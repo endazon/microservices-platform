@@ -319,6 +319,10 @@ kubectl -n platform-infra logs deploy/reset-gate --tail=20   # close / reopen �
 床へ向ける route）は `ISTIO=1 LOCALEDGE=1` のエッジ（`scripts/istio-edge-up.sh`）が既定で足す。
 **外すのは `RESET_FLOOR=0` を与えたときだけ**（経路だけが外れる。`0` / `1` 以外は入口に触る前に拒む）。
 🔴 **Traefik のエッジには経路が無い**（器は立つが誰も通らない）。
+**［2026-09-26 / #1543］** 計画 ADR-0111 に従い、器は **2 レプリカ ＋ PodDisruptionBudget（`minAvailable: 1`）**で立つ
+（単一ノードでも 2 つとも載るよう、分散は `ScheduleAnyway` に留める）。🔴 **`RESET_FLOOR=0` は検証で床の有無を比べる用途に
+限り、本番の退路に使わない**（外している間は所要時間で利用者名を列挙できる）。器がすべて落ちたときの 503 は「申請を閉じた
+状態」として保ち、器を戻して復旧する —— 手順は `docs/operations/keycloak-smtp-relay-setup-runbook.md` の「器がすべて落ちたとき」。
 
 ```bash
 kubectl -n platform-infra get deploy reset-floor   # 器

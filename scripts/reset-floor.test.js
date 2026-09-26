@@ -2,7 +2,7 @@
 'use strict';
 /*
  * reset-floor.test.js
- * SC-15, FR-05, NFR-09, NFR-13, ADR-0078 決定 1, ADR-0094 決定 2, ADR-0097 決定 2, IADR-0432 (#1410 / #1500):
+ * SC-15, FR-05, NFR-05, NFR-09, NFR-13, ADR-0078 決定 1, ADR-0094 決定 2, ADR-0097 決定 2, ADR-0111, IADR-0432 (#1410 / #1500 / #1543):
  * **床（deploy/mail-relay/reset-floor.js）と、それを与えるマニフェスト・経路の宣言が
  * 食い違わないこと**を、実装とマニフェストを同時に読んで固定する。
  *
@@ -22,9 +22,14 @@
  *   6. 🔴 **ログイン経路へ床を掛けていない**（ADR-0094 決定 4 は同経路を判定の対象外とした）。
  *   7. 上流が Keycloak の Service と**同じ名前・同じポート**である。
  *   8. 🔴 **起動器（istio-edge-up.sh）の既定は床を入れる**（RESET_FLOOR 未設定 → 床の overlay）。
- *      退路 RESET_FLOOR=0 は素の edge-istio を当てる。0 / 1 以外は**入口に触る前に**落ちる。
+ *      RESET_FLOOR=0 は素の edge-istio を当てる（［2026-09-26 / #1543］検証で床の有無を比べる用途に限る。
+ *      本番の退路ではない。計画 ADR-0111 決定 3）。0 / 1 以外は**入口に触る前に**落ちる。
  *      スクリプトを記録スタブの下で実際に走らせて確かめる（正規表現で字面を見るだけにしない）。
  *   9. 器の自己試験（純関数）も通る。
+ *  10. 🔴 ［2026-09-26 / #1543］計画 ADR-0111 決定 1・2: **器は 2 レプリカ以上で、PodDisruptionBudget
+ *      （minAvailable: 1・selector が器の Pod と一致）を持つ。分散は ScheduleAnyway だけ**（単一ノードの
+ *      ローカルで 2 つ目を Pending にしない）。**readiness は上流を映さない tcpSocket のまま**。**経路の宛先は
+ *      器 1 つだけ**（予備の経路なし）。判定は純関数にし、変異を当てて落ちることも同じ試験の中で確かめる。
  *
  * 外部依存ゼロ（Node 標準モジュールのみ。8 は bash が前提ツール）。実行: node scripts/reset-floor.test.js
  */
@@ -195,7 +200,7 @@ const runEdgeUp = (extraEnv) => {
 };
 const appliesEdge = (lines, dir) => lines.some((l) => l === `kubectl apply -k ${dir}`);
 
-ok('🔴 8. 起動器の既定は床を入れる（RESET_FLOOR 未設定で床の overlay。退路は 0。#1500）', () => {
+ok('🔴 8. 起動器の既定は床を入れる（RESET_FLOOR 未設定で床の overlay。0 は検証用の比較に限る。#1500 / #1543）', () => {
   const dflt = runEdgeUp({});
   assert.ifError(dflt.error);
   assert.strictEqual(dflt.status, 0, `istio-edge-up.sh が stub 下で完走しない: ${dflt.stderr}`);
@@ -229,7 +234,9 @@ ok('🔴 8. 起動器の既定は床を入れる（RESET_FLOOR 未設定で床�
   const off = runEdgeUp({ RESET_FLOOR: '0' });
   assert.strictEqual(off.status, 0, off.stderr);
   assert.ok(appliesEdge(off.lines, 'deploy/local/edge-istio'), 'RESET_FLOOR=0 で素の edge-istio を当てていない');
-  assert.ok(!off.lines.some((l) => l.includes('reset-floor')), 'RESET_FLOOR=0 なのに床を足している（退路が効かない）');
+  assert.ok(!off.lines.some((l) => l.includes('reset-floor')), 'RESET_FLOOR=0 なのに床を足している（比較の実行で床が外れない）');
+  // ［2026-09-26 / #1543］計画 ADR-0111 決定 3: 0 を与えた者に「本番の退路ではない」ことを告げる。
+  assert.ok(/本番の退路に使わない/.test(off.stderr), 'RESET_FLOOR=0 の実行で「本番の退路に使わない」を告げていない');
 
   // 🔴 0 / 1 以外は**入口に触る前に**落ちる（Traefik を落としてから気付かない）。
   for (const bad of ['false', 'yes', '2']) {
@@ -253,6 +260,98 @@ ok('9. 器の自己試験（純関数）も通る', () => {
   assert.strictEqual(floor.holdDelayMs(0, 10, 150), 140);
   assert.strictEqual(floor.holdDelayMs(0, 300, 150), 0);
   assert.ok(floor.HOP_BY_HOP.has('transfer-encoding'));
+});
+
+// ===== 10: 器の可用性（［2026-09-26 / #1543］計画 ADR-0111 決定 1・2）=====
+// 複数ドキュメント YAML を `---` で割り、kind ごとに本文を返す（外部依存ゼロ。コメント行は落とす ——
+// コメントで言及しただけの語を「宣言している」と読まない）。
+const splitDocs = (text) => text
+  .split(/^---\s*$/m)
+  .map((d) => d.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n'))
+  .filter((d) => /\S/.test(d));
+const docOfKind = (docs, kind) => docs.filter((d) => new RegExp(`^kind:\\s*${kind}\\s*$`, 'm').test(d));
+const appLabelOf = (block) => {
+  const m = /matchLabels:\s*\{\s*app:\s*([a-z0-9-]+)\s*\}/.exec(block)
+    || /matchLabels:\s*\n\s+app:\s*([a-z0-9-]+)/.exec(block);
+  return m ? m[1] : null;
+};
+
+/**
+ * 器のマニフェストと経路の overlay から、計画 ADR-0111 決定 1・2 に反する点を列挙する。**純関数**。
+ * @returns {string[]} 失敗の理由（空なら合格）
+ */
+function availabilityFailures(manifest, overlay) {
+  const failures = [];
+  const docs = splitDocs(manifest);
+  const deps = docOfKind(docs, 'Deployment');
+  if (deps.length !== 1) return [`器の Deployment が 1 つでない（${deps.length} 件）`];
+  const dep = deps[0];
+  const ns = (/^\s{2}namespace:\s*(\S+)/m.exec(dep) || [])[1];
+  const podLabel = appLabelOf(dep);
+
+  // 決定 1: 2 レプリカ以上。
+  const replicas = /^\s{2}replicas:\s*(\d+)\s*$/m.exec(dep);
+  if (!replicas) failures.push('Deployment が replicas を明示していない（既定の 1 になる）');
+  else if (Number(replicas[1]) < 2) failures.push(`replicas=${replicas[1]}（2 以上が要る。1 では Pod の作り直しごとに申請が 503 になる）`);
+
+  // 決定 1: PodDisruptionBudget で ready を 0 にしない。
+  const pdbs = docOfKind(docs, 'PodDisruptionBudget');
+  if (pdbs.length !== 1) {
+    failures.push(`PodDisruptionBudget が 1 つでない（${pdbs.length} 件）`);
+  } else {
+    const pdb = pdbs[0];
+    if (!/^apiVersion:\s*policy\/v1\s*$/m.test(pdb)) failures.push('PDB の apiVersion が policy/v1 でない');
+    const pdbNs = (/^\s{2}namespace:\s*(\S+)/m.exec(pdb) || [])[1];
+    if (pdbNs !== ns) failures.push(`PDB の namespace（${pdbNs}）が器（${ns}）と違う（器を守らない）`);
+    const sel = appLabelOf(pdb);
+    if (!sel || sel !== podLabel) failures.push(`PDB の selector（${sel}）が器の Pod ラベル（${podLabel}）と一致しない（器を守らない）`);
+    if (/maxUnavailable:/.test(pdb)) failures.push('PDB が maxUnavailable を使っている（replicas を 1 へ絞ると最後の 1 つの退避を許す。minAvailable: 1 を使う）');
+    const minAv = /minAvailable:\s*(\S+)/.exec(pdb);
+    if (!minAv || minAv[1] !== '1') failures.push(`PDB の minAvailable が 1 でない（${minAv ? minAv[1] : '無し'}）`);
+  }
+
+  // 単一ノードのローカルで 2 つ目を Pending にしない（分散は「できれば」だけ）。
+  if (/requiredDuringSchedulingIgnoredDuringExecution/.test(dep)) failures.push('必須の (anti-)affinity がある（単一ノードで 2 つ目が Pending になる）');
+  if (/whenUnsatisfiable:\s*DoNotSchedule/.test(dep)) failures.push('分散が DoNotSchedule である（単一ノードで 2 つ目が Pending になる）');
+
+  // 決定 2: readiness は上流を映さない。
+  const ready = /readinessProbe:\s*\n((?:\s{12,}.*\n)+)/.exec(dep);
+  if (!ready) failures.push('readinessProbe が無い');
+  else if (!/tcpSocket:/.test(ready[1]) || /httpGet:|exec:|grpc:/.test(ready[1])) {
+    failures.push('readinessProbe が tcpSocket でない（上流を叩くと Keycloak が落ちた瞬間に床を待たない即座の 503 になる）');
+  }
+
+  // 決定 2: 経路の宛先は器 1 つだけ（予備の経路を足さない）。
+  const patch = overlay.slice(overlay.indexOf('patch: |-'));
+  const hosts = [...patch.matchAll(/host:\s*(\S+)/g)].map((m) => m[1]);
+  if (hosts.length !== 1 || hosts[0] !== `reset-floor.${ns}.svc.cluster.local`) {
+    failures.push(`経路の宛先が器 1 つだけでない（${hosts.join(', ') || '無し'}）。予備の経路は床の無い経路へ黙って戻る`);
+  }
+  return failures;
+}
+
+ok('🔴 10. 器は 2 レプリカ ＋ PDB（minAvailable 1）で、分散は ScheduleAnyway・readiness は上流を映さず・予備の経路なし（#1543）', () => {
+  assert.deepStrictEqual(availabilityFailures(FLOOR_MANIFEST, OVERLAY_KUST), []);
+
+  // 🔴 変異を当てて落ちることを確かめる（守る側へ誤る変異を落とせない試験は門として足りない）。
+  const mutate = (from, to, text = FLOOR_MANIFEST) => {
+    assert.ok(from.test ? from.test(text) : text.includes(from), `変異の前提が見つからない: ${from}`);
+    return text.replace(from, to);
+  };
+  const cases = [
+    ['replicas を 1 へ戻す', mutate(/^(\s{2}replicas:\s*)\d+/m, '$11'), OVERLAY_KUST],
+    ['PDB を消す', mutate(/kind:\s*PodDisruptionBudget/, 'kind: ConfigMap'), OVERLAY_KUST],
+    // 行頭で当てる（コメントの中の「minAvailable: 1」を書き換えて変異したつもりにならない）。
+    ['PDB を maxUnavailable へ', mutate(/^(\s{2})minAvailable:\s*1/m, '$1maxUnavailable: 1'), OVERLAY_KUST],
+    ['PDB の selector を外す', mutate(/(kind:\s*PodDisruptionBudget[\s\S]*?matchLabels:\s*\{\s*app:\s*)reset-floor/, '$1other'), OVERLAY_KUST],
+    ['分散を DoNotSchedule へ', mutate(/whenUnsatisfiable:\s*ScheduleAnyway/, 'whenUnsatisfiable: DoNotSchedule'), OVERLAY_KUST],
+    ['readiness を httpGet で上流へ', mutate(/tcpSocket:\s*\{\s*port:\s*8080\s*\}/, 'httpGet: { path: /health, port: 8080 }'), OVERLAY_KUST],
+    ['予備の宛先を足す', FLOOR_MANIFEST, mutate(
+      /(\n(\s+)- destination:\n\s+host: reset-floor[^\n]*\n\s+port:\n\s+number: 8080)/,
+      '$1\n$2- destination:\n$2    host: keycloak.platform-infra.svc.cluster.local', OVERLAY_KUST)],
+  ];
+  for (const [name, manifest, overlay] of cases) {
+    assert.ok(availabilityFailures(manifest, overlay).length > 0, `変異「${name}」を落とせない`);  }
 });
 
 console.log(`[reset-floor.test] OK: ${passed} 件`);

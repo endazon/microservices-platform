@@ -3,15 +3,15 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-25
+updated: 2026-09-26
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-09, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-22, UC-01, UC-04, UC-05, UC-07]
+ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0433, IADR-0453, IADR-0461]
-specs: [20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs]
-issues: [#1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0433, IADR-0453, IADR-0461, IADR-0466]
+specs: [20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable]
+issues: [#1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, planning#196, planning#524, planning#538]
 -->
 
 # 運用仕様書
@@ -605,6 +605,11 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 | キュー駆動ワーカー | conversion / ingestion（`worker: true`） | 対象外（replicas 1 のまま） |
 | ステートフル | seaweedfs / wikijs / postgres / qdrant | 対象外（各自の可用性方針） |
 
+- **チャートの外にも PDB を持つ部品が 1 つある**: パスワードリセット申請の床の器（`platform-infra` の `reset-floor`。
+  宣言は `deploy/mail-relay/reset-floor/`）。申請の経路が器だけを向くため、**2 レプリカ ＋ PDB（`minAvailable: 1`）**で
+  動かす（HPA は持たない）。器がすべて落ちたときの扱いは
+  [Keycloak smtpServer の設定の Runbook](keycloak-smtp-relay-setup-runbook.md) の「器がすべて落ちたとき」。
+
 - ワーカー（conversion/ingestion）は RabbitMQ 競合コンシューマで水平化自体は可能だが、CPU ベース HPA が
   不適（キュー滞留がスケール指標）なため本段では対象外とし、負荷実測後に KEDA 等のキュー長ベース
   スケールを別途検討する。
@@ -635,7 +640,8 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   運用環境ごとに設定するもので、既定は `default-null`＝どこへも送らない**（設定漏れではなく既定）。
 - **暫定のアラート（Grafana 統合アラート。#665 / 計画 決定 42）**:
   [`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)
-  が同じ 13 ルールを Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
+  が同じ 17 ルール（［2026-09-26 / #1111］で数え直した。従前の「13」は既に実体の 16 と食い違っていた）を
+  Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
   `alerts.yml` との対応は `node scripts/check-grafana-alerting.js` が CI で突合する。
 - **★ 経路間のパリティ（#674。Grafana provisioning は経路間で同内容とする実装 ADR）**: provisioning（datasources / dashboards / alerting）は
   **compose と k8s の両方に同内容で置く**。`node scripts/check-grafana-provisioning-parity.js` が突合する。
@@ -644,8 +650,8 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   スループット・5xx 率・p99・RAG レイテンシ・**RAG 初回応答 p95**）と
   [`llm-usage.json`](../../deploy/grafana/provisioning/dashboards/llm-usage.json)（**LLM の金額・トークン消費量・
   呼び出し回数**。**［2026-08-23］費用のパネルを追加した**）。
-- **LLM 費用の統制（暫定）**: **上限アラートは Alertmanager 配備後に有効となる。配備までは月次の手動確認である**
-  （計画 決定 39〜41 / #546）。手順・担当・記録は
+- **LLM 費用の統制（暫定）**: **上限アラートは月次予算の金額が設定された時点で有効となる。それまでは月次の手動確認である**
+  （計画 決定 39〜41 / #546 / #1111）。手順・担当・記録は
   [`llm-cost-monthly-review-runbook.md`](llm-cost-monthly-review-runbook.md) が定める。
   **［2026-08-23］費用の金額が出るようになった**（用途別・モデル別のトークン消費量と金額換算。
   換算はゲートウェイが**有効期間つき単価表**を読んで行い、Grafana のクエリには単価を書かない）。
@@ -656,6 +662,15 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   いまの理由は**月次予算のしきい値が計画側で未確定**だからである（計画 決定 41。実測を待って確定する）。
   **しきい値が無いものにアラートは置けない。** したがって月次の手動確認は**引き続き唯一の統制**であり、
   終了しない（終了条件は「配備」ではなく「配備 **かつ** 上限アラートの配線」である）。
+  🔴 **［2026-09-26 更新 / #1111］配線は入った。自動検知はまだ働いていない。** 用途別の上限アラート
+  `LlmMonthlyBudgetExceeded`（直近 30 日の `llm_cost_total` と、ゲートウェイが出すゲージ
+  `llm_budget_monthly_limit` を用途・通貨で比べる）が compose・経路B の Prometheus と Grafana に入っている。
+  **ただし金額（`Llm:Budget:MonthlyLimits`）は既定を持たず未設定であり、そのあいだゲージの系列が無いので
+  アラートは評価対象を持たず発火しない。** 金額を決めるのは所有者であり（実装側は数字を置かない）、
+  **金額を初めて設定する変更が同じ変更で Runbook を `superseded` にする**（併存させない。食い違いは
+  `node scripts/scripts.test.js` が CI で落とす）。設定の置き場・系列の確かめ方・意図的な発火の手順は
+  [Runbook](llm-cost-monthly-review-runbook.md) §金額を設定する手順（所有者）が定める。
+  **終了条件は「配備 かつ 配線 かつ 金額の設定」となり、残るのは金額だけである。**
 - **ピン留めモデルの版数移行と利用不能時の振る舞い**: 用途別にピン留めした LLM モデルの版数を上げる手順
   （**Stage 0 再検証が前提**）と、**モデルが使えないときは取引判断を実行せず発注もしない**（**障害ではなく
   設計上の正常な結果**）ことは [`llm-model-pin-runbook.md`](llm-model-pin-runbook.md) が定める（#587。報告書の種別別用途と取引判断モデルの改定を定めた実装 ADR の決定 3）。
@@ -664,7 +679,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   **dev の 2 経路（docker-compose と、ローカル k8s の可観測性オーバーレイ）に配線**されている。
   **［2026-08-30 更新 / #546］経路B（ローカル k8s）にも Alertmanager を配備し、両経路のルールが
   同じ受け手へ届くようにした**（それ以前は compose だけだった）。
-  🔵 **［2026-09-09 更新］経路B の Prometheus の inline は compose と同数である**（両経路とも 13 件。
+  🔵 **［2026-09-09 更新］経路B の Prometheus の inline は compose と同数である**（両経路とも 17 件。［2026-09-26 / #1111］で数え直した。
   `node scripts/check-prometheus-alerts-parity.js` が群名・ルール名・`expr`・`for`・`severity` で 1 対 1 を
   確かめる）。**2026-09-05 時点の「2 件が写されていない」はその後の是正で解消しており、本追記はその訂正である。**
   **件数は導出値なので、数えるのは実体である。****stg/prod は依然として対象外**である
@@ -683,7 +698,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 >
 > 計画が定めた**暫定の通知先＝ Grafana の内蔵アラート**（決定 42）は、**#665 で provisioning を配線した**
 > （[`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)。
-> compose・k8s の 2 か所。13 ルールは `alerts.yml` と 1 対 1）。**ただし、配線したのは検知と可視化までである。**
+> compose・k8s の 2 か所。17 ルールは `alerts.yml` と 1 対 1）。**ただし、配線したのは検知と可視化までである。**
 >
 > - **push 配信の宛先（contactPoints / policies）は設定していない。** 届かない宛先を書くと「配線した」と
 >   読めてしまうため、**意図的に書いていない**（SLO の暫定通知先を Grafana 統合アラートへ配線する実装 ADR の決定 3）。
@@ -692,7 +707,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 >   **人が気づくまでの時間は見に行く間隔に等しい。**
 > - **Grafana が provisioning を受理するかは、CI では見ていない。** 機械で確かめているのは
 >   `node scripts/check-grafana-alerting.js` の範囲（ルール数・名前の 1 対 1・`datasourceUid` の実在・
->   compose と k8s の同内容・必須キー）まで。**配備時に `/api/v1/provisioning/alert-rules` が 13 件返すことを確かめる。**
+>   compose と k8s の同内容・必須キー）まで。**配備時に `/api/v1/provisioning/alert-rules` が 17 件返すことを確かめる。**
 >   🔵 **［2026-09-04 更新］稼働クラスタでは受理された** —— `reload` の後に当時の 9 件が返ることを実測した
 >   （「実装環境で Grafana を起動できない」という以前の記述は、もう当てはまらない）。
 >   **ルールを増減させたら毎回確かめること**（件数は導出値である）。
@@ -723,6 +738,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 | 検索レイテンシ | retrieval-service p95（`http_server_request_duration_seconds_bucket`） | > 1.5（**秒**）が 10 分 | Alertmanager（warning） | 検索 p95 1.5s |
 | **RAG 初回応答（SLO 判定）** | aianalysis `/analysis/ask/stream` の**初回トークンまでの時間**（`rag_answer_first_token_duration_seconds_bucket`）p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | **RAG 初回応答 p95 5s** |
 | RAG 応答完了（**傾向の観察に留める**） | aianalysis `/analysis/ask`（一括経路）の応答完了 p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | — （**判定に用いない**） |
+| **LLM 費用（用途別の月次予算）** — ［2026-09-26 / #1111］ | 直近 30 日の `llm_cost_total` ＞ ゲージ `llm_budget_monthly_limit`（用途・通貨ごと） | 超過が 5 分（**金額は未設定＝不活性**） | Alertmanager（warning） | — （費用の統制。金額が設定されるまでは Runbook の月次確認） |
 | **評価対象の不在** — 収集経路 | `absent(up{job="otel-collector"})` | 系列が無い状態が 5 分 | Alertmanager（warning） | 検出（**統制**） |
 | **評価対象の不在** — 全サービスの HTTP メトリクス | `absent(http_server_request_duration_seconds_count)` | 系列が無い状態が 5 分 | Alertmanager（warning） | 検出（**統制**） |
 | **評価対象の不在** — 検索レイテンシ | `absent(http_server_request_duration_seconds_bucket{job="…retrieval-service"})` | 系列が無い状態が 5 分 | Alertmanager（warning） | 検出（**統制**） |
@@ -1069,13 +1085,19 @@ QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-fulltext-index.sh
   **暫定の通知先（Grafana 内蔵アラート）は #665 で配線済み**だが、**push 配信の宛先は依然として無い**
   （本書「監視・アラート」の★参照。気づく経路は Alertmanager / Grafana の画面を見ることだけ）。
   **受信先が設定されテスト通知が届いた時点で暫定経路を削除する**（併存させない。条件は同★）。**#546 で追跡している。**
-- **LLM 費用の自動検知**: **無い**。**［2026-08-30 更新 / #546］理由は「通知基盤が無い」ではなくなった** ——
+- **LLM 費用の自動検知**: **配線はあるが、金額が未設定のため働いていない**（［2026-09-26 更新 / #1111］。
+  従前ここは「無い」と書いていた。上限アラートは配線済みで、金額 `Llm:Budget:MonthlyLimits` は既定を持たず
+  所有者が設定する。未設定のあいだアラートは評価対象を持たず発火しない。**残る未決は金額だけ**であり、
+  設定する変更が同時に Runbook を `superseded` にする）。以下はそれ以前の経緯である。
+  **［2026-08-30 更新 / #546］理由は「通知基盤が無い」ではなくなった** ——
   Alertmanager は配備済みであり、**残る障害は月次予算のしきい値が計画側で未確定であること**である
   （計画 決定 41。実測を待って確定し、確定の前提は費用の実績が数か月分そろうこと）。
   **検知の遅れは最大 1 か月**であることを受け入れ、月次の手動確認を暫定の統制として置いている
   （計画 決定 39 / [Runbook](llm-cost-monthly-review-runbook.md)）。
-  🔴 **しきい値が定まるまで上限アラートは置かない。** 実装が数字を決めると、それが既成事実として
-  計画へ逆流する（計画が明示的に禁じている）。
+  🔴 **しきい値が定まるまで金額は置かない。** 実装が数字を決めると、それが既成事実として
+  計画へ逆流する（計画が明示的に禁じている）。［2026-09-26 / #1111］**配線だけを先に置いた**のは、
+  所有者が「金額を所有者が設定する値にできるなら配線してよい」と裁定したためである —— 配線は数字を持たず、
+  金額が無いあいだ何も評価しない。
 - **監視の stg/prod（k3s）展開**: Prometheus/Alertmanager を Helm（Operator 等）で配備し、`alerts.yml` 相当の
   ルールと通知を k3s にも展開する（**［2026-08-30 更新 / #546］現状は dev の 2 経路のみ**。
   本番像の chart には Prometheus / Alertmanager / Grafana のリソースが無い）。

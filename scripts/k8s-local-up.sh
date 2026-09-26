@@ -14,7 +14,9 @@
 # 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
 #   使い捨てスタックでだけ PERSIST=0 で外す。
 # リセット申請の床（SC-15）は **既定オン**（ADR-0097 決定 2 / #1500）。器は infra と一緒に必ず立ち、
-#   経路は ISTIO=1 ＋ LOCALEDGE=1 のエッジ（istio-edge-up.sh）が足す。外すときだけ RESET_FLOOR=0。
+#   経路は ISTIO=1 ＋ LOCALEDGE=1 のエッジ（istio-edge-up.sh）が足す。外すときだけ RESET_FLOOR=0
+#   （検証で床の有無を比べる用途に限る。本番の退路に使わない。ADR-0111 決定 3 / #1543）。
+#   器は 2 レプリカ ＋ PodDisruptionBudget（ADR-0111 決定 1）。下の rollout 待ちは 2 つとも ready になるまで待つ。
 set -euo pipefail
 
 # SC-15 / ADR-0097 決定 2 (#1500): RESET_FLOOR は末尾の istio-edge-up.sh が読む。そこでも 0 / 1 以外を拒むが、
