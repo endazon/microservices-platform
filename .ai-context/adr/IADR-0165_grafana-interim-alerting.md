@@ -11,7 +11,7 @@ related_ids:
   - IADR-0432
 author: claude
 created: 2026-08-10
-updated: 2026-09-26
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md
 ---
@@ -228,3 +228,21 @@ PromQL の優先順位どおり `or` は各辺の和、`and` / `unless` は左�
 
 **本追記の後も見ていないもの**: 上の追記と同じ（Grafana が受理するか・閾値の妥当性）。NaN は値の集合に入れない（`ne` の評価器で NaN が真になる端は近似として受容する）。
 変異試験（検査器の各修正を 1 つずつ戻す 23 通り）はすべて自己試験で落ちることを確かめた（#1595 の作業仕様書 §検証）。
+
+## ［2026-09-27 追記 / #1605］検査 6 の読み方を配備の版（Grafana 11.0.0・Prometheus v2.52.0）の実装に合わせる
+
+#1600（#1595）の監査の残り。**新たな設計判断は無い**ため新しい IADR は起こさない。配備の版のソースを `gh api` で読み（読み取りのみ）、検査器の読み方をそれに合わせた。
+
+1. **plain の数は yaml.v3 の読み方にする。** Grafana 11.0.0 は provisioning を `gopkg.in/yaml.v3`（v3.0.1）で読み、`resolve.go` は `_` を除いてから
+   `strconv.ParseInt(·, 0, 64)` にかける —— **0 始まりは 8 進**（`[010]` は 8）で、`0x` / `0o` / `0b` は符号つきでも読み、`08` は浮動小数の 8 になる。
+   #1595 は YAML 1.2 core schema で読んでいた（`010` を 10）ので、`> 9` と `lt 010` のような組み合わせを見逃していた（既存の偽陰性）。
+2. **`absent(…)` のラベルは Prometheus の `createLabelsForAbsentFunction` と同じに作る。** 照合子を順に読み、同じ名前が等号の後に別の照合子へ出れば落とし、
+   サブクエリ・括弧はラベルを持たない。#1595 は等号の照合子をそのままラベルにしていたので、`absent(up{job="a", job!="b"}) and vector(1)` を
+   「決して値を返さない」と誤判定していた（許可リストでも黙らせられない誤陽性）。
+3. **評価器の型は Grafana 11.0.0 の threshold が受け付ける `gt` / `lt` / `within_range` / `outside_range` だけを通す**（`pkg/expr/threshold.go` の
+   `supportedThresholdFuncs`）。`gte` / `lte` / `eq` / `ne` / `*_included` は後の版で足されたもので、11.0.0 は誤りとして拒む。issue では「範囲外・記録のみ」としたが、
+   受理する型を狭めるだけで実データ（`gt` / `lt` のみ）に影響しないので直した。
+4. YAML の空白の細部（二重引用の行末のエスケープした空白・`|+` / `>+` のファイル末の改行・ブロックスカラーの空白だけの行）を YAML 1.2 のとおりに読む。
+
+**本追記の後も見ていないもの**: 上の追記と同じ。加えて、Grafana の文字列型の欄（`title` / `condition` / `refId` / `datasourceUid`）は yaml.v3 が plain の元の綴りを入れる
+（`refId: 010` は "010"）のに、検査器は数として読んでから文字列にする（"8"）。検査器の中では両側が同じ読み方なので鎖の照合はずれない。記録に留める（#1605 の作業仕様書 §未検証）。

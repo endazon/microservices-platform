@@ -3,15 +3,15 @@ title: ワンタイムコード（OTP／多要素認証） テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-08-15
-updated: 2026-09-09
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
 ids: [SC-13, SC-14, SC-16, UC-05]
 adrs: [ADR-0026]
 iadrs: [IADR-0197, IADR-0294]
-specs: []
-issues: [#438]
+specs: [20260927_issue-1605_checker-residual-precision]
+issues: [#438, #1605]
 -->
 
 # テスト仕様書: ワンタイムコード（OTP／多要素認証）
@@ -47,7 +47,7 @@ issues: [#438]
 | T-05 | 同上 | 同上 | `otpPolicyCodeReusable = false` | 同一コードの再利用を許さない（TOTP の前提） | 自動 |
 | T-10 | 同上 | 同上（検査 5） | **対話ログインする利用者が全員** `requiredActions` に `CONFIGURE_TOTP` を持つ | 🔴 **T-04 だけでは足りない。** provider 側の `defaultAction` は**新規に作られる利用者にしか付かず**、realm import で作られる利用者には遡及しない。T-04 が緑でも**未登録者がパスワードだけで通る**状態が成立し得た（実測） | 自動 |
 | T-11 | 同上 | 同上（検査 5） | **サービスアカウント**（`serviceAccountClientId` を持つ利用者）には `CONFIGURE_TOTP` が**付いていない** | 陽性対照。付けるとトークン取得が `Account is not fully set up` で壊れる。T-10 を「全利用者へ付ける」と読み違えたときに落ちる | 自動 |
-| T-12 | 同上 | 同上（検査 5） | realm の**全 client** で `directAccessGrantsEnabled` が `true` でない | パスワードグラントは browser フローを通らないため、開いていると **OTP を一切問われずにトークンが出る**（MFA のバイパス口） | 自動 |
+| T-12 | 同上 | 同上（検査 5） | realm の**全 client** で `directAccessGrantsEnabled` が `true` でなく、非推奨の `directGrantsOnly` が `true` でなく、`bearerOnly` でない client は `directAccessGrantsEnabled` を書き落としていない（管理 API で作ると未設定は開く） | パスワードグラントは browser フローを通らないため、開いていると **OTP を一切問われずにトークンが出る**（MFA のバイパス口） | 自動 |
 | T-13 | 同上 | 同上（検査 5） | `requiredActions` の `delete_credential` が `enabled: false` | 登録済み OTP を利用者自身が消せると、強制登録を通った後に MFA 無しの状態へ戻れる（再発行は管理者側の画面が担う） | 自動 |
 | T-14 | 同上 | 同上（検査 5） | `eventsEnabled` / `adminEventsEnabled` / `adminEventsDetailsEnabled` が `true`、`eventsListeners` に `jboss-logging`、`enabledEventTypes` に最小集合（`LOGIN` / `LOGIN_ERROR` / `LOGOUT` / `UPDATE_PASSWORD` / `UPDATE_TOTP` / `REMOVE_TOTP` / `RESET_PASSWORD` / `REMOVE_CREDENTIAL`） | 計画 ADR「操作を監査ログに記録する」／メール停止時の代替手順が「申請者・承認者・実行者を残す」ことを前提にしている。Keycloak の既定は「記録しない」であり、**書かなければ 1 件も残らない** | 自動 |
 | T-15 | — | `node scripts/check-realm-constraints.js --self-test` | 検査 5 の不変条件を **1 つずつ壊した変異 9 件がそれぞれ検出され**、陽性対照（サービスアカウント）は検出されない | 🔴 **正例だけでは検出力を測れない。** 「実データで緑」は検査が効いていることの証拠にならない | 自動 |
