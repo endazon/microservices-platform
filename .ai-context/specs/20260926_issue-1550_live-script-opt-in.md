@@ -136,3 +136,15 @@ L 18 ＋ O 1 ＋ S 14 ＋ T 10 ＋ D 3 ＋ X 4 ＋ C 1 ＝ 51。
 - 🔴 ローカルで**走らせていない**もの: `k8s-local-up.test.js` / `k8s-local-down.test.sh` / `reset-floor.test.js`（PATH のスタブが
   この作業機の実ツールを確実に隠せる保証が無く、#1550 の監査で実際にスタブ漏れから本物の `kubectl delete` が飛んだため）。
   CI（ubuntu・クラスタ無し）の結果で確かめる。
+
+## ［2026-09-26 追記 / 監査への対応］
+
+- F1: 「`LIVE` は `1` だけ」を試験で固定した。`LIVE=0` / `true` / `yes` / ` 1`（前に空白）/ 空を、JS の判定器・bash の判定器・
+  live の 18 入口それぞれ（未設定と合わせて 6 通り）で拒否することを見る。JS が `0` も受ける変異と、bash が空でない値を何でも受ける
+  変異の 2 つが、判定器の 2 件の試験で落ちることを確かめた（戻し済み。変異のもとで入口を起こす試験は走らせていない）。
+- F2: ワークフローの検査を `run:` の中の「コマンドの先頭」を見る形へ替え、`bash|sh|node` 経由に加えて直接実行（`scripts/X.sh`・
+  `./scripts/X`・`$GITHUB_WORKSPACE/scripts/X`・`${{ github.workspace }}/scripts/X`）と行継続を拾う。存在確認（`[ -f scripts/X ]`）・
+  `echo`・`paths:` の列挙・注記は拾わない（合成したワークフローで両方向を固定）。
+- F3: 標識に `docker compose` / `docker-compose`（コマンドとして。`docker-compose.yml` のファイル名は当たらない）と `psql` を足した。
+  新たに当たったのは `compose-up.sh` だけで、`offline` へ理由つきで分類した（上の表の C。k8s の稼働クラスタにも稼働サービスにも当たらない）。
+  `psql` は既存の live（`measure-*`）と ownFlag（`backup-restore-drill.sh`）にしか当たらない。

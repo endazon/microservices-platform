@@ -11256,6 +11256,8 @@ exit $RC
     const manifest = JSON.parse(fs.readFileSync(path.join(SCRIPTS, 'live-scripts.json'), 'utf8'));
     const live = require('./lib/live-opt-in.js');
     const TOOLS = ['kubectl', 'helm', 'k3d', 'nerdctl', 'rdctl', 'docker', 'curl', 'wget', 'node', 'psql', 'age'];
+    // 指定とみなしてはならない値（監査 F1）。受け付けるのは `1` だけである。
+    const BAD_LIVE_VALUES = ['0', 'true', 'yes', ' 1', ''];
 
     const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
       const p = path.join(dir, e.name);
@@ -11266,7 +11268,10 @@ exit $RC
       assert.strictEqual(live.isLiveOptedIn(['--live'], {}), true);
       assert.strictEqual(live.isLiveOptedIn([], { LIVE: '1' }), true);
       assert.strictEqual(live.isLiveOptedIn([], {}), false);
-      assert.strictEqual(live.isLiveOptedIn([], { LIVE: 'true' }), false, '1 以外の値を指定とみなしている');
+      // 監査 F1: 「1 だけ」を固定する（0 を受ける・空でなければ何でも受ける、の変異を殺す）。
+      for (const v of BAD_LIVE_VALUES) {
+        assert.strictEqual(live.isLiveOptedIn([], { LIVE: v }), false, `LIVE=${JSON.stringify(v)} を指定とみなしている（1 だけのはず）`);
+      }
       assert.strictEqual(live.isLiveOptedIn(['--live=1'], {}), false, '--live 以外の綴りを指定とみなしている');
       assert.deepStrictEqual(live.withoutLiveFlag(['a', '--live', 'b']), ['a', 'b']);
       assert.strictEqual(live.EXIT_CODE, 3);
@@ -11284,7 +11289,13 @@ exit $RC
       assert.strictEqual(refuse.status, 3, refuse.stderr);
       assert.ok(!refuse.stdout.includes('reached'), '拒否の後も処理が続いた');
       assert.ok(refuse.stderr.includes('[probe]') && refuse.stderr.includes('--live') && refuse.stderr.includes('LIVE=1'), refuse.stderr);
-      const pass = spawnSync('bash', ['-c', `. "${lib}"; live_opt_in_require probe; printf 'LIVE=%s' "$(bash -c 'printf %s "\${LIVE:-}"')"`], { encoding: 'utf8', env: { ...env, LIVE: '1' } });
+      // 監査 F1: bash 側も「1 だけ」。0・true・yes・前に空白のある 1 は拒否する。
+      for (const v of BAD_LIVE_VALUES) {
+        const r = spawnSync('bash', ['-c', `. "${lib}"; live_opt_in_require probe; echo reached`], { encoding: 'utf8', env: { ...env, LIVE: v } });
+        assert.strictEqual(r.status, 3, `bash が LIVE=${JSON.stringify(v)} を指定とみなした（exit ${r.status}）`);
+        assert.ok(!r.stdout.includes('reached'), `LIVE=${JSON.stringify(v)} で拒否の後も処理が続いた`);
+      }
+      const pass =spawnSync('bash', ['-c', `. "${lib}"; live_opt_in_require probe; printf 'LIVE=%s' "$(bash -c 'printf %s "\${LIVE:-}"')"`], { encoding: 'utf8', env: { ...env, LIVE: '1' } });
       assert.strictEqual(pass.status, 0, pass.stderr);
       assert.strictEqual(pass.stdout, 'LIVE=1', '指定を子へ export していない');
     });
@@ -11356,45 +11367,117 @@ exit $RC
           LIVE_SANDBOX_MARK: mark,
           KUBECONFIG: path.join(work, 'no-such-kubeconfig'),
         });
-        for (const { path: rel } of manifest.live) {
-          const abs = path.join(SCRIPTS, rel);
-          const r = rel.endsWith('.sh')
-            ? spawnSync('bash', [abs.split(path.sep).join('/')], { cwd: REPO, env, encoding: 'utf8', timeout: 60000 })
-            : spawnSync(process.execPath, ['-r', preload, abs], { cwd: REPO, env, encoding: 'utf8', timeout: 60000 });
-          const name = rel.replace(/\.js$/, '');
-          const hitsLog = fs.existsSync(mark) ? fs.readFileSync(mark, 'utf8') : '';
-          assert.strictEqual(hitsLog, '', `${rel} が指定なしでツールを起動した: ${hitsLog}`);
-          assert.strictEqual(r.status, 3, `${rel} が指定なしで exit ${r.status} を返した（期待 3）。stderr=${r.stderr}`);
-          const err = r.stderr || '';
-          assert.ok(err.includes(`[${name}]`) && err.includes('--live') && err.includes('LIVE=1'), `${rel} の拒否の文言が所定の形でない: ${err}`);
+        // 未設定に加え、指定とみなしてはならない値（監査 F1）でも同じく拒否することを入口ごとに見る。
+        for (const liveValue of [undefined, ...BAD_LIVE_VALUES]) {
+          const runEnv = liveValue === undefined ? env : { ...env, LIVE: liveValue };
+          const label = liveValue === undefined ? '未設定' : `LIVE=${JSON.stringify(liveValue)}`;
+          for (const { path: rel } of manifest.live) {
+            const abs = path.join(SCRIPTS, rel);
+            const r = rel.endsWith('.sh')
+              ? spawnSync('bash', [abs.split(path.sep).join('/')], { cwd: REPO, env: runEnv, encoding: 'utf8', timeout: 60000 })
+              : spawnSync(process.execPath, ['-r', preload, abs], { cwd: REPO, env: runEnv, encoding: 'utf8', timeout: 60000 });
+            const name = rel.replace(/\.js$/, '');
+            const hitsLog = fs.existsSync(mark) ? fs.readFileSync(mark, 'utf8') : '';
+            assert.strictEqual(hitsLog, '', `${rel} が ${label} でツールを起動した: ${hitsLog}`);
+            assert.strictEqual(r.status, 3, `${rel} が ${label} で exit ${r.status} を返した（期待 3）。stderr=${r.stderr}`);
+            const err = r.stderr || '';
+            assert.ok(err.includes(`[${name}]`) && err.includes('--live') && err.includes('LIVE=1'), `${rel} の拒否の文言が所定の形でない（${label}）: ${err}`);
+          }
         }
       } finally {
         fs.rmSync(work, { recursive: true, force: true });
       }
     });
 
+    // ワークフローの run: の中から live の入口の呼び出しを拾う。コマンドの先頭（行頭・`;`・`&&`・`||`・`|`・`$(`・`(` の後）
+    // に置かれた形だけを数える —— `bash|sh|node` 経由・直接実行（`scripts/X.sh`・`./scripts/X`・`$GITHUB_WORKSPACE/scripts/X`・
+    // `${{ github.workspace }}/scripts/X`）のどれでも拾い、`[ -f scripts/X ]` や `echo scripts/X` や paths: の列挙は拾わない（監査 F2）。
+    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const findLiveInvocations = (text) => {
+      const lines = text.replace(/\r\n/g, '\n').split('\n');
+      const body = [];
+      for (let i = 0; i < lines.length; i += 1) {
+        const m = /^(\s*)(?:-\s+)?run:\s*(.*)$/.exec(lines[i]);
+        if (!m) continue;
+        const indent = m[1].length;
+        if (/^[|>][-+]?\s*$/.test(m[2])) {
+          let j = i + 1;
+          while (j < lines.length && (lines[j].trim() === '' || /^\s*/.exec(lines[j])[0].length > indent)) {
+            body.push({ n: j + 1, t: lines[j] });
+            j += 1;
+          }
+        } else {
+          body.push({ n: i + 1, t: m[2] });
+        }
+      }
+      // 行継続（末尾の `\`）をつなぎ、注記を落とす。
+      const logical = [];
+      for (const { n, t } of body) {
+        const prev = logical[logical.length - 1];
+        if (prev && prev.cont) { prev.t += ` ${t.trim()}`; prev.cont = /\\\s*$/.test(t); continue; }
+        logical.push({ n, t, cont: /\\\s*$/.test(t) });
+      }
+      const found = [];
+      for (const { n, t } of logical) {
+        const code = t.replace(/\\\s*(?=\s|$)/g, ' ').replace(/(^|\s)#.*$/, '');
+        for (let cmd of code.split(/;|&&|\|\||\||\$\(|\(/)) {
+          cmd = cmd.trim()
+            .replace(/^(?:(?:then|do|else|elif|if|!|time|exec|env)\s+)+/, '')
+            .replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+/, '')
+            .replace(/^(?:bash|sh|node)(?:\s+-\S+)*\s+/, '');
+          for (const { path: rel, offline } of manifest.live) {
+            const re = new RegExp(`^["']?(?:\\$\\{?GITHUB_WORKSPACE\\}?/|\\$\\{\\{\\s*github\\.workspace\\s*\\}\\}/|\\./)?scripts/${esc(rel)}["']?(?=\\s|$)(.*)$`);
+            const m = re.exec(cmd);
+            if (m) found.push({ n, rel, offline, args: m[1].trim().split(/\s+/).filter(Boolean), line: t.trim() });
+          }
+        }
+      }
+      return found;
+    };
+    const offendersOf = (found) =>
+      found.filter((x) => !x.args.includes('--live') && !x.offline.some((o) => x.args.includes(o)));
+
+    ok('#1550: 呼び出しの検出器 — 直接実行・$GITHUB_WORKSPACE・行継続を拾い、存在確認・echo・paths: は拾わない', () => {
+      const sample = [
+        'on:',
+        '  pull_request:',
+        '    paths:',
+        '      - "scripts/k8s-local-up.sh"',
+        'jobs:',
+        '  a:',
+        '    steps:',
+        '      - run: scripts/k8s-local-up.sh "$C"',
+        '      - run: $GITHUB_WORKSPACE/scripts/check-stack-ready.js',
+        '      - name: x',
+        '        run: |',
+        '          set -e',
+        '          [ -f scripts/check-stack-ready.js ] && echo scripts/check-stack-ready.js',
+        '          LOCALEDGE=1 K=2 \\',
+        '            ./scripts/k8s-local-down.sh --apply',
+        '          if true; then bash -x scripts/istio-edge-up.sh --live; fi',
+        '          node scripts/check-password-reset-mail.js --self-test',
+        '          "${{ github.workspace }}/scripts/verify-oidc-edge-flow.sh" # 注記 --live',
+      ].join('\n');
+      const found = findLiveInvocations(sample);
+      assert.deepStrictEqual(found.map((x) => x.rel).sort(), [
+        'check-password-reset-mail.js', 'check-stack-ready.js', 'istio-edge-up.sh', 'k8s-local-down.sh',
+        'k8s-local-up.sh', 'verify-oidc-edge-flow.sh',
+      ], JSON.stringify(found, null, 1));
+      assert.deepStrictEqual(offendersOf(found).map((x) => x.rel).sort(), [
+        'check-stack-ready.js', 'k8s-local-down.sh', 'k8s-local-up.sh', 'verify-oidc-edge-flow.sh',
+      ], '指定なしの呼び出し（注記の --live は数えない）を拾えていない');
+    });
+
     ok('#1550: ワークフローが live の入口を呼ぶ行は、指定なしで動くモードでない限り --live を持つ', () => {
       const wfDir = path.join(REPO, '.github', 'workflows');
-      const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       let seen = 0;
       const offenders = [];
       for (const f of fs.readdirSync(wfDir).filter((n) => /\.ya?ml$/.test(n))) {
-        const lines = fs.readFileSync(path.join(wfDir, f), 'utf8').split('\n');
-        lines.forEach((line, i) => {
-          if (/^\s*#/.test(line)) return;
-          for (const { path: rel, offline } of manifest.live) {
-            const re = new RegExp(`\\b(?:node|bash|sh)\\s+(?:\\./)?scripts/${esc(rel)}(?=\\s|$|["'])(.*)$`);
-            const m = re.exec(line);
-            if (!m) continue;
-            seen += 1;
-            const args = m[1].split(/\s+/);
-            if (args.includes('--live')) continue;
-            if (offline.some((o) => args.includes(o))) continue;
-            offenders.push(`${f}:${i + 1}: ${line.trim()}`);
-          }
-        });
+        const found = findLiveInvocations(fs.readFileSync(path.join(wfDir, f), 'utf8'));
+        seen += found.length;
+        for (const x of offendersOf(found)) offenders.push(`${f}:${x.n}: ${x.line}`);
       }
-      assert.ok(seen > 0, 'ワークフローに live の入口の呼び出しが 1 行も見つからない（走査が壊れている）');
+      assert.ok(seen >= 7, `ワークフローに live の入口の呼び出しが ${seen} 件しか見つからない（integration-stack.yml だけで 7 件ある。走査が壊れている）`);
       assert.deepStrictEqual(offenders, [], `--live を明示していない呼び出し:\n${offenders.join('\n')}`);
     });
 

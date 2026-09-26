@@ -6,7 +6,7 @@
     "offline: markers に当たるが稼働クラスタへは当たらないファイル（理由つき）。",
     "markers に当たる新しいファイルは、ここへ分類するまで scripts-tests が赤になる。人向けの一覧は scripts/README.md「稼働クラスタへ当たる scripts」。"
   ],
-  "markers": "\\bkubectl\\b|port-forward|\\bk3d\\b|\\bnerdctl\\b|\\brdctl\\b|\\bkcadm\\b|/admin/realms|\\bhelm\\s+(upgrade|install|uninstall|status|rollback|get|list)\\b|(localhost|127\\.0\\.0\\.1)(:\\d|\\b)|svc\\.cluster\\.local",
+  "markers": "\\bkubectl\\b|port-forward|\\bk3d\\b|\\bnerdctl\\b|\\brdctl\\b|\\bkcadm\\b|/admin/realms|\\bhelm\\s+(upgrade|install|uninstall|status|rollback|get|list)\\b|(localhost|127\\.0\\.0\\.1)(:\\d|\\b)|svc\\.cluster\\.local|\\bdocker[ -]compose(\\s|$)|\\bpsql\\b",
   "excludedPatterns": [
     { "pattern": "\\.test\\.(js|sh)$", "reason": "試験器。実ツールは PATH のスタブで置き換えて走る" },
     { "pattern": "^scripts(\\.repo)?\\.test\\.js$", "reason": "試験器（受け口と companion）" },
@@ -37,6 +37,7 @@
     { "path": "backup-restore-drill.sh", "reason": "稼働クラスタへは自前の --live のときだけ読み取り専用の psql で触れる。--live-counts は使い捨てのコンテナ（--network none）だけ、--self-test はスタブだけ。拒否の経路は同スクリプトの T-1560-39 / T-1560-41 が固定する" }
   ],
   "offline": [
+    { "path": "compose-up.sh", "reason": "引数をそのまま docker compose へ渡す dev の compose 起動ヘルパ。k8s の稼働クラスタにも稼働サービスにも当たらない（対象は手元の compose スタックで、副作用はサブコマンドが明示する）。どのワークフローも呼ばない" },
     { "path": "check-collector-self-telemetry.js", "reason": "collector の待受が loopback でないことを見る静的検査。localhost は正規表現に現れるだけ" },
     { "path": "check-default-credentials.js", "reason": "既定資格情報の静的検査。localhost はダミーの接続文字列の例" },
     { "path": "check-deploy-manifests.js", "reason": "kubectl kustomize と helm template と kubeconform はクラスタへ当たらない" },
