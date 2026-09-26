@@ -740,6 +740,78 @@ public class KeycloakIdentityAdminClientTests
         groups.Select(g => g.Id).Should().Equal("g-1", "g-2");
     }
 
+    // ── FR-05, SC-06, 計画 ADR-0115 決定 1・5, [[IADR-0472]] (#1557): フルパスでの引き当て ──
+
+    // 陽性: `group-by-path` を 1 往復で引き、区切りの `/` を残してセグメントごとにエスケープする。
+    [Fact]
+    public async Task Finding_a_group_by_path_uses_group_by_path_and_escapes_each_segment()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/group-by-path/department/r%26d?briefRepresentation=true", """
+                {"id":"g-rd","name":"r&d","path":"/department/r&d"}
+                """);
+
+        var group = await Client(handler).FindGroupByPathAsync("/department/r&d", Ct);
+
+        group.Should().NotBeNull();
+        group!.Id.Should().Be("g-rd");
+        group.Path.Should().Be("/department/r&d");
+    }
+
+    // 陰性: 404 は「居ない」（null）。例外にしない。
+    [Fact]
+    public async Task Finding_a_missing_group_by_path_returns_null()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token());
+        // 未登録のパスはスタブが 404 を返す。
+
+        (await Client(handler).FindGroupByPathAsync("/department/finance", Ct)).Should().BeNull();
+    }
+
+    // 🔴 返ってきたパスが要求と序数一致しなければ null（IdP の格納層が大小文字を畳んでも、値域は大小文字を区別する）。
+    [Fact]
+    public async Task Finding_a_group_by_path_rejects_a_case_folded_match()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/group-by-path/department/Sales?briefRepresentation=true", """
+                {"id":"g-s","name":"sales","path":"/department/sales"}
+                """);
+
+        (await Client(handler).FindGroupByPathAsync("/department/Sales", Ct)).Should().BeNull();
+    }
+
+    // #1557 監査: 🔴 応答が path を持たないときは**推測しない**（名前から `/名前` を組み立てて比べない）。例外 ＝ 502 側。
+    [Fact]
+    public async Task Finding_a_group_by_path_without_a_path_in_the_response_fails_instead_of_guessing()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/group-by-path/department/sales?briefRepresentation=true", """
+                {"id":"g-s","name":"sales"}
+                """);
+
+        var act = async () => await Client(handler).FindGroupByPathAsync("/department/sales", Ct);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("path");
+    }
+
+    // 🔴 404 以外の失敗は例外（＝ gRPC 面で status。「値域の外」と混ぜない）。
+    [Fact]
+    public async Task Finding_a_group_by_path_throws_on_non_404_failure()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Status("admin/realms/platform/group-by-path/department/sales?briefRepresentation=true",
+                HttpStatusCode.Forbidden);
+
+        var act = async () => await Client(handler).FindGroupByPathAsync("/department/sales", Ct);
+
+        await act.Should().ThrowAsync<HttpRequestException>();
+    }
+
     private sealed class StubHandler : HttpMessageHandler
     {
         private readonly Dictionary<string, (HttpStatusCode Status, string Body)> _responses = new(StringComparer.Ordinal);

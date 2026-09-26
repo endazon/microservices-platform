@@ -19,6 +19,7 @@ namespace AuthorizationService.Features.Users.Directory;
 //   通していた。east-west の面へ利用者トークンを載せないという規約（IADR-0379 決定 4 /
 //   docs/api/east-west-grpc.md §4）を守るため、**呼び出し元が実際に要る問いだけ**を面へ出す ——
 //   「この利用者名は実在するか」と「この 1 人の属性は何か」である。
+//   ［2026-09-26 / #1557・[[IADR-0472]]］3 つ目の問い「この部門コードは値域に在るか」を足した（計画 ADR-0115 決定 5）。
 //   **列挙と書き込みはこの面に存在しない。** 出すと `platform-service` を持つ全サービスが
 //   名簿全件を引けることになり、コード注記が名指しで避けた経路そのものになる。
 //
@@ -76,6 +77,44 @@ public sealed class UserDirectoryGrpcService(
             resp.Results.Add(new UsernameExistence { Username = username, Exists = known.Contains(username) });
         return resp;
     }
+
+    // FR-05, UC-04, SC-06, 計画 ADR-0115 決定 1・5, ADR-0074 決定 4, [[IADR-0472]] (#1557):
+    // **部門コードの値域照会**。値域は realm の `/department/<code>` の `<code>` の集合である（決定 1）。
+    //
+    // 🔴 **照会であって列挙ではない。** 部門グループの一覧は面に出さない —— 呼び出し元（DataSourceService の
+    // 書き込み時検証）が要る問いは「この値は値域に在るか」だけであり、`CheckUsernames` と同じ狭め方をする。
+    //
+    // 🔴 **`/department` の直下だけが値域である。** `/` を含む値（入れ子のパス）・空文字・前後空白を含む値は
+    // 部門コードではないので**後段を引かずに** `exists=false` とする。入れ子のグループ（`/department/a/b`）を
+    // 実在として数えると、`b` ではなく `a/b` という「コード」が通り、利用者属性（1 値のコード）と一致しなくなる。
+    //
+    // 🔴 **要求と同じ順・同じ数を返す**（`CheckUsernames` と同じ）。同じコードが重なっても後段は 1 回だけ引く。
+    // 🔴 **後段の失敗は status である**（`exists=false` へ畳まない。IdP の障害を「値域の外」と報告しない）。
+    public override async Task<CheckDepartmentCodesResponse> CheckDepartmentCodes(
+        CheckDepartmentCodesRequest request, ServerCallContext context)
+    {
+        var known = new Dictionary<string, bool>(StringComparer.Ordinal);
+        var resp = new CheckDepartmentCodesResponse();
+        foreach (var code in request.Codes)
+        {
+            if (!known.TryGetValue(code, out var exists))
+            {
+                exists = IsDepartmentCodeShape(code)
+                    && await identity.FindGroupByPathAsync(
+                        DepartmentGroupRoot + code, context.CancellationToken) is not null;
+                known[code] = exists;
+            }
+            resp.Results.Add(new DepartmentCodeExistence { Code = code, Exists = exists });
+        }
+        return resp;
+    }
+
+    // 部門グループ木の根（計画 ADR-0115 決定 1）。DataSourceService の `RegistrantDepartment.DepartmentGroupRoot` と同じ値だが、
+    // ユニットをまたいで参照できない（platform → knowledge は禁止）ので、ここにも置く。
+    internal const string DepartmentGroupRoot = "/department/";
+
+    internal static bool IsDepartmentCodeShape(string code) =>
+        code.Length > 0 && !code.Contains('/') && code.Trim().Length == code.Length;
 
     // FR-16, UC-09, SC-12, ADR-0062 決定 3: 名指しした 1 人の ABAC 属性。
     //

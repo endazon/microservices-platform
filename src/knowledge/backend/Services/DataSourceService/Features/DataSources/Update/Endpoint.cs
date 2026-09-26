@@ -21,7 +21,8 @@ internal static class UpdateDataSourceEndpoint
     {
         g.MapPut("/{id:guid}", async (Guid id, UpdateDataSourceRequest req,
             IValidator<UpdateDataSourceRequest> validator, DataSourceDbContext db,
-            SyncSchedule schedule, IPlatformUserDirectory userDirectory, CancellationToken ct) =>
+            SyncSchedule schedule, IPlatformUserDirectory userDirectory,
+            IDepartmentDomainDirectory departmentDomain, CancellationToken ct) =>
         {
             // FR-01, UC-04 / IADR-0371 決定 2・4 / IADR-0395: 入力検証（FluentValidation）の失敗を
             // Kernel の `Result` で表し、**HTTP への写像は 1 度だけ行う**
@@ -43,6 +44,14 @@ internal static class UpdateDataSourceEndpoint
             // FR-05, SC-06, ADR-0074 決定 4 (#1194): 写像先の実在をサーバ側で検証する。
             if (await OwnerMappingValidation.ValidateAsync(req.OwnerMappings, userDirectory, ct) is { } mapError)
                 return mapError;
+
+            // FR-05, SC-06, 計画 ADR-0115 決定 5, [[IADR-0472]] (#1557): 明示した部門の値域検証（登録と同じ述語・同じ応答）。
+            // ［2026-09-26 / #1557 監査］🔴 **保存済みの値から変わったときだけ照会する**（`storedAttributes`）。
+            // 変わっていない部門まで検証すると、値域が定まる前の値を持つソースは部門以外の編集まで 400 になり、
+            // 認可サービスの障害中はあらゆる編集が 502 になる（理由は `DepartmentDomainValidation` の注記）。
+            if (await DepartmentDomainValidation.ValidateAsync(
+                    req.DefaultAttributes, departmentDomain, ct, storedAttributes: ds.DefaultAttributes) is { } deptError)
+                return deptError;
 
             ds.Update(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes,
                 req.OwnerMappings);

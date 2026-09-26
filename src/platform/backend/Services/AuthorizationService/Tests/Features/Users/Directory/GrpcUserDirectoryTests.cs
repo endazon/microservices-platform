@@ -326,6 +326,78 @@ public class GrpcUserDirectoryTests
     public void Retention_eligibility_zero_value_is_unspecified()
         => ((int)RetentionEligibility.Unspecified).Should().Be(0);
 
+    // ── #1557 / [[IADR-0472]]: 部門コードの値域照会（計画 ADR-0115 決定 1・5）──────────────
+
+    // T-64（陽性・陰性を同じ要求で対にする）: 偽の身元プロバイダの木は `/department/engineering` と
+    // `/teams/knowledge` 等を持つ。値域は **`/department` の直下**のコードだけである。
+    //   - `engineering` … 在る
+    //   - `knowledge` … 名前は在るが `/teams` の下（別の木）。🔴 名前で探す変異はここで赤になる
+    //   - `Engineering` … 大小文字違い。🔴 照合を大小文字無視へ変える変異はここで赤になる
+    //   - `engineering/x` / `` / ` engineering` … 部門コードの形ではない
+    //   - `department` … 親そのもの（`/department/department` は無い）
+    // 🔴 要求と同じ順・同じ数（重複も含む）を返す。
+    //   - `engineering/backend` … 🔴 **入れ子のグループは実在する**（下で足す）が、値域ではない。
+    //     形の検査を外す変異はここで赤になる（入れ子を数えると `a/b` という「コード」が通る）
+    //   - ` engineering` … 前後空白（`/department/ engineering` も実在させておき、形の検査だけが弾くことを測る）
+    [Fact]
+    public async Task CheckDepartmentCodes_reports_only_direct_children_of_department_ordinally()
+    {
+        _factory.Identity.ExtraGroupPaths.UnionWith(["/department/engineering/backend", "/department/ engineering"]);
+        try
+        {
+            var requested = new[]
+            {
+                "engineering", "knowledge", "Engineering", "engineering/backend", "", " engineering", "department",
+                "engineering",
+            };
+            var request = new CheckDepartmentCodesRequest();
+            request.Codes.AddRange(requested);
+
+            var resp = await PlainClient().CheckDepartmentCodesAsync(
+                request, headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
+
+            resp.Results.Select(r => r.Code).Should().Equal(requested);
+            resp.Results.Select(r => r.Exists).Should().Equal(true, false, false, false, false, false, false, true);
+        }
+        finally
+        {
+            _factory.Identity.ExtraGroupPaths.Clear();
+        }
+    }
+
+    // T-64（陰性）: 🔴 管理者の利用者トークンでも PERMISSION_DENIED（利用者トークンの転送を成立させない）。
+    [Fact]
+    public async Task CheckDepartmentCodes_with_forwarded_admin_user_token_is_permission_denied()
+    {
+        var adminToken = GrpcKestrelFactory.IssueToken("admin-user", [PlatformAuthPolicies.AdminRole]);
+
+        var act = async () => await PlainClient().CheckDepartmentCodesAsync(
+            new CheckDepartmentCodesRequest { Codes = { "engineering" } },
+            headers: Bearer(adminToken), cancellationToken: TestContext.Current.CancellationToken);
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
+    }
+
+    // T-64（縮退）: 🔴 **グループを引けなければ status であって `exists=false` ではない。**
+    // 呼び出し元はこれを「引けなかった」（502）へ写す。`exists=false` へ畳むと IdP の障害が「値域の外」（400）になる。
+    [Fact]
+    public async Task CheckDepartmentCodes_backend_outage_is_a_status_not_a_negative_answer()
+    {
+        _factory.Identity.GroupFailure = new HttpRequestException("Keycloak のグループ照会へ届かない");
+        try
+        {
+            var act = async () => await PlainClient().CheckDepartmentCodesAsync(
+                new CheckDepartmentCodesRequest { Codes = { "engineering" } },
+                headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().NotBe(StatusCode.OK);
+        }
+        finally
+        {
+            _factory.Identity.GroupFailure = null;
+        }
+    }
+
     // T-S-08: 構造の門。gRPC サービス型が ServiceCaller ポリシーを宣言していること
     // （属性が外れると T-S-02 / T-S-03 が落ちるが、どの層で外れたかを名指しするためにここでも固定する）。
     [Fact]

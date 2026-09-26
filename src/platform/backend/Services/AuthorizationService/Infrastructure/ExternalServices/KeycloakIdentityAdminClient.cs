@@ -237,6 +237,44 @@ public sealed class KeycloakIdentityAdminClient(
         return group is null || string.IsNullOrEmpty(group.Id) ? null : ToIdentityGroup(group);
     }
 
+    // FR-05, UC-04, SC-06, 計画 ADR-0115 決定 1・5, [[IADR-0472]] (#1557): フルパスでグループを 1 つ引く
+    // （Keycloak `GET /group-by-path/{path}`。**1 往復**）。部門コードの値域検証が使う。
+    //
+    // 🔴 **404 は「居ない」であって失敗ではない**（null）。それ以外の非 2xx は例外にする ——
+    // 呼び出し元（gRPC 面）はそれを status に写し、DataSourceService は「引けなかった」（502）として扱う。
+    // 「居ない」と混ぜると、IdP の障害が「その部門コードは値域の外です」という嘘の理由になる。
+    //
+    // 🔴 **セグメントごとにエスケープする**（`/` は区切りのまま残す）。パス全体を 1 回で
+    // エスケープすると区切りまで `%2F` になり、Keycloak は 1 つの名前として探して見つけない。
+    //
+    // 🔴 **返ってきたパスが要求と序数一致しなければ null**。照合の大小文字の扱いを IdP の格納層
+    // （DB の照合順序）に委ねない —— 部門コードは大小文字を区別する（`RegistrantDepartment` と同じ）。
+    public async Task<IdentityGroup?> FindGroupByPathAsync(string path, CancellationToken ct)
+    {
+        // 入力のガードは認可済みクライアントの取得の後（`GetUserGroupsAsync` の注記）。
+        var client = await AuthorizedClientAsync(ct);
+        if (string.IsNullOrWhiteSpace(path) || !path.StartsWith('/')) return null;
+
+        var escaped = string.Join('/', path[1..].Split('/').Select(Uri.EscapeDataString));
+        var response = await client.GetAsync(
+            $"admin/realms/{Realm}/group-by-path/{escaped}?briefRepresentation=true", ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+
+        var group = await response.Content.ReadFromJsonAsync<KeycloakGroup>(Json, ct);
+        if (group is null || string.IsNullOrEmpty(group.Id)) return null;
+
+        // ［2026-09-26 / #1557 監査］🔴 **応答が `path` を持たなければ「分からない」として失敗にする。**
+        // `ToIdentityGroup` は画面表示のために名前から `/名前` を組み立てるが、値域の判定でそれを使うと
+        // 推測で「在る／無い」を答えることになる。例外 ＝ gRPC 面で status ＝ 呼び出し元で 502（「引けなかった」）。
+        if (string.IsNullOrWhiteSpace(group.Path))
+            throw new InvalidOperationException(
+                "Keycloak の group-by-path 応答に path が無い。部門コードの値域を判定できない（推測で答えない）。");
+
+        var found = ToIdentityGroup(group);
+        return string.Equals(group.Path, path, StringComparison.Ordinal) ? found : null;
+    }
+
     // グループ木を深さ優先で平坦化する（`subGroups` は Keycloak が入れ子で返す）。
     // **ID を持たない節は落とす**（判定と取り消しの鍵が無い像は画面でも使えない）。
     private static IEnumerable<IdentityGroup> Flatten(IEnumerable<KeycloakGroup> groups)

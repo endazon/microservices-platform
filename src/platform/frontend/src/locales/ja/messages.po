@@ -1761,6 +1761,11 @@ msgstr "入力 {inputTokens} ・出力 {outputTokens} トークン"
 msgid "入力してください。"
 msgstr "入力してください。"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
+msgid "入力するときは、部門グループのコード（大小文字を区別します）を指定してください。部門グループに無いコードは保存されません。"
+msgstr "入力するときは、部門グループのコード（大小文字を区別します）を指定してください。部門グループに無いコードは保存されません。"
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
@@ -4279,6 +4284,10 @@ msgstr "部門"
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "部門・ロールの絞り込みを「すべて」に戻すと全件が出ます。"
 msgstr "部門・ロールの絞り込みを「すべて」に戻すと全件が出ます。"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "部門グループまたは写像先の利用者を確認できなかったため、保存されていない可能性があります。一覧で確かめ、時間をおいて再試行してください。部門を空欄にすると部門の確認は行いません。"
+msgstr "部門グループまたは写像先の利用者を確認できなかったため、保存されていない可能性があります。一覧で確かめ、時間をおいて再試行してください。部門を空欄にすると部門の確認は行いません。"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "部門と機密区分上限は必須です。"

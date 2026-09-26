@@ -20,6 +20,7 @@ import { QueryState } from '@foundation/ui/QueryState';
 import { i18n } from '@foundation/i18n';
 import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { toMessages } from '@foundation/utils/apiErrors';
+import { ApiError } from '@foundation/api/ApiError';
 import { DataSourceForm } from './DataSourceForm';
 import { DataSourceAttributesForm } from './DataSourceAttributesForm';
 import { DataSourceAttributesView } from './DataSourceAttributesView';
@@ -81,6 +82,16 @@ export function DataSourceManagementPage() {
   // 戻り値から導く——手書きの配列にすると、4 本目のミューテーションを足したときに同じ穴が空く。
   const mutations = Object.values(actions);
   const failed = mutations.find((m) => m.isError);
+  // FR-05, SC-06, ADR-0074 決定 4, 計画 ADR-0115 決定 5, IADR-0472（#1557）: 登録・更新の 502 には
+  // **確認先（部門グループ・写像先の利用者名簿）を引けなかった**場合が含まれる。後段はその理由を本文に載せるが、
+  // `ApiError.fromStatus` は 5xx の本文を捨てるので、画面には「サーバでエラーが発生しました。」しか出ない。
+  // 何を確かめられなかったか・どうすればよいかをこの画面の言葉で添える。
+  // 🔴 **「保存されていません」とは言い切らない** —— BFF の 502 は後段の応答が空だったときにも返り、
+  // その場合は保存されていることがある。一覧で確かめるよう促す。
+  const verificationUnavailable =
+    (failed === create || failed === patch) &&
+    failed.error instanceof ApiError &&
+    failed.error.status === 502;
 
   /**
    * 新しい操作を始める前に、前回の結果（成功メッセージと各ミューテーションの失敗状態）を捨てる。
@@ -168,6 +179,14 @@ export function DataSourceManagementPage() {
       {failed && (
         <Alert tone="danger" role="alert" className="mb-2" label={t`エラー`}>
           {toMessages(failed.error, t`操作を実行できませんでした。`).join(' / ')}
+          {verificationUnavailable && (
+            <>
+              {' '}
+              <Trans>
+                部門グループまたは写像先の利用者を確認できなかったため、保存されていない可能性があります。一覧で確かめ、時間をおいて再試行してください。部門を空欄にすると部門の確認は行いません。
+              </Trans>
+            </>
+          )}
         </Alert>
       )}
 
