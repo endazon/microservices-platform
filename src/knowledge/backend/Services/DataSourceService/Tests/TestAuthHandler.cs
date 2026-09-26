@@ -12,6 +12,8 @@ namespace DataSourceService.Tests;
 //   - "X-Test-Roles: platform-operator" → 運用者（同上）
 //   - "X-Test-Roles: viewer"     → 非権限ロール（403 になる確認用）
 // ※ DashboardService.Tests.TestAuthHandler と同一方針。
+// FR-05, SC-06, IADR-0468 (#754): "X-Test-GroupPaths: /department/sales,/clearance/internal" で
+//   登録者の所属グループのフルパス（クレーム group_paths。Keycloak の配列クレームと同じく 1 値 1 クレーム）を載せる。
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
@@ -19,6 +21,7 @@ public class TestAuthHandler(
 {
     public const string SchemeName = "Test";
     public const string RolesHeader = "X-Test-Roles";
+    public const string GroupPathsHeader = "X-Test-GroupPaths";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -28,6 +31,10 @@ public class TestAuthHandler(
 
         var claims = new List<Claim> { new(ClaimTypes.Name, "test-user") };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
+        if (Request.Headers.TryGetValue(GroupPathsHeader, out var groupPaths))
+            claims.AddRange(groupPaths.ToString()
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(p => new Claim("group_paths", p)));
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);

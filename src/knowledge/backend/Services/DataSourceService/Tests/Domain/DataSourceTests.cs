@@ -265,4 +265,63 @@ public class DataSourceTests
 
         ds.DefaultAttributes["lifecycle"].Should().Be("draft");
     }
+
+    // ---- FR-05, UC-04, SC-06, IADR-0468 (#754): 登録者の部門グループからの補完 ----------------
+
+    // T-53（ドメイン）: department 未指定なら登録者の部門で補う
+    [Fact]
+    public void Create_WithoutDepartment_UsesRegistrantDepartment()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share", registrantDepartment: "engineering");
+
+        ds.DefaultAttributes["department"].Should().Be("engineering");
+        // 他の必須属性の失敗安全は従来どおり通る。
+        ds.DefaultAttributes["confidentiality"].Should().Be("internal");
+        ds.DefaultAttributes["owner"].Should().Be("system");
+    }
+
+    // T-54（ドメイン）: 導けなかった（null）なら従来どおり予約値
+    [Fact]
+    public void Create_WithoutRegistrantDepartment_FallsBackToUnassigned()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share", registrantDepartment: null);
+
+        ds.DefaultAttributes["department"].Should().Be("unassigned");
+    }
+
+    // T-56: 明示値は上書きしない。🔴 変異: 「常に登録者の部門で上書き」へ変えると赤になる。
+    [Fact]
+    public void Create_WithExplicitDepartment_IsNotOverwrittenByRegistrant()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share",
+            defaultAttributes: new Dictionary<string, string> { ["department"] = "sales" },
+            registrantDepartment: "engineering");
+
+        ds.DefaultAttributes["department"].Should().Be("sales");
+    }
+
+    // T-56: 空白・予約値 unassigned の明示は「指定していない」と同じ（予約値は部門の指定ではなく未解決の記録）
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData("unassigned")]
+    public void Create_WithUnresolvedDepartment_UsesRegistrantDepartment(string given)
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share",
+            defaultAttributes: new Dictionary<string, string> { ["department"] = given },
+            registrantDepartment: "hr");
+
+        ds.DefaultAttributes["department"].Should().Be("hr");
+    }
+
+    // T-56: 渡した辞書を書き換えない（呼び出し側の要求本文を汚さない）
+    [Fact]
+    public void Create_WithRegistrantDepartment_DoesNotMutateInput()
+    {
+        var given = new Dictionary<string, string> { ["confidentiality"] = "internal" };
+
+        DataSource.Create("fs", "filesystem", "smb://share", defaultAttributes: given, registrantDepartment: "hr");
+
+        given.Should().NotContainKey("department");
+    }
 }

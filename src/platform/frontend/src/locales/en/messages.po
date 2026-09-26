@@ -1539,6 +1539,11 @@ msgstr "Create"
 msgid "使用件数"
 msgstr "Usage count"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
+msgid "例: engineering"
+msgstr "e.g. engineering"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "例: hr_system\\tanaka"
 msgstr "e.g. hr_system\\tanaka"
@@ -1558,11 +1563,6 @@ msgstr "e.g. tanaka"
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "例: 経費精算"
 msgstr "e.g. expense reimbursement"
-
-#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
-#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
-msgid "例: 開発"
-msgstr "e.g. engineering"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "供給元"
@@ -3105,8 +3105,11 @@ msgstr "Expired (syncing has stopped)"
 msgid "期限切れ間近（残り {daysLeft} 日）"
 msgstr "Expiring soon ({daysLeft} days left)"
 
-#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
+msgid "未入力のときは、登録する管理者が属する部門グループ（1 つだけのとき）のコードが入ります。決まらないときは予約値 {UNRESOLVED_DEPARTMENT} が入ります。"
+msgstr "When left blank, the code of the department group the registering administrator belongs to (only when there is exactly one) is stored. Otherwise the reserved value {UNRESOLVED_DEPARTMENT} is stored."
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 msgid "未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります。"
 msgstr "When left blank, the reserved value {UNRESOLVED_DEPARTMENT} is stored."
 
