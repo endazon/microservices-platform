@@ -18,27 +18,26 @@ k6 は threshold 未達で**非ゼロ終了**するため、そのままゲー�
 
 - [k6](https://k6.io/)（`k6 version` で確認）。
 - 実行対象の稼働環境（BFF エッジに到達可能）。**本番相当のデータ量**（検索は 1 万件規模のカタログ）を投入しておく。
-- 認証: BFF は Keycloak JWT を要求する。以下のいずれか。
-  - `TOKEN=<事前取得済みアクセストークン>`（最優先）。
-  - Keycloak パスワードグラント: `KC_TOKEN_URL` / `KC_CLIENT_ID`（**既定なし**）/ `KC_USERNAME` / `KC_PASSWORD`。
-    direct access grants を有効にした計測専用クライアントが要る（realm の対話用クライアントは
-    MFA 必須化により通らない）。
+- 認証: BFF は**利用者をセッション Cookie でしか受け付けない**（BFF セッション方式。利用者のトークンを
+  `Authorization: Bearer` で送ると 401 になる）。以下のいずれか。
+  - `SESSION_COOKIE=<BFF セッション Cookie の値>`（利用者として測るときはこれ）。ブラウザで BFF にログインし、
+    開発者ツールの Cookie 一覧から `__Host-msp-session` の値を写す。POST には CSRF ヘッダ（`X-MSP-CSRF`）が要るが、
+    ハーネスが自動で付ける。名前を変えている環境は `SESSION_COOKIE_NAME` / `CSRF_HEADER` で合わせる。
+  - `TOKEN=<アクセストークン>` は**無人の主体（client credentials）のトークンに限る**。利用者の権限範囲
+    （ABAC）での検索にはならないので、検索の SLO は `SESSION_COOKIE` で測ること。
+  - Keycloak のパスワードグラントで取る経路は撤去した（得られるのは利用者トークンなので BFF では 401 になる。
+    そもそも realm の全クライアントで直接付与は無効）。
   - 秘密情報はスクリプトに埋め込まない（env 経由・コミット禁止。`docs/security/security.md`）。
+    **セッション Cookie の値も資格情報である。**
 
 ## 実行
 
 ```bash
 # 検索（p95 ≤ 1.5s）
-BASE_URL=http://localhost:5000 TOKEN=<jwt> k6 run perf/k6/search-load.js
+BASE_URL=http://localhost:5000 SESSION_COOKIE=<セッション Cookie の値> k6 run perf/k6/search-load.js
 
 # RAG（p95 ≤ 5s）
-BASE_URL=http://localhost:5000 TOKEN=<jwt> k6 run perf/k6/rag-load.js
-
-# Keycloak パスワードグラント例
-BASE_URL=http://localhost:5000 \
-  KC_TOKEN_URL=http://localhost:8080/realms/platform/protocol/openid-connect/token \
-  KC_USERNAME=poc-user KC_PASSWORD=*** \
-  k6 run perf/k6/search-load.js
+BASE_URL=http://localhost:5000 SESSION_COOKIE=<セッション Cookie の値> k6 run perf/k6/rag-load.js
 ```
 
 負荷レベル（VU・stages）はシナリオ内で調整する。まず小さく開始し、SLO を満たす範囲で段階的に上げて限界を探る。

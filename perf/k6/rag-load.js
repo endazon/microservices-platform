@@ -1,6 +1,7 @@
 // NFR (#196): RAG 回答（AI 分析）の負荷試験（k6）。SLO: 初回応答 p95 ≤ 5s。
 // 実行例:
-//   BASE_URL=http://localhost:5000 TOKEN=<jwt> k6 run perf/k6/rag-load.js
+//   BASE_URL=http://localhost:5000 SESSION_COOKIE=<BFF セッション Cookie の値> k6 run perf/k6/rag-load.js
+//   （利用者のトークンは BFF が 401 で拒む。認証の詳細は lib/config.js。#1535）
 // 注: /bff/analysis/ask は LLM ゲートウェイ経由（外部/セルフホスト）。実測は LLM 経路の構成に依存する。
 //     ストリーミング初回応答（TTFB）を厳密に測る場合は /bff/analysis/ask/stream を対象に別途計測する。
 

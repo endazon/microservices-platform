@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
 # NFR（セキュリティ｜認証・認可）/ FR-05, Issue #466:
-#   エッジ経由の OIDC 認証導線（認可コード + PKCE）を実機で通し切る。
+#   エッジ経由の OIDC 認証導線（BFF セッション方式・認可コード + PKCE）を実機で通し切る。
 #   起点 ID の帰属: **認証そのものは非機能要件**（02_requirements §セキュリティ「恒久: 全 API で
 #   OIDC/JWT 認証」）であり、FR-05 は ABAC（利用者属性 × 文書属性による絞り込み）の要求である。
-#   本スクリプトが FR-05 に触れるのは、その**判定入力**（clearance / department クレーム）が
-#   認証を通じて載ることを確認する範囲に限る。
+#   本スクリプトが FR-05 に触れるのは、その**判定入力**（clearance / department）が
+#   認証を通じて載り、ABAC の判定に効いていることを確認する範囲に限る。
 #
-#   ⚠️ 本スクリプトが通す経路は ADR-0032（BFF セッション方式 / Token Handler・#439）の移行で無くなる。
-#      移行後は BFF が confidential client として交換を行いトークンをブラウザへ渡さないため、
-#      手順 3〜6 を Cookie 経由の検証へ書き換えること（作業仕様書 §未決事項）。
-#      **#1393 で client だけは `platform-spa`（public）→ `bff`（confidential）へ移した** ——
-#      public client を realm から撤去するのに必要な最小の変更であり、**Cookie 方式化は残作業**である
-#      （IADR-0251 決定 9 の狭める条件 1 / IADR-0429）。
+#   🔴 NFR-09, SC-13, ADR-0032, IADR-0251 決定 9, IADR-0429 (#1535): **ブラウザと同じ Cookie 方式で叩く。**
+#      ログインは BFF の `/bff/auth/login` から始め、Keycloak のログイン画面（＋TOTP）を通し、
+#      `/bff/auth/callback` を BFF に渡す。**コードを交換するのは BFF（confidential client）であり、
+#      本スクリプトはトークンを一切持たない。** 以後の `/bff/*` はセッション Cookie（HttpOnly）で叩き、
+#      状態を変える要求には CSRF ヘッダ（`X-MSP-CSRF`。IADR-0251 決定 1）を付ける。
+#      従前は `bff` の client_secret を読んで自前でコードを交換し、得た利用者トークンを `Authorization: Bearer`
+#      で送っていた。BFF はその形（`azp` = BFF の client の利用者トークン）を移行期の腕として受理していたが、
+#      本スクリプトの移行と同時に落とした —— **いま利用者トークンを Bearer で送ると 401 になる。**
 #
 # 背景:
 #   現行の E2E は「バックエンド不要のスモーク」だけで、`/login` への誘導など**認証前**の導線しか
-#   見ていない。Keycloak を通した認証後の導線（SPA → 認可 → コード → トークン → BFF）は
-#   一度も検証されていない（#466）。本スクリプトはその導線を curl だけで通し切り、
+#   見ていない。Keycloak を通した認証後の導線（BFF → 認可 → ログイン → コールバック → セッション → BFF）は
+#   一度も検証されていなかった（#466）。本スクリプトはその導線を curl だけで通し切り、
 #   どこで壊れているかを名指しできるようにする。ブラウザを使わないため、#466 が目指す
 #   CI 実行の土台にもなる。
 #
@@ -38,10 +40,11 @@
 #
 # 終了コード: 0=全項目 PASS / 1=導線の失敗（FAIL あり） / 2=前提未整備（SKIP。失敗と区別する）
 #
-# 依存: bash / curl / openssl / node（JWT クレームと JSON の読み取りに使う）。
+# 依存: bash / curl / node（JSON の読み取りと TOTP の計算に使う）。
 #
 # 副作用: **既定では読み取り専用**。書き込み系エンドポイントは「無トークンで 401 になること」の
-#         確認だけを行い、成功する書き込みは一切発行しない。code_verifier は固定値で乱数を使わない。
+#         確認だけを行い、成功する書き込みは一切発行しない。ログインのたびに BFF のセッションが
+#         1 つ増える（Redis。寿命は realm の値）。セッション Cookie を収めた一時ファイルは終了時に消す。
 #
 #   🔴 例外は `ABAC_POSITIVE=1` を明示したときだけである（既定オフ。#972）。このとき段 10〜13 が
 #      有効になり、**文書を 1 件作成する**（正の対照を作るため）。**使い捨てのスタック専用**であり、
@@ -121,37 +124,27 @@ else
   fi
 fi
 REALM="${OIDC_REALM:-platform}"
-# ---- 認可コードを取るクライアント（#1393 で public → confidential へ移した） ---------
+# ---- BFF セッション（Cookie 方式。#1535） ---------------------------------------
 #
-# 🔴 **従前ここは `platform-spa`（public client・PKCE）だった。** ADR-0032（BFF セッション方式）の
-#    移行で SPA はトークンを扱わなくなったのに realm には public client が残り、
-#    **ブラウザが利用者トークンを取れる口**として開いたままだった。#1393 で realm から撤去したので、
-#    本スクリプトも **BFF 自身の confidential client（`bff`）**で認可コードを取る。
+# 🔴 **本スクリプトは client_id も client_secret も持たない。** ログインの開始（PAR・PKCE・state・nonce）と
+#    コードの交換は BFF が confidential client として行う（ADR-0032）。本スクリプトがするのは、
+#    ブラウザと同じく「BFF が返す redirect を辿り、ログイン画面へ資格情報を POST し、コールバックを BFF に渡す」
+#    ことだけである。**従前は `bff` の secret を realm JSON から読んで自前で交換していた** ——
+#    その結果得た利用者トークンを Bearer で送る形は、BFF の側で受理しなくなった（IADR-0429 追記）。
 #
-#    本スクリプトは Location ヘッダを自分で読むだけで **redirect_uri を実際に開かない**ので、
-#    `bff` に登録済みの `/bff/auth/callback` をそのまま使える。
-#
-#    ⚠️ 本スクリプトが通す経路は依然として Bearer である（冒頭の警告のとおり Cookie 方式への
-#    書き換えが残作業）。BFF 側は `azp` が自分の client か無人の主体だけを Bearer で受理する
-#    （IADR-0429）ため、**`bff` 以外の client_id を与えると段 7 以降が 401 になる。**
-CLIENT_ID="${OIDC_CLIENT_ID:-bff}"
-REDIRECT_URI="${OIDC_REDIRECT_URI:-${EDGE_URL}/bff/auth/callback}"
-# confidential client の secret。**リテラルを書かない** —— dev realm の単一情報源
-# （`deploy/keycloak/microservices-platform-realm.json`）から読む。実環境では
-# OIDC_CLIENT_SECRET / BFF_OIDC_CLIENT_SECRET で上書きする。
-#
-# ※ `node -e` は**1 行で書く**。複数行の -e は Windows の Git Bash で引数が渡らず、
-#   **何も出力せず空文字になる**（実測）。空だと `client_secret` を付けずに交換しに行き、
-#   `invalid_client` で落ちる —— 静かに縮退する形なので 1 行を崩さないこと。
-CLIENT_SECRET="${OIDC_CLIENT_SECRET:-${BFF_OIDC_CLIENT_SECRET:-}}"
-REALM_FILE="$SCRIPT_DIR/../deploy/keycloak/microservices-platform-realm.json"
-if [ -z "$CLIENT_SECRET" ] && [ -f "$REALM_FILE" ]; then
-  CLIENT_SECRET=$(node -e "const c=(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).clients||[]).find((x)=>x.clientId===process.argv[2]);process.stdout.write((c&&c.secret)||'')" "$REALM_FILE" "$CLIENT_ID" 2>/dev/null || true)
-fi
+# セッション Cookie の名前と CSRF ヘッダの名前は BFF の構成値（`BffSessionOptions`）と一致させる。
+# 既定は BFF の既定値である。**値は Cookie の jar（一時ファイル）から出さない**（ログへ載せない）。
+BFF_LOGIN_PATH="${BFF_LOGIN_PATH:-/bff/auth/login?returnUrl=/}"
+BFF_SESSION_COOKIE="${BFF_SESSION_COOKIE:-__Host-msp-session}"
+BFF_CSRF_HEADER="${BFF_CSRF_HEADER:-X-MSP-CSRF}"
+# 状態を変える要求に付けるヘッダ。**値は検査されない。存在することが preflight を強制する**（IADR-0251 決定 1）。
+CSRF_HDR="$BFF_CSRF_HEADER: 1"
 OIDC_USER="${OIDC_USER:-developer}"
 OIDC_PASSWORD="${OIDC_PASSWORD:-Developer-2026}"
-# 固定の code_verifier（再現可能性のため乱数を使わない。dev 専用の検証値であり秘密ではない）。
-CODE_VERIFIER="${OIDC_CODE_VERIFIER:-msp-verify-oidc-edge-flow-fixed-code-verifier-0123456789}"
+# セッション Cookie を収めた jar は資格情報である。終了時に必ず消す（途中で落ちても）。
+SESSION_JARS=()
+cleanup_session_jars() { [ "${#SESSION_JARS[@]}" -gt 0 ] && rm -f "${SESSION_JARS[@]}"; return 0; }
+trap cleanup_session_jars EXIT
 
 # ---- TOTP シークレットの持ち回し（#780 基準 4） --------------------------------
 #
@@ -231,7 +224,7 @@ step() {
 # モードの組み合わせで後続の段番号が変わるため、後から足す段だけ動的に採る。
 next_step() { step "$((STEPS + 1))/$TOTAL" "$1"; }
 
-for cmd in curl openssl node; do
+for cmd in curl node; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     printf 'ERROR: %s が必要です。\n' "$cmd" >&2
     exit 2
@@ -244,7 +237,8 @@ json_field() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
 hr
 printf 'エッジ経由 OIDC 認証導線の検証（Issue #466 / NFR・FR-05）\n'
 printf '  edge   : %s\n' "$EDGE_URL"
-printf '  issuer : %s（realm %s / client %s）\n' "$KC_URL" "$REALM" "$CLIENT_ID"
+printf '  issuer : %s（realm %s）\n' "$KC_URL" "$REALM"
+printf '  方式   : BFF セッション（%s → Cookie %s。状態を変える要求に %s）\n' "$BFF_LOGIN_PATH" "$BFF_SESSION_COOKIE" "$BFF_CSRF_HEADER"
 hr
 
 # ---- 前提の確認（未整備は SKIP=2 で終える。導線の失敗と区別する） -----------------
@@ -262,7 +256,10 @@ if ! curl -s $CURL_K -o /dev/null -m 5 "$DISCOVERY"; then
   info "エッジ issuer（IADR-0243・#780 第2段）が有効か、LOCALEDGE=1 で経路B を起動したか確認してください。"
   exit 2
 fi
-ISSUER=$(curl -s $CURL_K -m 5 "$DISCOVERY" | json_field issuer)
+DISCOVERY_BODY=$(curl -s $CURL_K -m 5 "$DISCOVERY")
+ISSUER=$(printf '%s' "$DISCOVERY_BODY" | json_field issuer)
+# 段 3 で「BFF のログイン開始が redirect する先」の期待値。**discovery が唯一の出所**（URL を組み立てない）。
+AUTHZ_ENDPOINT=$(printf '%s' "$DISCOVERY_BODY" | json_field authorization_endpoint)
 info "Keycloak: 到達（issuer=$ISSUER）"
 
 # ---- 1) SPA がエッジから配信されるか -------------------------------------------
@@ -289,34 +286,54 @@ else
   fail "config.js から authority を読めない（実行時 config が注入されていない）"
 fi
 
-# ---- 認可コード + PKCE でアクセストークンを取る（利用者ごとに呼べる） ----------------
+# ---- BFF のログイン往復でセッションを確立する（利用者ごとに呼べる） ------------------
 #
 # #972 で負の対照（別の利用者）が要るようになったため、段 3〜5 の手順を関数へ切り出した。
 # 🔴 **コマンド置換（`$( )`）で呼ばないこと。** サブシェルになると PASS / FAIL の集計が失われる。
-#    結果は ACQUIRED_TOKEN / ACQUIRE_ERR というグローバルへ入れる。
+#    結果は ACQUIRED_JAR / ACQUIRE_ERR というグローバルへ入れる。
+#
+# 🔴 #1535: **ブラウザと同じ往復である。** BFF が作る認可要求（PAR・PKCE・state・nonce）を辿り、
+#    Keycloak のコールバック先（`/bff/auth/callback`）を BFF に渡す。BFF がコードを交換して
+#    セッション Cookie を発行する。**本関数はトークンを受け取らない**（受け取れない）。
+#    jar には Keycloak 側の Cookie と BFF 側の Cookie が host ごとに入る（curl が host で振り分ける）。
 #
 # $1=利用者 $2=パスワード $3=verbose（1 なら段 3〜5 として PASS を刻む。0 なら黙って取る）
-# 戻り値: 0=取得できた / 1=取得できなかった（ACQUIRE_ERR に理由）
-ACQUIRED_TOKEN=""
+# 戻り値: 0=確立できた（ACQUIRED_JAR にセッション Cookie の jar） / 1=確立できなかった（ACQUIRE_ERR に理由）
+ACQUIRED_JAR=""
 ACQUIRE_ERR=""
-# 負の対照のトークン。ABAC の段（12）と検索の段（#992）の両方が使うため、**両ブロックの外**で宣言する
-# （`set -u` の下で未宣言を参照すると、判定へ到達する前にスクリプトごと落ちる）。
-DENY_ACCESS=""
-acquire_token() {
+# 主たる利用者と負の対照のセッション（Cookie の jar）。ABAC の段（12）と検索の段（#992）の両方が
+# 使うため、**両ブロックの外**で宣言する（`set -u` の下で未宣言を参照すると、判定へ到達する前に
+# スクリプトごと落ちる）。
+SESSION_JAR=""
+DENY_JAR=""
+acquire_session() {
   local user="$1" password="$2" verbose="$3"
-  local jar challenge auth_url login_html form_action location code token_json
-  ACQUIRED_TOKEN=""
+  local jar login_hdr authz_location login_html form_action location code
+  ACQUIRED_JAR=""
   ACQUIRE_ERR=""
 
-  [ "$verbose" = "1" ] && step "3/$TOTAL" "認可エンドポイントへ GET（ログイン画面）"
+  [ "$verbose" = "1" ] && step "3/$TOTAL" "BFF のログイン開始から認可エンドポイントへ（ログイン画面）"
   jar=$(mktemp)
-  challenge=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -binary -sha256 | openssl base64 -A | tr '+/' '-_' | tr -d '=')
-  auth_url="$KC_URL/realms/$REALM/protocol/openid-connect/auth?client_id=$CLIENT_ID&response_type=code&scope=openid%20profile%20email&redirect_uri=$REDIRECT_URI&state=verify-oidc-edge-flow&code_challenge=$challenge&code_challenge_method=S256"
-  login_html=$(curl -s $CURL_K -c "$jar" -b "$jar" -m 15 "$auth_url")
+  SESSION_JARS+=("$jar")
+  # (a) BFF のログイン開始。302 の先が **issuer の認可端点**であること（BFF が OIDC の往復を始めた証拠）。
+  #     ここで BFF は correlation / nonce の Cookie を置く（コールバックの検証に要る）。
+  login_hdr=$(mktemp)
+  curl -s $CURL_K -c "$jar" -b "$jar" -m 15 -o /dev/null -D "$login_hdr" "$EDGE_URL$BFF_LOGIN_PATH" >/dev/null
+  authz_location=$(grep -i '^location:' "$login_hdr" | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: //')
+  rm -f "$login_hdr"
+  case "$authz_location" in
+    "${AUTHZ_ENDPOINT:-$KC_URL/realms/$REALM/protocol/openid-connect/auth}"*) ;;
+    *)
+      ACQUIRE_ERR="BFF のログイン開始（$BFF_LOGIN_PATH）が issuer の認可端点へ redirect しない（client secret の注入漏れ・PAR の 401・メタデータ不達の疑い）: Location=${authz_location:-（無し）}"
+      return 1
+      ;;
+  esac
+  [ "$verbose" = "1" ] && pass "BFF のログイン開始が認可端点へ redirect する（${authz_location%%\?*}）"
+  # (b) 認可端点 → ログイン画面。
+  login_html=$(curl -s $CURL_K -c "$jar" -b "$jar" -m 15 "$authz_location")
   form_action=$(printf '%s' "$login_html" | grep -o 'action="[^"]*"' | head -1 | sed 's/action="//; s/"$//; s/&amp;/\&/g')
   if [ -z "$form_action" ]; then
     ACQUIRE_ERR="ログインフォームを取得できない（redirect_uri が realm に未登録の可能性）: $(printf '%s' "$login_html" | head -c 160)"
-    rm -f "$jar"
     return 1
   fi
   [ "$verbose" = "1" ] && pass "ログインフォームが返る"
@@ -424,57 +441,99 @@ acquire_token() {
     fi
   fi
 
-  rm -f "$jar" "$hdr" "$body"
+  rm -f "$hdr" "$body"
   if [ -z "$code" ]; then
     ACQUIRE_ERR="認可コードを取得できない（ログイン失敗、MFA の段で止まった、または redirect_uri 不一致）: Location=${location:-（無し）}"
     return 1
   fi
   [ "$verbose" = "1" ] && pass "認可コードを取得（redirect 先: ${location%%\?*}）"
 
-  [ "$verbose" = "1" ] && step "5/$TOTAL" "トークンエンドポイントでコードを交換する（PKCE 検証）"
-  # #1393: confidential client なので client_secret を添える（空なら付けない ——
-  # public client 構成の realm でも動くようにしておく。付いていないだけで意味は変わらない）。
-  token_json=$(curl -s $CURL_K -m 15 -X POST "$KC_URL/realms/$REALM/protocol/openid-connect/token" \
-    -d "grant_type=authorization_code" -d "client_id=$CLIENT_ID" -d "code=$code" \
-    ${CLIENT_SECRET:+--data-urlencode "client_secret=$CLIENT_SECRET"} \
-    --data-urlencode "redirect_uri=$REDIRECT_URI" -d "code_verifier=$CODE_VERIFIER")
-  ACQUIRED_TOKEN=$(printf '%s' "$token_json" | json_field access_token)
-  if [ -z "$ACQUIRED_TOKEN" ]; then
-    ACQUIRE_ERR="トークン交換に失敗: $(printf '%s' "$token_json" | head -c 160)"
+  # ---- 5) コールバックを BFF に渡す（コードを交換するのは BFF） ------------------------
+  #
+  # 🔴 #1535: 従前ここは本スクリプトが `bff` の client_secret でコードを自前交換していた。
+  #    いまは redirect 先（`/bff/auth/callback`）をそのまま開き、**BFF が**交換してセッション Cookie を
+  #    発行することを確かめる。BFF は state と correlation / nonce の Cookie（段 3 で置かれた）を検証するので、
+  #    同じ jar で開く必要がある。**Location（code を含む）と Cookie の値はログへ出さない。**
+  [ "$verbose" = "1" ] && step "5/$TOTAL" "コールバックを BFF に渡し、BFF がコードを交換してセッション Cookie を発行すること"
+  local cb_hdr cb_status cb_loc set_cookie
+  cb_hdr=$(mktemp)
+  cb_status=$(curl -s $CURL_K -c "$jar" -b "$jar" -m 20 -o /dev/null -D "$cb_hdr" -w '%{http_code}' "$location")
+  set_cookie=$(grep -i "^set-cookie: *$BFF_SESSION_COOKIE=" "$cb_hdr" | tail -1 | tr -d '\r')
+  cb_loc=$(grep -i '^location:' "$cb_hdr" | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: //')
+  rm -f "$cb_hdr"
+  if [ -z "$set_cookie" ]; then
+    ACQUIRE_ERR="BFF のコールバックがセッション Cookie（$BFF_SESSION_COOKIE）を発行しない（status=$cb_status・Location=${cb_loc%%\?*}）。BFF のコード交換の失敗（client secret・redirect_uri の不一致）か、correlation Cookie の欠落の疑い"
     return 1
   fi
-  [ "$verbose" = "1" ] && pass "access_token を取得（PKCE 検証が通った）"
+  if ! grep -q "$BFF_SESSION_COOKIE" "$jar"; then
+    ACQUIRE_ERR="BFF はセッション Cookie を発行したが curl が保存しなかった（\`__Host-\` の条件＝Secure・Path=/・Domain 無し、または https でない EDGE_URL の疑い）"
+    return 1
+  fi
+  if [ "$verbose" = "1" ]; then
+    pass "BFF がセッション Cookie を発行した（status=$cb_status → ${cb_loc%%\?*}）"
+    # ADR-0032 §決定: HttpOnly / Secure / SameSite=Lax。値は見ずに属性だけを見る。
+    if printf '%s' "$set_cookie" | grep -qi '; *httponly'; then
+      pass "セッション Cookie は HttpOnly"
+    else
+      fail "セッション Cookie に HttpOnly が無い（ADR-0032：スクリプトから読めるトークン相当の値になる）"
+    fi
+    if printf '%s' "$set_cookie" | grep -qi '; *secure'; then
+      pass "セッション Cookie は Secure"
+    else
+      fail "セッション Cookie に Secure が無い（ADR-0032）"
+    fi
+  fi
+  ACQUIRED_JAR="$jar"
   return 0
 }
 
-# ---- 3〜5) 主たる利用者のトークンを取る -------------------------------------------
-if ! acquire_token "$OIDC_USER" "$OIDC_PASSWORD" 1; then
+# ---- 3〜5) 主たる利用者のセッションを確立する -------------------------------------
+if ! acquire_session "$OIDC_USER" "$OIDC_PASSWORD" 1; then
   fail "$ACQUIRE_ERR"
   hr; printf '結果: PASS %d / FAIL %d\n' "$PASS" "$FAIL"; exit 1
 fi
-ACCESS="$ACQUIRED_TOKEN"
+SESSION_JAR="$ACQUIRED_JAR"
 
-# ---- 6) クレーム（ABAC の入力） --------------------------------------------------
-step "6/$TOTAL" "トークンのクレームを確認する（ABAC の入力が載っているか）"
-# JWT ペイロードは base64url かつパディング無しのため、GNU coreutils の base64 -d は
-# stderr に `invalid input` を出して exit 1 を返すが、**stdout には正しくデコード結果を書く**（実測）。
-# したがって終了コードは見ず、stderr のみ捨てる（エラーの握り潰しではなく既知の挙動への対応）。
-CLAIMS=$(printf '%s' "$ACCESS" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null)
-for claim in iss preferred_username clearance department; do
-  value=$(printf '%s' "$CLAIMS" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s.endsWith('}')?s:s+'}')[process.argv[1]]??'')}catch{console.log('')}})" "$claim")
-  if [ -n "$value" ]; then
-    pass "クレーム $claim = $value"
-  else
-    # clearance / department は ABAC の判定入力（BffScopeResolver.ExtractUserAttributes）。
-    fail "クレーム $claim が無い"
-  fi
-done
+# ---- 6) 身元（BFF の `/bff/auth/me`） ----------------------------------------------
+#
+# 🔴 #1535: 従前ここはトークンのクレーム（iss / preferred_username / clearance / department）を
+#    直接読んでいた。**Cookie 方式では本スクリプトはトークンを持たない**（持たないことが ADR-0032 の要件）。
+#    代わりに SPA が使う唯一の身元の口 `/bff/auth/me` を読み、①セッションで認証される ②利用者名が載る
+#    ③ロールが載る（realm_access の複写。IADR-0273 決定 5）④**応答にトークンが無い** を確かめる。
+#    ABAC の判定入力（clearance / department）はトークンと共に BFF の内側にあり、載っていることは
+#    ABAC_POSITIVE=1 の段 13〜15（許可 → 作成できる・非空、属性なし → 0 件）が結果で示す。
+step "6/$TOTAL" "BFF の身元の口（/bff/auth/me）で利用者とロールを確かめる（応答にトークンが無いこと）"
+body_file=$(mktemp)
+code=$(curl -s $CURL_K -m 15 -o "$body_file" -w '%{http_code}' -b "$SESSION_JAR" "$EDGE_URL/bff/auth/me")
+if [ "$code" = "200" ]; then
+  pass "GET /bff/auth/me → 200（セッション Cookie で認証された）"
+else
+  fail "GET /bff/auth/me → $code（200 を期待。セッション Cookie が効いていない）"
+fi
+me_name=$(json_field name < "$body_file")
+if [ "$me_name" = "$OIDC_USER" ]; then
+  pass "身元 name = $me_name（preferred_username がセッションの主体へ載っている）"
+else
+  fail "身元 name が $OIDC_USER ではない（${me_name:-（空）}）"
+fi
+me_roles=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const r=JSON.parse(s).roles;console.log(Array.isArray(r)?r.length:-1)}catch{console.log(-1)}})" < "$body_file")
+if [ "${me_roles:-0}" -gt 0 ] 2>/dev/null; then
+  pass "ロール $me_roles 件（realm_access がセッションの主体へ複写されている）"
+else
+  fail "ロールが載っていない（${me_roles}。Cookie 経路の RequireRole が全員 403 になる形）"
+fi
+if grep -Eq 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|access_token|refresh_token|id_token' "$body_file"; then
+  fail "身元の応答にトークンらしき値がある（ADR-0032：ブラウザへトークンを出さない）"
+else
+  pass "身元の応答にトークンが無い（ADR-0032）"
+fi
+rm -f "$body_file"
 
 # ---- 7) エッジ経由で BFF（認証あり） ----------------------------------------------
 step "7/$TOTAL" "エッジ経由で BFF を叩く（認証後の実導線）"
 for path in /bff/documents /bff/dashboard/summary /bff/datasources; do
   body_file=$(mktemp)
-  code=$(curl -s $CURL_K -m 20 -o "$body_file" -w '%{http_code}' -H "Authorization: Bearer $ACCESS" "$EDGE_URL$path")
+  code=$(curl -s $CURL_K -m 20 -o "$body_file" -w '%{http_code}' -b "$SESSION_JAR" -H "$CSRF_HDR" "$EDGE_URL$path")
   if [ "$code" = "200" ]; then
     pass "$path → 200 $(head -c 60 "$body_file")"
   else
@@ -555,7 +614,7 @@ fi
 #    形を見ないと、後段が別の JSON を 200 で返しても・壊れた本文を返しても素通りする。
 step "11/$TOTAL" "認証ありで検索を叩く（200 かつ SearchResponse の形であること）"
 body_file=$(mktemp)
-code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST   -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json'   -d '{"query":"smoke","topK":5}' "$EDGE_URL/bff/search")
+code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST   -b "$SESSION_JAR" -H "$CSRF_HDR" -H 'Content-Type: application/json'   -d '{"query":"smoke","topK":5}' "$EDGE_URL/bff/search")
 shape=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const g=k=>o[k]!==undefined?o[k]:o[k[0].toUpperCase()+k.slice(1)];const r=g('results'),t=g('totalHits'),e=g('elapsedMs');console.log(Array.isArray(r)&&typeof t==='number'&&typeof e==='number'?'ok:'+r.length:'bad')}catch{console.log('bad')}})" < "$body_file")
 if [ "$code" = "000" ]; then
   fail "POST /bff/search（認証あり）→ 応答なし（タイムアウト）。上流の宛先が不達の疑い（#342 / #958 の形）"
@@ -578,14 +637,14 @@ rm -f "$body_file"
 #    正の対照（許可されたら非空）と負の対照（権限が無ければ 0 件）を**対で**置いて区別する。
 if [ "$ABAC_POSITIVE" = "1" ]; then
 
-  # ---- 12) 負の対照用のトークン --------------------------------------------------
-  step "12/$TOTAL" "負の対照の利用者（$DENY_USER）のトークンを取る"
-  if acquire_token "$DENY_USER" "$DENY_PASSWORD" 0; then
-    DENY_ACCESS="$ACQUIRED_TOKEN"
-    pass "$DENY_USER の access_token を取得"
+  # ---- 12) 負の対照用のセッション ------------------------------------------------
+  step "12/$TOTAL" "負の対照の利用者（$DENY_USER）のセッションを確立する"
+  if acquire_session "$DENY_USER" "$DENY_PASSWORD" 0; then
+    DENY_JAR="$ACQUIRED_JAR"
+    pass "$DENY_USER のセッション Cookie を取得（BFF がコードを交換した）"
   else
-    DENY_ACCESS=""
-    fail "$DENY_USER のトークンを取得できない: $ACQUIRE_ERR"
+    DENY_JAR=""
+    fail "$DENY_USER のセッションを確立できない: $ACQUIRE_ERR"
   fi
 
   # ---- 13) 正の対照: 許可された主体は作成できる ------------------------------------
@@ -604,7 +663,7 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
   create_body=$(printf '{"title":"%s","originalUri":null,"contentType":"text/plain","attributes":{"confidentiality":"public","department":"engineering"}}' "$PROBE_TITLE")
   body_file=$(mktemp)
   code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
-    -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+    -b "$SESSION_JAR" -H "$CSRF_HDR" -H 'Content-Type: application/json' \
     -d "$create_body" "$EDGE_URL/bff/documents")
   case "$code" in
     2*)
@@ -634,7 +693,7 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
   step "14/$TOTAL" "許可のある利用者の一覧が非空であること（200 ＋ 空リストを PASS にしない）"
   body_file=$(mktemp)
   code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' \
-    -H "Authorization: Bearer $ACCESS" "$EDGE_URL/bff/documents")
+    -b "$SESSION_JAR" -H "$CSRF_HDR" "$EDGE_URL/bff/documents")
   count=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=JSON.parse(s);console.log(Array.isArray(a)?a.length:-1)}catch{console.log(-1)}})" < "$body_file")
   # 🔴 #466: ここは `grep -c ... || printf '0'` だった（#982 由来）。**その形は恒久的に fail-open だった。**
   #    grep -c は無マッチでも stdout へ 0 を書きつつ **exit 1** を返す（実測）。exit が非 0 なので
@@ -660,12 +719,12 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
   # 🔴 これが無いと「全開放でも緑」になる。正の対照だけを足すと逆向きの穴が開く。
   #    $DENY_USER は platform-operator を持つので **RBAC は通る**。落ちるのは ABAC だけである。
   step "15/$TOTAL" "ABAC 属性を持たない利用者の一覧が 0 件であること（全開放を検出する）"
-  if [ -z "$DENY_ACCESS" ]; then
-    fail "負の対照のトークンが無いため判定できない（段 12 を参照）"
+  if [ -z "$DENY_JAR" ]; then
+    fail "負の対照のセッションが無いため判定できない（段 12 を参照）"
   else
     body_file=$(mktemp)
     code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' \
-      -H "Authorization: Bearer $DENY_ACCESS" "$EDGE_URL/bff/documents")
+      -b "$DENY_JAR" -H "$CSRF_HDR" "$EDGE_URL/bff/documents")
     deny_count=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=JSON.parse(s);console.log(Array.isArray(a)?a.length:-1)}catch{console.log(-1)}})" < "$body_file")
     if [ "$code" = "403" ]; then
       pass "GET /bff/documents（$DENY_USER）→ 403（RBAC で落ちている。ABAC の対照にはならない点に注意）"
@@ -689,7 +748,7 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
     fail "作成した文書の id を取得できていないため判定できない（段 13 を参照）"
   else
     body_file=$(mktemp)
-    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -H "Authorization: Bearer $ACCESS" "$EDGE_URL/bff/documents/$PROBE_DOC_ID")
+    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -b "$SESSION_JAR" -H "$CSRF_HDR" "$EDGE_URL/bff/documents/$PROBE_DOC_ID")
     got_id=$(json_field id < "$body_file")
     got_title=$(json_field title < "$body_file")
     if [ "$code" = "000" ]; then
@@ -711,11 +770,11 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
   #    deny-by-default は**存在を秘匿する**（[[IADR-0009]]）ので、403 でも 404 でも合格とする。
   #    **200 だけが不合格**である。
   step "17/$TOTAL" "属性を持たない利用者が同じ文書の詳細を引けないこと"
-  if [ -z "$DENY_ACCESS" ] || [ -z "$PROBE_DOC_ID" ]; then
-    fail "負の対照のトークンまたは文書 id が無いため判定できない（段 12・13 を参照）"
+  if [ -z "$DENY_JAR" ] || [ -z "$PROBE_DOC_ID" ]; then
+    fail "負の対照のセッションまたは文書 id が無いため判定できない（段 12・13 を参照）"
   else
     body_file=$(mktemp)
-    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -H "Authorization: Bearer $DENY_ACCESS" "$EDGE_URL/bff/documents/$PROBE_DOC_ID")
+    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -b "$DENY_JAR" -H "$CSRF_HDR" "$EDGE_URL/bff/documents/$PROBE_DOC_ID")
     if [ "$code" = "200" ]; then
       fail "GET /bff/documents/$PROBE_DOC_ID（$DENY_USER）→ 200（属性が無いのに詳細が見えている）"
       info "$(head -c 200 "$body_file")"
@@ -760,7 +819,7 @@ if [ "$SEARCH_SEEDED" = "1" ]; then
   else
     body_file=$(mktemp)
     code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' \
-      -H "Authorization: Bearer $ACCESS" "$EDGE_URL/bff/documents")
+      -b "$SESSION_JAR" -H "$CSRF_HDR" "$EDGE_URL/bff/documents")
     # 'missing'（一覧に無い）/ 'no-uri'（在るが markdownUri が空）/ 'ok'（在って参照を持つ）/ 'bad'（配列でない）
     seed_state=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=JSON.parse(s);if(!Array.isArray(a))return console.log('bad');const t=process.argv[1];const d=a.find(x=>String(x.title??x.Title??'').includes(t));if(!d)return console.log('missing');const u=d.markdownUri??d.MarkdownUri??null;console.log(u?'ok':'no-uri')}catch{console.log('bad')}})" "$SEARCH_PROBE_TERM" < "$body_file")
     if [ "$code" = "000" ]; then
@@ -790,13 +849,13 @@ if [ "$SEARCH_SEEDED" = "1" ]; then
   #    先頭 `IsNullOrWhiteSpace(req.Query)`）ため、**この段が必ず PASS する fail-open** になる。
   if [ -z "$SEARCH_PROBE_TERM" ]; then
     fail "検索の合言葉を解決できないため判定できない（段 S1 を参照）"
-  elif [ -z "$DENY_ACCESS" ] && ! acquire_token "$DENY_USER" "$DENY_PASSWORD" 0; then
-    fail "$DENY_USER のトークンを取得できない: $ACQUIRE_ERR"
+  elif [ -z "$DENY_JAR" ] && ! acquire_session "$DENY_USER" "$DENY_PASSWORD" 0; then
+    fail "$DENY_USER のセッションを確立できない: $ACQUIRE_ERR"
   else
-    [ -z "$DENY_ACCESS" ] && DENY_ACCESS="$ACQUIRED_TOKEN"
+    [ -z "$DENY_JAR" ] && DENY_JAR="$ACQUIRED_JAR"
     body_file=$(mktemp)
     code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
-      -H "Authorization: Bearer $DENY_ACCESS" -H 'Content-Type: application/json' \
+      -b "$DENY_JAR" -H "$CSRF_HDR" -H 'Content-Type: application/json' \
       -d "$(printf '{"query":"%s","topK":5}' "$SEARCH_PROBE_TERM")" "$EDGE_URL/bff/search")
     deny_hits=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const r=o.results??o.Results;console.log(Array.isArray(r)?r.length:-1)}catch{console.log(-1)}})" < "$body_file")
     if [ "$code" = "403" ]; then
@@ -828,7 +887,7 @@ if [ "$SEARCH_HITS" = "1" ]; then
   else
     body_file=$(mktemp)
     code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
-      -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+      -b "$SESSION_JAR" -H "$CSRF_HDR" -H 'Content-Type: application/json' \
       -d "$(printf '{"query":"%s","topK":10}' "$SEARCH_PROBE_TERM")" "$EDGE_URL/bff/search")
     # 'bad' か "<件数>:<seed を含むか 0|1>"。**件数だけでなく seed 自身の有無まで見る** ——
     # 別の文書が当たっても「検索が効いている」証拠にはならない（段 14 が踏んだのと同じ型）。
@@ -877,7 +936,7 @@ if [ "$SEARCH_HITS" = "1" ]; then
   else
     body_file=$(mktemp)
     code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
-      -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+      -b "$SESSION_JAR" -H "$CSRF_HDR" -H 'Content-Type: application/json' \
       -d "$(printf '{"query":"%s","topK":10,"mode":"keyword"}' "$KEYWORD_ONLY_QUERY")" \
       "$EDGE_URL/bff/search")
     kw_state=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const r=o.results??o.Results;if(!Array.isArray(r))return console.log('bad');const t=process.argv[1];const seen=r.some(x=>String(x.documentTitle??x.DocumentTitle??'').includes(t)||String(x.text??x.Text??'').includes(t));console.log(r.length+':'+(seen?1:0))}catch{console.log('bad')}})" "$SEARCH_PROBE_TERM" < "$body_file")
@@ -905,7 +964,7 @@ if [ "$SEARCH_HITS" = "1" ]; then
   next_step "全文検索だけ（mode=keyword）で、索引に無い語が 0 件であること（全件返しを検出する）"
   body_file=$(mktemp)
   code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
-    -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+    -b "$SESSION_JAR" -H "$CSRF_HDR" -H 'Content-Type: application/json' \
     -d "$(printf '{"query":"%s","topK":10,"mode":"keyword"}' "$KEYWORD_ABSENT_TERM")" \
     "$EDGE_URL/bff/search")
   absent_hits=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const r=o.results??o.Results;console.log(Array.isArray(r)?r.length:-1)}catch{console.log(-1)}})" < "$body_file")
@@ -941,7 +1000,7 @@ if [ "$SEARCH_HITS" = "1" ]; then
     # 🔴 日本語は printf の書式へ載せずファイル経由で送る（Windows の Git Bash で argv の日本語が壊れる罠）。
     printf '{"query":"%s","topK":10,"mode":"keyword"}' "$JAPANESE_KEYWORD_QUERY" > "$req_file"
     code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
-      -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+      -b "$SESSION_JAR" -H "$CSRF_HDR" -H 'Content-Type: application/json' \
       --data-binary "@$req_file" "$EDGE_URL/bff/search")
     ja_state=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const r=o.results??o.Results;if(!Array.isArray(r))return console.log('bad');const t=process.argv[1];const seen=r.some(x=>String(x.documentTitle??x.DocumentTitle??'').includes(t)||String(x.text??x.Text??'').includes(t));console.log(r.length+':'+(seen?1:0))}catch{console.log('bad')}})" "$SEARCH_PROBE_TERM" < "$body_file")
     if [ "$code" != "200" ]; then
@@ -967,7 +1026,7 @@ if [ "$SEARCH_HITS" = "1" ]; then
   req_file=$(mktemp)
   printf '{"query":"%s","topK":10,"mode":"keyword"}' "$JAPANESE_ABSENT_TERM" > "$req_file"
   code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
-    -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
+    -b "$SESSION_JAR" -H "$CSRF_HDR" -H 'Content-Type: application/json' \
     --data-binary "@$req_file" "$EDGE_URL/bff/search")
   ja_absent_hits=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const r=o.results??o.Results;console.log(Array.isArray(r)?r.length:-1)}catch{console.log(-1)}})" < "$body_file")
   if [ "$code" != "200" ]; then

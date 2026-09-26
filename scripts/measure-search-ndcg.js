@@ -24,7 +24,7 @@
  *
  * 実行方法:
  *   1) 収集 ＋ 集計（稼働環境が要る）:
- *        NDCG_BASE_URL=https://edge.example NDCG_TOKEN=<jwt> \
+ *        NDCG_BASE_URL=https://edge.example NDCG_SESSION_COOKIE=<BFF セッション Cookie の値> \
  *          node scripts/measure-search-ndcg.js --live --qrels perf/ndcg/qrels.json --dump run-voyage.json
  *   2) 集計だけ（保存済みの順位から。**環境非依存＝レビューの追試はこちら**）:
  *        node scripts/measure-search-ndcg.js --input run-voyage.json
@@ -34,9 +34,11 @@
  * 主な環境変数:
  *   NDCG_BASE_URL   … 検索 API のベース URL（既定 http://localhost:5000）
  *   NDCG_SEARCH_PATH… 検索の経路（既定 /bff/search。RetrievalService を直に叩くなら /search）
- *   NDCG_TOKEN      … Bearer アクセストークン（**推奨**。MFA 必須化によりパスワードグラントは通らない）
+ *   NDCG_SESSION_COOKIE … BFF セッション Cookie の値（既定の経路 `/bff/search` を測るときは**これ**。BFF は利用者のトークンを
+ *                   Bearer で受理しない。#1535）。名前は NDCG_SESSION_COOKIE_NAME・CSRF ヘッダ名は NDCG_CSRF_HEADER で変えられる
+ *   NDCG_TOKEN      … Bearer アクセストークン（RetrievalService を直に叩くとき。MFA 必須化によりパスワードグラントは通らない）
  *   NDCG_KC_TOKEN_URL / NDCG_KC_CLIENT_ID / NDCG_KC_USERNAME / NDCG_KC_PASSWORD
- *                   … 計測専用クライアントを用意した場合のパスワードグラント（perf/k6 と同じ考え方）
+ *                   … 計測専用クライアントを用意した場合のパスワードグラント（RetrievalService を直に叩くとき）
  *   NDCG_MODES      … 測るモード（既定 keyword,semantic,hybrid）
  *   NDCG_LABEL      … この収集の名札（例 voyage-3.5 / ruri-v3）。A/B の識別に使う
  *   NDCG_K          … 打ち切り順位（既定 10）。qrels の `k` より優先する
@@ -310,17 +312,36 @@ function renderText(r) {
 
 const env = (k, d) => process.env[k] || d;
 
+// 認証ヘッダ。NDCG_SESSION_COOKIE があれば BFF セッション（Cookie ＋ CSRF ヘッダ）、無ければ Bearer。
+//
+// 🔴 NFR-09, ADR-0032, IADR-0429 (#1535): **BFF は利用者のトークンを Bearer で受理しない**（401）。
+// 既定の経路（`/bff/search`）を利用者として測るときは NDCG_SESSION_COOKIE を使う（ブラウザで BFF に
+// ログインし、開発者ツールから `__Host-msp-session` の値を写す。値は資格情報である）。
+// トークン（NDCG_TOKEN / パスワードグラント）は RetrievalService を直に叩く（NDCG_SEARCH_PATH=/search）ときのもの。
+// CSRF ヘッダは値を検査されず、存在することに意味がある（BFF の IADR-0251 決定 1）。
+async function obtainAuthHeaders() {
+  const cookie = process.env.NDCG_SESSION_COOKIE;
+  if (cookie) {
+    return {
+      Cookie: `${env('NDCG_SESSION_COOKIE_NAME', '__Host-msp-session')}=${cookie}`,
+      [env('NDCG_CSRF_HEADER', 'X-MSP-CSRF')]: '1',
+    };
+  }
+  return { Authorization: `Bearer ${await obtainToken()}` };
+}
+
 // トークン取得。TOKEN があればそれを、無ければパスワードグラント。
 //
 // 🔴 **MFA 必須化（#438 / IADR-0294）により、realm の対話利用者はパスワードグラントで取れない。**
-// `perf/k6/lib/config.js` と同じ事情である。**NDCG_TOKEN を与えて使うこと。**
+// **NDCG_TOKEN を与えて使うこと。** いずれにせよ得られるのは利用者トークンであり、`/bff/search` では 401 になる（#1535）。
 async function obtainToken() {
   if (process.env.NDCG_TOKEN) return process.env.NDCG_TOKEN;
 
   const tokenUrl = process.env.NDCG_KC_TOKEN_URL;
   if (!tokenUrl) {
     throw new Error(
-      '認証情報がありません。NDCG_TOKEN に取得済みのアクセストークンを与えてください' +
+      '認証情報がありません。/bff/search を測るなら NDCG_SESSION_COOKIE（BFF セッション Cookie の値）を、' +
+        'RetrievalService を直に叩くなら NDCG_TOKEN（取得済みのアクセストークン）を与えてください' +
         '（MFA 必須化により realm の対話利用者はパスワードグラントで取得できない。#438）。'
     );
   }
@@ -346,16 +367,19 @@ async function obtainToken() {
 }
 
 // 1 クエリ × 1 モードの上位 k 件（文書 ID の列）を取る。
-async function search(baseUrl, path, token, query, mode, k) {
+async function search(baseUrl, path, auth, query, mode, k) {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { ...auth, 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, topK: k, mode }),
   });
   if (!res.ok) {
     // 🔴 **失敗を空の結果へ縮退させない。** 空は「該当なし」と区別できず、
     // 落ちている系統を nDCG 0 として記録すると、故障が「精度が低い」に化ける。
-    throw new Error(`検索に失敗しました（${mode} / ${res.status}）: ${query}`);
+    const hint = res.status === 401 && auth.Authorization && path.startsWith('/bff/')
+      ? '（BFF は利用者のトークンを Bearer で受理しない。NDCG_SESSION_COOKIE を使うこと。#1535）'
+      : '';
+    throw new Error(`検索に失敗しました（${mode} / ${res.status}）: ${query}${hint}`);
   }
   const body = await res.json();
   return (body.results || []).map((x) => x.documentId ?? x.DocumentId).filter(Boolean);
@@ -374,12 +398,12 @@ async function collect(qrels, options) {
     throw new Error(`未知の検索モードです: ${unknown.join(', ')}（有効: ${SEARCH_MODES.join(', ')}）`);
   }
 
-  const token = await obtainToken();
+  const auth = await obtainAuthHeaders();
   const runs = [];
   for (const mode of modes) {
     const results = {};
     for (const q of qrels.queries) {
-      results[q.id] = await search(baseUrl, path, token, q.text, mode, options.k);
+      results[q.id] = await search(baseUrl, path, auth, q.text, mode, options.k);
     }
     runs.push({ label, mode, results });
   }
