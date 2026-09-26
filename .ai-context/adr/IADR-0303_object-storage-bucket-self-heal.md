@@ -2,10 +2,10 @@
 title: IADR-0303 オブジェクトストレージのバケットを書き込み側で自己修復する
 type: impl-adr
 status: Accepted
-related_ids: [FR-06, FR-12, FR-21, NFR-05, NFR-21, ADR-0014, ADR-0015, IADR-0008]
+related_ids: [FR-06, FR-12, FR-21, NFR-05, NFR-21, ADR-0014, ADR-0015, IADR-0008, IADR-0461]
 author: Claude
 created: 2026-08-29
-updated: 2026-08-29
+updated: 2026-09-26
 related_specs:
   - ../specs/20260829_issue-1033_object-storage-bucket-self-heal.md
 ---
@@ -70,6 +70,10 @@ ADR-0014 / [[IADR-0008]] は版の保持を要求し、**完全削除（全版�
 同メソッドの存在確認は静的な `AmazonS3Util.DoesS3BucketExistV2Async` であり、
 **テストで差し替えられない**（＝検出力のある検査が書けない）。
 **存在しないことは例外が既に教えている**ので、作成部分だけを私有メソッドへ切り出して呼ぶ。
+
+> ［2026-09-26 追記 / #1562］上の第 1 段落の理由（存在確認が静的で差し替えられない）は失効した。
+> 存在確認は `IAmazonS3.HeadBucketAsync` へ替わり（[[IADR-0461]] 決定 11）、単体試験で差し替えられる。
+> **自己修復から呼ばない判断は変えない** —— 第 2 段落の理由（例外が既に教えている）だけで足りる。
 
 ### 決定 6: bootstrap の fail-open は維持する。ただし根拠を書き換える
 
