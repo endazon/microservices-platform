@@ -171,5 +171,7 @@ service-account 利用者に `platform-admin`（投入先 `/authz/*` が AdminOn
 - **未設定の既定**: 同じ `setupClientDefaults` は、`directGrantsOnly` が無ければ未設定の `directAccessGrantsEnabled` を **true** にする。「未設定は false」は import にしか当たらない
   （reconcile は新しいクライアントを `POST /clients` で作る）。
 
-検査 5 は `directGrantsOnly: true` と、`bearerOnly` でないクライアントの未設定の `directAccessGrantsEnabled` も MFA のバイパス口として報告する（`loginFlowFlags`）。
+検査 5 は `directAccessGrantsEnabled` を **`!== false`（リテラルの false だけが閉）** と読み、`directGrantsOnly: true` と合わせて MFA のバイパス口として報告する（`loginFlowFlags`）。
+未設定（キーが無い）・JSON の `null`（Jackson は未設定の Boolean として読み、管理 REST の作成では true になる）・文字列 `"true"` など真偽値の false でない値はどれも開くと読む。
+未設定と `null` を数えるのは `bearerOnly` でないクライアントだけ。`directGrantsOnly` は未設定と `null` を「無い」、`false` / `"false"` を false、それ以外（`"true"` を含む）を true と読む。
 同じ読み方を検査 7（人のログイン経路）と、`manage-realm` を持つ主体の対話ログインの検査にも使う。実データの realm は全クライアントが `directAccessGrantsEnabled: false` を明示しており、影響は無い。

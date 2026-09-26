@@ -466,7 +466,7 @@ module.exports = ({ ok, assert }) => {
 
     // 🔴 #1605（NFR-09, ADR-0032）: #1602 の監査の残り —— 任意スコープにしか無い軽量の利用者名マッパー・非推奨の directGrantsOnly を
     //   実データの realm へ入れて CLI から止められること、`user.attribute=Username`（Keycloak は getUsername を引く）は通すことを固定する。
-    ok('★ #1605: realm 検査の CLI が任意スコープだけの軽量マッパー・directGrantsOnly の変異で exit 1、user.attribute=Username は exit 0', () => {
+    ok('★ #1605: realm 検査の CLI が任意スコープだけの軽量マッパー・directGrantsOnly・reset-gate の directAccessGrantsEnabled=null / "true" の変異で exit 1、user.attribute=Username は exit 0', () => {
       const osT = require('os');
       const { spawnSync: spawnT } = require('child_process');
       const script = pathSeed.join(__dirname, 'check-realm-constraints.js');
@@ -504,6 +504,14 @@ module.exports = ({ ok, assert }) => {
           assert.ok(c && c.standardFlowEnabled === false && c.directAccessGrantsEnabled === false, 'synthetic-monitor がログインの口を閉じた形でない（前提が変わった）');
           c.directGrantsOnly = true;
         }],
+        // (c)(d) #1605 の監査: manage-realm を持つ reset-gate の directAccessGrantsEnabled を null / "true" にする（リテラルの false だけが閉。
+        //        Keycloak は null を未設定として読み管理 REST の作成で true にし、"true" も true へ読み替える）。SA の天井・検査 5・検査 7 のどれでも名指す。
+        ...[null, 'true'].map((v) => [`reset-gate の directAccessGrantsEnabled=${JSON.stringify(v)}`,
+          [/realm\.clients\[reset-gate\]: manage-realm/, /realm\.clients\[reset-gate\]\.directAccessGrantsEnabled/, /realm\.clients\[reset-gate\]\.defaultClientScopes/], (r) => {
+            const c = r.clients.find((x) => x.clientId === 'reset-gate');
+            assert.ok(c && c.directAccessGrantsEnabled === false && c.standardFlowEnabled === false, 'reset-gate がログインの口を閉じた形でない（前提が変わった）');
+            c.directAccessGrantsEnabled = v;
+          }]),
       ];
       for (const [label, needles, mutate] of cases) {
         const realm = JSON.parse(JSON.stringify(base));

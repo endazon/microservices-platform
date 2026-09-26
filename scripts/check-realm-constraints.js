@@ -489,10 +489,15 @@ function collectMfaAuditGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
   for (const client of realm.clients || []) {
     if (!client) continue;
     const { directBy } = loginFlowFlags(client);
-    if (directBy === null || (directBy === 'default' && client.bearerOnly === true)) continue;
+    // 未設定（undefined / null）を bearerOnly で数えないのは従来どおり。明示の true・文字列などは bearerOnly でも数える。
+    const unsetDage = client.directAccessGrantsEnabled === undefined || client.directAccessGrantsEnabled === null;
+    if (directBy === null || (client.bearerOnly === true && (directBy === 'default' || (directBy === 'nonBoolean' && unsetDage)))) continue;
     const id = client.clientId || '«無名»';
     const why = {
       explicit: [`realm.clients[${id}].directAccessGrantsEnabled`, 'true です。'],
+      nonBoolean: [`realm.clients[${id}].directAccessGrantsEnabled`,
+        `真偽値の false ではありません（実際 ${JSON.stringify(client.directAccessGrantsEnabled)}。Keycloak は null を未設定として読み、管理 REST の作成では true にする。`
+        + '文字列 "true" なども true へ読み替え得る。リテラルの false を明示すること）。'],
       directGrantsOnly: [`realm.clients[${id}].directGrantsOnly`,
         'true です（非推奨だが Keycloak 24 はまだ尊重し、管理 REST の作成では明示の directAccessGrantsEnabled=false も上書きして直接付与を開く）。'],
       default: [`realm.clients[${id}].directAccessGrantsEnabled`,
@@ -1208,17 +1213,28 @@ const clientAttributeTrue = (client, key) => String(((client && client.attribute
  *   - 管理 REST の作成（`ClientManager.createClient` → `OIDCLoginProtocolFactory.setupClientDefaults`。reconcile の `POST /clients`）:
  *     同じ後で `directGrantsOnly` があれば**明示の値を上書き**し、無ければ未設定の標準フローと**直接アクセスを true にする**。
  *   - 更新（`updateClient`）は `directGrantsOnly` を読まない。
- * 戻り値の directBy は直接アクセスが開く理由（'directGrantsOnly' / 'explicit' / 'default'〔未設定〕/ null）。
+ * 🔴 値は**リテラルの false だけを「閉」と読む**（#1605 の監査）。Keycloak は表現を Jackson で読み、JSON の null は未設定の Boolean
+ *    （import では既定・管理 REST の作成では setupClientDefaults が直接アクセスを true にする）、文字列 "true" や数は Boolean へ読み替え得る。
+ *    真偽値でない値を「未設定ではない ＝ 閉」と読むと、`directAccessGrantsEnabled: null` / `"true"` が黙って通る（#1605 の初版の後退）。
+ * 戻り値の directBy は直接アクセスが開く理由（'directGrantsOnly' / 'explicit'〔true〕/ 'nonBoolean'〔null・文字列など〕/ 'default'〔未設定〕/ null）。
  */
 function loginFlowFlags(client) {
   const c = client || {};
-  const dgo = typeof c.directGrantsOnly === 'boolean' ? c.directGrantsOnly : null;
-  const standard = dgo === true ? c.standardFlowEnabled === true : dgo === false ? true : c.standardFlowEnabled !== false;
+  const unset = (v) => v === undefined || v === null; // Jackson は JSON の null を未設定の Boolean として読む
+  const isFalse = (v) => v === false || (typeof v === 'string' && v.trim().toLowerCase() === 'false');
+  // directGrantsOnly: 未設定（undefined / null）→ 無い。false / "false" → false。それ以外（true・"true"・読めない値）→ true（保守側）。
+  const dgo = unset(c.directGrantsOnly) ? null : !isFalse(c.directGrantsOnly);
+  const sfe = c.standardFlowEnabled;
+  const dage = c.directAccessGrantsEnabled;
+  // 標準フロー: dgo=true なら import で明示が勝つので、未設定でもリテラルの false でもない値だけが開く。dgo=false は REST が true にする。
+  const standard = dgo === true ? !unset(sfe) && sfe !== false : dgo === false ? true : sfe !== false;
   let directBy = null;
   if (dgo === true) directBy = 'directGrantsOnly';
-  else if (c.directAccessGrantsEnabled === true) directBy = 'explicit';
-  else if (dgo === null && c.directAccessGrantsEnabled === undefined) directBy = 'default';
-  return { standard, direct: directBy !== null, directBy, standardByDgo: dgo === false && c.standardFlowEnabled === false };
+  else if (dage === true) directBy = 'explicit';
+  else if (dgo === false) directBy = unset(dage) || dage === false ? null : 'nonBoolean'; // import は明示（読み替え後）が勝ち、REST は false
+  else if (dage === undefined) directBy = 'default';
+  else if (dage !== false) directBy = 'nonBoolean'; // null（未設定と同じ）・"true"・読めない値
+  return { standard, direct: directBy !== null, directBy, standardByDgo: dgo === false && sfe === false };
 }
 
 // 人のトークンを出す grant のうち、そのクライアントで開いているものの名前。
@@ -1236,6 +1252,7 @@ function humanLoginGrants(client) {
   if (flags.directBy === 'directGrantsOnly') grants.push('directGrantsOnly（非推奨。Keycloak 24 は直接アクセスを開く）');
   else if (flags.directBy === 'explicit') grants.push('directAccessGrantsEnabled');
   else if (flags.directBy === 'default') grants.push('directAccessGrantsEnabled（未設定。管理 REST の作成は true にする）');
+  else if (flags.directBy === 'nonBoolean') grants.push(`directAccessGrantsEnabled（${JSON.stringify(client.directAccessGrantsEnabled)}。リテラルの false 以外は開くと読む）`);
   if (clientAttributeTrue(client, DEVICE_GRANT_ATTRIBUTE)) grants.push(`attributes.${DEVICE_GRANT_ATTRIBUTE}`);
   if (clientAttributeTrue(client, CIBA_GRANT_ATTRIBUTE)) grants.push(`attributes.${CIBA_GRANT_ATTRIBUTE}`);
   return grants;
@@ -1863,6 +1880,19 @@ function selfTest() {
       && collectMfaAuditGaps(mutate((c) => { c.clients.push({ clientId: 'api', bearerOnly: true }); })).length === 0,
   });
   cases.push({
+    name: 'MFA: 変異（#1605 監査）— directAccessGrantsEnabled が null / "true" / "false"（真偽値の false でない）なら 1 件。directGrantsOnly="true" も 1 件',
+    pass: [null, 'true', 'false', 1].every((v) => {
+      const g = collectMfaAuditGaps(mutate((c) => { c.clients[0].directAccessGrantsEnabled = v; }));
+      return g.length === 1 && g[0].path === 'realm.clients[bff].directAccessGrantsEnabled';
+    }) && (() => {
+      const g = collectMfaAuditGaps(mutate((c) => { c.clients[0].directGrantsOnly = 'true'; }));
+      return g.length === 1 && g[0].path === 'realm.clients[bff].directGrantsOnly';
+    })()
+      // 陰性対照: bearerOnly の null は未設定と同じく数えない。directGrantsOnly=null は未設定で、明示の false が効く。
+      && collectMfaAuditGaps(mutate((c) => { c.clients.push({ clientId: 'api', bearerOnly: true, directAccessGrantsEnabled: null }); })).length === 0
+      && collectMfaAuditGaps(mutate((c) => { c.clients[0].directGrantsOnly = null; })).length === 0,
+  });
+  cases.push({
     name: 'MFA: 変異 5 — delete_credential を有効へ戻すと 1 件',
     pass: collectMfaAuditGaps(mutate((c) => { c.requiredActions[0].enabled = true; })).length === 1,
   });
@@ -2310,6 +2340,12 @@ function selfTest() {
       && collectServiceAccountRoleGaps(saMut((c) => { c.clients[0].directGrantsOnly = false; })).length === 1,
   });
   cases.push({
+    name: '🔴 SA 権限（#1605 監査）: manage-realm を持つ主体の directAccessGrantsEnabled / standardFlowEnabled が null / "true"（真偽値の false でない）なら落ちる。directGrantsOnly="true" も落ちる',
+    pass: [null, 'true'].every((v) => collectServiceAccountRoleGaps(saMut((c) => { c.clients[0].directAccessGrantsEnabled = v; })).length === 1
+      && collectServiceAccountRoleGaps(saMut((c) => { c.clients[0].standardFlowEnabled = v; })).length === 1)
+      && collectServiceAccountRoleGaps(saMut((c) => { c.clients[0].directGrantsOnly = 'true'; })).length === 1,
+  });
+  cases.push({
     name: '🔴 SA 権限: realm-management-roles を宣言したのに担い手が users[] に無いと落ちる（#1301 の形）',
     pass: collectServiceAccountRoleGaps(saMut((c) => { c.users.splice(0, 1); })).length === 1,
   });
@@ -2636,6 +2672,19 @@ function selfTest() {
       const g = collectMachineJudgementGaps(mjMut((c) => { delete c.clients[1].directAccessGrantsEnabled; }));
       return g.length === 1 && g[0].path === 'realm.clients[svc].defaultClientScopes';
     })(),
+  });
+  cases.push({
+    name: '検査7 変異（#1605 監査）: directAccessGrantsEnabled が null / "true"・directGrantsOnly が "true" のクライアントを直接アクセスとして検出する（リテラルの false だけが閉）',
+    pass: [null, 'true'].every((v) => {
+      const g = collectMachineJudgementGaps(mjMut((c) => { c.clients[1].directAccessGrantsEnabled = v; }));
+      return g.length === 1 && g[0].path === 'realm.clients[svc].defaultClientScopes';
+    }) && (() => {
+      const g = collectMachineJudgementGaps(mjMut((c) => { c.clients[1].directGrantsOnly = 'true'; }));
+      return g.length === 1 && g[0].detail.includes('directGrantsOnly');
+    })()
+      // directGrantsOnly=true の下の standardFlowEnabled も、リテラルの false・未設定でなければ開く（"true" は標準フローとして名指す）
+      && humanLoginGrants({ clientId: 'x', directGrantsOnly: true, standardFlowEnabled: 'true' }).includes('standardFlowEnabled')
+      && !humanLoginGrants({ clientId: 'x', directGrantsOnly: true, standardFlowEnabled: null }).includes('standardFlowEnabled'),
   });
   cases.push({
     name: '検査7 陰性対照（#1605）: user.attribute=Username は Keycloak が getUsername を呼ぶので利用者名の出どころと認める（USERNAME・username2 は認めない）',

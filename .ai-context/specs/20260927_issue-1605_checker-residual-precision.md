@@ -53,6 +53,10 @@ issue: "#1605"
    - 標準フロー: `directGrantsOnly === true` なら明示の `standardFlowEnabled === true` のときだけ（import は明示が勝ち、REST は false）。`directGrantsOnly === false` なら**常に開く**（REST が明示の false を上書きして true）。無ければ `standardFlowEnabled !== false`。
    - 直接アクセス（ROPC）: `directGrantsOnly === true` なら開く（REST は明示の false を上書き）。`directGrantsOnly === false` なら明示の true のときだけ。未設定なら **`directAccessGrantsEnabled !== false`**（REST の作成は未設定を true にする）。
      検査 5 は、未設定を数えるのを `bearerOnly` でないクライアントに限る（`bearerOnly` はトークンを得られない。明示の true と `directGrantsOnly: true` は従来どおり `bearerOnly` でも数える）。
+   - ［2026-09-27 追記 / #1605］**PR の監査で後退が見つかり直した**: 初版は「未設定」を `directAccessGrantsEnabled === undefined` だけで判定しており、`null` や `"true"` を閉として黙って通していた
+     （#1605 以前の SA の天井の検査は `!== false` で数えていた）。Keycloak は表現を Jackson で読み、JSON の `null` は未設定の Boolean（管理 REST の作成で true）、`"true"` も true へ読み替え得る。
+     いまは **リテラルの false だけを閉**と読む（`null` / 文字列 / 数は開く。`bearerOnly` の `null` は未設定と同じく数えない）。`directGrantsOnly` は `null` を無い、`false` / `"false"` を false、他（`"true"` を含む）を true。
+     `directGrantsOnly` が true の下の `standardFlowEnabled` は、未設定・`null`・リテラルの false 以外を開くと読む。自己試験 3 件（検査 5・SA の天井・検査 7）と、実データの `reset-gate` を `null` / `"true"` にした CLI 試験を足した。
    - 使う箇所: 検査 7 の `humanLoginGrants`、検査 5 (2)（直接付与は MFA を迂回する）、SA の realm 書き込みの検査（対話ログインの口を閉じていること）。
      これまでの「直接アクセスは既定 false なので明示の true だけを数える」は import にしか当たらない（reconcile はクライアントを `POST /clients` で作る）。
 7. **`user.attribute` は `getUserModelValue` と同じに照らす**: 先頭の 1 文字の大小を問わず `sername` が続くもの（`username` / `Username`）を利用者名のプロパティと認める。
@@ -100,7 +104,7 @@ issue: "#1605"
 ## 検証
 
 - `node scripts/check-grafana-alerting.js --self-test` → 54 → 60 件通過。`node scripts/check-grafana-alerting.js` → OK（Prometheus 20 / Grafana 20・組み合わせ 20 件・許可リスト 0 件）
-- `node scripts/check-realm-constraints.js --self-test` → 157 → 167 件 OK。`node scripts/check-realm-constraints.js` → OK（exit 0。CI の `static-checks` と同じ 2 行）
+- `node scripts/check-realm-constraints.js --self-test` → 157 → 167 件 OK（PR の監査の後退を直して 170 件）。`node scripts/check-realm-constraints.js` → OK（exit 0。CI の `static-checks` と同じ 2 行）
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` → 835 件 pass（#1605 の realm の CLI 試験・Grafana の実データの変異試験・自己試験の名指しを含む）
 - **テストを先に書いた**: 追加した自己試験は修正前の検査器ですべて落ちた（realm は 10 件が FAIL。Grafana は数・absent・エスケープ・`|+`・空白だけの行・評価器の型の順に、1 つ直すごとに次が落ちた）
 - **変異試験（検査器のソース）**: 修正を 1 つずつ戻し `--self-test` を走らせ、`git show HEAD:<path> > <path>` で戻した。**15 通りすべて exit 1**
