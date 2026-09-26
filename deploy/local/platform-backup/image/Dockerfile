@@ -17,10 +17,19 @@ FROM docker.io/library/postgres:16.15-alpine3.24@sha256:721873c34ceb9f8d8fc26598
 ARG AGE_VERSION=1.3.1-r6
 ARG AGE_APK_SHA256_X86_64=9e360d891d504924cc0996aa3fa7eabb7d93fc5d80c813139a4d2b3f7ad88b5b
 ARG AGE_APK_SHA256_AARCH64=38e2cd2bc60d5fbfcceab415a438b4ef3a24d083a029b7e469af04edb6e7e5a6
+# ベース（alpine:3.24）の community ブランチ。ベースの /etc/alpine-release と食い違えばビルドを止める。
+ARG ALPINE_BRANCH=v3.24
+ARG ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
 
-# `apk fetch` は `--no-cache` では索引を読まず「unable to select package」で止まる（CI で実測）。
-# 索引は `apk update` で明示して取り、入れ終えたら消す（イメージに残さない）。
+# パッケージファイルは Alpine のミラーから直接取る。`apk fetch` はこのベースでは age を選べず
+# 「unable to select package」で止まった（CI で実測。`apk update` を挟んでも同じ）。取り方を変えても固定の強さは同じ ——
+# sha256 の照合と、`apk add <ファイル>` による署名の検証（/etc/apk/keys）は変わらない。
 RUN set -eu; \
+    cat /etc/apk/repositories; \
+    case "$(cat /etc/alpine-release)" in \
+      "${ALPINE_BRANCH#v}".*) ;; \
+      *) echo "platform-backup: ベースの Alpine（$(cat /etc/alpine-release)）が ALPINE_BRANCH=$ALPINE_BRANCH と違います" >&2; exit 1 ;; \
+    esac; \
     arch="$(apk --print-arch)"; \
     case "$arch" in \
       x86_64) want="$AGE_APK_SHA256_X86_64" ;; \
@@ -28,11 +37,10 @@ RUN set -eu; \
       *) echo "platform-backup: age のチェックサムを持たないアーキテクチャです: $arch" >&2; exit 1 ;; \
     esac; \
     tmp="$(mktemp -d)"; \
-    apk update --quiet; \
-    apk fetch --output "$tmp" "age=$AGE_VERSION"; \
+    wget -q -O "$tmp/age-$AGE_VERSION.apk" "$ALPINE_MIRROR/$ALPINE_BRANCH/community/$arch/age-$AGE_VERSION.apk"; \
     echo "$want  $tmp/age-$AGE_VERSION.apk" | sha256sum -c -; \
     apk add --no-cache "$tmp/age-$AGE_VERSION.apk"; \
-    rm -f "$tmp/age-$AGE_VERSION.apk" /var/cache/apk/APKINDEX.*.tar.gz; \
+    rm -f "$tmp/age-$AGE_VERSION.apk"; \
     rmdir "$tmp"; \
     age --version | grep -Fq "${AGE_VERSION%-r*}"; \
     command -v age-keygen >/dev/null; \
