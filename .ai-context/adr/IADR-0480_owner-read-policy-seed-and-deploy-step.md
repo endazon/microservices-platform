@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-05, FR-19, NFR-09, UC-05, UC-11, SC-09, ADR-0121, ADR-0036, ADR-0062, ADR-0098, ADR-0119, IADR-0133, IADR-0253, IADR-0384, IADR-0447, IADR-0450, IADR-0476]
 author: claude
 created: 2026-09-27
-updated: 2026-09-27
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0121_owner-read-policy-mandatory-and-content-abac-gate.md 決定 1・4・6・フォローアップ 1・6
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md D-01・D-02・D-05・D-08
@@ -92,6 +92,10 @@ seed の追加で、IdP に居る**全利用者**に分岐 `owner ∈ {本人}` 
   - SC-09 の画面からこのポリシーを作れない（ADR-0036 フォローアップ 5。手順書は API への直接投入を書く）。
   - 予約値と同名の利用者を IdP に作らないことは、本番では運用の約束である（機械の検査は dev realm だけ）。
   - グラフ・Wiki の面は述語が同じことで評価し、seed の応答での試験は置いていない。
+
+> ［2026-09-27 追記 / #1665］上の「残るもの」の「消されたときの検知と通知は無い」と、決定 4 の「検知と通知（ADR-0121 決定 2）…は後段」のうち
+> **検知と通知は入った**（[[IADR-0481]]。認可サービスの定期の検査と警報 `OwnerReadPolicyMissing` / `OwnerReadPolicyCheckSeriesAbsent`）。
+> あわせて内容の ABAC の有効化の門（文書サービス。所有者の読み取りのポリシーを確かめるまで開かない）も入った。古い写しの削除・判定の寄せ・内容の ABAC の本体は後段のままである。
 
 ## 関連
 

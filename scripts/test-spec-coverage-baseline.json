@@ -66,9 +66,14 @@
       "AuthzGrpcClientCallerCancellationTests",
       "BffAttributeValuesGrpcTests",
       "BffOwnerReadSeedTests",
+      "ContentAbacGateTests",
       "DirectoryCallerCancellationTests",
       "DocumentReadOwnerSeedTests",
+      "GrpcOwnerReadPolicyStatusSourceTests",
+      "GrpcOwnerReadPolicyStatusTests",
+      "OwnerReadPolicyCheckTests",
       "OwnerReadPolicySeedTests",
+      "OwnerReadPolicyShapeTests",
       "OwnerReadSeedSearchScopeTests"
     ],
     "docs/tests/FR-06_document-crud-versioning.md": [

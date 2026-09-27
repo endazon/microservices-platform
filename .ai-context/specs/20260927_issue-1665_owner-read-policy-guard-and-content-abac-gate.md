@@ -1,7 +1,7 @@
 ---
 title: 所有者の読み取りのポリシーが消えたら検知してシステム管理者へ知らせ、内容の ABAC の有効化をその存在で門にする（#1665）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-05, FR-19, NFR-09, NFR-21, UC-05, SC-09, ADR-0121, ADR-0119, ADR-0036, ADR-0006, IADR-0253, IADR-0379, IADR-0473, IADR-0476, IADR-0480, IADR-0165]
 author: claude
 created: 2026-09-27
@@ -79,7 +79,7 @@ issue: "#1665"
 ### 4. 内容の ABAC の有効化の門（DocumentService）
 
 - 構成 `ContentAbac:Mode`（`Off` 既定 / `On`）。値域外は起動時に落とす（`DepartmentAttributeSync:Mode` と同じ deny-by-default）。
-- `IContentAbacGate`（`IsOpen` と `State`）。状態は `disabled`（構成が Off）/ `owner_read_policy_absent`（On だが 0 件）/
+- `IContentAbacGate`（`IsOpen` と `State`）。状態は `disabled`（構成が Off）/ `not_evaluated`（On だがまだ確かめていない。実装時に足した）/ `owner_read_policy_absent`（On だが 0 件）/
   `owner_read_policy_unknown`（On だが数えられない。宛先の未構成・RPC の失敗・時間切れ・s2s トークンの失敗）/ `open`。
   **開くのは On かつ 1 件以上を確かめたときだけ**（fail-closed）。
 - 常駐が起動時に評価し、開くまで 1 分ごとに評価し直す。**1 度開いたらプロセスの寿命の間は閉じない**（ラッチ）——

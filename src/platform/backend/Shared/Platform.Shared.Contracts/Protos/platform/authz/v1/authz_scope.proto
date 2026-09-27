@@ -27,6 +27,22 @@ service AuthzScope {
   // - 呼び出し側サービスの資格情報が無い → UNAUTHENTICATED、`platform-service` ロールが無い → PERMISSION_DENIED
   // - 該当ポリシーが無い → granted=false（deny-by-default。エラーではなく応答で表す）
   rpc Resolve(ResolveScopeRequest) returns (ResolveScopeResponse);
+
+  // FR-05, FR-19, NFR-09, 計画 ADR-0121 決定 2, IADR-0481 (#1665): 所有者の読み取りのポリシー
+  // （read・利用者の条件なし・文書の条件 owner ∈ {${current_user}} だけ）の**有効な件数**を返す。
+  // 内容の ABAC の門（DocumentService）が、有効にしてよいかを確かめるために呼ぶ。
+  // - 受け手は呼ばれるたびに DB から数える（常駐の検査の直近の値は返さない）。
+  // - 呼び出し側サービスの資格情報が無い → UNAUTHENTICATED、`platform-service` ロールが無い → PERMISSION_DENIED
+  rpc GetOwnerReadPolicyStatus(GetOwnerReadPolicyStatusRequest) returns (GetOwnerReadPolicyStatusResponse);
+}
+
+// 本文は持たない（呼び出し元の文脈に依らない問い）。
+message GetOwnerReadPolicyStatusRequest {}
+
+message GetOwnerReadPolicyStatusResponse {
+  // 形の合う有効なポリシーの件数。0 は「無い」。
+  // 🔴 proto3 の既定値 0 は「無い」と読まれる（取り違えは門が閉じる側へ倒れる）。
+  int32 active_count = 1;
 }
 
 // REST の AccessScopeRequest と同じ形（UserId / UserAttributes / Action）。

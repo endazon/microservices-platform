@@ -73,6 +73,18 @@ builder.Services.AddOpenTelemetry().WithMetrics(metrics => metrics.AddMeter(
 builder.Services.AddScoped<AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSync>();
 builder.Services.AddHostedService<AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSyncHostedService>();
 
+// FR-05, FR-19, NFR-09, 計画 ADR-0121 決定 2・4, [[IADR-0481]] (#1665): 所有者の読み取りのポリシーが消えたら
+// 検知して知らせる定期の検査（計器 `authz.owner_read_policy.*` ＋ 警報 OwnerReadPolicyMissing）。
+// 🔴 **opt-in にしない**（内容の ABAC の門より前に働いている必要がある）。周期の値域外はここで落ちる。
+// Meter は部門の同期と同じサービス名なので、上の AddMeter で収集される。
+builder.Services.AddSingleton(
+    AuthorizationService.Features.Authz.OwnerReadPolicyGuard.OwnerReadPolicyCheckOptions.FromConfiguration(
+        builder.Configuration));
+builder.Services.AddSingleton<AuthorizationService.Features.Authz.OwnerReadPolicyGuard.OwnerReadPolicyMetrics>();
+builder.Services.AddScoped<AuthorizationService.Features.Authz.OwnerReadPolicyGuard.OwnerReadPolicyCheck>();
+builder.Services.AddHostedService<
+    AuthorizationService.Features.Authz.OwnerReadPolicyGuard.OwnerReadPolicyCheckHostedService>();
+
 // FR-05, FR-09, SC-09, SC-17, 計画 ADR-0116 決定 3, [[IADR-0477]] (#1609): 属性辞書を読む唯一の入口。
 // `department` の許可値を realm の部門グループから導く（読めなければ保存済みの値を「不明」として使い、消さない）。
 builder.Services.AddScoped<AuthorizationService.Features.Authz.AttributeDictionary>();

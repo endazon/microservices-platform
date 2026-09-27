@@ -971,6 +971,26 @@
             "names": []
           }
         },
+        "GetOwnerReadPolicyStatusRequest": {
+          "fields": {},
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetOwnerReadPolicyStatusResponse": {
+          "fields": {
+            "active_count": {
+              "number": 1,
+              "type": "int32",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
         "ResolveScopeRequest": {
           "fields": {
             "action": {
@@ -1027,6 +1047,12 @@
       "services": {
         "AuthzScope": {
           "rpcs": {
+            "GetOwnerReadPolicyStatus": {
+              "request": "GetOwnerReadPolicyStatusRequest",
+              "response": "GetOwnerReadPolicyStatusResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            },
             "Resolve": {
               "request": "ResolveScopeRequest",
               "response": "ResolveScopeResponse",

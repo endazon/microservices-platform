@@ -68,6 +68,8 @@ node scripts/seed-abac-policies.js --dry-run # 何が入るかだけ見る（副
 
 投入前の状態（ポリシー 0 件）に戻ると、再び deny-by-default で全員 0 件になる。
 所有者の read ポリシーだけを消すと、所有者が自分の個人資料（共有していないもの）を開けなくなる（404）。
+消すと認可サービスの定期の検査が数え、警報 `OwnerReadPolicyMissing`（critical）が鳴る（削除そのものは止めない。
+[`docs/operations/operations.md`](../../../docs/operations/operations.md) §消えたときの検知と通知）。
 
 ## 評価の意味論（読み違えないための注記）
 
