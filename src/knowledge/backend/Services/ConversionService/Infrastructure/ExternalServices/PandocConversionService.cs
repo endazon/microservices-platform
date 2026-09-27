@@ -1,6 +1,7 @@
 using ConversionService.Domain;
 using ConversionService.Domain.Ports;
 using ConversionService.Infrastructure.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using System.Diagnostics;
@@ -21,12 +22,23 @@ namespace ConversionService.Infrastructure.ExternalServices;
 // 実行時イメージが pandoc を持たなかったため **配備した実物でずっと縮退していた**。
 // 縮退そのものは消していない（単体テストは pandoc の無い CI でも走る）が、
 // ConversionOptions.AllowDegradedBodyConversion が true のときに限る。
+//
+// 🔴 IADR-0008（2026-09-27 追記 / #1641）: **pandoc は自前の期限つきで起動し、期限切れか呼び出し元の取り消しで
+// プロセスツリーごと止める**（`ExternalProcess`。期限は `DiagramCodingLimits.BodyConversionTimeout`）。
 public class PandocConversionService(
     IObjectStorageClient storage,
     IOptions<ConversionOptions> options,
+    DiagramCodingLimits limits,
     ILogger<PandocConversionService> logger) : IBodyConverter
 {
     private bool AllowDegraded => options.Value.AllowDegradedBodyConversion;
+
+    // #1641: pandoc 1 回の期限（`Conversion:BodyConversionTimeoutSeconds`）。
+    internal TimeSpan ProcessTimeout => limits.BodyConversionTimeout;
+
+    // 試験用の口（#1641）: 起動する命令を差し替える。本番は恒等（`pandoc` をそのまま起動する）。
+    // pandoc の無い CI で、止まるプロセス・正常に終わるプロセスを pandoc の代わりに起動するために使う。
+    internal Func<ProcessStartInfo, ProcessStartInfo> StartInfoFilter { get; init; } = static psi => psi;
 
     private readonly RawSourceResolver _resolver = new(storage, logger);
 
@@ -44,7 +56,7 @@ public class PandocConversionService(
                 $"PDF は pandoc の担当ではない（{storageUri}）。FormatRoutingBodyConverter を経由すること。");
 
         // pandoc が利用可能か確認する。無いのは環境の欠陥であり、既定では失敗させる。
-        if (!await CheckPandocAsync(ct))
+        if (await TryGetPandocVersionAsync(ct, StartInfoFilter, logger) is null)
         {
             return Degrade(storageUri,
                 $"pandoc が実行時イメージに無い（{storageUri} の本文変換ができない）。"
@@ -108,6 +120,8 @@ public class PandocConversionService(
 
     // 原本を pandoc で GitHub Flavored Markdown へ変換し、標準出力（本文）を返す。
     // 恒久失敗（非0終了）は例外を送出し、再試行→デッドレターへ委ねる（UC-06 例外フロー）。
+    // #1641: 期限（`ProcessTimeout`）切れは `BodyConversionTimeoutException`、呼び出し元の取り消しは
+    // `OperationCanceledException`。どちらもプロセスツリーを止めてから投げる（`ExternalProcess`）。
     private async Task<string> RunPandocAsync(string sourcePath, string inputFormat, string mediaDir,
         CancellationToken ct)
     {
@@ -127,21 +141,14 @@ public class PandocConversionService(
         psi.ArgumentList.Add(mediaDir);
         psi.ArgumentList.Add(sourcePath);
 
-        using var proc = Process.Start(psi)
-            ?? throw new InvalidOperationException("Failed to start pandoc process");
+        var result = await ExternalProcess.RunAsync(
+            StartInfoFilter(psi), "pandoc", ProcessTimeout, logger, ct);
 
-        // デッドロック回避のため、待機前に stdout/stderr の読み取りを開始する。
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync(ct);
-        var stderrTask = proc.StandardError.ReadToEndAsync(ct);
-        await proc.WaitForExitAsync(ct);
-        var markdown = await stdoutTask;
-        var error = await stderrTask;
-
-        if (proc.ExitCode != 0)
+        if (result.ExitCode != 0)
             throw new InvalidOperationException(
-                $"pandoc exited with code {proc.ExitCode} for {sourcePath}: {error}");
+                $"pandoc exited with code {result.ExitCode} for {sourcePath}: {result.StandardError}");
 
-        return markdown;
+        return result.StandardOutput;
     }
 
     // --extract-media が書き出した画像ファイルを ExtractedFigure へ写す（決定的順序で採番）。
@@ -367,31 +374,29 @@ public class PandocConversionService(
     // 原本の解決（オブジェクトストレージからの取り寄せ。IADR-0320 決定 3）は `RawSourceResolver` が持つ。
     // PDF の抽出器と同じ経路を使うため、本クラスから切り出した（IADR-0356）。
 
-    private static async Task<bool> CheckPandocAsync(CancellationToken ct) =>
-        await TryGetPandocVersionAsync(ct) is not null;
-
     // IADR-0320 決定 5 (#1097): pandoc の版（`pandoc --version` の 1 行目）。取得できなければ null
     // ＝**実行時イメージに pandoc が無い**。readiness ヘルスチェックが同じ口を使う。
-    internal static async Task<string?> TryGetPandocVersionAsync(CancellationToken ct)
+    // #1641: 版の確かめも期限（`ExternalProcess.VersionProbeTimeout`）つきで起動し、期限切れ・取り消しではツリーごと止める。
+    internal static async Task<string?> TryGetPandocVersionAsync(CancellationToken ct,
+        Func<ProcessStartInfo, ProcessStartInfo>? startInfoFilter = null, ILogger? logger = null)
     {
         try
         {
             var psi = new ProcessStartInfo("pandoc", "--version")
             {
                 RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            using var proc = Process.Start(psi);
-            if (proc is null) return null;
-            // 待機前に読み始める（パイプが埋まると WaitForExit が返らない）。
-            var stdout = proc.StandardOutput.ReadToEndAsync(ct);
-            await proc.WaitForExitAsync(ct);
-            var text = await stdout;
-            if (proc.ExitCode != 0) return null;
-            var firstLine = text.Split('\n')[0].Trim();
+            var result = await ExternalProcess.RunAsync(startInfoFilter?.Invoke(psi) ?? psi, "pandoc",
+                ExternalProcess.VersionProbeTimeout, logger ?? NullLogger.Instance, ct);
+            if (result.ExitCode != 0) return null;
+            var firstLine = result.StandardOutput.Split('\n')[0].Trim();
             return firstLine.Length == 0 ? "pandoc" : firstLine;
         }
+        // #1641: 呼び出し元の取り消しは「pandoc が無い」へ畳まずに外へ出す（受け口では停止要求・実行期限である）。
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch { return null; }
     }
 

@@ -181,6 +181,9 @@ public class HttpEffectiveConfigCollectorTests
     // —— 期限切れと停止要求は型では分けられず、ct でしか分けられない。素の `OperationCanceledException` を注入していた間は、
     // 絞り込みを「`TaskCanceledException` なら期限切れ」と**型で**判定する変異（`|| ex is TaskCanceledException`）が生き残った
     // （上の期限切れの試験は期限切れの側しか見ないので、その変異の下でも緑である）。
+    // ［#1647］取り消す時機は壁時計（300 ミリ秒）ではなく**待受の合図**で決める。待受が接続を受け付け、要求の先頭のバイトを
+    // 読んだ時点で `RequestReceived` を完了させ、試験はそれを待ってから取り消す。壁時計の窓は、platform の slnx 全体を走らせた
+    // 負荷の下で「300 ミリ秒の間に接続が受け付けられない」ことがあり、前提の表明（`Accepted > 0`）で揺れていた（#1639・#1643 の作業で実測）。
     [Fact]
     public async Task 呼び出し側の取り消しは到達不能へ化けずに外へ出る()
     {
@@ -189,9 +192,13 @@ public class HttpEffectiveConfigCollectorTests
         var (collector, _, logger) = Build(
             Options(new() { ["document-service"] = peer.BaseUrl }, timeoutSeconds: 30), handler);
         using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        caller.CancelAfter(TimeSpan.FromMilliseconds(300));
 
-        var act = async () => await collector.CollectAsync(caller.Token);
+        var collect = collector.CollectAsync(caller.Token);
+        // 要求が待受まで届いた（接続の失敗ではない）ことを合図で確かめてから取り消す。上限は見張りであって所要時間の判定ではない。
+        await peer.RequestReceived.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        await caller.CancelAsync();
+
+        var act = async () => await collect;
 
         (await act.Should().ThrowAsync<TaskCanceledException>(
                 "停止要求由来の取り消しは収集失敗ではない（前提: 本物の HttpClient は取り消しを TaskCanceledException で表す）"))
@@ -347,11 +354,16 @@ public class HttpEffectiveConfigCollectorTests
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
         private readonly ConcurrentBag<TcpClient> _clients = [];
         private readonly CancellationTokenSource _cts = new();
+        private readonly TaskCompletionSource _requestReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _accepted;
 
         public string BaseUrl => $"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}";
 
         public int Accepted => Volatile.Read(ref _accepted);
+
+        // ［#1647］接続を受け付け、要求の先頭のバイトを読んだ時点で完了する合図（応答は返さない）。
+        // 取り消しの時機を壁時計ではなくこの合図で決めるためのもの（#1643 の `LoopbackGrpcServer` と同じ考え方）。
+        public Task RequestReceived => _requestReceived.Task;
 
         public static SilentPeer Start()
         {
@@ -367,11 +379,25 @@ public class HttpEffectiveConfigCollectorTests
             {
                 while (!_cts.IsCancellationRequested)
                 {
-                    _clients.Add(await _listener.AcceptTcpClientAsync(_cts.Token));
+                    var client = await _listener.AcceptTcpClientAsync(_cts.Token);
+                    _clients.Add(client);
                     Interlocked.Increment(ref _accepted);
+                    _ = Task.Run(() => SignalOnFirstBytesAsync(client));
                 }
             }
             catch (Exception) { /* 停止 */ }
+        }
+
+        // 要求の先頭を読んだら合図する。読むだけで何も返さない（相手は応答を待ち続ける）。
+        private async Task SignalOnFirstBytesAsync(TcpClient client)
+        {
+            try
+            {
+                var buffer = new byte[1024];
+                if (await client.GetStream().ReadAsync(buffer, _cts.Token) > 0)
+                    _requestReceived.TrySetResult();
+            }
+            catch (Exception) { /* 停止・切断 */ }
         }
 
         public void Dispose()
