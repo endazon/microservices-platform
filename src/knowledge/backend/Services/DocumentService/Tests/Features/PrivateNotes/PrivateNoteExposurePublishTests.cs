@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using AwesomeAssertions;
 using DocumentService.Features.ObsidianSync;
 using DocumentService.Features.ObsidianSync.Push;
+using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.Extensions.DependencyInjection;
@@ -201,16 +202,19 @@ public class PrivateNoteExposurePublishTests(TestWebApplicationFactory factory)
                 new { attributes, tags = new List<string>() }, TestContext.Current.CancellationToken);
     }
 
-    // ［#1471］受け入れ基準: **管理者の属性全置換で露出が外れた個人資料は、撤収のイベントが出る**
-    // （ADR-0061 決定 4 / [[IADR-0396]] 決定 5 / [[IADR-0455]] 決定 1）。
+    // ［#1629］（旧 #1471 の 2 本を置き換えた）**管理者の保存は他人の個人資料に届かない。**
     //
-    // 🔴 SetExposure だけが ON → OFF を作るのではない。属性の全置換で露出キーを `excluded` にする保存も
-    // 同じ遷移であり、「今」索引可のときだけ出す単純な門を当てると**消させるためのイベントが弾かれて
-    // 本文が索引に残る**。PR #1281 のレビュー修正（`c4830568`）をそのまま当てると、ここが落ちる。
+    // #1471 は「管理者の属性全置換で露出が外れた個人資料は撤収のイベントが出る」をここで固定していたが、
+    // その前提（管理者が他人の個人資料を書き換えられる）そのものが ADR-0036 D-08・ADR-0119 決定 3 の違反だった
+    // （#1629）。管理の書き込み口は個人資料を主体に依らず対象外（404）とし、ON → OFF の撤収は所有者の
+    // SetExposure（上の `全てOFFへ戻すと撤収のためのイベントが発行される`）が担う。
+    //
+    // 🔴 **陰性（404・イベント無し・属性不変）は陽性対照と対で置く**: 同じ資料で、露出 ON の発行が出ていること、
+    // 所有者の SetExposure なら撤収まで届くことを同じテストの中で示す（「常に 404」の実装でも陰性だけは緑になる）。
     [Theory]
     [InlineData("PUT")]
     [InlineData("PATCH")]
-    public async Task 管理者の属性更新で露出が外れると撤収のイベントが発行される(string method)
+    public async Task 管理者の属性更新は他人の個人資料に届かず_404で撤収も書き換えも起きない(string method)
     {
         var (_, session, plugin) = await OwnerAsync();
         var noteId = await PushAsync(plugin, $"管理者更新-{method}.md", "本文");
@@ -221,40 +225,30 @@ public class PrivateNoteExposurePublishTests(TestWebApplicationFactory factory)
         var withdrawn = new Dictionary<string, string>(afterOn[^1].Attributes)
         {
             [DocumentExposure.SearchKey] = DocumentExposure.Excluded,
+            ["owner"] = TestAuthHandler.DefaultUser,
         };
 
-        var res = await AdminSaveAsync(method, noteId, afterOn[^1].Title, withdrawn);
-        res.StatusCode.Should().Be(HttpStatusCode.OK);
+        var res = await AdminSaveAsync(method, noteId, "管理者が付けた題名", withdrawn);
+        res.StatusCode.Should().Be(HttpStatusCode.NotFound, "個人資料は管理の口の対象外（存在を明かさない）");
+        (await res.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().NotContain(noteId.ToString())
+            .And.NotContain("管理者更新", "応答に表題・owner を出さない");
 
-        var published = UpdatesFor(noteId);
-        published.Count.Should().BeGreaterThan(afterOn.Count,
-            "ON → OFF は索引からの削除まで及ぶ。管理者の保存でもイベントが出ないと撤収の契機が無い");
-        published[^1].Attributes.Should()
-            .Contain(DocumentExposure.SearchKey, DocumentExposure.Excluded);
-    }
+        UpdatesFor(noteId).Count.Should().Be(afterOn.Count, "書き換えていないので発行もしない");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            var stored = (await db.Documents.FindAsync([noteId], TestContext.Current.CancellationToken))!;
+            stored.Title.Should().NotBe("管理者が付けた題名", "管理者の保存は表題を変えていない");
+            stored.Attributes.Should().Contain("owner", afterOn[^1].Attributes["owner"], "owner を奪えない");
+            stored.Attributes.Should().NotContain(DocumentExposure.SearchKey, DocumentExposure.Excluded);
+        }
 
-    // ［#1471］上のテストと対: **全 OFF のまま管理者が保存しても発行しない**（ADR-0061 決定 2）。
-    // 片方だけだと「管理者の保存は常に出す」実装（＝門を通さない直接発行）でも通ってしまう。
-    [Theory]
-    [InlineData("PUT")]
-    [InlineData("PATCH")]
-    public async Task 全てOFFの個人資料を管理者が更新しても発行されない(string method)
-    {
-        var (_, session, plugin) = await OwnerAsync();
-        var noteId = await PushAsync(plugin, $"管理者更新OFF-{method}.md", "本文");
-        await SetExposureAsync(session, noteId, search: true, graph: false, ai: false);
+        // 陽性対照: 所有者の経路（SetExposure）なら撤収まで届く ＝ 資料も配線も生きている。
         await SetExposureAsync(session, noteId, search: false, graph: false, ai: false);
-
         var afterOff = UpdatesFor(noteId);
-        afterOff[^1].Attributes.Should().Contain(DocumentExposure.SearchKey, DocumentExposure.Excluded,
-            "陽性対照: 撤収のイベントまでは出ている（ここから全 OFF のまま保存する）");
-
-        var res = await AdminSaveAsync(method, noteId, afterOff[^1].Title,
-            new Dictionary<string, string>(afterOff[^1].Attributes));
-        res.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        UpdatesFor(noteId).Count.Should().Be(afterOff.Count,
-            "3 つとも OFF の資料はイベントそのものを出さない（索引に存在しないまま保つ）");
+        afterOff.Count.Should().BeGreaterThan(afterOn.Count, "陽性対照: 所有者の撤収は届く");
+        afterOff[^1].Attributes.Should().Contain("owner", afterOn[^1].Attributes["owner"],
+            "管理者の保存は owner を書き換えていない");
     }
 
     // ［#1471］陽性対照（組織文書）: **露出キーを明示的に全 `excluded` にした組織文書でも、発行は止まらない**

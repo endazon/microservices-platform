@@ -28,7 +28,8 @@ internal static class UpdateDocumentEndpoint
             var gate = validator.Validate(req);
             if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
 
-            var doc = await db.Documents.FindAsync(id);
+            // FR-19, ADR-0036 D-08, ADR-0119 決定 3 (#1629): 個人資料はこの口の対象外（主体を問わず 404）。
+            var doc = await DocumentManageScope.FindManageableAsync(db, id, ct);
             if (doc is null) return Results.NotFound();
 
             // FR-06, FR-19, ADR-0058 決定 2: doc_scope は作成時に確定し、以後変更できない。
@@ -56,6 +57,8 @@ internal static class UpdateDocumentEndpoint
 
             // FR-19, ADR-0061 決定 4, [[IADR-0455]] 決定 1 (#1471): **書き換える「前」に門の判定を取る。**
             // 属性は全置換なので、個人資料の露出キーを落とす・`excluded` にする保存は ON → OFF の撤収になる。
+            // ［#1629］個人資料は上の `FindManageableAsync` で 404 になりここへ来ない。組織文書では撤収の形と単純な門は
+            // 同値である（`PassesPublishGate` は組織文書に常に真）ため、形は残す（[[IADR-0455]] の 2026-09-27 追記）。
             var wasPublishable = DocumentEndpoints.PassesPublishGate(doc);
             doc.Update(req.Title, req.Attributes ?? [], updateTagIds, req.ChangeNote);
             await db.SaveChangesAsync();

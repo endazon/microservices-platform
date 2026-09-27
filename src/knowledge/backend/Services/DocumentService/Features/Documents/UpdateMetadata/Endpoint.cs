@@ -26,7 +26,8 @@ internal static class UpdateDocumentMetadataEndpoint
             var gate = validator.Validate(req);
             if (!gate.IsValid) return ValidationProblems.FirstViolation(gate);
 
-            var doc = await db.Documents.FindAsync(id);
+            // FR-19, ADR-0036 D-08, ADR-0119 決定 3 (#1629): 個人資料はこの口の対象外（主体を問わず 404）。
+            var doc = await DocumentManageScope.FindManageableAsync(db, id, ct);
             if (doc is null) return Results.NotFound();
 
             // FR-06, FR-19, ADR-0058 決定 2: doc_scope は作成時に確定し、以後変更できない。
@@ -52,7 +53,7 @@ internal static class UpdateDocumentMetadataEndpoint
             if (metaUnknown.Count > 0) return DocumentEndpoints.UnknownTagsProblem(metaUnknown);
 
             // FR-19, ADR-0061 決定 4, [[IADR-0455]] 決定 1 (#1471): **書き換える「前」に門の判定を取る**
-            // （`Update` と同じ理由。属性の全置換は個人資料の露出を外し得る）。
+            // （`Update` と同じ理由。［#1629］個人資料はここへ来ない —— 形を残す理由も `Update` と同じ）。
             var wasPublishable = DocumentEndpoints.PassesPublishGate(doc);
             doc.UpdateMetadata(req.Attributes ?? [], metaTagIds, req.ChangeNote);
             await db.SaveChangesAsync();

@@ -2018,6 +2018,8 @@ paths:
       responses:
         "200":
           description: 更新成功
+        "404":
+          description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
     delete:
       tags: [Documents]
       summary: "FR-06, UC-03, Issue #88: ドキュメントを削除する（DocumentDeleted を発行し Wiki.js 実体も撤去）"
@@ -2027,6 +2029,8 @@ paths:
       responses:
         "204":
           description: 削除成功
+        "404":
+          description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
 
   /documents/{id}/metadata:
     patch:
@@ -2045,7 +2049,7 @@ paths:
         "200":
           description: 更新成功
         "404":
-          description: 見つからない
+          description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
         "409":
           description: 版競合（楽観的並行制御）
 
@@ -2060,7 +2064,7 @@ paths:
         "200":
           description: 公開成功
         "404":
-          description: 見つからない
+          description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
 
   /documents/{id}/archive:
     post:
@@ -2073,7 +2077,7 @@ paths:
         "200":
           description: アーカイブ成功（status=archived の DocumentUpdated を発行）
         "404":
-          description: 見つからない
+          description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
 
   /documents/{id}/versions:
     get:

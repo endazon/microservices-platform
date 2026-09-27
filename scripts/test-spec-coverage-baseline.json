@@ -54,6 +54,7 @@
       "AccessScopeContractTests"
     ],
     "docs/tests/FR-06_document-crud-versioning.md": [
+      "AdminWritePrivateNoteScopeTests",
       "DocumentAttributesTests",
       "DocumentConfidentialityValidationTests",
       "DocumentCrudTests",
@@ -65,7 +66,9 @@
       "DocumentReadRelayDeploymentWiringTests",
       "DocumentReadRelayOptionsTests",
       "DocumentReadTrustedRelayTests",
-      "DocumentVersioningTests"
+      "DocumentVersioningTests",
+      "GrpcDocumentTagWriteTests",
+      "PrivateNoteExposurePublishTests"
     ],
     "docs/tests/FR-07_data-range-analysis.md": [
       "AnalysisEndpointTests",
@@ -148,6 +151,7 @@
       "ConfigViewerPolicyTests",
       "DriftDetectorTests",
       "DriftServiceCoverageTests",
+      "HttpEffectiveConfigCollectorTests",
       "IntrospectionEndpointTests",
       "IntrospectionGrpcDeploymentWiringTests",
       "IntrospectionGrpcFaceTests",

@@ -221,6 +221,33 @@ public class GrpcDocumentTagWriteTests
             .Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
     }
 
+    // 🔴 T-12 (#1629): **管理者ロールの分岐（②）は他人の個人資料に及ばない**（計画 ADR-0036 D-08・ADR-0119 決定 3）。
+    // gRPC 面も REST と同じ本体（`AddDocumentTagUseCase`）を通ることの観測。陽性対照は同じ資料への所有者の反映。
+    [Fact]
+    public async Task 管理者ロールを運んでも他人の個人資料へは反映されず所有者なら反映される()
+    {
+        var tag = await RegisterTagAsync();
+        var note = await SeedAsync(db =>
+        {
+            var doc = Document.CreateNormalized(
+                Guid.NewGuid(), $"個人資料 {Guid.NewGuid():N}", "storage://b/x",
+                new Dictionary<string, string>
+                {
+                    ["confidentiality"] = "restricted",
+                    ["doc_scope"] = "private-note",
+                    ["owner"] = "alice",
+                }, hasBody: false);
+            db.Documents.Add(doc);
+            return doc;
+        });
+
+        var asAdmin = await AddAsync(note.Id, tag, "admin-user", PlatformAuthPolicies.AdminRole);
+        var asOwner = await AddAsync(note.Id, tag, "alice");
+
+        asAdmin.Result.Should().Be(TagWriteResult.NotWritable, "管理者ロールは個人資料の所有者の束縛ではない");
+        asOwner.Result.Should().Be(TagWriteResult.Applied, "★ 陽性対照: 同じ資料へ所有者は書ける");
+    }
+
     // 🔴 T-11: **`ServiceCaller` の宣言をリフレクションで固定する。**
     [Fact]
     public void Grpc面はServiceCallerポリシーを宣言する()

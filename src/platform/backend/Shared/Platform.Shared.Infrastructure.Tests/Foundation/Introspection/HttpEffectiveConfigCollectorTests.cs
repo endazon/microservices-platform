@@ -6,6 +6,7 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Tests.Testing;
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 
 namespace Platform.Shared.Infrastructure.Tests.Foundation.Introspection;
@@ -175,23 +176,28 @@ public class HttpEffectiveConfigCollectorTests
     }
 
     // 陰性対照 (#1382): 呼び出し側の ct による取り消しは握らず外へ出す（停止要求を「到達不能」に化けさせない）。
+    // ［#1630］取り消しは **本物の HttpClient が表す形** で起こす。本物の HttpClient（期限 30 秒）で何も返さない 127.0.0.1 の
+    // 待受へ収集し、呼び出し側の ct を 300 ミリ秒で取り消す。HttpClient はこれを **`TaskCanceledException`**（期限切れと同じ型）で表す
+    // —— 期限切れと停止要求は型では分けられず、ct でしか分けられない。素の `OperationCanceledException` を注入していた間は、
+    // 絞り込みを「`TaskCanceledException` なら期限切れ」と**型で**判定する変異（`|| ex is TaskCanceledException`）が生き残った
+    // （上の期限切れの試験は期限切れの側しか見ないので、その変異の下でも緑である）。
     [Fact]
     public async Task 呼び出し側の取り消しは到達不能へ化けずに外へ出る()
     {
-        using var cts = new CancellationTokenSource();
-        var handler = new RoutingHandler(_ =>
-        {
-            cts.Cancel();
-            throw new OperationCanceledException(cts.Token);
-        });
-        var (collector, _, _) = Build(
-            Options(new() { ["document-service"] = "http://document-service:5001" }),
-            handler);
+        using var peer = SilentPeer.Start();
+        using var handler = new SocketsHttpHandler();
+        var (collector, _, logger) = Build(
+            Options(new() { ["document-service"] = peer.BaseUrl }, timeoutSeconds: 30), handler);
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        caller.CancelAfter(TimeSpan.FromMilliseconds(300));
 
-        var act = async () => await collector.CollectAsync(cts.Token);
+        var act = async () => await collector.CollectAsync(caller.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>(
-            "停止要求由来の取り消しは収集失敗ではない");
+        (await act.Should().ThrowAsync<TaskCanceledException>(
+                "停止要求由来の取り消しは収集失敗ではない（前提: 本物の HttpClient は取り消しを TaskCanceledException で表す）"))
+            .Which.CancellationToken.Should().Be(caller.Token, "前提: HttpClient は呼び出し側の取り消しを呼び出し側の token で表す");
+        peer.Accepted.Should().BeGreaterThan(0, "前提: 要求は待受まで届いてから取り消された（接続の失敗ではない）");
+        logger.OfLevel(LogLevel.Warning).Should().BeEmpty("停止要求を到達不能として記録していない");
     }
 
     [Fact]
@@ -254,18 +260,24 @@ public class HttpEffectiveConfigCollectorTests
     // catch の when 条件 `ex is not OperationCanceledException` が守っているのはここである。
     // 握ると、シャットダウン中の収集が「全サービス到達不能」という観測結果として残り、
     // ドリフト検出の履歴に偽の障害が記録される。
+    // ［#1630］上の対照と同じく本物の HttpClient で起こす（こちらは収集の前から取り消し済みの ct）。素の
+    // `OperationCanceledException` を注入していた間は、型で判定する変異（`|| ex is TaskCanceledException`）の下でも緑だった。
     [Fact]
     public async Task キャンセルは到達不能へ化けさせず伝播する()
     {
+        using var peer = SilentPeer.Start();
+        using var handler = new SocketsHttpHandler();
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
-        var handler = new RoutingHandler(_ => throw new OperationCanceledException(cts.Token));
-        var (collector, _, _) = Build(
-            Options(new() { ["document-service"] = "http://document-service:5001" }), handler);
+        var (collector, _, logger) = Build(
+            Options(new() { ["document-service"] = peer.BaseUrl }, timeoutSeconds: 30), handler);
 
         var act = async () => await collector.CollectAsync(cts.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        (await act.Should().ThrowAsync<TaskCanceledException>(
+                "停止要求は到達不能ではない（前提: 本物の HttpClient は取り消しを TaskCanceledException で表す）"))
+            .Which.CancellationToken.Should().Be(cts.Token);
+        logger.OfLevel(LogLevel.Warning).Should().BeEmpty("停止要求を到達不能として記録していない");
     }
 
     // ── タイムアウトの下限 ────────────────────────────────────────────────────
@@ -327,5 +339,47 @@ public class HttpEffectiveConfigCollectorTests
             new StepIntrospectionDto("convert", "C", "RawDocumentFetched", ["DocumentNormalized"], true));
         report.Ports.Should().ContainSingle().Which.Target.Should().Be("seaweedfs:8333");
         report.Connectors.Should().ContainSingle().Which.Enabled.Should().BeFalse();
+    }
+
+    // 接続を受けて何も返さない（読みもしない）127.0.0.1 の待受（#1630。McpServer の `ToolCatalogRefresherTimeoutTests` と同じ形）。
+    private sealed class SilentPeer : IDisposable
+    {
+        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+        private readonly ConcurrentBag<TcpClient> _clients = [];
+        private readonly CancellationTokenSource _cts = new();
+        private int _accepted;
+
+        public string BaseUrl => $"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}";
+
+        public int Accepted => Volatile.Read(ref _accepted);
+
+        public static SilentPeer Start()
+        {
+            var peer = new SilentPeer();
+            peer._listener.Start();
+            _ = Task.Run(peer.AcceptLoopAsync);
+            return peer;
+        }
+
+        private async Task AcceptLoopAsync()
+        {
+            try
+            {
+                while (!_cts.IsCancellationRequested)
+                {
+                    _clients.Add(await _listener.AcceptTcpClientAsync(_cts.Token));
+                    Interlocked.Increment(ref _accepted);
+                }
+            }
+            catch (Exception) { /* 停止 */ }
+        }
+
+        public void Dispose()
+        {
+            _cts.Cancel();
+            _listener.Stop();
+            foreach (var c in _clients) c.Dispose();
+            _cts.Dispose();
+        }
     }
 }
