@@ -9,6 +9,7 @@ import {
   Label,
   Panel,
   Select,
+  StatusBadge,
   Table,
   TableBody,
   TableCaption,
@@ -22,7 +23,11 @@ import { ApiError } from '@foundation/api/ApiError';
 import { QueryState } from '@foundation/ui/QueryState';
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/utils/apiErrors';
-import { ATTRIBUTE_SCOPES, attributeScopeLabel } from '../types/abacVocabulary';
+import {
+  ATTRIBUTE_SCOPES,
+  allowedValuesSourceBadge,
+  attributeScopeLabel,
+} from '../types/abacVocabulary';
 import type { AttributeScope } from '../types/abacVocabulary';
 import { useAttributeActions } from '../api/useAbacAdmin';
 import { useAttributeDraft } from '../hooks/useAttributeDraft';
@@ -54,6 +59,7 @@ function AttributeRow({
 }) {
   const { t } = useLingui();
   const attributeKey = attribute.key;
+  const source = allowedValuesSourceBadge(attribute.allowedValuesSource);
   return (
     <TableRow>
       <TableCell className="font-mono text-xs">{attributeKey}</TableCell>
@@ -62,7 +68,16 @@ function AttributeRow({
         {/* スコープは**分類の名前**であり状態ではない（Tag / StatusBadge の使い分け）。 */}
         <Tag>{labelOf(attributeScopeLabel(attribute.scope))}</Tag>
       </TableCell>
-      <TableCell>{attribute.allowedValues.join(' / ') || '—'}</TableCell>
+      <TableCell>
+        {attribute.allowedValues.join(' / ') || '—'}
+        {/* SC-09（#1609）: `department` の許可値は realm の部門グループから導く。出所と「不明」を文言で示す
+            （realm を読めないときも既存の値は消えないので、値だけを見ると正しい値に見えてしまう）。 */}
+        {source && (
+          <div className="mt-1">
+            <StatusBadge tone={source.tone}>{labelOf(source.label)}</StatusBadge>
+          </div>
+        )}
+      </TableCell>
       <TableCell>{attribute.required ? t`必須` : t`任意`}</TableCell>
       <TableCell>
         <Button

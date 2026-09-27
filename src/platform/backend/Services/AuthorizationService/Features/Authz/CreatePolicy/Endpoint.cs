@@ -11,9 +11,10 @@ public static class CreatePolicyEndpoint
 {
     public static IEndpointRouteBuilder MapCreatePolicy(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/policies", async (CreatePolicyRequest req, AuthorizationDbContext db) =>
+        app.MapPost("/policies", async (
+            CreatePolicyRequest req, AuthorizationDbContext db, AttributeDictionary dictionary, CancellationToken ct) =>
         {
-            var errors = await AuthzEndpoints.ValidatePolicyAsync(req, db);
+            var errors = await AuthzEndpoints.ValidatePolicyAsync(req, db, dictionary, ct);
             if (errors.Count > 0)
                 return AuthzEndpoints.ValidationProblem(errors);
 

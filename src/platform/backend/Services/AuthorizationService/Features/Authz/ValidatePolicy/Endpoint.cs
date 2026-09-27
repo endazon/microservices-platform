@@ -23,9 +23,10 @@ public static class ValidatePolicyEndpoint
 {
     public static IEndpointRouteBuilder MapValidatePolicy(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/policies/validate", async (CreatePolicyRequest req, AuthorizationDbContext db) =>
+        app.MapPost("/policies/validate", async (
+            CreatePolicyRequest req, AuthorizationDbContext db, AttributeDictionary dictionary, CancellationToken ct) =>
         {
-            var errors = await AuthzEndpoints.ValidatePolicyAsync(req, db);
+            var errors = await AuthzEndpoints.ValidatePolicyAsync(req, db, dictionary, ct);
             return Results.Ok(new ValidatePolicyResponse(errors.Count == 0, errors));
         });
 

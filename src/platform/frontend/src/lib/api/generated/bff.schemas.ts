@@ -1022,6 +1022,14 @@ export interface AttributeDefinitionDto {
   scope: string;
   createdAt: string;
   updatedAt: string;
+  /**
+     * FR-09, SC-09, SC-17（#1609・計画 ADR-0116 決定 3）: 許可値の出所。**手で持つキーは null**。
+     * `department` の許可値は realm の部門グループ（`/department/<code>`）から導き、手で足す・消すことはできない ——
+     * `realm` は今回 realm から導いた値、`realm-unavailable` は realm を読めず**最後に確かめた値**を示している（**不明**。
+     * realm を読めないときも既存の値は消さない）。`enum` にしない（値域の正は AuthorizationService の `DepartmentDictionaryValues`）。
+     * `department` の登録・更新の `allowedValues` は、空（realm から導く）か現在の値と同じ集合のときだけ受け付ける（それ以外は 400）。
+     */
+  allowedValuesSource?: string | null;
 }
 
 /**
