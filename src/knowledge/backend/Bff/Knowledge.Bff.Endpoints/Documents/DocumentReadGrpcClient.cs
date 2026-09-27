@@ -36,7 +36,8 @@ namespace Knowledge.Bff.Endpoints.Documents;
 // 後段は個人資料を所有者と共有先の利用者にだけ返すようになったので、利用者を名指さずに呼ぶと
 // **BFF 自身（機械の主体）として読まれ、所有者が自分の個人資料を SC-03 で開けなくなる**。
 // 呼び出し元が機械（Bearer の無人主体）のときは**載せない**（BFF 自身の機械の主体として読まれ、個人資料は返らない）。
-// 組織文書の ABAC の実施点は引き続き `BffScopeResolver` ＋ `IsManageable` / `IsReadable` である（#1615 で後段にも入る）。
+// 組織文書の ABAC の実施点は引き続き `BffScopeResolver` ＋ `IsManageable` / `IsReadable` である（［2026-09-28 / #1615］後段も、
+// 内容の ABAC の門が開いたときだけ同じ分岐で判定する。AND 合成で BFF の応答は変わらない）。
 public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient client)
 {
     /// <summary>`Services:DocumentServiceGrpc`（h2c のアドレス。例: http://document-service:8081）。</summary>

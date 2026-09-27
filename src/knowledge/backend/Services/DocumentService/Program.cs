@@ -248,7 +248,7 @@ else
 // FR-05, FR-19, NFR-09, 計画 ADR-0121 決定 2・4, [[IADR-0481]] (#1665): 内容の ABAC の門。
 // `ContentAbac:Mode`（既定 Off。値域外はここで落ちる）が On で、かつ所有者の読み取りのポリシーを認可サービスで
 // 確かめたときだけ開く。宛先が未構成なら「数えられない」縮退を登録する（門は開かない）。
-// 🔴 本件の時点で門を読む判定は無い（内容の ABAC の本体が読む）。
+// ［2026-09-28 / #1615］門を読むのは `DocumentReadAccess` だけである（開いたときだけ内容の ABAC で判定する）。
 builder.Services.AddSingleton(
     DocumentService.Features.Documents.ContentAbac.ContentAbacOptions.FromConfiguration(builder.Configuration));
 builder.Services.AddSingleton<DocumentService.Features.Documents.ContentAbac.ContentAbacGate>();

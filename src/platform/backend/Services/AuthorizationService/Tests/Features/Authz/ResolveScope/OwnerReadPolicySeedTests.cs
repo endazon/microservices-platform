@@ -73,9 +73,11 @@ public class OwnerReadPolicySeedTests : IClassFixture<TestWebApplicationFactory>
 
     // T-25（ADR-0121 フォローアップ 6 の入力）: seed を入れた端点の応答が**期待値のファイルと一致する**。
     // 消費側の試験はこのファイルを入力にするので、ここが消費側の入力の正しさの担保である。
+    // ［2026-09-28 / #1615］AST の KB の書き手のサービスアカウントも入れる（内容の ABAC の下で自分の写しを見つけられることの入力）。
     [Theory]
     [InlineData("alice")]
     [InlineData("bob")]
+    [InlineData("service-account-ai-stock-trading-kb-writer")]
     public async Task Seedを入れた端点の応答は期待値のファイルと一致する(string userId)
     {
         var expected = SeedScopeFixture.ScopeOf(userId);
@@ -92,6 +94,7 @@ public class OwnerReadPolicySeedTests : IClassFixture<TestWebApplicationFactory>
     [Theory]
     [InlineData("alice")]
     [InlineData("bob")]
+    [InlineData("service-account-ai-stock-trading-kb-writer")]
     public async Task 所有者の分岐は本人だけに束縛され全件許可の分岐は無い(string userId)
     {
         var (_, scope) = await ResolveAsync(userId);

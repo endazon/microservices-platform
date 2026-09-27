@@ -42,6 +42,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // 🔴 **既定は「読めるものは無い」**（本番の縮退と同じ向き）。
     public StubDocumentReadScopeSource ReadScopes { get; } = new();
 
+    // FR-05, 計画 ADR-0121 決定 4・5 (#1615): 内容の ABAC の門の代役。🔴 **既定は閉じている**（本番の既定 Off と同じ）。
+    // 開いた門で読み取りを測る試験は `ContentAbacOpenWebApplicationFactory`（器ごと開いた状態）を使う ——
+    // 器はクラスで共有されるので、試験の途中で開くと同じクラスの他の試験の前提が変わる。
+    public StubContentAbacGate ContentAbac { get; } = new();
+
     // [[IADR-0474]] (#1532): false にすると差し替えず、`Program.cs` が選んだ実装（未構成なら縮退）のまま走る。
     // **本番の縮退の向きを試験で固定するため**だけに使う。
     protected virtual bool ReplaceOwnerAccountDirectory => true;
@@ -94,6 +99,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<DocumentService.Domain.Ports.IDocumentReadScopeSource>();
             services.AddSingleton<DocumentService.Domain.Ports.IDocumentReadScopeSource>(ReadScopes);
 
+            // FR-05, #1615: 門を読む側（`DocumentReadAccess`）へ代役を渡す。本物の門と常駐は残す（構成は既定 Off のまま）。
+            services.RemoveAll<DocumentService.Features.Documents.ContentAbac.IContentAbacGate>();
+            services.AddSingleton<DocumentService.Features.Documents.ContentAbac.IContentAbacGate>(ContentAbac);
+
             // MassTransit をテストハーネスへ差し替え
             services.RemoveAll<IBusControl>();
             services.AddMassTransitTestHarness();
@@ -125,4 +134,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 
         services.AddDbContext<TContext>(opt => opt.UseInMemoryDatabase(dbName));
     }
+}
+
+// FR-05, NFR-09, 計画 ADR-0121 決定 4・5, ADR-0119 決定 3 (#1615): **内容の ABAC の門が開いた器。**
+// 閉じた器（`TestWebApplicationFactory`）と同じ構成で、門の代役だけが最初から開いている。
+public sealed class ContentAbacOpenWebApplicationFactory : TestWebApplicationFactory
+{
+    public ContentAbacOpenWebApplicationFactory() => ContentAbac.Open();
 }

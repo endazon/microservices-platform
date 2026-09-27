@@ -27,7 +27,8 @@ namespace DocumentService.Features.Documents;
 // ［2026-09-27 更新 / #1614］🔴 **主体は要求の `user` で決まる**（計画 ADR-0119 決定 3・ADR-0086 決定 1）。
 //   在れば**その利用者**（呼び出し元サービスは利用者の代わりに読んでいる）、無ければ**呼び出し元サービス自身**
 //   （機械の主体）。個人資料は所有者と共有先の利用者にだけ返り（`DocumentReadAccess`）、機械の主体には返らない
-//   （ADR-0034 決定 9）。組織文書の内容の ABAC は引き続き BFF の `BffScopeResolver` が実施点である（#1615）。
+//   （ADR-0034 決定 9）。［2026-09-28 / #1615］組織文書の内容の ABAC は、門が開いたときだけ `DocumentReadAccess` が行う
+//   （閉じている間は BFF の `BffScopeResolver` が実施点）。`user` の無い呼び出しは呼び出し元サービスのアカウント名で判定する。
 //   🔴 `user.user_id` が空なら INVALID_ARGUMENT —— 「利用者が分からない」を機械の主体へ畳まない。
 //
 // ［2026-09-27 追記 / #1628］🔴 **本文の `user` を信じるのは、許可集合（`DocumentReadRelayOptions`。既定 `bff` だけ）の
@@ -121,7 +122,7 @@ public sealed class DocumentReadGrpcService(
         UserContext? user, ClaimsPrincipal caller, DocumentReadRelayOptions relay)
     {
         if (user is null)
-            return DocumentReadPrincipal.CallingService();
+            return DocumentReadPrincipal.CallingService(caller);
         if (!relay.TrustsUserContextFrom(caller))
             throw new RpcException(new Status(StatusCode.PermissionDenied,
                 "この呼び出し元は利用者文脈（user）を運べません。user を省略すると呼び出し元サービス自身として読みます。"));

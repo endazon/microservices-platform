@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-05, FR-06, FR-19, UC-03, SC-03, SC-05, NFR-09, ADR-0119, ADR-0034, ADR-0036, ADR-0054, ADR-0056, ADR-0058, ADR-0086, ADR-0098, ADR-0109, IADR-0012, IADR-0041, IADR-0045, IADR-0379, IADR-0402, IADR-0410, IADR-0416, IADR-0420, IADR-0447, IADR-0475]
 author: claude
 created: 2026-09-27
-updated: 2026-09-27
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0119_document-machine-client-own-docs-and-read-abac.md 決定 3・決定 4
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md §所有者ベースの read 規則（2026-09-27 補完）
@@ -214,3 +214,11 @@ package をまたいで型を共有しない（[[IADR-0379]] 決定 1）ので�
 `DocumentReadRelayOptions` に写したまま持つのをやめ、#1645 で置かれた共有の `TrustedUserContextRelay`（`Platform.Shared.Infrastructure`）の
 `Effective` / `Trusts` / `ThrowIfScalar` へ委譲する。型に残るのは節名・既定・委譲だけで、公開面と 1 つの値の例外の文言は従前と同じである
 （`DocumentReadRelayOptionsTests` が文言を含めて固定する）。配備への影響は無い。
+
+## 追記 3: 内容の ABAC の門が開いたときは、決定 3・4 の判定を認可サービスの分岐 1 つへ置き換える（2026-09-28 / #1615）
+
+［2026-09-28 追記 / #1615］計画 ADR-0121 決定 4 の 4 番目・決定 5 の実装。**門（[[IADR-0481]]）が閉じている間は、決定 3・4 は本文のまま変えない。**
+門が開いたときは、判定点 `DocumentReadAccess`（決定 7 のとおり増やしていない）が、組織文書を含む全ての文書を認可サービスの `read` の分岐ただ 1 つで判定し、
+所有者・利用者の共有先のコード判定は使わない（決定 4 の「所有者・利用者の共有先・組織文書だけの読み取りでは 1 度も問わない」も、開いた後は成り立たない）。
+機械の主体はそのサービスアカウント名で問う。詳細は [[IADR-0483]]。
+

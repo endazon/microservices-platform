@@ -12,7 +12,8 @@ namespace DocumentService.Features.Documents.ContentAbac;
 // ■ 🔴 **1 度開いたら、プロセスの寿命の間は閉じない（ラッチ）。** 開いた後にポリシーが消えたことは、認可サービスの検査と
 //   警報（`OwnerReadPolicyMissing`）が知らせる（ADR-0121 決定 2・§結果）。門を動的に閉じると、消えた瞬間に内容の ABAC が外れ、
 //   機械クライアントの許可が**広がる**向きに倒れる。再起動したときは改めて確かめる。
-// ■ 🔴 **本件の時点で門を読む判定は無い。** 内容の ABAC の本体（#1615）が `DocumentReadAccess` から `IsOpen` を読む。
+// ■ ［2026-09-28 更新 / #1615］**門を読むのは `DocumentReadAccess` ただ 1 か所である**（要求の中で最初に判定するときに 1 度だけ読む）。
+//   開いていれば読み取りの判定は認可サービスの分岐だけで行う（内容の ABAC）。閉じている間は従前の判定のまま。
 public enum ContentAbacMode
 {
     Off,

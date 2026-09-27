@@ -11,7 +11,10 @@
     "比較は分岐の順序と値の順序を無視する（DB の返す順は定まらない）。",
     "alice: 属性を 1 つも持たない利用者（AST の KB の書き手と同じ形）。所有者と共有先の分岐だけにマッチする。",
     "bob: clearance=internal の利用者。階段の 2 段と、所有者・共有先の分岐にマッチする。",
-    "所属グループはどちらも持たない（${current_groups} は何にも展開されない）。"
+    "所属グループはどちらも持たない（${current_groups} は何にも展開されない）。",
+    "service-account-ai-stock-trading-kb-writer（#1615）: AST の KB の書き手のサービスアカウントそのもの（属性なし・所属なし）。",
+    "内容の ABAC の下で、自分が owner の写しを見つけられることの入力（ADR-0119 決定 3・フォローアップ 2）。",
+    "実 Keycloak 24 は username と exact=true の照会でサービスアカウントの利用者も返すので、認可サービスはこの名前を引ける。"
   ],
   "subjects": [
     {
@@ -46,6 +49,22 @@
           { "name": "dev: internal 取扱者は public/internal を読める", "filters": [{ "key": "confidentiality", "allowedValues": ["public", "internal"] }] },
           { "name": "dev: 共有された個人資料を読める", "filters": [{ "key": "shared_with", "allowedValues": ["bob"] }] },
           { "name": "dev: 所有者は自分の文書を読める", "filters": [{ "key": "owner", "allowedValues": ["bob"] }] }
+        ]
+      }
+    },
+    {
+      "userId": "service-account-ai-stock-trading-kb-writer",
+      "attributes": {},
+      "scope": {
+        "userId": "service-account-ai-stock-trading-kb-writer",
+        "allowedFilters": [
+          { "key": "shared_with", "allowedValues": ["${current_user}", "${current_groups}"] },
+          { "key": "owner", "allowedValues": ["${current_user}"] }
+        ],
+        "granted": true,
+        "branches": [
+          { "name": "dev: 共有された個人資料を読める", "filters": [{ "key": "shared_with", "allowedValues": ["service-account-ai-stock-trading-kb-writer"] }] },
+          { "name": "dev: 所有者は自分の文書を読める", "filters": [{ "key": "owner", "allowedValues": ["service-account-ai-stock-trading-kb-writer"] }] }
         ]
       }
     }

@@ -17,12 +17,17 @@ namespace DocumentService.Features.Documents;
 // 🔴 **個人資料を読み得るのは「名前の分かる人」だけである**（`PrivateNoteSubject`）。
 // 機械は所有者・共有先を名乗っても読まない（ADR-0034 決定 9）。名前の無い人（`preferred_username` も
 // クライアント識別も無い）も読まない —— 主体が決まらないものを誰かと読み替えない。
+//
+// ［2026-09-28 追記 / #1615］計画 ADR-0121 決定 5, ADR-0119 決定 3: **内容の ABAC の門が開いたときに認可サービスへ
+// 名指す名前（`AbacSubject`）を持つ。** 人は利用者名、機械はそのサービスアカウント（`DocumentManageScope.MachineSubject`
+// ＝作成時に `owner` へ入れる名前と同じ関数）。門が閉じている間は読まない（判定は従前の `PrivateNoteSubject` だけ）。
 public sealed record DocumentReadPrincipal
 {
-    private DocumentReadPrincipal(string? userId, bool isMachine)
+    private DocumentReadPrincipal(string? userId, bool isMachine, string? abacSubject)
     {
         UserId = userId;
         IsMachine = isMachine;
+        AbacSubject = string.IsNullOrWhiteSpace(abacSubject) ? null : abacSubject;
     }
 
     /// <summary>利用者識別子（`preferred_username`）。機械・名前の無い主体は null。</summary>
@@ -34,22 +39,31 @@ public sealed record DocumentReadPrincipal
     /// <summary>個人資料の所有者・共有先として照合してよい利用者名。機械・名前の無い主体は null。</summary>
     public string? PrivateNoteSubject => IsMachine ? null : UserId;
 
+    /// <summary>
+    /// 内容の ABAC で認可サービスへ名指す主体名（人は利用者名、機械はサービスアカウント名）。決まらなければ null
+    /// （門が開いていれば何も読めない）。#1615。
+    /// </summary>
+    public string? AbacSubject { get; }
+
     // REST: 呼び出し元の資格情報そのもの（利用者の中継、または機械クライアント自身）。
     public static DocumentReadPrincipal FromUser(ClaimsPrincipal user)
     {
-        if (MachinePrincipal.IsMachine(user)) return new(null, isMachine: true);
+        if (MachinePrincipal.IsMachine(user))
+            return new(null, isMachine: true, DocumentManageScope.MachineSubject(user));
         var name = user.Identity?.Name;
-        return new(string.IsNullOrWhiteSpace(name) ? null : name, isMachine: false);
+        var userId = string.IsNullOrWhiteSpace(name) ? null : name;
+        return new(userId, isMachine: false, userId);
     }
 
-    // gRPC: 利用者文脈を運ばない呼び出し ＝ 呼び出し元サービス自身。
-    public static DocumentReadPrincipal CallingService() => new(null, isMachine: true);
+    // gRPC: 利用者文脈を運ばない呼び出し ＝ 呼び出し元サービス自身（#1615: 名前は呼び出し元の資格情報から）。
+    public static DocumentReadPrincipal CallingService(ClaimsPrincipal caller)
+        => new(null, isMachine: true, DocumentManageScope.MachineSubject(caller));
 
     // gRPC: 本文で運ばれた利用者文脈（ADR-0086 決定 1）。呼び出し元は `ServiceCaller` を通り、
     // ［2026-09-27 追記 / #1628］かつ許可集合の中継者（`DocumentReadRelayOptions`。既定 `bff`）であることを確かめ済み。
     // 🔴 `service-account-` の利用者名は機械として扱う（BFF の呼び出し元が機械だった等。REST と同じ規約）。
     public static DocumentReadPrincipal RelayedUser(string userId)
         => userId.StartsWith(MachinePrincipal.ServiceAccountUsernamePrefix, StringComparison.OrdinalIgnoreCase)
-            ? new(null, isMachine: true)
-            : new(userId, isMachine: false);
+            ? new(null, isMachine: true, userId)
+            : new(userId, isMachine: false, userId);
 }
