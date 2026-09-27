@@ -10,7 +10,7 @@ author: Claude
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
 adrs: [ADR-0119, ADR-0063, ADR-0089, ADR-0050, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114, ADR-0117]
 iadrs: [IADR-0476, IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431]
-specs: [20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
+specs: [20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
 issues: [#1636, #1516, #1635, #1628, #1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532]
 -->
 
@@ -265,6 +265,13 @@ REST 実装がそれぞれ「出典のみ返す」「提案 0 件」「画像と
 | `CheckUsernames` | 「これらの利用者名は実在するか」 | **序数一致**。🔴 無効化された利用者も**実在として数える** |
 | `GetUserAttributes` | 「この 1 人の ABAC 属性は何か」 | **大小文字無視**。属性は REST と同じ線上表現（集合値キーはカンマ連結） |
 | `CheckDepartmentCodes` | 「これらの部門コードは値域（realm の `/department/<code>` の `<code>`）に在るか」 | **序数一致**。`/department` の**直下だけ**が値域で、`/` を含む値・空文字・前後空白を含む値は後段を引かずに `exists=false` |
+| `CheckRealmRole` | 「この 1 人はこの realm ロールを持つか」 | 利用者名は `GetUserAttributes` と同じ（大小文字無視）、ロール名は**序数一致**。**実効ロール**（合成・既定の展開を含む ＝ トークンのロールと同じ意味）で答え、🔴 **無効化された利用者は持たない**と答える。ロールの一覧は返さない |
+
+［2026-09-27 追記］**4 つ目の問い `CheckRealmRole` を足した。** 文書サービスのタグの反映（グラフが AI タグ提案の承認を反映する口）が、
+承認者が管理者かを**要求本文が運ぶロール（呼び出し元の主張）ではなく**名簿から引いて判定するためである。問いは 1 つのロールだけで、
+ロールの一覧は面に出さない。呼び出し側は「持つ／持たない・居ない／引けなかった」を分け、文書サービスは「引けなかった」を
+**要求の失敗（UNAVAILABLE）**として返す（「書けない」＝ 404 へ畳まない）。**認可サービスを先に配備すること** —— 文書サービスを
+先に出すと問いが未実装として拒まれ、管理者の承認（所有者でない承認者）だけが 502 になる。
 
 ［2026-09-26 追記］**3 つ目の問い `CheckDepartmentCodes` を足した。** データソースの既定属性で**明示した部門**を、
 書き込み時に値域で検証するためである。**部門グループの一覧は返さない**（照会であって列挙ではない。上の 2 つと同じ狭め方）。
@@ -451,6 +458,11 @@ REST の受け口は**認証を持たない**（利用者裁定で認証を外�
   タグの反映では `user_roles` に管理者を名乗って**管理者の上書きで任意の組織文書へタグを書けた**。
   呼び出し元の client 名を変える配備では、**先に受け口の許可集合へ足すこと**（逆順だと、タグの承認は 502、近傍展開は
   警告を出してグラフ再ランクなしの検索へ静かに縮退する）。辺の型の重み（利用者文脈を持たない）は変わらない。
+- **タグの反映の管理者の判定**［2026-09-27 追記］: 🔴 受け口は要求の `user_roles` を**評価に用いない**。承認者が管理者かは、
+  要求の `user_id` について認可サービスの名簿の読み口（`UserDirectory/CheckRealmRole`）へ問い直す（呼び出し元の主張を判定に用いない）。
+  問うのは所有者として書けない組織文書のときだけ（所有者の承認・個人資料では問わない）。名簿を引けなければ `UNAVAILABLE`
+  （グラフは 502。「書けない」＝ 404 へ畳まない）。`user_roles` は互換のため契約に残し、グラフは送り続ける。
+  **認可サービス → 文書サービスの順に配備すること。**
 - 置き場: いずれも **knowledge ユニットの共有契約プロジェクト**（`Knowledge.Contracts`）。所有者は呼び出し先である（§1）。
 
 **これは「呼び出し先が利用者自身の権限で判定する」最初の面である。** 前の 6 面は、呼び出し先が
