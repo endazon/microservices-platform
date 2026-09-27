@@ -291,3 +291,16 @@ compose・helm の「各サービスの受け口は #1611 まで無い」→ 同
   trace ブロックに IADR-0479・本仕様書・#1611 を足した。
 - **残る懸念（追加）**: Retrieval の実行口は `owner`・部署等を含む索引の属性を全キー返す（共有先は入らない）。MCP の応答の属性を許可リストへ揃えるかは
   別件の判断とする。被参照・参照先の打ち切り時の件数は全体件数ではない。
+
+#### 監査対応の検証と変異（修正コミット `fix(FR-16,ADR-0117,ADR-0098): …許可リストに絞る` の後）
+
+検証: knowledge・platform の build（エラー 0。knowledge の既存警告 1 件のみ）、GraphService.Tests 751 件・McpServer.Tests 237 件合格、`dotnet format --verify-no-changes` 両ユニット差分なし、
+`scripts.test.js` 841 件合格、check-trace-blocks / check-test-spec-coverage（`--update` で差分なし）/ check-test-traceability / check-cross-repo-refs /
+check-plan-id-qualification / check-proto-contracts / gen-knowledge-graph --check / check-commit-messages はすべて OK。
+
+| # | 変異（コミット済みの状態で当て、`git show HEAD:<path>` で戻した） | 結果 |
+| --- | --- | --- |
+| Ma | 写像の許可リストを外して全キーを写す（`Seal` の共有先の除去は残る） | 赤 4 件: `共有先と所有者はエンベロープの属性に載らない`（有人・SA）・陽性対照（2。許可リスト外のキーが載る）|
+| Mb | `Seal` の共有先の除去を外す（写像の許可リストは残る） | 緑のまま —— 写像の許可リストで守られる（多層防御の 1 層だけを外した形。想定どおり） |
+| Mab | 写像の許可リストに共有先だけを通す（`Seal` の除去は残る） | 緑のまま —— `Seal` の除去で守られる（もう 1 層だけを外した形。想定どおり） |
+| Mc | 打ち切り時の全体件数を返さない（返した件数に戻す） | 赤 1 件: `表示上限で打ち切ったら全体件数を返す` |
