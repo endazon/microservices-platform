@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — SC-17 の部門欄を部門グループの所属の変更に改め、利用者属性 department を直接書かない（#1610・計画 ADR-0116 決定 1）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-05
   - FR-09
@@ -138,6 +138,22 @@ issue: "#1610"
 
 - IADR-0473 への追記 `［2026-09-27 追記 / #1610］`（所属を変える口・SC-17 だけが使う・同期は使わない・補償の順序・2 個以上は拒む）。
   新しい IADR は起こさない（決定の対象が IADR-0473 の「属性はグループに従い、グループは変えない」の境界そのものであるため）。
+
+## 結果（2026-09-27）
+
+- 受け入れ基準 AC-1〜AC-6 は T-62〜T-67（テスト仕様書: 利用者アカウント管理）に写像し、いずれも緑。
+- 変異（いずれも赤になることを確かめ、`git show HEAD:<path> > <path>` で戻した）:
+  - M1 部門の変更の後に属性を直接書き戻す（`SetDepartmentAttributeAsync` / `ClearDepartmentAttributeAsync`）→ T-64
+    `Changing_the_department_never_writes_the_department_attribute` と T-63 `One_sync_cycle_after_the_change_follows_the_new_group_instead_of_reverting_it` が赤。
+  - M2 外す段を飛ばす → T-62 `Saving_moves_the_user_to_the_chosen_department_group_and_none_leaves_them_all`・T-63 の 2 件・T-66 の 2 件（計 5 件）が赤。
+  - M3 実プロバイダ実装の差し替えで `department` の持ち越しを外す → T-64 `Replacing_attributes_never_writes_the_department_and_carries_the_current_one_over` が赤。
+  - M5 画面の属性の下書きに部門を残す → Vitest 4 件（T-64 の画面の否定の試験を含む）が赤。
+- 検証: 両 slnx の `dotnet test`（全緑）・`dotnet format --verify-no-changes`（両方 exit 0）。`src/` で typecheck / lint（エラー 0）/ format:check /
+  codegen・i18n（再生成で差分なし）/ Vitest（sc17-users は全緑）。`check-i18n-catalogs`・`check-chunk-budget --require`（初期ロード +1.44 kB を床へ反映。
+  増分は ja / en のカタログの文言）・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（841 件緑）。
+- 手元だけで赤い既存の試験（本変更と無関係。CI の Node 22 では緑の見込み）: `orvalMutator.test.ts` の Blob の 1 件は手元の Node 24 の jsdom で
+  `arrayBuffer` が無いため。echarts の遅延読み込みの 2 件は全量実行の負荷で時間切れになり、単独では緑。
+- `check-knip.js --require` は Windows で knip の起動（`.CMD`）に失敗したため、`pnpm exec knip` の区分別件数を床（4 / 1 / 16 / 15）と突き合わせて一致を確かめた。
 
 ## 手順
 
