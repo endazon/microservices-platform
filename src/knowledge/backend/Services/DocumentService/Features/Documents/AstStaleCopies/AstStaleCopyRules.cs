@@ -98,7 +98,7 @@ internal static class AstStaleCopyRules
             : Reasons.OtherOwner, category);
     }
 
-    // AST の入れ直し（AST IADR-0436 決定 2）と同じ写しの判定: `kind`・`periodKey` があり、
+    // AST の入れ直し（AST/IADR-0436 決定 2）と同じ写しの判定: `kind`・`periodKey` があり、
     // project を持つか、project が無く表題が確定時の写像の表題と完全に一致する。
     internal static bool IsReport(string title, IReadOnlyDictionary<string, string> attributes, bool hasAstProject)
     {

@@ -58,7 +58,7 @@ issue: "#1667"
 | 4 | **`owner=system` は DataSourceService の予約値**（`DataSource.UnresolvedOwner`）。取り込みの経路（`normalized`）で入る | `DataSourceService/Domain/DataSource.cs` L72 |
 | 5 | 個人資料の判定は `DocumentScopes.IsPrivateNote`（集合帰属。大小を問わない。キー欠落は組織文書） | `Knowledge.Contracts/Dtos/AiInputExposure.cs` |
 | 6 | `project` 属性のキーは `RestrictedProject.DocumentKey`（`project`）。AST は #665（2026-09-03）以降 `project=ai-stock-trading` を必ず付け、別の値は例外で拒む（空白は補う） | `HttpKnowledgeBaseWriter.BuildAttributes`（AST） |
-| 7 | **AST の確定報告書**: 属性 `periodKey`・`kind`（`Daily` / `Weekly` / `Monthly`）・`assumptionsVersion`・`confirmedAt`、表題 `確定報告書 {kind} {periodKey}`（#169 から不変）。AST の入れ直し（AST IADR-0436 決定 2）は「`periodKey`・`kind` が一致し、`project=ai-stock-trading` を持つか、`project` が無く表題が完全一致」を写しとみなす | `ReportKnowledgeMapper`（AST）・AST IADR-0436 |
+| 7 | **AST の確定報告書**: 属性 `periodKey`・`kind`（`Daily` / `Weekly` / `Monthly`）・`assumptionsVersion`・`confirmedAt`、表題 `確定報告書 {kind} {periodKey}`（#169 から不変）。AST の入れ直し（AST/IADR-0436 決定 2）は「`periodKey`・`kind` が一致し、`project=ai-stock-trading` を持つか、`project` が無く表題が完全一致」を写しとみなす | `ReportKnowledgeMapper`（AST）・AST/IADR-0436 |
 | 8 | **AST の収集記事**: 属性 `kind`（`Quote` / `News` / `Disclosure` / `MacroIndicator` / `SupplyDemand` / `SourceStatus`）・`source`・`publishedAt`（ISO 8601 の往復形）・`symbol`（任意）。表題は記事の表題（固定の形は無い） | `KnowledgeBaseWriterSink`・`InformationKind`（AST） |
 | 9 | 作成の口の `owner` は主体から入れ直し、主体が無ければ載せない（`WithOwner`）。機械の主体名は `DocumentManageScope.MachineSubject`（`service-account-<clientId>`） | `Features/Documents/Create/Endpoint.cs`・`DocumentManageScope.cs` |
 | 10 | 試験の器は InMemory（クラスごとに DB を分ける）。`AdminOnly` は `platform-admin` ロールを要る | `Tests/TestWebApplicationFactory.cs`・`AuthExtensions.cs` |

@@ -74,7 +74,7 @@ public class AstStaleCopyRulesTests
     [Fact]
     public void project_を持つ報告書は表題が違っても対象_projectが無ければ表題の一致が要る()
     {
-        // AST の入れ直し（AST IADR-0436 決定 2）と同じ写しの判定。
+        // AST の入れ直し（AST/IADR-0436 決定 2）と同じ写しの判定。
         AstStaleCopyRules.Classify("表題を変えた報告書", Report(project: "ai-stock-trading"), Created)
             .IsTarget.Should().BeTrue();
 
