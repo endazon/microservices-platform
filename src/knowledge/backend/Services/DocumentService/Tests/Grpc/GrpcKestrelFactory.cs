@@ -117,8 +117,19 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
 
     // テスト用 IdP の代わりに JWT を発行する。realm_access.roles は
     // KeycloakRolesClaimsTransformation が ClaimTypes.Role へ展開する（実 Keycloak トークンと同じ形）。
-    public static string IssueToken(string subject, IEnumerable<string> realmRoles)
+    // `azp`（authorized party）を与えると、実 Keycloak と同じくクライアント識別のクレームが付く
+    // （#1628。サービスアカウントは `azp = clientId`、BFF のセッションの利用者トークンは `azp = bff`）。
+    public static string IssueToken(string subject, IEnumerable<string> realmRoles, string? azp = null)
     {
+        var claims = new Dictionary<string, object>
+        {
+            ["sub"] = subject,
+            ["preferred_username"] = subject,
+            ["realm_access"] = new Dictionary<string, object> { ["roles"] = realmRoles.ToArray() },
+        };
+        if (azp is not null)
+            claims["azp"] = azp;
+
         var descriptor = new SecurityTokenDescriptor
         {
             Issuer = Issuer,
@@ -126,12 +137,7 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             NotBefore = DateTime.UtcNow.AddMinutes(-1),
             Expires = DateTime.UtcNow.AddMinutes(5),
             SigningCredentials = new SigningCredentials(SigningKey, SecurityAlgorithms.HmacSha256),
-            Claims = new Dictionary<string, object>
-            {
-                ["sub"] = subject,
-                ["preferred_username"] = subject,
-                ["realm_access"] = new Dictionary<string, object> { ["roles"] = realmRoles.ToArray() },
-            },
+            Claims = claims,
         };
         return new JsonWebTokenHandler().CreateToken(descriptor);
     }

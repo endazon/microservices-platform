@@ -45,7 +45,8 @@ public sealed record DocumentReadPrincipal
     // gRPC: 利用者文脈を運ばない呼び出し ＝ 呼び出し元サービス自身。
     public static DocumentReadPrincipal CallingService() => new(null, isMachine: true);
 
-    // gRPC: 本文で運ばれた利用者文脈（ADR-0086 決定 1）。呼び出し元は `ServiceCaller` を通っている。
+    // gRPC: 本文で運ばれた利用者文脈（ADR-0086 決定 1）。呼び出し元は `ServiceCaller` を通り、
+    // ［2026-09-27 追記 / #1628］かつ許可集合の中継者（`DocumentReadRelayOptions`。既定 `bff`）であることを確かめ済み。
     // 🔴 `service-account-` の利用者名は機械として扱う（BFF の呼び出し元が機械だった等。REST と同じ規約）。
     public static DocumentReadPrincipal RelayedUser(string userId)
         => userId.StartsWith(MachinePrincipal.ServiceAccountUsernamePrefix, StringComparison.OrdinalIgnoreCase)
