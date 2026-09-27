@@ -251,13 +251,99 @@ public class KeycloakIdentityAdminClientTests
             .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
 
         var updated = await Client(handler).ReplaceAttributesAsync(
-            "u1", new Dictionary<string, string> { ["department"] = "hr", ["clearance"] = "internal" }, Ct);
+            "u1", new Dictionary<string, string> { ["clearance"] = "internal" }, Ct);
 
         updated.Should().NotBeNull();
         var put = handler.Requests.Single(r => r.Method == "PUT");
         using var body = JsonDocument.Parse(put.Body!);
-        body.RootElement.GetProperty("attributes").GetProperty("department")
-            .EnumerateArray().Select(e => e.GetString()).Should().BeEquivalentTo(["hr"]);
+        body.RootElement.GetProperty("attributes").GetProperty("clearance")
+            .EnumerateArray().Select(e => e.GetString()).Should().BeEquivalentTo(["internal"]);
+    }
+
+    // T-64（#1610・計画 ADR-0116 決定 1）: 🔴 **属性の差し替えは `department` を書かない。** 要求に混ざった値（`sales`）を採らず、
+    // 現在の表現の値（`engineering`）を多値のまま持ち越す。部門は部門グループの所属で変え、属性は同期が追いつく。
+    // 陽性対照（差し替えたい機密区分上限は要求どおり載る）を同じ本文に置く。
+    [Fact]
+    public async Task Replacing_attributes_never_writes_the_department_and_carries_the_current_one_over()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1", "")
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"tanaka.taro","enabled":true,
+                 "attributes":{"department":["engineering"],"clearance":["restricted"]}}
+                """)
+            .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
+
+        await Client(handler).ReplaceAttributesAsync(
+            "u1", new Dictionary<string, string> { ["Department"] = "sales", ["clearance"] = "restricted" }, Ct);
+
+        var put = handler.Requests.Single(r => r.Method == "PUT");
+        using var body = JsonDocument.Parse(put.Body!);
+        var attrs = body.RootElement.GetProperty("attributes");
+        attrs.GetProperty("department").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["engineering"], "部門は現在の値を持ち越し、要求の値を書かない");
+        attrs.TryGetProperty("Department", out _).Should().BeFalse("大小文字違いのキーでも書かない");
+        attrs.GetProperty("clearance").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["restricted"], "陽性対照: 差し替えたい属性は要求どおり載る");
+    }
+
+    // ---- SC-17 の部門欄（FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] / #1610） ----
+
+    // T-62: 所属の変更は Keycloak の `PUT` / `DELETE /users/{id}/groups/{groupId}`（冪等）。404 は false（利用者かグループが居ない）。
+    [Fact]
+    public async Task Joining_and_leaving_a_group_use_the_user_group_membership_endpoints()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Put("admin/realms/platform/users/u1/groups/g-sales", "")
+            .Respond("DELETE", "admin/realms/platform/users/u1/groups/g-eng", HttpStatusCode.NoContent);
+
+        (await Client(handler).JoinGroupAsync("u1", "g-sales", Ct)).Should().BeTrue();
+        (await Client(handler).LeaveGroupAsync("u1", "g-eng", Ct)).Should().BeTrue();
+        (await Client(handler).JoinGroupAsync("u1", "g-gone", Ct)).Should().BeFalse("404 は居ない");
+
+        handler.Requests.Where(r => r.Path.Contains("/groups/")).Select(r => $"{r.Method} {r.Path}")
+            .Should().Equal(
+                "PUT admin/realms/platform/users/u1/groups/g-sales",
+                "DELETE admin/realms/platform/users/u1/groups/g-eng",
+                "PUT admin/realms/platform/users/u1/groups/g-gone");
+        handler.Requests.Should().NotContain(r => r.Method == "PUT" && r.Path == "admin/realms/platform/users/u1",
+            "所属の変更で利用者の表現（属性）を書き戻さない");
+    }
+
+    // T-66: 404 以外の失敗は例外（呼び出し元が補償する。「居ない」に混ぜない）。
+    [Fact]
+    public async Task A_failed_membership_change_throws_instead_of_reporting_absence()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Respond("DELETE", "admin/realms/platform/users/u1/groups/g-eng", HttpStatusCode.InternalServerError);
+
+        var act = async () => await Client(handler).LeaveGroupAsync("u1", "g-eng", Ct);
+
+        await act.Should().ThrowAsync<HttpRequestException>();
+    }
+
+    // SC-17 の部門欄は内部 ID で 1 人を引く（`GET /users/{id}`。ロールは引かない）。404 は null、それ以外の失敗は例外。
+    [Fact]
+    public async Task Finding_a_user_by_id_reads_the_representation_without_roles()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users/u1", """
+                {"id":"u1","username":"sato.hanako","enabled":true,"attributes":{"department":["engineering"]}}
+                """)
+            .Status("admin/realms/platform/users/ghost", HttpStatusCode.NotFound)
+            .Status("admin/realms/platform/users/broken", HttpStatusCode.InternalServerError);
+
+        var found = await Client(handler).FindByIdAsync("u1", Ct);
+        found!.Attributes["department"].Should().Be("engineering");
+        found.Roles.Should().BeEmpty();
+        (await Client(handler).FindByIdAsync("ghost", Ct)).Should().BeNull();
+        await ((Func<Task>)(async () => await Client(handler).FindByIdAsync("broken", Ct)))
+            .Should().ThrowAsync<HttpRequestException>();
+        handler.Requests.Should().NotContain(r => r.Path.Contains("role-mappings"), "ロールは引かない");
     }
 
     // ---- 退職時の保持起点（FR-19, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] / #1392） ----
@@ -274,19 +360,19 @@ public class KeycloakIdentityAdminClientTests
             .Put("admin/realms/platform/users/u1", "")
             .Get("admin/realms/platform/users/u1", """
                 {"id":"u1","username":"tanaka.taro","enabled":true,
-                 "attributes":{"department":["hr"],
+                 "attributes":{"clearance":["internal"],
                                "account_disabled_at":["2026-08-01T03:00:00Z"]}}
                 """)
             .Get("admin/realms/platform/users/u1/role-mappings/realm", "[]");
 
         await Client(handler).ReplaceAttributesAsync(
-            "u1", new Dictionary<string, string> { ["department"] = "hr" }, Ct);
+            "u1", new Dictionary<string, string> { ["clearance"] = "internal" }, Ct);
 
         var put = handler.Requests.Single(r => r.Method == "PUT");
         using var body = JsonDocument.Parse(put.Body!);
         var attrs = body.RootElement.GetProperty("attributes");
-        attrs.GetProperty("department").EnumerateArray().Select(e => e.GetString())
-            .Should().BeEquivalentTo(["hr"], "陽性対照: 差し替えたい属性は要求どおり載る");
+        attrs.GetProperty("clearance").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo(["internal"], "陽性対照: 差し替えたい属性は要求どおり載る");
         attrs.GetProperty("account_disabled_at").EnumerateArray().Select(e => e.GetString())
             .Should().BeEquivalentTo(["2026-08-01T03:00:00Z"]);
     }
@@ -1109,6 +1195,7 @@ public class KeycloakIdentityAdminClientTests
         public StubHandler Post(string path, string body) => Register("POST", path, HttpStatusCode.OK, body);
         public StubHandler Put(string path, string body) => Register("PUT", path, HttpStatusCode.NoContent, body);
         public StubHandler Status(string path, HttpStatusCode status) => Register("GET", path, status, "");
+        public StubHandler Respond(string method, string path, HttpStatusCode status) => Register(method, path, status, "");
 
         private StubHandler Register(string method, string path, HttpStatusCode status, string body)
         {

@@ -3552,9 +3552,13 @@ paths:
       description: |
         差し替えである（部分更新ではない）。送らなかったキーは消える。
 
-        **部門と機密区分上限は必須、タグは任意**である。値は属性辞書（利用者スコープ）に
+        **機密区分上限は必須、タグは任意**である。値は属性辞書（利用者スコープ）に
         定義済みのものだけを受け付け、**辞書に無いキーも拒否する** —— 受け付けて無視すると
         「割り当てたのに認可が変わらない」が黙って作れるためである。
+
+        🔴 **部門（`department`）は含められない（400）。** 部門は部門グループの所属で変える
+        （`PUT /bff/admin/users/{userId}/department`。ADR-0116 決定 1）。差し替えでも現在の部門は消えない
+        （属性 `department` は部門の同期が部門グループへ追随させる）。
       operationId: bff-user-admin-replace-user-attributes
       requestBody:
         required: true
@@ -3579,6 +3583,70 @@ paths:
         "403": { description: 管理者ロール以外（AdminOnly） }
         "404": { description: 見つからない }
         "502": { description: AuthorizationService へ到達できない }
+
+  # ── SC-17, FR-05, FR-09, ADR-0116 決定 1, IADR-0473 (#1610): 部門 ＝ 部門グループの所属 ──
+  # 🔴 **利用者属性 `department` を書かない。** 変更は部門グループ（`/department/<code>`）の所属だけを変え、
+  # 属性は部門の同期が追随させる。
+  /bff/admin/users/{userId}/department:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    get:
+      x-roles: [platform-admin]
+      tags: [UserAdmin]
+      summary: "FR-05, FR-09, SC-17: 利用者の部門（部門グループの所属・属性・部門欄の選択肢）"
+      description: |
+        `departmentGroups` は利用者が直接属する部門グループのコード（入れ子は上位のコードに畳む）、
+        `departmentAttribute` は ABAC が読む利用者属性（部門の同期が追いつくまでグループと違い得る）、
+        `choices` は realm の部門グループのコード（**画面はここから選択肢を作る**。焼き込まない）。
+        realm を読めないときは選択肢を推測で出さず 503 を返す。
+      operationId: bff-user-admin-get-user-department
+      responses:
+        "200":
+          description: 利用者の部門
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDepartmentDto"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: AuthorizationService へ到達できない }
+        "503": { description: realm の部門グループを読めない（RFC7807 ProblemDetails の detail に理由） }
+    put:
+      x-roles: [platform-admin]
+      tags: [UserAdmin]
+      summary: "FR-05, FR-09, SC-17: 利用者の部門の変更（部門グループの所属の変更）"
+      description: |
+        選んだ部門グループへ入れ、ほかの部門グループから外す（**先に入れてから外す**）。`department` が
+        null・空なら「部門なし」（すべての部門グループから外す）。いまの状態と同じなら何も書かない。
+        🔴 **2 個以上の部門グループに属する利用者は変えない**（409）。途中で失敗したときは元に戻すことを試み、
+        結果（戻せた／戻せなかった・いまの所属）を 502 の detail で返す（**部門グループ 0 個にはしない**）。
+      operationId: bff-user-admin-replace-user-department
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceUserDepartmentRequest"
+      responses:
+        "200":
+          description: 変更後の部門（読み直した所属）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDepartmentDto"
+        "400":
+          description: 検証エラー（RFC7807 ValidationProblem。realm の部門グループに無いコード）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblemDetails"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "409": { description: 複数の部門グループに属している・書いた後の読み直しが期待と違う（ProblemDetails の detail に理由） }
+        "502": { description: 所属の変更が途中で失敗した（補償の結果といまの所属を detail に載せる）・AuthorizationService へ到達できない }
+        "503": { description: realm の部門グループを読めない（何も変えていない） }
 
   /bff/admin/users/{userId}/roles:
     parameters:
@@ -5993,13 +6061,44 @@ components:
       type: object
       description: |
         SC-17: ABAC 属性の割当（**差し替え**。部分更新ではない）。
-        部門と機密区分上限は必須、タグは任意。値・キーとも属性辞書（利用者スコープ）に
-        定義済みのものだけを受け付ける。
+        機密区分上限は必須、タグは任意。値・キーとも属性辞書（利用者スコープ）に
+        定義済みのものだけを受け付ける。**`department` は含められない**（部門は部門グループの所属で変える）。
       required: [attributes]
       properties:
         attributes:
           type: object
           additionalProperties: { type: string }
+
+    UserDepartmentDto:
+      type: object
+      description: |
+        SC-17（ADR-0116 決定 1）: 利用者の部門。**部門の正本は部門グループの所属である**
+        （`departmentGroups`）。`departmentAttribute` は ABAC が読む属性で、部門の同期が追いつくまで違い得る。
+      required: [departmentGroups, choices]
+      properties:
+        departmentGroups:
+          type: array
+          items: { type: string }
+          description: "直接属する部門グループのコード（入れ子は上位に畳む。序数順）。2 件以上なら画面から変えられない"
+        departmentAttribute:
+          type: string
+          nullable: true
+          description: "利用者属性 department（無ければ null）"
+        choices:
+          type: array
+          items: { type: string }
+          description: "部門欄の選択肢（realm の /department の直下の子のコード）"
+
+    ReplaceUserDepartmentRequest:
+      type: object
+      description: |
+        SC-17（ADR-0116 決定 1）: 部門の変更（部門グループの所属の変更）。null・空は「部門なし」。
+        🔴 利用者属性 `department` は書かない。
+      properties:
+        department:
+          type: string
+          nullable: true
+          description: "選んだ部門コード（realm の部門グループのコード）。null・空は部門なし"
 
     ReplaceUserRolesRequest:
       type: object

@@ -11,9 +11,11 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0088_authz-resolves-user-attributes-itself.md 決定 1
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md §利用者属性
   - planning:projects/microservices-platform/07_adr/ADR-0116_sc17-department-edits-group-membership.md 決定 2（2026-09-27 追記 / #1609）
+  - planning:projects/microservices-platform/07_adr/ADR-0116_sc17-department-edits-group-membership.md 決定 1（2026-09-27 追記 / #1610。SC-17 の部門欄は部門グループの所属を変える）
 related_specs:
   - ../specs/20260926_issue-1573_department-attribute-follows-group.md
   - ../specs/20260927_issue-1609_department-clear-and-dictionary-from-realm.md
+  - ../specs/20260927_issue-1610_sc17-department-edits-group-membership.md
 ---
 
 # IADR-0473: 利用者属性 department を部門グループ所属へ合わせる（#1573）
@@ -106,12 +108,33 @@ AST のクライアントが依存する挙動を変えない。
     評価器 `gt 0`（`> 0` の後に残る値は正の前進量なので正しい。`== 0` と `gt 0` の組み合わせ〔#1577〕ではない）。
 12. ［同・差分監査］計器は 1 サービス 1 Meter の慣行に揃え、`microservices-platform.authorization-service` に載せる。
 
+13. ［2026-09-27 追記 / #1610］**計画 ADR-0116 決定 1 により、SC-17 の部門欄は部門グループの所属を変える。** 本 IADR の「属性はグループに従い、
+    グループは変えない」（決定 3）の境界は保ったまま、グループを変える口を **SC-17 の部門欄だけ**に置く。
+    - **ポートに 3 つの口を足す**: `FindByIdAsync`（内部 ID で 1 人。属性つき・ロールなし）・`JoinGroupAsync` / `LeaveGroupAsync`
+      （Keycloak `PUT` / `DELETE /users/{id}/groups/{groupId}`。冪等。404 は false、それ以外の失敗は例外）。名前に作成の禁止語を使わない。
+      🔴 **同期はこの 2 つの書き込みを使わない**（同期の試験の偽物は呼ばれたら落とす）。権限は既存の `manage-users` の範囲で、主体・ロールは増やさない。
+    - **SC-17 の経路から属性 `department` を書かない。** 端点 `PUT /authz/users/{id}/attributes` は要求に `department`（大小文字無視）があれば 400、
+      必須は `clearance` だけにした（ADR-0116 決定 1 の「部門なし」）。ポートの `ReplaceAttributesAsync` は保持起点（[[IADR-0428]]）と同じく
+      現在の `department` を多値のまま持ち越す（差し替えは全置換であり、持ち越さないと機密区分上限を直しただけで部門が消える）。
+    - **部門の変更の口** `GET` / `PUT /authz/users/{id}/department`（BFF は透過）。選択肢は [[IADR-0477]] と同じ realm の読み取り
+      （`AttributeDictionary.ReadDepartmentDomainAsync`）。計画は純関数 `DepartmentMembershipPlan`（コードは `CodeOf` で入れ子を上位に畳む。
+      部門の木の外・根は触らない。目的と同じなら何もしない）。
+    - 🔴 **2 個以上の部門グループに属する人は SC-17 からも変えない**（409・理由つき・何も書かない）。ADR-0116 はこの人を扱わない
+      （決定 2・フォローアップ 4）。1 つを選ばせて残りを外すと、管理者が組んだ複数所属を黙って崩す。
+    - 🔴 **先に入れてから外す**（途中で止まっても 0 個にならない順）。外す途中の失敗は補償する: 外したグループと失敗したグループへ入れ直し（冪等）、
+      **入れ直しがすべて成功したときだけ**目的のグループから外す。入れ直しが 1 つでも失敗したら目的のグループを残す（**黙って 0 個にしない**。原則 A）。
+      入れる段の失敗は目的のグループから外すだけ（まだ何も外していない）。いずれも読み直した所属を 502 の理由に載せ、元に戻せなかったときは Error ログ。
+      書き込みの途中は要求の取り消しで止めない（入れた後・外す前に止めると 2 つに属したまま残る）。書いた後に所属を読み直し、期待と違えば 409。
+    - 同期（`Fix`）は次の周期で属性を新しい部門グループへ追随させる（戻さない）。`Off` / `Report` の環境では属性は追随しない（画面が「未反映」を示す）。
+    - 監査: 所属の変更は Keycloak の管理イベント（`GROUP_MEMBERSHIP`）に残る（SC-17 の他の操作と同じ記録先）。サービスのログに IdP 内部 ID と変更前後のコード。
+
 ## 結果
 
 - `Fix` を有効にすると、人事連携や管理者がグループを変えれば、次の周期で属性が追随する（遅れの上限は周期）。
 - 🔴 **SC-17 の部門欄との関係**: SC-17 は属性 `department` を直接編集できる（計画 SC-17「属性辞書に定義済みの値のみ」）。`Fix` の下では、
   部門グループにちょうど 1 つ属する人の部門欄を SC-17 で別の値へ変えても、次の周期でグループの値へ戻る（決定 3 の「属性はグループに従う」どおり）。
   画面の挙動をどうするか（部門欄を読み取り専用にする・グループの編集へ誘導する等）は計画の問いとして環流する。
+  - ［2026-09-27 追記 / #1610］**解消した。** SC-17 の部門欄は部門グループの所属を変え、属性を書かない（決定 13）。同期は属性を新しいグループへ追随させる。
 - 複数レプリカでは各レプリカが同じ処理を回すが、書く値はグループから決まるので結果は同じである（書き込みが重複するだけ）。
 - **稼働環境への適用（利用者・コーディネータの作業）**: 既定は Off のため、本変更をデプロイしても稼働 realm には何も起きない。
   有効化は authorization-service に `DepartmentAttributeSync__Mode=Report` を与えてログで食い違いを確かめ、問題が無ければ `Fix` へ切り替える。
@@ -126,3 +149,4 @@ AST のクライアントが依存する挙動を変えない。
      読み切れなければ消さずに計器で知らせる。**2 個以上の人の扱いは計画でも対象外のまま**（ADR-0116 フォローアップ 4）。
 3. ［2026-09-27 追記 / #1609］SC-17 の部門欄（残るもの 1）は、計画 ADR-0116 決定 1 で「部門グループの所属を変える」と裁定された（#1610）。
    属性辞書の部門の値は realm の部門グループから導く形になった（[[IADR-0477]]）。
+   - ［2026-09-27 追記 / #1610］実装した（決定 13）。**2 個以上の部門グループに属する人の扱いは計画でも実装でも対象外のまま**（SC-17 は変えずに理由を示す）。

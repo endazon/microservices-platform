@@ -1594,8 +1594,8 @@ msgid "保存すると属性はここに並んでいる内容で置き換わり�
 msgstr "保存すると属性はここに並んでいる内容で置き換わります。残したい属性は消さないでください。"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
-msgid "保存すると認可基盤へ反映され、認可判定に即座に効きます。属性に選べるのは定義済みの値 だけです。無効化すると、その利用者の全セッションが即座に失効します。"
-msgstr "保存すると認可基盤へ反映され、認可判定に即座に効きます。属性に選べるのは定義済みの値 だけです。無効化すると、その利用者の全セッションが即座に失効します。"
+msgid "保存すると認可基盤へ反映され、認可判定に即座に効きます。属性に選べるのは定義済みの値 だけです。部門を変えると部門グループの所属が変わり、認可に使う部門の属性は部門の同期で 追随します。無効化すると、その利用者の全セッションが即座に失効します。"
+msgstr "保存すると認可基盤へ反映され、認可判定に即座に効きます。属性に選べるのは定義済みの値 だけです。部門を変えると部門グループの所属が変わり、認可に使う部門の属性は部門の同期で 追随します。無効化すると、その利用者の全セッションが即座に失効します。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
@@ -2553,9 +2553,17 @@ msgstr "属性"
 msgid "属性・タグ"
 msgstr "属性・タグ"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "属性に反映済み"
+msgstr "属性に反映済み"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "属性は登録されていません。"
 msgstr "属性は登録されていません。"
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "属性は部門の同期で追随します（未反映）"
+msgstr "属性は部門の同期で追随します（未反映）"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "属性を削除: {attributeKey}"
@@ -3428,6 +3436,10 @@ msgstr "機密区分（ABAC属性）"
 msgid "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
 msgstr "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "機密区分上限は必須です。"
+msgstr "機密区分上限は必須です。"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "次回同期"
 msgstr "次回同期"
@@ -3941,6 +3953,10 @@ msgstr "補正を破棄して再変換"
 msgid "補正対象の図の元画像"
 msgstr "補正対象の図の元画像"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "複数の部門グループに所属（この画面では変更できません）"
+msgstr "複数の部門グループに所属（この画面では変更できません）"
+
 #: platform/frontend/src/lib/api/ApiError.ts
 msgid "要求が失敗しました（{status}）。"
 msgstr "要求が失敗しました（{status}）。"
@@ -4293,13 +4309,33 @@ msgstr "部門"
 msgid "部門・ロールの絞り込みを「すべて」に戻すと全件が出ます。"
 msgstr "部門・ロールの絞り込みを「すべて」に戻すと全件が出ます。"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "部門（部門グループ）"
+msgstr "部門（部門グループ）"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "部門グループまたは写像先の利用者を確認できなかったため、保存されていない可能性があります。一覧で確かめ、時間をおいて再試行してください。部門を空欄にすると部門の確認は行いません。"
 msgstr "部門グループまたは写像先の利用者を確認できなかったため、保存されていない可能性があります。一覧で確かめ、時間をおいて再試行してください。部門を空欄にすると部門の確認は行いません。"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
-msgid "部門と機密区分上限は必須です。"
-msgstr "部門と機密区分上限は必須です。"
+msgid "部門グループを読み込んでいます…"
+msgstr "部門グループを読み込んでいます…"
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "部門グループを読めませんでした"
+msgstr "部門グループを読めませんでした"
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "部門なし"
+msgstr "部門なし"
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "部門は 1 つです。認可基盤の管理コンソールで所属を 1 つにしてから、この画面で変えてください。"
+msgstr "部門は 1 つです。認可基盤の管理コンソールで所属を 1 つにしてから、この画面で変えてください。"
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "部門は変えられません。時間をおいて開き直してください。"
+msgstr "部門は変えられません。時間をおいて開き直してください。"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "配下の資料数"

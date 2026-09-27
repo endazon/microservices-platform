@@ -456,6 +456,44 @@ public sealed class KeycloakIdentityAdminClient(
         return DepartmentWriteResult.Applied(updated);
     }
 
+    // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): 内部 ID で 1 人（`GET /users/{id}`。1 往復・ロールは引かない）。
+    // 404 は「居ない」（null）。それ以外の非 2xx は例外（「引けなかった」を「居ない」に混ぜない）。
+    public async Task<IdentityUser?> FindByIdAsync(string userId, CancellationToken ct)
+    {
+        // 入力のガードは認可済みクライアントの取得の後（`GetUserGroupsAsync` の注記）。
+        var client = await AuthorizedClientAsync(ct);
+        if (string.IsNullOrWhiteSpace(userId)) return null;
+
+        var response = await client.GetAsync($"admin/realms/{Realm}/users/{Uri.EscapeDataString(userId)}", ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        var user = await response.Content.ReadFromJsonAsync<KeycloakUser>(Json, ct);
+        return user is null || string.IsNullOrEmpty(user.Id) ? null : ToIdentityUser(user, []);
+    }
+
+    // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): グループの所属の変更（SC-17 の部門欄だけが使う）。
+    // Keycloak の `PUT` / `DELETE /users/{id}/groups/{groupId}` はどちらも冪等（既に居る・居ないは 204）。
+    // 404 は「利用者かグループが居ない」（false）。それ以外の非 2xx は例外（呼び出し元が補償する）。
+    // 権限は既存の `manage-users` の範囲（主体・ロールは増やさない）。所属の変更は Keycloak の管理イベント（GROUP_MEMBERSHIP）に残る。
+    public Task<bool> JoinGroupAsync(string userId, string groupId, CancellationToken ct)
+        => ChangeMembershipAsync(HttpMethod.Put, userId, groupId, ct);
+
+    public Task<bool> LeaveGroupAsync(string userId, string groupId, CancellationToken ct)
+        => ChangeMembershipAsync(HttpMethod.Delete, userId, groupId, ct);
+
+    private async Task<bool> ChangeMembershipAsync(HttpMethod method, string userId, string groupId, CancellationToken ct)
+    {
+        var client = await AuthorizedClientAsync(ct);
+        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(groupId)) return false;
+
+        using var request = new HttpRequestMessage(method,
+            $"admin/realms/{Realm}/users/{Uri.EscapeDataString(userId)}/groups/{Uri.EscapeDataString(groupId)}");
+        using var response = await client.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     // グループ木を深さ優先で平坦化する（`subGroups` は Keycloak が入れ子で返す）。
     // **ID を持たない節は落とす**（判定と取り消しの鍵が無い像は画面でも使えない）。
     private static IEnumerable<IdentityGroup> Flatten(IEnumerable<KeycloakGroup> groups)
@@ -502,8 +540,12 @@ public sealed class KeycloakIdentityAdminClient(
         // 対象外である。** 要求に混ざっていても採らず、現在の表現から持ち越す ——
         // 画面が送る差し替えは ABAC 属性だけであり、**持ち越さないと部門を 1 つ直しただけで
         // 退職時の窓の起点が黙って消える**。書き手は `SetRetentionAnchorAsync` ただ 1 つである。
+        //
+        // ［2026-09-27 / #1610・計画 ADR-0116 決定 1］🔴 **`department` も差し替えの対象外である。** 要求に混ざっていても採らず、
+        // 現在の表現から多値のまま持ち越す（`WithPreservedReserved`）。部門は部門グループの所属で変え、属性は同期が追いつく ——
+        // SC-17 の経路から属性 `department` を書かない。
         var abac = attributes
-            .Where(kv => !RetentionAnchorAttributes.IsReserved(kv.Key))
+            .Where(kv => !RetentionAnchorAttributes.IsReserved(kv.Key) && !DepartmentAttributes.IsDepartment(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
 
         var updated = await UpdateAndReloadAsync(client, userId, current => new Dictionary<string, object?>
@@ -585,12 +627,12 @@ public sealed class KeycloakIdentityAdminClient(
         return attributes;
     }
 
-    // 予約キー（保持起点）だけを現在の表現から持ち越す。
+    // 予約キー（保持起点）と、［2026-09-27 / #1610］`department` を現在の表現から持ち越す（差し替えでは書かない）。
     private static Dictionary<string, string[]> WithPreservedReserved(
         Dictionary<string, string[]> payload, JsonObject representation)
     {
         var current = CurrentAttributes(representation);
-        foreach (var key in RetentionAnchorAttributes.ReservedKeys)
+        foreach (var key in RetentionAnchorAttributes.ReservedKeys.Append(DepartmentAttributeKey))
         {
             if (current.TryGetValue(key, out var values) && values.Length > 0) payload[key] = values;
         }

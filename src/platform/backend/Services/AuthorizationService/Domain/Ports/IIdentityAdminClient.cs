@@ -197,6 +197,32 @@ public interface IIdentityAdminClient
         string userId, IdentityUser observed, CancellationToken ct);
 
     /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): **IdP の内部 ID で 1 人を引く**（属性つき・ロールなし）。
+    /// 居なければ null。SC-17 の部門欄が、利用者の実在と属性 `department`（同期が追いつく値）を読むためにある。
+    ///
+    /// 🔴 **<see cref="ListUsersAsync"/> の上で絞らない**（1000 件で打ち切られ、1001 人目が「居ない」に見える。[[IADR-0413]] 決定 5）。
+    /// 🔴 **ロールは引かない**（`Roles` が空なのは「この口では引いていない」である。<see cref="FindByUsernameAsync"/> と同じ判断）。
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<IdentityUser?> FindByIdAsync(string userId, CancellationToken ct);
+
+    /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): 利用者を**グループへ入れる**（冪等。既に居ても成功）。
+    /// 利用者かグループが居なければ false。
+    ///
+    /// 🔴 **SC-17 の部門欄だけが使う**（部門の変更は部門グループの所属の変更である）。**部門の同期は使わない** ——
+    /// 同期は属性をグループへ合わせる向きだけを持ち、グループを変えない（IADR-0473 決定 3）。
+    /// 🔴 **これは新規作成の口ではない**（利用者もグループも作らない。既存の 2 つを結ぶだけである）。
+    /// </summary>
+    Task<bool> JoinGroupAsync(string userId, string groupId, CancellationToken ct);
+
+    /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): 利用者を**グループから外す**（冪等。居なくても成功）。
+    /// 利用者かグループが居なければ false。<see cref="JoinGroupAsync"/> と同じく SC-17 の部門欄だけが使う。
+    /// </summary>
+    Task<bool> LeaveGroupAsync(string userId, string groupId, CancellationToken ct);
+
+    /// <summary>
     /// SC-17 入力規則「定義済みロールのみ」の**値域の正**。IdP が持つ割当可能な realm ロールを返す。
     /// **画面にも後段にも焼き込まない** —— 焼き込むと realm を増やしても選べず、
     /// 消えたロールを選べてしまう。
@@ -210,6 +236,11 @@ public interface IIdentityAdminClient
     /// 差し替えの対象外であり、現在値を持ち越す**（[[IADR-0428]] / #1392）。予約キーは ABAC 属性では
     /// なく、画面が送る差し替え要求にも含まれない —— **持ち越さないと、部門を 1 つ直しただけで
     /// 退職時の窓の起点が黙って消える。** 要求側に予約キーが混ざっていても採らない。
+    ///
+    /// ［2026-09-27 / #1610・計画 ADR-0116 決定 1］🔴 **`department` も差し替えの対象外であり、現在値を多値のまま持ち越す**
+    /// （<see cref="DepartmentAttributes.PreserveDepartment"/>）。部門は部門グループの所属で変え、属性は同期が追いつく ——
+    /// SC-17 の経路から属性 `department` を書かない（持ち越さないと、機密区分上限を 1 つ直しただけで部門が消える）。
+    /// 要求側に `department` が混ざっていても採らない（端点は 400 で拒む）。
     /// </summary>
     Task<IdentityUser?> ReplaceAttributesAsync(
         string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct);

@@ -67,6 +67,12 @@ public class IdentityAdminContractTests
                 // 全利用者の列挙（読み切れたかを返す）と、`department` 1 キーだけの消去。🔴 **いずれも新規作成の口ではない。**
                 nameof(IIdentityAdminClient.ListAllUsersAsync),
                 nameof(IIdentityAdminClient.ClearDepartmentAttributeAsync),
+                // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): SC-17 の部門欄（部門グループの所属の変更）が使う
+                // 内部 ID での引き当てと、グループへ入れる・外す。🔴 **いずれも新規作成の口ではない**（利用者もグループも作らない。
+                // 名前に禁止語の `Add` を使わない）。部門の同期は所属の変更を使わない（同期の試験の偽物は呼ばれたら落とす）。
+                nameof(IIdentityAdminClient.FindByIdAsync),
+                nameof(IIdentityAdminClient.JoinGroupAsync),
+                nameof(IIdentityAdminClient.LeaveGroupAsync),
                 nameof(IIdentityAdminClient.ListAssignableRolesAsync),
                 nameof(IIdentityAdminClient.ReplaceAttributesAsync),
                 // FR-19, SC-19, 計画 ADR-0036 D-09, ADR-0082 決定 5, [[IADR-0428]] (#1392):
