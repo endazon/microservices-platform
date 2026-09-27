@@ -4,9 +4,11 @@ using Grpc.Core;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RetrievalService.Domain;
 using RetrievalService.Infrastructure.ExternalServices;
+using RetrievalService.Tests.Grpc;
 using Pb = Knowledge.Contracts.Grpc.Graph.V1;
 
 namespace RetrievalService.Tests.Infrastructure.ExternalServices;
@@ -143,6 +145,49 @@ public class GrpcGraphNeighborExpanderTests
         (await act.Should().NotThrowAsync()).Subject.Edges.Should().BeEmpty();
     }
 
+    // 🔴 T-06a / T-06b (#1637): **呼び出し元の取り消しは縮退へ畳まず外へ出す**（REST 版と同じ姿勢）。
+    // 127.0.0.1 の実サーバーで受け口が要求を受け取ってから呼び出し元が取り消す。本物のチャネルはこれを
+    // `RpcException(Cancelled)` で投げるので、型（OCE）だけで取り消しを見分ける絞り込みは、打ち切られた検索の
+    // 取り消しを「辞書が引けない」「近傍の取得の失敗」（警告つきの縮退）へ畳んでいた。段は 2 つ（辞書・近傍）あり、
+    // どちらの捕捉も測るため、取り消す段を分けて置く。
+    [Theory]
+    [InlineData(HangAt.Weights)]
+    [InlineData(HangAt.Neighbors)]
+    public async Task 呼び出し元の取り消しは縮退へ畳まず外へ出す(HangAt hangAt)
+    {
+        var service = new NeighborsService(hangAt);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        var logger = new RecordingLogger<GrpcGraphNeighborExpander>();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var expander = new GrpcGraphNeighborExpander(
+            new Pb.GraphNeighbors.GraphNeighborsClient(server.Channel), logger);
+
+        var call = expander.ExpandAsync([Seed], 1, Authenticated("alice"), cts.Token);
+        await service.Received.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await cts.CancelAsync();
+
+        var thrown = await FluentActions.Awaiting(() => call).Should().ThrowAsync<OperationCanceledException>();
+        thrown.Which.CancellationToken.Should().Be(cts.Token, "呼び出し元の取り消しとして外へ出す");
+        logger.OfLevel(LogLevel.Warning).Should().BeEmpty("取り消しはグラフの不調ではない");
+    }
+
+    // 🔴 T-06c (#1637): **呼び出し元が取り消していない `CANCELLED` は従来どおり縮退する**
+    // （警告つきの空。status だけで判定する変異を落とす対照）。
+    [Fact]
+    public async Task 受け口が返した_Cancelled_は空へ縮退する()
+    {
+        var service = new NeighborsService(HangAt.None);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        var logger = new RecordingLogger<GrpcGraphNeighborExpander>();
+        var expander = new GrpcGraphNeighborExpander(
+            new Pb.GraphNeighbors.GraphNeighborsClient(server.Channel), logger);
+
+        var result = await expander.ExpandAsync([Seed], 1, Authenticated("alice"), Ct);
+
+        result.Edges.Should().BeEmpty();
+        logger.OfLevel(LogLevel.Warning).Should().ContainSingle("★ 陽性対照 —— 縮退の枝は警告を出す");
+    }
+
     // 🔴 T-07: **辞書が引けなければ全辺がフォールバック重みへ倒れる**（REST 実装と同値）。
     // 陽性対照（辞書が引けたときは実重みが載る）と対で置く ——
     // 対が無いと「常にフォールバック」の実装でも緑になる。
@@ -215,6 +260,39 @@ public class GrpcGraphNeighborExpanderTests
     }
 
     // ── 器 ────────────────────────────────────────────────────────
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    public enum HangAt { None, Weights, Neighbors }
+
+    // 実サーバーに載せる受け口の偽物。`hangAt` の段で要求を受け取ったことを知らせてから取り消されるまで待つ。
+    // `None` のときは辞書を空で返し、近傍では受け口自身が `CANCELLED` を返す（呼び出し元の取り消しではない対照）。
+    private sealed class NeighborsService(HangAt hangAt) : Pb.GraphNeighbors.GraphNeighborsBase
+    {
+        public TaskCompletionSource Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<Pb.ListEdgeTypeWeightsResponse> ListEdgeTypeWeights(
+            Pb.ListEdgeTypeWeightsRequest request, ServerCallContext context)
+        {
+            if (hangAt == HangAt.Weights)
+                await HangAsync(context);
+            return new Pb.ListEdgeTypeWeightsResponse();
+        }
+
+        public override async Task<Pb.ExpandNeighborsResponse> ExpandNeighbors(
+            Pb.ExpandNeighborsRequest request, ServerCallContext context)
+        {
+            if (hangAt == HangAt.Neighbors)
+                await HangAsync(context);
+            throw new RpcException(new Status(StatusCode.Cancelled, "受け口が取り消した"));
+        }
+
+        private async Task HangAsync(ServerCallContext context)
+        {
+            Received.TrySetResult();
+            await Task.Delay(Timeout.Infinite, context.CancellationToken);
+        }
+    }
 
     private static GrpcGraphNeighborExpander Expander(
         Pb.GraphNeighbors.GraphNeighborsClient client) =>
