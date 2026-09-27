@@ -50,6 +50,13 @@ public sealed class ConsumerCallTimeoutsTests : IDisposable
 
     private ConsumerCallTimeouts Calls => _services.GetRequiredService<ConsumerCallTimeouts>();
 
+    private static CancellationTokenSource CallerWithDeadline()
+    {
+        var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        caller.CancelAfter(TimeSpan.FromSeconds(10));
+        return caller;
+    }
+
     private static async Task<string> HangAsync(CancellationToken ct)
     {
         await Task.Delay(Timeout.Infinite, ct);
@@ -59,9 +66,10 @@ public sealed class ConsumerCallTimeoutsTests : IDisposable
     [Fact]
     public async Task 自分の期限が立てば時間切れとして投げ直し計器に残す()
     {
-        var caller = TestContext.Current.CancellationToken;
+        // 呼び出し元の ct は 10 秒で立つ（受け口の実行期限の縮尺）。期限を外す変異では、これが立って取り消しとして落ちる。
+        using var caller = CallerWithDeadline();
 
-        var act = () => Calls.RunAsync("ingest", "embedding", TimeSpan.FromMilliseconds(200), HangAsync, caller);
+        var act = () => Calls.RunAsync("ingest", "embedding", TimeSpan.FromMilliseconds(200), HangAsync, caller.Token);
 
         var thrown = (await act.Should().ThrowAsync<ConsumerTimeoutException>()).Which;
         thrown.Should().BeAssignableTo<TimeoutException>();
@@ -114,6 +122,7 @@ public sealed class ConsumerCallTimeoutsTests : IDisposable
     [Fact]
     public async Task 期限の後に投げられた_RpcException_も時間切れとして扱う()
     {
+        using var caller = CallerWithDeadline();
         var act = () => Calls.RunAsync<string>("retrieval-delete", "vector-store", TimeSpan.FromMilliseconds(100),
             async t =>
             {
@@ -126,7 +135,7 @@ public sealed class ConsumerCallTimeoutsTests : IDisposable
                     throw new RpcException(new Status(StatusCode.Cancelled, "Call canceled by the client."));
                 }
                 return "unreachable";
-            }, TestContext.Current.CancellationToken);
+            }, caller.Token);
 
         (await act.Should().ThrowAsync<ConsumerTimeoutException>())
             .Which.InnerException.Should().BeOfType<RpcException>();
