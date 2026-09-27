@@ -71,7 +71,7 @@ issue: "#1676"
   **`updated:` を追記の日付 2026-09-27 に揃える**（frontmatter の整形。本件は IADR-0480 の本文に何も足さない）。
 - **B5（#1663）`GraphService/Program.cs` の注記**: 「これが `unsummarized-clusters` の分母」を「所属 2 件以上のクラスタが分母」に追随させる。
 - **B6（#1663）旧 3 引数の `UnsummarizedClusterRule.Evaluate`**: `git grep -n "UnsummarizedClusterRule.Evaluate(" -- src` の実測で、本番の呼び出しは
-  `ClusterSummaryJob`・`KnowledgeHealthCollector` の 2 か所とも 4 引数版、3 引数版は試験だけ（`UnsummarizedClusterRuleTests` の 11 か所）。
+  `ClusterSummaryJob`・`KnowledgeHealthCollector` の 2 か所とも 4 引数版、3 引数版は試験だけ（`UnsummarizedClusterRuleTests` の 9 か所）。
   **private 化を採る（名前は `EvaluateConditions` へ改める）。** 削除しない理由: 3 条件の判定は本体として残る（4 引数版がそれを呼ぶ）。
   public のままにしない理由: 呼び出し側が 3 引数版を選べると単独クラスタの除外を落とせる（#1663 が塞いだ割れ方の再発経路）。
   試験は 4 引数版に `MinMembersToSummarize` を渡す形へ書き換える（3 条件の固定はそのまま）。記録は IADR-0425 への日付つき追記。
@@ -90,7 +90,7 @@ issue: "#1676"
 | --- | --- | --- |
 | `ADR-0001..0121` | `.claude/rules/traceability.repo.md` の 1 か所 | 直す。別紙は過去の記録の見出し（`0001..0119` → `0001..0121`）であり直さない |
 | `unsummarized-clusters` ＋ `分母` | `GraphService/Program.cs:274` の 1 か所 | 直す。`LeidenCommunityDetectorTests`・`ClusterDetectionTests` の「分母」は未要約クラスタ数の分母ではなく検出の母集合の話であり対象外 |
-| `UnsummarizedClusterRule.Evaluate(` | 本番 2（4 引数）・試験 11（3 引数）＋ 4（4 引数） | 3 引数の 11 か所を書き換える。IADR-0425・作業仕様書 #1663 の本文の `Evaluate(memberCount, …)` は凍結記録で、4 引数版を指すので正しいまま |
+| `UnsummarizedClusterRule.Evaluate(` | 本番 2（4 引数）・試験 9（3 引数）＋ 4（4 引数） | 3 引数の 9 か所を書き換える。IADR-0425・作業仕様書 #1663 の本文の `Evaluate(memberCount, …)` は凍結記録で、4 引数版を指すので正しいまま |
 | `利用者属性に使えません`・利用者スコープの `owner` の拒否 | `AbacValidation.cs`・試験・SC-09 T-71・FR-09 表 24・`abacVocabulary.ts` の注記 | 登録の拒否は維持するので、T-71・表 24 は正しいまま。更新の扱いを T-74・表 29 に足す |
 | `2 つの位置` / IADR-0482 の表題 | IADR-0482 の `title:`・H1、索引の行、`docs/screens/SC-09_admin-abac-settings.md:195` | 索引の行を直し、IADR-0482 に追記。画面仕様の本文は同節で action の次元（閲覧だけ・書き込みの所有者）と束縛だけの値を既に書いており、誤りではない |
 | `鳴るまで`・`lookback`（運用仕様書） | 運用仕様書の `OwnerReadPolicyMissing` の「最大およそ 6 分」の 1 か所。`OwnerReadPolicyCheckSeriesAbsent` には目安が無い | 後者に目安を足す。前者（ポリシーが消えた場合。系列は 0 を出し続けるので lookback は掛からない）は正しいまま |
