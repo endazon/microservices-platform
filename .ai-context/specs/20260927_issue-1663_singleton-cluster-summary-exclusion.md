@@ -112,3 +112,19 @@ PoC の実測（planning#687。`clusters=6107 nodes=6107 edges=0`）で、辺 0 
 - `dotnet format <slnx> --verify-no-changes`（両ユニット）
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` と各検査器
 - 変異 2 件以上をコミット済みの状態で当てて赤を確かめ、`git show HEAD:<path> > <path>` で戻す。
+
+### 結果（2026-09-27・ローカル）
+
+- `dotnet build src/knowledge/backend/backend.slnx`: 0 エラー（警告 1 件は既存の `IngestToSearchQdrantTests` の CS0618 で本件と無関係）／
+  `src/platform/backend/backend.slnx`: 0 エラー・0 警告
+- GraphService.Tests 698・DashboardService.Tests 93: 全件合格
+- `dotnet format <slnx> --verify-no-changes`: 両ユニット exit 0
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 841 tests passed
+- `check-trace-blocks` / `check-test-spec-coverage`（床の対 406 → 408。FR-17 × `UnsummarizedClusterRuleTests`・`ClusterSummaryTests`）/
+  `check-test-traceability` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-reading-budget` / `gen-knowledge-graph --check` /
+  `check-commit-messages --range=origin/develop..HEAD`: OK（レンジの引き直し前は `check-trace-blocks` と `check-commit-messages` が ADR-0120 で落ちた）
+- 変異（コミット済みの状態で当て、`FullyQualifiedName~Cluster` で実測。どれも `git show HEAD:<path> > <path>` で戻し、`//MUT` の残りが 0 件であることを確かめた）:
+  - M1 入口の除外を外す（`Evaluate(memberCount, …)` が常に 3 条件の判定へ進む）: 4 件赤（単体 2・結合 2）
+  - M2 要約バッチが所属文書数を渡さない（常に 2）: 2 件赤（T-68・T-69）
+  - M3 指標が所属文書数を渡さない（常に 2）: 2 件赤（T-68・T-69）
+  - M4 `IsSummaryTarget` が常に偽（全クラスタを対象外にする）: 13 件赤（陽性対照 T-67P・T-69 と既存の要約・未要約の試験）
