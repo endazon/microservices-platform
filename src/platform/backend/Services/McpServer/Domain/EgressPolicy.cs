@@ -20,7 +20,8 @@ public enum EgressTier
 // **文書単位に**適用する。送信不可の文書は本文を返さず、参照リンクのみへ縮退する。
 public sealed class EgressPolicy
 {
-    public const string ConfidentialityKey = "confidentiality";
+    // #1671: 綴りは共有の許可リスト（`McpEnvelopeAttributes`）の定数を指す —— 受け口が運ぶキーと読むキーを 1 か所に揃える。
+    public const string ConfidentialityKey = Platform.Shared.Contracts.Dtos.McpEnvelopeAttributes.ConfidentialityKey;
 
     // 計画 08_data-egress-policy §越境マトリクス。
     //   public       : A 可 / B 可 / C 可

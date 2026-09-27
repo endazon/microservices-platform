@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-16, UC-08, NFR-09, NFR-16, ADR-0024, ADR-0034, ADR-0086, ADR-0088, ADR-0117, IADR-0269, IADR-0292, IADR-0379, IADR-0416, IADR-0426, IADR-0462]
 author: claude
 created: 2026-09-27
-updated: 2026-09-27
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0117_mcp-tool-destination-and-execution-context.md 決定 1〜4
   - planning:projects/microservices-platform/07_adr/ADR-0086_user-context-in-body-not-token-exchange.md 決定 1・4・§結果
@@ -115,3 +115,20 @@ ADR-0117 決定 3 は、本文を利用者文脈（`user_id`・`action`）とツ
   全キーを写すと共有先は所有者にだけ返す規則（ADR-0098 / IADR-0450）を MCP の経路が迂回する。許可リストは MCP サーバーが応答の統制で読むキー
   （`confidentiality`・`doc_scope`・`project`）だけとし、`owner` 等も運ばない。`Seal` の `NodeAttributes` からも `shared_with` を除く（二重に守る）。
 - `graph.traverse` の `total_count` は打ち切り時に許可済みの全体件数（起点を除く）を返す。本体の失敗の `INTERNAL` は固定文言にした。
+
+### ［2026-09-28 追記 / #1671］エンベロープの属性の許可リストを共有の定数 1 か所へ（全受け口に適用）
+
+> 上の本文・段 3 の追記は書き換えない。本節は #1671 で決めたことだけを足す。作業仕様書 `20260927_issue-1671_mcp-envelope-attribute-allowlist` と対になる。
+
+- **許可リストは `Platform.Shared.Contracts.Dtos.McpEnvelopeAttributes` の 1 か所に置く**（`confidentiality`・`doc_scope`・`project`。`Ordinal`）。
+  段 3 監査で GraphService の実行口にだけ置いた許可リスト（`EnvelopeAttributeKeys`）は撤去し、この定数を参照する。置き場は `RestrictedProject` と同じ
+  （読み手の McpServer と受け口の knowledge ユニットの間で許されるユニット外参照は `Platform.Shared.*` だけ。IADR-0373 決定 1・IADR-0405 決定 4 と同じ理由）。
+- **読み手も同じ定数を指す**: McpServer の `EgressPolicy.ConfidentialityKey`・`DocumentScope.Key` はこの定数の別名にした。`project` の正本は `RestrictedProject.DocumentKey`
+  のままで、許可リストがそれを参照する。McpServer の試験（X-55）が「読み手のキー ⊆ 許可リスト（かつ一致）」を、受け口の試験（X-50・X-52）が
+  「許可リストのキーが残り、外のキーが消える」を固定する —— **キーを足す・外すとき片側だけ変わる割れ方を両側の赤で止める**。
+- **RetrievalService の実行口（段 1）にも適用する**: 段 1 は Qdrant の入れ子 `attributes` の全キーを写しており、`owner`（利用者名）・`dept` 等が
+  外部 LLM へ渡っていた（閲覧権限は BFF と同水準なので漏えいではないが、MCP サーバーが読まないキーを越境させる理由が無い）。
+  REST `POST /search`・gRPC `DocumentSearch/Search`（MCP 以外）の応答の属性は変えない。
+- **段 2（DocumentService の実行口。未着手）はこの定数を使う**: エンベロープの `attributes` へは `McpEnvelopeAttributes.IsCarried` のキーだけを写す
+  （`DocumentDto.Attributes` の全キーを写さない）。段 2 の作業仕様書の母集合に本定数を入れる。
+- MCP サーバーの受信側（`GrpcToolInvoker.ToResult`）では濾さない（受け口側の許可リストが #1671 の受け入れ基準。受信側の三重目は将来の判断に残す）。

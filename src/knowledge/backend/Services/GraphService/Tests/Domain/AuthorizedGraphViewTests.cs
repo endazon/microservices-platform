@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using GraphService.Domain;
 using GraphService.Infrastructure.Persistence;
+using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Contracts.Dtos;
 
@@ -86,6 +87,34 @@ public class AuthorizedGraphViewTests
         var sub = new UnfilteredSubgraph([], [], true);
 
         GraphViewResponse.Seal(sub, InternalOnly()).Truncated.Should().BeTrue();
+    }
+
+    // 🔴 X-53（FR-16, ADR-0024 §4, [[IADR-0479]] 2026-09-28 追記 / #1671）: **`Seal` 単独で**共有先を落とす。
+    // MCP の実行口の写像の許可リストと二重に守る片側（#1611 段 3 監査 B-1）であり、許可リスト側の試験（X-50）だけでは
+    // こちらを外しても緑のままになる。大小文字の変種も落とす（`GraphDocument.Attributes` は ABAC 判定用に共有先を重ねた像）。
+    // 陽性対照: 共有先以外の属性（機密区分・所有者）は `Seal` では残る —— 所有者を落とすのは許可リストの責務で、ここは共有先だけ。
+    [Theory]
+    [InlineData(AttributeValueKeys.SharedWith)]
+    [InlineData("Shared_With")]
+    [InlineData("SHARED_WITH")]
+    public void Seal_does_not_carry_shared_with_in_node_attributes(string sharedWithKey)
+    {
+        var a = Guid.NewGuid();
+        var doc = GraphDocument.Create(a, "d",
+            new Dictionary<string, string>
+            {
+                ["confidentiality"] = "internal",
+                ["owner"] = "carol-owner",
+                [sharedWithKey] = "bob-secret,grp-hr-1234",
+            },
+            null, DateTimeOffset.UtcNow);
+
+        var view = GraphViewResponse.Seal(new UnfilteredSubgraph([doc], [], false), InternalOnly());
+
+        var attributes = view.NodeAttributes.Should().ContainKey(a).WhoseValue;
+        attributes.Keys.Should().NotContain(k => string.Equals(k, AttributeValueKeys.SharedWith, StringComparison.OrdinalIgnoreCase));
+        attributes.Values.Should().NotContain(v => v.Contains("bob-secret"));
+        attributes.Should().Contain("confidentiality", "internal").And.Contain("owner", "carol-owner");
     }
 
     // IADR-0242 決定 11: ストアの空入力が例外にならない（探索の初手・終端で必ず通る経路）。

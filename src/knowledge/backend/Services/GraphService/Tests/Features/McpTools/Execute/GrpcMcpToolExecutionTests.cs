@@ -179,7 +179,7 @@ public class GrpcMcpToolExecutionTests
         l1.Title.Should().Be("参照先");
         l1.Attributes.Should().Contain("confidentiality", "internal").And.Contain(DocumentScopes.Key, DocumentScopes.Organization)
             .And.Contain(RestrictedProject.DocumentKey, "alpha");
-        l1.Attributes.Keys.Should().BeSubsetOf(McpToolExecutionGrpcService.EnvelopeAttributeKeys,
+        l1.Attributes.Keys.Should().BeSubsetOf(McpEnvelopeAttributes.Keys,
             "エンベロープの属性は MCP サーバーが読むキーの許可リストだけ（部署・所有者・共有先は運ばない）");
         l1.HasBody.Should().BeFalse("グラフは本文を持たない");
         l1.HasReferenceUrl.Should().BeFalse();
@@ -461,6 +461,51 @@ public class GrpcMcpToolExecutionTests
         result.Truncated.Should().BeTrue();
         result.Documents.Should().HaveCount(GraphTraversal.MaxNodes - 1, "表示は起点を含めて上限まで");
         result.TotalCount.Should().Be(extra, "許可済みの全体件数（起点・権限外を除く）");
+    }
+
+    // 🔴 X-54（X-51 のサービスアカウント版。ADR-0034 決定 4・9 / #1671）: 打ち切ったときの全体件数に、探索で刈った個人資料を数えない。
+    // 数えると件数そのものが「見えない何かがある」ことを明かす。同じハブ・同じスコープで有人は個人資料を数える（陽性対照）。
+    [Fact]
+    public async Task サービスアカウント実行で打ち切ったら全体件数に刈った個人資料を数えない()
+    {
+        var s = await SeedAsync();
+        var hub = Guid.NewGuid();
+        var extra = GraphTraversal.MaxNodes + 5;
+        const int privateNotes = 3;
+        await _factory.SeedAsync(db =>
+        {
+            db.Documents.Add(GraphDocument.Create(hub, "ハブ", new() { ["dept"] = s.AllowedDept, ["confidentiality"] = "internal" }, null, DateTimeOffset.UtcNow));
+            for (var i = 0; i < extra; i++)
+            {
+                var n = Guid.NewGuid();
+                db.Documents.Add(GraphDocument.Create(n, $"近傍{i}", new() { ["dept"] = s.AllowedDept, ["confidentiality"] = "internal" }, null, DateTimeOffset.UtcNow));
+                db.Edges.Add(Edge.Create(hub, n, s.LinkType, false, EdgeProvenance.Auto));
+            }
+            // 所有者の分岐でだけ見える個人資料（有人には数えられ、サービスアカウントでは刈られる）。
+            for (var i = 0; i < privateNotes; i++)
+            {
+                var p = Guid.NewGuid();
+                db.Documents.Add(GraphDocument.Create(p, $"個人資料{i}", new()
+                {
+                    ["dept"] = s.AllowedDept,
+                    [DocumentScopes.Key] = DocumentScopes.PrivateNote,
+                    ["owner"] = s.Owner,
+                    [DocumentExposure.GraphKey] = DocumentExposure.Included,
+                }, null, DateTimeOffset.UtcNow));
+                db.Edges.Add(Edge.Create(hub, p, s.LinkType, false, EdgeProvenance.Auto));
+            }
+            return Task.CompletedTask;
+        });
+
+        var args = Args(hub, ""","hops":1""");
+        var agent = await ExecuteAsync(As("service-account-batch-agent", McpToolExecutionGrpcService.TraverseTool, args));
+        var human = await ExecuteAsync(As(Unique("alice"), McpToolExecutionGrpcService.TraverseTool, args));
+
+        agent.Truncated.Should().BeTrue();
+        agent.TotalCount.Should().Be(extra, "刈った個人資料は全体件数に入らない");
+        agent.Documents.Should().NotContain(d => d.Title.StartsWith("個人資料"));
+        human.Truncated.Should().BeTrue();
+        human.TotalCount.Should().Be(extra + privateNotes, "対照: 有人は同じハブで個人資料も数える");
     }
 
     // 構造の門: 面は ServiceCaller を宣言している（外れると上の門の試験が落ちるが、どの層で外れたかを名指しする）。

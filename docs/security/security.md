@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-09-27
+updated: 2026-09-28
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-04, FR-17, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
-adrs: [ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116]
-iadrs: [IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364]
-specs: [20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
-issues: [#1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672]
+adrs: [ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116]
+iadrs: [IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364]
+specs: [20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
+issues: [#1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672]
 -->
 
 # セキュリティ仕様書
@@ -219,6 +219,20 @@ ABAC が判定に使う利用者の部門は IdP の利用者属性 `department`
 | ログ | 件数と、食い違い・未解決の利用者の IdP 内部 ID と値（制御文字を落とす）。利用者名は出さない |
 | 失敗の検知 | 利用者の書き込みの失敗・周期ごとの中断・全員の見送り・全利用者の列挙の未完了を計器に数え、アラート（warning）で知らせる。1 人の失敗で周期は止まらない |
 | 管理画面の部門欄 | ［2026-09-27］利用者アカウント管理画面（システム管理者限定）の部門欄は**部門グループの所属を変える**（同じ機密クライアントの `manage-users` の範囲。主体・ロールは増やさない）。**属性 `department` は画面から書かない**（属性の差し替えは部門を拒み、現在の部門を持ち越す）ので、属性を変えるのはこの定期処理だけである。定期処理はグループの所属を変えない。所属の変更は先に入れてから外し、途中の失敗は元に戻す（部門グループ 0 個にしない）。所属の変更は認可基盤の管理イベントに残る |
+
+### 所有者の読み取りのポリシーの消失の検知と、内容の ABAC の門 — 未確認なら開かない（fail-closed）
+
+所有者が自分の文書を読めるのは、所有者の読み取りのポリシー（有効・`read`・利用者の条件なし・文書の条件は `owner` が利用者自身に一致することだけ）が
+在るからである。評価器は組み込みの「所有者は読める」を持たない。このポリシーは管理者が自由に削除・無効化できる。
+
+| 項目 | 決めごと |
+| --- | --- |
+| 在ることの判定 | 上の形に**完全に**合う有効なポリシーだけを数える。形が近いが違うもの（利用者の条件あり・文書の条件に別のキー・キーの大文字小文字違い・値に他の利用者やグループの束縛が混ざる・値が空）は数えない（数え違いは門を誤って開き、警報を黙らせる） |
+| 消失の検知と通知 | 認可サービスが起動時と 1 分ごとに数え、計器と警報（critical）で知らせる。数えられないときは計器の系列を止め、「見ていない」として別の警報（warning）で知らせる（0 を出して「無い」と偽らない。古い値を出して「在る」と偽らない） |
+| 削除の扱い | 🔴 **止めない。** 管理画面・API の削除と無効化の口は変えない（ポリシーの誤りを直す操作を塞がない）。消したことは知らせる |
+| 内容の ABAC の門 | 文書サービスの構成 `ContentAbac:Mode`（`Off` 既定 / `On`。値域外は起動時に落ちる）。`On` でも、認可サービスでこのポリシーが 1 件以上あると確かめるまで開かない。数えられない（宛先の未構成・通信の失敗・時間切れ・サービス間の資格情報の失敗）も開かない。閉じている理由はログと計器に残す |
+| 開いた後に消えたとき | 門は閉じない（1 度開いたら実行の間は開いたまま）。閉じ直すと内容の ABAC が外れ、機械の主体に対する読み取りの許可が**広がる**向きに倒れるためである。消えたことは上の警報が知らせ、所有者は自分の文書を読めなくなる（受け入れたトレードオフ） |
+| 残るもの | 誰が消したかをポリシーの API は記録しない。消えてから警報が鳴るまで最大およそ 6 分。内容の ABAC の本体はまだ入っておらず、門が開いても文書サービスの読み取りの判定は変わらない |
 
 ### 退職時の個人資料の保持起点 — 未供給なら数えない（fail-safe）
 

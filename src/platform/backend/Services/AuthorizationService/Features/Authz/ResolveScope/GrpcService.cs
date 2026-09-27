@@ -23,6 +23,18 @@ namespace AuthorizationService.Features.Authz.ResolveScope;
 public sealed class AuthzScopeGrpcService(
     AuthorizationDbContext db, ScopeUserAttributeSource users) : AuthzScope.AuthzScopeBase
 {
+    // FR-05, FR-19, NFR-09, 計画 ADR-0121 決定 2, [[IADR-0481]] (#1665): 所有者の読み取りのポリシーの有効な件数。
+    // 内容の ABAC の門（DocumentService）が有効にしてよいかを確かめる口である。
+    // 🔴 **呼ばれるたびに DB から数える**（常駐の検査の直近の値は返さない —— 門が古い値で開かないように）。
+    // 数えられなければ例外が status（INTERNAL 等）として出て、呼び出し元は「数えられない」＝門を閉じたままにする。
+    public override async Task<GetOwnerReadPolicyStatusResponse> GetOwnerReadPolicyStatus(
+        GetOwnerReadPolicyStatusRequest request, ServerCallContext context)
+        => new()
+        {
+            ActiveCount = await AuthorizationService.Features.Authz.OwnerReadPolicyGuard.OwnerReadPolicyCheck
+                .CountAsync(db, context.CancellationToken),
+        };
+
     public override async Task<ResolveScopeResponse> Resolve(ResolveScopeRequest request, ServerCallContext context)
     {
         // 空文字は read（REST の AccessScopeRequest.Action の既定値と同じ）。
