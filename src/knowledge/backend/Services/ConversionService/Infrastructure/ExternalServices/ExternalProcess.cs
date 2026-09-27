@@ -77,6 +77,8 @@ internal static class ExternalProcess
         }
     }
 
+    // 読み取りが上限の内に**成功で**終わったか。時間切れだけでなく読み取りの失敗（稀な IOException 等）も false とし、
+    // 呼び出し元の期限切れ（`BodyConversionTimeoutException`）へ畳む（この枝の外へ別の型を漏らさない。例外は `Observe` が観測する）。
     private static async Task<bool> CompletesWithinAsync(Task task, TimeSpan within)
     {
         try
@@ -84,7 +86,7 @@ internal static class ExternalProcess
             await task.WaitAsync(within);
             return true;
         }
-        catch (TimeoutException)
+        catch (Exception)
         {
             return false;
         }
