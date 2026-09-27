@@ -176,6 +176,16 @@ public class QdrantVectorStore(
                 .Select(p => MapPayload(p.Id.Uuid, p.Payload, 1f / ++rank))
                 .ToList();
         }
+        // 🔴 #1646: **呼び出し元（要求）の取り消しは縮退へ畳まない。** Qdrant の公式クライアントも本物のチャネルで
+        // 取り消しを `RpcException(Cancelled)` で投げるので、下の catch へ落ちると「キーワード検索の縮退」として
+        // 計器（`RecordDegraded`）を 1 件汚し、打ち切られた要求ごとに警告を出していた。呼び出し元の token を持つ
+        // `OperationCanceledException` へ揃える。判定は status ではなく呼び出し元の ct で行う
+        // （Qdrant が返した `CANCELLED` は従来どおり縮退として数える）。
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            ct.ThrowIfCancellationRequested();
+            throw;
+        }
         catch (RpcException ex)
         {
             // 全文インデックス未作成等の場合はベクトルのみへ degrade（検索全体は失敗させない）。

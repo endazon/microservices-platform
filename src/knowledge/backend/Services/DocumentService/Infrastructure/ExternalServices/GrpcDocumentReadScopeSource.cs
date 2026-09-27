@@ -36,10 +36,18 @@ public sealed class GrpcDocumentReadScopeSource(AuthzScopeGrpcClient client) : I
         {
             return null;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // ［2026-09-27 / #1646］共有クライアントは呼び出し元の取り消しを `null` に畳まず、渡された token（上限つきの
+            // `bounded.Token`）の OCE で外へ出すようになった。**要求そのもの（`ct`）の token へ揃えて**伝える。
+            ct.ThrowIfCancellationRequested();
+            throw;
+        }
 
         if (scope is null)
         {
-            // 共有クライアントは取り消しも `RpcException(Cancelled)` として null に畳む。
+            // 障害の応答と要求の取り消しが入れ違った場合の守り（［2026-09-27 / #1646］共有クライアントは
+            // 取り消しを null に畳まなくなり、上の catch が受ける）。
             ct.ThrowIfCancellationRequested();
             return null;
         }

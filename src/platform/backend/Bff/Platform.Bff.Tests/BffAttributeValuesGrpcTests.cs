@@ -3,7 +3,9 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using Knowledge.Bff.Endpoints.Search;
 using Knowledge.Contracts.Dtos;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Infrastructure.Foundation.Authz;
@@ -286,6 +288,46 @@ public class BffAttributeValuesGrpcTests : IClassFixture<BffTestFactory>
             TestContext.Current.CancellationToken))!.Values.Should().BeEmpty();
     }
 
+    // 🔴 #1646: **呼び出し元（要求）の取り消しを 502 へ畳まない。**
+    // 本物のチャネル（127.0.0.1 の実サーバー）で、受け口が要求を受け取ってから利用者の要求を打ち切る。
+    // 本物のチャネルは取り消しを `RpcException(Cancelled)` で投げるので、守りが無いと
+    // 「後段が答えた上での失敗」の `catch (RpcException)` へ落ちて 502 を返していた（偽の invoker では通らない経路）。
+    // 端点の結末は要求の外側の器（`IStartupFilter`）で観測する —— 打ち切った側の HttpClient には応答が届かない。
+    [Fact]
+    public async Task A_caller_cancellation_over_a_real_channel_is_not_turned_into_a_bad_gateway()
+    {
+        var service = new AttributeValuesService(ServerBehavior.Hang);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, TestContext.Current.CancellationToken);
+        var outcome = new TaskCompletionSource<(int Status, Exception? Error)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = RealChannelClient(server, outcome);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+
+        var request = client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" }, cts.Token);
+        await service.Received.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        await cts.CancelAsync();
+        await FluentActions.Awaiting(() => request).Should().ThrowAsync<OperationCanceledException>();
+
+        var (status, error) = await outcome.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        status.Should().NotBe(StatusCodes.Status502BadGateway, "打ち切られた要求を後段の失敗として記録しない");
+        error.Should().BeAssignableTo<OperationCanceledException>("取り消しとして端点の外へ出す");
+    }
+
+    // 対: **後段が返した `CANCELLED`（利用者は打ち切っていない）は従来どおり 502** である。
+    // status で判定する変異（`when (ex.StatusCode == StatusCode.Cancelled)`）はここで赤になる。
+    [Fact]
+    public async Task A_cancelled_status_answered_by_the_downstream_is_still_a_bad_gateway()
+    {
+        var service = new AttributeValuesService(ServerBehavior.ReturnCancelled);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, TestContext.Current.CancellationToken);
+        var outcome = new TaskCompletionSource<(int Status, Exception? Error)>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var resp = await RealChannelClient(server, outcome).PostAsJsonAsync("/bff/attribute-values",
+            new { key = "tags" }, TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+        service.Received.Task.IsCompleted.Should().BeTrue("★ 陽性対照 —— 本物のチャネルで後段まで届いている");
+    }
+
     // 🔴 **サーバ側の解決が不許可なら後段を呼ばない**（輸送を替えても早期の門は残る）。
     [Fact]
     public async Task A_denied_scope_still_short_circuits_before_the_grpc_call()
@@ -311,6 +353,59 @@ public class BffAttributeValuesGrpcTests : IClassFixture<BffTestFactory>
             s.AddSingleton(new AttributeValuesGrpcClient(
                 new Pb.AttributeValues.AttributeValuesClient(stub)))))
             .CreateClient();
+
+    // #1646: 本物のチャネル（127.0.0.1 の実サーバー）で gRPC 経路を差し込み、端点の結末（状態番号と、外へ出た例外）を記録する。
+    private HttpClient RealChannelClient(
+        LoopbackGrpcServer server, TaskCompletionSource<(int Status, Exception? Error)> outcome) =>
+        _factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.AddSingleton(new AttributeValuesGrpcClient(new Pb.AttributeValues.AttributeValuesClient(server.Channel)));
+            s.AddSingleton<IStartupFilter>(new OutcomeRecordingFilter(outcome));
+        })).CreateClient();
+
+    private sealed class OutcomeRecordingFilter(TaskCompletionSource<(int Status, Exception? Error)> outcome) : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, inner) =>
+            {
+                if (!context.Request.Path.StartsWithSegments("/bff/attribute-values"))
+                {
+                    await inner(context);
+                    return;
+                }
+                try
+                {
+                    await inner(context);
+                    outcome.TrySetResult((context.Response.StatusCode, null));
+                }
+                catch (Exception ex)
+                {
+                    outcome.TrySetResult((context.Response.StatusCode, ex));
+                    throw;
+                }
+            });
+            next(app);
+        };
+    }
+
+    private enum ServerBehavior { Hang, ReturnCancelled }
+
+    // 実サーバーに載せる受け口の偽物。`Hang` は要求を受け取ったことを知らせてから取り消されるまで待ち、
+    // `ReturnCancelled` は受け口自身が `CANCELLED` を返す（呼び出し元の取り消しではない対照）。
+    private sealed class AttributeValuesService(ServerBehavior behavior) : Pb.AttributeValues.AttributeValuesBase
+    {
+        public TaskCompletionSource Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<Pb.ListValuesResponse> ListValues(Pb.ListValuesRequest request, ServerCallContext context)
+        {
+            Received.TrySetResult();
+            if (behavior == ServerBehavior.ReturnCancelled)
+                throw new RpcException(new Status(StatusCode.Cancelled, "受け口が取り消した"));
+            await Task.Delay(Timeout.Infinite, context.CancellationToken);
+            return new Pb.ListValuesResponse();
+        }
+    }
 
     // 生成クライアントは CallInvoker の上に乗る。**要求を記録する** ——
     // 面が何を運んだか（scope を運んでいないこと・利用者文脈を運んでいること）を観測できる。

@@ -281,3 +281,23 @@ LlmGateway 側は**キー付き**で登録されているので衝突しない�
 - **配備の順番**: **authorization-service を先に配備すること。** document-service を先に出すと `CheckRealmRole` が `UNIMPLEMENTED` → 判定できない →
   管理者の承認（所有者でない承認者）だけが 502 になる。authorization-service を出した時点で回復する。
 - 作業仕様書: `.ai-context/specs/20260927_issue-1636_addtag-admin-role-from-authz.md`
+
+## 追記: 呼び出し元の取り消しを「引けなかった」に畳まない（2026-09-27 / #1646）
+
+［2026-09-27 追記 / #1646］決定 5 は「居ない」（応答）と「引けなかった」（戻り値 `null`）を型で分け、`RpcException`（全 status）と s2s トークン取得失敗を `null` とした。
+**呼び出し元の取り消しはどちらでもない。** 本物のチャネルは取り消しを `RpcException(Cancelled)` で投げる（`ThrowOperationCanceledOnCancellation` は既定の false）ので、
+`AuthzScopeGrpcClient`（2 つの口）と `UserDirectoryGrpcClient`（5 つの口。#1636 の `HasRealmRoleAsync` を含む）の無条件の `catch (RpcException)` が取り消しを `null` に畳み、
+呼び出し元は打ち切られた要求を「認可サービスの障害」（DataSourceService は 502、McpServer は Unavailable、各解決器は deny）として扱っていた。
+
+- **形**: 各口の縮退の catch より前に `catch (Exception) when (ct.IsCancellationRequested) { ct.ThrowIfCancellationRequested(); throw; }` を置き、渡された token を持つ
+  `OperationCanceledException` で外へ出す（[[IADR-0462]] と同じ形。判定は status ではなく ct。受け口が返した `CANCELLED`・期限切れは従来どおり `null`）。
+- **呼び出し元を全部読み直した**（母集合と除外は作業仕様書）。REST 経路（`BffScopeResolver` と 4 つの解決器）は既に `when (… && !ct.IsCancellationRequested)` で取り消しを外へ出しており、
+  gRPC 経路がそれに揃う。DataSourceService・McpServer の口は ct をそのまま渡すので、そのまま取り消しになる。
+- **DocumentService の 4 つの口**（`GrpcOwnerAccountDirectory`・`GrpcOwnerRetentionDirectory`・`GrpcApproverRoleDirectory`・`GrpcDocumentReadScopeSource`）は、`null` を受けてから
+  `ct.ThrowIfCancellationRequested()` で取り消しを取り戻す前提で書かれていた。上限つきの linked token（`bounded.Token`）を渡すので、共有クライアントが外へ出す OCE の token は内側のものになる。
+  既存の `catch (OperationCanceledException) when (!ct.IsCancellationRequested)`（上限の時間切れ → Unknown / `null`）はそのまま効き、その後ろに
+  `catch (OperationCanceledException) when (ct.IsCancellationRequested) { ct.ThrowIfCancellationRequested(); throw; }` を足して**要求そのものの token**へ揃える。
+- **失うもの**: 4 つの口の上限の時間切れは、共有クライアントの Warning（「gRPC 解決に失敗しました（Cancelled）」）を出さなくなる（共有クライアントから見れば呼び出し元の取り消しである）。
+  s2s トークン取得の途中の時間切れは元からログを出していなかったのと同じ扱いになる。上限を掛けるのは各口なので、記録が要るなら各口で出す（本件では足さない）。
+- 試験: `AuthzGrpcClientCallerCancellationTests`（7 つの口 ＋ `ResolveScopeAsync`。127.0.0.1 の実受け口で、受け口が要求を受け取ってから取り消す／受け口が `CANCELLED` を返す対）・
+  `DirectoryCallerCancellationTests`（DocumentService の 4 つの口）。作業仕様書: `.ai-context/specs/20260927_issue-1646_caller-cancellation-remaining.md`。

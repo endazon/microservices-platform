@@ -8,9 +8,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace RetrievalService.Tests.Grpc;
+namespace Platform.Shared.Infrastructure.Tests.Testing;
 
-// NFR-16, ADR-0029, [[IADR-0379]] 決定 3 (#1637): 生成クライアントを**本物のチャネル**で往復させるための最小の gRPC サーバー。
+// NFR-16, ADR-0029, [[IADR-0379]] 決定 3 (#1637, #1646): 生成クライアントを**本物のチャネル**で往復させるための最小の gRPC サーバー。
 //
 // 🔴 呼び出し元の取り消しの対照は、偽のクライアントへ素の `OperationCanceledException` を注入しても測れない ——
 // 本物のチャネルは取り消しを `RpcException(Cancelled)` で投げる（`ThrowOperationCanceledOnCancellation` は既定の false）。
@@ -40,11 +40,16 @@ internal sealed class LoopbackGrpcServer : IAsyncDisposable
             app => app.MapGrpcService<TService>(),
             ct);
 
-    // NFR-16 (#1646): 生成された `*Base` を持たない第三者の gRPC（Qdrant の公式クライアントはサーバー側を同梱しない）の
-    // 受け口の偽物を載せる口。全経路を 1 つの `RequestDelegate` で受ける —— 受け口は要求を受け取ったことを知らせて待つか、
-    // trailers-only の gRPC 応答（`grpc-status` をヘッダに載せる）を返すだけでよい。クライアント側は本物のチャネルのまま。
-    public static Task<LoopbackGrpcServer> StartRawAsync(RequestDelegate handler, CancellationToken ct)
-        => StartCoreAsync(_ => { }, app => app.Map("/{**path}", handler), ct);
+    // NFR-16 (#1646): 受け口を 2 つ載せる口（認可サービスは `AuthzScope` と `UserDirectory` を同じ宛先で公開する。
+    // 共有クライアントの 2 つが同じチャネルを使うのと同じ形で測る）。
+    public static Task<LoopbackGrpcServer> StartAsync<TFirst, TSecond>(
+        TFirst first, TSecond second, CancellationToken ct)
+        where TFirst : class
+        where TSecond : class
+        => StartCoreAsync(
+            services => { services.AddGrpc(); services.AddSingleton(first); services.AddSingleton(second); },
+            app => { app.MapGrpcService<TFirst>(); app.MapGrpcService<TSecond>(); },
+            ct);
 
     private static async Task<LoopbackGrpcServer> StartCoreAsync(
         Action<IServiceCollection> register, Action<WebApplication> map, CancellationToken ct)

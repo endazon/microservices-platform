@@ -24,6 +24,8 @@ namespace Platform.Shared.Infrastructure.Foundation.Authz;
 //   「その利用者は存在しません」という嘘の理由になる。
 //   `RpcException`（全 status。`UNAUTHENTICATED` / `PERMISSION_DENIED` / `UNAVAILABLE`）と
 //   s2s トークン取得失敗（`InvalidOperationException`）は**どちらも** `null` である。
+//   ［2026-09-27 / #1646］**ただし呼び出し元の取り消しは `null` にしない** —— 呼び出し元の token を持つ
+//   `OperationCanceledException` で外へ出す（取り消された要求を「引けなかった」＝ 502・Unavailable と記録しない）。
 public sealed class UserDirectoryGrpcClient(
     Pb.UserDirectory.UserDirectoryClient client,
     ILogger<UserDirectoryGrpcClient> logger)
@@ -52,6 +54,15 @@ public sealed class UserDirectoryGrpcClient(
                 request, deadline: DateTime.UtcNow.Add(WriteTimeLookupTimeout), cancellationToken: ct);
             return new HashSet<string>(
                 resp.Results.Where(r => r.Exists).Select(r => r.Username), StringComparer.Ordinal);
+        }
+        // 🔴 #1646: **呼び出し元の取り消しは `null` へ畳まない。** 本物のチャネルは取り消しを `RpcException(Cancelled)` で
+        // 投げる（`ThrowOperationCanceledOnCancellation` は既定の false）ので、縮退の catch より前で拾い、呼び出し元の
+        // token を持つ `OperationCanceledException` へ揃える。判定は status ではなく呼び出し元の ct で行う
+        // （受け口が返した `CANCELLED`・期限切れは従来どおり `null`）。
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            ct.ThrowIfCancellationRequested();
+            throw;
         }
         catch (RpcException ex)
         {
@@ -85,6 +96,12 @@ public sealed class UserDirectoryGrpcClient(
             return new HashSet<string>(
                 resp.Results.Where(r => r.Exists).Select(r => r.Code), StringComparer.Ordinal);
         }
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            // #1646: 呼び出し元の取り消しは `null` へ畳まない（上の `CheckUsernamesAsync` の注記を参照）。
+            ct.ThrowIfCancellationRequested();
+            throw;
+        }
         catch (RpcException ex)
         {
             logger.LogWarning(
@@ -112,6 +129,12 @@ public sealed class UserDirectoryGrpcClient(
                 new Pb.GetUserAttributesRequest { Username = username }, cancellationToken: ct);
             return new PlatformUserAttributes(
                 resp.Found, resp.Username, new Dictionary<string, string>(resp.Attributes));
+        }
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            // #1646: 呼び出し元の取り消しは `null` へ畳まない（上の `CheckUsernamesAsync` の注記を参照）。
+            ct.ThrowIfCancellationRequested();
+            throw;
         }
         catch (RpcException ex)
         {
@@ -143,6 +166,12 @@ public sealed class UserDirectoryGrpcClient(
                 new Pb.CheckRealmRoleRequest { Username = username, Role = role },
                 deadline: DateTime.UtcNow.Add(WriteTimeLookupTimeout), cancellationToken: ct);
             return resp.Found && resp.HasRole;
+        }
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            // #1646: 呼び出し元の取り消しは `null` へ畳まない（上の `CheckUsernamesAsync` の注記を参照）。
+            ct.ThrowIfCancellationRequested();
+            throw;
         }
         catch (RpcException ex)
         {
@@ -197,6 +226,12 @@ public sealed class UserDirectoryGrpcClient(
             var resp = await client.GetUserAttributesAsync(
                 new Pb.GetUserAttributesRequest { Username = username }, cancellationToken: ct);
             return new PlatformUserRetentionStatus(resp.Found, resp.Enabled, resp.RetentionEligibility);
+        }
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            // #1646: 呼び出し元の取り消しは `null` へ畳まない（上の `CheckUsernamesAsync` の注記を参照）。
+            ct.ThrowIfCancellationRequested();
+            throw;
         }
         catch (RpcException ex)
         {

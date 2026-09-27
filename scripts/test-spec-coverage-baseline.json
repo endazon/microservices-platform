@@ -61,7 +61,10 @@
     ],
     "docs/tests/FR-05_abac-access-control.md": [
       "AbacEvaluatorTests",
-      "AccessScopeContractTests"
+      "AccessScopeContractTests",
+      "AuthzGrpcClientCallerCancellationTests",
+      "BffAttributeValuesGrpcTests",
+      "DirectoryCallerCancellationTests"
     ],
     "docs/tests/FR-06_document-crud-versioning.md": [
       "AdminWritePrivateNoteScopeTests",

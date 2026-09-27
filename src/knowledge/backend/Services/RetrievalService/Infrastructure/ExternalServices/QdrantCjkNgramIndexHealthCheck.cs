@@ -49,6 +49,14 @@ public sealed class QdrantCjkNgramIndexHealthCheck(
                 + "（Qdrant は例外を返さず部分文字列の全走査へ縮退する）。"
                 + "取り込みサービスの起動時ブートストラップ（QdrantBootstrapHostedService）を確認すること");
         }
+        // 🔴 #1646: **検査の打ち切り（呼び出し元の取り消し）は `Degraded` へ畳まない。** 本物のチャネルは取り消しを
+        // `RpcException(Cancelled)` で投げるので、下の catch へ落ちると「索引の有無を判定できない」になる。
+        // 呼び出し元の token を持つ `OperationCanceledException` へ揃える（健全性検査の器は取り消しを OCE で待つ）。
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            throw;
+        }
         catch (RpcException ex)
         {
             return HealthCheckResult.Degraded(

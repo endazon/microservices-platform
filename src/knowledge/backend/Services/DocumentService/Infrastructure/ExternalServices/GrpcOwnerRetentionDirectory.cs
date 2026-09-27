@@ -48,6 +48,13 @@ public sealed class GrpcOwnerRetentionDirectory(UserDirectoryGrpcClient client) 
             // 上限に達した（gRPC の外 —— s2s トークン取得の途中など —— で取り消された場合もここへ来る）。
             return null;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // ［2026-09-27 / #1646］共有クライアントは呼び出し元の取り消しを `null` に畳まず、渡された token（上限つきの
+            // `bounded.Token`）の OCE で外へ出すようになった。**要求そのもの（`ct`）の token へ揃えて**伝える。
+            ct.ThrowIfCancellationRequested();
+            throw;
+        }
 
         if (status is null)
         {

@@ -46,12 +46,19 @@ public sealed class GrpcOwnerAccountDirectory(UserDirectoryGrpcClient client) : 
             // 上限に達した（s2s トークン取得の途中など、gRPC の外で取り消された場合もここへ来る）。
             return OwnerAccountState.Unknown;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // ［2026-09-27 / #1646］共有クライアントは呼び出し元の取り消しを `null` に畳まず、渡された token（上限つきの
+            // `bounded.Token`）の OCE で外へ出すようになった。**要求そのもの（`ct`）の token へ揃えて**伝える。
+            ct.ThrowIfCancellationRequested();
+            throw;
+        }
 
         if (status is null)
         {
-            // 🔴 本番のチャネルは取り消しを `RpcException(Cancelled)` で投げ（`ThrowOperationCanceledOnCancellation`
-            //   は既定の false）、共有クライアントがそれを `null` に畳む。要求そのもの（`ct`）が取り消されて
-            //   いたなら、時間切れ・障害と混ぜずに取り消しとして伝える（どちらでも応答は返らない）。
+            // 🔴 要求そのもの（`ct`）が取り消されていたなら、時間切れ・障害と混ぜずに取り消しとして伝える
+            //   （どちらでも応答は返らない）。［2026-09-27 / #1646］共有クライアントは取り消しを `null` に畳まなく
+            //   なった（上の catch が受ける）ので、ここは障害の応答と取り消しが入れ違った場合の守りである。
             ct.ThrowIfCancellationRequested();
             return OwnerAccountState.Unknown;
         }

@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-02, FR-03, FR-05, UC-01, SC-01, SC-02, NFR, NFR-06, NFR-08, ADR-0009, ADR-0016, IADR-0009, IADR-0014, IADR-0151, IADR-0252, IADR-0255, IADR-0256, IADR-0313, IADR-0315]
 author: claude
 created: 2026-08-31
-updated: 2026-08-31
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
   - planning:projects/microservices-platform/07_adr/ADR-0009_vector-db-qdrant.md
@@ -128,6 +128,8 @@ payload_schema: (empty)          ← 索引は 1 つも無い
 2. **メトリクス**: `search.keyword_degraded.total`（0 が正常。理由タグ `missing_index` / `backend_error`）。
    `EdgeTypeFallbackMetrics`（GraphService）と同型。クエリ文字列はタグにしない（基数が無界）。
 3. **ログ**: `RpcException` の握り潰しは残す（検索全体は落とさない）が、**必ず数えてから返す**。
+
+> **［2026-09-27 追記 / #1646］呼び出し元の取り消しは数えない。** Qdrant の公式クライアントも本物のチャネルでは取り消しを `RpcException(Cancelled)` で投げるので、3 の握り潰しが打ち切られた要求ごとに `backend_error` を 1 件積み、警告を出していた（計器 2 の「0 が正常」を取り消しが汚す）。readiness の 2 つ（`qdrant-fulltext-index`・`qdrant-cjk-ngram-index`）も検査の打ち切りを「判定できない」＝ Degraded へ畳んでいた。3 か所とも、縮退の catch より前に `catch (Exception) when (ct.IsCancellationRequested) { ct.ThrowIfCancellationRequested(); throw; }` を置き、呼び出し元の token を持つ `OperationCanceledException` で外へ出す（判定は status ではなく呼び出し元の ct。Qdrant が返した `CANCELLED` は従来どおり数える・Degraded）。健全性検査の器（`DefaultHealthCheckService`）は呼び出し元の取り消しの OCE をそのまま伝え、登録の上限の時間切れは登録の `failureStatus`（Degraded）で記録するので、Unhealthy へ倒れる経路は増えない。試験は 127.0.0.1 の偽の Qdrant（公式クライアントはサーバー側の基底を同梱しないので、trailers-only の素の HTTP/2 応答で受ける）へ本番と同じ既定値のチャネルで繋ぐ（`QdrantFullTextIndexObservabilityTests`）。作業仕様書: `.ai-context/specs/20260927_issue-1646_caller-cancellation-remaining.md`。
 
 ### 決定 4: 退行防止の門は `mode=keyword` ＋ **語順を替えた合言葉**で置く
 

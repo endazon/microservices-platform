@@ -36,6 +36,13 @@ public sealed class GrpcApproverRoleDirectory(UserDirectoryGrpcClient client) : 
         {
             return ApproverAdminState.Unknown;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // ［2026-09-27 / #1646］共有クライアントは呼び出し元の取り消しを `null` に畳まず、渡された token（上限つきの
+            // `bounded.Token`）の OCE で外へ出すようになった。**要求そのもの（`ct`）の token へ揃えて**伝える。
+            ct.ThrowIfCancellationRequested();
+            throw;
+        }
 
         if (hasRole is null)
         {
