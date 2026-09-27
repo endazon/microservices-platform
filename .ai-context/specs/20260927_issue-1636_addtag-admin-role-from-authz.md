@@ -72,12 +72,12 @@ issue: "#1636"
 - AC-3: 認可サービスを引けなければ、所有者でない承認者の要求は `UNAVAILABLE`（文書は変わらない）。
 - AC-4: 所有者の要求は認可サービスを呼ばずに反映される（引けない状態でも通る）。
 - AC-5: 個人資料へは、認可サービスが管理者と答えても管理者は書けず（#1629）、認可サービスも呼ばれない。
-- AC-6: `CheckRealmRole`: 管理者 → `found, has_role`、管理者でない → `found, !has_role`、居ない → `!found`、無効化された管理者 → `found, !has_role`、ロール名の大小文字違い → `!has_role`、
+- AC-6: `CheckRealmRole`: 管理者 → `found, has_role`、管理者でない → `found, !has_role`、居ない → `!found`、無効化された管理者 → `found, !has_role`、ロール名の大小文字違い → `!has_role`（［2026-09-27 追記 / #1636 監査 N2］許可集合の外なので `PERMISSION_DENIED` に改めた。実在する他のロール〔`platform-operator` 等〕も同じ）、
   空の引数 → `INVALID_ARGUMENT`、IdP を引けない → 非 OK の status、`platform-service` の無い主体（管理者の利用者トークン）→ `PERMISSION_DENIED`。
 - AC-7: Keycloak 実装は実効ロール（`role-mappings/realm/composite`）を読む。
 - AC-8: 配備: helm・compose の document-service は `Services__AuthorizationServiceGrpc` を持ち（＝ gRPC 実装が選ばれる）、realm の `document-service` は `platform-service` を持つ。
 - AC-9: REST の `POST /documents/{id}/tags` は従来どおりトークンのロールで判定する。
-- AC-10: 変異: gRPC の `AddTag` で本文の `user_roles` を再び信じると AC-1 が落ちる。`Unknown` を「管理者ではない」へ畳むと AC-3 が落ちる。無効化の確認を落とすと AC-6 が落ちる。
+- AC-10: 変異: gRPC の `AddTag` で本文の `user_roles` を再び信じると AC-1 が落ちる。`Unknown` を「管理者ではない」へ畳むと AC-3 が落ちる。無効化の確認を落とすと AC-6 が落ちる。［2026-09-27 追記 / #1636 監査 N1・N2］照会が止まったときの `Unknown` を `Admin` にすると `照会が止まれば自分の期限でUnknown` が落ち、ロールの許可集合の検査を外すと AC-6 の 5 件が落ちる（実測）。
 
 ## 母集合（着手前に引いた）
 

@@ -273,8 +273,11 @@ LlmGateway 側は**キー付き**で登録されているので衝突しない�
   - 「居ない」は `found=false`、「引けなかった」は status（決定 5 の分離）。空の引数は `INVALID_ARGUMENT`。門は `ServiceCaller` のまま。
 - **呼び出し側**: 共有の `UserDirectoryGrpcClient.HasRealmRoleAsync` は、持つ → true、持たない・居ない → false、引けなかった → `null`（決定 5。倒す向きは呼び出し元が決める。
   DocumentService は `null` を UNAVAILABLE へ倒す）。書き込みの経路なので締切 5 秒。
-- **残るもの**: この問いは `platform-service` を持つ主体なら誰でも引ける（任意の利用者が特定のロールを持つかの照会）。同じ主体は既に
-  `GetUserAttributes` で任意の利用者の ABAC 属性を引けるので、漏れの水準は変わらない（計画 `ADR-0088` 決定 4 の受け入れの範囲）。
+- **問えるロールは許可集合（`platform-admin` だけ）に固定する**（#1636 のセキュリティ監査 N2）。任意のロールを問えると、`platform-service` の保持者が
+  「誰がどのロールを持つか」を列挙できる。`GetUserAttributes` は realm ロールを出さないので、漏れる情報の種類が 1 つ増えるためである。
+  集合の外（大小文字違い・接頭辞・実在する他のロールを含む）は、名簿を引く前に `PERMISSION_DENIED`。呼び出し元が増えたら集合へ足す（要る問いだけを面へ出す ＝ 決定 2）。
+- **残るもの**: `platform-admin` を持つかは `platform-service` を持つ主体なら誰でも引ける（任意の利用者が管理者かの照会）。同じ主体は既に
+  `GetUserAttributes` で任意の利用者の ABAC 属性を引けるので、計画 `ADR-0088` 決定 4 の受け入れの範囲として残す。
 - **配備の順番**: **authorization-service を先に配備すること。** document-service を先に出すと `CheckRealmRole` が `UNIMPLEMENTED` → 判定できない →
   管理者の承認（所有者でない承認者）だけが 502 になる。authorization-service を出した時点で回復する。
 - 作業仕様書: `.ai-context/specs/20260927_issue-1636_addtag-admin-role-from-authz.md`
