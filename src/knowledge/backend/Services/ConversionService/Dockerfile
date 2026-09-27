@@ -25,11 +25,17 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 # 外部プロセスとして起動して取り出す。これが無いと PDF の変換は既定で失敗する（fail-closed。
 # `PdfToTextHealthCheck` が readiness で見るので Pod は Ready にならない）。
 # 版は noble の poppler-utils 24.02.0。イメージの増分は PR 本文に実測を残す。
+#
+# FR-12, UC-06, IADR-0008（2026-09-27 追記 / #1654）: **tini を PID 1 に置く。** 本サービスは外部プロセス（pandoc・pdftotext）を
+# 起動するので、ツリーの外へ出た孫（デーモン化した補助プロセス）が孤児になり得る。孤児は PID 1 の子に付け替えられるが、
+# dotnet は PID 1 になっても `wait` しないのでゾンビが溜まる。tini は孤児を刈り取り、SIGTERM は子（dotnet）へ中継するので
+# 停止の振る舞いは変わらない。取得元は上と同じ APT ミラー（noble の tini）。孤児を**止める**ものではない —— 止めるのは
+# 実行器の期限（`ExternalProcess`）である。
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends pandoc poppler-utils \
+    && apt-get install -y --no-install-recommends pandoc poppler-utils tini \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "ConversionService.dll"]
+ENTRYPOINT ["tini", "--", "dotnet", "ConversionService.dll"]

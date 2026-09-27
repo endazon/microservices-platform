@@ -13,7 +13,8 @@ public sealed class PdfToTextHealthCheck(ILogger<PdfToTextHealthCheck> logger) :
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
-        var version = await PdfTextLayerConverter.TryGetPdfToTextVersionAsync(cancellationToken);
+        // #1654 B: 自分の logger を渡す（版の確認が時間切れのとき「止まっている」旨の Warning が残る）。
+        var version = await PdfTextLayerConverter.TryGetPdfToTextVersionAsync(cancellationToken, logger: logger);
         if (version is not null)
             return HealthCheckResult.Healthy(version);
 

@@ -21,6 +21,7 @@ related_specs:
   - ../specs/20260703_FR-12_document-normalization-pipeline.md
   - ../specs/20260927_issue-1621_diagram-coder-timeout-retain.md
   - ../specs/20260927_issue-1641_pandoc-timeout-and-kill.md
+  - ../specs/20260927_issue-1654_external-process-runner-followups.md
   - ../../docs/functional/FR-12_document-normalization.md
   - ../../docs/tests/FR-12_document-normalization.md
   - ./IADR-0007_llm-egress-routing-config-driven.md
@@ -141,6 +142,30 @@ FR-12 / UC-06 は「取得した原本を、AI が扱いやすい正規化形式
 > `powershell` ＋ `ping 127.0.0.1`〕を pandoc / pdftotext の代わりに起動する。期限でツリーごと止まり親も子も残らない・受け口から通してジョブが失敗理由つきで
 > 記録される・呼び出し元の取り消しでも止まり取り消しとして外へ出る・正常系と非 0 終了は不変）、`DiagramCodingLimitsTests`（既定値・丸め・広げた検査・配線）。
 > 作業仕様書: `.ai-context/specs/20260927_issue-1641_pandoc-timeout-and-kill.md`。**本文（pandoc 実行の決定）は書き換えない。**
+
+> **［2026-09-27 追記 / #1654］外部プロセスの実行器の残り（#1641 の監査で出た低い 4 件）。上の #1641 の追記は書き換えない。**
+>
+> 1. **kill の失敗の型**: `Process.Kill(entireProcessTree: true)` は子孫の一部を止められない（EPERM 等）と `AggregateException` を投げる。
+>    これを kill の捕捉に足す。捕まえないと刈り取りを飛ばし、呼び出し元の catch の中から投げられて期限切れ・取り消しの分類を上書きする。
+> 2. **版の確認の時間切れのログ**: 版の確認（`pandoc --version` / `pdftotext -v`）が `BodyConversionTimeoutException` になったら、
+>    **Warning** を出してから null（「無い」）を返す。「止まっている」を「無い」と区別できるようにする。readiness は自分の logger を渡す。「無い」として扱うこと自体
+>    （fail-closed・縮退の可否）は変えない。
+> 3. **終了と時間切れの競合・孤児の孫・init**:
+>    - 読み取りは取り消さずに開始し、待つ側で期限を守る。
+>    - 期限が来た時点でプロセスが**自分で**終わっていたら kill せず、読み取りを刈り取りの上限（10 秒）まで待つ。読み終われば結果を返す（期限の直前に終わった正しい出力を捨てない）。
+>    - 読み終わらないのは、ツリーの外へ出た孫が標準出力を握っている場合である。孫は `Kill(true)` では止まらないので、Warning を出して期限切れにする。
+>    - どの経路でも、1 回の呼び出しの最悪は「期限 ＋ 刈り取りの上限」で変わらない。
+>    - ConversionService のイメージに **tini** を入れ、`ENTRYPOINT ["tini", "--", "dotnet", "ConversionService.dll"]` にする（noble の APT ミラーから取得。tini 0.19.0）。
+>      dotnet は PID 1 になっても孤児を `wait` しないので、ゾンビが溜まる。tini は孤児を刈り取り、SIGTERM を dotnet へ中継する。
+>    - helm・compose は ConversionService の `command` / `args` を上書きしていないので、配備の変更は要らない。
+>    - 外部プロセスを起動するのは ConversionService だけなので、他サービスには入れない。tini は孤児を**止め**はしない（止めるのは 3. の期限）。
+> 4. **起動時の式の余裕**: 本文変換 1 回の最悪を「本文変換の期限 ＋ 版の確認 10 秒 ＋ 刈り取りの上限 10 秒」（`DiagramCodingLimits.BodyConversionWorstCase`）とし、
+>    式を「受け口 ＞ その最悪 ＋ 総枠 ＋ 1 回」へ広げる。版の確認が止まったときは 10 ＋ 10 秒で「無い」になり変換へ進まないので、この和を超えない。
+>    既定では 300 ＞ 90 ＋ 10 ＋ 10 ＋ 120 ＋ 20 ＝ 250（余裕 50 秒）で、鍵の無い稼働構成はそのまま起動する。
+>
+> 試験: `ExternalProcessTimeoutTests`（版の確認の時間切れの Warning〔pandoc・pdftotext〕・自分で終わったプロセスの出力を孫が期限を跨いで握っても返す・
+> 孫が握り続けたら期限 ＋ 刈り取りの上限で期限切れ）、`DiagramCodingLimitsTests`（新しい境界の行・陽性対照 251 秒）。1. は止められない子孫を CI で作れないため、試験を置かない。
+> 作業仕様書: `.ai-context/specs/20260927_issue-1654_external-process-runner-followups.md`。
 
 ## 理由
 
