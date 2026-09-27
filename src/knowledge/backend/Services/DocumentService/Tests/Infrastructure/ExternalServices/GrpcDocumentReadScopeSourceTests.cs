@@ -1,7 +1,10 @@
 using AwesomeAssertions;
 using DocumentService.Infrastructure.ExternalServices;
+using Grpc.Core;
+using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Authz;
+using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
 
 namespace DocumentService.Tests.Infrastructure.ExternalServices;
 
@@ -36,6 +39,59 @@ public class GrpcDocumentReadScopeSourceTests
         var branches = GrpcDocumentReadScopeSource.ToBranches(new BffAccessScope([Internal, Shared], GrantsAccess: true));
 
         branches.Should().ContainSingle().Which.Should().Equal(Internal, Shared);
+    }
+
+    // ［2026-09-27 / #1646 監査］認可サービスが応答しなければ、自分の上限で打ち切って**読めない（null）**へ倒す ——
+    // 要求の ct は立っていないので取り消しにはしない。Grpc.Net.Client の既定（取り消しを `RpcException(Cancelled)` で投げる）と、
+    // OCE で終わる形の両方を見る（共有クライアントはどちらも、渡された上限つきの token の OCE として外へ出す）。
+    [Theory(Timeout = 10_000)]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task 認可サービスが応答しなければ上限で打ち切って読めない(bool asRpcException)
+    {
+        var source = new GrpcDocumentReadScopeSource(
+            new AuthzScopeGrpcClient(new HangingAuthzScopeClient(asRpcException), NullLogger<AuthzScopeGrpcClient>.Instance),
+            TimeSpan.FromMilliseconds(50));
+
+        (await source.ResolveReadBranchesAsync("alice", TestContext.Current.CancellationToken)).Should().BeNull();
+    }
+
+    // 対照: 要求そのものが取り消されたら、読めない（null）へ畳まず取り消しとして伝える。
+    [Theory(Timeout = 10_000)]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task 要求そのものが取り消されたら取り消しをそのまま伝える(bool asRpcException)
+    {
+        var source = new GrpcDocumentReadScopeSource(
+            new AuthzScopeGrpcClient(new HangingAuthzScopeClient(asRpcException), NullLogger<AuthzScopeGrpcClient>.Instance),
+            TimeSpan.FromMinutes(1));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+        var act = () => source.ResolveReadBranchesAsync("alice", cts.Token);
+
+        (await act.Should().ThrowAsync<OperationCanceledException>()).Which.CancellationToken.Should().Be(cts.Token);
+    }
+
+    // 取り消されるまで応答しない `AuthzScope/Resolve`。
+    private sealed class HangingAuthzScopeClient(bool asRpcException) : Pb.AuthzScope.AuthzScopeClient
+    {
+        public override AsyncUnaryCall<Pb.ResolveScopeResponse> ResolveAsync(Pb.ResolveScopeRequest request, CallOptions options)
+            => new(HangAsync(options.CancellationToken), Task.FromResult(new Metadata()),
+                () => Status.DefaultSuccess, () => [], () => { });
+
+        private async Task<Pb.ResolveScopeResponse> HangAsync(CancellationToken ct)
+        {
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException) when (asRpcException)
+            {
+                throw new RpcException(new Status(StatusCode.Cancelled, "fake"));
+            }
+            throw new InvalidOperationException("unreachable");
+        }
     }
 
     [Fact]

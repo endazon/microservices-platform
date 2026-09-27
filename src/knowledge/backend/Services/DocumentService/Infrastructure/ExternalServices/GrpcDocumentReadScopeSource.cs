@@ -21,11 +21,17 @@ public sealed class GrpcDocumentReadScopeSource(AuthzScopeGrpcClient client) : I
 
     private static readonly IReadOnlyDictionary<string, string> NoAttributes = new Dictionary<string, string>();
 
+    private readonly TimeSpan _timeout = LookupTimeout;
+
+    // 試験用: 上限の時間切れの枝を短い上限で測る（［2026-09-27 / #1646 監査］`GrpcOwnerAccountDirectory` と同じ形）。
+    internal GrpcDocumentReadScopeSource(AuthzScopeGrpcClient client, TimeSpan timeout) : this(client)
+        => _timeout = timeout;
+
     public async Task<IReadOnlyList<IReadOnlyList<AttributeFilter>>?> ResolveReadBranchesAsync(
         string userId, CancellationToken ct)
     {
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        bounded.CancelAfter(LookupTimeout);
+        bounded.CancelAfter(_timeout);
 
         BffAccessScope? scope;
         try
