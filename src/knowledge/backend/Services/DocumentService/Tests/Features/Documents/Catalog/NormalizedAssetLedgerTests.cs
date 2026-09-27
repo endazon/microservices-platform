@@ -59,6 +59,7 @@ public sealed class NormalizedAssetLedgerTests
             .AddMetrics()
             .AddDbContext<DocumentDbContext>(o => o.UseInMemoryDatabase(dbName))
             .AddSingleton<IngestTagMetrics>()
+            .AddCatalogTimeoutsForTests()
             .AddSingleton<IObjectStorageClient, UnresolvableStorage>()
             .AddSingleton<IDocumentUpdatedPublisher, NoopUpdatedPublisher>()
             .AddMassTransitTestHarness(x => x.AddConsumer<DocumentNormalizedConsumer>())
