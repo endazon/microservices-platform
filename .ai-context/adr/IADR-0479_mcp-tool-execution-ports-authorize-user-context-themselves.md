@@ -122,7 +122,7 @@ ADR-0117 決定 3 は、本文を利用者文脈（`user_id`・`action`）とツ
 
 - **許可リストは `Platform.Shared.Contracts.Dtos.McpEnvelopeAttributes` の 1 か所に置く**（`confidentiality`・`doc_scope`・`project`。`Ordinal`）。
   段 3 監査で GraphService の実行口にだけ置いた許可リスト（`EnvelopeAttributeKeys`）は撤去し、この定数を参照する。置き場は `RestrictedProject` と同じ
-  （読み手の McpServer と受け口の knowledge ユニットの間で許されるユニット外参照は `Platform.Shared.*` だけ。IADR-0373 決定 1・IADR-0405 決定 3 と同じ理由）。
+  （読み手の McpServer と受け口の knowledge ユニットの間で許されるユニット外参照は `Platform.Shared.*` だけ。IADR-0373 決定 1・IADR-0405 決定 4 と同じ理由）。
 - **読み手も同じ定数を指す**: McpServer の `EgressPolicy.ConfidentialityKey`・`DocumentScope.Key` はこの定数の別名にした。`project` の正本は `RestrictedProject.DocumentKey`
   のままで、許可リストがそれを参照する。McpServer の試験（X-55）が「読み手のキー ⊆ 許可リスト（かつ一致）」を、受け口の試験（X-50・X-52）が
   「許可リストのキーが残り、外のキーが消える」を固定する —— **キーを足す・外すとき片側だけ変わる割れ方を両側の赤で止める**。
