@@ -2,10 +2,10 @@
 title: MCP のツール実行口を申告したサービスに作り、MCP サーバーは利用者文脈を本文で運ぶ（#1611 / 段 1: 共通部分と RetrievalService）
 type: spec
 status: done
-related_ids: [FR-16, UC-08, NFR-09, NFR-16, ADR-0024, ADR-0034, ADR-0086, ADR-0088, ADR-0117, IADR-0479, IADR-0269, IADR-0292, IADR-0379, IADR-0426, IADR-0462]
+related_ids: [FR-16, UC-08, NFR-09, NFR-16, ADR-0024, ADR-0034, ADR-0086, ADR-0088, ADR-0117, ADR-0121, IADR-0479, IADR-0483, IADR-0269, IADR-0292, IADR-0379, IADR-0426, IADR-0462]
 author: Claude（実装）
 created: 2026-09-27
-updated: 2026-09-27
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0117_mcp-tool-destination-and-execution-context.md 決定 1〜4
   - planning:projects/microservices-platform/07_adr/ADR-0086_user-context-in-body-not-token-exchange.md 決定 1・4
@@ -304,3 +304,90 @@ check-plan-id-qualification / check-proto-contracts / gen-knowledge-graph --chec
 | Mb | `Seal` の共有先の除去を外す（写像の許可リストは残る） | 緑のまま —— 写像の許可リストで守られる（多層防御の 1 層だけを外した形。想定どおり） |
 | Mab | 写像の許可リストに共有先だけを通す（`Seal` の除去は残る） | 緑のまま —— `Seal` の除去で守られる（もう 1 層だけを外した形。想定どおり） |
 | Mc | 打ち切り時の全体件数を返さない（返した件数に戻す） | 赤 1 件: `表示上限で打ち切ったら全体件数を返す` |
+
+---
+
+## ［2026-09-28 追記 / #1611］段 2: DocumentService の実行口
+
+> 段 1・段 3 の記録（上）は書き換えない。本節は段 2 の着手前に書き、実施結果を末尾に足す。**本段で #1611 を閉じる**（`Closes #1611`）。
+
+### 起点・前提
+
+- 基点 `origin/develop` `29d23882`（#1675 = #1615 の内容の ABAC の着地後）。`git rev-parse --is-shallow-repository` = `true`
+  （`git log` / `git blame` は出典に使わない。以下の母集合は `git grep` の実測）。ブランチ `feat/FR-16-mcp-tool-execution-document`。
+- 前提としてマージ済み: 段 1（#1662）・段 3（#1668）・属性の許可リスト（#1671 / #1672。`Platform.Shared.Contracts.Dtos.McpEnvelopeAttributes`）・
+  内容の ABAC（#1615 / #1675。判定点 `DocumentReadAccess`・門 `IContentAbacGate`・IADR-0483）。
+- 計画: ADR-0117 決定 1〜4、ADR-0086 決定 1・4、ADR-0088 決定 1、ADR-0034 決定 9、ADR-0024 §4、ADR-0121 決定 2・4・5・6（`/home/user/project-planning` の `origin/main` `17518cc` を読み取り専用で読んだ）。
+- 並行作業 #1676（`DocumentReadAccess` 周辺の試験・AuthorizationService・運用仕様書・`.claude/rules/traceability.repo.md`）とは、
+  **`DocumentReadAccess` 本体と `traceability.repo.md` を触らない**ことで交差を避ける。
+- 束ねない判断（段 1 の表）は変わらない。本 PR は DocumentService の受け口だけを足し、proto・MCP サーバーのコードは変えない（注記だけ）。
+
+### 母集合（規則 9。誤りの側の文字列で走査した）
+
+誤りの側 = 「文書には受け口が無い」「文書は段 2 まで拒否」「実行口の無い宛先（文書）」「文書の実行は `UNIMPLEMENTED`」。
+走査語: `段 2`・`document は段`・`文書だけ`・`受け口が無い`・`実行口の無い`・`［#1611 段 3 時点］`・`UNIMPLEMENTED`/`Unimplemented`・`#1611`。
+除外は段 1・段 3 と同じ（`bin` / `obj` / `node_modules` / `.git` / `src/ai-stock-trading`、凍結記録 `.ai-context/specs/`、生成物 `CHANGELOG.md`）。
+
+1. **「文書には受け口が無い」と書く記述** ——
+   proto `mcp_tool_execution.proto`（■ 受け口の段落）／McpServer `ToolInvocationService.cs`（1）・`GrpcToolInvoker.cs`（2）・
+   `GrpcToolInvokerTests.cs`（1）・`McpToolDeclarationGrpcTestHost.cs`（1。「実行口の無い本番の申告元と同じく」）／
+   compose `deploy/docker-compose.yml`・helm `values.yaml` の「document は段 2 まで拒否」／
+   `docs/api/FR-16_mcp-server.md`（§実行の注記）／`docs/api/east-west-grpc.md`（14 つ目の面）／
+   `docs/tests/FR-16_mcp-server.md`（X-14・未実施・残件）
+2. **文書の `UNIMPLEMENTED` を固定する試験** —— DocumentService `GrpcMcpToolDeclarationTests.Tool_execution_port_is_not_served_yet_and_returns_unimplemented`
+3. **実行口が乗る既存の経路**（変更しない）—— `DocumentReadUseCase.GetAsync` / `ListAsync`・判定点 `DocumentReadAccess`（門 `IContentAbacGate` の 2 つの枝）・
+   `DocumentReadPrincipal.RelayedUser`（`service-account-` を機械として扱う）・`IDocumentReadScopeSource`（属性は空で認可サービスへ問う）
+4. **#1671 の申し送り**: エンベロープの属性は `McpEnvelopeAttributes.IsCarried` のキーだけ（`DocumentDto.Attributes` は `owner`・部署等を持つ）
+5. **申告の説明** —— `document.get_document` の説明「（タイトル・属性・本文の参照）」。応答は本文も参照リンクも持たないので、返らないものを約束している
+
+**本 PR で直すもの**: 1 の全件（「3 サービスとも受け口を持つ」へ）・2 の反転・5 の説明（「（タイトル・属性）」へ。段 3 の `graph.traverse` と同じ扱い）。
+**除外（直さない）**: IADR-0462 の追記・IADR-0483 フォローアップ 2・IADR-0479 §残るもの（凍結記録の本文。IADR-0479 の段 2 の追記で記録する）／
+McpServer の `UNIMPLEMENTED` を拒否へ写す枝とその試験（X-3。配備の順番〔旧い DocumentService〕と将来の供給元のために残る。事実として今も正しい）／
+`docs/tests/FR-16_mcp-server.md` の変異表「受け口が無いこと（`UNIMPLEMENTED`）の枝を外す」（同上）。
+**この変更で新たに誤りになる自分の記述（規則 10）**: 段 3 で「文書だけが無い」へ直した記述（上の 1）はすべて本段で誤りになる —— 1 に含めた。
+段 3 の仕様で X-30〜X-39 を段 2 に予約していたが、テスト仕様書の develop の最大は X-55 なので、本段は **X-56 から**採る（予約は使わない。欠番は仕様書の表に現れない）。
+
+### 受け入れ基準（段 2）
+
+- D-1 **実行口（Document）**: `platform.mcp.v1.McpToolExecution/Execute` を h2c で受け、自分の申告名（`document.get_document` / `document.list_documents`）だけを実行する。
+  他（他のサービスのツール・申告から落とした `document.list_private_notes`・公開名・変種）は `NOT_FOUND`。面は `ServiceCaller` を要求し、申告の口（`MapMcpToolEndpoints`）と対で張る。
+- D-2 🔴 **MCP サーバー以外は拒否**: 許可集合 `McpToolExecution:TrustedUserContextClients`（既定 `mcp-server`。共有 `TrustedUserContextRelay`。
+  `Program.cs` で `ThrowIfScalar` → `Configure`）。他の `platform-service` の主体（`DocumentRead:` の中継者 `bff` を含む）・変種・人のトークンは
+  `PERMISSION_DENIED` で、認可の問い合わせも台帳の読み取りの判定も 1 度も行わない。`DocumentRead:`（既定 `bff`）とはキーも集合も共有しない。
+- D-3 🔴 **自分で認可する・第二の判定点を作らない**: 本文の利用者名を `DocumentReadPrincipal.RelayedUser` で主体にし、既存の `DocumentReadUseCase`
+  （→ `DocumentReadAccess`。門の状態で枝を選ぶ）をそのまま通す。認可サービスへは利用者名で問う（属性は空。ADR-0088）。
+  権限外の文書は個別では空・一覧では現れず件数にも入らない。無い・見えないは同じ空（バイト列まで区別できない）。
+- D-4 🔴 **REST の同じ利用者の結果を超えない（門の両状態）**: 門が閉じている間（既定 Off）は #1615 の閉じた枝（＝従前の判定）で、
+  門が開いた後は内容の ABAC の枝で、MCP 経路の個別・一覧の結果が DocumentService の REST（`GET /documents/{id}`・`GET /documents`）の同じ利用者の結果と一致する
+  （一覧の件数も一致する）。閉じている間は他人の機密の組織文書が返り（従前どおり）、開いた後は属性の合わない利用者に返らないことも固定する。
+- D-5 🔴 **本文の scope は効かない**: 旧い番号 3 をワイヤへ載せても、引数に `scope` / `filters` / `attributes` を書いても結果は変わらない。
+- D-6 `action` は受け口が決める（2 ツールとも `read`）。違えば `INVALID_ARGUMENT`。利用者文脈が無い・空も `INVALID_ARGUMENT`（機械の主体へ読み替えない）。
+- D-7 **引数は丸めない**: `get_document` は `document_id`（必須・GUID の文字列）、`list_documents` は `limit`（整数 1〜100・既定 20。申告の `input_schema` と同じ値）。
+  外れは `INVALID_ARGUMENT`。境界ちょうど・省略は通る。
+- D-8 🔴 **サービスアカウント実行は個人資料を返さない**（ADR-0034 決定 9 の要求側）: 利用者名が `service-account-` で始まるなら、その名前が所有者・共有先でも
+  個人資料を返さず件数にも入れない（門の両状態）。判定点（`RelayedUser` が機械として扱う）と写像の 2 層で落とす。有人の所有者には返る（対照）。
+- D-9 **応答**: 共通エンベロープ。`get_document` は 0 件か 1 件、`list_documents` は更新の新しい順の先頭 `limit` 件・`total_count` は判定と除外の後の全体件数・
+  超えたら `truncated`。題名と属性を返し、**属性は `McpEnvelopeAttributes.IsCarried` のキーだけ**（`owner`・部署・`shared_with` は運ばない）。
+  本文・参照リンクは持たない（台帳は本文を持たず、`MarkdownUri` は内部の格納先であって利用者へ見せるリンクではない）。
+- D-10 **配備**: 既定の許可集合が compose・helm の MCP サーバーの s2s の client と realm の機密クライアントに一致し、実行の宛先に document-service の h2c が在る（配線試験）。
+
+### 設計（段 2）
+
+- **受け口**（`Features/McpTools/Execute/`。Graph・Retrieval と同じ型）: 判定の順は段 1 の決定 2 のまま。引数の解釈の後、
+  `DocumentReadPrincipal.RelayedUser(userId)` を組み、`get_document` は `DocumentReadUseCase.GetAsync`、`list_documents` は `ListAsync` を呼ぶ
+  （REST・gRPC `DocumentRead` と同じ関数。**判定器は増やさない・`DocumentReadAccess` は変えない**）。
+- **門は受け口では読まない**: 枝の選択は `DocumentReadAccess` の中（要求の中で最初に読んだ値に固定）で行う。受け口が門を読んで分岐すると判定点が 2 つになる。
+- **写像**: サービスアカウント実行なら個人資料を落とし（多層防御）、件数を数えてから `limit` で切る。属性は許可リストのキーだけ。
+- **一覧の件数**: `ListAsync` は読める文書を全件返すので、`total_count` は全体・`truncated` は `limit` 超え（REST の `GET /documents` と同じ母集合）。
+- **申告の説明**: `document.get_document` の「本文の参照」を外す（返らないものを LLM に約束しない）。
+- **IADR**: 新設しない。IADR-0479 に段 2 の追記を足す（受け口の形・門の閉じた枝に乗ること・本文を返さないこと）。
+
+### 試験の方針（段 2）
+
+- DocumentService の既存の器 `GrpcKestrelFactory`（本番の `Program.cs`・実 Kestrel の h2c・127.0.0.1・本物の JwtBearer）で往復する。
+  器の `IDocumentReadScopeSource` と `IContentAbacGate` を代役（`StubDocumentReadScopeSource`・`StubContentAbacGate`。既定は「読めるものは無い」・閉）へ差し替える
+  （未構成の縮退と同じ向きなので、同じ器の他の試験の挙動は変わらない）。門を開く試験は `finally` で閉じる。
+- REST との突き合わせは同じ器の HTTP/1.1 側へ利用者のトークン（`preferred_username`）で送る。
+- テスト仕様書 `docs/tests/FR-16_mcp-server.md` の行は **X-56〜**。
+- 変異（5 件以上。コミット後に当てて `git show HEAD:<path> > <path>` で戻す）: 許可集合の検査を外す／認可の結果を無視して全許可（判定点を通さず台帳を直接読む）／
+  エンベロープの許可リストを外す／サービスアカウントの個人資料の除外を外す（写像・主体の両層）／門の状態を見ず常に開いた枝で判定／操作の突合を外す。
