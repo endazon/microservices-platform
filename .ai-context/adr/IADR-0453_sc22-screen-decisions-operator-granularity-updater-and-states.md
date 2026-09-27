@@ -2,10 +2,10 @@
 title: IADR-0453 SC-22 は運用者を含め、プロパティ 1 つずつ書き、最終更新者は BFF が書いた版にだけ付け、状態は metadata から 3 値で出す
 type: impl-adr
 status: Accepted
-related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0032, ADR-0042, ADR-0095, ADR-0110, IADR-0009, IADR-0030, IADR-0096, IADR-0251, IADR-0433, IADR-0460]
+related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0032, ADR-0042, ADR-0095, ADR-0110, IADR-0009, IADR-0030, IADR-0096, IADR-0251, IADR-0433, IADR-0456, IADR-0460]
 author: claude
 created: 2026-09-14
-updated: 2026-09-26
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/07_adr/ADR-0042_ops-management-ui-production.md
@@ -251,6 +251,15 @@ IADR-0433 決定 3 のまま。**本 ADR は `items[]` を 1 行も動かさな�
      > 注記を直し、`AuditLoggerTests` に `failed` を足し、`docs/security/security.md`「監査ログ」に「抽出は `Audit=true` で絞り
      > `outcome` を 2 値で列挙しない」を書いた。**稼働クラスタの Loki で `failed` の行を引く実測は #1472 項目 4（T-40）の場で行う。**
      > 本フォローアップは閉じた。
+     > ［2026-09-27 追記 / #1472］**develop `8e5293e3` で同じ走査を引き直し、上の追記の「抽出側に 2 値前提は無い」が今も成り立つことを確かめた**
+     > （2026-09-25 以降に足された `outcome` の条件は認可サービスの部門の同期の計器 `department_sync_outcome` だけで、監査ではない。
+     > 収集器の `logs` パイプラインも `memory_limiter` と `batch` のまま）。🔴 **ただし抽出条件を約束する文書の側に漏れがあった** ——
+     > `docs/security/security.md`「監査ログ」の SC-22 の行は `action` を `secret.item.list` / `secret.item.update` の 2 つしか挙げておらず、
+     > IADR-0456 決定 4（#1477）が足した **`secret.item.sync`（`granted` / `failed`）が無かった**。同期の依頼が通らないとき、
+     > 書き込みの行は `granted` のまま同期の `failed` が**別の行**に残るため、文書の 2 つで絞った抽出は「書けたのに Pod へ届かない」記録を黙って落とす。
+     > 行へ `secret.item.sync` と同期の失敗理由を足し、「`action` を 2 つで列挙しない」を書いた。**表の行と境界層の `*Action` 定数・`audit.Record` の outcome の
+     > リテラルが一致することを `SecretItemAuditDocTests` が固定する**（定数か outcome を足せば文書への追記を求めて落ちる）。
+     > 走査の全軸は `.ai-context/specs/20260927_1472_audit-sync-action-extraction.md`。
   5. **KV の現在版がソフト削除された状態での書き込み**は 502（`vault-rejected`）になり、原因が画面から分からない（決定 10 の帰結。監査指摘 2）。
      区別した結果と文言を返し、FakeVault に「削除済み版への PATCH が 404」を再現させる。
      > ［2026-09-15 追記 / #1467］**IADR-0454 決定 1 で片付けた。** `PATCH` 404 の後に metadata を読み、現在版が削除・破棄なら
