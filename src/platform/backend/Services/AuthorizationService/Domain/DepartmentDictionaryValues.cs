@@ -1,6 +1,6 @@
 namespace AuthorizationService.Domain;
 
-// FR-05, FR-09, UC-05, SC-09, SC-17, 計画 ADR-0116 決定 3, ADR-0115 決定 1, [[IADR-0476]] (#1609):
+// FR-05, FR-09, UC-05, SC-09, SC-17, 計画 ADR-0116 決定 3, ADR-0115 決定 1, [[IADR-0477]] (#1609):
 // **属性辞書の `department` の許可値は、realm の部門グループ（`/department/<code>`）から導く**（純関数。IdP を呼ばない）。
 //
 // ■ 裁定（計画 ADR-0116 決定 3）

@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AuthorizationService.Features.Authz;
 
-// FR-05, FR-09, UC-05, SC-09, SC-17, 計画 ADR-0116 決定 3, ADR-0115 決定 1, [[IADR-0476]] (#1609):
+// FR-05, FR-09, UC-05, SC-09, SC-17, 計画 ADR-0116 決定 3, ADR-0115 決定 1, [[IADR-0477]] (#1609):
 // **属性辞書を読む唯一の入口**。`department` の許可値を realm の部門グループから導いて当てはめる。
 //
 // ■ 🔴 **属性辞書を読む経路はすべてここを通す**（一覧・個別取得・登録・更新・ポリシー検証〔保存・dry-run〕・
@@ -100,7 +100,7 @@ public sealed class AttributeDictionary(IIdentityAdminClient identity, ILogger<A
     }
 }
 
-// FR-09, SC-09, [[IADR-0476]] (#1609): 属性辞書の応答（BFF ↔ SPA 契約 `AttributeDefinitionDto` と JSON 互換）。
+// FR-09, SC-09, [[IADR-0477]] (#1609): 属性辞書の応答（BFF ↔ SPA 契約 `AttributeDefinitionDto` と JSON 互換）。
 // `AllowedValuesSource` は手で持つキーでは null、`department` では `realm`（導いた）／`realm-unavailable`（不明・最後に確かめた値）。
 public sealed record AttributeDefinitionView(
     Guid Id,

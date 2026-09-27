@@ -73,7 +73,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(metrics => metrics.AddMeter(
 builder.Services.AddScoped<AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSync>();
 builder.Services.AddHostedService<AuthorizationService.Features.Users.DepartmentSync.DepartmentAttributeSyncHostedService>();
 
-// FR-05, FR-09, SC-09, SC-17, 計画 ADR-0116 決定 3, [[IADR-0476]] (#1609): 属性辞書を読む唯一の入口。
+// FR-05, FR-09, SC-09, SC-17, 計画 ADR-0116 決定 3, [[IADR-0477]] (#1609): 属性辞書を読む唯一の入口。
 // `department` の許可値を realm の部門グループから導く（読めなければ保存済みの値を「不明」として使い、消さない）。
 builder.Services.AddScoped<AuthorizationService.Features.Authz.AttributeDictionary>();
 

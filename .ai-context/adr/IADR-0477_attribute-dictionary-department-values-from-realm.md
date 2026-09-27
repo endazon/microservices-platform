@@ -1,5 +1,5 @@
 ---
-title: IADR-0476 属性辞書の department の許可値は、読むたびに realm の部門グループから導いて保存し直し、realm を読めなければ最後に確かめた値を「不明」として示して消さない
+title: IADR-0477 属性辞書の department の許可値は、読むたびに realm の部門グループから導いて保存し直し、realm を読めなければ最後に確かめた値を「不明」として示して消さない
 type: impl-adr
 status: Accepted
 related_ids: [FR-05, FR-09, UC-05, SC-09, SC-17, ADR-0116, ADR-0115, IADR-0006, IADR-0040, IADR-0301, IADR-0329, IADR-0472, IADR-0473]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20260927_issue-1609_department-clear-and-dictionary-from-realm.md
 ---
 
-# IADR-0476: 属性辞書の department の許可値を realm の部門グループから導く（#1609）
+# IADR-0477: 属性辞書の department の許可値を realm の部門グループから導く（#1609）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

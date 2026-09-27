@@ -9,7 +9,7 @@ using System.Net.Http.Json;
 
 namespace AuthorizationService.Tests.Features.Authz;
 
-// FR-05, FR-09, UC-05, SC-09, SC-17, 計画 ADR-0116 決定 3, ADR-0115 決定 1, [[IADR-0476]] (#1609):
+// FR-05, FR-09, UC-05, SC-09, SC-17, 計画 ADR-0116 決定 3, ADR-0115 決定 1, [[IADR-0477]] (#1609):
 // **属性辞書の `department` の許可値は realm の部門グループから導く。**
 //
 // 身元プロバイダは in-memory の偽物（部門グループは開発用 realm export と同じ engineering / sales / hr）。

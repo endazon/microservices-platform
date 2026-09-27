@@ -11,7 +11,7 @@ ids: [FR-05, FR-09, SC-09, SC-17, UC-05, NFR-09]
 adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0115, ADR-0116]
 iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0044, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0330, IADR-0473, IADR-0420, IADR-0429, IADR-0477]
 specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260905_issue-439_session-revocation-e2e, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1589_realm-machine-judgement-premises, 20260926_issue-1596_realm-login-grants-and-username-source, 20260927_issue-1605_checker-residual-precision, 20260927_issue-1630_caller-cancel-controls-tce, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
-issues: [#452, #438, #1101, #439, #1573, #1589, #1596, #1605, #1630, planning#672, #1609]
+issues: [#1609, #452, #438, #1101, #439, #1573, #1589, #1596, #1605, #1630, planning#672]
 -->
 
 # テスト仕様書: ユーザーアカウント管理

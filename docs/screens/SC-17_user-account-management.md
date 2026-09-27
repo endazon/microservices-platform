@@ -9,7 +9,7 @@ author: implementation-agent
 <!-- trace:
 ids: [FR-05, FR-09, SC-09, SC-17, UC-05, FR-20, NFR-14, NFR-09]
 adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0036, ADR-0115, ADR-0096, ADR-0114, ADR-0116]
-iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0134, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0473, IADR-0474, IADR-0420, IADR-0429, IADR-0476]
+iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0134, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0473, IADR-0474, IADR-0420, IADR-0429, IADR-0477]
 specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1589_realm-machine-judgement-premises, 20260926_issue-1596_realm-login-grants-and-username-source, 20260927_issue-1605_checker-residual-precision, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
 issues: [#452, #438, #1101, #1573, #1532, #1589, #1587, #1596, #1605, #1609, planning#672]
 -->

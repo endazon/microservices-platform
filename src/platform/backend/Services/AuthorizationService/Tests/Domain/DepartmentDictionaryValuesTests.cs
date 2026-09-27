@@ -4,7 +4,7 @@ using AwesomeAssertions;
 
 namespace AuthorizationService.Tests.Domain;
 
-// FR-05, FR-09, SC-09, 計画 ADR-0116 決定 3, [[IADR-0476]] (#1609): 属性辞書の `department` の許可値を realm から導く純関数。
+// FR-05, FR-09, SC-09, 計画 ADR-0116 決定 3, [[IADR-0477]] (#1609): 属性辞書の `department` の許可値を realm から導く純関数。
 [Trait("TestKind", "Unit")]
 public class DepartmentDictionaryValuesTests
 {

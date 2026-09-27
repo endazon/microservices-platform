@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-09, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, UC-05, SC-17]
 adrs: [ADR-0031, ADR-0116, ADR-0115]
-iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253, IADR-0476]
+iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253, IADR-0477]
 specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
 issues: [#503, #504, #510, #535, #640, #989, #1609, planning#672]
 -->

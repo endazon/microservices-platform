@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-09, SC-09, SC-17]
 adrs: [ADR-0002, ADR-0004, ADR-0036, ADR-0116, ADR-0115]
-iadrs: [IADR-0253, IADR-0476]
+iadrs: [IADR-0253, IADR-0477]
 specs: [20260823_issue-989_authz-scope-disjunction-stages, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
 issues: [#989, #1609, planning#466, planning#672]
 -->
