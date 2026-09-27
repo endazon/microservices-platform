@@ -7,7 +7,8 @@ namespace Platform.Shared.Infrastructure.Tests.Foundation.Observability;
 
 // NFR-09, 計画 ADR-0086 決定 1・§結果, ADR-0119 決定 3 (#1636):
 // **east-west gRPC の本文の利用者文脈を信じる中継者の許可集合**の共有 3 関数（判定・既定の解決・構成の形の検査）。
-// 面ごとの束縛と統合は各サービスの `*RelayOptionsTests` / `*TrustedRelayTests` が見る。ここは関数そのものの形を固定する。
+// 面ごとの束縛と統合は各サービスの試験（例: `DocumentTagWriteRelayOptionsTests` / `DocumentTagWriteTrustedRelayTests`）が見る。
+// ここは関数そのものの形を固定する。
 [Trait("TestKind", "Unit")]
 public class TrustedUserContextRelayTests
 {

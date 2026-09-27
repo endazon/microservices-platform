@@ -1,7 +1,7 @@
 ---
 title: gRPC の AddTag・ExpandNeighbors・ListValues で本文の利用者文脈を信じる呼び出し元を構成の許可集合に絞る —— AuthzScope/Resolve は受け入れの範囲を確かめて据え置く（#1636 段 1）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-04, FR-05, FR-17, FR-18, NFR-09, SC-01, SC-05, ADR-0086, ADR-0088, ADR-0063, ADR-0034, ADR-0119, IADR-0410, IADR-0417, IADR-0413, IADR-0401, IADR-0420, IADR-0426, IADR-0476]
 author: claude
 created: 2026-09-27
@@ -163,7 +163,8 @@ issue: "#1636"
 - 呼び出し元の client 名を変える配備は、**先に受け口の許可集合へ足すこと**。逆順の壊れ方:
   - graph-service の client を変えて document-service より先に出す → タグ提案の承認が `PERMISSION_DENIED` → `Unavailable` → **502**（承認は確定しない。成功へは縮退しない）。
   - retrieval-service の client を変えて graph-service より先に出す → 近傍展開が拒否され、二段検索の**グラフ再ランクが静かに効かなくなる**（検索は返る）。
-  - BFF の client を変えて retrieval-service より先に出す → 属性の候補が REST と同じ縮退の枝へ落ちる（**候補が空**）。
+  - BFF の client を変えて retrieval-service より先に出す → BFF は `PERMISSION_DENIED` を「後段が答えた上での失敗」として **502** にする
+    （`SearchBffEndpoints`。IADR-0417 決定 9。検索画面の対象範囲フィルタに候補が出ない）。
 - REST 輸送へ戻した配備には影響しない（REST の口は変えていない）。
 
 ## 残るもの
@@ -179,3 +180,20 @@ issue: "#1636"
 - `dotnet format <slnx> --verify-no-changes`（両ユニット）
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`
 - 変異 (a)(b) を当てて落ちることを確かめ、`git show HEAD:<path> > <path>` で戻す。
+
+### 結果（2026-09-27・ローカル）
+
+- `dotnet test src/knowledge/backend/backend.slnx`: exit 0（DocumentService.Tests 763・GraphService.Tests 681・RetrievalService.Tests 379 合格ほか。全プロジェクト失敗 0）
+- `dotnet test src/platform/backend/backend.slnx`: exit 0（Platform.Shared.Infrastructure.Tests 444・Platform.Bff.Tests 768 合格〔1 スキップ〕ほか。全プロジェクト失敗 0）
+- `dotnet format <slnx> --verify-no-changes`: 両ユニット exit 0
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 841 tests passed（test-spec-coverage の床は `--update` で 13 対を足した。
+  初回は `check-test-name-references` が共有の試験の注記の `*RelayOptionsTests` を実在しない試験名として止めたので、実在の名前へ直した）
+- 変異（3 サービスの試験を `TrustedRelay|RelayOptions|RelayDeploymentWiring|GrpcDocumentTagWrite|GrpcGraphNeighbors|GrpcAttributeValues` で絞って実測。
+  どれも `git show HEAD:<path> > <path>` で戻し、`grep "//MUT"` で残りが 0 件であることを確かめた）。件数は DocumentService / GraphService / RetrievalService の順:
+  - M1 3 面の `EnsureTrustedRelay(context)` の呼び出しを落とす（呼び出し元の確認を落とす）: 14 / 13 / 14 件が落ちた（許可集合外 6 主体の Theory・変種 5・`azp` の食い違い・人のトークン・空のタグ名／空の key）。
+  - M2 共有の判定の照合を落とす（`Contains` → `true`）: 21 / 20 / 21 件が落ちた（上記 ＋ 構成・判定の単体試験）。
+  - M3 接頭辞一致（`clientId.StartsWith(c) || c.StartsWith(clientId)`）: 4 / 4 / 4 件が落ちた（`*-x`・末尾を欠いた名前の統合・単体）。
+  - M4 大小文字を畳む（`OrdinalIgnoreCase`）: 3 / 3 / 3 件が落ちた。
+  - M5 機械であることの確認を落とす: 2 / 2 / 2 件が落ちた（人のトークンの統合試験と単体試験）。
+  - M6 1 つの値の検査を外す（`ThrowIfScalar` を素通しにする）: 1 / 1 / 1 件が落ちた。
+  - 変異 (c)「本文のロールを再び信じる」は段 2 の PR で当てる（段 1 では本文のロールは許可集合の中継者から来たときにまだ効く）。

@@ -39,9 +39,14 @@ related_ids:
   - IADR-0401
   - IADR-0402
   - IADR-0408
+  - ADR-0088
+  - IADR-0413
+  - IADR-0420
+  - IADR-0426
+  - IADR-0476
 author: claude
 created: 2026-09-07
-updated: 2026-09-07
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0086_user-context-in-body-not-token-exchange.md 決定 1〜5
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md 決定 1・2
@@ -258,3 +263,46 @@ plan_refs:
 | 日付 | 変更 | 根拠 |
 | --- | --- | --- |
 | 2026-09-07 | 起案した | 計画 `ADR-0086` 決定 1・3・5（#1255 残作業 1） |
+| 2026-09-27 | 追記 1: 本文の利用者文脈を信じる呼び出し元を面ごとの許可集合に絞った（決定 1・決定 2 の信頼の範囲） | #1636（PR #1631 の監査で見つかった同型） |
+
+## 追記 1: 本文の利用者文脈（とロール）を信じる呼び出し元を許可集合に絞る（2026-09-27 / #1636）
+
+［2026-09-27 追記 / #1636］PR #1631（#1628。`DocumentRead` の同型の穴）の監査で見つかった。決定 1 の「判定の位置は動かさない」は守られていたが、
+判定の**入力**（本文の利用者文脈と、決定 2 の `user_roles`）を**誰が運んでよいか**が門で閉じていなかった。
+
+- **事実**: 両面の門は `ServiceCaller`（realm ロール `platform-service`）だけで、realm では 11 のサービスアカウントがそれを持つ
+  （bff・ai-stock-trading-llm-caller・aianalysis-service・graph-service・conversion-service・retrieval-service・ingestion-service・wiki-service・
+  datasource-service・mcp-server・document-service）。
+  - `DocumentTagWrite/AddTag`: どれかが `user_id` を任意にし、`user_roles=["platform-admin"]` を名乗ると、決定 2 の②（管理者の上書き）で
+    **任意の組織文書へタグを書けた**（個人資料は #1629 で②から外れている）。書けたかどうかの応答は文書の実在の手掛かりにもなる。
+  - `GraphNeighbors/ExpandNeighbors`: 名乗った利用者のスコープの辺（文書 ID・辺の種類）を引けた。
+  - 実際に呼ぶのは、`AddTag` は GraphService の `GrpcDocumentTagWriter`（client `graph-service`）だけ、`ExpandNeighbors` は RetrievalService の
+    `GrpcGraphNeighborExpander`（client `retrieval-service`）だけである（両ユニットと AST を走査。作業仕様書の母集合）。
+- **決定**:
+  1. **本文の利用者文脈を信じるのは、呼び出し元が機械の主体（`MachinePrincipal.IsMachine`）で、かつクライアント識別
+     （`MachinePrincipal.ClientIdOf`。`azp` を第一に、無ければ `service-account-<clientId>` から復元）が面ごとの許可集合に序数一致で含まれるときだけ。**
+     判定・既定の解決・構成の形の検査は共有の `TrustedUserContextRelay`（`Platform.Shared.Infrastructure`。`MachinePrincipal` の隣）に置き、
+     `MachinePrincipal` の 2 関数だけで書く（[[IADR-0420]]）。
+  2. **許可集合は `DocumentTagWrite:TrustedUserContextClients`（既定 `graph-service`）・`GraphNeighbors:TrustedUserContextClients`（既定 `retrieval-service`）。**
+     未構成なら既定、構成すると既定を置き換える（.NET の配列の束縛は初期値に追記するので既定は null にして読み出し側で解決する）。
+     空白だけなら誰も信じない。**1 つの値で構成すると起動時に例外**（[[IADR-0476]] の追記と同じ。1 つの値は束縛されず既定へ静かに戻る）。
+  3. **許可集合に無い呼び出し元が利用者文脈を付けたら `PERMISSION_DENIED`**。要求の形の誤り（GUID・`user_id` の空）の `INVALID_ARGUMENT` の後、
+     入力検証・スコープ解決・文書の取得の前に判定する。`AddTag` の拒否を `NOT_WRITABLE` へ畳まない（中継者の構成誤りが「書けない」に化けるため。
+     文書を引く前なので実在は漏れない）。両面とも `user_id` の無い要求は元々 `INVALID_ARGUMENT` であり、それは変えない（機械の視野を新設しない ＝ 広げない）。
+     `ListEdgeTypeWeights` は利用者文脈を持たないので対象外。
+- **選ばなかった案: 機械の主体として扱う（利用者文脈を捨てる）。** 両面とも利用者の無い要求の口を持たない。読み替えると呼び出し元は利用者の視野の
+  つもりで別の結果を受け取り、誤りに気付けない（#1628 / #1635 と同じ判断）。
+- **決定 2（`user_roles`）の扱い**: 本追記の後、本文のロールが効くのは**許可集合の中継者（graph-service）が運んだときだけ**になる。
+  🔴 **本文のロールを信じること自体をやめる**（管理者かどうかを認可サービスに引き直させる）のは #1636 の 2 本目の PR で行う ——
+  管理者の上書きは外さない（取り込み文書 `owner=system` を承認できる唯一の枝であり、helm・compose とも graph はタグの反映を gRPC で呼ぶので、
+  外すと SC-05 の管理者の承認が配備で壊れる）。本文の `user_roles` は計画 `ADR-0088` が閉じた「偽の属性を主張する」と同じ型の主張だからである。
+- **計画 ADR-0086 との関係**: 決定 1 は運び方（本文で運ぶ）を定め、§結果は「中継サービスが正直であること」への依存を受け入れた。受け入れたのは
+  利用者の権限で動く中継者への依存であって、`platform-service` を持つ全主体への依存ではない。依存を実在する中継者へ狭めても運び方は変わらない。
+  上の「残るもの」の「`ADR-0086` 決定 4 の構造は残る」（`AuthzScope/Resolve` が主張を評価する）は、計画 `ADR-0088` が属性の半分を閉じ（[[IADR-0413]]）、
+  `user_id` の半分を受け入れたリスクとして残した。その扱いは [[IADR-0413]] の追記（同日）に記録する（本追記では変えない）。
+- **配備の順番**: helm・compose とも graph の s2s の client は `graph-service`、retrieval は `retrieval-service` で、既定の許可集合と一致する
+  （`DocumentTagWriteRelayDeploymentWiringTests` / `GraphNeighborsRelayDeploymentWiringTests` が固定する）。**document-service・graph-service を
+  先に配備してよい**（呼び出し元の変更は無い）。呼び出し元の client 名を変える配備は、**先に受け口の許可集合へ足すこと** —— 逆順だと、
+  タグの承認は `PERMISSION_DENIED` → `Unavailable` → **502**（承認は確定しない）、近傍展開は警告を出して**グラフ再ランクなしの検索へ静かに縮退**する。
+  REST 輸送へ戻した配備には影響しない。
+- 作業仕様書: `.ai-context/specs/20260927_issue-1636_grpc-trusted-user-context-relays.md`

@@ -3,15 +3,15 @@ title: FR-18 AI 提案（リンク・タグ）テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-22
-updated: 2026-09-05
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
-ids: [FR-18, SC-03, SC-05, SC-09]
-adrs: [ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063]
-iadrs: [IADR-0242, IADR-0266, IADR-0364, IADR-0380]
-specs: [20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source]
-issues: [#450, #914, #911, #915, #1014, #1187, #1244]
+ids: [FR-18, SC-03, SC-05, SC-09, NFR-09]
+adrs: [ADR-0086, ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063]
+iadrs: [IADR-0410, IADR-0242, IADR-0266, IADR-0364, IADR-0380]
+specs: [20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source]
+issues: [#1636, #450, #914, #911, #915, #1014, #1187, #1244]
 -->
 
 # テスト仕様書: AI 提案（リンク・タグ）
@@ -88,6 +88,7 @@ AI が提案したリンク候補・タグ候補の**永続と状態遷移**、�
 | T-50 | 構成 `Source=none` ／ 未知の値 | ホストを起動する | `none` で「常に空」の既定アダプタが解決される（切り替えの陽性対照）／**未知の値は起動が落ちる**（既定へ倒さない） | 未構成時の既定を維持する | 自動 |
 | T-51 | 本文指紋が変わる ／ 変わらない | 文書更新イベントを購読側へ与える | 変われば本文を 1 回読んで出現数を作り直す。**変わらなければ本文を読まず出現数も変わらない**（対）。指紋が進めば差し替わる（陽性対照） | 却下解除・リンク抽出と同じ契機 | 自動 |
 | T-52 | 出現数の行がある文書 | 文書削除イベントを購読側へ与える | 出現数の行も消える（削除前は在る: 陽性対照） | 痕跡を残さない | 自動 |
+| T-53 | 所有者の無い組織文書と辞書のタグ。グラフの client（`graph-service`。実トークンの形 = 利用者名なし・`azp` あり、と `service-account-` の利用者名の形）、`platform-service` を持つ他のサービスアカウント（別プロジェクトの LLM 呼び出し用・BFF・MCP・文書・検索・AI 分析）、クライアント識別の接頭辞・大小文字の変種、利用者名だけグラフで `azp` が別のトークン、`azp=graph-service` を持つ人のトークン（`DocumentTagWriteTrustedRelayTests`・`DocumentTagWriteRelayOptionsTests`・`DocumentTagWriteRelayDeploymentWiringTests`） | 反映の gRPC 面を利用者文脈と管理者ロールつき・利用者文脈無しで呼ぶ。信頼する中継者の集合を未構成・置き換え・空白だけ・1 つの値で束縛する。compose・helm のグラフの s2s の client と realm を読む | グラフだけが利用者として反映でき、管理者の承認が通る（陽性対照・版が進む）。他はすべて拒否され（`PERMISSION_DENIED`）、**管理者ロールを名乗っても文書は変わらない**（版が 1 のまま）。空のタグ名でも拒否。利用者文脈の無い要求は呼び出し元を問わず要求の誤り。集合は未構成ならグラフだけ・構成は既定を置き換える・空白だけは誰も信じない・1 つの値は起動時に止まる。配備のグラフの client は既定の集合に入り、realm に `platform-service` 付きで在り、反映を gRPC で配線している。確認を落とす・接頭辞一致・大小文字を畳む・機械の確認を落とす・1 つの値の検査を外す変異は赤 | 利用者文脈を運べる呼び出し元 | 自動 |
 
 ## 変異試験（類似度候補の供給元）
 

@@ -2,10 +2,10 @@
 title: IADR-0413 認可サービスは利用者属性を IdP から引き直し、REST の /authz/scope にも ServiceCaller を掛ける。引き方は by-username の 1 往復とし、キャッシュは置かない
 type: impl-adr
 status: Accepted
-related_ids: [FR-05, FR-09, FR-16, NFR-09, UC-05, UC-09, SC-12, SC-17, ADR-0004, ADR-0062, ADR-0080, ADR-0084, ADR-0086, ADR-0087, ADR-0088, IADR-0141, IADR-0301, IADR-0329, IADR-0379, IADR-0385, IADR-0401, IADR-0411, IADR-0412]
+related_ids: [FR-05, FR-09, FR-16, NFR-09, UC-05, UC-09, SC-12, SC-17, ADR-0004, ADR-0062, ADR-0080, ADR-0084, ADR-0086, ADR-0087, ADR-0088, IADR-0141, IADR-0301, IADR-0329, IADR-0379, IADR-0385, IADR-0401, IADR-0411, IADR-0412, IADR-0410, IADR-0417, IADR-0426, IADR-0476]
 author: claude
 created: 2026-09-08
-updated: 2026-09-11
+updated: 2026-09-27
 ---
 
 # IADR-0413: 利用者属性の引き直しと、REST 面の認可
@@ -221,3 +221,21 @@ gRPC 面と同じ水準に揃う。** それ以上は閉じていない。
 > サブグループ（`ServiceCaller`）へ移した。**呼び出し元の追随は不要**——現時点で呼ぶ取り込み経路は無い（`deploy/local/abac-seed/README.md`）。
 > 陰性対照 2 件（platform-service を持たない主体 / 管理者の利用者トークン → 403）を足し、門を外すと 2 件が赤になる。
 > `docs/security/security.md` は以前から本端点を ServiceCaller と記していたので、文書が実装に先行していた形になる。
+
+## 追記: 利用者文脈を運べる呼び出し元の許可集合を `AuthzScope/Resolve` には置かない（2026-09-27 / #1636）
+
+［2026-09-27 追記 / #1636］PR #1631（#1628）の監査が、本文の利用者文脈を `ServiceCaller` だけで信じる east-west の面を 5 つ挙げた。
+資源を返す 4 面（`DocumentRead`・`DocumentSearch`・`DocumentTagWrite/AddTag`・`GraphNeighbors/ExpandNeighbors`・`AttributeValues/ListValues`）には
+面ごとの許可集合を当てた（[[IADR-0476]] 追記・[[IADR-0426]] 追記 1・[[IADR-0410]] 追記 1・[[IADR-0417]] 追記 1）。**本面（5 位）は変えない。**
+
+- **確かめたこと**: 計画 `ADR-0086` 決定 4 は「`AuthzScope/Resolve` が `user_id` / `user_attributes` を呼び出し元の本文から受け取り、Keycloak を
+  引き直さずに評価する」ことを受け入れたリスクとして記録した。計画 `ADR-0088` は属性の半分を閉じ（本 IADR 決定 1・3）、**決定 4 で `user_id` の
+  詐称を「残る半分」として明示的に残し**、決定 2 で「詐称できる主体は `platform-service` を持つサービスに限られ、gRPC 面と同じ水準に揃う」とした。
+  本 IADR 決定 6 もそれを写している。**「`platform-service` を持つ主体が任意の利用者のスコープを引ける」は計画が受け入れた範囲そのものである。**
+- **したがって実装側で許可集合を当てない。** 当てることは技術的には可能だが（呼び出し元は BFF・AI 分析・文書・グラフ・検索・Wiki・MCP の 7 クライアント）、
+  それは計画が選んだ水準（`platform-service` を持つサービス）を実装で動かすことになり、計画の裁定を要する。狭めねばならない新しい事実も無い:
+  - 本面が返すのは**スコープの記述**（属性の形・分岐）であり、資源そのものではない。
+  - スコープを使って資源（文書の読み取り・検索の本文・辺・属性値・タグの書き込み）を引く面は、上の 4 追記によりそれぞれ許可集合の中継者に限られた。
+    `platform-service` を持つだけの主体は、本面で被害者のスコープを知っても、それを使って資源を引く口を持たない。
+- **残るもの**: `user_id` の詐称（計画 `ADR-0088` 決定 4。token exchange 待ち ＝ 計画 `ADR-0086` 決定 2 の着手可否 2 条件）。本追記はこれを閉じていない。
+- 作業仕様書: `.ai-context/specs/20260927_issue-1636_grpc-trusted-user-context-relays.md` §設計 4
