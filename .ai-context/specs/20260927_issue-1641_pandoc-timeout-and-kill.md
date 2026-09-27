@@ -1,7 +1,7 @@
 ---
 title: pandoc の呼び出しに時間切れとプロセスの停止を持たせ、止まった変換が Inline のキューを長くふさがないようにする（#1641）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-12, UC-06, SC-07, ADR-0012, ADR-0027, ADR-0070, IADR-0008, IADR-0320, IADR-0356]
 author: claude
 created: 2026-09-27
@@ -58,7 +58,7 @@ issue: "#1641"
 
 ## 設計
 
-- **実行器** `ExternalProcess.RunAsync(psi, timeout, ct, logger)`（`Infrastructure/ExternalServices/ExternalProcess.cs`・internal static）を 4 か所
+- **実行器** `ExternalProcess.RunAsync(psi, tool, timeout, logger, ct)`（`tool` は例外・ログに出す道具名。試験が命令を差し替えても変わらない）（`Infrastructure/ExternalServices/ExternalProcess.cs`・internal static）を 4 か所
   （pandoc 変換・pandoc 版・pdftotext 抽出・pdftotext 版）で共用する。
   - 期限の CTS と `ct` を連結した `linked` で `WaitForExitAsync` と読み取りを待つ。
   - `linked` が立ったら `Kill(entireProcessTree: true)`（既に終わっていれば何もしない）→ 刈り取り（`WaitForExitAsync(None)` を上限 10 秒で待つ。越えたら警告ログ）→
@@ -96,13 +96,14 @@ issue: "#1641"
 
 ## 検証
 
-実測はすべて 2026-09-27、手元（Windows・.NET SDK 10）。結果は PR 本文に記す。
+実測はすべて 2026-09-27、手元（Windows・.NET SDK 10）。修正のコミット `08f0fb2b` の上で測った。
 
-- `dotnet test src/knowledge/backend/Services/ConversionService/Tests`。
-- `dotnet format <slnx> --verify-no-changes`: `src/knowledge/backend/backend.slnx`・`src/platform/backend/backend.slnx`。
-- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`。
-- 変異（1 か所ずつ。修正のコミットの上で書き換え、`git show HEAD:<path> > <path>` で戻す）:
-  - M1: `Kill(entireProcessTree: true)` を外す → AC-3・AC-4 の試験が赤。
-  - M2: 期限の CTS を外す（期限なし）→ AC-3・AC-5 の試験が赤。
-  - M3: `Kill(entireProcessTree: false)`（親だけ止める）→ AC-3・AC-4 の試験が赤（子孫が残る）。
-  - M4: 起動時の検査から本文変換の期限を外す → AC-2 の試験が赤。
+- `dotnet test src/knowledge/backend/Services/ConversionService/Tests/ConversionService.Tests.csproj` → 合格 220・スキップ 6（pandoc / pdftotext 導入環境でだけ走る既存の試験）・失敗 0。
+- `dotnet format <slnx> --verify-no-changes`: `src/knowledge/backend/backend.slnx`・`src/platform/backend/backend.slnx` とも終了コード 0。
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` → 841 tests passed。
+- 変異（1 か所ずつ。修正のコミットの上で書き換え、`git show HEAD:<path> > <path>` で戻し、戻した後に `git status --short` が空であることを確かめた）。
+  各回の後に `tasklist` で `ping.exe` が 0 件（試験の後始末が変異で残った子を止める）:
+  - M1: `proc.Kill(entireProcessTree: true)` を外す → `ExternalProcessTimeoutTests` 6 件中 4 件が赤（期限切れ 2・ジョブ記録・取り消し。止まらず残る）。正常系・非 0 終了の 2 件は緑のまま。
+  - M2: 期限の CTS を期限なしにする → 3 件が赤（期限切れ 2・ジョブ記録。試験の上限 30 秒の `TimeoutException` になり `BodyConversionTimeoutException` にならない）。
+  - M3: `Kill(entireProcessTree: false)`（親だけ止める）→ 4 件が赤（`found at least one item {<子の番号>}` —— 子孫が残る）。
+  - M4: 起動時の検査から本文変換の期限を外す → `受け口の期限が本文変換と総枠と一回の期限の和を超えなければ起動を止める` の 3 行すべてが赤。
