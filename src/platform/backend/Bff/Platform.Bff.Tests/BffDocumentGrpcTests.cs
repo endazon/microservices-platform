@@ -158,6 +158,43 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
         missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // ── 読み取りの主体（#1614） ───────────────────────────────────────────
+
+    // NFR-09, FR-19, 計画 ADR-0119 決定 3, ADR-0086 決定 1 (#1614): 🔴 **gRPC の読み取り 4 口は、呼び出し元の
+    // 利用者を本文の利用者文脈で運ぶ。** 運ばないと後段は BFF 自身（機械の主体）として読み、個人資料を返さない
+    // ——所有者が自分の資料を SC-03 で開けなくなる。
+    [Fact]
+    public async Task Grpc_reads_carry_the_caller_as_the_user_context()
+    {
+        var stub = new StubDocumentReadInvoker(_factory);
+        var client = GrpcClient(stub);
+        client.DefaultRequestHeaders.Add(TestAuthHandler.UsernameHeader, "alice");
+
+        (await client.GetAsync("/bff/documents", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        (await client.GetAsync(DetailPath, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        (await client.GetAsync(VersionsPath, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        (await client.GetAsync(VersionPath(3), TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+
+        stub.Users.Keys.Should().BeEquivalentTo(["ListDocuments", "GetDocument", "ListVersions", "GetVersion"]);
+        stub.Users.Values.Should().OnlyContain(u => u != null && u.UserId == "alice" && u.Action == "read",
+            "4 口とも呼び出し元の利用者を運ぶ");
+    }
+
+    // 🔴 呼び出し元が機械（Bearer の無人主体）なら**運ばない**（BFF 自身の機械の主体として読まれ、個人資料は返らない）。
+    // 機械の利用者名を利用者文脈として運ぶと、後段で「その名前の利用者」として照合されてしまう。
+    [Fact]
+    public async Task Grpc_reads_do_not_carry_a_user_context_for_a_machine_caller()
+    {
+        var stub = new StubDocumentReadInvoker(_factory);
+        var client = GrpcClient(stub);
+        client.DefaultRequestHeaders.Add(TestAuthHandler.UsernameHeader, "service-account-some-client");
+
+        await client.GetAsync(DetailPath, TestContext.Current.CancellationToken);
+
+        stub.Users.Should().ContainKey("GetDocument");
+        stub.Users["GetDocument"].Should().BeNull();
+    }
+
     // ── 縮退（呼び出し元ごとに向きが違う。一般化しない） ─────────────────────────
 
     // 一覧: 引けなかったら **空一覧**（現行 REST の catch と同じ枝を共有する）。
@@ -238,6 +275,9 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
     {
         public int GetDocumentCalls { get; private set; }
 
+        /// <summary>#1614: rpc ごとに受け取った利用者文脈（載っていなければ null）。</summary>
+        public System.Collections.Concurrent.ConcurrentDictionary<string, Pb.UserContext?> Users { get; } = new();
+
         /// <summary>全 rpc を失敗させる（縮退の検証用）。</summary>
         public Exception? Failure { get; init; }
 
@@ -259,6 +299,14 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
 
         private object Respond(string name, object request)
         {
+            Users[name] = request switch
+            {
+                Pb.ListDocumentsRequest r => r.User,
+                Pb.GetDocumentRequest r => r.User,
+                Pb.ListVersionsRequest r => r.User,
+                Pb.GetVersionRequest r => r.User,
+                _ => null,
+            };
             if (Failure is not null) throw Failure;
 
             switch (name)

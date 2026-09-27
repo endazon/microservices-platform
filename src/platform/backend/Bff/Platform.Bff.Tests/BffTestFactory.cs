@@ -247,6 +247,12 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // 検査するため、**伝播が切れれば辞書は取れない**。**テスト間で共有される**（IClassFixture）ため、
     // 観測する側が呼ぶ前に戻すこと。
     public string? LastTagDictionaryForwardedAuthorization { get; set; }
+
+    // NFR-09, FR-19, 計画 ADR-0119 決定 3 (#1614): 文書の**読み取り**（一覧・詳細・版の一覧・特定版）へ伝播した
+    // Authorization。後段の読み取りは認証を要し、個人資料を所有者と共有先の利用者にだけ返すため、
+    // **伝播が切れれば REST 経路は 401、所有者が自分の資料を開けない**。読み取った経路ごとに記録する
+    // （キー: 後段のパス）。**テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に消すこと。
+    public System.Collections.Concurrent.ConcurrentDictionary<string, string?> DocumentReadForwardedAuthorization { get; } = new();
     public HttpStatusCode TagDictionaryStatusCode { get; set; } = HttpStatusCode.OK;
 
     // FR-09, SC-09, #640: 辞書の書き込み（追加・改名・削除）。
@@ -991,6 +997,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
                         })
                         : Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
             }
+
+            // #1614: 読み取り（GET の一覧・詳細・版）へ伝播した資格情報を経路ごとに記録する（書き込みは記録しない）。
+            if (method == HttpMethod.Get && path.StartsWith("/documents", StringComparison.Ordinal))
+                owner.DocumentReadForwardedAuthorization[path] = request.Headers.Authorization?.ToString();
 
             if (path.EndsWith("/versions", StringComparison.Ordinal))
                 return Ok(owner.StubVersions);

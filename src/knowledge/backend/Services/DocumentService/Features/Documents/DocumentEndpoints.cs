@@ -31,9 +31,19 @@ public static class DocumentEndpoints
 {
     public static IEndpointRouteBuilder MapDocumentEndpoints(this IEndpointRouteBuilder app)
     {
-        // 読み取り（一覧・個別・版）は一般利用者の文書閲覧（SC-03）のためロールで塞がない。
-        // 読み取りの機密制御は取得段の ABAC（IADR-0012）が担う。
-        var g = app.MapGroup("/documents").WithTags("Documents");
+        // ── NFR-09, FR-06, FR-19, UC-03, 計画 ADR-0119 決定 3 (#1614): 読み取り 5 口（一覧・ページ・個別・版の一覧・特定版） ──
+        //
+        // **認証を要する。ロールは積まない**（一般利用者の文書閲覧 SC-03。ロールで塞ぐと BFF の詳細が
+        // 一般利用者に対して 404 になる）。従前は認証を求めない群に属し、個人資料の表題・owner・共有先が
+        // メッシュ内の任意の呼び出し元へ返っていた（planning#680 実測 10）。
+        // 主体は呼び出し元の資格情報（エッジが中継した利用者、または機械クライアント自身）であり、
+        // 個人資料は所有者と共有先の利用者にだけ返る（判定は `DocumentReadAccess`）。
+        //
+        // 🔴 **読み取りの口を匿名の群へ戻さない。** 1 口だけ戻すと、その口から個人資料の除外が
+        // 外れるのではなく**主体が決まらなくなる**（`DocumentReadPrincipal` は名前の無い主体に個人資料を見せないが、
+        // 組織文書は認証なしで見える＝ADR-0119 決定 3 の違反）。`DocumentReadAuthenticationTests` が 5 口を列挙して止める。
+        // （旧 `pageRead` 群〔#1575〕はこの群へ合流した —— 同じ認可の既定を 2 本持たない。）
+        var read = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
 
         // FR-06, FR-09, UC-03, IADR-0044: 多層防御。BFF 迂回の直接呼び出しでも認可を実効化する
         // （サービスが最終防衛線）。利用者トークンは BFF が伝播する。
@@ -68,16 +78,13 @@ public static class DocumentEndpoints
         // 死ぬ。判定は口の中で行い、拒否は 404 に倒す（`PutBody` と同じ）。**`write` 群へ入れてはならない。**
         var tagReflection = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
 
-        // ── FR-06, NFR-08 (#1575): 組織文書の絞り込み・ページング（`GET /documents/page`） ──
-        //
-        // **認証だけを要する。** 読み取りの `g` 群（認証なし）へ入れないのは、新しい口を狭い側で開けるため
-        // （呼び出し元は KB 用のサービスアカウント等で、トークンを必ず持つ）。ロールは積まない ——
-        // 集合は `GET /documents` の部分集合であり、ロールで塞ぐと既存の一覧より狭い主体しか使えない口になる。
-        var pageRead = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
+        // FR-06, NFR-08 (#1575): 組織文書の絞り込み・ページング（`GET /documents/page`）も上の `read` 群に居る。
+        // ロールは積まない —— 集合は `GET /documents` の部分集合であり、ロールで塞ぐと既存の一覧より狭い主体しか
+        // 使えない口になる。
 
-        ListDocumentsEndpoint.Map(g);
-        ListDocumentPageEndpoint.Map(pageRead);
-        GetDocumentEndpoint.Map(g);
+        ListDocumentsEndpoint.Map(read);
+        ListDocumentPageEndpoint.Map(read);
+        GetDocumentEndpoint.Map(read);
         CreateDocumentEndpoint.Map(write);
         UpdateDocumentEndpoint.Map(write);
         UpdateDocumentMetadataEndpoint.Map(write);
@@ -85,8 +92,8 @@ public static class DocumentEndpoints
         ArchiveDocumentEndpoint.Map(write);
         PutDocumentBodyEndpoint.Map(bodyIntake);
         AddDocumentTagEndpoint.Map(tagReflection);
-        ListDocumentVersionsEndpoint.Map(g);
-        GetDocumentVersionEndpoint.Map(g);
+        ListDocumentVersionsEndpoint.Map(read);
+        GetDocumentVersionEndpoint.Map(read);
         DeleteDocumentEndpoint.Map(write);
 
         return app;

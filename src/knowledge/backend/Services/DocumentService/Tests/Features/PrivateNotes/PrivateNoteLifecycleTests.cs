@@ -89,7 +89,8 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
         note.IncludeInSearch.Should().BeFalse();
 
         // Document 側の既定値（doc_scope / owner / restricted）
-        var doc = await factory.CreateClient().GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>(
+        // #1614: 個人資料は所有者（と共有先）にしか返らない（計画 ADR-0119 決定 3）→ 所有者として読む。
+        var doc = await session.GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>(
             $"/documents/{note.Id}", TestContext.Current.CancellationToken);
         doc!.Attributes.Should().Contain("doc_scope", "private-note");
         doc.Attributes.Should().Contain("owner", user);
@@ -122,7 +123,8 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
 
         // FR-19: 機密区分＝restricted。⑨ の判定が読む `ai_input` も **excluded で明示**される
         // （[[IADR-0283]] 決定 4。不在に頼らない多層防御）。
-        var doc = await factory.CreateClient().GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>(
+        // #1614: 個人資料は所有者（と共有先）にしか返らない（計画 ADR-0119 決定 3）→ 所有者として読む。
+        var doc = await session.GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>(
             $"/documents/{note.Id}", TestContext.Current.CancellationToken);
         doc!.Attributes.Should().Contain(
             ConfidentialityLevels.AttributeKey, ConfidentialityLevels.Restricted);
@@ -148,7 +150,7 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
         on.StatusCode.Should().Be(HttpStatusCode.OK);
         (await on.Content.ReadFromJsonAsync<PrivateNoteDto>(TestContext.Current.CancellationToken))!.IncludeInAi.Should().BeTrue();
 
-        var afterOn = await AttributesOfAsync(note.Id);
+        var afterOn = await AttributesOfAsync(session, note.Id);
         afterOn.Should().Contain(AiInputExposure.AttributeKey, AiInputExposure.Included);
         AiInputExposure.IsAllowed(afterOn).Should().BeTrue();
 
@@ -157,7 +159,7 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
             new { includeInSearch = true, includeInGraph = false, includeInAi = false }, TestContext.Current.CancellationToken);
         off.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var afterOff = await AttributesOfAsync(note.Id);
+        var afterOff = await AttributesOfAsync(session, note.Id);
         afterOff.Should().Contain(AiInputExposure.AttributeKey, AiInputExposure.Excluded);
         AiInputExposure.IsAllowed(afterOff).Should().BeFalse();
 
@@ -175,7 +177,7 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
     {
         var (_, session, plugin) = await OwnerAsync();
         var noteId = await PushNoteAsync(plugin, "version-stable.md", "本文");
-        var before = (await factory.CreateClient()
+        var before = (await session
             .GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>($"/documents/{noteId}", TestContext.Current.CancellationToken))!.Version;
 
         await session.PutAsJsonAsync($"/private-notes/{noteId}/exposure",
@@ -183,13 +185,14 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
         await session.PutAsJsonAsync($"/private-notes/{noteId}/exposure",
             new { includeInSearch = false, includeInGraph = false, includeInAi = false }, TestContext.Current.CancellationToken);
 
-        var after = (await factory.CreateClient()
+        var after = (await session
             .GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>($"/documents/{noteId}", TestContext.Current.CancellationToken))!.Version;
         after.Should().Be(before, "露出トグルは本文の編集ではない（FR-19 の版の意味）");
     }
 
-    private async Task<Dictionary<string, string>> AttributesOfAsync(Guid documentId)
-        => (await factory.CreateClient()
+    // #1614: 個人資料は所有者（と共有先）にしか返らない → 所有者のセッションで読む。
+    private static async Task<Dictionary<string, string>> AttributesOfAsync(HttpClient owner, Guid documentId)
+        => (await owner
             .GetFromJsonAsync<Knowledge.Contracts.Dtos.DocumentDto>($"/documents/{documentId}"))!
             .Attributes;
 
@@ -262,8 +265,11 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
             "90 日未満は保管が続く（陽性対照）");
 
         // 文書実体も消えている（復元不可）
-        (await factory.CreateClient().GetAsync($"/documents/{oldNote}", TestContext.Current.CancellationToken)).StatusCode
+        // #1614: **所有者として**引く —— 他人として引くと、消えていなくても 404（存在秘匿）になり何も測れない。
+        (await session.GetAsync($"/documents/{oldNote}", TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.NotFound);
+        (await session.GetAsync($"/documents/{freshNote}", TestContext.Current.CancellationToken)).StatusCode
+            .Should().Be(HttpStatusCode.OK, "陽性対照: 保管中の資料は所有者に返る");
 
         // FR-22 ①-c: 事後通知は件数のみ
         var done = factory.Notifier.OfKind(PrivateNoteNotificationKinds.PrivateNotePurgeDone)

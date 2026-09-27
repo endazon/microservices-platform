@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AwesomeAssertions;
+using DocumentService.Domain.Ports;
 using DocumentService.Features.ObsidianSync.Push;
 using DocumentService.Features.PrivateNotes.Maintenance;
 using DocumentService.Infrastructure.Persistence;
@@ -12,6 +12,7 @@ using Knowledge.Contracts.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 
 namespace DocumentService.Tests.Features.PrivateNotes;
 
@@ -68,29 +69,57 @@ public class PrivateNoteMaintenanceHostedServiceTests(TestWebApplicationFactory 
 
     // ［#1604］FR-19, FR-22, [[IADR-0431]] 決定 5 の追記: 失敗した周期の後は**次の拍まで待つ**（間を空けずに再試行しない）。
     // 上の試験は「次の周期が来る」ことしか測っておらず、失敗の直後に待たずに再試行する変異（M1）が生き残った（#1601 の監査）。
-    // 周期を 300 ミリ秒にし、1・2 周期目の 1 巡目の判定で投げ（停止要求と無関係な取り消しと、ふつうの例外）、3 周期目で「経過」と答えさせる。
-    // 各回の判定の時刻を記録し、1→2 回目・2→3 回目の間隔が周期の半分以上あることを測る。
+    // 1・2 周期目の 1 巡目の判定で投げ（停止要求と無関係な取り消しと、ふつうの例外）、3 周期目で「経過」と答えさせる。
+    // 各回の判定が**別の拍**で起きることを測る。
+    //
+    // ［#1622］[[IADR-0431]] 決定 5 の追記: 拍は**偽の時計**（`CycleClock` に `FakeTimeProvider`）で試験が手で進める。従前は周期 300 ミリ秒の
+    // 実時間で「判定の間隔が周期の半分以上」を測っており、1 周期目の本体（スコープ・DB 読み）が負荷で 300 ミリ秒を超えると `PeriodicTimer` が
+    // 溜まった拍をすぐに発火し、**正しい実装でも**落ちた（監査で全体の実行 3 回中 2 回・develop でも再現）。偽の時計は試験が進めない限り進まない。
+    // 判定: (a) 失敗の後、拍を進める前は次の判定が来ない（静穏の窓を置いて回数を見る）、(b) k 回目の判定が見た偽の時刻が「開始 + k 周期」。
+    // 正しい実装では (a)(b) とも決定的に成り立つ（窓の長さに依らない）。窓が効くのは M1（待たずに再試行）の側だけである。
     [Fact]
     public async Task 周期の失敗が続いても次の拍まで待ってから再び判定する()
     {
-        var cycle = TimeSpan.FromMilliseconds(300);
+        var cycle = TimeSpan.FromHours(1);
+        var quiet = TimeSpan.FromMilliseconds(250);
         var user = $"tick-{Guid.NewGuid():N}"[..20];
         var noteId = await PushNoteAsync(await PluginAsync(user), "tick.md", "本文");
-        var clock = Stopwatch.StartNew();
-        var askedAt = new ConcurrentQueue<TimeSpan>();
+        var clock = new ManualTickClock();
+        var start = clock.GetUtcNow();
+        var askedAt = new ConcurrentQueue<DateTimeOffset>();
+        using var asked = new SemaphoreSlim(0);
+        OwnerRetentionStatus? Ask(Func<OwnerRetentionStatus?> answer)
+        {
+            askedAt.Enqueue(clock.GetUtcNow());
+            asked.Release();
+            return answer();
+        }
         factory.OwnerRetention.DeclareSequence(user,
-            () => { askedAt.Enqueue(clock.Elapsed); throw new TaskCanceledException("下流の時間切れ（停止要求ではない）"); },
-            () => { askedAt.Enqueue(clock.Elapsed); throw new InvalidOperationException("判定の口の一時障害"); },
-            () => { askedAt.Enqueue(clock.Elapsed); return StubOwnerRetentionDirectory.Departed(); },
+            () => Ask(() => throw new TaskCanceledException("下流の時間切れ（停止要求ではない）")),
+            () => Ask(() => throw new InvalidOperationException("判定の口の一時障害")),
+            () => Ask(StubOwnerRetentionDirectory.Departed),
             StubOwnerRetentionDirectory.Departed);
         var worker = new PrivateNoteMaintenanceHostedService(
             factory.Services.GetRequiredService<IServiceScopeFactory>(),
             new RecordingLogger<PrivateNoteMaintenanceHostedService>())
-        { CycleInterval = cycle };
+        { CycleInterval = cycle, CycleClock = clock };
 
         await worker.StartAsync(TestContext.Current.CancellationToken);
         try
         {
+            // 拍の源が作られる前に進めた時刻は拍にならない（StartAsync は ExecuteAsync を待たずに返り得る）。
+            await clock.TimerCreated.WaitAsync(Deadline, TestContext.Current.CancellationToken);
+            for (var tick = 1; tick <= 3; tick++)
+            {
+                // tick 1 の前: 初回は 1 周期後。tick 2・3 の前: 直前の判定は失敗している —— 拍を進めるまで次の判定は来ない。
+                await Task.Delay(quiet, TestContext.Current.CancellationToken);
+                askedAt.Should().HaveCount(tick - 1,
+                    tick == 1 ? "初回の周期は 1 拍目を待つ" : $"{tick - 1} 回目の失敗の後、次の拍を進めるまで判定しない（待たずに再試行していない）");
+
+                clock.Advance(cycle);
+                (await asked.WaitAsync(Deadline, TestContext.Current.CancellationToken))
+                    .Should().BeTrue($"拍 {tick} で {tick} 回目の判定が起きる");
+            }
             await WaitUntilDeletedAsync(noteId);
         }
         finally
@@ -98,10 +127,8 @@ public class PrivateNoteMaintenanceHostedServiceTests(TestWebApplicationFactory 
             await worker.StopAsync(CancellationToken.None);
         }
 
-        var at = askedAt.ToArray();
-        at.Should().HaveCountGreaterThanOrEqualTo(3);
-        (at[1] - at[0]).Should().BeGreaterThanOrEqualTo(cycle / 2, "1 回目の失敗の後、次の拍まで待っている");
-        (at[2] - at[1]).Should().BeGreaterThanOrEqualTo(cycle / 2, "2 回目の失敗の後も、次の拍まで待っている");
+        askedAt.Should().Equal([start + cycle, start + 2 * cycle, start + 3 * cycle],
+            "判定はそれぞれ別の拍で起きている（失敗の後に同じ拍のうちに再試行していない）");
     }
 
     private async Task WaitUntilDeletedAsync(Guid noteId)
@@ -145,5 +172,21 @@ public class PrivateNoteMaintenanceHostedServiceTests(TestWebApplicationFactory 
         push.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await push.Content.ReadFromJsonAsync<PushNoteResponse>(
             TestContext.Current.CancellationToken))!.NoteId;
+    }
+
+    // #1622: 周期の拍を試験が手で進める偽の時計。`PeriodicTimer` がこの時計から拍の源を作ったことを知らせる
+    // （作られる前に進めた時刻は拍にならない —— 偽の時計の拍は、源が作られた時刻から数える）。
+    private sealed class ManualTickClock : FakeTimeProvider
+    {
+        private readonly TaskCompletionSource _timerCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task TimerCreated => _timerCreated.Task;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = base.CreateTimer(callback, state, dueTime, period);
+            _timerCreated.TrySetResult();
+            return timer;
+        }
     }
 }

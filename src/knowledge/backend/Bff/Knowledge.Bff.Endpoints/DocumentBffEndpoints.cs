@@ -24,10 +24,15 @@ namespace Knowledge.Bff.Endpoints;
 // NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0402]] (#1255):
 // 🔴 **後段への読み取り 4 箇所は east-west gRPC でも呼べる**（`Services:DocumentServiceGrpc` が
 // 構成されたときだけ。無ければ従来どおり REST。**並走中の正は REST**）。
-// この 4 箇所が移せるのは、**現状も利用者の資格情報を運んでいない**からである ——
 // ABAC の実施点は下の `BffScopeResolver` ＋ `IsManageable` / `IsReadable`（**判定は 1 か所で
 // 面ごとに 1 つ**。読み取りと管理面の違いは [[IADR-0447]] 決定 4 / #1447）であり（[[IADR-0041]] /
 // [[IADR-0045]]）、後段の読み取り group はロールで塞いでいない。**移行で判定の位置を動かさない。**
+//
+// ［2026-09-27 更新 / #1614］🔴 **後段の読み取りは認証を要し、個人資料を所有者と共有先の利用者にだけ返す**
+// （計画 ADR-0119 決定 3）。したがって読み取りも**利用者を名指して**呼ぶ —— REST は書き込みと同じ
+// `Forwarding`（利用者の `Authorization` を中継）、gRPC は本文の利用者文脈（`DocumentReadGrpcClient.ToUserContext`）。
+// 名指さずに呼ぶと、REST は 401、gRPC は BFF 自身（機械）として読まれ、所有者が自分の個人資料を開けなくなる。
+// 後段の判定は BFF の判定より広いか等しい（所有者・共有先は通す）ので、BFF の応答は変わらない（AND 合成）。
 // 同じファイルの `Forwarding()`（書き込み経路）は**利用者の資格情報を運ぶので移さない** ——
 // 後段が `AdminOnly` を二重ゲートで強制しており、s2s へ替えると門が 1 枚になる。
 public static class DocumentBffEndpoints
@@ -90,11 +95,12 @@ public static class DocumentBffEndpoints
             var grpc = http.RequestServices?.GetService<DocumentReadGrpcClient>();
             if (grpc is not null)
             {
-                var viaGrpc = await grpc.ListVersionsAsync(id, ct);
+                var viaGrpc = await grpc.ListVersionsAsync(http.User, id, ct);
                 return viaGrpc is null ? Results.NotFound() : Results.Ok(viaGrpc);
             }
 
-            var client = httpFactory.CreateClient("DocumentService");
+            // NFR-09, 計画 ADR-0119 決定 3 (#1614): 後段の読み取りは認証を要する → 利用者の資格情報を中継する。
+            var client = Forwarding(httpFactory, http);
             var versions = await client.GetFromJsonAsync<List<DocumentVersionDto>>(
                 $"/documents/{id}/versions", ct);
             return Results.Ok(versions ?? []);
@@ -130,11 +136,12 @@ public static class DocumentBffEndpoints
             var grpc = http.RequestServices?.GetService<DocumentReadGrpcClient>();
             if (grpc is not null)
             {
-                var viaGrpc = await grpc.GetVersionAsync(id, version, ct);
+                var viaGrpc = await grpc.GetVersionAsync(http.User, id, version, ct);
                 return viaGrpc is null ? Results.NotFound() : Results.Ok(viaGrpc);
             }
 
-            var client = httpFactory.CreateClient("DocumentService");
+            // NFR-09, 計画 ADR-0119 決定 3 (#1614): 後段の読み取りは認証を要する → 利用者の資格情報を中継する。
+            var client = Forwarding(httpFactory, http);
             var resp = await client.GetAsync($"/documents/{id}/versions/{version}", ct);
             // 後段の 404（その版が無い）はそのまま 404 で返す（存在秘匿の意味論と衝突しない）。
             if (!resp.IsSuccessStatusCode)
@@ -412,7 +419,7 @@ public static class DocumentBffEndpoints
         {
             try
             {
-                doc = await grpc.GetAsync(id, ct);
+                doc = await grpc.GetAsync(http.User, id, ct);
             }
             catch (Exception ex) when (IsTransportFailure(ex, grpc: true, ct))
             {
@@ -421,7 +428,8 @@ public static class DocumentBffEndpoints
         }
         else
         {
-            var client = httpFactory.CreateClient("DocumentService");
+            // NFR-09, 計画 ADR-0119 決定 3 (#1614): 後段の読み取りは認証を要する → 利用者の資格情報を中継する。
+            var client = Forwarding(httpFactory, http);
             HttpResponseMessage resp;
             try
             {
@@ -463,9 +471,10 @@ public static class DocumentBffEndpoints
         try
         {
             if (grpc is not null)
-                return await grpc.ListAsync(ct);
+                return await grpc.ListAsync(http.User, ct);
 
-            var client = httpFactory.CreateClient("DocumentService");
+            // NFR-09, 計画 ADR-0119 決定 3 (#1614): 後段の読み取りは認証を要する → 利用者の資格情報を中継する。
+            var client = Forwarding(httpFactory, http);
             return await client.GetFromJsonAsync<List<DocumentDto>>("/documents", ct) ?? [];
         }
         catch (Exception ex) when (IsTransportFailure(ex, grpc is not null, ct))

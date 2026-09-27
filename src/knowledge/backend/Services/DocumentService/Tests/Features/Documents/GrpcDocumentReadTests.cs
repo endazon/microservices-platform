@@ -226,8 +226,9 @@ public class GrpcDocumentReadTests
     // 🔴 REST が同じプロセスの HTTP/1.1 ポートで応えること自体が、**h2c を有効にしても
     // 8080 側が消えていない**ことの証明でもある（`AddPlatformGrpcListener` の 🔴）。
     //
-    // 🔴 REST の読み取りは**無認可**で通り、gRPC は s2s トークンを要る ——
-    // 面ごとに通る資格情報が違うことが、そのまま「利用者トークンを転送していない」ことの現れである。
+    // ［2026-09-27 更新 / #1614］REST の読み取りも認証を要するようになった（計画 ADR-0119 決定 3）。
+    // 同値は**同じ主体**で測る —— REST は機械のトークン（`service-account-bff`）、gRPC は利用者文脈なし
+    // （呼び出し元サービス自身）。どちらも機械の主体であり、個人資料は両方から同じく除かれる。
     [Fact]
     public async Task Rest_and_grpc_report_the_same_documents()
     {
@@ -236,6 +237,8 @@ public class GrpcDocumentReadTests
             new Dictionary<string, string> { ["confidentiality"] = "internal" }, hasBody: false));
 
         using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
+        http.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ServiceToken());
         var restDoc = (await http.GetFromJsonAsync<DocumentDto>(
             $"/documents/{doc.Id}", TestContext.Current.CancellationToken))!;
 
