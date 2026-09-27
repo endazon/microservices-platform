@@ -231,3 +231,40 @@ compose・helm の「各サービスの受け口は #1611 まで無い」→ 同
 - テスト仕様書 `docs/tests/FR-16_mcp-server.md` の行は **X-40〜X-49**（段 1 は X-28 まで、段 2 は X-30〜X-39 を予約）。
 - 変異（3 件以上。コミット済みの状態で当てて `git show HEAD:<path>` で戻す）: 許可集合の検査を外す／認可の結果を無視する（`Granted` を真にする）／
   ホップごとの判定を外す（`AuthorizedNode.Authorize` を素通しにする）／サービスアカウントの刈り込みを外す／操作の突合を外す。
+
+### 実施結果（段 3）
+
+基点 `origin/develop` `b633e303`（push 前に取り直して差分なし）。実装コミットは `feat(FR-16,ADR-0117,ADR-0086): …グラフサービスに作り…`。
+設計からの追加 1 点: `graph.traverse` の申告の説明から「辺を返す」を外した（応答のエンベロープは文書の並びしか持たない。IADR-0479 段 3 の追記）。
+
+#### 検証（すべて前景・timeout 付き。待受は 127.0.0.1）
+
+| 検査 | 結果 |
+| --- | --- |
+| `dotnet build knowledge/backend/backend.slnx`（`--no-incremental`） | エラー 0。警告 1 件は既存（`Knowledge.IntegrationTests` の `QdrantBuilder()` の廃止予告。本 PR は触れていない） |
+| `dotnet build platform/backend/backend.slnx` | 警告 0・エラー 0 |
+| `dotnet test` GraphService.Tests | 748 件合格（新規・反転の McpTools 系 69 件を含む） |
+| `dotnet test` McpServer.Tests / Platform.Shared.Infrastructure.Tests | 237 件 / 484 件合格 |
+| `dotnet format --verify-no-changes`（knowledge・platform） | 差分なし |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 841 件合格 |
+| `check-trace-blocks` / `check-test-spec-coverage`（`--update` の差分なし。新しい試験クラスは段 1 と同名で、仕様書 × クラスの対は増えない）/ `check-test-traceability` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-proto-contracts`（コメントだけの変更で baseline と差分なし）/ `gen-knowledge-graph --check` / `check-commit-messages --range=origin/develop..HEAD` | すべて OK |
+
+#### 変異試験（コミット済みの状態で当て、`git show HEAD:<path>` で戻した）
+
+| # | 変異 | 赤になった試験 |
+| --- | --- | --- |
+| M1 | 受け口の許可集合の検査（`EnsureTrustedRelay`）を素通しにする | `MCPサーバー以外の主体からの実行はPERMISSION_DENIED`（6 件）・`MCPサーバーの変種や人のトークンは信じない`（4 件） |
+| M2 | 認可の問い合わせ結果を無視して全許可にする（`ExpandNeighborsUseCase`） | 陽性対照（2）・`権限の無い文書もそれを橋にした先も返らない`・`許可が無い起点が見えない起点が無いはどれも空で区別できない`・`旧い番号3のscopeや引数のscopeは効かない`・`サービスアカウント実行は個人資料を返さず橋にもしない`・引数の境界（4）（計 10 件） |
+| M3 | ホップごとの判定を外す（`GraphTraversal` の展開で許可を問わずに `AuthorizedNode` を作る＝「探索してから濾す」形。出力の門は残る） | `権限の無い文書もそれを橋にした先も返らない`・`旧い番号3のscopeや引数のscopeは効かない`・陽性対照（2）ほか（計 8 件） |
+| M4 | サービスアカウント実行の探索中の刈り込みを外す（応答の写像での除外は残る） | `サービスアカウント実行は個人資料を返さず橋にもしない`（個人資料の先 Q が浮上する） |
+| M5 | 本文の `action` の突合を外す | `操作がツールの要する操作と違えばINVALID_ARGUMENT`（3 件） |
+
+#### 残る懸念（段 3）
+
+- `graph.traverse` は辺を返さない（エンベロープの改定は計画 ADR-0024 §4 の範囲）。到達文書は返るので緩む向きではない。
+- 被参照・参照先は 1 ホップの結果を辺の向きで選ぶ。対称型の辺（`related`）は書き込み時に文書 ID の昇順へ正規化されるため、向きは意味を持たず、
+  どちらか一方のツールにだけ現れる（近傍探索には両方の向きで現れる）。
+- 認可サービス不達は既存の `GraphAccessResolver` の縮退（`Granted=false`）で空の応答になる。拒否（status）ではなく空で返るのは近傍展開の gRPC と同じであり、
+  「結果を返さない」は満たすが、MCP クライアントからは「該当なし」と区別できない（存在秘匿と同じ形）。
+- 取り消しは既存の経路が `OperationCanceledException` を畳まないことに依る（受け口は捕まえない）。受け口の取り消しを直接起こす試験は置いていない。
+- MCP サーバーと受け口を同じ器で動かす結合試験は無い（段 1 と同じ）。
