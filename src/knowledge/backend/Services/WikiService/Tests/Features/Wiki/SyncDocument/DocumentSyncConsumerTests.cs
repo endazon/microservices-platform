@@ -1,3 +1,4 @@
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using AwesomeAssertions;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,9 @@ public class DocumentSyncConsumerTests
     private static ServiceProvider BuildProvider(string dbName)
         => new ServiceCollection()
             .AddLogging()
+            // #1640: 受け口の期限（本番と同じ登録・既定値）。
+            .AddPlatformConsumerTimeouts()
+            .AddSingleton(WikiSyncTimeouts.Default)
             .AddDbContext<WikiDbContext>(o => o.UseInMemoryDatabase(dbName))
             // IADR-0021: Wiki.js への push と本文取得を記録スタブへ差し替え、稼働 Wiki.js に依存させない。
             .AddSingleton<RecordingWikiJsClient>()
@@ -40,6 +44,8 @@ public class DocumentSyncConsumerTests
             scope.ServiceProvider.GetRequiredService<WikiDbContext>(),
             scope.ServiceProvider.GetRequiredService<IWikiJsClient>(),
             scope.ServiceProvider.GetRequiredService<IWikiContentReader>(),
+            scope.ServiceProvider.GetRequiredService<ConsumerCallTimeouts>(),
+            scope.ServiceProvider.GetRequiredService<WikiSyncTimeouts>(),
             scope.ServiceProvider.GetRequiredService<ILogger<DocumentSyncConsumer>>());
         await consumer.Handle(ev, TestContext.Current.CancellationToken);
     }

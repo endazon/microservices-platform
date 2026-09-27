@@ -1,3 +1,4 @@
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
@@ -22,14 +23,23 @@ namespace WikiService.Features.Wiki.SyncDocument;
 //
 // 🔴 ADR-0027 / E3b: **購読は Wolverine へ移した**（IPipelineStep<DocumentUpdated>・IADR-0239）。
 // wiki-delete 段（E3a）と併せて、本サービスから MassTransit は撤去済みである。
+//
+// 🔴 #1640: 本文の取得と Wiki.js への反映は、それぞれ期限（`WikiSyncTimeouts`・既定 20 秒 / 15 秒）の下で行う。
+// 止まった依存先は、受け口の ct（Wolverine の実行期限）で「取り消し」として切られる前に時間切れ
+// （`ConsumerTimeoutException`・計器 `messaging.consumer.timeout`）として投げる。呼び出し元の取り消しはそのまま外へ出す。
 public class DocumentSyncConsumer(
     WikiDbContext db,
     IWikiJsClient wikiJs,
     IWikiContentReader contentReader,
+    ConsumerCallTimeouts calls,
+    WikiSyncTimeouts timeouts,
     ILogger<DocumentSyncConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "wiki-sync";
+
+    private Task WikiJsAsync(Func<CancellationToken, Task> call, CancellationToken ct)
+        => calls.RunAsync(StepName, WikiSyncTimeouts.WikiJsTarget, timeouts.WikiJs, call, ct);
 
     // FR-19, ADR-0046 D-01, ADR-0054 決定 1・2: 個人資料かどうかを判定する軸。
     // 属性キー・値の綴りは計画 ADR-0054 が確定させたものをそのまま用いる（実装で言い換えない）。
@@ -56,7 +66,7 @@ public class DocumentSyncConsumer(
         // Wiki.js 側の非公開化は正準パス（DocumentId 由来）で試みる（冪等・deny-closed）。
         if (ev.Status == "archived")
         {
-            await wikiJs.ArchivePageAsync(WikiPage.PathFor(ev.DocumentId), ct);
+            await WikiJsAsync(t => wikiJs.ArchivePageAsync(WikiPage.PathFor(ev.DocumentId), t), ct);
 
             var archivedPage = await db.Pages
                 .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ct);
@@ -123,10 +133,10 @@ public class DocumentSyncConsumer(
         //    以外（欠落含む）は Wiki.js 上でも非公開にする（deny-closed）。ABAC の代替ではない。
         var isPublic = ev.Attributes.TryGetValue("confidentiality", out var confidentiality)
             && string.Equals(confidentiality, "public", StringComparison.OrdinalIgnoreCase);
-        var markdown = await contentReader.ReadAsync(ev.MarkdownUri, ev.Title, ct);
-        await wikiJs.UpsertPageAsync(
-            new WikiJsPage(page.WikiPath, ev.Title, markdown, ev.Tags, IsPrivate: !isPublic),
-            ct);
+        var markdown = await calls.RunAsync(StepName, WikiSyncTimeouts.ContentTarget, timeouts.ContentRead,
+            t => contentReader.ReadAsync(ev.MarkdownUri, ev.Title, t), ct);
+        var wikiPage = new WikiJsPage(page.WikiPath, ev.Title, markdown, ev.Tags, IsPrivate: !isPublic);
+        await WikiJsAsync(t => wikiJs.UpsertPageAsync(wikiPage, t), ct);
 
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Synced document {DocumentId} to Wiki.js at {Path}", ev.DocumentId, page.WikiPath);
