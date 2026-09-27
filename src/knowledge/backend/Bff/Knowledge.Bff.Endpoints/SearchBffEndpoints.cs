@@ -171,6 +171,15 @@ public static class SearchBffEndpoints
                 // 空配列へ縮退する —— **障害を 200 空応答で隠さない**という判断であり、
                 // 輸送を替えたついでに畳むと運用側が後段の不調に気づけなくなる。
                 // gRPC はどちらも `RpcException` に畳むので、**status で分け直す。**
+                // 🔴 #1646: **呼び出し元（要求）の取り消しは 502 へ畳まない。** 本物のチャネルは取り消しを
+                // `RpcException(Cancelled)` で投げる（`ThrowOperationCanceledOnCancellation` は既定の false）ので、
+                // 下の無条件の `catch (RpcException)` へ落ちて「後段が答えた上での失敗」になっていた。
+                // 判定は status ではなく呼び出し元の ct で行う（後段が返した `CANCELLED` は従来どおり 502）。
+                catch (Exception) when (ct.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    throw;
+                }
                 catch (Exception ex) when (IsRetrievalUnreachable(ex, ct))
                 {
                     // 不達（`UNAVAILABLE` / `DEADLINE_EXCEEDED`）と s2s トークンの取得失敗。

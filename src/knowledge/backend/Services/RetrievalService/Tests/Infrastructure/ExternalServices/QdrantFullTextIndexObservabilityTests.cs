@@ -1,13 +1,16 @@
 using System.Diagnostics.Metrics;
 using AwesomeAssertions;
 using Grpc.Core;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
 using RetrievalService.Common.Observability;
 using RetrievalService.Infrastructure.ExternalServices;
+using RetrievalService.Tests.Grpc;
 
 namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 
@@ -105,6 +108,145 @@ public class QdrantFullTextIndexObservabilityTests
         recorder.Measurements(KeywordSearchMetrics.DegradedCounterName)
             .Should().ContainSingle()
             .Which.Reason.Should().Be(KeywordSearchMetrics.BackendErrorReason);
+    }
+
+    // ── 呼び出し元の取り消し（#1646。本物のチャネル） ─────────────────────────────
+
+    // 前提の表明: Qdrant の公式クライアントも、本物のチャネルでは呼び出し元の取り消しを `RpcException(Cancelled)` で投げる。
+    // これが崩れる（OCE を投げる）と、下の取り消しの試験は `catch (RpcException)` の前の守りを測らなくなる。
+    [Fact]
+    public async Task 前提_Qdrantの公式クライアントは本物のチャネルで取り消しを_RpcException_Cancelled_で投げる()
+    {
+        var qdrant = new FakeQdrantServer(FakeQdrantBehavior.Hang);
+        await using var server = await LoopbackGrpcServer.StartRawAsync(qdrant.HandleAsync, Ct);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+
+        var call = new QdrantClient(new QdrantGrpcClient(server.Channel.CreateCallInvoker()))
+            .ScrollAsync(Collection, limit: 1, cancellationToken: cts.Token);
+        await qdrant.Received.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await cts.CancelAsync();
+
+        var thrown = await FluentActions.Awaiting(() => call).Should().ThrowAsync<RpcException>();
+        thrown.Which.StatusCode.Should().Be(StatusCode.Cancelled);
+    }
+
+    // 🔴 NFR-06, #1646: **打ち切られた要求を「キーワード検索の縮退」として数えない。**
+    // 127.0.0.1 の偽の Qdrant が要求を受け取ってから呼び出し元が取り消す。外へ出るのは呼び出し元の token を持つ OCE で、
+    // 計器（`RecordDegraded`）は 1 件も増えず、縮退の警告も出ない。
+    [Fact]
+    public async Task KeywordSearch_呼び出し元の取り消しは縮退として数えず外へ出す()
+    {
+        var qdrant = new FakeQdrantServer(FakeQdrantBehavior.Hang);
+        await using var server = await LoopbackGrpcServer.StartRawAsync(qdrant.HandleAsync, Ct);
+        var recorder = new MetricRecorder();
+        var logger = new RecordingLogger<QdrantVectorStore>();
+        var store = new QdrantVectorStore(
+            new QdrantClient(new QdrantGrpcClient(server.Channel.CreateCallInvoker())), Config(), logger, recorder.Metrics);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+
+        var call = store.KeywordSearchAsync("検索語", 10, null, cts.Token);
+        await qdrant.Received.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await cts.CancelAsync();
+
+        var thrown = await FluentActions.Awaiting(() => call).Should().ThrowAsync<OperationCanceledException>();
+        thrown.Which.CancellationToken.Should().Be(cts.Token, "呼び出し元の取り消しとして外へ出す");
+        recorder.Measurements(KeywordSearchMetrics.DegradedCounterName)
+            .Should().BeEmpty("取り消しはキーワード検索の縮退ではない（計器を汚さない）");
+        logger.OfLevel(LogLevel.Warning).Should().BeEmpty();
+    }
+
+    // 🔴 #1646 の対: **呼び出し元が取り消していない `CANCELLED`（Qdrant が返したもの）は従来どおり縮退として数える。**
+    // status で判定する変異（`when (ex.StatusCode == StatusCode.Cancelled)`）はここで赤になる。
+    [Fact]
+    public async Task KeywordSearch_Qdrantが返した_Cancelled_は縮退として数える()
+    {
+        var qdrant = new FakeQdrantServer(FakeQdrantBehavior.ReturnCancelled);
+        await using var server = await LoopbackGrpcServer.StartRawAsync(qdrant.HandleAsync, Ct);
+        var recorder = new MetricRecorder();
+        var logger = new RecordingLogger<QdrantVectorStore>();
+        var store = new QdrantVectorStore(
+            new QdrantClient(new QdrantGrpcClient(server.Channel.CreateCallInvoker())), Config(), logger, recorder.Metrics);
+
+        var results = await store.KeywordSearchAsync("検索語", 10, null, Ct);
+
+        results.Should().BeEmpty();
+        recorder.Measurements(KeywordSearchMetrics.DegradedCounterName)
+            .Should().ContainSingle("★ 陽性対照 —— 縮退の枝は計器を 1 件積む")
+            .Which.Reason.Should().Be(KeywordSearchMetrics.BackendErrorReason);
+        logger.OfLevel(LogLevel.Warning).Should().ContainSingle();
+    }
+
+    // 🔴 #1646: 索引の健全性の検査 2 つも、**検査の打ち切りを `Degraded` へ畳まない**。
+    [Theory]
+    [InlineData(QdrantFullTextIndexHealthCheck.Name)]
+    [InlineData(QdrantCjkNgramIndexHealthCheck.Name)]
+    public async Task HealthCheck_呼び出し元の取り消しは_Degraded_へ畳まず外へ出す(string checkName)
+    {
+        var qdrant = new FakeQdrantServer(FakeQdrantBehavior.Hang);
+        await using var server = await LoopbackGrpcServer.StartRawAsync(qdrant.HandleAsync, Ct);
+        var check = HealthCheckOver(checkName, server, out var recorder);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+
+        var call = check.CheckHealthAsync(new HealthCheckContext(), cts.Token);
+        await qdrant.Received.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await cts.CancelAsync();
+
+        var thrown = await FluentActions.Awaiting(() => call).Should().ThrowAsync<OperationCanceledException>();
+        thrown.Which.CancellationToken.Should().Be(cts.Token);
+        recorder.Measurements(KeywordSearchMetrics.DegradedCounterName).Should().BeEmpty();
+    }
+
+    // 対: Qdrant が返した `CANCELLED` は従来どおり「判定できない」＝ Degraded。
+    [Theory]
+    [InlineData(QdrantFullTextIndexHealthCheck.Name)]
+    [InlineData(QdrantCjkNgramIndexHealthCheck.Name)]
+    public async Task HealthCheck_Qdrantが返した_Cancelled_は_Degraded_である(string checkName)
+    {
+        var qdrant = new FakeQdrantServer(FakeQdrantBehavior.ReturnCancelled);
+        await using var server = await LoopbackGrpcServer.StartRawAsync(qdrant.HandleAsync, Ct);
+        var check = HealthCheckOver(checkName, server, out _);
+
+        var result = await check.CheckHealthAsync(new HealthCheckContext(), Ct);
+
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Exception.Should().BeOfType<RpcException>()
+            .Which.StatusCode.Should().Be(StatusCode.Cancelled, "★ 陽性対照 —— 偽の Qdrant が実際に CANCELLED を返した");
+    }
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private static IHealthCheck HealthCheckOver(string name, LoopbackGrpcServer server, out MetricRecorder recorder)
+    {
+        recorder = new MetricRecorder();
+        var client = new QdrantClient(new QdrantGrpcClient(server.Channel.CreateCallInvoker()));
+        return name == QdrantFullTextIndexHealthCheck.Name
+            ? new QdrantFullTextIndexHealthCheck(client, Config(), recorder.Metrics)
+            : new QdrantCjkNgramIndexHealthCheck(client, Config(), recorder.Metrics);
+    }
+
+    private enum FakeQdrantBehavior { Hang, ReturnCancelled }
+
+    // 127.0.0.1 に載せる偽の Qdrant（#1646）。公式クライアントはサーバー側の `*Base` を同梱しないので、
+    // gRPC の枠を HTTP/2 の素の要求として受ける。`Hang` は要求を受け取ったことを知らせてから取り消されるまで待ち、
+    // `ReturnCancelled` は trailers-only の応答で `CANCELLED` を返す（呼び出し元の取り消しではない対照）。
+    private sealed class FakeQdrantServer(FakeQdrantBehavior behavior)
+    {
+        public TaskCompletionSource Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task HandleAsync(HttpContext context)
+        {
+            Received.TrySetResult();
+            if (behavior == FakeQdrantBehavior.ReturnCancelled)
+            {
+                context.Response.ContentType = "application/grpc";
+                context.Response.Headers["grpc-status"] = ((int)StatusCode.Cancelled).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
+                context.Response.Headers["grpc-message"] = "fake-qdrant-cancelled";
+                return;
+            }
+
+            await Task.Delay(Timeout.Infinite, context.RequestAborted);
+        }
     }
 
     // FR-02, FR-03, #1116: 検索と readiness が**同じコレクション**を指すこと

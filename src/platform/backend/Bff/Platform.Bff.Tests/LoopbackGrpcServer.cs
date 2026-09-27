@@ -8,9 +8,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace RetrievalService.Tests.Grpc;
+namespace Platform.Bff.Tests;
 
-// NFR-16, ADR-0029, [[IADR-0379]] 決定 3 (#1637): 生成クライアントを**本物のチャネル**で往復させるための最小の gRPC サーバー。
+// NFR-16, ADR-0029, [[IADR-0379]] 決定 3 (#1637, #1646): 生成クライアントを**本物のチャネル**で往復させるための最小の gRPC サーバー。
 //
 // 🔴 呼び出し元の取り消しの対照は、偽のクライアントへ素の `OperationCanceledException` を注入しても測れない ——
 // 本物のチャネルは取り消しを `RpcException(Cancelled)` で投げる（`ThrowOperationCanceledOnCancellation` は既定の false）。
@@ -39,12 +39,6 @@ internal sealed class LoopbackGrpcServer : IAsyncDisposable
             services => { services.AddGrpc(); services.AddSingleton(service); },
             app => app.MapGrpcService<TService>(),
             ct);
-
-    // NFR-16 (#1646): 生成された `*Base` を持たない第三者の gRPC（Qdrant の公式クライアントはサーバー側を同梱しない）の
-    // 受け口の偽物を載せる口。全経路を 1 つの `RequestDelegate` で受ける —— 受け口は要求を受け取ったことを知らせて待つか、
-    // trailers-only の gRPC 応答（`grpc-status` をヘッダに載せる）を返すだけでよい。クライアント側は本物のチャネルのまま。
-    public static Task<LoopbackGrpcServer> StartRawAsync(RequestDelegate handler, CancellationToken ct)
-        => StartCoreAsync(_ => { }, app => app.Map("/{**path}", handler), ct);
 
     private static async Task<LoopbackGrpcServer> StartCoreAsync(
         Action<IServiceCollection> register, Action<WebApplication> map, CancellationToken ct)

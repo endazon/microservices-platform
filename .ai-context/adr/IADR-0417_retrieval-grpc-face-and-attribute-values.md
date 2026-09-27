@@ -146,6 +146,8 @@ gRPC の status に対応する番号は無い。**守るのは「200 空応答�
 あちらの REST 経路は `GetFromJsonAsync` が非 2xx でも例外を投げるため、**元から 1 つの枝**だった。
 **縮退の向きは呼び出し元の call site ごとに違う**（[[IADR-0400]] 決定 5 / [[IADR-0402]]）。
 
+> **［2026-09-27 追記 / #1646］上の 2 つの枝のどちらにも「呼び出し元（利用者の要求）の取り消し」は入らない。** 本物のチャネルは取り消しを `RpcException(Cancelled)` で投げ（`ThrowOperationCanceledOnCancellation` は既定の false）、`IsRetrievalUnreachable` は ct を見て外すが、その後ろの無条件の `catch (RpcException)` が拾って **502** を返していた（打ち切られた要求を「後段が答えた上での失敗」と記録する）。2 つの枝より前に `catch (Exception) when (ct.IsCancellationRequested) { ct.ThrowIfCancellationRequested(); throw; }` を置き、取り消しとして端点の外へ出す（REST 経路の `catch … when (… && !ct.IsCancellationRequested)` と同じ意味論。[[IADR-0462]] の形）。後段が返した `CANCELLED`（利用者は打ち切っていない）は従来どおり 502。試験は 127.0.0.1 の実受け口へ本番と同じ既定値のチャネルで繋ぎ、受け口が要求を受け取ってから利用者の要求を打ち切って、端点の結末を要求の外側（`IStartupFilter`）で観測する（`BffAttributeValuesGrpcTests`）。作業仕様書: `.ai-context/specs/20260927_issue-1646_caller-cancellation-remaining.md`。
+
 ## 帰結
 
 - RetrievalService の Service に `grpc` ポート（8081）が出る。**readiness は 8080 のまま**である。

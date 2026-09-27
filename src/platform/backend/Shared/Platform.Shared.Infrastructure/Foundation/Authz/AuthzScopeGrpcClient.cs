@@ -12,6 +12,8 @@ namespace Platform.Shared.Infrastructure.Foundation.Authz;
 // FR-05, NFR-09, ADR-0029, ADR-0075, IADR-0379 (#1201): 認可スコープ解決の **gRPC 経路**（参照実装）。
 // REST 経路（BffScopeResolver の HTTP）と同じ deny-by-default で縮退する ——
 // UNAUTHENTICATED / PERMISSION_DENIED / UNAVAILABLE / s2s トークン取得失敗 のいずれも null（閲覧可能なし）。
+// ［2026-09-27 / #1646］呼び出し元の取り消しだけは null にせず、呼び出し元の token を持つ
+// `OperationCanceledException` で外へ出す（REST 経路の `BffScopeResolver` と同じ。取り消しを deny と記録しない）。
 //
 // **並走中の正は REST である。** 本クライアントは `Services:AuthorizationServiceGrpc` が構成されたときだけ
 // 登録され（AddAuthzScopeGrpcClient）、BffScopeResolver は登録が在ればこちらを使う。
@@ -40,6 +42,15 @@ public sealed class AuthzScopeGrpcClient(
                 resp.Branches.Count == 0
                     ? null
                     : resp.Branches.Select(b => new Dto.AccessScopeBranch(b.Name, b.Filters.Select(ToFilter).ToList())).ToList());
+        }
+        // 🔴 #1646: **呼び出し元の取り消しは `null` へ畳まない。** 本物のチャネルは取り消しを `RpcException(Cancelled)` で
+        // 投げる（`ThrowOperationCanceledOnCancellation` は既定の false）ので、縮退の catch より前で拾い、呼び出し元の
+        // token を持つ `OperationCanceledException` へ揃える。判定は status ではなく呼び出し元の ct で行う
+        // （受け口が返した `CANCELLED`・期限切れは従来どおり `null`）。
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            ct.ThrowIfCancellationRequested();
+            throw;
         }
         catch (RpcException ex)
         {
@@ -106,6 +117,12 @@ public sealed class AuthzScopeGrpcClient(
                     : resp.Branches
                         .Select(b => new Dto.AccessScopeBranch(b.Name, b.Filters.Select(ToFilter).ToList()))
                         .ToList());
+        }
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            // #1646: 呼び出し元の取り消しは `null` へ畳まない（上の `ResolveAsync` の注記を参照）。
+            ct.ThrowIfCancellationRequested();
+            throw;
         }
         catch (RpcException ex)
         {
