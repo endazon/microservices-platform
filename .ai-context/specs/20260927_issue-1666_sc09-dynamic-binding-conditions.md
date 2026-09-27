@@ -157,3 +157,13 @@ issue は「表示の形・どの属性に動的束縛を許すか」に判断�
   - M5 画面が束縛を「動的束縛」の文言で示さない: 2 件赤（選択肢・チップ・一覧）
   - M6 辞書の許可値の検証が表の束縛も「辞書外」とする: 1 件赤（T-70）
 
+
+［2026-09-28 追記 / #1666］**CI の `build-test` が初期ロードの床で赤になった**（`check-chunk-budget`: 616.27 kB > 615.92 kB、+0.35 kB）。
+
+- **再現**: `src/` で `pnpm run build` → `node scripts/check-chunk-budget.js --require` で同じ超過を確かめた。
+- **帰属**: 初期ロードは `index`・`vendor-react`・`ui`・`vendor-query` の 4 本である。
+  - 増えたのは `index` で、中身は ja / en の i18n カタログである。本件で足した文言は 4 件で、カタログの `messages.ts` は ja が +214 B、en が +186 B 増えた。
+  - `@foundation/i18n` はカタログを静的に import するので、カタログは設計どおり初期ロードに入る（IADR-0134 のフォローアップ 1 は、ロケール別の遅延読み込みを未実施として残している）。
+  - SC-09 固有のコード（束縛の表・選択肢の組み立て）は `AdminAbacSettingsPage` の遅延チャンクにとどまる。成果物を走査すると、`current_groups` は遅延チャンクにしか現れない。
+- **対処**: import の境界を直す対象は無い。カタログ文言による設計どおりの増加なので、`--update` で床を 615,916 → 616,268 B へ引き上げた。
+  理由は `scripts/chunk-budget-baseline.json` の `$comment_initialTotalBytes_20260928_1666_sc09-dynamic-binding` に残した（前例 #1610 と同じ形）。
