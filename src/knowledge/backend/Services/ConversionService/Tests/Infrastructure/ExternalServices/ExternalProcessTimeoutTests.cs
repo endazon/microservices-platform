@@ -215,16 +215,20 @@ public class ExternalProcessTimeoutTests
     public async Task Output_is_kept_when_the_process_exited_but_a_grandchild_briefly_held_stdout()
     {
         using var pids = new PidFile();
-        var timeout = TimeSpan.FromSeconds(1);
+        // 期限は止まる命令の起動（Windows の powershell は負荷下で 1 秒を超える）より長くとる。期限の時点で親がまだ走っていると
+        // kill の枝へ入り、この試験が測りたい「自分で終わっていた」枝を通らない（1 秒の期限で全体実行の負荷下に実測した揺らぎ）。
+        // 孫は期限の 3 秒後まで握る（刈り取りの上限 10 秒の内）。
+        var timeout = HangTimeout;
+        var holdSeconds = (int)timeout.TotalSeconds + 3;
         var started = Stopwatch.GetTimestamp();
 
-        var result = await ExternalProcess.RunAsync(Stub.PrintAndDetachChild("stub-out", 3, pids.Path), "pandoc",
+        var result = await ExternalProcess.RunAsync(Stub.PrintAndDetachChild("stub-out", holdSeconds, pids.Path), "pandoc",
                 timeout, NullLogger.Instance, TestContext.Current.CancellationToken)
             .WaitAsync(Guard, TestContext.Current.CancellationToken);
 
         result.ExitCode.Should().Be(0);
         result.StandardOutput.Should().Contain("stub-out");
-        // 孫が握っている間（約 3 秒）は読み取りが終わらない —— 期限（1 秒）を跨いでから返ったことを確かめる。
+        // 孫が握っている間は読み取りが終わらない —— 期限を跨いでから返ったことを確かめる。
         Stopwatch.GetElapsedTime(started).Should().BeGreaterThan(timeout);
     }
 
@@ -241,9 +245,11 @@ public class ExternalProcessTimeoutTests
             .WaitAsync(Guard, TestContext.Current.CancellationToken);
 
         (await act.Should().ThrowExactlyAsync<BodyConversionTimeoutException>()).Which.Timeout.Should().Be(HangTimeout);
-        // 刈り取りの上限まで読み取りを待ってから諦める（期限そのものでは諦めない）。
+        // 刈り取りの上限まで読み取りを待ってから諦める（期限そのものでは諦めない）。諦めた後は、孫（600 秒握る）を待たずに返る
+        // （#1654 L1: 諦めた読み取りは手放す。上限は負荷の揺らぎを見込んで 10 秒の余裕を置く）。
         Stopwatch.GetElapsedTime(started).Should()
-            .BeGreaterThanOrEqualTo(HangTimeout + ExternalProcess.ReapTimeout - TimeSpan.FromMilliseconds(200));
+            .BeGreaterThanOrEqualTo(HangTimeout + ExternalProcess.ReapTimeout - TimeSpan.FromMilliseconds(200))
+            .And.BeLessThan(HangTimeout + ExternalProcess.ReapTimeout + TimeSpan.FromSeconds(10));
     }
 
     // 代わりに起動する命令。いずれも標準出力・標準エラーをリダイレクトする（実行器の前提）。

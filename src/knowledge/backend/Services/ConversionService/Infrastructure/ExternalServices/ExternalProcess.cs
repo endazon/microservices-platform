@@ -38,10 +38,12 @@ internal static class ExternalProcess
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
         // デッドロック回避のため、待機前に stdout/stderr の読み取りを開始する。
-        // #1654 C: 読み取り自体は取り消さない（期限は待つ側の `WaitAsync` が守る）。期限の直前に自分で終わった
-        // プロセスの出力を、読み取りの取り消しで失わないためである。
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync(CancellationToken.None);
-        var stderrTask = proc.StandardError.ReadToEndAsync(CancellationToken.None);
+        // #1654 C: 読み取りは期限では取り消さない（期限は待つ側の `WaitAsync` が守る）。期限の直前に自分で終わった
+        // プロセスの出力を、読み取りの取り消しで失わないためである。読み取りには専用の CTS を渡し、諦めたときだけ
+        // 取り消す（下の `AbandonReads`）。
+        using var readsCts = new CancellationTokenSource();
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync(readsCts.Token);
+        var stderrTask = proc.StandardError.ReadToEndAsync(readsCts.Token);
         var reads = Task.WhenAll(stdoutTask, stderrTask);
         try
         {
@@ -71,9 +73,30 @@ internal static class ExternalProcess
 
             // 止めたプロセスの出力は使わない。子孫がパイプを握っていても待たないよう、観測だけして捨てる。
             Observe(reads);
+            AbandonReads(proc, readsCts, tool, logger);
 
             ct.ThrowIfCancellationRequested();
             throw new BodyConversionTimeoutException(tool, timeout);
+        }
+    }
+
+    // #1654 L1: 諦めた読み取りを手放す。読み取りは期限では取り消さないので、ツリーの外の孫が標準出力を握ったまま諦めると、
+    // 保留中の読み取り 2 つがパイプの fd と StreamReader を孫が終わるまで持ち続ける（`Process.Dispose` は一度参照した
+    // 標準入出力のストリームを閉じない）。読み取りの CTS を取り消し、ストリームを明示的に閉じる。
+    // 読み取りがネイティブの read で塞がっている間は、ハンドルの参照カウントにより実際の close はその read が返るまで遅れ得る
+    // （そこは OS の制約で、ここでは閉じる意思を伝えるところまでを行う）。
+    private static void AbandonReads(Process proc, CancellationTokenSource readsCts, string tool, ILogger logger)
+    {
+        try
+        {
+            readsCts.Cancel();
+            proc.StandardOutput.Dispose();
+            proc.StandardError.Dispose();
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or IOException or InvalidOperationException
+                                       or AggregateException)
+        {
+            logger.LogDebug(ex, "Failed to release {Tool} output streams", tool);
         }
     }
 
