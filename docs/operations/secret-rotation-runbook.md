@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-25
-updated: 2026-09-26
+updated: 2026-09-28
 ---
 <!-- trace:
 ids: [NFR-18, SC-22]
-adrs: [ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110]
-iadrs: [IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461]
-specs: [20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm]
-issues: [#458, #1411, #1477, #1499, #1523]
+adrs: [ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110, ADR-0124]
+iadrs: [IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485]
+specs: [20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22]
+issues: [#458, #1411, #1477, #1499, #1523, #1682, planning#700]
 -->
 
 # 運用 Runbook: 秘密情報のローテーション
@@ -32,8 +32,11 @@ issues: [#458, #1411, #1477, #1499, #1523]
 | 分類 | 何か | 回せるか | 手順 |
 | --- | --- | --- | --- |
 | `items[]`（6 項目） | Git に置けず画面から入れる値 —— 外部の発行元がある値（外部 LLM の API キー・メール送信のアプリパスワード・Wiki.js の API キー・取引ユニットの外部 API キー / Discord / 証券会社ログイン）と、**画面が生成する** OpenD の RSA 鍵 | ✅ **回せる** | [手順 A](#手順-a-items画面から回す)（製品の画面から） |
-| `excluded[]`（7 項目） | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db` | 🟡 **ストア側と同時なら回せる** | [手順 B](#手順-b-excludedストア側と同時に回す)（コンソール。未実測） |
-| `deferred[]`（17 項目） | 認証基盤（Keycloak）のクライアントシークレット —— OIDC クライアント 8・サービス間 9 | 🔴 **いまは恒久的には回せない** | [手順 C](#手順-c-deferredいまは回せない理由と回すための前提) |
+| `excluded[]`（7 項目） | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db` | 🟡 **ストア側と同時なら回せる** | [手順 B](#手順-b-excludedストア側と同時に回す)（コンソール。未実測）。順序と途中で止まったときの戻し方は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) |
+| `deferred[]`（17 項目）と `items[]` の `notWritable` の `*-auth-client-*`（4 組） | 認証基盤（Keycloak）のクライアントシークレット —— OIDC クライアント 8・サービス間 9・取引ユニットの 4 | 🟡 **認証基盤と対でなら回せる** | [手順 C](#手順-c-deferred認証基盤と対で回す)（コンソール。未実測） |
+
+`excluded[]`・`deferred[]`・`*-auth-client-*` はいずれも**対になる秘密**（相手と同時に変えないと成立しない秘密）であり、画面の対象外である。
+回し方の正は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) にある。
 
 🔴 **どの分類でも、`scripts/k8s-local-up.sh` の再実行は回した値を元へ戻し得る。** 戻す経路は 3 つある
 （[回した値を元へ戻す経路](#回した値を元へ戻す経路)）。**回した後の運用まで含めて 1 つの手順である。**
@@ -52,7 +55,7 @@ issues: [#458, #1411, #1477, #1499, #1523]
 - 環境を新しく立ち上げるとき。それは初期投入であり、`scripts/k8s-local-up.sh` の通常経路が担う。
 - 画面が使えないときに `items[]` の 1 項目を急ぎ差し替えたいだけのとき。それは
   [`secret-item-console-injection-runbook.md`](secret-item-console-injection-runbook.md)（退避手段）である。
-- `deferred[]` の項目を単独で回すとき（[手順 C](#手順-c-deferredいまは回せない理由と回すための前提)）。
+- `deferred[]` の項目を認証基盤と対にせず、保管先だけで回すとき（[手順 C](#手順-c-deferred認証基盤と対で回す)）。
 
 ## 前提
 
@@ -78,17 +81,18 @@ issues: [#458, #1411, #1477, #1499, #1523]
 
 | 経路 | 何をするか | 影響する分類 |
 | --- | --- | --- |
-| 手動の Secret 作成（`apply_secret`） | env が無ければ**開発用既定値**で Secret を作る。`postgres` / `rabbitmq` / `keycloak-admin`（`excluded[]`）、`reset-gate-oidc`（`deferred[]`）、`keycloak-smtp`（`items[]`）は `ESO=1` でも作る（同期は `Merge` で上書きするだけ） | `excluded[]`・`deferred[]`（`reset-gate-oidc`）・`items[]`（`keycloak-smtp` の Secret だけ。下の注記） |
-| 保管先の再投入（`deploy/local/vault/eso/bootstrap.sh`） | 画面が書く KV（`items[]` のうち種を入れる 4 つ）は**無いときだけ**作り、在れば env が空でないプロパティだけ差し替える。**`excluded[]` の 7 と `deferred[]` の 18、計 25 KV は毎回、env か開発用既定値で全置換する** | `excluded[]` と `deferred[]` |
-| 認証基盤の宣言の追随（`deploy/local/keycloak-setup/reconcile-realm.sh`） | realm JSON を正として稼働中の realm へ差分を当てる。**クライアントの `secret` も含む** | `deferred[]` |
+| 手動の Secret 作成（`apply_secret`） | env が無ければ**開発用既定値**で Secret を作る。`postgres` / `rabbitmq` / `keycloak-admin`（`excluded[]`）、`reset-gate-oidc`（`deferred[]`）、`keycloak-smtp`（`items[]`）は `ESO=1` でも作る（同期は `Merge` で上書きするだけ） | `excluded[]`・`deferred[]`（`reset-gate-oidc`）・`items[]`（`keycloak-smtp`）の **Secret だけ**（保管先の値は戻らない。下の注記） |
+| 保管先の再投入（`deploy/local/vault/eso/bootstrap.sh`） | 画面が書く KV（`items[]` のうち種を入れる 4 つ）は**無いときだけ**作り、在れば env が空でないプロパティだけ差し替える。**`excluded[]` の 7 と `deferred[]` の 17、計 24 KV も無いときだけ作り、在れば env を渡しても触らない**（2026-09-28 から。それまでは毎回全置換していた） | 戻さない |
+| 認証基盤の宣言の追随（`deploy/local/keycloak-setup/reconcile-realm.sh`） | realm JSON を正として稼働中の realm へ差分を当てる。**クライアントの `secret` は作成時にだけ運び、既存の client では比べず・書かない**（2026-09-28 から。それまでは realm JSON の値へ当て直していた） | 戻さない |
 
 - **`items[]` は保管先の値が戻らない**（画面で入れた値は再投入で消えない）。ただし `keycloak-smtp` は **Secret だけ**が
   手動作成で env の値（未指定なら空）に一度書き換わる。保管先の値は残っているので同期で戻るが、`Merge` の Secret の
   上書きに同期がすぐ反応するかは確かめていない —— **起動の後に `keycloak-smtp` の同期を促す**（B-0 の `annotate`）。
-- **`excluded[]` は env で新しい値を渡し続ける限り戻らない。** env 名は `deploy/local/README.md` の「機密情報」表にある
+- **`excluded[]` の保管先の値は戻らない。** ただし手動の Secret 作成は env の値で Secret を書き直す。env 名は `deploy/local/README.md` の「機密情報」表にある
   （`PG_PASSWORD` / `APP_DB_PASSWORD` / `WIKIJS_DB_PASSWORD` / `RABBITMQ_USER` / `RABBITMQ_PASSWORD` / `KEYCLOAK_ADMIN_PASSWORD` / `OBJECT_STORAGE_ACCESS_KEY` / `OBJECT_STORAGE_SECRET_KEY`）。
-  🔴 **渡し忘れると、保管先と Secret だけが既定値へ戻り、ストア側は新しい値のまま残る —— 認証が壊れる。**
-- **`deferred[]` は env を渡しても戻る**（3 つ目の経路が realm JSON の値へ当て直す）。[手順 C](#手順-c-deferredいまは回せない理由と回すための前提)。
+  🔴 **渡し忘れると、`postgres` / `rabbitmq` / `keycloak-admin` の Secret が次の同期まで既定値になる。** 起動の後に同期を促す
+  （[`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md)「起動の後に同期を促す」）。
+- **`deferred[]` は戻らない**（保管先の再投入も宣言の追随も、在る値を書き直さない）。`reset-gate-oidc` の Secret だけは手動作成で既定値になり得るので、上と同じく同期を促す。
 
 ## 手順 A: `items[]`（画面から回す）
 
@@ -110,7 +114,7 @@ Stakater Reloader が注釈を持つ消費側（外部 LLM の境界サービス
 | `llm-provider-credentials`（`anthropic-api-key` / `openai-api-key`） | 各 LLM プロバイダの管理画面 | 漏洩が即座に金銭へ変わる。漏洩の疑いなら 4 を先に行ってよい（その間は外部 LLM を使う機能が縮退応答になる） |
 | `keycloak-smtp`（`from` / `user` / `password`） | 組織のメールテナント | 🔴 `host` / `port` / `starttls` は構成であり画面では書けない（Git 経由）。**認証基盤は作り直さない**（読むのは近接 MTA）。送信元アドレスを変えるときは [`keycloak-smtp-relay-setup-runbook.md`](keycloak-smtp-relay-setup-runbook.md) も見る |
 | `wikijs-sync`（`apiKey`） | Wiki.js の管理画面（Administration → API Access） | 新しいキーを発行 → 画面で書く → 同期が通ることを確かめる → **旧キーを Wiki.js 側で Revoke する**。キーは Wiki.js の管理 GraphQL 全体に及ぶので、漏洩の疑いなら即時 Revoke する |
-| `ast-app-secrets`（外部 API キー・Discord） | 各外部サービス | 🔴 **Discord の bot token は再発行した瞬間に旧が失効する**（重ねられない）。同じ KV の `*-auth-client-*` は画面では書けない（`deferred[]` と同じ扱い） |
+| `ast-app-secrets`（外部 API キー・Discord） | 各外部サービス | 🔴 **Discord の bot token は再発行した瞬間に旧が失効する**（重ねられない）。同じ KV の `*-auth-client-*` は画面では書けない（対になる秘密。[手順 C](#手順-c-deferred認証基盤と対で回す)） |
 | `ast-moomoo`（`login-account` / `login-pwd-md5`） | 証券会社 | パスワードは画面へ平文で入れ、境界層が MD5 へ変換して書く。証券会社側で変えてから画面で書く。ログインのやり直し（検証コード）が要ることがある —— 取引ユニットの手順に従う |
 | `ast-moomoo-rsa`（`opend_rsa.pem`） | 画面の「生成」 | 🔴 **生成し直すと保管先の鍵が置き換わり、OpenD を手動で再起動するまで、OpenD と同じ鍵で接続するクライアントとの間で鍵が食い違う。** 画面の確認ダイアログで確かめてから生成し、書き込み後に OpenD を手動で再起動する（再認証を求められることがある）。公開鍵を証券会社へ登録する手順は無い（OpenD とクライアントが同じ秘密鍵を共有するだけ） |
 
@@ -120,6 +124,9 @@ Stakater Reloader が注釈を持つ消費側（外部 LLM の境界サービス
 同期が誤った資格情報を配って認証が壊れる。**ストア側の値を先に変え、同じ作業の中で保管先・Secret・消費側を合わせる。**
 
 🔴 **本節は未実測である。** ストアごとの挙動（特にオブジェクトストレージ〔SeaweedFS〕の資格情報の変更）は、最初のリハーサルで確かめて本書を直すこと。
+
+> ［2026-09-28 追記］`excluded[]` は**対になる秘密**である。保管先の直前の版を控えること、保管先を先に書いてからストア側を変える順序、
+> **途中で止まったときの戻し方**は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) 手順 2 が持つ。本節の B-1 の表は、同書がストアごとのコマンドとして引く。
 
 ### B-0. 共通の部品
 
@@ -147,7 +154,7 @@ printf '%s' "$NEW_VALUE" | kubectl -n platform-infra exec -i deploy/vault -- sh 
 kubectl -n <namespace> annotate externalsecret <name> force-sync="$(date +%s)" --overwrite
 ```
 
-書き終えたら `unset NEW_VALUE`。**以後 `scripts/k8s-local-up.sh` を再実行するときは、表の env に新しい値を必ず渡す**（[回した値を元へ戻す経路](#回した値を元へ戻す経路)）。
+書き終えたら `unset NEW_VALUE`。**以後 `scripts/k8s-local-up.sh` を再実行するときは、表の env に新しい値を渡すか、起動の後に同期を促す**（[回した値を元へ戻す経路](#回した値を元へ戻す経路)）。
 
 ### B-1. ストアごとの手順
 
@@ -177,27 +184,22 @@ kubectl -n microservices-platform wait --for=condition=Available deploy --all --
 **切り替えの間はサービスが断続的に止まる。** ストア側を変えた瞬間から、既存の接続は保たれるが新しい接続は旧い値で失敗する。
 消費側の作り直しが終わるまでを 1 つの作業として続けて行う。
 
-## 手順 C: `deferred[]`（いまは回せない理由と回すための前提）
+## 手順 C: `deferred[]`（認証基盤と対で回す）
 
 **認証基盤のクライアントシークレット 17 項目**（OIDC クライアント: 境界層・利用者管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視／
-サービス間: 各サービスのサービスアカウント 9 本）は、**経路B では恒久的に回せない。**
+サービス間: 各サービスのサービスアカウント 9 本）と、取引ユニットの `*-auth-client-*` の 4 組は、**認証基盤と保管先を対で書いて回す。**
+手順は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) 手順 1 である。
 
 - 値は保管先と認証基盤の**両方**に在り、**両方が同値でなければ**トークン端点が `invalid_client` を返し続ける。
-- 認証基盤側の値の**正は realm JSON**（`deploy/keycloak/microservices-platform-realm.json`）であり、
-  `scripts/k8s-local-up.sh` のたびに宣言の追随がその値へ当て直す（[回した値を元へ戻す経路](#回した値を元へ戻す経路)の 3 つ目）。
-- 保管先側も `bootstrap.sh` が開発用既定値で全置換する（同 2 つ目）。
-- **その開発用既定値はリポジトリに在る。** したがって経路B のこれらの値は、**そもそも秘密として機能していない**（開発専用。
-  `docs/security/security.md`「開発専用の平文認証情報」の扱い）。
+- 認証基盤側の値は、**client を作るときにだけ** realm JSON（`deploy/keycloak/microservices-platform-realm.json`）の開発用の値で入る。
+  以後は宣言の追随が当て直さないので、対で回した値が次の起動で戻らない。保管先側も `bootstrap.sh` が無いときだけ作る。
+- **realm JSON の値は開発用であり、リポジトリに在る**（`docs/security/security.md`「開発専用の平文認証情報」の扱い）。
+  **本番の値を realm JSON に書かない** —— 検査器（`scripts/check-realm-constraints.js`）が開発用の形でない値を止める。
+  開発用の値のまま運用している環境で実運用の値へ差し替えるのも、同じ手順（最初の 1 回もローテーション）である。
 
-**一時的に回しても次の起動で戻る。** 手作業で両側を書き換えることは可能だが、それは本書の手順にしない。
-
-**回せるようにするための前提**（いずれも未着手。設計の判断が要る）:
-
-1. realm JSON からクライアントの `secret` を外し、宣言の追随が secret を当て直さないようにする。
-2. 認証基盤の管理 API への書き込みと保管先への書き込みを**対で**行う経路を作る（画面でも、コンソールの手順でもよい）。
-3. `bootstrap.sh` がこれらを「無いときだけ作る」ようにする（`items[]` と同じ扱い）。
-
-分類を動かすときは、分類の単一情報源（`deploy/bootstrap/sc22-secret-items.json`）の注記に従う。
+> ［2026-09-28 追記］従前の本節は「経路B では恒久的に回せない」とし、回せるようにする前提を 3 つ挙げていた
+> （①realm JSON が secret を当て直さないこと ②認証基盤と保管先を対で書く経路 ③`bootstrap.sh` が無いときだけ作ること）。
+> 計画の裁定（trace ブロック参照）を受けて ①③ を実装し、② を別の Runbook として書いた。**リハーサルは未実施である。**
 
 ## 本書が扱わない秘密
 
@@ -233,12 +235,13 @@ kubectl -n microservices-platform wait --for=condition=Available deploy --all --
 | 次の起動の後に認証が壊れた | env を渡さずに `scripts/k8s-local-up.sh` を再実行し、保管先と Secret が既定値へ戻った | env に新しい値を渡して再実行する。値を控えていなければ、手順 B をやり直して新しい値を作る |
 | 新しい値そのものが誤っていた（発行元で失効させる前） | 投入の誤り | **保管先の直前の版へ戻す**: Vault Pod 内で `vault kv metadata get secret/<path>` で版を見て `vault kv rollback -version=<直前の版> secret/<path>`。その後に同期を促し、消費側を作り直す |
 | SeaweedFS が資格情報の変更後に起動しない・データが読めない | 未実測の挙動（手順 B の注記） | 保管先を直前の版へ戻し（上）、同期と `seaweedfs` の作り直しで旧い値へ戻す。結果を本書へ書き戻す |
-| `deferred[]` を回したら `invalid_client` | 手順 C のとおり、片側だけ・次の起動で戻る | 認証基盤側・保管先側とも realm JSON の値へ戻す（`scripts/k8s-local-up.sh` の再実行で両側とも既定値へ戻る） |
+| `deferred[]` を回したら `invalid_client` | 片側だけ書いた（対の手順の途中で止まった） | [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md)「途中で止まったとき」の表で、どこまで進んだかから戻す向きを決める。🔴 `scripts/k8s-local-up.sh` の再実行では**もう戻らない**（在る値を書き直さない） |
 
 ## 記録
 
 - **手順 A**: 画面から書いた更新は監査ログに残る（誰が・いつ・どの項目のどのプロパティを）。**発行元で旧を失効させた日時**だけを、下の「実施記録」に追記する。
-- **手順 B**: コンソールの操作は監査ログに乗らない。**実施日時・実施者・対象・渡した env の名前**を、#458 へのコメントとして残す（暫定。退避手段の使用記録と同じく、計画側に記録手段の設計が残っている）。
+- **手順 B・C**: コンソールの操作は監査ログに乗らない。**実施日時・実施者・対象・渡した env の名前**を、#458 へのコメントとして残す。
+  **記録先は #458 ただ 1 か所**である（退避手段の使用記録と同じ置き場。保管先の監査を可観測性基盤へ取り込めるまでの暫定）。
 - **値・値の長さ・値の一部は書かない。**
 
 ### リハーサル記録
@@ -258,7 +261,7 @@ kubectl -n microservices-platform wait --for=condition=Available deploy --all --
 ## 限界（この手順で担保できないこと）
 
 - 🔴 **リハーサル未実施。** 本書は手順を定めただけであり、「この手順で回せる」ことは最初のリハーサルではじめて確かめられる。
-- 🔴 **`deferred[]` の 17 項目は回せない**（手順 C）。「集中管理・ローテーション」の要件に対し、経路B が満たすのは `items[]` と `excluded[]` だけである。
+- 🔴 **`deferred[]` の 17 項目と `*-auth-client-*` の 4 組は、対の手順でしか回せない**（手順 C）。手順はあるが、リハーサルは未実施である。
 - **周期の統制は無い。** 周期を定めていないので、回し忘れを知らせる仕組みも無い。
 - **旧の値の失効は発行元の操作であり、機械で確かめていない。** 失効させたかどうかは実施記録に人が書く。
 - **手順 B は監査にならない。** 記録は人が書く前提であり、書かなければ残らない。

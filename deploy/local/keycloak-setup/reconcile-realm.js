@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * FR-05, NFR-09, ADR-0004 / ADR-0026, IADR-0369 (#1088 / #324):
+ * FR-05, NFR-09, ADR-0004 / ADR-0026, IADR-0369 (#1088 / #324); SC-22, NFR-18, ADR-0124, IADR-0485 (#1682):
  * realm JSON（宣言）と稼働 realm（Keycloak Admin REST API）の**差分を計画し、当てる**。
  *
  *   Job（deploy/local/keycloak-setup/realm-reconcile-job.yaml）の中で node:22-alpine が実行する。
@@ -18,9 +18,18 @@
  * ## 境界 —— 宣言が所有する層と、実行時が所有する層（IADR-0369 決定 2）
  *
  * 宣言（realm JSON）が正: realm の非コレクション設定 / requiredActions / realm ロール・client ロール / グループ /
- *   client scopes ＋ protocol mappers / clients（属性・redirect・secret・scope 割当 ＋ mappers）/ **seed 利用者の存在** /
+ *   client scopes ＋ protocol mappers / clients（属性・redirect・scope 割当 ＋ mappers）/ **seed 利用者の存在** /
  *   サービスアカウント利用者のロールと属性 / **`smtpServer`**（下記の追記）。
- * 実行時が正（**触らない**）: 既存の人間の利用者の資格情報・属性・ロール・グループ・requiredActions・セッション。
+ * 実行時が正（**触らない**）: 既存の人間の利用者の資格情報・属性・ロール・グループ・requiredActions・セッション／
+ *   **既存の client の `secret`**（下記の追記）。
+ *
+ * ［2026-09-28 追記 / #1682 / IADR-0485］**client の `secret` は作成時にだけ宣言が運ぶ**（`CLIENT_CREATE_ONLY_KEYS`）。
+ *   ADR-0124 決定 1 は client シークレットを「対になる秘密」（認証基盤と Vault を同時に変えないと成立しない）とし、
+ *   **本番の秘密を realm の宣言から外す・初期投入は無いときだけ作る**と定めた。従前は更新のたびに宣言の値（開発用）と
+ *   稼働の値を比べて当て直したため、**認証基盤と Vault を対で回しても、次の起動でこの Job が認証基盤側だけを戻し、
+ *   片側だけ書いた状態（`invalid_client`）を作っていた。** 今は client が無いとき（`client.create`）と realm が無いとき
+ *   （`realm.create`）にだけ宣言の値で作り、既存の client の `secret` は比べず・`PUT` の本文に載せず・読みにも行かない。
+ *   宣言の値は開発用の形に限る（`scripts/check-realm-constraints.js` 検査 8）。
  *
  * ［2026-09-06 追記 / #1245 / IADR-0404］**`smtpServer` を実行時所有から宣言所有へ移した。**
  *   ADR-0078 決定 2 が Keycloak の送出先を**クラスタ内の近接 MTA**（`deploy/mail-relay/`）へ固定し、
@@ -93,6 +102,10 @@ const CLIENT_SKIP_KEYS = new Set([
   'id', 'protocolMappers', 'defaultClientScopes', 'optionalClientScopes', 'authorizationSettings',
   'access', 'registrationAccessToken', 'origin',
 ]);
+// ［2026-09-28 / #1682 / IADR-0485］client 表現のうち、**作成時にだけ**宣言が運ぶキー（ADR-0124 決定 1）。
+// 既存の client では比べず、`PUT` の本文にも載せない（Keycloak は本文に `secret` が無ければ現在の値を保つ）。
+// 🔴 ここから `secret` を外すと、対の手順で回した client シークレットを次の起動で開発用の値へ戻す。
+const CLIENT_CREATE_ONLY_KEYS = new Set(['secret']);
 const MAPPER_SKIP_KEYS = new Set(['id']);
 // 利用者の作成時に POST /users が処理しないもの（作成後にロール割当の端点で当てる）。
 const USER_CREATE_SKIP_KEYS = new Set(['realmRoles', 'clientRoles', 'serviceAccountClientId', 'id']);
@@ -175,7 +188,6 @@ function gateHoldsClosed(key, wantedValue, liveRealm) {
  *   {
  *     realm: <RealmRepresentation>|null,
  *     requiredActions: [...], realmRoles: [...], clientScopes: [...], clients: [...],
- *     clientSecrets: { <clientId>: <secret> },       // confidential client のみ
  *     clientRoles:   { <clientId>: [...] },          // 宣言が触れる client のみ
  *     roleComposites:{ <roleName>: [...] },          // 宣言が composite を持つロールのみ
  *     groups: [ { ..., subGroups: [...] } ],
@@ -293,14 +305,15 @@ function plan(desired, live) {
         body: pick(client, (k) => k !== 'id'), reason: 'client が無い' });
       continue;
     }
-    const wanted = pick(client, (k) => !CLIENT_SKIP_KEYS.has(k));
-    const liveView = { ...cur };
-    if (Object.prototype.hasOwnProperty.call(client, 'secret')) liveView.secret = (live.clientSecrets || {})[client.clientId];
-    const drifted = Object.keys(wanted).filter((k) => !contains(wanted[k], liveView[k]));
+    // 作成時だけのキー（`secret`）は比べない（ADR-0124 決定 1。稼働の値は対の手順が正）。
+    const wanted = pick(client, (k) => !CLIENT_SKIP_KEYS.has(k) && !CLIENT_CREATE_ONLY_KEYS.has(k));
+    const drifted = Object.keys(wanted).filter((k) => !contains(wanted[k], cur[k]));
     if (drifted.length > 0) {
-      const body = pick(merge(cur, wanted), (k) => !['protocolMappers', 'defaultClientScopes', 'optionalClientScopes', 'access'].includes(k));
+      // 本文にも載せない —— GET の表現が `secret` を含んでいても落とす（稼働の値を往復させない）。
+      const body = pick(merge(cur, wanted), (k) => !['protocolMappers', 'defaultClientScopes', 'optionalClientScopes', 'access'].includes(k)
+        && !CLIENT_CREATE_ONLY_KEYS.has(k));
       add({ op: 'client.update', target: client.clientId, method: 'PUT', path: `${R}/clients/${cur.id}`, body,
-        reason: `client の差分: ${drifted.map((k) => (k === 'secret' ? 'secret(値は出さない)' : k)).join(', ')}` });
+        reason: `client の差分: ${drifted.join(', ')}` });
     }
     // scope 割当（宣言が全集合）
     for (const [field, seg] of [['defaultClientScopes', 'default-client-scopes'], ['optionalClientScopes', 'optional-client-scopes']]) {
@@ -498,13 +511,8 @@ async function collectLive(kc, desired) {
   ]);
   const clientByClientId = byKey(clients, 'clientId');
 
-  const clientSecrets = {};
-  for (const c of desired.clients || []) {
-    const cur = clientByClientId.get(c.clientId);
-    if (!cur || !Object.prototype.hasOwnProperty.call(c, 'secret')) continue;
-    const s = await kc.get(`${R}/clients/${cur.id}/client-secret`);
-    clientSecrets[c.clientId] = s ? s.value : undefined;
-  }
+  // ［2026-09-28 / #1682 / IADR-0485］client の secret は読みに行かない（`GET …/client-secret` を打たない）。
+  // 比べないので要らず、読まなければ稼働の秘密がこの Job のメモリを通らない。
 
   // 宣言が触れる client のロール（roles.client の宣言 ＋ 利用者の clientRoles が指す client）
   const roleClientIds = new Set(Object.keys((desired.roles && desired.roles.client) || {}));
@@ -552,7 +560,7 @@ async function collectLive(kc, desired) {
     }
   }
 
-  return { realm, requiredActions, realmRoles, clientScopes, clients, clientSecrets, clientRoles, roleComposites, groups, users, serviceAccounts };
+  return { realm, requiredActions, realmRoles, clientScopes, clients, clientRoles, roleComposites, groups, users, serviceAccounts };
 }
 
 async function applyOps(kc, realmName, ops) {
@@ -634,6 +642,6 @@ if (require.main === module) {
 
 module.exports = {
   plan, planMappers, collectLive, contains, merge, describe, gateHoldsClosed,
-  REALM_COLLECTION_KEYS, RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, CLIENT_SKIP_KEYS, MAX_PASSES,
+  REALM_COLLECTION_KEYS, RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, CLIENT_SKIP_KEYS, CLIENT_CREATE_ONLY_KEYS, MAX_PASSES,
   GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
 };

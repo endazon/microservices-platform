@@ -15,6 +15,8 @@
  *      🔴 逆向き（宣言 false・稼働 true）は drift のままであることを対で固定する。
  *   4. 前提が無い操作は deferred として数えられ、黙って消えない（check モードで drift になる）。
  *   5. fixture は **実物の realm JSON から切り出す**（値を書き写さない。宣言が変わればここも追随する）。
+ *   6. ［2026-09-28 追記 / #1682 / ADR-0124 決定 1・IADR-0485］**client の `secret` は作成時にだけ運ぶ。**
+ *      既存の client では比べず・`PUT` の本文に載せず・稼働の値を読みに行かない（対の手順で回した値を戻さない）。
  *
  * 外部依存ゼロ（Node 標準 assert のみ）。実行: node scripts/keycloak-realm-reconcile.test.js
  */
@@ -23,7 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   plan, contains, merge, gateHoldsClosed, collectLive,
-  RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
+  RUNTIME_OWNED_REALM_KEYS, CLIENT_CREATE_ONLY_KEYS, GATE_OWNED_REALM_KEYS, GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
 } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -61,7 +63,6 @@ function liveFrom(desired) {
     l.attributes = { ...(l.attributes || {}), 'client.secret.creation.time': '1700000000' }; // 余剰の属性
     return l;
   });
-  const clientSecrets = Object.fromEntries(desired.clients.filter((c) => c.secret).map((c) => [c.clientId, c.secret]));
   const clientRoles = {};
   for (const [cid, roles] of Object.entries(desired.roles.client || {})) clientRoles[cid] = roles.map((r) => ({ ...clone(r), id: uuid() }));
   // realm-management はビルトイン。サービスアカウントの clientRoles が指すので居る。
@@ -87,7 +88,7 @@ function liveFrom(desired) {
     }
   }
   return {
-    realm, requiredActions: clone(desired.requiredActions), realmRoles, clientScopes, clients, clientSecrets, clientRoles,
+    realm, requiredActions: clone(desired.requiredActions), realmRoles, clientScopes, clients, clientRoles,
     roleComposites: {}, groups, users, serviceAccounts,
   };
 }
@@ -296,13 +297,37 @@ ok('client の属性（backchannel.logout.url）が違えば client.update 1 件
   assert.ok(/attributes/.test(ops[0].reason));
 });
 
-ok('client の secret が違えば client.update になるが、理由に値は出ない', () => {
+// ［2026-09-28 / #1682 / ADR-0124 決定 1・IADR-0485］従前は「secret が違えば client.update」を固定していた。
+// 🔴 それは**認証基盤と Vault を対で回した値を、次の起動で認証基盤側だけ開発用の値へ戻す**動きだった（片側だけ書いた状態を作る）。
+ok('既存の client の secret が宣言と違っても計画は 0 件（回した値を戻さない。ADR-0124 決定 1）', () => {
   const live = liveFrom(REALM);
-  live.clientSecrets.bff = 'rotated-elsewhere';
+  // GET の表現が secret を含む版の Keycloak を模す（含まない版は liveFrom の既定）。
+  for (const c of live.clients) if (REALM.clients.some((d) => d.clientId === c.clientId && 'secret' in d)) c.secret = `rotated-${c.clientId}`;
+  assert.ok(live.clients.filter((c) => c.secret).length >= 20, '陽性対照: secret を持つ client が宣言に揃っていない');
+  assert.deepStrictEqual(opsOf(REALM, live), []);
+});
+
+ok('他の差分で client.update になっても、本文に secret を載せない（稼働の値も宣言の値も往復させない）', () => {
+  const live = liveFrom(REALM);
+  const bff = live.clients.find((c) => c.clientId === 'bff');
+  bff.secret = 'rotated-elsewhere';
+  bff.attributes['backchannel.logout.url'] = 'http://localhost:5000/bff/auth/backchannel-logout';
   const ops = opsOf(REALM, live);
   assert.deepStrictEqual(kinds(ops), ['client.update']);
-  assert.ok(!ops[0].reason.includes('rotated-elsewhere') && !ops[0].reason.includes(REALM.clients.find((c) => c.clientId === 'bff').secret));
-  assert.ok(/secret/.test(ops[0].reason));
+  assert.ok(!('secret' in ops[0].body), 'PUT の本文に secret が載っている');
+  assert.ok(!/secret/.test(ops[0].reason), '理由に secret が出ている（比べていないはず）');
+});
+
+ok('client が無ければ client.create の本文は宣言の secret を運ぶ（初期投入は「無いときだけ作る」）', () => {
+  const live = liveFrom(REALM);
+  live.clients = live.clients.filter((c) => c.clientId !== 'bff');
+  const create = opsOf(REALM, live).find((o) => o.op === 'client.create' && o.target === 'bff');
+  assert.ok(create, 'bff の client.create が無い');
+  assert.strictEqual(create.body.secret, REALM.clients.find((c) => c.clientId === 'bff').secret);
+});
+
+ok('CLIENT_CREATE_ONLY_KEYS は secret を持つ（集合から外すと既存の client の secret を宣言所有に戻す）', () => {
+  assert.ok(CLIENT_CREATE_ONLY_KEYS.has('secret'));
 });
 
 ok('client が無ければ client.create、そのサービスアカウントは deferred（次の周で当てる）', () => {
@@ -441,12 +466,13 @@ ok('merge: オブジェクトは再帰、配列とスカラーは置換、宣言
 // #1373: 稼働側のクライアントが在って service account が無効なとき、collectLive は SA 利用者を「未存在」として
 // 返し、plan は client.update（SA 有効化）＋ deferred を出す。Keycloak はこの状態の service-account-user に
 // 400 を返す（404 ではない）ため、以前はここで例外になり realm 全体の追随が止まっていた（2026-09-10 実測: `bff`）。
-function fakeKc({ saEnabled, saUser }) {
+function fakeKc({ saEnabled, saUser, seen = [] }) {
   const R = `/admin/realms/${encodeURIComponent(REALM.realm)}`;
   const bff = { id: 'c-bff', clientId: 'bff', serviceAccountsEnabled: saEnabled };
   return {
     call: async () => { throw new Error('collectLive は call を使わない'); },
     get: async (p) => {
+      seen.push(p);
       if (p === R) return { realm: REALM.realm };
       if (p === `${R}/clients?max=1000`) return [bff];
       if (p === `${R}/clients/c-bff/service-account-user`) {
@@ -475,6 +501,15 @@ function fakeKc({ saEnabled, saUser }) {
     assert.deepStrictEqual(live.serviceAccounts.bff.realmRoles, ['platform-service']);
     passed++;
     process.stdout.write('  ok  #1373 陰性対照: SA 有効なら service-account-user とロールを読む\n');
+  }
+  {
+    // #1682 / IADR-0485: collectLive は client の secret を読みに行かない（比べないので要らない。秘密が Job を通らない）。
+    const seen = [];
+    await collectLive(fakeKc({ saEnabled: true, saUser: { id: 'u-bff', username: 'service-account-bff' }, seen }), REALM);
+    assert.ok(seen.some((p) => p.endsWith('/clients?max=1000')), '陽性対照: client の一覧は読んでいる');
+    assert.ok(!seen.some((p) => /\/client-secret$/.test(p)), `client-secret を読んだ: ${seen.filter((p) => /client-secret/.test(p)).join(', ')}`);
+    passed++;
+    process.stdout.write('  ok  #1682: collectLive は client の secret（GET …/client-secret）を読みに行かない\n');
   }
   console.log(`\n${passed} tests passed.`);
 })().catch((e) => { console.error(e); process.exit(1); });

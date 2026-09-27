@@ -165,6 +165,44 @@ public class SecretItemBootstrapSeedTests
         patch.Should().BeGreaterThan(get, "在否を確かめてから足すこと");
     }
 
+    // SC-22 T-78, NFR-18, ADR-0124 決定 1, IADR-0485 (#1682): **対になる秘密（deferred[] と excluded[] のパス）は無いときだけ作る。**
+    // 従前は毎回全置換で env か開発用既定値へ戻し、相手（認証基盤・データストア）と Vault を対で回した値を Vault 側だけ戻していた。
+    // 各パスは `vkv_create_if_absent <path> …` の 1 文だけで書かれ、それ以外の文（put / patch）がそのパスへ書かないこと。
+    // 補助関数は「在れば return 0」を `kv put -cas=0` より前に持つこと。母集合は許可リストから引く（件数を書き写さない）。
+    [Fact]
+    public void Paired_secret_kvs_are_created_only_when_absent()
+    {
+        using var allowlist = JsonDocument.Parse(File.ReadAllText(CatalogPath));
+        var paired = new[] { "deferred", "excluded" }
+            .SelectMany(k => allowlist.RootElement.GetProperty(k).EnumerateArray())
+            .SelectMany(g => g.GetProperty("vaultPaths").EnumerateArray().Select(e => e.GetString()!))
+            .ToList();
+        // 陽性対照: 母集合が空・取りこぼしで緑にならない（deferred 17 ＋ excluded 7。数は許可リストが正で、ここは下限だけを見る）。
+        paired.Should().HaveCountGreaterThanOrEqualTo(20).And.OnlyHaveUniqueItems();
+
+        var statements = Statements();
+        foreach (var path in paired)
+        {
+            var escaped = Regex.Escape(path);
+            var creates = statements.Where(s => Regex.IsMatch(s, $@"^\s*vkv_create_if_absent\s+{escaped}\s+""")).ToList();
+            creates.Should().ContainSingle($"secret/{path} は vkv_create_if_absent の 1 文で作ること（対になる秘密。無いときだけ）");
+
+            var writes = statements.Where(s => Regex.IsMatch(s, $@"kv\s+(put|patch)[^
+]*secret/{escaped}(?=[\s'""])")).ToList();
+            writes.Should().BeEmpty($"secret/{path} を無条件の put / patch で書いている（在る KV を env か既定値へ戻す）");
+        }
+
+        var body = Regex.Match(File.ReadAllText(BootstrapPath), @"(?s)vkv_create_if_absent\(\)\s*\{(.*?)
+\}").Groups[1].Value;
+        body.Should().NotBeEmpty("vkv_create_if_absent の定義を読めること");
+        var exists = body.IndexOf("if vkv_exists \"$path\"; then", StringComparison.Ordinal);
+        var keep = body.IndexOf("return 0", StringComparison.Ordinal);
+        var put = body.IndexOf("vault kv put -cas=0 secret/$path", StringComparison.Ordinal);
+        exists.Should().BeGreaterThanOrEqualTo(0, "在否を確かめること");
+        keep.Should().BeGreaterThan(exists, "在れば何もせず戻ること");
+        put.Should().BeGreaterThan(keep, "作るのは無いときだけで、-cas=0 を持つこと");
+    }
+
     // SC-22, IADR-0456 決定 6: moomoo / moomoo-rsa は seed しない（未設定のあいだ OpenD は Secret 不在で待機する＝fail-closed）。
     [Fact]
     public void Moomoo_kvs_are_not_seeded()

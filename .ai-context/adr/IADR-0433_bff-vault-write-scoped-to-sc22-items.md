@@ -2,10 +2,10 @@
 title: IADR-0433 BFF の Vault 書き込みは項目ごとの許可で与え、値を読み返せない形にする
 type: impl-adr
 status: Accepted
-related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0040, ADR-0042, ADR-0095, ADR-0032, ADR-0007]
+related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0040, ADR-0042, ADR-0095, ADR-0032, ADR-0007, ADR-0124, IADR-0485]
 author: claude
 created: 2026-09-11
-updated: 2026-09-15
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
@@ -156,6 +156,13 @@ path "secret/metadata/msp/llm-provider-credentials" {
 > `items[]` は **6 KV・書けるプロパティ 21**、`deferred[]` は Vault パスで **18 件**になった（§結果の「4 KV・13 プロパティ」「20 件」は当時の数）。
 > policy は完全一致パスを 2 KV ぶん足しただけで、data の `read`・`update`・ワイルドカードは足していない（本決定 1 のまま）。
 
+> ［2026-09-28 追記 / #1682 / IADR-0485］**`deferred[]` は Vault パスで 17 件である**（OIDC クライアントシークレット 8 件〔`bff` / `identity-admin` / `grafana` / `vault` /
+> `headlamp` / `wikijs` / `reset-gate` / `synthetic-monitor`〕・east-west gRPC の s2s 資格情報 9 件）。上の表の「計 18 件」、上の追記の「18 件」、§いま決めたこと・§結果の「20 件」は当時の数である
+> （IADR-0461 決定 5 で `msp/minio-oidc` を撤去して 18 → 17。`excluded[]` の `minio-credentials` は IADR-0461 決定 3 で `object-storage-credentials` へ改名された。7 件は不変）。
+> **計画 ADR-0124 決定 1（planning#700 の裁定 2026-09-28）が、`deferred[]`・`excluded[]`・`ast-app-secrets` の `notWritable` の `*-auth-client-*` を「対になる秘密」として
+> SC-22 の対象外と定めた**（ADR-0095 決定 1 の例外）。「`deferred[]` を `excluded[]` と分けたのは、こちらは設計すれば解けるから」（§理由）は、計画が画面で解かないと裁定したので、
+> 以後の分け目は「相手が認証基盤かデータストアか」（回す手順の違い）である。ファイルの構造は変えず、`reason` と `$comment` を書き換えた（IADR-0485 決定 1）。
+
 ### 決定 4: BFF 専用の ServiceAccount を作り、k8s auth ロールをそれに束縛する
 
 ```
@@ -266,6 +273,8 @@ ADR-0095 の統制の表が「決定 3 を実装する時点で同時に配備�
   3. `items[]` と policy の突合（allowlist に載っていてパスが無い／その逆）を機械検査にする。
      🔴 **同型の事故が 2 回起きたら**が検査器追加の条件であるため、いまは置かない（本項は記録である）。
   4. `deferred[]` の扱いを計画へ問う（**モックアップ受領時に一括して問う**。いま問うと裁定が二重になる）。
+     > ［2026-09-28 追記 / #1682］**planning#700 で裁定された（計画 ADR-0124 決定 1）。** `deferred[]` は画面で扱わない（対になる秘密として SC-22 の対象外）。
+     > 回すのは認証基盤と Vault を対で書く運用手順（`docs/operations/paired-secret-rotation-runbook.md`。IADR-0485 決定 5）。本フォローアップは閉じた。
 
 ## 関連
 

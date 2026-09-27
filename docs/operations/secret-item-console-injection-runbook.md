@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-11
-updated: 2026-09-26
+updated: 2026-09-28
 ---
 <!-- trace:
 ids: [SC-22, SC-06, SC-15, FR-05, NFR-11, NFR-18]
-adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0110]
-iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460]
-specs: [20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260926_issue-1558_runbook-nits]
-issues: [#458, #310, #438, #1102, #1411, #1467, #1477, #1523, #1558, planning#599, planning#635, planning#652]
+adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0110, ADR-0124]
+iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485]
+specs: [20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260926_issue-1558_runbook-nits, 20260928_issue-1682_paired-secrets-outside-sc22]
+issues: [#458, #310, #438, #1102, #1411, #1467, #1477, #1523, #1558, #1682, planning#599, planning#635, planning#652, planning#700]
 -->
 
 # 運用 Runbook: 画面が使えないときに秘密情報を 1 項目だけコンソールから投入する
@@ -43,8 +43,10 @@ issues: [#458, #310, #438, #1102, #1411, #1467, #1477, #1523, #1558, planning#59
 - 🔴 **`excluded[]` の項目を「回す」目的で実行してはならない。** 稼働中のデータストアが既存の
   パスワードで初期化済みであり、**Vault 側だけ書き換えると認証が壊れる。** 同ファイルの `reason` を読むこと。
 - 🔴 **`deferred[]` の項目（認証基盤のクライアントシークレット群）を単独で書き換えてはならない。**
-  **認証基盤側の宣言と同値でなければならず、片側だけ書くと認証が静かに壊れる**（トークン端点が
+  **認証基盤側の値と同値でなければならず、片側だけ書くと認証が静かに壊れる**（トークン端点が
   `invalid_client` を返し続けるが、画面は認可の手前までは進むため気づきにくい）。
+  ［2026-09-28 追記］`excluded[]`・`deferred[]`・`ast-app-secrets` の `*-auth-client-*` は**対になる秘密**（相手と同時に変えないと成立しない秘密）であり、
+  画面の対象外である。回すときは [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md)（相手と保管先を対で書く）を使う。
 - 環境を新しく立ち上げるとき。それは退避ではなく**初期投入**であり、`scripts/k8s-local-up.sh` の
   通常経路が担う。
 
@@ -64,6 +66,12 @@ env で値を渡さなかった項目は**既定値（多くは開発用の固�
 ［2026-09-15 追記］**画面が書く KV（`items[]` のうち `bootstrap.sh` が種を入れるもの）は、無いときだけ作るようになった。**
 既に在る KV は、env が空でないプロパティだけが差し替わる（画面で入れた値は再実行で消えない）。
 🔴 **それ以外の項目（認証基盤・データベース・ブローカの資格情報）は従来どおり再投入される。** 1 項目を直すために `bootstrap.sh` を実行しない、は変わらない。
+
+［2026-09-28 追記］**対になる秘密（認証基盤・データベース・ブローカ・オブジェクトストレージの資格情報の 24 KV）も、無いときだけ作るようになった。**
+在る KV は env を渡しても触らない。したがって上の「28 項目すべてを再投入する」「稼働中の資格情報が既定値に置き換わる」は、**保管先については成り立たなくなった。**
+🔴 **それでも 1 項目を直すために `bootstrap.sh` を実行しない。** `keycloak-smtp` の構成値（`host` / `port` / `starttls`）は毎回 env と Git の値へ揃え直され、
+起動器（`scripts/k8s-local-up.sh`）の手動の Secret 作成は `postgres` / `rabbitmq` / `keycloak-admin` / `reset-gate-oidc` の Secret を env か既定値で書き直す
+（保管先の値は戻らず、次の同期で Secret も戻る）。
 
 ## 前提
 
@@ -179,7 +187,8 @@ keycloak-smtp を読むのは mail-relay であり、**Keycloak は作り直さ�
 🔴 **コンソール操作は監査ログに乗らない。** 記録しなければ、**誰がいつ秘密を差し替えたかを
 後から辿る手段が 1 つも無い。**
 
-**記録先は #1411 へのコメント**とする。次の 4 点を書く。**値は書かない。**
+**記録先は #458 へのコメント**とする（［2026-09-28 追記］従前は #1411 だったが、閉じた issue であり、ローテーションの記録〔#458〕と置き場が 2 つに分かれていた。
+**#458 ただ 1 か所へまとめた。** #1411 に在る過去の記録はそのまま残す）。次の 4 点を書く。**値は書かない。**
 
 - 実施日時（タイムゾーンを添える）
 - 実施者
@@ -189,6 +198,9 @@ keycloak-smtp を読むのは mail-relay であり、**Keycloak は作り直さ�
 > **この記録先は暫定である。** 計画側に「退避手段を使ったことを残す手段」の設計が残っており、
 > それが決まるまでの置き場として issue コメントを使う。
 > **設計が来たらこの節を差し替える**（そのとき本書に日付つきの追記を入れる）。
+>
+> ［2026-09-28 追記］**設計は来た**: 保管先（Vault）の監査を可観測性基盤の監査へ取り込み、画面経由とコンソールの書き込みを同じ記録で辿る（値は記録しない）。
+> **取り込みができるまでは、上のとおり #458 へのコメントで記録する**（計画が定めた暫定手段。記録先を 1 か所にまとめること）。取り込みができたら本節を差し替える。
 
 ## 確認（この手順が成功したと言える条件）
 
@@ -229,7 +241,7 @@ kubectl -n microservices-platform get secret llm-provider-credentials \
 | ExternalSecret が `Ready=False` のまま | `ClusterSecretStore` の認証が切れている／パスの綴りが違う | `kubectl describe externalsecret <name>` の `Events` を読む。パスは `deploy/bootstrap/sc22-secret-items.json` の `vaultPath` と一致させる |
 | Secret は更新されたが挙動が変わらない | 消費側 Pod が古い環境変数を持ったまま | 手順 4 の `rollout restart` を行う |
 | 同じ KV の別のキーが消えた | `put` を使ってしまった | **元の値を持っていれば書き戻す。持っていなければ、そのキーの供給元（発行元のサービス・認証基盤の宣言）から取り直す。**この事故は記録に残す（手順 5） |
-| 認証が壊れた（トークン端点が `invalid_client`） | `deferred[]` の項目を単独で書き換えた | 認証基盤側の宣言と同値へ戻す。**本書の対象外の操作であり、単独では直せない** |
+| 認証が壊れた（トークン端点が `invalid_client`） | `deferred[]` の項目を単独で書き換えた | **本書の対象外の操作であり、本書の手順では直せない。** [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md)「途中で止まったとき」（保管先へ書いた後・相手を書く前）に従い、保管先を直前の版へ戻す |
 | **画面が「現在の版は保管先で削除されています」と出す**（一覧では「未設定」） | その KV の現在版がコンソール等で削除（`vault kv delete`）または破棄（`vault kv destroy`）された。画面の権限（部分更新と「無いときだけ作る」）では削除済みの版の上へ書けず、**画面の権限は広げない** | 下の「現在の版が削除されているとき」で版を戻してから、**画面で更新し直す**。コンソールでそのまま `put` しない |
 
 ### 現在の版が削除されているとき（画面へ戻すための復元）
@@ -256,7 +268,7 @@ kubectl -n platform-infra exec deploy/vault -- sh -c '
 
 ## 記録
 
-**手順 5 のとおり #1411 へコメントする。** 実施日時・実施者・項目とプロパティ名・画面を使わなかった理由。
+**手順 5 のとおり #458 へコメントする**（記録先はこの 1 か所）。実施日時・実施者・項目とプロパティ名・画面を使わなかった理由。
 **値・値の長さ・値の一部は書かない。**
 
 ## 限界（この手順で担保できないこと）

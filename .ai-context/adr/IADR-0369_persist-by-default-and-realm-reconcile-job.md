@@ -19,9 +19,11 @@ related_ids:
   - IADR-0332
   - IADR-0336
   - IADR-0342
+  - IADR-0485
+  - ADR-0124
 author: claude
 created: 2026-09-04
-updated: 2026-09-06
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md（認証＝Keycloak）
   - planning:projects/microservices-platform/07_adr/ADR-0026_auth-keycloak.md
@@ -143,6 +145,15 @@ CI（`integration-stack.yml`。k3d）も既定＝永続で走る（k3d は local
   >    属性が無い false（人が手で閉じた）も従来どおり drift である。
   >    門そのもの（`reset-gate`）は #1245 PR-C で着地する。**所有権を先に入れたのは、順序が逆だと
   >    「門が閉じた realm を Job が静かに開き直す」事故に、門と同じ PR で初めて気付く形になるからである。**
+
+  > **［2026-09-28 追記 / #1682 / IADR-0485］境界表の宣言の行から clients の `secret` を外した（表そのものは上のまま。追記で言い直す）。**
+  >
+  > client の `secret` は**作成時にだけ宣言が運ぶ**（`CLIENT_CREATE_ONLY_KEYS`）。client が無いとき（と realm が無いとき）にだけ宣言の値で作り、
+  > **既存の client では比べず・`PUT` の本文に載せず・`GET …/client-secret` で読まない**（既存の client の `secret` は実行時が所有する）。
+  > 計画 ADR-0124 決定 1 が client シークレットを「対になる秘密」（認証基盤と Vault を同時に変えないと成立しない）とし、
+  > **本番の秘密を realm の宣言から外す・初期投入は無いときだけ作る**と定めたためである。宣言所有のままだと、認証基盤と Vault を対で回しても
+  > 本 Job が次の起動で認証基盤側だけ開発用の値へ戻し、片側だけ書いた状態（`invalid_client`）を作る。宣言の値は開発用の形に限る（`check-realm-constraints.js` 検査 8）。
+  > 🔴 **帰結**: realm JSON の client の `secret` を直しても既存の client には届かない（本決定の「realm JSON を直したら up を再実行すれば届く」の例外）。
 
   既存利用者の `requiredActions` を宣言へ戻さないのは、TOTP を登録し終えた利用者へ `CONFIGURE_TOTP` を再要求するためである。
   TOTP 既定は realm の `requiredActions[CONFIGURE_TOTP].defaultAction`（宣言層）で新規利用者へ効く。seed 利用者の宣言を

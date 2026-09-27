@@ -3,15 +3,15 @@ title: 秘密情報・接続設定の管理 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-09-14
-updated: 2026-09-26
+updated: 2026-09-28
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, NFR-11, NFR-18, SC-11, SC-12, SC-22]
-adrs: [ADR-0007, ADR-0031, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0104, ADR-0110]
-iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0124, IADR-0125, IADR-0134, IADR-0433, IADR-0437, IADR-0453, IADR-0454, IADR-0456, IADR-0460]
-specs: [20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm]
-issues: [#1411, #1416, #1467, #1477, #1502, #1523, planning#599, planning#631, planning#635, planning#652]
+adrs: [ADR-0007, ADR-0031, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124]
+iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0124, IADR-0125, IADR-0134, IADR-0433, IADR-0437, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485]
+specs: [20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22]
+issues: [#1411, #1416, #1467, #1477, #1502, #1523, #1682, planning#599, planning#631, planning#635, planning#652, planning#700]
 -->
 
 # 画面仕様書: 秘密情報・接続設定の管理
@@ -33,7 +33,11 @@ issues: [#1411, #1416, #1467, #1477, #1502, #1523, planning#599, planning#631, p
 - 🔴 **値は書き込み専用である。** 保存後は画面からも境界層からも読み出せない（読み出しの口そのものが無い）。
 - 🔴 **一括再投入の口は無い。** 1 回の操作で書くのは 1 プロパティだけである。
 - 扱う項目の集合は `deploy/bootstrap/sc22-secret-items.json` の `items[]` だけ（6 項目・21 プロパティ）。
-  認証基盤と対で書くべき秘密・稼働中のデータストアの資格情報は対象外である（同ファイルの `deferred[]` / `excluded[]`）。
+  🔴 **対になる秘密は対象外である** —— 相手（認証基盤・データストア）と同時に変えないと成立しない秘密であり、画面の 1 欄では変えられない。
+  認証基盤のクライアントシークレット（同ファイルの `deferred[]`）・データストアの資格情報（`excluded[]`）・株式自動売買の app-secrets の
+  `*-auth-client-*`（`notWritable`。画面から書けない）がこれに当たる。計画はこれを「Git に置けない秘密は画面から入れる」の**例外**と裁定した。
+  境界は性質であり、同じ性質の秘密は画面へ足さない。これらは Git にも置かず、相手と保管先を対で書く運用手順で回す
+  （[対になる秘密のローテーション](../operations/paired-secret-rotation-runbook.md)）。
 - **プロパティには入力の形がある**（同ファイルの `properties[]` の `kind` / `sensitive`）: 値をそのまま書く／パスワードを受けて MD5 だけを保存する（証券会社のログイン）／
   値を入力せず鍵を生成する（OpenD の RSA 鍵）。秘密ではない環境固有の ID（Discord のサーバー・チャンネル・許可する利用者・対応表）も、Git に置かない値としてここで扱う。
 - 保存が成立すると、同期先への**即時同期を依頼する**（定期同期を待たずに Pod へ届ける）。依頼できたかを画面に出す。
@@ -213,6 +217,6 @@ flowchart LR
 
 ## 未決事項
 
-- 認証基盤と対で書くべき秘密（`deferred[]`）を画面で扱うか。
+- ~~認証基盤と対で書くべき秘密（`deferred[]`）を画面で扱うか。~~ **扱わない**（計画が 2026-09-28 に裁定した。対になる秘密は画面の対象外。画面概要を参照）。
 - 本番の消費側の作り直し方（自動の作り直しはローカルにしか配備していない）。決めるときは、作り直しを**利用者が確認した書き込みを契機とするものに限る**（仕組みが自ら時機を選ぶ方式は採らない）。それまで本番では、書いた値は消費側を再起動するまで効かない。
 - 供給元の判定は稼働クラスタで未実測である（自動試験は Kubernetes API の偽物に対する固定。テスト仕様書の手動の項）。
