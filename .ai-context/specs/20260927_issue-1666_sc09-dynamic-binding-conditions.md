@@ -229,3 +229,11 @@ issue は「表示の形・どの属性に動的束縛を許すか」に判断�
   - Me: 利用者スコープの owner・shared_with の登録拒否を外す → 4 件赤（純関数 3・結合 1）
   - Mf: 画面が action を見ない → 4 件赤
   - Mg: サーバーの表のキーを大小無視へ戻す → 2 件赤（`Owner`・`SHARED_WITH`）
+
+［2026-09-28 追記 / #1666］**CI の `build-test` が `check-knip.js --require` で赤になった**（未使用の export が 17 件になり、床の 16 件を 1 件超えた）。
+
+- **原因**: `pnpm run knip` の内訳で、本件が足した `policyAttributeOptionId`（`abacVocabulary.ts`）が未使用の export だった。同じファイルの中でしか使っていない。
+- **対処**: 床は上げず、export を外してファイル内の関数にした（IADR-0211 の「使うか消す」）。
+- **確認**:
+  - `check-knip.js --require` は OK（床どおり 36 件）。
+  - frontend.yml の他のステップもローカルで通した: lint、typecheck、format:check、test:coverage（1813 件）、`pnpm run i18n` の差分なし、check-i18n-catalogs、build と `check-chunk-budget.js --require`。

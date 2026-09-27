@@ -153,7 +153,7 @@ export interface PolicyAttributeOption {
 }
 
 /** 選択肢の識別子（`Select` の値）。 */
-export function policyAttributeOptionId(scope: string, key: string): string {
+function policyAttributeOptionId(scope: string, key: string): string {
   return `${scope}:${key}`;
 }
 
