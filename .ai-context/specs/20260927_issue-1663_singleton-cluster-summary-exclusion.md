@@ -86,6 +86,15 @@ PoC の実測（planning#687。`clusters=6107 nodes=6107 edges=0`）で、辺 0 
 - IADR-0299・IADR-0353・IADR-0389（健全性の生産者・陳腐化・観測値の軸）: 未要約の定義を持たない（語として現れるだけ）。
 - 並行作業: GraphService の `Features/McpTools/`・`Program.cs`（#1611 段 3）、ABAC の seed（#1664）は触らない。
 
+## 計画 ADR レンジの引き直し（本 PR の別コミット）
+
+- 実装後に `check-trace-blocks` と `check-commit-messages` が「`ADR-0120` は宣言レンジ（`ADR-0001..0119`）外」で落ちた。
+  レンジ宣言（`.claude/rules/traceability.repo.md`）が計画側の ADR-0120・0121 の追加（`535051e`・`3c7949f`）に追いついていなかった。
+- 同型の前提作業の issue・PR は開いていなかった（`plan-adr-range` の PR 0 件、最新の issue は 0119 の #1612 で closed）。
+- 計画の `origin/main`（`3c7949f`）を `git archive` で展開して `gen-plan-ranges.js --check` を走らせ、MSP の ADR が「宣言 [1, 121] / 実物 [1, 121]・欠番なし」
+  （FR/UC/SC 不動・NFR 28 件不動）を得た。**実物に合わせて `0001..0121` へ開け**、別紙 `docs/how-to/plan-id-range-history-annex.md` に記録を足した。
+- 🔴 並行の #1664（ABAC の seed。ADR-0121 を引く見込み）も同じ 1 行を引き直す可能性がある。先にマージされた側に後の側が rebase で合わせる（値は同じ `0001..0121`）。
+
 ## 配備の順番
 
 - 構成の変更は無い。配備後、`unsummarized-clusters` は所属 2 件以上のクラスタだけを返す（辺 0 本の PoC では 6107 → 0）。
