@@ -2,10 +2,10 @@
 title: IADR-0425 クラスタ検出（Leiden 法）は依存を足さず自前で実装し、乱択を外して決定的にする。未要約クラスタ数はクラスタ同一性の追跡の上で数える
 type: impl-adr
 status: Accepted
-related_ids: [FR-17, FR-18, SC-10, SC-18, ADR-0033, ADR-0035, ADR-0083, IADR-0299, IADR-0353, IADR-0389]
+related_ids: [FR-17, FR-18, SC-10, SC-18, ADR-0033, ADR-0035, ADR-0083, ADR-0120, IADR-0299, IADR-0353, IADR-0389]
 author: endazon (with Claude Code)
 created: 2026-09-11
-updated: 2026-09-11
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md
   - planning:projects/microservices-platform/07_adr/ADR-0083_cluster-definition-and-unsummarized-semantics.md
@@ -196,6 +196,26 @@ PostgreSQL の advisory lock。キーは `"GCLD"`（健全性の `"GKHP"` とは
    **10 通り以上なら `ADR-0035` 決定 3・6 の再評価が要る。**
 3. **`SC-18` のクラスタ表示**（決定 7。2 の後）。
 4. **未要約の条件 3 の時刻の選択**（決定 5）。要約生成の費用が実測できたら環流する。
+
+> **［2026-09-27 追記 / #1663］計画 `ADR-0120` 決定 3（`ADR-0083` 決定 2・3 の部分改定）に従い、所属 1 件の単独クラスタを `unsummarized-clusters` に数えない。上の本文は書き換えない。**
+>
+> - **起点**: PoC の実測（planning#687。`clusters=6107 nodes=6107 edges=0`）で、辺 0 本のとき全文書が単独クラスタになり、
+>   単独クラスタの集合が孤立文書の集合と一致して `unsummarized-clusters` と `orphan-documents` が同じ事象を二重に数えていた。
+> - **変えたもの**: 判定の入口を `UnsummarizedClusterRule.Evaluate(memberCount, …)` にし、**所属文書数が 2 未満
+>   （`MinMembersToSummarize`）なら常に null**（未要約に数えない）を返す。`KnowledgeHealthCollector` は
+>   `graph_cluster_members` から所属文書数を数えてこの入口を呼ぶ。**要約バッチ（`IADR-0430`）も同じ入口を呼ぶ**ので、
+>   「作らないのに未要約として数え続ける」形には割れない（決定 4 以来の「判定は 1 か所から引く」を保つ）。
+> - **変えないもの**: 検出と保存（決定 1〜3。単独クラスタも `graph_clusters` に保存する）、`ADR-0083` 決定 1 の定義、
+>   `SC-18` の表示単位、未要約の 3 条件と理由の 3 語（内訳の軸）。**しきい値は持たない**ままである
+>   （「所属 2 件以上」は計画が定めた対象の境界であり、件数のしきい値ではない）。
+> - **決定 4 の「空であることは全クラスタが未要約」は、「所属 2 件以上の全クラスタが未要約」と読む。**
+>   §結果の「当面 `unsummarized-clusters` は全クラスタを返す」も同じ。**辺 0 本の環境では 0 件になる。**
+> - **§残るもの 2 の読み替えの訂正**: 「10 通り以上なら `ADR-0035` 決定 3・6 の再評価」の「10 通り」は
+>   **ABAC 属性の組み合わせ数の閾値であり、クラスタ数の閾値ではない**（`ADR-0120` 決定 1・実測 1）。
+>   クラスタ数のオーダーの実測（`ADR-0083` フォローアップ 2）は、辺のある環境での実測まで開いたままである。
+> - **試験**: `UnsummarizedClusterRuleTests`（所属 0・1 件は数えない／陽性対照の 2・5 件）、
+>   `ClusterSummaryTests`（辺 0 本で未要約 0 件／塊と単独の混在で塊だけを数える陽性対照）。作業仕様書
+>   `.ai-context/specs/20260927_issue-1663_singleton-cluster-summary-exclusion.md`。
 
 ## 関連
 

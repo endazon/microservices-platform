@@ -24,6 +24,7 @@ namespace GraphService.Tests.Features.Clustering;
 //  3. 🔴 **1 区分でも採れなければ 1 行も書かない**（fail-safe。部分書き込みの禁止）
 //  4. 要約の**本文は `graph_cluster_summaries` に入らない**（ADR-0035 決定 5 / [[IADR-0425]] 決定 4）
 //  5. 1 周期の上限・選ぶ順序・リース・**既定オフ**
+//  6. 🔴 **所属 1 件の単独クラスタは要約せず、未要約にも数えない**（ADR-0120 決定 3 / #1663。陽性対照つき）
 [Trait("TestKind", "Integration")]
 public sealed class ClusterSummaryTests
 {
@@ -421,6 +422,78 @@ public sealed class ClusterSummaryTests
         => new ClusterSummaryOptions { MaxClustersPerRun = 0 }
             .EffectiveMaxClustersPerRun.Should().Be(ClusterSummaryOptions.DefaultMaxClustersPerRun);
 
+    // ── 6. 単独クラスタ（ADR-0120 決定 3 / #1663） ─────────────────────────
+
+    // 🔴 FR-17, FR-10, ADR-0120 決定 3 (T-68): **辺 0 本で全文書が単独クラスタのとき、
+    // 要約は 0 件・`unsummarized-clusters` も 0 件である。** クラスタとしての検出・保存は続ける
+    // （ADR-0083 決定 1 の定義は変えない）。PoC の実測（6107 クラスタ・辺 0 本）の縮図である。
+    [Fact]
+    public async Task 辺が無く全部が単独クラスタなら要約せず未要約にも数えない()
+    {
+        using var factory = new TestWebApplicationFactory();
+        using var _ = factory.CreateClient();
+        var lonely = Ids(3);
+        await SeedAsync(factory, db =>
+        {
+            foreach (var id in lonely)
+                AddDocument(db, id, "孤立した組織文書", ConfidentialityLevels.Internal);
+        });
+        await DetectAsync(factory, Day1);
+
+        (await ClusterIdsAsync(factory)).Should().HaveCount(3,
+            "検出・保存は続ける —— 辺 0 本なら文書ごとに 1 クラスタである（ADR-0083 決定 1）");
+        (await CollectUnsummarizedAsync(factory)).Should().BeEmpty(
+            "🔴 単独クラスタは未要約に数えない（孤立文書は orphan-documents が数える）");
+
+        var llm = new StubLlm();
+        var result = await SummarizeAsync(factory, Day2, llm);
+
+        result.Candidates.Should().Be(0);
+        result.Generated.Should().Be(0);
+        llm.Prompts.Should().BeEmpty("🔴 単独クラスタには要約を作らない（LLM を 1 回も呼ばない）");
+        (await SummaryStampsAsync(factory)).Should().BeEmpty();
+        (await SummaryBodiesAsync(factory)).Should().BeEmpty();
+    }
+
+    // 🔴 FR-17, FR-10, ADR-0083 決定 2・3 (T-69): **陽性対照。** 所属 2 件以上のクラスタと
+    // 単独クラスタが混ざるとき、前者だけが従来どおり要約の対象になり、未要約として数えられる。
+    // これが無いと「クラスタを 1 つも選ばない実装」でも上のテストが緑になる。
+    [Fact]
+    public async Task 所属二件以上のクラスタだけが要約され未要約に数えられる()
+    {
+        using var factory = new TestWebApplicationFactory();
+        using var _ = factory.CreateClient();
+        var org = Ids(4);
+        var lonely = Ids(2);
+        await SeedAsync(factory, db =>
+        {
+            foreach (var id in org.Concat(lonely))
+                AddDocument(db, id, "組織文書", ConfidentialityLevels.Internal);
+            Clique(db, org);
+        });
+        await DetectAsync(factory, Day1);
+
+        (await ClusterIdsAsync(factory)).Should().HaveCount(3, "塊 1 つ ＋ 単独 2 つ");
+        var cliqueCluster = await ClusterOfAsync(factory, org[0]);
+
+        (await CollectUnsummarizedAsync(factory)).Should().ContainSingle(
+                "所属 4 件のクラスタだけが未要約に数えられる")
+            .Which.SubjectKey.Should().Be(cliqueCluster.ToString());
+
+        var llm = new StubLlm();
+        var result = await SummarizeAsync(factory, Day2, llm);
+
+        result.Candidates.Should().Be(1);
+        result.Generated.Should().Be(1);
+        llm.Prompts.Should().NotBeEmpty().And.AllSatisfy(p =>
+            p.Members.Select(m => m.DocumentId).Should().BeSubsetOf(org,
+                "単独クラスタの文書は送信本文に入らない"));
+        (await SummaryStampsAsync(factory)).Should().HaveCount(4)
+            .And.AllSatisfy(s => s.ClusterId.Should().Be(cliqueCluster));
+        (await CollectUnsummarizedAsync(factory)).Should().BeEmpty(
+            "要約した後は、単独クラスタも含めて未要約に数えるものは無い");
+    }
+
     // ── 器 ─────────────────────────────────────────────────────────────────
 
     private static Guid[] Ids(int count) => [.. Enumerable.Range(0, count).Select(_ => Guid.NewGuid())];
@@ -492,6 +565,14 @@ public sealed class ClusterSummaryTests
         return await scope.ServiceProvider.GetRequiredService<GraphDbContext>()
             .Clusters.AsNoTracking().Select(c => c.ClusterId)
             .ToListAsync(TestContext.Current.CancellationToken);
+    }
+
+    private static async Task<Guid> ClusterOfAsync(TestWebApplicationFactory factory, Guid documentId)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<GraphDbContext>()
+            .ClusterMembers.AsNoTracking().Where(m => m.DocumentId == documentId)
+            .Select(m => m.ClusterId).SingleAsync(TestContext.Current.CancellationToken);
     }
 
     private static async Task<List<GraphClusterSummary>> SummaryStampsAsync(

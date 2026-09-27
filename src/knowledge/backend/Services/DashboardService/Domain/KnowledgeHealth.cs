@@ -21,7 +21,8 @@ public static class KnowledgeHealthIndicators
     // 解決できないリンク数: リンク先を特定できない辺。
     public const string UnresolvedLinks = "unresolved-links";
 
-    // 未要約クラスタ数: 要約が生成されていないクラスタ（コミュニティ）。
+    // 未要約クラスタ数: 要約が生成されていないクラスタ（コミュニティ）。所属 1 件の単独クラスタは
+    // 要約の対象外であり、生産者が数えない（ADR-0120 決定 3 / #1663）。
     public const string UnsummarizedClusters = "unsummarized-clusters";
 
     // 陳腐化文書数: **本文**の更新が一定期間途絶えている文書。

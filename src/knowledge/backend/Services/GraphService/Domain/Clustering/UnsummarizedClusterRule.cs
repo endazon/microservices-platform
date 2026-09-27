@@ -14,15 +14,43 @@ namespace GraphService.Domain.Clustering;
 // 判定は**機密区分 4 通りのうち最も古い生成時刻**に対して行う。これは
 // 「4 通りのうち 1 つでも古ければ未要約」と同値であり、ADR-0083 決定 2
 // （「1 つでも欠ければ未要約」／ADR-0035 決定 6 の「4 通りすべてを作り直す」）と揃う。
+//
+// ★［2026-09-27 追記 / #1663・ADR-0120 決定 3］**所属文書が 1 件以下のクラスタは要約の対象外である。**
+// 要約を作らず、「未要約」にも数えない。要約は「複数の文書をまとめて大域的な問いに答える」ための
+// ものであり（ADR-0035 決定 3）、所属 1 件の要約は表題の言い換えにしかならない。単独クラスタの集合は
+// 辺が少ない環境では孤立文書の集合と重なり、`orphan-documents` が既に数えている（二重に数えない）。
+// **クラスタとしての検出・保存は変えない**（ADR-0083 決定 1 の定義も SC-18 の表示単位も不変）。
+//
+// 🔴 **判定の入口は `Evaluate(memberCount, …)` の 1 つである。** 要約バッチ（`ClusterSummaryJob`）と
+// 指標（`KnowledgeHealthCollector`）が同じ入口を呼ぶ —— 片方だけが単独クラスタを外すと、
+// 「作らないのに未要約として数え続ける」（または逆）に割れる。
 internal static class UnsummarizedClusterRule
 {
+    // 要約の対象になる最小の所属文書数（ADR-0120 決定 3）。これ未満は対象外である。
+    public const int MinMembersToSummarize = 2;
+
+    // 所属文書数から、要約の対象かどうかを返す。
+    public static bool IsSummaryTarget(int memberCount) => memberCount >= MinMembersToSummarize;
+
+    // 所属文書数を含めた判定。**要約の対象外（所属 1 件以下）なら常に null**（未要約に数えない）。
+    // 対象なら下の 3 条件の判定と同じ値を返す。
+    public static string? Evaluate(
+        int memberCount,
+        DateTimeOffset compositionChangedAt,
+        DateTimeOffset? latestMemberUpdatedAt,
+        IReadOnlyDictionary<string, DateTimeOffset> summaryGeneratedAt)
+        => IsSummaryTarget(memberCount)
+            ? Evaluate(compositionChangedAt, latestMemberUpdatedAt, summaryGeneratedAt)
+            : null;
+
     // 内訳の軸に載せる理由。🔴 **基数が有界な語だけを載せる**（IKnowledgeHealthReporter の定め）。
     // 3 語で閉じており、ADR-0083 決定 3 の 3 条件と 1 対 1 である。
     public const string NoSummary = "no-summary";
     public const string CompositionChanged = "composition-changed";
     public const string DocumentsUpdated = "documents-updated";
 
-    // 未要約なら理由、要約済みなら null。
+    // 未要約なら理由、要約済みなら null。**所属文書数を見ない**（ADR-0083 決定 3 の 3 条件だけ）。
+    // 呼び出し側は上の `Evaluate(memberCount, …)` を使う（単独クラスタの除外を落とさないため）。
     //
     // 複数の条件に当たるときは **1 → 2 → 3 の順で先勝ち**とする（内訳は 1 クラスタ 1 軸である）。
     // 条件 1 が最優先なのは、要約が欠けているクラスタでは 2・3 が測れない（起点が無い）ためである。
