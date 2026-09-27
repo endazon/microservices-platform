@@ -1,3 +1,4 @@
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
@@ -18,9 +19,15 @@ namespace WikiService.Features.Wiki.RemoveDeleted;
 //
 // 🔴 ADR-0027 / E3a: **購読は Wolverine へ移した**（IPipelineStep<DocumentDeleted>・IADR-0239）。
 // E3b で DocumentSyncConsumer（DocumentUpdated）も Wolverine へ移り、本サービスに MassTransit は残っていない。
+//
+// 🔴 #1640: Wiki.js からの撤去は期限（`WikiSyncTimeouts.WikiJs`・既定 15 秒）の下で行う。止まった Wiki.js は、受け口の ct
+// （Wolverine の実行期限）で「取り消し」として切られる前に時間切れ（`ConsumerTimeoutException`・計器
+// `messaging.consumer.timeout`）として投げる。呼び出し元の取り消しはそのまま外へ出す。
 public class DocumentDeletedConsumer(
     WikiDbContext db,
     IWikiJsClient wikiJs,
+    ConsumerCallTimeouts calls,
+    WikiSyncTimeouts timeouts,
     ILogger<DocumentDeletedConsumer> logger) : IPipelineStep<DocumentDeleted>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -29,7 +36,8 @@ public class DocumentDeletedConsumer(
     // ADR-0027 / E3a: Wolverine のハンドラ。
     public async Task Handle(DocumentDeleted ev, CancellationToken ct)
     {
-        await wikiJs.DeletePageAsync(WikiPage.PathFor(ev.DocumentId), ct);
+        await calls.RunAsync(StepName, WikiSyncTimeouts.WikiJsTarget, timeouts.WikiJs,
+            t => wikiJs.DeletePageAsync(WikiPage.PathFor(ev.DocumentId), t), ct);
 
         var page = await db.Pages
             .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ct);

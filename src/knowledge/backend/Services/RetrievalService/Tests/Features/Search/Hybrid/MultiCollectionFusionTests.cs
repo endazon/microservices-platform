@@ -394,6 +394,7 @@ public class MultiCollectionFusionTests
 
         await new DocumentDeletedConsumer(
                 primary, new FusedCollections([new FusedCollection(Ruri, tierA, new FixedEmbedding([]))]),
+                ConsumerTimeoutsForTests.Calls(), DocumentDeletedTimeouts.Default,
                 NullLogger<DocumentDeletedConsumer>.Instance)
             .Handle(new DocumentDeleted(doc, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
 

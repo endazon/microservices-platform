@@ -68,6 +68,7 @@ public class DocumentLinkTargetPersistenceTests
         var consumer = new GraphDocumentSyncConsumer(
             db, new FixedClock(T0.AddDays(1)), reader, sync,
             new TermProfileSynchronizer(db),
+            ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
             NullLogger<GraphDocumentSyncConsumer>.Instance);
         return (consumer, reader);
     }

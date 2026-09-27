@@ -5,6 +5,7 @@ using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 
 
@@ -49,12 +50,19 @@ namespace GraphService.Features.GraphDocuments.Sync;
 // 出現数の行が無い文書には表題から作る（既存文書の初回。backfill の代わり）。
 //
 // 失敗時: 例外を送出し、Wolverine のリトライ／デッドレター（UsePlatformMessagingDefaults）へ委ねる。
+//
+// 🔴 #1640: 本文の取得は期限（`GraphSyncTimeouts`・既定 20 秒）の下で行う。止まったストレージは、受け口の ct
+// （Wolverine の実行期限）で「取り消し」として切られる前に時間切れ（`ConsumerTimeoutException`・計器
+// `messaging.consumer.timeout`）として投げる。**時間切れは「本文が取れない（null）」へ畳まない** —— 畳むと辺を触らずに
+// 成功で終わり、本文の変化が再試行されずに失われる。呼び出し元の取り消しはそのまま外へ出す。
 public class GraphDocumentSyncConsumer(
     GraphDbContext db,
     TimeProvider clock,
     IGraphContentReader content,
     LinkEdgeSynchronizer links,
     TermProfileSynchronizer termProfiles,
+    ConsumerCallTimeouts calls,
+    GraphSyncTimeouts timeouts,
     ILogger<GraphDocumentSyncConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -117,7 +125,9 @@ public class GraphDocumentSyncConsumer(
             reinstated = await ReinstateRejectedAsync(ev.DocumentId, ev.ContentFingerprint, ct);
 
             // ADR-0033 決定 6 / #912: 本文が変わったときだけ辺を作り直す（ADR-0050 決定 3）。
-            var body = await content.ReadAsync(ev.MarkdownUri, ct);
+            var markdownUri = ev.MarkdownUri;
+            var body = await calls.RunAsync(StepName, GraphSyncTimeouts.ContentTarget, timeouts.ContentRead,
+                t => content.ReadAsync(markdownUri, t), ct);
             if (body is null)
             {
                 // 🔴 **辺を触らずに抜ける。** 縮退本文で抽出すると当該文書起点の辺が全消しになる。

@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-08, FR-03, FR-04, FR-05, FR-06, SC-05, UC-03, NFR-09, FR-19]
-adrs: [ADR-0058, ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056]
-iadrs: [IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455]
-specs: [20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope]
-issues: [#1616, #1628, #1629, #1614, #199, #1011, #1575, planning#473]
+adrs: [ADR-0058, ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056, ADR-0027]
+iadrs: [IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
+specs: [20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
 -->
 
 # テスト仕様書: 文書CRUD・バージョン管理
@@ -105,12 +105,14 @@ issues: [#1616, #1628, #1629, #1614, #199, #1011, #1575, planning#473]
 | T-67 | 機械クライアントが作った文書 | 所有者を別の利用者・空文字へ、文書スコープを個人資料へ書き換えるメタデータ更新を送る。所有者を送らない更新も送る | 所有者・文書スコープの書き換えは 400 で保存されない。所有者を送らない更新は 200 で所有者が残る | 所有者と文書スコープの不変性（機械の経路） | 自動（エンドポイント） |
 | T-68 | 運用者だけの人（自分が所有者の文書を含む）、書き込みのロールを持たない機械クライアント、運用者ロールの機械クライアント | 運用者だけの人でメタデータ更新・削除を自分の文書と不在の ID へ、ロールなしの機械で自分の文書を更新、運用者の機械で自分の文書の編集・公開・アーカイブを呼ぶ | いずれも 403（文書の有無に依らない）。版は変わらない | 人には管理者限定がそのまま効く・機械へ開いたのは 2 口だけ | 自動（エンドポイント） |
 | T-69 | 利用者 alice が所有する組織文書、所有者の無い組織文書 | 人の管理者が編集・メタデータ更新で所有者を機械クライアントへ書き換える。所有者を送らない保存、同じ所有者を送る保存。所有者の無い文書へ所有者を付ける | 書き換えと付与は 400 で所有者は変わらない。送らない保存・同じ値の保存は 200 で所有者が残る（陽性対照） | 人の管理者の経路でも所有者は動かせない | 自動（エンドポイント） |
+| T-70 | 検索索引からの削除（主・追加コレクション） | 縮めた受け口の期限（30 秒）の下で Qdrant の削除が止まる（1 回の期限 1 秒） | 受け口の期限より前に**時間切れ**（`ConsumerTimeoutException`）として投げる（再試行・デッドレターへ）。呼び出し元の取り消しは取り消しのまま（対照）。既定の期限 10 秒、「(主＋追加) × 期限」が既定の実行期限 60 秒以上の構成は起動を止める。本番の配線は期限を DI に置き実行期限は既定のまま | 削除は索引から消える | 自動（受け口） |
 
 対応テスト実装:
 
 - 単体（ドメイン）: `src/knowledge/backend/Services/DocumentService/Tests/Domain/DocumentVersioningTests.cs`（T-01〜T-05）、`DocumentAttributesTests.cs`（T-23）
 - 単体（エンドポイント, InMemory）: `.../MachineClientOwnDocumentWriteTests.cs`（T-64〜T-69）、`.../AdminWritePrivateNoteScopeTests.cs`（T-60〜T-63）、`.../AddTag/GrpcDocumentTagWriteTests.cs`（T-62 の gRPC 面）、`.../PrivateNotes/PrivateNoteExposurePublishTests.cs`（T-63）、`.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28・T-38）、`DocumentPageTests.cs`（T-30〜T-37・T-39〜T-41）
 - 単体（契約）: `src/knowledge/backend/Shared/Knowledge.Contracts.Tests/DocumentReadGrpcMappingTests.cs`（T-29）
+- 単体（検索索引からの削除の受け口）: `src/knowledge/backend/Services/RetrievalService/Tests/Features/Search/RemoveDeleted/DocumentDeletedTimeoutTests.cs`（T-70。配線は同じファイルの `DocumentDeletedTimeoutWiringTests`）
 - 実 Kestrel ＋ 本物の JwtBearer・単体（構成）: `.../Features/Documents/DocumentReadTrustedRelayTests.cs`・`DocumentReadRelayOptionsTests.cs`・`DocumentReadRelayDeploymentWiringTests.cs`（T-51）
 - 統合（実 PostgreSQL）: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DocumentService/DocumentCrudTests.cs`（T-12〜T-14）、`DocumentVersioningTests.cs`（T-15〜T-16）
 - 統合（実 PostgreSQL / RabbitMQ）: `.../DocumentNormalizedSyncTests.cs`（T-17〜T-18）

@@ -70,6 +70,7 @@ public class TermProfileSyncTests
             new LinkEdgeSynchronizer(db, new EdgeTypeFallbackMetrics(new DummyMeterFactory()),
                 NullLogger<LinkEdgeSynchronizer>.Instance),
             new TermProfileSynchronizer(db),
+            ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
             NullLogger<GraphDocumentSyncConsumer>.Instance);
         return (consumer, reader);
     }

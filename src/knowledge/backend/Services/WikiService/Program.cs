@@ -4,6 +4,7 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Microsoft.EntityFrameworkCore;
 using Wolverine;
 using Wolverine.RabbitMQ;
@@ -85,6 +86,11 @@ builder.Services.AddPlatformObjectStorage(builder.Configuration);
 // IADR-0021: 正規化 Markdown 本文を MarkdownUri から取得して Wiki.js へ push する
 // （storage:// はオブジェクトストレージから実取得。IADR-0020 ゲートウェイ経由の ABAC 強制と整合）。
 builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
+
+// FR-13, ADR-0027 (#1640): 同期・撤去の受け口の期限（本文の取得・Wiki.js 1 回）。
+// 既定の実行期限（60 秒）に最悪の所要時間が収まらない構成は、ここで起動を止める。
+builder.Services.AddSingleton(WikiSyncTimeouts.From(builder.Configuration));
+builder.Services.AddPlatformConsumerTimeouts();
 
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddPlatformPipelineConfig();

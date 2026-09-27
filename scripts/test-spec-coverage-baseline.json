@@ -68,6 +68,7 @@
       "DocumentAttributesTests",
       "DocumentConfidentialityValidationTests",
       "DocumentCrudTests",
+      "DocumentDeletedTimeoutTests",
       "DocumentEndpointVersioningTests",
       "DocumentFingerprintResponseTests",
       "DocumentNormalizedSyncTests",
@@ -150,7 +151,8 @@
       "DocumentLifecycleEventTests",
       "DocumentSyncConsumerTests",
       "WikiEndpointsAbacTests",
-      "WikiJsGraphQlClientTests"
+      "WikiJsGraphQlClientTests",
+      "WikiSyncTimeoutTests"
     ],
     "docs/tests/FR-14_composability.md": [
       "PipelineDeclarationEffectivenessTests",
@@ -204,6 +206,7 @@
       "GraphNeighborsRelayDeploymentWiringTests",
       "GraphNeighborsRelayOptionsTests",
       "GraphNeighborsTrustedRelayTests",
+      "GraphSyncTimeoutTests",
       "GraphTypeGateArchitectureTests",
       "LinkEdgeSyncTests",
       "ObsidianLinkParserTests",

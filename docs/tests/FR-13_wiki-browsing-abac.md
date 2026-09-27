@@ -3,15 +3,15 @@ title: FR-13 Wiki 閲覧の ABAC 適用 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-07-03
-updated: 2026-08-21
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-07, FR-13, UC-07]
-adrs: [ADR-0004, ADR-0011]
-iadrs: [IADR-0023]
-specs: [20260703_FR-13_wiki-browsing-abac]
-issues: []
+adrs: [ADR-0004, ADR-0011, ADR-0027]
+iadrs: [IADR-0023, IADR-0478]
+specs: [20260703_FR-13_wiki-browsing-abac, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#1640]
 -->
 
 # テスト仕様書: Wiki 閲覧の ABAC 適用
@@ -61,6 +61,8 @@ issues: []
 | T-20 | Archived ページ・権限あり | `GET /wiki/pages` / by-doc | 一覧に出ない・個別 404（存在秘匿維持） | 同上 | 自動 |
 | T-21 | 未存在ページの singleByPath（errors 6003） | `UpsertPageAsync` | 例外化せず create へ進む（稼働実測整合） | 更新反映 | 自動 |
 | T-22 | アーカイブの Wiki.js 送信シェイプ | `ArchivePageAsync` | content/title/tags を含む全項目 update＋unpublish | 削除/アーカイブ伝播 | 自動 |
+| T-23 | 縮めた受け口の期限（30 秒）の下で、本文の取得・Wiki.js への反映・アーカイブ・撤去のどれかが止まる（1 回の期限 1 秒） | 発行→消費 | 受け口の期限より前に、その呼び出し先の**時間切れ**（`ConsumerTimeoutException`）として投げる（再試行・デッドレターへ）。呼び出し元の取り消しは取り消しのまま外へ出る（対照） | 更新反映・削除/アーカイブ伝播 | 自動 |
+| T-24 | 期限の構成と配線 | 起動 | 既定は本文 20 秒・Wiki.js 15 秒。同期（本文＋Wiki.js）か撤去（Wiki.js）が既定の実行期限 60 秒以上になる構成は起動を止める（等しいときも）。本番の配線は期限を DI に置き、両受け口の実行期限は既定のまま | 同上 | 自動 |
 
 ## 実装マッピング
 
@@ -69,4 +71,5 @@ issues: []
 - `DocumentSyncConsumerTests`（T-12〜T-14）
 - `DocumentDeleteArchiveSyncTests`（T-15〜T-19）
 - `WikiJsGraphQlClientTests`（T-21〜T-22。稼働 Wiki.js 2.5.314 の実測応答を再生）
+- `WikiSyncTimeoutTests`（T-23〜T-24。配線は同じファイルの `WikiSyncTimeoutWiringTests`）
 - `DocumentLifecycleEventTests`（DocumentService 側: archive/delete のイベント発行）

@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using Knowledge.Contracts.Events;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.EntityFrameworkCore;
@@ -67,6 +68,8 @@ public class PipelineRecomposeTests
             })
             .ConfigureServices(services => services
                 .AddLogging()
+                .AddPlatformConsumerTimeouts()
+                .AddSingleton(WikiSyncTimeouts.Default)
                 .AddDbContext<WikiDbContext>(o => o.UseInMemoryDatabase(dbName))
                 .AddSingleton<IWikiJsClient, NoopWikiJsClient>()
                 .AddSingleton<IWikiContentReader, NoopContentReader>()
