@@ -42,6 +42,9 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
     // ポートは GrpcTestConfiguration（環境変数）が決める。ConfigureAppConfiguration では間に合わない。
     public int GrpcPort => GrpcTestConfiguration.GrpcPort;
 
+    /// <summary>承認者が管理者かを答える認可サービスの代役（#1636）。既定は NotAdmin。</summary>
+    public StubApproverRoleDirectory ApproverRoles { get; } = new();
+
     public GrpcKestrelFactory() => UseKestrel();
 
     public string GrpcAddress => $"http://127.0.0.1:{GrpcPort}";
@@ -79,6 +82,10 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             services.RemoveAll<DocumentService.Domain.Ports.IPrivateNoteNotifier>();
             services.AddSingleton<DocumentService.Domain.Ports.IPrivateNoteNotifier>(
                 new RecordingPrivateNoteNotifier());
+
+            // FR-18, NFR-09, [[IADR-0410]] 追記 2 (#1636): 承認者が管理者かを答える認可サービスの代役（既定は NotAdmin）。
+            services.RemoveAll<DocumentService.Domain.Ports.IApproverRoleDirectory>();
+            services.AddSingleton<DocumentService.Domain.Ports.IApproverRoleDirectory>(ApproverRoles);
 
             services.RemoveAll<IBusControl>();
             services.AddMassTransitTestHarness();

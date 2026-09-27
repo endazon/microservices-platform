@@ -212,6 +212,20 @@ else
     builder.Services.AddScoped<DocumentService.Domain.Ports.IOwnerAccountDirectory,
         DocumentService.Infrastructure.ExternalServices.UnavailableOwnerAccountDirectory>();
 }
+// FR-05, FR-18, NFR-09, SC-05, 計画 ADR-0088 決定 1, ADR-0063 決定 3, [[IADR-0410]] 追記 2 (#1636): gRPC のタグの反映で
+// 承認者が管理者かを認可サービスへ問う口（本文の `user_roles` は信じない）。**同じ構成キー・同じ生成クライアント**を読む。
+// 🔴 **未構成なら常に「判定できない」を返す縮退を登録する** —— 所有者でない承認者の gRPC の反映は UNAVAILABLE になる
+// （本文のロールへ戻さない。所有者の承認と REST は影響を受けない）。
+if (!string.IsNullOrWhiteSpace(builder.Configuration[AuthzScopeGrpcClient.AddressKey]))
+{
+    builder.Services.AddScoped<DocumentService.Domain.Ports.IApproverRoleDirectory,
+        DocumentService.Infrastructure.ExternalServices.GrpcApproverRoleDirectory>();
+}
+else
+{
+    builder.Services.AddScoped<DocumentService.Domain.Ports.IApproverRoleDirectory,
+        DocumentService.Infrastructure.ExternalServices.UnavailableApproverRoleDirectory>();
+}
 // FR-19, NFR-09, 計画 ADR-0119 決定 3 (#1614): 読み取りの可視性（`DocumentReadAccess`。要求の寿命＝認可サービスへの
 // 問い合わせの memo も要求の寿命）と、グループの共有先を認可サービスへ問う口。**同じ構成キー・同じ共有チャネル**を読む。
 // 🔴 **未構成なら常に「読めるものは無い」を返す縮退を登録する** —— グループの共有先の個人資料だけが誰にも返らなくなり、

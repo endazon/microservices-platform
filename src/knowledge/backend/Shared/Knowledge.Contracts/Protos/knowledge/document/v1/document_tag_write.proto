@@ -70,7 +70,9 @@ message AddTagRequest {
   map<string, string> user_attributes = 4;
 
   // 承認者の realm ロール。🔴 **`user_attributes` と別欄である**（上の 🔴 を参照）。
-  // 後段は `platform-admin` の有無だけを見る。
+  // ［2026-09-27 改 / #1636］🔴 **受け口は評価に用いない。** 承認者が `platform-admin` を持つかは、受け口が `user_id` について
+  // 認可サービス（`platform.authz.v1.UserDirectory/CheckRealmRole`）へ問い直す（呼び出し元の主張を判定に用いない。
+  // ADR-0088 決定 1 の原則。IADR-0410 追記 2）。フィールドの削除は破壊的変更なので残す。呼び出し元は送り続けてよい。
   repeated string user_roles = 5;
 
   // read / analyze / manage / write。この口は write である。

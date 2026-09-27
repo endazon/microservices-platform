@@ -43,9 +43,13 @@ related_ids:
   - IADR-0385
   - IADR-0397
   - IADR-0400
+  - FR-18
+  - ADR-0063
+  - ADR-0088
+  - IADR-0410
 author: claude
 created: 2026-09-06
-updated: 2026-09-06
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0029_grpc-rest-usage-criteria.md §決定・2026-08-04 追記
   - planning:projects/microservices-platform/07_adr/ADR-0075_east-west-grpc-migration-order.md 決定 3・5・6
@@ -251,3 +255,29 @@ LlmGateway 側は**キー付き**で登録されているので衝突しない�
 
 - Supersedes: なし（`IADR-0379` の 4 決定・`IADR-0397` / `IADR-0400` の決定はいずれも不変。本 IADR はその適用と拡張）
 - Superseded by: なし
+
+## 追記: 名簿の読み口に「この 1 人はこの realm ロールを持つか」を足す（2026-09-27 / #1636）
+
+［2026-09-27 追記 / #1636］決定 2 は「呼び出し元が実際に要る問いだけを s2s の面へ出す」とし、名簿の読み口は「ロール・有効状態・内部 ID は返さない」とした。
+[[IADR-0431]]（`enabled`）・[[IADR-0472]]（部門コード）と同じく、**要る呼び出し元ができたので問いを 1 つ足す。**
+
+- **呼び出し元**: DocumentService の gRPC のタグの反映（`DocumentTagWrite/AddTag`）。承認者が `platform-admin` を持つかを、east-west の本文の
+  `user_roles`（呼び出し元の主張）ではなく IdP から引いた値で判定する（[[IADR-0410]] 追記 2。計画 `ADR-0088` 決定 1 の原則を realm ロールへ延ばす）。
+  IdP を引けるのは認可サービスだけ（[[IADR-0329]] 決定 1）なので、名簿の読み口で問う。
+- **rpc `CheckRealmRole(username, role) → (found, has_role)`**（追加であり破壊的変更ではない。[[IADR-0379]] 決定 2。`check-proto-contracts` の床を更新した）。
+  - **問いは 1 つのロールだけ。ロールの一覧は返さない**（決定 2 の狭め方を保つ。呼び出し元が要るのは「管理者か」の 1 ビットである）。
+  - **実効ロール**（合成・既定の展開を含む ＝ トークンの `realm_access.roles`）で答える。Keycloak は `users/{id}/role-mappings/realm/composite`
+    （`IIdentityAdminClient.GetEffectiveRealmRolesAsync`）。管理画面の「割り当てたロール」（`IdentityUser.Roles`）では合成ロール経由の管理者が落ちる。
+  - **無効化された利用者は持たないと答える**（退職者の名前で管理者の上書きを通さない）。
+  - 利用者名の照合は `GetUserAttributes` と同じ（`FindByUsernameAsync`。大小文字無視・一意でなければ引けなかった）。ロール名は序数一致。
+  - 「居ない」は `found=false`、「引けなかった」は status（決定 5 の分離）。空の引数は `INVALID_ARGUMENT`。門は `ServiceCaller` のまま。
+- **呼び出し側**: 共有の `UserDirectoryGrpcClient.HasRealmRoleAsync` は、持つ → true、持たない・居ない → false、引けなかった → `null`（決定 5。倒す向きは呼び出し元が決める。
+  DocumentService は `null` を UNAVAILABLE へ倒す）。書き込みの経路なので締切 5 秒。
+- **問えるロールは許可集合（`platform-admin` だけ）に固定する**（#1636 のセキュリティ監査 N2）。任意のロールを問えると、`platform-service` の保持者が
+  「誰がどのロールを持つか」を列挙できる。`GetUserAttributes` は realm ロールを出さないので、漏れる情報の種類が 1 つ増えるためである。
+  集合の外（大小文字違い・接頭辞・実在する他のロールを含む）は、名簿を引く前に `PERMISSION_DENIED`。呼び出し元が増えたら集合へ足す（要る問いだけを面へ出す ＝ 決定 2）。
+- **残るもの**: `platform-admin` を持つかは `platform-service` を持つ主体なら誰でも引ける（任意の利用者が管理者かの照会）。同じ主体は既に
+  `GetUserAttributes` で任意の利用者の ABAC 属性を引けるので、計画 `ADR-0088` 決定 4 の受け入れの範囲として残す。
+- **配備の順番**: **authorization-service を先に配備すること。** document-service を先に出すと `CheckRealmRole` が `UNIMPLEMENTED` → 判定できない →
+  管理者の承認（所有者でない承認者）だけが 502 になる。authorization-service を出した時点で回復する。
+- 作業仕様書: `.ai-context/specs/20260927_issue-1636_addtag-admin-role-from-authz.md`

@@ -628,6 +628,7 @@ public class DepartmentAttributeSyncTests
 
         public Task<IReadOnlyList<IdentityUser>> ListUsersAsync(CancellationToken ct) => throw Untouchable();
         public Task<IdentityUser?> FindByUsernameAsync(string username, CancellationToken ct) => throw Untouchable();
+        public Task<IReadOnlyList<string>> GetEffectiveRealmRolesAsync(string userId, CancellationToken ct) => throw Untouchable();
         public Task<IReadOnlyList<IdentityUser>> SearchUsersAsync(string query, int max, CancellationToken ct) => throw Untouchable();
         public Task<IReadOnlyList<IdentityGroup>> SearchGroupsAsync(string query, int max, CancellationToken ct) => throw Untouchable();
         public Task<IReadOnlyList<IdentityGroup>> GetGroupsByIdsAsync(IReadOnlyList<string> ids, CancellationToken ct) => throw Untouchable();

@@ -16,6 +16,7 @@ namespace Platform.Shared.Infrastructure.Foundation.Authz;
 // 「これらの利用者名は実在するか」（DataSourceService）と
 // 「この 1 人の属性は何か」（McpServer の登録者自身）と、
 // ［2026-09-26 / #1557・IADR-0472］「これらの部門コードは値域に在るか」（DataSourceService。計画 ADR-0115 決定 5）。
+// ［2026-09-27 / #1636・IADR-0410 追記 2］「この 1 人はこの realm ロールを持つか」（DocumentService のタグの反映。計画 ADR-0088 決定 1）。
 //
 // 🔴 **「居ない」と「引けなかった」を型で分ける。**
 //   居ない = 応答（`exists=false` / `Found=false`）、引けなかった = 戻り値 `null`。
@@ -121,6 +122,37 @@ public sealed class UserDirectoryGrpcClient(
         catch (InvalidOperationException ex)
         {
             logger.LogWarning(ex, "s2s トークンが取得できないため登録者の ABAC 属性を解決できません。");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// NFR-09, FR-18, SC-05, 計画 ADR-0088 決定 1, ADR-0063 決定 3, IADR-0410 追記 2 (#1636):
+    /// 名指しした 1 人が 1 つの realm ロールを**実効で**持つか（無効化された利用者は持たない）。
+    /// 持つ → true、持たない・名簿に居ない → false、**引けなかったときは <c>null</c>**（false ではない）。
+    /// <para>
+    /// 🔴 呼び出し元は <c>null</c> を「持たない」へ畳まないこと —— 認可サービスの障害を「管理者ではない」と記録するのは嘘である。
+    /// 書き込みの経路で使うので締切（<see cref="WriteTimeLookupTimeout"/>）を掛ける。
+    /// </para>
+    /// </summary>
+    public async Task<bool?> HasRealmRoleAsync(string username, string role, CancellationToken ct)
+    {
+        try
+        {
+            var resp = await client.CheckRealmRoleAsync(
+                new Pb.CheckRealmRoleRequest { Username = username, Role = role },
+                deadline: DateTime.UtcNow.Add(WriteTimeLookupTimeout), cancellationToken: ct);
+            return resp.Found && resp.HasRole;
+        }
+        catch (RpcException ex)
+        {
+            logger.LogWarning(
+                "realm ロールの gRPC 照会に失敗しました（{Status}）。ロールは判定できません。", ex.StatusCode);
+            return null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "s2s トークンが取得できないため realm ロールを照会できません。");
             return null;
         }
     }

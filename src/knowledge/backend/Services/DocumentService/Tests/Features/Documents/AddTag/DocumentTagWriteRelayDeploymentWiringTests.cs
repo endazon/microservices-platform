@@ -73,6 +73,24 @@ public class DocumentTagWriteRelayDeploymentWiringTests
         }
     }
 
+    // FR-18, NFR-09, [[IADR-0410]] 追記 2 (#1636 段 2): 承認者が管理者かは認可サービスの `UserDirectory/CheckRealmRole` で引く。
+    // 🔴 document-service に認可サービスの gRPC 宛先が配線されていないと縮退（常に「判定できない」）が選ばれ、管理者の承認が
+    //   すべて UNAVAILABLE（graph は 502）になる。realm の document-service が `platform-service` を持たないと門で PERMISSION_DENIED になる。
+    [Fact]
+    public void compose_と_helm_の_documentは認可サービスのgRPC宛先を持ち_realmのdocument_serviceはplatform_serviceを持つ()
+    {
+        Block(ReadRepoFile(Compose), "services:", "  document-service:").Should().MatchRegex(
+            @"(?m)^\s+Services__AuthorizationServiceGrpc:\s*http://authorization-service:8081\s*$");
+        Block(ReadRepoFile(Helm), "services:", "  document:").Should().MatchRegex(
+            @"(?m)^\s+- name: Services__AuthorizationServiceGrpc\s*\n\s+value:\s*""http://authorization-service:8081""\s*$");
+
+        using var realm = JsonDocument.Parse(ReadRepoFile(Realm));
+        realm.RootElement.GetProperty("users").EnumerateArray()
+            .Single(u => u.TryGetProperty("serviceAccountClientId", out var s) && s.GetString() == "document-service")
+            .GetProperty("realmRoles").EnumerateArray().Select(r => r.GetString())
+            .Should().Contain("platform-service");
+    }
+
     // `section` の行より後で最初に現れる `header` から、同じ字下げ以下の行が来るまでを返す（改行は \n に揃える）。
     private static string Block(string text, string section, string header)
     {

@@ -44,6 +44,7 @@ related_ids:
   - IADR-0420
   - IADR-0426
   - IADR-0476
+  - IADR-0329
 author: claude
 created: 2026-09-07
 updated: 2026-09-27
@@ -105,6 +106,9 @@ plan_refs:
   その射程を「ホップごと ABAC の呼び出し先」へ及ぼしただけである。
 
 ### 決定 2: 🔴 realm ロールは `user_attributes` へ混ぜず、専用の `user_roles` で運ぶ
+
+> ［2026-09-27 追記 / #1636］**受け口は `user_roles` を評価に用いなくなった**（承認者が管理者かは認可サービスが引き直す）。末尾の追記 2 を正とする。
+> 「`user_attributes` へ混ぜない」は変わらない。
 
 タグ反映の認可は「①所有者の動的束縛 **または** ②`platform-admin`」の選言であり（`ADR-0063` 決定 3）、
 ②は ABAC ではなくロール判定である。**②のためにロールを運ぶ必要があるが、`user_attributes` へ入れない。**
@@ -266,6 +270,7 @@ plan_refs:
 | --- | --- | --- |
 | 2026-09-07 | 起案した | 計画 `ADR-0086` 決定 1・3・5（#1255 残作業 1） |
 | 2026-09-27 | 追記 1: 本文の利用者文脈を信じる呼び出し元を面ごとの許可集合に絞った（決定 1・決定 2 の信頼の範囲） | #1636（PR #1631 の監査で見つかった同型） |
+| 2026-09-27 | 追記 2: 決定 2 の `user_roles` を受け口が評価に用いないよう改め、管理者かを認可サービスが引き直す | #1636 |
 
 ## 追記 1: 本文の利用者文脈（とロール）を信じる呼び出し元を許可集合に絞る（2026-09-27 / #1636）
 
@@ -308,3 +313,33 @@ plan_refs:
   タグの承認は `PERMISSION_DENIED` → `Unavailable` → **502**（承認は確定しない）、近傍展開は警告を出して**グラフ再ランクなしの検索へ静かに縮退**する。
   REST 輸送へ戻した配備には影響しない。
 - 作業仕様書: `.ai-context/specs/20260927_issue-1636_grpc-trusted-user-context-relays.md`
+
+## 追記 2: 本文の `user_roles` を評価に用いず、承認者が管理者かを認可サービスが引き直す（2026-09-27 / #1636）
+
+［2026-09-27 追記 / #1636］追記 1 の後も、`AddTag` は許可集合の中継者（graph-service）が運んだ `user_roles` に `platform-admin` があれば決定 2 の②
+（管理者の上書き）を適用していた。本文のロールは呼び出し元の**主張**であり、計画 `ADR-0088` が閉じた「偽の属性を主張する」と同じ型である
+（中継者が 1 つ侵害されれば任意の利用者を管理者にできる）。**決定 2 の「ロールは本文の `user_roles` で運ぶ」を「受け口は評価に用いない」へ改める。**
+
+- **選んだ案: ロールを認可サービスが引き直す。** 受け口（DocumentService）が本文の `user_id` について、認可サービスの名簿の読み口
+  `UserDirectory/CheckRealmRole`（[[IADR-0401]] 追記）で `platform-admin` を持つかを問う。IdP を引けるのは認可サービスだけ（[[IADR-0329]] 決定 1）。
+  計画 `ADR-0088` 決定 1（判定の入力となる利用者の性質は認可サービスが IdP から引き直す。呼び出し元の主張を判定に用いない）の原則を、
+  ABAC 属性から realm ロールへ延ばしたものである。計画 `ADR-0086` §残るもの は「`user_attributes` に何を載せるかは実装の裁量」とし、ロールの搬送も
+  本 IADR 決定 2 の実装判断だったので、実装の記録で改められる。
+- **選ばなかった案: gRPC の経路では管理者の上書きを外す。** 計画 `ADR-0063` 決定 3 の②は取り込み文書（`owner=system`）を承認できる**唯一の枝**であり、
+  helm・compose とも graph はタグの反映を gRPC で呼ぶ（`Services__DocumentServiceGrpc`）。graph の承認フロー（`CanDecideAsync`）は ①起点文書の write
+  または ②検証済みトークンの管理者ロールで承認を受け付けるので、外すと graph は受け付け document は拒否し、**SC-05 の管理者の承認が配備で 404 になる**。
+  REST（利用者トークンの転送）へ戻すのは計画 `ADR-0086` 決定 1・決定 5 に反する。
+- **形**:
+  1. `AddDocumentTagUseCase` は管理者の判定を**遅延で**受け取る。①所有者で書ける、または資料が個人資料（②が及ばない。#1629）なら**問わない**
+     （認可サービスへの往復を増やさない）。REST はトークンのロールを返す関数を渡す（**REST の挙動は変えない**）。
+  2. gRPC は `IApproverRoleDirectory`（`Admin` / `NotAdmin` / `Unknown`。`Unknown` が 0）で問う。**`Unknown`（名簿を引けない・時間切れ・未構成）は
+     `UNAVAILABLE`**（graph は `Unavailable` → 502。「書けない」＝ 404 へ畳まない —— 認可サービスの障害を「管理者ではない」と記録するのは嘘である）。
+     未構成（`Services:AuthorizationServiceGrpc` 無し）の配備は常に `Unknown` を返す縮退を選び、本文のロールへは戻さない。
+  3. proto の `user_roles` は**消さない**（フィールド削除は破壊的変更。[[IADR-0379]] 決定 2）。「受け口は評価に用いない」と注記した。graph は**送り続ける**
+     （段 1 の document-service は本文のロールを読むので、graph を先に配備しても壊れない。撤去は並走が終わった段の判断）。
+- **残るもの**: `user_id` そのものは許可集合の中継者の主張のまま（計画 `ADR-0088` 決定 4 と同じ残り方）。中継者が侵害されれば**実在する管理者の名前**を
+  名乗れば②が通る。ただし任意の利用者を管理者にすることはできなくなり、名乗った利用者が IdP 上で有効な管理者であることが要る。閉じる手段は token exchange だけである。
+- **配備の順番**: **authorization-service → document-service の順に配備する。** 逆順だと `CheckRealmRole` が `UNIMPLEMENTED` → `Unknown` → 所有者でない承認者
+  （管理者）の承認だけが 502（所有者の承認は通る）。graph-service の変更は無い。helm・compose の document-service は `Services__AuthorizationServiceGrpc` を持ち、
+  realm の `document-service` は `platform-service` を持つ（`DocumentTagWriteRelayDeploymentWiringTests` が固定する）。
+- 作業仕様書: `.ai-context/specs/20260927_issue-1636_addtag-admin-role-from-authz.md`

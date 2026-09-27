@@ -38,11 +38,15 @@ public sealed class AddDocumentTagUseCase(DocumentDbContext db, IDocumentUpdated
     // 版履歴に残す変更メモ。**AI 提案の承認由来であることが後から読める**ようにする。
     public const string ChangeNote = "ai-suggestion-approved";
 
+    // ［2026-09-27 追記 / #1636］🔴 **管理者かどうかは遅延で受け取る**（`isAdmin`）。①所有者で書ける、または資料が個人資料
+    // （②が及ばない）なら**呼ばない**。REST はトークンのロールを返す関数を、gRPC は認可サービスへ問う関数を渡す
+    // （gRPC は本文の `user_roles` を信じない。[[IADR-0410]] 追記 2）。関数が例外を投げたら（gRPC で名簿を引けない）
+    // 副作用の前にそのまま伝わる。
     public async Task<AddDocumentTagOutcome> ExecuteAsync(
         Guid documentId,
         string rawTagName,
         string? subject,
-        bool isAdmin,
+        Func<CancellationToken, ValueTask<bool>> isAdmin,
         CancellationToken ct = default)
     {
         var name = Tag.Normalize(rawTagName);
@@ -63,9 +67,11 @@ public sealed class AddDocumentTagUseCase(DocumentDbContext db, IDocumentUpdated
         // しまう。個人資料は①（所有者）だけが書ける。拒否は同じ `NotWritable`（＝404。実在を明かさない）。
         // 判定は管理の書き込み 5 口（`DocumentManageScope`）と同じ `DocumentScopes.IsPrivateNote`。
         var canWrite = DocumentBodyIntake.CanWrite(doc.Attributes, subject);
-        var adminMayWrite = isAdmin && !DocumentScopes.IsPrivateNote(doc.Attributes);
-        if (!canWrite && !adminMayWrite)
-            return AddDocumentTagOutcome.NotWritable;
+        if (!canWrite)
+        {
+            if (DocumentScopes.IsPrivateNote(doc.Attributes) || !await isAdmin(ct))
+                return AddDocumentTagOutcome.NotWritable;
+        }
 
         // 🔴 **辞書に無い名前は却下**（SC-05「既定タグ辞書に整合」は経路を問わない不変条件。
         // `ADR-0063` 決定 2）。識別子化した以上、辞書に無い名前は物理的に保存できない。

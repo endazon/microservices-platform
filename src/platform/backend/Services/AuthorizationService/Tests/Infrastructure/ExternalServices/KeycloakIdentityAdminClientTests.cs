@@ -612,6 +612,41 @@ public class KeycloakIdentityAdminClientTests
             "ロールは呼び出し元が読まない —— 引くと 1 人あたりの往復が増える");
     }
 
+    // NFR-09, FR-18, [[IADR-0410]] 追記 2 (#1636): **実効ロールは `/role-mappings/realm/composite` を読む。**
+    // 🔴 直接の割当（`/role-mappings/realm`）では合成ロール経由の管理者が落ちる —— トークンの `realm_access.roles` と揃えるため。
+    // 既定・割当不能のロールも除かない（画面の値域ではなく判定の入力である）。
+    [Fact]
+    public async Task GetEffectiveRealmRoles_reads_the_composite_mapping_without_filtering()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users/u1/role-mappings/realm/composite",
+                """[{"id":"r1","name":"platform-admin"},{"id":"r2","name":"default-roles-platform"},{"id":"r3","name":"offline_access"}]""");
+
+        var roles = await Client(handler).GetEffectiveRealmRolesAsync("u1", Ct);
+
+        roles.Should().BeEquivalentTo(["platform-admin", "default-roles-platform", "offline_access"]);
+        handler.Requests.Should().NotContain(r => r.Path.EndsWith("/role-mappings/realm", StringComparison.Ordinal),
+            "直接の割当だけを読むと合成ロール経由のロールが落ちる");
+        handler.Requests.Single(r => r.Path.Contains("/role-mappings/")).Authorization.Should().Be("Bearer admin-token");
+    }
+
+    // 居なければ（404）空。それ以外の非 2xx は例外（呼び出し元が「引けなかった」へ倒す）。
+    [Fact]
+    public async Task GetEffectiveRealmRoles_is_empty_for_a_missing_user_and_throws_on_other_failures()
+    {
+        var missing = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Status("admin/realms/platform/users/gone/role-mappings/realm/composite", HttpStatusCode.NotFound);
+        (await Client(missing).GetEffectiveRealmRolesAsync("gone", Ct)).Should().BeEmpty();
+
+        var failing = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Status("admin/realms/platform/users/u1/role-mappings/realm/composite", HttpStatusCode.BadGateway);
+        var act = () => Client(failing).GetEffectiveRealmRolesAsync("u1", Ct);
+        await act.Should().ThrowAsync<HttpRequestException>();
+    }
+
     // 🔴 T-1333-c: **候補はこちらでも絞る。** Keycloak の `exact` は realm の設定に依存するので、
     // 依存先の設定で照合規則が変わらないようにする（呼び出し元と同じ大小文字無視）。
     [Fact]
