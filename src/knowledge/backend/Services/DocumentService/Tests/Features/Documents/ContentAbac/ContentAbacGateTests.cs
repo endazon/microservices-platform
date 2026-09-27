@@ -144,6 +144,40 @@ public class ContentAbacGateTests
         source.Calls.Should().Be(2, "開いた後は問い合わせない");
     }
 
+    // 答えを外から放つ源（並行の評価の順序を決めるため）。
+    private sealed class PendingSource : IOwnerReadPolicyStatusSource
+    {
+        private readonly TaskCompletionSource<int?> _answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<int?> GetActiveCountAsync(CancellationToken ct) => _answer.Task;
+        public void Answer(int? count) => _answer.SetResult(count);
+    }
+
+    // T-68（#1676）: **並行の評価でもラッチは閉じ直さない。** 閉じた門で 2 つの評価が同時に問い合わせ、
+    // 先に「在る」が返って開いた後に、遅れて「無い」が返っても開いたままである（遅れた評価も「開」を返す）。
+    // 今の呼び出し元は常駐の 1 本だけだが、評価を別の経路から呼ぶようになると、ロック内の再確認が無ければ閉じ直す
+    // （許可が広がる向きではないが、1 度開いた門が閉じると読み取りの判定が要求ごとに揺れる）。
+    [Fact]
+    public async Task 並行の評価でも一度開いた門を閉じ直さない()
+    {
+        var (gate, _, _) = NewGate(ContentAbacMode.On);
+        var present = new PendingSource();
+        var absent = new PendingSource();
+
+        var first = gate.EvaluateAsync(present, Ct);
+        var late = gate.EvaluateAsync(absent, Ct);
+        first.IsCompleted.Should().BeFalse("両方の評価が問い合わせの途中にいる");
+        late.IsCompleted.Should().BeFalse();
+
+        present.Answer(1);
+        (await first).Should().Be(ContentAbacGateState.Open);
+        gate.IsOpen.Should().BeTrue("陽性対照: 先の評価で開いた");
+
+        absent.Answer(0);
+        (await late).Should().Be(ContentAbacGateState.Open, "遅れて返った「無い」で閉じ直さない");
+        gate.IsOpen.Should().BeTrue();
+        gate.State.Should().Be(ContentAbacGateState.Open);
+    }
+
     [Theory]
     [InlineData(null, ContentAbacMode.Off)]
     [InlineData("", ContentAbacMode.Off)]
