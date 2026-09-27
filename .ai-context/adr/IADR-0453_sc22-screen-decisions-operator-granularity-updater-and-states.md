@@ -2,10 +2,10 @@
 title: IADR-0453 SC-22 は運用者を含め、プロパティ 1 つずつ書き、最終更新者は BFF が書いた版にだけ付け、状態は metadata から 3 値で出す
 type: impl-adr
 status: Accepted
-related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0032, ADR-0042, ADR-0095, ADR-0110, IADR-0009, IADR-0030, IADR-0096, IADR-0251, IADR-0433, IADR-0456, IADR-0460]
+related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0032, ADR-0042, ADR-0095, ADR-0110, ADR-0124, IADR-0009, IADR-0030, IADR-0096, IADR-0251, IADR-0433, IADR-0456, IADR-0460, IADR-0485]
 author: claude
 created: 2026-09-14
-updated: 2026-09-27
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/07_adr/ADR-0042_ops-management-ui-production.md
@@ -241,6 +241,11 @@ IADR-0433 決定 3 のまま。**本 ADR は `items[]` を 1 行も動かさな�
      > **Vault の権限は変えない**（本決定 4・IADR-0433 決定 1 のまま）。注記は既に在るため**コードは変えない**。本フォローアップは閉じた。
   2. `deferred[]`（20 件）を画面で扱うか（IADR-0433 フォローアップ 4 のまま）。
   3. 退避手段の使用記録（ADR-0095 フォローアップ 4。Runbook は引き続き issue コメントへ記録する）。
+     > ［2026-09-28 追記 / #1683］**計画の裁定が来た**（planning#700。計画 ADR-0124 決定 2: Vault の audit を可観測性基盤の監査へ取り込んで残す。値は記録しない。射程は監査）。
+     > 実装は [[IADR-0485]]: 経路B の Vault の起動器が audit device を 2 つ（標準出力・collector への socket）有効にし、collector が Loki の `{job="vault-audit"}` へ入れる。
+     > 秘密の書き込みは `docs/security/security.md`「保管先（Vault）の audit」の条件で抽出し、画面経由は BFF のロール `bff-secret-writer` で見分ける。
+     > **共有の root トークンで書いた行は「画面以外」までしか言えない**ため、Runbook の人の記録（実施者・理由）は引き続き要る。記録先の一本化（同 ADR フォローアップ 4）は本件の外である。
+     > 本フォローアップは、記録の手段が決まり実装されたことをもって閉じた。
   4. 監査の抽出クエリ（可観測性基盤）が `outcome=failed` を拾うか確かめる（本 PR では抽出側を触っていない）。
      > ［2026-09-25 追記 / #1472］**確かめた。抽出側に 2 値前提のものは無い —— そもそも本リポジトリに監査の抽出クエリが無い。**
      > `AuditOutcome` を名指しするのは記録側（`AuditLogger`）とその試験だけで、`deploy/`・`docs/observability/` の

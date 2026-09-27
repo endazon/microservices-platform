@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-04, FR-17, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
-adrs: [ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116]
-iadrs: [IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364]
-specs: [20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
-issues: [#1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672]
+adrs: [ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116]
+iadrs: [IADR-0485, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364]
+specs: [20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
+issues: [#1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672, planning#700]
 -->
 
 # セキュリティ仕様書
@@ -404,6 +404,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 | --- | --- | --- |
 | 構成情報 API アクセス（構成ビューア。`/bff/admin/config` 系） | `action`（`config.read` / `config.drift.read` / `config.history.read`）・`subject`（利用者名）・`outcome`（`granted` / `denied`）・`detail` | 可観測性基盤（OTLP 収集先）の保持設定に従う（アプリ側で固定保管期間は持たない） |
 | 秘密情報の一覧・投入（秘密情報・接続設定の管理。`/bff/secrets` 系） | `action`（`secret.item.list` / `secret.item.update` / `secret.item.sync`〔書き込みが成立した後の、同期先の ExternalSecret への即時同期の依頼。**書き込みの行とは別の行**〕）・`subject`（利用者名）・`outcome`（`granted` / `denied` / `failed`〔一覧・投入では保管先が未構成・不達・拒否・項目の現在の版が削除済み。同期の依頼では同期が未構成・依頼が通らない〕）・`detail`（項目名・プロパティ名・書き込み後の版・更新の理由・同期先の名前空間と名前、または拒否・失敗の理由）。🔴 **値・値の長さ・値のハッシュは記録しない**（テストが値の不在を監査・ログの両方で固定する） | 同上 |
+| 保管先（Vault）への秘密の書き込み（画面経由・画面以外の両方） | Vault の audit（1 要求につき request と response の 2 行の JSON）。抽出するのは response の行で、残るのは `time`（いつ）・`auth.display_name` と `auth.metadata`（誰が。経路の見分けに使う）・`request.path`（どの項目）・`request.data.data` の**キー**（どのプロパティ）・`error`（拒否・失敗）。🔴 **値は記録しない** —— 値・トークン・accessor は HMAC（`hmac-sha256:…`）で置き換わる（下の「保管先の audit」） | Loki の保持設定に従う（`deploy/local/observability/loki.yaml`。削除の設定は無く、容量は Loki の PVC で縛られる）。**同じ内容の完全な写しが Vault のコンテナログ（標準出力）にもある** |
 | LLM egress ルーティング判断（送信先切替・越境統制） | 構造化ログ（`sensitivity`・`purpose`（log-forging 対策でサニタイズ）・`allowedTiers`／拒否理由。`LlmRouter` / `EmbeddingRouter`） | 同上。※ 形式監査（`IAuditLogger`）ではなく越境統制の観測ログ。将来的な `IAuditLogger` 化はフォローアップ |
 
 - **`outcome` の値域は 2 値ではない。** `granted` / `denied` に加え、秘密情報の投入の `failed`、同期競合の `recorded`、
@@ -416,6 +417,48 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
   `granted` のまま、`secret.item.sync` の `failed` が**別の行**に残る（書き込みの成否と同期の成否を分けるため）。
   `secret.item.list` / `secret.item.update` だけで絞ると「書けたのに Pod へ届かない」記録が抽出から黙って落ちる。
   接頭辞 `secret.item.` で絞るか、上の表の 3 つをすべて列挙する（表とコードの一致は `Platform.Bff.Tests` が固定する）。
+- ［2026-09-28 追記］上の「抽出するクエリは無い」は、アプリの監査（`Audit=true`）については今も同じである。**保管先（Vault）の audit にだけ、
+  抽出の条件を下の「保管先の audit」に置いた**（アプリの監査とは別の記録であり、`Audit=true` を持たない）。
+
+### 保管先（Vault）の audit
+
+秘密情報の書き込みは、**画面を経由したものも画面以外（コンソールからの直接投入・一括投入）のものも**、保管先の audit に残る。
+画面の監査（上の表の `/bff/secrets` 系の行）は画面を経由した操作しか残せないので、画面以外の書き込みを辿れるのはこちらだけである。
+
+**配備の宣言**（経路B の Vault。永続化した既定の構成）:
+
+| 項目 | 宣言 | 理由 |
+| --- | --- | --- |
+| audit device | `stdout/`（file。コンテナの標準出力）と `otel-collector/`（socket・tcp。collector の `tcplog/vault-audit` → Loki）の **2 つ** | Vault は有効な audit device の**少なくとも 1 つ**に書けなければ要求を拒む。socket 1 つだけだと、collector や Loki が止まった瞬間に Vault が止まる（画面の書き込みも同期も止まる）。止まらない方（標準出力）を並べる |
+| 起動時の扱い | 標準出力の device を有効にできなければ Vault を起動しない。socket の device は起動を止めずに裏で再試行する | audit の無い Vault を動かさない。collector より先に Vault が上がっても立つ |
+| 値の扱い | 両方に `log_raw=false`・`hmac_accessor=true` を明示する | 値・トークン・accessor を HMAC で置き換える（Vault の既定と同じ値を**書いて**固定する）。🔴 **`log_raw=true` と、mount の `audit_non_hmac_request_keys` / `audit_non_hmac_response_keys` を置かない**（平文が残る）。`deploy/`・`scripts/` に無いことは `scripts/scripts.repo.test.js` が固定する |
+| socket の待ち | `write_timeout=2s` | collector が受け取らずに詰まったとき、要求 1 本が待つ上限 |
+
+宣言の実体は `deploy/local/vault-persistence/vault-entrypoint.sh`（起動器）と、collector の 2 つの設定
+（`deploy/local/infra/otel-collector.yaml`〔既定。外へ出さない〕・`deploy/local/observability/otel-collector-forward.yaml`〔Loki へ出す〕）である。
+**`PERSIST=0`（インメモリの `-dev`）の Vault は audit を持たない**（起動器を通らない使い捨ての構成）。本番の Vault は未配備である。
+
+**抽出の条件**（Grafana の Explore で Loki を選んで投げる。可観測性の転送を opt-in した構成だけで引ける）:
+
+```logql
+{job="vault-audit"} | json
+  | type="response"
+  | request_operation=~"create|update|patch|delete"
+  | request_path=~"secret/(data|metadata|delete|undelete|destroy)/.+"
+```
+
+- **経路の見分け**: `auth_metadata_role="bff-secret-writer"` の行が**画面（境界層の BFF）**、それ以外が**画面以外**である。
+  画面以外の主体は `auth_display_name` で分かる（`token-local-dev-root` は共有の root トークン、`oidc-<利用者>` は人のログイン）。
+  ロール名は `deploy/local/vault/eso/bootstrap.sh` が作るものと同じで、一致は `scripts/scripts.repo.test.js` が固定する。
+- 🔴 **共有の root トークンで書いた行は「画面以外で書かれた」までしか言えない。** 誰が（人）・なぜ画面を使わなかったかは残らないので、
+  退避の Runbook の記録（手順 5）は引き続き要る。
+- **`error` で絞らない。** 拒否（`permission denied`）・失敗の行も同じ条件で出る。上のアプリの監査で `outcome` を 2 値で列挙しないのと同じ理由である。
+- `request_operation` を `update` と `patch` だけにしない。KV の作成・全置換は `create` / `update`、部分更新は `patch`、削除は `delete`（`secret/data/`・`secret/metadata/`）
+  と `update`（`secret/delete/`・`secret/undelete/`・`secret/destroy/`）で来る。
+- **読み取りは抽出に出ない**（同期の読み取りは Loki には入っているが、この条件で落ちる）。collector の `logs/vault-audit` に値で落とす段は無い。
+- Loki に届かなかった間（collector や Loki の停止）の行は、Vault のコンテナログ（標準出力）に残る。コンテナログは kubelet が回すので、
+  **止まっていた時間の行を後から Loki へ入れ直す手段は無い**（残余。起動器は socket の device を有効にできないと WARN を出す）。
+
 - 監査ログの保持期間・改ざん防止・エクスポートは可観測性基盤側の運用設定で定める（`docs/operations/operations.md` の
   監視・アラート／バックアップと連動。#198）。NFR「監査ログ保持」の具体的な保管期間は運用整備で確定する。
 

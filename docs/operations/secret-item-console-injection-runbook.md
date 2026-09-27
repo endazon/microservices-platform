@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-11
-updated: 2026-09-26
+updated: 2026-09-28
 ---
 <!-- trace:
 ids: [SC-22, SC-06, SC-15, FR-05, NFR-11, NFR-18]
-adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0110]
-iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460]
-specs: [20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260926_issue-1558_runbook-nits]
-issues: [#458, #310, #438, #1102, #1411, #1467, #1477, #1523, #1558, planning#599, planning#635, planning#652]
+adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0110, ADR-0124]
+iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485]
+specs: [20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260926_issue-1558_runbook-nits, 20260928_issue-1683_vault-audit-to-observability]
+issues: [#458, #310, #438, #1102, #1411, #1467, #1477, #1523, #1558, #1683, planning#599, planning#635, planning#652, planning#700]
 -->
 
 # 運用 Runbook: 画面が使えないときに秘密情報を 1 項目だけコンソールから投入する
@@ -84,6 +84,10 @@ Pod の再起動で投入した値は消えない。`vault-data` PVC を消し�
 🔴 **この手順は監査ログに乗らない。** 画面を経由しないため、「誰がいつどの項目を更新したか」が
 **どこにも残らない**。**手順 5 で必ず記録する。** 先にそれを決めてから始めること
 （作業を終えた後で思い出す形にすると、忙しい日ほど残らない）。
+
+［2026-09-28 追記］**保管先の audit には残るようになった**（永続化した既定の Vault。[セキュリティ仕様書](../security/security.md)の「保管先（Vault）の audit」）。
+残るのは「画面以外の主体（共有の root トークン）が、いつ・どの項目のどのプロパティへ書いたか」までで、値は残らない。
+**誰が（人）・なぜ画面を使わなかったかは残らない**ので、手順 5 の記録は引き続き省略しない。アプリの監査ログ（画面の監査）に乗らないことは変わらない。
 
 ### 1. 対象の項目とプロパティを確かめる
 
@@ -189,6 +193,10 @@ keycloak-smtp を読むのは mail-relay であり、**Keycloak は作り直さ�
 > **この記録先は暫定である。** 計画側に「退避手段を使ったことを残す手段」の設計が残っており、
 > それが決まるまでの置き場として issue コメントを使う。
 > **設計が来たらこの節を差し替える**（そのとき本書に日付つきの追記を入れる）。
+>
+> ［2026-09-28 追記］**設計が来た。** 計画の裁定は「保管先の audit を可観測性基盤の監査へ取り込んで残す」であり、実装した
+> （[セキュリティ仕様書](../security/security.md)の「保管先（Vault）の audit」に抽出の条件がある）。この節は**差し替えない** ——
+> audit は共有の root トークンの行としてしか残らず、実施者と理由を残せないからである。記録先の一本化は別の作業で行う。
 
 ## 確認（この手順が成功したと言える条件）
 
@@ -266,6 +274,7 @@ kubectl -n platform-infra exec deploy/vault -- sh -c '
   なった運用の場ではじめて確かめられる。** 食い違いが出たら本書を直すこと。
 - **本手順は監査にならない。** 記録は人が書く前提であり、**書かなければ残らない。**
   監査ログに乗るのは製品の画面を経由した投入だけである。
+  ［2026-09-28 追記］保管先の audit には「画面以外の主体が書いた」ことが残るようになった（上の手順 0 の追記）。人と理由は引き続き人が書く。
 - **本手順は回転（ローテーション）の手順ではない**（回転の手順は [`secret-rotation-runbook.md`](secret-rotation-runbook.md)）。秘密を「新しい値に差し替える」ことはできるが、
   **古い値を無効化する**のは発行元（外部サービス・認証基盤）の仕事であり、本書の射程の外である。
 - **`excluded[]` の項目は本手順でも扱えない。** 扱えないことが設計であり、制限ではない。
