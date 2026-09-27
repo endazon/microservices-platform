@@ -119,14 +119,18 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
     // KeycloakRolesClaimsTransformation が ClaimTypes.Role へ展開する（実 Keycloak トークンと同じ形）。
     // `azp`（authorized party）を与えると、実 Keycloak と同じくクライアント識別のクレームが付く
     // （#1628。サービスアカウントは `azp = clientId`、BFF のセッションの利用者トークンは `azp = bff`）。
-    public static string IssueToken(string subject, IEnumerable<string> realmRoles, string? azp = null)
+    // `withUsername: false` は `profile` スコープを持たない機械クライアントの実形（`preferred_username` が無い）。
+    // realm の `graph-service` は既定スコープが `roles` だけなので、実トークンはこちらの形である（#1636）。
+    public static string IssueToken(
+        string subject, IEnumerable<string> realmRoles, string? azp = null, bool withUsername = true)
     {
         var claims = new Dictionary<string, object>
         {
             ["sub"] = subject,
-            ["preferred_username"] = subject,
             ["realm_access"] = new Dictionary<string, object> { ["roles"] = realmRoles.ToArray() },
         };
+        if (withUsername)
+            claims["preferred_username"] = subject;
         if (azp is not null)
             claims["azp"] = azp;
 

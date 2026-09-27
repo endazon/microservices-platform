@@ -33,6 +33,9 @@
       "QdrantIngestionVectorStoreTests"
     ],
     "docs/tests/FR-03_hybrid-search.md": [
+      "AttributeValuesRelayDeploymentWiringTests",
+      "AttributeValuesRelayOptionsTests",
+      "AttributeValuesTrustedRelayTests",
       "BffSearchEndpointTests",
       "BodylessDocumentSearchTests",
       "DocumentBodyPresenceTests",
@@ -46,7 +49,8 @@
       "HybridSearchServiceTests",
       "MetadataIndexTextTests",
       "MultiCollectionFusionTests",
-      "QdrantVectorStoreTests"
+      "QdrantVectorStoreTests",
+      "TrustedUserContextRelayTests"
     ],
     "docs/tests/FR-04_ai-answer-citations.md": [
       "AskAttributeFilterTests",
@@ -199,6 +203,9 @@
       "EdgeTypeEndpointsTests",
       "EdgeTypeResolverTests",
       "GraphAccessResolverTests",
+      "GraphNeighborsRelayDeploymentWiringTests",
+      "GraphNeighborsRelayOptionsTests",
+      "GraphNeighborsTrustedRelayTests",
       "GraphSyncTimeoutTests",
       "GraphTypeGateArchitectureTests",
       "LinkEdgeSyncTests",
@@ -209,6 +216,9 @@
       "AiSuggestionEndpointsTests",
       "AiSuggestionGenerationTests",
       "AiSuggestionStateMachineTests",
+      "DocumentTagWriteRelayDeploymentWiringTests",
+      "DocumentTagWriteRelayOptionsTests",
+      "DocumentTagWriteTrustedRelayTests",
       "GraphDocumentSyncConsumerTests",
       "GrpcDocumentTagWriterTests",
       "GrpcTagDictionaryReaderTests",

@@ -2,10 +2,10 @@
 title: IADR-0417 RetrievalService に east-west gRPC の受け口を開き、権限内属性値の照会を利用者文脈だけで運ぶ
 type: impl-adr
 status: Accepted
-related_ids: [FR-04, FR-05, NFR-09, NFR-16, UC-01, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034, ADR-0043, ADR-0075, ADR-0086, ADR-0087, ADR-0088, IADR-0044, IADR-0141, IADR-0151, IADR-0152, IADR-0253, IADR-0272, IADR-0379, IADR-0401, IADR-0402, IADR-0410, IADR-0411, IADR-0412, IADR-0415, IADR-0416]
+related_ids: [FR-04, FR-05, NFR-09, NFR-16, UC-01, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034, ADR-0043, ADR-0075, ADR-0086, ADR-0087, ADR-0088, IADR-0044, IADR-0141, IADR-0151, IADR-0152, IADR-0253, IADR-0272, IADR-0379, IADR-0401, IADR-0402, IADR-0410, IADR-0411, IADR-0412, IADR-0415, IADR-0416, IADR-0420, IADR-0426, IADR-0476]
 author: claude
 created: 2026-09-09
-updated: 2026-09-09
+updated: 2026-09-27
 ---
 
 # IADR-0417: 受け口として立つ最初の一枚
@@ -159,3 +159,26 @@ gRPC の status に対応する番号は無い。**守るのは「200 空応答�
     （ポリシー無しの `RequireAuthorization()`）。SPA / McpServer への影響は実測で消えた。
     **gRPC 面が `ServiceCaller`・REST 面が利用者トークンという非対称は残り**、
     決定 4 のとおり並走の期間だけ続く。
+
+## 追記 1: 本文の利用者文脈を信じる呼び出し元を許可集合（既定 `bff`）に絞る（2026-09-27 / #1636）
+
+［2026-09-27 追記 / #1636］PR #1631（#1628。`DocumentRead` の同型の穴）の監査で見つかった。決定 4 の「面は `ServiceCaller` を要求する」を改める。
+
+- **事実**: `ServiceCaller` は realm ロール `platform-service` だけを見る。realm では 11 のサービスアカウントがそれを持つ。どれかが `user.user_id`
+  （と `user_attributes`）を任意の利用者にして `ListValues` を呼べば、受け口は決定 2 のとおり**名乗った利用者のスコープ**を自分で解決し、その範囲の
+  属性の値（制限文書のプロジェクト名など）を返していた。決定 2（解決済みのスコープを受けない）は守られていたが、判定の**入力**を誰が運んでよいかが
+  門で閉じていなかった。実際に `ListValues` を呼ぶのは BFF の `AttributeValuesGrpcClient`（client `bff`）だけである（作業仕様書の母集合）。
+- **決定**:
+  1. **本文の `user` を信じるのは、呼び出し元が機械の主体で、クライアント識別（`azp` 第一）が許可集合 `AttributeValues:TrustedUserContextClients`
+     に序数一致で含まれるときだけ。** 未構成なら `bff` だけ。構成すると既定を置き換え、空白だけなら誰も信じない。1 つの値で構成すると起動時に例外。
+     判定は共有の `TrustedUserContextRelay`（[[IADR-0410]] 追記 1 と同じ関数）で書く。
+  2. **同じ RetrievalService の `DocumentSearch:`（既定 `aianalysis-service`。[[IADR-0426]] 追記 1）とはキーも集合も共有しない。** 属性値の中継者と
+     検索の中継者は別である。
+  3. **許可集合に無い呼び出し元が `user` を付けたら `PERMISSION_DENIED`**（決定 6 の `INVALID_ARGUMENT` の後、空の key の早期 return とスコープ解決の前）。
+     `user` の無い要求は決定 6 のとおり誰にも `INVALID_ARGUMENT`（機械の視野の照会を新設しない ＝ 広げない）。
+- **決定 9（呼び出し元の縮退）との関係**: BFF にとって `PERMISSION_DENIED` は「後段が答えた上での失敗」の枝であり、**502** になる（200 空応答にしない）。
+  配備の正規の client（helm `services.bff.serviceToken.clientId: bff`・compose `ServiceToken__ClientId: bff`）は既定の集合と一致し、
+  `AttributeValuesRelayDeploymentWiringTests` が固定する。
+- **配備の順番**: **retrieval-service だけを先に配備してよい**（BFF の変更は無い）。BFF の client 名を変える配備は、**先に retrieval-service の許可集合へ
+  足すこと** —— 逆順だと属性の候補が 502 になる。REST 輸送へ戻した配備には影響しない。
+- 作業仕様書: `.ai-context/specs/20260927_issue-1636_grpc-trusted-user-context-relays.md`

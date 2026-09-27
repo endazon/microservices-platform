@@ -3,7 +3,9 @@ using Grpc.Core;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Grpc.Document.V1;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace DocumentService.Features.Documents.AddTag;
 
@@ -32,11 +34,20 @@ namespace DocumentService.Features.Documents.AddTag;
 // 🔴 **拒否は `NOT_WRITABLE` の応答であって `PERMISSION_DENIED` ではない。**
 //   REST は「所有者でも管理者でもない」と「文書が無い」を**同じ 404** で返す。
 //   status で割ると、割り方そのものが文書の実在を漏らす。**`PERMISSION_DENIED` は
-//   s2s の門だけが返す。**
+//   s2s の門だけが返す。**［2026-09-27 追記 / #1636］加えて、許可集合に無い呼び出し元が利用者文脈を
+//   付けたときにも返す（文書を引く前であり、文書の実在には依らない）。
+//
+// ［2026-09-27 追記 / #1636］🔴 **本文の `user_id` / `user_roles` を信じるのは、許可集合
+//   （`DocumentTagWriteRelayOptions`。既定 `graph-service` だけ）の機械クライアントが運んだときだけである**
+//   （[[IADR-0410]] 追記 1）。`ServiceCaller`（`platform-service`）だけでは信じない —— そのロールは 11 の
+//   サービスアカウント（別プロジェクトのものを含む）が持ち、どれもが任意の利用者を名乗り、`user_roles` に
+//   `platform-admin` を名乗って管理者の上書きで任意の組織文書へタグを書けた。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
 public sealed class DocumentTagWriteGrpcService(
     AddDocumentTagUseCase tags,
-    IValidator<AddDocumentTagRequest> validator)
+    IValidator<AddDocumentTagRequest> validator,
+    IOptions<DocumentTagWriteRelayOptions> relay,
+    ILogger<DocumentTagWriteGrpcService> logger)
     : DocumentTagWrite.DocumentTagWriteBase
 {
     public override async Task<AddTagResponse> AddTag(
@@ -53,6 +64,10 @@ public sealed class DocumentTagWriteGrpcService(
         // **故障が「該当なし」に見える**。
         if (string.IsNullOrWhiteSpace(request.UserId))
             throw new RpcException(new Status(StatusCode.InvalidArgument, "user_id は必須です。"));
+
+        // 🔴 FR-05, FR-18, NFR-09, 計画 ADR-0086 決定 1・§結果 (#1636): **利用者文脈を運べる呼び出し元か。**
+        // タグ名の検証・文書の取得より前に置く（信頼しない呼び出し元に文書の実在・辞書の手掛かりを 1 つも返さない）。
+        EnsureTrustedRelay(context);
 
         // 🔴 **検証は取得・認可より前**（REST と同じ位置。後ろへ動かすと 404 に化ける）。
         // 規則は `AddDocumentTagValidator` が持つ 1 つだけである。
@@ -71,6 +86,26 @@ public sealed class DocumentTagWriteGrpcService(
             context.CancellationToken);
 
         return new AddTagResponse { Result = ToProto(outcome.Status) };
+    }
+
+    // FR-05, FR-18, NFR-09, 計画 ADR-0086 決定 1・§結果, [[IADR-0410]] 追記 1 (#1636):
+    // 🔴 本文の利用者文脈（とロール）を信じてよいのは、それを運ぶのが**利用者の権限で動く中継者として許可集合に
+    //   載った機械クライアント**だからである（ADR-0086 §結果が受け入れた依存の範囲）。
+    //   拒否を `NOT_WRITABLE` へ畳まない —— 畳むと中継者の構成誤りが「その文書は書けない」に化ける。
+    private void EnsureTrustedRelay(ServerCallContext context)
+    {
+        var caller = context.GetHttpContext().User;
+        if (relay.Value.TrustsUserContextFrom(caller))
+            return;
+
+        // 基数は realm の機密クライアント数で閉じる（利用者識別子・ロール・文書 ID・タグは載せない）。
+        logger.LogWarning(
+            "DocumentTagWrite rejected a user context from a caller that is not a trusted relay (client={ClientId}). "
+            + "Trusted relays are configured under {Section}:{Key}.",
+            MachinePrincipal.ClientIdOf(caller) ?? "(unknown)", DocumentTagWriteRelayOptions.SectionName,
+            TrustedUserContextRelay.ClientsKey);
+        throw new RpcException(new Status(StatusCode.PermissionDenied,
+            "この呼び出し元は利用者文脈（user_id）を運べません。"));
     }
 
     // REST の状態コードと 1:1（200 / 400 / 404）。

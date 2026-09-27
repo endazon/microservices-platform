@@ -243,6 +243,12 @@ else
 // fail-open と同じ向き。倒した後の値がそのまま画面へ出る）。
 builder.Services.Configure<KnowledgeHealthOptions>(
     builder.Configuration.GetSection(KnowledgeHealthOptions.SectionName));
+// FR-04, FR-05, FR-17, NFR-09, 計画 ADR-0086 決定 1, [[IADR-0410]] 追記 1 (#1636): gRPC `GraphNeighbors/ExpandNeighbors` の
+// 本文の利用者文脈を信じる呼び出し元。**未構成なら `retrieval-service` だけ。構成したら置き換える。**
+// 配列でなく 1 つの値が書かれていたら起動を止める（静かに既定へ戻さない）。
+GraphNeighborsRelayOptions.ThrowIfScalar(builder.Configuration);
+builder.Services.Configure<GraphNeighborsRelayOptions>(
+    builder.Configuration.GetSection(GraphNeighborsRelayOptions.SectionName));
 builder.Services.AddScoped<KnowledgeHealthCollector>();
 // 🔴 [[IADR-0299]] 決定 3: 単一書き手化。受け口は**全量スナップショット置換**であり、2 レプリカが
 // 同時に走ると片方の DELETE が他方の INSERT 済み行を消して**恒久的に過少な件数**が残る。

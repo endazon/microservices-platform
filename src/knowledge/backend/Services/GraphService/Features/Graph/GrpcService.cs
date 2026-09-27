@@ -5,7 +5,9 @@ using GraphService.Infrastructure.Persistence;
 using Grpc.Core;
 using Knowledge.Contracts.Grpc.Graph.V1;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using Platform.Shared.Kernel;
 
 namespace GraphService.Features.Graph;
@@ -41,10 +43,18 @@ namespace GraphService.Features.Graph;
 // ADR-0065 決定 2 の適用: 実体は `Features/<操作>/` に置くのが原則だが、**本クラスは 2 操作
 // （近傍展開・辺の型の重み）が共有する 1 つの面**なので合成点と同じ階層に置く
 // （`GraphEndpoints` と同じ扱い）。**各操作フォルダへ複写しない。**
+//
+// ［2026-09-27 追記 / #1636］🔴 **`ExpandNeighbors` の本文の利用者文脈を信じるのは、許可集合
+//   （`GraphNeighborsRelayOptions`。既定 `retrieval-service` だけ）の機械クライアントが運んだときだけである**
+//   （[[IADR-0410]] 追記 1）。`ServiceCaller` だけでは信じない —— そのロールは 11 のサービスアカウント
+//   （別プロジェクトのものを含む）が持ち、どれもが任意の利用者を名乗ってその利用者のスコープの辺を引けた。
+//   それ以外が利用者文脈を付けたら PERMISSION_DENIED。`ListEdgeTypeWeights` は利用者文脈を持たないので変えない。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
 internal sealed class GraphNeighborsGrpcService(
     ExpandNeighborsUseCase neighbors,
-    GraphDbContext db)
+    GraphDbContext db,
+    IOptions<GraphNeighborsRelayOptions> relay,
+    ILogger<GraphNeighborsGrpcService> logger)
     : Knowledge.Contracts.Grpc.Graph.V1.GraphNeighbors.GraphNeighborsBase
 {
     public override async Task<ExpandNeighborsResponse> ExpandNeighbors(
@@ -58,6 +68,10 @@ internal sealed class GraphNeighborsGrpcService(
                 StatusCode.InvalidArgument, "document_id は GUID である必要があります。"));
 
         var user = ToUserContext(request.User);
+
+        // 🔴 FR-04, FR-05, NFR-09, 計画 ADR-0086 決定 1・§結果 (#1636): **利用者文脈を運べる呼び出し元か。**
+        // スコープ解決より前に置く（信頼しない呼び出し元の主張で解決を 1 度も走らせない）。
+        EnsureTrustedRelay(context);
 
         var outcome = await neighbors.ExecuteAsync(
             documentId,
@@ -103,6 +117,25 @@ internal sealed class GraphNeighborsGrpcService(
             Weight = i.Weight,
         }));
         return response;
+    }
+
+    // FR-04, FR-05, NFR-09, 計画 ADR-0086 決定 1・§結果, [[IADR-0410]] 追記 1 (#1636):
+    // 🔴 本文の利用者文脈を信じてよいのは、それを運ぶのが**利用者の権限で動く中継者として許可集合に載った
+    //   機械クライアント**だからである（ADR-0086 §結果が受け入れた依存の範囲）。
+    private void EnsureTrustedRelay(ServerCallContext context)
+    {
+        var caller = context.GetHttpContext().User;
+        if (relay.Value.TrustsUserContextFrom(caller))
+            return;
+
+        // 基数は realm の機密クライアント数で閉じる（利用者識別子・属性・文書 ID は載せない）。
+        logger.LogWarning(
+            "GraphNeighbors rejected a user context from a caller that is not a trusted relay (client={ClientId}). "
+            + "Trusted relays are configured under {Section}:{Key}.",
+            MachinePrincipal.ClientIdOf(caller) ?? "(unknown)", GraphNeighborsRelayOptions.SectionName,
+            TrustedUserContextRelay.ClientsKey);
+        throw new RpcException(new Status(StatusCode.PermissionDenied,
+            "この呼び出し元は利用者文脈（user）を運べません。"));
     }
 
     // 🔴 **本文の利用者文脈を判定の入力へ写す**（計画 `ADR-0086` 決定 1）。

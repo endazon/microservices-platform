@@ -10,6 +10,9 @@
 // ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
 // ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
 //   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
+//   ［2026-09-27 追記 / #1636］🔴 本文の利用者文脈（`user_id` / `user_roles` を含む）を信じるのは、受け口の許可集合
+//   （`DocumentTagWrite:TrustedUserContextClients`。既定 `graph-service` だけ）の機械クライアントが運んだときだけである。
+//   それ以外が利用者文脈を付けると PERMISSION_DENIED（NFR-09, IADR-0410 追記 1）。
 //
 // ■ 🔴 **利用者の権限で動く面の 2 つ目である**（計画 ADR-0086 決定 1・3）。
 //   従前この経路は**承認者本人の `Authorization` ヘッダを転送**していた（ADR-0063 決定 3 が
@@ -30,6 +33,8 @@
 //   REST は「所有者でも管理者でもない」と「文書が無い」を**同じ 404** で返す（PutBody と同じ理由 ——
 //   403 は文書 ID の総当たりで実在を明かす）。gRPC status で割ると、割り方そのものが実在を漏らす。
 //   `PERMISSION_DENIED` はこの面では **s2s の門**（`platform-service` 無し）だけが返す。
+//   ［2026-09-27 追記 / #1636］加えて、許可集合に無い呼び出し元が利用者文脈を付けたときにも返す
+//   （文書を引く前に判定するので、文書の実在には依らない）。
 //
 // ■ 🔴 **fail-closed である。** 呼び出し元は `RpcException` をすべて `Unavailable` へ倒して
 //   502 にする。**成功へ縮退しない** —— 承認できていないのに承認済みと見えるのが最悪である。

@@ -8,10 +8,10 @@ author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
-adrs: [ADR-0119, ADR-0089, ADR-0050, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114, ADR-0117]
+adrs: [ADR-0119, ADR-0063, ADR-0089, ADR-0050, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114, ADR-0117]
 iadrs: [IADR-0476, IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431]
-specs: [20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
-issues: [#1516, #1635, #1628, #1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532]
+specs: [20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#1636, #1516, #1635, #1628, #1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532]
 -->
 
 # 通信仕様書: east-west gRPC（サービス間の同期呼び出し）
@@ -116,6 +116,13 @@ s2s の `CallCredentials` を付ける。平文でトークンを送るには `U
 - 概要: BFF の `BffScopeResolver` が `Services:AuthorizationServiceGrpc`（例: `http://authorization-service:8081`）の
   構成があるときだけ gRPC で解決し、無ければ REST `POST /authz/scope` で解決する。**並走中の正は REST。**
 - 認証・認可: `ServiceCaller`（上記）。
+- **利用者文脈を運べる呼び出し元**［2026-09-27 追記］: この面には**許可集合を置かない**（他の利用者の権限で動く面と違う）。
+  `ServiceCaller` を持つ主体は任意の `user_id` を名乗ってその利用者のスコープ（属性の形）を引ける。属性は認可サービスが
+  引き直すので**偽の属性は通らない**が、**他人の `user_id` を名乗ることは残る** —— 計画はこれを受け入れたリスクとして記録しており、
+  閉じる手段（呼び出し元が「その利用者のために動いている」ことを証明する形）は今は採らないと定めている。
+  呼び出し元は資源サービス（BFF・AI 分析・グラフ・Wiki・MCP・検索・文書）の多数にわたる。
+  一方、スコープを使って**資源**（辺・属性値・検索の本文・文書の読み取り・タグの書き込み）を引く面は、それぞれ許可集合の中継者に
+  限られている（各面の「利用者文脈を運べる呼び出し元」）ので、この面から漏れるのは**スコープの記述**に留まる。
 - 評価器: REST と**同じ** `AbacEvaluator.ResolveScope` を呼ぶ（評価器を 2 つにしない）。
 
 リクエスト（`ResolveScopeRequest`）:
@@ -434,6 +441,16 @@ REST の受け口は**認証を持たない**（利用者裁定で認証を外�
 - 呼び出し元と呼び出し先: **検索 → グラフ**（二段検索の近傍展開）と **グラフ → 文書**（AI タグ提案の承認の反映）。
 - 切替の構成キー: `Services:GraphServiceGrpc` / `Services:DocumentServiceGrpc`。**未設定なら REST のまま。**
 - 認証・認可: `ServiceCaller`。
+- **利用者文脈を運べる呼び出し元**［2026-09-27 追記］: 🔴 本文の利用者文脈を信じるのは、呼び出し元が**機械クライアント**で、
+  そのクライアント識別（`azp`。無ければ `service-account-<clientId>` から復元）が受け口の許可集合に**序数一致**で在るときだけである。
+  近傍展開は `GraphNeighbors:TrustedUserContextClients`（**未構成なら `retrieval-service` だけ**）、タグの反映は
+  `DocumentTagWrite:TrustedUserContextClients`（**未構成なら `graph-service` だけ**）。構成すると既定を置き換え、空白だけなら誰も信じない。
+  配列でなく 1 つの値で書くと起動時に止まる（1 つの値は束縛されず、既定へ静かに戻るため）。
+  許可集合に無い呼び出し元が利用者文脈を付けると、スコープ解決・文書の取得の前に `PERMISSION_DENIED`（機械の視野へ読み替えない）。
+  従前はサービス間トークンのロールを持つどのサービスアカウント（別プロジェクトのものを含む）も任意の利用者を名乗れ、
+  タグの反映では `user_roles` に管理者を名乗って**管理者の上書きで任意の組織文書へタグを書けた**。
+  呼び出し元の client 名を変える配備では、**先に受け口の許可集合へ足すこと**（逆順だと、タグの承認は 502、近傍展開は
+  警告を出してグラフ再ランクなしの検索へ静かに縮退する）。辺の型の重み（利用者文脈を持たない）は変わらない。
 - 置き場: いずれも **knowledge ユニットの共有契約プロジェクト**（`Knowledge.Contracts`）。所有者は呼び出し先である（§1）。
 
 **これは「呼び出し先が利用者自身の権限で判定する」最初の面である。** 前の 6 面は、呼び出し先が
@@ -512,6 +529,12 @@ status で割ると、**割り方そのものが存在を漏らす**（1 種類�
   （ポリシー無し —— realm の任意の認証済み主体を通し、見えるものは ABAC が決める）。
   gRPC 面はサービス自身の資格情報だけを通すので、**依然として狭まる向き**である。
   この非対称は**並走の期間だけ**続く（REST が運ぶのは利用者トークン、gRPC が運ぶのは s2s ＋ 本文の利用者文脈）。
+- **利用者文脈を運べる呼び出し元**［2026-09-27 追記］: 🔴 本文の `user` を信じるのは、呼び出し元が**機械クライアント**で、
+  そのクライアント識別（`azp`。無ければ `service-account-<clientId>` から復元）が検索サービスの許可集合
+  `AttributeValues:TrustedUserContextClients` に**序数一致**で在るときだけである。**未構成なら `bff` だけ**で、構成すると既定を置き換える
+  （空白だけなら誰も信じない。1 つの値で書くと起動時に止まる）。検索の面（`DocumentSearch:`）の集合とは**別**である。
+  許可集合に無い呼び出し元が `user` を付けると、スコープを解決する前に `PERMISSION_DENIED`。`user` の無い要求は従来どおり誰にも
+  `INVALID_ARGUMENT`。BFF の client 名を変える配備では、**先に検索サービスの許可集合へ足すこと**（逆順だと BFF の属性の候補が 502 になる）。
 - 置き場: `Knowledge.Contracts` の `Protos/knowledge/retrieval/v1/attribute_values.proto`。
 
 🔴 **RetrievalService が受け口として立つのはこれが最初である**（従前は LlmGateway 宛・グラフ宛・

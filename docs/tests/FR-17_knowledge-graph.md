@@ -7,11 +7,11 @@ updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, FR-17, UC-10, SC-09, SC-10]
-adrs: [ADR-0002, ADR-0004, ADR-0033, ADR-0034, ADR-0036, ADR-0050, ADR-0027]
-iadrs: [IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281, IADR-0289, IADR-0478]
-specs: [20260822_issue-908_graphservice-foundation, 20260823_issue-941_edge-type-db-guards, 20260828_issue-912_obsidian-link-extraction, 20260828_issue-941_edge-type-db-guard-verification, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#450, #516, #908, #909, #910, #911, #912, #913, #941, #1640]
+ids: [FR-05, FR-17, UC-10, SC-09, SC-10, FR-04, NFR-09]
+adrs: [ADR-0086, ADR-0002, ADR-0004, ADR-0033, ADR-0034, ADR-0036, ADR-0050, ADR-0027]
+iadrs: [IADR-0410, IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281, IADR-0289, IADR-0478]
+specs: [20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-908_graphservice-foundation, 20260823_issue-941_edge-type-db-guards, 20260828_issue-912_obsidian-link-extraction, 20260828_issue-941_edge-type-db-guard-verification, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#1636, #450, #516, #908, #909, #910, #911, #912, #913, #941, #1640]
 -->
 
 # テスト仕様書: 知識グラフ（型付き辺・ホップごとのアクセス制御）
@@ -111,7 +111,8 @@ issues: [#450, #516, #908, #909, #910, #911, #912, #913, #941, #1640]
 | T-62 | 本文が取得できない（未配備・未指定） | 再取り込み | **既存の自動抽出の辺が消えない**（**陽性対照つき**） | 関係の保持 | 自動 |
 | T-63 | 対称型・識別子の並びが逆 | 再取り込み | 1 行へ正規化・**抽出の起点は入れ替わらない**・再処理で差分ゼロ | 関係の保持 | 自動 |
 | T-64 | 2 文書が相互に参照し合う | 再取り込み | 1 行に落ち、起点は先に抽出した側（**受容する残余の固定**） | 関係の保持 | 自動 |
-| T-65 | 縮めた受け口の期限（30 秒）の下で本文の取得が止まる（期限 1 秒） | 再取り込み | 受け口の期限より前に**時間切れ**（`ConsumerTimeoutException`）として投げ、**本文なしへ畳まず同期を保存しない**（再試行で本文の変化を取り直す）。呼び出し元の取り消しは取り消しのまま（対照）。既定の期限 20 秒、既定の実行期限 60 秒以上の構成は起動を止める。本番の配線は期限を DI に置き実行期限は既定のまま | 関係の保持 | 自動 |
+| T-65 | 1 辺を持つ 2 文書。検索の client（`retrieval-service`。実トークンの形 = 利用者名なし・`azp` あり、と `service-account-` の利用者名の形）、`platform-service` を持つ他のサービスアカウント（別プロジェクトの LLM 呼び出し用・BFF・MCP・文書・グラフ・AI 分析）、クライアント識別の接頭辞・大小文字の変種、利用者名だけ検索で `azp` が別のトークン、`azp=retrieval-service` を持つ人のトークン（`GraphNeighborsTrustedRelayTests`・`GraphNeighborsRelayOptionsTests`・`GraphNeighborsRelayDeploymentWiringTests`） | 近傍展開の gRPC 面を利用者文脈つき・無しで呼ぶ。辺の型の重みを許可集合の外の主体で呼ぶ。信頼する中継者の集合を未構成・置き換え・空白だけ・1 つの値で束縛する。compose・helm の検索の s2s の client と realm を読む | 検索だけが利用者として辺を引ける（陽性対照）。他はすべて `PERMISSION_DENIED` で、スコープ解決も呼ばれない。利用者文脈の無い要求は呼び出し元を問わず要求の誤り。辺の型の重み（利用者文脈を持たない）は従来どおり返る。集合は未構成なら検索だけ・構成は既定を置き換える・空白だけは誰も信じない・1 つの値は起動時に止まる。配備の検索の client は既定の集合に入り、realm に `platform-service` 付きで在り、近傍展開を gRPC で配線している。確認を落とす・接頭辞一致・大小文字を畳む・機械の確認を落とす変異は赤 | 利用者文脈を運べる呼び出し元 | 自動 |
+| T-66 | 縮めた受け口の期限（30 秒）の下で本文の取得が止まる（期限 1 秒） | 再取り込み | 受け口の期限より前に**時間切れ**（`ConsumerTimeoutException`）として投げ、**本文なしへ畳まず同期を保存しない**（再試行で本文の変化を取り直す）。呼び出し元の取り消しは取り消しのまま（対照）。既定の期限 20 秒、既定の実行期限 60 秒以上の構成は起動を止める。本番の配線は期限を DI に置き実行期限は既定のまま | 関係の保持 | 自動 |
 
 ## 実装マッピング
 
@@ -145,7 +146,7 @@ issues: [#450, #516, #908, #909, #910, #911, #912, #913, #941, #1640]
 - `ObsidianLinkParserTests`（T-49〜T-54 の抽出側。**純粋関数であり、データベースも購読も要らない**）
 - `EdgeTypeResolverTests`（T-49〜T-53 の型解決側と T-55・T-55P・T-56。**辞書は引数で渡す** —— 型の集合は実行時に変わるものであり、テストも「そのときの辞書」を渡して測る）
   - 既定型の名前が初期値集合の既定型と一致することを 1 件で固定している。**層をまたぐため定数を共有できず、値が割れても構文上は通ってしまう**（本文からの抽出が黙って辺を作らなくなる形で壊れる）
-- `GraphSyncTimeoutTests`（T-65。配線は同じファイルの `GraphSyncTimeoutWiringTests`）
+- `GraphSyncTimeoutTests`（T-66。配線は同じファイルの `GraphSyncTimeoutWiringTests`）
 - `LinkEdgeSyncTests`（T-55〜T-64。**購読ハンドラ経由の統合**。計測は試験用の計器工場と測定リスナで実測する）
   - 🔴 **差分の否定形（T-57・T-62）には必ず陽性対照を置く**。「消えていない」は、そもそも辺が入っていなくても緑になる
   - T-63 は**識別子の大小関係そのものを 1 行で主張してから**測る。前提が崩れると正規化が起きず、テストが何も測らない状態で緑になる
