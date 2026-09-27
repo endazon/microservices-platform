@@ -171,6 +171,61 @@ public class UserDepartmentEndpointTests : IClassFixture<TestWebApplicationFacto
         }
     }
 
+    // T-66: 🔴 **元のグループからの外しは反映された（応答だけが時間切れ）のに、補償の入れ直しが失敗した**ときも、
+    // 目的のグループから外さない（外すと部門グループ 0 個になる）。502 は読み直した実際の所属（sales）を示す。
+    // 「入れ直しがすべて成功したときだけ目的のグループから外す」の条件を外す変異はここで落ちる。
+    [Fact]
+    public async Task When_the_rejoin_fails_after_the_removal_took_effect_the_new_group_is_kept()
+    {
+        _factory.Identity.FailLeaveAfterApplying = groupId => groupId == "g-engineering";
+        _factory.Identity.FailJoin = groupId => groupId == "g-engineering";
+        try
+        {
+            var res = await Client.PutAsJsonAsync("/authz/users/u-sato/department", new { Department = "sales" }, Ct);
+
+            res.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+            var body = await res.Content.ReadAsStringAsync(Ct);
+            (await GroupPathsAsync("u-sato")).Should().Equal(["/department/sales", "/teams/knowledge"],
+                "元の所属は消え入れ直しも失敗したので、目的のグループを残す（部門グループ 0 個にしない）");
+            body.Should().Contain("元に戻せませんでした").And.Contain("いまの部門グループ: sales")
+                .And.Contain("部門グループを 1 つも持たない状態にはしていません");
+            _factory.Identity.MembershipWrites.Should().NotContain(("leave", "u-sato", "g-sales"),
+                "入れ直しが失敗したのに目的のグループから外してはならない");
+        }
+        finally
+        {
+            _factory.Identity.FailLeaveAfterApplying = null;
+            _factory.Identity.FailJoin = null;
+            await Inner.LeaveGroupAsync("u-sato", "g-sales", Ct);
+            await Inner.JoinGroupAsync("u-sato", "g-engineering", Ct);
+        }
+    }
+
+    // T-66: 🔴 読み直した所属が 0 個のとき（部門なしを選んだ人の途中失敗）は、「部門グループを 1 つも持たない状態には
+    // していません」と**言わない**（嘘になる）。いまの所属は「なし」と示す。
+    [Fact]
+    public async Task The_failure_message_does_not_claim_a_group_remains_when_the_read_back_membership_is_empty()
+    {
+        _factory.Identity.FailLeaveAfterApplying = groupId => groupId == "g-engineering";
+        _factory.Identity.FailJoin = groupId => groupId == "g-engineering";
+        try
+        {
+            var res = await Client.PutAsJsonAsync("/authz/users/u-sato/department", new { Department = (string?)null }, Ct);
+
+            res.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+            var body = await res.Content.ReadAsStringAsync(Ct);
+            (await GroupPathsAsync("u-sato")).Should().Equal("/teams/knowledge");
+            body.Should().Contain("元に戻せませんでした").And.Contain("いまの部門グループ: なし");
+            body.Should().NotContain("1 つも持たない状態にはしていません");
+        }
+        finally
+        {
+            _factory.Identity.FailLeaveAfterApplying = null;
+            _factory.Identity.FailJoin = null;
+            await Inner.JoinGroupAsync("u-sato", "g-engineering", Ct);
+        }
+    }
+
     // T-66: 入れる段で失敗したら何も外さない（元の所属のまま）。502。
     [Fact]
     public async Task A_failed_join_removes_nothing()

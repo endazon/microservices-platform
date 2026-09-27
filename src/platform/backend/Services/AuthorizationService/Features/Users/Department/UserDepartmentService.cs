@@ -184,7 +184,11 @@ public sealed class UserDepartmentService(
     private async Task<UserDepartmentOutcome> PartialFailureAsync(string userId, bool restored, CancellationToken ct)
     {
         var now = await ReadGroupsOrNullAsync(userId, ct);
-        var state = now is null ? "読み直せませんでした" : Describe(DepartmentMembershipPlan.CodesOf(now));
+        var nowCodes = now is null ? null : DepartmentMembershipPlan.CodesOf(now);
+        var state = nowCodes is null ? "読み直せませんでした" : Describe(nowCodes);
+        // 「0 個にはしていない」と言えるのは、読み直した所属に部門グループが在るときだけである。
+        // 読み直すと 0 個（はじめから 0 個の人・部門なしを選んだ人）・読み直せないときにこの一文を出すと嘘になる。
+        var notLeftWithoutGroup = nowCodes is { Count: > 0 } ? "部門グループを 1 つも持たない状態にはしていません。" : "";
         if (!restored)
         {
             logger.LogError(
@@ -194,7 +198,7 @@ public sealed class UserDepartmentService(
         return UserDepartmentOutcome.Failed(restored
             ? $"部門グループの所属を変えられませんでした。元に戻しました（いまの部門グループ: {state}）。もう一度保存してください。"
             : $"部門グループの所属の変更が途中で失敗し、元に戻せませんでした（いまの部門グループ: {state}）。"
-              + "部門グループを 1 つも持たない状態にはしていません。Keycloak で所属を確かめてください。");
+              + notLeftWithoutGroup + "Keycloak で所属を確かめてください。");
     }
 
     private async Task<IReadOnlyList<IdentityGroup>?> ReadGroupsOrNullAsync(string userId, CancellationToken ct)

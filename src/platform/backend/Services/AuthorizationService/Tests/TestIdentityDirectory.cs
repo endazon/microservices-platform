@@ -71,8 +71,14 @@ public sealed class TestIdentityDirectory
     /// <summary>#1610: 入れる操作を失敗させるグループ ID の条件（途中の失敗と補償を測る）。</summary>
     public Func<string, bool>? FailJoin { get; set; }
 
-    /// <summary>#1610: 外す操作を失敗させるグループ ID の条件。</summary>
+    /// <summary>#1610: 外す操作を失敗させるグループ ID の条件（外す前に失敗する＝所属は残る）。</summary>
     public Func<string, bool>? FailLeave { get; set; }
+
+    /// <summary>
+    /// #1610: 外す操作が**反映された後に**失敗するグループ ID の条件（時間切れの後に反映されている形。所属は消えている）。
+    /// 補償の入れ直しまで失敗したときに部門グループ 0 個へ落ちないことを測るために使う。
+    /// </summary>
+    public Func<string, bool>? FailLeaveAfterApplying { get; set; }
 
     /// <summary>この器が作る内部 ID の接頭辞（`id-&lt;利用者名&gt;`）。</summary>
     internal const string StubIdPrefix = "id-";
@@ -98,6 +104,7 @@ public sealed class TestIdentityDirectory
         AttributeWrites.Clear();
         FailJoin = null;
         FailLeave = null;
+        FailLeaveAfterApplying = null;
     }
 
     /// <summary>
@@ -216,7 +223,15 @@ public sealed class TestIdentityDirectory
         {
             lock (state.MembershipWrites) state.MembershipWrites.Add(("leave", userId, groupId));
             if (state.FailLeave?.Invoke(groupId) == true) throw new HttpRequestException("Keycloak が 500 を返した（偽・外す）");
+            if (state.FailLeaveAfterApplying?.Invoke(groupId) == true)
+                return ApplyThenFailAsync(inner.LeaveGroupAsync(userId, groupId, ct));
             return inner.LeaveGroupAsync(userId, groupId, ct);
+
+            static async Task<bool> ApplyThenFailAsync(Task<bool> applied)
+            {
+                await applied;
+                throw new TaskCanceledException("Keycloak の応答が時間切れ（偽・外す。反映はされている）");
+            }
         }
 
         public Task<IReadOnlyList<IdentityUser>> ListUsersAsync(CancellationToken ct) => inner.ListUsersAsync(ct);
