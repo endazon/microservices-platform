@@ -14,7 +14,9 @@ namespace AuthorizationService.Infrastructure.ExternalServices;
 // `deploy/local/abac-seed/attributes.json` の利用者スコープ許可値から採っている**ので、
 // 辞書を投入した開発環境でそのまま保存が通る。
 // ［2026-09-27 / #1609・計画 ADR-0116 決定 3］部門の許可値は realm の部門グループから導く（下の固定の木では
-// engineering / sales / hr）。田中の `finance` は値域の外に残してある（旧い値を持つ利用者の形。保存し直すには値域の部門を選ぶ）。
+// engineering / sales / hr）。田中の `finance` は値域の外に残してある（旧い値を持つ利用者の形）。
+// ［2026-09-27 / #1610・計画 ADR-0116 決定 1］SC-17 の部門欄は部門グループの所属を変える（属性は同期が追いつく）。
+// 田中は部門グループに属さない（`/teams/finance` は部門の木の外）。佐藤は `engineering` に 1 つ属する。
 public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
 {
     // 実 realm が持つ 2 ロール（`platform-admin` / `platform-operator`）に、Keycloak 既定の
@@ -52,13 +54,25 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
     // 利用者の**内部 ID** → 所属グループ ID（`GetUserGroupsAsync` の鍵は利用者名ではない）。
     // 既存 seed の 4 人に 1〜2 件ずつ与える。**属性（department）と重ねてあるが別物である** ——
     // 属性は ABAC の条件、グループは共有先の識別子である。
-    private static readonly Dictionary<string, string[]> Memberships = new(StringComparer.Ordinal)
+    //
+    // ［2026-09-27 / #1610・計画 ADR-0116 決定 1］**可変にした**（SC-17 の部門欄が部門グループの所属を変えるため）。
+    // インスタンスごとに持つ（器を共有する試験どうしが互いの所属を書き換えないよう、静的な表にしない）。
+    // 読み書きは `_membershipLock` で直列化する（本物の Keycloak と同じく、1 回の入れる・外すは原子的）。
+    private readonly Dictionary<string, HashSet<string>> _memberships = new(StringComparer.Ordinal)
     {
-        ["u-tanaka"] = ["g-finance"],
-        ["u-sato"] = ["g-knowledge", "g-engineering"],
-        ["u-suzuki"] = ["g-knowledge"],
-        ["u-takahashi"] = ["g-teams"],
+        ["u-tanaka"] = new(StringComparer.Ordinal) { "g-finance" },
+        ["u-sato"] = new(StringComparer.Ordinal) { "g-knowledge", "g-engineering" },
+        ["u-suzuki"] = new(StringComparer.Ordinal) { "g-knowledge" },
+        ["u-takahashi"] = new(StringComparer.Ordinal) { "g-teams" },
     };
+
+    private readonly Lock _membershipLock = new();
+
+    private bool IsMember(string userId, string groupId)
+    {
+        lock (_membershipLock)
+            return _memberships.TryGetValue(userId, out var ids) && ids.Contains(groupId);
+    }
 
     /// <summary>
     /// 失効を要求された利用者 ID（要求された順）。
@@ -141,10 +155,7 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
     // [[IADR-0447]] (#1447): 所属グループ。**鍵は利用者の内部 ID**（本物と同じ意味論）。
     // 🔴 **親へ遡らない**（本物の注記と同じ。木の形が認可の広さを黙って変えないため）。
     public Task<IReadOnlyList<IdentityGroup>> GetUserGroupsAsync(string userId, CancellationToken ct)
-        => Task.FromResult<IReadOnlyList<IdentityGroup>>(
-            Memberships.TryGetValue(userId, out var ids)
-                ? [.. Groups.Where(g => ids.Contains(g.Id, StringComparer.Ordinal))]
-                : []);
+        => Task.FromResult<IReadOnlyList<IdentityGroup>>([.. Groups.Where(g => IsMember(userId, g.Id))]);
 
     // FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0447]] (#1447): 共有先の候補。
     // 🔴 **本物（Keycloak の平坦化 ＋ 名前の部分一致）と同じ意味論にする** ——
@@ -200,7 +211,7 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
         => Task.FromResult<IReadOnlyList<IdentityUser>>(
         [
             .. _users.Values
-                .Where(u => Memberships.TryGetValue(u.Id, out var ids) && ids.Contains(groupId, StringComparer.Ordinal))
+                .Where(u => IsMember(u.Id, groupId))
                 .OrderBy(u => u.Id, StringComparer.Ordinal)
                 .Select(u => u.ToIdentityUser())
         ]);
@@ -237,17 +248,47 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
         return Task.FromResult(DepartmentWriteResult.Applied(Mutate(userId, u => u.Attributes.Remove("department"))!));
     }
 
+    // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): 内部 ID で 1 人（本物と同じくロールは返さない）。
+    public Task<IdentityUser?> FindByIdAsync(string userId, CancellationToken ct)
+        => Task.FromResult(_users.TryGetValue(userId, out var user) ? user.ToIdentityUser() with { Roles = [] } : null);
+
+    // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): グループへ入れる・外す
+    // （本物と同じく冪等。利用者かグループが居なければ false）。
+    public Task<bool> JoinGroupAsync(string userId, string groupId, CancellationToken ct)
+    {
+        if (!_users.ContainsKey(userId) || !Groups.Any(g => g.Id == groupId)) return Task.FromResult(false);
+        lock (_membershipLock)
+        {
+            if (!_memberships.TryGetValue(userId, out var ids))
+                _memberships[userId] = ids = new HashSet<string>(StringComparer.Ordinal);
+            ids.Add(groupId);
+        }
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> LeaveGroupAsync(string userId, string groupId, CancellationToken ct)
+    {
+        if (!_users.ContainsKey(userId) || !Groups.Any(g => g.Id == groupId)) return Task.FromResult(false);
+        lock (_membershipLock)
+        {
+            if (_memberships.TryGetValue(userId, out var ids)) ids.Remove(groupId);
+        }
+        return Task.FromResult(true);
+    }
+
     public Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct)
         => Task.FromResult<IReadOnlyList<string>>([.. AssignableRoles]);
 
     // 🔴 **予約キー（保持起点）は差し替えで消さない**（[[IADR-0428]] / #1392）。
     // 本物（Keycloak 実装）と**同じ意味論**にしておく —— ここだけ素朴に置き換えると、
     // 偽物で緑になる試験が本物では別の答えを返す。
+    // ［2026-09-27 / #1610・計画 ADR-0116 決定 1］🔴 **`department` も差し替えで書かない**（現在値を持ち越す。本物と同じ）。
     public Task<IdentityUser?> ReplaceAttributesAsync(
         string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
         => Task.FromResult(Mutate(userId, u => u.Attributes =
             new Dictionary<string, string>(
-                RetentionAnchorAttributes.PreserveReserved(u.Attributes, attributes),
+                DepartmentAttributes.PreserveDepartment(
+                    u.Attributes, RetentionAnchorAttributes.PreserveReserved(u.Attributes, attributes)),
                 StringComparer.Ordinal)));
 
     // FR-19, SC-17, ADR-0082 決定 5, [[IADR-0428]] (#1392): 保持起点の書き込み・消去。

@@ -13,16 +13,20 @@ import {
   useAssignableRoles,
   useUserAccountActions,
   useUserAccounts,
+  useUserDepartment,
 } from '../api/useUserAccounts';
 import {
   DEPARTMENT_KEY,
   assignableAttributes,
+  currentDepartment,
+  departmentChangeToSend,
+  departmentState,
   departmentsInUse,
   filterUsers,
   optionalAttributes,
   requiredAttributes,
 } from '../types/userAccountVocabulary';
-import type { AssignmentIssue } from '../types/userAccountVocabulary';
+import type { AssignmentIssue, DepartmentState } from '../types/userAccountVocabulary';
 import { useUserPermissionEditor } from '../hooks/useUserPermissionEditor';
 
 // SC-17, UC-05, FR-05, FR-09, ADR-0026: ユーザーアカウント管理（05_screens: ルート /admin/users）。
@@ -44,14 +48,33 @@ import { useUserPermissionEditor } from '../hooks/useUserPermissionEditor';
 //   「無効」だけだと、既存セッションが生き残るのか失効するのかが読めない。
 //
 // ■ 実装していない要素は画面仕様書の §計画との対応 に「一部する／しない」で理由つきで記録した。
+//
+// ■ ［2026-09-27 / #1610・計画 ADR-0116 決定 1］🔴 **部門欄は部門グループの所属を変える。** 選択肢は realm の部門グループの
+//   コード（＋部門なし）。保存は部門グループの所属の変更として送り、**属性 `department` は書かない**（部門の同期が追いつく）。
+//   属性が追随したかどうかを色 ＋ アイコン ＋ 文言（StatusBadge）で示す。2 つ以上の部門グループに属する人は変えられない。
 
 /** 入力規則の識別子 → 表示文言。**語彙側は文言を持たない**ので画面が写す。 */
 function useIssueLabels(): Record<AssignmentIssue, string> {
   const { t } = useLingui();
   return {
     'roles-required': t`ロールは 1 件以上を割り当ててください（権限を外すときは無効化を使います）。`,
-    'required-attribute-missing': t`部門と機密区分上限は必須です。`,
+    'required-attribute-missing': t`機密区分上限は必須です。`,
   };
+}
+
+/** 部門欄の状態 → バッジ（色 ＋ アイコン ＋ 文言。StatusBadge が強制する）。 */
+function DepartmentStateBadge({ state }: { state: DepartmentState }) {
+  const { t } = useLingui();
+  switch (state) {
+    case 'synced':
+      return <StatusBadge tone="success">{t`属性に反映済み`}</StatusBadge>;
+    case 'pending':
+      return <StatusBadge tone="warning">{t`属性は部門の同期で追随します（未反映）`}</StatusBadge>;
+    case 'multiple':
+      return (
+        <StatusBadge tone="warning">{t`複数の部門グループに所属（この画面では変更できません）`}</StatusBadge>
+      );
+  }
 }
 
 export function UserAccountManagementPage() {
@@ -79,6 +102,9 @@ export function UserAccountManagementPage() {
   // フック側に閉じており、画面を描かずに固定してある（`hooks/useUserPermissionEditor.test.ts`）。
   const editor = useUserPermissionEditor(rows);
   const editing = editor.editing;
+  // #1610: 編集中の利用者の部門（部門グループの所属・属性・選択肢）。開いた人だけを引く。
+  const department = useUserDepartment(editing?.id ?? null);
+  const departmentData = department.data;
   // 列定義（`useMemo`）から呼ぶので、**参照の固定してある関数だけ**を取り出して依存に置く
   // （`editor` ごと依存に入れるとフックの戻り値は毎描画で新しく、列定義が作り直される）。
   const { open: openEditor } = editor;
@@ -172,14 +198,23 @@ export function UserAccountManagementPage() {
     if (!editing) return;
     if (!editor.validate(definitions)) return;
 
-    // 🔴 **2 本の要求に分かれる**（ロールと属性は別の反映先を持つ）。片方だけ通る余地があるため、
-    // 画面側で先に検証してから送る。**中間状態は隠さない** —— どちらが失敗したかは
+    // 🔴 **要求は分かれる**（ロール・属性・部門は別の反映先を持つ）。片方だけ通る余地があるため、
+    // 画面側で先に検証してから送る。**中間状態は隠さない** —— どれが失敗したかは
     // 各 mutation のエラーとして下に出る。
     actions.replaceRoles.mutate({ userId: editing.id, data: { roles: editor.draftRoles } });
+    // #1610: 🔴 属性の下書きは部門を含まない（`useUserPermissionEditor` が落とす）。属性 `department` を書く要求は出さない。
     actions.replaceAttributes.mutate({
       userId: editing.id,
       data: { attributes: editor.draftAttributes },
     });
+    // #1610: 部門は**いまの所属から変えたときだけ**、部門グループの所属の変更として送る。
+    const nextDepartment = departmentChangeToSend(departmentData, editor.draftDepartment);
+    if (nextDepartment !== undefined) {
+      actions.replaceDepartment.mutate({
+        userId: editing.id,
+        data: { department: nextDepartment },
+      });
+    }
   };
 
   return (
@@ -318,6 +353,60 @@ export function UserAccountManagementPage() {
             ))}
           </fieldset>
 
+          {/* #1610・計画 ADR-0116 決定 1: 部門欄 ＝ 部門グループの所属。選択肢は realm の部門グループのコード（焼き込まない）。
+              読み込み中・読めない・複数所属を描き分ける（読めないときに選択肢を推測で出さない）。 */}
+          <div className="mb-3" data-testid="department-field">
+            {department.isError ? (
+              <Alert
+                tone="danger"
+                role="alert"
+                label={t`部門グループを読めませんでした`}
+                data-testid="department-error"
+              >
+                {toMessages(department.error, '').join(' / ') ||
+                  t`部門は変えられません。時間をおいて開き直してください。`}
+              </Alert>
+            ) : !departmentData ? (
+              <p className="text-xs text-fg-muted">
+                <Trans>部門グループを読み込んでいます…</Trans>
+              </p>
+            ) : currentDepartment(departmentData) === null ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm">{t`部門（部門グループ）`}</span>
+                <span className="text-sm" data-testid="department-groups">
+                  {departmentData.departmentGroups.join('・')}
+                </span>
+                <DepartmentStateBadge state={departmentState(departmentData)} />
+                <p className="w-full text-xs text-fg-muted">
+                  <Trans>
+                    部門は 1 つです。認可基盤の管理コンソールで所属を 1
+                    つにしてから、この画面で変えてください。
+                  </Trans>
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-end gap-2">
+                <div>
+                  <Label htmlFor="user-department">{t`部門（部門グループ）`}</Label>
+                  <Select
+                    id="user-department"
+                    selectSize="sm"
+                    value={editor.draftDepartment ?? currentDepartment(departmentData) ?? ''}
+                    onChange={(e) => editor.setDepartment(e.target.value)}
+                  >
+                    <option value="">{t`部門なし`}</option>
+                    {departmentData.choices.map((code) => (
+                      <option key={code} value={code}>
+                        {code}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <DepartmentStateBadge state={departmentState(departmentData)} />
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-wrap items-end gap-4">
             {required.map((definition) => (
               <div key={definition.key}>
@@ -370,7 +459,9 @@ export function UserAccountManagementPage() {
             </Alert>
           )}
 
-          {(actions.replaceRoles.isError || actions.replaceAttributes.isError) && (
+          {(actions.replaceRoles.isError ||
+            actions.replaceAttributes.isError ||
+            actions.replaceDepartment.isError) && (
             // 後段の拒否理由（RFC7807）をそのまま出す。**中立化しない** ——
             // 「辞書外の値」「定義済みでないロール」等、管理者が直せる情報である。
             <Alert
@@ -383,6 +474,8 @@ export function UserAccountManagementPage() {
               {[
                 ...toMessages(actions.replaceRoles.error, ''),
                 ...toMessages(actions.replaceAttributes.error, ''),
+                // #1610: 部門の変更の拒否理由（値域外・複数の部門グループ・途中の失敗と補償の結果・realm を読めない）。
+                ...toMessages(actions.replaceDepartment.error, ''),
               ]
                 .filter((message) => message.length > 0)
                 .join(' / ')}
@@ -411,7 +504,8 @@ export function UserAccountManagementPage() {
           <Note data-testid="editor-notes">
             <Trans>
               保存すると認可基盤へ反映され、認可判定に即座に効きます。属性に選べるのは定義済みの値
-              だけです。無効化すると、その利用者の全セッションが即座に失効します。
+              だけです。部門を変えると部門グループの所属が変わり、認可に使う部門の属性は部門の同期で
+              追随します。無効化すると、その利用者の全セッションが即座に失効します。
             </Trans>
           </Note>
         </Panel>

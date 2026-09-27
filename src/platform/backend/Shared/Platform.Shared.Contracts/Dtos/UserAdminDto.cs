@@ -21,10 +21,27 @@ public record PlatformUserDto(
     List<string> Roles,
     Dictionary<string, string> Attributes);
 
-// SC-17 入力/バリデーション: ABAC 属性（部門・機密区分上限・タグ）の割当。
+// SC-17 入力/バリデーション: ABAC 属性（機密区分上限・タグ）の割当。
 // **差し替えである**（部分更新ではない）。送らなかったキーは消える。
+// ［2026-09-27 / #1610・計画 ADR-0116 決定 1］🔴 **`department` は含めない**（含めると 400）。部門は
+// `ReplaceUserDepartmentRequest`（部門グループの所属の変更）で変え、属性は部門の同期が追いつく。差し替えでも現在の部門は消えない。
 public record ReplaceUserAttributesRequest(Dictionary<string, string> Attributes);
 
 // SC-17 入力/バリデーション: ロール割当（必須・複数選択・定義済みロールのみ・併任可）。
 // **差し替えである**（送った集合が、その利用者の realm ロールの全体になる）。
 public record ReplaceUserRolesRequest(List<string> Roles);
+
+// FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, IADR-0473 (#1610): 利用者の部門（部門グループの所属）と部門欄の選択肢。
+// `DepartmentGroups` は利用者が直接属する部門グループのコード（入れ子は上位のコードに畳む。序数順）。
+// `DepartmentAttribute` は ABAC が読む利用者属性 `department`（部門の同期が追いつくまでグループと違い得る。無ければ null）。
+// `Choices` は realm の `/department` の直下の子のコード（部門欄の選択肢。画面に焼き込まない）。
+// 🔴 **部門の正本は部門グループである**（計画 ADR-0115 決定 3）。画面は属性ではなく `DepartmentGroups` を部門欄に出す。
+public record UserDepartmentDto(
+    List<string> DepartmentGroups,
+    string? DepartmentAttribute,
+    List<string> Choices);
+
+// FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, IADR-0473 (#1610): 部門の変更（部門グループの所属の変更）。
+// `Department` は選んだ部門コード。null・空は「部門なし」（すべての部門グループから外す）。
+// 🔴 **利用者属性 `department` は書かない**（部門の同期が追いつく）。
+public record ReplaceUserDepartmentRequest(string? Department);
