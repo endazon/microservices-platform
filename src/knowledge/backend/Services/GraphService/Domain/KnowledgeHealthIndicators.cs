@@ -31,6 +31,8 @@ internal static class KnowledgeHealthIndicators
     // SC-18 の表示単位も本指標の計数単位も同じものである（ADR-0083 決定 1）。
     // 🔴 **しきい値は持たない**（ADR-0083 決定 3。件数をそのまま出す）。
     // 内訳の軸は未要約の理由（`UnsummarizedClusterRule` の 3 語で閉じている）。
+    // ★［2026-09-27 追記 / #1663・ADR-0120 決定 3］**所属 1 件以下の単独クラスタは数えない**
+    // （要約の対象外。孤立文書は `orphan-documents` が数える）。
     public const string UnsummarizedClusters = "unsummarized-clusters";
 
     // FR-17, SC-10, ADR-0033 決定 9, [[IADR-0389]] (#1246):

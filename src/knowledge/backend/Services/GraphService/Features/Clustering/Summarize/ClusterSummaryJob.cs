@@ -74,8 +74,12 @@ public sealed class ClusterSummaryJob(
         // 🔴 **`ClusterId` の昇順で決定的に選ぶ。** 乱択も「最近のもの優先」も持たない
         // （[[IADR-0425]] 決定 2 と同じ向き —— 選ぶ順が周期ごとに変わると、上限に掛かった
         //  クラスタが永久に順番待ちになり得る）。
+        //
+        // ★［2026-09-27 追記 / #1663・ADR-0120 決定 3］**所属 1 件以下の単独クラスタは選ばない**
+        // （所属文書数を判定の入口へ渡す。除外は `UnsummarizedClusterRule` が持つ）。
         var targets = clusters
             .Where(c => UnsummarizedClusterRule.Evaluate(
+                membersByCluster.TryGetValue(c.ClusterId, out var memberIds) ? memberIds.Count : 0,
                 c.CompositionChangedAt,
                 membersByCluster.TryGetValue(c.ClusterId, out var ids)
                     ? ids.Select(id => documents.TryGetValue(id, out var d)
@@ -90,7 +94,9 @@ public sealed class ClusterSummaryJob(
 
         if (targets.Count == 0)
         {
-            logger.LogDebug("要約を作り直すクラスタは無い（全クラスタが要約済みである）。");
+            logger.LogDebug(
+                "要約を作り直すクラスタは無い（所属 2 件以上の全クラスタが要約済みである。"
+                + "所属 1 件の単独クラスタは要約の対象外である —— ADR-0120 決定 3）。");
             return ClusterSummaryResult.Empty;
         }
 
