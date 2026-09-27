@@ -1,4 +1,7 @@
+using AuthorizationService.Domain;
+using AuthorizationService.Infrastructure.Persistence;
 using AwesomeAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Json;
 
@@ -229,6 +232,43 @@ public class AuthzManagementEndpointTests(TestWebApplicationFactory factory)
         var doc = await Client.PostAsJsonAsync("/authz/attributes",
             AttributeBody("shared_with", ["group-sales"], scope: "document"), TestContext.Current.CancellationToken);
         doc.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    // FR-05, FR-09, SC-09 (#1676) T-74: **拒否より前に登録された**利用者スコープの束縛の位置の名前（ここでは `Owner`）は、
+    // 更新（ラベル・許可値の変更）が通る。登録の口の拒否は維持する（同じキーの POST は 400。否定の対照）。
+    // 🔴 DB へ直接置く —— 登録の口では作れない状態（拒否の導入より前のデータ）を再現するため。
+    // 器の InMemory DB はクラス内で共有するので、他の試験と衝突しない大小違いのキーを使い、最後に消す。
+    [Fact]
+    public async Task UpdateAttribute_UserScopeBindingPositionKeyStoredBeforeRejection_Returns200_CreateStillReturns400()
+    {
+        Guid id;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AuthorizationDbContext>();
+            var stored = AttributeDefinition.Create("Owner", "担当者", ["alice"], false, AttributeScope.User);
+            db.AttributeDefinitions.Add(stored);
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+            id = stored.Id;
+        }
+
+        try
+        {
+            var update = await Client.PutAsJsonAsync($"/authz/attributes/{id}",
+                new { Label = "担当者（改）", AllowedValues = new[] { "alice", "bob" }, Required = false },
+                TestContext.Current.CancellationToken);
+            update.StatusCode.Should().Be(HttpStatusCode.OK, "保存済みのキーは Key / Scope が不変で、新たに同名の利用者属性を生まない");
+            var updated = await update.Content.ReadFromJsonAsync<AttributeDto>(TestContext.Current.CancellationToken);
+            updated!.Label.Should().Be("担当者（改）");
+            updated.AllowedValues.Should().BeEquivalentTo("alice", "bob");
+
+            var create = await Client.PostAsJsonAsync("/authz/attributes",
+                AttributeBody("owner", ["carol"], scope: "user"), TestContext.Current.CancellationToken);
+            create.StatusCode.Should().Be(HttpStatusCode.BadRequest, "登録の拒否は維持する");
+        }
+        finally
+        {
+            await Client.DeleteAsync($"/authz/attributes/{id}", TestContext.Current.CancellationToken);
+        }
     }
 
     // FR-09: 不正なアクションのポリシーは 400

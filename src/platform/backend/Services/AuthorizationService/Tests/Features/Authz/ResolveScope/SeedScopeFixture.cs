@@ -60,7 +60,7 @@ internal static class SeedScopeFixture
     private static Dictionary<string, List<string>> Conditions(JsonNode? node)
         => node is null ? [] : node.Deserialize<Dictionary<string, List<string>>>(Web)!;
 
-    private static string RepoFile(string relative)
+    internal static string RepoFile(string relative)
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {

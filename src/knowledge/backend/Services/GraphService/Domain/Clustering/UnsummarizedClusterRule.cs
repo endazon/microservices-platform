@@ -40,7 +40,7 @@ internal static class UnsummarizedClusterRule
         DateTimeOffset? latestMemberUpdatedAt,
         IReadOnlyDictionary<string, DateTimeOffset> summaryGeneratedAt)
         => IsSummaryTarget(memberCount)
-            ? Evaluate(compositionChangedAt, latestMemberUpdatedAt, summaryGeneratedAt)
+            ? EvaluateConditions(compositionChangedAt, latestMemberUpdatedAt, summaryGeneratedAt)
             : null;
 
     // 内訳の軸に載せる理由。🔴 **基数が有界な語だけを載せる**（IKnowledgeHealthReporter の定め）。
@@ -50,11 +50,12 @@ internal static class UnsummarizedClusterRule
     public const string DocumentsUpdated = "documents-updated";
 
     // 未要約なら理由、要約済みなら null。**所属文書数を見ない**（ADR-0083 決定 3 の 3 条件だけ）。
-    // 呼び出し側は上の `Evaluate(memberCount, …)` を使う（単独クラスタの除外を落とさないため）。
+    // ［2026-09-28 / #1676］**private である。** 外から呼べるのは上の `Evaluate(memberCount, …)` だけにする ——
+    // 3 条件だけの入口を公開しておくと、呼び出し側がそれを選んで単独クラスタの除外（ADR-0120 決定 3）を落とせる。
     //
     // 複数の条件に当たるときは **1 → 2 → 3 の順で先勝ち**とする（内訳は 1 クラスタ 1 軸である）。
     // 条件 1 が最優先なのは、要約が欠けているクラスタでは 2・3 が測れない（起点が無い）ためである。
-    public static string? Evaluate(
+    private static string? EvaluateConditions(
         DateTimeOffset compositionChangedAt,
         DateTimeOffset? latestMemberUpdatedAt,
         IReadOnlyDictionary<string, DateTimeOffset> summaryGeneratedAt)

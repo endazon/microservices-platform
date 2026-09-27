@@ -271,7 +271,8 @@ builder.Services.AddHostedService<KnowledgeHealthHostedService>();
 
 // FR-17, FR-18, SC-10, SC-18, ADR-0035 決定 3・6・8, ADR-0083 決定 1〜3, [[IADR-0425]] (#1363):
 // 知識グラフのクラスタ検出（**Leiden 法・日次バッチ**）。
-// これが `unsummarized-clusters` の分母であり、SC-18 が表示する単位でもある（ADR-0083 決定 1）。
+// 検出したクラスタは SC-18 が表示する単位である（ADR-0083 決定 1）。`unsummarized-clusters` の分母は、そのうち
+// **所属 2 件以上のクラスタ**である（ADR-0120 決定 3。単独クラスタは要約の対象外で数えない。`UnsummarizedClusterRule`）。
 builder.Services.AddScoped<ClusterDetectionJob>();
 // 🔴 単一書き手化。ナレッジ健全性とは**別の口**である —— 同じ口を共有すると、日次の検出（長い）が
 // 毎時の指標報告（短い）を塞ぎ、指標が丸ごと止まる（[[IADR-0425]] 決定 6）。

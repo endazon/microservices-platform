@@ -406,14 +406,17 @@ public class AbacValidationTests
 
     // T-72（#1666 監査）: 束縛とリテラルは同じ値配列に混ぜられない。
     // `owner:[${current_user}, "bob"]` は全員に bob の文書を読ませる（計画の owner の位置は { ${current_user} } だけ）。
+    // ［2026-09-28 / #1676］リテラルが先の並び（`shared_with:["bob", ${current_groups}]`）も同じく拒否する。
+    // 混在の検査を先頭の値だけで判定する実装（先頭が束縛のときだけ混在を見る）が生き残っていた。
     [Theory]
-    [InlineData("owner", "${current_user}", "bob")]
-    [InlineData("shared_with", "${current_groups}", "group-sales")]
-    public void ValidatePolicy_BindingMixedWithLiteral_Error(string key, string binding, string literal)
+    [InlineData("owner", "${current_user}", "bob", "bob")]
+    [InlineData("shared_with", "${current_groups}", "group-sales", "group-sales")]
+    [InlineData("shared_with", "bob", "${current_groups}", "bob")]
+    public void ValidatePolicy_BindingMixedWithLiteral_Error(string key, string first, string second, string literal)
     {
         AbacValidation.ValidatePolicy(
                 "混在", "read", [],
-                Doc(key, binding, literal),
+                Doc(key, first, second),
                 [Confidentiality(), Clearance()])
             .Should().ContainSingle(e => e.Contains($"documentConditions.{key}") && e.Contains("混ぜる") && e.Contains(literal));
     }
@@ -529,6 +532,25 @@ public class AbacValidationTests
             key, "担当者", ["alice"], AttributeScope.User, []);
 
         errors.Should().ContainSingle(e => e.Contains($"key '{key}'") && e.Contains("利用者属性"));
+    }
+
+    // T-74（#1676）: 保存済みのキーの更新（Key / Scope は不変）では、利用者スコープの束縛の位置の名前を拒まない。
+    // 拒否より前に登録された属性のラベル・許可値を直せるようにする。登録（既定）は T-71 のとおり拒む（否定の対照を同じ入力で置く）。
+    [Theory]
+    [InlineData("owner")]
+    [InlineData("shared_with")]
+    [InlineData("Owner")]
+    public void ValidateAttributeDefinition_UserScopeBindingPositionKeyAlreadyStored_NoErrors(string key)
+    {
+        var stored = AttributeDefinition.Create(key, "担当者", ["alice"], false, AttributeScope.User);
+
+        AbacValidation.ValidateAttributeDefinition(
+                key, "担当者（改）", ["alice", "bob"], AttributeScope.User, [stored], excludeId: stored.Id,
+                keyAlreadyStored: true)
+            .Should().BeEmpty();
+        AbacValidation.ValidateAttributeDefinition(
+                key, "担当者（改）", ["alice", "bob"], AttributeScope.User, [stored], excludeId: stored.Id)
+            .Should().ContainSingle(e => e.Contains("利用者属性"), "登録（既定）では拒む");
     }
 
     // T-71（陽性対照）: 文書スコープの同名は登録できる（束縛の値と辞書の許可値を併せ持てる）。

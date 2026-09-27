@@ -10,8 +10,8 @@ author: claude
 ids: [FR-05, FR-09, SC-05, SC-09, UC-05]
 adrs: [ADR-0036, ADR-0043, ADR-0121]
 iadrs: [IADR-0006, IADR-0152, IADR-0153, IADR-0482]
-specs: [20260927_issue-1666_sc09-dynamic-binding-conditions]
-issues: [#634, #635, #1666]
+specs: [20260928_issue-1676_adr0121-audit-followups, 20260927_issue-1666_sc09-dynamic-binding-conditions]
+issues: [#1676, #634, #635, #1666]
 -->
 
 # テスト仕様書: 文書属性・タグ／ABAC ポリシー管理
@@ -57,9 +57,10 @@ issues: [#634, #635, #1666]
 | 23 | ［#1666］dev seed の全ポリシー | すべてエラー無し |
 | 24 | ［#1666］利用者スコープの `owner`・`shared_with`（大小違いを含む）の属性定義／文書スコープの同名 | 利用者はエラー・文書はエラー無し |
 | 25 | ［#1666］大小違いのキー（`Owner`・`SHARED_WITH`）の束縛 | エラー（束縛の位置は大小を区別する） |
-| 26 | ［#1666 監査］束縛とリテラルの混在 | エラー（混ぜる） |
+| 26 | ［#1666 監査］束縛とリテラルの混在（束縛が先・リテラルが先の両方） | エラー（混ぜる） |
 | 27 | ［#1666 監査］計画に無い action の束縛（`write`・`manage`・`analyze` の共有先、`manage`・`analyze` の所有者）／`write` の所有者 | 前者はエラー・後者はエラー無し |
 | 28 | ［#1666 監査］前後に文字の付いた束縛 | エラー |
+| 29 | 保存済みの利用者スコープの `owner`・`shared_with` の更新（Key / Scope は不変）／同じ入力の登録 | 更新はエラー無し・登録はエラー |
 
 ### ロールクレーム展開（`KeycloakRolesClaimsTransformationTests`）
 

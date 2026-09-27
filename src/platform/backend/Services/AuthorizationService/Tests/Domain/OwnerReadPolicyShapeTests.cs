@@ -1,4 +1,7 @@
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using AuthorizationService.Domain;
+using AuthorizationService.Tests.Features.Authz.ResolveScope;
 using AwesomeAssertions;
 
 namespace AuthorizationService.Tests.Domain;
@@ -76,5 +79,48 @@ public class OwnerReadPolicyShapeTests
         };
         OwnerReadPolicyShape.CountActive(policies).Should().Be(2);
         OwnerReadPolicyShape.CountActive([]).Should().Be(0);
+    }
+
+    // T-67（#1676）: **投入の正本 2 つを判定器に通す。** dev seed（`deploy/local/abac-seed/policies.json`）と、
+    // 運用仕様書 §所有者の読み取りのポリシーの投入 の JSON 本文は、どちらも「在る」と判定される（seed はちょうど 1 件）。
+    // 🔴 どちらも**ファイルから読む**（書き写さない）。本文が形の判定から外れると、手順どおりに投入しても門が開かず、
+    // 消失の警報が鳴り続ける —— しかも誤りとして表に出ない。
+    [Fact]
+    public void DevSeedの所有者の読み取りのポリシーは在ると数える()
+    {
+        var policies = SeedScopeFixture.SeedPolicies()
+            .Select(p => AbacPolicy.Create(p.Name, p.Action, p.UserConditions, p.DocumentConditions))
+            .ToList();
+        policies.Should().NotBeEmpty("seed を読んでいる");
+
+        OwnerReadPolicyShape.CountActive(policies).Should().Be(1, "seed の所有者の読み取りのポリシーは 1 本");
+    }
+
+    [Fact]
+    public void 運用仕様書の投入の本文は在ると数える()
+    {
+        var body = OperationsOwnerReadBody();
+        var policy = AbacPolicy.Create(
+            body.GetProperty("name").GetString()!,
+            body.GetProperty("action").GetString()!,
+            body.GetProperty("userConditions").Deserialize<Dictionary<string, List<string>>>(),
+            body.GetProperty("documentConditions").Deserialize<Dictionary<string, List<string>>>());
+
+        OwnerReadPolicyShape.Matches(policy).Should().BeTrue();
+    }
+
+    // 運用仕様書の §所有者の読み取りのポリシーの投入（次の `### ` まで）にある JSON のコードブロック。1 つだけであることも確かめる。
+    private static JsonElement OperationsOwnerReadBody()
+    {
+        const string Heading = "### 所有者の読み取りのポリシーの投入";
+        var text = File.ReadAllText(SeedScopeFixture.RepoFile("docs/operations/operations.md"));
+        var start = text.IndexOf(Heading, StringComparison.Ordinal);
+        start.Should().BeGreaterThanOrEqualTo(0, $"運用仕様書に「{Heading}」の節がある");
+        var end = text.IndexOf("\n### ", start + Heading.Length, StringComparison.Ordinal);
+        var section = end < 0 ? text[start..] : text[start..end];
+
+        var blocks = Regex.Matches(section, @"```json\s*\n(?<body>.*?)```", RegexOptions.Singleline);
+        blocks.Should().ContainSingle("節の投入の本文（JSON）は 1 つ");
+        return JsonDocument.Parse(blocks[0].Groups["body"].Value).RootElement.Clone();
     }
 }

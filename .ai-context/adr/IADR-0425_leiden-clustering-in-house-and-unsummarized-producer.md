@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-17, FR-18, SC-10, SC-18, ADR-0033, ADR-0035, ADR-0083, ADR-0120, IADR-0299, IADR-0353, IADR-0389]
 author: endazon (with Claude Code)
 created: 2026-09-11
-updated: 2026-09-27
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md
   - planning:projects/microservices-platform/07_adr/ADR-0083_cluster-definition-and-unsummarized-semantics.md
@@ -216,6 +216,13 @@ PostgreSQL の advisory lock。キーは `"GCLD"`（健全性の `"GKHP"` とは
 > - **試験**: `UnsummarizedClusterRuleTests`（所属 0・1 件は数えない／陽性対照の 2・5 件）、
 >   `ClusterSummaryTests`（辺 0 本で未要約 0 件／塊と単独の混在で塊だけを数える陽性対照）。作業仕様書
 >   `.ai-context/specs/20260927_issue-1663_singleton-cluster-summary-exclusion.md`。
+
+> **［2026-09-28 追記 / #1676］3 条件だけの判定（所属文書数を見ない旧 3 引数の `Evaluate`）を private にし、名前を `EvaluateConditions` に改めた。**
+> 本番の呼び出しは要約バッチと指標の 2 か所とも所属文書数つきの入口であり（`git grep` の実測）、3 引数版を呼んでいたのは試験だけだった。
+> 公開のままだと、呼び出し側が 3 引数版を選んで単独クラスタの除外を落とせる（上の追記が塞いだ割れ方の再発経路）。削除しないのは、
+> 3 条件の判定が入口の本体として残るためである。試験（`UnsummarizedClusterRuleTests` の 3 条件の固定）は、入口に要約の対象の最小の所属数
+> （`MinMembersToSummarize`）を渡す形へ書き換えた（固定している内容は変えていない）。`GraphService/Program.cs` のクラスタ検出の注記も
+> 「`unsummarized-clusters` の分母」から「分母は所属 2 件以上のクラスタ」へ追随させた。作業仕様書 `.ai-context/specs/20260928_issue-1676_adr0121-audit-followups.md`。
 
 ## 関連
 
