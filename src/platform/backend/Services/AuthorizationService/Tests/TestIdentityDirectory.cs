@@ -57,6 +57,23 @@ public sealed class TestIdentityDirectory
     /// </summary>
     public HashSet<string> ExtraGroupPaths { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): 所属の書き込み（`join` / `leave`・利用者 ID・グループ ID）の観測点。
+    /// </summary>
+    public List<(string Op, string UserId, string GroupId)> MembershipWrites { get; } = [];
+
+    /// <summary>
+    /// #1610: 属性の書き込み（`replace` の要求キー・`set-department` / `clear-department`）の観測点。
+    /// 🔴 SC-17 の部門の変更から属性 `department` を書く要求が出ないこと（否定の試験）をここで測る。
+    /// </summary>
+    public List<(string Op, string UserId, string[] Keys)> AttributeWrites { get; } = [];
+
+    /// <summary>#1610: 入れる操作を失敗させるグループ ID の条件（途中の失敗と補償を測る）。</summary>
+    public Func<string, bool>? FailJoin { get; set; }
+
+    /// <summary>#1610: 外す操作を失敗させるグループ ID の条件。</summary>
+    public Func<string, bool>? FailLeave { get; set; }
+
     /// <summary>この器が作る内部 ID の接頭辞（`id-&lt;利用者名&gt;`）。</summary>
     internal const string StubIdPrefix = "id-";
 
@@ -77,6 +94,10 @@ public sealed class TestIdentityDirectory
         GroupFailure = null;
         GroupsLookedUp.Clear();
         ExtraGroupPaths.Clear();
+        MembershipWrites.Clear();
+        AttributeWrites.Clear();
+        FailJoin = null;
+        FailLeave = null;
     }
 
     /// <summary>
@@ -165,14 +186,38 @@ public sealed class TestIdentityDirectory
 
         public Task<DepartmentWriteResult> SetDepartmentAttributeAsync(
             string userId, string department, IdentityUser observed, CancellationToken ct)
-            => inner.SetDepartmentAttributeAsync(userId, department, observed, ct);
+        {
+            lock (state.AttributeWrites) state.AttributeWrites.Add(("set-department", userId, ["department"]));
+            return inner.SetDepartmentAttributeAsync(userId, department, observed, ct);
+        }
 
         // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 全利用者の列挙・部門の消去も素通しする。
         public Task<UserEnumeration> ListAllUsersAsync(CancellationToken ct) => inner.ListAllUsersAsync(ct);
 
         public Task<DepartmentWriteResult> ClearDepartmentAttributeAsync(
             string userId, IdentityUser observed, CancellationToken ct)
-            => inner.ClearDepartmentAttributeAsync(userId, observed, ct);
+        {
+            lock (state.AttributeWrites) state.AttributeWrites.Add(("clear-department", userId, ["department"]));
+            return inner.ClearDepartmentAttributeAsync(userId, observed, ct);
+        }
+
+        // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): 内部 ID での引き当てと所属の変更も素通しする
+        // （SC-17 の試験は本物の偽物の所属を見る）。書き込みは `MembershipWrites` に残し、`FailJoin` / `FailLeave` で途中の失敗を作る。
+        public Task<IdentityUser?> FindByIdAsync(string userId, CancellationToken ct) => inner.FindByIdAsync(userId, ct);
+
+        public Task<bool> JoinGroupAsync(string userId, string groupId, CancellationToken ct)
+        {
+            lock (state.MembershipWrites) state.MembershipWrites.Add(("join", userId, groupId));
+            if (state.FailJoin?.Invoke(groupId) == true) throw new HttpRequestException("Keycloak が 500 を返した（偽・入れる）");
+            return inner.JoinGroupAsync(userId, groupId, ct);
+        }
+
+        public Task<bool> LeaveGroupAsync(string userId, string groupId, CancellationToken ct)
+        {
+            lock (state.MembershipWrites) state.MembershipWrites.Add(("leave", userId, groupId));
+            if (state.FailLeave?.Invoke(groupId) == true) throw new HttpRequestException("Keycloak が 500 を返した（偽・外す）");
+            return inner.LeaveGroupAsync(userId, groupId, ct);
+        }
 
         public Task<IReadOnlyList<IdentityUser>> ListUsersAsync(CancellationToken ct) => inner.ListUsersAsync(ct);
         // FR-19, SC-19 主要素 3, [[IADR-0445]] (#1445): 共有先の候補の検索も**素通しする**
@@ -182,7 +227,10 @@ public sealed class TestIdentityDirectory
         public Task<IReadOnlyList<string>> ListAssignableRolesAsync(CancellationToken ct) => inner.ListAssignableRolesAsync(ct);
         public Task<IdentityUser?> ReplaceAttributesAsync(
             string userId, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
-            => inner.ReplaceAttributesAsync(userId, attributes, ct);
+        {
+            lock (state.AttributeWrites) state.AttributeWrites.Add(("replace", userId, [.. attributes.Keys]));
+            return inner.ReplaceAttributesAsync(userId, attributes, ct);
+        }
         // FR-19, SC-17, ADR-0082 決定 5, [[IADR-0428]] (#1392): 保持起点の書き込みも素通しする
         // （SC-17 の試験は本物の偽物が持つ属性を見る）。
         public Task<IdentityUser?> SetRetentionAnchorAsync(

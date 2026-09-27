@@ -38,9 +38,21 @@ public static class UserAdminBffEndpoints
             .WithName("BffUserAdminListAssignableRoles").Produces<List<string>>();
 
         // SC-17: ABAC 属性の割当（差し替え）。辞書外の値・必須欠落は後段が 400 で拒む。
+        // ［2026-09-27 / #1610］部門（`department`）は含められない（後段が 400）。部門は下の `/department` で変える。
         g.MapPut("/{userId}/attributes", (string userId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
             Proxy(f, h, HttpMethod.Put, $"/authz/users/{Uri.EscapeDataString(userId)}/attributes", ct))
             .WithName("BffUserAdminReplaceUserAttributes");
+
+        // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, IADR-0473 (#1610): 部門 ＝ 部門グループの所属。
+        // 読み取りは所属・属性・選択肢（realm の部門グループのコード）、変更は所属だけを変える（属性 department は書かない）。
+        // 後段の 400（値域外）・404・409（複数の部門グループ・競合）・502（途中の失敗と補償の結果）・503（realm を読めない）を透過する。
+        g.MapGet("/{userId}/department", (string userId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Get, $"/authz/users/{Uri.EscapeDataString(userId)}/department", ct))
+            .WithName("BffUserAdminGetUserDepartment").Produces<UserDepartmentDto>();
+
+        g.MapPut("/{userId}/department", (string userId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Put, $"/authz/users/{Uri.EscapeDataString(userId)}/department", ct))
+            .WithName("BffUserAdminReplaceUserDepartment").Produces<UserDepartmentDto>();
 
         // SC-17: ロール割当（差し替え。併任可）。空集合・定義外ロールは後段が 400 で拒む。
         g.MapPut("/{userId}/roles", (string userId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>

@@ -7,9 +7,10 @@ using Platform.Shared.Contracts.Dtos;
 namespace AuthorizationService.Features.Users.ReplaceAttributes;
 
 // SC-17: ABAC 属性の割当（差し替え）。
-// 値域は SC-09 の属性辞書（`scope=user`）が持つ。**必須は部門・機密区分上限、タグは任意。**
-// ［2026-09-27 / #1609・計画 ADR-0116 決定 3］辞書は `AttributeDictionary` から読む —— 部門の値域は realm の部門グループの
-// コードであり、画面の選択肢（同じ辞書の一覧）と保存の検証が同じ集合を見る。
+// 値域は SC-09 の属性辞書（`scope=user`）が持つ。**必須は機密区分上限、タグは任意。**
+// ［2026-09-27 / #1609・計画 ADR-0116 決定 3］辞書は `AttributeDictionary` から読む。
+// ［2026-09-27 / #1610・計画 ADR-0116 決定 1］🔴 **部門はこの口で書かない。** 要求に `department` があれば 400、
+// 差し替えでも現在の部門はポートが持ち越す。部門は `PUT /{userId}/department`（部門グループの所属の変更）で変える。
 public static class ReplaceUserAttributesEndpoint
 {
     public static IEndpointRouteBuilder MapReplaceUserAttributes(this IEndpointRouteBuilder app)

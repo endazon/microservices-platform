@@ -638,7 +638,12 @@ public class DepartmentAttributeSyncTests
         public Task<IdentityUser?> SetEnabledAsync(string userId, bool enabled, CancellationToken ct) => throw Untouchable();
         public Task<bool> RevokeSessionsAsync(string userId, CancellationToken ct) => throw Untouchable();
 
+        // #1610・IADR-0473 決定 3: 🔴 **同期はグループの所属を変えない**（所属を変えるのは SC-17 の部門欄だけ）。呼ばれたら落とす。
+        public Task<IdentityUser?> FindByIdAsync(string userId, CancellationToken ct) => throw Untouchable();
+        public Task<bool> JoinGroupAsync(string userId, string groupId, CancellationToken ct) => throw Untouchable();
+        public Task<bool> LeaveGroupAsync(string userId, string groupId, CancellationToken ct) => throw Untouchable();
+
         private static InvalidOperationException Untouchable()
-            => new("部門の同期はこの口を使わない（属性の全置換・ロール・有効状態・セッションに触れてはならない）");
+            => new("部門の同期はこの口を使わない（属性の全置換・ロール・有効状態・セッション・グループの所属に触れてはならない）");
     }
 }

@@ -13,7 +13,8 @@ import {
 } from '@faker-js/faker';
 
 import type {
-  PlatformUserDto
+  PlatformUserDto,
+  UserDepartmentDto
 } from '../bff.schemas';
 
 
@@ -26,6 +27,10 @@ export const getBffUserAdminListAssignableRolesResponseMock = (): string[] => (A
 export const getBffUserAdminReplaceUserAttributesResponseMock = (overrideResponse: Partial<Extract<PlatformUserDto, object>> = {}): PlatformUserDto => ({id: faker.string.alpha({length: {min: 10, max: 20}}), username: faker.string.alpha({length: {min: 10, max: 20}}), displayName: faker.string.alpha({length: {min: 10, max: 20}}), enabled: faker.datatype.boolean(), roles: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), attributes: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
       }, ...overrideResponse})
+
+export const getBffUserAdminGetUserDepartmentResponseMock = (overrideResponse: Partial<Extract<UserDepartmentDto, object>> = {}): UserDepartmentDto => ({departmentGroups: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), departmentAttribute: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), choices: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), ...overrideResponse})
+
+export const getBffUserAdminReplaceUserDepartmentResponseMock = (overrideResponse: Partial<Extract<UserDepartmentDto, object>> = {}): UserDepartmentDto => ({departmentGroups: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), departmentAttribute: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), choices: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), ...overrideResponse})
 
 export const getBffUserAdminReplaceUserRolesResponseMock = (overrideResponse: Partial<Extract<PlatformUserDto, object>> = {}): PlatformUserDto => ({id: faker.string.alpha({length: {min: 10, max: 20}}), username: faker.string.alpha({length: {min: 10, max: 20}}), displayName: faker.string.alpha({length: {min: 10, max: 20}}), enabled: faker.datatype.boolean(), roles: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), attributes: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})

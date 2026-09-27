@@ -52,7 +52,7 @@ public class BffUserAdminEndpointTests : IClassFixture<BffTestFactory>
         return client;
     }
 
-    // ── 1. 陽性対照: 管理者は 6 端点すべてを使える ──────────────────────
+    // ── 1. 陽性対照: 管理者は 8 端点すべてを使える（#1610 で部門の読み取り・変更を足した） ──
 
     [Fact]
     public async Task ListUsers_AsAdmin_ReturnsUsersAndStripsTheBffPrefix()
@@ -76,11 +76,40 @@ public class BffUserAdminEndpointTests : IClassFixture<BffTestFactory>
         _factory.LastUserAdminPath.Should().Be("/authz/users/assignable-roles");
     }
 
+    // T-62（#1610・計画 ADR-0116 決定 1）: 部門の読み取り・変更は後段の `/authz/users/{id}/department` へ透過中継する
+    // （PUT は本文をそのまま渡す。落とすと後段は常に「部門なし」として全部門グループから外してしまう）。
+    [Fact]
+    public async Task Department_AsAdmin_ReadsAndReplacesThroughTheDownstreamDepartmentEndpoint()
+    {
+        var read = await AsAdmin().GetAsync("/bff/admin/users/u-tanaka/department", Ct);
+        read.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await read.Content.ReadAsStringAsync(Ct)).Should().Contain("choices");
+        _factory.LastUserAdminMethod.Should().Be("GET");
+        _factory.LastUserAdminPath.Should().Be("/authz/users/u-tanaka/department");
+
+        var put = await AsAdmin().PutAsync("/bff/admin/users/u-tanaka/department", Json("""{"department":"sales"}"""), Ct);
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+        _factory.LastUserAdminMethod.Should().Be("PUT");
+        _factory.LastUserAdminPath.Should().Be("/authz/users/u-tanaka/department");
+        _factory.LastUserAdminBody.Should().Contain("sales");
+        _factory.LastUserAdminForwardedAuthorization.Should().Be("Bearer test-token");
+    }
+
+    // #1610: 運用者は部門の読み取りも変更も 403（管理者限定。陽性対照は上の管理者の試験）。
+    [Fact]
+    public async Task Department_AsOperator_IsForbidden()
+    {
+        (await AsOperator().GetAsync("/bff/admin/users/u-tanaka/department", Ct))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await AsOperator().PutAsync("/bff/admin/users/u-tanaka/department", Json("""{"department":"sales"}"""), Ct))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     [Fact]
     public async Task ReplaceAttributes_AsAdmin_UsesPutAndForwardsBody()
     {
         var resp = await AsAdmin().PutAsync("/bff/admin/users/u-tanaka/attributes",
-            Json("""{"attributes":{"department":"finance","clearance":"internal"}}"""), Ct);
+            Json("""{"attributes":{"clearance":"internal"}}"""), Ct);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         _factory.LastUserAdminMethod.Should().Be("PUT");
@@ -145,6 +174,21 @@ public class BffUserAdminEndpointTests : IClassFixture<BffTestFactory>
 
         var resp = await AsAdmin().PutAsync("/bff/admin/users/u-ghost/roles",
             Json("""{"roles":["platform-admin"]}"""), Ct);
+
+        resp.StatusCode.Should().Be(status);
+    }
+
+    // T-65 / T-66（#1610）: 部門の変更の 409（複数の部門グループ）・502（途中の失敗と補償の結果）・503（realm を読めない）も
+    // そのまま返す（画面が理由を出せるように作り替えない）。
+    [Theory]
+    [InlineData(HttpStatusCode.Conflict)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task DepartmentDownstreamStatus_IsPassedThroughUnchanged(HttpStatusCode status)
+    {
+        _factory.UserAdminStatusCode = status;
+
+        var resp = await AsAdmin().PutAsync("/bff/admin/users/u-tanaka/department", Json("""{"department":"sales"}"""), Ct);
 
         resp.StatusCode.Should().Be(status);
     }

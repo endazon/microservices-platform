@@ -65,24 +65,33 @@ public class UserAssignmentValidationTests
             .Should().NotBeEmpty();
     }
 
-    // ---- ABAC 属性割当（部門・機密区分上限は必須／タグは任意／定義済みの値のみ） ----
+    // ---- ABAC 属性割当（機密区分上限は必須／タグは任意／定義済みの値のみ／部門はこの口で書かない） ----
 
-    // 05_screens §SC-17: 部門・機密区分上限は**必須**。
+    // 05_screens §SC-17: 機密区分上限は**必須**。
+    [Fact]
+    public void ValidateAttributes_requires_clearance()
+        => UserAssignmentValidation.ValidateAttributes(new Dictionary<string, string>(), Dictionary())
+            .Should().ContainSingle().Which.Should().Contain("必須属性 'clearance'");
+
+    // T-64（#1610・計画 ADR-0116 決定 1）: 🔴 **部門は属性の差し替えで書かない。** 要求に `department` があれば理由つきで拒む
+    // （大小文字違いも）。部門は部門グループの所属で変え、属性は部門の同期が追いつく。辞書に在る値でも拒む。
     [Theory]
     [InlineData("department")]
-    [InlineData("clearance")]
-    public void ValidateAttributes_requires_department_and_clearance(string missing)
+    [InlineData("Department")]
+    public void ValidateAttributes_refuses_to_write_the_department(string key)
     {
-        var attrs = new Dictionary<string, string>
-        {
-            ["department"] = "engineering",
-            ["clearance"] = "internal",
-        };
-        attrs.Remove(missing);
+        var attrs = new Dictionary<string, string> { [key] = "engineering", ["clearance"] = "internal" };
 
         UserAssignmentValidation.ValidateAttributes(attrs, Dictionary())
-            .Should().ContainSingle().Which.Should().Contain($"必須属性 '{missing}'");
+            .Should().ContainSingle().Which.Should().Contain("部門グループの所属");
     }
+
+    // #1610: 部門を送らない差し替えは通る（部門は必須ではない。陽性対照）。
+    [Fact]
+    public void ValidateAttributes_no_longer_requires_the_department()
+        => UserAssignmentValidation.ValidateAttributes(
+                new Dictionary<string, string> { ["clearance"] = "internal" }, Dictionary())
+            .Should().BeEmpty();
 
     // 空白は「未設定」と同じに扱う（空文字を保存して必須を満たしたことにしない）。
     [Fact]
@@ -90,8 +99,7 @@ public class UserAssignmentValidationTests
     {
         var attrs = new Dictionary<string, string>
         {
-            ["department"] = "   ",
-            ["clearance"] = "internal",
+            ["clearance"] = "   ",
         };
         UserAssignmentValidation.ValidateAttributes(attrs, Dictionary())
             .Should().NotBeEmpty();
@@ -104,7 +112,6 @@ public class UserAssignmentValidationTests
     {
         var attrs = new Dictionary<string, string>
         {
-            ["department"] = "finance",
             ["clearance"] = "internal",
         };
         UserAssignmentValidation.ValidateAttributes(attrs, Dictionary()).Should().BeEmpty();
@@ -116,7 +123,6 @@ public class UserAssignmentValidationTests
     {
         var attrs = new Dictionary<string, string>
         {
-            ["department"] = "finance",
             ["clearance"] = "internal",
             ["tags"] = "management",
         };
@@ -134,7 +140,6 @@ public class UserAssignmentValidationTests
     {
         var attrs = new Dictionary<string, string>
         {
-            ["department"] = "finance",
             ["clearance"] = "internal",
             ["tags"] = "finance,management",
         };
@@ -147,7 +152,6 @@ public class UserAssignmentValidationTests
     {
         var attrs = new Dictionary<string, string>
         {
-            ["department"] = "finance",
             ["clearance"] = "internal",
             ["tags"] = "management,legal",
         };
@@ -162,7 +166,6 @@ public class UserAssignmentValidationTests
     {
         var attrs = new Dictionary<string, string>
         {
-            ["department"] = "finance",
             ["clearance"] = "internal,restricted", // 各要素は辞書にあるが、値としては辞書外
         };
         UserAssignmentValidation.ValidateAttributes(attrs, Dictionary())
@@ -175,7 +178,6 @@ public class UserAssignmentValidationTests
     {
         var attrs = new Dictionary<string, string>
         {
-            ["department"] = "engineering",
             ["clearance"] = "top-secret", // 辞書に無い
         };
         UserAssignmentValidation.ValidateAttributes(attrs, Dictionary())
@@ -189,7 +191,6 @@ public class UserAssignmentValidationTests
     {
         var attrs = new Dictionary<string, string>
         {
-            ["department"] = "engineering",
             ["clearance"] = "internal",
             ["unknown_key"] = "whatever",
         };
@@ -203,7 +204,6 @@ public class UserAssignmentValidationTests
     {
         var attrs = new Dictionary<string, string>
         {
-            ["department"] = "engineering",
             ["clearance"] = "internal",
             ["confidentiality"] = "public", // document スコープにしか定義が無い
         };
@@ -220,15 +220,16 @@ public class UserAssignmentValidationTests
         [
             AttributeDefinition.Create("department", "所属部門", ["engineering"], false, AttributeScope.User),
         ];
-        var attrs = new Dictionary<string, string> { ["department"] = "engineering" };
+        var attrs = new Dictionary<string, string>();
 
         UserAssignmentValidation.ValidateAttributes(attrs, partial)
             .Should().ContainSingle().Which.Should().Contain("属性辞書に定義されていません");
     }
 
-    // 必須キーの宣言そのものを固定する（計画の「部門・機密区分上限」に対応する 2 キー）。
+    // 必須キーの宣言そのものを固定する（計画の「機密区分上限」に対応する 1 キー）。
+    // ［2026-09-27 / #1610］部門は必須から外した（部門グループの所属で変え、「部門なし」も選べる。計画 ADR-0116 決定 1）。
     [Fact]
-    public void RequiredUserAttributeKeys_are_department_and_clearance()
+    public void RequiredUserAttributeKeys_are_only_the_clearance()
         => UserAssignmentValidation.RequiredUserAttributeKeys
-            .Should().BeEquivalentTo("department", "clearance");
+            .Should().BeEquivalentTo("clearance");
 }

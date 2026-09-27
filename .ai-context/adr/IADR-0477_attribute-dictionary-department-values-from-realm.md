@@ -11,6 +11,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0115_department-domain-is-realm-group-and-default-from-registrant.md 決定 1（値域は /department/<code> の <code>）
 related_specs:
   - ../specs/20260927_issue-1609_department-clear-and-dictionary-from-realm.md
+  - ../specs/20260927_issue-1610_sc17-department-edits-group-membership.md
 ---
 
 # IADR-0477: 属性辞書の department の許可値を realm の部門グループから導く（#1609）
@@ -69,6 +70,9 @@ related_specs:
    `realm`（今回導いた）／`realm-unavailable`（不明・最後に確かめた値）。`enum` にしない（値域の正は `DepartmentDictionaryValues`）。
 4. **`department` の登録・更新は (c) の 2 のとおり。** 新規登録で realm を読めなければ空で登録し、出所を不明とする（次に読めた要求で埋まる）。
 5. **SC-09 の属性辞書の行に出所を文言つきのバッジで示す**（不明は注意の色。`StatusBadge` がアイコンと文言を強制する）。SC-17 の画面は変えない（#1610）。
+   > ［2026-09-27 追記 / #1610］SC-17 の部門欄は部門グループの所属を変える形になり（[[IADR-0473]] 決定 13）、選択肢は本決定 1 と同じ realm の読み取り
+   > （`AttributeDictionary.ReadDepartmentDomainAsync`）から直接引く。属性辞書の `department` の定義は SC-17 の部門欄には使わない
+   > （属性の割当の欄から外した）。realm を読めないときは SC-17 は選択肢を出さない（本決定 2 の「最後に確かめた値」は辞書・ポリシーの側だけ）。
 6. **開発用の偽物 IdP（`InMemoryIdentityAdminClient`）の部門グループを realm export と同じ `engineering` / `sales` / `hr` にする。**
 
 ## 結果
@@ -82,5 +86,5 @@ related_specs:
 
 ## 残るもの
 
-1. SC-17 の部門欄を部門グループの選択と所属の変更へ改める（計画 ADR-0116 決定 1。#1610）。
+1. SC-17 の部門欄を部門グループの選択と所属の変更へ改める（計画 ADR-0116 決定 1。#1610）。［2026-09-27 追記 / #1610］実装した（[[IADR-0473]] 決定 13）。
 2. 予約値 `unassigned`（IADR-0199）は文書の `department` に入り得るが、辞書の許可値には入れない（どのポリシーにも許さない値であり、従前の seed も持たない）。
