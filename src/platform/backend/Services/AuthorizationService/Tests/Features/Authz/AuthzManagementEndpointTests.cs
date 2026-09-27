@@ -217,6 +217,20 @@ public class AuthzManagementEndpointTests(TestWebApplicationFactory factory)
         await Client.DeleteAsync($"/authz/attributes/{created.Id}", TestContext.Current.CancellationToken);
     }
 
+    // FR-05, SC-09 (#1666) T-71: 利用者スコープの owner・shared_with は 400（束縛の位置と同名のキーを作らせない）。
+    // 陽性対照: 文書スコープの owner は登録できる。
+    [Fact]
+    public async Task CreateAttribute_UserScopeOwner_Returns400_DocumentScopeOwner_Returns201()
+    {
+        var user = await Client.PostAsJsonAsync("/authz/attributes",
+            AttributeBody("shared_with", ["alice"], scope: "user"), TestContext.Current.CancellationToken);
+        user.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var doc = await Client.PostAsJsonAsync("/authz/attributes",
+            AttributeBody("shared_with", ["group-sales"], scope: "document"), TestContext.Current.CancellationToken);
+        doc.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
     // FR-09: 不正なアクションのポリシーは 400
     [Fact]
     public async Task CreatePolicy_InvalidAction_Returns400()

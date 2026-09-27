@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
+import {
+  installBffSession,
+  sessionUser,
+  expectBffTrafficIsComplete,
+  reply,
+} from './support/bffSession';
 
 // SC-09 (#504 / #1139): 管理者設定（ABAC）（`/admin/abac`）のスクリーンレベル・スモーク。
 //
@@ -92,6 +97,59 @@ test('SC-09: the edge-type dictionary tab reads the admin dictionary, not the dr
 
   expectBffTrafficIsComplete(traffic);
 });
+// FR-05, SC-09, ADR-0121 決定 1・ADR-0036 D-02 (#1666): **所有者の read ポリシーを画面の操作だけで作る。**
+// 属性辞書は空（owner は辞書に載らない）。実ビルド成果物の上で、選択 → 条件の追加 → 保存の順に押し、
+// BFF へ届いた本文が ADR-0121 決定 1 の形そのものであることを見る。
+test('SC-09: an administrator creates the owner read policy by selection only', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-admin']),
+    handlers: {
+      ...handlers,
+      'POST /admin/authz/policies': reply(201, {
+        id: 'cccccccc-dddd-eeee-ffff-000000000000',
+        name: '所有者は自分の文書を読める',
+        action: 'read',
+        userConditions: {},
+        documentConditions: { owner: ['${current_user}'] },
+        isActive: true,
+      }),
+    },
+  });
+
+  await page.goto('/admin/abac');
+  const form = page.getByRole('form', { name: 'ポリシー登録' });
+  await expect(form).toBeVisible();
+
+  await form.getByLabel('名前（必須）').fill('所有者は自分の文書を読める');
+  await form.getByLabel('対象属性').selectOption('document:owner');
+  // 値は選択だけ。束縛は「動的束縛」の文言で示される（色だけにしない）。
+  await form
+    .getByLabel('条件の値')
+    .selectOption({ label: '動的束縛: 操作する利用者本人（${current_user}）' });
+  await form.getByRole('button', { name: '条件を追加' }).click();
+  await expect(
+    form.getByText('文書 owner = 動的束縛: 操作する利用者本人（${current_user}）'),
+  ).toBeVisible();
+  await form.getByRole('button', { name: '保存' }).click();
+
+  await expect(
+    page.getByText('ポリシーを保存しました。認可判定へ即時反映されます。'),
+  ).toBeVisible();
+  const posted = traffic.calls.filter((c) => c.key === 'POST /admin/authz/policies');
+  expect(posted.map((c) => c.body)).toEqual([
+    {
+      name: '所有者は自分の文書を読める',
+      action: 'read',
+      userConditions: {},
+      documentConditions: { owner: ['${current_user}'] },
+    },
+  ]);
+
+  expectBffTrafficIsComplete(traffic);
+});
+
 test('SC-09: an operator gets the same not-found page and never learns the screen exists', async ({
   page,
 }) => {

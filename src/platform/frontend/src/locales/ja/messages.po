@@ -1842,6 +1842,10 @@ msgstr "共有した相手はこの資料を閲覧できます。共有された
 msgid "共有している相手はいません。"
 msgstr "共有している相手はいません。"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
+msgid "共有先"
+msgstr "共有先"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "共有先を取得できませんでした。"
 msgstr "共有先を取得できませんでした。"
@@ -2110,6 +2114,10 @@ msgstr "削除済みの個人資料を確認する"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "削除済みの資料です。削除済みタブから復元するか、Obsidian 側のファイルを削除してください。"
 msgstr "削除済みの資料です。削除済みタブから復元するか、Obsidian 側のファイルを削除してください。"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
+msgid "動的束縛: {bindingLabel}（{notation}）"
+msgstr "動的束縛: {bindingLabel}（{notation}）"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "即時同期を依頼しました。アプリケーションへの反映まで少し時間がかかることがあります。"
@@ -2679,6 +2687,7 @@ msgid "成功"
 msgstr "成功"
 
 #: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 msgid "所有者"
 msgstr "所有者"
 
@@ -2818,6 +2827,14 @@ msgstr "提案の一覧を読み込み中…"
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "操作"
 msgstr "操作"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
+msgid "操作する利用者の所属グループ"
+msgstr "操作する利用者の所属グループ"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
+msgid "操作する利用者本人"
+msgstr "操作する利用者本人"
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "操作できませんでした。すでに他の利用者が承認・却下した可能性があります。 画面を再読み込みして確認してください。"

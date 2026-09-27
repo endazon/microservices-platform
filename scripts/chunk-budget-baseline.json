@@ -294,7 +294,13 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 615916,
+  "initialTotalBytes": 616268,
+  "$comment_initialTotalBytes_20260928_1666_sc09-dynamic-binding": [
+    "［2026-09-28 / #1666］615,916 → 616,268（+352 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
+    "+0.35 kB 超過を報告し、--update で床を更新した）。増分は SC-09 の動的束縛の条件に足した文言 4 件（ja / en のカタログは初期ロードに入る。",
+    "カタログの messages.ts は ja +214 B・en +186 B）である。画面のコード（束縛の表・選択肢の組み立て）は AdminAbacSettingsPage の遅延チャンクのまま",
+    "（`current_groups` は遅延チャンクにしか現れない）。意図した増加。"
+  ],
   "$comment_initialTotalBytes_20260927_1610_sc17-department-group": [
     "［2026-09-27 / #1610］614,476 → 615,916（+1,440 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
     "+1.44 kB 超過を報告し、--update で床を更新した）。増分は SC-17 の部門欄（部門グループの所属の変更）に足した文言 11 件と改めた文言 2 件",
