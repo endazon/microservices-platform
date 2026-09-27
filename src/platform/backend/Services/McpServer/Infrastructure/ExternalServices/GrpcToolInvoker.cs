@@ -21,6 +21,8 @@ namespace McpServer.Infrastructure.ExternalServices;
 //
 // ■ 🔴 **fail-closed**（ADR-0117 決定 4）。宛先の経路が構成されていない・実行口が無い（`UNIMPLEMENTED`。［#1611 段 2 で文書・検索・グラフとも持った］旧い版・将来の供給元）・
 //   期限切れ・拒否・トークン取得失敗・到達不能は、すべて `ToolExecutionUnavailableException` にして結果を返さない。
+//   ［2026-09-28 / #1611 段 2］文書サービスの受け口は内容の ABAC の門が閉じている間 `FAILED_PRECONDITION` を返す —— 下の既定の枝
+//   （Warning・結果 0 件）で拒否へ写る（X-69 が固定する）。
 //   利用者へ返す文言は内部の宛先（サービス名・アドレス・status）を含めない。宛先はログにだけ書く。
 //   ログは配線不備（`UNAUTHENTICATED` / `PERMISSION_DENIED` / s2s トークンの取得失敗。再起動では直らない）を Error、それ以外を Warning。
 //

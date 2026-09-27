@@ -52,7 +52,7 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
     public StubDocumentReadScopeSource ReadScopes { get; } = new();
 
     /// <summary>
-    /// 内容の ABAC の門の代役（#1611 段 2）。既定は閉（本番の既定 `ContentAbac:Mode=Off` と同じ）。開く試験は `finally` で閉じる。
+    /// 内容の ABAC の門の代役（#1611 段 2）。既定は閉（本番の既定 `ContentAbac:Mode=Off` と同じ）。開いて使う試験（MCP の実行口）は後始末で閉じる。
     /// </summary>
     public StubContentAbacGate ContentAbacGate { get; } = new();
 

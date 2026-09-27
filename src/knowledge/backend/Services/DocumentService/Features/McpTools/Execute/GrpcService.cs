@@ -19,10 +19,16 @@ namespace DocumentService.Features.McpTools.Execute;
 // `document.get_document` / `document.list_documents` を実行する。RetrievalService（段 1）・GraphService（段 3）の実行口と同じ形である。
 //
 // 🔴 **本体と判定器は持たない。** 読み取りは REST `GET /documents/{id}`・`GET /documents`・gRPC `DocumentRead` と**同じ関数**
-//   （`DocumentReadUseCase` → 判定点 `DocumentReadAccess`）を通る。内容の ABAC の門（`IContentAbacGate`）で枝を選ぶのも判定点の中であり、
-//   **受け口は門を読まない**（読んで分岐すると判定点が 2 つになる）。門が閉じている間（既定 Off）は #1615 の閉じた枝（従前の判定）、
-//   開いた後は認可サービスの `read` の分岐で判定される —— どちらでも REST の同じ利用者の結果を超えない。
-//   ここに在るのは、利用者文脈の検証・ツールの引数の解釈・応答の共通エンベロープへの写像だけである。
+//   （`DocumentReadUseCase` → 判定点 `DocumentReadAccess`）を通る。可視性の判定（認可サービスの `read` の分岐）は判定点だけが行う。
+//   ここに在るのは、利用者文脈の検証・ツールの引数の解釈・**経路の開閉**・応答の共通エンベロープへの写像だけである。
+//
+// 🔴 **内容の ABAC の門（`IContentAbacGate`）が閉じている間は、この経路を開かない**（FAILED_PRECONDITION。［2026-09-28 裁定 / #1611 段 2 案 2］）。
+//   閉じている間の判定点は #1615 の閉じた枝（組織文書を内容の属性で絞らない）であり、その間の組織文書の実施点は BFF の判定である
+//   （ADR-0121 決定 6 の暫定手段）。MCP の経路は BFF を通らないので、閉じた枝で答えると BFF の画面では見えない機密・制限の組織文書の
+//   題名と属性が引ける ——「利用者に権限の無い文書は返らない」（#1611 の受け入れ基準）に反する。これは**第二の判定点ではなく経路の前提条件**
+//   である（開いていれば判定はすべて判定点が行い、閉じていれば判定そのものを走らせない）。
+//   門の値は判定点と**同じ要求内固定の値**（`DocumentReadAccess.ContentAbacEnabled`。要求の寿命の同じインスタンス）を読む ——
+//   受け口が門を別に読むと、要求の途中で門が開いたときに「受け口は閉・判定点は開」のように食い違い得る（門を読むのは要求につき 1 回）。
 //
 // 🔴 **判定の順番**（どれも前段で落ちたら後段を 1 度も走らせない）:
 //   1. `ServiceCaller`（面の門。利用者のトークンは管理者でも通らない）
@@ -31,9 +37,16 @@ namespace DocumentService.Features.McpTools.Execute;
 //   4. **自分の申告に在るツールか**（無ければ NOT_FOUND。宛先は申告したサービス＋ツール名。ADR-0117 決定 1）
 //   5. **操作の突合**: 操作は受け口が決める（2 ツールとも閲覧 = `read`）。本文の `action` が違えば INVALID_ARGUMENT
 //   6. 引数の検証（丸めない。INVALID_ARGUMENT）
-//   7. 🔴 **自分で認可する**: 本文の `user_id` を主体（`DocumentReadPrincipal.RelayedUser`）にして判定点を通す。認可サービスへは
+//   7. 🔴 **経路の開閉**: 門が閉じていれば FAILED_PRECONDITION（判定・読み取りを 1 度も走らせない）。引数の検証の後に置くのは、
+//      呼び出しの形の誤り（配線・LLM の引数）を門の状態に依らず同じ status で返すため（門が開いた日に初めて形の誤りが見える、を作らない）。
+//      信頼しない呼び出し元・申告に無いツールはそれより前で落ちるので、門の状態は MCP サーバーにしか見えない。
+//      status は MCP サーバーの実行器（`GrpcToolInvoker`）が既定の枝で「実行できない」（fail-closed・Warning。結果 0 件）へ写すもの。
+//      `UNIMPLEMENTED`（実行口の無い旧い版と誤読させる）・`PERMISSION_DENIED`（s2s の配線不備として Error で見せる）・
+//      `UNAVAILABLE`（一時障害として再試行を誘う）は選ばない。門は運用者が開けるまで閉じたままの状態なので、gRPC の意味でも
+//      「前提が満たされていない」＝ FAILED_PRECONDITION が当たる。
+//   8. 🔴 **自分で認可する**: 本文の `user_id` を主体（`DocumentReadPrincipal.RelayedUser`）にして判定点を通す。認可サービスへは
 //      利用者名で問う（`IDocumentReadScopeSource`。**属性は送らない**＝空。認可サービスが引き直す。ADR-0088）。
-//   8. 読み取り（同じ関数）→ サービスアカウント実行なら個人資料を落とす → 共通エンベロープ（件数は判定と除外の後）
+//   9. 読み取り（同じ関数）→ サービスアカウント実行なら個人資料を落とす → 共通エンベロープ（件数は判定と除外の後）
 //
 // 🔴 **ADR-0034 決定 9（要求側の 1 層目）**: `user_id` が `service-account-` で始まるならサービスアカウント実行であり、
 //   個人資料（`doc_scope=private-note`）を返さない。判定点（`RelayedUser` が機械として扱い、機械は個人資料を読まない）と
@@ -43,6 +56,7 @@ namespace DocumentService.Features.McpTools.Execute;
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
 public sealed class McpToolExecutionGrpcService(
     DocumentReadUseCase reads,
+    DocumentReadAccess access,
     IOptions<McpToolExecutionRelayOptions> relay,
     ILogger<McpToolExecutionGrpcService> logger)
     : Pb.McpToolExecution.McpToolExecutionBase
@@ -58,6 +72,9 @@ public sealed class McpToolExecutionGrpcService(
     public const int MinLimit = 1;
     public const int MaxLimit = 100;
     public const int DefaultLimit = 20;
+
+    /// <summary>門が閉じている間の拒否の文言（試験が固定する。利用者へは MCP サーバーが自分の文言に置き換える）。</summary>
+    public const string GateClosedMessage = "文書のツールは内容の ABAC が有効になるまで実行できない（経路が閉じている）。";
 
     private static readonly string[] Tools = [GetDocumentTool, ListDocumentsTool];
 
@@ -85,11 +102,15 @@ public sealed class McpToolExecutionGrpcService(
         // 6. 引数（丸めない）。
         var args = ParseArguments(tool, request.ArgumentsJson);
 
+        // 7. 🔴 経路の開閉（#1611 段 2 案 2）。判定点と同じ要求内固定の値を読む（ここが要求で最初の読み取りになり、判定点はその値を使う）。
+        if (!access.ContentAbacEnabled)
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, GateClosedMessage));
+
         var userId = request.User.UserId;
         var excludePrivateNote = IsServiceAccount(userId);
 
-        // 7・8. 🔴 自分で認可する。主体は本文の利用者（`service-account-` は機械として扱う）。判定は既存の判定点のまま
-        //   （門の枝の選択・認可サービスへの問い合わせ・存在秘匿はすべてそちら）。
+        // 8・9. 🔴 自分で認可する。主体は本文の利用者（`service-account-` は機械として扱う）。判定は既存の判定点のまま
+        //   （認可サービスへの問い合わせ・存在秘匿はすべてそちら。ここへ来るのは門が開いた枝だけ）。
         //   身元は本文で主張され、s2s の門と許可集合を通っている（ADR-0086 決定 4 が受け入れた依存の範囲）。
         var principal = DocumentReadPrincipal.RelayedUser(userId);
         IReadOnlyList<DocumentDto> visible = tool == GetDocumentTool

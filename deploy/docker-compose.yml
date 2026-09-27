@@ -1121,6 +1121,8 @@ services:
       # ここに無いサービスのツールは実行を拒否する。［#1611 段 2］受け口は document-service・retrieval-service・graph-service の 3 つとも持つ。
       # 受け口は本文の利用者文脈を下の ServiceToken__ClientId（mcp-server）が運んだときだけ信じる（各受け口の McpToolExecution の許可集合。
       # 既定 mcp-server。client を変えるなら受け口の集合と McpToolExecutionRelayDeploymentWiringTests も直す）。
+      # 🔴 document-service の受け口は、内容の ABAC の門（ContentAbac:Mode。既定 Off）が開くまで FAILED_PRECONDITION で拒否する
+      # （MCP サーバーは実行できないとして結果を返さない）。文書のツールは一覧に出るが、門が開くまでは実質使えない。宛先はそのまま置く。
       Mcp__GrpcServices__document-service: http://document-service:8081
       Mcp__GrpcServices__retrieval-service: http://retrieval-service:8081
       Mcp__GrpcServices__graph-service: http://graph-service:8081

@@ -848,6 +848,8 @@ services:
       # 実行の期限は McpServer の appsettings.json の Mcp:ToolExecutionTimeoutSeconds（既定 30 秒）。
       # ［#1611 段 2］受け口は document-service・retrieval-service・graph-service の 3 つとも持つ。受け口は本文の利用者文脈を
       # 上の serviceToken.clientId（mcp-server）が運んだときだけ信じる（各受け口の McpToolExecution の許可集合。既定 mcp-server）。
+      # 🔴 document-service の受け口は、内容の ABAC の門（ContentAbac:Mode。既定 Off）が開くまで FAILED_PRECONDITION で拒否する
+      # （MCP サーバーは実行できないとして結果を返さない）。文書のツールは一覧に出るが、門が開くまでは実質使えない。宛先はそのまま置く。
       - name: Mcp__GrpcServices__document-service
         value: "http://document-service:8081"
       - name: Mcp__GrpcServices__retrieval-service
