@@ -250,8 +250,9 @@ public class GrpcKnowledgeHealthReporterTests
     }
 
     // 既存の試験（`KnowledgeHealthProducerTests` ほか）と同じ形の固定時計。
-    // **新しいライブラリ（Microsoft.Extensions.TimeProvider.Testing）は足さない**
-    // —— `scripts/backend-library-baseline.json` の ratchet に触れる。
+    // この試験が要るのは「固定の現在時刻」だけなので、自前の小さな派生で足りる（本プロジェクトは #1622 から
+    // `Microsoft.Extensions.TimeProvider.Testing` の `FakeTimeProvider` も参照しており、使ってもよい）。
+    // `scripts/backend-library-baseline.json` の ratchet が縛るのは不採用ライブラリ（ADR-0030）だけで、この選択とは関係しない（#1630）。
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;

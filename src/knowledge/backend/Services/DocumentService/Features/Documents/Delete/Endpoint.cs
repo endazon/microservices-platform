@@ -18,7 +18,8 @@ internal static class DeleteDocumentEndpoint
             IDocumentDeletedPublisher deletedBus, DocumentObjectPurger purger,
             CancellationToken ct) =>
         {
-            var doc = await db.Documents.FindAsync([id], ct);
+            // FR-19, ADR-0036 D-08, ADR-0119 決定 3 (#1629): 個人資料はこの口の対象外（主体を問わず 404）。
+            var doc = await DocumentManageScope.FindManageableAsync(db, id, ct);
             if (doc is null) return Results.NotFound();
             await purger.PurgeAsync([id], ct);
             db.Documents.Remove(doc);

@@ -24,12 +24,15 @@ public sealed class DataSourceSyncHostedService(
     // 形は #1598 の `CycleInterval`（PrivateNoteMaintenance・GraphService の 3 つ）と同じ。
     internal TimeSpan? CycleInterval { get; init; }
 
+    // #1622: 周期の拍の源。**試験だけが偽の時計（FakeTimeProvider）に差し替える**（壁時計の間隔は負荷で揺れる）。本番はシステムの時計のまま。
+    internal TimeProvider CycleClock { get; init; } = TimeProvider.System;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var interval = StartSchedule();
         if (interval is null) return;
 
-        using var timer = new PeriodicTimer(CycleInterval ?? interval.Value);
+        using var timer = new PeriodicTimer(CycleInterval ?? interval.Value, CycleClock);
         try
         {
             do

@@ -3,15 +3,15 @@ title: east-west gRPC 通信仕様書（proto の置き場・versioning・h2c・
 type: api-spec
 status: completed
 created: 2026-09-05
-updated: 2026-09-26
+updated: 2026-09-27
 author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
-adrs: [ADR-0089, ADR-0050, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114]
-iadrs: [IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431]
-specs: [20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
-issues: [#1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532]
+adrs: [ADR-0119, ADR-0089, ADR-0050, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114]
+iadrs: [IADR-0476, IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431]
+specs: [20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532]
 -->
 
 # 通信仕様書: east-west gRPC（サービス間の同期呼び出し）
@@ -307,7 +307,7 @@ AI 分析・グラフ・Wiki は**参照実装と同じ rpc**を使う（proto �
 
 - 概要: **BFF の文書閲覧経路**（一覧・詳細・版履歴・特定版）が使う。
   `Services:DocumentServiceGrpc` の構成があるときだけ gRPC で、無ければ REST のまま。
-- 認証・認可: `ServiceCaller`。
+- 認証・認可: `ServiceCaller`。［2026-09-27 追記］**読み取りの主体は要求の利用者文脈（`user`）で決まる**（下記）。
 - 置き場: **knowledge ユニットの共有契約プロジェクト**（`Knowledge.Contracts`）。所有者は呼び出し先であり、
   置き場はその所有者が属するユニットである（§1）。platform 側へ置いてはならない。
 
@@ -343,6 +343,21 @@ MCP・通知・Wiki・文書・変換・データソース、基盤を拡張す�
 🔴 **この面は認可の判定を持たない。** 文書単位の ABAC（属性合致 ∧ 個人資料でないこと）は
 **呼び出し元の 1 か所**が実施点であり、移行で位置を動かしていない。書き込みプリフライト
 （変更前にスコープを確かめる往復）もそのまま残る。
+
+［2026-09-27 追記］🔴 **個人資料の除外は、文書サービスの中でも行うようになった**（計画の裁定。読み取りの全ての口で認証を求め、
+個人資料は所有者と共有先にだけ返す）。上の段落のうち「個人資料でないこと」は呼び出し元だけの判定ではなくなった。
+組織文書の内容による絞り込み（機密・部門）は引き続き呼び出し元が実施点である（文書サービス側へも入れる予定。別の作業）。
+
+- **主体**: 4 つの要求に**利用者文脈 `user`**（利用者識別子・利用者属性・アクションの 3 項目。検索・グラフの面と同じ形）を足した。
+  在れば**その利用者**、無ければ**呼び出し元サービス自身**（機械の主体）として読む。利用者識別子が空文字なら `INVALID_ARGUMENT`。
+  利用者識別子がサービスアカウントの形（`service-account-` で始まる）なら機械として扱う。
+- **個人資料**は所有者と共有先の利用者にだけ返る。機械の主体・管理者ロールの利用者には返らない。
+  読めない文書は一覧から除き、個別は `found=false`（「無い」と区別しない）。
+  グループへの共有は、文書サービスが権限スコープ解決（`AuthzScope/Resolve`）へ利用者を名指して問い、所属は認可サービスが引く。
+- **BFF は呼び出し元の利用者を `user` で運ぶ**（呼び出し元が機械なら運ばない）。運ばないと BFF 自身として読まれ、
+  所有者が自分の個人資料を文書詳細で開けなくなる。
+- **REST 並走側の読み取り 4 箇所も利用者の資格情報を付けるようになった**（文書サービスの読み取りが認証を要するため）。
+  上の「読み取り 4 箇所（本面の REST 並走側）は付けない」は過去の記述であり、この 4 箇所はエッジの中継（15 本の側）に数える。
 
 🔴 **proto3 の既定と DTO の既定が逆向きの真偽値が 1 つある。**
 「原本が本文を持っていたか」は DTO の既定が `true`・proto3 の既定が `false` である。

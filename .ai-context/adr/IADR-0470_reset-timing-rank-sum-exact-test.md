@@ -2,16 +2,18 @@
 title: IADR-0470 リセット申請の所要時間は暖機を除く 2 反復をまとめた順位和検定（両側・正確法・同順位は中間順位）で判定し、整数 ns の時計を同時に入れる（IADR-0432 決定 5・IADR-0463 の判定部分の後継）
 type: impl-adr
 status: Accepted
-related_ids: [SC-15, NFR-13, ADR-0094, ADR-0097, ADR-0103, ADR-0108, ADR-0113, IADR-0432, IADR-0463]
+related_ids: [SC-15, NFR-13, ADR-0094, ADR-0097, ADR-0103, ADR-0108, ADR-0113, ADR-0118, IADR-0232, IADR-0432, IADR-0463]
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-09-27
 plan_refs:
+  - planning:projects/microservices-platform/07_adr/ADR-0118_timing-chance-red-rerun-and-monthly-record.md
   - planning:projects/microservices-platform/07_adr/ADR-0113_timing-judgement-rank-sum-test.md
   - planning:projects/microservices-platform/07_adr/ADR-0108_timing-samples-at-microsecond-resolution.md
   - planning:projects/microservices-platform/07_adr/ADR-0094_existence-hiding-timing-median-consistency-and-response-floor.md
 related_specs:
   - ../specs/20260926_1541_timing-rank-sum-test.md
+  - ../specs/20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary.md
 ---
 
 # IADR-0470: リセット申請の所要時間は順位和検定（両側・正確法）で判定し、整数 ns の時計を同時に入れる
@@ -142,6 +144,78 @@ related_specs:
   偶然の赤を受け入れる以上、それが他の門の証拠を消す配線は実装の欠陥である。**後段は T-25 の結果に依らず、スタックの門が緑なら走る**
   （`if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}`。ABAC と検索の門は 2 つの投入の成功も条件にする）。
   ジョブの合否は変えない（`continue-on-error` は使わない）。配線は `scripts/k8s-local-up.test.js` の #1597 の試験が場面ごとの評価で固定する。
+
+## ［2026-09-27 追記 / #1617］偶然の赤の 1 回の再実行（T-25 だけの赤なら自動）と、p の分布の月次の記録（計画 ADR-0118）
+
+planning#681 の裁定（計画 ADR-0118）の実装である。**判定（決定 1〜4）は変えていない**（ADR-0118 決定 1）。
+
+### 追記 1: 再実行は `workflow_run` で起動する別ワークフローから `gh run rerun <id> --failed` で起こす
+
+- **同じ run の新しい attempt にする**ことで、同じコミット・同じワークフロー定義を構造的に保証する。`workflow_dispatch` は ref しか取れず、
+  その間に develop が進めば別のコミット（と別の定義）を測る。同じ run の中からは自分を再実行できない（実行中の run は API が拒否する）。
+- 「1 回まで」（ADR-0118 決定 2）は `run_attempt` で持つ。**`.github/workflows/integration-stack-rerun.yml` のジョブは attempt 1 の赤と attempt 2 でしか起動せず**
+  （契機は push / schedule だけ。手動実行は床なしの比較〔`istio=false`〕があり得るので対象外。**head が develop で、head のリポジトリがこのリポジトリの run だけ** ——
+  `on.workflow_run.branches: [develop]`・ジョブの `if:`・script の `decide` の三重。PR #1623 の監査 R1 で足した多層防御で、別ブランチやフォークの head の run を
+  書き込みのトークンで再実行・記録しない）、script（`scripts/t25-rerun-on-chance-red.js`）の
+  純関数 `decide` も attempt 2 では結果を書くだけ・attempt 3 以降は何もしない。二重の抑止として、再実行の直前に最新の attempt が 1 のままか、
+  issue に同じ run の再実行の記録（マーカー `t25-chance-red:rerun:<run id>`）が無いかを見る。
+- 権限はそのジョブにだけ `actions: write`（再実行）と `issues: write`（コメント）。起票（`IADR-0232` の `ci-failure-issue.yml`）は変えない ——
+  再実行は起票の後（run の完了後）に起き、結果は同じ issue（マーカー `ci-failure:integration-stack`）へ書く。
+
+### 追記 2: 「T-25 だけの赤」は 3 か所で判定する
+
+1. **検査器**: `isTimingOnlyRankSumRed` が「失敗が順位和検定の `不合格`（p < `TIMING_ALPHA`）ただ 1 件か」を返し、main が `$GITHUB_OUTPUT` へ
+   `t25_only_red` / `t25_p` / `t25_w` を**合否の前に**書く。同じ門が測る T-10 / T-16 / T-17 / T-20 の失敗、前提の失敗、申請を通せなかった標本、
+   `評価不能`、判定の前提の `不合格`（p が出ない）のどれかが混ざれば false。
+2. **integration-stack.yml の印の手順**「T-25 only red (chance-red candidate)」（判定はしない・ジョブの合否は変えない）。
+   `if:` は `!cancelled()` ∧ スタックの門 success ∧ パスワードリセットの門 failure ∧ `t25_only_red == 'true'` ∧ 2 つの投入と後段の 2 つの門がすべて success。
+   別ワークフローはこの手順の結論を API で読む（ジョブの出力は API に出ないため、手順の結論を合図にした）。手順名は API が長い名前を切るので短い ASCII にした。
+3. **script の数え直し**: 印の手順が success であることに加え、失敗した手順がパスワードリセットの門ただ 1 つで、ほかの門がすべて success
+   （飛ばされた門は緑と確かめられていないので不可）、ほかのジョブが赤でないこと。`if:` の式が崩れても他の門の赤を再実行しない。
+
+- 🔴 **issue は自動で閉じない。** マーカーはワークフロー単位なので、開いている issue には他の run の本物の失敗も集まる（ADR-0118 §結果）。
+  閉じる前の確かめ（同じ実行の他の門・issue の他の実行の失敗）は `docs/operations/operations.md` の障害対応に書いた。
+- 再実行の結果の分類: 合格＝偶然の赤／T-25 がまた `不合格`＝再実行も赤（床の引き直しの契機・計画へ環流）／T-25 は合格だがほかが赤／
+  判定に届かない／取り消し（integration-stack は同時実行 1 本なので、待機中の再実行が後続の push に置き換えられ得る。手で 1 回だけやり直す）。
+- 再実行を起こせなかったとき（API の拒否など）は、手で打つコマンドを issue へ書いてジョブを赤にする（黙って緑にしない）。
+- 固定: `scripts/t25-rerun-on-chance-red.js --self-test`（17 件。監査 R1 の 1 件を含む）・`scripts/scripts.repo.test.js` の #1617 節（印の手順の `if:` を場面ごとに評価〔5 手順 × failure / skipped / cancelled を含む〕・
+  再実行のワークフローのジョブの `if:` の真理値表 12 行・dispatch でないこと）・検査器の自己試験 +4。
+- 🔴 **実際の赤ではまだ動いていない**（PR の CI では `workflow_run` を起こせない）。GITHUB_TOKEN での再実行と、再実行の attempt の完了で再び `workflow_run` が届くことは
+  GitHub の仕様に拠る。確かめは次の T-25 の赤か、利用者が判断する検証の起動で行う。
+
+### 追記 3: 月次の記録は `scripts/t25-monthly-summary.js` が数える（手で数えない）
+
+- 入力は GitHub の Actions の API の GET だけ（run の一覧 → attempt ごとのジョブ → ジョブのログ）。稼働クラスタには触れない。
+- **観測の単位は attempt**（再実行も帰無仮説のもとで独立な 1 標本）。ログはパスワードリセットの門の手順の区間（`##[group]Run node scripts/check-password-reset-mail.js`、
+  `--self-test` を除く）だけを読む。偶然の赤＝赤の観測の同じコミットの次の観測が `合格`／再実行も赤＝次の観測も `不合格`／再実行なし＝次の観測が無い。
+- 除外（内訳には出す）: 判定式の変更前（run 36217595485 の作成時刻 2026-09-26T04:21:42Z より前）・検査まで届かない attempt・床の無い比較実行（手順の env の `ISTIO` が空）・
+  判定の前提の `不合格`。`評価不能` は p が出るので n に数え、件数も別に出す。
+- 検算: #1597 の追記が手で数えた 21 件（〜run 36244939449）を同じ script の出力から再計算すると、**中央値 0.5062・D 0.1335・p < 0.5 は 10/21** で一致した。
+  （#1597 の作業仕様書の「24 件・cancelled 3 件」は、同じ時間窓の run を数え直すと 23 件・cancelled 2 件だった。届いた 21 件と p の値は一致する。）
+
+### 月次の要約: 2026-09（1 回目・月の途中の時点）
+
+`node scripts/t25-monthly-summary.js --month 2026-09` の出力（集計 2026-09-26T16:52:38Z ＝ 2026-09-27 01:52 JST。月はまだ終わっていない）:
+
+```text
+T-25 の月次の要約 2026-09（endazon/microservices-platform / integration-stack.yml・集計 2026-09-26T16:52:38Z）
+- 対象: 2026-09 に作られた run の全 attempt（判定式の変更 2026-09-26T04:21:42Z より前は数えない）。run 297 件 / attempt 297 件
+- 内訳: 判定式が順位和検定になる前 261 / 実行中 1 / 検査まで届かず（取り消し・前段の赤・前提の失敗） 5 / 検査まで届いた（p あり） 30
+- 検査まで届いた件数 n = 30
+- 不合格 1（偶然の赤 0 / 再実行も赤 0 / 再実行が判定に届かない 0 / 再実行なし 1）
+- 評価不能 0
+- p の中央値 0.5128（p < 0.5 は 14/30）
+- 一様分布からの KS 距離 D = 0.083（有意水準 5% の目安 1.36/√n = 0.248）→ 超えていない
+- 計画への環流: 要らない（KS が目安を超えた: いいえ / 再実行も赤: 0 件）
+- 不合格の一覧:
+  - run 36244009369 attempt 1（push `8f7b1e4d`）p=0.0094 W=713（遅い側 実在）: 再実行なし（同じコミットの次の観測が無い）
+```
+
+- 検査まで届かなかった 5 件はすべて `cancelled`（concurrency で後続の run に置き換えられた）。
+- 不合格の 1 件（run 36244009369）は ADR-0118 より前の赤であり、同じコミットでの再実行は行われていない（次の run 36244939449 は別のコミット `8f32e373` で p=0.6165）。
+  したがって「偶然の赤」ではなく「再実行なし」と数える。#1597 の切り分け（差分は静的検査と文書だけ）は変わらない。
+- **計画への環流は要らない**（ADR-0118 決定 4 の 2 条件のどちらにも当たらない）。
+- 2026-09 の残りの run は、10 月初めに同じ script で数え直し、確定値として次の追記に残す。
 
 ## 関連
 
