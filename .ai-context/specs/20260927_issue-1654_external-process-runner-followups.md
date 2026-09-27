@@ -1,7 +1,7 @@
 ---
 title: 外部プロセスの実行器の残り —— kill の AggregateException・版の確認の時間切れのログ・init の無いコンテナ・起動時の式の余裕（#1654）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-12, UC-06, ADR-0012, ADR-0070, IADR-0008, IADR-0320, IADR-0356]
 author: claude
 created: 2026-09-27
@@ -91,11 +91,19 @@ issue: "#1654"
 
 ## 検証
 
-- `dotnet test src/knowledge/backend/Services/ConversionService/Tests/ConversionService.Tests.csproj`
-- `dotnet format <slnx> --verify-no-changes`（knowledge・platform）
-- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`
-- イメージ: `nerdctl build`（既定の名前空間・`k8s.io` は使わない・push しない・専用のタグ）と、`nerdctl run --rm --entrypoint` で PID 1 と tini の存在を確かめる。クラスタには触れない。
-- 変異（修正のコミットの上で書き換え、`git show HEAD:<path> > <path>` で戻す）:
-  - M1: 版の確認の Warning を外す → AC-2 の 2 件が赤。
-  - M2: 「自分で終わっていたら読み取りを待つ」枝を外す → AC-3 が赤。
-  - M3: 起動時の式から版の確認と刈り取りを外す → AC-6 の新しい境界の行が赤。
+実測はすべて 2026-09-27、手元（Windows・.NET SDK 10・Rancher Desktop の nerdctl v2.2.2）。修正のコミット `9eae5e9d` の上で測った。
+
+- `dotnet test src/knowledge/backend/Services/ConversionService/Tests/ConversionService.Tests.csproj` → 合格 226・スキップ 6（pandoc / pdftotext 導入環境でだけ走る既存の試験）・失敗 0。
+  新しい 4 件（AC-2 の 2 件・AC-3・AC-4）は Windows の分岐（`powershell` ＋ `ping 127.0.0.1` の孫）で実走して合格した。
+- `dotnet format <slnx> --verify-no-changes`: knowledge・platform とも終了コード 0。
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` → 841 tests passed。文書・トレーサビリティの検査器（trace ブロック・テスト仕様の床・リンク・知識グラフ・他リポジトリ参照・ID 修飾）はすべて OK。
+- イメージ（AC-5）: 名前空間は既定（`k8s.io` ではない）で、専用のタグ `msp-conversion-tini-check:1654` を使った。push はしておらず、確認の後に `nerdctl rmi` で消した。クラスタには触れていない。
+  - `nerdctl build -f src/knowledge/backend/Services/ConversionService/Dockerfile -t msp-conversion-tini-check:1654 . </dev/null` → 終了コード 0。
+  - `nerdctl image inspect --format '{{json .Config.Entrypoint}}'` → `["tini","--","dotnet","ConversionService.dll"]`。
+  - `nerdctl run --rm --network none --entrypoint tini … --version` → `tini version 0.19.0`。
+  - 既定の ENTRYPOINT で起動すると、`ConnectionStrings:DefaultConnection が未設定` の未処理例外が出て終了コード 134 になった。tini が dotnet を起動し、その終了コードを返したことを示す。
+  - 容器の中で孤児の刈り取りを実演する `sh` 経由の確認は、作業環境の安全装置（任意のシェル入力を容器へ渡す実行を拒む）で走らせられなかった。刈り取りは tini の本来の機能（PID 1 として `waitpid(-1)`）であり、ここでは実測していない。
+- 変異（修正のコミットの上で書き換え、`git show HEAD:<path> > <path>` で戻した。戻した後の `git status --short` は毎回空で、`ping.exe` の残りも 0 件）:
+  - M1: 版の確認の Warning を Debug にする → AC-2 の 2 件が赤（`Expected logger.Warnings to contain a single item, but the collection is empty`）。
+  - M2: 「自分で終わっていたら読み取りを待つ」枝を外す → AC-3 と AC-4 が赤（AC-4 は 5 秒で諦め、期限 ＋ 刈り取りの上限 14.8 秒まで待たない）。
+  - M3: 起動時の式から版の確認と刈り取りを外す → AC-6 の新しい境界の 2 行（250 秒・24 秒）が赤。
