@@ -109,7 +109,7 @@ public sealed class UserDepartmentService(
 
         logger.LogInformation(
             "SC-17 の部門: 利用者 {UserId} の部門グループを {Before} から {After} へ変えた（属性 department は書かない。部門の同期が追いつく）。",
-            Sanitize(userId), string.Join(",", plan.CurrentCodes), targetCode ?? "(なし)");
+            Sanitize(userId), Sanitize(string.Join(",", plan.CurrentCodes)), Sanitize(targetCode ?? "(なし)"));
         var (reloaded, _) = await FindUserAsync(userId, ct);
         return UserDepartmentOutcome.Ok(View(reloaded ?? user, after, domain));
     }
@@ -189,7 +189,7 @@ public sealed class UserDepartmentService(
         {
             logger.LogError(
                 "SC-17 の部門: 利用者 {UserId} の部門グループの変更が途中で失敗し、元に戻せなかった（いまの部門グループ: {State}）。Keycloak で確かめること。",
-                Sanitize(userId), state);
+                Sanitize(userId), Sanitize(state));
         }
         return UserDepartmentOutcome.Failed(restored
             ? $"部門グループの所属を変えられませんでした。元に戻しました（いまの部門グループ: {state}）。もう一度保存してください。"
