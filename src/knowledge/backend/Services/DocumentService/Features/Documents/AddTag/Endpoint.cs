@@ -51,7 +51,8 @@ internal static class AddDocumentTagEndpoint
             // gRPC 面は要求本文から取る —— **判定そのものは本体の中で 1 度だけ行われる。**
             var outcome = await tags.ExecuteAsync(
                 id, req.Name ?? string.Empty,
-                http.User.Identity?.Name,
+                // ［2026-09-28 / #1679］主体は作成の口と同じ関数から引く（`DocumentManageScope.OwnerSubject`。本文の投入と同じ）。
+                DocumentManageScope.OwnerSubject(http.User),
                 // ［2026-09-27 / #1636］REST はエッジが中継した利用者の資格情報そのもののロールで判定する（変えない）。
                 _ => ValueTask.FromResult(http.User.IsInRole(PlatformAuthPolicies.AdminRole)),
                 ct);

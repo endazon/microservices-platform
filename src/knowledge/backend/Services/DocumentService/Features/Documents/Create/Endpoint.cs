@@ -75,7 +75,8 @@ internal static class CreateDocumentEndpoint
             // FR-06, FR-08, 計画 ADR-0119 決定 2 (#1616): **機械クライアントが作る文書の `owner` は、そのサービスアカウント。**
             // `DocumentManageScope.MachineSubject` が腕 A（`service-account-…` の利用者名）と腕 B（利用者名なし＋クライアント識別）の
             // どちらでも同じ名前を返す。人は従前どおり利用者名（ADR-0060 決定 3）。要求の `owner` は経路を問わず捨てる。
-            var createOwner = DocumentManageScope.MachineSubject(http.User) ?? http.User.Identity?.Name;
+            // ［2026-09-28 / #1679］同じ式を `DocumentManageScope.OwnerSubject` へ移した（所有者で許す口が同じ関数から引く）。
+            var createOwner = DocumentManageScope.OwnerSubject(http.User);
             var createAttributes = DocumentBodyIntake.WithOwner(req.Attributes, createOwner);
 
             Document doc;

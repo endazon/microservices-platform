@@ -35,7 +35,9 @@ internal static class GrantDocumentShareEndpoint
 
             // 所有者限定（再共有不可の実体）。認可を検証より先に見る——他人の文書に対する
             // 存在・重複の情報を返さない（拒否は 404。ADR-0056 決定 1）。
-            if (!DocumentBodyIntake.CanWrite(doc.Attributes, http.User.Identity?.Name))
+            // ［2026-09-28 / #1679］主体は作成の口と同じ関数から引く（`DocumentManageScope.OwnerSubject`。本文の投入と同じ）。
+            var subject = DocumentManageScope.OwnerSubject(http.User);
+            if (!DocumentBodyIntake.CanWrite(doc.Attributes, subject))
                 return Results.NotFound();
 
             var exists = await db.DocumentShares.AnyAsync(s => s.DocumentId == id
@@ -43,8 +45,8 @@ internal static class GrantDocumentShareEndpoint
             if (exists)
                 return Results.Conflict(new { message = "既に共有済みです。" });
 
-            var share = DocumentShare.Create(id, req.SubjectType, req.SubjectId,
-                http.User.Identity!.Name!);
+            // 付与者も同じ主体名で記録する（`CanWrite` が真なので非 null。腕 B の機械で `Identity.Name` の null を入れない）。
+            var share = DocumentShare.Create(id, req.SubjectType, req.SubjectId, subject!);
             db.DocumentShares.Add(share);
             await db.SaveChangesAsync(ct);
             await DocumentEndpoints.PublishUpdatedIfIndexableAsync(

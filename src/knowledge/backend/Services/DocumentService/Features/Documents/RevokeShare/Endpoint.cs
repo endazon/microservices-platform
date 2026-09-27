@@ -21,7 +21,8 @@ internal static class RevokeDocumentShareEndpoint
         {
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
-            if (!DocumentBodyIntake.CanWrite(doc.Attributes, http.User.Identity?.Name))
+            // ［2026-09-28 / #1679］主体は作成の口と同じ関数から引く（`DocumentManageScope.OwnerSubject`）。
+            if (!DocumentBodyIntake.CanWrite(doc.Attributes, DocumentManageScope.OwnerSubject(http.User)))
                 return Results.NotFound();
 
             var share = await db.DocumentShares.FirstOrDefaultAsync(s => s.DocumentId == id

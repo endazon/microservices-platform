@@ -96,6 +96,7 @@
       "DocumentVersioningTests",
       "GrpcDocumentTagWriteTests",
       "MachineClientOwnDocumentWriteTests",
+      "MachineClientOwnerSubjectTests",
       "PrivateNoteExposurePublishTests"
     ],
     "docs/tests/FR-07_data-range-analysis.md": [

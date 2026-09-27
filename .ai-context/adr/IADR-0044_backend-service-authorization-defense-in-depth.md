@@ -16,6 +16,7 @@ related_ids:
   - ADR-0036
   - ADR-0056
   - ADR-0119
+  - ADR-0122
   - IADR-0277
   - IADR-0476
   - FR-08
@@ -24,7 +25,7 @@ related_ids:
   - IADR-0475
 author: claude
 created: 2026-07-09
-updated: 2026-09-27
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (FR-09)
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md
@@ -128,6 +129,20 @@ mTLS/NetworkPolicy（[IADR-0017](./IADR-0017_internal-service-auth-network-isola
      >   現在 `owner` が無い文書へ付けるのも拒否）と `WithCurrentOwner`（保存時に現在の値を入れ直す。属性の全置換で落とさない）。
      >   拒否は 400（キー `owner`）で、`doc_scope` の不変性（ADR-0058）の直後に置く。**黙って捨てない**（移管できたと誤解させない）。
      > - 作業仕様書: `.ai-context/specs/20260927_issue-1616_machine-client-own-document-write.md`。
+
+     > **［2026-09-28 追記 / #1679］計画 ADR-0122 実測 8・フォローアップ 3（planning#696 の裁定）: 所有者で許す口の主体を、作成の口と同じ規則へそろえた。**
+     >
+     > - **事実（着手前に現物で確かめた）**: 作成の口は腕 B の機械にも `owner = service-account-<clientId>` を入れるが、本文の投入（`PUT …/body`）は
+     >   `Identity.Name`（腕 B では null）で比べていた。**腕 B の機械は自分で作った文書に本文を入れられなかった**（新設の試験を変更前のコードで走らせ 404 を実測）。
+     >   AST の KB 用クライアントは既定のスコープに `profile` を持たない見込みであり（ADR-0122 実測 2）、AST の入れ直し（ADR-0122 決定 2）が成り立たない。
+     > - **決定**: `DocumentManageScope.OwnerSubject`（＝`MachineSubject ?? Identity.Name`）を足し、**`owner` へ入れる名前と `owner` と比べる名前をこの 1 関数から引く。**
+     >   作成・本文の投入・共有の付与／一覧／取り消し（付与者の記録も）・タグ反映の REST 面が通る。比較（`DocumentBodyIntake.CanWrite`。序数一致）と拒否の形（404）は変えない。
+     > - **射程の判断（共有・タグまで広げた）**: 腕 A の機械は今日すでに自分の文書の共有・タグを扱える。腕 B だけが扱えないのは権限の有無ではなく主体の引き方の食い違いであり、
+     >   #1616 が `MachineSubject` に課した「同じクライアントが `profile` スコープの有無で別の所有者にならない」に反する。口ごとの許可の範囲（所有者だけ）は変えない。
+     > - **除外**: 個人資料の口（`PrivateNoteEndpoints.SubjectOf`。機械は個人資料を扱わない＝ADR-0034 決定 9）、タグ反映の gRPC 面（主体は中継された承認者）、
+     >   列挙の口（#1667 の領域）、認可サービスへ `userId` を渡すだけの他サービス。母集合と除外理由は作業仕様書に書いた。
+     > - **人の利用者の挙動は変わらない**（`MachineSubject` は人に null を返す）。稼働中のトークンに利用者名が載るかの実測（ADR-0122 フォローアップ 4）は稼働クラスタで行う（本件の外）。
+     > - 作業仕様書: `.ai-context/specs/20260928_issue-1679_putbody-owner-subject.md`。
 2. **サービス間内部呼び出しは対象外**とする。`AuthorizationService` `/authz/scope`（ABAC スコープ照会）は
    RetrievalService/AiAnalysisService が内部呼び出しするため無認可を維持（[IADR-0017](./IADR-0017_internal-service-auth-network-isolation.md) と整合）。
    管理系 `/authz`（属性辞書・ポリシー）は既に AdminOnly。

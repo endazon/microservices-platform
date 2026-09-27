@@ -3,15 +3,15 @@ title: 文書CRUD・バージョン管理 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-27
+updated: 2026-09-28
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-08, UC-03, NFR-09, FR-19]
-adrs: [ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057]
+adrs: [ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122]
 iadrs: [IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475]
-specs: [20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint]
-issues: [#1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
+specs: [20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint]
+issues: [#1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -94,6 +94,10 @@ issues: [#1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
 - **人の利用者には管理者限定がそのまま効く。** 運用者だけの人は、自分が所有者の文書でも、文書の有無に依らず 403。
 - **機械クライアントが作る文書の所有者は、そのサービスアカウント**（`service-account-<clientId>`）である。利用者名を持たない
   トークン（クライアント識別だけを持つ）でも同じ名前になり、要求の `owner` は捨てる。
+- **所有者で許す他の口も、同じ名前で所有者と比べる。** 本文の投入（`PUT /documents/{id}/body`）・共有の付与／一覧／取り消し・
+  タグの反映口は、作成時に所有者へ入れる名前と同じ規則で主体を決める（機械はそのサービスアカウント、人は利用者名）。
+  したがって利用者名を持たない機械クライアントも、自分が作った文書に本文・共有・タグを入れられる。他の主体の文書は従前どおり 404。
+  共有の付与者の記録も同じ名前になる。
 - 他の主体が所有する組織文書への機械クライアントの更新・削除は、**読める文書なら 403、読めない文書なら 404**。
   個人資料は前節のとおり 404（この経路の対象外）。削除の伝播範囲（本文・索引まで）は経路によらず同じ。
 - **`owner` と `doc_scope` は作成時に確定し、属性を書き換える口（`PUT`・`PATCH metadata`）で変えられない。主体を問わない**
