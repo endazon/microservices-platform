@@ -3,6 +3,7 @@ using Grpc.Core;
 using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
+using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 using RetrievalService.Domain;
@@ -38,6 +39,7 @@ namespace RetrievalService.Features.McpTools.Execute;
 //
 // 🔴 **ADR-0034 決定 9（要求側の 1 層目）**: `user_id` が `service-account-` で始まるならサービスアカウント実行であり、
 //   個人資料（`doc_scope=private-note`）を 1 件も返さない。MCP サーバーの応答側のフィルタ（2 層目）とは別に持つ。
+// 🔴 ［2026-09-28 追記 / #1671］エンベロープの属性は共有の許可リスト（`McpEnvelopeAttributes`）のキーだけを写す。
 // 🔴 **「該当が無い」と「権限が無い」を区別させない**（存在秘匿）—— どちらも空の文書の並びで返る。
 //   件数（`total_count`）は判定と除外を通したあとの件数である（ADR-0034 決定 4）。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
@@ -181,8 +183,14 @@ public sealed class McpToolExecutionGrpcService(
                 DocumentId = hit.DocumentId.ToString(),
                 Title = hit.DocumentTitle,
             };
+            // 🔴 ［2026-09-28 追記 / #1671］許可リストのキーだけ（`McpEnvelopeAttributes`。MCP サーバーが応答の統制で読む
+            //   `confidentiality`・`doc_scope`・`project`）。`owner`・`dept` 等は MCP サーバーが読まず、外部 LLM へ渡す理由が無い
+            //   （越境する個人識別子の最小化。REST / gRPC の検索応答は変えない）。
             foreach (var (key, value) in hit.Attributes)
-                document.Attributes[key] = value;
+            {
+                if (McpEnvelopeAttributes.IsCarried(key))
+                    document.Attributes[key] = value;
+            }
             if (hit.HasBody)
                 document.Body = hit.Text;
             result.Documents.Add(document);
