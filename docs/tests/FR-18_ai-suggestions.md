@@ -3,15 +3,15 @@ title: FR-18 AI 提案（リンク・タグ）テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-22
-updated: 2026-09-05
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
 ids: [FR-18, SC-03, SC-05, SC-09]
 adrs: [ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063]
-iadrs: [IADR-0242, IADR-0266, IADR-0364, IADR-0380]
-specs: [20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source]
-issues: [#450, #914, #911, #915, #1014, #1187, #1244]
+iadrs: [IADR-0242, IADR-0266, IADR-0364, IADR-0380, IADR-0410, IADR-0412]
+specs: [20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20260927_issue-1637_grpc-client-caller-cancellation]
+issues: [#450, #914, #911, #915, #1014, #1187, #1244, #1637]
 -->
 
 # テスト仕様書: AI 提案（リンク・タグ）
@@ -88,6 +88,8 @@ AI が提案したリンク候補・タグ候補の**永続と状態遷移**、�
 | T-50 | 構成 `Source=none` ／ 未知の値 | ホストを起動する | `none` で「常に空」の既定アダプタが解決される（切り替えの陽性対照）／**未知の値は起動が落ちる**（既定へ倒さない） | 未構成時の既定を維持する | 自動 |
 | T-51 | 本文指紋が変わる ／ 変わらない | 文書更新イベントを購読側へ与える | 変われば本文を 1 回読んで出現数を作り直す。**変わらなければ本文を読まず出現数も変わらない**（対）。指紋が進めば差し替わる（陽性対照） | 却下解除・リンク抽出と同じ契機 | 自動 |
 | T-52 | 出現数の行がある文書 | 文書削除イベントを購読側へ与える | 出現数の行も消える（削除前は在る: 陽性対照） | 痕跡を残さない | 自動 |
+| T-53 | タグ反映の gRPC 版を 127.0.0.1 の実受け口へ本番と同じ既定値のチャネルで繋ぐ | 受け口が要求を受け取った後に承認の要求が取り消される／受け口自身が取り消し状態を返す（要求は生きている） | 前者は**取り消しとして外へ出す**（「反映先へ届かない」＝ 502 に畳まない・エラーログを出さない）。後者は従来どおり到達不能。前提として、チャネルが呼び出し元の取り消しを取り消し状態の例外で投げることを同じ器で確かめる | 反映が確定してから承認する | 自動 |
+| T-54 | タグ辞書の読み取りの gRPC 版を同じ器で繋ぐ | 同上 | 前者は**取り消しとして外へ出す**（「引けなかった」に畳まない・警告を出さない）。後者は従来どおり「引けなかった」 | 辞書照合（「引けなかった」と「空」を混ぜない） | 自動 |
 
 ## 変異試験（類似度候補の供給元）
 
@@ -120,6 +122,8 @@ T-36 が、「照合しない」実装は T-35 が捕まえる —— 陽性・�
 - `TermOverlapSimilarityCandidateSourceTests`（T-41・T-42・T-45・T-46。供給元）
 - `SimilaritySourceWiringTests`（T-48〜T-50。**本番の依存注入と HTTP の結合**）
 - `TermProfileSyncTests`（T-51・T-52。購読ハンドラ経由の作成契機と掃除）
+- `GrpcDocumentTagWriterTests`（T-53 ほか。タグ反映の gRPC 版。REST と同じ結果への写像・利用者文脈の運び方）
+- `GrpcTagDictionaryReaderTests`（T-54 ほか。タグ辞書の読み取りの gRPC 版。宛先ごと 1 本のチャネル）
 
 ### T-16〜T-25 について — 受け入れ基準「権限スコープ外の文書本文を LLM へ送信しない」の写像
 

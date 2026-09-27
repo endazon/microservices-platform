@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-10, FR-17, FR-18, FR-19, UC-05, SC-10]
 adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071, ADR-0072]
-iadrs: [IADR-0011, IADR-0122, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367]
-specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention, 20260926_issue-1598_maintenance-loop-foreign-cancellation, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1622_deterministic-tick-tests]
-issues: [#443, #1186, #1197, #1198, #1598, #1604, #1622, planning#494, planning#514, planning#515, planning#525, planning#526]
+iadrs: [IADR-0011, IADR-0122, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367, IADR-0408]
+specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention, 20260926_issue-1598_maintenance-loop-foreign-cancellation, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1637_grpc-client-caller-cancellation]
+issues: [#443, #1186, #1197, #1198, #1598, #1604, #1622, #1637, planning#494, planning#514, planning#515, planning#525, planning#526]
 -->
 
 # テスト仕様書: 利用状況・検索傾向・回答品質ダッシュボード
@@ -148,7 +148,7 @@ T-74 / T-75 の 2 本**）。境界は**上下から**固定する —— 基準
 | P-09 | GraphService | **孤立が 0 件** | **空のスナップショットを送る**（送らないと前回の件数が残り続ける） |
 | P-10 | GraphService | 送出のパスと本文 | 受け口の宣言と同値のパス。本文は指標名と観測値だけ |
 | P-11 | GraphService | 受け口が落ちている（5 態） | **例外を投げない**（fail-open。購読ホストを止めない） |
-| P-12 | GraphService | 呼び出し元のキャンセル | **伝播させる**（握るとシャットダウンを続行したように見える） |
+| P-12 | GraphService | 呼び出し元のキャンセル | **伝播させる**（握るとシャットダウンを続行したように見える）。gRPC 版は実受け口へ本物のチャネルで繋いで要求の最中に取り消し、**取り消しとして外へ出してエラーログを出さない**こと、受け口自身が返した取り消し状態は従来どおり「受理されない」枝（数えず・投げない）であることを確かめる |
 
 ### 陳腐化文書数の生産（GraphService 側。#1186）
 
@@ -203,4 +203,5 @@ T-74 / T-75 の 2 本**）。境界は**上下から**固定する —— 基準
 - `DashboardEndpointTests` — ダッシュボードの集計端点
 - `UsageRetentionTests` — 利用イベントの主体（持たない）と保持期間（90 日で消す。境界は上下から）
 - `KnowledgeHealthProducerTests` — 観測値の生産（孤立文書の判定・スコープ付与・単一書き手化・送出）
+- `GrpcKnowledgeHealthReporterTests` — 観測値の送出の gRPC 版（REST と同じ枝・同じ副作用。P-11・P-12。呼び出し元の取り消しは 127.0.0.1 の実受け口と本物のチャネルで起こす。［2026-09-27 追加］）
 - `BatchLoopForeignCancellationTests` — 健全性の報告・クラスタ検出・クラスタ要約の定期処理のループが、停止要求ではない取り消しで終わらず次の周期を回す（失敗は記録し、停止要求では静かに終わる）。失敗が続いても次の拍まで待ってから回す（間を空けずに再試行しない）。拍は偽の時計で試験が手で進め、壁時計の間隔では測らない（負荷で溜まった拍がすぐ発火して正しい実装でも揺れるため。［2026-09-27 追加］）
