@@ -2,6 +2,7 @@ using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents.AddTag;
 using DocumentService.Features.Documents.Archive;
+using DocumentService.Features.Documents.AstStaleCopies;
 using DocumentService.Features.Documents.Create;
 using DocumentService.Features.Documents.Delete;
 using DocumentService.Features.Documents.GetById;
@@ -95,6 +96,10 @@ public static class DocumentEndpoints
         ListDocumentVersionsEndpoint.Map(read);
         GetDocumentVersionEndpoint.Map(read);
         DeleteDocumentEndpoint.Map(write);
+
+        // FR-06, SC-05, 計画 ADR-0122 決定 1・3 (#1667): AST の古い写しの列挙（読み取り専用）。
+        // `read` 群（認証）に置き、口の側で `AdminOnly` を積む（管理者だけ。運用者・機械の書き手には開けない）。
+        ListAstStaleCopiesEndpoint.Map(read);
 
         return app;
     }
