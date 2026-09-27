@@ -11,6 +11,8 @@ using IngestionService.Infrastructure.ExternalServices;
 using IngestionService.Infrastructure.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Qdrant.Client;
 using Wolverine;
 using Wolverine.RabbitMQ;
@@ -48,6 +50,16 @@ builder.Services.AddSingleton(new QdrantClient(qdrantHost, qdrantPort));
 builder.Services.Configure<EmbeddingCollectionsOptions>(
     builder.Configuration.GetSection(EmbeddingCollectionsOptions.SectionName));
 builder.Services.AddSingleton<IIngestionVectorStore, QdrantIngestionVectorStore>();
+
+// FR-02, ADR-0027 (#1640): 取り込みの受け口の時間の上限（呼び出しごとの期限・埋め込みの総枠・受け口の実行期限）。
+// 受け口の実行期限に最悪の所要時間が収まらない構成は、ここで起動を止める（`IngestionTimeouts.From`）。
+// 既存チャンクの削除はコレクション 1 本ごとに Qdrant を 1 回呼ぶので、コレクション数を最悪の所要時間に入れる。
+var ingestionTimeouts = IngestionTimeouts.From(builder.Configuration,
+    builder.Configuration.GetSection(EmbeddingCollectionsOptions.SectionName)
+        .Get<EmbeddingCollectionsOptions>()?.Collections.Count ?? 0);
+builder.Services.AddSingleton(ingestionTimeouts);
+builder.Services.AddPlatformConsumerTimeouts();
+builder.Services.TryAddSingleton(TimeProvider.System);
 
 // FR-02: 起動時に検索インデックス（Qdrant コレクション）の存在を保証する
 builder.Services.AddHostedService<QdrantBootstrapHostedService>();
@@ -132,6 +144,10 @@ builder.Host.UseWolverine(opts =>
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
+
+    // FR-02, ADR-0027 (#1640): 取り込みの受け口の実行期限（既定 720 秒）。Wolverine の既定 60 秒では、埋め込みの回数が
+    // チャンク数に比例する大きな文書を止まっていなくても切ってしまう。他のメッセージ型の既定は変えない。
+    opts.Policies.Add(new HandlerExecutionTimeoutPolicy<DocumentUpdated>(ingestionTimeouts.Handler));
 });
 
 var app = builder.Build();
