@@ -61,6 +61,52 @@ public class DocumentReadRelayOptionsTests
         options.TrustsUserContextFrom(ServiceAccount("bff")).Should().BeFalse();
     }
 
+    // 🔴 監査 F1: 照合は**全体一致**である。前方一致・後方一致・部分一致で `bff` を含む別の client を信じない
+    // （`clientId.StartsWith(c)` の変異を落とす）。
+    [Theory]
+    [InlineData("bff-x")]
+    [InlineData("bffx")]
+    [InlineData("xbff")]
+    public void bffを含むだけの別のclientは信じない(string clientId)
+    {
+        var options = Bind([]);
+
+        options.TrustsUserContextFrom(ServiceAccount("bff")).Should().BeTrue("対照: bff そのものは信じる");
+        options.TrustsUserContextFrom(ServiceAccount(clientId)).Should().BeFalse(clientId);
+        options.TrustsUserContextFrom(ServiceAccount(clientId, withAzp: false)).Should()
+            .BeFalse($"利用者名から復元した {clientId} も同じ");
+    }
+
+    // 🔴 監査 F1: クライアント識別は `azp` が正で、利用者名（`service-account-bff`）は `azp` が無いときの代わりに過ぎない。
+    // 利用者名が bff の形でも `azp` が別なら信じない。
+    [Fact]
+    public void 利用者名がservice_account_bffでもazpが別なら信じない()
+    {
+        var options = Bind([]);
+        var mismatched = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim("preferred_username", "service-account-bff"), new Claim("azp", "retrieval-service")],
+            "test", "preferred_username", ClaimTypes.Role));
+
+        options.TrustsUserContextFrom(mismatched).Should().BeFalse();
+    }
+
+    // 監査 F2: 配列ではなく 1 つの値（カンマ区切り）は束縛されず既定の bff へ静かに戻る —— 起動時に止める。
+    [Fact]
+    public void 一つの値で構成すると起動時に例外になり_束縛だけなら既定へ戻ってしまう()
+    {
+        var scalar = new Dictionary<string, string?> { ["DocumentRead:TrustedUserContextClients"] = "other-relay,bff-2" };
+
+        Bind(scalar).EffectiveClients.Should().Equal(["bff"], "前提: 1 つの値は配列へ束縛されず既定へ戻る（止める理由）");
+        var act = () => DocumentReadRelayOptions.ThrowIfScalar(
+            new ConfigurationBuilder().AddInMemoryCollection(scalar).Build());
+        act.Should().Throw<InvalidOperationException>().WithMessage("*TrustedUserContextClients__0*");
+
+        // 対照: 配列の形・未構成は通る。
+        DocumentReadRelayOptions.ThrowIfScalar(new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["DocumentRead:TrustedUserContextClients:0"] = "bff" }).Build());
+        DocumentReadRelayOptions.ThrowIfScalar(new ConfigurationBuilder().Build());
+    }
+
     // 判定の形: 機械であること ∧ クライアント識別が序数一致で許可集合に在ること。
     [Fact]
     public void 判定は機械の主体のクライアント識別を序数一致で見る()

@@ -41,6 +41,23 @@ public sealed class DocumentReadRelayOptions
                 .ToArray();
 
     /// <summary>
+    /// 構成の形を起動時に確かめる。**配列ではなく 1 つの値（`DocumentRead__TrustedUserContextClients=bff,other`）が
+    /// 書かれていたら例外を投げる。**
+    /// </summary>
+    /// <remarks>
+    /// 🔴 1 つの値は配列へ束縛されず、プロパティは null のまま**既定の `bff` へ静かに戻る**（#1628 の監査の F2）。
+    /// 書き手は集合を置き換えたつもりで既定のまま動く。配列は `__0` / `__1` … で書く。
+    /// </remarks>
+    public static void ThrowIfScalar(Microsoft.Extensions.Configuration.IConfiguration configuration)
+    {
+        var key = $"{SectionName}:{nameof(TrustedUserContextClients)}";
+        if (configuration.GetSection(key).Value is not null)
+            throw new InvalidOperationException(
+                $"{key} は配列で構成すること（環境変数なら {SectionName}__{nameof(TrustedUserContextClients)}__0=bff）。"
+                + "1 つの値（カンマ区切りを含む）は束縛されず、既定の bff へ戻ってしまう。");
+    }
+
+    /// <summary>
     /// 呼び出し元が本文の利用者文脈を運んでよいか。**機械の主体**であり、かつクライアント識別が許可集合に
     /// 序数一致で含まれるときだけ真。
     /// </summary>
