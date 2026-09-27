@@ -107,3 +107,14 @@ issue: "#1641"
   - M2: 期限の CTS を期限なしにする → 3 件が赤（期限切れ 2・ジョブ記録。試験の上限 30 秒の `TimeoutException` になり `BodyConversionTimeoutException` にならない）。
   - M3: `Kill(entireProcessTree: false)`（親だけ止める）→ 4 件が赤（`found at least one item {<子の番号>}` —— 子孫が残る）。
   - M4: 起動時の検査から本文変換の期限を外す → `受け口の期限が本文変換と総枠と一回の期限の和を超えなければ起動を止める` の 3 行すべてが赤。
+
+## ［2026-09-27 追記 / #1654］AC-2 の試験名の誤り
+
+上の AC-2 の写像先に挙げた `DiagramCodingLimitsTests.本番の配線は四つの上限を既定値で張る` は**実在しない**（監査が検出）。
+実在する写像先は次の 2 つである。
+
+- `DiagramCodingLimitsTests.本番の配線は三つの上限を既定値で張る`（#1621 の既存の試験。名前を変えずに残した）
+- `DiagramCodingLimitsTests.本番の配線は本文変換の期限を両方の変換器へ渡す`（本件で足した試験）
+
+起動時の式は #1654 でさらに「受け口 ＞ 本文変換 ＋ 版の確認 10 秒 ＋ 刈り取りの上限 10 秒 ＋ 総枠 ＋ 1 回」へ広がった
+（`.ai-context/specs/20260927_issue-1654_external-process-runner-followups.md`）。本文は書き換えない。

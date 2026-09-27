@@ -174,8 +174,11 @@ public class PdfTextLayerConverter(
     // （開発機で実測）。「版の行が出た」ことを在る証拠とし、終了コードは版の行が無いときだけ見る。
     //
     // #1641: 版の確かめも期限（`ExternalProcess.VersionProbeTimeout`）つきで起動し、期限切れ・取り消しではツリーごと止める。
+    // #1654 B: 版の確認の時間切れは Warning を出してから null を返す（「止まっている」を「無い」と区別できるように）。
+    // probeTimeout は試験用（既定は固定の `ExternalProcess.VersionProbeTimeout`。起動時の式がこの値を含む）。
     internal static async Task<string?> TryGetPdfToTextVersionAsync(CancellationToken ct,
-        Func<ProcessStartInfo, ProcessStartInfo>? startInfoFilter = null, ILogger? logger = null)
+        Func<ProcessStartInfo, ProcessStartInfo>? startInfoFilter = null, ILogger? logger = null,
+        TimeSpan? probeTimeout = null)
     {
         try
         {
@@ -187,7 +190,7 @@ public class PdfTextLayerConverter(
                 CreateNoWindow = true
             };
             var result = await ExternalProcess.RunAsync(startInfoFilter?.Invoke(psi) ?? psi, "pdftotext",
-                ExternalProcess.VersionProbeTimeout, logger ?? NullLogger.Instance, ct);
+                probeTimeout ?? ExternalProcess.VersionProbeTimeout, logger ?? NullLogger.Instance, ct);
             var text = result.StandardError;
             if (string.IsNullOrWhiteSpace(text)) text = result.StandardOutput;
             var firstLine = text.Split('\n')[0].Trim();
@@ -197,6 +200,13 @@ public class PdfTextLayerConverter(
         }
         // #1641: 呼び出し元の取り消しは「pdftotext が無い」へ畳まずに外へ出す。
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (BodyConversionTimeoutException ex)
+        {
+            (logger ?? NullLogger.Instance).LogWarning(ex,
+                "pdftotext -v did not finish within {Timeout} and was killed; pdftotext is treated as unavailable, "
+                + "but it may be installed and hung rather than missing", ex.Timeout);
+            return null;
+        }
         catch { return null; }
     }
 }
