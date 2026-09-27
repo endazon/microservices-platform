@@ -18,11 +18,14 @@ namespace GraphService.Features.McpTools.Declare;
 // ［2026-09-26 追記 / #1515］昇格は gRPC の契約（proto `platform.mcp.v1`。`Platform.Shared.Contracts`）で行った
 // （[[IADR-0462]] の「経路 ④-a への適用」）。本ファイルは REST の受け口（並走中の正）が使う写しとして残り、
 // REST の退役（#1517）で消える。gRPC の面（`GrpcService.cs`）は同じ `McpToolDeclarationSource.Declare` を proto へ写す。
+// ［2026-09-27 追記 / #1516］🔴 **`endpoint`（申告の実行先 URL）を外した** —— 計画 ADR-0117 決定 1 により規約は 5 項目である。
+// 実行先は McpServer が「申告したサービス（`service`）＋ツール名（`name`）」で決め、申告に URL を載せない
+// （載せると、あるサービスが別のサービスの内部経路を自分のツールとして申告できる）。URL を作る理由が無くなったので、
+// 基底 URL の構成（旧 `Mcp:SelfBaseUrl`）も外した。
 public sealed record McpToolDeclaration(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("description")] string Description,
     [property: JsonPropertyName("input_schema")] string InputSchema,
-    [property: JsonPropertyName("endpoint")] string Endpoint,
     [property: JsonPropertyName("required_scope")] string RequiredScope,
     [property: JsonPropertyName("egress_class")] string EgressClass);
 
@@ -49,9 +52,6 @@ public static class McpToolDeclarationSource
     // FR-15 の `/internal/introspection` と同じサービス名を使う（同じ規約系に置くため）。
     public const string ServiceName = "graph-service";
 
-    public const string SelfBaseUrlKey = "Mcp:SelfBaseUrl";
-    public const string DefaultSelfBaseUrl = "http://graph-service:8080";
-
     // ADR-0024 §5「egress_class 必須」。欠けた申告は McpServer が公開しない（安全側）。
     private const string EgressClass = "internal";
 
@@ -62,9 +62,8 @@ public static class McpToolDeclarationSource
         new Dictionary<string, string> { [DocumentScopes.Key] = DocumentScopes.Organization };
 
     // 申告し得る候補の全体。**除外は下の Publishable が 1 箇所で行う。**
-    public static IReadOnlyList<McpToolCandidate> Candidates(string selfBaseUrl)
+    public static IReadOnlyList<McpToolCandidate> Candidates()
     {
-        var basePath = selfBaseUrl.TrimEnd('/') + "/internal/mcp";
 
         // 🔴 `hops` の既定 2・上限 3 は計画の確定事項である（11_mcp-server-integration §6）。
         // **上限超過は丸めずエラーで拒否する** —— 黙って丸めると、呼び出し側の LLM は
@@ -85,7 +84,6 @@ public static class McpToolDeclarationSource
                 "指定した文書を参照している文書（被参照）の一覧を返す。"
                 + "ある文書がどこから引かれているかを辿るときに呼ぶ。",
                 """{"type":"object","properties":{"document_id":{"type":"string","format":"uuid"}},"required":["document_id"]}""",
-                $"{basePath}/get_backlinks",
                 "graph:read",
                 EgressClass)),
             new McpToolCandidate(Organization, new McpToolDeclaration(
@@ -93,7 +91,6 @@ public static class McpToolDeclarationSource
                 "指定した文書が参照している文書（参照先）の一覧を返す。"
                 + "ある文書が何を引いているかを辿るときに呼ぶ。",
                 """{"type":"object","properties":{"document_id":{"type":"string","format":"uuid"}},"required":["document_id"]}""",
-                $"{basePath}/get_links",
                 "graph:read",
                 EgressClass)),
             new McpToolCandidate(Organization, new McpToolDeclaration(
@@ -102,7 +99,6 @@ public static class McpToolDeclarationSource
                 + $"hops は既定 {GraphTraversal.DefaultHops}・上限 {GraphTraversal.MaxHops} で、"
                 + "上限を超える指定は丸めずエラーになる。",
                 traverseSchema,
-                $"{basePath}/traverse",
                 "graph:read",
                 EgressClass)),
         ];
@@ -121,9 +117,6 @@ public static class McpToolDeclarationSource
     public static IReadOnlyList<McpToolDeclaration> Publishable(IEnumerable<McpToolCandidate> candidates)
         => [.. candidates.Where(c => !GraphDocumentScope.IsPrivateNote(c.Coverage)).Select(c => c.Declaration)];
 
-    public static string SelfBaseUrl(IConfiguration configuration)
-        => configuration[SelfBaseUrlKey] is { Length: > 0 } url ? url : DefaultSelfBaseUrl;
-
-    public static ServiceToolDeclarations Declare(IConfiguration configuration)
-        => new(ServiceName, Publishable(Candidates(SelfBaseUrl(configuration))));
+    public static ServiceToolDeclarations Declare()
+        => new(ServiceName, Publishable(Candidates()));
 }

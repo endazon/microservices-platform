@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-19, FR-20, FR-21, FR-22, NFR-09, NFR-16, NFR-19, UC-11, ADR-0004, ADR-0026, ADR-0029, ADR-0037, ADR-0045, ADR-0075, IADR-0017, IADR-0026, IADR-0117, IADR-0215, IADR-0267, IADR-0270, IADR-0299, IADR-0316, IADR-0371, IADR-0379, IADR-0397, IADR-0398, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0412, IADR-0416, IADR-0417]
 author: claude
 created: 2026-09-09
-updated: 2026-09-09
+updated: 2026-09-27
 ---
 
 # IADR-0419: 呼び出し元として立つ最初の一枚
@@ -130,6 +130,8 @@ gRPC では非 2xx も不達も同じ `RpcException` に畳まれるので、**s
 | 受け口が答えた失敗 | 非 2xx | `INVALID_ARGUMENT` / `INTERNAL` / `UNAUTHENTICATED` / `PERMISSION_DENIED` ほか | `rejected` |
 | 後段へ届かなかった | 例外（通信・タイムアウト・想定外） | `UNAVAILABLE` / `DEADLINE_EXCEEDED`、および s2s トークン取得失敗 | `unreachable` |
 | 呼び出し元のキャンセル | **伝播させる** | 同じ | 数えない |
+
+> **［2026-09-27 追記 / #1637］上の表の最終行は gRPC 版で成り立っていなかった。** 本物のチャネルは呼び出し元の取り消しを `RpcException(Cancelled)` で投げ（`ThrowOperationCanceledOnCancellation` は既定の false）、無条件の `catch (RpcException)` が型の絞り込み（`ex is OperationCanceledException && ct.IsCancellationRequested`）より前でそれを拾っていた。試験は偽のクライアントへ素の OCE を注入しており、本物のチャネルが通らない経路だけを見ていた。`CANCELLED` は「不達」の status に入っていないので、停止（ホストの停止・利用者の切断）が計器に **`rejected`**（受け口の責任）として積まれ、Error のログも出ていた。縮退の catch より前に `catch (Exception) when (ct.IsCancellationRequested) { ct.ThrowIfCancellationRequested(); throw; }` を置き、呼び出し元の token を持つ `OperationCanceledException` へ揃えて外へ出す（`GrpcServiceIntrospectionCollector`・IADR-0462 と同じ形。**判定は型でも status でもなく呼び出し元の ct で行う**）。期限切れ・受け口が返した `CANCELLED`（呼び出し元の ct は生きている）は従来どおり縮退する。受け口が返した `CANCELLED` は従来どおり `rejected` のままである（受け口が答えた失敗）。試験は 127.0.0.1 の実 gRPC サーバー（`LoopbackGrpcServer`）へ本番と同じ既定値のチャネルで繋ぎ、受け口が要求を受け取ってから取り消す形へ改めた。守りを外す・status で判定する・`RpcException` のまま投げ直す、の 3 変異がいずれも赤になることを確かめた。作業仕様書: `.ai-context/specs/20260927_issue-1637_grpc-client-caller-cancellation.md`。
 
 🔴 **全 status を「不達」へ畳まない**（[[IADR-0417]] 決定 9 と同じ理由）。畳むと `rejected` の枝が
 静かに消え、**ペイロード・配備の不整合が「届かなかった」に見える** —— 計器の説明文がこの 2 つを

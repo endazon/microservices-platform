@@ -7,7 +7,15 @@
     "承認の記録は $acceptedBreakingChanges へ追記され、以後も残る（削除しない）。"
   ],
   "$schemaVersion": 1,
-  "$acceptedBreakingChanges": [],
+  "$acceptedBreakingChanges": [
+    {
+      "key": "field:McpToolDeclaration.endpoint",
+      "reason": "ADR-0117 決定 1: ツール定義規約から endpoint を外し、実行先は申告したサービスとツール名で決める。番号 4 と名前は reserved に残す。旧い申告元が送る番号 4 は未知のフィールドとして読み飛ばされ、受け手は dial しない（ワイヤ互換）。受け手は MCP サーバー 1 つで、申告元 3 サービスと同じ PR で揃えるので v2 の並走は要らない",
+      "approvedBy": "endazon（利用者裁定 2026-09-26・ADR-0117・#1516 の裁定コメント）",
+      "issue": "#1516",
+      "date": "2026-09-27"
+    }
+  ],
   "files": {
     "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/dashboard/v1/knowledge_health.proto": {
       "syntax": "proto3",
@@ -1620,11 +1628,6 @@
               "type": "string",
               "label": "singular"
             },
-            "endpoint": {
-              "number": 4,
-              "type": "string",
-              "label": "singular"
-            },
             "input_schema": {
               "number": 3,
               "type": "string",
@@ -1642,8 +1645,12 @@
             }
           },
           "reserved": {
-            "numbers": [],
-            "names": []
+            "numbers": [
+              4
+            ],
+            "names": [
+              "endpoint"
+            ]
           }
         },
         "ServiceToolDeclarations": {
@@ -1672,6 +1679,139 @@
             "Declare": {
               "request": "DeclareMcpToolsRequest",
               "response": "ServiceToolDeclarations",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
+    "src/platform/backend/Shared/Platform.Shared.Contracts/Protos/platform/mcp/v1/mcp_tool_execution.proto": {
+      "syntax": "proto3",
+      "package": "platform.mcp.v1",
+      "csharpNamespace": "Platform.Shared.Contracts.Grpc.Mcp.V1",
+      "imports": [],
+      "messages": {
+        "ExecuteMcpToolRequest": {
+          "fields": {
+            "arguments_json": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "scope": {
+              "number": 3,
+              "type": "McpToolInvocationScope",
+              "label": "singular"
+            },
+            "tool": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "McpToolDocument": {
+          "fields": {
+            "attributes": {
+              "number": 3,
+              "type": "map<string,string>",
+              "label": "map"
+            },
+            "body": {
+              "number": 4,
+              "type": "string",
+              "label": "optional"
+            },
+            "document_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "reference_url": {
+              "number": 5,
+              "type": "string",
+              "label": "optional"
+            },
+            "title": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "McpToolInvocationScope": {
+          "fields": {
+            "exclude_private_note": {
+              "number": 4,
+              "type": "bool",
+              "label": "singular"
+            },
+            "required_scope": {
+              "number": 5,
+              "type": "string",
+              "label": "singular"
+            },
+            "subject_attributes": {
+              "number": 3,
+              "type": "map<string,string>",
+              "label": "map"
+            },
+            "subject_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "subject_kind": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "McpToolResult": {
+          "fields": {
+            "documents": {
+              "number": 1,
+              "type": "McpToolDocument",
+              "label": "repeated"
+            },
+            "total_count": {
+              "number": 2,
+              "type": "int32",
+              "label": "singular"
+            },
+            "truncated": {
+              "number": 3,
+              "type": "bool",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {},
+      "services": {
+        "McpToolExecution": {
+          "rpcs": {
+            "Execute": {
+              "request": "ExecuteMcpToolRequest",
+              "response": "McpToolResult",
               "clientStreaming": false,
               "serverStreaming": false
             }

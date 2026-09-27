@@ -47,7 +47,7 @@ public sealed class HttpToolDeclarationSource(
         var collected = new List<ServiceToolDeclarations>();
         foreach (var (service, baseUrl) in ConfiguredServices(configuration))
         {
-            if (await CollectOneAsync(service, baseUrl, ct) is { } declared)
+            if (DeclarationBinding.Bind(service, await CollectOneAsync(service, baseUrl, ct), logger) is { } declared)
                 collected.Add(declared);
         }
         return collected;
@@ -99,15 +99,18 @@ public sealed class ToolDeclarationSource : IToolDeclarationSource
     private readonly HttpToolDeclarationSource _http;
     private readonly GrpcToolDeclarationCollector? _grpc;
     private readonly IConfiguration _configuration;
+    private readonly ILogger _logger;
 
     public ToolDeclarationSource(
         HttpToolDeclarationSource http,
         IConfiguration configuration,
-        GrpcToolDeclarationCollector? grpc = null)
+        GrpcToolDeclarationCollector? grpc = null,
+        ILogger<ToolDeclarationSource>? logger = null)
     {
         _http = http;
         _grpc = grpc;
         _configuration = configuration;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ToolDeclarationSource>.Instance;
 
         // 🔴 gRPC の宛先が構成されているのに gRPC の収集器が居ないのは登録の誤りである。
         // 黙って REST へ倒すと「gRPC へ移したつもりで REST のまま」になり、REST の口を退役させた
@@ -135,10 +138,51 @@ public sealed class ToolDeclarationSource : IToolDeclarationSource
             var declared = grpcTargets.TryGetValue(service, out var address)
                 ? await _grpc!.CollectOneAsync(service, address, ct)
                 : await _http.CollectOneAsync(service, restByService[service], ct);
-            if (declared is not null)
-                collected.Add(declared);
+            // ［2026-09-27 / #1516 監査 M-1］封筒の `service` を収集先のキーへ結び付ける（下の DeclarationBinding）。
+            if (DeclarationBinding.Bind(service, declared, _logger) is { } bound)
+                collected.Add(bound);
         }
         return collected;
+    }
+}
+
+// 🔴 FR-16, NFR-09, ADR-0024 §5, ADR-0117 決定 1, IADR-0462（2026-09-27 追記 / #1516 監査 M-1）:
+// **申告の封筒の `service` を、収集先のキー（`Mcp:Services` / `Mcp:GrpcServices` の名前）へ結び付ける。**
+//
+// 申告の `service` は ToolCatalog の突合キーになり、ツールの実行先（`Mcp:GrpcServices:<service>`）もそこから引く。
+// 封筒の名乗りをそのまま信じると、キー X で集めたサービスが `service = "Y"` と名乗るだけで、Y のツールとして
+// **自分の説明・必要スコープ・越境分類を公開**でき、その実行は Y へ送られる —— ADR-0117 決定 1「申告の中身で他のサービスを
+// 宛先にできない」の破れであり、同じ `Y::name` が 2 つ届くと突合も壊れていた。
+//
+// 🔴 **食い違いは書き換えず拒否する**（申告なしとして扱い、Error で記録する）。書き換え（`service` をキーで上書き）を採らない理由:
+//   1. 食い違いは「構成のキーが別のサービスのアドレスを指している」配線の誤りか、名乗りの偽装のどちらかであり、
+//      どちらの場合も**その申告がキーのサービスのものだという根拠が無い**。書き換えると、他人の申告をキーの名で公開する推測になる
+//      （ADR-0024 §5「推測で公開しない」）。
+//   2. 拒否すれば公開構成が要求するツールは「申告なし」の構成ドリフトとして管理 API とログに現れ、運用者が配線を直せる。
+//      書き換えは誤配線を静かに通してしまう。
+//   3. 他のサービスの申告には影響しない（1 宛先ぶんを捨てるだけ）。
+// 比較は大文字小文字を区別する（公開構成・ToolCatalog のキーと同じ Ordinal）。
+internal static class DeclarationBinding
+{
+    public static ServiceToolDeclarations? Bind(string target, ServiceToolDeclarations? declared, ILogger logger)
+    {
+        if (declared is null || string.Equals(declared.Service, target, StringComparison.Ordinal))
+            return declared;
+
+        logger.LogError(
+            "MCP tool declarations collected from {Target} name another service ({DeclaredService}); rejected "
+            + "(the envelope service must equal the collection target key — check the Mcp:Services / Mcp:GrpcServices address)",
+            target, ForLog(declared.Service));
+        return null;
+    }
+
+    // 相手の応答に由来する名前を行指向のログへそのまま落とさない（制御文字を潰し、長さを切る）。
+    private static string ForLog(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "(empty)";
+        var cleaned = new string(Array.ConvertAll(value.ToCharArray(), c => char.IsControl(c) ? '_' : c));
+        return cleaned.Length <= 128 ? cleaned : cleaned[..128] + "…";
     }
 }
 

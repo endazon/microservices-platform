@@ -256,7 +256,7 @@ function callers(gatewayNs, releaseNs) {
     { who: 'GraphService → gRPC タグの書き戻し', ...inNs('graph-service'), port: 8081, method: 'POST', path: '/knowledge.document.v1.DocumentTagWrite/AddTag', want: 'allow' },
     { who: 'GraphService → gRPC タグ辞書', ...inNs('graph-service'), port: 8081, method: 'POST', path: '/knowledge.document.v1.TagDictionary/ListNames', want: 'allow' },
     { who: 'McpServer → REST ツール申告', ...inNs('mcp-server'), port: 8080, method: 'GET', path: '/internal/mcp-tools', want: 'allow' },
-    { who: 'McpServer → REST ツール呼び出し', ...inNs('mcp-server'), port: 8080, method: 'POST', path: '/internal/mcp/search', want: 'allow' },
+    { who: 'McpServer → gRPC ツール実行（#1516。REST の実行経路は廃した）', ...inNs('mcp-server'), port: 8081, method: 'POST', path: '/platform.mcp.v1.McpToolExecution/Execute', want: 'allow' },
     { who: 'McpServer → gRPC ツール申告', ...inNs('mcp-server'), port: 8081, method: 'POST', path: '/platform.mcp.v1.McpToolDeclarations/Declare', want: 'allow' },
     { who: 'AST（別名前空間・サイドカー無し＝平文）→ REST KB 保存', ns: null, port: 8080, method: 'POST', path: '/documents', want: 'allow' },
     { who: 'AST（別名前空間・メッシュ参入後＝mTLS）→ REST KB 保存', ns: 'ai-stock-trading', sa: 'default', port: 8080, method: 'POST', path: '/documents', want: 'allow' },

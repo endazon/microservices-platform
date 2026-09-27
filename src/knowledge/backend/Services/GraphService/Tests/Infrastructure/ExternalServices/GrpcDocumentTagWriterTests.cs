@@ -2,10 +2,12 @@ using System.Security.Claims;
 using AwesomeAssertions;
 using GraphService.Domain.Ports;
 using GraphService.Infrastructure.ExternalServices;
+using GraphService.Tests.Grpc;
 using Grpc.Core;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Pb = Knowledge.Contracts.Grpc.Document.V1;
@@ -123,17 +125,64 @@ public class GrpcDocumentTagWriterTests
         outcome.Should().Be(TagWriteOutcome.Unavailable);
     }
 
-    // 🔴 T-07: **呼び出し元のキャンセルだけは伝播する。**
+    // 🔴 T-07: **呼び出し元のキャンセルだけは伝播する**（#1637 で本物のチャネルの形へ改めた）。
+    // 127.0.0.1 の実サーバーで受け口が要求を受け取ってから呼び出し元が取り消す。本物のチャネルはこれを
+    // `RpcException(Cancelled)` で投げる（下の T-07a）ので、素の OCE を注入する形では `catch (RpcException)` が
+    // 取り消しを `Unavailable`（呼び出し側は 502）へ畳んでも緑になっていた。
+    // **外へ出るのは呼び出し元の token を持つ OCE で、縮退の Error ログは出ない**ことを測る。
     [Fact]
     public async Task 呼び出し元のキャンセルは伝播する()
     {
-        using var cts = new CancellationTokenSource();
+        var service = new TagWriteService(ServerBehavior.Hang);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        var logger = new RecordingLogger<GrpcDocumentTagWriter>();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var writer = new GrpcDocumentTagWriter(
+            new Pb.DocumentTagWrite.DocumentTagWriteClient(server.Channel), Approver("alice"), logger);
+
+        var call = writer.AddTagAsync(DocumentId, "経理", cts.Token);
+        await service.Received.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
         await cts.CancelAsync();
-        var fake = new FakeClient(new OperationCanceledException(cts.Token));
 
-        var act = async () => await Writer(fake, Approver("alice")).AddTagAsync(DocumentId, "経理", cts.Token);
+        var thrown = await FluentActions.Awaiting(() => call).Should().ThrowAsync<OperationCanceledException>();
+        thrown.Which.CancellationToken.Should().Be(cts.Token, "呼び出し元の取り消しとして外へ出す");
+        logger.OfLevel(LogLevel.Error).Should().BeEmpty("取り消しは反映の失敗ではない");
+    }
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+    // T-07a 前提の表明: 本物のチャネルは呼び出し元の取り消しを `RpcException(Cancelled)` で投げる。
+    // これが崩れる（チャネルが OCE を投げる）と、T-07 は取り消しの捕捉を測らなくなる。
+    [Fact]
+    public async Task 前提_本物のチャネルは取り消しを_RpcException_Cancelled_で投げる()
+    {
+        var service = new TagWriteService(ServerBehavior.Hang);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var client = new Pb.DocumentTagWrite.DocumentTagWriteClient(server.Channel);
+
+        var call = client.AddTagAsync(new Pb.AddTagRequest(), cancellationToken: cts.Token).ResponseAsync;
+        await service.Received.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await cts.CancelAsync();
+
+        var thrown = await FluentActions.Awaiting(() => call).Should().ThrowAsync<RpcException>();
+        thrown.Which.StatusCode.Should().Be(StatusCode.Cancelled);
+    }
+
+    // 🔴 T-07b: **呼び出し元が取り消していない `CANCELLED` は従来どおり `Unavailable` である。**
+    // 受け口が返した `CANCELLED`（呼び出し元の ct は生きている）を取り消しとして外へ出すと、
+    // status だけで判定する変異（`when (ex.StatusCode == StatusCode.Cancelled)`）と区別できない。
+    [Fact]
+    public async Task 受け口が返した_Cancelled_は到達不能へ倒す()
+    {
+        var service = new TagWriteService(ServerBehavior.ReturnCancelled);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        var logger = new RecordingLogger<GrpcDocumentTagWriter>();
+        var writer = new GrpcDocumentTagWriter(
+            new Pb.DocumentTagWrite.DocumentTagWriteClient(server.Channel), Approver("alice"), logger);
+
+        var outcome = await writer.AddTagAsync(DocumentId, "経理", Ct);
+
+        outcome.Should().Be(TagWriteOutcome.Unavailable);
+        logger.OfLevel(LogLevel.Error).Should().ContainSingle("★ 陽性対照 —— 縮退の枝は Error を出す");
     }
 
     // 🔴 T-08: **承認者が分からなければ呼ばない。値は REST と同じ `NotWritable` である。**
@@ -180,6 +229,26 @@ public class GrpcDocumentTagWriterTests
     }
 
     // ── 器 ────────────────────────────────────────────────────────
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private enum ServerBehavior { Hang, ReturnCancelled }
+
+    // 実サーバーに載せる受け口の偽物。`Hang` は要求を受け取ったことを知らせてから取り消されるまで待ち、
+    // `ReturnCancelled` は受け口自身が `CANCELLED` を返す（呼び出し元の取り消しではない対照）。
+    private sealed class TagWriteService(ServerBehavior behavior) : Pb.DocumentTagWrite.DocumentTagWriteBase
+    {
+        public TaskCompletionSource Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<Pb.AddTagResponse> AddTag(Pb.AddTagRequest request, ServerCallContext context)
+        {
+            Received.TrySetResult();
+            if (behavior == ServerBehavior.ReturnCancelled)
+                throw new RpcException(new Status(StatusCode.Cancelled, "受け口が取り消した"));
+            await Task.Delay(Timeout.Infinite, context.CancellationToken);
+            return new Pb.AddTagResponse();
+        }
+    }
 
     private static GrpcDocumentTagWriter Writer(
         Pb.DocumentTagWrite.DocumentTagWriteClient client, IHttpContextAccessor accessor) =>

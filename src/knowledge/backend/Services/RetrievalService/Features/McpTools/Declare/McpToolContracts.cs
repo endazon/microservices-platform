@@ -15,11 +15,14 @@ namespace RetrievalService.Features.McpTools.Declare;
 // ［2026-09-26 追記 / #1515］昇格は gRPC の契約（proto `platform.mcp.v1`。`Platform.Shared.Contracts`）で行った
 // （[[IADR-0462]] の「経路 ④-a への適用」）。本ファイルは REST の受け口（並走中の正）が使う写しとして残り、
 // REST の退役（#1517）で消える。gRPC の面（`GrpcService.cs`）は同じ `McpToolDeclarationSource.Declare` を proto へ写す。
+// ［2026-09-27 追記 / #1516］🔴 **`endpoint`（申告の実行先 URL）を外した** —— 計画 ADR-0117 決定 1 により規約は 5 項目である。
+// 実行先は McpServer が「申告したサービス（`service`）＋ツール名（`name`）」で決め、申告に URL を載せない
+// （載せると、あるサービスが別のサービスの内部経路を自分のツールとして申告できる）。URL を作る理由が無くなったので、
+// 基底 URL の構成（旧 `Mcp:SelfBaseUrl`）も外した。
 public sealed record McpToolDeclaration(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("description")] string Description,
     [property: JsonPropertyName("input_schema")] string InputSchema,
-    [property: JsonPropertyName("endpoint")] string Endpoint,
     [property: JsonPropertyName("required_scope")] string RequiredScope,
     [property: JsonPropertyName("egress_class")] string EgressClass);
 
@@ -43,9 +46,6 @@ public static class McpToolDeclarationSource
     // FR-15 の `/internal/introspection` と同じサービス名を使う（同じ規約系に置くため）。
     public const string ServiceName = "retrieval-service";
 
-    public const string SelfBaseUrlKey = "Mcp:SelfBaseUrl";
-    public const string DefaultSelfBaseUrl = "http://retrieval-service:8080";
-
     // ADR-0024 §5「egress_class 必須」。欠けた申告は McpServer が公開しない（安全側）。
     private const string EgressClass = "internal";
 
@@ -58,9 +58,8 @@ public static class McpToolDeclarationSource
     // FR-21 受け入れ基準 ⑨ / [[IADR-0283]] 決定 3）。したがって MCP へ出す検索ツールは
     // **組織文書に限る**ものとして申告する —— サービスアカウント実行では個人資料を一律に
     // 対象外とする（ADR-0034 決定 9。検索系にも適用される）。
-    public static IReadOnlyList<McpToolCandidate> Candidates(string selfBaseUrl)
+    public static IReadOnlyList<McpToolCandidate> Candidates()
     {
-        var basePath = selfBaseUrl.TrimEnd('/') + "/internal/mcp";
         return
         [
             new McpToolCandidate(Organization, new McpToolDeclaration(
@@ -68,7 +67,6 @@ public static class McpToolDeclarationSource
                 "自然文のクエリで社内ナレッジを横断検索し、関連する文書とその抜粋を返す。"
                 + "答えの根拠になりそうな文書を探すときに最初に呼ぶ。",
                 """{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50,"default":10}},"required":["query"]}""",
-                $"{basePath}/search_documents",
                 "retrieval:search",
                 EgressClass)),
         ];
@@ -83,9 +81,6 @@ public static class McpToolDeclarationSource
     public static IReadOnlyList<McpToolDeclaration> Publishable(IEnumerable<McpToolCandidate> candidates)
         => [.. candidates.Where(c => !DocumentScopes.IsPrivateNote(c.Coverage)).Select(c => c.Declaration)];
 
-    public static string SelfBaseUrl(IConfiguration configuration)
-        => configuration[SelfBaseUrlKey] is { Length: > 0 } url ? url : DefaultSelfBaseUrl;
-
-    public static ServiceToolDeclarations Declare(IConfiguration configuration)
-        => new(ServiceName, Publishable(Candidates(SelfBaseUrl(configuration))));
+    public static ServiceToolDeclarations Declare()
+        => new(ServiceName, Publishable(Candidates()));
 }

@@ -1,9 +1,11 @@
 using AwesomeAssertions;
 using GraphService.Infrastructure.ExternalServices;
+using GraphService.Tests.Grpc;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pb = Knowledge.Contracts.Grpc.Document.V1;
 
@@ -75,17 +77,42 @@ public class GrpcTagDictionaryReaderTests
         names.Should().BeNull();
     }
 
-    // 🔴 T-05: **呼び出し元のキャンセルだけは伝播する**（REST 版と同じ姿勢）。
+    // 🔴 T-05: **呼び出し元のキャンセルだけは伝播する**（REST 版と同じ姿勢。#1637 で本物のチャネルの形へ改めた）。
+    // 127.0.0.1 の実サーバーで受け口が要求を受け取ってから呼び出し元が取り消す。本物のチャネルはこれを
+    // `RpcException(Cancelled)` で投げるので、素の OCE を注入する形では `catch (RpcException)` が
+    // 取り消しを `null`（引けなかった）へ畳んでも緑になっていた。
     [Fact]
     public async Task 呼び出し元のキャンセルは伝播する()
     {
-        using var cts = new CancellationTokenSource();
+        var service = new TagDictionaryService(ServerBehavior.Hang);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        var logger = new RecordingLogger<GrpcTagDictionaryReader>();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var reader = new GrpcTagDictionaryReader(new Pb.TagDictionary.TagDictionaryClient(server.Channel), logger);
+
+        var call = reader.ReadNamesAsync(cts.Token);
+        await service.Received.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
         await cts.CancelAsync();
-        var fake = new FakeClient(new OperationCanceledException(cts.Token));
 
-        var act = async () => await Reader(fake).ReadNamesAsync(cts.Token);
+        var thrown = await FluentActions.Awaiting(() => call).Should().ThrowAsync<OperationCanceledException>();
+        thrown.Which.CancellationToken.Should().Be(cts.Token, "呼び出し元の取り消しとして外へ出す");
+        logger.OfLevel(LogLevel.Warning).Should().BeEmpty("取り消しは「引けなかった」ではない");
+    }
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+    // 🔴 T-05b: **呼び出し元が取り消していない `CANCELLED` は従来どおり `null`（引けなかった）である**
+    // （status だけで判定する変異を落とす対照）。
+    [Fact]
+    public async Task 受け口が返した_Cancelled_は引けなかったである()
+    {
+        var service = new TagDictionaryService(ServerBehavior.ReturnCancelled);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        var logger = new RecordingLogger<GrpcTagDictionaryReader>();
+        var reader = new GrpcTagDictionaryReader(new Pb.TagDictionary.TagDictionaryClient(server.Channel), logger);
+
+        var names = await reader.ReadNamesAsync(Ct);
+
+        names.Should().BeNull();
+        logger.OfLevel(LogLevel.Warning).Should().ContainSingle("★ 陽性対照 —— 縮退の枝は Warning を出す");
     }
 
     // 🔴 T-06: **利用者の資格情報を面へ載せない**（[[IADR-0379]] 決定 4）。読む主体は本サービス自身であり、
@@ -164,6 +191,26 @@ public class GrpcTagDictionaryReaderTests
     }
 
     // ── 器 ────────────────────────────────────────────────────────
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private enum ServerBehavior { Hang, ReturnCancelled }
+
+    // 実サーバーに載せる受け口の偽物（`GrpcDocumentTagWriterTests.TagWriteService` と同型）。
+    private sealed class TagDictionaryService(ServerBehavior behavior) : Pb.TagDictionary.TagDictionaryBase
+    {
+        public TaskCompletionSource Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<Pb.ListNamesResponse> ListNames(
+            Pb.ListNamesRequest request, ServerCallContext context)
+        {
+            Received.TrySetResult();
+            if (behavior == ServerBehavior.ReturnCancelled)
+                throw new RpcException(new Status(StatusCode.Cancelled, "受け口が取り消した"));
+            await Task.Delay(Timeout.Infinite, context.CancellationToken);
+            return new Pb.ListNamesResponse();
+        }
+    }
 
     private static IConfiguration Configured() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
