@@ -45,7 +45,11 @@ internal static class PutDocumentBodyEndpoint
             // 打ち分けの軸は「主体がその文書を読めるか」であり、**本サービスは ABAC の
             // 読み取り判定を持たない**ため「読めるが書けない」（403 が許される決定 2 の側）だと
             // 言い切れない。403 を返すと**文書 ID の総当たりで実在が判別できてしまう**。
-            if (!DocumentBodyIntake.CanWrite(doc.Attributes, http.User.Identity?.Name))
+            //
+            // ［2026-09-28 / #1679］計画 ADR-0122 実測 8: **主体は作成の口が `owner` へ入れる名前と同じ関数から引く**
+            // （`DocumentManageScope.OwnerSubject`）。`Identity.Name` で比べていた頃は、利用者名の無い機械クライアントが
+            // 自分で作った文書（`owner = service-account-<clientId>`）に本文を入れられなかった。
+            if (!DocumentBodyIntake.CanWrite(doc.Attributes, DocumentManageScope.OwnerSubject(http.User)))
                 return Results.NotFound();
 
             // FR-21 受け入れ基準 ⑥: 1 MB 超は 413。**切り詰めない。**

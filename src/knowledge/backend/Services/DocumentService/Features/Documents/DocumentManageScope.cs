@@ -60,6 +60,14 @@ internal static class DocumentManageScope
             : null;
     }
 
+    // FR-06, FR-21, FR-20, FR-18, 計画 ADR-0122 実測 8・フォローアップ 3, ADR-0119 決定 2, ADR-0036 D-07, [[IADR-0044]] (#1679):
+    // **`owner` へ入れる名前と、`owner` と比べる名前は、この関数ただ 1 つから引く。** 機械は `MachineSubject`、人は利用者名。
+    // 作成・本文の投入・共有の付与／一覧／取り消し・タグ反映（REST 面）が通る。
+    // 🔴 **口の中で `Identity.Name` を直接比べない。** 腕 B（利用者名の無い機械）は作成の口では `service-account-<clientId>` を
+    // `owner` にされるのに、本文の投入では主体なしと読まれ、自分の文書に書けなかった（本件）。2 本目の式は片方だけが直る。
+    public static string? OwnerSubject(ClaimsPrincipal user)
+        => MachineSubject(user) ?? user.Identity?.Name;
+
     // メタデータ更新・削除の**入口の門**（取得・入力検証より前）。管理者か機械クライアントなら中へ通す。
     // 🔴 **運用者だけの人はここで 403**（`AdminOnly` を積んでいた頃と同じく、文書の有無・本文の中身に依らない）。
     public static IResult? ForbidUnlessAdminOrMachine(ClaimsPrincipal user)

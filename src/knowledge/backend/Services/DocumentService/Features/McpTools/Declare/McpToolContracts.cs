@@ -71,9 +71,11 @@ public static class McpToolDeclarationSource
     {
         return
         [
+            // ［2026-09-28 / #1611 段 2］説明から「本文の参照」を外した —— 実行口の応答（共通エンベロープ）は本文も参照リンクも
+            // 持たない（台帳は本文を持たず、`MarkdownUri` は内部の格納先）。返らないものを呼び出し側の LLM に約束しない。
             new McpToolCandidate(Organization, new McpToolDeclaration(
                 "document.get_document",
-                "文書 ID を指定して 1 件の文書（タイトル・属性・本文の参照）を取得する。"
+                "文書 ID を指定して 1 件の文書（タイトル・属性）を取得する。"
                 + "検索結果や被参照一覧で得た document_id の中身を読むときに呼ぶ。",
                 """{"type":"object","properties":{"document_id":{"type":"string","format":"uuid"}},"required":["document_id"]}""",
                 "document:read",

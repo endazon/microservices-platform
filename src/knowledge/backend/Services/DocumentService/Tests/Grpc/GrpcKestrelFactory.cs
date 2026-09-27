@@ -45,6 +45,17 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
     /// <summary>承認者が管理者かを答える認可サービスの代役（#1636）。既定は NotAdmin。</summary>
     public StubApproverRoleDirectory ApproverRoles { get; } = new();
 
+    /// <summary>
+    /// 読み取りの許可（認可サービス）の代役（#1611 段 2）。既定は「読めるものは無い」＝未構成の縮退と同じ向きなので、
+    /// 同じ器の他の試験の挙動は変わらない。
+    /// </summary>
+    public StubDocumentReadScopeSource ReadScopes { get; } = new();
+
+    /// <summary>
+    /// 内容の ABAC の門の代役（#1611 段 2）。既定は閉（本番の既定 `ContentAbac:Mode=Off` と同じ）。開いて使う試験（MCP の実行口）は後始末で閉じる。
+    /// </summary>
+    public StubContentAbacGate ContentAbacGate { get; } = new();
+
     public GrpcKestrelFactory() => UseKestrel();
 
     public string GrpcAddress => $"http://127.0.0.1:{GrpcPort}";
@@ -86,6 +97,12 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             // FR-18, NFR-09, [[IADR-0410]] 追記 2 (#1636): 承認者が管理者かを答える認可サービスの代役（既定は NotAdmin）。
             services.RemoveAll<DocumentService.Domain.Ports.IApproverRoleDirectory>();
             services.AddSingleton<DocumentService.Domain.Ports.IApproverRoleDirectory>(ApproverRoles);
+
+            // FR-16, FR-19, 計画 ADR-0121 決定 2・4 (#1611 段 2): 読み取りの判定点が問う認可サービスと、判定点が枝を選ぶ門の代役。
+            services.RemoveAll<DocumentService.Domain.Ports.IDocumentReadScopeSource>();
+            services.AddSingleton<DocumentService.Domain.Ports.IDocumentReadScopeSource>(ReadScopes);
+            services.RemoveAll<DocumentService.Features.Documents.ContentAbac.IContentAbacGate>();
+            services.AddSingleton<DocumentService.Features.Documents.ContentAbac.IContentAbacGate>(ContentAbacGate);
 
             services.RemoveAll<IBusControl>();
             services.AddMassTransitTestHarness();

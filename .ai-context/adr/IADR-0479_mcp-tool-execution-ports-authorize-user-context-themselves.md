@@ -2,7 +2,7 @@
 title: IADR-0479 MCP のツールの実行口は MCP サーバー（許可集合）が運んだ利用者文脈だけを信じ、その利用者で認可サービスへ自分で判定を問う。MCP サーバーは利用者名と操作だけを運ぶ
 type: impl-adr
 status: Accepted
-related_ids: [FR-16, UC-08, NFR-09, NFR-16, ADR-0024, ADR-0034, ADR-0086, ADR-0088, ADR-0117, IADR-0269, IADR-0292, IADR-0379, IADR-0416, IADR-0426, IADR-0462]
+related_ids: [FR-16, UC-08, NFR-09, NFR-16, ADR-0024, ADR-0034, ADR-0086, ADR-0088, ADR-0117, ADR-0121, IADR-0483, IADR-0269, IADR-0292, IADR-0379, IADR-0416, IADR-0426, IADR-0462]
 author: claude
 created: 2026-09-27
 updated: 2026-09-28
@@ -132,3 +132,35 @@ ADR-0117 決定 3 は、本文を利用者文脈（`user_id`・`action`）とツ
 - **段 2（DocumentService の実行口。未着手）はこの定数を使う**: エンベロープの `attributes` へは `McpEnvelopeAttributes.IsCarried` のキーだけを写す
   （`DocumentDto.Attributes` の全キーを写さない）。段 2 の作業仕様書の母集合に本定数を入れる。
 - MCP サーバーの受信側（`GrpcToolInvoker.ToResult`）では濾さない（受け口側の許可リストが #1671 の受け入れ基準。受信側の三重目は将来の判断に残す）。
+
+### ［2026-09-28 追記 / #1611］段 2 DocumentService
+
+> 上の本文・段 3 と #1671 の追記は書き換えない。本節は段 2（DocumentService の受け口。#1615 の内容の ABAC の着地後）で決めたことだけを足す。
+> 作業仕様書 `20260927_issue-1611_mcp-tool-execution-ports` の同日付の段 2 の節と対になる。**本段で #1611 は閉じる**（3 サービスとも受け口を持つ）。
+
+- **受け口の形**: 決定 2 の判定の順番・決定 3 の許可集合（`McpToolExecution:TrustedUserContextClients`。既定 `mcp-server`。DocumentService の `Program.cs` で
+  `ThrowIfScalar` → `Configure`）を段 1・段 3 と同じ形で持つ。読み取りの gRPC の集合（`DocumentRead:`。既定 `bff`）・タグ反映の集合（`DocumentTagWrite:`。
+  既定 `graph-service`）とはキーも集合も共有しない。2 ツール（`document.get_document` / `document.list_documents`）とも操作は `read`。
+- **第二の判定点を作らない**: 本文の利用者名を `DocumentReadPrincipal.RelayedUser`（`service-account-` は機械）で主体にし、REST・gRPC `DocumentRead` と同じ
+  `DocumentReadUseCase`（→ `DocumentReadAccess`）を通す。可視性の判定（認可サービスの `read` の分岐）は判定点だけが行う。認可サービスへは判定点が利用者名で問う
+  （`IDocumentReadScopeSource`。属性は空）。`DocumentReadAccess` 本体は変えていない。
+- 🔴 **門が閉じている間（既定 Off）は経路を開かない —— 受け口は `FAILED_PRECONDITION` で結果を 1 件も返さない**（利用者裁定 2026-09-28。PR の要裁定の案 2）。
+  - **理由**: 閉じている間の判定点は #1615 の閉じた枝（＝従前の判定）で、組織文書を内容の属性で絞らない。閉じている間の組織文書の実施点は BFF の判定
+    （ADR-0121 決定 6 の暫定手段。IADR-0483 §コンテキスト）であり、**MCP の経路は BFF を通らない**。閉じた枝で答えると、MCP の利用者は BFF の画面では見えない
+    機密・制限の組織文書の題名と許可リストの属性を引ける —— #1611 の受け入れ基準「利用者に権限の無い文書は返らない」と、段 1〜3 の「どの順でも緩む向きは無い」に
+    反する状態を、門を開くまでの期間とはいえ配備に出さない。
+  - **判定点の外で門を読むことの位置づけ**: 第二の判定点ではなく**経路の前提条件**である。開いていれば判定はすべて判定点が行い、閉じていれば判定そのものを走らせない
+    （認可サービスへも問わない）。受け口は門の値を判定点と**同じ要求内固定の値**（`DocumentReadAccess.ContentAbacEnabled`。要求の寿命の同じインスタンスの memo。
+    IADR-0483 決定 1・5）から読む —— 受け口が門を別に読むと、要求の途中で門が開いたとき受け口と判定点の値が食い違い得る。門を読むのは要求につき 1 回である（X-56 が固定）。
+  - **順番**: 引数の検証の後・判定の前（決定 2 の順番の 6 と 7 の間）。信頼しない呼び出し元・申告に無いツール・利用者文脈の欠落・操作の不一致・引数の形の誤りは、
+    門の状態に依らず従前の status で落ちる（門の状態は MCP サーバーにしか見えず、形の誤りが門の開いた日に初めて見える、を作らない）。
+  - **status の選択**: MCP サーバーの実行器（`GrpcToolInvoker`）は `UNAUTHENTICATED` / `PERMISSION_DENIED` を配線不備（Error）、`UNIMPLEMENTED` を実行口の無い宛先、
+    `DEADLINE_EXCEEDED` を時間切れ、それ以外を既定の枝（到達不能の文言・Warning）で、いずれも結果 0 件の拒否へ写す。`FAILED_PRECONDITION` は既定の枝に乗る
+    （MCP サーバーは無改修。X-69 で固定した）。`UNIMPLEMENTED`（旧い版と誤読させる）・`PERMISSION_DENIED`（s2s の配線不備として Error を上げる）・`UNAVAILABLE`
+    （一時障害として再試行を誘う）は選ばない。門は運用者が開けるまで閉じたままの状態なので gRPC の意味でも「前提が満たされていない」が当たる。
+  - **帰結**: 門が開くまで、文書の 2 ツールは MCP のツール一覧に出るが実行すると拒否になる（利用者への文言は既定の枝の「到達できません」で、門が閉じていることは
+    言わない）。門が開いた後は、MCP の結果が DocumentService の REST の同じ利用者の結果と一致する（X-59）。閉じている間は REST より狭い（安全側。X-68）。
+- **サービスアカウント実行（決定 4）**: 判定点（`RelayedUser` が機械として扱い、機械は個人資料を読まない）と応答の写像の 2 層で個人資料を落とす。
+- **応答**: 共通エンベロープ。属性は `McpEnvelopeAttributes.IsCarried` のキーだけ（#1671 の申し送り）。**本文・参照リンクは返さない** —— 台帳は本文を持たず
+  （`MarkdownUri` は内部の格納先）、格納先から本文を読む経路は DocumentService に無い。申告の説明から「本文の参照」を外した（段 3 の `graph.traverse` と同じ扱い。
+  返らないものを LLM に約束しない）。一覧は判定の後の全体件数を `total_count` に返し、`limit`（1〜100・既定 20）を超えたら `truncated`。

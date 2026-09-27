@@ -18,6 +18,11 @@ public sealed class StubContentAbacGate : IContentAbacGate
 
     public void Open() => _open = true;
 
+    /// <summary>
+    /// 試験の後始末だけに使う（#1611 段 2。器を共有する試験が門を開いたまま次へ渡さないため）。本物の門はラッチで閉じない。
+    /// </summary>
+    public void Close() => _open = false;
+
     public bool IsOpen
     {
         get
