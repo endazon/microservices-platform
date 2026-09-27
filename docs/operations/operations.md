@@ -3,15 +3,15 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-27
+updated: 2026-09-28
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19]
 adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480]
-specs: [20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step]
-issues: [#1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672]
+iadrs: [IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480]
+specs: [20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step]
+issues: [#1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672]
 -->
 
 # 運用仕様書
@@ -451,15 +451,47 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
 - **消したとき・無効にしたときの影響**: **所有者が、共有していない自分の個人資料を開けなくなる**（404）。
   自分の組織文書のうち取扱区分の外にあるものも読めなくなり、検索・グラフ・Wiki からも自分の文書が消える。
   誤りとしては表に出ない（読めないだけで、エラーにはならない）。削除そのものは止めていないので、消す前に影響を確かめる。
-  **削除・無効化の検知と通知はまだ無い**（内容の ABAC を文書サービスで有効にする前に入れる）。
+  **削除・無効化は検知して知らせる**（下の「消えたときの検知と通知」）。
 - **配備の順番**: このポリシーの投入は、文書サービスで内容の ABAC を有効にする作業の**1 番目**である。
   内容の ABAC はまだ有効にしない（投入しても文書サービス自身の判定は変わらない。効くのは境界層・検索・グラフ・Wiki の判定である）。
-  続く作業（古い写しの削除・削除の検知と通知・内容の ABAC の有効化）は、それぞれの手順が揃ってから行う。
+  続く作業は、古い写しの削除 → 消えたときの検知と通知（配備済み。下）→ 内容の ABAC の有効化（下の門を通る）の順で、
+  それぞれの手順が揃ってから行う。**検知と通知は、内容の ABAC を有効にするより前に働いていなければならない。**
 - 🔴 **予約値と同じ名前の利用者を認証基盤（Keycloak）に作らない**: `system`（取り込みで所有者を解決できなかった文書の所有者の値・
   外部システムの古い写しの所有者の値）と `anonymous`（未認証の要求の身元）。その名前の利用者が居ると、このポリシーでその利用者が
   **予約値を所有者に持つ文書をすべて読める**。名簿に居ない名前は判定で拒否される（許可へは倒れない）ので、作らない限り問題にならない。
   開発用の realm にこれらの利用者が居ないことは回帰試験が確かめる。
 - **切り戻し**: ポリシーを削除する（`DELETE /authz/policies/{id}`）か無効にする（`PATCH /authz/policies/{id}/active`）。影響は上のとおり。
+  消すと下の警報が鳴る（切り戻しの意図であっても鳴る。鳴り止ませるには投入し直す）。
+
+#### 消えたときの検知と通知
+
+- **検査**: 認可サービスが**起動時に 1 回と、以後 1 分ごと**に、上の形のポリシーの有効な件数を数える（上の「投入済みかの確かめ方」と
+  同じ条件。名前では判定しない）。**構成で有効にする必要は無い**（常に働く）。周期は `OwnerReadPolicyCheck__Interval`
+  （`hh:mm:ss`・`00:01:00`〜`23:59:59`。値域外は起動時に落ちる）で変えられる。
+- **計器**: ゲージ `authz_owner_read_policy_active`（直近の検査で数えた件数。**0 が「無い」**）。ポリシーの表を読めなかったときと
+  起動直後の未検査のときは、**系列を出さない**（古い値も 0 も出さない）。検査の結末は
+  `authz_owner_read_policy_checks_total{authz_owner_read_policy_outcome="present" | "absent" | "failed"}`。
+- **警報**（下の「監視・アラート」と同じ経路。Alertmanager と Grafana の Alerting 画面）:
+  - `OwnerReadPolicyMissing`（critical）: 件数が 1 未満のまま 5 分。**消えてから鳴るまで最大およそ 6 分**（検査の周期 ＋ 5 分）。
+  - `OwnerReadPolicyCheckSeriesAbsent`（warning）: ゲージの系列が無い（**見ていない**）。認可サービスが止まっている、ポリシーの表を
+    読めない状態が続いている、または収集が欠けている。このあいだ `OwnerReadPolicyMissing` は鳴らない。
+- **ログ**: 無いあいだは検査のたびに認可サービスが Error「所有者の読み取りのポリシーが有効な状態で 1 件も無い」を出す。
+  戻ったら Information「所有者の読み取りのポリシーが戻った」。
+- **鳴ったときの対応**: 上の「投入済みかの確かめ方」で状態を確かめ、無ければ「手順」で投入し直す（無効なら有効へ戻す）。
+  🔴 **誰が消したかは、ポリシーの API が記録していない**（削除・無効化の口は監査の記録を持たない）。管理者の間で確かめる。
+
+#### 内容の ABAC の有効化の門（文書サービス）
+
+- **構成**: `ContentAbac__Mode`（`Off` 既定 / `On`）。値域外は起動時に落ちる。
+- **門**: `On` にしても、文書サービスが**認可サービスで上の形のポリシーが 1 件以上あることを確かめるまで、内容の ABAC は有効にならない**。
+  無い・数えられない（認可サービスの gRPC 宛先 `Services__AuthorizationServiceGrpc` が無い・届かない・時間切れ）ときは閉じたままで、
+  文書サービスが 1 分ごとに確かめ直し、投入されれば開く。**1 度開いたら、その実行の間は閉じない**（開いた後に消えたことは上の警報が知らせる）。
+  再起動したときは改めて確かめる。
+- **見え方**: ゲージ `documents_content_abac_gate_open`（1 = 開・0 = 閉）の属性 `documents_content_abac_gate_state`
+  （`disabled` / `not_evaluated` / `owner_read_policy_absent` / `owner_read_policy_unknown` / `open`）と、閉じている理由の Warning ログ。
+- 🔴 **いまの時点で、門が開いても文書サービスの読み取りの判定は変わらない**（内容の ABAC の本体はまだ入っていない。門はその前提として先に入れた）。
+- 🔴 **配備順: authorization-service を document-service より先に（または同時に）上げる。** 門が問う口は新しい認可サービスにしか無い。
+  逆順でも門は `owner_read_policy_unknown` で閉じたまま（安全側）である。
 
 ### 適用直後のドリフト即時検出（構成情報 API の要求 / 実装 ADR のフォローアップ 4 / #145）
 
@@ -780,7 +812,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   運用環境ごとに設定するもので、既定は `default-null`＝どこへも送らない**（設定漏れではなく既定）。
 - **暫定のアラート（Grafana 統合アラート。#665 / 計画 決定 42）**:
   [`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)
-  が同じ 20 ルール（［2026-09-26 / #1577］で数え直した。部門の同期の 1 件が足された後も 19 のままだった。
+  が同じ 22 ルール（所有者の読み取りのポリシーの 2 件を足して数え直した。［2026-09-26 / #1577］で数え直した。部門の同期の 1 件が足された後も 19 のままだった。
   #1544 の時点は 19、#1111 の時点は 17、その前の「13」は既に実体の 16 と食い違っていた）を
   Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
   `alerts.yml` との対応は `node scripts/check-grafana-alerting.js` が CI で突合する。
@@ -820,7 +852,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   **dev の 2 経路（docker-compose と、ローカル k8s の可観測性オーバーレイ）に配線**されている。
   **［2026-08-30 更新 / #546］経路B（ローカル k8s）にも Alertmanager を配備し、両経路のルールが
   同じ受け手へ届くようにした**（それ以前は compose だけだった）。
-  🔵 **［2026-09-09 更新］経路B の Prometheus の inline は compose と同数である**（両経路とも 20 件。［2026-09-26 / #1544］［2026-09-26 / #1573］で数え直した。
+  🔵 **［2026-09-09 更新］経路B の Prometheus の inline は compose と同数である**（両経路とも 22 件。［2026-09-26 / #1544］［2026-09-26 / #1573］と、所有者の読み取りのポリシーの 2 件を足したときに数え直した。
   `node scripts/check-prometheus-alerts-parity.js` が群名・ルール名・`expr`・`for`・`severity` で 1 対 1 を
   確かめる）。**2026-09-05 時点の「2 件が写されていない」はその後の是正で解消しており、本追記はその訂正である。**
   **件数は導出値なので、数えるのは実体である。****stg/prod は依然として対象外**である
@@ -839,7 +871,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 >
 > 計画が定めた**暫定の通知先＝ Grafana の内蔵アラート**（決定 42）は、**#665 で provisioning を配線した**
 > （[`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)。
-> compose・k8s の 2 か所。19 ルールは `alerts.yml` と 1 対 1）。**ただし、配線したのは検知と可視化までである。**
+> compose・k8s の 2 か所。22 ルールは `alerts.yml` と 1 対 1。以前ここにあった「19」は、20 に増えた後も直っていなかった）。**ただし、配線したのは検知と可視化までである。**
 >
 > - **push 配信の宛先（contactPoints / policies）は設定していない。** 届かない宛先を書くと「配線した」と
 >   読めてしまうため、**意図的に書いていない**（SLO の暫定通知先を Grafana 統合アラートへ配線する実装 ADR の決定 3）。
@@ -1139,6 +1171,7 @@ LlmGateway）に在るため、**当該イメージが更新済みであるこ�
 | Qdrant 停止 | 検索 5xx/エラーログ | Qdrant 再起動。索引は再取り込みで再構築可能（決定的チャンク ID） | ボリューム障害時はスナップショットからリストア（バックアップ節） |
 | PostgreSQL 停止 | サービス起動失敗/DB 接続エラー | DB 再起動・接続確認。書き込み不可の間は該当サービスを縮退 | データ破損時はバックアップからリストア（RPO/RTO 節） |
 | パスワードリセット申請の床の器が全滅（申請がすべて 503） | `ResetFloorNoReadyEndpoint` アラート（critical）。`ResetFloorUpSeriesAbsent` は「見ていない」（収集器の受け口の欠落）であり全滅ではない | 🔴 **503 は「申請を閉じた状態」であり、床を外さない**（本番で `RESET_FLOOR=0` を退路に使わない —— 外している間は所要時間で利用者名を列挙できる）。器を戻す: `kubectl -n platform-infra get deploy,pdb,pods -l app=reset-floor`・ログ・ConfigMap `reset-floor-script` の有無を見て直す。利用者は**管理者による一時パスワード発行**で復旧する。手順は [運用 Runbook](keycloak-smtp-relay-setup-runbook.md) の「器がすべて落ちたとき」 | 器が戻らない（イメージ取得・ノード資源・PDB による退避の停止）ならノードと Deployment の事象を確認する。全滅が繰り返すならレプリカ数・分散の見直しを計画へ環流する |
+| 所有者の読み取りのポリシーが消えた（所有者が自分の文書を読めない） | `OwnerReadPolicyMissing` アラート（critical）と認可サービスの Error ログ。`OwnerReadPolicyCheckSeriesAbsent` は「見ていない」（認可サービスの停止・ポリシーの表を読めない）であり、消えたことではない | 本書「所有者の読み取りのポリシーの投入」の確かめ方で状態を見て、無ければ手順で投入し直す（無効なら有効へ戻す）。削除そのものは止めていない。誰が消したかはポリシーの API が記録していないので、管理者の間で確かめる | 繰り返し消されるなら、管理者の操作の手順（削除の前の確認）を見直す。画面からこのポリシーを作れないことは計画側の未了事項である |
 | サービス 5xx スパイク | `HighHttp5xxRate` アラート | 対象サービスのログ/トレース（Tempo）で原因特定。必要ならロールバック（Git revert → ArgoCD 同期） | 依存（DB/ブローカ/外部）起因の切り分け。HPA 上限到達なら `scaling` 見直し |
 | 構成ドリフト検出 | ドリフト検出 Warning（監査/警告ログ） | 宣言（`pipeline.json`）と実効の差分を確認。意図せぬ差分は Git を正として再同期 | 起動時 fail-fastで不整合構成の反映は阻止済み。恒常化は宣言の是正 |
 

@@ -308,6 +308,28 @@ groups:
           summary: "部門の同期が利用者の属性を直せていない（0 が正常）"
           description: "認可サービスの部門の同期（DepartmentAttributeSync:Mode=Fix）で、直近 1 時間に利用者の書き込みが失敗した（department_sync_users_total{department_sync_outcome=\"failed\"}）、周期ごと中断した（aborted）、直そうとした全員が「読み取り後に変わった」で見送られた（all_skipped_changed）、または全利用者の列挙を読み切れず部門グループから外れた利用者の属性を消せなかった（department_sync_enumeration_incomplete_total。消去はその周期だけ止まる）。エラーログの IdP 内部 ID で対象を特定し、all_skipped_changed なら運用仕様書の試験利用者 1 人での確認を行う。同期が Off のときは系列が無く鳴らない。"
 
+  # FR-05, FR-19, NFR-09, ADR-0121 決定 2・4, IADR-0481 (#1665): 所有者の読み取りのポリシーが消えたこと（**1 以上が正常**）。
+  # 🔴 **ゲージは直近の検査の件数そのもの**であり、検査に失敗した・未検査のときは系列が無い（古い値も 0 も出さない）。
+  #   したがって「無い」は `< 1`、「見ていない」は `absent()` の 2 本で分けて知らせる（同じ不在で 2 通鳴らさない）。
+  #   複数レプリカは同じ表を数えるので、どのレプリカの 0 でも鳴らしてよい（集約しない）。
+  # 🔴 **削除そのものは止めない**（SC-09 の口は変えない。ADR-0121 決定 2）。知らせて投入し直してもらう。
+  - name: owner-read-policy
+    rules:
+      - alert: OwnerReadPolicyMissing
+        expr: 'authz_owner_read_policy_active < 1'
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "所有者の読み取りのポリシーが無い（所有者が自分の文書を読めない）"
+          description: "認可サービスの定期の検査（既定 1 分ごと）で、所有者の読み取りのポリシー（action=read・利用者の条件なし・文書の条件は owner が利用者自身に一致することだけ）が有効な状態で 1 件も無い（authz_owner_read_policy_active）。削除・無効化・形の変更のいずれかである。所有者は共有していない自分の個人資料を開けず（404）、内容の ABAC を有効にした後は機械クライアントが自分の文書を読めなくなる。誤りとしては表に出ない。運用仕様書「所有者の読み取りのポリシーの投入」の手順で投入し直す（削除そのものは止めていない）。"
+      - alert: OwnerReadPolicyCheckSeriesAbsent
+        expr: absent(authz_owner_read_policy_active)
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "所有者の読み取りのポリシーを見ていない: authz_owner_read_policy_active の系列が存在しない"
+          description: "認可サービスの所有者の読み取りのポリシーの検査が値を出していない。OwnerReadPolicyMissing は空ベクタになり、ポリシーが消えても発火しない。認可サービスの停止、検査の失敗の継続（ポリシーの表を読めない。authz_owner_read_policy_checks_total{authz_owner_read_policy_outcome=\"failed\"} とエラーログ）、または収集の欠落を疑う。"
+
   # SC-10, SC-15, FR-05, ADR-0045 決定 8（ADR-0078 決定 3 による部分改定）, IADR-0404 / IADR-0421 (#1245 PR-B):
   # **近接 MTA（mail-relay）のキュー** —— 上流（組織のメールテナント）の停止を見る唯一の窓である。
   #

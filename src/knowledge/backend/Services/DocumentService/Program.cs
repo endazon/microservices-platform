@@ -65,7 +65,9 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics
         .AddMeter(IngestTagMetrics.MeterName)
         .AddMeter(PrivateNoteNotificationMetrics.MeterName)
-        .AddMeter(UnitProjectMetrics.MeterName));
+        .AddMeter(UnitProjectMetrics.MeterName)
+        // #1665: 内容の ABAC の門（同じサービス名の Meter。収集対象は増えない）。
+        .AddMeter(DocumentService.Features.Documents.ContentAbac.ContentAbacGate.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
 // NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0402]] (#1255):
 // east-west gRPC の h2c リスナ（`Grpc:Port`。未設定なら立てない）。
@@ -243,6 +245,26 @@ else
     builder.Services.AddScoped<DocumentService.Domain.Ports.IDocumentReadScopeSource,
         DocumentService.Infrastructure.ExternalServices.UnavailableDocumentReadScopeSource>();
 }
+// FR-05, FR-19, NFR-09, 計画 ADR-0121 決定 2・4, [[IADR-0481]] (#1665): 内容の ABAC の門。
+// `ContentAbac:Mode`（既定 Off。値域外はここで落ちる）が On で、かつ所有者の読み取りのポリシーを認可サービスで
+// 確かめたときだけ開く。宛先が未構成なら「数えられない」縮退を登録する（門は開かない）。
+// 🔴 本件の時点で門を読む判定は無い（内容の ABAC の本体が読む）。
+builder.Services.AddSingleton(
+    DocumentService.Features.Documents.ContentAbac.ContentAbacOptions.FromConfiguration(builder.Configuration));
+builder.Services.AddSingleton<DocumentService.Features.Documents.ContentAbac.ContentAbacGate>();
+builder.Services.AddSingleton<DocumentService.Features.Documents.ContentAbac.IContentAbacGate>(
+    sp => sp.GetRequiredService<DocumentService.Features.Documents.ContentAbac.ContentAbacGate>());
+if (!string.IsNullOrWhiteSpace(builder.Configuration[AuthzScopeGrpcClient.AddressKey]))
+{
+    builder.Services.AddScoped<DocumentService.Domain.Ports.IOwnerReadPolicyStatusSource,
+        DocumentService.Infrastructure.ExternalServices.GrpcOwnerReadPolicyStatusSource>();
+}
+else
+{
+    builder.Services.AddScoped<DocumentService.Domain.Ports.IOwnerReadPolicyStatusSource,
+        DocumentService.Infrastructure.ExternalServices.UnavailableOwnerReadPolicyStatusSource>();
+}
+builder.Services.AddHostedService<DocumentService.Features.Documents.ContentAbac.ContentAbacGateHostedService>();
 builder.Services.AddScoped<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceService>();
 builder.Services.AddHostedService<
     DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService>();

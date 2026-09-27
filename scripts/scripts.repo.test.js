@@ -12009,6 +12009,54 @@ exit $RC
     });
   }
 
+  // --- #1665: 所有者の読み取りのポリシーの消失の警報は、C# のゲージ名から導いた Prometheus 名を 4 か所で見る -----------
+  //
+  // 名前がずれると式は構文として正当なまま**永久に空ベクタ**になり、ポリシーが消えても鳴らない（#1110・#1111 と同型）。
+  // 「無い」（`< 1` / Grafana は `lt 1`）と「見ていない」（`absent()`）の 2 本が、同じゲージを見ていることを確かめる。
+  {
+    const fsO = require('fs');
+    const pathO = require('path');
+    const ROOT_O = pathO.resolve(__dirname, '..');
+    const METRICS_CS = 'src/platform/backend/Services/AuthorizationService/Features/Authz/OwnerReadPolicyGuard/OwnerReadPolicyCheck.cs';
+    const RULE_FILES_O = [
+      'deploy/prometheus/alerts.yml',
+      'deploy/local/observability/prometheus.yaml',
+      'deploy/grafana/provisioning/alerting/slo-alerts.yaml',
+      'deploy/local/observability/grafana.yaml',
+    ];
+    const readO = (rel) => fsO.readFileSync(pathO.join(ROOT_O, rel), 'utf8');
+    // ルールの定義行から次のルールの定義行までを切り出す（説明文の同名に引きずられない）。
+    const ruleBody = (text, name) => {
+      const def = new RegExp(`(?:alert|title):\\s*${name}\\s*$`, 'm').exec(text);
+      if (!def) return null;
+      const rest = text.slice(def.index + def[0].length);
+      const next = /(?:- alert|title):\s*\w+\s*$/m.exec(rest);
+      return next ? rest.slice(0, next.index) : rest;
+    };
+
+    ok('#1665: 所有者の読み取りのポリシーの警報 2 本が、C# のゲージ名から導いた Prometheus 名を 4 か所で見る（実データ）', () => {
+      const cs = readO(METRICS_CS);
+      const m = /ActiveGaugeName\s*=\s*"([^"]+)"/.exec(cs);
+      assert.ok(m, `${METRICS_CS} に ActiveGaugeName が見つからない（走査が壊れている）`);
+      // OTel → prometheusremotewrite: `.` は `_` へ。単位 `{policy}` は注記で接尾辞にならず、ゲージに `_total` は付かない。
+      const promName = m[1].replace(/\./g, '_');
+      assert.strictEqual(promName, 'authz_owner_read_policy_active');
+      for (const rel of RULE_FILES_O) {
+        const text = readO(rel);
+        const missing = ruleBody(text, 'OwnerReadPolicyMissing');
+        assert.ok(missing, `${rel} に OwnerReadPolicyMissing のルール定義が無い`);
+        assert.ok(missing.includes(promName), `${rel} の OwnerReadPolicyMissing が ${promName} を見ていない`);
+        assert.ok(!missing.includes('absent('), `${rel} の OwnerReadPolicyMissing が absent() になっている（「無い」と「見ていない」を混ぜない）`);
+        // 「1 未満で鳴る」: Prometheus 版は式の `< 1`、Grafana 版は評価器の `lt 1`。
+        assert.ok(/<\s*1\b/.test(missing) || /type:\s*lt,\s*params:\s*\[1\]/.test(missing),
+          `${rel} の OwnerReadPolicyMissing が「1 未満」で鳴らない`);
+        const absent = ruleBody(text, 'OwnerReadPolicyCheckSeriesAbsent');
+        assert.ok(absent, `${rel} に OwnerReadPolicyCheckSeriesAbsent のルール定義が無い`);
+        assert.ok(absent.includes(`absent(${promName})`), `${rel} の OwnerReadPolicyCheckSeriesAbsent が absent(${promName}) でない`);
+      }
+    });
+  }
+
   // --- #1550: 稼働クラスタへ当たる scripts は、明示の指定（--live か LIVE=1）が無ければ何もせずに終わる ------------
   //
   // 事故（2026-09-26）: ワークフローの `node scripts/...` の行をまとめて実行した作業エージェントが、稼働中の Keycloak へ

@@ -469,14 +469,14 @@ data:
     #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
     #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、
     #      式の絞り込みの後に残る値で評価器が真になり得る（#1577）、まで。
-    #      **配備時に `/api/v1/provisioning/alert-rules` が 20 件返すことを確かめること。**
+    #      **配備時に `/api/v1/provisioning/alert-rules` が 22 件返すことを確かめること。**
     #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
     #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
     #      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 6
     #      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2
-    #      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ department-sync 1 ＝ **20**
+    #      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ department-sync 1 ／ owner-read-policy 2 ＝ **22**
     #      （［2026-09-26 / #1577］内訳が #1573 の department-sync 1 を取りこぼして 19 のままだったので足した）
-    #      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20 へ数え直した）。
+    #      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20、#1665 で 20 → 22 へ数え直した）。
     #
     # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
     #
@@ -1019,6 +1019,71 @@ data:
                   refId: A
                   instant: true
                   expr: '(sum(increase(department_sync_users_total{department_sync_outcome="failed"}[1h])) or vector(0)) + (sum(increase(department_sync_cycles_total{department_sync_outcome=~"aborted|all_skipped_changed"}[1h])) or vector(0)) + (sum(increase(department_sync_enumeration_incomplete_total[1h])) or vector(0)) > 0'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
+      # FR-05, FR-19, NFR-09, ADR-0121 決定 2・4, IADR-0481 (#1665): 所有者の読み取りのポリシーが消えたこと（**1 以上が正常**）。
+      # 🔴 **この群の OwnerReadPolicyMissing は Prometheus 版と式・閾値の置き方が違う**（#1577。冒頭の注意）。
+      #   生の値 `authz_owner_read_policy_active` を **`lt 1`（値 0 で真）** で比べる（OtelCollectorDown と同じ形）。
+      #   **`noDataState: OK`** —— 系列の不在は OwnerReadPolicyCheckSeriesAbsent が拾う（同じ不在で 2 通鳴らさない）。
+      #   理由の正本は `deploy/prometheus/alerts.yml` の同名グループの前書きである。
+      - orgId: 1
+        name: owner-read-policy
+        folder: SLO
+        interval: 1m
+        rules:
+          - uid: owner-read-policy-missing
+            title: OwnerReadPolicyMissing
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: critical
+            annotations:
+              summary: "所有者の読み取りのポリシーが無い（所有者が自分の文書を読めない）"
+              description: "認可サービスの定期の検査（既定 1 分ごと）で、所有者の読み取りのポリシー（action=read・利用者の条件なし・文書の条件は owner が利用者自身に一致することだけ）が有効な状態で 1 件も無い（authz_owner_read_policy_active）。削除・無効化・形の変更のいずれかである。所有者は共有していない自分の個人資料を開けず（404）、内容の ABAC を有効にした後は機械クライアントが自分の文書を読めなくなる。誤りとしては表に出ない。運用仕様書「所有者の読み取りのポリシーの投入」の手順で投入し直す（削除そのものは止めていない）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'authz_owner_read_policy_active'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: lt, params: [1] }
+          - uid: owner-read-policy-check-series-absent
+            title: OwnerReadPolicyCheckSeriesAbsent
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "所有者の読み取りのポリシーを見ていない: authz_owner_read_policy_active の系列が存在しない"
+              description: "認可サービスの所有者の読み取りのポリシーの検査が値を出していない。OwnerReadPolicyMissing は空ベクタになり、ポリシーが消えても発火しない。認可サービスの停止、検査の失敗の継続（ポリシーの表を読めない。authz_owner_read_policy_checks_total{authz_owner_read_policy_outcome=\"failed\"} とエラーログ）、または収集の欠落を疑う。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'absent(authz_owner_read_policy_active)'
               - refId: C
                 datasourceUid: __expr__
                 model:
