@@ -80,16 +80,29 @@ public class AuthzScopeHttpClientTests
     }
 
     // 🔴 T-04: **呼び出し元のキャンセルだけは伝播する**（deny へ畳まない）。
+    // ［#1630］取り消しは **実物のトークン取得（`ClientCredentialsServiceTokenProvider`）が表す形** —— 受け取った token を持つ
+    // `TaskCanceledException`（`SemaphoreSlim.WaitAsync` も HttpClient もこの型で表す）—— で起こす。素の `OperationCanceledException` を
+    // 注入していた間は、絞り込みを「`TaskCanceledException` なら時間切れ（deny へ畳む）」と**型で**判定する変異
+    // （`|| ex is TaskCanceledException`）が生き残った。
+    // 🔴 型の表明（`OperationCanceledException`）だけではその変異を殺せない —— 変異が畳んだ `HttpRequestException` を、呼び出し元の
+    // token が立っているので HttpClient が取り消しへ包み直す（実測）。**外へ出たのがトークン取得の取り消しそのもの（HttpClient が包む
+    // なら、その内側）であること**で測る。
     [Fact]
     public async Task The_callers_cancellation_still_propagates()
     {
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
-        using var sp = Provider(new ThrowingToken(new OperationCanceledException(cts.Token)), new SpyHandler());
+        var token = new CancelledToken();
+        var spy = new SpyHandler();
+        using var sp = Provider(token, spy);
 
         var act = async () => await ClientOf(sp).PostAsync("/authz/scope", new StringContent("{}"), cts.Token);
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        var thrown = (await act.Should().ThrowAsync<OperationCanceledException>()).Which;
+        token.Thrown.Should().NotBeNull("前提: 取り消しはトークン取得まで届いている");
+        (thrown == token.Thrown || thrown.InnerException == token.Thrown).Should().BeTrue(
+            "トークン取得の取り消しを deny（HttpRequestException）へ畳まず、そのまま（HttpClient が包むなら内側に）伝えている");
+        spy.Called.Should().BeFalse("取り消されたまま呼びに行かない");
     }
 
     private sealed class FixedToken(string token) : IServiceTokenProvider
@@ -100,6 +113,19 @@ public class AuthzScopeHttpClientTests
     private sealed class ThrowingToken(Exception ex) : IServiceTokenProvider
     {
         public ValueTask<string> GetTokenAsync(CancellationToken ct) => throw ex;
+    }
+
+    // 取り消された ct を受け取ったら、その ct を持つ `TaskCanceledException` を投げる（実物のトークン取得の形。#1630）。
+    private sealed class CancelledToken : IServiceTokenProvider
+    {
+        public TaskCanceledException? Thrown { get; private set; }
+
+        public ValueTask<string> GetTokenAsync(CancellationToken ct)
+        {
+            if (!ct.IsCancellationRequested)
+                throw new InvalidOperationException("呼び出し元の取り消しが ct に届いていない（試験の前提の誤り）");
+            throw Thrown = new TaskCanceledException("A task was canceled.", null, ct);
+        }
     }
 
     private sealed class SpyHandler : HttpMessageHandler
