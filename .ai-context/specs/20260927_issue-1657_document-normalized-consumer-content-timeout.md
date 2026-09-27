@@ -63,7 +63,7 @@ issue: "#1657"
   - 残る制約は「1 回の配信の再試行の連鎖がブローカの `consumer_timeout` に収まること」（IADR-0478 決定 7。MassTransit の `UseMessageRetry` も同じ配信の中で回る）。
     `ConsumerHandlerTimeouts.EnsureRetryChainFits` を、1 試行の上限として**本受け口が期限で抑えている部分**（本文の取得）で呼ぶ。試行上限と待ちの合計は MassTransit 側の単一情報源（`MassTransitExtensions.MaxAttempts`・新設の `TotalRetryCooldown`）から取る。
   - 既定: 4 × 20 ＋ 42 ＝ 122 秒 ＜ 1800 秒。本文の期限を 440 秒以上にすると 4 × 440 ＋ 42 ＝ 1802 秒で止まる（境界の試験に使う）。
-  - **DB と発行は式に入れない**（IADR-0478「残るもの」と同じ。DB は Npgsql のコマンド期限、発行は射程外）。既定の構成では 1 試行あたり 419 秒（(1800 − 42) ÷ 4 − 20）が DB と発行の余白として残る。
+  - **DB と発行は式に入れない**（IADR-0478「残るもの」と同じ。DB は Npgsql のコマンド期限、発行は射程外）。既定の構成では 1 試行あたり 419.5 秒（(1800 − 42) ÷ 4 − 20）が DB と発行の余白として残る。
 - 試験の器: `Consume(ConsumeContext)` の本体を `internal Task ConsumeAsync(DocumentNormalized ev, CancellationToken ct)` へ切り出し、`ConsumeContext` を組み立てずに縮めた受け口の ct で呼ぶ（既存の `KnownTagsAsync` と同じ理由）。
   `Consume` は `ConsumeAsync(context.Message, context.CancellationToken)` を呼ぶだけにする。
 - 🔴 時間依存の試験は、縮めた受け口の ct（30 秒）と呼び出しごとの期限（1 秒）の比を 30 倍にする（#1650 の監査 B2 と同じ）。

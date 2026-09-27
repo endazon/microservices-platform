@@ -168,7 +168,7 @@ WolverineFx 6.24.4 は受け口へ渡す ct に 1 通ごとの実行期限（`Ha
   同じ配信の中で回り ack は最後の試行の後に返る。`EnsureRetryChainFits` を、1 試行の上限として本受け口が期限で抑えている部分（本文の取得）で呼ぶ。
   試行上限と待ちの合計は MassTransit 側の単一情報源（`MassTransitExtensions.MaxAttempts`・本追記で足した `TotalRetryCooldown`）から取る。
   本文の期限を 440 秒以上にすると 1802 秒となり、起動を止める。
-- DB（EF Core）と `DocumentUpdated` の発行（Wolverine）は「残るもの」と同じく式に入れない。既定では 1 試行あたり 419 秒（(1800 − 42) ÷ 4 − 20）がその余白として残る。
+- DB（EF Core）と `DocumentUpdated` の発行（Wolverine）は「残るもの」と同じく式に入れない。既定では 1 試行あたり 419.5 秒（(1800 − 42) ÷ 4 − 20）がその余白として残る。
 - 構成キーの節は `DocumentCatalog` とした。DocumentService の構成節は機能ごとに `Document` を前置する（`DocumentRead` / `DocumentTagWrite`）。項目名は他サービスの同じ期限
   （`Ingestion:` / `Graph:` / `Wiki:` の `ContentReadTimeoutSeconds`）に揃えた。値の理由は取り込みの本文と同じである（同じストレージから同じ正規化本文を読む）。
 - 🔴 **時間切れは本文指紋の「不明（null）」へ畳まない。** null はストレージ縮退（`CanResolve=false`）の意味で、台帳を指紋なしで更新して成功で終える。

@@ -99,6 +99,48 @@ public class CatalogTimeoutTests
         probe.Timeouts.Should().BeEmpty("取り消しは時間切れとして数えない");
     }
 
+    // ［#1657 監査 N1］`Consume` は MassTransit の `ConsumeContext` の ct（バスの停止）を本体へ渡す ——
+    // 渡さない（`CancellationToken.None` 等）と、バスの停止が止まったストレージを切れず、本文の期限まで待ってから時間切れに化ける。
+    [Fact]
+    public async Task Consumeは受け口の文脈のctを本体へ渡す()
+    {
+        await using var db = NewDb($"catalog-context-{Guid.NewGuid():N}");
+        var calls = new ConsumerCallTimeouts(
+            new ConsumerTimeoutMetrics(new TestMeterFactory()), NullLogger<ConsumerCallTimeouts>.Instance);
+        var consumer = Build(db, new RecordingUpdatedPublisher(), HandlerBudget, calls);
+        using var bus = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        bus.CancelAfter(TimeSpan.FromMilliseconds(200));
+        var context = ContextProxy.For(Event(Guid.NewGuid()), bus.Token);
+
+        var act = () => consumer.Consume(context);
+
+        (await act.Should().ThrowAsync<OperationCanceledException>()).Which
+            .Should().NotBeAssignableTo<TimeoutException>("文脈の ct が立った取り消しであって、本文の期限（30 秒）の時間切れではない");
+    }
+
+    // `ConsumeContext<T>` の最小の代役（`Message` と `CancellationToken` だけを答え、他は使われたら落ちる）。
+    public class ContextProxy : System.Reflection.DispatchProxy
+    {
+        private DocumentNormalized? _message;
+        private CancellationToken _token;
+
+        public static MassTransit.ConsumeContext<DocumentNormalized> For(DocumentNormalized message, CancellationToken token)
+        {
+            var proxy = Create<MassTransit.ConsumeContext<DocumentNormalized>, ContextProxy>();
+            var self = (ContextProxy)(object)proxy;
+            self._message = message;
+            self._token = token;
+            return proxy;
+        }
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args) => targetMethod?.Name switch
+        {
+            "get_Message" => _message,
+            "get_CancellationToken" => _token,
+            _ => throw new NotSupportedException(targetMethod?.Name),
+        };
+    }
+
     private static IConfiguration Config(string? contentSeconds, string? brokerSeconds = null) => new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>
         {
