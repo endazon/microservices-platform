@@ -113,6 +113,11 @@ var graphExpansion = builder.Configuration
     ?? new GraphExpansionOptions();
 builder.Services.AddSingleton(graphExpansion.Normalize());
 
+// FR-19, NFR-09, 計画 ADR-0086 決定 1, ADR-0119 決定 3, [[IADR-0426]] 追記 1 (#1635): gRPC `DocumentSearch/Search` の
+// 本文の利用者文脈を信じる呼び出し元（クライアント識別子の許可集合）。**未構成なら `aianalysis-service` だけ。構成したら置き換える。**
+builder.Services.Configure<DocumentSearchRelayOptions>(
+    builder.Configuration.GetSection(DocumentSearchRelayOptions.SectionName));
+
 // FR-03, FR-04, FR-05, NFR-09, UC-01, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034 決定 1,
 // ADR-0075, [[IADR-0044]], [[IADR-0379]] 決定 5, [[IADR-0410]], [[IADR-0416]] (#1339):
 // 🔴 **本サービスが自分で ABAC 許可スコープを解決する。**
