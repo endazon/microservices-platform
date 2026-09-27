@@ -185,6 +185,9 @@ package をまたいで型を共有しない（[[IADR-0379]] 決定 1）ので�
      .NET の配列の束縛は初期値に追記するため、プロパティの既定を null にして読み出し側で既定を解決する）。空白だけの要素は捨て、
      1 つも残らなければ誰も信じない（fail-closed）。`MachinePrincipal` の「一覧を構成に持たない」とは向きが逆である（こちらは許可の集合で、
      外せば狭くなる。`SyntheticMonitoringOptions.Subjects` と同じ形）。
+     照合は**全体一致**（`bff-x`・`bffx`・`xbff` は信じない）で、クライアント識別は `azp` が正（利用者名が `service-account-bff` でも
+     `azp` が別なら信じない）。配列でなく 1 つの値（`DocumentRead__TrustedUserContextClients=a,b`）は束縛されず既定へ静かに戻るため、
+     **起動時に例外で止める**（`ThrowIfScalar`。監査の F1・F2）。
   3. **許可集合に無い呼び出し元が `user` を付けたら `PERMISSION_DENIED`**（利用者識別子が空かどうかより先に判定する）。拒否はクライアント識別だけを
      警告ログに残す（基数は realm の機密クライアント数で閉じる）。`user` を付けない呼び出し（呼び出し元サービス自身＝機械の主体）は従来どおり
      全ての `ServiceCaller` に開いている。

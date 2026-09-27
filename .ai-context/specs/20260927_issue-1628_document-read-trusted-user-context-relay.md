@@ -146,3 +146,12 @@ ADR-0086 決定 1 との関係: 決定 1 は「利用者文脈を本文で運ぶ
   （BFF 以外 4 主体の Theory・`azpがbffでも人のトークンは利用者文脈を運べない`・`信頼しない呼び出し元の空の利用者文脈はPERMISSION_DENIED`〔InvalidArgument が返った〕）。
 - 変異 2（`TrustsUserContextFrom` の `IsMachine` を落とす）: 2 件が落ちた（人のトークンの統合試験と単体試験）。
 - どちらも戻し、`grep "false &&"` で残りが無いことを確かめた。
+
+［2026-09-27 追記 / #1628］監査の指摘への対応（PR #1631 の追いコミット）:
+
+- F1: 前方一致の変異（`EffectiveClients.Any(c => clientId.StartsWith(c))`）が既存 14 件をすり抜けた。`bff-x`・`bffx`・`xbff` と、
+  利用者名 `service-account-bff`・`azp` 別の主体を信じない否定の試験を足した。同じ変異で `bffx`・`bff-x` の 2 件が落ちることを確かめ、
+  `git show HEAD:<path> > <path>` で戻した。
+- F2: 1 つの値（カンマ区切り）の構成は配列へ束縛されず既定の `bff` へ戻る（試験で前提を実測）。起動時に例外で止める `ThrowIfScalar` を足した。
+- develop（#1632・#1633）を merge commit で取り込んだ。衝突は docs 2 件の trace ブロック（キーごとに和集合）と T-51 / T-60〜63 の隣接行（両方残す）、
+  test-spec-coverage の床（develop 版から `--update` で再生成）。
