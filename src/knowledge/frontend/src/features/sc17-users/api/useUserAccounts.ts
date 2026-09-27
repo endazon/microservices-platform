@@ -1,22 +1,26 @@
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  getBffUserAdminGetUserDepartmentQueryKey,
   getBffUserAdminListAssignableRolesQueryKey,
   getBffUserAdminListUsersQueryKey,
   useBffUserAdminDisableUser,
   useBffUserAdminEnableUser,
+  useBffUserAdminGetUserDepartment,
   useBffUserAdminListAssignableRoles,
   useBffUserAdminListUsers,
   useBffUserAdminReplaceUserAttributes,
+  useBffUserAdminReplaceUserDepartment,
   useBffUserAdminReplaceUserRoles,
 } from '@foundation/api/generated/user-admin/user-admin';
 import {
   getBffAuthzListAttributesQueryKey,
   useBffAuthzListAttributes,
 } from '@foundation/api/generated/authorization/authorization';
-import { okArray } from '@foundation/api/orvalSelect';
+import { okArray, okData } from '@foundation/api/orvalSelect';
 import type {
   AttributeDefinitionDto,
   PlatformUserDto,
+  UserDepartmentDto,
 } from '@foundation/api/generated/bff.schemas';
 
 // SC-17, UC-05, FR-05, FR-09: 利用者アカウント管理の読み書き（/bff/admin/users）。
@@ -66,6 +70,24 @@ export function useAbacAttributeDictionary() {
 }
 
 /**
+ * 利用者の部門（#1610・計画 ADR-0116 決定 1）: 部門グループの所属・属性・部門欄の選択肢。
+ *
+ * 🔴 **部門欄の選択肢は realm の部門グループのコード**（`choices`）であり、画面へ焼き込まない。
+ * 部門の正本は部門グループであり、属性（`departmentAttribute`）は部門の同期が追いつくまで違い得る。
+ * 編集を開いた利用者だけを引く（`userId` が null の間は引かない）。
+ */
+export function useUserDepartment(userId: string | null) {
+  const id = userId ?? '';
+  return useBffUserAdminGetUserDepartment<UserDepartmentDto, unknown>(id, {
+    query: {
+      queryKey: getBffUserAdminGetUserDepartmentQueryKey(id),
+      select: okData,
+      enabled: id.length > 0,
+    },
+  });
+}
+
+/**
  * 割当の保存と、アカウントの無効化・再有効化。
  *
  * 無効化は**全セッション失効を伴う**（後段が 1 つの操作として実行する）。画面側も一覧を
@@ -78,8 +100,20 @@ export function useUserAccountActions() {
 
   const replaceRoles = useBffUserAdminReplaceUserRoles<unknown>(onSuccess);
   const replaceAttributes = useBffUserAdminReplaceUserAttributes<unknown>(onSuccess);
+  // #1610: 部門の変更（部門グループの所属の変更）。成功しても失敗しても、その人の部門を引き直す
+  // （途中の失敗で補償した後の所属も画面に出す）。一覧（属性）も引き直す。
+  const replaceDepartment = useBffUserAdminReplaceUserDepartment<unknown>({
+    mutation: {
+      onSettled: (_data, _error, variables) => {
+        invalidate();
+        void queryClient.invalidateQueries({
+          queryKey: getBffUserAdminGetUserDepartmentQueryKey(variables.userId),
+        });
+      },
+    },
+  });
   const disable = useBffUserAdminDisableUser<unknown>(onSuccess);
   const enable = useBffUserAdminEnableUser<unknown>(onSuccess);
 
-  return { replaceRoles, replaceAttributes, disable, enable };
+  return { replaceRoles, replaceAttributes, replaceDepartment, disable, enable };
 }

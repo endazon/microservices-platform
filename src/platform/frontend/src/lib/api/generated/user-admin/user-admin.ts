@@ -25,7 +25,9 @@ import type {
 import type {
   PlatformUserDto,
   ReplaceUserAttributesRequest,
+  ReplaceUserDepartmentRequest,
   ReplaceUserRolesRequest,
+  UserDepartmentDto,
   ValidationProblemDetails
 } from '../bff.schemas';
 
@@ -315,9 +317,13 @@ export const getBffUserAdminReplaceUserAttributesUrl = (userId: string,) => {
 /**
  * 差し替えである（部分更新ではない）。送らなかったキーは消える。
  *
- * **部門と機密区分上限は必須、タグは任意**である。値は属性辞書（利用者スコープ）に
+ * **機密区分上限は必須、タグは任意**である。値は属性辞書（利用者スコープ）に
  * 定義済みのものだけを受け付け、**辞書に無いキーも拒否する** —— 受け付けて無視すると
  * 「割り当てたのに認可が変わらない」が黙って作れるためである。
+ *
+ * 🔴 **部門（`department`）は含められない（400）。** 部門は部門グループの所属で変える
+ * （`PUT /bff/admin/users/{userId}/department`。ADR-0116 決定 1）。差し替えでも現在の部門は消えない
+ * （属性 `department` は部門の同期が部門グループへ追随させる）。
  * @summary FR-05, FR-09, SC-17: 利用者の ABAC 属性の割当（差し替え）
  */
 export const bffUserAdminReplaceUserAttributes = async (userId: string,
@@ -379,6 +385,249 @@ export const useBffUserAdminReplaceUserAttributes = <TError = ValidationProblemD
         TContext
       > => {
       return useMutation(getBffUserAdminReplaceUserAttributesMutationOptions(options));
+    }
+    export type bffUserAdminGetUserDepartmentResponse200 = {
+  data: UserDepartmentDto
+  status: 200
+}
+
+export type bffUserAdminGetUserDepartmentResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffUserAdminGetUserDepartmentResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffUserAdminGetUserDepartmentResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffUserAdminGetUserDepartmentResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffUserAdminGetUserDepartmentResponse503 = {
+  data: void
+  status: 503
+}
+
+export type bffUserAdminGetUserDepartmentResponseSuccess = (bffUserAdminGetUserDepartmentResponse200) & {
+  headers: Headers;
+};
+export type bffUserAdminGetUserDepartmentResponseError = (bffUserAdminGetUserDepartmentResponse401 | bffUserAdminGetUserDepartmentResponse403 | bffUserAdminGetUserDepartmentResponse404 | bffUserAdminGetUserDepartmentResponse502 | bffUserAdminGetUserDepartmentResponse503) & {
+  headers: Headers;
+};
+
+export type bffUserAdminGetUserDepartmentResponse = (bffUserAdminGetUserDepartmentResponseSuccess | bffUserAdminGetUserDepartmentResponseError)
+
+export const getBffUserAdminGetUserDepartmentUrl = (userId: string,) => {
+
+
+
+
+  return `/bff/admin/users/${userId}/department`
+}
+
+/**
+ * `departmentGroups` は利用者が直接属する部門グループのコード（入れ子は上位のコードに畳む）、
+ * `departmentAttribute` は ABAC が読む利用者属性（部門の同期が追いつくまでグループと違い得る）、
+ * `choices` は realm の部門グループのコード（**画面はここから選択肢を作る**。焼き込まない）。
+ * realm を読めないときは選択肢を推測で出さず 503 を返す。
+ * @summary FR-05, FR-09, SC-17: 利用者の部門（部門グループの所属・属性・部門欄の選択肢）
+ */
+export const bffUserAdminGetUserDepartment = async (userId: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffUserAdminGetUserDepartmentResponse> => {
+
+  return bffFetch<bffUserAdminGetUserDepartmentResponse>(getBffUserAdminGetUserDepartmentUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffUserAdminGetUserDepartmentQueryKey = (userId: string,) => {
+    return [
+    `/bff/admin/users/${userId}/department`
+    ] as const;
+    }
+
+
+export const getBffUserAdminGetUserDepartmentQueryOptions = <TData = Awaited<ReturnType<typeof bffUserAdminGetUserDepartment>>, TError = void>(userId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffUserAdminGetUserDepartment>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffUserAdminGetUserDepartmentQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffUserAdminGetUserDepartment>>> = ({ signal }) => bffUserAdminGetUserDepartment(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: userId !== null && userId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffUserAdminGetUserDepartment>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffUserAdminGetUserDepartmentQueryResult = NonNullable<Awaited<ReturnType<typeof bffUserAdminGetUserDepartment>>>
+export type BffUserAdminGetUserDepartmentQueryError = void
+
+
+/**
+ * @summary FR-05, FR-09, SC-17: 利用者の部門（部門グループの所属・属性・部門欄の選択肢）
+ */
+
+export function useBffUserAdminGetUserDepartment<TData = Awaited<ReturnType<typeof bffUserAdminGetUserDepartment>>, TError = void>(
+ userId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffUserAdminGetUserDepartment>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffUserAdminGetUserDepartmentQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffUserAdminReplaceUserDepartmentResponse200 = {
+  data: UserDepartmentDto
+  status: 200
+}
+
+export type bffUserAdminReplaceUserDepartmentResponse400 = {
+  data: ValidationProblemDetails
+  status: 400
+}
+
+export type bffUserAdminReplaceUserDepartmentResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffUserAdminReplaceUserDepartmentResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffUserAdminReplaceUserDepartmentResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffUserAdminReplaceUserDepartmentResponse409 = {
+  data: void
+  status: 409
+}
+
+export type bffUserAdminReplaceUserDepartmentResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffUserAdminReplaceUserDepartmentResponse503 = {
+  data: void
+  status: 503
+}
+
+export type bffUserAdminReplaceUserDepartmentResponseSuccess = (bffUserAdminReplaceUserDepartmentResponse200) & {
+  headers: Headers;
+};
+export type bffUserAdminReplaceUserDepartmentResponseError = (bffUserAdminReplaceUserDepartmentResponse400 | bffUserAdminReplaceUserDepartmentResponse401 | bffUserAdminReplaceUserDepartmentResponse403 | bffUserAdminReplaceUserDepartmentResponse404 | bffUserAdminReplaceUserDepartmentResponse409 | bffUserAdminReplaceUserDepartmentResponse502 | bffUserAdminReplaceUserDepartmentResponse503) & {
+  headers: Headers;
+};
+
+export type bffUserAdminReplaceUserDepartmentResponse = (bffUserAdminReplaceUserDepartmentResponseSuccess | bffUserAdminReplaceUserDepartmentResponseError)
+
+export const getBffUserAdminReplaceUserDepartmentUrl = (userId: string,) => {
+
+
+
+
+  return `/bff/admin/users/${userId}/department`
+}
+
+/**
+ * 選んだ部門グループへ入れ、ほかの部門グループから外す（**先に入れてから外す**）。`department` が
+ * null・空なら「部門なし」（すべての部門グループから外す）。いまの状態と同じなら何も書かない。
+ * 🔴 **2 個以上の部門グループに属する利用者は変えない**（409）。途中で失敗したときは元に戻すことを試み、
+ * 結果（戻せた／戻せなかった・いまの所属）を 502 の detail で返す（**部門グループ 0 個にはしない**）。
+ * @summary FR-05, FR-09, SC-17: 利用者の部門の変更（部門グループの所属の変更）
+ */
+export const bffUserAdminReplaceUserDepartment = async (userId: string,
+    replaceUserDepartmentRequest: ReplaceUserDepartmentRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffUserAdminReplaceUserDepartmentResponse> => {
+
+  return bffFetch<bffUserAdminReplaceUserDepartmentResponse>(getBffUserAdminReplaceUserDepartmentUrl(userId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(replaceUserDepartmentRequest)
+  }
+);}
+
+
+
+
+
+export const getBffUserAdminReplaceUserDepartmentMutationOptions = <TError = ValidationProblemDetails | void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffUserAdminReplaceUserDepartment>>, TError,{userId: string;data: ReplaceUserDepartmentRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffUserAdminReplaceUserDepartment>>, TError,{userId: string;data: ReplaceUserDepartmentRequest}, TContext> => {
+
+const mutationKey = ['bffUserAdminReplaceUserDepartment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffUserAdminReplaceUserDepartment>>, {userId: string;data: ReplaceUserDepartmentRequest}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  bffUserAdminReplaceUserDepartment(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffUserAdminReplaceUserDepartmentMutationResult = NonNullable<Awaited<ReturnType<typeof bffUserAdminReplaceUserDepartment>>>
+    export type BffUserAdminReplaceUserDepartmentMutationBody = ReplaceUserDepartmentRequest
+    export type BffUserAdminReplaceUserDepartmentMutationError = ValidationProblemDetails | void
+
+    /**
+ * @summary FR-05, FR-09, SC-17: 利用者の部門の変更（部門グループの所属の変更）
+ */
+export const useBffUserAdminReplaceUserDepartment = <TError = ValidationProblemDetails | void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffUserAdminReplaceUserDepartment>>, TError,{userId: string;data: ReplaceUserDepartmentRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffUserAdminReplaceUserDepartment>>,
+        TError,
+        {userId: string;data: ReplaceUserDepartmentRequest},
+        TContext
+      > => {
+      return useMutation(getBffUserAdminReplaceUserDepartmentMutationOptions(options));
     }
     export type bffUserAdminReplaceUserRolesResponse200 = {
   data: PlatformUserDto

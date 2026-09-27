@@ -6,7 +6,11 @@ import type {
 import {
   REQUIRED_ATTRIBUTE_KEYS,
   assignableAttributes,
+  currentDepartment,
+  departmentChangeToSend,
+  departmentState,
   departmentsInUse,
+  withoutDepartment,
   filterUsers,
   optionalAttributes,
   requiredAttributes,
@@ -91,19 +95,62 @@ const users: PlatformUserDto[] = [
 ];
 
 describe('userAccountVocabulary (SC-17)', () => {
-  it('offers only user-scoped dictionary entries that have allowed values', () => {
-    expect(assignableAttributes(definitions).map((d) => d.key)).toEqual([
-      'department',
-      'clearance',
-      'tags',
-    ]);
+  // #1610・計画 ADR-0116 決定 1: 🔴 部門は属性の割当として出さない（部門欄は部門グループの所属を別に描く）。
+  it('offers only user-scoped dictionary entries that have allowed values, never the department', () => {
+    expect(assignableAttributes(definitions).map((d) => d.key)).toEqual(['clearance', 'tags']);
   });
 
-  // 計画の「部門・機密区分上限は必須／タグは任意」を、必須集合とその補集合で表す。
-  it('splits the dictionary into the required pair and everything else', () => {
-    expect(requiredAttributes(definitions).map((d) => d.key)).toEqual(['department', 'clearance']);
+  // 計画の「機密区分上限は必須／タグは任意」を、必須集合とその補集合で表す（#1610 で部門は必須から外れた）。
+  it('splits the dictionary into the required clearance and everything else', () => {
+    expect(requiredAttributes(definitions).map((d) => d.key)).toEqual(['clearance']);
     expect(optionalAttributes(definitions).map((d) => d.key)).toEqual(['tags']);
-    expect([...REQUIRED_ATTRIBUTE_KEYS]).toEqual(['department', 'clearance']);
+    expect([...REQUIRED_ATTRIBUTE_KEYS]).toEqual(['clearance']);
+  });
+
+  // T-64（#1610）: 🔴 属性の差し替えの下書きから部門を落とす（大小文字違いも）。他の属性は残す（陽性対照）。
+  it('drops the department from an attribute draft', () => {
+    expect(
+      withoutDepartment({
+        department: 'sales',
+        Department: 'hr',
+        clearance: 'internal',
+        tags: '経理',
+      }),
+    ).toEqual({ clearance: 'internal', tags: '経理' });
+  });
+
+  // T-67（#1610）: 部門欄の状態。属性がグループに追随済み／未反映／複数の部門グループ。
+  it('reads the department state from the membership and the attribute', () => {
+    const dto = (departmentGroups: string[], departmentAttribute: string | null) => ({
+      departmentGroups,
+      departmentAttribute,
+      choices: ['engineering', 'hr', 'sales'],
+    });
+    expect(departmentState(dto(['sales'], 'sales'))).toBe('synced');
+    expect(departmentState(dto([], null))).toBe('synced');
+    expect(departmentState(dto(['sales'], 'engineering'))).toBe('pending');
+    expect(departmentState(dto([], 'engineering'))).toBe('pending');
+    expect(departmentState(dto(['hr', 'sales'], 'hr'))).toBe('multiple');
+
+    expect(currentDepartment(dto(['sales'], null))).toBe('sales');
+    expect(currentDepartment(dto([], null))).toBe('');
+    expect(currentDepartment(dto(['hr', 'sales'], null))).toBeNull();
+  });
+
+  // T-62（#1610）: 部門の変更は、いまの所属から変えたときだけ送る。部門なしは null。触っていない・複数所属は送らない。
+  it('sends a department change only when the draft differs from the membership', () => {
+    const one = {
+      departmentGroups: ['engineering'],
+      departmentAttribute: 'engineering',
+      choices: [],
+    };
+    const two = { departmentGroups: ['hr', 'sales'], departmentAttribute: null, choices: [] };
+    expect(departmentChangeToSend(one, 'sales')).toBe('sales');
+    expect(departmentChangeToSend(one, '')).toBeNull();
+    expect(departmentChangeToSend(one, 'engineering')).toBeUndefined();
+    expect(departmentChangeToSend(one, null)).toBeUndefined();
+    expect(departmentChangeToSend(undefined, 'sales')).toBeUndefined();
+    expect(departmentChangeToSend(two, 'sales')).toBeUndefined();
   });
 
   it('filters by department, by role, and by both (AND)', () => {
@@ -127,25 +174,26 @@ describe('userAccountVocabulary (SC-17)', () => {
     expect(
       validateAssignment({
         roles: [],
-        attributes: { department: 'finance', clearance: 'internal' },
+        attributes: { clearance: 'internal' },
         definitions,
       }),
     ).toEqual(['roles-required']);
   });
 
-  it('requires department and clearance but not the optional tag', () => {
+  // #1610: 必須は機密区分上限だけ。部門もタグも無くて妥当（部門は「部門なし」を選べる）。
+  it('requires the clearance but neither the department nor the optional tag', () => {
     expect(
       validateAssignment({
         roles: ['platform-admin'],
-        attributes: { department: 'finance' },
+        attributes: {},
         definitions,
       }),
     ).toEqual(['required-attribute-missing']);
-    // 🔴 過剰拒否の否定側: タグ無しは妥当である。
+    // 🔴 過剰拒否の否定側: 部門・タグ無しは妥当である。
     expect(
       validateAssignment({
         roles: ['platform-admin'],
-        attributes: { department: 'finance', clearance: 'internal' },
+        attributes: { clearance: 'internal' },
         definitions,
       }),
     ).toEqual([]);
@@ -158,7 +206,7 @@ describe('userAccountVocabulary (SC-17)', () => {
     expect(
       validateAssignment({
         roles: ['platform-admin'],
-        attributes: { department: 'finance' },
+        attributes: {},
         definitions: partial,
       }),
     ).toEqual([]);

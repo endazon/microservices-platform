@@ -10,18 +10,22 @@ namespace AuthorizationService.Domain;
 public static class UserAssignmentValidation
 {
     /// <summary>
-    /// 計画 05_screens §SC-17:「ABAC属性（部門・機密区分上限）＝**必須**」。
+    /// 計画 05_screens §SC-17:「ABAC属性（部門・機密区分上限）＝**必須**」（［2026-09-27 / #1610］部門は下の注記のとおり外した）。
     ///
     /// 🔴 **辞書の <c>Required</c> 列から引かない。** 同列は**取り込み時の必須性**として運用されており
     /// （<c>deploy/local/abac-seed/attributes.json</c> の注記:「required は**すべて false** …
     /// 必須化は実データ側が属性を備えてから行う」）、**割当の必須性とは別の軸**である。
     /// 1 つの列を 2 つの意味で使うと、片方を直したときにもう片方が黙って緩む。
     ///
-    /// キーが `department` / `clearance` なのは、**判定側が読むクレームがこの 2 つだから**である
+    /// キーが `clearance` なのは、**判定側が読むクレームだから**である
     /// （realm の `abac-attributes` スコープ → <c>BffScopeResolver.ExtractUserAttributes</c>）。
-    /// 計画の「部門」「機密区分上限」がこの 2 キーへ落ちる。
+    /// 計画の「機密区分上限」がこのキーへ落ちる。
+    ///
+    /// ［2026-09-27 / #1610・計画 ADR-0116 決定 1］🔴 **`department` は必須から外した。** 部門は属性の差し替えでは書かず、
+    /// 部門グループの所属で変える（「部門なし」も選べる）。属性 `department` は部門の同期が追いつく。
+    /// 差し替えの要求に `department` が含まれていれば拒む（<see cref="ValidateAttributes"/>）。
     /// </summary>
-    public static readonly string[] RequiredUserAttributeKeys = ["department", "clearance"];
+    public static readonly string[] RequiredUserAttributeKeys = ["clearance"];
 
     /// <summary>
     /// ロール割当の検証（必須・複数選択・**定義済みロールのみ**・併任可）。
@@ -87,7 +91,7 @@ public static class UserAssignmentValidation
             .Where(d => string.Equals(d.Scope, AttributeScope.User, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        // 必須の充足（部門・機密区分上限）。**辞書に無ければ「辞書側が未整備」として断る**
+        // 必須の充足（機密区分上限）。**辞書に無ければ「辞書側が未整備」として断る**
         // —— 必須を黙って諦めると、統制を定めたことと効いていることの区別が消える。
         foreach (var key in RequiredUserAttributeKeys)
         {
@@ -107,6 +111,16 @@ public static class UserAssignmentValidation
 
         foreach (var (key, value) in attrs)
         {
+            // #1610・計画 ADR-0116 決定 1: 🔴 **部門はこの口で書かない。** 受け付けて無視すると「保存したのに部門が変わらない」が
+            // 黙って作れる（ポートは現在の部門を持ち越す）ので、その場で断る。
+            if (DepartmentAttributes.IsDepartment(key))
+            {
+                errors.Add(
+                    $"属性 '{key}' はこの操作では変えられません。部門は部門グループの所属で変えます"
+                    + "（部門の変更の操作を使ってください。属性は部門の同期が追いつきます）。");
+                continue;
+            }
+
             var def = userDefs.FirstOrDefault(d =>
                 string.Equals(d.Key, key, StringComparison.OrdinalIgnoreCase));
             if (def is null)
