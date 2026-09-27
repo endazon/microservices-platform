@@ -23,7 +23,10 @@ namespace DocumentService.Features.Documents.Create;
 //
 // **人間の運用者に対する実効境界は BFF 側で閉じている**——`/bff/documents` の `POST` は
 // `AdminOnly` であり、DocumentService はメッシュ内部でイングレス非公開である。
-// **裁定が出たらここを追随させる。**
+//
+// ［2026-09-27 / #1616］**裁定が出た**（計画 ADR-0119 決定 2）: 機械クライアントの `POST`（operator に開けたままの作成）を
+// **追認**し、機械が作る文書の `owner` はそのサービスアカウントとする（下の `createOwner`）。据え置きは正になった。
+// SC-05 の「管理者限定」は人の利用者についての定めであり、人に対する境界は上のとおり BFF が閉じている。
 internal static class CreateDocumentEndpoint
 {
     internal static void Map(RouteGroupBuilder write)
@@ -68,7 +71,12 @@ internal static class CreateDocumentEndpoint
             // 要求由来の `owner` は捨てて主体から入れ直す（`WithOwner` が両方を担う）。
             // 個人資料の作成（`PrivateNoteDefaults`）とコネクタ同期（`DataSourceSyncService`）は
             // 既に `owner` を載せており、**残っていたのはこの一般作成経路だけ**である。
-            var createAttributes = DocumentBodyIntake.WithOwner(req.Attributes, http.User.Identity?.Name);
+            //
+            // FR-06, FR-08, 計画 ADR-0119 決定 2 (#1616): **機械クライアントが作る文書の `owner` は、そのサービスアカウント。**
+            // `DocumentManageScope.MachineSubject` が腕 A（`service-account-…` の利用者名）と腕 B（利用者名なし＋クライアント識別）の
+            // どちらでも同じ名前を返す。人は従前どおり利用者名（ADR-0060 決定 3）。要求の `owner` は経路を問わず捨てる。
+            var createOwner = DocumentManageScope.MachineSubject(http.User) ?? http.User.Identity?.Name;
+            var createAttributes = DocumentBodyIntake.WithOwner(req.Attributes, createOwner);
 
             Document doc;
             if (string.IsNullOrEmpty(req.Body))

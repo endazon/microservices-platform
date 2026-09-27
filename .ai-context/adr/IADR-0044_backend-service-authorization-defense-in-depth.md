@@ -18,6 +18,10 @@ related_ids:
   - ADR-0119
   - IADR-0277
   - IADR-0476
+  - FR-08
+  - ADR-0058
+  - IADR-0075
+  - IADR-0475
 author: claude
 created: 2026-07-09
 updated: 2026-09-27
@@ -97,6 +101,33 @@ mTLS/NetworkPolicy（[IADR-0017](./IADR-0017_internal-service-auth-network-isola
      > - **タグの反映口（`POST /documents/{id}/tags`）の管理者の分岐も個人資料に及ばない**（[IADR-0364](./IADR-0364_tag-suggestion-reflection-and-dictionary-enforcement.md) 決定 3 の追記）。
      > - `owner`・`doc_scope` の書き換えの禁止（組織文書の側）は #1616（ADR-0119 決定 2）で扱う。本追記は個人資料を管理の口から外すだけである。
      > - 作業仕様書: `.ai-context/specs/20260927_issue-1629_admin-write-private-note-scope.md`。
+
+     > **［2026-09-27 追記 / #1616］計画 ADR-0119 決定 2 の裁定を実装した。上の 2026-08-09 追記の「裁定待ち」は解消した。**
+     >
+     > - **`POST /documents` の据え置き（admin / operator）は追認された**（機械クライアントの作成）。機械が作る文書の `owner` は
+     >   そのサービスアカウント（`service-account-<clientId>`）。名前は `DocumentManageScope.MachineSubject` が決める —— 腕 A
+     >   （`preferred_username` がその名前）と腕 B（利用者名が無くクライアント識別だけ）で同じ名前になる。人は従前どおり利用者名。
+     > - **`PATCH /{id}/metadata` と `DELETE /{id}` から `AdminOnly` を外し、同じ判定を口の中へ移した**（ロールは足さない）。
+     >   1. 入口の門 `ForbidUnlessAdminOrMachine`: 管理者か機械クライアント（`MachinePrincipal.IsMachine`）でなければ **403**。
+     >      入力検証・取得より前に置き、**運用者だけの人は文書の有無・本文に依らず 403**（`AdminOnly` を積んでいた頃と同じ応答）。
+     >      書き込みの群の下限（admin / operator）はそのままなので、ロールを持たない機械は群で 403。
+     >   2. 取得 `FindManageableAsync`（個人資料・不在は 404。#1629 の門。機械の分岐は個人資料に及ばない＝ADR-0034 決定 9）。
+     >   3. `DenyUnlessAdminOrMachineOwnerAsync`: 管理者、または `doc.owner` が機械の主体名と序数一致（`DocumentBodyIntake.IsOwnedBy`。
+     >      本文の投入・個人資料の読み取りと同じ比較）なら通す。それ以外は **ADR-0056 に従い、読めるなら 403・読めないなら 404**。
+     >      「読めるか」は読み取りの唯一の判定点 `DocumentReadAccess` に問う（判定器を増やさない。#1615 が組織文書の内容の ABAC を
+     >      そこへ入れると、機械が読めない文書への拒否は自動的に 404 になる）。
+     > - `PUT`・`publish`・`archive` は `AdminOnly` のまま（ADR-0119 決定 2 の射程はメタデータ更新と削除だけ）。
+     > - **`owner` の不変性（判断）: 機械の経路だけでなく、人の管理者の経路（`PUT` / `PATCH`）でも `owner` を変えさせない。**
+     >   | 案 | 評価 |
+     >   | --- | --- |
+     >   | **A. 主体を問わず不変**（採用） | 所有者で書き込みを許す判定（本文の投入・機械の自分の文書・タグ反映の①）の前提を、判定の対象の側から崩させない（ADR-0119 §理由と同じ理由）。管理者が `owner` を機械へ書き換えると、その機械へ書き込み権限を渡す移管になるが、移管は計画 ADR-0036 §未確定事項 3 のまま決まっていない |
+     >   | B. 機械の経路だけ不変、管理者は書き換えられる | 未確定の移管を管理者の一存で成立させる口が残る（#1629 の監査が「組織文書の owner の書き換え」として残した論点） |
+     >
+     >   既存の仕様（SC-05 の編集画面）は応答の属性をそのまま送り返すので `owner` を同値で運び、A で退行しない。規則は
+     >   `DocumentBodyIntake.ValidateOwnerUnchanged`（要求に `owner` キーが無ければ通し、あれば現在の値と序数一致を要する。
+     >   現在 `owner` が無い文書へ付けるのも拒否）と `WithCurrentOwner`（保存時に現在の値を入れ直す。属性の全置換で落とさない）。
+     >   拒否は 400（キー `owner`）で、`doc_scope` の不変性（ADR-0058）の直後に置く。**黙って捨てない**（移管できたと誤解させない）。
+     > - 作業仕様書: `.ai-context/specs/20260927_issue-1616_machine-client-own-document-write.md`。
 2. **サービス間内部呼び出しは対象外**とする。`AuthorizationService` `/authz/scope`（ABAC スコープ照会）は
    RetrievalService/AiAnalysisService が内部呼び出しするため無認可を維持（[IADR-0017](./IADR-0017_internal-service-auth-network-isolation.md) と整合）。
    管理系 `/authz`（属性辞書・ポリシー）は既に AdminOnly。

@@ -11,8 +11,10 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md D-07・D-08・§未確定事項 6
   - planning:projects/microservices-platform/05_screens/01_screens.md §SC-05「管理系 3 画面の閲覧ロール」
   - planning:projects/microservices-platform/10_feedback/20260809_document-write-machine-client.md（status open）
+  - planning:projects/microservices-platform/07_adr/ADR-0119_document-machine-client-own-docs-and-read-abac.md 決定 1・2（2026-09-27 追記）
 related_specs:
   - ../specs/20260926_issue-1575_document-page-and-fingerprint.md
+  - ../specs/20260927_issue-1616_machine-client-own-document-write.md
 ---
 
 # IADR-0475: 文書の応答へ本文指紋を載せ、組織文書の絞り込みとページングは別の口に置く
@@ -119,6 +121,18 @@ REST と同じ形を保つ（presence で運び、null を空文字へ化けさ�
 
 **決定 5 — 項目 1（外部 ID）と項目 4（機械の主体の所有文書の更新・削除）は実装しない。** 計画の裁定を待つ。
 環流の下書きは PR 本文に置く（起票は利用者・コーディネータ）。既存の管理者限定（`Write_OperatorRole_Returns403` ほか）は変えない。
+
+> ［2026-09-27 追記 / #1616］**裁定が出た**（計画 ADR-0119。planning#680）。
+> - **項目 1（外部 ID）は持たない**（決定 1）。同一性は文書 ID のまま、呼び出し側が属性で既存の写しを探す（本 IADR の `GET /documents/page`）。
+>   重複の実害が観測されたら改めて起こし、第一候補は取り込み経路と同じ「主体とキーから文書 ID を決まった形で導く」形とする。
+> - **項目 4 は実装した**（決定 2。[IADR-0044](./IADR-0044_backend-service-authorization-defense-in-depth.md) 決定 1 の 2026-09-27 追記 / #1616）。
+>   機械クライアントは自分が `owner` の組織文書に限りメタデータ更新・削除ができ、`owner`・`doc_scope` は書き換えられない。
+>   人の運用者は従前どおり 403（`Write_OperatorRole_Returns403` は変わらず緑）。
+> - 🔴 **ADR-0091 の読み方を改める。** 上の「起点・関連」の「ADR-0091（文書の同一性は文書 ID）」と、項目 1 の採否の根拠は、
+>   ADR-0091 を文書の同一性の一般則として読んでいた。**ADR-0091 が定めるのは SC-04 の深いリンクの同一性（DocumentId）であり、
+>   文書の同一性の一般則は定めていない**（ADR-0119 §実測 2）。項目 1 を採らない根拠は、計画に外部 ID の記述が無いこと（上の表）と、
+>   その後に出た ADR-0119 決定 1 である。フォローアップ 1 の「裁定が出たら新しい IADR で実装する」は、本追記と IADR-0044 の追記で足りると
+>   判断した（新しい統制ではなく、既存の書き込みの門の射程の補いであるため）。
 
 ## 理由
 

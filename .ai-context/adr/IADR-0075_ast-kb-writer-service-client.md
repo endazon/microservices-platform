@@ -8,9 +8,11 @@ related_ids:
   - IADR-0041
   - IADR-0044
   - ADR-0018
+  - ADR-0119
+  - IADR-0475
 author: claude
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md
   - planning:projects/microservices-platform/06_technical/10_composability-design.md
@@ -73,6 +75,19 @@ DocumentService は **`microservices-platform` レルム**の Authority で JWT 
   よって実運用で到達するのは作成のみで、破壊的操作は AST の利用範囲に現れない。より細粒度の「作成専用」スコープを
   与えるには専用ロール/ポリシーの新設が要るが、消費実装が作成限定であること・[IADR-0044](./IADR-0044_backend-service-authorization-defense-in-depth.md) のロールゲートが効くこと
   から、本 PR では operator 付与に留める（過剰なロール新設を避ける・検討した代替案 C）。
+
+> **［2026-09-27 追記 / #1616］上の「AST 側のクライアント実装は構造上 `POST /documents` しか発行しない」は崩れている**
+> （計画 ADR-0119 §実測 7）。AST（`origin/develop` `892376e8`）の KB 用アダプタは `POST /documents` に加えて
+> `GET /documents`（KB の入れ直しで既存の写しを探す一覧。`HttpKnowledgeDocumentCatalog`）と `PUT /documents/{id}/body`
+> （本文の投入。所有者の束縛で通る）を呼ぶ。submodule の pin `7a7a8a14` は `POST` だけだが、pin は前進する。
+>
+> あわせて、計画 ADR-0119 決定 2 により **機械クライアントは自分が `owner` の組織文書に限りメタデータ更新（`PATCH /documents/{id}/metadata`）と
+> 削除（`DELETE /documents/{id}`）を行える**ようになった（ロールは足さない。本クライアントの `platform-operator` のまま）。
+> 本クライアントが作る文書の `owner` は `service-account-ai-stock-trading-kb-writer` であり、**AST が触れられる破壊的操作は
+> 自分が作った組織文書の更新・削除に限られる**（他の主体の文書は 403 / 404、個人資料は 404、`owner`・`doc_scope` は書き換え不可。
+> 編集・公開・アーカイブは管理者限定のまま）。上の「破壊的操作は AST の利用範囲に現れない」は、この範囲へ改める。
+> 専用ロールを新設しない判断（代替案 C の却下）は ADR-0119 が同じ理由で維持した。実装は [IADR-0044](./IADR-0044_backend-service-authorization-defense-in-depth.md)
+> 決定 1 の 2026-09-27 追記（#1616）。
 
 ## 検討した代替案
 

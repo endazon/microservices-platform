@@ -1,4 +1,5 @@
 using DocumentService.Common.Observability;
+using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
@@ -37,6 +38,12 @@ internal static class UpdateDocumentEndpoint
                 is { } updateScopeFixed)
                 return updateScopeFixed;
 
+            // FR-06, FR-19, ADR-0119 決定 2, ADR-0036 §未確定事項 3 (#1616): owner も書き換えられない（管理者でも。
+            // 所有者の移管は計画で未確定。属性は全置換なので、送らなければ現在の値を入れ直す）。
+            if (DocumentManageScope.OwnerChangedProblemOrNull(req.Attributes, doc.Attributes)
+                is { } updateOwnerFixed)
+                return updateOwnerFixed;
+
             // FR-06, FR-16, AST/ADR-0032 決定 2, [[IADR-0405]] 決定 2 (#1233):
             // 制限 project の値は保存で外せない（属性は全置換であり、落とすと後段の除外が効かなくなる）。
             if (DocumentEndpoints.RestrictedProjectDroppedProblemOrNull(req.Attributes, doc.Attributes)
@@ -60,7 +67,8 @@ internal static class UpdateDocumentEndpoint
             // ［#1629］個人資料は上の `FindManageableAsync` で 404 になりここへ来ない。組織文書では撤収の形と単純な門は
             // 同値である（`PassesPublishGate` は組織文書に常に真）ため、形は残す（[[IADR-0455]] の 2026-09-27 追記）。
             var wasPublishable = DocumentEndpoints.PassesPublishGate(doc);
-            doc.Update(req.Title, req.Attributes ?? [], updateTagIds, req.ChangeNote);
+            doc.Update(req.Title, DocumentBodyIntake.WithCurrentOwner(req.Attributes, doc.Attributes),
+                updateTagIds, req.ChangeNote);
             await db.SaveChangesAsync();
             // FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
             // **編集も保存である。** 属性は全置換なので、`project` を落とした保存もここで数える

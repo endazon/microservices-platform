@@ -10,8 +10,8 @@ author: claude
 ids: [FR-06, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
 adrs: [ADR-0086, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116]
 iadrs: [IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364]
-specs: [20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
-issues: [#1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672]
+specs: [20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
+issues: [#1616, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672]
 -->
 
 # セキュリティ仕様書
@@ -57,10 +57,10 @@ issues: [#1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #
     （呼び出し元が BFF の中継しか無く、サービス間の面は置かない）。🔴 **門はロールで判定し、主体の種別は見ない** —— 門のロールを持つ
     realm のサービスアカウント（管理者ロールを持つ ABAC 投入用・運用者ロールを持つ AST の KB 書き込み用）は通る。
     これは BFF の門・DataSourceService の門と同じ性質であり、それらより緩くはない。
-  - `DocumentService` 書き込み: **更新・メタデータ・公開・アーカイブ・削除は admin 必須**。
-    **作成（`POST`）だけ admin/operator のまま据え置く** —— `ai-stock-trading` の KB 書き込みが
+  - `DocumentService` 書き込み: **更新・メタデータ・公開・アーカイブ・削除は、人については admin 必須**。
+    **作成（`POST`）だけ admin/operator** —— `ai-stock-trading` の KB 書き込みが
     BFF を経由せず直接叩いており、その service-account は `platform-operator` しか持たないためである
-    （KB 書き込み用クライアントの実装判断。計画へ裁定を依頼中）。**人間に対する境界は BFF 側（`AdminOnly`）で閉じている。**
+    （**［2026-09-27］機械クライアントの作成は計画の裁定で追認された**）。**人間に対する境界は BFF 側（`AdminOnly`）で閉じている。**
     読み取り（GET）は一般利用者の文書閲覧のためロールでは塞がない（組織文書の機密制御は取得段の ABAC が担う）。
     **［2026-09-27］読み取りの全ての口（一覧・ページ・単一取得・版履歴・特定版。east-west gRPC の読み取り面も）が認証を要する**
     （従前は一覧・単一取得・版が無認証で、個人資料の表題・所有者・共有先がメッシュ内の呼び出し元へ返っていた）。
@@ -74,7 +74,11 @@ issues: [#1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #
     組織文書の内容による絞り込みを文書サービス自身が行うのは別の作業として残る（それまでの実施点は BFF）。
     **組織文書の絞り込み・ページングの口（`GET /documents/page`）は認証を要する**（ロールは問わない）。
     結果は既存の一覧の部分集合に限り、**個人資料は絞り込みの値にも呼び出し元にも依らず返さない**。
-    機械クライアントは自分が作った文書でもメタデータ更新・削除をできない（admin 必須のまま。計画の判断を待つ）。
+    **［2026-09-27］機械クライアントは、自分が所有者の組織文書に限り、メタデータ更新と削除を行える**（所有者の動的束縛。
+    ロールは足さない。書き込みの口の下限 admin/operator はそのまま）。人の運用者は従前どおり 403。機械クライアントが作る文書の
+    所有者はそのサービスアカウントである。他の主体の文書は読めれば 403・読めなければ 404、個人資料は 404。
+    **所有者（`owner`）と文書スコープ（`doc_scope`）は、属性を書き換える口で主体を問わず変えられない**（人の管理者でも移管できない。
+    所有者で書き込みを許す判定の前提を、判定の対象の側から崩させないため）。
     **［2026-09-27］管理の書き込み口（更新・メタデータ・公開・アーカイブ・削除）は個人資料を対象外とする**。
     主体を問わず（管理者ロールの人・管理者ロールを持つ機械クライアント・所有者本人でも）不在と同じ 404 を返し、
     応答に表題・所有者・共有先を出さず、何も書き換えない。従前は管理者ロールがあれば他人の個人資料を書き換え・公開・
