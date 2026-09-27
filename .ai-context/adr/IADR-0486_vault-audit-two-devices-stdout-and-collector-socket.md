@@ -1,8 +1,8 @@
 ---
-title: IADR-0485 Vault の audit device は標準出力と collector への socket の 2 つを並べ、socket 側を Loki へ取り込む。値は HMAC のまま残し、秘密の書き込みは Loki の条件 1 本で抽出して、経路は BFF のロールで見分ける
+title: IADR-0486 Vault の audit device は標準出力と collector への socket の 2 つを並べ、socket 側を Loki へ取り込む。値は HMAC のまま残し、秘密の書き込みは Loki の条件 1 本で抽出して、経路は BFF のロールで見分ける
 type: impl-adr
 status: Accepted
-related_ids: [NFR-18, NFR-21, SC-22, ADR-0124, ADR-0095, ADR-0006, ADR-0042, IADR-0453, IADR-0433, IADR-0457, IADR-0077, IADR-0096, IADR-0216]
+related_ids: [NFR-18, NFR-21, SC-22, ADR-0124, ADR-0095, ADR-0006, ADR-0042, IADR-0485, IADR-0453, IADR-0433, IADR-0457, IADR-0077, IADR-0096, IADR-0216]
 author: claude
 created: 2026-09-28
 updated: 2026-09-28
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20260928_issue-1683_vault-audit-to-observability.md
 ---
 
-# IADR-0485: Vault の audit を 2 つの device で出し、socket 側を可観測性基盤へ取り込む（#1683）
+# IADR-0486: Vault の audit を 2 つの device で出し、socket 側を可観測性基盤へ取り込む（#1683）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -26,7 +26,7 @@ related_specs:
 - 関連する計画書 ID: NFR-18（シークレット管理）、NFR-21（障害検出）、SC-22
 - 関連する計画 ADR: **ADR-0124 決定 2**（Vault の audit を可観測性基盤の監査へ取り込み、秘密の書き込みを監査として抽出する。値は記録しない。射程は監査）・
   決定 4（3 点セットの 2 行目）・フォローアップ 3、ADR-0095 決定 4（退避手段を使った事実を残す）、ADR-0006（可観測性基盤）、ADR-0042（監査）
-- 関連する実装 ADR: [[IADR-0453]]（フォローアップ 3 が本件）、[[IADR-0433]]（BFF の k8s auth ロール `bff-secret-writer`）、[[IADR-0457]]（Vault の Pod 内ラッパー）、
+- 関連する実装 ADR: [[IADR-0485]]（#1682。対になる秘密と、退避の記録先の #458 への一本化）、[[IADR-0453]]（フォローアップ 3 が本件）、[[IADR-0433]]（BFF の k8s auth ロール `bff-secret-writer`）、[[IADR-0457]]（Vault の Pod 内ラッパー）、
   [[IADR-0077]]（経路B の可観測性・Vault）、[[IADR-0096]]（k8s auth）、[[IADR-0216]]（アプリのログの出口は OTLP）
 - 裁定: planning#700（利用者裁定 2026-09-28。裁定 ②）
 
@@ -158,7 +158,7 @@ ADR-0124 決定 2 は、Vault の audit device を有効にし、そのログを
   1. **稼働クラスタで確かめる**（本件の外。LIVE 未設定）: k8s auth で入った BFF の書き込みの `auth.metadata.role`、collector の Service 越しの socket の疎通、
      Grafana の Explore での抽出、collector の再起動（転送構成への差し替え）の後の再接続。
   2. 監査の保持期間・改ざん防止（#198。NFR「監査ログ保持」）。
-  3. 退避の記録先の一本化（ADR-0124 フォローアップ 4）は本件の外（#1682 または別件）。
+  3. 退避の記録先の一本化（ADR-0124 フォローアップ 4）は #1682 が #458 へ済ませた（[[IADR-0485]] 決定 6）。本件は人の記録を置き換えない。
 
 ## 関連
 

@@ -40,8 +40,15 @@ Job（`node:22-alpine`・`platform-infra`）は **ConfigMap `keycloak-realms`**�
 
 | 層 | 対象 | 扱い |
 | --- | --- | --- |
-| 宣言（realm JSON が正） | realm の非コレクション設定 / `requiredActions` / realm・client ロール / グループ / client scopes ＋ mappers / clients（属性・redirect・secret・scope 割当 ＋ mappers）/ **seed 利用者の存在** / サービスアカウント利用者のロールと属性 | 差分があれば当てる。集合欄は宣言が全集合、実体は加算的（余剰は消さない） |
-| 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション | **触らない** |
+| 宣言（realm JSON が正） | realm の非コレクション設定 / `requiredActions` / realm・client ロール / グループ / client scopes ＋ mappers / clients（属性・redirect・scope 割当 ＋ mappers）/ **seed 利用者の存在** / サービスアカウント利用者のロールと属性 | 差分があれば当てる。集合欄は宣言が全集合、実体は加算的（余剰は消さない） |
+| 宣言（**作成時だけ**） | client の `secret`（開発用の値） | client が無いとき（と realm が無いとき）にだけ宣言の値で作る。**既存の client では比べず・書かず・読まない** |
+| 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション／**既存の client の `secret`** | **触らない** |
+
+> **［2026-09-28 / #1682 / ADR-0124 決定 1・IADR-0485］client の `secret` を「作成時だけ」へ移した。**
+> client シークレットは認証基盤と Vault を同時に変えないと成立しない「対になる秘密」であり、本番の値を realm の宣言（Git）に置かない。
+> 従前は宣言の値（開発用）へ当て直したため、**対で回した値を次の起動で認証基盤側だけ戻していた。** 回し方は
+> [対になる秘密のローテーション](../../../docs/operations/paired-secret-rotation-runbook.md)。宣言の値が開発用の形であることは
+> `scripts/check-realm-constraints.js` の検査 8 が見る。
 | 門（`reset-gate` が正。**条件つき**） | `resetPasswordAllowed` —— ただし除くのは「**宣言 true・稼働 false・`attributes["reset-gate.state"]==="closed"`**」の 1 組だけ | その 1 組のときだけ差分から除く |
 
 > **［2026-09-06 / #1245］`smtpServer` は実行時所有から宣言所有へ移った。** 送出先はクラスタ内の

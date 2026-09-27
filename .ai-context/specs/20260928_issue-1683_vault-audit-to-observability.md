@@ -2,7 +2,7 @@
 title: Vault の audit device を宣言で有効にし、秘密の書き込みを可観測性基盤の監査として抽出する（値は記録しない。#1683）
 type: spec
 status: done
-related_ids: [NFR-18, NFR-21, SC-22, ADR-0124, ADR-0095, ADR-0006, ADR-0042, IADR-0453, IADR-0433, IADR-0457, IADR-0077, IADR-0096, IADR-0216]
+related_ids: [NFR-18, NFR-21, SC-22, ADR-0124, ADR-0095, ADR-0006, ADR-0042, IADR-0486, IADR-0485, IADR-0453, IADR-0433, IADR-0457, IADR-0077, IADR-0096, IADR-0216]
 author: claude
 created: 2026-09-28
 updated: 2026-09-28
@@ -88,6 +88,12 @@ issue: "#1683"
 | --- | --- | --- |
 | `.claude/rules/traceability.repo.md`・`docs/how-to/plan-id-range-history-annex.md` | **変更**（`ADR-0001..0122` → `0001..0124`） | コミット件名・trace ブロックに ADR-0124 を書くと宣言レンジの検査が落ちる。計画リポの `origin/main`（`74eb255`）を `git archive` で展開し `gen-plan-ranges.js --check` で「ADR [1, 124]・欠番なし」を実測した。**#1684（#1682）が同じ引き直しを持つので、行と別紙の節は同 PR と字義一致にした**（どちらが先にマージされても衝突しない） |
 
+## 追記（2026-09-28・develop の取り込み）
+
+- #1684（#1682）が先にマージされ、IADR-0485 はそちらのもの（`paired-secrets-create-only-declarations`）になった。本件の IADR は **IADR-0486** へ改番した。
+- 退避の Runbook §5 の記録先は #1684 の決定どおり **#458 の 1 か所**を維持し、本件の追記（audit に残るのは画面以外の root トークンの行までで、人と理由は #458 に書き続ける）を同じ節にまとめた。
+  #1684 の「取り込みができたら本節を差し替える」は「取り込みの後も本節は差し替えない」に改めた。
+
 ## 設計
 
 ### 1. audit device を 2 つ有効にする（出力先と冗長化）
@@ -151,4 +157,4 @@ issue: "#1683"
 
 - `PERSIST=0`（`-dev`）の Vault の audit（上の除外）。本番の Vault（未配備）。
 - 保持期間・改ざん防止（#198）。ダッシュボード・アラート（抽出の条件を約束するまで。裁定は「抽出できるようにする」）。
-- 退避手段の記録先の一本化（ADR-0124 フォローアップ 4）、`deferred` の件数の是正（同 5）—— #1682 側または別件。
+- 退避手段の記録先の一本化（ADR-0124 フォローアップ 4）、`deferred` の件数の是正（同 5）—— #1682 側（#1684 でマージ済み）。

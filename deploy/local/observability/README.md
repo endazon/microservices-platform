@@ -86,7 +86,7 @@ PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh --live
 - 詳細は [`deploy/local/README.md`](../README.md) の「永続化」節と
   [IADR-0210](../../../.ai-context/adr/IADR-0210_local-k8s-observability-persistence.md)。
 
-## Vault の audit（NFR-18・ADR-0124 決定 2・IADR-0485・#1683）
+## Vault の audit（NFR-18・ADR-0124 決定 2・IADR-0486・#1683）
 
 collector は Vault の audit（socket device・tcp）を `tcplog/vault-audit`（`9514`）で受け、専用の `logs/vault-audit` パイプラインで
 Loki の `{job="vault-audit"}` へ出す（1 行 = Vault の JSON 1 件）。**既定の collector 設定（`deploy/local/infra/otel-collector.yaml`）にも

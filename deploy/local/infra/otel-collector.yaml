@@ -46,7 +46,7 @@ data:
               metrics_path: /metrics
               static_configs:
                 - targets: ['reset-floor:8080']
-      # NFR-18, ADR-0124 決定 2, IADR-0485 (#1683): Vault の audit（socket device・tcp・1 行 1 JSON）の受け口。
+      # NFR-18, ADR-0124 決定 2, IADR-0486 (#1683): Vault の audit（socket device・tcp・1 行 1 JSON）の受け口。
       # 🔴 **既定構成と転送構成の両方に同じ宣言を置く。** Vault は audit device を有効にするときに試験の 1 行を書くので、
       #    ここに受け口が無いと有効化そのものが失敗する。転送構成は本 ConfigMap を同名で上書きする（#1090 の形）。
       # 🔴 **compose の設定（deploy/otel-collector-config.yaml）には置かない** —— compose に Vault は居ない。
@@ -60,7 +60,7 @@ data:
       memory_limiter:
         check_interval: 1s
         limit_mib: 256
-      # NFR-18, ADR-0124 決定 2, IADR-0485 (#1683): Vault の audit を Loki の `{job="vault-audit"}` に置き、
+      # NFR-18, ADR-0124 決定 2, IADR-0486 (#1683): Vault の audit を Loki の `{job="vault-audit"}` に置き、
       # 本文（Vault の JSON 1 行）をそのまま 1 行として送る。🔴 **値で落とす段（filter）を置かない** ——
       # 抽出は Loki の側で行う（抽出の条件は docs/security/security.md「監査ログ」）。
       resource/vault-audit:
@@ -98,7 +98,7 @@ data:
           receivers: [otlp]
           processors: [memory_limiter, batch]
           exporters: [debug]
-        # NFR-18, ADR-0124 決定 2, IADR-0485 (#1683): Vault の audit 専用（アプリの OTLP のログと混ぜない）。
+        # NFR-18, ADR-0124 決定 2, IADR-0486 (#1683): Vault の audit 専用（アプリの OTLP のログと混ぜない）。
         logs/vault-audit:
           receivers: [tcplog/vault-audit]
           processors: [memory_limiter, resource/vault-audit, attributes/vault-audit, batch]
@@ -130,7 +130,7 @@ spec:
             # OtelCollectorDown が鳴り続ける。Alertmanager 配備前は誰も見ていなかったので
             # 気付かれなかった（実測 2026-08-30）。
             - { containerPort: 8888, name: self-metrics }
-            # NFR-18, ADR-0124 決定 2, IADR-0485 (#1683): Vault の audit（socket device・tcp）の受け口。
+            # NFR-18, ADR-0124 決定 2, IADR-0486 (#1683): Vault の audit（socket device・tcp）の受け口。
             - { containerPort: 9514, name: vault-audit, protocol: TCP }
           volumeMounts:
             - name: config
@@ -158,5 +158,5 @@ spec:
     # #546: Prometheus はこのポートを scrape する（deploy/prometheus.yml / 経路B の
     # prometheus.yaml の job_name: otel-collector）。**Service に載せないと到達できない。**
     - { name: self-metrics, port: 8888, targetPort: 8888 }
-    # NFR-18, ADR-0124 決定 2, IADR-0485 (#1683): Vault の audit の宛先（vault-entrypoint.sh の VAULT_AUDIT_SOCKET_ADDRESS）。
+    # NFR-18, ADR-0124 決定 2, IADR-0486 (#1683): Vault の audit の宛先（vault-entrypoint.sh の VAULT_AUDIT_SOCKET_ADDRESS）。
     - { name: vault-audit, port: 9514, targetPort: 9514, protocol: TCP }

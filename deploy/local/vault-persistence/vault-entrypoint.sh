@@ -10,7 +10,7 @@
 #   4. 固定 root トークン（Secret vault-dev-token の値＝VAULT_DEV_ROOT_TOKEN_ID）が無ければ root policy で作る
 #      —— bootstrap.sh / ESO store（token 認証版）/ OIDC bootstrap は従来どおり同じトークンで動く
 #   5. `secret/` に kv-v2 が無ければ mount する（dev モードが自動でしていたこと）
-#   6. audit device を有効にする（NFR-18, ADR-0124 決定 2, IADR-0485 / #1683。下の「audit device」を参照）
+#   6. audit device を有効にする（NFR-18, ADR-0124 決定 2, IADR-0486 / #1683。下の「audit device」を参照）
 #   7. サーバを待つ（SIGTERM は転送する）
 #
 # 🔴 unseal 鍵と初期 root トークンは PVC 上の平文ファイルに置く。root トークンが既知の dev 既定である現状と
@@ -29,7 +29,7 @@ VAULT_ADDR="${VAULT_ADDR:-http://127.0.0.1:8200}"
 export VAULT_ADDR
 VAULT_KV_PATH="${VAULT_KV_PATH:-secret}"
 
-# ---- audit device（NFR-18, ADR-0124 決定 2, IADR-0485 / #1683）----
+# ---- audit device（NFR-18, ADR-0124 決定 2, IADR-0486 / #1683）----
 # 🔴 **2 つ並べる。** Vault は、有効な audit device の**少なくとも 1 つ**が書けなければ要求を拒む。
 #    socket（可観測性基盤への取り込み）1 つだけにすると、collector / Loki の停止がそのまま Vault の停止になる
 #    （画面の書き込みも ESO の同期も止まる）。止まらない方の device（標準出力）を並べてそれを避ける。

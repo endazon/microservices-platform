@@ -49,7 +49,7 @@ Vault k8s auth＋ExternalSecret 供給まで自動化する（[eso/README](eso/R
 AST chart で `externalSecrets.enabled=true` ＋（API 鍵なら）`externalSecrets.appSecrets.enabled=true` を設定すると、
 `vault-backend` を参照して Vault dev から同期する（手順は ai-stock-trading `docs/operations/vault-secrets-runbook.md`）。
 
-## audit（監査。NFR-18・ADR-0124 決定 2・IADR-0485・#1683）
+## audit（監査。NFR-18・ADR-0124 決定 2・IADR-0486・#1683）
 
 既定（永続化）の Vault は、起動器（`deploy/local/vault-persistence/vault-entrypoint.sh`）が audit device を 2 つ有効にする。
 

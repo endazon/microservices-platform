@@ -105,7 +105,7 @@ chmod +x "$WORK/bin/vault-down"
 ( PATH="$WORK/bin:$PATH"; vault() { vault-down "$@"; }; export -f vault; wait_for_api ) >/dev/null 2>&1; RC=$?
 assert_eq 'T-1479-05 API 到達不能: 上限回数で諦める（非ゼロ）' "$RC" "1"
 
-# ---- T-1683-01: audit（標準出力）: 無ければ有効にする。値を記録しない設定を明示する（NFR-18, ADR-0124 決定 2, IADR-0485） ----
+# ---- T-1683-01: audit（標準出力）: 無ければ有効にする。値を記録しない設定を明示する（NFR-18, ADR-0124 決定 2, IADR-0486） ----
 reset_state
 bootstrap_after_start >/dev/null 2>&1; RC=$?
 LOG="$(cat "$STUB_LOG")"
