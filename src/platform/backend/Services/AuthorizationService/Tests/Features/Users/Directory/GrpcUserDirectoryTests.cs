@@ -480,9 +480,22 @@ public class GrpcUserDirectoryTests
         (await CheckRoleAsync(EnabledUser, PlatformAuthPolicies.AdminRole)).Found.Should().BeTrue("陽性対照: 許可集合のロールは答える");
     }
 
+    // 🔴 ［#1636 差分監査 N-a］集合の外の問いは**名簿を引く前に**拒む —— 居ない利用者・無効化された利用者でも同じ PERMISSION_DENIED
+    // （名簿を引いた後に拒むと found=false や無効化の分岐が先に答え、ロールの外の問いで利用者の存在が漏れる）。
+    [Theory]
+    [InlineData("no-such-user")]
+    [InlineData(DisabledUser)]
+    public async Task CheckRealmRole_outside_the_answerable_roles_is_denied_before_the_directory_lookup(string username)
+    {
+        var act = () => CheckRoleAsync(username, "platform-operator");
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
+    }
+
     [Theory]
     [InlineData("", "platform-admin")]
     [InlineData("sato.hanako", "")]
+    [InlineData("sato.hanako", "  ")]
     [InlineData("  ", "platform-admin")]
     public async Task CheckRealmRole_without_username_or_role_is_invalid_argument(string username, string role)
     {
