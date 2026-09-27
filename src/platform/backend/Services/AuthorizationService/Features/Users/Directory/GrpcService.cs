@@ -164,4 +164,34 @@ public sealed class UserDirectoryGrpcService(
             resp.Attributes[key] = value;
         return resp;
     }
+
+    // NFR-09, FR-18, SC-05, 計画 ADR-0088 決定 1, ADR-0063 決定 3, [[IADR-0410]] 追記 2, [[IADR-0401]] 追記 (#1636):
+    // **名指しした 1 人が 1 つの realm ロールを持つか。** 呼び出し元（DocumentService のタグの反映）は、east-west の本文が
+    // 運んだ承認者について、本文のロール（呼び出し元の主張）ではなく IdP から引いた値で管理者の上書きを判定する。
+    //
+    // 🔴 **問いは 1 つのロールだけ。ロールの一覧は返さない**（呼び出し元が要らないものを面へ出さない。[[IADR-0401]] 決定 2）。
+    // 🔴 **実効ロール**（合成・既定の展開を含む ＝ トークンの `realm_access.roles`）で答える。ロール名は**序数一致**。
+    // 🔴 **無効化された利用者は持たないと答える** —— 退職者の名前で管理者の上書きを通さない。
+    // 🔴 「居ない」は `found=false`（応答）、「引けなかった」は例外 → status（`GetUserAttributes` と同じ分離）。
+    //   利用者名の照合は `FindByUsernameAsync`（大小文字無視・一意でなければ引けなかった）に委ねる。
+    public override async Task<CheckRealmRoleResponse> CheckRealmRole(
+        CheckRealmRoleRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Role))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "username と role は必須である。"));
+
+        var user = await identity.FindByUsernameAsync(request.Username, context.CancellationToken);
+        if (user is null)
+            return new CheckRealmRoleResponse { Found = false };
+
+        if (!user.Enabled)
+            return new CheckRealmRoleResponse { Found = true, HasRole = false };
+
+        var roles = await identity.GetEffectiveRealmRolesAsync(user.Id, context.CancellationToken);
+        return new CheckRealmRoleResponse
+        {
+            Found = true,
+            HasRole = roles.Contains(request.Role, StringComparer.Ordinal),
+        };
+    }
 }

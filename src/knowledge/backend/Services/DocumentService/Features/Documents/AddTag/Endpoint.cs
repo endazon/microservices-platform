@@ -52,7 +52,8 @@ internal static class AddDocumentTagEndpoint
             var outcome = await tags.ExecuteAsync(
                 id, req.Name ?? string.Empty,
                 http.User.Identity?.Name,
-                http.User.IsInRole(PlatformAuthPolicies.AdminRole),
+                // ［2026-09-27 / #1636］REST はエッジが中継した利用者の資格情報そのもののロールで判定する（変えない）。
+                _ => ValueTask.FromResult(http.User.IsInRole(PlatformAuthPolicies.AdminRole)),
                 ct);
 
             return outcome.Status switch

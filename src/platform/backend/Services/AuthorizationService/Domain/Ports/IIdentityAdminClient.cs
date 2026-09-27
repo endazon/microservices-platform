@@ -44,6 +44,20 @@ public interface IIdentityAdminClient
     Task<IdentityUser?> FindByUsernameAsync(string username, CancellationToken ct);
 
     /// <summary>
+    /// NFR-09, FR-18, SC-05, 計画 ADR-0088 決定 1, ADR-0063 決定 3, [[IADR-0410]] 追記 2 (#1636):
+    /// **利用者 1 人の実効 realm ロール**（合成ロール・既定ロールの展開を含む ＝ トークンの `realm_access.roles` と同じ意味）。
+    /// <paramref name="userId"/> は **IdP の内部 ID**（<see cref="IdentityUser.Id"/>）であって利用者名ではない。
+    ///
+    /// 🔴 **<see cref="IdentityUser.Roles"/> で代用しない。** あちらは管理画面の「割り当てたロール」（直接の割当から
+    /// 既定・割当不能のロールを除いたもの）であり、合成ロール経由で持つロールを含まない。判定に使うのはトークンと同じ実効の集合である。
+    /// 🔴 呼び出し元は east-west の本文が運んだ利用者について、**本文のロールを信じずに**判定するために使う（`UserDirectory/CheckRealmRole`）。
+    /// 居なければ空。引けなければ例外（呼び出し元が「引けなかった」へ倒す）。
+    ///
+    /// 🔴 **これは新規作成の口ではない**（禁止語に触れない読み取りである）。
+    /// </summary>
+    Task<IReadOnlyList<string>> GetEffectiveRealmRolesAsync(string userId, CancellationToken ct);
+
+    /// <summary>
     /// FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0445]] (#1445):
     /// **共有先に指定する利用者を名前で探す**（部分一致・**有効な利用者だけ**・最大 <paramref name="max"/> 件）。
     ///

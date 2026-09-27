@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using DocumentService.Domain;
+using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents.AddTag;
 using DocumentService.Infrastructure.Persistence;
 using DocumentService.Tests.Grpc;
@@ -111,16 +112,20 @@ public class GrpcDocumentTagWriteTests
         resp.Result.Should().Be(TagWriteResult.NotWritable);
     }
 
-    // 🔴 T-03: **管理者ロールは `user_roles` で運ぶ。** 取り込み文書（所有者無し）は
-    // ①では誰も書けないので、②が無いと誰も承認できない（`ADR-0063` 決定 3）。
+    // 🔴 T-03: 取り込み文書（所有者無し）は①では誰も書けないので、②が無いと誰も承認できない（`ADR-0063` 決定 3）。
+    // ［2026-09-27 改 / #1636］**管理者かどうかは本文の `user_roles` ではなく認可サービスが答える**（[[IADR-0410]] 追記 2）。
     [Fact]
-    public async Task 管理者ロールを運べば所有者のいない文書へも反映される()
+    public async Task 認可サービスが管理者と答えれば所有者のいない文書へも反映される()
     {
         var tag = await RegisterTagAsync();
         var doc = await SeedDocumentAsync(owner: null);
+        var admin = $"admin-{Guid.NewGuid():N}";
+        var user = $"user-{Guid.NewGuid():N}";
+        _factory.ApproverRoles.States[admin] = ApproverAdminState.Admin;
+        _factory.ApproverRoles.States[user] = ApproverAdminState.NotAdmin;
 
-        var asAdmin = await AddAsync(doc.Id, tag, "operator", PlatformAuthPolicies.AdminRole);
-        var asUser = await AddAsync(doc.Id, tag, "operator");
+        var asAdmin = await AddAsync(doc.Id, tag, admin);
+        var asUser = await AddAsync(doc.Id, tag, user);
 
         asAdmin.Result.Should().Be(TagWriteResult.Applied, "★ 陽性対照");
         asUser.Result.Should().Be(TagWriteResult.NotWritable);
@@ -226,6 +231,8 @@ public class GrpcDocumentTagWriteTests
     [Fact]
     public async Task 管理者ロールを運んでも他人の個人資料へは反映されず所有者なら反映される()
     {
+        // ［2026-09-27 / #1636］管理者かは認可サービスが答える。管理者と答えさせても個人資料には及ばない。
+        _factory.ApproverRoles.States["admin-user"] = ApproverAdminState.Admin;
         var tag = await RegisterTagAsync();
         var note = await SeedAsync(db =>
         {

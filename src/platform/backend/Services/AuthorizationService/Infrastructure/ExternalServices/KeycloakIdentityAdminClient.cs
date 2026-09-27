@@ -116,6 +116,26 @@ public sealed class KeycloakIdentityAdminClient(
         return matched.Count == 0 ? null : ToIdentityUser(matched[0], []);
     }
 
+    // NFR-09, FR-18, SC-05, 計画 ADR-0088 決定 1, [[IADR-0410]] 追記 2 (#1636): 利用者 1 人の**実効** realm ロール（1 往復）。
+    //
+    // 🔴 **`/role-mappings/realm/composite` を読む**（`RealmRolesAsync` の `/role-mappings/realm` ではない）。
+    // あちらは直接の割当だけで、合成ロール経由で持つロールが落ちる —— トークンの `realm_access.roles` は合成を展開した
+    // 実効の集合なので、判定をトークンと揃えるにはこちらを読む。既定・割当不能のロールも**除かない**（画面の値域ではなく判定の入力である）。
+    // 居なければ（404）空。それ以外の非 2xx は例外（呼び出し元が「引けなかった」へ倒す）。
+    public async Task<IReadOnlyList<string>> GetEffectiveRealmRolesAsync(string userId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(userId)) return [];
+
+        var client = await AuthorizedClientAsync(ct);
+        var response = await client.GetAsync(
+            $"admin/realms/{Realm}/users/{Uri.EscapeDataString(userId)}/role-mappings/realm/composite", ct);
+        if (response.StatusCode == HttpStatusCode.NotFound) return [];
+        response.EnsureSuccessStatusCode();
+
+        var roles = await response.Content.ReadFromJsonAsync<List<KeycloakRole>>(Json, ct) ?? [];
+        return [.. roles.Select(r => r.Name).Where(n => !string.IsNullOrEmpty(n)).Select(n => n!)];
+    }
+
     // FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0445]] (#1445):
     // 共有先の候補を Keycloak の `search=` で引く（**1 往復**）。
     //

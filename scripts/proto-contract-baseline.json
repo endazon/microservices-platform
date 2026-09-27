@@ -1055,6 +1055,42 @@
             "names": []
           }
         },
+        "CheckRealmRoleRequest": {
+          "fields": {
+            "role": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "username": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "CheckRealmRoleResponse": {
+          "fields": {
+            "found": {
+              "number": 1,
+              "type": "bool",
+              "label": "singular"
+            },
+            "has_role": {
+              "number": 2,
+              "type": "bool",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
         "CheckUsernamesRequest": {
           "fields": {
             "usernames": {
@@ -1184,6 +1220,12 @@
             "CheckDepartmentCodes": {
               "request": "CheckDepartmentCodesRequest",
               "response": "CheckDepartmentCodesResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            },
+            "CheckRealmRole": {
+              "request": "CheckRealmRoleRequest",
+              "response": "CheckRealmRoleResponse",
               "clientStreaming": false,
               "serverStreaming": false
             },

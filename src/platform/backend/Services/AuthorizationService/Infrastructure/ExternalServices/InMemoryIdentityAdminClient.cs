@@ -115,6 +115,12 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
             .FirstOrDefault(u => string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase))
             ?.ToIdentityUser());
 
+    // NFR-09, FR-18, [[IADR-0410]] 追記 2 (#1636): 実効ロール。偽物は合成ロールを持たないので、割り当てたロールがそのまま実効である。
+    // 居なければ空（本物の 404 と同じ）。
+    public Task<IReadOnlyList<string>> GetEffectiveRealmRolesAsync(string userId, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<string>>(
+            _users.TryGetValue(userId, out var user) ? [.. user.Roles] : []);
+
     // FR-19, UC-11, SC-19 主要素 3, 計画 ADR-0098 決定 1, [[IADR-0445]] (#1445): 共有先の候補。
     // 🔴 **本物（Keycloak の `search=`）と同じ意味論にする** —— 利用者名・表示名の部分一致
     // （大小文字無視）・**有効な利用者だけ**・表示名順・`max` 件。ここだけ素朴に作ると、

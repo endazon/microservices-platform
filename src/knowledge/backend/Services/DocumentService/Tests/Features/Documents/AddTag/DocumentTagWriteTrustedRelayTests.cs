@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using DocumentService.Domain;
+using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 using DocumentService.Tests.Grpc;
 using Grpc.Core;
@@ -32,6 +33,9 @@ public class DocumentTagWriteTrustedRelayTests
     {
         _factory = factory;
         _factory.StartServer();
+        // ［2026-09-27 / #1636 段 2］管理者かは認可サービスが答える（本文の `user_roles` は読まれない）。
+        // 陽性対照の承認者 `operator` を管理者と答えさせる。陰性の `victim-*` は器の既定（NotAdmin）のまま。
+        _factory.ApproverRoles.States["operator"] = ApproverAdminState.Admin;
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

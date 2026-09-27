@@ -57,6 +57,15 @@ public sealed class TestIdentityDirectory
     /// </summary>
     public HashSet<string> ExtraGroupPaths { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// NFR-09, FR-18, [[IADR-0410]] 追記 2 (#1636): **実効ロールの照会だけが引けない**ことにする（利用者は引ける）。
+    /// 🔴 <see cref="Failure"/> と別に持つ —— 「利用者は居たがロールを引けなかった」を「居ない」へ畳まないことを測る。
+    /// </summary>
+    public Exception? RoleFailure { get; set; }
+
+    /// <summary>`GetEffectiveRealmRolesAsync` が受け取った ID（ロールの照会が実際に走った観測点）。</summary>
+    public List<string> RolesLookedUp { get; } = [];
+
     /// <summary>この器が作る内部 ID の接頭辞（`id-&lt;利用者名&gt;`）。</summary>
     internal const string StubIdPrefix = "id-";
 
@@ -77,6 +86,8 @@ public sealed class TestIdentityDirectory
         GroupFailure = null;
         GroupsLookedUp.Clear();
         ExtraGroupPaths.Clear();
+        RoleFailure = null;
+        RolesLookedUp.Clear();
     }
 
     /// <summary>
@@ -114,6 +125,17 @@ public sealed class TestIdentityDirectory
 
             return Task.FromResult<IdentityUser?>(
                 new IdentityUser($"{StubIdPrefix}{username}", username, username, true, [], attributes));
+        }
+
+        // NFR-09, FR-18, [[IADR-0410]] 追記 2 (#1636): 実効ロールの照会。**本物の偽物へ素通しする**（ロールは
+        // `InMemoryIdentityAdminClient` の既定の利用者が持つもので測る）。`Failure` / `RoleFailure` は効かせる。
+        public Task<IReadOnlyList<string>> GetEffectiveRealmRolesAsync(string userId, CancellationToken ct)
+        {
+            lock (state.RolesLookedUp) state.RolesLookedUp.Add(userId);
+
+            if (state.Failure is not null) throw state.Failure;
+            if (state.RoleFailure is not null) throw state.RoleFailure;
+            return inner.GetEffectiveRealmRolesAsync(userId, ct);
         }
 
         // FR-19, 計画 ADR-0036 D-03, ADR-0088 決定 1, ADR-0098 決定 1, [[IADR-0447]] (#1447):

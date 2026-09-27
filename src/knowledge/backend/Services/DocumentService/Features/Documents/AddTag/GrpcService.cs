@@ -1,5 +1,6 @@
 using FluentValidation;
 using Grpc.Core;
+using DocumentService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Grpc.Document.V1;
 using Microsoft.AspNetCore.Authorization;
@@ -42,11 +43,14 @@ namespace DocumentService.Features.Documents.AddTag;
 //   （[[IADR-0410]] 追記 1）。`ServiceCaller`（`platform-service`）だけでは信じない —— そのロールは 11 の
 //   サービスアカウント（別プロジェクトのものを含む）が持ち、どれもが任意の利用者を名乗り、`user_roles` に
 //   `platform-admin` を名乗って管理者の上書きで任意の組織文書へタグを書けた。
+//   ［同日・段 2］さらに **`user_roles` は読まない**。管理者かどうかは本文の `user_id` について認可サービスが引き直す
+//   （`IApproverRoleDirectory`。[[IADR-0410]] 追記 2）。上の「管理者ロールは本文で運ばれる」は改まった。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
 public sealed class DocumentTagWriteGrpcService(
     AddDocumentTagUseCase tags,
     IValidator<AddDocumentTagRequest> validator,
     IOptions<DocumentTagWriteRelayOptions> relay,
+    IApproverRoleDirectory approverRoles,
     ILogger<DocumentTagWriteGrpcService> logger)
     : DocumentTagWrite.DocumentTagWriteBase
 {
@@ -80,12 +84,32 @@ public sealed class DocumentTagWriteGrpcService(
             documentId,
             request.TagName,
             request.UserId,
-            // 🔴 **ロールは `user_attributes` ではなく `user_roles` から読む**（proto の 🔴 を参照）。
-            // ABAC 属性とロール判定は別の経路である（計画 `07_abac-attribute-model` §利用者属性）。
-            request.UserRoles.Contains(PlatformAuthPolicies.AdminRole),
+            // ［2026-09-27 / #1636］🔴 **本文の `user_roles` は読まない。** 承認者が管理者かは認可サービスが IdP から引き直す
+            // （計画 ADR-0088 決定 1 の原則をロールへ延ばす。[[IADR-0410]] 追記 2）。本体は①所有者で書けないときだけ呼ぶ。
+            innerCt => IsAdminAsync(request.UserId, innerCt),
             context.CancellationToken);
 
         return new AddTagResponse { Result = ToProto(outcome.Status) };
+    }
+
+    // FR-05, FR-18, NFR-09, SC-05, 計画 ADR-0088 決定 1, ADR-0063 決定 3, [[IADR-0410]] 追記 2 (#1636):
+    // 🔴 **判定できなければ UNAVAILABLE**（`NOT_WRITABLE` へ畳まない）—— 認可サービスの障害を「管理者ではない」＝ 404 と
+    //   記録するのは嘘である。graph は `Unavailable` → 502 として承認を確定しない（成功へは縮退しない）。
+    private async ValueTask<bool> IsAdminAsync(string userId, CancellationToken ct)
+    {
+        switch (await approverRoles.GetAdminStateAsync(userId, ct))
+        {
+            case ApproverAdminState.Admin:
+                return true;
+            case ApproverAdminState.NotAdmin:
+                return false;
+            default:
+                logger.LogWarning(
+                    "DocumentTagWrite could not verify the approver's admin role with the authorization service; "
+                    + "the admin override is not applied and the call fails as UNAVAILABLE.");
+                throw new RpcException(new Status(StatusCode.Unavailable,
+                    "承認者のロールを認可サービスから引けません。"));
+        }
     }
 
     // FR-05, FR-18, NFR-09, 計画 ADR-0086 決定 1・§結果, [[IADR-0410]] 追記 1 (#1636):

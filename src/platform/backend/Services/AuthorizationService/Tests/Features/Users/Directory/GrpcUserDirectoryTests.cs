@@ -398,6 +398,111 @@ public class GrpcUserDirectoryTests
         }
     }
 
+    // ── NFR-09, FR-18, SC-05, 計画 ADR-0088 決定 1, ADR-0063 決定 3, [[IADR-0410]] 追記 2, [[IADR-0401]] 追記 (#1636):
+    // `CheckRealmRole` —— 名指しした 1 人が 1 つの realm ロールを実効で持つか（DocumentService のタグの反映が管理者の上書きに使う）。
+    // 偽の身元プロバイダの既定: `sato.hanako` = platform-admin、`tanaka.taro` = platform-operator、`takahashi.jiro` = 無効化。
+
+    private Task<CheckRealmRoleResponse> CheckRoleAsync(string username, string role, string? token = null)
+        => PlainClient().CheckRealmRoleAsync(
+            new CheckRealmRoleRequest { Username = username, Role = role },
+            headers: Bearer(token ?? ServiceToken()), cancellationToken: TestContext.Current.CancellationToken).ResponseAsync;
+
+    // 陽性対照と陰性を対で置く（常に false を返す実装でも陰性だけは緑になる）。
+    [Fact]
+    public async Task CheckRealmRole_reports_the_effective_role_of_the_named_user()
+    {
+        var admin = await CheckRoleAsync("sato.hanako", PlatformAuthPolicies.AdminRole);
+        var operatorOnly = await CheckRoleAsync(EnabledUser, PlatformAuthPolicies.AdminRole);
+
+        admin.Found.Should().BeTrue();
+        admin.HasRole.Should().BeTrue("★ 陽性対照: 管理者は持つ");
+        operatorOnly.Found.Should().BeTrue();
+        operatorOnly.HasRole.Should().BeFalse("運用者は platform-admin を持たない");
+    }
+
+    // 「居ない」は応答（found=false）であってエラーではない。
+    [Fact]
+    public async Task CheckRealmRole_for_unknown_user_is_not_found()
+    {
+        var resp = await CheckRoleAsync("no-such-user", PlatformAuthPolicies.AdminRole);
+
+        resp.Found.Should().BeFalse();
+        resp.HasRole.Should().BeFalse();
+    }
+
+    // 🔴 無効化された利用者は、ロールを割り当てられていても持たないと答える（退職者の名前で管理者の上書きを通さない）。
+    [Fact]
+    public async Task CheckRealmRole_disabled_user_does_not_hold_the_role_even_if_assigned()
+    {
+        const string disabledId = "u-takahashi";
+        var ct = TestContext.Current.CancellationToken;
+        _ = _factory.Services.GetRequiredService<IIdentityAdminClient>(); // 装飾を起こして Inner を確定させる
+        (await _factory.Identity.Inner.ReplaceRealmRolesAsync(disabledId, [PlatformAuthPolicies.AdminRole], ct))
+            .Should().NotBeNull("前提: 無効化された利用者へ管理者を割り当てられた");
+        try
+        {
+            (await _factory.Identity.Inner.GetEffectiveRealmRolesAsync(disabledId, ct))
+                .Should().Contain(PlatformAuthPolicies.AdminRole, "対照: IdP 上はロールを持っている");
+
+            var resp = await CheckRoleAsync(DisabledUser, PlatformAuthPolicies.AdminRole);
+
+            resp.Found.Should().BeTrue();
+            resp.HasRole.Should().BeFalse("無効化された利用者は持たない");
+        }
+        finally
+        {
+            await _factory.Identity.Inner.ReplaceRealmRolesAsync(disabledId, ["platform-operator"], ct);
+        }
+    }
+
+    // 🔴 ロール名は序数一致（大小文字違い・接頭辞は別のロール）。
+    [Theory]
+    [InlineData("PLATFORM-ADMIN")]
+    [InlineData("platform-admi")]
+    [InlineData("platform-admin-x")]
+    public async Task CheckRealmRole_matches_role_names_ordinally(string role)
+    {
+        (await CheckRoleAsync("sato.hanako", role)).HasRole.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("", "platform-admin")]
+    [InlineData("sato.hanako", "")]
+    [InlineData("  ", "platform-admin")]
+    public async Task CheckRealmRole_without_username_or_role_is_invalid_argument(string username, string role)
+    {
+        var act = () => CheckRoleAsync(username, role);
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+    }
+
+    // 🔴 利用者は居たがロールを引けなかった → status（found=true / has_role=false へ畳まない）。
+    [Fact]
+    public async Task CheckRealmRole_role_lookup_outage_is_a_status_not_a_negative_answer()
+    {
+        _factory.Identity.RoleFailure = new HttpRequestException("Keycloak のロール照会へ届かない");
+        try
+        {
+            var act = () => CheckRoleAsync("sato.hanako", PlatformAuthPolicies.AdminRole);
+
+            (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().NotBe(StatusCode.OK);
+        }
+        finally
+        {
+            _factory.Identity.RoleFailure = null;
+        }
+    }
+
+    // 門: 管理者の利用者トークン（`platform-service` を持たない）は PERMISSION_DENIED。
+    [Fact]
+    public async Task CheckRealmRole_with_forwarded_admin_user_token_is_permission_denied()
+    {
+        var act = () => CheckRoleAsync("sato.hanako", PlatformAuthPolicies.AdminRole,
+            GrpcKestrelFactory.IssueToken("admin-user", [PlatformAuthPolicies.AdminRole]));
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
+    }
+
     // T-S-08: 構造の門。gRPC サービス型が ServiceCaller ポリシーを宣言していること
     // （属性が外れると T-S-02 / T-S-03 が落ちるが、どの層で外れたかを名指しするためにここでも固定する）。
     [Fact]
