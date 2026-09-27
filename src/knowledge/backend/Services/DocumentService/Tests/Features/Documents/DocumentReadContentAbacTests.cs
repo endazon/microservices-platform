@@ -89,6 +89,9 @@ public class DocumentReadContentAbacTests
 
         scopes.CallsFor("alice").Should().Be(0);
         scopes.CallsFor("bob").Should().Be(0, "利用者の共有先は台帳だけで決まる（門が閉じている間）");
+        // ［2026-09-28 / #1676］他人の・共有なしの個人資料は、認可サービスへ問うまでもなく読めない（共有が 0 件なら所有者しか読まない）。
+        // 問い合わせの有無は結果に出ない（スタブの既定は「許可なし」）ので、回数で固定する。
+        scopes.CallsFor("mallory").Should().Be(0, "共有なしの他人の個人資料では、閉じた枝は認可サービスを問わない");
     }
 
     // ── AC-2: 門が開くと、属性の合わない主体には機密・制限の組織文書が返らない ─────────
@@ -198,6 +201,30 @@ public class DocumentReadContentAbacTests
 
         (await access.CanReadAsync(machine, PrivateNote(KbWriter), null, Ct)).Should().BeFalse();
         (await access.CanReadAsync(machine, Org("restricted", owner: KbWriter), null, Ct)).Should().BeTrue("陽性対照");
+    }
+
+    // T-69（#1676）: **利用者文脈の無い gRPC 呼び出し**（主体は呼び出し元サービス自身。ここでは `service-account-bff`）は、
+    // 門が開いた枝で、その名前を所有者・共有先に持つ個人資料を読めない。共有先の subjectId には所有者が任意の値を入れられるので、
+    // サービスアカウント名を共有先に入れた個人資料が機械へ漏れる経路になり得る。組織文書は分岐のとおり読める（陽性対照）。
+    // 分岐は seed の所有者・共有先のポリシーを、この主体の名前で束縛した形（認可サービスの答えの形）で与える。
+    [Fact]
+    public async Task 門が開いても利用者文脈の無いgRPC呼び出しは自分の名前を所有者と共有先に持つ個人資料を読めない()
+    {
+        const string Bff = "service-account-bff";
+        var (access, scopes, _) = Open();
+        scopes.Grant(Bff, [
+            [new AttributeFilter("shared_with", [Bff])],
+            [new AttributeFilter("owner", [Bff])],
+        ]);
+        var caller = Authenticated(new Claim(ClaimTypes.Name, Bff), new Claim("azp", "bff"));
+        var principal = DocumentReadGrpcService.PrincipalOf(null, caller, new DocumentReadRelayOptions());
+
+        principal.IsMachine.Should().BeTrue();
+        principal.AbacSubject.Should().Be(Bff);
+        (await access.CanReadAsync(principal, PrivateNote(Bff), null, Ct)).Should().BeFalse("所有者に自分の名前");
+        (await access.CanReadAsync(principal, PrivateNote("carol"), [Bff], Ct)).Should().BeFalse("共有先に自分の名前");
+        (await access.CanReadAsync(principal, Org("internal", owner: Bff), null, Ct)).Should().BeTrue("陽性対照: 所有する組織文書");
+        scopes.CallsFor(Bff).Should().Be(1, "分岐は実際に引かれている");
     }
 
     // ── AC-6: 認可サービスが答えない・主体が決まらないときは何も読めない ─────────────────
