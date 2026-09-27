@@ -1,7 +1,7 @@
 ---
 title: SC-09 のポリシーの編集器で動的束縛（${current_user}・${current_groups}）と owner・shared_with の条件を作れるようにする（#1666）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-05, FR-09, FR-19, SC-09, UC-05, ADR-0121, ADR-0036, ADR-0098, IADR-0129, IADR-0253, IADR-0341, IADR-0447, IADR-0480]
 author: claude
 created: 2026-09-27
@@ -139,3 +139,21 @@ issue は「表示の形・どの属性に動的束縛を許すか」に判断�
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`、check-trace-blocks / check-test-spec-coverage / check-test-traceability / check-cross-repo-refs /
   check-plan-id-qualification / gen-knowledge-graph --check / check-commit-messages --range=origin/develop..HEAD
 - 変異 3 件以上（コミット後に当て、`git show HEAD:<path> > <path>` で戻す）
+
+### 結果（2026-09-28・ローカル）
+
+- `src/`: `pnpm run lint`（0 エラー・警告 12 件は develop と同数）・`typecheck`（全ワークスペース。`src/ai-stock-trading` の submodule を初期化して実行）・
+  `format:check`・`test:coverage`（148 ファイル・1807 件合格・しきい値内。exit 0）・`pnpm run i18n` の再生成差分なし・`node scripts/check-i18n-catalogs.js` OK
+- E2E: `sc09-admin-abac.smoke.spec.ts` 5 件合格（新設 E4 を含む。ビルド済みプレビュー・Chromium は `/opt/pw-browsers/chromium` を一時設定で指定）
+- `AuthorizationService.Tests` 511 件合格、`dotnet format src/platform/backend/backend.slnx --verify-no-changes` exit 0
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 843 件合格、check-trace-blocks / check-test-spec-coverage（`--update` で床の対 415 件。
+  SC-09 のテスト仕様書 × `AbacValidationTests`・`PolicyDryRunValidationTests` の 2 対が増えた）/ check-test-traceability / check-cross-repo-refs /
+  check-plan-id-qualification / gen-knowledge-graph --check / check-commit-messages --range=origin/develop..HEAD: OK
+- 変異（コミット済みの状態で当て、`git show HEAD:<path> > <path>` で戻した）:
+  - M1 辞書に無い `owner`・`shared_with` の選択肢の値を空にする: 4 件赤（純関数 P13・下書き・画面の所有者／共有先）
+  - M2 サーバの束縛の検証を外す: 8 件赤（T-69 の 7 件・dry-run と保存の一致）
+  - M3 下書きが選択肢に無い値も積む: 1 件赤（`refuses to stack a value that is not one of the offered choices`）
+  - M4 サーバの表で `owner` に `${current_groups}` を許す: 1 件赤（位置違いの拒否）
+  - M5 画面が束縛を「動的束縛」の文言で示さない: 2 件赤（選択肢・チップ・一覧）
+  - M6 辞書の許可値の検証が表の束縛も「辞書外」とする: 1 件赤（T-70）
+
