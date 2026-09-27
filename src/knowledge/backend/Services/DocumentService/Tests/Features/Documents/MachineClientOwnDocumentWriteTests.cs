@@ -178,6 +178,32 @@ public class MachineClientOwnDocumentWriteTests(TestWebApplicationFactory factor
         (await PatchAsync(HumanAdmin(), doc.Id, Org(owner))).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    // FR-06, ADR-0119 決定 2, ADR-0036 D-07 (#1616・監査 F2): **所有者の比較は序数一致（大文字小文字を区別する）。**
+    // 大小だけ違う `owner` を「自分の文書」と読むと、別の主体名の文書へ書けてしまう（本文の投入・個人資料の読み取りと同じ比較を
+    // 機械の経路でも通っていることの端点越しの固定。大小を無視する変異は、これまで単体試験でしか落ちなかった）。
+    [Theory]
+    [InlineData("Service-Account-Ai-Stock-Trading-Kb-Writer")]
+    [InlineData("SERVICE-ACCOUNT-AI-STOCK-TRADING-KB-WRITER")]
+    public async Task 大小だけ違うownerは機械クライアントの自分の文書として扱わない(string caseVariant)
+    {
+        var doc = await SeedAsync(Org(owner: caseVariant));
+
+        var patch = await PatchAsync(Machine(), doc.Id,
+            new Dictionary<string, string>(Org(caseVariant)) { ["confidentiality"] = "public" });
+        var delete = await Machine().DeleteAsync($"/documents/{doc.Id}", Ct);
+
+        patch.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.NotFound);
+        delete.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.NotFound);
+        var stored = await LoadAsync(doc.Id);
+        stored.Should().NotBeNull("削除されていない");
+        stored!.Version.Should().Be(doc.Version);
+        stored.Attributes.Should().Contain("confidentiality", "internal");
+
+        // ★ 陽性対照: 大小まで一致する owner の文書なら、同じ主体・同じ口で書ける。
+        var exact = await SeedAsync(Org(owner: KbWriter));
+        (await PatchAsync(Machine(), exact.Id, Org(KbWriter))).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     [Fact]
     public async Task 機械クライアントがownerを名乗る個人資料もこの経路の対象外で404()
     {
