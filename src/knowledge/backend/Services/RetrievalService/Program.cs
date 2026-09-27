@@ -2,6 +2,7 @@ using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Llm;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Qdrant.Client;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -95,6 +96,11 @@ else
 var fusedCollectionNames = QdrantVectorStore.ResolveFusedCollectionNames(builder.Configuration);
 builder.Services.AddScoped(sp =>
     FusedCollectionsComposition.Build(sp, fusedCollectionNames, embedOverGrpc));
+
+// FR-06, ADR-0027 (#1640): 索引からの削除の受け口の時間の上限（Qdrant 1 回ごとの期限）。
+// 「(主 ＋ 追加コレクション数) × 期限」が Wolverine の既定の実行期限に収まらない構成は、ここで起動を止める。
+builder.Services.AddSingleton(DocumentDeletedTimeouts.From(builder.Configuration, fusedCollectionNames.Count));
+builder.Services.AddPlatformConsumerTimeouts();
 
 // FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 RRF 統合）
 builder.Services.AddScoped<HybridSearchService>();

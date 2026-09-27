@@ -1,4 +1,5 @@
 using Knowledge.Contracts.Events;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
@@ -24,9 +25,15 @@ namespace RetrievalService.Features.Search.RemoveDeleted;
 // ［2026-09-26 追記 / #336］FR-03, ADR-0057 決定 1, ADR-0092 決定 1, [[IADR-0467]]: 検索が束ねて読む
 // 追加コレクション（`Qdrant:FusedCollections`）**からも消す**。検索が読むコレクションに点が残れば、
 // 削除済みの文書が検索に出る。追加が空（既定）なら従来どおり主の 1 本だけである。
+//
+// 🔴 #1640: Qdrant への削除は 1 回ごとに期限（`DocumentDeletedTimeouts`・既定 10 秒）の下で行う。止まった Qdrant は
+// 受け口の ct（Wolverine の実行期限）で「取り消し」として切られる前に、時間切れ（`ConsumerTimeoutException`・
+// 計器 `messaging.consumer.timeout`）として投げ、再試行・デッドレターへ委ねる。呼び出し元の取り消しはそのまま外へ出す。
 public class DocumentDeletedConsumer(
     IVectorStore store,
     FusedCollections fused,
+    ConsumerCallTimeouts calls,
+    DocumentDeletedTimeouts timeouts,
     ILogger<DocumentDeletedConsumer> logger) : IPipelineStep<DocumentDeleted>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -35,10 +42,14 @@ public class DocumentDeletedConsumer(
     // ADR-0027 / #1016: Wolverine のハンドラ。
     public async Task Handle(DocumentDeleted ev, CancellationToken ct)
     {
-        await store.DeleteByDocumentAsync(ev.DocumentId, ct);
+        await DeleteAsync(store, ev.DocumentId, ct);
         foreach (var collection in fused.Items)
-            await collection.Store.DeleteByDocumentAsync(ev.DocumentId, ct);
+            await DeleteAsync(collection.Store, ev.DocumentId, ct);
         logger.LogInformation(
             "Removed chunks of deleted document {DocumentId} from the search index", ev.DocumentId);
     }
+
+    private Task DeleteAsync(IVectorStore target, Guid documentId, CancellationToken ct)
+        => calls.RunAsync(StepName, DocumentDeletedTimeouts.VectorStoreTarget, timeouts.VectorStore,
+            t => target.DeleteByDocumentAsync(documentId, t), ct);
 }
