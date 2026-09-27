@@ -406,14 +406,17 @@ public class AbacValidationTests
 
     // T-72（#1666 監査）: 束縛とリテラルは同じ値配列に混ぜられない。
     // `owner:[${current_user}, "bob"]` は全員に bob の文書を読ませる（計画の owner の位置は { ${current_user} } だけ）。
+    // ［2026-09-28 / #1676］リテラルが先の並び（`shared_with:["bob", ${current_groups}]`）も同じく拒否する。
+    // 混在の検査を先頭の値だけで判定する実装（先頭が束縛のときだけ混在を見る）が生き残っていた。
     [Theory]
-    [InlineData("owner", "${current_user}", "bob")]
-    [InlineData("shared_with", "${current_groups}", "group-sales")]
-    public void ValidatePolicy_BindingMixedWithLiteral_Error(string key, string binding, string literal)
+    [InlineData("owner", "${current_user}", "bob", "bob")]
+    [InlineData("shared_with", "${current_groups}", "group-sales", "group-sales")]
+    [InlineData("shared_with", "bob", "${current_groups}", "bob")]
+    public void ValidatePolicy_BindingMixedWithLiteral_Error(string key, string first, string second, string literal)
     {
         AbacValidation.ValidatePolicy(
                 "混在", "read", [],
-                Doc(key, binding, literal),
+                Doc(key, first, second),
                 [Confidentiality(), Clearance()])
             .Should().ContainSingle(e => e.Contains($"documentConditions.{key}") && e.Contains("混ぜる") && e.Contains(literal));
     }
