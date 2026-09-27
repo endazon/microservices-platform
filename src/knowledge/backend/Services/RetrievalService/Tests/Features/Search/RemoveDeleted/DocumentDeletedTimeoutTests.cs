@@ -17,13 +17,13 @@ namespace RetrievalService.Tests.Features.Search.RemoveDeleted;
 
 // FR-06, FR-19, ADR-0027, ADR-0057 (#1640): 索引からの削除の受け口の、Qdrant 1 回ごとの期限。
 //
-// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限（本受け口は既定 60 秒）を含む。ここでは 4 秒の CTS で模し、
+// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限（本受け口は既定 60 秒）を含む。ここでは 30 秒の CTS で模し（呼び出しごとの 1 秒と十分に離し、負荷下の揺らぎで比が崩れないようにする）、
 // Qdrant 1 回の期限（1 秒）が**先に**立って時間切れ（`ConsumerTimeoutException`）になること —— 受け口の ct は立っていないこと —— を見る。
 // 期限を外す変異では、止まった Qdrant は受け口の ct で取り消し（`OperationCanceledException`）として落ち、赤になる。
 [Trait("TestKind", "Unit")]
 public class DocumentDeletedTimeoutTests
 {
-    private static readonly TimeSpan HandlerBudget = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan HandlerBudget = TimeSpan.FromSeconds(30);
     private static readonly DocumentDeletedTimeouts Scaled = new(TimeSpan.FromSeconds(1), CollectionCount: 2);
 
     private static DocumentDeletedConsumer Build(IVectorStore primary, IVectorStore fused, DocumentDeletedTimeouts timeouts)

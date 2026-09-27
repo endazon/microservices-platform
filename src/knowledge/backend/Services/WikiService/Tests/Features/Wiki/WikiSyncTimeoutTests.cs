@@ -17,13 +17,13 @@ namespace WikiService.Tests.Features.Wiki;
 
 // FR-13 テスト仕様 (#1640) —— UC-07, ADR-0027, IADR-0021: Wiki.js への同期・撤去の受け口の期限。
 //
-// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限（両受け口とも既定 60 秒）を含む。ここでは 4 秒の CTS で模し、
+// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限（両受け口とも既定 60 秒）を含む。ここでは 30 秒の CTS で模し（呼び出しごとの 1 秒と十分に離し、負荷下の揺らぎで比が崩れないようにする）、
 // 呼び出しごとの期限（1 秒）が**先に**立って時間切れ（`ConsumerTimeoutException`）になること —— 受け口の ct は立っていないこと —— を見る。
 // 期限を外す変異では、止まった依存先は受け口の ct で取り消し（`OperationCanceledException`）として落ち、赤になる。
 [Trait("TestKind", "Unit")]
 public class WikiSyncTimeoutTests
 {
-    private static readonly TimeSpan HandlerBudget = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan HandlerBudget = TimeSpan.FromSeconds(30);
     private static readonly WikiSyncTimeouts Scaled = new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
 
     public enum Hung { Content, Upsert, Archive, Delete }

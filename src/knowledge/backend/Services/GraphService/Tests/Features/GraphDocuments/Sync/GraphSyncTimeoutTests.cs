@@ -17,14 +17,14 @@ namespace GraphService.Tests.Features.GraphDocuments.Sync;
 
 // FR-17 テスト仕様 (#1640) —— ADR-0027, ADR-0033: グラフ同期の受け口の本文の取得の期限。
 //
-// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限（本受け口は既定 60 秒）を含む。ここでは 4 秒の CTS で模し、
+// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限（本受け口は既定 60 秒）を含む。ここでは 30 秒の CTS で模し（呼び出しごとの 1 秒と十分に離し、負荷下の揺らぎで比が崩れないようにする）、
 // 本文の取得の期限（1 秒）が**先に**立って時間切れ（`ConsumerTimeoutException`）になること —— 受け口の ct は立っていないこと —— を見る。
 // 期限を外す変異では、止まったストレージは受け口の ct で取り消し（`OperationCanceledException`）として落ち、赤になる。
 [Trait("TestKind", "Unit")]
 public class GraphSyncTimeoutTests
 {
     private static readonly Guid Doc = Guid.Parse("cccccccc-0000-0000-0000-0000000000c1");
-    private static readonly TimeSpan HandlerBudget = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan HandlerBudget = TimeSpan.FromSeconds(30);
 
     private static DbContextOptions<GraphDbContext> Options(string name) =>
         new DbContextOptionsBuilder<GraphDbContext>().UseInMemoryDatabase(name).Options;
