@@ -77,6 +77,10 @@ builder.Services.AddHostedService<AuthorizationService.Features.Users.Department
 // `department` の許可値を realm の部門グループから導く（読めなければ保存済みの値を「不明」として使い、消さない）。
 builder.Services.AddScoped<AuthorizationService.Features.Authz.AttributeDictionary>();
 
+// FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): SC-17 の部門欄 ＝ 部門グループの所属の変更
+// （属性 department は書かない。部門の同期が追いつく）。選択肢は上の属性辞書と同じ realm の読み取りを使う。
+builder.Services.AddScoped<AuthorizationService.Features.Users.Department.UserDepartmentService>();
+
 // FR-05, FR-21, UC-05 / 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 /
 // [[IADR-0398]] 決定 1 (b)（#1278 PR-C）: 端点の入力検証。
 // **アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、検証器を消しても

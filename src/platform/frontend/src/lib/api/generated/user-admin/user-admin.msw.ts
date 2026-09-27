@@ -17,19 +17,22 @@ import type {
 } from 'msw';
 
 import type {
-  PlatformUserDto
+  PlatformUserDto,
+  UserDepartmentDto
 } from '../bff.schemas';
 
 import {
   getBffUserAdminDisableUserResponseMock,
   getBffUserAdminEnableUserResponseMock,
+  getBffUserAdminGetUserDepartmentResponseMock,
   getBffUserAdminListAssignableRolesResponseMock,
   getBffUserAdminListUsersResponseMock,
   getBffUserAdminReplaceUserAttributesResponseMock,
+  getBffUserAdminReplaceUserDepartmentResponseMock,
   getBffUserAdminReplaceUserRolesResponseMock
 } from './user-admin.faker';
 
-export { getBffUserAdminListUsersResponseMock, getBffUserAdminListAssignableRolesResponseMock, getBffUserAdminReplaceUserAttributesResponseMock, getBffUserAdminReplaceUserRolesResponseMock, getBffUserAdminDisableUserResponseMock, getBffUserAdminEnableUserResponseMock } from './user-admin.faker';
+export { getBffUserAdminListUsersResponseMock, getBffUserAdminListAssignableRolesResponseMock, getBffUserAdminReplaceUserAttributesResponseMock, getBffUserAdminGetUserDepartmentResponseMock, getBffUserAdminReplaceUserDepartmentResponseMock, getBffUserAdminReplaceUserRolesResponseMock, getBffUserAdminDisableUserResponseMock, getBffUserAdminEnableUserResponseMock } from './user-admin.faker';
 
 
 export const getBffUserAdminListUsersMockHandler = (overrideResponse?: PlatformUserDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<PlatformUserDto[]> | PlatformUserDto[]), options?: RequestHandlerOptions) => {
@@ -63,6 +66,30 @@ export const getBffUserAdminReplaceUserAttributesMockHandler = (overrideResponse
     return HttpResponse.json(overrideResponse !== undefined
     ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
     : getBffUserAdminReplaceUserAttributesResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
+export const getBffUserAdminGetUserDepartmentMockHandler = (overrideResponse?: UserDepartmentDto | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<UserDepartmentDto> | UserDepartmentDto), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/admin/users/:userId/department', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffUserAdminGetUserDepartmentResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
+export const getBffUserAdminReplaceUserDepartmentMockHandler = (overrideResponse?: UserDepartmentDto | ((info: Parameters<Parameters<typeof http.put>[1]>[0]) => Promise<UserDepartmentDto> | UserDepartmentDto), options?: RequestHandlerOptions) => {
+  return http.put('*/bff/admin/users/:userId/department', async (info: Parameters<Parameters<typeof http.put>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffUserAdminReplaceUserDepartmentResponseMock(),
       { status: 200
       })
   }, options)
@@ -107,6 +134,8 @@ export const getUserAdminMock = () => [
   getBffUserAdminListUsersMockHandler(),
   getBffUserAdminListAssignableRolesMockHandler(),
   getBffUserAdminReplaceUserAttributesMockHandler(),
+  getBffUserAdminGetUserDepartmentMockHandler(),
+  getBffUserAdminReplaceUserDepartmentMockHandler(),
   getBffUserAdminReplaceUserRolesMockHandler(),
   getBffUserAdminDisableUserMockHandler(),
   getBffUserAdminEnableUserMockHandler()

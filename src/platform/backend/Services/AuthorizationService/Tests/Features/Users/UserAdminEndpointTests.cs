@@ -108,9 +108,10 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
 
     // ---- ABAC 属性割当 ----
 
-    // SC-17: 部門・機密区分上限は必須／タグは任意（陽性対照つき）。
+    // SC-17: 機密区分上限は必須／タグは任意（陽性対照つき）。
+    // ［2026-09-27 / #1610・計画 ADR-0116 決定 1］部門は送らない（部門グループの所属で変える）。🔴 差し替えでも現在の部門は消えない。
     [Fact]
-    public async Task ReplaceAttributes_accepts_required_pair_without_optional_tag()
+    public async Task ReplaceAttributes_accepts_the_clearance_without_optional_tag_and_keeps_the_department()
     {
         await SeedUserDictionaryAsync();
 
@@ -119,14 +120,13 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
             {
                 Attributes = new Dictionary<string, string>
                 {
-                    ["department"] = "hr",
                     ["clearance"] = "confidential",
                 }
             }, Ct);
 
         res.StatusCode.Should().Be(HttpStatusCode.OK);
         var user = await res.Content.ReadFromJsonAsync<UserDto>(Ct);
-        user!.Attributes["department"].Should().Be("hr");
+        user!.Attributes["department"].Should().Be("sales", "差し替えは部門を書かない（現在の値を持ち越す）");
         user.Attributes.Should().NotContainKey("tags");
     }
 
@@ -136,7 +136,7 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
         await SeedUserDictionaryAsync();
 
         (await Client.PutAsJsonAsync("/authz/users/u-suzuki/attributes",
-                new { Attributes = new Dictionary<string, string> { ["department"] = "hr" } }, Ct))
+                new { Attributes = new Dictionary<string, string> { ["tags"] = "management" } }, Ct))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -150,28 +150,27 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
                 {
                     Attributes = new Dictionary<string, string>
                     {
-                        ["department"] = "hr",
                         ["clearance"] = "top-secret",
                     }
                 }, Ct))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
-    // T-59（#1609・計画 ADR-0116 決定 3）: 🔴 SC-17 の部門の値域は realm の部門グループのコードである。
-    // realm に無い `finance`（seed の旧い固定値）は保存で拒まれ、realm に在る `sales` は通る（陽性対照を対で置く）。
+    // T-64（#1610・計画 ADR-0116 決定 1）: 🔴 **属性の差し替えから部門を書く要求は拒む**（値域の内側の `sales` でも）。
+    // 利用者の部門の属性は変わらない。［T-59（#1609）の「部門の値域は realm の部門グループのコード」は、部門の変更の口
+    // （`UserDepartmentEndpointTests`）へ移した］
     [Fact]
-    public async Task ReplaceAttributes_takes_the_department_domain_from_the_realm_department_groups()
+    public async Task ReplaceAttributes_refuses_the_department_and_leaves_it_untouched()
     {
         await SeedUserDictionaryAsync();
 
-        var outside = await Client.PutAsJsonAsync("/authz/users/u-suzuki/attributes",
-            new { Attributes = new Dictionary<string, string> { ["department"] = "finance", ["clearance"] = "confidential" } }, Ct);
-        outside.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await outside.Content.ReadAsStringAsync(Ct)).Should().Contain("finance");
+        var res = await Client.PutAsJsonAsync("/authz/users/u-takahashi/attributes",
+            new { Attributes = new Dictionary<string, string> { ["department"] = "sales", ["clearance"] = "public" } }, Ct);
 
-        (await Client.PutAsJsonAsync("/authz/users/u-suzuki/attributes",
-                new { Attributes = new Dictionary<string, string> { ["department"] = "sales", ["clearance"] = "confidential" } }, Ct))
-            .StatusCode.Should().Be(HttpStatusCode.OK);
+        res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await res.Content.ReadAsStringAsync(Ct)).Should().Contain("部門グループの所属");
+        var user = (await Client.GetFromJsonAsync<List<UserDto>>("/authz/users", Ct))!.Single(u => u.Id == "u-takahashi");
+        user.Attributes["department"].Should().Be("hr");
     }
 
     // ---- 無効化・再有効化 ----
@@ -277,19 +276,18 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
         dto!.Attributes.Should().NotContainKey(RetentionAnchorAttributes.AccountDisabledAtKey);
         dto.Attributes.Should().ContainKey("department", "ABAC 属性まで落としたら出しすぎである");
 
-        // 画面が実際に送る形（辞書に定義された 2 キーだけ）で差し替えても通り、**起点は消えない。**
+        // 画面が実際に送る形（辞書に定義されたキーだけ。#1610 以降は部門を含めない）で差し替えても通り、**起点は消えない。**
         var replaced = await Client.PutAsJsonAsync("/authz/users/u-suzuki/attributes",
             new
             {
                 Attributes = new Dictionary<string, string>
                 {
-                    ["department"] = "hr",
                     ["clearance"] = "confidential",
                 }
             }, Ct);
         replaced.StatusCode.Should().Be(HttpStatusCode.OK);
         (await AnchorOfAsync(identity, "u-suzuki"))
-            .Should().NotBeNull("部門を 1 つ直しただけで退職時の窓の起点が消えてはならない");
+            .Should().NotBeNull("機密区分上限を 1 つ直しただけで退職時の窓の起点が消えてはならない");
 
         // 後片付け（本クラスは器を共有する）。再有効化で起点も消える。
         (await Client.PostAsync("/authz/users/u-suzuki/enable", null, Ct))
@@ -340,6 +338,10 @@ public class UserAdminEndpointTests(TestWebApplicationFactory factory)
 
         // 陽性対照: 割当の口は在る（この一覧が空でないことを先に確かめる）。
         routes.Should().Contain(r => r.Pattern == "/authz/users" && r.Methods.Contains("GET"));
+
+        // #1610: 部門の読み取り・変更の口が在る（陽性対照。部門グループの所属の変更であって、作成の口ではない）。
+        routes.Should().Contain(r => r.Pattern == "/authz/users/{userId}/department" && r.Methods.Contains("PUT"));
+        routes.Should().Contain(r => r.Pattern == "/authz/users/{userId}/department" && r.Methods.Contains("GET"));
 
         // 本題: 作成に相当する動詞が /authz/users の直下に無い。
         routes.Should().NotContain(

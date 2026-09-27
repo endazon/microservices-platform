@@ -86,12 +86,32 @@ const ATTRIBUTES = [
   },
 ];
 
-/** 経路ごとに応答を振り分ける（1 画面が 3 本引くため、URL で分けないと取り違える）。 */
+// #1610・計画 ADR-0116 決定 1: 利用者の部門（部門グループの所属・属性・選択肢）。選択肢は realm の部門グループのコードで、
+// 属性辞書の部門の許可値（上の `ATTRIBUTES` の finance を含む）とは別に引く。
+// 田中 = 部門グループなし・属性 finance（未反映）／佐藤 = engineering（反映済み）／高橋 = 2 つの部門グループ（変えられない）。
+const CHOICES = ['engineering', 'hr', 'sales'];
+const DEPARTMENTS: Record<string, unknown> = {
+  'u-tanaka': { departmentGroups: [], departmentAttribute: 'finance', choices: CHOICES },
+  'u-sato': {
+    departmentGroups: ['engineering'],
+    departmentAttribute: 'engineering',
+    choices: CHOICES,
+  },
+  'u-takahashi': { departmentGroups: ['hr', 'sales'], departmentAttribute: 'hr', choices: CHOICES },
+};
+
+function departmentResponse(path: string) {
+  const id = /\/admin\/users\/([^/]+)\/department$/.exec(String(path))?.[1] ?? '';
+  return jsonResponse(DEPARTMENTS[id]);
+}
+
+/** 経路ごとに応答を振り分ける（1 画面が複数本引くため、URL で分けないと取り違える）。 */
 function mockApi(overrides: { users?: unknown } = {}) {
   mocks.apiRequest.mockImplementation((path: string) => {
     if (String(path).includes('/admin/users/assignable-roles')) {
       return Promise.resolve(jsonResponse(ROLES));
     }
+    if (String(path).endsWith('/department')) return Promise.resolve(departmentResponse(path));
     if (String(path).includes('/authz/attributes'))
       return Promise.resolve(jsonResponse(ATTRIBUTES));
     if (String(path).includes('/admin/users')) {
@@ -202,6 +222,13 @@ describe('UserAccountManagementPage (SC-17)', () => {
         ),
       ).toBe(true),
     );
+    // #1610: 部門欄に触れていない保存は、部門グループの所属を変える要求を出さない。
+    expect(
+      mocks.apiRequest.mock.calls.some(
+        ([path, init]) =>
+          String(path).endsWith('/department') && (init as RequestInit)?.method === 'PUT',
+      ),
+    ).toBe(false);
   });
 
   // 05_screens §SC-17 入力/バリデーション: ロール割当は**必須**（複数選択）。
@@ -221,21 +248,194 @@ describe('UserAccountManagementPage (SC-17)', () => {
     expect(mocks.apiRequest.mock.calls.length).toBe(before);
   });
 
-  // 05_screens §SC-17: 部門・機密区分上限は**必須**。
+  // 05_screens §SC-17: 機密区分上限は**必須**（#1610 で部門は必須から外れた。「部門なし」を選べる）。
   it('refuses to save when a required attribute is unset', async () => {
     mockApi();
     const user = userEvent.setup();
     await renderPage();
     await openEditor(user, '田中 太郎');
 
-    await user.selectOptions(screen.getByLabelText('部門 *'), '');
+    await user.selectOptions(screen.getByLabelText('機密区分上限 *'), '');
     const before = mocks.apiRequest.mock.calls.length;
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     expect(await screen.findByTestId('assignment-issues')).toHaveTextContent(
-      '部門と機密区分上限は必須です。',
+      '機密区分上限は必須です。',
     );
     expect(mocks.apiRequest.mock.calls.length).toBe(before);
+  });
+
+  // T-67（#1610・計画 ADR-0116 決定 1）: 部門欄の選択肢は realm の部門グループのコード（＋部門なし）。
+  // 属性辞書の部門の許可値（finance を含む）からは作らない。いまの所属を初期値にし、属性の追随を色 ＋ アイコン ＋ 文言で示す。
+  it('offers the realm department groups as the department choices and shows whether the attribute followed', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '佐藤 花子');
+
+    const select = await screen.findByLabelText('部門（部門グループ）');
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['部門なし', 'engineering', 'hr', 'sales']);
+    expect(select).toHaveValue('engineering');
+    expect(
+      within(screen.getByTestId('department-field')).getByText('属性に反映済み'),
+    ).toBeInTheDocument();
+    // 部門は属性の割当の入力欄として出さない（部門グループの所属の欄だけ）。
+    expect(screen.queryByLabelText('部門 *')).not.toBeInTheDocument();
+  });
+
+  // T-67（#1610）: 属性がまだ部門グループに追随していない人には「未反映」を出す（色だけに頼らない）。
+  it('says the attribute has not followed the group yet', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '田中 太郎');
+
+    expect(await screen.findByLabelText('部門（部門グループ）')).toHaveValue('');
+    expect(
+      within(screen.getByTestId('department-field')).getByText(
+        '属性は部門の同期で追随します（未反映）',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // T-62 / T-64（#1610）: 🔴 部門を変えて保存すると、部門グループの所属の変更（PUT …/department）が飛ぶ。
+  // **属性の差し替えの本文に部門は載らない**（否定の試験。陽性対照として機密区分上限は載る）。
+  it('saves a department change as a group membership change and never writes the department attribute', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '佐藤 花子');
+
+    await user.selectOptions(await screen.findByLabelText('部門（部門グループ）'), 'sales');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          ([path, init]) =>
+            String(path).endsWith('/admin/users/u-sato/department') &&
+            (init as RequestInit)?.method === 'PUT' &&
+            JSON.parse(String((init as RequestInit)?.body)).department === 'sales',
+        ),
+      ).toBe(true),
+    );
+    const attributeBodies = mocks.apiRequest.mock.calls
+      .filter(([path]) => String(path).endsWith('/admin/users/u-sato/attributes'))
+      .map(
+        ([, init]) =>
+          JSON.parse(String((init as RequestInit)?.body)) as { attributes: Record<string, string> },
+      );
+    expect(attributeBodies).toHaveLength(1);
+    expect(attributeBodies[0].attributes).toEqual({ clearance: 'restricted' });
+    expect(Object.keys(attributeBodies[0].attributes)).not.toContain('department');
+  });
+
+  // T-62（#1610）: 「部門なし」を選ぶと department は null で送る（すべての部門グループから外す）。
+  it('sends no department as null', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '佐藤 花子');
+
+    await user.selectOptions(await screen.findByLabelText('部門（部門グループ）'), '');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          ([path, init]) =>
+            String(path).endsWith('/admin/users/u-sato/department') &&
+            (init as RequestInit)?.method === 'PUT' &&
+            JSON.parse(String((init as RequestInit)?.body)).department === null,
+        ),
+      ).toBe(true),
+    );
+  });
+
+  // T-65（#1610）: 2 つ以上の部門グループに属する人は、部門欄を出さず理由を示す。保存しても部門の要求は飛ばない。
+  it('does not let a user in several department groups be changed here', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '高橋 次郎');
+
+    const field = within(await screen.findByTestId('department-field'));
+    expect(
+      await field.findByText('複数の部門グループに所属（この画面では変更できません）'),
+    ).toBeInTheDocument();
+    expect(field.getByTestId('department-groups')).toHaveTextContent('hr・sales');
+    expect(screen.queryByLabelText('部門（部門グループ）')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(([path]) =>
+          String(path).endsWith('/admin/users/u-takahashi/attributes'),
+        ),
+      ).toBe(true),
+    );
+    expect(
+      mocks.apiRequest.mock.calls.some(
+        ([path, init]) =>
+          String(path).endsWith('/department') && (init as RequestInit)?.method === 'PUT',
+      ),
+    ).toBe(false);
+  });
+
+  // T-66（#1610）: 部門の変更の拒否理由（途中の失敗と補償の結果など）をそのまま出す。
+  it('shows the reason when the department change fails', async () => {
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === 'PUT' && String(path).endsWith('/department')) {
+        return Promise.reject(
+          new ApiError('server', 'bad gateway', 502, [
+            '部門グループの所属を変えられませんでした。元に戻しました（いまの部門グループ: engineering）。',
+          ]),
+        );
+      }
+      if (String(path).endsWith('/department')) return Promise.resolve(departmentResponse(path));
+      if (String(path).includes('/admin/users/assignable-roles'))
+        return Promise.resolve(jsonResponse(ROLES));
+      if (String(path).includes('/authz/attributes'))
+        return Promise.resolve(jsonResponse(ATTRIBUTES));
+      return Promise.resolve(jsonResponse(USERS));
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '佐藤 花子');
+    await user.selectOptions(await screen.findByLabelText('部門（部門グループ）'), 'hr');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(await screen.findByTestId('assignment-error')).toHaveTextContent('元に戻しました');
+  });
+
+  // #1610: 部門グループを読めないときは選択肢を推測で出さず、理由を出す。
+  it('does not guess the department choices when they cannot be read', async () => {
+    mocks.apiRequest.mockImplementation((path: string) => {
+      if (String(path).endsWith('/department')) {
+        return Promise.reject(
+          new ApiError('server', 'unavailable', 503, [
+            'realm の部門グループを読めません。部門は変えていません。',
+          ]),
+        );
+      }
+      if (String(path).includes('/admin/users/assignable-roles'))
+        return Promise.resolve(jsonResponse(ROLES));
+      if (String(path).includes('/authz/attributes'))
+        return Promise.resolve(jsonResponse(ATTRIBUTES));
+      return Promise.resolve(jsonResponse(USERS));
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '佐藤 花子');
+
+    expect(await screen.findByTestId('department-error')).toHaveTextContent(
+      'realm の部門グループを読めません',
+    );
+    expect(screen.queryByLabelText('部門（部門グループ）')).not.toBeInTheDocument();
   });
 
   // 🔴 05_screens §SC-17: **タグは任意**（過剰拒否の否定側）。タグ未設定でも保存できる。
@@ -378,6 +578,7 @@ describe('UserAccountManagementPage (SC-17)', () => {
           ]),
         );
       }
+      if (String(path).endsWith('/department')) return Promise.resolve(departmentResponse(path));
       if (String(path).includes('/admin/users/assignable-roles')) {
         return Promise.resolve(jsonResponse(ROLES));
       }

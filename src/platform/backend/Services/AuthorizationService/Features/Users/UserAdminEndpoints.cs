@@ -1,4 +1,5 @@
 using AuthorizationService.Domain.Ports;
+using AuthorizationService.Features.Users.Department;
 using AuthorizationService.Features.Users.DisableUser;
 using AuthorizationService.Features.Users.EnableUser;
 using AuthorizationService.Features.Users.ListAssignableRoles;
@@ -40,6 +41,8 @@ public static class UserAdminEndpoints
         // `assignable-roles` は 2 セグメント、`{userId}` 経路は 3 セグメントなので衝突しない。
         g.MapListAssignableRoles();
         g.MapReplaceUserAttributes();
+        // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, [[IADR-0473]] (#1610): 部門は部門グループの所属で変える（属性を書かない）。
+        g.MapUserDepartment();
         g.MapReplaceUserRoles();
         g.MapDisableUser();
         g.MapEnableUser();
