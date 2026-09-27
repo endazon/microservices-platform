@@ -65,6 +65,7 @@
       "DocumentReadGrpcMappingTests",
       "DocumentVersioningTests",
       "GrpcDocumentTagWriteTests",
+      "MachineClientOwnDocumentWriteTests",
       "PrivateNoteExposurePublishTests"
     ],
     "docs/tests/FR-07_data-range-analysis.md": [

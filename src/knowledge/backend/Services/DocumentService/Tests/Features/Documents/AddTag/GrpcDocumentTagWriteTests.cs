@@ -221,7 +221,7 @@ public class GrpcDocumentTagWriteTests
             .Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
     }
 
-    // 🔴 T-12 (#1629): **管理者ロールの分岐（②）は他人の個人資料に及ばない**（計画 ADR-0036 D-08・ADR-0119 決定 3）。
+    // 🔴 T-62 (#1629。FR-06 テスト仕様書の T-62 の gRPC 面。旧ラベル T-12 は FR-06 の T-12 と衝突していた): **管理者ロールの分岐（②）は他人の個人資料に及ばない**（計画 ADR-0036 D-08・ADR-0119 決定 3）。
     // gRPC 面も REST と同じ本体（`AddDocumentTagUseCase`）を通ることの観測。陽性対照は同じ資料への所有者の反映。
     [Fact]
     public async Task 管理者ロールを運んでも他人の個人資料へは反映されず所有者なら反映される()
