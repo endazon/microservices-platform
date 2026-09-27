@@ -27,7 +27,7 @@
 | ファイル | 役割 |
 | --- | --- |
 | `attributes.json` | 属性辞書（`document` / `user` スコープ）。値集合は計画 project-planning の `projects/microservices-platform/06_technical/07_abac-attribute-model.md` に合わせる。**`department` の許可値は空で投入する**——AuthorizationService が realm の部門グループ（`/department/<code>`）から導く（計画 ADR-0116 決定 3・#1609。手で足した値は 400 で拒まれる） |
-| `policies.json` | ABAC ポリシー。`clearance` が高いほど読める `confidentiality` が広がる階段 |
+| `policies.json` | ABAC ポリシー。`clearance` が高いほど読める `confidentiality` が広がる階段と、裁量の分岐（所有者・共有先）の read、所有者の write |
 
 `required` は**すべて `false`** にしてある。`/authz/attributes/validate` を呼ぶ取り込み経路は現時点で
 存在しないが、将来 `required: true` を入れると属性を 1 つしか付けない既存の取り込みを落としうるため、
@@ -51,7 +51,13 @@ node scripts/seed-abac-policies.js --dry-run # 何が入るかだけ見る（副
 
 本ファイルは **dev の初期値**である。実運用の属性辞書・ポリシーは **SC-09（管理者設定画面）から編集する**
 （FR-09（計画 project-planning の `projects/microservices-platform/02_requirements/01_requirements.md`）/ UC-05）。
-本番環境へ同じ値を入れる意図はない。
+階段の値（`clearance` × `confidentiality`）を本番へ同じまま入れる意図はない。
+
+🔴 **ただし所有者の read ポリシー（`dev: 所有者は自分の文書を読める`）は本番でも必須である**
+（計画 ADR-0121 決定 1。#1664）。評価器は組み込みの「所有者は読める」分岐を持たないので、無い環境では
+所有者が共有していない自分の個人資料すら読めない。本番への投入は配備の手順
+（[`docs/operations/operations.md`](../../../docs/operations/operations.md) §所有者の読み取りのポリシーの投入）で
+システム管理者が行う。共有先の read（`dev: 共有された個人資料を読める`）も、本番ではその投入が共有の統制の実現手段である。
 
 ## 切り戻し
 
@@ -61,10 +67,11 @@ node scripts/seed-abac-policies.js --dry-run # 何が入るかだけ見る（副
 ```
 
 投入前の状態（ポリシー 0 件）に戻ると、再び deny-by-default で全員 0 件になる。
+所有者の read ポリシーだけを消すと、所有者が自分の個人資料（共有していないもの）を開けなくなる（404）。
 
 ## 評価の意味論（読み違えないための注記）
 
 `AbacEvaluator.ResolveScope` は **利用者条件を満たすポリシーすべての文書条件を union** する。
-したがって `restricted` の利用者は 3 本の read ポリシーすべてにマッチし、許可される
+したがって `restricted` の利用者は階段の read ポリシーすべてにマッチし、許可される
 `confidentiality` は 4 値の和になる。**序数比較は導入していない**ため
 （計画「評価は集合帰属のまま」）、各段の許可集合を `policies.json` に明示的に列挙している。

@@ -7,11 +7,11 @@ updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17]
-adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477]
-specs: [20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership]
-issues: [#1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672]
+ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19]
+adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480]
+specs: [20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step]
+issues: [#1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672]
 -->
 
 # 運用仕様書
@@ -47,6 +47,7 @@ issues: [#1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #
 | アラートが実際にどこへ届くか（未配線の現状）を確認したい | §監視・アラート |
 | 利用イベントがいつ消えるか・消えていないときの見方を知りたい | §データ保持期間（利用イベント） |
 | 検索が全件 0 件になる（応答は 200 のまま）理由を切り分けたい | §検索が全件 0 件になる（読み書き先コレクションの乖離・全文索引の欠落） |
+| 本番へ所有者の読み取りのポリシーを投入する・投入済みか確かめる | §所有者の読み取りのポリシーの投入 |
 | 障害発生時の一次対応を知りたい | §障害対応（Runbook） |
 
 ---
@@ -408,6 +409,57 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
 - **gRPC 宛先（`Services__AuthorizationServiceGrpc`）を持たない配備**では照会できない扱いになり、部門を明示した書き込み（部門を変える更新を含む）は 502 になる。
 - **realm への作業は要らない**（認可サービスの既存の機密クライアントの権限でグループを読める）。
 - **既存データ**: 値域が定まる前に保存された部門（部門グループに無いコード）は、部門を変えない限りそのまま残り、他の項目の編集も妨げない。部門を変えるときだけ検証される。
+
+### 所有者の読み取りのポリシーの投入（本番の配備の手順。ABAC の要求）
+
+**所有者の読み取りのポリシーは本番でも必須である。** 認可サービスは組み込みの「所有者は自分の文書を読める」判定を持たず、
+ポリシー 1 件ごとに許可の分岐を 1 本作る。このポリシーが無い環境では、所有者が**共有していない自分の個人資料**を
+開けない（文書閲覧が 404 になる）。開発環境（経路B）では ABAC の初期投入（`deploy/local/abac-seed/policies.json`・
+`node scripts/seed-abac-policies.js --live`）が入れる。**本番では配備の手順としてシステム管理者が投入する。**
+
+- **形（これ以外にしない）**: 動作は `read`、**利用者の条件なし**、文書の条件は `owner` が `${current_user}` に一致すること**だけ**。
+  `${current_user}` は認可サービスが判定のたびに利用者名へ置き換える。
+  - 🔴 **文書の条件を空にしない。** 文書の条件が空のポリシーは「全件許可」として読まれる（全利用者が全文書を読める）。
+  - 🔴 **利用者の条件を足さない。** 取扱区分（`clearance`）などで絞ると、区分を持たない所有者（機械の書き手など）が自分の文書を読めなくなる。
+  - 🔴 **文書の条件へ他の属性を足さない。** 所有者の分岐が他の軸との組み合わせになり、区分の割り当ての判定（無人アカウントへ配れる区分）が前提とする形から外れる。
+- **投入の口**: 管理者設定画面（ABAC）と同じポリシーの API である。**画面からはこのポリシーを作れない**
+  （条件の属性・値を属性辞書から選ぶため、`owner` と `${current_user}` を選べない）。**画面が動的な値の入力に対応するまでは、API へ直接投入する。**
+  - 認可サービスの管理 API: `POST /authz/policies`（`platform-admin` ロールを持つ主体のアクセストークン。クラスタの内側から叩く。
+    例: `kubectl -n microservices-platform port-forward svc/authorization-service 18091:8080`）。
+  - 同じ API は BFF の `POST /bff/admin/authz/policies` からも届く（管理者設定画面が使う中継。管理者のセッションと CSRF ヘッダが要る）。
+- **手順**:
+  1. 先に検証だけを行う（保存しない）: `POST /authz/policies/validate` に下の本文を送り、検証の誤りが無いことを確かめる。
+  2. 投入する: `POST /authz/policies` に同じ本文を送る。
+
+     ```json
+     {
+       "name": "所有者は自分の文書を読める",
+       "action": "read",
+       "userConditions": {},
+       "documentConditions": { "owner": ["${current_user}"] }
+     }
+     ```
+
+  3. 投入済みかを確かめる（下）。
+- **投入済みかの確かめ方**: `GET /authz/policies`（または管理者設定画面のポリシー一覧）で、次をすべて満たすポリシーが**ちょうど 1 件**あること。
+  **名前では判定しない**（名前は管理者が変えられる）。
+  - `action` が `read`、`isActive` が `true`
+  - `userConditions` が空
+  - `documentConditions` のキーが `owner` だけで、値が `["${current_user}"]` だけ
+  - 2 件以上あっても許可は変わらないが、消すときに片方を残し忘れる原因になるので 1 件にそろえる。
+  - 実際の効き目は、共有していない個人資料を 1 件持つ利用者が、その資料を文書閲覧で開けることで確かめる（開けなければ 404）。
+- **消したとき・無効にしたときの影響**: **所有者が、共有していない自分の個人資料を開けなくなる**（404）。
+  自分の組織文書のうち取扱区分の外にあるものも読めなくなり、検索・グラフ・Wiki からも自分の文書が消える。
+  誤りとしては表に出ない（読めないだけで、エラーにはならない）。削除そのものは止めていないので、消す前に影響を確かめる。
+  **削除・無効化の検知と通知はまだ無い**（内容の ABAC を文書サービスで有効にする前に入れる）。
+- **配備の順番**: このポリシーの投入は、文書サービスで内容の ABAC を有効にする作業の**1 番目**である。
+  内容の ABAC はまだ有効にしない（投入しても文書サービス自身の判定は変わらない。効くのは境界層・検索・グラフ・Wiki の判定である）。
+  続く作業（古い写しの削除・削除の検知と通知・内容の ABAC の有効化）は、それぞれの手順が揃ってから行う。
+- 🔴 **予約値と同じ名前の利用者を認証基盤（Keycloak）に作らない**: `system`（取り込みで所有者を解決できなかった文書の所有者の値・
+  外部システムの古い写しの所有者の値）と `anonymous`（未認証の要求の身元）。その名前の利用者が居ると、このポリシーでその利用者が
+  **予約値を所有者に持つ文書をすべて読める**。名簿に居ない名前は判定で拒否される（許可へは倒れない）ので、作らない限り問題にならない。
+  開発用の realm にこれらの利用者が居ないことは回帰試験が確かめる。
+- **切り戻し**: ポリシーを削除する（`DELETE /authz/policies/{id}`）か無効にする（`PATCH /authz/policies/{id}/active`）。影響は上のとおり。
 
 ### 適用直後のドリフト即時検出（構成情報 API の要求 / 実装 ADR のフォローアップ 4 / #145）
 

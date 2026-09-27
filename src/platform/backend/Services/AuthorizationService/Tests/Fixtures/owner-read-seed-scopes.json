@@ -1,0 +1,53 @@
+{
+  "_comment": [
+    "FR-05, FR-19, NFR-09, ADR-0121 決定 1・フォローアップ 6, ADR-0062 実測 9 / #1664:",
+    "dev seed（deploy/local/abac-seed/policies.json）を入れた認可サービスが /authz/scope で返す応答の期待値。",
+    "",
+    "🔴 **この値は書き写しではなく、認可サービスの試験が実物の応答と突き合わせている**",
+    "（AuthorizationService.Tests の OwnerReadPolicySeedTests）。seed を変えて応答が変わればそちらが赤になる。",
+    "消費側（BFF・MCP の登録者・検索・DocumentService）の試験は、この応答を**そのまま入力にして**判定を固定する。",
+    "期待値を各試験へ書き写すと、seed が変わったときに消費側の試験だけが作り物のまま緑で残る。",
+    "",
+    "比較は分岐の順序と値の順序を無視する（DB の返す順は定まらない）。",
+    "alice: 属性を 1 つも持たない利用者（AST の KB の書き手と同じ形）。所有者と共有先の分岐だけにマッチする。",
+    "bob: clearance=internal の利用者。階段の 2 段と、所有者・共有先の分岐にマッチする。",
+    "所属グループはどちらも持たない（${current_groups} は何にも展開されない）。"
+  ],
+  "subjects": [
+    {
+      "userId": "alice",
+      "attributes": {},
+      "scope": {
+        "userId": "alice",
+        "allowedFilters": [
+          { "key": "shared_with", "allowedValues": ["${current_user}", "${current_groups}"] },
+          { "key": "owner", "allowedValues": ["${current_user}"] }
+        ],
+        "granted": true,
+        "branches": [
+          { "name": "dev: 共有された個人資料を読める", "filters": [{ "key": "shared_with", "allowedValues": ["alice"] }] },
+          { "name": "dev: 所有者は自分の文書を読める", "filters": [{ "key": "owner", "allowedValues": ["alice"] }] }
+        ]
+      }
+    },
+    {
+      "userId": "bob",
+      "attributes": { "clearance": "internal" },
+      "scope": {
+        "userId": "bob",
+        "allowedFilters": [
+          { "key": "confidentiality", "allowedValues": ["public", "internal"] },
+          { "key": "shared_with", "allowedValues": ["${current_user}", "${current_groups}"] },
+          { "key": "owner", "allowedValues": ["${current_user}"] }
+        ],
+        "granted": true,
+        "branches": [
+          { "name": "dev: public 取扱者は public を読める", "filters": [{ "key": "confidentiality", "allowedValues": ["public"] }] },
+          { "name": "dev: internal 取扱者は public/internal を読める", "filters": [{ "key": "confidentiality", "allowedValues": ["public", "internal"] }] },
+          { "name": "dev: 共有された個人資料を読める", "filters": [{ "key": "shared_with", "allowedValues": ["bob"] }] },
+          { "name": "dev: 所有者は自分の文書を読める", "filters": [{ "key": "owner", "allowedValues": ["bob"] }] }
+        ]
+      }
+    }
+  ]
+}

@@ -16,7 +16,7 @@ related_ids:
   - IADR-0373
 author: claude
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0062_unattended-account-attribute-subset.md
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md
@@ -164,6 +164,13 @@ fail-open は緑のまま通る。**本物の解決器に `HttpMessageHandler` �
      **今は planning へ環流しない** —— 暫定が生きている間は現実の欠落が無く、
      「将来こうなる」だけを送っても裁定材料にならない。
   2. **稼働 k3s での実測は未実施**（既存 seed に所有者 `read` ポリシーを足さずには再現できない）。
+
+     ［2026-09-27 追記 / #1664］**契機が来た。** dev seed に所有者の `read` ポリシー（利用者の条件なし・
+     `owner ∈ {${current_user}}` だけ）が入った（計画 ADR-0121 決定 1 / [[IADR-0480]]）。本 IADR の読み方で
+     再顕在化しないことを、**seed を入れた認可サービスの応答そのもの**（期待値のファイル
+     `AuthorizationService/Tests/Fixtures/owner-read-seed-scopes.json`）を入力にした McpServer の試験
+     （`Seedの構成で属性を持たない登録者は機密区分を配れない` ／ `Seedの構成で階段の登録者は自分の区分だけを配れる`）で固定した。
+     稼働 k3s での実測は引き続き未実施である。
 
 ## 関連
 

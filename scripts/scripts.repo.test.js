@@ -569,6 +569,34 @@ module.exports = ({ ok, assert }) => {
       // 最上段は 4 区分すべてを読める。
       assert.strictEqual(visibleFor('restricted').size, 4);
     });
+
+    // FR-05, 計画 ADR-0121 決定 1 / #1664: **所有者の read はポリシー 1 本で、dev seed に必須である。**
+    // 評価器は組み込みの所有者の分岐を持たない（ADR-0121 実測 1）ので、消えると所有者が自分の個人資料すら
+    // 読めなくなる。形（利用者の条件なし・文書の条件は owner ∈ {${current_user}} だけ）も固定する ——
+    // 利用者の条件を足すと clearance を持たない所有者（AST の KB の書き手）が自分の文書を読めなくなり、
+    // 文書の条件を足すと所有者の分岐が連言になって MCP の登録者の読み方（IADR-0384）の前提が変わる。
+    ok('seed: 所有者の read ポリシーが 1 本あり、形が ADR-0121 決定 1 のとおり', () => {
+      const file = pathSeed.resolve(__dirname, '..', 'deploy', 'local', 'abac-seed', 'policies.json');
+      const owners = JSON.parse(fsSeed.readFileSync(file, 'utf8')).policies.filter(
+        (p) => p.action === 'read' && p.documentConditions && 'owner' in p.documentConditions
+      );
+      assert.strictEqual(owners.length, 1, `所有者の read ポリシーが ${owners.length} 本（1 本であること）`);
+      const [owner] = owners;
+      assert.deepStrictEqual(owner.userConditions, {}, '利用者の条件は置かない（{} と明示する）');
+      assert.deepStrictEqual(owner.documentConditions, { owner: ['${current_user}'] });
+    });
+
+    // #1664: 所有者の分岐は `${current_user}` を利用者名へ束縛する。**予約値と同名の利用者が IdP に居ると、
+    // その利用者が予約値の文書を読める**（`system` = 取り込みで所有者を解決できなかった印・AST の古い写し、
+    // `anonymous` = 未認証の要求で BFF が送る身元）。dev realm に居ないことを固定する（本番は手順書で禁じる）。
+    ok('seed: realm に所有者の予約値と同名の利用者が居ない', () => {
+      const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
+      const names = (realm.users || []).map((u) => String(u.username || '').toLowerCase());
+      assert.ok(names.length > 0, 'realm に利用者が 1 人も居ない（走査が壊れている）');
+      for (const reserved of ['system', 'anonymous']) {
+        assert.ok(!names.includes(reserved), `realm に利用者 ${reserved} が居る（予約値の文書が読めてしまう）`);
+      }
+    });
   }
 
   // --- #524: PR タイトル検査が GitHub App 作成 PR で skipped にならないこと ------------
@@ -10725,7 +10753,8 @@ ${r.stderr}`);
       assert.ok((seed.documents || []).length > 0, 'seed 文書が 0 件（走査が壊れている）');
       assert.deepStrictEqual(seeder.documentsMissingProbeTerm(seed), []);
       for (const d of seed.documents) {
-        // 正の対照と負の対照が同じ 1 件で成立する条件（abac-seed は confidentiality だけを見る）。
+        // 正の対照と負の対照が同じ 1 件で成立する条件（abac-seed の静的の分岐は confidentiality だけを見る。
+        // 所有者・共有先の分岐は投入者〔abac-seeder〕の文書にしか一致しないので、負の対照には効かない。#1664）。
         assert.strictEqual((d.attributes || {}).confidentiality, 'public', `${d.title}: confidentiality`);
         assert.ok(!('tags' in d), `${d.title}: tags を宣言してはいけない`);
         assert.ok(String(d.body || '').length > 0, `${d.title}: 本文が空`);
