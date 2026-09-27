@@ -118,4 +118,36 @@ public class ToolCatalogTests
         catalog.Refresh(new ToolPublicationConfig("v2", []), declarations);
         catalog.Version.Should().Be(first + 1);
     }
+
+    // 🔴 FR-16, ADR-0024 §5（#1516 監査 M-1）: 同じ `サービス::ツール名` の申告が 2 つあっても**突合は落ちない**。
+    // 重複したツールはどちらも公開せず（どちらが正しいかを推測しない）ドリフトとして現れ、**他のツールは公開される**。
+    // 従前は ToDictionary が例外を投げ、周期ごとに突合が失敗して起動直後なら公開ツールが 0 件のままだった。
+    [Fact]
+    public void 重複した申告は突合を壊さずそのツールだけ公開しない()
+    {
+        var catalog = NewCatalog();
+        var config = new ToolPublicationConfig("v1",
+        [
+            new ToolPublicationEntry("retrieval.search", "retrieval"),
+            new ToolPublicationEntry("document.get", "document"),
+        ]);
+        var declarations = new List<ServiceToolDeclarations>
+        {
+            new("retrieval", [Decl("retrieval.search")]),
+            new("retrieval", [Decl("retrieval.search")]),
+            new("document", [Decl("document.get")]),
+        };
+
+        var act = () => catalog.Refresh(config, declarations);
+
+        act.Should().NotThrow();
+        catalog.PublishedTools.Select(t => t.PublishedName).Should().Equal(["document.get"], "他のサービスのツールは公開される");
+        catalog.Drifts.Should().ContainSingle().Which.Should().Match<ToolCatalogDrift>(
+            d => d.Kind == "duplicate-declaration" && d.Target == "retrieval.search");
+
+        // 決定的: 同じ入力で何度突合しても同じ結果（版も進まない）。
+        var version = catalog.Version;
+        catalog.Refresh(config, declarations);
+        catalog.Version.Should().Be(version);
+    }
 }

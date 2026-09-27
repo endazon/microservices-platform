@@ -33,7 +33,10 @@ namespace McpServer.Tests.Infrastructure.ExternalServices;
 // 動的ポートへ開き、起動直後に全待受アドレスがループバックであることを確かめる（外れたら停止して落とす）。
 // 0.0.0.0 では待ち受けない。
 //
-// REST と gRPC で**違う申告**（`RestService` / `GrpcService`）を返させ、どちらの輸送で集めたかを結果から読めるようにする。
+// どちらの輸送で集めたかは、輸送ごとの受信回数（`RestHits` / `GrpcHits`）で読む。
+// ［2026-09-27 改訂 / #1516 監査 M-1］従前は REST と gRPC で**違うサービス名**を返させて輸送を見分けていたが、
+// 収集器は申告の封筒の `service` が収集先のキーと一致しない申告を拒否するようになった（申告元が他のサービスを名乗れない）。
+// したがって 1 つのホストは 1 つのサービス名（`service`）を両輸送で名乗る。名乗りを違えたいときだけ `grpcService` で上書きする。
 //
 // ［2026-09-27 追記 / #1516, IADR-0462 経路 ④-b］ツールの実行の代役も持てる。`execution` を渡したときだけ
 // `platform.mcp.v1.McpToolExecution` を張る（渡さなければ張らない —— 実行口の無い本番の申告元と同じく `UNIMPLEMENTED` になる）。
@@ -41,19 +44,31 @@ namespace McpServer.Tests.Infrastructure.ExternalServices;
 internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
 {
     public const string Issuer = "https://test-issuer/realms/platform";
-    public const string RestService = "probe-over-rest";
-    public const string GrpcService = "probe-over-grpc";
+    public const string DefaultService = "probe";
 
     private static readonly SymmetricSecurityKey SigningKey =
         new(Encoding.UTF8.GetBytes("mcp-tools-grpc-test-signing-key-0123456789abcdef"));
 
     private readonly WebApplication _app;
+    private readonly Hits _hits;
 
-    private McpToolDeclarationGrpcTestHost(WebApplication app, string httpAddress, string grpcAddress)
+    private McpToolDeclarationGrpcTestHost(WebApplication app, Hits hits, string httpAddress, string grpcAddress)
     {
         _app = app;
+        _hits = hits;
         HttpAddress = httpAddress;
         GrpcAddress = grpcAddress;
+    }
+
+    // 申告の受信回数（輸送ごと）。
+    public int RestHits => Volatile.Read(ref _hits.Rest);
+
+    public int GrpcHits => Volatile.Read(ref _hits.Grpc);
+
+    internal sealed class Hits
+    {
+        public int Rest;
+        public int Grpc;
     }
 
     public string HttpAddress { get; }
@@ -64,10 +79,11 @@ internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
     public static McpToolDeclaration SampleTool { get; } = new(
         "probe.tool", "説明", """{"type":"object"}""", "probe:read", "internal");
 
-    // `grpcService` を渡せば gRPC 面の申告のサービス名を差し替える（空の service 名を返させるため）。
+    // `service` は両輸送の申告の封筒が名乗るサービス名。`grpcService` を渡せば gRPC 面の名乗りだけを差し替える
+    // （空の service 名・収集先と違う名乗りを返させるため）。
     public static async Task<McpToolDeclarationGrpcTestHost> StartAsync(
-        string grpcService = GrpcService, CancellationToken ct = default,
-        StubExecution? execution = null, string? legacyEndpoint = null)
+        string service = DefaultService, CancellationToken ct = default,
+        StubExecution? execution = null, string? legacyEndpoint = null, string? grpcService = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -91,16 +107,21 @@ internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
             o.TokenValidationParameters.ValidIssuer = Issuer;
         });
         builder.Services.AddGrpc();
-        builder.Services.AddSingleton(new StubDeclarations(grpcService, legacyEndpoint));
+        var hits = new Hits();
+        builder.Services.AddSingleton(hits);
+        builder.Services.AddSingleton(new StubDeclarations(grpcService ?? service, legacyEndpoint));
         if (execution is not null)
             builder.Services.AddSingleton(execution);
 
         var app = builder.Build();
         app.UsePlatformMiddleware();
-        if (legacyEndpoint is null)
-            app.MapGet("/internal/mcp-tools", () => Results.Ok(new ServiceToolDeclarations(RestService, [SampleTool])));
-        else
-            app.MapGet("/internal/mcp-tools", () => Results.Text(LegacyRestJson(legacyEndpoint), "application/json"));
+        app.MapGet("/internal/mcp-tools", () =>
+        {
+            Interlocked.Increment(ref hits.Rest);
+            return legacyEndpoint is null
+                ? Results.Ok(new ServiceToolDeclarations(service, [SampleTool]))
+                : Results.Text(LegacyRestJson(service, legacyEndpoint), "application/json");
+        });
         app.MapGrpcService<StubMcpToolDeclarationsService>();
         if (execution is not null)
             app.MapGrpcService<StubMcpToolExecutionService>();
@@ -116,7 +137,7 @@ internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
         }
 
         addresses.Should().HaveCount(2, "HTTP/1.1 と h2c の 2 本だけを開く");
-        return new McpToolDeclarationGrpcTestHost(app,
+        return new McpToolDeclarationGrpcTestHost(app, hits,
             $"http://127.0.0.1:{http!.IPEndPoint!.Port}",
             $"http://127.0.0.1:{h2c!.IPEndPoint!.Port}");
     }
@@ -160,10 +181,10 @@ internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
     internal sealed record StubDeclarations(string Service, string? LegacyEndpoint);
 
     // 旧い申告元の REST の JSON（6 項目。`endpoint` を持つ）。
-    public static string LegacyRestJson(string endpoint) =>
+    public static string LegacyRestJson(string service, string endpoint) =>
         System.Text.Json.JsonSerializer.Serialize(new
         {
-            service = RestService,
+            service,
             tools = new[]
             {
                 new Dictionary<string, string>
@@ -221,11 +242,12 @@ internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
 
     // 申告元の gRPC 面の代役（申告元と同じ ServiceCaller を要求する）。
     [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
-    internal sealed class StubMcpToolDeclarationsService(StubDeclarations stub)
+    internal sealed class StubMcpToolDeclarationsService(StubDeclarations stub, Hits hits)
         : Pb.McpToolDeclarations.McpToolDeclarationsBase
     {
         public override Task<Pb.ServiceToolDeclarations> Declare(Pb.DeclareMcpToolsRequest request, ServerCallContext context)
         {
+            Interlocked.Increment(ref hits.Grpc);
             var message = new Pb.ServiceToolDeclarations { Service = stub.Service };
             message.Tools.Add(stub.LegacyEndpoint is { } legacy
                 ? LegacyGrpcTool(legacy)

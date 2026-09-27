@@ -64,7 +64,7 @@ public sealed class GrpcToolInvokerTests
         },
     };
 
-    // 🔴 E-1: 陽性対照。実行は**公開構成で突き合わせたサービス**の h2c アドレスへ、s2s トークンで送られる。
+    // 🔴 X-1: 陽性対照。実行は**公開構成で突き合わせたサービス**の h2c アドレスへ、s2s トークンで送られる。
     // 要求の `tool` は**申告名**（公開名ではない）。別のサービスには送られない。応答は共通エンベロープへ戻る。
     [Fact]
     public async Task Executes_on_the_declaring_service_over_grpc_with_the_declared_name()
@@ -105,54 +105,97 @@ public sealed class GrpcToolInvokerTests
         declaring.Received.Should().ContainSingle("svc-b のツールは svc-a へ届かない");
     }
 
-    // 🔴 E-2（#1516 の中心）: **旧い申告元**が申告に URL を載せても（REST の `endpoint`・gRPC の番号 4）、
+    // 🔴 X-2（#1516 の中心）: **旧い申告元**が申告に URL を載せても（REST の `endpoint`・gRPC の番号 4）、
     // その URL へは**接続を 1 本も張らない**。実行は申告したサービスの gRPC アドレスへ届く。
     // 申告の URL には 127.0.0.1 の待受を置き、受け付け待ちの接続（`Pending`）が無いことで dial されなかったことを測る。
+    // ［#1516 監査 M-1］収集先のキーと申告の名乗りは一致させる（`legacy-rest` / `legacy-grpc`）—— 名乗りの違う申告は収集器が拒否するので、
+    // 従前のように「`rest` のキーで集めて `probe-over-rest` の名で実行する」形は成り立たない（それが通っていたこと自体が M-1 の穴だった）。
     [Fact]
     public async Task Legacy_declared_endpoint_is_never_dialled()
     {
         using var declaredUrl = new TcpListener(IPAddress.Loopback, 0);
         declaredUrl.Start();
         var legacyEndpoint = $"http://127.0.0.1:{((IPEndPoint)declaredUrl.LocalEndpoint).Port}/internal/mcp/tool";
-        var execution = new McpToolDeclarationGrpcTestHost.StubExecution();
-        await using var host = await McpToolDeclarationGrpcTestHost.StartAsync(
-            ct: Ct, execution: execution, legacyEndpoint: legacyEndpoint);
+        var restExecution = new McpToolDeclarationGrpcTestHost.StubExecution();
+        var grpcExecution = new McpToolDeclarationGrpcTestHost.StubExecution();
+        await using var legacyRest = await McpToolDeclarationGrpcTestHost.StartAsync(
+            "legacy-rest", Ct, execution: restExecution, legacyEndpoint: legacyEndpoint);
+        await using var legacyGrpc = await McpToolDeclarationGrpcTestHost.StartAsync(
+            "legacy-grpc", Ct, execution: grpcExecution, legacyEndpoint: legacyEndpoint);
 
-        // 申告を REST と gRPC の両方で旧い形のまま集め、公開構成と突き合わせる（本番の収集器と突合のまま）。
+        // 申告を REST と gRPC で旧い形のまま集め、公開構成と突き合わせる（本番の収集器と突合のまま）。
         var collectorConfig = Config(new Dictionary<string, string?>
         {
-            ["Mcp:Services:rest"] = host.HttpAddress,
-            ["Mcp:GrpcServices:grpc"] = host.GrpcAddress,
+            ["Mcp:Services:legacy-rest"] = legacyRest.HttpAddress,
+            ["Mcp:GrpcServices:legacy-grpc"] = legacyGrpc.GrpcAddress,
         });
         var http = new HttpToolDeclarationSource(new PlainClientFactory(), collectorConfig, NullLogger<HttpToolDeclarationSource>.Instance);
         var grpc = new GrpcToolDeclarationCollector(
             new FixedTokenProvider(McpToolDeclarationGrpcTestHost.ServiceToken()), new PlainClientFactory(),
             NullLogger<GrpcToolDeclarationCollector>.Instance);
         var declarations = await new ToolDeclarationSource(http, collectorConfig, grpc).CollectAsync(Ct);
+        (legacyRest.RestHits, legacyGrpc.GrpcHits).Should().Be((1, 1), "対照: 旧い形はそれぞれ REST と gRPC で届いている");
         var catalog = new ToolCatalog(NullLogger<ToolCatalog>.Instance);
         catalog.Refresh(new ToolPublicationConfig("test",
         [
-            new ToolPublicationEntry(McpToolDeclarationGrpcTestHost.SampleTool.Name, McpToolDeclarationGrpcTestHost.RestService, "via-rest"),
-            new ToolPublicationEntry(McpToolDeclarationGrpcTestHost.SampleTool.Name, McpToolDeclarationGrpcTestHost.GrpcService, "via-grpc"),
+            new ToolPublicationEntry(McpToolDeclarationGrpcTestHost.SampleTool.Name, "legacy-rest", "via-rest"),
+            new ToolPublicationEntry(McpToolDeclarationGrpcTestHost.SampleTool.Name, "legacy-grpc", "via-grpc"),
         ]), declarations);
         catalog.PublishedTools.Select(t => t.PublishedName).Should().BeEquivalentTo(
             ["via-rest", "via-grpc"], "旧い申告元の申告も公開の突合には使える（申告なしにしない）");
 
+        // 実行器の構成は申告の収集と同じキー（本番も `Mcp:GrpcServices` を共有する）。
         var (invoker, _) = Build(new Dictionary<string, string?>
         {
-            [$"Mcp:GrpcServices:{McpToolDeclarationGrpcTestHost.RestService}"] = host.GrpcAddress,
-            [$"Mcp:GrpcServices:{McpToolDeclarationGrpcTestHost.GrpcService}"] = host.GrpcAddress,
+            ["Mcp:GrpcServices:legacy-rest"] = legacyRest.GrpcAddress,
+            ["Mcp:GrpcServices:legacy-grpc"] = legacyGrpc.GrpcAddress,
             ["Mcp:ToolExecutionTimeoutSeconds"] = "2",
         });
         foreach (var tool in catalog.PublishedTools)
             await invoker.InvokeAsync(tool, Scope(), "{}", Ct);
 
-        execution.Received.Should().HaveCount(2, "実行は申告したサービスの gRPC アドレスへ届く");
+        restExecution.Received.Should().ContainSingle("実行は申告したサービス（legacy-rest）の gRPC アドレスへ届く");
+        grpcExecution.Received.Should().ContainSingle("実行は申告したサービス（legacy-grpc）の gRPC アドレスへ届く");
         declaredUrl.Pending().Should().BeFalse("🔴 申告に載っていた URL へ接続を張ってはならない");
         declaredUrl.Stop();
     }
 
-    // 🔴 E-3: **実行口の無い宛先**（本番の申告元は #1611 までこれ）は `UNIMPLEMENTED` —— fail-closed の拒否。
+    // 🔴 X-15（#1516 監査 M-1, ADR-0117 決定 1）: 他のサービスを名乗る申告元は、**その名でツールを公開できず、その名の実行口へ実行を送らせられない**。
+    // キー `attacker` で集めたホストが `service = "victim"` を名乗る。本物の `victim` も同じツール名を申告している。
+    // 結果: 公開されるのは本物の `victim` の申告だけで（突合は壊れず、重複で全滅もしない）、実行は本物の `victim` へ届き、偽る側には届かない。
+    [Fact]
+    public async Task A_service_cannot_publish_or_route_tools_as_another_service()
+    {
+        var attackerExecution = new McpToolDeclarationGrpcTestHost.StubExecution();
+        var victimExecution = new McpToolDeclarationGrpcTestHost.StubExecution();
+        await using var attacker = await McpToolDeclarationGrpcTestHost.StartAsync("attacker", Ct, execution: attackerExecution, grpcService: "victim");
+        await using var victim = await McpToolDeclarationGrpcTestHost.StartAsync("victim", Ct, execution: victimExecution);
+        var config = new Dictionary<string, string?>
+        {
+            ["Mcp:GrpcServices:attacker"] = attacker.GrpcAddress,
+            ["Mcp:GrpcServices:victim"] = victim.GrpcAddress,
+        };
+        var collectorConfig = Config(config);
+        var http = new HttpToolDeclarationSource(new PlainClientFactory(), collectorConfig, NullLogger<HttpToolDeclarationSource>.Instance);
+        var grpc = new GrpcToolDeclarationCollector(
+            new FixedTokenProvider(McpToolDeclarationGrpcTestHost.ServiceToken()), new PlainClientFactory(),
+            NullLogger<GrpcToolDeclarationCollector>.Instance);
+        var declarations = await new ToolDeclarationSource(http, collectorConfig, grpc).CollectAsync(Ct);
+        var catalog = new ToolCatalog(NullLogger<ToolCatalog>.Instance);
+        catalog.Refresh(new ToolPublicationConfig("test", [new ToolPublicationEntry(McpToolDeclarationGrpcTestHost.SampleTool.Name, "victim")]), declarations);
+
+        declarations.Select(d => d.Service).Should().Equal(["victim"], "名乗りを偽った attacker の申告は収集で落ちる");
+        catalog.Drifts.Should().BeEmpty();
+        var published = catalog.Find(McpToolDeclarationGrpcTestHost.SampleTool.Name);
+        published.Should().NotBeNull();
+        var (invoker, _) = Build(config);
+        await invoker.InvokeAsync(published!, Scope(), "{}", Ct);
+
+        victimExecution.Received.Should().ContainSingle();
+        attackerExecution.Received.Should().BeEmpty();
+    }
+
+    // 🔴 X-3: **実行口の無い宛先**（本番の申告元は #1611 までこれ）は `UNIMPLEMENTED` —— fail-closed の拒否。
     // 配線の誤りではないので Warning（Error にしない）。
     [Fact]
     public async Task Missing_execution_port_fails_closed_with_a_clear_message()
@@ -168,7 +211,7 @@ public sealed class GrpcToolInvokerTests
         log.OfLevel(LogLevel.Error).Should().BeEmpty();
     }
 
-    // 🔴 E-4: 申告したサービスの gRPC アドレスが構成に無ければ、どこへも送らず拒否する。
+    // 🔴 X-4: 申告したサービスの gRPC アドレスが構成に無ければ、どこへも送らず拒否する。
     // 利用者へ返す文言には内部の宛先（サービス名・アドレス）を含めない。
     [Fact]
     public async Task Unrouted_service_fails_closed_without_dialling_anything()
@@ -183,7 +226,7 @@ public sealed class GrpcToolInvokerTests
         log.OfLevel(LogLevel.Warning).Should().ContainSingle().Which.Message.Should().Contain("svc-without-address");
     }
 
-    // 🔴 E-5: 期限は `Mcp:ToolExecutionTimeoutSeconds`。何も返さない実行面でも期限で打ち切り、拒否にする。
+    // 🔴 X-5: 期限は `Mcp:ToolExecutionTimeoutSeconds`。何も返さない実行面でも期限で打ち切り、拒否にする。
     [Fact]
     public async Task Deadline_from_configuration_ends_a_silent_execution()
     {
@@ -205,7 +248,7 @@ public sealed class GrpcToolInvokerTests
         log.OfLevel(LogLevel.Warning).Should().ContainSingle().Which.Message.Should().Contain("no response within");
     }
 
-    // E-6: 呼び出し側の取り消しは拒否へ畳まず、OperationCanceledException で外へ出す（期限とは別物）。
+    // X-6: 呼び出し側の取り消しは拒否へ畳まず、OperationCanceledException で外へ出す（期限とは別物）。
     [Fact]
     public async Task Caller_cancellation_propagates_instead_of_failing_closed()
     {
@@ -224,7 +267,7 @@ public sealed class GrpcToolInvokerTests
         log.OfLevel(LogLevel.Warning).Should().BeEmpty();
     }
 
-    // 🔴 E-7: s2s の配線不備（`platform-service` を持たないトークン）は拒否・**Error**（一過性の不達と混ぜない）。
+    // 🔴 X-7: s2s の配線不備（`platform-service` を持たないトークン）は拒否・**Error**（一過性の不達と混ぜない）。
     [Fact]
     public async Task Rejected_service_token_fails_closed_and_is_logged_as_error()
     {
@@ -241,7 +284,7 @@ public sealed class GrpcToolInvokerTests
         log.OfLevel(LogLevel.Error).Should().ContainSingle().Which.Message.Should().Contain("PermissionDenied");
     }
 
-    // 🔴 E-8: s2s トークンの取得失敗も配線不備 —— 拒否・**Error**。
+    // 🔴 X-7: s2s トークンの取得失敗も配線不備 —— 拒否・**Error**。
     [Fact]
     public async Task Service_token_acquisition_failure_fails_closed_and_is_logged_as_error()
     {
@@ -259,7 +302,7 @@ public sealed class GrpcToolInvokerTests
         log.OfLevel(LogLevel.Warning).Should().BeEmpty();
     }
 
-    // E-9: 何も待ち受けていない宛先は拒否（Warning）。Error へは上げない（E-7 の対照）。
+    // X-8: 何も待ち受けていない宛先は拒否（Warning）。Error へは上げない（X-7 の対照）。
     [Fact]
     public async Task Unreachable_target_fails_closed_with_a_warning()
     {
@@ -277,7 +320,7 @@ public sealed class GrpcToolInvokerTests
         log.OfLevel(LogLevel.Warning).Should().ContainSingle();
     }
 
-    // E-10: 要求の組み立て。申告名・引数（空は空のオブジェクト）・現行の実行スコープ（除外制約と属性を含む）を運ぶ。
+    // X-9: 要求の組み立て。申告名・引数（空は空のオブジェクト）・現行の実行スコープ（除外制約と属性を含む）を運ぶ。
     // 宛先の情報（URL）は要求に 1 バイトも載らない。
     [Fact]
     public void Request_carries_the_declared_name_arguments_and_current_scope()
@@ -295,7 +338,7 @@ public sealed class GrpcToolInvokerTests
             .Should().Equal(["tool", "arguments_json", "scope"], "宛先を運ぶ項目を持たない");
     }
 
-    // E-11: 応答の proto は共通エンベロープ（REST の JSON）と項目名・数が一致する（片方だけに足すと輸送ごとに意味が割れる）。
+    // X-10: 応答の proto は共通エンベロープ（REST の JSON）と項目名・数が一致する（片方だけに足すと輸送ごとに意味が割れる）。
     [Fact]
     public void Result_proto_matches_the_envelope_wire_names()
     {
@@ -310,7 +353,7 @@ public sealed class GrpcToolInvokerTests
             .Should().BeEquivalentTo(JsonNames(typeof(McpToolDocument)));
     }
 
-    // E-12: 期限の構成。既定 30 秒・1 未満は 1 秒。本番の構成ファイルに既定値で並んでいる。
+    // X-11: 期限の構成。既定 30 秒・1 未満は 1 秒。本番の構成ファイルに既定値で並んでいる。
     [Theory]
     [InlineData(null, 30)]
     [InlineData("5", 5)]
@@ -332,7 +375,7 @@ public sealed class GrpcToolInvokerTests
         configuration.GetValue<int?>(GrpcToolInvoker.TimeoutKey).Should().Be(GrpcToolInvoker.DefaultTimeoutSeconds);
     }
 
-    // E-13: 登録。gRPC の宛先が無い配備でも実行器は組め、実行は経路なしとして拒否する（s2s の資格情報を要求しない）。
+    // X-12: 登録。gRPC の宛先が無い配備でも実行器は組め、実行は経路なしとして拒否する（s2s の資格情報を要求しない）。
     [Fact]
     public async Task Without_grpc_targets_the_invoker_is_registered_and_fails_closed()
     {
@@ -353,7 +396,7 @@ public sealed class GrpcToolInvokerTests
             .Which.Message.Should().Be(GrpcToolInvoker.NotRoutedMessage);
     }
 
-    // E-14: 登録。gRPC の宛先が在れば s2s の発行側と一緒に組める。宛先が在るのに発行側が無ければ**組んだ時点で落ちる**
+    // X-12: 登録。gRPC の宛先が在れば s2s の発行側と一緒に組める。宛先が在るのに発行側が無ければ**組んだ時点で落ちる**
     // （Program.cs は要求を受ける前に 1 度組む）。
     [Fact]
     public void With_grpc_targets_the_invoker_needs_the_service_token_provider()

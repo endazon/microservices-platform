@@ -257,6 +257,17 @@ appsettings.json の既定に寄りかかっているので、配線の試験（
    🔴 **暫定**である。ADR-0117 決定 3 は本文を利用者文脈（`user_id` / `action`）とツールの引数へ改め、解決済みの scope を信じさせる形を採らないと定めた ——
    その変更は #1611 が行い、`scope` の番号と名前は reserved へ移す。**#1611 までに、この `scope` を信じて認可する受け口を作ってはならない**（同 決定 4）。
 6. **受け口が無いことを固定した**: 3 サービスの本番の Program.cs の h2c ポートで `Execute` が `UNIMPLEMENTED` を返すことを各サービスの試験が持つ（#1611 で反転する）。
+7. 🔴 **申告の封筒の `service` を収集先のキーへ結び付ける**（PR の監査 M-1 で追加）。上の 2 の「申告の中身から宛先を作らない」は、`endpoint` を外しただけでは
+   成り立っていなかった —— 突合キーと実行先は封筒の `service` から引いており、キー X（`Mcp:Services` / `Mcp:GrpcServices` の名前）で集めた申告元が
+   `service = "Y"` と名乗れば、Y の名で自分の説明・必要スコープ・越境分類のツールを公開でき、その実行は Y の実行口へ送られた（同じ `Y::name` が 2 つ届くと
+   突合の `ToDictionary` が例外を投げ、周期ごとに失敗して起動直後なら公開ツールが 0 件のままになる DoS も伴った）。
+   - **収集器（`ToolDeclarationSource.CollectAsync`。REST だけの `HttpToolDeclarationSource.CollectAsync` も）は、封筒の `service` が収集先のキーと Ordinal で一致しない申告を拒否する**
+     （申告なしとして扱い、Error で記録する）。これで**申告元が名乗れるのは自分が集められたキーだけ**になり、実行先（同じキーの `Mcp:GrpcServices`）も
+     その申告元自身に閉じる。**書き換え（キーで上書き）ではなく拒否を採る** —— 食い違いは誤配線か偽装であり、どちらでもその申告がキーのサービスのものだという
+     根拠が無い（書き換えは推測で公開すること。ADR-0024 §5）。拒否なら公開構成が要求するツールは「申告なし」の構成ドリフトとして運用者に見える。
+   - **突合（`ToolCatalog.Refresh`）は重複した `サービス::ツール名` で落ちない。** 重複したキーはどちらも公開せず（推測しない）、構成が要求していれば
+     `duplicate-declaration` のドリフトにする。決定的で、他のキーのツールには影響しない。結び付けの後は、重複は 1 つのサービスが同じ名前を 2 度申告した場合にだけ起きる。
+   - 構成のキーは各サービスの申告の `service`（`document-service` / `retrieval-service` / `graph-service`）と既に一致しており（appsettings・helm・compose）、配備は変わらない。
 
 **配備**: 新しい構成は無い（`Mcp__GrpcServices__*` と `serviceToken` は ④-a のために在る）。helm の描画は develop と同一（values-local で確認）。宛先の Istio の認可は
 文書サービスの DENY だけのポリシーで、McpServer → h2c の実行の面は通る（`scripts/helm-private-notes-sync-authz.test.js` の呼び出し元の一覧を REST の実行から gRPC の実行へ差し替えた）。

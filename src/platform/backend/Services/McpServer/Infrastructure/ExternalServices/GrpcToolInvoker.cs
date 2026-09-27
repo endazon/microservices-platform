@@ -81,13 +81,15 @@ public sealed class GrpcToolInvoker : IToolInvoker, IDisposable
         }
 
         var timeout = ConfiguredTimeout(_configuration);
+        // ［#1516 監査］要求の組み立ては try の外に置く —— 組み立ての誤り（プログラムの誤り）を「到達不能」の拒否に紛れさせない。
+        var request = ToRequest(tool, scope, argumentsJson);
         try
         {
             var channel = _channels.GetOrAdd(address, a => new Lazy<GrpcChannel>(() =>
                 GrpcClientExtensions.CreatePlatformChannel(a, ServiceTokenFailures.Marking(_tokenProvider!)))).Value;
             var client = new Pb.McpToolExecution.McpToolExecutionClient(channel);
             var result = await client.ExecuteAsync(
-                ToRequest(tool, scope, argumentsJson),
+                request,
                 deadline: DateTime.UtcNow.Add(timeout),
                 cancellationToken: ct);
             return ToResult(result);

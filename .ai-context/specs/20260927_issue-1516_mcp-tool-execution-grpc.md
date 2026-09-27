@@ -104,7 +104,7 @@ plan_refs:
 
 ### 試験
 
-- McpServer: `GrpcToolInvokerTests`（E-1〜E-14。新規）・`GrpcToolDeclarationCollectorTests` T-G15〜T-G17（新規）・`ToolInvocationServiceTests`（拒否への写し 3 経路・取り消し）・
+- McpServer: `GrpcToolInvokerTests`（X-1〜X-12。新規。札は docs/tests の X-* と同じ）・`GrpcToolDeclarationCollectorTests` T-G15〜T-G17（新規）・`ToolInvocationServiceTests`（拒否への写し 3 経路・取り消し）・
   `ToolDeclarationSourceFailFastTests`（本番の登録で実行器が gRPC の実行器）
 - 3 サービス: `McpToolDeclarationEndpointTests`（D-8 を「申告の JSON のキーが 5 項目ちょうど」へ差し替え）・`GrpcMcpToolDeclarationTests`（`Execute` が `UNIMPLEMENTED`。新規）
 - 検証（2026-09-27、ローカル）:
@@ -121,7 +121,7 @@ plan_refs:
 | 変異 | 結果 |
 | --- | --- |
 | 🔴 申告の URL を再び dial する（DTO に `endpoint` を戻し、実行器がその URL の authority を宛先にする） | **赤 4 件**: `Legacy_declared_endpoint_is_never_dialled`・`Legacy_rest_declaration_with_endpoint_is_collected_without_the_endpoint`・`Proto_fields_match_the_rest_wire_names_of_the_dto`・`Declaration_carries_no_endpoint_and_field_4_is_not_reused` |
-| 申告したサービスを見ず、構成の 1 つ目の宛先へ送る | **赤 2 件**: `Executes_on_the_declaring_service_over_grpc_with_the_declared_name`・`Unrouted_service_fails_closed_without_dialling_anything`（初版の E-1 は片方向だけを見ていて宛先の並びしだいで緑になった。対のツールをもう一方へ送る検査を足して赤に固定した） |
+| 申告したサービスを見ず、構成の 1 つ目の宛先へ送る | **赤 2 件**: `Executes_on_the_declaring_service_over_grpc_with_the_declared_name`・`Unrouted_service_fails_closed_without_dialling_anything`（初版の X-1 は片方向だけを見ていて宛先の並びしだいで緑になった。対のツールをもう一方へ送る検査を足して赤に固定した） |
 | `UNIMPLEMENTED` の枝を外す | **赤**: `Missing_execution_port_fails_closed_with_a_clear_message` |
 | 実行に期限を付けない | **赤**: `Deadline_from_configuration_ends_a_silent_execution`（見張りで打ち切り） |
 | 呼び出し側の取り消しを拒否へ畳む | **赤**: `Caller_cancellation_propagates_instead_of_failing_closed` |
@@ -138,3 +138,39 @@ plan_refs:
 
 - 稼働 k3s での McpServer → 各サービス h2c の実行の往復（受け口が無いので `UNIMPLEMENTED` になるはず）。ループバックの実 Kestrel で代替した
 - 外部エージェントから見た `tools/call` の拒否の見え方（MCP SDK が `CallToolResult.IsError` と文言をどう載せるか）は `McpCallToolHandler` の既存の写しに任せ、SDK を通した結合は測っていない
+
+## ［2026-09-27 追記 / #1516］PR 監査の指摘への対応（M-1・L-1・L-2）
+
+### M-1: 申告の封筒の `service` を収集先のキーへ結び付ける
+
+- **穴**: 突合キー（`ToolCatalog`）と実行先（`GrpcToolInvoker` の `Mcp:GrpcServices:<service>`）はどちらも封筒の `service` から引いていた。
+  キー X で集めた申告元が `service = "Y"` と名乗れば Y の名でツール（説明・必要スコープ・越境分類は自分のもの）を公開でき、実行は Y の実行口へ送られた。
+  同じ `Y::name` が 2 つ届くと `ToDictionary` が例外を投げ、突合が毎周期失敗した（起動直後なら公開 0 件の DoS）。
+  本 PR の X-2（旧 E-2）が緑だったのは、キー `rest`/`grpc` で集めて `probe-over-rest`/`probe-over-grpc` の名で実行していた＝この穴に乗っていたためである。
+- **是正**:
+  - `ToolDeclarationSource.CollectAsync`（REST・gRPC）と REST だけの `HttpToolDeclarationSource.CollectAsync` が `DeclarationBinding.Bind` を通し、
+    封筒の `service` が収集先のキーと Ordinal で一致しない申告を**拒否**する（申告なし・Error。名乗りは制御文字を潰して長さを切ってからログへ）。
+    **書き換えではなく拒否**: 食い違いは誤配線か偽装で、申告がキーのサービスのものだという根拠が無い（ADR-0024 §5「推測で公開しない」）。拒否なら構成ドリフトとして見える。
+  - `ToolCatalog.Refresh` は重複キーで落ちない。重複したキーはどちらも公開せず `duplicate-declaration` のドリフトにし、他のキーには影響しない（決定的）。
+  - 試験の器 `McpToolDeclarationGrpcTestHost` は 1 ホスト 1 サービス名（両輸送）へ改め、輸送は受信回数（`RestHits`/`GrpcHits`）で見分ける。
+  - X-2 を収集先のキーと名乗りを一致させた形（`legacy-rest` / `legacy-grpc`）へ直した。
+- **試験**: `GrpcToolDeclarationCollectorTests.Declarations_naming_another_service_than_the_target_are_rejected`（G-16）・
+  `GrpcToolInvokerTests.A_service_cannot_publish_or_route_tools_as_another_service`（X-15）・`ToolCatalogTests.重複した申告は突合を壊さずそのツールだけ公開しない`（A-11）。
+- **変異**（1 件ずつ当てて戻した）:
+
+| 変異 | 結果 |
+| --- | --- |
+| 🔴 結び付けを外す（`Bind` が常に申告を返す） | **赤 2 件**: `A_service_cannot_publish_or_route_tools_as_another_service`・`Declarations_naming_another_service_than_the_target_are_rejected` |
+| 突合を重複で例外を投げる形（`ToDictionary`）へ戻す | **赤**: `重複した申告は突合を壊さずそのツールだけ公開しない` |
+
+- 構成のキーは各サービスの申告の `service` と既に一致している（appsettings・helm・compose の `document-service` / `retrieval-service` / `graph-service`）。配備は変わらない。
+
+### L-1・L-2・任意
+
+- L-1: [[IADR-0292]] の追記を決定 5 の段落の後ろ（空行で区切る）へ移した。決定 5 の本文は元の並びに戻った。
+- L-2: `GrpcToolInvokerTests` のコメントの札を `docs/tests/FR-16_mcp-server.md` の X-* と揃えた（同書の E-* は越境マトリクス）。本書の記述も X-* へ改めた。
+- 任意: `GrpcToolInvoker` は要求の組み立て（`ToRequest`）を `try` の外へ出した（組み立ての誤りを「到達不能」の拒否に紛れさせない）。
+
+### 起点
+
+`origin/develop` を merge commit で取り込んだ（#1632・#1633）。

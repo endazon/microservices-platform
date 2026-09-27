@@ -40,7 +40,8 @@ public sealed class GrpcToolDeclarationCollectorTests
         new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
     private static (ToolDeclarationSource Source, RecordingLogger<GrpcToolDeclarationCollector> GrpcLog) Build(
-        IDictionary<string, string?> values, IServiceTokenProvider? tokenProvider = null, TimeSpan? timeout = null)
+        IDictionary<string, string?> values, IServiceTokenProvider? tokenProvider = null, TimeSpan? timeout = null,
+        RecordingLogger<ToolDeclarationSource>? sourceLog = null)
     {
         var configuration = Config(values);
         var factory = new TimeoutClientFactory(timeout);
@@ -48,7 +49,7 @@ public sealed class GrpcToolDeclarationCollectorTests
         var log = new RecordingLogger<GrpcToolDeclarationCollector>();
         var grpc = new GrpcToolDeclarationCollector(
             tokenProvider ?? new FixedTokenProvider(McpToolDeclarationGrpcTestHost.ServiceToken()), factory, log);
-        return (new ToolDeclarationSource(http, configuration, grpc), log);
+        return (new ToolDeclarationSource(http, configuration, grpc, sourceLog), log);
     }
 
     private static string DeadAddress()
@@ -70,7 +71,7 @@ public sealed class GrpcToolDeclarationCollectorTests
         var collected = await source.CollectAsync(Ct);
 
         collected.Should().ContainSingle().Which.Should().BeEquivalentTo(
-            new ServiceToolDeclarations(McpToolDeclarationGrpcTestHost.GrpcService, [McpToolDeclarationGrpcTestHost.SampleTool]),
+            new ServiceToolDeclarations(McpToolDeclarationGrpcTestHost.DefaultService, [McpToolDeclarationGrpcTestHost.SampleTool]),
             o => o.WithStrictOrdering());
         log.OfLevel(LogLevel.Error).Should().BeEmpty();
         log.OfLevel(LogLevel.Warning).Should().BeEmpty();
@@ -78,29 +79,58 @@ public sealed class GrpcToolDeclarationCollectorTests
 
     // 🔴 T-G2: 宛先ごとに輸送を選ぶ。宛先 = `Mcp:Services` と `Mcp:GrpcServices` のキーの和（構成の順序を保つ）。
     // gRPC のアドレスが在る宛先だけが gRPC（両方に在れば gRPC）、空のアドレスは構成されていないものとして REST のまま。
+    // 宛先ごとにそのキーを名乗るホストを立て、どちらの輸送で集めたかはホストの受信回数で読む。
     [Fact]
     public async Task Collects_each_target_over_its_configured_transport()
     {
-        await using var target = await McpToolDeclarationGrpcTestHost.StartAsync(ct: Ct);
+        await using var restOnly = await McpToolDeclarationGrpcTestHost.StartAsync("rest-only", Ct);
+        await using var both = await McpToolDeclarationGrpcTestHost.StartAsync("both", Ct);
+        await using var blankGrpc = await McpToolDeclarationGrpcTestHost.StartAsync("blank-grpc", Ct);
+        await using var grpcOnly = await McpToolDeclarationGrpcTestHost.StartAsync("grpc-only", Ct);
         var (source, _) = Build(new Dictionary<string, string?>
         {
-            ["Mcp:Services:rest-only"] = target.HttpAddress,
-            ["Mcp:Services:both"] = target.HttpAddress,
-            ["Mcp:Services:blank-grpc"] = target.HttpAddress,
-            ["Mcp:GrpcServices:both"] = target.GrpcAddress,
+            ["Mcp:Services:rest-only"] = restOnly.HttpAddress,
+            ["Mcp:Services:both"] = both.HttpAddress,
+            ["Mcp:Services:blank-grpc"] = blankGrpc.HttpAddress,
+            ["Mcp:GrpcServices:both"] = both.GrpcAddress,
             ["Mcp:GrpcServices:blank-grpc"] = "",
-            ["Mcp:GrpcServices:grpc-only"] = target.GrpcAddress,
+            ["Mcp:GrpcServices:grpc-only"] = grpcOnly.GrpcAddress,
         });
 
         var collected = await source.CollectAsync(Ct);
 
-        collected.Select(d => d.Service).Should().Equal(
-            McpToolDeclarationGrpcTestHost.RestService,   // rest-only
-            McpToolDeclarationGrpcTestHost.GrpcService,   // both（gRPC が勝つ）
-            McpToolDeclarationGrpcTestHost.RestService,   // blank-grpc（空は構成されていない）
-            McpToolDeclarationGrpcTestHost.GrpcService);  // grpc-only
+        // 順序: REST の宛先（構成が返す順。構成の子要素はキー順に並ぶ）のあとに、gRPC にだけ在る宛先。
+        collected.Select(d => d.Service).Should().Equal("blank-grpc", "both", "rest-only", "grpc-only");
+        (restOnly.RestHits, restOnly.GrpcHits).Should().Be((1, 0), "rest-only は REST");
+        (both.RestHits, both.GrpcHits).Should().Be((0, 1), "両方に在れば gRPC が勝つ");
+        (blankGrpc.RestHits, blankGrpc.GrpcHits).Should().Be((1, 0), "空の gRPC アドレスは構成されていない");
+        (grpcOnly.RestHits, grpcOnly.GrpcHits).Should().Be((0, 1), "grpc-only は gRPC");
         collected.Should().AllSatisfy(d => d.Tools.Should().ContainSingle()
             .Which.Should().Be(McpToolDeclarationGrpcTestHost.SampleTool, "輸送を替えても申告の中身は同じ"));
+    }
+
+    // 🔴 T-G18（#1516 監査 M-1, ADR-0117 決定 1）: **封筒の `service` が収集先のキーと違う申告は拒否する**（REST・gRPC とも）。
+    // キー `victim-a` / `victim-b` で集めたホストが別のサービス（`spoofed`）を名乗っても、その名では 1 件も集まらず、Error で記録される。
+    // 名乗りを偽らない他の宛先（`honest`）の申告は集まる。
+    [Fact]
+    public async Task Declarations_naming_another_service_than_the_target_are_rejected()
+    {
+        await using var spoofRest = await McpToolDeclarationGrpcTestHost.StartAsync("spoofed", Ct);
+        await using var spoofGrpc = await McpToolDeclarationGrpcTestHost.StartAsync("spoofed", Ct);
+        await using var honest = await McpToolDeclarationGrpcTestHost.StartAsync("honest", Ct);
+        var sourceLog = new RecordingLogger<ToolDeclarationSource>();
+        var (source, _) = Build(new Dictionary<string, string?>
+        {
+            ["Mcp:Services:victim-a"] = spoofRest.HttpAddress,
+            ["Mcp:GrpcServices:victim-b"] = spoofGrpc.GrpcAddress,
+            ["Mcp:GrpcServices:honest"] = honest.GrpcAddress,
+        }, sourceLog: sourceLog);
+
+        var collected = await source.CollectAsync(Ct);
+
+        collected.Select(d => d.Service).Should().Equal(["honest"], "名乗りを偽った 2 宛先は申告なし。偽らない宛先は集まる");
+        (spoofRest.RestHits, spoofGrpc.GrpcHits).Should().Be((1, 1), "対照: 偽った宛先にも実際に問い合わせている");
+        sourceLog.OfLevel(LogLevel.Error).Should().HaveCount(2).And.AllSatisfy(e => e.Message.Should().Contain("spoofed"));
     }
 
     // 🔴 T-G3: s2s の配線不備（`platform-service` を持たないトークン）は**申告なし**へ畳み（推測で公開しない）、
@@ -166,7 +196,7 @@ public sealed class GrpcToolDeclarationCollectorTests
 
         var collected = await source.CollectAsync(Ct);
 
-        collected.Select(d => d.Service).Should().Equal(McpToolDeclarationGrpcTestHost.GrpcService);
+        collected.Select(d => d.Service).Should().Equal(McpToolDeclarationGrpcTestHost.DefaultService);
         log.OfLevel(LogLevel.Error).Should().BeEmpty();
         log.OfLevel(LogLevel.Warning).Should().ContainSingle().Which.Message.Should().Contain("gone");
     }
@@ -175,7 +205,7 @@ public sealed class GrpcToolDeclarationCollectorTests
     [Fact]
     public async Task Declarations_with_empty_service_name_are_no_declaration()
     {
-        await using var target = await McpToolDeclarationGrpcTestHost.StartAsync(grpcService: string.Empty, ct: Ct);
+        await using var target = await McpToolDeclarationGrpcTestHost.StartAsync("blank", Ct, grpcService: string.Empty);
         var (source, log) = Build(new Dictionary<string, string?> { ["Mcp:GrpcServices:blank"] = target.GrpcAddress });
 
         var collected = await source.CollectAsync(Ct);
