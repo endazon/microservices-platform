@@ -1,0 +1,239 @@
+---
+title: SC-09 のポリシーの編集器で動的束縛（${current_user}・${current_groups}）と owner・shared_with の条件を作れるようにする（#1666）
+type: spec
+status: done
+related_ids: [FR-05, FR-09, FR-19, SC-09, UC-05, ADR-0121, ADR-0036, ADR-0098, IADR-0129, IADR-0253, IADR-0341, IADR-0447, IADR-0480]
+author: claude
+created: 2026-09-27
+updated: 2026-09-28
+plan_refs:
+  - planning:projects/microservices-platform/07_adr/ADR-0121_owner-read-policy-mandatory-and-content-abac-gate.md 決定 1・決定 6・実測 7・フォローアップ 5
+  - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md D-02・D-03・D-06・フォローアップ 5
+  - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md §動的束縛（read 規則の第 2・第 3 節）
+  - planning:projects/microservices-platform/05_screens/01_screens.md §SC-09（必須のポリシー・入力 / バリデーション）
+issue: "#1666"
+---
+
+# 仕様書: SC-09 のポリシーの編集器で動的束縛と owner・shared_with の条件を作れるようにする（#1666）
+
+> 本仕様書は実装着手前に作成する。計画書（`project-planning` の `projects/microservices-platform/`、`origin/main`）を一次情報とする。
+
+## 起点となる計画書（トレーサビリティ）
+
+- 要求: **FR-05**（ABAC）、**FR-09**（属性・ポリシー管理）、FR-19（個人資料の共有）、UC-05、**SC-09**
+- 計画 ADR: **ADR-0121** 決定 1（所有者の read ポリシーは本番でもシステム管理者が SC-09 から投入する。SC-09 が動的束縛の入力に対応した後）・
+  決定 6（それまでは API へ直接投入）・実測 7（今の SC-09 では作れない）・フォローアップ 5。
+  **ADR-0036** D-02（所有者は `doc.owner ∈ { ${current_user} }`＝許容値の集合の側に束縛変数。共有先は主体の側を束縛で照合）・
+  D-03（束縛変数は `${current_user}` と `${current_groups}` の 2 つだけ。任意の式は書けない）・D-06（共有は個人とグループ）・フォローアップ 5。
+  ADR-0098 決定 1（`${current_groups}` は Keycloak のグループ ID）。
+- 計画 07_abac-attribute-model §動的束縛: 所有者 `doc.owner ∈ { ${current_user} }`／共有先 `${current_user} ∈ doc.shared_with` または
+  `doc.shared_with ∩ ${current_groups} ≠ ∅`（＝ `doc.shared_with ∩ ({${current_user}} ∪ ${current_groups}) ≠ ∅`）。
+- 関連 IADR: IADR-0129（構造化エディタ・自由記述の条件式を実装しない）、IADR-0341（下書きのフック）、IADR-0253（束縛は評価器の中だけ）、
+  IADR-0447（共有先の分岐を 1 本のポリシーで表す）、IADR-0480（所有者の read ポリシーの seed と配備の手順）
+- 起点 issue: #1666
+
+## 目的・背景
+
+- SC-09 のポリシーの編集器は、条件の属性を属性辞書から選び、値も辞書の許可値から選ぶ。`owner` は辞書に無く、`${current_user}` を選ぶ手段も無い。
+  したがって今の画面からは所有者の read ポリシーも共有先のポリシーも作れない（ADR-0121 実測 7）。
+- ポリシーの API（SC-09 と同じ口）は、未定義のキーも束縛の値も素通しで受け付ける（`AbacValidation.ValidateConditions` は未定義キーを許容する）。
+  **`${current_usr}` のような綴り違いも保存でき、評価器はそれをリテラルとして残す**（どの文書にも一致しない＝静かに効かないポリシー）。
+
+## 計画の判断が要る点の確認（着手前）
+
+issue は「表示の形・どの属性に動的束縛を許すか」に判断が要るなら止めよと書く。次のとおり、どちらも計画から一意に導けるので止めない。
+
+| 点 | 計画の記述 | 実装の形 |
+| --- | --- | --- |
+| どの属性に許すか | 計画が束縛を置く場所は 2 つだけ: 所有者 `doc.owner ∈ { ${current_user} }`（D-02）、共有先 `doc.shared_with ∩ ({${current_user}} ∪ ${current_groups})`（07 §動的束縛・D-06）。どちらも**文書の条件**である | `owner` → `${current_user}` のみ。`shared_with` → `${current_user}`・`${current_groups}`。**文書の条件だけ**。利用者の条件と他の属性には許さない |
+| 表示の形 | issue: 色だけでなくテキストでも示す。画面の既存の規約（INDEX 決定 21・`Tag` は分類の名前） | 条件の値の選択肢・積んだ条件・一覧の要約の 3 か所で、束縛の値を「動的束縛」という語と平易な説明（「操作する利用者本人」「操作する利用者の所属グループ」）で示し、記法（`${current_user}`）も併記する |
+| 自由入力 | issue: 許さない。計画の入力表「対象属性｜選択｜定義済み属性のみ」 | 値は `Select` だけ。`owner`・`shared_with` の選択肢は束縛の値だけ（辞書にそのキーが定義されていれば辞書の許可値も） |
+
+`owner`・`shared_with` を「定義済み属性」に含めてよいかについて: 両者は計画 07 §文書属性に**定義された属性**であり（`owner` は必須属性・`shared_with` は任意属性）、
+属性辞書（管理者が値集合を定義するもの）に載らないのは値が利用者名・グループ ID で列挙できないためである（seed の注記）。
+画面は「計画が定義する束縛の位置」だけを辞書の外から足す。辞書の外の任意のキーは引き続き選べない。
+
+## 設計
+
+### 画面（`src/knowledge/frontend/src/features/sc09-admin-abac/`）
+
+1. `types/abacVocabulary.ts` に束縛の語彙を置く（純関数・値集合は計画の写し）。
+   - `DYNAMIC_BINDINGS = { owner: ['${current_user}'], shared_with: ['${current_user}', '${current_groups}'] }`（文書の条件だけ）。
+   - `isDynamicBinding(value)`・`dynamicBindingLabel(value)`（「操作する利用者本人」「操作する利用者の所属グループ」）。
+   - `policyAttributeOptions(attributes)`: 属性辞書の各属性（値＝許可値）に、束縛の位置を足した選択肢の一覧を返す。
+     - 辞書に同じキーの**文書**属性があれば、その許可値の後ろへ束縛の値を足す（重複しない）。
+     - 辞書にそのキーが**どのスコープにも無い**ときだけ、文書属性の選択肢（ラベル「所有者」「共有先」）を足す。
+     - 利用者属性には束縛を足さない。
+2. `hooks/usePolicyDraft.ts` は属性辞書ではなく上の選択肢を引く（scope は選択肢から採る規則は変えない）。
+3. `components/PolicyEditorPanel.tsx`
+   - 条件の値の `option` は、束縛なら「動的束縛: 操作する利用者本人（${current_user}）」の形の文にする。
+   - 積んだ条件のチップと一覧の要約は、束縛の値を `Tag`（`outline`）の「動的束縛」＋説明＋記法で示す（色だけにしない）。
+4. i18n カタログ（ja / en）を再生成してコミットする。記法（`${…}`）は翻訳文へ入れない（ICU の `{}` と衝突するため。部品で並べる）。
+
+### サーバー（`AuthorizationService/Domain/AbacValidation.cs`。最小）
+
+`ValidatePolicy` に束縛の検証を足す（dry-run と保存は同じ関数を通るので両方に効く）。
+
+- 値に `${` を含むものを「束縛の形」とみなす。
+  - `${current_user}`・`${current_groups}` 以外は拒否（D-03。綴り違いが静かに効かないポリシーになるのを止める）。
+  - 利用者の条件に束縛があれば拒否（評価器は利用者の条件を束縛しない＝どの利用者にも一致しない）。
+  - 文書の条件で、束縛を許す位置は `owner` → `${current_user}`、`shared_with` → 両方。それ以外の組は拒否。
+- 辞書に `owner`・`shared_with` が定義されている場合でも、上で許した束縛の値は「辞書外の値」として拒否しない（画面が出す選択肢と整合させる）。
+- 評価器・契約・BFF は変えない。**既存の保存済みポリシーは検証し直さない**（検証は作成と dry-run の時だけ）。
+
+### 文書
+
+- `docs/screens/SC-09_admin-abac-settings.md`: 入力表（対象属性・条件の値）、§ポリシー定義、hi-fi 対応 #8・#10 の備考。
+- `docs/tests/SC-09_admin-abac-settings.md`: 画面・純関数・認可サービスの節に行を足す（テスト ID は push 直前に develop の最大を再確認）。
+- `docs/tests/FR-09_abac-attribute-policy-management.md`: `AbacValidationTests` の行を足す。
+- IADR を新設（push 直前に develop の最大＋1）。
+
+## 受け入れ基準
+
+- AC-1: 画面の操作だけで所有者の read ポリシー（`action=read`・`userConditions={}`・`documentConditions={owner:["${current_user}"]}`）を保存できる（送信本文で固定）。
+- AC-2: 共有先のポリシー（`documentConditions={shared_with:["${current_user}","${current_groups}"]}`）も画面の操作だけで作れる。
+- AC-3: 値は選択だけで、自由入力の欄が無い。辞書の属性（例 `confidentiality`）の選択肢に束縛の値は出ない。利用者属性にも出ない。
+- AC-4: 束縛の値は、選択肢・積んだ条件・一覧の要約で「動的束縛」という語で示される（色だけでない）。未知の値は生値のまま出す。
+- AC-5: サーバーは未知の束縛変数・利用者の条件の束縛・許されない位置の束縛を 400（dry-run では `valid=false`）にし、所有者と共有先の形は通す。
+  辞書に `owner`・`shared_with` が定義されていても許した束縛の値は通る。dev seed の全ポリシーが検証を通る。
+- AC-6: 変異 3 件以上で試験が赤になる。
+
+## 母集合（着手前に自分で引いた。規則 9）
+
+### 引き方
+
+- `git grep -n -E '画面からは作れない|画面から作れない|画面からは(この)?ポリシーを作れない'`（この変更で誤りになる記述）
+- `git grep -n -E 'SC-09 が動的束縛|動的束縛に対応'`
+- `git grep -n -E 'owner は attributes.json|辞書に入れる意味が無い'`
+- `git grep -n -E '定義済み属性のみ'`
+- `git grep -n -E 'current_user|current_groups|動的束縛' -- 'src/*.ts' 'src/*.tsx' docs/screens docs/tests/SC-09* docs/functional/FR-09* docs/data/abac-policy.md`
+- `git grep -n 'ValidatePolicy('`（検証の呼び出し元）・`git grep -n -E '"\$\{' -- '*.cs'`（束縛の値を使う試験）
+
+### 結果（変えるもの）
+
+- 画面: `abacVocabulary.ts`・`usePolicyDraft.ts`・`PolicyEditorPanel.tsx` とその試験 3 本、`platform/frontend/e2e/sc09-admin-abac.smoke.spec.ts`、
+  i18n カタログ（`knowledge/frontend` と `platform/frontend` のうち抽出先）。
+- サーバー: `AbacValidation.cs`・`AbacValidationTests.cs`。呼び出し元は `AuthzEndpoints.cs`（保存）と `ValidatePolicy/Endpoint.cs`（dry-run）の 2 つで、同じ関数を通る（変えない）。
+- 文書: `docs/screens/SC-09_admin-abac-settings.md`（入力表 164–165 行・hi-fi 対応）、`docs/tests/SC-09_admin-abac-settings.md`、
+  `docs/tests/FR-09_abac-attribute-policy-management.md`、`scripts/test-spec-coverage-baseline.json`（必要なら `--update`）。
+- `deploy/local/abac-seed/policies.json` の注記 22–23 行（「owner は attributes.json へ登録しない。検証器は未定義キーを許容し」）: 記述は本件の後も正しい
+  （未定義キーの許容は変えない）。［2026-09-28 追記］**変えないことにした** —— 並行の #1665 が同じ seed の所有者のポリシーを扱っており、
+  正しい記述に触って衝突の面を増やさない。seed の全ポリシーが新しい検証を通ることは試験で固定する（T-70）。
+
+### 除外したもの（理由）
+
+- **`docs/operations/operations.md:425`（「画面からはこのポリシーを作れない」）**: 本件で**誤りになる**が、並行の #1665 が同じファイルを触っているため本件では触らない
+  （指示による）。報告に残し、どちらかのマージ後に追随する。
+- `.ai-context/adr/IADR-0480`・`IADR-0133:61`・`IADR-0253:186`: 凍結記録。当時の状態の記述であり誤りではない（IADR-0253 は write の画面追随の話で本件と別）。
+- `.ai-context/specs/` の過去の作業仕様書: point-in-time の記録。
+- `AbacEvaluatorTests.cs` の `${current_department}`（未知のプレースホルダをリテラルで残すことの試験）: 評価器を直接呼び、検証器を通らない。変えない。
+- SC-19 の共有・`lib/abac/owner.ts`・生成物 `bff.schemas.ts` の `current_*` の言及: 本件の編集器と無関係（束縛の意味の説明）。
+- `docs/tests/SC-12_mcp-client-management.md` T-06（属性の選択肢）: 利用者属性だけを出す別画面。束縛は利用者属性へ足さないので影響しない。
+- 対象アクションの `write` の画面追随（画面仕様書 163 行・純関数 P1）: 別作業として記録済み。本件は read の所有者・共有先で足り、範囲を広げない。
+- 認可サービスの評価器・契約・BFF: 変えない（#1665 と #1671 の並行作業と重ならないよう最小にする）。
+
+## 検証
+
+- `src/` で `pnpm run lint`・`typecheck`・`format:check`・`test:coverage`・`i18n` の差分なし・`node scripts/check-i18n-catalogs.js`、SC-09 の E2E
+- `AuthorizationService.Tests` と `dotnet format --verify-no-changes`（platform）
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`、check-trace-blocks / check-test-spec-coverage / check-test-traceability / check-cross-repo-refs /
+  check-plan-id-qualification / gen-knowledge-graph --check / check-commit-messages --range=origin/develop..HEAD
+- 変異 3 件以上（コミット後に当て、`git show HEAD:<path> > <path>` で戻す）
+
+### 結果（2026-09-28・ローカル）
+
+- `src/`: `pnpm run lint`（0 エラー・警告 12 件は develop と同数）・`typecheck`（全ワークスペース。`src/ai-stock-trading` の submodule を初期化して実行）・
+  `format:check`・`test:coverage`（148 ファイル・1807 件合格・しきい値内。exit 0）・`pnpm run i18n` の再生成差分なし・`node scripts/check-i18n-catalogs.js` OK
+- E2E: `sc09-admin-abac.smoke.spec.ts` 5 件合格（新設 E4 を含む。ビルド済みプレビュー・Chromium は `/opt/pw-browsers/chromium` を一時設定で指定）
+- `AuthorizationService.Tests` 511 件合格、`dotnet format src/platform/backend/backend.slnx --verify-no-changes` exit 0
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 843 件合格、check-trace-blocks / check-test-spec-coverage（`--update` で床の対 415 件。
+  SC-09 のテスト仕様書 × `AbacValidationTests`・`PolicyDryRunValidationTests` の 2 対が増えた）/ check-test-traceability / check-cross-repo-refs /
+  check-plan-id-qualification / gen-knowledge-graph --check / check-commit-messages --range=origin/develop..HEAD: OK
+- 変異（コミット済みの状態で当て、`git show HEAD:<path> > <path>` で戻した）:
+  - M1 辞書に無い `owner`・`shared_with` の選択肢の値を空にする: 4 件赤（純関数 P13・下書き・画面の所有者／共有先）
+  - M2 サーバの束縛の検証を外す: 8 件赤（T-69 の 7 件・dry-run と保存の一致）
+  - M3 下書きが選択肢に無い値も積む: 1 件赤（`refuses to stack a value that is not one of the offered choices`）
+  - M4 サーバの表で `owner` に `${current_groups}` を許す: 1 件赤（位置違いの拒否）
+  - M5 画面が束縛を「動的束縛」の文言で示さない: 2 件赤（選択肢・チップ・一覧）
+  - M6 辞書の許可値の検証が表の束縛も「辞書外」とする: 1 件赤（T-70）
+
+
+［2026-09-28 追記 / #1666］**CI の `build-test` が初期ロードの床で赤になった**（`check-chunk-budget`: 616.27 kB > 615.92 kB、+0.35 kB）。
+
+- **再現**: `src/` で `pnpm run build` → `node scripts/check-chunk-budget.js --require` で同じ超過を確かめた。
+- **帰属**: 初期ロードは `index`・`vendor-react`・`ui`・`vendor-query` の 4 本である。
+  - 増えたのは `index` で、中身は ja / en の i18n カタログである。本件で足した文言は 4 件で、カタログの `messages.ts` は ja が +214 B、en が +186 B 増えた。
+  - `@foundation/i18n` はカタログを静的に import するので、カタログは設計どおり初期ロードに入る（IADR-0134 のフォローアップ 1 は、ロケール別の遅延読み込みを未実施として残している）。
+  - SC-09 固有のコード（束縛の表・選択肢の組み立て）は `AdminAbacSettingsPage` の遅延チャンクにとどまる。成果物を走査すると、`current_groups` は遅延チャンクにしか現れない。
+- **対処**: import の境界を直す対象は無い。カタログ文言による設計どおりの増加なので、`--update` で床を 615,916 → 616,268 B へ引き上げた。
+  理由は `scripts/chunk-budget-baseline.json` の `$comment_initialTotalBytes_20260928_1666_sc09-dynamic-binding` に残した（前例 #1610 と同じ形）。
+
+［2026-09-28 追記 / #1666］**develop の取り込み・IADR の改番・運用仕様書の是正・レビュー指摘への対応**（コーディネーターの指示による）。
+
+- **develop の取り込み**: #1665 の PR（#1673。IADR-0481 を新設）が develop に入った（`653878c0`）ので、マージコミットで取り込んだ。
+  - 衝突は `.ai-context/adr/README.md` の索引の 1 行だけだった。develop の行を残し、本件の行を後ろに置いた。
+  - 床（`scripts/test-spec-coverage-baseline.json`・`scripts/chunk-budget-baseline.json`）は手で合わせず、マージ後に各 `--update` で生成し直した。
+- **IADR の改番**: 本件の IADR-0481 を IADR-0482（develop の最大 0481 ＋1）へ改番した。
+  - 変えたもの: ファイル名、title と H1、索引の行、本件が足した trace ブロック 3 か所（SC-09 の画面仕様書・SC-09 と FR-09 のテスト仕様書）、運用仕様書の trace ブロック。
+  - `git grep -n "IADR-0481"` で引いた残りは、すべて #1665 由来の正当な参照（IADR-0480 の追記、監視の定義、DocumentService・認可サービスのコード注記、運用・セキュリティ・通信・FR-05 の trace ブロック）なので残した。
+  - 本仕様書の本文には IADR 番号を書いていなかったので、変更は無い。
+- **運用仕様書**（§所有者の読み取りのポリシーの投入）: 「画面からはこのポリシーを作れない」を改めた。
+  - 管理者設定画面から作る手順（対象属性「所有者（文書）」→ 値「動的束縛: 操作する利用者本人」→ 検証 → 保存）を既定にし、API への直接投入は代替として残した。
+  - 障害対応の表の「画面からこのポリシーを作れないことは計画側の未了事項」も改めた。
+  - trace ブロックに本仕様書・#1666・IADR-0482・SC-09 を足した。
+- **レビュー（推奨）名前の衝突**:
+  - `policyAttributeOptions` は、束縛の位置の選択肢を足すかを**文書スコープに同名キーがあるかだけ**で決めるようにした。選択肢の識別子（`Select` の値）は、キーだけからスコープとキーの組（`document:owner`）へ改めた。
+    キーだけだと、利用者属性の `owner` と文書の `owner`（束縛）が同じ値になり、先に並んだ方が黙って選ばれる。同じキーを両スコープに持つ辞書（`department`）の潜在の不具合も同時に閉じた。
+  - サーバーの `ValidateAttributeDefinition` は、利用者スコープの `owner`・`shared_with` の登録を拒否する（辞書のキーの一意性の検査と同じく大小を区別しない）。
+    入れる前に、dev seed の属性辞書（利用者は `clearance`・`department`・`tags`）・realm・既存の試験に利用者スコープの `owner`・`shared_with` が無いことを確かめた（`git grep`）。何も壊さないので入れた。AuthorizationService.Tests は全件合格した。
+- **レビュー（軽微）キー比較の不一致**: 束縛の位置のキーは、画面・サーバーとも大小を区別する（Ordinal）に揃えた。サーバーの表は当初 OrdinalIgnoreCase だった。根拠は評価側の比較規則である。
+  - 評価器は束縛を値の完全一致で解決する（`BindPlaceholders`）。
+  - 文書の属性の突き合わせも、キーを大小区別で引く（`AttributeFilterMatch.MatchesAll` の `TryGetValue`、`DocumentAttributeEncoding.WithSharedWith` の Ordinal）。
+  - したがって `Owner ∈ {${current_user}}` は `owner` を持つ文書に一致せず、保存できても静かに効かない。これを保存前に止める側へ揃えた。
+  - 画面側では、`DYNAMIC_BINDINGS[key]` が原型の名前（`constructor`）を拾う穴も `hasOwnProperty` で塞いだ。
+
+［2026-09-28 追記 / #1666］**別文脈の監査（head ba14d2d8）は GO だった。非ブロッキングの指摘のうち、次を同じ push で直した。**
+
+- **束縛の検証に action の次元を入れた**（最重要）。
+  - 根拠は計画 07 §動的束縛の判定規則である。
+    - `read` は、所有者ベース `doc.owner ∈ {${current_user}}` と共有先ベース `shared_with ∩ ({${current_user}} ∪ ${current_groups})`。
+    - `write` は `doc.owner ∈ {${current_user}}` だけ（「共有先には書き込み権限を与えない」）。ADR-0036 D-07 と ADR-0121 決定 1 もこの形である。
+    - `analyze`・`manage` の規則に束縛は無い。
+  - 表を (action, key, 変数) にした: read → owner・shared_with、write → owner。画面とサーバーの両方をこの形にした。
+  - 従来は `write` × `shared_with:[${current_user}]` が通り、`BffScopeResolver` の write スコープで共有先に書き込みを許していた。
+  - 画面は対象アクションが read のときだけ束縛の選択肢を出す。アクションを変えると、許されない束縛の条件を下書きから外す。
+- **束縛とリテラルの混在を禁じた**。サーバーは拒否する。画面は、束縛の位置では値の選択肢を束縛だけにした（辞書に同じキーがあっても、その許可値を並べない）。
+- **前後に文字が付いた束縛**（`x${current_user}`・`${current_user} `）が拒否されることを試験で固定した。
+- **キーの大小**: 先の対応で、画面・サーバーとも Ordinal に寄せた。評価器はポリシーのキーをそのままフィルタのキーにし（`AbacEvaluator.ResolveScope`）、文書の属性は大小を区別して引く。したがって序数で揃えるのが整合的であり、`Owner`・`SHARED_WITH` の否定の試験を置いた。
+- **T-70 を広げた**: dev seed の全ポリシーを、辞書なしと seed の属性辞書ありの両方で検査する。seed の属性辞書そのものが登録できることと、運用仕様書の本文が通ることも確かめる。
+- FR-09 の機能仕様書の業務ルールに ⑧（束縛の位置・action・混在の禁止）と ⑨（利用者属性の名前）を足した。
+
+［2026-09-28 追記 / #1666］**上の 2 回の対応の検証**（develop 取り込み後のローカル）
+
+- **`src/`**:
+  - lint は 0 エラー（警告 12 件は develop と同数）。typecheck と format:check は通った。
+  - test:coverage は 1813 件合格、exit 0、しきい値内。
+  - `pnpm run i18n` の差分なし、check-i18n-catalogs OK。
+  - `pnpm run build` のあと `check-chunk-budget.js --require` が OK（616.27 kB。`--update` で生成し直しても床は変わらない）。
+  - SC-09 の E2E は 5 件合格。
+- **バックエンド**: AuthorizationService.Tests は 568 件合格。`dotnet format --verify-no-changes` は両ユニットで exit 0。
+- **scripts**:
+  - `REQUIRE_REPO_TESTS=1 scripts.test.js` は 844 件合格。
+  - check-trace-blocks / check-test-spec-coverage（`--update` で対 423 件。SC-09 のテスト仕様書 × `AuthzManagementEndpointTests` が増えた）/ check-test-traceability / check-cross-repo-refs / check-plan-id-qualification / gen-knowledge-graph --check / check-commit-messages は OK。
+  - IADR の連番は 0480・0481・0482。
+- **変異**（コミット後に当て、`git show HEAD:<path> > <path>` で戻した）:
+  - Ma: サーバーが action を見ない（どの action でも read の表で引く）→ 6 件赤（write・manage・analyze × shared_with、manage・analyze × owner）
+  - Mb: 混在の検査を外す → 2 件赤
+  - Mc: 前後の文字を剥がして許す → 2 件赤
+  - Md: 画面を旧判定（どのスコープでも同名があれば束縛の選択肢を足さない）に戻す → 2 件赤（純関数と画面）
+  - Me: 利用者スコープの owner・shared_with の登録拒否を外す → 4 件赤（純関数 3・結合 1）
+  - Mf: 画面が action を見ない → 4 件赤
+  - Mg: サーバーの表のキーを大小無視へ戻す → 2 件赤（`Owner`・`SHARED_WITH`）
+
+［2026-09-28 追記 / #1666］**CI の `build-test` が `check-knip.js --require` で赤になった**（未使用の export が 17 件になり、床の 16 件を 1 件超えた）。
+
+- **原因**: `pnpm run knip` の内訳で、本件が足した `policyAttributeOptionId`（`abacVocabulary.ts`）が未使用の export だった。同じファイルの中でしか使っていない。
+- **対処**: 床は上げず、export を外してファイル内の関数にした（IADR-0211 の「使うか消す」）。
+- **確認**:
+  - `check-knip.js --require` は OK（床どおり 36 件）。
+  - frontend.yml の他のステップもローカルで通した: lint、typecheck、format:check、test:coverage（1813 件）、`pnpm run i18n` の差分なし、check-i18n-catalogs、build と `check-chunk-budget.js --require`。

@@ -51,11 +51,11 @@ describe('usePolicyDraft (SC-09)', () => {
 
   it('clears the condition value when the attribute changes', () => {
     const { result } = setup();
-    act(() => result.current.selectAttributeKey('clearance'));
+    act(() => result.current.selectAttribute('user:clearance'));
     act(() => result.current.setConditionValue('internal'));
     expect(result.current.values).toEqual(['public', 'internal']);
 
-    act(() => result.current.selectAttributeKey('sensitivity'));
+    act(() => result.current.selectAttribute('document:sensitivity'));
     expect(result.current.conditionValue).toBe('');
     expect(result.current.values).toEqual(['low', 'high']);
   });
@@ -71,17 +71,17 @@ describe('usePolicyDraft (SC-09)', () => {
     act(() => result.current.addCondition());
     expect(result.current.conditions).toEqual([]);
 
-    act(() => result.current.selectAttributeKey('clearance'));
+    act(() => result.current.selectAttribute('user:clearance'));
     act(() => result.current.addCondition()); // 値がまだ空
     expect(result.current.conditions).toEqual([]);
   });
 
   it('takes the scope from the attribute definition, not from the form', () => {
     const { result } = setup();
-    act(() => result.current.selectAttributeKey('clearance'));
+    act(() => result.current.selectAttribute('user:clearance'));
     act(() => result.current.setConditionValue('internal'));
     act(() => result.current.addCondition());
-    act(() => result.current.selectAttributeKey('sensitivity'));
+    act(() => result.current.selectAttribute('document:sensitivity'));
     act(() => result.current.setConditionValue('high'));
     act(() => result.current.addCondition());
 
@@ -101,7 +101,7 @@ describe('usePolicyDraft (SC-09)', () => {
 
   it('removes a condition by position (the same attribute can be stacked twice)', () => {
     const { result } = setup();
-    act(() => result.current.selectAttributeKey('clearance'));
+    act(() => result.current.selectAttribute('user:clearance'));
     act(() => result.current.setConditionValue('public'));
     act(() => result.current.addCondition());
     act(() => result.current.setConditionValue('internal'));
@@ -128,7 +128,7 @@ describe('usePolicyDraft (SC-09)', () => {
     const { result } = setup();
     act(() => result.current.setName('社外秘の閲覧'));
     act(() => result.current.setAction('analyze'));
-    act(() => result.current.selectAttributeKey('clearance'));
+    act(() => result.current.selectAttribute('user:clearance'));
     act(() => result.current.setConditionValue('internal'));
     act(() => result.current.addCondition());
 
@@ -138,5 +138,59 @@ describe('usePolicyDraft (SC-09)', () => {
     expect(result.current.conditions).toEqual([]);
     // 🔴 アクションは残る。同じアクションのポリシーを続けて足す管理者に毎回選び直させない。
     expect(result.current.action).toBe('analyze');
+  });
+  // FR-05, SC-09, ADR-0121 決定 1 (#1666): 所有者の read ポリシーを選択だけで組める。
+  it('builds the owner read policy from the binding position (no dictionary entry needed)', () => {
+    const { result } = setup();
+    act(() => result.current.setName('所有者は自分の文書を読める'));
+    act(() => result.current.selectAttribute('document:owner'));
+    expect(result.current.selected?.scope).toBe('document');
+    expect(result.current.values).toEqual(['${current_user}']);
+    act(() => result.current.setConditionValue('${current_user}'));
+    act(() => result.current.addCondition());
+
+    expect(result.current.body()).toEqual({
+      name: '所有者は自分の文書を読める',
+      action: 'read',
+      userConditions: {},
+      documentConditions: { owner: ['${current_user}'] },
+    });
+  });
+
+  // 🔴 #1666: 自由入力の余地を下書きの側でも塞ぐ —— 選択肢に無い値は積まない。
+  it('refuses to stack a value that is not one of the offered choices', () => {
+    const { result } = setup();
+    act(() => result.current.selectAttribute('document:owner'));
+    act(() => result.current.setConditionValue('alice'));
+    act(() => result.current.addCondition());
+    act(() => result.current.selectAttribute('document:sensitivity'));
+    act(() => result.current.setConditionValue('${current_user}'));
+    act(() => result.current.addCondition());
+
+    expect(result.current.conditions).toEqual([]);
+  });
+  // 🔴 #1666 監査: 束縛を置ける組は action ごとに違う。manage へ変えると owner の束縛の選択肢が消え、
+  // 積んだ束縛の条件も外れる（画面で選べない組を本文に残さない）。read へ戻すと再び選べる。
+  it('drops binding conditions and options that the new action does not allow', () => {
+    const { result } = setup();
+    act(() => result.current.selectAttribute('document:owner'));
+    act(() => result.current.setConditionValue('${current_user}'));
+    act(() => result.current.addCondition());
+    act(() => result.current.selectAttribute('document:sensitivity'));
+    act(() => result.current.setConditionValue('high'));
+    act(() => result.current.addCondition());
+    act(() => result.current.selectAttribute('document:owner'));
+    expect(result.current.conditions).toHaveLength(2);
+
+    act(() => result.current.setAction('manage'));
+    expect(result.current.options.map((o) => o.id)).not.toContain('document:owner');
+    expect(result.current.attributeId).toBe('');
+    // リテラルの条件は残り、束縛の条件だけが外れる。
+    expect(result.current.conditions).toEqual([
+      { scope: 'document', key: 'sensitivity', value: 'high' },
+    ]);
+
+    act(() => result.current.setAction('read'));
+    expect(result.current.options.map((o) => o.id)).toContain('document:owner');
   });
 });

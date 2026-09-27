@@ -24,11 +24,12 @@ import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import {
   attributeScopeLabel,
+  dynamicBindingLabel,
   policyActionLabel,
   POLICY_ACTIONS,
   summarizeConditions,
 } from '../types/abacVocabulary';
-import type { ConditionEntry, PolicyAction } from '../types/abacVocabulary';
+import type { ConditionEntry, ConditionSummaryEntry, PolicyAction } from '../types/abacVocabulary';
 import { usePolicyActions } from '../api/useAbacAdmin';
 import { usePolicyDraft } from '../hooks/usePolicyDraft';
 // SC-09, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
@@ -52,6 +53,24 @@ import type { AbacPolicyDto, AttributeDefinitionDto } from '@foundation/api/gene
 
 function labelOf(label: MessageDescriptor | string): string {
   return typeof label === 'string' ? label : i18n._(label);
+}
+
+/**
+ * FR-05, SC-09, ADR-0036 D-02・D-03 (#1666): 条件の値の表示文。
+ *
+ * **動的束縛は「動的束縛」という語で示す**（色だけにしない。INDEX 決定 21）。説明（「操作する利用者本人」）と
+ * 記法（`${current_user}`）を並べる —— 記法は API・運用手順書・一覧の要約と同じ字面なので、
+ * 画面で作ったものと手順書の本文を突き合わせられる。束縛でない値は生値のまま。
+ */
+function useConditionValueText(): (value: string) => string {
+  const { t } = useLingui();
+  return (value: string) => {
+    const label = dynamicBindingLabel(value);
+    if (label === null) return value;
+    const bindingLabel = i18n._(label);
+    const notation = value;
+    return t`動的束縛: ${bindingLabel}（${notation}）`;
+  };
 }
 
 /**
@@ -134,6 +153,7 @@ export function PolicyEditorPanel({
   // といった遷移の規則はフック側に閉じており、画面を描かずに固定してある
   // （`hooks/usePolicyDraft.test.ts`）。
   const draft = usePolicyDraft(attributes);
+  const valueText = useConditionValueText();
 
   // **列挙は手書きの配列にしない**（[[IADR-0127]] 決定 7）——
   // 4 本目のミューテーションを足したときに配列へ足し忘れて同じ穴が開く。
@@ -251,7 +271,9 @@ export function PolicyEditorPanel({
           </div>
 
           {/* 計画の入力表: 「対象属性｜必須｜選択｜**定義済み属性のみ**」。
-              属性辞書から引くため、辞書に無い属性で条件を作ることはできない。 */}
+              属性辞書から引くため、辞書に無い属性で条件を作ることはできない。
+              ［#1666］例外は計画が動的束縛を置く文書属性 `owner`・`shared_with` だけで、
+              値は束縛（`${current_user}`・`${current_groups}`）から選ぶ（自由入力の欄は無い）。 */}
           <div className="grid gap-2 sm:grid-cols-3">
             <div>
               <Label htmlFor="policy-attr">
@@ -259,13 +281,13 @@ export function PolicyEditorPanel({
               </Label>
               <Select
                 id="policy-attr"
-                value={draft.attributeKey}
-                onChange={(e) => draft.selectAttributeKey(e.target.value)}
+                value={draft.attributeId}
+                onChange={(e) => draft.selectAttribute(e.target.value)}
               >
                 <option value="">{t`選択してください`}</option>
-                {attributes.map((a) => (
-                  <option key={a.id} value={a.key}>
-                    {a.label || a.key}（{labelOf(attributeScopeLabel(a.scope))}）
+                {draft.options.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {labelOf(a.label)}（{labelOf(attributeScopeLabel(a.scope))}）
                   </option>
                 ))}
               </Select>
@@ -283,7 +305,7 @@ export function PolicyEditorPanel({
                 <option value="">{t`選択してください`}</option>
                 {draft.values.map((v) => (
                   <option key={v} value={v}>
-                    {v}
+                    {valueText(v)}
                   </option>
                 ))}
               </Select>
@@ -392,11 +414,16 @@ function ConditionChip({
   onRemove: () => void;
 }) {
   const { t } = useLingui();
+  const valueText = useConditionValueText();
   const conditionKey = condition.key;
   const conditionValue = condition.value;
+  // #1666: 束縛の条件は枠線のチップにし、文言にも「動的束縛」を出す（色だけにしない）。
+  const binding = dynamicBindingLabel(conditionValue) !== null;
   return (
     <li className="flex items-center gap-1">
-      <Tag>{`${labelOf(attributeScopeLabel(condition.scope))} ${conditionKey} = ${conditionValue}`}</Tag>
+      <Tag tone={binding ? 'outline' : 'neutral'}>
+        {`${labelOf(attributeScopeLabel(condition.scope))} ${conditionKey} = ${valueText(conditionValue)}`}
+      </Tag>
       <Button
         type="button"
         size="sm"
@@ -424,9 +451,20 @@ function ConditionSummary({ policy }: { policy: AbacPolicyDto }) {
     <ul>
       {rows.map((row) => (
         <li key={`${row.scope}-${row.key}`}>
-          {`${labelOf(attributeScopeLabel(row.scope))} ${row.key} = ${row.values.join(' / ')}`}
+          <ConditionSummaryRow row={row} />
         </li>
       ))}
     </ul>
   );
+}
+
+/**
+ * 要約の 1 行。#1666: **動的束縛を含む行は枠線の `Tag` に入れ、文言にも「動的束縛」を出す**（色だけにしない）。
+ * 束縛を含まない行は従来どおりの素の文にする（行の文を 1 つの文字列に保ち、読み上げを分断しない）。
+ */
+function ConditionSummaryRow({ row }: { row: ConditionSummaryEntry }) {
+  const valueText = useConditionValueText();
+  const text = `${labelOf(attributeScopeLabel(row.scope))} ${row.key} = ${row.values.map(valueText).join(' / ')}`;
+  const binding = row.values.some((v) => dynamicBindingLabel(v) !== null);
+  return binding ? <Tag tone="outline">{text}</Tag> : <>{text}</>;
 }
