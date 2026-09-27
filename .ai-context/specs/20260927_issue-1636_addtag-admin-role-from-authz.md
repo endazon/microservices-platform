@@ -1,7 +1,7 @@
 ---
 title: gRPC の AddTag で本文の user_roles を信じるのをやめ、承認者が管理者かどうかを認可サービスに引き直させる（#1636 段 2）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-05, FR-18, NFR-09, SC-05, ADR-0063, ADR-0086, ADR-0088, ADR-0036, ADR-0119, IADR-0410, IADR-0401, IADR-0329, IADR-0413, IADR-0431, IADR-0474]
 author: claude
 created: 2026-09-27
@@ -98,3 +98,20 @@ issue: "#1636"
 
 - `dotnet test` 両 slnx、`dotnet format --verify-no-changes` 両 slnx、`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`
 - 変異（AC-10）を当てて落ちることを確かめ、`git show HEAD:<path> > <path>` で戻す。
+
+### 結果（2026-09-27・ローカル。段 1 の枝と develop〔#1643 を含む〕を取り込んだ後）
+
+- `dotnet test src/knowledge/backend/backend.slnx`: exit 0（DocumentService.Tests 783・GraphService.Tests 686・RetrievalService.Tests 383 ほか失敗 0）
+- `dotnet test src/platform/backend/backend.slnx`: AuthorizationService.Tests 454・Platform.Bff.Tests 768 / 1 skip ほか合格。
+  `Platform.Shared.Infrastructure.Tests` の `HttpEffectiveConfigCollectorTests.呼び出し側の取り消しは到達不能へ化けずに外へ出る` が全体の並列実行で 2 回中 2 回落ち、
+  単独の再実行（同プロジェクトだけ）では 444 件すべて合格した。本件の変更（名簿の rpc・共有クライアントの 1 メソッド）と経路を共有しない既存の試験で、
+  300 ms で取り消す間に待受が接続を受け付けない負荷依存の揺れである（develop の #1633 由来。本 PR では触らない）。
+- `dotnet format <slnx> --verify-no-changes`: 両ユニット exit 0
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 841 tests passed（proto 契約の床と test-spec-coverage の床を `--update` した）
+- 変異（段 2 の関連試験で実測。どれも `git show HEAD:<path> > <path>` で戻し、`grep "//MUT"` で残り 0 件を確かめた）:
+  - Mc1 gRPC の `AddTag` で本文の `user_roles` を再び信じる: DocumentService 4 件が落ちた（AC-1・AC-2・AC-3 と既存 T-03 の書き換え）。
+  - Mc2 `Unknown` を「管理者ではない」へ畳む: 1 件が落ちた（AC-3）。
+  - Mc3 認可サービスで無効化の確認を落とす: AuthorizationService 1 件が落ちた（無効化された利用者）。
+  - Mc4 Keycloak で直接の割当（`/role-mappings/realm`）を読む: 2 件が落ちた。
+  - Mc5 本体が所有者・個人資料でも管理者を問う: 2 件が落ちた（AC-4・AC-5）。
+- 段 1 と develop（#1643 が FR-18 に T-53・T-54 を足した）を取り込んだので、テスト仕様書の行は段 1 が T-55、段 2 が T-56 になった。
