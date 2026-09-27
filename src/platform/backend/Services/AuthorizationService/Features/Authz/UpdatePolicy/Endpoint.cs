@@ -10,13 +10,14 @@ public static class UpdatePolicyEndpoint
     public static IEndpointRouteBuilder MapUpdatePolicy(this IEndpointRouteBuilder app)
     {
         app.MapPut("/policies/{id:guid}", async (
-            Guid id, CreatePolicyRequest req, AuthorizationDbContext db) =>
+            Guid id, CreatePolicyRequest req, AuthorizationDbContext db, AttributeDictionary dictionary,
+            CancellationToken ct) =>
         {
             var policy = await db.Policies.FindAsync(id);
             if (policy is null)
                 return Results.NotFound();
 
-            var errors = await AuthzEndpoints.ValidatePolicyAsync(req, db);
+            var errors = await AuthzEndpoints.ValidatePolicyAsync(req, db, dictionary, ct);
             if (errors.Count > 0)
                 return AuthzEndpoints.ValidationProblem(errors);
 

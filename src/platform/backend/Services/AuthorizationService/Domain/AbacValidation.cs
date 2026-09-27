@@ -6,9 +6,12 @@ namespace AuthorizationService.Domain;
 public static class AbacValidation
 {
     // 属性辞書エントリの検証。update 時は excludeId で自分自身を一意チェックから除外する。
+    // ［2026-09-27 / #1609・計画 ADR-0116 決定 3］`allowedValuesDerived` が true のキー（`department`）は許可値を
+    // realm の部門グループから導くため、要求の許可値の形（1 件以上・重複なし）をここでは見ない
+    // （受け付けるかは `DepartmentDictionaryValues.RequestAccepted` が決める）。
     public static List<string> ValidateAttributeDefinition(
         string? key, string? label, List<string>? allowedValues, string? scope,
-        IEnumerable<AttributeDefinition> existing, Guid? excludeId = null)
+        IEnumerable<AttributeDefinition> existing, Guid? excludeId = null, bool allowedValuesDerived = false)
     {
         var errors = new List<string>();
 
@@ -21,11 +24,12 @@ public static class AbacValidation
         if (!AttributeScope.IsValid(normalizedScope))
             errors.Add($"scope は {string.Join(" / ", AttributeScope.All)} のいずれかである必要があります。");
 
-        if (allowedValues is null || allowedValues.Count == 0)
+        // 導くキーの許可値は呼び出し元が realm のコードへ置き換えるので、形を見ない。
+        if (!allowedValuesDerived && (allowedValues is null || allowedValues.Count == 0))
         {
             errors.Add("allowedValues は 1 件以上必要です。");
         }
-        else
+        else if (!allowedValuesDerived && allowedValues is not null)
         {
             if (allowedValues.Any(string.IsNullOrWhiteSpace))
                 errors.Add("allowedValues に空の値を含めることはできません。");

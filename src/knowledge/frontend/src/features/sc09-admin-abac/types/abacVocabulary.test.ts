@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { i18n } from '@foundation/i18n';
 import {
+  ALLOWED_VALUES_SOURCES,
+  allowedValuesSourceBadge,
   ATTRIBUTE_SCOPES,
   attributeScopeLabel,
   buildConditions,
@@ -50,6 +52,23 @@ describe('abacVocabulary (SC-09)', () => {
   it('shows an unknown action or scope verbatim instead of hiding it', () => {
     expect(policyActionLabel('export')).toBe('export');
     expect(attributeScopeLabel('tenant')).toBe('tenant');
+  });
+
+  // SC-09（#1609・計画 ADR-0116 決定 3）: 許可値の出所。手で持つキーは表示なし、不明は注意の色、未知の値は生値。
+  it('describes the allowed-values source, flagging an unreadable realm as a warning', () => {
+    expect([...ALLOWED_VALUES_SOURCES]).toEqual(['realm', 'realm-unavailable']);
+    expect(allowedValuesSourceBadge(null)).toBeNull();
+    expect(allowedValuesSourceBadge(undefined)).toBeNull();
+
+    const realm = allowedValuesSourceBadge('realm');
+    expect(realm?.tone).toBe('neutral');
+    expect(text(realm!.label)).toBe('realm の部門グループから導出');
+
+    const unknown = allowedValuesSourceBadge('realm-unavailable');
+    expect(unknown?.tone).toBe('warning');
+    expect(text(unknown!.label)).toBe('不明（realm を読めないため最後に確かめた値）');
+
+    expect(allowedValuesSourceBadge('ldap')).toEqual({ tone: 'neutral', label: 'ldap' });
   });
 
   // IADR-0129 決定 2: 契約が表現するのは**属性キー → 許可値の集合所属**だけである。
