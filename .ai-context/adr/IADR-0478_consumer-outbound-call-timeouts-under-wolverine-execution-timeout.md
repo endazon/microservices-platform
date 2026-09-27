@@ -2,7 +2,7 @@
 title: IADR-0478 Wolverine の受け口の外への呼び出しは呼び出しごとの期限の下で行い、時間切れを取り消しと分けて記録し、最悪の所要時間が受け口の実行期限に収まることを起動時に検査する
 type: impl-adr
 status: Accepted
-related_ids: [FR-02, UC-04, FR-06, FR-13, UC-07, FR-17, ADR-0027, ADR-0029, ADR-0013, ADR-0016, ADR-0006, IADR-0008, IADR-0002, IADR-0233, IADR-0239, IADR-0021]
+related_ids: [FR-02, UC-04, FR-06, FR-12, FR-13, UC-07, FR-17, ADR-0027, ADR-0029, ADR-0013, ADR-0016, ADR-0006, IADR-0008, IADR-0002, IADR-0233, IADR-0239, IADR-0021]
 author: claude
 created: 2026-09-27
 updated: 2026-09-27
@@ -11,6 +11,7 @@ plan_refs:
   - planning:projects/microservices-platform/03_usecases/01_usecases.md UC-04（取り込み。失敗は再試行し、継続失敗はデッドレター）
 related_specs:
   - ../specs/20260927_issue-1640_consumer-outbound-call-timeouts.md
+  - ../specs/20260927_issue-1657_document-normalized-consumer-content-timeout.md
 ---
 
 # IADR-0478: Wolverine の受け口の外への呼び出しの期限（#1640）
@@ -150,3 +151,26 @@ WolverineFx 6.24.4 は受け口へ渡す ct に 1 通ごとの実行期限（`Ha
 🔴 **グラフ同期の本文の時間切れは「本文が取れない（null）」へ畳まない。** `IGraphContentReader` の null は「辺を触らずに成功で終える」縮退である。
 時間切れを null に畳むと、本文の変化が再試行されないまま失われる（指紋は保存されるので、同じ指紋の再配信では本文を読み直さない）。
 時間切れは例外のまま投げ、同期を保存せずに再試行・デッドレターへ委ねる。
+
+## ［2026-09-27 追記 / #1657］MassTransit の受け口: DocumentService `DocumentNormalizedConsumer`
+
+#1640 の射程は Wolverine の受け口 7 か所で、MassTransit に残る唯一の受け口（DocumentService `DocumentNormalizedConsumer`・段 `catalog`）は表に無かった。
+その本文の取得（本文指紋の計算。ADR-0050 決定 1）に決定 1〜3 をそのまま適用した。作業仕様書は `../specs/20260927_issue-1657_document-normalized-consumer-content-timeout.md`。
+
+| 受け口 | 上限 | 構成キー | 既定 | 起動時の検査の式 |
+| --- | --- | --- | --- | --- |
+| DocumentService `DocumentNormalizedConsumer`（`catalog`。MassTransit） | 本文の取得 1 回 | `DocumentCatalog:ContentReadTimeoutSeconds` | 20 秒 | 4 × 本文 ＋ 42 ＜ `consumer_timeout`（既定 4 × 20 ＋ 42 ＝ 122 ＜ 1800） |
+
+- **MassTransit の受け口には 1 通ごとの実行期限が無い**（MassTransit 8.4.1。本リポジトリは `UseTimeout` も RabbitMQ の `ConsumerTimeout` も設定していない）。
+  受け口の ct はバスの停止でしか立たないので、決定 4・5（受け口の実行期限と `EnsureFits`）に当たる制約は無い。
+  従前の止まったストレージは「受け口の ct に負ける取り消し」ではなく、S3 共通クライアントの既定の期限までの「長い待ち」として現れていた。
+- 残る制約は決定 7（再試行の連鎖と `consumer_timeout`）である。MassTransit の `UseMessageRetry`（`UsePlatformRetry`。間隔 2 / 10 / 30 秒・試行上限 4）もメモリ内の再試行で、
+  同じ配信の中で回り ack は最後の試行の後に返る。`EnsureRetryChainFits` を、1 試行の上限として本受け口が期限で抑えている部分（本文の取得）で呼ぶ。
+  試行上限と待ちの合計は MassTransit 側の単一情報源（`MassTransitExtensions.MaxAttempts`・本追記で足した `TotalRetryCooldown`）から取る。
+  本文の期限を 440 秒以上にすると 1802 秒となり、起動を止める。
+- DB（EF Core）と `DocumentUpdated` の発行（Wolverine）は「残るもの」と同じく式に入れない。既定では 1 試行あたり 419 秒（(1800 − 42) ÷ 4 − 20）がその余白として残る。
+- 構成キーの節は `DocumentCatalog` とした。DocumentService の構成節は機能ごとに `Document` を前置する（`DocumentRead` / `DocumentTagWrite`）。項目名は他サービスの同じ期限
+  （`Ingestion:` / `Graph:` / `Wiki:` の `ContentReadTimeoutSeconds`）に揃えた。値の理由は取り込みの本文と同じである（同じストレージから同じ正規化本文を読む）。
+- 🔴 **時間切れは本文指紋の「不明（null）」へ畳まない。** null はストレージ縮退（`CanResolve=false`）の意味で、台帳を指紋なしで更新して成功で終える。
+  時間切れを null に畳むと、本文が取れないまま再試行されずに終わる（グラフ同期の注記と同じ判断）。時間切れは例外のまま投げ、MassTransit の再試行・デッドレターへ委ねる。
+- 母集合: MassTransit の購読を持つのは DocumentService だけである。ConversionService・IngestionService の `AddMassTransit` は発行だけで、受け口を持たない。

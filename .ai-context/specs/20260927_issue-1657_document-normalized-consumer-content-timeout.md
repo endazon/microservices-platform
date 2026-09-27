@@ -42,7 +42,7 @@ issue: "#1657"
 
 | # | 基準 | 写像先 |
 | --- | --- | --- |
-| AC-1 | 縮めた受け口の ct（30 秒）の下で本文の取得が止まると（呼び出しごとの期限 1 秒）、受け口の ct より前に**時間切れ**（`ConsumerTimeoutException`、段 `catalog`・呼び出し先 `content`）として投げ、カタログへ保存せず発行もしない。受け口の ct は立っていない | `CatalogTimeoutTests.止まった本文の取得は時間切れとして投げ保存も発行もしない`（FR-06 テスト仕様 T-71） |
+| AC-1 | 縮めた受け口の ct（30 秒）の下で本文の取得が止まると（呼び出しごとの期限 1 秒）、受け口の ct より前に**時間切れ**（`ConsumerTimeoutException`、段 `catalog`・呼び出し先 `content`）として投げ、カタログへ保存せず発行もしない。受け口の ct は立っていない | `CatalogTimeoutTests.止まった本文の取得は時間切れとして投げ保存も発行もしない`（FR-06 テスト仕様 T-71。develop の最大 T-70 の次） |
 | AC-2 | 時間切れは計器 `messaging.consumer.timeout`（`messaging.step=catalog`・`messaging.timeout.target=content`）に 1 回数えられる | 同上（計器を `MeterListener` で聴く） |
 | AC-3 | 対照: 呼び出し元の取り消しは時間切れに化けず、取り消し（`OperationCanceledException`・`TimeoutException` ではない）のまま外へ出て、計器に数えない | `CatalogTimeoutTests.呼び出し元の取り消しは取り消しのまま外へ出る`（T-71） |
 | AC-4 | 構成 `DocumentCatalog:ContentReadTimeoutSeconds`（既定 20 秒）を読む。1 回の配信の再試行の連鎖（試行上限 4 × 本文の期限 ＋ 試行間の待ち 42 秒）がブローカの `consumer_timeout` 以上なら起動を止める（等号を含む） | `CatalogTimeoutTests.構成が無ければ既定の期限になる`・`再試行の連鎖が…起動を止める`（T-71） |
@@ -82,7 +82,17 @@ issue: "#1657"
 
 ## 変異（1 か所ずつ書き換え、`git show HEAD:<path> > <path>` で戻す）
 
-実装後に記録する（下の追記）。
+試験は `dotnet test …/DocumentService.Tests.csproj --filter "FullyQualifiedName~CatalogTimeout"`（8 件）で回した。
+
+| # | 変異 | 赤になった試験 |
+| --- | --- | --- |
+| M1 | **本文の取得の期限を外す**（`calls.RunAsync(…)` を `storage.GetTextAsync(markdownUri, ct)` に） | `止まった本文の取得は時間切れとして投げ保存も発行もしない`（30 秒の受け口の ct で取り消しとして落ちる） |
+| M2 | **取り消しを時間切れに化けさせる**（`OperationCanceledException` を捕まえて `ConsumerTimeoutException` を投げる） | `呼び出し元の取り消しは取り消しのまま外へ出る` |
+| M3 | 時間切れを本文指紋の不明（null）へ畳む | `止まった本文の取得は時間切れとして投げ保存も発行もしない` |
+| M4 | 起動時の再試行の連鎖の検査を外す | `再試行の連鎖がブローカの_consumer_timeout_に収まらなければ起動を止める` の 2 件（440 秒・consumer_timeout 122 秒） |
+| M5 | Program.cs から期限の登録を外す | `CatalogTimeoutWiringTests.本番の配線は本文の期限を既定値で張り受け口を組み立てられる` |
+
+いずれも 1 か所ずつ入れ、`git show HEAD:<path> > <path>` で戻した（戻した後の `git status` は差分なし）。
 
 ## 検証
 

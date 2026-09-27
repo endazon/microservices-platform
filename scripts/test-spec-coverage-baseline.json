@@ -65,6 +65,7 @@
     ],
     "docs/tests/FR-06_document-crud-versioning.md": [
       "AdminWritePrivateNoteScopeTests",
+      "CatalogTimeoutTests",
       "DocumentAttributesTests",
       "DocumentConfidentialityValidationTests",
       "DocumentCrudTests",
