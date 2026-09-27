@@ -843,6 +843,9 @@ services:
       # （platform.mcp.v1.McpToolDeclarations。上の serviceToken の s2s で呼ぶ）で集められ、無い宛先は REST のまま。
       # REST の宛先（Mcp__Services__*）は values に無く、McpServer の appsettings.json の既定（:8080 の 3 宛先）が効いている。
       # 並走中の正は REST であり、戻すのは該当行を消すだけでよい。ポートは各サービスの grpcPort と一致させること。
+      # ［2026-09-27 追記 / #1516, ADR-0117］ツールの実行（platform.mcp.v1.McpToolExecution）も**同じアドレス**へ送る
+      # （宛先は申告したサービス＋ツール名。申告の URL は使わない）。ここに無いサービスのツールは実行を拒否する（REST へは倒さない）。
+      # 実行の期限は McpServer の appsettings.json の Mcp:ToolExecutionTimeoutSeconds（既定 30 秒）。各サービスの受け口は #1611 まで無い。
       - name: Mcp__GrpcServices__document-service
         value: "http://document-service:8081"
       - name: Mcp__GrpcServices__retrieval-service
