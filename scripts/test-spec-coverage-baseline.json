@@ -66,6 +66,9 @@
       "DocumentNormalizedSyncTests",
       "DocumentPageTests",
       "DocumentReadGrpcMappingTests",
+      "DocumentReadRelayDeploymentWiringTests",
+      "DocumentReadRelayOptionsTests",
+      "DocumentReadTrustedRelayTests",
       "DocumentVersioningTests",
       "GrpcDocumentTagWriteTests",
       "PrivateNoteExposurePublishTests"
