@@ -8,6 +8,7 @@ using GraphService.Features.Graph.CreateEdge;
 using GraphService.Features.Graph.Neighbors;
 using GraphService.Features.GraphDocuments.Delete;
 using GraphService.Features.GraphDocuments.Sync;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using GraphService.Features.Clustering.Detect;
 using GraphService.Features.Clustering.Summarize;
 using GraphService.Features.KnowledgeHealth.Report;
@@ -199,6 +200,9 @@ builder.Services.AddSingleton<TagSuggestionDropMetrics>();
 // 抽出をスキップする（辺は触らない）。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 builder.Services.AddHttpClient<IGraphContentReader, StorageContentReader>();
+// FR-17, ADR-0027 (#1640): グラフ同期の受け口の本文の取得の期限。既定の実行期限（60 秒）に収まらない構成はここで起動を止める。
+builder.Services.AddSingleton(GraphSyncTimeouts.From(builder.Configuration));
+builder.Services.AddPlatformConsumerTimeouts();
 builder.Services.AddScoped<LinkEdgeSynchronizer>();
 // IADR-0380 (#1244): 同じ本文読み取りから語の出現数（類似度候補の材料）を作る。
 builder.Services.AddScoped<TermProfileSynchronizer>();
