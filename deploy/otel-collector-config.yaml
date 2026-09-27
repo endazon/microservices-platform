@@ -9,6 +9,8 @@
 # 🔴 SC-15, NFR-21, ADR-0111 フォローアップ 3 (#1544): **`prometheus/reset-floor`（リセット申請の床の器）も同じ扱いである。**
 #    経路 B の 2 つの設定は持つが、compose に床の器は居ないので本ファイルには置かない（乖離は意図）。
 #    その結果、compose の Prometheus では `ResetFloorUpSeriesAbsent` が鳴り続ける —— `MailRelayQueueSeriesAbsent` と同じ既知の状態である。
+# 🔴 NFR-18, ADR-0124 決定 2, IADR-0486 (#1683): **`tcplog/vault-audit`（Vault の audit の受け口）も経路 B の 2 つの設定にだけ置く。**
+#    compose に Vault は居ない（乖離は意図）。Vault を compose へ載せるときは、本ファイルにも同じ受信とパイプラインを足すこと。
 receivers:
   otlp:
     protocols:

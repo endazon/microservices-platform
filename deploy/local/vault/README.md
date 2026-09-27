@@ -49,6 +49,20 @@ Vault k8s auth＋ExternalSecret 供給まで自動化する（[eso/README](eso/R
 AST chart で `externalSecrets.enabled=true` ＋（API 鍵なら）`externalSecrets.appSecrets.enabled=true` を設定すると、
 `vault-backend` を参照して Vault dev から同期する（手順は ai-stock-trading `docs/operations/vault-secrets-runbook.md`）。
 
+## audit（監査。NFR-18・ADR-0124 決定 2・IADR-0486・#1683）
+
+既定（永続化）の Vault は、起動器（`deploy/local/vault-persistence/vault-entrypoint.sh`）が audit device を 2 つ有効にする。
+
+| path | 出力先 | 止まったとき |
+| --- | --- | --- |
+| `stdout/` | Vault のコンテナログ（`kubectl -n platform-infra logs deploy/vault`） | 有効にできなければ Vault を起動しない |
+| `otel-collector/` | collector の `tcplog/vault-audit`（`otel-collector.platform-infra.svc:9514`）→ `OBSERVABILITY=1` なら Loki の `{job="vault-audit"}` | Vault は止まらない（`stdout/` が書ける）。起動器は裏で再試行し、諦めたら WARN を出す |
+
+- 値・トークンは HMAC（`hmac-sha256:…`）で残る（`log_raw=false`）。**`log_raw=true` や mount の `audit_non_hmac_*` を足さない。**
+- 🔴 **`stdout/` を手で外さない。** 外した状態で collector が止まると、Vault は要求をすべて拒む（起動器のトークン確認すら通らない）。
+- 秘密の書き込みの抽出の条件は `docs/security/security.md`「保管先（Vault）の audit」。
+- `PERSIST=0`（本ディレクトリの `-dev`）は audit を持たない。
+
 ## Tier 境界
 
 Vault 本番運用（unseal/監査/HA/ローテーション）・[実弾解禁前提としての Vault 化実充足]は **Tier 3**（対象外）。

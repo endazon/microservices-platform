@@ -86,6 +86,15 @@ PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh --live
 - 詳細は [`deploy/local/README.md`](../README.md) の「永続化」節と
   [IADR-0210](../../../.ai-context/adr/IADR-0210_local-k8s-observability-persistence.md)。
 
+## Vault の audit（NFR-18・ADR-0124 決定 2・IADR-0486・#1683）
+
+collector は Vault の audit（socket device・tcp）を `tcplog/vault-audit`（`9514`）で受け、専用の `logs/vault-audit` パイプラインで
+Loki の `{job="vault-audit"}` へ出す（1 行 = Vault の JSON 1 件）。**既定の collector 設定（`deploy/local/infra/otel-collector.yaml`）にも
+同じ受け口がある**（出口は debug）—— 本オーバーレイは同名の ConfigMap で既定を上書きするので、片方だけにすると受け口が消える。
+値で落とす段は置いていない。秘密の書き込みの抽出の条件は `docs/security/security.md`「保管先（Vault）の audit」。
+
+- `OBSERVABILITY=1` を後から opt-in した場合、socket の device は Vault を再起動するまで有効にならない（起動器の再試行は約 5 分〔5 秒 × 60 回〕で打ち切る）。一度有効になれば Vault の storage に残る。
+
 ## 切り戻し
 
 `kubectl delete -k deploy/local/observability` で撤去し、`kubectl apply -k deploy/local/infra` ＋ collector

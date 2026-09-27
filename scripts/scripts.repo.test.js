@@ -12467,4 +12467,153 @@ exit $RC
     });
   }
 
+
+  // --- #1683: Vault の audit を可観測性基盤の監査へ取り込む（NFR-18, ADR-0124 決定 2, IADR-0486） -----------
+  //
+  // 宣言は 4 か所に分かれる（起動器・既定の collector 設定・転送構成の collector 設定・security.md の抽出の条件）。
+  // どれも排他的な別配備の全体設定か文書であり単一情報源にできないので、**一致をここで止める**。
+  // 値を記録しないこと（HMAC 化）は、起動器が `log_raw=false` を明示することと、平文を出す設定がどこにも無いことで固定する。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8');
+    const ENTRY = 'deploy/local/vault-persistence/vault-entrypoint.sh';
+    const COLLECTORS = {
+      'deploy/local/infra/otel-collector.yaml': 'debug',
+      'deploy/local/observability/otel-collector-forward.yaml': 'loki',
+    };
+    const SECURITY = 'docs/security/security.md';
+
+    const entry = read(ENTRY);
+    const envDefault = (name) => {
+      const m = entry.match(new RegExp(`^${name}="\\$\\{${name}:-([^}]*)\\}"$`, 'm'));
+      assert.ok(m, `${ENTRY}: ${name} の既定値を読めない`);
+      return m[1];
+    };
+    // 字下げ（ConfigMap の inline）に依らず、キーの直下の塊を取り出す。
+    const blockOf = (text, key) => {
+      const m = text.match(new RegExp(`^([ \\t]*)${key.replace(/[/.]/g, '\\$&')}:[ \\t]*$`, 'm'));
+      if (!m) return null;
+      const indent = m[1].length;
+      const rest = text.slice(m.index + m[0].length).split('\n');
+      const out = [];
+      for (const line of rest.slice(1)) {
+        if (line.trim() !== '' && line.search(/\S/) <= indent) break;
+        out.push(line);
+      }
+      return out.join('\n');
+    };
+    const listOf = (blk, key) => {
+      const m = blk && blk.match(new RegExp(`^[ \\t]*${key}:[ \\t]*\\[([^\\]]*)\\]`, 'm'));
+      return m ? m[1].split(',').map((x) => x.trim()).filter(Boolean) : null;
+    };
+
+    ok('#1683: 起動器の socket の宛先ポートが、2 つの k8s collector 設定の tcplog 受信・Deployment・Service と一致する', () => {
+      const addr = envDefault('VAULT_AUDIT_SOCKET_ADDRESS');
+      const [host, port] = addr.split(':');
+      assert.match(host, /^otel-collector(\.platform-infra(\.svc(\.cluster\.local)?)?)?$/, `宛先が collector ではない: ${addr}`);
+      for (const rel of Object.keys(COLLECTORS)) {
+        const recv = blockOf(read(rel), 'tcplog/vault-audit');
+        assert.ok(recv, `${rel}: tcplog/vault-audit が無い（Vault が audit device を有効にできない）`);
+        const m = recv.match(/listen_address:\s*(\S+)/);
+        assert.ok(m, `${rel}: tcplog/vault-audit の listen_address が無い`);
+        assert.strictEqual(m[1], `0.0.0.0:${port}`, `${rel}: 受け口 ${m[1]} が起動器の宛先 ${addr} と食い違う`);
+      }
+      const infra = read('deploy/local/infra/otel-collector.yaml');
+      assert.match(infra, new RegExp(`containerPort: ${port}, name: vault-audit`), 'collector の Deployment に受け口のポートが無い');
+      assert.match(infra, new RegExp(`name: vault-audit, port: ${port}, targetPort: ${port}`), 'collector の Service に受け口のポートが無い');
+    });
+
+    ok('#1683: 2 つの k8s collector 設定が同じ logs/vault-audit を持ち、既定は debug・転送構成は loki へ出す。値で落とす段が無い', () => {
+      let processorsSeen = null;
+      for (const [rel, exporter] of Object.entries(COLLECTORS)) {
+        const text = read(rel);
+        const pipe = blockOf(text, 'logs/vault-audit');
+        assert.ok(pipe, `${rel}: logs/vault-audit パイプラインが無い`);
+        assert.deepStrictEqual(listOf(pipe, 'receivers'), ['tcplog/vault-audit'], `${rel}: 受信が tcplog/vault-audit だけでない`);
+        assert.deepStrictEqual(listOf(pipe, 'exporters'), [exporter], `${rel}: 出口が ${exporter} でない`);
+        const procs = listOf(pipe, 'processors');
+        assert.ok(!procs.some((p) => /^(filter|tail_sampling|probabilistic_sampler)\b/.test(p)), `${rel}: 値で落とす段がある（${procs}）`);
+        if (processorsSeen) assert.deepStrictEqual(procs, processorsSeen, '2 つの設定で処理が違う');
+        processorsSeen = procs;
+        const res = blockOf(text, 'resource/vault-audit');
+        assert.ok(res && /key: service\.name\s+value: vault-audit\s+action: upsert/.test(res), `${rel}: service.name=vault-audit が無い`);
+        const attr = blockOf(text, 'attributes/vault-audit');
+        assert.ok(attr && /key: loki\.format\s+value: raw/.test(attr), `${rel}: loki.format=raw が無い`);
+      }
+      // compose に Vault は居ない（意図した乖離）。受け口を足すなら Vault も載せること。
+      assert.ok(!/tcplog\/vault-audit:/.test(read('deploy/otel-collector-config.yaml')), 'compose の collector に Vault の受け口がある（compose に Vault は居ない）');
+    });
+
+    ok('#1683: 起動器は 2 つの device をどちらも log_raw=false / hmac_accessor=true で有効にする', () => {
+      const enables = entry.split('\n').reduce((acc, line, i, all) => {
+        if (/vault audit enable/.test(line)) {
+          let j = i; let cmd = '';
+          while (j < all.length) { cmd += all[j]; if (!/\\\s*$/.test(all[j])) break; j++; }
+          acc.push(cmd);
+        }
+        return acc;
+      }, []);
+      assert.strictEqual(enables.length, 2, `audit enable が 2 つでない: ${enables.length}`);
+      assert.ok(enables.some((c) => /\bfile\b[\s\\]+file_path=stdout/.test(c)), '標準出力の file device が無い');
+      assert.ok(enables.some((c) => /\bsocket\b[\s\\]+address=/.test(c) && /socket_type=tcp/.test(c)), 'socket（tcp）の device が無い');
+      for (const c of enables) {
+        assert.match(c, /log_raw=false/, `log_raw=false を明示していない: ${c}`);
+        assert.match(c, /hmac_accessor=true/, `hmac_accessor=true を明示していない: ${c}`);
+      }
+    });
+
+    ok('#1683: deploy/ と scripts/ に、audit へ平文を出す設定が無い（log_raw=true / audit_non_hmac_*）', () => {
+      const hits = [];
+      const walk = (dir) => {
+        for (const e of fs.readdirSync(path.join(REPO, dir), { withFileTypes: true })) {
+          if (['node_modules', '.git', 'bin', 'obj', 'dist', 'charts'].includes(e.name)) continue;
+          const rel = path.join(dir, e.name);
+          if (e.isDirectory()) walk(rel);
+          // 試験は「無いこと」を確かめるために語そのものを持つので除く（設定ではない）。
+          else if (/\.(sh|ya?ml|hcl|json|js|tpl)$/.test(e.name) && !/\.test\.(sh|js)$/.test(e.name)) {
+            const text = fs.readFileSync(path.join(REPO, rel), 'utf8');
+            text.split('\n').forEach((line, i) => {
+              if (/^\s*(#|\/\/|\*)/.test(line)) return; // 注記（「足さないこと」の説明）は設定ではない
+              if (/log_raw["'\s]*[=:]\s*["']?true|-log-raw\b|audit_non_hmac_(request|response)_keys/.test(line)) hits.push(`${rel}:${i + 1}: ${line.trim()}`);
+            });
+          }
+        }
+      };
+      walk('deploy');
+      walk('scripts');
+      assert.deepStrictEqual(hits, [], `平文を出す設定がある:\n${hits.join('\n')}`);
+    });
+
+    ok('#1683: security.md の抽出の条件が、collector の service.name・起動器の KV の mount・BFF のロール名と一致する', () => {
+      const doc = read(SECURITY);
+      const m = doc.match(/```logql\n([\s\S]*?)```/);
+      assert.ok(m, `${SECURITY}: 抽出の条件（logql のコードブロック）が無い`);
+      const q = m[1];
+      const job = read('deploy/local/observability/otel-collector-forward.yaml').match(/key: service\.name\s+value: (\S+)/)[1];
+      assert.ok(q.includes(`{job="${job}"}`), `抽出の条件のストリームが collector の service.name（${job}）と食い違う`);
+      const kv = envDefault('VAULT_KV_PATH');
+      // パスの条件は文字列一致で見ず、実際のパスに当てて網羅を確かめる（Loki の `=~` は全体一致）。
+      const pm = q.match(/request_path=~"([^"]+)"/);
+      assert.ok(pm, '抽出の条件に request_path が無い');
+      const pathRe = new RegExp(`^(?:${pm[1]})$`);
+      const mustMatch = [
+        // 秘密の書き込み（KV v2 の全経路）
+        `${kv}/data/msp/x`, `${kv}/metadata/msp/x`, `${kv}/delete/msp/x`, `${kv}/undelete/msp/x`, `${kv}/destroy/msp/x`,
+        // 監査を弱める操作（監査の指摘。無効化・変更・HMAC しない指定・権限・mount）
+        'sys/audit/stdout', 'sys/audit/otel-collector', 'sys/config/auditing/request-headers/x',
+        'sys/policy/p', 'sys/policies/acl/p', 'sys/mounts/secret/tune',
+      ];
+      const mustNot = ['sys/audit-hash/stdout', 'sys/internal/ui/mounts/secret/x', 'auth/token/lookup-self', `${kv}/config`];
+      for (const x of mustMatch) assert.ok(pathRe.test(x), `抽出の条件が ${x} を拾わない`);
+      for (const x of mustNot) assert.ok(!pathRe.test(x), `抽出の条件が書き込みでない ${x} まで拾う`);
+      assert.ok(/request_operation=~"create\|update\|patch\|delete"/.test(q), '抽出の条件が書き込みの操作 4 種（create / update / patch / delete）を網羅しない');
+      assert.ok(/type="response"/.test(q), 'response の行に絞っていない（request と 2 重になる）');
+      assert.ok(!/error/.test(q), '抽出の条件が error で絞っている（拒否・失敗の行が落ちる）');
+      const role = read('deploy/local/vault/eso/bootstrap.sh').match(/auth\/kubernetes\/role\/(bff-secret-\w+)/)[1];
+      assert.ok(doc.includes(`auth_metadata_role="${role}"`), `security.md の経路の見分けが BFF のロール（${role}）と食い違う`);
+    });
+  }
+
 };
