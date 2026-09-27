@@ -132,6 +132,9 @@ public sealed class KnowledgeHealthCollector(
     // 添えていない」ではなく、「構造的に混ざらない」**である。受け手の除外対象にならない。
     //
     // 軸（`Dimension`）は**未要約の理由** 3 語。閉じた語彙であり、内訳が無界に増えることはない。
+    //
+    // ★［2026-09-27 追記 / #1663・ADR-0120 決定 3］🔴 **所属 1 件以下の単独クラスタは数えない。**
+    // 孤立文書は `orphan-documents` が数える（同じ集合を 2 つの指標で数えない）。
     internal async Task<IReadOnlyList<KnowledgeHealthObservation>> CollectUnsummarizedClustersAsync(
         CancellationToken ct = default)
     {
@@ -153,6 +156,11 @@ public sealed class KnowledgeHealthCollector(
         var updatedAtOf = await db.Documents.AsNoTracking()
             .Select(d => new { d.DocumentId, d.UpdatedAt })
             .ToDictionaryAsync(d => d.DocumentId, d => d.UpdatedAt, ct);
+
+        // ★［2026-09-27 追記 / #1663・ADR-0120 決定 3］所属文書数（単独クラスタの除外の材料）。
+        var memberCountOf = members
+            .GroupBy(m => m.ClusterId)
+            .ToDictionary(g => g.Key, g => g.Count());
 
         var latestMemberUpdate = members
             .GroupBy(m => m.ClusterId)
@@ -177,6 +185,7 @@ public sealed class KnowledgeHealthCollector(
         foreach (var cluster in clusters)
         {
             var reason = UnsummarizedClusterRule.Evaluate(
+                memberCountOf.GetValueOrDefault(cluster.ClusterId),
                 cluster.CompositionChangedAt,
                 latestMemberUpdate.GetValueOrDefault(cluster.ClusterId),
                 summaryOf.GetValueOrDefault(cluster.ClusterId, empty));

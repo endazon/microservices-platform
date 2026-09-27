@@ -205,6 +205,7 @@
     "docs/tests/FR-17_knowledge-graph.md": [
       "AbacNodeFilterTests",
       "AbacUnenforcedAxisTests",
+      "ClusterSummaryTests",
       "EdgeTypeDbGuardTests",
       "EdgeTypeDictionaryTests",
       "EdgeTypeEndpointsTests",
@@ -217,6 +218,7 @@
       "GraphTypeGateArchitectureTests",
       "LinkEdgeSyncTests",
       "ObsidianLinkParserTests",
+      "UnsummarizedClusterRuleTests",
       "UserAuthoredEdgeTests"
     ],
     "docs/tests/FR-18_ai-suggestions.md": [

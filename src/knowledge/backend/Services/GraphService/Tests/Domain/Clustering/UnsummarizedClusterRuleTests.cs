@@ -122,6 +122,43 @@ public sealed class UnsummarizedClusterRuleTests
         reason.Should().BeNull();
     }
 
+    // ── 単独クラスタ（ADR-0120 決定 3 / #1663） ─────────────────────────────
+
+    // 🔴 FR-17, FR-10, ADR-0120 決定 3 (T-67): **所属 1 件以下のクラスタは、要約が 1 つも無くても
+    // 未要約に数えない。** 要約の対象外であり、孤立文書は `orphan-documents` が数える。
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void 所属一件以下のクラスタは要約が無くても未要約に数えない(int memberCount)
+    {
+        UnsummarizedClusterRule.IsSummaryTarget(memberCount).Should().BeFalse();
+
+        var reason = UnsummarizedClusterRule.Evaluate(
+            memberCount, Generated.AddDays(1), Generated.AddDays(1), Summaries());
+
+        reason.Should().BeNull("単独クラスタは要約の対象外であり、未要約にも数えない（ADR-0120 決定 3）");
+    }
+
+    // 🔴 FR-17, FR-10, ADR-0083 決定 3 (T-67P): **陽性対照。** 所属 2 件以上は従来どおり 3 条件で判定する。
+    // これが無いと「常に null を返す入口」でも上のテストが緑になる。
+    [Theory]
+    [InlineData(2)]
+    [InlineData(5)]
+    public void 所属二件以上のクラスタは従来どおり未要約に数える(int memberCount)
+    {
+        UnsummarizedClusterRule.IsSummaryTarget(memberCount).Should().BeTrue();
+
+        UnsummarizedClusterRule.Evaluate(
+                memberCount, Generated.AddDays(-10), Generated.AddDays(-10), Summaries())
+            .Should().Be(UnsummarizedClusterRule.NoSummary);
+        UnsummarizedClusterRule.Evaluate(
+                memberCount, Generated.AddDays(1), Generated.AddDays(-10), AllSummaries())
+            .Should().Be(UnsummarizedClusterRule.CompositionChanged);
+        UnsummarizedClusterRule.Evaluate(
+                memberCount, Generated.AddDays(-10), Generated.AddDays(-10), AllSummaries())
+            .Should().BeNull("4 通り揃い、構成も文書も生成より前なら要約済みである");
+    }
+
     private static Dictionary<string, DateTimeOffset> Summaries(params string[] confidentialities)
         => confidentialities.ToDictionary(c => c, _ => Generated);
 
