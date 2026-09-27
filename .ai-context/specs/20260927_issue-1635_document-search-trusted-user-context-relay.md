@@ -153,7 +153,7 @@ issue: "#1635"
 ### 結果（2026-09-27・ローカル）
 
 - `dotnet test src/knowledge/backend/backend.slnx`: exit 0（RetrievalService.Tests 345 合格〔新規 3 クラス 29 件を含む〕・AiAnalysisService.Tests 161 合格。全プロジェクト失敗 0）
-- `dotnet test src/platform/backend/backend.slnx`: 下記 PR 本文に記録（exit 0 を確かめてから PR を出した）
+- `dotnet test src/platform/backend/backend.slnx`: exit 0（Platform.Bff.Tests 768 合格・1 スキップ。全プロジェクト失敗 0）
 - `dotnet format <slnx> --verify-no-changes`: 両ユニット exit 0
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 841 tests passed（test-spec-coverage の床は `--update` で 3 件を足した）
 - 変異（新規 2 クラスの 29 件で実測。どれも戻し、`grep "//MUT"` で残りが無いことを確かめた）:
