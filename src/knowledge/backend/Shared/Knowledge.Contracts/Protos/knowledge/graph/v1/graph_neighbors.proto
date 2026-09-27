@@ -10,6 +10,9 @@
 // ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
 // ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
 //   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
+//   ［2026-09-27 追記 / #1636］🔴 `ExpandNeighbors` の本文の利用者文脈を信じるのは、受け口の許可集合
+//   （`GraphNeighbors:TrustedUserContextClients`。既定 `retrieval-service` だけ）の機械クライアントが運んだときだけである。
+//   それ以外が利用者文脈を付けると PERMISSION_DENIED（NFR-09, IADR-0410 追記 1）。
 //
 // ■ 🔴 **利用者の権限で動く面の 1 つ目である**（計画 ADR-0086 決定 1・3）。
 //   従前この経路は**利用者の `Authorization` ヘッダを転送**していた（方式 A）。
