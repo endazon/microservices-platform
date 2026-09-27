@@ -133,6 +133,10 @@ RetrievalService.Features.Search.AttributeValues.AttributeValuesRelayOptions.Thr
 builder.Services.Configure<RetrievalService.Features.Search.AttributeValues.AttributeValuesRelayOptions>(
     builder.Configuration.GetSection(RetrievalService.Features.Search.AttributeValues.AttributeValuesRelayOptions.SectionName));
 
+// FR-16, NFR-09, 計画 ADR-0117 決定 3 (#1611): MCP のツールの実行口の本文の利用者文脈を信じる呼び出し元。
+// **未構成なら `mcp-server` だけ。構成したら置き換える**（他の面の集合とは別）。配列でない値なら起動を止める。
+RetrievalService.Features.McpTools.Execute.McpToolExecutionRegistration.AddMcpToolExecution(builder.Services, builder.Configuration);
+
 // FR-03, FR-04, FR-05, NFR-09, UC-01, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0034 決定 1,
 // ADR-0075, [[IADR-0044]], [[IADR-0379]] 決定 5, [[IADR-0410]], [[IADR-0416]] (#1339):
 // 🔴 **本サービスが自分で ABAC 許可スコープを解決する。**

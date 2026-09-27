@@ -44,6 +44,10 @@ public sealed class McpSubjectResolver(McpDbContext db)
                 ?? principal.Identity?.Name
                 ?? client.ClientId;
 
-        return (new McpSubject(subjectId, client.ClientId, client.Kind, client.Attributes), client, null);
+        // ［#1611］有人の利用者名（`NameClaimType = preferred_username`）。下流へ運ぶ利用者文脈の `user_id` になる。
+        // サービスアカウントでは使わない（`ToolUserContext.For` が `service-account-<client>` を組む）。
+        var userName = client.Kind == McpClientKind.ServiceAccount ? null : principal.Identity?.Name;
+
+        return (new McpSubject(subjectId, client.ClientId, client.Kind, client.Attributes, userName), client, null);
     }
 }

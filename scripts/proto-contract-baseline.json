@@ -14,6 +14,20 @@
       "approvedBy": "endazon（利用者裁定 2026-09-26・ADR-0117・#1516 の裁定コメント）",
       "issue": "#1516",
       "date": "2026-09-27"
+    },
+    {
+      "key": "field:ExecuteMcpToolRequest.scope",
+      "reason": "ADR-0117 決定 3: MCP サーバーが本文で運ぶものを、暫定の実行スコープ（scope）から利用者文脈（user_id・action）へ改める。番号 3 と名前 scope は reserved に残す。旧い呼び出し元が番号 3 に載せても受け口は未知のフィールドとして読み飛ばし、user が無いので INVALID_ARGUMENT で拒否する（緩む向きは無い）。受け口はこの変更で初めてでき、呼び出し元は MCP サーバー 1 つで同じ PR で揃えるので v2 の並走は要らない",
+      "approvedBy": "endazon（利用者裁定 2026-09-26・ADR-0117 決定 3・#1611 の issue 本文「本文で運ぶものを、解決済みの scope から利用者文脈へ改める」。#1516 が proto に予告済み）",
+      "issue": "#1611",
+      "date": "2026-09-27"
+    },
+    {
+      "key": "message:McpToolInvocationScope",
+      "reason": "ADR-0117 決定 3: MCP サーバーが本文で運ぶものを、暫定の実行スコープ（scope）から利用者文脈（user_id・action）へ改める。scope の型だった McpToolInvocationScope は参照が無くなったので削る（残すと解決済みの scope を運ぶ形が再び書ける）。受け口は本件まで 1 つも無く、参照していた呼び出し元は MCP サーバーだけで同じ PR で外す",
+      "approvedBy": "endazon（利用者裁定 2026-09-26・ADR-0117 決定 3・#1611 の issue 本文）",
+      "issue": "#1611",
+      "date": "2026-09-27"
     }
   ],
   "files": {
@@ -1741,20 +1755,24 @@
               "type": "string",
               "label": "singular"
             },
-            "scope": {
-              "number": 3,
-              "type": "McpToolInvocationScope",
-              "label": "singular"
-            },
             "tool": {
               "number": 1,
               "type": "string",
               "label": "singular"
+            },
+            "user": {
+              "number": 4,
+              "type": "McpToolUserContext",
+              "label": "singular"
             }
           },
           "reserved": {
-            "numbers": [],
-            "names": []
+            "numbers": [
+              3
+            ],
+            "names": [
+              "scope"
+            ]
           }
         },
         "McpToolDocument": {
@@ -1790,39 +1808,6 @@
             "names": []
           }
         },
-        "McpToolInvocationScope": {
-          "fields": {
-            "exclude_private_note": {
-              "number": 4,
-              "type": "bool",
-              "label": "singular"
-            },
-            "required_scope": {
-              "number": 5,
-              "type": "string",
-              "label": "singular"
-            },
-            "subject_attributes": {
-              "number": 3,
-              "type": "map<string,string>",
-              "label": "map"
-            },
-            "subject_id": {
-              "number": 1,
-              "type": "string",
-              "label": "singular"
-            },
-            "subject_kind": {
-              "number": 2,
-              "type": "string",
-              "label": "singular"
-            }
-          },
-          "reserved": {
-            "numbers": [],
-            "names": []
-          }
-        },
         "McpToolResult": {
           "fields": {
             "documents": {
@@ -1838,6 +1823,24 @@
             "truncated": {
               "number": 3,
               "type": "bool",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "McpToolUserContext": {
+          "fields": {
+            "action": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "user_id": {
+              "number": 1,
+              "type": "string",
               "label": "singular"
             }
           },

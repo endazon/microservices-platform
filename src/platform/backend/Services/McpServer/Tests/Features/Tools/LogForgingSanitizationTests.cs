@@ -73,7 +73,7 @@ public class LogForgingSanitizationTests
     private sealed class ThrowingInvoker : IToolInvoker
     {
         public Task<McpToolResult> InvokeAsync(
-            PublishedTool tool, ToolInvocationScope scope, string argumentsJson, CancellationToken ct)
+            PublishedTool tool, ToolUserContext user, string argumentsJson, CancellationToken ct)
             => throw new InvalidOperationException("未知ツールでは下流を呼ばない");
     }
 

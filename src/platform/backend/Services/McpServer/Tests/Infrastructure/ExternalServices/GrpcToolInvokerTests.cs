@@ -40,10 +40,8 @@ public sealed class GrpcToolInvokerTests
     private static PublishedTool Tool(string service, string publishedName = "search") =>
         new(publishedName, service, McpToolDeclarationGrpcTestHost.SampleTool);
 
-    private static ToolInvocationScope Scope(bool excludePrivateNote = true) => new(
-        "alice", "ServiceAccount",
-        new Dictionary<string, string> { ["clearance"] = "internal" },
-        excludePrivateNote, McpToolDeclarationGrpcTestHost.SampleTool.RequiredScope);
+    // ［#1611］本文で運ぶのは利用者文脈（利用者と操作）だけ。
+    private static ToolUserContext Scope() => new("alice", ToolUserContext.ReadAction);
 
     private static string DeadAddress()
     {
@@ -195,7 +193,7 @@ public sealed class GrpcToolInvokerTests
         attackerExecution.Received.Should().BeEmpty();
     }
 
-    // 🔴 X-3: **実行口の無い宛先**（本番の申告元は #1611 までこれ）は `UNIMPLEMENTED` —— fail-closed の拒否。
+    // 🔴 X-3: **実行口の無い宛先**（［#1611 段 1］本番の文書・グラフはまだこれ）は `UNIMPLEMENTED` —— fail-closed の拒否。
     // 配線の誤りではないので Warning（Error にしない）。
     [Fact]
     public async Task Missing_execution_port_fails_closed_with_a_clear_message()
@@ -320,22 +318,23 @@ public sealed class GrpcToolInvokerTests
         log.OfLevel(LogLevel.Warning).Should().ContainSingle();
     }
 
-    // X-9: 要求の組み立て。申告名・引数（空は空のオブジェクト）・現行の実行スコープ（除外制約と属性を含む）を運ぶ。
-    // 宛先の情報（URL）は要求に 1 バイトも載らない。
+    // X-9（［2026-09-27 改訂 / #1611, ADR-0117 決定 3］）: 要求の組み立て。申告名・引数（空は空のオブジェクト）・**利用者文脈（利用者と操作）だけ**を運ぶ。
+    // 🔴 実行スコープ（属性・必要スコープ・除外制約）は運ばない —— 受け手が利用者文脈で認可サービスへ問い、自分で認可する。
+    // 宛先の情報（URL）も要求に 1 バイトも載らない。旧 `scope`（番号 3）は予約済みで、項目としては存在しない。
     [Fact]
-    public void Request_carries_the_declared_name_arguments_and_current_scope()
+    public void Request_carries_the_declared_name_arguments_and_only_the_user_context()
     {
-        var request = GrpcToolInvoker.ToRequest(Tool("svc", publishedName: "search"), Scope(excludePrivateNote: true), "");
+        var request = GrpcToolInvoker.ToRequest(
+            Tool("svc", publishedName: "search"), new ToolUserContext("service-account-batch-agent", "read"), "");
 
         request.Tool.Should().Be(McpToolDeclarationGrpcTestHost.SampleTool.Name);
         request.ArgumentsJson.Should().Be("{}");
-        request.Scope.SubjectId.Should().Be("alice");
-        request.Scope.SubjectKind.Should().Be("ServiceAccount");
-        request.Scope.ExcludePrivateNote.Should().BeTrue("ADR-0034 決定 9 の要求側の 1 層目を落とさない");
-        request.Scope.RequiredScope.Should().Be(McpToolDeclarationGrpcTestHost.SampleTool.RequiredScope);
-        request.Scope.SubjectAttributes.Should().Contain("clearance", "internal");
-        Pb.ExecuteMcpToolRequest.Descriptor.Fields.InDeclarationOrder().Select(f => f.Name)
-            .Should().Equal(["tool", "arguments_json", "scope"], "宛先を運ぶ項目を持たない");
+        request.User.UserId.Should().Be("service-account-batch-agent");
+        request.User.Action.Should().Be("read");
+        Pb.ExecuteMcpToolRequest.Descriptor.Fields.InDeclarationOrder().Select(f => (f.Name, f.FieldNumber))
+            .Should().Equal([("tool", 1), ("arguments_json", 2), ("user", 4)], "宛先も解決済みの scope も運ぶ項目を持たない");
+        Pb.McpToolUserContext.Descriptor.Fields.InDeclarationOrder().Select(f => f.Name)
+            .Should().Equal(["user_id", "action"], "属性・必要スコープ・除外制約を運ぶ項目を持たない（ADR-0088・ADR-0117 決定 3）");
     }
 
     // X-10: 応答の proto は共通エンベロープ（REST の JSON）と項目名・数が一致する（片方だけに足すと輸送ごとに意味が割れる）。

@@ -13,7 +13,7 @@ namespace McpServer.Features.Tools;
 // 手順（UC-08 基本フロー 3〜5）:
 //   1. トークン → 登録済みクライアント（未登録・無効化は拒否）
 //   2. 公開構成に載っているツールか（載っていなければ「不明なツール」＝存在秘匿）
-//   3. 実行スコープを組む（サービスアカウントなら ExcludePrivateNote を立てる）
+//   3. 利用者文脈を組む（有人は利用者名、サービスアカウントは `service-account-<client>`。#1611 / ADR-0117 決定 3）
 //   4. 下流サービスを呼ぶ
 //   5. 個人資料の除外 → データ越境ポリシーの適用（本文 → 参照リンク縮退）
 //   6. 監査ログ
@@ -42,22 +42,27 @@ public sealed class ToolInvocationService(
             return ToolInvocationOutcome.Rejected($"不明なツールです: {toolName}");
         }
 
-        var scope = new ToolInvocationScope(
-            subject.SubjectId,
-            subject.Kind.ToString(),
-            subject.Attributes,
-            // 🔴 ADR-0034 決定 9: サービスアカウント実行なら個人資料を一律で対象外とする。
-            ExcludePrivateNote: subject.IsServiceAccount,
-            tool.Declaration.RequiredScope);
+        // ［2026-09-27 / #1611, ADR-0117 決定 3］🔴 **本文で運ぶのは利用者文脈（利用者と操作）だけである。** 受けたサービスが
+        // それで認可サービスへ判定を問い、自分で認可する。属性・必要スコープは運ばない（解決済みの scope を信じさせない）。
+        // 🔴 ADR-0034 決定 9: サービスアカウント実行は `service-account-<client>` を運び、受け手がそこから個人資料を落とす（1 層目）。
+        // 🔴 有人で利用者名が無い主体は下流へ送らない —— 主体の分からない実行を、誰かの名前や client の識別子に読み替えない。
+        var user = ToolUserContext.For(subject);
+        if (user is null)
+        {
+            logger.LogWarning(
+                "MCP tool not executed: the interactive subject has no user name (subject={SubjectId} client={ClientId} tool={Tool})",
+                subject.SubjectId, subject.ClientId, tool.PublishedName);
+            return ToolInvocationOutcome.Rejected(UnknownUserMessage);
+        }
 
         McpToolResult raw;
         try
         {
-            raw = await invoker.InvokeAsync(tool, scope, argumentsJson, ct);
+            raw = await invoker.InvokeAsync(tool, user, argumentsJson, ct);
         }
         catch (ToolExecutionUnavailableException ex)
         {
-            // ［2026-09-27 / #1516, ADR-0117 決定 4］🔴 **fail-closed。** 実行口の無い宛先（#1611 まで全宛先）・経路の無い宛先・
+            // ［2026-09-27 / #1516, ADR-0117 決定 4］🔴 **fail-closed。** 実行口の無い宛先（［#1611 段 1］文書・グラフ）・経路の無い宛先・
             // 時間切れ・拒否は、結果を 1 件も返さず拒否する。文言は実行器が利用者向けに作ったもの（内部の宛先を含めない）。
             // 監査ログにも残す（誰が・どのクライアントで・どのツールを呼んで実行できなかったか）。
             logger.LogWarning(
@@ -91,6 +96,9 @@ public sealed class ToolInvocationService(
         var (subject, _, _) = await resolver.ResolveAsync(principal, ct);
         return subject is null ? [] : catalog.PublishedTools;
     }
+
+    /// <summary>有人の主体に利用者名が無いときの拒否の文言（#1611）。</summary>
+    public const string UnknownUserMessage = "利用者を特定できないため、ツールを実行できません。";
 
     /// <summary>ログ出力上限。要求由来の名前でログを溢れさせない。</summary>
     private const int MaxLoggedToolNameLength = 128;

@@ -556,3 +556,4 @@
 | [IADR-0476](./IADR-0476_document-read-authn-and-private-note-visibility.md) | DocumentService の読み取りの全ての口に認証を求め、個人資料は所有者と共有先の利用者にだけ返す。主体は中継された利用者・gRPC 本文の利用者文脈・機械クライアント自身で、グループの共有先だけを認可サービスへ問う（#1614） | Accepted |
 | [IADR-0477](./IADR-0477_attribute-dictionary-department-values-from-realm.md) | **属性辞書の department の許可値は、読むたびに realm の部門グループから導いて保存し直し、realm を読めなければ最後に確かめた値を「不明」として示して消さない**（#1609・計画 ADR-0116 決定 3）。手で足す・消す要求は 400。応答に出所 `allowedValuesSource` | Accepted |
 | [IADR-0478](./IADR-0478_consumer-outbound-call-timeouts-under-wolverine-execution-timeout.md) | **Wolverine の受け口の外への呼び出しは呼び出しごとの期限の下で行い、時間切れを取り消しと分けて記録し（`messaging.consumer.timeout`）、最悪の所要時間が受け口の実行期限に収まることを起動時に検査する**（#1640）。取り込みは総枠 300 秒（使い切りはデッドレター）・受け口 420 秒・再試行の連鎖は consumer_timeout 内 | Accepted |
+| [IADR-0479](./IADR-0479_mcp-tool-execution-ports-authorize-user-context-themselves.md) | MCP のツールの実行口は MCP サーバー（許可集合）が運んだ利用者文脈だけを信じ、その利用者で認可サービスへ自分で判定を問う（#1611） | Accepted |

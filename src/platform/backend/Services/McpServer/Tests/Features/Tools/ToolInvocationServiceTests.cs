@@ -19,13 +19,15 @@ public class ToolInvocationServiceTests
     // 応答側フィルタ（2 層目）が効いていることを確かめられるようにしてある。
     private sealed class FakeInvoker : IToolInvoker
     {
-        public ToolInvocationScope? LastScope { get; private set; }
+        public ToolUserContext? LastUser { get; private set; }
+        public int Calls { get; private set; }
         public required McpToolResult Result { get; init; }
 
         public Task<McpToolResult> InvokeAsync(
-            PublishedTool tool, ToolInvocationScope scope, string argumentsJson, CancellationToken ct)
+            PublishedTool tool, ToolUserContext user, string argumentsJson, CancellationToken ct)
         {
-            LastScope = scope;
+            LastUser = user;
+            Calls++;
             return Task.FromResult(Result);
         }
     }
@@ -66,11 +68,17 @@ public class ToolInvocationServiceTests
         ])
     ];
 
+    // 本番の JwtBearer と同じく `Identity.Name` は `preferred_username` を指す（`AddPlatformAuth` の NameClaimType）。
+    // `sub`（NameIdentifier）は利用者名と違う値にしておく —— 下流へ運ぶ `user_id` が利用者名であることを見分けるため（#1611）。
     private static ClaimsPrincipal PrincipalFor(string clientId, string? userId = null)
     {
         var claims = new List<Claim> { new("azp", clientId) };
-        if (userId is not null) claims.Add(new Claim(ClaimTypes.NameIdentifier, userId));
-        return new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
+        if (userId is not null)
+        {
+            claims.Add(new Claim(ClaimTypes.NameIdentifier, $"sub-of-{userId}"));
+            claims.Add(new Claim("preferred_username", userId));
+        }
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, "Test", "preferred_username", ClaimTypes.Role));
     }
 
     private static McpDbContext NewDb() => new(new DbContextOptionsBuilder<McpDbContext>()
@@ -110,7 +118,7 @@ public class ToolInvocationServiceTests
         public const string Message = "このツールは現在実行できません（試験）。";
 
         public Task<McpToolResult> InvokeAsync(
-            PublishedTool tool, ToolInvocationScope scope, string argumentsJson, CancellationToken ct)
+            PublishedTool tool, ToolUserContext user, string argumentsJson, CancellationToken ct)
             => throw new ToolExecutionUnavailableException(Message);
     }
 
@@ -148,7 +156,7 @@ public class ToolInvocationServiceTests
     private sealed class CancelledInvoker : IToolInvoker
     {
         public Task<McpToolResult> InvokeAsync(
-            PublishedTool tool, ToolInvocationScope scope, string argumentsJson, CancellationToken ct)
+            PublishedTool tool, ToolUserContext user, string argumentsJson, CancellationToken ct)
             => throw new OperationCanceledException();
     }
 
@@ -193,30 +201,48 @@ public class ToolInvocationServiceTests
         outcome.Result.Documents.Should().Contain(d => d.DocumentId == PrivateId);
     }
 
-    // FR-16: 要求側（1 層目）でも下流へ除外制約を渡している。
-    // 応答側フィルタだけだと、下流が個人資料を検索・探索する処理を実際に行ってしまう。
+    // FR-16, ADR-0117 決定 3, ADR-0034 決定 9（#1611）: 要求側（1 層目）の除外は、下流へ運ぶ利用者文脈の形で伝わる ——
+    // サービスアカウント実行は `service-account-<client>`（Keycloak の利用者名の形）を運び、受け手がその接頭辞から個人資料を落とす。
+    // 🔴 client の識別子をそのまま `user_id` にしない（同じ綴りの利用者が居れば、その人として判定される）。
     [Fact]
-    public async Task サービスアカウント実行では下流へ除外制約を渡す()
+    public async Task サービスアカウント実行ではservice_accountの利用者名と読み取りの操作だけを下流へ運ぶ()
     {
-        var (service, invoker, _) = Build("retrieval.search_documents", ServiceAccountClient());
+        var (service, invoker, _) = Build("retrieval.search_documents", ServiceAccountClient("Batch-Agent"));
 
-        await service.InvokeAsync(PrincipalFor("batch-agent"), "retrieval.search_documents", "{}",
+        await service.InvokeAsync(PrincipalFor("Batch-Agent"), "retrieval.search_documents", "{}",
             CancellationToken.None);
 
-        invoker.LastScope!.ExcludePrivateNote.Should().BeTrue();
-        invoker.LastScope.SubjectKind.Should().Be(nameof(McpClientKind.ServiceAccount));
+        invoker.LastUser.Should().Be(new ToolUserContext("service-account-batch-agent", "read"));
     }
 
-    // FR-16（陽性対照）: 有人実行では除外制約を立てない。
+    // FR-16, ADR-0117 決定 3（#1611）: 有人実行は**利用者名**（`preferred_username`）を運ぶ。`sub` ではない
+    // （下流と認可サービスは利用者を利用者名で引く）。除外は掛からない（`service-account-` で始まらない）。
     [Fact]
-    public async Task 有人実行では下流へ除外制約を渡さない()
+    public async Task 有人実行では利用者名と読み取りの操作だけを下流へ運ぶ()
     {
         var (service, invoker, _) = Build("retrieval.search_documents", InteractiveClient());
 
         await service.InvokeAsync(PrincipalFor("claude-desktop", "alice"),
             "retrieval.search_documents", "{}", CancellationToken.None);
 
-        invoker.LastScope!.ExcludePrivateNote.Should().BeFalse();
+        invoker.LastUser.Should().Be(new ToolUserContext("alice", "read"));
+    }
+
+    // 🔴 FR-16, ADR-0117 決定 3（#1611）: 有人の主体に利用者名が無ければ、**下流へ送らず拒否する**。
+    // 主体の分からない実行を、`sub` や client の識別子に読み替えて誰かとして判定させない。
+    [Fact]
+    public async Task 有人実行で利用者名が無ければ下流を呼ばず拒否する()
+    {
+        var (service, invoker, _) = Build("retrieval.search_documents", InteractiveClient());
+        var nameless = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim("azp", "claude-desktop"), new Claim(ClaimTypes.NameIdentifier, "sub-only")],
+            "Test", "preferred_username", ClaimTypes.Role));
+
+        var outcome = await service.InvokeAsync(nameless, "retrieval.search_documents", "{}", CancellationToken.None);
+
+        outcome.Ok.Should().BeFalse();
+        outcome.Error.Should().Be(ToolInvocationService.UnknownUserMessage);
+        invoker.Calls.Should().Be(0);
     }
 
     // FR-16: 公開許可リスト外のツールは実行できない（既定は非公開。計画 ADR-0024 §決定）。
