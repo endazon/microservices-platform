@@ -40,6 +40,20 @@ public class DocumentReadRelayDeploymentWiringTests
         ReadRepoFile(Helm).Should().NotContain(TrustedKey, "構成で集合を変えるならこの試験を直す（上の 🔴）");
     }
 
+    // 🔴 #1658: 1 つの値の検査は**束縛より前**に起動時に呼ばれる（呼ばれなければ 1 つの値は既定へ静かに戻る）。
+    [Fact]
+    public void Program_csは束縛より前に一つの値の検査を呼ぶ()
+    {
+        var program = ReadRepoFile("src/knowledge/backend/Services/DocumentService/Program.cs");
+        var check = program.IndexOf("DocumentReadRelayOptions.ThrowIfScalar(builder.Configuration);", StringComparison.Ordinal);
+        var bindMatch = Regex.Match(program, @"Configure<(?:[\w.]+\.)?DocumentReadRelayOptions>\(");
+        var bind = bindMatch.Success ? bindMatch.Index : -1;
+
+        bind.Should().BeGreaterThanOrEqualTo(0, "対照: 束縛の行を読めていないなら以下は何も検査していない");
+        check.Should().BeGreaterThanOrEqualTo(0, "Program.cs が DocumentReadRelayOptions.ThrowIfScalar を呼ぶ");
+        check.Should().BeLessThan(bind, "検査は束縛より前");
+    }
+
     // `section` の行より後で最初に現れる `header` から、同じ字下げ以下の行が来るまでを返す（改行は \n に揃える）。
     private static string Block(string text, string section, string header)
     {

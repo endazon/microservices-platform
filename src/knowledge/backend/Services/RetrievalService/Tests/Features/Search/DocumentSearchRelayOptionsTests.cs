@@ -67,6 +67,47 @@ public class DocumentSearchRelayOptionsTests
         options.TrustsUserContextFrom(ServiceAccount("aianalysis-service")).Should().BeFalse();
     }
 
+    // 🔴 #1658: 1 つの値（配列でない）は束縛されず既定の `aianalysis-service` へ静かに戻る。起動時に止める。
+    [Fact]
+    public void 一つの値で構成すると起動時に例外になり_束縛だけなら既定へ戻ってしまう()
+    {
+        var scalar = new Dictionary<string, string?> { ["DocumentSearch:TrustedUserContextClients"] = "foo" };
+
+        Bind(scalar).EffectiveClients.Should().Equal(["aianalysis-service"], "前提: 1 つの値は配列へ束縛されず既定へ戻る（止める理由）");
+        var act = () => DocumentSearchRelayOptions.ThrowIfScalar(new ConfigurationBuilder().AddInMemoryCollection(scalar).Build());
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("DocumentSearch:TrustedUserContextClients は配列で構成すること（環境変数なら DocumentSearch__TrustedUserContextClients__0=aianalysis-service）。*既定の aianalysis-service へ戻ってしまう。");
+
+        // カンマ区切りも 1 つの値である。
+        var commaSeparated = () => DocumentSearchRelayOptions.ThrowIfScalar(new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["DocumentSearch:TrustedUserContextClients"] = "aianalysis-service,other-relay" }).Build());
+        commaSeparated.Should().Throw<InvalidOperationException>();
+
+        // 対照: 配列の形・未構成・別の面の節の 1 つの値は通る。
+        DocumentSearchRelayOptions.ThrowIfScalar(new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["DocumentSearch:TrustedUserContextClients:0"] = "aianalysis-service" }).Build());
+        DocumentSearchRelayOptions.ThrowIfScalar(new ConfigurationBuilder().Build());
+        DocumentSearchRelayOptions.ThrowIfScalar(new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["AttributeValues:TrustedUserContextClients"] = "bff" }).Build());
+    }
+
+    // #1658: 共有部品へ寄せても既定の解決・置き換え・空白の扱いは現行と同値（複数要素・前後空白・空要素・重複は落とさない）。
+    [Fact]
+    public void 複数要素の構成は前後空白を落とし空白だけの要素を捨てて順に並べる()
+    {
+        var options = Bind(new()
+        {
+            ["DocumentSearch:TrustedUserContextClients:0"] = " relay-a ",
+            ["DocumentSearch:TrustedUserContextClients:1"] = "   ",
+            ["DocumentSearch:TrustedUserContextClients:2"] = "relay-b",
+            ["DocumentSearch:TrustedUserContextClients:3"] = "relay-a",
+        });
+
+        options.EffectiveClients.Should().Equal("relay-a", "relay-b", "relay-a");
+        options.TrustsUserContextFrom(ServiceAccount("relay-b")).Should().BeTrue();
+        options.TrustsUserContextFrom(ServiceAccount("aianalysis-service")).Should().BeFalse("構成は既定を置き換える（足し合わせない）");
+    }
+
     // 🔴 #1631 の `DocumentRead` の節を構成しても検索の集合は変わらない（キーを共有しない）。
     [Fact]
     public void DocumentReadの節は検索の集合に効かない()

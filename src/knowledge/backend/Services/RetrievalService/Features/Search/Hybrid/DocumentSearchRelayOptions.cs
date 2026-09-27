@@ -19,6 +19,8 @@ namespace RetrievalService.Features.Search.Hybrid;
 // 🔴 **空白だけの要素は捨てる。1 つも残らなければ誰も信じない**（fail-closed）。
 // 🔴 **`MachinePrincipal` の「サービスアカウントの一覧を構成に持たない」とは向きが逆である。** あちらは一覧から
 //   外すと統制を免れる（抜け道になる）。こちらは**許可**の集合で、外せば狭くなり、空なら誰も信じない。
+// 🔴 **1 つの値（配列でない）の構成は起動時に止める**（`ThrowIfScalar`。`Program.cs` で束縛より前に呼ぶ。#1658）。
+// 判定・既定の解決・構成の形の検査は共有の `TrustedUserContextRelay` が持つ（面ごとに写さない。#1658）。
 public sealed class DocumentSearchRelayOptions
 {
     public const string SectionName = "DocumentSearch";
@@ -34,28 +36,26 @@ public sealed class DocumentSearchRelayOptions
 
     /// <summary>実際に使う許可集合（既定の解決・前後空白の除去・空要素の除去の後）。</summary>
     public IReadOnlyList<string> EffectiveClients =>
-        TrustedUserContextClients is null
-            ? DefaultTrustedUserContextClients
-            : TrustedUserContextClients
-                .Where(c => !string.IsNullOrWhiteSpace(c))
-                .Select(c => c.Trim())
-                .ToArray();
+        TrustedUserContextRelay.Effective(TrustedUserContextClients, DefaultTrustedUserContextClients);
 
     /// <summary>
-    /// 呼び出し元が本文の利用者文脈を運んでよいか。**機械の主体**であり、かつクライアント識別が許可集合に
-    /// **序数一致**で含まれるときだけ真（接頭辞・大小文字の変種は別のクライアントである）。
+    /// 呼び出し元が本文の利用者文脈を運んでよいか（機械の主体 ∧ クライアント識別が**序数一致**で許可集合に在る。
+    /// 接頭辞・大小文字の変種は別のクライアントである）。
     /// </summary>
     /// <remarks>
     /// 🔴 機械であることを併せて求める —— `azp` は人のトークンにも付く。
-    /// 🔴 クライアント識別は `azp` を第一に見る（`MachinePrincipal.ClientIdOf`）。利用者名が
-    ///   `service-account-aianalysis-service` でも `azp` が別なら別のクライアントである。
-    /// 判定は共有の `MachinePrincipal` の 2 関数だけで書く（述語を新設しない。[[IADR-0420]]）。
+    /// 🔴 クライアント識別は `azp` を第一に見る。利用者名が `service-account-aianalysis-service` でも `azp` が別なら別のクライアントである。
     /// </remarks>
-    public bool TrustsUserContextFrom(ClaimsPrincipal? caller)
-    {
-        if (!MachinePrincipal.IsMachine(caller)) return false;
-        var clientId = MachinePrincipal.ClientIdOf(caller);
-        if (clientId is null) return false;
-        return EffectiveClients.Contains(clientId, StringComparer.Ordinal);
-    }
+    public bool TrustsUserContextFrom(ClaimsPrincipal? caller) =>
+        TrustedUserContextRelay.Trusts(caller, EffectiveClients);
+
+    /// <summary>
+    /// 1 つの値（配列でない。`DocumentSearch__TrustedUserContextClients=foo`）で構成されていたら起動時に止める。
+    /// </summary>
+    /// <remarks>
+    /// 🔴 1 つの値は配列へ束縛されず、プロパティは null のまま**既定の `aianalysis-service` へ静かに戻る**（#1658）。
+    /// 書き手は集合を置き換えたつもりで既定のまま動く。配列は `__0` / `__1` … で書く。
+    /// </remarks>
+    public static void ThrowIfScalar(Microsoft.Extensions.Configuration.IConfiguration configuration) =>
+        TrustedUserContextRelay.ThrowIfScalar(configuration, SectionName, DefaultTrustedUserContextClients[0]);
 }

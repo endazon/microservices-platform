@@ -207,3 +207,10 @@ package をまたいで型を共有しない（[[IADR-0379]] 決定 1）ので�
   `DocumentReadRelayDeploymentWiringTests` が固定する。
 - **残るもの**: 本文の `user_id` を `platform-service` の全主体から信じる面は他にもある（`DocumentTagWrite/AddTag`・グラフの問い合わせ・検索の
   `HybridSearch` / `ListValues`・`AuthzScope/Resolve`）。面ごとに呼び出し元が違うので、別の issue で扱う。
+
+## 追記 2: 許可集合の実装を共有の `TrustedUserContextRelay` へ寄せる（2026-09-27 / #1658）
+
+［2026-09-27 追記 / #1658］追記 1 の決定 1・2（判定・既定・置き換え・空白の扱い・1 つの値の起動時の例外）は変えない。その実装を
+`DocumentReadRelayOptions` に写したまま持つのをやめ、#1645 で置かれた共有の `TrustedUserContextRelay`（`Platform.Shared.Infrastructure`）の
+`Effective` / `Trusts` / `ThrowIfScalar` へ委譲する。型に残るのは節名・既定・委譲だけで、公開面と 1 つの値の例外の文言は従前と同じである
+（`DocumentReadRelayOptionsTests` が文言を含めて固定する）。配備への影響は無い。
