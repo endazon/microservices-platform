@@ -3329,6 +3329,12 @@
             "required": true,
             "position": 3
           },
+          "AllowedValuesSource": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 8
+          },
           "CreatedAt": {
             "source": "positional",
             "type": "DateTimeOffset",

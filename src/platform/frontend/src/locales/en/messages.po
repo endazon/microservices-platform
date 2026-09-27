@@ -400,6 +400,10 @@ msgstr "OpenD RSA key"
 msgid "OpenD を手動で再起動するまで、書いた値は反映されません。"
 msgstr "The value you wrote does not take effect until you restart OpenD by hand."
 
+#: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
+msgid "realm の部門グループから導出"
+msgstr "Derived from the realm department groups"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "related: 実線・細（向きなし）"
 msgstr "related: thin solid line (undirected)"
@@ -1456,6 +1460,10 @@ msgstr "Use “Add an attribute” below to register the first user or document 
 #: knowledge/frontend/src/features/sc05-documents/types/documentStatus.ts
 msgid "下書き"
 msgstr "Draft"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
+msgid "不明（realm を読めないため最後に確かめた値）"
+msgstr "Unknown (the realm cannot be read; showing the last confirmed values)"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "両方を残しました。別名の資料を作成しています。"
