@@ -5,6 +5,7 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 
 namespace Platform.Shared.Infrastructure.Foundation.Extensions;
 
@@ -51,6 +52,8 @@ public static class ObservabilityExtensions
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
                 .AddRuntimeInstrumentation()
+                // #1640: 受け口の外への呼び出しの時間切れ（`ConsumerTimeoutMetrics`）。全サービス共通の Meter。
+                .AddMeter(ConsumerTimeoutMetrics.MeterName)
                 .AddOtlpExporter(o => o.Endpoint = otlpEndpoint));
 
         return services;

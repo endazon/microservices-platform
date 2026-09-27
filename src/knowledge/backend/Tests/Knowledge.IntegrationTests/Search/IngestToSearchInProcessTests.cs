@@ -15,6 +15,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Qdrant.Client;
 using RetrievalService.Infrastructure.ExternalServices;
 using System.Security.Claims;
@@ -187,6 +188,11 @@ public sealed class IngestToSearchInProcessTests : IAsyncLifetime
             new DeterministicEmbeddingService(Collection),
             _writes,
             new RecordingCompletedPublisher(),
+            // #1640: 本番と同じ登録から引いた時間切れの判定と、既定の上限（どの呼び出しも即時に返す）。
+            new ServiceCollection().AddLogging().AddPlatformConsumerTimeouts().BuildServiceProvider()
+                .GetRequiredService<ConsumerCallTimeouts>(),
+            IngestionTimeouts.Default,
+            TimeProvider.System,
             NullLogger<DocumentUpdatedConsumer>.Instance);
 
         await consumer.Handle(
