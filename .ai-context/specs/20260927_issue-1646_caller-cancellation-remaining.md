@@ -133,8 +133,39 @@ ct（停止の token）で絞っており、取り消しを縮退へ畳まない
 
 ## 変異の記録（AC-6）
 
-（コミット後に実施して追記する。）
+器: `scratchpad/m1646/mut.py`（作業用。コミットしない）。修正のコミット（7d8330bd）の後に 1 つずつ当て、該当の試験クラスを走らせ、`git show HEAD:<path> > <path>` で戻し、
+戻した後 `git diff --quiet -- <path>` が真であることを毎回確かめた（全 9 件 `restored-clean=True`）。R は `git show origin/develop:<path>` で**直す前の本番コード**に戻すもので、
+「直す前の実装では新しい試験が赤になる」ことの実測を兼ねる。S は守りを `catch (RpcException guardEx) when (guardEx.StatusCode == StatusCode.Cancelled)`（status で判定する形）へ替える。
+
+| 変異 | 当てた箇所 | 赤になった試験（その他はすべて緑） | 失敗の文言 |
+| --- | --- | --- | --- |
+| UD-R | `UserDirectoryGrpcClient` を直す前へ | `呼び出し元の取り消しは引けなかったへ畳まず外へ出す` の名簿の 6 件（6/19） | `Expected a <System.OperationCanceledException> to be thrown, but no exception was thrown.` |
+| UD-S | `UserDirectoryGrpcClient` の守りを status 判定へ | `受け口が返した_Cancelled_は従来どおり引けなかったである` の名簿の 6 件（6/19） | （`RpcException(Cancelled)` が外へ出た） |
+| AZ-R | `AuthzScopeGrpcClient` を直す前へ | `呼び出し元の取り消しは…` の認可スコープの 3 件（3/19） | `… but no exception was thrown.` |
+| BFF-R | `SearchBffEndpoints` を直す前へ | `A_caller_cancellation_over_a_real_channel_is_not_turned_into_a_bad_gateway`（1/18） | （端点が 502 を返した） |
+| BFF-S | `SearchBffEndpoints` の守りを status 判定へ | `A_cancelled_status_answered_by_the_downstream_is_still_a_bad_gateway`（1/18） | （502 ではなく取り消しになった） |
+| QV-R | `QdrantVectorStore` を直す前へ | `KeywordSearch_呼び出し元の取り消しは縮退として数えず外へ出す`（1/15） | `… but no exception was thrown.` |
+| QV-S | `QdrantVectorStore` の守りを status 判定へ | `KeywordSearch_Qdrantが返した_Cancelled_は縮退として数える`（1/15） | （縮退の計器が 0 件） |
+| QH-R | 健全性の検査 2 つを直す前へ | `HealthCheck_呼び出し元の取り消しは_Degraded_へ畳まず外へ出す` の 2 件（2/15） | `… but no exception was thrown.` |
+| OA-R | `GrpcOwnerAccountDirectory` の 2 つ目の OCE の catch を外す | `DirectoryCallerCancellationTests(GrpcOwnerAccountDirectory)`（1/4） | `Expected thrown.Which.CancellationToken to be …`（内側の token が外へ出た） |
+
+## 反復の記録
+
+各試験クラスを 1 度ビルドし、`dotnet test --no-build` をクラスのフィルタで 20 回連続で走らせた。
+
+| 試験クラス | 結果 |
+| --- | --- |
+| `AuthzGrpcClientCallerCancellationTests`（Platform.Shared.Infrastructure.Tests） | 20/20 |
+| `BffAttributeValuesGrpcTests`（Platform.Bff.Tests） | 20/20 |
+| `QdrantFullTextIndexObservabilityTests`（RetrievalService.Tests） | 20/20 |
+| `DirectoryCallerCancellationTests`（DocumentService.Tests） | 20/20 |
+
+試験は壁時計の間隔に依存しない（受け口が要求を受け取ったことを `TaskCompletionSource` で待ってから取り消す。待つ上限 10 秒は安全弁で、判定には使わない）。
 
 ## 結果
 
-（検証の後に追記する。）
+- AC-1〜AC-7 を満たした。本番コードの差分は 10 ファイル（守りの追加と注記だけ）。新しい IADR は起こしていない。
+- 検証: 両ユニットの `dotnet build`（警告 0）・`dotnet format --verify-no-changes`、試験プロジェクトの全件（Platform.Shared.Infrastructure 484・Platform.Bff 777（skip 1）・
+  RetrievalService 398・DocumentService 809・DataSourceService 331・McpServer 236・GraphService 692・WikiService 129・AiAnalysisService 161。共有クライアントの呼び出し元を持つサービスを含む）がすべて合格。
+  `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（841 合格）・`check-trace-blocks`・`check-test-spec-coverage`・`check-test-traceability`・`check-cross-repo-refs`・
+  `check-plan-id-qualification`・`check-commit-messages --range=origin/develop..HEAD` が合格。
