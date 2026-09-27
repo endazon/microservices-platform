@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-05, FR-19, NFR-09, UC-05, UC-11, SC-09, ADR-0121, ADR-0036, ADR-0062, ADR-0098, ADR-0119, IADR-0133, IADR-0253, IADR-0384, IADR-0447, IADR-0450, IADR-0476]
 author: claude
 created: 2026-09-27
-updated: 2026-09-28
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0121_owner-read-policy-mandatory-and-content-abac-gate.md 決定 1・4・6・フォローアップ 1・6
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md D-01・D-02・D-05・D-08
