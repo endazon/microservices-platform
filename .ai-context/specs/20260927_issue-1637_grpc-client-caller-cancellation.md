@@ -49,19 +49,19 @@ issue: "#1637"
 
 ## 母集合（規則 9: 誤りの側の文字列で全文書を走査する）
 
-走査は `origin/develop`（bbc1c1c6）に対して、両ユニットの本番コード（`src/platform/backend/**`・`src/knowledge/backend/**`。試験は除く）へ行った。
+走査は `origin/develop`（c343b9d7。着手時の bbc1c1c6 から #1634 が入ったので引き直した）に対して、両ユニットの本番コード（`src/platform/backend/**`・`src/knowledge/backend/**`。試験は除く）へ行った。
 `src/ai-stock-trading`（submodule・別リポジトリ）は対象外。
 
-- 軸 1（無条件の捕捉）: `git grep -n "catch (RpcException"` → **16 行**。
+- 軸 1（無条件の捕捉）: `git grep -n "catch (RpcException"` → **19 行**（bbc1c1c6 では 16 行。#1634 の `GrpcToolInvoker` の 3 行が増えた）。
 - 軸 2（取り消しを型だけで見分ける絞り込み）: `git grep -n "is OperationCanceledException && ct.IsCancellationRequested"` → **8 行**。
-- 軸 3（生成クライアントを呼ぶ全ファイル）: `git grep -l --all-match -e "cancellationToken: ct" -e "Grpc"` → **19 ファイル**。
+- 軸 3（生成クライアントを呼ぶ全ファイル）: `git grep -l --all-match -e "cancellationToken: ct" -e "Grpc"` → **20 ファイル**（bbc1c1c6 では 19。同じく `GrpcToolInvoker` が増えた）。
   軸 1・2 に出ないものは、それぞれの捕捉を読んで判定した（下の除外表）。
 
 突き合わせ（数えは `origin/develop` の走査の生の出力に対して行った）:
 
-- 軸 1 の 16 行 ＝ 対象 4 行（1〜4）＋ 除外 2 行（参照の形 2）＋ 報告のみ 10 行（BFF 1・共有クライアント 6・Qdrant 3）。
+- 軸 1 の 19 行 ＝ 対象 4 行（1〜4）＋ 除外 5 行（参照の形 3 ファイル 5 行）＋ 報告のみ 10 行（BFF 1・共有クライアント 6・Qdrant 3）。
 - 軸 2 の 8 行 ＝ 対象 5 行（1〜5）＋ 除外 3 行（REST 2・S3 1）。
-- 軸 3 の 19 ファイル ＝ 対象 5 ＋ 除外 10（参照の形 2・LLM／検索の輸送 4・BFF 2・埋め込み 2）＋ Qdrant の取り込み 1（除外）＋ 報告のみ 3（共有クライアント 2・`QdrantVectorStore` 1）。
+- 軸 3 の 20 ファイル ＝ 対象 5 ＋ 除外 11（参照の形 3・LLM／検索の輸送 4・BFF 2・埋め込み 2）＋ Qdrant の取り込み 1（除外）＋ 報告のみ 3（共有クライアント 2・`QdrantVectorStore` 1）。
 
 ### 対象（直す）
 
@@ -79,7 +79,7 @@ issue: "#1637"
 | --- | --- |
 | `HttpPrivateNoteNotifier.cs:82`・`HttpKnowledgeHealthReporter.cs:91`（軸 2） | REST 版。`HttpClient` は呼び出し元の取り消しを `TaskCanceledException`（OCE の派生）で投げるので、型の絞り込みで正しく拾える（#1630 が本物の HttpClient で確かめた形） |
 | `S3ObjectStorageClient.cs:227`（軸 2） | AWS SDK（HttpClient）。gRPC ではない（#1630 の対象 4 で確かめ済み） |
-| `GrpcServiceIntrospectionCollector.cs:81`・`GrpcToolDeclarationCollector.cs:92`（軸 1） | `catch (Exception) when (ct.IsCancellationRequested)` が先頭にあり、status を絞った捕捉はその後ろ。正しい形（参照） |
+| `GrpcServiceIntrospectionCollector.cs:81`・`GrpcToolDeclarationCollector.cs:92`・`GrpcToolInvoker.cs:111`・`:119`・`:128`（軸 1・3） | `catch (Exception) when (ct.IsCancellationRequested)` が先頭にあり、status を絞った捕捉はその後ろ。正しい形（参照） |
 | `GrpcLlmCompletionTransport`・`GrpcRagSearchTransport`・`LlmGatewayGrpcDiagramCoder`・`LlmGatewayGrpcSuggestionClient`（軸 3） | 絞り込みが `ex is RpcException or InvalidOperationException && !ct.IsCancellationRequested` で、呼び出し元の ct で判定している。取り消しは縮退へ畳まれない（`RpcException` のまま外へ出る。呼び出し元はいずれも要求の経路で、打ち切られた要求の例外として終わる） |
 | `DocumentReadGrpcClient`（BFF。軸 3） | クライアント自身は捕捉を持たず、呼び出し元の `DocumentBffEndpoints.IsTransportFailure(ex, grpc, ct)` が ct で判定している |
 | `AttributeValuesGrpcClient`（BFF。軸 3） | 捕捉は呼び出し元 `SearchBffEndpoints` にある（下の「報告のみ」1） |
