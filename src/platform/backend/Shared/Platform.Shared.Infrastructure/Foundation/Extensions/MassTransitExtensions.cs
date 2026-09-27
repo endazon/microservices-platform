@@ -16,6 +16,12 @@ public static class MassTransitExtensions
     // （数字を 2 か所に書かないため。IADR-0137 決定 3）。
     public static int MaxAttempts => RetryIntervals.Length + 1;
 
+    // FR-12, ADR-0027 (#1657): 1 回の配信の中で試行の間に待つ時間の合計。`UseMessageRetry` はメモリ内の再試行で、
+    // 同じ配信の中で回り ack は最後の試行の後である（Wolverine 側の `WolverineExtensions.TotalRetryCooldown` と同じ約束）。
+    // 再試行の連鎖がブローカの consumer_timeout に収まることの起動時の検査に使う（`ConsumerHandlerTimeouts.EnsureRetryChainFits`）。
+    public static TimeSpan TotalRetryCooldown =>
+        RetryIntervals.Aggregate(TimeSpan.Zero, (sum, interval) => sum + interval);
+
     // ADR-0003（Superseded by ADR-0027・注記は #580）: 一時的失敗（保存失敗・外部サービス呼び出しの一時エラー等）は間隔を空けて再試行する。
     // 再試行を使い切った継続失敗は MassTransit が自動で <queue>_error（デッドレター）へ送るため、
     // メッセージ喪失なく回復性を確保できる。ブローカ非依存の IBusFactoryConfigurator に対して適用する。

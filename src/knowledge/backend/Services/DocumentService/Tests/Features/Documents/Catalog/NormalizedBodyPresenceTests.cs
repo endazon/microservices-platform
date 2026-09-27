@@ -66,6 +66,7 @@ public sealed class NormalizedBodyPresenceTests
             .AddMetrics()
             .AddDbContext<DocumentDbContext>(o => o.UseInMemoryDatabase(dbName))
             .AddSingleton<IngestTagMetrics>()
+            .AddCatalogTimeoutsForTests()
             .AddSingleton<IObjectStorageClient, UnresolvableStorage>()
             .AddSingleton<IDocumentUpdatedPublisher>(publisher)
             .AddMassTransitTestHarness(x => x.AddConsumer<DocumentNormalizedConsumer>())

@@ -34,7 +34,8 @@ public sealed class IngestTagFilterTests
         var probe = new MetricsProbe(factory.CreatedMeterName!);
         var consumer = new DocumentNormalizedConsumer(
             db, new NoopUpdatedPublisher(), new UnresolvableStorage(),
-            metrics, NullLogger<DocumentNormalizedConsumer>.Instance);
+            metrics, ConsumerTimeoutsForTests.Calls(), ConsumerTimeoutsForTests.Timeouts,
+            NullLogger<DocumentNormalizedConsumer>.Instance);
         return (consumer, probe);
     }
 

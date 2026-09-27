@@ -1,3 +1,4 @@
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using DocumentService.Domain;
@@ -14,21 +15,30 @@ namespace DocumentService.Features.Documents.Catalog;
 // FR-01, UC-04: ConversionService が発行する DocumentNormalized を購読し、
 // 正規化文書をカタログ（正本）へ登録する。登録後 DocumentUpdated を発行して
 // 取り込み（IngestionService）・Wiki 同期（WikiService）へ連鎖させる（IADR-0001）。
+//
+// 🔴 FR-12, ADR-0027 (#1657): 本文の取得は期限（`CatalogTimeouts`・既定 20 秒）の下で行う。止まったストレージは
+// 時間切れ（`ConsumerTimeoutException`・計器 `messaging.consumer.timeout`）として投げ、MassTransit の再試行・デッドレター
+// （`UsePlatformRetry`）へ委ねる。**時間切れは指紋の「不明（null）」へ畳まない** —— 畳むと指紋の無いまま台帳を更新して
+// 成功で終わり、再試行されない。呼び出し元の取り消し（バスの停止）はそのまま外へ出す。
 public class DocumentNormalizedConsumer(
     DocumentDbContext db,
     IDocumentUpdatedPublisher bus,
     IObjectStorageClient storage,
     IngestTagMetrics metrics,
+    ConsumerCallTimeouts calls,
+    CatalogTimeouts timeouts,
     ILogger<DocumentNormalizedConsumer> logger) : IConsumer<DocumentNormalized>, IPipelineStep
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "catalog";
 
-    public async Task Consume(ConsumeContext<DocumentNormalized> context)
-    {
-        var ev = context.Message;
-        var ct = context.CancellationToken;
+    public Task Consume(ConsumeContext<DocumentNormalized> context) =>
+        ConsumeAsync(context.Message, context.CancellationToken);
 
+    // #1657: 受け口の本体。**`internal`** にしているのは、縮めた受け口の ct の下での期限の振る舞いを
+    // `ConsumeContext` を組み立てずに検証するためである（`KnownTagsAsync` と同じ理由）。
+    internal async Task ConsumeAsync(DocumentNormalized ev, CancellationToken ct)
+    {
         // FR-01: パイプライン全体で ID を一貫させ、同一イベントの再配信に対して冪等に upsert する。
         // SC-05, SC-09, #637: **辞書に無いタグは文書へ付けない。**
         // 「既定タグ辞書に整合」は**経路を問わない不変条件**である（計画確定・2026-08-09）。
@@ -42,7 +52,12 @@ public class DocumentNormalizedConsumer(
         // ストレージ縮退（CanResolve=false）では null = 不明（解除判定を発火させない側に倒す）。
         string? fingerprint = null;
         if (storage.CanResolve(ev.MarkdownUri))
-            fingerprint = DocumentBodyIntake.Fingerprint(await storage.GetTextAsync(ev.MarkdownUri, ct));
+        {
+            var markdownUri = ev.MarkdownUri;
+            var body = await calls.RunAsync(StepName, CatalogTimeouts.ContentTarget, timeouts.ContentRead,
+                t => storage.GetTextAsync(markdownUri, t), ct);
+            fingerprint = DocumentBodyIntake.Fingerprint(body);
+        }
 
         var doc = await db.Documents.FindAsync(new object?[] { ev.DocumentId }, ct);
         // FR-19, ADR-0061 決定 4, [[IADR-0455]] 決定 1 (#1471): **属性を差し替える「前」に門の判定を取る。**

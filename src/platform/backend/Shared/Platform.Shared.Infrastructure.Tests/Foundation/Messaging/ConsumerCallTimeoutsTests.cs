@@ -266,6 +266,10 @@ public class ConsumerHandlerTimeoutsTests
         Platform.Shared.Infrastructure.Foundation.Extensions.WolverineExtensions.MaxAttempts.Should().Be(4);
         Platform.Shared.Infrastructure.Foundation.Extensions.WolverineExtensions.TotalRetryCooldown
             .Should().Be(TimeSpan.FromSeconds(42));
+        // ［#1657 監査 N2］MassTransit の受け口（DocumentService のカタログ登録）の起動時検査も同じ材料を使う。
+        Platform.Shared.Infrastructure.Foundation.Extensions.MassTransitExtensions.MaxAttempts.Should().Be(4);
+        Platform.Shared.Infrastructure.Foundation.Extensions.MassTransitExtensions.TotalRetryCooldown
+            .Should().Be(TimeSpan.FromSeconds(42));
         ConsumerHandlerTimeouts.BrokerConsumerTimeout(new ConfigurationBuilder().Build())
             .Should().Be(TimeSpan.FromSeconds(1800));
     }

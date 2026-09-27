@@ -3,6 +3,7 @@ using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using DocumentService.Infrastructure.ExternalServices;
 using DocumentService.Infrastructure.Messaging;
 using DocumentService.Features.Documents;
@@ -263,6 +264,11 @@ var rabbitConnection = builder.Configuration["RabbitMq:ConnectionString"]
         "RabbitMq:ConnectionString が未設定である。環境変数 RabbitMq__ConnectionString で注入すること"
         + "（k8s は helm の global.messaging、compose は x-rabbit-env が注入する）。"
         + " 既定値は持たない —— 未注入をブローカへの接続失敗として現れさせないためである。");
+
+// FR-12, ADR-0027 (#1657): カタログ登録の受け口の本文の取得の期限と、時間切れの判定・計器。
+// 1 回の配信の再試行の連鎖がブローカの consumer_timeout に収まらない構成はここで起動を止める（`CatalogTimeouts.From`）。
+builder.Services.AddSingleton(DocumentService.Features.Documents.Catalog.CatalogTimeouts.From(builder.Configuration));
+builder.Services.AddPlatformConsumerTimeouts();
 
 builder.Services.AddMassTransit(x =>
 {
