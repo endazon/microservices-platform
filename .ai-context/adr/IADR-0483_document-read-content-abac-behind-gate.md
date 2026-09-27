@@ -2,7 +2,7 @@
 title: IADR-0483 DocumentService の読み取りの内容の ABAC は、門が開いたときだけ認可サービスの read の分岐ただ 1 つで判定する。所有者・利用者共有のコード判定はその枝に残さず、門は要求の中で最初に読んだ値に固定する
 type: impl-adr
 status: Accepted
-related_ids: [FR-05, FR-06, FR-19, NFR-09, UC-03, SC-03, SC-05, ADR-0121, ADR-0119, ADR-0122, ADR-0036, ADR-0034, ADR-0056, ADR-0086, ADR-0088, ADR-0109, IADR-0253, IADR-0416, IADR-0447, IADR-0476, IADR-0480, IADR-0481]
+related_ids: [FR-05, FR-06, FR-19, NFR-09, UC-03, SC-03, SC-05, ADR-0121, ADR-0119, ADR-0122, ADR-0036, ADR-0034, ADR-0056, ADR-0086, ADR-0088, ADR-0109, IADR-0253, IADR-0416, IADR-0447, IADR-0476, IADR-0480, IADR-0481, IADR-0484]
 author: claude
 created: 2026-09-28
 updated: 2026-09-28
@@ -80,6 +80,7 @@ IADR-0476 の判定点は、組織文書を認証済みの全主体に返し、�
     `/bff/documents` を機械で呼ぶ呼び出し元は現在無い。
 - フォローアップ:
   1. 🔴 **門を `On` にするのは、ADR-0122 決定 3・4 の段 2（#1667 の列挙の口と古い写しの削除／0 件の確認）の後**。門は所有者の read ポリシーしか確かめない（ADR-0121 決定 2）。
+     ［2026-09-28 追記 / #1667］列挙の口は [[IADR-0484]] で入った（`GET /documents/ast-stale-copies`・管理者だけ・読み取り専用）。段 2 の手順は `docs/operations/ast-stale-copies-deletion-runbook.md`。**口ができたことは段 2 が済んだことではない**（削除または 0 件の確認を稼働クラスタで行い、記録するまで `On` にしない）。
   2. #1611 の段 2（DocumentService の MCP ツールの実行口）を本判定点に乗せる。
 - 再検討の条件: 一覧の件数が増えて台帳をメモリで絞る形が遅くなったとき（分岐を DB の条件へ訳す形を改めて検討する）。
 

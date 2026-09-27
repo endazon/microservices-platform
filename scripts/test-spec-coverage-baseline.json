@@ -80,6 +80,8 @@
     ],
     "docs/tests/FR-06_document-crud-versioning.md": [
       "AdminWritePrivateNoteScopeTests",
+      "AstStaleCopiesEndpointTests",
+      "AstStaleCopyRulesTests",
       "CatalogTimeoutTests",
       "DocumentAttributesTests",
       "DocumentConfidentialityValidationTests",
