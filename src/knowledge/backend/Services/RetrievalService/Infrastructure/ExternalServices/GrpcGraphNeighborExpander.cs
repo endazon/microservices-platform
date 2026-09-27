@@ -125,6 +125,16 @@ public sealed class GrpcGraphNeighborExpander(
                     map[id] = item.Weight;
             return map;
         }
+        // 🔴 #1637: **呼び出し元の取り消しは縮退（警告つきの空・フォールバック重み）へ畳まない。** 本物のチャネルは取り消しを
+        // `RpcException(Cancelled)` で投げる（`ThrowOperationCanceledOnCancellation` は既定の false）ので、
+        // 縮退の catch より前で拾い、呼び出し元が待つ `OperationCanceledException`（呼び出し元の token つき）へ揃える
+        // （`GrpcServiceIntrospectionCollector` と同じ形）。**判定は型でも status でもなく呼び出し元の ct で行う** ——
+        // 期限切れ・受け口が返した `CANCELLED` は呼び出し元の取り消しではなく、従来どおり下の縮退へ落ちる。
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            ct.ThrowIfCancellationRequested();
+            throw;
+        }
         catch (Exception ex) when (!IsCallerCancellation(ex, ct))
         {
             logger.LogWarning(ex,
@@ -153,6 +163,16 @@ public sealed class GrpcGraphNeighborExpander(
             // （`ADR-0034` 決定 2 の存在秘匿）、**起点が見えないことは異常ではない**
             // （REST 版が 404 を警告しないのと同じ）。
             return resp.Found ? resp.Edges : [];
+        }
+        // 🔴 #1637: **呼び出し元の取り消しは縮退（警告つきの空・フォールバック重み）へ畳まない。** 本物のチャネルは取り消しを
+        // `RpcException(Cancelled)` で投げる（`ThrowOperationCanceledOnCancellation` は既定の false）ので、
+        // 縮退の catch より前で拾い、呼び出し元が待つ `OperationCanceledException`（呼び出し元の token つき）へ揃える
+        // （`GrpcServiceIntrospectionCollector` と同じ形）。**判定は型でも status でもなく呼び出し元の ct で行う** ——
+        // 期限切れ・受け口が返した `CANCELLED` は呼び出し元の取り消しではなく、従来どおり下の縮退へ落ちる。
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            ct.ThrowIfCancellationRequested();
+            throw;
         }
         catch (Exception ex) when (!IsCallerCancellation(ex, ct))
         {

@@ -1,0 +1,70 @@
+// FR-16, UC-08, NFR-09, NFR-16, ADR-0024 §2・§4, ADR-0029, ADR-0075, ADR-0117 決定 1・2・4, IADR-0379,
+// IADR-0462（2026-09-27 追記 / #1516, #1255 経路 ④-b）: MCP サーバーから、ツールを申告したサービスへの**ツール実行**の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 申告の契約（`mcp_tool_declarations.proto`）と同じく、ツールの規約を定める
+//   **MCP サーバー（platform）**が持つ。受け口を実装するのは申告したサービス（knowledge の Document / Retrieval / Graph）。
+//
+// ■ 🔴 **宛先は「申告したサービス＋ツール名」で決まる**（ADR-0117 決定 1）。呼び出し側は、公開構成で申告を突き合わせた
+//   サービスの h2c アドレス（`Mcp:GrpcServices:<サービス名>`）へ送り、`tool` に**申告名**（公開名ではない）を載せる。
+//   宛先の URL を運ぶ項目は持たない —— 申告の中身から宛先を作らない。
+//
+// ■ 🔴 **受け口はまだどのサービスにも無い**（ADR-0117 決定 2。実行口は FR-16 の別作業 #1611）。
+//   それまで呼び出しは `UNIMPLEMENTED` で失敗し、MCP サーバーはツールの実行を fail-closed で拒否する（同 決定 4）。
+//
+// ■ 🔴 **`scope` は暫定である。** 現行（REST 時代の `HttpToolInvoker`）の本文の意味論をそのまま写した —— MCP サーバーが
+//   解決した実行スコープ（主体・種別・属性・個人資料の除外制約・必要スコープ）。ADR-0117 決定 3 は、本文で運ぶものを
+//   **利用者文脈（`user_id` と `action`）とツールの引数**へ改め、**解決済みの scope を信じさせる形を採らない**と定めた。
+//   その変更は #1611 が行い、このフィールドの番号と名前は reserved へ移す（versioning は IADR-0379 決定 2）。
+//   **この `scope` を信じて認可する受け口を作ってはならない**（同 決定 4 の暫定手段）。
+//
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは呼び出し側サービス自身（MCP サーバー）の JWT である。
+//   受け口は `ServiceCaller`（realm ロール `platform-service`）を要求すること。利用者のトークンは運ばない
+//   （MCP の仕様がトークンの中継を禁じている。ADR-0117 実測 6）。
+//
+// ■ proto3 に null は無い（IADR-0397 決定 5）。応答で null を取り得るのは文書の `body` / `reference_url` だけで、
+//   `optional string` で運ぶ（越境不可なら MCP サーバーが本文を落とし参照リンクへ縮退する。ADR-0024 §4）。
+syntax = "proto3";
+
+package platform.mcp.v1;
+
+option csharp_namespace = "Platform.Shared.Contracts.Grpc.Mcp.V1";
+
+// ツールの実行（1 呼び出し = 1 ツール）。宛先ごとに同じ 1 つの rpc を実装する（宛先が増えても proto は増えない）。
+service McpToolExecution {
+  rpc Execute(ExecuteMcpToolRequest) returns (McpToolResult);
+}
+
+message ExecuteMcpToolRequest {
+  // 申告名（`McpToolDeclaration.name`）。公開名（公開構成の `published_name`）ではない。
+  string tool = 1;
+  // MCP クライアントから来た引数の JSON（文字列のまま運ぶ。解釈は受け口の責務）。
+  string arguments_json = 2;
+  // 暫定（上の注記）。#1611 で利用者文脈へ改め、この番号と名前は reserved へ移す。
+  McpToolInvocationScope scope = 3;
+}
+
+// MCP サーバーの `ToolInvocationScope` と 1 対 1（暫定。上の注記）。
+message McpToolInvocationScope {
+  string subject_id = 1;
+  string subject_kind = 2;
+  map<string, string> subject_attributes = 3;
+  // 🔴 ADR-0034 決定 9 の要求側の 1 層目（サービスアカウント実行なら true）。応答側のフィルタは MCP サーバーが別に持つ。
+  bool exclude_private_note = 4;
+  string required_scope = 5;
+}
+
+// ツール応答の共通エンベロープ（MCP サーバーの `McpToolResult`。REST の JSON の綴りと同じ）。
+message McpToolResult {
+  repeated McpToolDocument documents = 1;
+  // 認可判定を通したあとの件数（ADR-0034 決定 4）。
+  int32 total_count = 2;
+  bool truncated = 3;
+}
+
+message McpToolDocument {
+  string document_id = 1;
+  string title = 2;
+  map<string, string> attributes = 3;
+  optional string body = 4;
+  optional string reference_url = 5;
+}

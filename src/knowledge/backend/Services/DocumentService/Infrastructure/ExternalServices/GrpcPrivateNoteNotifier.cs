@@ -64,6 +64,16 @@ public sealed class GrpcPrivateNoteNotifier(
 
             metrics.RecordDispatch(kind, PrivateNoteNotificationMetrics.OutcomeSent);
         }
+        // 🔴 #1637: **呼び出し元の取り消しは送出の失敗（計器の `rejected`）へ畳まない。** 本物のチャネルは取り消しを
+        // `RpcException(Cancelled)` で投げる（`ThrowOperationCanceledOnCancellation` は既定の false）ので、
+        // 縮退の catch より前で拾い、呼び出し元が待つ `OperationCanceledException`（呼び出し元の token つき）へ揃える
+        // （`GrpcServiceIntrospectionCollector` と同じ形）。**判定は型でも status でもなく呼び出し元の ct で行う** ——
+        // 期限切れ・受け口が返した `CANCELLED` は呼び出し元の取り消しではなく、従来どおり下の縮退へ落ちる。
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            ct.ThrowIfCancellationRequested();
+            throw;
+        }
         catch (RpcException ex)
         {
             // 🔴 status で「届かなかった」と「届いたが拒まれた」を分け直す（上の表）。

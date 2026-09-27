@@ -50,7 +50,21 @@ public sealed class ToolInvocationService(
             ExcludePrivateNote: subject.IsServiceAccount,
             tool.Declaration.RequiredScope);
 
-        var raw = await invoker.InvokeAsync(tool, scope, argumentsJson, ct);
+        McpToolResult raw;
+        try
+        {
+            raw = await invoker.InvokeAsync(tool, scope, argumentsJson, ct);
+        }
+        catch (ToolExecutionUnavailableException ex)
+        {
+            // ［2026-09-27 / #1516, ADR-0117 決定 4］🔴 **fail-closed。** 実行口の無い宛先（#1611 まで全宛先）・経路の無い宛先・
+            // 時間切れ・拒否は、結果を 1 件も返さず拒否する。文言は実行器が利用者向けに作ったもの（内部の宛先を含めない）。
+            // 監査ログにも残す（誰が・どのクライアントで・どのツールを呼んで実行できなかったか）。
+            logger.LogWarning(
+                "MCP tool not executed: subject={SubjectId} kind={Kind} client={ClientId} tool={Tool} service={Service}",
+                subject.SubjectId, subject.Kind, subject.ClientId, tool.PublishedName, tool.Service);
+            return ToolInvocationOutcome.Rejected(ex.Message);
+        }
 
         // 🔴 2 層目。要求側の制約を下流が無視しても、ここで落ちる（fail-closed）。
         var filtered = privateNoteFilter.Apply(subject, raw);

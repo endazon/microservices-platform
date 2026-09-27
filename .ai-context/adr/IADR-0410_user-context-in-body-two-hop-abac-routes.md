@@ -41,7 +41,7 @@ related_ids:
   - IADR-0408
 author: claude
 created: 2026-09-07
-updated: 2026-09-07
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0086_user-context-in-body-not-token-exchange.md 決定 1〜5
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md 決定 1・2
@@ -158,6 +158,8 @@ plan_refs:
 🔴 **故障を「該当なし」に化けさせない。** 利用者文脈の欠落は**要求の誤り**（`INVALID_ARGUMENT`）で
 あって deny ではない —— deny へ畳むと、呼び出し元の配線誤りが「グラフには何も無い」
 「承認できない文書だった」に化けて気付けなくなる。
+
+> **［2026-09-27 追記 / #1637］表の「近傍展開: 非 2xx・不達…」「辺の重み: 引けない」「タグ反映: その他の非 2xx・不達…」の枝に、呼び出し元の取り消しが畳まれていた。** 本物のチャネルは呼び出し元の取り消しを `RpcException(Cancelled)` で投げ（`ThrowOperationCanceledOnCancellation` は既定の false）、無条件の `catch (RpcException)` が型の絞り込み（`ex is OperationCanceledException && ct.IsCancellationRequested`）より前でそれを拾っていた。試験は偽のクライアントへ素の OCE を注入しており、本物のチャネルが通らない経路だけを見ていた。タグ反映では既に打ち切られた承認の要求へ `Unavailable`（502）と Error のログ、近傍展開（`GrpcGraphNeighborExpander` の辞書・近傍の 2 段。こちらは `catch (Exception ex) when (!IsCallerCancellation(ex, ct))` の形で、型だけで取り消しを見分けていた）では打ち切られた検索の取り消しが警告つきの縮退になっていた。縮退の catch より前に `catch (Exception) when (ct.IsCancellationRequested) { ct.ThrowIfCancellationRequested(); throw; }` を置き、呼び出し元の token を持つ `OperationCanceledException` へ揃えて外へ出す（`GrpcServiceIntrospectionCollector`・IADR-0462 と同じ形。**判定は型でも status でもなく呼び出し元の ct で行う**）。期限切れ・受け口が返した `CANCELLED`（呼び出し元の ct は生きている）は従来どおり縮退する。試験は 127.0.0.1 の実 gRPC サーバー（`LoopbackGrpcServer`）へ本番と同じ既定値のチャネルで繋ぎ、受け口が要求を受け取ってから取り消す形へ改めた。守りを外す・status で判定する・`RpcException` のまま投げ直す、の 3 変異がいずれも赤になることを確かめた。作業仕様書: `.ai-context/specs/20260927_issue-1637_grpc-client-caller-cancellation.md`。
 
 ### 決定 6: `user_attributes` に載るのは現行と同じ 2 属性のままとする（広げない）
 

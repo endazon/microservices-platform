@@ -37,7 +37,7 @@ public class GrpcMcpToolDeclarationTests
         new(GrpcChannel.ForAddress(_factory.GrpcAddress));
 
     // 陽性対照 ＋ 同値: s2s トークンを CallCredentials で付けた h2c チャネル（MCP サーバーの収集器と同じ組み方）で往復し、
-    // REST と**同じ申告**（6 項目・順序とも）が返る。
+    // REST と**同じ申告**（5 項目・順序とも）が返る。
     [Fact]
     public async Task Declare_over_h2c_with_service_token_returns_the_same_declarations_as_rest()
     {
@@ -54,8 +54,8 @@ public class GrpcMcpToolDeclarationTests
         grpc.Service.Should().Be("document-service", "空の service は収集器が申告なしへ落とす");
         grpc.Service.Should().Be(rest.Service);
         grpc.Tools.Select(t => t.Name).Should().Contain(["document.get_document", "document.list_documents"], "★ 陽性対照 —— 両方が空で一致したのではない");
-        grpc.Tools.Select(t => (t.Name, t.Description, t.InputSchema, t.Endpoint, t.RequiredScope, t.EgressClass))
-            .Should().Equal(rest.Tools.Select(t => (t.Name, t.Description, t.InputSchema, t.Endpoint, t.RequiredScope, t.EgressClass)),
+        grpc.Tools.Select(t => (t.Name, t.Description, t.InputSchema, t.RequiredScope, t.EgressClass))
+            .Should().Equal(rest.Tools.Select(t => (t.Name, t.Description, t.InputSchema, t.RequiredScope, t.EgressClass)),
                 "輸送を替えても申告の中身も順序も変わらない（同じ McpToolDeclarationSource.Declare を通る）");
     }
 
@@ -92,6 +92,24 @@ public class GrpcMcpToolDeclarationTests
 
         attr.Should().NotBeNull();
         attr!.Policy.Should().Be(PlatformAuthPolicies.ServiceCaller);
+    }
+
+    // 🔴 FR-16, ADR-0117 決定 2・4（#1516）: **ツールの実行口はまだ無い**（各サービスの実行口は #1611 が作る）。
+    // MCP サーバーと同じ組み方（s2s の h2c）で `platform.mcp.v1.McpToolExecution/Execute` を呼ぶと `UNIMPLEMENTED` が返り、
+    // MCP サーバーはそれを fail-closed の拒否へ写す（`GrpcToolInvokerTests`）。実行口を作る作業でこの試験は反転する ——
+    // それまで、解決済みの scope を本文で受け取って信じる受け口を先に作らない（同 決定 4）。
+    [Fact]
+    public async Task Tool_execution_port_is_not_served_yet_and_returns_unimplemented()
+    {
+        using var channel = GrpcClientExtensions.CreatePlatformChannel(
+            _factory.GrpcAddress,
+            new FixedTokenProvider(GrpcKestrelFactory.IssueToken("service-account-mcp-server", [PlatformAuthPolicies.ServiceRole])));
+
+        var act = async () => await new Pb.McpToolExecution.McpToolExecutionClient(channel).ExecuteAsync(
+            new Pb.ExecuteMcpToolRequest { Tool = "document.get_document", ArgumentsJson = "{}" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Unimplemented);
     }
 
     // s2s トークンの発行側を固定値へ差し替える（IdP を持たないため）。

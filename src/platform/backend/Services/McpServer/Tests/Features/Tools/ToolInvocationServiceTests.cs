@@ -62,8 +62,7 @@ public class ToolInvocationServiceTests
     [
         new ServiceToolDeclarations(ServiceOf(toolName),
         [
-            new McpToolDeclaration(toolName, "テスト用", """{"type":"object"}""",
-                "http://svc/internal/mcp/exec", "read", "internal")
+            new McpToolDeclaration(toolName, "テスト用", """{"type":"object"}""", "read", "internal")
         ])
     ];
 
@@ -80,6 +79,14 @@ public class ToolInvocationServiceTests
     private static (ToolInvocationService Service, FakeInvoker Invoker, McpDbContext Db) Build(
         string toolName, McpClient client, McpToolResult? downstream = null)
     {
+        var invoker = new FakeInvoker { Result = downstream ?? MixedResult() };
+        var (service, db) = BuildWith(toolName, client, invoker);
+        return (service, invoker, db);
+    }
+
+    private static (ToolInvocationService Service, McpDbContext Db) BuildWith(
+        string toolName, McpClient client, IToolInvoker invoker)
+    {
         var db = NewDb();
         db.Clients.Add(client);
         db.SaveChanges();
@@ -87,7 +94,6 @@ public class ToolInvocationServiceTests
         var catalog = new ToolCatalog(NullLogger<ToolCatalog>.Instance);
         catalog.Refresh(ConfigFor(toolName), DeclarationsFor(toolName));
 
-        var invoker = new FakeInvoker { Result = downstream ?? MixedResult() };
         var service = new ToolInvocationService(
             new McpSubjectResolver(db),
             catalog,
@@ -95,7 +101,55 @@ public class ToolInvocationServiceTests
             new ServiceAccountDocumentFilter(NullLogger<ServiceAccountDocumentFilter>.Instance),
             new EgressPolicy(),
             NullLogger<ToolInvocationService>.Instance);
-        return (service, invoker, db);
+        return (service, db);
+    }
+
+    // 実行できない下流（実行口が無い・経路が無い等）。本番の実行器と同じく利用者向けの文言を持つ例外を投げる。
+    private sealed class UnavailableInvoker : IToolInvoker
+    {
+        public const string Message = "このツールは現在実行できません（試験）。";
+
+        public Task<McpToolResult> InvokeAsync(
+            PublishedTool tool, ToolInvocationScope scope, string argumentsJson, CancellationToken ct)
+            => throw new ToolExecutionUnavailableException(Message);
+    }
+
+    // 🔴 FR-16, UC-08 例外フロー, ADR-0117 決定 4（#1516）: 実行できない下流は **fail-closed の拒否**になる ——
+    // 結果を 1 件も返さず、実行器の文言をそのまま返す。**一覧（tools/list）には申告されたツールが出たまま**である
+    // （実行口ができるまで「見えるが実行できない」。同 決定 2）。
+    [Theory]
+    [MemberData(nameof(AllRoutes))]
+    public async Task 実行できない下流は拒否になり結果を返さず一覧には残る(string toolName)
+    {
+        var (service, _) = BuildWith(toolName, InteractiveClient(), new UnavailableInvoker());
+
+        var outcome = await service.InvokeAsync(
+            PrincipalFor("claude-desktop", "alice"), toolName, "{}", CancellationToken.None);
+
+        outcome.Ok.Should().BeFalse();
+        outcome.Result.Should().BeNull();
+        outcome.Error.Should().Be(UnavailableInvoker.Message);
+        (await service.ListToolsAsync(PrincipalFor("claude-desktop", "alice"), CancellationToken.None))
+            .Select(t => t.PublishedName).Should().Equal(toolName);
+    }
+
+    // FR-16（対照）: 実行器の例外のうち「実行できない」以外は拒否へ畳まない（取り消しは取り消しのまま外へ出る）。
+    [Fact]
+    public async Task 呼び出し側の取り消しは拒否へ畳まれず外へ出る()
+    {
+        var (service, _) = BuildWith("retrieval.search_documents", InteractiveClient(), new CancelledInvoker());
+
+        var act = () => service.InvokeAsync(
+            PrincipalFor("claude-desktop", "alice"), "retrieval.search_documents", "{}", CancellationToken.None);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    private sealed class CancelledInvoker : IToolInvoker
+    {
+        public Task<McpToolResult> InvokeAsync(
+            PublishedTool tool, ToolInvocationScope scope, string argumentsJson, CancellationToken ct)
+            => throw new OperationCanceledException();
     }
 
     private static McpClient ServiceAccountClient(string clientId = "batch-agent") =>

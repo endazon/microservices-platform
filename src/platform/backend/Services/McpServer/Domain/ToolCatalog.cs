@@ -42,9 +42,20 @@ public sealed class ToolCatalog(ILogger<ToolCatalog> logger)
         ToolPublicationConfig config,
         IReadOnlyList<ServiceToolDeclarations> declarations)
     {
-        var declared = declarations
+        // ［2026-09-27 / #1516 監査 M-1］🔴 **同じ `サービス::ツール名` が 2 つ以上あっても落ちない。**
+        // 従前の ToDictionary は重複で例外を投げ、突合が毎周期失敗していた（起動直後なら公開ツールが 1 つも無いまま＝DoS）。
+        // 重複したキーは**どちらも公開しない**（どちらが正しいかを推測しない。ADR-0024 §5）。決定的で、他のキーには影響しない。
+        // 公開構成が要求していれば構成ドリフト（`duplicate-declaration`）として現れる。
+        var grouped = declarations
             .SelectMany(d => d.Tools.Select(t => (Service: d.Service, Tool: t)))
-            .ToDictionary(x => $"{x.Service}::{x.Tool.Name}", x => x, StringComparer.Ordinal);
+            .GroupBy(x => $"{x.Service}::{x.Tool.Name}", StringComparer.Ordinal)
+            .ToList();
+        var declared = grouped.Where(g => g.Count() == 1)
+            .ToDictionary(g => g.Key, g => g.Single(), StringComparer.Ordinal);
+        var duplicated = grouped.Where(g => g.Count() > 1)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        foreach (var (key, count) in duplicated)
+            logger.LogWarning("MCP tool declaration {Key} was declared {Count} times; none of them is published", key, count);
 
         var tools = new Dictionary<string, PublishedTool>(StringComparer.Ordinal);
         var drifts = new List<ToolCatalogDrift>();
@@ -52,6 +63,14 @@ public sealed class ToolCatalog(ILogger<ToolCatalog> logger)
         foreach (var entry in config.Tools)
         {
             var key = $"{entry.Service}::{entry.Name}";
+            if (duplicated.ContainsKey(key))
+            {
+                drifts.Add(new ToolCatalogDrift(
+                    "duplicate-declaration", entry.Name,
+                    $"サービス '{entry.Service}' の '{entry.Name}' の申告が {duplicated[key]} 件あり、どれを公開するか決められません。"));
+                continue;
+            }
+
             if (!declared.TryGetValue(key, out var found))
             {
                 // ADR-0024 §5: 公開宣言されたツールの申告が見つからない場合は構成ドリフト。

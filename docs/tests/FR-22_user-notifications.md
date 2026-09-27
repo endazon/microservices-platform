@@ -3,15 +3,15 @@ title: FR-22 利用者本人への通知 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-08-16
-updated: 2026-09-02
+updated: 2026-09-27
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, SC-10, UC-11]
 adrs: [ADR-0037, ADR-0045]
-iadrs: [IADR-0009, IADR-0119, IADR-0125, IADR-0132, IADR-0135, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0346]
-specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20260902_issue-600_bff-notifications-relay]
-issues: [#451, #600, #1025]
+iadrs: [IADR-0009, IADR-0119, IADR-0125, IADR-0132, IADR-0135, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0346, IADR-0419]
+specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20260902_issue-600_bff-notifications-relay, 20260927_issue-1637_grpc-client-caller-cancellation]
+issues: [#451, #600, #1025, #1637]
 -->
 
 # テスト仕様書: 利用者本人への通知
@@ -129,6 +129,7 @@ issues: [#451, #600, #1025]
 | **T-36** | 未認証 | 既読化を呼ぶ | **401** | — | 自動（xUnit・同上） |
 | **T-37** | 後段が到達不能 | 一覧を呼ぶ | **502**。空の 200 で隠すと「通知が 0 件になった」と読ませ、**完全削除の期限を見落とさせる** | — | 自動（xUnit・同上） |
 | **T-38** | 集約側の器 | 後段向けクライアントの接続先を見る | **設定から解決される**（コード既定の直書きへ退行していない。過去に同型の欠落が実環境で到達失敗を起こしている） | — | 自動（xUnit・同上） |
+| **T-39** | gRPC の送出アダプタを 127.0.0.1 の実受け口へ本番と同じ既定値のチャネルで繋ぐ | 受け口が要求を受け取った後に呼び出し元（停止・利用者の切断）が取り消す／受け口自身が取り消し状態を返す（呼び出し元は取り消していない） | 前者は**取り消しとして外へ出し、計器に 1 件も積まない**（`rejected` にも `unreachable` にもしない。エラーログも出さない）。後者は従来どおり `rejected`。前提として、チャネルが呼び出し元の取り消しを取り消し状態の例外で投げることを同じ器で確かめる（素の取り消し例外の注入では本物の経路を測れない） | **AC-5**（発火側） | 自動（xUnit・`GrpcPrivateNoteNotifierTests`） |
 
 ## テストデータ
 

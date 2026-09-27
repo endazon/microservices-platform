@@ -54,5 +54,7 @@ public class ToolDeclarationSourceFailFastTests
         using var scope = factory.Services.CreateScope();
         scope.ServiceProvider.GetRequiredService<IToolDeclarationSource>().Should().BeOfType<ToolDeclarationSource>();
         factory.Services.GetService<GrpcToolDeclarationCollector>().Should().NotBeNull();
+        // ［2026-09-27 / #1516］本番の Program.cs の登録で、ツールの実行器は gRPC の実行器である（申告の URL へ POST する実装は無い）。
+        factory.Services.GetRequiredService<McpServer.Domain.IToolInvoker>().Should().BeOfType<GrpcToolInvoker>();
     }
 }
