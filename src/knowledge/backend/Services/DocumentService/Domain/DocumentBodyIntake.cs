@@ -83,6 +83,44 @@ public static class DocumentBodyIntake
     public static bool CanWrite(IReadOnlyDictionary<string, string>? attributes, string? subject)
         => IsOwnedBy(attributes, subject);
 
+    // FR-06, FR-19, 計画 ADR-0119 決定 2, ADR-0036 §未確定事項 3, [[IADR-0044]] (#1616):
+    // **既存文書の `owner` は、属性を書き換える口（`PUT` / `PATCH metadata`）で動かせない。主体を問わない。**
+    //
+    // 所有者で書き込みを許す判定（本文の投入・機械クライアントの自分の文書・タグ反映の①）の前提を、判定の対象の側から
+    // 崩させないためである。所有者の移管は計画 ADR-0036 §未確定事項 3 のまま決まっていない ——
+    // 管理者が `owner` を機械クライアントへ書き換えれば、その機械に書き込み権限を渡す移管になる。
+    //
+    // ■ 要求に `owner` キーが**無い**なら通す（保存時に現在の値を入れ直す。下の `WithCurrentOwner`）。
+    //   SC-05 の編集画面は DTO の属性を丸ごと送り返すので `owner` を持つが、持たない呼び出し元も「書き換え」ではない。
+    // ■ キーが**有る**なら、現在の値と序数一致しなければ拒否する（現在 `owner` を持たない文書へ付けるのも拒否）。
+    //   🔴 **黙って捨てない** —— 捨てると呼び出し側は移管できたと誤解する（`doc_scope` の不変性と同じ扱い）。
+    public static (bool Ok, string? Error) ValidateOwnerUnchanged(
+        IReadOnlyDictionary<string, string>? incoming, IReadOnlyDictionary<string, string>? current)
+    {
+        if (incoming is null || !incoming.TryGetValue(OwnerKey, out var requested)) return (true, null);
+
+        string? existing = null;
+        current?.TryGetValue(OwnerKey, out existing);
+        if (string.Equals(requested, existing, StringComparison.Ordinal)) return (true, null);
+
+        return (false,
+            $"所有者（{OwnerKey}）は作成時に確定し、以後変更できません（要求の値は現在の所有者と異なります）。" +
+            $"{OwnerKey} を送らないか、現在の値のまま送ってください。");
+    }
+
+    // 保存する属性の `owner` を現在の値に揃える（要求の値は `ValidateOwnerUnchanged` を通った後なので、無いか同値）。
+    // 属性は全置換なので、`owner` を送らない呼び出しで所有者が落ちないようにここで入れ直す。
+    public static Dictionary<string, string> WithCurrentOwner(
+        IReadOnlyDictionary<string, string>? incoming, IReadOnlyDictionary<string, string> current)
+    {
+        var result = incoming is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(incoming);
+        result.Remove(OwnerKey);
+        if (current.TryGetValue(OwnerKey, out var owner)) result[OwnerKey] = owner;
+        return result;
+    }
+
     // FR-19, ADR-0036 D-05, 計画 ADR-0119 決定 3 (#1614): **動的束縛 `doc.owner ∈ { ${current_user} }` の唯一の比較。**
     // 本文の書き込み（上の `CanWrite`）と、個人資料の読み取りの所有者の分岐（`DocumentReadAccess`）が同じ関数を通る
     // —— 所有者の比較を 2 本書くと、片方だけ大文字小文字の扱いが変わって書けるのに読めない（またはその逆）が起きる。

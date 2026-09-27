@@ -28,17 +28,24 @@ namespace ConversionService.Tests.Features.ConversionJobs.Normalize;
 // 本物を通す部品: `RawDocumentFetchedConsumer` → `NormalizationService`（総枠つき）→ **本番と同じ登録**
 // （`DiagramCoderRegistration.AddRestDiagramCoder`。名前付きクライアントの `Timeout` はここで決まる）の
 // `LlmGatewayDiagramCoder` → `HttpClient`。差し替えるのは LLM ゲートウェイ（応答しないハンドラ）・本文変換・
-// オブジェクトストレージ・発行口だけである。期限は本番の既定（20 秒 / 120 秒 / 300 秒）を 1 秒 / 2 秒 / 4 秒へ縮尺する
-// （構成の下限が 1 秒なので、これより縮めない）。
+// オブジェクトストレージ・発行口だけである。期限は本番の既定（20 秒 / 120 秒 / 300 秒・本文変換 90 秒）を
+// 1 秒 / 2 秒 / 30 秒・本文変換 1 秒へ縮尺する（構成の下限が 1 秒なので、これより縮めない）。
+//
+// 🔴 #1644: **受け口の期限は 1 回の期限より十分に長くする。** 当初は 4 秒にしていたが、knowledge の全試験を並列に走らせると
+// スレッドプールが飢えて 1 秒のタイマーが 4 秒のタイマーより先に発火せず、コード化の側が受け口の取り消しを受けて落ちた
+// （PR #1639 の CI で 3 回とも・手元の全体実行でも再現）。正常な経路は 1 回の期限（1 秒）で終わるので、受け口の期限を
+// 30 秒へ広げても所要時間は増えない。1 回の期限を外す変異（M6）では受け口の期限（30 秒）で落ちる —— それがこの試験の上限である。
+// #1641: 起動時の検査は「受け口 ＞ 本文変換 ＋ 総枠 ＋ 1 回」へ広がった（30 ＞ 1 ＋ 2 ＋ 1 を満たす）。本文変換は差し替えてあり、期限は使わない。
 [Trait("TestKind", "Unit")]
 public class DiagramCodingTimeoutPipelineTests
 {
-    // 縮尺した期限: 1 回 1 秒・総枠 2 秒・受け口 4 秒（本番の既定と同じく 受け口 ＞ 総枠 ＋ 1 回）。
+    // 縮尺した期限: 1 回 1 秒・総枠 2 秒・本文変換 1 秒・受け口 30 秒（本番の既定と同じく 受け口 ＞ 本文変換 ＋ 総枠 ＋ 1 回。#1644 で受け口 4 → 30 秒）。
     private static readonly Dictionary<string, string?> ScaledLimits = new()
     {
         [DiagramCodingLimits.CallTimeoutKey] = "1",
         [DiagramCodingLimits.BudgetKey] = "2",
-        [DiagramCodingLimits.HandlerTimeoutKey] = "4",
+        [DiagramCodingLimits.BodyConversionTimeoutKey] = "1",
+        [DiagramCodingLimits.HandlerTimeoutKey] = "30",
     };
 
     private static RawDocumentFetched Raw() =>
@@ -72,7 +79,7 @@ public class DiagramCodingTimeoutPipelineTests
     }
 
     // T-48: 図 5 つ・ゲートウェイは応答しない。1 回 1 秒の期限が積もって総枠（2 秒）を使い切り、**残りの図はゲートウェイを
-    // 呼ばずに**画像として残す（通常は 2 回で使い切る）。総枠が無ければ 5 回 × 1 秒 ＝ 5 秒で受け口の期限（4 秒）を越え、ジョブは失敗する。
+    // 呼ばずに**画像として残す（通常は 2 回で使い切る）。総枠が無ければ 5 図すべてを呼ぶ（変異 M7。受け口の期限 30 秒の内に終わるので、回数の検査で落ちる）。
     [Fact]
     public async Task Exhausted_budget_retains_the_remaining_figures_without_calling_the_gateway()
     {

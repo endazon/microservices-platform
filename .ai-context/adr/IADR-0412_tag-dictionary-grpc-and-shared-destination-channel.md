@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-18, NFR-09, NFR-16, SC-05, SC-09, ADR-0029, ADR-0043, ADR-0063, ADR-0075, IADR-0299, IADR-0364, IADR-0379, IADR-0401, IADR-0402, IADR-0410]
 author: claude
 created: 2026-09-08
-updated: 2026-09-08
+updated: 2026-09-27
 ---
 
 # IADR-0412: タグ辞書読み取りの east-west gRPC 化と、宛先ごと 1 本のチャネル
@@ -83,6 +83,8 @@ s2s トークン取得失敗を**すべて `null`** へ縮退し、**正常応�
 🔴 **この不変条件は片方向では固定できない。** 実測（下記 変異 M-1 / M-2）のとおり、
 「`null` を空集合へ倒す」変異と「空集合を `null` へ倒す」変異は**別々の試験しか殺さない** ——
 どちらか一方だけの試験では、もう一方の向きへ壊れたまま緑になる。**両方向を対で置く。**
+
+> **［2026-09-27 追記 / #1637］呼び出し元の取り消しは `null`（引けなかった）へ畳まない。** 本物のチャネルは呼び出し元の取り消しを `RpcException(Cancelled)` で投げ（`ThrowOperationCanceledOnCancellation` は既定の false）、無条件の `catch (RpcException)` が型の絞り込み（`ex is OperationCanceledException && ct.IsCancellationRequested`）より前でそれを拾っていた。試験は偽のクライアントへ素の OCE を注入しており、本物のチャネルが通らない経路だけを見ていた。提案の生成が打ち切られると「引けなかった」（Warning）として扱われていた。縮退の catch より前に `catch (Exception) when (ct.IsCancellationRequested) { ct.ThrowIfCancellationRequested(); throw; }` を置き、呼び出し元の token を持つ `OperationCanceledException` へ揃えて外へ出す（`GrpcServiceIntrospectionCollector`・IADR-0462 と同じ形。**判定は型でも status でもなく呼び出し元の ct で行う**）。期限切れ・受け口が返した `CANCELLED`（呼び出し元の ct は生きている）は従来どおり縮退する。試験は 127.0.0.1 の実 gRPC サーバー（`LoopbackGrpcServer`）へ本番と同じ既定値のチャネルで繋ぎ、受け口が要求を受け取ってから取り消す形へ改めた。守りを外す・status で判定する・`RpcException` のまま投げ直す、の 3 変異がいずれも赤になることを確かめた。作業仕様書: `.ai-context/specs/20260927_issue-1637_grpc-client-caller-cancellation.md`。
 
 ### 決定 4: 切替は既存の `Services:DocumentServiceGrpc` **1 本**である
 

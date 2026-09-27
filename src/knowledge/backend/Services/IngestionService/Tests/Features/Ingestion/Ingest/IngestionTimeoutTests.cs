@@ -16,14 +16,14 @@ namespace IngestionService.Tests.Features.Ingestion.Ingest;
 // FR-02 テスト仕様 T-18〜T-21 (#1640) —— UC-04, ADR-0013, ADR-0016, ADR-0027:
 // 取り込みの受け口の時間の上限（呼び出しごとの期限・埋め込みの総枠・受け口の実行期限）。
 //
-// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限を含む（本番の既定 720 秒・方針なしなら 60 秒）。
-// ここではそれを 4 秒の CTS で模し、呼び出しごとの期限（1 秒）が**先に**立って時間切れ（`ConsumerTimeoutException`）に
+// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限を含む（本番の既定 420 秒・方針なしなら 60 秒）。
+// ここではそれを 30 秒の CTS で模し（呼び出しごとの 1 秒と十分に離し、負荷下の揺らぎで比が崩れないようにする）、呼び出しごとの期限（1 秒）が**先に**立って時間切れ（`ConsumerTimeoutException`）に
 // なること —— 受け口の ct は立っていないこと —— を見る。呼び出しごとの期限を外す変異では、止まった依存先は
 // 受け口の ct で取り消し（`OperationCanceledException`）として落ち、これらの試験が赤になる。
 [Trait("TestKind", "Unit")]
 public class IngestionTimeoutTests
 {
-    private static readonly TimeSpan HandlerBudget = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan HandlerBudget = TimeSpan.FromSeconds(30);
 
     // 縮尺: 呼び出しごと 1 秒、総枠は十分長く（期限の試験で総枠が先に立たないように）。
     private static readonly IngestionTimeouts Scaled = new(
@@ -156,16 +156,16 @@ public class IngestionTimeoutTests
         timeouts.ContentRead.Should().Be(TimeSpan.FromSeconds(20));
         timeouts.Embedding.Should().Be(TimeSpan.FromSeconds(30));
         timeouts.VectorStore.Should().Be(TimeSpan.FromSeconds(10));
-        timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(600));
-        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(720));
+        timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(300));
+        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(420));
         timeouts.DeleteFromAll.Should().Be(TimeSpan.FromSeconds(20), "コレクション 2 本 × Qdrant 10 秒");
     }
 
     // T-21: 受け口の実行期限が「削除（本数 × Qdrant）＋本文＋総枠＋最後の 1 チャンク」以下なら起動を止める。
-    // 既定値では 20＋20＋600＋30＋10＝680 秒。コレクションが 6 本なら 60＋20＋600＋30＋10＝720 秒で、既定の 720 秒と等しく止まる。
+    // 既定値では 20＋20＋300＋30＋10＝380 秒。コレクションが 6 本なら 60＋20＋300＋30＋10＝420 秒で、既定の 420 秒と等しく止まる。
     [Theory]
     [InlineData(6, null)]
-    [InlineData(2, "680")]
+    [InlineData(2, "380")]
     [InlineData(2, "60")]
     public void 受け口の実行期限に最悪の所要時間が収まらなければ起動を止める(int collections, string? handler)
     {
@@ -175,17 +175,41 @@ public class IngestionTimeoutTests
         act.Should().Throw<InvalidOperationException>().WithMessage($"*{IngestionTimeouts.HandlerKey}*");
     }
 
-    [Fact]
-    public void 総枠を上げるなら受け口の実行期限も上げれば通る()
+    // T-21: 1 回の配信の再試行の連鎖（4 × 受け口の実行期限 ＋ 試行間の待ち 42 秒）がブローカの consumer_timeout 以上なら起動を止める。
+    // 既定では 4 × 420 ＋ 42 ＝ 1722 秒 ＜ 1800 秒。総枠 600・実行期限 720 は連鎖 2922 秒で既定の 1800 秒を超える。
+    // 境界: consumer_timeout を 1722 秒に置くと等しく止まり、1723 秒なら通る。
+    [Theory]
+    [InlineData("600", "720", null)]
+    [InlineData(null, null, "1722")]
+    public void 再試行の連鎖がブローカの_consumer_timeout_に収まらなければ起動を止める(
+        string? budget, string? handler, string? broker)
     {
-        var timeouts = IngestionTimeouts.From(Config(new()
+        var act = () => IngestionTimeouts.From(Config(new()
         {
-            [IngestionTimeouts.EmbeddingBudgetKey] = "1800",
-            [IngestionTimeouts.HandlerKey] = "1900",
+            [IngestionTimeouts.EmbeddingBudgetKey] = budget,
+            [IngestionTimeouts.HandlerKey] = handler,
+            [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = broker,
         }), 2);
 
-        timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(1800));
-        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(1900));
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage($"*{ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey}*");
+    }
+
+    [Fact]
+    public void 総枠を上げるなら受け口の実行期限とブローカの_consumer_timeout_も上げれば通る()
+    {
+        IngestionTimeouts.From(Config(new() { [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "1723" }), 2)
+            .Should().Be(IngestionTimeouts.Default);
+
+        var timeouts = IngestionTimeouts.From(Config(new()
+        {
+            [IngestionTimeouts.EmbeddingBudgetKey] = "600",
+            [IngestionTimeouts.HandlerKey] = "720",
+            [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "3000",
+        }), 2);
+
+        timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(600));
+        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(720));
     }
 
     // ── 部品 ──
@@ -257,7 +281,7 @@ public class IngestionTimeoutTests
     }
 }
 
-// T-21: 本番の Program.cs の配線 —— 取り込みの受け口の実行期限（720 秒）と上限の値が DI から引けること。
+// T-21: 本番の Program.cs の配線 —— 取り込みの受け口の実行期限（420 秒）と上限の値が DI から引けること。
 [Trait("TestKind", "Integration")]
 public class IngestionTimeoutWiringTests(IntrospectionEndpointTests.Factory factory)
     : IClassFixture<IntrospectionEndpointTests.Factory>

@@ -145,9 +145,12 @@ builder.Host.UseWolverine(opts =>
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
 
-    // FR-02, ADR-0027 (#1640): 取り込みの受け口の実行期限（既定 720 秒）。Wolverine の既定 60 秒では、埋め込みの回数が
+    // FR-02, ADR-0027 (#1640): 取り込みの受け口の実行期限（既定 420 秒）。Wolverine の既定 60 秒では、埋め込みの回数が
     // チャンク数に比例する大きな文書を止まっていなくても切ってしまう。他のメッセージ型の既定は変えない。
     opts.Policies.Add(new HandlerExecutionTimeoutPolicy<DocumentUpdated>(ingestionTimeouts.Handler));
+    // #1640: 埋め込みの総枠を使い切った文書は再試行せずデッドレターへ（大きすぎる文書は何度試しても収まらない）。
+    // 呼び出しごとの時間切れは上の共通既定どおり再試行する。
+    opts.Policies.Add(new EmbeddingBudgetDeadLetterPolicy());
 });
 
 var app = builder.Build();

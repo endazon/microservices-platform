@@ -73,7 +73,9 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
     // **`POST /documents` は含めない。** あの口だけは admin ＋ operator のまま据え置いた
     // —— `ai-stock-trading` の KB 書き込みが BFF を経由せず直接叩いており、その service-account は
     // `platform-operator` しか持たないためである（[[IADR-0075]] が最小権限を理由に admin を却下）。
-    // 計画の裁定を待つ。据え置きであることは `Create_OperatorRole_IsStillAllowed` が固定する。
+    // 据え置き（`POST` は運用者にも開く）は計画 ADR-0119 決定 2 で追認された（#1616）。`Create_OperatorRole_IsStillAllowed` が固定する。
+    // ［#1616］ここの主体は**人**（既定の利用者名 ＋ `platform-operator`）である。機械クライアントは自分が owner の組織文書に限り
+    // PATCH / DELETE を使える（`MachineClientOwnDocumentWriteTests`）が、人の運用者は従前どおり 5 口とも 403。
     [Theory]
     [InlineData("PUT", "/documents/{id}")]
     [InlineData("PATCH", "/documents/{id}/metadata")]
@@ -136,6 +138,6 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
             new { title = "kb-writer-doc", attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" } }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created,
-            "AST の KB 書き込みが operator ロールで本口を直接叩いている（IADR-0075）。裁定まで据え置く");
+            "AST の KB 書き込みが operator ロールで本口を直接叩いている（IADR-0075）。ADR-0119 決定 2 が追認した（#1616）");
     }
 }
