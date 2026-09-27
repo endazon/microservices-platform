@@ -49,6 +49,9 @@ public class DocumentUpdatedConsumerTests
             embed ?? new StubEmbeddingService(),
             store,
             completed,
+            ConsumerTimeoutsForTests.Calls(),
+            ConsumerTimeoutsForTests.Timeouts,
+            TimeProvider.System,
             logger ?? NullLogger<DocumentUpdatedConsumer>.Instance);
         return (consumer, completed);
     }

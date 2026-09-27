@@ -4,6 +4,7 @@ using IngestionService.Domain;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.Extensions.Logging;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 
 namespace IngestionService.Features.Ingestion.Ingest;
 
@@ -14,16 +15,42 @@ namespace IngestionService.Features.Ingestion.Ingest;
 // 発行（IngestionCompleted）は MassTransit のまま —— その辺は本 PR の射程外であり、
 // 辺は原子的に動かす（IADR-0234 決定 3）。発行は IIngestionCompletedPublisher（ポート）越しで、
 // 1 ファイル 1 トランスポートを保つ。
+//
+// 🔴 #1640: **外への呼び出し（本文の取得・埋め込み・Qdrant）はすべて呼び出しごとの期限の下で行う**（`IngestionTimeouts`・
+// `ConsumerCallTimeouts`）。受け口の ct は Wolverine の実行期限を含むため、期限が無いと止まった依存先は
+// 受け口の ct で「取り消し」として切られる。自分の期限の時間切れは `ConsumerTimeoutException` として投げ
+// （警告ログ・計器 `messaging.consumer.timeout`）、呼び出し元の取り消しはそのまま外へ出す。
+// 埋め込みはチャンクごとに総枠（`EmbeddingBudget`）を判定し、使い切ったら残りを呼ばずに時間切れとして投げる。
 public class DocumentUpdatedConsumer(
     IDocumentContentReader reader,
     IChunkingService chunker,
     IEmbeddingService embed,
     IIngestionVectorStore store,
     IIngestionCompletedPublisher bus,
+    ConsumerCallTimeouts calls,
+    IngestionTimeouts timeouts,
+    TimeProvider clock,
     ILogger<DocumentUpdatedConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "ingest";
+
+    // #1640: 外への 1 回の呼び出しを、その呼び出し先の期限の下で行う。
+    private Task<T> CallAsync<T>(string target, TimeSpan timeout,
+        Func<CancellationToken, Task<T>> call, CancellationToken ct)
+        => calls.RunAsync(StepName, target, timeout, call, ct);
+
+    private Task CallAsync(string target, TimeSpan timeout,
+        Func<CancellationToken, Task> call, CancellationToken ct)
+        => calls.RunAsync(StepName, target, timeout, call, ct);
+
+    private Task DeleteFromAllAsync(Guid documentId, CancellationToken ct)
+        => CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.DeleteFromAll,
+            t => store.DeleteByDocumentFromAllAsync(documentId, t), ct);
+
+    private Task<EmbeddingResult> EmbedAsync(string text, string? confidentiality, CancellationToken ct)
+        => CallAsync(IngestionTimeouts.EmbeddingTarget, timeouts.Embedding,
+            t => embed.EmbedAsync(text, confidentiality, t), ct);
 
     // ADR-0027 / E3b: Wolverine のハンドラ。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
@@ -45,7 +72,7 @@ public class DocumentUpdatedConsumer(
         // 後ろに置くと、本文を持たない資料のチャンクが消えずに残る。
         if (!DocumentExposure.IsIndexable(ev.Attributes))
         {
-            await store.DeleteByDocumentFromAllAsync(ev.DocumentId, ct);
+            await DeleteFromAllAsync(ev.DocumentId, ct);
             logger.LogInformation(
                 "DocumentUpdated {Id}: exposure toggles are all off; withdrew the document from every index",
                 ev.DocumentId);
@@ -64,13 +91,15 @@ public class DocumentUpdatedConsumer(
         // FR-02, FR-05, ADR-0016: 既存チャンクを全モデル別コレクションから削除する。
         // 再インデックスの冪等性に加え、機密区分変更（例 public→confidential）でモデル/コレクションが
         // 変わった場合の旧コレクション残存（ABAC バイパス）を防ぐ（fail-closed で全消し）。
-        await store.DeleteByDocumentFromAllAsync(ev.DocumentId, ct);
+        await DeleteFromAllAsync(ev.DocumentId, ct);
 
         // FR-05, ADR-0016: 文書の機密区分（ABAC confidentiality）を埋め込み越境判定へ渡す。
         var confidentiality = ev.Attributes.GetValueOrDefault("confidentiality");
 
         // FR-02 parse: 本文（Markdown）を取得する
-        var markdownText = await reader.ReadAsync(ev.MarkdownUri, ev.Title, ct);
+        string markdownUri = ev.MarkdownUri;
+        var markdownText = await CallAsync(IngestionTimeouts.ContentTarget, timeouts.ContentRead,
+            t => reader.ReadAsync(markdownUri, ev.Title, t), ct);
 
         // FR-02 chunk: チャンク化
         var chunks = chunker.Chunk(markdownText);
@@ -92,14 +121,23 @@ public class DocumentUpdatedConsumer(
 
         var chunkCount = 0;
         var skipped = 0;
+        // #1640: 埋め込みの総枠の起点（チャンクを回し始めた時刻）。
+        var embeddingStarted = clock.GetTimestamp();
 
         foreach (var (text, idx) in chunks.Select((t, i) => (t, i)))
         {
             // FR-02: documentId + chunkIndex から決定的なチャンク ID を導出（冪等）
             var chunkId = ChunkId.Derive(ev.DocumentId, idx);
 
+            // 🔴 #1640: 総枠は呼び出しの**前**に判定する（超過は最後の 1 チャンクの期限までに収まる）。
+            // 使い切ったら残りを呼ばずに時間切れとして投げる —— 受け口の実行期限に切られて取り消しとして落ちるより先に。
+            if (clock.GetElapsedTime(embeddingStarted) >= timeouts.EmbeddingBudget)
+                throw calls.BudgetExhausted(StepName, IngestionTimeouts.EmbeddingBudgetTarget,
+                    timeouts.EmbeddingBudget,
+                    $"document {ev.DocumentId}: {idx} of {chunks.Count} chunks embedded");
+
             // FR-02 embed: 埋め込み生成（LLM Gateway 経由 / ADR-0013・ADR-0016）。機密区分で送信先・コレクションが決まる。
-            var embedding = await embed.EmbedAsync(text, confidentiality, ct);
+            var embedding = await EmbedAsync(text, confidentiality, ct);
 
             // FR-02（Issue #98 レビュー対応）: 一時的な障害（送信先の不調・タイムアウト等）は fail-closed
             // （意図的拒否）と区別する。一時障害（Retryable=true）は恒久スキップにせず例外を送出し、
@@ -125,9 +163,10 @@ public class DocumentUpdatedConsumer(
             // FR-03, SC-02, #536: 更新日時は**イベントが運んできた値をそのまま渡す**（IADR-0149 決定 5）。
             // ここで DateTimeOffset.UtcNow を採ると、再索引のたびに全文書の「更新日時」が今になる。
             // #1184: `shared_with` も同じ点へ載せる（ADR-0061 決定 5 の第 3 の判定軸）。
-            await store.UpsertChunkAsync(embedding.Collection, chunkId, ev.DocumentId, ev.Title, text, idx,
-                embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt,
-                ev.SharedWith, ct);
+            await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
+                t => store.UpsertChunkAsync(embedding.Collection, chunkId, ev.DocumentId, ev.Title, text, idx,
+                    embedding.Vector, markdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt,
+                    ev.SharedWith, t), ct);
             chunkCount++;
         }
 
@@ -199,7 +238,7 @@ public class DocumentUpdatedConsumer(
             return;
         }
 
-        var embedding = await embed.EmbedAsync(indexText, confidentiality, ct);
+        var embedding = await EmbedAsync(indexText, confidentiality, ct);
 
         // 本文チャンクと同じ規則: 一時障害は例外（ブローカの再試行へ）、恒久的な拒否はスキップ。
         if (!embedding.Embedded && embedding.Retryable)
@@ -212,10 +251,11 @@ public class DocumentUpdatedConsumer(
 
         if (embedding.Embedded)
         {
-            await store.UpsertMetadataPointAsync(embedding.Collection,
-                ChunkId.DeriveMetadata(ev.DocumentId), ev.DocumentId, ev.Title, indexText,
-                embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt,
-                ev.SharedWith, ct);
+            await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
+                t => store.UpsertMetadataPointAsync(embedding.Collection,
+                    ChunkId.DeriveMetadata(ev.DocumentId), ev.DocumentId, ev.Title, indexText,
+                    embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt,
+                    ev.SharedWith, t), ct);
 
             logger.LogInformation(
                 "Ingestion {Id}: no body; indexed metadata only (title/tags/path/source). 0 body chunks",

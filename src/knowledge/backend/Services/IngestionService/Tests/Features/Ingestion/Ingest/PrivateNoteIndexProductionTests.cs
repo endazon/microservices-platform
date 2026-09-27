@@ -49,6 +49,9 @@ public class PrivateNoteIndexProductionTests
             new StubEmbedder(),
             index,
             new NoopCompleted(),
+            ConsumerTimeoutsForTests.Calls(),
+            ConsumerTimeoutsForTests.Timeouts,
+            TimeProvider.System,
             NullLogger<DocumentUpdatedConsumer>.Instance);
         return (consumer, index);
     }

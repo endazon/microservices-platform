@@ -43,6 +43,12 @@ public static class WolverineExtensions
     // これに達した失敗はデッドレターへ送られる。**試行上限の単一情報源**である。
     public static int MaxAttempts => RetryIntervals.Length + 1;
 
+    // #1640: 1 回の配信の中で試行の間に待つ時間の合計（再試行は同じ配信の中で回る。RabbitMQ の ack は最後の試行の後）。
+    // 受け口の実行期限 × 試行上限 ＋ これ が、ブローカの consumer_timeout を超えないことの起動時の検査に使う
+    // （`ConsumerHandlerTimeouts.EnsureRetryChainFits`）。
+    public static TimeSpan TotalRetryCooldown =>
+        RetryIntervals.Aggregate(TimeSpan.Zero, (sum, interval) => sum + interval);
+
     // 手順 3: リスニングキュー名にサービス名を前置する。
     //
     // 前置の目的は fan-out の保存である。同一イベントを 2 サービスが購読するとき（正本の

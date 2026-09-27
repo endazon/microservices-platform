@@ -38,24 +38,80 @@ internal static class ExternalProcess
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
         // デッドロック回避のため、待機前に stdout/stderr の読み取りを開始する。
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync(linked.Token);
-        var stderrTask = proc.StandardError.ReadToEndAsync(linked.Token);
+        // #1654 C: 読み取りは期限では取り消さない（期限は待つ側の `WaitAsync` が守る）。期限の直前に自分で終わった
+        // プロセスの出力を、読み取りの取り消しで失わないためである。読み取りには専用の CTS を渡し、諦めたときだけ
+        // 取り消す（下の `AbandonReads`）。
+        using var readsCts = new CancellationTokenSource();
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync(readsCts.Token);
+        var stderrTask = proc.StandardError.ReadToEndAsync(readsCts.Token);
+        var reads = Task.WhenAll(stdoutTask, stderrTask);
         try
         {
             await proc.WaitForExitAsync(linked.Token);
-            var stdout = await stdoutTask;
-            var stderr = await stderrTask;
-            return new Result(proc.ExitCode, stdout, stderr);
+            await reads.WaitAsync(linked.Token);
+            return new Result(proc.ExitCode, stdoutTask.Result, stderrTask.Result);
         }
         catch (OperationCanceledException) when (linked.IsCancellationRequested)
         {
-            await KillTreeAndReapAsync(proc, tool, logger);
+            // #1654 C（終了と時間切れの競合）: 期限が来た時点でプロセスが**自分で**終わっていたら、止めるものは無い。
+            // 読み取りを刈り取りの上限まで待ち、読み終われば結果を返す（期限の直前に終わった正しい出力を捨てない）。
+            // 読み終わらないのは、ツリーの外へ出た孫（デーモン化）が標準出力を握っている場合である。孫は `Kill(true)` でも
+            // 止まらない（親が終わった時点で木から外れている）ので、ここで待ち切って時間切れにする。
+            if (!ct.IsCancellationRequested && proc.HasExited)
+            {
+                if (await CompletesWithinAsync(reads, ReapTimeout))
+                    return new Result(proc.ExitCode, stdoutTask.Result, stderrTask.Result);
+
+                logger.LogWarning(
+                    "{Tool} exited but its output stayed open for {ReapTimeout} after the timeout; a detached descendant may hold stdout",
+                    tool, ReapTimeout);
+            }
+            else
+            {
+                await KillTreeAndReapAsync(proc, tool, logger);
+            }
+
             // 止めたプロセスの出力は使わない。子孫がパイプを握っていても待たないよう、観測だけして捨てる。
-            Observe(stdoutTask);
-            Observe(stderrTask);
+            Observe(reads);
+            AbandonReads(proc, readsCts, tool, logger);
 
             ct.ThrowIfCancellationRequested();
             throw new BodyConversionTimeoutException(tool, timeout);
+        }
+    }
+
+    // #1654 L1: 諦めた読み取りを手放す。読み取りは期限では取り消さないので、ツリーの外の孫が標準出力を握ったまま諦めると、
+    // 保留中の読み取り 2 つがパイプの fd と StreamReader を孫が終わるまで持ち続ける（`Process.Dispose` は一度参照した
+    // 標準入出力のストリームを閉じない）。読み取りの CTS を取り消し、ストリームを明示的に閉じる。
+    // 読み取りがネイティブの read で塞がっている間は、ハンドルの参照カウントにより実際の close はその read が返るまで遅れ得る
+    // （そこは OS の制約で、ここでは閉じる意思を伝えるところまでを行う）。
+    private static void AbandonReads(Process proc, CancellationTokenSource readsCts, string tool, ILogger logger)
+    {
+        try
+        {
+            readsCts.Cancel();
+            proc.StandardOutput.Dispose();
+            proc.StandardError.Dispose();
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or IOException or InvalidOperationException
+                                       or AggregateException)
+        {
+            logger.LogDebug(ex, "Failed to release {Tool} output streams", tool);
+        }
+    }
+
+    // 読み取りが上限の内に**成功で**終わったか。時間切れだけでなく読み取りの失敗（稀な IOException 等）も false とし、
+    // 呼び出し元の期限切れ（`BodyConversionTimeoutException`）へ畳む（この枝の外へ別の型を漏らさない。例外は `Observe` が観測する）。
+    private static async Task<bool> CompletesWithinAsync(Task task, TimeSpan within)
+    {
+        try
+        {
+            await task.WaitAsync(within);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 
@@ -67,8 +123,10 @@ internal static class ExternalProcess
             // 標準出力のパイプを握った子孫が残り、読み取りが終わらない。既に終わったプロセスには何もしない。
             proc.Kill(entireProcessTree: true);
         }
+        // #1654 A: 子孫の一部を止められない（EPERM 等）と `AggregateException` になる。捕まえないと刈り取りを飛ばし、
+        // 呼び出し元の catch の中から投げられて期限切れ・取り消しの分類を上書きする。
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
-                                       or NotSupportedException)
+                                       or NotSupportedException or AggregateException)
         {
             logger.LogWarning(ex, "Failed to kill {Tool} process tree", tool);
         }

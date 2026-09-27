@@ -9,6 +9,7 @@ using ConversionService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
@@ -176,6 +177,81 @@ public class ExternalProcessTimeoutTests
             .WithMessage("pandoc exited with code 3 for *boom*");
     }
 
+    // T-50 (7) #1654 B: 版の確認の時間切れは Warning を残して「無い」（null）に倒す。止まっているだけの道具を、
+    // ログ無しで「実行時イメージに無い」と報告しない。止めたプロセスは子孫ごと残らない。
+    [Fact]
+    public async Task Version_probe_timeout_is_logged_as_a_warning_for_pandoc()
+    {
+        using var pids = new PidFile();
+        var logger = new RecordingLogger();
+
+        var version = await PandocConversionService.TryGetPandocVersionAsync(TestContext.Current.CancellationToken,
+                _ => Stub.HangWithChild(pids.Path), logger, HangTimeout)
+            .WaitAsync(Guard, TestContext.Current.CancellationToken);
+
+        version.Should().BeNull();
+        logger.Warnings.Should().ContainSingle().Which.Should().Contain("pandoc").And.Contain("hung");
+        await pids.ShouldAllBeGoneAsync();
+    }
+
+    [Fact]
+    public async Task Version_probe_timeout_is_logged_as_a_warning_for_pdftotext()
+    {
+        using var pids = new PidFile();
+        var logger = new RecordingLogger();
+
+        var version = await PdfTextLayerConverter.TryGetPdfToTextVersionAsync(TestContext.Current.CancellationToken,
+                _ => Stub.HangWithChild(pids.Path), logger, HangTimeout)
+            .WaitAsync(Guard, TestContext.Current.CancellationToken);
+
+        version.Should().BeNull();
+        logger.Warnings.Should().ContainSingle().Which.Should().Contain("pdftotext").And.Contain("hung");
+        await pids.ShouldAllBeGoneAsync();
+    }
+
+    // T-50 (8) #1654 C（終了と時間切れの競合）: プロセスは期限の前に**自分で**終わったが、ツリーの外の孫が標準出力を
+    // 期限の少し後まで握っていた。読み取りの完了が期限を跨いでも、正しい出力を捨てず結果として返す（kill しない）。
+    [Fact]
+    public async Task Output_is_kept_when_the_process_exited_but_a_grandchild_briefly_held_stdout()
+    {
+        using var pids = new PidFile();
+        // 期限は止まる命令の起動（Windows の powershell は負荷下で 1 秒を超える）より長くとる。期限の時点で親がまだ走っていると
+        // kill の枝へ入り、この試験が測りたい「自分で終わっていた」枝を通らない（1 秒の期限で全体実行の負荷下に実測した揺らぎ）。
+        // 孫は期限の 3 秒後まで握る（刈り取りの上限 10 秒の内）。
+        var timeout = HangTimeout;
+        var holdSeconds = (int)timeout.TotalSeconds + 3;
+        var started = Stopwatch.GetTimestamp();
+
+        var result = await ExternalProcess.RunAsync(Stub.PrintAndDetachChild("stub-out", holdSeconds, pids.Path), "pandoc",
+                timeout, NullLogger.Instance, TestContext.Current.CancellationToken)
+            .WaitAsync(Guard, TestContext.Current.CancellationToken);
+
+        result.ExitCode.Should().Be(0);
+        result.StandardOutput.Should().Contain("stub-out");
+        // 孫が握っている間は読み取りが終わらない —— 期限を跨いでから返ったことを確かめる。
+        Stopwatch.GetElapsedTime(started).Should().BeGreaterThan(timeout);
+    }
+
+    // T-50 (9) #1654 C（孤児の孫）: 親が終わった後、ツリーの外の孫が標準出力を握り続ける。孫は `Kill(true)` では止まらないので、
+    // 期限 ＋ 刈り取りの上限で時間切れとして終わる（待ち続けない）。孫は試験の後始末で止める。
+    [Fact]
+    public async Task Detached_grandchild_holding_stdout_times_out_within_the_reap_cap()
+    {
+        using var pids = new PidFile();
+        var started = Stopwatch.GetTimestamp();
+
+        var act = () => ExternalProcess.RunAsync(Stub.PrintAndDetachChild("stub-out", 600, pids.Path), "pandoc",
+                HangTimeout, NullLogger.Instance, TestContext.Current.CancellationToken)
+            .WaitAsync(Guard, TestContext.Current.CancellationToken);
+
+        (await act.Should().ThrowExactlyAsync<BodyConversionTimeoutException>()).Which.Timeout.Should().Be(HangTimeout);
+        // 刈り取りの上限まで読み取りを待ってから諦める（期限そのものでは諦めない）。諦めた後は、孫（600 秒握る）を待たずに返る
+        // （#1654 L1: 諦めた読み取りは手放す。上限は負荷の揺らぎを見込んで 10 秒の余裕を置く）。
+        Stopwatch.GetElapsedTime(started).Should()
+            .BeGreaterThanOrEqualTo(HangTimeout + ExternalProcess.ReapTimeout - TimeSpan.FromMilliseconds(200))
+            .And.BeLessThan(HangTimeout + ExternalProcess.ReapTimeout + TimeSpan.FromSeconds(10));
+    }
+
     // 代わりに起動する命令。いずれも標準出力・標準エラーをリダイレクトする（実行器の前提）。
     private static class Stub
     {
@@ -194,6 +270,15 @@ public class ExternalProcessTimeoutTests
                 "$c = Start-Process -FilePath ping.exe -ArgumentList '-n','600','127.0.0.1' -NoNewWindow -PassThru; "
                 + $"Set-Content -LiteralPath '{pidFile}' -Value ('{{0}} {{1}}' -f $PID, $c.Id); $c.WaitForExit()")
             : Start("sh", "-c", "sleep 600 & echo \"$$ $!\" > \"$1\"; wait", "sh", pidFile);
+
+        // #1654 C: 孫をツリーの外へ出して（親は待たずに）すぐ終わる。孫は標準出力のパイプを受け継いで seconds 秒握る。
+        // 自分と孫のプロセス番号を空白区切りでファイルへ書く。Linux はサブシェルで孫を init へ付け替える。
+        public static ProcessStartInfo PrintAndDetachChild(string text, int seconds, string pidFile) =>
+            OperatingSystem.IsWindows()
+                ? Start("powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+                    $"$c = Start-Process -FilePath ping.exe -ArgumentList '-n','{seconds + 1}','127.0.0.1' -NoNewWindow -PassThru; "
+                    + $"Set-Content -LiteralPath '{pidFile}' -Value ('{{0}} {{1}}' -f $PID, $c.Id); Write-Output '{text}'")
+                : Start("sh", "-c", $"(sleep {seconds} & echo \"$$ $!\" > \"$1\"); echo {text}", "sh", pidFile);
 
         private static ProcessStartInfo Start(string fileName, params string[] args)
         {
@@ -330,6 +415,28 @@ public class ExternalProcessTimeoutTests
 
         public string CreatePresignedGetUrl(string uri, TimeSpan? expiry = null) =>
             throw new NotSupportedException(uri);
+    }
+
+    // Warning 以上の記録だけを取る logger（#1654 B）。
+    private sealed class RecordingLogger : ILogger
+    {
+        private readonly List<string> _warnings = [];
+
+        public IReadOnlyList<string> Warnings
+        {
+            get { lock (_warnings) return [.. _warnings]; }
+        }
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel != LogLevel.Warning) return;
+            lock (_warnings) _warnings.Add(formatter(state, exception));
+        }
     }
 
     private sealed class NeverCalledCoder : IDiagramCoder

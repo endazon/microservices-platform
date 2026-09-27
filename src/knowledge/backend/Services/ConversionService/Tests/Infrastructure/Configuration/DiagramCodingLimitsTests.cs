@@ -43,7 +43,7 @@ public class DiagramCodingLimitsTests
         limits.CallTimeout.Should().Be(TimeSpan.FromSeconds(20));
         limits.Budget.Should().Be(TimeSpan.FromSeconds(120));
         limits.HandlerTimeout.Should().Be(TimeSpan.FromSeconds(300));
-        // #1641: 本文変換の外部プロセス（pandoc・pdftotext）の期限。300 ＞ 90 ＋ 120 ＋ 20 で、鍵の無い稼働構成が起動する。
+        // #1641 / #1654 D・L2: 本文変換の外部プロセスの期限。300 ＞（10 ＋ 10）版の確認 ＋（90 ＋ 10）変換 ＋ 120 ＋ 20 ＝ 260 で、鍵の無い稼働構成が起動する。
         limits.BodyConversionTimeout.Should().Be(TimeSpan.FromSeconds(90));
     }
 
@@ -56,7 +56,7 @@ public class DiagramCodingLimitsTests
             [DiagramCodingLimits.CallTimeoutKey] = "0",
             [DiagramCodingLimits.BudgetKey] = "-5",
             [DiagramCodingLimits.BodyConversionTimeoutKey] = "0",
-            [DiagramCodingLimits.HandlerTimeoutKey] = "4",
+            [DiagramCodingLimits.HandlerTimeoutKey] = "34",
         }));
 
         limits.CallTimeout.Should().Be(TimeSpan.FromSeconds(1));
@@ -88,6 +88,11 @@ public class DiagramCodingLimitsTests
     [InlineData("20", "120", "90", "230")]
     [InlineData("20", "120", "90", "200")]
     [InlineData("1", "2", "1", "4")]
+    // #1654 D・L2: 版の確認（10 秒）と、版の確認・変換それぞれの刈り取りの上限（10 秒 × 2）も足す。次の 2 行は #1641 の式
+    // （本文変換 ＋ 総枠 ＋ 1 回）なら通る値で、ちょうど新しい式の境界（等号）である —— 版の確認と刈り取りを足さない変異（M3）も、
+    // 刈り取りを 1 回分しか足さない誤り（L2 の前の式。境界は 250・24）も、ここで赤になる。
+    [InlineData("20", "120", "90", "260")]
+    [InlineData("1", "2", "1", "34")]
     public void 受け口の期限が本文変換と総枠と一回の期限の和を超えなければ起動を止める(
         string call, string budget, string body, string handler)
     {
@@ -103,7 +108,8 @@ public class DiagramCodingLimitsTests
             .WithMessage($"*{DiagramCodingLimits.HandlerTimeoutKey}*{DiagramCodingLimits.BodyConversionTimeoutKey}*");
     }
 
-    // 陽性対照: 和を 1 秒でも超えれば起動する（構成で本文変換の期限を与えたとき、その値が採られる）。
+    // 陽性対照: 和（版の確認 10 ＋ 刈り取り 10 ＋ 本文変換 90 ＋ 刈り取り 10 ＋ 総枠 120 ＋ 1 回 20 ＝ 260。#1654 D・L2）を 1 秒でも超えれば起動する
+    // （構成で本文変換の期限を与えたとき、その値が採られる）。
     [Fact]
     [Trait("TestKind", "Unit")]
     public void 受け口の期限が四つの和を超えれば起動し本文変換の期限は構成の値になる()
@@ -113,11 +119,11 @@ public class DiagramCodingLimitsTests
             [DiagramCodingLimits.CallTimeoutKey] = "20",
             [DiagramCodingLimits.BudgetKey] = "120",
             [DiagramCodingLimits.BodyConversionTimeoutKey] = "90",
-            [DiagramCodingLimits.HandlerTimeoutKey] = "231",
+            [DiagramCodingLimits.HandlerTimeoutKey] = "261",
         }));
 
         limits.BodyConversionTimeout.Should().Be(TimeSpan.FromSeconds(90));
-        limits.HandlerTimeout.Should().Be(TimeSpan.FromSeconds(231));
+        limits.HandlerTimeout.Should().Be(TimeSpan.FromSeconds(261));
     }
 
     // 前提の固定: Wolverine の受け口の実行期限の既定は 60 秒である（本件の欠陥の出所。上げ下げされたら見直す）。
