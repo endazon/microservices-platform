@@ -225,7 +225,7 @@ gRPC 面と同じ水準に揃う。** それ以上は閉じていない。
 ## 追記: 利用者文脈を運べる呼び出し元の許可集合を `AuthzScope/Resolve` には置かない（2026-09-27 / #1636）
 
 ［2026-09-27 追記 / #1636］PR #1631（#1628）の監査が、本文の利用者文脈を `ServiceCaller` だけで信じる east-west の面を 5 つ挙げた。
-資源を返す 4 面（`DocumentRead`・`DocumentSearch`・`DocumentTagWrite/AddTag`・`GraphNeighbors/ExpandNeighbors`・`AttributeValues/ListValues`）には
+資源を返す 5 面（`DocumentRead`・`DocumentSearch`・`DocumentTagWrite/AddTag`・`GraphNeighbors/ExpandNeighbors`・`AttributeValues/ListValues`）には
 面ごとの許可集合を当てた（[[IADR-0476]] 追記・[[IADR-0426]] 追記 1・[[IADR-0410]] 追記 1・[[IADR-0417]] 追記 1）。**本面（5 位）は変えない。**
 
 - **確かめたこと**: 計画 `ADR-0086` 決定 4 は「`AuthzScope/Resolve` が `user_id` / `user_attributes` を呼び出し元の本文から受け取り、Keycloak を
