@@ -512,7 +512,8 @@ async function collectLive(kc, desired) {
   const clientByClientId = byKey(clients, 'clientId');
 
   // ［2026-09-28 / #1682 / IADR-0485］client の secret は読みに行かない（`GET …/client-secret` を打たない）。
-  // 比べないので要らず、読まなければ稼働の秘密がこの Job のメモリを通らない。
+  // 値を取りに行かず、比べず、PUT の本文とログに出さない（`GET /clients` の表現が `secret` を含む版の Keycloak では、
+  // 値はこの Job のメモリを通る —— 使わないだけである）。
 
   // 宣言が触れる client のロール（roles.client の宣言 ＋ 利用者の clientRoles が指す client）
   const roleClientIds = new Set(Object.keys((desired.roles && desired.roles.client) || {}));

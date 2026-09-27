@@ -182,9 +182,17 @@ issue: "#1682"
 | M3 | `msp/postgres` を無条件の `vault kv put` へ戻す | `bootstrap.sh` | `SecretItemBootstrapSeedTests.Paired_secret_kvs_are_created_only_when_absent`（T-78） |
 | M4 | 補助関数の在否の確認を外す（`if false`） | `bootstrap.sh` | 同 |
 | M5 | realm の宣言の `bff` の secret を開発用の形でない値にする | realm JSON | `check-realm-constraints.js`（検査 8。実データ） |
+| M6 | 許可リストの `deferred[]` から `msp/document-service-token` を 1 件落とす（監査で生き残った変異。逆方向の突合〔補助関数で作るパスの集合＝deferred ∪ excluded〕を足して殺した） | 許可リスト | `SecretItemBootstrapSeedTests.Paired_secret_kvs_are_created_only_when_absent`（T-78） |
 
 検証: `keycloak-realm-reconcile.test.js` 38 件・`check-realm-constraints.js --self-test` 174 件・`reset-gate.test.js` 12 件・`reset-gate.js --self-test` 17 件・
 `check-stack-ready.js --self-test` 71 件・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 844 件が緑。Platform.Bff.Tests 790 件緑（1 件は既存の skip）。
 `dotnet format src/platform/backend/backend.slnx --verify-no-changes` 緑。check-trace-blocks / check-test-spec-coverage / check-test-traceability / check-cross-repo-refs /
 check-plan-id-qualification / check-doc-links / check-doc-type-vocabulary / gen-knowledge-graph --check / check-commit-messages が緑（check-reading-budget は既存の 90% 超の warn 1 件のみ）。
 稼働クラスタのスクリプト（`bootstrap.sh`・`reconcile-realm.sh`）は実行していない。Runbook はリハーサル未実施である。
+
+### 監査の後の追記（2026-09-28。PR #1684 の監査 GO の指摘 3 点）
+
+- M6 を殺した（上表）。T-78 の「20 件を下回らない」を集合の一致へ改めた。
+- IADR-0485 決定 2 と `reconcile-realm.js` の注記の言い過ぎ（「メモリを通らない」）を直した —— `GET /clients` の表現が `secret` を含む版では通る。値を取りに行かず、比べず、本文とログに出さないだけである。
+- Runbook の同期後の確認に、`keycloak-admin` を回した直後は追随の Job が WARN で飛び得るので本実行でやり直すことを足した。
+- 記録のみ: 検査 8 の射程は `clients[].secret` だけで、`users[].credentials` の開発用の平文パスワード 4 件は形の検査の外（対になる秘密ではないので本件の範囲外。IADR-0485 フォローアップ 3）。

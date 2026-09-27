@@ -216,6 +216,8 @@ done
 ```
 
 同期の後、`keycloak-admin` を読む宣言の追随（`bash deploy/local/keycloak-setup/reconcile-realm.sh --check`）が認証エラーで落ちないことを確かめる。
+🔴 **`keycloak-admin` を回した直後の起動では、起動器が呼ぶ追随の Job が認証エラーの WARN で飛ぶことがある**（呼び出しは best-effort で、起動は止まらない）。
+`--check` で確かめるだけで終えず、同期の後に**本実行（`bash deploy/local/keycloak-setup/reconcile-realm.sh`。apply）でやり直し**、その後に `--check` が差分 0 件になることを確かめる。
 
 ## 確認（この手順が成功したと言える条件）
 

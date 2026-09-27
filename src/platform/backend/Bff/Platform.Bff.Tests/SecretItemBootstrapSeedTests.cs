@@ -177,10 +177,18 @@ public class SecretItemBootstrapSeedTests
             .SelectMany(k => allowlist.RootElement.GetProperty(k).EnumerateArray())
             .SelectMany(g => g.GetProperty("vaultPaths").EnumerateArray().Select(e => e.GetString()!))
             .ToList();
-        // 陽性対照: 母集合が空・取りこぼしで緑にならない（deferred 17 ＋ excluded 7。数は許可リストが正で、ここは下限だけを見る）。
-        paired.Should().HaveCountGreaterThanOrEqualTo(20).And.OnlyHaveUniqueItems();
+        paired.Should().NotBeEmpty().And.OnlyHaveUniqueItems();
 
         var statements = Statements();
+        // 逆方向の突合（PR #1684 監査 M6）: bootstrap が無いときだけ作るパスの集合と、許可リストの deferred ∪ excluded が**一致する**。
+        // 許可リストから 1 件落としても（bootstrap にだけ在る）、bootstrap から 1 件落としても（許可リストにだけ在る）赤にする。
+        var created = statements
+            .Select(s => Regex.Match(s, @"^\s*vkv_create_if_absent\s+(?<path>\S+)\s+"""))
+            .Where(m => m.Success)
+            .Select(m => m.Groups["path"].Value)
+            .ToList();
+        created.Order(StringComparer.Ordinal).Should().Equal(paired.Order(StringComparer.Ordinal),
+            "vkv_create_if_absent で作るパスの集合は、許可リストの deferred ∪ excluded と一致すること");
         foreach (var path in paired)
         {
             var escaped = Regex.Escape(path);

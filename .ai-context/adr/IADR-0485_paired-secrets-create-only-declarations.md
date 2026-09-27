@@ -68,7 +68,8 @@ related_specs:
 - `reconcile-realm.js` に `CLIENT_CREATE_ONLY_KEYS = { 'secret' }` を置く。既存の client では `secret` を**比べず・`PUT` の本文に載せず・`GET …/client-secret` で読まない。**
   client が無いとき（`client.create`）と realm が無いとき（`realm.create`）にだけ、宣言の値で作る。
 - Keycloak の client 更新は、本文に `secret` が無ければ現在の値を保つ。GET の表現が `secret` を含む版でも本文から落とす（稼働の値を往復させない）。
-- 読みに行かないのは、比べないので要らないことに加え、稼働の秘密がこの Job のメモリとログを通る経路を 1 つ減らすためである。
+- 読みに行かないのは、比べないので要らないからである。値を取りに行かず、比べず、`PUT` の本文とログに出さない。
+  ただし `GET /clients?max=1000` の表現が `secret` を含む版の Keycloak では、値はこの Job のメモリを通る（使わないだけで、通ることは止めていない）。
 
 ### 決定 3: Vault の種は対になる秘密も「無いときだけ作る」
 
@@ -129,6 +130,8 @@ related_specs:
 - **フォローアップ**
   1. 対の手順のリハーサル（新しい環境で群 1・群 2 を通しで実行し、Runbook を直す）。
   2. `apply_secret` の既定値の Secret を `ESO=1` で作らないようにするか（塞いでいない経路）。**同型の事故が起きたら**起票する（1 回目は記録に留める）。
+  3. （記録のみ）検査 8 の射程は `clients[].secret` だけである。realm の `users[].credentials` にある開発用の平文パスワード（4 件）は形の検査の外にある。
+     これらは相手と対で書く秘密ではない（人の資格情報）ので #1682 の範囲外とし、`docs/security/security.md`「開発専用の平文認証情報」の扱いのままとする。
 
 ## 関連
 
