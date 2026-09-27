@@ -2,7 +2,9 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
 using Pb = Knowledge.Contracts.Grpc.Retrieval.V1;
@@ -32,9 +34,20 @@ namespace RetrievalService.Features.Search.Hybrid;
 //
 // 🔴 **「該当が無い」と「権限が無い」を区別させない**（[[IADR-0009]] / [[IADR-0151]] 決定 5）——
 // どちらも**空の並び**で返る。引けなかったのは gRPC status である。
+//
+// ［2026-09-27 追記 / #1635］🔴 **本文の `user` を信じるのは、許可集合（`DocumentSearchRelayOptions`。
+//   既定 `aianalysis-service` だけ）の機械クライアントが運んだときだけである**（[[IADR-0426]] 追記 1）。
+//   `ServiceCaller`（`platform-service`）だけでは信じない —— そのロールは 11 のサービスアカウント
+//   （別プロジェクトのものを含む）が持ち、どれもが任意の利用者（管理者を含む）を名乗って、その利用者の
+//   スコープ（個人資料の分岐を含む）でチャンクの**本文**を読めた。
+//   それ以外が `user` を付けたら PERMISSION_DENIED（機械の主体へ読み替えない —— この面には元々
+//   「利用者の無い検索」の口が無い）。`user` の無い要求は従来どおり誰にも INVALID_ARGUMENT。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
 public sealed class DocumentSearchGrpcService(
-    IHybridSearchService search, ISearchAccessResolver access)
+    IHybridSearchService search,
+    ISearchAccessResolver access,
+    IOptions<DocumentSearchRelayOptions> relay,
+    ILogger<DocumentSearchGrpcService> logger)
     : Pb.DocumentSearch.DocumentSearchBase
 {
     public override async Task<Pb.SearchResponse> Search(
@@ -46,6 +59,10 @@ public sealed class DocumentSearchGrpcService(
         if (string.IsNullOrWhiteSpace(request.User?.UserId))
             throw new RpcException(new Status(
                 StatusCode.InvalidArgument, "user.user_id は必須である（利用者文脈が無い呼び出しは受けない）。"));
+
+        // 🔴 FR-19, NFR-09, 計画 ADR-0086 決定 1, ADR-0119 決定 3 (#1635): **利用者文脈を運べる呼び出し元か。**
+        // 空の query の早期 return より前に置く（信頼しない呼び出し元に「通る形」を 1 つも残さない）。
+        EnsureTrustedRelay(context);
 
         var response = new Pb.SearchResponse();
         if (string.IsNullOrWhiteSpace(request.Query))
@@ -68,6 +85,24 @@ public sealed class DocumentSearchGrpcService(
 
         response.Results.AddRange(results.Select(ToProto));
         return response;
+    }
+
+    // FR-19, NFR-09, 計画 ADR-0086 決定 1・§結果, ADR-0119 決定 3, [[IADR-0426]] 追記 1 (#1635):
+    // 🔴 本文の利用者文脈を信じてよいのは、それを運ぶのが**利用者の権限で動く中継者として許可集合に載った
+    //   機械クライアント**だからである（ADR-0086 §結果が受け入れた依存の範囲）。
+    private void EnsureTrustedRelay(ServerCallContext context)
+    {
+        var caller = context.GetHttpContext().User;
+        if (relay.Value.TrustsUserContextFrom(caller))
+            return;
+
+        // 基数は realm の機密クライアント数で閉じる（利用者識別子・属性・query は載せない）。
+        logger.LogWarning(
+            "DocumentSearch rejected a user context from a caller that is not a trusted relay (client={ClientId}). "
+            + "Trusted relays are configured under {Section}:TrustedUserContextClients.",
+            MachinePrincipal.ClientIdOf(caller) ?? "(unknown)", DocumentSearchRelayOptions.SectionName);
+        throw new RpcException(new Status(StatusCode.PermissionDenied,
+            "この呼び出し元は利用者文脈（user）を運べません。"));
     }
 
     // 🔴 **`top_k` の proto3 の未指定は `0` であり、DTO の既定は `10` である。**

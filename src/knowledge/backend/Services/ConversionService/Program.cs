@@ -19,6 +19,7 @@ using ConversionService.Infrastructure.ExternalServices;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 const string ServiceName = "microservices-platform.conversion-service";
 
@@ -91,13 +92,19 @@ builder.Services.AddSingleton<IObjectStore, StorageObjectStore>();
 // **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
 // 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま
 // （戻すのは構成を外すだけ。コードは変えない）。
+//
+// UC-06, IADR-0008（2026-09-27 追記 / #1621）: **図のコード化の時間の上限**（1 回の期限・1 文書の総枠・受け口の実行期限）。
+// 受け口の期限が「総枠＋1 回の期限」を超えていなければ、ここで起動を止める（`DiagramCodingLimits.From`）。
+var diagramCodingLimits = DiagramCodingLimits.From(builder.Configuration);
+builder.Services.AddSingleton(diagramCodingLimits);
+builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
 if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
     builder.Services.AddSingleton<IDiagramCoder, LlmGatewayGrpcDiagramCoder>();
 else
     // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
-    builder.Services.AddHttpClient<IDiagramCoder, LlmGatewayDiagramCoder>(c =>
-        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"))
+    // #1621: 名前付きクライアントの `Timeout` は `DiagramCodingLimits.CallTimeout`（既定 100 秒のままにしない）。
+    builder.Services.AddRestDiagramCoder(builder.Configuration, diagramCodingLimits)
         .AddLlmGatewayServiceToken(builder.Configuration);
 
 // FR-12, UC-06: 正規化オーケストレータ（本文＋図＋保管を束ねる）。
@@ -180,6 +187,10 @@ builder.Host.UseWolverine(opts =>
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
+
+    // UC-06, IADR-0008（2026-09-27 追記 / #1621）: 受け口の実行期限を明示する（Wolverine の既定 60 秒のままにしない）。
+    // 図のコード化の総枠と 1 回の期限が収まる長さである（`DiagramCodingLimits`）。
+    opts.Policies.Add(new RawDocumentFetchedTimeoutPolicy(diagramCodingLimits.HandlerTimeout));
 });
 
 var app = builder.Build();
