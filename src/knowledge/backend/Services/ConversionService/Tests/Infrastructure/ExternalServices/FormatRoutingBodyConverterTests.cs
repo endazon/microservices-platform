@@ -23,8 +23,10 @@ public class FormatRoutingBodyConverterTests
         var storage = new UnresolvableStorage();
         var options = Options.Create(new ConversionOptions { AllowDegradedBodyConversion = true });
         return new FormatRoutingBodyConverter(
-            new PandocConversionService(storage, options, NullLogger<PandocConversionService>.Instance),
-            new PdfTextLayerConverter(storage, options, NullLogger<PdfTextLayerConverter>.Instance));
+            new PandocConversionService(storage, options, DiagramCodingLimits.Default,
+                NullLogger<PandocConversionService>.Instance),
+            new PdfTextLayerConverter(storage, options, DiagramCodingLimits.Default,
+                NullLogger<PdfTextLayerConverter>.Instance));
     }
 
     // ADR-0070 決定 2: PDF はテキスト層の抽出器へ。MIME からでも拡張子からでも判る。
