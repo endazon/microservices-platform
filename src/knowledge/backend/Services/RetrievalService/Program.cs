@@ -121,6 +121,8 @@ builder.Services.AddSingleton(graphExpansion.Normalize());
 
 // FR-19, NFR-09, 計画 ADR-0086 決定 1, ADR-0119 決定 3, [[IADR-0426]] 追記 1 (#1635): gRPC `DocumentSearch/Search` の
 // 本文の利用者文脈を信じる呼び出し元（クライアント識別子の許可集合）。**未構成なら `aianalysis-service` だけ。構成したら置き換える。**
+// 配列でなく 1 つの値が書かれていたら起動を止める（静かに既定へ戻さない。#1658）。
+DocumentSearchRelayOptions.ThrowIfScalar(builder.Configuration);
 builder.Services.Configure<DocumentSearchRelayOptions>(
     builder.Configuration.GetSection(DocumentSearchRelayOptions.SectionName));
 

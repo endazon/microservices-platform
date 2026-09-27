@@ -203,3 +203,17 @@ IGraphNeighborExpander.ExpandAsync(seeds, hops, user, ct)
   `DocumentSearchRelayDeploymentWiringTests` が固定する。
 - **残るもの**: 同じ RetrievalService の `AttributeValues/ListValues`（呼び出し元は BFF。返すのは属性値）も本文の `user_id` を全 `ServiceCaller` から信じる。
   別の issue で扱う。
+
+## 追記 2: 1 つの値の構成を起動時に止め、許可集合の実装を共有の `TrustedUserContextRelay` へ寄せる（2026-09-27 / #1658）
+
+［2026-09-27 追記 / #1658］PR #1645 のセキュリティ監査の非ブロッキング N2。追記 1 の決定 2 に次を足す（決定 1〜3 の判定・既定・置き換え・空白の扱いは変えない）。
+
+- **1 つの値（配列でない）の構成は起動時に例外で止める。** `DocumentSearch__TrustedUserContextClients=foo` は配列へ束縛されず、プロパティは null のまま
+  既定の `aianalysis-service` へ静かに戻っていた（閉じる側には倒れるが、運用者の意図した集合との食い違いが検知されない）。
+  RetrievalService の `Program.cs` で `DocumentSearchRelayOptions.ThrowIfScalar` → `Configure<DocumentSearchRelayOptions>` の順に呼ぶ
+  （#1631 の `DocumentRead`・#1645 の 3 面と同じ規約）。
+- **判定・既定の解決・構成の形の検査は共有の `TrustedUserContextRelay`（`Platform.Shared.Infrastructure`）へ委譲する。** `DocumentSearchRelayOptions` に残るのは
+  節名・既定・委譲だけ（公開面は変えない）。共有部品の 3 関数は本 IADR 追記 1 の実装と同値である（`DocumentSearchRelayOptionsTests` の既存の試験と
+  複数要素の試験がそのまま通ることで固定した）。
+- **配備**: 構成の値を変えない配備（helm・compose は既定のまま）には影響しない。1 つの値で書いていた配備は retrieval-service が起動しなくなるので、
+  配列（`DocumentSearch__TrustedUserContextClients__0=<値>`）へ書き直してから配備すること。

@@ -107,6 +107,35 @@ public class DocumentReadRelayOptionsTests
         DocumentReadRelayOptions.ThrowIfScalar(new ConfigurationBuilder().Build());
     }
 
+    // #1658: 共有部品へ寄せても 1 つの値の例外の文言は従前と同じ（配列の書き方と既定の bff を示す）。
+    [Fact]
+    public void 一つの値の例外の文言は従前と同じ()
+    {
+        var act = () => DocumentReadRelayOptions.ThrowIfScalar(new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["DocumentRead:TrustedUserContextClients"] = "bff" }).Build());
+
+        act.Should().Throw<InvalidOperationException>().WithMessage(
+            "DocumentRead:TrustedUserContextClients は配列で構成すること（環境変数なら DocumentRead__TrustedUserContextClients__0=bff）。"
+            + "1 つの値（カンマ区切りを含む）は束縛されず、既定の bff へ戻ってしまう。");
+    }
+
+    // #1658: 共有部品へ寄せても既定の解決・置き換え・空白の扱いは現行と同値（複数要素・前後空白・空要素・重複は落とさない）。
+    [Fact]
+    public void 複数要素の構成は前後空白を落とし空白だけの要素を捨てて順に並べる()
+    {
+        var options = Bind(new()
+        {
+            ["DocumentRead:TrustedUserContextClients:0"] = " relay-a ",
+            ["DocumentRead:TrustedUserContextClients:1"] = "   ",
+            ["DocumentRead:TrustedUserContextClients:2"] = "relay-b",
+            ["DocumentRead:TrustedUserContextClients:3"] = "relay-a",
+        });
+
+        options.EffectiveClients.Should().Equal("relay-a", "relay-b", "relay-a");
+        options.TrustsUserContextFrom(ServiceAccount("relay-b")).Should().BeTrue();
+        options.TrustsUserContextFrom(ServiceAccount("bff")).Should().BeFalse("構成は既定を置き換える（足し合わせない）");
+    }
+
     // 判定の形: 機械であること ∧ クライアント識別が序数一致で許可集合に在ること。
     [Fact]
     public void 判定は機械の主体のクライアント識別を序数一致で見る()
