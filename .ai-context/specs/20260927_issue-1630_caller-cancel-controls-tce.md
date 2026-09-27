@@ -142,3 +142,18 @@ issue: "#1630"
 ## 結果
 
 - AC-1〜AC-7 を満たした。本番コードの差分は 0 行。新しい IADR は起こしていない（IADR 3 本は誤字の修正だけ）。
+
+## ［2026-09-27 追記 / #1647］対象 1 の取り消しの時機を、壁時計ではなく待受の合図で決める
+
+- **事実**: 対象 1（`HttpEffectiveConfigCollectorTests.呼び出し側の取り消しは到達不能へ化けずに外へ出る`）は、呼び出し側の ct を
+  `CancelAfter(300 ms)` で取り消していた。platform の slnx 全体を走らせた負荷の下では 300 ミリ秒の間に待受が接続を受け付けないことがあり、
+  前提の表明 `peer.Accepted.Should().BeGreaterThan(0)` が `… but found 0.` で落ちた（#1639・#1643 の作業で 2 回実測。単独では 441/441 で通る）。
+- **直し方**: `SilentPeer` に合図 `RequestReceived`（`TaskCompletionSource`）を足した。接続を受け付け、要求の先頭のバイトを読んだ時点で完了する
+  （応答は返さない）。試験は収集を始め、合図を待ってから（見張りの上限 10 秒）呼び出し側の ct を取り消す（#1643 の `LoopbackGrpcServer` と同じ考え方）。
+  待受は `IPAddress.Loopback` のまま、HTTP/1.1 の本物の `HttpClient`（`SocketsHttpHandler`）のまま。表明（`TaskCanceledException` が呼び出し側の token を
+  持つ・`Accepted > 0`・到達不能の Warning を出さない）は変えていない。対象 2（取り消し済みの ct で始める）は時機に依存しないので変えていない。
+- **変異**: 収集器の絞り込み（`HttpEffectiveConfigCollector.cs` L88）に `|| ex is TaskCanceledException` を当てると、対象 1・2 がともに赤
+  （`Expected a <System.Threading.Tasks.TaskCanceledException> to be thrown … but no exception was thrown.`。16 件中 2 件失敗）。
+  `git show HEAD:<path> > <path>` で戻し、`git diff --quiet` で戻ったことを確かめた。
+- **反復**: `dotnet test src/platform/backend/backend.slnx` を 5 回連続でフォアグラウンドで走らせ、5 回とも全プロジェクト成功
+  （各回 合格 2358・スキップ 1・失敗 0。内訳 Kernel 42／Infrastructure 441／Notification 104／McpServer 236／Authorization 441／LlmGateway 326／Bff 768＋スキップ 1）。

@@ -34,7 +34,7 @@ related_ids:
   - IADR-0402
 author: claude
 created: 2026-09-06
-updated: 2026-09-06
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0029_grpc-rest-usage-criteria.md §決定・2026-08-04 追記
   - planning:projects/microservices-platform/07_adr/ADR-0075_east-west-grpc-migration-order.md 決定 3・5・6
@@ -175,6 +175,8 @@ REST 実装の枝は 3 つで、gRPC 実装はそれを写す。
 ★ タイムアウトは REST 側の `HttpClient.Timeout`（5 秒）を **deadline** で写す。値は
 `HttpKnowledgeHealthReporter.SendTimeout` を**そのまま引く**（書き写すと片方だけ動いたとき気付けない）。
 期限切れ（`DeadlineExceeded`）は上の「受理されない」枝と同じ縮退になる。
+
+> **［2026-09-27 追記 / #1637］上の表の「呼び出し元のキャンセル | 伝播させる | 同じ」は gRPC 版で成り立っていなかった。** 本物のチャネルは呼び出し元の取り消しを `RpcException(Cancelled)` で投げ（`ThrowOperationCanceledOnCancellation` は既定の false）、無条件の `catch (RpcException)` が型の絞り込み（`ex is OperationCanceledException && ct.IsCancellationRequested`）より前でそれを拾っていた。試験は偽のクライアントへ素の OCE を注入しており、本物のチャネルが通らない経路だけを見ていた。停止のたびに「受理されない」枝の Error のログが出ていた（`KnowledgeHealthCollector` が指標ごとに続けて呼ぶので続けて出る）。縮退の catch より前に `catch (Exception) when (ct.IsCancellationRequested) { ct.ThrowIfCancellationRequested(); throw; }` を置き、呼び出し元の token を持つ `OperationCanceledException` へ揃えて外へ出す（`GrpcServiceIntrospectionCollector`・IADR-0462 と同じ形。**判定は型でも status でもなく呼び出し元の ct で行う**）。期限切れ・受け口が返した `CANCELLED`（呼び出し元の ct は生きている）は従来どおり縮退する。`RpcException` のまま投げ直さないのは、周期のループ（`KnowledgeHealthHostedService`。#1598）が停止要求の OCE だけを静かに終わる合図として読むからである。試験は 127.0.0.1 の実 gRPC サーバー（`LoopbackGrpcServer`）へ本番と同じ既定値のチャネルで繋ぎ、受け口が要求を受け取ってから取り消す形へ改めた。守りを外す・status で判定する・`RpcException` のまま投げ直す、の 3 変異がいずれも赤になることを確かめた。作業仕様書: `.ai-context/specs/20260927_issue-1637_grpc-client-caller-cancellation.md`。
 
 ### 決定 6: 切替は `Services:DashboardServiceGrpc` の有無。**チャネルはキー付き**
 

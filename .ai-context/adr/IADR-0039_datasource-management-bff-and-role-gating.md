@@ -12,7 +12,7 @@ related_ids:
   - IADR-0128
 author: claude
 created: 2026-07-09
-updated: 2026-08-09
+updated: 2026-09-27
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md
@@ -94,6 +94,9 @@ SC-06 はデータソースの登録・一覧・同期・無効化を行う運�
    > > **人間に対する実効境界は BFF 側（`AdminOnly`）で閉じている。**
    > >
    > > したがって **SC-06 / SC-07 の同型の逸脱は残っていないが、SC-05 は `POST` 1 口が裁定待ちで残る。**
+   > >
+   > > **［2026-09-27 追記 / #1616］この `POST` 1 口の裁定待ちは解消した**（計画 ADR-0119 決定 2 が機械クライアントの作成を追認し、
+   > > SC-05 の「管理者限定」を人の利用者についての定めとした）。実装は [IADR-0044](./IADR-0044_backend-service-authorization-defense-in-depth.md) 決定 1 の 2026-09-27 追記。
 2. **サーバ側（BFF）を実効境界とする。** `/bff/datasources/*` はグループ全体を `RequireRole(platform-admin, platform-operator)` で保護する（インラインポリシー。共有 `AuthExtensions` に新ポリシーを追加せず、BFF ローカルに宣言してサービス横断の副作用を避ける）。フロントは `RequireRole`（[IADR-0035](./IADR-0035_frontend-role-based-nav-and-existence-hiding.md)）でルート／ナビを出し分け、権限外は NotFound を描画して**画面の存在を示さない**（UI は表示制御専用）。
 3. **権限外は 403（無認証は 401）**とする。データソースは文書のような「存在自体の秘匿」対象ではなく（機密文書のタイトルが漏れる懸念が主眼の [IADR-0009](./IADR-0009_wiki-browsing-404-hides-existence.md) とは性質が異なる）、管理 API としては標準的な 403/401 が適切。画面の存在秘匿はフロントの `RequireRole`→NotFound で担保する。
 

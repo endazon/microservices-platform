@@ -73,6 +73,7 @@
       "DocumentReadTrustedRelayTests",
       "DocumentVersioningTests",
       "GrpcDocumentTagWriteTests",
+      "MachineClientOwnDocumentWriteTests",
       "PrivateNoteExposurePublishTests"
     ],
     "docs/tests/FR-07_data-range-analysis.md": [
@@ -100,6 +101,7 @@
       "BatchLoopForeignCancellationTests",
       "DashboardEndpointTests",
       "GraphDocumentBodyUpdatedAtTests",
+      "GrpcKnowledgeHealthReporterTests",
       "KnowledgeHealthEndpointTests",
       "KnowledgeHealthProducerTests",
       "LlmUsageMetricsTests",
@@ -126,6 +128,7 @@
       "ConversionJobStoreTests",
       "DeterministicGuidTests",
       "DiagramCodingLimitsTests",
+      "ExternalProcessTimeoutTests",
       "FormatRoutingBodyConverterTests",
       "LlmGatewayDiagramCoderTests",
       "LlmGatewayGrpcDiagramCoderTests",
@@ -203,6 +206,8 @@
       "AiSuggestionGenerationTests",
       "AiSuggestionStateMachineTests",
       "GraphDocumentSyncConsumerTests",
+      "GrpcDocumentTagWriterTests",
+      "GrpcTagDictionaryReaderTests",
       "SimilaritySourceWiringTests",
       "SuggestionPromptGateTests",
       "TermOverlapSimilarityCandidateSourceTests",
@@ -247,6 +252,7 @@
       "BffNotificationEndpointTests",
       "EmailIndependenceTests",
       "EmailSendRateTests",
+      "GrpcPrivateNoteNotifierTests",
       "NotificationContractTests",
       "NotificationIngressTests",
       "NotificationOwnerScopingTests",
@@ -431,6 +437,7 @@
       "ConversionJobEndpointTests",
       "ConversionJobStoreTests",
       "DiagramCodingTimeoutPipelineTests",
+      "ExternalProcessTimeoutTests",
       "NormalizationServiceTests",
       "PandocConversionServiceTests",
       "PandocExtractedMediaRewriteTests",
@@ -465,7 +472,8 @@
       "BffGraphEndpointTests",
       "EdgeTypeCatalogTests",
       "GraphEndpointsSecrecyTests",
-      "GraphTraversalTests"
+      "GraphTraversalTests",
+      "GrpcGraphNeighborExpanderTests"
     ]
   }
 }

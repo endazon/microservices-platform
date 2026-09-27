@@ -20,6 +20,7 @@ plan_refs:
 related_specs:
   - ../specs/20260703_FR-12_document-normalization-pipeline.md
   - ../specs/20260927_issue-1621_diagram-coder-timeout-retain.md
+  - ../specs/20260927_issue-1641_pandoc-timeout-and-kill.md
   - ../../docs/functional/FR-12_document-normalization.md
   - ../../docs/tests/FR-12_document-normalization.md
   - ./IADR-0007_llm-egress-routing-config-driven.md
@@ -109,6 +110,37 @@ FR-12 / UC-06 は「取得した原本を、AI が扱いやすい正規化形式
 - **pandoc 実行**: `IBodyConverter` は pandoc が利用可能かつ原本がローカル解決可能な場合、
   `pandoc -f <fmt> -t gfm --extract-media <tmp> <src>` を実行し、抽出画像を `ExtractedFigure` に写す。
   恒久失敗（pandoc 非0終了）は例外を送出し、MassTransit の再試行→デッドレターへ委ねる。
+
+> **［2026-09-27 追記 / #1641］pandoc の実行（と同じ型の pdftotext の実行）に自前の期限を持たせ、期限切れか呼び出し元の取り消しでプロセスツリーごと止める。**
+>
+> **欠陥**: pandoc の呼び出し（`PandocConversionService.RunPandocAsync`）は `WaitForExitAsync(ct)` で待つだけで、自前の期限を持たず、
+> 取り消されてもプロセスを止めなかった（`using` の `Dispose` はハンドルを閉じるだけ）。PDF のテキスト層抽出（`PdfTextLayerConverter`・IADR-0356）と
+> 両者の版の確かめも同じ形だった。受け口は Wolverine の Inline（1 通ずつ処理）で、#1621 の追記 4. が受け口の実行期限を 300 秒にしたため、
+> 止まった pandoc は 1 通で最大 4 × 300 ＋ 42 ≒ **1242 秒**受け口をふさぎ（従前 282 秒）、取り消された pandoc は受け口の外で走り続けた。
+>
+> **決定**:
+> 1. **本文変換の外部プロセスの期限** `Conversion:BodyConversionTimeoutSeconds`（既定 **90 秒**・下限 1 秒）。pandoc と pdftotext で共用する
+>    （1 文書は形式でどちらか一方だけを通る）。値は #1621 の上限と同じ record（`DiagramCodingLimits.BodyConversionTimeout`）が持ち、変換器は DI から必須の引数で受ける。
+> 2. **起動時の検査を広げる**: 受け口の期限 ＞ **本文変換の期限** ＋ 総枠 ＋ 1 回の期限（#1621 の追記 4. の「受け口 ＞ 総枠 ＋ 1 回」を包含）。
+>    既定では 300 ＞ 90 ＋ 120 ＋ 20 ＝ 230 で、原本の取り寄せ・版の確かめ・保管・発行に 70 秒が残る。鍵は helm・compose・appsettings のどこにも無いので、稼働構成は既定で起動する。
+> 3. **実行器 `ExternalProcess.RunAsync`** を 4 か所（pandoc の変換・版、pdftotext の抽出・版）で共用する。期限の CTS と呼び出し元の ct を連結して待ち、
+>    どちらかが立ったら `Process.Kill(entireProcessTree: true)` → 刈り取り（上限 10 秒）→ 例外。**呼び出し元の ct が立っていれば `OperationCanceledException`
+>    （その ct を運ぶ）、そうでなければ `BodyConversionTimeoutException`（`TimeoutException` の派生・道具名と期限と構成鍵をメッセージに持つ）**。
+>    両方立ったら呼び出し元を優先する（#1604 / #1621 と同じ境界）。版の確かめは固定の 10 秒で、呼び出し元の取り消しは「無い」へ畳まずに外へ出す。
+> 4. **期限切れは再試行する**（受け口の `catch (Exception)` が失敗を記録して再送出する。未対応形式のように再送出を止める経路にはしない）。
+>    負荷で遅れただけの一過性の時間切れがあり得るうえ、UC-06 例外フロー「本文変換の恒久失敗は再試行し、継続失敗はデッドレターへ送る」に揃える。
+>    止まった pandoc が 1 通でふさぐ時間は 4 × 90 ＋ 42 ＝ **402 秒**になる（刈り取りが上限の 10 秒まで掛かる最悪でも 4 × 100 ＋ 42 ＝ 442 秒）。
+>
+> **RabbitMQ の prefetch・`consumer_timeout` は変えない**: `consumer_timeout`（ブローカ既定 30 分）は配信から ack までの時間に掛かり、1 通単独では
+> 最悪（本文変換以外の段が止まった場合の 4 × 300 ＋ 42 ＝ 1242 秒）でも届かない。prefetch（Wolverine 既定 100）で先に受け取った配信は前の配信の処理中も
+> 時計が進むので、止まる配信が 5 通続けば（5 × 402 ＞ 1800。刈り取りの最悪 442 秒でも 4 通では 1768 ＜ 1800）掛かり得るが、そのときブローカはチャネルを閉じて未 ack の配信を**再キューする**（捨てない）。
+> 変換は冪等（決定 C-2 の決定的 `DocumentId`）なので二重処理は害にならない。どちらも共通基盤（`WolverineExtensions.ListenToPlatformQueue`）とブローカの構成に属し
+> 全サービスの受け口に効くため、1 サービスの外部プロセスの期限の修正で動かす根拠は無い。
+>
+> 試験: `ExternalProcessTimeoutTests`（起動する命令を試験用の口 `StartInfoFilter` で差し替え、子を持って止まる命令〔Linux: `sh` ＋ `sleep`、Windows:
+> `powershell` ＋ `ping 127.0.0.1`〕を pandoc / pdftotext の代わりに起動する。期限でツリーごと止まり親も子も残らない・受け口から通してジョブが失敗理由つきで
+> 記録される・呼び出し元の取り消しでも止まり取り消しとして外へ出る・正常系と非 0 終了は不変）、`DiagramCodingLimitsTests`（既定値・丸め・広げた検査・配線）。
+> 作業仕様書: `.ai-context/specs/20260927_issue-1641_pandoc-timeout-and-kill.md`。**本文（pandoc 実行の決定）は書き換えない。**
 
 ## 理由
 
