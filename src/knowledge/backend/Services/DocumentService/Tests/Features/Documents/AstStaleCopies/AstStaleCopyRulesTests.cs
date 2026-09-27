@@ -169,7 +169,7 @@ public class AstStaleCopyRulesTests
         verdict.Category.Should().Be(AstCopyCategory.Report, "形まで通った写しは種別を持つ（重複の数えに使う）");
     }
 
-    // ── kind の値域を AST の実値で丸ごと固定する（過不足の両方を検出する。AST の KnowledgeTagVocabularyTests と同じ型） ──
+    // ── kind の値域を AST の実値で丸ごと固定する（過不足の両方を検出する。AST 側で KB のタグの語彙を固定している試験と同じ型） ──
     //
     // 出典（AST の隣接クローン 40d992e で読んだ。基盤は AST の型を参照できないので値を写して固定する）:
     //   - 報告書: `backend/Services/ReportService/Domain/TradingReport.cs` の `enum ReportKind { Daily, Weekly, Monthly }`
