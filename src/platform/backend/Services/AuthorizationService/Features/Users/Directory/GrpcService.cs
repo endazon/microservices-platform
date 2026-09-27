@@ -174,11 +174,22 @@ public sealed class UserDirectoryGrpcService(
     // 🔴 **無効化された利用者は持たないと答える** —— 退職者の名前で管理者の上書きを通さない。
     // 🔴 「居ない」は `found=false`（応答）、「引けなかった」は例外 → status（`GetUserAttributes` と同じ分離）。
     //   利用者名の照合は `FindByUsernameAsync`（大小文字無視・一意でなければ引けなかった）に委ねる。
+    // 🔴 ［#1636 監査 N2］**問えるロールは許可集合（`platform-admin` だけ）に固定する。** 任意のロールを問えると、
+    //   `platform-service` の保持者が「誰がどのロールを持つか」を列挙できるオラクルになる。集合の外は利用者を引く前に
+    //   PERMISSION_DENIED（序数一致。呼び出し元が要る問いだけを面へ出す ＝ [[IADR-0401]] 決定 2）。
+    private static readonly HashSet<string> AnswerableRealmRoles = new(StringComparer.Ordinal)
+    {
+        PlatformAuthPolicies.AdminRole,
+    };
+
     public override async Task<CheckRealmRoleResponse> CheckRealmRole(
         CheckRealmRoleRequest request, ServerCallContext context)
     {
         if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Role))
             throw new RpcException(new Status(StatusCode.InvalidArgument, "username と role は必須である。"));
+
+        if (!AnswerableRealmRoles.Contains(request.Role))
+            throw new RpcException(new Status(StatusCode.PermissionDenied, "この面で問えるロールではない。"));
 
         var user = await identity.FindByUsernameAsync(request.Username, context.CancellationToken);
         if (user is null)

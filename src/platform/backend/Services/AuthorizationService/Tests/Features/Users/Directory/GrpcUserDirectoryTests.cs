@@ -455,14 +455,29 @@ public class GrpcUserDirectoryTests
         }
     }
 
-    // 🔴 ロール名は序数一致（大小文字違い・接頭辞は別のロール）。
+    // 🔴 ロール名は序数一致（大小文字違い・接頭辞は別のロール）。［#1636 監査 N2］許可集合の外なので、答えずに PERMISSION_DENIED。
     [Theory]
     [InlineData("PLATFORM-ADMIN")]
     [InlineData("platform-admi")]
     [InlineData("platform-admin-x")]
     public async Task CheckRealmRole_matches_role_names_ordinally(string role)
     {
-        (await CheckRoleAsync("sato.hanako", role)).HasRole.Should().BeFalse();
+        var act = () => CheckRoleAsync("sato.hanako", role);
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
+    }
+
+    // 🔴 ［#1636 監査 N2］実在するロールでも、許可集合（platform-admin）の外は問えない —— 名簿を引く前に拒む
+    // （「誰が運用者か」を列挙するオラクルにしない）。陽性対照は同じ利用者の platform-admin の問いが答えること。
+    [Theory]
+    [InlineData("platform-operator")]
+    [InlineData("platform-service")]
+    public async Task CheckRealmRole_outside_the_answerable_roles_is_permission_denied(string role)
+    {
+        var act = () => CheckRoleAsync(EnabledUser, role);
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
+        (await CheckRoleAsync(EnabledUser, PlatformAuthPolicies.AdminRole)).Found.Should().BeTrue("陽性対照: 許可集合のロールは答える");
     }
 
     [Theory]

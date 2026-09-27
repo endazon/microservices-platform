@@ -53,6 +53,20 @@ public class GrpcApproverRoleDirectoryTests
             .Should().Be(ApproverAdminState.Unknown);
     }
 
+    // 🔴 ［#1636 監査 N1］照会が止まった（s2s トークンの取得が返らない等。status ではなく取り消しで終わる）なら、
+    // 自分の期限（LookupTimeout）で Unknown へ倒す —— 管理者として通さず、要求の取り消しとも混ぜない。
+    [Fact]
+    public async Task 照会が止まれば自分の期限でUnknown()
+    {
+        using var guard = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        guard.CancelAfter(GrpcApproverRoleDirectory.LookupTimeout * 10);
+
+        var state = await Directory(FakeRoleClient.Hanging()).GetAdminStateAsync("erin", CancellationToken.None)
+            .WaitAsync(guard.Token);
+
+        state.Should().Be(ApproverAdminState.Unknown);
+    }
+
     // 要求そのものが取り消されたなら、障害と混ぜずに取り消しとして伝える。
     [Fact]
     public async Task 要求が取り消されたなら取り消しとして伝える()
@@ -92,10 +106,24 @@ public class GrpcApproverRoleDirectoryTests
 
         public static FakeRoleClient Failing(StatusCode status) => new(null, status);
 
+        // 応答せず、渡された ct が立ったら取り消しで終わる（止まった s2s トークンの取得と同じ終わり方）。
+        public static FakeRoleClient Hanging() => new(null, null) { _hang = true };
+
+        private bool _hang;
+
         public override AsyncUnaryCall<Pb.CheckRealmRoleResponse> CheckRealmRoleAsync(
             Pb.CheckRealmRoleRequest request, CallOptions options)
         {
             LastRequest = request;
+            if (_hang)
+            {
+                var hung = Task.Delay(Timeout.Infinite, options.CancellationToken)
+                    .ContinueWith<Pb.CheckRealmRoleResponse>(
+                        _ => throw new OperationCanceledException(options.CancellationToken),
+                        CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+                return new AsyncUnaryCall<Pb.CheckRealmRoleResponse>(
+                    hung, Task.FromResult(new Metadata()), () => Status.DefaultSuccess, () => [], () => { });
+            }
             var response = _failWith is { } status
                 ? Task.FromException<Pb.CheckRealmRoleResponse>(new RpcException(new Status(status, "fake")))
                 : Task.FromResult(_answer!);
