@@ -1,5 +1,6 @@
 using ConversionService.Domain.Ports;
 using ConversionService.Infrastructure.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using System.Diagnostics;
@@ -21,12 +22,22 @@ namespace ConversionService.Infrastructure.ExternalServices;
 // 🔴 **fail-closed は「本文があるのに作れない」場合に限って維持する**（IADR-0320 決定 2 と同じ線）。
 // pdftotext が実行時イメージに無い → 既定は `BodyConversionUnavailableException`。
 // pdftotext が非 0 終了（壊れた PDF・暗号化）→ `InvalidOperationException` → 再試行 → デッドレター。
+//
+// 🔴 IADR-0008（2026-09-27 追記 / #1641）: pandoc と同じく**自前の期限つきで起動し、期限切れか呼び出し元の取り消しで
+// プロセスツリーごと止める**（`ExternalProcess`。期限は `DiagramCodingLimits.BodyConversionTimeout`）。
 public class PdfTextLayerConverter(
     IObjectStorageClient storage,
     IOptions<ConversionOptions> options,
+    DiagramCodingLimits limits,
     ILogger<PdfTextLayerConverter> logger) : IBodyConverter
 {
     private bool AllowDegraded => options.Value.AllowDegradedBodyConversion;
+
+    // #1641: pdftotext 1 回の期限（`Conversion:BodyConversionTimeoutSeconds`。pandoc と同じ鍵）。
+    internal TimeSpan ProcessTimeout => limits.BodyConversionTimeout;
+
+    // 試験用の口（#1641）: 起動する命令を差し替える。本番は恒等（`pdftotext` をそのまま起動する）。
+    internal Func<ProcessStartInfo, ProcessStartInfo> StartInfoFilter { get; init; } = static psi => psi;
 
     private readonly RawSourceResolver _resolver = new(storage, logger);
 
@@ -37,7 +48,7 @@ public class PdfTextLayerConverter(
             storageUri, contentType);
 
         // 抽出器が利用可能か確認する。無いのは環境の欠陥であり、既定では失敗させる。
-        if (await TryGetPdfToTextVersionAsync(ct) is null)
+        if (await TryGetPdfToTextVersionAsync(ct, StartInfoFilter, logger) is null)
         {
             return Degrade(storageUri,
                 $"pdftotext が実行時イメージに無い（{storageUri} の本文抽出ができない）。"
@@ -90,7 +101,9 @@ public class PdfTextLayerConverter(
     // 原本を pdftotext でプレーンテキストへ落とし、標準出力を返す。
     // `-enc UTF-8` で符号化を固定し、`-nopgbrk` で改頁（\f）を出さない。出力先 `-` は標準出力。
     // 恒久失敗（非 0 終了）は例外を送出し、再試行→デッドレターへ委ねる（UC-06 例外フロー）。
-    private static async Task<string> RunPdfToTextAsync(string sourcePath, CancellationToken ct)
+    // #1641: 期限（`ProcessTimeout`）切れは `BodyConversionTimeoutException`、呼び出し元の取り消しは
+    // `OperationCanceledException`。どちらもプロセスツリーを止めてから投げる（`ExternalProcess`）。
+    private async Task<string> RunPdfToTextAsync(string sourcePath, CancellationToken ct)
     {
         var psi = new ProcessStartInfo("pdftotext")
         {
@@ -106,21 +119,14 @@ public class PdfTextLayerConverter(
         psi.ArgumentList.Add(sourcePath);
         psi.ArgumentList.Add("-");
 
-        using var proc = Process.Start(psi)
-            ?? throw new InvalidOperationException("Failed to start pdftotext process");
+        var result = await ExternalProcess.RunAsync(
+            StartInfoFilter(psi), "pdftotext", ProcessTimeout, logger, ct);
 
-        // デッドロック回避のため、待機前に stdout/stderr の読み取りを開始する。
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync(ct);
-        var stderrTask = proc.StandardError.ReadToEndAsync(ct);
-        await proc.WaitForExitAsync(ct);
-        var text = await stdoutTask;
-        var error = await stderrTask;
-
-        if (proc.ExitCode != 0)
+        if (result.ExitCode != 0)
             throw new InvalidOperationException(
-                $"pdftotext exited with code {proc.ExitCode} for {sourcePath}: {error}");
+                $"pdftotext exited with code {result.ExitCode} for {sourcePath}: {result.StandardError}");
 
-        return text;
+        return result.StandardOutput;
     }
 
     /// <summary>
@@ -166,7 +172,10 @@ public class PdfTextLayerConverter(
     // 版の出力は**標準エラー**へ出る（標準出力は空）ので、両方読んで空でない側を採る。
     // 🔴 終了コードでは判定しない —— poppler の `pdftotext -v` は 0 で終わるが、同名の xpdf 版は 99 で終わる
     // （開発機で実測）。「版の行が出た」ことを在る証拠とし、終了コードは版の行が無いときだけ見る。
-    internal static async Task<string?> TryGetPdfToTextVersionAsync(CancellationToken ct)
+    //
+    // #1641: 版の確かめも期限（`ExternalProcess.VersionProbeTimeout`）つきで起動し、期限切れ・取り消しではツリーごと止める。
+    internal static async Task<string?> TryGetPdfToTextVersionAsync(CancellationToken ct,
+        Func<ProcessStartInfo, ProcessStartInfo>? startInfoFilter = null, ILogger? logger = null)
     {
         try
         {
@@ -177,19 +186,17 @@ public class PdfTextLayerConverter(
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            using var proc = Process.Start(psi);
-            if (proc is null) return null;
-            // 待機前に読み始める（パイプが埋まると WaitForExit が返らない）。
-            var stdout = proc.StandardOutput.ReadToEndAsync(ct);
-            var stderr = proc.StandardError.ReadToEndAsync(ct);
-            await proc.WaitForExitAsync(ct);
-            var text = await stderr;
-            if (string.IsNullOrWhiteSpace(text)) text = await stdout;
+            var result = await ExternalProcess.RunAsync(startInfoFilter?.Invoke(psi) ?? psi, "pdftotext",
+                ExternalProcess.VersionProbeTimeout, logger ?? NullLogger.Instance, ct);
+            var text = result.StandardError;
+            if (string.IsNullOrWhiteSpace(text)) text = result.StandardOutput;
             var firstLine = text.Split('\n')[0].Trim();
             if (firstLine.Contains("pdftotext", StringComparison.OrdinalIgnoreCase)) return firstLine;
-            if (proc.ExitCode != 0) return null;
+            if (result.ExitCode != 0) return null;
             return firstLine.Length == 0 ? "pdftotext" : firstLine;
         }
+        // #1641: 呼び出し元の取り消しは「pdftotext が無い」へ畳まずに外へ出す。
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch { return null; }
     }
 }

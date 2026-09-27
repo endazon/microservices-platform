@@ -32,6 +32,7 @@ public class PandocConversionServiceTests
         bool allowDegraded = false, IObjectStorageClient? storage = null) =>
         new(storage ?? new UnresolvableStorage(),
             Options.Create(new ConversionOptions { AllowDegradedBodyConversion = allowDegraded }),
+            DiagramCodingLimits.Default,
             NullLogger<PandocConversionService>.Instance);
 
     // 🔴 既定（fail-closed）では pandoc 未導入は**例外**である。静かに縮退しない。
