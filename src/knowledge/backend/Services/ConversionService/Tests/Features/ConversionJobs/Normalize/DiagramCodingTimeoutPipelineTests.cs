@@ -71,8 +71,8 @@ public class DiagramCodingTimeoutPipelineTests
             .Which.AssetUris.Should().ContainSingle().Which.Should().EndWith("/assets/fig-1.png");
     }
 
-    // T-48: 図 5 つ・ゲートウェイは応答しない。1 回 1 秒 × 2 回で総枠（2 秒）を使い切り、**残る 3 つはゲートウェイを
-    // 呼ばずに**画像として残す。総枠が無ければ 5 回 × 1 秒 ＝ 5 秒で受け口の期限（4 秒）を越え、ジョブは失敗する。
+    // T-48: 図 5 つ・ゲートウェイは応答しない。1 回 1 秒の期限が積もって総枠（2 秒）を使い切り、**残りの図はゲートウェイを
+    // 呼ばずに**画像として残す（通常は 2 回で使い切る）。総枠が無ければ 5 回 × 1 秒 ＝ 5 秒で受け口の期限（4 秒）を越え、ジョブは失敗する。
     [Fact]
     public async Task Exhausted_budget_retains_the_remaining_figures_without_calling_the_gateway()
     {
@@ -84,7 +84,9 @@ public class DiagramCodingTimeoutPipelineTests
         await pipeline.HandleAsync(ev, handler.Token);
 
         handler.IsCancellationRequested.Should().BeFalse("総枠があれば受け口の実行期限より前に終わる");
-        gateway.Requests.Should().Be(2, "総枠 2 秒を 1 回 1 秒の期限が 2 回で使い切る");
+        // 回数は負荷で揺れる（1 回目が期限 1 秒 ＋ 待ち行列の遅れで総枠 2 秒を越えれば 1 回で使い切る。手元の全体実行で 1 回を実測）。
+        // 固定するのは「少なくとも 1 回は呼び、全 5 図は呼ばない」こと。総枠が無ければ 5 図すべてを呼ぶ（変異 M7）。
+        gateway.Requests.Should().BeInRange(1, 3, "総枠を使い切った残りの図はゲートウェイを呼ばない");
         var job = (await pipeline.ReadJobAsync(ev.FetchId))!;
         job.Status.Should().Be(ConversionJobStatus.Succeeded);
         job.DiagramsRetained.Should().Be(5);

@@ -127,6 +127,13 @@ issue: "#1621"
 
   本 PR では直さない（射程外。起票は依頼元に委ねる）。
 
+## フォローアップ（射程外・低）
+
+- **固まった pandoc が受け口の待ち行列を占有する時間が延びる**（再監査の指摘）。受け口の実行期限を 60 → 300 秒にしたので、pandoc（自前の期限を持たず受け口の ct に従う）が
+  固まると 1 回の試行が最大 300 秒続く。試行は 1 回の配信で 4 回（初回 ＋ 再試行 2・10・30 秒）なので、1 通が受け口を占有し得る時間は最大
+  4 × 300 ＋ 42 ＝ **約 1242 秒**（従前は 4 × 60 ＋ 42 ＝ 282 秒）。受け口は 1 通ずつ処理するため（再監査の見立て）、その間は後続の原本の変換が待たされる。
+  対処（pandoc に図のコード化と同じく自前の期限を与える等）は依頼元が別 issue で扱う。本 PR では直さない。
+
 ## 検証
 
 実測はすべて 2026-09-27、手元（Windows・.NET SDK 10）。結果は PR 本文と報告に記す。
@@ -134,6 +141,7 @@ issue: "#1621"
 - `dotnet test src/knowledge/backend/backend.slnx`（影響ユニット）。
 - `dotnet format <slnx> --verify-no-changes`: `src/knowledge/backend/backend.slnx`・`src/platform/backend/backend.slnx`。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`。
+- 全体実行の揺らぎ（再監査の指摘）: T-48 のゲートウェイへの要求の回数は負荷で 1〜2 回に揺れる（1 回目が期限 ＋ 待ち行列の遅れで総枠を越える）。回数は「1 以上 3 以下」で見る（総枠が無ければ 5 回）。
 - 変異（1 か所ずつ。修正のコミットの上で書き換え、`git show HEAD:<path> > <path>` で戻す）:
   - M1: REST の捕捉を型だけへ戻す → AC-1・AC-4・AC-8（端から端）の試験が赤。
   - M2: REST の捕捉を型で広げる（`|| ex is TaskCanceledException`）→ AC-2・AC-5 の試験が赤。
