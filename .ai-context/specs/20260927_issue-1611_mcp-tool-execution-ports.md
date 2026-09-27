@@ -158,3 +158,76 @@ compose・helm の「各サービスの受け口は #1611 まで無い」→ 同
   登録簿の属性と IdP の属性の関係は計画に定めが無い（[[IADR-0479]] §結果）。個人資料は 2 層で落ちるので緩む向きではない。
 - proto の破壊的変更の承認（allowlist の `approvedBy`）は、ADR-0117 決定 3 と #1611 の本文を根拠に記入した。レビューで利用者の確認を受けること。
 - MCP サーバーと受け口を同じ器で動かす結合試験は無い（ユニットをまたぐ器が無い）。
+
+---
+
+## ［2026-09-27 追記 / #1611］段 3: GraphService の実行口
+
+> 段 1 の記録（上）は書き換えない。本節は段 3 の着手前に書き、実施結果を末尾に足した。
+
+### 起点・段の並び
+
+- 基点 `origin/develop` `b633e303`（段 1＝#1662 の着地後）。`git rev-parse --is-shallow-repository` = `false`。ブランチ `feat/FR-16-mcp-tool-execution-graph`。
+- **段 2（DocumentService）は #1615（内容の ABAC）の後ろへ回した** —— DocumentService の読み取りには内容の ABAC がまだ無く、実行口を今の判定点に
+  乗せると組織文書が属性で絞られないため。**本 PR（段 3）は `Refs #1611` で、#1611 は段 2 で閉じる。**
+- 束ねない判断（段 1 の表）は変わらない。本 PR は GraphService の受け口だけを足し、proto・MCP サーバーは変えない。
+
+### 母集合（規則 9。誤りの側の文字列で走査した）
+
+走査語: `#1611`・`段 2・3`・`後続の段`・`文書・グラフ`・`DocumentService・GraphService`・`UNIMPLEMENTED`/`Unimplemented`。
+除外は段 1 と同じ（`bin` / `obj` / `node_modules` / `.git` / `src/ai-stock-trading`、凍結記録 `.ai-context/specs/`、生成物 `CHANGELOG.md`）。
+
+1. **「グラフには受け口が無い」と書く記述** —— proto `mcp_tool_execution.proto`（■ 受け口の段落）／`GrpcToolInvoker.cs`（2 箇所）・`ToolInvocationService.cs`（1）・
+   `GrpcToolInvokerTests.cs`（1）の `［#1611 段 1］文書・グラフ`／compose・helm の `document・graph は後続の段まで拒否`／
+   `docs/api/FR-16_mcp-server.md` の注記／`docs/api/east-west-grpc.md` §14 つ目の面／`docs/tests/FR-16_mcp-server.md` X-14・未実施・残件／
+   IADR-0462 の追記（「文書・グラフは後続の段まで」）／IADR-0479 §残るもの
+2. **グラフの `UNIMPLEMENTED` を固定する試験** —— GraphService `GrpcMcpToolDeclarationTests.Tool_execution_port_is_not_served_yet_and_returns_unimplemented`
+3. **近傍展開の本体**（`ExpandNeighborsUseCase` / `GraphTraversal` / `GraphViewResponse.Seal`）—— 実行口が再利用する既存の経路（変更は下の「設計」の 2 点だけ）
+
+**本 PR で直すもの**: 1 の全件（「文書だけが無い」へ）・2 の反転。IADR-0462 は凍結記録の追記ブロックなので本文を直さず、IADR-0479 側の追記で段 3 を記録する。
+**除外（直さない）**: DocumentService の `UNIMPLEMENTED` の試験（段 2 で反転する。今も正しい）。
+**この変更で新たに誤りになる自分の記述（規則 10）**: 1 を「文書だけ」へ直した記述は段 2 で再び誤りになる（段 2 の母集合へ引き継ぐ）。
+
+### 受け入れ基準（段 3）
+
+- G-1 **実行口（Graph）**: `platform.mcp.v1.McpToolExecution/Execute` を h2c で受け、自分の申告名（`graph.get_backlinks` / `graph.get_links` / `graph.traverse`）だけを実行する。
+  他は `NOT_FOUND`。面は `ServiceCaller` を要求し、申告の口（`MapMcpToolEndpoints`）と対で張る。
+- G-2 🔴 **MCP サーバー以外は拒否**: 許可集合 `McpToolExecution:TrustedUserContextClients`（既定 `mcp-server`。共有 `TrustedUserContextRelay`。
+  `Program.cs` で `ThrowIfScalar` → `Configure`）。他の `platform-service` の主体・変種・人のトークンは `PERMISSION_DENIED` で、認可の問い合わせを 1 度も行わない。
+  近傍展開の面（`GraphNeighbors:`。既定 `retrieval-service`）とは集合を共有しない。
+- G-3 🔴 **自分で認可する・第二の判定点を作らない**: 本文の利用者名で `IGraphAccessResolver.ResolveForUserAsync`（属性は空・操作は `read`）を問い、
+  既存の `ExpandNeighborsUseCase`（検証 → 認可 → `AuthorizedNode` の型ゲートによるホップごと ABAC → `Seal`）をそのまま通す。
+  権限外の文書は返らず、**権限外の文書を橋にした先も返らない**。`granted=false`・認可サービス不達（既存の縮退で `granted=false`）は 1 件も返らない。
+- G-4 🔴 **本文の scope は効かない**: 旧い番号 3 をワイヤへ載せても、引数に `scope` / `filters` を書いても結果は変わらない。
+- G-5 `action` は受け口が決める（3 ツールとも `read`）。違えば `INVALID_ARGUMENT`。利用者文脈が無い・空も `INVALID_ARGUMENT`。
+- G-6 **引数は丸めない**: `document_id`（必須・GUID）、`hops`（traverse のみ。整数 1〜3・既定 2）、`edge_types`（traverse のみ。GUID の文字列の配列）。
+  外れは `INVALID_ARGUMENT`。境界ちょうど・省略は通る。上限・既定は申告と同じ値（`GraphTraversal` の定数）。
+- G-7 🔴 **サービスアカウント実行は個人資料を返さない・橋にもしない**（ADR-0034 決定 9 の要求側）: 利用者名が `service-account-` で始まるなら、
+  個人資料を起点・中継・結果のどこにも使わない。有人には同じ点で返る（対照）。
+- G-8 **応答**: 共通エンベロープ。`traverse` は起点を除く到達文書、`get_links` は起点が参照する文書（起点 → 相手の辺）、`get_backlinks` は起点を参照する文書（相手 → 起点の辺）。
+  題名と属性を返し、本文・参照リンクは持たない（グラフは本文を持たない）。件数は判定後の件数、表示上限で打ち切ったら `truncated`。
+  起点が見えない・無いは空（存在秘匿。区別しない）。
+- G-9 **取り消し**は取り消しのまま外へ出る（#1646 の規約。既存の経路が `OperationCanceledException` を畳まない）。
+- G-10 **配備**: 既定の許可集合が compose・helm の MCP サーバーの s2s の client と realm の機密クライアントに一致し、実行の宛先に graph-service の h2c が在る（配線試験）。
+
+### 設計（段 3）
+
+- **受け口**（`Features/McpTools/Execute/`）: Retrieval の型と同じ判定順。引数の解釈の後、`GraphUserContext(userId, 空の属性, IsAuthenticated: true)` を組んで
+  `ExpandNeighborsUseCase.ExecuteAsync` を呼ぶ（`get_backlinks` / `get_links` は `hops=1`、`traverse` は指定または既定）。**判定器は増やさない。**
+- **既存の経路への変更は 2 点だけ**:
+  1. `ExpandNeighborsUseCase` / `GraphTraversal` に **`excludePrivateNote`（既定 false）** を足す。true なら起点と各ホップの相手が個人資料のとき、
+     非許可と同じくその場で刈る（**展開・計数より前**）。応答から落とすだけだと、個人資料を橋にして到達した文書が残る（サービスアカウントに関係の存在を漏らす）。
+     REST・近傍展開の gRPC は既定 false のままで挙動は変わらない。
+  2. `GraphViewResponse` に **`Seal` が通したノードの属性**を内部の項目（直列化しない）として持たせる。MCP サーバーの 2 層目（個人資料・制限プロジェクトの除外）と
+     越境判定（機密区分）は属性を読むため、属性の無い応答は越境判定が安全側（本文なし）へ倒れるだけでなく 2 層目が効かなくなる。REST の応答の形は変えない。
+- **応答の写像**: `Seal` 済みのノードと辺だけから作る（未フィルタの部分グラフには触れない）。ノード・辺の順序は探索の到達順。辺の向きは `Edge` の
+  `Source → Target`（バックリンクは Target の逆引き。対称型の辺は正規化順で向きが決まる）。
+- **IADR**: 新設しない。IADR-0479 に段 3 の追記を足す（受け口の形・既存の経路への 2 点の変更・段 2 の後回し）。
+
+### 試験の方針（段 3）
+
+- GraphService の既存の器 `GrpcKestrelFactory`（本番の `Program.cs`・実 Kestrel の h2c・127.0.0.1・本物の JwtBearer）で往復する。器の解決器は
+  `ScopeFor` で答えを決め `ResolvedFor` に問い合わせを記録する（判定の位置の観測点）。陰性と陽性対照を同じ器・同じ点で対にする。
+- テスト仕様書 `docs/tests/FR-16_mcp-server.md` の行は **X-40〜X-49**（段 1 は X-28 まで、段 2 は X-30〜X-39 を予約）。
+- 変異（3 件以上。コミット済みの状態で当てて `git show HEAD:<path>` で戻す）: 許可集合の検査を外す／認可の結果を無視する（`Granted` を真にする）／
+  ホップごとの判定を外す（`AuthorizedNode.Authorize` を素通しにする）／サービスアカウントの刈り込みを外す／操作の突合を外す。

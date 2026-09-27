@@ -249,6 +249,10 @@ builder.Services.Configure<KnowledgeHealthOptions>(
 GraphNeighborsRelayOptions.ThrowIfScalar(builder.Configuration);
 builder.Services.Configure<GraphNeighborsRelayOptions>(
     builder.Configuration.GetSection(GraphNeighborsRelayOptions.SectionName));
+// FR-16, NFR-09, 計画 ADR-0117 決定 3, [[IADR-0479]]（2026-09-27 追記 / #1611 段 3）: MCP のツールの実行口の本文の利用者文脈を
+// 信じる呼び出し元。**未構成なら `mcp-server` だけ。構成したら置き換える**（上の `GraphNeighbors:` の集合とは別）。
+// 登録は `ThrowIfScalar` → `Configure` の順（配列でない 1 つの値なら起動を止める）。
+GraphService.Features.McpTools.Execute.McpToolExecutionRegistration.AddMcpToolExecution(builder.Services, builder.Configuration);
 builder.Services.AddScoped<KnowledgeHealthCollector>();
 // 🔴 [[IADR-0299]] 決定 3: 単一書き手化。受け口は**全量スナップショット置換**であり、2 レプリカが
 // 同時に走ると片方の DELETE が他方の INSERT 済み行を消して**恒久的に過少な件数**が残る。

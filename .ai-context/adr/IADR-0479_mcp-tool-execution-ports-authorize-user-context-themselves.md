@@ -84,3 +84,27 @@ ADR-0117 決定 3 は、本文を利用者文脈（`user_id`・`action`）とツ
 
 - DocumentService・GraphService の受け口（#1611 の後続の段）。
 - MCP サーバーと受け口を同じ器で動かす結合試験（ユニットをまたぐ器が無い）。
+
+---
+
+## ［2026-09-27 追記 / #1611］段 3 GraphService
+
+> 上の本文（段 1 の決定）は書き換えない。本節は段 3（GraphService の受け口）で決めたことだけを足す。作業仕様書の同日付の段 3 の節と対になる。
+
+- **段の並びの変更**: 段 2（DocumentService）は #1615（内容の ABAC）の後ろへ回した —— DocumentService の読み取りには内容の ABAC がまだ無く、
+  実行口を今の判定点に乗せると組織文書が属性で絞られないため。段 3 を先に入れ、#1611 は段 2 で閉じる。
+- **受け口の形**: 決定 2 の判定の順番・決定 3 の許可集合（`McpToolExecution:TrustedUserContextClients`。既定 `mcp-server`。GraphService の
+  `Program.cs` で `ThrowIfScalar` → `Configure`）を RetrievalService と同じ形で持つ。近傍展開の面の集合（`GraphNeighbors:`。既定 `retrieval-service`）とは
+  キーも集合も共有しない。3 ツール（`graph.get_backlinks` / `graph.get_links` / `graph.traverse`）とも操作は `read`。
+- **第二の判定点を作らない**: 認可は既存の `ExpandNeighborsUseCase`（検証 → `IGraphAccessResolver.ResolveForUserAsync`〔利用者名・属性は空・`read`〕→
+  `AuthorizedNode` の型ゲートによるホップごと ABAC → `GraphViewResponse.Seal`）をそのまま通す。被参照・参照先は 1 ホップの結果から辺の向きで選ぶ
+  （`Edge` の Source → Target が意味方向。バックリンクは Target の逆引き）。応答は `Seal` 済みのノードと辺だけから作る。
+- **既存の経路への変更は 2 点**（どちらも既定で従来と同じ挙動）:
+  1. `ExpandNeighborsUseCase` / `GraphTraversal` の `excludePrivateNote`（既定 false）: サービスアカウント実行（決定 4 の接頭辞）では個人資料を
+     **起点・中継・結果のどこにも使わない**（非許可と同じくその場で刈る）。応答から落とすだけの形は退けた —— 個人資料を橋にした先の文書が残り、
+     その関係の存在をサービスアカウントへ明かす。応答の写像でも落とす（多層防御）。
+  2. `GraphViewResponse` に `Seal` が通したノードの属性を内部の項目（`JsonIgnore`・internal）として持たせた。MCP サーバーの越境判定と 2 層目の除外は
+     属性を読むため、属性の無い応答では 2 層目が効かない。REST の応答の形は変えない。
+- **応答の限界**: 共通エンベロープは文書の並びしか持たないので、`graph.traverse` は**辺を返さない**。申告の説明（旧「到達できた文書と辺を返す」）を
+  「到達できた文書（起点を除く）を返す」へ直した（返らないものを呼び出し側の LLM に約束しない）。辺を運ぶにはエンベロープ（ADR-0024 §4）の改定が要り、
+  本段では行わない（緩む向きではない）。

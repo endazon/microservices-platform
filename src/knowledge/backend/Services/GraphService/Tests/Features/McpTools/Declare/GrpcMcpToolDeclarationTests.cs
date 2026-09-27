@@ -94,12 +94,12 @@ public class GrpcMcpToolDeclarationTests
         attr!.Policy.Should().Be(PlatformAuthPolicies.ServiceCaller);
     }
 
-    // 🔴 FR-16, ADR-0117 決定 2・4（#1516）: **ツールの実行口はまだ無い**（各サービスの実行口は #1611 が作る）。
-    // MCP サーバーと同じ組み方（s2s の h2c）で `platform.mcp.v1.McpToolExecution/Execute` を呼ぶと `UNIMPLEMENTED` が返り、
-    // MCP サーバーはそれを fail-closed の拒否へ写す（`GrpcToolInvokerTests`）。実行口を作る作業でこの試験は反転する ——
-    // それまで、解決済みの scope を本文で受け取って信じる受け口を先に作らない（同 決定 4）。
+    // 🔴 FR-16, ADR-0117 決定 2（［2026-09-27 反転 / #1611 段 3］）: **ツールの実行口は申告の口と対で張られている。**
+    // MCP サーバーと同じ組み方（s2s の h2c）で `platform.mcp.v1.McpToolExecution/Execute` を呼ぶと、もう `UNIMPLEMENTED` ではない ——
+    // 利用者文脈の無い要求は受け口の検証が `INVALID_ARGUMENT` で拒否する（受け口が居ることの証明。本体の試験は
+    // `GrpcMcpToolExecutionTests`）。#1516 が固定した「受け口が無い」はこのサービスについて反転した。
     [Fact]
-    public async Task Tool_execution_port_is_not_served_yet_and_returns_unimplemented()
+    public async Task Tool_execution_port_is_served_next_to_the_declaration_port()
     {
         using var channel = GrpcClientExtensions.CreatePlatformChannel(
             _factory.GrpcAddress,
@@ -109,7 +109,7 @@ public class GrpcMcpToolDeclarationTests
             new Pb.ExecuteMcpToolRequest { Tool = "graph.traverse", ArgumentsJson = "{}" },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Unimplemented);
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
     }
 
     // s2s トークンの発行側を固定値へ差し替える（IdP を持たないため）。

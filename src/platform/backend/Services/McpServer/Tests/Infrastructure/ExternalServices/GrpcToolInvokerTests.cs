@@ -193,7 +193,7 @@ public sealed class GrpcToolInvokerTests
         attackerExecution.Received.Should().BeEmpty();
     }
 
-    // 🔴 X-3: **実行口の無い宛先**（［#1611 段 1］本番の文書・グラフはまだこれ）は `UNIMPLEMENTED` —— fail-closed の拒否。
+    // 🔴 X-3: **実行口の無い宛先**（［#1611 段 3 時点］本番の文書はまだこれ）は `UNIMPLEMENTED` —— fail-closed の拒否。
     // 配線の誤りではないので Warning（Error にしない）。
     [Fact]
     public async Task Missing_execution_port_fails_closed_with_a_clear_message()
