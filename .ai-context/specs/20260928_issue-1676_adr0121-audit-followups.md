@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — ADR-0121 系の監査で残った非ブロッキング指摘を片付ける（試験の穴・文書の追随・計画 ADR レンジの引き直し。#1676）
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, FR-05, FR-09, FR-17, FR-10, FR-19, SC-09, UC-05, ADR-0121, ADR-0122, ADR-0120, ADR-0119, ADR-0036, ADR-0034, IADR-0425, IADR-0480, IADR-0481, IADR-0482, IADR-0483]
 author: claude
 created: 2026-09-28
@@ -108,3 +108,25 @@ issue: "#1676"
   `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`、check-trace-blocks / check-test-spec-coverage / check-test-traceability / check-cross-repo-refs /
   check-plan-id-qualification / gen-knowledge-graph --check / check-reading-budget / check-commit-messages が緑。
 - テスト ID は各テスト仕様の develop の最大の次: FR-05 は T-67〜T-69、SC-09 は T-74。
+
+## 実施結果（2026-09-28）
+
+変異は試験のコミットの後に当て、`git show HEAD:<path> > <path>` で戻した。
+
+| # | 変異 | 結果 |
+| --- | --- | --- |
+| A1 | 混在の検査を先頭の値だけで判定する（`LooksLikeBinding(list[0]) && …`） | 赤 1（リテラルが先の行） |
+| A2 | 閉じた枝の「共有が 0 件なら問わずに偽」を外す | 赤 1（T-54） |
+| A3a | 開いた枝の「機械は個人資料を読まない」を外す | 赤 2（T-58・T-69） |
+| A3b | `CallingService` を人として作る（`isMachine: false`） | 赤 1（T-69。本件の前は生き残る形） |
+| A4a | seed の所有者の読み取りのポリシーの値に `alice` を足す | 赤 1（T-67 seed） |
+| A4b | 運用仕様書の本文の文書の条件に `confidentiality` を足す | 赤 1（T-67 運用仕様書） |
+| A5 | 門のロック内の再確認を外す | 赤 1（T-68） |
+| B1a | 予約語の検査を更新でも掛ける（`keyAlreadyStored` を無視） | 赤 4（単体 3・結合 1） |
+| B1b | 更新の口が `keyAlreadyStored: true` を渡さない | 赤 1（結合） |
+| B1c | 予約語の検査を登録でも外す | 赤 7（T-71 ほか） |
+
+B6（3 引数版の private 化）は型で守る（外から 3 引数で呼ぶとコンパイルが通らない）ので、変異試験の対象にしない。
+
+検証: AuthorizationService.Tests 577・DocumentService.Tests 878・GraphService.Tests 761 が全件緑。両ユニットの build（警告は既存の CS0618 のみ）と
+`dotnet format --verify-no-changes` が緑。`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 844 件緑。check-* はすべて緑（check-reading-budget は既存の 90% 超の warn 1 件のみ）。
