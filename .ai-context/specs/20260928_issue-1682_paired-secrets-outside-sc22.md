@@ -173,4 +173,18 @@ issue: "#1682"
 
 ## 実施結果（2026-09-28）
 
-（PR 本文と同じ表を下に書く。）
+変異はコミットの後の状態に 1 件ずつ当て、赤を確かめてから `git show HEAD:<path> > <path>` で戻し、`git diff --quiet` を確かめた（スクリプトは作業場所の外に置いた）。
+
+| # | 変異 | 当てた先 | 赤にした試験 |
+| --- | --- | --- | --- |
+| M1 | `CLIENT_CREATE_ONLY_KEYS` を空にする（既存の client の secret を宣言所有へ戻す） | `reconcile-realm.js` | `keycloak-realm-reconcile.test.js`（既存の client の secret が違っても 0 件） |
+| M2 | `PUT` の本文から `secret` を落とす条件を外す | `reconcile-realm.js` | 同（本文に secret を載せない） |
+| M3 | `msp/postgres` を無条件の `vault kv put` へ戻す | `bootstrap.sh` | `SecretItemBootstrapSeedTests.Paired_secret_kvs_are_created_only_when_absent`（T-78） |
+| M4 | 補助関数の在否の確認を外す（`if false`） | `bootstrap.sh` | 同 |
+| M5 | realm の宣言の `bff` の secret を開発用の形でない値にする | realm JSON | `check-realm-constraints.js`（検査 8。実データ） |
+
+検証: `keycloak-realm-reconcile.test.js` 38 件・`check-realm-constraints.js --self-test` 174 件・`reset-gate.test.js` 12 件・`reset-gate.js --self-test` 17 件・
+`check-stack-ready.js --self-test` 71 件・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 844 件が緑。Platform.Bff.Tests 790 件緑（1 件は既存の skip）。
+`dotnet format src/platform/backend/backend.slnx --verify-no-changes` 緑。check-trace-blocks / check-test-spec-coverage / check-test-traceability / check-cross-repo-refs /
+check-plan-id-qualification / check-doc-links / check-doc-type-vocabulary / gen-knowledge-graph --check / check-commit-messages が緑（check-reading-budget は既存の 90% 超の warn 1 件のみ）。
+稼働クラスタのスクリプト（`bootstrap.sh`・`reconcile-realm.sh`）は実行していない。Runbook はリハーサル未実施である。
