@@ -61,6 +61,21 @@ internal sealed class McpToolExecutionGrpcService(
 
     private static readonly IReadOnlyDictionary<string, string> NoAttributes = new Dictionary<string, string>();
 
+    // 🔴 ［2026-09-27 追記 / #1611 段 3 監査 B-1］**エンベロープへ載せる属性の許可リスト。** MCP サーバーが応答の統制で実際に読むキーだけ:
+    //   - `confidentiality` —— 越境判定（McpServer `EgressPolicy.ConfidentialityKey`）
+    //   - `doc_scope` —— 2 層目の個人資料の除外（McpServer `DocumentScope.Key`）
+    //   - `project` —— 2 層目の制限プロジェクトの除外（`RestrictedProject.DocumentKey`）
+    // それ以外（`shared_with`・`owner`・部署等の ABAC 判定用の属性）は運ばない —— MCP サーバーは attributes をそのまま外部クライアントへ返し、
+    // 共有先は所有者にだけ返す規則（ADR-0098 / IADR-0450）を迂回する。`owner` も MCP サーバーが読まないので落とす。
+    internal static readonly IReadOnlySet<string> EnvelopeAttributeKeys = new HashSet<string>(StringComparer.Ordinal)
+    {
+        ConfidentialityKey,
+        GraphDocumentScope.Key,
+        Platform.Shared.Contracts.Dtos.RestrictedProject.DocumentKey,
+    };
+
+    private const string ConfidentialityKey = "confidentiality";
+
     private static readonly string[] Tools = [GetBacklinksTool, GetLinksTool, TraverseTool];
 
     public override async Task<Pb.McpToolResult> Execute(Pb.ExecuteMcpToolRequest request, ServerCallContext context)
@@ -104,8 +119,10 @@ internal sealed class McpToolExecutionGrpcService(
         if (outcome.IsFailure)
         {
             // 本体の検証（hops・types）は上の引数の検証と同じ値域なので、ここへ来るのは食い違いだけ。丸めずに返す。
-            var status = outcome.Error.Kind == ErrorKind.Validation ? StatusCode.InvalidArgument : StatusCode.Internal;
-            throw new RpcException(new Status(status, outcome.Error.Message));
+            // INTERNAL は固定文言（内部の失敗の中身を外へ出さない。監査 N-4）。
+            if (outcome.Error.Kind == ErrorKind.Validation)
+                throw new RpcException(new Status(StatusCode.InvalidArgument, outcome.Error.Message));
+            throw new RpcException(new Status(StatusCode.Internal, "ツールの実行に失敗しました。"));
         }
 
         return outcome.Value.View is { } view
@@ -228,11 +245,20 @@ internal sealed class McpToolExecutionGrpcService(
 
             var document = new Pb.McpToolDocument { DocumentId = node.DocumentId.ToString(), Title = node.Title };
             foreach (var (key, value) in attributes)
-                document.Attributes[key] = value;
+            {
+                // 🔴 許可リストのキーだけ（上の EnvelopeAttributeKeys）。共有先・所有者は運ばない。
+                if (EnvelopeAttributeKeys.Contains(key))
+                    document.Attributes[key] = value;
+            }
             result.Documents.Add(document);
         }
 
-        result.TotalCount = result.Documents.Count;
+        // 件数は判定後の件数（ADR-0034 決定 4）。［監査 N-1］近傍探索で表示上限に打ち切ったら、許可済みの全体件数（`TotalNodes`。
+        // 起点を含むので 1 を引く）を返す（11_mcp-server-integration §6）。被参照・参照先は辺の向きごとの全体件数を本体が数えないので、
+        // 打ち切り時も返した件数のまま（`truncated` で打ち切りを示す）。
+        result.TotalCount = tool == TraverseTool && view.Truncated
+            ? Math.Max(result.Documents.Count, view.TotalNodes - 1)
+            : result.Documents.Count;
         result.Truncated = view.Truncated;
         return result;
     }

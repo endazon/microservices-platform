@@ -268,3 +268,26 @@ compose・helm の「各サービスの受け口は #1611 まで無い」→ 同
   「結果を返さない」は満たすが、MCP クライアントからは「該当なし」と区別できない（存在秘匿と同じ形）。
 - 取り消しは既存の経路が `OperationCanceledException` を畳まないことに依る（受け口は捕まえない）。受け口の取り消しを直接起こす試験は置いていない。
 - MCP サーバーと受け口を同じ器で動かす結合試験は無い（段 1 と同じ）。
+
+### ［2026-09-27 追記 / #1611］段 3 の監査（PR #1668、NO-GO）への対応
+
+- **B-1（ブロッキング）: 他人の共有先が MCP クライアントへ渡っていた。** `GraphDocument.Attributes` は同期時に `shared_with` を重ねた ABAC 判定用の像であり
+  （`GraphDocumentSyncConsumer.AbacAttributes`）、段 3 の初版は `NodeAttributes` がそれを丸ごと複製し、写像が全キーをエンベロープへ載せていた。
+  共有先は所有者にだけ返す規則（ADR-0098 / IADR-0450）を MCP のグラフ経路だけが迂回していた。
+  **エンベロープの属性は許可リストの文書属性だけ。共有先は運ばない。** 直し方:
+  1. 写像の許可リスト `EnvelopeAttributeKeys` = `confidentiality`・`doc_scope`・`project`。根拠は McpServer のコードで属性を読む箇所の走査
+     （`git grep` の `Attributes.TryGetValue` / `IsPrivateNote` / `IsRestricted`）: `EgressPolicy.ConfidentialityKey`（越境判定）、`DocumentScope.Key`
+     （2 層目の個人資料の除外）、`RestrictedProject.DocumentKey`（2 層目の制限プロジェクトの除外）の 3 つだけ。登録簿の属性（`clearance`・`tags`）は
+     文書ではなく主体の属性なので対象外。
+  2. 多層防御として `Seal` が作る `NodeAttributes` からも `AttributeValueKeys.SharedWith` を除く（判定用の像でなく文書の属性だけ）。
+  3. **`owner`（N-2）は落とす** —— McpServer は読まない（上の走査で 0 件）。
+  - **段 1（Retrieval）との差**: Retrieval は索引の入れ子 `attributes` を全キー返す（`QdrantVectorStore.ExtractAttributes`）。共有先は入れ子の外
+    （ペイロード直下）なので入らないが、`owner`・部署等は返る。グラフは許可リストに絞ったので、返すキーは Retrieval より狭い。
+    Retrieval は本 PR では変えない（揃えるかは別件として残る懸念に書く）。
+- **N-1**: `graph.traverse` は表示上限で打ち切ったら許可済みの全体件数（`TotalNodes` − 起点）を `total_count` に返す。被参照・参照先は向きごとの全体件数を
+  本体が数えないので、打ち切り時も返した件数のまま（`truncated` で示す）。
+- **N-4**: 本体の失敗を `INTERNAL` で返すときは固定文言にした（`Error.Message` を外へ出さない）。
+- テスト仕様書に X-50（共有先・所有者の否定と陽性対照）・X-51（打ち切り時の件数）を足した。`docs/tests/FR-17_knowledge-graph.md`・`docs/tests/UC-10_graph-traversal.md` の
+  trace ブロックに IADR-0479・本仕様書・#1611 を足した。
+- **残る懸念（追加）**: Retrieval の実行口は `owner`・部署等を含む索引の属性を全キー返す（共有先は入らない）。MCP の応答の属性を許可リストへ揃えるかは
+  別件の判断とする。被参照・参照先の打ち切り時の件数は全体件数ではない。

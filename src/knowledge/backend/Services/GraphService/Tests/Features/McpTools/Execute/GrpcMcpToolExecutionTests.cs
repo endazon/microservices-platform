@@ -32,6 +32,7 @@ namespace GraphService.Tests.Features.McpTools.Execute;
 public class GrpcMcpToolExecutionTests
 {
     private const string Trusted = "mcp-server";
+    private const string SharedWith = "bob-secret,grp-hr-1234";
     private readonly GrpcKestrelFactory _factory;
 
     public GrpcMcpToolExecutionTests(GrpcKestrelFactory factory)
@@ -95,7 +96,12 @@ public class GrpcMcpToolExecutionTests
         {
             db.Documents.Add(GraphDocument.Create(s.O, "起点", Org(s.AllowedDept), null, DateTimeOffset.UtcNow));
             db.Documents.Add(GraphDocument.Create(s.B1, "被参照元", Org(s.AllowedDept), null, DateTimeOffset.UtcNow));
-            db.Documents.Add(GraphDocument.Create(s.L1, "参照先", Org(s.AllowedDept), null, DateTimeOffset.UtcNow));
+            // L1 は共有付きの組織文書（同期時に重ねる ABAC 判定用の像の形）と、許可リストの `project` を持つ。
+            var l1 = Org(s.AllowedDept);
+            l1[AttributeValueKeys.SharedWith] = SharedWith;
+            l1["owner"] = "carol-owner";
+            l1[RestrictedProject.DocumentKey] = "alpha";
+            db.Documents.Add(GraphDocument.Create(s.L1, "参照先", l1, null, DateTimeOffset.UtcNow));
             db.Documents.Add(GraphDocument.Create(s.L2, "二つ先", Org(s.AllowedDept), null, DateTimeOffset.UtcNow));
             db.Documents.Add(GraphDocument.Create(s.X, "権限外", Org(s.ForbiddenDept), null, DateTimeOffset.UtcNow));
             db.Documents.Add(GraphDocument.Create(s.Z, "権限外の先", Org(s.AllowedDept), null, DateTimeOffset.UtcNow));
@@ -171,7 +177,10 @@ public class GrpcMcpToolExecutionTests
 
         var l1 = links.Documents.Single(d => d.DocumentId == s.Id(s.L1));
         l1.Title.Should().Be("参照先");
-        l1.Attributes.Should().Contain("dept", s.AllowedDept).And.Contain("confidentiality", "internal");
+        l1.Attributes.Should().Contain("confidentiality", "internal").And.Contain(DocumentScopes.Key, DocumentScopes.Organization)
+            .And.Contain(RestrictedProject.DocumentKey, "alpha");
+        l1.Attributes.Keys.Should().BeSubsetOf(McpToolExecutionGrpcService.EnvelopeAttributeKeys,
+            "エンベロープの属性は MCP サーバーが読むキーの許可リストだけ（部署・所有者・共有先は運ばない）");
         l1.HasBody.Should().BeFalse("グラフは本文を持たない");
         l1.HasReferenceUrl.Should().BeFalse();
 
@@ -399,6 +408,59 @@ public class GrpcMcpToolExecutionTests
         var result = await ExecuteAsync(As(Unique("alice"), McpToolExecutionGrpcService.TraverseTool, Args(s.O, json)));
 
         Ids(result).Should().BeEquivalentTo(expected.Select(n => s.Id(names[n])));
+    }
+
+    // 🔴 X-50（否定。監査 B-1）: 共有先（`shared_with`）は所有者にだけ返す規則を MCP の経路で迂回しない。
+    // 所有者でない有人とサービスアカウントの両方で、共有付きの組織文書の応答の属性に共有先も所有者も部署も載らない。
+    // 陽性対照: 同じ文書・同じ応答に許可リストのキー（機密区分・プロジェクト）は載る。
+    [Theory]
+    [InlineData("alice-probe")]
+    [InlineData("service-account-batch-agent")]
+    public async Task 共有先と所有者はエンベロープの属性に載らない(string userId)
+    {
+        var s = await SeedAsync();
+
+        foreach (var tool in new[] { McpToolExecutionGrpcService.GetLinksTool, McpToolExecutionGrpcService.TraverseTool })
+        {
+            var result = await ExecuteAsync(As(userId, tool, Args(s.O)));
+            var l1 = result.Documents.Should().ContainSingle(d => d.DocumentId == s.Id(s.L1), "対照: 共有付きの文書そのものは見える").Which;
+
+            l1.Attributes.Should().Contain("confidentiality", "internal").And.Contain(RestrictedProject.DocumentKey, "alpha");
+            l1.Attributes.Should().NotContainKey(AttributeValueKeys.SharedWith, tool);
+            l1.Attributes.Values.Should().NotContain(v => v.Contains("bob-secret"), tool);
+            l1.Attributes.Should().NotContainKey("owner").And.NotContainKey("dept");
+        }
+    }
+
+    // X-51（監査 N-1）: 近傍探索が表示上限で打ち切ったら `truncated` を立て、件数は許可済みの全体（起点を除く）を返す。
+    // 返した件数ではない（打ち切ったら全体件数〔判定後〕）。権限外の近傍は数えない。
+    [Fact]
+    public async Task 表示上限で打ち切ったら全体件数を返す()
+    {
+        var s = await SeedAsync();
+        var hub = Guid.NewGuid();
+        var extra = GraphTraversal.MaxNodes + 5;
+        await _factory.SeedAsync(db =>
+        {
+            db.Documents.Add(GraphDocument.Create(hub, "ハブ", new() { ["dept"] = s.AllowedDept, ["confidentiality"] = "internal" }, null, DateTimeOffset.UtcNow));
+            for (var i = 0; i < extra; i++)
+            {
+                var n = Guid.NewGuid();
+                db.Documents.Add(GraphDocument.Create(n, $"近傍{i}", new() { ["dept"] = s.AllowedDept, ["confidentiality"] = "internal" }, null, DateTimeOffset.UtcNow));
+                db.Edges.Add(Edge.Create(hub, n, s.LinkType, false, EdgeProvenance.Auto));
+            }
+            // 権限外の近傍（数えない）。
+            var hidden = Guid.NewGuid();
+            db.Documents.Add(GraphDocument.Create(hidden, "権限外の近傍", new() { ["dept"] = s.ForbiddenDept }, null, DateTimeOffset.UtcNow));
+            db.Edges.Add(Edge.Create(hub, hidden, s.LinkType, false, EdgeProvenance.Auto));
+            return Task.CompletedTask;
+        });
+
+        var result = await ExecuteAsync(As(Unique("alice"), McpToolExecutionGrpcService.TraverseTool, Args(hub, ""","hops":1""")));
+
+        result.Truncated.Should().BeTrue();
+        result.Documents.Should().HaveCount(GraphTraversal.MaxNodes - 1, "表示は起点を含めて上限まで");
+        result.TotalCount.Should().Be(extra, "許可済みの全体件数（起点・権限外を除く）");
     }
 
     // 構造の門: 面は ServiceCaller を宣言している（外れると上の門の試験が落ちるが、どの層で外れたかを名指しする）。

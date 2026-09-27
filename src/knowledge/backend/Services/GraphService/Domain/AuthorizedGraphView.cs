@@ -128,9 +128,14 @@ public sealed class GraphViewResponse
             .Select(n => new GraphNodeDto(n.DocumentId, n.Title, GraphDocumentScope.IsPrivateNote(n.Attributes)))
             .ToList();
 
+        // 🔴 ［2026-09-27 追記 / #1611 段 3 監査 B-1］**共有先（`shared_with`）は載せない。** `GraphDocument.Attributes` は同期時に
+        // 共有先を重ねた ABAC 判定用の像であり（`GraphDocumentSyncConsumer.AbacAttributes`）、共有先は所有者にだけ返す
+        // （ADR-0098 / IADR-0450）。ここは文書の属性だけを持つ（実行口の写像の許可リストと二重に守る）。
         var attributes = visible.ToDictionary(
             n => n.DocumentId,
-            n => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(n.Attributes));
+            n => (IReadOnlyDictionary<string, string>)n.Attributes
+                .Where(kv => !string.Equals(kv.Key, AttributeValueKeys.SharedWith, StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(kv => kv.Key, kv => kv.Value));
 
         return new GraphViewResponse(nodes, edges, subgraph.Truncated,
             subgraph.TotalNodes, subgraph.TotalEdges, subgraph.TotalIsLowerBound, attributes);
