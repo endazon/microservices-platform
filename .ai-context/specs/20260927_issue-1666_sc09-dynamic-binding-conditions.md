@@ -207,3 +207,25 @@ issue は「表示の形・どの属性に動的束縛を許すか」に判断�
 - **キーの大小**: 先の対応で、画面・サーバーとも Ordinal に寄せた。評価器はポリシーのキーをそのままフィルタのキーにし（`AbacEvaluator.ResolveScope`）、文書の属性は大小を区別して引く。したがって序数で揃えるのが整合的であり、`Owner`・`SHARED_WITH` の否定の試験を置いた。
 - **T-70 を広げた**: dev seed の全ポリシーを、辞書なしと seed の属性辞書ありの両方で検査する。seed の属性辞書そのものが登録できることと、運用仕様書の本文が通ることも確かめる。
 - FR-09 の機能仕様書の業務ルールに ⑧（束縛の位置・action・混在の禁止）と ⑨（利用者属性の名前）を足した。
+
+［2026-09-28 追記 / #1666］**上の 2 回の対応の検証**（develop 取り込み後のローカル）
+
+- **`src/`**:
+  - lint は 0 エラー（警告 12 件は develop と同数）。typecheck と format:check は通った。
+  - test:coverage は 1813 件合格、exit 0、しきい値内。
+  - `pnpm run i18n` の差分なし、check-i18n-catalogs OK。
+  - `pnpm run build` のあと `check-chunk-budget.js --require` が OK（616.27 kB。`--update` で生成し直しても床は変わらない）。
+  - SC-09 の E2E は 5 件合格。
+- **バックエンド**: AuthorizationService.Tests は 568 件合格。`dotnet format --verify-no-changes` は両ユニットで exit 0。
+- **scripts**:
+  - `REQUIRE_REPO_TESTS=1 scripts.test.js` は 844 件合格。
+  - check-trace-blocks / check-test-spec-coverage（`--update` で対 423 件。SC-09 のテスト仕様書 × `AuthzManagementEndpointTests` が増えた）/ check-test-traceability / check-cross-repo-refs / check-plan-id-qualification / gen-knowledge-graph --check / check-commit-messages は OK。
+  - IADR の連番は 0480・0481・0482。
+- **変異**（コミット後に当て、`git show HEAD:<path> > <path>` で戻した）:
+  - Ma: サーバーが action を見ない（どの action でも read の表で引く）→ 6 件赤（write・manage・analyze × shared_with、manage・analyze × owner）
+  - Mb: 混在の検査を外す → 2 件赤
+  - Mc: 前後の文字を剥がして許す → 2 件赤
+  - Md: 画面を旧判定（どのスコープでも同名があれば束縛の選択肢を足さない）に戻す → 2 件赤（純関数と画面）
+  - Me: 利用者スコープの owner・shared_with の登録拒否を外す → 4 件赤（純関数 3・結合 1）
+  - Mf: 画面が action を見ない → 4 件赤
+  - Mg: サーバーの表のキーを大小無視へ戻す → 2 件赤（`Owner`・`SHARED_WITH`）
