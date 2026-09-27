@@ -229,7 +229,7 @@ internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
             (_, _) => Task.FromResult(new Pb.McpToolResult());
     }
 
-    // 実行面の代役（受け口と同じく ServiceCaller を要求する —— #1611 の受け口が満たすべき形）。
+    // 実行面の代役（受け口と同じく ServiceCaller を要求する —— 各サービスの受け口（#1611）が満たす形）。
     [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
     internal sealed class StubMcpToolExecutionService(StubExecution stub) : Pb.McpToolExecution.McpToolExecutionBase
     {

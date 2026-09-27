@@ -1,4 +1,4 @@
-// FR-16, UC-08, NFR-09, NFR-16, ADR-0024 §2・§4, ADR-0029, ADR-0075, ADR-0117 決定 1・2・4, IADR-0379,
+// FR-16, UC-08, NFR-09, NFR-16, ADR-0024 §2・§4, ADR-0029, ADR-0075, ADR-0086 決定 1, ADR-0088, ADR-0117 決定 1〜4, IADR-0379, IADR-0479,
 // IADR-0462（2026-09-27 追記 / #1516, #1255 経路 ④-b）: MCP サーバーから、ツールを申告したサービスへの**ツール実行**の gRPC 契約。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）: 申告の契約（`mcp_tool_declarations.proto`）と同じく、ツールの規約を定める
@@ -8,14 +8,15 @@
 //   サービスの h2c アドレス（`Mcp:GrpcServices:<サービス名>`）へ送り、`tool` に**申告名**（公開名ではない）を載せる。
 //   宛先の URL を運ぶ項目は持たない —— 申告の中身から宛先を作らない。
 //
-// ■ 🔴 **受け口はまだどのサービスにも無い**（ADR-0117 決定 2。実行口は FR-16 の別作業 #1611）。
-//   それまで呼び出しは `UNIMPLEMENTED` で失敗し、MCP サーバーはツールの実行を fail-closed で拒否する（同 決定 4）。
+// ■ 🔴 **受け口は申告したサービスが持つ**（ADR-0117 決定 2。FR-16 の実行口の作業 #1611）。［2026-09-27 / #1611 段 1］
+//   RetrievalService が最初に持った。DocumentService・GraphService は段 2・3 で足すまで `UNIMPLEMENTED` のままであり、
+//   MCP サーバーはツールの実行を fail-closed で拒否する（同 決定 4）。
 //
-// ■ 🔴 **`scope` は暫定である。** 現行（REST 時代の `HttpToolInvoker`）の本文の意味論をそのまま写した —— MCP サーバーが
-//   解決した実行スコープ（主体・種別・属性・個人資料の除外制約・必要スコープ）。ADR-0117 決定 3 は、本文で運ぶものを
-//   **利用者文脈（`user_id` と `action`）とツールの引数**へ改め、**解決済みの scope を信じさせる形を採らない**と定めた。
-//   その変更は #1611 が行い、このフィールドの番号と名前は reserved へ移す（versioning は IADR-0379 決定 2）。
-//   **この `scope` を信じて認可する受け口を作ってはならない**（同 決定 4 の暫定手段）。
+// ■ 🔴 **本文で運ぶのは利用者文脈（`user_id`・`action`）とツールの引数だけである**（ADR-0117 決定 3。ADR-0086 決定 1 の援用）。
+//   ［2026-09-27 / #1611］従前の暫定の `scope`（MCP サーバーが組んだ実行スコープ）は番号 3 と名前ごと reserved へ移した。
+//   🔴 **受け口は本文の利用者文脈で認可サービスへ判定を問い、自分で認可する**（属性は認可サービスが引き直す。ADR-0088）。
+//   **解決済みの scope を受け取って信じる口は作らない** —— そこへ到達できる誰もが任意の scope を主張できる（IADR-0292 D-1）。
+//   本文の利用者文脈を信じるのは、呼び出し元が MCP サーバー（許可集合。既定 `mcp-server`）であるときだけである。
 //
 // ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは呼び出し側サービス自身（MCP サーバー）の JWT である。
 //   受け口は `ServiceCaller`（realm ロール `platform-service`）を要求すること。利用者のトークンは運ばない
@@ -39,18 +40,20 @@ message ExecuteMcpToolRequest {
   string tool = 1;
   // MCP クライアントから来た引数の JSON（文字列のまま運ぶ。解釈は受け口の責務）。
   string arguments_json = 2;
-  // 暫定（上の注記）。#1611 で利用者文脈へ改め、この番号と名前は reserved へ移す。
-  McpToolInvocationScope scope = 3;
+  // ［2026-09-27 / #1611］暫定の実行スコープ（`scope`）は外した。番号と名前は再利用しない（旧い呼び出し元が載せても読み飛ばされる）。
+  reserved 3;
+  reserved "scope";
+  // 利用者文脈（ADR-0117 決定 3）。受け口は無ければ `INVALID_ARGUMENT` で拒否する（機械の主体へ読み替えない）。
+  McpToolUserContext user = 4;
 }
 
-// MCP サーバーの `ToolInvocationScope` と 1 対 1（暫定。上の注記）。
-message McpToolInvocationScope {
-  string subject_id = 1;
-  string subject_kind = 2;
-  map<string, string> subject_attributes = 3;
-  // 🔴 ADR-0034 決定 9 の要求側の 1 層目（サービスアカウント実行なら true）。応答側のフィルタは MCP サーバーが別に持つ。
-  bool exclude_private_note = 4;
-  string required_scope = 5;
+// FR-16, ADR-0117 決定 3, ADR-0086 決定 1（#1611）: ツールを実行させる利用者の文脈。**判定の入力であって結果ではない。**
+message McpToolUserContext {
+  // 利用者名（`preferred_username`）。サービスアカウント実行なら `service-account-<client>`（Keycloak の利用者名の形）であり、
+  // 受け口はこの接頭辞から ADR-0034 決定 9（個人資料の一律除外）を導く。属性は運ばない（認可サービスが引き直す。ADR-0088）。
+  string user_id = 1;
+  // 操作（`read` 等）。🔴 受け口は自分のツールが要する操作と突き合わせ、違えば拒否する —— この値で判定を緩めさせない。
+  string action = 2;
 }
 
 // ツール応答の共通エンベロープ（MCP サーバーの `McpToolResult`。REST の JSON の綴りと同じ）。

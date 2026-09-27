@@ -10,14 +10,16 @@ namespace McpServer.Infrastructure.ExternalServices;
 
 // FR-16, UC-08, NFR-09, NFR-16, ADR-0024 §2, ADR-0029, ADR-0075, ADR-0117 決定 1・2・4, IADR-0379 決定 4,
 // IADR-0462（2026-09-27 追記 / #1516, #1255 経路 ④-b）: ツールの実行を **gRPC（h2c）** で、ツールを申告したサービスへ送る。
-// 従前の `HttpToolInvoker`（申告の `endpoint` の URL へ POST）を置き換えた。**輸送の差し替えだけ**であり、本文の意味論は変えていない
-// （主体・種別・属性・個人資料の除外制約・必要スコープ ＋ 引数。利用者文脈へ改めるのは #1611）。
+// 従前の `HttpToolInvoker`（申告の `endpoint` の URL へ POST）を置き換えた。
+// ［2026-09-27 追記 / #1611, ADR-0117 決定 3］🔴 **本文で運ぶのは利用者文脈（`user_id`・`action`）とツールの引数だけである。**
+// 従前の暫定の実行スコープ（主体・種別・属性・個人資料の除外制約・必要スコープ）は運ばない —— 受けたサービスが利用者文脈で
+// 認可サービスへ判定を問い、自分で認可する（ADR-0086 決定 1 の援用・ADR-0088）。
 //
 // ■ 🔴 **宛先は `PublishedTool.Service`（公開構成で申告を突き合わせたサービス）と申告名だけで決める**（ADR-0117 決定 1）。
 //   アドレスは申告の収集と同じ `Mcp:GrpcServices:<サービス名>`（申告元サービスの h2c アドレス）。**申告の中身から宛先を作らない** ——
 //   申告に URL はもう無く、どのサービスも他のサービスを自分のツールの実行先にできない。
 //
-// ■ 🔴 **fail-closed**（ADR-0117 決定 4）。宛先の経路が構成されていない・実行口が無い（`UNIMPLEMENTED`。#1611 まで全宛先）・
+// ■ 🔴 **fail-closed**（ADR-0117 決定 4）。宛先の経路が構成されていない・実行口が無い（`UNIMPLEMENTED`。［#1611 段 1］文書・グラフ）・
 //   期限切れ・拒否・トークン取得失敗・到達不能は、すべて `ToolExecutionUnavailableException` にして結果を返さない。
 //   利用者へ返す文言は内部の宛先（サービス名・アドレス・status）を含めない。宛先はログにだけ書く。
 //   ログは配線不備（`UNAUTHENTICATED` / `PERMISSION_DENIED` / s2s トークンの取得失敗。再起動では直らない）を Error、それ以外を Warning。
@@ -69,7 +71,7 @@ public sealed class GrpcToolInvoker : IToolInvoker, IDisposable
         TimeSpan.FromSeconds(Math.Max(1, configuration.GetValue<int?>(TimeoutKey) ?? DefaultTimeoutSeconds));
 
     public async Task<McpToolResult> InvokeAsync(
-        PublishedTool tool, ToolInvocationScope scope, string argumentsJson, CancellationToken ct)
+        PublishedTool tool, ToolUserContext user, string argumentsJson, CancellationToken ct)
     {
         var service = tool.Service;
         if (!GrpcToolDeclarationCollector.ConfiguredTargets(_configuration).TryGetValue(service, out var address))
@@ -82,7 +84,7 @@ public sealed class GrpcToolInvoker : IToolInvoker, IDisposable
 
         var timeout = ConfiguredTimeout(_configuration);
         // ［#1516 監査］要求の組み立ては try の外に置く —— 組み立ての誤り（プログラムの誤り）を「到達不能」の拒否に紛れさせない。
-        var request = ToRequest(tool, scope, argumentsJson);
+        var request = ToRequest(tool, user, argumentsJson);
         try
         {
             var channel = _channels.GetOrAdd(address, a => new Lazy<GrpcChannel>(() =>
@@ -118,7 +120,7 @@ public sealed class GrpcToolInvoker : IToolInvoker, IDisposable
         }
         catch (RpcException ex) when (ex.StatusCode is StatusCode.Unimplemented)
         {
-            // #1611 まではすべての宛先がここへ来る（実行口が無い）。配線の誤りではないので Warning。
+            // 実行口をまだ持たない宛先（［#1611 段 1］文書・グラフ）がここへ来る。配線の誤りではないので Warning。
             _logger.LogWarning(
                 "MCP tool {Tool} of {Service} at {Address} was not executed: the service has no tool execution port "
                 + "(platform.mcp.v1.McpToolExecution is unimplemented)",
@@ -142,26 +144,16 @@ public sealed class GrpcToolInvoker : IToolInvoker, IDisposable
     }
 
     // 要求の組み立て。宛先の情報は 1 バイトも載せない（宛先はチャネルのアドレスが決めている）。
-    public static Pb.ExecuteMcpToolRequest ToRequest(PublishedTool tool, ToolInvocationScope scope, string argumentsJson)
-    {
-        var message = new Pb.ExecuteMcpToolRequest
+    // ［#1611］🔴 利用者文脈は利用者と操作だけ。属性・必要スコープ・除外制約は載せない（受け手が自分で引く／導く）。
+    public static Pb.ExecuteMcpToolRequest ToRequest(PublishedTool tool, ToolUserContext user, string argumentsJson) =>
+        new()
         {
             // 申告名（公開名ではない）。受け口は自分の申告の名前で引く。
             Tool = tool.Declaration.Name,
             // 引数は MCP クライアントから来た JSON をそのまま渡す（解釈は受け口の責務）。空は空のオブジェクト。
             ArgumentsJson = string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson,
-            Scope = new Pb.McpToolInvocationScope
-            {
-                SubjectId = scope.SubjectId,
-                SubjectKind = scope.SubjectKind,
-                ExcludePrivateNote = scope.ExcludePrivateNote,
-                RequiredScope = scope.RequiredScope,
-            },
+            User = new Pb.McpToolUserContext { UserId = user.UserId, Action = user.Action },
         };
-        foreach (var (key, value) in scope.SubjectAttributes)
-            message.Scope.SubjectAttributes[key] = value;
-        return message;
-    }
 
     // 応答 → 共通エンベロープ（REST の JSON と同じ意味。null を取り得るのは body / reference_url だけ）。
     public static McpToolResult ToResult(Pb.McpToolResult result) =>

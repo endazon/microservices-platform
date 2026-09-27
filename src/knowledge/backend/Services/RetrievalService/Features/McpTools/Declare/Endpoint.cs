@@ -18,6 +18,10 @@ public static class McpToolEndpoints
         // 張り忘れた宛先は MCP サーバーからは「申告なし」としか見えない（収集は失敗を申告なしへ畳む）。
         // 申告を張る唯一の口に gRPC 面を同居させ、張り忘れを構造で起こさない。面は ServiceCaller を要求する。
         app.MapGrpcService<McpToolDeclarationGrpcService>();
+        // FR-16, ADR-0117 決定 1〜3 (#1611): 🔴 **申告した口に実行口を対で張る。** 宛先は「申告したサービス＋ツール名」なので、
+        // 申告を張るサービスは実行口も張る（張り忘れると、一覧に出るツールが UNIMPLEMENTED で拒否され続ける）。
+        // 面は ServiceCaller を要求し、本文の利用者文脈は MCP サーバー（許可集合）が運んだときだけ信じる。
+        app.MapGrpcService<Execute.McpToolExecutionGrpcService>();
         return app;
     }
 }

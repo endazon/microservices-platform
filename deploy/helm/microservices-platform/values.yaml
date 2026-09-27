@@ -845,7 +845,9 @@ services:
       # 並走中の正は REST であり、戻すのは該当行を消すだけでよい。ポートは各サービスの grpcPort と一致させること。
       # ［2026-09-27 追記 / #1516, ADR-0117］ツールの実行（platform.mcp.v1.McpToolExecution）も**同じアドレス**へ送る
       # （宛先は申告したサービス＋ツール名。申告の URL は使わない）。ここに無いサービスのツールは実行を拒否する（REST へは倒さない）。
-      # 実行の期限は McpServer の appsettings.json の Mcp:ToolExecutionTimeoutSeconds（既定 30 秒）。各サービスの受け口は #1611 まで無い。
+      # 実行の期限は McpServer の appsettings.json の Mcp:ToolExecutionTimeoutSeconds（既定 30 秒）。
+      # ［#1611 段 1］受け口は retrieval-service だけが持つ（document・graph は後続の段まで拒否）。受け口は本文の利用者文脈を
+      # 上の serviceToken.clientId（mcp-server）が運んだときだけ信じる（各受け口の McpToolExecution の許可集合。既定 mcp-server）。
       - name: Mcp__GrpcServices__document-service
         value: "http://document-service:8081"
       - name: Mcp__GrpcServices__retrieval-service

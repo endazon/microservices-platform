@@ -75,11 +75,16 @@ public class McpClient
 //
 // 🔴 IsServiceAccount が **ADR-0034 決定 9 の適用条件そのもの**である。ここを取り違えると
 // 個人資料の一律除外が静かに外れるため、判定は 1 箇所（McpSubjectResolver）に閉じる。
+//
+// ［2026-09-27 追記 / #1611, ADR-0117 決定 3］`UserName` は有人の利用者名（`preferred_username`）であり、下流へ本文で運ぶ
+// 利用者文脈の `user_id` になる（`ToolUserContext.For`）。`SubjectId`（`sub` を第一にする）を運ばないのは、下流と認可サービスが
+// 利用者を**利用者名**で引くからである（BFF が運ぶ `user_id` と同じ綴り）。
 public sealed record McpSubject(
     string SubjectId,
     string ClientId,
     McpClientKind Kind,
-    IReadOnlyDictionary<string, string> Attributes)
+    IReadOnlyDictionary<string, string> Attributes,
+    string? UserName = null)
 {
     public bool IsServiceAccount => Kind == McpClientKind.ServiceAccount;
 }

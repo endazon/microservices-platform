@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
 adrs: [ADR-0119, ADR-0063, ADR-0089, ADR-0050, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114, ADR-0117]
-iadrs: [IADR-0476, IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431]
-specs: [20260927_issue-1658_relay-options-shared, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
-issues: [#1658, #1636, #1516, #1635, #1628, #1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532]
+iadrs: [IADR-0479, IADR-0476, IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431]
+specs: [20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1658_relay-options-shared, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#1611, #1658, #1636, #1516, #1635, #1628, #1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532]
 -->
 
 # 通信仕様書: east-west gRPC（サービス間の同期呼び出し）
@@ -766,8 +766,11 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
   （書き換えない）。名乗りを信じると、申告元が別のサービスを名乗るだけでその名のツールを公開し、実行先をそちらへ向けられるためである。
 - 置き場: `Platform.Shared.Contracts` の `Protos/platform/mcp/v1/mcp_tool_execution.proto`（所有は 13 つ目の面と同じ MCP サーバー）。
 - 認証・認可: 呼び出し側は MCP サーバー自身のサービス間トークン（`mcp-server` client）。受け口は `ServiceCaller` を要求すること。利用者のトークンは運ばない。
-- 🔴 **受け口はまだどのサービスにも無い**（別の作業で作る）。今は呼び出しが `UNIMPLEMENTED` で終わり、MCP サーバーは実行を拒否する（fail-closed）。
-  3 サービスの本番の起動処理のまま `UNIMPLEMENTED` であることを試験で固定した（受け口を作る作業で反転する）。
+- 🔴 **受け口は、今は検索サービスだけが持つ**（［2026-09-27 改訂］）。文書・グラフは呼び出しが `UNIMPLEMENTED` で終わり、MCP サーバーは実行を拒否する（fail-closed）。
+  2 サービスの本番の起動処理のまま `UNIMPLEMENTED` であることを試験で固定している（受け口を足す段で反転する）。検索サービスでは反転した。
+- 🔴 **本文の利用者文脈を信じるのは MCP サーバーだけ**（受け口ごとの許可集合 `McpToolExecution:TrustedUserContextClients`。既定 `mcp-server`）。
+  受け口は利用者文脈（利用者名と操作）で認可サービスへ判定を問い、**自分で**認可する（属性は送らない。認可サービスが引き直す）。
+  操作は受け口が自分のツールから決め、本文の操作は突き合わせるだけである。利用者名が `service-account-` で始まる実行は個人資料を落とす。
 
 **13 つ目の面（申告の収集）との違い**は次のとおりである。
 
@@ -778,8 +781,8 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
 | 期限 | 別のキー `Mcp:ToolExecutionTimeoutSeconds`（既定 30 秒、1 未満は 1 秒） | 収集は背景処理、実行は下流の処理を待つ呼び出しで、所要時間の桁が違う |
 | リトライ | 持たない | ツールの実行は冪等とは限らない |
 
-- 🔴 **要求本文の `scope` は暫定である。** 従前の REST の本文と同じ意味（MCP サーバーが解決した実行スコープ）を写しただけであり、受け口を作る作業で
-  **利用者文脈（利用者と操作）とツールの引数**へ改め、この項目は番号ごと予約へ移す。**それまで、本文の `scope` を信じて認可する受け口を作らない。**
+- 🔴 **要求本文は利用者文脈（利用者と操作）とツールの引数だけである**（［2026-09-27 改訂］）。暫定だった `scope`（MCP サーバーが組んだ実行スコープ）は
+  番号ごと予約へ移した。旧い呼び出し元が番号 3 に載せても受け口は読み飛ばし、利用者文脈が無いので拒否する。**解決済みの scope を信じて認可する受け口は作らない。**
 - 配備: 新しい構成は要らない（`Mcp__GrpcServices__*` とサービス間トークンは 13 つ目の面のために既に在る）。宛先の Istio の認可（文書サービスの DENY のみのポリシー）は
   MCP サーバーから h2c ポートへの呼び出しを通す（試験の呼び出し元の一覧を実行の面へ差し替えた）。
 
