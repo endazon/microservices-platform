@@ -2,7 +2,9 @@ using Grpc.Core;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Grpc.Retrieval.V1;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
 
@@ -26,9 +28,19 @@ namespace RetrievalService.Features.Search.AttributeValues;
 //
 // 🔴 **「候補が無い」と「権限が無い」を区別させない**（[[IADR-0151]] 決定 5）——
 // どちらも**空の配列**で返る。引けなかったのは gRPC status である。
+//
+// ［2026-09-27 追記 / #1636］🔴 **本文の `user` を信じるのは、許可集合（`AttributeValuesRelayOptions`。
+//   既定 `bff` だけ）の機械クライアントが運んだときだけである**（[[IADR-0417]] 追記 1）。
+//   `ServiceCaller`（`platform-service`）だけでは信じない —— そのロールは 11 のサービスアカウント
+//   （別プロジェクトのものを含む）が持ち、どれもが任意の利用者を名乗ってその利用者のスコープの属性の値を引けた。
+//   それ以外が `user` を付けたら PERMISSION_DENIED。`user` の無い要求は従来どおり誰にも INVALID_ARGUMENT。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
 public sealed class AttributeValuesGrpcService(
-    IVectorStore store, ISearchAccessResolver access, FusedCollections fused)
+    IVectorStore store,
+    ISearchAccessResolver access,
+    FusedCollections fused,
+    IOptions<AttributeValuesRelayOptions> relay,
+    ILogger<AttributeValuesGrpcService> logger)
     : Knowledge.Contracts.Grpc.Retrieval.V1.AttributeValues.AttributeValuesBase
 {
     public override async Task<ListValuesResponse> ListValues(
@@ -40,6 +52,10 @@ public sealed class AttributeValuesGrpcService(
         if (string.IsNullOrWhiteSpace(request.User?.UserId))
             throw new RpcException(new Status(
                 StatusCode.InvalidArgument, "user.user_id は必須である（利用者文脈が無い呼び出しは受けない）。"));
+
+        // 🔴 FR-04, FR-05, NFR-09, 計画 ADR-0086 決定 1・§結果 (#1636): **利用者文脈を運べる呼び出し元か。**
+        // 空の key の早期 return より前に置く（信頼しない呼び出し元に「通る形」を 1 つも残さない）。
+        EnsureTrustedRelay(context);
 
         var response = new ListValuesResponse();
         if (string.IsNullOrWhiteSpace(request.Key))
@@ -60,6 +76,25 @@ public sealed class AttributeValuesGrpcService(
         response.Values.AddRange(
             await AttributeValuesEndpoint.ListAsync(store, fused, request.Key, scope, context.CancellationToken));
         return response;
+    }
+
+    // FR-04, FR-05, NFR-09, 計画 ADR-0086 決定 1・§結果, [[IADR-0417]] 追記 1 (#1636):
+    // 🔴 本文の利用者文脈を信じてよいのは、それを運ぶのが**利用者の権限で動く中継者として許可集合に載った
+    //   機械クライアント**だからである（ADR-0086 §結果が受け入れた依存の範囲）。
+    private void EnsureTrustedRelay(ServerCallContext context)
+    {
+        var caller = context.GetHttpContext().User;
+        if (relay.Value.TrustsUserContextFrom(caller))
+            return;
+
+        // 基数は realm の機密クライアント数で閉じる（利用者識別子・属性・key は載せない）。
+        logger.LogWarning(
+            "AttributeValues rejected a user context from a caller that is not a trusted relay (client={ClientId}). "
+            + "Trusted relays are configured under {Section}:{Key}.",
+            MachinePrincipal.ClientIdOf(caller) ?? "(unknown)", AttributeValuesRelayOptions.SectionName,
+            TrustedUserContextRelay.ClientsKey);
+        throw new RpcException(new Status(StatusCode.PermissionDenied,
+            "この呼び出し元は利用者文脈（user）を運べません。"));
     }
 
     // 空の指定は「絞らない」である（REST 側の `null` と同義。判定の枝を増やさない）。

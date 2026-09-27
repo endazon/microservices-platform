@@ -174,6 +174,12 @@ builder.Services.Configure<DocumentService.Features.Documents.DocumentReadRelayO
 // FR-05, FR-18, SC-05, ADR-0063 決定 1〜3, ADR-0065 決定 2, 計画 ADR-0086 決定 1, [[IADR-0410]] (#1255):
 // タグ反映の**本体**。🔴 **REST の端点と east-west gRPC の rpc が同じ関数を通る**（判定器を 2 つにしない）。
 builder.Services.AddScoped<AddDocumentTagUseCase>();
+// FR-05, FR-18, NFR-09, 計画 ADR-0086 決定 1, [[IADR-0410]] 追記 1 (#1636): gRPC `DocumentTagWrite/AddTag` の本文の
+// 利用者文脈（とロール）を信じる呼び出し元。**未構成なら `graph-service` だけ。構成したら置き換える。**
+// 配列でなく 1 つの値が書かれていたら起動を止める（静かに既定へ戻さない）。
+DocumentService.Features.Documents.AddTag.DocumentTagWriteRelayOptions.ThrowIfScalar(builder.Configuration);
+builder.Services.Configure<DocumentService.Features.Documents.AddTag.DocumentTagWriteRelayOptions>(
+    builder.Configuration.GetSection(DocumentService.Features.Documents.AddTag.DocumentTagWriteRelayOptions.SectionName));
 // FR-19, SC-19, NFR-09, ADR-0029, ADR-0075, ADR-0096 決定 1・2, [[IADR-0401]] 決定 2,
 // [[IADR-0428]] 決定 3, [[IADR-0431]] (#1409): 退職の窓の照会。
 // `Services:AuthorizationServiceGrpc`（`AuthzScopeGrpcClient.AddressKey`）が構成された配備でだけ
