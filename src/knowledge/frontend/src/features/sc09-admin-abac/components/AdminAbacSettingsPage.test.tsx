@@ -295,7 +295,7 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     ).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('名前（必須）'), 'P-014 開発設計');
-    await user.selectOptions(attributeSelect, 'dept');
+    await user.selectOptions(attributeSelect, 'user:dept');
     await user.selectOptions(screen.getByLabelText('条件の値'), '開発');
     await user.click(screen.getByRole('button', { name: '条件を追加' }));
 
@@ -332,7 +332,7 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     expect(form.getAllByRole('textbox')).toEqual([form.getByLabelText('名前（必須）')]);
 
     await user.type(form.getByLabelText('名前（必須）'), '所有者は自分の文書を読める');
-    await user.selectOptions(form.getByLabelText('対象属性'), 'owner');
+    await user.selectOptions(form.getByLabelText('対象属性'), 'document:owner');
     const valueSelect = form.getByLabelText('条件の値');
     // 値の選択肢は束縛 1 つだけ。**「動的束縛」を文言で示す**（色だけにしない）。
     expect(
@@ -365,6 +365,71 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     });
   });
 
+  // 🔴 #1666 レビュー: 利用者スコープに `owner` 属性があっても、文書の所有者の束縛は画面から選べる。
+  it('still offers the owner binding when the dictionary has a user attribute named owner', async () => {
+    mockApi({
+      attributes: [
+        ...ATTRIBUTES,
+        {
+          id: 'a9',
+          key: 'owner',
+          label: '担当者',
+          allowedValues: ['alice'],
+          required: false,
+          scope: 'user',
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: 'アクセスポリシーの一覧' });
+
+    const attributeSelect = screen.getByLabelText('対象属性');
+    // 2 つの owner は別の選択肢として並ぶ（スコープで選び分ける）。
+    expect(
+      within(attributeSelect).getByRole('option', { name: '担当者（利用者）' }),
+    ).toBeInTheDocument();
+    expect(
+      within(attributeSelect).getByRole('option', { name: '所有者（文書）' }),
+    ).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('名前（必須）'), '所有者は自分の文書を読める');
+    await user.selectOptions(attributeSelect, 'document:owner');
+    await user.selectOptions(screen.getByLabelText('条件の値'), '${current_user}');
+    await user.click(screen.getByRole('button', { name: '条件を追加' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(sentBody(mocks.apiRequest.mock.calls)).toBeTruthy());
+    expect(sentBody(mocks.apiRequest.mock.calls)).toEqual({
+      name: '所有者は自分の文書を読める',
+      action: 'read',
+      userConditions: {},
+      documentConditions: { owner: ['${current_user}'] },
+    });
+  });
+
+  // 🔴 #1666 監査: 束縛の選択肢は read にだけ出る（analyze・manage の判定規則に束縛は無い）。
+  it('offers the binding positions only while the action is read', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: 'アクセスポリシーの一覧' });
+
+    const attributeSelect = screen.getByLabelText('対象属性');
+    expect(
+      within(attributeSelect).getByRole('option', { name: '所有者（文書）' }),
+    ).toBeInTheDocument();
+    for (const action of ['manage', 'analyze']) {
+      await user.selectOptions(screen.getByLabelText('対象アクション'), action);
+      expect(within(attributeSelect).queryByRole('option', { name: '所有者（文書）' })).toBeNull();
+      expect(within(attributeSelect).queryByRole('option', { name: '共有先（文書）' })).toBeNull();
+    }
+    await user.selectOptions(screen.getByLabelText('対象アクション'), 'read');
+    expect(
+      within(attributeSelect).getByRole('option', { name: '共有先（文書）' }),
+    ).toBeInTheDocument();
+  });
+
   // #1666: 共有先の分岐（個人とグループ。ADR-0036 D-06）も画面から作れる。
   it('creates the shared-with policy with both bindings', async () => {
     mockApi();
@@ -373,7 +438,7 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     await screen.findByRole('table', { name: 'アクセスポリシーの一覧' });
 
     await user.type(screen.getByLabelText('名前（必須）'), '共有された個人資料を読める');
-    await user.selectOptions(screen.getByLabelText('対象属性'), 'shared_with');
+    await user.selectOptions(screen.getByLabelText('対象属性'), 'document:shared_with');
     for (const v of ['${current_user}', '${current_groups}']) {
       await user.selectOptions(screen.getByLabelText('条件の値'), v);
       await user.click(screen.getByRole('button', { name: '条件を追加' }));
@@ -397,8 +462,8 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     await screen.findByRole('table', { name: 'アクセスポリシーの一覧' });
 
     for (const [key, values] of [
-      ['confidentiality', ['public', 'internal']],
-      ['dept', ['経理', '開発']],
+      ['document:confidentiality', ['public', 'internal']],
+      ['user:dept', ['経理', '開発']],
     ] as const) {
       await user.selectOptions(screen.getByLabelText('対象属性'), key);
       expect(

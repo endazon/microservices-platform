@@ -123,7 +123,7 @@ test('SC-09: an administrator creates the owner read policy by selection only', 
   await expect(form).toBeVisible();
 
   await form.getByLabel('名前（必須）').fill('所有者は自分の文書を読める');
-  await form.getByLabel('対象属性').selectOption('owner');
+  await form.getByLabel('対象属性').selectOption('document:owner');
   // 値は選択だけ。束縛は「動的束縛」の文言で示される（色だけにしない）。
   await form
     .getByLabel('条件の値')

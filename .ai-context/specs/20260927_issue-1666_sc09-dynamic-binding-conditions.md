@@ -167,3 +167,43 @@ issue は「表示の形・どの属性に動的束縛を許すか」に判断�
   - SC-09 固有のコード（束縛の表・選択肢の組み立て）は `AdminAbacSettingsPage` の遅延チャンクにとどまる。成果物を走査すると、`current_groups` は遅延チャンクにしか現れない。
 - **対処**: import の境界を直す対象は無い。カタログ文言による設計どおりの増加なので、`--update` で床を 615,916 → 616,268 B へ引き上げた。
   理由は `scripts/chunk-budget-baseline.json` の `$comment_initialTotalBytes_20260928_1666_sc09-dynamic-binding` に残した（前例 #1610 と同じ形）。
+
+［2026-09-28 追記 / #1666］**develop の取り込み・IADR の改番・運用仕様書の是正・レビュー指摘への対応**（コーディネーターの指示による）。
+
+- **develop の取り込み**: #1665 の PR（#1673。IADR-0481 を新設）が develop に入った（`653878c0`）ので、マージコミットで取り込んだ。
+  - 衝突は `.ai-context/adr/README.md` の索引の 1 行だけだった。develop の行を残し、本件の行を後ろに置いた。
+  - 床（`scripts/test-spec-coverage-baseline.json`・`scripts/chunk-budget-baseline.json`）は手で合わせず、マージ後に各 `--update` で生成し直した。
+- **IADR の改番**: 本件の IADR-0481 を IADR-0482（develop の最大 0481 ＋1）へ改番した。
+  - 変えたもの: ファイル名、title と H1、索引の行、本件が足した trace ブロック 3 か所（SC-09 の画面仕様書・SC-09 と FR-09 のテスト仕様書）、運用仕様書の trace ブロック。
+  - `git grep -n "IADR-0481"` で引いた残りは、すべて #1665 由来の正当な参照（IADR-0480 の追記、監視の定義、DocumentService・認可サービスのコード注記、運用・セキュリティ・通信・FR-05 の trace ブロック）なので残した。
+  - 本仕様書の本文には IADR 番号を書いていなかったので、変更は無い。
+- **運用仕様書**（§所有者の読み取りのポリシーの投入）: 「画面からはこのポリシーを作れない」を改めた。
+  - 管理者設定画面から作る手順（対象属性「所有者（文書）」→ 値「動的束縛: 操作する利用者本人」→ 検証 → 保存）を既定にし、API への直接投入は代替として残した。
+  - 障害対応の表の「画面からこのポリシーを作れないことは計画側の未了事項」も改めた。
+  - trace ブロックに本仕様書・#1666・IADR-0482・SC-09 を足した。
+- **レビュー（推奨）名前の衝突**:
+  - `policyAttributeOptions` は、束縛の位置の選択肢を足すかを**文書スコープに同名キーがあるかだけ**で決めるようにした。選択肢の識別子（`Select` の値）は、キーだけからスコープとキーの組（`document:owner`）へ改めた。
+    キーだけだと、利用者属性の `owner` と文書の `owner`（束縛）が同じ値になり、先に並んだ方が黙って選ばれる。同じキーを両スコープに持つ辞書（`department`）の潜在の不具合も同時に閉じた。
+  - サーバーの `ValidateAttributeDefinition` は、利用者スコープの `owner`・`shared_with` の登録を拒否する（辞書のキーの一意性の検査と同じく大小を区別しない）。
+    入れる前に、dev seed の属性辞書（利用者は `clearance`・`department`・`tags`）・realm・既存の試験に利用者スコープの `owner`・`shared_with` が無いことを確かめた（`git grep`）。何も壊さないので入れた。AuthorizationService.Tests は全件合格した。
+- **レビュー（軽微）キー比較の不一致**: 束縛の位置のキーは、画面・サーバーとも大小を区別する（Ordinal）に揃えた。サーバーの表は当初 OrdinalIgnoreCase だった。根拠は評価側の比較規則である。
+  - 評価器は束縛を値の完全一致で解決する（`BindPlaceholders`）。
+  - 文書の属性の突き合わせも、キーを大小区別で引く（`AttributeFilterMatch.MatchesAll` の `TryGetValue`、`DocumentAttributeEncoding.WithSharedWith` の Ordinal）。
+  - したがって `Owner ∈ {${current_user}}` は `owner` を持つ文書に一致せず、保存できても静かに効かない。これを保存前に止める側へ揃えた。
+  - 画面側では、`DYNAMIC_BINDINGS[key]` が原型の名前（`constructor`）を拾う穴も `hasOwnProperty` で塞いだ。
+
+［2026-09-28 追記 / #1666］**別文脈の監査（head ba14d2d8）は GO だった。非ブロッキングの指摘のうち、次を同じ push で直した。**
+
+- **束縛の検証に action の次元を入れた**（最重要）。
+  - 根拠は計画 07 §動的束縛の判定規則である。
+    - `read` は、所有者ベース `doc.owner ∈ {${current_user}}` と共有先ベース `shared_with ∩ ({${current_user}} ∪ ${current_groups})`。
+    - `write` は `doc.owner ∈ {${current_user}}` だけ（「共有先には書き込み権限を与えない」）。ADR-0036 D-07 と ADR-0121 決定 1 もこの形である。
+    - `analyze`・`manage` の規則に束縛は無い。
+  - 表を (action, key, 変数) にした: read → owner・shared_with、write → owner。画面とサーバーの両方をこの形にした。
+  - 従来は `write` × `shared_with:[${current_user}]` が通り、`BffScopeResolver` の write スコープで共有先に書き込みを許していた。
+  - 画面は対象アクションが read のときだけ束縛の選択肢を出す。アクションを変えると、許されない束縛の条件を下書きから外す。
+- **束縛とリテラルの混在を禁じた**。サーバーは拒否する。画面は、束縛の位置では値の選択肢を束縛だけにした（辞書に同じキーがあっても、その許可値を並べない）。
+- **前後に文字が付いた束縛**（`x${current_user}`・`${current_user} `）が拒否されることを試験で固定した。
+- **キーの大小**: 先の対応で、画面・サーバーとも Ordinal に寄せた。評価器はポリシーのキーをそのままフィルタのキーにし（`AbacEvaluator.ResolveScope`）、文書の属性は大小を区別して引く。したがって序数で揃えるのが整合的であり、`Owner`・`SHARED_WITH` の否定の試験を置いた。
+- **T-70 を広げた**: dev seed の全ポリシーを、辞書なしと seed の属性辞書ありの両方で検査する。seed の属性辞書そのものが登録できることと、運用仕様書の本文が通ることも確かめる。
+- FR-09 の機能仕様書の業務ルールに ⑧（束縛の位置・action・混在の禁止）と ⑨（利用者属性の名前）を足した。

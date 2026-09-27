@@ -336,6 +336,7 @@
     ],
     "docs/tests/SC-09_admin-abac-settings.md": [
       "AbacValidationTests",
+      "AuthzManagementEndpointTests",
       "BffAuthzEndpointTests",
       "DepartmentDictionaryFromRealmTests",
       "DepartmentDictionaryValuesTests",

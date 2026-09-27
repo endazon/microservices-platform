@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-09, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, UC-05, SC-17]
 adrs: [ADR-0031, ADR-0036, ADR-0116, ADR-0115, ADR-0121]
-iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253, IADR-0477, IADR-0481]
+iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253, IADR-0477, IADR-0482]
 specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1666_sc09-dynamic-binding-conditions]
 issues: [#503, #504, #510, #535, #640, #989, #1609, #1666, planning#672]
 -->
@@ -87,6 +87,8 @@ issues: [#503, #504, #510, #535, #640, #989, #1609, #1666, planning#672]
 | 18 | ★ **所有者の read ポリシーを選択だけで作る**（#1666） | 必須のポリシー・動的束縛の入力 | 辞書に `owner` が無くても「所有者（文書）」を選べ、値の選択肢は `${current_user}` の 1 つだけ。送信本文が `userConditions: {}`・`documentConditions: {owner: ["${current_user}"]}` そのもの。フォームの自由入力の欄は名前の 1 つだけ |
 | 19 | 共有先の束縛（#1666） | 同上 | `shared_with` に `${current_user}`・`${current_groups}` を積んで保存できる |
 | 20 | ★ **束縛は計画の位置にだけ出る**（陰性。#1666） | 同上 | 辞書の文書属性（`confidentiality`）と利用者属性（`dept`）の値の選択肢に束縛が無い |
+| 20-b | ★ **利用者属性の同名 `owner` は束縛の選択肢を塞がない**（#1666 レビュー） | 同上 | 辞書に利用者属性 `owner` があっても「所有者（文書）」が別の選択肢として残り、所有者の read ポリシーを保存できる。選択肢の識別子はスコープとキーの組 |
+| 20-c | ★ **束縛の選択肢は閲覧のときだけ**（#1666 監査） | 同上 | 対象アクションを「管理」「分析」にすると「所有者（文書）」「共有先（文書）」が選択肢から消え、「閲覧」に戻すと現れる。アクションを変えると許されない束縛の条件は下書きから外れる（`usePolicyDraft.test.ts`） |
 | 21 | **束縛は語で示す**（#1666） | INDEX 決定 21 | 値の選択肢・積んだ条件・一覧の要約で「動的束縛: 操作する利用者本人（`${current_user}`）」の文言が出る。束縛の無い行には出ない |
 
 ## アクセス制御・存在秘匿（画面）
@@ -112,9 +114,9 @@ issues: [#503, #504, #510, #535, #640, #989, #1609, #1666, planning#672]
 | P8 | 要約の順序 | 一覧の条件は**利用者属性が先**（計画の並び） |
 | P9 | 許可値の解釈 | カンマ区切りを配列へ。空要素を落とす |
 | P10 | 許可値の出所（#1609） | 出所の値集合は `realm` / `realm-unavailable` の 2 値。手で持つキー（null）は表示なし、不明は注意の色、未知の値は生値のまま |
-| P11 | 束縛の位置（#1666） | 表が `owner` → `${current_user}`、`shared_with` → `${current_user}`・`${current_groups}` と完全一致する（サーバの検証器と同じ表） |
+| P11 | 束縛の位置（#1666） | 表がアクションごとに `read`: `owner` → `${current_user}`・`shared_with` → `${current_user}`・`${current_groups}`、`write`: `owner` → `${current_user}` と完全一致する（サーバの検証器と同じ表）。`write` の共有先・`analyze`・`manage` には無い |
 | P12 | 束縛変数（#1666） | 2 つだけを大小を区別して束縛とみなし、説明が対で決まる。綴り違い・大小違いは束縛ではない（生値のまま） |
-| P13 | 選択肢の組み立て（#1666） | 辞書に無い `owner`・`shared_with` を文書属性として足し値は束縛だけ／辞書の文書属性にあれば許可値の後ろへ重複なく足す／利用者属性には足さない |
+| P13 | 選択肢の組み立て（#1666） | 辞書の文書属性に無い `owner`・`shared_with` を文書属性として足し値は束縛だけ／辞書の文書属性にあれば許可値の後ろへ重複なく足す／利用者属性には足さず、**利用者属性の同名があっても文書の束縛の選択肢は残す**／識別子はスコープとキーの組で一意／キーは大小を区別し、原型の名前（`constructor`）を取り違えない |
 
 ## 認可サービス（xUnit。［2026-09-27 / #1609］部門の許可値の導出）
 
@@ -130,13 +132,16 @@ issues: [#503, #504, #510, #535, #640, #989, #1609, #1666, planning#672]
 ## 認可サービス（xUnit。［2026-09-28 / #1666］動的束縛の検証）
 
 テスト: `src/platform/backend/Services/AuthorizationService/Tests/Domain/AbacValidationTests.cs`（純関数）・
-`.../Tests/Features/Authz/ValidatePolicy/PolicyDryRunValidationTests.cs`（結合。dry-run と保存の一致）。番号は上の §認可サービス と同じ系列。
+`.../Tests/Features/Authz/ValidatePolicy/PolicyDryRunValidationTests.cs`（結合。dry-run と保存の一致）・`.../Tests/Features/Authz/AuthzManagementEndpointTests.cs`（結合。利用者属性の名前の 400）。番号は上の §認可サービス と同じ系列。
 
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
 | T-68 | 通る形（陽性対照） | 所有者（`owner` の `${current_user}`）と共有先（`shared_with` の `${current_user}`・`${current_groups}`）は辞書に無くても通る。dry-run も保存（201）も通る |
-| T-69 | 止める形 | 表に無い変数（`${current_usr}`・`${Current_User}`・`${current_department}`）、表に無い位置（`owner` の `${current_groups}`・`confidentiality`・`department`）、利用者の条件の束縛はエラー。綴り違いは dry-run が `valid: false`、保存が 400 で一致する |
+| T-69 | 止める形 | 表に無い変数（`${current_usr}`・`${Current_User}`・`${current_department}`）、表に無い位置（`owner` の `${current_groups}`・`confidentiality`・`department`・大小違いのキー `Owner`・`SHARED_WITH`）、利用者の条件の束縛はエラー。綴り違いは dry-run が `valid: false`、保存が 400 で一致する |
 | T-70 | 辞書・seed との整合 | 辞書に `shared_with` が定義されていても表の束縛は「辞書外」にならず、辞書外のリテラルは従来どおり拒否。dev seed の全ポリシーが検証を通る |
+| T-71 | 利用者属性の名前（#1666 レビュー） | 利用者スコープの `owner`・`shared_with`（大小違い `Owner` を含む）の登録はエラー（結合でも 400）。文書スコープの同名と利用者スコープの他のキーは通る（陽性対照） |
+| T-72 | 束縛とリテラルの混在（#1666 監査） | `owner:[${current_user}, bob]`・`shared_with:[${current_groups}, group-sales]` はエラー。辞書に `shared_with` があっても束縛だけの集合は通る |
+| T-73 | 束縛を置ける action（#1666 監査） | `write`・`manage`・`analyze` の `shared_with`、`manage`・`analyze` の `owner` の束縛はエラー。`write` の `owner`（dev seed の書き込みの形）は通る。前後に文字の付いた束縛（`x${current_user}`・`${current_user} `）もエラー（T-69 の追加）。dev seed の全ポリシーは辞書なし・seed の属性辞書ありの両方で通り、seed の属性辞書そのものも登録できる。運用仕様書の本文も通る（T-70 の追加） |
 
 ## バックエンド（BFF・xUnit）
 

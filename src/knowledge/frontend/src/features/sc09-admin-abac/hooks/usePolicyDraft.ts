@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react';
 import type { AttributeDefinitionDto } from '@foundation/api/generated/bff.schemas';
-import { buildConditions, policyAttributeOptions } from '../types/abacVocabulary';
+import {
+  bindingsAt,
+  buildConditions,
+  isDynamicBinding,
+  policyAttributeOptions,
+} from '../types/abacVocabulary';
 import type {
   ConditionEntry,
   PolicyAction,
@@ -31,9 +36,10 @@ export interface PolicyDraft {
   conditions: ConditionEntry[];
   /** 対象属性の選択肢（属性辞書 ＋ 動的束縛の位置。#1666）。 */
   options: PolicyAttributeOption[];
-  attributeKey: string;
-  /** 対象属性を選び直す。**条件の値は消える** —— 別の属性の許可値を持ち越さない。 */
-  selectAttributeKey: (key: string) => void;
+  /** 選んでいる対象属性の識別子（スコープとキーの組。`document:owner`）。未選択なら空文字。 */
+  attributeId: string;
+  /** 対象属性を識別子で選び直す。**条件の値は消える** —— 別の属性の許可値を持ち越さない。 */
+  selectAttribute: (id: string) => void;
   conditionValue: string;
   setConditionValue: (value: string) => void;
   /** いま選んでいる対象属性の選択肢（値の一覧を引くため）。未選択なら undefined。 */
@@ -68,22 +74,39 @@ export function usePolicyDraft(attributes: readonly AttributeDefinitionDto[]): P
   const [name, setName] = useState('');
   const [action, setAction] = useState<PolicyAction>('read');
   const [conditions, setConditions] = useState<ConditionEntry[]>([]);
-  const [attributeKey, setAttributeKey] = useState('');
+  const [attributeId, setAttributeId] = useState('');
   const [conditionValue, setConditionValue] = useState('');
 
-  const options = useMemo(() => policyAttributeOptions(attributes), [attributes]);
-  const selected = options.find((a) => a.key === attributeKey);
+  const options = useMemo(() => policyAttributeOptions(attributes, action), [attributes, action]);
+  const selected = options.find((a) => a.id === attributeId);
 
   return {
     name,
     setName,
     action,
-    setAction,
+    setAction: (value: PolicyAction) => {
+      // 🔴 #1666 監査: 束縛を置ける組は action ごとに違う（read だけが owner・shared_with を持つ）。
+      // action を変えたら、新しい action で許されない束縛の条件を外し、消えた選択肢の選択も外す
+      // （画面で選べない組を本文に残さない）。
+      setAction(value);
+      setConditions((prev) =>
+        prev.filter(
+          (c) =>
+            !isDynamicBinding(c.value) ||
+            (c.scope === 'document' && bindingsAt(value, c.key).includes(c.value)),
+        ),
+      );
+      // 選びかけの値は action ごとに選択肢が変わり得るので捨てる。
+      setConditionValue('');
+      if (!policyAttributeOptions(attributes, value).some((o) => o.id === attributeId)) {
+        setAttributeId('');
+      }
+    },
     conditions,
     options,
-    attributeKey,
-    selectAttributeKey: (key: string) => {
-      setAttributeKey(key);
+    attributeId,
+    selectAttribute: (id: string) => {
+      setAttributeId(id);
       setConditionValue('');
     },
     conditionValue,

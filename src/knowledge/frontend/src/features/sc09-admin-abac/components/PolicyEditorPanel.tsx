@@ -281,12 +281,12 @@ export function PolicyEditorPanel({
               </Label>
               <Select
                 id="policy-attr"
-                value={draft.attributeKey}
-                onChange={(e) => draft.selectAttributeKey(e.target.value)}
+                value={draft.attributeId}
+                onChange={(e) => draft.selectAttribute(e.target.value)}
               >
                 <option value="">{t`選択してください`}</option>
                 {draft.options.map((a) => (
-                  <option key={`${a.scope}-${a.key}`} value={a.key}>
+                  <option key={a.id} value={a.id}>
                     {labelOf(a.label)}（{labelOf(attributeScopeLabel(a.scope))}）
                   </option>
                 ))}
