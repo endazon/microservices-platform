@@ -391,3 +391,43 @@ McpServer の `UNIMPLEMENTED` を拒否へ写す枝とその試験（X-3。配�
 - テスト仕様書 `docs/tests/FR-16_mcp-server.md` の行は **X-56〜**。
 - 変異（5 件以上。コミット後に当てて `git show HEAD:<path> > <path>` で戻す）: 許可集合の検査を外す／認可の結果を無視して全許可（判定点を通さず台帳を直接読む）／
   エンベロープの許可リストを外す／サービスアカウントの個人資料の除外を外す（写像・主体の両層）／門の状態を見ず常に開いた枝で判定／操作の突合を外す。
+
+### 実施結果（段 2）
+
+基点 `origin/develop` `29d23882`（push 前に取り直して差分なし。テスト仕様書の develop の最大は X-55 のままで、本段は X-56〜X-67）。
+実装コミットは `feat(FR-16,ADR-0117,ADR-0086): …文書サービスに作り…`。設計からの追加 1 点: 試験の器 `GrpcKestrelFactory` の認可サービスと門を代役にし、
+`StubContentAbacGate` に後始末用の `Close()` を足した（器を共有する試験へ開いた門を渡さないため。本物の門はラッチのまま）。
+
+#### 検証（すべて前景・timeout 付き。待受は 127.0.0.1）
+
+| 検査 | 結果 |
+| --- | --- |
+| `dotnet build platform/backend/backend.slnx`（submodule を初期化して） | 警告 0・エラー 0 |
+| `dotnet build knowledge/backend/backend.slnx` | エラー 0。警告 1 件は既存（`Knowledge.IntegrationTests` の `QdrantBuilder()` の廃止予告） |
+| `dotnet test` DocumentService.Tests | 929 件合格（新規・反転の McpTools 系を含む。`McpTools.Execute` は 53 件） |
+| `dotnet test` McpServer.Tests / Platform.Shared.Infrastructure.Tests / AuthorizationService.Tests | 241 件 / 484 件 / 570 件合格 |
+| `dotnet format --verify-no-changes`（platform・knowledge） | 差分なし |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 844 件合格 |
+| `check-trace-blocks` / `check-test-spec-coverage`（床と一致。新しい試験クラスは段 1・段 3 と同名）/ `check-test-traceability` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-proto-contracts`（コメントだけの変更で baseline と差分なし）/ `check-contract-schema` / `gen-knowledge-graph --check` / `check-commit-messages --range=origin/develop..HEAD` | すべて OK |
+
+#### 変異試験（コミット済みの状態で当て、`git show HEAD:<path> > <path>` で戻した。`McpTools.Execute` の 53 件で測った）
+
+| # | 変異 | 結果 |
+| --- | --- | --- |
+| M1 | 受け口の許可集合の検査（`EnsureTrustedRelay`）を素通しにする | 赤 10 件: `MCPサーバー以外の主体からの実行はPERMISSION_DENIED`（6）・`MCPサーバーの変種や人のトークンは信じない`（4） |
+| M2 | 判定点の開いた枝で認可サービスの答えを無視して全許可（`DocumentReadAccess`） | 赤 3 件: `MCP経路の結果はRESTの同じ利用者の結果と一致する(gateOpen: True)`・`門が開いた後は権限の無い文書は…区別できない`・`旧い番号3のscopeや引数のscopeは効かない` |
+| M3 | エンベロープの許可リストを外して全キーを写す | 赤 2 件: `所有者部署共有先はエンベロープの属性に載らない`（有人・SA） |
+| M4a | 写像のサービスアカウントの個人資料の除外だけを外す | 緑のまま —— 判定点（`RelayedUser` が機械として扱う）で守られる（多層防御の 1 層だけ。想定どおり） |
+| M4b | 判定点の層だけを外す（`RelayedUser` が `service-account-` も人として扱う） | 緑のまま —— 写像の除外で守られる（もう 1 層だけ。想定どおり。この層単独は `DocumentReadContentAbacTests` 等が持つ） |
+| M4ab | 両層を外す | 赤 2 件: `サービスアカウント実行は個人資料を返さない`（門の両状態） |
+| M5 | 門の状態を見ず常に開いた枝で判定する（`ContentAbacEnabled` を常に真） | 赤 4 件: `MCP経路の結果はRESTの同じ利用者の結果と一致する(gateOpen: False)`・`サービスアカウント実行は個人資料を返さない(gateOpen: False)`・`所有者部署共有先はエンベロープの属性に載らない`（2） |
+| M6 | 本文の `action` の突合を外す | 赤 3 件: `操作がツールの要する操作と違えばINVALID_ARGUMENT` |
+
+#### 残る懸念（段 2）
+
+- 🔴 **門が閉じている間（既定 Off）は、MCP の利用者が BFF の画面では見えない機密・制限の組織文書の題名と許可リストの属性を引ける**（閉じた枝は組織文書を内容の属性で
+  絞らず、MCP の経路は BFF の判定を通らない）。段 3 の追記が段 2 を #1615 の後ろへ回した理由そのものであり、門を開けるのは ADR-0122 の段 2 の後である。
+  段 2 の作業の設計指示どおり閉じた枝に乗せたが、門が開くまで文書のツールを公開構成から外すか配備で宛先を構成しないか（fail-closed）の判断は利用者に残る（IADR-0479 段 2 の追記）。
+- 文書取得のツールは本文を返さない（台帳は本文を持たず、格納先から読む経路が DocumentService に無い）。LLM は題名と属性しか得られない。
+- 個人資料の「AI の入力に含める」（`ai_input`）は MCP の 3 つの実行口のどれも見ていない（有人の所有者・共有先には、AI 入力から外した個人資料も返る）。段 2 で新しく生じたものではない。
+- MCP サーバーと受け口を同じ器で動かす結合試験は無い（段 1・段 3 と同じ）。
