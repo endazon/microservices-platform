@@ -3,11 +3,13 @@ using AwesomeAssertions;
 using DocumentService.Common.Observability;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.ExternalServices;
+using DocumentService.Tests.Grpc;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pb = Platform.Shared.Contracts.Grpc.Notification.V1;
 
@@ -113,19 +115,68 @@ public class GrpcPrivateNoteNotifierTests
 
     // 🔴 T-05: **呼び出し元のキャンセルだけは伝播させる**（REST 版と同じ）。
     // 握ると「キャンセルされたのに続行した」ように見える。
+    // #1637 で本物のチャネルの形へ改めた: 127.0.0.1 の実サーバーで受け口が要求を受け取ってから呼び出し元が取り消す。
+    // 本物のチャネルはこれを `RpcException(Cancelled)` で投げ、`Cancelled` は「不達」の status に入っていない ——
+    // 素の OCE を注入する形では、停止が計器に **`rejected`**（受け手の責任）として積まれても緑になっていた。
     [Fact]
     public async Task 呼び出し元のキャンセルは伝播する()
     {
         var (metrics, probe) = NewProbe();
         using var _ = probe;
-        var notifier = Notifier(new ThrowingClient(new OperationCanceledException()), metrics);
-        using var cts = new CancellationTokenSource();
+        var service = new AcceptService(ServerBehavior.Hang);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        var logger = new RecordingLogger<GrpcPrivateNoteNotifier>();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var notifier = new GrpcPrivateNoteNotifier(
+            new Pb.NotificationIngress.NotificationIngressClient(server.Channel), metrics,
+            TimeProvider.System, logger);
+
+        var call = notifier.NotifyAsync("owner-a", Kind, Occurred, ct: cts.Token);
+        await service.Received.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
         await cts.CancelAsync();
 
-        var act = async () => await notifier.NotifyAsync("owner-a", Kind, Occurred, ct: cts.Token);
+        var thrown = await FluentActions.Awaiting(() => call).Should().ThrowAsync<OperationCanceledException>();
+        thrown.Which.CancellationToken.Should().Be(cts.Token, "呼び出し元の取り消しとして外へ出す");
+        probe.Measurements.Should().BeEmpty("キャンセルは通知の失敗ではない（`rejected` にも `unreachable` にも積まない）");
+        logger.OfLevel(LogLevel.Error).Should().BeEmpty();
+    }
 
-        await act.Should().ThrowAsync<OperationCanceledException>();
-        probe.Measurements.Should().BeEmpty("キャンセルは通知の失敗ではない");
+    // T-05a 前提の表明: 本物のチャネルは呼び出し元の取り消しを `RpcException(Cancelled)` で投げる。
+    // これが崩れる（チャネルが OCE を投げる）と、T-05 は取り消しの捕捉を測らなくなる。
+    [Fact]
+    public async Task 前提_本物のチャネルは取り消しを_RpcException_Cancelled_で投げる()
+    {
+        var service = new AcceptService(ServerBehavior.Hang);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var client = new Pb.NotificationIngress.NotificationIngressClient(server.Channel);
+
+        var call = client.AcceptAsync(new Pb.AcceptRequest(), cancellationToken: cts.Token).ResponseAsync;
+        await service.Received.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
+        await cts.CancelAsync();
+
+        var thrown = await FluentActions.Awaiting(() => call).Should().ThrowAsync<RpcException>();
+        thrown.Which.StatusCode.Should().Be(StatusCode.Cancelled);
+    }
+
+    // 🔴 T-05b: **呼び出し元が取り消していない `CANCELLED` は従来どおり `rejected` である**
+    // （受け口が答えた失敗。status だけで判定する変異を落とす対照）。
+    [Fact]
+    public async Task 受け口が返した_Cancelled_は_rejected_である()
+    {
+        var (metrics, probe) = NewProbe();
+        using var _ = probe;
+        var service = new AcceptService(ServerBehavior.ReturnCancelled);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        var notifier = new GrpcPrivateNoteNotifier(
+            new Pb.NotificationIngress.NotificationIngressClient(server.Channel), metrics,
+            TimeProvider.System, NullLogger<GrpcPrivateNoteNotifier>.Instance);
+
+        var act = async () => await notifier.NotifyAsync("owner-a", Kind, Occurred, ct: Ct);
+
+        await act.Should().NotThrowAsync();
+        probe.Measurements.Should().ContainSingle()
+            .Which.Outcome.Should().Be(PrivateNoteNotificationMetrics.OutcomeRejected);
     }
 
     // ── 2. 面へ写す形（presence と自由文の不在） ──────────────────────────────
@@ -253,6 +304,26 @@ public class GrpcPrivateNoteNotifierTests
     }
 
     // ── 器 ────────────────────────────────────────────────────────
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private enum ServerBehavior { Hang, ReturnCancelled }
+
+    // 実サーバーに載せる受け口の偽物。`Hang` は要求を受け取ったことを知らせてから取り消されるまで待ち、
+    // `ReturnCancelled` は受け口自身が `CANCELLED` を返す（呼び出し元の取り消しではない対照）。
+    private sealed class AcceptService(ServerBehavior behavior) : Pb.NotificationIngress.NotificationIngressBase
+    {
+        public TaskCompletionSource Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<Pb.AcceptResponse> Accept(Pb.AcceptRequest request, ServerCallContext context)
+        {
+            Received.TrySetResult();
+            if (behavior == ServerBehavior.ReturnCancelled)
+                throw new RpcException(new Status(StatusCode.Cancelled, "受け口が取り消した"));
+            await Task.Delay(Timeout.Infinite, context.CancellationToken);
+            return new Pb.AcceptResponse();
+        }
+    }
 
     private static IConfiguration Configured() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

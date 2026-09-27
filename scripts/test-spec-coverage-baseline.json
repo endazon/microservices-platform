@@ -102,6 +102,7 @@
       "BatchLoopForeignCancellationTests",
       "DashboardEndpointTests",
       "GraphDocumentBodyUpdatedAtTests",
+      "GrpcKnowledgeHealthReporterTests",
       "KnowledgeHealthEndpointTests",
       "KnowledgeHealthProducerTests",
       "LlmUsageMetricsTests",
@@ -213,6 +214,8 @@
       "DocumentTagWriteTrustedRelayTests",
       "GraphDocumentSyncConsumerTests",
       "GrpcApproverRoleDirectoryTests",
+      "GrpcDocumentTagWriterTests",
+      "GrpcTagDictionaryReaderTests",
       "GrpcUserDirectoryTests",
       "KeycloakIdentityAdminClientTests",
       "SimilaritySourceWiringTests",
@@ -259,6 +262,7 @@
       "BffNotificationEndpointTests",
       "EmailIndependenceTests",
       "EmailSendRateTests",
+      "GrpcPrivateNoteNotifierTests",
       "NotificationContractTests",
       "NotificationIngressTests",
       "NotificationOwnerScopingTests",
@@ -477,7 +481,8 @@
       "BffGraphEndpointTests",
       "EdgeTypeCatalogTests",
       "GraphEndpointsSecrecyTests",
-      "GraphTraversalTests"
+      "GraphTraversalTests",
+      "GrpcGraphNeighborExpanderTests"
     ]
   }
 }

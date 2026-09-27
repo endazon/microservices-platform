@@ -4,9 +4,11 @@ using AwesomeAssertions;
 using GraphService.Common.Observability;
 using GraphService.Domain.Ports;
 using GraphService.Infrastructure.ExternalServices;
+using GraphService.Tests.Grpc;
 using Grpc.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pb = Knowledge.Contracts.Grpc.Dashboard.V1;
 
@@ -85,20 +87,52 @@ public class GrpcKnowledgeHealthReporterTests
 
     // 🔴 T-09: **呼び出し元のキャンセルだけは伝播する。** 握ると「キャンセルされたのに続行した」
     // ように見える（REST 実装の `IsCallerCancellation` と同値）。
+    // #1637 で本物のチャネルの形へ改めた: 127.0.0.1 の実サーバーで受け口が要求を受け取ってから呼び出し元が取り消す。
+    // 本物のチャネルはこれを `RpcException(Cancelled)` で投げるので、素の OCE を注入する形では `catch (RpcException)` が
+    // 停止を「報告の失敗」（Error のログ）へ畳んでも緑になっていた。周期のループ（`KnowledgeHealthHostedService`）は
+    // 停止要求の OCE だけを静かに終わる合図として読むので、**外へ出る型が OCE であること**まで測る。
     [Fact]
     public async Task 呼び出し元のキャンセルは伝播する()
     {
         var (metrics, probe) = NewProbe();
         using var _ = probe;
-        using var cts = new CancellationTokenSource();
+        var service = new ReportService(ServerBehavior.Hang);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        var logger = new RecordingLogger<GrpcKnowledgeHealthReporter>();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var reporter = new GrpcKnowledgeHealthReporter(
+            new Pb.KnowledgeHealthReport.KnowledgeHealthReportClient(server.Channel), metrics,
+            TimeProvider.System, logger);
+
+        var call = reporter.ReportAsync(Indicator, [], ct: cts.Token);
+        await service.Received.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
         await cts.CancelAsync();
-        var reporter = Reporter(
-            new ThrowingClient(new OperationCanceledException(cts.Token)), metrics);
 
-        var act = async () => await reporter.ReportAsync(Indicator, [], ct: cts.Token);
-
-        await act.Should().ThrowAsync<OperationCanceledException>();
+        var thrown = await FluentActions.Awaiting(() => call).Should().ThrowAsync<OperationCanceledException>();
+        thrown.Which.CancellationToken.Should().Be(cts.Token, "呼び出し元の取り消しとして外へ出す");
         probe.Measurements.Should().BeEmpty();
+        logger.OfLevel(LogLevel.Error).Should().BeEmpty("停止は報告の失敗ではない");
+    }
+
+    // 🔴 T-09b: **呼び出し元が取り消していない `CANCELLED` は従来どおり「受理されない」枝である**
+    // （数えず・投げず・Error。status だけで判定する変異を落とす対照）。
+    [Fact]
+    public async Task 受け口が返した_Cancelled_は数えず投げない()
+    {
+        var (metrics, probe) = NewProbe();
+        using var _ = probe;
+        var service = new ReportService(ServerBehavior.ReturnCancelled);
+        await using var server = await LoopbackGrpcServer.StartAsync(service, Ct);
+        var logger = new RecordingLogger<GrpcKnowledgeHealthReporter>();
+        var reporter = new GrpcKnowledgeHealthReporter(
+            new Pb.KnowledgeHealthReport.KnowledgeHealthReportClient(server.Channel), metrics,
+            TimeProvider.System, logger);
+
+        var act = async () => await reporter.ReportAsync(Indicator, [], ct: Ct);
+
+        await act.Should().NotThrowAsync();
+        probe.Measurements.Should().BeEmpty();
+        logger.OfLevel(LogLevel.Error).Should().ContainSingle("★ 陽性対照 —— 縮退の枝は Error を出す");
     }
 
     // 🔴 T-02/T-03 の送信側: **null を presence にしない。** `DocScope` / `Dimension` の null を
@@ -200,6 +234,25 @@ public class GrpcKnowledgeHealthReporterTests
     }
 
     // ── 器 ────────────────────────────────────────────────────────
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private enum ServerBehavior { Hang, ReturnCancelled }
+
+    // 実サーバーに載せる受け口の偽物（`GrpcDocumentTagWriterTests.TagWriteService` と同型）。
+    private sealed class ReportService(ServerBehavior behavior) : Pb.KnowledgeHealthReport.KnowledgeHealthReportBase
+    {
+        public TaskCompletionSource Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<Pb.ReportResponse> Report(Pb.ReportRequest request, ServerCallContext context)
+        {
+            Received.TrySetResult();
+            if (behavior == ServerBehavior.ReturnCancelled)
+                throw new RpcException(new Status(StatusCode.Cancelled, "受け口が取り消した"));
+            await Task.Delay(Timeout.Infinite, context.CancellationToken);
+            return new Pb.ReportResponse();
+        }
+    }
 
     private static GrpcKnowledgeHealthReporter Reporter(
         Pb.KnowledgeHealthReport.KnowledgeHealthReportClient client,
