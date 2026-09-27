@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using System.Text.Json.Serialization;
 using AwesomeAssertions;
+using Grpc.Core;
 using McpServer.Domain;
 using McpServer.Infrastructure.ExternalServices;
 using Microsoft.Extensions.Configuration;
@@ -193,7 +194,7 @@ public sealed class GrpcToolInvokerTests
         attackerExecution.Received.Should().BeEmpty();
     }
 
-    // 🔴 X-3: **実行口の無い宛先**（［#1611 段 3 時点］本番の文書はまだこれ）は `UNIMPLEMENTED` —— fail-closed の拒否。
+    // 🔴 X-3: **実行口の無い宛先**（［#1611 段 2 以後］本番の 3 サービスは持つ。旧い版・将来の供給元がこれ）は `UNIMPLEMENTED` —— fail-closed の拒否。
     // 配線の誤りではないので Warning（Error にしない）。
     [Fact]
     public async Task Missing_execution_port_fails_closed_with_a_clear_message()
@@ -207,6 +208,33 @@ public sealed class GrpcToolInvokerTests
             .Which.Message.Should().Be(GrpcToolInvoker.NoExecutionPortMessage);
         log.OfLevel(LogLevel.Warning).Should().ContainSingle().Which.Message.Should().Contain("no tool execution port");
         log.OfLevel(LogLevel.Error).Should().BeEmpty();
+    }
+
+    // 🔴 X-69（［2026-09-28 / #1611 段 2］）: 受け口が `FAILED_PRECONDITION` を返したら（文書サービスの受け口は内容の ABAC の門が
+    // 閉じている間これを返す）、結果を 1 件も返さず拒否する（既定の枝。配線の誤りではないので Warning・Error にしない）。
+    // 受け口が結果を返す対照（同じ器・同じ宛先）で、器が壊れているのではないことを確かめる。
+    [Fact]
+    public async Task Failed_precondition_from_the_port_fails_closed_with_a_warning()
+    {
+        var closed = true;
+        var execution = new McpToolDeclarationGrpcTestHost.StubExecution
+        {
+            Respond = (_, _) => closed
+                ? throw new RpcException(new Status(StatusCode.FailedPrecondition, "gate closed"))
+                : Task.FromResult(new Pb.McpToolResult { Documents = { new Pb.McpToolDocument { DocumentId = "d1", Title = "t" } }, TotalCount = 1 }),
+        };
+        await using var target = await McpToolDeclarationGrpcTestHost.StartAsync(ct: Ct, execution: execution);
+        var (invoker, log) = Build(new Dictionary<string, string?> { ["Mcp:GrpcServices:svc"] = target.GrpcAddress });
+
+        var act = () => invoker.InvokeAsync(Tool("svc"), Scope(), "{}", Ct);
+
+        (await act.Should().ThrowAsync<ToolExecutionUnavailableException>())
+            .Which.Message.Should().Be(GrpcToolInvoker.UnreachableMessage);
+        log.OfLevel(LogLevel.Error).Should().BeEmpty();
+        log.OfLevel(LogLevel.Warning).Should().ContainSingle();
+
+        closed = false;
+        (await invoker.InvokeAsync(Tool("svc"), Scope(), "{}", Ct)).Documents.Should().ContainSingle("対照: 同じ宛先で結果は返る");
     }
 
     // 🔴 X-4: 申告したサービスの gRPC アドレスが構成に無ければ、どこへも送らず拒否する。
