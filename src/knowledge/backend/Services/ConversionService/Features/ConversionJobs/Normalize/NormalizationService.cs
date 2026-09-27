@@ -1,5 +1,6 @@
 using ConversionService.Domain.Ports;
 using ConversionService.Domain;
+using ConversionService.Infrastructure.Configuration;
 using Knowledge.Contracts.Events;
 
 namespace ConversionService.Features.ConversionJobs.Normalize;
@@ -7,12 +8,25 @@ namespace ConversionService.Features.ConversionJobs.Normalize;
 // FR-12, UC-06, ADR-0012/0014: 原本を正規化形式（本文Markdown＋資産）へ変換するオーケストレータ。
 // 本文は pandoc で Markdown 化し、図は LLM で PlantUML/Mermaid 化する。コード化できない図は
 // 画像としてオブジェクトストレージへ保持し、本文へ参照を埋め込む。
+//
+// UC-06, IADR-0008（2026-09-27 追記 / #1621）: **図のコード化には 1 文書あたりの総枠がある**（`DiagramCodingLimits.Budget`・
+// 既定 120 秒）。図の多い文書で 1 回ごとの期限（既定 20 秒）が積み重なると、受け口の実行期限（Wolverine が受け口の ct へ
+// 連結する）を食い尽くし、応答しないゲートウェイで変換ジョブ全体が失敗する。枠を使い切ったら**残りの図はゲートウェイを
+// 呼ばずに画像として残す**（UC-06 例外フロー「図コード化の失敗は画像保持へ縮退し、後日の人手補正でコード化する」）。
 public class NormalizationService(
     IBodyConverter bodyConverter,
     IDiagramCoder diagramCoder,
     IObjectStore objectStore,
-    ILogger<NormalizationService> logger) : INormalizationService
+    ILogger<NormalizationService> logger,
+    DiagramCodingLimits? limits = null,
+    TimeProvider? timeProvider = null) : INormalizationService
 {
+    // 枠を使い切って呼ばずに画像保持へ回した図の理由（ログに出す。図の記録の形は変えない）。
+    public const string BudgetExhaustedReason = "coding-budget-exhausted";
+
+    private readonly TimeSpan _budget = (limits ?? DiagramCodingLimits.Default).Budget;
+    private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
+
     public async Task<NormalizationResult> NormalizeAsync(RawDocumentFetched raw,
         CancellationToken ct = default)
     {
@@ -33,9 +47,22 @@ public class NormalizationService(
         var documentId = DeterministicGuid.ForDocument(raw.SourceId, raw.OriginalPath);
 
         // 2. 図ごとにコード化を試み、成功はコードブロック埋込・不可は画像保持へ振り分ける。
+        // #1621: 総枠の判定は呼び出しの**前**に行う（超過は最後の 1 回の期限までに収まる。`DiagramCodingLimits`）。
+        var codingStarted = _time.GetTimestamp();
         foreach (var figure in body.Figures)
         {
-            var result = await diagramCoder.CodeAsync(figure, confidentiality, ct);
+            DiagramCodingResult result;
+            if (_time.GetElapsedTime(codingStarted) >= _budget)
+            {
+                logger.LogWarning(
+                    "Diagram coding budget {Budget} exhausted for {DocumentId}; retaining {FigureId} as image without calling the gateway",
+                    _budget, documentId, figure.FigureId);
+                result = DiagramCodingResult.Retain(BudgetExhaustedReason);
+            }
+            else
+            {
+                result = await diagramCoder.CodeAsync(figure, confidentiality, ct);
+            }
             if (result.Coded)
             {
                 // コード化成功: PlantUML/Mermaid をコードブロックとして本文へ埋め込む。

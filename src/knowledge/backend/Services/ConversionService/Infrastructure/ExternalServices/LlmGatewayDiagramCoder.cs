@@ -26,9 +26,15 @@ public class LlmGatewayDiagramCoder(
             resp.EnsureSuccessStatusCode();
             result = await resp.Content.ReadFromJsonAsync<CompletionApiResponse>(ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             // 呼び出し失敗は例外送出せず画像保持へ縮退する（変換パイプラインを止めない）。
+            // 🔴 UC-06 (#1621): **時間切れも呼び出し失敗である。** 名前付きクライアントの `HttpClient.Timeout`
+            // （`DiagramCodingLimits.CallTimeout`・既定 20 秒。`DiagramCoderRegistration`）の経過は `TaskCanceledException`
+            // （`OperationCanceledException` の派生）で表れ、そのとき `ct` は立っていない。外へ出すのは `ct` が立った取り消しだけ。
+            // `ct` は受け口の ct ＝**停止要求と Wolverine の 1 通ごとの実行期限の連結**である。したがって縮退の枝に届くのは、
+            // 自分の期限（`Timeout`）が受け口の実行期限より**先に**切れるときだけであり、その順序は `DiagramCodingLimits` が
+            // 起動時に保証する（従前は `Timeout` 未設定＝既定 100 秒 ＞ Wolverine 既定 60 秒で、いつも受け口の ct が先に立っていた）。
             logger.LogWarning(ex, "Diagram coding call failed for {FigureId}; retaining as image", figure.FigureId);
             return DiagramCodingResult.Retain("llm-call-failed");
         }
