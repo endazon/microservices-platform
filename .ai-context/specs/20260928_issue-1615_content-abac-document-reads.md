@@ -1,7 +1,7 @@
 ---
 title: DocumentService の読み取りに、門が開いたときだけ効く内容の ABAC を入れ、所有者・利用者共有のコード判定を認可サービスへの問い合わせにまとめる（#1615）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-05, FR-06, FR-19, NFR-09, UC-03, SC-03, SC-05, ADR-0121, ADR-0119, ADR-0122, ADR-0036, ADR-0034, ADR-0056, ADR-0058, ADR-0086, ADR-0088, ADR-0109, IADR-0253, IADR-0416, IADR-0447, IADR-0476, IADR-0480, IADR-0481]
 author: claude
 created: 2026-09-28
@@ -178,3 +178,29 @@ issue: "#1615"
 - 変異（コミット後に当てて赤を確かめ、`git show HEAD:<path> > <path>` で戻す）: ①門が閉じていても ABAC を効かせる ②門が開いていても ABAC を効かせない
   ③開いた枝で所有者の分岐を落とす（コード判定へ戻す／分岐を見ない）④機械の主体の個人資料の除外を落とす ⑤認可サービスの不達で許可へ倒す
   ⑥`/page` の絞り込みを切り出しの後へ回す ⑦門を判定のたびに読む
+
+### 結果（2026-09-28・ローカル。実装コミット `21c81d29`）
+
+- build: knowledge・platform とも成功（警告は既存の `IngestToSearchQdrantTests` の CS0618 だけ）。`dotnet format --verify-no-changes` 両 slnx とも差分なし。
+- test（失敗 0）: DocumentService.Tests 876・AuthorizationService.Tests 536・Platform.Bff.Tests 789（スキップ 1 は既存）・RetrievalService.Tests 454・
+  GraphService.Tests 761・McpServer.Tests 241。
+- 検査器: check-trace-blocks / check-test-spec-coverage（`--update` で床を上げた）/ check-test-traceability / check-cross-repo-refs / check-plan-id-qualification /
+  check-proto-contracts / check-contract-schema / gen-knowledge-graph --check / check-commit-messages はすべて OK。
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 🔴 **IADR-0482 の欠番で落ちる**（採番検査。0482 は並行の #1674 が取る前提）。0482 の仮置き
+  （#1674 の IADR を番号だけ替えた写しと索引の行）を一時的に置くと 844 件すべて合格した（仮置きは消した）。**#1674 が先にマージされなければ、本件の IADR を
+  develop の最大＋1 へ振り直す。**
+
+### 変異（コミット後に当て、赤を確かめて `git show HEAD:<path>` で戻した。対象は DocumentService.Tests の読み取りの試験 128 件）
+
+| # | 変異 | 赤になった試験（抜粋） |
+| --- | --- | --- |
+| M1 | 門が閉じていても ABAC を効かせる（`??= true`） | 38 件（閉じた器の T-54・#1614 の個人資料の試験・`/page` の試験） |
+| M2 | 門が開いていても ABAC を効かせない（`??= false`） | 16 件（T-55・T-56・T-59・T-62・T-65 ほか） |
+| M3 | 開いた枝で所有者をコードで通す（コード判定を残す） | T-56（所有者の分岐が無い所有者）・T-59 |
+| M4 | 機械の主体名を `azp` の生値にする（所有者の名前と食い違う） | T-60 ×2・T-63・T-66 |
+| M5 | 機械の主体の個人資料の除外を落とす | T-58 |
+| M6 | 認可サービスが答えないとき許可へ倒す | T-59・T-61 |
+| M7 | `/page` の絞り込みを落とす | T-64 |
+| M8 | 門を判定のたびに読む | T-61 |
+| M9 | 機械クライアントの組織文書の許可を広げる（ABAC を素通し） | T-60 ×2・T-63・T-65・T-66・T-61 |
+
