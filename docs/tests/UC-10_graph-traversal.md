@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-17, UC-10]
 adrs: [ADR-0004, ADR-0033, ADR-0034]
-iadrs: [IADR-0242, IADR-0410]
-specs: [20260822_issue-908_graphservice-foundation, 20260927_issue-1637_grpc-client-caller-cancellation]
-issues: [#450, #908, #909, #916, #962, #1637]
+iadrs: [IADR-0242, IADR-0410, IADR-0479]
+specs: [20260822_issue-908_graphservice-foundation, 20260927_issue-1637_grpc-client-caller-cancellation, 20260927_issue-1611_mcp-tool-execution-ports]
+issues: [#450, #908, #909, #916, #962, #1637, #1611]
 -->
 
 # テスト仕様書: 関係を辿って根拠に到達する

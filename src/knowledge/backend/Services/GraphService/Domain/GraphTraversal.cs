@@ -76,7 +76,8 @@ internal sealed class GraphTraversal(IGraphStore store)
         int hops,
         string? thinning = null,
         IReadOnlySet<Guid>? edgeTypes = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool excludePrivateNote = false)
     {
         var visited = new HashSet<Guid> { origin.DocumentId };
 
@@ -154,6 +155,12 @@ internal sealed class GraphTraversal(IGraphStore store)
                     continue;
                 var authorized = AuthorizedNode.Authorize(node, scope);
                 if (authorized is null)
+                    continue;
+
+                // 🔴 FR-16, ADR-0034 決定 9, [[IADR-0479]]（2026-09-27 追記 / #1611 段 3）: サービスアカウント実行では
+                // 個人資料を**非許可と同じくその場で刈る**（展開にも計数にも先立つ）。結果から落とすだけだと、個人資料を
+                // 橋にして到達した文書が残り、その関係の存在をサービスアカウントへ明かす。既定 false（REST・近傍展開の gRPC は不変）。
+                if (excludePrivateNote && GraphDocumentScope.IsPrivateNote(node.Attributes))
                     continue;
 
                 // ここから先は「許可済み」だけを数える。権限外は上限に一切影響しない。

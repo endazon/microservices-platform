@@ -47,7 +47,10 @@ internal sealed class ExpandNeighborsUseCase(
         string? by,
         string? types,
         GraphUserContext user,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        // FR-16, ADR-0034 決定 9, [[IADR-0479]]（2026-09-27 追記 / #1611 段 3）: MCP の実行口がサービスアカウント実行で立てる。
+        // 起点と各ホップの相手が個人資料なら非許可と同じく刈る（`GraphTraversal`）。既定 false —— REST・近傍展開の gRPC は不変。
+        bool excludePrivateNote = false)
     {
         // ★検証★ —— 認可より前。順序を組み替えてはならない（上の 🔴）。
         var gate = Validate(new NeighborsQuery(hops, types));
@@ -86,7 +89,11 @@ internal sealed class ExpandNeighborsUseCase(
         if (origin is null)
             return Result<NeighborsOutcome>.Success(NeighborsOutcome.NotFound);
 
-        var subgraph = await traversal.ExploreAsync(origin, scope, requested, by, edgeTypes, ct);
+        // 🔴 起点が個人資料なら「見えない」と同じ（区別を作らない。ADR-0034 決定 2）。
+        if (excludePrivateNote && GraphDocumentScope.IsPrivateNote(start.Attributes))
+            return Result<NeighborsOutcome>.Success(NeighborsOutcome.NotFound);
+
+        var subgraph = await traversal.ExploreAsync(origin, scope, requested, by, edgeTypes, ct, excludePrivateNote);
 
         return Result<NeighborsOutcome>.Success(
             new NeighborsOutcome(GraphViewResponse.Seal(subgraph, scope)));

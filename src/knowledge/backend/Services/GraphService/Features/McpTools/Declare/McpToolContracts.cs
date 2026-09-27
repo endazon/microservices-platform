@@ -7,6 +7,8 @@ namespace GraphService.Features.McpTools.Declare;
 
 // ADR-0068 決定 2, [[IADR-0319]]: 本ファイルを使う操作は `McpTools/Declare` の 1 つだけなので 3 段目に置く。
 // **「申告の語彙だから操作をまたぐ」ではない** —— 判定は所属（どの操作が使うか）であって、内容の抽象度ではない。
+// ［2026-09-27 追記 / #1611 段 3］実行口（`McpTools/Execute`）も `McpToolDeclarationSource.Declare` を**読む**（要求のツールが自分の申告に
+// 在るかの突合）。申告を組むのは本操作だけであり、実行口は結果を引くだけなので置き場は変えない（RetrievalService と同じ判断）。
 
 // FR-16, ADR-0024 §2, [[IADR-0292]]: `GET /internal/mcp-tools` が返す自己申告の形。
 //
@@ -93,9 +95,11 @@ public static class McpToolDeclarationSource
                 """{"type":"object","properties":{"document_id":{"type":"string","format":"uuid"}},"required":["document_id"]}""",
                 "graph:read",
                 EgressClass)),
+            // ［2026-09-27 / #1611 段 3］説明から「辺を返す」を外した —— 実行の応答（共通エンベロープ）は文書の並びしか持たない
+            // （IADR-0479 段 3 の追記）。呼び出し側の LLM に返らないものを約束しない。
             new McpToolCandidate(Organization, new McpToolDeclaration(
                 "graph.traverse",
-                "指定した文書の近傍をホップ探索し、到達できた文書と辺を返す。"
+                "指定した文書の近傍をホップ探索し、到達できた文書（起点を除く）を返す。"
                 + $"hops は既定 {GraphTraversal.DefaultHops}・上限 {GraphTraversal.MaxHops} で、"
                 + "上限を超える指定は丸めずエラーになる。",
                 traverseSchema,

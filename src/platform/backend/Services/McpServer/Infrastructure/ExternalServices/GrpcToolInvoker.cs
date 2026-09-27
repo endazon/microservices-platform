@@ -19,7 +19,7 @@ namespace McpServer.Infrastructure.ExternalServices;
 //   アドレスは申告の収集と同じ `Mcp:GrpcServices:<サービス名>`（申告元サービスの h2c アドレス）。**申告の中身から宛先を作らない** ——
 //   申告に URL はもう無く、どのサービスも他のサービスを自分のツールの実行先にできない。
 //
-// ■ 🔴 **fail-closed**（ADR-0117 決定 4）。宛先の経路が構成されていない・実行口が無い（`UNIMPLEMENTED`。［#1611 段 1］文書・グラフ）・
+// ■ 🔴 **fail-closed**（ADR-0117 決定 4）。宛先の経路が構成されていない・実行口が無い（`UNIMPLEMENTED`。［#1611 段 3 時点］文書）・
 //   期限切れ・拒否・トークン取得失敗・到達不能は、すべて `ToolExecutionUnavailableException` にして結果を返さない。
 //   利用者へ返す文言は内部の宛先（サービス名・アドレス・status）を含めない。宛先はログにだけ書く。
 //   ログは配線不備（`UNAUTHENTICATED` / `PERMISSION_DENIED` / s2s トークンの取得失敗。再起動では直らない）を Error、それ以外を Warning。
@@ -120,7 +120,7 @@ public sealed class GrpcToolInvoker : IToolInvoker, IDisposable
         }
         catch (RpcException ex) when (ex.StatusCode is StatusCode.Unimplemented)
         {
-            // 実行口をまだ持たない宛先（［#1611 段 1］文書・グラフ）がここへ来る。配線の誤りではないので Warning。
+            // 実行口をまだ持たない宛先（［#1611 段 3 時点］文書）がここへ来る。配線の誤りではないので Warning。
             _logger.LogWarning(
                 "MCP tool {Tool} of {Service} at {Address} was not executed: the service has no tool execution port "
                 + "(platform.mcp.v1.McpToolExecution is unimplemented)",

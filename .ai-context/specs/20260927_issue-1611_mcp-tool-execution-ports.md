@@ -158,3 +158,149 @@ compose・helm の「各サービスの受け口は #1611 まで無い」→ 同
   登録簿の属性と IdP の属性の関係は計画に定めが無い（[[IADR-0479]] §結果）。個人資料は 2 層で落ちるので緩む向きではない。
 - proto の破壊的変更の承認（allowlist の `approvedBy`）は、ADR-0117 決定 3 と #1611 の本文を根拠に記入した。レビューで利用者の確認を受けること。
 - MCP サーバーと受け口を同じ器で動かす結合試験は無い（ユニットをまたぐ器が無い）。
+
+---
+
+## ［2026-09-27 追記 / #1611］段 3: GraphService の実行口
+
+> 段 1 の記録（上）は書き換えない。本節は段 3 の着手前に書き、実施結果を末尾に足した。
+
+### 起点・段の並び
+
+- 基点 `origin/develop` `b633e303`（段 1＝#1662 の着地後）。`git rev-parse --is-shallow-repository` = `false`。ブランチ `feat/FR-16-mcp-tool-execution-graph`。
+- **段 2（DocumentService）は #1615（内容の ABAC）の後ろへ回した** —— DocumentService の読み取りには内容の ABAC がまだ無く、実行口を今の判定点に
+  乗せると組織文書が属性で絞られないため。**本 PR（段 3）は `Refs #1611` で、#1611 は段 2 で閉じる。**
+- 束ねない判断（段 1 の表）は変わらない。本 PR は GraphService の受け口だけを足し、proto・MCP サーバーは変えない。
+
+### 母集合（規則 9。誤りの側の文字列で走査した）
+
+走査語: `#1611`・`段 2・3`・`後続の段`・`文書・グラフ`・`DocumentService・GraphService`・`UNIMPLEMENTED`/`Unimplemented`。
+除外は段 1 と同じ（`bin` / `obj` / `node_modules` / `.git` / `src/ai-stock-trading`、凍結記録 `.ai-context/specs/`、生成物 `CHANGELOG.md`）。
+
+1. **「グラフには受け口が無い」と書く記述** —— proto `mcp_tool_execution.proto`（■ 受け口の段落）／`GrpcToolInvoker.cs`（2 箇所）・`ToolInvocationService.cs`（1）・
+   `GrpcToolInvokerTests.cs`（1）の `［#1611 段 1］文書・グラフ`／compose・helm の `document・graph は後続の段まで拒否`／
+   `docs/api/FR-16_mcp-server.md` の注記／`docs/api/east-west-grpc.md` §14 つ目の面／`docs/tests/FR-16_mcp-server.md` X-14・未実施・残件／
+   IADR-0462 の追記（「文書・グラフは後続の段まで」）／IADR-0479 §残るもの
+2. **グラフの `UNIMPLEMENTED` を固定する試験** —— GraphService `GrpcMcpToolDeclarationTests.Tool_execution_port_is_not_served_yet_and_returns_unimplemented`
+3. **近傍展開の本体**（`ExpandNeighborsUseCase` / `GraphTraversal` / `GraphViewResponse.Seal`）—— 実行口が再利用する既存の経路（変更は下の「設計」の 2 点だけ）
+
+**本 PR で直すもの**: 1 の全件（「文書だけが無い」へ）・2 の反転。IADR-0462 は凍結記録の追記ブロックなので本文を直さず、IADR-0479 側の追記で段 3 を記録する。
+**除外（直さない）**: DocumentService の `UNIMPLEMENTED` の試験（段 2 で反転する。今も正しい）。
+**この変更で新たに誤りになる自分の記述（規則 10）**: 1 を「文書だけ」へ直した記述は段 2 で再び誤りになる（段 2 の母集合へ引き継ぐ）。
+
+### 受け入れ基準（段 3）
+
+- G-1 **実行口（Graph）**: `platform.mcp.v1.McpToolExecution/Execute` を h2c で受け、自分の申告名（`graph.get_backlinks` / `graph.get_links` / `graph.traverse`）だけを実行する。
+  他は `NOT_FOUND`。面は `ServiceCaller` を要求し、申告の口（`MapMcpToolEndpoints`）と対で張る。
+- G-2 🔴 **MCP サーバー以外は拒否**: 許可集合 `McpToolExecution:TrustedUserContextClients`（既定 `mcp-server`。共有 `TrustedUserContextRelay`。
+  `Program.cs` で `ThrowIfScalar` → `Configure`）。他の `platform-service` の主体・変種・人のトークンは `PERMISSION_DENIED` で、認可の問い合わせを 1 度も行わない。
+  近傍展開の面（`GraphNeighbors:`。既定 `retrieval-service`）とは集合を共有しない。
+- G-3 🔴 **自分で認可する・第二の判定点を作らない**: 本文の利用者名で `IGraphAccessResolver.ResolveForUserAsync`（属性は空・操作は `read`）を問い、
+  既存の `ExpandNeighborsUseCase`（検証 → 認可 → `AuthorizedNode` の型ゲートによるホップごと ABAC → `Seal`）をそのまま通す。
+  権限外の文書は返らず、**権限外の文書を橋にした先も返らない**。`granted=false`・認可サービス不達（既存の縮退で `granted=false`）は 1 件も返らない。
+- G-4 🔴 **本文の scope は効かない**: 旧い番号 3 をワイヤへ載せても、引数に `scope` / `filters` を書いても結果は変わらない。
+- G-5 `action` は受け口が決める（3 ツールとも `read`）。違えば `INVALID_ARGUMENT`。利用者文脈が無い・空も `INVALID_ARGUMENT`。
+- G-6 **引数は丸めない**: `document_id`（必須・GUID）、`hops`（traverse のみ。整数 1〜3・既定 2）、`edge_types`（traverse のみ。GUID の文字列の配列）。
+  外れは `INVALID_ARGUMENT`。境界ちょうど・省略は通る。上限・既定は申告と同じ値（`GraphTraversal` の定数）。
+- G-7 🔴 **サービスアカウント実行は個人資料を返さない・橋にもしない**（ADR-0034 決定 9 の要求側）: 利用者名が `service-account-` で始まるなら、
+  個人資料を起点・中継・結果のどこにも使わない。有人には同じ点で返る（対照）。
+- G-8 **応答**: 共通エンベロープ。`traverse` は起点を除く到達文書、`get_links` は起点が参照する文書（起点 → 相手の辺）、`get_backlinks` は起点を参照する文書（相手 → 起点の辺）。
+  題名と属性を返し、本文・参照リンクは持たない（グラフは本文を持たない）。件数は判定後の件数、表示上限で打ち切ったら `truncated`。
+  起点が見えない・無いは空（存在秘匿。区別しない）。
+- G-9 **取り消し**は取り消しのまま外へ出る（#1646 の規約。既存の経路が `OperationCanceledException` を畳まない）。
+- G-10 **配備**: 既定の許可集合が compose・helm の MCP サーバーの s2s の client と realm の機密クライアントに一致し、実行の宛先に graph-service の h2c が在る（配線試験）。
+
+### 設計（段 3）
+
+- **受け口**（`Features/McpTools/Execute/`）: Retrieval の型と同じ判定順。引数の解釈の後、`GraphUserContext(userId, 空の属性, IsAuthenticated: true)` を組んで
+  `ExpandNeighborsUseCase.ExecuteAsync` を呼ぶ（`get_backlinks` / `get_links` は `hops=1`、`traverse` は指定または既定）。**判定器は増やさない。**
+- **既存の経路への変更は 2 点だけ**:
+  1. `ExpandNeighborsUseCase` / `GraphTraversal` に **`excludePrivateNote`（既定 false）** を足す。true なら起点と各ホップの相手が個人資料のとき、
+     非許可と同じくその場で刈る（**展開・計数より前**）。応答から落とすだけだと、個人資料を橋にして到達した文書が残る（サービスアカウントに関係の存在を漏らす）。
+     REST・近傍展開の gRPC は既定 false のままで挙動は変わらない。
+  2. `GraphViewResponse` に **`Seal` が通したノードの属性**を内部の項目（直列化しない）として持たせる。MCP サーバーの 2 層目（個人資料・制限プロジェクトの除外）と
+     越境判定（機密区分）は属性を読むため、属性の無い応答は越境判定が安全側（本文なし）へ倒れるだけでなく 2 層目が効かなくなる。REST の応答の形は変えない。
+- **応答の写像**: `Seal` 済みのノードと辺だけから作る（未フィルタの部分グラフには触れない）。ノード・辺の順序は探索の到達順。辺の向きは `Edge` の
+  `Source → Target`（バックリンクは Target の逆引き。対称型の辺は正規化順で向きが決まる）。
+- **IADR**: 新設しない。IADR-0479 に段 3 の追記を足す（受け口の形・既存の経路への 2 点の変更・段 2 の後回し）。
+
+### 試験の方針（段 3）
+
+- GraphService の既存の器 `GrpcKestrelFactory`（本番の `Program.cs`・実 Kestrel の h2c・127.0.0.1・本物の JwtBearer）で往復する。器の解決器は
+  `ScopeFor` で答えを決め `ResolvedFor` に問い合わせを記録する（判定の位置の観測点）。陰性と陽性対照を同じ器・同じ点で対にする。
+- テスト仕様書 `docs/tests/FR-16_mcp-server.md` の行は **X-40〜X-49**（段 1 は X-28 まで、段 2 は X-30〜X-39 を予約）。
+- 変異（3 件以上。コミット済みの状態で当てて `git show HEAD:<path>` で戻す）: 許可集合の検査を外す／認可の結果を無視する（`Granted` を真にする）／
+  ホップごとの判定を外す（`AuthorizedNode.Authorize` を素通しにする）／サービスアカウントの刈り込みを外す／操作の突合を外す。
+
+### 実施結果（段 3）
+
+基点 `origin/develop` `b633e303`（push 前に取り直して差分なし）。実装コミットは `feat(FR-16,ADR-0117,ADR-0086): …グラフサービスに作り…`。
+設計からの追加 1 点: `graph.traverse` の申告の説明から「辺を返す」を外した（応答のエンベロープは文書の並びしか持たない。IADR-0479 段 3 の追記）。
+
+#### 検証（すべて前景・timeout 付き。待受は 127.0.0.1）
+
+| 検査 | 結果 |
+| --- | --- |
+| `dotnet build knowledge/backend/backend.slnx`（`--no-incremental`） | エラー 0。警告 1 件は既存（`Knowledge.IntegrationTests` の `QdrantBuilder()` の廃止予告。本 PR は触れていない） |
+| `dotnet build platform/backend/backend.slnx` | 警告 0・エラー 0 |
+| `dotnet test` GraphService.Tests | 748 件合格（新規・反転の McpTools 系 69 件を含む） |
+| `dotnet test` McpServer.Tests / Platform.Shared.Infrastructure.Tests | 237 件 / 484 件合格 |
+| `dotnet format --verify-no-changes`（knowledge・platform） | 差分なし |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 841 件合格 |
+| `check-trace-blocks` / `check-test-spec-coverage`（`--update` の差分なし。新しい試験クラスは段 1 と同名で、仕様書 × クラスの対は増えない）/ `check-test-traceability` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-proto-contracts`（コメントだけの変更で baseline と差分なし）/ `gen-knowledge-graph --check` / `check-commit-messages --range=origin/develop..HEAD` | すべて OK |
+
+#### 変異試験（コミット済みの状態で当て、`git show HEAD:<path>` で戻した）
+
+| # | 変異 | 赤になった試験 |
+| --- | --- | --- |
+| M1 | 受け口の許可集合の検査（`EnsureTrustedRelay`）を素通しにする | `MCPサーバー以外の主体からの実行はPERMISSION_DENIED`（6 件）・`MCPサーバーの変種や人のトークンは信じない`（4 件） |
+| M2 | 認可の問い合わせ結果を無視して全許可にする（`ExpandNeighborsUseCase`） | 陽性対照（2）・`権限の無い文書もそれを橋にした先も返らない`・`許可が無い起点が見えない起点が無いはどれも空で区別できない`・`旧い番号3のscopeや引数のscopeは効かない`・`サービスアカウント実行は個人資料を返さず橋にもしない`・引数の境界（4）（計 10 件） |
+| M3 | ホップごとの判定を外す（`GraphTraversal` の展開で許可を問わずに `AuthorizedNode` を作る＝「探索してから濾す」形。出力の門は残る） | `権限の無い文書もそれを橋にした先も返らない`・`旧い番号3のscopeや引数のscopeは効かない`・陽性対照（2）ほか（計 8 件） |
+| M4 | サービスアカウント実行の探索中の刈り込みを外す（応答の写像での除外は残る） | `サービスアカウント実行は個人資料を返さず橋にもしない`（個人資料の先 Q が浮上する） |
+| M5 | 本文の `action` の突合を外す | `操作がツールの要する操作と違えばINVALID_ARGUMENT`（3 件） |
+
+#### 残る懸念（段 3）
+
+- `graph.traverse` は辺を返さない（エンベロープの改定は計画 ADR-0024 §4 の範囲）。到達文書は返るので緩む向きではない。
+- 被参照・参照先は 1 ホップの結果を辺の向きで選ぶ。対称型の辺（`related`）は書き込み時に文書 ID の昇順へ正規化されるため、向きは意味を持たず、
+  どちらか一方のツールにだけ現れる（近傍探索には両方の向きで現れる）。
+- 認可サービス不達は既存の `GraphAccessResolver` の縮退（`Granted=false`）で空の応答になる。拒否（status）ではなく空で返るのは近傍展開の gRPC と同じであり、
+  「結果を返さない」は満たすが、MCP クライアントからは「該当なし」と区別できない（存在秘匿と同じ形）。
+- 取り消しは既存の経路が `OperationCanceledException` を畳まないことに依る（受け口は捕まえない）。受け口の取り消しを直接起こす試験は置いていない。
+- MCP サーバーと受け口を同じ器で動かす結合試験は無い（段 1 と同じ）。
+
+### ［2026-09-27 追記 / #1611］段 3 の監査（PR #1668、NO-GO）への対応
+
+- **B-1（ブロッキング）: 他人の共有先が MCP クライアントへ渡っていた。** `GraphDocument.Attributes` は同期時に `shared_with` を重ねた ABAC 判定用の像であり
+  （`GraphDocumentSyncConsumer.AbacAttributes`）、段 3 の初版は `NodeAttributes` がそれを丸ごと複製し、写像が全キーをエンベロープへ載せていた。
+  共有先は所有者にだけ返す規則（ADR-0098 / IADR-0450）を MCP のグラフ経路だけが迂回していた。
+  **エンベロープの属性は許可リストの文書属性だけ。共有先は運ばない。** 直し方:
+  1. 写像の許可リスト `EnvelopeAttributeKeys` = `confidentiality`・`doc_scope`・`project`。根拠は McpServer のコードで属性を読む箇所の走査
+     （`git grep` の `Attributes.TryGetValue` / `IsPrivateNote` / `IsRestricted`）: `EgressPolicy.ConfidentialityKey`（越境判定）、`DocumentScope.Key`
+     （2 層目の個人資料の除外）、`RestrictedProject.DocumentKey`（2 層目の制限プロジェクトの除外）の 3 つだけ。登録簿の属性（`clearance`・`tags`）は
+     文書ではなく主体の属性なので対象外。
+  2. 多層防御として `Seal` が作る `NodeAttributes` からも `AttributeValueKeys.SharedWith` を除く（判定用の像でなく文書の属性だけ）。
+  3. **`owner`（N-2）は落とす** —— McpServer は読まない（上の走査で 0 件）。
+  - **段 1（Retrieval）との差**: Retrieval は索引の入れ子 `attributes` を全キー返す（`QdrantVectorStore.ExtractAttributes`）。共有先は入れ子の外
+    （ペイロード直下）なので入らないが、`owner`・部署等は返る。グラフは許可リストに絞ったので、返すキーは Retrieval より狭い。
+    Retrieval は本 PR では変えない（揃えるかは別件として残る懸念に書く）。
+- **N-1**: `graph.traverse` は表示上限で打ち切ったら許可済みの全体件数（`TotalNodes` − 起点）を `total_count` に返す。被参照・参照先は向きごとの全体件数を
+  本体が数えないので、打ち切り時も返した件数のまま（`truncated` で示す）。
+- **N-4**: 本体の失敗を `INTERNAL` で返すときは固定文言にした（`Error.Message` を外へ出さない）。
+- テスト仕様書に X-50（共有先・所有者の否定と陽性対照）・X-51（打ち切り時の件数）を足した。`docs/tests/FR-17_knowledge-graph.md`・`docs/tests/UC-10_graph-traversal.md` の
+  trace ブロックに IADR-0479・本仕様書・#1611 を足した。
+- **残る懸念（追加）**: Retrieval の実行口は `owner`・部署等を含む索引の属性を全キー返す（共有先は入らない）。MCP の応答の属性を許可リストへ揃えるかは
+  別件の判断とする。被参照・参照先の打ち切り時の件数は全体件数ではない。
+
+#### 監査対応の検証と変異（修正コミット `fix(FR-16,ADR-0117,ADR-0098): …許可リストに絞る` の後）
+
+検証: knowledge・platform の build（エラー 0。knowledge の既存警告 1 件のみ）、GraphService.Tests 751 件・McpServer.Tests 237 件合格、`dotnet format --verify-no-changes` 両ユニット差分なし、
+`scripts.test.js` 841 件合格、check-trace-blocks / check-test-spec-coverage（`--update` で差分なし）/ check-test-traceability / check-cross-repo-refs /
+check-plan-id-qualification / check-proto-contracts / gen-knowledge-graph --check / check-commit-messages はすべて OK。
+
+| # | 変異（コミット済みの状態で当て、`git show HEAD:<path>` で戻した） | 結果 |
+| --- | --- | --- |
+| Ma | 写像の許可リストを外して全キーを写す（`Seal` の共有先の除去は残る） | 赤 4 件: `共有先と所有者はエンベロープの属性に載らない`（有人・SA）・陽性対照（2。許可リスト外のキーが載る）|
+| Mb | `Seal` の共有先の除去を外す（写像の許可リストは残る） | 緑のまま —— 写像の許可リストで守られる（多層防御の 1 層だけを外した形。想定どおり） |
+| Mab | 写像の許可リストに共有先だけを通す（`Seal` の除去は残る） | 緑のまま —— `Seal` の除去で守られる（もう 1 層だけを外した形。想定どおり） |
+| Mc | 打ち切り時の全体件数を返さない（返した件数に戻す） | 赤 1 件: `表示上限で打ち切ったら全体件数を返す` |

@@ -62,6 +62,14 @@ public sealed class GraphViewResponse
     // ことで読み取れる** —— 黙って正確なふりをしない。
     public bool TotalIsLowerBound { get; }
 
+    // FR-16, ADR-0024 §4, ADR-0034 決定 9, [[IADR-0479]]（2026-09-27 追記 / #1611 段 3）: **`Seal` が通したノードの属性**
+    // （文書 ID → 属性の複製）。MCP の実行口が共通エンベロープの `attributes` へ写すためだけに持つ ——
+    // MCP サーバーの越境判定（機密区分）と 2 層目の除外（個人資料・制限プロジェクト）は属性を読む。
+    // 🔴 **直列化しない**（internal ＋ `JsonIgnore`）。REST の応答の形は変えない。値は `Nodes` と同じ集合だけを持つ
+    // （出力ゲートの外の属性は載らない）。
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, string>> NodeAttributes { get; }
+
     // 🔴 **private である。** ここを緩めると出力ゲートが無効になる
     // （GraphTypeGateArchitectureTests が公開コンストラクタの不在を assert する）。
     private GraphViewResponse(
@@ -70,8 +78,10 @@ public sealed class GraphViewResponse
         bool truncated,
         int totalNodes,
         int totalEdges,
-        bool totalIsLowerBound)
+        bool totalIsLowerBound,
+        IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, string>> nodeAttributes)
     {
+        NodeAttributes = nodeAttributes;
         Nodes = nodes;
         Edges = edges;
         Truncated = truncated;
@@ -85,7 +95,8 @@ public sealed class GraphViewResponse
     {
         // FR-05: deny-by-default。許可ポリシーが無ければ何も返さない。
         if (!scope.Granted)
-            return new GraphViewResponse([], [], subgraph.Truncated, 0, 0, false);
+            return new GraphViewResponse([], [], subgraph.Truncated, 0, 0, false,
+                new Dictionary<Guid, IReadOnlyDictionary<string, string>>());
 
         // 多層防御: 入口のゲートを通っていれば恒等だが、迂回経路があってもここで濾す。
         var visible = new List<GraphDocument>();
@@ -117,7 +128,16 @@ public sealed class GraphViewResponse
             .Select(n => new GraphNodeDto(n.DocumentId, n.Title, GraphDocumentScope.IsPrivateNote(n.Attributes)))
             .ToList();
 
+        // 🔴 ［2026-09-27 追記 / #1611 段 3 監査 B-1］**共有先（`shared_with`）は載せない。** `GraphDocument.Attributes` は同期時に
+        // 共有先を重ねた ABAC 判定用の像であり（`GraphDocumentSyncConsumer.AbacAttributes`）、共有先は所有者にだけ返す
+        // （ADR-0098 / IADR-0450）。ここは文書の属性だけを持つ（実行口の写像の許可リストと二重に守る）。
+        var attributes = visible.ToDictionary(
+            n => n.DocumentId,
+            n => (IReadOnlyDictionary<string, string>)n.Attributes
+                .Where(kv => !string.Equals(kv.Key, AttributeValueKeys.SharedWith, StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(kv => kv.Key, kv => kv.Value));
+
         return new GraphViewResponse(nodes, edges, subgraph.Truncated,
-            subgraph.TotalNodes, subgraph.TotalEdges, subgraph.TotalIsLowerBound);
+            subgraph.TotalNodes, subgraph.TotalEdges, subgraph.TotalIsLowerBound, attributes);
     }
 }
