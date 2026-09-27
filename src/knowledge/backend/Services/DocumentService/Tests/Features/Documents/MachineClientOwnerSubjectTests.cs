@@ -156,6 +156,47 @@ public class MachineClientOwnerSubjectTests(TestWebApplicationFactory factory)
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // 本番の人のトークン（BFF の中継）は利用者名と `azp=bff` を両方持つ。
+    private HttpClient HumanViaBff(string user, params string[] roles)
+    {
+        var client = ClientAs(user, roles);
+        client.DefaultRequestHeaders.Add(TestAuthHandler.ClientIdHeader, "bff");
+        return client;
+    }
+
+    // 🔴 **人の主体は `azp` から組み立てない**（#1680 の監査で生き残った変異の固定）。`azp` を持たない人だけで試すと、
+    // 「人でも `azp` を優先して `service-account-<azp>` を返す」変異が全件緑のまま残る —— そのとき BFF 経由の人は全員
+    // `service-account-bff` という 1 つの主体にまとまり、互いの文書に本文・共有・タグを入れられる。
+    [Fact]
+    public async Task 利用者名とazpを持つ人は自分の文書を扱え_別の人の文書には404になる()
+    {
+        var tag = await RegisterTagAsync();
+        var doc = await CreateAsync(HumanViaBff("alice", "platform-admin"));
+        doc.Attributes.Should().Contain("owner", "alice", "人の所有者は利用者名（azp から組み立てない）");
+
+        (await PutBodyAsync(HumanViaBff("alice"), doc.Id, "alice の本文"))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await HumanViaBff("alice").PostAsJsonAsync($"/documents/{doc.Id}/shares",
+            new { subjectType = "user", subjectId = "carol" }, Ct)).StatusCode.Should().Be(HttpStatusCode.Created);
+        var list = await HumanViaBff("alice").GetAsync($"/documents/{doc.Id}/shares", Ct);
+        list.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await list.Content.ReadFromJsonAsync<List<DocumentShareDto>>(Ct))!
+            .Should().ContainSingle().Which.GrantedBy.Should().Be("alice");
+        (await HumanViaBff("alice").PostAsJsonAsync($"/documents/{doc.Id}/tags", new AddDocumentTagRequest(tag), Ct))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // 対照: 同じ `azp=bff` を持つ別の人（ロールは運用者＝管理者の分岐に当たらない）。
+        var bob = HumanViaBff("bob", "platform-operator");
+        (await PutBodyAsync(bob, doc.Id, "bob の本文")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await bob.PostAsJsonAsync($"/documents/{doc.Id}/shares",
+            new { subjectType = "user", subjectId = "mallory" }, Ct)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await bob.GetAsync($"/documents/{doc.Id}/shares", Ct)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await bob.DeleteAsync($"/documents/{doc.Id}/shares/user/carol", Ct)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await bob.PostAsJsonAsync($"/documents/{doc.Id}/tags", new AddDocumentTagRequest(await RegisterTagAsync()), Ct))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await LoadAsync(doc.Id))!.ContentFingerprint.Should().Be(DocumentBodyIntake.Fingerprint("alice の本文"));
+    }
+
     // ── T-74: 共有の付与・一覧・取り消しとタグ反映（同じ所有者の比較を持つ口） ─────────────
 
     [Fact]

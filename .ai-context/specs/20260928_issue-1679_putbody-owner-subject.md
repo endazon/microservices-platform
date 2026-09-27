@@ -94,3 +94,37 @@ issue: "#1679"
 - `dotnet test` を `DocumentService.Tests` で全件、`dotnet format --verify-no-changes`（knowledge の slnx）、`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`、
   文書系の検査器（`check-trace-blocks`・`check-test-spec-coverage`・`check-test-traceability`・`check-cross-repo-refs`・`check-plan-id-qualification`・
   `gen-knowledge-graph --check`・`check-commit-messages --range=origin/develop..HEAD`）。
+
+## ［2026-09-28 追記 / #1679］監査（PR #1680・head `dd6ede2a`）の指摘への対応
+
+### 走査語の取りこぼし（規則 9・10）
+
+走査語 `Identity\??\.Name` は `Identity!.Name` の形を拾わない。`git grep -n -E "Identity!\.Name" f42e4e36 -- 'src/**/*.cs'`（試験を除く）→ 7 行。
+
+| 箇所 | 中身 | 扱い |
+| --- | --- | --- |
+| `Knowledge.Bff.Endpoints/Documents/DocumentReadGrpcClient.cs` L97 | 読み取りの gRPC へ運ぶ利用者文脈（`UserContext.UserId`） | 除外: 所有者との比較ではない（受け口が判定する） |
+| `AiAnalysisService/.../Analyze/Endpoint.cs` L41・`Ask/Endpoint.cs` L21 | ABAC へ渡す userId | 除外: 所有者との比較ではない |
+| `AiAnalysisService/.../AskStream/Endpoint.cs` L53 | 同上 | 除外: 同上 |
+| `RetrievalService/Domain/SearchUserContext.cs` L53 | 検索の利用者文脈 | 除外: 同上 |
+| `DocumentService/Features/PrivateNotes/PrivateNoteEndpoints.cs` L92 | `SubjectOf`（`Identity?.Name` と同じ行。上の母集合で既出） | 除外: 個人資料は人だけ（ADR-0034 決定 9） |
+| `DocumentService/.../GrantShare/Endpoint.cs` L47 | 共有の付与者（`GrantedBy`） | 変えた（同じファイルの L38 を読んだときに拾っていた。上の母集合の表の GrantShare 行） |
+
+所有者との比較の取りこぼしは無かった。
+
+### 監査で生き残った変異と、足した試験
+
+「`OwnerSubject` が人でも `azp` を優先して `service-account-<azp>` を返す」変異は、885 件がすべて緑のまま残っていた。試験の人が `azp` を持たなかったためである（本番の人のトークンは `azp=bff` を持つ）。
+`利用者名とazpを持つ人は自分の文書を扱え_別の人の文書には404になる` を足した（T-73 に 1 行を追記）。
+
+### 残余リスク
+
+- **利用者名を持たない人のトークン**（`profile` スコープが無く `azp=bff`）は、`MachinePrincipal.IsMachine` で腕 B と読まれ、主体が `service-account-bff` の 1 つにまとまる。これは #1616（作成の口の `owner`・メタデータ更新・削除）以来の前提である。
+  本件で、この主体どうしが本文・共有・タグでも互いの文書に書ける範囲まで広がる。
+- **緩和（実在と CI 配線を確かめた）**: `scripts/check-realm-constraints.js` の検査 7（#1589 / #1587）が、realm の宣言について次を拒否する。
+  - 標準フロー（人がログインする経路）のクライアントが `profile` を既定のスコープに持たないこと
+  - `profile` スコープが `preferred_username` を access token へ載せないこと
+  - 軽量アクセストークンで利用者名が落ちること
+  - `service-account-` 接頭辞の人の利用者
+  CI では `.github/workflows/ci.yml` の `static-checks` ジョブが、`--self-test`（L473）と本走（L476）の 2 段で走らせている。本作業の時点で本走は OK だった。
+- 稼働中のトークンに利用者名が載るかの実測は、計画 ADR-0122 のフォローアップ 4 で行う（稼働クラスタ。本件の外）。
