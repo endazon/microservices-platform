@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-02 取り込み
 type: test-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-09-05
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, SC-02, UC-04]
-adrs: [ADR-0070]
-iadrs: [IADR-0149, IADR-0358, IADR-0368, IADR-0390]
-specs: [20260627_FR-02_ingestion-pipeline, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration]
-issues: [#536, #1193, #1247]
+adrs: [ADR-0070, ADR-0027]
+iadrs: [IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478]
+specs: [20260627_FR-02_ingestion-pipeline, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#536, #1193, #1247, #1640]
 -->
 
 # テスト仕様書: 取り込み
@@ -44,6 +44,10 @@ issues: [#536, #1193, #1247]
 | T-15 | **索引テキスト** | 題名・タグから索引テキストを作る純関数 | 題名とタグを空白区切りで並べ、空要素は落とす。題名もタグも無ければ空（`MetadataIndexTextTests`） | 本文なしの文書をメタデータで索引する裁定（決定 4） |
 | T-16 | **メタデータ点の ID** | `DeriveMetadata` が本文チャンクと衝突しない | 決定的で、同じ文書の本文チャンク（先頭 512 件）のどれとも一致しない（`ChunkIdTests`） | 取り込み: 冪等性 |
 | T-17 | **`has_body` の書き込み** | メタデータ点のペイロードを組む | `has_body = false`（真偽）が載り、索引テキストが `text` に入り、`chunk_index` は `-1`。**本文チャンクではキー自体を書かない**（欠落＝本文あり。backfill を要らなくする既定）（`QdrantIngestionVectorStoreTests`） | 本文なしの文書をメタデータで索引する裁定（決定 4） |
+| T-18 | **呼び出しごとの期限** | 縮めた受け口の期限（4 秒）の下で、本文・埋め込み・既存チャンクの削除・チャンクの登録・メタデータ点の登録のどれか 1 つが止まる（呼び出しごとの期限 1 秒） | 受け口の期限が立つより前に、その呼び出し先の**時間切れ**（`ConsumerTimeoutException`）として投げる。完了イベントは出さない（`IngestionTimeoutTests`） | 取り込み: 失敗は再試行・デッドレター |
+| T-19 | **取り消しは取り消しのまま**（対照） | 呼び出しごとの期限より先に呼び出し元が取り消す | 時間切れに化けず `OperationCanceledException` のまま外へ出る（`IngestionTimeoutTests`）。判定の境界そのもの（両方が立ったら呼び出し元を優先・`RpcException(Cancelled)` の扱い・計器）は共通部品の試験が持つ（`src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Foundation/Messaging/ConsumerCallTimeoutsTests.cs`） | 同上 |
+| T-20 | **埋め込みの総枠** | 1 回ごとに時計が 1 秒進む埋め込みで 10 チャンクの文書を取り込む（偽の時計） | 総枠 3 秒なら 3 回呼んだ後の判定で残りを呼ばずに時間切れ（呼び出し先 `embedding-budget`）。総枠 11 秒なら全チャンクを埋め込み完了を出す（対照）（`IngestionTimeoutTests`） | 取り込み: チャンク数に比例する埋め込み |
+| T-21 | **上限の構成と配線** | 既定値・受け口の実行期限に最悪の所要時間が収まらない構成・本番の Program.cs | 既定は本文 20 秒・埋め込み 30 秒・Qdrant 10 秒・総枠 600 秒・受け口 720 秒。「削除（コレクション数 × Qdrant）＋本文＋総枠＋最後の 1 チャンク」以上の受け口の期限は起動を止める（等しいときも）。受け口の実行期限の方針が `DocumentUpdated` の受け口に 720 秒を与える（`IngestionTimeoutTests`・`IngestionTimeoutWiringTests`。Wolverine の既定 60 秒との突き合わせは `ConsumerHandlerTimeoutsTests`） | 同上 |
 
 ## 段間結合（取り込み → 索引 → 検索ヒット）
 

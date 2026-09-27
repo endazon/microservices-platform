@@ -25,7 +25,9 @@
     ],
     "docs/tests/FR-02_ingestion.md": [
       "ChunkIdTests",
+      "ConsumerCallTimeoutsTests",
       "DocumentUpdatedConsumerTests",
+      "IngestionTimeoutTests",
       "MetadataIndexTextTests",
       "QdrantIngestionVectorStoreTests"
     ],
