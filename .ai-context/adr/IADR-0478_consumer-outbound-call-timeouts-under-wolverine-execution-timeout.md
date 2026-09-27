@@ -2,7 +2,7 @@
 title: IADR-0478 Wolverine の受け口の外への呼び出しは呼び出しごとの期限の下で行い、時間切れを取り消しと分けて記録し、最悪の所要時間が受け口の実行期限に収まることを起動時に検査する
 type: impl-adr
 status: Accepted
-related_ids: [FR-02, UC-04, FR-13, FR-17, ADR-0027, ADR-0029, ADR-0013, ADR-0016, ADR-0006, IADR-0008, IADR-0002, IADR-0233, IADR-0239]
+related_ids: [FR-02, UC-04, FR-06, FR-13, UC-07, FR-17, ADR-0027, ADR-0029, ADR-0013, ADR-0016, ADR-0006, IADR-0008, IADR-0002, IADR-0233, IADR-0239, IADR-0021]
 author: claude
 created: 2026-09-27
 updated: 2026-09-27
@@ -103,3 +103,28 @@ WolverineFx 6.24.4 は受け口へ渡す ct に 1 通ごとの実行期限（`Ha
   同じ部品を使う後続の PR で直す（#1640 を 2 つに分けた後半）。本 IADR へ日付つきで追記する。
 - 完了イベントの発行（MassTransit）は期限の射程外。受け口の実行期限の余白で受ける。
 - DB（EF Core）の呼び出しは Npgsql のコマンド期限（既定 30 秒）に任せ、本 IADR の射程に入れない。
+
+## ［2026-09-27 追記 / #1640］後半: GraphService・RetrievalService・WikiService の 4 受け口
+
+決定 1〜5 をそのまま適用した（部品は同じ `ConsumerCallTimeouts` / `ConsumerHandlerTimeouts`）。4 受け口とも最悪の所要時間が 60 秒を正当に超えないので、
+**実行期限の方針は入れず**、既定の実行期限（`ConsumerHandlerTimeouts.WolverineDefault`）に対して起動時に検査する。値は chart へ足さずコードの既定で持つ。
+
+| 受け口 | 上限 | 構成キー | 既定 | 起動時の検査の式（＜ 60 秒） |
+| --- | --- | --- | --- | --- |
+| GraphService `GraphDocumentSyncConsumer`（`graph-sync`） | 本文の取得 1 回 | `Graph:ContentReadTimeoutSeconds` | 20 秒 | 本文（20） |
+| RetrievalService `DocumentDeletedConsumer`（`retrieval-delete`） | Qdrant の削除 1 回 | `Retrieval:VectorStoreDeleteTimeoutSeconds` | 10 秒 | (主 1 ＋ `Qdrant:FusedCollections` の本数) × 10。既定（追加 0 本）で 10、追加 5 本で 60 となり止まる |
+| WikiService `DocumentSyncConsumer`（`wiki-sync`） | 本文の取得 1 回・Wiki.js 1 回 | `Wiki:ContentReadTimeoutSeconds` / `Wiki:WikiJsTimeoutSeconds` | 20 秒 / 15 秒 | 本文（20）＋ Wiki.js（15）＝ 35。アーカイブの枝は Wiki.js（15）だけ |
+| WikiService `DocumentDeletedConsumer`（`wiki-delete`） | Wiki.js 1 回 | `Wiki:WikiJsTimeoutSeconds` | 15 秒 | Wiki.js（15） |
+
+値の理由:
+
+- 本文の取得の 20 秒は取り込み（決定 6）と同じ理由による（クラスタ内のオブジェクトストレージから Markdown を読む）。
+- Qdrant の削除の 10 秒は取り込みの Qdrant 1 回と同じ理由による。文書 ID の一致での削除（wait=true）で、正常時はミリ秒単位である。
+- **Wiki.js の期限はポートの 1 回の呼び出しごと**に与える。`UpsertPageAsync` / `ArchivePageAsync` / `DeletePageAsync` は GraphQL の要求をそれぞれ 2 回
+  （パスで ID を引く ＋ 変更）出すので、15 秒は 2 回の要求をまとめて抑える。
+  - 名前付きクライアントの `HttpClient.Timeout` は変えない。変えると、同じ登録を使う閲覧の経路（`GetRenderedContentAsync`）の期限まで変わる。
+- DB（EF Core）の呼び出しは、決定の射程外のまま（Npgsql のコマンド期限）。60 秒からの残り（グラフ同期 40 秒・Wiki 同期 25 秒）で受ける。
+
+🔴 **グラフ同期の本文の時間切れは「本文が取れない（null）」へ畳まない。** `IGraphContentReader` の null は「辺を触らずに成功で終える」縮退である。
+時間切れを null に畳むと、本文の変化が再試行されないまま失われる（指紋は保存されるので、同じ指紋の再配信では本文を読み直さない）。
+時間切れは例外のまま投げ、同期を保存せずに再試行・デッドレターへ委ねる。

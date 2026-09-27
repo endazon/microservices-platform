@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-06, SC-05, UC-03, NFR-09, FR-19]
-adrs: [ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056]
-iadrs: [IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455]
-specs: [20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope]
-issues: [#1628, #1629, #1614, #199, #1011, #1575, planning#473]
+adrs: [ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056, ADR-0027]
+iadrs: [IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
+specs: [20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
 -->
 
 # テスト仕様書: 文書CRUD・バージョン管理
@@ -99,12 +99,14 @@ issues: [#1628, #1629, #1614, #199, #1011, #1575, planning#473]
 | T-61 | 他人の個人資料と不在の ID | 管理者で公開・削除を呼ぶ | 状態コードも本文も同じ（区別できない） | 存在秘匿 | 自動（エンドポイント） |
 | T-62 | 所有者 alice の個人資料・組織文書・辞書のタグ | タグの反映口を管理者ロールの人・機械で個人資料へ、alice（ロールなし）で同じ資料へ、管理者で組織文書へ呼ぶ。gRPC のタグ反映面でも管理者ロールと alice を運ぶ | 管理者は個人資料に 404（gRPC は書けない）でタグは付かない。alice と、組織文書への管理者は付けられる（陽性対照） | タグ反映の管理者の分岐は個人資料に及ばない | 自動（エンドポイント） |
 | T-63 | 所有者 alice の個人資料（露出 ON） | 管理者が更新・メタデータで露出を外し所有者を書き換えようとし、そのあと alice が露出を全て OFF にする | 管理者は 404 で、属性・表題・イベントは変わらない。alice の露出の変更は撤収のイベントまで届く（陽性対照）。本文の投入は alice に通り管理者には 404 | 所有者の経路は変わらない | 自動（エンドポイント） |
+| T-64 | 検索索引からの削除（主・追加コレクション） | 縮めた受け口の期限（4 秒）の下で Qdrant の削除が止まる（1 回の期限 1 秒） | 受け口の期限より前に**時間切れ**（`ConsumerTimeoutException`）として投げる（再試行・デッドレターへ）。呼び出し元の取り消しは取り消しのまま（対照）。既定の期限 10 秒、「(主＋追加) × 期限」が既定の実行期限 60 秒以上の構成は起動を止める。本番の配線は期限を DI に置き実行期限は既定のまま | 削除は索引から消える | 自動（受け口） |
 
 対応テスト実装:
 
 - 単体（ドメイン）: `src/knowledge/backend/Services/DocumentService/Tests/Domain/DocumentVersioningTests.cs`（T-01〜T-05）、`DocumentAttributesTests.cs`（T-23）
 - 単体（エンドポイント, InMemory）: `.../AdminWritePrivateNoteScopeTests.cs`（T-60〜T-63）、`.../AddTag/GrpcDocumentTagWriteTests.cs`（T-62 の gRPC 面）、`.../PrivateNotes/PrivateNoteExposurePublishTests.cs`（T-63）、`.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28・T-38）、`DocumentPageTests.cs`（T-30〜T-37・T-39〜T-41）
 - 単体（契約）: `src/knowledge/backend/Shared/Knowledge.Contracts.Tests/DocumentReadGrpcMappingTests.cs`（T-29）
+- 単体（検索索引からの削除の受け口）: `src/knowledge/backend/Services/RetrievalService/Tests/Features/Search/RemoveDeleted/DocumentDeletedTimeoutTests.cs`（T-64。配線は同じファイルの `DocumentDeletedTimeoutWiringTests`）
 - 実 Kestrel ＋ 本物の JwtBearer・単体（構成）: `.../Features/Documents/DocumentReadTrustedRelayTests.cs`・`DocumentReadRelayOptionsTests.cs`・`DocumentReadRelayDeploymentWiringTests.cs`（T-51）
 - 統合（実 PostgreSQL）: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DocumentService/DocumentCrudTests.cs`（T-12〜T-14）、`DocumentVersioningTests.cs`（T-15〜T-16）
 - 統合（実 PostgreSQL / RabbitMQ）: `.../DocumentNormalizedSyncTests.cs`（T-17〜T-18）

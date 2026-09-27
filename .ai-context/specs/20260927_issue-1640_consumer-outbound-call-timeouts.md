@@ -2,7 +2,7 @@
 title: Wolverine の既定 60 秒の実行期限の下で、外への呼び出しが既定の 100 秒か期限なしに頼る消費側に時間の予算を持たせる（#1640・前半＝共通部品と取り込み）
 type: spec
 status: done
-related_ids: [FR-02, UC-04, FR-13, FR-17, ADR-0027, ADR-0029, ADR-0013, ADR-0016, ADR-0006, IADR-0478, IADR-0008, IADR-0002, IADR-0233]
+related_ids: [FR-02, UC-04, FR-06, FR-13, UC-07, FR-17, ADR-0027, ADR-0029, ADR-0013, ADR-0016, ADR-0006, IADR-0478, IADR-0008, IADR-0002, IADR-0233]
 author: claude
 created: 2026-09-27
 updated: 2026-09-27
@@ -94,3 +94,37 @@ M6 は最初、呼び出し元の ct が試験の文脈の ct（立たない）�
 ## 検証
 
 PR 本文に記録する（前景実行・コマンドと出力）。
+
+## ［2026-09-27 追記 / #1640］後半（GraphService・RetrievalService・WikiService）
+
+前半（共通部品と取り込み）の PR の上に積んだ後半の PR で、母集合の残り 4 受け口を直した。決定と値の理由は IADR-0478 の同日の追記に置いた。
+
+### 事実（着手前の実測）
+
+- GraphService `GraphDocumentSyncConsumer`: 外への呼び出しは `IGraphContentReader.ReadAsync`（`StorageContentReader`。http(s) は `AddHttpClient` の既定 100 秒、`storage://` は S3 共通クライアント）の 1 回だけで、残りは DB。
+  本文が取れない（null）は「辺を触らずに成功で終える」縮退である（`IGraphContentReader` の契約）。
+- RetrievalService `DocumentDeletedConsumer`: `IVectorStore.DeleteByDocumentAsync` を主 1 回 ＋ `Qdrant:FusedCollections` の本数（既定 0）回。Qdrant は `new QdrantClient(host, port)`（期限なし）で、検索と共有する単例。
+- WikiService `DocumentSyncConsumer`: 本文 1 回（`StorageMarkdownReader`）＋ Wiki.js 1 回（`UpsertPageAsync`。アーカイブの枝は `ArchivePageAsync`）。`DocumentDeletedConsumer`: Wiki.js 1 回（`DeletePageAsync`）。
+  Wiki.js のポートの 1 回の呼び出しは GraphQL の要求を 2 回出す（`WikiJsGraphQlClient` の `GetPageIdByPathAsync` / `QuerySingleByPathAsync` ＋ 変更）。名前付きクライアントは既定 100 秒。
+- 4 受け口とも実行期限の方針は無く、Wolverine の既定 60 秒の下で動く。
+
+### 受け入れ基準（後半）
+
+| # | 基準 | 写像先 |
+| --- | --- | --- |
+| AC-8 | 縮めた受け口の期限（4 秒）の下で、グラフ同期の本文の取得が止まると、受け口の期限より前に時間切れとして投げ、同期を保存しない（本文なしへ畳まない）。呼び出し元の取り消しは取り消しのまま | `GraphSyncTimeoutTests`（FR-17 テスト仕様 T-65） |
+| AC-9 | 索引からの削除で主・追加コレクションのどちらの Qdrant が止まっても、受け口の期限より前に時間切れ。呼び出し元の取り消しは取り消しのまま | `DocumentDeletedTimeoutTests`（FR-06 テスト仕様 T-64） |
+| AC-10 | Wiki 同期の本文・Wiki.js への反映・アーカイブ、Wiki 撤去の Wiki.js のどれが止まっても、受け口の期限より前にその呼び出し先の時間切れ。呼び出し元の取り消しは取り消しのまま | `WikiSyncTimeoutTests`（FR-13 テスト仕様 T-23） |
+| AC-11 | 各受け口の期限の既定値と、既定の実行期限 60 秒に最悪の所要時間が収まらない構成で起動を止めること。本番の配線が期限を DI に置き、実行期限は既定のまま（方針なし）であること | 各 `…TimeoutTests` の構成の試験と `…TimeoutWiringTests`（T-24・T-64・T-65） |
+
+### 変異（後半。1 か所ずつ書き換え、`git show HEAD:<path> > <path>` で戻した）
+
+| # | 変異 | 赤になった試験 |
+| --- | --- | --- |
+| MR | 索引からの削除の期限を外す（`DeleteAsync` を `target.DeleteByDocumentAsync(documentId, ct)` に） | `止まった_Qdrant_は受け口の期限より前に時間切れとして投げる` の 2 件 |
+| MG | グラフ同期の本文の期限を外す | `止まった本文の取得は受け口の期限より前に時間切れとして投げ保存しない` |
+| MW1 | Wiki 同期の Wiki.js の期限を外す（`WikiJsAsync` を `call(ct)` に） | `止まった依存先は…`（Upsert・Archive） |
+| MW2 | Wiki 同期の本文の期限を外す | `止まった依存先は…`（Content） |
+| MW3 | Wiki 撤去の Wiki.js の期限を外す | `止まった依存先は…`（Delete） |
+
+MW2 と MW3 は同じ実行で入れた（別ファイル・別の試験の行が赤になることを個別に確かめた）。
