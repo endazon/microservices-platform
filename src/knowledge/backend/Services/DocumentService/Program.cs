@@ -183,6 +183,10 @@ builder.Services.AddScoped<AddDocumentTagUseCase>();
 DocumentService.Features.Documents.AddTag.DocumentTagWriteRelayOptions.ThrowIfScalar(builder.Configuration);
 builder.Services.Configure<DocumentService.Features.Documents.AddTag.DocumentTagWriteRelayOptions>(
     builder.Configuration.GetSection(DocumentService.Features.Documents.AddTag.DocumentTagWriteRelayOptions.SectionName));
+// FR-16, NFR-09, 計画 ADR-0117 決定 3, [[IADR-0479]]（2026-09-28 追記 / #1611 段 2）: MCP のツールの実行口の本文の利用者文脈を
+// 信じる呼び出し元。**未構成なら `mcp-server` だけ。構成したら置き換える**（上の `DocumentRead:`・`DocumentTagWrite:` の集合とは別）。
+// 登録は `ThrowIfScalar` → `Configure` の順（配列でない 1 つの値なら起動を止める）。
+DocumentService.Features.McpTools.Execute.McpToolExecutionRegistration.AddMcpToolExecution(builder.Services, builder.Configuration);
 // FR-19, SC-19, NFR-09, ADR-0029, ADR-0075, ADR-0096 決定 1・2, [[IADR-0401]] 決定 2,
 // [[IADR-0428]] 決定 3, [[IADR-0431]] (#1409): 退職の窓の照会。
 // `Services:AuthorizationServiceGrpc`（`AuthzScopeGrpcClient.AddressKey`）が構成された配備でだけ

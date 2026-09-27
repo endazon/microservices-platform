@@ -1118,7 +1118,7 @@ services:
       # （platform.mcp.v1.McpToolDeclarations。下の ServiceToken の s2s で呼ぶ）で集められ、無い宛先は上の Mcp__Services__* の REST のまま
       # （並走中の正は REST。戻すのは該当行を消すだけでよい）。ポートは各サービスの Grpc__Port と一致させること。
       # ［2026-09-27 追記 / #1516, ADR-0117］ツールの実行（platform.mcp.v1.McpToolExecution）も同じアドレスへ送る（申告の URL は使わない）。
-      # ここに無いサービスのツールは実行を拒否する。［#1611 段 3］受け口は retrieval-service・graph-service が持つ（document は段 2 まで拒否）。
+      # ここに無いサービスのツールは実行を拒否する。［#1611 段 2］受け口は document-service・retrieval-service・graph-service の 3 つとも持つ。
       # 受け口は本文の利用者文脈を下の ServiceToken__ClientId（mcp-server）が運んだときだけ信じる（各受け口の McpToolExecution の許可集合。
       # 既定 mcp-server。client を変えるなら受け口の集合と McpToolExecutionRelayDeploymentWiringTests も直す）。
       Mcp__GrpcServices__document-service: http://document-service:8081

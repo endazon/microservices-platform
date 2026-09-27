@@ -9,8 +9,8 @@
 //   宛先の URL を運ぶ項目は持たない —— 申告の中身から宛先を作らない。
 //
 // ■ 🔴 **受け口は申告したサービスが持つ**（ADR-0117 決定 2。FR-16 の実行口の作業 #1611）。［2026-09-27 / #1611 段 1］
-//   RetrievalService が最初に持ち、［段 3］GraphService が続いた。DocumentService は段 2（#1615 の内容の ABAC の後）で足すまで
-//   `UNIMPLEMENTED` のままであり、MCP サーバーはそのツールの実行を fail-closed で拒否する（同 決定 4）。
+//   RetrievalService が最初に持ち、［段 3］GraphService、［段 2。#1615 の内容の ABAC の後］DocumentService が続いた（3 サービスとも持つ）。
+//   受け口を持たない供給元（旧い版・将来の供給元）は `UNIMPLEMENTED` を返し、MCP サーバーはそのツールの実行を fail-closed で拒否する（同 決定 4）。
 //
 // ■ 🔴 **本文で運ぶのは利用者文脈（`user_id`・`action`）とツールの引数だけである**（ADR-0117 決定 3。ADR-0086 決定 1 の援用）。
 //   ［2026-09-27 / #1611］従前の暫定の `scope`（MCP サーバーが組んだ実行スコープ）は番号 3 と名前ごと reserved へ移した。

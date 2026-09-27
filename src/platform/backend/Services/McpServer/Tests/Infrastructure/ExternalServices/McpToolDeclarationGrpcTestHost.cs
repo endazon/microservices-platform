@@ -39,7 +39,7 @@ namespace McpServer.Tests.Infrastructure.ExternalServices;
 // したがって 1 つのホストは 1 つのサービス名（`service`）を両輸送で名乗る。名乗りを違えたいときだけ `grpcService` で上書きする。
 //
 // ［2026-09-27 追記 / #1516, IADR-0462 経路 ④-b］ツールの実行の代役も持てる。`execution` を渡したときだけ
-// `platform.mcp.v1.McpToolExecution` を張る（渡さなければ張らない —— 実行口の無い本番の申告元と同じく `UNIMPLEMENTED` になる）。
+// `platform.mcp.v1.McpToolExecution` を張る（渡さなければ張らない —— 実行口の無い申告元〔旧い版・将来の供給元〕と同じく `UNIMPLEMENTED` になる）。
 // `legacyEndpoint` を渡すと、**旧い申告元**の形（REST の JSON に `endpoint`、gRPC の番号 4）で申告する。
 internal sealed class McpToolDeclarationGrpcTestHost : IAsyncDisposable
 {
