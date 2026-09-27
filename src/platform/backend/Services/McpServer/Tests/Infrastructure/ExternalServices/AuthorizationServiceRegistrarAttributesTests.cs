@@ -143,6 +143,59 @@ public class AuthorizationServiceRegistrarAttributesTests
         scope.Clearance.Should().BeEmpty();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // 🔴 ADR-0062 実測 9 の契機の到来（#1664 / 計画 ADR-0121 決定 1）
+    // ─────────────────────────────────────────────────────────────────────────
+    //
+    // ADR-0062 は #1242 の顕在化の契機を「**所有者の read 条件が seed に入った時点**」と記録した。
+    // #1664 で seed に入ったので、**seed が実際に作る応答**を入力にして再顕在化が無いことを固定する。
+    // 入力は認可サービスの試験（`OwnerReadPolicySeedTests`）が実物の応答と突き合わせている期待値のファイルであり、
+    // 上の手組みの JSON（形の主張）とは別の担保である。
+
+    // T-34: 属性を持たない登録者（所有者・共有先の分岐だけ）は、区分を 1 つも配れず、無制限にもならない。
+    [Fact]
+    public async Task Seedの構成で属性を持たない登録者は機密区分を配れない()
+    {
+        var registrar = await ResolveAsync(SeedScopeJson("alice"));
+
+        registrar.Available.Should().BeTrue();
+        registrar.ClearanceUnrestricted.Should().BeFalse("所有者・共有先の分岐は機密区分の軸の許可ではない");
+        registrar.Clearance.Should().BeEmpty();
+        ServiceAccountAttributeSubset.Validate(
+            "sa-escalation", new Dictionary<string, string> { ["clearance"] = "restricted" }, registrar)
+            .Should().ContainSingle();
+    }
+
+    // T-35: `clearance=internal` の登録者は階段の分だけ（public・internal）を配れ、所有者の分岐で広がらない。
+    [Fact]
+    public async Task Seedの構成で階段の登録者は自分の区分だけを配れる()
+    {
+        var registrar = await ResolveAsync(SeedScopeJson("bob"));
+
+        registrar.ClearanceUnrestricted.Should().BeFalse();
+        registrar.Clearance.Should().BeEquivalentTo(["public", "internal"]);
+        ServiceAccountAttributeSubset.Validate(
+            "sa-ok", new Dictionary<string, string> { ["clearance"] = "internal" }, registrar)
+            .Should().BeEmpty("陽性対照: 自分が読める区分は配れる");
+        ServiceAccountAttributeSubset.Validate(
+            "sa-escalation", new Dictionary<string, string> { ["clearance"] = "confidential" }, registrar)
+            .Should().ContainSingle();
+    }
+
+    // seed を入れた認可サービスの応答の期待値（正は AuthorizationService/Tests/Fixtures/owner-read-seed-scopes.json）。
+    private static string SeedScopeJson(string userId)
+    {
+        const string relative = "src/platform/backend/Services/AuthorizationService/Tests/Fixtures/owner-read-seed-scopes.json";
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            var path = Path.Combine(dir.FullName, relative.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(path)) continue;
+            return System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!["subjects"]!.AsArray()
+                .Single(s => (string)s!["userId"]! == userId)!["scope"]!.ToJsonString();
+        }
+        throw new FileNotFoundException($"リポジトリの {relative} が見つからない（走査の起点: {AppContext.BaseDirectory}）");
+    }
+
     // 上の帰結を後段の判定まで通して見る（**この登録者は `restricted` を配れない**）。
     [Fact]
     public async Task 所有者分岐だけでは_restricted_を配れない()

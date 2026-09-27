@@ -32,7 +32,15 @@
     "userConditions は**空オブジェクトで明示する** —— 共有は clearance / department で絞らない",
     "（絞ると共有された相手の取扱区分によって共有が効かなくなる。write 側と同じ非対称の理由）。",
     "省略ではなく {} と書くのは、階段の回帰試験（scripts/scripts.repo.test.js）が read ポリシーの",
-    "userConditions.clearance を無条件に読むためである（空なら階段のどの段にも数えられない）。"
+    "userConditions.clearance を無条件に読むためである（空なら階段のどの段にも数えられない）。",
+    "",
+    "owner の read（FR-05 / ADR-0121 決定 1・ADR-0036 D-01・D-02 / #1664）:",
+    "所有者ベースの分岐（計画 read 規則の選言の第 2 節）もポリシー 1 本で表す。利用者の条件は置かず、",
+    "文書の条件は owner ∈ { ${current_user} } だけとする（共有先の分岐と同じ形）。",
+    "🔴 **dev seed と本番の両方で必須である** —— 評価器は組み込みの所有者の分岐を持たないので、",
+    "無いと所有者が自分の個人資料すら読めない。本番への投入は配備の手順に含める（docs/operations/operations.md",
+    "§所有者の読み取りのポリシーの投入）。消すと所有者が自分の文書を読めなくなる。",
+    "userConditions は共有先の分岐と同じ理由で {} と明示する。投入済みかは名前ではなく形（action・条件）で確かめる。"
   ],
   "policies": [
     {
@@ -70,6 +78,12 @@
       "action": "read",
       "userConditions": {},
       "documentConditions": { "shared_with": ["${current_user}", "${current_groups}"] }
+    },
+    {
+      "name": "dev: 所有者は自分の文書を読める",
+      "action": "read",
+      "userConditions": {},
+      "documentConditions": { "owner": ["${current_user}"] }
     },
     {
       "name": "dev: 所有者は自分の文書を書ける",
