@@ -30,6 +30,7 @@ public class GrpcMcpToolExecutionTests
 {
     private const string Trusted = "mcp-server";
     private const string Tool = McpToolExecutionGrpcService.SearchDocumentsTool;
+    private const string OrgOwner = "carol-owner";
     private readonly GrpcKestrelFactory _factory;
 
     public GrpcMcpToolExecutionTests(GrpcKestrelFactory factory)
@@ -74,8 +75,16 @@ public class GrpcMcpToolExecutionTests
         var owner = Unique("owner");
         var seeded = new Seeded(term, allowedDept, forbiddenDept, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
 
+        // 権限内の組織文書は、許可リストのキー（機密区分・文書スコープ・プロジェクト）と、その外のキー（部署・所有者）の両方を持つ（X-52）。
         await _factory.Index.UpsertAsync(Chunk(seeded.Allowed, $"{term} 組織の文書の本文",
-            new() { ["dept"] = allowedDept, ["doc_scope"] = "organization", ["confidentiality"] = "internal" }));
+            new()
+            {
+                ["dept"] = allowedDept,
+                ["doc_scope"] = "organization",
+                ["confidentiality"] = "internal",
+                ["owner"] = OrgOwner,
+                [RestrictedProject.DocumentKey] = "alpha",
+            }));
         await _factory.Index.UpsertAsync(Chunk(seeded.Forbidden, $"{term} 権限外の文書の本文",
             new() { ["dept"] = forbiddenDept, ["doc_scope"] = "organization", ["confidentiality"] = "confidential" }));
         await _factory.Index.UpsertAsync(Chunk(seeded.PrivateNote, $"{term} 個人資料の本文",
@@ -134,7 +143,9 @@ public class GrpcMcpToolExecutionTests
         result.TotalCount.Should().Be(2);
         var org = result.Documents.Single(d => d.DocumentId == seeded.Allowed.ToString());
         org.Title.Should().Be($"doc:{seeded.Allowed:N}");
-        org.Attributes.Should().Contain("dept", seeded.AllowedDept);
+        // ［2026-09-28 改訂 / #1671］属性は許可リストのキーだけ（部署・所有者は X-52 が否定で固定する）。
+        org.Attributes.Should().Contain("confidentiality", "internal");
+        org.Attributes.Keys.Should().BeSubsetOf(McpEnvelopeAttributes.Keys);
         org.HasBody.Should().BeTrue();
         org.Body.Should().Contain("組織の文書の本文");
         org.HasReferenceUrl.Should().BeFalse("索引の内部の格納先を参照リンクとして出さない");
@@ -264,6 +275,28 @@ public class GrpcMcpToolExecutionTests
 
         result.Documents.Select(d => d.DocumentId).Should().Equal(seeded.Allowed.ToString());
         result.TotalCount.Should().Be(1);
+    }
+
+    // 🔴 X-52（#1671。ADR-0024 §4）: エンベロープの属性は MCP サーバーが読むキーの許可リスト（`McpEnvelopeAttributes`）だけ。
+    // 所有者（利用者名）・部署は外部 LLM へ渡さない —— 有人でもサービスアカウントでも同じ。
+    // 陽性対照: 同じ文書・同じ応答に機密区分・文書スコープ・プロジェクトは残る（許可リストが空でも否定だけは緑になるため対にする）。
+    [Theory]
+    [InlineData("alice-probe")]
+    [InlineData("service-account-batch-agent")]
+    public async Task エンベロープの属性は許可リストのキーだけで所有者と部署は載らない(string userId)
+    {
+        var seeded = await SeedAsync();
+
+        var result = await Grpc().ExecuteAsync(
+            As(userId, seeded.Term), Bearer(ServiceAccountToken(Trusted)), cancellationToken: Ct);
+
+        var org = result.Documents.Should().ContainSingle(d => d.DocumentId == seeded.Allowed.ToString(), "対照: 文書そのものは返る").Which;
+        org.Attributes.Should().NotContainKey("owner").And.NotContainKey("dept");
+        org.Attributes.Values.Should().NotContain(OrgOwner).And.NotContain(seeded.AllowedDept);
+        org.Attributes.Should().Contain(McpEnvelopeAttributes.ConfidentialityKey, "internal")
+            .And.Contain(McpEnvelopeAttributes.DocumentScopeKey, "organization")
+            .And.Contain(McpEnvelopeAttributes.ProjectKey, "alpha");
+        result.Documents.SelectMany(d => d.Attributes.Keys).Should().OnlyContain(k => McpEnvelopeAttributes.Keys.Contains(k));
     }
 
     // X-21: 本文の `action` は受け口が自分のツールから決めた操作（read）と突き合わせるだけ。違えば INVALID_ARGUMENT で、判定を問わない。

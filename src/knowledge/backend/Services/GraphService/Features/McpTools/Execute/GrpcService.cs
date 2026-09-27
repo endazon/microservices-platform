@@ -6,6 +6,7 @@ using GraphService.Features.McpTools.Declare;
 using Grpc.Core;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
+using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 using Platform.Shared.Kernel;
@@ -61,20 +62,11 @@ internal sealed class McpToolExecutionGrpcService(
 
     private static readonly IReadOnlyDictionary<string, string> NoAttributes = new Dictionary<string, string>();
 
-    // 🔴 ［2026-09-27 追記 / #1611 段 3 監査 B-1］**エンベロープへ載せる属性の許可リスト。** MCP サーバーが応答の統制で実際に読むキーだけ:
-    //   - `confidentiality` —— 越境判定（McpServer `EgressPolicy.ConfidentialityKey`）
-    //   - `doc_scope` —— 2 層目の個人資料の除外（McpServer `DocumentScope.Key`）
-    //   - `project` —— 2 層目の制限プロジェクトの除外（`RestrictedProject.DocumentKey`）
-    // それ以外（`shared_with`・`owner`・部署等の ABAC 判定用の属性）は運ばない —— MCP サーバーは attributes をそのまま外部クライアントへ返し、
-    // 共有先は所有者にだけ返す規則（ADR-0098 / IADR-0450）を迂回する。`owner` も MCP サーバーが読まないので落とす。
-    internal static readonly IReadOnlySet<string> EnvelopeAttributeKeys = new HashSet<string>(StringComparer.Ordinal)
-    {
-        ConfidentialityKey,
-        GraphDocumentScope.Key,
-        Platform.Shared.Contracts.Dtos.RestrictedProject.DocumentKey,
-    };
-
-    private const string ConfidentialityKey = "confidentiality";
+    // 🔴 ［2026-09-27 追記 / #1611 段 3 監査 B-1］**エンベロープへ載せる属性は許可リストのキーだけ**（MCP サーバーが応答の統制で読む
+    // `confidentiality`・`doc_scope`・`project`）。`shared_with`・`owner`・部署等の ABAC 判定用の属性は運ばない —— MCP サーバーは attributes を
+    // そのまま外部クライアントへ返し、共有先は所有者にだけ返す規則（ADR-0098 / IADR-0450）を迂回する。
+    // ［2026-09-28 追記 / #1671］許可リストは受け口ごとに持たず、共有の定数 `McpEnvelopeAttributes`（Platform.Shared.Contracts）を参照する
+    // （MCP サーバーの読み手と同じ定数。キーを足すとき片側だけ変わる割れ方を防ぐ）。
 
     private static readonly string[] Tools = [GetBacklinksTool, GetLinksTool, TraverseTool];
 
@@ -246,8 +238,8 @@ internal sealed class McpToolExecutionGrpcService(
             var document = new Pb.McpToolDocument { DocumentId = node.DocumentId.ToString(), Title = node.Title };
             foreach (var (key, value) in attributes)
             {
-                // 🔴 許可リストのキーだけ（上の EnvelopeAttributeKeys）。共有先・所有者は運ばない。
-                if (EnvelopeAttributeKeys.Contains(key))
+                // 🔴 許可リストのキーだけ（`McpEnvelopeAttributes`）。共有先・所有者は運ばない。
+                if (McpEnvelopeAttributes.IsCarried(key))
                     document.Attributes[key] = value;
             }
             result.Documents.Add(document);

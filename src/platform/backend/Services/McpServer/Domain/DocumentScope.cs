@@ -5,7 +5,8 @@ namespace McpServer.Domain;
 // WikiService の DocumentSyncConsumer と同じ定数・同じ判定の向きにしてある。
 public static class DocumentScope
 {
-    public const string Key = "doc_scope";
+    // #1671: 綴りは共有の許可リスト（`McpEnvelopeAttributes`）の定数を指す —— 受け口が運ぶキーと読むキーを 1 か所に揃える。
+    public const string Key = Platform.Shared.Contracts.Dtos.McpEnvelopeAttributes.DocumentScopeKey;
     public const string PrivateNote = "private-note";
     public const string Organization = "organization";
 
