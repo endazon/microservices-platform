@@ -3894,6 +3894,31 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.McpEnvelopeAttributes": {
+        "kind": "class",
+        "members": {
+          "ConfidentialityKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"confidentiality\""
+          },
+          "DocumentScopeKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"doc_scope\""
+          },
+          "Keys": {
+            "source": "property",
+            "type": "IReadOnlySet<string>",
+            "required": false
+          },
+          "ProjectKey": {
+            "source": "const",
+            "type": "string",
+            "value": "RestrictedProject.DocumentKey"
+          }
+        }
+      },
       "Platform.Shared.Contracts.Dtos.PipelineStageDto": {
         "kind": "record",
         "members": {

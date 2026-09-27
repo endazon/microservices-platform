@@ -1,11 +1,11 @@
 ---
 title: MCP のツールの実行口が返す文書属性を、MCP サーバーが読むキーの許可リスト（共有の定数 1 か所）へ揃える（#1671）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-16, UC-08, NFR-09, ADR-0024, ADR-0034, ADR-0117, IADR-0479, IADR-0373, IADR-0405]
 author: Claude（実装）
 created: 2026-09-27
-updated: 2026-09-27
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0117_mcp-tool-destination-and-execution-context.md 決定 2・3
   - planning:projects/microservices-platform/07_adr/ADR-0024_mcp-server-integration.md §4
@@ -88,4 +88,33 @@ X-16（Retrieval の陽性対照）は「属性に `dept` が載る」を確か�
 
 ## 実施結果
 
-（実装後に追記する）
+### 検証（すべて前景・timeout 付き。待受は 127.0.0.1）
+
+| コマンド | 結果 |
+| --- | --- |
+| `dotnet build src/platform/backend/backend.slnx`（submodule を init） | 0 エラー・0 警告 |
+| `dotnet build src/knowledge/backend/backend.slnx` | 0 エラー（警告 1 は既存の `QdrantBuilder()` 旧式化） |
+| `dotnet test` McpServer.Tests | 241 件合格（新 X-55 の 2 件を含む） |
+| `dotnet test` RetrievalService.Tests | 454 件合格（新 X-52 の 2 件を含む） |
+| `dotnet test` GraphService.Tests | 761 件合格（新 X-53 の 3 件・X-54 の 1 件を含む） |
+| `dotnet test` Platform.Shared.Infrastructure.Tests | 484 件合格 |
+| `dotnet format <両ユニットの slnx> --verify-no-changes` | 両方 exit 0 |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 843 件合格（初回は `check-contract-schema` の baseline 差分〔型の追加・additive〕で赤 → `--update` で床を更新） |
+| `check-trace-blocks` / `check-test-spec-coverage`（`--update` で対 +2） / `check-test-traceability` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-proto-contracts` / `gen-knowledge-graph --check` | すべて OK |
+| `check-commit-messages --range=origin/develop..HEAD` | 適合 |
+
+### 変異試験（コミット済みの状態で当て、`git show HEAD:<path>` で戻した）
+
+| # | 変異 | 赤になった試験 |
+| --- | --- | --- |
+| M1 | Retrieval の写像の許可リストを外す（全キーを写す） | Retrieval X-52（2 件）・X-16（2 件） |
+| M2 | 共有の定数から `project` を外す | McpServer X-55（2 件）・Retrieval X-52（2 件）・Graph X-40（2 件）・X-50（2 件）—— **読み手と受け口の両側が赤** |
+| M3 | `Seal` の `shared_with` 除去を外す | Graph X-53（3 件。段 3 の再監査 W4 が生き残った変異） |
+| M4 | Graph の写像の許可リストを外す | Graph X-40（2 件）・X-50（2 件） |
+| M5 | Graph の探索で個人資料を刈らない（写像の除去は残す） | Graph X-44・X-54 |
+
+### 残る懸念
+
+- MCP サーバーの受信側（`GrpcToolInvoker.ToResult`）では濾していない。受け口が許可リストを外せば、MCP サーバーはそのまま外部へ返す（受け口の試験が止める）。
+- 大小文字の違うキー（例: `Confidentiality`）は運ばれない。越境判定は欠落を送信不可へ倒すので安全側だが、個人資料の除外は受け口の 1 層目に依存する。
+- 段 2（DocumentService）は未着手。本書「段 2 への申し送り」と IADR-0479 の追記が引き継ぎである。
