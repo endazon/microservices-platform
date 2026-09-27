@@ -431,3 +431,64 @@ McpServer の `UNIMPLEMENTED` を拒否へ写す枝とその試験（X-3。配�
 - 文書取得のツールは本文を返さない（台帳は本文を持たず、格納先から読む経路が DocumentService に無い）。LLM は題名と属性しか得られない。
 - 個人資料の「AI の入力に含める」（`ai_input`）は MCP の 3 つの実行口のどれも見ていない（有人の所有者・共有先には、AI 入力から外した個人資料も返る）。段 2 で新しく生じたものではない。
 - MCP サーバーと受け口を同じ器で動かす結合試験は無い（段 1・段 3 と同じ）。
+
+### ［2026-09-28 追記 / #1611］段 2 の裁定: 案 2（門が閉じている間は経路を開かない）
+
+> 上の段 2 の節（受け入れ基準 D-4・D-8 の「門の両状態」、設計の「門は受け口では読まない」、残る懸念の 🔴 1 件目）は書き換えない。本節がそれらを**置き換える**。
+
+**裁定**: PR の要裁定（および claude-review の 🔴「門が閉じている間の緩み」）に対し、利用者が**案 2（受け口で門が閉じていたら拒否）**を採った。
+理由: #1611 の受け入れ基準「利用者に権限の無い文書は返らない」と、段 1〜3 の「どの順でも緩む向きは無い」に反する状態（閉じた枝の MCP の経路が BFF より広く
+機密・制限の組織文書の題名と属性を見せる）を、門を開くまでの期間とはいえ配備に出さないため。判定点の外で門を読むことは「閉じている間は MCP の文書経路を開かない」
+という**受け口の前提条件**として扱い、判定そのものは引き続き `DocumentReadAccess` に置く（第二の判定点ではなく経路の開閉）。
+
+**受け入れ基準の置き換え**
+- D-4′ 🔴 門が閉じている間は、2 ツールとも有人・サービスアカウントの両方で `FAILED_PRECONDITION`・結果 0 件（題名・属性を 1 件も返さない）。判定点を走らせない
+  （認可サービスへ問わない）。同じ器の閉じた間の REST には他人の機密の組織文書が見える（器の対照）＝ MCP は REST より狭い（安全側）。門が開けば同じ呼び出しが通る（陽性対照）。
+  門が開いた後は、MCP 経路の個別・一覧の結果（件数も）が REST の同じ利用者の結果と一致する（従前の D-4 の開いた側のまま）。
+- D-4″ 門の値は判定点と同じ要求内固定の値（`DocumentReadAccess.ContentAbacEnabled`）を読む。門を読むのは要求につき 1 回。
+- D-4‴ 順番: 許可集合・利用者文脈・申告の突合・操作の突合・引数の検証の後、判定の前。信頼しない呼び出し元は門が閉じていても `PERMISSION_DENIED`、
+  引数の形の誤りは門に依らず `INVALID_ARGUMENT`。
+- D-8′ サービスアカウント実行の個人資料の除外は門が開いた後で固定する（閉じている間は D-4′ で何も返らない）。
+- D-11 MCP サーバーは受け口の `FAILED_PRECONDITION` を結果 0 件の拒否（既定の枝・Warning）へ写す（無改修。試験で固定する）。
+
+**status の選択（根拠）**: `GrpcToolInvoker` の写し表は、`UNAUTHENTICATED` / `PERMISSION_DENIED` → 拒否（Error。s2s の配線不備）、`UNIMPLEMENTED` → 実行口の無い宛先（Warning）、
+`DEADLINE_EXCEEDED` → 時間切れ、それ以外 → 既定の枝（到達不能の文言・Warning）で、いずれも結果 0 件。`FAILED_PRECONDITION` は既定の枝に乗る。
+`UNIMPLEMENTED` は旧い版の供給元と誤読させ、`PERMISSION_DENIED` は運用者に s2s の配線不備を探させ（Error）、`UNAVAILABLE` は一時障害として再試行を誘う。
+門は運用者が開けるまで閉じたままの状態なので、gRPC の意味でも「前提が満たされていない」＝ `FAILED_PRECONDITION` が当たる。
+
+**母集合（規則 9・10）**: 誤りの側 =「門の両状態で REST と一致」「受け口は門を読まない」「閉じた枝に乗せる」「受け口はまだどのサービスにも無い」。
+走査語: `門の両状態`・`閉じた枝`・`門を読まない`・`どのサービスにも無い`・`受け口はまだ`・`受け口が無い`・`実行口が無い`・`受け口を持たない`（除外は段 2 と同じ）。
+直したもの: 受け口のコード注記・試験（X-56・X-57・X-59・X-61・X-62・新 X-68）・試験の器の注記・`GrpcToolInvoker` の注記（X-69 を追加）・
+IADR-0479 の段 2 追記（同じ PR の未マージの追記なので本文を改めた）・`docs/tests/FR-16_mcp-server.md`（X-56〜X-61・X-68・X-69・変異表・実装マッピング・残件）・
+`docs/api/FR-16_mcp-server.md`（§実行の注記・手順 4・**インターフェース表の「受け口はまだどのサービスにも無い」**＝段 2 の母集合の取りこぼし。claude-review の指摘）・
+`docs/api/east-west-grpc.md`・compose・helm の宛先の注記（門が開くまで実質拒否）。
+直さないもの: 「実行口が無い・経路が無い・時間切れ・拒否」を一般の失敗の種類として並べる記述（`ToolInvocation.cs`・`GrpcToolInvoker.cs` の ■ fail-closed・
+`ToolInvocationServiceTests`・`docs/api/FR-16_mcp-server.md` の失敗の行。今も正しい）／他の IADR の凍結記録（IADR-0462・IADR-0292）。
+テスト仕様書の行は develop の最大（X-55）を push 前に確かめたうえで X-68・X-69 を採った。
+
+**実施結果**: 実装コミットは `fix(FR-16,ADR-0117,ADR-0121): 内容の ABAC の門が閉じている間は…`。
+試験の器の門は、このクラスでは開いた状態で始め（コンストラクタ）、閉じた状態の試験は `WithGateClosedAsync` の中で行い、後始末（`Dispose`）で閉じる。
+
+| 検査 | 結果 |
+| --- | --- |
+| `dotnet test` DocumentService.Tests | 928 件合格（`McpTools.Execute` は 52 件。X-59・X-61 の Theory 2 件を Fact 1 件ずつにし、X-68 を足した） |
+| `dotnet test` McpServer.Tests | 242 件合格（X-69 を足した） |
+| `dotnet format --verify-no-changes`（platform・knowledge） | 差分なし |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 844 件合格 |
+| `check-trace-blocks` / `check-test-spec-coverage`（床と一致）/ `check-test-traceability` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-proto-contracts` / `gen-knowledge-graph --check` / `check-commit-messages --range=origin/develop..HEAD` | すべて OK |
+
+変異（コミット後に当て `git show HEAD:<path> > <path>` で戻した）:
+
+| # | 変異 | 結果 |
+| --- | --- | --- |
+| G1 | 受け口が門の閉鎖を見ない（閉じた枝で答える） | 赤 1: `門が閉じている間は文書のツールは結果を返さずFAILED_PRECONDITION` |
+| G2 | 受け口が門を判定点と別に読む（`IContentAbacGate` を直接） | 赤 2: `MCPサーバーのs2sなら…判定点が利用者で問う`（門の読み取りが要求につき 2 回） |
+| G3 | MCP サーバーが `FAILED_PRECONDITION` を配線不備（Error）の枝へ写す | 赤 1: `Failed_precondition_from_the_port_fails_closed_with_a_warning` |
+| M5 | 判定点が門の状態を見ず常に開いた枝（`ContentAbacEnabled` を常に真） | 赤 1: X-68（受け口の経路の開閉も同じ値を読むので閉じていても開く） |
+| M1 / M2 / M3 / M6 | 段 2 の節と同じ変異を新しい試験で再測 | 赤 10 / 3 / 2 / 3 |
+| M4a / M4b / M4ab | 個人資料の除外を片層・両層外す | 緑 / 緑 / 赤 1（多層防御のとおり） |
+
+**残る懸念（置き換え）**:
+- 門が開くまで、文書の 2 ツールは MCP のツール一覧に出るが実行すると拒否になる。利用者への文言は MCP サーバーの既定の枝の「実行先に到達できません」で、
+  門が閉じていることは言わない（MCP サーバーの文言の追加は本 PR の外。必要なら別 issue）。
+- 上の段 2 の節の残る懸念のうち 🔴 1 件目（閉じている間の緩み）は本裁定で解消した。本文を返さない・`ai_input` を見ない・同じ器の結合試験が無い、は残る。
