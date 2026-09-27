@@ -3,15 +3,15 @@ title: 文書管理 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-06
+updated: 2026-09-27
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-09, FR-12, FR-16, SC-02, SC-03, SC-05, SC-07, UC-03]
-adrs: [AST/ADR-0032]
+adrs: [ADR-0119, AST/ADR-0032]
 iadrs: [IADR-0009, IADR-0039, IADR-0041, IADR-0044, IADR-0075, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0135, IADR-0373, IADR-0405]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260809_issue-629_document-write-admin-only, 20260906_issue-1233_restricted-project-controls]
-issues: [#7, #446, #490, #502, #506, #519, #553, #629, #634, #640, #1233, planning#197, planning#198, planning#199, planning#299]
+specs: [20260927_issue-1616_machine-client-own-document-write, 20260805_issue-503_sc05-08-admin-screens, 20260809_issue-629_document-write-admin-only, 20260906_issue-1233_restricted-project-controls]
+issues: [#1616, #7, #446, #490, #502, #506, #519, #553, #629, #634, #640, #1233, planning#197, planning#198, planning#199, planning#299]
 -->
 
 # 画面仕様書: 文書管理
@@ -56,7 +56,10 @@ issues: [#7, #446, #490, #502, #506, #519, #553, #629, #634, #640, #1233, planni
     **本画面には影響しない** —— 画面は `/bff/documents` を通り、そちらは `AdminOnly` だからである。
     据え置きの理由は、この口を **`ai-stock-trading` の KB 書き込みが BFF を経由せず直接叩いており**、
     その service-account が `platform-operator` しか持たないこと（KB 書き込み用クライアントの実装判断）である。
-    **機械クライアントの扱いは計画へ裁定を依頼中**（作業仕様書 §追補 1）。
+    **［2026-09-27］機械クライアントの扱いは裁定済み** —— 作成は追認され、機械クライアントは自分が所有者の組織文書に限り
+    メタデータ更新と削除もできる（所有者の動的束縛。ロールは足さない）。**「管理者限定」は人の利用者についての定めであり、
+    本画面（人の利用者）の挙動は変わらない。** 所有者と文書スコープは編集で変えられない（本画面の編集は応答の属性を
+    そのまま送り返すので当たらない）。
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 

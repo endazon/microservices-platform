@@ -31,6 +31,21 @@ public record BodyConversionResult(string Markdown, IReadOnlyList<ExtractedFigur
 // 縮退は ConversionOptions.AllowDegradedBodyConversion が true のときだけに限る。
 public sealed class BodyConversionUnavailableException(string message) : Exception(message);
 
+// FR-12, UC-06, ADR-0012, IADR-0008（2026-09-27 追記 / #1641）: 本文変換の外部プロセス（pandoc・pdftotext）が
+// **自前の期限（`Conversion:BodyConversionTimeoutSeconds`）までに終わらなかった**。プロセスはツリーごと止めてある。
+//
+// 呼び出し元の取り消し（受け口の ct）とは区別する —— そちらは `OperationCanceledException` のまま外へ出る。
+// 本例外は受け口が失敗として記録し（メッセージが変換ジョブの失敗理由になる）、再試行 → デッドレターへ委ねる
+// （UC-06 例外フロー「本文変換の恒久失敗は再試行し、継続失敗はデッドレターへ送る」）。
+public sealed class BodyConversionTimeoutException(string tool, TimeSpan timeout)
+    : TimeoutException(
+        $"{tool} が {timeout.TotalSeconds:0.###} 秒以内に終わらなかったため、プロセスツリーを停止した"
+        + "（期限は Conversion:BodyConversionTimeoutSeconds）。")
+{
+    public string Tool { get; } = tool;
+    public TimeSpan Timeout { get; } = timeout;
+}
+
 // FR-12, UC-06, ADR-0012, ADR-0070 決定 5, IADR-0320 (#1097), IADR-0356 (#1192): 原本の形式が
 // **どの変換器の入力にもならない**（計画の対応形式表に無い未知の形式）。
 //

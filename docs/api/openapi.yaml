@@ -1925,6 +1925,9 @@ paths:
     post:
       tags: [Documents]
       summary: "FR-06, UC-03: ドキュメント作成"
+      description: |
+        書き込みの群（`platform-admin` または `platform-operator`）。要求の `owner` は捨て、**作成した主体を所有者にする**。
+        人は利用者名、**機械クライアントはそのサービスアカウント**（`service-account-<clientId>`。利用者名を持たないトークンでも同じ名前。#1616）。
       operationId: create-document
       requestBody:
         required: true
@@ -2006,6 +2009,9 @@ paths:
           description: 見つからない、または読めない個人資料（区別しない）
     put:
       tags: [Documents]
+      description: |
+        管理者限定。`doc_scope` と `owner` は作成時に確定し変更できない（`owner` は送らなければ現在の値が残り、
+        異なる値を送ると 400。管理者でも移管はできない。#1616）。
       operationId: update-document
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -2018,17 +2024,23 @@ paths:
       responses:
         "200":
           description: 更新成功
+        "400":
+          description: 入力検証、または `doc_scope` / `owner` の変更
         "404":
           description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
     delete:
       tags: [Documents]
       summary: "FR-06, UC-03, Issue #88: ドキュメントを削除する（DocumentDeleted を発行し Wiki.js 実体も撤去）"
+      description: |
+        人は管理者限定。**機械クライアントは自分が `owner` の組織文書に限り削除できる**（動的束縛。ロールは足さない。#1616）。
       operationId: delete-document
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "204":
           description: 削除成功
+        "403":
+          description: 人の運用者（文書の有無に依らない）、または他の主体が所有する読める組織文書への機械クライアントの削除
         "404":
           description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
 
@@ -2036,6 +2048,9 @@ paths:
     patch:
       tags: [Documents]
       summary: "FR-06, UC-03: メタデータ（属性・タグ）のみ更新"
+      description: |
+        人は管理者限定。**機械クライアントは自分が `owner` の組織文書に限り更新できる**（動的束縛。ロールは足さない。#1616）。
+        `doc_scope` と `owner` は主体を問わず変更できない（`owner` は送らなければ現在の値が残り、異なる値を送ると 400）。
       operationId: update-document-metadata
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -2048,8 +2063,12 @@ paths:
       responses:
         "200":
           description: 更新成功
+        "400":
+          description: 入力検証、または `doc_scope` / `owner` の変更
+        "403":
+          description: 人の運用者（文書の有無に依らない）、または他の主体が所有する読める組織文書への機械クライアントの更新
         "404":
-          description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
+          description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）。読めない文書も 404
         "409":
           description: 版競合（楽観的並行制御）
 

@@ -43,6 +43,8 @@ public class DiagramCodingLimitsTests
         limits.CallTimeout.Should().Be(TimeSpan.FromSeconds(20));
         limits.Budget.Should().Be(TimeSpan.FromSeconds(120));
         limits.HandlerTimeout.Should().Be(TimeSpan.FromSeconds(300));
+        // #1641: 本文変換の外部プロセス（pandoc・pdftotext）の期限。300 ＞ 90 ＋ 120 ＋ 20 で、鍵の無い稼働構成が起動する。
+        limits.BodyConversionTimeout.Should().Be(TimeSpan.FromSeconds(90));
     }
 
     [Fact]
@@ -53,11 +55,13 @@ public class DiagramCodingLimitsTests
         {
             [DiagramCodingLimits.CallTimeoutKey] = "0",
             [DiagramCodingLimits.BudgetKey] = "-5",
-            [DiagramCodingLimits.HandlerTimeoutKey] = "3",
+            [DiagramCodingLimits.BodyConversionTimeoutKey] = "0",
+            [DiagramCodingLimits.HandlerTimeoutKey] = "4",
         }));
 
         limits.CallTimeout.Should().Be(TimeSpan.FromSeconds(1));
         limits.Budget.Should().Be(TimeSpan.FromSeconds(1));
+        limits.BodyConversionTimeout.Should().Be(TimeSpan.FromSeconds(1));
     }
 
     // 受け口の期限が「総枠＋1 回の期限」を超えない構成は起動を止める（境界: ちょうど等しいときも止める）。
@@ -75,6 +79,45 @@ public class DiagramCodingLimitsTests
         }));
 
         act.Should().Throw<InvalidOperationException>().WithMessage($"*{DiagramCodingLimits.HandlerTimeoutKey}*");
+    }
+
+    // #1641: 受け口の期限が「本文変換の期限＋総枠＋1 回の期限」を超えない構成も起動を止める（境界の等号を含む）。
+    // 1 行目は #1624 の検査（総枠＋1 回＝140 秒）なら通る値である —— 本文変換の期限を足さない変異（M4）はここで赤になる。
+    [Theory]
+    [Trait("TestKind", "Unit")]
+    [InlineData("20", "120", "90", "230")]
+    [InlineData("20", "120", "90", "200")]
+    [InlineData("1", "2", "1", "4")]
+    public void 受け口の期限が本文変換と総枠と一回の期限の和を超えなければ起動を止める(
+        string call, string budget, string body, string handler)
+    {
+        var act = () => DiagramCodingLimits.From(Config(new()
+        {
+            [DiagramCodingLimits.CallTimeoutKey] = call,
+            [DiagramCodingLimits.BudgetKey] = budget,
+            [DiagramCodingLimits.BodyConversionTimeoutKey] = body,
+            [DiagramCodingLimits.HandlerTimeoutKey] = handler,
+        }));
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage($"*{DiagramCodingLimits.HandlerTimeoutKey}*{DiagramCodingLimits.BodyConversionTimeoutKey}*");
+    }
+
+    // 陽性対照: 和を 1 秒でも超えれば起動する（構成で本文変換の期限を与えたとき、その値が採られる）。
+    [Fact]
+    [Trait("TestKind", "Unit")]
+    public void 受け口の期限が四つの和を超えれば起動し本文変換の期限は構成の値になる()
+    {
+        var limits = DiagramCodingLimits.From(Config(new()
+        {
+            [DiagramCodingLimits.CallTimeoutKey] = "20",
+            [DiagramCodingLimits.BudgetKey] = "120",
+            [DiagramCodingLimits.BodyConversionTimeoutKey] = "90",
+            [DiagramCodingLimits.HandlerTimeoutKey] = "231",
+        }));
+
+        limits.BodyConversionTimeout.Should().Be(TimeSpan.FromSeconds(90));
+        limits.HandlerTimeout.Should().Be(TimeSpan.FromSeconds(231));
     }
 
     // 前提の固定: Wolverine の受け口の実行期限の既定は 60 秒である（本件の欠陥の出所。上げ下げされたら見直す）。
@@ -144,6 +187,20 @@ public class DiagramCodingLimitsTests
         scope.ServiceProvider.GetRequiredService<IDiagramCoder>().Should().BeOfType<LlmGatewayDiagramCoder>();
         services.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IDiagramCoder))
             .Timeout.Should().Be(TimeSpan.FromSeconds(DiagramCodingLimits.DefaultCallTimeoutSeconds));
+    }
+
+    // #1641: 本番の配線は、本文変換の外部プロセスの期限（既定 90 秒）を pandoc・pdftotext の両方の変換器へ渡す
+    // （変換器は期限を必須の引数で受ける。DI の登録から外れれば解決で止まる）。
+    [Fact]
+    [Trait("TestKind", "Integration")]
+    public async Task 本番の配線は本文変換の期限を両方の変換器へ渡す()
+    {
+        await using var factory = new Factory();
+        var services = factory.Services;
+
+        var expected = TimeSpan.FromSeconds(DiagramCodingLimits.DefaultBodyConversionTimeoutSeconds);
+        services.GetRequiredService<PandocConversionService>().ProcessTimeout.Should().Be(expected);
+        services.GetRequiredService<PdfTextLayerConverter>().ProcessTimeout.Should().Be(expected);
     }
 
     // 受け口の ct が立つまで待ち、立った時刻（`Stopwatch` のタイムスタンプ）を返す。
