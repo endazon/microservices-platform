@@ -74,6 +74,13 @@
  * 未設定の directAccessGrantsEnabled（管理 REST の作成は true にする）をログインの口として数える（検査 5・SA の検査も同じ。loginFlowFlags）／
  * user.attribute の先頭の大小を問わない（Keycloak は getUsername を引く）。
  *
+ * 検査8: **realm の宣言が本番の秘密を持っていないか**（SC-22 / NFR-18 / ADR-0124 決定 1・#1682・IADR-0485）。
+ * 背景: client シークレットは「対になる秘密」（認証基盤と Vault を同時に変えないと成立しない）であり、ADR-0124 決定 1 は
+ * **本番の秘密を realm の宣言（Git）から外す**と定めた。宣言に残してよいのは**開発用の値**だけである（本番へ持ち込まない限り認める）。
+ * 宣言は作成時にだけ運ばれる（reconcile-realm.js の CLIENT_CREATE_ONLY_KEYS）ので、ここへ本番の値を書けば
+ * **そのまま Git に平文で残る**。開発用であることを値の形（`-dev-secret-change-me` で終わる／`dev-only-` で始まる）で表し、
+ * それ以外の形の `clients[].secret` を違反にする。値そのものは出力しない（client 名だけを出す）。
+ *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
  *   node scripts/check-realm-constraints.js <path...>  # 明示したファイルのみ検査。
@@ -1461,6 +1468,36 @@ function checkRealmMachineJudgementText(text, opts) {
   return collectMachineJudgementGaps(JSON.parse(text), opts);
 }
 
+// --- 検査8: realm の宣言が本番の秘密を持たない（ADR-0124 決定 1・#1682）-----------------
+
+// 開発用の値の形。🔴 **広げるときは、その形が本番で使われ得ないことを確かめる**（空文字・任意の文字列を許す形にしない）。
+const DEV_SECRET_PATTERNS = Object.freeze([/^dev-only-[a-z0-9-]+$/, /^[a-z0-9-]+-dev-secret-change-me$/]);
+
+/**
+ * `clients[].secret` のうち、開発用の形でないものを返す。**値は返さない**（client 名と理由だけ）。
+ * `secret` が文字列でない（数値・空文字など）ものも違反にする（形で開発用と言えない）。
+ */
+function collectDeclaredSecretGaps(realm, patterns = DEV_SECRET_PATTERNS) {
+  const gaps = [];
+  for (const c of (realm && realm.clients) || []) {
+    if (!c || !Object.prototype.hasOwnProperty.call(c, 'secret')) continue;
+    const v = c.secret;
+    const dev = typeof v === 'string' && patterns.some((re) => re.test(v));
+    if (!dev) {
+      gaps.push({
+        path: `clients[${c.clientId}].secret`,
+        detail: '開発用の形（`-dev-secret-change-me` で終わる／`dev-only-` で始まる）ではない。'
+          + '本番の値を realm の宣言（Git）へ置かない —— 本番の client シークレットは認証基盤と Vault を対で書く運用手順で入れる（値は出力しない）',
+      });
+    }
+  }
+  return gaps;
+}
+
+function checkRealmDeclaredSecretsText(text, patterns) {
+  return collectDeclaredSecretGaps(JSON.parse(text), patterns);
+}
+
 // --- I/O（副作用は main / checkFiles に閉じる） --------------------------------
 
 // 既定の検査対象（REALM_DIR 配下の *-realm.json）をリポジトリ相対で列挙する。
@@ -1502,6 +1539,7 @@ function checkFiles(relPaths) {
       saRoleGaps: checkRealmServiceAccountRolesText(text),
       serverUrlGaps: checkRealmServerSideUrlsText(text),
       machineGaps: checkRealmMachineJudgementText(text),
+      secretGaps: checkRealmDeclaredSecretsText(text),
     });
   }
   return results;
@@ -2727,6 +2765,42 @@ function selfTest() {
     })(),
   });
 
+  // --- 検査8（#1682 / ADR-0124 決定 1）: realm の宣言の client secret は開発用の形に限る ---
+  cases.push({
+    name: '検査8: 開発用の 2 つの形（-dev-secret-change-me / dev-only-）は違反にしない',
+    pass: collectDeclaredSecretGaps({ clients: [
+      { clientId: 'a', secret: 'bff-dev-secret-change-me' },
+      { clientId: 'b', secret: 'dev-only-service-secret' },
+      { clientId: 'c', publicClient: true },
+    ] }).length === 0,
+  });
+  cases.push({
+    name: '🔴 検査8: 開発用の形でない secret は違反で、報告に値を含めない',
+    pass: (() => {
+      const g = collectDeclaredSecretGaps({ clients: [{ clientId: 'bff', secret: 'Zq8-real-production-value' }] });
+      return g.length === 1 && g[0].path === 'clients[bff].secret' && !JSON.stringify(g).includes('Zq8-real-production-value');
+    })(),
+  });
+  cases.push({
+    name: '検査8: 形の途中一致では通さない（接頭辞・接尾辞の位置を固定する）',
+    pass: collectDeclaredSecretGaps({ clients: [
+      { clientId: 'x', secret: 'prod-dev-secret-change-me-2026' },
+      { clientId: 'y', secret: 'real-dev-only-secret' },
+      { clientId: 'z', secret: '' },
+      { clientId: 'w', secret: 12345 },
+    ] }).length === 4,
+  });
+  cases.push({
+    name: '🔴 検査8: 実データの realm が前提を守る（実データ・ラチェット。secret を持つ client が 0 件の走査を緑にしない）',
+    pass: (() => {
+      const realmPath = path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json');
+      if (!fs.existsSync(realmPath)) return true; // realm が無い配布物では skip
+      const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
+      const withSecret = (realm.clients || []).filter((c) => Object.prototype.hasOwnProperty.call(c, 'secret'));
+      return withSecret.length >= 20 && collectDeclaredSecretGaps(realm).length === 0;
+    })(),
+  });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -2762,11 +2836,12 @@ function main() {
   const totalSaRoleGaps = results.reduce((n, r) => n + r.saRoleGaps.length, 0);
   const totalServerUrlGaps = results.reduce((n, r) => n + r.serverUrlGaps.length, 0);
   const totalMachineGaps = results.reduce((n, r) => n + r.machineGaps.length, 0);
+  const totalSecretGaps = results.reduce((n, r) => n + r.secretGaps.length, 0);
   if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0
     && totalMfaGaps === 0 && totalMailGaps === 0 && totalRelayGaps === 0
     && totalServerUrlGaps === 0 && totalConcealGaps === 0 && totalSaRoleGaps === 0
-    && totalMachineGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / 利用者が利用者名を選べる宣言 / profile を既定に持たないログイン経路のクライアント / 利用者名以外から出す preferred_username / 利用者名の落ちる軽量アクセストークン）はありません。`);
+    && totalMachineGaps === 0 && totalSecretGaps === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / 利用者が利用者名を選べる宣言 / profile を既定に持たないログイン経路のクライアント / 利用者名以外から出す preferred_username / 利用者名の落ちる軽量アクセストークン）・開発用の形でない client シークレットはありません。`);
     process.exit(0);
   }
 
@@ -2908,6 +2983,19 @@ function main() {
       + '利用者名を選べる宣言・preferred_username の出どころは #1596）です。');
   }
 
+  if (totalSecretGaps > 0) {
+    console.error(`[check-realm-constraints] realm の宣言に開発用の形でない client シークレット ${totalSecretGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.secretGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\n🔴 これは「設定の食い違い」ではなく**本番の秘密が Git に入ること**の話です。'
+      + '\nclient シークレットは認証基盤と Vault を同時に変える「対になる秘密」であり、realm の宣言が運ぶのは作成時の開発用の値だけです。'
+      + '\n本番の値は docs/operations/paired-secret-rotation-runbook.md の手順で入れます。'
+      + '\n要件の正は planning の ADR-0124 決定 1（ADR-0095 決定 1 の部分改定）、実装側の記録は IADR-0485（#1682）です。');
+  }
+
   process.exit(1);
 }
 
@@ -2943,6 +3031,9 @@ module.exports = {
   checkRealmServiceAccountRolesText,
   collectMachineJudgementGaps,
   checkRealmMachineJudgementText,
+  collectDeclaredSecretGaps,
+  checkRealmDeclaredSecretsText,
+  DEV_SECRET_PATTERNS,
   isHumanLoginClient,
   MACHINE_USERNAME_PREFIX,
   PROFILE_SCOPE,

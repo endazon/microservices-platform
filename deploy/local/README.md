@@ -176,8 +176,10 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
 届いているかは `node scripts/check-stack-ready.js --live` の **G9**（`--check`＝差分 0 件）が fail-closed で見る。
 
 - **宣言が当てる層**: realm 設定（テーマ・ロケール・token 寿命・パスワード／OTP ポリシー・ブルートフォース・events）／
-  `requiredActions`／ロール／グループ／client scopes ＋ mappers／clients（属性・redirect・secret・scope 割当 ＋ mappers）／
-  **seed 利用者の存在**／サービスアカウント利用者のロールと属性。
+  `requiredActions`／ロール／グループ／client scopes ＋ mappers／clients（属性・redirect・scope 割当 ＋ mappers）／
+  **seed 利用者の存在**／サービスアカウント利用者のロールと属性。client の `secret` は**client を作るときにだけ**宣言（開発用の値）で入れ、
+  既存の client では比べず・書かない（#1682。認証基盤と Vault を対で回した値を戻さないため。回し方は
+  [対になる秘密のローテーション](../../docs/operations/paired-secret-rotation-runbook.md)）。
 - **触らない層**（実行時が正）: **既存の人間の利用者**の資格情報・属性・ロール・グループ・`requiredActions`・セッション、
   `smtpServer`（[運用 Runbook](../../docs/operations/keycloak-smtp-relay-setup-runbook.md) が入れる実行時状態）。
   宣言に無い余剰の実体（client / role / group / 利用者）も消さない。
@@ -193,6 +195,9 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
 
 `k8s-local-up.sh` は未設定なら **dev 既定 / 空（no-op）** で Secret を作成する。実接続を有効化する場合のみ
 環境変数で上書きする（値は Git に載せない）。
+🔴 **`VAULT=1 ESO=1` のとき、Vault の種（`deploy/local/vault/eso/bootstrap.sh`）は KV が無いときだけ作る**（#1682）。
+既に在る KV は env を渡しても書き換わらない —— 認証基盤・データストアと対になる秘密を回すのは
+[対になる秘密のローテーション](../../docs/operations/paired-secret-rotation-runbook.md) の手順である。
 
 | 環境変数 | 生成 Secret / キー | 既定 | 用途 |
 | --- | --- | --- | --- |

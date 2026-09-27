@@ -63,6 +63,23 @@ vkv_patch_if_missing() { # <path> <property> <value>
     || echo "    WARN: secret/$1 に $2 を足せない（現在版が削除されている等）。Runbook の手順で直す" >&2
 }
 
+# SC-22, NFR-18, ADR-0124 決定 1, IADR-0485 (#1682): **対になる秘密は無いときだけ作る。在れば触らない。**
+# 対になる秘密 ＝ 相手（認証基盤の realm・データストア）と同時に変えないと成立しない秘密。許可リスト
+# deploy/bootstrap/sc22-secret-items.json の deferred[]（OIDC クライアントシークレット・s2s 資格情報）と
+# excluded[]（データストアの資格情報）のパスがこれに当たる。従前は毎回 `vault kv put`（全置換）で env か開発用既定値へ戻したため、
+# **相手と Vault を対で回した値を、次の `k8s-local-up.sh` が Vault 側だけ戻して片側だけ書いた状態を作っていた。**
+# 🔴 env はここでは**作るときだけ**効く（既に在る KV を env で書き換えない）。回すのは
+#    docs/operations/paired-secret-rotation-runbook.md の手順（相手と Vault を対で書く）である。
+# 作成は `-cas=0`（Vault 側でも「無いときだけ」）。この形は Platform.Bff.Tests の SecretItemBootstrapSeedTests が固定する。
+vkv_create_if_absent() { # <path> <key>='<value>' [...]
+  local path="$1"; shift
+  if vkv_exists "$path"; then
+    echo "    keep: secret/$path は在るので触らない（対になる秘密。回すときは paired-secret-rotation-runbook.md）"
+    return 0
+  fi
+  vexec "vault kv put -cas=0 secret/$path $*"
+}
+
 echo "==> seed: secret/msp/*（env 由来 or dev 既定・平文の実 secret は非コミット）"
 # 値は現行 apply_secret の既定と同一（objectstorage-dev/kp/空）。env で上書き可。
 # SC-22 の項目（IADR-0456 決定 6）: 無いときだけ作る。在れば env が空でないキーだけ差し替える。
@@ -74,15 +91,15 @@ else
 fi
 # IADR-0097 (#310) PR-2: object-storage-credentials / wikijs-db / wikijs-sync。
 # IADR-0461 決定 3 (#1499): オブジェクトストレージ（SeaweedFS）の S3 資格情報。旧 msp/minio-credentials。
-vexec "vault kv put secret/msp/object-storage-credentials accessKey='${OBJECT_STORAGE_ACCESS_KEY:-objectstorage-dev}' secretKey='${OBJECT_STORAGE_SECRET_KEY:-objectstorage-dev-secret}'"
+vkv_create_if_absent msp/object-storage-credentials "accessKey='${OBJECT_STORAGE_ACCESS_KEY:-objectstorage-dev}' secretKey='${OBJECT_STORAGE_SECRET_KEY:-objectstorage-dev-secret}'"
 # NFR, ADR-0002 (#1012): サービス DB のパスワード。appsettings.json から接続文字列を撤去したため、
 # これが無いと ESO=1 では DB を持つ全サービスが起動できない。dev 既定は init スクリプトが作る `kp`。
-vexec "vault kv put secret/msp/postgres-app password='${APP_DB_PASSWORD:-kp}'"
+vkv_create_if_absent msp/postgres-app "password='${APP_DB_PASSWORD:-kp}'"
 # NFR, ADR-0027 (#1022): ブローカのパスワード（app 側）。appsettings.json から接続文字列を撤去したため、
 # これが無いと ESO=1 では RabbitMQ を使う 7 サービスが起動できない。★値は step 3 の基盤 secret
 # `rabbitmq` と**同値**にすること（同じ env RABBITMQ_PASSWORD から作る。ズレると認証破壊）。
-vexec "vault kv put secret/msp/rabbitmq-app password='${RABBITMQ_PASSWORD:-guest}'"
-vexec "vault kv put secret/msp/wikijs-db password='${WIKIJS_DB_PASSWORD:-kp}'"
+vkv_create_if_absent msp/rabbitmq-app "password='${RABBITMQ_PASSWORD:-guest}'"
+vkv_create_if_absent msp/wikijs-db "password='${WIKIJS_DB_PASSWORD:-kp}'"
 # SC-22 の項目（IADR-0456 決定 6）。Wiki.js が発行した鍵の書き戻し（deploy/local/wikijs-setup/bootstrap.sh）は別の経路である。
 if vkv_exists msp/wikijs-sync; then
   vkv_patch_nonempty msp/wikijs-sync apiKey "${WIKIJS_SYNC_APIKEY:-}"
@@ -90,66 +107,68 @@ else
   vexec "vault kv put -cas=0 secret/msp/wikijs-sync apiKey='${WIKIJS_SYNC_APIKEY:-}'"
 fi
 # IADR-0098 (#310) PR-3: OIDC client secret 群（grafana/vault/headlamp）。既定は各 <tool>-dev-secret-change-me
-# （現行 apply_secret の env 既定と同値）。env で上書き可。realm import の dev client secret と一致させること。
+# （現行 apply_secret の env 既定と同値）。env は作るときだけ効く（#1682）。realm import の dev client secret と一致させること。
 # ［IADR-0461 決定 5 / #1499］msp/minio-oidc（MinIO Console の SSO）は撤去した。
 # NFR, SC-13, ADR-0032, IADR-0251/IADR-0273/IADR-0316 (#1107): BFF がコンフィデンシャルクライアントとして
 # Keycloak と通信するための client secret。**空だと `GET /bff/auth/login` が 500 で落ちる**（PAR が 401）。
-# 既定は realm の置き場と同値（一致しないと PAR が同じ 401 を返す）。env で上書き可。
-vexec "vault kv put secret/msp/bff-oidc client-secret='${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}'"
+# 既定は realm の置き場と同値（一致しないと PAR が同じ 401 を返す）。env は作るときだけ効く（#1682）。
+vkv_create_if_absent msp/bff-oidc "client-secret='${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}'"
 # FR-05, FR-09, SC-17, IADR-0301/IADR-0329 (#1101): AuthorizationService が Keycloak Admin REST へ
 # SC-17 の変更を反映するための client secret（realm の機密クライアント `identity-admin`）。
 # **空だと authorization-service Pod が起動しない**（helm は非 optional な secretKeyRef で読む）。
 # 既定は realm import の置き場と同値（ズレると client_credentials が 401 になり SC-17 が 500 になる）。
-vexec "vault kv put secret/msp/identity-admin-oidc client-secret='${IDENTITY_ADMIN_CLIENT_SECRET:-identity-admin-dev-secret-change-me}'"
+vkv_create_if_absent msp/identity-admin-oidc "client-secret='${IDENTITY_ADMIN_CLIENT_SECRET:-identity-admin-dev-secret-change-me}'"
 # FR-02, FR-03, NFR-09, NFR-16, ADR-0029/ADR-0075, IADR-0379 決定 4 / IADR-0397 (#1255): east-west gRPC の
 # **呼び出し側**が名乗る資格情報（realm の機密クライアント `retrieval-service` / `ingestion-service`）。
 # **空だと当該 Pod が起動しない**（helm は非 optional な secretKeyRef で読む）。
 # 既定は realm import の置き場と同値（ズレると client_credentials が 401 になり、埋め込みが 1 件も通らない）。
-vexec "vault kv put secret/msp/retrieval-service-token client-secret='${RETRIEVAL_SERVICE_CLIENT_SECRET:-retrieval-service-dev-secret-change-me}'"
-vexec "vault kv put secret/msp/ingestion-service-token client-secret='${INGESTION_SERVICE_CLIENT_SECRET:-ingestion-service-dev-secret-change-me}'"
+vkv_create_if_absent msp/retrieval-service-token "client-secret='${RETRIEVAL_SERVICE_CLIENT_SECRET:-retrieval-service-dev-secret-change-me}'"
+vkv_create_if_absent msp/ingestion-service-token "client-secret='${INGESTION_SERVICE_CLIENT_SECRET:-ingestion-service-dev-secret-change-me}'"
 # FR-04, FR-12, FR-18, NFR-09, NFR-16, ADR-0029/ADR-0075, IADR-0379 決定 4 / IADR-0400 (#1255):
 # テキスト生成（/complete 系）の呼び出し側 3 サービス。埋め込みの 2 つと同型・同じ理由である。
-vexec "vault kv put secret/msp/aianalysis-service-token client-secret='${AIANALYSIS_SERVICE_CLIENT_SECRET:-aianalysis-service-dev-secret-change-me}'"
-vexec "vault kv put secret/msp/graph-service-token client-secret='${GRAPH_SERVICE_CLIENT_SECRET:-graph-service-dev-secret-change-me}'"
-vexec "vault kv put secret/msp/conversion-service-token client-secret='${CONVERSION_SERVICE_CLIENT_SECRET:-conversion-service-dev-secret-change-me}'"
+vkv_create_if_absent msp/aianalysis-service-token "client-secret='${AIANALYSIS_SERVICE_CLIENT_SECRET:-aianalysis-service-dev-secret-change-me}'"
+vkv_create_if_absent msp/graph-service-token "client-secret='${GRAPH_SERVICE_CLIENT_SECRET:-graph-service-dev-secret-change-me}'"
+vkv_create_if_absent msp/conversion-service-token "client-secret='${CONVERSION_SERVICE_CLIENT_SECRET:-conversion-service-dev-secret-change-me}'"
 # FR-05, FR-13, FR-16, UC-04, UC-09, SC-06, SC-12, NFR-09, NFR-16, ADR-0029/ADR-0075,
 # IADR-0379 決定 4 / IADR-0401 (#1255): 認可サービス（ABAC スコープ解決・利用者名簿の狭い読み口）の
 # 呼び出し側 3 サービス。🔴 wiki / datasource / mcp-server の 3 つは
 # **利用者トークンの転送をやめる**ための資格情報である（呼び出し先の読み口を狭めてある）。
-vexec "vault kv put secret/msp/wiki-service-token client-secret='${WIKI_SERVICE_CLIENT_SECRET:-wiki-service-dev-secret-change-me}'"
-vexec "vault kv put secret/msp/datasource-service-token client-secret='${DATASOURCE_SERVICE_CLIENT_SECRET:-datasource-service-dev-secret-change-me}'"
-vexec "vault kv put secret/msp/mcp-server-token client-secret='${MCP_SERVER_CLIENT_SECRET:-mcp-server-dev-secret-change-me}'"
+vkv_create_if_absent msp/wiki-service-token "client-secret='${WIKI_SERVICE_CLIENT_SECRET:-wiki-service-dev-secret-change-me}'"
+vkv_create_if_absent msp/datasource-service-token "client-secret='${DATASOURCE_SERVICE_CLIENT_SECRET:-datasource-service-dev-secret-change-me}'"
+vkv_create_if_absent msp/mcp-server-token "client-secret='${MCP_SERVER_CLIENT_SECRET:-mcp-server-dev-secret-change-me}'"
 # FR-19, FR-20, FR-21, FR-22, NFR-09, NFR-16, ADR-0004/ADR-0029/ADR-0075,
 # IADR-0379 決定 4 / IADR-0419 (#1255): 通知の受け付け（NotificationService）の呼び出し側。
 # 🔴 **DocumentService が east-west gRPC の呼び出し元になるのはここが最初である**
 # （従前は受け口だけを持っていた）。空だと Pod が起動しない —— 送出は fail-open なので、
 # 資格情報だけが欠けた状態で起動できると**個人資料の通知が静かに 1 件も届かなくなる**。
-vexec "vault kv put secret/msp/document-service-token client-secret='${DOCUMENT_SERVICE_CLIENT_SECRET:-document-service-dev-secret-change-me}'"
+vkv_create_if_absent msp/document-service-token "client-secret='${DOCUMENT_SERVICE_CLIENT_SECRET:-document-service-dev-secret-change-me}'"
 # NFR-09, IADR-0095/IADR-0342 (#1127): Wiki.js の OIDC ストラテジ（DB 保持・manifest 化できない runtime 状態）
 # を冪等に再適用する `deploy/local/wikijs-setup/bootstrap.sh` 段 8 が読む client secret。
 # **Pod は誰も env で読まない**（読み手は bootstrap）。既定は realm import の置き場と同値 ——
 # ズレると Keycloak の token 端点が `invalid_client` を返し、認可までは進むのに callback で落ちる。
-vexec "vault kv put secret/msp/wikijs-oidc client-secret='${WIKIJS_OIDC_CLIENT_SECRET:-wiki-js-dev-secret-change-me}'"
-vexec "vault kv put secret/msp/grafana-oidc client-secret='${GRAFANA_OIDC_CLIENT_SECRET:-grafana-dev-secret-change-me}'"
-vexec "vault kv put secret/msp/vault-oidc client-secret='${VAULT_OIDC_CLIENT_SECRET:-vault-dev-secret-change-me}'"
-vexec "vault kv put secret/msp/headlamp-oidc client-secret='${HEADLAMP_OIDC_CLIENT_SECRET:-headlamp-dev-secret-change-me}'"
+vkv_create_if_absent msp/wikijs-oidc "client-secret='${WIKIJS_OIDC_CLIENT_SECRET:-wiki-js-dev-secret-change-me}'"
+vkv_create_if_absent msp/grafana-oidc "client-secret='${GRAFANA_OIDC_CLIENT_SECRET:-grafana-dev-secret-change-me}'"
+vkv_create_if_absent msp/vault-oidc "client-secret='${VAULT_OIDC_CLIENT_SECRET:-vault-dev-secret-change-me}'"
+vkv_create_if_absent msp/headlamp-oidc "client-secret='${HEADLAMP_OIDC_CLIENT_SECRET:-headlamp-dev-secret-change-me}'"
 # SC-15, ADR-0078 決定 4, IADR-0404 (#1245 PR-C): 近接 MTA へ投函できないときに申請を閉じる門
 # （platform-infra/reset-gate）が Admin REST を叩く機密クライアントの secret。
 # **既定は realm import の置き場と同値**にする —— ズレると Keycloak の token 端点が invalid_client を返し、
 # 門は 401 を打ち続けるだけになる（窓は開いたまま。wikijs-oidc と同じ罠）。
-vexec "vault kv put secret/msp/reset-gate-oidc client-secret='${RESET_GATE_CLIENT_SECRET:-reset-gate-dev-secret-change-me}'"
+vkv_create_if_absent msp/reset-gate-oidc "client-secret='${RESET_GATE_CLIENT_SECRET:-reset-gate-dev-secret-change-me}'"
 # NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1, IADR-0378 (#1287): 合成監視のプローブが
 # client_credentials で名乗る機密クライアントの secret。**既定は realm import の置き場と同値**にする ——
 # ズレると token 端点が invalid_client を返し、プローブは 1 度も BFF へ到達しないまま
 # `RagLatencySeriesAbsent` を鳴らす（原因が「評価対象が本当に無い」と区別できない。wikijs-oidc と同じ罠）。
 # 種は無条件に入れる。ExternalSecret を apply するのは SYNTHETIC=1 のときだけである（k8s-local-up.sh）。
-vexec "vault kv put secret/msp/synthetic-monitor-oidc client-secret='${SYNTHETIC_MONITOR_CLIENT_SECRET:-synthetic-monitor-dev-secret-change-me}'"
+vkv_create_if_absent msp/synthetic-monitor-oidc "client-secret='${SYNTHETIC_MONITOR_CLIENT_SECRET:-synthetic-monitor-dev-secret-change-me}'"
 # IADR-0099 (#310) PR-4: 基盤 secret（postgres/rabbitmq/keycloak-admin）。★値は k8s-local-up.sh step 3 の手動 apply と
 # **完全一致**させること（env 由来 or 同じ既定 postgres/guest/admin）。DB/broker/keycloak は既存パスワードで初期化済みのため、
 # 値がズレると認証破壊。ExternalSecret は creationPolicy: Merge で同一値を上書きするのみ（値不変＝無害）。
-vexec "vault kv put secret/msp/postgres password='${PG_PASSWORD:-postgres}'"
-vexec "vault kv put secret/msp/rabbitmq username='${RABBITMQ_USER:-guest}' password='${RABBITMQ_PASSWORD:-guest}'"
-vexec "vault kv put secret/msp/keycloak-admin password='${KEYCLOAK_ADMIN_PASSWORD:-admin}'"
+# ［2026-09-28 / #1682］無いときだけ作る（上の vkv_create_if_absent）。回した後は Vault が正であり、手動 apply の Secret は
+# 次の同期で Vault の値へ戻る（起動の後に同期を促す手順は paired-secret-rotation-runbook.md）。
+vkv_create_if_absent msp/postgres "password='${PG_PASSWORD:-postgres}'"
+vkv_create_if_absent msp/rabbitmq "username='${RABBITMQ_USER:-guest}' password='${RABBITMQ_PASSWORD:-guest}'"
+vkv_create_if_absent msp/keycloak-admin "password='${KEYCLOAK_ADMIN_PASSWORD:-admin}'"
 # #438, ADR-0045 決定 2-b/6: SMTP リレー（go-live では Google Workspace への STARTTLS リレー）の資格情報。
 # **実環境の値は未供給のため from/user/password の既定は空文字**（他 secret と同じ fail-safe。runbook §2 の
 # 「長さが 0 なら kcadm を打つな」判定はこの空既定に依る）。値の投入手順・Secret の消費方法は
@@ -217,6 +236,7 @@ fi
 
 echo ""
 echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h。画面 /admin/secrets からの書き込みは BFF が force-sync で即時同期を依頼する）:"
+echo "  #1682: 対になる秘密（OIDC / s2s / データストアの資格情報の 24 KV）は無いときだけ作った（在るものは env を渡しても触らない。回すのは docs/operations/paired-secret-rotation-runbook.md）"
 echo "  #1477: SC-22 の KV（llm-provider-credentials / wikijs-sync / keycloak-smtp / ai-stock-trading/app-secrets）は無いときだけ作った（在るものは env が空でないキーだけ差し替えた）"
 echo "  PR-1: llm-provider-credentials / PR-2: object-storage-credentials, wikijs-db, wikijs-sync"
 echo "  PR-3: grafana-oidc, vault-oidc, headlamp-oidc (platform-infra ns)"

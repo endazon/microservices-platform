@@ -2,10 +2,10 @@
 title: IADR-0453 SC-22 は運用者を含め、プロパティ 1 つずつ書き、最終更新者は BFF が書いた版にだけ付け、状態は metadata から 3 値で出す
 type: impl-adr
 status: Accepted
-related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0032, ADR-0042, ADR-0095, ADR-0110, IADR-0009, IADR-0030, IADR-0096, IADR-0251, IADR-0433, IADR-0456, IADR-0460]
+related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0032, ADR-0042, ADR-0095, ADR-0110, ADR-0124, IADR-0009, IADR-0030, IADR-0096, IADR-0251, IADR-0433, IADR-0456, IADR-0460, IADR-0485]
 author: claude
 created: 2026-09-14
-updated: 2026-09-27
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/07_adr/ADR-0042_ops-management-ui-production.md
@@ -240,7 +240,13 @@ IADR-0433 決定 3 のまま。**本 ADR は `items[]` を 1 行も動かさな�
      > プロパティ単位の空欄は画面に出さない。画面の「設定済みは各プロパティに空でない値が入っていることを保証しない」注記は残す。
      > **Vault の権限は変えない**（本決定 4・IADR-0433 決定 1 のまま）。注記は既に在るため**コードは変えない**。本フォローアップは閉じた。
   2. `deferred[]`（20 件）を画面で扱うか（IADR-0433 フォローアップ 4 のまま）。
+     > ［2026-09-28 追記 / #1682］**件数は 17 件である**（「20 件」は当時の数。IADR-0456 で moomoo の 2 件が `items[]` へ移り、IADR-0461 で `msp/minio-oidc` が撤去された）。
+     > **計画 ADR-0124 決定 1（planning#700 の裁定 2026-09-28）で閉じた** —— `deferred[]`・`excluded[]`・`ast-app-secrets` の `*-auth-client-*` は「対になる秘密」として SC-22 の対象外であり、
+     > 画面では扱わない。本決定 8 はそのまま成り立つ。回し方は IADR-0485。本フォローアップは閉じた。
   3. 退避手段の使用記録（ADR-0095 フォローアップ 4。Runbook は引き続き issue コメントへ記録する）。
+     > ［2026-09-28 追記 / #1682］**計画 ADR-0124 決定 2・4 で閉じた。** 記録の手段は Vault の audit を可観測性基盤の監査へ取り込むこと（値は記録しない）と定まり、
+     > それまでの暫定手段は issue コメントで、**記録先を 1 か所にまとめる**こととされた。記録先を #458 へ一本化した（退避手段の Runbook の #1411 を改めた。IADR-0485 決定 6）。
+     > audit の取り込みそのものは #1683 が持つ。本フォローアップは閉じた。
   4. 監査の抽出クエリ（可観測性基盤）が `outcome=failed` を拾うか確かめる（本 PR では抽出側を触っていない）。
      > ［2026-09-25 追記 / #1472］**確かめた。抽出側に 2 値前提のものは無い —— そもそも本リポジトリに監査の抽出クエリが無い。**
      > `AuditOutcome` を名指しするのは記録側（`AuditLogger`）とその試験だけで、`deploy/`・`docs/observability/` の

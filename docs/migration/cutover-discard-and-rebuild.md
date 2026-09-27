@@ -4,14 +4,14 @@ type: migration-spec
 status: draft
 author: Claude
 created: 2026-09-25
-updated: 2026-09-26
+updated: 2026-09-28
 ---
 <!-- trace:
 ids: [NFR-05, NFR-18]
-adrs: [ADR-0002, ADR-0008, ADR-0032]
-iadrs: [IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457]
-specs: [20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft]
-issues: [#457, #454, #439, #458]
+adrs: [ADR-0002, ADR-0008, ADR-0032, ADR-0124]
+iadrs: [IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
+specs: [20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
+issues: [#457, #454, #439, #458, #1682]
 -->
 
 # 移行仕様書: 再実装版への切替 —— 6 資産の破棄と realm の作り直し
@@ -118,11 +118,14 @@ node scripts/measure-cutover-inventory.js --input cutover-after.json --since 202
 ### 0. 事前確認（窓の前日まで）
 
 1. go-live の前提（BFF セッション方式の完了・セキュリティ暫定運用の解消）の状態を確かめる。本切替を go-live と同時に行うかどうかはオーナーが決める。
-2. 秘密情報の画面で入れた値が Vault に残っていることを確かめる（Vault は触らない）。🔴 **起動器の再実行が既存の値を
-   上書きしないのは、秘密情報の画面の項目（`deploy/bootstrap/sc22-secret-items.json` の対象）だけである。** それ以外の
-   `secret/msp/*`（DB・MinIO・RabbitMQ のパスワード、各サービスの client secret ほか）は起動器が**毎回全置換する**
-   （env が無ければ開発用の既定値）。手で変えた値があれば、4 の起動器に同じ env を渡すか、後で入れ直す。
-3. realm のクライアントの secret を realm.json の宣言値と違う値へ変えていないか確かめる。変えているなら、作り直しの後に配り直す手順を用意する。
+2. 秘密情報の画面で入れた値が Vault に残っていることを確かめる（Vault は触らない）。起動器の再実行は、Vault に**在る** KV を上書きしない
+   （秘密情報の画面の項目も、DB・オブジェクトストレージ・RabbitMQ のパスワードや各サービスの client secret などの対になる秘密も、無いときだけ作る。2026-09-28 から。
+   それまでは対になる秘密を毎回全置換していた）。🔴 **ただし起動器の手動の Secret 作成は一部の Secret を env か開発用の既定値で書き直す**
+   （Vault の値は戻らず、次の同期で Secret も戻る）。手で変えた値があれば、4 の起動器に同じ env を渡すか、起動の後に同期を促す
+   （[対になる秘密のローテーション](../operations/paired-secret-rotation-runbook.md)「起動の後に同期を促す」）。
+3. realm のクライアントの secret を realm.json の宣言値と違う値へ変えていないか確かめる。変えているなら、作り直しの後に配り直す手順を用意する
+   （realm の作り直しは realm.json の開発用の値で client を作る。Vault には回した値が残るので、**両者が食い違う** ——
+   [対になる秘密のローテーション](../operations/paired-secret-rotation-runbook.md) 手順 1 の 4 で、Vault の値を認証基盤へ書き直す）。
 4. オーナーが実行時に作った利用者（seed 利用者以外）を書き出しておく。作り直しでは**入り直らない**。
 5. 起動器（`scripts/k8s-local-up.sh`）を今のクラスタを作ったときと同じ環境変数で再実行できることを確かめる（`LOCALEDGE` / `OBSERVABILITY` / `VAULT` / `ARGOCD` ほか）。
 6. **ai-stock-trading の身元を書き出す**（破棄の境界の節）: realm `platform` の `ai-stock-trading-*` 4 クライアントの現在の secret と、
