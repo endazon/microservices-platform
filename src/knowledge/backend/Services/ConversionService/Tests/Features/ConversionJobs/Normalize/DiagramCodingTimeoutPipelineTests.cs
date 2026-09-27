@@ -28,17 +28,19 @@ namespace ConversionService.Tests.Features.ConversionJobs.Normalize;
 // 本物を通す部品: `RawDocumentFetchedConsumer` → `NormalizationService`（総枠つき）→ **本番と同じ登録**
 // （`DiagramCoderRegistration.AddRestDiagramCoder`。名前付きクライアントの `Timeout` はここで決まる）の
 // `LlmGatewayDiagramCoder` → `HttpClient`。差し替えるのは LLM ゲートウェイ（応答しないハンドラ）・本文変換・
-// オブジェクトストレージ・発行口だけである。期限は本番の既定（20 秒 / 120 秒 / 300 秒）を 1 秒 / 2 秒 / 4 秒へ縮尺する
-// （構成の下限が 1 秒なので、これより縮めない）。
+// オブジェクトストレージ・発行口だけである。期限は本番の既定（20 秒 / 120 秒 / 300 秒・本文変換 90 秒）を
+// 1 秒 / 2 秒 / 5 秒・本文変換 1 秒へ縮尺する（構成の下限が 1 秒なので、これより縮めない。受け口は #1641 の起動時の検査
+// 「受け口 ＞ 本文変換 ＋ 総枠 ＋ 1 回」を満たす最小の 5 秒。#1624 の時点では 4 秒だった）。
 [Trait("TestKind", "Unit")]
 public class DiagramCodingTimeoutPipelineTests
 {
-    // 縮尺した期限: 1 回 1 秒・総枠 2 秒・受け口 4 秒（本番の既定と同じく 受け口 ＞ 総枠 ＋ 1 回）。
+    // 縮尺した期限: 1 回 1 秒・総枠 2 秒・本文変換 1 秒・受け口 5 秒（本番の既定と同じく 受け口 ＞ 本文変換 ＋ 総枠 ＋ 1 回）。
     private static readonly Dictionary<string, string?> ScaledLimits = new()
     {
         [DiagramCodingLimits.CallTimeoutKey] = "1",
         [DiagramCodingLimits.BudgetKey] = "2",
-        [DiagramCodingLimits.HandlerTimeoutKey] = "4",
+        [DiagramCodingLimits.BodyConversionTimeoutKey] = "1",
+        [DiagramCodingLimits.HandlerTimeoutKey] = "5",
     };
 
     private static RawDocumentFetched Raw() =>
@@ -72,7 +74,7 @@ public class DiagramCodingTimeoutPipelineTests
     }
 
     // T-48: 図 5 つ・ゲートウェイは応答しない。1 回 1 秒の期限が積もって総枠（2 秒）を使い切り、**残りの図はゲートウェイを
-    // 呼ばずに**画像として残す（通常は 2 回で使い切る）。総枠が無ければ 5 回 × 1 秒 ＝ 5 秒で受け口の期限（4 秒）を越え、ジョブは失敗する。
+    // 呼ばずに**画像として残す（通常は 2 回で使い切る）。総枠が無ければ 5 図すべてを呼び（5 回 × 1 秒 ＝ 5 秒）、受け口の期限（5 秒）に掛かる。
     [Fact]
     public async Task Exhausted_budget_retains_the_remaining_figures_without_calling_the_gateway()
     {

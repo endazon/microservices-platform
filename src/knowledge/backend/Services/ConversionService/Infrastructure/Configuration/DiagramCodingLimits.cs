@@ -19,34 +19,52 @@ namespace ConversionService.Infrastructure.Configuration;
 //      食い尽くす構成を、実行時の縮退の失敗として初めて知ることにしない。既定では本文変換・保管に 300−(120＋20)＝160 秒が残る。
 //
 // いずれも 1 未満は 1 に丸める（#1604 の `Mcp:DeclarationTimeoutSeconds` と同じ扱い）。
+//
+// ［2026-09-27 追記 / #1641］4 つ目の上限として**本文変換の外部プロセス（pandoc・pdftotext）の期限**
+// （`Conversion:BodyConversionTimeoutSeconds`・既定 90 秒）を持つ（`BodyConversionTimeout`）。期限で**プロセスツリーごと止める**
+// （`ExternalProcess`）。起動時の検査は「受け口 ＞ 本文変換 ＋ 総枠 ＋ 1 回」へ広げる（従前の「受け口 ＞ 総枠 ＋ 1 回」を包含する）。
+// 既定では原本の取り寄せ・版の確かめ・保管・発行に 300 −（90 ＋ 120 ＋ 20）＝ 70 秒が残る。
+// 型の名前は #1621 のまま残す（位置引数も変えない）—— 受け口の時間の上限を 1 か所で検査するための record である。
 public sealed record DiagramCodingLimits(TimeSpan CallTimeout, TimeSpan Budget, TimeSpan HandlerTimeout)
 {
     public const string CallTimeoutKey = "Conversion:DiagramCodingTimeoutSeconds";
     public const string BudgetKey = "Conversion:DiagramCodingBudgetSeconds";
     public const string HandlerTimeoutKey = "Conversion:HandlerTimeoutSeconds";
+    public const string BodyConversionTimeoutKey = "Conversion:BodyConversionTimeoutSeconds";
 
     public const int DefaultCallTimeoutSeconds = 20;
     public const int DefaultBudgetSeconds = 120;
     public const int DefaultHandlerTimeoutSeconds = 300;
+    public const int DefaultBodyConversionTimeoutSeconds = 90;
+
+    // #1641: 本文変換の外部プロセス（pandoc・pdftotext）1 回の期限。1 文書は形式でどちらか一方だけを通る
+    // （`FormatRoutingBodyConverter`）ので、鍵は 1 つで足りる。
+    public TimeSpan BodyConversionTimeout { get; init; } = TimeSpan.FromSeconds(DefaultBodyConversionTimeoutSeconds);
 
     public static DiagramCodingLimits Default { get; } = new(
         TimeSpan.FromSeconds(DefaultCallTimeoutSeconds),
         TimeSpan.FromSeconds(DefaultBudgetSeconds),
         TimeSpan.FromSeconds(DefaultHandlerTimeoutSeconds));
 
-    // 構成から読む。受け口の期限が「総枠＋1 回の期限」を超えていなければ InvalidOperationException（起動失敗）。
+    // 構成から読む。受け口の期限が「本文変換の期限＋総枠＋1 回の期限」を超えていなければ InvalidOperationException（起動失敗）。
     public static DiagramCodingLimits From(IConfiguration configuration)
     {
         var limits = new DiagramCodingLimits(
             Seconds(configuration, CallTimeoutKey, DefaultCallTimeoutSeconds),
             Seconds(configuration, BudgetKey, DefaultBudgetSeconds),
-            Seconds(configuration, HandlerTimeoutKey, DefaultHandlerTimeoutSeconds));
+            Seconds(configuration, HandlerTimeoutKey, DefaultHandlerTimeoutSeconds))
+        {
+            BodyConversionTimeout = Seconds(configuration, BodyConversionTimeoutKey, DefaultBodyConversionTimeoutSeconds),
+        };
 
-        if (limits.HandlerTimeout <= limits.Budget + limits.CallTimeout)
+        if (limits.HandlerTimeout <= limits.BodyConversionTimeout + limits.Budget + limits.CallTimeout)
             throw new InvalidOperationException(
-                $"{HandlerTimeoutKey}（{limits.HandlerTimeout.TotalSeconds} 秒）は {BudgetKey}（{limits.Budget.TotalSeconds} 秒）"
+                $"{HandlerTimeoutKey}（{limits.HandlerTimeout.TotalSeconds} 秒）は "
+                + $"{BodyConversionTimeoutKey}（{limits.BodyConversionTimeout.TotalSeconds} 秒）"
+                + $"＋ {BudgetKey}（{limits.Budget.TotalSeconds} 秒）"
                 + $"＋ {CallTimeoutKey}（{limits.CallTimeout.TotalSeconds} 秒）より長くなければならない。"
-                + " 図のコード化が受け口の実行期限を食い尽くすと、応答しない LLM ゲートウェイで変換ジョブが失敗する。");
+                + " 本文変換と図のコード化が受け口の実行期限を食い尽くすと、止まった pandoc や応答しない LLM ゲートウェイが"
+                + "自前の期限ではなく受け口の取り消しとして終わり、変換ジョブの失敗理由が失われる。");
 
         return limits;
     }

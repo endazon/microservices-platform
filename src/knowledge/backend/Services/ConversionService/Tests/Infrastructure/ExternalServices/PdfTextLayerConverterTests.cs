@@ -28,6 +28,7 @@ public class PdfTextLayerConverterTests
         bool allowDegraded = false, IObjectStorageClient? storage = null) =>
         new(storage ?? new UnresolvableStorage(),
             Options.Create(new ConversionOptions { AllowDegradedBodyConversion = allowDegraded }),
+            DiagramCodingLimits.Default,
             NullLogger<PdfTextLayerConverter>.Instance);
 
     // --- 空判定（純関数。pdftotext 無しで走る） -------------------------------------------
