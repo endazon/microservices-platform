@@ -68,6 +68,8 @@
       "BffOwnerReadSeedTests",
       "ContentAbacGateTests",
       "DirectoryCallerCancellationTests",
+      "DocumentReadContentAbacEndpointTests",
+      "DocumentReadContentAbacTests",
       "DocumentReadOwnerSeedTests",
       "GrpcOwnerReadPolicyStatusSourceTests",
       "GrpcOwnerReadPolicyStatusTests",

@@ -17,7 +17,8 @@ namespace DocumentService.Features.Documents;
 // ［2026-09-27 更新 / #1614］🔴 **個人資料の可視性はここで判定する**（計画 ADR-0119 決定 3）。
 // すべての操作は**主体**（`DocumentReadPrincipal`）を受け取り、`DocumentReadAccess` で読めるかを決める。
 // 読めない文書は一覧から除き（件数にも含めない）、個別は「無い」と同じ `null` を返す（ADR-0056 の存在秘匿）。
-// **組織文書の内容の ABAC はまだ BFF の `BffScopeResolver` が実施点である**（#1615 で `DocumentReadAccess` に入る）。
+// ［2026-09-28 更新 / #1615］**組織文書の内容の ABAC は、門（`IContentAbacGate`）が開いたときだけ `DocumentReadAccess` が行う**
+// （計画 ADR-0121 決定 4・5）。閉じている間の組織文書の実施点は従前どおり BFF の `BffScopeResolver` である。
 // 認証の門（REST の読み取り群の `RequireAuthorization()`・gRPC の `ServiceCaller`）は**このクラスの外**にある。
 //
 // 🔴 **「無い」は `null` で返す。例外にしない。** 呼び出し側（REST は 404、gRPC は

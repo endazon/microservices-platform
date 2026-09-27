@@ -559,3 +559,4 @@
 | [IADR-0479](./IADR-0479_mcp-tool-execution-ports-authorize-user-context-themselves.md) | MCP のツールの実行口は MCP サーバー（許可集合）が運んだ利用者文脈だけを信じ、その利用者で認可サービスへ自分で判定を問う（#1611） | Accepted |
 | [IADR-0480](./IADR-0480_owner-read-policy-seed-and-deploy-step.md) | 所有者の読み取りは dev seed の必須のポリシー 1 本（利用者の条件なし・文書の条件は `owner ∈ {${current_user}}` だけ）で表し、本番はシステム管理者がポリシーの API へ直接投入する。seed を入れた `/authz/scope` の応答を期待値のファイルに固定し、BFF・MCP・検索・DocumentService の試験はそれを入力にする（#1664） | Accepted |
 | [IADR-0481](./IADR-0481_owner-read-policy-loss-alert-and-content-abac-gate.md) | 所有者の読み取りのポリシーの消失は認可サービスの定期の検査のゲージと警報 2 本（無い／見ていない）で知らせ、削除は止めない。内容の ABAC の門は文書サービスが件数を問い、構成が On かつ 1 件以上を確かめたときだけ開いてラッチする（#1665） | Accepted |
+| [IADR-0483](./IADR-0483_document-read-content-abac-behind-gate.md) | DocumentService の読み取りの内容の ABAC は、門が開いたときだけ認可サービスの read の分岐ただ 1 つで判定し（所有者・利用者共有のコード判定を残さない。機械はサービスアカウント名で問う）、閉じている間は従前の判定のまま。門は要求の中で最初に読んだ値に固定し、`/documents/page` は開いたときだけ切り出しの前に絞る（#1615） | Accepted |

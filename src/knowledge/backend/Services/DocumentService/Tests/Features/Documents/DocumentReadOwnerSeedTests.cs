@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using AwesomeAssertions;
 using DocumentService.Domain;
 using DocumentService.Features.Documents;
@@ -32,8 +30,8 @@ public class DocumentReadOwnerSeedTests
     public async Task Seedの分岐は他人のグループ共有の個人資料を許さない()
     {
         var scopes = new StubDocumentReadScopeSource();
-        scopes.Grant("bob", [.. SeedScope("bob").Branches!.Select(b => (IReadOnlyList<AttributeFilter>)b.Filters)]);
-        var access = new DocumentReadAccess(scopes);
+        scopes.Grant("bob", OwnerReadSeedScopes.BranchesOf("bob"));
+        var access = new DocumentReadAccess(scopes, new StubContentAbacGate());
 
         var readable = await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("bob"),
             PrivateNoteOwnedBy("alice"), ["g-not-a-member"], TestContext.Current.CancellationToken);
@@ -47,24 +45,10 @@ public class DocumentReadOwnerSeedTests
     public async Task 所有者本人は読める()
     {
         var scopes = new StubDocumentReadScopeSource();
-        var access = new DocumentReadAccess(scopes);
+        var access = new DocumentReadAccess(scopes, new StubContentAbacGate());
 
         (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"),
             PrivateNoteOwnedBy("alice"), null, TestContext.Current.CancellationToken)).Should().BeTrue();
         scopes.CallsFor("alice").Should().Be(0);
-    }
-
-    private static AccessScopeResponse SeedScope(string userId)
-    {
-        const string relative = "src/platform/backend/Services/AuthorizationService/Tests/Fixtures/owner-read-seed-scopes.json";
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
-        {
-            var path = Path.Combine(dir.FullName, relative.Replace('/', Path.DirectorySeparatorChar));
-            if (!File.Exists(path)) continue;
-            return JsonNode.Parse(File.ReadAllText(path))!["subjects"]!.AsArray()
-                .Single(s => (string)s!["userId"]! == userId)!["scope"]!
-                .Deserialize<AccessScopeResponse>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
-        }
-        throw new FileNotFoundException($"リポジトリの {relative} が見つからない（走査の起点: {AppContext.BaseDirectory}）");
     }
 }
