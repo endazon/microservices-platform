@@ -93,6 +93,8 @@ Loki の `{job="vault-audit"}` へ出す（1 行 = Vault の JSON 1 件）。**�
 同じ受け口がある**（出口は debug）—— 本オーバーレイは同名の ConfigMap で既定を上書きするので、片方だけにすると受け口が消える。
 値で落とす段は置いていない。秘密の書き込みの抽出の条件は `docs/security/security.md`「保管先（Vault）の audit」。
 
+- `OBSERVABILITY=1` を後から opt-in した場合、socket の device は Vault を再起動するまで有効にならない（起動器の再試行は約 5 分〔5 秒 × 60 回〕で打ち切る）。一度有効になれば Vault の storage に残る。
+
 ## 切り戻し
 
 `kubectl delete -k deploy/local/observability` で撤去し、`kubectl apply -k deploy/local/infra` ＋ collector

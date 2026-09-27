@@ -129,6 +129,7 @@ issue: "#1683"
   | request_path=~"secret/(data|metadata|delete|undelete|destroy)/.+"
 ```
 
+- ［2026-09-28 追記・監査の指摘］`request_path` に `sys/(audit|config/auditing|policy|policies/acl|mounts)/.+` を足した（監査を弱める操作も抽出する。IADR-0486 決定 4 の追記）。
 - 経路の見分け: `auth_metadata_role="bff-secret-writer"` は**画面（BFF）**、それ以外（`auth_display_name` が `token-local-dev-root` の root トークン・`oidc-…` の人のログイン）は**画面以外**。
 - `error` で絞らない（拒否・失敗の行を落とさない。アプリ側の `outcome` を 2 値で列挙しないのと同じ理由）。
 - 残るのは時刻（`time`）・主体（`auth_display_name`・`auth_metadata_*`・`auth_policies`）・パス（項目）・プロパティ名（`request_data_data` の**キー**）。

@@ -111,11 +111,15 @@ ADR-0124 決定 2 は、Vault の audit device を有効にし、そのログを
 {job="vault-audit"} | json
   | type="response"
   | request_operation=~"create|update|patch|delete"
-  | request_path=~"secret/(data|metadata|delete|undelete|destroy)/.+"
+  | request_path=~"secret/(data|metadata|delete|undelete|destroy)/.+|sys/(audit|config/auditing|policy|policies/acl|mounts)/.+"
 ```
 
 - `auth_metadata_role="bff-secret-writer"`（IADR-0433 の BFF 専用ロール）の行が画面経由、それ以外が画面以外である。
 - `error` で絞らない（拒否の行を落とさない）。読み取りは条件で落ちる（Loki には入っている）。
+- ［2026-09-28 追記・監査の指摘］**監査を弱める操作も同じ条件で抽出する**: `request_path` に `sys/(audit|config/auditing|policy|policies/acl|mounts)/.+` を足した
+  （audit device の有効化・無効化、HMAC しない要求ヘッダの指定、権限の変更、mount の変更〔`tune` で HMAC しないキーを指定できる〕）。
+  秘密の書き込みだけを残しても、「記録を弱めてから書く」を辿れないからである。ローカルの実測で、`sys/policies/acl/…`（`vault policy write` もこのパス）・
+  `sys/mounts/secret/tune`・`sys/config/auditing/request-headers/…`・`sys/audit/…` の書き込みが抽出され、`sys/audit-hash/…` は抽出されなかった。
 - 条件の正本は `docs/security/security.md`「保管先（Vault）の audit」である。collector の `service.name`・KV の mount（`secret`）・ロール名との一致は `scripts/scripts.repo.test.js` が固定する。
 
 ## 理由
@@ -152,6 +156,12 @@ ADR-0124 決定 2 は、Vault の audit device を有効にし、そのログを
     起動器は socket の device を有効にできなかったときに WARN を出すが、繋がった後の切断は Vault のログ（`failed to audit`）にしか出ない。
   - 🔴 **共有の root トークンで書いた行は「画面以外」までしか言えない。** 誰が（人）・なぜ画面を使わなかったかは残らない。退避の Runbook の人の記録は引き続き要る。
   - `PERSIST=0`（インメモリの `-dev`）の Vault は audit を持たない（起動器を通らない）。本番の Vault は未配備であり、本決定は経路B の Vault に限る。
+  - 🔴 **9514（`tcplog/vault-audit`）は `0.0.0.0` で待ち受け、ローカルでは NetworkPolicy が効いていない。** クラスタ内の Pod は偽の audit 行を Loki へ入れられる
+    （クラスタの外へは露出していない。OTLP の 4317 も同じ条件）。改ざん防止は #198 の射程である。
+  - 🔴 **`vault audit list` が一時的に失敗すると、起動器は既に在る `stdout/` を無いと見て `enable` を打ち、それが失敗して起動を止めうる。**
+    直前にトークンの確認（`token lookup`）が通っているので起こりにくいが、起これば Pod の再起動で直る。
+  - 🔴 **Loki へ送る側の device（`otel-collector/`）を外す操作そのものは Loki に届かない**（外された device は自分の無効化の行を受け取らない。実測）。
+    標準出力にだけ残り、Loki では行が途絶えることが手がかりになる。
   - 起動器の readiness（`vault status`）は unseal で通るので、標準出力の device の有効化の直前に、ごく短い「audit の無い」時間がある（kv の mount も同じ位置にある）。
   - 1 要求につき 2 行（request / response）を 2 か所へ出す。ESO の同期（1 時間ごとの読み取り）も入る。保持は Loki の既定（削除しない。容量は PVC で縛られる）。
 - フォローアップ

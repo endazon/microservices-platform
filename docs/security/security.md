@@ -444,9 +444,14 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 {job="vault-audit"} | json
   | type="response"
   | request_operation=~"create|update|patch|delete"
-  | request_path=~"secret/(data|metadata|delete|undelete|destroy)/.+"
+  | request_path=~"secret/(data|metadata|delete|undelete|destroy)/.+|sys/(audit|config/auditing|policy|policies/acl|mounts)/.+"
 ```
 
+- **監査を弱める操作も同じ条件で出る。** `sys/audit/…`（audit device の有効化・変更・無効化）、`sys/config/auditing/…`（HMAC しない要求ヘッダの指定）、
+  `sys/policy/…`・`sys/policies/acl/…`（権限の変更）、`sys/mounts/…`（mount の変更。`…/tune` で HMAC しないキーを指定できる）である。
+  秘密の書き込みを残しても、これらを残さなければ「記録を止めてから書く」を辿れない。`sys/audit-hash/…`（ハッシュの計算）は書き込みではないので出ない。
+  🔴 **ただし、Loki へ送る側の device（`otel-collector/`）を外す操作そのものは Loki に届かない**（外された device は自分の無効化の行を受け取らない。実測）。
+  その行は Vault のコンテナログ（`stdout/`）にだけ残り、Loki では**その時刻から行が途絶える**ことが手がかりになる。
 - **経路の見分け**: `auth_metadata_role="bff-secret-writer"` の行が**画面（境界層の BFF）**、それ以外が**画面以外**である。
   画面以外の主体は `auth_display_name` で分かる（`token-local-dev-root` は共有の root トークン、`oidc-<利用者>` は人のログイン）。
   ロール名は `deploy/local/vault/eso/bootstrap.sh` が作るものと同じで、一致は `scripts/scripts.repo.test.js` が固定する。

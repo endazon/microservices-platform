@@ -192,6 +192,7 @@ main() {
 		exit 1
 	fi
 	# 裏で再試行する（collector より先に上がっても起動を待たせない）。失敗は WARN だけ。
+	# 上の trap はこの再試行には伝えない —— コンテナの終了時にはコンテナごと回収されるので、止める必要が無い。
 	ensure_audit_socket &
 	# `wait` はシグナルで中断されるので、サーバが実際に終わるまで待ち直す（PID 1 が先に抜けると残りが SIGKILL される）。
 	while kill -0 "$server_pid" 2>/dev/null; do

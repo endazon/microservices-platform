@@ -12594,7 +12594,20 @@ exit $RC
       const job = read('deploy/local/observability/otel-collector-forward.yaml').match(/key: service\.name\s+value: (\S+)/)[1];
       assert.ok(q.includes(`{job="${job}"}`), `抽出の条件のストリームが collector の service.name（${job}）と食い違う`);
       const kv = envDefault('VAULT_KV_PATH');
-      assert.ok(q.includes(`request_path=~"${kv}/(data|metadata|delete|undelete|destroy)/.+"`), `抽出の条件が KV の mount（${kv}/）の書き込みのパスを網羅しない`);
+      // パスの条件は文字列一致で見ず、実際のパスに当てて網羅を確かめる（Loki の `=~` は全体一致）。
+      const pm = q.match(/request_path=~"([^"]+)"/);
+      assert.ok(pm, '抽出の条件に request_path が無い');
+      const pathRe = new RegExp(`^(?:${pm[1]})$`);
+      const mustMatch = [
+        // 秘密の書き込み（KV v2 の全経路）
+        `${kv}/data/msp/x`, `${kv}/metadata/msp/x`, `${kv}/delete/msp/x`, `${kv}/undelete/msp/x`, `${kv}/destroy/msp/x`,
+        // 監査を弱める操作（監査の指摘。無効化・変更・HMAC しない指定・権限・mount）
+        'sys/audit/stdout', 'sys/audit/otel-collector', 'sys/config/auditing/request-headers/x',
+        'sys/policy/p', 'sys/policies/acl/p', 'sys/mounts/secret/tune',
+      ];
+      const mustNot = ['sys/audit-hash/stdout', 'sys/internal/ui/mounts/secret/x', 'auth/token/lookup-self', `${kv}/config`];
+      for (const x of mustMatch) assert.ok(pathRe.test(x), `抽出の条件が ${x} を拾わない`);
+      for (const x of mustNot) assert.ok(!pathRe.test(x), `抽出の条件が書き込みでない ${x} まで拾う`);
       assert.ok(/request_operation=~"create\|update\|patch\|delete"/.test(q), '抽出の条件が書き込みの操作 4 種（create / update / patch / delete）を網羅しない');
       assert.ok(/type="response"/.test(q), 'response の行に絞っていない（request と 2 重になる）');
       assert.ok(!/error/.test(q), '抽出の条件が error で絞っている（拒否・失敗の行が落ちる）');
