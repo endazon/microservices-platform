@@ -37,10 +37,12 @@ internal static class AstStaleCopyRules
     };
 
     // AST の確定報告書（`ReportKnowledgeMapper`）。`kind` は AST の `ReportKind` の名前。
-    private static readonly HashSet<string> ReportKinds = new(StringComparer.Ordinal) { "Daily", "Weekly", "Monthly" };
+    // 🔴 値域は `AstStaleCopyRulesTests` が AST の実値で丸ごと固定する（過不足の両方が赤になる）。
+    internal static readonly IReadOnlySet<string> ReportKinds =
+        new HashSet<string>(StringComparer.Ordinal) { "Daily", "Weekly", "Monthly" };
 
-    // AST の収集記事（`KnowledgeBaseWriterSink`）。`kind` は AST の `InformationKind` の名前。
-    private static readonly HashSet<string> ArticleKinds = new(StringComparer.Ordinal)
+    // AST の収集記事（`KnowledgeBaseWriterSink`）。`kind` は AST の `InformationKind` の名前（同上の試験が固定する）。
+    internal static readonly IReadOnlySet<string> ArticleKinds = new HashSet<string>(StringComparer.Ordinal)
     {
         "Quote", "News", "Disclosure", "MacroIndicator", "SupplyDemand", "SourceStatus",
     };

@@ -169,6 +169,54 @@ public class AstStaleCopyRulesTests
         verdict.Category.Should().Be(AstCopyCategory.Report, "形まで通った写しは種別を持つ（重複の数えに使う）");
     }
 
+    // ── kind の値域を AST の実値で丸ごと固定する（過不足の両方を検出する。AST の KnowledgeTagVocabularyTests と同じ型） ──
+    //
+    // 出典（AST の隣接クローン 40d992e で読んだ。基盤は AST の型を参照できないので値を写して固定する）:
+    //   - 報告書: `backend/Services/ReportService/Domain/TradingReport.cs` の `enum ReportKind { Daily, Weekly, Monthly }`
+    //     （`ReportKnowledgeMapper` が `report.Kind.ToString()` を属性 `kind` に載せる）
+    //   - 記事: `backend/Services/InformationCollectionService/Domain/CollectedInformation.cs` の
+    //     `enum InformationKind { Quote, News, Disclosure, MacroIndicator, SupplyDemand, SourceStatus }`
+    //     （`KnowledgeBaseWriterSink` が `item.Kind.ToString()` を属性 `kind` に載せる）
+    // 🔴 AST が列挙値を足したら、ここと `AstStaleCopyRules` を同時に直す（足りないと古い写しを見落とし、余ると AST 以外を拾い得る）。
+    private static readonly string[] AstReportKinds = ["Daily", "Weekly", "Monthly"];
+    private static readonly string[] AstInformationKinds =
+        ["Quote", "News", "Disclosure", "MacroIndicator", "SupplyDemand", "SourceStatus"];
+
+    [Fact]
+    public void 報告書のkindの値域はAST_のReportKindの全値と過不足なく一致する()
+    {
+        AstStaleCopyRules.ReportKinds.Should().BeEquivalentTo(AstReportKinds);
+    }
+
+    [Fact]
+    public void 記事のkindの値域はAST_のInformationKindの全値と過不足なく一致する()
+    {
+        AstStaleCopyRules.ArticleKinds.Should().BeEquivalentTo(AstInformationKinds);
+    }
+
+    [Theory]
+    [InlineData("Daily")]
+    [InlineData("Weekly")]
+    [InlineData("Monthly")]
+    public void AST_の報告書のkindはどれも報告書として拾う(string kind)
+    {
+        AstStaleCopyRules.Classify($"確定報告書 {kind} 2026-08-01", Report(kind: kind), Created)
+            .Category.Should().Be(AstCopyCategory.Report);
+    }
+
+    [Theory]
+    [InlineData("Quote")]
+    [InlineData("News")]
+    [InlineData("Disclosure")]
+    [InlineData("MacroIndicator")]
+    [InlineData("SupplyDemand")]
+    [InlineData("SourceStatus")]
+    public void AST_の記事のkindはどれも記事として拾う(string kind)
+    {
+        AstStaleCopyRules.Classify("記事", Article(kind: kind), Created)
+            .Category.Should().Be(AstCopyCategory.Article);
+    }
+
     [Fact]
     public void 理由は判定の順に6つ()
     {

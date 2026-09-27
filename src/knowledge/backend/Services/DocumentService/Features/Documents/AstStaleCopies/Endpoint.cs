@@ -49,7 +49,9 @@ internal static class ListAstStaleCopiesEndpoint
                     excluded[verdict.ExcludedReason!]++;
                     if (verdict is { ExcludedReason: AstStaleCopyRules.Reasons.OwnedByCurrentAccount, Category: AstCopyCategory.Report })
                     {
-                        var key = (row.Attributes[AstStaleCopyRules.KindKey], row.Attributes[AstStaleCopyRules.PeriodKeyKey]);
+                        // 形の判定（`IsReport`）を通っているので 2 つとも空白でない値を持つ。読み方は規則と同じ `ValueOrNull` にそろえる。
+                        var key = (AstStaleCopyRules.ValueOrNull(row.Attributes, AstStaleCopyRules.KindKey)!,
+                            AstStaleCopyRules.ValueOrNull(row.Attributes, AstStaleCopyRules.PeriodKeyKey)!);
                         currentAccountReportKeys[key] = currentAccountReportKeys.GetValueOrDefault(key) + 1;
                     }
                     continue;
