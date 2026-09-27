@@ -534,6 +534,25 @@ public class AbacValidationTests
         errors.Should().ContainSingle(e => e.Contains($"key '{key}'") && e.Contains("利用者属性"));
     }
 
+    // T-74（#1676）: 保存済みのキーの更新（Key / Scope は不変）では、利用者スコープの束縛の位置の名前を拒まない。
+    // 拒否より前に登録された属性のラベル・許可値を直せるようにする。登録（既定）は T-71 のとおり拒む（否定の対照を同じ入力で置く）。
+    [Theory]
+    [InlineData("owner")]
+    [InlineData("shared_with")]
+    [InlineData("Owner")]
+    public void ValidateAttributeDefinition_UserScopeBindingPositionKeyAlreadyStored_NoErrors(string key)
+    {
+        var stored = AttributeDefinition.Create(key, "担当者", ["alice"], false, AttributeScope.User);
+
+        AbacValidation.ValidateAttributeDefinition(
+                key, "担当者（改）", ["alice", "bob"], AttributeScope.User, [stored], excludeId: stored.Id,
+                keyAlreadyStored: true)
+            .Should().BeEmpty();
+        AbacValidation.ValidateAttributeDefinition(
+                key, "担当者（改）", ["alice", "bob"], AttributeScope.User, [stored], excludeId: stored.Id)
+            .Should().ContainSingle(e => e.Contains("利用者属性"), "登録（既定）では拒む");
+    }
+
     // T-71（陽性対照）: 文書スコープの同名は登録できる（束縛の値と辞書の許可値を併せ持てる）。
     // 利用者スコープの他のキーは従来どおり通る。
     [Theory]

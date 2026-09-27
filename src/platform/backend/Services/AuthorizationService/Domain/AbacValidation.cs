@@ -9,9 +9,12 @@ public static class AbacValidation
     // ［2026-09-27 / #1609・計画 ADR-0116 決定 3］`allowedValuesDerived` が true のキー（`department`）は許可値を
     // realm の部門グループから導くため、要求の許可値の形（1 件以上・重複なし）をここでは見ない
     // （受け付けるかは `DepartmentDictionaryValues.RequestAccepted` が決める）。
+    // ［2026-09-28 / #1676］`keyAlreadyStored` は「キー・スコープが既に保存されている属性の更新」（Key / Scope は不変）である。
+    // 真なら利用者スコープの束縛の位置の名前の検査（下）だけを飛ばす —— 登録の拒否より前から在る属性のラベル・許可値を直せるようにする。
     public static List<string> ValidateAttributeDefinition(
         string? key, string? label, List<string>? allowedValues, string? scope,
-        IEnumerable<AttributeDefinition> existing, Guid? excludeId = null, bool allowedValuesDerived = false)
+        IEnumerable<AttributeDefinition> existing, Guid? excludeId = null, bool allowedValuesDerived = false,
+        bool keyAlreadyStored = false)
     {
         var errors = new List<string>();
 
@@ -46,7 +49,11 @@ public static class AbacValidation
         // 束縛は文書の条件にだけ置けるので、利用者属性の `owner` は SC-09 の条件エディタで文書の `owner`（束縛）と
         // 名前だけが同じ別物として並び、取り違えの元になる。辞書のキーの同一性は大小を区別しない（下の一意の検査と同じ）ので、
         // ここも大小を区別せずに拒む。文書スコープの同名は拒まない（束縛の値と辞書の許可値を併せて持てる）。
-        if (!string.IsNullOrWhiteSpace(key)
+        // ［2026-09-28 / #1676］**拒むのは登録だけである。** 更新では Key / Scope が変わらないので、この検査で新たに
+        // 同名の利用者属性が生まれることは無い。更新まで拒むと、拒否より前に登録された属性はラベルの変更すら 400 になり、
+        // 参照中なら削除もできない（409）ので直す手段が無くなる。
+        if (!keyAlreadyStored
+            && !string.IsNullOrWhiteSpace(key)
             && string.Equals(normalizedScope, AttributeScope.User, StringComparison.OrdinalIgnoreCase)
             && DynamicBindingKeys.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)))
         {

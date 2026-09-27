@@ -25,9 +25,11 @@ public static class UpdateAttributeEndpoint
             var derived = DepartmentDictionaryValues.IsDerived(attr.Key);
             var reading = derived ? await dictionary.ReadDepartmentDomainAsync(ct) : DepartmentDomainReading.Unknown;
             // Key / Scope は不変。既存値を用いて一意・整合を再検証する。
+            // ［2026-09-28 / #1676］保存済みのキーなので、利用者スコープの束縛の位置の名前（owner・shared_with）の拒否は掛けない
+            // （拒否は登録の口だけ。拒否より前に在った属性のラベル・許可値を直せるようにする）。
             var errors = AbacValidation.ValidateAttributeDefinition(
                 attr.Key, req.Label, req.AllowedValues, attr.Scope, existing, excludeId: attr.Id,
-                allowedValuesDerived: derived);
+                allowedValuesDerived: derived, keyAlreadyStored: true);
 
             var allowedValues = req.AllowedValues;
             if (derived)
