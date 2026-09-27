@@ -72,11 +72,24 @@ WolverineFx 6.24.4 は受け口へ渡す ct に 1 通ごとの実行期限（`Ha
    | 本文の取得 | `Ingestion:ContentReadTimeoutSeconds` | 20 秒 | `IDocumentContentReader.ReadAsync`（S3・HTTP とも） |
    | 埋め込み 1 回 | `Ingestion:EmbeddingTimeoutSeconds` | 30 秒 | `IEmbeddingService.EmbedAsync`（REST・gRPC とも） |
    | Qdrant 1 回 | `Ingestion:VectorStoreTimeoutSeconds` | 10 秒 | チャンク・メタデータ点の登録。既存チャンクの削除はコレクション数倍（コレクション 1 本ごとに 1 回呼ぶ） |
-   | 埋め込みの総枠 | `Ingestion:EmbeddingBudgetSeconds` | 600 秒 | チャンクを回し始めてからの経過。各チャンクの埋め込みの**前**に判定し、使い切ったら残りを呼ばずに時間切れ |
-   | 受け口の実行期限 | `Ingestion:HandlerTimeoutSeconds` | 720 秒 | `HandlerExecutionTimeoutPolicy<DocumentUpdated>` |
+   | 埋め込みの総枠 | `Ingestion:EmbeddingBudgetSeconds` | 300 秒 | チャンクを回し始めてからの経過。各チャンクの埋め込みの**前**に判定し、使い切ったら残りを呼ばずに時間切れ。**再試行せずデッドレターへ**（決定 8） |
+   | 受け口の実行期限 | `Ingestion:HandlerTimeoutSeconds` | 420 秒 | `HandlerExecutionTimeoutPolicy<DocumentUpdated>` |
 
-   起動時の検査の式: 実行期限 ＞ 削除（コレクション数 × Qdrant）＋ 本文 ＋ 総枠 ＋ 最後の 1 チャンク（埋め込み ＋ Qdrant）。既定（コレクション 2 本）では
-   20 ＋ 20 ＋ 600 ＋ 30 ＋ 10 ＝ 680 秒で、残り 40 秒は完了イベントの発行（MassTransit。期限の射程外）の余白である。**値は chart へ足さず、コードの既定で持つ。**
+   起動時の検査の式（その 1）: 実行期限 ＞ 削除（コレクション数 × Qdrant）＋ 本文 ＋ 総枠 ＋ 最後の 1 チャンク（埋め込み ＋ Qdrant）。既定（コレクション 2 本）では
+   20 ＋ 20 ＋ 300 ＋ 30 ＋ 10 ＝ 380 秒で、残り 40 秒は完了イベントの発行（MassTransit。期限の射程外）の余白である。**値は chart へ足さず、コードの既定で持つ。**
+   起動時の検査の式（その 2。決定 7）: 4 × 420 ＋ 42 ＝ 1722 秒 ＜ `consumer_timeout` 1800 秒。
+7. 🔴 **1 回の配信の再試行の連鎖全体がブローカの `consumer_timeout` に収まることを起動時に検査する**（`ConsumerHandlerTimeouts.EnsureRetryChainFits`）。
+   WolverineFx.RabbitMQ 6.24.4 の受信は Inline（`ConsumerDispatchConcurrency = 1`・prefetch 100）で、再試行（`RetryInlineContinuation`）は**同じ配信の中で**回り、
+   ack は最後の試行の後にしか返らない（監査が逆コンパイルで確認）。1 通が配信を握る上限は「試行上限（4）× 受け口の実行期限 ＋ 試行間の待ちの合計（2＋10＋30＝42 秒。
+   `WolverineExtensions.TotalRetryCooldown`）」であり、これが `consumer_timeout` 以上だとブローカはチャネルを閉じて再配信し、**試行回数が 0 に戻る** ——
+   失敗し続ける 1 通が永久に回り、その間キューを塞ぐ。仮定する `consumer_timeout` は構成 `Messaging:BrokerConsumerTimeoutSeconds`（既定 1800 秒＝RabbitMQ 3.13 の既定。
+   本リポジトリの配備は上書きしていない）で持ち、配備で変えたらこの値も合わせる。等しいときも止める。
+   方針を入れない受け口（実行期限 60 秒）の連鎖は 4 × 60 ＋ 42 ＝ 282 秒、ConversionService（#1621・300 秒）は 1242 秒で、どちらも収まる。
+8. 🔴 **取り込みの埋め込みの総枠の使い切り（呼び出し先 `embedding-budget` の `ConsumerTimeoutException`）は、再試行せずデッドレターへ送る**
+   （`EmbeddingBudgetDeadLetterPolicy`。`DocumentUpdated` の受け口に `OnException<ConsumerTimeoutException>(…).MoveToErrorQueue()` を足す）。
+   総枠の使い切りは文書の大きさで決まり、何度試しても同じ結果になる —— 再試行へ流すと 1 回の配信が 4 試行分配信を握り、そのたびに総枠分の埋め込みを使い直す。
+   呼び出しごとの時間切れ（`content` / `embedding` / `vector-store`）は一時的な障害として従来どおり再試行する。受け口の規則が全体の既定より先に効くことは
+   ローカルキューの実配送で確かめた（`EmbeddingBudgetDeadLetterPipelineTests`）。
 
 ## 値の理由（取り込み）
 
@@ -85,16 +98,25 @@ WolverineFx 6.24.4 は受け口へ渡す ct に 1 通ごとの実行期限（`Ha
   - 本文: クラスタ内のオブジェクトストレージから数 MB 以下の Markdown を読む。正常時は 1 秒未満で、20 秒は 1 桁以上の余裕を持つ。
   - 埋め込み: 1 チャンクは 512 トークン（約 2 KB）以下。LLM ゲートウェイ自身は上流への期限を持たない（`HttpClient` 既定 100 秒）ので、ゲートウェイが上流で固まった場合も 30 秒で切る。
   - Qdrant: 1 点の登録（wait=true）と文書 ID の一致での削除。正常時はミリ秒単位で、10 秒は十分な余裕である。
-- 総枠 600 秒は「従来の実質上限（受け口の既定 60 秒）の 10 倍」である。チャンク 1 つあたり埋め込み＋登録が 1 秒なら約 600 チャンク（約 1.2 MB の Markdown）まで収まる。
-- 受け口の実行期限の上限は RabbitMQ の `consumer_timeout`（既定 30 分・本リポジトリの配備は上書きしていない）で決まる。受け口の処理中に配信が未 ack のまま残る経路では、
-  これを超えるとブローカがチャネルを閉じる。720 秒（12 分）はそれより十分短い。総枠を上げるときは実行期限も上げ、30 分を超えないこと（起動時の検査は前者だけを見る）。
-- 総枠を超える文書は、従来（60 秒で取り消し）と同じく再試行のあとデッドレターへ入る。違いは (1) 収まる文書が 10 倍に広がること、(2) 落ちたときに
-  「埋め込みの総枠を使い切った（何チャンク中何チャンク）」がログと計器に残ることである。運用は `Ingestion:EmbeddingBudgetSeconds` と `Ingestion:HandlerTimeoutSeconds` を上げて再投入する。
+- **受け口の実行期限の上限は、1 試行ではなく再試行の連鎖全体で `consumer_timeout` に収まることで決まる**（決定 7）。
+  - 再試行は同じ配信の中で回るので、「4 × 実行期限 ＋ 42 秒 ＜ 1800 秒」から実行期限は 439 秒以下になる。
+  - 420 秒は 78 秒の余裕を残す。
+  - 総枠は「420 − (20 ＋ 20 ＋ 30 ＋ 10) − 余白 40」から 300 秒とした。
+- 総枠 300 秒は、従来の実質上限（受け口の既定 60 秒）の 5 倍である。チャンク 1 つあたり埋め込み＋登録が 1 秒なら、約 300 チャンク（約 600 KB の Markdown）まで収まる。
+- 総枠を超える文書は再試行せずにデッドレターへ入る（決定 8）。
+  - 従来は 60 秒で取り消しになり、再試行のあとデッドレターへ入っていた。
+  - 今回の違いは 3 点ある。(1) 収まる文書が 5 倍に広がる。(2) 落ちたときに「埋め込みの総枠を使い切った（何チャンク中何チャンク）」がログと計器に残る。(3) 1 回の試行で止まるので、キューを 1 試行分しか塞がない。
+  - 運用では `Ingestion:EmbeddingBudgetSeconds` と `Ingestion:HandlerTimeoutSeconds` を上げて再投入する。連鎖が収まらなければ、`consumer_timeout` と `Messaging:BrokerConsumerTimeoutSeconds` も上げる。起動時の検査が、この 3 つの組み合わせを確かめる。
+- ［訂正 / #1640 監査］初版は総枠 600 秒・実行期限 720 秒とし、「720 秒は 30 分より十分短い」と書いていた。これは 1 試行と連鎖全体の上限を比べた誤りである。
+  - 実際の連鎖は、4 × 720 ＋ 42 ＝ 2922 秒で 1800 秒を超える。
+  - その結果、大きすぎる文書は再配信で試行回数が戻り、永久に回っていた。
+  - 決定 7・8 と上の値で直した。
 
 ## 結果
 
 - 止まった依存先は、受け口の ct より先に呼び出しごとの期限で時間切れとして落ち、`messaging.consumer.timeout` に数えられる。取り消し（停止要求）は従来どおり取り消しのまま外へ出る。
-- 取り込みは Wolverine の既定 60 秒ではなく 720 秒の下で動き、大きな文書を止まっていなくても切ることが無くなる。
+- 取り込みは Wolverine の既定 60 秒ではなく 420 秒の下で動き、総枠 300 秒までの文書を止まっていなくても切ることが無くなる。
+- 総枠を超える文書は 1 試行でデッドレターへ入り、1 回の配信が `consumer_timeout` を超えて握られることは起動時の検査で起こらない。
 - 固まった依存先が 1 回の試行を占有する時間は、呼び出しごとの期限で上から抑えられる（従前は受け口の期限＝60 秒まで）。
 
 ## 残るもの

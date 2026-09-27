@@ -27,6 +27,7 @@
       "ChunkIdTests",
       "ConsumerCallTimeoutsTests",
       "DocumentUpdatedConsumerTests",
+      "EmbeddingBudgetDeadLetterPipelineTests",
       "IngestionTimeoutTests",
       "MetadataIndexTextTests",
       "QdrantIngestionVectorStoreTests"
