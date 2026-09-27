@@ -377,8 +377,11 @@ public class PandocConversionService(
     // IADR-0320 決定 5 (#1097): pandoc の版（`pandoc --version` の 1 行目）。取得できなければ null
     // ＝**実行時イメージに pandoc が無い**。readiness ヘルスチェックが同じ口を使う。
     // #1641: 版の確かめも期限（`ExternalProcess.VersionProbeTimeout`）つきで起動し、期限切れ・取り消しではツリーごと止める。
+    // #1654 B: 版の確認の時間切れは Warning を出してから null を返す（「止まっている」を「無い」と区別できるように）。
+    // probeTimeout は試験用（既定は固定の `ExternalProcess.VersionProbeTimeout`。起動時の式がこの値を含む）。
     internal static async Task<string?> TryGetPandocVersionAsync(CancellationToken ct,
-        Func<ProcessStartInfo, ProcessStartInfo>? startInfoFilter = null, ILogger? logger = null)
+        Func<ProcessStartInfo, ProcessStartInfo>? startInfoFilter = null, ILogger? logger = null,
+        TimeSpan? probeTimeout = null)
     {
         try
         {
@@ -390,13 +393,20 @@ public class PandocConversionService(
                 CreateNoWindow = true
             };
             var result = await ExternalProcess.RunAsync(startInfoFilter?.Invoke(psi) ?? psi, "pandoc",
-                ExternalProcess.VersionProbeTimeout, logger ?? NullLogger.Instance, ct);
+                probeTimeout ?? ExternalProcess.VersionProbeTimeout, logger ?? NullLogger.Instance, ct);
             if (result.ExitCode != 0) return null;
             var firstLine = result.StandardOutput.Split('\n')[0].Trim();
             return firstLine.Length == 0 ? "pandoc" : firstLine;
         }
         // #1641: 呼び出し元の取り消しは「pandoc が無い」へ畳まずに外へ出す（受け口では停止要求・実行期限である）。
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (BodyConversionTimeoutException ex)
+        {
+            (logger ?? NullLogger.Instance).LogWarning(ex,
+                "pandoc --version did not finish within {Timeout} and was killed; pandoc is treated as unavailable, "
+                + "but it may be installed and hung rather than missing", ex.Timeout);
+            return null;
+        }
         catch { return null; }
     }
 

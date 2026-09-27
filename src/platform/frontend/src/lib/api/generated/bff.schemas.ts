@@ -2066,11 +2066,33 @@ export type ReplaceUserAttributesRequestAttributes = {[key: string]: string};
 
 /**
  * SC-17: ABAC 属性の割当（**差し替え**。部分更新ではない）。
- * 部門と機密区分上限は必須、タグは任意。値・キーとも属性辞書（利用者スコープ）に
- * 定義済みのものだけを受け付ける。
+ * 機密区分上限は必須、タグは任意。値・キーとも属性辞書（利用者スコープ）に
+ * 定義済みのものだけを受け付ける。**`department` は含められない**（部門は部門グループの所属で変える）。
  */
 export interface ReplaceUserAttributesRequest {
   attributes: ReplaceUserAttributesRequestAttributes;
+}
+
+/**
+ * SC-17（ADR-0116 決定 1）: 利用者の部門。**部門の正本は部門グループの所属である**
+ * （`departmentGroups`）。`departmentAttribute` は ABAC が読む属性で、部門の同期が追いつくまで違い得る。
+ */
+export interface UserDepartmentDto {
+  /** 直接属する部門グループのコード（入れ子は上位に畳む。序数順）。2 件以上なら画面から変えられない */
+  departmentGroups: string[];
+  /** 利用者属性 department（無ければ null） */
+  departmentAttribute?: string | null;
+  /** 部門欄の選択肢（realm の /department の直下の子のコード） */
+  choices: string[];
+}
+
+/**
+ * SC-17（ADR-0116 決定 1）: 部門の変更（部門グループの所属の変更）。null・空は「部門なし」。
+ * 🔴 利用者属性 `department` は書かない。
+ */
+export interface ReplaceUserDepartmentRequest {
+  /** 選んだ部門コード（realm の部門グループのコード）。null・空は部門なし */
+  department?: string | null;
 }
 
 /**

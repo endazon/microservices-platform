@@ -74,6 +74,12 @@ function revocableSession() {
       'GET /auth/me': () => (revoked ? reply(401, {}) : sessionUser(['platform-admin'])),
       'GET /admin/users': gate([self]),
       'GET /admin/users/assignable-roles': gate(['platform-user', 'platform-admin']),
+      // SC-17, ADR-0116 決定 1 (#1610): 権限編集を開くと、その人の部門（部門グループの所属・属性・選択肢）を引く。
+      [`GET /admin/users/${self.id}/department`]: gate({
+        departmentGroups: ['sales'],
+        departmentAttribute: 'sales',
+        choices: ['engineering', 'hr', 'sales'],
+      }),
       'GET /admin/authz/attributes': gate([]),
       'GET /notifications': gate([]),
       // 無効化＝全セッション失効。契約上の応答は更新後の利用者（200）である。
@@ -108,11 +114,14 @@ test('a disabled account is refused on the very next request through the BFF', a
   expect(traffic.calls.map((c) => c.key)).toContain('GET /admin/users');
   expect(session.isRevoked()).toBe(false);
 
+  await page.getByRole('button', { name: '編集' }).click();
+  await expect(page.getByRole('heading', { name: /権限編集/ })).toBeVisible();
+  // #1610: 権限編集は開いた人の部門を引く。その往復が済んでから数え始める（無効化の並びと混ぜない）。
+  await expect(page.getByLabel('部門（部門グループ）')).toBeVisible();
+
   // ここから先に出る `/bff/*` だけを見る（前段の往復と混ぜない）。
   const from = traffic.calls.length;
 
-  await page.getByRole('button', { name: '編集' }).click();
-  await expect(page.getByRole('heading', { name: /権限編集/ })).toBeVisible();
   await page.getByRole('button', { name: '無効化（全セッション失効）' }).click();
   // ［UI/UX 改善 2026-09-12］無効化の手前に確認ダイアログが入った（全セッション即時失効は取り返しがつかない）。
   // 確認するまで `/bff/*` は 1 つも飛ばない——飛ぶのは確認したあとである。

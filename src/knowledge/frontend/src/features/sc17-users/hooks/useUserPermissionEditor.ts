@@ -3,7 +3,7 @@ import type {
   AttributeDefinitionDto,
   PlatformUserDto,
 } from '@foundation/api/generated/bff.schemas';
-import { validateAssignment } from '../types/userAccountVocabulary';
+import { validateAssignment, withoutDepartment } from '../types/userAccountVocabulary';
 import type { AssignmentIssue } from '../types/userAccountVocabulary';
 
 // SC-17, UC-05, FR-05/FR-09: 権限編集の**クライアント状態**
@@ -39,6 +39,12 @@ export interface UserPermissionEditor {
    * 「送らない」ことが「外す」ことである —— 空文字のまま送ると、値として空文字が入る。
    */
   setAttribute: (key: string, value: string) => void;
+  /**
+   * 部門欄の下書き（#1610・計画 ADR-0116 決定 1）。**`null` は「触っていない」**（いまの所属のまま・要求を送らない）、
+   * `''` は部門なし。部門は属性ではなく部門グループの所属であり、いまの所属は画面が別に引く（`UserDepartmentDto`）。
+   */
+  draftDepartment: string | null;
+  setDepartment: (value: string) => void;
   issues: AssignmentIssue[];
   /** 入力規則を検査し結果を保持する。**送ってよいときだけ true** を返す。 */
   validate: (definitions: readonly AttributeDefinitionDto[]) => boolean;
@@ -51,6 +57,7 @@ export function useUserPermissionEditor(users: readonly PlatformUserDto[]): User
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftRoles, setDraftRoles] = useState<string[]>([]);
   const [draftAttributes, setDraftAttributes] = useState<Record<string, string>>({});
+  const [draftDepartment, setDraftDepartment] = useState<string | null>(null);
   const [issues, setIssues] = useState<AssignmentIssue[]>([]);
 
   const editing = users.find((u) => u.id === editingId) ?? null;
@@ -62,7 +69,9 @@ export function useUserPermissionEditor(users: readonly PlatformUserDto[]): User
   useEffect(() => {
     if (!editing) return;
     setDraftRoles([...editing.roles]);
-    setDraftAttributes({ ...editing.attributes });
+    // #1610: 🔴 **属性の下書きに部門を入れない**（差し替えの要求から属性 `department` を書かない。後段も 400 で拒む）。
+    setDraftAttributes(withoutDepartment(editing.attributes));
+    setDraftDepartment(null);
     // 🔴 **対象が変わったときだけ引き直す。** `editing` を依存に入れると、一覧が再取得された
     // だけで入力途中の下書きが毎回潰れる。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,6 +97,8 @@ export function useUserPermissionEditor(users: readonly PlatformUserDto[]): User
         }
         return { ...prev, [key]: value };
       }),
+    draftDepartment,
+    setDepartment: (value: string) => setDraftDepartment(value),
     issues,
     validate: (definitions: readonly AttributeDefinitionDto[]) => {
       const found = validateAssignment({

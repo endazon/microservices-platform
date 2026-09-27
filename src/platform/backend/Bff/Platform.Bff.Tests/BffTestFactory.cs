@@ -864,6 +864,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
                     return Json(HttpStatusCode.OK, owner.StubAssignableRoles);
                 if (path == "/authz/users")
                     return Json(HttpStatusCode.OK, owner.StubUsers);
+                // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, IADR-0473 (#1610): 部門（部門グループの所属）の読み取り・変更。
+                if (path.EndsWith("/department", StringComparison.Ordinal))
+                    return Json(HttpStatusCode.OK, new UserDepartmentDto(["engineering"], "engineering", ["engineering", "hr", "sales"]));
                 return Json(HttpStatusCode.OK, owner.StubUsers[0]); // PUT attributes/roles・POST disable/enable
             }
 

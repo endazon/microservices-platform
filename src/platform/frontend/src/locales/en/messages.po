@@ -1594,8 +1594,8 @@ msgid "保存すると属性はここに並んでいる内容で置き換わり�
 msgstr "Saving replaces the attributes with exactly what is listed here. Do not remove attributes you want to keep."
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
-msgid "保存すると認可基盤へ反映され、認可判定に即座に効きます。属性に選べるのは定義済みの値 だけです。無効化すると、その利用者の全セッションが即座に失効します。"
-msgstr "Saving applies the change to the identity provider and takes effect on authorization decisions immediately. Only values defined in the dictionary can be selected. Disabling revokes every session of that user at once."
+msgid "保存すると認可基盤へ反映され、認可判定に即座に効きます。属性に選べるのは定義済みの値 だけです。部門を変えると部門グループの所属が変わり、認可に使う部門の属性は部門の同期で 追随します。無効化すると、その利用者の全セッションが即座に失効します。"
+msgstr "Saving applies the change to the identity provider and takes effect on authorization decisions immediately. Only values defined in the dictionary can be selected. Changing the department changes the department group membership; the department attribute used for authorization follows through the department sync. Disabling revokes every session of that user at once."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
@@ -2553,9 +2553,17 @@ msgstr "Attribute"
 msgid "属性・タグ"
 msgstr "Attributes and tags"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "属性に反映済み"
+msgstr "Attribute up to date"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "属性は登録されていません。"
 msgstr "No attributes have been registered."
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "属性は部門の同期で追随します（未反映）"
+msgstr "Attribute will follow via the department sync (not yet applied)"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "属性を削除: {attributeKey}"
@@ -3428,6 +3436,10 @@ msgstr "Confidentiality (ABAC attribute)"
 msgid "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
 msgstr "Highly confidential data is processed by the self-hosted LLM and is never sent to an external API (UC-02 alternative flow, data egress policy). Data you may not access is silently excluded (existence is hidden)."
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "機密区分上限は必須です。"
+msgstr "Clearance ceiling is required."
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "次回同期"
 msgstr "Next sync"
@@ -3941,6 +3953,10 @@ msgstr "Discard corrections and re-convert"
 msgid "補正対象の図の元画像"
 msgstr "Original image of the diagram being corrected"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "複数の部門グループに所属（この画面では変更できません）"
+msgstr "In several department groups (cannot be changed here)"
+
 #: platform/frontend/src/lib/api/ApiError.ts
 msgid "要求が失敗しました（{status}）。"
 msgstr "The request failed ({status})."
@@ -4293,13 +4309,33 @@ msgstr "Department"
 msgid "部門・ロールの絞り込みを「すべて」に戻すと全件が出ます。"
 msgstr "Set the department and role filters back to “All” to see every user."
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "部門（部門グループ）"
+msgstr "Department (department group)"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "部門グループまたは写像先の利用者を確認できなかったため、保存されていない可能性があります。一覧で確かめ、時間をおいて再試行してください。部門を空欄にすると部門の確認は行いません。"
 msgstr "The department groups or the mapped users could not be checked, so the change may not have been saved. Check the list and try again later. Leaving the department blank skips the department check."
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
-msgid "部門と機密区分上限は必須です。"
-msgstr "Department and clearance ceiling are required."
+msgid "部門グループを読み込んでいます…"
+msgstr "Loading department groups…"
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "部門グループを読めませんでした"
+msgstr "Could not read the department groups"
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "部門なし"
+msgstr "No department"
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "部門は 1 つです。認可基盤の管理コンソールで所属を 1 つにしてから、この画面で変えてください。"
+msgstr "A user has one department. Reduce the membership to one group in the identity provider admin console, then change it here."
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "部門は変えられません。時間をおいて開き直してください。"
+msgstr "The department cannot be changed now. Reopen this later."
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "配下の資料数"
