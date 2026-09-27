@@ -43,6 +43,35 @@ public static class ConsumerHandlerTimeouts
             + " 収まらないと、止まった依存先が時間切れではなく受け口の取り消しとして記録される。");
     }
 
+    // ブローカ（RabbitMQ）の `consumer_timeout` として仮定する値の構成キーと既定（RabbitMQ 3.13 の既定 30 分。配備は上書きしていない）。
+    // 配備で `consumer_timeout` を変えたら、この値も合わせる。
+    public const string BrokerConsumerTimeoutKey = "Messaging:BrokerConsumerTimeoutSeconds";
+    public const int DefaultBrokerConsumerTimeoutSeconds = 1800;
+
+    public static TimeSpan BrokerConsumerTimeout(IConfiguration configuration) =>
+        Seconds(configuration, BrokerConsumerTimeoutKey, DefaultBrokerConsumerTimeoutSeconds);
+
+    // 🔴 起動時の検査（その 2）: **1 回の配信の再試行の連鎖全体**がブローカの `consumer_timeout` に収まること。
+    //
+    // WolverineFx.RabbitMQ 6.24.4 の受信は Inline で、再試行（`RetryInlineContinuation`）は**同じ配信の中で**回り、
+    // ack は最後の試行の後にしか返らない。したがって 1 通が配信を握る時間の上限は
+    // 「試行上限 × 受け口の実行期限 ＋ 試行間の待ちの合計」である。これが `consumer_timeout` 以上だと、ブローカはチャネルを閉じて
+    // 再配信し、試行回数が 0 に戻る —— 失敗し続ける 1 通が永久に回り、その間キューを塞ぐ。等しいときも止める。
+    public static void EnsureRetryChainFits(
+        string step, TimeSpan handlerTimeout, string handlerTimeoutSource, int maxAttempts,
+        TimeSpan totalRetryCooldown, TimeSpan brokerConsumerTimeout)
+    {
+        var chain = handlerTimeout * maxAttempts + totalRetryCooldown;
+        if (chain < brokerConsumerTimeout)
+            return;
+
+        throw new InvalidOperationException(
+            $"受け口 {step} の 1 回の配信の再試行の連鎖（試行 {maxAttempts} 回 × {handlerTimeoutSource}＝{handlerTimeout.TotalSeconds} 秒"
+            + $" ＋ 試行間の待ち {totalRetryCooldown.TotalSeconds} 秒 ＝ {chain.TotalSeconds} 秒）は、"
+            + $"ブローカの consumer_timeout（{BrokerConsumerTimeoutKey}＝{brokerConsumerTimeout.TotalSeconds} 秒）より短くなければならない。"
+            + " 超えるとブローカが配信を取り上げて再配信し、試行回数が戻って失敗し続ける 1 通が永久に回る。");
+    }
+
     // 共通の時間切れの判定・計器を DI へ登録する（受け口がコンストラクタで受ける）。
     public static IServiceCollection AddPlatformConsumerTimeouts(this IServiceCollection services)
     {

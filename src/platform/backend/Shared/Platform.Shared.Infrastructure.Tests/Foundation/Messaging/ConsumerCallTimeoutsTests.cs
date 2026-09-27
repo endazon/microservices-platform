@@ -99,16 +99,17 @@ public sealed class ConsumerCallTimeoutsTests : IDisposable
     }
 
     // 境界: 呼び出し元の ct と自分の期限の**両方**が立っていたら、呼び出し元の取り消しを優先する（`!ct.IsCancellationRequested`）。
-    // 呼び出しは取り消しに遅れて応じる（300 ms 後に投げる）ので、捕捉の時点では両方が立っている。
+    // 呼び出し元の取り消しは呼び出しの中で**同期に**立てる（時刻に依らない）。自分の期限は 1 ms で、呼び出しが 500 ms 後に投げる時点では
+    // 両方が立っている。
     [Fact]
     public async Task 両方が立っていれば呼び出し元の取り消しを優先する()
     {
         using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        caller.CancelAfter(TimeSpan.FromMilliseconds(50));
 
-        var act = () => Calls.RunAsync<string>("ingest", "embedding", TimeSpan.FromMilliseconds(100), async t =>
+        var act = () => Calls.RunAsync<string>("ingest", "embedding", TimeSpan.FromMilliseconds(1), async t =>
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(300), TestContext.Current.CancellationToken);
+            caller.Cancel();
+            await Task.Delay(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken);
             t.IsCancellationRequested.Should().BeTrue();
             throw new OperationCanceledException(t);
         }, caller.Token);
@@ -256,6 +257,34 @@ public class ConsumerHandlerTimeoutsTests
             .Build();
 
         ConsumerHandlerTimeouts.Seconds(configuration, "X:Seconds", 30).Should().Be(TimeSpan.FromSeconds(expectedSeconds));
+    }
+
+    // 前提の固定: 1 回の配信は 4 試行で、試行間の待ちの合計は 2＋10＋30＝42 秒（再試行は同じ配信の中で回る）。
+    [Fact]
+    public void 再試行の連鎖の材料は試行4回と待ち42秒である()
+    {
+        Platform.Shared.Infrastructure.Foundation.Extensions.WolverineExtensions.MaxAttempts.Should().Be(4);
+        Platform.Shared.Infrastructure.Foundation.Extensions.WolverineExtensions.TotalRetryCooldown
+            .Should().Be(TimeSpan.FromSeconds(42));
+        ConsumerHandlerTimeouts.BrokerConsumerTimeout(new ConfigurationBuilder().Build())
+            .Should().Be(TimeSpan.FromSeconds(1800));
+    }
+
+    // 再試行の連鎖（試行上限 × 実行期限 ＋ 待ち）がブローカの consumer_timeout 未満なら通り、以上なら止める（等しいときも止める）。
+    [Theory]
+    [InlineData(420, 1723, true)]
+    [InlineData(420, 1722, false)]
+    [InlineData(720, 1800, false)]
+    public void 再試行の連鎖がブローカの_consumer_timeout_に収まるかを検査する(int handlerSeconds, int brokerSeconds, bool fits)
+    {
+        var act = () => ConsumerHandlerTimeouts.EnsureRetryChainFits("ingest", TimeSpan.FromSeconds(handlerSeconds),
+            "Ingestion:HandlerTimeoutSeconds", 4, TimeSpan.FromSeconds(42), TimeSpan.FromSeconds(brokerSeconds));
+
+        if (fits)
+            act.Should().NotThrow();
+        else
+            act.Should().Throw<InvalidOperationException>()
+                .WithMessage($"*ingest*{ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey}*");
     }
 
     // 方針は型引数のメッセージ型の受け口にだけ期限を与え、他の型の既定（未設定）は変えない。端数は切り上げる。
