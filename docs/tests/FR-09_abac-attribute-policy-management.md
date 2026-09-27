@@ -3,15 +3,15 @@ title: 文書属性・タグ／ABAC ポリシー管理 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-07-02
-updated: 2026-08-30
+updated: 2026-09-28
 author: claude
 ---
 <!-- trace:
-ids: [FR-09, SC-05, SC-09, UC-05]
-adrs: [ADR-0043]
-iadrs: [IADR-0006, IADR-0152, IADR-0153]
-specs: []
-issues: [#634, #635]
+ids: [FR-05, FR-09, SC-05, SC-09, UC-05]
+adrs: [ADR-0036, ADR-0043, ADR-0121]
+iadrs: [IADR-0006, IADR-0152, IADR-0153, IADR-0481]
+specs: [20260927_issue-1666_sc09-dynamic-binding-conditions]
+issues: [#634, #635, #1666]
 -->
 
 # テスト仕様書: 文書属性・タグ／ABAC ポリシー管理
@@ -51,6 +51,10 @@ issues: [#634, #635]
 | 17 | 未定義キー（自由タグ） | 許容（エラー無し） |
 | 18 | 条件 null でポリシー生成 | 空辞書として保存（null を保持しない） |
 | 19 | ポリシーの属性参照判定（scope 一致のみ） | 一致 true / 別スコープ・未使用 false |
+| 20 | ［2026-09-28 / #1666］所有者（`owner` の `${current_user}`）・共有先（`shared_with` の `${current_user}`・`${current_groups}`）の束縛 | エラー無し（辞書に `owner` が無くてもよい） |
+| 21 | ［#1666］表に無い束縛変数（綴り違い・大小違い）・表に無い位置の束縛・利用者の条件の束縛 | エラー（「動的束縛」を含む） |
+| 22 | ［#1666］辞書に `shared_with` が定義されているときの表の束縛／辞書外のリテラル | 束縛はエラー無し・リテラルは辞書外のエラー |
+| 23 | ［#1666］dev seed の全ポリシー | すべてエラー無し |
 
 ### ロールクレーム展開（`KeycloakRolesClaimsTransformationTests`）
 
@@ -91,7 +95,7 @@ issues: [#634, #635]
 
 ## ポリシーの dry-run 検証（#535 / 裁定 Q23）
 
-**実装は `AuthorizationService.Tests/PolicyDryRunValidationTests.cs`（5 件）と
+**実装は `AuthorizationService.Tests/PolicyDryRunValidationTests.cs`（7 件）と
 `Platform.Bff.Tests/BffAuthzEndpointTests.cs`（2 件）。**
 
 | # | 確かめること | 実装 |
@@ -103,6 +107,8 @@ issues: [#634, #635]
 | T-54 | 妥当な入力でも一致する（dry-run が通れば保存も通る） | `Validate_AgreesWithSave_WhenInputIsValid` |
 | T-55 | BFF が中継する（200） | `ValidatePolicy_AsAdmin_Returns200` |
 | T-56 | **運用者は 403**（検証も管理操作である） | `ValidatePolicy_AsNonAdmin_IsForbidden` |
+| T-68 | ［2026-09-28 / #1666］所有者の read ポリシーは dry-run も保存も通る（辞書に `owner` は無い） | `Validate_AgreesWithSave_OnOwnerReadPolicy` |
+| T-69 | ［#1666］綴り違いの束縛（`${current_usr}`）は dry-run が `valid: false`、保存が 400 で一致する | `Validate_AgreesWithSave_OnUnknownBindingVariable` |
 
 **T-53 が本 issue の中心である。** 計画は「検証は通ったのに保存で矛盾が出る」形を名指しで禁じた。
 実装は 3 経路が同じ関数を呼ぶことで守っているが、**将来それが割れたらここが落ちる**。

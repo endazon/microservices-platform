@@ -1,5 +1,6 @@
 using AuthorizationService.Domain;
 using AwesomeAssertions;
+using AuthorizationService.Tests.Features.Authz.ResolveScope;
 
 namespace AuthorizationService.Tests.Domain;
 
@@ -301,5 +302,119 @@ public class AbacValidationTests
             [Confidentiality(), Clearance()]);
 
         errors.Should().BeEmpty();
+    }
+
+    // ---- 動的束縛（#1666） ----
+    // FR-05, SC-09, 計画 ADR-0036 D-02・D-03・D-06, ADR-0121 決定 1: 束縛を置けるのは文書の条件の 2 か所だけ。
+    // SC-09 の編集器が作る形（所有者・共有先）は通り、それ以外は保存の前に止まる。
+
+    private static Dictionary<string, List<string>> Doc(string key, params string[] values) =>
+        new() { [key] = [.. values] };
+
+    // T-68（陽性対照）: 所有者の read ポリシー（ADR-0121 決定 1 の形）は通る。辞書に owner が無くてもよい。
+    [Fact]
+    public void ValidatePolicy_OwnerCurrentUserBinding_NoErrors()
+    {
+        var errors = AbacValidation.ValidatePolicy(
+            "所有者は自分の文書を読める", "read",
+            new Dictionary<string, List<string>>(),
+            Doc("owner", "${current_user}"),
+            [Confidentiality(), Clearance()]);
+
+        errors.Should().BeEmpty();
+    }
+
+    // T-68（陽性対照）: 共有先の形（個人とグループ。ADR-0036 D-06）は通る。
+    [Fact]
+    public void ValidatePolicy_SharedWithBothBindings_NoErrors()
+    {
+        var errors = AbacValidation.ValidatePolicy(
+            "共有された個人資料を読める", "read",
+            new Dictionary<string, List<string>>(),
+            Doc("shared_with", "${current_user}", "${current_groups}"),
+            [Confidentiality(), Clearance()]);
+
+        errors.Should().BeEmpty();
+    }
+
+    // T-69: 計画に無い束縛変数（綴り違い・大小違い）は拒否する（D-03。評価器はリテラルとして残し、静かに効かない）。
+    [Theory]
+    [InlineData("${current_usr}")]
+    [InlineData("${Current_User}")]
+    [InlineData("${current_department}")]
+    public void ValidatePolicy_UnknownBindingVariable_Error(string value)
+    {
+        var errors = AbacValidation.ValidatePolicy(
+            "綴り違い", "read",
+            new Dictionary<string, List<string>>(),
+            Doc("owner", value),
+            [Confidentiality(), Clearance()]);
+
+        errors.Should().ContainSingle(e => e.Contains("documentConditions.owner") && e.Contains(value));
+    }
+
+    // T-69: 位置の違う束縛は拒否する —— owner は利用者 1 人を指すので ${current_groups} を置けない。
+    // 計画が束縛を置かない属性（confidentiality）にも置けない。
+    [Theory]
+    [InlineData("owner", "${current_groups}")]
+    [InlineData("confidentiality", "${current_user}")]
+    [InlineData("department", "${current_groups}")]
+    public void ValidatePolicy_BindingAtUnplannedPosition_Error(string key, string value)
+    {
+        var errors = AbacValidation.ValidatePolicy(
+            "位置違い", "read",
+            new Dictionary<string, List<string>>(),
+            Doc(key, value),
+            [Confidentiality(), Clearance()]);
+
+        errors.Should().Contain(e => e.Contains($"documentConditions.{key}") && e.Contains("動的束縛"));
+    }
+
+    // T-69: 利用者の条件に束縛は置けない（評価器は利用者の条件を束縛しない）。
+    [Fact]
+    public void ValidatePolicy_BindingInUserConditions_Error()
+    {
+        var errors = AbacValidation.ValidatePolicy(
+            "利用者の条件の束縛", "read",
+            new Dictionary<string, List<string>> { ["owner"] = ["${current_user}"] },
+            new Dictionary<string, List<string>>(),
+            [Confidentiality(), Clearance()]);
+
+        errors.Should().ContainSingle(e => e.Contains("userConditions.owner"));
+    }
+
+    // T-70: 辞書に owner・shared_with が定義されていても、許した束縛は「辞書外の値」にしない（SC-09 の選択肢と整合）。
+    // 陰性対照: 辞書に無いリテラルは従来どおり辞書外として拒否する。
+    [Fact]
+    public void ValidatePolicy_AllowedBindingNotRejectedAsOutsideDictionary()
+    {
+        var sharedWith = AttributeDefinition.Create(
+            "shared_with", "共有先", ["group-sales"], required: false, AttributeScope.Document);
+
+        AbacValidation.ValidatePolicy(
+                "共有先", "read", [],
+                Doc("shared_with", "${current_user}", "${current_groups}", "group-sales"),
+                [sharedWith])
+            .Should().BeEmpty();
+
+        AbacValidation.ValidatePolicy(
+                "共有先（辞書外）", "read", [],
+                Doc("shared_with", "group-hr"),
+                [sharedWith])
+            .Should().ContainSingle(e => e.Contains("辞書外"));
+    }
+
+    // T-70: dev seed の全ポリシーが検証を通る（seed は同じ API で投入される。IADR-0133）。
+    [Fact]
+    public void ValidatePolicy_DevSeedPolicies_AllPass()
+    {
+        var policies = SeedScopeFixture.SeedPolicies();
+        policies.Should().Contain(p => p.DocumentConditions.ContainsKey("owner"), "所有者の read ポリシーを含む seed を読んでいる");
+
+        foreach (var p in policies)
+        {
+            AbacValidation.ValidatePolicy(p.Name, p.Action, p.UserConditions, p.DocumentConditions, [])
+                .Should().BeEmpty($"seed のポリシー '{p.Name}' は検証を通る");
+        }
     }
 }

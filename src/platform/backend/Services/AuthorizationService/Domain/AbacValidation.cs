@@ -73,8 +73,67 @@ public static class AbacValidation
         ValidateConditions("userConditions", userConditions, defList, AttributeScope.User, errors);
         ValidateConditions("documentConditions", documentConditions, defList, AttributeScope.Document, errors);
         ValidateSingleDocumentConditionKey(documentConditions, errors);
+        ValidateDynamicBindings(userConditions, documentConditions, errors);
 
         return errors;
+    }
+
+    // FR-05, SC-09, 計画 ADR-0036 D-02・D-03・D-06, ADR-0121 決定 1 (#1666): 動的束縛を置いてよい位置。
+    //
+    // 計画が束縛を置くのは**文書の条件の 2 か所だけ**である（07_abac-attribute-model §動的束縛）。
+    //   所有者: doc.owner ∈ { ${current_user} }
+    //   共有先: doc.shared_with ∩ ({${current_user}} ∪ ${current_groups}) ≠ ∅
+    // SC-09 の編集器は同じ表から選択肢を作る（`abacVocabulary.ts` の `DYNAMIC_BINDINGS`）。
+    // 🔴 **語彙は計画が定める。** 位置・変数を足すなら計画 ADR の側で定義してから足す（`AbacEvaluator` と同じ趣旨）。
+    private static readonly Dictionary<string, string[]> DynamicBindingPositions =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["owner"] = ["${current_user}"],
+            ["shared_with"] = ["${current_user}", "${current_groups}"],
+        };
+
+    // 束縛の形かどうか。`${` を含む値は束縛として書かれたものとみなす（リテラルに `${` を含む属性値は無い）。
+    private static bool LooksLikeBinding(string? value) =>
+        value is not null && value.Contains("${", StringComparison.Ordinal);
+
+    // 文書の条件の (key, value) が、計画が定める束縛の位置に当たるか。
+    // 変数名は**大小を区別する** —— 評価器は `${current_user}` を完全一致でしか束縛しない（`AbacEvaluator.BindPlaceholders`）。
+    private static bool IsAllowedDocumentBinding(string key, string value) =>
+        DynamicBindingPositions.TryGetValue(key, out var allowed)
+        && allowed.Contains(value, StringComparer.Ordinal);
+
+    // FR-05, SC-09, ADR-0036 D-03 (#1666): 動的束縛の検証。
+    //
+    // 🔴 **止めるのは「保存できるが静かに効かないポリシー」である。** 評価器は未知のプレースホルダを
+    // リテラルのまま残す（`${current_usr}` はどの文書にも一致しない）。利用者の条件は束縛しない
+    // （`${current_user}` を利用者の条件へ置くと、その文字列を属性に持つ利用者にしか一致しない）。
+    // どちらも誤りとして表に出ないので、保存の前に止める。
+    private static void ValidateDynamicBindings(
+        Dictionary<string, List<string>>? userConditions,
+        Dictionary<string, List<string>>? documentConditions,
+        List<string> errors)
+    {
+        foreach (var (key, values) in userConditions ?? [])
+        {
+            foreach (var value in (values ?? []).Where(LooksLikeBinding))
+            {
+                errors.Add(
+                    $"userConditions.{key} に動的束縛 '{value}' は置けません。"
+                    + "動的束縛は文書の条件（owner・shared_with）にだけ置けます。");
+            }
+        }
+
+        foreach (var (key, values) in documentConditions ?? [])
+        {
+            foreach (var value in (values ?? []).Where(LooksLikeBinding))
+            {
+                if (IsAllowedDocumentBinding(key, value))
+                    continue;
+                errors.Add(
+                    $"documentConditions.{key} に動的束縛 '{value}' は置けません。"
+                    + "置けるのは owner の ${current_user} と、shared_with の ${current_user}・${current_groups} だけです。");
+            }
+        }
     }
 
     // FR-05, FR-09, SC-09（planning#470 の裁定・2026-08-23）: **文書条件に 2 つ以上の属性キーを
@@ -132,8 +191,11 @@ public static class AbacValidation
             if (def is null)
                 continue;
 
+            // #1666: 計画が定める位置の束縛は辞書の値ではない（利用者名・グループ ID は列挙できない）。
+            // 辞書に owner・shared_with が定義されていても「辞書外」として拒否しない（位置の検証は ValidateDynamicBindings）。
             var invalid = values
                 .Where(v => !def.AllowedValues.Contains(v, StringComparer.OrdinalIgnoreCase))
+                .Where(v => !(scope == AttributeScope.Document && IsAllowedDocumentBinding(key, v)))
                 .ToList();
             if (invalid.Count > 0)
                 errors.Add($"{field}.{key} に辞書外の値があります: {string.Join(", ", invalid)}");

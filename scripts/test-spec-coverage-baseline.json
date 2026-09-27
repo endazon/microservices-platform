@@ -328,9 +328,11 @@
       "RawDocumentFetchedConsumerJobTests"
     ],
     "docs/tests/SC-09_admin-abac-settings.md": [
+      "AbacValidationTests",
       "BffAuthzEndpointTests",
       "DepartmentDictionaryFromRealmTests",
-      "DepartmentDictionaryValuesTests"
+      "DepartmentDictionaryValuesTests",
+      "PolicyDryRunValidationTests"
     ],
     "docs/tests/SC-10_operations-dashboard.md": [
       "DashboardBffEndpointTests",

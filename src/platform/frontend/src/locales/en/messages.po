@@ -1842,6 +1842,10 @@ msgstr "People you share with can view this note. They cannot re-share it with a
 msgid "共有している相手はいません。"
 msgstr "This note is not shared with anyone."
 
+#: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
+msgid "共有先"
+msgstr "Shared with"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "共有先を取得できませんでした。"
 msgstr "Could not load the share targets."
@@ -2110,6 +2114,10 @@ msgstr "Review deleted private notes"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "削除済みの資料です。削除済みタブから復元するか、Obsidian 側のファイルを削除してください。"
 msgstr "This note is in the trash. Restore it from the Deleted tab, or delete the file in Obsidian."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
+msgid "動的束縛: {bindingLabel}（{notation}）"
+msgstr "Dynamic binding: {bindingLabel} ({notation})"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "即時同期を依頼しました。アプリケーションへの反映まで少し時間がかかることがあります。"
@@ -2679,6 +2687,7 @@ msgid "成功"
 msgstr "Success"
 
 #: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 msgid "所有者"
 msgstr "Owner"
 
@@ -2818,6 +2827,14 @@ msgstr "Loading the list of suggestions…"
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "操作"
 msgstr "Actions"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
+msgid "操作する利用者の所属グループ"
+msgstr "The acting user's groups"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
+msgid "操作する利用者本人"
+msgstr "The acting user"
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "操作できませんでした。すでに他の利用者が承認・却下した可能性があります。 画面を再読み込みして確認してください。"

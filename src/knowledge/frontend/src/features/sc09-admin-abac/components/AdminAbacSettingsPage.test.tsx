@@ -319,6 +319,135 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     });
   });
 
+  // FR-05, SC-09, ADR-0121 決定 1・ADR-0036 D-02 (#1666): **所有者の read ポリシーを画面の操作だけで作れる。**
+  // 属性辞書に owner は無い（seed の注記どおり）。値は動的束縛から選び、自由入力の欄は無い。
+  it('creates the owner read policy by selection only, and says the value is a dynamic binding', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: 'アクセスポリシーの一覧' });
+
+    const form = within(screen.getByRole('form', { name: 'ポリシー登録' }));
+    // 自由入力の欄は名前の 1 つだけ（条件の属性・値はどちらも選択）。
+    expect(form.getAllByRole('textbox')).toEqual([form.getByLabelText('名前（必須）')]);
+
+    await user.type(form.getByLabelText('名前（必須）'), '所有者は自分の文書を読める');
+    await user.selectOptions(form.getByLabelText('対象属性'), 'owner');
+    const valueSelect = form.getByLabelText('条件の値');
+    // 値の選択肢は束縛 1 つだけ。**「動的束縛」を文言で示す**（色だけにしない）。
+    expect(
+      within(valueSelect)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['選択してください', '動的束縛: 操作する利用者本人（${current_user}）']);
+    await user.selectOptions(valueSelect, '${current_user}');
+    await user.click(form.getByRole('button', { name: '条件を追加' }));
+
+    expect(
+      within(screen.getByRole('list', { name: '設定した条件' })).getByText(
+        '文書 owner = 動的束縛: 操作する利用者本人（${current_user}）',
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(form.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        '/admin/authz/policies',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    // ADR-0121 決定 1 の形そのもの（利用者の条件なし・文書の条件は owner ∈ {${current_user}} だけ）。
+    expect(sentBody(mocks.apiRequest.mock.calls)).toEqual({
+      name: '所有者は自分の文書を読める',
+      action: 'read',
+      userConditions: {},
+      documentConditions: { owner: ['${current_user}'] },
+    });
+  });
+
+  // #1666: 共有先の分岐（個人とグループ。ADR-0036 D-06）も画面から作れる。
+  it('creates the shared-with policy with both bindings', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: 'アクセスポリシーの一覧' });
+
+    await user.type(screen.getByLabelText('名前（必須）'), '共有された個人資料を読める');
+    await user.selectOptions(screen.getByLabelText('対象属性'), 'shared_with');
+    for (const v of ['${current_user}', '${current_groups}']) {
+      await user.selectOptions(screen.getByLabelText('条件の値'), v);
+      await user.click(screen.getByRole('button', { name: '条件を追加' }));
+    }
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(sentBody(mocks.apiRequest.mock.calls)).toBeTruthy());
+    expect(sentBody(mocks.apiRequest.mock.calls)).toEqual({
+      name: '共有された個人資料を読める',
+      action: 'read',
+      userConditions: {},
+      documentConditions: { shared_with: ['${current_user}', '${current_groups}'] },
+    });
+  });
+
+  // 🔴 #1666（陰性）: 束縛は計画が置く位置にしか出ない。辞書の属性（文書・利用者）の値に束縛は無い。
+  it('offers no binding on dictionary attributes, document or user', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: 'アクセスポリシーの一覧' });
+
+    for (const [key, values] of [
+      ['confidentiality', ['public', 'internal']],
+      ['dept', ['経理', '開発']],
+    ] as const) {
+      await user.selectOptions(screen.getByLabelText('対象属性'), key);
+      expect(
+        within(screen.getByLabelText('条件の値'))
+          .getAllByRole('option')
+          .map((o) => o.getAttribute('value')),
+      ).toEqual(['', ...values]);
+    }
+  });
+
+  // #1666: 一覧の要約でも束縛を「動的束縛」の文言で示す。束縛の無い行は従来どおり。
+  it('marks dynamic bindings in the policy list with words, not only colour', async () => {
+    mockApi({
+      policies: [
+        ...POLICIES,
+        {
+          id: 'p3',
+          name: '所有者は自分の文書を読める',
+          action: 'read',
+          userConditions: {},
+          documentConditions: { owner: ['${current_user}'] },
+          isActive: true,
+        },
+        {
+          id: 'p4',
+          name: '共有',
+          action: 'read',
+          userConditions: {},
+          documentConditions: { shared_with: ['${current_user}', '${current_groups}'] },
+          isActive: true,
+        },
+      ],
+    });
+    await renderPage();
+    const table = within(await screen.findByRole('table', { name: 'アクセスポリシーの一覧' }));
+
+    expect(
+      table.getByText('文書 owner = 動的束縛: 操作する利用者本人（${current_user}）'),
+    ).toBeInTheDocument();
+    expect(
+      table.getByText(
+        '文書 shared_with = 動的束縛: 操作する利用者本人（${current_user}） / 動的束縛: 操作する利用者の所属グループ（${current_groups}）',
+      ),
+    ).toBeInTheDocument();
+    // 束縛の無い行には「動的束縛」を出さない。
+    expect(table.getByText('文書 confidentiality = internal')).toBeInTheDocument();
+    expect(table.getAllByText(/動的束縛/)).toHaveLength(2);
+  });
+
   // 計画 §SC-09 §アクション: 保存前にポリシーを検証し、矛盾はエラー表示。検証結果パネルへ集約する。
   it('shows the server-side contradiction detail in the validation panel', async () => {
     mockApi({

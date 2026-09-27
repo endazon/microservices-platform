@@ -1,5 +1,6 @@
 import { msg } from '@lingui/core/macro';
 import type { MessageDescriptor } from '@lingui/core';
+import type { AttributeDefinitionDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-09, UC-05, FR-09: ABAC 管理の語彙と条件の組み立て（純関数）。
 //
@@ -82,6 +83,90 @@ export function allowedValuesSourceBadge(
 ): AllowedValuesSourceBadge | null {
   if (source === null || source === undefined || source === '') return null;
   return isKnownSource(source) ? SOURCE_BADGES[source] : { tone: 'neutral', label: source };
+}
+
+/**
+ * FR-05, SC-09, 計画 ADR-0036 D-02・D-03・D-06, ADR-0121 決定 1 (#1666): **動的束縛を置ける位置**。
+ *
+ * 計画が束縛を置くのは**文書の条件の 2 か所だけ**である（07_abac-attribute-model §動的束縛）。
+ * - 所有者: `doc.owner ∈ { ${current_user} }`
+ * - 共有先: `doc.shared_with ∩ ({${current_user}} ∪ ${current_groups}) ≠ ∅`
+ *
+ * 🔴 **語彙は計画が定める。** 認可サービスの検証器（`AbacValidation.DynamicBindingPositions`）が
+ * 同じ表を持ち、ここに無い組は保存で 400 になる。足すなら計画 ADR の側で定義してから両方に足す。
+ */
+/* eslint-disable lingui/no-unlocalized-strings -- 束縛変数の記法（契約の値。表示文言ではない） */
+const CURRENT_USER = '${current_user}';
+const CURRENT_GROUPS = '${current_groups}';
+/* eslint-enable lingui/no-unlocalized-strings */
+
+export const DYNAMIC_BINDINGS: Readonly<Record<string, readonly string[]>> = {
+  owner: [CURRENT_USER],
+  shared_with: [CURRENT_USER, CURRENT_GROUPS],
+};
+
+/** 束縛変数の平易な説明。記法（`${…}`）は翻訳文へ入れない（ICU の `{}` と衝突する）。 */
+const BINDING_LABELS: Record<string, MessageDescriptor> = {
+  [CURRENT_USER]: msg`操作する利用者本人`,
+  [CURRENT_GROUPS]: msg`操作する利用者の所属グループ`,
+};
+
+/** 辞書に無い束縛の位置へ付ける表示名（辞書に同じキーがあればそちらのラベルを使う）。 */
+const BINDING_ATTRIBUTE_LABELS: Record<string, MessageDescriptor> = {
+  owner: msg`所有者`,
+  shared_with: msg`共有先`,
+};
+
+/** 値が計画の定める束縛変数か（`${current_user}` / `${current_groups}`。大小を区別する）。 */
+export function isDynamicBinding(value: string): boolean {
+  return Object.prototype.hasOwnProperty.call(BINDING_LABELS, value);
+}
+
+/** 束縛変数の説明。束縛でなければ null（呼び出し側が生値を出す）。 */
+export function dynamicBindingLabel(value: string): MessageDescriptor | null {
+  return isDynamicBinding(value) ? BINDING_LABELS[value] : null;
+}
+
+/** ポリシーの条件エディタの「対象属性」の 1 選択肢。 */
+export interface PolicyAttributeOption {
+  /** `Select` の値。属性キーである（既存の選択と同じ）。 */
+  key: string;
+  scope: string;
+  /** 表示名。辞書のラベル（無ければキー）か、束縛の位置の既定の名前。 */
+  label: MessageDescriptor | string;
+  /** 選べる値。辞書の許可値の後ろに、その位置で許される束縛の値が続く。 */
+  values: string[];
+}
+
+/**
+ * 条件エディタの「対象属性」の選択肢を作る（#1666）。
+ *
+ * - 属性辞書の属性はそのまま（値＝許可値）。**文書属性で束縛の位置に当たるキー**なら束縛の値を後ろへ足す。
+ * - 束縛の位置のキーが辞書の**どのスコープにも無い**ときだけ、文書属性の選択肢を足す（`owner` は利用者名、
+ *   `shared_with` は利用者名・グループ ID を値に持ち、列挙できないので辞書に載らない。seed の注記）。
+ * - **利用者属性には束縛を足さない**（評価器は利用者の条件を束縛しない）。
+ *
+ * 🔴 **自由入力の余地は作らない。** 値は常にこの配列から選ぶ。
+ */
+export function policyAttributeOptions(
+  attributes: readonly AttributeDefinitionDto[],
+): PolicyAttributeOption[] {
+  const options: PolicyAttributeOption[] = attributes.map((a) => {
+    const bindings = a.scope === 'document' ? (DYNAMIC_BINDINGS[a.key] ?? []) : [];
+    const values = [...a.allowedValues];
+    for (const b of bindings) if (!values.includes(b)) values.push(b);
+    return { key: a.key, scope: a.scope, label: a.label || a.key, values };
+  });
+  for (const [key, bindings] of Object.entries(DYNAMIC_BINDINGS)) {
+    if (attributes.some((a) => a.key === key)) continue;
+    options.push({
+      key,
+      scope: 'document',
+      label: BINDING_ATTRIBUTE_LABELS[key] ?? key,
+      values: [...bindings],
+    });
+  }
+  return options;
 }
 
 /** 条件エディタが積む 1 条件（属性のスコープ・キー・値）。 */

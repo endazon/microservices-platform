@@ -139,4 +139,34 @@ describe('usePolicyDraft (SC-09)', () => {
     // 🔴 アクションは残る。同じアクションのポリシーを続けて足す管理者に毎回選び直させない。
     expect(result.current.action).toBe('analyze');
   });
+  // FR-05, SC-09, ADR-0121 決定 1 (#1666): 所有者の read ポリシーを選択だけで組める。
+  it('builds the owner read policy from the binding position (no dictionary entry needed)', () => {
+    const { result } = setup();
+    act(() => result.current.setName('所有者は自分の文書を読める'));
+    act(() => result.current.selectAttributeKey('owner'));
+    expect(result.current.selected?.scope).toBe('document');
+    expect(result.current.values).toEqual(['${current_user}']);
+    act(() => result.current.setConditionValue('${current_user}'));
+    act(() => result.current.addCondition());
+
+    expect(result.current.body()).toEqual({
+      name: '所有者は自分の文書を読める',
+      action: 'read',
+      userConditions: {},
+      documentConditions: { owner: ['${current_user}'] },
+    });
+  });
+
+  // 🔴 #1666: 自由入力の余地を下書きの側でも塞ぐ —— 選択肢に無い値は積まない。
+  it('refuses to stack a value that is not one of the offered choices', () => {
+    const { result } = setup();
+    act(() => result.current.selectAttributeKey('owner'));
+    act(() => result.current.setConditionValue('alice'));
+    act(() => result.current.addCondition());
+    act(() => result.current.selectAttributeKey('sensitivity'));
+    act(() => result.current.setConditionValue('${current_user}'));
+    act(() => result.current.addCondition());
+
+    expect(result.current.conditions).toEqual([]);
+  });
 });

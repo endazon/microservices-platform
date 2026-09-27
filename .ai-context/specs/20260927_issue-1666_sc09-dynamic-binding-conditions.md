@@ -116,8 +116,9 @@ issue は「表示の形・どの属性に動的束縛を許すか」に判断�
 - サーバー: `AbacValidation.cs`・`AbacValidationTests.cs`。呼び出し元は `AuthzEndpoints.cs`（保存）と `ValidatePolicy/Endpoint.cs`（dry-run）の 2 つで、同じ関数を通る（変えない）。
 - 文書: `docs/screens/SC-09_admin-abac-settings.md`（入力表 164–165 行・hi-fi 対応）、`docs/tests/SC-09_admin-abac-settings.md`、
   `docs/tests/FR-09_abac-attribute-policy-management.md`、`scripts/test-spec-coverage-baseline.json`（必要なら `--update`）。
-- `deploy/local/abac-seed/policies.json` の注記 22–23 行（「owner は attributes.json へ登録しない。検証器は未定義キーを許容し」）: 記述は本件の後も正しい。
-  束縛の検証が入ったことを 1 行足す。
+- `deploy/local/abac-seed/policies.json` の注記 22–23 行（「owner は attributes.json へ登録しない。検証器は未定義キーを許容し」）: 記述は本件の後も正しい
+  （未定義キーの許容は変えない）。［2026-09-28 追記］**変えないことにした** —— 並行の #1665 が同じ seed の所有者のポリシーを扱っており、
+  正しい記述に触って衝突の面を増やさない。seed の全ポリシーが新しい検証を通ることは試験で固定する（T-70）。
 
 ### 除外したもの（理由）
 

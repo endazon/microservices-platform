@@ -132,4 +132,35 @@ public class PolicyDryRunValidationTests(TestWebApplicationFactory factory)
         var save = await Client.PostAsJsonAsync("/authz/policies", body, TestContext.Current.CancellationToken);
         save.StatusCode.Should().Be(HttpStatusCode.Created, "dry-run が通ったなら保存も通る");
     }
+
+    // FR-05, SC-09, ADR-0036 D-03, ADR-0121 決定 1 (#1666) T-69: **束縛の検証も dry-run と保存で一致する。**
+    // SC-09 の「検証」ボタンが綴り違いの束縛を通し、保存で落ちる（または逆）形にしない。
+    [Fact]
+    public async Task Validate_AgreesWithSave_OnUnknownBindingVariable()
+    {
+        var body = PolicyBody(UniqueName("綴り違いの束縛"),
+            doc: new Dictionary<string, List<string>> { ["owner"] = ["${current_usr}"] });
+
+        var dryRun = await Client.PostAsJsonAsync("/authz/policies/validate", body, TestContext.Current.CancellationToken);
+        var result = (await dryRun.Content.ReadFromJsonAsync<ValidateResponse>(TestContext.Current.CancellationToken))!;
+        result.Valid.Should().BeFalse();
+        result.Errors.Should().ContainSingle(e => e.Contains("${current_usr}"));
+
+        var save = await Client.PostAsJsonAsync("/authz/policies", body, TestContext.Current.CancellationToken);
+        save.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    // T-68（陽性対照）: SC-09 が作る所有者の read ポリシーは、dry-run も保存も通る（辞書に owner は無い）。
+    [Fact]
+    public async Task Validate_AgreesWithSave_OnOwnerReadPolicy()
+    {
+        var body = PolicyBody(UniqueName("所有者は自分の文書を読める"),
+            doc: new Dictionary<string, List<string>> { ["owner"] = ["${current_user}"] });
+
+        var dryRun = await Client.PostAsJsonAsync("/authz/policies/validate", body, TestContext.Current.CancellationToken);
+        (await dryRun.Content.ReadFromJsonAsync<ValidateResponse>(TestContext.Current.CancellationToken))!.Valid.Should().BeTrue();
+
+        var save = await Client.PostAsJsonAsync("/authz/policies", body, TestContext.Current.CancellationToken);
+        save.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
 }

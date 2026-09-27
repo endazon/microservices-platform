@@ -1,12 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { i18n } from '@foundation/i18n';
+import type { AttributeDefinitionDto } from '@foundation/api/generated/bff.schemas';
 import {
   ALLOWED_VALUES_SOURCES,
   allowedValuesSourceBadge,
   ATTRIBUTE_SCOPES,
   attributeScopeLabel,
   buildConditions,
+  DYNAMIC_BINDINGS,
+  dynamicBindingLabel,
+  isDynamicBinding,
   parseAllowedValues,
+  policyAttributeOptions,
   policyActionLabel,
   POLICY_ACTIONS,
   summarizeConditions,
@@ -133,5 +138,80 @@ describe('abacVocabulary (SC-09)', () => {
       'confidential',
     ]);
     expect(parseAllowedValues('')).toEqual([]);
+  });
+});
+
+// 束縛変数の記法（契約の値）。
+const CU = '${current_user}';
+const CG = '${current_groups}';
+
+const attr = (
+  a: Omit<AttributeDefinitionDto, 'createdAt' | 'updatedAt' | 'id' | 'required'>,
+): AttributeDefinitionDto => ({ ...a, id: a.key, required: false, createdAt: '', updatedAt: '' });
+
+// FR-05, SC-09, ADR-0036 D-02・D-03・D-06, ADR-0121 決定 1 (#1666): 動的束縛の語彙（P11〜P13）。
+describe('dynamic bindings (SC-09 / #1666)', () => {
+  // P11: 位置と変数の表は計画の写しであり、サーバの検証器（AbacValidation）と同じ表である。
+  // 1 値でも増減すれば、画面が「保存で 400 になる選択肢」を出すか、作れるはずの形を作れなくなる。
+  it('fixes exactly the two binding positions the plan defines', () => {
+    expect(DYNAMIC_BINDINGS).toEqual({ owner: [CU], shared_with: [CU, CG] });
+  });
+
+  // P12: 変数は 2 つだけ（D-03）。綴り違い・大小違いは束縛ではない（生値のまま出す）。
+  it('recognises only the two variables, case-sensitively', () => {
+    expect(isDynamicBinding(CU)).toBe(true);
+    expect(isDynamicBinding(CG)).toBe(true);
+    for (const v of ['${current_usr}', '${Current_User}', 'current_user', 'internal']) {
+      expect(isDynamicBinding(v)).toBe(false);
+      expect(dynamicBindingLabel(v)).toBeNull();
+    }
+    expect(i18n._(dynamicBindingLabel(CU)!)).toBe('操作する利用者本人');
+    expect(i18n._(dynamicBindingLabel(CG)!)).toBe('操作する利用者の所属グループ');
+  });
+
+  // P13: 選択肢は辞書 ＋ 束縛の位置。辞書に無い owner・shared_with は文書属性として足し、値は束縛だけ。
+  it('adds owner and shared_with as document attributes whose values are bindings only', () => {
+    const options = policyAttributeOptions([
+      attr({ key: 'clearance', label: '取扱区分', allowedValues: ['internal'], scope: 'user' }),
+      attr({
+        key: 'confidentiality',
+        label: '機密区分',
+        allowedValues: ['public'],
+        scope: 'document',
+      }),
+    ]);
+    expect(options.map((o) => [o.key, o.scope, o.values])).toEqual([
+      ['clearance', 'user', ['internal']],
+      // 🔴 辞書の属性には束縛を足さない（計画が束縛を置かない位置）。
+      ['confidentiality', 'document', ['public']],
+      ['owner', 'document', [CU]],
+      ['shared_with', 'document', [CU, CG]],
+    ]);
+    expect(options.map((o) => text(o.label))).toEqual(['取扱区分', '機密区分', '所有者', '共有先']);
+  });
+
+  // P13: 辞書に同じキーの文書属性があれば、その許可値の後ろへ束縛を足す（重複させない。選択肢は 1 つ）。
+  it('merges the bindings into a dictionary-defined document attribute without duplicating it', () => {
+    const options = policyAttributeOptions([
+      attr({
+        key: 'shared_with',
+        label: '共有先（辞書）',
+        allowedValues: ['group-sales', CU],
+        scope: 'document',
+      }),
+    ]);
+    expect(options.filter((o) => o.key === 'shared_with')).toHaveLength(1);
+    expect(options.find((o) => o.key === 'shared_with')!.values).toEqual(['group-sales', CU, CG]);
+  });
+
+  // P13: 利用者属性には束縛を足さない（評価器は利用者の条件を束縛しない）。同名の利用者属性があるときは
+  // 選択肢を重ねない（キーが Select の値なので、重ねると選び分けられない）。
+  it('never offers bindings on user attributes', () => {
+    const options = policyAttributeOptions([
+      attr({ key: 'owner', label: '所有者（利用者）', allowedValues: ['x'], scope: 'user' }),
+    ]);
+    expect(options.filter((o) => o.key === 'owner')).toEqual([
+      { key: 'owner', scope: 'user', label: '所有者（利用者）', values: ['x'] },
+    ]);
   });
 });

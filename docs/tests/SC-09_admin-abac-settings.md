@@ -3,15 +3,15 @@ title: SC-09 管理者設定（ABAC） テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-27
+updated: 2026-09-28
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-09, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, UC-05, SC-17]
-adrs: [ADR-0031, ADR-0116, ADR-0115]
-iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253, IADR-0477]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
-issues: [#503, #504, #510, #535, #640, #989, #1609, planning#672]
+adrs: [ADR-0031, ADR-0036, ADR-0116, ADR-0115, ADR-0121]
+iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253, IADR-0477, IADR-0481]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1666_sc09-dynamic-binding-conditions]
+issues: [#503, #504, #510, #535, #640, #989, #1609, #1666, planning#672]
 -->
 
 # テスト仕様書: 管理者設定（ABAC）
@@ -44,6 +44,7 @@ issues: [#503, #504, #510, #535, #640, #989, #1609, planning#672]
 | 基本 4. 保存すると認可判定へ即時反映される | 検証結果パネルの完了表示 | `confirms in the validation panel that a saved policy takes effect immediately` |
 | **例外**. 参照中の属性は削除できない | 409 の理由表示 ＋ 参照元ポリシー名 | `explains a 409 when deleting a referenced attribute and keeps the server detail` |
 | ［2026-09-27 / #1609］部門の許可値は realm の部門グループから導く（手で持たない） | 属性辞書の行の出所のバッジ（導出／不明）。値の導出・保存し直し・不明のときに消さないこと・手で足す要求の拒否はサーバ側（下の §認可サービス） | `shows where the department values come from and flags an unreadable realm` |
+| ［2026-09-28 / #1666］所有者の読み取り・共有先のポリシーを画面から作る（動的束縛） | 対象属性「所有者」「共有先」＋ 値の選択肢の動的束縛。束縛の位置・変数の検証はサーバ側（下の §認可サービス） | `creates the owner read policy by selection only, and says the value is a dynamic binding` ／ `creates the shared-with policy with both bindings` ／ `offers no binding on dictionary attributes, document or user` ／ `marks dynamic bindings in the policy list with words, not only colour` |
 | 認可判定の実行（`AbacEvaluator`） | **写像しない**（サーバ側の責務） | — |
 
 ## 計画の要素 → 実装／テストの対応
@@ -83,6 +84,10 @@ issues: [#503, #504, #510, #535, #640, #989, #1609, planning#672]
 | 15-c | 矛盾は**エラーではなく検証結果** | 同上（200 ＋ `valid: false`） | 矛盾の理由が一覧表示される |
 | 16 | **他 issue の射程** | 同 #5 | MCP クライアント管理へのリンクが無い（遷移先が未実装） |
 | 17 | ロケール `en` | —| 見出しが英語で描画される |
+| 18 | ★ **所有者の read ポリシーを選択だけで作る**（#1666） | 必須のポリシー・動的束縛の入力 | 辞書に `owner` が無くても「所有者（文書）」を選べ、値の選択肢は `${current_user}` の 1 つだけ。送信本文が `userConditions: {}`・`documentConditions: {owner: ["${current_user}"]}` そのもの。フォームの自由入力の欄は名前の 1 つだけ |
+| 19 | 共有先の束縛（#1666） | 同上 | `shared_with` に `${current_user}`・`${current_groups}` を積んで保存できる |
+| 20 | ★ **束縛は計画の位置にだけ出る**（陰性。#1666） | 同上 | 辞書の文書属性（`confidentiality`）と利用者属性（`dept`）の値の選択肢に束縛が無い |
+| 21 | **束縛は語で示す**（#1666） | INDEX 決定 21 | 値の選択肢・積んだ条件・一覧の要約で「動的束縛: 操作する利用者本人（`${current_user}`）」の文言が出る。束縛の無い行には出ない |
 
 ## アクセス制御・存在秘匿（画面）
 
@@ -107,6 +112,9 @@ issues: [#503, #504, #510, #535, #640, #989, #1609, planning#672]
 | P8 | 要約の順序 | 一覧の条件は**利用者属性が先**（計画の並び） |
 | P9 | 許可値の解釈 | カンマ区切りを配列へ。空要素を落とす |
 | P10 | 許可値の出所（#1609） | 出所の値集合は `realm` / `realm-unavailable` の 2 値。手で持つキー（null）は表示なし、不明は注意の色、未知の値は生値のまま |
+| P11 | 束縛の位置（#1666） | 表が `owner` → `${current_user}`、`shared_with` → `${current_user}`・`${current_groups}` と完全一致する（サーバの検証器と同じ表） |
+| P12 | 束縛変数（#1666） | 2 つだけを大小を区別して束縛とみなし、説明が対で決まる。綴り違い・大小違いは束縛ではない（生値のまま） |
+| P13 | 選択肢の組み立て（#1666） | 辞書に無い `owner`・`shared_with` を文書属性として足し値は束縛だけ／辞書の文書属性にあれば許可値の後ろへ重複なく足す／利用者属性には足さない |
 
 ## 認可サービス（xUnit。［2026-09-27 / #1609］部門の許可値の導出）
 
@@ -118,6 +126,17 @@ issues: [#503, #504, #510, #535, #640, #989, #1609, planning#672]
 | T-59 | 導出 | 一覧・個別取得の `department`（利用者・文書の両方）の許可値が realm の部門グループのコードと一致し、出所は `realm`。保存済みの旧い値（`finance` / `legal`）は置き換わり、保存し直される。手で持つキーは出所 null。ポリシーの許容値も同じ集合で検証する（`finance` は 400・`sales` は 201） |
 | T-60 | 不明（否定の試験） | realm を読めない（グループの読み取りが例外）と出所は `realm-unavailable` で、**保存済みの値は消えない**（旧い値しか無い DB でも空へ倒さない）。一度導いた後の障害では最後に確かめた値を示し続ける |
 | T-61 | 手で持たない | 値を手で足す登録・1 つ消す更新は 400（理由に「realm の部門グループ」）。空の登録は realm の値で作られ、同じ集合（並び違い）でのラベルの変更は通る。realm を読めない間は保存済みの値のまま送る更新だけが通る |
+
+## 認可サービス（xUnit。［2026-09-28 / #1666］動的束縛の検証）
+
+テスト: `src/platform/backend/Services/AuthorizationService/Tests/Domain/AbacValidationTests.cs`（純関数）・
+`.../Tests/Features/Authz/ValidatePolicy/PolicyDryRunValidationTests.cs`（結合。dry-run と保存の一致）。番号は上の §認可サービス と同じ系列。
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| T-68 | 通る形（陽性対照） | 所有者（`owner` の `${current_user}`）と共有先（`shared_with` の `${current_user}`・`${current_groups}`）は辞書に無くても通る。dry-run も保存（201）も通る |
+| T-69 | 止める形 | 表に無い変数（`${current_usr}`・`${Current_User}`・`${current_department}`）、表に無い位置（`owner` の `${current_groups}`・`confidentiality`・`department`）、利用者の条件の束縛はエラー。綴り違いは dry-run が `valid: false`、保存が 400 で一致する |
+| T-70 | 辞書・seed との整合 | 辞書に `shared_with` が定義されていても表の束縛は「辞書外」にならず、辞書外のリテラルは従来どおり拒否。dev seed の全ポリシーが検証を通る |
 
 ## バックエンド（BFF・xUnit）
 
@@ -154,6 +173,7 @@ issues: [#503, #504, #510, #535, #640, #989, #1609, planning#672]
 | E1 | 認証ガード（未認証の導線） | 未認証で `/admin/abac` を開くと `/login` へ誘導される。🔴 **この 1 本ではルートの実在を測れない** —— 未知のパスの受け皿は認証ガード配下に居るため、ルートを消しても未認証なら同じく `/login` へ行く |
 | E2 | 画面への到達（**セッションを与える**） | 管理者の身元を与えて `/admin/abac` を開くと、見出しと左ナビ「ABAC設定」が実ブラウザ・実ビルド成果物の上で描かれる＝陽性対照。**ルートの実在はここで固定される**（パスが変われば見出しの待ちが落ちる） |
 | E3 | 権限による存在秘匿 | **運用者**では同じ「見つかりませんでした」が出て、左ナビにも項目が出ず、**管理端点を呼びにも行かない**＝陰性対照。🔴 本画面は管理者限定であり、運用者にも開く他の管理画面と混ざると条件の緩みに気づけないため、**ロール無しではなく運用者を当てる** |
+| E4 | 所有者の read ポリシーを画面の操作だけで作る（#1666） | 空の属性辞書で、対象属性「所有者」→ 値「動的束縛: 操作する利用者本人（`${current_user}`）」→ 追加 → 保存。BFF へ届いた本文が所有者の read ポリシーの形そのもので、完了表示が出る |
 
 ## ロール・存在秘匿の担保
 
