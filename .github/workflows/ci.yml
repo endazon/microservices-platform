@@ -793,8 +793,8 @@ jobs:
           echo "legs=${legs}" >> "$GITHUB_OUTPUT"
           echo "legs: ${legs}"
 
-  # NFR, #1686: 脚の名前は `backend-build (<label>)`。シャードしないユニットの label はユニット名のままなので従来の
-  # `backend-build (platform)` を保つ。シャードする脚は `backend-build (knowledge 1/3)` の形になる。脚は必須 check ではない
+  # NFR, #1686: 脚の名前は `backend-build (<label>)`。シャードしないユニットの label はユニット名のまま（`backend-build (<unit>)`）、
+  # シャードする脚は `backend-build (knowledge 1/3)` / `backend-build (platform 1/2)` の形になる。脚は必須 check ではない
   # （必須は集約 build-and-test。決定 2）ため、脚の名前が変わっても恒久 pending は生じない。
   backend-build:
     name: backend-build (${{ matrix.label }})

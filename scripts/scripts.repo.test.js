@@ -263,7 +263,8 @@ module.exports = ({ ok, assert }) => {
     ok('#1686: 実データ —— シャードするユニットの試験プロジェクトの集合はシャードの和と一致し、各 1 回だけ載る', () => {
       const config = planner.readConfig(repoRoot);
       const units = Object.keys(config.units || {});
-      assert.ok(units.includes('knowledge'), 'knowledge がシャードの設定に無い（#1686 の裁定）');
+      // knowledge（#1686 の裁定）と、律速が移った platform（同じ PR で追加）。
+      for (const u of ['knowledge', 'platform']) assert.ok(units.includes(u), `${u} がシャードの設定に無い（#1686）`);
       for (const unit of units) {
         const actual = planner.testProjectsOf(repoRoot, unit);
         assert.ok(actual.length >= 2, `${unit} の試験プロジェクトを読めていない（${actual.length} 件）`);
@@ -273,13 +274,13 @@ module.exports = ({ ok, assert }) => {
       }
       const { legs, errors } = planner.planLegs(repoRoot, planner.discoverUnits(repoRoot), config);
       assert.deepStrictEqual(errors, []);
-      const k = legs.filter((l) => l.unit === 'knowledge');
-      assert.ok(k.length >= 2, `knowledge の脚が ${k.length} 本しかない（シャードになっていない）`);
-      assert.ok(k.every((l) => l.projects), 'knowledge の脚に試験プロジェクトが空のものがある（backend.slnx 全体を試してしまう）');
+      for (const u of units) {
+        const ls = legs.filter((l) => l.unit === u);
+        assert.ok(ls.length >= 2, `${u} の脚が ${ls.length} 本しかない（シャードになっていない）`);
+        assert.ok(ls.every((l) => l.projects), `${u} の脚に試験プロジェクトが空のものがある（backend.slnx 全体を試してしまう）`);
+      }
       assert.strictEqual(new Set(legs.map((l) => l.key)).size, legs.length, 'artifact の key が脚ごとに一意でない');
-      const p = legs.find((l) => l.unit === 'platform');
-      assert.deepStrictEqual(p, { unit: 'platform', label: 'platform', key: 'platform', projects: '' },
-        'シャードしないユニットの脚が従来の形（backend-build (platform)・backend.slnx 全体）でない');
+      assert.strictEqual(new Set(legs.map((l) => l.label)).size, legs.length, '脚の名前（label）が一意でない');
     });
 
     ok('#1686: 導出器 —— 取りこぼし・二重・存在しない名前・古いユニット・1 シャードを赤くする', () => {
