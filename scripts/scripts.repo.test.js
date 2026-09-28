@@ -337,6 +337,12 @@ module.exports = ({ ok, assert }) => {
           `build-and-test が ${v} を「!= success なら exit 1」で判定していない（skipped / cancelled が素通りする）`);
         assert.ok(!new RegExp(`"\\$${v}" = "failure"`).test(btc), `build-and-test が ${v} を failure だけで判定している`);
       }
+      // 監査（#1693 差分）: 判定の変数が前段の結果から来ていること。固定値や別ジョブを指すと、判定の if が残っても素通りする。
+      for (const [v, needJob] of [['DISCOVER_RESULT', 'discover-units'], ['BUILD_RESULT', 'backend-build'],
+        ['SUBMODULE_CHANGES_RESULT', 'submodule-changes'], ['SUBMODULE_BUILD_RESULT', 'submodule-backend-build']]) {
+        assert.match(bt, new RegExp(`^\\s+${v}: \\$\\{\\{ needs\\.${needJob.replace(/-/g, '\\-')}\\.result \\}\\}$`, 'm'),
+          `build-and-test の ${v} が needs.${needJob}.result を読んでいない（前段の失敗が素通りする）`);
+      }
     });
 
     ok('#1686: 脚の手順（dotnet はスタブ）—— シャードは一時の slnx へ絞ってテストし、ビルドは backend.slnx 全体に掛ける', () => {
