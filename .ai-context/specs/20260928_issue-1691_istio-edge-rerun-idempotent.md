@@ -34,12 +34,29 @@ issue: "#1691"
 
 ### 1. 判定はクラスタの実際の状態で行う（フラグで判定しない）
 
-`kubectl -n kube-system get helmchartconfig traefik -o jsonpath='{.spec.valuesContent}'` を読み、空白類を 1 つに潰した文字列に
-`service: enabled: false` が含まれれば「入口は Istio へ移し済み」と読む。HelmChartConfig が無い・読めない・Service ありの形なら「未移行」。
+`kubectl get helmchartconfig traefik -n kube-system -o jsonpath='{.spec.valuesContent}'` を読み、**トップレベルの `service:` の
+直下の子に `enabled: false`** があれば「入口は Istio へ移し済み」と読む。それ以外は「未移行」。
 
-- `k8s-local-down.sh` の `traefik_service_disabled`（同じ HelmChartConfig を見る）と**同じ資源**を見る。ただし down は
-  `enabled: false` の部分一致であり、ここでは `service:` の直下であることまで見る（`traefik-entrypoint.yaml` に将来
-  別キーの `enabled: false` が入っても誤判定しない）。両者の結論は現行の 2 本の宣言で一致する。
+- **判定は `scripts/lib/edge-state.sh` の 1 本だけ**にし、`k8s-local-up.sh`（`edge_on_istio`）と `k8s-local-down.sh`
+  （`traefik_service_disabled`。読み取りは `kc_read` を通す）の両方がそれを呼ぶ。［2026-09-28 / PR 監査 #1694 の推奨］当初は up に
+  「空白を潰して `service: enabled: false` を含むか」を置き、down の「どこかに `enabled: false`」と厳しさが違っていた。
+  現行の 2 本の宣言では同じ結論でも、宣言が増えるとずれる形なので 1 本化した。
+- 判定の表（`k8s-local-up.test.js` が up と down の両方に通して固定する。監査のプローブ `audit-1694-probe.sh` を写した）:
+
+| valuesContent / kubectl | 判定 | 理由 |
+| --- | --- | --- |
+| `service:` ＋ 直下 `enabled: false`（`traefik-service-off.yaml` の実物） | 移行済み | 本来の印 |
+| `service:` の直下で他のキーが先（`type: LoadBalancer` の後に `enabled: false`） | 移行済み | 直下の子であれば順序は問わない |
+| flow 形 `service: {enabled: false}`・CRLF・行末コメント | 移行済み | 同じ YAML の別表記 |
+| `traefik-entrypoint.yaml` の実物・`service.enabled: true`・空 | 未移行 | Service は在る |
+| HelmChartConfig が無い（NotFound）・kubectl が失敗（出力があっても） | 未移行 | 読めないときは未移行へ倒す（下記） |
+| `service:` 以外のキーの `enabled: false`（`ingressRoute.dashboard`） | 未移行 | 別の機能の無効化 |
+| **入れ子の `x.service.enabled: false`**（`metrics.service` 等） | **未移行** | Traefik chart で LoadBalancer Service（80/443/50000 の svclb）を消すのはトップレベルの `service.enabled` だけである。`metrics.service` 等は別の Service を指す |
+| `service:` の孫の `enabled: false`（`service.spec.enabled`） | 未移行 | 直下ではない |
+| 引用符つきの `enabled: "false"` | 未移行 | Go テンプレートでは空でない文字列は真であり、Service は消えない |
+
+- **読めないときに未移行へ倒す理由**: 移行済みを見落とした場合は、Traefik の反映待ちが**非 0 で止まる**（#1691 と同じく目に見える）。
+  移行済みへ倒すと、Traefik がエッジのクラスタで反映待ちの門（IADR-0258）を**黙って**飛ばすことになる。黙る側を選ばない。
 - 判定は `LOCALEDGE=1` のときだけ、`[1/7]`（クラスタ）の直後・`[2/7]` の前で 1 回行う。**副作用より前**に置くのは、
   下の 3. の拒否を何も書き換えないうちに出すためである。新規クラスタでは HelmChartConfig が無いので未移行と読む。
 
@@ -92,11 +109,23 @@ cert-manager とエッジ TLS（`deploy/local/edge/tls`）は**飛ばさない**
 | `.github/workflows/integration-stack.yml` | 新規クラスタでの診断出力のみ | **対象外**: 再実行を扱わない |
 | `deploy/**`（Ingress・HelmChartConfig・README 等）・`docs/**`・`scripts/README.md`・`*.test.*` | 宣言・注記・試験 | **対象外**: 自ら動かない |
 
+## 範囲外のリスク（記録に留める。実装しない。監査 #1694）
+
+- **移行済みのクラスタを `LOCALEDGE` も `ISTIO` も付けずに再実行すると、[6/7] でメッシュの設定が外れる恐れがある。**
+  `ISTIO` 無しの [6/7] は `mesh.*` の `--set` を付けずに helm upgrade するため、`mesh.enabled` が既定（false）へ戻り
+  PeerAuthentication 等が消え得る（`LOCALEDGE` が無いので本件の判定は走らず、入口の Gateway は残る）。
+  本件（`LOCALEDGE=1` のときの Traefik 前提）と同じ型の「フラグが現状と食い違う再実行」だが、`LOCALEDGE` の段を通らない別の経路であり、
+  本 PR では扱わない。直すなら判定（`lib/edge-state.sh`）を `LOCALEDGE` の有無によらず走らせ、移行済みで `ISTIO` 無しなら止める形が候補である。
+
 ## 変更するもの
 
 | ファイル | 変更 |
 | --- | --- |
-| `scripts/k8s-local-up.sh` | 判定関数 `edge_on_istio`・`[2/7]` 前の判定と拒否・`[6/7]` の mTLS 宣言・LOCALEDGE の段の分岐 |
+| `scripts/lib/edge-state.sh` | 新規。判定の単一の口（`edge_traefik_service_off` / `edge_values_traefik_service_off`） |
+| `scripts/k8s-local-up.sh` | lib を読み `edge_on_istio` を 1 行呼び出しにする・`[2/7]` 前の判定と拒否・`[6/7]` の mTLS 宣言・LOCALEDGE の段の分岐 |
+| `scripts/k8s-local-down.sh` | `traefik_service_disabled` を lib の 1 行呼び出しにする（判定の厳しさを up と揃える） |
+| `scripts/live-scripts.json` / `scripts/README.md` | 新しい lib を `offline`（source される関数定義だけ）へ分類し、一覧に加える |
+| `.ai-context/adr/IADR-0377_...md` | 「STRICT を要求した再実行では [6/7] で一度 PERMISSIVE に戻る（意図した挙動）」へ、移行済みでは降格しない旨の日付つき追記 |
 | `scripts/k8s-local-up.test.js` | kubectl スタブに HelmChartConfig の状態の模型を足し、試験を足す（下記） |
 | `.ai-context/adr/IADR-0317_...md` | 決定 7 の後へ日付つき追記（新規 IADR は起こさない） |
 | `deploy/istio/README.md` | 「STRICT を要求した再実行では一度緩んでから上がる」が本変更で誤りになる（規則 10）。移行済みの再実行の扱いに書き換える |
@@ -112,6 +141,9 @@ cert-manager とエッジ TLS（`deploy/local/edge/tls`）は**飛ばさない**
 3. 未移行 ＋ `LOCALEDGE=1 ISTIO=1`: 従来どおり `apply -k deploy/local/edge` → `wait svc/traefik` → CoreDNS → `istio-edge-up.sh` の順に出る。
 4. 移行済み ＋ `LOCALEDGE=1`（`ISTIO` 無し）: 非 0 で止まり、`istio-edge-down.sh` と `ISTIO=1` を告げ、`[2/7]` 以降（helm upgrade）へ進まない。
 5. 移行済み ＋ `ISTIO_MTLS_MODE=STRICT`: `[6/7]` が STRICT を宣言する（未移行では従来どおり PERMISSIVE。既存試験）。
+6. HelmChartConfig が読めない（kubectl の失敗・未作成）なら未移行として従来の経路を通る（起動器の経路で試す）。
+7. `service:` 以外のキーの `enabled: false` は移行済みと読まない（同上）。
+8. up と down は `lib/edge-state.sh` を 1 行で呼び、自前の `enabled:` 照合を持たない（静的）。上の判定の表の全件で up と down が同じ結論になる（lib の単体試験）。
 
 ## 検証
 

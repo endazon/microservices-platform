@@ -43,6 +43,8 @@ usage() {
 # NFR, #1550: 既定の --dry-run も稼働クラスタを読む（--apply は消す）。明示の指定（--live か LIVE=1）が無ければ
 # 何もせずに終わる。引数の解析は副作用を持たないので、判定はその直後・最初の kubectl より前に置く。
 . "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+# shellcheck source=scripts/lib/edge-state.sh
+. "$(dirname "$0")/lib/edge-state.sh" || exit 3    # 入口の移行の判定（#1691）。読めなければ Traefik を戻すかを決められない
 live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
 
 MODE="dry-run"
@@ -150,11 +152,10 @@ list_webhooks() {
 }
 # Traefik の Service を止める HelmChartConfig（Istio エッジが当てる `service.enabled: false`）が残っているか。
 # HelmChartConfig が無ければ（エッジを当てていない構成では普通に無い）止まっていないと読む。
-traefik_service_disabled() {
-  local values
-  values="$(kc_read get helmchartconfig traefik -n kube-system -o jsonpath='{.spec.valuesContent}' 2>/dev/null)" || return 1
-  grep -Eq 'enabled:[[:space:]]*false' <<<"$values"
-}
+# NFR, IADR-0317 (#1691 / 監査 #1694): 判定は k8s-local-up.sh と共有する単一の口（scripts/lib/edge-state.sh）。
+#   ここへ複写しない —— 以前は「どこかに enabled: false」で、up の「service: の直下」と厳しさが違った。
+#   読み取りは kc_read（読み取り専用の門）を通す。
+traefik_service_disabled() { edge_traefik_service_off kc_read; }
 # 「名前空間|名前|finalizers」の行（finalizers が空のものは出さない）。名前空間を渡せばそこだけ。
 # 区切りをタブにしない: タブは IFS の空白類で、cluster スコープの物（名前空間が空）を read すると
 # 先頭の空欄が詰められ、名前が名前空間の欄へずれる。

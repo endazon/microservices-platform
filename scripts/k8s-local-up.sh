@@ -115,15 +115,10 @@ fi
 #   🔴 移行済みのクラスタへ LOCALEDGE の段が `apply -k deploy/local/edge` を当てると、HelmChartConfig が Service ありへ戻り、
 #   helm-controller の入れ直しが `wait svc/traefik`（180 秒）より遅くて rc=1 で止まる。作り直された svclb-traefik は
 #   80/443/50000 を istio-ingressgateway と取り合って Pending のまま残る（#1691。2026-09-14 に続き 2 回目）。
-edge_on_istio() {
-  local values
-  values="$(kubectl -n kube-system get helmchartconfig traefik -o jsonpath='{.spec.valuesContent}' 2>/dev/null)" || return 1
-  # 空白類（改行・字下げ）を 1 つに潰して `service:` の直下の `enabled: false` を見る。
-  case " $(tr -s '[:space:]' ' ' <<<"$values") " in
-    *" service: enabled: false "*) return 0 ;;
-  esac
-  return 1
-}
+#   判定は k8s-local-down.sh と共有する単一の口（scripts/lib/edge-state.sh）。ここへ複写しない（監査 #1694）。
+# shellcheck source=scripts/lib/edge-state.sh
+. "$ROOT/scripts/lib/edge-state.sh"
+edge_on_istio() { edge_traefik_service_off kubectl; }
 EDGE_ON_ISTIO=0
 if [ "${LOCALEDGE:-}" = "1" ] && edge_on_istio; then
   EDGE_ON_ISTIO=1

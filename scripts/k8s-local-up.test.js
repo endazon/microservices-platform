@@ -224,10 +224,16 @@ const KUBECTL_STUB = [
   'EDGE_STATE="$STUB_LOG.edge-istio"; REINSTALL_STATE="$STUB_LOG.traefik-reinstalling"',
   'case "$*" in *"apply -f deploy/local/edge-istio/traefik-service-off.yaml"*) : > "$EDGE_STATE";; esac',
   'case "$*" in *"apply -k deploy/local/edge") if [ -e "$EDGE_STATE" ]; then rm -f "$EDGE_STATE"; : > "$REINSTALL_STATE"; fi;; esac',
+  //   返すのは jsonpath の値（valuesContent）だけである（マニフェスト全体ではない）。
+  //   STUB_HCC_FAIL=1 … 問い合わせが失敗する（HelmChartConfig が無い・API が読めない。NotFound を stderr へ出して非 0）。
+  //   STUB_HCC_VALUES … 未移行の状態で返す valuesContent を差し替える（判定の境界を起動器の経路で試す）。
   'case "$*" in *"get helmchartconfig traefik"*valuesContent*)',
-  '  if [ -e "$EDGE_STATE" ]; then printf "service:\\n  enabled: false"; else cat "${STUB_TRAEFIK_MANIFEST:-' +
+  '  if [ "${STUB_HCC_FAIL:-}" = "1" ]; then echo \'Error from server (NotFound): helmchartconfigs.helm.cattle.io "traefik" not found\' >&2; exit 1; fi',
+  '  if [ -e "$EDGE_STATE" ]; then printf "service:\\n  enabled: false"',
+  '  elif [ -n "${STUB_HCC_VALUES+x}" ]; then printf "%s" "$STUB_HCC_VALUES"',
+  '  else sed -n "/valuesContent: |-/,\\$p" "${STUB_TRAEFIK_MANIFEST:-' +
     TRAEFIK_MANIFEST_REL +
-    '}"; fi; exit 0;;',
+    '}" | tail -n +2 | sed "s/^    //"; fi; exit 0;;',
   'esac',
   'if [ -e "$EDGE_STATE" ] || [ -e "$REINSTALL_STATE" ]; then case "$*" in *"get svc traefik"*) exit 1;; esac; fi',
   'if [ -e "$REINSTALL_STATE" ]; then case "$*" in *--for=jsonpath*svc/traefik*) echo \'Error from server (NotFound): services "traefik" not found\' >&2; exit 1;; esac; fi',
@@ -3189,7 +3195,7 @@ ok('#1159: ISTIO 未設定なら mesh.* の --set が 1 つも足されない（
 // 判定は**クラスタの状態**（HelmChartConfig の中身）で行う。同じフラグで、模型の初期状態だけを変えて比べる。
 // 模型は kubectl スタブの #1691 節（traefik-service-off の apply で Service が消え、戻すと入れ直しで待ちが落ちる）。
 
-const EDGE_APPLY = 'kubectl apply -k deploy/local/edge'; // 末尾一致で見る（deploy/local/edge/tls と区別する）
+const EDGE_APPLY = 'kubectl apply -k deploy/local/edge'; // 行の完全一致で見る（deploy/local/edge/tls と区別する）
 const isEdgeApply = (l) => l === EDGE_APPLY;
 const isTraefikWait = (l) => l.startsWith('kubectl ') && l.includes('--for=jsonpath') && l.includes('svc/traefik');
 const isTraefikCoreDns = (l) => l.includes('apply -f deploy/local/aliases/coredns-edge-hosts.yaml');
@@ -3279,6 +3285,97 @@ ok('#1691: 陽性対照 —— 模型は #1691 を再現する（移行済みで
   fs.rmSync(workdir, { recursive: true, force: true });
   assert.notStrictEqual(wait.status, 0, '模型が #1691（入れ直しが待ちに間に合わない）を再現しない');
   assert.match(wait.stderr, /services "traefik" not found/);
+});
+
+// ---- #1691 / 監査 #1694: 判定の境界（読めない・別キーの enabled: false）と、up / down の判定の 1 本化 ----------------
+//
+// 判定は scripts/lib/edge-state.sh の 1 本だけで、k8s-local-up.sh（edge_on_istio）と k8s-local-down.sh
+// （traefik_service_disabled）の両方がそれを呼ぶ。以前は down が「どこかに enabled: false」で up より緩かった。
+
+ok('#1691: HelmChartConfig が読めない（kubectl の失敗・未作成）なら未移行として従来の経路を通る', () => {
+  const r = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_HCC_FAIL: '1' });
+  assert.strictEqual(r.status, 0, `読めないだけで止まった:\n${r.stderr.slice(-600)}`);
+  assert.ok(r.lines.some(isHelmChartConfigProbe), 'HelmChartConfig を読んでいない');
+  assert.ok(r.lines.some(isEdgeApply), '読めないのに移行済みへ倒した（Traefik の反映待ちの門を黙って飛ばす）');
+  assert.ok(r.lines.some(isTraefikWait), '読めないのに Traefik の反映待ちを飛ばした');
+  assert.ok(!r.stdout.includes('移し済み'), '読めないのに「移し済み」と告げた');
+});
+
+ok('#1691: service: 以外のキーの enabled: false は移行済みと読まない（従来の経路を通る）', () => {
+  const r = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_HCC_VALUES: 'ingressRoute:\n  dashboard:\n    enabled: false\n' });
+  assert.strictEqual(r.status, 0, `起動器が失敗した:\n${r.stderr.slice(-600)}`);
+  assert.ok(r.lines.some(isEdgeApply), '別キーの enabled: false を移行済みと読んだ');
+  assert.ok(r.lines.some(isTraefikWait), '別キーの enabled: false で Traefik の反映待ちを飛ばした');
+});
+
+const EDGE_STATE_LIB = path.join(REPO_ROOT, 'scripts', 'lib', 'edge-state.sh');
+const DOWN_SH = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-down.sh'), 'utf8');
+const UP_EDGE_FN = /^edge_on_istio\(\) \{ edge_traefik_service_off kubectl; \}$/m;
+const DOWN_EDGE_FN = /^traefik_service_disabled\(\) \{ edge_traefik_service_off kc_read; \}$/m;
+
+ok('#1691: up と down は同じ判定（scripts/lib/edge-state.sh）を呼び、自前の判定を持たない', () => {
+  assert.ok(/^\. "\$ROOT\/scripts\/lib\/edge-state\.sh"/m.test(UP_SH), 'k8s-local-up.sh が lib/edge-state.sh を読んでいない');
+  assert.ok(/^\. "\$\(dirname "\$0"\)\/lib\/edge-state\.sh"/m.test(DOWN_SH), 'k8s-local-down.sh が lib/edge-state.sh を読んでいない');
+  assert.ok(UP_EDGE_FN.test(UP_SH), 'k8s-local-up.sh の edge_on_istio が共有の判定の 1 行呼び出しでない');
+  assert.ok(DOWN_EDGE_FN.test(DOWN_SH), 'k8s-local-down.sh の traefik_service_disabled が共有の判定の 1 行呼び出しでない');
+  // 判定の中身（enabled: false の照合）を lib の外に置かない。
+  for (const [name, src] of [['k8s-local-up.sh', UP_SH], ['k8s-local-down.sh', DOWN_SH]]) {
+    // コメント行と利用者向けの echo は除く（照合ではない）。残りに `enabled:` の照合があれば自前の判定である。
+    const code = src
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l) && !/\becho /.test(l))
+      .join('\n');
+    assert.ok(!/enabled:/.test(code), `${name} が enabled: を自前で照合している（判定は lib/edge-state.sh の 1 本だけ）`);
+  }
+});
+
+// 判定の表（監査 #1694 のプローブを写した）。rc は kubectl の終了コード。
+const EDGE_STATE_CASES = [
+  ['service-off（実物）', null, 0, true],
+  ['traefik-entrypoint（実物）', 'ENTRYPOINT', 0, false],
+  ['HelmChartConfig が無い（NotFound）', '', 1, false],
+  ['kubectl が失敗（出力あり）', 'service:\n  enabled: false', 1, false],
+  ['valuesContent が空', '', 0, false],
+  ['別キーの enabled: false', 'ingressRoute:\n  dashboard:\n    enabled: false', 0, false],
+  ['service の直下で他のキーが先', 'service:\n  type: LoadBalancer\n  enabled: false', 0, true],
+  ['入れ子の x.service.enabled', 'metrics:\n  service:\n    enabled: false', 0, false],
+  ['service の孫の enabled', 'service:\n  spec:\n    enabled: false', 0, false],
+  ['service.enabled: true', 'service:\n  enabled: true', 0, false],
+  ['引用符つきの "false"', 'service:\n  enabled: "false"', 0, false],
+  ['flow 形 {enabled: false}', 'service: {enabled: false}', 0, true],
+  ['CRLF', 'service:\r\n  enabled: false\r\n', 0, true],
+  ['行末コメント', 'service:\n  enabled: false # Istio へ移す\n', 0, true],
+];
+
+ok('#1691: 判定の表 —— up（edge_on_istio）と down（traefik_service_disabled）が全件で同じ結論になる', () => {
+  const offYaml = readAt(REPO_ROOT, 'deploy', 'local', 'edge-istio', 'traefik-service-off.yaml');
+  const entryYaml = readAt(REPO_ROOT, TRAEFIK_MANIFEST_REL);
+  const valuesOf = (yaml) => yaml.split(/valuesContent: \|-\n/)[1].replace(/^ {4}/gm, '');
+  const upFn = UP_EDGE_FN.exec(UP_SH)[0];
+  const downFn = DOWN_EDGE_FN.exec(DOWN_SH)[0];
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'edge-state-'));
+  const bin = path.join(workdir, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'kubectl'), '#!/usr/bin/env bash\nprintf "%s" "$STUB_VALUES"\nexit "$STUB_RC"\n');
+  fs.chmodSync(path.join(bin, 'kubectl'), 0o755);
+  const judge = (fnDef, call, values, rc) =>
+    spawnSync('bash', ['-c', `set -euo pipefail; . "$1"; kc_read() { kubectl "$@"; }\n${fnDef}\n${call} && echo MIGRATED || echo not`, 'x', EDGE_STATE_LIB], {
+      env: { ...process.env, PATH: bin + path.delimiter + process.env.PATH, STUB_VALUES: values, STUB_RC: String(rc) },
+      encoding: 'utf8',
+    }).stdout.trim();
+  const wrong = [];
+  try {
+    for (const [name, raw, rc, expected] of EDGE_STATE_CASES) {
+      const values = raw === null ? valuesOf(offYaml) : raw === 'ENTRYPOINT' ? valuesOf(entryYaml) : raw;
+      const want = expected ? 'MIGRATED' : 'not';
+      const up = judge(upFn, 'edge_on_istio', values, rc);
+      const down = judge(downFn, 'traefik_service_disabled', values, rc);
+      if (up !== want || down !== want) wrong.push(`${name}: 期待=${want} up=${up} down=${down}`);
+    }
+  } finally {
+    fs.rmSync(workdir, { recursive: true, force: true });
+  }
+  assert.deepStrictEqual(wrong, [], `判定の表と合わない:\n${wrong.join('\n')}`);
 });
 
 // ---- #1316: ISTIO=1 の別名はサイドカー注入より前に当たる ----------------------------------

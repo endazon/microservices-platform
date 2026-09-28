@@ -143,8 +143,10 @@ down で Gateway の撤去を先にするのは、**hostPort を空けてから�
 > 作り直された `svclb-traefik` は 80/443/50000 を istio-ingressgateway と取り合い Pending のまま残る（2026-09-14 に続き 2 回目）。
 > 本決定の「up は ① Traefik を明け渡す → ② Gateway を立てる」は**初回**の順序であり、再実行で ① の前に Traefik を戻すことは想定していなかった。
 >
-> - **判定**: `[1/7]` の直後・副作用より前に、HelmChartConfig の `valuesContent` が `service:` 直下の `enabled: false` なら移行済みと読む。
->   フラグ（`ISTIO`）では判定しない（今回の意図であってクラスタの現状ではない）。`k8s-local-down.sh` の `traefik_service_disabled` と同じ資源を見る。
+> - **判定**: `[1/7]` の直後・副作用より前に、HelmChartConfig の `valuesContent` がトップレベルの `service:` 直下に `enabled: false` を持てば移行済みと読む。
+>   フラグ（`ISTIO`）では判定しない（今回の意図であってクラスタの現状ではない）。読めないときは未移行へ倒す（見落としても反映待ちが非 0 で止まり、黙らない）。
+>   判定は `scripts/lib/edge-state.sh` の 1 本だけで、`k8s-local-down.sh` の `traefik_service_disabled` も同じ口を呼ぶ（監査 #1694 の推奨で 1 本化。
+>   以前の down は「どこかに `enabled: false`」で up より緩かった）。入れ子の `x.service.enabled` や引用符つきの `"false"` は未移行と読む（表は作業仕様書）。
 > - **移行済み ＋ `ISTIO=1`**: Traefik を前提とする 4 処理（`apply -k deploy/local/edge`・`wait svc/traefik`・Traefik 向け CoreDNS・`argocd-ingress.yaml`）を飛ばし、
 >   エッジ TLS と `istio-edge-up.sh`（冪等）は従来どおり走らせる。`[6/7]` は入口が既に Envoy なので要求どおりの mTLS モードを宣言する（STRICT を一時降格しない）。
 > - **移行済み ＋ `LOCALEDGE=1` のみ（`ISTIO` 無し）**: `[2/7]` の前に非 0 で止め、「`ISTIO=1` を付けて再実行」か「先に `istio-edge-down.sh --live`（決定 7）で戻す」を告げる。
