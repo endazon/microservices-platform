@@ -513,7 +513,28 @@ PR 時点で SAST の指摘が一切出なくなる。**`paths:` を持つため
 > - 実測（run 36433900638・head 85dd86f）: Platform.Bff.Tests は単独の脚で 27.7 秒（4 並列の下では 63〜65 秒）。platform の脚の step は 65 / 80 秒（従来 103〜110 秒）、
 >   脚の完了は脚の開始から 89 / 110 秒（従来 128〜141 秒）。律速は knowledge の脚（脚の開始から 130〜145 秒）へ戻った。この run は `discover-units` が
 >   ランナー待ちで 39 秒遅れて始まり（従来 7 秒）、knowledge 2/3 のキャッシュ復元が 57 秒掛かった（従来 5〜8 秒）ため、オフセットは参考値である。
-> - 🔴 **148 秒を下回るとはまだ言えない。** `ci.yml` を触らない PR の `build-and-test` の完了は、脚の所要から見積もって約 147〜162 秒、最終構成の実測 2 run
->   （run 36433900638 をランナー待ちなしに換算・run 36435375359〔全脚の完了 160 秒〕）では約 167〜175 秒である。
+> - 🔴 **148 秒を下回るとはまだ言えない。** `ci.yml` を触らない PR の `build-and-test` の完了の見積もり（見積もりの式と run ごとの値は追記 3）は、
+>   この構成の run 36433900638 / 36435375359 で 173（キャッシュ遅れを除くと 162）/ 174 秒である。
 >   残りは knowledge の脚（固定費 約 18 秒＋restore / build 約 60 秒＋最も重いシャードの test 26〜43 秒）で、下限は ConversionService を含む 3/3 である。
 >   判定はマージ後の ci-latency の週次 run に委ね、再び鳴ったら knowledge のシャードの組み替え（ConversionService を単独にする等）を裁定に掛ける。
+
+> **［2026-09-28 追記 3 / #1686］knowledge の 3 シャードを組み替えた。最長脚は縮まず、148 秒には届かない。本 PR は #1686 を閉じない。**
+>
+> - 組み替え: シャード化後の各脚のログ（run 36430633926 / 36435375359）の所要から、最も重い 3 本（ConversionService 41〜51 秒・GraphService 32〜35 秒・
+>   DocumentService 28 秒）を別の脚へ分け、ConversionService の脚には軽いもの（AiAnalysis / Feedback / Contracts）だけを組ませた。シャード数は 3 のまま
+>   （4 脚にして ConversionService を単独にする案は、固定費 約 78 秒の脚を 1 本増やすだけで、軽い同居なら単独とほぼ同じ見込みのため採らない）。
+> - 実測（run 36437032894・head d832b9a）: ConversionService.Tests は軽い同居でも 44.9 秒で縮まなかった（所要は同居の重さではなく、それ自身の重さで決まる）。
+>   最も遅い脚の所要は 133 秒で、組み替え前（130〜146 秒）の範囲に留まった。
+> - 見積もりの式（追記 2 と作業仕様書の値はこれにそろえた）: 普通の PR の `build-and-test` の完了 ＝ 脚の開始の遅れ 13 秒（ランナー待ちの無い run の実測）
+>   ＋ 最も遅い脚の所要（脚の開始から完了まで）＋ 集約ジョブ自身の所要 15 秒。改善前 200 秒（実測）→ knowledge 3・platform 1 で 160 / 170 秒 →
+>   knowledge 3・platform 2 で 173（162）/ 174 / 161 秒。**最終構成は約 161〜174 秒で、3 run とも 148 秒を上回る。**
+> - 下限: 律速は knowledge の脚で、「脚の準備・取得・キャッシュ 約 18 秒＋restore / build 約 60 秒＋ConversionService.Tests 1 本 約 45 秒」≒ 123 秒。
+>   シャードの割り当てではこれ以上縮まない。
+> - 代償（明記する）: **試験プロジェクトを 1 本足すたびに `scripts/backend-test-shards.json` の編集が要る**（knowledge / platform とも）。載せ忘れは
+>   `discover-units` を落として PR を赤にする（黙って走らない試験は作らない）。この手間を避けるため自動割り当てにする案は、重みの表が別に要り、割り当てが
+>   レビューで読めなくなるので採らない。手順は `docs/tech/composable-component-guide.md` §2.5 に足した。
+> - 集約ジョブの判定の固定（監査 M6）: `build-and-test` が前段 3 つ（discover-units / backend-build / submodule-changes）の結果を「success 以外は失敗」で
+>   判定していることを repo test で固定した。`= "failure"` へ弱めると、行列が 0 脚・取り消しの skipped / cancelled が緑で素通りする。
+> - 残余（本件では行わない。裁定事項）: 集約ジョブの setup-node をやめる（約 5 秒）／各脚に重なる restore / build（約 60 秒）をビルド成果物の再利用で
+>   減らす／ConversionService.Tests 自体を速くする。判定はマージ後の ci-latency の週次 run に委ね、本 PR は `Refs #1686` とする（#1686 は開いたまま）。
+

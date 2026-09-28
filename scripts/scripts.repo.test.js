@@ -329,6 +329,14 @@ module.exports = ({ ok, assert }) => {
       assert.match(bt, /^    needs:\s*\[[^\]]*\bbackend-build\b[^\]]*\]/m, 'build-and-test が backend-build を needs に持たない');
       assert.match(bt, /pattern: coverage-\*/, '集約が全脚のカバレッジを拾わない');
       assert.ok(!/^    name:/m.test(job('backend-format')), 'backend-format の名前を変えている（本件の範囲外）');
+      // 監査 M6: 集約の判定を `= "failure"` へ弱めると、cancelled / skipped（行列が 0 脚・前段の取り消し）が素通りして緑になる。
+      // 前段 3 つの結果は「success 以外はすべて失敗」の形で判定していることを固定する。
+      const btc = code(bt);
+      for (const v of ['DISCOVER_RESULT', 'BUILD_RESULT', 'SUBMODULE_CHANGES_RESULT']) {
+        assert.ok(new RegExp(`if \\[ "\\$${v}" != "success" \\]; then\\n[^\\n]*\\n\\s*exit 1`).test(btc),
+          `build-and-test が ${v} を「!= success なら exit 1」で判定していない（skipped / cancelled が素通りする）`);
+        assert.ok(!new RegExp(`"\\$${v}" = "failure"`).test(btc), `build-and-test が ${v} を failure だけで判定している`);
+      }
     });
 
     ok('#1686: 脚の手順（dotnet はスタブ）—— シャードは一時の slnx へ絞ってテストし、ビルドは backend.slnx 全体に掛ける', () => {

@@ -91,6 +91,18 @@ issue: "#1686"
   | 3/3 | GraphService / AiAnalysisService / ConversionService / RetrievalService | 128.2（同 113.1） |
 
 - 見積もり: 各シャードの test ≒ 30〜55 秒（最長 1 本が下限）。脚の step ≒ 7 + 55 + 55 ≒ 115 秒以下 → knowledge は platform（109 秒）と同程度になる。
+- ［2026-09-28 組み替え］上表は最初の割り当て（run 1〜4）である。シャード化後の各脚のログ（run 36430633926 / 36435375359）の所要から、最長脚が
+  最小になるよう組み替えた。最も重い 3 本（Conversion 41〜51 秒・Graph 32〜35 秒・Document 28 秒）を別の脚へ分け、Conversion の脚には軽いものだけを組ませた。
+  シャード数は 3 のまま（4 脚にして Conversion を単独にする案は、固定費 約 78 秒を払う脚を 1 本増やすだけで、軽い同居なら単独とほぼ同じになる見込みのため）。
+
+  | シャード | 試験プロジェクト | 合計（秒） |
+  | --- | --- | --- |
+  | 1/3 | ConversionService / AiAnalysisService / FeedbackService / Knowledge.Contracts.Tests | 81.8 |
+  | 2/3 | GraphService / RetrievalService / WikiService / Knowledge.IntegrationTests | 100.0 |
+  | 3/3 | DocumentService / DataSourceService / IngestionService / DashboardService | 99.8 |
+
+  結果（run 5）: Conversion は軽い同居でも 44.9 秒で縮まず、最長脚は縮まなかった（結果の節を参照）。割り当ては戻さない（戻しても最長脚は同じで、
+  各脚の合計はこちらのほうが均等なため）。
 - platform（範囲の拡張後）: 2 シャード。根拠は run 36360190149 / 36431967761 の platform の脚のログ（4 並列の Total time。同時に始まる 4 本は
   Passed 行の名前空間の件数で同定）: Platform.Bff.Tests 62.8 / 65.5、LlmGateway 32.3 / 30.9、AuthorizationService 26.4 / 24.0、McpServer 22.0 / 18.0、
   NotificationService 20.4 / 19.9、Platform.Shared.Infrastructure 18.5 / 16.8、Platform.Shared.Kernel 9.6 / 9.1。
@@ -138,6 +150,7 @@ issue: "#1686"
 | `.github/workflows/ci.yml` `backend-build` の脚の名前の注記「platform は `backend-build (platform)` を保つ」（範囲の拡張で誤りになる） | **直す**（注記のみ。手順・行列は変えない） |
 | `scripts/scripts.repo.test.js` #1686 節「platform はシャードしない脚」の検査（範囲の拡張で誤りになる） | **直す**（実データの節を platform にも掛ける） |
 | `.ai-context/adr/IADR-0232` の 2026-09-28 追記の platform の記述（決定 2 との関係・残余・実測） | **追記 2 で更新**（本文は直さず、追記 2 が置き換えを明記する） |
+| `docs/tech/composable-component-guide.md` §2.5「`backend.slnx` に csproj を登録する」（監査の指摘。試験プロジェクトを足す手順に JSON への追記が抜ける） | **追記**（knowledge / platform ではシャードの設定へも足す。表示テキストに ID は書かない） |
 | `.ai-context/specs/**`・`CHANGELOG.md` | 除外（凍結記録・生成物） |
 
 ## 受け入れ基準
@@ -147,17 +160,19 @@ issue: "#1686"
 - [x] 必須 check 名 `build-and-test` は変わらず、全脚の成功を集める。ruleset・ブランチ保護は変えない。起動条件（`on:`）は変えない。
 - [x] 「試験プロジェクトの集合 ＝ シャードの和・各 1 回」を repo test が knowledge と platform の実データで固定し、崩すと赤になる（変異で確かめた）。
 - [x] カバレッジ artifact が脚ごとに一意（key と label の一意を repo test が固定）で、集約の `--report-only` が従来と同じ母集合を集計する。
-- [x] 律速の経路（backend-build の最後の脚の完了）が改善前（run 36360190149 で 185 秒）より縮む（ランナー待ちを除いて 132〜152 秒）。
-- [ ] `ci.yml` を触らない PR の `build-and-test` の完了が閾値 148 秒を下回る —— **未達の見込み**（見積もり 147〜167 秒。結果を参照）。
+- [x] 律速の経路（最も遅い脚の所要）が改善前（run 36360190149 で 177 秒）より縮む（最終構成で 133〜146 秒）。
+- [ ] `ci.yml` を触らない PR の `build-and-test` の完了が閾値 148 秒を下回る —— **未達の見込み**（最終構成の見積もり 約 161〜174 秒。結果を参照）。
       判定はマージ後の ci-latency の週次 run に委ねる。
 - [x] 閾値（`check-ci-latency.js`）は変えない。テストの skip・無効化をしない。
 
 ## テスト方針
 
-- `scripts.repo.test.js` に #1686 節（4 件）: 実データの集合一致 / 導出器の崩れ 6 種 / `ci.yml` の配線 / 脚の手順を dotnet のスタブで走らせる振る舞い。
+- `scripts.repo.test.js` に #1686 節（4 件）: 実データの集合一致 / 導出器の崩れ 6 種 / `ci.yml` の配線（集約が前段 3 つの結果を「success 以外は失敗」で判定することを含む。監査 M6） / 脚の手順を dotnet のスタブで走らせる振る舞い。
 - 変異（コミット後）: ①設定から試験プロジェクトを 1 つ落とす ②`ci.yml` の artifact 名を `coverage-${{ matrix.unit }}` へ戻す ③脚の手順で
   一時の slnx ではなく `backend.slnx` を試す ④試験プロジェクトを 2 シャードに重ねる ⑤platform のシャードから試験プロジェクトを 1 本落とす
-  ⑥platform の Bff を 2 シャードに重ねる —— いずれも repo test が赤になることを確かめ、`git show HEAD:<path>` で戻す。
+  ⑥platform の Bff を 2 シャードに重ねる ⑦（組み替え後）1/3 から ConversionService を落とす ⑧2/3 から IntegrationTests を落とす
+  ⑨Document を 1/3 にも重ねる ⑩Conversion を 3/3 にも重ねる ⑪（監査 M6）集約 `build-and-test` の `BUILD_RESULT != "success"` を `= "failure"` へ弱める
+  —— いずれも repo test が赤になることを確かめ、`git show HEAD:<path>` で戻す。
 - 本 PR 自身の CI（`backend-build (knowledge 1/3〜3/3)` / `(platform 1/2〜2/2)`）が実測になる。
 
 ## 計画書との差異
@@ -211,22 +226,36 @@ issue: "#1686"
 - 🔴 この run は `discover-units` がランナー待ちで 39 秒遅れて始まり（run 1・2 は 7〜10 秒）、knowledge 2/3 のキャッシュ復元が 57 秒掛かった
   （従来 5〜8 秒）。オフセットはその分だけ膨らんでいる。脚が 4 → 5 本へ増えたことが待ちに効いたかは、この 1 run では切り分けられない。
 
-### 計測表（オフセットは check 群の開始から。`build-and-test` の実測は本 PR が `ci.yml` を触るので AST の合成ビルドを待った値）
+### PR の CI（run 36437032894・head d832b9a。knowledge を組み替えた後）
 
-| run | 構成 | platform の脚の完了 | 全脚の完了 | `build-and-test` の完了（実測） | `ci.yml` を触らない PR の見積もり |
-| --- | --- | --- | --- | --- | --- |
-| 36360190149（改善前） | knowledge 1 脚・platform 1 脚 | 136 秒 | 185 秒 | 200 秒 | 200 秒 |
-| 36430633926（run 1） | knowledge 3・platform 1 | 140 秒 | 144 秒 | 240 秒 | 159 秒 |
-| 36431967761（run 2） | knowledge 3・platform 1 | 155 秒 | 155 秒 | 308 秒 | 170 秒 |
-| 36433900638（run 3） | knowledge 3・platform 2 | 139 / 160 秒 | 195 秒（ランナー待ち 32 秒を除くと 163 秒） | 285 秒 | 約 167〜178 秒（待ちを除く） |
-| 36435375359（run 4・head 52398539。記録だけの変更で構成は run 3 と同じ） | knowledge 3・platform 2 | 113 / 113 秒 | **160 秒**（knowledge 3/3。step 117 秒） | 337 秒 | 約 175 秒 |
+- 全ジョブ緑。knowledge の各脚の「Test run for」は 4 本ずつ（1/3: AiAnalysis / Conversion / Feedback / Contracts、2/3: Graph / Wiki /
+  IntegrationTests / Retrieval、3/3: Dashboard / Ingestion / Document / DataSource）で、計 12 本・重複なし・失敗 0。
+- 脚の test（壁時計）は 46.7 / 34.8 / 40.6 秒。**ConversionService.Tests は軽いものとだけ同居させても 44.9 秒**で、組み替え前の 3/3（41.3 / 51.3 秒）と
+  ほとんど変わらなかった。ConversionService の所要は同居の重さではなく、それ自身の重さで決まっている。DocumentService は重いもの（DataSource）と
+  同居して 28 → 39 秒に伸びた。**組み替えで最長脚は縮まなかった**（脚の開始から完了まで 133 秒。組み替え前は 130〜146 秒）。
+- この run も `discover-units` がランナー待ちで 28 秒遅れて始まった。
 
-- 見積もりは「全脚の完了 ＋ 集約ジョブ自身の所要（13〜15 秒）」。run 3 の構成（platform も分けた形）を run 1・2 の脚の所要へ当てはめると、
-  platform の脚は脚の開始から 89 / 110 秒で終わるので律速は knowledge の脚（脚の開始から run 1: 132 秒・run 2: 119 秒・run 3: 134 秒
-  〔2/3 のキャッシュの遅れを除く〕）になり、見積もりは **約 147〜162 秒**。
-- 🔴 **普通の PR で閾値 148 秒を下回るとは言えない。** 最終構成の実測 2 run（run 3・4。ランナー待ちなし換算）は約 167〜175 秒で、脚の所要からの見積もり（147〜162 秒）より重い側に出た。中央値は 160〜170 秒と見込む。
-  platform のシャード化で platform は律速から外れた（脚の完了が約 20〜30 秒早まった）が、律速は knowledge の脚へ戻り、その下限は
-  「固定費 約 18 秒＋restore / build 約 60 秒＋3/3 の test 43 秒（ConversionService を含む）」である。
-- 次の手（いずれも裁定の対象。本 PR では行わない）: knowledge のシャードの組み替え（ConversionService を単独にする等。3/3 の test を
-  約 15 秒縮める見込み）／集約ジョブの setup-node をランナー既定の node へ替える（約 5 秒・別の関心事）。
+### 計測表
+
+オフセットは check 群の開始からの秒数。`build-and-test` の実測は、本 PR が `ci.yml` を触るので AST の合成ビルドを待った値である。
+**見積もりは全 run で同じ式にそろえた**: 普通の PR の見積もり ＝ 脚の開始の遅れ（ランナー待ちの無い run の実測 13 秒）＋ 最も遅い脚の所要
+（脚の開始から完了まで）＋ 集約ジョブ自身の所要 15 秒。ランナー待ちとキャッシュ復元の遅れはこの式で除かれる（run 3 の knowledge 2/3 の
+キャッシュ 57 秒だけは括弧内に除いた値を併記する）。
+
+| run | 構成（knowledge / platform） | platform の脚の完了 | 全脚の完了 | `build-and-test` の完了（実測） | 最も遅い脚の所要 | 普通の PR の見積もり |
+| --- | --- | --- | --- | --- | --- | --- |
+| 36360190149（改善前） | 1 / 1 | 136 秒 | 185 秒 | 200 秒 | 177 秒（knowledge） | 200 秒（実測） |
+| 36430633926（run 1） | 3 / 1 | 140 秒 | 144 秒 | 240 秒 | 132 秒（knowledge 3/3） | 160 秒 |
+| 36431967761（run 2） | 3 / 1 | 155 秒 | 155 秒 | 308 秒 | 142 秒（platform） | 170 秒 |
+| 36433900638（run 3） | 3 / 2 | 139 / 160 秒 | 195 秒 | 285 秒 | 145 秒（knowledge 2/3。キャッシュ遅れを除くと 134 秒） | 173 秒（162 秒） |
+| 36435375359（run 4・head 52398539） | 3 / 2 | 113 / 113 秒 | 160 秒 | 337 秒 | 146 秒（knowledge 3/3） | 174 秒 |
+| 36437032894（run 5・head d832b9a・組み替え後） | 3 / 2 | 134 / 141 秒 | 172 秒 | 262 秒 | 133 秒（knowledge 1/3） | 161 秒 |
+
+- 最終構成（knowledge 3・platform 2）の見積もりは run 3〜5 で **約 161〜174 秒**（中央 162〜173 秒）。改善前の 200 秒からは 26〜39 秒縮んだ。
+- 🔴 **普通の PR で閾値 148 秒を下回るとは言えない。** 最終構成の 3 run の見積もりはすべて 148 秒を上回った。律速は knowledge の脚で、その下限は
+  「脚の準備・取得・キャッシュ 約 18 秒＋restore / build 約 60 秒＋ConversionService.Tests 1 本 約 45 秒（シャードの割り当てでは縮まない）」≒ 123 秒、
+  ここに脚の開始の遅れ 13 秒と集約の 15 秒が乗る。
+- 残余（いずれも本 PR では行わない。裁定事項）: 集約ジョブの setup-node をやめる（約 5 秒）／各脚に重なる restore / build（約 60 秒）を
+  ビルド成果物の再利用で減らす（IADR-0232 の別の手）。ConversionService.Tests 自体を速くする（試験の中身の変更。本件の範囲外）。
   判定はマージ後に `ci.yml` の epoch 以降の PR が 3 本たまった時点の ci-latency の週次 run で確かめる（IADR-0241）。
+- 本 PR は #1686 を閉じない（`Refs #1686`）。逆転は縮んだが解消した実測は得られていないため。
