@@ -181,11 +181,13 @@ const PLAIN_STUB = (name) =>
 
 // #1564: docker スタブ。STUB_DOCKER_BUILD_FAIL に部分文字列を与えると、その語を引数に含む `docker build` だけを
 // 非0 で返す（例: platform-backup のイメージだけビルドに失敗する世界 = Alpine が age の -rN を上げた日）。
+// #1689: 失敗のときに出すビルドのログは STUB_DOCKER_BUILD_FAIL_LOG で与える（WARN が原因を分けるための入力）。
+//   既定は -rN が消えた日の実物の文言（Dockerfile は age をミラーのファイルで取るので busybox wget の 404 になる）。
 const DOCKER_STUB = [
   '#!/usr/bin/env bash',
   'echo "docker $*" >> "$STUB_LOG"',
   'if [ -n "${STUB_DOCKER_BUILD_FAIL:-}" ] && [ "${1:-}" = "build" ]; then',
-  '  case "$*" in *"$STUB_DOCKER_BUILD_FAIL"*) echo "stub: build failed (404 on age-1.3.1-r6.apk)" >&2; exit 1;; esac',
+  '  case "$*" in *"$STUB_DOCKER_BUILD_FAIL"*) printf \'%s\\n\' "${STUB_DOCKER_BUILD_FAIL_LOG:-wget: server returned error: HTTP/1.1 404 Not Found}" >&2; exit 1;; esac',
   'fi',
   'exit 0',
   '',
@@ -3787,19 +3789,161 @@ ok('🔴 #1564: platform-backup のイメージだけビルドに失敗しても
   assert.ok(!BACKUP_IMAGE_REF.test(imp), 'ビルドに失敗した platform-backup を取り込もうとした');
 });
 
-ok('🔴 #1564: 失敗したときは、CronJob が ImagePullBackOff で落ちることと Runbook の版上げの節を WARN で告げる', () => {
-  const err = BACKUP_BUILD_FAILS.stderr;
+// #1689: 案内の中身を分岐ごとに見分ける印。
+const HINT_BUMP = /platform-infra-backup-runbook\.md の「6\. イメージの版を上げる」/;
+const HINT_CREDS = /資格情報ヘルパーの失敗/;
+const HINT_UNKNOWN = /ビルドのログから判別できませんでした/;
+
+/** 3 分岐に共通する約束: どのイメージが落ちたか・影響する CronJob・起動は止めない。 */
+function assertBackupWarnCommon(r) {
+  const err = r.stderr;
+  assert.strictEqual(r.status, 0, `バックアップのイメージ 1 つで起動全体が止まった\nstderr:\n${err.slice(-2000)}`);
   assert.match(err, /WARN: k3d-local\/platform-backup:\S+ のビルドに失敗しました/, 'どのイメージが落ちたかを告げていない');
   assert.match(err, /platform-backup-postgres \/ platform-backup-vault/, '影響する CronJob を名指ししていない');
   assert.match(err, /ImagePullBackOff/, 'CronJob が ImagePullBackOff で失敗することを告げていない');
-  assert.match(
-    err,
-    /platform-infra-backup-runbook\.md の「6\. イメージの版を上げる」/,
-    'Runbook の版上げの節を指していない',
-  );
+}
+
+ok('🔴 #1564 / #1689: 版の解決に失敗したとき（ミラーの 404）は、Runbook の版上げの節へ導き、資格情報の案内は出さない', () => {
+  assertBackupWarnCommon(BACKUP_BUILD_FAILS);
+  const err = BACKUP_BUILD_FAILS.stderr;
+  assert.match(err, /原因: 版の解決に失敗しました/, '版の分岐の原因を告げていない');
+  assert.match(err, HINT_BUMP, 'Runbook の版上げの節を指していない');
+  assert.doesNotMatch(err, HINT_CREDS, '版の失敗なのに資格情報の案内を出した');
+  assert.doesNotMatch(err, HINT_UNKNOWN, '版の失敗なのに判別不能と告げた');
   // Runbook の節が実在する（指し先が腐らない）。
   const runbook = readAt(REPO_ROOT, 'docs', 'operations', 'platform-infra-backup-runbook.md');
   assert.match(runbook, /^## 6\. イメージの版を上げる/m, 'WARN が指す Runbook の節が無い');
+  assert.match(runbook, /^## 失敗したときの分岐/m, 'WARN が指す Runbook の「失敗したときの分岐」が無い');
+});
+
+// 2026-09-28 の稼働クラスタでの実ログ（#1689）。資格情報ヘルパーがメタデータの取得で失敗した。
+const BACKUP_BUILD_FAILS_CREDS = runUp({
+  STUB_DOCKER_BUILD_FAIL: 'platform-backup',
+  STUB_DOCKER_BUILD_FAIL_LOG: [
+    '#2 [internal] load metadata for docker.io/library/postgres:16.15-alpine3.24@sha256:7218',
+    '#2 ERROR: error getting credentials - err: exit status 22, out: `{ "errorCode" : 255 }`',
+  ].join('\n'),
+});
+
+ok('🔴 #1689: 資格情報ヘルパーの失敗（error getting credentials）は、ログイン・ヘルパー・再起動を案内し、版上げへ導かない', () => {
+  assertBackupWarnCommon(BACKUP_BUILD_FAILS_CREDS);
+  const err = BACKUP_BUILD_FAILS_CREDS.stderr;
+  assert.match(err, HINT_CREDS, '資格情報ヘルパーの失敗として案内していない');
+  assert.match(err, /age の版の問題ではありません/, '版の問題ではないことを告げていない');
+  assert.match(err, /docker login/, 'Docker Hub へのログインの手順が無い');
+  assert.match(err, /credsStore \/ credHelpers/, '資格情報ヘルパーの設定の確かめ方が無い');
+  assert.match(err, /再起動/, 'ランタイムの再起動の手順が無い');
+  assert.match(err, /§1 の 5 の手順でイメージを作り直して/, '直したあとの作り直しの手順が無い');
+  assert.doesNotMatch(err, HINT_BUMP, '🔴 資格情報の失敗なのに版上げの節へ導いた（#1689 の誤誘導）');
+  assert.doesNotMatch(err, /原因: 版の解決/, '資格情報の失敗なのに版の失敗と告げた');
+});
+
+// sha256 の不一致は「同じ版の中身が変わった」であり、版を上げて上書きしてよいものではない —— 判別不能の代表に使う。
+const BACKUP_BUILD_FAILS_UNKNOWN = runUp({
+  STUB_DOCKER_BUILD_FAIL: 'platform-backup',
+  STUB_DOCKER_BUILD_FAIL_LOG: [
+    '/tmp/tmp.x/age-1.3.1-r6.apk: FAILED',
+    'sha256sum: WARNING: 1 of 1 computed checksums did NOT match',
+  ].join('\n'),
+});
+
+ok('🔴 #1689: どちらにも当たらない失敗は、原因を断定せずログを見るよう案内する（版上げにも資格情報にも導かない）', () => {
+  assertBackupWarnCommon(BACKUP_BUILD_FAILS_UNKNOWN);
+  const err = BACKUP_BUILD_FAILS_UNKNOWN.stderr;
+  assert.match(err, HINT_UNKNOWN, '判別できないことを告げていない');
+  assert.match(err, /上に出ているビルドのログを確かめて/, 'ログを見るよう案内していない');
+  assert.match(err, /「失敗したときの分岐」/, 'Runbook の失敗の分岐を指していない');
+  assert.doesNotMatch(err, HINT_BUMP, '判別できないのに版上げの節へ導いた');
+  assert.doesNotMatch(err, HINT_CREDS, '判別できないのに資格情報の失敗と断定した');
+  assert.doesNotMatch(err, /可能性が高い/, '判別できないのに原因を推定で断定した');
+});
+
+ok('#1689: 分類器は実物の文言で 3 分岐を分ける（apk の 2 形・wget・資格情報・到達・食い違い・sha256・空・不在）', () => {
+  const lib = path.join(REPO_ROOT, 'scripts', 'lib', 'backup-image-build-cause.sh');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-cause-'));
+  // 失敗した RUN の本文（BuildKit はこれをログへそのまま出す）。字面の `$ALPINE_BRANCH と違います` を含む。
+  const runEcho =
+    'ERROR: process "/bin/sh -c set -eu; case ... echo \\"platform-backup: ベースの Alpine（$(cat /etc/alpine-release)）が ALPINE_BRANCH=$ALPINE_BRANCH と違います\\" >&2; exit 1 ;; esac; ..." did not complete successfully: exit code: 1';
+  const cases = [
+    ['#2 ERROR: error getting credentials - err: exit status 22, out: `{ "errorCode" : 255 }`', 'registry'],
+    ['failed to solve: failed to authorize: failed to fetch anonymous token: unexpected status: 401 Unauthorized', 'registry'],
+    ['ERROR: failed to do request: Head "https://registry-1.docker.io/v2/library/postgres/manifests/x": dial tcp: lookup registry-1.docker.io: no such host', 'registry'],
+    ['toomanyrequests: You have reached your pull rate limit.', 'registry'],
+    ["wget: bad address 'dl-cdn.alpinelinux.org'", 'registry'],
+    ['ERROR: unable to select packages:\n  age-1.3.1-r7:\n    breaks: world[age=1.3.1-r6]', 'version'],
+    ['age: unable to select package (or its dependencies)', 'version'],
+    [`wget: server returned error: HTTP/1.1 404 Not Found\n${runEcho}`, 'version'],
+    ['platform-backup: ベースの Alpine（3.25.0）が ALPINE_BRANCH=v3.24 と違います', 'version'],
+    // RUN の本文だけ（展開前の字面）では version に倒さない。
+    [runEcho, 'unknown'],
+    [`/tmp/x/age-1.3.1-r6.apk: FAILED\nsha256sum: WARNING: 1 of 1 computed checksums did NOT match\n${runEcho}`, 'unknown'],
+    ['', 'unknown'],
+    // 両方の語が載っても registry を先に見る（資格情報・到達の失敗を版上げへ導かない）。
+    ['#2 ERROR: error getting credentials - err: exit status 22\nwget: server returned error: HTTP/1.1 404 Not Found', 'registry'],
+    // 大文字を含む実物の表記（containerd の token 取得の失敗）。registry の検索は大文字小文字を区別しない。
+    ['failed to fetch oauth token: unexpected status from GET request to https://auth.docker.io/token: 401 Unauthorized', 'registry'],
+    // BuildKit の Dockerfile の抜粋（注釈に「unable to select package」の語が在る）だけでは version に倒さない。
+    [`${runEcho}\nDockerfile:27\n--------------------\n  24 |     # パッケージファイルは Alpine のミラーから直接取る。\n  25 | >>> # 「unable to select package」で止まった（CI で実測）。\n--------------------`, 'unknown'],
+  ];
+  const run = (file) => {
+    const r = spawnSync('bash', ['-c', '. "$1"; backup_image_build_cause "$2"', '_', lib, file], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, `分類器が非0 で終わった: ${r.stderr}`);
+    return r.stdout.trim();
+  };
+  const got = cases.map(([log], i) => {
+    const f = path.join(dir, `${i}.log`);
+    fs.writeFileSync(f, `${log}\n`);
+    return run(f);
+  });
+  assert.deepStrictEqual(got, cases.map(([, want]) => want), cases.map(([log]) => log.split('\n')[0]).join('\n'));
+  assert.strictEqual(run(path.join(dir, 'absent.log')), 'unknown', 'ログが無いのに断定した');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// #1689: Rancher Desktop（nerdctl）の経路でも、ビルドのログを採って分類する。起動器（k8s-local-up.sh）は
+// K8S_LOCAL_RUNTIME=k3d で固定して走らせているため（cluster create の経路を通すため）、ここは
+// k8s-local-images.sh を K8S_LOCAL_RUNTIME=rancher で直接、nerdctl の記録スタブの下で走らせる。
+function runImagesRancher(buildLog) {
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-images-rancher-'));
+  const binDir = path.join(workdir, 'bin');
+  fs.mkdirSync(binDir);
+  const logFile = path.join(workdir, 'commands.log');
+  fs.writeFileSync(logFile, '');
+  const stub = [
+    '#!/usr/bin/env bash',
+    'echo "nerdctl $*" >> "$STUB_LOG"',
+    'case "$*" in *" build "*platform-backup*) printf \'%s\\n\' "$STUB_NERDCTL_BUILD_FAIL_LOG" >&2; exit 1;; esac',
+    'exit 0',
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(binDir, 'nerdctl'), stub);
+  fs.chmodSync(path.join(binDir, 'nerdctl'), 0o755);
+  const r = spawnSync('bash', [path.join('scripts', 'k8s-local-images.sh')], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: binDir + path.delimiter + (process.env.PATH || ''),
+      STUB_LOG: logFile,
+      STUB_NERDCTL_BUILD_FAIL_LOG: buildLog,
+      K8S_LOCAL_RUNTIME: 'rancher',
+      LIVE: '1',
+    },
+  });
+  const lines = fs.readFileSync(logFile, 'utf8').split('\n').filter(Boolean);
+  fs.rmSync(workdir, { recursive: true, force: true });
+  return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+
+ok('🔴 #1689: Rancher（nerdctl）の経路でも、資格情報ヘルパーの失敗を registry として案内する（版上げへ導かない）', () => {
+  const r = runImagesRancher('#2 ERROR: error getting credentials - err: exit status 22, out: `{ "errorCode" : 255 }`');
+  assert.ok(
+    r.lines.some((l) => l.startsWith('nerdctl --namespace k8s.io build ') && BACKUP_IMAGE_REF.test(l)),
+    'nerdctl の経路で platform-backup をビルドしていない（試験の前提）',
+  );
+  assertBackupWarnCommon(r);
+  assert.match(r.stderr, HINT_CREDS, 'nerdctl の経路でビルドのログを分類できていない');
+  assert.doesNotMatch(r.stderr, HINT_BUMP, 'nerdctl の経路で資格情報の失敗を版上げへ導いた');
 });
 
 ok('#1564: 陽性対照 —— compose 由来の本体のイメージ（MAPPING）のビルド失敗は、従来どおり起動を止める', () => {
