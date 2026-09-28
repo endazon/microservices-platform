@@ -215,6 +215,22 @@ const KUBECTL_STUB = [
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
   'if [ "${STUB_TRAEFIK_ADMIN_MISSING:-}" = "1" ]; then case "$*" in *--for=jsonpath*svc/traefik*) exit 1;; esac; fi',
+  // #1691: **HelmChartConfig kube-system/traefik の状態の模型**（状態は "$STUB_LOG.edge-istio" の有無で持つ）。
+  //   - traefik-service-off.yaml の apply（istio-edge-up.sh [2/5]）で「Service 無し」になり、Service が消える。
+  //   - 「Service 無し」のときに `apply -k deploy/local/edge`（traefik-entrypoint.yaml を含む）が来ると入れ直し中になり、
+  //     helm-controller が 180 秒の待ちに間に合わない ＝ `wait svc/traefik` が NotFound で非 0（#1691 の実測の再現）。
+  //   - HelmChartConfig の valuesContent の問い合わせには、状態に応じて service-off か traefik-entrypoint の宣言を返す。
+  //   初期状態は runUp の STUB_EDGE_ON_ISTIO=1（前回の実行で移行済み）だけが作る。**起動器のフラグではなく模型の初期状態**である。
+  'EDGE_STATE="$STUB_LOG.edge-istio"; REINSTALL_STATE="$STUB_LOG.traefik-reinstalling"',
+  'case "$*" in *"apply -f deploy/local/edge-istio/traefik-service-off.yaml"*) : > "$EDGE_STATE";; esac',
+  'case "$*" in *"apply -k deploy/local/edge") if [ -e "$EDGE_STATE" ]; then rm -f "$EDGE_STATE"; : > "$REINSTALL_STATE"; fi;; esac',
+  'case "$*" in *"get helmchartconfig traefik"*valuesContent*)',
+  '  if [ -e "$EDGE_STATE" ]; then printf "service:\\n  enabled: false"; else cat "${STUB_TRAEFIK_MANIFEST:-' +
+    TRAEFIK_MANIFEST_REL +
+    '}"; fi; exit 0;;',
+  'esac',
+  'if [ -e "$EDGE_STATE" ] || [ -e "$REINSTALL_STATE" ]; then case "$*" in *"get svc traefik"*) exit 1;; esac; fi',
+  'if [ -e "$REINSTALL_STATE" ]; then case "$*" in *--for=jsonpath*svc/traefik*) echo \'Error from server (NotFound): services "traefik" not found\' >&2; exit 1;; esac; fi',
   // #1287: 除外を持つ 3 サービスの rollout が揃わない世界（イメージが古い・Secret 待ち等）を作る。
   // ADR-0076 決定 4「除外できない構成では配備しない」の**陽性対照**である —— これが無いと
   // 「配備しない」側は一度も実行されず、門は「在るが測っていない」ままになる。
@@ -244,6 +260,8 @@ function runUp(extraEnv) {
   fs.mkdirSync(binDir);
   const logFile = path.join(workdir, 'commands.log');
   fs.writeFileSync(logFile, '');
+  // #1691: 模型の初期状態「前回の実行で入口を Istio へ移し済み」（HelmChartConfig traefik が service.enabled: false）。
+  if (extraEnv.STUB_EDGE_ON_ISTIO === '1') fs.writeFileSync(`${logFile}.edge-istio`, '');
 
   const write = (name, body) => {
     const p = path.join(binDir, name);
@@ -3140,8 +3158,9 @@ ok('#1159: ISTIO=1 かつ LOCALEDGE=1 なら [6/7] は PERMISSIVE を宣言す�
 });
 
 ok('#1159: STRICT への昇格は入口を Envoy へ移した後に来る（順序は 2 本のスクリプトを跨いで固定する）', () => {
-  // 🔴 ハーネスでは測れない —— istio-edge-up.sh は「Traefik の Service が消えるのを待つ」段で
-  //   スタブ相手には永久に成立せず、そこで非 0 終了する。順序は**テキストで**固定する。
+  // 順序は**テキストで**固定する。［2026-09-28 / #1691］以前はスタブ相手に「Traefik の Service が消えるのを待つ」段が
+  //   成立せず、ハーネスでは測れなかった。今は HelmChartConfig の模型が Service を消すので istio-edge-up.sh は最後まで走る。
+  //   ここは 2 本のスクリプトの宣言の順序を固定する検査として据え置く（実行順は #1691 の節が見る）。
   const upAt = UP_SH.indexOf('scripts/istio-edge-up.sh');
   const installAt = UP_SH.indexOf('helm upgrade --install msp');
   assert.ok(installAt > 0 && upAt > installAt, 'k8s-local-up.sh で入口の移設が [6/7] より前に来ている');
@@ -3154,6 +3173,106 @@ ok('#1159: STRICT への昇格は入口を Envoy へ移した後に来る（順�
 ok('#1159: ISTIO 未設定なら mesh.* の --set が 1 つも足されない（既定のバイト等価）', () => {
   const line = DEFAULT.lines.find((l) => HELM_UPGRADE_RE.test(l));
   assert.ok(!line.includes('mesh.'), `既定なのに mesh.* が付いている: ${line}`);
+});
+
+// ---- #1691: 入口を Istio へ移した後の再実行は Traefik へ戻さず、待たない ------------------------------
+//
+// 稼働クラスタの実測（2026-09-28。2026-09-14 に続き 2 回目）: 移行済みのクラスタで LOCALEDGE=1 ISTIO=1 を再実行すると、
+// `apply -k deploy/local/edge` が HelmChartConfig traefik を Service ありへ戻し、helm-controller の入れ直しが
+// `wait svc/traefik`（180 秒）に間に合わず rc=1 で止まった（後段の istio-edge-up.sh・seed が走らない）。
+// 判定は**クラスタの状態**（HelmChartConfig の中身）で行う。同じフラグで、模型の初期状態だけを変えて比べる。
+// 模型は kubectl スタブの #1691 節（traefik-service-off の apply で Service が消え、戻すと入れ直しで待ちが落ちる）。
+
+const EDGE_APPLY = 'kubectl apply -k deploy/local/edge'; // 末尾一致で見る（deploy/local/edge/tls と区別する）
+const isEdgeApply = (l) => l === EDGE_APPLY;
+const isTraefikWait = (l) => l.startsWith('kubectl ') && l.includes('--for=jsonpath') && l.includes('svc/traefik');
+const isTraefikCoreDns = (l) => l.includes('apply -f deploy/local/aliases/coredns-edge-hosts.yaml');
+const isArgocdIngress = (l) => l.includes('apply -f deploy/local/edge/argocd-ingress.yaml');
+const isServiceOff = (l) => l.includes('apply -f deploy/local/edge-istio/traefik-service-off.yaml');
+const isGatewayInstall = (l) => l.startsWith('helm upgrade --install istio-ingressgateway ');
+const isHelmChartConfigProbe = (l) =>
+  l.startsWith('kubectl ') && l.includes('get helmchartconfig traefik') && l.includes('valuesContent');
+
+const EDGE_FRESH = runUp({ ISTIO: '1', LOCALEDGE: '1' });
+const EDGE_MIGRATED = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1' });
+
+ok('#1691: 移行済み（HelmChartConfig traefik が service.enabled: false）なら Traefik へ戻さず、待たずに完走する', () => {
+  const r = EDGE_MIGRATED;
+  assert.strictEqual(r.status, 0, `移行済みの再実行が止まった（#1691 の再発）:\n${r.stderr.slice(-600)}`);
+  assert.ok(r.lines.some(isHelmChartConfigProbe), 'HelmChartConfig の状態を読んでいない（フラグで判定している）');
+  assert.ok(!r.lines.some(isEdgeApply), `HelmChartConfig を Service ありへ戻した: ${EDGE_APPLY}`);
+  assert.ok(!r.lines.some(isTraefikWait), 'Traefik の反映待ち（wait svc/traefik）を走らせた');
+  assert.ok(!r.lines.some(isTraefikCoreDns), 'pod 側の *.localhost を Traefik へ向ける CoreDNS を当てた');
+  assert.ok(!r.lines.some(isArgocdIngress), 'Traefik しか読まない argocd-ingress を当てた');
+  // Istio の入口も使うエッジ TLS は飛ばさない（ClusterIssuer local-edge-ca は istio-edge-up.sh の前提）。
+  assert.ok(r.lines.some((l) => l.endsWith('apply -k deploy/local/edge/tls')), 'エッジ TLS（cert-manager）まで飛ばした');
+  assert.match(r.stdout, /Istio Ingress Gateway へ移し済み/, '飛ばしたことを告げていない');
+});
+
+ok('#1691: 移行済みでも istio-edge-up.sh は呼ばれる（冪等な確認。Gateway・経路・CoreDNS を当て直す）', () => {
+  const r = EDGE_MIGRATED;
+  assert.ok(r.lines.some(isServiceOff), 'istio-edge-up.sh の [2/5]（traefik-service-off の apply）が無い');
+  assert.ok(r.lines.some(isGatewayInstall), 'istio-edge-up.sh の [3/5]（istio-ingressgateway の helm）が無い');
+  assert.ok(
+    r.lines.some((l) => l.endsWith('apply -k deploy/local/edge-istio-reset-floor')),
+    'istio-edge-up.sh の [4/5]（経路の apply）が無い',
+  );
+  assert.match(r.stdout, /OK: エッジは istio-ingressgateway です。/, 'istio-edge-up.sh が最後まで走っていない');
+});
+
+ok('#1691: 未移行なら従来どおり（Traefik を当て、反映を待ち、CoreDNS を向けてから istio-edge-up.sh）', () => {
+  const r = EDGE_FRESH;
+  assert.strictEqual(r.status, 0, `未移行の LOCALEDGE=1 ISTIO=1 が止まった:\n${r.stderr.slice(-600)}`);
+  const at = (pred, what) => {
+    const i = r.lines.findIndex(pred);
+    assert.ok(i >= 0, `未移行なのに ${what} が無い`);
+    return i;
+  };
+  const probe = at(isHelmChartConfigProbe, 'HelmChartConfig の状態の読み取り');
+  const apply = at(isEdgeApply, EDGE_APPLY);
+  const wait = at(isTraefikWait, 'wait svc/traefik');
+  const dns = at(isTraefikCoreDns, 'Traefik 向け CoreDNS');
+  const argo = at(isArgocdIngress, 'argocd-ingress');
+  const off = at(isServiceOff, 'istio-edge-up.sh の traefik-service-off');
+  assert.ok(probe < apply && apply < wait && wait < dns && dns < argo && argo < off, '従来の順序が崩れている');
+  assert.ok(!r.stdout.includes('移し済み'), '未移行なのに「移し済み」と告げた');
+});
+
+ok('#1691: 移行済みで ISTIO を指定しない LOCALEDGE=1 は、何も書き換える前に止まり 2 つの道を告げる', () => {
+  const r = runUp({ LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1' });
+  assert.notStrictEqual(r.status, 0, '移行済みなのに LOCALEDGE=1 だけで Traefik 経路へ進んだ（ポートを取り合う）');
+  assert.match(r.stderr, /istio-edge-down\.sh --live/, 'Traefik へ戻す正規の手段（istio-edge-down.sh）を告げていない');
+  assert.match(r.stderr, /ISTIO=1 LOCALEDGE=1/, 'Istio のまま再実行する指定を告げていない');
+  assert.ok(!r.lines.some(isEdgeApply), 'Traefik へ戻してから止まった');
+  assert.ok(!r.lines.some((l) => HELM_UPGRADE_RE.test(l)), '[6/7] の helm upgrade（mesh の --set 無し）まで進んだ');
+  assert.ok(!r.lines.some((l) => l.startsWith('docker build ')), '[2/7] 以降へ進んでから止まった（判定は副作用より前）');
+});
+
+ok('#1691: 移行済みなら [6/7] は要求どおり STRICT を宣言する（入口は既に Envoy。再実行のたびに緩めない）', () => {
+  const line = runUp({ ISTIO: '1', LOCALEDGE: '1', ISTIO_MTLS_MODE: 'STRICT', STUB_EDGE_ON_ISTIO: '1' }).lines.find((l) =>
+    HELM_UPGRADE_RE.test(l),
+  );
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.ok(line.includes('--set mesh.mtlsMode=STRICT'), `移行済みなのに PERMISSIVE へ降格した: ${line}`);
+});
+
+ok('#1691: 陽性対照 —— 模型は #1691 を再現する（移行済みで Traefik を当て直すと反映待ちが NotFound で落ちる）', () => {
+  // 起動器の分岐を通さず、模型そのものが「戻すと落ちる」世界を持つことを確かめる（持たなければ上の試験は何も守らない）。
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-up-1691-'));
+  const log = path.join(workdir, 'commands.log');
+  fs.writeFileSync(log, '');
+  fs.writeFileSync(`${log}.edge-istio`, '');
+  const stub = path.join(workdir, 'kubectl');
+  fs.writeFileSync(stub, KUBECTL_STUB);
+  fs.chmodSync(stub, 0o755);
+  const env = { ...process.env, STUB_LOG: log };
+  const run = (...args) => spawnSync(stub, args, { cwd: REPO_ROOT, env, encoding: 'utf8' });
+  assert.notStrictEqual(run('-n', 'kube-system', 'get', 'svc', 'traefik').status, 0, '移行済みなのに Service が在る');
+  assert.strictEqual(run('apply', '-k', 'deploy/local/edge').status, 0);
+  const wait = run('-n', 'kube-system', 'wait', "--for=jsonpath={.spec.ports[?(@.name==\"admin\")].port}=50000", 'svc/traefik');
+  fs.rmSync(workdir, { recursive: true, force: true });
+  assert.notStrictEqual(wait.status, 0, '模型が #1691（入れ直しが待ちに間に合わない）を再現しない');
+  assert.match(wait.stderr, /services "traefik" not found/);
 });
 
 // ---- #1316: ISTIO=1 の別名はサイドカー注入より前に当たる ----------------------------------
