@@ -108,6 +108,34 @@ else
   echo "    Rancher Desktop 内蔵 k3s を使用（context: $(kubectl config current-context))"
 fi
 
+# NFR, ADR-0021, IADR-0317 (#1691): **入口がすでに Istio Ingress Gateway へ移っているかを、クラスタの状態で読む。**
+#   前回の istio-edge-up.sh が HelmChartConfig kube-system/traefik を `service.enabled: false`
+#   （deploy/local/edge-istio/traefik-service-off.yaml）にしていれば移行済みである。**フラグ（ISTIO）では判定しない** ——
+#   フラグは「今回の意図」であって「クラスタの現状」ではない。HelmChartConfig が無い・読めない・Service ありの形なら未移行。
+#   🔴 移行済みのクラスタへ LOCALEDGE の段が `apply -k deploy/local/edge` を当てると、HelmChartConfig が Service ありへ戻り、
+#   helm-controller の入れ直しが `wait svc/traefik`（180 秒）より遅くて rc=1 で止まる。作り直された svclb-traefik は
+#   80/443/50000 を istio-ingressgateway と取り合って Pending のまま残る（#1691。2026-09-14 に続き 2 回目）。
+#   判定は k8s-local-down.sh と共有する単一の口（scripts/lib/edge-state.sh）。ここへ複写しない（監査 #1694）。
+# shellcheck source=scripts/lib/edge-state.sh
+. "$ROOT/scripts/lib/edge-state.sh"
+edge_on_istio() { edge_traefik_service_off kubectl; }
+EDGE_ON_ISTIO=0
+if [ "${LOCALEDGE:-}" = "1" ] && edge_on_istio; then
+  EDGE_ON_ISTIO=1
+  # 🔴 移行済みで ISTIO を指定しない再実行は、**何も書き換えないうちに止める**（fail-closed）。
+  #   Istio のままのつもりで付け忘れたのか、Traefik へ戻したいのかは読めない。どちらでも従来の Traefik 経路は誤りである ——
+  #   istio-ingressgateway を撤去しないまま Traefik を戻すと hostPort を取り合い、[6/7] は mesh の --set 無しで
+  #   メッシュ設定を黙って外す。戻す正規の手段は istio-edge-down.sh の 1 コマンドである（IADR-0317 決定 7 の順序を持つ）。
+  if [ "${ISTIO:-}" != "1" ]; then
+    echo "ERROR: 入口はすでに Istio Ingress Gateway へ移っています（HelmChartConfig kube-system/traefik が service.enabled: false）。" >&2
+    echo "       LOCALEDGE=1 だけでは再実行できません（Traefik へ戻す処理が Istio の入口とポートを取り合います。#1691）。どちらかを選んでください:" >&2
+    echo "       - Istio の入口のまま再実行する: ISTIO=1 LOCALEDGE=1 bash scripts/k8s-local-up.sh --live" >&2
+    echo "       - Traefik へ戻す: 先に bash scripts/istio-edge-down.sh --live を実行してから LOCALEDGE=1 で再実行する" >&2
+    exit 1
+  fi
+  echo "    入口は Istio Ingress Gateway へ移し済み（HelmChartConfig traefik: service.enabled: false）。Traefik へ戻す段と待ちは飛ばす（#1691）"
+fi
+
 echo "==> [2/7] build & import images"
 bash "$ROOT/scripts/k8s-local-images.sh" "$CLUSTER"
 
@@ -421,8 +449,10 @@ if [ "${ISTIO:-}" = "1" ]; then
   #   🔴 **昇格も helm で行う。`kubectl patch` では書かない** —— Helm 4 はサーバサイド apply なので
   #   patch が field manager を奪い、以後の helm upgrade が conflict で恒久的に失敗する
   #   （#1159 の「手動 patch によるドリフト」の正体。scripts/lib/mesh-mtls-mode.sh 冒頭に実測を置いた）。
+  #   #1691: **入口がすでに Istio へ移っている再実行では降格しない**（EDGE_ON_ISTIO。[1/7] の後でクラスタの状態から読む）。
+  #   入口は既に Envoy であり、降格の理由（入口がメッシュ外の Traefik）が無い。再実行のたびに STRICT → PERMISSIVE → STRICT と緩めない。
   ISTIO_MTLS_MODE_AT_INSTALL="${ISTIO_MTLS_MODE:-PERMISSIVE}"
-  if [ "${LOCALEDGE:-}" = "1" ] && [ "${ISTIO_MTLS_MODE:-}" = "STRICT" ]; then
+  if [ "${LOCALEDGE:-}" = "1" ] && [ "${ISTIO_MTLS_MODE:-}" = "STRICT" ] && [ "$EDGE_ON_ISTIO" != "1" ]; then
     ISTIO_MTLS_MODE_AT_INSTALL="PERMISSIVE"
   fi
   ISTIO_MESH_ARGS="--set mesh.enabled=true --set mesh.mtlsMode=${ISTIO_MTLS_MODE_AT_INSTALL} --set namespace.istioInjection=true --set mesh.backchannelLogout.fromOutsideMesh=true"
@@ -453,6 +483,15 @@ if [ "${LOCALEMBED:-}" = "1" ]; then
   LOCALEMBED_ARGS="--set embedding.deterministicLocal.enabled=true"
 fi
 echo "==> [6/7] helm upgrade --install (values-local)"
+# NFR, IADR-0210 決定 7, #1688: **後から Recreate へ変えた Deployment は、既存リリースに RollingUpdate の既定値
+#   （spec.strategy.rollingUpdate）が残っている。** Helm 4 の SSA はそれを消さず（チャートの `rollingUpdate: null` でも
+#   消えないことを実測）、`type: Recreate` と同居して upgrade 全体が落ちる。helm の前に冪等な patch で寄せる。
+#   列挙はチャートで `type: Recreate` を宣言する Deployment の全件（k8s-local-up.test.js がチャートと突き合わせる）。
+#   新規クラスタ・移行済みでは何もせず、何も出さない（lib 冒頭）。
+RECREATE_DEPLOYMENTS="seaweedfs wiki-js"
+. "$ROOT/scripts/lib/recreate-strategy.sh"
+# shellcheck disable=SC2086  # RECREATE_DEPLOYMENTS は空白区切りの名前の列。意図的に分割する。
+reconcile_recreate_strategy "$MSP_NS" $RECREATE_DEPLOYMENTS
 # shellcheck disable=SC2086  # ISTIO_MESH_ARGS / LOCALEMBED_ARGS は空か複数フラグ。意図的に分割する。
 helm upgrade --install msp deploy/helm/microservices-platform \
   -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS $LOCALEMBED_ARGS
@@ -946,58 +985,67 @@ fi
 # realm.json は触らない（redirect 追記・root_url は #355 マージ後の PR-2）。
 if [ "${LOCALEDGE:-}" = "1" ]; then
   echo "==> [opt-in] local edge aggregation (Traefik admin:50000 + Ingress, IADR-0091)"
-  kubectl apply -k deploy/local/edge
+  # NFR, IADR-0317 (#1691): 入口がすでに Istio へ移っていれば（EDGE_ON_ISTIO。[1/7] の後でクラスタの状態から読んだ）、
+  #   **Traefik を前提とする 4 つの処理を飛ばす** —— HelmChartConfig を Service ありへ戻す apply・その反映待ち（#953 の門）・
+  #   pod 側の *.localhost を Traefik へ向ける CoreDNS・Traefik しか読まない argocd-ingress。戻すと 180 秒の待ちで rc=1 になり、
+  #   svclb-traefik が istio-ingressgateway と 80/443/50000 を取り合う（#1691）。CoreDNS と経路は下の istio-edge-up.sh が当て直し、
+  #   Traefik 側の宣言は切り戻し（istio-edge-down.sh）が当て直す。エッジ TLS（cert-manager）は Istio の入口も使うので飛ばさない。
+  if [ "$EDGE_ON_ISTIO" = "1" ]; then
+    echo "    -> 入口は Istio へ移し済み: Traefik の HelmChartConfig・反映待ち・CoreDNS（Traefik 向け）・argocd-ingress を飛ばす (#1691)"
+  else
+    kubectl apply -k deploy/local/edge
 
-  # IADR-0258 (#953): ★ **HelmChartConfig の反映を待つ。来なければ落とす（fail-closed）。**
-  #
-  # `deploy/local/edge` の先頭資源 traefik-entrypoint.yaml は `kind: HelmChartConfig` であり、その効果
-  # （Traefik Service に admin=50000 が生えること）は **k3s の helm-controller が非同期に**実現する。
-  # `kubectl apply` が見るのは「オブジェクトを置けたか」だけで、後段の `helm upgrade` が values スキーマの
-  # 型不一致（`error calling eq: incompatible types for comparison`）で落ちても **呼び出し側へは伝わらない**。
-  # 実測では admin(50000) が立たないまま本スクリプトが EXIT=0 で返った（GitHub ホストランナー・
-  # run 32554867883・k3s v1.30.4 同梱の traefik chart 25.0.3）。#783 の K3S_IMAGE pin は**回避**であって
-  # 解決ではない —— pin が外れれば同じ穴へ落ちる。
-  #
-  # 🔴 **警告を出して続行してはならない。** それは EXIT=0 と同じであり、#953 が塞ごうとしている穴そのものである。
-  # 待ちは `kubectl wait`（下の certificate/edge-tls 待ちと同じ形。条件だけ jsonpath である）。reconcile が
-  # 失敗すると helm-controller は Service を更新しないので、条件はタイムアウトまで満たされない＝非 0 で終わる。
-  # 見るのは **宣言の status ではなく観測可能な結果（Service の port）** である —— HelmChart の status に
-  # 何が載るかは k3s のバージョン依存であり、**バージョン依存を塞ぐ門をバージョン依存の識別子で書かない**。
-  #
-  # 既知の限界（隠さない）: **既存クラスタへの再実行では、新たに壊した宣言を捕まえられない**。前回の
-  # reconcile が成功していれば Service は admin=50000 を保持し続けるためである。確実に効くのは
-  # クラスタ作成直後。job レベル（helm-install-traefik の Complete）まで見れば塞げるが、job 名・ラベルが
-  # k3s のバージョン依存であり、**バージョン依存を塞ぐ門をバージョン依存の識別子で書くこと**になる（IADR-0258 決定 3）。
-  echo "    -> HelmChartConfig の反映を待つ: kube-system/traefik svc に admin=50000 が生えること (#953)"
-  if ! kubectl -n kube-system wait --for=jsonpath='{.spec.ports[?(@.name=="admin")].port}'=50000 \
-       svc/traefik --timeout=180s; then
-    echo "ERROR: HelmChartConfig(traefik) の反映が確認できません。admin(50000) entrypoint が立っていません。" >&2
-    echo "       **kubectl apply は成功していても reconcile は失敗し得ます**（#953）。以下を確認してください:" >&2
-    echo "       - traefik chart の values スキーマは chart バージョンで変わります（deploy/local/edge/traefik-entrypoint.yaml の注記）" >&2
-    echo "       - k3s のバージョンは K3S_IMAGE で固定できます（例: K3S_IMAGE=rancher/k3s:v1.35.4-k3s1）" >&2
-    echo "--- kube-system/traefik svc の実ポート ---" >&2
-    kubectl -n kube-system get svc traefik \
-      -o jsonpath='{range .spec.ports[*]}{.name}={.port}{"\n"}{end}' >&2 || true
-    echo "--- helm-controller の宣言と状態 ---" >&2
-    kubectl -n kube-system get helmchartconfig,helmchart traefik >&2 || true
-    echo "--- helm-install-traefik の直近ログ（reconcile の失敗理由）---" >&2
-    kubectl -n kube-system logs job/helm-install-traefik --tail=40 >&2 || true
-    exit 1
-  fi
+    # IADR-0258 (#953): ★ **HelmChartConfig の反映を待つ。来なければ落とす（fail-closed）。**
+    #
+    # `deploy/local/edge` の先頭資源 traefik-entrypoint.yaml は `kind: HelmChartConfig` であり、その効果
+    # （Traefik Service に admin=50000 が生えること）は **k3s の helm-controller が非同期に**実現する。
+    # `kubectl apply` が見るのは「オブジェクトを置けたか」だけで、後段の `helm upgrade` が values スキーマの
+    # 型不一致（`error calling eq: incompatible types for comparison`）で落ちても **呼び出し側へは伝わらない**。
+    # 実測では admin(50000) が立たないまま本スクリプトが EXIT=0 で返った（GitHub ホストランナー・
+    # run 32554867883・k3s v1.30.4 同梱の traefik chart 25.0.3）。#783 の K3S_IMAGE pin は**回避**であって
+    # 解決ではない —— pin が外れれば同じ穴へ落ちる。
+    #
+    # 🔴 **警告を出して続行してはならない。** それは EXIT=0 と同じであり、#953 が塞ごうとしている穴そのものである。
+    # 待ちは `kubectl wait`（下の certificate/edge-tls 待ちと同じ形。条件だけ jsonpath である）。reconcile が
+    # 失敗すると helm-controller は Service を更新しないので、条件はタイムアウトまで満たされない＝非 0 で終わる。
+    # 見るのは **宣言の status ではなく観測可能な結果（Service の port）** である —— HelmChart の status に
+    # 何が載るかは k3s のバージョン依存であり、**バージョン依存を塞ぐ門をバージョン依存の識別子で書かない**。
+    #
+    # 既知の限界（隠さない）: **既存クラスタへの再実行では、新たに壊した宣言を捕まえられない**。前回の
+    # reconcile が成功していれば Service は admin=50000 を保持し続けるためである。確実に効くのは
+    # クラスタ作成直後。job レベル（helm-install-traefik の Complete）まで見れば塞げるが、job 名・ラベルが
+    # k3s のバージョン依存であり、**バージョン依存を塞ぐ門をバージョン依存の識別子で書くこと**になる（IADR-0258 決定 3）。
+    echo "    -> HelmChartConfig の反映を待つ: kube-system/traefik svc に admin=50000 が生えること (#953)"
+    if ! kubectl -n kube-system wait --for=jsonpath='{.spec.ports[?(@.name=="admin")].port}'=50000 \
+         svc/traefik --timeout=180s; then
+      echo "ERROR: HelmChartConfig(traefik) の反映が確認できません。admin(50000) entrypoint が立っていません。" >&2
+      echo "       **kubectl apply は成功していても reconcile は失敗し得ます**（#953）。以下を確認してください:" >&2
+      echo "       - traefik chart の values スキーマは chart バージョンで変わります（deploy/local/edge/traefik-entrypoint.yaml の注記）" >&2
+      echo "       - k3s のバージョンは K3S_IMAGE で固定できます（例: K3S_IMAGE=rancher/k3s:v1.35.4-k3s1）" >&2
+      echo "--- kube-system/traefik svc の実ポート ---" >&2
+      kubectl -n kube-system get svc traefik \
+        -o jsonpath='{range .spec.ports[*]}{.name}={.port}{"\n"}{end}' >&2 || true
+      echo "--- helm-controller の宣言と状態 ---" >&2
+      kubectl -n kube-system get helmchartconfig,helmchart traefik >&2 || true
+      echo "--- helm-install-traefik の直近ログ（reconcile の失敗理由）---" >&2
+      kubectl -n kube-system logs job/helm-install-traefik --tail=40 >&2 || true
+      exit 1
+    fi
 
-  # IADR-0227 (#780): エッジ host（*.localhost）を **pod からも** 解決できるようにする。
-  # k3s の CoreDNS は Corefile 末尾に import /etc/coredns/custom/*.server を持ち、coredns Deployment は
-  # coredns-custom ConfigMap を optional で既にマウントしている。置けば効き、消せば元に戻る（fail-safe）。
-  # 非 .NET の OIDC クライアント（Grafana/ArgoCD/Vault/Headlamp/Wiki.js）は IADR-0086 の
-  # metadata/issuer 分離が使えず、pod から issuer host を実際に引く必要がある。
-  # ★ import 先の追加は Corefile 自体の変更ではないため reload プラグインが拾わない。rollout restart で確実に反映する。
-  kubectl apply -f deploy/local/aliases/coredns-edge-hosts.yaml
-  kubectl -n kube-system rollout restart deploy/coredns
-  kubectl -n kube-system rollout status deploy/coredns --timeout=120s
-  # argocd namespace が存在するときのみ、argocd 用の管理ツール Ingress を追加適用する
-  # （ns 不在時に失敗させない fail-safe。ArgoCD は ARGOCD=1 の別 opt-in で作成される）。
-  if kubectl get namespace argocd >/dev/null 2>&1; then
-    kubectl apply -f deploy/local/edge/argocd-ingress.yaml
+    # IADR-0227 (#780): エッジ host（*.localhost）を **pod からも** 解決できるようにする。
+    # k3s の CoreDNS は Corefile 末尾に import /etc/coredns/custom/*.server を持ち、coredns Deployment は
+    # coredns-custom ConfigMap を optional で既にマウントしている。置けば効き、消せば元に戻る（fail-safe）。
+    # 非 .NET の OIDC クライアント（Grafana/ArgoCD/Vault/Headlamp/Wiki.js）は IADR-0086 の
+    # metadata/issuer 分離が使えず、pod から issuer host を実際に引く必要がある。
+    # ★ import 先の追加は Corefile 自体の変更ではないため reload プラグインが拾わない。rollout restart で確実に反映する。
+    kubectl apply -f deploy/local/aliases/coredns-edge-hosts.yaml
+    kubectl -n kube-system rollout restart deploy/coredns
+    kubectl -n kube-system rollout status deploy/coredns --timeout=120s
+    # argocd namespace が存在するときのみ、argocd 用の管理ツール Ingress を追加適用する
+    # （ns 不在時に失敗させない fail-safe。ArgoCD は ARGOCD=1 の別 opt-in で作成される）。
+    if kubectl get namespace argocd >/dev/null 2>&1; then
+      kubectl apply -f deploy/local/edge/argocd-ingress.yaml
+    fi
   fi
 
   # IADR-0206 (#779): エッジ TLS 終端。cert-manager を導入し、selfsigned→CA の 2 段で
@@ -1046,6 +1094,8 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   #
   # ここに置く理由: cert-manager と ClusterIssuer local-edge-ca（直上）が要る。
   # ISTIO 未設定なら実行されない＝既定はバイト等価（従来どおり Traefik がエッジである）。
+  # #1691: **移行済みの再実行でも必ず呼ぶ**（上で飛ばすのは Traefik 側だけ）。istio-edge-up.sh は冪等で、
+  #   [2/5] は Service が既に無いので即座に通り、Gateway・経路・CoreDNS・mTLS を当て直して現状を確かめる。
   if [ "${ISTIO:-}" = "1" ]; then
     echo "==> [opt-in] エッジを Istio Ingress Gateway へ移す (ADR-0021 / #782)"
     ISTIO_MTLS_MODE="${ISTIO_MTLS_MODE:-}" bash "$ROOT/scripts/istio-edge-up.sh"

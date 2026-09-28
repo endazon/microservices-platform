@@ -215,6 +215,28 @@ const KUBECTL_STUB = [
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
   'if [ "${STUB_TRAEFIK_ADMIN_MISSING:-}" = "1" ]; then case "$*" in *--for=jsonpath*svc/traefik*) exit 1;; esac; fi',
+  // #1691: **HelmChartConfig kube-system/traefik の状態の模型**（状態は "$STUB_LOG.edge-istio" の有無で持つ）。
+  //   - traefik-service-off.yaml の apply（istio-edge-up.sh [2/5]）で「Service 無し」になり、Service が消える。
+  //   - 「Service 無し」のときに `apply -k deploy/local/edge`（traefik-entrypoint.yaml を含む）が来ると入れ直し中になり、
+  //     helm-controller が 180 秒の待ちに間に合わない ＝ `wait svc/traefik` が NotFound で非 0（#1691 の実測の再現）。
+  //   - HelmChartConfig の valuesContent の問い合わせには、状態に応じて service-off か traefik-entrypoint の宣言を返す。
+  //   初期状態は runUp の STUB_EDGE_ON_ISTIO=1（前回の実行で移行済み）だけが作る。**起動器のフラグではなく模型の初期状態**である。
+  'EDGE_STATE="$STUB_LOG.edge-istio"; REINSTALL_STATE="$STUB_LOG.traefik-reinstalling"',
+  'case "$*" in *"apply -f deploy/local/edge-istio/traefik-service-off.yaml"*) : > "$EDGE_STATE";; esac',
+  'case "$*" in *"apply -k deploy/local/edge") if [ -e "$EDGE_STATE" ]; then rm -f "$EDGE_STATE"; : > "$REINSTALL_STATE"; fi;; esac',
+  //   返すのは jsonpath の値（valuesContent）だけである（マニフェスト全体ではない）。
+  //   STUB_HCC_FAIL=1 … 問い合わせが失敗する（HelmChartConfig が無い・API が読めない。NotFound を stderr へ出して非 0）。
+  //   STUB_HCC_VALUES … 未移行の状態で返す valuesContent を差し替える（判定の境界を起動器の経路で試す）。
+  'case "$*" in *"get helmchartconfig traefik"*valuesContent*)',
+  '  if [ "${STUB_HCC_FAIL:-}" = "1" ]; then echo \'Error from server (NotFound): helmchartconfigs.helm.cattle.io "traefik" not found\' >&2; exit 1; fi',
+  '  if [ -e "$EDGE_STATE" ]; then printf "service:\\n  enabled: false"',
+  '  elif [ -n "${STUB_HCC_VALUES+x}" ]; then printf "%s" "$STUB_HCC_VALUES"',
+  '  else sed -n "/valuesContent: |-/,\\$p" "${STUB_TRAEFIK_MANIFEST:-' +
+    TRAEFIK_MANIFEST_REL +
+    '}" | tail -n +2 | sed "s/^    //"; fi; exit 0;;',
+  'esac',
+  'if [ -e "$EDGE_STATE" ] || [ -e "$REINSTALL_STATE" ]; then case "$*" in *"get svc traefik"*) exit 1;; esac; fi',
+  'if [ -e "$REINSTALL_STATE" ]; then case "$*" in *--for=jsonpath*svc/traefik*) echo \'Error from server (NotFound): services "traefik" not found\' >&2; exit 1;; esac; fi',
   // #1287: 除外を持つ 3 サービスの rollout が揃わない世界（イメージが古い・Secret 待ち等）を作る。
   // ADR-0076 決定 4「除外できない構成では配備しない」の**陽性対照**である —— これが無いと
   // 「配備しない」側は一度も実行されず、門は「在るが測っていない」ままになる。
@@ -222,6 +244,12 @@ const KUBECTL_STUB = [
   // IADR-0369 (#1088): STUB_SC_ABSENT=1 で `kubectl get storageclass local-path` を非0（provisioner 不在）に返させ、
   // 既定（永続化）が黙って emptyDir へ落ちずに止まることを検証できるようにする。
   'if [ "${STUB_SC_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "storageclass" ]; then exit 1; fi',
+  // #1688: STUB_LIVE_ROLLINGUPDATE（空白区切りの Deployment 名）に挙げた Deployment だけを「RollingUpdate の既定値が
+  // 残った既存リリース」として `spec.strategy.rollingUpdate` を返す。既定（空）は新規クラスタ ＝ 何も返さない。
+  'case "$*" in *"get deploy "*"jsonpath={.spec.strategy.rollingUpdate}"*)',
+  '  for d in ${STUB_LIVE_ROLLINGUPDATE:-}; do case "$*" in *"get deploy $d "*) echo \'{"maxSurge":"25%","maxUnavailable":"25%"}\';; esac; done',
+  '  exit 0;;',
+  'esac',
   // IADR-0369 (#1088): realm 後追い Job（deploy/local/keycloak-setup/reconcile-realm.sh）の完了待ち。
   // conditions の問い合わせに Complete を返す（返さないと起動器が Job の完了を 300 秒待つ）。
   'case "$*" in *"get job"*conditions*) echo "Complete "; exit 0;; esac',
@@ -244,6 +272,8 @@ function runUp(extraEnv) {
   fs.mkdirSync(binDir);
   const logFile = path.join(workdir, 'commands.log');
   fs.writeFileSync(logFile, '');
+  // #1691: 模型の初期状態「前回の実行で入口を Istio へ移し済み」（HelmChartConfig traefik が service.enabled: false）。
+  if (extraEnv.STUB_EDGE_ON_ISTIO === '1') fs.writeFileSync(`${logFile}.edge-istio`, '');
 
   const write = (name, body) => {
     const p = path.join(binDir, name);
@@ -3140,8 +3170,9 @@ ok('#1159: ISTIO=1 かつ LOCALEDGE=1 なら [6/7] は PERMISSIVE を宣言す�
 });
 
 ok('#1159: STRICT への昇格は入口を Envoy へ移した後に来る（順序は 2 本のスクリプトを跨いで固定する）', () => {
-  // 🔴 ハーネスでは測れない —— istio-edge-up.sh は「Traefik の Service が消えるのを待つ」段で
-  //   スタブ相手には永久に成立せず、そこで非 0 終了する。順序は**テキストで**固定する。
+  // 順序は**テキストで**固定する。［2026-09-28 / #1691］以前はスタブ相手に「Traefik の Service が消えるのを待つ」段が
+  //   成立せず、ハーネスでは測れなかった。今は HelmChartConfig の模型が Service を消すので istio-edge-up.sh は最後まで走る。
+  //   ここは 2 本のスクリプトの宣言の順序を固定する検査として据え置く（実行順は #1691 の節が見る）。
   const upAt = UP_SH.indexOf('scripts/istio-edge-up.sh');
   const installAt = UP_SH.indexOf('helm upgrade --install msp');
   assert.ok(installAt > 0 && upAt > installAt, 'k8s-local-up.sh で入口の移設が [6/7] より前に来ている');
@@ -3154,6 +3185,197 @@ ok('#1159: STRICT への昇格は入口を Envoy へ移した後に来る（順�
 ok('#1159: ISTIO 未設定なら mesh.* の --set が 1 つも足されない（既定のバイト等価）', () => {
   const line = DEFAULT.lines.find((l) => HELM_UPGRADE_RE.test(l));
   assert.ok(!line.includes('mesh.'), `既定なのに mesh.* が付いている: ${line}`);
+});
+
+// ---- #1691: 入口を Istio へ移した後の再実行は Traefik へ戻さず、待たない ------------------------------
+//
+// 稼働クラスタの実測（2026-09-28。2026-09-14 に続き 2 回目）: 移行済みのクラスタで LOCALEDGE=1 ISTIO=1 を再実行すると、
+// `apply -k deploy/local/edge` が HelmChartConfig traefik を Service ありへ戻し、helm-controller の入れ直しが
+// `wait svc/traefik`（180 秒）に間に合わず rc=1 で止まった（後段の istio-edge-up.sh・seed が走らない）。
+// 判定は**クラスタの状態**（HelmChartConfig の中身）で行う。同じフラグで、模型の初期状態だけを変えて比べる。
+// 模型は kubectl スタブの #1691 節（traefik-service-off の apply で Service が消え、戻すと入れ直しで待ちが落ちる）。
+
+const EDGE_APPLY = 'kubectl apply -k deploy/local/edge'; // 行の完全一致で見る（deploy/local/edge/tls と区別する）
+const isEdgeApply = (l) => l === EDGE_APPLY;
+const isTraefikWait = (l) => l.startsWith('kubectl ') && l.includes('--for=jsonpath') && l.includes('svc/traefik');
+const isTraefikCoreDns = (l) => l.includes('apply -f deploy/local/aliases/coredns-edge-hosts.yaml');
+const isArgocdIngress = (l) => l.includes('apply -f deploy/local/edge/argocd-ingress.yaml');
+const isServiceOff = (l) => l.includes('apply -f deploy/local/edge-istio/traefik-service-off.yaml');
+const isGatewayInstall = (l) => l.startsWith('helm upgrade --install istio-ingressgateway ');
+const isHelmChartConfigProbe = (l) =>
+  l.startsWith('kubectl ') && l.includes('get helmchartconfig traefik') && l.includes('valuesContent');
+
+const EDGE_FRESH = runUp({ ISTIO: '1', LOCALEDGE: '1' });
+const EDGE_MIGRATED = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1' });
+
+ok('#1691: 移行済み（HelmChartConfig traefik が service.enabled: false）なら Traefik へ戻さず、待たずに完走する', () => {
+  const r = EDGE_MIGRATED;
+  assert.strictEqual(r.status, 0, `移行済みの再実行が止まった（#1691 の再発）:\n${r.stderr.slice(-600)}`);
+  assert.ok(r.lines.some(isHelmChartConfigProbe), 'HelmChartConfig の状態を読んでいない（フラグで判定している）');
+  assert.ok(!r.lines.some(isEdgeApply), `HelmChartConfig を Service ありへ戻した: ${EDGE_APPLY}`);
+  assert.ok(!r.lines.some(isTraefikWait), 'Traefik の反映待ち（wait svc/traefik）を走らせた');
+  assert.ok(!r.lines.some(isTraefikCoreDns), 'pod 側の *.localhost を Traefik へ向ける CoreDNS を当てた');
+  assert.ok(!r.lines.some(isArgocdIngress), 'Traefik しか読まない argocd-ingress を当てた');
+  // Istio の入口も使うエッジ TLS は飛ばさない（ClusterIssuer local-edge-ca は istio-edge-up.sh の前提）。
+  assert.ok(r.lines.some((l) => l.endsWith('apply -k deploy/local/edge/tls')), 'エッジ TLS（cert-manager）まで飛ばした');
+  assert.match(r.stdout, /Istio Ingress Gateway へ移し済み/, '飛ばしたことを告げていない');
+});
+
+ok('#1691: 移行済みでも istio-edge-up.sh は呼ばれる（冪等な確認。Gateway・経路・CoreDNS を当て直す）', () => {
+  const r = EDGE_MIGRATED;
+  assert.ok(r.lines.some(isServiceOff), 'istio-edge-up.sh の [2/5]（traefik-service-off の apply）が無い');
+  assert.ok(r.lines.some(isGatewayInstall), 'istio-edge-up.sh の [3/5]（istio-ingressgateway の helm）が無い');
+  assert.ok(
+    r.lines.some((l) => l.endsWith('apply -k deploy/local/edge-istio-reset-floor')),
+    'istio-edge-up.sh の [4/5]（経路の apply）が無い',
+  );
+  assert.match(r.stdout, /OK: エッジは istio-ingressgateway です。/, 'istio-edge-up.sh が最後まで走っていない');
+});
+
+ok('#1691: 未移行なら従来どおり（Traefik を当て、反映を待ち、CoreDNS を向けてから istio-edge-up.sh）', () => {
+  const r = EDGE_FRESH;
+  assert.strictEqual(r.status, 0, `未移行の LOCALEDGE=1 ISTIO=1 が止まった:\n${r.stderr.slice(-600)}`);
+  const at = (pred, what) => {
+    const i = r.lines.findIndex(pred);
+    assert.ok(i >= 0, `未移行なのに ${what} が無い`);
+    return i;
+  };
+  const probe = at(isHelmChartConfigProbe, 'HelmChartConfig の状態の読み取り');
+  const apply = at(isEdgeApply, EDGE_APPLY);
+  const wait = at(isTraefikWait, 'wait svc/traefik');
+  const dns = at(isTraefikCoreDns, 'Traefik 向け CoreDNS');
+  const argo = at(isArgocdIngress, 'argocd-ingress');
+  const off = at(isServiceOff, 'istio-edge-up.sh の traefik-service-off');
+  assert.ok(probe < apply && apply < wait && wait < dns && dns < argo && argo < off, '従来の順序が崩れている');
+  assert.ok(!r.stdout.includes('移し済み'), '未移行なのに「移し済み」と告げた');
+});
+
+ok('#1691: 移行済みで ISTIO を指定しない LOCALEDGE=1 は、何も書き換える前に止まり 2 つの道を告げる', () => {
+  const r = runUp({ LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1' });
+  assert.notStrictEqual(r.status, 0, '移行済みなのに LOCALEDGE=1 だけで Traefik 経路へ進んだ（ポートを取り合う）');
+  assert.match(r.stderr, /istio-edge-down\.sh --live/, 'Traefik へ戻す正規の手段（istio-edge-down.sh）を告げていない');
+  assert.match(r.stderr, /ISTIO=1 LOCALEDGE=1/, 'Istio のまま再実行する指定を告げていない');
+  assert.ok(!r.lines.some(isEdgeApply), 'Traefik へ戻してから止まった');
+  assert.ok(!r.lines.some((l) => HELM_UPGRADE_RE.test(l)), '[6/7] の helm upgrade（mesh の --set 無し）まで進んだ');
+  assert.ok(!r.lines.some((l) => l.startsWith('docker build ')), '[2/7] 以降へ進んでから止まった（判定は副作用より前）');
+});
+
+ok('#1691: 移行済みなら [6/7] は要求どおり STRICT を宣言する（入口は既に Envoy。再実行のたびに緩めない）', () => {
+  const line = runUp({ ISTIO: '1', LOCALEDGE: '1', ISTIO_MTLS_MODE: 'STRICT', STUB_EDGE_ON_ISTIO: '1' }).lines.find((l) =>
+    HELM_UPGRADE_RE.test(l),
+  );
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.ok(line.includes('--set mesh.mtlsMode=STRICT'), `移行済みなのに PERMISSIVE へ降格した: ${line}`);
+});
+
+ok('#1691: 陽性対照 —— 模型は #1691 を再現する（移行済みで Traefik を当て直すと反映待ちが NotFound で落ちる）', () => {
+  // 起動器の分岐を通さず、模型そのものが「戻すと落ちる」世界を持つことを確かめる（持たなければ上の試験は何も守らない）。
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-up-1691-'));
+  const log = path.join(workdir, 'commands.log');
+  fs.writeFileSync(log, '');
+  fs.writeFileSync(`${log}.edge-istio`, '');
+  const stub = path.join(workdir, 'kubectl');
+  fs.writeFileSync(stub, KUBECTL_STUB);
+  fs.chmodSync(stub, 0o755);
+  const env = { ...process.env, STUB_LOG: log };
+  const run = (...args) => spawnSync(stub, args, { cwd: REPO_ROOT, env, encoding: 'utf8' });
+  assert.notStrictEqual(run('-n', 'kube-system', 'get', 'svc', 'traefik').status, 0, '移行済みなのに Service が在る');
+  assert.strictEqual(run('apply', '-k', 'deploy/local/edge').status, 0);
+  const wait = run('-n', 'kube-system', 'wait', "--for=jsonpath={.spec.ports[?(@.name==\"admin\")].port}=50000", 'svc/traefik');
+  fs.rmSync(workdir, { recursive: true, force: true });
+  assert.notStrictEqual(wait.status, 0, '模型が #1691（入れ直しが待ちに間に合わない）を再現しない');
+  assert.match(wait.stderr, /services "traefik" not found/);
+});
+
+// ---- #1691 / 監査 #1694: 判定の境界（読めない・別キーの enabled: false）と、up / down の判定の 1 本化 ----------------
+//
+// 判定は scripts/lib/edge-state.sh の 1 本だけで、k8s-local-up.sh（edge_on_istio）と k8s-local-down.sh
+// （traefik_service_disabled）の両方がそれを呼ぶ。以前は down が「どこかに enabled: false」で up より緩かった。
+
+ok('#1691: HelmChartConfig が読めない（kubectl の失敗・未作成）なら未移行として従来の経路を通る', () => {
+  const r = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_HCC_FAIL: '1' });
+  assert.strictEqual(r.status, 0, `読めないだけで止まった:\n${r.stderr.slice(-600)}`);
+  assert.ok(r.lines.some(isHelmChartConfigProbe), 'HelmChartConfig を読んでいない');
+  assert.ok(r.lines.some(isEdgeApply), '読めないのに移行済みへ倒した（Traefik の反映待ちの門を黙って飛ばす）');
+  assert.ok(r.lines.some(isTraefikWait), '読めないのに Traefik の反映待ちを飛ばした');
+  assert.ok(!r.stdout.includes('移し済み'), '読めないのに「移し済み」と告げた');
+});
+
+ok('#1691: service: 以外のキーの enabled: false は移行済みと読まない（従来の経路を通る）', () => {
+  const r = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_HCC_VALUES: 'ingressRoute:\n  dashboard:\n    enabled: false\n' });
+  assert.strictEqual(r.status, 0, `起動器が失敗した:\n${r.stderr.slice(-600)}`);
+  assert.ok(r.lines.some(isEdgeApply), '別キーの enabled: false を移行済みと読んだ');
+  assert.ok(r.lines.some(isTraefikWait), '別キーの enabled: false で Traefik の反映待ちを飛ばした');
+});
+
+const EDGE_STATE_LIB = path.join(REPO_ROOT, 'scripts', 'lib', 'edge-state.sh');
+const DOWN_SH = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-down.sh'), 'utf8');
+const UP_EDGE_FN = /^edge_on_istio\(\) \{ edge_traefik_service_off kubectl; \}$/m;
+const DOWN_EDGE_FN = /^traefik_service_disabled\(\) \{ edge_traefik_service_off kc_read; \}$/m;
+
+ok('#1691: up と down は同じ判定（scripts/lib/edge-state.sh）を呼び、自前の判定を持たない', () => {
+  assert.ok(/^\. "\$ROOT\/scripts\/lib\/edge-state\.sh"/m.test(UP_SH), 'k8s-local-up.sh が lib/edge-state.sh を読んでいない');
+  assert.ok(/^\. "\$\(dirname "\$0"\)\/lib\/edge-state\.sh"/m.test(DOWN_SH), 'k8s-local-down.sh が lib/edge-state.sh を読んでいない');
+  assert.ok(UP_EDGE_FN.test(UP_SH), 'k8s-local-up.sh の edge_on_istio が共有の判定の 1 行呼び出しでない');
+  assert.ok(DOWN_EDGE_FN.test(DOWN_SH), 'k8s-local-down.sh の traefik_service_disabled が共有の判定の 1 行呼び出しでない');
+  // 判定の中身（enabled: false の照合）を lib の外に置かない。
+  for (const [name, src] of [['k8s-local-up.sh', UP_SH], ['k8s-local-down.sh', DOWN_SH]]) {
+    // コメント行と利用者向けの echo は除く（照合ではない）。残りに `enabled:` の照合があれば自前の判定である。
+    const code = src
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l) && !/\becho /.test(l))
+      .join('\n');
+    assert.ok(!/enabled:/.test(code), `${name} が enabled: を自前で照合している（判定は lib/edge-state.sh の 1 本だけ）`);
+  }
+});
+
+// 判定の表（監査 #1694 のプローブを写した）。rc は kubectl の終了コード。
+const EDGE_STATE_CASES = [
+  ['service-off（実物）', null, 0, true],
+  ['traefik-entrypoint（実物）', 'ENTRYPOINT', 0, false],
+  ['HelmChartConfig が無い（NotFound）', '', 1, false],
+  ['kubectl が失敗（出力あり）', 'service:\n  enabled: false', 1, false],
+  ['valuesContent が空', '', 0, false],
+  ['別キーの enabled: false', 'ingressRoute:\n  dashboard:\n    enabled: false', 0, false],
+  ['service の直下で他のキーが先', 'service:\n  type: LoadBalancer\n  enabled: false', 0, true],
+  ['入れ子の x.service.enabled', 'metrics:\n  service:\n    enabled: false', 0, false],
+  ['service の孫の enabled', 'service:\n  spec:\n    enabled: false', 0, false],
+  ['service.enabled: true', 'service:\n  enabled: true', 0, false],
+  ['引用符つきの "false"', 'service:\n  enabled: "false"', 0, false],
+  ['flow 形 {enabled: false}', 'service: {enabled: false}', 0, true],
+  ['CRLF', 'service:\r\n  enabled: false\r\n', 0, true],
+  ['行末コメント', 'service:\n  enabled: false # Istio へ移す\n', 0, true],
+];
+
+ok('#1691: 判定の表 —— up（edge_on_istio）と down（traefik_service_disabled）が全件で同じ結論になる', () => {
+  const offYaml = readAt(REPO_ROOT, 'deploy', 'local', 'edge-istio', 'traefik-service-off.yaml');
+  const entryYaml = readAt(REPO_ROOT, TRAEFIK_MANIFEST_REL);
+  const valuesOf = (yaml) => yaml.split(/valuesContent: \|-\n/)[1].replace(/^ {4}/gm, '');
+  const upFn = UP_EDGE_FN.exec(UP_SH)[0];
+  const downFn = DOWN_EDGE_FN.exec(DOWN_SH)[0];
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'edge-state-'));
+  const bin = path.join(workdir, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'kubectl'), '#!/usr/bin/env bash\nprintf "%s" "$STUB_VALUES"\nexit "$STUB_RC"\n');
+  fs.chmodSync(path.join(bin, 'kubectl'), 0o755);
+  const judge = (fnDef, call, values, rc) =>
+    spawnSync('bash', ['-c', `set -euo pipefail; . "$1"; kc_read() { kubectl "$@"; }\n${fnDef}\n${call} && echo MIGRATED || echo not`, 'x', EDGE_STATE_LIB], {
+      env: { ...process.env, PATH: bin + path.delimiter + process.env.PATH, STUB_VALUES: values, STUB_RC: String(rc) },
+      encoding: 'utf8',
+    }).stdout.trim();
+  const wrong = [];
+  try {
+    for (const [name, raw, rc, expected] of EDGE_STATE_CASES) {
+      const values = raw === null ? valuesOf(offYaml) : raw === 'ENTRYPOINT' ? valuesOf(entryYaml) : raw;
+      const want = expected ? 'MIGRATED' : 'not';
+      const up = judge(upFn, 'edge_on_istio', values, rc);
+      const down = judge(downFn, 'traefik_service_disabled', values, rc);
+      if (up !== want || down !== want) wrong.push(`${name}: 期待=${want} up=${up} down=${down}`);
+    }
+  } finally {
+    fs.rmSync(workdir, { recursive: true, force: true });
+  }
+  assert.deepStrictEqual(wrong, [], `判定の表と合わない:\n${wrong.join('\n')}`);
 });
 
 // ---- #1316: ISTIO=1 の別名はサイドカー注入より前に当たる ----------------------------------
@@ -3585,6 +3807,164 @@ ok('#1564: 陽性対照 —— compose 由来の本体のイメージ（MAPPING�
   const r = runUp({ STUB_DOCKER_BUILD_FAIL: 'microservices-platform/bff' });
   assert.notStrictEqual(r.status, 0, '本体のイメージのビルド失敗で起動器が止まらなかった');
   assert.ok(!r.lines.some((l) => l.startsWith('helm upgrade ')), '本体のイメージが落ちたのに helm で配備へ進んだ');
+});
+
+
+// --- #1688: 後から Recreate へ変えた Deployment を既存リリースへ upgrade できること -------------------------
+//
+// RollingUpdate で作られた Deployment には API サーバが既定の `spec.strategy.rollingUpdate` を埋める。チャートが後から
+// `type: Recreate` だけを宣言すると、Helm 4 のサーバサイド apply は所有者の無いこの値を消さず、同居して検証に落ちる
+// （#1569 の wiki-js。稼働クラスタの `[6/7] helm upgrade` が rc=1 で止まった）。チャートの `rollingUpdate: null` では
+// 消えないことを実測した（kube-apiserver 1.34.1 / Helm v4.0.0・v4.2.1。作業仕様書 20260928_issue-1688）。
+// そこで起動器は helm upgrade の**前に**冪等な patch で strategy を寄せる（scripts/lib/recreate-strategy.sh）。
+
+const RECREATE_LIB_REL = 'scripts/lib/recreate-strategy.sh';
+const MSP_UPGRADE = 'helm upgrade --install msp ';
+const isStrategyProbe = (l, d) =>
+  l.startsWith('kubectl ') && l.includes(`get deploy ${d} `) && l.includes('jsonpath={.spec.strategy.rollingUpdate}');
+const isRecreatePatch = (l, d) => l.startsWith('kubectl ') && l.includes(`patch deploy ${d} `);
+
+/** チャートのテンプレートを走査し、`spec.strategy.type: Recreate` を宣言する Deployment の名前を返す。 */
+function chartRecreateDeployments() {
+  const tplDir = path.join(REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'templates');
+  const names = [];
+  for (const name of fs.readdirSync(tplDir).filter((f) => /\.ya?ml$/.test(f)).sort()) {
+    for (const doc of readAt(tplDir, name).split(/^---\s*$/m)) {
+      if (!/^kind:\s*Deployment\s*$/m.test(doc)) continue;
+      if (!/^\s{2}strategy:\s*\n(?:\s{4}#.*\n)*\s{4}type:\s*Recreate\s*$/m.test(doc)) continue;
+      names.push((/^metadata:\s*\n\s+name:\s*(\S+)/m.exec(doc) || [])[1] || `?(${name})`);
+    }
+  }
+  return names.sort();
+}
+
+ok('#1688: 起動器の列挙（RECREATE_DEPLOYMENTS）はチャートで Recreate を宣言する Deployment の全件と一致する', () => {
+  const src = readAt(REPO_ROOT, UP_SCRIPT);
+  const m = /^RECREATE_DEPLOYMENTS="([^"]*)"\s*$/m.exec(src);
+  assert.ok(m, 'k8s-local-up.sh に RECREATE_DEPLOYMENTS="..." の宣言が無い');
+  const listed = m[1].split(/\s+/).filter(Boolean).sort();
+  const chart = chartRecreateDeployments();
+  // 母集合が空なら何も検査していない（「検査していない」と「問題が無い」を同じ出力にしない）。
+  assert.ok(chart.includes('wiki-js'), `チャートの走査が wiki-js（#1688 の当事者）を拾えていない: [${chart.join(', ')}]`);
+  assert.deepStrictEqual(
+    listed,
+    chart,
+    '起動器の列挙がチャートの Recreate 全件と一致しない。Recreate を足した Deployment を列挙し忘れると、' +
+      '既存リリースへの upgrade が rollingUpdate の残りで落ちる（#1688）',
+  );
+});
+
+ok('#1688: チャートは `rollingUpdate: null` に頼らない（SSA では既存の値を消さないことを実測済み）', () => {
+  const tplDir = path.join(REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'templates');
+  for (const name of fs.readdirSync(tplDir).filter((f) => /\.ya?ml$/.test(f))) {
+    assert.ok(
+      !/^\s*rollingUpdate:\s*(null|~)\s*$/m.test(readAt(tplDir, name)),
+      `${name}: rollingUpdate: null は Helm 4 / ArgoCD のサーバサイド apply では既存の rollingUpdate を消さない。` +
+        '直したと誤読されるので置かない（起動器の patch で寄せる。#1688）',
+    );
+  }
+});
+
+const RECREATE_FRESH = runUp({});
+const RECREATE_EXISTING = runUp({ STUB_LIVE_ROLLINGUPDATE: 'wiki-js' });
+
+ok('#1688: 既存リリース（wiki-js に rollingUpdate が残る）では helm upgrade の前に strategy を Recreate へ寄せる', () => {
+  const r = RECREATE_EXISTING;
+  assert.strictEqual(r.status, 0, `起動器が失敗した: ${r.stderr.slice(-400)}`);
+  const up = r.lines.findIndex((l) => l.startsWith(MSP_UPGRADE));
+  const patch = r.lines.findIndex((l) => isRecreatePatch(l, 'wiki-js'));
+  assert.ok(up >= 0, 'msp の helm upgrade が無い');
+  assert.ok(patch >= 0, 'rollingUpdate が残る wiki-js に patch を当てていない（upgrade が SSA の検証で落ちる）');
+  assert.ok(patch < up, 'patch が helm upgrade より後にある（upgrade は patch の前に落ちる）');
+  const line = r.lines[patch];
+  assert.ok(line.includes('-n microservices-platform '), `patch の namespace が違う: ${line}`);
+  assert.ok(
+    line.includes('--type=json') &&
+      line.includes('[{"op":"replace","path":"/spec/strategy","value":{"type":"Recreate"}}]'),
+    `patch が strategy を {"type":"Recreate"} へ置き換えていない: ${line}`,
+  );
+  // 残っていない Deployment には当てない（seaweedfs は作成時から Recreate）。
+  assert.ok(!r.lines.some((l) => isRecreatePatch(l, 'seaweedfs')), 'rollingUpdate が残っていない seaweedfs まで patch した');
+  assert.match(r.stdout, /#1688: deploy\/wiki-js に RollingUpdate の残り/, '寄せたことを出力で告げていない');
+});
+
+ok('#1688: 新規クラスタ（rollingUpdate が無い）では確かめるだけで patch しない（既定の出力を増やさない）', () => {
+  const r = RECREATE_FRESH;
+  assert.strictEqual(r.status, 0, `起動器が失敗した: ${r.stderr.slice(-400)}`);
+  const up = r.lines.findIndex((l) => l.startsWith(MSP_UPGRADE));
+  for (const d of ['seaweedfs', 'wiki-js']) {
+    const probe = r.lines.findIndex((l) => isStrategyProbe(l, d));
+    assert.ok(probe >= 0 && probe < up, `${d}: helm upgrade の前に strategy を確かめていない`);
+    assert.ok(!r.lines.some((l) => isRecreatePatch(l, d)), `${d}: rollingUpdate が無いのに patch した`);
+  }
+  assert.ok(!r.stdout.includes('#1688'), '新規クラスタでも #1688 の出力が出た（既定の出力が増えた）');
+});
+
+/**
+ * lib を直接 source して `reconcile_recreate_strategy` を走らせる。kubectl は与えたスタブ本体（null なら PATH に置かない）。
+ * @returns {{ status: number|null, lines: string[], stdout: string }}
+ */
+function runRecreateLib(kubectlBody, deploys) {
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'recreate-lib-'));
+  const binDir = path.join(workdir, 'bin');
+  fs.mkdirSync(binDir);
+  const logFile = path.join(workdir, 'commands.log');
+  fs.writeFileSync(logFile, '');
+  if (kubectlBody !== null) {
+    fs.writeFileSync(path.join(binDir, 'kubectl'), kubectlBody);
+    fs.chmodSync(path.join(binDir, 'kubectl'), 0o755);
+  }
+  const bash = spawnSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).stdout.trim();
+  const lib = path.join(REPO_ROOT, RECREATE_LIB_REL);
+  // PATH は bin だけ —— kubectl を置かなければ「kubectl が無い環境」になる。lib が使うのは builtin だけ。
+  const r = spawnSync(bash, ['-c', `set -euo pipefail; . "$1"; shift; reconcile_recreate_strategy "$@"`, 'x', lib, 'ns1', ...deploys], {
+    env: { PATH: binDir, STUB_LOG: logFile },
+    encoding: 'utf8',
+  });
+  const lines = fs.readFileSync(logFile, 'utf8').split('\n').filter(Boolean);
+  fs.rmSync(workdir, { recursive: true, force: true });
+  return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+// echo / exit だけで書く（PATH に coreutils を置かないため）。
+const LIB_KUBECTL = (getBody, patchRc = 0) =>
+  [
+    '#!/bin/bash',
+    'echo "kubectl $*" >> "$STUB_LOG"',
+    'case "$*" in *" get deploy "*) ' + getBody + ' ;; esac',
+    `case "$*" in *" patch deploy "*) exit ${patchRc} ;; esac`,
+    'exit 0',
+    '',
+  ].join('\n');
+
+ok('#1688: lib は kubectl が無い環境では何もせず 0 で返る', () => {
+  const r = runRecreateLib(null, ['wiki-js']);
+  assert.strictEqual(r.status, 0, `kubectl が無いのに失敗した: ${r.stderr}`);
+  assert.strictEqual(r.stdout, '', 'kubectl が無いのに何か出力した');
+});
+
+ok('#1688: lib は Deployment が無い（get が失敗する）なら何もせず 0 で返る', () => {
+  const r = runRecreateLib(LIB_KUBECTL('echo "NotFound" >&2; exit 1'), ['seaweedfs', 'wiki-js']);
+  assert.strictEqual(r.status, 0, `Deployment が無いのに失敗した: ${r.stderr}`);
+  assert.ok(!r.lines.some((l) => l.includes(' patch ')), 'Deployment が無いのに patch した');
+  assert.strictEqual(r.lines.filter((l) => l.includes(' get deploy ')).length, 2, '列挙の全件を確かめていない');
+});
+
+ok('#1688: lib は移行済み（rollingUpdate が空）なら patch しない（冪等 ＝ 2 回目以降は何もしない）', () => {
+  const r = runRecreateLib(LIB_KUBECTL('exit 0'), ['seaweedfs', 'wiki-js']);
+  assert.strictEqual(r.status, 0);
+  assert.ok(!r.lines.some((l) => l.includes(' patch ')), '移行済みなのに patch した');
+  assert.strictEqual(r.stdout, '', '移行済みなのに何か出力した');
+});
+
+ok('#1688: lib は rollingUpdate が残る Deployment だけを patch し、patch の失敗は握らない', () => {
+  const get = 'case "$*" in *"get deploy wiki-js "*) echo \'{"maxSurge":"25%"}\';; esac; exit 0';
+  const r = runRecreateLib(LIB_KUBECTL(get), ['seaweedfs', 'wiki-js']);
+  assert.strictEqual(r.status, 0, `失敗した: ${r.stderr}`);
+  const patches = r.lines.filter((l) => l.includes(' patch '));
+  assert.strictEqual(patches.length, 1, `patch は wiki-js の 1 件だけのはず: ${JSON.stringify(patches)}`);
+  assert.ok(patches[0].startsWith('kubectl -n ns1 patch deploy wiki-js --type=json'), `patch の形が違う: ${patches[0]}`);
+  const failing = runRecreateLib(LIB_KUBECTL(get, 1), ['wiki-js']);
+  assert.notStrictEqual(failing.status, 0, 'patch が失敗したのに 0 で返った（直後の helm upgrade が同じ理由で落ちる）');
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
