@@ -3,15 +3,15 @@ title: 可変部品（Composable コンポーネント）共通実装ガイド �
 type: tech
 status: completed
 created: 2026-07-09
-updated: 2026-09-11
+updated: 2026-09-28
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, FR-14, FR-15]
 adrs: [ADR-0002, ADR-0018, ADR-0032]
-iadrs: [IADR-0007, IADR-0022, IADR-0024, IADR-0025, IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056, IADR-0121, IADR-0131, IADR-0135, IADR-0273, IADR-0429]
-specs: [20260709_composable-component-implementation-guide, 20260911_issue-1393_remove-platform-spa-public-client]
-issues: [#195, #206, #217, #218, #219, #519, #1393]
+iadrs: [IADR-0007, IADR-0022, IADR-0024, IADR-0025, IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056, IADR-0121, IADR-0131, IADR-0135, IADR-0232, IADR-0273, IADR-0429]
+specs: [20260709_composable-component-implementation-guide, 20260911_issue-1393_remove-platform-spa-public-client, 20260928_issue-1686_knowledge-test-sharding]
+issues: [#195, #206, #217, #218, #219, #519, #1393, #1686]
 -->
 
 # 可変部品（Composable コンポーネント）共通実装ガイド
@@ -141,6 +141,10 @@ issues: [#195, #206, #217, #218, #219, #519, #1393]
    （固定/可変分離はこのフォルダ割りが担う。空フォルダは作らない）。
 2. 所属ユニットの `src/knowledge/backend/backend.slnx` に csproj を登録する。ビルド設定・パッケージ版は
    `Directory.Build.props` / `Directory.Packages.props` の中央管理に従う（csproj に `Version=` を書かない）。
+   **試験プロジェクト（`Tests/<Name>.Tests.csproj` 等）を足したときは、`scripts/backend-test-shards.json` の同じユニット
+   （knowledge / platform）のいずれか 1 つのシャードへも追記する。** PR の CI はユニットのテストをシャードに分けて走らせており、
+   シャードに載らない試験プロジェクトがあると行列の導出（`discover-units`）が落ち、`build-and-test` が赤になる
+   （`node scripts/plan-backend-test-shards.js --check` で手元でも確かめられる）。割り当ての目安は同ファイルの注記にある。
 3. ユニット外参照は `src/platform/backend/Shared/` のみ。サービス間連携は同期 API（openapi.yaml 管理）または
    イベント（Shared.Contracts）に限る。
 4. デプロイ: Helm チャートへ Deployment を追加し、段をホストするなら `pipelineSteps: true` を設定する。

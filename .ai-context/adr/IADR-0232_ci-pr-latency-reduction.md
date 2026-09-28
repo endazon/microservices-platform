@@ -8,7 +8,7 @@ related_ids:
   - IADR-0123
 author: claude
 created: 2026-08-21
-updated: 2026-09-26
+updated: 2026-09-28
 plan_refs:
   - planning:docs/ai-implementation-workflow-guide.md
   - planning:projects/microservices-platform/07_adr/ADR-0048_impl-docs-restructure.md (決定 6・kit との乖離は受容する)
@@ -471,3 +471,71 @@ PR 時点で SAST の指摘が一切出なくなる。**`paths:` を持つため
 >   固定している claude-code-action は `origin` をトークン入りの URL へ書き換えるので、**`.git/config` にはトークンが残る**（env の `GH_TOKEN` にも在る）。
 >   設定は害が無く一律の規則に揃えるため残し、注記と作業仕様書（日付つき追記）を正した。許可する道具を絞る案は隠せないうえレビューを壊すので採らない。
 >   作業仕様書: `.ai-context/specs/20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes.md`
+
+> **［2026-09-28 追記 / #1686］決定 8 の監視が逆転を検知した。knowledge のテストをシャードに分けて解消する。閾値は変えない。**
+>
+> - 事実: `ci-latency`（2026-09-28 の週次 run 36381319788）が exit 1 —— `build-and-test` の中央値 **189 秒** > `claude-review` の最小 **148 秒**。
+>   律速は `backend-build (knowledge)` の「Restore, build and test」（約 150〜157 秒）。PR の CI run 36360190149 のログで内訳を測った:
+>   restore 約 7 秒・build 約 55 秒・test 約 90 秒（12 試験プロジェクトを 4 並列）。platform の脚は同じ step が約 109 秒（build 38・test 65）。
+>   監視スクリプト（`scripts/check-ci-latency.js`）は正常であり、直すのは監視ではなく律速の脚である。
+> - 裁定（利用者）: **knowledge のテストの脚をシャーディングして逆転を解消する。閾値は変えない。**
+> - 決定: `backend-build` の行列を「ユニット × テストのシャード」にする。割り当ては `scripts/backend-test-shards.json`（knowledge を 3 シャード）が持ち、
+>   `scripts/plan-backend-test-shards.js` を `discover-units` が呼んで行列（`legs`）を導出する。**ユニット名・試験プロジェクト名は `ci.yml` に書かない**（決定 2 の
+>   「ユニット追加時に CI の編集は不要」を保つ）。設定に無いユニット（platform）は従来どおり 1 脚で `backend.slnx` 全体を試す。
+>   シャードの脚も `backend.slnx` 全体を restore / build し（ビルドの検証の範囲は変えない）、テストだけを一時の slnx（シャードの試験プロジェクトだけを載せる）へ絞る。
+> - 取りこぼし・二重の防止（fail-closed）: 導出器は「`backend.slnx` の試験プロジェクト（`Microsoft.NET.Test.Sdk` を参照する csproj）の集合 ＝ シャードの和・各 1 回」を
+>   検査し、崩れていれば `discover-units` を落とす（→ 集約 `build-and-test` が赤）。同じ性質を `scripts.repo.test.js` の #1686 節が実データで固定する。
+>   試験プロジェクトを足して設定へ載せ忘れると PR が赤くなる —— **黙って走らない試験を作るより、足す手間を払わせる側に倒した。**
+> - 決定 2 との関係: 必須 check 名（`build-and-test`）は変えない。脚の名前は `backend-build (<label>)` になり、platform は `backend-build (platform)` のまま、
+>   knowledge は `backend-build (knowledge 1/3)` 〜 `(knowledge 3/3)` になる。脚は必須 check ではないので恒久 pending は生じない。起動条件（`on:`）も変えていない。
+> - カバレッジ: 各脚が `coverage-<key>`（脚ごとに一意）で Cobertura を上げ、集約が `coverage-*` を `merge-multiple` で展開する。シャード同士は試験プロジェクトが
+>   重ならないので、展開したパスは衝突せず、集計の母集合（試験プロジェクトごとの Cobertura）は従来と同じになる。PR は `--report-only` のまま（決定 3）。
+> - 代償: ランナーを 2 台多く使う（knowledge の build をシャードごとに重ねて払う）。build を試験プロジェクトの推移閉包へ絞る案は、どの試験からも参照されない
+>   プロジェクト（`Knowledge.Bff.Endpoints` など）のビルドが PR から落ちるので採らない。
+> - 残余: シャードを分けた後は platform の脚（build 38 秒＋最長の試験プロジェクト 1 本で約 63 秒）が律速になる。余裕が薄いときの次の手は、同じ設定へ platform を
+>   載せること（`ci.yml` の変更は要らない）だが、これは本裁定の範囲外であり、ci-latency が再び鳴ったときに裁定を仰ぐ。
+> - 実測（本 PR の CI run 36430633926）: knowledge の脚の step は 157 秒 → 96 / 94 / 111 秒。check 群の開始から backend-build の最後の脚の完了まで
+>   185 秒 → **144 秒**（platform 140 秒）。`ci.yml` を触らない PR の `build-and-test` の完了は約 159 秒と見積もる（集約の自前の所要 約 15 秒を足す）。
+>   🔴 **148 秒を下回るとは言い切れない**（改善前の中央値 189 − 41 ≒ 148 で境界上）。判定はマージ後の ci-latency の週次 run に委ね、再び鳴ったら
+>   上の「残余」の手（platform のシャード化・集約の setup-node の撤去）を裁定に掛ける。
+>   作業仕様書: `.ai-context/specs/20260928_issue-1686_knowledge-test-sharding.md`
+
+> **［2026-09-28 追記 2 / #1686］platform のテストも同じ裁定の範囲でシャードに分ける。上の 2026-09-28 追記の一部をこれで更新する。**
+>
+> - 範囲: 利用者裁定「テストを分割して逆転を解消する」（2026-09-28 に #1686 の方針として選ばれた）は、knowledge に限らず律速の脚のテストを分けることを指す。
+>   knowledge を分けた後の実測（run 36430633926 / 36431967761）で律速が platform の脚（完了 140 / 155 秒。Platform.Bff.Tests 1 本が 4 並列の下で 63〜65 秒）へ
+>   移ったため、platform も同じ裁定の範囲に入れた。集約ジョブの setup-node をやめる案は別の関心事なので、本件では扱わない。
+> - 決定: `scripts/backend-test-shards.json` に platform を 2 シャードで足す —— `Platform.Bff.Tests` 単独と、残り 6 本。3 シャード以上は Bff の下限が縮まず、
+>   脚ごとの固定費（ランナーの準備・取得・キャッシュ 約 18 秒＋restore / build 約 40 秒）を 1 脚ぶん増やすだけなので採らない。`ci.yml` は脚の名前の注記だけを直した
+>   （手順・行列・名前の規則は変えていない）。脚は `backend-build (platform 1/2)` / `(platform 2/2)` になる（必須ではないので恒久 pending は生じない）。
+> - 上の追記の更新点: 「決定 2 との関係」の「platform は `backend-build (platform)` のまま」、「残余」の「platform を載せるのは本裁定の範囲外」、「実測」の
+>   「platform のシャード化を裁定に掛ける」は、いずれも本追記で置き換わる。
+> - 実測（run 36433900638・head 85dd86f）: Platform.Bff.Tests は単独の脚で 27.7 秒（4 並列の下では 63〜65 秒）。platform の脚の step は 65 / 80 秒（従来 103〜110 秒）、
+>   脚の完了は脚の開始から 89 / 110 秒（従来 128〜141 秒）。律速は knowledge の脚（脚の開始から 130〜145 秒）へ戻った。この run は `discover-units` が
+>   ランナー待ちで 39 秒遅れて始まり（従来 7 秒）、knowledge 2/3 のキャッシュ復元が 57 秒掛かった（従来 5〜8 秒）ため、オフセットは参考値である。
+> - 🔴 **148 秒を下回るとはまだ言えない。** `ci.yml` を触らない PR の `build-and-test` の完了の見積もり（見積もりの式と run ごとの値は追記 3）は、
+>   この構成の run 36433900638 / 36435375359 で 173（キャッシュ遅れを除くと 162）/ 174 秒である。
+>   残りは knowledge の脚（固定費 約 18 秒＋restore / build 約 60 秒＋最も重いシャードの test 26〜43 秒）で、下限は ConversionService を含む 3/3 である。
+>   判定はマージ後の ci-latency の週次 run に委ね、再び鳴ったら knowledge のシャードの組み替え（ConversionService を単独にする等）を裁定に掛ける。
+
+> **［2026-09-28 追記 3 / #1686］knowledge の 3 シャードを組み替えた。最長脚は縮まず、148 秒には届かない。本 PR は #1686 を閉じない。**
+>
+> - 組み替え: シャード化後の各脚のログ（run 36430633926 / 36435375359）の所要から、最も重い 3 本（ConversionService 41〜51 秒・GraphService 32〜35 秒・
+>   DocumentService 28 秒）を別の脚へ分け、ConversionService の脚には軽いもの（AiAnalysis / Feedback / Contracts）だけを組ませた。シャード数は 3 のまま
+>   （4 脚にして ConversionService を単独にする案は、固定費 約 78 秒の脚を 1 本増やすだけで、軽い同居なら単独とほぼ同じ見込みのため採らない）。
+> - 実測（run 36437032894・head d832b9a）: ConversionService.Tests は軽い同居でも 44.9 秒で縮まなかった（所要は同居の重さではなく、それ自身の重さで決まる）。
+>   最も遅い脚の所要は 133 秒で、組み替え前（130〜146 秒）の範囲に留まった。
+> - 見積もりの式（追記 2 と作業仕様書の値はこれにそろえた）: 普通の PR の `build-and-test` の完了 ＝ 脚の開始の遅れ 13 秒（ランナー待ちの無い run の実測）
+>   ＋ 最も遅い脚の所要（脚の開始から完了まで）＋ 集約ジョブ自身の所要 15 秒。改善前 200 秒（実測）→ knowledge 3・platform 1 で 160 / 170 秒 →
+>   knowledge 3・platform 2 で 173（162）/ 174 / 161 / 158 秒（最後はランナー待ちの無い run 36438716595・develop 取り込み後）。
+>   **最終構成は約 158〜174 秒で、4 run とも 148 秒を上回る。**
+> - 下限: 律速は knowledge の脚で、「脚の準備・取得・キャッシュ 約 18 秒＋restore / build 約 60 秒＋ConversionService.Tests 1 本 約 45 秒」≒ 123 秒。
+>   シャードの割り当てではこれ以上縮まない。
+> - 代償（明記する）: **試験プロジェクトを 1 本足すたびに `scripts/backend-test-shards.json` の編集が要る**（knowledge / platform とも）。載せ忘れは
+>   `discover-units` を落として PR を赤にする（黙って走らない試験は作らない）。この手間を避けるため自動割り当てにする案は、重みの表が別に要り、割り当てが
+>   レビューで読めなくなるので採らない。手順は `docs/tech/composable-component-guide.md` §2.5 に足した。
+> - 集約ジョブの判定の固定（監査 M6）: `build-and-test` が前段 3 つ（discover-units / backend-build / submodule-changes）の結果を「success 以外は失敗」で
+>   判定していることを repo test で固定した。`= "failure"` へ弱めると、行列が 0 脚・取り消しの skipped / cancelled が緑で素通りする。
+> - 残余（本件では行わない。裁定事項）: 集約ジョブの setup-node をやめる（約 5 秒）／各脚に重なる restore / build（約 60 秒）をビルド成果物の再利用で
+>   減らす／ConversionService.Tests 自体を速くする。判定はマージ後の ci-latency の週次 run に委ね、本 PR は `Refs #1686` とする（#1686 は開いたまま）。
+

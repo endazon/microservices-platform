@@ -745,6 +745,7 @@ jobs:
   # FR-14, IADR-0056 / IADR-0060, Issue #230: 全バックエンドユニットを restore → build → test する。
   # 統合前は 1 ジョブで `for slnx in src/*/backend/backend.slnx` の **直列ループ**だったため、
   # ユニットが増えるほど線形に伸びていた（実測 462 秒）。ユニットを matrix の軸にして並列化する。
+  # （NFR, #1686 以降、行列の軸は「ユニット × テストのシャード」。シャードしないユニットは従来どおり 1 脚。下の discover-units 参照。）
   #
   # FR-14, IADR-0056 / IADR-0060, Issue #230: ルート集約ソリューションは置かず、全バックエンドユニット
   # （src/*/backend/backend.slnx）を自動発見して restore → build → test する。ユニット追加時に CI の
@@ -757,10 +758,16 @@ jobs:
   # knowledge）だけになる**（下の backend-build / backend-format の脚は submodule を取るが、脚の中の取得は行列に効かない）。
   # これは意図である —— submodule ユニットを全 PR の行列へ入れると所要・整形検査・カバレッジ集計に AST が混ざる。
   # submodule ユニットは submodule-changes / submodule-backend-build が、合成を変え得る差分のある PR でだけ試す。
+  #
+  # 🔴 NFR, #1686: backend-build の行列は「ユニット × テストのシャード」である（legs）。シャードの割り当ては
+  # scripts/backend-test-shards.json が持ち、scripts/plan-backend-test-shards.js が導出する（ここへユニット名も試験プロジェクト名も
+  # 書かない）。導出は「backend.slnx の試験プロジェクトの集合 ＝ シャードの和・各 1 回」を検査し、崩れていれば本ジョブを落とす
+  # （→ 集約 build-and-test が赤）。backend-format は従来どおりユニットの行列（units）を使う。
   discover-units:
     runs-on: ubuntu-latest
     outputs:
       units: ${{ steps.discover.outputs.units }}
+      legs: ${{ steps.discover.outputs.legs }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -781,8 +788,16 @@ jobs:
           json="$(printf '%s\n' "${units[@]}" | sort | jq -R . | jq -sc .)"
           echo "units=${json}" >> "$GITHUB_OUTPUT"
           echo "discovered: ${json}"
+          # NFR, #1686: ランナー既定の node で呼ぶ（setup-node は律速の経路に数秒載るため足さない）。
+          legs="$(node scripts/plan-backend-test-shards.js --units "$json")"
+          echo "legs=${legs}" >> "$GITHUB_OUTPUT"
+          echo "legs: ${legs}"
 
+  # NFR, #1686: 脚の名前は `backend-build (<label>)`。シャードしないユニットの label はユニット名のまま（`backend-build (<unit>)`）、
+  # シャードする脚は `backend-build (knowledge 1/3)` / `backend-build (platform 1/2)` の形になる。脚は必須 check ではない
+  # （必須は集約 build-and-test。決定 2）ため、脚の名前が変わっても恒久 pending は生じない。
   backend-build:
+    name: backend-build (${{ matrix.label }})
     runs-on: ubuntu-latest
     # 実インフラの Testcontainer 起動を含むため、既定 6 時間ではなく明示的に上限を置く。
     timeout-minutes: 30
@@ -790,7 +805,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        unit: ${{ fromJSON(needs.discover-units.outputs.units) }}
+        include: ${{ fromJSON(needs.discover-units.outputs.legs) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -843,21 +858,50 @@ jobs:
       # 🔴 Trait の付け忘れは fail-safe に倒れる —— 付け忘れたテストは除外されず**ここに残る**
       # （PR が少し遅くなるだけで、検証は 1 件も失われない）。回収先が --filter を使わないのは
       # このためでもある（あちらでフィルタすると、付け忘れがどこでも走らない形に倒れる）。
-      - name: Restore, build and test (${{ matrix.unit }}, unit tests only, with coverage)
+      #
+      # 🔴 NFR, #1686: シャードの脚も **backend.slnx 全体を restore / build する**（ビルドの検証は従来どおり全プロジェクトに掛かる）。
+      # 絞るのはテストだけで、シャードの試験プロジェクトだけを載せた一時の slnx（ci-test-shard.slnx。コミットしない）へ
+      # --no-build で dotnet test を掛ける。一時の slnx は backend.slnx と同じディレクトリに置くので、相対パスはそのまま通る。
+      # SHARD_PROJECTS が空の脚（シャードしないユニット）は従来どおり backend.slnx 全体を試す。
+      - name: Restore, build and test (${{ matrix.label }}, unit tests only, with coverage)
+        env:
+          UNIT: ${{ matrix.unit }}
+          SHARD_PROJECTS: ${{ matrix.projects }}
         run: |
           set -euo pipefail
-          slnx="src/${{ matrix.unit }}/backend/backend.slnx"
+          slnx="src/${UNIT}/backend/backend.slnx"
           dotnet restore "$slnx"
           dotnet build "$slnx" --no-restore --configuration Release
-          dotnet test "$slnx" --no-build --configuration Release \
+          target="$slnx"
+          if [ -n "$SHARD_PROJECTS" ]; then
+            target="src/${UNIT}/backend/ci-test-shard.slnx"
+            IFS=';' read -ra shard_projects <<< "$SHARD_PROJECTS"
+            {
+              echo '<Solution>'
+              for p in "${shard_projects[@]}"; do
+                if [ ! -f "src/${UNIT}/backend/${p}" ]; then
+                  echo "::error::シャードの試験プロジェクト ${p} が無い。" >&2
+                  exit 1
+                fi
+                printf '  <Project Path="%s" />\n' "$p"
+              done
+              echo '</Solution>'
+            } > "$target"
+            echo "::group::${target}（${#shard_projects[@]} 試験プロジェクト）"
+            cat "$target"
+            echo "::endgroup::"
+          fi
+          dotnet test "$target" --no-build --configuration Release \
             --filter "Category!=Integration" \
             --collect:"XPlat Code Coverage" --verbosity normal
       # カバレッジ床は全ユニット横断で 1 回だけ集計する（IADR-0123 決定 3〜5 の前提）。
       # matrix の各脚では集計せず、Cobertura を artifact で集約ジョブへ渡す。
+      # NFR, #1686: artifact 名は脚ごとに一意（key）。シャードは試験プロジェクトが重ならないので、集約ジョブの
+      # merge-multiple で展開しても Cobertura のパス（<試験プロジェクト>/TestResults/<guid>/）は衝突しない。
       - name: Upload coverage reports
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-${{ matrix.unit }}
+          name: coverage-${{ matrix.key }}
           path: "**/coverage.cobertura.xml"
           retention-days: 1
           if-no-files-found: error

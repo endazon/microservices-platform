@@ -16,7 +16,7 @@ related_ids:
   - IADR-0369
 author: claude
 created: 2026-09-04
-updated: 2026-09-04
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md
@@ -241,6 +241,10 @@ IADR-0317 が「動いているが宣言が持っていない」として**記�
   - 決定 2 により、STRICT を要求した再実行では **[6/7] で一度 PERMISSIVE に戻り、入口を移した後に
     STRICT へ戻る**（数分の緩みの窓）。これは IADR-0307 決定 4 の段取りそのものであり、
     **意図した挙動**として記録する（事故ではない）。
+    ［2026-09-28 追記 / #1691］ **入口をすでに Istio Ingress Gateway へ移したクラスタへの再実行では、この降格はもう行わない。**
+    降格の理由は「[6/7] の時点で入口がまだメッシュ外の Traefik」であり、移行済み（HelmChartConfig `kube-system/traefik` が
+    `service.enabled: false`。判定は `scripts/lib/edge-state.sh`）ならその理由が無い。`k8s-local-up.sh` は移行済みのとき
+    [6/7] から要求どおりのモードを宣言し、緩みの窓は初回（入口を移す実行）だけに残る。判断は IADR-0317 の 2026-09-28 追記。
   - G12 は `helm` を 2 回、`kubectl` を 1 回追加で叩く。`check-stack-ready.js` の実行時間が数秒伸びる。
 - **フォローアップ**:
   1. **AST をメッシュへ入れる**（AST#627）。入るまで経路B の既定は PERMISSIVE のままである（決定 3）
