@@ -65,3 +65,24 @@ kubectl apply -f deploy/argocd/application.yaml
 
 `selfHeal: true` により、手動 `kubectl edit` 等の out-of-band 変更は Git 状態へ自動復元される
 （手動 kubectl 依存の排除）。
+
+## 5. 更新戦略を Recreate へ変えた Deployment の同期が落ちるとき（#1688）
+
+`ServerSideApply=true` で同期する Application では、**RollingUpdate で作られた既存の Deployment を
+チャート側で `strategy.type: Recreate` へ変えると同期が落ちる**:
+
+```
+Deployment.apps "wiki-js" is invalid: spec.strategy.rollingUpdate: Forbidden:
+  may not be specified when strategy `type` is 'Recreate'
+```
+
+API サーバが既定で埋めた `rollingUpdate` は誰の所有でもないため、サーバサイド apply が消さずに残すからである。
+チャートに `rollingUpdate: null` を書いても消えない（実測。`scripts/lib/recreate-strategy.sh` 冒頭）。
+同期の前に、該当する Deployment へ一度だけ次を当てる（値はチャートと同じなので、以後の同期と衝突せず `selfHeal` も戻さない）:
+
+```sh
+kubectl -n microservices-platform patch deploy <name> --type=json \
+  -p '[{"op":"replace","path":"/spec/strategy","value":{"type":"Recreate"}}]'
+```
+
+`scripts/k8s-local-up.sh` を流すクラスタでは、起動器が helm upgrade の前に同じ patch を冪等に当てるので不要である。
