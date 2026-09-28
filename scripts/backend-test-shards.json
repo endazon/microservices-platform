@@ -1,0 +1,33 @@
+{
+  "$comment": [
+    "NFR, #1686 / IADR-0232（2026-09-28 追記）: ci.yml の backend-build でテストをシャードに分けるユニットと、その割り当て（単一情報源）。",
+    "読むのは scripts/plan-backend-test-shards.js。ここに無いユニットは従来どおり 1 脚で backend.slnx 全体を試す。",
+    "パスは各ユニットの backend.slnx からの相対。backend.slnx に載る試験プロジェクト（Microsoft.NET.Test.Sdk を参照する csproj）の集合とシャードの和が一致しなければ CI（discover-units）と scripts-tests が赤くなる。試験プロジェクトを足したら、どれか 1 つのシャードへ足すこと。",
+    "割り当ての根拠（knowledge）: PR の CI run 36360190149（2026-09-27）の backend-build (knowledge) のログの各プロジェクトの Total time（秒・4 並列の実測）。DocumentService 54.6 / DataSourceService 50.4 / GraphService 37.4 / AiAnalysisService 26.5 / ConversionService 25.9 / IngestionService 25.7 / RetrievalService 23.3 / WikiService 18.5 / DashboardService 17.1 / FeedbackService 15.5 / Knowledge.IntegrationTests（Category!=Integration）14.2 / Knowledge.Contracts.Tests 8.2。",
+    "最長の DocumentService を持つシャードは他を軽くした（1 本で約 55 秒あり、同じランナーで重いものと並べると伸びるため）。各シャードの合計: 92.5 / 111.7 / 113.1。"
+  ],
+  "units": {
+    "knowledge": {
+      "shards": [
+        [
+          "Services/DocumentService/Tests/DocumentService.Tests.csproj",
+          "Services/FeedbackService/Tests/FeedbackService.Tests.csproj",
+          "Shared/Knowledge.Contracts.Tests/Knowledge.Contracts.Tests.csproj",
+          "Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj"
+        ],
+        [
+          "Services/DashboardService/Tests/DashboardService.Tests.csproj",
+          "Services/DataSourceService/Tests/DataSourceService.Tests.csproj",
+          "Services/IngestionService/Tests/IngestionService.Tests.csproj",
+          "Services/WikiService/Tests/WikiService.Tests.csproj"
+        ],
+        [
+          "Services/AiAnalysisService/Tests/AiAnalysisService.Tests.csproj",
+          "Services/ConversionService/Tests/ConversionService.Tests.csproj",
+          "Services/GraphService/Tests/GraphService.Tests.csproj",
+          "Services/RetrievalService/Tests/RetrievalService.Tests.csproj"
+        ]
+      ]
+    }
+  }
+}

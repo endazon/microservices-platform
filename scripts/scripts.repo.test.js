@@ -225,6 +225,159 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #1686: knowledge のテストをシャードに分ける（ci-latency の逆転の解消。IADR-0232 2026-09-28 追記） -----------------
+  //
+  // 固定するもの: ①「backend.slnx の試験プロジェクトの集合 ＝ シャードの和・各 1 回」（実データ）②導出器が崩れを赤くする
+  // ③ci.yml の配線（行列をユニット × シャードから取る・ユニット名を書かない・artifact 名が脚ごとに一意・集約の名前を保つ）
+  // ④脚の手順の振る舞い（dotnet をスタブにして、シャードの脚が一時の slnx へ絞ってテストすることを走らせて確かめる）。
+  {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const { spawnSync } = require('child_process');
+    const repoRoot = path.join(__dirname, '..');
+    const planner = require('./plan-backend-test-shards.js');
+    const ci = fs.readFileSync(path.join(repoRoot, '.github', 'workflows', 'ci.yml'), 'utf8').replace(/\r\n/g, '\n');
+    const job = (id) => {
+      const m = new RegExp(`^  ${id}:\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9-]*:\\n|(?![\\s\\S]))`, 'm').exec(ci);
+      return m ? m[1] : null;
+    };
+    const code = (text) => text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+    // 仮のユニットを temp に作る（slnx ＋ csproj。試験プロジェクトは Microsoft.NET.Test.Sdk を参照する）。
+    const fakeRepo = (unit, { tests, others = [] }) => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shards-'));
+      const dir = path.join(root, 'src', unit, 'backend');
+      const all = [...tests.map((p) => [p, true]), ...others.map((p) => [p, false])];
+      for (const [p, isTest] of all) {
+        fs.mkdirSync(path.dirname(path.join(dir, p)), { recursive: true });
+        fs.writeFileSync(path.join(dir, p), isTest
+          ? '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" /></ItemGroup></Project>'
+          : '<Project Sdk="Microsoft.NET.Sdk"></Project>');
+      }
+      fs.writeFileSync(path.join(dir, 'backend.slnx'),
+        `<Solution>\n${all.map(([p]) => `  <Project Path="${p}" />`).join('\n')}\n</Solution>\n`);
+      return root;
+    };
+
+    ok('#1686: 実データ —— シャードするユニットの試験プロジェクトの集合はシャードの和と一致し、各 1 回だけ載る', () => {
+      const config = planner.readConfig(repoRoot);
+      const units = Object.keys(config.units || {});
+      assert.ok(units.includes('knowledge'), 'knowledge がシャードの設定に無い（#1686 の裁定）');
+      for (const unit of units) {
+        const actual = planner.testProjectsOf(repoRoot, unit);
+        assert.ok(actual.length >= 2, `${unit} の試験プロジェクトを読めていない（${actual.length} 件）`);
+        const flat = config.units[unit].shards.flat();
+        assert.strictEqual(new Set(flat).size, flat.length, `${unit}: 2 つのシャードに載る試験プロジェクトがある（二重に走る）`);
+        assert.deepStrictEqual([...flat].sort(), actual, `${unit}: シャードの和が backend.slnx の試験プロジェクトの集合と一致しない`);
+      }
+      const { legs, errors } = planner.planLegs(repoRoot, planner.discoverUnits(repoRoot), config);
+      assert.deepStrictEqual(errors, []);
+      const k = legs.filter((l) => l.unit === 'knowledge');
+      assert.ok(k.length >= 2, `knowledge の脚が ${k.length} 本しかない（シャードになっていない）`);
+      assert.ok(k.every((l) => l.projects), 'knowledge の脚に試験プロジェクトが空のものがある（backend.slnx 全体を試してしまう）');
+      assert.strictEqual(new Set(legs.map((l) => l.key)).size, legs.length, 'artifact の key が脚ごとに一意でない');
+      const p = legs.find((l) => l.unit === 'platform');
+      assert.deepStrictEqual(p, { unit: 'platform', label: 'platform', key: 'platform', projects: '' },
+        'シャードしないユニットの脚が従来の形（backend-build (platform)・backend.slnx 全体）でない');
+    });
+
+    ok('#1686: 導出器 —— 取りこぼし・二重・存在しない名前・古いユニット・1 シャードを赤くする', () => {
+      const tests = ['A/A.Tests.csproj', 'B/B.Tests.csproj', 'C/C.Tests.csproj'];
+      const root = fakeRepo('u', { tests, others: ['A/A.csproj'] });
+      try {
+        const run = (shards, units = ['u']) => planner.planLegs(root, units, { units: { u: { shards } } });
+        assert.deepStrictEqual(run([['A/A.Tests.csproj'], ['B/B.Tests.csproj', 'C/C.Tests.csproj']]).errors, []);
+        const miss = run([['A/A.Tests.csproj'], ['B/B.Tests.csproj']]).errors;
+        assert.ok(miss.some((e) => e.includes('C/C.Tests.csproj') && e.includes('どのシャードにも無い')), `取りこぼしを拾わない: ${miss}`);
+        const dup = run([['A/A.Tests.csproj', 'C/C.Tests.csproj'], ['B/B.Tests.csproj', 'C/C.Tests.csproj']]).errors;
+        assert.ok(dup.some((e) => e.includes('二重')), `二重を拾わない: ${dup}`);
+        const bogus = run([['A/A.Tests.csproj', 'A/A.csproj'], ['B/B.Tests.csproj', 'C/C.Tests.csproj']]).errors;
+        assert.ok(bogus.some((e) => e.includes('A/A.csproj') && e.includes('試験プロジェクトではない')), `試験でないものを拾わない: ${bogus}`);
+        assert.ok(run([tests]).errors.some((e) => e.includes('2 つ以上')), '1 シャードを拾わない');
+        assert.ok(run([['A/A.Tests.csproj'], []]).errors.some((e) => e.includes('空')), '空のシャードを拾わない');
+        const stale = planner.planLegs(root, ['u'], { units: { gone: { shards: [['x'], ['y']] } } }).errors;
+        assert.ok(stale.some((e) => e.includes('gone')), `古いユニットを拾わない: ${stale}`);
+        assert.deepStrictEqual(planner.planLegs(root, ['u'], { units: {} }),
+          { legs: [{ unit: 'u', label: 'u', key: 'u', projects: '' }], errors: [] }, '設定に無いユニットが 1 脚にならない');
+        // CLI は崩れを exit 1 にする（discover-units を落として集約を赤くする経路）。
+        const r = spawnSync(process.execPath, [path.join(__dirname, 'plan-backend-test-shards.js'), '--units', '[]'], { encoding: 'utf8' });
+        assert.strictEqual(r.status, 1, '空の --units で exit 1 にならない');
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    ok('#1686: ci.yml —— 行列はユニット × シャードから取り、ユニット名を書かず、集約 build-and-test の名前と配線を保つ', () => {
+      const du = code(job('discover-units'));
+      assert.match(du, /legs: \$\{\{ steps\.discover\.outputs\.legs \}\}/, 'discover-units が legs を出力しない');
+      assert.match(du, /node scripts\/plan-backend-test-shards\.js --units "\$json"/, 'discover-units が導出器を呼ばない');
+      assert.match(du, /units: \$\{\{ steps\.discover\.outputs\.units \}\}/, 'backend-format が使う units が消えた');
+      const bb = job('backend-build');
+      assert.ok(bb, 'backend-build が無い');
+      const bbc = code(bb);
+      assert.match(bbc, /^    name: backend-build \(\$\{\{ matrix\.label \}\}\)$/m, '脚の名前が backend-build (<label>) でない');
+      assert.match(bbc, /include: \$\{\{ fromJSON\(needs\.discover-units\.outputs\.legs\) \}\}/, '行列を legs から取っていない');
+      assert.match(bbc, /name: coverage-\$\{\{ matrix\.key \}\}/, 'カバレッジ artifact の名前が脚ごとに一意でない（シャード同士で衝突する）');
+      for (const id of ['discover-units', 'backend-build']) {
+        assert.ok(!/knowledge|platform/.test(code(job(id))), `${id} にユニット名が書かれている（次にユニットが増えたとき静かに外れる）`);
+      }
+      const bt = job('build-and-test');
+      assert.ok(bt, 'build-and-test（必須 check 名）が無い');
+      assert.ok(!/^    name:/m.test(bt), 'build-and-test に name: が付いた（必須 check の context が変わる）');
+      assert.match(bt, /^    needs:\s*\[[^\]]*\bbackend-build\b[^\]]*\]/m, 'build-and-test が backend-build を needs に持たない');
+      assert.match(bt, /pattern: coverage-\*/, '集約が全脚のカバレッジを拾わない');
+      assert.ok(!/^    name:/m.test(job('backend-format')), 'backend-format の名前を変えている（本件の範囲外）');
+    });
+
+    ok('#1686: 脚の手順（dotnet はスタブ）—— シャードは一時の slnx へ絞ってテストし、ビルドは backend.slnx 全体に掛ける', () => {
+      const lines = job('backend-build').split('\n');
+      const at = lines.findIndex((l) => /- name: Restore, build and test \(\$\{\{ matrix\.label \}\}/.test(l));
+      const runAt = lines.findIndex((l, i) => i > at && /^\s+run: \|$/.test(l));
+      assert.ok(at >= 0 && runAt > at, '脚の run: を切り出せない（形が変わった）');
+      const indent = /^\s*/.exec(lines[runAt])[0].length;
+      const body = [];
+      for (let i = runAt + 1; i < lines.length; i += 1) {
+        if (lines[i].trim() !== '' && /^\s*/.exec(lines[i])[0].length <= indent) break;
+        body.push(lines[i].slice(indent + 2));
+      }
+      const tests = ['A/A.Tests.csproj', 'B/B.Tests.csproj'];
+      const root = fakeRepo('u', { tests });
+      const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'stub-dotnet-'));
+      const log = path.join(bin, 'calls.log');
+      fs.writeFileSync(path.join(bin, 'dotnet'),
+        '#!/usr/bin/env bash\necho "$*" >> "$STUB_LOG"\nif [ "$1" = test ]; then cp "$2" "$STUB_LOG.slnx"; fi\n', { mode: 0o755 });
+      const run = (projects) => {
+        fs.rmSync(log, { force: true });
+        fs.rmSync(`${log}.slnx`, { force: true });
+        return spawnSync('bash', ['-c', body.join('\n')], {
+          cwd: root,
+          encoding: 'utf8',
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, STUB_LOG: log, UNIT: 'u', SHARD_PROJECTS: projects },
+        });
+      };
+      try {
+        let r = run('B/B.Tests.csproj');
+        assert.strictEqual(r.status, 0, r.stderr);
+        const calls = fs.readFileSync(log, 'utf8').trim().split('\n');
+        assert.match(calls[0], /^restore src\/u\/backend\/backend\.slnx$/, `restore が backend.slnx 全体でない: ${calls[0]}`);
+        assert.match(calls[1], /^build src\/u\/backend\/backend\.slnx /, `build が backend.slnx 全体でない: ${calls[1]}`);
+        assert.match(calls[2], /^test src\/u\/backend\/ci-test-shard\.slnx --no-build .*--filter Category!=Integration/,
+          `シャードの脚が一時の slnx へ絞ってテストしていない: ${calls[2]}`);
+        const shard = fs.readFileSync(`${log}.slnx`, 'utf8');
+        assert.deepStrictEqual(planner.slnxProjects(shard), ['B/B.Tests.csproj'], '一時の slnx がシャードの試験プロジェクトだけを載せていない');
+        r = run('');
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.match(fs.readFileSync(log, 'utf8'), /^test src\/u\/backend\/backend\.slnx --no-build/m, 'シャードしない脚が backend.slnx 全体を試していない');
+        r = run('A/A.Tests.csproj;Z/Missing.Tests.csproj');
+        assert.notStrictEqual(r.status, 0, '存在しない試験プロジェクトを載せても脚が緑になる');
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+        fs.rmSync(bin, { recursive: true, force: true });
+      }
+    });
+  }
+
 
   // --- seed-abac-policies: 冪等性の核（#517 / IADR-0133） ---------------------------
 
@@ -7986,6 +8139,10 @@ ${r.stderr}`);
           // #457 / IADR-0459: 切替（破棄と再構築）の**測定器**。`measure-abac-combinations.js` と同じ扱いで、
           // 走らせると稼働クラスタへ kubectl を叩きに行く。検査器として spawn される母集合に入れてはならない。
           'measure-cutover-inventory.js',
+          // #1686 / IADR-0232（2026-09-28 追記）: ci.yml の backend-build の行列（ユニット × テストのシャード）の**導出器**。
+          // `gen-*` と同じく生成が役割で、`--check` も導出の検査を兼ねるだけである（崩れの検査は #1686 節の試験と
+          // CI の discover-units が持つ）。git を呼ばず fs のみ。母集合に数えない。
+          'plan-backend-test-shards.js',
           'seed-abac-policies.js',
           // #992 / IADR-0284: 検索検証用文書の初期投入器。`seed-abac-policies.js` と同じ
           // **投入器**であり検査器ではない（副作用を持ち、判定を返さない）。母集合に数えない。

@@ -8,7 +8,7 @@ related_ids:
   - IADR-0123
 author: claude
 created: 2026-08-21
-updated: 2026-09-26
+updated: 2026-09-28
 plan_refs:
   - planning:docs/ai-implementation-workflow-guide.md
   - planning:projects/microservices-platform/07_adr/ADR-0048_impl-docs-restructure.md (決定 6・kit との乖離は受容する)
@@ -471,3 +471,27 @@ PR 時点で SAST の指摘が一切出なくなる。**`paths:` を持つため
 >   固定している claude-code-action は `origin` をトークン入りの URL へ書き換えるので、**`.git/config` にはトークンが残る**（env の `GH_TOKEN` にも在る）。
 >   設定は害が無く一律の規則に揃えるため残し、注記と作業仕様書（日付つき追記）を正した。許可する道具を絞る案は隠せないうえレビューを壊すので採らない。
 >   作業仕様書: `.ai-context/specs/20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes.md`
+
+> **［2026-09-28 追記 / #1686］決定 8 の監視が逆転を検知した。knowledge のテストをシャードに分けて解消する。閾値は変えない。**
+>
+> - 事実: `ci-latency`（2026-09-28 の週次 run 36381319788）が exit 1 —— `build-and-test` の中央値 **189 秒** > `claude-review` の最小 **148 秒**。
+>   律速は `backend-build (knowledge)` の「Restore, build and test」（約 150〜157 秒）。PR の CI run 36360190149 のログで内訳を測った:
+>   restore 約 7 秒・build 約 55 秒・test 約 90 秒（12 試験プロジェクトを 4 並列）。platform の脚は同じ step が約 109 秒（build 38・test 65）。
+>   監視スクリプト（`scripts/check-ci-latency.js`）は正常であり、直すのは監視ではなく律速の脚である。
+> - 裁定（利用者）: **knowledge のテストの脚をシャーディングして逆転を解消する。閾値は変えない。**
+> - 決定: `backend-build` の行列を「ユニット × テストのシャード」にする。割り当ては `scripts/backend-test-shards.json`（knowledge を 3 シャード）が持ち、
+>   `scripts/plan-backend-test-shards.js` を `discover-units` が呼んで行列（`legs`）を導出する。**ユニット名・試験プロジェクト名は `ci.yml` に書かない**（決定 2 の
+>   「ユニット追加時に CI の編集は不要」を保つ）。設定に無いユニット（platform）は従来どおり 1 脚で `backend.slnx` 全体を試す。
+>   シャードの脚も `backend.slnx` 全体を restore / build し（ビルドの検証の範囲は変えない）、テストだけを一時の slnx（シャードの試験プロジェクトだけを載せる）へ絞る。
+> - 取りこぼし・二重の防止（fail-closed）: 導出器は「`backend.slnx` の試験プロジェクト（`Microsoft.NET.Test.Sdk` を参照する csproj）の集合 ＝ シャードの和・各 1 回」を
+>   検査し、崩れていれば `discover-units` を落とす（→ 集約 `build-and-test` が赤）。同じ性質を `scripts.repo.test.js` の #1686 節が実データで固定する。
+>   試験プロジェクトを足して設定へ載せ忘れると PR が赤くなる —— **黙って走らない試験を作るより、足す手間を払わせる側に倒した。**
+> - 決定 2 との関係: 必須 check 名（`build-and-test`）は変えない。脚の名前は `backend-build (<label>)` になり、platform は `backend-build (platform)` のまま、
+>   knowledge は `backend-build (knowledge 1/3)` 〜 `(knowledge 3/3)` になる。脚は必須 check ではないので恒久 pending は生じない。起動条件（`on:`）も変えていない。
+> - カバレッジ: 各脚が `coverage-<key>`（脚ごとに一意）で Cobertura を上げ、集約が `coverage-*` を `merge-multiple` で展開する。シャード同士は試験プロジェクトが
+>   重ならないので、展開したパスは衝突せず、集計の母集合（試験プロジェクトごとの Cobertura）は従来と同じになる。PR は `--report-only` のまま（決定 3）。
+> - 代償: ランナーを 2 台多く使う（knowledge の build をシャードごとに重ねて払う）。build を試験プロジェクトの推移閉包へ絞る案は、どの試験からも参照されない
+>   プロジェクト（`Knowledge.Bff.Endpoints` など）のビルドが PR から落ちるので採らない。
+> - 残余: シャードを分けた後は platform の脚（build 38 秒＋最長の試験プロジェクト 1 本で約 63 秒）が律速になる。余裕が薄いときの次の手は、同じ設定へ platform を
+>   載せること（`ci.yml` の変更は要らない）だが、これは本裁定の範囲外であり、ci-latency が再び鳴ったときに裁定を仰ぐ。
+>   作業仕様書: `.ai-context/specs/20260928_issue-1686_knowledge-test-sharding.md`
