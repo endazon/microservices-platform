@@ -23,7 +23,10 @@ BACKUP_IMAGE_BUILD_REGISTRY_RE='error getting credentials|failed to authorize|un
 # 版の解決の失敗（apk の 2 形・ミラーの 404・ベースの Alpine の食い違い）。
 # 🔴 食い違いは**展開後の値**（ALPINE_BRANCH=v3.24）で引く。BuildKit は失敗した RUN の本文をそのままログへ出すため、
 #    字面の `ALPINE_BRANCH=$ALPINE_BRANCH と違います` で引くと、RUN が別の理由で落ちたときも version に倒れる。
-BACKUP_IMAGE_BUILD_VERSION_RE='unable to select package|server returned error: HTTP/[0-9.]+ 404|ALPINE_BRANCH=v[0-9][^ ]* と違います'
+# 🔴 apk の文言は**実際のエラー行の形**（`ERROR: unable to select packages:` / `<名前>: unable to select package (or its dependencies)`）で引く。
+#    BuildKit は失敗した行の前後の Dockerfile を抜粋して出し、Dockerfile の注釈には「unable to select package」の語が在る。
+#    素の語で引くと、別の原因で落ちた RUN の抜粋まで version に倒れる。
+BACKUP_IMAGE_BUILD_VERSION_RE='ERROR: unable to select packages:|: unable to select package \(or its dependencies\)|server returned error: HTTP/[0-9.]+ 404|ALPINE_BRANCH=v[0-9][^ ]* と違います'
 
 # backup_image_build_cause <logfile>
 # ログが無い・読めないときは unknown（断定しない）。判定の順は registry → version

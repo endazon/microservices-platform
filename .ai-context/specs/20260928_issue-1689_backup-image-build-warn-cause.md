@@ -91,6 +91,13 @@ Runbook §6（イメージの版を上げる）へ導く。原因が違うのに
 - `node scripts/check-commit-messages.js --range=origin/develop..HEAD`
 - 変異（コミット後に 2 件以上）: 分類器の registry 分岐を潰す／WARN の分岐を version 固定に戻す、で赤になること。
 
+## 追記（2026-09-28・監査の指摘への対応）
+
+- **出力の合流**: LOCAL_ONLY_IMAGES のビルドは `2>&1 | tee` で採るため、ビルドの stderr は stdout へ合流して画面に出る（WARN 自体は従来どおり stderr）。tee を挟むため、TTY 向けの BuildKit の進捗表示はプレーン表示になる。
+- **apk の文言は実際のエラー行の形に絞る**（`ERROR: unable to select packages:` / `: unable to select package (or its dependencies)`）。BuildKit は失敗した行の前後の Dockerfile を抜粋して出し、Dockerfile の注釈には「unable to select package」の語が在る。素の語で引くと、別の原因で落ちた RUN の抜粋まで version に倒れる。Dockerfile の注釈は言い換えない（実測の記録であり、正規表現を絞れば足りる。変えるとイメージの再ビルドが走るだけで得るものが無い）。注釈の抜粋を含むログが unknown になることを表の試験に足した。
+- **試験の追加**: 両方の語を含むログが registry になること（判定の順）、大文字を含む表記（`401 Unauthorized`）が registry になること（大文字小文字を区別しない検索）。
+- **nerdctl の経路**: 起動器（k8s-local-up.sh）の試験は `K8S_LOCAL_RUNTIME=k3d` に固定して走らせている（cluster create の経路を通すため。rancher にすると起動器の段の前提が変わる）。そこで nerdctl の経路は `k8s-local-images.sh` を `K8S_LOCAL_RUNTIME=rancher` で直接、nerdctl の記録スタブの下で走らせ、registry の分岐が出ることを見る。
+
 ## 範囲外
 
 - 実際のイメージのビルド・稼働クラスタでの実行（スタブで固定する）。

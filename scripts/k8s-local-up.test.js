@@ -3656,6 +3656,12 @@ ok('#1689: 分類器は実物の文言で 3 分岐を分ける（apk の 2 形�
     [runEcho, 'unknown'],
     [`/tmp/x/age-1.3.1-r6.apk: FAILED\nsha256sum: WARNING: 1 of 1 computed checksums did NOT match\n${runEcho}`, 'unknown'],
     ['', 'unknown'],
+    // 両方の語が載っても registry を先に見る（資格情報・到達の失敗を版上げへ導かない）。
+    ['#2 ERROR: error getting credentials - err: exit status 22\nwget: server returned error: HTTP/1.1 404 Not Found', 'registry'],
+    // 大文字を含む実物の表記（containerd の token 取得の失敗）。registry の検索は大文字小文字を区別しない。
+    ['failed to fetch oauth token: unexpected status from GET request to https://auth.docker.io/token: 401 Unauthorized', 'registry'],
+    // BuildKit の Dockerfile の抜粋（注釈に「unable to select package」の語が在る）だけでは version に倒さない。
+    [`${runEcho}\nDockerfile:27\n--------------------\n  24 |     # パッケージファイルは Alpine のミラーから直接取る。\n  25 | >>> # 「unable to select package」で止まった（CI で実測）。\n--------------------`, 'unknown'],
   ];
   const run = (file) => {
     const r = spawnSync('bash', ['-c', '. "$1"; backup_image_build_cause "$2"', '_', lib, file], { encoding: 'utf8' });
@@ -3670,6 +3676,52 @@ ok('#1689: 分類器は実物の文言で 3 分岐を分ける（apk の 2 形�
   assert.deepStrictEqual(got, cases.map(([, want]) => want), cases.map(([log]) => log.split('\n')[0]).join('\n'));
   assert.strictEqual(run(path.join(dir, 'absent.log')), 'unknown', 'ログが無いのに断定した');
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// #1689: Rancher Desktop（nerdctl）の経路でも、ビルドのログを採って分類する。起動器（k8s-local-up.sh）は
+// K8S_LOCAL_RUNTIME=k3d で固定して走らせているため（cluster create の経路を通すため）、ここは
+// k8s-local-images.sh を K8S_LOCAL_RUNTIME=rancher で直接、nerdctl の記録スタブの下で走らせる。
+function runImagesRancher(buildLog) {
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-images-rancher-'));
+  const binDir = path.join(workdir, 'bin');
+  fs.mkdirSync(binDir);
+  const logFile = path.join(workdir, 'commands.log');
+  fs.writeFileSync(logFile, '');
+  const stub = [
+    '#!/usr/bin/env bash',
+    'echo "nerdctl $*" >> "$STUB_LOG"',
+    'case "$*" in *" build "*platform-backup*) printf \'%s\\n\' "$STUB_NERDCTL_BUILD_FAIL_LOG" >&2; exit 1;; esac',
+    'exit 0',
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(binDir, 'nerdctl'), stub);
+  fs.chmodSync(path.join(binDir, 'nerdctl'), 0o755);
+  const r = spawnSync('bash', [path.join('scripts', 'k8s-local-images.sh')], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: binDir + path.delimiter + (process.env.PATH || ''),
+      STUB_LOG: logFile,
+      STUB_NERDCTL_BUILD_FAIL_LOG: buildLog,
+      K8S_LOCAL_RUNTIME: 'rancher',
+      LIVE: '1',
+    },
+  });
+  const lines = fs.readFileSync(logFile, 'utf8').split('\n').filter(Boolean);
+  fs.rmSync(workdir, { recursive: true, force: true });
+  return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+
+ok('🔴 #1689: Rancher（nerdctl）の経路でも、資格情報ヘルパーの失敗を registry として案内する（版上げへ導かない）', () => {
+  const r = runImagesRancher('#2 ERROR: error getting credentials - err: exit status 22, out: `{ "errorCode" : 255 }`');
+  assert.ok(
+    r.lines.some((l) => l.startsWith('nerdctl --namespace k8s.io build ') && BACKUP_IMAGE_REF.test(l)),
+    'nerdctl の経路で platform-backup をビルドしていない（試験の前提）',
+  );
+  assertBackupWarnCommon(r);
+  assert.match(r.stderr, HINT_CREDS, 'nerdctl の経路でビルドのログを分類できていない');
+  assert.doesNotMatch(r.stderr, HINT_BUMP, 'nerdctl の経路で資格情報の失敗を版上げへ導いた');
 });
 
 ok('#1564: 陽性対照 —— compose 由来の本体のイメージ（MAPPING）のビルド失敗は、従来どおり起動を止める', () => {
