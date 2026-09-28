@@ -17,7 +17,7 @@ related_ids:
   - IADR-0307
 author: claude
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md
@@ -135,6 +135,24 @@ Istio の Gateway は `credentialName` の Secret を**ingress gateway と同じ
 
 down で mTLS を先に緩めるのは、**入口だけ戻して 502 のままにしない**ためである。
 down で Gateway の撤去を先にするのは、**hostPort を空けてからでないと Traefik の svclb が bind に失敗する**ためである。
+
+> ［2026-09-28 追記 / #1691］ **入口を移した後の再実行は、Traefik へ戻さず待たない。判定はクラスタの状態で行う。**
+> 移行済みのクラスタで `LOCALEDGE=1 ISTIO=1` の `k8s-local-up.sh` を再実行すると、LOCALEDGE の段の
+> `kubectl apply -k deploy/local/edge` が HelmChartConfig `kube-system/traefik` を Service ありへ戻し（決定 2 の逆操作）、
+> helm-controller の入れ直しが IADR-0258 の反映待ち（`wait svc/traefik`・180 秒）に間に合わず rc=1 で止まった。
+> 作り直された `svclb-traefik` は 80/443/50000 を istio-ingressgateway と取り合い Pending のまま残る（2026-09-14 に続き 2 回目）。
+> 本決定の「up は ① Traefik を明け渡す → ② Gateway を立てる」は**初回**の順序であり、再実行で ① の前に Traefik を戻すことは想定していなかった。
+>
+> - **判定**: `[1/7]` の直後・副作用より前に、HelmChartConfig の `valuesContent` がトップレベルの `service:` 直下に `enabled: false` を持てば移行済みと読む。
+>   フラグ（`ISTIO`）では判定しない（今回の意図であってクラスタの現状ではない）。読めないときは未移行へ倒す（見落としても反映待ちが非 0 で止まり、黙らない）。
+>   判定は `scripts/lib/edge-state.sh` の 1 本だけで、`k8s-local-down.sh` の `traefik_service_disabled` も同じ口を呼ぶ（監査 #1694 の推奨で 1 本化。
+>   以前の down は「どこかに `enabled: false`」で up より緩かった）。入れ子の `x.service.enabled` や引用符つきの `"false"` は未移行と読む（表は作業仕様書）。
+> - **移行済み ＋ `ISTIO=1`**: Traefik を前提とする 4 処理（`apply -k deploy/local/edge`・`wait svc/traefik`・Traefik 向け CoreDNS・`argocd-ingress.yaml`）を飛ばし、
+>   エッジ TLS と `istio-edge-up.sh`（冪等）は従来どおり走らせる。`[6/7]` は入口が既に Envoy なので要求どおりの mTLS モードを宣言する（STRICT を一時降格しない）。
+> - **移行済み ＋ `LOCALEDGE=1` のみ（`ISTIO` 無し）**: `[2/7]` の前に非 0 で止め、「`ISTIO=1` を付けて再実行」か「先に `istio-edge-down.sh --live`（決定 7）で戻す」を告げる。
+>   付け忘れか Traefik へ戻す意図かは読めず、どちらでも従来の Traefik 経路はポートの取り合いとメッシュ設定の黙った除去を招くため、推測で選ばない。
+> - 母集合（`traefik` の全文走査）と試験の写像は作業仕様書 `20260928_issue-1691_istio-edge-rerun-idempotent.md`。
+>   `k8s-local-up.test.js` の kubectl スタブに HelmChartConfig の状態の模型を足し、移行済み・未移行・`ISTIO` 無しの 3 通りを固定した。
 
 ## 実クラスタで確かめたこと（2026-08-30・k3s `v1.35.4+k3s1` / Istio `1.30.4`）
 

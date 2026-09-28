@@ -87,7 +87,13 @@ bash scripts/istio-edge-down.sh --live   # 🔴 切り戻し（1 コマンド）
 
 `LOCALEDGE=1` と併用したときは、**[6/7] の helm はいったん PERMISSIVE を宣言し、入口を Envoy へ移した
 後に `istio-edge-up.sh` [5/5] が STRICT へ上げる**（#1159 / [`IADR-0377`](../../.ai-context/adr/IADR-0377_mesh-mtls-single-writer-and-drift-gate.md) 決定 2）。
-上の段取りをスクリプトの側で満たすためであり、STRICT を要求した再実行では**一度緩んでから上がる**。
+上の段取りをスクリプトの側で満たすためである。**入口をすでに Envoy へ移したクラスタへの再実行では緩めない**
+（HelmChartConfig `kube-system/traefik` が `service.enabled: false` なら移行済みと読み、[6/7] から要求どおりのモードを宣言する。#1691）。
+
+入口を移した後の**再実行**（#1691 / IADR-0317 の 2026-09-28 追記）: 移行済みかは**クラスタの状態**（上の HelmChartConfig）で判定する。
+`ISTIO=1 LOCALEDGE=1` なら Traefik へ戻す段（`deploy/local/edge` の apply・`svc/traefik` の反映待ち・Traefik 向け CoreDNS・
+`argocd-ingress.yaml`）を飛ばし、`istio-edge-up.sh` の冪等な確認だけを行う。**`LOCALEDGE=1` だけ（`ISTIO` 無し）では起動の前に止まる** ——
+Istio のまま再実行するなら `ISTIO=1` を付け、Traefik へ戻すなら先に `bash scripts/istio-edge-down.sh --live` を実行する。
 
 ### 🔴 mTLS モードを書いてよいのは helm だけである（#1159）
 
