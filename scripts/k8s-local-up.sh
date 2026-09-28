@@ -453,6 +453,15 @@ if [ "${LOCALEMBED:-}" = "1" ]; then
   LOCALEMBED_ARGS="--set embedding.deterministicLocal.enabled=true"
 fi
 echo "==> [6/7] helm upgrade --install (values-local)"
+# NFR, IADR-0210 決定 7, #1688: **後から Recreate へ変えた Deployment は、既存リリースに RollingUpdate の既定値
+#   （spec.strategy.rollingUpdate）が残っている。** Helm 4 の SSA はそれを消さず（チャートの `rollingUpdate: null` でも
+#   消えないことを実測）、`type: Recreate` と同居して upgrade 全体が落ちる。helm の前に冪等な patch で寄せる。
+#   列挙はチャートで `type: Recreate` を宣言する Deployment の全件（k8s-local-up.test.js がチャートと突き合わせる）。
+#   新規クラスタ・移行済みでは何もせず、何も出さない（lib 冒頭）。
+RECREATE_DEPLOYMENTS="seaweedfs wiki-js"
+. "$ROOT/scripts/lib/recreate-strategy.sh"
+# shellcheck disable=SC2086  # RECREATE_DEPLOYMENTS は空白区切りの名前の列。意図的に分割する。
+reconcile_recreate_strategy "$MSP_NS" $RECREATE_DEPLOYMENTS
 # shellcheck disable=SC2086  # ISTIO_MESH_ARGS / LOCALEMBED_ARGS は空か複数フラグ。意図的に分割する。
 helm upgrade --install msp deploy/helm/microservices-platform \
   -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS $LOCALEMBED_ARGS

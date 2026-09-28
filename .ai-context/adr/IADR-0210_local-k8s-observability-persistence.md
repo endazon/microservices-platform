@@ -13,7 +13,7 @@ related_ids:
   - IADR-0179
 author: claude
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-09-28
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md (可観測性)
   - planning:projects/microservices-platform/07_adr/ADR-0008_runtime-kubernetes-k3s.md (経路B の実行基盤)
@@ -203,6 +203,19 @@ compose の `user: "0:0"` は compose のままで正しく、[IADR-0079](./IADR
 
 **base（`emptyDir`）側は `RollingUpdate` のままでよい**（奪い合うボリュームが無い）。
 オーバーレイだけに入れることで、既定経路はバイト等価のまま保たれる。
+
+> ［2026-09-28 追記 / #1688］ **後から Recreate へ変えるときは、既存の Deployment に残る `rollingUpdate` を寄せる。**
+> 本決定の射程を helm チャートへ広げた #1435 / #1569（wiki-js）で、既存リリースへの `helm upgrade` が
+> `spec.strategy.rollingUpdate: Forbidden: may not be specified when strategy type is 'Recreate'` で落ちた。
+> RollingUpdate で作られた Deployment には API サーバが既定の `rollingUpdate` を埋めており、Helm 4 の
+> サーバサイド apply（ArgoCD の `ServerSideApply=true` も同じ）は所有者の無いこの値を消さないためである。
+> **チャートの `rollingUpdate: null` では消えない**（kube-apiserver 1.34.1 / Helm v4.0.0・v4.2.1 で実測。
+> null は API サーバまで届くが既存の値は残る）。そこで経路B の起動器は `[6/7]` の helm upgrade の前に
+> `scripts/lib/recreate-strategy.sh` で strategy を `{"type":"Recreate"}` へ冪等に置き換える（残っていなければ何もしない）。
+> 値はチャートと同じなので field manager の衝突（IADR-0377）は起きない（同じ実測）。対象はチャートで Recreate を
+> 宣言する Deployment の全件で、列挙の一致は `k8s-local-up.test.js` が固定する。本節の kustomize オーバーレイ 7 件は
+> クライアントサイド apply（戦略的マージパッチの `retainKeys`）で `rollingUpdate` が消えるため同型ではない。
+> 実測と母集合は作業仕様書 `20260928_issue-1688_recreate-strategy-upgrade.md`。
 
 ## 理由
 

@@ -47,6 +47,7 @@
     { "path": "check-test-spec-coverage.js", "reason": "kubectl は偽陽性の説明と試験用の文字列に現れるだけ" },
     { "path": "lib/live-opt-in.js", "reason": "判定器そのもの。注記に kubectl が現れるだけ" },
     { "path": "lib/mesh-mtls-mode.sh", "reason": "source される関数定義だけ（sourcing は何もしない）。呼ぶのは live の istio-edge-up.sh / istio-edge-down.sh" },
+    { "path": "lib/recreate-strategy.sh", "reason": "source される関数定義だけ（sourcing は何もしない）。呼ぶのは live の k8s-local-up.sh（#1688）" },
     { "path": "lib/tool-oidc-login.js", "reason": "判定だけの純関数。I/O は live の verify-tool-oidc-logins.sh が持つ" }
   ]
 }
