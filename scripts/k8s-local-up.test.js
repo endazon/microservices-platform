@@ -238,6 +238,12 @@ const KUBECTL_STUB = [
   // IADR-0369 (#1088): STUB_SC_ABSENT=1 で `kubectl get storageclass local-path` を非0（provisioner 不在）に返させ、
   // 既定（永続化）が黙って emptyDir へ落ちずに止まることを検証できるようにする。
   'if [ "${STUB_SC_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "storageclass" ]; then exit 1; fi',
+  // #1688: STUB_LIVE_ROLLINGUPDATE（空白区切りの Deployment 名）に挙げた Deployment だけを「RollingUpdate の既定値が
+  // 残った既存リリース」として `spec.strategy.rollingUpdate` を返す。既定（空）は新規クラスタ ＝ 何も返さない。
+  'case "$*" in *"get deploy "*"jsonpath={.spec.strategy.rollingUpdate}"*)',
+  '  for d in ${STUB_LIVE_ROLLINGUPDATE:-}; do case "$*" in *"get deploy $d "*) echo \'{"maxSurge":"25%","maxUnavailable":"25%"}\';; esac; done',
+  '  exit 0;;',
+  'esac',
   // IADR-0369 (#1088): realm 後追い Job（deploy/local/keycloak-setup/reconcile-realm.sh）の完了待ち。
   // conditions の問い合わせに Complete を返す（返さないと起動器が Job の完了を 300 秒待つ）。
   'case "$*" in *"get job"*conditions*) echo "Complete "; exit 0;; esac',
@@ -3704,6 +3710,164 @@ ok('#1564: 陽性対照 —— compose 由来の本体のイメージ（MAPPING�
   const r = runUp({ STUB_DOCKER_BUILD_FAIL: 'microservices-platform/bff' });
   assert.notStrictEqual(r.status, 0, '本体のイメージのビルド失敗で起動器が止まらなかった');
   assert.ok(!r.lines.some((l) => l.startsWith('helm upgrade ')), '本体のイメージが落ちたのに helm で配備へ進んだ');
+});
+
+
+// --- #1688: 後から Recreate へ変えた Deployment を既存リリースへ upgrade できること -------------------------
+//
+// RollingUpdate で作られた Deployment には API サーバが既定の `spec.strategy.rollingUpdate` を埋める。チャートが後から
+// `type: Recreate` だけを宣言すると、Helm 4 のサーバサイド apply は所有者の無いこの値を消さず、同居して検証に落ちる
+// （#1569 の wiki-js。稼働クラスタの `[6/7] helm upgrade` が rc=1 で止まった）。チャートの `rollingUpdate: null` では
+// 消えないことを実測した（kube-apiserver 1.34.1 / Helm v4.0.0・v4.2.1。作業仕様書 20260928_issue-1688）。
+// そこで起動器は helm upgrade の**前に**冪等な patch で strategy を寄せる（scripts/lib/recreate-strategy.sh）。
+
+const RECREATE_LIB_REL = 'scripts/lib/recreate-strategy.sh';
+const MSP_UPGRADE = 'helm upgrade --install msp ';
+const isStrategyProbe = (l, d) =>
+  l.startsWith('kubectl ') && l.includes(`get deploy ${d} `) && l.includes('jsonpath={.spec.strategy.rollingUpdate}');
+const isRecreatePatch = (l, d) => l.startsWith('kubectl ') && l.includes(`patch deploy ${d} `);
+
+/** チャートのテンプレートを走査し、`spec.strategy.type: Recreate` を宣言する Deployment の名前を返す。 */
+function chartRecreateDeployments() {
+  const tplDir = path.join(REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'templates');
+  const names = [];
+  for (const name of fs.readdirSync(tplDir).filter((f) => /\.ya?ml$/.test(f)).sort()) {
+    for (const doc of readAt(tplDir, name).split(/^---\s*$/m)) {
+      if (!/^kind:\s*Deployment\s*$/m.test(doc)) continue;
+      if (!/^\s{2}strategy:\s*\n(?:\s{4}#.*\n)*\s{4}type:\s*Recreate\s*$/m.test(doc)) continue;
+      names.push((/^metadata:\s*\n\s+name:\s*(\S+)/m.exec(doc) || [])[1] || `?(${name})`);
+    }
+  }
+  return names.sort();
+}
+
+ok('#1688: 起動器の列挙（RECREATE_DEPLOYMENTS）はチャートで Recreate を宣言する Deployment の全件と一致する', () => {
+  const src = readAt(REPO_ROOT, UP_SCRIPT);
+  const m = /^RECREATE_DEPLOYMENTS="([^"]*)"\s*$/m.exec(src);
+  assert.ok(m, 'k8s-local-up.sh に RECREATE_DEPLOYMENTS="..." の宣言が無い');
+  const listed = m[1].split(/\s+/).filter(Boolean).sort();
+  const chart = chartRecreateDeployments();
+  // 母集合が空なら何も検査していない（「検査していない」と「問題が無い」を同じ出力にしない）。
+  assert.ok(chart.includes('wiki-js'), `チャートの走査が wiki-js（#1688 の当事者）を拾えていない: [${chart.join(', ')}]`);
+  assert.deepStrictEqual(
+    listed,
+    chart,
+    '起動器の列挙がチャートの Recreate 全件と一致しない。Recreate を足した Deployment を列挙し忘れると、' +
+      '既存リリースへの upgrade が rollingUpdate の残りで落ちる（#1688）',
+  );
+});
+
+ok('#1688: チャートは `rollingUpdate: null` に頼らない（SSA では既存の値を消さないことを実測済み）', () => {
+  const tplDir = path.join(REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'templates');
+  for (const name of fs.readdirSync(tplDir).filter((f) => /\.ya?ml$/.test(f))) {
+    assert.ok(
+      !/^\s*rollingUpdate:\s*(null|~)\s*$/m.test(readAt(tplDir, name)),
+      `${name}: rollingUpdate: null は Helm 4 / ArgoCD のサーバサイド apply では既存の rollingUpdate を消さない。` +
+        '直したと誤読されるので置かない（起動器の patch で寄せる。#1688）',
+    );
+  }
+});
+
+const RECREATE_FRESH = runUp({});
+const RECREATE_EXISTING = runUp({ STUB_LIVE_ROLLINGUPDATE: 'wiki-js' });
+
+ok('#1688: 既存リリース（wiki-js に rollingUpdate が残る）では helm upgrade の前に strategy を Recreate へ寄せる', () => {
+  const r = RECREATE_EXISTING;
+  assert.strictEqual(r.status, 0, `起動器が失敗した: ${r.stderr.slice(-400)}`);
+  const up = r.lines.findIndex((l) => l.startsWith(MSP_UPGRADE));
+  const patch = r.lines.findIndex((l) => isRecreatePatch(l, 'wiki-js'));
+  assert.ok(up >= 0, 'msp の helm upgrade が無い');
+  assert.ok(patch >= 0, 'rollingUpdate が残る wiki-js に patch を当てていない（upgrade が SSA の検証で落ちる）');
+  assert.ok(patch < up, 'patch が helm upgrade より後にある（upgrade は patch の前に落ちる）');
+  const line = r.lines[patch];
+  assert.ok(line.includes('-n microservices-platform '), `patch の namespace が違う: ${line}`);
+  assert.ok(
+    line.includes('--type=json') &&
+      line.includes('[{"op":"replace","path":"/spec/strategy","value":{"type":"Recreate"}}]'),
+    `patch が strategy を {"type":"Recreate"} へ置き換えていない: ${line}`,
+  );
+  // 残っていない Deployment には当てない（seaweedfs は作成時から Recreate）。
+  assert.ok(!r.lines.some((l) => isRecreatePatch(l, 'seaweedfs')), 'rollingUpdate が残っていない seaweedfs まで patch した');
+  assert.match(r.stdout, /#1688: deploy\/wiki-js に RollingUpdate の残り/, '寄せたことを出力で告げていない');
+});
+
+ok('#1688: 新規クラスタ（rollingUpdate が無い）では確かめるだけで patch しない（既定の出力を増やさない）', () => {
+  const r = RECREATE_FRESH;
+  assert.strictEqual(r.status, 0, `起動器が失敗した: ${r.stderr.slice(-400)}`);
+  const up = r.lines.findIndex((l) => l.startsWith(MSP_UPGRADE));
+  for (const d of ['seaweedfs', 'wiki-js']) {
+    const probe = r.lines.findIndex((l) => isStrategyProbe(l, d));
+    assert.ok(probe >= 0 && probe < up, `${d}: helm upgrade の前に strategy を確かめていない`);
+    assert.ok(!r.lines.some((l) => isRecreatePatch(l, d)), `${d}: rollingUpdate が無いのに patch した`);
+  }
+  assert.ok(!r.stdout.includes('#1688'), '新規クラスタでも #1688 の出力が出た（既定の出力が増えた）');
+});
+
+/**
+ * lib を直接 source して `reconcile_recreate_strategy` を走らせる。kubectl は与えたスタブ本体（null なら PATH に置かない）。
+ * @returns {{ status: number|null, lines: string[], stdout: string }}
+ */
+function runRecreateLib(kubectlBody, deploys) {
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'recreate-lib-'));
+  const binDir = path.join(workdir, 'bin');
+  fs.mkdirSync(binDir);
+  const logFile = path.join(workdir, 'commands.log');
+  fs.writeFileSync(logFile, '');
+  if (kubectlBody !== null) {
+    fs.writeFileSync(path.join(binDir, 'kubectl'), kubectlBody);
+    fs.chmodSync(path.join(binDir, 'kubectl'), 0o755);
+  }
+  const bash = spawnSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).stdout.trim();
+  const lib = path.join(REPO_ROOT, RECREATE_LIB_REL);
+  // PATH は bin だけ —— kubectl を置かなければ「kubectl が無い環境」になる。lib が使うのは builtin だけ。
+  const r = spawnSync(bash, ['-c', `set -euo pipefail; . "$1"; shift; reconcile_recreate_strategy "$@"`, 'x', lib, 'ns1', ...deploys], {
+    env: { PATH: binDir, STUB_LOG: logFile },
+    encoding: 'utf8',
+  });
+  const lines = fs.readFileSync(logFile, 'utf8').split('\n').filter(Boolean);
+  fs.rmSync(workdir, { recursive: true, force: true });
+  return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+// echo / exit だけで書く（PATH に coreutils を置かないため）。
+const LIB_KUBECTL = (getBody, patchRc = 0) =>
+  [
+    '#!/bin/bash',
+    'echo "kubectl $*" >> "$STUB_LOG"',
+    'case "$*" in *" get deploy "*) ' + getBody + ' ;; esac',
+    `case "$*" in *" patch deploy "*) exit ${patchRc} ;; esac`,
+    'exit 0',
+    '',
+  ].join('\n');
+
+ok('#1688: lib は kubectl が無い環境では何もせず 0 で返る', () => {
+  const r = runRecreateLib(null, ['wiki-js']);
+  assert.strictEqual(r.status, 0, `kubectl が無いのに失敗した: ${r.stderr}`);
+  assert.strictEqual(r.stdout, '', 'kubectl が無いのに何か出力した');
+});
+
+ok('#1688: lib は Deployment が無い（get が失敗する）なら何もせず 0 で返る', () => {
+  const r = runRecreateLib(LIB_KUBECTL('echo "NotFound" >&2; exit 1'), ['seaweedfs', 'wiki-js']);
+  assert.strictEqual(r.status, 0, `Deployment が無いのに失敗した: ${r.stderr}`);
+  assert.ok(!r.lines.some((l) => l.includes(' patch ')), 'Deployment が無いのに patch した');
+  assert.strictEqual(r.lines.filter((l) => l.includes(' get deploy ')).length, 2, '列挙の全件を確かめていない');
+});
+
+ok('#1688: lib は移行済み（rollingUpdate が空）なら patch しない（冪等 ＝ 2 回目以降は何もしない）', () => {
+  const r = runRecreateLib(LIB_KUBECTL('exit 0'), ['seaweedfs', 'wiki-js']);
+  assert.strictEqual(r.status, 0);
+  assert.ok(!r.lines.some((l) => l.includes(' patch ')), '移行済みなのに patch した');
+  assert.strictEqual(r.stdout, '', '移行済みなのに何か出力した');
+});
+
+ok('#1688: lib は rollingUpdate が残る Deployment だけを patch し、patch の失敗は握らない', () => {
+  const get = 'case "$*" in *"get deploy wiki-js "*) echo \'{"maxSurge":"25%"}\';; esac; exit 0';
+  const r = runRecreateLib(LIB_KUBECTL(get), ['seaweedfs', 'wiki-js']);
+  assert.strictEqual(r.status, 0, `失敗した: ${r.stderr}`);
+  const patches = r.lines.filter((l) => l.includes(' patch '));
+  assert.strictEqual(patches.length, 1, `patch は wiki-js の 1 件だけのはず: ${JSON.stringify(patches)}`);
+  assert.ok(patches[0].startsWith('kubectl -n ns1 patch deploy wiki-js --type=json'), `patch の形が違う: ${patches[0]}`);
+  const failing = runRecreateLib(LIB_KUBECTL(get, 1), ['wiki-js']);
+  assert.notStrictEqual(failing.status, 0, 'patch が失敗したのに 0 で返った（直後の helm upgrade が同じ理由で落ちる）');
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
