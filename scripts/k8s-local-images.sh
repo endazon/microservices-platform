@@ -117,31 +117,57 @@ done
 #    ここで止めると、新しい機械やキャッシュを消した環境で起動器全体が [2/7] で落ちる（CronJob を置かない PERSIST=0 でも）。
 #    代わりに WARN を出して続ける。落ちるのはバックアップの CronJob だけで、それは Job の失敗として見える。
 #    **厳格な赤は CI（images.yml の build-local (platform-backup)）が担う** —— develop で先に知らせる信号はそちらである。
+#    NFR-21, #1689: 原因は決め打ちしない。ビルドの出力を画面へ流しつつ採り、lib/backup-image-build-cause.sh で分類して
+#    原因別に案内する（資格情報ヘルパーの失敗を「age の版が上がった」と案内し、版を上げる手順へ誤誘導した）。
+. "$(dirname "$0")/lib/backup-image-build-cause.sh" || exit 3   # 分類器が読めなければ案内を誤る —— 黙って続けず止める
+local_only_logdir="$(mktemp -d)"
+trap 'rm -f "$local_only_logdir"/*.log; rmdir "$local_only_logdir" 2>/dev/null || true' EXIT
 local_only_failed=()
+local_only_cause=()
+local_only_n=0
 for entry in "${LOCAL_ONLY_IMAGES[@]}"; do
   IFS='|' read -r image context dockerfile <<< "$entry" || true
   ref="${PREFIX}/${image}"
+  local_only_n=$((local_only_n + 1)); log="${local_only_logdir}/${local_only_n}.log"
   echo "==> build ${ref}  (-f ${context}/${dockerfile}  context=${context})"
   if [ "$RUNTIME" = "rancher" ]; then
-    if ! nerdctl --namespace k8s.io build -f "${context}/${dockerfile}" -t "${ref}" "${context}"; then
-      local_only_failed+=("${ref}")
+    if ! nerdctl --namespace k8s.io build -f "${context}/${dockerfile}" -t "${ref}" "${context}" 2>&1 | tee "$log"; then
+      local_only_failed+=("${ref}"); local_only_cause+=("$(backup_image_build_cause "$log")")
     fi
   else
-    if docker build -f "${context}/${dockerfile}" -t "${ref}" "${context}"; then
+    if docker build -f "${context}/${dockerfile}" -t "${ref}" "${context}" 2>&1 | tee "$log"; then
       k3d_images+=("${ref}")
     else
-      local_only_failed+=("${ref}")
+      local_only_failed+=("${ref}"); local_only_cause+=("$(backup_image_build_cause "$log")")
     fi
   fi
 done
 warn_local_only_failed() {
-  local ref
-  for ref in "${local_only_failed[@]}"; do
+  local i ref cause
+  for i in "${!local_only_failed[@]}"; do
+    ref="${local_only_failed[$i]}"; cause="${local_only_cause[$i]}"
     echo "WARN: ${ref} のビルドに失敗しました（起動は続けます）。" >&2
     echo "WARN:   このイメージを使うバックアップの CronJob（platform-backup-postgres / platform-backup-vault）は" >&2
     echo "WARN:   ErrImageNeverPull / ImagePullBackOff で失敗します（日次のバックアップが取れません）。" >&2
-    echo "WARN:   age の版が Alpine で上がった（固定した -rN が消えた）可能性が高い。" >&2
-    echo "WARN:   docs/operations/platform-infra-backup-runbook.md の「6. イメージの版を上げる」を参照してください。" >&2
+    case "$cause" in
+      registry)
+        echo "WARN:   原因: 資格情報ヘルパーの失敗（error getting credentials 等）か、レジストリ・ミラーへの認証・到達の失敗です。" >&2
+        echo "WARN:   age の版の問題ではありません（版を上げても直りません）。次を確かめてください:" >&2
+        echo "WARN:     1. Docker Hub へログインし直す（docker login。Rancher Desktop なら nerdctl login）。" >&2
+        echo "WARN:     2. 資格情報ヘルパー（~/.docker/config.json の credsStore / credHelpers）が動くか確かめ、" >&2
+        echo "WARN:        コンテナランタイム（Rancher Desktop / Docker Desktop）を再起動する。" >&2
+        echo "WARN:     3. ネットワーク（プロキシ・DNS）で Docker Hub と dl-cdn.alpinelinux.org へ届くか確かめる。" >&2
+        echo "WARN:   直したら docs/operations/platform-infra-backup-runbook.md の §1 の 5 の手順でイメージを作り直してください。" >&2
+        ;;
+      version)
+        echo "WARN:   原因: 版の解決に失敗しました（age の版が Alpine で上がり、固定した -rN が消えた等）。" >&2
+        echo "WARN:   docs/operations/platform-infra-backup-runbook.md の「6. イメージの版を上げる」を参照してください。" >&2
+        ;;
+      *)
+        echo "WARN:   原因: ビルドのログから判別できませんでした（断定しません）。上に出ているビルドのログを確かめてください。" >&2
+        echo "WARN:   docs/operations/platform-infra-backup-runbook.md の「失敗したときの分岐」を参照してください。" >&2
+        ;;
+    esac
   done
 }
 [ "${#local_only_failed[@]}" -eq 0 ] || warn_local_only_failed

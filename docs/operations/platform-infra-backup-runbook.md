@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-09-28
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0008]
 iadrs: [IADR-0066, IADR-0369, IADR-0457, IADR-0471]
-specs: [20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image]
-issues: [#1560, #1564, AST#346]
+specs: [20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause]
+issues: [#1560, #1564, #1689, AST#346]
 -->
 
 # 運用 Runbook: platform-infra の暗号化バックアップ
@@ -213,6 +213,7 @@ issues: [#1560, #1564, AST#346]
 3 つで固定している。Alpine の安定版ブランチは各パッケージの最新のリリースしか置かないため、上流が age の `-rN` を上げると
 取得が失敗し、CI の `build-local (platform-backup)` が赤くなる。**赤くなるのが正しい**（黙って別の版を入れない）。
 次の手順で上げる。稼働クラスタへは、リポジトリに入ってから §1 の 5 で当てる。
+起動スクリプトの WARN から来たときは、その「原因:」の行が**版の解決の失敗**であることを先に確かめる（資格情報ヘルパーや到達の失敗は版を上げても直らない。「失敗したときの分岐」を見る）。
 
 1. **ベースの digest を引く**（稼働クラスタへ pull しない。レジストリの API を読むだけ）。`postgres:<PG の版>-alpine<Alpine の版>`
    の image index の digest を、匿名トークンで `registry-1.docker.io/v2/library/postgres/manifests/<タグ>` へ HEAD を撃ち、
@@ -240,7 +241,7 @@ issues: [#1560, #1564, AST#346]
 | `age の受取人ファイルがありません` | ConfigMap `platform-backup-age-recipients` が無い | §1 の 2〜3 |
 | `… 行目が age の公開鍵（age1...）ではありません` / `公開鍵が 1 つもありません` | 占位のまま・写し間違い | 受取人ファイルを直して §1 の 3 |
 | `受取人ファイル … 行目の前後に空白があります` | 公開鍵の行の前後や `#` 行の頭に空白がある | 空白を消して §1 の 3 |
-| Pod が `ErrImageNeverPull` / `ErrImagePull` / `ImagePullBackOff`（イメージ `k3d-local/platform-backup:…`） | イメージを作っていない・タグを上げたのに作り直していない・起動スクリプトのビルドが失敗した（`WARN: k3d-local/platform-backup:… のビルドに失敗しました` が出る。起動は止めない） | WARN が出ていれば §6（age の版が Alpine で上がった可能性が高い）。出ていなければ §1 の 5 の手順でイメージを作り、手動の Job を走らせ直す（レジストリからは取れない） |
+| Pod が `ErrImageNeverPull` / `ErrImagePull` / `ImagePullBackOff`（イメージ `k3d-local/platform-backup:…`） | イメージを作っていない・タグを上げたのに作り直していない・起動スクリプトのビルドが失敗した（`WARN: k3d-local/platform-backup:… のビルドに失敗しました` が出る。起動は止めない） | WARN の「原因:」の行で分かれる。**版の解決に失敗** → §6。**資格情報ヘルパーの失敗か、レジストリ・ミラーへの認証・到達の失敗**（ログに `error getting credentials` 等）→ 版を上げても直らない。Docker Hub へログインし直す・資格情報ヘルパー（`~/.docker/config.json` の `credsStore` / `credHelpers`）を確かめてランタイムを再起動する・プロキシと DNS を確かめる、のあと §1 の 5 で作り直す。**判別できません** → 起動スクリプトの出力にあるビルドのログを読んで原因を確かめる（sha256 の不一致は版を上げて上書きしない）。WARN が出ていなければ §1 の 5 の手順でイメージを作り、手動の Job を走らせ直す（レジストリからは取れない） |
 | `age がありません（イメージが k3d-local/platform-backup ではない可能性があります…）` | CronJob が age を持たない別のイメージを指している（古いマニフェストの当て直し等） | `kubectl -n platform-infra get cronjob platform-backup-postgres -o jsonpath='{..image}'` で確かめ、§1 の 5 で当て直す |
 | `保管先に目印 .platform-backup-target がありません` | ドライブが外れている・目印を置いていない | ドライブを確かめて §1 の 4。**もう片方には書けている** |
 | `DB の一覧を取れません` | Postgres が落ちている・Secret `postgres` のパスワードと DB が食い違う | `kubectl -n platform-infra get pods`、Secret の供給（起動スクリプト・ESO）を確かめる |
