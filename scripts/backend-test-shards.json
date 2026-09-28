@@ -1,0 +1,51 @@
+{
+  "$comment": [
+    "NFR, #1686 / IADR-0232（2026-09-28 追記）: ci.yml の backend-build でテストをシャードに分けるユニットと、その割り当て（単一情報源）。",
+    "読むのは scripts/plan-backend-test-shards.js。ここに無いユニットは従来どおり 1 脚で backend.slnx 全体を試す。",
+    "パスは各ユニットの backend.slnx からの相対。backend.slnx に載る試験プロジェクト（Microsoft.NET.Test.Sdk を参照する csproj）の集合とシャードの和が一致しなければ CI（discover-units）と scripts-tests が赤くなる。試験プロジェクトを足したら、どれか 1 つのシャードへ足すこと。",
+    "割り当ての根拠（knowledge）: PR の CI run 36360190149（2026-09-27）の backend-build (knowledge) のログの各プロジェクトの Total time（秒・4 並列の実測）。DocumentService 54.6 / ConversionService 50.4 / GraphService 37.4 / DataSourceService 26.5 / DashboardService 25.9 / IngestionService 25.7 / RetrievalService 23.3 / WikiService 18.5 / AiAnalysisService 17.1 / FeedbackService 15.5 / Knowledge.IntegrationTests（Category!=Integration）14.2 / Knowledge.Contracts.Tests 8.2。［2026-09-28 訂正］割り当てを決めたときは Conversion と AiAnalysis・Dashboard と DataSource の所要を取り違えていた（シャード化後の run 36430633926 の件数で同定し直した）。取り違えた値での合計は 92.5 / 111.7 / 113.1、正しい値では 92.5 / 96.6 / 128.2。",
+    "最長の DocumentService を持つシャードは他を軽くした（1 本で約 55 秒あり、同じランナーで重いものと並べると伸びるため）。run 36430633926 の実測（テスト部分の壁時計）は 31 / 26 / 43 秒。3/3 の 43 秒は ConversionService 1 本（4 並列の下で 41 秒）が下限である。［2026-09-28 追記］platform を分けた後（run 36433900638）は knowledge の脚が律速に戻ったので、3/3 の組み替え（ConversionService を単独にする等）が次の候補になる（本 PR では行わない）。",
+    "platform（2026-09-28 追記）: 根拠は run 36360190149 と run 36431967761 の backend-build (platform) のログ（Total time・秒・4 並列。同時に始まる 4 本は Passed 行の名前空間の件数で同定した）。Platform.Bff.Tests 62.8 / 65.5、LlmGateway.Tests 32.3 / 30.9、AuthorizationService.Tests 26.4 / 24.0、McpServer.Tests 22.0 / 18.0、NotificationService.Tests 20.4 / 19.9、Platform.Shared.Infrastructure.Tests 18.5 / 16.8、Platform.Shared.Kernel.Tests 9.6 / 9.1。",
+    "platform を 2 シャードにした理由: Platform.Bff.Tests 1 本（約 63〜65 秒）が test の下限で、残り 6 本の合計（約 118〜129 秒・4 並列で約 30〜35 秒）より重い。したがって Bff を単独の脚にし、残りをもう 1 脚にまとめる。3 シャード以上は Bff の下限が縮まないうえ、脚ごとの固定費（restore 約 4 秒＋build 約 38 秒＋ランナーの準備約 15 秒）を 1 脚ぶん増やすだけなので採らない。",
+    "knowledge の組み替え（2026-09-28 追記 3）: シャード化後の run 36430633926 / 36435375359 の各脚のログ（Total time・秒。脚の中の 4 並列）で最長脚が最小になるよう組み替えた。ConversionService 41.3 / 51.3（同じ脚の重いものと競合して伸びる。シャード前は 50.4）、GraphService 31.8 / 34.9、DocumentService 27.8 / 28.3、IngestionService 24.2、DataSourceService 24.1、RetrievalService 23.8 / 23.7、WikiService 23.7、DashboardService 23.5、Knowledge.IntegrationTests 20.7 / 18.2、AiAnalysisService 16.8 / 16.8、FeedbackService 12.0 / 11.7、Knowledge.Contracts.Tests 7.7 / 6.2。各脚は 4 本で、4 コアに同時に載るので脚の test は「最も重い 1 本（競合込み）」で決まる。最も重い 3 本（Conversion / Graph / Document）を別の脚へ分け、Conversion の脚には軽いもの（AiAnalysis / Feedback / Contracts）だけを組ませて競合を減らした。合計は 81.8 / 100.0 / 99.8。シャード数は 3 のまま（4 脚にして Conversion を単独にする案は、脚の固定費 約 78 秒を払う脚が 1 本増えるだけで、Conversion の脚は軽い同居なら単独とほぼ同じになる見込みのため採らない）。"
+  ],
+  "units": {
+    "knowledge": {
+      "shards": [
+        [
+          "Services/AiAnalysisService/Tests/AiAnalysisService.Tests.csproj",
+          "Services/ConversionService/Tests/ConversionService.Tests.csproj",
+          "Services/FeedbackService/Tests/FeedbackService.Tests.csproj",
+          "Shared/Knowledge.Contracts.Tests/Knowledge.Contracts.Tests.csproj"
+        ],
+        [
+          "Services/GraphService/Tests/GraphService.Tests.csproj",
+          "Services/RetrievalService/Tests/RetrievalService.Tests.csproj",
+          "Services/WikiService/Tests/WikiService.Tests.csproj",
+          "Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj"
+        ],
+        [
+          "Services/DashboardService/Tests/DashboardService.Tests.csproj",
+          "Services/DataSourceService/Tests/DataSourceService.Tests.csproj",
+          "Services/DocumentService/Tests/DocumentService.Tests.csproj",
+          "Services/IngestionService/Tests/IngestionService.Tests.csproj"
+        ]
+      ]
+    },
+    "platform": {
+      "shards": [
+        [
+          "Bff/Platform.Bff.Tests/Platform.Bff.Tests.csproj"
+        ],
+        [
+          "Services/AuthorizationService/Tests/AuthorizationService.Tests.csproj",
+          "Services/LlmGateway/Tests/LlmGateway.Tests.csproj",
+          "Services/McpServer/Tests/McpServer.Tests.csproj",
+          "Services/NotificationService/Tests/NotificationService.Tests.csproj",
+          "Shared/Platform.Shared.Infrastructure.Tests/Platform.Shared.Infrastructure.Tests.csproj",
+          "Shared/Platform.Shared.Kernel.Tests/Platform.Shared.Kernel.Tests.csproj"
+        ]
+      ]
+    }
+  }
+}
