@@ -494,4 +494,8 @@ PR 時点で SAST の指摘が一切出なくなる。**`paths:` を持つため
 >   プロジェクト（`Knowledge.Bff.Endpoints` など）のビルドが PR から落ちるので採らない。
 > - 残余: シャードを分けた後は platform の脚（build 38 秒＋最長の試験プロジェクト 1 本で約 63 秒）が律速になる。余裕が薄いときの次の手は、同じ設定へ platform を
 >   載せること（`ci.yml` の変更は要らない）だが、これは本裁定の範囲外であり、ci-latency が再び鳴ったときに裁定を仰ぐ。
+> - 実測（本 PR の CI run 36430633926）: knowledge の脚の step は 157 秒 → 96 / 94 / 111 秒。check 群の開始から backend-build の最後の脚の完了まで
+>   185 秒 → **144 秒**（platform 140 秒）。`ci.yml` を触らない PR の `build-and-test` の完了は約 159 秒と見積もる（集約の自前の所要 約 15 秒を足す）。
+>   🔴 **148 秒を下回るとは言い切れない**（改善前の中央値 189 − 41 ≒ 148 で境界上）。判定はマージ後の ci-latency の週次 run に委ね、再び鳴ったら
+>   上の「残余」の手（platform のシャード化・集約の setup-node の撤去）を裁定に掛ける。
 >   作業仕様書: `.ai-context/specs/20260928_issue-1686_knowledge-test-sharding.md`

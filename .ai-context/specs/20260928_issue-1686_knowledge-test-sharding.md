@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — #1686 ci-latency の逆転を、knowledge のテストをシャードに分けて解消する
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, IADR-0232, IADR-0123]
 author: Claude Opus 5.5 (worker)
 created: 2026-09-28
@@ -41,17 +41,22 @@ issue: "#1686"
   | 試験プロジェクト | 秒 | 件数 |
   | --- | --- | --- |
   | DocumentService.Tests | 54.6 | 978 |
-  | DataSourceService.Tests | 50.4 | 232 |
+  | ConversionService.Tests | 50.4 | 232 |
   | GraphService.Tests | 37.4 | 761 |
-  | AiAnalysisService.Tests | 26.5 | 331 |
-  | ConversionService.Tests | 25.9 | 93 |
+  | DataSourceService.Tests | 26.5 | 331 |
+  | DashboardService.Tests | 25.9 | 93 |
   | IngestionService.Tests | 25.7 | 104 |
   | RetrievalService.Tests | 23.3 | 454 |
   | WikiService.Tests | 18.5 | 129 |
-  | DashboardService.Tests | 17.1 | 161 |
+  | AiAnalysisService.Tests | 17.1 | 161 |
   | FeedbackService.Tests | 15.5 | 39 |
   | Knowledge.IntegrationTests（`Category!=Integration`） | 14.2 | 62 |
   | Knowledge.Contracts.Tests | 8.2 | 90 |
+
+  🔴 ［2026-09-28 訂正］割り当てを決めた時点では、同時に始まった 4 本（Conversion / AiAnalysis / Dashboard / DataSource）の
+  結果を取り違え、Conversion=25.9・AiAnalysis=26.5・Dashboard=17.1・DataSource=50.4 と読んでいた。シャード化後の
+  run 36430633926 では各シャードが 4 本ずつしか走らないので件数から一意に同定でき、上表はその同定で直した値である。
+  取り違えた値で均した結果、シャードの合計は 92.5 / 96.6 / 128.2 秒と 3/3 に偏った（実測の結果を参照）。
 
 - カバレッジ: `check-coverage-floor.js` は `src` 配下の `coverage.cobertura.xml` をすべて歩いて集計する。Cobertura は
   `<試験プロジェクト>/TestResults/<guid>/` に出るので、シャードで試験プロジェクトが重ならなければ展開後のパスは衝突しない。
@@ -79,8 +84,8 @@ issue: "#1686"
   | シャード | 試験プロジェクト | 合計（秒） |
   | --- | --- | --- |
   | 1/3 | DocumentService / FeedbackService / Knowledge.Contracts.Tests / Knowledge.IntegrationTests | 92.5 |
-  | 2/3 | DataSourceService / IngestionService / WikiService / DashboardService | 111.7 |
-  | 3/3 | GraphService / AiAnalysisService / ConversionService / RetrievalService | 113.1 |
+  | 2/3 | DataSourceService / IngestionService / WikiService / DashboardService | 96.6（割り当て時の読みでは 111.7） |
+  | 3/3 | GraphService / AiAnalysisService / ConversionService / RetrievalService | 128.2（同 113.1） |
 
 - 見積もり: 各シャードの test ≒ 30〜55 秒（最長 1 本が下限）。脚の step ≒ 7 + 55 + 55 ≒ 115 秒以下 → knowledge は platform（109 秒）と同程度になる。
 
@@ -140,4 +145,42 @@ issue: "#1686"
 
 ## 結果
 
-（PR の CI 完走後に追記する）
+### 検証
+
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` → exit 0（#1686 節 4 件を含む）。CI の `scripts-tests` も緑。
+- `check-trace-blocks` / `gen-knowledge-graph --check` / `check-workflow-job-refs` / `check-doc-links` / `check-cross-repo-refs` /
+  `check-plan-id-qualification` / `check-doc-updated` / `check-adr-numbering` → OK。`check-commit-messages --range=origin/develop..HEAD` → 適合。
+- actionlint 1.7.7（`-shellcheck=`）→ 指摘 0。
+- 変異（コミット後・`scratchpad/impl-1686-mutate.sh`）: ①シャードから WikiService.Tests を落とす（repo test 赤・`--check` exit 1
+  「どのシャードにも無い」）②artifact 名を `coverage-${{ matrix.unit }}` へ戻す（赤「脚ごとに一意でない」）③シャードの脚が
+  `backend.slnx` 全体を試す（赤「一時の slnx へ絞ってテストしていない」）④WikiService.Tests を 2 シャードへ重ねる（赤「二重に走る」）。
+  いずれも `git show HEAD:<path>` で戻し、`git diff --quiet` を確かめた。
+
+### PR の CI（run 36430633926・head d650501）
+
+- 全ジョブ緑。脚は `backend-build (platform)` / `backend-build (knowledge 1/3)` / `(2/3)` / `(3/3)`。
+- 取りこぼし・二重なし: 3 つの脚のログの「Test run for」は 4 本ずつ、計 12 本で重複なし（1/3: Document / Contracts / Feedback /
+  IntegrationTests、2/3: Dashboard / Ingestion / DataSource / Wiki、3/3: AiAnalysis / Conversion / Graph / Retrieval）。失敗 0。
+  各脚の Cobertura は 4 件ずつ上がり、集約の `--report-only` が緑。
+
+| 脚 | Restore, build and test | build | test（壁時計） |
+| --- | --- | --- | --- |
+| knowledge（改善前・run 36360190149） | 157 秒 | 54.7 秒 | 90.5 秒 |
+| knowledge 1/3 | 96 秒 | 54.7 秒 | 31.0 秒 |
+| knowledge 2/3 | 94 秒 | 56.5 秒 | 26.0 秒 |
+| knowledge 3/3 | 111 秒 | 55.7 秒 | 43.1 秒（ConversionService 1 本で 41.3 秒） |
+| platform | 103 秒 | — | — |
+
+- check 群の開始（13:43:26）からの完了オフセット:
+  - backend-build の最後の脚（knowledge 3/3）の完了 **144 秒**、platform の脚 140 秒（改善前の run では knowledge 185 秒・platform 136 秒）。
+  - 🔴 本 PR の `build-and-test` の完了は **240 秒**。本 PR は `ci.yml` を触るので `submodule-backend-build (ai-stock-trading)`（AST・完了 220 秒）が
+    走り、集約がそれを待った。これは #1551 の設計どおり（`ci.yml` / gitlink / 共通 props を触る PR だけ）で、本件の改善対象ではない。
+  - `ci.yml` を触らない PR の見積もり: 最後の脚 144 秒 ＋ 集約の自前の所要（改善前 run で脚の完了から 15 秒）≒ **159 秒**
+    （改善前の同じ見積もりは 185 ＋ 15 ＝ 200 秒。律速の経路で **41 秒**縮んだ）。
+- 🔴 **閾値 148 秒を下回るとは言い切れない。** 改善前の中央値 189 秒から 41 秒引くと約 148 秒で境界上、単発の見積もりでは約 159 秒で
+  まだ上回る。残りは (a) platform の脚（build 38 秒＋最長の試験プロジェクト 1 本 約 63 秒）が knowledge とほぼ同時に終わること、
+  (b) 集約ジョブ自身の所要（setup-node・checkout 等で約 15 秒）による。knowledge のシャードを組み替えても 3/3 の下限は
+  ConversionService 1 本（41 秒）で、platform の 140 秒があるので律速は数秒しか動かない。
+  次の手（いずれも本裁定の範囲外・利用者の裁定事項）: platform も同じ設定でシャードする（`ci.yml` の変更は不要）／集約ジョブの
+  setup-node をランナー既定の node へ替える（約 5 秒）。判定は、本 PR のマージ後に `ci.yml` の epoch 以降の PR が 3 本たまった時点の
+  ci-latency の週次 run で確かめる（epoch より前の run は判定から落ちる。IADR-0241）。
