@@ -1237,6 +1237,47 @@ if [ "${SYNTHETIC:-$SYNTHETIC_DEFAULT}" = "1" ]; then
   echo "    🔴 LLM を呼ぶ 60 分側（ADR-0079 決定 2・課金の承認が要る）は**別の配備単位**であり、ここには無い。"
 fi
 
+# NFR-21, IADR-0471 (#1699): バックアップの CronJob は**前提が揃うまで suspend で置き、揃った再実行で有効へ戻す**。
+# 前提は「CronJob のイメージがランタイムに在る」と「age の受取人が CronJob の中の検査を通る」の 2 つ（判定は lib に閉じる）。
+# 🔴 欠けたまま有効にしておくと、毎日の回が ImagePullBackOff / 失敗の Pod を残し、「バックアップが動いている」と誤読させる。
+# 🔴 suspend は毎回**明示的に**書く（true も false も）。apply -k はマニフェストに無い suspend を触らないので、
+#    書かなければ一度止めた CronJob が前提が揃っても止まったままになる。
+# 永続化を外した起動（PERSIST=0）は CronJob を置かないので何もしない。
+if [ "${PERSIST:-1}" != "0" ]; then
+  . "$(dirname "$0")/lib/backup-cronjob-gate.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+  backup_recipients_tmp="$(mktemp)"
+  kubectl -n "$INFRA_NS" get configmap platform-backup-age-recipients \
+    -o 'jsonpath={.data.recipients\.txt}' > "$backup_recipients_tmp" 2>/dev/null || : > "$backup_recipients_tmp"
+  backup_missing=""
+  for backup_cj in platform-backup-postgres platform-backup-vault; do
+    kubectl -n "$INFRA_NS" get cronjob "$backup_cj" >/dev/null 2>&1 || continue
+    backup_ref="$(kubectl -n "$INFRA_NS" get cronjob "$backup_cj" \
+      -o 'jsonpath={.spec.jobTemplate.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+    backup_image_present=0
+    if [ -n "$backup_ref" ]; then
+      if [ "$RUNTIME" = "rancher" ]; then
+        nerdctl --namespace k8s.io image inspect "$backup_ref" >/dev/null 2>&1 && backup_image_present=1
+      else
+        docker exec "k3d-${CLUSTER}-server-0" crictl inspecti "$backup_ref" >/dev/null 2>&1 && backup_image_present=1
+      fi
+    fi
+    mapfile -t backup_decision < <(backup_cronjob_suspend "$backup_image_present" "$backup_recipients_tmp")
+    kubectl -n "$INFRA_NS" patch cronjob "$backup_cj" --type=merge -p "{\"spec\":{\"suspend\":${backup_decision[0]}}}"
+    if [ "${backup_decision[0]}" = "true" ]; then
+      backup_missing="${backup_decision[*]:1}"
+      echo "WARN: バックアップの CronJob ${backup_cj} を停止（suspend）で置きました。欠けている前提: ${backup_missing// /, }" >&2
+    else
+      echo "    バックアップの CronJob ${backup_cj} を有効にしました（イメージと age の受取人が揃っている）"
+    fi
+  done
+  rm -f "$backup_recipients_tmp"
+  if [ -n "${backup_missing:-}" ]; then
+    echo "WARN:   image … バックアップのイメージがありません（[2/7] のビルドの WARN を参照）。" >&2
+    echo "WARN:   recipients … ConfigMap platform-backup-age-recipients に age の公開鍵がありません（占位・不在・不正な行）。" >&2
+    echo "WARN:   前提を揃えて再実行すると有効に戻ります（docs/operations/platform-infra-backup-runbook.md）。" >&2
+  fi
+fi
+
 echo ""
 echo "done. 状態確認:"
 echo "  kubectl get pods -A"
