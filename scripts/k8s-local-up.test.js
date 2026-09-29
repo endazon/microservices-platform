@@ -261,6 +261,8 @@ const KUBECTL_STUB = [
   //   受取人の ConfigMap は STUB_BACKUP_RECIPIENTS（中身そのもの）を返す。既定（未設定）は空 ＝ 受取人なし。
   'case "$*" in *"get cronjob platform-backup-"*"containers[0].image"*) echo "k3d-local/platform-backup:pg16.15-age1.3.1-r6"; exit 0;; esac',
   'case "$*" in *"get configmap platform-backup-age-recipients"*recipients*) printf "%s" "${STUB_BACKUP_RECIPIENTS:-}"; exit 0;; esac',
+  // #1699（PR #1700 監査 🟡3）: STUB_BACKUP_PATCH_FAIL=1 で CronJob の suspend の書き込みだけを失敗させる（API・RBAC の失敗）。
+  'if [ "${STUB_BACKUP_PATCH_FAIL:-}" = "1" ]; then case "$*" in *"patch cronjob platform-backup-"*) echo "Error from server (Forbidden)" >&2; exit 1;; esac; fi',
   // #953: 反映の待ち合わせ **だけ** は記録して 0 を返さない。宣言を helm-controller の模型に通す。
   'case "$*" in *--for=jsonpath*svc/traefik*) exec awk -v major="${STUB_TRAEFIK_CHART_MAJOR:-26}" -f "$STUB_HELM_MODEL" "${STUB_TRAEFIK_MANIFEST:-' +
     TRAEFIK_MANIFEST_REL +
@@ -274,7 +276,7 @@ const KUBECTL_STUB = [
  * @param {Record<string,string>} extraEnv opt-in などの追加環境変数
  * @returns {{ status: number|null, lines: string[], stdout: string, stderr: string }}
  */
-function runUp(extraEnv) {
+function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-up-smoke-'));
   const binDir = path.join(workdir, 'bin');
   fs.mkdirSync(binDir);
@@ -339,8 +341,8 @@ function runUp(extraEnv) {
     ...extraEnv,
   };
 
-  const r = spawnSync('bash', [UP_SCRIPT, CLUSTER], {
-    cwd: REPO_ROOT,
+  const r = spawnSync('bash', [script, CLUSTER], {
+    cwd,
     env,
     encoding: 'utf8',
   });
@@ -786,6 +788,63 @@ ok('#1699 受取人が占位のままなら suspend=true（CronJob の中の検�
   // 前後に空白のある鍵は age が受け付けない（backup.sh の check_recipients と同じ）。門だけ通すと CronJob の中で落ちる。
   const spaced = runUp({ STUB_BACKUP_RECIPIENTS: ` ${VALID_AGE_RECIPIENT}\n` });
   assert.ok(suspendPatchOf(spaced.lines, 'platform-backup-postgres').includes('"suspend":true'), '前後に空白のある鍵を通した');
+});
+
+ok('🔴 #1699（PR #1700 監査 🔴1）: scripts/ の中から相対パスで起動しても最後まで進む（門の lib を $ROOT 基準で読む）', () => {
+  const res = runUp({}, { cwd: path.join(REPO_ROOT, 'scripts'), script: 'k8s-local-up.sh' });
+  assert.strictEqual(res.status, 0, `scripts/ から起動すると落ちた: ${res.stderr.slice(-800)}`);
+  assert.ok(suspendPatchOf(res.lines, 'platform-backup-postgres'), '門が動いていない');
+});
+
+ok('#1699（監査 🟡2）: 直し方は実際に欠けていた前提についてだけ案内する', () => {
+  assert.match(DEFAULT.stderr, /WARN:   recipients … /, '既定（受取人なし）で受取人の直し方を案内していない');
+  assert.doesNotMatch(DEFAULT.stderr, /WARN:   image … /, 'イメージは在るのに「イメージがありません」と言った');
+  const imageOnly = runUp({ STUB_BACKUP_RECIPIENTS: `${VALID_AGE_RECIPIENT}\n`, STUB_BACKUP_IMAGE_ABSENT: '1' });
+  assert.match(imageOnly.stderr, /WARN:   image … /);
+  assert.doesNotMatch(imageOnly.stderr, /WARN:   recipients … /, '受取人は揃っているのに受取人の直し方を案内した');
+});
+
+ok('#1699（監査 🟡3）: suspend の書き込みに失敗しても起動の最後を落とさず、書けなかった CronJob を名指しする', () => {
+  const res = runUp({ STUB_BACKUP_PATCH_FAIL: '1' });
+  assert.strictEqual(res.status, 0, `patch の失敗で落ちた: ${res.stderr.slice(-800)}`);
+  assert.match(res.stderr, /platform-backup-postgres の suspend を書けませんでした/);
+  assert.match(res.stderr, /platform-backup-vault の suspend を書けませんでした/);
+});
+
+ok('#1699（監査 M8）: イメージの有無は Rancher なら nerdctl（k8s.io）、k3d ならサーバノードの crictl で見て、確かめられなければ無いに倒す', () => {
+  const lib = path.join(REPO_ROOT, 'scripts', 'lib', 'backup-cronjob-gate.sh');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-gate-'));
+  const log = path.join(dir, 'calls.log');
+  const stub = (name) => {
+    const p = path.join(dir, name);
+    fs.writeFileSync(p, ['#!/usr/bin/env bash', `echo "${name} $*" >> "${log}"`, 'exit "${STUB_RC:-0}"', ''].join('\n'));
+    fs.chmodSync(p, 0o755);
+  };
+  stub('nerdctl');
+  stub('docker');
+  const run = (runtime, rc, ref = 'k3d-local/platform-backup:x') => {
+    fs.writeFileSync(log, '');
+    const r = spawnSync('bash', ['-c', '. "$1"; backup_image_present "$2" dev "$3"', '_', lib, runtime, ref], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: dir + path.delimiter + (process.env.PATH || ''), STUB_RC: String(rc) },
+    });
+    return { status: r.status, calls: fs.readFileSync(log, 'utf8').trim() };
+  };
+  try {
+    const rancherHit = run('rancher', 0);
+    assert.strictEqual(rancherHit.status, 0);
+    assert.strictEqual(rancherHit.calls, 'nerdctl --namespace k8s.io image inspect k3d-local/platform-backup:x');
+    assert.notStrictEqual(run('rancher', 1).status, 0, 'Rancher で無いイメージを在ると判定した');
+    const k3dHit = run('k3d', 0);
+    assert.strictEqual(k3dHit.status, 0);
+    assert.strictEqual(k3dHit.calls, 'docker exec k3d-dev-server-0 crictl inspecti k3d-local/platform-backup:x');
+    assert.notStrictEqual(run('k3d', 1).status, 0, 'k3d で無いイメージを在ると判定した');
+    const noRef = run('rancher', 0, '');
+    assert.notStrictEqual(noRef.status, 0, 'CronJob からイメージの参照を読めないのに在ると判定した');
+    assert.strictEqual(noRef.calls, '', '参照が無いのにランタイムへ問い合わせた');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 ok('#1699 PERSIST=0（CronJob を置かない）では門を動かさない', () => {

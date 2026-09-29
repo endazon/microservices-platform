@@ -28,6 +28,20 @@ backup_recipients_file_ok() {
   ) >/dev/null 2>&1
 }
 
+# backup_image_present <runtime> <cluster> <ref>
+# CronJob のイメージがランタイムに在れば 0。Rancher（内蔵 k3s）は containerd の k8s.io 名前空間へ直接ビルドするので
+# nerdctl で見る。k3d はノードへ取り込むので、サーバノードの crictl で見る（k3d image import は全ノードへ入れる）。
+# 🔴 確かめられないときは「無い」に倒す（止めて置く側。有効のまま失敗の Pod を毎日残すより、理由を告げて止める）。
+backup_image_present() {
+  local runtime="${1:-}" cluster="${2:-}" ref="${3:-}"
+  [ -n "$ref" ] || return 1
+  if [ "$runtime" = "rancher" ]; then
+    nerdctl --namespace k8s.io image inspect "$ref" >/dev/null 2>&1
+  else
+    docker exec "k3d-${cluster}-server-0" crictl inspecti "$ref" >/dev/null 2>&1
+  fi
+}
+
 # backup_cronjob_suspend <image_present:0|1> <recipients_file>
 # 標準出力へ suspend の値（true / false）を 1 行、続けて欠けている前提の名前（image / recipients）を 1 行ずつ出す。
 backup_cronjob_suspend() {

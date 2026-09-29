@@ -1244,26 +1244,35 @@ fi
 #    書かなければ一度止めた CronJob が前提が揃っても止まったままになる。
 # 永続化を外した起動（PERSIST=0）は CronJob を置かないので何もしない。
 if [ "${PERSIST:-1}" != "0" ]; then
-  . "$(dirname "$0")/lib/backup-cronjob-gate.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
+  # 🔴 読み込みは $ROOT 基準（上で cd "$ROOT" 済み。$(dirname "$0") は起動したときの相対パスのままなので、
+  #    scripts/ の中から `bash k8s-local-up.sh` と起動すると見つからない。PR #1700 の監査 🔴1）。
+  . "$ROOT/scripts/lib/backup-cronjob-gate.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
   backup_recipients_tmp="$(mktemp)"
   kubectl -n "$INFRA_NS" get configmap platform-backup-age-recipients \
     -o 'jsonpath={.data.recipients\.txt}' > "$backup_recipients_tmp" 2>/dev/null || : > "$backup_recipients_tmp"
-  backup_missing=""
+  backup_missing_image=0
+  backup_missing_recipients=0
+  backup_patch_failed=0
   for backup_cj in platform-backup-postgres platform-backup-vault; do
     kubectl -n "$INFRA_NS" get cronjob "$backup_cj" >/dev/null 2>&1 || continue
     backup_ref="$(kubectl -n "$INFRA_NS" get cronjob "$backup_cj" \
       -o 'jsonpath={.spec.jobTemplate.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
-    backup_image_present=0
-    if [ -n "$backup_ref" ]; then
-      if [ "$RUNTIME" = "rancher" ]; then
-        nerdctl --namespace k8s.io image inspect "$backup_ref" >/dev/null 2>&1 && backup_image_present=1
-      else
-        docker exec "k3d-${CLUSTER}-server-0" crictl inspecti "$backup_ref" >/dev/null 2>&1 && backup_image_present=1
-      fi
+    backup_image=0
+    backup_image_present "$RUNTIME" "$CLUSTER" "$backup_ref" && backup_image=1
+    mapfile -t backup_decision < <(backup_cronjob_suspend "$backup_image" "$backup_recipients_tmp")
+    # 🔴 patch の失敗（API・RBAC・競合）で長い起動の最後を落とさない。落とさない代わりに、止められなかったことを名指しする。
+    if ! kubectl -n "$INFRA_NS" patch cronjob "$backup_cj" --type=merge -p "{\"spec\":{\"suspend\":${backup_decision[0]}}}"; then
+      backup_patch_failed=1
+      echo "WARN: バックアップの CronJob ${backup_cj} の suspend を書けませんでした（前提: ${backup_decision[*]:1}）。kubectl -n $INFRA_NS get cronjob で状態を確かめてください。" >&2
+      continue
     fi
-    mapfile -t backup_decision < <(backup_cronjob_suspend "$backup_image_present" "$backup_recipients_tmp")
-    kubectl -n "$INFRA_NS" patch cronjob "$backup_cj" --type=merge -p "{\"spec\":{\"suspend\":${backup_decision[0]}}}"
     if [ "${backup_decision[0]}" = "true" ]; then
+      for backup_reason in "${backup_decision[@]:1}"; do
+        case "$backup_reason" in
+          image) backup_missing_image=1 ;;
+          recipients) backup_missing_recipients=1 ;;
+        esac
+      done
       backup_missing="${backup_decision[*]:1}"
       echo "WARN: バックアップの CronJob ${backup_cj} を停止（suspend）で置きました。欠けている前提: ${backup_missing// /, }" >&2
     else
@@ -1271,9 +1280,14 @@ if [ "${PERSIST:-1}" != "0" ]; then
     fi
   done
   rm -f "$backup_recipients_tmp"
-  if [ -n "${backup_missing:-}" ]; then
+  # 直し方は、実際に欠けていた前提についてだけ 1 回案内する（欠けていない前提を「無い」と言わない。監査 🟡2）。
+  if [ "$backup_missing_image" = "1" ]; then
     echo "WARN:   image … バックアップのイメージがありません（[2/7] のビルドの WARN を参照）。" >&2
+  fi
+  if [ "$backup_missing_recipients" = "1" ]; then
     echo "WARN:   recipients … ConfigMap platform-backup-age-recipients に age の公開鍵がありません（占位・不在・不正な行）。" >&2
+  fi
+  if [ "$backup_missing_image" = "1" ] || [ "$backup_missing_recipients" = "1" ] || [ "$backup_patch_failed" = "1" ]; then
     echo "WARN:   前提を揃えて再実行すると有効に戻ります（docs/operations/platform-infra-backup-runbook.md）。" >&2
   fi
 fi

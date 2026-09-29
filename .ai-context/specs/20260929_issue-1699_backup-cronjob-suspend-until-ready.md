@@ -65,9 +65,17 @@ issue: "#1699"
 5. 受取人が占位のまま、または前後に空白のある鍵なら、`"suspend":true` にする。
 6. `PERSIST=0` では門を動かさない。
 
+## 監査と自動レビューの指摘の是正（PR #1700）
+
+- 🔴 門の lib を `$(dirname "$0")` で読んでいた。スクリプトは冒頭で `cd "$ROOT"` するため、`scripts/` の中から `bash k8s-local-up.sh` と起動すると、最後に exit 3 で落ちた（develop からの退行）。`$ROOT/scripts/lib/…` へ直し、`scripts/` から起動する試験を足した（元の書き方へ戻すと落ちることを確認済み）。
+- 🟡 直し方の案内が、欠けていない前提まで「無い」と言っていた。実際に欠けていた前提の案内だけを出す（自動レビューの 🟢 も同じ指摘）。
+- 🟡 `kubectl patch` の失敗で、`set -e` により長い起動の最後が落ちていた。WARN で書けなかった CronJob を名指しして続ける。
+- 監査の変異 M8（Rancher の分岐が試験に無い）: イメージの有無の判定を lib の `backup_image_present` へ移し、Rancher・k3d・参照なしの試験を足した。
+- 自動レビューの 🟡（起点 ID は無採番の `NFR` ではなく `NFR-21`）: PR タイトルを `fix(NFR-21): …` へ直した（squash の件名になる）。
+
 ## 検証
 
-- `node scripts/k8s-local-up.test.js`: 224/224 成功。
+- `node scripts/k8s-local-up.test.js`: 228/228 成功（是正後）。
 - `bash -n` で `k8s-local-up.sh` と `lib/backup-cronjob-gate.sh` を検査し、構文エラーなし。
 
 ## 残余
