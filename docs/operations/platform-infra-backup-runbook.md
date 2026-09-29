@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-09-28
+updated: 2026-09-29
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0008]
 iadrs: [IADR-0066, IADR-0369, IADR-0457, IADR-0471]
-specs: [20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause]
-issues: [#1560, #1564, #1689, AST#346]
+specs: [20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready]
+issues: [#1560, #1564, #1689, #1699, AST#346]
 -->
 
 # 運用 Runbook: platform-infra の暗号化バックアップ
@@ -140,6 +140,16 @@ issues: [#1560, #1564, #1689, AST#346]
 
 ## 2. 日々の確認
 
+0. CronJob が有効か（`SUSPEND` が `False`）:
+
+   ```bash
+   kubectl -n platform-infra get cronjob -l app=platform-backup
+   ```
+
+   起動スクリプトは、**前提（バックアップのイメージと age の受取人）が揃うまで CronJob を停止（`suspend: true`）で置く。**
+   揃わないまま有効にしておくと、毎日の回が失敗した Pod を残すためである。停止で置いたときは、起動スクリプトの最後に
+   `WARN: バックアップの CronJob … を停止（suspend）で置きました。欠けている前提: …` が出る。
+   前提を揃えて起動スクリプトを再実行すると有効に戻る（手で `suspend` を外さない。次の再実行で、揃っていなければ停止へ戻る）。
 1. 直近の Job が成功しているか:
 
    ```bash
@@ -238,6 +248,7 @@ issues: [#1560, #1564, #1689, AST#346]
 
 | 症状（ログ） | 原因の候補 | 次の手 |
 | --- | --- | --- |
+| 起動スクリプトの最後に `欠けている前提: image` / `recipients`（CronJob の `SUSPEND` が `True`） | `image` … バックアップのイメージがランタイムに無い（ビルドの失敗は `[2/7]` の WARN に原因が出る）。`recipients` … ConfigMap `platform-backup-age-recipients` が無い・占位のまま・不正な行がある（判定は CronJob の中の検査と同じ規則） | 欠けている方を §1 で揃え、起動スクリプトを再実行する（有効に戻る） |
 | `age の受取人ファイルがありません` | ConfigMap `platform-backup-age-recipients` が無い | §1 の 2〜3 |
 | `… 行目が age の公開鍵（age1...）ではありません` / `公開鍵が 1 つもありません` | 占位のまま・写し間違い | 受取人ファイルを直して §1 の 3 |
 | `受取人ファイル … 行目の前後に空白があります` | 公開鍵の行の前後や `#` 行の頭に空白がある | 空白を消して §1 の 3 |

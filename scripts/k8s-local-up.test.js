@@ -189,6 +189,8 @@ const DOCKER_STUB = [
   'if [ -n "${STUB_DOCKER_BUILD_FAIL:-}" ] && [ "${1:-}" = "build" ]; then',
   '  case "$*" in *"$STUB_DOCKER_BUILD_FAIL"*) printf \'%s\\n\' "${STUB_DOCKER_BUILD_FAIL_LOG:-wget: server returned error: HTTP/1.1 404 Not Found}" >&2; exit 1;; esac',
   'fi',
+  // #1699: STUB_BACKUP_IMAGE_ABSENT=1 で、k3d のノードに platform-backup のイメージが無い世界を作る（crictl inspecti が非0）。
+  'if [ "${STUB_BACKUP_IMAGE_ABSENT:-}" = "1" ]; then case "$*" in "exec "*"crictl inspecti "*platform-backup*) exit 1;; esac; fi',
   'exit 0',
   '',
 ].join('\n');
@@ -255,6 +257,12 @@ const KUBECTL_STUB = [
   // IADR-0369 (#1088): realm 後追い Job（deploy/local/keycloak-setup/reconcile-realm.sh）の完了待ち。
   // conditions の問い合わせに Complete を返す（返さないと起動器が Job の完了を 300 秒待つ）。
   'case "$*" in *"get job"*conditions*) echo "Complete "; exit 0;; esac',
+  // #1699: バックアップの CronJob の門の入力。CronJob のイメージは実物のマニフェストと同じ形の参照を返す。
+  //   受取人の ConfigMap は STUB_BACKUP_RECIPIENTS（中身そのもの）を返す。既定（未設定）は空 ＝ 受取人なし。
+  'case "$*" in *"get cronjob platform-backup-"*"containers[0].image"*) echo "k3d-local/platform-backup:pg16.15-age1.3.1-r6"; exit 0;; esac',
+  'case "$*" in *"get configmap platform-backup-age-recipients"*recipients*) printf "%s" "${STUB_BACKUP_RECIPIENTS:-}"; exit 0;; esac',
+  // #1699（PR #1700 監査 🟡3）: STUB_BACKUP_PATCH_FAIL=1 で CronJob の suspend の書き込みだけを失敗させる（API・RBAC の失敗）。
+  'if [ "${STUB_BACKUP_PATCH_FAIL:-}" = "1" ]; then case "$*" in *"patch cronjob platform-backup-"*) echo "Error from server (Forbidden)" >&2; exit 1;; esac; fi',
   // #953: 反映の待ち合わせ **だけ** は記録して 0 を返さない。宣言を helm-controller の模型に通す。
   'case "$*" in *--for=jsonpath*svc/traefik*) exec awk -v major="${STUB_TRAEFIK_CHART_MAJOR:-26}" -f "$STUB_HELM_MODEL" "${STUB_TRAEFIK_MANIFEST:-' +
     TRAEFIK_MANIFEST_REL +
@@ -268,7 +276,7 @@ const KUBECTL_STUB = [
  * @param {Record<string,string>} extraEnv opt-in などの追加環境変数
  * @returns {{ status: number|null, lines: string[], stdout: string, stderr: string }}
  */
-function runUp(extraEnv) {
+function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-up-smoke-'));
   const binDir = path.join(workdir, 'bin');
   fs.mkdirSync(binDir);
@@ -333,8 +341,8 @@ function runUp(extraEnv) {
     ...extraEnv,
   };
 
-  const r = spawnSync('bash', [UP_SCRIPT, CLUSTER], {
-    cwd: REPO_ROOT,
+  const r = spawnSync('bash', [script, CLUSTER], {
+    cwd,
     env,
     encoding: 'utf8',
   });
@@ -695,7 +703,11 @@ ok('PERSIST=0: 素の infra を apply し、永続化オーバーレイは現れ
 // --- NFR-21, IADR-0471 (#1560): バックアップの受取人（age の公開鍵）は、与えられたときだけ ConfigMap にする ---------
 // 🔴 既定の再実行で作り直すと、運用者が入れた公開鍵が消えて CronJob が毎日失敗する（占位へ戻る）。
 ok('#1560 既定: バックアップの受取人 ConfigMap に触れない（運用者が入れた公開鍵を上書きしない）', () => {
-  assert.ok(!anyLineHas(DEFAULT.lines, 'platform-backup-age-recipients'), '既定で受取人の ConfigMap を作り直している');
+  // #1699 以後、起動器は最後に受取人の ConfigMap を**読む**（CronJob の門）。作り直し（create / apply）だけを禁じる。
+  assert.ok(
+    !anyLineHas(DEFAULT.lines, 'create configmap platform-backup-age-recipients'),
+    '既定で受取人の ConfigMap を作り直している',
+  );
 });
 
 ok('#1560 BACKUP_AGE_RECIPIENTS_FILE: 受取人 ConfigMap を platform-infra に作る（infra の apply より前）', () => {
@@ -717,6 +729,128 @@ ok('#1560 BACKUP_AGE_RECIPIENTS_FILE が読めなければ止まる（黙って�
   assert.notStrictEqual(res.status, 0, '読めないファイルを与えたのに EXIT=0');
   assert.ok(/BACKUP_AGE_RECIPIENTS_FILE/.test(res.stderr), '止まった理由を示していない');
   assert.ok(!anyLineHas(res.lines, 'platform-backup-age-recipients'), '読めないのに ConfigMap を作ろうとした');
+});
+
+// --- NFR-21, IADR-0471 (#1699): バックアップの CronJob は前提が揃うまで suspend で置き、揃った再実行で有効へ戻す ---------
+// 前提は「CronJob のイメージがランタイムに在る」と「受取人が CronJob の中の検査（backup.sh の check_recipients）を通る」。
+// 🔴 欠けたまま有効にしておくと、毎日の回が ImagePullBackOff の Pod を残す（#1699 の実測）。
+const BACKUP_CRONJOBS = ['platform-backup-postgres', 'platform-backup-vault'];
+const VALID_AGE_RECIPIENT = `age1${'q'.repeat(58)}`; // age の公開鍵の形（bech32 の文字集合・58 文字）
+const suspendPatchOf = (lines, cj) =>
+  lines.find((l) => l.startsWith(`kubectl -n platform-infra patch cronjob ${cj} `)) || null;
+
+ok('#1699 既定（受取人なし）: 2 本の CronJob を suspend=true で置き、欠けている前提を名指しする', () => {
+  for (const cj of BACKUP_CRONJOBS) {
+    const patch = suspendPatchOf(DEFAULT.lines, cj);
+    assert.ok(patch, `${cj} の suspend を書いていない`);
+    assert.ok(patch.includes('"suspend":true'), `受取人が無いのに ${cj} を有効にした: ${patch}`);
+  }
+  assert.match(DEFAULT.stderr, /platform-backup-postgres を停止（suspend）で置きました。欠けている前提: recipients/);
+  assert.doesNotMatch(DEFAULT.stderr, /欠けている前提: [^\n]*image/, 'イメージは在るのに image を欠けていると告げた');
+});
+
+ok('#1699 門は infra の apply（CronJob を置く側）より後で書く', () => {
+  const infraAt = DEFAULT.lines.findIndex((l) => /^kubectl apply -k deploy\/local\/infra-persistence$/.test(l));
+  const patchAt = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl -n platform-infra patch cronjob platform-backup-'));
+  assert.ok(infraAt >= 0 && patchAt > infraAt, `apply=${infraAt} patch=${patchAt}`);
+});
+
+ok('#1699 イメージと正しい受取人が揃えば suspend=false へ戻す（再実行で有効になる）', () => {
+  const res = runUp({ STUB_BACKUP_RECIPIENTS: `# 運用者の鍵\n${VALID_AGE_RECIPIENT}\n` });
+  assert.strictEqual(res.status, 0, `非0終了: ${res.stderr}`);
+  for (const cj of BACKUP_CRONJOBS) {
+    const patch = suspendPatchOf(res.lines, cj);
+    assert.ok(patch && patch.includes('"suspend":false'), `前提が揃ったのに ${cj} を有効にしていない: ${patch}`);
+  }
+  assert.doesNotMatch(res.stderr, /停止（suspend）で置きました/, '揃っているのに停止を告げた');
+});
+
+ok('#1699 受取人が揃ってもイメージが無ければ suspend=true（欠けている前提は image だけ）', () => {
+  const res = runUp({ STUB_BACKUP_RECIPIENTS: `${VALID_AGE_RECIPIENT}\n`, STUB_BACKUP_IMAGE_ABSENT: '1' });
+  assert.strictEqual(res.status, 0, `非0終了: ${res.stderr}`);
+  for (const cj of BACKUP_CRONJOBS) {
+    const patch = suspendPatchOf(res.lines, cj);
+    assert.ok(patch && patch.includes('"suspend":true'), `イメージが無いのに ${cj} を有効にした: ${patch}`);
+  }
+  assert.match(res.stderr, /欠けている前提: image\n/, 'image だけを名指ししていない');
+  assert.ok(
+    res.lines.some((l) => /^docker exec k3d-\S+-server-0 crictl inspecti k3d-local\/platform-backup:/.test(l)),
+    'k3d のノードでイメージの有無を確かめていない',
+  );
+});
+
+ok('#1699 受取人が占位のままなら suspend=true（CronJob の中の検査と同じ規則で判定する）', () => {
+  const res = runUp({ STUB_BACKUP_RECIPIENTS: 'REPLACE_WITH_AGE_PUBLIC_KEY\n' });
+  for (const cj of BACKUP_CRONJOBS) {
+    const patch = suspendPatchOf(res.lines, cj);
+    assert.ok(patch && patch.includes('"suspend":true'), `占位のままなのに ${cj} を有効にした: ${patch}`);
+  }
+  // 前後に空白のある鍵は age が受け付けない（backup.sh の check_recipients と同じ）。門だけ通すと CronJob の中で落ちる。
+  const spaced = runUp({ STUB_BACKUP_RECIPIENTS: ` ${VALID_AGE_RECIPIENT}\n` });
+  assert.ok(suspendPatchOf(spaced.lines, 'platform-backup-postgres').includes('"suspend":true'), '前後に空白のある鍵を通した');
+});
+
+ok('🔴 #1699（PR #1700 監査 🔴1）: scripts/ の中から相対パスで起動しても最後まで進む（門の lib を $ROOT 基準で読む）', () => {
+  const res = runUp({}, { cwd: path.join(REPO_ROOT, 'scripts'), script: 'k8s-local-up.sh' });
+  assert.strictEqual(res.status, 0, `scripts/ から起動すると落ちた: ${res.stderr.slice(-800)}`);
+  assert.ok(suspendPatchOf(res.lines, 'platform-backup-postgres'), '門が動いていない');
+});
+
+ok('#1699（監査 🟡2）: 直し方は実際に欠けていた前提についてだけ案内する', () => {
+  assert.match(DEFAULT.stderr, /WARN:   recipients … /, '既定（受取人なし）で受取人の直し方を案内していない');
+  assert.doesNotMatch(DEFAULT.stderr, /WARN:   image … /, 'イメージは在るのに「イメージがありません」と言った');
+  const imageOnly = runUp({ STUB_BACKUP_RECIPIENTS: `${VALID_AGE_RECIPIENT}\n`, STUB_BACKUP_IMAGE_ABSENT: '1' });
+  assert.match(imageOnly.stderr, /WARN:   image … /);
+  assert.doesNotMatch(imageOnly.stderr, /WARN:   recipients … /, '受取人は揃っているのに受取人の直し方を案内した');
+});
+
+ok('#1699（監査 🟡3）: suspend の書き込みに失敗しても起動の最後を落とさず、書けなかった CronJob を名指しする', () => {
+  const res = runUp({ STUB_BACKUP_PATCH_FAIL: '1' });
+  assert.strictEqual(res.status, 0, `patch の失敗で落ちた: ${res.stderr.slice(-800)}`);
+  assert.match(res.stderr, /platform-backup-postgres の suspend を書けませんでした/);
+  assert.match(res.stderr, /platform-backup-vault の suspend を書けませんでした/);
+});
+
+ok('#1699（監査 M8）: イメージの有無は Rancher なら nerdctl（k8s.io）、k3d ならサーバノードの crictl で見て、確かめられなければ無いに倒す', () => {
+  const lib = path.join(REPO_ROOT, 'scripts', 'lib', 'backup-cronjob-gate.sh');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-gate-'));
+  const log = path.join(dir, 'calls.log');
+  const stub = (name) => {
+    const p = path.join(dir, name);
+    fs.writeFileSync(p, ['#!/usr/bin/env bash', `echo "${name} $*" >> "${log}"`, 'exit "${STUB_RC:-0}"', ''].join('\n'));
+    fs.chmodSync(p, 0o755);
+  };
+  stub('nerdctl');
+  stub('docker');
+  const run = (runtime, rc, ref = 'k3d-local/platform-backup:x') => {
+    fs.writeFileSync(log, '');
+    const r = spawnSync('bash', ['-c', '. "$1"; backup_image_present "$2" dev "$3"', '_', lib, runtime, ref], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: dir + path.delimiter + (process.env.PATH || ''), STUB_RC: String(rc) },
+    });
+    return { status: r.status, calls: fs.readFileSync(log, 'utf8').trim() };
+  };
+  try {
+    const rancherHit = run('rancher', 0);
+    assert.strictEqual(rancherHit.status, 0);
+    assert.strictEqual(rancherHit.calls, 'nerdctl --namespace k8s.io image inspect k3d-local/platform-backup:x');
+    assert.notStrictEqual(run('rancher', 1).status, 0, 'Rancher で無いイメージを在ると判定した');
+    const k3dHit = run('k3d', 0);
+    assert.strictEqual(k3dHit.status, 0);
+    assert.strictEqual(k3dHit.calls, 'docker exec k3d-dev-server-0 crictl inspecti k3d-local/platform-backup:x');
+    assert.notStrictEqual(run('k3d', 1).status, 0, 'k3d で無いイメージを在ると判定した');
+    const noRef = run('rancher', 0, '');
+    assert.notStrictEqual(noRef.status, 0, 'CronJob からイメージの参照を読めないのに在ると判定した');
+    assert.strictEqual(noRef.calls, '', '参照が無いのにランタイムへ問い合わせた');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+ok('#1699 PERSIST=0（CronJob を置かない）では門を動かさない', () => {
+  const res = runUp({ PERSIST: '0' });
+  assert.strictEqual(res.status, 0, `非0終了: ${res.stderr}`);
+  assert.ok(!anyLineHas(res.lines, 'patch cronjob platform-backup-'), 'CronJob を置かない起動で suspend を書いた');
 });
 
 ok('PERSIST=1（旧 opt-in の綴り）は既定と同じ（手順書の古い呼び方でも壊れない）', () => {
