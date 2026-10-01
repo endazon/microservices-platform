@@ -16,7 +16,7 @@ related_ids:
   - IADR-0369
 author: claude
 created: 2026-09-04
-updated: 2026-09-28
+updated: 2026-10-01
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md
@@ -161,6 +161,10 @@ IADR-0307 決定 4 が書いた段取り「注入 → 全 Pod Ready → PERMISSI
 
 `ISTIO_MTLS_MODE` 未設定なら PERMISSIVE である（IADR-0307 決定 4 のまま）。
 本番像 `values.yaml` の `mtlsMode: STRICT` は**変えない**（`MeshMtlsTests` が回帰固定）。
+
+> ［2026-10-01 追記 / #1710］ **「未設定なら PERMISSIVE」は初回（`msp` リリースが無い・メッシュ未宣言）の既定に限る。**
+> 未設定の**再実行**は helm の宣言（`helm get values msp`）から現行の `mesh.mtlsMode` を引き継ぎ、読めなければ `[2/7]` の前に止まる。
+> 従前は再実行でも PERMISSIVE を渡し、STRICT のクラスタを黙って降格していた。判断は [[IADR-0487]]。
 
 **理由は §実測 2 である** —— 経路B の `ai-stock-trading` はメッシュ外のテナントであり、
 STRICT の間 AST→MSP の平文（ナレッジ保存・日報の LLM 生成・**取引判断の LLM 呼び出し**）が全断する。

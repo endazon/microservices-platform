@@ -49,3 +49,61 @@ set_mesh_mtls_mode() {
   echo "    helm 経由で mesh.mtlsMode=$mode を宣言する（kubectl patch では書かない / #1159）"
   helm upgrade "$release" "$chart" -n "$ns" --reuse-values --set "mesh.mtlsMode=$mode" >/dev/null
 }
+
+# ---------------------------------------------------------------------------
+# NFR-16 / IADR-0487 (#1710): **現行の mTLS モードを読む口。** 書く口（上）と同じく helm の宣言だけを見る。
+#
+# `k8s-local-up.sh` の [6/7] は `--reuse-values` 無しで `--set mesh.mtlsMode=…` を渡す。`ISTIO_MTLS_MODE` を
+# 付けずに再実行すると、以前は `${ISTIO_MTLS_MODE:-PERMISSIVE}` で **STRICT のクラスタを黙って PERMISSIVE へ戻していた**。
+# 起動器は未指定のときここで現行の値を読み、引き継ぐ。
+#
+# 読むのは `helm get values`（利用者が与えた値 = values-local.yaml と --set の和）であって `--all` ではない ——
+# `--all` はチャートの既定（values.yaml の `mtlsMode: STRICT`）を混ぜるので、メッシュを一度も宣言していない
+# リリースを「STRICT だった」と読んでしまう。稼働の PeerAuthentication でもない —— 書く口が helm ただ 1 つなので
+# helm の宣言が正であり、乖離は check-stack-ready.js の G12 が別に落とす。
+# ---------------------------------------------------------------------------
+
+# mesh_values_mtls_mode <`helm get values -o yaml` の出力>   純関数
+#   0: メッシュ宣言あり（トップレベル `mesh:` 直下の `enabled: true`）で、`mtlsMode` が値域内。モードを標準出力へ
+#   1: メッシュ宣言なし（`mesh:` が無い・`enabled` が true でない）。引き継ぐものが無い
+#   2: メッシュ宣言ありなのに `mtlsMode` が無い・値域外。読めないのと同じに扱う（呼び出し側が止める）
+mesh_values_mtls_mode() {
+  local parsed enabled mode
+  parsed="$(printf '%s\n' "${1:-}" | awk '
+    { line = $0; sub(/\r$/, "", line) }
+    line ~ /^[ \t]*#/ { next }
+    line ~ /^[ \t]*$/ { next }
+    line ~ /^[^ \t]/ { inmesh = (line ~ /^mesh:[ \t]*$/); cind = -1; next }
+    inmesh {
+      match(line, /^[ \t]*/); ind = RLENGTH
+      if (cind < 0) cind = ind                       # 直下の子の字下げ（最初の子で決める）
+      if (ind != cind) next                          # 孫（backchannelLogout.* 等）は見ない
+      v = line; sub(/^[ \t]*[A-Za-z]+:[ \t]*/, "", v); sub(/[ \t]+#.*$/, "", v); gsub(/"/, "", v); gsub(sprintf("%c", 39), "", v)
+      if (line ~ /^[ \t]*enabled:/) enabled = v
+      if (line ~ /^[ \t]*mtlsMode:/) mode = v
+    }
+    END { printf "%s %s\n", (enabled == "" ? "-" : enabled), (mode == "" ? "-" : mode) }')"
+  enabled="${parsed%% *}"
+  mode="${parsed#* }"
+  [ "$enabled" = "true" ] || return 1
+  case "$mode" in
+    STRICT | PERMISSIVE | DISABLE) printf '%s\n' "$mode"; return 0 ;;
+    *) return 2 ;;
+  esac
+}
+
+# current_mesh_mtls_mode   クラスタ（helm）を読む
+#   0: 引き継ぐモードを標準出力へ / 1: リリースが無い・メッシュ未宣言（新規の扱い） / 2: 読めない（fail-closed の材料）
+#   🔴 「読めない」を「無い」へ倒さない —— 倒すと STRICT のクラスタを PERMISSIVE へ黙って戻す（#1710 そのもの）。
+#   リリースの有無は `helm list`（無ければ空で 0）で確かめ、`helm get values` の失敗は常に「読めない」と読む。
+current_mesh_mtls_mode() {
+  local ns="${MSP_NS:-microservices-platform}"
+  local release="${MSP_HELM_RELEASE:-msp}"
+  local names values rc
+  names="$(helm list -n "$ns" -a -q --filter "^${release}\$" 2>/dev/null)" || return 2
+  printf '%s\n' "$names" | grep -qx "$release" || return 1
+  values="$(helm get values "$release" -n "$ns" -o yaml 2>/dev/null)" || return 2
+  rc=0
+  mesh_values_mtls_mode "$values" || rc=$?
+  return "$rc"
+}

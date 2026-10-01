@@ -17,7 +17,7 @@ related_ids:
   - IADR-0307
 author: claude
 created: 2026-08-30
-updated: 2026-09-28
+updated: 2026-10-01
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md
@@ -153,6 +153,10 @@ down で Gateway の撤去を先にするのは、**hostPort を空けてから�
 >   付け忘れか Traefik へ戻す意図かは読めず、どちらでも従来の Traefik 経路はポートの取り合いとメッシュ設定の黙った除去を招くため、推測で選ばない。
 > - 母集合（`traefik` の全文走査）と試験の写像は作業仕様書 `20260928_issue-1691_istio-edge-rerun-idempotent.md`。
 >   `k8s-local-up.test.js` の kubectl スタブに HelmChartConfig の状態の模型を足し、移行済み・未移行・`ISTIO` 無しの 3 通りを固定した。
+>
+> ［2026-10-01 追記 / #1710］ 上の「`[6/7]` は要求どおりの mTLS モードを宣言する（STRICT を一時降格しない）」は、`ISTIO_MTLS_MODE` を
+> 明示したときにしか成り立っていなかった。未指定では PERMISSIVE を渡し、上の拒否のエラー文が勧める `ISTIO=1 LOCALEDGE=1` の再実行で
+> STRICT を黙って降格した。未指定の再実行は現行の `mesh.mtlsMode` を引き継ぎ（読めなければ止める）、エラー文は `ISTIO_MTLS_MODE=STRICT` を含む形に改めた。判断は [[IADR-0487]]。
 
 ## 実クラスタで確かめたこと（2026-08-30・k3s `v1.35.4+k3s1` / Istio `1.30.4`）
 

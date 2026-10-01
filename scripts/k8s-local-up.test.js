@@ -195,6 +195,26 @@ const DOCKER_STUB = [
   '',
 ].join('\n');
 
+// NFR-16, IADR-0487 (#1710): helm スタブ。既定は記録して 0（従来の PLAIN_STUB と同じく何も出さない）＝
+// `helm list` が空 ＝ **リリースが無い新規クラスタ**。既存リリースの mesh.mtlsMode を読む経路だけを模型にする。
+//   STUB_HELM_VALUES       … 与えると「msp リリースが在る」世界になり、`helm get values msp` がこの YAML を返す
+//   STUB_HELM_LIST_FAIL=1  … `helm list` が失敗する（API に届かない等）
+//   STUB_HELM_VALUES_FAIL=1… リリースは在るが `helm get values msp` が失敗する
+const HELM_STUB = [
+  '#!/usr/bin/env bash',
+  'echo "helm $*" >> "$STUB_LOG"',
+  'case "$*" in "list "*)',
+  '  if [ "${STUB_HELM_LIST_FAIL:-}" = "1" ]; then echo "Error: Kubernetes cluster unreachable" >&2; exit 1; fi',
+  '  if [ -n "${STUB_HELM_VALUES+x}" ]; then echo msp; fi; exit 0;;',
+  'esac',
+  'case "$*" in "get values msp "*)',
+  '  if [ "${STUB_HELM_VALUES_FAIL:-}" = "1" ]; then echo "Error: query: failed to query with labels: context deadline exceeded" >&2; exit 1; fi',
+  '  printf "%s\\n" "${STUB_HELM_VALUES:-}"; exit 0;;',
+  'esac',
+  'exit 0',
+  '',
+].join('\n');
+
 // kubectl スタブは CRD 有無を env で切替可能にする。既定は有（exit 0）＝VAULT は deploy/local/vault を
 // apply。STUB_CRD_ABSENT=1 で `kubectl get crd clustersecretstores.*` を非0（未導入）に返させ、
 // ESO 未導入フォールバック（WARN ＋ vault-dev.yaml のみ apply）経路を検証できるようにする。
@@ -295,7 +315,8 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   // node も差し替える。ABACSEED=1 は `node scripts/seed-abac-policies.js` を呼ぶため、素の node のままだと
   // smoke test が実際に投入スクリプトを走らせて（到達しない port-forward を待って）遅くなる。
   // k8s-local-up.sh が node を使うのはこの 1 か所だけなので、記録スタブで足りる。
-  for (const n of ['helm', 'node']) write(n, PLAIN_STUB(n));
+  write('node', PLAIN_STUB('node'));
+  write('helm', HELM_STUB); // #1710: 既定は PLAIN_STUB と同じ振る舞い（リリース無し）
   write('docker', DOCKER_STUB);
   // helm-controller の模型（awk）。PATH には置かない —— これはコマンドの差し替えではなく、
   // kubectl stub が反映の成否を決めるために読む**データ**である。
@@ -326,6 +347,8 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
     'RESET_FLOOR', // #1500: 床の経路を外す比較用の口（#1543: 本番の退路ではない）。漏れていると冒頭の検査・警告が既定と違う形で走る
     'BACKUP_AGE_RECIPIENTS_FILE', // #1560: バックアップの受取人。漏れていると既定で ConfigMap を作り直す
+    'ISTIO', // #1710: メッシュの門。漏れていると既定のバイト等価が崩れる
+    'ISTIO_MTLS_MODE', // #1710: 未指定（引き継ぎ）の経路を試すため、漏れを除く
   ]) {
     delete base[k];
   }
@@ -3442,6 +3465,140 @@ ok('#1691: service: 以外のキーの enabled: false は移行済みと読ま�
   assert.strictEqual(r.status, 0, `起動器が失敗した:\n${r.stderr.slice(-600)}`);
   assert.ok(r.lines.some(isEdgeApply), '別キーの enabled: false を移行済みと読んだ');
   assert.ok(r.lines.some(isTraefikWait), '別キーの enabled: false で Traefik の反映待ちを飛ばした');
+});
+
+// ---- #1710 / IADR-0487: ISTIO_MTLS_MODE を付けない再実行は現行の mesh.mtlsMode を引き継ぐ（黙って緩めない） ----------
+//
+// #1694 のエラー文が勧める `ISTIO=1 LOCALEDGE=1 … --live` をそのまま写すと、[6/7] が `--reuse-values` 無しで
+// `--set mesh.mtlsMode=${ISTIO_MTLS_MODE:-PERMISSIVE}` を渡し、STRICT のクラスタを**黙って** PERMISSIVE へ戻していた。
+// 選び方は 明示 ＞ 現行（helm get values）＞ PERMISSIVE（初回）。読めなければ [2/7] の前に止める（fail-closed）。
+// 入力は helm スタブの STUB_HELM_VALUES（`helm get values msp -o yaml` の出力の形）。プローブの表は作業仕様書
+// 20261001_issue-1710_mesh-mtls-mode-inherit.md（規則 11）。
+
+const helmValues = (mode) =>
+  'mesh:\n  backchannelLogout:\n    fromOutsideMesh: true\n  enabled: true\n'
+  + (mode ? `  mtlsMode: ${mode}\n` : '')
+  + 'namespace:\n  create: false\n  istioInjection: true\n';
+const mtlsOf = (r) => {
+  const line = r.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, `helm upgrade --install msp の行が無い（status=${r.status}）:\n${r.stderr.slice(-600)}`);
+  const m = /--set mesh\.mtlsMode=(\S+)/.exec(line);
+  assert.ok(m, `mesh.mtlsMode の --set が無い: ${line}`);
+  return m[1];
+};
+// istio-edge-up.sh [5/5] が helm 経由で上げた値（set_mesh_mtls_mode。--reuse-values の upgrade）。無ければ null。
+const promotedOf = (r) => {
+  const line = r.lines.find((l) => l.startsWith('helm upgrade msp ') && l.includes('--reuse-values'));
+  const m = line && /--set mesh\.mtlsMode=(\S+)/.exec(line);
+  return m ? m[1] : null;
+};
+const INHERIT_INFO = /INFO: mesh\.mtlsMode は現行の (\S+) を引き継ぎます（ISTIO_MTLS_MODE 未指定）/;
+
+ok('#1710: 移行済み ＋ 未指定 ＋ 現行 STRICT → [6/7] は STRICT のまま（黙って PERMISSIVE へ戻さない）', () => {
+  const r = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1', STUB_HELM_VALUES: helmValues('STRICT') });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  assert.strictEqual(mtlsOf(r), 'STRICT', '#1710 の再発: 現行 STRICT のクラスタを未指定の再実行で PERMISSIVE へ降格した');
+  assert.match(r.stdout, INHERIT_INFO, '引き継いだことを告げていない');
+  assert.strictEqual(INHERIT_INFO.exec(r.stdout)[1], 'STRICT');
+  assert.strictEqual(promotedOf(r), 'STRICT', 'istio-edge-up.sh [5/5] へ引き継いだ STRICT が渡っていない');
+});
+
+ok('#1710: 移行済み ＋ 未指定 ＋ 現行 PERMISSIVE → PERMISSIVE のまま（勝手に上げない）', () => {
+  const r = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1', STUB_HELM_VALUES: helmValues('PERMISSIVE') });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  assert.strictEqual(mtlsOf(r), 'PERMISSIVE');
+  assert.strictEqual(INHERIT_INFO.exec(r.stdout)?.[1], 'PERMISSIVE', '引き継いだことを告げていない');
+  assert.strictEqual(promotedOf(r), null, 'PERMISSIVE を引き継いだのに STRICT へ上げた');
+});
+
+ok('#1710: 明示が勝つ（現行 STRICT でも ISTIO_MTLS_MODE=PERMISSIVE なら PERMISSIVE。現行 PERMISSIVE でも STRICT なら STRICT）', () => {
+  const down = runUp({
+    ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1', ISTIO_MTLS_MODE: 'PERMISSIVE', STUB_HELM_VALUES: helmValues('STRICT'),
+  });
+  assert.strictEqual(mtlsOf(down), 'PERMISSIVE', '明示の PERMISSIVE より現行を優先した（緩める正規の手段が効かない）');
+  assert.doesNotMatch(down.stdout, INHERIT_INFO, '明示があるのに引き継ぎを告げた');
+  assert.ok(!down.lines.some((l) => l.startsWith('helm get values')), '明示があるのに現行を読みに行った');
+  const up = runUp({
+    ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1', ISTIO_MTLS_MODE: 'STRICT', STUB_HELM_VALUES: helmValues('PERMISSIVE'),
+  });
+  assert.strictEqual(mtlsOf(up), 'STRICT', '明示の STRICT より現行を優先した');
+  // 明示なら読めなくても止めない（読む必要が無い）。
+  const failOk = runUp({ ISTIO: '1', ISTIO_MTLS_MODE: 'STRICT', STUB_HELM_LIST_FAIL: '1' });
+  assert.strictEqual(failOk.status, 0, `明示があるのに読み取りの失敗で止まった:\n${failOk.stderr.slice(-600)}`);
+  assert.strictEqual(mtlsOf(failOk), 'STRICT');
+});
+
+ok('#1710: 初回（リリースが無い）＋ 未指定 → 従来どおり PERMISSIVE。メッシュ未宣言のリリースもチャート既定の STRICT を拾わない', () => {
+  const fresh = runUp({ ISTIO: '1', LOCALEDGE: '1' });
+  assert.strictEqual(fresh.status, 0, `起動器が止まった:\n${fresh.stderr.slice(-600)}`);
+  assert.strictEqual(mtlsOf(fresh), 'PERMISSIVE');
+  assert.ok(fresh.lines.some((l) => l.startsWith('helm list ')), 'リリースの有無を確かめていない');
+  assert.ok(!fresh.lines.some((l) => l.startsWith('helm get values')), 'リリースが無いのに values を読んだ');
+  assert.doesNotMatch(fresh.stdout, INHERIT_INFO, '初回なのに引き継ぎを告げた');
+  // ISTIO 無しで立てた既存リリース（values-local.yaml の mesh.enabled: false のまま）。`--all` で読むと既定 STRICT を拾う形。
+  const noMesh = runUp({ ISTIO: '1', STUB_HELM_VALUES: 'mesh:\n  enabled: false\nnamespace:\n  create: false\n' });
+  assert.strictEqual(noMesh.status, 0, `メッシュ未宣言のリリースで止まった:\n${noMesh.stderr.slice(-600)}`);
+  assert.strictEqual(mtlsOf(noMesh), 'PERMISSIVE', 'メッシュを宣言していないリリースからモードを引き継いだ');
+});
+
+ok('#1710: 読めない（helm list / get values の失敗・mtlsMode 欠落・値域外）＋ 未指定 → [2/7] の前に止まり、明示を告げる', () => {
+  const cases = [
+    ['helm list が失敗', { STUB_HELM_LIST_FAIL: '1' }],
+    ['helm get values が失敗', { STUB_HELM_VALUES: helmValues('STRICT'), STUB_HELM_VALUES_FAIL: '1' }],
+    ['mesh.enabled なのに mtlsMode が無い', { STUB_HELM_VALUES: helmValues(null) }],
+    ['mtlsMode が値域外', { STUB_HELM_VALUES: helmValues('strict') }],
+  ];
+  for (const [what, env] of cases) {
+    const r = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1', ...env });
+    assert.notStrictEqual(r.status, 0, `${what}: 読めないのに進んだ（PERMISSIVE へ倒すと STRICT を黙って緩める）`);
+    assert.match(r.stderr, /ISTIO_MTLS_MODE=STRICT/, `${what}: 明示の指定を告げていない`);
+    assert.ok(!r.lines.some((l) => l.startsWith('docker build ')), `${what}: [2/7] 以降へ進んでから止まった（判定は副作用より前）`);
+    assert.ok(!r.lines.some((l) => HELM_UPGRADE_RE.test(l)), `${what}: [6/7] の helm upgrade まで進んだ`);
+  }
+});
+
+ok('#1710: 未移行の LOCALEDGE ＋ 引き継いだ STRICT → [6/7] は PERMISSIVE、入口を移した後で STRICT へ戻す（段取りは明示と同じ）', () => {
+  const r = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_HELM_VALUES: helmValues('STRICT') });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  assert.strictEqual(mtlsOf(r), 'PERMISSIVE', '入口がまだ Traefik の段で STRICT を宣言した（502。IADR-0377 決定 2）');
+  assert.strictEqual(promotedOf(r), 'STRICT', '引き継いだ STRICT へ戻していない（黙った降格が残る）');
+});
+
+ok('#1710: 移行済みで ISTIO 無しのエラー文は ISTIO_MTLS_MODE=STRICT を含む写せる形で告げる', () => {
+  const r = runUp({ LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1' });
+  assert.notStrictEqual(r.status, 0);
+  assert.match(r.stderr, /ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT bash scripts\/k8s-local-up\.sh --live/,
+    'Istio のまま再実行する指定に ISTIO_MTLS_MODE=STRICT が無い（写すと読み取り次第の挙動になる）');
+});
+
+ok('#1710: ISTIO 未設定の既定経路では helm の読み取りを足さない（既定のバイト等価）', () => {
+  assert.ok(!DEFAULT.lines.some((l) => l.startsWith('helm list ') || l.startsWith('helm get values')),
+    '既定経路で現行の mTLS モードを読みに行った');
+});
+
+ok('#1710: mesh_values_mtls_mode の判定表（mesh 直下だけを見る・孫や別キーの mtlsMode は拾わない）', () => {
+  const run = (yaml) => spawnSync('bash', ['-c', `. "${MESH_MTLS_LIB_REL}"; mesh_values_mtls_mode "$1"`, '_', yaml], {
+    cwd: REPO_ROOT, encoding: 'utf8',
+  });
+  const table = [
+    [helmValues('STRICT'), 0, 'STRICT'],
+    [helmValues('PERMISSIVE'), 0, 'PERMISSIVE'],
+    [helmValues('DISABLE'), 0, 'DISABLE'],
+    ['mesh:\n  enabled: true\n  mtlsMode: "STRICT"\n', 0, 'STRICT'],
+    ['mesh:\r\n  enabled: true\r\n  mtlsMode: STRICT\r\n', 0, 'STRICT'],
+    ['mesh:\n  enabled: false\n', 1, ''],
+    ['namespace:\n  create: false\n', 1, ''],
+    ['', 1, ''],
+    ['other:\n  mesh:\n    enabled: true\n    mtlsMode: STRICT\n', 1, ''],
+    ['mesh:\n  x:\n    enabled: true\n    mtlsMode: STRICT\n', 1, ''],
+    [helmValues(null), 2, ''],
+    [helmValues('strict'), 2, ''],
+  ];
+  for (const [yaml, rc, out] of table) {
+    const r = run(yaml);
+    assert.strictEqual(r.status, rc, `rc が違う: ${JSON.stringify(yaml)} → ${r.status}`);
+    assert.strictEqual(r.stdout.trim(), out, `出力が違う: ${JSON.stringify(yaml)}`);
+  }
 });
 
 const EDGE_STATE_LIB = path.join(REPO_ROOT, 'scripts', 'lib', 'edge-state.sh');

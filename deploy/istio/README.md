@@ -43,9 +43,16 @@ kubectl -n microservices-platform get pods -o json |   jq -r '.items[] | .metada
 ### 🔴 mTLS モードは既定 PERMISSIVE で入る
 
 ```sh
-ISTIO=1 ./scripts/k8s-local-up.sh --live                        # PERMISSIVE（既定）
+ISTIO=1 ./scripts/k8s-local-up.sh --live                        # 初回は PERMISSIVE（既定）。再実行は現行を引き継ぐ
 ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live # STRICT へ移す
 ```
+
+**`ISTIO_MTLS_MODE` を付けない再実行は、現行の `mesh.mtlsMode` を引き継ぐ**（#1710 / [`IADR-0487`](../../.ai-context/adr/IADR-0487_mesh-mtls-mode-inherit-on-rerun-fail-closed.md)）。
+読む先は helm の宣言（`helm get values msp`）であり、`INFO: mesh.mtlsMode は現行の <mode> を引き継ぎます` を出す。
+PERMISSIVE になるのは `msp` リリースが無い・メッシュを宣言していない**初回だけ**である。STRICT から PERMISSIVE へ戻すのも
+`ISTIO_MTLS_MODE=PERMISSIVE` の明示でだけ行う。🔴 **現行の値を読めないとき（helm に届かない等）は、何も書き換える前に止まる** ——
+推測で PERMISSIVE へ倒すと STRICT を黙って緩め、STRICT へ倒すと入口がメッシュ外の構成で 502 になり得るため。
+そのときは `ISTIO_MTLS_MODE` を明示して再実行する。
 
 **いきなり STRICT にしてはならない。** サイドカーの入っていない `platform-infra`
 （postgres / keycloak / rabbitmq / qdrant / redis …）との通信と、注入前の Pod からの通信が
@@ -89,11 +96,12 @@ bash scripts/istio-edge-down.sh --live   # 🔴 切り戻し（1 コマンド）
 後に `istio-edge-up.sh` [5/5] が STRICT へ上げる**（#1159 / [`IADR-0377`](../../.ai-context/adr/IADR-0377_mesh-mtls-single-writer-and-drift-gate.md) 決定 2）。
 上の段取りをスクリプトの側で満たすためである。**入口をすでに Envoy へ移したクラスタへの再実行では緩めない**
 （HelmChartConfig `kube-system/traefik` が `service.enabled: false` なら移行済みと読み、[6/7] から要求どおりのモードを宣言する。#1691）。
+「要求どおり」は明示の `ISTIO_MTLS_MODE`、無ければ引き継いだ現行のモードである（#1710。引き継いだ STRICT も明示と同じ段取りを通る）。
 
 入口を移した後の**再実行**（#1691 / IADR-0317 の 2026-09-28 追記）: 移行済みかは**クラスタの状態**（上の HelmChartConfig）で判定する。
 `ISTIO=1 LOCALEDGE=1` なら Traefik へ戻す段（`deploy/local/edge` の apply・`svc/traefik` の反映待ち・Traefik 向け CoreDNS・
 `argocd-ingress.yaml`）を飛ばし、`istio-edge-up.sh` の冪等な確認だけを行う。**`LOCALEDGE=1` だけ（`ISTIO` 無し）では起動の前に止まる** ——
-Istio のまま再実行するなら `ISTIO=1` を付け、Traefik へ戻すなら先に `bash scripts/istio-edge-down.sh --live` を実行する。
+Istio のまま再実行するなら `ISTIO=1` を付け（STRICT で使っているなら `ISTIO_MTLS_MODE=STRICT` も。エラー文はこの形を示す）、Traefik へ戻すなら先に `bash scripts/istio-edge-down.sh --live` を実行する。
 
 ### 🔴 mTLS モードを書いてよいのは helm だけである（#1159）
 
