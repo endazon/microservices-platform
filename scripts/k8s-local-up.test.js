@@ -200,14 +200,19 @@ const DOCKER_STUB = [
 //   STUB_HELM_VALUES       … 与えると「msp リリースが在る」世界になり、`helm get values msp` がこの YAML を返す
 //   STUB_HELM_LIST_FAIL=1  … `helm list` が失敗する（API に届かない等）
 //   STUB_HELM_VALUES_FAIL=1… リリースは在るが `helm get values msp` が失敗する
+// 実機に寄せる（独立監査の変異 M2 / M6）: リリースは namespace microservices-platform にだけ在る（`-n` を落とすと
+// list は空・get values は "release: not found"）。`get values` の `--all`（チャート既定を混ぜる）は拒否して赤にする。
 const HELM_STUB = [
   '#!/usr/bin/env bash',
   'echo "helm $*" >> "$STUB_LOG"',
+  'in_ns=0; case " $* " in *" -n microservices-platform "*) in_ns=1;; esac',
   'case "$*" in "list "*)',
   '  if [ "${STUB_HELM_LIST_FAIL:-}" = "1" ]; then echo "Error: Kubernetes cluster unreachable" >&2; exit 1; fi',
-  '  if [ -n "${STUB_HELM_VALUES+x}" ]; then echo msp; fi; exit 0;;',
+  '  if [ -n "${STUB_HELM_VALUES+x}" ] && [ "$in_ns" = "1" ]; then echo msp; fi; exit 0;;',
   'esac',
   'case "$*" in "get values msp "*)',
+  '  case " $* " in *" --all "*|*" -a "*) echo "STUB: helm get values に --all を付けた（チャート既定が混ざる）" >&2; exit 3;; esac',
+  '  if [ "$in_ns" != "1" ]; then echo "Error: release: not found" >&2; exit 1; fi',
   '  if [ "${STUB_HELM_VALUES_FAIL:-}" = "1" ]; then echo "Error: query: failed to query with labels: context deadline exceeded" >&2; exit 1; fi',
   '  printf "%s\\n" "${STUB_HELM_VALUES:-}"; exit 0;;',
   'esac',
@@ -3501,6 +3506,10 @@ ok('#1710: 移行済み ＋ 未指定 ＋ 現行 STRICT → [6/7] は STRICT の
   assert.match(r.stdout, INHERIT_INFO, '引き継いだことを告げていない');
   assert.strictEqual(INHERIT_INFO.exec(r.stdout)[1], 'STRICT');
   assert.strictEqual(promotedOf(r), 'STRICT', 'istio-edge-up.sh [5/5] へ引き継いだ STRICT が渡っていない');
+  // 読み先の形を固定する（独立監査の変異 M2 / M6）: 利用者が与えた値だけ（--all なし）・リリースの namespace を指定。
+  assert.ok(r.lines.includes('helm get values msp -n microservices-platform -o yaml'),
+    `読み先が helm get values msp -n microservices-platform -o yaml でない: ${r.lines.filter((l) => l.startsWith('helm get')).join(' | ')}`);
+  assert.ok(r.lines.some((l) => l.startsWith('helm list -n microservices-platform ')), 'helm list に namespace を指定していない');
 });
 
 ok('#1710: 移行済み ＋ 未指定 ＋ 現行 PERMISSIVE → PERMISSIVE のまま（勝手に上げない）', () => {
@@ -3535,7 +3544,7 @@ ok('#1710: 初回（リリースが無い）＋ 未指定 → 従来どおり PE
   assert.ok(fresh.lines.some((l) => l.startsWith('helm list ')), 'リリースの有無を確かめていない');
   assert.ok(!fresh.lines.some((l) => l.startsWith('helm get values')), 'リリースが無いのに values を読んだ');
   assert.doesNotMatch(fresh.stdout, INHERIT_INFO, '初回なのに引き継ぎを告げた');
-  // ISTIO 無しで立てた既存リリース（values-local.yaml の mesh.enabled: false のまま）。`--all` で読むと既定 STRICT を拾う形。
+  // ISTIO 無しで立てた既存リリース（values-local.yaml の mesh.enabled: false のまま）。メッシュ未宣言は初回と同じく PERMISSIVE。
   const noMesh = runUp({ ISTIO: '1', STUB_HELM_VALUES: 'mesh:\n  enabled: false\nnamespace:\n  create: false\n' });
   assert.strictEqual(noMesh.status, 0, `メッシュ未宣言のリリースで止まった:\n${noMesh.stderr.slice(-600)}`);
   assert.strictEqual(mtlsOf(noMesh), 'PERMISSIVE', 'メッシュを宣言していないリリースからモードを引き継いだ');

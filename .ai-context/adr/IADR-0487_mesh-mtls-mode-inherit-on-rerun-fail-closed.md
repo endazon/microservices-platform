@@ -96,6 +96,13 @@ IADR-0377 決定 3 の「未設定なら PERMISSIVE」は**初回の既定**と�
 - 試験: `k8s-local-up.test.js` の helm スタブに既存リリースの模型（`STUB_HELM_VALUES` ほか）を足し、#1710 節で受け入れ基準と純関数の判定表を固定した。
   プローブの表（規則 11）と変異の結果は作業仕様書。
 
+［2026-10-01 追記 / #1710］独立監査の是正と補足:
+
+- **論点 2 の案 b の理由を正す。** 「`--all` だとメッシュ未宣言のリリースを STRICT と読む」は不正確だった。`values-local.yaml` が `mesh.enabled: false` を利用者の値として与えるので、`--all` でも未宣言のリリースは enabled=false のまま「初回」に落ちる。`--all` が実害を出すのは **`mesh.enabled: true` なのに `mtlsMode` を宣言していない**場合で、本来は「読めない」で止まるべきところをチャート既定の STRICT として読む。採らない結論は変わらない。
+- **読み先の形を試験で固定した。** helm スタブを実機に寄せた（リリースは namespace `microservices-platform` にだけ在り、`-n` を落とすと list は空・get values は not found、`get values` の `--all` は拒否）。起動器の経路の試験で、読み先が `helm get values msp -n microservices-platform -o yaml` であることを固定した（独立監査の変異 M2 `--all` 混入・M6 `-n` 欠落はいずれも殺した）。
+- **`helm list -a` が拾う状態。** `-a` は `deployed` 以外（`failed`・`pending-upgrade`・`pending-install` 等）も「在る」として返す。これらでも `helm get values` は最後に与えた値を返すので引き継げる。読めなければ「読めない」として止まる（fail-closed）ので、状態の種類で緩む経路は無い（PR の AI レビューの補足）。
+- **残余（本件の射程外・別件）**: Istio で動いているクラスタで **`ISTIO` を付けずに**再実行すると、[6/7] が mesh の `--set` を付けずに upgrade し、`values-local.yaml` の `mesh.enabled: false` に戻ってメッシュ宣言がまるごと外れる（以前からの挙動で本件の退行ではない）。MSP#1713 で扱う。
+
 ## 関連
 
 - 作業仕様書: `.ai-context/specs/20261001_issue-1710_mesh-mtls-mode-inherit.md`

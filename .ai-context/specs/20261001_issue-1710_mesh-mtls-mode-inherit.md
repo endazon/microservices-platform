@@ -132,3 +132,11 @@ A の P1 は下の変異 M1（形 A そのもの）で赤になることを実�
 - 文書系: `check-trace-blocks` / `gen-knowledge-graph --check` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-doc-links` /
   `check-reading-budget` / `check-doc-type-vocabulary` / `check-commit-messages --range origin/develop..HEAD`
 - 稼働クラスタでは実行しない（スタブのみ）。`shellcheck` は本環境に無い（CI の lint に委ねる）。
+
+［2026-10-01 追記 / #1710］独立監査（GO・🟡 3 件）の是正:
+
+- 上の「`--all` はメッシュ未宣言のリリースを STRICT と読む」は不正確（`values-local.yaml` が `mesh.enabled: false` を与えるため、未宣言は `--all` でも初回に落ちる）。`--all` の実害は「`mesh.enabled: true` なのに `mtlsMode` が無い」ときに止まらずチャート既定の STRICT を読むこと。IADR-0487 に同じ訂正を追記した。
+- 「`--all` の混入はスタブが区別しないため捕まらない（残余）」は解消した。helm スタブを実機に寄せ（namespace 指定が無ければ不在・`--all` は拒否）、読み先の行を固定した。監査の変異 M2（`--all`）・M6（get values の `-n` 欠落）に加え、`helm list` の `-n` 欠落も殺すことを実測した（いずれも 237 件中で赤）。
+- 🟡3（`ISTIO` 無しの再実行でメッシュ宣言が外れる。以前からの挙動）は射程外として MSP#1713 へ起票した。
+- 🟢: エラー文を貼り付けて実行できる形にし、リリース名を `MSP_HELM_RELEASE` に揃えた。`deploy/istio/README.md` の見出しを「初回は」に直した。
+

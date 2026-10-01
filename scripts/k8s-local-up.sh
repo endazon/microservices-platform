@@ -161,9 +161,10 @@ if [ "${ISTIO:-}" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ]; then
       ;;
     1) ;; # リリースが無い・メッシュ未宣言 = 初回。従来どおり PERMISSIVE で入る（下の [6/7]）
     *)
-      echo "ERROR: 現行の mesh.mtlsMode を helm リリース msp から読めませんでした（helm get values msp -n $MSP_NS）。" >&2
+      echo "ERROR: 現行の mesh.mtlsMode を helm リリース ${MSP_HELM_RELEASE:-msp} から読めませんでした（helm get values ${MSP_HELM_RELEASE:-msp} -n $MSP_NS）。" >&2
       echo "       ISTIO_MTLS_MODE を付けない再実行は現行のモードを引き継ぎます。読めないまま PERMISSIVE で入ると STRICT を黙って緩めるため、止めます。" >&2
-      echo "       モードを明示して再実行してください: ISTIO_MTLS_MODE=STRICT（または PERMISSIVE）ISTIO=1 ... bash scripts/k8s-local-up.sh --live" >&2
+      echo "       モードを明示して再実行してください（前回と同じ他の指定〔LOCALEDGE 等〕も付ける。緩めるなら PERMISSIVE）:" >&2
+      echo "         ISTIO_MTLS_MODE=STRICT ISTIO=1 bash scripts/k8s-local-up.sh --live" >&2
       exit 1
       ;;
   esac

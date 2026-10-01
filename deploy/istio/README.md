@@ -40,7 +40,7 @@ kubectl -n microservices-platform get pods -o json |   jq -r '.items[] | .metada
 **`istioctl` は要らない**（配布バイナリを増やさず、他の opt-in と同じ Helm 経路に揃える）。
 検証コマンド（§4）だけは `istioctl` があると便利だが、`kubectl` でも代替できる。
 
-### 🔴 mTLS モードは既定 PERMISSIVE で入る
+### 🔴 mTLS モードは初回は既定 PERMISSIVE で入り、再実行は現行を引き継ぐ
 
 ```sh
 ISTIO=1 ./scripts/k8s-local-up.sh --live                        # 初回は PERMISSIVE（既定）。再実行は現行を引き継ぐ
