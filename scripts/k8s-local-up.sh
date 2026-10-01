@@ -129,11 +129,45 @@ if [ "${LOCALEDGE:-}" = "1" ] && edge_on_istio; then
   if [ "${ISTIO:-}" != "1" ]; then
     echo "ERROR: 入口はすでに Istio Ingress Gateway へ移っています（HelmChartConfig kube-system/traefik が service.enabled: false）。" >&2
     echo "       LOCALEDGE=1 だけでは再実行できません（Traefik へ戻す処理が Istio の入口とポートを取り合います。#1691）。どちらかを選んでください:" >&2
-    echo "       - Istio の入口のまま再実行する: ISTIO=1 LOCALEDGE=1 bash scripts/k8s-local-up.sh --live" >&2
+    # NFR-16, IADR-0487 (#1710): mTLS を STRICT で使っているなら、そのまま写して実行できる形で告げる。
+    #   ISTIO_MTLS_MODE を省いても [6/7] は現行の mesh.mtlsMode を引き継ぐ（下の判定）が、意図を明示した形を勧める。
+    echo "       - Istio の入口のまま再実行する: ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT bash scripts/k8s-local-up.sh --live" >&2
+    echo "         （PERMISSIVE で使っているなら ISTIO_MTLS_MODE=PERMISSIVE。省くと現行の mesh.mtlsMode を引き継ぐ）" >&2
     echo "       - Traefik へ戻す: 先に bash scripts/istio-edge-down.sh --live を実行してから LOCALEDGE=1 で再実行する" >&2
     exit 1
   fi
   echo "    入口は Istio Ingress Gateway へ移し済み（HelmChartConfig traefik: service.enabled: false）。Traefik へ戻す段と待ちは飛ばす（#1691）"
+fi
+
+# NFR-16, ADR-0005, IADR-0487 (#1710): **ISTIO_MTLS_MODE を付けない再実行は、現行の mesh.mtlsMode を引き継ぐ。**
+#   [6/7] は --reuse-values 無しで --set mesh.mtlsMode=… を渡す。以前は未指定を一律 PERMISSIVE と読み、
+#   STRICT で動いているクラスタを再実行のたびに**黙って** PERMISSIVE へ戻していた（#1694 のエラー文が勧める
+#   `ISTIO=1 LOCALEDGE=1 … --live` をそのまま写すと起きる）。
+#   選び方: 明示（env）＞ 現行（helm の宣言）＞ PERMISSIVE（リリースが無い・メッシュを宣言していない＝初回）。
+#   引き継いだ値は以降「明示されたのと同じ」に扱う（未移行の LOCALEDGE なら [6/7] は PERMISSIVE で入り、
+#   istio-edge-up.sh [5/5] が入口を移した後で STRICT へ戻す。IADR-0377 決定 2 の段取りのまま）。
+#   🔴 **読めないときは止める（fail-closed）。** PERMISSIVE へ倒すと降格を黙って起こし、STRICT へ倒すと
+#   PERMISSIVE で動いているクラスタ（入口が Traefik の構成を含む）の入口を 502 にし得る。どちらも推測である。
+#   **副作用より前**（[2/7] の前）に置き、止めるときは何も書き換えていない。ISTIO 無しの既定経路では読まない（バイト等価）。
+if [ "${ISTIO:-}" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ]; then
+  # shellcheck source=scripts/lib/mesh-mtls-mode.sh
+  . "$ROOT/scripts/lib/mesh-mtls-mode.sh"
+  mtls_rc=0
+  mtls_current="$(current_mesh_mtls_mode)" || mtls_rc=$?
+  case "$mtls_rc" in
+    0)
+      ISTIO_MTLS_MODE="$mtls_current"
+      echo "    INFO: mesh.mtlsMode は現行の ${mtls_current} を引き継ぎます（ISTIO_MTLS_MODE 未指定）"
+      ;;
+    1) ;; # リリースが無い・メッシュ未宣言 = 初回。従来どおり PERMISSIVE で入る（下の [6/7]）
+    *)
+      echo "ERROR: 現行の mesh.mtlsMode を helm リリース ${MSP_HELM_RELEASE:-msp} から読めませんでした（helm get values ${MSP_HELM_RELEASE:-msp} -n $MSP_NS）。" >&2
+      echo "       ISTIO_MTLS_MODE を付けない再実行は現行のモードを引き継ぎます。読めないまま PERMISSIVE で入ると STRICT を黙って緩めるため、止めます。" >&2
+      echo "       モードを明示して再実行してください（前回と同じ他の指定〔LOCALEDGE 等〕も付ける。緩めるなら PERMISSIVE）:" >&2
+      echo "         ISTIO_MTLS_MODE=STRICT ISTIO=1 bash scripts/k8s-local-up.sh --live" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 echo "==> [2/7] build & import images"
@@ -413,7 +447,9 @@ fi
 # 🔴 **[6/7] より前に置く。** アプリチャートは PeerAuthentication / DestinationRule を
 #   レンダリングするので、CRD が無いまま helm upgrade すると apply がその時点で失敗する。
 #
-# 🔴 **既定は PERMISSIVE で入る。** STRICT へは ISTIO_MTLS_MODE=STRICT で明示的に移す。
+# 🔴 **初回は PERMISSIVE で入る。** STRICT へは ISTIO_MTLS_MODE=STRICT で明示的に移す。
+#   ［2026-10-01 / #1710］ISTIO_MTLS_MODE を付けない**再実行**は現行の mesh.mtlsMode を引き継ぐ（[2/7] の前の判定。IADR-0487）。
+#   PERMISSIVE へ戻すのも ISTIO_MTLS_MODE=PERMISSIVE の明示だけである。
 #   いきなり STRICT にすると、サイドカーの入っていない platform-infra（postgres / keycloak /
 #   rabbitmq / qdrant / redis …）との通信と、注入前の Pod からの通信が**同時に**壊れる。
 #   段取りは「注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT」である。
@@ -451,6 +487,9 @@ if [ "${ISTIO:-}" = "1" ]; then
   #   （#1159 の「手動 patch によるドリフト」の正体。scripts/lib/mesh-mtls-mode.sh 冒頭に実測を置いた）。
   #   #1691: **入口がすでに Istio へ移っている再実行では降格しない**（EDGE_ON_ISTIO。[1/7] の後でクラスタの状態から読む）。
   #   入口は既に Envoy であり、降格の理由（入口がメッシュ外の Traefik）が無い。再実行のたびに STRICT → PERMISSIVE → STRICT と緩めない。
+  #   #1710: ↑ が成り立つのは ISTIO_MTLS_MODE が決まっているときである。未指定の再実行は [2/7] の前の判定が
+  #   現行の mesh.mtlsMode を ISTIO_MTLS_MODE へ引き継ぐので、ここで空が残るのはリリースが無い・メッシュ未宣言（初回）だけ
+  #   ＝ 下の既定 PERMISSIVE は**初回の値**であって、再実行の降格ではない（IADR-0487）。
   ISTIO_MTLS_MODE_AT_INSTALL="${ISTIO_MTLS_MODE:-PERMISSIVE}"
   if [ "${LOCALEDGE:-}" = "1" ] && [ "${ISTIO_MTLS_MODE:-}" = "STRICT" ] && [ "$EDGE_ON_ISTIO" != "1" ]; then
     ISTIO_MTLS_MODE_AT_INSTALL="PERMISSIVE"

@@ -30,7 +30,7 @@ istiod / ingressgateway の values は [`../../istio/`](../../istio/README.md)�
 
 ```sh
 # クラスタ作成から通す（推奨）
-ISTIO=1 LOCALEDGE=1 ./scripts/k8s-local-up.sh --live                        # PERMISSIVE
+ISTIO=1 LOCALEDGE=1 ./scripts/k8s-local-up.sh --live                        # 初回は PERMISSIVE。再実行は現行のモードを引き継ぐ
 ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live # STRICT
 
 # 既に立っているクラスタのエッジだけを移す
@@ -48,6 +48,8 @@ bash scripts/istio-edge-down.sh --live
 恒久的に失敗する**（復旧手順は `docs/operations/operations.md` の Runbook）。
 `ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT` の up は、**[6/7] でいったん PERMISSIVE を宣言し、
 入口を移した後に STRICT へ上げる**（段取りは `IADR-0307` 決定 4）。
+`ISTIO_MTLS_MODE` を付けない再実行は helm の宣言から現行のモードを引き継ぎ、読めなければ止まる（#1710 /
+[`IADR-0487`](../../../.ai-context/adr/IADR-0487_mesh-mtls-mode-inherit-on-rerun-fail-closed.md)。STRICT を黙って PERMISSIVE へ戻さない）。
 
 ## 🔴 順序が命である
 
