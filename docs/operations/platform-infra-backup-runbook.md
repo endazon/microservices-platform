@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-09-29
+updated: 2026-10-01
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0008]
 iadrs: [IADR-0066, IADR-0369, IADR-0457, IADR-0471]
-specs: [20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready]
-issues: [#1560, #1564, #1689, #1699, AST#346]
+specs: [20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status]
+issues: [#1709, #1560, #1564, #1689, #1699, AST#346]
 -->
 
 # 運用 Runbook: platform-infra の暗号化バックアップ
@@ -139,6 +139,11 @@ issues: [#1560, #1564, #1689, #1699, AST#346]
    手動の Job は確かめたら `kubectl -n platform-infra delete job <名前>` で消してよい（保管先の回は消えない）。
 
 ## 2. 日々の確認
+
+> 🔴 **現状（2026-10-01）: 稼働 PoC では 2 本とも停止（`SUSPEND` が `True`）で、バックアップは 1 本も取れていない。**
+> age の受取人（利用者が作る）とバックアップのイメージ（ビルドが資格情報ヘルパーの失敗で通っていない）が揃っていない。
+> 「1. 準備」を済ませ、イメージを作り直し、起動スクリプトを再実行して有効化したうえで、「3. リストア試験」を 1 回行う。
+> 再開を確かめたら、この注記を消す。
 
 0. CronJob が有効か（`SUSPEND` が `False`）:
 
