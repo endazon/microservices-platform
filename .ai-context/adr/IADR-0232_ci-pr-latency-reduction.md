@@ -573,6 +573,14 @@ PR 時点で SAST の指摘が一切出なくなる。**`paths:` を持つため
 > - 見積もり（普通の PR の完了 ＝ Δ0 13 ＋ 最も遅い脚 ＋ 集約 A）: 約 116〜126 秒（knowledge 2/3 の閉包 build を CI で 25〜35 秒と写した幅。A は ③ 後の約 10 秒）。
 >   改善前（本追記の前）は 158〜174 秒。ConversionService.Tests の高速化（別 PR）はこの見積もりに含めない。
 > - 代償: ジョブがユニットごとに 1 本増える（脚 5 ＋ 検証 2 ＝ 7 本）。ランナー待ちが増える方向に効き得る。閉包の build はシャード間で共有の下位プロジェクトを重ねて建てる。
+> - 構成（Release）: 一時の slnx に載らない閉包のプロジェクトは、MSBuild の既定（`ShouldUnsetParentConfigurationAndPlatform`）で親の Configuration を外されて
+>   Debug で建つ（独立監査が `bin/Debug` の本体を試験が読むことを実測）。従来どおり Release の本体を試すため、脚の build に
+>   `-p:ShouldUnsetParentConfigurationAndPlatform=false` を付けた。上の手元の 19 試験プロジェクトの結果は Debug の本体で取った値である。
+> - キャッシュの残余: キーはユニットを区別しないので、保存側（`backend-verify-build` 2 本・`backend-format` 2 本）のうち先に保存したジョブの
+>   「そのユニットの全体」が残る。ユニットをまたいで中身が揃う保証は無い。この競合は脚が保存していた改修前からあり、本追記で悪化はしていない。
+> - 初回の CI 実測（本 PR の run 36970837356。`ci.yml` を触るため集約は AST の合成ビルドを待ったので、脚の値だけを使う）: 脚 knowledge 1/3・2/3・3/3 が
+>   90・110・91 秒、platform 1/2・2/2 が 80・90 秒、`backend-verify-build` は knowledge 96・platform 81 秒で最遅脚より先に終わった。普通の PR に写すと
+>   完了は約 131 秒（見積もりの上端を 5 秒超えるが閾値 148 秒の内）。1 回の値であり、判定は週次の ci-latency に委ねる。
 > - 本 IADR への追記にした理由（IADR-0490 を新設しない）: #1686 の一連の判断（シャード化・組み替え・setup-node・本件）は同じ監視（決定 8）の逆転への手当てであり、
 >   2026-09-28 追記 1 の設計の一部を置き換えるものである。別 IADR に割ると「脚が何を建てるか」の正が 2 か所に分かれる。
 >   作業仕様書: `.ai-context/specs/20261001_1686_ci-build-artifact-reuse.md`

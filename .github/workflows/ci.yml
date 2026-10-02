@@ -872,6 +872,8 @@ jobs:
       # プロジェクト一覧をここへ書かない）。backend.slnx 全体の build の検証は、律速の経路の外で並列に走る
       # backend-verify-build が持ち、集約 build-and-test がその結果も判定する（全体 build の失敗は取りこぼさない）。
       # 試験は従来どおり一時の slnx に --no-build で掛けるので、脚が試すのは自分で建てたものだけで、選別も変わらない。
+      # 一時の slnx に載らない閉包のプロジェクトは、MSBuild の既定（ShouldUnsetParentConfigurationAndPlatform）で
+      # 親の Configuration を外されて Debug で建つ。従来どおり Release の本体を試すため、この既定を止める（独立監査の指摘）。
       - name: Restore, build and test (${{ matrix.label }}, unit tests only, with coverage)
         env:
           UNIT: ${{ matrix.unit }}
@@ -899,7 +901,7 @@ jobs:
             echo "::endgroup::"
           fi
           dotnet restore "$target"
-          dotnet build "$target" --no-restore --configuration Release
+          dotnet build "$target" --no-restore --configuration Release -p:ShouldUnsetParentConfigurationAndPlatform=false
           dotnet test "$target" --no-build --configuration Release \
             --filter "Category!=Integration" \
             --collect:"XPlat Code Coverage" --verbosity normal

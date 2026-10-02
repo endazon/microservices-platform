@@ -390,7 +390,7 @@ module.exports = ({ ok, assert }) => {
         const calls = fs.readFileSync(log, 'utf8').trim().split('\n');
         // 2026-10-02 再裁定: シャードの脚は一時の slnx（試験プロジェクトの閉包）を restore / build し、建てたものだけを --no-build で試す。
         assert.match(calls[0], /^restore src\/u\/backend\/ci-test-shard\.slnx$/, `シャードの脚の restore が一時の slnx でない: ${calls[0]}`);
-        assert.match(calls[1], /^build src\/u\/backend\/ci-test-shard\.slnx --no-restore --configuration Release$/, `シャードの脚の build が一時の slnx でない: ${calls[1]}`);
+        assert.match(calls[1], /^build src\/u\/backend\/ci-test-shard\.slnx --no-restore --configuration Release -p:ShouldUnsetParentConfigurationAndPlatform=false$/, `シャードの脚の build が一時の slnx でない（または閉包が Debug で建つ）: ${calls[1]}`);
         assert.match(calls[2], /^test src\/u\/backend\/ci-test-shard\.slnx --no-build .*--filter Category!=Integration/,
           `シャードの脚が一時の slnx へ絞ってテストしていない: ${calls[2]}`);
         const shard = fs.readFileSync(`${log}.slnx`, 'utf8');
