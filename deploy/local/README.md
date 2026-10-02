@@ -134,6 +134,12 @@ PERSIST=0 bash scripts/k8s-local-up.sh --live
   何も書かずに毎日失敗する**（fail-closed）。受取人は `BACKUP_AGE_RECIPIENTS_FILE=<ファイル>` を与えた起動でだけ作り直す。
   準備・確認・リストア試験（`scripts/backup-restore-drill.sh`）は [`docs/operations/platform-infra-backup-runbook.md`](../../docs/operations/platform-infra-backup-runbook.md)。
   **ローカル開発・PoC 専用で、本番のバックアップ設計ではない。**
+  - CronJob のイメージ（[`platform-backup/image`](platform-backup/image/Dockerfile)）は `[2/7]` で作る。ベースは
+    `mirror.gcr.io/library` から digest で固定して取る（#1709 / [IADR-0489](../../.ai-context/adr/IADR-0489_backup-image-base-from-no-challenge-mirror.md)）。
+    `docker.io` は匿名でも 401 の認証チャレンジを返し、ビルダーが資格情報ヘルパー（`credsStore` / `credHelpers`）を呼ぶ ——
+    ヘルパーが壊れた機械（稼働 PoC）ではビルドがそこで落ちていた。
+  - 🔴 **前提（イメージと受取人）が揃うまで、起動スクリプトは CronJob を `suspend: true` で置く**（#1699）。稼働 PoC の現状と
+    再開の手順（受取人を作る → イメージを作り直す → 起動スクリプトの再実行で有効化 → 手動 Job とリストア試験）は Runbook の「2. 日々の確認」冒頭の注記。
 - **Prometheus の保持期間**は base（[`observability/prometheus.yaml`](observability/prometheus.yaml)）の args
   `--storage.tsdb.retention.time=35d` / `--storage.tsdb.retention.size=4GB` で明示する（35d は月次規則の `[30d]` 窓を評価できる最小の保持 ＋ 余裕）。**`size` を PVC 容量（5Gi）
   未満に置いてあるので、流入が増えても PVC が満杯になって書き込み不能になることはない**（IADR-0210 決定 3）。

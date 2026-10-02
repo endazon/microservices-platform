@@ -20,6 +20,10 @@
  *   9. 🔴 ［#1564］age は digest 固定のベースへ版・sha256 で同梱する（deploy/local/platform-backup/image/Dockerfile）。
  *      タグは版から作り、Dockerfile・k8s-local-images.sh の LOCAL_ONLY_IMAGES・2 つの CronJob で揃える。IfNotPresent。
  *      実行時に apk を呼ばない（BACKUP_AGE_INSTALL も撤去）。CI（images.yml）がビルドする。
+ *  10. 🔴 ［#1709 / IADR-0489］ベースの取得元は匿名の取得にチャレンジを返さないミラー（mirror.gcr.io/library）。
+ *      docker.io・ghcr.io・public.ecr.aws（と取得元を書かない FROM＝docker.io）は匿名でも 401 の Bearer チャレンジを返し、
+ *      その応答でビルダーが資格情報ヘルパーを呼ぶ。稼働 PoC ではヘルパーが落ち、このイメージを作れなかった。
+ *      FROM の `${BASE_REGISTRY}` は Dockerfile の ARG の既定で解いてから見る。
  * 判定は純関数にし、変異を当てて落ちることも同じ試験の中で確かめる（見ているつもりで見ていない、を防ぐ）。
  *
  * 描画は `kubectl kustomize`（オフライン。クラスタに接続しない）。kubectl が無ければ失敗にする（fail-closed。
@@ -180,11 +184,19 @@ const secretLiterals = (cj) =>
 // ---------------------------------------------------------------- イメージ（#1564）
 
 const BACKUP_DOCKERFILE = 'deploy/local/platform-backup/image/Dockerfile';
+// #1709 / IADR-0489: 匿名の manifest の取得に 200 を返す（Bearer チャレンジを返さない）ことを実測した取得元。
+// 増やすときは、匿名の GET /v2/library/postgres/manifests/<digest> が 401 にならないことを確かめてから足す。
+const NO_CHALLENGE_BASE_REGISTRIES = ['mirror.gcr.io/library'];
 
 /** Dockerfile・k8s-local-images.sh・images.yml・backup.sh・2 つの CronJob から、イメージの約束に要る事実を抜き出す。 */
 function imageFacts({ dockerfile, imagesSh, imagesYml, backupSh, cronJobs }) {
-  const from = (/^FROM\s+(\S+)/m.exec(dockerfile) || [])[1] || '';
-  const arg = (name) => (new RegExp(`^ARG\\s+${name}=(\\S+)`, 'm').exec(dockerfile) || [])[1];
+  const argIn = (text, name) => (new RegExp(`^ARG\\s+${name}=(\\S+)`, 'm').exec(text) || [])[1];
+  const arg = (name) => argIn(dockerfile, name);
+  // #1709: FROM の ${名前} / $名前 は ARG の既定で解く（解けない名前はそのまま残し、下の検査で落とす）。
+  // FROM で使える ARG は最初の FROM より前のものだけ（後ろの ARG は Docker が FROM で展開しない。独立監査）。
+  const preamble = dockerfile.split(/^FROM\s/m)[0];
+  const rawFrom = (/^FROM\s+(\S+)/m.exec(dockerfile) || [])[1] || '';
+  const from = rawFrom.replace(/\$\{(\w+)\}|\$(\w+)/g, (m, a, b) => argIn(preamble, a || b) ?? m);
   const block = (/\nLOCAL_ONLY_IMAGES=\(([\s\S]*?)\n\)/.exec(imagesSh) || [])[1] || '';
   const localOnly = [...block.matchAll(/"([^"|]+)\|([^"|]+)\|([^"|]+)"/g)].map((m) => ({ ref: m[1], context: m[2], dockerfile: m[3] }));
   // 🔴 注記（# 行）は除いて、実行される行だけで apk の呼び出しを探す（撤去の経緯を書いた注記に語が残る）。
@@ -213,11 +225,16 @@ function imageFacts({ dockerfile, imagesSh, imagesYml, backupSh, cronJobs }) {
 /** 同梱イメージの約束: digest 固定・PG のメジャー版・age の版と sha256・タグの 3 か所一致・IfNotPresent・実行時の apk なし。 */
 function checkBackupImage(f, serverMajor) {
   const errors = [];
-  const from = /^(?:docker\.io\/library\/)?postgres:((\d+)\.(\d+))-alpine[\d.]*@sha256:[0-9a-f]{64}$/.exec(f.from);
+  const m = /^(?:(\S+)\/)?postgres:((\d+)\.(\d+))-alpine[\d.]*@sha256:[0-9a-f]{64}$/.exec(f.from);
+  const from = m && [m[0], m[2], m[3]];
   if (!from) {
     errors.push(`Dockerfile の FROM（${f.from}）が postgres:<メジャー>.<マイナー>-alpine… を digest（@sha256:）で固定していない`);
   } else if (from[2] !== String(serverMajor)) {
     errors.push(`Dockerfile の PG のメジャー版 ${from[2]} が本体 ${serverMajor} と違う（pg_dump が本体を写せない）`);
+  }
+  // 10. #1709: 取得元は匿名の取得にチャレンジを返さないミラーだけ（取得元を書かない FROM は docker.io）。
+  if (m && !NO_CHALLENGE_BASE_REGISTRIES.includes(m[1] || 'docker.io/library')) {
+    errors.push(`Dockerfile のベースの取得元（${m[1] || 'docker.io/library（省略）'}）が ${NO_CHALLENGE_BASE_REGISTRIES.join(' / ')} でない（匿名でも 401 のチャレンジを返すレジストリは資格情報ヘルパーを呼び、稼働 PoC ではそこで落ちる）`);
   }
   if (!/^\d+\.\d+\.\d+-r\d+$/.test(f.ageVersion || '')) errors.push(`age の版（${f.ageVersion}）が <版>-r<N> で固定されていない`);
   for (const [arch, sum] of Object.entries(f.ageSha)) {
@@ -470,7 +487,7 @@ ok('🔴 8. age の秘密鍵（AGE-SECRET-KEY-）が deploy/ のどこにも無�
 
 // ---------------------------------------------------------------- 9. イメージ（#1564）
 
-ok('🔴 9. age は digest 固定のベースへ版・sha256 で同梱し、タグは版から作って 3 か所で揃え、実行時に apk を呼ばない', () => {
+ok('🔴 9. / 10. age は digest 固定のベースへ版・sha256 で同梱し、タグは版から作って 3 か所で揃え、実行時に apk を呼ばない。ベースはチャレンジを返さない取得元から取る', () => {
   assert.deepStrictEqual(checkBackupImage(IMAGE_FACTS, '16'), [], checkBackupImage(IMAGE_FACTS, '16').join(' / '));
   const mut = (fn) => {
     const f = clone(IMAGE_FACTS);
@@ -493,8 +510,24 @@ ok('🔴 9. age は digest 固定のベースへ版・sha256 で同梱し、タ�
     ['BACKUP_AGE_INSTALL を env へ戻す', (f) => { f.cronJobs[0].envNames.push('BACKUP_AGE_INSTALL'); }],
     ['backup.sh に apk add を戻す', (f) => { f.scriptCallsApk = true; }],
     ['CI のビルドから外す', (f) => { f.ciBuildsDockerfile = false; }],
+    // 10. #1709: チャレンジを返す取得元へ戻す。
+    ['取得元を docker.io/library へ戻す', (f) => { f.from = f.from.replace(/^\S+\/postgres:/, 'docker.io/library/postgres:'); }],
+    ['取得元を書かない（docker.io）', (f) => { f.from = f.from.replace(/^\S+\/postgres:/, 'postgres:'); }],
+    ['取得元を public.ecr.aws へ替える', (f) => { f.from = f.from.replace(/^\S+\/postgres:/, 'public.ecr.aws/docker/library/postgres:'); }],
+    ['取得元を ghcr.io へ替える', (f) => { f.from = f.from.replace(/^\S+\/postgres:/, 'ghcr.io/library/postgres:'); }],
   ];
   for (const [name, fn] of cases) assert.ok(mut(fn).length > 0, `変異「${name}」を見逃した`);
+  // 10. #1709: FROM の ARG は既定で解いて見る。解けない名前は通さない。
+  const fromOf = (dockerfile) => imageFacts({ dockerfile, imagesSh: '', imagesYml: '', backupSh: '', cronJobs: [] }).from;
+  const pin = 'postgres:16.15-alpine3.24@sha256:' + 'a'.repeat(64);
+  assert.strictEqual(fromOf(`ARG BASE_REGISTRY=mirror.gcr.io/library\nFROM \${BASE_REGISTRY}/${pin}\n`), `mirror.gcr.io/library/${pin}`, '${…} を ARG の既定で解いていない');
+  assert.strictEqual(fromOf(`ARG BASE_REGISTRY=docker.io/library\nFROM $BASE_REGISTRY/${pin}\n`), `docker.io/library/${pin}`, '$… を ARG の既定で解いていない');
+  assert.strictEqual(IMAGE_FACTS.from.startsWith('mirror.gcr.io/library/postgres:'), true, `実物の FROM が mirror.gcr.io を指していない（${IMAGE_FACTS.from}）`);
+  const unresolved = clone(IMAGE_FACTS);
+  unresolved.from = fromOf(`FROM \${BASE_REGISTRY}/${pin}\n`);
+  assert.ok(checkBackupImage(unresolved, '16').length > 0, '既定の無い ARG の FROM を通した');
+  unresolved.from = fromOf(`FROM \${BASE_REGISTRY}/${pin}\nARG BASE_REGISTRY=mirror.gcr.io/library\n`);
+  assert.ok(checkBackupImage(unresolved, '16').length > 0, 'FROM より後ろの ARG で FROM を解いた（Docker は展開しない）');
   // 抜き出しの側も確かめる: 注記の中の apk は数えず、実行行の apk は数える。
   const facts = (backupSh) => imageFacts({ dockerfile: '', imagesSh: '', imagesYml: '', backupSh, cronJobs: [] });
   assert.strictEqual(facts('# 従前は `apk add age` を撃っていた\nensure_age() { :; }\n').scriptCallsApk, false, '注記の apk を数えた');
