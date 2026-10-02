@@ -77,9 +77,9 @@ bash src/ai-stock-trading/scripts/k8s-local-deploy.sh
 ```sh
 kubectl -n ai-stock-trading set env deploy/trade-decision-service --list \
   | grep -E "MarketData__Provider|MaxQuoteStaleness|LlmGateway__BaseUrl"     # finnhub / 300 / llmgateway-service...
-for k in finnhub-api-key marketdata-finnhub-api-key kb-auth-client-secret; do
+for k in finnhub-api-key marketdata-finnhub-api-key kb-auth-client-secret kb-reader-auth-client-secret; do
   printf "%s len=%s\n" "$k" "$(kubectl -n ai-stock-trading get secret ast-secrets -o jsonpath="{.data.$k}" | base64 -d | wc -c)"
-done                                                                          # すべて 0 でないこと
+done                                                                          # すべて 0 でないこと（読み手の秘密が 0 だと取引判断の KB 検索は 0 件になる）
 ```
 
 > Discord の環境固有 ID（GuildId/ChannelId/AllowedUserIds/UserMapping）を `kubectl set env` で入れると、

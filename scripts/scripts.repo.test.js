@@ -788,6 +788,18 @@ module.exports = ({ ok, assert }) => {
       assert.deepStrictEqual(reader.documentConditions, { project: ['ai-stock-trading'] }, '文書の条件は project ∈ {ai-stock-trading} だけ');
     });
 
+    // 同上（IADR-0492 決定 1・#1696 独立監査）: **dev の属性辞書に `projects` を入れない。** 入れると SC-17 の割当
+    //   （UserAssignmentValidation）が人へ projects=ai-stock-trading を付けられるようになり、AST の文書の読み取りが
+    //   読み手のサービスアカウント以外へ広がる。🔴 本番の属性辞書は SC-09（管理者設定）から編集するので、この試験が
+    //   守るのは dev の seed（deploy/local/abac-seed/attributes.json）だけである。
+    ok('seed: dev の属性辞書に projects のキーが無い（SC-17 から人へ AST の文書の読み取りを配らせない）', () => {
+      const file = pathSeed.resolve(__dirname, '..', 'deploy', 'local', 'abac-seed', 'attributes.json');
+      const attrs = JSON.parse(fsSeed.readFileSync(file, 'utf8')).attributes;
+      assert.ok(Array.isArray(attrs) && attrs.length > 0, '属性辞書が空（走査が壊れている）');
+      const found = attrs.filter((a) => String(a.key || '').toLowerCase() === 'projects');
+      assert.deepStrictEqual(found.map((a) => `${a.scope}:${a.key}`), [], '属性辞書に projects がある（IADR-0492 決定 1 に反する）');
+    });
+
     // 同上: **読み手は書き手と別の機密クライアントで、ロールを持たず、profile で preferred_username を載せる。**
     //   - 書き手（ai-stock-trading-kb-writer）は platform-operator で POST /documents を通る。読み手はロールを持たないので 403 になる。
     //   - profile が無いと preferred_username が載らず、検索サービスは userId を引けない（#1696 の原因 1）。
