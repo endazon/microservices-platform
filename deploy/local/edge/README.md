@@ -12,7 +12,8 @@
 > **平文で入っている**。`PeerAuthentication` を STRICT にするとその平文が拒否され、**入口だけが 502 になる**。
 > 計画 `ADR-0021` は「入口＝Istio Ingress Gateway・k3s 同梱 Traefik は無効化」と定めており、
 > 経路B ではそれを [`../edge-istio/`](../edge-istio/) が実装する（`ISTIO=1` かつ `LOCALEDGE=1` のときだけ有効）。
-> **`ISTIO` 未設定なら本オーバーレイの挙動は 1 バイトも変わらない。**
+> **メッシュを宣言していないクラスタ（`ISTIO=0`、または `ISTIO` 未指定の初回）なら本オーバーレイの挙動は 1 バイトも変わらない。**
+> `ISTIO` 未指定でも、メッシュで動いているクラスタの再実行は `ISTIO=1` を引き継ぐ（#1713 / [IADR-0488](../../../.ai-context/adr/IADR-0488_istio-tristate-inherit-mesh-enabled-on-rerun.md)）。
 > 判断と実測は [IADR-0317](../../../.ai-context/adr/IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md)。
 
 ## 構成
