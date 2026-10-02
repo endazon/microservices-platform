@@ -555,3 +555,24 @@ PR 時点で SAST の指摘が一切出なくなる。**`paths:` を持つため
 >   全体 約 27 秒に対し Conversion を含むシャードの閉包は約 6〜7 秒。CI へ写すと knowledge の最長脚は約 133 → 約 103 秒、律速は platform 2/2（約 110 秒）へ移り、
 >   普通の PR の完了は約 138 秒（③ 込みで約 133 秒）と見積もる。
 >   作業仕様書: `.ai-context/specs/20261001_1686_ci-build-artifact-reuse.md`
+
+> **［2026-10-02 追記 2 / #1686］再裁定（2026-10-02・利用者）で上の代替案を採った。シャードの脚は自分の試験プロジェクトの閉包だけを建て、`backend.slnx` 全体の build は並列の `backend-verify-build` が検証する。2026-09-28 追記 1 の「シャードの脚も `backend.slnx` 全体を restore / build する」「推移閉包へ絞る案は採らない」は本追記で置き換わる。**
+>
+> - 決定: シャードの脚は一時の slnx（シャードの試験プロジェクトだけ）を restore / build / `test --no-build` する。閉包は MSBuild が ProjectReference から辿るので、
+>   プロジェクト一覧はワークフローに書かない（単一情報源は従来どおり `scripts/backend-test-shards.json` と `discover-units`）。シャードしないユニットの脚は従来どおり
+>   `backend.slnx` 全体。新ジョブ `backend-verify-build (<unit>)`（行列は `discover-units` の `units`）が `backend.slnx` 全体を restore / build し、
+>   集約 `build-and-test` がその結果も「success 以外は失敗」で判定する（`needs:` に追加）。どの試験からも参照されないプロジェクトのビルドはここで検証される。
+> - 律速の経路を延ばさない形: `backend-verify-build` は `discover-units` だけを待ち、脚と並列に走る（脚はそれを待たない）。所要の見積もりは knowledge 約 83 秒・
+>   platform 約 62 秒で、最も遅い脚（約 93〜103 秒）より短い。集約は全部を待つので、検証ジョブが脚より遅い run では差の分だけ延びる（残余）。
+> - キャッシュ: 脚は閉包のパッケージしか restore しないので、NuGet キャッシュを `actions/cache/restore`（復元のみ）にした。同じキーで閉包だけの中身を保存すると、
+>   後続の run が「キーは当たるのに中身が足りない」キャッシュを引く。保存は全体を restore する `backend-verify-build` と `backend-format` が持つ。
+> - 選別は変わらない: 試験は従来どおり一時の slnx に `--no-build` で掛けるので、脚が試すのは自分で建てたものだけである。手元（SDK 10.0.401）で knowledge 3 シャード・
+>   platform 2 シャードをそれぞれクリーンな bin / obj から閉包だけ build → `test --no-build --filter "Category!=Integration"` し、19 試験プロジェクトすべて失敗 0、
+>   knowledge の件数は #1693 の CI 実測の表と一致した。
+> - 決定 2 との関係: 必須 check 名（`build-and-test`）・`on:`・paths は変えない。新ジョブ `backend-verify-build (<unit>)` は必須ではない。
+> - 見積もり（普通の PR の完了 ＝ Δ0 13 ＋ 最も遅い脚 ＋ 集約 A）: 約 116〜126 秒（knowledge 2/3 の閉包 build を CI で 25〜35 秒と写した幅。A は ③ 後の約 10 秒）。
+>   改善前（本追記の前）は 158〜174 秒。ConversionService.Tests の高速化（別 PR）はこの見積もりに含めない。
+> - 代償: ジョブがユニットごとに 1 本増える（脚 5 ＋ 検証 2 ＝ 7 本）。ランナー待ちが増える方向に効き得る。閉包の build はシャード間で共有の下位プロジェクトを重ねて建てる。
+> - 本 IADR への追記にした理由（IADR-0490 を新設しない）: #1686 の一連の判断（シャード化・組み替え・setup-node・本件）は同じ監視（決定 8）の逆転への手当てであり、
+>   2026-09-28 追記 1 の設計の一部を置き換えるものである。別 IADR に割ると「脚が何を建てるか」の正が 2 か所に分かれる。
+>   作業仕様書: `.ai-context/specs/20261001_1686_ci-build-artifact-reuse.md`

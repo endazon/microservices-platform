@@ -1,5 +1,5 @@
 ---
-title: 作業仕様書 — #1686 ci-latency の裁定（2026-10-01）のうち、ビルド成果物の再利用と集約ジョブの setup-node の撤去
+title: 作業仕様書 — #1686 ci-latency の裁定（2026-10-01）のうち、ビルド成果物の再利用（見送り→閉包の build へ再裁定）と集約ジョブの setup-node の撤去
 type: spec
 status: done
 related_ids: [NFR, IADR-0232]
@@ -130,9 +130,95 @@ issue: "#1686"
 
 ## 未決事項
 
-- ① を中止し代替案（推移閉包の build ＋ 全体の build の別ジョブ）へ置き換えるかは**利用者の再裁定**を仰ぐ。
+- ~~① を中止し代替案（推移閉包の build ＋ 全体の build の別ジョブ）へ置き換えるかは**利用者の再裁定**を仰ぐ。~~ → 下の［2026-10-02 追記］で解消。
 
 ## 結果
 
 - 手元の検証は本作業のコミットのとおり（報告に記す）。PR の CI で確かめること: 集約ジョブの「Self-test coverage floor checker」が
   ランナー既定の node で緑、集約ジョブの所要（従来 約 15 秒）が約 10 秒前後になること。週次の判定は ci-latency の run に委ねる（#1686 は開いたまま）。
+
+［2026-10-02 追記 / #1686］再裁定と代替案の実装
+
+## 再裁定（2026-10-02・利用者。コーディネータ経由）
+
+1. ① ビルド成果物の再利用は見送り、代替案「各脚は自分のシャードの試験プロジェクトの推移閉包だけを build し、`backend.slnx` 全体の build は
+   律速の経路の外の別ジョブで検証する」を採る。
+2. ③ setup-node の撤去は「外す」で確定（先のコミットをそのまま残す）。
+
+要件: 全体 build の失敗を必須 check（集約 `build-and-test`）が取りこぼさない／律速の経路を延ばさない（並列・脚より短いことを見積もりで示す）／
+閉包は ProjectReference の推移に従い、プロジェクト一覧をワークフローへ複写しない／各シャードは自分で建てたものだけを試し、選別は変わらない／
+platform も同じ形（AST の submodule の取得は既存の手順のまま）／必須 check 名・`on:`・paths を変えない。
+
+## 設計（追記）
+
+- `backend-build`（脚）の step: 一時の slnx（`ci-test-shard.slnx`）を先に作り、それを `dotnet restore` → `dotnet build --no-restore -c Release` →
+  `dotnet test --no-build`（フィルタ・カバレッジ収集は従来どおり）。シャードしない脚（`SHARD_PROJECTS` が空）は `backend.slnx` 全体のまま。
+  閉包は MSBuild が ProjectReference から辿る（一時の slnx に載るのは `scripts/backend-test-shards.json` の試験プロジェクトだけ）。
+- 新ジョブ `backend-verify-build (<unit>)`: `needs: discover-units`、行列は `units`。取得（submodule）・NuGet キャッシュ（保存あり）・setup-dotnet・
+  `backend.slnx` 全体の restore / build。テストは走らせない。ユニット名を書かない。
+- 集約 `build-and-test`: `needs:` に `backend-verify-build` を足し、`VERIFY_BUILD_RESULT` を「success 以外は exit 1」で判定する。
+- 脚の NuGet キャッシュは `actions/cache/restore`（復元のみ）。閉包だけの中身を全体のキーで保存しないため。
+- IADR は IADR-0232 への日付つき追記（2026-10-02 追記 2）。IADR-0490 を新設しない理由は同追記に書いた（同じ監視への一連の手当てで、
+  2026-09-28 追記 1 の設計の置き換えであり、正を 2 か所に分けない）。
+
+## クリティカルパスの見積もり（追記・規則 10: 計算し直した）
+
+式: 普通の PR の完了 ＝ Δ0（13 秒）＋ 最も遅いジョブの所要（脚と `backend-verify-build` の最大）＋ A（③ 後 約 10 秒）。
+各ジョブ ＝ 準備 S 18 ＋ restore R ＋ build B ＋ test T ＋ 残り r 8（脚）。
+
+手元の build の実測（クリーンな bin / obj。knowledge は build のみ・2 回、platform は restore 込み・1 回）と CI への写し（CI の全体 build ÷ 手元の全体 build の比）:
+
+| ジョブ | 手元（秒） | CI の B（見積もり） | T（#1693 の実測） | 所要（見積もり） |
+| --- | --- | --- | --- | --- |
+| knowledge 1/3（Conversion を含む・11 プロジェクト） | 6.2〜6.8 | 約 13 | 47 | 約 93 |
+| knowledge 2/3（18 プロジェクト） | 12.7〜17.7 | 約 25〜35 | 35 | 約 93〜103 |
+| knowledge 3/3（12 プロジェクト） | 9.8〜14.1 | 約 20〜28 | 41 | 約 94〜102 |
+| platform 1/2（Bff・7 プロジェクト） | 9（全体 14） | 約 24 | 28 | 約 85 |
+| platform 2/2（13 プロジェクト） | 11（全体 14） | 約 30 | 約 35 | 約 91 |
+| backend-verify-build (knowledge) | 27〜28（全体） | 55 | — | 約 83 |
+| backend-verify-build (platform) | 14（全体） | 38 | — | 約 62 |
+
+- 最も遅いのは knowledge 2/3 で約 93〜103 秒。検証ジョブ（約 83 / 62 秒）は脚より約 10 秒以上短く、律速の経路に載らない見積もり。
+- **普通の PR の完了 ≒ 13 ＋ 93〜103 ＋ 10 ＝ 約 116〜126 秒**（本追記の前は 158〜174 秒。閾値 148 秒に対し余裕 約 22〜32 秒）。
+  ConversionService.Tests の高速化（別 PR）は含めない。
+
+## 母集合（追記・規則 9）
+
+誤りの側＝「シャードの脚も `backend.slnx` 全体を restore / build する」「推移閉包へ絞る案は採らない」と読める記述。語: `全体を restore` / `backend.slnx 全体` /
+`推移閉包` / `ci-test-shard` / `ビルドは backend` / `閉包` / `backend-build`（docs）を `git grep`（`.ai-context/specs`・`CHANGELOG.md`・`src/ai-stock-trading` を除く）で引いた。
+
+| 箇所 | 判定 |
+| --- | --- |
+| `.github/workflows/ci.yml` `backend-build` の手順と注記・NuGet キャッシュ | **直す**（本変更） |
+| `.github/workflows/ci.yml` 新ジョブ `backend-verify-build`・集約の `needs:` と判定 | **足す** |
+| `scripts/plan-backend-test-shards.js`:16 の方式の注記「各脚は `backend.slnx` 全体を restore / build し」 | **直す** |
+| `scripts/scripts.repo.test.js` #1686 節の配線・手順の試験（脚が全体を build することを固定していた） | **直す**（閉包・検証ジョブ・集約の判定・キャッシュの復元のみを固定） |
+| `docs/ai-workflow.md` 必須チェック表の `build-and-test` 行 | **追記**（`backend-verify-build` も拾う。trace ブロックに本仕様書を足した） |
+| `scripts/backend-test-shards.json`:4「ここに無いユニットは 1 脚で backend.slnx 全体を試す」 | 変えない（変更後も真） |
+| `.ai-context/adr/IADR-0232` 2026-09-28 追記 1 の :485 / :493 | 本文は直さず、**2026-10-02 追記 2 で置き換えを明記** |
+| `docs/how-to/adding-a-unit-submodule.md`:90 / `docs/tests/TEST_STRATEGY.md`:118 | 変えない（行列の自動発見・AST を含まない、は変更後も真） |
+| 他の「推移閉包」（IADR-0162 / 0196 / 0236 / 0280・`check-backend-libraries.js` ほか） | 対象外（別の文脈の語） |
+
+規則 11: 該当なし（窓の是正ではない）。
+
+## 受け入れ基準（追記）
+
+- [x] シャードの脚は一時の slnx を restore / build / `test --no-build` し、`backend.slnx` 全体の build は `backend-verify-build` が並列に検証する。
+- [x] 集約 `build-and-test` が `backend-verify-build` を `needs:` に持ち、success 以外を失敗と判定する（repo test が固定。変異で赤を確認）。
+- [x] `backend-verify-build` は `discover-units` だけを待ち、脚はそれを待たない（repo test が固定）。所要の見積もりは最も遅い脚より短い。
+- [x] プロジェクト一覧・ユニット名をワークフローに書かない（repo test が固定）。
+- [x] 手元で knowledge 3 シャード・platform 2 シャードの閉包 build と `test --no-build` が通り、19 試験プロジェクトがすべて走り失敗 0。
+- [x] 必須 check 名・`on:`・paths を変えない。
+- [ ] PR の CI で、各脚の build が縮み、`backend-verify-build` が最も遅い脚より先に終わる（PR 後に測る）。
+
+## 結果（追記）
+
+- 手元の閉包 build → `test --no-build --filter "Category!=Integration"`（SDK 10.0.401・クリーンな bin / obj から各シャード単独）:
+  - knowledge 1/3: build 7 秒。Contracts 90 / AiAnalysis 161 / Feedback 39 / Conversion 232（skip 9）。2/3: build 15 秒。IntegrationTests 62 / Wiki 129 /
+    Retrieval 454 / Graph 761。3/3: build 13 秒。DataSource 331 / Dashboard 93 / Ingestion 104 / Document 978。件数は #1693 の CI 実測の表と一致・失敗 0。
+  - platform（AST の submodule は gitlink の e392843 を作業ツリーの外へ取り出してつないだ。検証後に外した）: 全体 restore＋build 14 秒（18 プロジェクト）。
+    1/2: restore＋build 9 秒（7 プロジェクト）・Bff 791（skip 1）。2/2: 11 秒（13 プロジェクト）・McpServer 242 / Notification 104 / Authorization 577 /
+    Shared.Kernel 42 / LlmGateway 326 / Shared.Infrastructure 484。失敗 0。
+- 変異（`scratchpad/msp1686a-mut/` に退避した ci.yml から戻した）: ①集約の `needs:` から `backend-verify-build` を落とす ②`VERIFY_BUILD_RESULT` の判定を `= "failure"` へ弱める
+  ③`backend-verify-build` に `backend-build` を待たせる ④脚のキャッシュを `actions/cache` へ戻す ⑤脚の restore を `backend.slnx` へ戻す ⑥脚の build を `backend.slnx` へ戻す
+  —— いずれも `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が exit 1。戻した後の `cmp` で一致を確かめた。

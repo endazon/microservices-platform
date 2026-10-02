@@ -1,7 +1,7 @@
 <!-- trace:
 adrs: [ADR-0048, ADR-0118]
 iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470]
-specs: [20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
+specs: [20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
 issues: [#1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
 -->
 
@@ -147,7 +147,7 @@ GitHub Actions が report する status check の context は**ジョブ側の�
 
 | 必須にする check 名 | 出所 | 備考 |
 | --- | --- | --- |
-| `build-and-test` | `ci.yml` | ビルドとテスト。**全 PR で起動する**。集約ジョブであり、本リポジトリの実体のユニット（行列 `backend-build`。テストをシャードに分けるユニットはシャードごとに 1 脚で、割り当ては `scripts/backend-test-shards.json`。脚は必須ではないので脚の名前が変わっても恒久 pending にはならない）に加えて、**submodule ユニットを本リポジトリの構成で建てる `submodule-backend-build`** の結果も拾う。後者は gitlink・`.gitmodules`・`src/Directory.*`・`global.json`・`ci.yml` を触る PR でだけ走り、それ以外では skipped（合格として扱う。`images.yml` の `image-build` と同じ形）。check 名は変わらない |
+| `build-and-test` | `ci.yml` | ビルドとテスト。**全 PR で起動する**。集約ジョブであり、本リポジトリの実体のユニット（行列 `backend-build`。テストをシャードに分けるユニットはシャードごとに 1 脚で、割り当ては `scripts/backend-test-shards.json`。脚は必須ではないので脚の名前が変わっても恒久 pending にはならない）と、`backend.slnx` 全体を建てる行列 `backend-verify-build`（シャードの脚は自分の試験プロジェクトが参照する範囲だけを建てるため、全体のビルドはこちらで検証する。脚と並列に走る）に加えて、**submodule ユニットを本リポジトリの構成で建てる `submodule-backend-build`** の結果も拾う。後者は gitlink・`.gitmodules`・`src/Directory.*`・`global.json`・`ci.yml` を触る PR でだけ走り、それ以外では skipped（合格として扱う。`images.yml` の `image-build` と同じ形）。check 名は変わらない |
 | `lint` | `ci.yml` | `dotnet format --verify-no-changes` ほか |
 | `commit-messages` | `ci.yml` | 件名規約（スカッシュ前の中間コミット） |
 | `pr-title` | `pr-title.yml` | スカッシュ後件名の唯一の予防線 |

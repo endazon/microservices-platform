@@ -831,7 +831,11 @@ jobs:
       # setup-dotnet が本リポジトリで 8 箇所使われて 1 つも cache: を設定しておらず、毎 run
       # 全パッケージを取り直していた。packages.lock.json を持たないため setup-dotnet の
       # cache: true は使えない（ロックファイルのハッシュをキーにする実装のため）。
-      - uses: actions/cache@v6
+      #
+      # 🔴 NFR, #1686（2026-10-02 再裁定）: シャードの脚は**復元だけ**する（actions/cache/restore）。脚は閉包の
+      # パッケージしか restore しないので、同じキーで保存すると「キーは当たるのに中身が足りない」キャッシュを
+      # 後続の run へ残す。保存は backend.slnx 全体を restore する backend-verify-build / backend-format が持つ。
+      - uses: actions/cache/restore@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
@@ -859,10 +863,15 @@ jobs:
       # （PR が少し遅くなるだけで、検証は 1 件も失われない）。回収先が --filter を使わないのは
       # このためでもある（あちらでフィルタすると、付け忘れがどこでも走らない形に倒れる）。
       #
-      # 🔴 NFR, #1686: シャードの脚も **backend.slnx 全体を restore / build する**（ビルドの検証は従来どおり全プロジェクトに掛かる）。
-      # 絞るのはテストだけで、シャードの試験プロジェクトだけを載せた一時の slnx（ci-test-shard.slnx。コミットしない）へ
+      # 🔴 NFR, #1686: シャードの試験プロジェクトだけを載せた一時の slnx（ci-test-shard.slnx。コミットしない）を作り、
       # --no-build で dotnet test を掛ける。一時の slnx は backend.slnx と同じディレクトリに置くので、相対パスはそのまま通る。
-      # SHARD_PROJECTS が空の脚（シャードしないユニット）は従来どおり backend.slnx 全体を試す。
+      # SHARD_PROJECTS が空の脚（シャードしないユニット）は従来どおり backend.slnx 全体を restore / build / test する。
+      #
+      # 🔴 NFR, #1686（2026-10-02 再裁定・IADR-0232 追記）: シャードの脚は **一時の slnx を restore / build する**
+      # ＝ シャードの試験プロジェクトの ProjectReference の推移閉包だけを建てる（閉包は MSBuild が参照から辿る。
+      # プロジェクト一覧をここへ書かない）。backend.slnx 全体の build の検証は、律速の経路の外で並列に走る
+      # backend-verify-build が持ち、集約 build-and-test がその結果も判定する（全体 build の失敗は取りこぼさない）。
+      # 試験は従来どおり一時の slnx に --no-build で掛けるので、脚が試すのは自分で建てたものだけで、選別も変わらない。
       - name: Restore, build and test (${{ matrix.label }}, unit tests only, with coverage)
         env:
           UNIT: ${{ matrix.unit }}
@@ -870,8 +879,6 @@ jobs:
         run: |
           set -euo pipefail
           slnx="src/${UNIT}/backend/backend.slnx"
-          dotnet restore "$slnx"
-          dotnet build "$slnx" --no-restore --configuration Release
           target="$slnx"
           if [ -n "$SHARD_PROJECTS" ]; then
             target="src/${UNIT}/backend/ci-test-shard.slnx"
@@ -891,6 +898,8 @@ jobs:
             cat "$target"
             echo "::endgroup::"
           fi
+          dotnet restore "$target"
+          dotnet build "$target" --no-restore --configuration Release
           dotnet test "$target" --no-build --configuration Release \
             --filter "Category!=Integration" \
             --collect:"XPlat Code Coverage" --verbosity normal
@@ -905,6 +914,49 @@ jobs:
           path: "**/coverage.cobertura.xml"
           retention-days: 1
           if-no-files-found: error
+
+  # NFR, #1686（2026-10-02 再裁定・IADR-0232 追記）: backend.slnx **全体**の restore / build をユニットごとに 1 回だけ検証する。
+  # シャードの脚は自分の試験プロジェクトの閉包しか建てないので、どの試験からも参照されないプロジェクト
+  # （例: Bff.Endpoints の類）のビルドはここでだけ検証される。集約 build-and-test が結果を「success 以外は失敗」で判定する。
+  # 🔴 律速の経路に載せないこと: discover-units だけを needs にして脚と並列に走らせる。所要（準備 約 18 秒＋restore 約 7 秒＋
+  #    build 約 55 秒 ≒ 80 秒）は最も遅い脚（約 100〜110 秒）より短い見積もり（作業仕様書 20261001_1686）。脚の needs に入れない。
+  # 行列はユニット（units）であり、ユニット名をここへ書かない（決定 2）。テストは走らせない（試験は脚が持つ）。
+  backend-verify-build:
+    name: backend-verify-build (${{ matrix.unit }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: discover-units
+    strategy:
+      fail-fast: false
+      matrix:
+        unit: ${{ fromJSON(needs.discover-units.outputs.units) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # backend-build と同じ取得（platform の Platform.Bff が AST の Bff.Endpoints を ProjectReference する合成点のため）。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
+      # 全体を restore するので、キャッシュの保存はこのジョブ（と backend-format）が持つ（脚は復元だけ）。
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      - name: Restore and build the whole backend.slnx (${{ matrix.unit }})
+        env:
+          UNIT: ${{ matrix.unit }}
+        run: |
+          set -euo pipefail
+          slnx="src/${UNIT}/backend/backend.slnx"
+          dotnet restore "$slnx"
+          dotnet build "$slnx" --no-restore --configuration Release
 
   # ───────────────────────────────────────────────────────────────────────────────
   # NFR, #1551 / IADR-0232（2026-09-26 追記）: submodule ユニット（現在は ai-stock-trading）のバックエンドを、
@@ -1059,18 +1111,20 @@ jobs:
     runs-on: ubuntu-latest
     # NFR, #1551: submodule ユニットの合成ビルドも拾う（images.yml の image-build と同じ形。skipped は「合成を変え得る
     # 差分が無い」を意味し合格として扱う）。
-    needs: [discover-units, backend-build, submodule-changes, submodule-backend-build]
+    # NFR, #1686（2026-10-02 再裁定）: backend-verify-build（backend.slnx 全体の build。脚は閉包しか建てない）も拾う。
+    needs: [discover-units, backend-build, backend-verify-build, submodule-changes, submodule-backend-build]
     if: always()
     steps:
       - name: Report build/test result
         env:
           DISCOVER_RESULT: ${{ needs.discover-units.result }}
           BUILD_RESULT: ${{ needs.backend-build.result }}
+          VERIFY_BUILD_RESULT: ${{ needs.backend-verify-build.result }}
           SUBMODULE_CHANGES_RESULT: ${{ needs.submodule-changes.result }}
           SUBMODULE_BUILD_RESULT: ${{ needs.submodule-backend-build.result }}
           SUBMODULE_SHOULD_BUILD: ${{ needs.submodule-changes.outputs.build }}
         run: |
-          echo "discover-units=$DISCOVER_RESULT / backend-build=$BUILD_RESULT"
+          echo "discover-units=$DISCOVER_RESULT / backend-build=$BUILD_RESULT / backend-verify-build=$VERIFY_BUILD_RESULT"
           echo "submodule-changes=$SUBMODULE_CHANGES_RESULT / submodule-backend-build=$SUBMODULE_BUILD_RESULT / should-build=$SUBMODULE_SHOULD_BUILD"
           if [ "$DISCOVER_RESULT" != "success" ]; then
             echo "::error::ビルド対象ユニットの導出に失敗した。"
@@ -1078,6 +1132,10 @@ jobs:
           fi
           if [ "$BUILD_RESULT" != "success" ]; then
             echo "::error::いずれかのユニットで restore / build / test が失敗した（backend-build の各脚を見ること）。"
+            exit 1
+          fi
+          if [ "$VERIFY_BUILD_RESULT" != "success" ]; then
+            echo "::error::いずれかのユニットで backend.slnx 全体の restore / build が失敗した（backend-verify-build (<unit>) を見ること）。"
             exit 1
           fi
           if [ "$SUBMODULE_CHANGES_RESULT" != "success" ]; then

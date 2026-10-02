@@ -13,8 +13,9 @@
  *   - シャードの割り当ては `scripts/backend-test-shards.json` が持つ（ユニット → 試験プロジェクトの配列の配列）。
  *     **ci.yml にはユニット名も試験プロジェクト名も書かない**（discover-units の glob と同じ理由。書くと次に増えたとき静かに外れる）。
  *   - 設定に無いユニットは従来どおり 1 脚で `backend.slnx` 全体を試す（`projects` が空）。
- *   - 設定に在るユニットは、シャードごとに 1 脚を出す。各脚は `backend.slnx` 全体を restore / build し（ビルドの検証は
- *     従来と同じく全プロジェクトに掛かる）、**テストだけ**をシャードの試験プロジェクトに絞る。
+ *   - 設定に在るユニットは、シャードごとに 1 脚を出す。各脚はシャードの試験プロジェクトだけを載せた一時の slnx を
+ *     restore / build / test する（＝ 試験プロジェクトの ProjectReference の推移閉包だけを建てる。2026-10-02 再裁定）。
+ *     `backend.slnx` 全体の build の検証は ci.yml の `backend-verify-build` が脚と並列に持つ（集約 build-and-test が判定する）。
  *
  * 🔴 取りこぼし・二重実行を許さない（fail-closed）:
  *   設定に在るユニットについて、`backend.slnx` に載る試験プロジェクト（`Microsoft.NET.Test.Sdk` を PackageReference する

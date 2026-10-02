@@ -320,32 +320,45 @@ module.exports = ({ ok, assert }) => {
       assert.match(bbc, /^    name: backend-build \(\$\{\{ matrix\.label \}\}\)$/m, '脚の名前が backend-build (<label>) でない');
       assert.match(bbc, /include: \$\{\{ fromJSON\(needs\.discover-units\.outputs\.legs\) \}\}/, '行列を legs から取っていない');
       assert.match(bbc, /name: coverage-\$\{\{ matrix\.key \}\}/, 'カバレッジ artifact の名前が脚ごとに一意でない（シャード同士で衝突する）');
-      for (const id of ['discover-units', 'backend-build']) {
+      for (const id of ['discover-units', 'backend-build', 'backend-verify-build']) {
         assert.ok(!/knowledge|platform/.test(code(job(id))), `${id} にユニット名が書かれている（次にユニットが増えたとき静かに外れる）`);
       }
+      // 2026-10-02 再裁定: 脚は閉包だけを建て、backend.slnx 全体の build は backend-verify-build が脚と並列に検証する。
+      const vb = job('backend-verify-build');
+      assert.ok(vb, 'backend-verify-build（backend.slnx 全体の build の検証）が無い —— 脚は閉包しか建てないので、参照されないプロジェクトのビルドが PR から落ちる');
+      const vbc = code(vb);
+      assert.match(vbc, /^    needs: discover-units$/m, 'backend-verify-build が discover-units 以外を待っている（脚と並列に走らず律速の経路が延びる）');
+      assert.match(vbc, /unit: \$\{\{ fromJSON\(needs\.discover-units\.outputs\.units\) \}\}/, 'backend-verify-build の行列がユニット（units）から取られていない');
+      assert.match(vbc, /dotnet restore "\$slnx"\n\s*dotnet build "\$slnx" --no-restore --configuration Release/, 'backend-verify-build が backend.slnx 全体を restore / build していない');
+      assert.match(vbc, /slnx="src\/\$\{UNIT\}\/backend\/backend\.slnx"/, 'backend-verify-build の対象が backend.slnx でない');
+      assert.ok(!/backend-verify-build/.test(code(bb)), 'backend-build（脚）が backend-verify-build を待っている（直列になり律速の経路が延びる）');
+      // 脚は閉包のパッケージしか restore しないので、同じキーで保存すると中身の足りないキャッシュが残る。脚は復元だけ。
+      assert.match(bbc, /uses: actions\/cache\/restore@/, '脚が NuGet キャッシュを actions/cache/restore で復元していない');
+      assert.ok(!/uses: actions\/cache@/.test(bbc), '脚が NuGet キャッシュを保存し得る（閉包だけの中身が全体のキーで残る）');
       const bt = job('build-and-test');
       assert.ok(bt, 'build-and-test（必須 check 名）が無い');
       assert.ok(!/^    name:/m.test(bt), 'build-and-test に name: が付いた（必須 check の context が変わる）');
       assert.match(bt, /^    needs:\s*\[[^\]]*\bbackend-build\b[^\]]*\]/m, 'build-and-test が backend-build を needs に持たない');
+      assert.match(bt, /^    needs:\s*\[[^\]]*\bbackend-verify-build\b[^\]]*\]/m, 'build-and-test が backend-verify-build を needs に持たない（全体 build の失敗を取りこぼす）');
       assert.match(bt, /pattern: coverage-\*/, '集約が全脚のカバレッジを拾わない');
       assert.ok(!/^    name:/m.test(job('backend-format')), 'backend-format の名前を変えている（本件の範囲外）');
       // 監査 M6: 集約の判定を `= "failure"` へ弱めると、cancelled / skipped（行列が 0 脚・前段の取り消し）が素通りして緑になる。
       // 前段 3 つの結果は「success 以外はすべて失敗」の形で判定していることを固定する。
       const btc = code(bt);
-      for (const v of ['DISCOVER_RESULT', 'BUILD_RESULT', 'SUBMODULE_CHANGES_RESULT']) {
+      for (const v of ['DISCOVER_RESULT', 'BUILD_RESULT', 'VERIFY_BUILD_RESULT', 'SUBMODULE_CHANGES_RESULT']) {
         assert.ok(new RegExp(`if \\[ "\\$${v}" != "success" \\]; then\\n[^\\n]*\\n\\s*exit 1`).test(btc),
           `build-and-test が ${v} を「!= success なら exit 1」で判定していない（skipped / cancelled が素通りする）`);
         assert.ok(!new RegExp(`"\\$${v}" = "failure"`).test(btc), `build-and-test が ${v} を failure だけで判定している`);
       }
       // 監査（#1693 差分）: 判定の変数が前段の結果から来ていること。固定値や別ジョブを指すと、判定の if が残っても素通りする。
-      for (const [v, needJob] of [['DISCOVER_RESULT', 'discover-units'], ['BUILD_RESULT', 'backend-build'],
+      for (const [v, needJob] of [['DISCOVER_RESULT', 'discover-units'], ['BUILD_RESULT', 'backend-build'], ['VERIFY_BUILD_RESULT', 'backend-verify-build'],
         ['SUBMODULE_CHANGES_RESULT', 'submodule-changes'], ['SUBMODULE_BUILD_RESULT', 'submodule-backend-build']]) {
         assert.match(bt, new RegExp(`^\\s+${v}: \\$\\{\\{ needs\\.${needJob.replace(/-/g, '\\-')}\\.result \\}\\}$`, 'm'),
           `build-and-test の ${v} が needs.${needJob}.result を読んでいない（前段の失敗が素通りする）`);
       }
     });
 
-    ok('#1686: 脚の手順（dotnet はスタブ）—— シャードは一時の slnx へ絞ってテストし、ビルドは backend.slnx 全体に掛ける', () => {
+    ok('#1686: 脚の手順（dotnet はスタブ）—— シャードは一時の slnx を restore / build / test し（閉包だけを建てる）、シャードしない脚は backend.slnx 全体', () => {
       const lines = job('backend-build').split('\n');
       const at = lines.findIndex((l) => /- name: Restore, build and test \(\$\{\{ matrix\.label \}\}/.test(l));
       const runAt = lines.findIndex((l, i) => i > at && /^\s+run: \|$/.test(l));
@@ -375,15 +388,19 @@ module.exports = ({ ok, assert }) => {
         let r = run('B/B.Tests.csproj');
         assert.strictEqual(r.status, 0, r.stderr);
         const calls = fs.readFileSync(log, 'utf8').trim().split('\n');
-        assert.match(calls[0], /^restore src\/u\/backend\/backend\.slnx$/, `restore が backend.slnx 全体でない: ${calls[0]}`);
-        assert.match(calls[1], /^build src\/u\/backend\/backend\.slnx /, `build が backend.slnx 全体でない: ${calls[1]}`);
+        // 2026-10-02 再裁定: シャードの脚は一時の slnx（試験プロジェクトの閉包）を restore / build し、建てたものだけを --no-build で試す。
+        assert.match(calls[0], /^restore src\/u\/backend\/ci-test-shard\.slnx$/, `シャードの脚の restore が一時の slnx でない: ${calls[0]}`);
+        assert.match(calls[1], /^build src\/u\/backend\/ci-test-shard\.slnx --no-restore --configuration Release$/, `シャードの脚の build が一時の slnx でない: ${calls[1]}`);
         assert.match(calls[2], /^test src\/u\/backend\/ci-test-shard\.slnx --no-build .*--filter Category!=Integration/,
           `シャードの脚が一時の slnx へ絞ってテストしていない: ${calls[2]}`);
         const shard = fs.readFileSync(`${log}.slnx`, 'utf8');
         assert.deepStrictEqual(planner.slnxProjects(shard), ['B/B.Tests.csproj'], '一時の slnx がシャードの試験プロジェクトだけを載せていない');
         r = run('');
         assert.strictEqual(r.status, 0, r.stderr);
-        assert.match(fs.readFileSync(log, 'utf8'), /^test src\/u\/backend\/backend\.slnx --no-build/m, 'シャードしない脚が backend.slnx 全体を試していない');
+        const whole = fs.readFileSync(log, 'utf8');
+        assert.match(whole, /^restore src\/u\/backend\/backend\.slnx$/m, 'シャードしない脚が backend.slnx 全体を restore していない');
+        assert.match(whole, /^build src\/u\/backend\/backend\.slnx /m, 'シャードしない脚が backend.slnx 全体を build していない');
+        assert.match(whole, /^test src\/u\/backend\/backend\.slnx --no-build/m, 'シャードしない脚が backend.slnx 全体を試していない');
         r = run('A/A.Tests.csproj;Z/Missing.Tests.csproj');
         assert.notStrictEqual(r.status, 0, '存在しない試験プロジェクトを載せても脚が緑になる');
       } finally {
