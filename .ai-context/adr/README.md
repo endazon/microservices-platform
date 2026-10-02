@@ -568,3 +568,4 @@
 | [IADR-0488](./IADR-0488_istio-tristate-inherit-mesh-enabled-on-rerun.md) | k8s-local-up.sh の ISTIO を 3 値（1＝入れる・0＝外す・未指定＝現行を引き継ぐ）にし、未指定の再実行は helm の宣言から mesh.enabled（と mesh.mtlsMode）を引き継ぎ、読めなければ副作用より前に止める。#1691 の移行済みの入口の拒否は据え置く（#1713） | Accepted |
 | [IADR-0489](./IADR-0489_backup-image-base-from-no-challenge-mirror.md) | platform-backup イメージのベースは、匿名の取得に 401 のチャレンジを返さないミラー（mirror.gcr.io/library）から digest のまま取り、資格情報ヘルパーを呼ばずにビルドする。取得元は `BASE_REGISTRY` で上書きでき、試験が「チャレンジを返さないことを実測した取得元」に固定する（#1709） | Accepted |
 | [IADR-0490](./IADR-0490_conversion-tests-parallel-classes-and-longest-first.md) | ConversionService.Tests の実時間の期限を待つ試験は、検査を変えずに入れ子のクラス（別コレクション）へ分けて並列にし、最長の 1 本（期限 ＋ 刈り取りの上限）を順序づけで最初に起動する。本番コードは変えない（#1686） | Accepted |
+| [IADR-0491](./IADR-0491_helm-list-status-flags-instead-of-all.md) | 現行のメッシュ宣言を読む helm list は helm v4 が廃した -a / --all をやめ、状態の旗 6 つの和を明示して helm v3 / v4 の両方で同じ集合を読む（#1722） | Accepted |

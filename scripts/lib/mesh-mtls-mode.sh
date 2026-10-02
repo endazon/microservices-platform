@@ -98,11 +98,19 @@ mesh_values_mtls_mode() {
 #   0: 引き継ぐモードを標準出力へ / 1: リリースが無い・メッシュ未宣言（新規の扱い） / 2: 読めない（fail-closed の材料）
 #   🔴 「読めない」を「無い」へ倒さない —— 倒すと STRICT のクラスタを PERMISSIVE へ黙って戻す（#1710 そのもの）。
 #   リリースの有無は `helm list`（無ければ空で 0）で確かめ、`helm get values` の失敗は常に「読めない」と読む。
+#
+# ［2026-10-02 / #1722, IADR-0491］**状態の絞りは 6 つのフラグの和で明示する（`-a` / `--all` は使わない）。**
+#   helm v4 は list の `-a` / `--all` を廃し（`Error: unknown shorthand flag: 'a' in -a`・終了コード 1）、既定で全状態を返す。
+#   helm v3 は `-a` を持つが、既定は deployed / failed だけで pending-* を落とす。`-a` を外すだけだと v3 で pending-upgrade 等の
+#   リリースを「無い」と読み、初回の扱い（メッシュ無し・PERMISSIVE）へ倒れる。6 つのフラグの和は v3（3.12.3 / 3.22.0）と
+#   v4（4.2.1）で同じ集合（v3 の `-a` と同じ。deployed・failed・pending-install/upgrade/rollback・superseded・uninstalling・
+#   uninstalled）を返すことを実測した。`helm status` の終了コードは「無い」と「届かない」がどちらも 1 で分けられない。
 current_mesh_mtls_mode() {
   local ns="${MSP_NS:-microservices-platform}"
   local release="${MSP_HELM_RELEASE:-msp}"
   local names values rc
-  names="$(helm list -n "$ns" -a -q --filter "^${release}\$" 2>/dev/null)" || return 2
+  names="$(helm list -n "$ns" -q --filter "^${release}\$" \
+    --deployed --failed --pending --superseded --uninstalling --uninstalled 2>/dev/null)" || return 2
   printf '%s\n' "$names" | grep -qx "$release" || return 1
   values="$(helm get values "$release" -n "$ns" -o yaml 2>/dev/null)" || return 2
   rc=0
