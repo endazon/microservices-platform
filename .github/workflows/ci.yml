@@ -1102,9 +1102,10 @@ jobs:
           pattern: coverage-*
           merge-multiple: true
           path: .
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
+      # NFR, #1686（裁定 2026-10-01）: setup-node を置かず、ランナー既定の node で呼ぶ（discover-units と同じ）。
+      # 本ジョブは必須 check の律速の経路の末尾に載るので、setup-node の約 5 秒がそのまま待ち時間になる。
+      # 下の検査器は fs / path だけを使う CommonJS で、特定の node の版を要さない。node が無ければ本ステップが落ちて
+      # 集約が赤くなる（黙って緑にはならない）。
       - name: Self-test coverage floor checker
         run: node scripts/check-coverage-floor.js --self-test
       # 🔴 PR では床を強制しない（--report-only。IADR-0232 改定 3）。

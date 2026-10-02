@@ -8,7 +8,7 @@ related_ids:
   - IADR-0123
 author: claude
 created: 2026-08-21
-updated: 2026-09-28
+updated: 2026-10-02
 plan_refs:
   - planning:docs/ai-implementation-workflow-guide.md
   - planning:projects/microservices-platform/07_adr/ADR-0048_impl-docs-restructure.md (決定 6・kit との乖離は受容する)
@@ -539,3 +539,19 @@ PR 時点で SAST の指摘が一切出なくなる。**`paths:` を持つため
 > - 残余（本件では行わない。裁定事項）: 集約ジョブの setup-node をやめる（約 5 秒）／各脚に重なる restore / build（約 60 秒）をビルド成果物の再利用で
 >   減らす／ConversionService.Tests 自体を速くする。判定はマージ後の ci-latency の週次 run に委ね、本 PR は `Refs #1686` とする（#1686 は開いたまま）。
 
+
+> **［2026-10-02 追記 / #1686］裁定（2026-10-01）の ③ 集約ジョブの setup-node を外した。① ビルド成果物の再利用は、待ち時間が縮まないと見積もれたので実装せず、再裁定を仰ぐ。**
+>
+> - ③ 決定: 集約 `build-and-test` の `actions/setup-node` を外し、`check-coverage-floor.js`（self-test と `--report-only`）をランナー既定の node で呼ぶ
+>   （`discover-units` と同じ）。集約ジョブは律速の経路の末尾にあるので、約 5 秒（決定 6 の実測）がそのまま待ち時間から引かれる。検査器は `fs` / `path` / `os`
+>   だけの CommonJS で版に依存する API を使わない。node が無ければ step が落ちて集約が赤くなる（fail-closed は保つ）。必須 check 名・`needs:`・`on:` は変えない。
+>   上の 2026-09-28 追記 3「残余」のうち setup-node の項は本追記で実施済みになる。
+> - ① 見積もり: 普通の PR の完了 ＝ Δ0 ＋ 最も遅い脚 ＋ A（追記 3 の式）。共有ジョブで restore / build（約 62 秒）を 1 回にしても、**その 62 秒は律速の経路に直列に
+>   1 回載ったまま**であり（現行でも 5 脚の build は別のランナーで並列に走っている＝重なっているのはランナー時間であって待ち時間ではない）、経路には成果物の
+>   upload U・後段ジョブの割り当て待ち Δq・後段の準備 s′・download D が足される。差 ＝ U ＋ Δq ＋ s′ ＋ D ≒ +19〜+43 秒（knowledge の試験プロジェクトの
+>   `bin/Release` は 12 本で約 839 MB・1 脚あたり gzip 後 約 75〜100 MB の手元実測から）。却下 E と同じ理由（目的は待ち時間の短縮であり、ランナー時間の節約ではない）で採らない。
+> - 代替案（未実装・裁定事項）: 各脚は自分のシャードの試験プロジェクトの推移閉包だけを build し、`backend.slnx` 全体の build は律速の経路の外の別ジョブで検証する
+>   （2026-09-28 追記 1 が推移閉包を退けた理由＝参照されないプロジェクトのビルドが PR から落ちる、は別ジョブで解消する）。手元の実測では knowledge の build が
+>   全体 約 27 秒に対し Conversion を含むシャードの閉包は約 6〜7 秒。CI へ写すと knowledge の最長脚は約 133 → 約 103 秒、律速は platform 2/2（約 110 秒）へ移り、
+>   普通の PR の完了は約 138 秒（③ 込みで約 133 秒）と見積もる。
+>   作業仕様書: `.ai-context/specs/20261001_1686_ci-build-artifact-reuse.md`
