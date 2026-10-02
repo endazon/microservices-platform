@@ -36,19 +36,22 @@ issue: "#1723"
 1. `.github/workflows/claude-code-review.yml` と `.github/workflows/claude-coding.yml` の `--allowedTools` に、次の 2 つを足す。
    - `Bash(bash -n:*)`: 構文検査だけで、スクリプトは実行しない。
    - `Bash(bash scripts/k8s-local-down.test.sh)`: 引数を固定した形にする。前方一致で別のスクリプトへ広がらない。
-2. レビュー用プロンプトの「使える Bash コマンドの一覧」に、上の 2 形と「他の `bash <スクリプト>` や `helm` は拒否される」を書き足す。
+2. レビュー用プロンプトの「使える Bash コマンドの一覧」と実装用プロンプト（`claude-coding.yml` の `--append-system-prompt`）の「実行系」の列挙に、上の 2 形と「他の `bash <スクリプト>` や `helm` は拒否される」を書き足す。
    - 一覧に無いものは試さずに未検証と書く、という既存の規律を保つためである。
+
+## settings.json（3 系統を揃える）
+
+- `.claude/settings.json` の allow には**同じ 2 形を足す**（利用者の明示の承認 2026-10-02）。CI の `STRICT_AI_WORKFLOW_CONFIG=1` が 3 系統（レビュー用・実装用ワークフローと settings.json）の一致を要求し、片方だけでは static-checks が赤になったため（初回 push で実測）。
 
 ## 足さないもの（理由）
 
 - `Bash(bash:*)`: 任意のスクリプトを実行できてしまう。
 - `helm`: レビューは実機の helm を持たない。読むだけなら Read で足りる。
-- `.claude/settings.json` の allow には**同じ 2 形を足す**（利用者の明示の承認 2026-10-02）。CI の `STRICT_AI_WORKFLOW_CONFIG=1` が 3 系統（レビュー用・実装用ワークフローと settings.json）の一致を要求し、片方だけでは static-checks が赤になったため（初回 push で実測）。
 
 ## 母集合（規則 9）
 
 - `--allowedTools` を持つワークフローは `claude-code-review.yml` と `claude-coding.yml` の 2 本である（`grep -n 'allowedTools "' .github/workflows/*.yml`）。2 本とも直す。
-- 写しの一覧（レビュー用プロンプトの「正の一覧」）は `claude-code-review.yml` の 1 か所だけにある。
+- 正の一覧の写しはレビュー用プロンプト（`claude-code-review.yml`）と実装用プロンプト（`claude-coding.yml` の `--append-system-prompt`）の 2 か所にある（後者は AI レビューの指摘で追随）。
 
 ## 規則 10・11
 
