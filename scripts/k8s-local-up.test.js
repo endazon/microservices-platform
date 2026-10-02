@@ -3346,7 +3346,9 @@ ok('#1159: STRICT への昇格は入口を Envoy へ移した後に来る（順�
   assert.ok(promoteAt > gwAt, 'STRICT への昇格が Gateway の導入より前に来ている（入口が 502 になる）');
 });
 
-ok('#1159: ISTIO 未設定なら mesh.* の --set が 1 つも足されない（既定のバイト等価）', () => {
+ok('#1159: ISTIO 未設定（リリースが無い初回）なら mesh.* の --set が 1 つも足されない', () => {
+  // ［2026-10-02 / #1713］ISTIO 未指定は現行のメッシュ宣言を引き継ぐ（IADR-0488）。リリースが無い初回（DEFAULT）は従来どおり。
+  //   既定のバイト等価（helm の読み取りも足さない）は ISTIO=0 の側が持つ（#1713 節）。
   const line = DEFAULT.lines.find((l) => HELM_UPGRADE_RE.test(l));
   assert.ok(!line.includes('mesh.'), `既定なのに mesh.* が付いている: ${line}`);
 });
@@ -3580,9 +3582,11 @@ ok('#1710: 移行済みで ISTIO 無しのエラー文は ISTIO_MTLS_MODE=STRICT
     'Istio のまま再実行する指定に ISTIO_MTLS_MODE=STRICT が無い（写すと読み取り次第の挙動になる）');
 });
 
-ok('#1710: ISTIO 未設定の既定経路では helm の読み取りを足さない（既定のバイト等価）', () => {
-  assert.ok(!DEFAULT.lines.some((l) => l.startsWith('helm list ') || l.startsWith('helm get values')),
-    '既定経路で現行の mTLS モードを読みに行った');
+ok('#1710: ISTIO 未設定の初回は helm get values を読まない（リリースの有無だけ。#1713 で既定経路も helm list を 1 回読む）', () => {
+  // ［2026-10-02 / #1713］旧「既定経路では helm の読み取りを足さない」は、ISTIO 未指定が現行のメッシュを引き継ぐ
+  //   ようになり成り立たない（読まなければ引き継げない。IADR-0488）。読まないことは ISTIO=0 の側で固定する（#1713 節）。
+  assert.strictEqual(DEFAULT.lines.filter((l) => l.startsWith('helm list ')).length, 1, '既定経路でリリースの有無を 1 回だけ確かめていない');
+  assert.ok(!DEFAULT.lines.some((l) => l.startsWith('helm get values')), 'リリースが無いのに values を読んだ');
 });
 
 ok('#1710: mesh_values_mtls_mode の判定表（mesh 直下だけを見る・孫や別キーの mtlsMode は拾わない）', () => {
@@ -3607,6 +3611,132 @@ ok('#1710: mesh_values_mtls_mode の判定表（mesh 直下だけを見る・孫
     const r = run(yaml);
     assert.strictEqual(r.status, rc, `rc が違う: ${JSON.stringify(yaml)} → ${r.status}`);
     assert.strictEqual(r.stdout.trim(), out, `出力が違う: ${JSON.stringify(yaml)}`);
+  }
+});
+
+// ---- #1713 / IADR-0488: ISTIO を付けない再実行は現行のメッシュ宣言（mesh.enabled）を引き継ぐ（黙って外さない） ----------
+//
+// [6/7] は --reuse-values 無しで helm upgrade するので、ISTIO 未指定（＝従前は「メッシュ無し」）の再実行は values-local.yaml の
+// mesh.enabled: false を当て、メッシュで動いているクラスタの宣言をまるごと外していた。ISTIO は 3 値（1 / 0 / 未指定＝引き継ぎ）。
+// 入力は #1710 と同じ helm スタブの STUB_HELM_VALUES。プローブの表は作業仕様書 20261001_1713_mesh-enabled-inherit.md（規則 11）。
+
+const meshArgsOf = (r) => {
+  const line = r.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, `helm upgrade --install msp の行が無い（status=${r.status}）:\n${r.stderr.slice(-600)}`);
+  return {
+    enabled: /--set mesh\.enabled=true\b/.test(line),
+    mtls: (/--set mesh\.mtlsMode=(\S+)/.exec(line) || [])[1] || null,
+    anyMesh: line.includes('mesh.'),
+  };
+};
+const MESH_INHERIT_INFO = /INFO: メッシュ（mesh\.enabled: true）は現行を引き継ぎます（ISTIO 未指定。外すなら ISTIO=0）/;
+const readsHelm = (r) => r.lines.some((l) => l.startsWith('helm list ') || l.startsWith('helm get values'));
+const touchedCluster = (r) => r.lines.some((l) => l.startsWith('docker build ') || HELM_UPGRADE_RE.test(l)
+  || l.startsWith('kubectl label namespace') || l.startsWith('helm upgrade --install istio'));
+const NO_MESH_VALUES = 'mesh:\n  enabled: false\nnamespace:\n  create: false\n';
+
+ok('#1713: 未指定 ＋ 現行 mesh true（STRICT）→ [6/7] は mesh.enabled=true・STRICT を保ち、Istio の段も通る', () => {
+  const r = runUp({ STUB_HELM_VALUES: helmValues('STRICT') });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  const m = meshArgsOf(r);
+  assert.ok(m.enabled, '#1713 の再発: ISTIO 未指定の再実行でメッシュ宣言（mesh.enabled=true）を外した');
+  assert.strictEqual(m.mtls, 'STRICT', 'メッシュは保ったが mTLS モードを引き継いでいない（#1710 との組み合わせ）');
+  assert.match(r.stdout, MESH_INHERIT_INFO, 'メッシュを引き継いだことを告げていない');
+  assert.strictEqual(INHERIT_INFO.exec(r.stdout)?.[1], 'STRICT', 'mTLS モードを引き継いだことを告げていない');
+  // 引き継いだ ISTIO=1 は明示と同じ段を通る（コントロールプレーン・注入ラベル・注入の作り直し）。
+  assert.ok(r.lines.some((l) => l.startsWith('helm upgrade --install istiod ')), 'Istio のコントロールプレーンの段を飛ばした');
+  assert.ok(r.lines.some((l) => l.startsWith('kubectl label namespace microservices-platform istio-injection=enabled')), '注入ラベルを貼っていない');
+  assert.ok(r.lines.some((l) => l.startsWith('kubectl -n microservices-platform rollout restart deployment')), '注入の作り直し（rollout restart）を飛ばした');
+  // 読みは 1 回（list と get values を 1 回ずつ）。ISTIO と ISTIO_MTLS_MODE の判定で読み直さない。
+  assert.strictEqual(r.lines.filter((l) => l.startsWith('helm get values')).length, 1, 'helm get values を 2 回以上読んだ');
+});
+
+ok('#1713: 未指定 ＋ 現行 mesh false（ISTIO 無しで立てた）→ mesh.* を付けない・引き継ぎを告げない', () => {
+  const r = runUp({ STUB_HELM_VALUES: NO_MESH_VALUES });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  assert.ok(!meshArgsOf(r).anyMesh, 'メッシュを宣言していないリリースへメッシュを入れた（推測で全 Pod を作り直す）');
+  assert.doesNotMatch(r.stdout, MESH_INHERIT_INFO);
+  assert.ok(!r.lines.some((l) => l.startsWith('helm upgrade --install istiod ')), 'メッシュ無しなのに Istio の段を通った');
+});
+
+ok('#1713: 未指定 ＋ リリースが無い（初回）→ 従来どおり（mesh.* 無し・values を読まない）', () => {
+  const m = meshArgsOf(DEFAULT);
+  assert.ok(!m.anyMesh, `初回にメッシュを入れた`);
+  assert.ok(!DEFAULT.lines.some((l) => l.startsWith('helm get values')), 'リリースが無いのに values を読んだ');
+  assert.doesNotMatch(DEFAULT.stdout, MESH_INHERIT_INFO, '初回なのに引き継ぎを告げた');
+});
+
+ok('#1713: ISTIO=0 ＋ 現行 mesh true → 外す（mesh.* を付けない）。helm を読まない（従来の既定とバイト等価）', () => {
+  const r = runUp({ ISTIO: '0', STUB_HELM_VALUES: helmValues('STRICT') });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  assert.ok(!meshArgsOf(r).anyMesh, 'ISTIO=0 なのにメッシュ宣言を残した（明示的に外す手段が効かない）');
+  assert.ok(!readsHelm(r), 'ISTIO=0 なのに現行の宣言を読みに行った');
+  assert.doesNotMatch(r.stdout, MESH_INHERIT_INFO);
+  // 読めなくても止まらない（読まない）。
+  const failOk = runUp({ ISTIO: '0', STUB_HELM_LIST_FAIL: '1' });
+  assert.strictEqual(failOk.status, 0, `ISTIO=0 なのに読み取りの失敗で止まった:\n${failOk.stderr.slice(-600)}`);
+  // 従来の既定（ISTIO 無し・リリース無し）と helm の呼び出しが同じ（読み取りの 1 行を除く）。全コマンド列では比べない ——
+  //   `create … | kubectl apply -f -` のパイプの両端の記録順や待ちの回数が実行ごとに揺れる（実測）。helm の列は揺れない。
+  const helmLines = (lines) => lines.filter((l) => l.startsWith('helm ') && !l.startsWith('helm list '));
+  assert.deepStrictEqual(helmLines(runUp({ ISTIO: '0' }).lines), helmLines(DEFAULT.lines), 'ISTIO=0 の helm の呼び出しが従来の既定と違う');
+});
+
+ok('#1713: 読めない（helm list / get values の失敗・mtlsMode 欠落）＋ ISTIO 未指定 → [2/7] の前に止まり、ISTIO=1 / ISTIO=0 の明示を告げる', () => {
+  const cases = [
+    ['helm list が失敗', { STUB_HELM_LIST_FAIL: '1' }],
+    ['helm get values が失敗', { STUB_HELM_VALUES: helmValues('STRICT'), STUB_HELM_VALUES_FAIL: '1' }],
+    ['mesh.enabled なのに mtlsMode が無い', { STUB_HELM_VALUES: helmValues(null) }],
+    ['ISTIO_MTLS_MODE を明示しても helm list が失敗', { STUB_HELM_LIST_FAIL: '1', ISTIO_MTLS_MODE: 'STRICT' }],
+  ];
+  for (const [what, env] of cases) {
+    const r = runUp(env);
+    assert.notStrictEqual(r.status, 0, `${what}: 読めないのに進んだ（メッシュを黙って外すか推測で入れる）`);
+    assert.match(r.stderr, /ISTIO=1 ISTIO_MTLS_MODE=STRICT bash scripts\/k8s-local-up\.sh --live/, `${what}: 保つ側の明示を告げていない`);
+    assert.match(r.stderr, /ISTIO=0 bash scripts\/k8s-local-up\.sh --live/, `${what}: 外す側の明示を告げていない`);
+    assert.ok(!touchedCluster(r), `${what}: 副作用（[2/7] 以降・Istio の段）へ進んでから止まった: ${r.lines.filter((l) => !l.startsWith('k3d ') && !l.startsWith('helm list') && !l.startsWith('helm get')).slice(-3).join(' | ')}`);
+  }
+});
+
+ok('#1713: 未指定 ＋ 現行 mesh true ＋ ISTIO_MTLS_MODE=PERMISSIVE の明示 → メッシュは保ち、モードは明示が勝つ', () => {
+  const r = runUp({ ISTIO_MTLS_MODE: 'PERMISSIVE', STUB_HELM_VALUES: helmValues('STRICT') });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  const m = meshArgsOf(r);
+  assert.ok(m.enabled, 'メッシュを外した');
+  assert.strictEqual(m.mtls, 'PERMISSIVE', '明示の ISTIO_MTLS_MODE より現行を優先した');
+  assert.doesNotMatch(r.stdout, INHERIT_INFO, '明示があるのに mTLS モードの引き継ぎを告げた');
+});
+
+ok('#1713: 未指定 ＋ 現行 STRICT ＋ 未移行の LOCALEDGE → [6/7] は PERMISSIVE、入口を移した後で STRICT（段取りは明示の ISTIO=1 と同じ）', () => {
+  const r = runUp({ LOCALEDGE: '1', STUB_HELM_VALUES: helmValues('STRICT') });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  assert.ok(meshArgsOf(r).enabled, 'メッシュを外した');
+  assert.strictEqual(meshArgsOf(r).mtls, 'PERMISSIVE', '入口がまだ Traefik の段で STRICT を宣言した（502。IADR-0377 決定 2）');
+  assert.strictEqual(promotedOf(r), 'STRICT', '引き継いだ STRICT へ戻していない');
+});
+
+ok('#1713: ISTIO は 0 / 1 / 空 だけを受け付け、それ以外はクラスタに触れる前に落ちる', () => {
+  for (const bad of ['true', 'yes', '2', 'on']) {
+    const res = runUp({ ISTIO: bad });
+    assert.notStrictEqual(res.status, 0, `ISTIO=${bad} を受け付けた（黙って「外す」と読む）`);
+    assert.deepStrictEqual(res.lines, [], `ISTIO=${bad} で落ちる前にコマンドを発行した: ${res.lines.slice(0, 3).join(' / ')}`);
+    assert.match(res.stderr, /ISTIO は 1/, `落ちた理由が ISTIO を名指ししていない: ${res.stderr}`);
+  }
+});
+
+ok('#1713: RESET_FLOOR の WARN は引き継ぎの後で判定する（引き継いだ ISTIO=1 ＋ LOCALEDGE なら床が効くので告げない）', () => {
+  const inherited = runUp({ RESET_FLOOR: '1', LOCALEDGE: '1', STUB_HELM_VALUES: helmValues('PERMISSIVE') });
+  assert.strictEqual(inherited.status, 0, `起動器が止まった:\n${inherited.stderr.slice(-600)}`);
+  assert.ok(!/WARN: RESET_FLOOR=/.test(inherited.stderr), '床が効く起動（引き継いだ ISTIO=1 ＋ LOCALEDGE=1）で「効かない」と告げた');
+  const fresh = runUp({ RESET_FLOOR: '1', LOCALEDGE: '1' });
+  assert.ok(/WARN: RESET_FLOOR=/.test(fresh.stderr), '初回（メッシュ無し）で床が効かないことを告げていない');
+});
+
+ok('#1713: 移行済みの入口 ＋ ISTIO 未指定 / ISTIO=0 は従来どおり拒否する（#1691。helm を読む前に止まる）', () => {
+  for (const env of [{}, { ISTIO: '0' }]) {
+    const r = runUp({ LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1', STUB_HELM_VALUES: helmValues('STRICT'), ...env });
+    assert.notStrictEqual(r.status, 0, `移行済みの入口で ISTIO=${env.ISTIO ?? '未指定'} を通した`);
+    assert.ok(!readsHelm(r), '拒否の前に helm を読んだ（拒否の判定は引き継ぎより前）');
+    assert.match(r.stderr, /ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT bash scripts\/k8s-local-up\.sh --live/);
   }
 });
 
@@ -4125,12 +4255,15 @@ const BACKUP_BUILD_FAILS_CREDS = runUp({
   ].join('\n'),
 });
 
-ok('🔴 #1689: 資格情報ヘルパーの失敗（error getting credentials）は、ログイン・ヘルパー・再起動を案内し、版上げへ導かない', () => {
+ok('🔴 #1689 / #1709: 資格情報ヘルパーの失敗（error getting credentials）は、ベースの取得元・ヘルパー・再起動を案内し、版上げへ導かない', () => {
   assertBackupWarnCommon(BACKUP_BUILD_FAILS_CREDS);
   const err = BACKUP_BUILD_FAILS_CREDS.stderr;
   assert.match(err, HINT_CREDS, '資格情報ヘルパーの失敗として案内していない');
   assert.match(err, /age の版の問題ではありません/, '版の問題ではないことを告げていない');
-  assert.match(err, /docker login/, 'Docker Hub へのログインの手順が無い');
+  // #1709: ベースの取得元は mirror.gcr.io（チャレンジ無し）。Docker Hub へのログインは直し方にならないので案内しない。
+  assert.match(err, /load metadata の行が mirror\.gcr\.io\/library\/postgres を指しているか/, 'ベースの取得元の確かめ方が無い');
+  assert.match(err, /BASE_REGISTRY の既定（mirror\.gcr\.io\/library）/, 'ベースの取得元を既定へ戻す手順が無い');
+  assert.doesNotMatch(err, /docker login|Docker Hub へログイン/, '直し方にならない Docker Hub へのログインを案内した');
   assert.match(err, /credsStore \/ credHelpers/, '資格情報ヘルパーの設定の確かめ方が無い');
   assert.match(err, /再起動/, 'ランタイムの再起動の手順が無い');
   assert.match(err, /§1 の 5 の手順でイメージを作り直して/, '直したあとの作り直しの手順が無い');

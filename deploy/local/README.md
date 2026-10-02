@@ -134,6 +134,12 @@ PERSIST=0 bash scripts/k8s-local-up.sh --live
   何も書かずに毎日失敗する**（fail-closed）。受取人は `BACKUP_AGE_RECIPIENTS_FILE=<ファイル>` を与えた起動でだけ作り直す。
   準備・確認・リストア試験（`scripts/backup-restore-drill.sh`）は [`docs/operations/platform-infra-backup-runbook.md`](../../docs/operations/platform-infra-backup-runbook.md)。
   **ローカル開発・PoC 専用で、本番のバックアップ設計ではない。**
+  - CronJob のイメージ（[`platform-backup/image`](platform-backup/image/Dockerfile)）は `[2/7]` で作る。ベースは
+    `mirror.gcr.io/library` から digest で固定して取る（#1709 / [IADR-0489](../../.ai-context/adr/IADR-0489_backup-image-base-from-no-challenge-mirror.md)）。
+    `docker.io` は匿名でも 401 の認証チャレンジを返し、ビルダーが資格情報ヘルパー（`credsStore` / `credHelpers`）を呼ぶ ——
+    ヘルパーが壊れた機械（稼働 PoC）ではビルドがそこで落ちていた。
+  - 🔴 **前提（イメージと受取人）が揃うまで、起動スクリプトは CronJob を `suspend: true` で置く**（#1699）。稼働 PoC の現状と
+    再開の手順（受取人を作る → イメージを作り直す → 起動スクリプトの再実行で有効化 → 手動 Job とリストア試験）は Runbook の「2. 日々の確認」冒頭の注記。
 - **Prometheus の保持期間**は base（[`observability/prometheus.yaml`](observability/prometheus.yaml)）の args
   `--storage.tsdb.retention.time=35d` / `--storage.tsdb.retention.size=4GB` で明示する（35d は月次規則の `[30d]` 窓を評価できる最小の保持 ＋ 余裕）。**`size` を PVC 容量（5Gi）
   未満に置いてあるので、流入が増えても PVC が満杯になって書き込み不能になることはない**（IADR-0210 決定 3）。
@@ -644,6 +650,9 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
 - **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
   エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
   `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときも **mTLS の既定は PERMISSIVE** である（IADR-0307 決定 4）。
+  **`ISTIO` は 3 値**（`1`＝入れる／`0`＝外す／未指定＝現行の helm の宣言を引き継ぐ。#1713 / IADR-0488）——
+  メッシュで動いているクラスタを `ISTIO` 無しで再実行してもメッシュ宣言は外れず、mTLS モードも引き継ぐ（初回だけがメッシュ無し・PERMISSIVE）。
+  外すのは `ISTIO=0` の明示だけで、未指定のまま現行を読めなければ起動の前に止まる（詳細は `deploy/istio/README.md`）。
   🔴 **STRICT へ上げると `ai-stock-trading`（サイドカー無し）から MSP への平文が全断する** ——
   ナレッジ保存・日報の LLM 生成・取引判断の LLM 呼び出しが RST で落ちる（#1159 実測。逆向きは落ちない）。
   AST を mesh へ入れるまで（AST#627）既定は PERMISSIVE のままにする。

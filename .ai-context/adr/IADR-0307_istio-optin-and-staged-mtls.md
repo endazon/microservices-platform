@@ -10,9 +10,10 @@ related_ids:
   - IADR-0026
   - IADR-0091
   - IADR-0317
+  - IADR-0488
 author: claude
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-10-02
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md
@@ -50,6 +51,10 @@ plan_refs:
 
 **理由**: 1 ノードの dev クラスタに 27 Pod が既に載っており、全 Pod へサイドカーが 1 つずつ増える。
 **メッシュが要らない作業の邪魔をしない**ことを既定にする。
+
+> ［2026-10-02 追記 / #1713］ **「既定は完全に不変」は `ISTIO=0` の側へ移った。** `ISTIO` は 3 値（`1`＝入れる／`0`＝外す／未指定＝現行を引き継ぐ）になり、
+> 未指定の**再実行**は helm の宣言（`helm get values msp`）から `mesh.enabled` を引き継ぐ（従前は `values-local.yaml` の `false` が当たり、
+> メッシュで動いているクラスタの宣言を黙って外していた）。リリースが無い初回は従来どおりメッシュ無しで、既定経路は `helm list` を 1 回読む。判断は [[IADR-0488]]。
 
 ### 決定 2 — 導入は `istioctl` ではなく Helm で行う
 

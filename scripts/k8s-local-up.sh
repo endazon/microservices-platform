@@ -36,9 +36,15 @@ case "${RESET_FLOOR:-}" in
 esac
 # 床の経路を足すのは Istio のエッジだけである（ISTIO=1 ＋ LOCALEDGE=1 で istio-edge-up.sh が走るとき）。
 # それ以外で RESET_FLOOR を与えても何も変わらない —— 黙って無視せず、効かないことを告げる。
-if [ -n "${RESET_FLOOR:-}" ] && { [ "${ISTIO:-}" != "1" ] || [ "${LOCALEDGE:-}" != "1" ]; }; then
-  echo "WARN: RESET_FLOOR=${RESET_FLOOR} は ISTIO=1 ＋ LOCALEDGE=1（Istio のエッジ）のときだけ効きます。この起動では効きません（床の器は常に立ちます）。" >&2
-fi
+#   ［2026-10-02 / #1713］告げるのは [2/7] の前（ISTIO の引き継ぎの判定の後）へ移した。ISTIO 未指定は現行のメッシュを
+#   引き継げば ISTIO=1 になり床が効くので、ここ（クラスタを読む前）では効くかどうかが決まらない（IADR-0488）。
+
+# NFR-16, IADR-0488 (#1713): ISTIO は 3 値 —— 1＝メッシュを入れる / 0＝外す（明示）/ 未指定（空）＝現行の helm の宣言を引き継ぐ。
+#   未指定に意味ができたので、それ以外の値（true・yes 等）を黙って「外す」と読まない。RESET_FLOOR と同じく最初に落とす。
+case "${ISTIO:-}" in
+  ''|0|1) ;;
+  *) echo "ERROR: ISTIO は 1（メッシュを入れる）・0（外す）・未指定（現行を引き継ぐ。初回は入れない）のいずれかです: '${ISTIO}'" >&2; exit 1 ;;
+esac
 
 CLUSTER="${1:-msp-ast-dev}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -128,7 +134,7 @@ if [ "${LOCALEDGE:-}" = "1" ] && edge_on_istio; then
   #   メッシュ設定を黙って外す。戻す正規の手段は istio-edge-down.sh の 1 コマンドである（IADR-0317 決定 7 の順序を持つ）。
   if [ "${ISTIO:-}" != "1" ]; then
     echo "ERROR: 入口はすでに Istio Ingress Gateway へ移っています（HelmChartConfig kube-system/traefik が service.enabled: false）。" >&2
-    echo "       LOCALEDGE=1 だけでは再実行できません（Traefik へ戻す処理が Istio の入口とポートを取り合います。#1691）。どちらかを選んでください:" >&2
+    echo "       LOCALEDGE=1 だけ（ISTIO 未指定・ISTIO=0）では再実行できません（Traefik へ戻す処理が Istio の入口とポートを取り合います。#1691）。どちらかを選んでください:" >&2
     # NFR-16, IADR-0487 (#1710): mTLS を STRICT で使っているなら、そのまま写して実行できる形で告げる。
     #   ISTIO_MTLS_MODE を省いても [6/7] は現行の mesh.mtlsMode を引き継ぐ（下の判定）が、意図を明示した形を勧める。
     echo "       - Istio の入口のまま再実行する: ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT bash scripts/k8s-local-up.sh --live" >&2
@@ -139,35 +145,53 @@ if [ "${LOCALEDGE:-}" = "1" ] && edge_on_istio; then
   echo "    入口は Istio Ingress Gateway へ移し済み（HelmChartConfig traefik: service.enabled: false）。Traefik へ戻す段と待ちは飛ばす（#1691）"
 fi
 
-# NFR-16, ADR-0005, IADR-0487 (#1710): **ISTIO_MTLS_MODE を付けない再実行は、現行の mesh.mtlsMode を引き継ぐ。**
-#   [6/7] は --reuse-values 無しで --set mesh.mtlsMode=… を渡す。以前は未指定を一律 PERMISSIVE と読み、
-#   STRICT で動いているクラスタを再実行のたびに**黙って** PERMISSIVE へ戻していた（#1694 のエラー文が勧める
-#   `ISTIO=1 LOCALEDGE=1 … --live` をそのまま写すと起きる）。
-#   選び方: 明示（env）＞ 現行（helm の宣言）＞ PERMISSIVE（リリースが無い・メッシュを宣言していない＝初回）。
-#   引き継いだ値は以降「明示されたのと同じ」に扱う（未移行の LOCALEDGE なら [6/7] は PERMISSIVE で入り、
-#   istio-edge-up.sh [5/5] が入口を移した後で STRICT へ戻す。IADR-0377 決定 2 の段取りのまま）。
-#   🔴 **読めないときは止める（fail-closed）。** PERMISSIVE へ倒すと降格を黙って起こし、STRICT へ倒すと
-#   PERMISSIVE で動いているクラスタ（入口が Traefik の構成を含む）の入口を 502 にし得る。どちらも推測である。
-#   **副作用より前**（[2/7] の前）に置き、止めるときは何も書き換えていない。ISTIO 無しの既定経路では読まない（バイト等価）。
-if [ "${ISTIO:-}" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ]; then
+# NFR-16, ADR-0005, IADR-0488 (#1713) / IADR-0487 (#1710): **付けなかった ISTIO・ISTIO_MTLS_MODE は、現行の helm の宣言を引き継ぐ。**
+#   [6/7] は --reuse-values 無しで helm upgrade する。以前は ISTIO 未指定を「メッシュ無し」と読み、values-local.yaml の
+#   mesh.enabled: false が当たって、メッシュで動いているクラスタの宣言（PeerAuthentication・AuthorizationPolicy・注入）を
+#   再実行のたびに**黙って**外していた（#1713）。ISTIO_MTLS_MODE を付けない再実行が STRICT を PERMISSIVE へ戻したのと同じ型（#1710）。
+#   選び方はどちらも 明示（env）＞ 現行（helm get values msp の mesh.*）＞ 初回の既定（ISTIO はメッシュ無し・mTLS は PERMISSIVE）。
+#   - ISTIO 未指定 × メッシュ宣言あり → ISTIO=1 として以降を進める（明示と同じ段: コントロールプレーン・注入・LOCALEDGE なら Istio の入口）。
+#     ISTIO_MTLS_MODE も未指定なら同じ読みからモードを引き継ぐ。外すのは ISTIO=0 の明示だけである。
+#   - ISTIO=0 は読まない（従来の「ISTIO 無し」と同じ経路。既定のバイト等価はこちらへ移した）。
+#   🔴 **読めないときは止める（fail-closed）。** 外す側へ倒すと #1713 を黙って起こし、入れる側へ倒すと ISTIO 無しで立てたクラスタへ
+#   推測でメッシュを入れる（全 Pod の作り直し）。どちらも推測である。読めない理由（helm に届かない・mesh.enabled: true なのに
+#   mtlsMode が壊れている）は終了コードで分けていないので、ISTIO_MTLS_MODE を明示していても ISTIO 未指定なら止める（ISTIO=1 を足せば進む）。
+#   **副作用より前**（[2/7] の前）に置き、止めるときは何も書き換えていない。読むのは 1 回だけ（両方の判定に使う）。
+#   移行済みの入口で ISTIO が 1 でない再実行は、この前（#1691 の拒否）で既に止まっている。
+if [ -z "${ISTIO:-}" ] || { [ "$ISTIO" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ]; }; then
   # shellcheck source=scripts/lib/mesh-mtls-mode.sh
   . "$ROOT/scripts/lib/mesh-mtls-mode.sh"
-  mtls_rc=0
-  mtls_current="$(current_mesh_mtls_mode)" || mtls_rc=$?
-  case "$mtls_rc" in
-    0)
-      ISTIO_MTLS_MODE="$mtls_current"
-      echo "    INFO: mesh.mtlsMode は現行の ${mtls_current} を引き継ぎます（ISTIO_MTLS_MODE 未指定）"
-      ;;
-    1) ;; # リリースが無い・メッシュ未宣言 = 初回。従来どおり PERMISSIVE で入る（下の [6/7]）
-    *)
+  mesh_rc=0
+  mesh_current="$(current_mesh_mtls_mode)" || mesh_rc=$?
+  if [ "$mesh_rc" -ge 2 ]; then
+    if [ -z "${ISTIO:-}" ]; then
+      echo "ERROR: 現行のメッシュ宣言（mesh.enabled / mesh.mtlsMode）を helm リリース ${MSP_HELM_RELEASE:-msp} から読めませんでした（helm get values ${MSP_HELM_RELEASE:-msp} -n $MSP_NS）。" >&2
+      echo "       ISTIO を付けない再実行は現行のメッシュ宣言を引き継ぎます。読めないまま進むと、メッシュを黙って外すか推測で入れることになるため、止めます。" >&2
+      echo "       どちらかを明示して再実行してください（前回と同じ他の指定〔LOCALEDGE 等〕も付ける）:" >&2
+      echo "         - メッシュを保つ: ISTIO=1 ISTIO_MTLS_MODE=STRICT bash scripts/k8s-local-up.sh --live（PERMISSIVE で使っているなら PERMISSIVE）" >&2
+      echo "         - メッシュを外す: ISTIO=0 bash scripts/k8s-local-up.sh --live" >&2
+    else
       echo "ERROR: 現行の mesh.mtlsMode を helm リリース ${MSP_HELM_RELEASE:-msp} から読めませんでした（helm get values ${MSP_HELM_RELEASE:-msp} -n $MSP_NS）。" >&2
       echo "       ISTIO_MTLS_MODE を付けない再実行は現行のモードを引き継ぎます。読めないまま PERMISSIVE で入ると STRICT を黙って緩めるため、止めます。" >&2
       echo "       モードを明示して再実行してください（前回と同じ他の指定〔LOCALEDGE 等〕も付ける。緩めるなら PERMISSIVE）:" >&2
       echo "         ISTIO_MTLS_MODE=STRICT ISTIO=1 bash scripts/k8s-local-up.sh --live" >&2
-      exit 1
-      ;;
-  esac
+    fi
+    exit 1
+  fi
+  if [ -z "${ISTIO:-}" ] && [ "$mesh_rc" = "0" ]; then
+    ISTIO=1
+    echo "    INFO: メッシュ（mesh.enabled: true）は現行を引き継ぎます（ISTIO 未指定。外すなら ISTIO=0）"
+  fi
+  # mesh_rc=1（リリースが無い・メッシュ未宣言＝初回）は何もしない: ISTIO 未指定はメッシュ無し、ISTIO=1 は PERMISSIVE で入る（下の [6/7]）。
+  if [ "${ISTIO:-}" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ] && [ "$mesh_rc" = "0" ]; then
+    ISTIO_MTLS_MODE="$mesh_current"
+    echo "    INFO: mesh.mtlsMode は現行の ${mesh_current} を引き継ぎます（ISTIO_MTLS_MODE 未指定）"
+  fi
+fi
+
+# SC-15, ADR-0097 決定 2 (#1500) / IADR-0488 (#1713): RESET_FLOOR が効かないことを告げる（値域の検査は冒頭）。ISTIO の引き継ぎの後で判定する。
+if [ -n "${RESET_FLOOR:-}" ] && { [ "${ISTIO:-}" != "1" ] || [ "${LOCALEDGE:-}" != "1" ]; }; then
+  echo "WARN: RESET_FLOOR=${RESET_FLOOR} は ISTIO=1 ＋ LOCALEDGE=1（Istio のエッジ）のときだけ効きます。この起動では効きません（床の器は常に立ちます）。" >&2
 fi
 
 echo "==> [2/7] build & import images"
@@ -1132,7 +1156,8 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   #   計画 ADR-0021 はこの境界問題を理由に「入口＝Istio Ingress Gateway・Traefik は無効化」と定めている。
   #
   # ここに置く理由: cert-manager と ClusterIssuer local-edge-ca（直上）が要る。
-  # ISTIO 未設定なら実行されない＝既定はバイト等価（従来どおり Traefik がエッジである）。
+  # ISTIO が 1 でなければ実行されない＝従来どおり Traefik がエッジである。［2026-10-02 / #1713］ISTIO 未指定は、
+  #   メッシュを宣言したクラスタの再実行では上の判定で 1 を引き継ぐ（IADR-0488）。ISTIO=0・初回・メッシュ未宣言なら実行されない。
   # #1691: **移行済みの再実行でも必ず呼ぶ**（上で飛ばすのは Traefik 側だけ）。istio-edge-up.sh は冪等で、
   #   [2/5] は Service が既に無いので即座に通り、Gateway・経路・CoreDNS・mTLS を当て直して現状を確かめる。
   if [ "${ISTIO:-}" = "1" ]; then

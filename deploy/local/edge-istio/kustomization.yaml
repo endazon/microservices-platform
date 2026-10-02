@@ -1,6 +1,7 @@
 # ADR-0021, #782: 経路B のエッジを Istio Ingress Gateway へ移す overlay（opt-in・ISTIO=1 かつ LOCALEDGE=1）。
 #
-# 既定（ISTIO 未設定）では一切適用されない。既定経路は従来どおり deploy/local/edge（Traefik）である。
+# メッシュを宣言していないクラスタ（ISTIO=0、または ISTIO 未指定の初回）では一切適用されない。その経路は従来どおり deploy/local/edge（Traefik）である。
+# ISTIO 未指定でも、メッシュで動いているクラスタの再実行は ISTIO=1 を引き継ぐ（#1713 / IADR-0488）。
 #
 # 適用順の前提（scripts/k8s-local-up.sh が守る）:
 #   1. Istio の CRD（gateways / virtualservices）が Established であること
