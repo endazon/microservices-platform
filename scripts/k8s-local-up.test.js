@@ -3646,6 +3646,7 @@ ok('#1713: 未指定 ＋ 現行 mesh true（STRICT）→ [6/7] は mesh.enabled=
   // 引き継いだ ISTIO=1 は明示と同じ段を通る（コントロールプレーン・注入ラベル・注入の作り直し）。
   assert.ok(r.lines.some((l) => l.startsWith('helm upgrade --install istiod ')), 'Istio のコントロールプレーンの段を飛ばした');
   assert.ok(r.lines.some((l) => l.startsWith('kubectl label namespace microservices-platform istio-injection=enabled')), '注入ラベルを貼っていない');
+  assert.ok(r.lines.some((l) => l.startsWith('kubectl -n microservices-platform rollout restart deployment')), '注入の作り直し（rollout restart）を飛ばした');
   // 読みは 1 回（list と get values を 1 回ずつ）。ISTIO と ISTIO_MTLS_MODE の判定で読み直さない。
   assert.strictEqual(r.lines.filter((l) => l.startsWith('helm get values')).length, 1, 'helm get values を 2 回以上読んだ');
 });
