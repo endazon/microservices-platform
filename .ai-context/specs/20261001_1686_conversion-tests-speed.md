@@ -2,7 +2,7 @@
 title: 作業仕様書 — #1686 ConversionService.Tests を、試験を減らさず弱めずに速くする
 type: spec
 status: done
-related_ids: [NFR, IADR-0491, IADR-0232]
+related_ids: [NFR, IADR-0490, IADR-0232]
 author: Claude Opus 5.5 (worker)
 created: 2026-10-01
 updated: 2026-10-02
@@ -17,7 +17,7 @@ issue: "#1686"
 
 - issue #1686（ci-latency の逆転）。2026-10-01 の利用者裁定の 2 番目「**ConversionService.Tests の高速化**: 約 45 秒かかる原因を調べてから縮める」。
   閾値は緩めない。**試験を消す・skip する・弱めることはしない**（検証の網羅を落とさない）。
-- 起点 ID は **無採番の `NFR`**（CI の所要時間というメタ作業）。判断は **IADR-0491** に置く。
+- 起点 ID は **無採番の `NFR`**（CI の所要時間というメタ作業）。判断は **IADR-0490** に置く。
 - 同じ裁定の 1 番目（ビルド成果物の再利用）・3 番目（集約ジョブの setup-node の撤去）は別 PR。本件は `.github/workflows/` を触らない。
 
 ## 編集前に確かめた事実（計測。2026-10-02・手元 4 コア）
@@ -49,7 +49,7 @@ issue: "#1686"
    （同じビルドで span 12.8〜16.7 秒。長い回は開始が 4.6 秒遅れていた）。試験プロジェクトに順序づけ `StartsFirstCollectionOrderer` を置き、
    `[StartsFirst]` の付いたコレクション定義を先頭へ寄せる（それ以外は既定の無作為な順のまま）。`DetachedGrandchild` だけを定義つきのコレクションに入れて印を付ける。
 3. **本番コードは変えない。** `ReapTimeout` を注入できるようにすれば `DetachedGrandchild` の 12 秒も縮むが、
-   試験が本番の上限（10 秒）を通らなくなる＝検査が変わるので採らない（IADR-0491 の却下案）。
+   試験が本番の上限（10 秒）を通らなくなる＝検査が変わるので採らない（IADR-0490 の却下案）。
 
 ### 網羅が落ちていないこと
 
@@ -155,5 +155,5 @@ issue: "#1686"
 ## 残余
 
 - CI での効果は未計測（push しないため）。ci-latency の週次 run とシャードの脚のログで確かめる。
-- `DetachedGrandchild` の約 12 秒が ConversionService.Tests の下限として残る。縮めるには本番の刈り取りの上限を試験から差し替える口が要り、検査が変わるので採らない（IADR-0491）。
+- `DetachedGrandchild` の約 12 秒が ConversionService.Tests の下限として残る。縮めるには本番の刈り取りの上限を試験から差し替える口が要り、検査が変わるので採らない（IADR-0490）。
 - `scripts/backend-test-shards.json` の割り当ては、ConversionService が軽くなった前提で組み替える余地がある（ビルド成果物の再利用の PR の後に CI の実測で）。

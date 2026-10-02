@@ -1,5 +1,5 @@
 ---
-title: IADR-0491 ConversionService.Tests の実時間の期限を待つ試験は、検査を変えずにクラスを分けて並列にし、最長の 1 本を最初に起動する
+title: IADR-0490 ConversionService.Tests の実時間の期限を待つ試験は、検査を変えずにクラスを分けて並列にし、最長の 1 本を最初に起動する
 type: impl-adr
 status: Accepted
 related_ids: [NFR, IADR-0232, IADR-0008]
@@ -12,7 +12,7 @@ related_specs:
   - ../specs/20261001_1686_conversion-tests-speed.md
 ---
 
-# IADR-0491: ConversionService.Tests は試験を分けて並列にし、最長の 1 本を最初に起動する（#1686）
+# IADR-0490: ConversionService.Tests は試験を分けて並列にし、最長の 1 本を最初に起動する（#1686）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -67,6 +67,8 @@ xUnit はクラスを 1 コレクションとし、その中を直列に走ら�
 - 負: 試験の完全名が `ExternalProcessTimeoutTests+<組>.<メソッド>` に変わる（`--filter` で完全名を引く運用は無い。試験仕様書・カバレッジ基準はファイル名で引く）。
 - 負: ConversionService.Tests の下限として `DetachedGrandchild` の約 12 秒が残る（期限 2 秒 ＋ 本番の刈り取りの上限 10 秒。縮めると検査が変わる）。
 - 試験の順序づけは ConversionService.Tests のアセンブリに閉じる。他の試験プロジェクトの順序は変わらない。
+- 負（検知されない劣化）: `[Trait("TestKind","Integration")]` は入れ子クラスごとに付く。付け忘れても CI は落ちない（CI の選別は `Category`。`TestKind` は振り分けに使われない）。IADR-0368 がトップレベルのテストクラスの構文検査を入れるときは、入れ子クラスも対象に含める。順序づけの登録が外れても試験は緑のままで、所要だけが戻る（独立監査で実測）。
+- 負: 短縮幅はコア数に依存する（1 コアに絞ると前後差なし）。CI の脚での実測は PR の run で確かめる。
 - 新たに実時間を長く待つ試験を足したら、それが下限を超えるなら同じ印（`[StartsFirst]` のコレクション定義）を付ける。
 
 ## 関連

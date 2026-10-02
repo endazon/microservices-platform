@@ -5,7 +5,7 @@ using Xunit.v3;
 
 namespace ConversionService.Tests;
 
-// NFR, #1686（IADR-0491）: 実時間を長く待つ試験のコレクションを**最初に**走らせる順序づけ。
+// NFR, #1686（IADR-0490）: 実時間を長く待つ試験のコレクションを**最初に**走らせる順序づけ。
 //
 // xUnit v3 の既定はコレクションを無作為な順に並べ、並列の枠（既定はコア数）が空いた順に起動する。
 // 実時間を最も長く待つ試験（`ExternalProcessTimeoutTests.DetachedGrandchild`。期限 ＋ 刈り取りの上限 ≒ 12 秒）が
