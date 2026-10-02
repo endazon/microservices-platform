@@ -48,6 +48,8 @@ bash scripts/istio-edge-down.sh --live
 恒久的に失敗する**（復旧手順は `docs/operations/operations.md` の Runbook）。
 `ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT` の up は、**[6/7] でいったん PERMISSIVE を宣言し、
 入口を移した後に STRICT へ上げる**（段取りは `IADR-0307` 決定 4）。
+`ISTIO` を付けない再実行も、メッシュで動いているクラスタなら `ISTIO=1` を引き継ぐ（外すのは `ISTIO=0` の明示だけ。#1713 /
+[`IADR-0488`](../../../.ai-context/adr/IADR-0488_istio-tristate-inherit-mesh-enabled-on-rerun.md)。入口を移し済みのクラスタでは引き継がず、`ISTIO=1` の明示を求めて止まる）。
 `ISTIO_MTLS_MODE` を付けない再実行は helm の宣言から現行のモードを引き継ぎ、読めなければ止まる（#1710 /
 [`IADR-0487`](../../../.ai-context/adr/IADR-0487_mesh-mtls-mode-inherit-on-rerun-fail-closed.md)。STRICT を黙って PERMISSIVE へ戻さない）。
 

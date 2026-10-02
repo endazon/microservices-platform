@@ -16,6 +16,19 @@ mTLS を強制する宣言（`PeerAuthentication` / `DestinationRule`）は Helm
 ISTIO=1 ./scripts/k8s-local-up.sh --live
 ```
 
+**`ISTIO` は 3 値である**（#1713 / [`IADR-0488`](../../.ai-context/adr/IADR-0488_istio-tristate-inherit-mesh-enabled-on-rerun.md)）。
+
+| 指定 | 挙動 |
+| --- | --- |
+| `ISTIO=1` | メッシュを入れる（下の手順）。既に入っていれば冪等に当て直す |
+| `ISTIO=0` | メッシュの宣言を外す（`values-local.yaml` の `mesh.enabled: false` を当てる。helm を読まない） |
+| 未指定 | **現行の helm の宣言（`helm get values msp`）を引き継ぐ。** メッシュで動いているクラスタなら `ISTIO=1` と同じに進み `INFO: メッシュ（mesh.enabled: true）は現行を引き継ぎます` を出す。リリースが無い初回・メッシュを宣言していないクラスタならメッシュ無し |
+
+それ以外の値（`true` 等）は起動の前に拒否する。🔴 **未指定で現行の宣言を読めないとき（helm に届かない等）は、何も書き換える前に止まる** ——
+推測で外すとメッシュ宣言（PeerAuthentication・AuthorizationPolicy・注入）が黙って消え、推測で入れると `ISTIO` 無しで立てたクラスタの全 Pod を作り直すため。
+そのときは `ISTIO=1`（＋ `ISTIO_MTLS_MODE`）か `ISTIO=0` を明示して再実行する。
+`ISTIO=0` で外しても、起動器が貼った namespace の `istio-injection=enabled` ラベルと既存 Pod のサイドカーは残る（外れるのは helm の宣言だけ）。
+
 `scripts/k8s-local-up.sh` が次を **[6/7] の前に** 行う（CRD が無いまま helm upgrade すると apply が失敗するため）:
 
 1. `istio/base`（CRD）と `istio/istiod`（コントロールプレーン）を Helm で導入する
@@ -47,7 +60,7 @@ ISTIO=1 ./scripts/k8s-local-up.sh --live                        # 初回は PERM
 ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live # STRICT へ移す
 ```
 
-**`ISTIO_MTLS_MODE` を付けない再実行は、現行の `mesh.mtlsMode` を引き継ぐ**（#1710 / [`IADR-0487`](../../.ai-context/adr/IADR-0487_mesh-mtls-mode-inherit-on-rerun-fail-closed.md)）。
+**`ISTIO_MTLS_MODE` を付けない再実行は、現行の `mesh.mtlsMode` を引き継ぐ**（`ISTIO` を付けずにメッシュを引き継いだ再実行も同じ。#1710 / [`IADR-0487`](../../.ai-context/adr/IADR-0487_mesh-mtls-mode-inherit-on-rerun-fail-closed.md)）。
 読む先は helm の宣言（`helm get values msp`）であり、`INFO: mesh.mtlsMode は現行の <mode> を引き継ぎます` を出す。
 PERMISSIVE になるのは `msp` リリースが無い・メッシュを宣言していない**初回だけ**である。STRICT から PERMISSIVE へ戻すのも
 `ISTIO_MTLS_MODE=PERMISSIVE` の明示でだけ行う。🔴 **現行の値を読めないとき（helm に届かない等）は、何も書き換える前に止まる** ——
@@ -100,7 +113,8 @@ bash scripts/istio-edge-down.sh --live   # 🔴 切り戻し（1 コマンド）
 
 入口を移した後の**再実行**（#1691 / IADR-0317 の 2026-09-28 追記）: 移行済みかは**クラスタの状態**（上の HelmChartConfig）で判定する。
 `ISTIO=1 LOCALEDGE=1` なら Traefik へ戻す段（`deploy/local/edge` の apply・`svc/traefik` の反映待ち・Traefik 向け CoreDNS・
-`argocd-ingress.yaml`）を飛ばし、`istio-edge-up.sh` の冪等な確認だけを行う。**`LOCALEDGE=1` だけ（`ISTIO` 無し）では起動の前に止まる** ——
+`argocd-ingress.yaml`）を飛ばし、`istio-edge-up.sh` の冪等な確認だけを行う。**`LOCALEDGE=1` だけ（`ISTIO` 未指定・`ISTIO=0`）では起動の前に止まる**
+（`ISTIO` 未指定の引き継ぎはここでは働かない。入口を Istio のまま使うか Traefik へ戻すかは明示で選ぶ） ——
 Istio のまま再実行するなら `ISTIO=1` を付け（STRICT で使っているなら `ISTIO_MTLS_MODE=STRICT` も。エラー文はこの形を示す）、Traefik へ戻すなら先に `bash scripts/istio-edge-down.sh --live` を実行する。
 
 ### 🔴 mTLS モードを書いてよいのは helm だけである（#1159）

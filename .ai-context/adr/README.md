@@ -565,3 +565,4 @@
 | [IADR-0485](./IADR-0485_paired-secrets-create-only-declarations.md) | 対になる秘密（認証基盤の client シークレット・データストアの資格情報）は SC-22 の対象外とし、realm の宣言と Vault の種は「無いときだけ作る」に改め、realm の宣言の secret は開発用の形に限る。回すのは相手と Vault を対で書く運用手順（#1682） | Accepted |
 | [IADR-0486](./IADR-0486_vault-audit-two-devices-stdout-and-collector-socket.md) | Vault の audit device は標準出力と collector への socket の 2 つを並べ、socket 側を Loki へ取り込む。値は HMAC のまま残し、秘密の書き込みは Loki の条件 1 本で抽出して、経路は BFF のロールで見分ける（#1683） | Accepted |
 | [IADR-0487](./IADR-0487_mesh-mtls-mode-inherit-on-rerun-fail-closed.md) | k8s-local-up.sh の ISTIO_MTLS_MODE を付けない再実行は helm の宣言から現行の mesh.mtlsMode を引き継ぎ、読めなければ副作用より前に止める（初回だけが PERMISSIVE。#1710） | Accepted |
+| [IADR-0488](./IADR-0488_istio-tristate-inherit-mesh-enabled-on-rerun.md) | k8s-local-up.sh の ISTIO を 3 値（1＝入れる・0＝外す・未指定＝現行を引き継ぐ）にし、未指定の再実行は helm の宣言から mesh.enabled（と mesh.mtlsMode）を引き継ぎ、読めなければ副作用より前に止める。#1691 の移行済みの入口の拒否は据え置く（#1713） | Accepted |
