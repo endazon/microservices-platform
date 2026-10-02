@@ -44,6 +44,8 @@
       "Bash(which:*)",
       "Bash(mkdir:*)",
       "Bash(node:*)",
+      "Bash(bash -n:*)",
+      "Bash(bash scripts/k8s-local-down.test.sh)",
       "Bash(npx markdownlint-cli2:*)",
       "Bash(dotnet build:*)",
       "Bash(dotnet test:*)",

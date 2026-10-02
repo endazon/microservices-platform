@@ -2,7 +2,7 @@
 title: IADR-0487 k8s-local-up.sh の ISTIO_MTLS_MODE を付けない再実行は helm の宣言から現行の mesh.mtlsMode を引き継ぎ、読めなければ止める
 type: impl-adr
 status: Accepted
-related_ids: [NFR-16, ADR-0005, ADR-0021, IADR-0377, IADR-0317, IADR-0307, IADR-0488]
+related_ids: [NFR-16, ADR-0005, ADR-0021, IADR-0377, IADR-0317, IADR-0307, IADR-0488, IADR-0491]
 author: claude
 created: 2026-10-01
 updated: 2026-10-02
@@ -107,6 +107,11 @@ IADR-0377 決定 3 の「未設定なら PERMISSIVE」は**初回の既定**と�
 `ISTIO` は 3 値（`1`／`0`／未指定＝現行を引き継ぐ）になり、未指定の再実行は本 ADR の読む口 `current_mesh_mtls_mode` を 1 回だけ呼んで
 `mesh.enabled` と `mesh.mtlsMode` の両方を引き継ぐ。決定 5「`ISTIO` 未設定の既定経路では読まない（既定のバイト等価）」は成り立たなくなり、
 バイト等価は `ISTIO=0` の側へ移った（`k8s-local-up.test.js` の #1713 節が固定する）。
+
+［2026-10-02 追記 / #1722］論点 2 のリリースの有無の確かめ方 `helm list -n <ns> -a -q --filter '^msp$'` は、helm v4 が list の `-a` / `--all` を
+廃したため旗の解析で 1 になり、常に「読めない」へ倒れていた（稼働 PC の v4.2.1・CI の v4.3.0。初回でも止まる）。
+状態の旗 6 つの和（`--deployed --failed --pending --superseded --uninstalling --uninstalled`）へ替えた。v3 の `-a` と同じ集合を
+v3 / v4 の両方で返すことを実測したので、上の「`helm list -a` が拾う状態」の補足は旗を替えたまま成り立つ。判断は [[IADR-0491]]。
 
 ## 関連
 
