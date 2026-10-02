@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0008]
-iadrs: [IADR-0066, IADR-0369, IADR-0457, IADR-0471]
-specs: [20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status]
+iadrs: [IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489]
+specs: [20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper]
 issues: [#1709, #1560, #1564, #1689, #1699, AST#346]
 -->
 
@@ -122,9 +122,21 @@ issues: [#1709, #1560, #1564, #1689, #1699, AST#346]
 
    CronJob のイメージは `k3d-local/platform-backup:pg<PG の版>-age<age の版>` で、`imagePullPolicy: IfNotPresent`
    （pull しない）。**age は実行時に取りに行かない** —— イメージに版とチェックサムを固定して入れてあり、日次の回は
-   インターネットへの到達に依存しない。イメージだけを作り直すなら
-   `nerdctl --namespace k8s.io build -t k3d-local/platform-backup:<タグ> deploy/local/platform-backup/image`
-   （タグは `scripts/k8s-local-images.sh` の `LOCAL_ONLY_IMAGES` の値）。
+   インターネットへの到達に依存しない。イメージだけを作り直すなら（タグは `scripts/k8s-local-images.sh` の `LOCAL_ONLY_IMAGES` の値）:
+
+   ```bash
+   # Rancher Desktop（containerd）: k3s が参照する名前空間 k8s.io へ直接ビルドする（取り込みは要らない）
+   nerdctl --namespace k8s.io build -t k3d-local/platform-backup:<タグ> deploy/local/platform-backup/image
+   # k3d: ビルドしてからクラスタへ取り込む
+   docker build -t k3d-local/platform-backup:<タグ> deploy/local/platform-backup/image
+   k3d image import k3d-local/platform-backup:<タグ> -c msp-ast-dev
+   ```
+
+   ベースは Docker Hub の公式イメージを**プルスルーミラー `mirror.gcr.io/library` から** digest で固定して取る。
+   `docker.io` は匿名の取得にも 401 の認証チャレンジを返し、その応答でビルダーが資格情報ヘルパー
+   （`~/.docker/config.json` の `credsStore` / `credHelpers`）を呼ぶ。ヘルパーが壊れている機械ではそこで落ちるため、
+   チャレンジを返さないミラーにしてある（digest が同じなので中身は同じ）。取得元は `--build-arg BASE_REGISTRY=<取得元>` で替えられるが、
+   `docker.io/library` へ戻すとヘルパーが動く機械でしか通らない。
 
 6. **初回を今すぐ走らせて確かめる**（翌日の 12:00 を待たない）:
 
@@ -140,10 +152,38 @@ issues: [#1709, #1560, #1564, #1689, #1699, AST#346]
 
 ## 2. 日々の確認
 
-> 🔴 **現状（2026-10-01）: 稼働 PoC では 2 本とも停止（`SUSPEND` が `True`）で、バックアップは 1 本も取れていない。**
-> age の受取人（利用者が作る）とバックアップのイメージ（ビルドが資格情報ヘルパーの失敗で通っていない）が揃っていない。
-> 「1. 準備」を済ませ、イメージを作り直し、起動スクリプトを再実行して有効化したうえで、「3. リストア試験」を 1 回行う。
-> 再開を確かめたら、この注記を消す。
+> 🔴 **現状（2026-10-02）: 稼働 PoC では 2 本とも停止（`SUSPEND` が `True`）で、バックアップは 1 本も取れていない。**
+> age の受取人（利用者が作る）とバックアップのイメージが揃っていない。イメージのビルドは資格情報ヘルパーの失敗で
+> 通っていなかったが、ベースの取得元をチャレンジを返さないミラーへ替え、ヘルパーを呼ばずに作れるようにした（§1 の 5）。
+> 再開は次の順で行い、再開を確かめたらこの注記を消す。
+>
+> 1. **受取人を作る（利用者）。** 運用者の端末で鍵の組を作り、公開鍵だけを受取人ファイルへ書く（§1 の 1〜2。秘密鍵はクラスタ・リポジトリに置かない）:
+>
+>    ```bash
+>    age-keygen -o <秘密鍵のファイル>        # 表示される Public key: age1... の 1 行だけを控える
+>    cp deploy/local/platform-backup/age-recipients.example.txt <受取人ファイル>
+>    # <受取人ファイル> の REPLACE_WITH_AGE_PUBLIC_KEY の行を、控えた age1... の行に置き換える（前後に空白を入れない）
+>    ```
+>
+>    保管先の目印も置く（§1 の 4）。
+> 2. **イメージを作り直す。** この手順を含むリビジョンへ作業ツリーを進めてから、§1 の 5 のコマンドで作る
+>    （3 の起動スクリプトの `[2/7]` でも作られる）。在ることを確かめる:
+>
+>    ```bash
+>    nerdctl --namespace k8s.io image inspect k3d-local/platform-backup:<タグ> >/dev/null && echo ok   # Rancher Desktop
+>    ```
+>
+>    ビルドが資格情報で落ちたら、ログの `load metadata` の行が `mirror.gcr.io/library/postgres` を指しているかを先に見る（「失敗したときの分岐」）。
+> 3. **起動スクリプトを再実行して有効化する。** 受取人の ConfigMap を作り直し、前提が揃っていれば CronJob の停止が外れる:
+>
+>    ```bash
+>    BACKUP_AGE_RECIPIENTS_FILE=<受取人ファイル> bash scripts/k8s-local-up.sh --live
+>    kubectl -n platform-infra get cronjob -l app=platform-backup      # SUSPEND が False
+>    ```
+>
+>    最後に `欠けている前提: …` の WARN が出たら、その前提を揃えて再実行する。
+> 4. **手動 Job を 1 回走らせ、リストア試験を行う。** §1 の 6 のコマンドで Job を走らせ、ログの末尾が `完了（保管先 2 か所）` であることを確かめてから、
+>    できた回で「3. リストア試験」を行う。
 
 0. CronJob が有効か（`SUSPEND` が `False`）:
 
@@ -233,10 +273,17 @@ issues: [#1709, #1560, #1564, #1689, #1699, AST#346]
 1. **ベースの digest を引く**（稼働クラスタへ pull しない。レジストリの API を読むだけ）。`postgres:<PG の版>-alpine<Alpine の版>`
    の image index の digest を、匿名トークンで `registry-1.docker.io/v2/library/postgres/manifests/<タグ>` へ HEAD を撃ち、
    応答ヘッダ `docker-content-digest` から取る。PG のメジャー版は本体（`deploy/local/infra/postgres.yaml`）と揃える。
+   続けて、ビルドが取りに行くミラーがその digest を**トークン無しで 200 で返す**ことを確かめる（401 なら資格情報ヘルパーが呼ばれる）:
+
+   ```bash
+   curl -sS -o /dev/null -w '%{http_code}\n' \
+     -H 'Accept: application/vnd.oci.image.index.v1+json' \
+     https://mirror.gcr.io/v2/library/postgres/manifests/<digest>          # 200 であること
+   ```
 2. **age の版と sha256 を引く。** そのベースの Alpine のブランチ（例 `v3.24`）の
    `dl-cdn.alpinelinux.org/alpine/<ブランチ>/community/<x86_64|aarch64>/APKINDEX.tar.gz` の `P:age` の `V:` が版。
    同じ場所の `age-<版>.apk` を取り、`sha256sum` で両アーキテクチャのチェックサムを取る。
-3. **4 か所を同じ値へ上げる。** Dockerfile の `FROM`（タグと digest）と `ARG AGE_VERSION` / `AGE_APK_SHA256_*` / `ALPINE_BRANCH`（ベースの Alpine を上げたとき）、
+3. **4 か所を同じ値へ上げる。** Dockerfile の `FROM`（タグと digest。取得元の `BASE_REGISTRY` は替えない）と `ARG AGE_VERSION` / `AGE_APK_SHA256_*` / `ALPINE_BRANCH`（ベースの Alpine を上げたとき）、
    `scripts/k8s-local-images.sh` の `LOCAL_ONLY_IMAGES` のタグ（`platform-backup:pg<PG の版>-age<age の版>`）、
    2 つの CronJob の `image`。`node scripts/platform-backup.test.js` が食い違いを落とす。
 4. PR の CI で `build-local (platform-backup)` が緑になることを確かめる（ビルドし、ネットワーク無しで
@@ -257,7 +304,7 @@ issues: [#1709, #1560, #1564, #1689, #1699, AST#346]
 | `age の受取人ファイルがありません` | ConfigMap `platform-backup-age-recipients` が無い | §1 の 2〜3 |
 | `… 行目が age の公開鍵（age1...）ではありません` / `公開鍵が 1 つもありません` | 占位のまま・写し間違い | 受取人ファイルを直して §1 の 3 |
 | `受取人ファイル … 行目の前後に空白があります` | 公開鍵の行の前後や `#` 行の頭に空白がある | 空白を消して §1 の 3 |
-| Pod が `ErrImageNeverPull` / `ErrImagePull` / `ImagePullBackOff`（イメージ `k3d-local/platform-backup:…`） | イメージを作っていない・タグを上げたのに作り直していない・起動スクリプトのビルドが失敗した（`WARN: k3d-local/platform-backup:… のビルドに失敗しました` が出る。起動は止めない） | WARN の「原因:」の行で分かれる。**版の解決に失敗** → §6。**資格情報ヘルパーの失敗か、レジストリ・ミラーへの認証・到達の失敗**（ログに `error getting credentials` 等）→ 版を上げても直らない。Docker Hub へログインし直す・資格情報ヘルパー（`~/.docker/config.json` の `credsStore` / `credHelpers`）を確かめてランタイムを再起動する・プロキシと DNS を確かめる、のあと §1 の 5 で作り直す。**判別できません** → 起動スクリプトの出力にあるビルドのログを読んで原因を確かめる（sha256 の不一致は版を上げて上書きしない）。WARN が出ていなければ §1 の 5 の手順でイメージを作り、手動の Job を走らせ直す（レジストリからは取れない） |
+| Pod が `ErrImageNeverPull` / `ErrImagePull` / `ImagePullBackOff`（イメージ `k3d-local/platform-backup:…`） | イメージを作っていない・タグを上げたのに作り直していない・起動スクリプトのビルドが失敗した（`WARN: k3d-local/platform-backup:… のビルドに失敗しました` が出る。起動は止めない） | WARN の「原因:」の行で分かれる。**版の解決に失敗** → §6。**資格情報ヘルパーの失敗か、レジストリ・ミラーへの認証・到達の失敗**（ログに `error getting credentials` 等）→ 版を上げても直らない。まずビルドのログの `load metadata` の行が `mirror.gcr.io/library/postgres` を指しているかを見る（`docker.io` 等を指していれば Dockerfile の `BASE_REGISTRY` の既定が替わっている。匿名の取得に 401 を返すレジストリは資格情報ヘルパーを呼ぶので既定へ戻す）。次に資格情報ヘルパー（`~/.docker/config.json` の `credsStore` / `credHelpers`）を確かめてランタイムを再起動する・プロキシと DNS で `mirror.gcr.io` と `dl-cdn.alpinelinux.org` へ届くか確かめる、のあと §1 の 5 で作り直す。**判別できません** → 起動スクリプトの出力にあるビルドのログを読んで原因を確かめる（sha256 の不一致は版を上げて上書きしない）。WARN が出ていなければ §1 の 5 の手順でイメージを作り、手動の Job を走らせ直す（レジストリからは取れない） |
 | `age がありません（イメージが k3d-local/platform-backup ではない可能性があります…）` | CronJob が age を持たない別のイメージを指している（古いマニフェストの当て直し等） | `kubectl -n platform-infra get cronjob platform-backup-postgres -o jsonpath='{..image}'` で確かめ、§1 の 5 で当て直す |
 | `保管先に目印 .platform-backup-target がありません` | ドライブが外れている・目印を置いていない | ドライブを確かめて §1 の 4。**もう片方には書けている** |
 | `DB の一覧を取れません` | Postgres が落ちている・Secret `postgres` のパスワードと DB が食い違う | `kubectl -n platform-infra get pods`、Secret の供給（起動スクリプト・ESO）を確かめる |

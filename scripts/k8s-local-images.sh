@@ -153,10 +153,14 @@ warn_local_only_failed() {
       registry)
         echo "WARN:   原因: 資格情報ヘルパーの失敗（error getting credentials 等）か、レジストリ・ミラーへの認証・到達の失敗です。" >&2
         echo "WARN:   age の版の問題ではありません（版を上げても直りません）。次を確かめてください:" >&2
-        echo "WARN:     1. Docker Hub へログインし直す（docker login。Rancher Desktop なら nerdctl login）。" >&2
+        # NFR-21, IADR-0489 (#1709): ベースは mirror.gcr.io から取る（匿名の取得にチャレンジを返さず、ヘルパーを呼ばない）。
+        #   それでも資格情報の失敗が出るなら、取得元が docker.io 等のチャレンジを返すレジストリへ戻っている。
+        echo "WARN:     1. ビルドのログの load metadata の行が mirror.gcr.io/library/postgres を指しているか確かめる。" >&2
+        echo "WARN:        docker.io 等を指していれば、Dockerfile の BASE_REGISTRY の既定（mirror.gcr.io/library）が替わっています" >&2
+        echo "WARN:        （匿名の取得に 401 を返すレジストリは資格情報ヘルパーを呼びます）。既定へ戻してください。" >&2
         echo "WARN:     2. 資格情報ヘルパー（~/.docker/config.json の credsStore / credHelpers）が動くか確かめ、" >&2
         echo "WARN:        コンテナランタイム（Rancher Desktop / Docker Desktop）を再起動する。" >&2
-        echo "WARN:     3. ネットワーク（プロキシ・DNS）で Docker Hub と dl-cdn.alpinelinux.org へ届くか確かめる。" >&2
+        echo "WARN:     3. ネットワーク（プロキシ・DNS）で mirror.gcr.io と dl-cdn.alpinelinux.org へ届くか確かめる。" >&2
         echo "WARN:   直したら docs/operations/platform-infra-backup-runbook.md の §1 の 5 の手順でイメージを作り直してください。" >&2
         ;;
       version)

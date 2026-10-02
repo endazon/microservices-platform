@@ -4125,12 +4125,15 @@ const BACKUP_BUILD_FAILS_CREDS = runUp({
   ].join('\n'),
 });
 
-ok('🔴 #1689: 資格情報ヘルパーの失敗（error getting credentials）は、ログイン・ヘルパー・再起動を案内し、版上げへ導かない', () => {
+ok('🔴 #1689 / #1709: 資格情報ヘルパーの失敗（error getting credentials）は、ベースの取得元・ヘルパー・再起動を案内し、版上げへ導かない', () => {
   assertBackupWarnCommon(BACKUP_BUILD_FAILS_CREDS);
   const err = BACKUP_BUILD_FAILS_CREDS.stderr;
   assert.match(err, HINT_CREDS, '資格情報ヘルパーの失敗として案内していない');
   assert.match(err, /age の版の問題ではありません/, '版の問題ではないことを告げていない');
-  assert.match(err, /docker login/, 'Docker Hub へのログインの手順が無い');
+  // #1709: ベースの取得元は mirror.gcr.io（チャレンジ無し）。Docker Hub へのログインは直し方にならないので案内しない。
+  assert.match(err, /load metadata の行が mirror\.gcr\.io\/library\/postgres を指しているか/, 'ベースの取得元の確かめ方が無い');
+  assert.match(err, /BASE_REGISTRY の既定（mirror\.gcr\.io\/library）/, 'ベースの取得元を既定へ戻す手順が無い');
+  assert.doesNotMatch(err, /docker login|Docker Hub へログイン/, '直し方にならない Docker Hub へのログインを案内した');
   assert.match(err, /credsStore \/ credHelpers/, '資格情報ヘルパーの設定の確かめ方が無い');
   assert.match(err, /再起動/, 'ランタイムの再起動の手順が無い');
   assert.match(err, /§1 の 5 の手順でイメージを作り直して/, '直したあとの作り直しの手順が無い');

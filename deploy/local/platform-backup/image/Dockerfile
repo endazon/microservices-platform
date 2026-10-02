@@ -10,9 +10,17 @@
 #   **止まるのが正しい**（黙って別の版を入れない）。上げ方は docs/operations/platform-infra-backup-runbook.md。
 # - 版を上げたら scripts/k8s-local-images.sh の LOCAL_ONLY_IMAGES のタグと 2 つの CronJob のイメージを同じ値へ上げる
 #   （scripts/platform-backup.test.js が 3 か所の一致を見る）。
+# - NFR-21, IADR-0489 (#1709): ベースは docker.io を直に引かず、Docker Hub のプルスルーミラー mirror.gcr.io/library から取る
+#   （frontend の IADR-0081 と同じ）。docker.io は匿名の取得にも 401 の Bearer チャレンジを返し、その応答でビルダーが
+#   資格情報ヘルパー（~/.docker/config.json の credsStore / credHelpers）を呼ぶ。稼働 PoC ではそのヘルパーが
+#   `error getting credentials - err: exit status 22` で落ち、ビルドが毎回ここで止まった（#1689・#1709）。mirror.gcr.io は
+#   チャレンジを返さない（200）ため、ヘルパーは呼ばれない（壊れたヘルパーの下でのビルドで、呼び出し 0 回を実測）。
+#   **digest で固定しているので、取得元を替えても中身は替わらない**（ミラーが別の中身を返せば digest の照合でビルドが止まる）。BASE_REGISTRY は逃げ道として残す
+#   （`--build-arg BASE_REGISTRY=docker.io/library` で従来の取得元へ戻せる。docker.io はヘルパーが動く環境でのみ通る）。
 #
 # 🔴 deploy/local 専用（ローカル開発・PoC 環境）。本番のバックアップ設計ではない。
-FROM docker.io/library/postgres:16.15-alpine3.24@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+ARG BASE_REGISTRY=mirror.gcr.io/library
+FROM ${BASE_REGISTRY}/postgres:16.15-alpine3.24@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
 
 ARG AGE_VERSION=1.3.1-r6
 ARG AGE_APK_SHA256_X86_64=9e360d891d504924cc0996aa3fa7eabb7d93fc5d80c813139a4d2b3f7ad88b5b
