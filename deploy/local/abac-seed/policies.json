@@ -40,7 +40,18 @@
     "🔴 **dev seed と本番の両方で必須である** —— 評価器は組み込みの所有者の分岐を持たないので、",
     "無いと所有者が自分の個人資料すら読めない。本番への投入は配備の手順に含める（docs/operations/operations.md",
     "§所有者の読み取りのポリシーの投入）。消すと所有者が自分の文書を読めなくなる。",
-    "userConditions は共有先の分岐と同じ理由で {} と明示する。投入済みかは名前ではなく形（action・条件）で確かめる。"
+    "userConditions は共有先の分岐と同じ理由で {} と明示する。投入済みかは名前ではなく形（action・条件）で確かめる。",
+    "",
+    "AST の KB の読み手の read（AST/FR-08・AST/FR-04 / IADR-0492 / #1696 の裁定〔案 B〕・AST#1078）:",
+    "ai-stock-trading の取引判断が RAG で KB を読むためのポリシー 1 本。利用者の条件は projects ∋ ai-stock-trading",
+    "（参加プロジェクト。集合値キーなので交差で判定する。ADR-0080 決定 2）、文書の条件は project ∈ {ai-stock-trading} だけ。",
+    "これを持つ主体は realm の読み手のサービスアカウント（service-account-ai-stock-trading-kb-reader）だけである。",
+    "🔴 clearance で絞らない・clearance を与えない —— 与えると基盤全体の internal が読める（裁定が退けた案 A）。",
+    "🔴 read だけである。write / analyze を足さない（読み手は書けない。書き手は ai-stock-trading-kb-writer）。",
+    "🔴 ADR-0085 決定 2 の「project を判定軸へ加えない」の例外であり、射程はこの読み手の 1 本に限る。",
+    "利用者の条件が projects に限られるので、projects を持たない利用者の範囲は 1 つも変わらない",
+    "（project を持たない文書が全滅する、という同決定の懸念は、このポリシーにだけマッチする主体にしか及ばない）。",
+    "本番でも同じポリシーの投入が読み手の統制の実現手段である（docs/operations/operations.md §AST の KB の読み手のポリシーの投入）。"
   ],
   "policies": [
     {
@@ -84,6 +95,12 @@
       "action": "read",
       "userConditions": {},
       "documentConditions": { "owner": ["${current_user}"] }
+    },
+    {
+      "name": "dev: AST の KB の読み手は AST の文書を読める",
+      "action": "read",
+      "userConditions": { "projects": ["ai-stock-trading"] },
+      "documentConditions": { "project": ["ai-stock-trading"] }
     },
     {
       "name": "dev: 所有者は自分の文書を書ける",

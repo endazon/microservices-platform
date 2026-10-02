@@ -110,6 +110,10 @@ const ONE_SIDED_CLIENTS = new Map([
     'ai-stock-trading-llm-caller',
     'LlmGateway 呼び出しの cross-unit s2s。基盤レルム専用である（AST#724 / MSP#1364）。',
   ],
+  [
+    'ai-stock-trading-kb-reader',
+    'KB 読み取り（RetrievalService の /search）の cross-unit s2s。書き手と同じく基盤レルム専用である（AST#1078 / #1696・IADR-0492）。',
+  ],
 ]);
 
 // 片側のレルムにしか無くてよい realm ロール（name → 理由）。**現在 0 件**（実測: `trading-owner` /

@@ -93,7 +93,7 @@ public class SecretItemBootstrapSeedTests
         body.Should().Contain("$2=-");
     }
 
-    // SC-22, IADR-0456 決定 6: app-secrets の seed のキー集合は契約（items[] の書ける 12 ＋ notWritable 8）と一致し、
+    // SC-22, IADR-0456 決定 6: app-secrets の seed のキー集合は契約（items[] の書ける 12 ＋ notWritable 10）と一致し、
     // 書けるキーは空文字、*-auth-client-* は realm の機密クライアントと同値である。
     [Fact]
     public void App_secrets_seed_matches_the_contract_keys_and_realm_defaults()
@@ -109,7 +109,8 @@ public class SecretItemBootstrapSeedTests
         var notWritable = item.GetProperty("notWritable").EnumerateArray().Select(e => e.GetString()!).ToList();
 
         writable.Should().HaveCount(12);
-        notWritable.Should().HaveCount(8);
+        // ［2026-10-02 / #1696・IADR-0492］8 → 10: KB の読み手（kb-reader-auth-client-*）を足した。
+        notWritable.Should().HaveCount(10);
         seeded.Keys.Order(StringComparer.Ordinal).Should().Equal(writable.Concat(notWritable).Order(StringComparer.Ordinal));
         foreach (var key in writable)
             seeded[key].Should().BeEmpty($"{key} は画面から入れる値であり、seed は空文字であること");
@@ -118,7 +119,7 @@ public class SecretItemBootstrapSeedTests
         var clients = realm.RootElement.GetProperty("clients").EnumerateArray()
             .Where(c => c.TryGetProperty("secret", out _))
             .ToDictionary(c => c.GetProperty("clientId").GetString()!, c => c.GetProperty("secret").GetString()!);
-        foreach (var prefix in new[] { "service", "kb", "llm", "discord-owner" })
+        foreach (var prefix in new[] { "service", "kb", "kb-reader", "llm", "discord-owner" })
         {
             var clientId = seeded[$"{prefix}-auth-client-id"];
             clients.Should().ContainKey(clientId, $"{prefix} の client id は realm の機密クライアントであること");
@@ -127,7 +128,7 @@ public class SecretItemBootstrapSeedTests
     }
 
     // SC-22, IADR-0456 決定 6 (#1477 / PR #1478 監査 D4): app-secrets が既に在る（画面が先に 1 プロパティだけ書いて作った）ときも、
-    // *-auth-client-* 8 件は**無いものだけ**、seed と同じ realm の値で足す。在る値は触らない（取得に成功したら patch しない）。
+    // *-auth-client-* 10 件は**無いものだけ**、seed と同じ realm の値で足す。在る値は触らない（取得に成功したら patch しない）。
     [Fact]
     public void App_secrets_present_branch_fills_only_missing_auth_client_keys()
     {

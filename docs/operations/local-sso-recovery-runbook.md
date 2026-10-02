@@ -3,15 +3,15 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-09-26
+updated: 2026-10-02
 author: claude
 ---
 <!-- trace:
 ids: [NFR-09]
 adrs: [ADR-0106]
-iadrs: [IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
+iadrs: [IADR-0492, IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
 specs: [20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
-issues: [#1499, #328, #388, #841, #1088, #1127, #1163, AST#245]
+issues: [#1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AST#1078]
 -->
 
 # 経路B SSO 復旧 Runbook
@@ -66,6 +66,7 @@ kubectl get clustersecretstore -o custom-columns='N:.metadata.name,R:.status.con
 ```sh
 read -rs FINNHUB; export FINNHUB_API_KEY="$FINNHUB"; export MARKETDATA_FINNHUB_API_KEY="$FINNHUB"; unset FINNHUB
 export KB_AUTH_CLIENTSECRET="ai-stock-trading-kb-writer-dev-secret-change-me"
+export KB_READER_AUTH_CLIENTSECRET="ai-stock-trading-kb-reader-dev-secret-change-me"
 read -rs DISCORD_BOT_TOKEN; export DISCORD_BOT_TOKEN
 export DISCORD_BOT_KILLSWITCH_PHRASE="CONFIRM-KILL"
 bash src/ai-stock-trading/scripts/k8s-local-deploy.sh
@@ -76,9 +77,9 @@ bash src/ai-stock-trading/scripts/k8s-local-deploy.sh
 ```sh
 kubectl -n ai-stock-trading set env deploy/trade-decision-service --list \
   | grep -E "MarketData__Provider|MaxQuoteStaleness|LlmGateway__BaseUrl"     # finnhub / 300 / llmgateway-service...
-for k in finnhub-api-key marketdata-finnhub-api-key kb-auth-client-secret; do
+for k in finnhub-api-key marketdata-finnhub-api-key kb-auth-client-secret kb-reader-auth-client-secret; do
   printf "%s len=%s\n" "$k" "$(kubectl -n ai-stock-trading get secret ast-secrets -o jsonpath="{.data.$k}" | base64 -d | wc -c)"
-done                                                                          # すべて 0 でないこと
+done                                                                          # すべて 0 でないこと（読み手の秘密が 0 だと取引判断の KB 検索は 0 件になる）
 ```
 
 > Discord の環境固有 ID（GuildId/ChannelId/AllowedUserIds/UserMapping）を `kubectl set env` で入れると、

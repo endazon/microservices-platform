@@ -27,7 +27,7 @@
 | ファイル | 役割 |
 | --- | --- |
 | `attributes.json` | 属性辞書（`document` / `user` スコープ）。値集合は計画 project-planning の `projects/microservices-platform/06_technical/07_abac-attribute-model.md` に合わせる。**`department` の許可値は空で投入する**——AuthorizationService が realm の部門グループ（`/department/<code>`）から導く（計画 ADR-0116 決定 3・#1609。手で足した値は 400 で拒まれる） |
-| `policies.json` | ABAC ポリシー。`clearance` が高いほど読める `confidentiality` が広がる階段と、裁量の分岐（所有者・共有先）の read、所有者の write |
+| `policies.json` | ABAC ポリシー。`clearance` が高いほど読める `confidentiality` が広がる階段と、裁量の分岐（所有者・共有先）の read、所有者の write、AST の KB の読み手の read（下） |
 
 `required` は**すべて `false`** にしてある。`/authz/attributes/validate` を呼ぶ取り込み経路は現時点で
 存在しないが、将来 `required: true` を入れると属性を 1 つしか付けない既存の取り込みを落としうるため、
@@ -58,6 +58,13 @@ node scripts/seed-abac-policies.js --dry-run # 何が入るかだけ見る（副
 所有者が共有していない自分の個人資料すら読めない。本番への投入は配備の手順
 （[`docs/operations/operations.md`](../../../docs/operations/operations.md) §所有者の読み取りのポリシーの投入）で
 システム管理者が行う。共有先の read（`dev: 共有された個人資料を読める`）も、本番ではその投入が共有の統制の実現手段である。
+
+🔴 **AST の KB の読み手の read（`dev: AST の KB の読み手は AST の文書を読める`）も本番で要る**
+（[IADR-0492](../../../.ai-context/adr/IADR-0492_ast-kb-reader-project-scoped-read-policy.md) / #1696 の裁定 案B / AST#1078）。
+利用者の条件は `projects ∋ ai-stock-trading`、文書の条件は `project ∈ {ai-stock-trading}` だけ。これを持つ主体は realm が宣言する
+読み手のサービスアカウント（`service-account-ai-stock-trading-kb-reader`。ロールなし・属性は `projects` だけ）だけである。
+`clearance` を与えないので、読み手には階段のどの段もマッチしない（基盤全体の `internal` は読めない）。
+本番への投入は [`docs/operations/operations.md`](../../../docs/operations/operations.md) §AST の KB の読み手のポリシーの投入。
 
 ## 切り戻し
 

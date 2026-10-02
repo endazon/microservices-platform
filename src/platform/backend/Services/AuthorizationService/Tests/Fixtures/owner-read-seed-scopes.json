@@ -14,7 +14,10 @@
     "所属グループはどちらも持たない（${current_groups} は何にも展開されない）。",
     "service-account-ai-stock-trading-kb-writer（#1615）: AST の KB の書き手のサービスアカウントそのもの（属性なし・所属なし）。",
     "内容の ABAC の下で、自分が owner の写しを見つけられることの入力（ADR-0119 決定 3・フォローアップ 2）。",
-    "実 Keycloak 24 は username と exact=true の照会でサービスアカウントの利用者も返すので、認可サービスはこの名前を引ける。"
+    "実 Keycloak 24 は username と exact=true の照会でサービスアカウントの利用者も返すので、認可サービスはこの名前を引ける。",
+    "service-account-ai-stock-trading-kb-reader（#1696・IADR-0492・AST#1078）: AST の KB の読み手のサービスアカウント。",
+    "属性は realm が宣言する projects=ai-stock-trading だけ（AstKbReaderPolicySeedTests が realm の宣言と突き合わせる）。",
+    "AST の文書（project=ai-stock-trading）の分岐と、自分の名前に束縛された所有者・共有先の分岐だけにマッチする。clearance の階段には 1 段もマッチしない。"
   ],
   "subjects": [
     {
@@ -65,6 +68,24 @@
         "branches": [
           { "name": "dev: 共有された個人資料を読める", "filters": [{ "key": "shared_with", "allowedValues": ["service-account-ai-stock-trading-kb-writer"] }] },
           { "name": "dev: 所有者は自分の文書を読める", "filters": [{ "key": "owner", "allowedValues": ["service-account-ai-stock-trading-kb-writer"] }] }
+        ]
+      }
+    },
+    {
+      "userId": "service-account-ai-stock-trading-kb-reader",
+      "attributes": { "projects": "ai-stock-trading" },
+      "scope": {
+        "userId": "service-account-ai-stock-trading-kb-reader",
+        "allowedFilters": [
+          { "key": "shared_with", "allowedValues": ["${current_user}", "${current_groups}"] },
+          { "key": "project", "allowedValues": ["ai-stock-trading"] },
+          { "key": "owner", "allowedValues": ["${current_user}"] }
+        ],
+        "granted": true,
+        "branches": [
+          { "name": "dev: 共有された個人資料を読める", "filters": [{ "key": "shared_with", "allowedValues": ["service-account-ai-stock-trading-kb-reader"] }] },
+          { "name": "dev: AST の KB の読み手は AST の文書を読める", "filters": [{ "key": "project", "allowedValues": ["ai-stock-trading"] }] },
+          { "name": "dev: 所有者は自分の文書を読める", "filters": [{ "key": "owner", "allowedValues": ["service-account-ai-stock-trading-kb-reader"] }] }
         ]
       }
     }

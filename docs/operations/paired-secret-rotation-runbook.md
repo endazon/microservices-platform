@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-28
-updated: 2026-09-28
+updated: 2026-10-02
 ---
 <!-- trace:
 ids: [SC-22, NFR-18]
 adrs: [ADR-0124, ADR-0095, ADR-0005, ADR-0023]
-iadrs: [IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133]
+iadrs: [IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133]
 specs: [20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook]
-issues: [#1682, #458, #1411, planning#700]
+issues: [#1696, #1682, #458, #1411, planning#700, AST#1078]
 -->
 
 # 運用 Runbook: 対になる秘密のローテーション
@@ -36,7 +36,7 @@ issues: [#1682, #458, #1411, planning#700]
 
 | 群 | 何か | 件数 | 本書の節 |
 | --- | --- | ---: | --- |
-| 群 1 | 認証基盤のクライアントシークレット —— OIDC クライアント 8（境界層・利用者管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視）とサービス間 9（`deferred[]`）、取引ユニットの `*-auth-client-*` の 4 組（`ai-stock-trading/app-secrets` の `notWritable`） | 17 ＋ 4 | [手順 1](#手順-1-群-1認証基盤のクライアントシークレット) |
+| 群 1 | 認証基盤のクライアントシークレット —— OIDC クライアント 8（境界層・利用者管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視）とサービス間 9（`deferred[]`）、取引ユニットの `*-auth-client-*` の 5 組（`ai-stock-trading/app-secrets` の `notWritable`） | 17 ＋ 5 | [手順 1](#手順-1-群-1認証基盤のクライアントシークレット) |
 | 群 2 | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db`（`excluded[]`） | 7 | [手順 2](#手順-2-群-2データストアの資格情報) |
 
 > **同じ性質だが保管先に無いもの**: 認証基盤の `abac-seeder`（開発用の投入器だけが使う）と `argocd`（`argocd-secret` を起動器が直接書く）。
@@ -145,7 +145,7 @@ kubectl get deploy -A -o json | jq -r --arg s "<secret>" '.items[]
 | `grafana` / `headlamp` | `msp/<client>-oidc` の `client-secret` | `platform-infra/<client>-oidc` | 0-e で引く（`OBSERVABILITY=1` / `HEADLAMP=1` のときだけ在る） |
 | `vault` | `msp/vault-oidc` の `client-secret` | `platform-infra/vault-oidc` | **Pod ではなく** `deploy/local/vault/oidc/bootstrap.sh` が Vault の OIDC 認証設定へ書く。同期の後に同スクリプトを再実行する |
 | `wiki-js` | `msp/wikijs-oidc` の `client-secret` | `microservices-platform/wikijs-oidc` | **Pod ではなく** `deploy/local/wikijs-setup/bootstrap.sh` が Wiki.js の DB へ書く。同期の後に同スクリプトを再実行する |
-| `ai-stock-trading-svc` / `-kb-writer` / `-llm-caller` / `-owner` | `ai-stock-trading/app-secrets` の `service-` / `kb-` / `llm-` / `discord-owner-auth-client-secret` | `ai-stock-trading/ast-secrets` | 0-e で引く（取引ユニットの消費側） |
+| `ai-stock-trading-svc` / `-kb-writer` / `-kb-reader` / `-llm-caller` / `-owner` | `ai-stock-trading/app-secrets` の `service-` / `kb-` / `kb-reader-` / `llm-` / `discord-owner-auth-client-secret` | `ai-stock-trading/ast-secrets` | 0-e で引く（取引ユニットの消費側） |
 
 ### 1-1. 管理者のトークンを取る
 

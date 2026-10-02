@@ -771,6 +771,66 @@ module.exports = ({ ok, assert }) => {
       assert.deepStrictEqual(owner.documentConditions, { owner: ['${current_user}'] });
     });
 
+    // NFR-09, AST/FR-08, 計画 ADR-0085 決定 2（例外）, IADR-0492 / #1696（裁定 案 B）・AST#1078:
+    // **AST の KB の読み手の read はポリシー 1 本で、project=ai-stock-trading の文書だけを許す。**
+    // 🔴 clearance で絞らない・与えない（案 A を退けた）。read だけで write / analyze を持たない（読み手は書けない）。
+    //    projects / project を条件に持つポリシーをこれ以外に作らない（ADR-0085 決定 2 の例外は 1 本に限る）。
+    ok('seed: AST の KB の読み手の read ポリシーが 1 本あり、形が裁定（案 B）のとおり', () => {
+      const file = pathSeed.resolve(__dirname, '..', 'deploy', 'local', 'abac-seed', 'policies.json');
+      const policies = JSON.parse(fsSeed.readFileSync(file, 'utf8')).policies;
+      const withProject = policies.filter(
+        (p) => 'projects' in (p.userConditions || {}) || 'project' in (p.documentConditions || {})
+      );
+      assert.strictEqual(withProject.length, 1, `projects / project を条件に持つポリシーが ${withProject.length} 本（1 本であること）`);
+      const [reader] = withProject;
+      assert.strictEqual(reader.action, 'read', '読み手のポリシーは read だけ（読み手は書けない）');
+      assert.deepStrictEqual(reader.userConditions, { projects: ['ai-stock-trading'] }, '利用者の条件は projects ∋ ai-stock-trading だけ（clearance を足さない）');
+      assert.deepStrictEqual(reader.documentConditions, { project: ['ai-stock-trading'] }, '文書の条件は project ∈ {ai-stock-trading} だけ');
+    });
+
+    // 同上（IADR-0492 決定 1・#1696 独立監査）: **dev の属性辞書に `projects` を入れない。** 入れると SC-17 の割当
+    //   （UserAssignmentValidation）が人へ projects=ai-stock-trading を付けられるようになり、AST の文書の読み取りが
+    //   読み手のサービスアカウント以外へ広がる。🔴 本番の属性辞書は SC-09（管理者設定）から編集するので、この試験が
+    //   守るのは dev の seed（deploy/local/abac-seed/attributes.json）だけである。
+    ok('seed: dev の属性辞書に projects のキーが無い（SC-17 から人へ AST の文書の読み取りを配らせない）', () => {
+      const file = pathSeed.resolve(__dirname, '..', 'deploy', 'local', 'abac-seed', 'attributes.json');
+      const attrs = JSON.parse(fsSeed.readFileSync(file, 'utf8')).attributes;
+      assert.ok(Array.isArray(attrs) && attrs.length > 0, '属性辞書が空（走査が壊れている）');
+      const found = attrs.filter((a) => String(a.key || '').toLowerCase() === 'projects');
+      assert.deepStrictEqual(found.map((a) => `${a.scope}:${a.key}`), [], '属性辞書に projects がある（IADR-0492 決定 1 に反する）');
+    });
+
+    // 同上: **読み手は書き手と別の機密クライアントで、ロールを持たず、profile で preferred_username を載せる。**
+    //   - 書き手（ai-stock-trading-kb-writer）は platform-operator で POST /documents を通る。読み手はロールを持たないので 403 になる。
+    //   - profile が無いと preferred_username が載らず、検索サービスは userId を引けない（#1696 の原因 1）。
+    //   - 属性は projects=ai-stock-trading だけ。clearance を持つと階段（基盤全体の internal）にマッチする。
+    //   - projects=ai-stock-trading を持つ利用者は読み手だけ（他の主体へ AST の文書の読み取りを広げない）。
+    ok('realm: AST の KB の読み手は別の機密クライアント・ロールなし・profile あり・属性は projects だけ', () => {
+      const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
+      const client = (realm.clients || []).find((c) => c.clientId === 'ai-stock-trading-kb-reader');
+      assert.ok(client, 'realm に ai-stock-trading-kb-reader が無い');
+      assert.strictEqual(client.publicClient, false, '機密クライアントであること');
+      assert.strictEqual(client.serviceAccountsEnabled, true, 'client_credentials で名乗ること');
+      assert.strictEqual(client.standardFlowEnabled, false, '人のログインの口を開けない');
+      assert.strictEqual(client.directAccessGrantsEnabled, false, '直接付与を開けない');
+      assert.ok((client.defaultClientScopes || []).includes('profile'), 'profile が既定スコープに無い（preferred_username が載らない）');
+      const sa = (realm.users || []).filter((u) => u.serviceAccountClientId === 'ai-stock-trading-kb-reader');
+      assert.strictEqual(sa.length, 1, `読み手のサービスアカウントが ${sa.length} 件`);
+      assert.strictEqual(sa[0].username, 'service-account-ai-stock-trading-kb-reader');
+      assert.deepStrictEqual(sa[0].realmRoles || [], [], '読み手に realm ロールを与えない（書けない・東西端点へ届かない）');
+      assert.deepStrictEqual(sa[0].clientRoles || {}, {}, '読み手に client ロールを与えない');
+      assert.deepStrictEqual(sa[0].attributes, { projects: ['ai-stock-trading'] }, '属性は projects=ai-stock-trading だけ（clearance を与えない）');
+      const holders = (realm.users || []).filter((u) =>
+        Object.entries(u.attributes || {}).some(([k, v]) => k.toLowerCase() === 'projects'
+          && (v || []).some((x) => String(x).split(/[,\s]+/).includes('ai-stock-trading'))));
+      assert.deepStrictEqual(holders.map((u) => u.username), ['service-account-ai-stock-trading-kb-reader'],
+        'projects=ai-stock-trading を持つのは読み手だけであること');
+      const writer = (realm.users || []).find((u) => u.serviceAccountClientId === 'ai-stock-trading-kb-writer');
+      assert.ok(writer, '前提: 書き手のサービスアカウントが在る');
+      assert.ok(!client.secret || client.secret !== (realm.clients.find((c) => c.clientId === 'ai-stock-trading-kb-writer') || {}).secret,
+        '読み手と書き手が同じ資格情報を持たない');
+    });
+
     // #1664: 所有者の分岐は `${current_user}` を利用者名へ束縛する。**予約値と同名の利用者が IdP に居ると、
     // その利用者が予約値の文書を読める**（`system` = 取り込みで所有者を解決できなかった印・AST の古い写し、
     // `anonymous` = 未認証の要求で BFF が送る身元）。dev realm に居ないことを固定する（本番は手順書で禁じる）。
