@@ -190,10 +190,13 @@ const NO_CHALLENGE_BASE_REGISTRIES = ['mirror.gcr.io/library'];
 
 /** Dockerfile・k8s-local-images.sh・images.yml・backup.sh・2 つの CronJob から、イメージの約束に要る事実を抜き出す。 */
 function imageFacts({ dockerfile, imagesSh, imagesYml, backupSh, cronJobs }) {
-  const arg = (name) => (new RegExp(`^ARG\\s+${name}=(\\S+)`, 'm').exec(dockerfile) || [])[1];
+  const argIn = (text, name) => (new RegExp(`^ARG\\s+${name}=(\\S+)`, 'm').exec(text) || [])[1];
+  const arg = (name) => argIn(dockerfile, name);
   // #1709: FROM の ${名前} / $名前 は ARG の既定で解く（解けない名前はそのまま残し、下の検査で落とす）。
+  // FROM で使える ARG は最初の FROM より前のものだけ（後ろの ARG は Docker が FROM で展開しない。独立監査）。
+  const preamble = dockerfile.split(/^FROM\s/m)[0];
   const rawFrom = (/^FROM\s+(\S+)/m.exec(dockerfile) || [])[1] || '';
-  const from = rawFrom.replace(/\$\{(\w+)\}|\$(\w+)/g, (m, a, b) => arg(a || b) ?? m);
+  const from = rawFrom.replace(/\$\{(\w+)\}|\$(\w+)/g, (m, a, b) => argIn(preamble, a || b) ?? m);
   const block = (/\nLOCAL_ONLY_IMAGES=\(([\s\S]*?)\n\)/.exec(imagesSh) || [])[1] || '';
   const localOnly = [...block.matchAll(/"([^"|]+)\|([^"|]+)\|([^"|]+)"/g)].map((m) => ({ ref: m[1], context: m[2], dockerfile: m[3] }));
   // 🔴 注記（# 行）は除いて、実行される行だけで apk の呼び出しを探す（撤去の経緯を書いた注記に語が残る）。
@@ -523,6 +526,8 @@ ok('🔴 9. / 10. age は digest 固定のベースへ版・sha256 で同梱し�
   const unresolved = clone(IMAGE_FACTS);
   unresolved.from = fromOf(`FROM \${BASE_REGISTRY}/${pin}\n`);
   assert.ok(checkBackupImage(unresolved, '16').length > 0, '既定の無い ARG の FROM を通した');
+  unresolved.from = fromOf(`FROM \${BASE_REGISTRY}/${pin}\nARG BASE_REGISTRY=mirror.gcr.io/library\n`);
+  assert.ok(checkBackupImage(unresolved, '16').length > 0, 'FROM より後ろの ARG で FROM を解いた（Docker は展開しない）');
   // 抜き出しの側も確かめる: 注記の中の apk は数えず、実行行の apk は数える。
   const facts = (backupSh) => imageFacts({ dockerfile: '', imagesSh: '', imagesYml: '', backupSh, cronJobs: [] });
   assert.strictEqual(facts('# 従前は `apk add age` を撃っていた\nensure_age() { :; }\n').scriptCallsApk, false, '注記の apk を数えた');
