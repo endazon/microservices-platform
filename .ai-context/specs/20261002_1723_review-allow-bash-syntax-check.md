@@ -43,9 +43,7 @@ issue: "#1723"
 
 - `Bash(bash:*)`: 任意のスクリプトを実行できてしまう。
 - `helm`: レビューは実機の helm を持たない。読むだけなら Read で足りる。
-- `.claude/settings.json` の allow:
-  - 権限設定の変更は利用者の明示の指示が要るので、本件の裁定の射程外とした。
-  - `check-ai-workflow-config.js` は「settings.json の allow に無い」として warn（exit 0）を出す。これは受容する。
+- `.claude/settings.json` の allow には**同じ 2 形を足す**（利用者の明示の承認 2026-10-02）。CI の `STRICT_AI_WORKFLOW_CONFIG=1` が 3 系統（レビュー用・実装用ワークフローと settings.json）の一致を要求し、片方だけでは static-checks が赤になったため（初回 push で実測）。
 
 ## 母集合（規則 9）
 
@@ -59,6 +57,6 @@ issue: "#1723"
 
 ## 検証
 
-- `node scripts/check-ai-workflow-config.js`: OK（settings.json についての warn 2 件は受容する）。
+- `STRICT_AI_WORKFLOW_CONFIG=1 node scripts/check-ai-workflow-config.js`: OK（warn なし）。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 853 件すべて合格。
 - 本 PR のマージ後、#1723 に develop を取り込み、`claude-review` が緑になることを確かめる。
