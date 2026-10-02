@@ -2,10 +2,10 @@
 title: IADR-0487 k8s-local-up.sh の ISTIO_MTLS_MODE を付けない再実行は helm の宣言から現行の mesh.mtlsMode を引き継ぎ、読めなければ止める
 type: impl-adr
 status: Accepted
-related_ids: [NFR-16, ADR-0005, ADR-0021, IADR-0377, IADR-0317, IADR-0307]
+related_ids: [NFR-16, ADR-0005, ADR-0021, IADR-0377, IADR-0317, IADR-0307, IADR-0488]
 author: claude
 created: 2026-10-01
-updated: 2026-10-01
+updated: 2026-10-02
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/ (NFR-16 通信暗号化。恒久: サービス間 mTLS)
   - planning:projects/microservices-platform/07_adr/ADR-0005 (サービスメッシュ / Istio / mTLS)
@@ -102,6 +102,11 @@ IADR-0377 決定 3 の「未設定なら PERMISSIVE」は**初回の既定**と�
 - **読み先の形を試験で固定した。** helm スタブを実機に寄せた（リリースは namespace `microservices-platform` にだけ在り、`-n` を落とすと list は空・get values は not found、`get values` の `--all` は拒否）。起動器の経路の試験で、読み先が `helm get values msp -n microservices-platform -o yaml` であることを固定した（独立監査の変異 M2 `--all` 混入・M6 `-n` 欠落はいずれも殺した）。
 - **`helm list -a` が拾う状態。** `-a` は `deployed` 以外（`failed`・`pending-upgrade`・`pending-install` 等）も「在る」として返す。これらでも `helm get values` は最後に与えた値を返すので引き継げる。読めなければ「読めない」として止まる（fail-closed）ので、状態の種類で緩む経路は無い（PR の AI レビューの補足）。
 - **残余（本件の射程外・別件）**: Istio で動いているクラスタで **`ISTIO` を付けずに**再実行すると、[6/7] が mesh の `--set` を付けずに upgrade し、`values-local.yaml` の `mesh.enabled: false` に戻ってメッシュ宣言がまるごと外れる（以前からの挙動で本件の退行ではない）。MSP#1713 で扱う。
+
+［2026-10-02 追記 / #1713］上の残余（`ISTIO` を付けない再実行でメッシュ宣言がまるごと外れる）は [[IADR-0488]] で塞いだ。
+`ISTIO` は 3 値（`1`／`0`／未指定＝現行を引き継ぐ）になり、未指定の再実行は本 ADR の読む口 `current_mesh_mtls_mode` を 1 回だけ呼んで
+`mesh.enabled` と `mesh.mtlsMode` の両方を引き継ぐ。決定 5「`ISTIO` 未設定の既定経路では読まない（既定のバイト等価）」は成り立たなくなり、
+バイト等価は `ISTIO=0` の側へ移った（`k8s-local-up.test.js` の #1713 節が固定する）。
 
 ## 関連
 

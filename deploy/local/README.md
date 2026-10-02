@@ -644,6 +644,9 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
 - **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
   エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
   `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときも **mTLS の既定は PERMISSIVE** である（IADR-0307 決定 4）。
+  **`ISTIO` は 3 値**（`1`＝入れる／`0`＝外す／未指定＝現行の helm の宣言を引き継ぐ。#1713 / IADR-0488）——
+  メッシュで動いているクラスタを `ISTIO` 無しで再実行してもメッシュ宣言は外れず、mTLS モードも引き継ぐ（初回だけがメッシュ無し・PERMISSIVE）。
+  外すのは `ISTIO=0` の明示だけで、未指定のまま現行を読めなければ起動の前に止まる（詳細は `deploy/istio/README.md`）。
   🔴 **STRICT へ上げると `ai-stock-trading`（サイドカー無し）から MSP への平文が全断する** ——
   ナレッジ保存・日報の LLM 生成・取引判断の LLM 呼び出しが RST で落ちる（#1159 実測。逆向きは落ちない）。
   AST を mesh へ入れるまで（AST#627）既定は PERMISSIVE のままにする。

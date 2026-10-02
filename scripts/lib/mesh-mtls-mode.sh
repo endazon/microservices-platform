@@ -56,6 +56,8 @@ set_mesh_mtls_mode() {
 # `k8s-local-up.sh` の [6/7] は `--reuse-values` 無しで `--set mesh.mtlsMode=…` を渡す。`ISTIO_MTLS_MODE` を
 # 付けずに再実行すると、以前は `${ISTIO_MTLS_MODE:-PERMISSIVE}` で **STRICT のクラスタを黙って PERMISSIVE へ戻していた**。
 # 起動器は未指定のときここで現行の値を読み、引き継ぐ。
+# ［2026-10-02 / #1713, IADR-0488］`ISTIO` 未指定の再実行も同じ 1 回の読みで `mesh.enabled` を引き継ぐ（終了コード 0＝メッシュ宣言あり。
+#   それ以外の値の意味は下の関数の注記のまま）。関数は増やさない —— 終了コードが既に「宣言あり／無い／読めない」を分けている。
 #
 # 読むのは `helm get values`（利用者が与えた値 = values-local.yaml と --set の和）であって `--all` ではない ——
 # `--all` はチャートの既定（values.yaml の `mtlsMode: STRICT`）を混ぜるので、メッシュを一度も宣言していない
