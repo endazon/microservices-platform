@@ -842,6 +842,23 @@
       ]
     },
     {
+      "clientId": "ai-stock-trading-kb-reader",
+      "name": "AST KB reader (cross-unit s2s, client_credentials, read only)",
+      "description": "#1696 / AST#1078: ai-stock-trading の取引判断が RetrievalService の /search で KB を読む機密クライアント（client_credentials）。書き手とは別主体で、ロールを持たず書けない。profile で preferred_username を載せ、ABAC は project=ai-stock-trading の文書だけを許す。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "ai-stock-trading-kb-reader-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "profile"
+      ]
+    },
+    {
       "clientId": "ai-stock-trading-llm-caller",
       "name": "AST LLM caller (cross-unit s2s, client_credentials)",
       "description": "AST#724 / MSP#1364: ai-stock-trading が LlmGateway の /complete を呼ぶ機密クライアント（client_credentials・service-account に platform-service）。KB 書き込み用とは別主体にする（あちらへ platform-service を足すと東西端点すべてへ届く）。本番 secret は config から供給する。",
@@ -1235,6 +1252,16 @@
       "realmRoles": [
         "platform-operator"
       ]
+    },
+    {
+      "username": "service-account-ai-stock-trading-kb-reader",
+      "enabled": true,
+      "serviceAccountClientId": "ai-stock-trading-kb-reader",
+      "attributes": {
+        "projects": [
+          "ai-stock-trading"
+        ]
+      }
     },
     {
       "username": "service-account-ai-stock-trading-llm-caller",

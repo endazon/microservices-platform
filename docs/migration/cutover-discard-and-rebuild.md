@@ -4,14 +4,14 @@ type: migration-spec
 status: draft
 author: Claude
 created: 2026-09-25
-updated: 2026-09-28
+updated: 2026-10-02
 ---
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0008, ADR-0032, ADR-0124]
-iadrs: [IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
+iadrs: [IADR-0492, IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
 specs: [20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
-issues: [#457, #454, #439, #458, #1682]
+issues: [#1696, #457, #454, #439, #458, #1682, AST#1078]
 -->
 
 # 移行仕様書: 再実装版への切替 —— 6 資産の破棄と realm の作り直し
@@ -63,8 +63,8 @@ issues: [#457, #454, #439, #458, #1682]
 🔴 **「PVC を消して作り直す」を Postgres と Keycloak に当ててはならない。** ai-stock-trading の DB と、master / ai-stock-trading の realm まで消える。
 
 🔴 **ai-stock-trading の稼働中の身元は、作り直す realm `platform` の中にある。** ローカルクラスタの連携配備では
-ai-stock-trading は自分の realm ではなく platform realm で認証する。そこには ai-stock-trading のサービス用クライアント 4 つ
-（`ai-stock-trading-kb-writer` / `ai-stock-trading-llm-caller` / `ai-stock-trading-svc` / `ai-stock-trading-owner`）、realm ロール
+ai-stock-trading は自分の realm ではなく platform realm で認証する。そこには ai-stock-trading のサービス用クライアント 5 つ
+（`ai-stock-trading-kb-writer` / `ai-stock-trading-kb-reader` / `ai-stock-trading-llm-caller` / `ai-stock-trading-svc` / `ai-stock-trading-owner`）、realm ロール
 `trading-owner`（と `trading-service`）、利用者へのロールの付与（`developer` の `trading-owner` ほか）が入っている。
 **作り直すと、これらは realm.json に宣言されたとおりにしか戻らない。**
 

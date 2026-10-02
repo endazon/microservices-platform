@@ -207,10 +207,11 @@ fi
 
 # SC-22, ADR-0095 決定 1, IADR-0456 決定 6 (#1477): AST が ESO で受ける ai-stock-trading/app-secrets（契約 #1477 の表）。
 # **無いときだけ作る。在れば触らない**（画面で入れた外部 API キー・Discord ID を消さない。env での上書きも持たない —— 投入面は画面）。
-# *-auth-client-* 8 件は realm（deploy/keycloak/microservices-platform-realm.json の機密クライアント）と**同値**の dev 既定
+# *-auth-client-* 10 件（5 組）は realm（deploy/keycloak/microservices-platform-realm.json の機密クライアント）と**同値**の dev 既定
+# （#1696 / IADR-0492: KB の読み手 kb-reader-auth-client-* を足した。書き手 kb-auth-client-* とは別の主体である）
 # （ズレると client_credentials が invalid_client になる）。画面から書ける 12 件は空文字（未設定＝各連携が no-op）。
 # 🔴 ai-stock-trading/moomoo / moomoo-rsa は seed しない（未設定のあいだ OpenD は Secret 不在で待機する＝fail-closed）。
-# 値の一致（キー集合＝items[] の書ける 12 ＋ notWritable 8、auth は realm と同値）は SecretItemBootstrapSeedTests が固定する。
+# 値の一致（キー集合＝items[] の書ける 12 ＋ notWritable 10、auth は realm と同値）は SecretItemBootstrapSeedTests が固定する。
 if ! vkv_exists ai-stock-trading/app-secrets; then
   vexec "vault kv put -cas=0 secret/ai-stock-trading/app-secrets \
     finnhub-api-key='' marketdata-finnhub-api-key='' fred-api-key='' edinet-subscription-key='' \
@@ -219,15 +220,18 @@ if ! vkv_exists ai-stock-trading/app-secrets; then
     sec-edgar-user-agent='' \
     service-auth-client-id='ai-stock-trading-svc' service-auth-client-secret='dev-only-service-secret' \
     kb-auth-client-id='ai-stock-trading-kb-writer' kb-auth-client-secret='ai-stock-trading-kb-writer-dev-secret-change-me' \
+    kb-reader-auth-client-id='ai-stock-trading-kb-reader' kb-reader-auth-client-secret='ai-stock-trading-kb-reader-dev-secret-change-me' \
     llm-auth-client-id='ai-stock-trading-llm-caller' llm-auth-client-secret='ai-stock-trading-llm-caller-dev-secret-change-me' \
     discord-owner-auth-client-id='ai-stock-trading-owner' discord-owner-auth-client-secret='dev-only-owner-secret'"
 else
-  # 在る KV にも *-auth-client-* 8 件を**無いものだけ**足す（画面が先に書いて作った KV には auth キーが無く、
+  # 在る KV にも *-auth-client-* 10 件を**無いものだけ**足す（画面が先に書いて作った KV には auth キーが無く、
   # そのままでは ast-secrets に auth キーが載らず AST のサービス間トークン取得が止まる。PR #1478 監査 D4）。値は上の seed と同値。
   vkv_patch_if_missing ai-stock-trading/app-secrets service-auth-client-id 'ai-stock-trading-svc'
   vkv_patch_if_missing ai-stock-trading/app-secrets service-auth-client-secret 'dev-only-service-secret'
   vkv_patch_if_missing ai-stock-trading/app-secrets kb-auth-client-id 'ai-stock-trading-kb-writer'
   vkv_patch_if_missing ai-stock-trading/app-secrets kb-auth-client-secret 'ai-stock-trading-kb-writer-dev-secret-change-me'
+  vkv_patch_if_missing ai-stock-trading/app-secrets kb-reader-auth-client-id 'ai-stock-trading-kb-reader'
+  vkv_patch_if_missing ai-stock-trading/app-secrets kb-reader-auth-client-secret 'ai-stock-trading-kb-reader-dev-secret-change-me'
   vkv_patch_if_missing ai-stock-trading/app-secrets llm-auth-client-id 'ai-stock-trading-llm-caller'
   vkv_patch_if_missing ai-stock-trading/app-secrets llm-auth-client-secret 'ai-stock-trading-llm-caller-dev-secret-change-me'
   vkv_patch_if_missing ai-stock-trading/app-secrets discord-owner-auth-client-id 'ai-stock-trading-owner'

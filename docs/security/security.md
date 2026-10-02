@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-09-28
+updated: 2026-10-02
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-04, FR-17, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
 adrs: [ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116]
-iadrs: [IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364]
+iadrs: [IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364]
 specs: [20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm]
-issues: [#1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672, planning#700]
+issues: [#1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672, planning#700, AST#1078]
 -->
 
 # セキュリティ仕様書
@@ -301,7 +301,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 
 `deploy/keycloak/microservices-platform-realm.json` の realm import には、開発・E2E 検証用の dev ユーザーが
 平文パスワードで含まれる（`poc-user`／`poc-operator`／`developer`、および OIDC クライアントシークレット
-`wiki-js-dev-secret-change-me` / `ai-stock-trading-kb-writer-dev-secret-change-me` / `headlamp-dev-secret-change-me` /
+`wiki-js-dev-secret-change-me` / `ai-stock-trading-kb-writer-dev-secret-change-me` / `ai-stock-trading-kb-reader-dev-secret-change-me` / `headlamp-dev-secret-change-me` /
 `abac-seeder-dev-secret-change-me` / `identity-admin-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
 
 > **🔴 ［2026-08-28 / #438］パスワードだけではログインできない。** 計画が確定した「TOTP による多要素認証を必須」を
@@ -323,6 +323,14 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
   `platform-operator`・client_credentials のみ）。realm import 内の `ai-stock-trading-kb-writer-dev-secret-change-me`
   は **dev 専用**で、本番シークレットは環境変数／Secret（Vault）経由で AST 環境へ注入し、realm import へは
   コミットしない。AST 側は空既定なら no-op（トークンを付けない）。
+- **`ai-stock-trading-kb-reader`（ai-stock-trading からのクロスユニット s2s 用・読み取り専用）**: AST ユニットの取引判断が
+  本レルムの RetrievalService で KB を検索する（`POST /search`）ための機密クライアント。**書き手（上の `kb-writer`）とは別の主体**で、
+  service-account には**ロールを 1 つも与えない**（文書の作成・更新の口はロールで閉じているので書けない）。既定スコープは `profile` だけで、
+  トークンに `preferred_username`（`service-account-ai-stock-trading-kb-reader`）が載り、認可サービスはその名前で属性を引き直す。
+  service-account の属性は `projects = ai-stock-trading` だけで、`clearance` は**与えない**（与えると基盤全体の `internal` が読める）。
+  ABAC の読み取りポリシー 1 本（`projects ∋ ai-stock-trading` の主体に `project = ai-stock-trading` の文書だけを許す）が
+  読める範囲を決める（[運用手順](../operations/operations.md) の「AST の KB の読み手のポリシーの投入」）。realm import 内の
+  `ai-stock-trading-kb-reader-dev-secret-change-me` は **dev 専用**で、本番シークレットは Vault 経由で AST 環境へ注入する。
 - **`ai-stock-trading-svc`／`ai-stock-trading-owner`（ai-stock-trading のユニット内 s2s と Discord Bot 制御の owner 認証）**:
   基盤連結の k8s では AST サービスが**本レルム**で JWT を検証する（統合 SPA の身元は本レルムでしか成立しないため。
   AST 側の `values-local.yaml` が `global.authAuthority` を本レルムへ向ける）。その配備で AST の s2s
@@ -359,7 +367,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
   **dev 専用**であり、本番の Vault 化（unseal/監査/HA/ローテーション）充足ではない（Tier 3）。
 - **本番流用の禁止**: 共有／ステージング／本番の realm には **PoC ユーザーを含めない**。運用ユーザーは
   Keycloak 管理画面／IaC で個別に作成し、パスワードは realm import にコミットしない。クライアント
-  シークレット（`wiki-js` / `ai-stock-trading-kb-writer`）は環境ごとに必ず変更し、環境変数／Secret 経由で注入する
+  シークレット（`wiki-js` / `ai-stock-trading-kb-writer` / `ai-stock-trading-kb-reader`）は環境ごとに必ず変更し、環境変数／Secret 経由で注入する
   （上記「Wiki.js 前段」§秘密情報を参照）。
 - **リスク受容の根拠**: dev realm は host 公開されるが、格納データは合成のテスト属性のみで機密を含まず、
   ネットワークもローカルに閉じる。平文値は「変更前提の既知シード」であり、秘密として扱わない。
