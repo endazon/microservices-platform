@@ -202,13 +202,33 @@ const DOCKER_STUB = [
 //   STUB_HELM_VALUES_FAIL=1… リリースは在るが `helm get values msp` が失敗する
 // 実機に寄せる（独立監査の変異 M2 / M6）: リリースは namespace microservices-platform にだけ在る（`-n` を落とすと
 // list は空・get values は "release: not found"）。`get values` の `--all`（チャート既定を混ぜる）は拒否して赤にする。
+// ［2026-10-02 / #1722, IADR-0491］`helm list` の旗と状態の絞りも実機に寄せる（以前は list の旗を見ずに名前を返していたため、
+//   実機の helm v4 が拒否する `-a` を使う実装が緑のまま CI と稼働 PC で落ちた）。転写元は helm v4.2.1 / v3.22.0 / v3.12.3 の実測。
+//   STUB_HELM_MAJOR=4（既定。PoC の v4.2.1・CI の v4.3.0）… `-a` は `Error: unknown shorthand flag: 'a' in -a`、`--all` は
+//                         `Error: unknown flag: --all` を stderr へ出して 1 で終わる（クラスタへ届く前の旗の解析で落ちる）。
+//                         状態の旗が 1 つも無ければ全状態を返す。
+//   STUB_HELM_MAJOR=3    … `-a` / `--all` は全状態。旗が 1 つも無ければ deployed と failed だけ（pending-* 等を落とす）。
+//   STUB_HELM_STATUS     … msp リリースの状態（既定 deployed）。`--pending` は pending-install / -upgrade / -rollback に当たる。
 const HELM_STUB = [
   '#!/usr/bin/env bash',
   'echo "helm $*" >> "$STUB_LOG"',
   'in_ns=0; case " $* " in *" -n microservices-platform "*) in_ns=1;; esac',
   'case "$*" in "list "*)',
+  '  major="${STUB_HELM_MAJOR:-4}"; all=0',
+  '  case " $* " in *" -a "*|*" --all "*)',
+  '    if [ "$major" = "4" ]; then',
+  '      case " $* " in *" -a "*) echo "Error: unknown shorthand flag: \'a\' in -a" >&2;; *) echo "Error: unknown flag: --all" >&2;; esac; exit 1',
+  '    fi; all=1;;',
+  '  esac',
   '  if [ "${STUB_HELM_LIST_FAIL:-}" = "1" ]; then echo "Error: Kubernetes cluster unreachable" >&2; exit 1; fi',
-  '  if [ -n "${STUB_HELM_VALUES+x}" ] && [ "$in_ns" = "1" ]; then echo msp; fi; exit 0;;',
+  '  st="${STUB_HELM_STATUS:-deployed}"; want="$all"; nflags=0',
+  '  for f in deployed failed pending superseded uninstalling uninstalled; do',
+  '    case " $* " in *" --$f "*) nflags=$((nflags + 1)); case "$st" in "$f" | "$f"-*) want=1;; esac;; esac',
+  '  done',
+  '  if [ "$all" = "0" ] && [ "$nflags" = "0" ]; then',
+  '    if [ "$major" = "4" ]; then want=1; else case "$st" in deployed | failed) want=1;; esac; fi',
+  '  fi',
+  '  if [ -n "${STUB_HELM_VALUES+x}" ] && [ "$in_ns" = "1" ] && [ "$want" = "1" ]; then echo msp; fi; exit 0;;',
   'esac',
   'case "$*" in "get values msp "*)',
   '  case " $* " in *" --all "*|*" -a "*) echo "STUB: helm get values に --all を付けた（チャート既定が混ざる）" >&2; exit 3;; esac',
@@ -4543,5 +4563,99 @@ ok('#1688: lib は rollingUpdate が残る Deployment だけを patch し、patc
   const failing = runRecreateLib(LIB_KUBECTL(get, 1), ['wiki-js']);
   assert.notStrictEqual(failing.status, 0, 'patch が失敗したのに 0 で返った（直後の helm upgrade が同じ理由で落ちる）');
 });
+
+// ---- #1722 / IADR-0491: helm v4 が受け付けない `helm list -a` をやめ、helm v3 / v4 の両方で現行のメッシュ宣言を読む ----------
+//
+// `current_mesh_mtls_mode` は `helm list -n <ns> -a -q --filter '^msp$'` を呼んでいた。helm v4 は list の `-a` / `--all` を廃したため
+// 旗の解析で 1 になり「読めない」へ倒れ、ISTIO 未指定・ISTIO_MTLS_MODE 未指定の実行が初回でも [1/7] の直後に止まっていた
+// （稼働 PC の v4.2.1、CI integration-stack の v4.3.0）。スタブの list は旗を見ていなかったので試験は緑のままだった。
+// 状態の旗 6 つの和は v3 の `-a` と同じ集合を v3 / v4 の両方で返す（実測は作業仕様書 20261002_1722_helm-v4-list-compat.md）。
+
+const runHelmStub = (args, env = {}) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'helm-stub-'));
+  const bin = path.join(dir, 'helm');
+  fs.writeFileSync(bin, HELM_STUB);
+  fs.chmodSync(bin, 0o755);
+  const r = spawnSync(bin, args, { encoding: 'utf8', env: { ...process.env, STUB_LOG: path.join(dir, 'log'), ...env } });
+  fs.rmSync(dir, { recursive: true, force: true });
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+};
+const HELM_LIST_LINE = "helm list -n microservices-platform -q --filter ^msp$ --deployed --failed --pending --superseded --uninstalling --uninstalled";
+
+ok('#1722: スタブは実機の helm を写す（v4 は list の -a / --all を旗の解析で拒否し 1。v3 の既定は deployed / failed だけ）', () => {
+  const ns = ['-n', 'microservices-platform'];
+  const present = { STUB_HELM_VALUES: helmValues('STRICT') };
+  // v4.2.1 の実測: `Error: unknown shorthand flag: 'a' in -a` / `Error: unknown flag: --all`、終了コード 1、stdout は空。
+  const shortA = runHelmStub(['list', ...ns, '-a', '-q', '--filter', '^msp$'], present);
+  assert.deepStrictEqual([shortA.status, shortA.stdout, shortA.stderr], [1, '', "Error: unknown shorthand flag: 'a' in -a\n"]);
+  const longAll = runHelmStub(['list', ...ns, '--all', '-q'], present);
+  assert.deepStrictEqual([longAll.status, longAll.stdout, longAll.stderr], [1, '', 'Error: unknown flag: --all\n']);
+  // 旗の拒否はクラスタへ届く前（届かない世界でも同じ文言）。
+  assert.match(runHelmStub(['list', ...ns, '-a', '-q'], { ...present, STUB_HELM_LIST_FAIL: '1' }).stderr, /unknown shorthand flag/);
+  // 状態の絞り（v3.12.3 / v3.22.0 / v4.2.1 の実測表の写し）。
+  const listed = (major, status, flags) =>
+    runHelmStub(['list', ...ns, '-q', '--filter', '^msp$', ...flags], { ...present, STUB_HELM_MAJOR: major, STUB_HELM_STATUS: status }).stdout.trim();
+  const SIX = ['--deployed', '--failed', '--pending', '--superseded', '--uninstalling', '--uninstalled'];
+  for (const status of ['deployed', 'failed', 'pending-install', 'pending-upgrade', 'pending-rollback', 'superseded', 'uninstalling', 'uninstalled']) {
+    const v3default = ['deployed', 'failed'].includes(status) ? 'msp' : '';
+    assert.strictEqual(listed('3', status, []), v3default, `v3 の既定（旗なし）: ${status}`);
+    assert.strictEqual(listed('3', status, ['-a']), 'msp', `v3 の -a: ${status}`);
+    assert.strictEqual(listed('4', status, []), 'msp', `v4 の既定（旗なし）: ${status}`);
+    assert.strictEqual(listed('3', status, SIX), 'msp', `v3 の 6 旗の和: ${status}`);
+    assert.strictEqual(listed('4', status, SIX), 'msp', `v4 の 6 旗の和: ${status}`);
+  }
+});
+
+ok('#1722: 読み先の list は -a / --all を使わず、状態の旗 6 つの和を明示する（v3 / v4 の両方で同じ集合）', () => {
+  const r = runUp({ STUB_HELM_VALUES: helmValues('STRICT') });
+  const lists = r.lines.filter((l) => l.startsWith('helm list '));
+  assert.deepStrictEqual(lists, [HELM_LIST_LINE], `helm list の形が違う（1 回だけ・-a なし・6 旗）: ${JSON.stringify(lists)}`);
+});
+
+for (const major of ['4', '3']) {
+  const v = { STUB_HELM_MAJOR: major };
+  ok(`#1722: helm v${major} 相当 — 初回（リリース無し）は ISTIO / ISTIO_MTLS_MODE 未指定でも止まらず、従来どおりメッシュ無し`, () => {
+    for (const env of [{}, { LOCALEDGE: '1', ABACSEED: '1', SEARCHSEED: '1', LOCALEMBED: '1' }]) {
+      const r = runUp({ ...v, ...env });
+      assert.strictEqual(r.status, 0, `#1722 の再発: 初回なのに止まった（${JSON.stringify(env)}）:\n${r.stderr.slice(-600)}`);
+      assert.ok(!meshArgsOf(r).anyMesh, '初回にメッシュを入れた');
+    }
+    // CI integration-stack の形（ISTIO=1・ISTIO_MTLS_MODE 未指定・新しいクラスタ）。run 36993205504 はここで落ちた。
+    const ci = runUp({ ...v, ISTIO: '1', LOCALEDGE: '1', ABACSEED: '1', SEARCHSEED: '1', LOCALEMBED: '1' });
+    assert.strictEqual(ci.status, 0, `#1714 の再発: ISTIO=1 の初回が止まった:\n${ci.stderr.slice(-600)}`);
+    assert.strictEqual(mtlsOf(ci), 'PERMISSIVE');
+  });
+  ok(`#1722: helm v${major} 相当 — 宣言あり（STRICT）は引き継ぎ、宣言なしは外したまま`, () => {
+    const declared = runUp({ ...v, STUB_HELM_VALUES: helmValues('STRICT') });
+    assert.strictEqual(declared.status, 0, `止まった:\n${declared.stderr.slice(-600)}`);
+    assert.ok(meshArgsOf(declared).enabled, 'メッシュ宣言を引き継いでいない');
+    assert.strictEqual(meshArgsOf(declared).mtls, 'STRICT', 'STRICT を引き継いでいない');
+    const noMesh = runUp({ ...v, STUB_HELM_VALUES: NO_MESH_VALUES });
+    assert.strictEqual(noMesh.status, 0, `止まった:\n${noMesh.stderr.slice(-600)}`);
+    assert.ok(!meshArgsOf(noMesh).anyMesh, 'メッシュ未宣言のリリースへメッシュを入れた');
+    const istio1 = runUp({ ...v, ISTIO: '1', STUB_HELM_VALUES: helmValues('STRICT') });
+    assert.strictEqual(mtlsOf(istio1), 'STRICT', 'ISTIO=1 で現行の STRICT を引き継いでいない');
+  });
+  ok(`#1722: helm v${major} 相当 — pending-* / failed / superseded のリリースも「在る」と読み、宣言を引き継ぐ（v3 の既定に倒さない）`, () => {
+    for (const status of ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback', 'superseded']) {
+      const r = runUp({ ...v, STUB_HELM_STATUS: status, STUB_HELM_VALUES: helmValues('STRICT') });
+      assert.strictEqual(r.status, 0, `${status}: 止まった:\n${r.stderr.slice(-600)}`);
+      assert.ok(meshArgsOf(r).enabled, `${status}: リリースを「無い」と読み、メッシュ宣言を黙って外した（初回の扱いへ倒れた）`);
+      assert.strictEqual(meshArgsOf(r).mtls, 'STRICT', `${status}: STRICT を引き継いでいない`);
+    }
+  });
+  ok(`#1722: helm v${major} 相当 — helm に届かない・values を読めないときは従来どおり [2/7] の前に止まる（fail-closed）`, () => {
+    for (const [what, env] of [
+      ['helm list が失敗', { STUB_HELM_LIST_FAIL: '1' }],
+      ['helm get values が失敗', { STUB_HELM_VALUES: helmValues('STRICT'), STUB_HELM_VALUES_FAIL: '1' }],
+    ]) {
+      for (const istio of [{}, { ISTIO: '1' }]) {
+        const r = runUp({ ...v, ...istio, ...env });
+        assert.notStrictEqual(r.status, 0, `${what}（${JSON.stringify(istio)}）: 読めないのに進んだ`);
+        assert.ok(!touchedCluster(r), `${what}（${JSON.stringify(istio)}）: 副作用へ進んでから止まった`);
+      }
+    }
+  });
+}
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
