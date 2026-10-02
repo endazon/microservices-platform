@@ -4636,8 +4636,9 @@ for (const major of ['4', '3']) {
     const istio1 = runUp({ ...v, ISTIO: '1', STUB_HELM_VALUES: helmValues('STRICT') });
     assert.strictEqual(mtlsOf(istio1), 'STRICT', 'ISTIO=1 で現行の STRICT を引き継いでいない');
   });
-  ok(`#1722: helm v${major} 相当 — pending-* / failed / superseded のリリースも「在る」と読み、宣言を引き継ぐ（v3 の既定に倒さない）`, () => {
-    for (const status of ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback', 'superseded']) {
+  ok(`#1722: helm v${major} 相当 — pending-* / failed / superseded / uninstalling / uninstalled のリリースも「在る」と読み、宣言を引き継ぐ（v3 の既定に倒さない）`, () => {
+    // uninstalling / uninstalled は独立監査の指摘で追加（形の試験だけでは旗の欠落を止められなかった）。
+    for (const status of ['failed', 'pending-install', 'pending-upgrade', 'pending-rollback', 'superseded', 'uninstalling', 'uninstalled']) {
       const r = runUp({ ...v, STUB_HELM_STATUS: status, STUB_HELM_VALUES: helmValues('STRICT') });
       assert.strictEqual(r.status, 0, `${status}: 止まった:\n${r.stderr.slice(-600)}`);
       assert.ok(meshArgsOf(r).enabled, `${status}: リリースを「無い」と読み、メッシュ宣言を黙って外した（初回の扱いへ倒れた）`);
