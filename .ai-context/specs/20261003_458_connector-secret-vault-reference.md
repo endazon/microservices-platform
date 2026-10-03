@@ -2,7 +2,7 @@
 title: 作業仕様書 — コネクタ資格情報を「Vault 移行までの暫定マスク」から Vault 参照へ移す（設計段・#458 残射程 a）
 type: spec
 status: draft
-related_ids: [FR-01, UC-04, SC-06, SC-22, NFR-18, ADR-0005, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0295, IADR-0403, IADR-0433, IADR-0453, IADR-0456, IADR-0485]
+related_ids: [FR-01, UC-04, SC-06, SC-22, NFR-18, ADR-0005, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0295, IADR-0403, IADR-0433, IADR-0453, IADR-0456, IADR-0485, IADR-0493]
 author: claude
 created: 2026-10-03
 updated: 2026-10-03
@@ -313,3 +313,75 @@ $ git grep -ln "pg_dump" -- deploy scripts
 2. Vault 解決器の実装手段（VaultSharp か素の HTTP クライアントか）。IADR-0403 決定 8 の「`VaultSharp` が全サービスへ入る」懸念は 1 サービスに限られるが、依存の追加は S1 の IADR で決める。
 3. 参照文字列（`vault:…`）を応答で伏せるか。値ではないが Vault のパス構造を漏らす。既定は「伏せる」（`SecretMask` の対象を `Config` の秘密キー名で判定する現行規則のままなら自然に伏せられる）。
 4. 移送前のバックアップ（母集合の表の S2 行）に残る平文の扱い —— 保持期間の満了で消えるのを待つか、移送後に世代を切るか。運用の判断。
+
+## ［2026-10-03 追記 / #458］planning#716 の起票と段 S0 の実装
+
+### 経過
+
+- §計画への環流 の文案を **planning#716** として起票した（2026-10-03。`decision-needed`）。起票前の重複確認は本書 §計画への環流 の冒頭のとおり。
+- 段 **S0**（案に依らない）を実装した。新 IADR は §設計 の注記どおり S0 の PR で起こした —— [IADR-0493](../adr/IADR-0493_connector-secret-resolver-port-and-fail-closed.md)
+  （採番は `check-adr-numbering.js` の「重複・欠番なし」を確かめてから最大 0492 ＋ 1）。IADR-0403 決定 8 には日付つき追記で IADR-0493 決定 4 を指した（本文は書き換えていない）。
+- **S1 以降は未着手。** S2・S3 は planning#716 の裁定待ち。
+
+### 規則 10（この追記で誤りになる本書の記述）
+
+- 冒頭の「本仕様書は設計段（段 1）である。製品コードは書かない」「新 IADR は裁定が降りてから起こす」と §対象範囲 の「対象外（本段）: 製品コード … 新 IADR の起案」は、
+  **設計段の時点の記述**であり、本追記以後の段 S0 には当てはまらない（§設計 の注記「S0 と S1 は案に依らない … 新 IADR は S0 の PR で起こし」が S0 の着手根拠）。本文は凍結のため書き換えない。
+- 母集合 V3「`datasource-service` は Vault を一度も引かない」は**S0 の後も真**である（S0 の解決器は Vault に繋がない）。S1 で偽になる。
+- 母集合 R1「`source.Config` から直接」は**偽になった**。引き直し:
+  `git grep -n -E '"(apiToken|password)"' -- src/knowledge/backend/Services/DataSourceService ':!*Tests*'` → 読み出しは 0 件
+  （ヒットはコメント 4 行と、`CredentialKeys` が宣言するキー名の定数 3 行 `WikiConnector.ApiTokenKey` / `SaaSConnector.ApiTokenKey` / `DatabaseConnector.PasswordKey`）。
+- live 文書のうち S0 で**新たに誤りになった**のは `docs/tests/FR-01_data-source-catalog.md` の T-13・T-18（「`Config.apiToken` 設定 → Bearer 送出」）だけで、本 PR で是正し、T-67・T-68 を足した。
+  `docs/security/security.md` §データソースのコネクタ資格情報 は誤りにはならないが、読む経路の現状を 1 項足した。その他の D1（「暫定」節の恒久化・runbook L210）は S5 のまま。
+
+### 段 S0 の設計（IADR-0493 の要約）
+
+- ポート `Domain/Ports/IConnectorSecretResolver.ResolveAsync(configuredValue, ct)` → `ConnectorSecretResolution`（成功の値 / 失敗の符号。`ToString` は値を伏せる）。
+- コネクタは `IDataSourceConnector.CredentialKeys` で資格情報のキーを宣言する（wiki / saas = `apiToken`、db = `password`、filesystem = なし）。
+  ポートの `DiscoverAsync` / `FetchAsync` に `ConnectorCredentials` を足し、コネクタは `Config` ではなくそこから読む。
+- `DataSourceSyncService` がコネクタを引いた直後・探索の前に、宣言されたキーだけを 1 回ずつ解決し、探索と全取得へ同じ `ConnectorCredentials` を渡す（§窓 2 の「開始時に解決」）。
+- 参照の形 `vault:<path>#<key>`（`Domain/ConnectorSecretReference`。接頭辞は大文字小文字を区別しない。`ToString` はパスを伏せる）。パスの接頭辞は S1 で決める。
+- 実装: 本番は `Infrastructure/Secrets/PlaintextPassthroughConnectorSecretResolver`（平文は素通し・`vault:` は `ResolverUnavailable`・形の誤りは `MalformedReference`）。試験は `Tests/FakeConnectorSecretResolver`。
+- fail-closed: 失敗（`MalformedReference` / `ResolverUnavailable` / `NotFound` / `Empty` / `Unreachable`）で探索の前に止め、外部へ要求を出さない。
+  `SyncResult.CredentialsResolved=false`・`LastSyncError` と応答は `credentials not resolved for '<キー名>' (<理由の符号>)`・連続失敗に数える・watermark は進めない。
+  ログはキー名と理由の符号だけ。解決器の例外は型名だけを記録し、例外オブジェクトもメッセージも渡さない。
+
+### 試験（§設計 S0 の試験欄の写像）
+
+| S0 の試験欄 | `[Fact]` / `[Theory]` |
+| --- | --- |
+| 3 コネクタが `Config` を直接読まない（解決器の呼び出しを数える） | `ConnectorSecretResolutionTests.Sync_RealConnector_ResolvesOnce_AndSendsOnlyTheResolvedValue`（wiki / saas）・`Sync_RealDbConnector_ResolvesOnce_AndComposesOnlyTheResolvedPassword`／各コネクタ単体の `*_IgnoreConfig*_WhenCredentialsAreNotResolved` と `*_FromResolvedCredentials_NotFromConfig`（db は `Resolve_QuotesPasswordWithSpecialCharacters_IntoConnectionString` を解決済みの値へ改めた） |
+| 解決失敗で「資格情報未設定」の失敗状態・外部へ要求を出さない | `Sync_UnresolvableCredential_FailsClosed_WithoutAnyOutboundRequest`（6 理由）・`Sync_Db_UnresolvableCredential_NeverOpensAConnection`／対照 `Sync_NoCredentialConfigured_DoesNotCallResolver_AndSyncsWithoutAuthorization` |
+| ログ・`SyncError` に値も参照の内部も出ない | `Sync_ResolutionFailure_LeaksNeitherValueNorReferencePath`（3 理由。解決器の例外文に値とパスを入れた陽性対照つき） |
+| 同期の途中で版が変わっても混ざらない | `Sync_VersionChangeMidSync_DoesNotMixWithinOneRun_AndTheNextRunUsesTheNewVersion` |
+| （形の単体） | `ConnectorSecretReferenceTests`（参照の形・接頭辞の大小文字・移送期間用解決器・`ToString` が値とパスを出さない・宣言キーが `SecretMask.IsSecretKey` に当たる） |
+
+### 変異試験（1 つずつ当てて戻した。フィルタ `ConnectorSecret|ConnectorTests` の 89 件で実行）
+
+| # | 変異 | 結果 | 落ちた試験 |
+| --- | --- | --- | --- |
+| M1 | `WikiConnector.DiscoverAsync` が `new ConnectorCredentials(source.Config)` で接続（`Config` を直接読む） | 殺した | wiki の同期 1・単体 2 |
+| M2 | 同じ変異を `SaaSConnector` へ | 殺した | saas の同期 1・単体 2 |
+| M3 | `DatabaseConnector` のパスワードを `Config(source, "password", …)` から読む | 殺した | db の同期 1・単体 2 |
+| M4 | 解決失敗の分岐を通さない（`credentials is null && false`） | 殺した | fail-closed 7 |
+| M4b | 解決失敗を `ConnectorCredentials.None`（認証なし）へ倒す | 殺した | fail-closed 7 |
+| M5 | 取得のたびに解決し直す（窓 2 の却下した形） | 殺した | 呼び出し回数 2・版の混在 1 |
+| M6a | 解決器の例外の警告にマスク済みの `ex.Message` を足す | 殺した | 漏洩（unreachable） |
+| M6b | 解決失敗の警告に `Config` の値（参照の文字列）を足す | 殺した | 漏洩（not-found / resolver-unavailable） |
+| M6c | 解決器の例外の警告へ例外オブジェクトを渡す | 殺した | 漏洩（unreachable。`Exception` が null でない） |
+| M7 | 解決した値が空でも失敗にしない | 殺した | fail-closed（empty） |
+| M8 | 参照の接頭辞を大文字小文字を区別して判定する | 殺した | 単体 3・fail-closed（大文字の接頭辞） |
+
+### 検証
+
+- `dotnet build src/knowledge/backend/backend.slnx` → エラー 0（警告 1 件は未変更の `Knowledge.IntegrationTests/Search/IngestToSearchQdrantTests.cs` の CS0618。既存）
+- `dotnet test` `DataSourceService.Tests` → 371 件すべて成功。`Knowledge.IntegrationTests` の DataSourceService 3 件は Postgres / RabbitMQ が無く skip（本環境）
+- `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes` → 差分なし
+- `check-adr-numbering` / `check-trace-blocks` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-doc-links` / `gen-knowledge-graph --check` / `REQUIRE_REPO_TESTS=1 scripts.test.js` / `check-commit-messages --range origin/develop..HEAD` → コミット時の結果は PR 本文に記す
+
+### 残余リスク（S0 の時点）
+
+- **平文保存はそのまま。** 移送期間用の解決器は平文を素通しする（S4 まで）。外への経路は IADR-0295 の応答のマスクが引き続き塞ぐ。
+- `vault:` 参照を保存した行は、Vault 解決器（S1）が配備されるまで同期が `resolver-unavailable` で失敗し続ける（意図した fail-closed）。
+  現状、参照を書き込む経路（S2・S3）は無いので、参照の行は API 直叩きでしか生まれない。
+- SC-06 の画面は失敗を直近エラーの文で出すだけで、「資格情報未設定」を専用の表示にしていない（S3 で扱う）。

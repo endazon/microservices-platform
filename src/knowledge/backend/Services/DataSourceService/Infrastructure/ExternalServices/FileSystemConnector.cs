@@ -29,8 +29,9 @@ public sealed class FileSystemConnector(ILogger<FileSystemConnector> logger) : I
             [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         };
 
+    // NFR-18, [[IADR-0493]] (#458 段 S0): 資格情報を使わない（`CredentialKeys` は既定の空）。`credentials` は読まない。
     public Task<IReadOnlyList<SourceItem>> DiscoverAsync(
-        DataSource source, DateTimeOffset? since, CancellationToken ct)
+        DataSource source, ConnectorCredentials credentials, DateTimeOffset? since, CancellationToken ct)
     {
         var root = ResolveRoot(source);
         if (root is null || !Directory.Exists(root))
@@ -98,7 +99,8 @@ public sealed class FileSystemConnector(ILogger<FileSystemConnector> logger) : I
         return Task.FromResult<IReadOnlyList<SourceItem>>(items);
     }
 
-    public async Task<RawContent> FetchAsync(DataSource source, SourceItem item, CancellationToken ct)
+    public async Task<RawContent> FetchAsync(
+        DataSource source, ConnectorCredentials credentials, SourceItem item, CancellationToken ct)
     {
         var bytes = await File.ReadAllBytesAsync(item.Path, ct);
         var contentType = ContentTypes.GetValueOrDefault(

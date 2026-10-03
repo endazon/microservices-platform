@@ -1,3 +1,4 @@
+using DataSourceService.Infrastructure.Secrets;
 using System.Net;
 using System.Text;
 using AwesomeAssertions;
@@ -102,6 +103,7 @@ public sealed class ConnectorUpdatedByOwnerResolutionTests(TestWebApplicationFac
         var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
         var svc = new DataSourceSyncService(
             new ConnectorRegistry([connector]), storage, bus,
+            new PlaintextPassthroughConnectorSecretResolver(),
             NullLogger<DataSourceSyncService>.Instance);
         var source = DataSource.Create("wiki", "wiki", Base, ownerMappings: ownerMappings);
 
@@ -124,14 +126,15 @@ public sealed class ConnectorUpdatedByOwnerResolutionTests(TestWebApplicationFac
         public string SourceType => inner.SourceType;
 
         public async Task<IReadOnlyList<SourceItem>> DiscoverAsync(
-            DataSource source, DateTimeOffset? since, CancellationToken ct)
+            DataSource source, ConnectorCredentials credentials, DateTimeOffset? since, CancellationToken ct)
         {
-            var items = await inner.DiscoverAsync(source, since, ct);
+            var items = await inner.DiscoverAsync(source, credentials, since, ct);
             return items.Select(i => i with { UpdatedBy = null }).ToList();
         }
 
-        public Task<RawContent> FetchAsync(DataSource source, SourceItem item, CancellationToken ct)
-            => inner.FetchAsync(source, item, ct);
+        public Task<RawContent> FetchAsync(
+            DataSource source, ConnectorCredentials credentials, SourceItem item, CancellationToken ct)
+            => inner.FetchAsync(source, credentials, item, ct);
     }
 
     private sealed class StubHandler(string listJson) : HttpMessageHandler

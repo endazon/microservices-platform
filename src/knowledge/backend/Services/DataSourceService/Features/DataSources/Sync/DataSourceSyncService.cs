@@ -14,6 +14,7 @@ public sealed class DataSourceSyncService(
     ConnectorRegistry registry,
     IObjectStorageClient storage,
     IMessageBus bus,
+    IConnectorSecretResolver secretResolver,
     ILogger<DataSourceSyncService> logger)
 {
     // UC-04 例外フロー / SC-06（Q14 / #537）: 連続失敗がこの回数に達した時点でアラート（継続失敗の警告）。
@@ -82,11 +83,26 @@ public sealed class DataSourceSyncService(
                 Message: $"connector for '{source.SourceType}' not implemented");
         }
 
+        // NFR-18, 09_datasource-connectors §認証・秘匿情報, [[IADR-0493]] 決定 1・3・4 (#458 段 S0):
+        // 資格情報は**ここで 1 回だけ**解決し、Discover と各 Fetch へ同じものを渡す（作業仕様書 §窓 2）。
+        // 🔴 **解決できなければ外部へ 1 件も要求を出さずに失敗する**（fail-closed）。平文へも「認証なし」へも倒さない。
+        var (credentials, unresolved) = await ResolveCredentialsAsync(connector, source, ct);
+        if (credentials is null)
+        {
+            // 失敗の記録に載せるのは `Config` のキー名と理由の符号だけ —— 値・参照のパス・解決器の例外文は載せない。
+            // それでも同じ規則（マスク ＋ 上限）で揃えるため `SyncErrorRedactor` を通す。
+            var message = SyncErrorRedactor.Redact(
+                $"credentials not resolved for '{unresolved!.Value.Key}' ({FailureCode(unresolved.Value.Failure)})");
+            AlertOnFailure(source, message!, null);
+            return new SyncResult(0, 0, ConnectorAvailable: true, DiscoverSucceeded: false,
+                Message: message, CredentialsResolved: false);
+        }
+
         IReadOnlyList<SourceItem> items;
         try
         {
             // 増分: 前回同期時刻を watermark に差分のみ列挙（初回は null＝フルスキャン）。
-            items = await connector.DiscoverAsync(source, source.LastSyncedAt, ct);
+            items = await connector.DiscoverAsync(source, credentials, source.LastSyncedAt, ct);
         }
         // ［2026-09-26 / #1604・IADR-0083 追記］🔴 外へ出すのは呼び出し側の ct による取り消しだけである。
         // コネクタの接続の時間切れ（HttpClient.Timeout の TaskCanceledException）は**そのソースの探索の失敗**であり、
@@ -117,7 +133,7 @@ public sealed class DataSourceSyncService(
             ct.ThrowIfCancellationRequested();
             try
             {
-                var raw = await connector.FetchAsync(source, item, ct);
+                var raw = await connector.FetchAsync(source, credentials, item, ct);
                 var fetchId = Guid.NewGuid();
                 // 原本をオブジェクトストレージへ格納（未構成時は NullObjectStorageClient が決定的 URI を返し縮退）。
                 var key = $"{source.Id}/{fetchId}/raw{Path.GetExtension(item.Path)}";
@@ -192,6 +208,66 @@ public sealed class DataSourceSyncService(
         return new SyncResult(fetched, failed, ConnectorAvailable: true, DiscoverSucceeded: true, Message: null);
     }
 
+    // NFR-18, [[IADR-0493]] 決定 1・3 (#458 段 S0): コネクタが宣言したキー（`CredentialKeys`）だけを解決する。
+    //
+    // - `Config` に値が無い・空白のキーは解決しない（＝その資格情報なしで接続する。従前と同じ）。
+    // - 1 つでも解決できなければ、そのキーと理由を返して止める（残りのキーは解決しない）。
+    // - 解決した値が空なら失敗とする（空を「認証なし」として送らない）。
+    // - 解決器が例外を投げても失敗へ畳む。🔴 **例外オブジェクトもメッセージも記録しない** —— 解決器の例外は
+    //   値や Vault のパスを運び得る。切り分けの手掛かりとして型名だけを残す（IADR-0295 決定 4 より一段強い）。
+    //   呼び出し側の ct による取り消しだけは外へ出す（#1604 と同じ）。
+    private async Task<(ConnectorCredentials? Credentials, (string Key, ConnectorSecretFailure Failure)? Unresolved)>
+        ResolveCredentialsAsync(IDataSourceConnector connector, DataSource source, CancellationToken ct)
+    {
+        var keys = connector.CredentialKeys;
+        if (keys.Count == 0)
+            return (ConnectorCredentials.None, null);
+
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var key in keys)
+        {
+            if (!source.Config.TryGetValue(key, out var configured) || string.IsNullOrWhiteSpace(configured))
+                continue;
+
+            ConnectorSecretResolution resolution;
+            try
+            {
+                resolution = await secretResolver.ResolveAsync(configured, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                logger.LogWarning(
+                    "資格情報の解決器が失敗しました（source {Id}, 項目 {Key}）: {ErrorType}",
+                    source.Id, key, ex.GetType().FullName);
+                return (null, (key, ConnectorSecretFailure.Unreachable));
+            }
+
+            var failure = resolution.Failure
+                ?? (string.IsNullOrWhiteSpace(resolution.Value) ? ConnectorSecretFailure.Empty : null);
+            if (failure is { } f)
+            {
+                logger.LogWarning(
+                    "資格情報を解決できないため同期しません（source {Id}, 項目 {Key}, 理由 {Reason}）",
+                    source.Id, key, FailureCode(f));
+                return (null, (key, f));
+            }
+
+            values[key] = resolution.Value!;
+        }
+
+        return (new ConnectorCredentials(values), null);
+    }
+
+    // 失敗の理由の符号（`SyncError` と応答に出す固定の語。自由文を出さない）。
+    internal static string FailureCode(ConnectorSecretFailure failure) => failure switch
+    {
+        ConnectorSecretFailure.MalformedReference => "malformed-reference",
+        ConnectorSecretFailure.ResolverUnavailable => "resolver-unavailable",
+        ConnectorSecretFailure.NotFound => "not-found",
+        ConnectorSecretFailure.Empty => "empty",
+        _ => "unreachable",
+    };
+
     // UC-04 例外フロー: 連続失敗を記録し、しきい値到達で継続失敗アラート（構造化ログ Alert=true）を出す。
     // SC-06（Q14 / #537）: 計数と直近エラーは**エンティティへ**記録する（永続化され SC-06 が読む）。
     // 永続化は呼び出し側の SaveChangesAsync が行う（手動 /sync・定期同期ワーカーの双方が呼んでいる）。
@@ -216,10 +292,13 @@ public sealed class DataSourceSyncService(
 
 // 同期結果。ConnectorAvailable=false は未対応 SourceType（縮退）。DiscoverSucceeded=false は
 // discover が失敗した（＝「成功して 0 件」と区別する）ことを表す。
+// CredentialsResolved=false は資格情報が未設定・解決不能で、外部へ要求を出さずに止めたことを表す
+// （NFR-18, [[IADR-0493]] 決定 3。このとき DiscoverSucceeded も false —— discover は走っていない）。
 public sealed record SyncResult(
-    int Fetched, int Failed, bool ConnectorAvailable, bool DiscoverSucceeded, string? Message)
+    int Fetched, int Failed, bool ConnectorAvailable, bool DiscoverSucceeded, string? Message,
+    bool CredentialsResolved = true)
 {
-    // 増分 watermark（LastSyncedAt）を進めてよいのは、コネクタがあり discover が成功し、
+    // 増分 watermark（LastSyncedAt）を進めてよいのは、コネクタがあり資格情報が解決でき discover が成功し、
     // 全アイテムの取得に成功したとき。失敗があれば進めず、次回同期で再試行できるようにする（UC-04 再試行）。
-    public bool ShouldAdvanceWatermark => ConnectorAvailable && DiscoverSucceeded && Failed == 0;
+    public bool ShouldAdvanceWatermark => ConnectorAvailable && CredentialsResolved && DiscoverSucceeded && Failed == 0;
 }
