@@ -500,3 +500,17 @@ $ git grep -ln "pg_dump" -- deploy scripts
 - NetworkPolicy の一般化は helm の描画を手で比べただけで、描画を固定する自動試験は無い（既存の BFF の分にも無い）。
 - 実 Vault（KV v2 の 404 の本文・削除済み版の応答）との結合は偽のハンドラによる単体試験だけで、実測していない（環境待ち。#458 の残射程 4 と同じ）。
 - SA トークンの読み口が BFF とサービス内の 2 つになった（IADR-0495 決定 2）。
+
+［2026-10-03 追記 / #458・S1 監査］S1 の独立監査（条件付き GO）の指摘と対応。
+
+| 指摘 | 対応 | 追加の変異（1 つずつ当てて戻した。フィルタ `ConnectorSecret` の 112 件） |
+| --- | --- | --- |
+| 🟡-1 試験の KV v2 成功応答が実 Vault の形と違う | `KvBody` の既定 metadata を実応答の形（`created_time`・`custom_metadata: null`・`deletion_time: ""`・`destroyed: false`・`version`）へ。削除・破棄の例にも `created_time` を足した | A1 空の `deletion_time` を削除済み扱い → 殺した（3） |
+| 🟡-2 ログ漏洩の試験が SA の JWT と Vault のトークンを見ていない | JWT・`client_token` を一意な目印にし、`AssertNoLeak`（値・パス・キー名・JWT・トークン・例外オブジェクト）をログイン失敗・403・失敗写像の全例・不達・成功で断言 | A2 ログイン失敗のログに JWT → 殺した（3）／A3 非 2xx のログに `X-Vault-Token` → 殺した（9） |
+| 🟡-3 `EscapePath` が試験で固定されていない | `PathSegments_AreUrlEncoded_AndStayUnderTheDedicatedPrefix`（`%2e%2e`・`..%2f`・`%2E%2E`・`\..\`・`?x=1`）。送られた `AbsoluteUri` が `/v1/secret/data/datasource/` で始まり、`%` は `%25` へ符号化されることを断言 | A4 `EscapePath` を恒等写像 → 殺した（5） |
+| 🟢 networkpolicy の `$bff` | 未使用ではなく後続の「BFF → API サーバ」の段が使っていたので、**定義をその段の直前へ移した**（Vault の段は `$bff` に依らない）。helm v3.16.4 で既定・BFF の Vault と同期依頼の有効化・datasource の Vault 有効化の 3 通りを描き、変更前後で同一 | — |
+| 🟢 404・500 ではトークンを取り直さない | `NonForbiddenFailure_DoesNotRelogin`（ログイン 1 回・GET 1 回） | A5 403 以外でも取り直す → 殺した（7） |
+| 🟢 リース ≤ 60 秒の分岐 | `ShortLease_IsUsedInFull_NotShortenedByTheRenewMargin`（60 秒のリースは 59 秒後も使い、60 秒で取り直す） | A6 常にリース − 30 秒 → 殺した（1） |
+| 🟢 `Vault:Address` の起動時検証 | `ValidateOnStart` で空（Vault なし）か絶対の http / https の URI に限る（`VaultConnectorSecretOptions.IsAcceptableAddress`）。`VaultAddress_IsValidatedOnStart`（9 例。`IStartupValidator`） | A7 `ValidateOnStart` を外す → 殺した（4）／A8 スキームを問わない → 殺した（4） |
+
+`DataSourceService.Tests` は 431 → 448 件。

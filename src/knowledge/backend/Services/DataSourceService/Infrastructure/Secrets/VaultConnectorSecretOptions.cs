@@ -35,4 +35,10 @@ public sealed class VaultConnectorSecretOptions
     public int TimeoutSeconds { get; set; } = 10;
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Address);
+
+    /// <summary>起動時の検証: 空（Vault なし）か、絶対の http / https の URI だけを許す。</summary>
+    public static bool IsAcceptableAddress(string? address) =>
+        string.IsNullOrWhiteSpace(address)
+        || (Uri.TryCreate(address.Trim(), UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps));
 }

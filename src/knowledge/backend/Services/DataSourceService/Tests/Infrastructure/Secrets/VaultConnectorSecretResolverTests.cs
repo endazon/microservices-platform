@@ -24,8 +24,30 @@ public sealed class VaultConnectorSecretResolverTests
     private const string KeyMarker = "keyMarker42";
     private const string Reference = "vault:datasource/" + PathMarker + "#" + KeyMarker;
 
+    // 名乗りの資格情報（SA の JWT・Vault のトークン）も漏洩の目印にする（監査 🟡-2）。
+    private const string JwtMarker = "sa-jwt-marker-5d1e";
+    private const string TokenPrefix = "hvs.vault-token-marker-";
+
+    // 監査 🟡-1: KV v2 の読み取りの**実応答の形**（現在版が生きているとき deletion_time は空文字、destroyed は false）。
+    private static readonly object LiveMetadata = new
+    {
+        created_time = "2026-10-01T00:00:00.000000Z",
+        custom_metadata = (object?)null,
+        deletion_time = "",
+        destroyed = false,
+        version = 3,
+    };
+
     private static string KvBody(object? data, object? metadata = null) =>
-        JsonSerializer.Serialize(new { data = new { data, metadata = metadata ?? new { version = 3 } } });
+        JsonSerializer.Serialize(new { data = new { data, metadata = metadata ?? LiveMetadata } });
+
+    // ログに値・参照のパス・キー名・SA の JWT・Vault のトークンのいずれも出ない。
+    private static void AssertNoLeak(StubVault vault)
+    {
+        vault.LogText.Should().NotContain(SecretValue).And.NotContain(PathMarker).And.NotContain(KeyMarker)
+            .And.NotContain(JwtMarker).And.NotContain(TokenPrefix);
+        vault.Logs.Should().OnlyContain(l => l.Exception == null);
+    }
 
     [Fact]
     public async Task Reference_IsReadFromTheKvV2DataPath_WithTheLoginToken()
@@ -38,11 +60,11 @@ public sealed class VaultConnectorSecretResolverTests
         result.Succeeded.Should().BeTrue();
         result.Value.Should().Be(SecretValue);
         vault.DataRequests.Should().ContainSingle().Which.Should().Be($"/v1/secret/data/datasource/{PathMarker}");
-        vault.DataTokens.Should().Equal(["s.token-1"]);
+        vault.DataTokens.Should().Equal([TokenPrefix + "1"]);
         vault.LoginBodies.Should().ContainSingle();
         using var login = JsonDocument.Parse(vault.LoginBodies[0]);
         login.RootElement.GetProperty("role").GetString().Should().Be("datasource-connector-reader");
-        login.RootElement.GetProperty("jwt").GetString().Should().Be("sa-jwt");
+        login.RootElement.GetProperty("jwt").GetString().Should().Be(JwtMarker);
         vault.LoginPaths.Should().Equal(["/v1/auth/kubernetes/login"]);
     }
 
@@ -91,11 +113,11 @@ public sealed class VaultConnectorSecretResolverTests
     {
         // パス無し・現在版の削除・破棄（Vault は 404 に metadata を付けて返す）
         { HttpStatusCode.NotFound, "{\"errors\":[]}", ConnectorSecretFailure.NotFound },
-        { HttpStatusCode.NotFound, KvBody(null, new { version = 2, deletion_time = "2026-10-03T00:00:00Z", destroyed = false }), ConnectorSecretFailure.NotFound },
-        { HttpStatusCode.NotFound, KvBody(null, new { version = 2, deletion_time = "", destroyed = true }), ConnectorSecretFailure.NotFound },
+        { HttpStatusCode.NotFound, KvBody(null, new { created_time = "2026-10-01T00:00:00.000000Z", version = 2, deletion_time = "2026-10-03T00:00:00Z", destroyed = false }), ConnectorSecretFailure.NotFound },
+        { HttpStatusCode.NotFound, KvBody(null, new { created_time = "2026-10-01T00:00:00.000000Z", version = 2, deletion_time = "", destroyed = true }), ConnectorSecretFailure.NotFound },
         // 200 で返っても、現在版が削除・破棄されていれば値として扱わない
-        { HttpStatusCode.OK, KvBody(new Dictionary<string, string> { [KeyMarker] = SecretValue }, new { version = 2, deletion_time = "2026-10-03T00:00:00Z", destroyed = false }), ConnectorSecretFailure.NotFound },
-        { HttpStatusCode.OK, KvBody(new Dictionary<string, string> { [KeyMarker] = SecretValue }, new { version = 2, deletion_time = "", destroyed = true }), ConnectorSecretFailure.NotFound },
+        { HttpStatusCode.OK, KvBody(new Dictionary<string, string> { [KeyMarker] = SecretValue }, new { created_time = "2026-10-01T00:00:00.000000Z", version = 2, deletion_time = "2026-10-03T00:00:00Z", destroyed = false }), ConnectorSecretFailure.NotFound },
+        { HttpStatusCode.OK, KvBody(new Dictionary<string, string> { [KeyMarker] = SecretValue }, new { created_time = "2026-10-01T00:00:00.000000Z", version = 2, deletion_time = "", destroyed = true }), ConnectorSecretFailure.NotFound },
         { HttpStatusCode.OK, KvBody(null), ConnectorSecretFailure.NotFound },
         // キー無し・値が文字列でない
         { HttpStatusCode.OK, KvBody(new Dictionary<string, string> { ["other"] = SecretValue }), ConnectorSecretFailure.NotFound },
@@ -120,7 +142,7 @@ public sealed class VaultConnectorSecretResolverTests
         result.Succeeded.Should().BeFalse();
         result.Failure.Should().Be(expected);
         result.Value.Should().BeNull();
-        vault.LogText.Should().NotContain(SecretValue).And.NotContain(PathMarker).And.NotContain(KeyMarker);
+        AssertNoLeak(vault);
     }
 
     // 403 はトークンを取り直して 1 度だけやり直す。2 度目も 403 なら Unreachable（権限が無い）。
@@ -132,7 +154,23 @@ public sealed class VaultConnectorSecretResolverTests
 
         result.Failure.Should().Be(ConnectorSecretFailure.Unreachable);
         vault.LoginBodies.Should().HaveCount(2);
-        vault.DataTokens.Should().Equal(["s.token-1", "s.token-2"]);
+        vault.DataTokens.Should().Equal([TokenPrefix + "1", TokenPrefix + "2"]);
+        vault.Logs.Should().NotBeEmpty();
+        AssertNoLeak(vault);
+    }
+
+    // 403 以外の失敗（404・5xx）ではトークンを取り直さない（ログインは 1 回）。
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task NonForbiddenFailure_DoesNotRelogin(HttpStatusCode status)
+    {
+        var vault = new StubVault { Data = _ => (status, "{}") };
+        await vault.CreateResolver().ResolveAsync(Reference, CancellationToken.None);
+
+        vault.LoginBodies.Should().HaveCount(1);
+        vault.DataRequests.Should().HaveCount(1);
+        AssertNoLeak(vault);
     }
 
     [Fact]
@@ -140,13 +178,14 @@ public sealed class VaultConnectorSecretResolverTests
     {
         var vault = new StubVault
         {
-            Data = token => token == "s.token-1"
+            Data = token => token == TokenPrefix + "1"
                 ? (HttpStatusCode.Forbidden, "{}")
                 : (HttpStatusCode.OK, KvBody(new Dictionary<string, string> { [KeyMarker] = SecretValue })),
         };
         var result = await vault.CreateResolver().ResolveAsync(Reference, CancellationToken.None);
 
         result.Value.Should().Be(SecretValue);
+        AssertNoLeak(vault);
     }
 
     [Theory]
@@ -160,6 +199,8 @@ public sealed class VaultConnectorSecretResolverTests
 
         result.Failure.Should().Be(ConnectorSecretFailure.Unreachable);
         vault.DataRequests.Should().BeEmpty();
+        vault.Logs.Should().NotBeEmpty();
+        AssertNoLeak(vault);
     }
 
     [Fact]
@@ -195,9 +236,8 @@ public sealed class VaultConnectorSecretResolverTests
 
         result.Failure.Should().Be(ConnectorSecretFailure.Unreachable);
         vault.Logs.Should().NotBeEmpty("切り分けの手掛かり（型名）は残すこと");
-        vault.Logs.Should().OnlyContain(l => l.Exception == null);
-        vault.LogText.Should().NotContain(SecretValue).And.NotContain(PathMarker).And.NotContain(KeyMarker)
-            .And.NotContain("connect failed");
+        AssertNoLeak(vault);
+        vault.LogText.Should().NotContain("connect failed");
     }
 
     // 呼び出し側の取り消しだけは外へ出す（[[IADR-0493]] 決定 3）。
@@ -233,7 +273,7 @@ public sealed class VaultConnectorSecretResolverTests
         vault.Clock.Advance(TimeSpan.FromSeconds(3600 - 29));
         await resolver.ResolveAsync(Reference, CancellationToken.None);
         vault.LoginBodies.Should().HaveCount(2);
-        vault.DataTokens.Should().Equal(["s.token-1", "s.token-1", "s.token-2"]);
+        vault.DataTokens.Should().Equal([TokenPrefix + "1", TokenPrefix + "1", TokenPrefix + "2"]);
     }
 
     // 成功時もログに値・パス・キー名を出さない。
@@ -244,7 +284,76 @@ public sealed class VaultConnectorSecretResolverTests
         var result = await vault.CreateResolver().ResolveAsync(Reference, CancellationToken.None);
 
         result.ToString().Should().NotContain(SecretValue);
-        vault.LogText.Should().NotContain(SecretValue).And.NotContain(PathMarker).And.NotContain(KeyMarker);
+        AssertNoLeak(vault);
+    }
+
+    // リースが短い（≤ 60 秒）ときは満了の手前で削らず、リースいっぱいまで使う（削ると 0 秒以下になり毎回ログインする）。
+    [Fact]
+    public async Task ShortLease_IsUsedInFull_NotShortenedByTheRenewMargin()
+    {
+        var vault = new StubVault
+        {
+            LeaseSeconds = 60,
+            Data = _ => (HttpStatusCode.OK, KvBody(new Dictionary<string, string> { [KeyMarker] = SecretValue })),
+        };
+        var resolver = vault.CreateResolver();
+
+        await resolver.ResolveAsync(Reference, CancellationToken.None);
+        vault.Clock.Advance(TimeSpan.FromSeconds(59));
+        await resolver.ResolveAsync(Reference, CancellationToken.None);
+        vault.LoginBodies.Should().HaveCount(1, "60 秒のリースは 59 秒後もまだ有効");
+
+        vault.Clock.Advance(TimeSpan.FromSeconds(1));
+        await resolver.ResolveAsync(Reference, CancellationToken.None);
+        vault.LoginBodies.Should().HaveCount(2, "満了したら取り直す");
+    }
+
+    // 監査 🟡-3: 接頭辞の判定を通る参照でも、パスのセグメントは URL の符号化を経て送られる
+    // （`%2e%2e` が `..` へ戻って接頭辞の外へ出ない・`?` がクエリにならない）。
+    [Theory]
+    [InlineData("vault:datasource/%2e%2e/msp/postgres#password", "http://vault.test:8200/v1/secret/data/datasource/%252e%252e/msp/postgres")]
+    [InlineData("vault:datasource/..%2fmsp%2fpostgres#password", "http://vault.test:8200/v1/secret/data/datasource/..%252fmsp%252fpostgres")]
+    [InlineData("vault:datasource/%2E%2E#password", "http://vault.test:8200/v1/secret/data/datasource/%252E%252E")]
+    [InlineData(@"vault:datasource/\..\msp#password", "http://vault.test:8200/v1/secret/data/datasource/%5C..%5Cmsp")]
+    [InlineData("vault:datasource/ds-1?x=1#apiToken", "http://vault.test:8200/v1/secret/data/datasource/ds-1%3Fx%3D1")]
+    public async Task PathSegments_AreUrlEncoded_AndStayUnderTheDedicatedPrefix(string reference, string expectedUri)
+    {
+        var vault = new StubVault { Data = _ => (HttpStatusCode.NotFound, "{}") };
+        await vault.CreateResolver().ResolveAsync(reference, CancellationToken.None);
+
+        var sent = vault.DataUris.Should().ContainSingle().Subject;
+        sent.Should().StartWith("http://vault.test:8200/v1/secret/data/datasource/");
+        sent.Should().Be(expectedUri);
+        if (reference.Contains('%'))
+            sent.Should().Contain("%25", "入力の % は % のまま送らず %25 へ符号化すること");
+    }
+
+    // `Vault:Address` は起動時に検証する: 空（Vault なし）か、絶対の http / https の URI だけ。
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("   ", true)]
+    [InlineData("http://vault.platform-infra.svc.cluster.local:8200", true)]
+    [InlineData("https://vault.example.test", true)]
+    [InlineData("vault.platform-infra.svc.cluster.local:8200", false)]
+    [InlineData("/v1/vault", false)]
+    [InlineData("ftp://vault.example.test", false)]
+    [InlineData("file:///var/run/vault", false)]
+    public void VaultAddress_IsValidatedOnStart(string? address, bool valid)
+    {
+        var settings = new Dictionary<string, string?>();
+        if (address is not null) settings["Vault:Address"] = address;
+        var services = new ServiceCollection()
+            .AddLogging()
+            .AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+        services.AddConnectorSecretResolver();
+        using var provider = services.BuildServiceProvider();
+
+        var validate = () => provider.GetRequiredService<IStartupValidator>().Validate();
+        if (valid)
+            validate.Should().NotThrow();
+        else
+            validate.Should().Throw<OptionsValidationException>();
     }
 
     // 配線（[[IADR-0495]] 決定 3）: Vault が未構成なら S0 の素通し、構成済みなら Vault 解決器。
@@ -294,6 +403,8 @@ public sealed class VaultConnectorSecretResolverTests
         public List<string> LoginPaths { get; } = [];
         public List<string> LoginBodies { get; } = [];
         public List<string> DataRequests { get; } = [];
+        public List<string> DataUris { get; } = [];
+        public int LeaseSeconds { get; set; } = 3600;
         public List<string> DataTokens { get; } = [];
         public int TotalRequests => LoginPaths.Count + DataRequests.Count;
         public List<(string Message, Exception? Exception)> Logs { get; } = [];
@@ -318,6 +429,7 @@ public sealed class VaultConnectorSecretResolverTests
             else
             {
                 DataRequests.Add(path);
+                DataUris.Add(request.RequestUri.AbsoluteUri);
                 DataTokens.Add(request.Headers.GetValues("X-Vault-Token").Single());
             }
 
@@ -328,7 +440,7 @@ public sealed class VaultConnectorSecretResolverTests
                 if (LoginStatus != HttpStatusCode.OK)
                     return new HttpResponseMessage(LoginStatus) { Content = new StringContent("{}") };
                 _logins++;
-                var body = JsonSerializer.Serialize(new { auth = new { client_token = $"s.token-{_logins}", lease_duration = 3600 } });
+                var body = JsonSerializer.Serialize(new { auth = new { client_token = $"{TokenPrefix}{_logins}", lease_duration = LeaseSeconds } });
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
             }
 
@@ -345,7 +457,7 @@ public sealed class VaultConnectorSecretResolverTests
 
     private sealed class FixedTokenReader : IServiceAccountTokenReader
     {
-        public Task<string> ReadAsync(CancellationToken ct) => Task.FromResult("sa-jwt");
+        public Task<string> ReadAsync(CancellationToken ct) => Task.FromResult(JwtMarker);
     }
 
     private sealed class ThrowingTokenReader : IServiceAccountTokenReader

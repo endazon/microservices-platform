@@ -15,7 +15,14 @@ public static class ConnectorSecretResolverServiceCollectionExtensions
 {
     public static IServiceCollection AddConnectorSecretResolver(this IServiceCollection services)
     {
-        services.AddOptions<VaultConnectorSecretOptions>().BindConfiguration(VaultConnectorSecretOptions.SectionName);
+        // 🔴 所在の誤り（相対・スキーム違い）を起動時に止める。黙って起動すると、参照の行が毎回 unreachable で失敗し続ける。
+        //    空は「Vault を配備しない構成」として許す（素通しの配線）。
+        services.AddOptions<VaultConnectorSecretOptions>()
+            .BindConfiguration(VaultConnectorSecretOptions.SectionName)
+            .Validate(
+                o => VaultConnectorSecretOptions.IsAcceptableAddress(o.Address),
+                "Vault:Address は空（Vault なし）か、絶対の http / https の URI であること。")
+            .ValidateOnStart();
         services.AddHttpClient(VaultConnectorSecretResolver.ClientName, (sp, client) =>
         {
             var options = sp.GetRequiredService<IOptions<VaultConnectorSecretOptions>>().Value;
