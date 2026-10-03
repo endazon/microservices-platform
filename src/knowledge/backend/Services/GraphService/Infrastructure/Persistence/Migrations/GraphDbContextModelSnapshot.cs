@@ -306,7 +306,13 @@ namespace GraphService.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
-                    b.Property<DateTimeOffset>("LastSucceededAt")
+                    b.Property<int>("AttemptsSinceSuccess")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("LastAttemptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastSucceededAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("JobName");

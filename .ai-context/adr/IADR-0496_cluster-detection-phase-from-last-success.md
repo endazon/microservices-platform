@@ -1,5 +1,5 @@
 ---
-title: IADR-0496 日次のクラスタ検出は位相を前回の成功に付ける。成功の時刻を graph_batch_runs に検出と同じ保存で書き、起動の短い待ちの後にリースの内側で期限を判定して取りこぼしを追いつく。最後の成功の時刻をゲージで出す
+title: IADR-0496 日次のクラスタ検出は位相を前回の成功に付ける。成功の時刻を graph_batch_runs に検出と同じ保存で書き、起動の短い待ちの後にリースの内側で期限を判定して取りこぼしを追いつく。失敗は試行の記録で指数バックオフする。最後の成功の時刻をゲージで出す
 type: impl-adr
 status: Accepted
 related_ids: [FR-17, FR-18, FR-10, SC-10, SC-18, ADR-0035, ADR-0076, ADR-0083, IADR-0425, IADR-0430, IADR-0299, IADR-0389, IADR-0394]
@@ -74,7 +74,8 @@ ADR-0035 決定 3 が定めたのは「日次」であり時刻ではない。B 
 
 ### 決定 1: 成功の時刻を `graph_batch_runs` に、検出の保存と同じ `SaveChanges` で書く
 
-- 表 `graph_batch_runs`（`JobName` varchar(64) 主キー・`LastSucceededAt` timestamptz）。検出の行の名前は `cluster-detection`（`ClusterDetectionJob.RunName`）。
+- 表 `graph_batch_runs`（`JobName` varchar(64) 主キー・`LastSucceededAt` timestamptz NULL 可・`LastAttemptedAt` timestamptz・
+  `AttemptsSinceSuccess` integer。後ろの 2 列は決定 4 の試行の記録）。検出の行の名前は `cluster-detection`（`ClusterDetectionJob.RunName`）。
   マイグレーション `AddGraphBatchRuns`。**既存の表・行には触れない。** 表を足した直後は行が無いので、初回の判定は「期限切れ」になる（＝配備の直後に追いつく）。
 - 書き手は `ClusterDetectionJob` で、クラスタの追加・変更・削除と**同じ保存**で書く。🔴 **失敗・取り消しの周期は成功を記録しない**
   （保存の前に落ちれば何も書かれず、保存が失敗すれば全体が巻き戻る）。別の保存に分けると「クラスタは保存できなかったが成功は残った」が起き、
@@ -85,7 +86,10 @@ ADR-0035 決定 3 が定めたのは「日次」であり時刻ではない。B 
 
 - 起動の後 `ClusterDetection:StartupDelay`（既定 2 分）待ってから判定する。起動直後はマイグレーション・seed・購読の立ち上がりと重なる。
 - 判定（`ClusterDetectionSchedule.DelayUntilDue`）: 記録が無い・前回の成功から 24 時間以上 → すぐ走らせる（何周期遅れていても 1 回だけ）。
-  24 時間未満 → 「前回 + 24 時間」まで眠る。前回の成功が未来（時計のずれ）→ 1 周期で頭打ち。
+  24 時間未満 → 「前回 + 24 時間」まで眠る（1 周期で頭打ち）。
+- 🔴 前回の成功が**許容（5 分。`ClusterDetectionSchedule.FutureTolerance`）を超えて未来**なら、壊れた記録として**すぐ走らせる**
+  （走れば今の時刻で上書きされて正される）。「1 周期で頭打ちにして眠る」だけだと、起きてもまだ未来なので眠り直し、
+  3 日先の記録なら 4 日走らない（独立監査の指摘で改めた）。許容内の小さなずれは期限内として扱う。
 - 走り終えたら「この成功 + 24 時間」まで眠る（下限は決定 4 の再試行の待ち —— 検出が 1 周期より長くかかっても間を空けずに回り続けない）。
 - **周期は 24 時間のまま構成で変えられない**（ADR-0035 決定 3）。構成で変えられるのは待ちだけ。
 
@@ -95,18 +99,31 @@ ADR-0035 決定 3 が定めたのは「日次」であり時刻ではない。B 
   後の Pod が古い値のまま 2 回目を走らせる。内側で読めば、後の Pod は先の成功を見て眠る。
 - リースが取れないときは**読み込みもしない**（従前どおり）。
 
-### 決定 4: リースが取れない・周期が失敗したら、再試行の待ちの後に判定し直す
+### 決定 4: リースが取れなければ再試行の待ちの後に判定し直す。失敗は試行の記録で指数バックオフする
 
-- `ClusterDetection:RetryDelay`（既定 1 時間）。失敗は記録されていないので、次の判定は「まだ期限切れ」を見て走り直す。
-  短すぎると壊れ続ける周期が 2 万件の文書を何度も読み直す。
+- リースが取れない → `ClusterDetection:RetryDelay`（既定 1 時間）後に判定し直す（失敗ではないので倍にしない）。
+- 周期が失敗した（例外・停止要求でない取り消し）→ **連続した失敗の数だけ再試行の待ちを倍々にする**（1 時間 → 2 → 4 → … → 24 時間で頭打ち。
+  `ClusterDetectionSchedule.Backoff`）。失敗は成功として記録されていないので、待ちが明けた判定は「まだ期限切れ」を見て走り直す。
+- 🔴 **試行は本体の前に、別の保存で記録する**（`LastAttemptedAt` と `AttemptsSinceSuccess` を進める。成功で 0 に戻る）。
+  判定は「成功の期限」と「最後の試行 + バックオフ」の長い方を待つ（`ClusterDetectionSchedule.NextDelay`）。
+  プロセスごと落ちる失敗（メモリ不足の OOMKill 等）は例外として捕まらず、プロセス内の数は再起動で消える。
+  試行の記録が無いと、初回の検出が落ちる環境では「再起動 → 起動の待ち → 再実行 → 落ちる」が数分おきに続く。
+  稼働 PoC の初回は約 1.4 万件のクラスタと所属行を 1 回の保存で足す見込みで、graph には resources が無い（ノード使用率 83%。独立監査の実測）。
+  記録があれば、2 回目は 1 時間後、3 回目は 2 時間後…と間隔が開き、ノードを圧し続けない。
+- プロセス内の連続失敗の数も持つ（DB へ届かない失敗でもバックオフさせるため）。期限内・成功・リース無しで 0 に戻る。
+- 試行の記録が許容を超えて未来なら、バックオフは無視する（壊れた記録で眠り続けない）。
 - 停止要求の取り消しだけがループを終える（[[IADR-0299]] 決定 3 の 2026-09-26 追記・#1598 の形を保つ）。走っている途中で停止されると保存されず、成功も記録されない（次の起動で追いつく）。
-- 構成の不正値（負の `StartupDelay`、0 以下の `RetryDelay`）は既定へ倒して警告する。`ValidateOnStart` は付けない（`DocumentUpdated` / `DocumentDeleted` の購読ごと止めない）。
+- 構成の不正値（負の `StartupDelay`、0 以下の `RetryDelay`、どちらも 1 日超）は既定へ倒して警告する。上限は `Task.Delay` の上限（約 49.7 日）を
+  超える値で `ArgumentOutOfRangeException` がループの外へ漏れる経路も塞ぐ。`ValidateOnStart` は付けない（`DocumentUpdated` / `DocumentDeleted` の購読ごと止めない）。
 
 ### 決定 5: 最後の成功の時刻をゲージで出す
 
 - 計器 `graph.cluster_detection.last_success.timestamp`（単位 `s`。Prometheus では `graph_cluster_detection_last_success_timestamp_seconds`）。
   Meter は既存の `microservices-platform.graph-service`（`AddMeter` を増やさない）。値は前回の成功の Unix 秒。
-- 判定のたびに記録を読み直して更新し、成功したらその時刻へ進める。**記録が無い・まだ読めていない間は観測値を出さない**（0 は「1970 年に成功した」に読める）。
+- 判定のたびに記録を読み直して更新し、成功したらその時刻へ進める（成功のときは書いた値を流用し、読み直さない）。
+  **記録が無い・まだ成功していない・まだ読めていない間は観測値を出さない**（0 は「1970 年に成功した」に読める）。
+- 🔴 値は **Pod ごとの「最後に読んだ／書いた記録」**であり、Pod 間で一致する保証は無い（各 Pod は自分が判定した時点でしか読み直さない）。
+  アラートは Pod をまたいで `max()` を取って読む。
 - 遅れは `time() - graph_cluster_detection_last_success_timestamp_seconds` で読む。**アラート規則は本 IADR では足さない**（フォローアップ 1）。
 - 業務の値ではなく生産者の生死の値なので、DashboardService の観測値（[[IADR-0389]] の受け口）ではなく可観測性の系列に置く（[[IADR-0389]] 決定 5 と同じ置き場）。
 
@@ -123,6 +140,10 @@ ADR-0035 決定 3 が定めたのは「日次」であり時刻ではない。B 
 - 悪い影響・トレードオフ:
   - 表が 1 つ増えた（移行が要る。行は 1 行）。
   - 起動の 2 分後に 2 万件の文書と全辺を読む処理が走る（従前は 24 時間後だった）。所要はログ（「クラスタ検出を終えた（所要 …）」）で読む。
+  - 🔴 **残余: 初回配備後にメモリと所要時間を観測する。** 初回は約 1.4 万件のクラスタと所属行を 1 回の保存で足す。メモリ不足で落ちる場合、
+    決定 4 のバックオフで再実行の間隔は開くが、**成功はしない**。graph への `resources.limits` の追加は本 IADR では扱わない（別の判断。
+    limits を付けると OOMKill の閾値が下がる向きにも働く）。観測で落ちることが分かったら、保存の分割（決定 1 の「1 回の保存」との両立が要る）か
+    resources の判断へ進む。
   - 要約の日次バッチ（[[IADR-0430]]）は同じ欠陥の形のまま残る（既定オフ）。コード上に注記した。
 - フォローアップ:
   1. アラート規則（例: `time() - graph_cluster_detection_last_success_timestamp_seconds > 26h` と系列の不在）。規則は 4 か所（compose / k8s の Prometheus 規則と Grafana の 2 つ）に対で置く運用なので、別作業にする。
@@ -131,8 +152,10 @@ ADR-0035 決定 3 が定めたのは「日次」であり時刻ではない。B 
 
 ## 試験
 
-`docs/tests/FR-17_knowledge-graph.md` T-70〜T-76（`ClusterDetectionScheduleTests`・`ClusterDetectionCatchUpTests`・`ClusterDetectionMetricsTests`、
-既存の `BatchLoopForeignCancellationTests` の検出の 2 件と `ClusterDetectionTests` の T-18 / T-18b は新しい形へ追随）。自己変異 9 件をすべて殺した（作業仕様書 §変異試験の結果）。
+`docs/tests/FR-17_knowledge-graph.md` T-70〜T-79（`ClusterDetectionScheduleTests`・`ClusterDetectionCatchUpTests`・`ClusterDetectionMetricsTests`、
+既存の `BatchLoopForeignCancellationTests` の検出の 2 件と `ClusterDetectionTests` の T-18 / T-18b は新しい形へ追随）。自己変異 17 件をすべて殺した
+（独立監査が生存を指摘した N7・N12・N2・N3・N16 を含む。作業仕様書 §変異試験の結果）。統合試験の器（`GraphServiceFactory`）も起動の待ちを 1 日にして、
+実 PostgreSQL と実リースで検出が黙って走らないようにした。
 
 ## 関連
 

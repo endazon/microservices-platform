@@ -18,8 +18,11 @@ namespace GraphService.Features.Clustering.Detect;
 //  1. 起動の後、短い待ち（`ClusterDetection:StartupDelay`。既定 2 分）を置いて 1 度判定する。
 //  2. 判定は**リースの内側で** `graph_batch_runs` の行を読み直して行う（ローリング更新の新旧 2 Pod が両方走らない）。
 //     前回の成功から 24 時間以上（または記録が無い）なら走らせ、そうでなければ「前回 + 24 時間」まで眠る。
-//  3. リースが取れない・周期が失敗した（取り消し含む）ら `ClusterDetection:RetryDelay`（既定 1 時間）後に判定し直す。
+//  3. リースが取れなければ `ClusterDetection:RetryDelay`（既定 1 時間）後に判定し直す。周期が失敗した（取り消し含む）ら、
+//     **連続した失敗の数だけ再試行の待ちを倍々にする**（1 時間 → 2 → 4 → … → 24 時間で頭打ち）。
 //     失敗は成功として記録しない（記録は検出の保存と同じ `SaveChanges`。`ClusterDetectionJob`）。
+//     試行は本体の前に別の保存で記録するので、**プロセスごと落ちた試行も**次の起動がバックオフに数える
+//     （メモリ不足で落ちる検出が「再起動 → 2 分後に再実行 → 落ちる」を繰り返さない）。
 //
 // `TryRunCycleAsync` は internal にして決定的に検証する（形は従前と同じ）。
 public sealed class ClusterDetectionHostedService(
@@ -37,6 +40,10 @@ public sealed class ClusterDetectionHostedService(
 
     // #1622 / #1733: 待ちと期限の判定の時計。**試験だけが偽の時計（FakeTimeProvider）に差し替える**。本番はシステムの時計のまま。
     internal TimeProvider CycleClock { get; init; } = TimeProvider.System;
+
+    // [[IADR-0496]] 決定 4: このプロセスで続いている失敗の数（例外で終わった判定）。成功・期限内・リース無しで 0 に戻る。
+    // DB へ届かない失敗（接続不能）でもバックオフさせるための数であり、プロセスを跨ぐ数は `graph_batch_runs` が持つ。
+    private int _consecutiveFailures;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -57,6 +64,7 @@ public sealed class ClusterDetectionHostedService(
                 try
                 {
                     wait = (await TryRunCycleAsync(stoppingToken)).NextDelay;
+                    _consecutiveFailures = 0;
                 }
                 // ［2026-09-26 / #1598・[[IADR-0299]] 追記］🔴 **素通しするのは停止要求（stoppingToken）の取り消しだけである。**
                 // 下流の時間切れ等の取り消しは周期の失敗であり、型だけで素通しすると外側で「シャットダウン」と読まれて
@@ -66,8 +74,10 @@ public sealed class ClusterDetectionHostedService(
                     // 1 周期の失敗でホストを落とさない（本サービスは DocumentUpdated /
                     // DocumentDeleted の購読者でもある。クラスタ検出の都合で購読を止めない）。
                     // 🔴 [[IADR-0496]]: 失敗は成功として記録されていないので、次の判定は「まだ期限切れ」を見て走り直す。
-                    logger.LogError(ex, "クラスタ検出に失敗した。{RetryDelay} 後に判定し直す。", opts.EffectiveRetryDelay);
-                    wait = opts.EffectiveRetryDelay;
+                    _consecutiveFailures++;
+                    wait = ClusterDetectionSchedule.Backoff(opts.EffectiveRetryDelay, _consecutiveFailures, CycleInterval);
+                    logger.LogError(ex, "クラスタ検出に失敗した（連続 {Failures} 回）。{Wait} 後に判定し直す。",
+                        _consecutiveFailures, wait);
                 }
 
                 await Task.Delay(wait, CycleClock, stoppingToken);
@@ -100,23 +110,30 @@ public sealed class ClusterDetectionHostedService(
         await using var scope = scopeFactory.CreateAsyncScope();
         var job = scope.ServiceProvider.GetRequiredService<ClusterDetectionJob>();
 
-        var lastSucceededAt = await job.ReadLastSucceededAtAsync(ct);
-        metrics.RecordLastSuccess(lastSucceededAt);
+        var state = await job.ReadRunStateAsync(ct);
+        metrics.RecordLastSuccess(state.LastSucceededAt);
 
-        var wait = ClusterDetectionSchedule.DelayUntilDue(CycleClock.GetUtcNow(), lastSucceededAt, CycleInterval);
+        var now = CycleClock.GetUtcNow();
+        var wait = ClusterDetectionSchedule.NextDelay(now, state, CycleInterval, retryDelay);
         if (wait > TimeSpan.Zero)
         {
             logger.LogInformation(
-                "クラスタ検出はまだ期限内である（前回の成功 {LastSucceededAt:O}）。{Wait} 後に判定する。",
-                lastSucceededAt, wait);
+                "クラスタ検出はまだ待つ（前回の成功 {LastSucceededAt}・成功していない試行 {Attempts} 回・最後の試行 {LastAttemptedAt}）。{Wait} 後に判定する。",
+                state.LastSucceededAt?.ToString("O") ?? "記録なし", state.AttemptsSinceSuccess,
+                state.LastAttemptedAt?.ToString("O") ?? "記録なし", wait);
             return new(ClusterDetectionCycleKind.NotDue, wait);
         }
 
         logger.LogInformation(
-            "クラスタ検出の期限が来ている（前回の成功 {LastSucceededAt}）。検出する。",
-            lastSucceededAt?.ToString("O") ?? "記録なし");
+            "クラスタ検出の期限が来ている（前回の成功 {LastSucceededAt}・成功していない試行 {Attempts} 回）。検出する。",
+            state.LastSucceededAt?.ToString("O") ?? "記録なし", state.AttemptsSinceSuccess);
+
+        // 🔴 試行は本体より先に、別の保存で確定させる（落ちても残す。決定 4）。
+        await job.RecordAttemptAsync(now, ct);
+
         var startedAt = CycleClock.GetTimestamp();
         var result = await job.RunAsync(ct);
+        // 2 回目の更新は DB を読み直さない。いま本体が書いた成功の値（同じ保存で確定済み）をそのまま流用する。
         metrics.RecordLastSuccess(result.StartedAt);
 
         // 次は「この成功 + 1 周期」。検出が 1 周期より長くかかった（あるいは時計が食い違った）ときに

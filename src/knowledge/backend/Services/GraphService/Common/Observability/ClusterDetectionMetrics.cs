@@ -15,8 +15,12 @@ namespace GraphService.Common.Observability;
 //
 // 🔴 **記録をまだ読めていない・記録が無いときは観測値を出さない。** 0 を出すと「1970 年に成功した」になり、
 // 遅れの式が 56 年を返す（鳴らす理由としては正しいが、記録が無いことと区別できない）。
-// 不在は `absent()` で別に読める。値は `graph_batch_runs` の行であり、**どのレプリカが読んでも同じ**である
-// （リースを取れなかったレプリカも、次に判定したときに読み直して追いつく）。
+// 不在は `absent()` で別に読める。
+//
+// 🔴 **値は Pod ごとの「最後に読んだ／書いた記録」であり、Pod 間で一致する保証は無い。** 元は `graph_batch_runs` の
+// 同じ行だが、各 Pod は自分が判定した時点でしか読み直さない（リースを取れなかった Pod は再試行の待ちの後に、
+// 期限内と判定した Pod は期限まで、古い値を出し続ける）。**アラートは Pod をまたいで `max()` を取って読む**こと
+// （最も新しい成功が全体の最後の成功である）。
 public sealed class ClusterDetectionMetrics
 {
     // Meter 名は `EdgeTypeFallbackMetrics` と同値（Program.cs の AddMeter を増やさない）。
@@ -37,7 +41,8 @@ public sealed class ClusterDetectionMetrics
             description: "日次のクラスタ検出が最後に成功した周期の開始時刻（Unix 秒）。記録が無い間は系列を出さない");
     }
 
-    // 永続化された記録を読んだ／成功を書いたときに呼ぶ。null（記録が無い）は「未観測」へ戻す。
+    // 永続化された記録を読んだとき、および成功を書いたとき（書いた値を流用する）に呼ぶ。null（記録が無い・
+    // まだ成功していない）は「未観測」へ戻す。
     public void RecordLastSuccess(DateTimeOffset? lastSucceededAt) =>
         Interlocked.Exchange(ref _lastSuccessUnixSeconds,
             lastSucceededAt is { } at ? at.ToUnixTimeSeconds() : Unknown);

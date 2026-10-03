@@ -94,6 +94,8 @@ public sealed class BatchLoopForeignCancellationTests
         using var services = new ServiceCollection().BuildServiceProvider();
         // ［2026-10-04 / #1733・[[IADR-0496]]］検出の「拍」は起動の待ち（1 回目）と再試行の待ち（2・3 回目）である。
         // 両方を 1 拍にすれば、取得の時刻は他の 2 つと同じ「開始 + k 拍」になる。
+        // 連続した失敗の倍々は周期（ここでは 1 拍）で頭打ちになるので、ここでは倍にならない。倍々と、再試行の待ちが
+        // 周期と別の値であることは `ClusterDetectionCatchUpTests`（T-77）が測る。
         var worker = new ClusterDetectionHostedService(
             services.GetRequiredService<IServiceScopeFactory>(), coordinator,
             Options.Create(new ClusterDetectionOptions { StartupDelay = TickCycle, RetryDelay = TickCycle }),

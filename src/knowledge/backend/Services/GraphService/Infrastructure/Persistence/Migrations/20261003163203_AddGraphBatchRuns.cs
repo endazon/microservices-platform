@@ -16,7 +16,9 @@ namespace GraphService.Infrastructure.Persistence.Migrations
                 columns: table => new
                 {
                     JobName = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
-                    LastSucceededAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    LastSucceededAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    LastAttemptedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    AttemptsSinceSuccess = table.Column<int>(type: "integer", nullable: false)
                 },
                 constraints: table =>
                 {

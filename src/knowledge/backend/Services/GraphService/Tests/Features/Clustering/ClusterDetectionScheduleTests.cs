@@ -35,8 +35,52 @@ public sealed class ClusterDetectionScheduleTests
         => ClusterDetectionSchedule.DelayUntilDue(Now, Now.AddMinutes(-minutesAgo), Day)
             .Should().Be(TimeSpan.FromMinutes(expectedMinutes));
 
-    // 時計のずれで記録が未来にあっても、ずれの分だけ眠り続けない（1 周期で頭打ち）。
+    // ［#1733 監査］許容（5 分）を超えて未来の記録は壊れた記録として**すぐ走らせる**（走れば今の時刻で上書きされる）。
+    // 「1 周期で頭打ちにして眠る」だと、起きてもまだ未来なので眠り直し、3 日先の記録なら 4 日走らない。
+    [Theory]
+    [InlineData(6)]
+    [InlineData(3 * 24 * 60)]
+    public void 許容を超えて未来の記録はすぐ走らせる(int minutesAhead)
+        => ClusterDetectionSchedule.DelayUntilDue(Now, Now.AddMinutes(minutesAhead), Day).Should().Be(TimeSpan.Zero);
+
+    // 許容内（時計の小さなずれ）は期限内として扱い、1 周期で頭打ちにする。
     [Fact]
-    public void 未来の記録は1周期で頭打ちにする()
-        => ClusterDetectionSchedule.DelayUntilDue(Now, Now.AddDays(3), Day).Should().Be(Day);
+    public void 許容内の未来の記録は1周期で頭打ちにする()
+        => ClusterDetectionSchedule.DelayUntilDue(Now, Now.AddMinutes(3), Day).Should().Be(Day);
+
+    // T-77: 連続した失敗の待ちは再試行の待ちの倍々で、1 周期で頭打ち。
+    [Theory]
+    [InlineData(1, 60)]
+    [InlineData(2, 120)]
+    [InlineData(3, 240)]
+    [InlineData(5, 960)]
+    [InlineData(6, 24 * 60)]
+    [InlineData(40, 24 * 60)]
+    public void 失敗の待ちは倍々で1周期が上限(int failures, int expectedMinutes)
+        => ClusterDetectionSchedule.Backoff(TimeSpan.FromHours(1), failures, Day)
+            .Should().Be(TimeSpan.FromMinutes(expectedMinutes));
+
+    // T-77: 成功していない試行が残っていれば、成功の期限と最後の試行からのバックオフの長い方を待つ。
+    [Fact]
+    public void 成功していない試行があれば最後の試行からバックオフを待つ()
+    {
+        var state = new ClusterDetectionRunState(Now.AddDays(-2), Now.AddMinutes(-30), AttemptsSinceSuccess: 3);
+        ClusterDetectionSchedule.NextDelay(Now, state, Day, TimeSpan.FromHours(1))
+            .Should().Be(TimeSpan.FromHours(4) - TimeSpan.FromMinutes(30));
+    }
+
+    [Fact]
+    public void 成功していない試行が無ければ成功の期限だけを見る()
+    {
+        var state = new ClusterDetectionRunState(Now.AddHours(-1), Now.AddHours(-1), AttemptsSinceSuccess: 0);
+        ClusterDetectionSchedule.NextDelay(Now, state, Day, TimeSpan.FromHours(1)).Should().Be(TimeSpan.FromHours(23));
+    }
+
+    // 試行の記録が許容を超えて未来なら、バックオフで眠り続けない（壊れた記録）。
+    [Fact]
+    public void 未来の試行の記録ではバックオフしない()
+    {
+        var state = new ClusterDetectionRunState(null, Now.AddDays(3), AttemptsSinceSuccess: 2);
+        ClusterDetectionSchedule.NextDelay(Now, state, Day, TimeSpan.FromHours(1)).Should().Be(TimeSpan.Zero);
+    }
 }

@@ -29,12 +29,27 @@ public sealed class ClusterDetectionJob(
     // （次の起動で「記録が無い＝期限切れ」と読み、その場で 1 回余分に走る。壊れはしないが黙って変えない）。
     public const string RunName = "cluster-detection";
 
-    // [[IADR-0496]] (#1733): 前回の成功の時刻。記録が無ければ null（初めての配備・表を足した直後）。
-    public Task<DateTimeOffset?> ReadLastSucceededAtAsync(CancellationToken ct = default) =>
-        db.BatchRuns.AsNoTracking()
-            .Where(r => r.JobName == RunName)
-            .Select(r => (DateTimeOffset?)r.LastSucceededAt)
-            .SingleOrDefaultAsync(ct);
+    // [[IADR-0496]] (#1733): 実行の記録（前回の成功・最後の試行・成功していない試行の数）。行が無ければ `None`。
+    public async Task<ClusterDetectionRunState> ReadRunStateAsync(CancellationToken ct = default)
+    {
+        var row = await db.BatchRuns.AsNoTracking().SingleOrDefaultAsync(r => r.JobName == RunName, ct);
+        return row is null
+            ? ClusterDetectionRunState.None
+            : new ClusterDetectionRunState(row.LastSucceededAt, row.LastAttemptedAt, row.AttemptsSinceSuccess);
+    }
+
+    // [[IADR-0496]] 決定 4 (#1733): 周期を**始める前に**試行を記録する。🔴 **本体とは別の保存で、本体より先に確定させる** ——
+    // 本体の途中でプロセスごと落ちても（メモリ不足等）、次の起動が「前の試行は成功しなかった」を読んでバックオフできる。
+    // 成功の記録（`RunAsync` の中）とは逆向きであり、こちらは失敗しても残ることに意味がある。
+    public async Task RecordAttemptAsync(DateTimeOffset attemptedAt, CancellationToken ct = default)
+    {
+        var run = await db.BatchRuns.SingleOrDefaultAsync(r => r.JobName == RunName, ct);
+        if (run is null)
+            db.BatchRuns.Add(GraphBatchRun.Attempted(RunName, attemptedAt));
+        else
+            run.MarkAttempted(attemptedAt);
+        await db.SaveChangesAsync(ct);
+    }
 
     public async Task<ClusterDetectionResult> RunAsync(CancellationToken ct = default)
     {
@@ -119,7 +134,7 @@ public sealed class ClusterDetectionJob(
         // 構成が 1 つも変わらない周期でも書く —— ここが「検出が回っている」ことの唯一の証拠である。
         var run = await db.BatchRuns.SingleOrDefaultAsync(r => r.JobName == RunName, ct);
         if (run is null)
-            db.BatchRuns.Add(GraphBatchRun.Create(RunName, now));
+            db.BatchRuns.Add(GraphBatchRun.Succeeded(RunName, now));
         else
             run.MarkSucceeded(now);
 

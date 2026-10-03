@@ -30,6 +30,9 @@ namespace GraphService.Tests.Features.Clustering;
 //  - T-74: 新しいなら起動では走らず、前回 + 24 時間で走る
 //  - T-75: 期限の判定はリースの内側で読み直す（新旧 2 Pod の二重実行を防ぐ）
 //  - T-76: 計器・構成・マイグレーション
+//  - T-77: 失敗が続けば再試行の待ちを倍々にする。試行は本体の前に記録し、プロセスごと落ちた試行も次の起動が数える
+//  - T-78: 本体の保存は 1 回。成功後の待ちは周期の開始時刻から 1 周期（下限は再試行の待ち）
+//  - T-79: 停止要求は走っている判定へ届く
 public sealed class ClusterDetectionCatchUpTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 10, 4, 0, 0, 0, TimeSpan.Zero);
@@ -137,7 +140,7 @@ public sealed class ClusterDetectionCatchUpTests
         {
             AddDocuments(db, 2);
             if (hoursAgo is { } h)
-                db.BatchRuns.Add(GraphBatchRun.Create(ClusterDetectionJob.RunName, T0.AddHours(-h)));
+                db.BatchRuns.Add(GraphBatchRun.Succeeded(ClusterDetectionJob.RunName, T0.AddHours(-h)));
         });
         var coordinator = new CountingCoordinator();
         var worker = NewWorker(factory.Services, coordinator, clock);
@@ -173,7 +176,7 @@ public sealed class ClusterDetectionCatchUpTests
         await SeedAsync(factory.Services, db =>
         {
             AddDocuments(db, 2);
-            db.BatchRuns.Add(GraphBatchRun.Create(ClusterDetectionJob.RunName, last));
+            db.BatchRuns.Add(GraphBatchRun.Succeeded(ClusterDetectionJob.RunName, last));
         });
         var coordinator = new CountingCoordinator();
         var (metrics, probe) = ClusterDetectionMetricsTests.NewProbe();
@@ -221,7 +224,7 @@ public sealed class ClusterDetectionCatchUpTests
         await SeedAsync(factory.Services, db =>
         {
             AddDocuments(db, 2);
-            db.BatchRuns.Add(GraphBatchRun.Create(ClusterDetectionJob.RunName, T0.AddHours(-25)));
+            db.BatchRuns.Add(GraphBatchRun.Succeeded(ClusterDetectionJob.RunName, T0.AddHours(-25)));
         });
         // リースを渡す直前に、他の Pod が検出を終えて成功を記録した状態を作る。
         var coordinator = new PeerRanCoordinator(factory.Services, T0.AddMinutes(-5));
@@ -268,6 +271,14 @@ public sealed class ClusterDetectionCatchUpTests
         invalid.EffectiveStartupDelay.Should().Be(ClusterDetectionOptions.DefaultStartupDelay);
         invalid.EffectiveRetryDelay.Should().Be(ClusterDetectionOptions.DefaultRetryDelay);
 
+        // 上限（1 日）を超える待ちも既定へ倒す（`Task.Delay` の上限を超える値でループの外へ例外が漏れない）。
+        var tooLong = new ClusterDetectionOptions { StartupDelay = TimeSpan.FromDays(60), RetryDelay = TimeSpan.FromDays(1) + TimeSpan.FromTicks(1) };
+        tooLong.HasInvalidValue.Should().BeTrue();
+        tooLong.EffectiveStartupDelay.Should().Be(ClusterDetectionOptions.DefaultStartupDelay);
+        tooLong.EffectiveRetryDelay.Should().Be(ClusterDetectionOptions.DefaultRetryDelay);
+        new ClusterDetectionOptions { StartupDelay = TimeSpan.FromDays(1), RetryDelay = TimeSpan.FromDays(1) }
+            .HasInvalidValue.Should().BeFalse("上限ちょうどは受ける（試験の器は起動の待ちを 1 日にしている）");
+
         var zeroStartup = new ClusterDetectionOptions { StartupDelay = TimeSpan.Zero };
         zeroStartup.HasInvalidValue.Should().BeFalse();
         zeroStartup.EffectiveStartupDelay.Should().Be(TimeSpan.Zero);
@@ -295,27 +306,221 @@ public sealed class ClusterDetectionCatchUpTests
         db.Database.GetMigrations().Should().Contain(m => m.EndsWith("_AddGraphBatchRuns", StringComparison.Ordinal));
     }
 
+    // ── T-77: 失敗のバックオフと試行の記録 ───────────────────────────────────
+
+    // 🔴 FR-17, [[IADR-0496]] 決定 4 (T-77): **失敗が続けば再試行の待ちを倍々にする**（1 時間 → 2 → 4。周期 24 時間とは別の値）。
+    // 失敗の後の待ちを周期にする変異（N7）と、倍々にしない変異をここで落とす。各回の手前では判定しない。
+    [Fact]
+    public async Task 失敗が続くと再試行の待ちを倍々にする()
+    {
+        var clock = new SignalingClock(T0);
+        using var factory = NewFactory(clock);
+        await SeedAsync(factory.Services, db => AddDocuments(db, 2));
+        var coordinator = new FailingThenGrantingCoordinator(clock, failures: 3);
+        var worker = NewWorker(factory.Services, coordinator, clock);
+
+        await worker.StartAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            TimeSpan[] waits = [StartupDelay, RetryDelay, 2 * RetryDelay, 4 * RetryDelay];
+            for (var i = 0; i < waits.Length; i++)
+            {
+                (await clock.WaitTimerAsync(Deadline)).Should().BeTrue($"{i + 1} 回目の待ちのタイマーが作られる");
+                clock.Advance(waits[i] - TimeSpan.FromSeconds(1));
+                await Task.Delay(QuietWindow, TestContext.Current.CancellationToken);
+                coordinator.AcquiredAt.Should().HaveCount(i, $"{i + 1} 回目の待ちの手前では判定しない");
+                clock.Advance(TimeSpan.FromSeconds(1));
+                (await coordinator.WaitCallAsync(Deadline)).Should().BeTrue($"{i + 1} 回目の判定が来る");
+            }
+
+            (await coordinator.WaitCycleEndAsync(Deadline)).Should().BeTrue("4 回目はリースを取って検出する");
+            coordinator.AcquiredAt.Should().Equal(
+                T0 + StartupDelay,
+                T0 + StartupDelay + RetryDelay,
+                T0 + StartupDelay + 3 * RetryDelay,
+                T0 + StartupDelay + 7 * RetryDelay);
+            (await ClustersAsync(factory.Services)).Should().HaveCount(2);
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    // 🔴 FR-17, [[IADR-0496]] 決定 4 (T-77): **前の試行が成功しないまま終わった記録が残っていれば、起動の後もバックオフを待つ。**
+    // プロセスごと落ちた（メモリ不足等）試行は例外として捕まらない。プロセス内の数だけでバックオフすると、
+    // 「再起動 → 起動の待ち → 再実行 → 落ちる」を繰り返す。成功していない試行 2 回・最後の試行 30 分前なら、
+    // 待ちは 2 時間 − 30 分。成功の記録は無い（期限切れ）ので、バックオフが無ければ起動の待ちの直後に走る。
+    [Fact]
+    public async Task 成功しなかった試行の記録が残っていれば起動の後もバックオフを待つ()
+    {
+        var clock = new SignalingClock(T0);
+        using var factory = NewFactory(clock);
+        var lastAttempt = T0.AddMinutes(-30);
+        await SeedAsync(factory.Services, db =>
+        {
+            AddDocuments(db, 2);
+            var run = GraphBatchRun.Attempted(ClusterDetectionJob.RunName, lastAttempt.AddHours(-1));
+            run.MarkAttempted(lastAttempt);
+            db.BatchRuns.Add(run);
+        });
+        var coordinator = new CountingCoordinator();
+        var worker = NewWorker(factory.Services, coordinator, clock);
+
+        await worker.StartAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            (await clock.WaitTimerAsync(Deadline)).Should().BeTrue();
+            clock.Advance(StartupDelay);
+            (await coordinator.WaitCycleEndAsync(Deadline)).Should().BeTrue();
+            (await ClustersAsync(factory.Services)).Should().BeEmpty("前の試行から 2 時間たっていない");
+
+            var backoffUntil = lastAttempt + 2 * RetryDelay;
+            (await clock.WaitTimerAsync(Deadline)).Should().BeTrue();
+            clock.Advance(backoffUntil - clock.GetUtcNow() - TimeSpan.FromMinutes(1));
+            await Task.Delay(QuietWindow, TestContext.Current.CancellationToken);
+            coordinator.Calls.Should().Be(1, "バックオフの手前では判定し直さない");
+
+            clock.Advance(TimeSpan.FromMinutes(1));
+            (await coordinator.WaitCycleEndAsync(Deadline)).Should().BeTrue();
+            (await ClustersAsync(factory.Services)).Should().HaveCount(2, "バックオフが明けたので検出した");
+            var state = await RunStateAsync(factory.Services);
+            state.LastSucceededAt.Should().Be(backoffUntil);
+            state.AttemptsSinceSuccess.Should().Be(0, "成功で数が戻る");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    // 🔴 FR-17, [[IADR-0496]] 決定 1・4 (T-77): **本体が失敗した判定は、試行だけを記録し、成功を記録しない。**
+    // 試行は本体より先に別の保存で確定させる（落ちても残す）。成功は本体と同じ保存なので巻き戻る。
+    [Fact]
+    public async Task 本体が失敗した判定は試行だけを記録する()
+    {
+        var clock = new SignalingClock(T0);
+        using var factory = NewFactory(clock, interceptor: new FailClusterSaveInterceptor());
+        await SeedAsync(factory.Services, db => AddDocuments(db, 2));
+        var worker = NewWorker(factory.Services, new CountingCoordinator(), clock);
+
+        var cycle = () => worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
+
+        await cycle.Should().ThrowAsync<InvalidOperationException>();
+        var state = await RunStateAsync(factory.Services);
+        state.LastSucceededAt.Should().BeNull("失敗した判定は成功を記録しない");
+        state.LastAttemptedAt.Should().Be(T0, "試行は本体の前に記録される");
+        state.AttemptsSinceSuccess.Should().Be(1);
+        (await ClustersAsync(factory.Services)).Should().BeEmpty();
+    }
+
+    // ── T-78: 保存の回数と成功後の待ち ───────────────────────────────────────
+
+    // 🔴 FR-17, [[IADR-0496]] 決定 1 (T-78): **検出の本体は保存を 1 回だけ行う**（クラスタと成功の記録が同じ保存）。
+    // 成功の記録をクラスタの後の別の保存に分ける変異（N12）は、T-72（クラスタの保存の失敗）では落ちないのでここで落とす。
+    [Fact]
+    public async Task 検出の本体は保存を1回だけ行う()
+    {
+        var dbName = $"GraphCatchUp_{Guid.NewGuid()}";
+        await using (var seed = NewContext(dbName))
+        {
+            AddDocuments(seed, 2);
+            await seed.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        var counter = new SaveCountingInterceptor();
+        await using (var db = NewContext(dbName, counter))
+        {
+            var job = new ClusterDetectionJob(db, new FixedClock(T0), NullLogger<ClusterDetectionJob>.Instance);
+            await job.RunAsync(TestContext.Current.CancellationToken);
+        }
+
+        counter.Saves.Should().Be(1);
+        await using var check = NewContext(dbName);
+        (await check.BatchRuns.SingleAsync(TestContext.Current.CancellationToken)).LastSucceededAt.Should().Be(T0);
+        (await check.Clusters.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2);
+    }
+
+    // 🔴 FR-17, [[IADR-0496]] 決定 2 (T-78): **成功の後の待ちは、周期の開始時刻（記録した時刻）から 1 周期**である。
+    // 本体の開始時刻を判定の時刻より 3 時間前にずらすと、待ちは 21 時間になる（周期をそのまま返す変異 N3 は 24 時間を返す）。
+    [Fact]
+    public async Task 成功の後の待ちは周期の開始時刻から1周期である()
+    {
+        var clock = new SignalingClock(T0);
+        using var factory = NewFactory(clock, jobClockOffset: TimeSpan.FromHours(-3));
+        await SeedAsync(factory.Services, db => AddDocuments(db, 2));
+        var worker = NewWorker(factory.Services, new CountingCoordinator(), clock);
+
+        var outcome = await worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
+
+        outcome.Ran.Should().BeTrue();
+        outcome.NextDelay.Should().Be(TimeSpan.FromHours(21));
+    }
+
+    // FR-17, [[IADR-0496]] 決定 2 (T-78): 成功の後の待ちの**下限は再試行の待ち**である（周期より長くかかった検出が間を空けずに回り続けない）。
+    // 周期を 30 分（試験だけの値）にすると、開始時刻からの残りは 30 分未満なので、待ちは再試行の 1 時間になる（下限を外す変異 N2 は 30 分を返す）。
+    [Fact]
+    public async Task 成功の後の待ちの下限は再試行の待ちである()
+    {
+        var clock = new SignalingClock(T0);
+        using var factory = NewFactory(clock);
+        await SeedAsync(factory.Services, db => AddDocuments(db, 2));
+        var worker = NewWorker(factory.Services, new CountingCoordinator(), clock, cycleInterval: TimeSpan.FromMinutes(30));
+
+        var outcome = await worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
+
+        outcome.Ran.Should().BeTrue();
+        outcome.NextDelay.Should().Be(RetryDelay);
+    }
+
+    // ── T-79: 停止要求 ──────────────────────────────────────────────────────
+
+    // FR-17, [[IADR-0299]] 決定 3, [[IADR-0496]] 決定 4 (T-79): **停止要求は走っている判定へ届き、ループは静かに終わる。**
+    // 判定へ停止のトークンを渡さない変異（N16）は、取得が取り消されないまま止まらない。
+    [Fact]
+    public async Task 停止要求は走っている判定へ届く()
+    {
+        var clock = new SignalingClock(T0);
+        using var factory = NewFactory(clock);
+        var coordinator = new BlockingCoordinator();
+        var worker = NewWorker(factory.Services, coordinator, clock);
+
+        await worker.StartAsync(TestContext.Current.CancellationToken);
+        (await clock.WaitTimerAsync(Deadline)).Should().BeTrue();
+        clock.Advance(StartupDelay);
+        await coordinator.Entered.Task.WaitAsync(Deadline, TestContext.Current.CancellationToken);
+
+        using var stopDeadline = new CancellationTokenSource(Deadline);
+        await worker.StopAsync(stopDeadline.Token);
+
+        coordinator.Cancelled.Task.IsCompleted.Should().BeTrue("停止のトークンが判定（リースの取得）まで届いている");
+        worker.ExecuteTask!.IsCompletedSuccessfully.Should().BeTrue("停止要求はシャットダウンとして静かに終える");
+    }
+
     // ── 器 ─────────────────────────────────────────────────────────────────
 
-    private static WebApplicationFactory<Program> NewFactory(TimeProvider clock)
+    private static WebApplicationFactory<Program> NewFactory(
+        TimeProvider clock, TimeSpan jobClockOffset = default, IInterceptor? interceptor = null)
         => new TestWebApplicationFactory().WithWebHostBuilder(b => b.ConfigureServices(s =>
         {
-            // 検出の本体（DI の TimeProvider）とループ（CycleClock）が同じ「今」を見るようにする。
+            // 検出の本体（DI の TimeProvider）とループ（CycleClock）が同じ「今」を見るようにする（`jobClockOffset` だけずらせる）。
             // タイマーはシステムのまま（偽の時計のタイマーを他の部品に作らせない）。
             s.RemoveAll<TimeProvider>();
-            s.AddSingleton<TimeProvider>(new NowFrom(clock));
+            s.AddSingleton<TimeProvider>(new NowFrom(clock, jobClockOffset));
+            if (interceptor is not null)
+                s.ConfigureDbContext<GraphDbContext>(o => o.AddInterceptors(interceptor));
         }));
 
     private static ClusterDetectionHostedService NewWorker(
         IServiceProvider services, IClusterDetectionLeaseCoordinator coordinator, TimeProvider clock,
-        ClusterDetectionMetrics? metrics = null)
+        ClusterDetectionMetrics? metrics = null, TimeSpan? cycleInterval = null)
         => new(
             services.GetRequiredService<IServiceScopeFactory>(),
             coordinator,
             Options.Create(new ClusterDetectionOptions { StartupDelay = StartupDelay, RetryDelay = RetryDelay }),
             metrics ?? NewMetrics(),
             NullLogger<ClusterDetectionHostedService>.Instance)
-        { CycleClock = clock };
+        { CycleClock = clock, CycleInterval = cycleInterval ?? ClusterDetectionHostedService.Interval };
 
     private static async Task SeedAsync(IServiceProvider services, Action<GraphDbContext> seed)
     {
@@ -344,8 +549,14 @@ public sealed class ClusterDetectionCatchUpTests
     private static async Task<DateTimeOffset?> LastSucceededAtAsync(IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
+        return (await RunStateAsync(services)).LastSucceededAt;
+    }
+
+    private static async Task<ClusterDetectionRunState> RunStateAsync(IServiceProvider services)
+    {
+        await using var scope = services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<ClusterDetectionJob>()
-            .ReadLastSucceededAtAsync(TestContext.Current.CancellationToken);
+            .ReadRunStateAsync(TestContext.Current.CancellationToken);
     }
 
     private static async Task<List<GraphCluster>> ClustersAsync(IServiceProvider services)
@@ -380,9 +591,70 @@ public sealed class ClusterDetectionCatchUpTests
         public override DateTimeOffset GetUtcNow() => now;
     }
 
-    private sealed class NowFrom(TimeProvider source) : TimeProvider
+    private sealed class NowFrom(TimeProvider source, TimeSpan offset) : TimeProvider
     {
-        public override DateTimeOffset GetUtcNow() => source.GetUtcNow();
+        public override DateTimeOffset GetUtcNow() => source.GetUtcNow() + offset;
+    }
+
+    private sealed class SaveCountingInterceptor : SaveChangesInterceptor
+    {
+        private int _saves;
+
+        public int Saves => Volatile.Read(ref _saves);
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _saves);
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    // 最初の `failures` 回の取得で投げ、以後はリースを渡す。各回が見た偽の時計の時刻を記録する。
+    private sealed class FailingThenGrantingCoordinator(TimeProvider clock, int failures) : CountingCoordinator
+    {
+        private readonly List<DateTimeOffset> _acquiredAt = [];
+        private readonly SemaphoreSlim _called = new(0);
+        private int _n;
+
+        public IReadOnlyList<DateTimeOffset> AcquiredAt { get { lock (_acquiredAt) return [.. _acquiredAt]; } }
+
+        public Task<bool> WaitCallAsync(TimeSpan deadline) =>
+            _called.WaitAsync(deadline, TestContext.Current.CancellationToken);
+
+        public override Task<IAsyncDisposable?> TryAcquireAsync(CancellationToken ct)
+        {
+            lock (_acquiredAt) _acquiredAt.Add(clock.GetUtcNow());
+            var n = Interlocked.Increment(ref _n);
+            _called.Release();
+            return n <= failures
+                ? Task.FromException<IAsyncDisposable?>(new InvalidOperationException("リースの取得に失敗（試験の注入）"))
+                : base.TryAcquireAsync(ct);
+        }
+    }
+
+    // 取得の中で停止要求を待つ。取り消されたら知らせる（N16: 停止のトークンが周期へ届くこと）。
+    private sealed class BlockingCoordinator : IClusterDetectionLeaseCoordinator
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<IAsyncDisposable?> TryAcquireAsync(CancellationToken ct)
+        {
+            Entered.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                Cancelled.TrySetResult();
+                throw;
+            }
+
+            return null;
+        }
     }
 
     // 偽の時計。タイマーが作られるたびに知らせる（作られる前に進めた時刻はタイマーに効かない）。
