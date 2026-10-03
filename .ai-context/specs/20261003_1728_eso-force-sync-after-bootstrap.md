@@ -166,3 +166,27 @@ issue: "#1728"
 | M16 | 注釈の失敗で止めない | 1（初回は生存。止める文言は出たまま待ちへ進んでいた → 「待たずに止める」の表明を足した） |
 
 16 個すべてを殺した（生存 0）。
+
+## ［2026-10-03 追記 / #1728・独立監査］監査所見 5 件への対処
+
+上の記録（検証・変異試験の表）は書き換えない。独立監査（PR #1730）の所見に次のとおり対処した。
+
+| 所見 | 対処 |
+| --- | --- |
+| 🟡1 待ちの中で同期先 Secret を `jsonpath='{.data}'` で引き、base64 の値をシェル変数へ入れていた（`bash -x` で漏れる） | `-o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}'` でキー名だけを引き、行の完全一致で在否を見る。IADR-0494 決定 4 へ日付つき追記 |
+| 🟡2 値が出ないことの表明が無い | スタブの Secret を 1 行 1 キー「名前=値」（値は `c2VjcmV0LTE3MjgtdmFsdWU=`）に変え、go-template にはキー名、`{.data}` には値つき JSON を返す。`run1728` の全実行で stdout＋stderr に値が無いことを表明し、`bash -x` で流す試験を足した。試験 1 は「go-template で引いた」「`{.data}` で引いていない」も表明する |
+| 🟢2 促す前の `refreshTime` を `grep -F "ns\|name\|" \| head -n 1` で引いていた（部分一致） | `awk -F'\|' '$1 == ns && $2 == n'` の完全一致へ。`platform-infra/keycloak-smtp`（同期する・促す前の時刻が別）と `infra/keycloak-smtp`（同期しない）を並べる試験を足した（スタブに `refresh/<ns>_<name>` を追加） |
+| 🟢5 `ESO_FORCE_SYNC_TIMEOUT=08` が `$((…))` で落ちる | 整数検査の後に `$((10#…))` で正規化（INTERVAL も）。`08`（待って緑・`8s 以内`）と `00`（待たない）の試験を足した |
+| 🟢1 `docs/migration/cutover-discard-and-rebuild.md` §5 で `--baseline` の注記がコードフェンスの後ろへずれた | 注記を挿入ブロックの前（「どちらも緑…」の段落の直後）へ戻し、フェンスの後に空行を置いた |
+
+### 変異試験（追記分。`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` を流し、最初に落ちた表明を記す。基準は 872 件通過）
+
+| # | 変異 | 結果 |
+| --- | --- | --- |
+| A1 | キーの引き方を `jsonpath='{.data}'`＋JSON の文字列照合へ戻す | 赤（試験 1「キー名だけで確かめていない」） |
+| A2 | A1 に加え、試験 1 の引き方の表明 2 つを外す | 赤（`bash -x` の試験で「同期先 Secret の値が出力に出た」。xtrace に `keys='{"service-auth-client-id":"c2Vj…` が出る） |
+| A3 | go-template のまま、`{.data}` を引いて echo する行を足す | 赤（試験 1 で「同期先 Secret の値が出力に出た」） |
+| A4 | 完全一致を `grep -F … \| head -n 1` へ戻す | 赤（「infra の同期前の時刻を platform-infra の行から引き、…緑で終わった」） |
+| A5 | `10#` の正規化を外す | 赤（`08: value too great for base`） |
+
+5 個すべてを殺した（生存 0）。各変異の後に `bootstrap.sh`・試験を元へ戻した。

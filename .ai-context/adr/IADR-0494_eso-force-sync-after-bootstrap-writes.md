@@ -70,6 +70,12 @@ Reloader が trade-decision を作り直した。それまで読み手は空の�
    上限は `ESO_FORCE_SYNC_TIMEOUT`（秒・既定 120）、間隔は `ESO_FORCE_SYNC_INTERVAL`（秒・既定 2）。`ESO_FORCE_SYNC_TIMEOUT=0` は促すだけで待たない。
    一覧を引けない・注釈を付けられないときも、手で促すコマンドを出して非 0 で止める。
 
+> **［2026-10-03 追記 / #1728・独立監査］決定 4 の「足したキーの在否」は、同期先 Secret のキー名だけを引いて確かめる。値（base64）をシェル変数へ入れない。**
+> 従前は `kubectl get secret -o jsonpath='{.data}'` で値ごと引いて文字列照合していた。`bash -x` や後から足すデバッグの echo で秘密がログへ出る。
+> 今は `-o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}'`（1 行 1 キー）で引き、行の完全一致で在否を見る。「値は出さない」を「値を読まない」へ強めた。
+> あわせて、時間の指定の先頭の 0 は 10 進として読む（`08` を算術展開が 8 進と読んで落ちる・`00` を「待たない」と読めない、を防ぐ）。
+> 促す前の `refreshTime` は名前空間・名前の完全一致で引く（部分一致だと `infra` と `platform-infra` を取り違える）。決定の向きは変えない。
+
 ## 理由
 
 - 4-b（warn で続ける）は、`k8s-local-up.sh` の既存の同期待ち（`eso_wait`）と同じ best-effort だが、`eso_wait` は `condition=Ready` を見るだけで、

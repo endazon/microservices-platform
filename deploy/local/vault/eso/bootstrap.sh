@@ -284,6 +284,8 @@ eso_force_sync_changed() {
   case "$ESO_FORCE_SYNC_TIMEOUT$ESO_FORCE_SYNC_INTERVAL" in
     *[!0-9]*) echo "ERROR: ESO_FORCE_SYNC_TIMEOUT / ESO_FORCE_SYNC_INTERVAL は 0 以上の整数（秒）で指定する（実際: '$ESO_FORCE_SYNC_TIMEOUT' / '$ESO_FORCE_SYNC_INTERVAL'）" >&2; return 1 ;;
   esac
+  # 先頭の 0 は 10 進として読む（`08` を $((…)) が 8 進と読んで落ちる・`00` を「待たない」と読めない、を防ぐ。#1728 独立監査）。
+  ESO_FORCE_SYNC_TIMEOUT=$((10#$ESO_FORCE_SYNC_TIMEOUT)); ESO_FORCE_SYNC_INTERVAL=$((10#$ESO_FORCE_SYNC_INTERVAL))
   if [ "$CHANGED_PATHS" = " " ]; then
     echo "==> force-sync: この実行で Vault に書いた KV は無い（同期を促さない）"
     return 0
@@ -328,12 +330,13 @@ eso_force_sync_changed() {
     echo "    （ESO_FORCE_SYNC_TIMEOUT=0: 同期の完了は待たない）"
     return 0
   fi
-  local deadline=$((SECONDS + ESO_FORCE_SYNC_TIMEOUT)) pending state now ready path prop data
+  local deadline=$((SECONDS + ESO_FORCE_SYNC_TIMEOUT)) pending state now ready path prop keys
   while :; do
     pending=""
     while IFS='|' read -r ns name target xkeys; do
       [ -n "$name" ] || continue
-      t="$(grep -F -- "${ns}|${name}|" <<< "$before" | head -n 1 || true)"; t="${t#"${ns}|${name}|"}"
+      # 名前空間・名前の完全一致で引く（部分一致だと infra と platform-infra を取り違える。#1728 独立監査）。
+      t="$(awk -F'|' -v ns="$ns" -v n="$name" '$1 == ns && $2 == n { print $3; exit }' <<< "$before")"
       state="$(kubectl -n "$ns" get externalsecret "$name" -o jsonpath='{.status.refreshTime}|{.status.conditions[?(@.type=="Ready")].status}' </dev/null 2>/dev/null || true)"
       now="${state%%|*}"; ready="${state#*|}"
       if [ -z "$now" ] || [ "$now" = "$t" ] || [ "$ready" != "True" ]; then
@@ -341,12 +344,14 @@ eso_force_sync_changed() {
         continue
       fi
       # 在る KV へ足したプロパティは、extract で読む同期先 Secret にキーが在ること（値は出さない。キーの有無だけ）。
-      data=""
+      # 🔴 引くのはキー名だけ（go-template で 1 行 1 キー）。値（base64）をシェル変数へ入れない ——
+      #    `bash -x` やデバッグの echo で秘密がログへ出る（#1728 独立監査）。
+      keys=""
       while read -r path prop; do
         [ -n "$prop" ] || continue
         case " $xkeys " in *" $path "*) ;; *) continue ;; esac
-        [ -n "$data" ] || data="$(kubectl -n "$ns" get secret "$target" -o jsonpath='{.data}' </dev/null 2>/dev/null || true)"
-        case "$data" in *"\"$prop\":"*) ;; *) pending="${pending} ${ns}/${target}(キー ${prop} が無い)" ;; esac
+        [ -n "$keys" ] || keys="$(kubectl -n "$ns" get secret "$target" -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}' </dev/null 2>/dev/null || true)"
+        case $'\n'"$keys"$'\n' in *$'\n'"$prop"$'\n'*) ;; *) pending="${pending} ${ns}/${target}(キー ${prop} が無い)" ;; esac
       done <<< "$ADDED_PROPS"
     done <<< "$targets"
     if [ -z "$pending" ]; then
