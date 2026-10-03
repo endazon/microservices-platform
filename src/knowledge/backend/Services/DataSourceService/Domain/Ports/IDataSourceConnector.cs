@@ -12,13 +12,22 @@ public interface IDataSourceConnector
     // このコネクタが担うソース種別（DataSource.SourceType と一致）。例: "filesystem"。
     string SourceType { get; }
 
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): このコネクタが外部へ渡す資格情報の `Config` キー名。
+    // 同期サービスは**これらのキーだけ**を `IConnectorSecretResolver` で解決し、`ConnectorCredentials` として渡す。
+    // 🔴 **コネクタは `source.Config` から資格情報を読まない** —— 読むのは `credentials` だけである。
+    // 宣言するキーは `SecretMask.IsSecretKey` に当たる名前であること（応答のマスクと同じ集合。試験が固定する）。
+    // 資格情報を使わないコネクタ（filesystem）は空のまま。
+    IReadOnlyList<string> CredentialKeys => [];
+
     // Discover + 変更検知: `since` より後に更新された対象を列挙する（`since` が null なら初回フルスキャン）。
     // ルート未存在・アクセス不可などは例外にせず空列挙で縮退する（同期サイクルを止めない）。
+    // `credentials` は同期の開始時に 1 回だけ解決した値（Fetch にも同じものが渡る。作業仕様書 §窓 2）。
     Task<IReadOnlyList<SourceItem>> DiscoverAsync(
-        DataSource source, DateTimeOffset? since, CancellationToken ct);
+        DataSource source, ConnectorCredentials credentials, DateTimeOffset? since, CancellationToken ct);
 
     // Fetch: 列挙された 1 件の原本バイト列と content-type を取得する。
-    Task<RawContent> FetchAsync(DataSource source, SourceItem item, CancellationToken ct);
+    Task<RawContent> FetchAsync(
+        DataSource source, ConnectorCredentials credentials, SourceItem item, CancellationToken ct);
 }
 
 // 列挙された 1 対象（所在・更新日時・サイズ・更新者）。変更検知と Map の基礎メタ。

@@ -15,7 +15,8 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 //     → JSON 配列 [{ id, title?, updatedAt(ISO8601), updatedBy? }]。updatedAt > since で増分（初回=全件）。
 //   ページ本文（Fetch）:    GET {ConnectionUri}{contentPath}（既定 /api/pages/{id}/content、{id} 置換）
 //     → 応答本文を原本バイト、content-type は応答ヘッダ→既定 text/markdown。
-//   認証: Authorization: Bearer {Config["apiToken"]}（存在時。ログ出力しない）。
+//   認証: Authorization: Bearer {apiToken}（存在時。ログ出力しない）。［2026-10-03 / #458 段 S0］値は `Config` から
+//         直接ではなく、同期の開始時に `IConnectorSecretResolver` が解決した `ConnectorCredentials` から読む（[[IADR-0493]]）。
 //   失敗: HTTP/JSON 失敗は例外を送出 → オーケストレータ（IADR-0051 決定3a）が watermark 非前進・継続失敗アラートに載せる。
 //
 // FR-05, UC-04, ADR-0036, ADR-0074, #752: **更新者（`updatedBy`）を運ぶ。**
@@ -42,8 +43,13 @@ public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiCo
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): Bearer に載せる資格情報。値は `credentials` からだけ読む。
+    public const string ApiTokenKey = "apiToken";
+
+    public IReadOnlyList<string> CredentialKeys => [ApiTokenKey];
+
     public async Task<IReadOnlyList<SourceItem>> DiscoverAsync(
-        DataSource source, DateTimeOffset? since, CancellationToken ct)
+        DataSource source, ConnectorCredentials credentials, DateTimeOffset? since, CancellationToken ct)
     {
         var baseUrl = BaseUrl(source);
         if (baseUrl is null)
@@ -53,7 +59,7 @@ public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiCo
             return [];
         }
 
-        using var client = CreateClient(source);
+        using var client = CreateClient(credentials);
         var listUrl = baseUrl + Config(source, "listPath", DefaultListPath);
         // HTTP/JSON 失敗は例外を送出（ネットワーク断・4xx/5xx・不正 JSON）。呼び出し側が再試行を担保する。
         var pages = await client.GetFromJsonAsync<List<WikiPage>>(listUrl, JsonOptions, ct) ?? [];
@@ -81,11 +87,12 @@ public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiCo
         return items;
     }
 
-    public async Task<RawContent> FetchAsync(DataSource source, SourceItem item, CancellationToken ct)
+    public async Task<RawContent> FetchAsync(
+        DataSource source, ConnectorCredentials credentials, SourceItem item, CancellationToken ct)
     {
         var baseUrl = BaseUrl(source)
             ?? throw new InvalidOperationException("WikiConnector: ConnectionUri が未設定です。");
-        using var client = CreateClient(source);
+        using var client = CreateClient(credentials);
         var contentPath = Config(source, "contentPath", DefaultContentPath)
             .Replace("{id}", Uri.EscapeDataString(item.Path), StringComparison.Ordinal);
 
@@ -111,10 +118,12 @@ public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiCo
             source.Id, field, tally.Carried, tally.BlankAtSource, tally.Unreadable, tally.NotCarried);
     }
 
-    private HttpClient CreateClient(DataSource source)
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): 🔴 **`source.Config["apiToken"]` を読まない。**
+    // 同期の開始時に解決器が解決した値（`credentials`）だけを使う。
+    private HttpClient CreateClient(ConnectorCredentials credentials)
     {
         var client = httpFactory.CreateClient(HttpClientName);
-        var token = Config(source, "apiToken", string.Empty);
+        var token = credentials.Get(ApiTokenKey);
         if (!string.IsNullOrWhiteSpace(token))
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return client;

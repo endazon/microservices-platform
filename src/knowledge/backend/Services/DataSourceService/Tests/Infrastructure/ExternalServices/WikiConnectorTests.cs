@@ -31,7 +31,7 @@ public sealed class WikiConnectorTests
               {"id":"p2","title":"B","updatedAt":"2026-07-05T00:00:00Z"}
             ]
             """);
-        var items = await Connector(handler).DiscoverAsync(WikiSource(), since: null, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(WikiSource(), ConnectorCredentials.None, since: null, CancellationToken.None);
 
         items.Select(i => i.Path).Should().BeEquivalentTo("p1", "p2");
     }
@@ -47,7 +47,7 @@ public sealed class WikiConnectorTests
             """);
         var since = DateTimeOffset.Parse("2026-07-05T00:00:00Z");
 
-        var items = await Connector(handler).DiscoverAsync(WikiSource(), since, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(WikiSource(), ConnectorCredentials.None, since, CancellationToken.None);
 
         items.Select(i => i.Path).Should().ContainSingle().Which.Should().Be("new");
     }
@@ -63,23 +63,47 @@ public sealed class WikiConnectorTests
                 : new HttpResponseMessage(HttpStatusCode.NotFound),
         };
         var raw = await Connector(handler).FetchAsync(
-            WikiSource(), new SourceItem("p1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+            WikiSource(), ConnectorCredentials.None, new SourceItem("p1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
 
         Encoding.UTF8.GetString(raw.Bytes).Should().Be("# Body");
         raw.ContentType.Should().Be("text/markdown");
     }
 
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): Bearer は**解決済みの資格情報**から載せる。
+    // `Config` には参照（`vault:`）を置き、それが**そのまま送られていない**ことも同時に測る。
     [Fact]
-    public async Task Discover_SendsBearerToken_FromConfig()
+    public async Task Discover_SendsBearerToken_FromResolvedCredentials_NotFromConfig()
     {
         var handler = ListResponder("[]");
-        var source = WikiSource(new Dictionary<string, string> { ["apiToken"] = "secret-123" });
+        var source = WikiSource(new Dictionary<string, string> { ["apiToken"] = "vault:datasource/wiki#apiToken" });
 
-        await Connector(handler).DiscoverAsync(source, null, CancellationToken.None);
+        await Connector(handler).DiscoverAsync(source, new ConnectorCredentials(new Dictionary<string, string> { ["apiToken"] = "resolved-wiki-value" }), null, CancellationToken.None);
 
         handler.Requests.Should().ContainSingle();
         handler.Requests[0].Headers.Authorization!.Scheme.Should().Be("Bearer");
-        handler.Requests[0].Headers.Authorization!.Parameter.Should().Be("secret-123");
+        handler.Requests[0].Headers.Authorization!.Parameter.Should().Be("resolved-wiki-value");
+    }
+
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): 🔴 **コネクタは `Config` の秘密を直接読まない。**
+    // 解決済みの資格情報が無ければ、`Config` に平文が在っても Authorization を付けない（Discover・Fetch とも）。
+    [Fact]
+    public async Task DiscoverAndFetch_IgnoreConfigSecret_WhenCredentialsAreNotResolved()
+    {
+        var handler = new StubHandler
+        {
+            Responder = req => req.RequestUri!.AbsolutePath.Contains("content")
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("# Body") }
+                : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]") },
+        };
+        var source = WikiSource(new Dictionary<string, string> { ["apiToken"] = "plain-config-value" });
+
+        await Connector(handler).DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
+        await Connector(handler).FetchAsync(
+            source, ConnectorCredentials.None, new SourceItem("p1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+
+        handler.Requests.Should().HaveCount(2);
+        handler.Requests.Should().AllSatisfy(r => r.Headers.Authorization.Should().BeNull(
+            "資格情報は解決器を経たものだけを使い、Config を直接読まない"));
     }
 
     [Fact]
@@ -88,7 +112,7 @@ public sealed class WikiConnectorTests
         var handler = ListResponder("[]");
         var source = WikiSource(new Dictionary<string, string> { ["listPath"] = "/rest/pages" });
 
-        await Connector(handler).DiscoverAsync(source, null, CancellationToken.None);
+        await Connector(handler).DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
 
         handler.Requests[0].RequestUri!.ToString().Should().Be($"{Base}/rest/pages");
     }
@@ -98,7 +122,7 @@ public sealed class WikiConnectorTests
     {
         var handler = new StubHandler { Responder = _ => new HttpResponseMessage(HttpStatusCode.InternalServerError) };
 
-        var act = () => Connector(handler).DiscoverAsync(WikiSource(), null, CancellationToken.None);
+        var act = () => Connector(handler).DiscoverAsync(WikiSource(), ConnectorCredentials.None, null, CancellationToken.None);
 
         // HTTP 失敗は例外 → オーケストレータが discover 失敗として watermark 非前進・アラートに載せる（IADR-0051 決定3a）。
         await act.Should().ThrowAsync<HttpRequestException>();
@@ -110,7 +134,7 @@ public sealed class WikiConnectorTests
         var handler = ListResponder("[]");
         var source = DataSource.Create("wiki", "wiki", ""); // ConnectionUri 未設定
 
-        var items = await Connector(handler).DiscoverAsync(source, null, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().BeEmpty();
         handler.Requests.Should().BeEmpty("接続先未設定なら HTTP 呼び出しをしない");
@@ -124,7 +148,7 @@ public sealed class WikiConnectorTests
             [{"id":"p1","updatedAt":"2026-07-01T00:00:00Z","updatedBy":"hr-tanaka"}]
             """);
 
-        var items = await Connector(handler).DiscoverAsync(WikiSource(), null, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(WikiSource(), ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().ContainSingle().Which.UpdatedBy.Should().Be("hr-tanaka");
     }
@@ -138,7 +162,7 @@ public sealed class WikiConnectorTests
             """);
         var source = WikiSource(new Dictionary<string, string> { ["updatedByField"] = "lastModifiedBy" });
 
-        var items = await Connector(handler).DiscoverAsync(source, null, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().ContainSingle().Which.UpdatedBy.Should().Be("alice");
     }
@@ -153,7 +177,7 @@ public sealed class WikiConnectorTests
     public async Task Discover_LeavesUpdatedByNull_WhenTheSourceDoesNotCarryAUsableValue(string json)
     {
         var items = await Connector(ListResponder(json)).DiscoverAsync(
-            WikiSource(), null, CancellationToken.None);
+            WikiSource(), ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().ContainSingle().Which.UpdatedBy.Should().BeNull();
     }
@@ -166,7 +190,7 @@ public sealed class WikiConnectorTests
             [{"id":"p1","title":"A","updatedAt":"2026-07-01T00:00:00Z","weird":{"a":[1,2]}}]
             """);
 
-        var items = await Connector(handler).DiscoverAsync(WikiSource(), null, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(WikiSource(), ConnectorCredentials.None, null, CancellationToken.None);
 
         var item = items.Should().ContainSingle().Subject;
         item.Path.Should().Be("p1");

@@ -35,7 +35,7 @@ public sealed class DatabaseConnectorTests
                 new() { ["id"] = "b", ["updated"] = new DateTime(2026, 7, 5, 0, 0, 0, DateTimeKind.Utc) },
             ]);
 
-        var items = await Connector(conn).DiscoverAsync(DbSource(), since: null, CancellationToken.None);
+        var items = await Connector(conn).DiscoverAsync(DbSource(), ConnectorCredentials.None, since: null, CancellationToken.None);
 
         items.Select(i => i.Path).Should().BeEquivalentTo("a", "b");
     }
@@ -50,7 +50,7 @@ public sealed class DatabaseConnectorTests
             ]);
         var since = new DateTimeOffset(2026, 7, 5, 0, 0, 0, TimeSpan.Zero);
 
-        var items = await Connector(conn).DiscoverAsync(DbSource(), since, CancellationToken.None);
+        var items = await Connector(conn).DiscoverAsync(DbSource(), ConnectorCredentials.None, since, CancellationToken.None);
 
         items.Select(i => i.Path).Should().ContainSingle().Which.Should().Be("new");
     }
@@ -62,7 +62,7 @@ public sealed class DatabaseConnectorTests
         var conn = FakeDbConnection.WithReaderRows(
             [new() { ["id"] = "s", ["updated"] = "2026-07-09T00:00:00Z" }]);
 
-        var items = await Connector(conn).DiscoverAsync(DbSource(), null, CancellationToken.None);
+        var items = await Connector(conn).DiscoverAsync(DbSource(), ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().ContainSingle().Which.ModifiedAt.Should().Be(new DateTimeOffset(2026, 7, 9, 0, 0, 0, TimeSpan.Zero));
     }
@@ -76,7 +76,7 @@ public sealed class DatabaseConnectorTests
                 new() { ["id"] = "good", ["updated"] = new DateTime(2026, 7, 9, 0, 0, 0, DateTimeKind.Utc) },
             ]);
 
-        var items = await Connector(conn).DiscoverAsync(DbSource(), null, CancellationToken.None);
+        var items = await Connector(conn).DiscoverAsync(DbSource(), ConnectorCredentials.None, null, CancellationToken.None);
 
         // updated が NULL の行はスキップし、同期全体は成功する（good のみ列挙）。
         items.Select(i => i.Path).Should().ContainSingle().Which.Should().Be("good");
@@ -88,7 +88,7 @@ public sealed class DatabaseConnectorTests
         var conn = FakeDbConnection.WithScalar(DBNull.Value); // Discover と Fetch の間に消えた等
 
         var raw = await Connector(conn).FetchAsync(
-            DbSource(), new SourceItem("gone", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+            DbSource(), ConnectorCredentials.None, new SourceItem("gone", DateTimeOffset.UtcNow, 0), CancellationToken.None);
 
         raw.Bytes.Should().BeEmpty("該当なしは例外にせず空本文へ縮退する");
     }
@@ -99,7 +99,7 @@ public sealed class DatabaseConnectorTests
         var conn = FakeDbConnection.WithScalar("# Body");
 
         var raw = await Connector(conn).FetchAsync(
-            DbSource(), new SourceItem("a", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+            DbSource(), ConnectorCredentials.None, new SourceItem("a", DateTimeOffset.UtcNow, 0), CancellationToken.None);
 
         Encoding.UTF8.GetString(raw.Bytes).Should().Be("# Body");
         raw.ContentType.Should().Be("text/markdown");
@@ -121,15 +121,45 @@ public sealed class DatabaseConnectorTests
             new Dictionary<string, string>
             {
                 ["query"] = "SELECT id AS id, updated AS updated, body AS content FROM articles",
-                ["password"] = "p@ss;w'ord",
+                ["password"] = "vault:datasource/erp#password",
             });
+        // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): パスワードは解決済みの資格情報から合成する。
+        var credentials = new ConnectorCredentials(new Dictionary<string, string> { ["password"] = "p@ss;w'ord" });
 
-        await connector.DiscoverAsync(source, null, CancellationToken.None);
+        await connector.DiscoverAsync(source, credentials, null, CancellationToken.None);
 
         // 合成後の接続文字列を再パースして、特殊文字入りパスワードが欠落・破損なく往復すること。
         var parsed = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = factory.LastConnectionString };
         parsed["Password"].Should().Be("p@ss;w'ord");
         parsed["Host"].Should().Be("erp");
+    }
+
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): 🔴 **コネクタは `Config["password"]` を直接読まない。**
+    // 解決済みの資格情報が無ければ、`Config` に平文が在っても接続文字列へ合成しない（Discover・Fetch とも）。
+    [Fact]
+    public async Task DiscoverAndFetch_IgnoreConfigPassword_WhenCredentialsAreNotResolved()
+    {
+        var conn = FakeDbConnection.WithReaderRows([]);
+        var factory = new FakeFactory(conn);
+        var connector = new DatabaseConnector(factory, NullLogger<DatabaseConnector>.Instance);
+        var source = DataSource.Create("erp", "db", "Host=erp;Database=orders;Username=readonly",
+            new Dictionary<string, string>
+            {
+                ["query"] = "SELECT id AS id, updated AS updated, body AS content FROM articles",
+                ["password"] = "plain-config-value",
+            });
+
+        await connector.DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
+        var afterDiscover = factory.LastConnectionString;
+        await connector.FetchAsync(
+            source, ConnectorCredentials.None, new SourceItem("a", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+
+        foreach (var cs in new[] { afterDiscover, factory.LastConnectionString })
+        {
+            var parsed = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = cs };
+            parsed.ContainsKey("Password").Should().BeFalse("資格情報は解決器を経たものだけを使い、Config を直接読まない");
+            cs.Should().NotContain("plain-config-value");
+        }
     }
 
     [Fact]
@@ -138,7 +168,7 @@ public sealed class DatabaseConnectorTests
         var conn = FakeDbConnection.WithReaderRows([]);
         var source = DataSource.Create("erp", "db", "Host=erp"); // Config["query"] 無し
 
-        var items = await Connector(conn).DiscoverAsync(source, null, CancellationToken.None);
+        var items = await Connector(conn).DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().BeEmpty();
         conn.Opened.Should().BeFalse("設定不備なら DB 接続をしない");
@@ -151,7 +181,7 @@ public sealed class DatabaseConnectorTests
         var source = DataSource.Create("erp", "db", "",
             new Dictionary<string, string> { ["query"] = "SELECT 1" });
 
-        var items = await Connector(conn).DiscoverAsync(source, null, CancellationToken.None);
+        var items = await Connector(conn).DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().BeEmpty();
     }
@@ -161,7 +191,7 @@ public sealed class DatabaseConnectorTests
     {
         var conn = FakeDbConnection.ThatThrows(new FakeDbException("boom"));
 
-        var act = () => Connector(conn).DiscoverAsync(DbSource(), null, CancellationToken.None);
+        var act = () => Connector(conn).DiscoverAsync(DbSource(), ConnectorCredentials.None, null, CancellationToken.None);
 
         // DB エラーは例外 → オーケストレータが watermark 非前進・継続失敗アラートに載せる（IADR-0051 決定3a）。
         await act.Should().ThrowAsync<DbException>();
@@ -185,7 +215,7 @@ public sealed class DatabaseConnectorTests
         var conn = FakeDbConnection.WithReaderRows(
             [new() { ["id"] = "a", ["updated"] = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc) }]);
 
-        var items = await Connector(conn).DiscoverAsync(DbSource(), null, CancellationToken.None);
+        var items = await Connector(conn).DiscoverAsync(DbSource(), ConnectorCredentials.None, null, CancellationToken.None);
 
         conn.LastCommand!.CommandText.Should().Be(
             "SELECT id, updated FROM ( SELECT id AS id, updated AS updated, body AS content FROM articles ) AS src");
@@ -206,7 +236,7 @@ public sealed class DatabaseConnectorTests
             ]);
 
         var items = await Connector(conn).DiscoverAsync(
-            DbSourceWithUpdatedByColumn("author"), null, CancellationToken.None);
+            DbSourceWithUpdatedByColumn("author"), ConnectorCredentials.None, null, CancellationToken.None);
 
         conn.LastCommand!.CommandText.Should().StartWith("SELECT id, updated, author AS updated_by FROM (");
         items.Should().ContainSingle().Which.UpdatedBy.Should().Be("hr-tanaka");
@@ -228,7 +258,7 @@ public sealed class DatabaseConnectorTests
             ]);
 
         var items = await Connector(conn).DiscoverAsync(
-            DbSourceWithUpdatedByColumn("author"), null, CancellationToken.None);
+            DbSourceWithUpdatedByColumn("author"), ConnectorCredentials.None, null, CancellationToken.None);
 
         conn.LastCommand!.CommandText.Should().Contain("author AS updated_by");
         items.Should().ContainSingle().Which.UpdatedBy.Should().BeNull();
@@ -246,7 +276,7 @@ public sealed class DatabaseConnectorTests
             [new() { ["id"] = "a", ["updated"] = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc) }]);
 
         var items = await Connector(conn).DiscoverAsync(
-            DbSourceWithUpdatedByColumn(column), null, CancellationToken.None);
+            DbSourceWithUpdatedByColumn(column), ConnectorCredentials.None, null, CancellationToken.None);
 
         conn.LastCommand!.CommandText.Should().StartWith("SELECT id, updated FROM (");
         conn.LastCommand.CommandText.Should().NotContain("DROP TABLE");

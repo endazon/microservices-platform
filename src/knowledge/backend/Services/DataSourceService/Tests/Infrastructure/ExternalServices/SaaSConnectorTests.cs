@@ -33,7 +33,7 @@ public sealed class SaaSConnectorTests
                 : Json("""{"items":[{"id":"a","updatedAt":"2026-07-01T00:00:00Z"}],"nextCursor":"c2"}"""),
         };
 
-        var items = await Connector(handler).DiscoverAsync(SaasSource(), since: null, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(SaasSource(), ConnectorCredentials.None, since: null, CancellationToken.None);
 
         items.Select(i => i.Path).Should().BeEquivalentTo("a", "b");
         handler.Requests.Should().HaveCount(2, "カーソルが尽きるまで全ページをたどる");
@@ -53,7 +53,7 @@ public sealed class SaaSConnectorTests
         };
         var since = DateTimeOffset.Parse("2026-07-05T00:00:00Z");
 
-        var items = await Connector(handler).DiscoverAsync(SaasSource(), since, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(SaasSource(), ConnectorCredentials.None, since, CancellationToken.None);
 
         items.Select(i => i.Path).Should().ContainSingle().Which.Should().Be("new");
     }
@@ -68,7 +68,7 @@ public sealed class SaaSConnectorTests
                 : Json("""{"items":[{"id":"x","updatedAt":"2026-07-01T00:00:00Z"}],"nextCursor":null}"""),
         };
 
-        var items = await Connector(handler).DiscoverAsync(SaasSource(), null, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(SaasSource(), ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Select(i => i.Path).Should().ContainSingle().Which.Should().Be("x");
         handler.Requests.Should().HaveCount(2, "429 の後に Retry-After 従い再試行して成功する");
@@ -80,7 +80,7 @@ public sealed class SaaSConnectorTests
         var handler = new StubHandler { Responder = (_, _) => TooManyRequests() };
         var source = SaasSource(new Dictionary<string, string> { ["maxRetries"] = "1" });
 
-        var act = () => Connector(handler).DiscoverAsync(source, null, CancellationToken.None);
+        var act = () => Connector(handler).DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
 
         // 429 上限超過は例外 → オーケストレータが watermark 非前進・継続失敗アラートに載せる（IADR-0051 決定3a）。
         await act.Should().ThrowAsync<HttpRequestException>();
@@ -99,7 +99,7 @@ public sealed class SaaSConnectorTests
         };
 
         var raw = await Connector(handler).FetchAsync(
-            SaasSource(), new SourceItem("x1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+            SaasSource(), ConnectorCredentials.None, new SourceItem("x1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
 
         Encoding.UTF8.GetString(raw.Bytes).Should().Be("# Doc");
         handler.Requests.Should().HaveCount(2, "Fetch も 429 の後に再試行して成功する");
@@ -112,7 +112,7 @@ public sealed class SaaSConnectorTests
         var source = SaasSource(new Dictionary<string, string> { ["maxRetries"] = "1" });
 
         var act = () => Connector(handler).FetchAsync(
-            source, new SourceItem("x1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+            source, ConnectorCredentials.None, new SourceItem("x1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
 
         await act.Should().ThrowAsync<HttpRequestException>();
     }
@@ -129,22 +129,44 @@ public sealed class SaaSConnectorTests
         };
 
         var raw = await Connector(handler).FetchAsync(
-            SaasSource(), new SourceItem("x1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+            SaasSource(), ConnectorCredentials.None, new SourceItem("x1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
 
         Encoding.UTF8.GetString(raw.Bytes).Should().Be("# Doc");
         raw.ContentType.Should().Be("text/markdown");
     }
 
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): Bearer は**解決済みの資格情報**から載せる（`Config` の参照は送らない）。
     [Fact]
-    public async Task Discover_SendsBearerToken_FromConfig()
+    public async Task Discover_SendsBearerToken_FromResolvedCredentials_NotFromConfig()
     {
         var handler = new StubHandler { Responder = (_, _) => Json("""{"items":[],"nextCursor":null}""") };
-        var source = SaasSource(new Dictionary<string, string> { ["apiToken"] = "saas-secret" });
+        var source = SaasSource(new Dictionary<string, string> { ["apiToken"] = "vault:datasource/saas#apiToken" });
 
-        await Connector(handler).DiscoverAsync(source, null, CancellationToken.None);
+        await Connector(handler).DiscoverAsync(source, new ConnectorCredentials(new Dictionary<string, string> { ["apiToken"] = "resolved-saas-value" }), null, CancellationToken.None);
 
         handler.Requests[0].Headers.Authorization!.Scheme.Should().Be("Bearer");
-        handler.Requests[0].Headers.Authorization!.Parameter.Should().Be("saas-secret");
+        handler.Requests[0].Headers.Authorization!.Parameter.Should().Be("resolved-saas-value");
+    }
+
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): 🔴 **コネクタは `Config` の秘密を直接読まない**（Discover・Fetch とも）。
+    [Fact]
+    public async Task DiscoverAndFetch_IgnoreConfigSecret_WhenCredentialsAreNotResolved()
+    {
+        var handler = new StubHandler
+        {
+            Responder = (req, _) => req.RequestUri!.AbsolutePath.EndsWith("/x1", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("# Doc") }
+                : Json("""{"items":[],"nextCursor":null}"""),
+        };
+        var source = SaasSource(new Dictionary<string, string> { ["apiToken"] = "plain-config-value" });
+
+        await Connector(handler).DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
+        await Connector(handler).FetchAsync(
+            source, ConnectorCredentials.None, new SourceItem("x1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+
+        handler.Requests.Should().HaveCount(2);
+        handler.Requests.Should().AllSatisfy(r => r.Headers.Authorization.Should().BeNull(
+            "資格情報は解決器を経たものだけを使い、Config を直接読まない"));
     }
 
     [Fact]
@@ -153,7 +175,7 @@ public sealed class SaaSConnectorTests
         var handler = new StubHandler { Responder = (_, _) => Json("""{"items":[],"nextCursor":null}""") };
         var source = DataSource.Create("saas", "saas", "");
 
-        var items = await Connector(handler).DiscoverAsync(source, null, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().BeEmpty();
         handler.Requests.Should().BeEmpty();
@@ -170,7 +192,7 @@ public sealed class SaaSConnectorTests
                 """),
         };
 
-        var items = await Connector(handler).DiscoverAsync(SaasSource(), null, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(SaasSource(), ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().ContainSingle().Which.UpdatedBy.Should().Be("hr-tanaka");
     }
@@ -186,7 +208,7 @@ public sealed class SaaSConnectorTests
         };
         var source = SaasSource(new Dictionary<string, string> { ["updatedByField"] = "author" });
 
-        var items = await Connector(handler).DiscoverAsync(source, null, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().ContainSingle().Which.UpdatedBy.Should().Be("alice");
     }
@@ -199,7 +221,7 @@ public sealed class SaaSConnectorTests
     {
         var handler = new StubHandler { Responder = (_, _) => Json(json) };
 
-        var items = await Connector(handler).DiscoverAsync(SaasSource(), null, CancellationToken.None);
+        var items = await Connector(handler).DiscoverAsync(SaasSource(), ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().ContainSingle().Which.UpdatedBy.Should().BeNull();
     }

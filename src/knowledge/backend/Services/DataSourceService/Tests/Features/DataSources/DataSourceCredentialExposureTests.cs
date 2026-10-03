@@ -1,3 +1,4 @@
+using DataSourceService.Infrastructure.Secrets;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -399,6 +400,7 @@ public class DataSourceCredentialExposureTests(TestWebApplicationFactory factory
             new ConnectorRegistry([connector]),
             scope.ServiceProvider.GetRequiredService<IObjectStorageClient>(),
             scope.ServiceProvider.GetRequiredService<RecordingMessageBus>(),
+            new PlaintextPassthroughConnectorSecretResolver(),
             log);
     }
 
@@ -408,10 +410,10 @@ public class DataSourceCredentialExposureTests(TestWebApplicationFactory factory
     {
         public const string Type = "leaky-discover";
         public string SourceType => Type;
-        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, ConnectorCredentials c, DateTimeOffset? since, CancellationToken ct)
             => throw new IOException(
                 $"connection failed: Host=db.example.test;Username=app;Password={LeakedPassword};Database=kb");
-        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+        public Task<RawContent> FetchAsync(DataSource s, ConnectorCredentials c, SourceItem item, CancellationToken ct)
             => throw new NotSupportedException();
     }
 
@@ -420,9 +422,9 @@ public class DataSourceCredentialExposureTests(TestWebApplicationFactory factory
     {
         public const string Type = "leaky-fetch";
         public string SourceType => Type;
-        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, ConnectorCredentials c, DateTimeOffset? since, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<SourceItem>>([new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1)]);
-        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+        public Task<RawContent> FetchAsync(DataSource s, ConnectorCredentials c, SourceItem item, CancellationToken ct)
             => throw new IOException(
                 $"fetch failed: https://svc-account:{LeakedPassword}@saas.example.test/api/items/1");
     }

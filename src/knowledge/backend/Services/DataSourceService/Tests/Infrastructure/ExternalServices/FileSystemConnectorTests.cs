@@ -42,7 +42,7 @@ public sealed class FileSystemConnectorTests : IDisposable
         Write("a.md", "a");
         Write("sub/b.txt", "b");
 
-        var items = await _connector.DiscoverAsync(Source(), since: null, CancellationToken.None);
+        var items = await _connector.DiscoverAsync(Source(), ConnectorCredentials.None, since: null, CancellationToken.None);
 
         items.Should().HaveCount(2);
         items.Should().OnlyContain(i => i.UpdatedBy == null,
@@ -58,7 +58,7 @@ public sealed class FileSystemConnectorTests : IDisposable
         Write("ignore.bin", "x");      // 非対応拡張子
         Write("ignore.png", "y");      // 非対応拡張子
 
-        var items = await _connector.DiscoverAsync(Source(), since: null, CancellationToken.None);
+        var items = await _connector.DiscoverAsync(Source(), ConnectorCredentials.None, since: null, CancellationToken.None);
 
         items.Select(i => Path.GetFileName(i.Path))
             .Should().BeEquivalentTo("a.md", "b.txt", "c.docx");
@@ -75,7 +75,7 @@ public sealed class FileSystemConnectorTests : IDisposable
         Write("new.md", "new");
         File.SetLastWriteTimeUtc(Path.Combine(_root, "new.md"), watermark.AddMinutes(10).UtcDateTime);
 
-        var items = await _connector.DiscoverAsync(Source(), since: watermark, CancellationToken.None);
+        var items = await _connector.DiscoverAsync(Source(), ConnectorCredentials.None, since: watermark, CancellationToken.None);
 
         items.Select(i => Path.GetFileName(i.Path)).Should().ContainSingle().Which.Should().Be("new.md");
     }
@@ -84,10 +84,10 @@ public sealed class FileSystemConnectorTests : IDisposable
     public async Task Fetch_ReturnsBytesAndContentType()
     {
         Write("doc.md", "# Title");
-        var items = await _connector.DiscoverAsync(Source(), null, CancellationToken.None);
+        var items = await _connector.DiscoverAsync(Source(), ConnectorCredentials.None, null, CancellationToken.None);
         var item = items.Single();
 
-        var raw = await _connector.FetchAsync(Source(), item, CancellationToken.None);
+        var raw = await _connector.FetchAsync(Source(), ConnectorCredentials.None, item, CancellationToken.None);
 
         Encoding.UTF8.GetString(raw.Bytes).Should().Be("# Title");
         raw.ContentType.Should().Be("text/markdown");
@@ -99,7 +99,7 @@ public sealed class FileSystemConnectorTests : IDisposable
         var source = DataSource.Create("missing", "filesystem", "",
             new Dictionary<string, string> { ["rootPath"] = Path.Combine(_root, "does-not-exist") });
 
-        var items = await _connector.DiscoverAsync(source, null, CancellationToken.None);
+        var items = await _connector.DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().BeEmpty();
     }
@@ -110,7 +110,7 @@ public sealed class FileSystemConnectorTests : IDisposable
         // smb:// 等のリモート URI は rootPath 未指定なら縮退（マウントパス未提供）。
         var source = DataSource.Create("smb", "filesystem", "smb://server/share");
 
-        var items = await _connector.DiscoverAsync(source, null, CancellationToken.None);
+        var items = await _connector.DiscoverAsync(source, ConnectorCredentials.None, null, CancellationToken.None);
 
         items.Should().BeEmpty();
     }

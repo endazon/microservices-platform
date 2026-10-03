@@ -23,9 +23,10 @@ related_ids:
   - IADR-0379
   - IADR-0458
   - IADR-0465
+  - IADR-0493
 author: claude
 created: 2026-09-06
-updated: 2026-09-26
+updated: 2026-10-03
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md 決定
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md 決定
@@ -298,6 +299,13 @@ ESO マニフェストは **25 本**（`deploy/local/vault/eso/`）で、うち 
 4. ローテーションは Vault 側の版管理に委ね、アプリは参照だけを持つ。
 
 **実配備は環境依存であり本 PR では検証できない。展開 issue へ送る。**
+
+［2026-10-03 追記 / #458］🔴 **段 1 は [IADR-0493](./IADR-0493_connector-secret-resolver-port-and-fail-closed.md) 決定 4 が改めた。**
+本決定の起案（2026-09-06）の後に、計画が秘密情報の投入の面を SC-22 と決めた（ADR-0095 実測 6・決定 1、SC-06 の 2026-09-11 追記）。
+段 1 の「書き込み時に（データソース側で）参照へ変換する」はデータソース側に投入の面があることを前提にしており、その前提が崩れた。
+データソースごとに増える項目を SC-22 の型（書き込み射程・供給元・ロール）でどう扱うかは planning#716 の裁定待ちである。
+**段 2（`IConnectorSecretResolver`）と段 3 の fail-closed は IADR-0493 決定 1・3 が実装した**（Vault 解決器・移送は後続段）。
+参照の例 `vault:msp/datasource/<id>#<key>` のパスは ESO の `msp/*` の read policy に入るため、接頭辞は後続段（Vault の role・policy）で決め直す（IADR-0493 決定 2）。
 
 ## 結果
 
