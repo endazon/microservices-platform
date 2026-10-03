@@ -4,6 +4,9 @@
 
 ### 新機能
 
+- **NFR-18**: コネクタの資格情報を datasource-service 専用の読み取りロールで Vault の専用接頭辞から解決し、読めなければ平文へ倒さず失敗させる（#458） (#1732) (e16afb1d)
+- **NFR-18**: コネクタの資格情報を同期の開始時に解決器で 1 回だけ解決し、解決できなければ外部へ要求を出さずに失敗させる（#458） (#1727) (84c80853)
+- **NFR-09**: AST の KB の読み手を書き手と別のクライアントにし、AST の文書だけを読む静的ポリシーを 1 本置く（#1696） (233f432d)
 - **NFR-18,ADR-0124**: Vault の audit を標準出力と collector の 2 か所へ出し、秘密の書き込みを Loki で監査として抽出できるようにする（値は HMAC） (#1685) (337f830c)
 - **FR-06,ADR-0122**: AST の古い写しを列挙する管理者だけの読み取り専用の口を作り、見分けの条件と消す手順を残す (#1681) (bd620f79)
 - **FR-16,ADR-0117,ADR-0086**: MCP のツールの実行口を文書サービスに作り、MCP サーバーが運んだ利用者文脈で既存の読み取りの判定点（内容の ABAC の門の両状態）をそのまま通す (#1678) (094a4a2d)
@@ -278,6 +281,9 @@
 
 ### 不具合修正
 
+- **SC-15**: ログインの存在秘匿の検査器に試験専用の利用者名の上書きを足し、PR-D 手順書の未決を裁定どおりに畳む（#1245） (#1734) (b0eaeff7)
+- **NFR-18**: bootstrap が Vault に書いた KV を読む ExternalSecret にだけ force-sync を付け、同期の完了を待つ（#1728） (#1730) (bcce388e)
+- **NFR-16**: helm v4 で -a が拒否されるため、全状態のリリースを状態旗で列挙してメッシュ宣言を引き継ぐ（#1722） (1e039595)
 - **NFR-21**: platform-backup イメージのベースをチャレンジを返さないミラーから取り、資格情報ヘルパーを呼ばずにビルドする（#1709） (95e6f0bd)
 - **NFR-16**: ISTIO を付けない k8s-local-up.sh の再実行で、現行の mesh.enabled を引き継ぎメッシュ宣言を黙って外さない（#1713） (c753b204)
 - **NFR-16**: ISTIO_MTLS_MODE を付けない k8s-local-up.sh の再実行で、現行の mesh.mtlsMode を引き継ぎ STRICT を黙って PERMISSIVE へ戻さない (#1712) (f63db8c2)
@@ -550,6 +556,9 @@
 
 ### ドキュメント
 
+- **SC-22**: 稼働クラスタで画面から 1 プロパティを書き同期後の Secret を長さだけで確かめる T-40 の手順書を追加（#1472） (#1739) (abefc099)
+- **NFR-16**: 稼働 k3s で east-west gRPC（h2c）の往復を PERMISSIVE / STRICT の両方で実測する手順書を置く（#1255） (#1737) (337a0c8c)
+- **NFR**: CHANGELOG を自動更新 (#1475) (db3918cd)
 - **NFR-21**: 稼働 PoC のバックアップが停止中（CronJob は suspend）であることを運用文書に明記する（#1709） (#1711) (78bc7b21)
 - **SC-22,ADR-0095**: 監査の抽出条件を約束する文書の SC-22 の行に即時同期の依頼 secret.item.sync を足し、境界層の action と outcome が行に揃うことを試験で固定する (#1656) (dfa14ddb)
 - **NFR**: 文書・スクリプト中の Deployment 名を誤りの側から全数走査し、運用仕様書の Wiki.js キーのローテーションを実在する wiki-service / wiki-js へ直す (#1561) (40ecdc90)
@@ -830,6 +839,7 @@
 
 ### CI
 
+- **NFR**: AI レビュー・実装の --allowedTools と settings.json に bash の構文検査と k8s-local-down.test.sh の固定形を足す（#1722） (50b1a1ed)
 - **NFR**: テストのシャードの脚は試験プロジェクトの閉包だけを建て、全体 build は並列ジョブで検証し、集約の setup-node を外す（#1686） (62e0e507)
 - **SC-15,NFR-13,ADR-0118**: T-25 だけが赤の integration-stack を同じコミットで 1 回だけ再実行して結果を起票済みの issue へ書き、p の分布を月次で要約する (#1623) (08907b09)
 - **SC-15,NFR-13,ADR-0113**: integration-stack の T-25 の偶然の赤で後段の門を飛ばさず、スタックの門が緑なら ABAC・検索・ログイン経路の門まで評価する (#1599) (7955394a)
@@ -861,6 +871,9 @@
 
 ### その他
 
+- **NFR**: submodule src/ai-stock-trading を develop 3daeb2a へ進め、送信結果を確認できない発注の故障注入（SIMULATE 限定・既定無効）を載せる (#1735) (82b864f8)
+- **NFR**: submodule src/ai-stock-trading を develop 3b2ef47 へ進め、ATR(14) の損切り幅の下限と建玉照会の失敗の種類の一本化を載せる (#1731) (28c70ecd)
+- **NFR**: submodule src/ai-stock-trading を develop f17f1b7 へ進め、KB の読み手での検索・報告書の未供給の区別・判断の最終の失敗の監査ほかを載せる (#1729) (3eea5ff6)
 - **deps**: Bump anthropics/claude-code-action from 1.0.231 to 1.0.237 (#1717) (b4eb21ce)
 - **deps**: Bump github/codeql-action from 4.38.1 to 4.38.2 (#1716) (3e3127d9)
 - **NFR**: submodule src/ai-stock-trading を develop e392843 へ進め、利確条件の数値化・監視銘柄の不明時の見送り・KB の市場文書・retMsg の口座 ID 伏せ・Finnhub 見積りの実数化・出来高の設定一致の検査ほかを載せる (#1715) (e0d35208)
