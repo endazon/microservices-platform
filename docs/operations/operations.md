@@ -3,7 +3,7 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-02
+updated: 2026-10-04
 author: claude
 ---
 <!-- trace:
@@ -1299,6 +1299,9 @@ helm upgrade msp deploy/helm/microservices-platform -n microservices-platform --
 kubectl -n microservices-platform get peerauthentication microservices-platform-mtls \
   -o yaml --show-managed-fields | grep -A1 'manager:'   # helm 以外が居ないこと
 ```
+
+サービス間の gRPC（h2c・8081）の往復を稼働クラスタで PERMISSIVE / STRICT の両方について実測する手順（REST の east-west を退役させる前の観測点。#1255 / #1517）は
+[east-west gRPC（h2c）往復の実測 Runbook](east-west-grpc-h2c-roundtrip-measurement-runbook.md) にある。モードの切り替えは上と同じく `set_mesh_mtls_mode` だけを使う。
 
 ### 検索が全件 0 件になる（読み書き先コレクションの乖離・全文索引の欠落）（非機能要件: 可観測性 / #1215）
 

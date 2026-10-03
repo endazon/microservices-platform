@@ -3,7 +3,7 @@ title: east-west gRPC 通信仕様書（proto の置き場・versioning・h2c・
 type: api-spec
 status: completed
 created: 2026-09-05
-updated: 2026-09-28
+updated: 2026-10-04
 author: Claude
 ---
 <!-- trace:
@@ -832,6 +832,8 @@ sequenceDiagram
   戻すときは構成を外すだけでよい（コードを変えない）。
 - **タイムアウト・リトライ・fail-safe**: 呼び出し元の Infrastructure に置く。参照実装は縮退（deny）だけを持ち、リトライは持たない。
 - **観測**: gRPC の状態コードは呼び出し側の警告ログに出る。gRPC 専用の計装（OTel の gRPC instrumentation）は展開 issue で扱う。
+  ［2026-10-04 追記］**成功した呼び出しはどちら側にもログを残さない**（失敗だけが出る）。稼働クラスタで往復の成立を示す手順（受け手の要求ログの水準を一時的に上げる・サイドカーの計数で gRPC の状態を読む・PERMISSIVE / STRICT の両方）は
+  [h2c 往復の実測 Runbook](../operations/east-west-grpc-h2c-roundtrip-measurement-runbook.md) にある。
 - **Keycloak**: 呼び出し元サービスごとに confidential client（service account 有効・`platform-service`）を realm へ登録する。
   参照実装では既存の `bff` client を流用した。
 
