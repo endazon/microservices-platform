@@ -570,3 +570,4 @@
 | [IADR-0490](./IADR-0490_conversion-tests-parallel-classes-and-longest-first.md) | ConversionService.Tests の実時間の期限を待つ試験は、検査を変えずに入れ子のクラス（別コレクション）へ分けて並列にし、最長の 1 本（期限 ＋ 刈り取りの上限）を順序づけで最初に起動する。本番コードは変えない（#1686） | Accepted |
 | [IADR-0491](./IADR-0491_helm-list-status-flags-instead-of-all.md) | 現行のメッシュ宣言を読む helm list は helm v4 が廃した -a / --all をやめ、状態の旗 6 つの和を明示して helm v3 / v4 の両方で同じ集合を読む（#1722） | Accepted |
 | [IADR-0492](./IADR-0492_ast-kb-reader-project-scoped-read-policy.md) | AST の KB の読み手は書き手と別の機密クライアント（ロールなし・profile あり）にし、`projects=ai-stock-trading` の主体に `project=ai-stock-trading` の文書だけを許す read のポリシー 1 本で読ませる（#1696） | Accepted |
+| [IADR-0493](./IADR-0493_connector-secret-resolver-port-and-fail-closed.md) | コネクタの資格情報は同期の開始時に `IConnectorSecretResolver` で 1 回だけ解決し、解決できなければ外部へ要求を出さずに失敗する（fail-closed）。IADR-0403 決定 8 段 1（データソース側で参照へ変換）は投入の面 SC-22 に合わせて改め、動的な項目は planning#716 の裁定待ち（#458 段 S0） | Accepted |

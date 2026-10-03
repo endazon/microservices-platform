@@ -1,3 +1,4 @@
+using DataSourceService.Infrastructure.Secrets;
 using DataSourceService.Infrastructure.ExternalServices;
 using DataSourceService.Domain;
 using DataSourceService.Domain.Ports;
@@ -372,7 +373,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var storage = scope.ServiceProvider.GetRequiredService<IObjectStorageClient>();
         var bus = scope.ServiceProvider.GetRequiredService<RecordingMessageBus>();
         var registry = new ConnectorRegistry([connector]);
-        return new DataSourceSyncService(registry, storage, bus,
+        return new DataSourceSyncService(registry, storage, bus, new PlaintextPassthroughConnectorSecretResolver(),
             NullLogger<DataSourceSyncService>.Instance);
     }
 
@@ -389,9 +390,9 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     private sealed class DiscoverThrowingConnector : IDataSourceConnector
     {
         public string SourceType => "filesystem";
-        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, ConnectorCredentials c, DateTimeOffset? since, CancellationToken ct)
             => throw new IOException("discover boom");
-        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+        public Task<RawContent> FetchAsync(DataSource s, ConnectorCredentials c, SourceItem item, CancellationToken ct)
             => throw new NotSupportedException();
     }
 
@@ -399,9 +400,9 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     private sealed class SecretLeakingConnector : IDataSourceConnector
     {
         public string SourceType => "filesystem";
-        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, ConnectorCredentials c, DateTimeOffset? since, CancellationToken ct)
             => throw new IOException("connect failed: Host=db;Username=app;Password=hunter2");
-        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+        public Task<RawContent> FetchAsync(DataSource s, ConnectorCredentials c, SourceItem item, CancellationToken ct)
             => throw new NotSupportedException();
     }
 
@@ -409,9 +410,9 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     private sealed class FetchThrowingConnector : IDataSourceConnector
     {
         public string SourceType => "filesystem";
-        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, ConnectorCredentials c, DateTimeOffset? since, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<SourceItem>>([new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1)]);
-        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+        public Task<RawContent> FetchAsync(DataSource s, ConnectorCredentials c, SourceItem item, CancellationToken ct)
             => throw new IOException("fetch boom");
     }
 
@@ -420,7 +421,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     private sealed class TimingOutConnector(bool onDiscover) : IDataSourceConnector
     {
         public string SourceType => "filesystem";
-        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, ConnectorCredentials c, DateTimeOffset? since, CancellationToken ct)
             => onDiscover
                 ? throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout")
                 : Task.FromResult<IReadOnlyList<SourceItem>>(
@@ -428,7 +429,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
                     new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1),
                     new SourceItem("/x/b.md", DateTimeOffset.UtcNow, 1),
                 ]);
-        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+        public Task<RawContent> FetchAsync(DataSource s, ConnectorCredentials c, SourceItem item, CancellationToken ct)
             => item.Path == "/x/a.md"
                 ? throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout")
                 : Task.FromResult(new RawContent([1], "text/markdown"));
@@ -439,7 +440,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     private sealed class CancellingConnector(CancellationTokenSource caller, bool onDiscover) : IDataSourceConnector
     {
         public string SourceType => "filesystem";
-        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, ConnectorCredentials c, DateTimeOffset? since, CancellationToken ct)
             => onDiscover
                 ? throw Cancel(ct)
                 : Task.FromResult<IReadOnlyList<SourceItem>>(
@@ -447,7 +448,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
                     new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1),
                     new SourceItem("/x/b.md", DateTimeOffset.UtcNow, 1),
                 ]);
-        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+        public Task<RawContent> FetchAsync(DataSource s, ConnectorCredentials c, SourceItem item, CancellationToken ct)
             => item.Path == "/x/a.md"
                 ? throw Cancel(ct)
                 : throw new InvalidOperationException("呼び出し側の取り消しの後に次の件の取得へ進んだ");
@@ -472,13 +473,13 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     private sealed class TwoItemConnector(string? updatedBy) : IDataSourceConnector
     {
         public string SourceType => "filesystem";
-        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, ConnectorCredentials c, DateTimeOffset? since, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<SourceItem>>(
             [
                 new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1, updatedBy),
                 new SourceItem("/x/b.md", DateTimeOffset.UtcNow, 1, updatedBy),
             ]);
-        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+        public Task<RawContent> FetchAsync(DataSource s, ConnectorCredentials c, SourceItem item, CancellationToken ct)
             => Task.FromResult(new RawContent([1], "text/markdown"));
     }
 
@@ -486,13 +487,13 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     private sealed class PerItemUpdaterConnector : IDataSourceConnector
     {
         public string SourceType => "filesystem";
-        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, ConnectorCredentials c, DateTimeOffset? since, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<SourceItem>>(
             [
                 new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1, "alice"),
                 new SourceItem("/x/b.md", DateTimeOffset.UtcNow, 1, "bob"),
             ]);
-        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+        public Task<RawContent> FetchAsync(DataSource s, ConnectorCredentials c, SourceItem item, CancellationToken ct)
             => Task.FromResult(new RawContent([1], "text/markdown"));
     }
 

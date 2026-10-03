@@ -3,14 +3,14 @@ title: データソース登録・同期・カタログ化 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-04
-updated: 2026-09-26
+updated: 2026-10-03
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-05, SC-06, UC-04]
+ids: [FR-01, FR-05, SC-06, UC-04, NFR-18]
 adrs: [ADR-0002, ADR-0003, ADR-0014, ADR-0027, ADR-0074, ADR-0115]
-iadrs: [IADR-0001, IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0199, IADR-0295, IADR-0468, IADR-0472]
-specs: [20260926_issue-754_department-from-registrant-group, 20260926_issue-1557_department-domain-validation]
+iadrs: [IADR-0001, IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0199, IADR-0295, IADR-0468, IADR-0472, IADR-0493]
+specs: [20260926_issue-754_department-from-registrant-group, 20260926_issue-1557_department-domain-validation, 20261003_458_connector-secret-vault-reference]
 issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, #1557, planning#344, planning#361]
 -->
 
@@ -55,19 +55,19 @@ issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, #1557
 | T-10 | 未登録 SourceType（架空種別 `unknown-source`。filesystem/wiki/saas/db は登録済みのため恒久的に未登録の値を用いる） | `POST /{id}/sync` | 202・`connectorAvailable=false`・`fetched=0`・発行なし（縮退） | 未登録型の縮退 | 自動（エンドポイント） |
 | T-11 | Wiki（汎用契約）一覧 API がページ配列を返す | `WikiConnector.DiscoverAsync`（since=null / since=watermark） | 全件列挙／`updatedAt>since` で増分 | Wiki 列挙・増分 | 自動（単体・fake HTTP） |
 | T-12 | Wiki 本文 API が Markdown を返す | `WikiConnector.FetchAsync` | 本文バイト＋content-type（応答ヘッダ） | Wiki 取得 | 自動（単体・fake HTTP） |
-| T-13 | `Config.apiToken` 設定・`listPath` 設定 | `DiscoverAsync` | `Authorization: Bearer` 送出／設定パスへ GET | Wiki 認証・設定駆動 | 自動（単体・fake HTTP） |
+| T-13 | 解決済みの資格情報（`apiToken`）・`listPath` 設定／`Config.apiToken` だけがあり資格情報が解決されていない | `DiscoverAsync`・`FetchAsync` | 解決済みの値で `Authorization: Bearer` 送出／設定パスへ GET／`Config` の値は送らない（Authorization を付けない） | Wiki 認証・設定駆動 | 自動（単体・fake HTTP） |
 | T-14 | 一覧 API が 5xx／ConnectionUri 未設定 | `DiscoverAsync` | 5xx は例外送出（watermark 非前進）／未設定は空列挙で縮退 | Wiki 失敗時挙動（#217。コネクタのポート分離と同期基盤の決定 3a） | 自動（単体・fake HTTP） |
 | T-15 | SaaS 一覧 API が nextCursor で複数ページを返す | `SaaSConnector.DiscoverAsync` | 全ページをカーソルで集約・`updatedAt>since` で増分 | SaaS ページング・増分 | 自動（単体・fake HTTP） |
 | T-16 | SaaS 一覧 API が 429（Retry-After:0）→200 | `DiscoverAsync` | Retry-After に従い再試行して成功（2 リクエスト） | SaaS レート制限バックオフ | 自動（単体・fake HTTP） |
 | T-17 | SaaS 一覧 API が 429 継続（maxRetries=1） | `DiscoverAsync` | 上限超過で例外送出（watermark 非前進） | SaaS 上限超過（#218。同決定 3a） | 自動（単体・fake HTTP） |
-| T-18 | SaaS 本文 API が Markdown／`Config.apiToken`／未設定 | `FetchAsync`/`DiscoverAsync` | 本文＋content-type／`Bearer` 送出／未設定は空列挙 | SaaS 取得・認証・縮退 | 自動（単体・fake HTTP） |
+| T-18 | SaaS 本文 API が Markdown／解決済みの `apiToken`（`Config` の値だけでは送らない）／未設定 | `FetchAsync`/`DiscoverAsync` | 本文＋content-type／解決済みの値で `Bearer` 送出／未設定は空列挙 | SaaS 取得・認証・縮退 | 自動（単体・fake HTTP） |
 | T-19 | 業務DB クエリが行を返す（fake ADO.NET） | `DatabaseConnector.DiscoverAsync`（since=null / watermark / ISO8601文字列） | 全行を id/updated へマッピング・`updated>since` で増分・文字列日時も正規化 | DB 行→文書・増分 | 自動（単体・fake ADO.NET） |
 | T-20 | 業務DB 本文スカラを返す | `DatabaseConnector.FetchAsync` | 本文バイト＋content-type・id は `@id` パラメータで渡す | DB 取得・パラメータ化 | 自動（単体・fake ADO.NET） |
-| T-21 | `Config.query`／`ConnectionUri` 未設定 | `DiscoverAsync` | 空列挙で縮退（接続しない） | DB 縮退 | 自動（単体・fake ADO.NET） |
+| T-21 | `Config.query`／`ConnectionUri` 未設定／`Config` にパスワードだけがあり資格情報が解決されていない | `DiscoverAsync`・`FetchAsync` | 空列挙で縮退（接続しない）／`Config` の値は接続文字列へ合成しない（パスワードを付けずに接続する） | DB 縮退・資格情報の読み口 | 自動（単体・fake ADO.NET） |
 | T-22 | 業務DB がエラーを返す | `DiscoverAsync` | 例外送出（watermark 非前進） | DB 失敗時挙動（#219。同決定 3a） | 自動（単体・fake ADO.NET） |
 | T-23 | `updated` 列が NULL の行を含む | `DiscoverAsync` | 当該行のみスキップ＋警告・同期全体は成功 | DB 不正行の縮退（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
 | T-24 | Fetch 対象 id が存在しない（消えた行） | `FetchAsync` | 例外にせず空本文へ縮退 | DB 該当なしの縮退（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
-| T-25 | `Config.password` に `;`/`'` を含む | `DiscoverAsync` | 接続文字列がクオート合成され特殊文字が往復 | DB パスワードエスケープ（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
+| T-25 | 解決済みの資格情報（パスワード）に `;`/`'` を含む（`Config` には参照だけを置く） | `DiscoverAsync` | 接続文字列がクオート合成され解決済みの値の特殊文字が往復（`Config` の参照は合成しない） | DB パスワードエスケープ（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
 | T-26 | 連続して discover が失敗する（再試行上限まで） | `SyncAsync` | **再試行上限に達した時点**で継続失敗となり、連続失敗回数がエンティティに載る。しきい値と再試行上限は同一定数 | 継続失敗のしきい値（#537 / データソース同期の例外フロー / 健全性の永続化・決定 3） | 自動（単体） |
 | T-27 | 失敗の後に完全成功する | `SyncAsync` | 連続失敗回数が 0 へ戻り、**直近エラーも消える** | 健全性の回復（#537 / 健全性の永続化） | 自動（単体） |
 | T-28 | 例外メッセージが接続文字列（`Password=`）を含む | `SyncAsync` | **保存時点でマスク**され、平文の秘密が永続化されない | 直近エラーの秘密マスク（#537 / 健全性の永続化・決定 5 / Wiki コネクタの汎用 REST 契約） | 自動（単体） |
@@ -109,6 +109,8 @@ issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, #1557
 | T-64 | 認可サービスの値域照会（`/department` 直下・名前だけ別の木・大小文字違い・入れ子のグループ・前後空白・親そのもの・重複）／管理者の利用者トークン／身元プロバイダの障害 | gRPC `UserDirectory/CheckDepartmentCodes` ／ `FindGroupByPathAsync` | 直下のコードだけが在る。要求と同じ順・同じ数。利用者トークンは PERMISSION_DENIED。障害は status（`exists=false` にしない）。返ったパスが大小文字違いなら無い扱い | 照会であって列挙ではない。入れ子を数えると `a/b` という「コード」が通る | 自動（xUnit・実 Kestrel の h2c） |
 | T-65 | データソース管理画面の部門欄の補助文・値域の外の理由表示・確認できない（502）ときの説明 | 登録・編集フォーム | 補助文が「入れるなら部門グループのコード。無いコードは保存されない」を伝える。400 の理由が出る。502 には確認できなかった旨を添え、保存されていないとは言い切らない | 入力の前に規則を伝え、拒否の理由を画面に出す | 自動（Vitest） |
 | T-66 | 値域が定まる前に保存された部門（値域の外）を持つソースで、部門を変えずに機密区分・ライフサイクルを編集／部門を変える | `PATCH` / `PUT /datasources/{id}` | 部門を変えない編集は**値域を照会せずに 200**（値域が引けない状態でも通る）。部門を変えれば照会し、値域の外は 400・引けなければ 502（大小文字だけの違いも「変えた」） | 旧データの部門で無関係な編集を止めない。値域の外の値を新しく書かせない | 自動（xUnit） |
+| T-67 | 資格情報の参照（`apiToken` / `password` の項目に `vault:…`）を `Config` に持つ Wiki・SaaS・業務DB のソースを同期（取得 2 件） | `DataSourceSyncService.SyncAsync` ＋ 資格情報の解決器 | 解決器は 1 回の同期で**1 回だけ**呼ばれ、探索と全取得が同じ解決済みの値を使う。同期の途中で版が変わっても 1 回の同期の中では混ざらず、次の同期が新しい版を使う。`Config` に資格情報が無ければ解決器を呼ばず認証なしで同期する | 資格情報の読み口を 1 本にし、実行時に取得する。1 回の同期で版を混ぜない | 自動（xUnit） |
+| T-68 | 資格情報が解決できない（表に無い参照・解決器が未配備・形の誤り・大文字の接頭辞・解決した値が空・解決器の例外） | 同上 | 外部へ**要求を 1 件も出さず**（業務DB へは接続しない）、`credentials not resolved for credential #<番号> (<理由>)` で失敗（項目のキー名も出さない）。直近エラー・連続失敗に載り watermark は進めない。ログ・直近エラー・応答に値・参照のパス・解決器の例外文が出ない | 参照を平文として相手へ渡さない（fail-closed）。資格情報の所在を漏らさない | 自動（xUnit） |
 
 ## テストデータ
 
@@ -127,7 +129,7 @@ issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, #1557
 - データ仕様書: `../data/data-source.md`
 - 実装 ADR: `../../.ai-context/adr/IADR-0001_document-service-owns-catalog.md`
 - テストコード: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DataSourceService/DataSourceTests.cs`, `src/knowledge/backend/Services/DataSourceService/Tests/HealthEndpointTests.cs`
-- コネクタ/同期テスト: `.../DataSourceService.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）、`.../DataSourceSyncServiceTests.cs`（watermark 非前進）
+- コネクタ/同期テスト: `.../DataSourceService.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10・T-68 の応答本文）、`.../DataSourceSyncServiceTests.cs`（watermark 非前進）
 - Wiki コネクタテスト: `.../DataSourceService.Tests/WikiConnectorTests.cs`（T-11〜T-14・fake HttpMessageHandler）
 - SaaS コネクタテスト: `.../DataSourceService.Tests/SaaSConnectorTests.cs`（T-15〜T-18・fake HttpMessageHandler）
 - 業務DB コネクタテスト: `.../DataSourceService.Tests/DatabaseConnectorTests.cs`（T-19〜T-25・ハンドロール ADO.NET フェイク）

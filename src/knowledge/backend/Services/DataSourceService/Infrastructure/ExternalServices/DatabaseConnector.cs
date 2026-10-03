@@ -16,6 +16,8 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 //   Discover: SELECT id, updated FROM ( {query} ) AS src を実行し updated>since をインメモリで増分。
 //   Fetch:    SELECT content FROM ( {query} ) AS src WHERE id = @id（パラメータ化）→ 本文バイト＋content-type。
 //   認証/権限: 接続情報は ConnectionUri（パスワードを含めない）＋Config["password"]（GET 応答でマスク）。
+//     ［2026-10-03 / #458 段 S0］パスワードは `Config` から直接ではなく、同期の開始時に
+//     `IConnectorSecretResolver` が解決した `ConnectorCredentials` から読む（[[IADR-0493]]）。
 //     IADR-0295 決定 3: **「パスワードを含めない」は強制されるようになった** —— 従前この契約を
 //     守らせる検証はどこにも無く、ConnectionUri は応答へ素で出ていた。現在は資格情報つきの
 //     ConnectionUri を書き込み時に 400 で拒否し（ConnectionUriPolicy）、既存行は応答で伏せる。
@@ -37,10 +39,15 @@ public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, IL
 
     private const string DefaultContentType = "text/markdown";
 
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): 接続文字列へ合成する資格情報。値は `credentials` からだけ読む。
+    public const string PasswordKey = "password";
+
+    public IReadOnlyList<string> CredentialKeys => [PasswordKey];
+
     public async Task<IReadOnlyList<SourceItem>> DiscoverAsync(
-        DataSource source, DateTimeOffset? since, CancellationToken ct)
+        DataSource source, ConnectorCredentials credentials, DateTimeOffset? since, CancellationToken ct)
     {
-        var (connectionString, query) = Resolve(source);
+        var (connectionString, query) = Resolve(source, credentials);
         if (connectionString is null || query is null)
         {
             logger.LogWarning(
@@ -101,9 +108,10 @@ public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, IL
         return items;
     }
 
-    public async Task<RawContent> FetchAsync(DataSource source, SourceItem item, CancellationToken ct)
+    public async Task<RawContent> FetchAsync(
+        DataSource source, ConnectorCredentials credentials, SourceItem item, CancellationToken ct)
     {
-        var (connectionString, query) = Resolve(source);
+        var (connectionString, query) = Resolve(source, credentials);
         if (connectionString is null || query is null)
             throw new InvalidOperationException("DatabaseConnector: ConnectionUri または Config[\"query\"] が未設定です。");
 
@@ -129,14 +137,15 @@ public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, IL
     // ---- helpers ---------------------------------------------------------
 
     // 接続文字列（ConnectionUri＋任意 password）とクエリを解決する。いずれか欠落は (null, null)。
-    private static (string? ConnectionString, string? Query) Resolve(DataSource source)
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): 🔴 **`source.Config["password"]` を読まない**（`credentials` だけ）。
+    private static (string? ConnectionString, string? Query) Resolve(DataSource source, ConnectorCredentials credentials)
     {
         var baseConn = source.ConnectionUri;
         var query = Config(source, "query", string.Empty);
         if (string.IsNullOrWhiteSpace(baseConn) || string.IsNullOrWhiteSpace(query))
             return (null, null);
 
-        var password = Config(source, "password", string.Empty);
+        var password = credentials.Get(PasswordKey);
         if (string.IsNullOrWhiteSpace(password))
             return (baseConn, query);
 

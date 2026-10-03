@@ -15,7 +15,8 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 //   一覧（Discover・ページング）: GET {ConnectionUri}{listPath}（既定 /api/items）を nextCursor が尽きるまで
 //     ?{cursorParam}={cursor} でたどる。応答 { items:[{ id, title?, updatedAt, updatedBy? }], nextCursor? }。updatedAt>since で増分。
 //   本文（Fetch）: GET {ConnectionUri}{contentPath}（既定 /api/items/{id}、{id} 置換）→ 本文バイト＋content-type。
-//   認証: Authorization: Bearer {Config["apiToken"]}（ログ非出力）。
+//   認証: Authorization: Bearer {apiToken}（ログ非出力）。［2026-10-03 / #458 段 S0］値は `Config` から直接ではなく、
+//         同期の開始時に `IConnectorSecretResolver` が解決した `ConnectorCredentials` から読む（[[IADR-0493]]）。
 //   レート制限: HTTP 429 を Retry-After（秒/日時）で待機し再試行。無ければ指数バックオフ。maxRetries 超過は例外送出。
 //   失敗: 例外送出 → オーケストレータ（IADR-0051 決定3a）が watermark 非前進・継続失敗アラートに載せる。
 //
@@ -42,8 +43,13 @@ public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSCo
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): Bearer に載せる資格情報。値は `credentials` からだけ読む。
+    public const string ApiTokenKey = "apiToken";
+
+    public IReadOnlyList<string> CredentialKeys => [ApiTokenKey];
+
     public async Task<IReadOnlyList<SourceItem>> DiscoverAsync(
-        DataSource source, DateTimeOffset? since, CancellationToken ct)
+        DataSource source, ConnectorCredentials credentials, DateTimeOffset? since, CancellationToken ct)
     {
         var baseUrl = BaseUrl(source);
         if (baseUrl is null)
@@ -52,7 +58,7 @@ public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSCo
             return [];
         }
 
-        using var client = CreateClient(source);
+        using var client = CreateClient(credentials);
         var listPath = Config(source, "listPath", DefaultListPath);
         var cursorParam = Config(source, "cursorParam", DefaultCursorParam);
         var maxRetries = ConfigInt(source, "maxRetries", DefaultMaxRetries);
@@ -103,11 +109,12 @@ public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSCo
         return items;
     }
 
-    public async Task<RawContent> FetchAsync(DataSource source, SourceItem item, CancellationToken ct)
+    public async Task<RawContent> FetchAsync(
+        DataSource source, ConnectorCredentials credentials, SourceItem item, CancellationToken ct)
     {
         var baseUrl = BaseUrl(source)
             ?? throw new InvalidOperationException("SaaSConnector: ConnectionUri が未設定です。");
-        using var client = CreateClient(source);
+        using var client = CreateClient(credentials);
         var maxRetries = ConfigInt(source, "maxRetries", DefaultMaxRetries);
         var contentPath = Config(source, "contentPath", DefaultContentPath)
             .Replace("{id}", Uri.EscapeDataString(item.Path), StringComparison.Ordinal);
@@ -169,10 +176,12 @@ public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSCo
 
     // ---- helpers ---------------------------------------------------------
 
-    private HttpClient CreateClient(DataSource source)
+    // NFR-18, [[IADR-0493]] 決定 1 (#458 段 S0): 🔴 **`source.Config["apiToken"]` を読まない。**
+    // 同期の開始時に解決器が解決した値（`credentials`）だけを使う。
+    private HttpClient CreateClient(ConnectorCredentials credentials)
     {
         var client = httpFactory.CreateClient(HttpClientName);
-        var token = Config(source, "apiToken", string.Empty);
+        var token = credentials.Get(ApiTokenKey);
         if (!string.IsNullOrWhiteSpace(token))
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return client;
