@@ -3,15 +3,15 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-10-02
+updated: 2026-10-03
 author: claude
 ---
 <!-- trace:
 ids: [NFR-09]
 adrs: [ADR-0106]
-iadrs: [IADR-0492, IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
-specs: [20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
-issues: [#1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AST#1078]
+iadrs: [IADR-0494, IADR-0492, IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
+specs: [20261003_1728_eso-force-sync-after-bootstrap, 20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
+issues: [#1728, #1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AST#1078]
 -->
 
 # 経路B SSO 復旧 Runbook
@@ -56,6 +56,21 @@ kubectl get pods -A | grep -vE "Running|Completed"                       # 空
 kubectl get externalsecret -A --no-headers \
   -o custom-columns='R:.status.conditions[?(@.type=="Ready")].status' | sort | uniq -c   # 11 True
 kubectl get clustersecretstore -o custom-columns='N:.metadata.name,R:.status.conditions[?(@.type=="Ready")].status'
+```
+
+ESO seed が在る KV へキーを足した（または KV を作った）ときは、seed 自身が**それを読む ExternalSecret にだけ** `force-sync` を付け、
+同期の完了（同期時刻の更新・Ready・足したキーが Secret に在ること）を待つ。起動ログで次を確かめる:
+
+- `==> force-sync:` の行があり、続く行が `synced` か「対象なし」「書いた KV は無い」で終わっている。
+- `ERROR: force-sync した ExternalSecret の同期が … 以内に終わらない` で止まっていない（止まったら名指しされた ExternalSecret を
+  `kubectl -n <ns> describe externalsecret <name>` で調べ、`ESO_FORCE_SYNC_TIMEOUT=<秒>` を付けて起動器を再実行する）。
+
+AST を連結しているなら、seed が足した読み手の資格情報が Secret に載っていること（値は出さない。長さだけ）:
+
+```sh
+for k in kb-reader-auth-client-id kb-reader-auth-client-secret; do
+  printf "%s len=%s\n" "$k" "$(kubectl -n ai-stock-trading get secret ast-secrets -o jsonpath="{.data.$k}" | base64 -d | wc -c)"
+done                                                                          # どちらも 0 でないこと（0 なら同期が古い。手で促す: kubectl -n ai-stock-trading annotate externalsecret ast-secrets force-sync="$(date +%s)" --overwrite）
 ```
 
 ## STEP 1: AST デプロイ（鍵の export が必須）

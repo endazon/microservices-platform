@@ -3,15 +3,15 @@ title: 運用 Runbook — Keycloak smtpServer（SMTP リレー）の設定
 type: runbook
 status: draft
 created: 2026-08-23
-updated: 2026-09-26
+updated: 2026-10-03
 author: claude
 ---
 <!-- trace:
 ids: [SC-10, SC-15, FR-05, FR-09, FR-22, NFR-05, NFR-13, NFR-21]
 adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0111]
-iadrs: [IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404, IADR-0421, IADR-0432]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260926_1500_reset-floor-default-on, 20260926_1543_reset-floor-replicas-pdb, 20260926_1544_reset-floor-zero-endpoint-alert]
-issues: [#438, #578, #600, #1102, #1143, #1144, #1245, #1500, #1543, #1544, planning#656]
+iadrs: [IADR-0494, IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404, IADR-0421, IADR-0432]
+specs: [20261003_1728_eso-force-sync-after-bootstrap, 20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260926_1500_reset-floor-default-on, 20260926_1543_reset-floor-replicas-pdb, 20260926_1544_reset-floor-zero-endpoint-alert]
+issues: [#1728, #438, #578, #600, #1102, #1143, #1144, #1245, #1500, #1543, #1544, planning#656]
 -->
 
 # 運用 Runbook: Keycloak smtpServer（SMTP リレー）の設定
@@ -172,9 +172,11 @@ kubectl -n platform-infra get secret keycloak-smtp -o jsonpath='{.data.from}' | 
 **最後のコマンドが 0 より大きければ**、Vault → k8s Secret の同期は成立している。
 **値そのものは表示しない**（長さだけを見る。`password` キーは確認しない）。
 
-> **同期の間隔は 1 時間である**（`refreshInterval: 1h`）。§1 の再 seed 直後に長さが 0 のままなら、
-> まだ前の（空の）値を保持している。`kubectl -n platform-infra delete secret keycloak-smtp` で
-> ESO に作り直させるか、次の refresh を待つ。
+> **同期の間隔は 1 時間である**（`refreshInterval: 1h`）が、§1 の `bootstrap.sh` は値を書き換えたときに
+> `keycloak-smtp` の ExternalSecret へ `force-sync` を付け、同期の完了を待ってから終わる（`==> force-sync:` の行が `synced` で終わる）。
+> それでも長さが 0 なら、§1 で `SMTP_FROM` を渡していない（空の env は既存の値を書き換えない）。§1 をやり直す。
+> `bootstrap.sh` が `ERROR: force-sync した ExternalSecret の同期が … 以内に終わらない` で止まったら、
+> `kubectl -n platform-infra describe externalsecret keycloak-smtp` で理由を見る。
 >
 > 🔴 **長さが 0 のまま §4 へ進んでも、外向きの差出人は書き換わらない。** 近接 MTA は空の `from` を
 > 「実値が未供給」と読み、外向きの差出人写像を張らない（**壊れた写像で起動するよりよい**）。

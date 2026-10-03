@@ -12865,4 +12865,266 @@ exit $RC
     });
   }
 
+  // --- NFR-18, IADR-0494 (#1728): bootstrap が Vault に書いた KV を読む ExternalSecret にだけ同期を促す -------
+  //
+  // PoC 2026-10-03: bootstrap が在る KV（ai-stock-trading/app-secrets）へ kb-reader-auth-client-* を足したのに、
+  // ExternalSecret ast-secrets（refreshInterval 1h）は配備の前に同期したきりで、消費側の Secret に新しいキーが入らなかった。
+  // bootstrap.sh を kubectl の記録スタブの下で実走させ、(1) 書いた後に force-sync を付ける (2) 書いた KV を読む
+  // ExternalSecret だけに付ける (3) 同期が終わらなければ名指しして非 0 で止める、を固定する。
+  {
+    const fs1728 = require('fs');
+    const os1728 = require('os');
+    const path1728 = require('path');
+    const { spawnSync: spawn1728 } = require('child_process');
+    const REPO1728 = path1728.join(__dirname, '..');
+    const BOOTSTRAP = path1728.join(REPO1728, 'deploy', 'local', 'vault', 'eso', 'bootstrap.sh');
+
+    // kubectl の記録スタブ。状態は $STUB_STATE 配下のファイル:
+    //   kv/<パスの / を __ に>   … Vault の KV（1 行 1 プロパティ「名前=値」）。ファイルが在る＝KV が在る
+    //   es-list                 … `get externalsecret -A` の出力（bootstrap の jsonpath と同じ「|」区切り）
+    //   es-list-fail / patch-fail / annotate-fail … 在れば当該操作を失敗させる
+    //   stuck/<ns>_<name>       … 在れば注釈を付けても同期しない（refreshTime が変わらない）
+    //   ready                   … Ready の値（既定 True）
+    //   secret/<ns>_<name>      … 同期した後の Secret の data（JSON）。同期前は {}
+    const STUB = `#!/usr/bin/env bash
+S="$STUB_STATE"
+ns=""; verb=""; kind=""; name=""; jp=""; all=""; last=""
+args=("$@")
+for ((i=0; i<\${#args[@]}; i++)); do
+  a="\${args[$i]}"
+  case "$a" in
+    -n) i=$((i+1)); ns="\${args[$i]}" ;;
+    -A) all=1 ;;
+    -o) i=$((i+1)); jp="\${args[$i]}" ;;
+    -i|--overwrite|--) ;;
+    *) if [ -z "$verb" ]; then verb="$a"; elif [ -z "$kind" ]; then kind="$a"; elif [ -z "$name" ]; then name="$a"; fi ;;
+  esac
+  last="$a"
+done
+kvf() { printf '%s/kv/%s' "$S" "\${1//\\//__}"; }
+if [ "$verb" = "exec" ]; then
+  cmd="$last"
+  case "$cmd" in
+    *"vault kv metadata get secret/"*)
+      p="\${cmd#*vault kv metadata get secret/}"; p="\${p%% *}"
+      [ -e "$(kvf "$p")" ] && exit 0 || exit 2 ;;
+    *"vault kv get -field="*)
+      f="\${cmd#*-field=}"; f="\${f%% *}"; p="\${cmd#*secret/}"; p="\${p%% *}"
+      [ -e "$(kvf "$p")" ] || exit 2
+      line="$(grep -m1 "^$f=" "$(kvf "$p")")" || exit 2
+      printf '%s\\n' "\${line#*=}"; exit 0 ;;
+    *"vault kv patch"*)
+      v="$(cat)"; p="\${cmd#*secret/}"; p="\${p%% *}"; f="\${cmd#*secret/$p }"; f="\${f%%=-*}"
+      [ -e "$S/patch-fail" ] && exit 2
+      echo "VAULT PATCH $p $f" >> "$STUB_LOG"
+      grep -v "^$f=" "$(kvf "$p")" > "$(kvf "$p").tmp" 2>/dev/null; echo "$f=$v" >> "$(kvf "$p").tmp"; mv "$(kvf "$p").tmp" "$(kvf "$p")"
+      exit 0 ;;
+    *"vault kv put -cas=0 secret/"*)
+      cat >/dev/null; p="\${cmd#*vault kv put -cas=0 secret/}"; p="\${p%% *}"
+      echo "VAULT PUT $p" >> "$STUB_LOG"; : > "$(kvf "$p")"; exit 0 ;;
+    *) cat >/dev/null; exit 0 ;;
+  esac
+fi
+echo "kubectl $*" >> "$STUB_LOG"
+if [ "$verb" = "get" ] && [ "$kind" = "externalsecret" ] && [ -n "$all" ]; then
+  [ -e "$S/es-list-fail" ] && { echo 'error: the server does not have a resource type "externalsecret"' >&2; exit 1; }
+  cat "$S/es-list" 2>/dev/null; exit 0
+fi
+if [ "$verb" = "annotate" ]; then
+  [ -e "$S/annotate-fail" ] && exit 1
+  : > "$S/annotated_\${ns}_\${name}"; exit 0
+fi
+synced() { [ -e "$S/annotated_\${ns}_$1" ] && [ ! -e "$S/stuck/\${ns}_$1" ]; }
+if [ "$verb" = "get" ] && [ "$kind" = "externalsecret" ]; then
+  t="2026-10-03T02:08:00Z"; synced "$name" && t="2026-10-03T05:00:00Z"
+  case "$jp" in
+    *conditions*) printf '%s|%s' "$t" "$(cat "$S/ready" 2>/dev/null || echo True)" ;;
+    *) printf '%s' "$t" ;;
+  esac
+  exit 0
+fi
+if [ "$verb" = "get" ] && [ "$kind" = "secret" ]; then
+  # 同期先 Secret は ExternalSecret と同名の場合だけ扱う（試験の入力はそう作る）
+  if synced "$name" && [ -e "$S/secret/\${ns}_$name" ]; then cat "$S/secret/\${ns}_$name"; else printf '{}'; fi
+  exit 0
+fi
+exit 0
+`;
+
+    // 既定の世界: SC-22 の 4 KV と対になる秘密の KV はすべて在る。app-secrets には kb-reader-auth-client-* だけが無い（PoC の状態）。
+    const AUTH = {
+      'service-auth-client-id': 'ai-stock-trading-svc', 'service-auth-client-secret': 'dev-only-service-secret',
+      'kb-auth-client-id': 'ai-stock-trading-kb-writer', 'kb-auth-client-secret': 'ai-stock-trading-kb-writer-dev-secret-change-me',
+      'llm-auth-client-id': 'ai-stock-trading-llm-caller', 'llm-auth-client-secret': 'ai-stock-trading-llm-caller-dev-secret-change-me',
+      'discord-owner-auth-client-id': 'ai-stock-trading-owner', 'discord-owner-auth-client-secret': 'dev-only-owner-secret',
+    };
+    const READER = ['kb-reader-auth-client-id', 'kb-reader-auth-client-secret'];
+    const allKvPaths = () => {
+      const src = fs1728.readFileSync(BOOTSTRAP, 'utf8');
+      const set = new Set(['msp/llm-provider-credentials', 'msp/wikijs-sync', 'msp/keycloak-smtp', 'ai-stock-trading/app-secrets']);
+      for (const m of src.matchAll(/^vkv_create_if_absent\s+(\S+)/gm)) set.add(m[1]);
+      return [...set];
+    };
+    const ES_LIST = [
+      // 読む: app-secrets を dataFrom.extract（AST のチャート。同期先は同名）
+      'ai-stock-trading|ast-secrets|vault-backend|ast-secrets||ai-stock-trading/app-secrets ',
+      // 読まない: 同じ名前空間の別 KV（seed しない moomoo）
+      'ai-stock-trading|moomoo-credentials|vault-backend|moomoo-credentials|ai-stock-trading/moomoo ai-stock-trading/moomoo |',
+      // 読まない: 書いていない在る KV（data[]・同期先の名前は省略）
+      'microservices-platform|llm-provider-credentials|vault-backend||msp/llm-provider-credentials msp/llm-provider-credentials |',
+      // 読むが別のストア: 対象外
+      'other|ast-secrets-elsewhere|other-store|x||ai-stock-trading/app-secrets ',
+      // keycloak-smtp（構成値は今の値と同じなので書かない）
+      'platform-infra|keycloak-smtp|vault-backend|keycloak-smtp|msp/keycloak-smtp msp/keycloak-smtp |',
+      // 対になる秘密（vkv_create_if_absent で作る KV）を data[] で読む
+      'microservices-platform|bff-oidc|vault-backend|bff-oidc|msp/bff-oidc |',
+    ].join('\n') + '\n';
+
+    const run1728 = ({ setup = () => {}, env = {} } = {}) => {
+      const dir = fs1728.mkdtempSync(path1728.join(os1728.tmpdir(), 'iadr0494-'));
+      try {
+        const bin = path1728.join(dir, 'bin');
+        const state = path1728.join(dir, 'state');
+        for (const d of [bin, path1728.join(state, 'kv'), path1728.join(state, 'stuck'), path1728.join(state, 'secret')]) fs1728.mkdirSync(d, { recursive: true });
+        fs1728.writeFileSync(path1728.join(bin, 'kubectl'), STUB, { mode: 0o755 });
+        const kv = (p, props) => fs1728.writeFileSync(path1728.join(state, 'kv', p.split('/').join('__')),
+          Object.entries(props).map(([k, v]) => `${k}=${v}\n`).join(''));
+        for (const p of allKvPaths()) kv(p, {});
+        kv('ai-stock-trading/app-secrets', AUTH);
+        kv('msp/keycloak-smtp', { host: 'mailpit.platform-infra.svc.cluster.local', port: '1025', starttls: 'false' });
+        fs1728.writeFileSync(path1728.join(state, 'es-list'), ES_LIST);
+        fs1728.writeFileSync(path1728.join(state, 'secret', 'ai-stock-trading_ast-secrets'),
+          JSON.stringify(Object.fromEntries([...Object.keys(AUTH), ...READER].map((k) => [k, 'eA==']))));
+        setup({ state, kv });
+        const log = path1728.join(dir, 'calls.log');
+        fs1728.writeFileSync(log, '');
+        const baseEnv = { ...process.env };
+        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|SMTP_|WIKIJS_SYNC|ESO_)/.test(k)) delete baseEnv[k];
+        const r = spawn1728('bash', [BOOTSTRAP.split(path1728.sep).join('/')], {
+          encoding: 'utf8',
+          timeout: 60000,
+          env: { ...baseEnv, PATH: `${bin}${path1728.delimiter}${process.env.PATH}`, STUB_STATE: state, STUB_LOG: log,
+                 // 待ちの既定（120 秒）で変異体が試験を止めないよう、上限を短くしておく（個々の試験が上書きする）。
+                 ESO_FORCE_SYNC_INTERVAL: '0', ESO_FORCE_SYNC_TIMEOUT: '3', ...env },
+        });
+        return { ...r, calls: fs1728.readFileSync(log, 'utf8').split('\n').filter(Boolean) };
+      } finally {
+        fs1728.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const annotated = (calls) => calls.filter((c) => /^kubectl -n \S+ annotate externalsecret /.test(c))
+      .map((c) => c.match(/^kubectl -n (\S+) annotate externalsecret (\S+)/).slice(1).join('/'));
+
+    ok('#1728: 在る app-secrets へ kb-reader-auth-client-* を足したら、それを読む ast-secrets にだけ force-sync を付け、同期を待つ', () => {
+      const r = run1728();
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      const patched = r.calls.filter((c) => c.startsWith('VAULT PATCH '));
+      assert.deepStrictEqual(patched, READER.map((k) => `VAULT PATCH ai-stock-trading/app-secrets ${k}`),
+        '足すのは無い 2 キーだけ（在るキー・構成値が同じ keycloak-smtp は書かない）');
+      assert.deepStrictEqual(annotated(r.calls), ['ai-stock-trading/ast-secrets'],
+        '書いた KV を読み、ストアが vault-backend の ExternalSecret だけに付ける（moomoo・llm・別ストア・keycloak-smtp には付けない）');
+      const lastPatch = r.calls.map((c) => c.startsWith('VAULT PATCH ')).lastIndexOf(true);
+      const firstAnnotate = r.calls.findIndex((c) => / annotate externalsecret /.test(c));
+      assert.ok(firstAnnotate > lastPatch, `force-sync が Vault への書き込みより前に出た（patch ${lastPatch} / annotate ${firstAnnotate}）`);
+      assert.ok(/force-sync=\d+/.test(r.calls[firstAnnotate]), r.calls[firstAnnotate]);
+      assert.ok(r.calls.some((c) => c === 'kubectl -n ai-stock-trading get secret ast-secrets -o jsonpath={.data}'),
+        '足したキーが同期先 Secret に在ることを確かめていない');
+      assert.ok(/force-sync ai-stock-trading\/ast-secrets/.test(r.stdout) && /synced/.test(r.stdout), r.stdout);
+    });
+
+    ok('#1728: この実行で何も書かなければ、ExternalSecret を引かず force-sync も付けない（再実行は静か）', () => {
+      const r = run1728({ setup: ({ kv }) => kv('ai-stock-trading/app-secrets', Object.fromEntries([...Object.entries(AUTH), ...READER.map((k) => [k, 'x'])])) });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      assert.deepStrictEqual(r.calls.filter((c) => c.startsWith('VAULT ')), [], '在る KV・同じ構成値を書き直している');
+      assert.deepStrictEqual(annotated(r.calls), []);
+      assert.ok(!r.calls.some((c) => /get externalsecret -A/.test(c)), '書いていないのに ExternalSecret を引いた');
+    });
+
+    ok('#1728: 新しく作った KV（無いときだけの put）も「書いた KV」に数え、それを読む ExternalSecret に付ける', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__llm-provider-credentials')) });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      assert.ok(r.calls.includes('VAULT PUT msp/llm-provider-credentials'));
+      assert.deepStrictEqual(annotated(r.calls).sort(), ['ai-stock-trading/ast-secrets', 'microservices-platform/llm-provider-credentials']);
+    });
+
+    ok('#1728: 対になる秘密の KV を無いときだけ作ったら（vkv_create_if_absent）、それを読む ExternalSecret に付ける', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__bff-oidc')) });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      assert.ok(r.calls.includes('VAULT PUT msp/bff-oidc'));
+      assert.deepStrictEqual(annotated(r.calls).sort(), ['ai-stock-trading/ast-secrets', 'microservices-platform/bff-oidc']);
+    });
+
+    ok('#1728: data[] で読む ExternalSecret は、同期時刻が変わるまで待つ（Ready=True のまま古い同期を通さない）', () => {
+      const r = run1728({ setup: ({ state }) => {
+        fs1728.rmSync(path1728.join(state, 'kv', 'msp__llm-provider-credentials'));
+        fs1728.writeFileSync(path1728.join(state, 'stuck', 'microservices-platform_llm-provider-credentials'), '');
+      }, env: { ESO_FORCE_SYNC_TIMEOUT: '1' } });
+      assert.notStrictEqual(r.status, 0, '同期時刻が変わらないのに緑で終わった');
+      assert.ok(/microservices-platform\/llm-provider-credentials\(refreshTime=2026-10-03T02:08:00Z Ready=True\)/.test(r.stderr), r.stderr);
+      assert.ok(!/ai-stock-trading\/ast-secrets/.test(r.stderr), '同期した ExternalSecret まで名指しした');
+    });
+
+    ok('#1728: 構成値（keycloak-smtp の host）が今と違うときだけ書き、keycloak-smtp に付ける', () => {
+      const r = run1728({ env: { SMTP_HOST: 'smtp.example.invalid' } });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      const smtp = r.calls.filter((c) => c.startsWith('VAULT PATCH msp/keycloak-smtp '));
+      assert.deepStrictEqual(smtp, ['VAULT PATCH msp/keycloak-smtp host', 'VAULT PATCH msp/keycloak-smtp port', 'VAULT PATCH msp/keycloak-smtp starttls'],
+        '宛先を変えると port / starttls の既定も 587 / true へ変わる（3 つとも今と違う）');
+      assert.ok(annotated(r.calls).includes('platform-infra/keycloak-smtp'));
+    });
+
+    ok('#1728: 同期が時間内に終わらなければ、対象を名指しして非 0 で止める', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.writeFileSync(path1728.join(state, 'stuck', 'ai-stock-trading_ast-secrets'), ''),
+                          env: { ESO_FORCE_SYNC_TIMEOUT: '1' } });
+      assert.notStrictEqual(r.status, 0, '同期しないのに緑で終わった');
+      assert.ok(/ai-stock-trading\/ast-secrets/.test(r.stderr) && /ESO_FORCE_SYNC_TIMEOUT/.test(r.stderr), r.stderr);
+    });
+
+    ok('#1728: 同期しても足したキーが同期先 Secret に無ければ（Ready=True でも）非 0 で止める', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.writeFileSync(path1728.join(state, 'secret', 'ai-stock-trading_ast-secrets'),
+        JSON.stringify(Object.fromEntries(Object.keys(AUTH).map((k) => [k, 'eA==']))) ),
+                          env: { ESO_FORCE_SYNC_TIMEOUT: '1' } });
+      assert.notStrictEqual(r.status, 0);
+      assert.ok(/キー kb-reader-auth-client-id が無い/.test(r.stderr), r.stderr);
+    });
+
+    ok('#1728: Ready が True にならなければ非 0 で止める', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.writeFileSync(path1728.join(state, 'ready'), 'False'), env: { ESO_FORCE_SYNC_TIMEOUT: '1' } });
+      assert.notStrictEqual(r.status, 0);
+      assert.ok(/Ready=False/.test(r.stderr), r.stderr);
+    });
+
+    ok('#1728: ExternalSecret を引けない・注釈を付けられないときは、手で促す手順を出して非 0 で止める', () => {
+      for (const f of ['es-list-fail', 'annotate-fail']) {
+        const r = run1728({ setup: ({ state }) => fs1728.writeFileSync(path1728.join(state, f), '') });
+        assert.notStrictEqual(r.status, 0, `${f}: 緑で終わった`);
+        assert.ok(/annotate externalsecret/.test(r.stderr), `${f}: ${r.stderr}`);
+        assert.ok(!r.calls.some((c) => /conditions/.test(c)), `${f}: 失敗の後も同期を待ち続けた（その場で止めていない）`);
+        assert.ok(!/以内に終わらない/.test(r.stderr), `${f}: 待ちの失敗として報告した（原因の行で止めていない）`);
+      }
+    });
+
+    ok('#1728: ESO_FORCE_SYNC_TIMEOUT=0 は促すだけで待たない（同期しなくても止めない）', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.writeFileSync(path1728.join(state, 'stuck', 'ai-stock-trading_ast-secrets'), ''),
+                          env: { ESO_FORCE_SYNC_TIMEOUT: '0' } });
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.deepStrictEqual(annotated(r.calls), ['ai-stock-trading/ast-secrets']);
+      assert.ok(!r.calls.some((c) => /get secret /.test(c)), '待たない指定なのに Secret を読んだ');
+    });
+
+    ok('#1728: patch に失敗したキーは「書いた KV」に数えない（WARN だけ。促す対象に入れない）', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.writeFileSync(path1728.join(state, 'patch-fail'), '') });
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.ok(/WARN: secret\/ai-stock-trading\/app-secrets に kb-reader-auth-client-id を足せない/.test(r.stderr), r.stderr);
+      assert.deepStrictEqual(annotated(r.calls), []);
+    });
+
+    ok('#1728: 時間の指定が整数でなければ、促す前に止める', () => {
+      const r = run1728({ env: { ESO_FORCE_SYNC_TIMEOUT: '1m' } });
+      assert.notStrictEqual(r.status, 0);
+      assert.ok(/0 以上の整数/.test(r.stderr), r.stderr);
+      assert.deepStrictEqual(annotated(r.calls), []);
+    });
+  }
+
 };

@@ -47,20 +47,45 @@ vexec 'vault write auth/kubernetes/role/bff-secret-writer bound_service_account_
 # 🔴 作成は `-cas=0`（Vault 側でも「無いときだけ」）。既に在る KV は、env が**空でない**プロパティだけを部分更新する。
 #    この形は Platform.Bff.Tests の SecretItemBootstrapSeedTests が固定する（無条件の put へ戻すと落ちる）。
 vkv_exists() { vexec "vault kv metadata get secret/$1 >/dev/null 2>&1"; }
+# NFR-18, IADR-0494 (#1728): **この実行で Vault に書いた KV を覚えておき、最後にそれを読む ExternalSecret の同期を促す。**
+# ExternalSecret は refreshInterval（1h）でしか Vault を読み直さないので、在る KV へ足したキーは次の refresh まで
+# 消費側の Secret に入らない（PoC 2026-10-03: kb-reader-auth-client-* を patch したのに ast-secrets が古いまま）。
+# CHANGED_PATHS ＝ 書いた KV のパス（前後に空白・重複なし）。ADDED_PROPS ＝ 在る KV へ書いたプロパティ（「パス プロパティ」の行）。
+CHANGED_PATHS=" "
+ADDED_PROPS=""
+mark_changed() { # <path> [property]
+  case "$CHANGED_PATHS" in *" $1 "*) ;; *) CHANGED_PATHS="${CHANGED_PATHS}$1 " ;; esac
+  if [ -n "${2:-}" ]; then ADDED_PROPS="${ADDED_PROPS}$1 $2"$'\n'; fi
+}
 # 既に在る KV のプロパティを 1 つだけ部分更新する。**値が空なら何もしない**（未指定の env で画面の値を消さない）。
 # 値は stdin で渡す（`キー=-`）。現在版が削除されている等で失敗しても bootstrap は止めない（画面・Runbook で直す）。
 vkv_patch_nonempty() { # <path> <property> <value>
   [ -n "$3" ] || return 0
-  printf '%s' "$3" | vexec "vault kv patch -method=patch secret/$1 $2=- >/dev/null" \
-    || echo "    WARN: secret/$1 の $2 を更新できない（現在版が削除されている等）。画面または Runbook の手順で直す" >&2
+  if printf '%s' "$3" | vexec "vault kv patch -method=patch secret/$1 $2=- >/dev/null"; then
+    mark_changed "$1" "$2"
+  else
+    echo "    WARN: secret/$1 の $2 を更新できない（現在版が削除されている等）。画面または Runbook の手順で直す" >&2
+  fi
+}
+# NFR-18, IADR-0494 決定 3 (#1728): 構成値（秘密ではない。keycloak-smtp の host / port / starttls）を**今の値と違うときだけ**書く。
+# 従前は毎回 patch していたため、再実行のたびに「書いた KV」になり、同期を促す対象から外れなかった（値は同じなのに毎回待つ）。
+vkv_patch_config() { # <path> <property> <value>
+  [ -n "$3" ] || return 0
+  local cur
+  cur="$(vexec "vault kv get -field=$2 secret/$1" 2>/dev/null || true)"
+  [ "$cur" = "$3" ] && return 0
+  vkv_patch_nonempty "$1" "$2" "$3"
 }
 # 既に在る KV に、プロパティが**無いときだけ**値を足す（在れば空文字でも触らない）。値は stdin で渡す。
 # 画面が先に 1 プロパティだけ書いた KV（BFF は KV が無いと cas=0 でそのプロパティだけの KV を作る）へ、
 # 画面から書けない構成値（realm と対の *-auth-client-*）を補うために使う。
 vkv_patch_if_missing() { # <path> <property> <value>
   vexec "vault kv get -field=$2 secret/$1 >/dev/null 2>&1" && return 0
-  printf '%s' "$3" | vexec "vault kv patch -method=patch secret/$1 $2=- >/dev/null" \
-    || echo "    WARN: secret/$1 に $2 を足せない（現在版が削除されている等）。Runbook の手順で直す" >&2
+  if printf '%s' "$3" | vexec "vault kv patch -method=patch secret/$1 $2=- >/dev/null"; then
+    mark_changed "$1" "$2"
+  else
+    echo "    WARN: secret/$1 に $2 を足せない（現在版が削除されている等）。Runbook の手順で直す" >&2
+  fi
 }
 
 # SC-22, NFR-18, ADR-0124 決定 1, IADR-0485 (#1682): **対になる秘密は無いときだけ作る。在れば触らない。**
@@ -78,6 +103,7 @@ vkv_create_if_absent() { # <path> <key>='<value>' [...]
     return 0
   fi
   vexec "vault kv put -cas=0 secret/$path $*"
+  mark_changed "$path"
 }
 
 echo "==> seed: secret/msp/*（env 由来 or dev 既定・平文の実 secret は非コミット）"
@@ -88,6 +114,7 @@ if vkv_exists msp/llm-provider-credentials; then
   vkv_patch_nonempty msp/llm-provider-credentials openai-api-key "${OPENAI_API_KEY:-}"
 else
   vexec "vault kv put -cas=0 secret/msp/llm-provider-credentials anthropic-api-key='${ANTHROPIC_API_KEY:-}' openai-api-key='${OPENAI_API_KEY:-}'"
+  mark_changed msp/llm-provider-credentials
 fi
 # IADR-0097 (#310) PR-2: object-storage-credentials / wikijs-db / wikijs-sync。
 # IADR-0461 決定 3 (#1499): オブジェクトストレージ（SeaweedFS）の S3 資格情報。旧 msp/minio-credentials。
@@ -105,6 +132,7 @@ if vkv_exists msp/wikijs-sync; then
   vkv_patch_nonempty msp/wikijs-sync apiKey "${WIKIJS_SYNC_APIKEY:-}"
 else
   vexec "vault kv put -cas=0 secret/msp/wikijs-sync apiKey='${WIKIJS_SYNC_APIKEY:-}'"
+  mark_changed msp/wikijs-sync
 fi
 # IADR-0098 (#310) PR-3: OIDC client secret 群（grafana/vault/headlamp）。既定は各 <tool>-dev-secret-change-me
 # （現行 apply_secret の env 既定と同値）。env は作るときだけ効く（#1682）。realm import の dev client secret と一致させること。
@@ -193,9 +221,9 @@ fi
 # SC-22 の項目（IADR-0456 決定 6）: from / user / password は画面が書く秘密なので、在れば env が空でないときだけ差し替える。
 # host / port / starttls は構成（env と Git が決める。画面は書けない）なので、在っても毎回その値へ揃える（従前と同じ意味論）。
 if vkv_exists msp/keycloak-smtp; then
-  vkv_patch_nonempty msp/keycloak-smtp host "$smtp_host"
-  vkv_patch_nonempty msp/keycloak-smtp port "${SMTP_PORT:-$smtp_port_default}"
-  vkv_patch_nonempty msp/keycloak-smtp starttls "${SMTP_STARTTLS:-$smtp_starttls_default}"
+  vkv_patch_config msp/keycloak-smtp host "$smtp_host"
+  vkv_patch_config msp/keycloak-smtp port "${SMTP_PORT:-$smtp_port_default}"
+  vkv_patch_config msp/keycloak-smtp starttls "${SMTP_STARTTLS:-$smtp_starttls_default}"
   vkv_patch_nonempty msp/keycloak-smtp from "${SMTP_FROM:-}"
   vkv_patch_nonempty msp/keycloak-smtp user "${SMTP_USER:-}"
   vkv_patch_nonempty msp/keycloak-smtp password "${SMTP_PASSWORD:-}"
@@ -203,6 +231,7 @@ else
   vexec "vault kv put -cas=0 secret/msp/keycloak-smtp \
     host='$smtp_host' port='${SMTP_PORT:-$smtp_port_default}' starttls='${SMTP_STARTTLS:-$smtp_starttls_default}' \
     from='${SMTP_FROM:-}' user='${SMTP_USER:-}' password='${SMTP_PASSWORD:-}'"
+  mark_changed msp/keycloak-smtp
 fi
 
 # SC-22, ADR-0095 決定 1, IADR-0456 決定 6 (#1477): AST が ESO で受ける ai-stock-trading/app-secrets（契約 #1477 の表）。
@@ -223,6 +252,7 @@ if ! vkv_exists ai-stock-trading/app-secrets; then
     kb-reader-auth-client-id='ai-stock-trading-kb-reader' kb-reader-auth-client-secret='ai-stock-trading-kb-reader-dev-secret-change-me' \
     llm-auth-client-id='ai-stock-trading-llm-caller' llm-auth-client-secret='ai-stock-trading-llm-caller-dev-secret-change-me' \
     discord-owner-auth-client-id='ai-stock-trading-owner' discord-owner-auth-client-secret='dev-only-owner-secret'"
+  mark_changed ai-stock-trading/app-secrets
 else
   # 在る KV にも *-auth-client-* 10 件を**無いものだけ**足す（画面が先に書いて作った KV には auth キーが無く、
   # そのままでは ast-secrets に auth キーが載らず AST のサービス間トークン取得が止まる。PR #1478 監査 D4）。値は上の seed と同値。
@@ -238,8 +268,105 @@ else
   vkv_patch_if_missing ai-stock-trading/app-secrets discord-owner-auth-client-secret 'dev-only-owner-secret'
 fi
 
+# NFR-18, IADR-0494 (#1728): **この実行で書いた KV を読む ExternalSecret にだけ同期を促し、同期が終わるのを有限時間で待つ。**
+# 対象は、ストア ESO_STORE（既定 vault-backend ＝ deploy/local/vault/eso/clustersecretstore-k8s.yaml）を参照し、
+# 書いた KV のパスを `data[].remoteRef.key` か `dataFrom[].extract.key` で読む ExternalSecret（全名前空間。AST の ast-secrets を含む）。
+# 名前を書き写さずにクラスタから引く —— AST のチャートが描く ExternalSecret を基盤のリストへ写すと、片方だけ増えて漏れる。
+# まだ apply されていない ExternalSecret は対象に入らない（作られたときに初回の同期で読むので、促す必要が無い）。
+# 待ちの完了条件 ＝ 促す前と違う status.refreshTime ＋ Ready=True。在る KV へ足したプロパティは、`dataFrom.extract` で読む
+# ExternalSecret の同期先 Secret にそのキーが在ることまで確かめる（PoC の症状そのもの）。
+# 🔴 待ちが時間内に終わらなければ名指しして非 0 で止める（新しいキーを読むサービスが空の秘密のまま動き続けるため）。
+#    ESO_FORCE_SYNC_TIMEOUT=0 は促すだけで待たない。
+ESO_STORE="${ESO_STORE:-vault-backend}"
+ESO_FORCE_SYNC_TIMEOUT="${ESO_FORCE_SYNC_TIMEOUT:-120}"
+ESO_FORCE_SYNC_INTERVAL="${ESO_FORCE_SYNC_INTERVAL:-2}"
+eso_force_sync_changed() {
+  case "$ESO_FORCE_SYNC_TIMEOUT$ESO_FORCE_SYNC_INTERVAL" in
+    *[!0-9]*) echo "ERROR: ESO_FORCE_SYNC_TIMEOUT / ESO_FORCE_SYNC_INTERVAL は 0 以上の整数（秒）で指定する（実際: '$ESO_FORCE_SYNC_TIMEOUT' / '$ESO_FORCE_SYNC_INTERVAL'）" >&2; return 1 ;;
+  esac
+  if [ "$CHANGED_PATHS" = " " ]; then
+    echo "==> force-sync: この実行で Vault に書いた KV は無い（同期を促さない）"
+    return 0
+  fi
+  echo "==> force-sync: この実行で書いた KV を読む ExternalSecret の同期を促す（書いた KV:${CHANGED_PATHS% }）"
+  local listing
+  # 1 行 1 本: 名前空間|名前|ストア|同期先|data のキー（空白区切り）|extract のキー（空白区切り）
+  if ! listing="$(kubectl get externalsecret -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"|"}{.metadata.name}{"|"}{.spec.secretStoreRef.name}{"|"}{.spec.target.name}{"|"}{range .spec.data[*]}{.remoteRef.key}{" "}{end}{"|"}{range .spec.dataFrom[*]}{.extract.key}{" "}{end}{"\n"}{end}')"; then
+    echo "ERROR: ExternalSecret の一覧を読めない（kubectl get externalsecret -A）。この実行で書いた KV:${CHANGED_PATHS% }" >&2
+    echo "       ESO の CRD が在るか確かめ、手で同期を促す: kubectl -n <ns> annotate externalsecret <name> force-sync=\"\$(date +%s)\" --overwrite" >&2
+    return 1
+  fi
+  local ns name store target dkeys xkeys k hit targets="" ts
+  while IFS='|' read -r ns name store target dkeys xkeys; do
+    [ -n "$name" ] || continue
+    [ "$store" = "$ESO_STORE" ] || continue
+    hit=""
+    for k in $dkeys $xkeys; do
+      case "$CHANGED_PATHS" in *" $k "*) hit=1 ;; esac
+    done
+    [ -n "$hit" ] || continue
+    targets="${targets}${ns}|${name}|${target:-$name}|${xkeys}"$'\n'
+  done <<< "$listing"
+  if [ -z "$targets" ]; then
+    echo "    対象なし（書いた KV を読む ExternalSecret はまだ apply されていない。作られたときに初回の同期で読む）"
+    return 0
+  fi
+  # 促す前の refreshTime を控えてから注釈を付ける（同じ秒に付けた注釈でも、値は時刻で毎回変わる）。
+  ts="$(date +%s)"
+  local before="" t
+  while IFS='|' read -r ns name target xkeys; do
+    [ -n "$name" ] || continue
+    t="$(kubectl -n "$ns" get externalsecret "$name" -o jsonpath='{.status.refreshTime}' </dev/null 2>/dev/null || true)"
+    before="${before}${ns}|${name}|${t}"$'\n'
+    if ! kubectl -n "$ns" annotate externalsecret "$name" "force-sync=$ts" --overwrite </dev/null >/dev/null; then
+      echo "ERROR: $ns/$name に force-sync の注釈を付けられない。手で付ける: kubectl -n $ns annotate externalsecret $name force-sync=\"\$(date +%s)\" --overwrite" >&2
+      return 1
+    fi
+    echo "    force-sync $ns/$name"
+  done <<< "$targets"
+  if [ "$ESO_FORCE_SYNC_TIMEOUT" = "0" ]; then
+    echo "    （ESO_FORCE_SYNC_TIMEOUT=0: 同期の完了は待たない）"
+    return 0
+  fi
+  local deadline=$((SECONDS + ESO_FORCE_SYNC_TIMEOUT)) pending state now ready path prop data
+  while :; do
+    pending=""
+    while IFS='|' read -r ns name target xkeys; do
+      [ -n "$name" ] || continue
+      t="$(grep -F -- "${ns}|${name}|" <<< "$before" | head -n 1 || true)"; t="${t#"${ns}|${name}|"}"
+      state="$(kubectl -n "$ns" get externalsecret "$name" -o jsonpath='{.status.refreshTime}|{.status.conditions[?(@.type=="Ready")].status}' </dev/null 2>/dev/null || true)"
+      now="${state%%|*}"; ready="${state#*|}"
+      if [ -z "$now" ] || [ "$now" = "$t" ] || [ "$ready" != "True" ]; then
+        pending="${pending} ${ns}/${name}(refreshTime=${now:-なし} Ready=${ready:-なし})"
+        continue
+      fi
+      # 在る KV へ足したプロパティは、extract で読む同期先 Secret にキーが在ること（値は出さない。キーの有無だけ）。
+      data=""
+      while read -r path prop; do
+        [ -n "$prop" ] || continue
+        case " $xkeys " in *" $path "*) ;; *) continue ;; esac
+        [ -n "$data" ] || data="$(kubectl -n "$ns" get secret "$target" -o jsonpath='{.data}' </dev/null 2>/dev/null || true)"
+        case "$data" in *"\"$prop\":"*) ;; *) pending="${pending} ${ns}/${target}(キー ${prop} が無い)" ;; esac
+      done <<< "$ADDED_PROPS"
+    done <<< "$targets"
+    if [ -z "$pending" ]; then
+      echo "    synced（${ESO_FORCE_SYNC_TIMEOUT}s 以内）"
+      return 0
+    fi
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "ERROR: force-sync した ExternalSecret の同期が ${ESO_FORCE_SYNC_TIMEOUT}s 以内に終わらない:${pending}" >&2
+      echo "       Vault には書けている。消費側の Secret が古いままなので、新しいキーを読むサービスは空の秘密で動く。" >&2
+      echo "       調べる: kubectl -n <ns> describe externalsecret <name>（Ready の reason / message）・kubectl get clustersecretstore $ESO_STORE" >&2
+      echo "       待ちを延ばす: ESO_FORCE_SYNC_TIMEOUT=<秒> で再実行する（bootstrap は再実行可）" >&2
+      return 1
+    fi
+    sleep "$ESO_FORCE_SYNC_INTERVAL"
+  done
+}
+eso_force_sync_changed
+
 echo ""
-echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h。画面 /admin/secrets からの書き込みは BFF が force-sync で即時同期を依頼する）:"
+echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h。この実行で書いた KV を読むものは上で force-sync した（#1728）。画面 /admin/secrets からの書き込みは BFF が force-sync で即時同期を依頼する）:"
 echo "  #1682: 対になる秘密（OIDC / s2s / データストアの資格情報の 24 KV）は無いときだけ作った（在るものは env を渡しても触らない。回すのは docs/operations/paired-secret-rotation-runbook.md）"
 echo "  #1477: SC-22 の KV（llm-provider-credentials / wikijs-sync / keycloak-smtp / ai-stock-trading/app-secrets）は無いときだけ作った（在るものは env が空でないキーだけ差し替えた）"
 echo "  PR-1: llm-provider-credentials / PR-2: object-storage-credentials, wikijs-db, wikijs-sync"

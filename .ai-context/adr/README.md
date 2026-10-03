@@ -570,3 +570,4 @@
 | [IADR-0490](./IADR-0490_conversion-tests-parallel-classes-and-longest-first.md) | ConversionService.Tests の実時間の期限を待つ試験は、検査を変えずに入れ子のクラス（別コレクション）へ分けて並列にし、最長の 1 本（期限 ＋ 刈り取りの上限）を順序づけで最初に起動する。本番コードは変えない（#1686） | Accepted |
 | [IADR-0491](./IADR-0491_helm-list-status-flags-instead-of-all.md) | 現行のメッシュ宣言を読む helm list は helm v4 が廃した -a / --all をやめ、状態の旗 6 つの和を明示して helm v3 / v4 の両方で同じ集合を読む（#1722） | Accepted |
 | [IADR-0492](./IADR-0492_ast-kb-reader-project-scoped-read-policy.md) | AST の KB の読み手は書き手と別の機密クライアント（ロールなし・profile あり）にし、`projects=ai-stock-trading` の主体に `project=ai-stock-trading` の文書だけを許す read のポリシー 1 本で読ませる（#1696） | Accepted |
+| [IADR-0494](./IADR-0494_eso-force-sync-after-bootstrap-writes.md) | Vault の seed（eso/bootstrap.sh）は、その実行で書いた KV を覚え、最後にそれを読む ExternalSecret だけをクラスタから引いて force-sync を付け、同期の完了を有限時間で待って、終わらなければ名指しして止める。構成値は今と違うときだけ書く（#1728。0493 は PR #1727 が使用中） | Accepted |
