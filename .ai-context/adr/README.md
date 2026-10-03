@@ -571,3 +571,4 @@
 | [IADR-0491](./IADR-0491_helm-list-status-flags-instead-of-all.md) | 現行のメッシュ宣言を読む helm list は helm v4 が廃した -a / --all をやめ、状態の旗 6 つの和を明示して helm v3 / v4 の両方で同じ集合を読む（#1722） | Accepted |
 | [IADR-0492](./IADR-0492_ast-kb-reader-project-scoped-read-policy.md) | AST の KB の読み手は書き手と別の機密クライアント（ロールなし・profile あり）にし、`projects=ai-stock-trading` の主体に `project=ai-stock-trading` の文書だけを許す read のポリシー 1 本で読ませる（#1696） | Accepted |
 | [IADR-0493](./IADR-0493_connector-secret-resolver-port-and-fail-closed.md) | コネクタの資格情報は同期の開始時に `IConnectorSecretResolver` で 1 回だけ解決し、解決できなければ外部へ要求を出さずに失敗する（fail-closed）。IADR-0403 決定 8 段 1（データソース側で参照へ変換）は投入の面 SC-22 に合わせて改め、動的な項目は planning#716 の裁定待ち（#458 段 S0） | Accepted |
+| [IADR-0495](./IADR-0495_connector-secret-vault-read-path-dedicated-prefix.md) | コネクタの資格情報は datasource-service が専用接頭辞 secret/data/datasource/* の read だけを持つ k8s auth ロールで Vault の KV v2 から読む。ESO の msp/* の外に置き、Vault が読めなければ平文へ倒さず失敗する（#458 段 S1） | Accepted |

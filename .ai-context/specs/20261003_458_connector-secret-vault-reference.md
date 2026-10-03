@@ -2,7 +2,7 @@
 title: 作業仕様書 — コネクタ資格情報を「Vault 移行までの暫定マスク」から Vault 参照へ移す（設計段・#458 残射程 a）
 type: spec
 status: draft
-related_ids: [FR-01, UC-04, SC-06, SC-22, NFR-18, ADR-0005, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0295, IADR-0403, IADR-0433, IADR-0453, IADR-0456, IADR-0485, IADR-0493]
+related_ids: [FR-01, UC-04, SC-06, SC-22, NFR-18, ADR-0005, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0295, IADR-0403, IADR-0433, IADR-0453, IADR-0456, IADR-0485, IADR-0493, IADR-0495]
 author: claude
 created: 2026-10-03
 updated: 2026-10-03
@@ -403,3 +403,100 @@ $ git grep -ln "pg_dump" -- deploy scripts
   `DataSourceSyncEndpointTests.Sync_UnresolvableCredential_ResponseMessageLeaksNeitherReferenceNorKeyNorResolverText`（`resolver-unavailable` は本番配線の解決器、`unreachable` は例外文にパスを入れた解決器を DI で差し替え）を足した。
   変異: 端点の `message` に `ds.Config` の値（参照）を連結 → 2 件とも赤、戻して緑。
 - `Program.cs` の解決器の登録を完全修飾から `using DataSourceService.Infrastructure.Secrets;` へ改めた（AI レビュー 🟢）。
+
+## ［2026-10-03 追記 / #458・S1］段 S1（Vault の読み取り経路）の実装
+
+### 経過
+
+- 段 **S1**（案に依らない）を実装した。基点は `origin/develop` `84c80853`（S0 ＝ PR #1727 / IADR-0493 を含む。`git rev-parse --is-shallow-repository` → `false`）。
+- 新 IADR は [IADR-0495](../adr/IADR-0495_connector-secret-vault-read-path-dedicated-prefix.md)。🔴 **採番の注意**: develop の最大は 0493 で、0494 は未マージの別ブランチ（#1728・`fix/NFR-18-1728-eso-force-sync-after-bootstrap`）が取る見込みのため 0495 とした。
+  本ブランチ単独では `check-adr-numbering.js` が `[missing-number] IADR-0494 が欠番` を返す（意図した状態）。**#1728 の後にマージする**こと。#1728 が先に入らない場合はマージ時に 0494 へ改番する（ファイル名・自称番号・索引・本書・コード内コメント・IADR-0403 の追記・`docs/security/security.md` の trace ブロック・PR タイトル）。
+- §未決事項 2（VaultSharp か素の HTTP クライアントか）は **素の HttpClient** に決めた（IADR-0495 決定 2。BFF の `VaultKvClient` が前例）。`src/Directory.Packages.props` は変えていない。
+
+### 段 S1 の設計（IADR-0495 の要約）
+
+- **パスと権限**: 参照のパスは KV マウントからの相対で専用接頭辞 `datasource/`（例 `vault:datasource/<データソース ID>#apiToken`）。
+  policy `datasource-connector-read`（`deploy/local/vault/eso/policy-datasource-connector-read.hcl`）は `secret/data/datasource/*` の `read` の 1 本だけ。
+  role `datasource-connector-reader` を SA `microservices-platform/datasource-service`（helm の `services.datasource.serviceAccount` が作る）にだけ束縛（`bootstrap.sh`）。
+  🔴 ESO の `policy-eso-read.hcl` は**変えていない**（`secret/data/msp/*`・`ai-stock-trading/*` はこの接頭辞に一致しない）。母集合 V1 はこれで閉じる。
+- **解決器**: `Infrastructure/Secrets/VaultConnectorSecretResolver`（k8s auth ログイン ＋ KV v2 の GET。トークンはリース満了の 30 秒前まで使い回し、403 で 1 度だけ取り直す）。
+  平文は `PlaintextPassthroughConnectorSecretResolver` へ委ねて素通し、`vault:` は形と接頭辞（大文字小文字を区別・空 / `.` / `..` のセグメント拒否）を確かめてから Vault へ。接頭辞の外は Vault へ送らず `MalformedReference`。
+- **失敗の写像**（列挙は増やさない）: 404・削除 / 破棄の版・`data.data` null・キー無し・非文字列 → `NotFound`、空白 → `Empty`、ログイン不能・403（取り直し後）・5xx・不達・時間切れ・解釈不能 → `Unreachable`。呼び出し側の取り消しだけは外へ出す。**どの失敗でも平文へ倒さない。**
+- **ログ**: 状態コードと例外の型名だけ（値・パス・キー名・例外オブジェクト・例外文を出さない）。
+- **配線**: `AddConnectorSecretResolver()`（`Program.cs`）。`Vault:Address` が在れば Vault 解決器、空なら S0 の素通し（判定は解決時。試験の構成の上書きが効くように起動前の `builder.Configuration` を読まない）。
+  helm の `services.datasource.vault`（`address: ""` 既定・`role: datasource-connector-reader` を明示）が `Vault__Address` / `Vault__Role` / `Vault__AuthMount` を描く。compose は Vault を持たないので変えない（素通しのまま）。
+- **NetworkPolicy**: 「BFF → Vault」を「`vault.address` を持つサービス → Vault」へ一般化（`allow-<name>-egress-to-vault`）。helm v3.16.4 で描画を比べ、
+  BFF の分（`--set services.bff.vault.address=…`）は**変更前後で同一**、差分は datasource の SA・`serviceAccountName`・`Vault__*` の 3 つだけ、
+  `services.datasource.vault.address` を与えたときだけ `allow-datasource-egress-to-vault` が描かれることを確かめた。`helm lint` → 0 failed。
+- **母集合の確認**: `check-secret-injected-options.js` → OK（宣言 2 件）。`VaultConnectorSecretOptions` は秘密を持たない（名乗りは SA トークン）ので、宣言の語を付けておらず母集合に入らない（意図どおり）。
+- age 鍵（`deploy/local/platform-backup/`）・バックアップの制約には触れていない。
+
+### 規則 10（この追記で誤りになる記述の引き直し）
+
+`git grep -n -E 'Vault を一度も引かない|Vault クライアント 0 件|Vault に繋がない|Vault 解決器は段 S1|段 S1|Vault の解決器は未配備|VaultSharp' -- docs deploy src scripts ':!src/ai-stock-trading'` で引いた。
+
+- 本書 母集合 V3「`datasource-service` は Vault を一度も引かない」は**偽になった**（`Vault:Address` を構成した配備では引く）。本文は凍結のため書き換えない。
+- `docs/security/security.md` §データソースのコネクタ資格情報 の「（Vault の解決器は未配備）」が**誤りになった** → 構成による配線・fail-closed・権限（専用接頭辞・ESO と交わらない）の 2 項へ改め、trace ブロックへ IADR-0495 を足した。
+- コード内コメント 3 箇所（`IConnectorSecretResolver` の「Vault 解決器は段 S1 で足す」、`PlaintextPassthroughConnectorSecretResolver` の合成の予告、`ConnectorSecretReference` の「接頭辞は段 S1 が決める」）を現状へ改めた。
+- `scripts/verify-oidc-edge-flow.sh` の「段 S1」は別件（検索の合言葉）で除外。`docs/security/security.md` §Vault 監査の「`auth_metadata_role="bff-secret-writer"` の行が画面、それ以外が画面以外」は**書き込み**の抽出条件の説明で、datasource の role は読み取りしかしないので抽出に現れない → 誤りにならない（変えない）。
+- IADR-0493 の「Vault 解決器は段 S1」等は凍結記録 → 書き換えず、IADR-0403 決定 8 に日付つき追記で IADR-0495 を指した。
+
+### 試験（§設計 S1 の試験欄の写像）
+
+| S1 の試験欄 | `[Fact]` / `[Theory]` |
+| --- | --- |
+| policy の path 集合が専用接頭辞の `read` だけ | `ConnectorSecretVaultPolicyTests.DatasourcePolicy_IsExactlyReadOnTheDedicatedPrefix`・`ResolverPrefix_AndKvMount_MatchThePolicy`・`DatasourcePolicy_CannotReadOutsideTheDedicatedPrefix`（6 例。`msp/*`・AST・`datasourcex/`・metadata） |
+| ESO の policy から読めない | `EsoPolicy_CannotReadTheDedicatedPrefix`（3 例。照合器の陽性対照 `secret/data/msp/postgres` つき）・`BffWritePolicy_DoesNotCoverTheDedicatedPrefix` |
+| role の束縛先・helm との一致 | `Bootstrap_BindsTheReaderRoleToTheDatasourceServiceAccountOnly`・`HelmValues_DeclareTheDedicatedServiceAccount_RoleAndEmptyAddressByDefault` |
+| Vault 不達・403・404・版削除で止まり平文を使わない | `VaultConnectorSecretResolverTests.VaultResponses_MapToTheExistingFailureCodes_AndNeverFallBackToPlaintext`（13 例）・`Forbidden_RetriesOnceWithAFreshToken_ThenFailsClosed`・`LoginFailure_FailsClosed_WithoutReadingData`（3 例）・`UnreadableServiceAccountToken_FailsClosed_WithoutAnyRequest`・`TransportFailure_FailsClosed_AndLeaksNothing`（不達・時間切れ・ログイン不達） |
+| 形の誤り・接頭辞の外 | `ReferenceOutsideTheDedicatedPrefixOrMalformed_IsRejected_WithoutAnyRequest`（10 例）・`DedicatedPrefix_AcceptsNestedPaths` |
+| 成功・平文の素通し・トークン | `Reference_IsReadFromTheKvV2DataPath_WithTheLoginToken`・`Plaintext_PassesThrough_WithoutTouchingVault`・`Forbidden_ThenSuccess_AfterTokenRefresh_Resolves`・`Token_IsReusedWithinTheLease_AndRenewedBeforeExpiry`・`CallerCancellation_Propagates` |
+| ログに値・パス・キー名・例外文が出ない | 上の失敗系の全例 ＋ `Success_LogsNothingSensitive`（例外文に値・パス・キー名を入れた陽性対照つき） |
+| 配線 | `Wiring_ChoosesTheResolverByVaultAddress`（4 例）・`Wiring_WithoutVault_KeepsReferencesFailClosedAsResolverUnavailable` |
+
+`DataSourceService.Tests` は 371 → 431 件（+60）。
+
+### 変異試験（1 つずつ当てて戻した。フィルタ `VaultConnectorSecret|ConnectorSecretVaultPolicy|ConnectorSecret` の 95 件で実行。スクリプトで適用・試験・復元）
+
+| # | 変異 | 結果（赤の件数） |
+| --- | --- | --- |
+| M1 | Vault の失敗の状態コードで参照文字列を値として返す（平文へ倒す） | 殺した（3） |
+| M2 | 専用接頭辞の判定を外す | 殺した（4） |
+| M3 | `..` セグメントを通す | 殺した（1） |
+| M4 | 接頭辞を大文字小文字を無視して比較する | 殺した（1） |
+| M5 | 404 を `NotFound` にしない（`Unreachable` へ落ちる） | 殺した（3） |
+| M6 | 削除・破棄の metadata を見ない | 殺した（2） |
+| M7 | 空白の値を成功にする | 殺した（1） |
+| M8 | 文字列でない値を受け入れる | 殺した（1） |
+| M9 | 例外オブジェクトをログへ渡す | 殺した（3） |
+| M10 | 例外文をログへ出す | 殺した（4） |
+| M11 | 状態コードのログに参照のパスとキーを足す | 殺した（2） |
+| M12 | 403 でトークンを取り直さない | 殺した（2） |
+| M13 | トークンを使い回さない | 殺した（1） |
+| M14 | 呼び出し側の取り消しも `Unreachable` へ畳む | 殺した（1） |
+| M15 | 配線: 常に素通し | 殺した（1） |
+| M16 | 配線: 常に Vault | 殺した（4） |
+| M17 | policy を `secret/data/*` へ広げる | 殺した（6） |
+| M18 | policy に `list` を足す | 殺した（1） |
+| M19 | ESO の policy に `secret/data/datasource/*` を足す | 殺した（2） |
+| M20 | role を `default` にも束縛する | 殺した（1） |
+| M21 | `eso` role に datasource の policy を相乗りさせる | 殺した（1） |
+| M22 | helm の values から role を省く（テンプレートの既定 = BFF の role で名乗る） | 殺した（1） |
+| M23 | 平文も Vault へ送る（素通しへ委ねない） | 殺した（1） |
+
+### 検証
+
+- `dotnet build src/knowledge/backend/backend.slnx` → エラー 0（警告 1 件は未変更の `IngestToSearchQdrantTests.cs` の CS0618。既存）
+- `dotnet test` `DataSourceService.Tests` → 431 件すべて成功
+- `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes` → 差分なし
+- `bash -n deploy/local/vault/eso/bootstrap.sh` → OK（実クラスタでの bootstrap の実行は本環境に k8s / Vault が無く未実施）
+- `helm template` / `helm lint`（v3.16.4）→ 上の §設計 NetworkPolicy のとおり
+- 文書・規約の検査器はコミット時の結果を PR 本文に記す（`check-adr-numbering` は IADR-0494 の欠番 1 件を返す —— 上の採番の注意のとおり）
+
+### 残余リスク（S1 の時点）
+
+- **参照先へ書く面が無い**（段 S2・S3 は planning#716 の裁定待ち）。いまは運用者がコンソールで `secret/datasource/<…>` へ書き、API 直叩きで `Config` に参照を置くしかない。
+- helm の既定は `vault.address: ""` なので、**配備の値を変えるまで本番の挙動は S0 と同じ**（参照は `resolver-unavailable`）。Vault を有効にした配備で `bootstrap.sh` を再実行しないと role が無く、ログインが失敗して `unreachable` で止まる（fail-closed）。
+- NetworkPolicy の一般化は helm の描画を手で比べただけで、描画を固定する自動試験は無い（既存の BFF の分にも無い）。
+- 実 Vault（KV v2 の 404 の本文・削除済み版の応答）との結合は偽のハンドラによる単体試験だけで、実測していない（環境待ち。#458 の残射程 4 と同じ）。
+- SA トークンの読み口が BFF とサービス内の 2 つになった（IADR-0495 決定 2）。

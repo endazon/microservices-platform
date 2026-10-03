@@ -143,25 +143,28 @@ spec:
           port: {{ .Values.edge.privateNotesSync.port }}
 {{- end }}
 {{- end }}
-{{- /* SC-22, ADR-0095 決定 3, IADR-0433, IADR-0453 決定 9 (#1411): BFF → Vault（秘密情報の投入）。
+{{- /* SC-22, ADR-0095 決定 3, IADR-0433, IADR-0453 決定 9 (#1411), IADR-0495 決定 3 (#458 段 S1): サービス → Vault。
        allow-intra-namespace が Egress を「同 Namespace ＋ DNS」に絞るため、別 Namespace の Vault へは
-       L3/L4 で届かない（届かなければ /bff/secrets は 503 になる）。**BFF の Pod から Vault の Pod・ポートへ 1 本だけ**開ける。
-       **services.bff.vault.address が空のとき（Vault を配備しない構成）は描画しない**＝穴を開けない。 */}}
+       L3/L4 で届かない（届かなければ BFF の /bff/secrets は 503、datasource-service の `vault:` 参照は unreachable で fail-closed）。
+       **`services.<name>.vault.address` を持つサービスの Pod から Vault の Pod・ポートへ 1 本だけ**開ける
+       （BFF＝秘密情報の投入、datasource＝コネクタの資格情報の読み取り）。名前は従前の `allow-bff-egress-to-vault` を保つ。
+       **address が空のとき（Vault を配備しない構成）は描画しない**＝穴を開けない。 */}}
 {{- $bff := .Values.services.bff | default dict }}
-{{- $vault := $bff.vault | default dict }}
-{{- if and $bff.enabled $vault.address }}
+{{- range $name, $svc := .Values.services }}
+{{- $vault := $svc.vault | default dict }}
+{{- if and $svc.enabled $vault.address }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-bff-egress-to-vault
-  namespace: {{ .Values.namespace.name }}
+  name: allow-{{ $name }}-egress-to-vault
+  namespace: {{ $.Values.namespace.name }}
   labels:
     app.kubernetes.io/part-of: microservices-platform
 spec:
   podSelector:
     matchLabels:
-      app: bff-service
+      app: {{ $name }}-service
   policyTypes:
     - Egress
   egress:
@@ -175,6 +178,7 @@ spec:
       ports:
         - protocol: TCP
           port: {{ $vault.port | default 8200 }}
+{{- end }}
 {{- end }}
 {{- /* SC-22, ADR-0095 決定 3, IADR-0456 決定 4 (#1477): BFF → Kubernetes API サーバ（ExternalSecret への force-sync 注釈）。
        allow-intra-namespace が Egress を「同 Namespace ＋ DNS」に絞るため、API サーバへは L3/L4 で届かない。

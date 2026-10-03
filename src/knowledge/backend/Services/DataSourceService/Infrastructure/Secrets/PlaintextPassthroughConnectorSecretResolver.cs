@@ -13,8 +13,8 @@ namespace DataSourceService.Infrastructure.Secrets;
 //   「資格情報が設定されていない」状態を「認証に失敗した」状態に見せかける（fail-closed）。
 //   形を成していない参照は `MalformedReference` で区別する（設定の誤りの切り分けのため）。
 //
-// 段 S1 で Vault 解決器を足すとき、本実装は「参照は Vault へ、平文は期間中だけ素通し」の合成の
-// 平文側として残るか、段 S4 の着地で撤去される（[[IADR-0493]] 決定 2）。
+// 段 S1（[[IADR-0495]] 決定 3）: 本実装は、Vault が未構成（`Vault:Address` が空）の構成の解決器であり、
+// かつ `VaultConnectorSecretResolver` の平文側（移送期間の素通し）でもある。段 S4 の着地で撤去される（[[IADR-0493]] 決定 2）。
 public sealed class PlaintextPassthroughConnectorSecretResolver : IConnectorSecretResolver
 {
     public Task<ConnectorSecretResolution> ResolveAsync(string configuredValue, CancellationToken ct)

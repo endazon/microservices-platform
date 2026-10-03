@@ -24,6 +24,7 @@ related_ids:
   - IADR-0458
   - IADR-0465
   - IADR-0493
+  - IADR-0495
 author: claude
 created: 2026-09-06
 updated: 2026-10-03
@@ -306,6 +307,10 @@ ESO マニフェストは **25 本**（`deploy/local/vault/eso/`）で、うち 
 データソースごとに増える項目を SC-22 の型（書き込み射程・供給元・ロール）でどう扱うかは planning#716 の裁定待ちである。
 **段 2（`IConnectorSecretResolver`）と段 3 の fail-closed は IADR-0493 決定 1・3 が実装した**（Vault 解決器・移送は後続段）。
 参照の例 `vault:msp/datasource/<id>#<key>` のパスは ESO の `msp/*` の read policy に入るため、接頭辞は後続段（Vault の role・policy）で決め直す（IADR-0493 決定 2）。
+
+［2026-10-03 追記 / #458・S1］🔴 **参照のパスと Vault 解決器は [IADR-0495](./IADR-0495_connector-secret-vault-read-path-dedicated-prefix.md) が決めた。**
+接頭辞は `msp/` の外の `datasource/`（`vault:datasource/<…>#<key>`）で、datasource-service の role の policy は `secret/data/datasource/*` の `read` だけ（ESO の policy は変えず、その接頭辞を読めない）。
+Vault とは素の HttpClient で話し、VaultSharp は入れない（IADR-0495 決定 2）。
 
 ## 結果
 

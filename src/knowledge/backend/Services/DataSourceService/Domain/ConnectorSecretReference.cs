@@ -2,8 +2,9 @@ namespace DataSourceService.Domain;
 
 // FR-01, NFR-18, [[IADR-0493]] 決定 2 (#458 段 S0): `Config` に保存する Vault 参照の形 `vault:<path>#<key>`。
 //
-// **パスの置き場所（接頭辞）はここで決めない。** ESO の `msp/*` policy に入らない場所へ置くことは
-// 段 S1 が配備の policy と一緒に決める（作業仕様書 20261003_458 §設計 S1）。本型が守るのは形だけである。
+// **パスの置き場所（接頭辞）はここで決めない。** 本型が守るのは形だけである。接頭辞（ESO の `msp/*` policy の外の
+// `datasource/`）は段 S1 が配備の policy と一緒に決め、Vault 解決器が守る（[[IADR-0495]] 決定 1。
+// `VaultConnectorSecretResolver.IsUnderDedicatedPrefix`）。
 //
 // ■ 🔴 **接頭辞の判定は大文字小文字を区別しない**
 //   `VAULT:…` を「参照ではない」と判定すると、移送期間の解決器はそれを**平文として外部へ送る**。

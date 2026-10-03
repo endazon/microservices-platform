@@ -319,6 +319,22 @@ services:
       clientId: datasource-service
       existingSecret: datasource-service-token
       clientSecretKey: client-secret
+    # FR-01, UC-04, NFR-18, IADR-0495 決定 1・3 (#458 段 S1): datasource-service 専用の ServiceAccount。
+    # 🔴 Vault の k8s auth ロール `datasource-connector-reader`（policy は `secret/data/datasource/*` の read だけ）は
+    # この名前にだけ束縛する（`default` に束縛しない。deploy/local/vault/eso/bootstrap.sh）。
+    serviceAccount:
+      create: true
+      name: datasource-service
+    # FR-01, NFR-18, IADR-0495 決定 3 (#458 段 S1): コネクタの資格情報（`vault:datasource/…#<key>`）を読む Vault。
+    # **address の既定は空＝Vault を配備していない構成**。解決器は移送期間の素通しだけになり（`vault:` 参照は
+    # resolver-unavailable で fail-closed）、NetworkPolicy の穴も開けない。
+    # 🔴 role は明示する（deployment テンプレートの既定は BFF の `bff-secret-writer` であり、省くと BFF の role 名で名乗る）。
+    vault:
+      address: ""
+      role: datasource-connector-reader
+      authMount: kubernetes
+      namespace: platform-infra
+      port: 8200
     # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段。
     # 🔴 **k8s の Service は 8080 で待つ。** コード既定も 8080 にしてあるが、
     # **明示しておく**（先行 3 サービスは既定 `:5005` を extraEnv で上書きしており、

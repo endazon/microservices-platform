@@ -20,7 +20,8 @@ namespace DataSourceService.Domain.Ports;
 // ■ 実装（段 S0 時点）
 //   - `PlaintextPassthroughConnectorSecretResolver` —— 移送期間用。平文はそのまま返し、
 //     `vault:` で始まる値は**解決器が無い**として失敗させる（平文として外へ送らない＝fail-closed）。
-//   - Vault 解決器は段 S1 で足す（配備の role・policy と同じ PR に置く）。
+//   - `VaultConnectorSecretResolver`（段 S1・[[IADR-0495]]）—— `Vault:Address` が在る構成で配線する。
+//     参照は Vault の KV v2（専用接頭辞 `datasource/`）から読み、平文は移送期間として素通しへ委ねる。
 public interface IConnectorSecretResolver
 {
     /// <summary>
