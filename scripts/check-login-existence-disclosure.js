@@ -207,7 +207,8 @@ function summarizeTimings(samples) {
 /**
  * 対の前提を確かめる（**測る前に**落とす）。
  *
- * @param {{existingUsername:string, absentUsername:string, realmUsernames:string[]}} input
+ * @param {{existingUsername:string, absentUsername:string, takenUsernames:string[]}} input
+ *   `takenUsernames` は**実在する（はずの）名前**の全体 —— realm 宣言の利用者名と、上書きした試験利用者の名前
  * @returns {string[]}
  */
 function evaluateProbePairing(input) {
@@ -226,8 +227,8 @@ function evaluateProbePairing(input) {
       + ' 申請した利用者名は応答へそのまま反映されるので、**長さが違えば本文長は必ず違う** ——'
       + ' それは存在の漏れではなく測り方の誤りである（#1245 の実測で 1 度踏んでいる）。');
   }
-  if ((input.realmUsernames || []).includes(absent)) {
-    failures.push(`${TAG} [前提] 陰性対照に選んだ利用者名 ${absent} が realm 宣言に実在する。`
+  if ((input.takenUsernames || []).includes(absent)) {
+    failures.push(`${TAG} [前提] 陰性対照に選んだ利用者名 ${absent} が、実在する名前（realm 宣言の利用者か、上書きした試験利用者）と一致する。`
       + ' 「非実在のつもりが実在していた」測定になる。');
   }
   return failures;
@@ -282,6 +283,16 @@ function readUsernameOverride(argv, env = process.env) {
   if (/[\u0000-\u001f\u007f]/.test(value)) {
     return { error: `${source} の値に制御文字が含まれる` };
   }
+  // 陰性対照は ASCII だけで作るので、ASCII 以外を許すと「同じバイト長」を「同じ文字数」と取り違える余地が生まれる。
+  // 手順書の試験利用者も ASCII だけで作ると定めている。
+  if (!/^[\x20-\x7e]+$/.test(value)) {
+    return { error: `${source} の値に ASCII 以外の文字が含まれる（試験利用者名は ASCII だけで作る）` };
+  }
+  // 🔴 realm はメールアドレスでのログインを許す（loginWithEmailAllowed）。`admin@…` を渡すと admin に失敗が積まれる。
+  //    利用者名に `@` を使わない限り困らないので、**メールアドレスの形は一律に拒否する**（宣言の照合とは別の層）。
+  if (value.includes('@')) {
+    return { error: `${source} の値に @ が含まれる（メールアドレスでのログインは宣言済みの利用者に当たり得るので拒否する）` };
+  }
   return { override: value, source, rest };
 }
 
@@ -307,8 +318,21 @@ function resolveLoginTarget({ override, realm }) {
   if (name.trim() === '') {
     return { ok: false, error: '上書きした利用者名が空である（既定へは倒さない）。' };
   }
-  const declared = ((realm && realm.users) || []).map((u) => String((u && u.username) || '').toLowerCase());
-  if (declared.includes(name.toLowerCase())) {
+  // 既定経路（宣言の対話利用者が居なければ止まる）と対称に、**照合する宣言が読めなければ止める**（0 件照合を通さない）。
+  if (!realm || !Array.isArray(realm.users) || realm.users.length === 0) {
+    return { ok: false, error: 'realm 宣言の users が空か読めない。宣言済みの利用者との照合ができないので上書きを受け付けない。' };
+  }
+  const lowered = name.toLowerCase();
+  // 多重防御: 宣言の利用者のメールアドレス（大小無視）を名指しで拒否し、それ以外の `@` を含む名前も拒否する。
+  const declaredEmails = realm.users.map((u) => String((u && u.email) || '').toLowerCase()).filter((x) => x !== '');
+  if (declaredEmails.includes(lowered)) {
+    return { ok: false, error: `${name} は realm 宣言の利用者のメールアドレスである（大小を無視して照合）。` };
+  }
+  if (lowered.includes('@')) {
+    return { ok: false, error: `${name} はメールアドレスの形である。メールアドレスでのログインは宣言済みの利用者に当たり得るので拒否する。` };
+  }
+  const declared = realm.users.map((u) => String((u && u.username) || '').toLowerCase());
+  if (declared.includes(lowered)) {
     return {
       ok: false,
       error: `${name} は realm 宣言に在る共有の利用者である（大小を無視して照合）。`
@@ -445,10 +469,8 @@ async function attemptLogin({ base, realmName, client, ca, username, credential 
 async function run({ usernameOverride = null } = {}) {
   const notices = [];
 
-  if (!hasTool('kubectl')) {
-    return { failures: [`${TAG} [前提] kubectl が無い。稼働クラスタに対して測る検査なので、逃げ道の環境変数は置かない。`], notices };
-  }
-
+  // 🔴 対象の決定（宣言の読み込みと上書きの拒否）は**稼働へ当たる前**に済ませる。
+  //    宣言済みの名前を渡されたら、kubectl もネットワークも開かずに止まる。
   const realmRes = loadRealm();
   if (!realmRes.ok) return { failures: [`${TAG} [前提] ${realmRes.error}`], notices };
   const realm = realmRes.value;
@@ -456,6 +478,10 @@ async function run({ usernameOverride = null } = {}) {
 
   const target = resolveLoginTarget({ override: usernameOverride, realm });
   if (!target.ok) return { failures: [`${TAG} [前提] ${target.error}`], notices };
+
+  if (!hasTool('kubectl')) {
+    return { failures: [`${TAG} [前提] kubectl が無い。稼働クラスタに対して測る検査なので、逃げ道の環境変数は置かない。`], notices };
+  }
   const user = { username: target.username };
   const client = pickBrowserFlowClient(realm);
   if (!client) return { failures: [`${TAG} [前提] realm 宣言に標準フローのクライアント（redirectUri あり・bearer-only でない）が無い。ログイン画面へ到達できない。`], notices };
@@ -484,7 +510,7 @@ async function run({ usernameOverride = null } = {}) {
   const pairing = evaluateProbePairing({
     existingUsername: user.username,
     absentUsername,
-    realmUsernames: takenUsernames,
+    takenUsernames,
   });
   if (pairing.length > 0) return { failures: pairing, notices };
 
@@ -630,7 +656,7 @@ function selfTest() {
     const f = evaluateProbePairing({
       existingUsername: 'admin',
       absentUsername: 'no-such-user-abcd1234',
-      realmUsernames: ['admin'],
+      takenUsernames: ['admin'],
     });
     assert.ok(f.some((x) => x.includes('バイト長が違う')), f.join('\n'));
   });
@@ -638,19 +664,19 @@ function selfTest() {
     assert.deepStrictEqual(evaluateProbePairing({
       existingUsername: 'admin',
       absentUsername: 'ekuze',
-      realmUsernames: ['admin', 'poc-user'],
+      takenUsernames: ['admin', 'poc-user'],
     }), []);
   });
   ok('S-07c 陰性: 陰性対照が realm に実在する → 検出する', () => {
     const f = evaluateProbePairing({
       existingUsername: 'admin',
       absentUsername: 'admin',
-      realmUsernames: ['admin'],
+      takenUsernames: ['admin'],
     });
     assert.ok(f.some((x) => x.includes('実在する')), f.join('\n'));
   });
   ok('S-07d 陰性: 片側の利用者名が空 → 検出する', () => {
-    const f = evaluateProbePairing({ existingUsername: 'admin', absentUsername: '', realmUsernames: [] });
+    const f = evaluateProbePairing({ existingUsername: 'admin', absentUsername: '', takenUsernames: [] });
     assert.ok(f.some((x) => x.includes('対の利用者名を用意できなかった')), f.join('\n'));
   });
 

@@ -13,7 +13,7 @@ related_ids:
   - IADR-0427
 author: claude
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-04
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0078_existence-hiding-response-indistinguishability-and-nearby-mta.md
 related_specs:
@@ -131,3 +131,21 @@ issue: "#1245"
   「先にロックさせて User events にロックの行が出た利用者に対して走らせる」順序で塞ぐ。
 - 手順書の削除手順（⑤）が前提にする「realm の PUT で `attributes` から落としたキーが消える」は稼働の Keycloak で未実測。
   消えなければその事実を記録して止める（手順書に分岐として書いた）。
+
+［2026-10-04 追記 / #1245］独立監査（条件付き GO）の指摘への対応（`f809c11e` の上の 1 コミット）
+
+- **メールアドレスでの迂回**: realm は `loginWithEmailAllowed=true` で、`admin` に宣言のメールアドレスがある。`--username <admin のメール>` で `admin` に失敗が積まれた。
+  引数の段で `@` を含む名前を一律に拒否し、`resolveLoginTarget` でも宣言の `users[].email`（大小無視）を名指しで拒否し、それ以外の `@` も拒否する（多重防御）。
+  手順書 §4.2 の使い捨てスクリプトは `resolveLoginTarget` を通るので同じく塞がる（ASCII の検査は引数の段だけにあり、使い捨てスクリプトには掛からない）。
+- **ASCII 以外を拒否**（手順書 §4.1 の指示をコードで強制）。末尾の空白・DEL の試験を足した。
+- **上書き経路でも宣言の `users` が空・読めなければ止める**（既定経路と対称に fail-closed）。
+- **main → run の配線**: `run` は宣言の読み込みと対象の決定を kubectl の確認より先に行うようにした。`--live --username Admin`（PATH から kubectl を外す）で
+  「宣言に在る共有の利用者」で止まることを試験する（配線が切れると既定の admin で進み「kubectl が無い」で止まる）。
+- `evaluateProbePairing` の入力キーを `realmUsernames` → `takenUsernames`（宣言＋上書き名）へ改名し、文言を実態に合わせた。
+- 手順書: 末尾の番号つきリストを `- **N.**` 形式にした（CommonMark が連番へ振り直して本文の「実測項目 3/8/10」とずれるため）。
+  順位和検定は実装済み（#1541）なので §2.1・表 3・§限界・項目 7 と使い捨ての `reset-pair.js` の表示を合わせた。
+- §0.6 の前提（PUT 本文に無い属性が消える）を、本リポジトリの認証基盤の版（`keycloak:24.0`）のソースで確かめた:
+  `DefaultExportImportManager.updateRealm` は `rep.getAttributes() != null` のとき、稼働の属性のうち本文に無いキーを `removeAttribute` する
+  （`REALM_EXCLUDED_ATTRIBUTES` を除く）。24.0.0 と 24.0.5 で同じ。稼働では未実測。
+- 変異（すべて赤）: N1 引数の段の `@` 拒否を外す／N2 宣言メールの照合を外す／N3 main が `run({ usernameOverride: null })`／N4 上書き経路の users 空チェックを外す／
+  N5 ASCII 以外の拒否を外す／N6 DEL を制御文字から外す／N7 対の前提を旧キーで読む（自己試験も赤）／N8 宣言メールの照合を大小区別にする。

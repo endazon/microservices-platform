@@ -13282,6 +13282,65 @@ exit 0
       assert.strictEqual(st.status, 0, st.stderr);
       assert.ok(/self-test: 25 件すべて成功/.test(st.stdout), st.stdout);
     });
+
+    ok('#1245 ⑥: 宣言の利用者のメールアドレス（大小無視）と @ を含む名前を拒否する（loginWithEmailAllowed の迂回を塞ぐ）', () => {
+      const real = loadRealm1245().value;
+      assert.strictEqual(real.loginWithEmailAllowed, true, '前提（メールでのログインが許されている）が変わった。試験の意味を見直す');
+      for (const u of real.users.filter((x) => x.email)) {
+        for (const mail of [u.email, u.email.toUpperCase()]) {
+          // 層 1: 引数の段で @ を拒否する
+          const r = login1245.readUsernameOverride(['--username', mail], {});
+          assert.ok(r.error && /@/.test(r.error), `${mail} を引数の段で通した: ${JSON.stringify(r)}`);
+          // 層 2: 宣言のメールアドレスを名指しで拒否する
+          const t = login1245.resolveLoginTarget({ override: mail, realm: real });
+          assert.strictEqual(t.ok, false, `${mail} を拒否しなかった`);
+          assert.ok(/メールアドレスである/.test(t.error), t.error);
+        }
+      }
+      // 宣言側に大文字が入っていても大小無視で当てる（実宣言は小文字なので合成の宣言で見る）。
+      const mixed = login1245.resolveLoginTarget({ override: 'boss@example.com', realm: { users: [{ username: 'boss', email: 'Boss@Example.com' }] } });
+      assert.ok(!mixed.ok && /メールアドレスである/.test(mixed.error), JSON.stringify(mixed));
+      const other = login1245.resolveLoginTarget({ override: 'someone@example.invalid', realm: realm1245 });
+      assert.strictEqual(other.ok, false);
+      assert.ok(/メールアドレスの形/.test(other.error), other.error);
+    });
+
+    ok('#1245 ⑥: 末尾の空白・DEL・ASCII 以外の文字を拒否する', () => {
+      const cases = [['prd-x ', /前後に空白/], ['prd\u007fx', /制御文字/], ['prd-テスト', /ASCII 以外/], ['prd-ｘ', /ASCII 以外/]];
+      for (const [v, re] of cases) {
+        const r = login1245.readUsernameOverride([], { LOGIN_PROBE_USERNAME: v });
+        assert.ok(r.error && re.test(r.error), `${JSON.stringify(v)}: ${JSON.stringify(r)}`);
+      }
+    });
+
+    ok('#1245 ⑥: 上書き経路でも宣言の users が空・読めなければ止める（既定経路と対称に fail-closed）', () => {
+      for (const realm of [{ users: [] }, {}, null, { users: 'x' }]) {
+        const t = login1245.resolveLoginTarget({ override: 'prd-lockout1', realm });
+        assert.strictEqual(t.ok, false, `${JSON.stringify(realm)} で上書きを受け付けた`);
+      }
+    });
+
+    ok('#1245 ⑥: 対の前提は「実在する名前」（宣言＋上書き名）との衝突を検出する', () => {
+      const f = login1245.evaluateProbePairing({
+        existingUsername: 'prd-lockout1', absentUsername: 'prd-lockout1', takenUsernames: ['admin', 'prd-lockout1'],
+      });
+      assert.ok(f.some((x) => /実在する名前/.test(x)), f.join('\n'));
+    });
+
+    ok('#1245 ⑥: main は解析した上書きを run へ渡す（宣言済みの名前は稼働へ当たる前に拒否される）', () => {
+      // PATH から kubectl も which も外す。配線が切れていれば既定（admin）で進み「kubectl が無い」で止まる。
+      const script = path1245.join(__dirname, 'check-login-existence-disclosure.js');
+      const env = { ...process.env, PATH: path1245.dirname(process.execPath), KUBECONFIG: '/nonexistent-kubeconfig-1245' };
+      delete env.LIVE;
+      delete env.LOGIN_PROBE_USERNAME;
+      const r = spawnSync1245(process.execPath, [script, '--live', '--username', 'Admin'], { env, encoding: 'utf8' });
+      assert.strictEqual(r.status, 1, r.stderr);
+      assert.ok(/realm 宣言に在る共有の利用者/.test(r.stderr), `上書きが run へ届いていない: ${r.stderr}`);
+      assert.ok(!/kubectl が無い/.test(r.stderr), r.stderr);
+      const viaEnv = spawnSync1245(process.execPath, [script, '--live'], { env: { ...env, LOGIN_PROBE_USERNAME: 'developer' }, encoding: 'utf8' });
+      assert.strictEqual(viaEnv.status, 1, viaEnv.stderr);
+      assert.ok(/realm 宣言に在る共有の利用者/.test(viaEnv.stderr), `環境変数の上書きが run へ届いていない: ${viaEnv.stderr}`);
+    });
   }
 
 };
