@@ -100,7 +100,7 @@ related_specs:
   解決した値が空白なら `Empty` として失敗させる（空を「認証なし」として送らない）。解決器が例外を投げたら `Unreachable` に畳む
   （呼び出し側の ct による取り消しだけは外へ出す。#1604 と同じ）。
 - 同期は探索の前で止まり、`SyncResult.CredentialsResolved = false`（`DiscoverSucceeded` も false、watermark は進めない）。
-  直近エラー（`LastSyncError`。SC-06 が読む）と応答の `message` は固定の文 `credentials not resolved for '<Config キー名>' (<理由の符号>)` であり、
+  直近エラー（`LastSyncError`。SC-06 が読む）と応答の `message` は固定の文 `credentials not resolved for credential #<番号> (<理由の符号>)` であり（番号はコネクタが宣言する資格情報の項目の 1 始まりの順。キー名は `password` 等の機微な語なので出さない —— CodeQL `cs/cleartext-storage` の指摘で初版から改めた）、
   連続失敗として数える（継続失敗アラートの対象）。
 - 🔴 **ログ・`SyncError`・応答に出すのは `Config` のキー名と理由の符号だけである。** 値・参照の文字列（パスを含む）・解決器の例外文は出さない。
   解決器の例外は**型名だけ**を記録し、例外オブジェクトもメッセージも渡さない（[[IADR-0295]] 決定 4 より一段強い。解決器の例外は値や Vault のパスを運び得る）。

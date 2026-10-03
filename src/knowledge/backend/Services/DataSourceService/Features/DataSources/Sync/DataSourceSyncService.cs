@@ -89,10 +89,12 @@ public sealed class DataSourceSyncService(
         var (credentials, unresolved) = await ResolveCredentialsAsync(connector, source, ct);
         if (credentials is null)
         {
-            // 失敗の記録に載せるのは `Config` のキー名と理由の符号だけ —— 値・参照のパス・解決器の例外文は載せない。
+            // 失敗の記録に載せるのは資格情報の項目の番号（コネクタが宣言する順の 1 始まり）と理由の符号だけ ——
+            // 値・参照のパス・解決器の例外文に加え、項目のキー名も載せない（CodeQL cs/cleartext-storage。キー名が
+            // `password` 等の機微な語であるため。#458 段 S0）。
             // それでも同じ規則（マスク ＋ 上限）で揃えるため `SyncErrorRedactor` を通す。
             var message = SyncErrorRedactor.Redact(
-                $"credentials not resolved for '{unresolved!.Value.Key}' ({FailureCode(unresolved.Value.Failure)})");
+                $"credentials not resolved for credential #{unresolved!.Value.Slot} ({FailureCode(unresolved.Value.Failure)})");
             AlertOnFailure(source, message!, null);
             return new SyncResult(0, 0, ConnectorAvailable: true, DiscoverSucceeded: false,
                 Message: message, CredentialsResolved: false);
@@ -216,7 +218,7 @@ public sealed class DataSourceSyncService(
     // - 解決器が例外を投げても失敗へ畳む。🔴 **例外オブジェクトもメッセージも記録しない** —— 解決器の例外は
     //   値や Vault のパスを運び得る。切り分けの手掛かりとして型名だけを残す（IADR-0295 決定 4 より一段強い）。
     //   呼び出し側の ct による取り消しだけは外へ出す（#1604 と同じ）。
-    private async Task<(ConnectorCredentials? Credentials, (string Key, ConnectorSecretFailure Failure)? Unresolved)>
+    private async Task<(ConnectorCredentials? Credentials, (int Slot, ConnectorSecretFailure Failure)? Unresolved)>
         ResolveCredentialsAsync(IDataSourceConnector connector, DataSource source, CancellationToken ct)
     {
         var keys = connector.CredentialKeys;
@@ -224,8 +226,10 @@ public sealed class DataSourceSyncService(
             return (ConnectorCredentials.None, null);
 
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var key in keys)
+        for (var i = 0; i < keys.Count; i++)
         {
+            var key = keys[i];
+            var slot = i + 1;
             if (!source.Config.TryGetValue(key, out var configured) || string.IsNullOrWhiteSpace(configured))
                 continue;
 
@@ -237,9 +241,9 @@ public sealed class DataSourceSyncService(
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 logger.LogWarning(
-                    "資格情報の解決器が失敗しました（source {Id}, 項目 {Key}）: {ErrorType}",
-                    source.Id, key, ex.GetType().FullName);
-                return (null, (key, ConnectorSecretFailure.Unreachable));
+                    "資格情報の解決器が失敗しました（source {Id}, 項目 #{Slot}）: {ErrorType}",
+                    source.Id, slot, ex.GetType().FullName);
+                return (null, (slot, ConnectorSecretFailure.Unreachable));
             }
 
             var failure = resolution.Failure
@@ -247,9 +251,9 @@ public sealed class DataSourceSyncService(
             if (failure is { } f)
             {
                 logger.LogWarning(
-                    "資格情報を解決できないため同期しません（source {Id}, 項目 {Key}, 理由 {Reason}）",
-                    source.Id, key, FailureCode(f));
-                return (null, (key, f));
+                    "資格情報を解決できないため同期しません（source {Id}, 項目 #{Slot}, 理由 {Reason}）",
+                    source.Id, slot, FailureCode(f));
+                return (null, (slot, f));
             }
 
             values[key] = resolution.Value!;

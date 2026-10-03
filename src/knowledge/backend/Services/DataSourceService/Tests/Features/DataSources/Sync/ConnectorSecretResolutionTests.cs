@@ -106,7 +106,7 @@ public sealed class ConnectorSecretResolutionTests(TestWebApplicationFactory fac
         result.CredentialsResolved.Should().BeFalse();
         result.DiscoverSucceeded.Should().BeFalse("探索は走っていない");
         result.ShouldAdvanceWatermark.Should().BeFalse();
-        result.Message.Should().Be($"credentials not resolved for 'apiToken' ({code})");
+        result.Message.Should().Be($"credentials not resolved for credential #1 ({code})");
         source.LastSyncError.Should().Be(result.Message, "SC-06 が読む直近エラーに同じ状態が載る");
         source.ConsecutiveFailureCount.Should().Be(1, "同期の失敗として数える（継続失敗アラートの対象）");
         source.LastSyncedAt.Should().BeNull();
@@ -123,7 +123,7 @@ public sealed class ConnectorSecretResolutionTests(TestWebApplicationFactory fac
         var result = await svc.SyncAsync(DbSource("vault:datasource/ds-1#password"), TestContext.Current.CancellationToken);
 
         connections.ConnectionStrings.Should().BeEmpty("解決できない資格情報で業務 DB へ接続しない");
-        result.Message.Should().Be("credentials not resolved for 'password' (resolver-unavailable)");
+        result.Message.Should().Be("credentials not resolved for credential #1 (resolver-unavailable)");
     }
 
     // 対照: 資格情報が `Config` に無いソースは従前どおり認証なしで同期する（解決器を呼ばない。失敗にしない）。

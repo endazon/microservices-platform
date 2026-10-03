@@ -385,3 +385,5 @@ $ git grep -ln "pg_dump" -- deploy scripts
 - `vault:` 参照を保存した行は、Vault 解決器（S1）が配備されるまで同期が `resolver-unavailable` で失敗し続ける（意図した fail-closed）。
   現状、参照を書き込む経路（S2・S3）は無いので、参照の行は API 直叩きでしか生まれない。
 - SC-06 の画面は失敗を直近エラーの文で出すだけで、「資格情報未設定」を専用の表示にしていない（S3 で扱う）。
+
+［2026-10-03 追記 / #458・CodeQL］PR #1727 の CodeQL `cs/cleartext-storage-of-sensitive-information`（2 件・high）が、解決失敗のログに資格情報の項目のキー名（`DatabaseConnector.PasswordKey` = `password`）を載せる行を検出した。値ではないが、安全側に倒して**ログ・`LastSyncError`・応答からキー名を外し、コネクタが宣言する順の 1 始まりの番号（`credential #1`）に置き換えた**。上の S0 の記述（`credentials not resolved for '<キー名>'`）はこの追記で改める。
