@@ -17,6 +17,7 @@
     { "path": "check-login-existence-disclosure.js", "offline": ["--self-test"] },
     { "path": "check-password-reset-mail.js", "offline": ["--self-test"] },
     { "path": "check-stack-ready.js", "offline": ["--self-test"] },
+    { "path": "check-bff-multi-replica-session.js", "offline": ["--plan"] },
     { "path": "seed-abac-policies.js", "offline": ["--dry-run"] },
     { "path": "seed-search-documents.js", "offline": ["--dry-run", "--print-probe-term", "--print-keyword-only-query", "--print-japanese-keyword-query"] },
     { "path": "seed-tag-dictionary.js", "offline": ["--dry-run"] },
