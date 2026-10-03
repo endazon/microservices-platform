@@ -66,6 +66,18 @@
  * 使い方:
  *   node scripts/check-login-existence-disclosure.js --live       # 稼働クラスタに対して測る（--live か LIVE=1 が無ければ何もしない。#1550）
  *   node scripts/check-login-existence-disclosure.js --self-test  # 判定関数（純関数）の自己試験
+ *   node scripts/check-login-existence-disclosure.js --live --username <試験利用者>   # 実在側を試験専用の利用者へ差し替える
+ *   LOGIN_PROBE_USERNAME=<試験利用者> node scripts/check-login-existence-disclosure.js --live   # 同上（CLI が環境変数に勝つ）
+ *
+ * ## 実在側の利用者名の上書き（#1245 の 2026-10-03 裁定 ⑥）
+ *
+ * 指定が無ければ realm 宣言の最初の対話利用者（`admin`）を実在側にする（統合スタックの CI はこれで走る）。
+ * 利用者のクラスタで走らせるときは、`admin` へ失敗を `failureFactor - 1` 回積まないよう、
+ * **管理コンソールで作った試験専用の利用者**を `--username` か `LOGIN_PROBE_USERNAME` で渡す。
+ * 🔴 **realm 宣言に在る利用者名は（大小を無視して）拒否する** —— 共有の利用者を一時ロックの手前へ押しやる。
+ * 🔴 **空の上書きは既定へ倒さない** —— 倒すと「試験利用者を指定したつもりで `admin` を叩く」ことになる。
+ * 🔴 **上書きした利用者が稼働 realm に実在するかは確かめない**（管理 API の資格情報を持たない）。
+ *   居ない名前を渡すと両側とも非実在の対になり、黙って一致する。作った直後に在ることを確かめてから渡す。
  */
 const {
   loadRealm,
@@ -82,6 +94,11 @@ const {
 const { LIVE_FLAG, requireLiveOptIn } = require('./lib/live-opt-in.js');
 
 const TAG = '[check-login-existence-disclosure]';
+
+/** 実在側の利用者名を上書きする CLI 引数（#1245 裁定 ⑥）。値は次の引数で渡す。 */
+const USERNAME_FLAG = '--username';
+/** 同じ上書きの環境変数。**CLI が勝つ**（兄弟の `measure-search-ndcg.js` の `--k` / `NDCG_K` と同じ作法）。 */
+const USERNAME_ENV = 'LOGIN_PROBE_USERNAME';
 
 /**
  * 両側に使う**誤った資格情報**。
@@ -190,7 +207,8 @@ function summarizeTimings(samples) {
 /**
  * 対の前提を確かめる（**測る前に**落とす）。
  *
- * @param {{existingUsername:string, absentUsername:string, realmUsernames:string[]}} input
+ * @param {{existingUsername:string, absentUsername:string, takenUsernames:string[]}} input
+ *   `takenUsernames` は**実在する（はずの）名前**の全体 —— realm 宣言の利用者名と、上書きした試験利用者の名前
  * @returns {string[]}
  */
 function evaluateProbePairing(input) {
@@ -209,11 +227,143 @@ function evaluateProbePairing(input) {
       + ' 申請した利用者名は応答へそのまま反映されるので、**長さが違えば本文長は必ず違う** ——'
       + ' それは存在の漏れではなく測り方の誤りである（#1245 の実測で 1 度踏んでいる）。');
   }
-  if ((input.realmUsernames || []).includes(absent)) {
-    failures.push(`${TAG} [前提] 陰性対照に選んだ利用者名 ${absent} が realm 宣言に実在する。`
+  if ((input.takenUsernames || []).includes(absent)) {
+    failures.push(`${TAG} [前提] 陰性対照に選んだ利用者名 ${absent} が、実在する名前（realm 宣言の利用者か、上書きした試験利用者）と一致する。`
       + ' 「非実在のつもりが実在していた」測定になる。');
   }
   return failures;
+}
+
+/**
+ * 引数と環境変数から、実在側の利用者名の**上書き**を読む（#1245 裁定 ⑥）。**純関数**。
+ *
+ * - どちらも無い → `{ override: null }`（既定 ＝ realm 宣言の対話利用者）
+ * - `--username <名前>` → それ（環境変数より優先）
+ * - `LOGIN_PROBE_USERNAME` が**定義されている** → その値
+ * - 🔴 値の無い `--username`・2 回以上の `--username`・空／空白だけ・前後の空白・制御文字は `{ error }`。
+ *   **既定へ倒さない**（倒すと試験利用者を指定したつもりで `admin` を叩く）。
+ *
+ * @param {string[]} argv
+ * @param {object} [env]
+ * @returns {{override: ?string, source?: string, rest: string[]}|{error: string}}
+ */
+function readUsernameOverride(argv, env = process.env) {
+  const args = Array.isArray(argv) ? argv : [];
+  const rest = [];
+  const given = [];
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] !== USERNAME_FLAG) { rest.push(args[i]); continue; }
+    const v = args[i + 1];
+    if (v === undefined || v.startsWith('--')) {
+      return { error: `${USERNAME_FLAG} には値（試験専用の利用者名）が要る` };
+    }
+    given.push(v);
+    i += 1;
+  }
+  if (given.length > 1) {
+    return { error: `${USERNAME_FLAG} が ${given.length} 回指定された（どれを実在側にするか決められない）` };
+  }
+  let value = null;
+  let source = null;
+  if (given.length === 1) {
+    value = given[0];
+    source = USERNAME_FLAG;
+  } else if (env && Object.prototype.hasOwnProperty.call(env, USERNAME_ENV) && env[USERNAME_ENV] !== undefined) {
+    value = String(env[USERNAME_ENV]);
+    source = USERNAME_ENV;
+  }
+  if (value === null) return { override: null, rest };
+  if (value.trim() === '') {
+    return { error: `${source} が空である。**既定（realm 宣言の利用者）へは倒さない** —— 試験専用の利用者名を渡すか、${source} を外す` };
+  }
+  if (value !== value.trim()) {
+    return { error: `${source} の値の前後に空白がある（作った利用者名と一致しないまま測ることになる）` };
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(value)) {
+    return { error: `${source} の値に制御文字が含まれる` };
+  }
+  // 陰性対照は ASCII だけで作るので、ASCII 以外を許すと「同じバイト長」を「同じ文字数」と取り違える余地が生まれる。
+  // 手順書の試験利用者も ASCII だけで作ると定めている。
+  if (!/^[\x20-\x7e]+$/.test(value)) {
+    return { error: `${source} の値に ASCII 以外の文字が含まれる（試験利用者名は ASCII だけで作る）` };
+  }
+  // 🔴 realm はメールアドレスでのログインを許す（loginWithEmailAllowed）。`admin@…` を渡すと admin に失敗が積まれる。
+  //    利用者名に `@` を使わない限り困らないので、**メールアドレスの形は一律に拒否する**（宣言の照合とは別の層）。
+  if (value.includes('@')) {
+    return { error: `${source} の値に @ が含まれる（メールアドレスでのログインは宣言済みの利用者に当たり得るので拒否する）` };
+  }
+  return { override: value, source, rest };
+}
+
+/**
+ * 実在側の利用者名を決める（#1245 裁定 ⑥）。**純関数**。
+ *
+ * - 上書きが無ければ realm 宣言の対話利用者（`pickTargetUser`）—— **今までと同じ**。
+ * - 上書きがあれば、それが **realm 宣言の `users[].username` に（大小を無視して）一致しないこと**を要求する。
+ *   Keycloak は利用者名を小文字で保持するので、`Admin` は `admin` を指す。
+ *
+ * 手順書の使い捨てのロックアウト測定器も、この関数で拒否を判定する（**拒否の正本を 1 つにする**）。
+ *
+ * @param {{override: ?string, realm: object}} input
+ * @returns {{ok: true, username: string, overridden: boolean}|{ok: false, error: string}}
+ */
+function resolveLoginTarget({ override, realm }) {
+  if (override === null || override === undefined) {
+    const user = pickTargetUser(realm);
+    if (!user) return { ok: false, error: 'realm 宣言に対話利用者が居ない（0 件走査を緑にしない）。' };
+    return { ok: true, username: user.username, overridden: false };
+  }
+  const name = String(override);
+  if (name.trim() === '') {
+    return { ok: false, error: '上書きした利用者名が空である（既定へは倒さない）。' };
+  }
+  // 既定経路（宣言の対話利用者が居なければ止まる）と対称に、**照合する宣言が読めなければ止める**（0 件照合を通さない）。
+  if (!realm || !Array.isArray(realm.users) || realm.users.length === 0) {
+    return { ok: false, error: 'realm 宣言の users が空か読めない。宣言済みの利用者との照合ができないので上書きを受け付けない。' };
+  }
+  const lowered = name.toLowerCase();
+  // 多重防御: 宣言の利用者のメールアドレス（大小無視）を名指しで拒否し、それ以外の `@` を含む名前も拒否する。
+  const declaredEmails = realm.users.map((u) => String((u && u.email) || '').toLowerCase()).filter((x) => x !== '');
+  if (declaredEmails.includes(lowered)) {
+    return { ok: false, error: `${name} は realm 宣言の利用者のメールアドレスである（大小を無視して照合）。` };
+  }
+  if (lowered.includes('@')) {
+    return { ok: false, error: `${name} はメールアドレスの形である。メールアドレスでのログインは宣言済みの利用者に当たり得るので拒否する。` };
+  }
+  const declared = realm.users.map((u) => String((u && u.username) || '').toLowerCase());
+  if (declared.includes(lowered)) {
+    return {
+      ok: false,
+      error: `${name} は realm 宣言に在る共有の利用者である（大小を無視して照合）。`
+        + ' 失敗を積むと一時ロックの手前へ押しやる —— 管理コンソールで試験専用の利用者を作って渡す。',
+    };
+  }
+  return { ok: true, username: name, overridden: true };
+}
+
+/**
+ * 実在側（`resolveLoginTarget` の結果）に対する陰性対照の名前を作る。**純関数**（乱数は差し替えられる）。
+ *
+ * 上書きした試験利用者は宣言に居ないが稼働 realm には居る。**陰性対照がそれと衝突しないよう**
+ * 「取られている名前」に数える（Keycloak は小文字で保持するので小文字形も数える）。
+ *
+ * @param {object} realm realm 宣言
+ * @param {{username: string, overridden: boolean}} target
+ * @param {() => number} [rng]
+ * @returns {{takenUsernames: string[], absentUsername: ?string}}
+ */
+function pickAbsentCounterpart(realm, target, rng = Math.random) {
+  const realmUsernames = ((realm && realm.users) || []).map((u) => String((u && u.username) || ''));
+  const takenUsernames = target.overridden
+    ? [...realmUsernames, target.username, target.username.toLowerCase()]
+    : realmUsernames;
+  const absentUsername = makeAbsentUsernameOfLength(
+    { users: takenUsernames.map((username) => ({ username })) },
+    Buffer.byteLength(target.username),
+    rng,
+  );
+  return { takenUsernames, absentUsername };
 }
 
 /**
@@ -316,20 +466,23 @@ async function attemptLogin({ base, realmName, client, ca, username, credential 
   return { status: res.status, location: res.location, body: res.body, elapsedMs };
 }
 
-async function run() {
+async function run({ usernameOverride = null } = {}) {
   const notices = [];
 
-  if (!hasTool('kubectl')) {
-    return { failures: [`${TAG} [前提] kubectl が無い。稼働クラスタに対して測る検査なので、逃げ道の環境変数は置かない。`], notices };
-  }
-
+  // 🔴 対象の決定（宣言の読み込みと上書きの拒否）は**稼働へ当たる前**に済ませる。
+  //    宣言済みの名前を渡されたら、kubectl もネットワークも開かずに止まる。
   const realmRes = loadRealm();
   if (!realmRes.ok) return { failures: [`${TAG} [前提] ${realmRes.error}`], notices };
   const realm = realmRes.value;
   const realmName = realm.realm;
 
-  const user = pickTargetUser(realm);
-  if (!user) return { failures: [`${TAG} [前提] realm 宣言に対話利用者が居ない（0 件走査を緑にしない）。`], notices };
+  const target = resolveLoginTarget({ override: usernameOverride, realm });
+  if (!target.ok) return { failures: [`${TAG} [前提] ${target.error}`], notices };
+
+  if (!hasTool('kubectl')) {
+    return { failures: [`${TAG} [前提] kubectl が無い。稼働クラスタに対して測る検査なので、逃げ道の環境変数は置かない。`], notices };
+  }
+  const user = { username: target.username };
   const client = pickBrowserFlowClient(realm);
   if (!client) return { failures: [`${TAG} [前提] realm 宣言に標準フローのクライアント（redirectUri あり・bearer-only でない）が無い。ログイン画面へ到達できない。`], notices };
 
@@ -346,8 +499,7 @@ async function run() {
   }
   const ca = caRes.value;
 
-  const realmUsernames = (realm.users || []).map((u) => String((u && u.username) || ''));
-  const absentUsername = makeAbsentUsernameOfLength(realm, Buffer.byteLength(user.username));
+  const { takenUsernames, absentUsername } = pickAbsentCounterpart(realm, target);
   if (!absentUsername) {
     return {
       failures: [`${TAG} [前提] realm に実在しない、同じバイト長の利用者名を作れなかった（陰性対照を置けないので緑にしない）。`],
@@ -358,7 +510,7 @@ async function run() {
   const pairing = evaluateProbePairing({
     existingUsername: user.username,
     absentUsername,
-    realmUsernames,
+    takenUsernames,
   });
   if (pairing.length > 0) return { failures: pairing, notices };
 
@@ -367,6 +519,10 @@ async function run() {
   notices.push(`${TAG} realm=${realmName} / 実在=${user.username} / 非実在=${absentUsername}`
     + `（同じ ${Buffer.byteLength(user.username)} バイト・realm 宣言と突き合わせて不在を確認済み）`
     + ` / client=${client.clientId} / edge=${base}`);
+  if (target.overridden) {
+    notices.push(`${TAG} 実在側は上書きした試験利用者である（${USERNAME_FLAG} / ${USERNAME_ENV}）。`
+      + ' 🔴 **稼働 realm に実在するかは本検査器では確かめていない** —— 居なければ両側とも非実在の対になり、一致は何も示さない。');
+  }
   notices.push(`${TAG} 標本数=${budget}（realm の bruteForceProtected=${realm.bruteForceProtected === true}`
     + ` / failureFactor=${realm.failureFactor} から導いた。**ロックの手前で止める**）`
     + ` / 失敗の間隔=${spacing}ms`);
@@ -500,7 +656,7 @@ function selfTest() {
     const f = evaluateProbePairing({
       existingUsername: 'admin',
       absentUsername: 'no-such-user-abcd1234',
-      realmUsernames: ['admin'],
+      takenUsernames: ['admin'],
     });
     assert.ok(f.some((x) => x.includes('バイト長が違う')), f.join('\n'));
   });
@@ -508,19 +664,19 @@ function selfTest() {
     assert.deepStrictEqual(evaluateProbePairing({
       existingUsername: 'admin',
       absentUsername: 'ekuze',
-      realmUsernames: ['admin', 'poc-user'],
+      takenUsernames: ['admin', 'poc-user'],
     }), []);
   });
   ok('S-07c 陰性: 陰性対照が realm に実在する → 検出する', () => {
     const f = evaluateProbePairing({
       existingUsername: 'admin',
       absentUsername: 'admin',
-      realmUsernames: ['admin'],
+      takenUsernames: ['admin'],
     });
     assert.ok(f.some((x) => x.includes('実在する')), f.join('\n'));
   });
   ok('S-07d 陰性: 片側の利用者名が空 → 検出する', () => {
-    const f = evaluateProbePairing({ existingUsername: 'admin', absentUsername: '', realmUsernames: [] });
+    const f = evaluateProbePairing({ existingUsername: 'admin', absentUsername: '', takenUsernames: [] });
     assert.ok(f.some((x) => x.includes('対の利用者名を用意できなかった')), f.join('\n'));
   });
 
@@ -609,7 +765,12 @@ function selfTest() {
 
 async function main() {
   const argv = process.argv.slice(2);
-  const unknown = argv.filter((a) => a !== '--self-test' && a !== LIVE_FLAG);
+  const parsed = readUsernameOverride(argv);
+  if (parsed.error) {
+    console.error(`${TAG} ${parsed.error}`);
+    process.exit(2);
+  }
+  const unknown = parsed.rest.filter((a) => a !== '--self-test' && a !== LIVE_FLAG);
   if (unknown.length > 0) {
     console.error(`${TAG} 未知の引数: ${unknown.join(' ')}`);
     process.exit(2);
@@ -618,7 +779,7 @@ async function main() {
   // NFR, #1550: 稼働の Keycloak へ認証の失敗を投げる（brute-force の計数を消費する）。明示の指定が無ければ何もしない。
   requireLiveOptIn('check-login-existence-disclosure', argv, { offline: '--self-test' });
 
-  const r = await run();
+  const r = await run({ usernameOverride: parsed.override });
   for (const notice of r.notices) console.log(notice);
   if (r.failures.length > 0) {
     console.error(`${TAG} ${r.failures.length} 件の失敗:`);
@@ -645,7 +806,12 @@ module.exports = {
   summarizeTimings,
   evaluateProbePairing,
   evaluateLoginConcealment,
+  readUsernameOverride,
+  resolveLoginTarget,
+  pickAbsentCounterpart,
   attemptLogin,
+  USERNAME_FLAG,
+  USERNAME_ENV,
   ABSENT_NAME_ALPHABET,
   UNPROTECTED_SAMPLE_COUNT,
   KEYCLOAK_DEFAULT_QUICK_LOGIN_CHECK_MS,

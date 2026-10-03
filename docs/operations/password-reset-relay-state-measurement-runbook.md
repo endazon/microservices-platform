@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-10-04
 ---
 <!-- trace:
 ids: [SC-15, SC-13, SC-10, FR-05, NFR-13]
 adrs: [ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0103, ADR-0108]
 iadrs: [IADR-0347, IADR-0369, IADR-0404, IADR-0421, IADR-0427, IADR-0432, IADR-0463]
-specs: [20260926_issue-1245_pr-d-state-measurement-runbook, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260911_issue-1245_login-existence-disclosure, 20260926_issue-1558_runbook-nits]
-issues: [#1245, #1143, #1169, #1319, #1355, #1378, #1388, #1526, #1558, planning#596, planning#602, planning#656, planning#659]
+specs: [20260926_issue-1245_pr-d-state-measurement-runbook, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260911_issue-1245_login-existence-disclosure, 20260926_issue-1558_runbook-nits, 20261003_1245_login-checker-username-override]
+issues: [#1245, #1143, #1169, #1319, #1355, #1378, #1388, #1526, #1541, #1558, planning#596, planning#602, planning#656, planning#659]
 -->
 
 # 運用 Runbook: パスワードリセットの近接 MTA の状態を作り、窓とキューを実測する
@@ -38,9 +38,9 @@ issues: [#1245, #1143, #1169, #1319, #1355, #1378, #1388, #1526, #1558, planning
 | --- | --- |
 | 必要な権限 | 対象クラスタの `platform-infra` 名前空間で `scale` / `patch networkpolicy` / `exec` / `logs` ができること。認証基盤の管理コンソールへ `master` の管理者で入れること（§4 の試験利用者の作成・削除、管理イベントの閲覧） |
 | 必要なツール | `kubectl`（対象クラスタの context）・`node` 22・GNU `date`（Git Bash で可）・`curl`。**リポジトリのチェックアウト**（下の版） |
-| チェックアウトの版 | `origin/develop` の **#1526 のマージコミット `33a21412` 以降**。確かめ方: `git merge-base --is-ancestor 33a21412 HEAD && echo OK` |
+| チェックアウトの版 | `origin/develop` の **#1526 のマージコミット `33a21412` 以降**で、かつ**ログインの検査器が利用者名の上書き（`--username` / `LOGIN_PROBE_USERNAME`）を持つ版**。確かめ方: `git merge-base --is-ancestor 33a21412 HEAD && grep -q LOGIN_PROBE_USERNAME scripts/check-login-existence-disclosure.js && echo OK` |
 | シェル | 本書のコマンドは bash の書き方である（PowerShell では動かない） |
-| 所要時間の目安 | 全体で約 3 時間（§2.2 の上流停止の保持 35 分、§2.4 の保持 15 分、§4 の待ち 15 分を含む）。**節ごとに分けて実行してよい**（節の終わりで必ず §0.5 の復元まで行う） |
+| 所要時間の目安 | 全体で約 3 時間（§2.2 の上流停止の保持 35 分、§2.4 の保持 15 分、§4 のロックの確認と解除を含む）。**節ごとに分けて実行してよい**（節の終わりで必ず §0.5 の復元まで行う） |
 
 ---
 
@@ -57,8 +57,8 @@ issues: [#1245, #1143, #1169, #1319, #1355, #1378, #1388, #1526, #1558, planning
 | `deploy/mail-relay`（近接 MTA） | レプリカを 0 にする／稼働コンテナで `postconf` の 1 項目を変える | §2.3 / §2.4 | 元のレプリカ数へ／スナップショットの値へ |
 | `networkpolicy/mail-relay-ingress` と `networkpolicy/mail-relay-ingress-reset-gate` | `from` の `podSelector` を一致しない値へ差し替える | §2.5 | 元のラベル値へ差し替え直す |
 | `deploy/reset-gate`（申請を閉じる門） | **任意**でレプリカを 0 にする | §2.7 | 元のレプリカ数へ |
-| realm `platform` の `resetPasswordAllowed` と `reset-gate.*` 属性 | **人は書かない。** 門が閉じ、門が開け直す | §2 全体 | 門が戻す（§0.5） |
-| realm `platform` の試験利用者 1 人 | 作る → 一時ロックさせる → 削除する | §4 | 削除する |
+| realm `platform` の `resetPasswordAllowed` と `reset-gate.*` 属性 | **人は書かない。** 門が閉じ、門が開け直す。**実施の最後に `reset-gate.*` の 3 属性だけを消す**（裁定 5） | §2 全体 / §0.6 | 門が戻す（§0.5）。属性は §0.6 で消す |
+| realm `platform` の試験利用者 1 人 | 作る → 一時ロックさせる → 解除する → ログインの検査器で測る → 削除する | §4 | 削除する |
 
 **触らないもの**: 認証基盤（Keycloak）の Deployment・realm の宣言・Secret（`keycloak-smtp` / `reset-gate-oidc` を含む）・
 床（`deploy/reset-floor` と Istio の経路）・他の名前空間。**`scripts/k8s-local-up.sh` と `scripts/istio-edge-up.sh` は本書の実行中に走らせない**
@@ -68,7 +68,7 @@ issues: [#1245, #1143, #1169, #1319, #1355, #1378, #1388, #1526, #1558, planning
 
 | # | 条件 | 理由 |
 | --- | --- | --- |
-| S1 | 上流（Secret `keycloak-smtp` の `host`）が捕捉用 MTA ではない | 状態 A と §2 の申請が**実在の宛先へ実メールを出す**。本書は dev の上流を前提にしている（未決事項 4） |
+| S1 | 上流（Secret `keycloak-smtp` の `host`）が捕捉用 MTA ではない | 状態 A と §2 の申請が**実在の宛先へ実メールを出す**。本書は dev の上流を前提にしている。**C1（上流停止）は上流が捕捉用 MTA のときだけ測り、実テナントでは作らない**（裁定 4） |
 | S2 | 門が居ない（`deploy/reset-gate` が available 1 でない）状態で §2.2〜§2.5 を始めようとしている | 門が居ないと窓が閉じない。§2.7 以外で門の不在を前提にしない |
 | S3 | 障害を入れてから **60 秒経っても**門が閉じない（門のログに `close:` が出ない、または `watch` で 200 / 500 が続く） | **利用者名を列挙できる窓が開いたまま**である。予想の上限（周期 10 秒 ＋ タイムアウト 10 秒 ＋ PUT）を大きく超えている |
 | S4 | 門のログに `tick failed: PUT realm returned 401` / `403` が出る | `manage-realm` での PUT が通っていない。閉じるべきときに閉じられない |
@@ -87,6 +87,7 @@ ts() { date -u +%Y-%m-%dT%H:%M:%S.%3NZ; }          # UTC・ミリ秒。以後の
 cd <リポジトリのルート>
 git rev-parse HEAD | tee "$PRD/00-head.txt"
 git merge-base --is-ancestor 33a21412 HEAD && echo "#1526 以降: OK" | tee -a "$PRD/00-head.txt"
+grep -q LOGIN_PROBE_USERNAME scripts/check-login-existence-disclosure.js && echo "ログインの検査器の上書き: OK" | tee -a "$PRD/00-head.txt"
 kubectl config current-context | tee "$PRD/00-context.txt"      # 対象クラスタであることを目で確かめる
 ```
 
@@ -178,17 +179,73 @@ curl -s 'http://localhost:9090/api/v1/rules?type=alert' | grep -o '"name":"MailR
 | NetworkPolicy の `podSelector` | §2.5 の「戻す」 | `01-netpol.txt` と同じ出力 |
 | `reset-gate` のレプリカ | `kubectl -n platform-infra scale deploy/reset-gate --replicas=<値>` → `rollout status` | READY が元の数。門のログに `起動:` |
 | realm | **人は触らない。** 近接 MTA が健全に戻れば、門が連続 3 回の成功のあと `reopen:` で `resetPasswordAllowed=true` に戻す | `realm_gate_state` で `resetPasswordAllowed=true` / `state="open"` |
-| 試験利用者 | §4.4 | 管理コンソールの利用者一覧に居ない |
+| 試験利用者 | §4.6 | 管理コンソールの利用者一覧に居ない |
+| `reset-gate.*` 属性 | §0.6（実施の最後に 1 回だけ） | `realm_gate_state` の `state` / `reason` / `since` が `null` |
 
 最後の照合: §0.4 のコマンドを `02-` の接頭辞で撮り直し、`diff "$PRD/01-replicas.txt" "$PRD/02-replicas.txt"` のように 1 つずつ比べる。
 
 **戻らないもの（差として記録する）**
 
-- 🔴 **realm の `reset-gate.*` 属性。** 門が 1 度でも閉じて開け直すと、`state="open"`・`reason`・`since` が残る。
-  実験前が `null` だった場合も、**門が平常運転で作る姿**であり、門と後追いの Job はこの状態を健全として扱う。
-  消すには人手で `manage-realm` の PUT を打つことになり、**門を機械にした理由（人手で realm を書かない）に反する**ので本書は消さない（未決事項 5）。
+- realm の `reset-gate.*` 属性は**戻らないものから外した**（裁定 5）。門が 1 度でも閉じて開け直すと `state="open"`・`reason`・`since` が残るが、
+  **実施の最後に §0.6 で消す。** 実測の記録は §5 の表に残り、realm には試験の痕跡を残さない。
 - Pod 名（`mail-relay` を 0 → 1 にすると変わる）と、再作成前の spool の中身（寿命 30 分のメールだけ）。
 - 認証基盤の管理イベント・利用者イベント・Postfix のログ（記録として残る）。捕捉用 MTA に溜まったメール。
+
+### 0.6 実施の最後に `reset-gate.*` 属性を消す（裁定 5）
+
+**全節を終え、§0.5 の最後の照合を済ませた後に 1 回だけ行う。** 実測の記録は §5 の表に残すので、realm には試験の痕跡を残さない。
+
+🔴 **開いた状態（`resetPasswordAllowed=true` かつ `state="open"`）でしか消さない。** 閉じた状態で標識を消すと、
+門は「門ではなく人が手で閉じた」と読み、**近接 MTA が健全に戻っても二度と開け直さない**（門の判断の規則がそう書いてある）。
+下のコマンドは GET した realm がこの条件を満たさなければ PUT せずに止まる。
+
+1. 前提を確かめる: `realm_gate_state` が `resetPasswordAllowed=true` / `state="open"` を返し、門のログの直近 2 分に `close:` も `tick failed:` も無い。
+2. 消す。門の Pod から**門自身の資格情報**で、門と同じ read-modify-write の形（コレクションを本文に載せない）で、`reset-gate.*` の 3 キー**だけ**を落として PUT する。
+   消すキーの集合と「本文に載せないコレクション」は、門のコード（`/gate/reset-gate.js`）の export をそのまま使う（書き写さない）。
+
+```bash
+echo "gate-attrs-delete-begin $(ts)" | tee -a "$PRD/timeline.txt"
+kubectl -n platform-infra exec deploy/reset-gate -c gate -- node -e '
+const g = require("/gate/reset-gate.js");
+const e = process.env;
+(async () => {
+  const tr = await fetch(`${e.KC_URL}/realms/${e.KC_REALM}/protocol/openid-connect/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "client_credentials", client_id: e.GATE_CLIENT_ID, client_secret: e.GATE_CLIENT_SECRET }),
+  });
+  if (!tr.ok) throw new Error(`token ${tr.status}`);
+  const { access_token: token } = await tr.json();
+  const url = `${e.KC_URL}/admin/realms/${e.KC_REALM}`;
+  const rr = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  if (!rr.ok) throw new Error(`GET realm ${rr.status}`);
+  const r = await rr.json();
+  const a = r.attributes || {};
+  if (r.resetPasswordAllowed !== true || a[g.GATE_STATE_ATTRIBUTE] !== g.GATE_STATE_OPEN) {
+    throw new Error("開いた状態ではない（resetPasswordAllowed=true かつ state=open でない）。消さない");
+  }
+  const body = {};
+  for (const [k, v] of Object.entries(r)) { if (!g.REALM_COLLECTION_KEYS.has(k)) body[k] = v; }
+  const attrs = { ...a };
+  for (const k of g.GATE_WRITABLE_ATTRIBUTES) delete attrs[k];
+  body.attributes = attrs;
+  const pr = await fetch(url, { method: "PUT", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (!pr.ok) throw new Error(`PUT realm ${pr.status}`);
+  console.log(`PUT realm ${pr.status}（reset-gate.* の ${g.GATE_WRITABLE_ATTRIBUTES.size} キーを落とした）`);
+})().catch((x) => { console.error(x.message); process.exit(1); });'
+echo "gate-attrs-delete-end $(ts)" | tee -a "$PRD/timeline.txt"
+realm_gate_state | tee "$PRD/03-realm-after-delete.json"
+```
+
+3. 確かめる: `03-realm-after-delete.json` が `resetPasswordAllowed=true` / `state=null` / `reason=null` / `since=null`。
+   続けて門のログに `close:` が出ないこと（門は「開いていて健全」なら何もしない）と、`reset-pair.js once` が `200 / 200` を返すことを見る。
+4. **本文から落としたキーが消える根拠**: 本リポジトリの認証基盤の版（`quay.io/keycloak/keycloak:24.0`）のソースで、realm の更新
+   （`RealmAdminResource.updateRealm` → `RepresentationToModel.updateRealm` → `DefaultExportImportManager.updateRealm`）は、
+   本文に `attributes` が在るとき**「稼働の属性のうち本文に無いキー」を `removeAttribute` で消す**（表示名などの除外キーを除く）。
+   24.0.0 と 24.0.5 の両方のソースで確かめた（**ソースの読みであり、稼働での実測ではない**）。したがって本文に `attributes` を必ず載せる
+   （上のコマンドは GET した属性から 3 キーを落とした残りを載せる。`attributes` を省くと何も消えない）。
+   🔴 **PUT が 2xx なのに属性が残ったら**、稼働の版がこの読みと違う。**別の手段を試さずに止め**、残った値と PUT の時刻を表 6 に書いて #1245 へ報告する（人手の PUT を重ねない）。
+5. この PUT は管理イベントに `reset-gate` クライアントの `UPDATE`（`REALM`）として残る。**門の操作と区別できるよう、時刻を表 6 に書く。**
 
 ---
 
@@ -196,7 +253,7 @@ curl -s 'http://localhost:9090/api/v1/rules?type=alert' | grep -o '"name":"MailR
 
 既存の検査器 2 本は、本書の状態のいくつかを測れない ——
 `check-password-reset-mail.js` は**閉じた状態では申請を打たずに終わり**、上流が落ちていると**捕捉用 MTA の API を読めず前提で止まる**。
-`check-login-existence-disclosure.js` は**対象が realm 宣言の最初の対話利用者（`admin`）に固定**で、ロックの手前で止まる。
+`check-login-existence-disclosure.js` は**既定では対象が realm 宣言の最初の対話利用者（`admin`）**で、ロックの手前で止まる。利用者のクラスタでは**試験専用の利用者を `--username` で渡して**使う（§4.5）が、設計上ロックの後は測れない。
 そこで、両検査器の export を**そのまま借りる**小さな測定器を `$PRD` に置いて使う（URL・本文の正規化・時計は検査器と同じ）。
 
 ### 1.1 `reset-pair.js` —— リセット申請を実在／非実在の対で打つ
@@ -345,9 +402,9 @@ async function main() {
       }
       repetitions.push({ existing, absent });
     }
-    // 参考表示。🔴 この判定式は置き換えが決まっている（§2.1 の注意）。判定の正本にしない。
+    // 検査器の T-25 と同じ判定関数（順位和検定・p < 0.01 で不合格。§2.1）。
     const current = m.evaluateTimingConsistency({ repetitions });
-    console.error(`[reset-pair] 参考（現行の判定式）: ${current.verdict}`);
+    console.error(`[reset-pair] 判定（順位和検定）: ${current.verdict}`);
     for (const line of current.lines) console.error(line);
   } else {
     throw new Error(`未知のモード: ${mode}`);
@@ -476,14 +533,20 @@ node "$PRD/reset-pair.js" watch 180 2000 | tee "$PRD/<状態>-reopen.jsonl"
 
 - #1526 は**着地済み**である（`33a21412`）。検査器の所要時間の札が `T-25` になり、時計が単調時計の整数 ns になり、出力に段の内訳が出る。
   **これらは #1526 以降のチェックアウトでしか出ない**（§前提の版の確認はこのためである）。
-- ただし #1526 の後、**計画が所要時間の判定式そのものを順位和検定（両側・有意水準 1%。片側 12・反復 3）へ改めると裁定した**（2026-09-26）。
-  理由は、整数 ns の時計と現行の 2 段の判定式の組では、**系統差が無くても実行の約 6 割が「不合格」になる**ことが合成試験で示されたためである。
-  **この判定式の変更は本リポジトリにまだ実装されていない**（時計だけが先に入っている）。
-- したがって **§2.1 の手順 1 の `T-25` の判定（合格／不合格）は、本書の記録の正本にしない。** 正本は手順 2 の**生の標本**である。
-  判定式が実装されたら、その実装で `A-timing.jsonl` を判定し直す。反復ごとの中央値と比は参考として記録してよい。
+- #1526 の後、計画は所要時間の判定式そのものを**順位和検定**へ改めると裁定し（2026-09-26。整数 ns の時計と旧来の 2 段の判定式の組では、
+  系統差が無くても実行の約 6 割が「不合格」になることが合成試験で示されたため）、**検査器はこの判定式を実装済みである**（#1541。本書の初版の時点では未実装だった）。
+  判定は「反復 3 の先頭 1 回を暖機として捨て、残り 2 反復をまとめた片側 24 標本どうしを両側の順位和検定で比べ、**p < 0.01 なら不合格**」。
+  自己対照（同じ側どうしの比）は「評価不能」の判定にだけ使う。
+- したがって **§2.1 の手順 1 の `T-25` の判定（合格／不合格／評価不能）と p 値を表 3 に記録する。** 有意水準 1% は
+  **系統差が無くても約 100 回に 1 回は不合格になる**値である —— 不合格が 1 回出たら、その事実と p 値をそのまま書き、手順 2 の結果と並べる。
+- 手順 2 の**生の標本**（`A-timing.jsonl`）も引き続き残す。`reset-pair.js timing` は終わりに同じ判定関数で判定を出す（参考ではなく、検査器と同じ判定である）。
+  反復ごとの中央値と比は判定に使わない参考として記録してよい。
 - **床を外して比べない**（本番での退路としても、比較のためにも、本書では `RESET_FLOOR=0` を使わない）。
 
 ### 2.2 状態 C1 —— 上流停止（relay は稼働）
+
+🔴 **上流が捕捉用 MTA（`mailpit`）のときだけ行う**（裁定 4）。上流が実際のメールテナントなら C1 は**作らない**
+（中止条件 S1 のまま測らない）。表 1 の C1 の行に「未測（上流が実テナント）」と書く。送出経路の断は C2 / C2' / C3 で測る。
 
 **入れる**:
 ```bash
@@ -533,7 +596,7 @@ echo "C3-fault-end $(ts)"   | tee -a "$PRD/timeline.txt"
 
 （C3b は 1 行目の代わりに `postconf -e 'smtpd_client_restrictions=reject'`。）
 
-**確かめる**: 門のログの `close:` の理由が期待の拒否コードを含むこと。**違うコード・違う段で拒まれたら、そのまま記録する**（未決事項 3）。
+**確かめる**: 門のログの `close:` の理由が期待の拒否コードを含むこと。**違うコード・違う段で拒まれたら、そのまま記録する**（実測項目 3）。
 門が閉じた後、§2.6（状態 D）をここで測る。
 
 **戻す**（§0.5 の `postconf` の行）:
@@ -593,12 +656,12 @@ kubectl -n platform-infra exec deploy/mail-relay -c queue-exporter -- wget -qO- 
 NetworkPolicy は加算的なので、残る `mail-relay-ingress-otel-collector`（:9154 だけを許す）により Pod は「隔離」され、:587 への接続は**強制するクラスタでは**落とされる。
 **削除ではなく差し替え**にするのは、戻すときに同じ値へ確実に戻せるからである。
 
-**まず、このクラスタで C2' が作れるかを確かめる**（未決事項 1）:
+**まず、このクラスタで C2' が作れるかを確かめる**（実測項目 1）:
 
 - リポジトリは「dev の k3d の既定は NetworkPolicy を強制しない」と書いている。強制しないクラスタでは差し替えても何も起きない（門は閉じず、申請は 200 / 200 のまま）。
 - 強制していても、**捨てる（DROP）か拒む（REJECT）か**は実装による。拒むなら接続は即座に失敗し、それは C2 と同じ形である。
 - **判定は結果で行う**: 門の `close:` の理由が `timeout after 10000ms` なら C2'（SYN が落ちている）、`ECONNREFUSED` などの即時の失敗なら「C2 相当」、
-  60 秒たっても閉じず申請が 200 / 200 なら「強制しない」。**後の 2 つのときは C2' は作れなかったと記録する**（別の作り方は未決事項 1）。
+  60 秒たっても閉じず申請が 200 / 200 なら「強制しない」。**後の 2 つのときは C2' は作れなかったと記録する**（別の作り方は実測項目 1）。
 
 §2.0.1 の型で、`READY` を見てから**入れる**:
 ```bash
@@ -611,7 +674,7 @@ echo "C2p-fault-end $(ts)"   | tee -a "$PRD/timeline.txt"
 ```
 
 **確かめる**: 実在側の 500 が**約 10 秒後**に返ること（`ms` が 10 000 前後。これが「ステータスを見なくても所要時間で判別できる」W1' の形である）。
-**10 秒より短い時間で 5xx になったら**、経路上のどこかが先に打ち切っている（未決事項 10）—— ステータスと `ms` をそのまま記録する。
+**10 秒より短い時間で 5xx になったら**、経路上のどこかが先に打ち切っている（実測項目 10）—— ステータスと `ms` をそのまま記録する。
 門が閉じた後、§2.6（状態 D）を測る。
 
 **戻す**:
@@ -636,8 +699,11 @@ C3 / C2 / C2' のいずれかで門が閉じている間に測る（門が閉じ
 1. `window` の出力で、門が閉じた後の行が**実在・非実在とも 400**・`bodyEqual: true`・`bodyBytes` が同じであること。**連続 5 行以上**を確かめる。
 2. ログイン画面から導線が消えていること: `node "$PRD/reset-pair.js" once` が両側とも `error: "no-reset-link"` を返す。
 3. 閉じている間に新しい申請を**先取りできない**ので、`window` の先取りは必ず開いている間（`READY` の前）に済ませる。
+4. 🎯 **導線が消えた後に、どうやって申請へ到達したかを記録する**（裁定 2）。表 1 の D の行の「申請への到達」欄へ、
+   本書の方法（開いている間に先取りしたフォームへ、閉じた後に POST した）か、それ以外の経路（申請端点の URL を直接開いた等）かと、その経路で得た応答を書く。
 
-期待と違ったら（400 以外・本文不一致）**そのまま記録する**。過去の実測（400 / 400・本文バイト一致）がどの経路で閉じた状態の申請端点に届いたかは記録に残っていない（未決事項 2）。
+期待と違ったら（400 以外・本文不一致）**そのまま記録する**。過去の実測（400 / 400・本文バイト一致）がどの経路で閉じた状態の申請端点に届いたかは記録に残っていないので、
+今回の到達の仕方は**必ず**書く（同じ 400 / 400 でも、経路が違えば比べられない）。
 
 ### 2.7 任意: 門を止めた陰性対照（生の 500 / 200）
 
@@ -723,8 +789,10 @@ realm は「**5 回連続で失敗すると 15 分の一時ロック**（永久�
 統合スタックの検査器は、後段を壊さないために**意図的にロックの手前で止まる**ので、ここだけが未実測で残っている。
 
 🔴 **`admin` をはじめ、realm 宣言に在る利用者では決して行わない。** 他の自動化（性能試験・検索評価など）が使っている。
-**専用の試験利用者を作り、測り、削除する。** 下の測定器は宣言済みの利用者名を渡されると拒む。
-🔴 **統合スタック用のログインの検査器（`check-login-existence-disclosure.js`）を利用者のクラスタで稼働モードにしない。** 対象が `admin` に固定で、失敗を 4 回積む（上書きの手段が無い。未決事項 6）。
+**専用の試験利用者を作り、測り、削除する。** 下の測定器と検査器は、宣言済みの利用者名と宣言済みの利用者のメールアドレス（いずれも大小を無視）、`@` を含む名前を渡されると拒む（判定は検査器の同じ関数である。realm はメールアドレスでのログインを許すので、`admin` のメールアドレスを渡すと `admin` に失敗が積まれる）。検査器はさらに ASCII 以外の文字・前後の空白・制御文字を拒む。
+🔴 **統合スタック用のログインの検査器（`check-login-existence-disclosure.js`）を利用者のクラスタで稼働モードにするときは、必ず `--username` で試験利用者を渡す**（裁定 6）。
+指定が無いと対象は `admin` になり、失敗を `failureFactor - 1` 回（宣言では 4 回）積む。空の指定（`LOGIN_PROBE_USERNAME=` など）は既定へ倒さず exit 2 で止まる。
+検査器はロックの手前で止まる設計なので**ロックの後は測れない** —— ロックの後は下の使い捨ての測定器で測り、ロックの手前は検査器（CI と同じ判定）で測る。
 
 ### 4.1 試験利用者を作る
 
@@ -759,16 +827,15 @@ async function main() {
   const realmRes = m.loadRealm();
   if (!realmRes.ok) throw new Error(realmRes.error);
   const realm = realmRes.value;
-  const declared = (realm.users || []).map((u) => String((u && u.username) || ''));
   if (testUser === '') throw new Error('試験利用者名を引数で渡す');
-  if (declared.includes(testUser)) {
-    throw new Error(`${testUser} は realm 宣言に在る共有の利用者である。専用の試験利用者を作って渡す`);
-  }
+  // 拒否の判定は検査器と同じ関数を借りる（宣言に在る名前を大小無視で拒む。空を既定へ倒さない）。
+  const target = l.resolveLoginTarget({ override: testUser, realm });
+  if (!target.ok) throw new Error(target.error);
   if (!(realm.bruteForceProtected === true && Number.isInteger(realm.failureFactor) && realm.failureFactor >= 1)) {
     throw new Error('realm 宣言が一時ロックを持たない（bruteForceProtected / failureFactor）');
   }
-  const absent = l.makeAbsentUsernameOfLength(realm, Buffer.byteLength(testUser));
-  const pairing = l.evaluateProbePairing({ existingUsername: testUser, absentUsername: absent || '', realmUsernames: declared });
+  const { takenUsernames, absentUsername: absent } = l.pickAbsentCounterpart(realm, target);
+  const pairing = l.evaluateProbePairing({ existingUsername: testUser, absentUsername: absent || '', takenUsernames });
   if (pairing.length > 0) throw new Error(pairing.join(' / '));
   const client = m.pickBrowserFlowClient(realm);
   const base = m.keycloakBaseUrl();
@@ -825,16 +892,41 @@ echo "lockout-end $(ts)"   | tee -a "$PRD/timeline.txt"
 | 見るもの | どこで | 期待（導出）・記録 |
 | --- | --- | --- |
 | ロックの手前（`afterLockThreshold: false` の行） | `lockout.jsonl` | 各回 `statusEqual` / `locationEqual` / `bodyEqual` がすべて `true`（統合スタックの実測と同じ形） |
-| **ロックの後**（`afterLockThreshold: true` の行） | 同上 | 🎯 **これが本節の測定対象である。** ステータス・リダイレクト先・本文が非実在側と一致するか。**期待値は置かない**（認証基盤がロック中の利用者に何を返すかは実測で決める。未決事項 8） |
+| **ロックの後**（`afterLockThreshold: true` の行） | 同上 | 🎯 **これが本節の測定対象である。** ステータス・リダイレクト先・本文が非実在側と一致するか。**期待値は置かない**（認証基盤がロック中の利用者に何を返すかは実測で決める。実測項目 8） |
 | 所要時間 | 同上の `ms` | ロックの前後で実在側の `ms` が変わるか（例: ロック中は資格情報の照合を省いて速くなる／遅くなる）。**判定しない。数字だけ記録する** |
 | ロックが本当に掛かったこと | 管理コンソール → Users → 試験利用者（一時ロックの表示）／ **Events → User events** で試験利用者の `LOGIN_ERROR` の error 欄 | ロックを示すエラー種別の行があること。時刻を記録する。**無ければロックは起きておらず、ロック後の行の比較は無効**である |
 | 非実在側がロックされないこと | User events に非実在名の行があっても、利用者が存在しないので一時ロックの対象にならない | 記録のみ |
 
-### 4.4 解除と後片付け
+### 4.4 解除する
 
-1. **解除**: 管理コンソール → Users → 試験利用者 → 一時ロックの表示を解除する（または 15 分待つ）。**realm 全体のロックの一括解除は使わない**（他の利用者のロックまで消える）。
-2. **削除**: 同じ画面から試験利用者を削除する。削除の時刻を `timeline.txt` に書く。
-3. 確かめる: 利用者一覧に試験利用者が居ないこと。
+管理コンソール → Users → 試験利用者 → 一時ロックの表示を解除する。**realm 全体のロックの一括解除は使わない**（他の利用者のロックまで消える）。
+🔴 **15 分待つ方法は §4.5 の前には使わない** —— 待って解けるのはロックであって、失敗の計数が残り得る。残っていると §4.5 の 1 回目で再びロックし、
+ロックの手前を測ったつもりでロックの後を測ることになる。解除の時刻を `timeline.txt` に書く。
+
+### 4.5 ログインの検査器で、ロックの手前の 3 面を CI と同じ判定で測る（裁定 6）
+
+解除した**同じ試験利用者**を `--username` で渡し、統合スタックの CI と同じ検査器で 1 回測る（ステータス・リダイレクト先・正規化した本文。所要時間は出すだけ）。
+**この順序（ロック → 解除 → 検査器）にするのは**、§4.3 でロックが掛かったことを User events で確かめた利用者に対して走らせるためである ——
+🔴 **検査器は渡された利用者が稼働 realm に居るかを確かめない**（管理 API の資格情報を持たない）。居ない名前を渡すと両側とも非実在の対になり、黙って一致する。
+
+```bash
+echo "login-check-begin $(ts)" | tee -a "$PRD/timeline.txt"
+node scripts/check-login-existence-disclosure.js --live --username prd-lockout1 2>&1 | tee "$PRD/login-check.txt"; echo "exit=${PIPESTATUS[0]}"
+echo "login-check-end $(ts)"   | tee -a "$PRD/timeline.txt"
+```
+
+| 見るもの | 期待（導出）・記録 |
+| --- | --- |
+| 対象の行 | `実在=prd-lockout1 / 非実在=<同じバイト長の名前>` と「実在側は上書きした試験利用者である」の行が出る。**`実在=admin` が出たら直ちに Ctrl-C で止め、表 5 に書く**（上書きが効いていない） |
+| 標本数の行 | `標本数=<failureFactor - 1>`（宣言では 4）。ロックの手前で止まる |
+| 判定 | `exit=0` と `OK: ログイン経路の応答（ステータス・リダイレクト先・本文）が…区別できない`。失敗の行が出たら、その行をそのまま表 5 に書く（`測定中に変わった` は、解除が失敗の計数まで消していなかったことを示す） |
+| 所要時間の行 | `[観測]` の行の数字を表 5 に写す（判定しない） |
+| 終わった後 | 管理コンソールで試験利用者が**ロックされていない**こと |
+
+### 4.6 削除と後片付け
+
+1. **削除**: 管理コンソール → Users → 試験利用者を削除する。削除の時刻を `timeline.txt` に書く。
+2. 確かめる: 利用者一覧に試験利用者が居ないこと。
 
 ---
 
@@ -846,15 +938,15 @@ echo "lockout-end $(ts)"   | tee -a "$PRD/timeline.txt"
 
 **表 1: 状態ごとの応答と窓**
 
-| 状態 | 障害の時刻 | 実在（ステータス・`ms`） | 非実在（ステータス・`ms`） | 本文一致 | 門の `close:`（時刻・理由） | 最初の 400 / 400 | **窓の秒数** | 窓の中の 500 の件数 | 戻した時刻 | `reopen:` の時刻 | 最初の 200 / 200 | 根拠 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| A | — |  |  |  | —（閉じない） | — | — | — | — | — | — | `A-once.jsonl` |
-| C1 |  |  |  |  | —（閉じないこと） | — | — | — |  | — | — | `C1-pairs.jsonl` |
-| C3（a / b） |  |  |  |  |  |  |  |  |  |  |  | `C3-*.jsonl` / `C3-gate.log` |
-| C2 |  |  |  |  |  |  |  |  |  |  |  | `C2-*` |
-| C2'（作れたか: 作れた／C2 相当／強制しない） |  |  |  |  |  |  |  |  |  |  |  | `C2p-*` |
-| D（どの状態の閉鎖中か） | — | 400 ・ | 400 ・ |  | — | — | — | — | — | — | — | `*-window.jsonl` の閉鎖後の行 |
-| 任意: C2raw ほか |  |  |  |  | —（門を止めた） | — | — |  |  | — | — | `C2raw-pairs.jsonl` |
+| 状態 | 障害の時刻 | 実在（ステータス・`ms`） | 非実在（ステータス・`ms`） | 本文一致 | 門の `close:`（時刻・理由） | 最初の 400 / 400 | **窓の秒数** | 窓の中の 500 の件数 | 戻した時刻 | `reopen:` の時刻 | 最初の 200 / 200 | 申請への到達（導線が消えた後。D のみ） | 根拠 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| A | — |  |  |  | —（閉じない） | — | — | — | — | — | — | — | `A-once.jsonl` |
+| C1（上流が実テナントなら「未測」） |  |  |  |  | —（閉じないこと） | — | — | — |  | — | — | — | `C1-pairs.jsonl` |
+| C3（a / b） |  |  |  |  |  |  |  |  |  |  |  | — | `C3-*.jsonl` / `C3-gate.log` |
+| C2 |  |  |  |  |  |  |  |  |  |  |  | — | `C2-*` |
+| C2'（作れたか: 作れた／C2 相当／強制しない） |  |  |  |  |  |  |  |  |  |  |  | — | `C2p-*` |
+| D（どの状態の閉鎖中か） | — | 400 ・ | 400 ・ |  | — | — | — | — | — | — | — | （§2.6 の 4。先取りしたフォームへ POST／それ以外の経路とその応答） | `*-window.jsonl` の閉鎖後の行 |
+| 任意: C2raw ほか |  |  |  |  | —（門を止めた） | — | — |  |  | — | — | — | `C2raw-pairs.jsonl` |
 
 **表 2: 門の `close` PUT の証跡**
 
@@ -869,13 +961,14 @@ echo "lockout-end $(ts)"   | tee -a "$PRD/timeline.txt"
 | 床の経路の有無（§0.3） |  |
 | 生の標本 | `A-timing.jsonl`（反復 3 × 片側 12） |
 | 反復 2・3 の実在／非実在の中央値（ms） |  |
-| 検査器の `T-25` の出力（参考。判定の正本にしない） |  |
+| 検査器の `T-25` の判定（合格／不合格／評価不能）と p 値 |  |
+| `reset-pair.js timing` の判定（同じ関数）と p 値 |  |
 
 **表 4: キュー（§3 の Q1〜Q11）** —— 項目ごとに値と根拠の行（`queue-watch.txt` の時刻）。
 
-**表 5: ロックアウト（§4）** —— 回ごとに実在／非実在のステータス・`location` の一致・本文の一致・`ms`、ロックの確認（User events の時刻）。
+**表 5: ロックアウト（§4）** —— 回ごとに実在／非実在のステータス・`location` の一致・本文の一致・`ms`、ロックの確認（User events の時刻）、解除の時刻、§4.5 の検査器の結果（`exit`・対象の行・標本数・失敗の行・所要時間の `[観測]` の行）。
 
-**表 6: 復元の照合** —— §0.5 の最後の照合の `diff` の結果と、「戻らないもの」の実際の値。
+**表 6: 復元の照合** —— §0.5 の最後の照合の `diff` の結果と、「戻らないもの」の実際の値、§0.6 で `reset-gate.*` 属性を消した時刻（管理イベントの時刻）と消した後の `realm_gate_state`（消えなかったなら残った値）。
 
 ### 5.2 どこへ置くか
 
@@ -906,6 +999,7 @@ echo "lockout-end $(ts)"   | tee -a "$PRD/timeline.txt"
 - C3 / C2（/ C2'）のそれぞれで、表 2 の 3 つの証跡がそろっている
 - 表 1 の D の行が `400 / 400`・本文一致である。**そうでなければ成功ではなく、それ自体が報告すべき結果である**
 - §0.5 の最後の照合で、「戻らないもの」以外の差が無い
+- §0.6 で `reset-gate.*` 属性が消えている（消えなかったなら、そのことが表 6 に書かれている）
 - 記録が #1245 にコメントされている
 
 **「窓の秒数が 0 だった」は成功条件ではない。** 窓は残るものとして設計されている —— 測れていればよい。
@@ -916,30 +1010,43 @@ echo "lockout-end $(ts)"   | tee -a "$PRD/timeline.txt"
 | --- | --- | --- |
 | `reset-pair.js` が `前提を満たさない` で止まる | context が違う・エッジの CA を読めない・Keycloak の Deployment が見つからない | `kubectl config current-context` と §0.3 を見直す。検査器の稼働モードが同じ前提で動くかを 1 回試す |
 | `window` の先取りで `no-reset-link` | 既に申請が閉じている | `realm_gate_state` を見る。門が閉じているなら原因（近接 MTA）を先に直す |
-| 障害を入れても門が閉じない（S3） | NetworkPolicy を強制しない（C2'）／拒否が効いていない（C3。`postfix reload` が効いていない）／門のプローブが別の経路を見ている | 直ちに戻す。C3 なら `postconf -h` で値が入ったか、Pod を作り直さずに `postfix reload` をもう 1 度。記録して未決事項へ |
+| 障害を入れても門が閉じない（S3） | NetworkPolicy を強制しない（C2'）／拒否が効いていない（C3。`postfix reload` が効いていない）／門のプローブが別の経路を見ている | 直ちに戻す。C3 なら `postconf -h` で値が入ったか、Pod を作り直さずに `postfix reload` をもう 1 度。記録して実測項目 1 / 3 の結果として書く |
 | `tick failed: PUT realm returned 403`（S4） | 門のサービスアカウントに `manage-realm` が無い | 直ちに戻す。宣言の検査（`node scripts/check-realm-constraints.js`）が通るか、稼働 realm の service account のロールを管理コンソールで確認し、#1245 へ報告 |
 | 戻しても門が開け直さない（S6） | 門の連続成功が揃わない（揺れ）／門の標識が `closed` でない（人が手で閉じた扱い）／宣言が閉じている | `realm_gate_state` の `state` を見る。`closed` 以外なら門は開けない設計である。**手で開けない** —— 開けると検査器の T-20 が「門の標識が closed のまま開いている」で赤になる。状態を記録して報告する |
 | `mail-relay` が 2/2 にならない | 起動時の初期化スクリプトの fail-closed（上流の値が空・STARTTLS の値が不正）／exporter のスクリプトの ConfigMap が無い | `kubectl -n platform-infra logs deploy/mail-relay -c postfix` の `mail-relay:` で始まる行を見る。直らなければ、稼働中の構成を入れたときと同じチェックアウトから `kubectl apply -f deploy/mail-relay/mail-relay.yaml` |
+| §0.6 で `開いた状態ではない` と出て止まる | 門がまだ開け直していない／閉じている | 消さない。§2.0.1 の「再開の観測」で開け直しを待ち、`state="open"` になってからやり直す。**閉じたまま標識を消さない** |
 | ロックアウトで User events にロックの行が無い | 試験利用者が無効になっている・稼働 realm の一時ロックの設定が宣言と違う | 利用者が有効か、管理コンソールの realm 設定（Security defenses → Brute force detection）が宣言どおりかを確かめ、もう 1 度だけ行う。**2 回目も無ければ行わない**（記録する） |
+| §4.5 の検査器が `realm 宣言に在る共有の利用者` で止まる | 宣言に在る名前（大小違いを含む）を渡した | 宣言に無い名前で試験利用者を作り直す。**`--username` を外して走らせない**（既定の対象は `admin` である） |
 
 ## 限界（この手順で担保できないこと）
 
 - **本書の期待値はすべて導出である。** 本書が正しく状態を作れることも、稼働クラスタでは 1 度も確かめていない。
 - **窓は閉じない。** 本書は窓の大きさを測るだけである。窓の間に返った 500 / 200 の件数が、そのまま「その間に列挙できた件数の上限」になる。
-- **go-live の構成（上流が実テナント）では本書をそのまま使えない**（S1）。上流停止の作り方が別に要る。
+- **go-live の構成（上流が実テナント）では本書をそのまま使えない**（S1）。**C1（上流停止）は実テナントでは測らない**と裁定済みで（裁定 4）、送出経路の断は C2 / C2' / C3 で測る。ただし実在側の申請が実在の宛先へメールを出す点の扱いは、本書には無い。
 - **門の不在を知らせる計器は無い**（観測の仕様書の未決事項）。本書の S2 は人の目で見ている。
-- **所要時間の判定式は本リポジトリで未実装の改定を待っている**（§2.1）。生の標本は残るが、判定の結論はまだ出せない。
+- **所要時間の判定は順位和検定（有意水準 1%）である**（§2.1）。系統差が無くても約 100 回に 1 回は不合格になるので、1 回の実施の判定だけで結論を固めない。
 - 認証基盤の Pod の中で管理 CLI を起動する既存の検査器（§2.0.1 の T-20 の確認）は、認証基盤のメモリを圧迫し得る既知の残債を抱えている。
 
-## 未決事項（リポジトリから導けなかったこと）
+## 未決事項の振り分け（2026-10-03 の利用者裁定）
 
-1. **利用者のクラスタが NetworkPolicy を強制するか、強制するなら捨てるか拒むか。** C2' を作れるかはこれで決まる。作れなかった場合の別の作り方（接続は成立するがバナーを返さない状態など）はリポジトリに無く、本書は手順にしていない。
-2. **閉じた状態の 400 / 400 を過去の実測がどう観測したか。** 本書は「閉じる前に先取りしたフォームへ閉じた後に POST する」方法を採った。これが同じ応答を返すことは確かめていない。
-3. **`postconf` による拒否の実際の応答コードと段**（`queue_minfree` → `MAIL FROM` の 452、`smtpd_client_restrictions=reject` → `RCPT TO` の 554）と、このイメージで `postfix reload` が効くか。いずれも Postfix の仕様からの導出である。
-4. **上流が捕捉用 MTA でない場合の C1 の作り方。** 本書は中止条件にした。
-5. **門の `reset-gate.*` 属性を実験前（無し）へ戻すか。** 戻すなら人手で `manage-realm` の PUT を打つことになる。本書は戻さない。
-6. **ログインの検査器に対象利用者の上書きを足すか。** 足せば利用者のクラスタでも統合スタックと同じ検査器で測れる。
-7. **所要時間の判定式の改定（順位和検定）の実装**と、先に入った時計の扱い。本リポジトリに追跡する issue がまだ無い。
-8. **認証基盤が一時ロック中の利用者に返す応答**（文言・ステータス・所要時間）。本書は期待値を置かず、実測で決める。
-9. **観測スタック・Istio エッジ（床の経路）が利用者のクラスタに在るか。** 無ければ該当の測定は「未測」と記録する。
-10. **C2' の 10 秒待ちの経路上に、10 秒未満で打ち切るプロキシが無いか。** リポジトリのマニフェスト（エッジの経路・床の器）には明示のタイムアウトが無い。
+本書の初版が「リポジトリから導けなかったこと」として並べた 10 点を、利用者の裁定で次の 3 つに振り分けた。
+**番号は初版のまま保つ**（本文の参照が番号で引くため）。
+
+### 裁定済み（本書へ反映した）
+
+- **2.** **状態 D で、導線が消えた後にどう申請へ到達したか。** → **実施時に記録する項目にした。** 表 1 に「申請への到達」の欄を足し、§2.6 の 4 で書く。
+- **4.** **上流が捕捉用 MTA でない場合の C1。** → **C1 は上流が捕捉用 MTA のときだけ測る。** 実テナントでは C1 を中止条件（S1）のまま測らず、送出経路の断は C2 / C2' / C3 で測る（§2.2・S1・§限界）。
+- **5.** **門の `reset-gate.*` 属性を実験前（無し）へ戻すか。** → **消す。** 実測の記録は §5 の表に残し、realm に試験の痕跡を残さない（§0.6。開いた状態でしか消さない）。
+- **6.** **ログインの検査器に対象利用者の上書きを足すか。** → **足した。** `--username <名前>` か `LOGIN_PROBE_USERNAME` で試験専用の利用者を渡す。宣言に在る名前・宣言の利用者のメールアドレス・`@` を含む名前・ASCII 以外を拒否し（大小は無視）、空の指定は既定へ倒さない。指定が無ければ従来どおり `admin` を対象にする（統合スタックの CI はこれで走る）。§4.5 で使う。
+
+### 実測項目（稼働環境の事実。本書の実施で測って記録する）
+
+- **1.** **利用者のクラスタが NetworkPolicy を強制するか、強制するなら捨てるか拒むか。** §2.5 の冒頭の判定で測り、表 1 の C2' の行に「作れた／C2 相当／強制しない」を書く。作れなかった場合の別の作り方は本書の手順に無い。
+- **3.** **`postfix reload` がこのイメージで効くか、`postconf` の 2 変更が実際に返す拒否コードと段**（導出: `queue_minfree` → `MAIL FROM` の 452、`smtpd_client_restrictions=reject` → `RCPT TO` の 554）。§2.3 で門の `close:` の理由をそのまま記録する。
+- **8.** **認証基盤が一時ロック中の利用者に返す応答**（文言・ステータス・所要時間）。期待値は置かず、§4.3 で測る（裁定の 8 点には含まれないが、性質は実測項目である）。
+- **9.** **観測スタック・Istio エッジ（床の経路）が利用者のクラスタに在るか。** §0.3 の事前チェックで測り、無ければ該当の測定を「未測」と記録する。
+- **10.** **C2' の 10 秒待ちの経路上に、10 秒未満で打ち切るプロキシが無いか。** §2.5 で実在側の 5xx の `ms` をそのまま記録する。
+
+### 解消済み（裁定の外）
+
+- **7.** **所要時間の判定式の改定（順位和検定）の実装**と、先に入った時計の扱い。→ **実装済み**（#1541）。検査器の `T-25` は順位和検定で判定する。§2.1・表 3・§限界 をこれに合わせた。
