@@ -4,14 +4,14 @@ type: migration-spec
 status: draft
 author: Claude
 created: 2026-09-25
-updated: 2026-10-02
+updated: 2026-10-03
 ---
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0008, ADR-0032, ADR-0124]
-iadrs: [IADR-0492, IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
-specs: [20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
-issues: [#1696, #457, #454, #439, #458, #1682, AST#1078]
+iadrs: [IADR-0494, IADR-0492, IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
+specs: [20261003_1728_eso-force-sync-after-bootstrap, 20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
+issues: [#1728, #1696, #457, #454, #439, #458, #1682, AST#1078]
 -->
 
 # 移行仕様書: 再実装版への切替 —— 6 資産の破棄と realm の作り直し
@@ -220,6 +220,16 @@ node scripts/check-stack-ready.js --live      # realm の乖離・永続化・�
 
 どちらも緑であることを確かめる。🔴 **検証スクリプトが「触らない側」で fail を出したら、作り直しすぎか消しすぎである。** 再開せずに原因を調べる。
 `--baseline` を付け忘れると消失は見えない（「基準」の行が skip で出る）。
+
+4 の起動器の Vault の seed は、在る KV へキーを足した（または KV を作った）ときに、それを読む ExternalSecret にだけ同期を促して完了を待つ。
+起動器のログに `==> force-sync:` の行があり、`ERROR: force-sync した ExternalSecret の同期が … 以内に終わらない` で止まっていないことも確かめる。
+ai-stock-trading の読み手の資格情報が Secret に載っていること（値は出さない。長さだけ）:
+
+```bash
+for k in kb-reader-auth-client-id kb-reader-auth-client-secret; do
+  printf "%s len=%s\n" "$k" "$(kubectl -n ai-stock-trading get secret ast-secrets -o jsonpath="{.data.$k}" | base64 -d | wc -c)"
+done   # どちらも 0 でないこと
+```
 
 ### 6. 再開
 
