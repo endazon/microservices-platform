@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using DataSourceService.Domain;
+using DataSourceService.Domain.Ports;
 using DataSourceService.Infrastructure.Persistence;
 using AwesomeAssertions;
 using Knowledge.Contracts.Events;
@@ -127,6 +128,50 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
         body.RootElement.GetProperty("fetched").GetInt32().Should().Be(0);
         bus.PublishedOf<RawDocumentFetched>().Where(m => m.SourceId == id)
             .Should().BeEmpty("コネクタが無いときは 1 件も発行しない");
+    }
+
+    // NFR-18, [[IADR-0493]] 決定 4 (#458 段 S0・独立監査): 資格情報が解決できない同期の**応答本文**は、
+    // 番号と理由の符号だけを返す。参照のパス・`vault:` の接頭辞・項目のキー名・解決器の例外文を運ばない。
+    // サービス層の試験（`ConnectorSecretResolutionTests`）は `SyncResult.Message` までしか見ないため、
+    // 端点が応答を組み立てる段で `Config` や例外を足す退行はここでしか捕まらない（T-68 の「応答」）。
+    //   resolver-unavailable: 本番に配線された移送期間用の解決器がそのまま判定する
+    //   unreachable: 解決器が例外を投げる（例外文に参照のパスを入れた陽性対照）
+    [Theory]
+    [InlineData("resolver-unavailable")]
+    [InlineData("unreachable")]
+    public async Task Sync_UnresolvableCredential_ResponseMessageLeaksNeitherReferenceNorKeyNorResolverText(string code)
+    {
+        const string referencePath = "datasource/sync-endpoint-audit";
+        const string reference = "vault:" + referencePath + "#apiToken";
+        const string resolverText = "resolver detail mentions datasource/sync-endpoint-audit";
+        var client = code == "unreachable"
+            ? factory.WithWebHostBuilder(b => b.ConfigureServices(s =>
+                s.AddSingleton<IConnectorSecretResolver>(new FakeConnectorSecretResolver
+                {
+                    Throw = new HttpRequestException(resolverText),
+                }))).CreateClient()
+            : factory.CreateClient();
+
+        var id = await CreateDataSourceAsync(client, new
+        {
+            name = "wiki-unresolved-" + code,
+            sourceType = "wiki",
+            connectionUri = "https://wiki.example.test",
+            config = new Dictionary<string, string> { ["apiToken"] = reference },
+        });
+
+        var res = await client.PostAsync($"/datasources/{id}/sync", content: null, TestContext.Current.CancellationToken);
+        res.EnsureSuccessStatusCode();
+
+        var raw = await res.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        using var body = JsonDocument.Parse(raw);
+        body.RootElement.GetProperty("message").GetString()
+            .Should().Be($"credentials not resolved for credential #1 ({code})");
+        body.RootElement.GetProperty("fetched").GetInt32().Should().Be(0);
+        raw.Should().NotContain(referencePath, "参照のパスは資格情報の所在であり、応答へ出さない")
+            .And.NotContainEquivalentOf("vault:", "参照の接頭辞も出さない")
+            .And.NotContain("apiToken", "項目のキー名も出さない（番号で示す）")
+            .And.NotContain(resolverText, "解決器の例外文は応答へ運ばない");
     }
 
     private static RawDocumentFetched FirstPublishedFor(RecordingMessageBus bus, Guid id)

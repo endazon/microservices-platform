@@ -387,3 +387,19 @@ $ git grep -ln "pg_dump" -- deploy scripts
 - SC-06 の画面は失敗を直近エラーの文で出すだけで、「資格情報未設定」を専用の表示にしていない（S3 で扱う）。
 
 ［2026-10-03 追記 / #458・CodeQL］PR #1727 の CodeQL `cs/cleartext-storage-of-sensitive-information`（2 件・high）が、解決失敗のログに資格情報の項目のキー名（`DatabaseConnector.PasswordKey` = `password`）を載せる行を検出した。値ではないが、安全側に倒して**ログ・`LastSyncError`・応答からキー名を外し、コネクタが宣言する順の 1 始まりの番号（`credential #1`）に置き換えた**。上の S0 の記述（`credentials not resolved for '<キー名>'`）はこの追記で改める。
+
+［2026-10-03 追記 / #458・独立監査］PR #1727 の独立監査（任意の指摘 2 件）と AI レビュー（🟢 1 件）を受けた是正。
+
+- **規則 10 の引き直し（上の「S0 で新たに誤りになったのは T-13・T-18 だけ」は不完全だった）。**
+  `git grep -n -E 'Config\.(password|apiToken)|apiToken|password|キー名と理由|credentials not resolved' -- docs .ai-context/adr/IADR-0493*` で引き直し、
+  コネクタ・同期に関わる行だけを残した（`SC-13` / `SC-15` のパスワードリセット・各 runbook の DB・ブローカ・認証基盤の `password` は別系統なので除外）。
+  - `docs/tests/FR-01_data-source-catalog.md` T-25: 入力が「`Config.password` に `;`/`'`」のままだった。試験は `Config` に参照を置き、特殊文字は解決済みの `ConnectorCredentials` で渡す形へ S0 で改めていた → 入力・期待を改めた。
+  - 同 T-21: 業務DB の「`Config` の値だけでは接続文字列へ合成しない」（`DiscoverAndFetch_IgnoreConfigPassword_WhenCredentialsAreNotResolved`）が表に無かった（Wiki・SaaS は T-13・T-18 に在る）→ 足した。
+  - 同 T-67: 「資格情報を `Config` に持つ」→ 試験は参照（`vault:…`）を置いているので「資格情報の参照を `Config` に持つ」へ改めた。
+  - `docs/security/security.md` §データソースのコネクタ資格情報 の「失敗の記録に出るのはキー名と理由の符号だけ」は、直前の CodeQL 追記（キー名を番号へ置換）で**誤りになっていた** → 番号と理由の符号へ改めた。
+  - [IADR-0493](../adr/IADR-0493_connector-secret-resolver-port-and-fail-closed.md) 決定の「ログ・`SyncError`・応答に出すのは `Config` のキー名と理由の符号だけ」も同じ理由で誤りになっていた（同じ PR で起こした IADR なので本文を直した）。
+  - T-13・T-18・T-68 は現状どおりで正しい。
+- **T-68 の「応答」に試験が無かった。** サービス層の試験は `SyncResult.Message` までしか見ず、`POST /{id}/sync` の応答本文を測る試験が無かった →
+  `DataSourceSyncEndpointTests.Sync_UnresolvableCredential_ResponseMessageLeaksNeitherReferenceNorKeyNorResolverText`（`resolver-unavailable` は本番配線の解決器、`unreachable` は例外文にパスを入れた解決器を DI で差し替え）を足した。
+  変異: 端点の `message` に `ds.Config` の値（参照）を連結 → 2 件とも赤、戻して緑。
+- `Program.cs` の解決器の登録を完全修飾から `using DataSourceService.Infrastructure.Secrets;` へ改めた（AI レビュー 🟢）。
