@@ -41,6 +41,7 @@ issues: [#1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 | 必要なツール | `kubectl`・`helm`（**クラスタを立てたものと同じ版**。描画の比較に使う）・`node` 22・`curl`・bash（Git Bash で可） |
 | チェックアウトの版 | `origin/develop` の `b0eaeff7` 以降。確かめ方: `git merge-base --is-ancestor b0eaeff7 HEAD && echo OK` |
 | クラスタ | **同じチェックアウトから** `bash scripts/k8s-local-images.sh --live` → `ISTIO=1 bash scripts/k8s-local-up.sh --live`（`LOCALEDGE=1` の有無・`ISTIO_MTLS_MODE` は普段どおり）で立ててあること。🔴 イメージが古いと面が無く、全経路が `UNIMPLEMENTED` で落ちる |
+| 入口（STRICT の回） | **入口が Istio Ingress Gateway（`ISTIO=1 LOCALEDGE=1` で立てたもの）であるか、画面を `kubectl port-forward` で開くこと。** 既定の入口（`kube-system` の Traefik）はサイドカーを持たないので、STRICT では Traefik → BFF・フロントの平文が受け手のサイドカーに落とされ、画面が 5xx になる（起動スクリプトが STRICT を入口の移行後にしか宣言しないのはこのため）。**そうでない構成で STRICT で測れるのは I と M だけ**（画面操作を要らない）で、§1.2 の経路は PERMISSIVE だけで測り、STRICT は「未測定（入口がメッシュ外）」と書く |
 | 外部課金 | LLM を呼ぶ経路（§1 の表の「課金」）は外部 API の費用が出る。**実施の可否は利用者が決める**。埋め込みだけなら `LOCALEMBED=1`（決定的ローカル埋め込み。使い捨てスタック専用）で費用なしに測れる |
 | 所要時間の目安 | 約 2 時間（グラフ → ダッシュボードの報告を待つなら ＋1 時間。§3.3） |
 
@@ -75,7 +76,7 @@ conflict で恒久的に止まる —— [運用仕様書](operations.md) の「
 | S3 | §2.3 の差分に **消える行（`<`）が 1 行でもある** | 既存の env を消している。適用すると経路が黙って REST／縮退へ戻る |
 | S4 | `helm upgrade` が `conflict … field manager` で失敗する | 所有権が奪われている。**値を変えて再試行しない**。運用仕様書の復旧手順へ |
 | S5 | 上書きの適用後 10 分経っても Ready にならない Deployment がある・CrashLoopBackOff が出る | 計測以外の故障。測定を続けない |
-| S6 | STRICT の区間で、利用者の操作が 5xx を返し続ける・BFF の readiness が落ちる | STRICT はサイドカーを持たない呼び出し元（別名前空間の AST など）からの平文を落とす。**元が PERMISSIVE なら STRICT の区間は 30 分以内に区切る** |
+| S6 | STRICT の区間で、利用者の操作が 5xx を返し続ける・BFF の readiness が落ちる | STRICT はサイドカーを持たない呼び出し元（別名前空間の AST・`kube-system` の Traefik の入口など）からの平文を落とす。**元が PERMISSIVE なら STRICT の区間は 30 分以内に区切る** |
 | S7 | 他の誰かが同じクラスタで `helm upgrade`・起動スクリプト・ArgoCD の同期を走らせている | 測っている状態が別物になる |
 | S8 | LLM の費用のアラートが鳴った・承認した回数を超えた | 課金を伴う経路だけを止める（他の経路は続けてよい） |
 
@@ -100,7 +101,10 @@ helm template msp deploy/helm/microservices-platform -n "$NS" -f "$W/current-val
   | diff - "$W/manifest-before.yaml" | tee "$W/render-vs-live.diff" | wc -l
 
 # (3) 現行の mTLS モードとサイドカーの有無
-grep -A3 '^mesh:' "$W/current-values.yaml" | tee "$W/mesh-before.txt"   # enabled: true と mtlsMode を記録
+. scripts/lib/mesh-mtls-mode.sh
+current_mesh_mtls_mode | tee "$W/mesh-before.txt"; echo "rc=${PIPESTATUS[0]}"   # rc=0 でモード（STRICT/PERMISSIVE）が出る。1=メッシュ宣言なし・2=読めない
+kubectl -n "$NS" get peerauthentication microservices-platform-mtls -o jsonpath='{.spec.mtls.mode}{"\n"}' \
+  | tee "$W/peerauthentication-before.txt"                                # 稼働のモード（上と一致すること）
 kubectl get ns -L istio-injection                                         # 注入ラベルは microservices-platform だけのはず
 kubectl -n "$NS" get pods -o custom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name \
   | tee "$W/pods-containers.txt"                                          # アプリ Pod すべてに istio-proxy が在ること
@@ -116,7 +120,7 @@ kubectl -n "$NS" get svc authorization-service \
 # 期待: "http 8080 http" と "grpc 8081 grpc"
 ```
 
-`mesh-before.txt` に `enabled: true` が無ければメッシュが入っていない。§3 の観測①だけは取れるが、PERMISSIVE / STRICT の測定はできないので、
+`current_mesh_mtls_mode` が `rc=1`（メッシュ宣言なし）なら、メッシュが入っていない（`grep -A3 '^mesh:'` は使わない —— キーが辞書順に並ぶので `mtlsMode` まで届かない）。§3 の観測①だけは取れるが、PERMISSIVE / STRICT の測定はできないので、
 `ISTIO=1` で立て直してから始める。
 
 ---
@@ -165,7 +169,7 @@ kubectl -n "$NS" get svc authorization-service \
 | --- | --- | --- | --- | --- |
 | X-1 | `document-service` | authorization | `AuthzScope/Resolve`・`AuthzScope/GetOwnerReadPolicyStatus`・`UserDirectory/GetUserAttributes`・`UserDirectory/CheckRealmRole` | それぞれ縮退（判定できない・数えられない） |
 | X-2 | `datasource-service` | authorization | `UserDirectory/CheckDepartmentCodes` | 照会できない扱い（明示部門の書き込みが 502） |
-| X-3 | `mcp-service` | document / retrieval / graph | `/platform.mcp.v1.McpToolExecution/Execute` | 実行を拒否（fail-closed） |
+| X-3 | `mcp-service` | document / retrieval / graph | `/platform.mcp.v1.McpToolExecution/Execute` | 実行を拒否（fail-closed）。REST の実行経路は無い —— 旧 `HttpToolInvoker` は `GrpcToolInvoker` に置き換えられて残っておらず、置き換え前も宛先に REST の実行口が無く常に失敗していた |
 
 **数えない経路**: 別名前空間の AST から MSP への呼び出し（AST 側の作業）、BFF が利用者の資格情報を付けて中継する呼び出し（エッジ。east-west に数えない）。
 
@@ -177,8 +181,8 @@ kubectl -n "$NS" get svc authorization-service \
 
 成功した gRPC 呼び出しは**どちら側にもログを残さない**。収集器・クライアントは失敗だけをログし、チャネル（`CreatePlatformChannel`）は
 `LoggerFactory` を渡していないので gRPC ライブラリのログも出ない。呼び出し先の ASP.NET Core は要求ごとに
-`Request finished HTTP/2 POST http://<宛先>:8081/<package>.<Service>/<Method> - 200 …` を出すが、各サービスの `appsettings.json` が
-`Microsoft.AspNetCore` を `Warning` に絞っているので出ていない。そこで呼び出し先 13 サービスに
+`Request finished HTTP/2 POST http://<宛先>:8081/<package>.<Service>/<Method> - 200 …` を出すが、13 サービスのうち 11 は `appsettings.json` が
+`Microsoft.AspNetCore` を `Warning` に絞っているので出ていない（conversion と ingestion は `Default: Information` だけを持ち、絞っていない。足しても害は無いので同じく足す）。そこで呼び出し先 13 サービスに
 `Logging__LogLevel__Microsoft.AspNetCore.Hosting.Diagnostics=Information` を一時的に足す。
 
 🔴 **env はリストであり、Helm は上書き側のリストで丸ごと置き換える。** `extraEnv` を上書きファイルに書くと、その
@@ -397,6 +401,8 @@ kubectl -n "$NS" run "h2c-probe-$(date +%s)" --rm -i --restart=Never \
    `set_mesh_mtls_mode` は `--reuse-values` なので §2 の上書きは保たれる。Pod は作り直されない（モードは新しい接続から効く）。
    §3.2 の M は `mcp-service` の再起動を伴うので、新しいモードの下で接続が張り直される。
 3. §3 をもう一方のモードで行う。**元が PERMISSIVE なら STRICT の区間は 30 分以内**（S6）。
+   🔴 **STRICT の回で画面を操作できるのは、入口が Istio Ingress Gateway のとき（`ISTIO=1 LOCALEDGE=1`）か、画面を `port-forward` で開いたときだけ**である。
+   入口が Traefik のままなら STRICT では I と M（§3.2 の 2 つのコマンドだけで発火する）だけを測り、§1.2 の経路は「未測定（入口がメッシュ外）」と書く。
 4. §6.1 で戻す（元のモードもここで戻る）。
 
 ### 4.1 メッシュと NetworkPolicy について確かめたこと（チャートと起動スクリプトから）
@@ -415,6 +421,9 @@ kubectl -n "$NS" run "h2c-probe-$(date +%s)" --rm -i --restart=Never \
 - **AuthorizationPolicy**: チャートが描くのは BFF のバックチャネルログアウト（平文の 1 経路）と、エッジの同期経路（ゲートウェイの名前空間から
   文書サービスへの DENY。ローカルはエッジ無効で描画されない）だけで、名前空間の中から 8081 への呼び出しには当たらない。
 - **STRICT の副作用**: サイドカーを持たない呼び出し元（別名前空間の AST から LLM ゲートウェイ・文書・検索への REST など）は STRICT で落ちる。
+  **既定の入口（`kube-system` の Traefik）も同じ**で、Traefik → BFF・フロントの平文が落ち、画面が 5xx になる。起動スクリプトは STRICT を
+  入口を Istio Ingress Gateway へ移した後（`istio-edge-up.sh` の最後の段）でしか宣言しない。入口が Traefik の構成で STRICT にするのは本書の測定の間だけであり、
+  その間に測れるのは画面操作の要らない I と M だけである。
   本書の測定とは無関係だが、その間 AST の機能は使えない（S6）。
 
 ---
@@ -442,6 +451,11 @@ kubectl -n "$NS" run "h2c-probe-$(date +%s)" --rm -i --restart=Never \
 - **#1517**: I-01〜I-13 と M-1〜M-3 が **両モードで合格**。
 - **#1255 残射程 2**: §1.2 の全行（B-1 を含む）が **両モードで合格**。「輸送のみ」「未測定」が残るなら、その行と理由を並べてオーナーが判断する。
 - **#1255 やること 7**: A-1〜A-6（と B-1）が両モードで合格し、§3.5 の対が期待どおり。
+- **H-1（グラフ → ダッシュボード）の STRICT**: 報告は 1 時間周期（初回は graph の起動から 1 周期後）で、STRICT の区間（元が PERMISSIVE なら 30 分以内）と噛み合わない。
+  次のどちらかにする。
+  1. **段取りで合わせる**: §2.4 の適用（graph が作り直される）から 2 時間目の報告が STRICT の区間に入るよう、PERMISSIVE の回を先に 1 時間目の報告まで行い、
+     2 時間目の少し前に §4 の 2 で STRICT へ切り替える（graph は再起動しない。モードの切り替えでは Pod は作り直されない）。
+  2. **未測定のまま回す**: H-1 の STRICT を「未測定（周期 1 時間）」と書き、PERMISSIVE の合格と §3.5 の対（STRICT の効き）を根拠にオーナーの判断に回してよい。
 
 ### 5.4 記録の書式（#1255 と #1517 へコメントで貼る）
 
@@ -478,14 +492,28 @@ node scripts/check-stack-ready.js --live                                        
 
 ### 6.2 経路単位の緊急切り戻し（その経路だけを REST へ戻す）
 
-計測中にある経路が利用者の操作を壊していると分かったら、その経路の gRPC 宛先だけを抜く。**リストを手で書かない**:
+計測中にある経路が利用者の操作を壊していると分かったら、その経路の gRPC 宛先だけを抜く。**リストを手で書かない**。
+
+- 🔴 **今適用している上書きと同じオプションを付け直す。** B-1 を測っている（`overlay-bff.json` を適用中）なら `--bff-authz` も付ける。
+  付けずに組むと B-1 の宛先が**黙って外れ**、しかも `render-before.yaml` との差分には現れない（どちらにも無いため）。
+- 🔴 **差分は今適用している描画と比べる**（`render-before.yaml` ではない）。下の `render-now.yaml` がそれである。
+- 🔴 **今のモードを `--set` で渡す。** 保存した利用者値は §0.3 の時点のモードを持つので、§4 でモードを切り替えた後に渡さないと元のモードへ戻る。
+- **B-1 だけを戻す**には `--bff-authz` を付けずに組み直す（`--rest bff=Services__AuthorizationServiceGrpc` は「extraEnv に無い」でエラーになる。B-1 の宛先は `extraEnvAppend` にあるため）。
 
 ```bash
-node "$W/gen-overlay.mjs" "$W/all-values.json" --rest mcp=Mcp__GrpcServices__document-service > "$W/overlay-rest.json"
-helm template msp deploy/helm/microservices-platform -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.json" \
-  | diff "$W/render-before.yaml" - | grep '^<'      # 消えるのは抜いた 2 行だけであること
-helm upgrade msp deploy/helm/microservices-platform -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.json"
+MODE=STRICT; BFF=--bff-authz      # 今のモード／B-1 を適用中でなければ BFF=
+C=deploy/helm/microservices-platform
+node "$W/gen-overlay.mjs" "$W/all-values.json" $BFF > "$W/overlay-now.json"
+node "$W/gen-overlay.mjs" "$W/all-values.json" $BFF --rest mcp=Mcp__GrpcServices__document-service > "$W/overlay-rest.json"
+helm template msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-now.json"  --set "mesh.mtlsMode=$MODE" > "$W/render-now.yaml"
+helm get manifest msp -n "$NS" | diff "$W/render-now.yaml" - | wc -l          # 0 行（今の稼働と同じものを組めている）
+helm template msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.json" --set "mesh.mtlsMode=$MODE" \
+  | diff "$W/render-now.yaml" - | grep '^[<>]'      # 消えるのは抜いた 2 行だけ・足される行は無いこと
+helm upgrade msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.json" --set "mesh.mtlsMode=$MODE"
 ```
+
+🟢 `--rest` で抜いた宛先は**上書きとしてリリースに残る**。§6.1 を飛ばして `--reuse-values` の helm（`set_mesh_mtls_mode`・`istio-edge-up.sh`）を続けると、
+その固定（その宛先だけ REST）が引き継がれ続ける。計測を終えたら必ず §6.1 で保存した利用者値へ戻す。
 
 🔴 **§1.3 の gRPC だけの経路には使わない**（REST の兄弟が無いので、宛先を抜くと縮退＝その機能が止まる）。
 `--rest` で戻した経路は §5 に「不合格（切り戻し）」と書く。

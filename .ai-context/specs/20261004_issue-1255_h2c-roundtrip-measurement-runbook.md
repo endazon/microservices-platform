@@ -137,3 +137,16 @@ issue: "#1255"
   食い違ったら出た値をそのまま記録する（Runbook §結果の記録）。
 - 稼働イメージが develop より古いと、面が無く `UNIMPLEMENTED` になる。前提の節でイメージの作り直しを求めている。
 - LLM を呼ぶ経路（生成・埋め込み）は外部課金を伴う。Runbook では任意扱いにし、実施の可否は利用者が決める。
+
+## ［2026-10-04 追記 / #1255］独立監査（条件付き GO）の指摘を直した
+
+- STRICT の回は、入口が Istio Ingress Gateway（`ISTIO=1 LOCALEDGE=1`）か画面の port-forward でなければ画面が 5xx になる
+  （`kube-system` の Traefik はサイドカーを持たない。`k8s-local-up.sh` と `istio-edge-up.sh` が STRICT を入口の移行後にしか宣言しない理由）。
+  そうでない構成で STRICT で測れるのは I と M だけと、前提・§4・§4.1 に書き分けた。
+- §6.2 の `--rest` は適用中の上書きと同じオプション（`--bff-authz`）を付け直し、今の描画（`render-now.yaml`、`--set mesh.mtlsMode=$MODE` 込み）と比べる形にした。
+  helm v3.16.4 で実測: 付け直さないと B-1 の 2 行が消え、`render-before.yaml` との差分には現れない。`--set` を渡さないとモードが §0.3 の時点へ戻る。
+  `--rest bff=Services__AuthorizationServiceGrpc` は「extraEnv に無い」でエラーになる。
+- §0.3 のモードの読み取りを `current_mesh_mtls_mode` と PeerAuthentication の jsonpath に替えた（`grep -A3 '^mesh:'` は辞書順で `mtlsMode` に届かない）。
+- H-1 の STRICT は段取り（2 時間目の報告に合わせる）か、未測定のままオーナーの判断に回すかを §5.3 に書いた。
+- 細部: appsettings の `Warning` の絞りは 13 中 11（conversion・ingestion は `Default` だけ）。X-3 は旧 `HttpToolInvoker` が既に `GrpcToolInvoker` に置き換えられて
+  残っていない（監査の「HttpToolInvoker は在る」はコードと違う。`GrpcToolInvoker.cs` の冒頭注記と `Infrastructure/ExternalServices/` の一覧で確認）。
