@@ -67,6 +67,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = "https://localhost/realms/test",
                 ["Services:AuthorizationService"] = "http://localhost/authz",
+                // ［2026-10-04 / #1733・[[IADR-0496]]］ホストが登録した日次のクラスタ検出は、起動の待ちの後に
+                // 本当に走る（記録が無ければ期限切れ）。試験の DB へ黙って書かせないよう、待ちを 1 日にして眠らせる。
+                // 検出のループを測る試験は、自分でワーカーを組み立てて待ちを与える（ClusterDetectionCatchUpTests）。
+                ["ClusterDetection:StartupDelay"] = "1.00:00:00",
             }));
         builder.ConfigureServices(services =>
         {

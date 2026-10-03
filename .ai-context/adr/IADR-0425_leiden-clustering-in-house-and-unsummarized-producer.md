@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-17, FR-18, SC-10, SC-18, ADR-0033, ADR-0035, ADR-0083, ADR-0120, IADR-0299, IADR-0353, IADR-0389]
 author: endazon (with Claude Code)
 created: 2026-09-11
-updated: 2026-09-28
+updated: 2026-10-04
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md
   - planning:projects/microservices-platform/07_adr/ADR-0083_cluster-definition-and-unsummarized-semantics.md
@@ -223,6 +223,11 @@ PostgreSQL の advisory lock。キーは `"GCLD"`（健全性の `"GKHP"` とは
 > 3 条件の判定が入口の本体として残るためである。試験（`UnsummarizedClusterRuleTests` の 3 条件の固定）は、入口に要約の対象の最小の所属数
 > （`MinMembersToSummarize`）を渡す形へ書き換えた（固定している内容は変えていない）。`GraphService/Program.cs` のクラスタ検出の注記も
 > 「`unsummarized-clusters` の分母」から「分母は所属 2 件以上のクラスタ」へ追随させた。作業仕様書 `.ai-context/specs/20260928_issue-1676_adr0121-audit-followups.md`。
+
+> **［2026-10-04 追記 / #1733］検出の起動の形（`PeriodicTimer(1 日)`。初回は起動の 24 時間後）を改め、位相を前回の成功に付けた。判断は [[IADR-0496]]。上の本文は書き換えない。**
+> 稼働 PoC は Pod がほぼ毎日作り直されるため初回の拍が来ず、9/27 から検出が 1 度も走らなかった。成功の時刻は新しい表 `graph_batch_runs` に
+> 検出と同じ保存で書き（クラスタの `DetectedAt` は本 IADR の「構成が変わったときだけ進める」不変条件により前回の実行時刻に使えない）、
+> 期限の判定は決定 6 のリースの内側で行う。決定 1〜7 の内容は変えていない。
 
 ## 関連
 

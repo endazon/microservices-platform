@@ -222,6 +222,10 @@
     "docs/tests/FR-17_knowledge-graph.md": [
       "AbacNodeFilterTests",
       "AbacUnenforcedAxisTests",
+      "BatchLoopForeignCancellationTests",
+      "ClusterDetectionCatchUpTests",
+      "ClusterDetectionMetricsTests",
+      "ClusterDetectionScheduleTests",
       "ClusterSummaryTests",
       "EdgeTypeDbGuardTests",
       "EdgeTypeDictionaryTests",

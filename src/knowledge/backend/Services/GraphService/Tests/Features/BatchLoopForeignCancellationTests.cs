@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.Metrics;
 using AwesomeAssertions;
+using GraphService.Common.Observability;
 using GraphService.Domain.Ports;
 using GraphService.Features.Clustering.Detect;
 using GraphService.Features.Clustering.Summarize;
@@ -34,8 +36,12 @@ public sealed class BatchLoopForeignCancellationTests
         var coordinator = new ForeignCancellationCoordinator();
         var logger = new RecordingLogger<ClusterDetectionHostedService>();
         using var services = new ServiceCollection().BuildServiceProvider();
+        // ［2026-10-04 / #1733・[[IADR-0496]]］検出は拍ではなく「起動の待ち」と「再試行の待ち」で回る。
+        // 起動の待ちを 0・再試行の待ちを短い周期にして、同じ性質（取り消しの後も次の判定が来る）を測る。
         var worker = new ClusterDetectionHostedService(
-            services.GetRequiredService<IServiceScopeFactory>(), coordinator, logger)
+            services.GetRequiredService<IServiceScopeFactory>(), coordinator,
+            Options.Create(new ClusterDetectionOptions { StartupDelay = TimeSpan.Zero, RetryDelay = ShortCycle }),
+            NewDetectionMetrics(), logger)
         { CycleInterval = ShortCycle };
 
         await AssertLoopSurvivesAsync(worker, coordinator, logger.Errors);
@@ -86,8 +92,12 @@ public sealed class BatchLoopForeignCancellationTests
         var clock = new ManualTickClock();
         var coordinator = new ThrowTwiceCoordinator(clock);
         using var services = new ServiceCollection().BuildServiceProvider();
+        // ［2026-10-04 / #1733・[[IADR-0496]]］検出の「拍」は起動の待ち（1 回目）と再試行の待ち（2・3 回目）である。
+        // 両方を 1 拍にすれば、取得の時刻は他の 2 つと同じ「開始 + k 拍」になる。
         var worker = new ClusterDetectionHostedService(
             services.GetRequiredService<IServiceScopeFactory>(), coordinator,
+            Options.Create(new ClusterDetectionOptions { StartupDelay = TickCycle, RetryDelay = TickCycle }),
+            NewDetectionMetrics(),
             new RecordingLogger<ClusterDetectionHostedService>())
         { CycleInterval = TickCycle, CycleClock = clock };
 
@@ -122,6 +132,9 @@ public sealed class BatchLoopForeignCancellationTests
 
         await AssertWaitsForNextTickAsync(worker, clock, coordinator);
     }
+
+    private static ClusterDetectionMetrics NewDetectionMetrics() =>
+        new(new ServiceCollection().AddMetrics().BuildServiceProvider().GetRequiredService<IMeterFactory>());
 
     private static async Task AssertWaitsForNextTickAsync(
         BackgroundService worker, ManualTickClock clock, ThrowTwiceCoordinator coordinator)
