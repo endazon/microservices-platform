@@ -571,3 +571,4 @@
 | [IADR-0491](./IADR-0491_helm-list-status-flags-instead-of-all.md) | 現行のメッシュ宣言を読む helm list は helm v4 が廃した -a / --all をやめ、状態の旗 6 つの和を明示して helm v3 / v4 の両方で同じ集合を読む（#1722） | Accepted |
 | [IADR-0492](./IADR-0492_ast-kb-reader-project-scoped-read-policy.md) | AST の KB の読み手は書き手と別の機密クライアント（ロールなし・profile あり）にし、`projects=ai-stock-trading` の主体に `project=ai-stock-trading` の文書だけを許す read のポリシー 1 本で読ませる（#1696） | Accepted |
 | [IADR-0493](./IADR-0493_connector-secret-resolver-port-and-fail-closed.md) | コネクタの資格情報は同期の開始時に `IConnectorSecretResolver` で 1 回だけ解決し、解決できなければ外部へ要求を出さずに失敗する（fail-closed）。IADR-0403 決定 8 段 1（データソース側で参照へ変換）は投入の面 SC-22 に合わせて改め、動的な項目は planning#716 の裁定待ち（#458 段 S0） | Accepted |
+| [IADR-0494](./IADR-0494_eso-force-sync-after-bootstrap-writes.md) | Vault の seed（eso/bootstrap.sh）は、その実行で書いた KV を覚え、最後にそれを読む ExternalSecret だけをクラスタから引いて force-sync を付け、同期の完了を有限時間で待って、終わらなければ名指しして止める。構成値は今と違うときだけ書く（#1728。0493 は PR #1727 が使用中） | Accepted |

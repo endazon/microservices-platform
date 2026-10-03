@@ -51,6 +51,14 @@ BFF は書き込み成功後に同期先の ExternalSecret へ `force-sync` を�
 消費側（llmgateway-service・wiki-service は `values-local.yaml`、mail-relay は `deploy/mail-relay/mail-relay.yaml`）を作り直す。
 上書きは `RELOADER_CHART_VERSION` / `RELOADER_IMAGE_TAG`。
 
+［2026-10-03 / #1728 / IADR-0494］`bootstrap.sh` も、**その実行で Vault に書いた KV**（無いときの作成・在る KV へのキーの追加・
+env が空でないときの差し替え・値の違う構成値）を覚え、最後にそれを読む ExternalSecret（ストア `vault-backend`、`data[].remoteRef.key` か
+`dataFrom[].extract.key` が書いた KV。全名前空間をクラスタから引くので AST の `ast-secrets` を含む）にだけ `force-sync` を付ける。
+`refreshInterval: 1h` のままだと、在る KV へ足したキー（例: `kb-reader-auth-client-*`）が次の refresh まで Secret に入らないため。
+続けて、同期時刻（`status.refreshTime`）の更新と Ready、`dataFrom.extract` なら足したキーが同期先 Secret に在ることを
+`ESO_FORCE_SYNC_TIMEOUT` 秒（既定 120・`0` は促すだけで待たない）まで待ち、終わらなければ名指しして非 0 で止まる。
+何も書かなかった実行は ExternalSecret を引かない。固定は `scripts/scripts.repo.test.js` の #1728 節（kubectl のスタブで bootstrap を実走）。
+
 ## seed 値（**平文非コミット**）
 
 `bootstrap.sh` の seed は **env 由来 or 空既定**（`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`）:
