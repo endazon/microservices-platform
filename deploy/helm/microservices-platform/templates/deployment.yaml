@@ -41,6 +41,8 @@ spec:
       {{- with $svc.serviceAccount }}
       # SC-22, ADR-0095 決定 3, IADR-0433 決定 4, IADR-0453 決定 9 (#1411): サービス専用の ServiceAccount。
       # 🔴 **BFF は Vault の k8s auth ロール `bff-secret-writer` にこの SA の名前で束縛される**。
+      # 🔴 **datasource は Vault の k8s auth ロール `datasource-connector-reader` に SA `datasource-service` の名前で束縛される**
+      # （コネクタの資格情報の読み取りだけ。IADR-0495 決定 1。#458 段 S1）。
       # 宣言が無いサービスは従来どおり名前空間の `default` で動く（`default` を Vault に束縛しないこと）。
       serviceAccountName: {{ .name }}
       {{- end }}
@@ -154,6 +156,8 @@ spec:
             # SC-22, NFR-18, ADR-0095 決定 3, IADR-0433, IADR-0453 決定 5 (#1411): 秘密情報の投入先（Vault の KV v2）。
             # **address が空なら「Vault を配備していない構成」**として扱い、/bff/secrets は 503 を返す（静かに成功しない）。
             # 名乗りは Pod の ServiceAccount トークン（k8s auth）。静的トークンを env で渡さない（IADR-0433 決定 4 の案 C を採らない）。
+            # FR-01, NFR-18, IADR-0495 決定 3 (#458 段 S1): datasource も同じ 3 つで Vault を引く（コネクタの資格情報の読み取り。
+            # address が空なら移送期間の素通しだけ）。role の既定は BFF のものなので、BFF 以外は values で role を明示すること。
             - name: Vault__Address
               value: {{ $svc.vault.address | default "" | quote }}
             - name: Vault__Role

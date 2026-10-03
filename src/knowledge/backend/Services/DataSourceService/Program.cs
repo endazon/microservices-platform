@@ -141,10 +141,12 @@ builder.Services.AddSingleton<IDataSourceConnector, WikiConnector>();        // 
 builder.Services.AddSingleton<IDataSourceConnector, SaaSConnector>();        // 優先3: SaaS（IADR-0054）
 builder.Services.AddSingleton<IDataSourceConnector, DatabaseConnector>();    // 優先4: 業務DB（IADR-0055）
 builder.Services.AddSingleton<ConnectorRegistry>();
-// NFR-18, [[IADR-0493]] 決定 2 (#458 段 S0): コネクタの資格情報の解決器。**段 S0 は移送期間用の素通しだけ**で、
-// Vault には繋がない（平文は素通し、`vault:` 参照は解決器なしとして同期を fail-closed で止める）。
-// Vault 解決器は段 S1 が配備の role・policy と同じ PR で足す。
-builder.Services.AddSingleton<IConnectorSecretResolver, PlaintextPassthroughConnectorSecretResolver>();
+// NFR-18, [[IADR-0493]] 決定 2 (#458 段 S0), [[IADR-0495]] 決定 3 (#458 段 S1): コネクタの資格情報の解決器。
+// `Vault:Address` が在れば Vault 解決器（`vault:datasource/…#<key>` を Vault の KV v2 から読む。平文は移送期間の素通し）、
+// 空なら S0 と同じ素通しだけ（`vault:` 参照は解決器なしとして同期を fail-closed で止める）。
+// 名乗りは Pod の ServiceAccount `datasource-service`（Vault の k8s auth ロール `datasource-connector-reader`。
+// policy は `secret/data/datasource/*` の read だけ。deploy/local/vault/eso/bootstrap.sh）。
+builder.Services.AddConnectorSecretResolver();
 // SC-06（planning#200 / 裁定 Q15）, IADR-0136: 「次回同期」は共通間隔の次回実行時刻（全ソース同値）である。
 // ワーカーが起動時に位相を記録し、/datasources が読む。時計は BCL の TimeProvider（テストで固定できる）。
 builder.Services.AddSingleton(TimeProvider.System);

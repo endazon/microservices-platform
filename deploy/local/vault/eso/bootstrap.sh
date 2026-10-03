@@ -41,6 +41,17 @@ vexec 'vault policy write bff-secret-write -' < "$ROOT/deploy/local/vault/eso/po
 echo "==> role: bff-secret-writer（BFF 専用 SA microservices-platform/bff に束縛）"
 vexec 'vault write auth/kubernetes/role/bff-secret-writer bound_service_account_names=bff bound_service_account_namespaces=microservices-platform policies=bff-secret-write ttl=1h'
 
+# FR-01, UC-04, NFR-18, IADR-0495 決定 1 (#458 段 S1): datasource-service がコネクタの資格情報（`vault:datasource/…#<key>`）を
+# 実行時に読む権限。🔴 policy は専用接頭辞 `secret/data/datasource/*` の read だけ（ESO の `msp/*` の外。書き込み・削除なし）。
+# 🔴 role は datasource-service 専用の ServiceAccount `datasource-service`（helm が作る）にだけ束縛する。**`default` に束縛しない**、
+#    **`eso` role へ足さない**（ESO が接頭辞を読めると、コネクタの資格情報が k8s Secret へ材料化され得る）。
+# 読み手の Pod は helm の services.datasource.vault.address が空でないときだけ Vault を引く（空なら S0 と同じ素通し）。
+echo "==> policy: datasource-connector-read（secret/data/datasource/* の read だけ）"
+vexec 'vault policy write datasource-connector-read -' < "$ROOT/deploy/local/vault/eso/policy-datasource-connector-read.hcl"
+
+echo "==> role: datasource-connector-reader（datasource-service 専用 SA microservices-platform/datasource-service に束縛）"
+vexec 'vault write auth/kubernetes/role/datasource-connector-reader bound_service_account_names=datasource-service bound_service_account_namespaces=microservices-platform policies=datasource-connector-read ttl=1h'
+
 # SC-22, ADR-0095 決定 4, IADR-0456 決定 6 (#1477): **画面（/admin/secrets）が書く KV は無いときだけ作る。**
 # 従前は毎回 `vault kv put`（全置換）していたため、`k8s-local-up.sh` を再実行するたびに**画面で入れた値が env の既定（空）で消えた**。
 # 対象は deploy/bootstrap/sc22-secret-items.json の items[] のうち seed するもの。
