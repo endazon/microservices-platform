@@ -12967,7 +12967,8 @@ exit 0
     };
     const READER = ['kb-reader-auth-client-id', 'kb-reader-auth-client-secret'];
     // 同期先 Secret の値（base64）。bootstrap の出力にも xtrace にも決して出てはならない（#1728 独立監査）。
-    const SECRET_VAL = 'c2VjcmV0LTE3MjgtdmFsdWU=';
+    // 直書きすると gitleaks（generic-api-key）が鍵と区別できないため、平文の目印から実行時に符号化する。
+    const SECRET_VAL = Buffer.from('marker-1728-value', 'utf8').toString('base64');
     const secretData = (keys) => keys.map((k) => `${k}=${SECRET_VAL}\n`).join('');
     const allKvPaths = () => {
       const src = fs1728.readFileSync(BOOTSTRAP, 'utf8');

@@ -174,7 +174,7 @@ issue: "#1728"
 | 所見 | 対処 |
 | --- | --- |
 | 🟡1 待ちの中で同期先 Secret を `jsonpath='{.data}'` で引き、base64 の値をシェル変数へ入れていた（`bash -x` で漏れる） | `-o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}'` でキー名だけを引き、行の完全一致で在否を見る。IADR-0494 決定 4 へ日付つき追記 |
-| 🟡2 値が出ないことの表明が無い | スタブの Secret を 1 行 1 キー「名前=値」（値は `c2VjcmV0LTE3MjgtdmFsdWU=`）に変え、go-template にはキー名、`{.data}` には値つき JSON を返す。`run1728` の全実行で stdout＋stderr に値が無いことを表明し、`bash -x` で流す試験を足した。試験 1 は「go-template で引いた」「`{.data}` で引いていない」も表明する |
+| 🟡2 値が出ないことの表明が無い | スタブの Secret を 1 行 1 キー「名前=値」（値は平文の目印を実行時に base64 化したもの。直書きは gitleaks が鍵と見分けられないため避けた）に変え、go-template にはキー名、`{.data}` には値つき JSON を返す。`run1728` の全実行で stdout＋stderr に値が無いことを表明し、`bash -x` で流す試験を足した。試験 1 は「go-template で引いた」「`{.data}` で引いていない」も表明する |
 | 🟢2 促す前の `refreshTime` を `grep -F "ns\|name\|" \| head -n 1` で引いていた（部分一致） | `awk -F'\|' '$1 == ns && $2 == n'` の完全一致へ。`platform-infra/keycloak-smtp`（同期する・促す前の時刻が別）と `infra/keycloak-smtp`（同期しない）を並べる試験を足した（スタブに `refresh/<ns>_<name>` を追加） |
 | 🟢5 `ESO_FORCE_SYNC_TIMEOUT=08` が `$((…))` で落ちる | 整数検査の後に `$((10#…))` で正規化（INTERVAL も）。`08`（待って緑・`8s 以内`）と `00`（待たない）の試験を足した |
 | 🟢1 `docs/migration/cutover-discard-and-rebuild.md` §5 で `--baseline` の注記がコードフェンスの後ろへずれた | 注記を挿入ブロックの前（「どちらも緑…」の段落の直後）へ戻し、フェンスの後に空行を置いた |
