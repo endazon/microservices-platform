@@ -31,7 +31,11 @@ issues: [#1472, #1467, #1477, #1502, #1682, #1728]
 
 **実行してはいけない場合**:
 
-- 🔴 本番相当の環境（Reloader が入っていない・利用者が LLM 機能を使っている最中）。試験の書き込みで llmgateway-service が作り直される（数十秒止まる）。
+- 🔴 本番相当の環境（Reloader が入っていない）。
+- 🔴 LLM を呼ぶ処理が走っている最中（利用者の LLM 機能の利用、株式自動売買の定時サイクルが LlmGateway を呼んでいる時間帯）。
+  試験の書き込みと戻しで llmgateway-service が 2 回作り直される。作り直しは RollingUpdate なので新しい Pod が Ready になってから古い Pod が消え、
+  ほとんど止まらないが、古い Pod が終わる瞬間に処理中の要求は切れ得る。定時サイクルの合間に行う。
+- 🔴 任意の節 B（OpenD の鍵の生成）を、その節の実施条件（市場が閉まっている・自動売買を止めている・未約定の注文が無い）を満たさずに行うこと。
 - 下の「前提の確認」のどれかが満たせないとき。**前提を本書の中で直さない**（立ち上げ直しは `scripts/k8s-local-up.sh` の通常経路）。
 
 ## 同じ場で確かめること（本書が 1 回で拾う項目）
@@ -52,7 +56,7 @@ issues: [#1472, #1467, #1477, #1502, #1682, #1728]
 | --- | --- |
 | 環境 | `VAULT=1 ESO=1 bash scripts/k8s-local-up.sh --live` で立てたクラスタ（ESO=1 は VAULT=1 が無いと止まる）。Vault は既定の永続化（`PERSIST=0` でない） |
 | 画面に入れる利用者 | ロール **platform-admin** か **platform-operator** を持つ利用者（画面 `/admin/secrets`。左ナビ「運用」→「秘密情報・接続設定の管理」）。他のロールでは画面が「見つかりません」になる |
-| クラスタの権限 | `kubectl` で `platform-infra`（`exec deploy/vault`）・`microservices-platform`（ExternalSecret・Secret・Deployment の読み取り）・`reloader`（ログの読み取り） |
+| クラスタの権限 | `kubectl` で `platform-infra`（`exec deploy/vault`）・`microservices-platform`（ExternalSecret・Secret・Deployment の読み取りと、**ExternalSecret の `patch`**＝手順 3・7 の `annotate`）・`reloader`（ログの読み取り）・**全名前空間の Deployment / StatefulSet / DaemonSet / CronJob の `list`**（手順 0-5）・`clustersecretstore` の読み取り |
 | 必要なツール | `kubectl`・`base64`・`wc`・`openssl`（試験値の生成）・ブラウザ（開発者ツールのネットワーク表示を使う）。**ホストに `vault` CLI は不要**（Vault Pod 内で実行する） |
 | 所要時間の目安 | 30〜45 分（記録を含む。任意の節を除く） |
 
@@ -102,11 +106,17 @@ kubectl -n reloader get deploy -o name
 # 0-4 境界層の同期依頼の Role がある
 kubectl -n "$NS" get role bff-externalsecret-sync
 
-# 0-5 試験対象に読み手が無い（0 であること。Deployment の定義は Secret の参照だけで値を含まない）
-kubectl get deploy -A -o yaml | grep -c "key: $PROP"
+# 0-5 試験対象に読み手が無い。Secret を参照するワークロードを全名前空間で引き、参照しているキー名だけを並べる
+#     （ワークロードの定義は Secret の参照だけで値を含まない。全体を YAML で落とさず、参照の欄だけを jsonpath で引く）
+kubectl get deploy,sts,ds,cronjob -A -o jsonpath='{range .items[*]}{.kind}/{.metadata.namespace}/{.metadata.name}{" "}{..secretKeyRef.name}:{..secretKeyRef.key}{" "}{..secretRef.name}{"\n"}{end}' \
+  | grep -- "$SECRET"
 ```
 
-期待: 0-1 は `Sealed false`、0-2 は 2 行とも `True`、0-3 は 1 行以上、0-4 は見つかる、0-5 は `0`。
+期待: 0-1 は `Sealed false`、0-2 は 2 行とも `True`、0-3 は 1 行以上、0-4 は見つかる。
+0-5 は `Deployment/microservices-platform/llmgateway-service` の 1 行だけで、その行に `openai-api-key` が出ないこと
+（行には、そのワークロードが参照する Secret の名前の列とキーの列が `:` の前後に並ぶ。対応は崩れるが、キー名 `openai-api-key` の有無は読める）。
+`openai-api-key` が出る、2 行目のワークロードがある、`:` の後ろ〔`secretRef`＝Secret 全体を env に読む形〕に `llm-provider-credentials` が出る、
+のいずれかなら試験対象を替える（上の「試験対象」の表を引き直す）。
 
 続けて画面 `/admin/secrets` を開き、`llm-provider-credentials` の行が **状態「設定済み」・供給元「画面」** であることを見る。
 「接続できません」なら保管先か権限が配備されていない —— 止める。
@@ -129,7 +139,7 @@ kubectl -n "$NS" get secret "$SECRET" -o go-template='{{range $k, $v := .data}}{
 # 1-3 書くプロパティの今の長さ（バイト数）＝ 長さ L0
 kubectl -n "$NS" get secret "$SECRET" -o jsonpath="{.data.$PROP}" | base64 -d | wc -c
 
-# 1-4 同期の時刻と注釈・消費側の世代と Pod
+# 1-4 同期の時刻と注釈（参考。同期の完了の基準は手順 3 で取り直す）・消費側の世代と Pod
 kubectl -n "$NS" get externalsecret "$ES" \
   -o jsonpath='{.metadata.annotations.force-sync}|{.status.refreshTime}{"\n"}'
 kubectl -n "$NS" get deploy llmgateway-service -o jsonpath='{.metadata.generation}{"\n"}'
@@ -158,7 +168,12 @@ printf '%s' "$PROBE" | wc -c     # 期待長 ＝ 40（echo ではなく printf '
 1. ブラウザの開発者ツールのネットワーク表示を開く。
 2. `/admin/secrets` で `llm-provider-credentials` の「更新」→ プロパティ `openai-api-key` を選ぶ。
 3. 値と確認入力に試験値を入れ、理由に「T-40 稼働クラスタの疎通試験（後で戻す）」と書く。
-4. 送る。確認ダイアログが出たら（消費側が自動で再起動される旨）読んで「書き込む」。
+4. 送る。確認ダイアログが出たら（消費側が自動で再起動される旨）読む。**「書き込む」を押す直前に**、別の端末で同期の基準を取り直す
+   （手順 1-4 の値は古い。その間に 1 時間ごとの定期同期が挟まると、基準が古いせいで「同期が終わった」と早まって判定する）:
+   ```bash
+   kubectl -n "$NS" get externalsecret "$ES" -o jsonpath='{.status.refreshTime}{"\n"}'   # ＝ 基準 T0
+   ```
+   取り直したらすぐ「書き込む」を押す。
 5. 画面に**保存の成立と「即時同期を依頼しました」**が出ることを見る。
 
 ネットワーク表示で `PUT /bff/secrets/llm-provider-credentials` の応答を見る（応答に値は無い）。
@@ -187,7 +202,10 @@ for i in $(seq 1 60); do
 done
 ```
 
-- **完了** ＝ `refreshTime` が手順 1-4 と**違う値**に変わり、かつ `Ready` が `True`（起動器の force-sync の完了条件と同じ）。変わったら Ctrl-C で抜ける。
+- **完了** ＝ 次の 3 つがそろったとき（起動器の force-sync の完了条件に、注釈との前後を足したもの）。そろったら Ctrl-C で抜ける。
+  - `refreshTime` が手順 3 の基準 T0 と**違う値**に変わった。
+  - `refreshTime` が `force-sync` の注釈の時刻（unix 秒）**以降**である（`date -u -d @<注釈の値>` で同じ書式に直して比べる。注釈より前なら定期同期であり、まだ完了ではない）。
+  - `Ready` が `True`。
 - 所要時間 ＝ `refreshTime` − `force-sync` の注釈（境界層が付けた unix 秒）。注釈が手順 1-4 から変わっていることも見る（境界層の依頼が届いた証拠）。
 - 合否: **10 秒以内**なら設計どおり。10 秒を超えて 120 秒以内に終われば合格だが逸脱として記録する。**120 秒たっても `refreshTime` が変わらなければ不合格** —— 止める条件へ。
 
@@ -223,8 +241,23 @@ kubectl -n reloader logs <0-3 の名前> --since=15m | grep llmgateway-service
 
 戻しは**保管先の版を戻す**（誰も元の値を見ない）。版 B を戻すと、版 B と同じ中身の新しい版（＝ 版 R ＝ 版 W ＋ 1）ができる。
 
+🔴 **`rollback` はプロパティ単位ではなく KV 全体を版 B へ戻す**（同居する `anthropic-api-key` も版 B の値になる）。
+作業中に誰か（画面・コンソール・起動器）が `anthropic-api-key` を差し替えていると、その差し替えが**黙って巻き戻り**、LLM の呼び出しが壊れる。
+**戻す前に、現在版が自分の書いた版 W のままであることを確かめる。**
+
 ```bash
-# 7-1 戻す。応答（-format=json）に値は含まれない。data.version（＝ 版 R）と data.created_time を控える
+# 7-0 現在版を確かめる（metadata だけ。値は出ない）。current_version が 版 W と一致すること
+kubectl -n platform-infra exec deploy/vault -- sh -c '
+  export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"
+  vault kv metadata get -format=json '"$VPATH"'
+' | grep '"current_version"'
+```
+
+**一致しなければ戻さずに止める**（止める条件の表）。版 W より新しい版を誰がなぜ書いたかを確かめ、その人と戻し方を決める
+（`openai-api-key` だけを元へ戻したいなら、元の値を持っている人が画面から書く。元が空だった場合は画面では戻せないので、試験値のまま残したことを記録する）。
+
+```bash
+# 7-1 戻す（7-0 が一致したときだけ）。応答（-format=json）に値は含まれない。data.version（＝ 版 R）と data.created_time を控える
 kubectl -n platform-infra exec deploy/vault -- sh -c '
   export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"
   vault kv rollback -format=json -version=<版 B> '"$VPATH"'
@@ -242,13 +275,14 @@ kubectl -n platform-infra exec deploy/vault -- sh -c '
 - **文字列の一致**: 7-1 の `data.created_time` と 7-2 の `versions` の 版 R の `created_time` が**同じ文字列**であること。
   7-1 の応答に `created_time` が無ければ「確認できない」と記録し、手順 3 の「最終更新者」の結果だけで判定する。
 - **画面の書き込み（補助）**: 手順 3 で控えた `updatedAt` と、7-2 の 版 W の `created_time` を**小数 7 桁まで**突き合わせる
-  （保管先は小数 9 桁、境界層の応答は 7 桁で返る。時刻帯の表記は `Z` と `+00:00` の違いがあり得る）。
+  （保管先は小数 9 桁、境界層の応答は最大 7 桁で、**末尾の 0 が削られて 7 桁より短くなり得る**〔例: 7 桁目が 0 なら 6 桁〕。短い側の末尾に 0 を補って 7 桁で比べる。時刻帯の表記は `Z` と `+00:00` の違いがあり得る）。
 
 戻しは画面を通らない書き込みなので、**境界層は同期を依頼しない**。手で促し、戻ったことを長さで確かめる:
 
 ```bash
+kubectl -n "$NS" get externalsecret "$ES" -o jsonpath='{.status.refreshTime}{"\n"}'   # 基準 T0 を取り直す
 kubectl -n "$NS" annotate externalsecret "$ES" force-sync="$(date +%s)" --overwrite
-# 手順 4 と同じループで refreshTime の変化と Ready=True を待ってから:
+# 手順 4 と同じループで、完了（T0 と違う・注釈の時刻以降・Ready=True）を待ってから:
 kubectl -n "$NS" get secret "$SECRET" -o jsonpath="{.data.$PROP}" | base64 -d | wc -c   # 手順 1-3 の L0 に戻ること
 kubectl -n "$NS" get secret "$SECRET" -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}' | wc -l   # 手順 1-2 と同じ
 kubectl -n "$NS" rollout status deploy/llmgateway-service --timeout=180s
@@ -260,10 +294,10 @@ unset PROBE
 ## 確認（この手順が成功したと言える条件）
 
 - 手順 3: 応答が 200・版 W ＝ 版 B ＋ 1・`syncRequested: true`・「最終更新者」が自分の名前。
-- 手順 4: `refreshTime` が変わり `Ready=True`。所要時間が 120 秒以内（10 秒以内が設計どおり）。
+- 手順 4: `refreshTime` が基準 T0 と違い、注釈の時刻以降で、`Ready=True`。所要時間が 120 秒以内（10 秒以内が設計どおり）。
 - 手順 5: 書いたプロパティの長さが試験値の長さと一致し、キー名と数が書く前と同じ。
 - 手順 6: llmgateway-service の世代が増え、Pod が入れ替わり、Ready に戻る。
-- 手順 7: 作成時刻が文字列で一致（または「確認できない」と記録）。戻した後の長さが書く前と同じで、キー名と数も同じ。
+- 手順 7: 戻す前の現在版が 版 W だった。作成時刻が文字列で一致（または「確認できない」と記録）。戻した後の長さが書く前と同じで、キー名と数も同じ。
 
 🔴 **「ExternalSecret が Ready」だけでは成功ではない。** 空の値でも同期は成功する。長さとキー名で見る。
 
@@ -277,6 +311,7 @@ unset PROBE
 | 手順 4 | 120 秒たっても `refreshTime` が変わらない／`Ready=False` | `kubectl -n "$NS" describe externalsecret "$ES"` の Events を記録し、**手順 7 で戻して**止める |
 | 手順 5 | キーの数が減った・名前が変わった | **直ちに手順 7 で戻し**、戻った後のキー名と数を確かめて止める。不合格として起票する |
 | 手順 6 | 180 秒で Ready に戻らない | 手順 7 で戻し、`kubectl -n "$NS" describe deploy llmgateway-service` とログを記録して止める |
+| 手順 7 | 7-0 の `current_version` が 版 W でない（誰かが版 W の後に書いた） | **戻さずに止める**（戻すと後から書かれた値を巻き戻す）。誰が書いたかを保管先の audit と画面の「最終更新者」で確かめ、記録する。試験値が残ったまま止まるが、`openai-api-key` に読み手は無い |
 | 手順 7 | `rollback` が失敗する | 版 B の状態（`vault kv metadata get`）を記録して止める。`openai-api-key` に読み手は無いので、急いで別の手段で書かない |
 
 ## 任意の節（株式自動売買を配備している場でだけ行う）
@@ -295,7 +330,21 @@ kubectl -n ai-stock-trading get externalsecret ast-secrets
 
 ### B. 生成した鍵を OpenD が読める
 
-🔴 **OpenD の再起動で SMS／画像の認証を再び求められ得る。** その場で認証を通せる人がいるときだけ行う。
+🔴 **鍵の生成は戻せない。** 生成すると、OpenD とクライアント（注文執行）が同じ鍵を共有する前提が一度崩れる。
+
+- **食い違いの窓**: 生成が同期されると、Reloader が注文執行（order-execution。株式自動売買のチャートが RSA 鍵の Secret を作り直しの対象にしている）を
+  **自動で**作り直して新しい鍵を読ませる。一方 **OpenD は Reloader の対象外で、手で作り直すまで古い鍵のまま**である。
+  この間（生成の同期から、OpenD の作り直しと再認証が終わるまで）、注文執行は OpenD と鍵が合わず**発注できない**。
+- **OpenD の作り直しで SMS／画像の認証を再び求められ得る。** 認証が通るまで窓は閉じない。
+
+**実施条件（すべて満たすときだけ行う）**:
+
+- 市場が閉まっている時間帯である。
+- 自動売買を止めている（キルスイッチ等、株式自動売買の側の手段で発注の経路を止めてある）。
+- 未約定の注文が無い。
+- OpenD の再認証をその場で通せる人がいる。
+
+満たせなければ本節は行わず、「行わなかった」と記録する。
 
 1. 画面で `ast-moomoo-rsa` の `opend_rsa.pem` を「生成」→ 確認ダイアログを読んで「生成して書き込む」。
 2. 同期先 Secret に鍵が入ったことを、値を出さずに確かめる:
@@ -303,7 +352,7 @@ kubectl -n ai-stock-trading get externalsecret ast-secrets
    kubectl -n ai-stock-trading get secret moomoo-rsa -o jsonpath='{.data.opend_rsa\.pem}' | base64 -d | grep -c 'BEGIN RSA PRIVATE KEY'   # 1 であること
    ```
 3. OpenD は Reloader の対象外なので手で作り直す: `kubectl -n ai-stock-trading rollout restart deploy/opend`。認証を通す。
-4. 鍵を読むクライアント（注文執行）が OpenD へ接続できることを、株式自動売買の側の確認手順で見る。
+4. 鍵を読むクライアント（注文執行）が OpenD へ接続できることを、株式自動売買の側の確認手順で見る。確かめたら自動売買の停止を解く（窓が閉じた後に限る）。
 
 生成は戻さない（旧版へ戻しても OpenD が読み込んだ鍵は戻らない）。新しい鍵のまま運用する。
 
@@ -329,7 +378,7 @@ kubectl -n ai-stock-trading get externalsecret ast-secrets
 | 実施日時・実施者 | タイムゾーンを添える |
 | 環境 | `VAULT=1 ESO=1` の起動・MSP のコミット・helm の revision |
 | 試験対象 | `msp/llm-provider-credentials` の `openai-api-key`（替えたなら理由） |
-| 版 | 版 B → 版 W（画面）→ 版 R（戻し） |
+| 版 | 版 B → 版 W（画面）→ 戻す前の現在版（版 W であったか）→ 版 R（戻し） |
 | 書き込み | ステータス・`syncRequested`・「最終更新者」が自分の名前だったか |
 | 同期 | 所要時間（秒）・`Ready` |
 | 長さ | 試験値と一致した／しなかった（数値は書かない） |
@@ -345,7 +394,7 @@ kubectl -n ai-stock-trading get externalsecret ast-secrets
 ## 限界（この手順で担保できないこと）
 
 - 🔴 **本書は稼働クラスタで実測していない。** 起草した作業はクラスタにも Vault にも触れていない。食い違いが出たら本書を直すこと。
-  特に、`vault kv rollback -format=json` の応答に作成時刻が含まれることと、Reloader のログの文言は未実測である。
+  特に、`vault kv rollback -format=json` の応答に作成時刻が含まれること、Reloader のログの文言、手順 0-5 の複数種別をまとめた `jsonpath` の出力の形は未実測である。
 - 試験対象は読み手の無いプロパティである。**「消費側が新しい値で動く」ことは確かめない**（作り直されることまで）。値を読む消費側（`anthropic-api-key` 等）での確認は、実際に鍵を差し替える運用（[`secret-rotation-runbook.md`](secret-rotation-runbook.md)）の場で行う。
 - Reloader はローカルの `ESO=1` にしか入っていない。本番像の消費側の作り直しは本書の範囲外である。
 - 戻しの書き込みは画面の監査ログに乗らない（保管先の audit に root トークンの行として残る）。人と理由は上の記録で残す。
