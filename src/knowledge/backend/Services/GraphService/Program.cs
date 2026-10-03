@@ -285,6 +285,13 @@ builder.Services.AddSingleton<IClusterDetectionLeaseCoordinator>(sp =>
     return new PostgresClusterDetectionLeaseCoordinator(
         connStr, sp.GetRequiredService<ILogger<PostgresClusterDetectionLeaseCoordinator>>());
 });
+// ［2026-10-04 / #1733・[[IADR-0496]]］周期の位相は前回の成功（`graph_batch_runs`）に付く。起動から 24 時間を数えない。
+// 待ち（起動の後・失敗の後）は構成 `ClusterDetection:StartupDelay` / `ClusterDetection:RetryDelay`
+// （環境変数 `ClusterDetection__StartupDelay` 等。不正値は既定へ倒し、起動は落とさない）。
+builder.Services.Configure<ClusterDetectionOptions>(
+    builder.Configuration.GetSection(ClusterDetectionOptions.SectionName));
+// 最後の成功の時刻（Unix 秒のゲージ）。Meter は EdgeTypeFallbackMetrics と同じなので、AddMeter の追加は要らない。
+builder.Services.AddSingleton<ClusterDetectionMetrics>();
 builder.Services.AddHostedService<ClusterDetectionHostedService>();
 
 // FR-17, FR-18, SC-10, ADR-0035 決定 3・5・6, ADR-0051 決定 4, ADR-0083 決定 2・3,

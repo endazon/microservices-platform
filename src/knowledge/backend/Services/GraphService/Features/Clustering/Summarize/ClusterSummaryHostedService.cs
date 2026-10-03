@@ -12,6 +12,9 @@ namespace GraphService.Features.Clustering.Summarize;
 //
 // 形は `ClusterDetectionHostedService` に合わせる（`BackgroundService` ＋ `PeriodicTimer` ＋
 // 初回は 1 周期後 ＋ 排他リースのゲート ＋ `TryRunCycleAsync` を internal にして決定的に検証）。
+// ［2026-10-04 / #1733・[[IADR-0496]]］🔴 **検出のほうは位相を前回の成功に付ける形へ移った。本ジョブは移していない**
+// （既定オフのため）。この形のまま有効化すると、24 時間より短い間隔で Pod が作り直される環境では
+// 初回の拍（起動の 24 時間後）が永久に来ない（#1733 と同じ欠陥）。有効化の前に検出と同じ形へ移すこと。
 //
 // 🔴 **既定では 1 周期も回さない**（`ClusterSummary:Enabled=false`）。無効なら**タイマーすら作らず**
 // 即座に降りる —— リースも取らず、DB も読まず、LLM の呼び出しは 1 回も起きない（[[IADR-0430]] 決定 6）。
