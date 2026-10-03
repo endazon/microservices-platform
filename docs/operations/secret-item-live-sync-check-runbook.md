@@ -57,7 +57,7 @@ issues: [#1472, #1467, #1477, #1502, #1682, #1728]
 | 環境 | `VAULT=1 ESO=1 bash scripts/k8s-local-up.sh --live` で立てたクラスタ（ESO=1 は VAULT=1 が無いと止まる）。Vault は既定の永続化（`PERSIST=0` でない） |
 | 画面に入れる利用者 | ロール **platform-admin** か **platform-operator** を持つ利用者（画面 `/admin/secrets`。左ナビ「運用」→「秘密情報・接続設定の管理」）。他のロールでは画面が「見つかりません」になる |
 | クラスタの権限 | `kubectl` で `platform-infra`（`exec deploy/vault`）・`microservices-platform`（ExternalSecret・Secret・Deployment の読み取りと、**ExternalSecret の `patch`**＝手順 3・7 の `annotate`）・`reloader`（ログの読み取り）・**全名前空間の Deployment / StatefulSet / DaemonSet / CronJob の `list`**（手順 0-5）・`clustersecretstore` の読み取り |
-| 必要なツール | `kubectl`・`base64`・`wc`・`openssl`（試験値の生成）・ブラウザ（開発者ツールのネットワーク表示を使う）。**ホストに `vault` CLI は不要**（Vault Pod 内で実行する） |
+| 必要なツール | `kubectl`・`base64`・`wc`・`openssl`（試験値の生成）・GNU coreutils の `date`（手順 4 で unix 秒を時刻へ直す `date -u -d @<秒>`。macOS 標準の BSD 版は `date -u -r <秒>` に読み替える）・ブラウザ（開発者ツールのネットワーク表示を使う）。**ホストに `vault` CLI は不要**（Vault Pod 内で実行する） |
 | 所要時間の目安 | 30〜45 分（記録を含む。任意の節を除く） |
 
 ## 試験対象（なぜこのプロパティか）
@@ -204,7 +204,7 @@ done
 
 - **完了** ＝ 次の 3 つがそろったとき（起動器の force-sync の完了条件に、注釈との前後を足したもの）。そろったら Ctrl-C で抜ける。
   - `refreshTime` が手順 3 の基準 T0 と**違う値**に変わった。
-  - `refreshTime` が `force-sync` の注釈の時刻（unix 秒）**以降**である（`date -u -d @<注釈の値>` で同じ書式に直して比べる。注釈より前なら定期同期であり、まだ完了ではない）。
+  - `refreshTime` が `force-sync` の注釈の時刻（unix 秒）**以降**である（`date -u -d @<注釈の値> +%Y-%m-%dT%H:%M:%SZ` で同じ書式に直して比べる。BSD 版では `date -u -r <注釈の値> +%Y-%m-%dT%H:%M:%SZ`。注釈より前なら定期同期であり、まだ完了ではない）。
   - `Ready` が `True`。
 - 所要時間 ＝ `refreshTime` − `force-sync` の注釈（境界層が付けた unix 秒）。注釈が手順 1-4 から変わっていることも見る（境界層の依頼が届いた証拠）。
 - 合否: **10 秒以内**なら設計どおり。10 秒を超えて 120 秒以内に終われば合格だが逸脱として記録する。**120 秒たっても `refreshTime` が変わらなければ不合格** —— 止める条件へ。
