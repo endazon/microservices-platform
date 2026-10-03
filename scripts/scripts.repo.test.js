@@ -13170,4 +13170,118 @@ exit 0
     });
   }
 
+
+  // --- #1245 裁定 ⑥（2026-10-03）: ログインの存在秘匿の検査器に、試験専用の利用者名の上書きを足す ----------------------
+  //
+  // 利用者のクラスタで稼働モードにすると、既定の対象（realm 宣言の最初の対話利用者 ＝ admin）へ
+  // failureFactor - 1 回の失敗を積み、一時ロックの手前へ押しやる。上書きの口を足し、宣言済みの名前は拒否する。
+  // 🔴 既定（指定なし）は統合スタックの CI が使うので変えない。空の上書きを既定へ倒さない。
+  {
+    const login1245 = require('./check-login-existence-disclosure.js');
+    const { loadRealm: loadRealm1245, pickTargetUser: pickTargetUser1245 } = require('./check-password-reset-mail.js');
+    const { spawnSync: spawnSync1245 } = require('child_process');
+    const path1245 = require('path');
+    const realm1245 = { users: [{ username: 'admin', email: 'a@example.invalid' }, { username: 'poc-user', email: 'p@example.invalid' }] };
+
+    ok('#1245 ⑥: 指定が無ければ上書きは無い（既定のまま）', () => {
+      const r = login1245.readUsernameOverride(['--live'], {});
+      assert.deepStrictEqual(r, { override: null, rest: ['--live'] });
+    });
+
+    ok('#1245 ⑥: 既定の対象は今までどおり realm 宣言の対話利用者（実宣言で admin）', () => {
+      const real = loadRealm1245();
+      assert.ok(real.ok, real.error);
+      const t = login1245.resolveLoginTarget({ override: null, realm: real.value });
+      assert.deepStrictEqual(t, { ok: true, username: pickTargetUser1245(real.value).username, overridden: false });
+      assert.strictEqual(t.username, 'admin', 'CI の既定の対象が変わった');
+    });
+
+    ok('#1245 ⑥: --username と LOGIN_PROBE_USERNAME の上書きが効き、CLI が環境変数に勝つ', () => {
+      assert.deepStrictEqual(
+        login1245.readUsernameOverride(['--live', '--username', 'prd-lockout1'], {}),
+        { override: 'prd-lockout1', source: '--username', rest: ['--live'] },
+      );
+      assert.deepStrictEqual(
+        login1245.readUsernameOverride(['--live'], { LOGIN_PROBE_USERNAME: 'prd-env1' }),
+        { override: 'prd-env1', source: 'LOGIN_PROBE_USERNAME', rest: ['--live'] },
+      );
+      assert.strictEqual(
+        login1245.readUsernameOverride(['--username', 'prd-cli1'], { LOGIN_PROBE_USERNAME: 'prd-env1' }).override,
+        'prd-cli1',
+      );
+      const t = login1245.resolveLoginTarget({ override: 'prd-lockout1', realm: realm1245 });
+      assert.deepStrictEqual(t, { ok: true, username: 'prd-lockout1', overridden: true });
+    });
+
+    ok('#1245 ⑥: realm 宣言に在る利用者名は大小を無視して拒否する（実宣言の全利用者で）', () => {
+      const real = loadRealm1245().value;
+      for (const u of real.users) {
+        for (const name of [u.username, u.username.toUpperCase()]) {
+          const t = login1245.resolveLoginTarget({ override: name, realm: real });
+          assert.strictEqual(t.ok, false, `${name} を拒否しなかった`);
+          assert.ok(/realm 宣言に在る共有の利用者/.test(t.error), t.error);
+        }
+      }
+      assert.strictEqual(login1245.resolveLoginTarget({ override: 'Admin', realm: realm1245 }).ok, false);
+    });
+
+    ok('#1245 ⑥: 空・空白・前後の空白・制御文字・値なし・重複指定は既定へ倒さずに止める', () => {
+      const bad = [
+        [['--username'], {}],
+        [['--username', '--live'], {}],
+        [['--username', ''], {}],
+        [['--username', 'a', '--username', 'b'], {}],
+        [[], { LOGIN_PROBE_USERNAME: '' }],
+        [[], { LOGIN_PROBE_USERNAME: '   ' }],
+        [[], { LOGIN_PROBE_USERNAME: ' prd-x' }],
+        [[], { LOGIN_PROBE_USERNAME: 'prd-x\n' }],
+        [[], { LOGIN_PROBE_USERNAME: 'prd\u0007x' }],
+      ];
+      for (const [argv, env] of bad) {
+        const r = login1245.readUsernameOverride(argv, env);
+        assert.ok(r.error, `${JSON.stringify(argv)} ${JSON.stringify(env)} を受け付けた: ${JSON.stringify(r)}`);
+        assert.ok(!('override' in r), '誤りなのに既定（override: null）を返した');
+      }
+      const t = login1245.resolveLoginTarget({ override: '', realm: realm1245 });
+      assert.strictEqual(t.ok, false, '空の上書きを既定の admin へ倒した');
+    });
+
+    ok('#1245 ⑥: 陰性対照は上書きした試験利用者（小文字形を含む）と衝突しない', () => {
+      // 乱数を固定して、最初の候補が試験利用者そのものになる状況を作る。
+      const target = { username: 'aaaaa', overridden: true };
+      const r = login1245.pickAbsentCounterpart(realm1245, target, () => 0);
+      assert.ok(r.takenUsernames.includes('aaaaa'), '試験利用者を取られている名前に数えていない');
+      assert.strictEqual(r.absentUsername, null, '候補が試験利用者と衝突しても返した');
+      const upper = login1245.pickAbsentCounterpart(realm1245, { username: 'AAAAA', overridden: true }, () => 0);
+      assert.strictEqual(upper.absentUsername, null, '小文字形（Keycloak の保持形）との衝突を見逃した');
+      const ok1 = login1245.pickAbsentCounterpart(realm1245, { username: 'prd-lockout1', overridden: true });
+      assert.strictEqual(Buffer.byteLength(ok1.absentUsername), Buffer.byteLength('prd-lockout1'));
+      assert.notStrictEqual(ok1.absentUsername, 'prd-lockout1');
+      // 既定（上書きなし）では取られている名前は宣言だけ（今までと同じ）。
+      const def = login1245.pickAbsentCounterpart(realm1245, { username: 'admin', overridden: false });
+      assert.deepStrictEqual(def.takenUsernames, ['admin', 'poc-user']);
+    });
+
+    ok('#1245 ⑥: main は --username を引数として受け、誤った上書きは稼働へ当たる前に exit 2 で止める', () => {
+      const script = path1245.join(__dirname, 'check-login-existence-disclosure.js');
+      const env = { ...process.env };
+      delete env.LIVE;
+      delete env.LOGIN_PROBE_USERNAME;
+      const run = (args, extra = {}) => spawnSync1245(process.execPath, [script, ...args], { env: { ...env, ...extra }, encoding: 'utf8' });
+      // 正しい上書きは引数解析を通り、明示の指定（--live）が無いので #1550 の拒否（exit 3）へ進む。
+      const good = run(['--username', 'prd-lockout1']);
+      assert.strictEqual(good.status, 3, good.stderr);
+      assert.ok(!/未知の引数/.test(good.stderr), good.stderr);
+      // 誤りは exit 2（未知の引数と同じ扱い）。
+      for (const [args, extra] of [[['--username'], {}], [[], { LOGIN_PROBE_USERNAME: '' }], [['--username', 'a', '--username', 'b'], {}]]) {
+        const r = run(args, extra);
+        assert.strictEqual(r.status, 2, `${JSON.stringify(args)} ${JSON.stringify(extra)}: exit ${r.status} ${r.stderr}`);
+      }
+      // 指定なしの自己試験は今までどおり動く（CI の --self-test）。
+      const st = run(['--self-test']);
+      assert.strictEqual(st.status, 0, st.stderr);
+      assert.ok(/self-test: 25 件すべて成功/.test(st.stdout), st.stdout);
+    });
+  }
+
 };
