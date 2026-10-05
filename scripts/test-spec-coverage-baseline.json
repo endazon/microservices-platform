@@ -408,6 +408,7 @@
       "BffSecretItemEndpointTests",
       "BffSecretItemGroupEndpointTests",
       "ConnectorSecretVaultPolicyTests",
+      "CredentialReferencePlacementTests",
       "DataSourceCredentialGroupEndpointTests",
       "SecretItemBootstrapSeedTests",
       "SecretItemCatalogTests",

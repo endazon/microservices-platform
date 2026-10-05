@@ -29,9 +29,10 @@ internal static class PlaceCredentialReferenceEndpoint
             if (!keys.Contains(key, StringComparer.Ordinal))
                 return Results.BadRequest(new { error = "このキーはコネクタの資格情報として宣言されていません。" });
 
-            var supply = ds.PlaceCredentialReference(key);
-            await db.SaveChangesAsync(ct);
-            return Results.Ok(new { property = key, supply });
+            // 🔴 `Config` 全体を作り直して保存しない（並行する配置・SC-06 の更新を消す）。そのキーにだけ条件つきで置き、
+            // 置いた後の実際の状態を返す（独立監査の指摘。`CredentialReferencePlacement`）。
+            var supply = await CredentialReferencePlacement.PlaceAsync(db, ds, key, ct);
+            return supply is null ? Results.NotFound() : Results.Ok(new { property = key, supply });
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }
 }

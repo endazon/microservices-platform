@@ -124,7 +124,7 @@ issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, planning#716]
 | T-82 | 群・業務DB の成員 | 書く | 保管先への書き込みは `secret/data/datasource/<ID>` の 1 本だけ（部分更新）で、値がそこに入る | 専用接頭辞 | 自動 |
 | T-83 | 群 | 成員が宣言しないプロパティ／宣言に無い群（`msp`・静的な項目名・未知）／空・長すぎる値・長すぎる理由／JSON でない本文 | 400（JSON でなければ 415 で監査に残る）。保管先へ届かない | 入力の検査 | 自動 |
 | T-84 | 群・成員を後段から取れない | 一覧と書き込み | どちらも 502（`members-unavailable`）。🔴 空の群にしない。書き込みは保管先へ届かない | 失敗を空へ縮退させない | 自動 |
-| T-85 | 成員の設定が 参照あり／値なし／平文／未知の符号 | 群の一覧 | 参照あり・値なし → `screen`、平文・未知の符号 → `git`（表示「画面以外」）。Kubernetes API へ 1 度も触れない（同期先の有無で判定しない） | 群の供給元 | 自動 |
+| T-85 | 成員の設定が 参照あり／値なし（保管先は空）／平文／未知の符号 | 群の一覧 | 参照あり・値なし → `screen`、平文 → `git`（表示「画面以外」）、🔴 未知の符号 → `unknown`（表示「確認できない」。2 値へ寄せない）。ただし同じ成員の別のキーが平文なら `git`。Kubernetes API へ 1 度も触れない（同期先の有無で判定しない） | 群の供給元 | 自動 |
 | T-86 | 値なしの成員 | 書く | 200・`screen`。🔴 **保管先へ書いた後に**参照の配置（`/datasources/<ID>/credentials/<キー>/reference`）を 1 回送る。同期依頼は無い。一覧の最終更新者に書いた利用者が出る | 書いた値が次の同期から使われる（窓の増える側） | 自動 |
 | T-87 | 平文を持つ成員 | 書く | 200・`git`（後段は平文を置き換えない） | 平文は画面が黙って移送しない（窓の減る側） | 自動 |
 | T-88 | 保管先が書き込みを拒む／参照の配置が失敗 | 書く | 前者は 502 で参照を置かない。後者は 200・`unknown`、書き込みの監査は granted、参照の監査は failed | 書けていないものを指させない | 自動 |
@@ -139,6 +139,14 @@ issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, planning#716]
 | T-97 | 画面・`?datasource=<ID>` | 管理者・運用者で開く／群に無い ID／成員を取れない（502） | 当該行が強調され、管理者には更新フォームが開く（運用者には開かない）。群に無い ID は注記を出す。502 は失敗を出して表を描かない | データソース管理画面からの導線 | 自動 |
 | T-98 | データソース管理画面 | 一覧を開く（管理者・運用者） | 有効で資格情報を使う種別の行にだけ導線（管理者「認証情報を設定」・運用者「認証情報の状態」）が出て `/admin/secrets?datasource=<ID>` を指す。ファイルサーバー・無効なソースには出ない。パスワードの入力欄は 1 つも無い。注記が投入の面を名指しする | 入力欄を置かず導線を置く | 自動 |
 | T-99 | ブラウザ・運用者／管理者 | 運用者で `?datasource=` を開く／管理者がデータソース管理画面の導線を押す | 運用者: 群の当該行が強調され、群に「更新」が無い（静的な項目の「更新」は在る）。管理者: 秘密情報・接続設定の管理画面へ移り、当該行の強調と更新フォーム | 画面の通し | 自動 |
+| T-100 | 群・保管先に値があるのに成員の設定が値なし（参照を置けなかった・並行する更新に負けた） | 群の一覧（陽性対照: 保管先が空の値なし） | 🔴 `unknown`（「画面」と出さない。コネクタはその値を読まない）。陽性対照は `screen` | 不明を 2 値へ寄せない | 自動 |
+| T-101 | 群・供給元の判定（キーごとの事実の組と保管先の有無）／参照の配置の応答が未知の符号 | 判定する／書く | 優先は `git` → `unknown` → `screen`。保管先が空の値なしは `screen`、値ありの値なしは `unknown`。書き込みの応答も未知の符号なら `unknown` | 供給元の規則 | 自動 |
+| T-102 | 群・後段の呼び出しが予期しない例外（HTTP の失敗でない）で落ちる | 保管先へ書けた後の参照の配置／成員の一覧 | 配置: 🔴 **500 にしない**。200・`unknown`、値は保管先に在り、参照の監査は failed、ログは例外の型名だけ（メッセージも値も出さない）。一覧: 一覧も書き込みも 502 で、書き込みは保管先へ届かない | 書けた値を「保存されていない」と言わせない | 自動 |
+| T-103 | 成員 ID・群の宣言（群名・接頭辞）・項目のパス | 末尾に改行を付ける | いずれも通さない（成員 ID は形の検査で偽、宣言は起動しない）。🔴 終端は `$` ではなく `\z` | 形の検査に改行の抜け道を残さない | 自動 |
+| T-104 | 後段・実 PostgreSQL・同じデータソースを読んだ 2 つの文脈 | 片方が別のキーへ参照を置いた後に、古い実体を持つもう片方が置く／同時に置く（8 回） | 🔴 両方の参照が残る（`Config` を古い辞書で丸ごと上書きしない） | 並行する配置で参照を消さない | 自動（統合） |
+| T-105 | 後段・実 PostgreSQL・読んだ時点では値なしのキー | 読んだ後にデータソース管理画面の更新が平文を入れ、その後に参照を置く（陽性対照: 空白だけの値） | 🔴 平文を上書きせず、応答は実際の状態 `other`（`reference` と報告しない）。陽性対照は参照が置かれ `reference` | 既存の値を決して上書きしない | 自動（統合） |
+| T-106 | 画面・群の成員の供給元が `unknown` | 画面を開く | 「確認できない」のバッジを出し、「画面」「画面以外」「実行時に取得・次の同期から効く」を出さない。注記が「確認できない」の意味と次の手を伝える | 不明を 2 値へ寄せない（表示） | 自動 |
+| T-107 | 画面・群と静的な項目の書き込み（変更キャッシュは既定の設定） | 1 プロパティを書いてフォームを閉じる | 変更の `gcTime` は 0 で、観測者が外れると送った値（変数）が変更キャッシュから消える | 送った値をメモリに残さない | 自動 |
 | T-40 | 稼働クラスタ（保管先・同期あり） | 画面から 1 プロパティを更新し、同期後の Secret を長さだけで確かめる（手順・試験対象・止める条件・記録は[稼働クラスタの確認の Runbook](../operations/secret-item-live-sync-check-runbook.md)） | 更新したプロパティの長さが一致し、同居するキーが減っていない | 稼働での成立 | 手動（未実施） |
 
 ## 自動試験の所在
@@ -155,11 +163,13 @@ issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, planning#716]
 | 起動器 | `scripts/k8s-local-up.test.js` | T-63 |
 | Kubernetes API の偽物 | `src/platform/backend/Bff/Platform.Bff.Tests/FakeKubernetesApi.cs` | T-57〜T-60・T-68〜T-70 が使う（既定では同期先がすべて在る。無いものは名前で指定する） |
 | ブラウザ | `src/platform/frontend/e2e/sc22-secrets.smoke.spec.ts` | T-36〜T-38・T-99（運用者） |
-| 群（境界層の端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemGroupEndpointTests.cs` | T-79〜T-89 |
+| 群（境界層の端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemGroupEndpointTests.cs` | T-79〜T-89・T-100〜T-103 |
 | 群（権限の字面） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemGroupVaultPolicyTests.cs`・`src/knowledge/backend/Services/DataSourceService/Tests/Infrastructure/Secrets/ConnectorSecretVaultPolicyTests.cs` | T-90 |
-| 群（宣言） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemCatalogTests.cs` | T-91 |
+| 群（宣言） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemCatalogTests.cs` | T-91・T-103 |
 | 群（後段） | `src/knowledge/backend/Services/DataSourceService/Tests/Features/DataSources/DataSourceCredentialGroupEndpointTests.cs` | T-92・T-93 |
-| 群（画面） | `src/knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.test.tsx` | T-94〜T-97 |
+| 群（後段・実 PostgreSQL） | `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DataSourceService/CredentialReferencePlacementTests.cs` | T-104・T-105（統合。PR では走らず、push と日次の統合試験で走る） |
+| 群（画面） | `src/knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.test.tsx` | T-94〜T-97・T-106 |
+| 書き込みの変更キャッシュ | `src/knowledge/frontend/src/features/sc22-secrets/api/secretMutationCache.test.tsx` | T-107 |
 | 導線（データソース管理画面） | `src/knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.test.tsx` | T-98 |
 | ブラウザ（導線） | `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts` | T-99（管理者） |
 | 保管先の偽物 | `src/platform/backend/Bff/Platform.Bff.Tests/FakeVault.cs` | 上記の境界層試験が使う |

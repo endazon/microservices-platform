@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Platform.Bff.Foundation.Endpoints;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Ports.Secrets;
 
 namespace Platform.Bff.Tests;
 
@@ -194,6 +195,9 @@ public class BffSecretItemGroupEndpointTests : IClassFixture<BffTestFactory>
     [InlineData("a b", false)]
     [InlineData("", false)]
     [InlineData(null, false)]
+    // #458 段 S2 の独立監査: `$` は末尾の改行の前でも一致する。終端は `\z`。
+    [InlineData("a\n", false)]
+    [InlineData("3f2504e0-4f89-11d3-9a0c-0305e82c3301\n", false)]
     public void Member_id_pattern_admits_only_one_lowercase_segment(string? member, bool expected)
     {
         SecretItemGroupBffEndpoints.IsMemberId(member).Should().Be(expected);
@@ -319,16 +323,62 @@ public class BffSecretItemGroupEndpointTests : IClassFixture<BffTestFactory>
         _factory.KubernetesApi.Requests.Should().BeEmpty("群の供給元は ExternalSecret の有無で判定しない");
     }
 
-    // 🔴 後段が未知の符号を返したら「画面以外」へ倒す（「画面」と出して、書いた値が使われると誤認させない）。
+    // 🔴 計画 ADR-0126 決定 4「不明を 2 値へ寄せない」: 後段が未知の符号を返したら「確認できない」（`unknown`）。
+    // 「画面」にも「画面以外」にも倒さない（#458 段 S2 の独立監査。従来は「画面以外」へ倒していた）。
+    // ただし別のプロパティが平文（`other`）を持てば「画面以外」が勝つ（書いた値が使われないことは確か）。
     [Fact]
-    public async Task Unknown_supply_codes_fall_to_not_screen()
+    public async Task Unknown_supply_codes_are_reported_as_unknown_not_folded_into_two_values()
     {
-        _factory.StubDataSourceCredentials = [new(WikiId, "社内 Wiki", "wiki", [new("apiToken", "migrating")])];
+        _factory.StubDataSourceCredentials =
+        [
+            new(WikiId, "社内 Wiki", "wiki", [new("apiToken", "migrating")]),
+            new(DbId, "業務 DB", "db", [new("password", "migrating"), new("user", DataSourceCredentialSupplies.Other)]),
+        ];
 
         using var response = await SendAsync(Get());
 
-        var group = await response.Content.ReadFromJsonAsync<SecretItemGroupDto>(TestContext.Current.CancellationToken);
-        group!.Members.Single().SupplySource.Should().Be(SecretItemSupplySources.Git);
+        var members = (await response.Content.ReadFromJsonAsync<SecretItemGroupDto>(TestContext.Current.CancellationToken))!
+            .Members.ToDictionary(m => m.MemberId);
+        members[WikiId.ToString("D")].SupplySource.Should().Be(SecretItemSupplySources.Unknown);
+        members[DbId.ToString("D")].SupplySource.Should().Be(SecretItemSupplySources.Git);
+    }
+
+    // 🔴 保管先（Vault）には値があるのに、成員の設定が値を持たない（`absent`）—— 書いた後の参照の配置が失敗した・
+    // 並行する更新に負けた状態。コネクタはその値を読まないので「画面」と出さず「確認できない」（#458 段 S2 の独立監査）。
+    // 陽性対照: 同じ「値なし」でも保管先が空なら「画面」（書けば参照が置かれる）。
+    [Fact]
+    public async Task Vault_set_but_member_without_a_value_is_reported_as_unknown()
+    {
+        _factory.Vault.Put($"datasource/{WikiId:D}", ("apiToken", PlaceholderValue));
+
+        using var response = await SendAsync(Get());
+
+        var members = (await response.Content.ReadFromJsonAsync<SecretItemGroupDto>(TestContext.Current.CancellationToken))!
+            .Members.ToDictionary(m => m.MemberId);
+        members[WikiId.ToString("D")].Status.Should().Be("set");
+        members[WikiId.ToString("D")].SupplySource.Should().Be(SecretItemSupplySources.Unknown);
+
+        _factory.Vault.Reset();
+        using var empty = await SendAsync(Get());
+        var wiki = (await empty.Content.ReadFromJsonAsync<SecretItemGroupDto>(TestContext.Current.CancellationToken))!
+            .Members.Single(m => m.MemberId == WikiId.ToString("D"));
+        wiki.Status.Should().Be("notSet");
+        wiki.SupplySource.Should().Be(SecretItemSupplySources.Screen);
+    }
+
+    // 供給元の判定そのもの（`SupplySourceOf`）。`git` が最優先、次に `unknown`、残りが `screen`。
+    [Theory]
+    [InlineData(new[] { SecretItemGroupSupply.Referenced }, false, SecretItemSupplySources.Screen)]
+    [InlineData(new[] { SecretItemGroupSupply.Referenced }, true, SecretItemSupplySources.Screen)]
+    [InlineData(new[] { SecretItemGroupSupply.Unset }, false, SecretItemSupplySources.Screen)]
+    [InlineData(new[] { SecretItemGroupSupply.Unset }, true, SecretItemSupplySources.Unknown)]
+    [InlineData(new[] { SecretItemGroupSupply.Unknown }, false, SecretItemSupplySources.Unknown)]
+    [InlineData(new[] { SecretItemGroupSupply.Unknown, SecretItemGroupSupply.OtherSource }, true, SecretItemSupplySources.Git)]
+    [InlineData(new[] { SecretItemGroupSupply.Unset, SecretItemGroupSupply.OtherSource }, true, SecretItemSupplySources.Git)]
+    public void Supply_source_never_folds_unknown_into_screen_or_not_screen(
+        SecretItemGroupSupply[] supplies, bool vaultHasValue, string expected)
+    {
+        SecretItemGroupBffEndpoints.SupplySourceOf(supplies, vaultHasValue).Should().Be(expected);
     }
 
     // ── 書き込みと参照の配置（AC-5・AC-8。窓の両端）
@@ -400,6 +450,57 @@ public class BffSecretItemGroupEndpointTests : IClassFixture<BffTestFactory>
             e.Action == SecretItemGroupBffEndpoints.UpdateAction && e.Outcome == "granted");
         _factory.RecordedAuditEntries.Should().Contain(e =>
             e.Action == SecretItemGroupBffEndpoints.ReferenceAction && e.Outcome == "failed");
+    }
+
+    // 後段が配置の結果に未知の符号を返したら、書き込みの結果も「確認できない」（「画面以外」へ倒さない）。
+    [Fact]
+    public async Task Unknown_reference_result_code_is_reported_as_unknown()
+    {
+        _factory.StubDataSourceCredentials = [new(WikiId, "社内 Wiki", "wiki", [new("apiToken", "migrating")])];
+
+        using var response = await SendAsync(Put(WikiId.ToString("D"), Body()));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await response.Content.ReadFromJsonAsync<SecretItemGroupWriteResultDto>(TestContext.Current.CancellationToken);
+        result!.SupplySource.Should().Be(SecretItemSupplySources.Unknown);
+    }
+
+    // 🔴 Vault へ書けた後の参照の配置が**予期しない例外**（HTTP の失敗ではない）で落ちても 500 にしない（#458 段 S2 の独立監査）。
+    // 500 だと画面は「値は保存されていません」と出すが、値は保存されている（偽）。200・「確認できない」・配置は failed の監査行。
+    // ログには例外の型名だけを出す（値もメッセージも出さない）。
+    [Fact]
+    public async Task Unexpected_exception_after_the_vault_write_keeps_the_write_and_reports_unknown()
+    {
+        var sink = new ConcurrentQueue<string>();
+        using var logged = _factory.WithWebHostBuilder(b =>
+            b.ConfigureLogging(l => l.AddProvider(new CollectingLoggerProvider(sink)).SetMinimumLevel(LogLevel.Trace)));
+        _factory.DataSourceReferenceException = () => new InvalidOperationException("fault-message-must-not-be-logged");
+
+        using var response = await SendAsync(Put(WikiId.ToString("D"), Body()), logged.CreateClient());
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await response.Content.ReadFromJsonAsync<SecretItemGroupWriteResultDto>(TestContext.Current.CancellationToken);
+        result!.SupplySource.Should().Be(SecretItemSupplySources.Unknown);
+        _factory.Vault.Store[$"datasource/{WikiId:D}"].Data["apiToken"].Should().Be(PlaceholderValue);
+        _factory.RecordedAuditEntries.Should().Contain(e =>
+            e.Action == SecretItemGroupBffEndpoints.ReferenceAction && e.Outcome == "failed");
+        sink.Should().Contain(line => line.Contains(nameof(InvalidOperationException), StringComparison.Ordinal));
+        sink.Should().NotContain(line => line.Contains("fault-message-must-not-be-logged", StringComparison.Ordinal));
+        sink.Should().NotContain(line => line.Contains(PlaceholderValue, StringComparison.Ordinal));
+    }
+
+    // 成員の一覧が予期しない例外で落ちても 500 にしない（「取れない」= 502。書き込みは Vault へ届かない）。
+    [Fact]
+    public async Task Unexpected_exception_while_listing_members_returns_502()
+    {
+        _factory.DataSourceCredentialsException = () => new InvalidOperationException("fault");
+
+        using var list = await SendAsync(Get());
+        using var update = await SendAsync(Put(WikiId.ToString("D"), Body()));
+
+        list.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+        update.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+        VaultWrites().Should().BeEmpty();
     }
 
     // 🔴 値は応答・監査・ログのどこにも出ない（成功・拒否・成員の取得失敗のいずれの経路でも）。理由は引用符で囲む。

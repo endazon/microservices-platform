@@ -22,7 +22,8 @@ namespace Platform.Bff.Foundation.Endpoints;
 //   ロールはハンドラ内で評価し、拒否を監査に残す（静的な項目と同じ理由。IADR-0433 決定 6）。
 // ■ 🔴 **値を読み出す口を作らない・値を出さない**（静的な項目と同じ。監査・ログ・応答のどこにも値・長さを出さない）。
 // ■ 供給元（ADR-0126 決定 4。ADR-0110 決定 1・3 の部分改定）: ExternalSecret の有無で判定しない。成員の設定が群の参照を持つ
-//   （または値を持たない）なら `screen`、画面以外の値（平文など）を持つなら `git`（表示「画面以外」）。
+//   （または値を持たない）なら `screen`、画面以外の値（平文など）を持つなら `git`（表示「画面以外」）。判定できない
+//   （未知の符号・保管先に値があるのに設定が値を持たない）なら `unknown`（不明を 2 値へ寄せない。`SupplySourceOf`）。
 //   **同期依頼も再起動の確認も無い**（消費側は次の同期の開始時に Vault から読む。IADR-0493）。
 public static partial class SecretItemGroupBffEndpoints
 {
@@ -109,7 +110,7 @@ public static partial class SecretItemGroupBffEndpoints
                     present ? metadata.CurrentVersion : null,
                     present ? metadata.CurrentVersionCreatedAt : null,
                     updatedBy,
-                    SupplySourceOf(member.Properties.Select(p => p.Supply))));
+                    SupplySourceOf(member.Properties.Select(p => p.Supply), vaultHasValue: present)));
             }
 
             // IADR-0453 決定 5 と同じ: **1 件も取れない**なら保管先に届いていない（全行「取得できない」の 200 にしない）。
@@ -239,7 +240,7 @@ public static partial class SecretItemGroupBffEndpoints
 
             return Results.Ok(new SecretItemGroupWriteResultDto(
                 definition.Group, member.MemberId, property, written.Version, written.UpdatedAt,
-                supply is { } placed ? SupplySourceOf([placed]) : SecretItemSupplySources.Unknown));
+                supply is { } placed ? SupplySourceOf([placed], vaultHasValue: true) : SecretItemSupplySources.Unknown));
         }).WithName("BffSecretItemGroupUpdate")
           .Produces<SecretItemGroupWriteResultDto>()
           .ProducesValidationProblem()
@@ -305,16 +306,27 @@ public static partial class SecretItemGroupBffEndpoints
     }
 
     // ADR-0126 決定 4: 🔴 **どれか 1 つでも画面以外の値を持てば「画面以外」**（書いても、その値は使われない）。
-    // それ以外（参照あり・値なし）は「画面」—— 値なしは書けば参照が置かれて次の同期から効く。
-    internal static string SupplySourceOf(IEnumerable<SecretItemGroupSupply> supplies) =>
-        supplies.Any(s => s == SecretItemGroupSupply.OtherSource)
-            ? SecretItemSupplySources.Git
-            : SecretItemSupplySources.Screen;
+    // 🔴 **不明を 2 値へ寄せない**（独立監査の指摘）: 次のどちらかなら「確認できない」（`unknown`）。
+    //   - 後段が判定できない符号を返した（`Unknown`）。
+    //   - **保管先（Vault）には値があるのに、成員の設定が値を持たない（`Unset`）** —— 書いた後の参照の配置が失敗した・
+    //     並行する更新に負けた状態であり、コネクタはその値を読まない。「画面」と出すと、使われていない値を使われていると誤認させる。
+    //     （KV v2 のメタデータはキーごとの有無を持たず、値を読む口も作らないので、成員単位で倒す。）
+    // それ以外（参照あり・保管先が空で値なし）は「画面」—— 値なしは書けば参照が置かれて次の同期から効く。
+    internal static string SupplySourceOf(IEnumerable<SecretItemGroupSupply> supplies, bool vaultHasValue)
+    {
+        var all = supplies.ToList();
+        if (all.Contains(SecretItemGroupSupply.OtherSource))
+            return SecretItemSupplySources.Git;
+        if (all.Contains(SecretItemGroupSupply.Unknown) || (vaultHasValue && all.Contains(SecretItemGroupSupply.Unset)))
+            return SecretItemSupplySources.Unknown;
+        return SecretItemSupplySources.Screen;
+    }
 
     // 成員 ID は Vault のパスの 1 セグメントになる。小文字英数とハイフンだけ（データソース ID の `D` 形式を含む）。
     internal static bool IsMemberId(string? memberId) => memberId is not null && MemberIdPattern().IsMatch(memberId);
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9-]{0,63}$")]
+    // 🔴 終端は `\z`（`$` は末尾の改行の前でも一致し、"a\n" を通してしまう。独立監査の指摘）。
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{0,63}\z")]
     private static partial Regex MemberIdPattern();
 
     private static IResult MembersUnavailableProblem() => Results.Problem(

@@ -498,6 +498,13 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public HttpStatusCode DataSourceCredentialsStatusCode { get; set; } = HttpStatusCode.OK;
     public HttpStatusCode DataSourceReferenceStatusCode { get; set; } = HttpStatusCode.OK;
 
+    /// <summary>
+    /// 後段の呼び出しが（HTTP の失敗ではない）予期しない例外で落ちる状態を作る（#458 段 S2 の独立監査）。
+    /// null なら投げない。
+    /// </summary>
+    public Func<Exception>? DataSourceCredentialsException { get; set; }
+    public Func<Exception>? DataSourceReferenceException { get; set; }
+
     /// <summary>参照の配置の要求（パス・伝播された Authorization・その時点までに Vault へ届いた data の書き込みの数）。</summary>
     public System.Collections.Concurrent.ConcurrentQueue<(string Path, string? Authorization, int VaultDataWrites)> DataSourceReferenceRequests { get; } = new();
 
@@ -506,6 +513,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
         StubDataSourceCredentials = [];
         DataSourceCredentialsStatusCode = HttpStatusCode.OK;
         DataSourceReferenceStatusCode = HttpStatusCode.OK;
+        DataSourceCredentialsException = null;
+        DataSourceReferenceException = null;
         DataSourceReferenceRequests.Clear();
     }
     public HttpMethod? LastDataSourceUpdateMethod { get; internal set; }
@@ -1326,6 +1335,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // SC-22 の群（#458 段 S2）: 成員の一覧と参照の配置。汎用の PUT の分岐より前に置く。
             if (path == "/datasources/credentials" && method == HttpMethod.Get)
             {
+                if (owner.DataSourceCredentialsException is { } listFault)
+                    throw listFault();
                 if (owner.DataSourceCredentialsStatusCode != HttpStatusCode.OK)
                     return Task.FromResult(new HttpResponseMessage(owner.DataSourceCredentialsStatusCode));
                 return Json(HttpStatusCode.OK, owner.StubDataSourceCredentials);
@@ -1337,6 +1348,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
                     path,
                     request.Headers.Authorization?.ToString(),
                     owner.Vault.Requests.Count(r => r.Path.Contains("/data/", StringComparison.Ordinal) && r.Method != "GET")));
+                if (owner.DataSourceReferenceException is { } referenceFault)
+                    throw referenceFault();
                 if (owner.DataSourceReferenceStatusCode != HttpStatusCode.OK)
                     return Task.FromResult(new HttpResponseMessage(owner.DataSourceReferenceStatusCode));
                 // 後段（DataSourceService）と同じ規則: 値なしなら参照を置く、それ以外はそのまま。

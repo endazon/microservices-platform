@@ -147,6 +147,8 @@ public class SecretItemCatalogTests
     [InlineData("msp/+")]
     [InlineData("msp/../postgres")]
     [InlineData("/msp/alpha")]
+    // #458 段 S2 の独立監査: 末尾の改行（`$` は改行の前でも一致する）も拒む。
+    [InlineData("msp/alpha\\n")]
     public void Wildcard_or_traversal_paths_fail_closed(string vaultPath)
     {
         var json = Valid.Replace("\"msp/alpha\"", $"\"{vaultPath}\"", StringComparison.Ordinal);
@@ -259,6 +261,9 @@ public class SecretItemCatalogTests
     [InlineData("""[ { "group": "g", "vaultPathPrefix": "zeta", "writers": "admin" }, { "group": "g", "vaultPathPrefix": "eta", "writers": "admin" } ]""", "重複")]
     [InlineData("""[ { "group": "g", "vaultPathPrefix": "zeta", "writers": "admin" }, { "group": "h", "vaultPathPrefix": "zeta", "writers": "admin" } ]""", "重複")]
     [InlineData("""{ "group": "g" }""", "配列ではない")]
+    // #458 段 S2 の独立監査: 1 セグメントの型（`SegmentPattern`）は末尾の改行を通さない（`$` ではなく `\z`）。
+    [InlineData("""[ { "group": "g", "vaultPathPrefix": "zeta\n", "writers": "admin" } ]""", "1 セグメント")]
+    [InlineData("""[ { "group": "g\n", "vaultPathPrefix": "zeta", "writers": "admin" } ]""", "group の書式")]
     public void Invalid_group_declarations_fail_closed(string groups, string reason)
     {
         var act = () => SecretItemCatalog.Parse(WithGroups(groups), "inline");

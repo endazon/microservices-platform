@@ -14,7 +14,7 @@ namespace Knowledge.Bff.Endpoints.Secrets;
 //   🔴 **登録済みの ID の検査は、BFF がこの一覧で行う**（決定 2「登録済みの ID は BFF のコードで限る」）。
 // - 参照の配置 = `PUT /datasources/{id}/credentials/{key}/reference`（本文なし。値はこの経路を通らない）。
 // - 利用者の資格情報（Authorization）を後段へ伝播する（`DataSourceBffEndpoints` と同じ。後段にも同じ認可がある）。
-// - 🔴 **失敗は null で返す**（例外を外へ出さない）。ログは状態コードと例外の型名だけ。
+// - 🔴 **失敗は null で返す**（例外を外へ出さない。呼び出し元の取り消しを除き、予期しない例外も含む）。ログは状態コードと例外の型名だけ。
 public sealed class DataSourceCredentialGroupSource(
     IHttpClientFactory httpFactory,
     ILogger<DataSourceCredentialGroupSource> logger) : ISecretItemGroupSource
@@ -47,8 +47,8 @@ public sealed class DataSourceCredentialGroupSource(
                 item.SourceType,
                 [.. (item.Properties ?? []).Select(p => new SecretItemGroupProperty(p.Name, SupplyOf(p.Supply)))]))];
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException
-                                       && !ct.IsCancellationRequested)
+        // 🔴 HTTP・JSON の失敗に限らず捕まえる（#458 段 S2 の独立監査）。呼び出し元の取り消しだけは外へ出す。
+        catch (Exception ex) when (!IsCallerCancellation(ex, ct))
         {
             logger.LogWarning("データソースの資格情報の一覧を取得できない: {ExceptionType}", ex.GetType().Name);
             return null;
@@ -74,21 +74,30 @@ public sealed class DataSourceCredentialGroupSource(
             var result = await response.Content.ReadFromJsonAsync<DataSourceCredentialReferenceResultDto>(ct);
             return result is null ? null : SupplyOf(result.Supply);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException
-                                       && !ct.IsCancellationRequested)
+        // 🔴 Vault への書き込みは**成立した後**である。ここで例外を外へ出すと BFF は 500 を返し、画面は
+        // 「値は保存されていません」と出す（偽）。予期しない例外も配置の失敗（null →「確認できない」）として扱う
+        // （#458 段 S2 の独立監査）。ログは例外の型名だけ（メッセージに値が混ざり得る）。
+        catch (Exception ex) when (!IsCallerCancellation(ex, ct))
         {
             logger.LogWarning("データソースの資格情報の参照を置けない: {ExceptionType}", ex.GetType().Name);
             return null;
         }
     }
 
-    // 計画 ADR-0126 決定 4: 🔴 **未知の符号は「画面以外」へ倒す**（「画面」と出して、書いた値が使われると誤認させない）。
+    // 計画 ADR-0126 決定 4: 🔴 **未知の符号は「確認できない」（`Unknown`）のまま返す**（不明を 2 値へ寄せない。
+    // #458 段 S2 の独立監査で「画面以外」へ倒す扱いを改めた）。「画面」と出して書いた値が使われると誤認させないことは、
+    // 「確認できない」でも同じく守られる。平文（`other`）が他のプロパティにあれば、BFF が「画面以外」を優先する。
     internal static SecretItemGroupSupply SupplyOf(string? supply) => supply switch
     {
         DataSourceCredentialSupplies.Reference => SecretItemGroupSupply.Referenced,
         DataSourceCredentialSupplies.Absent => SecretItemGroupSupply.Unset,
-        _ => SecretItemGroupSupply.OtherSource,
+        DataSourceCredentialSupplies.Other => SecretItemGroupSupply.OtherSource,
+        _ => SecretItemGroupSupply.Unknown,
     };
+
+    // 呼び出し元（要求）の取り消しだけは握らない。後段の時間切れ（TaskCanceledException で ct は未取り消し）は失敗として扱う。
+    private static bool IsCallerCancellation(Exception ex, CancellationToken ct) =>
+        ex is OperationCanceledException && ct.IsCancellationRequested;
 
     private HttpClient CreateForwardingClient(HttpContext http)
     {

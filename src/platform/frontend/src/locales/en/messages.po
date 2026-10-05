@@ -139,6 +139,10 @@ msgstr "Use “+ Add source” to register an ingestion source."
 msgid "「＋ 新規登録」から最初の文書を登録してください。"
 msgstr "Use “+ New” to register the first document."
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "「確認できない」の項目は、データソースの設定が保管先の値を参照しているかを確かめられませんでした（保管先に値があるのに参照を置けなかった場合など）。次の同期が失敗する場合は、もう一度更新してください。"
+msgstr "Items shown as \"Cannot confirm\" could not be confirmed to reference the value in the secret store (for example, a value is in the store but the reference could not be placed). If the next sync fails, update the item again."
+
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "「設定済み」は保管先に値の版があることを示します。各プロパティに空でない値が入っているかは、値を読み出さないためこの画面では判定できません。最終更新者は、この画面から更新した版にだけ表示されます（コンソールから更新した版は「記録なし」）。"
 msgstr "\"Set\" means the store holds a version of the value. Because values are never read back, this screen cannot tell whether each property holds a non-empty value. The last updater is shown only for versions written from this screen (versions written from the console show \"No record\")."

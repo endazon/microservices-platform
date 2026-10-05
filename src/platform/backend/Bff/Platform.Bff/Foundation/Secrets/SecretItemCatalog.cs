@@ -381,19 +381,20 @@ public sealed partial class SecretItemCatalog
     private static SecretItemCatalogException Invalid(string source, string reason, Exception? inner = null) =>
         new($"SC-22 の項目一覧（allowlist）が不正: {source}: {reason}。BFF は起動しない（fail-closed）。", inner);
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9-]*$")]
+    // 🔴 終端は `\z`（`$` は末尾の改行の前でも一致し、"a\n" を通してしまう。#458 段 S2 の独立監査の指摘。下の型も同じ）。
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9-]*\z")]
     private static partial Regex SegmentPattern();
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")]
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*\z")]
     private static partial Regex VaultPathPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]*$")]
+    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._-]*\z")]
     private static partial Regex PropertyPattern();
 
     // k8s のオブジェクト名（DNS-1123 subdomain）と名前空間名（DNS-1123 label）。
-    [GeneratedRegex(@"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$")]
+    [GeneratedRegex(@"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*\z")]
     private static partial Regex KubernetesNamePattern();
 
-    [GeneratedRegex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")]
+    [GeneratedRegex(@"^[a-z0-9]([-a-z0-9]*[a-z0-9])?\z")]
     private static partial Regex KubernetesNamespacePattern();
 }

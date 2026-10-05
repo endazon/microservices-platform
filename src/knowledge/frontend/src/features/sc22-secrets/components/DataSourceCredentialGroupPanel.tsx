@@ -181,6 +181,10 @@ export function DataSourceCredentialGroupPanel({ focusId }: { focusId?: string }
         <Note data-testid="datasource-credentials-supply-note">
           <Trans>
             供給元が「画面」の項目は、この画面で書いた値をコネクタが実行時に保管先から読みます。書いた値は次の同期から使われ、アプリケーションの再起動は要りません。「画面以外」の項目は、データソースの設定に画面以外から入れた値が残っているため、この画面で書いた値は使われません。
+          </Trans>{' '}
+          {/* 計画 ADR-0126 決定 4「不明を 2 値へ寄せない」（#458 段 S2 の独立監査）: 「確認できない」の意味と次の手を添える。 */}
+          <Trans>
+            「確認できない」の項目は、データソースの設定が保管先の値を参照しているかを確かめられませんでした（保管先に値があるのに参照を置けなかった場合など）。次の同期が失敗する場合は、もう一度更新してください。
           </Trans>
         </Note>
       </Panel>
@@ -214,6 +218,7 @@ function MemberStatus({ member }: { member: SecretItemGroupMemberStatusDto }) {
 }
 
 // 計画 ADR-0126 決定 4: 供給元の 3 値。「画面」には「実行時に取得・次の同期から効く」を添える。
+// 判定できない（BFF が `unknown`・未知の値）は「確認できない」—— 色・語・（StatusBadge の）印で描き、2 値へ寄せない。
 function MemberSupply({ member }: { member: SecretItemGroupMemberStatusDto }) {
   const { t } = useLingui();
   const source = secretSupplySource(member);

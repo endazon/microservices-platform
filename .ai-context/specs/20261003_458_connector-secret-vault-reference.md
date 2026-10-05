@@ -707,6 +707,61 @@ BFF はフィルタ `SecretItemGroup|SecretItemCatalog`、DataSourceService は 
 - 群の policy の `+` と metadata の `read` は、実 Vault に対して未実測（試験は字面と偽の Vault）。稼働クラスタでの疎通は #458 の残射程 4 と同じ場。
 - 書き込みの後の参照の配置は 2 つ目の要求であり、Vault の書き込みと原子的ではない（失敗すると供給元 `unknown` を返し、更新し直しで直る。参照が無いままなら同期は認証なしのまま —— 書く前と同じ状態）。
 
+### 独立監査の指摘と是正（2026-10-06。PR #1759 の head `deb191f6` に対する監査は GO・指摘 6 件）
+
+着手時に `origin/develop` を merge した（rebase ではない。衝突なし）。指摘ごとに、是正の前に赤・後に緑になる試験を足した（是正を一時的に戻して赤を確かめた。下の変異 M25〜M31）。
+
+| 指摘 | 是正 | 試験 |
+| --- | --- | --- |
+| 🟡1 一覧で、保管先（Vault）が `set` なのに成員の設定が値を持たない（参照の配置が失敗・並行する更新に負けた）とき「画面」と出る —— コネクタはその値を読まない | `SupplySourceOf(supplies, vaultHasValue)`: 保管先に値あり かつ `Unset` →「確認できない」（`unknown`）。書き込みの応答は「保管先に値あり」として同じ規則で判定する | BFF `Vault_set_but_member_without_a_value_is_reported_as_unknown`（陽性対照: 保管先が空なら `screen`）・`Supply_source_never_folds_unknown_into_screen_or_not_screen` |
+| 🟡2 後段の未知の符号を「画面以外」へ倒していた（ADR-0126 決定 4「不明を 2 値へ寄せない」と食い違う） | ポートに `SecretItemGroupSupply.Unknown` を足し、knowledge の `SupplyOf` は `other` だけを `OtherSource`、未知を `Unknown` へ写す。BFF の優先は `git` → `unknown` → `screen`。画面は既に `unknown` を「確認できない」（`StatusBadge` の色＋印＋語）で描くので、表の注記に意味と次の手を 1 文足した（ja / en） | BFF `Unknown_supply_codes_are_reported_as_unknown_not_folded_into_two_values`・`Unknown_reference_result_code_is_reported_as_unknown`、Vitest `shows unknown supply as cannot-confirm without folding it into screen or not-screen` |
+| 🟡3 参照の配置が `Config` 全体を作り直して並行性の制御なしに保存する —— 別のキーへの配置・SC-06 の更新と重なると参照・平文を消し、しかも `reference` と報告する | `CredentialReferencePlacement.PlaceAsync`: 実 DB では `jsonb_set` を**そのキーにだけ・キーが無い／空白だけのときだけ**当てる 1 文の条件つき更新にし、**置いた後の状態を読み直して**返す。移行も並行性の印（xmin）も足さない（印は `Config` に触れない同期の記録まで競合で落とすため）。InMemory は従来の実体の更新 | 統合（実 PostgreSQL）`CredentialReferencePlacementTests.Concurrent_placements_for_different_keys_both_survive`・`Placement_never_overwrites_a_value_written_after_it_read_the_row` |
+| 🟡4 成員 ID の型 `^…$` が末尾の改行を通す（.NET の `$` は末尾の `\n` の前でも一致） | 終端を `\z` に。`SecretItemCatalog` の型 5 つ（1 セグメント・パス・プロパティ・Kubernetes の名前 2 つ）も同じく | BFF `Member_id_pattern_admits_only_one_lowercase_segment`（`"a\n"`・`"<GUID>\n"`）、`SecretItemCatalogTests.Invalid_group_declarations_fail_closed`（群名・接頭辞の末尾改行）・`Wildcard_or_traversal_paths_fail_closed`（パスの末尾改行） |
+| 🟢1 ポートが HTTP・JSON・時間切れ以外の例外を外へ出す —— Vault へ書けた後なら BFF は 500 を返し、画面は「値は保存されていません」と出す（偽） | 捕まえる条件を「呼び出し元の取り消し以外のすべて」へ広げた（ログは例外の型名だけ）。配置の失敗は null → 200・`unknown`・配置の監査行 `failed`、一覧の失敗は 502 | BFF `Unexpected_exception_after_the_vault_write_keeps_the_write_and_reports_unknown`・`Unexpected_exception_while_listing_members_returns_502` |
+| 🟢2 書き込みの変更（mutation）が送った値（変数）を TanStack Query の変更キャッシュに既定の 5 分残す | 群・静的な項目の両方の変更に `gcTime: 0` | Vitest `secretMutationCache.test.tsx`（2 件。検査用の QueryClient は変更の gcTime を上書きしない） |
+
+#### 規則 10（この是正で誤りになる記述の引き直し）
+
+`git grep -n -E "未知の符号|画面以外」へ倒|値なし → .screen|値なし → 画面|\{0,63\}\$" -- docs .ai-context/adr src ':!src/ai-stock-trading'` で引いた。
+
+| 箇所 | 扱い |
+| --- | --- |
+| IADR-0501 決定 2（成員 ID の型）・決定 3（配置）・決定 4（供給元・未知の符号）・決定 5（画面）・§結果 | 本 PR の新規 IADR なので本文を改めた |
+| IADR-0460 の 2026-10-06 追記（群の供給元） | 本 PR の追記なので「判定できない」の中身を足した |
+| `docs/screens/SC-22_secret-item-management.md` 群の節・計画との対応表 | 改めた |
+| `docs/tests/SC-22_secret-item-management.md` T-85 | 「未知の符号 → `git`」を `unknown` へ改め、T-100〜T-107 を足した |
+| `docs/api/openapi.yaml` の `SecretItemGroupMemberStatusDto.supplySource` の説明・`SecretItemDto.cs` の同 DTO のコメント（`git grep -n "群の参照を持つ"` で追加に引いた） | `unknown` の中身と「保管先も空」を足した。orval の生成物（`bff.schemas.ts` のコメント）を再生成した |
+| 本書 §設計（S2・S3）の「供給元」の項（`absent` は「画面」・`other` 以外は「画面」） | 🔴 **この節の時点の記録として残す**（本節が改める） |
+
+#### 変異試験（1 つずつ当てて戻した。スクリプト `scratchpad/mut458.sh`）
+
+| # | 変異 | 結果 |
+| --- | --- | --- |
+| M25 | 保管先に値あり かつ `Unset` の分岐を外す（🟡1） | 殺した（2） |
+| M26 | 未知の符号を `OtherSource` へ戻す（🟡2） | 殺した（2） |
+| M27 | 配置を従来の `Config` 全体の保存へ戻す（実 DB でも実体の更新）（🟡3） | 殺した（2。統合） |
+| M28 | 成員 ID の型の終端を `$` へ戻す（🟡4） | 殺した（2） |
+| M29 | 1 セグメントの型の終端を `$` へ戻す（🟡4） | 殺した（2） |
+| M30 | パスの型の終端を `$` へ戻す（🟡4） | 殺した（1） |
+| M31 | 捕まえる例外を HTTP・時間切れ・JSON に戻す（🟢1） | 殺した（2） |
+| M32 | 変更の `gcTime: 0` を外す（🟢2） | 殺した（2） |
+| M33 | 画面: 「確認できない」を「画面以外」へ寄せ、注記の 1 文を落とす（🟡2 の表示） | 殺した（1） |
+
+#### 検証（独立監査の是正）
+
+- `dotnet build`（platform・knowledge）→ エラー 0（警告は既存の `IngestToSearchQdrantTests.cs` の CS0618 だけ）。`dotnet format --verify-no-changes`（両ユニット）→ 差分なし
+- `dotnet test`: `Platform.Bff.Tests` 865 成功＋skip 1、`DataSourceService.Tests` 464 成功、`CredentialReferencePlacementTests` 2 成功（実 PostgreSQL のコンテナ）
+- `src/`: `lint`（エラー 0）・`typecheck`・`format:check`・`codegen` の再生成差分なし・`i18n` の再生成差分なし・Vitest（`sc22-secrets`・`sc06-datasources`）成功・
+  `build` → `check-chunk-budget --require` が +0.55 kB 超過 → `--update`（`$comment_initialTotalBytes_20261006_458_audit-fixes`）
+- 文書・規約の検査器は PR 本文に記す
+
+#### 残余リスク（是正後）
+
+- 🔴 **SC-06 の更新（`PATCH` / `PUT /datasources/{id}`）は従来どおり `Config` 全体を並行性の印なしで書く**（本段の射程外・既存の挙動）。参照の配置が SC-06 の更新の
+  「読んでから書くまで」の間に入ると、SC-06 の更新が古い辞書で参照を消し得る。消えた場合、一覧は保管先に値があるのに設定が値を持たない状態を「確認できない」と出す（🟡1 の是正）ので、黙って「画面」とは出ない。
+- 「確認できない」の判定（🟡1）は成員単位である（KV v2 の metadata はキーごとの有無を持たない）。資格情報のキーを 2 つ以上宣言するコネクタが入ると、片方だけ書いた途中の状態も「確認できない」と出る（いまのコネクタは 1 つ）。
+- 並行性の試験（T-104・T-105）は統合の分類で、PR の CI では走らない（push と日次の統合試験で走る。IADR-0232 決定 3）。
+
 ### 段 S4 に要るもの
 
 - 既存の行の秘密キー（`Config` の `apiToken` / `password`）を `datasource/<ID>` へ移し、正規の参照（`ConnectorSecretReference.CanonicalFor`）へ置き換える一回きりのジョブ

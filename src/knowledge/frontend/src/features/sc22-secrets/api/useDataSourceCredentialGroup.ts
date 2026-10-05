@@ -40,6 +40,11 @@ export function useDataSourceCredentialGroup() {
 export function useDataSourceCredentialUpdate() {
   const queryClient = useQueryClient();
   return useBffSecretItemGroupUpdate<unknown>({
-    mutation: { onSuccess: () => void queryClient.invalidateQueries({ queryKey: groupKey }) },
+    mutation: {
+      // 🔴 送った値（変数）を変更キャッシュに残さない。既定（5 分）だと、フォームを閉じた後も値がメモリの
+      // キャッシュに残る（#458 段 S2 の独立監査）。観測者が外れたら即座に捨てる。
+      gcTime: 0,
+      onSuccess: () => void queryClient.invalidateQueries({ queryKey: groupKey }),
+    },
   });
 }

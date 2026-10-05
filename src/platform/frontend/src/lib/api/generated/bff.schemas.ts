@@ -2186,7 +2186,7 @@ export const SecretItemGroupMemberStatusDtoStatus = {
 } as const;
 
 /**
- * screen = 群の参照を持つ／値を持たない（表示「画面（実行時に取得・次の同期から効く）」）／git = 画面以外の値を持つ（表示「画面以外」）／unknown = 判定できない（表示「確認できない」）
+ * screen = 群の参照を持つ／値を持たない（保管先も空。表示「画面（実行時に取得・次の同期から効く）」）／git = 画面以外の値を持つ（表示「画面以外」）／unknown = 判定できない（未知の符号・保管先に値があるのに設定が値を持たない。表示「確認できない」。2 値へ寄せない）
  */
 export type SecretItemGroupMemberStatusDtoSupplySource = typeof SecretItemGroupMemberStatusDtoSupplySource[keyof typeof SecretItemGroupMemberStatusDtoSupplySource];
 
@@ -2216,7 +2216,7 @@ export interface SecretItemGroupMemberStatusDto {
   lastUpdatedAt?: string | null;
   /** BFF が書いた版が現在版のときだけ */
   lastUpdatedBy?: string | null;
-  /** screen = 群の参照を持つ／値を持たない（表示「画面（実行時に取得・次の同期から効く）」）／git = 画面以外の値を持つ（表示「画面以外」）／unknown = 判定できない（表示「確認できない」） */
+  /** screen = 群の参照を持つ／値を持たない（保管先も空。表示「画面（実行時に取得・次の同期から効く）」）／git = 画面以外の値を持つ（表示「画面以外」）／unknown = 判定できない（未知の符号・保管先に値があるのに設定が値を持たない。表示「確認できない」。2 値へ寄せない） */
   supplySource: SecretItemGroupMemberStatusDtoSupplySource;
 }
 

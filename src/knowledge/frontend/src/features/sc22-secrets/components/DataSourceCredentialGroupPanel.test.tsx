@@ -60,7 +60,12 @@ const MEMBERS = [
 const PLACEHOLDER = 'placeholder-value-for-sc22-group-ui-test';
 
 function mockApi(
-  options: { writable?: boolean; writeSupply?: string; writeError?: ApiError } = {},
+  options: {
+    writable?: boolean;
+    writeSupply?: string;
+    writeError?: ApiError;
+    members?: readonly unknown[];
+  } = {},
 ) {
   mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
     const p = String(path);
@@ -82,7 +87,7 @@ function mockApi(
         jsonResponse({
           group: 'datasource-credentials',
           writable: options.writable ?? true,
-          members: MEMBERS,
+          members: options.members ?? MEMBERS,
         }),
       );
     if (p === '/secrets') return Promise.resolve(jsonResponse([]));
@@ -135,6 +140,24 @@ describe('DataSourceCredentialGroupPanel (SC-22 群)', () => {
     const saas = within(await rowOf(SAAS_ID));
     expect(saas.getByText('画面以外')).toBeInTheDocument();
     expect(saas.queryByText('実行時に取得・次の同期から効く')).toBeNull();
+  });
+
+  // 🔴 ADR-0126 決定 4「不明を 2 値へ寄せない」（#458 段 S2 の独立監査）: BFF が `unknown` を返したら
+  // 「確認できない」と出し、「画面」にも「画面以外」にも寄せない。注記がその意味と次の手を伝える。
+  it('shows unknown supply as cannot-confirm without folding it into screen or not-screen', async () => {
+    mockApi({
+      members: [member({ status: 'set', currentVersion: 1, supplySource: 'unknown' })],
+    });
+    await renderPage();
+
+    const wiki = within(await rowOf(WIKI_ID));
+    expect(wiki.getByText('確認できない')).toBeInTheDocument();
+    expect(wiki.queryByText('画面')).toBeNull();
+    expect(wiki.queryByText('画面以外')).toBeNull();
+    expect(wiki.queryByText('実行時に取得・次の同期から効く')).toBeNull();
+    expect(screen.getByTestId('datasource-credentials-supply-note')).toHaveTextContent(
+      '「確認できない」の項目は',
+    );
   });
 
   // 🔴 ADR-0126 決定 3: 運用者は閲覧だけ（`writable: false` なら「更新」も操作の列も無い）。陽性対照: 管理者には 3 つ。

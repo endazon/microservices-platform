@@ -6349,7 +6349,7 @@ components:
         supplySource:
           type: string
           enum: [screen, git, unknown]
-          description: "screen = 群の参照を持つ／値を持たない（表示「画面（実行時に取得・次の同期から効く）」）／git = 画面以外の値を持つ（表示「画面以外」）／unknown = 判定できない（表示「確認できない」）"
+          description: "screen = 群の参照を持つ／値を持たない（保管先も空。表示「画面（実行時に取得・次の同期から効く）」）／git = 画面以外の値を持つ（表示「画面以外」）／unknown = 判定できない（未知の符号・保管先に値があるのに設定が値を持たない。表示「確認できない」。2 値へ寄せない）"
 
     SecretItemGroupWriteResultDto:
       type: object

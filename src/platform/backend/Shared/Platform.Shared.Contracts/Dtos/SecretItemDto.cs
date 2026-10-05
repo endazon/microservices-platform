@@ -83,8 +83,9 @@ public record SecretItemGroupDto(
 // `MemberId` は Vault のパスの 1 セグメント（例: データソース ID）、`DisplayName` / `Kind` は成員の名前と種別（例: Wiki）。
 // `Status` は `set` / `notSet` / `unavailable`（KV 単位。IADR-0453 決定 4 と同じ）。
 // `SupplySource` は `SecretItemSupplySources` の 3 値だが、**判定の材料が違う**（ADR-0126 決定 4・ADR-0110 決定 1 の部分改定）:
-// 成員の設定が群の参照を持つ（または値を持たない）→ `screen`（表示「画面（実行時に取得・次の同期から効く）」）／
-// 平文などを持つ → `git`（表示「画面以外」）。ExternalSecret の有無では判定しない。
+// 成員の設定が群の参照を持つ（または値を持たず保管先も空）→ `screen`（表示「画面（実行時に取得・次の同期から効く）」）／
+// 平文などを持つ → `git`（表示「画面以外」）／判定できない（未知の符号・保管先に値があるのに設定が値を持たない）→ `unknown`
+// （表示「確認できない」。2 値へ寄せない。#458 段 S2 の独立監査）。ExternalSecret の有無では判定しない。
 public record SecretItemGroupMemberStatusDto(
     string MemberId,
     string DisplayName,
