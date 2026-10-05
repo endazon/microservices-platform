@@ -115,6 +115,8 @@ public sealed class KeywordIndexQdrantTests : IAsyncLifetime
     }
 
     // I-11: 索引を張っても ABAC フィルタの意味は変わらない（完全一致・大小文字の区別）。facet も同じフィルタで絞られる。
+    // リスト項目（`tags`）の「いずれか一致」（spec m-4）と、否定条件 `must_not attributes.doc_scope == private-note` が
+    // キーを持たない点を残すこと（spec m-5）も、索引を張った後で同じであることを測る（独立監査 🟢）。
     [Fact]
     public async Task AbacFilter_KeepsExactCaseSensitiveMatch_WithKeywordIndex()
     {
@@ -141,6 +143,26 @@ public sealed class KeywordIndexQdrantTests : IAsyncLifetime
         (await reader.ListAttributeValuesAsync("tags", exact, ct))
             .Should().Equal(["人事"], "facet も検索と同じフィルタで絞られる（権限外の値は候補に出ない）");
         (await reader.ListAttributeValuesAsync("tags", otherCase, ct)).Should().BeEmpty();
+
+        // m-4: リスト項目（`tags`）は「いずれか一致」のまま。大小文字も区別する。
+        var anyHrTag = new ScopeFilter([new AttributeFilter("tags", ["人事", "経理"])]);
+        var anyTag = new ScopeFilter([new AttributeFilter("tags", ["人事", "営業"])]);
+        (await reader.KeywordSearchAsync("abac-keyword-it", 10, anyHrTag, ct)).Select(r => r.DocumentId)
+            .Should().Contain(hr).And.NotContain(sales);
+        (await reader.KeywordSearchAsync("abac-keyword-it", 10, anyTag, ct)).Select(r => r.DocumentId)
+            .Should().Contain([hr, sales]);
+
+        // m-5: 裁量でない分岐は `must_not attributes.doc_scope == private-note` を付ける。索引を張った後も、
+        // `doc_scope` を持たない点（既存の組織文書）は残り、個人資料だけが落ちる（否定形が欠落を落とさない）。
+        var note = Guid.NewGuid();
+        await writer.UpsertLexicalChunkAsync(Guid.NewGuid(), note, "個人の文書", "abac-keyword-it 個人", 0, null,
+            new() { ["department"] = "HR", [DocumentScopes.Key] = DocumentScopes.PrivateNote }, ["人事"], ct: ct);
+        await WaitForKeywordIndexAsync(_lexical, AttributeValueKeys.ToPayloadKey(DocumentScopes.Key), ct);
+        var organizational = new ScopeFilter([], [[new AttributeFilter("department", ["HR", "sales"])]]);
+        var visible = (await reader.KeywordSearchAsync("abac-keyword-it", 10, organizational, ct))
+            .Select(r => r.DocumentId).ToList();
+        visible.Should().Contain([hr, sales], "doc_scope を持たない点は否定条件で落ちない")
+            .And.NotContain(note, "個人資料は裁量でない分岐では許可されない");
     }
 
     // I-12（陰性対照）: 索引の無いコレクションでは生の facet が `No appropriate index for faceting` で失敗する。

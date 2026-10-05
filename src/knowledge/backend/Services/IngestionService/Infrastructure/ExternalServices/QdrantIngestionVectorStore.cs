@@ -310,37 +310,64 @@ public class QdrantIngestionVectorStore(
     //
     // 🔴 **全点を読む**（標本にしない）。標本では少数の文書にだけ付いたキーを取りこぼし、
     // 「その値を持つ文書は在るのに候補に出ない」形が残る。費用は IADR-0502 §結果。
+    //
+    // 🔴 **1 つのコレクションの走査の失敗で、他のコレクションの発見を止めない**（[[IADR-0502]] 決定 3。独立監査 🟡3）。
+    // 走査中の `NotFound`（コレクションが無い）・`Unavailable`（Qdrant の不調）はそのコレクションだけを諦めて
+    // Warning を残し、次のコレクションへ進む（そのコレクションの既存キーは、次の書き込みか次の起動で張られる）。
+    // ログにはコレクション名と状態コードだけを出す（ペイロードの値は出さない）。呼び出し元の取り消しは上げる。
     public async Task<int> EnsureKeywordIndexesForExistingPointsAsync(CancellationToken ct = default)
     {
         var created = 0;
         foreach (var name in AllCollectionNames)
         {
-            var keys = new HashSet<string>(StringComparer.Ordinal);
-            PointId? offset = null;
-            do
+            HashSet<string> keys;
+            try
             {
-                var page = await client.ScrollAsync(name,
-                    limit: KeyDiscoveryPageSize,
-                    offset: offset,
-                    payloadSelector: new WithPayloadSelector
-                    {
-                        Include = new PayloadIncludeSelector { Fields = { AttributeValueKeys.AttributesPrefix } }
-                    },
-                    vectorsSelector: new WithVectorsSelector { Enable = false },
-                    cancellationToken: ct);
-
-                foreach (var point in page.Result)
-                    keys.UnionWith(ReadAttributeKeys(point.Payload));
-
-                offset = page.NextPageOffset;
+                keys = await ScanAttributeKeysAsync(name, ct);
             }
-            while (offset is not null && !ct.IsCancellationRequested);
+            catch (Grpc.Core.RpcException ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    "Failed to scan Qdrant collection {Collection} for attribute keys ({StatusCode}); "
+                    + "keyword payload indexes for its pre-existing attribute keys are not ensured until "
+                    + "they are written again or the next start, continuing with the next collection",
+                    name, ex.StatusCode);
+                continue;
+            }
 
             ct.ThrowIfCancellationRequested();
             created += await EnsureAttributeKeywordIndexesAsync(name, keys, ct);
         }
 
         return created;
+    }
+
+    // [[IADR-0502]] 決定 3: 1 つのコレクションの全点を `attributes` だけ読んで走査し、属性キーを集める。
+    // 🔴 次のページは**前の応答の `NextPageOffset` から**読む（ここを落とすと先頭ページを読み続けて終わらない）。
+    private async Task<HashSet<string>> ScanAttributeKeysAsync(string name, CancellationToken ct)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        PointId? offset = null;
+        do
+        {
+            var page = await client.ScrollAsync(name,
+                limit: KeyDiscoveryPageSize,
+                offset: offset,
+                payloadSelector: new WithPayloadSelector
+                {
+                    Include = new PayloadIncludeSelector { Fields = { AttributeValueKeys.AttributesPrefix } }
+                },
+                vectorsSelector: new WithVectorsSelector { Enable = false },
+                cancellationToken: ct);
+
+            foreach (var point in page.Result)
+                keys.UnionWith(ReadAttributeKeys(point.Payload));
+
+            offset = page.NextPageOffset;
+        }
+        while (offset is not null && !ct.IsCancellationRequested);
+
+        return keys;
     }
 
     // 点のペイロードから属性キー（ネスト構造体 `attributes -> {k: v}` のキー）を読む（純関数。[[IADR-0014]]）。

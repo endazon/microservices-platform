@@ -3,6 +3,7 @@ using Grpc.Core;
 using IngestionService.Domain.Ports;
 using IngestionService.Infrastructure.ExternalServices;
 using Knowledge.Contracts.Dtos;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Platform.Shared.Contracts.Dtos;
 using Qdrant.Client;
@@ -188,6 +189,50 @@ public class QdrantKeywordIndexTests
         invoker.Scrolls.Should().OnlyContain(s => s.WithPayload.Include.Fields.SequenceEqual(new[] { "attributes" })
             && !s.WithVectors.Enable);
         invoker.Scrolls.Count(s => s.CollectionName == Voyage).Should().Be(2, "次のページの位置を辿る");
+        // 🔴 2 回目の scroll は 1 回目の応答の `NextPageOffset` から読む（独立監査 🟡1。器はこの位置でページを引く）。
+        var voyageScrolls = invoker.Scrolls.Where(s => s.CollectionName == Voyage).ToList();
+        voyageScrolls[0].Offset.Should().BeNull("先頭から読む");
+        voyageScrolls[1].Offset.Should().Be(RecordingCallInvoker.PageOffset(Voyage, 1));
+    }
+
+    // T-38 ([[IADR-0502]] 決定 3。独立監査 🟡3): 1 つのコレクションの走査の失敗で、他のコレクションの発見を止めない。
+    // 失敗したコレクションはコレクション名と状態コードだけを Warning に残す（ペイロードの値は出さない）。
+    [Theory]
+    [InlineData(StatusCode.NotFound)]
+    [InlineData(StatusCode.Unavailable)]
+    public async Task Discovery_ContinuesWithOtherCollections_WhenOneScanFails(StatusCode code)
+    {
+        var invoker = new RecordingCallInvoker { FailScroll = { [Voyage] = code } };
+        invoker.ScrollPages[Ruri] = [[new() { ["department"] = "secret-hr-value" }]];
+        invoker.ScrollPages[Lexical] = [[new() { ["owner"] = "bob" }]];
+        var logger = new ListLogger<QdrantIngestionVectorStore>();
+
+        var created = await NewStore(invoker, logger).EnsureKeywordIndexesForExistingPointsAsync(
+            TestContext.Current.CancellationToken);
+
+        invoker.FieldIndexes.Select(x => (x.CollectionName, x.FieldName)).Should().BeEquivalentTo(
+        [
+            (Ruri, "attributes.department"), (Ruri, "shared_with"), (Ruri, "tags"),
+            (Lexical, "attributes.owner"), (Lexical, "shared_with"), (Lexical, "tags"),
+        ], "最初のコレクションが失敗しても、後のコレクションには張る");
+        created.Should().Be(6);
+        var warning = logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning).Which;
+        warning.Message.Should().Contain(Voyage).And.Contain(code.ToString());
+        logger.Entries.Should().NotContain(e => e.Message.Contains("secret-hr-value") || e.Message.Contains("bob"));
+    }
+
+    // T-38: 呼び出し元の取り消しは走査の失敗として飲み込まない。
+    [Fact]
+    public async Task Discovery_CallerCancellation_IsNotSwallowed()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        var invoker = new RecordingCallInvoker { FailScroll = { [Voyage] = StatusCode.Cancelled } };
+
+        var act = () => NewStore(invoker).EnsureKeywordIndexesForExistingPointsAsync(cts.Token);
+
+        await act.Should().ThrowAsync<Exception>();
+        invoker.Scrolls.Should().ContainSingle("取り消し後に次のコレクションへ進まない");
     }
 
     // T-38: 点のペイロードから属性キーを読む（ネスト構造体以外は無視する）。
@@ -204,7 +249,8 @@ public class QdrantKeywordIndexTests
         }).Should().BeEmpty();
     }
 
-    private static QdrantIngestionVectorStore NewStore(CallInvoker invoker) =>
+    private static QdrantIngestionVectorStore NewStore(
+        CallInvoker invoker, ILogger<QdrantIngestionVectorStore>? logger = null) =>
         new(new QdrantClient(new QdrantGrpcClient(invoker)),
             Options.Create(new EmbeddingCollectionsOptions
             {
@@ -213,7 +259,23 @@ public class QdrantKeywordIndexTests
                     new EmbeddingCollectionOptions { Name = Voyage, VectorSize = 1024 },
                     new EmbeddingCollectionOptions { Name = Ruri, VectorSize = 768 },
                 ]
-            }));
+            }), logger: logger);
+
+    // ログの水準と本文を観測する器（新規パッケージを増やさないため手書きする）。
+    private sealed class ListLogger<T> : ILogger<T>
+    {
+        internal sealed record Entry(LogLevel Level, string Message);
+
+        internal List<Entry> Entries { get; } = [];
+
+        IDisposable? ILogger.BeginScope<TState>(TState state) => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Entries.Add(new Entry(logLevel, formatter(state, exception)));
+    }
 
     // 実機 Qdrant なしで「どの RPC がどんな要求で出たか」を記録する器。
     private sealed class RecordingCallInvoker : CallInvoker
@@ -227,8 +289,57 @@ public class QdrantKeywordIndexTests
         internal Dictionary<string, StatusCode> FailIndex { get; } = [];
         internal Action? OnIndex { get; init; }
 
-        // コレクションごとの scroll の応答ページ（点ごとの属性）。尽きたら空。
+        // コレクションごとの scroll の応答ページ（点ごとの属性）。無ければ空の 1 ページ。
+        // 🔴 **ページは要求の `Offset` で引く**（実機 Qdrant と同じ。独立監査 🟡1）: `Offset` 無し ＝ 先頭ページ、
+        // それ以外は直前に返した `NextPageOffset` と一致するページだけを返す。知らない位置は器の誤りとして落とす。
+        // 呼び出しの順で次のページを返すと、`Offset` を送らない実装（実機では先頭ページを読み続けて終わらない）が通ってしまう。
         internal Dictionary<string, List<List<Dictionary<string, string>>>> ScrollPages { get; } = [];
+
+        // このコレクションの scroll を、指定の状態コードで失敗させる。
+        internal Dictionary<string, StatusCode> FailScroll { get; } = [];
+
+        // ページ i（i ≥ 1）の位置。コレクションとページ番号から決まる（応答と要求の突き合わせに使う）。
+        internal static PointId PageOffset(string collection, int page)
+        {
+            var hash = System.Security.Cryptography.MD5.HashData(
+                System.Text.Encoding.UTF8.GetBytes($"{collection}#{page}"));
+            return new PointId { Uuid = new Guid(hash).ToString() };
+        }
+
+        private ScrollResponse ServePage(ScrollPoints scroll)
+        {
+            var pages = ScrollPages.TryGetValue(scroll.CollectionName, out var p) ? p : [[]];
+            if (Scrolls.Count(s => s.CollectionName == scroll.CollectionName) > pages.Count)
+                throw new InvalidOperationException(
+                    $"{scroll.CollectionName} を {pages.Count} ページより多く読んだ（続きの位置を送っていない）");
+
+            int index;
+            if (scroll.Offset is null)
+                index = 0;
+            else
+            {
+                index = Enumerable.Range(1, Math.Max(pages.Count - 1, 0))
+                    .FirstOrDefault(i => PageOffset(scroll.CollectionName, i).Equals(scroll.Offset), -1);
+                if (index < 0)
+                    throw new InvalidOperationException($"知らない位置から読んだ: {scroll.Offset}");
+            }
+
+            var response = new ScrollResponse();
+            foreach (var attributes in pages[index])
+            {
+                var point = new RetrievedPoint { Id = new PointId { Uuid = Guid.NewGuid().ToString() } };
+                if (attributes.Count > 0)
+                {
+                    var s = new Struct();
+                    foreach (var (k, v) in attributes) s.Fields[k] = new Value { StringValue = v };
+                    point.Payload["attributes"] = new Value { StructValue = s };
+                }
+                response.Result.Add(point);
+            }
+            if (index + 1 < pages.Count)
+                response.NextPageOffset = PageOffset(scroll.CollectionName, index + 1);
+            return response;
+        }
 
         public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(
             Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request)
@@ -244,7 +355,19 @@ public class QdrantKeywordIndexTests
                 FieldIndexes.Add(index);
             }
 
-            var response = (TResponse)Respond(method.Name, request!);
+            object raw;
+            try
+            {
+                raw = Respond(method.Name, request!);
+            }
+            catch (RpcException ex)
+            {
+                return new AsyncUnaryCall<TResponse>(
+                    Task.FromException<TResponse>(ex),
+                    Task.FromResult(new Metadata()), () => ex.Status, () => [], () => { });
+            }
+
+            var response = (TResponse)raw;
             return new AsyncUnaryCall<TResponse>(
                 Task.FromResult(response), Task.FromResult(new Metadata()),
                 () => Status.DefaultSuccess, () => [], () => { });
@@ -262,26 +385,9 @@ public class QdrantKeywordIndexTests
                 case "Scroll":
                     var scroll = (ScrollPoints)request;
                     Scrolls.Add(scroll);
-                    var response = new ScrollResponse();
-                    if (ScrollPages.TryGetValue(scroll.CollectionName, out var pages) && pages.Count > 0)
-                    {
-                        var page = pages[0];
-                        pages.RemoveAt(0);
-                        foreach (var attributes in page)
-                        {
-                            var point = new RetrievedPoint { Id = new PointId { Uuid = Guid.NewGuid().ToString() } };
-                            if (attributes.Count > 0)
-                            {
-                                var s = new Struct();
-                                foreach (var (k, v) in attributes) s.Fields[k] = new Value { StringValue = v };
-                                point.Payload["attributes"] = new Value { StructValue = s };
-                            }
-                            response.Result.Add(point);
-                        }
-                        if (pages.Count > 0)
-                            response.NextPageOffset = new PointId { Uuid = Guid.NewGuid().ToString() };
-                    }
-                    return response;
+                    if (FailScroll.TryGetValue(scroll.CollectionName, out var scrollFailure))
+                        throw new RpcException(new Status(scrollFailure, "simulated"));
+                    return ServePage(scroll);
                 default:
                     throw new NotSupportedException(
                         $"想定していない RPC が出た: {methodName}。テストの器を更新すること");

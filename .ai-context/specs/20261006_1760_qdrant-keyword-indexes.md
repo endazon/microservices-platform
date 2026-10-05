@@ -112,8 +112,10 @@ done
    `Embedding:Collections` に含まれる（`appsettings.json`・helm）。検索の主（`Qdrant:CollectionName`）も同じ集合に含まれる。
 4. **パラメータ**: `keyword`。`is_tenant`・`on_disk` は既定（偽）のまま（属性は全問い合わせに付くテナントの区切りではない。規模は NFR-08 の数十万点で、メモリ上の索引で足りる）。
 5. **検索側**: facet が「索引が無い」（`InvalidArgument` ＋ `No appropriate index for faceting`）で失敗したら、そのコレクションの値は空集合にする。
-   **書き込み時に必ず張るので、索引が無いキー ＝ そのコレクションのどの点も持っていないキー**であり、空集合が正しい答えである
-   （SC-01 の軸 `project` を 1 文書も持たない配備で、候補の照会全体が例外になるのを防ぐ）。他の失敗は従来どおり例外。
+   索引が無いのは、**そのコレクションのどの点もそのキーを持たないか、その索引がまだ構築されていないか**である
+   （後者の原因: `wait=false` の作成が構築前／作成の一時的な失敗〔取り込みは Warning だけ〕／再起動後の発見の走査が未了か失敗。
+   ［2026-10-06 追記 / 独立監査 🟡2］当初は前者だけと書いていた）。前者では空集合が正しい答えであり
+   （SC-01 の軸 `project` を 1 文書も持たない配備で、候補の照会全体が例外になるのを防ぐ）、後者に運用者が気付けるよう Warning を残す。他の失敗は従来どおり例外。
    検索は索引を張らない（索引の持ち主は取り込み。IADR-0318 と同じ分担）。
 6. **readiness は足さない**（IADR-0502 決定 6）。
 
@@ -158,7 +160,8 @@ done
 ## 残るもの（受け入れたもの）
 
 - 発見の走査（iii）は起動のたびに全点の `attributes` を読む（NFR-08 の数十万点で数分になり得る。バックグラウンドで、取り込みと検索は止めない）。
-- 発見の走査が終わるまで（または失敗した間）、再起動後にまだ書かれていない既存のキーには索引が無い。その間の facet は空集合（設計 5）。
+- 発見の走査が終わるまで（または失敗した間）、再起動後にまだ書かれていない既存のキーには索引が無い。その間の facet は空集合（設計 5。検索サービスの Warning に出る）。
+  1 つのコレクションの走査の失敗は、そのコレクションだけを飛ばす（他のコレクションは続ける。独立監査 🟡3）。
 - 不正なキー（JSON パスにならない属性キー）には索引が付かない。facet もできない（従来どおり例外）。
 - `check-stack-ready.js` の門 G13・検索の readiness はキーワード索引を見ない。
 
@@ -170,10 +173,10 @@ done
 | FR-02 T-35 | 同上 | 起動時に集合値キーを全コレクション（語彙索引を含む）へ keyword で張る。パラメータは既定 |
 | FR-02 T-36 | 同上 | 4 つの書き込みの口が書く点の属性キーへ `wait=false` で張る。同じ（コレクション, キー）へは 1 回 |
 | FR-02 T-37 | 同上 | 失敗で書き込みを止めない。不正なキーは再試行しない・一時的な失敗は再試行する・取り消しは上げる |
-| FR-02 T-38 | 同上 | 既存の点からの発見（ページを辿る・`attributes` だけ読む） |
+| FR-02 T-38 | 同上 | 既存の点からの発見（要求の続きの位置でページを辿る・`attributes` だけ読む・1 コレクションの失敗で止めない・取り消しは上げる） |
 | FR-02 T-39 | `QdrantKeywordIndexHostedServiceTests` | ブートストラップがキーワード索引を張る。発見の器が呼び、失敗を捕まえる |
-| FR-05 T-73 | `AttributeValuesMissingIndexTests` | 索引が無いときだけ空集合。不正なキー・不調は上げる |
-| FR-02 I-11〜I-13 | `KeywordIndexQdrantTests`（実 Qdrant v1.18.1） | 3 種のコレクションで facet が通る・陰性対照・既存の配備・不正なキー・フィルタの意味 |
+| FR-05 T-73 | `AttributeValuesMissingIndexTests` | 索引が無いときだけ空集合（Warning を 1 件・キーは無害化）。不正なキー・不調は上げる |
+| FR-02 I-11〜I-13 | `KeywordIndexQdrantTests`（実 Qdrant v1.18.1） | 3 種のコレクションで facet が通る・陰性対照・既存の配備・不正なキー・フィルタの意味（I-11 は m-4 のタグの「いずれか一致」と m-5 の否定条件の欠落の扱いを含む） |
 
 ## 変異試験の結果（2026-10-06。スクリプト scratch `msp1760-mut/mut.py`。1 変異ずつ当て、該当プロジェクトの試験の全件を走らせ、戻す）
 
@@ -204,6 +207,26 @@ done
 | I2 | 検索: 索引が無くても例外を上げる（統合） | killed | I-12 |
 | I3 | 発見で張らない（統合） | killed | I-13 |
 
+## 独立監査の指摘と是正（2026-10-06。監査は GO・🟡3 件＋🟢。PR #1761 の head `d91b6b95` に対して）
+
+| 指摘 | 内容 | 是正 | 試験 |
+| --- | --- | --- | --- |
+| 🟡1 | 発見の走査で `offset: offset` → `offset: null` の変異が全試験を生き残る（偽物の `RecordingCallInvoker` が要求の `Offset` を見ずに次のページを返していた）。実機では 1,024 点を超えるコレクションで終わらない | 偽物を**要求の `Offset` でページを引く**形にした（`Offset` 無し ＝ 先頭、他は直前に返した `NextPageOffset` と一致するページだけ。知らない位置・ページ数より多い読み取りは器の誤りとして落とす）。T-38 で 2 回目の `Offset` ＝ 1 回目の応答の `NextPageOffset` を突き合わせる。実装は走査を `ScanAttributeKeysAsync` へ切り出した（意味は不変） | T-38 `Discovery_IndexesKeysFoundOnExistingPoints_AcrossPages` |
+| 🟡2 | IADR-0502 決定 5・検索の catch の注記・機能仕様書が「索引が無い ＝ どの点もキーを持たない」と書く。索引が未構築（`wait=false` の構築前・作成の一時的な失敗・再起動後の発見が未了か失敗）もあり得る | 3 か所（＋本仕様書の設計 5・テスト仕様書 T-73・運用手順のログ表）を「どの点もキーを持たないか、索引がまだ構築されていない」へ直し、原因を IADR と本仕様書に列挙した。検索のログを Information → **Warning** へ上げた（`LogSanitizer.Sanitize(payloadKey)` は維持）。判定（`InvalidArgument` ＋ `No appropriate index for faceting` のときだけ空集合）は変えない | T-73 `MissingFacetIndex_LogsWarning_WithSanitizedPayloadKey`（新。CR/LF を含むキーで、水準が Warning・本文に CR/LF が無く `attributes.a__FAKE` が出る。AI レビュー 🟢「ログ行を固定する試験が無い」もこれで閉じる） |
+| 🟡3 | 発見で 1 つのコレクションの `ScrollAsync` が失敗（`NotFound`・`Unavailable`）すると、全コレクションの発見が止まる | コレクションごとの走査を `RpcException`（呼び出し元の取り消しを除く）で捕まえ、コレクション名と状態コードだけを Warning に残して次のコレクションへ進む | T-38 `Discovery_ContinuesWithOtherCollections_WhenOneScanFails`（NotFound / Unavailable）・`Discovery_CallerCancellation_IsNotSwallowed`（新） |
+| 🟢 | 統合試験 I-11 に m-4（タグの「いずれか一致」）と m-5（否定条件のキーの欠落）が無い | I-11 に、タグの any 一致（`[人事, 経理]` → 人事の文書だけ・`[人事, 営業]` → 両方）と、裁量でない分岐の `must_not attributes.doc_scope == private-note`（`doc_scope` を持たない 2 文書は残り、個人資料だけ落ちる。`attributes.doc_scope` の索引を待ってから測る）を足した | I-11 `AbacFilter_KeepsExactCaseSensitiveMatch_WithKeywordIndex`（手元の Docker・実 Qdrant で実走・緑） |
+
+### 是正の証拠（是正を戻すと落ち、戻すと通る。変異の原本は scratch `msp1761-fix-mut/`）
+
+| # | 変異 | 是正前 | 是正後 |
+| --- | --- | --- | --- |
+| A1 | 発見の scroll で `offset: offset,` → `offset: null,` | **survived**（監査の実測） | killed: T-38 `AcrossPages`（`knowledge_chunks_voyage_3_5 を 2 ページより多く読んだ（続きの位置を送っていない）`）。偽物の上限が無限ループを止める |
+| A2 | 走査の catch を外す（`when (false)`） | （試験なし） | killed: T-38 `ContinuesWithOtherCollections`（NotFound・Unavailable の 2 件） |
+| A3 | 走査の catch から取り消しの除外を外す（＋走査後の `ThrowIfCancellationRequested` を外す） | （試験なし） | killed: T-38 `CallerCancellation_IsNotSwallowed` |
+| A4 | 検索のログから `LogSanitizer.Sanitize` を外す | （試験なし） | killed: T-73 `LogsWarning_WithSanitizedPayloadKey`（本文に CR/LF が残る） |
+| A5 | 検索のログを `LogInformation` に戻す | （試験なし） | killed: 同上（`found LogLevel.Information`） |
+| A6 | 裁量でない分岐の `MustNot.Add(PrivateNoteCondition())` を外す（統合） | （試験なし） | killed: I-11（個人資料が見える） |
+
 ## 検証（2026-10-06。`origin/develop` `0172d9b7` 基点）
 
 | 検査 | 結果 |
@@ -215,3 +238,14 @@ done
 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 920 件緑 |
 | `check-test-spec-coverage` | 初回は床の上げ忘れ（新しい 4 クラス）で赤 → `--update`（追加 4 対だけ） |
 | check-trace-blocks / check-adr-numbering / gen-knowledge-graph --check / check-cross-repo-refs / check-plan-id-qualification / check-test-traceability / check-doc-updated / check-unit-dependencies / check-doc-links / check-commit-messages | すべて OK |
+
+### 検証（独立監査の是正後。2026-10-06。`origin/develop` `0172d9b7` 基点のまま〔develop は動いていない〕）
+
+| 検査 | 結果 |
+| --- | --- |
+| `dotnet build`（knowledge・platform） | 0 エラー。警告は knowledge の `IngestToSearchQdrantTests.cs` の CS0618（本 PR で触らない既存ファイル。`--no-incremental` で出る）1 件のみ |
+| `dotnet test` IngestionService.Tests / RetrievalService.Tests | 153 / 549 件緑 |
+| 統合 `KeywordIndexQdrantTests`（手元の Docker・実 Qdrant） | 5 件緑（skip なし） |
+| `dotnet format --verify-no-changes`（knowledge・platform） | 差分なし |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 920 件緑 |
+| check-trace-blocks / check-adr-numbering / gen-knowledge-graph --check / check-cross-repo-refs / check-plan-id-qualification / check-test-spec-coverage（`--update` 不要） / check-test-traceability / check-doc-updated / check-unit-dependencies | すべて OK |

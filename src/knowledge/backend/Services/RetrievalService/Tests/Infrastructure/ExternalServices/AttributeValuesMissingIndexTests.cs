@@ -1,18 +1,21 @@
 using AwesomeAssertions;
 using Grpc.Core;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
 using RetrievalService.Common.Observability;
 using RetrievalService.Infrastructure.ExternalServices;
+using RetrievalService.Tests.Grpc;
 
 namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 
 // FR-04, FR-05, SC-01, SC-08, [[IADR-0502]] 決定 5 (#1760):
 // **facet するキーに Qdrant のキーワード索引が無いとき、そのコレクションの候補は空集合である。**
 //
-// 取り込みは書く点の属性キーへ必ず索引を張るので、索引の無いキー ＝ どの点も持たないキーである
-// （例: 軸 `project` を 1 文書も持たない配備）。空集合へ倒さないと、その軸の候補の照会全体が例外になる。
+// 索引が無いのは、どの点もそのキーを持たない（例: 軸 `project` を 1 文書も持たない配備）か、索引がまだ構築されて
+// いない（非同期の作成が構築前・作成の一時的な失敗・再起動後の発見が未了）かである。空集合へ倒さないと、その軸の候補の
+// 照会全体が例外になる。後者に運用者が気付けるよう Warning を残す（キーは無害化して出す）。
 // 🔴 捕まえるのは「索引が無い」だけ。不正なキー（同じ `InvalidArgument`）と Qdrant の不調は従来どおり上げる。
 // 実 Qdrant の状態コードと文言は `Knowledge.IntegrationTests` の `KeywordIndexQdrantTests`（I-12）が測る。
 [Trait("TestKind", "Unit")]
@@ -21,9 +24,9 @@ public class AttributeValuesMissingIndexTests
     private const string MissingIndex =
         "Wrong input: No appropriate index for faceting: `attributes.project`. Please create one to facet on this field.";
 
-    private static QdrantVectorStore Store(CallInvoker invoker) =>
+    private static QdrantVectorStore Store(CallInvoker invoker, ILogger<QdrantVectorStore>? logger = null) =>
         QdrantVectorStore.ForCollection(new QdrantClient(new QdrantGrpcClient(invoker)), "knowledge_chunks_voyage_3_5",
-            NullLogger<QdrantVectorStore>.Instance, new KeywordSearchMetrics(new TestMeterFactory()));
+            logger ?? NullLogger<QdrantVectorStore>.Instance, new KeywordSearchMetrics(new TestMeterFactory()));
 
     // T-73: 索引が無いキーの facet は空集合（例外にしない）。
     [Fact]
@@ -33,6 +36,23 @@ public class AttributeValuesMissingIndexTests
             .ListAttributeValuesAsync("attributes.project", null, TestContext.Current.CancellationToken);
 
         values.Should().BeEmpty();
+    }
+
+    // T-73（独立監査 🟡2 ＋ AI レビュー）: 空集合へ倒すときは Warning を 1 件残す（索引が未構築の場合に運用者が気付ける）。
+    // ログへ出すペイロードキーは無害化する —— 制御文字（CR/LF）を含むキーで偽のログ行を作らせない。
+    [Fact]
+    public async Task MissingFacetIndex_LogsWarning_WithSanitizedPayloadKey()
+    {
+        var logger = new RecordingLogger<QdrantVectorStore>();
+
+        var values = await Store(new FailingInvoker(StatusCode.InvalidArgument, MissingIndex), logger)
+            .ListAttributeValuesAsync("attributes.a\r\nFAKE", null, TestContext.Current.CancellationToken);
+
+        values.Should().BeEmpty();
+        var entry = logger.Entries.Should().ContainSingle().Which;
+        entry.Level.Should().Be(LogLevel.Warning, "索引が未構築のこともあるので、運用者が気付ける水準で残す");
+        entry.Message.Should().Contain("attributes.a__FAKE", "キーは制御文字を _ へ置き換えて出す");
+        entry.Message.Should().NotContain("\r").And.NotContain("\n");
     }
 
     // T-73（陽性対照）: 同じ `InvalidArgument` でも、不正なキーは従来どおり上げる。Qdrant の不調も上げる。
