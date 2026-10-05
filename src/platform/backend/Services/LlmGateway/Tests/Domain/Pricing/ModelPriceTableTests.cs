@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using LlmGateway.Domain.Pricing;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -18,9 +19,9 @@ public class ModelPriceTableTests
     // **区間は半開 [From, To) であり、切替時刻ちょうどは新単価側に属する。**
     private static readonly DateTimeOffset Switch = new(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
 
-    private static ModelPriceTable Table(ModelPricingOptions? options = null)
+    private static ModelPriceTable Table(ModelPricingOptions? options = null, ILogger<ModelPriceTable>? logger = null)
         => new(new StaticOptionsMonitor<ModelPricingOptions>(options ?? SonnetTable()),
-               NullLogger<ModelPriceTable>.Instance);
+               logger ?? NullLogger<ModelPriceTable>.Instance);
 
     private static ModelPricingOptions SonnetTable() => new()
     {
@@ -127,6 +128,63 @@ public class ModelPriceTableTests
     public void モデル名の大小文字は区別しない()
         => Table().Estimate("CLAUDE-SONNET-5", 1_000_000, 0, Switch).Status
             .Should().Be(PricingStatus.Priced);
+
+    // NFR-19, FR-10, ADR-0044 決定 3 (T-41, #1743): 期間外の時刻は**警告ログを 1 件出す**（モデル名を含む）。
+    // 🔴 決定 3 は「期間外の単価で試算した場合は警告を出す」と定める。状態だけを見る T-5 では、
+    // 警告を消しても緑のままだった（#1743 の変異 M3b）。
+    [Fact]
+    public void 期間外の時刻は警告ログを1件出す()
+    {
+        var logger = new RecordingLogger<ModelPriceTable>();
+
+        var result = Table(logger: logger).Estimate(
+            "claude-sonnet-5", 1_000, 1_000, new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+        result.Status.Should().Be(PricingStatus.OutOfEffectivePeriod);
+        var warning = logger.Entries.Should().ContainSingle().Subject;
+        warning.Level.Should().Be(LogLevel.Warning);
+        warning.Message.Should().Contain("claude-sonnet-5");
+    }
+
+    // NFR-19, FR-10, ADR-0044 決定 3 (T-41, #1743): 未登録のモデルも同様に**警告ログを 1 件出す**（対照）。
+    [Fact]
+    public void 未登録のモデルは警告ログを1件出す()
+    {
+        var logger = new RecordingLogger<ModelPriceTable>();
+
+        var result = Table(logger: logger).Estimate("gpt-5", 1_000, 1_000, Switch);
+
+        result.Status.Should().Be(PricingStatus.NoEntryForModel);
+        var warning = logger.Entries.Should().ContainSingle().Subject;
+        warning.Level.Should().Be(LogLevel.Warning);
+        warning.Message.Should().Contain("gpt-5");
+    }
+
+    // NFR-19 (T-41 の陰性対照, #1743): 単価が解決できた呼び出しは警告を出さない
+    // （常に警告する実装を T-41 だけでは落とせないため）。
+    [Fact]
+    public void 単価が解決できた呼び出しは警告ログを出さない()
+    {
+        var logger = new RecordingLogger<ModelPriceTable>();
+
+        Table(logger: logger).Estimate("claude-sonnet-5", 1_000, 1_000, Switch)
+            .Status.Should().Be(PricingStatus.Priced);
+        logger.Entries.Should().BeEmpty();
+    }
+
+    // ログ出力を検証するための最小のロガー（OpenAiProviderStopReasonTests と同型）。
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => Entries.Add((logLevel, formatter(state, exception)));
+    }
 
     // テスト用の固定 IOptionsMonitor（設定変更の通知は使わない）。
     private sealed class StaticOptionsMonitor<T>(T value) : IOptionsMonitor<T>

@@ -58,21 +58,24 @@ public class LlmUsageMetricsTests
 
     // 計器と、その計器だけを見る probe を対で作る。**同じ IMeterFactory から Meter を引く** ——
     // 名前が同じでも容器が違えば別インスタンスであり、他クラスの発行は入らない（[[IADR-0394]] 決定 1）。
-    private static Probe NewProbe(out LlmUsageMetrics metrics, bool withPrice = true)
+    private static Probe NewProbe(
+        out LlmUsageMetrics metrics, bool withPrice = true, ModelPricingOptions? pricing = null)
     {
         var services = new ServiceCollection();
         services.AddMetrics();
         var meterFactory = services.BuildServiceProvider().GetRequiredService<IMeterFactory>();
-        metrics = Metrics(meterFactory, withPrice);
+        metrics = Metrics(meterFactory, withPrice, pricing);
         return new Probe(meterFactory.Create(LlmUsageMetrics.MeterName));
     }
 
-    private static LlmUsageMetrics Metrics(IMeterFactory meterFactory, bool withPrice = true)
+    private static LlmUsageMetrics Metrics(
+        IMeterFactory meterFactory, bool withPrice = true, ModelPricingOptions? custom = null)
     {
-        var pricing = new ModelPricingOptions();
+        var pricing = custom ?? new ModelPricingOptions();
+        // custom を渡したときは withPrice を見ない（単価表は custom がすべてを決める）。
         // #1741: 合成のモデル名と任意の単価（実価格ではない）。実モデル名を使うと、実価格の誤りを
         // 文字列で走査したときにこの合成値まで引っかかるため中立の名前にする。
-        if (withPrice)
+        if (withPrice && custom is null)
             pricing.Models["test-model"] =
             [
                 new ModelPriceEntry { InputPerMillionTokens = 3.0m, OutputPerMillionTokens = 15.0m },
@@ -139,6 +142,36 @@ public class LlmUsageMetricsTests
         unpriced.Tags[LlmUsageMetrics.PricingStatusTag].Should().Be(LlmUsageMetrics.PricingNoEntry);
         // トークンは単価と無関係に計上される（費用が出せなくても消費量は残す）。
         probe.Items.Should().Contain(m => m.Instrument == LlmUsageMetrics.TokensCounterName);
+    }
+
+    // NFR-19, FR-10, ADR-0044 決定 3 (T-42, #1743): **期間外**で単価を解決できない呼び出しは、
+    // `llm.pricing_status` が `out_of_period` で計上される（`no_entry` ではない）。
+    // 🔴 属性が化けると「期限切れ」と「登録漏れ」を区別できず、直す箇所を誤る（#1743 の変異 M3c）。
+    [Fact]
+    public void 期間外で単価を解決できない呼び出しはout_of_periodとして計上される()
+    {
+        // 合成の単価表（実価格ではない）: At より前に終わる区間だけを持つ。
+        var pricing = new ModelPricingOptions();
+        pricing.Models["test-model"] =
+        [
+            new ModelPriceEntry
+            {
+                EffectiveFrom = At.AddDays(-30),
+                EffectiveTo = At.AddDays(-1),
+                InputPerMillionTokens = 3.0m,
+                OutputPerMillionTokens = 15.0m,
+            },
+        ];
+        using var probe = NewProbe(out var metrics, pricing: pricing);
+
+        metrics.RecordUsage(Decision(), "rag-answer", SensitivityClass.Internal, 1_000, 500, At);
+
+        probe.Items.Should().NotContain(m => m.Instrument == LlmUsageMetrics.CostCounterName);
+        var unpriced = probe.Items.Single(m => m.Instrument == LlmUsageMetrics.UnpricedCounterName);
+        unpriced.Value.Should().Be(1);
+        unpriced.Tags[LlmUsageMetrics.PricingStatusTag].Should().Be(LlmUsageMetrics.PricingOutOfPeriod);
+        unpriced.Tags[LlmCompletionMetrics.ModelTag].Should().Be("test-model");
+        LlmUsageMetrics.PricingOutOfPeriod.Should().Be("out_of_period");
     }
 
     // FR-10, ADR-0044 決定 1 (T-18): 用途は設定で値域を閉じ、未定義値は other へ集約する
