@@ -132,7 +132,10 @@ public class FusedQueryEmbeddingTests
             only.Collection.Should().Be(Lexical);
             only.LexicalOnly.Should().BeTrue();
             only.Embed.Should().BeSameAs(NoQueryEmbedding.Instance);
-            only.Store.Should().BeOfType<QdrantVectorStore>().Which.Collection.Should().Be(Lexical);
+            var lexicalStore = only.Store.Should().BeOfType<QdrantVectorStore>().Subject;
+            lexicalStore.Collection.Should().Be(Lexical);
+            // #1746 監査 🟡3: 語彙索引は取り込みが作るので、無いうちの削除は no-op（IADR-0497 決定 4）。
+            lexicalStore.MissingCollectionIsEmpty.Should().BeTrue();
         }
 
         using var fused = new FusedConfiguredFactory();
@@ -144,6 +147,8 @@ public class FusedQueryEmbeddingTests
         items[1].LexicalOnly.Should().BeTrue();
         items[0].LexicalOnly.Should().BeFalse();
         items[0].Collection.Should().Be(Ruri);
+        // 陽性対照: ベクトルの追加コレクションは従来どおり（無ければ削除は例外）。
+        items[0].Store.Should().BeOfType<QdrantVectorStore>().Which.MissingCollectionIsEmpty.Should().BeFalse();
         items[0].Store.Should().BeOfType<QdrantVectorStore>().Which.Collection.Should().Be(Ruri);
         items[0].Embed.Should().BeOfType<LlmGatewayEmbeddingService>();
         fusedScope.ServiceProvider.GetRequiredService<IHttpClientFactory>()

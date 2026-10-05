@@ -52,6 +52,7 @@
       "EmbeddingRouterTargetCollectionTests",
       "FusedQueryEmbeddingTests",
       "HybridSearchServiceTests",
+      "LexicalCollectionDeleteTests",
       "LexicalIndexFusionTests",
       "LexicalIndexQdrantTests",
       "MetadataIndexTextTests",
@@ -154,6 +155,7 @@
       "OpenAiFinishReasonTests",
       "OpenAiProviderStopReasonTests",
       "QdrantVectorStoreTests",
+      "RagContextAiInputExclusionTests",
       "RagOrchestratorStopReasonTests"
     ],
     "docs/tests/FR-12_document-normalization.md": [

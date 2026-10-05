@@ -87,13 +87,15 @@ public class LexicalIndexStoreTests
         await NewStore(invoker, lexical: "custom_lexical").UpsertLexicalMetadataPointAsync(Guid.NewGuid(),
             Guid.NewGuid(), "題名", "題名 タグ", null,
             new Dictionary<string, string> { ["confidentiality"] = "confidential" }, ["タグ"],
-            ct: TestContext.Current.CancellationToken);
+            sharedWith: ["bob", "carol"], ct: TestContext.Current.CancellationToken);
 
         var upsert = invoker.Upserts.Should().ContainSingle().Subject;
         upsert.CollectionName.Should().Be("custom_lexical", "構成した名前へ書く");
         var point = upsert.Points.Should().ContainSingle().Subject;
         point.Vectors.Vectors_.Vectors.Should().BeEmpty();
         point.Payload["has_body"].BoolValue.Should().BeFalse();
+        // #1746 監査 🟡2: 本文なしの点も共有先を運ぶ（落とすと共有先の分岐が語彙索引で効かない）。
+        point.Payload["shared_with"].ListValue.Values.Select(v => v.StringValue).Should().Equal("bob", "carol");
     }
 
     // T-31 (FR-02, FR-05, [[IADR-0497]] 決定 4): 文書単位の削除は**語彙索引からも**消す
@@ -153,14 +155,45 @@ public class LexicalIndexStoreTests
         LexicalCollection.EnsureDistinct(Lexical, [Voyage, Ruri]);   // 陽性対照: 別名なら通る
     }
 
+    // T-31（監査 🟡3）: 語彙索引のコレクションがまだ無い（ブートストラップの失敗）なら、その削除は `NotFound` を
+    // no-op にして他のコレクションの削除を済ませる。ベクトルのコレクションの `NotFound` は従来どおり例外（陽性対照）。
+    [Fact]
+    public async Task DeleteByDocumentFromAll_TreatsMissingLexicalCollectionAsEmpty()
+    {
+        var invoker = new RecordingCallInvoker { MissingCollection = Lexical };
+
+        await NewStore(invoker).DeleteByDocumentFromAllAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
+
+        invoker.Deletes.Should().BeEquivalentTo([Voyage, Ruri], "ベクトルのコレクションからは消している");
+    }
+
+    [Fact]
+    public async Task DeleteByDocumentFromAll_StillThrows_WhenAVectorCollectionIsMissing()
+    {
+        var invoker = new RecordingCallInvoker { MissingCollection = Ruri };
+
+        var act = () => NewStore(invoker).DeleteByDocumentFromAllAsync(Guid.NewGuid(),
+            TestContext.Current.CancellationToken);
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound);
+    }
+
     private sealed class RecordingCallInvoker : CallInvoker
     {
         internal List<UpsertPoints> Upserts { get; } = [];
         internal List<string> Deletes { get; } = [];
+        // このコレクションへの呼び出しは Qdrant と同じく NotFound で失敗させる。
+        internal string? MissingCollection { get; init; }
 
         public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(
             Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request)
         {
+            if (request is DeletePoints { CollectionName: var name } && name == MissingCollection)
+                return new AsyncUnaryCall<TResponse>(
+                    Task.FromException<TResponse>(new RpcException(new Status(StatusCode.NotFound,
+                        $"Not found: Collection `{name}` doesn't exist!"))),
+                    Task.FromResult(new Metadata()), () => new Status(StatusCode.NotFound, ""), () => [], () => { });
+
             object response = method.Name switch
             {
                 "Upsert" => Ok(() => Upserts.Add((UpsertPoints)(object)request!)),

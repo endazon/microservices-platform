@@ -200,6 +200,38 @@ public sealed class LexicalIndexQdrantTests : IAsyncLifetime
         semantic.Should().NotContain(r => r.DocumentId == secret, "高機密文書は意味検索に現れない（ADR-0127 決定 2）");
     }
 
+    // I-09（監査 🟡3, [[IADR-0497]] 決定 4）: 語彙索引のコレクションが**まだ無い**とき（ブートストラップ前・失敗）。
+    //   - 実 Qdrant は無いコレクションの削除を `NotFound` で返す（検索側の no-op が前提とする状態コード。
+    //     検索側の分岐そのものは `LexicalCollectionDeleteTests` が同じ状態コードで測る）。
+    //   - 取り込みの「全コレクションから消す」は、語彙索引が無くてもベクトルのコレクションから消して成功する。
+    [Fact]
+    public async Task MissingLexicalCollection_DeleteIsNotFound_AndIngestionDeleteStillSucceeds()
+    {
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Qdrant);
+        var ct = TestContext.Current.CancellationToken;
+        var missing = $"knowledge_chunks_lexical_missing_{Guid.NewGuid():N}";
+        var documentId = Guid.NewGuid();
+
+        var act = () => NewReader(missing).DeleteByDocumentAsync(documentId, ct);
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound,
+            "主（既定）の削除は無いコレクションで従来どおり例外を上げる。語彙索引はこの NotFound だけを no-op にする");
+
+        // ベクトルのコレクションを作り、点を 1 つ置く。語彙索引の名前は存在しないものにする（ブートストラップしない）。
+        var vectorOnly = new QdrantIngestionVectorStore(_client!, Options.Create(new EmbeddingCollectionsOptions
+        {
+            Collections = [new EmbeddingCollectionOptions { Name = VectorCollection, VectorSize = Dimensions }]
+        }), missing);
+        await NewWriterAsync(ct);   // VectorCollection を作る（語彙索引 LexicalCollection も作られるが、上の writer は missing を見る）
+        await vectorOnly.UpsertChunkAsync(VectorCollection, Guid.NewGuid(), documentId, "公開の文書",
+            $"{PresentTerm} を含む", 0, Vectorize(PresentTerm), null,
+            new Dictionary<string, string> { ["confidentiality"] = "public" }, [], ct: ct);
+
+        await vectorOnly.DeleteByDocumentFromAllAsync(documentId, ct);
+
+        (await NewReader(VectorCollection).KeywordSearchAsync(PresentTerm, 10, ScopeFilter.Empty, ct))
+            .Should().NotContain(r => r.DocumentId == documentId, "ベクトルのコレクションからは消えている");
+    }
+
     // ── 器 ────────────────────────────────────────────────
 
     private async Task<QdrantIngestionVectorStore> NewWriterAsync(CancellationToken ct)

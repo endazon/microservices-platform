@@ -537,7 +537,8 @@ public class DocumentUpdatedConsumerTests
         var embed = new MustNotBeCalledEmbedding();
         var (consumer, completed) = Build(store, new StubContentReader("   "), embed);
         var ev = SampleEvent(confidentiality: "confidential", hasBody: false,
-            originalPath: "/共有/人事/評価.pdf", dataSourceName: "人事ファイルサーバー");
+            originalPath: "/共有/人事/評価.pdf", dataSourceName: "人事ファイルサーバー") with
+        { SharedWith = ["bob"] };
 
         await HandleAsync(consumer, ev);
 
@@ -547,6 +548,8 @@ public class DocumentUpdatedConsumerTests
         point.PointId.Should().Be(ChunkId.DeriveMetadata(ev.DocumentId));
         point.IndexText.Should().Contain("テスト文書").And.Contain("人事ファイルサーバー");
         point.Attributes.Should().Contain("confidentiality", "confidential");
+        point.SharedWith.Should().BeEquivalentTo(["bob"],
+            "共有先ベースの分岐（ADR-0061 決定 5）が本文なしの点でも索引の側で評価できること（#1746 監査 🟡2）");
         completed.Published.Should().ContainSingle().Which.ChunkCount.Should().Be(0);
     }
 

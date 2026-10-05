@@ -54,7 +54,9 @@ internal static class FusedCollectionsComposition
         if (lexicalCollection is not null)
             items.Add(new FusedCollection(
                 lexicalCollection,
-                QdrantVectorStore.ForCollection(client, lexicalCollection, storeLogger, metrics),
+                // #1746 監査 🟡3: 語彙索引は取り込みが作るので、無いうちの削除は no-op（IADR-0497 決定 4）。
+                QdrantVectorStore.ForCollection(client, lexicalCollection, storeLogger, metrics,
+                    missingCollectionIsEmpty: true),
                 NoQueryEmbedding.Instance,
                 LexicalOnly: true));
 

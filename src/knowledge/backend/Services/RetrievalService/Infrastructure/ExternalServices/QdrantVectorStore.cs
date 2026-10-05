@@ -76,14 +76,27 @@ public class QdrantVectorStore(
     // FR-03, ADR-0092 決定 1, [[IADR-0467]] (#336): 指定したコレクションを読む実装を作る。
     // **読み方（ABAC・全文・復元）は主と 1 行も違わない** —— 違うのはコレクション名だけであり、
     // 名前の解決規則も既存の `ResolveCollectionName` をそのまま通す（別の規則を作らない）。
+    //
+    // FR-03, FR-06, [[IADR-0497]] 決定 4 (#1746 監査 🟡3): `missingCollectionIsEmpty = true` は語彙索引用である。
+    // 語彙索引のコレクションは**取り込みサービスの起動時に作られる**ので、検索サービスが先に上がった・取り込みの
+    // ブートストラップが失敗した間は存在しない。そのとき文書削除を `NotFound` で失敗させると、削除の購読が全件
+    // 再試行・デッドレターへ回る。**無いコレクションには消す点も無い**ので、削除だけを no-op にする。
+    // 🔴 主・ベクトルの追加コレクションは false のまま（従来どおり例外を上げる）。
     internal static QdrantVectorStore ForCollection(
         QdrantClient client, string collection, ILogger<QdrantVectorStore> logger,
-        KeywordSearchMetrics metrics) =>
+        KeywordSearchMetrics metrics, bool missingCollectionIsEmpty = false) =>
         new(client,
             new ConfigurationBuilder()
                 .AddInMemoryCollection([new("Qdrant:CollectionName", collection)])
                 .Build(),
-            logger, metrics);
+            logger, metrics)
+        { _missingCollectionIsEmpty = missingCollectionIsEmpty };
+
+    // [[IADR-0497]] 決定 4: 無いコレクションからの削除を no-op にするか（語彙索引だけ true）。
+    private bool _missingCollectionIsEmpty;
+
+    // 合成点の試験が読む（語彙索引だけが true であること）。
+    internal bool MissingCollectionIsEmpty => _missingCollectionIsEmpty;
 
     // 読むコレクション名（束ねる側の組み立てと試験が読む）。
     internal string Collection => _collection;
@@ -600,6 +613,23 @@ public class QdrantVectorStore(
     }
 
     public async Task DeleteByDocumentAsync(Guid documentId, CancellationToken ct = default)
+    {
+        try
+        {
+            await DeleteByDocumentCoreAsync(documentId, ct);
+        }
+        // FR-06, [[IADR-0497]] 決定 4 (#1746 監査 🟡3): 語彙索引のコレクションがまだ無い（取り込みが作る前）なら、
+        // 消す点も無い。**`NotFound` だけ**を no-op にする（他の失敗・呼び出し元の取り消しは従来どおり上げる）。
+        catch (RpcException ex) when (_missingCollectionIsEmpty && ex.StatusCode == StatusCode.NotFound
+                                      && !ct.IsCancellationRequested)
+        {
+            logger.LogInformation(
+                "Collection {Collection} does not exist yet; nothing to delete for document {DocumentId}",
+                _collection, documentId);
+        }
+    }
+
+    private async Task DeleteByDocumentCoreAsync(Guid documentId, CancellationToken ct)
     {
         await client.DeleteAsync(_collection,
             new Filter

@@ -163,6 +163,61 @@ public class RagContextAiInputExclusionTests
             "送っていない資料の機密区分で送信先を決めない");
     }
 
+    // FR-11, ADR-0127 決定 4, [[IADR-0497]] (#1746): 🔴 **機密区分を持たない・未知の値を持つ文脈のチャンクは、
+    // 越境判定で `restricted` として扱う**（安全側。`ConfidentialityLevels.FromAttributes`）。
+    // 語彙索引の導入で、未指定・未知の文書が検索に現れ RAG の文脈に入る経路が開いた（#1746 段 S1）。
+    // ここが `public` へ倒れると、ZDR を要さない送信先へ本文が出る。非ストリーミング・ストリーミングの両方で測る。
+    // 陽性対照: 組織文書（internal）だけなら internal（既存の `越境判定は除外後の集合で測る` も同じ値を見る）。
+    public static TheoryData<string?> UnsetOrUnknownLevels => new() { null, "", "secret-ish", " public " };
+
+    private static SearchResultDto UnclassifiedChunk(string? level)
+    {
+        var attributes = new Dictionary<string, string> { ["department"] = "hr" };
+        if (level is not null) attributes[ConfidentialityLevels.AttributeKey] = level;
+        return Chunk(Guid.NewGuid(), "区分なしの文書", "区分なしの本文", attributes);
+    }
+
+    [Theory]
+    [MemberData(nameof(UnsetOrUnknownLevels))]
+    public async Task 機密区分の無い文脈は越境判定でrestrictedとして送る(string? level)
+    {
+        var routes = new RoutingHandler([OrganizationDocument(), UnclassifiedChunk(level)]);
+        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+
+        await orchestrator.AskAsync("質問", "alice", [], ct: TestContext.Current.CancellationToken);
+
+        routes.LastPrompt.Should().Contain("区分なしの本文", "装置の健全性: そのチャンクは文脈に入っている");
+        routes.LastConfidentiality.Should().Be(ConfidentialityLevels.Restricted,
+            "未指定・未知の機密区分は安全側（restricted）で越境判定する");
+    }
+
+    [Theory]
+    [MemberData(nameof(UnsetOrUnknownLevels))]
+    public async Task ストリーミング経路でも機密区分の無い文脈はrestrictedとして送る(string? level)
+    {
+        var routes = new RoutingHandler([OrganizationDocument(), UnclassifiedChunk(level)]);
+        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+
+        await foreach (var _ in orchestrator.AskStreamAsync("質問", "alice", [],
+            ct: TestContext.Current.CancellationToken)) { }
+
+        routes.LastPrompt.Should().Contain("区分なしの本文");
+        routes.LastConfidentiality.Should().Be(ConfidentialityLevels.Restricted);
+    }
+
+    // 陽性対照: 区分を持つ組織文書だけなら、その区分（internal）で送る（「常に restricted」の実装を落とす）。
+    [Fact]
+    public async Task 区分を持つ文脈だけならその区分で送る()
+    {
+        var routes = new RoutingHandler([OrganizationDocument()]);
+        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+
+        await foreach (var _ in orchestrator.AskStreamAsync("質問", "alice", [],
+            ct: TestContext.Current.CancellationToken)) { }
+
+        routes.LastConfidentiality.Should().Be(ConfidentialityLevels.Internal);
+    }
+
     // 装置の健全性: 除外がゼロ件のときは検索結果と文脈が一致する（余計に落としていない）。
     [Fact]
     public async Task 除外が無ければ検索結果と文脈は一致する()

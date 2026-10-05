@@ -392,7 +392,19 @@ public class QdrantIngestionVectorStore(
 
         // ［2026-10-05 / #1746］[[IADR-0497]] 決定 4: **語彙索引からも消す。** 機密区分が下がった文書
         // （confidential → public）の語彙索引の点が残ると、意味検索に出ない古い本文がキーワードで当たり続ける。
-        foreach (var name in AllCollectionNames)
-            await client.DeleteAsync(name, filter, cancellationToken: ct);
+        foreach (var c in _collections)
+            await client.DeleteAsync(c.Name, filter, cancellationToken: ct);
+
+        // #1746 監査 🟡3, [[IADR-0497]] 決定 4: 語彙索引は起動時のブートストラップが作る。ブートストラップが失敗して
+        // まだ無いときは、消す点も無いので `NotFound` だけを no-op にする（取り込み全体を再試行へ落とさない）。
+        // ベクトルのコレクションの削除は従来どおり（例外を上げる）。
+        try
+        {
+            await client.DeleteAsync(_lexical, filter, cancellationToken: ct);
+        }
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound
+                                                && !ct.IsCancellationRequested)
+        {
+        }
     }
 }

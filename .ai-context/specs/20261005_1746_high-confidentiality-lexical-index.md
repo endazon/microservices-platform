@@ -327,3 +327,41 @@ $ POST /collections/vec_f/facet (vector collection, no keyword index)
 | `helm template`（既定・`embedding.enabled=true`）・`helm lint` | 描画できる。既定で ingestion・retrieval の 2 つにだけ `Qdrant__LexicalCollection` が増える（他の差分なし）。`lexicalIndex.collection` を空にすると描画が失敗する |
 | check-trace-blocks / check-doc-updated / check-test-traceability / check-commit-messages / gen-knowledge-graph --check / check-cross-repo-refs / check-plan-id-qualification / check-unit-dependencies / check-doc-links / check-adr-numbering | すべて OK |
 | gitleaks（`origin/develop..HEAD`） | no leaks found |
+
+## ［2026-10-05 追記 / #1746］独立監査（PR #1751 head `8d4bef3f`・条件付き GO・🔴 なし）への対応
+
+| 指摘 | 対応 | 試験 |
+| --- | --- | --- |
+| 🟡1 RAG の越境判定で「機密区分が未指定・未知のチャンクは restricted」が未試験（監査の変異 M13〔`HighestConfidentiality` を属性欠落 → public〕が生存）。本 PR でこの経路に到達するようになった | `RagContextAiInputExclusionTests` に、属性なし・空・`secret-ish`・前後空白つきの `public` のチャンクを文脈に含めると補完要求の `Confidentiality` が `restricted` になる試験を、**非ストリーミング（`AskAsync`）とストリーミング（`AskStreamAsync`）の両方**で足した。陽性対照（区分を持つ組織文書だけなら `internal`）つき。コードは `ConfidentialityLevels.FromAttributes` が未知・未指定を `restricted` へ倒す（変更なし） | FR-11 T-27 |
+| 🟡2 本文なしの語彙索引の点の `shared_with` が未試験（監査の変異 M5〔消費側が null を渡す〕・M6〔ストアが null を書く〕が生存） | T-26 に共有先を持たせて `SharedWith` を、T-30 の `UpsertLexicalMetadataPoint_…` で `Payload["shared_with"]` を確かめる | FR-02 T-26・T-30 |
+| 🟡3 検索は語彙索引を常に束ねるが、作るのは取り込みの起動時だけ。実 Qdrant は無いコレクションの削除を `NotFound` で返すので、検索が先に上がる／取り込みのブートストラップが失敗すると、削除の購読が全件再試行・デッドレターへ回り、キーワード／ハイブリッドのたびに縮退の警告が出る | (a) 展開順序と依存を運用仕様書と IADR-0497 §残るもの（同じ PR で新設した IADR なので本文を直接改めた）に書いた。(b) **語彙索引の削除だけ `NotFound` を no-op にした** —— 検索側は語彙索引の `QdrantVectorStore` を `missingCollectionIsEmpty: true` で組み（合成点）、取り込み側は語彙索引の削除だけを `NotFound` で握る。**主・ベクトルのコレクションの `NotFound` と `NotFound` 以外の失敗は従来どおり例外**。縮退の警告は検索側の観測として残す（no-op にしない） | FR-02 T-31・FR-03 T-97・T-99（T-Q-06）・I-09（実 Qdrant が無いコレクションの削除を `NotFound` で返すことと、取り込みの全コレクション削除が語彙索引なしでも成功すること） |
+| 🟡4 「横断検索に含める」OFF・「AI の入力に含める」ON の個人資料は RAG に届かない（`HybridSearchService.Finish` が `IsSearchAllowed` で先に落とす。RAG も同じ検索の口を使う）。既存の挙動で fail-closed の向きだが FR-19 の独立トグルと食い違う。本 PR で到達するようになった | **本 PR では直さない。** #1752 に起票した（ファイルと行・組み合わせの表・FR-19 / FR-21 ⑨・直し方の候補と、用途を呼び出し元の申告にすると穴になる点） | — |
+| 🟢（AI レビュー）`IndexLexicallyAsync` に埋め込みの総枠に当たる早期打ち切りが無い | **コードは変えない。** 残るものに書いた（受け口の実行期限 420 秒だけが上から抑える。Qdrant 1 回 10 秒の期限つき）。段 S4 で扱う（#1746 の S4 に追記） | — |
+
+### 残るもの（追加）
+
+- #1752: 「横断検索に含める」OFF・「AI の入力に含める」ON の個人資料が RAG の文脈に入らない（fail-closed の向き）。
+- 巨大な高機密文書の語彙索引への書き込みに、埋め込みの総枠に当たる打ち切りが無い（段 S4）。
+- 展開順序（取り込み → 検索）を守らない間は、キーワード／ハイブリッドの検索ごとに縮退の警告と計器が増える（検索は 200 で続く。削除の購読は失敗しない）。
+
+### 変異の再実行（スクリプト scratch `mut-1746-audit.py`。1 変異ずつ当て、該当サービスの単体試験の全件を走らせ、戻す）
+
+| # | 変異 | 結果 | 落とした試験 |
+| --- | --- | --- | --- |
+| 監査 M5 | 本文なしの高機密のメタデータ点で、消費側が共有先を null で渡す | **killed** | T-26 |
+| 監査 M6 | 語彙索引のメタデータ点で、ストアが共有先を null で書く | **killed** | T-30 |
+| 監査 M13 | RAG の越境判定で、機密区分の無いチャンクを public へ倒す | **killed**（2 件赤） | FR-11 T-27（非ストリーミング・ストリーミングの属性なしの行） |
+| N1 | 削除（検索）: `NotFound` の no-op を主にも効かせる | **killed** | T-97（主は従来どおり例外） |
+| N2 | 削除（検索）: 語彙索引で `NotFound` 以外も no-op にする | **killed** | T-97（`Unavailable` は例外） |
+| N3 | 削除（検索）: 合成点が語彙索引を no-op の扱いで組まない | **killed**（初回は生存 → T-Q-06 に `MissingCollectionIsEmpty` の主張を足した） | T-99（T-Q-06） |
+| N4 | 削除（検索）: `NotFound` を no-op にする catch を外す | **killed** | T-97 |
+| N5 | 削除（取り込み）: 語彙索引の `NotFound` の no-op を外す | **killed** | T-31 |
+| N6 | 削除（取り込み）: ベクトルのコレクションの `NotFound` も握りつぶす | **killed** | T-31（陽性対照） |
+| 元の M10 | hybrid: 語彙索引のベクトル検索を引く | survived（§変異試験の記録どおり。二重の守りの片方。M9 と同時なら killed） | — |
+| 元の M13 | semantic: 束ねる経路で語彙索引も引く | survived（同上） | — |
+
+### 検証（監査対応の後）
+
+- 単体: IngestionService.Tests 138・RetrievalService.Tests 475・AiAnalysisService.Tests 170 緑
+- 統合（手元の Docker・実 Qdrant v1.18.1）: `Knowledge.IntegrationTests.Search` ＋ `DocumentUpdatedFanOutTests` 17 件緑（`LexicalIndexQdrantTests` 6 件を含む）
+- `dotnet format --verify-no-changes` 差分なし・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 918 緑（初回は test-spec-coverage の床の上げ忘れと未追跡のファイルで赤 → 直した）・check-trace-blocks・check-doc-updated・check-test-traceability・gen-knowledge-graph --check・check-cross-repo-refs・check-plan-id-qualification・check-doc-links・check-adr-numbering OK。check-commit-messages と gitleaks はコミット後に実行
