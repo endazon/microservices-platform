@@ -96,6 +96,12 @@ public class DocumentUpdatedConsumer(
         // FR-05, ADR-0016: 文書の機密区分（ABAC confidentiality）を埋め込み越境判定へ渡す。
         var confidentiality = ev.Attributes.GetValueOrDefault("confidentiality");
 
+        // 🔴 FR-02, FR-05, ADR-0127 決定 1・4, [[IADR-0497]] 決定 2 (#1746): **高機密文書は埋め込まない。**
+        // confidential・restricted・未指定・未知は、埋め込みを**呼ぶ前に**分けて語彙索引へだけ書く。
+        // 本文はどの埋め込みの送信先（ティア A・B を問わず）へも渡らない。判定は allow-list
+        // （public / internal だけが埋め込みへ進む）。ゲートウェイの越境判定（fail-closed）は残る —— 二重の守りである。
+        var lexicalOnly = LexicalIndexPolicy.IsLexicalOnly(ev.Attributes);
+
         // FR-02 parse: 本文（Markdown）を取得する
         string markdownUri = ev.MarkdownUri;
         var markdownText = await CallAsync(IngestionTimeouts.ContentTarget, timeouts.ContentRead,
@@ -115,7 +121,13 @@ public class DocumentUpdatedConsumer(
 
         if (chunks.Count == 0)
         {
-            await IndexMetadataOnlyAsync(ev, confidentiality, ct);
+            await IndexMetadataOnlyAsync(ev, confidentiality, lexicalOnly, ct);
+            return;
+        }
+
+        if (lexicalOnly)
+        {
+            await IndexLexicallyAsync(ev, chunks, markdownUri, confidentiality, ct);
             return;
         }
 
@@ -153,6 +165,9 @@ public class DocumentUpdatedConsumer(
 
             // FR-02, FR-05, ADR-0016: fail-closed。高機密でセルフホスト未有効・次元不整合など恒久的な理由は
             // 索引しない（外部へ本文を送らず、誤ったコレクション/次元へも書かない）。再試行では解消しないためスキップ。
+            // ［2026-10-05 / #1746］[[IADR-0497]] 決定 2: 高機密文書はここへ来ない（上で語彙索引へ分けた）。
+            // ここで拒まれるのは public / internal の恒久的な拒否（Voyage 経路の無効化・次元不整合等）であり、
+            // **語彙索引へは回さない**（ADR-0127 の対象外。埋め込めるはずの文書の不調を語彙索引で覆い隠さない）。
             if (!embedding.Embedded)
             {
                 skipped++;
@@ -182,6 +197,33 @@ public class DocumentUpdatedConsumer(
         await bus.PublishCompletedAsync(ev.DocumentId, chunkCount, DateTimeOffset.UtcNow, ct);
 
         logger.LogInformation("Ingestion complete for {Id}: {Count} chunks", ev.DocumentId, chunkCount);
+    }
+
+    // FR-02, FR-03, ADR-0127 決定 1・2, [[IADR-0497]] 決定 2・3 (#1746): 高機密文書の本文チャンクを語彙索引へ書く。
+    // 🔴 **埋め込みを 1 回も呼ばない**ので、埋め込みの総枠（`EmbeddingBudget`）も一時障害の分岐も通らない。
+    // Qdrant への書き込みは本文チャンクと同じ期限（`VectorStore`）の下で行い、失敗は例外のまま上げて
+    // ブローカの再試行へ委ねる（本文チャンクの書き込みと同じ）。
+    // チャンク ID は本文チャンクと同じ規則（`ChunkId.Derive`）—— 機密区分が変わって置き場所が移っても、
+    // 冒頭の全コレクション削除で古い点は消えている。
+    private async Task IndexLexicallyAsync(DocumentUpdated ev, IReadOnlyList<string> chunks,
+        string markdownUri, string? confidentiality, CancellationToken ct)
+    {
+        var chunkCount = 0;
+        foreach (var (text, idx) in chunks.Select((t, i) => (t, i)))
+        {
+            var chunkId = ChunkId.Derive(ev.DocumentId, idx);
+            await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
+                t => store.UpsertLexicalChunkAsync(chunkId, ev.DocumentId, ev.Title, text, idx,
+                    markdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ev.SharedWith, t), ct);
+            chunkCount++;
+        }
+
+        logger.LogInformation(
+            "Ingestion {Id}: {Count} chunk(s) indexed into the lexical index without embedding "
+            + "(confidentiality={Confidentiality}; ADR-0127)", ev.DocumentId, chunkCount,
+            confidentiality ?? "(unset)");
+
+        await bus.PublishCompletedAsync(ev.DocumentId, chunkCount, DateTimeOffset.UtcNow, ct);
     }
 
     // FR-02, FR-12, ADR-0070 決定 3, #1254, [[IADR-0388]] 決定 3:
@@ -222,7 +264,7 @@ public class DocumentUpdatedConsumer(
     // 🔴 **埋め込みの機密区分ルーティング（ADR-0016）は本文チャンクと同一に扱う。**
     // 本文が無いことを理由に送信制御を緩めない —— 題名も文書の内容である。
     private async Task IndexMetadataOnlyAsync(
-        DocumentUpdated ev, string? confidentiality, CancellationToken ct)
+        DocumentUpdated ev, string? confidentiality, bool lexicalOnly, CancellationToken ct)
     {
         // #1253 / [[IADR-0388]] 決定 4: 題名・タグに加えて**原本の所在とデータソース名**も材料にする
         // （ADR-0070 決定 4 が名指しする「パス」「データソース」。従前は届いていなかった）。
@@ -234,6 +276,21 @@ public class DocumentUpdatedConsumer(
             logger.LogWarning(
                 "Ingestion {Id}: no body and no metadata to index (empty title and tags); nothing indexed",
                 ev.DocumentId);
+            await bus.PublishCompletedAsync(ev.DocumentId, 0, DateTimeOffset.UtcNow, ct);
+            return;
+        }
+
+        // 🔴 FR-02, ADR-0070 決定 4, ADR-0127 決定 1, [[IADR-0497]] 決定 3 (#1746): 高機密文書のメタデータ点も
+        // **埋め込まずに語彙索引へ書く**（題名も文書の内容である —— 本文チャンクと同じ規則）。
+        if (lexicalOnly)
+        {
+            await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
+                t => store.UpsertLexicalMetadataPointAsync(ChunkId.DeriveMetadata(ev.DocumentId),
+                    ev.DocumentId, ev.Title, indexText, ev.MarkdownUri, ev.Attributes, ev.Tags,
+                    ev.UpdatedAt, ev.SharedWith, t), ct);
+            logger.LogInformation(
+                "Ingestion {Id}: no body; indexed metadata only into the lexical index without embedding "
+                + "(confidentiality={Confidentiality})", ev.DocumentId, confidentiality ?? "(unset)");
             await bus.PublishCompletedAsync(ev.DocumentId, 0, DateTimeOffset.UtcNow, ct);
             return;
         }

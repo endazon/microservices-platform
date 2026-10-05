@@ -3,7 +3,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace LlmGateway.Features.Embeddings.Embed;
 
-// FR-02, FR-03, FR-05, ADR-0013, ADR-0016, ADR-0017: 埋め込み生成エンドポイント（/embed）。
+// FR-02, FR-03, FR-05, ADR-0013, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）: 埋め込み生成エンドポイント（/embed）。
 // 機密区分・用途に応じて送信先（ティア/エンドポイント/モデル/コレクション）を切り替える。
 // confidential/restricted は EmbeddingRouter がティアA（セルフホスト）固定とし、無効なら fail-closed で
 // 外部へ本文を送らず索引もしない（呼び出し側が Embedded=false でスキップ）。

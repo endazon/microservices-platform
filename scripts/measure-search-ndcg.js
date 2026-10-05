@@ -6,7 +6,7 @@
  * FR-02 / FR-03, issue #336: 検索の関連性を **nDCG@10** で実測する。
  *
  * 背景:
- *   計画 ADR-0016（埋め込みは Voyage voyage-3.5 を既定・高機密はセルフホスト併用）と ADR-0017
+ *   計画 ADR-0016（埋め込みは Voyage voyage-3.5 を既定・高機密はセルフホスト併用）と ADR-0017（Superseded by ADR-0127・注記は #1746）
  *   （セルフホストは Ruri v3）は、モデルの確定を **「PoC（検索精度 nDCG@10・スループット）」** に
  *   委ねている。issue #336 はその実測を稼働環境依存として分離したが、**測る道具そのものが
  *   リポジトリに 1 つも無かった**（棚卸し 2026-08-16 / 09-03 / 09-05 が 3 度続けて指摘）。
@@ -54,7 +54,7 @@ const { requireLiveOptIn } = require('./lib/live-opt-in.js');
 // 🔴 **ここを 2 値にしない** —— hybrid を測れないと「埋め込みの寄与」を切り分けられない。
 const SEARCH_MODES = ['keyword', 'semantic', 'hybrid'];
 
-// 既定の打ち切り順位。ADR-0017 が求める指標は nDCG@10 である。
+// 既定の打ち切り順位。ADR-0017（Superseded by ADR-0127・注記は #1746） が求める指標は nDCG@10 である。
 const DEFAULT_K = 10;
 
 // 関連度の値域（graded relevance）。qrels の雛形と検証で使う。
@@ -272,7 +272,7 @@ const fmt = (v) => (v === null || v === undefined ? '—' : v.toFixed(4));
 function renderText(r) {
   const L = [];
   const hr = '----------------------------------------------------------------------';
-  L.push(`検索の関連性 nDCG@${r.k} の実測（issue #336 / FR-02・FR-03・ADR-0016・ADR-0017）`);
+  L.push(`検索の関連性 nDCG@${r.k} の実測（issue #336 / FR-02・FR-03・ADR-0016・ADR-0017（Superseded by ADR-0127・注記は #1746））`);
   L.push(hr);
   L.push(`qrels                 : ${r.qrels.queries} クエリ（指紋 ${r.qrels.digest}）`);
   if (r.qrels.unlabeled > 0) {

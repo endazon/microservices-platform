@@ -5,8 +5,8 @@ using System.Text.Json.Serialization;
 
 namespace LlmGateway.Infrastructure.ExternalServices;
 
-// FR-02, FR-05, ADR-0016, ADR-0017: セルフホスト埋め込みプロバイダ（高機密・ティアA=社外送信なし）。
-// confidential/restricted 文書の埋め込みをこの経路に固定する。モデルは Ruri v3（第一採用・次元 768 系、ADR-0017）。
+// FR-02, FR-05, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）: セルフホスト埋め込みプロバイダ（高機密・ティアA=社外送信なし）。
+// confidential/restricted 文書の埋め込みをこの経路に固定する。モデルは Ruri v3（第一採用・次元 768 系、ADR-0017（Superseded by ADR-0127・注記は #1746））。
 // OpenAI 互換の /v1/embeddings を持つ社内基盤（TEI / vLLM 等）を呼ぶ想定。ADR-0010/0013 のとおり「後付け可能」とし、
 // 既定では無効エンドポイントとして扱う（BaseUrl 未設定時は利用不可＝高機密は fail-closed で外部送信しない）。
 public sealed class SelfHostedEmbeddingProvider(IHttpClientFactory httpFactory, IConfiguration config)
@@ -14,8 +14,8 @@ public sealed class SelfHostedEmbeddingProvider(IHttpClientFactory httpFactory, 
 {
     private readonly string _baseUrl = config["Embedding:SelfHosted:BaseUrl"] ?? string.Empty;
 
-    // #809, ADR-0017: 用途別プレフィクスは**モデル固有**である。Ruri v3 は 1+3 プレフィクス
-    // （"検索クエリ: " / "検索文書: "）を必須とするが、ADR-0017 が劣化時の代替に挙げる BGE-M3 は使わない。
+    // #809, ADR-0017（Superseded by ADR-0127・注記は #1746）: 用途別プレフィクスは**モデル固有**である。Ruri v3 は 1+3 プレフィクス
+    // （"検索クエリ: " / "検索文書: "）を必須とするが、ADR-0017（Superseded by ADR-0127・注記は #1746） が劣化時の代替に挙げる BGE-M3 は使わない。
     // したがってハードコードせず設定駆動にし、**既定は空**＝素の本文を送る（現行と同じ挙動）。
     // 付けっぱなしにすると、モデルを差し替えたときに今度は別の意味で埋め込みが歪む。
     //

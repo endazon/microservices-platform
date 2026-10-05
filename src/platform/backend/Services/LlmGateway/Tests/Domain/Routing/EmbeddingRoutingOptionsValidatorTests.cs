@@ -114,7 +114,7 @@ public class EmbeddingRoutingOptionsValidatorTests
         => Validate(Voyage(enabled: false), SelfHosted(), Deterministic(enabled: true))
             .Succeeded.Should().BeTrue();
 
-    // ---- FR-03, ADR-0016, ADR-0017, [[IADR-0422]] 決定 2 (#336): 検索クエリ送信先の固定 ----
+    // ---- FR-03, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）, [[IADR-0422]] 決定 2 (#336): 検索クエリ送信先の固定 ----
 
     private static ValidateOptionsResultAssertion ValidateWithProfile(
         string? queryProfile, params EmbeddingEndpointOptions[] endpoints)

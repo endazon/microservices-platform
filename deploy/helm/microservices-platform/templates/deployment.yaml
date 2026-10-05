@@ -268,7 +268,7 @@ spec:
               value: {{ $synthetic.clientId | quote }}
           {{- end }}
           {{- if and $svc.selfHostedEmbedding $.Values.embedding.enabled }}
-            # FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線。
+            # FR-02, FR-03, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線。
             # embedding.enabled=true のときのみ描画し、llmgateway を templates/embedding.yaml（TEI・OpenAI 互換
             # /v1/embeddings）へ向ける。BaseUrl は base のみ（SelfHostedEmbeddingProvider が /v1/embeddings を後置）。
             # ⚠️ Issue #98: Endpoints__1 は appsettings.json の Embedding:Routing:Endpoints 配列で selfhosted が
@@ -288,6 +288,14 @@ spec:
             # 既定 embedding.enabled=false では非描画＝検索は主コレクションだけ（現状維持）。
             - name: Qdrant__FusedCollections__0
               value: {{ $.Values.embedding.collection | quote }}
+          {{- end }}
+          {{- if has $name (list "ingestion" "retrieval") }}
+            # FR-02, FR-03, ADR-0127 決定 1・2, IADR-0497 (#1746): 語彙索引（ベクトルを持たない専用のコレクション）。
+            # 高機密文書（confidential・restricted・未指定・未知）は埋め込まずここへ書き、検索は全文の系統だけで束ねる。
+            # 🔴 取り込みと検索へ**同じ 1 つの値**を描画する（片方だけ変えると「書いたのに検索されない」）。
+            # 常に描画する（無効化の口は無い。ADR-0127 決定 1）。
+            - name: Qdrant__LexicalCollection
+              value: {{ required "lexicalIndex.collection は必須（IADR-0497）" $.Values.lexicalIndex.collection | quote }}
           {{- end }}
           {{- /* FR-02, FR-03, ADR-0016, IADR-0284, IADR-0313 (#992 案 2): 決定的ローカル埋め込み。
                  🔴 **使い捨ての検証スタック専用**（意味は values.yaml の embedding.deterministicLocal）。

@@ -18,17 +18,21 @@ namespace RetrievalService.Infrastructure.ExternalServices;
 // 抱え込まない（ハンドラの入れ替えを殺さない）。
 internal static class FusedCollectionsComposition
 {
+    //
+    // FR-03, ADR-0127 決定 1・2, [[IADR-0497]] 決定 5 (#1746): `lexicalCollection` を渡すと、**語彙索引を最後に
+    // 束ねる**（`LexicalOnly = true`・埋め込みの客体は `NoQueryEmbedding`）。読み方（ABAC・全文・復元）は
+    // 主と 1 行も違わない `QdrantVectorStore` である。null は語彙索引を束ねない（試験・旧来の呼び出し）。
     internal static FusedCollections Build(
-        IServiceProvider sp, IReadOnlyList<string> names, bool useGrpc)
+        IServiceProvider sp, IReadOnlyList<string> names, bool useGrpc, string? lexicalCollection = null)
     {
-        if (names.Count == 0)
+        if (names.Count == 0 && lexicalCollection is null)
             return FusedCollections.None;
 
         var client = sp.GetRequiredService<QdrantClient>();
         var storeLogger = sp.GetRequiredService<ILogger<QdrantVectorStore>>();
         var metrics = sp.GetRequiredService<KeywordSearchMetrics>();
 
-        var items = new List<FusedCollection>(names.Count);
+        var items = new List<FusedCollection>(names.Count + 1);
         foreach (var name in names)
         {
             var target = new QueryEmbeddingTarget(name, NamedInRequest: true);
@@ -45,6 +49,16 @@ internal static class FusedCollectionsComposition
             items.Add(new FusedCollection(
                 name, QdrantVectorStore.ForCollection(client, name, storeLogger, metrics), embed));
         }
+
+        // 🔴 **語彙索引は最後に置く**（RRF の同点は初出順。ベクトルを持つコレクションの並びを先に保つ）。
+        if (lexicalCollection is not null)
+            items.Add(new FusedCollection(
+                lexicalCollection,
+                // #1746 監査 🟡3: 語彙索引は取り込みが作るので、無いうちの削除は no-op（IADR-0497 決定 4）。
+                QdrantVectorStore.ForCollection(client, lexicalCollection, storeLogger, metrics,
+                    missingCollectionIsEmpty: true),
+                NoQueryEmbedding.Instance,
+                LexicalOnly: true));
 
         return new FusedCollections(items);
     }

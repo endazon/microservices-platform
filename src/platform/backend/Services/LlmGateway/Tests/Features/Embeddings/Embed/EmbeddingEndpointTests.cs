@@ -10,7 +10,7 @@ using System.Net.Http.Json;
 
 namespace LlmGateway.Tests.Features.Embeddings.Embed;
 
-// FR-02, FR-05, ADR-0016, ADR-0017: /embed が機密区分・用途に応じて送信先を切り替え、
+// FR-02, FR-05, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）: /embed が機密区分・用途に応じて送信先を切り替え、
 // 高機密（confidential/restricted）は外部埋め込み API へ送信しない（fail-closed）ことを検証する。
 [Trait("TestKind", "Integration")]
 public class EmbeddingEndpointTests(TestWebApplicationFactory factory)

@@ -177,6 +177,21 @@ public class EmbeddingBudgetDeadLetterPipelineTests
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
             => Task.CompletedTask;
 
+        // #1746: 語彙索引の口（本試験は internal の文書なので呼ばれない）。
+        public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
+        string indexText, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
+            => Task.CompletedTask;
+
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task PublishCompletedAsync(Guid documentId, int chunkCount, DateTimeOffset completedAt,

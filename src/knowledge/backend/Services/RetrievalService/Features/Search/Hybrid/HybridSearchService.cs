@@ -25,6 +25,11 @@ public class HybridSearchService(
     // 束ねる追加コレクション（既定は空）。
     private readonly IReadOnlyList<FusedCollection> _fused = fused?.Items ?? [];
 
+    // FR-03, ADR-0127 決定 2, [[IADR-0497]] 決定 5 (#1746): **ベクトルの系統を持つ**追加コレクションの数。
+    // 語彙索引（`LexicalOnly`）は意味検索のモードに入らないので、意味検索の経路を選ぶ判定はこの数で行う
+    // （語彙索引だけが束ねられている既定の構成では、意味検索は従来の単一コレクションの経路のまま）。
+    private int VectorFusedCount => _fused.Count(f => !f.LexicalOnly);
+
     // FR-03, UC-01: 既存の呼び出し面。**振る舞いは従前と 1 バイトも変わらない。**
     //
     // 🔴 `user` は**段が無いこの実装では使わない**（[[IADR-0426]] 決定 2）。
@@ -105,7 +110,7 @@ public class HybridSearchService(
                 [], [], filters, sort, request.TopK, candidateK);
         }
 
-        if (mode == SearchModes.Semantic && _fused.Count > 0)
+        if (mode == SearchModes.Semantic && VectorFusedCount > 0)
             return await SemanticAcrossCollectionsAsync(
                 request, filters, sort, singleModeK, candidateK, mode, ct);
 
@@ -180,7 +185,11 @@ public class HybridSearchService(
         if (_fused.Count == 0)
             return (await primary, []);
 
-        var fusedEmbeds = _fused.Select(f => f.Embed.EmbedAsync(query, ct)).ToArray();
+        // 🔴 FR-03, ADR-0127 決定 2, [[IADR-0497]] 決定 5 (#1746): **語彙索引のクエリは埋めない**（客体も呼ばない）。
+        // 引く先のベクトルが無く、検索語を外部へ送る回数だけが増えるため。空ベクトルは「ベクトルの系統なし」である。
+        var fusedEmbeds = _fused
+            .Select(f => f.LexicalOnly ? Task.FromResult<float[]>([]) : f.Embed.EmbedAsync(query, ct))
+            .ToArray();
         await Task.WhenAll(fusedEmbeds.Prepend(primary));
         return (primary.Result, fusedEmbeds.Select(t => t.Result).ToArray());
     }
@@ -191,10 +200,13 @@ public class HybridSearchService(
         FusedCollection collection, float[] vector, string query, int k, ScopeFilter filters,
         string mode, CancellationToken ct)
     {
-        if (vector.Length == 0)
+        // FR-03, ADR-0127 決定 2, [[IADR-0497]] 決定 5 (#1746): 語彙索引は**設計どおりベクトルの系統を持たない**ので
+        // 縮退の警告を出さない（出すと検索のたびに鳴り、本当の縮退が埋もれる）。ベクトル検索も引かない
+        // （客体が空を返す前提に頼らず、ここでも落とす —— 二重の守り）。ABAC は全文の系統へそのまま渡る。
+        if (vector.Length == 0 && !collection.LexicalOnly)
             WarnFusedEmbeddingUnavailable(collection.Collection, mode);
 
-        var vectorTask = vector.Length > 0
+        var vectorTask = vector.Length > 0 && !collection.LexicalOnly
             ? collection.Store.SearchAsync(vector, k, filters, ct)
             : Task.FromResult(new List<SearchResultDto>());
         var keywordTask = collection.Store.KeywordSearchAsync(query, k, filters, ct);
@@ -210,22 +222,28 @@ public class HybridSearchService(
         SearchRequest request, ScopeFilter filters, string sort, int k, int candidateK,
         string mode, CancellationToken ct)
     {
+        // 🔴 FR-03, ADR-0127 決定 2, [[IADR-0497]] 決定 5 (#1746): **語彙索引は意味検索のモードに入らない**
+        // （高機密文書は意味検索のモードでは現れない。利用者が選んだモードを系が勝手に変えない）。
+        // ベクトルの系統を持つコレクションだけを並べ、語彙索引は埋めず・引かず・警告もしない。
         var (primaryVector, fusedVectors) = await EmbedQueryAsync(request.Query, ct);
         if (primaryVector.Length == 0)
             WarnEmbeddingUnavailable(mode);
         for (var i = 0; i < _fused.Count; i++)
-            if (fusedVectors[i].Length == 0)
+            if (fusedVectors[i].Length == 0 && !_fused[i].LexicalOnly)
                 WarnFusedEmbeddingUnavailable(_fused[i].Collection, mode);
 
-        if (primaryVector.Length == 0 && fusedVectors.All(v => v.Length == 0))
+        if (primaryVector.Length == 0
+            && fusedVectors.Where((_, i) => !_fused[i].LexicalOnly).All(v => v.Length == 0))
             return HybridSearchOutcome.Empty(sort, request.TopK);
 
         var primaryTask = primaryVector.Length > 0
             ? store.SearchAsync(primaryVector, k, filters, ct)
             : Task.FromResult(new List<SearchResultDto>());
         var fusedTasks = _fused
-            .Select((f, i) => fusedVectors[i].Length > 0
-                ? f.Store.SearchAsync(fusedVectors[i], k, filters, ct)
+            .Select((f, i) => (Collection: f, Vector: fusedVectors[i]))
+            .Where(x => !x.Collection.LexicalOnly)
+            .Select(x => x.Vector.Length > 0
+                ? x.Collection.Store.SearchAsync(x.Vector, k, filters, ct)
                 : Task.FromResult(new List<SearchResultDto>()))
             .ToList();
         await Task.WhenAll(fusedTasks.Prepend(primaryTask));

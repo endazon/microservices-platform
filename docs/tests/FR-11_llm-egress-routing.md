@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-11 用途別・機密度別 LLM ルーティン
 type: test-spec
 status: completed
 created: 2026-07-04
-updated: 2026-09-05
+updated: 2026-10-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-04, FR-05, FR-11, FR-12, NFR-21, UC-02]
-adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038]
-iadrs: [IADR-0007, IADR-0014, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0374]
-specs: [20260702_FR-11_llm-egress-routing, 20260704_FR-11_llm-routing-runtime-fixes, 20260905_issue-1091_llm-upstream-status-axis]
-issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #440, #850, #859, #863, #1091, AST#290, AST#309, planning#426]
+adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0127]
+iadrs: [IADR-0007, IADR-0014, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0374, IADR-0497]
+specs: [20260702_FR-11_llm-egress-routing, 20260704_FR-11_llm-routing-runtime-fixes, 20260905_issue-1091_llm-upstream-status-axis, 20261005_1746_high-confidentiality-lexical-index]
+issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #440, #850, #859, #863, #1091, #1746, AST#290, AST#309, planning#426]
 -->
 
 # テスト仕様書: 用途別・機密度別 LLM ルーティング
@@ -52,6 +52,7 @@ issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #440, #850, 
 | T-24 | **未知 content ブロックで応答全体を失わない** | Anthropic.SDK 4.0.0 の content 判別子は `text`/`image`/`tool_use`/`tool_result` の 4 種しか知らず、`thinking`（Opus 5 / Sonnet 5 は既定有効・Fable 5 は常時有効）が 1 個混ざるだけで `JsonException: Unknown type thinking` により**応答全体**を失う。**既知型の許可リスト**で未知型（`thinking` / `redacted_thinking` / `server_tool_use` / 将来型）を除去し、本文テキスト・構造化出力・トークン数・`stopReason` を従来どおり取得する。既知型のみの応答は書き換えない／全ブロック未知なら content 空へ縮退（例外にしない）／非 2xx と SSE は素通し／除去した型名は WARN に残す。`refusal` の本文破棄は不変 | `CompleteAsync` が例外を投げず本文を返す。取引判断 JSON の `action` が Buy/Sell/Hold として読める。**変異テスト**: サニタイズを外すと同応答で `Unknown type thinking` になる | LLM 送信先切替 / 根拠付き AI 回答 / `AnthropicContentBlockSanitizerTests`（許可リスト・将来型・素通し・空縮退・非 JSON・非 2xx・SSE の 11 ケース）・`ClaudeProviderThinkingTests`（本文取得・Buy/Sell/Hold・未知型・変異・素通し・refusal の 8 ケース） |
 | T-25 | **用途別フォールバック順序・429 の境界・発火の可観測化（分析用途のモデル割当の計画 ADR 決定 3・4・6 / 用途別フォールバックの実装 ADR / #863）** | ① `analysis` の第 1 候補（`claude-opus-5`）が HTTP 400 で失敗したら第 2 候補 `claude-sonnet-5` へ落ちて `Sent=true` になる。② **429 では落ちない**（再試行であってフォールバックではない）。5xx・ステータス不明も落ちない。③ 発火が `llm.completion.total{llm_result="fallback"}` として計上され、見送った候補と使った候補が `llm.model` で分かれる。④ 鎖の要素は `Models` 登録済み・ZDR 適格に限る（未登録は warn を出して落とす）。⑤ **鎖を持たない用途は落ちない** —— `trade-decision`（`AST/ADR-0011` / ピン Runbook の禁止）と報告書系（`report-weekly` 等）。⑥ `/complete/stream` は落ちない（射程外）。⑦ **［2026-08-21］`rag-answer` の第 1 候補（`claude-sonnet-5`）が HTTP 400 で失敗したら第 2 候補 `claude-haiku-4-5` へ落ちる**（計画側の裁定で第 2 候補が確定したことへの追随） | ①応答 `Model=claude-sonnet-5` ②`Sent=false` かつ `Model=claude-opus-5` ③計上 2 件（`fallback`＋`sent`）④鎖から除外 ⑤`PurposeFallbackModels` に `trade-decision` / `report-*` キーが無く、`report-weekly` は `Sent=false` かつ `Model=claude-opus-5` ⑥SSE が `sent:false` ⑦応答 `Model=claude-haiku-4-5` かつ `Sent=true` | 分析用途のモデル割当の計画 ADR 決定 3・4・6 / `LlmFallbackPolicyTests`・`LlmRouterTests`・`CompletionFallbackEndpointTests`・`CompletionMetricsTests`・`CompletionRoutingEndpointTests` |
 | T-26 | **上流 HTTP ステータスの軸（#1091）** | 失敗の計上に `llm.upstream_status` が載り、**429 が他の失敗と区別できる**。① 429 → `rate_limited`（`llm.result` は `upstream_error` のまま）② 500 → `server_error` ③ ステータスの取れない通信断 → `transport` ④ 設定ミス（`InvalidOperationException`）→ `other`（**`transport` に混ぜない**。混ぜると直す対象を取り違える）⑤ フォールバックした行は `client_error`・成功した行は `none` ⑥ 越境拒否は `none` ⑦ **値域が閉じている**（生ステータス `"429"` 等が出ない）⑧ ストリーム経路も同じ軸 ⑨ Histogram には載せない（送信成立時は常に `none` で系列を分けない）。**変異試験**: `rate_limited` の枝を落とすと 429 の 2 本だけが落ち、分類を止めて生ステータスを返すと値域テスト 5 ケースが全部落ちる | 測定の `llm.upstream_status` が宣言済みの 6 値集合に含まれ、上記の写像どおり | LLM 送信先切替 / 非機能要件 / `CompletionMetricsTests`（429・500・transport・other・fallback/sent・越境拒否・値域 5 ケース・SSE・Histogram 除外） |
+| T-27 | **機密区分の無い文脈は restricted で送る** | RAG の文脈に、機密区分の属性を持たない・空・未知の値（`secret-ish`）・前後空白つきの `public` のチャンクを含める。非ストリーミングとストリーミングの両方（`RagContextAiInputExclusionTests`） | 補完要求の `Confidentiality` が **`restricted`**（安全側）。陽性対照として、区分を持つ組織文書（`internal`）だけなら `internal` | 越境は文脈の最も高い機密区分で判定し、未指定・未知は安全側（語彙索引で未指定・未知の文書が文脈に入るようになった。#1746） |
 
 ## 未確認・フォローアップ
 

@@ -9,6 +9,7 @@ related_ids:
   - ADR-0013
   - ADR-0016
   - ADR-0017
+  - ADR-0127
   - IADR-0025
   - IADR-0085
   - IADR-0313
@@ -16,7 +17,7 @@ related_ids:
   - IADR-0467
 author: claude
 created: 2026-09-09
-updated: 2026-09-26
+updated: 2026-10-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md (モデル別コレクション分離・クエリは検索対象と整合)
   - planning:projects/microservices-platform/07_adr/ADR-0017_selfhosted-embedding-ruri.md (ティアA は Ruri v3。PoC で確定)

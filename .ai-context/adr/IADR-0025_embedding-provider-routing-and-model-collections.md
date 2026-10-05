@@ -5,6 +5,8 @@ status: Accepted
 related_ids:
   - ADR-0016
   - ADR-0017
+  - ADR-0127
+  - IADR-0497
   - ADR-0013
   - ADR-0009
   - FR-02
@@ -13,7 +15,7 @@ related_ids:
   - UC-04
 author: claude
 created: 2026-07-07
-updated: 2026-07-07
+updated: 2026-10-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md (Accepted)
   - planning:projects/microservices-platform/07_adr/ADR-0017_selfhosted-embedding-ruri.md (Accepted)
@@ -116,3 +118,16 @@ related_adrs:
 
 - Supersedes: なし（埋め込みの生成実体を新規結線する。ADR-0013 の抽象を具体化する）。
 - Superseded by: なし。
+
+## 追記: 高機密文書は埋め込みを呼ばず、語彙索引だけへ書く（2026-10-05 / #1746）
+
+［2026-10-05 追記 / #1746］計画 ADR-0017 は計画 ADR-0127 に置き換えられた（ADR-0017（Superseded by ADR-0127・注記は #1746））。ADR-0127 決定 1・4 は、
+`confidential`・`restricted`・機密区分が未指定・未知の文書を「埋め込みを作らず、全文索引（語彙索引）にだけ載せる」と決めた。本 IADR の取り込み側を次のとおり改める
+（正は [IADR-0497](./IADR-0497_high-confidentiality-lexical-index-vectorless-collection.md)）。**本文は書き換えず残置する。**
+
+- **決定 3 の「取り込み側は索引をスキップする」は、高機密文書については「埋め込みを呼ぶ前に分け、語彙索引（ベクトルを持たない専用のコレクション）へ書く」に改まる**（IADR-0497 決定 2）。
+  高機密文書は `/embed` を 1 回も呼ばない。`public` / `internal` の恒久的な拒否（`Retryable=false`）は従来どおりスキップ、一時障害（`Retryable=true`）は従来どおり再試行である。
+- **決定 2・3 のゲートウェイ側（`EmbeddingEgress` の「高機密はティア A だけ」・候補が無ければ拒否）は変えない。** 取り込みが呼ばなくなったので、二重の守りとして残る。
+- **決定 4（モデル別コレクション分離）・決定 6（全コレクションからの削除）**: 語彙索引は分離したコレクションの 1 本として、削除・全文索引・`text_ngram` の後付けの対象に加わる（IADR-0497 決定 4）。
+- **決定 5・フォローアップ (c)（高機密コレクションの横断検索）**: 語彙索引を全文の系統だけで束ねる形で解いた（IADR-0497 決定 5。束ね方は IADR-0467）。
+- **フォローアップ (a)（Ruri v3 の構築と nDCG@10 の実測）**: 対象が無くなった（ADR-0127 決定 5）。nDCG@10 は「全文のみ＋Claude の再順位付け」と「ハイブリッド（voyage）」の差を測る形に変わる（ADR-0127 決定 6。#1746 段 S3）。

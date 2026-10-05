@@ -5,6 +5,8 @@ namespace IngestionService.Domain.Ports;
 public interface IIngestionVectorStore
 {
     // FR-02: 全モデル別コレクション（索引）の存在を保証する（起動時ブートストラップ）。
+    // ［2026-10-05 / #1746］[[IADR-0497]] 決定 1: 語彙索引（ベクトルを持たないコレクション）も作る。
+    // `text` / `text_ngram` の索引と `text_ngram` の後付け（下の 2 つ）も語彙索引を含む全コレクションへ効く。
     Task EnsureCollectionsAsync(CancellationToken ct = default);
 
     // FR-03, #1118: 日本語（CJK）2-gram ペイロード `text_ngram` の全文索引を全コレクションへ張る
@@ -52,7 +54,34 @@ public interface IIngestionVectorStore
         List<string>? sharedWith = null,
         CancellationToken ct = default);
 
+    // FR-02, FR-03, FR-05, ADR-0127 決定 1・2, [[IADR-0497]] 決定 1・3 (#1746):
+    // **高機密文書（confidential・restricted・未指定・未知）のチャンクを語彙索引へ書く。ベクトルは持たない。**
+    //
+    // 🔴 **コレクションもベクトルも引数に取らない。** 置き場所は語彙索引の 1 本に固定であり
+    // （呼び出し側が選べると、ベクトルのコレクションへベクトル無しの点を書けてしまう）、
+    // 意味の無いベクトル（ハッシュ等）で点を作る形は ADR-0127 決定 1 が退けている。
+    // ペイロードはチャンクの口と同じ表現（`text` / `text_ngram` / `attributes` / `tags` / `shared_with` /
+    // `updated_at` / `document_id`）—— ABAC・削除・並び順・全文索引の判定軸を、埋め込みの有無で変えない。
+    Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null,
+        List<string>? sharedWith = null,
+        CancellationToken ct = default);
+
+    // FR-02, FR-03, ADR-0070 決定 4, ADR-0127 決定 1, [[IADR-0497]] 決定 3 (#1746):
+    // 本文を持たない高機密文書の**メタデータ点**を語彙索引へ書く（`has_body = false`。1 文書 1 点）。
+    // メタデータの口（`UpsertMetadataPointAsync`）と同じく、チャンクの口と分けてある。
+    Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
+        string indexText, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null,
+        List<string>? sharedWith = null,
+        CancellationToken ct = default);
+
     // FR-02, FR-05: 全モデル別コレクションから当該文書のチャンクを削除する。
+    // ［2026-10-05 / #1746］[[IADR-0497]] 決定 4: **語彙索引のコレクションからも消す**（機密区分が
+    // confidential → public へ下がったとき、語彙索引の古い点が残らないように）。
     // 機密区分変更（例 public→confidential）でモデル/コレクションが変わっても旧コレクションに残存させない
     // （残存すると ABAC を跨いだ検索ヒットになり得るため fail-closed で全消しする）。
     //

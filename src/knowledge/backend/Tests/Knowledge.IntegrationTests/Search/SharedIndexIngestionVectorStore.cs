@@ -24,8 +24,15 @@ namespace Knowledge.IntegrationTests.Search;
 // ここを既定の `true` にすると、[[IADR-0358]] 決定 3 が閉じた
 // 「題名由来の索引テキストが本文抜粋として利用者へ返る」が本テストの下で再発し、
 // しかも**テストは緑のまま**になる。
-internal sealed class SharedIndexIngestionVectorStore(InMemoryVectorStore index) : IIngestionVectorStore
+//
+// FR-03, ADR-0127 決定 1, [[IADR-0497]] (#1746): `lexicalIndex` を渡すと、語彙索引（高機密文書）の書き込みは
+// **別の索引**へ落ちる（本番の別コレクションに当たる）。検索側はそれを語彙索引として束ねる（`RetrievalHost`）。
+// 渡さなければ同じ索引へ落ちる（既存の試験の形）。
+internal sealed class SharedIndexIngestionVectorStore(
+    InMemoryVectorStore index, InMemoryVectorStore? lexicalIndex = null) : IIngestionVectorStore
 {
+    private InMemoryVectorStore Lexical => lexicalIndex ?? index;
+
     // コレクションの分離（ADR-0016 のモデル別ルーティング）は `InMemoryVectorStore` が持たない。
     // **書かれたコレクション名を記録するだけ**にして、テスト側が「どこへ書いたか」を主張できるようにする
     // —— 稼働環境で検索が全件 0 件になった事故（#1215）の一因は**読み書き先コレクションの不一致**で
@@ -63,9 +70,45 @@ internal sealed class SharedIndexIngestionVectorStore(InMemoryVectorStore index)
                 attributes, tags, updatedAt, HasBody: false), ct);
     }
 
+    // FR-03, ADR-0127 決定 1, [[IADR-0497]] (#1746): 語彙索引の名前（書き先の記録に使う）。
+    internal const string LexicalCollectionName = "knowledge_chunks_lexical";
+
+    // 語彙索引（高機密文書）。ベクトルは空で入れる（ハッシュ等で埋めない。ADR-0127 決定 1）。
+    // 🔴 **この橋は索引を 1 つしか持たないので、「意味検索に出ない」ことはここでは測れない**
+    // （`InMemoryVectorStore.SearchAsync` はベクトルを見ない）。それは実 Qdrant の `LexicalIndexQdrantTests` と、
+    // 束ね方の単体試験（`LexicalIndexFusionTests`）の担当である。
+    public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
+    {
+        Record(LexicalCollectionName);
+        return Lexical.UpsertAsync(
+            new ChunkPayload(chunkId, documentId, title, text, [], markdownUri,
+                attributes, tags, updatedAt, HasBody: true, SharedWith: sharedWith), ct);
+    }
+
+    public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
+        string indexText, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
+    {
+        Record(LexicalCollectionName);
+        return Lexical.UpsertAsync(
+            new ChunkPayload(pointId, documentId, title, indexText, [], markdownUri,
+                attributes, tags, updatedAt, HasBody: false, SharedWith: sharedWith), ct);
+    }
+
     // 取り込みは「全コレクションから消す」。索引が 1 つしか無いのでそのまま 1 回消す。
-    public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
-        => index.DeleteByDocumentAsync(documentId, ct);
+    // #1746: 語彙索引を別に持つときはそちらからも消す（本番の「全コレクションから消す」と同じ）。
+    public async Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
+    {
+        await index.DeleteByDocumentAsync(documentId, ct);
+        if (lexicalIndex is not null)
+            await lexicalIndex.DeleteByDocumentAsync(documentId, ct);
+    }
 
     private void Record(string collection)
     {

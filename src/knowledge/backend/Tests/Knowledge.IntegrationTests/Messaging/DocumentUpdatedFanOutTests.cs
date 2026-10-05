@@ -378,6 +378,28 @@ internal sealed class RecordingVectorStore(RecordingProbe probe) : IIngestionVec
         return Task.CompletedTask;
     }
 
+    // #1746 / [[IADR-0497]]: 語彙索引（高機密文書）へ書かれても同じ観測点を立てる
+    // （fan-out の観測が機密区分で消えないようにする。本試験の文書は public なので通常は呼ばれない）。
+    public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
+    {
+        probe.IngestionUpserts.Signal(documentId);
+        return Task.CompletedTask;
+    }
+
+    public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
+        string indexText, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
+    {
+        probe.IngestionUpserts.Signal(documentId);
+        return Task.CompletedTask;
+    }
+
     public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
         => Task.CompletedTask;
 }

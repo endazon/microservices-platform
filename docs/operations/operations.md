@@ -3,13 +3,13 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-04
+updated: 2026-10-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09]
-adrs: [ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036]
-iadrs: [IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480]
+adrs: [ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127]
+iadrs: [IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497]
 specs: [20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step]
 issues: [#1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712]
 -->
@@ -703,11 +703,15 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 
 埋め込みは取り込み時に**全文書本文**を送信するため、LLM 呼び出しよりデータ露出が大きい。機密区分で
 送信先・モデル・コレクションが分かれる（`Embedding:Routing`）。
+**［2026-10-05］高機密文書（confidential・restricted・機密区分が未指定・未知）は埋め込まない。** 取り込みは埋め込みを
+呼ぶ前に機密区分で分け、高機密文書をベクトルを持たない専用のコレクション（語彙索引。`Qdrant__LexicalCollection`。
+Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLLECTION`。**取り込みと検索で同じ値**）へ全文索引だけで書く。
 
 | 機密区分 | 送信先ティア | モデル / 次元 | コレクション | 既定状態 |
 | --- | --- | --- | --- | --- |
 | public / internal | ティアB（Voyage・保護契約） | voyage-3.5 / 1024 | `knowledge_chunks_voyage_3_5` | 有効（要 API キー） |
-| confidential / restricted | ティアA（セルフホスト固定） | ruri-v3 / 768 | `knowledge_chunks_ruri_v3` | 無効＝**fail-closed** |
+| confidential / restricted / 未指定・未知 | **埋め込まない**（どの送信先へも本文を送らない） | なし（ベクトルを持たない） | `knowledge_chunks_lexical`（語彙索引） | **常に有効**（全文索引だけ。キーワードとハイブリッドで現れ、意味検索には現れない） |
+| （opt-in）セルフホスト有効時 | ティアA（セルフホスト） | ruri-v3 / 768 | `knowledge_chunks_ruri_v3` | 無効。**有効にしても高機密文書は埋め込まれない**（上の行のまま。検索クエリと測定用） |
 | （検証スタック専用）全区分 | ティアA（決定的ローカル・プロセス内計算） | deterministic-hash-v1 / 1024 | `knowledge_chunks_deterministic_v1` | 無効＝**既定では存在しないのと同じ** |
 
 🔴 **3 行目は使い捨ての検証スタック専用である。** 表層の文字 3-gram をハッシュするだけで
@@ -736,7 +740,9 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 - **セルフホスト（ティアA / Ruri v3）の有効化**: 基盤（TEI / vLLM 等の OpenAI 互換 `/v1/embeddings`）を
   構築後、`SELFHOSTED_EMBEDDING_URL`（`Embedding__SelfHosted__BaseUrl`）と
   `SELFHOSTED_EMBEDDING_ENABLED=true`（`Embedding__Routing__Endpoints__1__Enabled`）を設定して有効化する。
-  有効化まで confidential/restricted 文書は**索引されない**（fail-closed。設計どおり）。
+  ~~有効化まで confidential/restricted 文書は**索引されない**（fail-closed。設計どおり）。~~
+  **［2026-10-05］改まった。** 高機密文書は有効化の有無に依らず埋め込まれず、語彙索引に全文索引だけで載る（上の表）。
+  セルフホストの配備物は opt-in のまま残る（検索クエリの埋め込みと nDCG の測定用）。
   - **配備物（opt-in・#303）**: 推論基盤（TEI）の配備物をリポに opt-in で用意済み。
     - k8s（Helm）: `values.yaml` の `embedding.enabled=true`（既定 `false`）で `templates/embedding.yaml` が
       TEI Deployment/Service を描画し、`llmgateway` へ `Embedding__SelfHosted__BaseUrl=http://embedding-service:<port>`
@@ -786,7 +792,8 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
     削除してから再索引する（機密区分変更時の残存防止）。一時障害でリトライ枯渇→DLQ 送りとなった文書は、
     **削除済み・未索引（0 チャンク）の状態で一時的に検索不可**となる（恒久欠落ではなく DLQ 再投入で回復する）。
     このため DLQ 滞留は検索網羅性に直結する運用指標として監視し、速やかに再投入すること。
-  - **fail-closed / 恒久的理由**（高機密でセルフホスト未有効・次元不整合・プロバイダ未登録、`Retryable=false`）:
+  - **fail-closed / 恒久的理由**（次元不整合・プロバイダ未登録・外部経路の無効化など、`Retryable=false`。［2026-10-05］高機密文書は
+    埋め込みを呼ばずに語彙索引へ行くので、ここへは来ない。ここへ来るのは public / internal の文書だけである）:
     設計どおり当該チャンクを**索引スキップ**し、`IngestionCompleted` は索引できた件数で発行する
     （警告ログに機密区分を記録）。再試行では解消しないため DLQ には回さない。
 - **再索引手順（次元 1536→1024・モデル別コレクション移行）**:
@@ -796,6 +803,13 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
      コレクションから当該文書を削除してから再索引するため、決定的チャンク ID により冪等に再構築される。
   3. 旧コレクション `knowledge_chunks` は移行完了後に手動削除する（`DELETE /collections/knowledge_chunks`）。
   - モデル差し替え（例 ruri-v3→BGE-M3）時も、当該コレクションを作り直し同手順で再索引する。
+  - **［2026-10-05］語彙索引の展開順序**: 語彙索引のコレクション（既定 `knowledge_chunks_lexical`）を作るのは**取り込みサービスの起動時だけ**である。
+    **取り込みサービスを先に（または同時に）展開し、起動ログに Qdrant のコレクションと全文索引の確保の成功が出ていること**
+    （`Failed to ensure Qdrant collection / full-text payload index at startup` の Error が無いこと）を確かめてから、検索サービスを展開する。
+    逆順やブートストラップの失敗の間は、キーワード／ハイブリッド検索のたびに縮退の警告と計器 `search.keyword_degraded.total`
+    （理由 `backend_error`）が増える（検索は 200 で続く。文書削除は語彙索引の分だけ何もしないので失敗しない）。取り込みサービスを再起動して作らせれば収まる。
+  - **［2026-10-05］語彙索引の導入後は、既に取り込まれた高機密文書（confidential・restricted・機密区分なし）に対して手順 2 を行う。**
+    これらは従来どこにも索引されておらず、再発行するまで語彙索引にも入らない。語彙索引のコレクションは取り込みサービスが起動時に自動で作る。
 - **ペイロード項目を増やしたときの再索引（#536）**: 索引ペイロードへ**新しい項目**を
   足した場合も、上記手順 2（**全文書に対する `DocumentUpdated` の再発行**）がそのまま使える。
   コレクションの作り直しは要らない —— 決定的チャンク ID により同じ点が上書きされる。
@@ -1232,7 +1246,7 @@ LlmGateway）に在るため、**当該イメージが更新済みであるこ�
 | 事象 | 検知 | 一次対応 | エスカレーション |
 | --- | --- | --- | --- |
 | LLM ゲートウェイ/外部 LLM 不調 | RAG レイテンシ/5xx アラート、`LlmGateway` 縮退ログ | RAG は縮退応答（送信せず縮退・fail-closed）。検索（非 LLM）は継続。エンドポイント設定/疎通確認 | 外部プロバイダ障害なら egress 設定でセルフホスト/別ティアへ切替 |
-| 埋め込みプロバイダ停止 | 取り込み失敗ログ、`EmbeddingEndpointTests` 相当の縮退 | 高機密はセルフホスト固定・未有効なら索引スキップ（fail-closed。埋め込みの機密区分ルーティング）。プロバイダ復旧後に再索引（本書「埋め込み」節） | セルフホスト基盤の起動、モデル/次元整合の確認 |
+| 埋め込みプロバイダ停止 | 取り込み失敗ログ、`EmbeddingEndpointTests` 相当の縮退 | 高機密は埋め込まず語彙索引へ書くので影響を受けない（［2026-10-05］）。public / internal の恒久的な拒否は索引スキップ（fail-closed）。プロバイダ復旧後に再索引（本書「埋め込み」節） | セルフホスト基盤の起動、モデル/次元整合の確認 |
 | RabbitMQ 停止 | サービス接続エラー、パイプライン滞留 | ブローカ再起動。MassTransit は再接続。未処理は再配信（冪等消費のため重複安全） | 永続化ボリューム/ディスク確認。デッドレター滞留は原因メッセージを調査 |
 | Qdrant 停止 | 検索 5xx/エラーログ | Qdrant 再起動。索引は再取り込みで再構築可能（決定的チャンク ID） | ボリューム障害時はスナップショットからリストア（バックアップ節） |
 | PostgreSQL 停止 | サービス起動失敗/DB 接続エラー | DB 再起動・接続確認。書き込み不可の間は該当サービスを縮退 | データ破損時はバックアップからリストア（RPO/RTO 節） |

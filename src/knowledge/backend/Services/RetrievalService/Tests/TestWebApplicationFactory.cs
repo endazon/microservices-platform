@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
+using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
@@ -40,6 +41,14 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<QdrantClient>();
             services.RemoveAll<IVectorStore>();
             services.AddSingleton<IVectorStore, InMemoryVectorStore>();
+            // #1746 / [[IADR-0497]] 決定 5: 本番の合成点は語彙索引を常に束ねる（実 Qdrant のクライアントを要する）。
+            // 器は Qdrant を持たないので束ねない形へ戻す —— 本器を使う試験の主題は束ね方ではない
+            // （語彙索引の束ね方は `LexicalIndexFusionTests`、合成は `FusedQueryEmbeddingTests` の T-Q-06 が測る）。
+            if (!KeepProductionFusedCollections)
+            {
+                services.RemoveAll<FusedCollections>();
+                services.AddScoped(_ => FusedCollections.None);
+            }
 
             // 埋め込みサービスをスタブへ差し替え
             services.RemoveAll<IEmbeddingService>();
@@ -73,6 +82,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
                     RetrievalTestUserAuthHandler.SchemeName, _ => { });
         });
     }
+
+    /// <summary>
+    /// #1746: true なら本番の合成点（`Program.cs` の `FusedCollections`。語彙索引を常に束ねる）を残す。
+    /// 残すときは派生側で Qdrant のクライアントを戻すこと（組み立てが引く。接続は呼び出しまで起きない）。
+    /// </summary>
+    protected virtual bool KeepProductionFusedCollections => false;
 
     /// <summary>既定のクライアントが名乗る利用者。</summary>
     public const string DefaultUser = "test-user";

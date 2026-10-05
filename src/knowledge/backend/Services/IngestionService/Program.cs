@@ -49,14 +49,22 @@ builder.Services.AddSingleton(new QdrantClient(qdrantHost, qdrantPort));
 // FR-02, ADR-0016: モデル別コレクション（voyage/1024・ruri/768）の定義（起動時作成・残存防止削除に使用）。
 builder.Services.Configure<EmbeddingCollectionsOptions>(
     builder.Configuration.GetSection(EmbeddingCollectionsOptions.SectionName));
-builder.Services.AddSingleton<IIngestionVectorStore, QdrantIngestionVectorStore>();
+// FR-02, FR-03, ADR-0127 決定 1, [[IADR-0497]] 決定 1 (#1746): 語彙索引（ベクトルを持たない専用のコレクション）。
+// 名前は検索サービスと同じキー（`Qdrant:LexicalCollection`）から引く。ベクトルのコレクションと同名なら起動を止める。
+var embeddingCollections = builder.Configuration.GetSection(EmbeddingCollectionsOptions.SectionName)
+    .Get<EmbeddingCollectionsOptions>()?.Collections ?? [];
+var lexicalCollection = LexicalCollection.Resolve(builder.Configuration);
+LexicalCollection.EnsureDistinct(lexicalCollection, embeddingCollections.Select(c => c.Name));
+builder.Services.AddSingleton<IIngestionVectorStore>(sp => new QdrantIngestionVectorStore(
+    sp.GetRequiredService<QdrantClient>(),
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<EmbeddingCollectionsOptions>>(),
+    lexicalCollection));
 
 // FR-02, ADR-0027 (#1640): 取り込みの受け口の時間の上限（呼び出しごとの期限・埋め込みの総枠・受け口の実行期限）。
 // 受け口の実行期限に最悪の所要時間が収まらない構成は、ここで起動を止める（`IngestionTimeouts.From`）。
 // 既存チャンクの削除はコレクション 1 本ごとに Qdrant を 1 回呼ぶので、コレクション数を最悪の所要時間に入れる。
-var ingestionTimeouts = IngestionTimeouts.From(builder.Configuration,
-    builder.Configuration.GetSection(EmbeddingCollectionsOptions.SectionName)
-        .Get<EmbeddingCollectionsOptions>()?.Collections.Count ?? 0);
+// ［2026-10-05 / #1746］[[IADR-0497]] 決定 4: 語彙索引の 1 本も削除の対象なので数に入れる（＋1）。
+var ingestionTimeouts = IngestionTimeouts.From(builder.Configuration, embeddingCollections.Count + 1);
 builder.Services.AddSingleton(ingestionTimeouts);
 builder.Services.AddPlatformConsumerTimeouts();
 builder.Services.TryAddSingleton(TimeProvider.System);

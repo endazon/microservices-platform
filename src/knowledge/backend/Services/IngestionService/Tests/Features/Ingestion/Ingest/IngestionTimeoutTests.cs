@@ -146,7 +146,7 @@ public class IngestionTimeoutTests
     private static IConfiguration Config(Dictionary<string, string?> values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
-    // T-21: 既定の上限と、それが既定のコレクション数（2）で受け口の実行期限に収まること。
+    // T-21: 既定の上限と、それが既定のコレクション数（3 = モデル別 2 ＋ 語彙索引 1。#1746）で受け口の実行期限に収まること。
     [Fact]
     public void 構成が無ければ既定の上限になる()
     {
@@ -158,7 +158,7 @@ public class IngestionTimeoutTests
         timeouts.VectorStore.Should().Be(TimeSpan.FromSeconds(10));
         timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(300));
         timeouts.Handler.Should().Be(TimeSpan.FromSeconds(420));
-        timeouts.DeleteFromAll.Should().Be(TimeSpan.FromSeconds(20), "コレクション 2 本 × Qdrant 10 秒");
+        timeouts.DeleteFromAll.Should().Be(TimeSpan.FromSeconds(30), "コレクション 3 本（モデル別 2 ＋ 語彙索引 1）× Qdrant 10 秒");
     }
 
     // T-21: 受け口の実行期限が「削除（本数 × Qdrant）＋本文＋総枠＋最後の 1 チャンク」以下なら起動を止める。
@@ -198,7 +198,8 @@ public class IngestionTimeoutTests
     [Fact]
     public void 総枠を上げるなら受け口の実行期限とブローカの_consumer_timeout_も上げれば通る()
     {
-        IngestionTimeouts.From(Config(new() { [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "1723" }), 2)
+        IngestionTimeouts.From(Config(new() { [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "1723" }),
+                IngestionTimeouts.DefaultCollectionCount)
             .Should().Be(IngestionTimeouts.Default);
 
         var timeouts = IngestionTimeouts.From(Config(new()
@@ -254,6 +255,24 @@ public class IngestionTimeoutTests
             string title, string indexText, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            => HangIf(Hung.MetadataUpsert, ct);
+
+        // #1746: 語彙索引の口。止まり方は本文チャンクの書き込みと同じ（Qdrant への 1 回の書き込み）。
+        public async Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
+        {
+            await HangIf(Hung.Upsert, ct);
+            Upserts++;
+        }
+
+        public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
+        string indexText, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
             => HangIf(Hung.MetadataUpsert, ct);
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
