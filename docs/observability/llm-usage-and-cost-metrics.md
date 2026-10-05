@@ -4,14 +4,14 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-23
-updated: 2026-09-26
+updated: 2026-10-05
 ---
 <!-- trace:
 ids: [FR-10, FR-11, NFR, NFR-21, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0076]
 iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466]
-specs: [20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable]
-issues: [#380, #443, #546, #1111, #1203]
+specs: [20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction]
+issues: [#380, #443, #546, #1111, #1203, #1741]
 -->
 
 # 可観測性仕様書: LLM 利用実績（トークン消費量と金額換算）
@@ -82,6 +82,13 @@ Prometheus 側の名前は、単位 `{currency}` が注記として落ち、ゲ�
 - **区間の重なり・空区間・負値は起動時に落とす。** 重なりを実行時に先勝ちで解決すると、
   どちらの単価で換算したかを後から特定できない。
 - **単価改定は設定変更だけで反映できる。** 反映そのものは人手に残る（下記の警報が漏れを検知する）。
+  - 🔴 **［2026-10-05 訂正］警報が検知できる漏れは片側だけである。** 下記の警報（単価を解決できなかった呼び出し）が
+    捕まえるのは**区間が無い・区間が切れた**とき、すなわち**金額が過小になる**漏れに限る。
+    **予定されていた改定が中止されたのに、その改定の区間を消し忘れた**場合は、どの時刻にも区間が該当して
+    単価は解決できてしまうため、警報は 0 のまま**金額が静かに過大になる**。この形を検知する警報は無く、
+    **気付けるのは人だけである**（提供元の価格の公表を確かめること）。`claude-sonnet-5` で実際に起き、
+    2026-09-01 から是正の配備までの同モデルの金額は 1.5 倍に過大である（月次確認での読み替えは
+    [`llm-cost-monthly-review-runbook.md`](../operations/llm-cost-monthly-review-runbook.md) §過大計上の期間）。
 
 ## 🔴 単価を解決できなかったときの扱い
 

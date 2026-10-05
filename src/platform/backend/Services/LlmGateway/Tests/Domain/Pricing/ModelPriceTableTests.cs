@@ -12,8 +12,10 @@ namespace LlmGateway.Tests.Domain.Pricing;
 [Trait("TestKind", "Unit")]
 public class ModelPriceTableTests
 {
-    // 単価改定の実例（ADR-0044 §コンテキスト）: claude-sonnet-5 の $2/$10 は 2026-08-31 まで、
-    // 9 月以降 $3/$15。**区間は半開 [From, To) であり、切替時刻ちょうどは新単価側に属する。**
+    // **合成の単価改定**（仕組みの検査用。実価格ではない）: $2/$10 → 2026-09-01 から $3/$15。
+    // ［2026-10-05 / #1741］ADR-0044 §コンテキストはこれを claude-sonnet-5 の実例としていたが、その引き上げは
+    // 中止された（2026-09-09 訂正）。実配備の単価は DeployedPriceTableTests が固定する。
+    // **区間は半開 [From, To) であり、切替時刻ちょうどは新単価側に属する。**
     private static readonly DateTimeOffset Switch = new(2026, 9, 1, 0, 0, 0, TimeSpan.Zero);
 
     private static ModelPriceTable Table(ModelPricingOptions? options = null)

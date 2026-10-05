@@ -70,14 +70,16 @@ public class LlmUsageMetricsTests
     private static LlmUsageMetrics Metrics(IMeterFactory meterFactory, bool withPrice = true)
     {
         var pricing = new ModelPricingOptions();
+        // #1741: 合成のモデル名と任意の単価（実価格ではない）。実モデル名を使うと、実価格の誤りを
+        // 文字列で走査したときにこの合成値まで引っかかるため中立の名前にする。
         if (withPrice)
-            pricing.Models["claude-sonnet-5"] =
+            pricing.Models["test-model"] =
             [
                 new ModelPriceEntry { InputPerMillionTokens = 3.0m, OutputPerMillionTokens = 15.0m },
             ];
 
         var routing = new LlmRoutingOptions();
-        routing.PurposeModels["rag-answer"] = "claude-sonnet-5";
+        routing.PurposeModels["rag-answer"] = "test-model";
 
         var prices = new ModelPriceTable(
             new Static<ModelPricingOptions>(pricing), NullLogger<ModelPriceTable>.Instance);
@@ -85,7 +87,7 @@ public class LlmUsageMetricsTests
             meterFactory, new Static<LlmRoutingOptions>(routing), prices, TimeProvider.System);
     }
 
-    private static RoutingDecision Decision(string model = "claude-sonnet-5")
+    private static RoutingDecision Decision(string model = "test-model")
         => new(true, "claude-managed", "claude", ProtectionTier.B, model, false, "test");
 
     // FR-10, ADR-0044 決定 1 (T-15): トークンは**用途別・モデル別**に、入出力を属性で分けて計上される。
@@ -105,7 +107,7 @@ public class LlmUsageMetricsTests
             m.Tags[LlmUsageMetrics.TokenTypeTag] == LlmUsageMetrics.TokenTypeOutput && m.Value == 500);
         tokens.Should().OnlyContain(m =>
             m.Tags[LlmCompletionMetrics.PurposeTag] == "rag-answer"
-            && m.Tags[LlmCompletionMetrics.ModelTag] == "claude-sonnet-5");
+            && m.Tags[LlmCompletionMetrics.ModelTag] == "test-model");
     }
 
     // FR-10, ADR-0044 決定 3 (T-16): 金額はゲートウェイ側で換算して計上される（Grafana へ単価を渡さない）。
