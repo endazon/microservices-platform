@@ -2,7 +2,7 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Domain.Routing;
 
-// FR-02, FR-05, ADR-0016, ADR-0017: 埋め込み専用の越境マトリクス（EmbeddingEgress）に基づき、
+// FR-02, FR-05, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）: 埋め込み専用の越境マトリクス（EmbeddingEgress）に基づき、
 // 埋め込み送信先（エンドポイント・モデル・次元・コレクション）を選択、または送信を拒否する。
 //
 // fail-closed の要点: confidential/restricted はティアA（セルフホスト）のみ許容し、
@@ -24,7 +24,7 @@ public sealed class EmbeddingRouter(IOptions<EmbeddingRoutingOptions> options, I
 
         var allowedTiers = EmbeddingEgress.AllowedTiers(sensitivity);
 
-        // FR-03, ADR-0016, ADR-0017, IADR-0422 (#336): 検索クエリ専用の送信先固定（測定用の切替口）。
+        // FR-03, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0422 (#336): 検索クエリ専用の送信先固定（測定用の切替口）。
         //
         // 🔴 **絞り込みは越境判定の「後」に効く。** 候補は既に `allowedTiers` と `Enabled` の篩を
         // 通っているので、プロファイルは候補を**狭めることしかできない** —— 機密区分が許さない

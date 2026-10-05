@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Tests.Domain.Routing;
 
-// FR-02, FR-05, ADR-0016, ADR-0017: 埋め込みルーターの機密区分ティア判定・fail-closed を検証する。
+// FR-02, FR-05, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）: 埋め込みルーターの機密区分ティア判定・fail-closed を検証する。
 [Trait("TestKind", "Unit")]
 public class EmbeddingRouterTests
 {
@@ -139,9 +139,9 @@ public class EmbeddingRouterTests
         decision.Dimensions.Should().Be(1024);
     }
 
-    // ---- FR-03, ADR-0016, ADR-0017, [[IADR-0422]] 決定 2 (#336): 検索クエリ送信先の固定（測定用） ----
+    // ---- FR-03, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）, [[IADR-0422]] 決定 2 (#336): 検索クエリ送信先の固定（測定用） ----
     //
-    // ADR-0017 の nDCG@10 の A/B は、**クエリの埋め込みを検索対象コレクションと同じモデルへ寄せられないと
+    // ADR-0017（Superseded by ADR-0127・注記は #1746） の nDCG@10 の A/B は、**クエリの埋め込みを検索対象コレクションと同じモデルへ寄せられないと
     // 成立しない**。ここで固定するのは「寄せられること」と「寄せても越境が広がらないこと」の 2 つである。
 
     private static EmbeddingRouter BuildWithProfile(string? queryProfile, bool selfHostedEnabled = true)
@@ -184,7 +184,7 @@ public class EmbeddingRouterTests
         decision.Dimensions.Should().Be(1024);
     }
 
-    // FR-03, ADR-0016, ADR-0017, IADR-0422: 名指しすると、そのエンドポイントのモデル・次元・
+    // FR-03, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0422: 名指しすると、そのエンドポイントのモデル・次元・
     // コレクションが選ばれる（＝Ruri コレクションを Ruri のクエリ埋め込みで検索できる）。
     [Fact]
     public void Route_QueryProfileを指定するとそのエンドポイントが選ばれる()

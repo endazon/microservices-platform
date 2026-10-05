@@ -32,7 +32,7 @@ spec:
           # TEI（OpenAI 互換 /v1/embeddings）。vLLM 等へ差し替える場合は registry/image/tag/args を values で上書きする。
           image: "{{ $e.registry }}/{{ $e.image }}:{{ $e.tag }}"
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
-          # ADR-0017: モデルは Ruri v3（768 次元）。実モデル取得は稼働環境依存（IADR-0085）。
+          # ADR-0017（Superseded by ADR-0127・注記は #1746）: モデルは Ruri v3（768 次元）。実モデル取得は稼働環境依存（IADR-0085）。
           args:
             - "--model-id"
             - {{ $e.modelId | quote }}

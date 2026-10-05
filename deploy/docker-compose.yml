@@ -722,7 +722,7 @@ services:
       # FR-02 / ADR-0016 / IADR-0025: 埋め込み。既定はティアB=Voyage（voyage-3.5/1024次元）。
       # 契約時にゼロ保持（学習利用オプトアウト）を設定してから本番データを流す（運用仕様書 参照）。
       Embedding__Voyage__ApiKey: ${VOYAGE_API_KEY:-}
-      # ADR-0017 / IADR-0025: 高機密（confidential/restricted）はティアA=セルフホスト（Ruri v3/768次元）固定。
+      # ADR-0017（Superseded by ADR-0127・注記は #1746） / IADR-0025: 高機密（confidential/restricted）はティアA=セルフホスト（Ruri v3/768次元）固定。
       # URL 未設定時は fail-closed（高機密は索引せず外部へも送らない）。基盤構築後に設定して有効化する。
       # ［2026-10-05 / #1746］ADR-0127 / IADR-0497: 高機密文書は埋め込まず語彙索引（ベクトルを持たないコレクション）にだけ
       # 載せるようになった。本基盤を有効にしても高機密文書は埋め込まれない（opt-in の配備物として残す。検索クエリと測定用）。
@@ -735,7 +735,7 @@ services:
     depends_on:
       - otel-collector
 
-  # FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
+  # FR-02, FR-03, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
   # 高機密（confidential/restricted）はティアA=セルフホスト固定。この基盤が未起動の間は fail-closed（高機密は
   # 索引されない）。案 A のインフラを opt-in で用意する。profiles: ["embedding"] のため既定オフ（`docker compose
   # --profile embedding up` でのみ起動）。build を持たない pull イメージ＝#275／images.yml いずれの検査対象外。

@@ -13,7 +13,7 @@ using LlmGateway.Tests.Grpc;
 
 namespace LlmGateway.Tests.Features.Embeddings.Embed;
 
-// FR-02, FR-03, FR-05, NFR-09, NFR-16, ADR-0013, ADR-0016, ADR-0017, ADR-0029, ADR-0075,
+// FR-02, FR-03, FR-05, NFR-09, NFR-16, ADR-0013, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）, ADR-0029, ADR-0075,
 // IADR-0379, IADR-0397 (#1255): 埋め込みの gRPC 面を**実 Kestrel の h2c ポート**で往復し、
 // s2s トークンの検証と越境判定（fail-closed）が gRPC 経路でも保たれることを固定する。
 //

@@ -1,6 +1,6 @@
 namespace Platform.Shared.Contracts.Dtos;
 
-// FR-02, FR-03, FR-05, ADR-0013, ADR-0016, ADR-0017: LLM ゲートウェイ /embed の要求・応答契約。
+// FR-02, FR-03, FR-05, ADR-0013, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）: LLM ゲートウェイ /embed の要求・応答契約。
 // LlmGateway（実装側）と IngestionService / RetrievalService（呼び出し側）で二重管理せず、
 // 契約変更時の追従漏れ（ドリフト）を防ぐため共有コントラクトに一元化する（/complete と同方針）。
 

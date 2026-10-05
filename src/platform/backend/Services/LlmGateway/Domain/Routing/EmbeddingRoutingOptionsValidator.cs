@@ -2,7 +2,7 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Domain.Routing;
 
-// FR-02, ADR-0016, ADR-0017（Issue #98 レビュー対応）: 埋め込みルーティング設定を起動時に検証する。
+// FR-02, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）（Issue #98 レビュー対応）: 埋め込みルーティング設定を起動時に検証する。
 //
 // 背景: 配備（docker-compose / Helm）はセルフホスト有効化を配列インデックス依存の環境変数
 // （例 `Embedding__Routing__Endpoints__1__Enabled`）で上書きする。将来エンドポイントの追加・並び替えで
@@ -20,7 +20,7 @@ public sealed class EmbeddingRoutingOptionsValidator : IValidateOptions<Embeddin
     {
         [ProtectionTier.A] =
         [
-            "selfhosted-embedding",   // セルフホスト推論基盤（社外送信なし。ADR-0017）
+            "selfhosted-embedding",   // セルフホスト推論基盤（社外送信なし。ADR-0017（Superseded by ADR-0127・注記は #1746））
             "deterministic-embedding" // 決定的ローカル埋め込み（プロセス内計算。使い捨てスタック専用）
         ],
         [ProtectionTier.B] = ["voyage"], // 保護契約済み外部
@@ -74,7 +74,7 @@ public sealed class EmbeddingRoutingOptionsValidator : IValidateOptions<Embeddin
                 "インデックス依存の Enabled 上書きで既定（Voyage）を誤って無効化していないか確認してください。");
         }
 
-        // FR-03, ADR-0016, ADR-0017, IADR-0422 決定 2 (#336): 検索クエリ送信先の固定（測定用の切替口）。
+        // FR-03, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0422 決定 2 (#336): 検索クエリ送信先の固定（測定用の切替口）。
         //
         // 🔴 **不在・無効なエンドポイント名は起動時に落とす。** ルーターは候補が消えたとき
         // fail-closed で拒否する（既定へ落とさない）が、それは**全検索のクエリ埋め込みが静かに

@@ -94,7 +94,7 @@ builder.Services.AddKeyedSingleton<ILlmProvider, ClaudeProvider>("claude");
 builder.Services.AddKeyedSingleton<ILlmProvider, SelfHostedProvider>("selfhosted");
 builder.Services.AddKeyedSingleton<ILlmProvider, CopilotProvider>("copilot");
 
-// FR-02, FR-05, ADR-0016, ADR-0017: 埋め込みは LLM 生成とは別系統で機密区分ルーティングする。
+// FR-02, FR-05, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）: 埋め込みは LLM 生成とは別系統で機密区分ルーティングする。
 // ティアB=Voyage AI（voyage-3.5 / 1024次元・既定）、ティアA=セルフホスト（Ruri v3 / 768次元・既定は無効）。
 // confidential/restricted はティアA固定・無効なら fail-closed（EmbeddingRouter）。
 // Issue #98 レビュー対応: インデックス依存の環境変数上書き（Endpoints__N__Enabled）による取り違えを

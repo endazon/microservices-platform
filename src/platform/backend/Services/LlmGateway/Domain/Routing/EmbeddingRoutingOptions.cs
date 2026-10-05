@@ -1,6 +1,6 @@
 namespace LlmGateway.Domain.Routing;
 
-// FR-02, ADR-0016, ADR-0017: 埋め込み送信先（エンドポイント）の設定駆動定義。
+// FR-02, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）: 埋め込み送信先（エンドポイント）の設定駆動定義。
 // 契約改定やモデル差し替え・再索引に運用で追従できるよう、コードでなく設定で定義する（IADR-0007 と同方針）。
 public sealed class EmbeddingRoutingOptions
 {
@@ -9,10 +9,10 @@ public sealed class EmbeddingRoutingOptions
     // 埋め込み送信先エンドポイント一覧。
     public List<EmbeddingEndpointOptions> Endpoints { get; set; } = [];
 
-    // FR-02, FR-03, ADR-0016, ADR-0017, IADR-0422 (#336): **検索クエリ専用**の送信先固定（測定用の切替口）。
+    // FR-02, FR-03, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0422 (#336): **検索クエリ専用**の送信先固定（測定用の切替口）。
     //
     // 空（既定）なら従来どおり優先度順で選ぶ。エンドポイント名を与えると `Purpose=Query` のときだけ
-    // 候補を**その 1 つに絞る**。ADR-0017 が求める nDCG@10 の A/B（voyage 比でセルフホストが劣化しないか）は、
+    // 候補を**その 1 つに絞る**。ADR-0017（Superseded by ADR-0127・注記は #1746） が求める nDCG@10 の A/B（voyage 比でセルフホストが劣化しないか）は、
     // **クエリの埋め込みを検索対象コレクションと同じモデルへ寄せられないと成立しない**（#336 の棚卸しが
     // 3 度続けて挙げた障害）。
     //

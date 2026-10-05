@@ -12,6 +12,7 @@ related_ids:
   - ADR-0013
   - ADR-0016
   - ADR-0017
+  - ADR-0127
   - ADR-0029
   - ADR-0030
   - ADR-0075
@@ -22,7 +23,7 @@ related_ids:
   - IADR-0379
 author: claude
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-10-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0029_grpc-rest-usage-criteria.md §決定・2026-08-04 追記
   - planning:projects/microservices-platform/07_adr/ADR-0075_east-west-grpc-migration-order.md 決定 1・3・4・5・6

@@ -670,7 +670,7 @@ services:
     # テキスト生成（platform.llmgateway.v1.LlmCompletion。Complete ＝ 一括 /
     # CompleteStream ＝ サーバストリーミング。IADR-0400 / #1255）の 2 面である。
     grpcPort: 8081
-    # FR-02, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線対象。
+    # FR-02, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線対象。
     # embedding.enabled=true のとき deployment.yaml が Embedding__SelfHosted__BaseUrl と
     # Embedding__Routing__Endpoints__1__Enabled=true を注入する。既定は embedding.enabled=false で非描画＝現状維持。
     selfHostedEmbedding: true
@@ -1189,7 +1189,7 @@ embedding:
   image: huggingface/text-embeddings-inference
   # 実運用前に固定するプレースホルダ（CPU 版の例。GPU 版は cuda-* タグへ差し替える）。
   tag: "cpu-1.5"
-  # ADR-0017: Ruri v3（768 次元）。実モデル取得は稼働環境依存。
+  # ADR-0017（Superseded by ADR-0127・注記は #1746）: Ruri v3（768 次元）。実モデル取得は稼働環境依存。
   modelId: "cl-nagoya/ruri-v3-310m"
   # TEI 追加起動引数（例: ["--dtype", "float16"]）。既定なし。
   extraArgs: []
@@ -1206,7 +1206,7 @@ embedding:
   #
   # 🔴 **使い捨ての検証スタック専用である。** 有効にすると、取り込みと検索クエリの埋め込みが
   # LlmGateway のプロセス内計算（文字 3-gram のハッシング）へ切り替わる。表層の重なりしか見ないため
-  # **意味的な近さは無く、検索品質を評価する用途には使えない**。実モデルは ADR-0017 が定める。
+  # **意味的な近さは無く、検索品質を評価する用途には使えない**。実モデルは ADR-0017（Superseded by ADR-0127・注記は #1746） が定める。
   #
   # なぜ在るのか: 統合スタックには埋め込みの鍵が無く、取り込みは Embedded=false のチャンクを
   # 索引しない（fail-closed）。索引に 1 点も入らないので `POST /bff/search` は

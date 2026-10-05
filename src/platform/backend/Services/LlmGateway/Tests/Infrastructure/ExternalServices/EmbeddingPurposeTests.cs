@@ -8,7 +8,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 
-// FR-02, FR-03, ADR-0016, ADR-0017 (#809): 埋め込みでクエリと文書を区別して送ることを固定する。
+// FR-02, FR-03, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746） (#809): 埋め込みでクエリと文書を区別して送ることを固定する。
 //
 // 用途（EmbeddingRoutePurpose）は EmbeddingEndpoints が算出してルーターへ渡していたが、
 // **プロバイダへは落ちていなかった**（IEmbeddingProvider に渡す口が無かった）。そのため:
@@ -16,7 +16,7 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 //     （モデルカード実測: cl-nagoya/ruri-v3-310m の README「1+3 prefix scheme」）
 //   - Voyage の input_type（query / document）が送られない
 // この状態で nDCG@10 を測ると、**プレフィクス必須の Ruri がより大きく損をする**。
-// ADR-0017 は「voyage-3.5 比で大幅に劣化するなら BGE-M3 へ切り替える」と定めているので、
+// ADR-0017（Superseded by ADR-0127・注記は #1746） は「voyage-3.5 比で大幅に劣化するなら BGE-M3 へ切り替える」と定めているので、
 // 欠陥を残したまま測ると切替の判断そのものを誤る（#336 の実測の前提条件）。
 [Trait("TestKind", "Unit")]
 public class EmbeddingPurposeTests
@@ -60,7 +60,7 @@ public class EmbeddingPurposeTests
 
     // --- セルフホスト（Ruri v3） ------------------------------------------------
 
-    // FR-02, ADR-0017 (#809): 索引用途では文書プレフィクスが前置される。
+    // FR-02, ADR-0017（Superseded by ADR-0127・注記は #1746） (#809): 索引用途では文書プレフィクスが前置される。
     [Fact]
     public async Task セルフホスト_索引用途では文書プレフィクスを前置する()
     {
@@ -75,7 +75,7 @@ public class EmbeddingPurposeTests
         Field(handler.Body, "input").Should().Be("検索文書: 瑠璃色とは");
     }
 
-    // FR-03, ADR-0017 (#809): 検索用途ではクエリプレフィクスが前置される。
+    // FR-03, ADR-0017（Superseded by ADR-0127・注記は #1746） (#809): 検索用途ではクエリプレフィクスが前置される。
     [Fact]
     public async Task セルフホスト_検索用途ではクエリプレフィクスを前置する()
     {
@@ -90,8 +90,8 @@ public class EmbeddingPurposeTests
         Field(handler.Body, "input").Should().Be("検索クエリ: 瑠璃色とは");
     }
 
-    // ADR-0017 (#809): プレフィクスは**モデル固有**であり、既定は空。
-    // ADR-0017 が劣化時の代替に挙げる BGE-M3 はこのプレフィクスを使わないため、
+    // ADR-0017（Superseded by ADR-0127・注記は #1746） (#809): プレフィクスは**モデル固有**であり、既定は空。
+    // ADR-0017（Superseded by ADR-0127・注記は #1746） が劣化時の代替に挙げる BGE-M3 はこのプレフィクスを使わないため、
     // 未設定なら現行と同じ「素の text」を送る（付けっぱなしは別の意味で埋め込みを歪める）。
     [Fact]
     public async Task セルフホスト_プレフィクス未設定なら素の本文を送る()

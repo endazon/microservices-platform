@@ -7,7 +7,7 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 
 namespace LlmGateway.Features.Embeddings.Embed;
 
-// FR-02, FR-03, FR-05, NFR-09, NFR-16, ADR-0013, ADR-0016, ADR-0017, ADR-0029, ADR-0075, IADR-0379,
+// FR-02, FR-03, FR-05, NFR-09, NFR-16, ADR-0013, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）, ADR-0029, ADR-0075, IADR-0379,
 // IADR-0397 (#1255): 埋め込み生成の **gRPC 面**。
 //
 // REST の `POST /embed`（EmbeddingEndpoints）と**同じ判定器**（EmbedUseCase）を呼ぶ —— 判定器を 2 つにしない。

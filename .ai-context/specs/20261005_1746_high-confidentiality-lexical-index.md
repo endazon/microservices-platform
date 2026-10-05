@@ -296,3 +296,18 @@ $ POST /collections/vec_f/facet (vector collection, no keyword index)
 - 検索の readiness は語彙索引の全文索引を見ない（Ruri のコレクションと同じ）。
 - 権限内属性値の facet は実 Qdrant でキーワード索引が無く例外になる（既存の欠陥。§実測）。
 - 統合試験（`LexicalIndexQdrantTests`）は `Category=Integration` で PR の CI では走らない（`integration.yml` が回収する）。本 PR では手元の Docker で実走した（§検証）。
+
+## ADR-0017 の引用の追随（本 PR の 3 つ目のコミット）
+
+走査: `git grep -n -P "(?<![I/\w-])ADR-0017(?!\d|（Superseded)" -- . ':!src/ai-stock-trading' ':!.ai-context/specs'`（AST の行は除く）。
+
+- **注記した（28 ファイル・コメント／散文 47 行）**: `src/platform/backend/Services/LlmGateway/`（本体 10・試験 5）・`src/platform/backend/Shared/Platform.Shared.Contracts/`（`EmbedDto.cs`・`embedding.proto`。コメントだけ）・
+  `deploy/`（compose・helm の 4 ファイル）・`scripts/measure-search-ndcg.js`・`scripts/README.md`・`perf/ndcg/README.md`。書式は `ADR-0017（Superseded by ADR-0127・注記は #1746）`（1 行に 1 か所）。
+- **ID リストへ後継を併記した**: IADR-0313・IADR-0397・IADR-0422 の `related_ids`、`docs/api/east-west-grpc.md` の trace ブロック（いずれも `updated:` を前進）。
+  IADR-0025・IADR-0085・IADR-0467・`docs/functional/FR-03_hybrid-search.md`・`docs/operations/operations.md` は 2 つ目のコミットで併記済み。`docs/how-to/plan-id-range-history-annex.md` は既に `ADR-0127` を持つ。
+- **残した（除外）**:
+  - IADR の本文・`plan_refs`（IADR-0025・0085・0313・0397・0422・0467 の散文）—— 凍結記録。0025・0085・0467 は日付つき追記で扱った。
+  - IADR-0093 —— `ADR-0017 サービス間認証・エッジ` と書いており、MSP の ADR-0017（Ruri）の題と合わない。誤引用の疑いで本件の追随とは別（S4 で扱う）。
+  - `.ai-context/adr/README.md` の IADR-0422 の行 —— 索引のタイトルセルは本体 `title:` と字を共有する規則（12 字以上）があり、注記を足すと本体と離れる。本体の `related_ids` に併記した。
+  - `docs/api/openapi.yaml:47` —— `/embed` の説明文。`docs/` の表示テキストへ計画 ID を足さない規則に当たる（既存の 1 行。trace ブロックを持たない生成物の形であり、S4 で見直す）。
+  - `.ai-context/specs/` —— 凍結。

@@ -268,7 +268,7 @@ spec:
               value: {{ $synthetic.clientId | quote }}
           {{- end }}
           {{- if and $svc.selfHostedEmbedding $.Values.embedding.enabled }}
-            # FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線。
+            # FR-02, FR-03, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線。
             # embedding.enabled=true のときのみ描画し、llmgateway を templates/embedding.yaml（TEI・OpenAI 互換
             # /v1/embeddings）へ向ける。BaseUrl は base のみ（SelfHostedEmbeddingProvider が /v1/embeddings を後置）。
             # ⚠️ Issue #98: Endpoints__1 は appsettings.json の Embedding:Routing:Endpoints 配列で selfhosted が

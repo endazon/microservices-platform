@@ -4,7 +4,7 @@ using System.Text;
 
 namespace LlmGateway.Infrastructure.ExternalServices;
 
-// FR-02, FR-03, ADR-0016, ADR-0017, #992 案 2, [[IADR-0313]]:
+// FR-02, FR-03, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）, #992 案 2, [[IADR-0313]]:
 // **決定的なローカル埋め込み**（ティアA＝社外送信なし。使い捨て統合スタック専用）。
 //
 // ■ なぜ在るのか
@@ -25,7 +25,7 @@ namespace LlmGateway.Infrastructure.ExternalServices;
 // ■ 🔴 これは検索**品質**を担保しない
 //
 // 表層の文字 3-gram の重なりしか見ていない。意味的な近さは無い。
-// **nDCG などの品質評価に使ってはならない**（それは実モデル＝ADR-0017 の仕事である）。
+// **nDCG などの品質評価に使ってはならない**（それは実モデル＝ADR-0017（Superseded by ADR-0127・注記は #1746） の仕事である）。
 // 既定は `Enabled: false`（`appsettings.json`）で、`Program.cs` が有効時に起動警告を出す。
 //
 // ■ 設計

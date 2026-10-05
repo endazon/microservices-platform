@@ -2,10 +2,10 @@
 title: IADR-0313 埋め込みは「決定的なローカル埋め込み」をティアA に足して供給し、検索の命中を統合スタックの門にする
 type: impl-adr
 status: Accepted
-related_ids: [FR-02, FR-03, FR-05, FR-21, UC-01, SC-01, SC-02, NFR, ADR-0016, ADR-0017, IADR-0009, IADR-0025, IADR-0085, IADR-0252, IADR-0255, IADR-0256, IADR-0284]
+related_ids: [FR-02, FR-03, FR-05, FR-21, UC-01, SC-01, SC-02, NFR, ADR-0016, ADR-0017, ADR-0127, IADR-0009, IADR-0025, IADR-0085, IADR-0252, IADR-0255, IADR-0256, IADR-0284]
 author: claude
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-10-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-model-routing.md
   - planning:projects/microservices-platform/07_adr/ADR-0017_embedding-model-selection.md
