@@ -1,4 +1,5 @@
 using Knowledge.IntegrationTests.Fixtures;
+using Microsoft.AspNetCore.Hosting;
 
 namespace Knowledge.IntegrationTests.GraphService;
 
@@ -35,4 +36,14 @@ public sealed class GraphServiceFactory : IntegrationTestFactoryBase<
     global::GraphService.Infrastructure.Persistence.GraphDbContext>
 {
     public GraphServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
+
+    // ［2026-10-04 / #1733・[[IADR-0496]]］ホストが登録した日次のクラスタ検出は、起動の待ちの後に**本当に走る**
+    // （記録が無ければ期限切れ。実 PostgreSQL ではリースも本物で取れる）。試験の DB へ黙って書かせないよう、
+    // 単体側の `TestWebApplicationFactory` と同じく起動の待ちを 1 日にして眠らせる。
+    // `UseSetting` はホスト構成へ書くので、オプションの束縛（解決時）から見える。
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.UseSetting("ClusterDetection:StartupDelay", "1.00:00:00");
+    }
 }

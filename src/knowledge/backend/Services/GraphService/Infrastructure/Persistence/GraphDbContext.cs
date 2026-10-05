@@ -32,6 +32,10 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
     // 既存の検索索引へは 1 行も登録しない（ADR-0035 決定 5）。
     public DbSet<GraphClusterSummaryBody> ClusterSummaryBodies => Set<GraphClusterSummaryBody>();
 
+    // FR-17, ADR-0035 決定 3, [[IADR-0496]] (#1733): 定期バッチの最後の成功と試行（バッチ 1 種につき 1 行）。
+    // 日次の検出を「起動から 24 時間後」ではなく「前回の成功から 24 時間後」で回すための記録。
+    public DbSet<GraphBatchRun> BatchRuns => Set<GraphBatchRun>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // FR-17, FR-18, SC-10, SC-18, ADR-0035 決定 3・5・6, ADR-0083 決定 1〜3,
@@ -43,6 +47,19 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
             e.Property(c => c.DetectedAt).IsRequired();
             e.Property(c => c.CompositionChangedAt).IsRequired();
             e.Property(c => c.MemberCount).IsRequired();
+        });
+
+        // FR-17, ADR-0035 決定 3, [[IADR-0496]] (#1733): 定期バッチの最後の成功と試行。
+        // 主キーはバッチの名前（固定の語。`ClusterDetectionJob.RunName`）。
+        mb.Entity<GraphBatchRun>(e =>
+        {
+            e.ToTable("graph_batch_runs");
+            e.HasKey(r => r.JobName);
+            e.Property(r => r.JobName).HasMaxLength(GraphBatchRun.MaxJobNameLength);
+            // まだ 1 度も成功していない行は null（試行だけが記録された状態）。
+            e.Property(r => r.LastSucceededAt);
+            e.Property(r => r.LastAttemptedAt).IsRequired();
+            e.Property(r => r.AttemptsSinceSuccess).IsRequired();
         });
 
         mb.Entity<GraphClusterMember>(e =>

@@ -8,6 +8,7 @@ using GraphService.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace GraphService.Tests.Features.Clustering;
 
@@ -239,11 +240,15 @@ public sealed class ClusterDetectionTests
         var worker = new ClusterDetectionHostedService(
             factory.Services.GetRequiredService<IServiceScopeFactory>(),
             new DenyingCoordinator(),
+            Options.Create(new ClusterDetectionOptions()),
+            ClusterDetectionCatchUpTests.NewMetrics(),
             NullLogger<ClusterDetectionHostedService>.Instance);
 
         var ran = await worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
 
-        ran.Should().BeFalse();
+        ran.Ran.Should().BeFalse();
+        // ［2026-10-04 / #1733・[[IADR-0496]]］スキップした周期は再試行の待ちの後に判定し直す。
+        ran.NextDelay.Should().Be(ClusterDetectionOptions.DefaultRetryDelay);
         (await ClustersAsync(factory)).Should().BeEmpty("スキップした周期は 1 行も書かない");
     }
 
@@ -265,11 +270,13 @@ public sealed class ClusterDetectionTests
         var worker = new ClusterDetectionHostedService(
             factory.Services.GetRequiredService<IServiceScopeFactory>(),
             new GrantingCoordinator(),
+            Options.Create(new ClusterDetectionOptions()),
+            ClusterDetectionCatchUpTests.NewMetrics(),
             NullLogger<ClusterDetectionHostedService>.Instance);
 
         var ran = await worker.TryRunCycleAsync(TestContext.Current.CancellationToken);
 
-        ran.Should().BeTrue();
+        ran.Ran.Should().BeTrue("記録が無い（初めての判定）ので期限切れとして走る");
         (await ClustersAsync(factory)).Should().ContainSingle();
     }
 

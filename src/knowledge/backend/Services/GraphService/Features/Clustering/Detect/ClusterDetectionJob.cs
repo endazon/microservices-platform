@@ -25,6 +25,32 @@ public sealed class ClusterDetectionJob(
     TimeProvider clock,
     ILogger<ClusterDetectionJob> logger)
 {
+    // [[IADR-0496]] (#1733): `graph_batch_runs` の行の名前。**固定の語であり、変えると前回の成功を見失う**
+    // （次の起動で「記録が無い＝期限切れ」と読み、その場で 1 回余分に走る。壊れはしないが黙って変えない）。
+    public const string RunName = "cluster-detection";
+
+    // [[IADR-0496]] (#1733): 実行の記録（前回の成功・最後の試行・成功していない試行の数）。行が無ければ `None`。
+    public async Task<ClusterDetectionRunState> ReadRunStateAsync(CancellationToken ct = default)
+    {
+        var row = await db.BatchRuns.AsNoTracking().SingleOrDefaultAsync(r => r.JobName == RunName, ct);
+        return row is null
+            ? ClusterDetectionRunState.None
+            : new ClusterDetectionRunState(row.LastSucceededAt, row.LastAttemptedAt, row.AttemptsSinceSuccess);
+    }
+
+    // [[IADR-0496]] 決定 4 (#1733): 周期を**始める前に**試行を記録する。🔴 **本体とは別の保存で、本体より先に確定させる** ——
+    // 本体の途中でプロセスごと落ちても（メモリ不足等）、次の起動が「前の試行は成功しなかった」を読んでバックオフできる。
+    // 成功の記録（`RunAsync` の中）とは逆向きであり、こちらは失敗しても残ることに意味がある。
+    public async Task RecordAttemptAsync(DateTimeOffset attemptedAt, CancellationToken ct = default)
+    {
+        var run = await db.BatchRuns.SingleOrDefaultAsync(r => r.JobName == RunName, ct);
+        if (run is null)
+            db.BatchRuns.Add(GraphBatchRun.Attempted(RunName, attemptedAt));
+        else
+            run.MarkAttempted(attemptedAt);
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task<ClusterDetectionResult> RunAsync(CancellationToken ct = default)
     {
         var now = clock.GetUtcNow();
@@ -102,6 +128,16 @@ public sealed class ClusterDetectionJob(
                 members.Select(m => GraphClusterMember.Create(cluster.ClusterId, m)));
         }
 
+        // 🔴 [[IADR-0496]] 決定 1 (#1733): **成功の記録はクラスタの変更と同じ `SaveChanges` に載せる。**
+        // 別の保存に分けると、クラスタの保存が失敗した周期でも「成功した」が残り、次の判定が
+        // 「まだ期限内」と読んで 1 日取りこぼす。記録する時刻は**この周期の開始時刻**（`DetectedAt` と同じ値）。
+        // 構成が 1 つも変わらない周期でも書く —— ここが「検出が回っている」ことの唯一の証拠である。
+        var run = await db.BatchRuns.SingleOrDefaultAsync(r => r.JobName == RunName, ct);
+        if (run is null)
+            db.BatchRuns.Add(GraphBatchRun.Succeeded(RunName, now));
+        else
+            run.MarkSucceeded(now);
+
         await db.SaveChangesAsync(ct);
 
         var result = new ClusterDetectionResult(
@@ -109,7 +145,8 @@ public sealed class ClusterDetectionJob(
             reconciliation.Unchanged.Count,
             reconciliation.Changed.Count,
             reconciliation.Added.Count,
-            reconciliation.Removed.Count);
+            reconciliation.Removed.Count,
+            now);
 
         logger.LogInformation(
             "知識グラフのクラスタを検出した（clusters={Clusters} unchanged={Unchanged} "
@@ -124,5 +161,6 @@ public sealed class ClusterDetectionJob(
 
 // 1 周期の結果。**ログと検証のための値**であり、指標の生産者はこれを使わない
 // （未要約クラスタ数は `KnowledgeHealthCollector` が永続化された行から数える）。
+// `StartedAt` は `graph_batch_runs` へ書いた成功の時刻（[[IADR-0496]]。計器へ渡す）。
 public sealed record ClusterDetectionResult(
-    int Detected, int Unchanged, int Changed, int Added, int Removed);
+    int Detected, int Unchanged, int Changed, int Added, int Removed, DateTimeOffset StartedAt);
