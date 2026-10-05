@@ -43,8 +43,10 @@ public sealed record IngestionTimeouts(
     public const int DefaultEmbeddingBudgetSeconds = 300;
     public const int DefaultHandlerSeconds = 420;
 
-    // 既定の構成（appsettings.json の `Embedding:Collections`）が持つモデル別コレクションの数。`Default` だけが使う。
-    public const int DefaultCollectionCount = 2;
+    // 既定の構成で削除が回るコレクションの数。`Default` だけが使う。
+    // appsettings.json の `Embedding:Collections`（モデル別 2 本）＋ 語彙索引 1 本
+    // （［2026-10-05 / #1746］[[IADR-0497]] 決定 4。語彙索引からも消すので 1 本増えた）。
+    public const int DefaultCollectionCount = 3;
 
     // 計器・ログに載せる呼び出し先の名前（閉じた値域）。
     public const string ContentTarget = "content";

@@ -7,10 +7,12 @@ related_ids:
   - FR-03
   - ADR-0016
   - ADR-0017
+  - ADR-0127
+  - IADR-0497
   - IADR-0025
 author: claude
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-10-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md (ティアB=Voyage voyage-3.5)
   - planning:projects/microservices-platform/07_adr/ADR-0017_selfhosted-embedding-ruri.md (ティアA=セルフホスト Ruri v3・fail-closed)
@@ -118,3 +120,15 @@ embedding` 指定時のみ起動＝既定オフ）。既存 `llm-gateway` の en
   として扱うと #275 が MAPPING/compose build を要求して失敗する。専用テンプレートが適切。
 - **既定オンで配備**: provisioner/GPU/モデル取得の前提を満たさない環境で Pod 起動失敗や高機密実索引の意図せぬ有効化を
   招く。opt-in・既定オフの fail-safe を採る。
+
+## 追記: 配備物は opt-in のまま残る。高機密文書の経路としては使われない（2026-10-05 / #1746）
+
+［2026-10-05 追記 / #1746］計画 ADR-0017（Superseded by ADR-0127・注記は #1746）は計画 ADR-0127 に置き換えられた。ADR-0127 決定 1 は高機密文書を埋め込まず語彙索引にだけ載せ、
+決定 5 は「ハイブリッド構成（セルフホストを後付けできる）は将来の選択肢として残す。配備物は opt-in のまま既定で無効である（実装 `IADR-0085`）」とした。
+
+- **本 IADR の配備物（`templates/embedding.yaml`・`embedding.enabled`・compose の `embedding` profile）は opt-in・既定無効のまま残す。** 撤去しない。
+- 🔴 **`embedding.enabled=true` にしても、高機密文書は埋め込まれない。** 取り込みは埋め込みを呼ぶ前に機密区分で分け、高機密文書を語彙索引へ書く
+  （[IADR-0497](./IADR-0497_high-confidentiality-lexical-index-vectorless-collection.md) 決定 2）。有効化した Ruri が受け取るのは、検索クエリの埋め込み（束ねたときの Ruri のコレクション用・
+  nDCG の測定用の `QueryProfile`）と、優先度の設定によっては `public` / `internal` の取り込みだけである。後付けして高機密を埋め込むときは、ADR-0127 を改める計画 ADR が要る。
+- 本文の「有効化まで confidential/restricted 文書は索引されない（fail-closed）」は、語彙索引の導入で事実でなくなった（高機密文書は語彙索引に索引される）。**本文は書き換えず残置する。**
+- 関連文書の後始末（values のコメント・運用仕様書の表）は #1746 段 S1 で一部を追随させた。残りは段 S4。

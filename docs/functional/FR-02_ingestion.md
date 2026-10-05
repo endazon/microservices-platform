@@ -3,15 +3,15 @@ title: 機能仕様書 — FR-02 取り込み（パース・チャンク化・�
 type: functional-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-09-05
+updated: 2026-10-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, UC-04]
-adrs: [ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0070]
-iadrs: [IADR-0002, IADR-0149, IADR-0358, IADR-0388]
-specs: [20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
-issues: [#532, #536, #580, #1193, #1253, #1254]
+adrs: [ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0070, ADR-0127, ADR-0016, ADR-0092]
+iadrs: [IADR-0002, IADR-0149, IADR-0358, IADR-0388, IADR-0497, IADR-0025]
+specs: [20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261005_1746_high-confidentiality-lexical-index]
+issues: [#532, #536, #580, #1193, #1253, #1254, #1746]
 -->
 
 # 機能仕様書: 取り込み
@@ -51,7 +51,9 @@ issues: [#532, #536, #580, #1193, #1253, #1254]
 4. **parse**: `IDocumentContentReader.ReadAsync(MarkdownUri)` で本文 Markdown を取得する。
 5. **chunk**: `IChunkingService.Chunk(text, maxTokens, overlap)` で見出し単位 + オーバーラップで分割する。
 6. **チャンクが 0 件なら**（本文が空＝テキスト層の無い原本など）、本文由来のチャンク・埋め込みは作らず、
-   **メタデータ点を 1 つだけ**登録して 7 へ進む（§本文なしの文書）。
+   **メタデータ点を 1 つだけ**登録して 8 へ進む（§本文なしの文書）。高機密文書のメタデータ点は語彙索引へ書く（§高機密文書）。
+   **［2026-10-05］文書の機密区分が `public` / `internal` でなければ**（`confidential`・`restricted`・未指定・未知）、
+   **埋め込みを呼ばずに**各チャンクを語彙索引へ登録して 8 へ進む（§高機密文書）。
 7. 各チャンクについて:
    1. `chunkIndex`（0始まり）を採番する。
    2. `chunkId` を `DocumentId` + `chunkIndex` から決定的に生成する。
@@ -102,11 +104,34 @@ issues: [#532, #536, #580, #1193, #1253, #1254]
   索引テキスト（メタデータ）が本文の抜粋として外へ出ることはない。
 - 完了イベントは**チャンク数 0 で発行する**（本文なしは失敗ではない。溜めない）。
 
+## 高機密文書（埋め込まず語彙索引だけに載せる）
+
+**［2026-10-05］** `confidential`・`restricted`・機密区分が未指定・未知の文書は、**埋め込みを作らない。**
+本文はどの埋め込みの送信先（クラスタ内のセルフホストを含む）へも送らない。かわりに、**ベクトルを持たない専用の
+Qdrant コレクション（語彙索引。既定 `knowledge_chunks_lexical`）**へ全文索引だけで載せる。
+
+- **埋め込みを呼ぶ前に分ける。** 埋め込みへ進むのは機密区分が `public` / `internal`（大小文字は問わない）の文書だけで、
+  それ以外は空・未知の値・属性なしを含めてすべて語彙索引だけ（安全側）。ゲートウェイの拒否を見てから分けるのではない ——
+  セルフホストの埋め込みを有効にした配備でも、高機密文書は埋め込まれない。
+- **点の表現はベクトルのコレクションの点と同じ**（`document_id` / `text` / `text_ngram` / `attributes` / `tags` / `shared_with` /
+  `updated_at` / `markdown_uri` / `chunk_index`。本文なしは `has_body = false`）。違うのは**ベクトルを持たない**ことだけで、
+  意味の無いベクトル（零ベクトル・ハッシュ）は入れない。チャンク ID は本文チャンクと同じ規則で決める。
+- 本文の無い高機密文書は、語彙索引へ**メタデータ点を 1 つ**載せる（§本文なしの文書と同じ索引テキスト）。
+- 埋め込みを呼ばないので、埋め込みの総枠・一時障害の再試行は関係しない。Qdrant への書き込みの失敗は従来どおり再試行される。
+- `public` / `internal` の文書の埋め込みが恒久的に拒否されたとき（外部経路の無効化・次元不整合など）は、**従来どおりスキップする**
+  （語彙索引へは回さない —— 埋め込めるはずの文書の不調を覆い隠さない）。
+- 検索側は語彙索引を**全文の系統だけ**で束ねる（キーワードとハイブリッドのモードで現れ、意味検索のモードには現れない。
+  [ハイブリッド検索 機能仕様書](./FR-03_hybrid-search.md)）。
+- 🔴 **既に取り込まれた高機密文書は、語彙索引に自動では入らない**（従来はどこにも書かれていなかった）。
+  `DocumentUpdated` の再発行（運用仕様書の再索引手順）で載る。
+
 ## 索引（Qdrant コレクション）
 
 - コレクション名: `Qdrant:CollectionName`（既定 `knowledge_chunks`）。後方互換で `Qdrant:Collection` もフォールバックで解決する。
 - ベクトル: 次元 = `Qdrant:VectorSize`（既定 1536）、距離 = Cosine。
 - 起動時に `QdrantBootstrapHostedService` が存在保証（無ければ作成）する。
+  **［2026-10-05］語彙索引（`Qdrant:LexicalCollection`。既定 `knowledge_chunks_lexical`）も、ベクトルの設定が空のコレクションとして作る。**
+  全文索引（`text` / `text_ngram`）・`text_ngram` の後付け・文書単位の削除は、語彙索引を含む全コレクションに効く。
 - ペイロード: `document_id` / `document_title` / `text` / `markdown_uri` / `chunk_index` / `tags` / `attributes.<key>` / **`updated_at`** / **`has_body`**。
 - **`updated_at` は Unix epoch ミリ秒の整数**である（同実装判断の決定 1）。ISO-8601 文字列にすると同じ時刻を `+09:00` とも `Z` とも書けるため、辞書順が実時刻順と一致しない（並び順は #532 が使う）。
   **本項目より前に索引されたチャンクはキーを持たない** —— 検索側は `null` で返す（縮退。再索引で解消する）。

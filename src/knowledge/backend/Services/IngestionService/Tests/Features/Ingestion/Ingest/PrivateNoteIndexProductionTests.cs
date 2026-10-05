@@ -97,6 +97,8 @@ public class PrivateNoteIndexProductionTests
         chunk.SharedWith.Should().BeEquivalentTo(["bob"],
             "`shared_with` が点に載らないと、共有先ベースの分岐（ADR-0061 決定 5 の第 3 節）が"
             + "索引の側で評価できない");
+        // #1746 / ADR-0127 決定 4: 個人資料の既定の機密区分（restricted）は埋め込まず語彙索引へ書く。
+        index.LexicalWrites.Should().ContainSingle().Which.Should().Be(NoteId);
     }
 
     // 🔴 受け入れ基準 6: **ON → 全 OFF は「属性で弾く」ではなく索引からの削除である。**
@@ -188,6 +190,33 @@ public class PrivateNoteIndexProductionTests
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
             CancellationToken ct = default)
         {
+            _chunks.Add(new IndexedChunk(documentId, attributes, sharedWith));
+            return Task.CompletedTask;
+        }
+
+        // #1746 / [[IADR-0497]] 決定 2: 個人資料の既定の機密区分は restricted なので、本文は語彙索引へ書かれる
+        // （埋め込みは呼ばれない）。索引の状態としては同じ 1 か所に積む —— 本ファイルが測るのは露出の門であって
+        // 置き場所ではない（置き場所は `DocumentUpdatedConsumerTests` の語彙索引の節が測る）。
+        public List<Guid> LexicalWrites { get; } = [];
+
+        public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
+        {
+            LexicalWrites.Add(documentId);
+            _chunks.Add(new IndexedChunk(documentId, attributes, sharedWith));
+            return Task.CompletedTask;
+        }
+
+        public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
+        string indexText, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+        CancellationToken ct = default)
+        {
+            LexicalWrites.Add(documentId);
             _chunks.Add(new IndexedChunk(documentId, attributes, sharedWith));
             return Task.CompletedTask;
         }

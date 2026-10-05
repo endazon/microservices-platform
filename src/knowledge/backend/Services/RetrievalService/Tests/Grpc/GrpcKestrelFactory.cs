@@ -14,6 +14,7 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using Platform.Shared.Contracts.Dtos;
 using Qdrant.Client;
+using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
 using RetrievalService.Infrastructure.ExternalServices;
 using Wolverine;
@@ -91,6 +92,11 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             services.RemoveAll<QdrantClient>();
             services.RemoveAll<IVectorStore>();
             services.AddSingleton<IVectorStore>(Index);
+            // #1746 / [[IADR-0497]] 決定 5: 本番の合成点は語彙索引を常に束ねる（実 Qdrant のクライアントを要する）。
+            // 器は Qdrant を持たないので束ねない形へ戻す —— 本器を使う試験の主題は束ね方ではない
+            // （語彙索引の束ね方は `LexicalIndexFusionTests`、合成は `LexicalFusedCompositionTests` が測る）。
+            services.RemoveAll<FusedCollections>();
+            services.AddScoped(_ => FusedCollections.None);
 
             services.RemoveAll<IEmbeddingService>();
             services.AddSingleton<IEmbeddingService, StubEmbeddingService>();

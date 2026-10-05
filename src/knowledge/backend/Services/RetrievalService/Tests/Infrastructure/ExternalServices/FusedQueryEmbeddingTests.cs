@@ -22,6 +22,8 @@ namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 public class FusedQueryEmbeddingTests
 {
     private const string Voyage = "knowledge_chunks_voyage_3_5";
+    // #1746 / [[IADR-0497]]: 語彙索引の既定名（appsettings.json と同じ）。
+    private const string Lexical = "knowledge_chunks_lexical";
     private const string Ruri = "knowledge_chunks_ruri_v3";
 
     private static string GatewayJson(string collection) => $$"""
@@ -116,21 +118,31 @@ public class FusedQueryEmbeddingTests
         QdrantVectorStore.ResolveFusedCollectionNames(new ConfigurationBuilder().Build()).Should().BeEmpty();
     }
 
-    // T-Q-06: 合成点。構成が無ければ `None`（既定＝従来と同一）、在ればそのコレクションを読む
-    // ストアと、そのコレクションを名乗る埋め込みの組が組み上がる。REST の客体は主と**同じ名前つき
-    // クライアント**（同じ宛先）を使う。
+    // T-Q-06: 合成点。構成が無ければ**語彙索引だけ**（［2026-10-05 / #1746］[[IADR-0497]] 決定 5。従前は `None`）、
+    // 在ればそのコレクションを読むストアと、そのコレクションを名乗る埋め込みの組が組み上がり、語彙索引は最後に付く。
+    // REST の客体は主と**同じ名前つきクライアント**（同じ宛先）を使う。
     [Fact]
-    public void 合成点は構成が無ければNoneで_在れば組を作る()
+    public void 合成点は構成が無ければ語彙索引だけで_在れば組を作り語彙索引を最後に付ける()
     {
-        using (var plain = new TestWebApplicationFactory())
+        using (var plain = new ProductionFusedFactory())
         using (var scope = plain.Services.CreateScope())
-            scope.ServiceProvider.GetRequiredService<FusedCollections>().Items.Should().BeEmpty();
+        {
+            var only = scope.ServiceProvider.GetRequiredService<FusedCollections>().Items
+                .Should().ContainSingle().Subject;
+            only.Collection.Should().Be(Lexical);
+            only.LexicalOnly.Should().BeTrue();
+            only.Embed.Should().BeSameAs(NoQueryEmbedding.Instance);
+            only.Store.Should().BeOfType<QdrantVectorStore>().Which.Collection.Should().Be(Lexical);
+        }
 
         using var fused = new FusedConfiguredFactory();
         using var fusedScope = fused.Services.CreateScope();
         var items = fusedScope.ServiceProvider.GetRequiredService<FusedCollections>().Items;
 
-        items.Should().ContainSingle();
+        items.Should().HaveCount(2);
+        items[1].Collection.Should().Be(Lexical);
+        items[1].LexicalOnly.Should().BeTrue();
+        items[0].LexicalOnly.Should().BeFalse();
         items[0].Collection.Should().Be(Ruri);
         items[0].Store.Should().BeOfType<QdrantVectorStore>().Which.Collection.Should().Be(Ruri);
         items[0].Embed.Should().BeOfType<LlmGatewayEmbeddingService>();
@@ -140,8 +152,22 @@ public class FusedQueryEmbeddingTests
             .Should().Be(new Uri("http://localhost:5007"));
     }
 
+    // #1746: 本番の合成点を残し、Qdrant のクライアントだけを戻す（追加コレクションの構成なし）。
+    private sealed class ProductionFusedFactory : TestWebApplicationFactory
+    {
+        protected override bool KeepProductionFusedCollections => true;
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.ConfigureServices(services => services.AddSingleton(new QdrantClient("localhost")));
+        }
+    }
+
     private sealed class FusedConfiguredFactory : TestWebApplicationFactory
     {
+        protected override bool KeepProductionFusedCollections => true;
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             base.ConfigureWebHost(builder);

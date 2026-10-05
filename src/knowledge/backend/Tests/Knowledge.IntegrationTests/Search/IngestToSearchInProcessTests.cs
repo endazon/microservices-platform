@@ -55,6 +55,8 @@ public sealed class IngestToSearchInProcessTests : IAsyncLifetime
 {
     // 書き手と読み手が共有する索引の実体（RetrievalService の本番コードにあるポート実装）。
     private readonly InMemoryVectorStore _index = new();
+    // FR-03, ADR-0127 決定 1, [[IADR-0497]] (#1746): 語彙索引（本番の別コレクションに当たる別の索引）。
+    private readonly InMemoryVectorStore _lexical = new();
     private SharedIndexIngestionVectorStore _writes = null!;
     private RetrievalHost _retrieval = null!;
     private HttpClient _client = null!;
@@ -68,8 +70,8 @@ public sealed class IngestToSearchInProcessTests : IAsyncLifetime
 
     public ValueTask InitializeAsync()
     {
-        _writes = new SharedIndexIngestionVectorStore(_index);
-        _retrieval = new RetrievalHost(_index);
+        _writes = new SharedIndexIngestionVectorStore(_index, _lexical);
+        _retrieval = new RetrievalHost(_index, _lexical);
         _client = _retrieval.CreateClient();
         return ValueTask.CompletedTask;
     }
@@ -177,10 +179,42 @@ public sealed class IngestToSearchInProcessTests : IAsyncLifetime
             "本文なしの点は抜粋を返さないこと（索引テキストは突合には使うが利用者へは返さない）");
     }
 
+    // I-08 (FR-02, FR-03, FR-05, ADR-0127 決定 1・2, [[IADR-0497]] / #1746):
+    // **高機密文書は埋め込まずに語彙索引へ入り、キーワードとハイブリッドでは見つかり、意味検索では見つからない。**
+    // 本番の取り込み → 本番の検索ホスト（語彙索引を束ねた形）を通す。陽性対照（public の文書は意味検索でも見つかる）
+    // を同じ器で置く —— 「意味検索が何も返さない」実装で緑にならないようにする。
+    [Theory]
+    [InlineData("confidential")]
+    [InlineData("restricted")]
+    [InlineData(null)]
+    public async Task HighConfidentialityDocument_IsFoundByKeywordAndHybrid_ButNotBySemantic(string? level)
+    {
+        var secret = Guid.NewGuid();
+        var open = Guid.NewGuid();
+
+        await IngestAsync(secret, "人事の文書", $"# 人事の文書\n\n本文には {PresentTerm} という語が含まれる。",
+            confidentiality: level);
+        await IngestAsync(open, "公開の文書", "# 公開の文書\n\n公開の本文である。");
+
+        _writes.WrittenCollections.Should().Contain(SharedIndexIngestionVectorStore.LexicalCollectionName,
+            "高機密文書は語彙索引へ書かれる");
+        _writes.WrittenCollections.Where(c => c != SharedIndexIngestionVectorStore.LexicalCollectionName)
+            .Should().AllBe(Collection, "公開の文書だけがベクトルのコレクションへ書かれる");
+
+        foreach (var mode in new string?[] { null, SearchModes.Keyword })
+            (await SearchAsync(PresentTerm, mode)).Should().Contain(r => r.DocumentId == secret,
+                $"高機密文書は全文の系統で見つかる（mode={mode ?? "hybrid"}）");
+
+        var semantic = await SearchAsync(PresentTerm, SearchModes.Semantic);
+        semantic.Should().Contain(r => r.DocumentId == open, "陽性対照: 意味検索は公開の文書を返している");
+        semantic.Should().NotContain(r => r.DocumentId == secret, "高機密文書は意味検索のモードに現れない（ADR-0127 決定 2）");
+    }
+
     // ── 段の駆動 ──────────────────────────────────────────
 
     // 本番の `DocumentUpdatedConsumer` をそのまま回す（購読の配線だけをブローカから外す）。
-    private async Task IngestAsync(Guid documentId, string title, string body)
+    private async Task IngestAsync(Guid documentId, string title, string body,
+        string? confidentiality = "public")
     {
         var consumer = new DocumentUpdatedConsumer(
             new FixedContentReader(body),
@@ -201,7 +235,9 @@ public sealed class IngestToSearchInProcessTests : IAsyncLifetime
                 Title: title,
                 Status: "published",
                 MarkdownUri: $"storage://knowledge/{documentId}.md",
-                Attributes: new Dictionary<string, string> { ["confidentiality"] = "public" },
+                Attributes: confidentiality is null
+                    ? new Dictionary<string, string>()
+                    : new Dictionary<string, string> { ["confidentiality"] = confidentiality },
                 Tags: ["段間結合"],
                 UpdatedAt: DateTimeOffset.UtcNow),
             TestContext.Current.CancellationToken);
@@ -226,7 +262,7 @@ public sealed class IngestToSearchInProcessTests : IAsyncLifetime
 // RetrievalService の**本番ホスト**を起こし、外向きの依存（Qdrant / LLM ゲートウェイ / ブローカ）
 // だけを差し替える器。`RetrievalService.Tests.TestWebApplicationFactory` と同じ作法だが、
 // 本プロジェクトは複数サービスを参照するのでマーカー型を使う（`Program` は CS0433 で衝突する）。
-internal sealed class RetrievalHost(InMemoryVectorStore index)
+internal sealed class RetrievalHost(InMemoryVectorStore index, InMemoryVectorStore? lexical = null)
     : WebApplicationFactory<global::RetrievalService.RetrievalServiceTestMarker>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -257,6 +293,19 @@ internal sealed class RetrievalHost(InMemoryVectorStore index)
             // InMemoryVectorStore>()` にすると取り込み側と別の索引になり、
             // **本テストは必ず 0 件で落ちる**（あるいは 0 件を検索の欠陥と読み違える）。
             services.AddSingleton<global::RetrievalService.Domain.Ports.IVectorStore>(index);
+
+            // FR-03, ADR-0127 決定 2, [[IADR-0497]] 決定 5 (#1746): 本番の合成点は語彙索引を常に束ねる（実 Qdrant の
+            // クライアントを要する）。器では**同じ形（`LexicalOnly`・`NoQueryEmbedding`）で別の索引を束ねる**。
+            // 渡されなければ束ねない（語彙索引を主題にしない器）。
+            services.RemoveAll<global::RetrievalService.Domain.FusedCollections>();
+            services.AddScoped(_ => lexical is null
+                ? global::RetrievalService.Domain.FusedCollections.None
+                : new global::RetrievalService.Domain.FusedCollections(
+                [
+                    new global::RetrievalService.Domain.FusedCollection(
+                        SharedIndexIngestionVectorStore.LexicalCollectionName, lexical,
+                        global::RetrievalService.Domain.NoQueryEmbedding.Instance, LexicalOnly: true),
+                ]));
 
             services.RemoveAll<global::RetrievalService.Domain.Ports.IEmbeddingService>();
             services.AddSingleton<global::RetrievalService.Domain.Ports.IEmbeddingService>(

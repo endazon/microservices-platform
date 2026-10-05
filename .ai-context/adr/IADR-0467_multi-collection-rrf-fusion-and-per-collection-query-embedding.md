@@ -2,10 +2,10 @@
 title: IADR-0467 検索は主コレクションと束ねる追加コレクションを 1 回の RRF で合成し、追加コレクションのクエリは要求にコレクション名を名乗ってそのモデルで埋める（ABAC は全コレクションの全系統に常に掛ける）
 type: impl-adr
 status: Accepted
-related_ids: [FR-02, FR-03, FR-05, UC-01, ADR-0009, ADR-0016, ADR-0017, ADR-0035, ADR-0043, ADR-0057, ADR-0092, IADR-0012, IADR-0085, IADR-0151, IADR-0256, IADR-0422]
+related_ids: [FR-02, FR-03, FR-05, UC-01, ADR-0009, ADR-0016, ADR-0017, ADR-0035, ADR-0043, ADR-0057, ADR-0092, IADR-0012, IADR-0085, IADR-0151, IADR-0256, IADR-0422, ADR-0127, IADR-0497]
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-10-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0092_multi-collection-search-fusion-and-query-egress.md (決定 1〜3・フォローアップ 1〜3)
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md (モデル別コレクション分離)
@@ -137,3 +137,15 @@ IADR-0422 決定 2 は「切替口は構成 1 つ。**契約は 1 バイトも�
 - **スコアの正規化（min-max 等）で束ねる**: モデル間でスコアの意味が違うという前提そのものに反する（ADR-0092 決定 1）。
 - **検索側がエンドポイント名を指示する**: IADR-0422 の代替案が退けた形（越境判定の外側に第 2 の決定点）。
 - **高機密を許さないスコープでティア A の問い合わせを省く**: 決定 4。
+
+## 追記: 語彙索引を常に束ねる。束ねる追加コレクションの既定は空でなくなった（2026-10-05 / #1746）
+
+［2026-10-05 追記 / #1746］計画 ADR-0127 決定 2 は、高機密文書を「ハイブリッドとキーワードのモードでだけ、全文の系統として ADR-0092 決定 1 の RRF に入れる。意味検索のモードには現れない」とした。
+[IADR-0497](./IADR-0497_high-confidentiality-lexical-index-vectorless-collection.md) 決定 5 は、語彙索引（ベクトルを持たない専用のコレクション）を本 IADR の「束ねる追加コレクション」として**常に**登録する。
+
+- **本 IADR の「既定は空（`FusedCollections.None`）であり、そのとき従来と同一」は、既定の構成では成り立たなくなった。** 既定は語彙索引の 1 本である。
+  - キーワードのモードは主と語彙索引の全文の並びを RRF で合成する（`Score` は RRF の値）。ハイブリッドは語彙索引の全文の系統が 1 本増える。
+  - **意味検索のモードは変わらない**（語彙索引は `LexicalOnly` で、意味検索の経路を選ぶ判定に数えない。既定では従来の単一コレクションの経路のまま・生スコア）。
+- 語彙索引はクエリを埋めない（`NoQueryEmbedding`。ゲートウェイを呼ばない）・ベクトル検索を引かない・縮退の警告を出さない。ABAC は主と同じフィルタで全文の系統に掛かる（決定 4 のまま）。
+- 削除の購読・権限内属性値は、既存の「追加コレクションの全部」の経路で語彙索引にも効く。
+- **本文は書き換えず残置する。**

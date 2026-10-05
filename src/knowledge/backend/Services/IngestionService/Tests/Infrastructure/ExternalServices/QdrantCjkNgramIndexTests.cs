@@ -24,6 +24,8 @@ public class QdrantCjkNgramIndexTests
 {
     private const string CollectionA = "knowledge_chunks_voyage_3_5";
     private const string CollectionB = "knowledge_chunks_ruri_v3";
+    // #1746 / [[IADR-0497]] 決定 1: 語彙索引も 2-gram の索引・後付けの対象である。
+    private const string Lexical = "knowledge_chunks_lexical";
 
     // 実配備チャンク（稼働 k3s から scroll した本文）と、CJK を含まない本文。
     private const string JapaneseChunk = "なぜ本文が要るのか\n\nIngestionService の `DocumentUpdatedConsumer` は `MarkdownUri` が null の文書を早期 return で捨てる。";
@@ -38,7 +40,7 @@ public class QdrantCjkNgramIndexTests
         await NewStore(invoker).EnsureCjkNgramIndexAsync(TestContext.Current.CancellationToken);
 
         invoker.CreatedFieldIndexes.Select(x => x.CollectionName)
-            .Should().BeEquivalentTo([CollectionA, CollectionB]);
+            .Should().BeEquivalentTo([CollectionA, CollectionB, Lexical]);
         invoker.CreatedFieldIndexes.Should().OnlyContain(x =>
             x.FieldName == CjkBigramPayload.PayloadKey && x.FieldType == FieldType.Text);
         invoker.CreatedFieldIndexes.Should().OnlyContain(x =>
@@ -114,7 +116,7 @@ public class QdrantCjkNgramIndexTests
 
         filled.Should().Be(0);
         invoker.UpdateBatches.Should().BeEmpty();
-        invoker.Scrolls.Select(s => s.CollectionName).Should().BeEquivalentTo([CollectionA, CollectionB],
+        invoker.Scrolls.Select(s => s.CollectionName).Should().BeEquivalentTo([CollectionA, CollectionB, Lexical],
             "全コレクションを 1 回ずつは見る");
     }
 

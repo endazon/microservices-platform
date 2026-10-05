@@ -75,7 +75,8 @@ public class DocumentDeletedTimeoutTests
     [Fact]
     public void 構成が無ければ既定の期限になる()
     {
-        var timeouts = DocumentDeletedTimeouts.From(Config(null), fusedCollectionCount: 0);
+        // #1746: 本番の配線は語彙索引の 1 本を追加の本数に数えて渡す（`Program.cs`）。既定は追加 0 本 ＋ 語彙索引 1 本。
+        var timeouts = DocumentDeletedTimeouts.From(Config(null), fusedCollectionCount: 1);
 
         timeouts.Should().Be(DocumentDeletedTimeouts.Default);
         timeouts.VectorStore.Should().Be(TimeSpan.FromSeconds(10));

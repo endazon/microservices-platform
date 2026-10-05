@@ -1,6 +1,8 @@
-# FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
+# FR-02, FR-03, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
 # 高機密区分（confidential/restricted）はティアA=セルフホスト固定であり、この基盤が未配備の間は fail-closed
 # （高機密は索引されない）。本テンプレートは案 A のインフラを opt-in で用意する（既定 embedding.enabled=false）。
+# ［2026-10-05 / #1746］ADR-0127 / IADR-0497: 高機密文書は埋め込まず語彙索引（ベクトルを持たないコレクション）にだけ
+# 載せるようになった。本基盤を有効にしても高機密文書は埋め込まれない（opt-in の配備物として残す。検索クエリと測定用）。
 # 第三者 pull イメージ（TEI）のため generic services レンジ（registry 前置）には載せず、seaweedfs/wikijs と同型の
 # 専用テンプレートにする。#275（check-image-mapping.js）は build を持つ microservices-platform/* のみ検査する
 # ため、本サービスは検査対象外＝ドリフト検査は緑。

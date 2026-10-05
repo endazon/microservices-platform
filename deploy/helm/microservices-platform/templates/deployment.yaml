@@ -289,6 +289,14 @@ spec:
             - name: Qdrant__FusedCollections__0
               value: {{ $.Values.embedding.collection | quote }}
           {{- end }}
+          {{- if has $name (list "ingestion" "retrieval") }}
+            # FR-02, FR-03, ADR-0127 決定 1・2, IADR-0497 (#1746): 語彙索引（ベクトルを持たない専用のコレクション）。
+            # 高機密文書（confidential・restricted・未指定・未知）は埋め込まずここへ書き、検索は全文の系統だけで束ねる。
+            # 🔴 取り込みと検索へ**同じ 1 つの値**を描画する（片方だけ変えると「書いたのに検索されない」）。
+            # 常に描画する（無効化の口は無い。ADR-0127 決定 1）。
+            - name: Qdrant__LexicalCollection
+              value: {{ required "lexicalIndex.collection は必須（IADR-0497）" $.Values.lexicalIndex.collection | quote }}
+          {{- end }}
           {{- /* FR-02, FR-03, ADR-0016, IADR-0284, IADR-0313 (#992 案 2): 決定的ローカル埋め込み。
                  🔴 **使い捨ての検証スタック専用**（意味は values.yaml の embedding.deterministicLocal）。
                  埋め込みの鍵が無いスタックでも索引に点が入り「検索が実際に効くこと」を観測できる。

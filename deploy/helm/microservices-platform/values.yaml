@@ -1158,7 +1158,18 @@ seaweedfs:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 1000m, memory: 1Gi }
 
-# FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
+# FR-02, FR-03, ADR-0127 決定 1・2, IADR-0497 (#1746): 語彙索引（ベクトルを持たない専用の Qdrant コレクション）。
+# 高機密文書（confidential・restricted・機密区分が未指定・未知）は埋め込みを作らず、ここへ全文索引だけで載せる。
+# 検索は全文の系統だけで RRF に束ね、意味検索のモードには入れない。ABAC は全系統に掛かる。
+# deployment.yaml が ingestion と retrieval の両方へ Qdrant__LexicalCollection として**同じ値**を描画する。
+# 値は両サービスの appsettings.json（Qdrant:LexicalCollection）と一致していなければならない（scripts/k8s-local-up.test.js が固定する）。
+# 🔴 無効化の口は無い（空にすると描画が失敗する）。ADR-0127 は高機密文書を語彙索引に載せると決めている。
+lexicalIndex:
+  collection: knowledge_chunks_lexical
+
+# FR-02, FR-03, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
+# ［2026-10-05 / #1746］ADR-0127 / IADR-0497: 高機密文書は埋め込まず語彙索引（ベクトルを持たないコレクション）にだけ
+# 載せるようになった。本基盤を有効にしても高機密文書は埋め込まれない（opt-in の配備物として残す。検索クエリと測定用）。
 # 高機密（confidential/restricted）はティアA=セルフホスト固定。本ブロックは案 A のインフラを opt-in で用意する。
 # 既定 enabled=false ＝現行 fail-closed 維持（後方互換）。有効化すると templates/embedding.yaml が TEI（OpenAI 互換
 # /v1/embeddings）を配備し、deployment.yaml が llmgateway へ BaseUrl と selfhosted エンドポイント有効化を注入する。

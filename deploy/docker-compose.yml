@@ -426,6 +426,9 @@ services:
       Grpc__Port: "8081"
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
+      # FR-02, ADR-0127 決定 1, IADR-0497 (#1746): 語彙索引（高機密文書を埋め込まずに書く、ベクトルを持たないコレクション）。
+      # retrieval-service と同じ値であること（片方だけ変えると「書いたのに検索されない」）。
+      Qdrant__LexicalCollection: ${SEARCH_LEXICAL_COLLECTION:-knowledge_chunks_lexical}
       Services__LlmGateway: http://llm-gateway:8080
       # FR-02 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0397 (#1255): east-west gRPC。
       # **`Services__LlmGatewayGrpc` が在るときだけ**埋め込みが gRPC 経路になる（無ければ上の REST のまま。
@@ -467,6 +470,9 @@ services:
       Grpc__Port: "8081"
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
+      # FR-03, ADR-0127 決定 1・2, IADR-0497 (#1746): 語彙索引（ベクトルを持たない専用のコレクション）。
+      # 取り込みと同じ値であること（片方だけ変えると「書いたのに検索されない」）。
+      Qdrant__LexicalCollection: ${SEARCH_LEXICAL_COLLECTION:-knowledge_chunks_lexical}
       # FR-03, ADR-0092 決定 1, IADR-0467 (#336): 束ねて読む追加コレクション（ティア A を有効化するときに
       # SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3 を .env で与える）。既定は空＝検索は主の 1 本だけ。
       Qdrant__FusedCollections__0: ${SEARCH_FUSED_COLLECTION:-}
@@ -718,6 +724,8 @@ services:
       Embedding__Voyage__ApiKey: ${VOYAGE_API_KEY:-}
       # ADR-0017 / IADR-0025: 高機密（confidential/restricted）はティアA=セルフホスト（Ruri v3/768次元）固定。
       # URL 未設定時は fail-closed（高機密は索引せず外部へも送らない）。基盤構築後に設定して有効化する。
+      # ［2026-10-05 / #1746］ADR-0127 / IADR-0497: 高機密文書は埋め込まず語彙索引（ベクトルを持たないコレクション）にだけ
+      # 載せるようになった。本基盤を有効にしても高機密文書は埋め込まれない（opt-in の配備物として残す。検索クエリと測定用）。
       Embedding__SelfHosted__BaseUrl: ${SELFHOSTED_EMBEDDING_URL:-}
       # ⚠️ Issue #98: この上書きは appsettings.json の Embedding:Routing:Endpoints 配列で selfhosted が
       # index 1（voyage が index 0）である前提。エンドポイントの追加・並び替え時はインデックスを見直すこと。
@@ -731,6 +739,8 @@ services:
   # 高機密（confidential/restricted）はティアA=セルフホスト固定。この基盤が未起動の間は fail-closed（高機密は
   # 索引されない）。案 A のインフラを opt-in で用意する。profiles: ["embedding"] のため既定オフ（`docker compose
   # --profile embedding up` でのみ起動）。build を持たない pull イメージ＝#275／images.yml いずれの検査対象外。
+  # ［2026-10-05 / #1746］ADR-0127 / IADR-0497: 高機密文書は埋め込まず語彙索引（ベクトルを持たないコレクション）にだけ
+  # 載せるようになった。本基盤を有効にしても高機密文書は埋め込まれない（opt-in の配備物として残す。検索クエリと測定用）。
   # 有効化手順: プロファイルを有効化し、llm-gateway へ SELFHOSTED_EMBEDDING_URL=http://embedding:80 と
   #   SELFHOSTED_EMBEDDING_ENABLED=true を .env で与える。
   #   🔴 同時に retrieval-service へ SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3 を与える

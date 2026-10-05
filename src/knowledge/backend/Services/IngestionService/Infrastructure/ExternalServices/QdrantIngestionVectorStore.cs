@@ -9,11 +9,30 @@ using Qdrant.Client.Grpc;
 namespace IngestionService.Infrastructure.ExternalServices;
 
 // ADR-0009, ADR-0016: IngestionService から Qdrant へ直接書き込む（モデル別コレクション対応）。
+//
+// FR-02, FR-03, ADR-0127 決定 1, [[IADR-0497]] 決定 1 (#1746): **語彙索引**（ベクトルを持たない専用のコレクション。
+// 名前は `lexicalCollection`。省略時は `LexicalCollection.DefaultName`）も同じ実装が持つ。
+// ベクトルのコレクション（`Embedding:Collections`）とは**作り方だけが違い**（ベクトルの設定が空）、
+// 全文索引・`text_ngram` の後付け・文書単位の削除は全コレクションに同じく効く。
 public class QdrantIngestionVectorStore(
-    QdrantClient client, IOptions<EmbeddingCollectionsOptions> collections)
+    QdrantClient client, IOptions<EmbeddingCollectionsOptions> collections,
+    string? lexicalCollection = null)
     : IIngestionVectorStore
 {
     private readonly IReadOnlyList<EmbeddingCollectionOptions> _collections = collections.Value.Collections;
+
+    // [[IADR-0497]] 決定 1: 語彙索引のコレクション名。
+    private readonly string _lexical = string.IsNullOrWhiteSpace(lexicalCollection)
+        ? LexicalCollection.DefaultName
+        : lexicalCollection.Trim();
+
+    // 全文索引・後付け・削除が回るコレクション（ベクトルのコレクション ＋ 語彙索引）。
+    // 🔴 **語彙索引を最後に置く**（順序に意味は無いが、既存のコレクションへの呼び出し順を変えない）。
+    private IEnumerable<string> AllCollectionNames =>
+        _collections.Select(c => c.Name).Append(_lexical);
+
+    // 語彙索引のコレクション名（試験・合成点が読む）。
+    internal string LexicalCollectionName => _lexical;
 
     // FR-03, #1116: 全文検索が引くペイロードキー。
     // **検索側（RetrievalService.QdrantVectorStore.KeywordSearchAsync の FieldCondition.Key）と
@@ -42,6 +61,17 @@ public class QdrantIngestionVectorStore(
             await client.CreatePayloadIndexAsync(c.Name, FullTextKey, PayloadSchemaType.Text,
                 BuildFullTextIndexParams(), cancellationToken: ct);
         }
+
+        // FR-02, FR-03, ADR-0127 決定 1, [[IADR-0497]] 決定 1 (#1746): 語彙索引は**ベクトルの設定が空の
+        // コレクション**として作る（`VectorParamsMap` が空 ＝ 名前つきベクトルを 1 つも持たない）。
+        // 実機 v1.18.1 / v1.13.4 で、作成・全文索引・ベクトル無しの点の書き込み・全文の scroll・文書単位の削除が
+        // 通り、ベクトル検索は「ベクトルが無い」で拒まれることを実測した（作業仕様書 §実測）。
+        // 既存のコレクションへの全文索引は上と同じ作法（存在の有無によらず毎回張る。冪等）。
+        if (!await client.CollectionExistsAsync(_lexical, ct))
+            await client.CreateCollectionAsync(_lexical, new VectorParamsMap(), cancellationToken: ct);
+
+        await client.CreatePayloadIndexAsync(_lexical, FullTextKey, PayloadSchemaType.Text,
+            BuildFullTextIndexParams(), cancellationToken: ct);
     }
 
     // FR-03, #1116, [[IADR-0318]] 決定 1: 全文インデックスのパラメータ。
@@ -80,9 +110,10 @@ public class QdrantIngestionVectorStore(
     // `text` の索引・系統は #1117 のまま変えない（識別子・型番・略語の再現率を落とさない）。
     public async Task EnsureCjkNgramIndexAsync(CancellationToken ct = default)
     {
-        foreach (var c in _collections)
+        // ［2026-10-05 / #1746］[[IADR-0497]] 決定 1: 語彙索引にも張る（日本語の語は `text_ngram` でしか当たらない）。
+        foreach (var name in AllCollectionNames)
         {
-            await client.CreatePayloadIndexAsync(c.Name, CjkBigramPayload.PayloadKey, PayloadSchemaType.Text,
+            await client.CreatePayloadIndexAsync(name, CjkBigramPayload.PayloadKey, PayloadSchemaType.Text,
                 BuildCjkNgramIndexParams(), cancellationToken: ct);
         }
     }
@@ -121,12 +152,14 @@ public class QdrantIngestionVectorStore(
     public async Task<int> BackfillCjkNgramAsync(CancellationToken ct = default)
     {
         var filled = 0;
-        foreach (var c in _collections)
+        // ［2026-10-05 / #1746］[[IADR-0497]] 決定 1: 語彙索引も対象にする（書き込みは最初から `text_ngram` を
+        // 書くので通常は 0 件。対象から外すと、手で投入した点や将来のペイロード変更で穴が開く）。
+        foreach (var name in AllCollectionNames)
         {
             PointId? previousFirst = null;
             while (!ct.IsCancellationRequested)
             {
-                var page = await client.ScrollAsync(c.Name,
+                var page = await client.ScrollAsync(name,
                     filter: BuildMissingCjkNgramFilter(),
                     limit: BackfillPageSize,
                     payloadSelector: new WithPayloadSelector
@@ -143,7 +176,7 @@ public class QdrantIngestionVectorStore(
                 //    無限ループになる（wait=true でも保証を疑って、進んでいないことを自分で見る）。
                 if (previousFirst is not null && previousFirst.Equals(page.Result[0].Id))
                     throw new InvalidOperationException(
-                        $"Backfill of {CjkBigramPayload.PayloadKey} on {c.Name} is not making progress "
+                        $"Backfill of {CjkBigramPayload.PayloadKey} on {name} is not making progress "
                         + $"(point {page.Result[0].Id} was returned twice)");
                 previousFirst = page.Result[0].Id;
 
@@ -151,7 +184,7 @@ public class QdrantIngestionVectorStore(
                     .Select(p => BuildSetCjkNgramOperation(p.Id,
                         p.Payload.TryGetValue(FullTextKey, out var text) ? text.StringValue : ""))
                     .ToList();
-                await client.UpdateBatchAsync(c.Name, operations, cancellationToken: ct);
+                await client.UpdateBatchAsync(name, operations, cancellationToken: ct);
                 filled += operations.Count;
             }
         }
@@ -221,6 +254,50 @@ public class QdrantIngestionVectorStore(
             [new PointStruct { Id = new PointId { Uuid = pointId.ToString() }, Vectors = vector, Payload = { payload } }],
             cancellationToken: ct);
     }
+
+    // FR-02, FR-03, FR-05, ADR-0127 決定 1, [[IADR-0497]] 決定 1・3 (#1746): 高機密文書のチャンクを語彙索引へ書く。
+    // **ペイロードはチャンクの口と同じ関数（`BuildChunkPayload`）で作る** —— ABAC（`attributes`・`shared_with`）・
+    // 削除（`document_id`）・並び順（`updated_at`）・全文（`text` / `text_ngram`）の表現を、埋め込みの有無で割らない。
+    // 違うのは**ベクトルが空**（名前つきベクトルを 1 つも持たない）ことと、書き先が語彙索引に固定であることだけである。
+    public async Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null,
+        List<string>? sharedWith = null,
+        CancellationToken ct = default)
+    {
+        var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes,
+            tags, updatedAt, sharedWith: sharedWith);
+
+        await client.UpsertAsync(_lexical, [BuildLexicalPoint(chunkId, payload)], cancellationToken: ct);
+    }
+
+    // FR-02, FR-03, ADR-0070 決定 4, ADR-0127 決定 1, [[IADR-0497]] 決定 3 (#1746): 本文なしの高機密文書の
+    // メタデータ点を語彙索引へ書く（`has_body = false`。メタデータの口と同じペイロード）。
+    public async Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
+        string indexText, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null,
+        List<string>? sharedWith = null,
+        CancellationToken ct = default)
+    {
+        var payload = BuildChunkPayload(documentId, title, indexText, ChunkId.MetadataChunkIndex,
+            markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith);
+
+        await client.UpsertAsync(_lexical, [BuildLexicalPoint(pointId, payload)], cancellationToken: ct);
+    }
+
+    // [[IADR-0497]] 決定 1: **ベクトルを持たない点**（純関数。試験が形を固定する）。
+    // 🔴 `Vectors` を未設定にすると Qdrant は「Expected some vectors」で拒む（実測）。**空の名前つきベクトル**
+    // （`NamedVectors` が 0 件）を明示して「ベクトルは無い」を書く。零ベクトル・ハッシュ埋め込みは入れない
+    // （ADR-0127 決定 1。ベクトルの系統の順位を汚す）。
+    internal static PointStruct BuildLexicalPoint(Guid pointId, Dictionary<string, Value> payload) =>
+        new()
+        {
+            Id = new PointId { Uuid = pointId.ToString() },
+            Vectors = new Vectors { Vectors_ = new NamedVectors() },
+            Payload = { payload },
+        };
 
     // FR-02, FR-05: チャンクの Qdrant ペイロードを構築する。
     // IADR-0014（選択肢C・実機検証済み・Issue #71）: ABAC 属性はネスト構造体 `attributes -> { k: v }`
@@ -313,7 +390,9 @@ public class QdrantIngestionVectorStore(
             }
         };
 
-        foreach (var c in _collections)
-            await client.DeleteAsync(c.Name, filter, cancellationToken: ct);
+        // ［2026-10-05 / #1746］[[IADR-0497]] 決定 4: **語彙索引からも消す。** 機密区分が下がった文書
+        // （confidential → public）の語彙索引の点が残ると、意味検索に出ない古い本文がキーワードで当たり続ける。
+        foreach (var name in AllCollectionNames)
+            await client.DeleteAsync(name, filter, cancellationToken: ct);
     }
 }

@@ -3,15 +3,15 @@ title: ハイブリッド検索 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-27
+updated: 2026-10-05
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, SC-01, SC-02, UC-01, FR-19, NFR-09, FR-04]
-adrs: [ADR-0086, ADR-0119, ADR-0016, ADR-0057, ADR-0070, ADR-0092]
-iadrs: [IADR-0417, IADR-0426, IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467]
-specs: [20260927_issue-1658_relay-options-shared, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion]
-issues: [#1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995]
+adrs: [ADR-0086, ADR-0119, ADR-0016, ADR-0057, ADR-0070, ADR-0092, ADR-0127]
+iadrs: [IADR-0417, IADR-0426, IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467, IADR-0497]
+specs: [20260927_issue-1658_relay-options-shared, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index]
+issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995]
 -->
 
 # テスト仕様書: ハイブリッド検索
@@ -130,7 +130,7 @@ issues: [#1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1254, #4
 | T-72 | **陽性対照**: 本文ありの文書（パス・データソース名を運ぶ） | 本文チャンクの索引 | 🔴 **チャンクの本文にパスもデータソース名も入らない**（意図した非対称を固定する） | 「本文の語で当たった」と「置き場所の名前で当たった」を混ぜない | 自動 |
 | T-73 | **変異試験**: 索引テキストからパスとデータソース名を外す | 上の T-69 / T-70 | パス・データソース名の陽性（T-69 と `Consumer_ShouldIndexPathAndDataSourceName_WhenBodyIsEmpty`）が落ち、**題名の陽性対照・陰性対照・旧発行元の 3 本は通ったまま**（「何を入れても当たる」実装で緑にならない） | メタデータで検索に載せる裁定（決定 4） | 自動（手動変異） |
 | T-74 | 契約が「本文あり」なのにチャンク 0 件／「本文なし」なのにチャンクが在る | 取り込み（`DocumentUpdatedConsumerTests`） | **判定は変えず警告を残す**（向きが分かる文言）。一致しているときは鳴らさない（陰性対照） | 二重化した情報が片方だけ変わって静かに割れるのを検知する | 自動 |
-| T-75 | 追加コレクションが空（既定） | hybrid / keyword / semantic で検索（`MultiCollectionFusionTests`） | **束ねる前と同一**: hybrid の `Score` は `RRF(主ベクトル, 主全文)` の値・並びは初出順、単一モードは生スコアのまま。埋め込み・ストアの呼び出し回数も同じ | 既定の不変 | 自動 |
+| T-75 | 追加コレクションが空 | hybrid / keyword / semantic で検索（`MultiCollectionFusionTests`） | **束ねる前と同一**: hybrid の `Score` は `RRF(主ベクトル, 主全文)` の値・並びは初出順、単一モードは生スコアのまま。埋め込み・ストアの呼び出し回数も同じ | 既定の不変 | 自動 |
 | T-76 | 主の生スコアは小さく（0.1）、追加コレクションの生スコアは大きい（0.99） | hybrid で検索 | **順位だけで並ぶ**（生スコアで並べる変異は赤）。`Score` は RRF 値で生スコアは漏れない | 束ね方（スコアを比べない） | 自動 |
 | T-77 | 主と追加の 1 位が同点 | 同上 | 主が先に並ぶ（同点は初出順） | 束ね方（同点） | 自動 |
 | T-78 | 追加コレクションにだけキーワード一致がある | keyword で検索 | 追加コレクションの文書が見つかる（全文も束ねる）。埋め込みは呼ばない | 束ね方（全文） | 自動 |
@@ -147,6 +147,14 @@ issues: [#1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1254, #4
 | T-89 | 本文つきのチャンク 1 点。AI 分析の client（`aianalysis-service`。実トークンの形 = 利用者名なし・`azp` あり、と `service-account-` の利用者名の形）、`platform-service` を持つ他のサービスアカウント（別プロジェクトの LLM 呼び出し用・BFF・MCP・文書・検索・グラフ）、クライアント識別の接頭辞・大小文字の変種、利用者名だけ AI 分析で `azp` が別のトークン、`azp=aianalysis-service` を持つ人のトークン（`DocumentSearchTrustedRelayTests`・`DocumentSearchRelayOptionsTests`・`DocumentSearchRelayDeploymentWiringTests`） | gRPC の検索を利用者文脈（管理者の属性つき）つき・無しで呼ぶ。信頼する中継者の集合を未構成・置き換え・空白だけで束縛する。compose・helm の AI 分析の s2s の client と realm を読む | AI 分析だけが利用者として検索でき本文が返る（陽性対照）。他はすべて `PERMISSION_DENIED` で、スコープ解決も呼ばれない。空の query でも拒否。利用者文脈の無い要求は呼び出し元を問わず `INVALID_ARGUMENT`。集合は未構成なら `aianalysis-service` だけ・構成は既定を置き換える・空白だけは誰も信じない。配備の AI 分析の client は既定の集合に入り、realm に `platform-service` 付きで在る。確認を落とす・接頭辞一致・大小文字を畳む・機械の確認を落とす変異は赤 | 利用者文脈を運べる呼び出し元 | 自動 |
 | T-90 | 固有の部門値を持つ点 1 つ。BFF の client（`bff`。実トークンの形 = `service-account-bff` と `azp=bff`、利用者名だけ・`azp` だけの形）、`platform-service` を持つ他のサービスアカウント（別プロジェクトの LLM 呼び出し用・AI 分析・MCP・文書・検索・グラフ）、クライアント識別の接頭辞・大小文字の変種、利用者名だけ BFF で `azp` が別のトークン、`azp=bff` を持つ人のトークン（`AttributeValuesTrustedRelayTests`・`AttributeValuesRelayOptionsTests`・`AttributeValuesRelayDeploymentWiringTests`・共有の判定 `TrustedUserContextRelayTests`） | 属性値の照会の gRPC 面を利用者文脈（管理者の属性つき）つき・無しで呼ぶ。信頼する中継者の集合を未構成・置き換え・空白だけ・1 つの値で束縛する（検索の集合の節は効かない）。compose・helm の BFF の s2s の client と realm を読む | BFF だけが利用者として値を引ける（陽性対照）。他はすべて `PERMISSION_DENIED` で、スコープ解決も呼ばれない。空の key でも拒否。利用者文脈の無い要求は呼び出し元を問わず `INVALID_ARGUMENT`。集合は未構成なら BFF だけ・構成は既定を置き換える・空白だけは誰も信じない・1 つの値は起動時に止まる。配備の BFF の client は既定の集合に入り、realm に `platform-service` 付きで在り、属性値の照会を gRPC で配線している。確認を落とす・接頭辞一致・大小文字を畳む・機械の確認を落とす・1 つの値の検査を外す変異は赤 | 利用者文脈を運べる呼び出し元 | 自動 |
 | T-91 | 検索の信頼する中継者の集合（`DocumentSearchRelayOptionsTests`・`DocumentSearchRelayDeploymentWiringTests`） | 集合を 1 つの値（`foo`・カンマ区切り）・配列・未構成・別の面の節の 1 つの値で構成して起動時の検査を呼ぶ。複数要素（前後空白・空白だけの要素・重複を含む）で束縛する。検索サービスの起動の手順（`Program.cs`）を読む | 1 つの値は起動時に例外になり、文言は配列の書き方（`DocumentSearch__TrustedUserContextClients__0`）と既定の `aianalysis-service` を示す（束縛だけなら既定へ静かに戻ることを前提として確かめる）。配列・未構成・別の面の節は通る。複数要素は前後空白を落とし空白だけの要素を捨てて順に並び、既定は残らない。起動の手順は束縛より前に 1 つの値を検査する。検査を素通しにする・起動の手順から検査を落とす・既定を足し合わせる・大小文字を畳む・接頭辞一致にする変異は赤 | 構成の誤りを黙って既定へ戻さない | 自動（単体） |
+| T-92 | 語彙索引（ベクトルを持たないコレクション）にだけ一致がある高機密文書 | keyword で検索（`LexicalIndexFusionTests`） | 見つかる。語彙索引は全文だけ 1 回引かれ、ベクトル検索も埋め込みも呼ばれない | 高機密はキーワードの系統で現れる裁定 |
+| T-93 | 主にベクトル・全文の一致、語彙索引に全文の一致 | hybrid で検索 | 語彙索引の文書が全文の系統 1 本として RRF に入る（1 位なら 1/61）。語彙索引のベクトル検索は引かず、**縮退の警告を出さない** | 同上 |
+| T-94 | 語彙索引にベクトル・全文の候補を仕込む（ベクトルの追加コレクションと並ぶ形を含む） | semantic で検索 | 語彙索引は**問い合わせない**（ベクトル・全文とも 0 回）。束ねたのが語彙索引だけなら従来の単一コレクションの経路のまま（生スコア・埋め込み 1 回） | 高機密は意味検索のモードに現れない裁定 |
+| T-95 | 語彙索引にベクトルを返す埋め込みの客体を誤って組む | 3 モードで検索 | 客体は呼ばれず、語彙索引のベクトル検索も引かれない（二重の守り） | 同上・検索語を余計に送らない |
+| T-96 | 語彙索引に `restricted` の文書（実際に絞る索引） | keyword / hybrid で、許さないスコープ／許すスコープで検索。フィルタの同一性も見る | 許さないスコープでは現れず、許すスコープでは現れる（陽性対照）。語彙索引へ渡るフィルタは主の全文の系統と同じ | 権限制御（全系統に掛ける） |
+| T-97 | 文書削除イベント | 削除の購読 | 主と語彙索引の両方から消す | 削除の伝播 |
+| T-98 | 語彙索引の名前の構成・クエリを埋めない客体 | 名前を未設定・前後空白つきで与える／主・追加コレクションと同名にする。客体を呼ぶ | 未設定は既定名（無効化の口は無い）。同名は起動時に止まる。客体は常に空ベクトル | 置き場所の決定 |
+| T-99 | 本番の合成点（`FusedQueryEmbeddingTests` の T-Q-06）・配備の配線（`k8s-local-up.test.js`）・実 Qdrant（`LexicalIndexQdrantTests`） | 合成点を構成なし／追加コレクションありで組む。values・両 appsettings・コード上の既定名・helm・compose を突き合わせる。実 Qdrant で 3 モード | 構成なしでも語彙索引 1 本が `LexicalOnly` で束ねられ、追加コレクションがあれば最後に付く。6 か所の名前が一致し、helm は ingestion と retrieval の両方へ常に描画する。実 Qdrant で高機密文書はキーワード・ハイブリッドで現れ意味検索で現れない | 既定の構成で効くこと |
 
 ## テストデータ
 

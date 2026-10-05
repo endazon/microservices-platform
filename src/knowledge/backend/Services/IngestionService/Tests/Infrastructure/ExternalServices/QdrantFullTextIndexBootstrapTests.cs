@@ -26,6 +26,8 @@ public class QdrantFullTextIndexBootstrapTests
 {
     private const string CollectionA = "knowledge_chunks_voyage_3_5";
     private const string CollectionB = "knowledge_chunks_ruri_v3";
+    // #1746 / [[IADR-0497]] 決定 1: 語彙索引（ベクトルを持たないコレクション。既定名）。
+    private const string Lexical = "knowledge_chunks_lexical";
 
     // FR-03, #1116: 既に在るコレクションにも索引を張る（**後付け**が要件である）。
     [Fact]
@@ -38,7 +40,7 @@ public class QdrantFullTextIndexBootstrapTests
 
         invoker.CreatedCollections.Should().BeEmpty("既に在るのだから作り直さない");
         invoker.CreatedFieldIndexes.Select(x => x.Collection)
-            .Should().BeEquivalentTo([CollectionA, CollectionB],
+            .Should().BeEquivalentTo([CollectionA, CollectionB, Lexical],
                 "既存コレクションにも後付けしなければ、稼働中の配備は永久に索引を持たない");
         invoker.CreatedFieldIndexes.Should().OnlyContain(
             x => x.FieldName == QdrantIngestionVectorStore.FullTextKey);
@@ -53,9 +55,27 @@ public class QdrantFullTextIndexBootstrapTests
 
         await store.EnsureCollectionsAsync(TestContext.Current.CancellationToken);
 
-        invoker.CreatedCollections.Should().BeEquivalentTo([CollectionA, CollectionB]);
+        invoker.CreatedCollections.Should().BeEquivalentTo([CollectionA, CollectionB, Lexical]);
         invoker.CreatedFieldIndexes.Select(x => x.Collection)
-            .Should().BeEquivalentTo([CollectionA, CollectionB]);
+            .Should().BeEquivalentTo([CollectionA, CollectionB, Lexical]);
+    }
+
+    // T-28 (FR-02, FR-03, ADR-0127 決定 1, [[IADR-0497]] 決定 1 / #1746): 語彙索引は**ベクトルの設定が空**の
+    // コレクションとして作る（名前つきベクトルを 1 つも持たない）。ベクトルのコレクションは従来どおり次元つき。
+    // 🔴 語彙索引に次元つきのベクトルを持たせる変異（意味の無いベクトルで点を作る道を開く）を落とす。
+    [Fact]
+    public async Task EnsureCollections_CreatesLexicalCollectionWithoutVectors()
+    {
+        var invoker = new RecordingCallInvoker(collectionExists: false);
+
+        await NewStore(invoker).EnsureCollectionsAsync(TestContext.Current.CancellationToken);
+
+        var lexical = invoker.CreateRequests.Should().ContainSingle(r => r.CollectionName == Lexical).Subject;
+        lexical.VectorsConfig.ConfigCase.Should().Be(VectorsConfig.ConfigOneofCase.ParamsMap);
+        lexical.VectorsConfig.ParamsMap.Map.Should().BeEmpty("語彙索引はベクトルを持たない（ADR-0127 決定 1）");
+        invoker.CreateRequests.Where(r => r.CollectionName != Lexical)
+            .Should().OnlyContain(r => r.VectorsConfig.ConfigCase == VectorsConfig.ConfigOneofCase.Params
+                && r.VectorsConfig.Params.Size > 0);
     }
 
     // FR-03, #1116: 索引は **text 型**として張る（キーワード型で張ると full-text Match が成立しない）。
@@ -131,16 +151,20 @@ public class QdrantFullTextIndexBootstrapTests
             {
                 Result = new CollectionExists { Exists = collectionExists }
             },
-            "Create" => Record(((CreateCollection)request).CollectionName,
+            "Create" => Record((CreateCollection)request,
                 new CollectionOperationResponse { Result = true }),
             "CreateFieldIndex" => RecordIndex((CreateFieldIndexCollection)request),
             _ => throw new NotSupportedException(
                 $"想定していない RPC が出た: {methodName}。テストの器を更新すること"),
         };
 
-        private object Record(string collection, object response)
+        // #1746: 作成要求そのもの（ベクトルの設定を見るため）。
+        internal List<CreateCollection> CreateRequests { get; } = [];
+
+        private object Record(CreateCollection request, object response)
         {
-            CreatedCollections.Add(collection);
+            CreatedCollections.Add(request.CollectionName);
+            CreateRequests.Add(request);
             return response;
         }
 

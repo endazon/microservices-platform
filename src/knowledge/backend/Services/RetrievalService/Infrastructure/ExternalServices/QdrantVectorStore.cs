@@ -50,6 +50,29 @@ public class QdrantVectorStore(
         return names;
     }
 
+    // FR-03, ADR-0127 決定 1・2, [[IADR-0497]] 決定 1・5 (#1746): **語彙索引**（ベクトルを持たないコレクション）の名前。
+    // 🔴 **取り込み（`IngestionService.LexicalCollection`）と同じキー・同じ既定名**であること。サービスを跨ぐため
+    // 型では束ねられない（`text` / `document_id` と同じ事情）。空・未設定は既定名へ倒す（無効化の口を持たない）。
+    internal const string LexicalCollectionKey = "Qdrant:LexicalCollection";
+    internal const string DefaultLexicalCollectionName = "knowledge_chunks_lexical";
+
+    internal static string ResolveLexicalCollectionName(IConfiguration config)
+    {
+        var name = config[LexicalCollectionKey]?.Trim();
+        return string.IsNullOrEmpty(name) ? DefaultLexicalCollectionName : name;
+    }
+
+    // [[IADR-0497]] 決定 5: 語彙索引が主・束ねる追加コレクションと同名なら起動を止める。
+    // 同名だと、同じ点が 2 つの系統で二度加点されるか、ベクトルのコレクションがベクトルの系統を失う。
+    internal static void EnsureLexicalCollectionDistinct(
+        string lexical, string primary, IReadOnlyList<string> fused)
+    {
+        if (lexical == primary || fused.Contains(lexical))
+            throw new InvalidOperationException(
+                $"{LexicalCollectionKey} '{lexical}' が Qdrant:CollectionName か {FusedCollectionsKey} と同名である。"
+                + " 語彙索引はベクトルを持たない専用のコレクションであり、ベクトルのコレクションと兼ねない（IADR-0497 決定 1）。");
+    }
+
     // FR-03, ADR-0092 決定 1, [[IADR-0467]] (#336): 指定したコレクションを読む実装を作る。
     // **読み方（ABAC・全文・復元）は主と 1 行も違わない** —— 違うのはコレクション名だけであり、
     // 名前の解決規則も既存の `ResolveCollectionName` をそのまま通す（別の規則を作らない）。

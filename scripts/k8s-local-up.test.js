@@ -3076,6 +3076,60 @@ ok('IADR-0467: 環境変数名が RetrievalService の構成キーと一致す�
 });
 
 // ---------------------------------------------------------------------------
+// FR-02, FR-03, ADR-0127 決定 1・2, IADR-0497 (#1746): 語彙索引（ベクトルを持たない専用のコレクション）。
+//
+// 🔴 取り込みが書くコレクションと検索が束ねるコレクションは**同じ名前**でなければならない（片方だけ変えると
+// 高機密文書が「書いたのに検索されない」）。サービスを跨ぐので型では束ねられない —— values・両 appsettings・
+// 両サービスのコード上の既定名・helm の描画・compose の 6 か所を静的に突き合わせる。
+// ---------------------------------------------------------------------------
+const RETRIEVAL_APPSETTINGS = JSON.parse(readAt(
+  REPO_ROOT, 'src', 'knowledge', 'backend', 'Services', 'RetrievalService', 'appsettings.json'));
+const INGESTION_LEXICAL_CS = readAt(
+  REPO_ROOT, 'src', 'knowledge', 'backend', 'Services', 'IngestionService',
+  'Infrastructure', 'ExternalServices', 'LexicalCollection.cs');
+
+function chartLexicalCollection() {
+  const at = CHART_VALUES.search(/^lexicalIndex:\s*$/m);
+  assert.ok(at !== -1, 'values.yaml に lexicalIndex: が無い');
+  return (/^ {2}collection:\s*(\S+)\s*$/m.exec(CHART_VALUES.slice(at)) || [])[1];
+}
+
+ok('IADR-0497: 語彙索引の名前が values・両 appsettings・両サービスのコード上の既定名で一致する', () => {
+  const chart = chartLexicalCollection();
+  assert.ok(chart, 'values.yaml の lexicalIndex.collection が読めない');
+  assert.strictEqual(INGESTION_APPSETTINGS.Qdrant.LexicalCollection, chart,
+    '取り込みの appsettings.json（Qdrant:LexicalCollection）が values と食い違う');
+  assert.strictEqual(RETRIEVAL_APPSETTINGS.Qdrant.LexicalCollection, chart,
+    '検索の appsettings.json（Qdrant:LexicalCollection）が values と食い違う');
+  assert.strictEqual((/DefaultName\s*=\s*"([^"]+)"/.exec(INGESTION_LEXICAL_CS) || [])[1], chart,
+    '取り込みのコード上の既定名（LexicalCollection.DefaultName）が values と食い違う');
+  assert.strictEqual((/DefaultLexicalCollectionName\s*=\s*"([^"]+)"/.exec(QDRANT_VECTOR_STORE_CS) || [])[1], chart,
+    '検索のコード上の既定名（DefaultLexicalCollectionName）が values と食い違う');
+  assert.ok(
+    !INGESTION_APPSETTINGS.Embedding.Collections.some((c) => c.Name === chart),
+    '語彙索引がベクトルのコレクション（Embedding:Collections）と同名である');
+});
+
+ok('IADR-0497: 語彙索引は ingestion と retrieval の両方へ同じキー・同じ値で常に描画される（helm / compose）', () => {
+  const ingKey = (/ConfigKey\s*=\s*"([^"]+)"/.exec(INGESTION_LEXICAL_CS) || [])[1];
+  const retKey = (/LexicalCollectionKey\s*=\s*"([^"]+)"/.exec(QDRANT_VECTOR_STORE_CS) || [])[1];
+  assert.strictEqual(ingKey, 'Qdrant:LexicalCollection', '取り込みの構成キーが読めない');
+  assert.strictEqual(retKey, ingKey, '取り込みと検索の構成キーが食い違う');
+  const env = ingKey.replace(/:/g, '__');
+  const at = CHART_DEPLOYMENT.indexOf('if has $name (list "ingestion" "retrieval")');
+  assert.ok(at !== -1, 'deployment.yaml に ingestion / retrieval の両方へ描く分岐が無い');
+  const block = CHART_DEPLOYMENT.slice(at, CHART_DEPLOYMENT.indexOf('{{- end }}', at));
+  assert.ok(block.includes(`- name: ${env}`), `${env} が無い`);
+  assert.ok(block.includes('$.Values.lexicalIndex.collection'), '値が lexicalIndex.collection から来ていない');
+  // compose は両サービスとも同じ既定値（.env の SEARCH_LEXICAL_COLLECTION で 1 か所から変えられる）。
+  const lines = COMPOSE_YAML.match(new RegExp(`^\\s+${env}: .*$`, 'gm')) || [];
+  assert.strictEqual(lines.length, 2, `docker-compose.yml の ${env} が 2 サービス分ない`);
+  for (const line of lines)
+    assert.match(line, new RegExp(`\\$\\{SEARCH_LEXICAL_COLLECTION:-${chartLexicalCollection()}\\}`),
+      `docker-compose.yml の ${env} の既定値が values と食い違う`);
+});
+
+// ---------------------------------------------------------------------------
 // #782 / ADR-0021: エッジを Istio Ingress Gateway へ移す overlay の静的検査。
 //
 // ここで固定するのは **STRICT が成立するための前提**だけである。実クラスタでの疎通は

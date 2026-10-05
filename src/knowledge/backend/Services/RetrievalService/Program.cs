@@ -94,12 +94,19 @@ else
 // 🔴 **既定は空であり、そのとき検索・属性値・削除は従来と同一である**（`FusedCollections.None`）。
 // Helm は `embedding.enabled=true` のときだけティア A のコレクションをここへ描画する。
 var fusedCollectionNames = QdrantVectorStore.ResolveFusedCollectionNames(builder.Configuration);
+// 🔴 FR-03, ADR-0127 決定 1・2, [[IADR-0497]] 決定 5 (#1746): **語彙索引を常に束ねる**（高機密文書の置き場所）。
+// 全文の系統だけで RRF に入り、意味検索のモードには入らない。ABAC は他のコレクションと同じフィルタを掛ける。
+// 主・追加コレクションと同名なら起動を止める。無効化の口は持たない（ADR-0127 決定 1）。
+var lexicalCollectionName = QdrantVectorStore.ResolveLexicalCollectionName(builder.Configuration);
+QdrantVectorStore.EnsureLexicalCollectionDistinct(lexicalCollectionName,
+    QdrantVectorStore.ResolveCollectionName(builder.Configuration), fusedCollectionNames);
 builder.Services.AddScoped(sp =>
-    FusedCollectionsComposition.Build(sp, fusedCollectionNames, embedOverGrpc));
+    FusedCollectionsComposition.Build(sp, fusedCollectionNames, embedOverGrpc, lexicalCollectionName));
 
 // FR-06, ADR-0027 (#1640): 索引からの削除の受け口の時間の上限（Qdrant 1 回ごとの期限）。
 // 「(主 ＋ 追加コレクション数) × 期限」が Wolverine の既定の実行期限に収まらない構成は、ここで起動を止める。
-builder.Services.AddSingleton(DocumentDeletedTimeouts.From(builder.Configuration, fusedCollectionNames.Count));
+// ［2026-10-05 / #1746］[[IADR-0497]] 決定 4: 語彙索引からも消すので 1 本足す。
+builder.Services.AddSingleton(DocumentDeletedTimeouts.From(builder.Configuration, fusedCollectionNames.Count + 1));
 builder.Services.AddPlatformConsumerTimeouts();
 
 // FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 RRF 統合）
