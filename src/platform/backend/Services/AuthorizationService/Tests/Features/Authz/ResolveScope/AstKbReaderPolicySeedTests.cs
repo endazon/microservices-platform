@@ -9,8 +9,8 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace AuthorizationService.Tests.Features.Authz.ResolveScope;
 
-// FR-05, FR-09, NFR-09, AST/FR-08, AST/FR-04, 計画 ADR-0085 決定 2（例外）・決定 3, ADR-0080 決定 2,
-// ADR-0088 決定 1, [[IADR-0420]], [[IADR-0492]] (#1696 / AST#1078):
+// FR-05, FR-09, NFR-09, AST/FR-08, AST/FR-04, 計画 ADR-0085 決定 2（例外。ADR-0125 が部分改定）・決定 3, ADR-0080 決定 2,
+// ADR-0088 決定 1, ADR-0125 決定 2, [[IADR-0420]], [[IADR-0492]], [[IADR-0500]] (#1696 / #1755 / AST#1078):
 // **AST の KB の読み手が `/authz/scope` で何を得るか**を、実物の realm の宣言・実物の seed・実物の端点で固定する。
 //
 // 裁定（#1696・案 B）の受け入れ基準 1 の写像:
@@ -30,6 +30,9 @@ public class AstKbReaderPolicySeedTests : IClassFixture<TestWebApplicationFactor
     private const string Writer = "service-account-ai-stock-trading-kb-writer";
     private const string AstPolicyName = "dev: AST の KB の読み手は AST の文書を読める";
     private const string AstProject = "ai-stock-trading";
+
+    // FR-05, 計画 ADR-0125 決定 2, [[IADR-0500]] (#1755): 読み手の枝の機密区分の上限。
+    private static readonly string[] ReaderCeiling = ["public", "internal"];
 
     private readonly TestWebApplicationFactory _factory;
 
@@ -82,7 +85,9 @@ public class AstKbReaderPolicySeedTests : IClassFixture<TestWebApplicationFactor
             "Fixtures/owner-read-seed-scopes.json の読み手の属性は realm の宣言と同じでなければならない");
     }
 
-    // T-2（受け入れ基準 1）: Granted=true で、束縛されない分岐は AST の文書の 1 本だけ。階段（confidentiality）は 1 つも無い。
+    // T-2（受け入れ基準 1）: Granted=true で、束縛されない分岐は AST の文書の 1 本だけ。階段（clearance の段）には 1 つもマッチしない。
+    // ［2026-10-06 / #1755・IADR-0500］その 1 本は `project ∈ {ai-stock-trading}` ∧ `confidentiality ∈ {public, internal}` の連言である
+    // （計画 ADR-0125 決定 2）。confidential・restricted は、ラベルが付いていてもこの枝では届かない。
     [Fact]
     public async Task 読み手はGrantedでASTの文書だけの範囲を得る()
     {
@@ -92,10 +97,29 @@ public class AstKbReaderPolicySeedTests : IClassFixture<TestWebApplicationFactor
         var unbound = UnboundBranches(scope, Reader);
         unbound.Should().ContainSingle("束縛されない分岐は AST の文書の 1 本だけ（他の文書へ届かない）");
         unbound[0].Name.Should().Be(AstPolicyName);
-        unbound[0].Filters.Should().ContainSingle().Which.Should().BeEquivalentTo(
-            new AttributeFilter("project", [AstProject]));
-        scope.AllowedFilters.Should().NotContain(f => f.Key == "confidentiality",
-            "clearance の階段にマッチしてはならない（裁定が退けた案 A）");
+        unbound[0].Filters.Should().BeEquivalentTo(
+            [new AttributeFilter("project", [AstProject]), new AttributeFilter("confidentiality", [.. ReaderCeiling])],
+            "文書の条件は project と機密区分の上限の 2 つだけ（ADR-0125 決定 2）");
+        (scope.Branches ?? []).Should().NotContain(b => b.Filters.All(f => f.Key == "confidentiality"),
+            "clearance の階段（機密区分だけで絞る段）にマッチしてはならない（裁定が退けた案 A）");
+    }
+
+    // T-2b（#1755・ADR-0125 決定 2）: 読み手の束縛されない分岐の機密区分は public・internal だけで、confidential・restricted を含まない。
+    // 束縛されない分岐のどれも confidentiality を欠かない（欠けると区分を問わず届く）。
+    [Fact]
+    public async Task 読み手の束縛されない分岐はconfidentialとrestrictedを許さない()
+    {
+        var scope = await ResolveAsync(Reader);
+
+        var unbound = UnboundBranches(scope, Reader);
+        unbound.Should().NotBeEmpty();
+        foreach (var branch in unbound)
+        {
+            var ceiling = branch.Filters.Where(f => f.Key == "confidentiality").ToList();
+            ceiling.Should().ContainSingle($"分岐 {branch.Name} は機密区分の上限を持たなければならない");
+            ceiling[0].AllowedValues.Should().BeEquivalentTo(ReaderCeiling);
+            ceiling[0].AllowedValues.Should().NotContain(["confidential", "restricted"]);
+        }
     }
 
     // T-3（陰性対照）: realm の属性が無ければ AST の文書の分岐は立たない —— 分岐を立てているのは宣言の属性である。
@@ -143,7 +167,8 @@ public class AstKbReaderPolicySeedTests : IClassFixture<TestWebApplicationFactor
         scope.AllowedFilters.Should().NotContain(f => f.Key == "project");
     }
 
-    // T-6（seed の形）: projects / project を条件に持つポリシーは read の 1 本だけで、条件はそれぞれ 1 キー 1 値。
+    // T-6（seed の形）: projects / project を条件に持つポリシーは read の 1 本だけ。利用者の条件は 1 キー 1 値。
+    // ［2026-10-06 / #1755・IADR-0500］文書の条件は project（1 値）と confidentiality（public・internal）の 2 キーである。
     [Fact]
     public void Seedのprojectを持つポリシーはreadの1本だけ()
     {
@@ -156,8 +181,10 @@ public class AstKbReaderPolicySeedTests : IClassFixture<TestWebApplicationFactor
         only.Action.Should().Be(PolicyAction.Read, "読み手は書けない");
         only.UserConditions.Should().ContainSingle().Which.Value.Should().Equal([AstProject]);
         only.UserConditions.Should().ContainKey("projects");
-        only.DocumentConditions.Should().ContainSingle().Which.Value.Should().Equal([AstProject]);
-        only.DocumentConditions.Should().ContainKey("project");
+        only.DocumentConditions.Keys.Should().BeEquivalentTo(["project", "confidentiality"],
+            "文書の条件は project と機密区分の上限の 2 つだけ（ADR-0125 決定 2）");
+        only.DocumentConditions["project"].Should().Equal([AstProject]);
+        only.DocumentConditions["confidentiality"].Should().BeEquivalentTo(ReaderCeiling);
     }
 
     // realm（deploy/keycloak/microservices-platform-realm.json）の読み手のサービスアカウントの属性を、

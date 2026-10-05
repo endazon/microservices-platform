@@ -259,6 +259,64 @@ public class AbacValidationTests
         errors.Should().Contain(e => e.Contains("documentConditions"));
     }
 
+    // ---- 例外: AST の KB の読み手の機密区分の上限（計画 ADR-0125 決定 2・[[IADR-0500]] 決定 4・#1755） ----
+
+    private static Dictionary<string, List<string>> ReaderUser() => new() { ["projects"] = ["ai-stock-trading"] };
+
+    private static Dictionary<string, List<string>> ReaderDoc(params string[] ceiling) => new()
+    {
+        ["project"] = ["ai-stock-trading"],
+        ["confidentiality"] = [.. ceiling],
+    };
+
+    // FR-05, FR-09, ADR-0125 決定 2: 読み手の形（project ∧ 機密区分 ⊆ {public, internal}）だけは 2 キーで保存できる。
+    // 辞書なし・辞書ありの両方（seed は辞書を先に入れる）。
+    [Theory]
+    [InlineData("public", "internal")]
+    [InlineData("internal")]
+    [InlineData("public")]
+    public void ValidatePolicy_AstKbReaderCeiling_TwoKeys_NoErrors(params string[] ceiling)
+    {
+        AbacValidation.ValidatePolicy("AST の KB の読み手は AST の文書を読める", "read", ReaderUser(), ReaderDoc(ceiling), [])
+            .Should().BeEmpty();
+        AbacValidation.ValidatePolicy("AST の KB の読み手は AST の文書を読める", "read", ReaderUser(), ReaderDoc(ceiling),
+                [Confidentiality(), Clearance()])
+            .Should().BeEmpty();
+    }
+
+    // 🔴 例外の形を 1 箇所ずつ崩すと、1 キーまでの規則に戻って拒否される（planning#470 の過剰許可を生まない形に限る）。
+    public static TheoryData<string, string, Dictionary<string, List<string>>, Dictionary<string, List<string>>> BrokenReaderShapes()
+        => new()
+        {
+            { "上限に confidential", "read", ReaderUser(), ReaderDoc("public", "internal", "confidential") },
+            { "上限に restricted", "read", ReaderUser(), ReaderDoc("internal", "restricted") },
+            { "上限が空", "read", ReaderUser(), ReaderDoc() },
+            { "上限の値が重複", "read", ReaderUser(), ReaderDoc("internal", "internal") },
+            { "別の project", "read", ReaderUser(),
+                new() { ["project"] = ["apollo"], ["confidentiality"] = ["internal"] } },
+            { "project を 2 値", "read", ReaderUser(),
+                new() { ["project"] = ["ai-stock-trading", "apollo"], ["confidentiality"] = ["internal"] } },
+            { "project の代わりに department", "read", ReaderUser(),
+                new() { ["department"] = ["sales"], ["confidentiality"] = ["internal"] } },
+            { "文書の条件が 3 キー", "read", ReaderUser(),
+                new() { ["project"] = ["ai-stock-trading"], ["confidentiality"] = ["internal"], ["department"] = ["sales"] } },
+            { "利用者の条件に clearance を足す", "read",
+                new() { ["projects"] = ["ai-stock-trading"], ["clearance"] = ["internal"] }, ReaderDoc("internal") },
+            { "利用者の条件が別のプロジェクト", "read", new() { ["projects"] = ["apollo"] }, ReaderDoc("internal") },
+            { "利用者の条件が空", "read", new(), ReaderDoc("internal") },
+            { "action が analyze", "analyze", ReaderUser(), ReaderDoc("internal") },
+        };
+
+    [Theory]
+    [MemberData(nameof(BrokenReaderShapes))]
+    public void ValidatePolicy_AstKbReaderCeiling_BrokenShape_StillSingleKeyError(
+        string because, string action,
+        Dictionary<string, List<string>> user, Dictionary<string, List<string>> doc)
+    {
+        AbacValidation.ValidatePolicy("読み手もどき", action, user, doc, [])
+            .Should().Contain(e => e.Contains("1 つまで"), because);
+    }
+
     // 🔴 陽性対照 1: **1 キーは通る。** これが無いと「文書条件を持つポリシーを一律拒否」でも
     // 上の否定形が緑になる。
     [Fact]

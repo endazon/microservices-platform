@@ -3,15 +3,15 @@ title: 文書属性・タグ／ABAC ポリシー管理 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-07-02
-updated: 2026-09-28
+updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-09, SC-05, SC-09, UC-05]
-adrs: [ADR-0036, ADR-0043, ADR-0121]
-iadrs: [IADR-0006, IADR-0152, IADR-0153, IADR-0482]
-specs: [20260928_issue-1676_adr0121-audit-followups, 20260927_issue-1666_sc09-dynamic-binding-conditions]
-issues: [#1676, #634, #635, #1666]
+adrs: [ADR-0125, ADR-0036, ADR-0043, ADR-0121]
+iadrs: [IADR-0500, IADR-0006, IADR-0152, IADR-0153, IADR-0482]
+specs: [20261006_1755_ast-kb-reader-confidentiality-cap, 20260928_issue-1676_adr0121-audit-followups, 20260927_issue-1666_sc09-dynamic-binding-conditions]
+issues: [#1755, #1676, #634, #635, #1666]
 -->
 
 # テスト仕様書: 文書属性・タグ／ABAC ポリシー管理
@@ -61,6 +61,8 @@ issues: [#1676, #634, #635, #1666]
 | 27 | ［#1666 監査］計画に無い action の束縛（`write`・`manage`・`analyze` の共有先、`manage`・`analyze` の所有者）／`write` の所有者 | 前者はエラー・後者はエラー無し |
 | 28 | ［#1666 監査］前後に文字の付いた束縛 | エラー |
 | 29 | 保存済みの利用者スコープの `owner`・`shared_with` の更新（Key / Scope は不変）／同じ入力の登録 | 更新はエラー無し・登録はエラー |
+| 30 | ［2026-10-06］取引ユニットの KB の読み手の形（利用者の条件 `projects ∋ ai-stock-trading`・文書の条件 `project ∈ {ai-stock-trading}` ∧ 機密区分 ⊆ {`public`, `internal`}）。辞書なし・辞書あり | エラー無し（文書の条件 1 キーまでの唯一の例外） |
+| 31 | ［2026-10-06］上の形を 1 箇所ずつ崩す（上限に `confidential`・`restricted`、上限が空・重複、別の `project`・2 値、`project` 以外のキー、3 キー、利用者の条件に `clearance`・別のプロジェクト・空、action が `analyze`） | エラー（1 キーまで） |
 
 ### ロールクレーム展開（`KeycloakRolesClaimsTransformationTests`）
 

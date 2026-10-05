@@ -61,10 +61,14 @@ node scripts/seed-abac-policies.js --dry-run # 何が入るかだけ見る（副
 
 🔴 **AST の KB の読み手の read（`dev: AST の KB の読み手は AST の文書を読める`）も本番で要る**
 （[IADR-0492](../../../.ai-context/adr/IADR-0492_ast-kb-reader-project-scoped-read-policy.md) / #1696 の裁定 案B / AST#1078）。
-利用者の条件は `projects ∋ ai-stock-trading`、文書の条件は `project ∈ {ai-stock-trading}` だけ。これを持つ主体は realm が宣言する
+利用者の条件は `projects ∋ ai-stock-trading`、文書の条件は `project ∈ {ai-stock-trading}` かつ `confidentiality ∈ {public, internal}`
+（機密区分の上限。計画 ADR-0125 決定 2 / [IADR-0500](../../../.ai-context/adr/IADR-0500_ast-kb-reader-confidentiality-ceiling.md) / #1755。
+confidential・restricted の文書は `project=ai-stock-trading` を持っていてもこの枝では届かない）。これを持つ主体は realm が宣言する
 読み手のサービスアカウント（`service-account-ai-stock-trading-kb-reader`。ロールなし・属性は `projects` だけ）だけである。
 `clearance` を与えないので、読み手には階段のどの段もマッチしない（基盤全体の `internal` は読めない）。
 本番への投入は [`docs/operations/operations.md`](../../../docs/operations/operations.md) §AST の KB の読み手のポリシーの投入。
+🔴 **上限を足す前に投入済みの環境は、`seed-abac-policies.js --live` を再実行しても直らない**（同じ名前のポリシーがあると作らない）。
+既存のポリシーを書き換える手順は同じ節の「上限の無い旧い形が入っている環境」にある。
 
 ## 切り戻し
 

@@ -785,7 +785,31 @@ module.exports = ({ ok, assert }) => {
       const [reader] = withProject;
       assert.strictEqual(reader.action, 'read', '読み手のポリシーは read だけ（読み手は書けない）');
       assert.deepStrictEqual(reader.userConditions, { projects: ['ai-stock-trading'] }, '利用者の条件は projects ∋ ai-stock-trading だけ（clearance を足さない）');
-      assert.deepStrictEqual(reader.documentConditions, { project: ['ai-stock-trading'] }, '文書の条件は project ∈ {ai-stock-trading} だけ');
+      // FR-05, 計画 ADR-0125 決定 2, IADR-0500 / #1755: 文書の条件は project と機密区分の上限（public・internal）の 2 つだけ。
+      //   上限を外すと project=ai-stock-trading を付けた confidential・restricted が取引判断の LLM へ届く。
+      assert.deepStrictEqual(reader.documentConditions,
+        { project: ['ai-stock-trading'], confidentiality: ['public', 'internal'] },
+        '文書の条件は project ∈ {ai-stock-trading} ∧ confidentiality ∈ {public, internal}（ADR-0125 決定 2）');
+    });
+
+    // 同上（IADR-0500 決定 3 / #1755）: **本番の手順（operations.md）の JSON は seed の読み手のポリシーと同じ形である。**
+    //   名前だけは環境の接頭辞（dev:）の有無で違ってよい。本番の手順だけが上限を欠くと、本番に上限の無い枝が入る。
+    ok('docs: 本番の手順の AST の KB の読み手のポリシーは seed と同じ形（機密区分の上限を含む）', () => {
+      const seedFile = pathSeed.resolve(__dirname, '..', 'deploy', 'local', 'abac-seed', 'policies.json');
+      const seedReader = JSON.parse(fsSeed.readFileSync(seedFile, 'utf8')).policies.find(
+        (p) => 'projects' in (p.userConditions || {})
+      );
+      const ops = fsSeed.readFileSync(pathSeed.resolve(__dirname, '..', 'docs', 'operations', 'operations.md'), 'utf8');
+      const blocks = [...ops.matchAll(/```json\n([\s\S]*?)```/g)]
+        .map((m) => { try { return JSON.parse(m[1]); } catch { return null; } })
+        .filter((j) => j && j.userConditions && 'projects' in j.userConditions);
+      assert.strictEqual(blocks.length, 1, `operations.md に projects を条件に持つポリシーの JSON が ${blocks.length} 個（1 個であること）`);
+      const [prod] = blocks;
+      assert.strictEqual(prod.name, seedReader.name.replace(/^dev: /, ''), '名前は seed から dev: を除いたもの');
+      assert.strictEqual(prod.action, seedReader.action);
+      assert.deepStrictEqual(prod.userConditions, seedReader.userConditions);
+      assert.deepStrictEqual(prod.documentConditions, seedReader.documentConditions,
+        '本番の手順の文書の条件が seed と違う（機密区分の上限の欠落を含む）');
     });
 
     // 同上（IADR-0492 決定 1・#1696 独立監査）: **dev の属性辞書に `projects` を入れない。** 入れると SC-17 の割当

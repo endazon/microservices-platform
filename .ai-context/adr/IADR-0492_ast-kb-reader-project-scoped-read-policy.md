@@ -2,10 +2,10 @@
 title: IADR-0492 AST の KB の読み手は書き手と別の機密クライアント（ロールなし・profile あり）にし、その service-account の projects=ai-stock-trading に project=ai-stock-trading の文書だけを許す read のポリシー 1 本で読ませる
 type: impl-adr
 status: Accepted
-related_ids: [FR-03, FR-05, FR-09, NFR-09, ADR-0004, ADR-0080, ADR-0085, ADR-0088, ADR-0119, ADR-0121, ADR-0124, IADR-0075, IADR-0133, IADR-0253, IADR-0373, IADR-0420, IADR-0456, IADR-0485]
+related_ids: [FR-03, FR-05, FR-09, NFR-09, ADR-0004, ADR-0080, ADR-0085, ADR-0088, ADR-0119, ADR-0121, ADR-0124, IADR-0075, IADR-0133, IADR-0253, IADR-0373, IADR-0420, IADR-0456, IADR-0485, ADR-0125, IADR-0500]
 author: claude
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-06
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0085_project-attribute-scope-and-non-axis.md 決定 2（本 IADR が例外を置く）・決定 3（静的ポリシー対）
   - planning:projects/microservices-platform/07_adr/ADR-0080_set-valued-user-attributes-and-match-semantics.md 決定 2（集合値の交差）
@@ -85,6 +85,10 @@ AST の取引判断が RAG で KB を検索すると、実環境では 0 件に�
   他人の個人資料は読めない（`AstKbReaderSearchScopeTests`）。
 - **`confidentiality` で絞らない。** 裁定は `project` だけを指定した。AST の文書の機密区分は AST 側が文書ごとに補完する（`HttpKnowledgeBaseWriter`）。読み手は AST の文書であれば区分を問わず読む。
 
+> ［2026-10-06 追記 / #1755］**上の「`confidentiality` で絞らない」は [[IADR-0500]] で部分改定された。** 計画 ADR-0125 決定 2（planning#712 の裁定）により、
+> 文書の条件は `{ "project": ["ai-stock-trading"], "confidentiality": ["public", "internal"] }` である（現行値は IADR-0500 を正とする）。
+> 本決定のその他（利用者の条件・read だけ・`projects` を辞書へ足さない・個人資料は届かない）と決定 2・3 は有効なままである。
+
 ### 決定 2 — 読み手は書き手と別の機密クライアント `ai-stock-trading-kb-reader`。ロールなし・既定スコープは `profile` だけ・属性は `projects` だけ
 
 | 項目 | 値 | 理由 |
@@ -132,6 +136,10 @@ AST の取引判断が RAG で KB を検索すると、実環境では 0 件に�
    消えても読み手が 0 件になるだけで他の主体へ影響しないため。必要になったら別件）。
 4. **実データでの受け入れ（参考情報 1 件以上）は PoC で確かめる**（試験はポリシーと絞り込みの形までを固定する）。
 5. ［2026-10-02 追記 / #1696・独立監査］**読み手のポリシーに機密区分の上限が無い。** 書き込みロールを持つ利用者は誰でも任意の文書へ `project=ai-stock-trading` を足せる（`ValidateRestrictedProjectRetained` が止めるのは除去であって付与ではない）。足された文書は区分を問わず（`confidential` / `restricted` を含む。個人資料は除く）AST の読み手へ届き、LLM のプロンプトへ載る。ラベルは「AST の読み手へ開く」の意味を兼ねるようになった。裁定は `project` だけを指定したので裁定違反ではない。計画側の扱いは planning#712 で追う。［2026-10-02 追記 / #1696・AI レビュー］**歯止め: 本番への投入（残余 3）は planning#712 の裁定が出るまで保留する。** dev の seed（PoC の受け入れ）は対象外。裁定が機密区分の上限を求めれば、ポリシーの文書の条件へ `confidentiality` を足す改定を別に起こす（本 PR では裁定の指定どおり `project` だけで絞る）。
+   ［2026-10-06 追記 / #1755］**裁定が出て上限を足した**（計画 ADR-0125 決定 2・[[IADR-0500]]）。また上の「書き込みロールを持つ利用者は誰でも任意の文書へ `project=ai-stock-trading` を足せる」は**言い過ぎだった**（ADR-0125 実測 6）。
+   既存の文書の属性を全置換できるのは管理者だけで、メタデータの更新は管理者か、その文書を所有する機械クライアントだけである（operator だけの人は 403）。
+   ただし管理者・operator は `project=ai-stock-trading` を持つ文書を区分を問わず**新しく作れる**ので、上限の要否の論点は成り立っていた。
+   本番への投入の保留は IADR-0500 のマージ後に別に解く（ADR-0125 フォローアップ 2）。本番の NetworkPolicy は #1756。
 
 ## 関連
 

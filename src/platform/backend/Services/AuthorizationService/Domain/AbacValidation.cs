@@ -91,7 +91,8 @@ public static class AbacValidation
         var defList = definitions.ToList();
         ValidateConditions("userConditions", userConditions, defList, AttributeScope.User, action, errors);
         ValidateConditions("documentConditions", documentConditions, defList, AttributeScope.Document, action, errors);
-        ValidateSingleDocumentConditionKey(documentConditions, errors);
+        if (!IsAstKbReaderCeilingPolicy(action, userConditions, documentConditions))
+            ValidateSingleDocumentConditionKey(documentConditions, errors);
         ValidateDynamicBindings(action, userConditions, documentConditions, errors);
 
         return errors;
@@ -211,6 +212,45 @@ public static class AbacValidation
     //
     // **利用者条件は対象外である** —— 潰しているのは文書条件の側だけであり、利用者条件は
     // 「すべて満たすか」の判定にしか使われない。
+    // FR-05, FR-09, 計画 ADR-0125 決定 1・2, [[IADR-0500]] 決定 4 (#1755):
+    // **上の「文書条件は 1 キーまで」の、ただ 1 つの例外。** AST の KB の読み手の read ポリシーは、
+    // 文書の条件を `project ∈ {ai-stock-trading}` ∧ `confidentiality ⊆ {public, internal}` の 2 キーで持つ
+    // （ADR-0125 決定 2 の機密区分の上限。1 キーずつのポリシーに分けると和になり、上限が効かない）。
+    //
+    // 🔴 **形を値まで固定するのは、例外がキー単位 union の過剰許可を生まないための条件だからである。**
+    //   例外に当たるポリシーはどれも `project` の値が `ai-stock-trading` 1 つで、機密区分は public・internal の部分集合である。
+    //   したがって、これらと 1 キーのポリシーをキー単位で潰しても、通る文書（`project=ai-stock-trading` かつ区分 v）には
+    //   v を許した例外のポリシーか、v を許した機密区分 1 キーのポリシーが**単独で**許可を与えている —— planning#470 の
+    //   「どのポリシー単独も許可しない混成」は生じない。値を広げる（別の project・confidential 以上）と、この論証が崩れる。
+    // 🔴 **利用者の条件も固定する**（`projects ∋ ai-stock-trading` だけ。ADR-0125 決定 1 の条件 1〜3。clearance を足すと
+    //   階段の段と並んで同じ主体にマッチする）。action は read だけ（同 条件 4）。
+    private static readonly string[] AstKbReaderCeiling = ["public", "internal"];
+
+    internal static bool IsAstKbReaderCeilingPolicy(
+        string? action,
+        Dictionary<string, List<string>>? userConditions,
+        Dictionary<string, List<string>>? documentConditions)
+    {
+        if (!string.Equals(action, PolicyAction.Read, StringComparison.Ordinal)) return false;
+        if (userConditions is not { Count: 1 } || documentConditions is not { Count: 2 }) return false;
+        if (!IsExactly(userConditions, "projects", out var projects)
+            || projects is not ["ai-stock-trading"]) return false;
+        if (!IsExactly(documentConditions, "project", out var project)
+            || project is not ["ai-stock-trading"]) return false;
+        if (!IsExactly(documentConditions, "confidentiality", out var ceiling)
+            || ceiling.Count == 0 || ceiling.Distinct(StringComparer.Ordinal).Count() != ceiling.Count
+            || !ceiling.All(v => AstKbReaderCeiling.Contains(v, StringComparer.Ordinal))) return false;
+        return true;
+
+        static bool IsExactly(Dictionary<string, List<string>> conditions, string key, out List<string> values)
+        {
+            values = [];
+            if (!conditions.TryGetValue(key, out var found) || found is null) return false;
+            values = found;
+            return true;
+        }
+    }
+
     private static void ValidateSingleDocumentConditionKey(
         Dictionary<string, List<string>>? documentConditions, List<string> errors)
     {

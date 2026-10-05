@@ -575,3 +575,4 @@
 | [IADR-0495](./IADR-0495_connector-secret-vault-read-path-dedicated-prefix.md) | コネクタの資格情報は datasource-service が専用接頭辞 secret/data/datasource/* の read だけを持つ k8s auth ロールで Vault の KV v2 から読む。ESO の msp/* の外に置き、Vault が読めなければ平文へ倒さず失敗する（#458 段 S1） | Accepted |
 | [IADR-0496](./IADR-0496_cluster-detection-phase-from-last-success.md) | 日次のクラスタ検出は位相を前回の成功に付ける。成功の時刻を graph_batch_runs に検出と同じ保存で書き、起動の短い待ち（既定 2 分）の後にリースの内側で期限を判定して取りこぼしを追いつく。失敗は試行の記録で指数バックオフする。最後の成功の時刻をゲージで出す（#1733） | Accepted |
 | [IADR-0497](./IADR-0497_high-confidentiality-lexical-index-vectorless-collection.md) | 高機密文書（confidential・restricted・未指定・未知）は埋め込みを呼ぶ前に分け、ベクトルを持たない専用のコレクション（語彙索引）へ全文索引だけで書く。検索は語彙索引を全文の系統だけで束ね、意味検索のモードには入れない（#1746 段 S1） | Accepted |
+| [IADR-0500](./IADR-0500_ast-kb-reader-confidentiality-ceiling.md) | AST の KB の読み手の read ポリシーの文書の条件へ機密区分の上限（public・internal）を足し、保存時の「1 キーまで」に値まで固定した例外を置く（IADR-0492 決定 1 の部分改定。#1755） | Accepted |
