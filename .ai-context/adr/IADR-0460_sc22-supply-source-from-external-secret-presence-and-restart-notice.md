@@ -2,10 +2,10 @@
 title: IADR-0460 SC-22 の供給元は同期先 ExternalSecret の有無から境界層が判定して 3 値（screen / git / unknown）で返し、画面は送る前に消費側の再起動を項目ごとに告げる
 type: impl-adr
 status: Accepted
-related_ids: [SC-22, FR-05, NFR-18, ADR-0095, ADR-0104, IADR-0433, IADR-0453, IADR-0456, ADR-0110]
+related_ids: [SC-22, FR-05, NFR-18, ADR-0095, ADR-0104, IADR-0433, IADR-0453, IADR-0456, ADR-0110, ADR-0126, IADR-0501]
 author: claude
 created: 2026-09-25
-updated: 2026-09-26
+updated: 2026-10-06
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0104_sc22-item-kinds-and-dual-path-for-env-ids.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
@@ -131,3 +131,14 @@ planning#652（本 IADR が起点の環流）の裁定を計画 ADR-0110（Accep
 
 - Supersedes: なし（IADR-0456 に同日付の追記を置いた —— 同 決定 4 の Role の `get` を一覧が使うようになったこと）
 - Superseded by: なし
+
+## ［2026-10-06 追記 / #458・S2・S3］群「データソースの資格情報」の供給元（計画 ADR-0126 決定 4 / IADR-0501 決定 4）
+
+- 🔴 **本 IADR の判定（同期先 ExternalSecret の有無）は、群には当てない。** 計画 ADR-0126 決定 4 が ADR-0110 決定 1・3 をこの群に限って部分改定した ——
+  群の値は ExternalSecret を経ず、コネクタが実行時に Vault から読む。
+- 群の供給元は**データソースの設定の参照の有無**で判定する（DataSourceService が `reference` / `other` / `absent` の符号だけを返す）。
+  参照あり・値なし → `screen`（表示「画面（実行時に取得・次の同期から効く）」）、平文など → `git`（表示「画面以外」）、判定できない → `unknown`。
+  **契約の値（3 値）は増やしていない。**
+- 群では**再起動の確認を出さない**（確認ダイアログを置かない）。同期依頼もしない。
+- 静的な項目の供給元と再起動の確認は本 IADR のまま変わらない。詳細は [IADR-0501](./IADR-0501_sc22-datasource-credential-group.md)。
+

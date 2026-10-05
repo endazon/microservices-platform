@@ -578,3 +578,4 @@
 | [IADR-0498](./IADR-0498_claude-rerank-stage-at-search-exit.md) | 検索結果の候補は、検索サービスの唯一の出口で Claude（用途 rerank・claude-haiku-4-5・ZDR 必須）に再順位付けさせる。RAG 回答と SC-02 の両方に効き、送るのは ABAC 後・ai_input が許す候補だけ、失敗は元の順で返す。既定は無効 | Accepted |
 | [IADR-0499](./IADR-0499_adr-0128-review-conditions-not-machine-checked.md) | 計画 ADR-0128 の見直し 3 条件（生成プロバイダの数と種類・運用 UI・共有範囲）は棚卸し（backlog-audit）で機械的に確かめない。報告だけの行も足さない。代わりに生成エンドポイントの定義を説明する機能仕様書へ照合の注記を書き、計画側の暫定手段と併せる（#1747） | Accepted |
 | [IADR-0500](./IADR-0500_ast-kb-reader-confidentiality-ceiling.md) | AST の KB の読み手の read ポリシーの文書の条件へ機密区分の上限（public・internal）を足し、保存時の「1 キーまで」に値まで固定した例外を置く（IADR-0492 決定 1 の部分改定。#1755） | Accepted |
+| [IADR-0501](./IADR-0501_sc22-datasource-credential-group.md) | SC-22 の群「データソースの資格情報」は基盤の BFF が仕組み（専用接頭辞の 1 階層・管理者だけ・値を返さない）を持ち、成員と参照の配置は knowledge がポートで供給する。書いた後に値の無いキーにだけ参照を置き、供給元は設定の参照の有無で判定する（#458 段 S2・S3） | Accepted |

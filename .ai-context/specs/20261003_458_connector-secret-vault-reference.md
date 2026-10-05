@@ -2,10 +2,10 @@
 title: 作業仕様書 — コネクタ資格情報を「Vault 移行までの暫定マスク」から Vault 参照へ移す（設計段・#458 残射程 a）
 type: spec
 status: draft
-related_ids: [FR-01, UC-04, SC-06, SC-22, NFR-18, ADR-0005, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0295, IADR-0403, IADR-0433, IADR-0453, IADR-0456, IADR-0485, IADR-0493, IADR-0495]
+related_ids: [FR-01, UC-04, SC-06, SC-22, NFR-18, ADR-0005, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124, ADR-0126, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0295, IADR-0403, IADR-0433, IADR-0453, IADR-0456, IADR-0460, IADR-0485, IADR-0493, IADR-0495, IADR-0501]
 author: claude
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-06
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md NFR-18
   - planning:projects/microservices-platform/03_usecases/01_usecases.md UC-04
@@ -15,6 +15,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0104_sc22-item-kinds-and-dual-path-for-env-ids.md 決定 2・3
   - planning:projects/microservices-platform/07_adr/ADR-0110_sc22-supplier-three-values-no-public-key-restart-confirmed-at-write.md 決定 1・3
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1
+  - planning:projects/microservices-platform/07_adr/ADR-0126_datasource-credentials-as-sc22-group-admin-write-runtime-supply.md 決定 1〜5（2026-10-06 追記）
 related_specs:
   - 20260828_issue-458_connector-credential-exposure
   - 20260906_issue-458_security-posture
@@ -514,3 +515,202 @@ $ git grep -ln "pg_dump" -- deploy scripts
 | 🟢 `Vault:Address` の起動時検証 | `ValidateOnStart` で空（Vault なし）か絶対の http / https の URI に限る（`VaultConnectorSecretOptions.IsAcceptableAddress`）。`VaultAddress_IsValidatedOnStart`（9 例。`IStartupValidator`） | A7 `ValidateOnStart` を外す → 殺した（4）／A8 スキームを問わない → 殺した（4） |
 
 `DataSourceService.Tests` は 431 → 448 件。
+
+## ［2026-10-06 追記 / #458・S2・S3］planning#716 の裁定（計画 ADR-0126）を受けた段 S2・S3
+
+### 経過と基点
+
+- planning#716 は 2026-10-03 に裁定された（利用者裁定 → 計画 **ADR-0126**。案 A を採用。完了記録は計画リポ
+  `projects/microservices-platform/10_feedback/20261003_datasource-credentials-sc22-group.md`）。本追記は裁定の本文
+  （ADR-0126 決定 1〜5・05_screens §SC-22 / §SC-06 の 2026-10-03 追記）を隣接クローン `project-planning` `main` `c3ad458`
+  で読んでから書いた。🔴 このクローンは shallow である（`git rev-parse --is-shallow-repository` → `true`）——
+  根拠はファイル本文の引用だけで、`git log` / `git blame` は使っていない。
+- 実装の基点は `origin/develop` `c63351de`（`git rev-parse --is-shallow-repository` → `false`）。S0（#1727）・S1（#1732）を含む。
+- 新 IADR は **IADR-0501**（着手時の develop の最大は 0497。0498〜0500 は並行作業が予約していたため取らない。
+  予約分はその後 develop へ入り、rebase 後の `check-adr-numbering.js` は欠番を返さない）。
+
+### 裁定の要点（ADR-0126 から。実装が従う線）
+
+| 決定 | 内容 | 本段での写像 |
+| --- | --- | --- |
+| 1 | SC-22 に「データソースの資格情報」の群。登録で 1 件増え、無効化で消える。パスは専用接頭辞 `datasource/<データソース ID>`。SC-06 は入力欄を置かず導線（「認証情報を設定」） | S2（群の一覧・書き込み）・S3（画面・導線） |
+| 2 | 書き込みの射程は**専用接頭辞（権限の層）**と**登録済みの ID（BFF のコード）**の両方。BFF には専用接頭辞への `create`・`patch` だけ（`read`・`list`・`delete` なし） | S2（policy・登録済みの検査） |
+| 3 | 群の書き込みは管理者だけ。運用者は閲覧だけ（項目名・未設定か・最終更新日時・最終更新者） | S2（認可）・S3（更新の操作を出さない） |
+| 4 | 供給元は ExternalSecret の有無で判定しない。参照あり →「画面」＋「実行時に取得・次の同期から効く」、平文 →「画面以外」、判定不能 →「確認できない」。再起動の確認は出さない | S2（判定）・S3（表示） |
+| 5 | 3 点セット: 読み取り側だけ実装済み。群・書き込み・画面は無い | 本段で「群・書き込み・画面」が入る。平文の移送（S4）と本番の Vault 有効化は残る |
+
+### 設計（IADR-0501 の要約）
+
+- **配置（ユニットの依存規則を守る形）**: 群の仕組み（認可・専用接頭辞・Vault への書き込み・監査・値を返さない）は
+  platform の BFF（`Platform.Bff/Foundation`）が持ち、**群の成員（登録済みのデータソース）と参照の配置**は knowledge の
+  BFF モジュールが `Platform.Shared.Infrastructure` のポート `ISecretItemGroupSource` を実装して供給する。
+  platform の基盤コードは DataSourceService も `Knowledge.Contracts` も参照しない（規則 1・例外 3 の内側）。
+- **群の宣言（単一情報源）**: `deploy/bootstrap/sc22-secret-items.json` に `groups[]` を足す
+  （`group: datasource-credentials`・`vaultPathPrefix: datasource`・`writers: admin`）。接頭辞は 1 セグメントで、
+  `items[]` のどのパスの先頭セグメントとも交わらないことを起動時に検査する（fail-closed）。
+- **Vault の権限**: 新しい policy `bff-secret-group-write`（`deploy/local/vault/eso/policy-bff-secret-group-write.hcl`）。
+  `secret/data/datasource/+` に `create`・`patch`、`secret/metadata/datasource/+` に `read` だけ。🔴 `+` は 1 セグメント
+  だけに一致する（`datasource/<ID>/<さらに下>` へは書けない）。metadata の `read` は静的な項目と同じ形
+  （版と作成時刻だけ。値を持たない）で、主要素 3 の「未設定」と最終更新日時に要る。role `bff-secret-writer` に既存の
+  `bff-secret-write` と並べて付ける。既存の静的 policy（完全一致・ワイルドカードなし）は変えない。
+- **DataSourceService の 2 端点**（`Features/DataSources/Credentials/`）:
+  - `GET /datasources/credentials`（管理者・運用者）: 有効で、コネクタが資格情報のキーを宣言するデータソースだけを返す。
+    キーごとに `reference`（`vault:datasource/<自分の ID>#<キー>` の正規の参照）/ `other`（平文・別の場所の参照）/
+    `absent`（値なし）。**値も参照の文字列も返さない。**
+  - `PUT /datasources/{id}/credentials/{key}/reference`（管理者だけ）: キーが `absent` のときだけ正規の参照を置く。
+    `reference` は何もしない。`other`（平文）は**置き換えない**（移送は段 S4。決定 4「画面以外」）。
+- **BFF の 2 端点**（`/bff/secrets/groups/{group}`）:
+  - `GET`（運用者・システム管理者）: 成員ごとに状態（KV 単位の 3 値）・版・最終更新日時・最終更新者・供給元と、
+    利用者がこの群を書けるか（`writable`）を返す。
+  - `PUT /{memberId}`（**管理者だけ**）: 認可 → 群 → **登録済みの検査（成員に無ければ 404。Vault へ届かない）** →
+    本文（上限つきの手読み。静的な項目と同じ）→ プロパティ（成員のキーに無ければ 400）→ 値・理由 → Vault へ 1 プロパティ →
+    書き込み記録 → 監査 → **参照の配置**（`absent` のときだけ）。応答は版・日時・書き込み後の供給元だけで、**値を返さない**。
+    ExternalSecret の同期依頼はしない（同期先が無い）。
+- **供給元**（決定 4）: 成員のキーのどれかが `other` →「画面以外」（契約の値 `git`）、それ以外 →「画面」（契約の値 `screen`）。
+  `absent` は「画面」とする —— 画面から書けば参照が置かれて次の同期から効くので、「書いても効かない」ではない。
+  BFF が成員を取れなければ一覧そのものを 502 にする（2 値へ寄せない）。書き込み後に参照の配置が失敗したら `unknown`。
+- **画面（S3）**: SC-22 に群の表を足す（項目名＝データソース名と種別、`datasource/<ID>`、最終更新日時と状態、最終更新者、
+  供給元「画面（実行時に取得・次の同期から効く）」／「画面以外」／「確認できない」、操作）。**更新の操作は `writable` のときだけ**。
+  更新フォームはマスク入力＋確認入力 2 度、再起動の確認の段は無い。SC-06 の各行（有効なもの）に
+  「認証情報を設定」（運用者には「認証情報の状態」）の導線 → `/admin/secrets?datasource=<ID>`。SC-22 はその行を強調し、
+  書ける利用者には更新フォームを開く。注記の文言を「認証情報は『秘密情報・接続設定の管理』画面で設定します」へ改める。
+
+### 母集合（規則 9・10。着手前に引いた）
+
+```console
+$ git grep -n -E "items\[\] だけ|6 項目|書き手は段 S2|段 S2|S2・S3|planning#716|Vault 管理です|認証情報はここに入力しない|データソース管理画面の更新で差し替える" -- docs deploy src scripts .ai-context/adr ':!src/ai-stock-trading' ':!*.po'
+$ git grep -ln -E "/bff/secrets|SecretItemStatusDto|sc22-secret-items" -- . ':!src/ai-stock-trading'
+```
+
+| 箇所 | この段で誤りになるか | 扱い |
+| --- | --- | --- |
+| `deploy/bootstrap/sc22-secret-items.json` の `$comment`「items[] だけが allowlist」 | 🔴 なる（群が加わる） | 群の行を足す |
+| `deploy/helm/.../values.yaml` L978「書ける項目は … items[] だけ」 | 🔴 なる | 群を併記 |
+| `docs/api/openapi.yaml` L3737 の注記 | 🔴 なる | 群の 2 端点を足し、注記を改める |
+| `deploy/local/vault/eso/policy-datasource-connector-read.hcl` L7「書き手は段 S2 以降で決める」 | 🔴 なる | 書き手（BFF の群 policy）を指す |
+| `ConnectorSecretVaultPolicyTests.cs` L97 のコメントと `BffWritePolicy_DoesNotCoverTheDedicatedPrefix` | 🔴 なる（BFF は群の policy で書ける） | 静的 policy は触れない・群 policy は書き込みだけで読めないこと、へ改める |
+| `docs/screens/SC-22_secret-item-management.md` L35「items[] だけ（6 項目）」 | 🔴 なる | 群の節を足す |
+| `docs/screens/SC-06_datasource-management.md`（注記・導線） | 🔴 なる | 導線と注記 |
+| `docs/operations/secret-rotation-runbook.md` L210「データソース管理画面の更新で差し替える」 | 既に誤り（S0 時点で記録済み）。この段で正しい面ができる | 「SC-22 の群で更新」へ改める |
+| `docs/security/security.md` §データソースのコネクタ資格情報 | 🔴 なる（書き込みの面ができた） | 書き込みの項を 1 つ足す（平文保存の「暫定」節は S4/S5 のまま） |
+| `docs/tests/SC-22_secret-item-management.md` | 試験が増える | 群の行を足す |
+| `DataSourceManagementPage.tsx` L293 の注記と試験 L393 | 🔴 なる | 文言と試験を改める |
+| `DataSourceForm.tsx` L21「認証情報はここに入力しない」 | ならない（入力欄は置かない） | 変えない |
+| IADR-0403 決定 8・IADR-0433・IADR-0460・IADR-0495 | 凍結記録 | 日付つき追記で IADR-0501 を指す（本文は書き換えない） |
+| `secret-rotation-runbook.md` L34「`items[]`（6 項目）」・`docs/tests/SC-22` T-10/T-27/T-29「6 項目」 | ならない（静的な項目の数は変わらない） | 変えない |
+
+除外: `.ai-context/specs/`（凍結）・`src/ai-stock-trading`（別プロジェクト）・`6 項目` の他の文脈（通知・gRPC）。
+
+### 窓（規則 11）
+
+本段の窓は「SC-22 で書く」と「参照を置く」の間（2 つの書き込みが別の器にある）。
+
+- **増える側のプローブ P+**: 値が無い（`absent`）データソースへ画面で書く → 次の同期が書いた値で認証する。
+- **減る側のプローブ P−**: 平文（`other`）を持つデータソースへ画面で書く → 同期は**平文のまま**（画面の値に切り替わらない。移送は S4）。
+
+| 形 | P+ | P− |
+| --- | --- | --- |
+| 後の端だけ（Vault へ書くだけで、参照は置かない） | 🔴 ×（参照が無いので書いた値は使われない） | ○ |
+| 前の端だけ（参照を常に置く＝平文を参照で上書き） | ○ | 🔴 ×（平文の移送を画面が黙って行う。決定 4 の「画面以外」と食い違い、Vault の値が平文と違えば同期の認証が変わる） |
+| **両端**（Vault へ書いた**後**に、`absent` のときだけ参照を置く） | ○ | ○ |
+
+順序: **Vault が先、参照が後。** 逆にすると参照の置かれた行が値の無い Vault を指し、次の同期が `not-found` で止まる
+（fail-closed なので漏れはしないが、書き込み失敗時に同期を壊す）。BFF の試験で 2 プローブと順序を `[Fact]` で固定する
+（`Write_to_a_member_without_a_value_writes_vault_then_places_the_reference`・`Write_to_a_member_with_plaintext_keeps_it_and_reports_not_screen`）。
+
+### 受け入れ基準と試験（S2・S3）
+
+| # | 受け入れ基準 | 試験 |
+| --- | --- | --- |
+| AC-1 | 群の書き込みは管理者だけ。運用者は 403（監査に残り、Vault へ届かない）。未認証 401 | BFF `Group_write_is_admin_only_and_operator_denial_is_audited_without_touching_vault`・`Anonymous_gets_401_for_the_group` |
+| AC-2 | 運用者・管理者は一覧を引ける。他ロールは 403。一覧は `writable` を役割どおりに返す | BFF `Group_list_is_open_to_operators_and_admins_and_reports_writable_by_role`・`Other_roles_get_403_for_the_group_list` |
+| AC-3 | 未登録・無効・資格情報を持たない種別の ID へは 404 で、Vault へ届かない | BFF `Unregistered_member_gets_404_and_vault_is_never_touched` |
+| AC-4 | 書き込みは専用接頭辞の 1 セグメントの下だけ（ID の形が崩れていれば 404。`..` やスラッシュを Vault のパスに入れない） | BFF `Malformed_member_ids_never_reach_vault`・`Write_goes_to_the_dedicated_prefix_path_only` |
+| AC-5 | 値は応答・監査・ログのどこにも出ない | BFF `Group_write_never_echoes_the_value_in_response_audit_or_logs` |
+| AC-6 | policy は専用接頭辞の `+` に `create`・`patch`（data）と `read`（metadata）だけ。`msp/*`・AST・`list`・`delete` なし。role に付く | BFF `SecretItemGroupVaultPolicyTests`（5 件） |
+| AC-7 | 供給元: 参照 → 画面、平文 → 画面以外、値なし → 画面、成員が取れない → 502 | BFF `Supply_source_follows_the_members_credential_state`・`Registry_unavailable_returns_502_not_an_empty_group` |
+| AC-8 | 書いた後、値なしのキーにだけ正規の参照が置かれる（窓の両端） | BFF 上記 2 件・DataSourceService `PlaceReference_*`（4 件） |
+| AC-9 | DataSourceService の一覧は有効・資格情報を持つ種別だけを返し、値も参照の文字列も返さない。参照の配置は管理者だけ | DataSourceService `ListCredentials_*`・`PlaceReference_is_admin_only` |
+| AC-10 | 群の宣言は fail-closed（接頭辞が `items[]` と交わる・書き手が admin 以外・形の誤り） | BFF `SecretItemCatalogTests` の群の 4 件 |
+| AC-11 | 画面: 群の表・未設定・供給元の 3 値・運用者に更新を出さない・更新フォーム（確認入力 2 度・再起動の確認なし）・`?datasource=` で行を強調 | Vitest `DataSourceCredentialGroupPanel.test.tsx` |
+| AC-12 | SC-06: 各行の導線（管理者「認証情報を設定」・運用者「認証情報の状態」）と注記 | Vitest `DataSourceManagementPage.test.tsx` |
+| AC-13 | e2e スモーク: SC-22 に群が出る（運用者に更新が無い）・SC-06 から導線で SC-22 へ | `sc22-secrets.smoke.spec.ts` / `sc06-datasources.smoke.spec.ts` に各 1 本 |
+
+### 対象外（本段）
+
+- **S4（平文の移送と平文の書き込み拒否）**: 既存行の平文は `other` のまま残り、画面は「画面以外」と出す。
+- 本番で Vault を読む配備の値（ADR-0126 フォローアップ 3）。
+- 無効化したデータソースの Vault の値の扱い（フォローアップ 4。計画・実装の両方で未決）。
+
+### 実装の結果（S2・S3）
+
+- 実装は §設計（IADR-0501 の要約）どおり。着手後に変えた点は 2 つ:
+  1. 🔴 **群の認可のヘルパは群の端点のファイルに置いた。** 当初は静的な項目の `DenyUnlessWriterAsync` にポリシーを引数で渡す形にしたが、
+     `check-bff-authz-docs.js` は同一ファイルのヘルパ本体の `AuthorizeAsync(…, PlatformAuthPolicies.X)` から実効ロールを読むため、静的な項目の 2 端点が
+     「ロール制約なし」、群の `GET` が（`writable` の判定を拾って）「管理者だけ」と読まれた。ヘルパを各ファイルへ戻し（ポリシー名は本体に直書き）、
+     表示用の `writable` の判定はポリシー名を変数で渡す別のヘルパにした（閲覧の可否ではないため）。拒否の記録（`Forbidden`）だけを共有する。
+  2. 成員 ID の形の試験（`Member_id_pattern_admits_only_one_lowercase_segment`）を足した。後段の一覧が 2 段目の守りになり、形の検査を外す変異が
+     端点の試験だけでは生き残り得るため（下の M4）。
+- `..`・`%2e%2e` の ID は URI の正規化で 1 段上（`PUT /bff/secrets/groups` ＝ 静的な項目 `groups`）へ畳まれて 400 になる（どちらでも Vault へは届かない。試験は 404 と 400 の両方を許す）。
+
+### 変異試験（1 つずつ当てて戻した。スクリプト `scratchpad/mut/run.py` で適用・試験・復元）
+
+BFF はフィルタ `SecretItemGroup|SecretItemCatalog`、DataSourceService は `DataSourceCredentialGroup|ConnectorSecretVaultPolicy`、画面は当該の Vitest ファイル。
+
+| # | 変異（守りの種類） | 結果（赤の件数） |
+| --- | --- | --- |
+| M1 | 群の書き込みの認可を `SecretItemWriter`（運用者も可）へ緩める（認可） | 殺した（1） |
+| M2 | 群の一覧の認可を `AdminOnly` へ狭める（認可） | 殺した（1） |
+| M3 | 登録済みの検査を外す（成員の照合を常に真）（射程） | 殺した（3） |
+| M4 | 成員 ID の形の検査を外す（射程） | 殺した（9） |
+| M5 | Vault のパスから接頭辞を落とす（射程） | 殺した（4） |
+| M6 | 書き込みの応答に値を載せる（値を返さない） | 殺した（2） |
+| M7 | 監査の detail に値を載せる（値を返さない） | 殺した（1） |
+| M8 | 参照を Vault への書き込みより前に置く（窓の順序） | 殺した（2） |
+| M9 | 値なしを「画面以外」に数える（供給元） | 殺した（1） |
+| M10 | 平文を無視して常に「画面」（供給元） | 殺した（3） |
+| M11 | `writable` を常に真（認可の表示） | 殺した（1） |
+| M12 | 成員が取れないとき空の群へ縮退（失敗の可視化） | 殺した（1） |
+| M13 | 群の接頭辞と `items[]` の交差を検査しない（宣言の fail-closed） | 殺した（1） |
+| M14 | 群の書き手に `admin` 以外を受け入れる（宣言の fail-closed） | 殺した（1） |
+| M15 | 群の policy を `+` から `*` へ広げる（権限の層の射程） | 殺した（3） |
+| M16 | 群の policy の data に `read` を足す（値を読み返さない） | 殺した（1） |
+| M17 | 参照の配置で平文も置き換える（窓の減る側） | 殺した（1） |
+| M18 | 参照の配置の端点から `AdminOnly` を外す（後段の認可） | 殺した（1） |
+| M19 | 群の成員に無効なデータソースも入れる（射程） | 殺した（1） |
+| M20 | どんな `vault:` 参照でも `reference` とする（供給元） | 殺した（1） |
+| M21 | 成員の一覧に設定の値を載せる（値を返さない） | 殺した（3） |
+| M22 | 画面: `writable` を無視して「更新」を出す（認可の表示） | 殺した（2） |
+| M23 | 画面: 「実行時に取得・次の同期から効く」を落とす（供給元の表示） | 殺した（1） |
+| M24 | SC-06: 無効なソースにも導線を出す（導線） | 殺した（1） |
+
+### 検証（2026-10-06）
+
+- `dotnet build`（platform・knowledge）→ エラー 0（警告は未変更の `IngestToSearchQdrantTests.cs` の CS0618 だけ。既存）
+- `dotnet test` platform → 全件成功（`Platform.Bff.Tests` 837 ＋ skip 1）。knowledge → `DataSourceService.Tests` 448 → 464 件すべて成功。
+  🔴 `Knowledge.IntegrationTests` の `ObjectStorageRoundTripTests` 3 件が S3 互換ストレージのコンテナの内部エラーで失敗（本変更と無関係。本環境のコンテナ起因）
+- `dotnet format --verify-no-changes`（両ユニット）→ 差分なし
+- `src/`: `pnpm install --frozen-lockfile`・`lint`（エラー 0。警告は既存）・`typecheck`・`format:check`・`build`・`codegen` の再生成差分なし・`i18n` の再生成差分なし・
+  `check-i18n-catalogs` OK・`test:coverage` 1827 件（🔴 本環境 4 コアでは 5 秒の既定タイムアウトで落ちる試験が実行ごとに入れ替わって出る —— SC-22 の既存 3 件のほか
+  `searchFlow`・SC-10 も。単独実行では全件成功し、SC-22 の既存試験の所要時間は変更の前後で同じ〔約 0.5〜1 秒〕）・Playwright 全 76 件成功
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` → rebase 前は `check-adr-numbering` の IADR-0498〜0500 の欠番（予約）だけで止まった（予約番号の仮ファイルを置くと 918 件すべて成功）。rebase 後の結果は PR 本文に記す
+- 文書・規約: `check-trace-blocks`・`check-test-traceability`・`gen-knowledge-graph --check`・`check-cross-repo-refs`・`check-plan-id-qualification`・`check-doc-links`・
+  `check-unit-dependencies`・`check-openapi-dto-drift`・`check-bff-authz-docs` → OK。`check-contract-schema --update`・`check-test-spec-coverage --update` で基準を更新（型の追加・仕様書 × クラスの対の追加）
+- コミット後に `check-doc-updated --base origin/develop`・`check-commit-messages --range origin/develop..HEAD`・gitleaks を走らせる（PR 本文に記す）
+
+### 残余リスク（S2・S3 の時点）
+
+- 🔴 **接頭辞の内側では、登録済みの ID への限定は BFF のコードに依る**（ADR-0126 §結果 が受容した形）。
+- 🔴 **既存の平文の行は「画面以外」のまま**（画面で書いても使われない）。段 S4 まで。
+- 🔴 **本番は Vault を読まない**（helm の既定）。群で書いた値が本番で効くのは配備の値を改めた後。
+- 🔴 **無効化したデータソースの値は Vault に残る**（削除の権限が無い。ADR-0126 フォローアップ 4）。
+- 群の policy の `+` と metadata の `read` は、実 Vault に対して未実測（試験は字面と偽の Vault）。稼働クラスタでの疎通は #458 の残射程 4 と同じ場。
+- 書き込みの後の参照の配置は 2 つ目の要求であり、Vault の書き込みと原子的ではない（失敗すると供給元 `unknown` を返し、更新し直しで直る。参照が無いままなら同期は認証なしのまま —— 書く前と同じ状態）。
+
+### 段 S4 に要るもの
+
+- 既存の行の秘密キー（`Config` の `apiToken` / `password`）を `datasource/<ID>` へ移し、正規の参照（`ConnectorSecretReference.CanonicalFor`）へ置き換える一回きりのジョブ
+  （書き手は運用者のトークン。BFF 経由ではない。冪等）。本段の `PlaceCredentialReference` は値なしのキーにしか置かないので、移送は別の経路で `other` → `reference` へ移す。
+- 移送期間フラグと readiness 検査（平文の行の件数＝`CredentialSupplyOf` が `other` を返すキーのうち `vault:` で始まらないものが 0 件）。§窓 1 の表 3 列を `[Fact]` で実測する。
+- 移送の後、`Create` / `Update` / `Patch` で秘密キーへの平文の書き込みを 400 で拒む（`vault:` の正規の参照と `***` の書き戻しだけを通す）。
+- 文書（S5）: `docs/security/security.md` の「暫定」節の恒久化、`docs/functional/FR-01_data-source-catalog.md`、runbook の版での戻しの手順。

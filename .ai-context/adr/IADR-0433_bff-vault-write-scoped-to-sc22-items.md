@@ -2,10 +2,10 @@
 title: IADR-0433 BFF の Vault 書き込みは項目ごとの許可で与え、値を読み返せない形にする
 type: impl-adr
 status: Accepted
-related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0040, ADR-0042, ADR-0095, ADR-0032, ADR-0007, ADR-0124, IADR-0485]
+related_ids: [SC-22, FR-05, NFR-11, NFR-18, ADR-0040, ADR-0042, ADR-0095, ADR-0032, ADR-0007, ADR-0124, ADR-0126, IADR-0485, IADR-0501]
 author: claude
 created: 2026-09-11
-updated: 2026-09-28
+updated: 2026-10-06
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
@@ -280,3 +280,13 @@ ADR-0095 の統制の表が「決定 3 を実装する時点で同時に配備�
 
 - Supersedes: なし
 - Superseded by: なし
+
+## ［2026-10-06 追記 / #458・S2］群の書き込み policy（計画 ADR-0126 決定 2 / IADR-0501 決定 2）
+
+- 🔴 **決定 1（完全一致パスだけ・ワイルドカードを禁じる）は、静的な項目（`items[]`）について有効のままである。** `policy-bff-secret-write.hcl` は変えていない。
+- SC-22 の**群**（実行時に成員が増える項目。いまは「データソースの資格情報」）は完全一致パスで書けないため、計画 ADR-0126 決定 2 が ADR-0095 決定 3 を補完し、
+  「群については、専用接頭辞の下にある登録済みの ID の集合」と読むことを定めた。これを受けて**別の policy ファイル** `policy-bff-secret-group-write.hcl` を足した
+  （`secret/data/datasource/+` に `create`・`patch`、metadata に `read`。`*`・`list`・`delete`・`update`・data の `read` は無い）。同じ role `bff-secret-writer` に並べて付ける。
+- 決定 3（項目集合の単一情報源）は `groups[]` を足して広げた。決定 6（監査に値を残さない）・決定 7（値を読み出す口を作らない）は群にもそのまま効く。
+- 詳細は [IADR-0501](./IADR-0501_sc22-datasource-credential-group.md)。
+

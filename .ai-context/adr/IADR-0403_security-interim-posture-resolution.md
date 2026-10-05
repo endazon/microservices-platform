@@ -25,9 +25,10 @@ related_ids:
   - IADR-0465
   - IADR-0493
   - IADR-0495
+  - IADR-0501
 author: claude
 created: 2026-09-06
-updated: 2026-10-03
+updated: 2026-10-06
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md 決定
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md 決定
@@ -311,6 +312,11 @@ ESO マニフェストは **25 本**（`deploy/local/vault/eso/`）で、うち 
 ［2026-10-03 追記 / #458・S1］🔴 **参照のパスと Vault 解決器は [IADR-0495](./IADR-0495_connector-secret-vault-read-path-dedicated-prefix.md) が決めた。**
 接頭辞は `msp/` の外の `datasource/`（`vault:datasource/<…>#<key>`）で、datasource-service の role の policy は `secret/data/datasource/*` の `read` だけ（ESO の policy は変えず、その接頭辞を読めない）。
 Vault とは素の HttpClient で話し、VaultSharp は入れない（IADR-0495 決定 2）。
+
+［2026-10-06 追記 / #458・S2・S3］🔴 **段 1（データソースの API が秘密を受け取り Vault へ書く）は採らないと決まった。** planning#716 は計画 ADR-0126 で裁定され、
+投入の面は SC-22 の群「データソースの資格情報」（書き込みは管理者だけ・専用接頭辞と登録済みの ID の両方で限る）になった。
+実装は [IADR-0501](./IADR-0501_sc22-datasource-credential-group.md) —— BFF が `datasource/<ID>` へ書き、その後に DataSourceService が値の無いキーにだけ参照を置く
+（本文を受け取らない端点。平文は置き換えない）。段 3 のうち既存の行の移送と移送後の平文の拒否は段 S4 のまま残る。
 
 ## 結果
 

@@ -2,10 +2,10 @@
 title: IADR-0495 コネクタの資格情報は datasource-service が専用接頭辞 secret/data/datasource/* の read だけを持つ k8s auth ロールで Vault の KV v2 から読む。ESO の msp/* の外に置き、素の HttpClient で話し、Vault が読めなければ平文へ倒さず失敗する
 type: impl-adr
 status: Accepted
-related_ids: [FR-01, UC-04, SC-06, SC-22, NFR-18, ADR-0005, ADR-0095, IADR-0096, IADR-0117, IADR-0295, IADR-0403, IADR-0433, IADR-0453, IADR-0493]
+related_ids: [FR-01, UC-04, SC-06, SC-22, NFR-18, ADR-0005, ADR-0095, IADR-0096, IADR-0117, IADR-0295, IADR-0403, IADR-0433, IADR-0453, IADR-0493, ADR-0126, IADR-0501]
 author: claude
 created: 2026-10-03
-updated: 2026-10-03
+updated: 2026-10-06
 plan_refs:
   - planning:projects/microservices-platform/06_technical/09_datasource-connectors.md §認証・秘匿情報（Vault で集中管理し、コネクタは実行時に取得する）
   - planning:projects/microservices-platform/02_requirements/01_requirements.md NFR-18
@@ -141,3 +141,9 @@ related_specs:
 
 - Supersedes: なし（[[IADR-0403]] 決定 8 の `msp/datasource/<id>` のパスは本 IADR 決定 1 が改める。IADR-0403 には日付つき追記で指す）
 - Superseded by: なし
+
+［2026-10-06 追記 / #458・S2］本 IADR の「書き手は段 S2 以降」は [IADR-0501](./IADR-0501_sc22-datasource-credential-group.md) が決めた —— 書き手は BFF
+（SC-22 の群「データソースの資格情報」。計画 ADR-0126）で、policy は `secret/data/datasource/+` に `create`・`patch` だけ（data の `read` は無い）。
+読み手（本 IADR の `datasource-connector-read`）と書き手の接頭辞は対であり、`ConnectorSecretVaultPolicyTests` が両方の字面で固定する。
+接頭辞の定数は Domain の `ConnectorSecretReference.DedicatedPathPrefix` に移し、解決器の `PathPrefix` はそれを指す（値は同じ `datasource/`）。
+
