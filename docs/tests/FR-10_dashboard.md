@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-10 利用状況・検索傾向・回答品質�
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-09-27
+updated: 2026-10-05
 author: claude
 ---
 <!-- trace:
-ids: [FR-10, FR-17, FR-18, FR-19, UC-05, SC-10]
+ids: [FR-10, FR-17, FR-18, FR-19, UC-05, SC-10, NFR-19]
 adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071, ADR-0072]
 iadrs: [IADR-0011, IADR-0122, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367, IADR-0408]
-specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention, 20260926_issue-1598_maintenance-loop-foreign-cancellation, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1637_grpc-client-caller-cancellation]
-issues: [#443, #1186, #1197, #1198, #1598, #1604, #1622, #1637, planning#494, planning#514, planning#515, planning#525, planning#526]
+specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention, 20260926_issue-1598_maintenance-loop-foreign-cancellation, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1637_grpc-client-caller-cancellation, 20261005_1743_out-of-period-tests]
+issues: [#443, #1186, #1197, #1198, #1598, #1604, #1622, #1637, #1743, planning#494, planning#514, planning#515, planning#525, planning#526]
 -->
 
 # テスト仕様書: 利用状況・検索傾向・回答品質ダッシュボード
@@ -130,6 +130,8 @@ T-74 / T-75 の 2 本**）。境界は**上下から**固定する —— 基準
 | T-38 | LlmGateway | 単価を解決できない補完 | **金額を記録せず**、解決漏れのカウンタが増える |
 | T-39 | LlmGateway | 未定義の用途 | `other` へ集約（カーディナリティを閉じる） |
 | T-40 | LlmGateway | **系列名・ラベル名の契約** | ダッシュボードが依存する名前が固定される |
+| T-41 | LlmGateway | どの区間にも該当しない時刻 / 未登録モデル / 解決できた呼び出し（陰性対照） | 前 2 者は **Warning のログがちょうど 1 件**出て本文にモデル名を含む。解決できた呼び出しはログを出さない（状態だけを見る T-34 では警告を消しても緑のままだった） |
+| T-42 | LlmGateway | 期間の区切りのある単価表で**区間外の時刻**に計上 | 解決漏れのカウンタの状態属性が **`out_of_period`**（`no_entry` ではない）。金額は記録しない（T-38 は未登録の経路しか通っていなかった） |
 
 ### ナレッジ健全性の観測値の生産（GraphService 側）
 
