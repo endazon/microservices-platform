@@ -3,7 +3,9 @@ using DataSourceService.Features.DataSources.Create;
 using DataSourceService.Features.DataSources.Disable;
 using DataSourceService.Features.DataSources.GetById;
 using DataSourceService.Features.DataSources.List;
+using DataSourceService.Features.DataSources.ListCredentials;
 using DataSourceService.Features.DataSources.Patch;
+using DataSourceService.Features.DataSources.PlaceCredentialReference;
 using DataSourceService.Features.DataSources.Sync;
 using DataSourceService.Features.DataSources.Update;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -35,6 +37,9 @@ public static class DataSourceEndpoints
         UpdateDataSourceEndpoint.Map(g);
         PatchDataSourceEndpoint.Map(g);
         DisableDataSourceEndpoint.Map(g);
+        // SC-22, 計画 ADR-0126, [[IADR-0501]] 決定 3 (#458 段 S2): SC-22 の群の成員と参照の配置。
+        ListDataSourceCredentialsEndpoint.Map(g);
+        PlaceCredentialReferenceEndpoint.Map(g);
 
         return app;
     }

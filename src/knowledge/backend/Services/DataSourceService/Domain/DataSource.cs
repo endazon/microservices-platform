@@ -405,6 +405,43 @@ public class DataSource
     }
 
     public void Disable() => Status = DataSourceStatus.Disabled;
+
+    // SC-22, 計画 ADR-0126 決定 4, [[IADR-0501]] 決定 3 (#458 段 S2): 資格情報のキー 1 つの供給の事実。
+    //   - `reference`: 自分の正規の参照（`vault:datasource/<自分の ID>#<キー>`）を持つ —— 画面から書いた値が使われる。
+    //   - `other`: 平文、または別の場所を指す参照を持つ —— 画面から書いた値は使われない（移送は段 S4）。
+    //   - `absent`: 値を持たない（空白だけも含む）。
+    // 🔴 **値も参照の文字列も外へ出さない。** 返すのは 3 つの符号だけである。
+    public string CredentialSupplyOf(string key)
+    {
+        if (!Config.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+            return DataSourceCredentialSupply.Absent;
+        return string.Equals(value.Trim(), ConnectorSecretReference.CanonicalFor(Id, key), StringComparison.Ordinal)
+            ? DataSourceCredentialSupply.Reference
+            : DataSourceCredentialSupply.Other;
+    }
+
+    // SC-22, 計画 ADR-0126 決定 1・4, [[IADR-0501]] 決定 3 (#458 段 S2): 画面（SC-22）で Vault へ書いた後に、
+    // **値を持たないキーにだけ**正規の参照を置く。
+    // 🔴 **平文（`other`）は置き換えない。** 平文の移送は段 S4 であり、ここで黙って行うと「画面以外」の表示
+    // （ADR-0126 決定 4）と食い違う。戻り値は配置後の供給の事実。
+    // `Config` は jsonb なので、辞書を**作り直して**代入する（同じインスタンスの変更は EF の変更検知に乗らない）。
+    public string PlaceCredentialReference(string key)
+    {
+        var supply = CredentialSupplyOf(key);
+        if (supply != DataSourceCredentialSupply.Absent)
+            return supply;
+
+        Config = new Dictionary<string, string>(Config) { [key] = ConnectorSecretReference.CanonicalFor(Id, key) };
+        return DataSourceCredentialSupply.Reference;
+    }
+}
+
+// SC-22, 計画 ADR-0126 決定 4, [[IADR-0501]] 決定 3 (#458 段 S2): 資格情報のキーの供給の事実（契約の値）。
+public static class DataSourceCredentialSupply
+{
+    public const string Reference = "reference";
+    public const string Other = "other";
+    public const string Absent = "absent";
 }
 
 public static class DataSourceStatus

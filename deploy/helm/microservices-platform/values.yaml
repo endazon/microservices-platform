@@ -976,6 +976,8 @@ services:
     # SC-22, NFR-18, IADR-0433, IADR-0453 決定 5 (#1411): 秘密情報の投入先（Vault の KV v2）。
     # **address の既定は空＝Vault を配備していない構成**。/bff/secrets は 503 を返し、NetworkPolicy の穴も開けない。
     # 書ける項目は deploy/bootstrap/sc22-secret-items.json の items[] だけ（BFF のイメージに同梱。policy は bootstrap.sh）。
+    # ［2026-10-06 / #458 段 S2・IADR-0501］加えて groups[] の群（データソースの資格情報。`datasource/<ID>`・管理者だけ）。
+    # 同じ role に群の policy（policy-bff-secret-group-write.hcl）を並べて付ける。
     vault:
       address: ""
       role: bff-secret-writer

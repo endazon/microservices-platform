@@ -17,16 +17,20 @@ import type {
 } from 'msw';
 
 import type {
+  SecretItemGroupDto,
+  SecretItemGroupWriteResultDto,
   SecretItemStatusDto,
   SecretItemWriteResultDto
 } from '../bff.schemas';
 
 import {
+  getBffSecretItemGroupListResponseMock,
+  getBffSecretItemGroupUpdateResponseMock,
   getBffSecretItemsListResponseMock,
   getBffSecretItemsUpdateResponseMock
 } from './secret-items.faker';
 
-export { getBffSecretItemsListResponseMock, getBffSecretItemsUpdateResponseMock } from './secret-items.faker';
+export { getBffSecretItemsListResponseMock, getBffSecretItemsUpdateResponseMock, getBffSecretItemGroupListResponseMock, getBffSecretItemGroupUpdateResponseMock } from './secret-items.faker';
 
 
 export const getBffSecretItemsListMockHandler = (overrideResponse?: SecretItemStatusDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<SecretItemStatusDto[]> | SecretItemStatusDto[]), options?: RequestHandlerOptions) => {
@@ -52,7 +56,33 @@ export const getBffSecretItemsUpdateMockHandler = (overrideResponse?: SecretItem
       })
   }, options)
 }
+
+export const getBffSecretItemGroupListMockHandler = (overrideResponse?: SecretItemGroupDto | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<SecretItemGroupDto> | SecretItemGroupDto), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/secrets/groups/:group', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffSecretItemGroupListResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
+export const getBffSecretItemGroupUpdateMockHandler = (overrideResponse?: SecretItemGroupWriteResultDto | ((info: Parameters<Parameters<typeof http.put>[1]>[0]) => Promise<SecretItemGroupWriteResultDto> | SecretItemGroupWriteResultDto), options?: RequestHandlerOptions) => {
+  return http.put('*/bff/secrets/groups/:group/:memberId', async (info: Parameters<Parameters<typeof http.put>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffSecretItemGroupUpdateResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
 export const getSecretItemsMock = () => [
   getBffSecretItemsListMockHandler(),
-  getBffSecretItemsUpdateMockHandler()
+  getBffSecretItemsUpdateMockHandler(),
+  getBffSecretItemGroupListMockHandler(),
+  getBffSecretItemGroupUpdateMockHandler()
 ]

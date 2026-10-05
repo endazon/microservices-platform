@@ -18,6 +18,7 @@ public sealed class ConnectorSecretVaultPolicyTests
     private static readonly string PolicyPath = RepoFile.Resolve("deploy/local/vault/eso/policy-datasource-connector-read.hcl");
     private static readonly string EsoPolicyPath = RepoFile.Resolve("deploy/local/vault/eso/policy-eso-read.hcl");
     private static readonly string BffPolicyPath = RepoFile.Resolve("deploy/local/vault/eso/policy-bff-secret-write.hcl");
+    private static readonly string BffGroupPolicyPath = RepoFile.Resolve("deploy/local/vault/eso/policy-bff-secret-group-write.hcl");
     private static readonly string BootstrapPath = RepoFile.Resolve("deploy/local/vault/eso/bootstrap.sh");
     private static readonly string ValuesPath = RepoFile.Resolve("deploy/helm/microservices-platform/values.yaml");
 
@@ -94,11 +95,39 @@ public sealed class ConnectorSecretVaultPolicyTests
         ParsePolicy(PolicyPath).Keys.Should().NotContain(p => PolicyPathMatches(p, request));
     }
 
-    // BFF の書き込み policy もこの接頭辞に触れない（書き手は段 S2 以降で決める。planning#716）。
+    // BFF の項目ごとの書き込み policy（完全一致パス）はこの接頭辞に触れない。
+    // ［2026-10-06 / #458 段 S2・計画 ADR-0126 決定 2・[[IADR-0501]] 決定 2］書き手は BFF の**群**の policy
+    // （`policy-bff-secret-group-write.hcl`）である。下の 2 件がその射程を固定する。
     [Fact]
     public void BffWritePolicy_DoesNotCoverTheDedicatedPrefix()
     {
         ParsePolicy(BffPolicyPath).Keys.Should().NotContain(p => PolicyPathMatches(p, "secret/data/datasource/ds-1"));
+    }
+
+    // 計画 ADR-0126 決定 2, [[IADR-0501]] 決定 2: BFF の群の policy は、読み手（本サービス）が読む 1 セグメントのパスへ
+    // **書けるが読めない**（data に read が無い）。読み手と書き手の接頭辞が対である。
+    [Fact]
+    public void BffGroupPolicy_WritesButCannotReadWhatTheConnectorReads()
+    {
+        var group = ParsePolicy(BffGroupPolicyPath);
+        var request = $"secret/data/{VaultConnectorSecretResolver.PathPrefix}3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+
+        PolicyPathMatches(DedicatedGlob, request).Should().BeTrue("陽性対照: 読み手の policy はこのパスを読める");
+        var writable = group.Where(kv => PolicyPathMatches(kv.Key, request)).ToList();
+        writable.Should().ContainSingle();
+        writable[0].Value.Should().Equal(["create", "patch"]);
+    }
+
+    // 🔴 群の policy は接頭辞の下の 1 セグメントにしか届かない（入れ子・接頭辞の外・基盤の秘密へは届かない）。
+    [Theory]
+    [InlineData("secret/data/datasource/nested/ds-2")]
+    [InlineData("secret/data/datasource")]
+    [InlineData("secret/data/datasourcex/ds-1")]
+    [InlineData("secret/data/msp/postgres")]
+    [InlineData("secret/data/ai-stock-trading/app-secrets")]
+    public void BffGroupPolicy_DoesNotReachBeyondOneSegmentUnderThePrefix(string request)
+    {
+        ParsePolicy(BffGroupPolicyPath).Keys.Should().NotContain(p => PolicyPathMatches(p, request));
     }
 
     [Fact]

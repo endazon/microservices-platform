@@ -100,7 +100,8 @@ public class SecretItemVaultPolicyTests
         var roleLine = bootstrap.Split('\n').Single(l => l.Contains("auth/kubernetes/role/bff-secret-writer", StringComparison.Ordinal));
         roleLine.Should().Contain("bound_service_account_names=bff ")
             .And.Contain("bound_service_account_namespaces=microservices-platform ")
-            .And.Contain("policies=bff-secret-write ")
+            // IADR-0501 決定 2 (#458 段 S2): 群の policy を同じ role に並べて付ける（新しい role は作らない）。
+            .And.Contain("policies=bff-secret-write,bff-secret-group-write ")
             .And.NotContain("default");
 
         bootstrap.Should().Contain("vault policy write bff-secret-write -' < \"$ROOT/deploy/local/vault/eso/policy-bff-secret-write.hcl\"");

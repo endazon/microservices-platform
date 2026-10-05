@@ -1,5 +1,6 @@
 using Knowledge.Bff.Endpoints.Documents;
 using Knowledge.Bff.Endpoints.Search;
+using Knowledge.Bff.Endpoints.Secrets;
 using Knowledge.Bff.Endpoints.Usage;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Authz;
@@ -215,6 +216,9 @@ builder.Services.AddBffSession(builder.Configuration);
 // SC-22, FR-05, ADR-0095 決定 3, IADR-0433, IADR-0453 (#1411): 秘密情報の投入（BFF → Vault の KV v2）。
 // allowlist（deploy/bootstrap/sc22-secret-items.json）・Vault クライアント・最終更新者の書き込み記録。
 builder.Services.AddSecretItemInjection();
+// SC-22, SC-06, 計画 ADR-0126 決定 1・2, IADR-0501 決定 1 (#458 段 S2): 群「データソースの資格情報」の成員の供給
+// （knowledge ユニットの BFF モジュールがポート `ISecretItemGroupSource` を実装する。合成点はこのホスト）。
+builder.Services.AddDataSourceCredentialGroup();
 
 var app = builder.Build();
 

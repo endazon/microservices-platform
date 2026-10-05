@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-04, FR-17, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
-adrs: [ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127]
-iadrs: [IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498]
+adrs: [ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127, ADR-0126]
+iadrs: [IADR-0501, IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498]
 specs: [20261006_1755_ast-kb-reader-confidentiality-cap, 20261003_458_connector-secret-vault-reference, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20261006_1746_claude-rerank]
-issues: [#1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672, planning#700, AST#1078]
+issues: [#1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672, planning#700, AST#1078, planning#716]
 -->
 
 # セキュリティ仕様書
@@ -404,7 +404,16 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
     datasource-service のロールの policy（`deploy/local/vault/eso/policy-datasource-connector-read.hcl`）は `secret/data/datasource/*` の
     `read` だけで、書き込み・一覧・削除を持たない。🔴 **ESO の policy（`secret/data/msp/*` ほか）はこの接頭辞を読めず、
     datasource-service は `msp/*` を読めない**（コネクタの資格情報を k8s Secret へ材料化させない）。一致は DataSourceService の試験が policy の字面で固定する。
-    参照を書き込む面はまだ無い（投入の面の型は計画の裁定待ち）。
+  - **書く経路（実装済み・2026-10-06）**: 資格情報の投入の面は秘密情報・接続設定の管理画面の群「データソースの資格情報」で、
+    **書けるのは管理者だけ**である（運用者は閲覧だけ。データソースの登録・更新と同じ）。BFF が `datasource/<データソース ID>` へ 1 プロパティずつ書く。
+    射程は 2 つの層で限る —— **接頭辞は権限の層**（BFF の群の policy `deploy/local/vault/eso/policy-bff-secret-group-write.hcl` は
+    `secret/data/datasource/+` の 1 階層に `create`・`patch`、metadata に `read` だけ。`read`（data）・`list`・`delete` は無い）、
+    **登録済みの ID は BFF のコード**（データソース管理のサービスが返す有効なデータソースに無い ID へは書かない）。
+    🔴 **接頭辞の内側では、登録済みの ID への限定はコードの検査に依る**（権限の層では接頭辞の下の任意の 1 階層へ書ける）。
+    値・値の長さは監査・ログ・応答のどこにも出さない。書いた後、設定が値を持たないキーにだけ参照（`vault:datasource/<ID>#<キー>`）を置き、
+    **平文は置き換えない**（平文の移送と、移送後の平文の書き込みの拒否は別段）。🔴 **無効化したデータソースの値は保管先に残る**（BFF にも
+    datasource-service にも削除の権限が無い。消すかどうかは未決）。
+    ~~参照を書き込む面はまだ無い（投入の面の型は計画の裁定待ち）。~~ ［2026-10-06］この項（書く経路）で解消した。
 - **残余リスク**: DB 直接アクセス・バックアップ流出・DB 侵害時に平文資格情報が露出し得る。鍵ローテーション・
   アクセス監査も未整備。**マスクは「アプリ層の露出」を塞ぐのみで、保存時の平文そのものは残る。**
 - **移行条件（To-Be）**: 実環境のシークレット設計（k8s Secret → External Secrets Operator / Vault）確定後、

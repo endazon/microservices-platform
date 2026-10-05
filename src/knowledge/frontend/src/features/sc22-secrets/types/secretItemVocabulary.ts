@@ -203,3 +203,35 @@ export function secretUpdateIssues(
   if (draft.reason.trim().length > MAX_REASON_LENGTH) issues.push('reason-too-long');
   return issues;
 }
+
+/**
+ * SC-22 の群「データソースの資格情報」の成員の種別の表示名（計画 ADR-0126 決定 1。SC-06 の種別と同じ語）。
+ * 未知の種別は識別子をそのまま出す（隠さない）。
+ */
+// SC-06 の種別の表示（`sourceTypeLabel`）と同じ語を同じ形（msg）で持つ。feature 間で import しない（公開面の外）ため複写する。
+const DATASOURCE_KINDS: Readonly<Record<string, MessageDescriptor>> = {
+  wiki: msg`Wiki`,
+  saas: msg`SaaS`,
+  db: msg`業務DB`,
+};
+
+export function dataSourceKindLabel(kind: string): MessageDescriptor | null {
+  return Object.prototype.hasOwnProperty.call(DATASOURCE_KINDS, kind)
+    ? DATASOURCE_KINDS[kind]
+    : null;
+}
+
+/**
+ * SC-22 の `/admin/secrets` の検索パラメータ（ルートの `validateSearch` の実体）。
+ *
+ * - `datasource`: SC-06 の導線から来たデータソース ID。群の当該行を強調し、書ける利用者には更新フォームを開く
+ *   （計画 ADR-0126 決定 1）。URL は外部由来なので、空文字・文字列以外は「無い」に倒す。
+ */
+export interface SecretsSearch {
+  datasource?: string;
+}
+
+export function validateSecretsSearch(raw: Record<string, unknown>): SecretsSearch {
+  const value = raw.datasource;
+  return { datasource: typeof value === 'string' && value !== '' ? value : undefined };
+}

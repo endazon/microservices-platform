@@ -106,6 +106,7 @@ msgstr "{title} を選択"
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} 件（権限内のみ表示）"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "{writtenProperty} を更新しました（版 {writtenVersion}）。"
 msgstr "{writtenProperty} を更新しました（版 {writtenVersion}）。"
@@ -409,6 +410,7 @@ msgid "related: 実線・細（向きなし）"
 msgstr "related: 実線・細（向きなし）"
 
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "SaaS"
 msgstr "SaaS"
 
@@ -421,6 +423,7 @@ msgid "URL を確かめるか、検索から辿り直してください。"
 msgstr "URL を確かめるか、検索から辿り直してください。"
 
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "Wiki"
 msgstr "Wiki"
 
@@ -520,6 +523,7 @@ msgstr "いまは、あなたの個人資料がすべて同期の対象です。
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 #: platform/frontend/src/app/routing/routeStates.tsx
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
@@ -679,6 +683,14 @@ msgstr "このタグは {inUseCount} 件の文書で使われているため削�
 msgid "このタグは辞書に無いため反映できません。却下してください。"
 msgstr "このタグは辞書に無いため反映できません。却下してください。"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "このデータソースの設定には、画面以外から入れた資格情報が残っています。書き込みはできますが、設定が保管先の値を参照するように移されるまで、書いた値は同期に使われません。"
+msgstr "このデータソースの設定には、画面以外から入れた資格情報が残っています。書き込みはできますが、設定が保管先の値を参照するように移されるまで、書いた値は同期に使われません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "このデータソースは登録されていないか、無効化されています。値は保存されていません。"
+msgstr "このデータソースは登録されていないか、無効化されています。値は保存されていません。"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "このトークンを表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
 msgstr "このトークンを表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
@@ -695,6 +707,7 @@ msgstr "このプロパティは値を入力しません。「生成」を押す
 msgid "このプロパティは秘密情報ではありません（環境ごとの ID など）。入力内容は表示されますが、保存後はこの画面から読み出せません。"
 msgstr "このプロパティは秘密情報ではありません（環境ごとの ID など）。入力内容は表示されますが、保存後はこの画面から読み出せません。"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "このプロパティを更新する"
 msgstr "このプロパティを更新する"
@@ -731,6 +744,10 @@ msgstr "この文書のタグを編集する権限がありません。"
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "この書き込みでは OpenD は再起動しません。書いた値を反映するには、書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で OpenD を手動で再起動してください。手動の再起動は稼働中の処理を中断し、SMS または画像の認証を再び求められることがあります。"
 msgstr "この書き込みでは OpenD は再起動しません。書いた値を反映するには、書き込み後に kubectl -n ai-stock-trading rollout restart deploy/opend で OpenD を手動で再起動してください。手動の再起動は稼働中の処理を中断し、SMS または画像の認証を再び求められることがあります。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "この画面で書いた値は使われません"
+msgstr "この画面で書いた値は使われません"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "この画面で書いた値は反映されません"
@@ -771,6 +788,10 @@ msgstr "この項目の供給元を確認できません。書いた値がアプ
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "この項目の現在の版は保管先（Vault）で削除されています。画面からは削除された版へ書き込めないため、運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。"
 msgstr "この項目の現在の版は保管先（Vault）で削除されています。画面からは削除された版へ書き込めないため、運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "この項目の現在の版は保管先（Vault）で削除されています。運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。"
+msgstr "この項目の現在の版は保管先（Vault）で削除されています。運用 Runbook の手順でコンソールから版を復元してから、もう一度更新してください。値は保存されていません。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "この項目はいま画面以外（手で作った Secret・配備スクリプト・Git など）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替える（同期先を作る）まで、書いた値はアプリケーションに反映されません。"
@@ -1018,6 +1039,34 @@ msgstr "データソースからの取り込みが済むとここに並びます
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "データソースから取り込むとジョブが並びます。"
 msgstr "データソースから取り込むとジョブが並びます。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "データソースのコネクタが接続に使う資格情報（Wiki・SaaS の API トークン、業務DBのパスワード）です。データソースを登録すると項目が増え、無効化すると一覧から消えます。値はコネクタが同期のたびに保管先から読みます。"
+msgstr "データソースのコネクタが接続に使う資格情報（Wiki・SaaS の API トークン、業務DBのパスワード）です。データソースを登録すると項目が増え、無効化すると一覧から消えます。値はコネクタが同期のたびに保管先から読みます。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "データソースの管理画面でデータソースを登録すると、ここに項目が増えます。"
+msgstr "データソースの管理画面でデータソースを登録すると、ここに項目が増えます。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "データソースの資格情報"
+msgstr "データソースの資格情報"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "データソースの資格情報の一覧"
+msgstr "データソースの資格情報の一覧"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "データソースの資格情報を取得できませんでした。"
+msgstr "データソースの資格情報を取得できませんでした。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "データソースの資格情報を更新できるのは管理者だけです。値は保存されていません。"
+msgstr "データソースの資格情報を更新できるのは管理者だけです。値は保存されていません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "データソースの資格情報を更新できるのは管理者だけです（データソースの登録・更新と同じ）。この一覧では状態だけを確認できます。"
+msgstr "データソースの資格情報を更新できるのは管理者だけです（データソースの登録・更新と同じ）。この一覧では状態だけを確認できます。"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "データソースは登録されていません。"
@@ -1572,9 +1621,14 @@ msgstr "例: tanaka"
 msgid "例: 経費精算"
 msgstr "例: 経費精算"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "供給元"
 msgstr "供給元"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "供給元が「画面」の項目は、この画面で書いた値をコネクタが実行時に保管先から読みます。書いた値は次の同期から使われ、アプリケーションの再起動は要りません。「画面以外」の項目は、データソースの設定に画面以外から入れた値が残っているため、この画面で書いた値は使われません。"
+msgstr "供給元が「画面」の項目は、この画面で書いた値をコネクタが実行時に保管先から読みます。書いた値は次の同期から使われ、アプリケーションの再起動は要りません。「画面以外」の項目は、データソースの設定に画面以外から入れた値が残っているため、この画面で書いた値は使われません。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "供給元は、各項目の同期先（ExternalSecret）がクラスタにあるかで判定します。「画面」はこの画面で書いた値がアプリケーションへ届く状態です。「画面以外」は同期先が無く、値が画面以外（手で作った Secret・配備スクリプト・Git など）から供給されている状態で、この画面で書いた値は反映されません。「確認できない」は判定に必要なクラスタへの接続が無いか、判定に失敗したことを示します（同期を無効にした構成では全項目がこの表示になります）。"
@@ -1641,9 +1695,25 @@ msgstr "保存容量の使用量が 95% を超えました。上限に達する�
 msgid "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
 msgstr "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "保管先（Vault）に届かないため、データソースの資格情報の状態を確認できません。"
+msgstr "保管先（Vault）に届かないため、データソースの資格情報の状態を確認できません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "保管先（Vault）に届かないため、更新できませんでした。値は保存されていません。"
+msgstr "保管先（Vault）に届かないため、更新できませんでした。値は保存されていません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "保管先への書き込みは完了しましたが、このデータソースの設定には画面以外から入れた資格情報が残っているため、書いた値は使われません。"
+msgstr "保管先への書き込みは完了しましたが、このデータソースの設定には画面以外から入れた資格情報が残っているため、書いた値は使われません。"
+
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "保管先への書き込みは完了しましたが、この項目は画面以外（手で作った Secret・配備スクリプト・Git など）から供給されているため、書いた値はアプリケーションに反映されません。"
 msgstr "保管先への書き込みは完了しましたが、この項目は画面以外（手で作った Secret・配備スクリプト・Git など）から供給されているため、書いた値はアプリケーションに反映されません。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "保管先への書き込みは完了しましたが、データソースの設定が保管先の値を参照しているかを確認できませんでした。次の同期が失敗する場合は、もう一度更新してください。"
+msgstr "保管先への書き込みは完了しましたが、データソースの設定が保管先の値を参照しているかを確認できませんでした。次の同期が失敗する場合は、もう一度更新してください。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "保管先への書き込みは完了しましたが、即時同期を依頼できませんでした。アプリケーションへの反映は定期同期（最大 1 時間）を待ちます。"
@@ -1740,6 +1810,7 @@ msgstr "候補を読み込み中…"
 msgid "値"
 msgstr "値"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "値は {MAX_VALUE_LENGTH} 文字以内で入力してください。"
 msgstr "値は {MAX_VALUE_LENGTH} 文字以内で入力してください。"
@@ -1776,6 +1847,7 @@ msgstr "入力するときは、部門グループのコード（大小文字を
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "入力を確認してください"
 msgstr "入力を確認してください"
@@ -1939,10 +2011,12 @@ msgstr "最新へ"
 msgid "最終同期"
 msgstr "最終同期"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "最終更新日時"
 msgstr "最終更新日時"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "最終更新者"
 msgstr "最終更新者"
@@ -2162,6 +2236,7 @@ msgstr "取り消す"
 msgid "取り込みが済むとここに並びます。"
 msgstr "取り込みが済むとここに並びます。"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "取得できない"
 msgstr "取得できない"
@@ -2477,6 +2552,10 @@ msgstr "実効構成"
 msgid "実行日時"
 msgstr "実行日時"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "実行時に取得・次の同期から効く"
+msgstr "実行時に取得・次の同期から効く"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "実装"
 msgstr "実装"
@@ -2719,6 +2798,10 @@ msgstr "承認済み"
 msgid "抽出"
 msgstr "抽出"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "指定されたデータソースは、この画面で資格情報を設定する対象ではありません（無効化されているか、資格情報を使わない種別です）。"
+msgstr "指定されたデータソースは、この画面で資格情報を設定する対象ではありません（無効化されているか、資格情報を使わない種別です）。"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "指定された起点の文書は表示できません。文書が存在しないのか、閲覧権限がないのかは区別できません。"
 msgstr "指定された起点の文書は表示できません。文書が存在しないのか、閲覧権限がないのかは区別できません。"
@@ -2772,8 +2855,8 @@ msgid "接続先は実行時 config（opsLinks）で注入します。配備済�
 msgstr "接続先は実行時 config（opsLinks）で注入します。配備済みのツールの URL を設定してください。"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
-msgid "接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。"
-msgstr "接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。"
+msgid "接続情報（認証情報）は Vault 管理です。認証情報は「秘密情報・接続設定の管理」画面で設定します（各行の「認証情報を設定」から開けます。設定できるのは管理者だけです）。接続の継続失敗はアラートで通知されます。"
+msgstr "接続情報（認証情報）は Vault 管理です。認証情報は「秘密情報・接続設定の管理」画面で設定します（各行の「認証情報を設定」から開けます。設定できるのは管理者だけです）。接続の継続失敗はアラートで通知されます。"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "接続端末"
@@ -2824,6 +2907,7 @@ msgstr "提案の一覧を読み込み中…"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "操作"
 msgstr "操作"
@@ -2964,10 +3048,12 @@ msgstr "新しいお知らせが {count} 件あります"
 msgid "新しい個人資料を作成する"
 msgstr "新しい個人資料を作成する"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "新しい値"
 msgstr "新しい値"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "新しい値（確認のためもう一度）"
 msgstr "新しい値（確認のためもう一度）"
@@ -3039,6 +3125,7 @@ msgstr "既読にできませんでした"
 msgid "日付"
 msgstr "日付"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "更新"
 msgstr "更新"
@@ -3051,6 +3138,7 @@ msgstr "更新 — {itemName}"
 msgid "更新 {count}"
 msgstr "更新 {count}"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "更新しました"
 msgstr "更新しました"
@@ -3059,18 +3147,22 @@ msgstr "更新しました"
 msgid "更新する"
 msgstr "更新する"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "更新するプロパティ"
 msgstr "更新するプロパティ"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "更新できませんでした。値は保存されていません。"
 msgstr "更新できませんでした。値は保存されていません。"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "更新の理由（任意）"
 msgstr "更新の理由（任意）"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "更新の理由は {MAX_REASON_LENGTH} 文字以内で入力してください。"
 msgstr "更新の理由は {MAX_REASON_LENGTH} 文字以内で入力してください。"
@@ -3095,6 +3187,10 @@ msgstr "更新日時の新しい順"
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "書いた値は反映されません"
 msgstr "書いた値は反映されません"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "書いた値は次の同期から使われます（再起動は要りません）。"
+msgstr "書いた値は次の同期から使われます（再起動は要りません）。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "書き込む"
@@ -3174,6 +3270,7 @@ msgid "未解決の同期競合"
 msgstr "未解決の同期競合"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "未設定"
 msgstr "未設定"
@@ -3384,6 +3481,7 @@ msgid "検証結果"
 msgstr "検証結果"
 
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
+#: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "業務DB"
 msgstr "業務DB"
 
@@ -3585,6 +3683,7 @@ msgstr "状態や種類の絞り込みを変えると、ほかの提案が見つ
 msgid "現在の指定先"
 msgstr "現在の指定先"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "理由は監査ログに残ります。値そのものは書かないでください。"
 msgstr "理由は監査ログに残ります。値そのものは書かないでください。"
@@ -3609,10 +3708,12 @@ msgstr "用途の説明が登録されていません。"
 msgid "画像を読み込み中…"
 msgstr "画像を読み込み中…"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "画面"
 msgstr "画面"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "画面以外"
 msgstr "画面以外"
@@ -3660,6 +3761,14 @@ msgstr "登録は管理者が行います。"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "登録済みデータソースの一覧"
 msgstr "登録済みデータソースの一覧"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "登録済みのデータソースの一覧を取得できません。データソースの管理サービスの稼働を確認してください。"
+msgstr "登録済みのデータソースの一覧を取得できません。データソースの管理サービスの稼働を確認してください。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "登録済みのデータソースを確認できないか、保管先（Vault）が書き込みを受け付けませんでした。値は保存されていません。"
+msgstr "登録済みのデータソースを確認できないか、保管先（Vault）が書き込みを受け付けませんでした。値は保存されていません。"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "監査ログ"
@@ -3709,10 +3818,12 @@ msgstr "確認"
 msgid "確認して書き込むと、即時同期のあとで {consumerName} が自動で再起動されます（自動再起動を配備した環境の場合）。配備していない環境では、再起動するまで書いた値は反映されません。"
 msgstr "確認して書き込むと、即時同期のあとで {consumerName} が自動で再起動されます（自動再起動を配備した環境の場合）。配備していない環境では、再起動するまで書いた値は反映されません。"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "確認できない"
 msgstr "確認できない"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "確認のための入力が一致しません。"
 msgstr "確認のための入力が一致しません。"
@@ -3998,6 +4109,7 @@ msgstr "角丸四角（破線の輪郭）= 個人資料"
 msgid "記法"
 msgstr "記法"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "記録なし"
 msgstr "記録なし"
@@ -4006,6 +4118,7 @@ msgstr "記録なし"
 msgid "設定した条件"
 msgstr "設定した条件"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "設定済み"
 msgstr "設定済み"
@@ -4070,6 +4183,14 @@ msgstr "認証が必要です。"
 msgid "認証基盤がパスワード再設定などの通知メールを送るための送信元アドレスと資格情報です（宛先ホスト・ポートは構成であり、ここでは扱いません）。"
 msgstr "認証基盤がパスワード再設定などの通知メールを送るための送信元アドレスと資格情報です（宛先ホスト・ポートは構成であり、ここでは扱いません）。"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "認証情報の状態"
+msgstr "認証情報の状態"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "認証情報を設定"
+msgstr "認証情報を設定"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "説明"
 msgstr "説明"
@@ -4090,6 +4211,14 @@ msgstr "警告"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "資料が見つかりません。Obsidian 側で再同期してください。"
 msgstr "資料が見つかりません。Obsidian 側で再同期してください。"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "資格情報の更新 — {name}"
+msgstr "資格情報の更新 — {name}"
+
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
+msgid "資格情報を使うデータソースは登録されていません。"
+msgstr "資格情報を使うデータソースは登録されていません。"
 
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "質問"
@@ -4378,6 +4507,7 @@ msgstr "鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わ
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "閉じる"
 msgstr "閉じる"
@@ -4439,6 +4569,7 @@ msgstr "非対称"
 msgid "項目"
 msgstr "項目"
 
+#: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "項目名"
 msgstr "項目名"

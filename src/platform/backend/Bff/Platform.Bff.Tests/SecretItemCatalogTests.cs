@@ -220,4 +220,49 @@ public class SecretItemCatalogTests
 
         act.Should().Throw<SecretItemCatalogException>().WithMessage("*fail-closed*");
     }
+
+    // ── 群（計画 ADR-0126 決定 1・2・3, IADR-0501 決定 2 / #458 段 S2）
+
+    private static string WithGroups(string groups) =>
+        Valid.Replace("\"deferred\":", $"\"groups\": {groups},\n  \"deferred\":", StringComparison.Ordinal);
+
+    // 実ファイルは群「データソースの資格情報」を 1 つ持つ（接頭辞 datasource・書き手は管理者だけ）。
+    [Fact]
+    public void Repository_allowlist_declares_the_datasource_credentials_group()
+    {
+        var catalog = SecretItemCatalog.Load(RepoPaths.Resolve("deploy/bootstrap/sc22-secret-items.json"));
+
+        catalog.Groups.Should().Equal(new SecretItemGroupDefinition("datasource-credentials", "datasource", "admin"));
+        catalog.FindGroup("datasource-credentials")!.VaultPathOf("abc").Should().Be("datasource/abc");
+        catalog.FindGroup("llm-provider-credentials").Should().BeNull("静的な項目は群ではない");
+    }
+
+    // groups[] は任意（無ければ空）。陽性対照: 正しい宣言は読める。
+    [Fact]
+    public void Groups_are_optional_and_a_valid_declaration_loads()
+    {
+        SecretItemCatalog.Parse(Valid, "inline").Groups.Should().BeEmpty();
+
+        var catalog = SecretItemCatalog.Parse(
+            WithGroups("""[ { "group": "g-one", "vaultPathPrefix": "zeta", "writers": "admin", "why": "w" } ]"""), "inline");
+        catalog.Groups.Should().Equal(new SecretItemGroupDefinition("g-one", "zeta", "admin"));
+    }
+
+    // 🔴 fail-closed: 接頭辞が items[] と交わる・2 セグメント以上・ワイルドカード・書き手が admin 以外・未知のキー・重複。
+    [Theory]
+    [InlineData("""[ { "group": "g", "vaultPathPrefix": "msp", "writers": "admin" } ]""", "交わる")]
+    [InlineData("""[ { "group": "g", "vaultPathPrefix": "zeta/sub", "writers": "admin" } ]""", "1 セグメント")]
+    [InlineData("""[ { "group": "g", "vaultPathPrefix": "+", "writers": "admin" } ]""", "1 セグメント")]
+    [InlineData("""[ { "group": "g", "vaultPathPrefix": "zeta", "writers": "operator" } ]""", "writers")]
+    [InlineData("""[ { "group": "g", "vaultPathPrefix": "zeta" } ]""", "writers")]
+    [InlineData("""[ { "group": "g", "vaultPathPrefix": "zeta", "writers": "admin", "role": "x" } ]""", "未知のキー")]
+    [InlineData("""[ { "group": "g", "vaultPathPrefix": "zeta", "writers": "admin" }, { "group": "g", "vaultPathPrefix": "eta", "writers": "admin" } ]""", "重複")]
+    [InlineData("""[ { "group": "g", "vaultPathPrefix": "zeta", "writers": "admin" }, { "group": "h", "vaultPathPrefix": "zeta", "writers": "admin" } ]""", "重複")]
+    [InlineData("""{ "group": "g" }""", "配列ではない")]
+    public void Invalid_group_declarations_fail_closed(string groups, string reason)
+    {
+        var act = () => SecretItemCatalog.Parse(WithGroups(groups), "inline");
+
+        act.Should().Throw<SecretItemCatalogException>().WithMessage($"*{reason}*");
+    }
 }

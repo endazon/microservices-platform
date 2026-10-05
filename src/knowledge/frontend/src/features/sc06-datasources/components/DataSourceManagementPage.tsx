@@ -286,11 +286,13 @@ export function DataSourceManagementPage() {
       </p>
 
       {/* 05_screens §SC-06 主要素の注記（hi-fi の 2 つ目の `.note`。琥珀＝`tone="warn"`）。
+          ［2026-10-06 / #458 段 S3］計画 ADR-0126 決定 1: 投入の面（SC-22）と導線を書き足した。
           静的な注記なので role は付けない。**色は補強でしかない**ので、注意すべき理由
           （接続の継続失敗はアラートになる）は本文に書く。 */}
       <Note tone="warn">
         <Trans>
-          接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。
+          接続情報（認証情報）は Vault
+          管理です。認証情報は「秘密情報・接続設定の管理」画面で設定します（各行の「認証情報を設定」から開けます。設定できるのは管理者だけです）。接続の継続失敗はアラートで通知されます。
         </Trans>
       </Note>
     </section>
@@ -377,6 +379,20 @@ function SourceRow({
             <Button type="button" size="sm" disabled={busy} onClick={onDisable}>
               <Trans>無効化</Trans>
             </Button>
+          )}
+          {/* SC-06 主要素, 計画 ADR-0126 決定 1, IADR-0501 (#458 段 S3): 🔴 **本画面に入力欄は置かない。**
+              各行から SC-22 の群「データソースの資格情報」の当該項目へ導線を置く。書けるのは管理者だけなので、
+              運用者には「状態を見る」導線として出す（決定 3）。無効なソースは群から消えるので出さない。
+              ファイルサーバーは資格情報を使わない（コネクタが資格情報のキーを宣言しない）ので群に入らず、導線も出さない。 */}
+          {source.status !== 'disabled' && source.sourceType !== 'filesystem' && (
+            <Link
+              to="/admin/secrets"
+              search={{ datasource: source.id }}
+              className="inline-flex items-center text-sm text-brand hover:underline"
+              data-testid={`datasource-credential-link-${source.id}`}
+            >
+              {canWrite ? <Trans>認証情報を設定</Trans> : <Trans>認証情報の状態</Trans>}
+            </Link>
           )}
         </span>
       </TableCell>

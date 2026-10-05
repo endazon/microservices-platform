@@ -70,3 +70,40 @@ public record SecretItemWriteResultDto(
     int Version,
     DateTimeOffset UpdatedAt,
     bool SyncRequested = false);
+
+// SC-22, SC-06, NFR-18, 計画 ADR-0126 決定 1・3・4, IADR-0501 決定 4 (#458 段 S2): **群**の一覧（`GET /bff/secrets/groups/{group}`）。
+// `Writable` はこの利用者が群へ書けるか（群の書き込みは管理者だけ。運用者は閲覧だけ —— ADR-0126 決定 3）。
+// 画面は `Writable` が false のとき更新の操作を出さない（認可の実効境界は BFF の `PUT` 側にある）。
+public record SecretItemGroupDto(
+    string Group,
+    bool Writable,
+    List<SecretItemGroupMemberStatusDto> Members);
+
+// 群の成員 1 件の状態（静的な項目の `SecretItemStatusDto` と同じ考え方。🔴 **値の列は無い**）。
+// `MemberId` は Vault のパスの 1 セグメント（例: データソース ID）、`DisplayName` / `Kind` は成員の名前と種別（例: Wiki）。
+// `Status` は `set` / `notSet` / `unavailable`（KV 単位。IADR-0453 決定 4 と同じ）。
+// `SupplySource` は `SecretItemSupplySources` の 3 値だが、**判定の材料が違う**（ADR-0126 決定 4・ADR-0110 決定 1 の部分改定）:
+// 成員の設定が群の参照を持つ（または値を持たない）→ `screen`（表示「画面（実行時に取得・次の同期から効く）」）／
+// 平文などを持つ → `git`（表示「画面以外」）。ExternalSecret の有無では判定しない。
+public record SecretItemGroupMemberStatusDto(
+    string MemberId,
+    string DisplayName,
+    string Kind,
+    string VaultPath,
+    List<SecretItemPropertyDto> PropertyDetails,
+    string Status,
+    int? CurrentVersion,
+    DateTimeOffset? LastUpdatedAt,
+    string? LastUpdatedBy,
+    string SupplySource = SecretItemSupplySources.Unknown);
+
+// 群の成員への書き込みの結果。**値を返さない。** 版・日時と、書き込み後の供給元だけ。
+// 🔴 同期依頼（`SyncRequested`）も再起動の確認も無い —— 群は ExternalSecret を経ず、消費側が次の同期で読む（ADR-0126 決定 4）。
+// `SupplySource` が `unknown` のときは、書き込みは成立したが参照の配置を確かめられなかった。
+public record SecretItemGroupWriteResultDto(
+    string Group,
+    string MemberId,
+    string Property,
+    int Version,
+    DateTimeOffset UpdatedAt,
+    string SupplySource = SecretItemSupplySources.Unknown);

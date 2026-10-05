@@ -3,15 +3,15 @@ title: データソース管理 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-26
+updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-05, SC-05, SC-06, SC-07, SC-09, SC-17, UC-04]
-adrs: [ADR-0036, ADR-0064, ADR-0074, ADR-0115]
-iadrs: [IADR-0019, IADR-0039, IADR-0044, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0128, IADR-0135, IADR-0136, IADR-0139, IADR-0148, IADR-0199, IADR-0329, IADR-0359, IADR-0381, IADR-0392, IADR-0468, IADR-0472]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260808_issue-534-537_datasource-contract-bundle, 20260815_issue-767_sc06-department-input, 20260816_issue-796_sc06-lifecycle-input, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-1252_sc06-operator-readonly-attributes, 20260905_issue-752_connector-updated-by, 20260926_issue-754_department-from-registrant-group, 20260926_issue-1557_department-domain-validation]
-issues: [#1194, #1252, #446, #490, #502, #506, #519, #534, #537, #538, #628, #752, #754, #767, #796, #1557, planning#198, planning#200, planning#299, planning#372, planning#518]
+ids: [FR-01, FR-02, FR-05, NFR-18, SC-05, SC-06, SC-07, SC-09, SC-17, SC-22, UC-04]
+adrs: [ADR-0036, ADR-0064, ADR-0074, ADR-0095, ADR-0115, ADR-0126]
+iadrs: [IADR-0019, IADR-0039, IADR-0044, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0128, IADR-0135, IADR-0136, IADR-0139, IADR-0148, IADR-0199, IADR-0329, IADR-0359, IADR-0381, IADR-0392, IADR-0468, IADR-0472, IADR-0501]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260808_issue-534-537_datasource-contract-bundle, 20260815_issue-767_sc06-department-input, 20260816_issue-796_sc06-lifecycle-input, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-1252_sc06-operator-readonly-attributes, 20260905_issue-752_connector-updated-by, 20260926_issue-754_department-from-registrant-group, 20260926_issue-1557_department-domain-validation, 20261003_458_connector-secret-vault-reference]
+issues: [#458, #1194, #1252, #446, #490, #502, #506, #519, #534, #537, #538, #628, #752, #754, #767, #796, #1557, planning#198, planning#200, planning#299, planning#372, planning#518, planning#716]
 -->
 
 # 画面仕様書: データソース管理
@@ -177,9 +177,12 @@ issues: [#1194, #1252, #446, #490, #502, #506, #519, #534, #537, #538, #628, #75
 ├────────────────────┼─────────────────┼─────────────────┼───────────────┤
 │ 規程集              │［ファイルサーバー］│ ✓ 同期済み（…）  │ 手動同期 無効化 │
 │ smb://fs01/share    │                 │                 │               │
+│ 社内Wiki            │［Wiki］          │ ✓ 同期済み（…）  │ 手動同期 無効化 │
+│ https://wiki…       │                 │                 │ 認証情報を設定  │
 └────────────────────┴─────────────────┴─────────────────┴───────────────┘
   変換ジョブの状況を見る →
-  ⓘ 接続情報（認証情報）は Vault 管理。接続の継続失敗はアラート（同期の例外フロー）。
+  ⓘ 接続情報（認証情報）は Vault 管理。認証情報は「秘密情報・接続設定の管理」画面で設定する
+    （各行の「認証情報を設定」から開ける。設定できるのは管理者だけ）。接続の継続失敗はアラート（同期の例外フロー）。
 ```
 
 ## 表示・入力項目
@@ -203,6 +206,7 @@ issues: [#1194, #1252, #446, #490, #502, #506, #519, #534, #537, #538, #628, #75
 | 手動同期 | `POST /bff/datasources/{id}/sync` → 一覧を再取得（**登録・同期の代替フロー**） | — |
 | 無効化 | `DELETE /bff/datasources/{id}` → 一覧を再取得 | — |
 | 変換ジョブの状況を見る → | 変換ジョブ画面へ | `/admin/conversions` |
+| 認証情報を設定（管理者）／認証情報の状態（運用者） | 秘密情報・接続設定の管理画面の「データソースの資格情報」の当該行へ。管理者には更新フォームが開く。**有効で資格情報を使う種別（Wiki・SaaS・業務DB）の行にだけ出す**（ファイルサーバーと無効なソースには出さない）。🔴 **本画面に入力欄は置かない** —— 認証情報の投入の面は秘密情報・接続設定の管理画面に 1 つだけである | `/admin/secrets?datasource=<ID>` |
 
 ## 既定属性・所有者の写像の閲覧（**管理者・運用者**。［2026-09-05］）
 

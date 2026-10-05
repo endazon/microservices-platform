@@ -3,22 +3,22 @@ title: SC-22 秘密情報・接続設定の管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-09-14
-updated: 2026-10-04
+updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, NFR-18, SC-22]
-adrs: [ADR-0032, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124]
-iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485]
-specs: [20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261004_issue-1472_sc22-t40-live-procedure]
-issues: [#1411, #1467, #1477, #1502, #1523, #1682, #1472]
+ids: [FR-01, FR-05, NFR-18, SC-06, SC-22]
+adrs: [ADR-0032, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124, ADR-0126]
+iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0495, IADR-0501]
+specs: [20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261004_issue-1472_sc22-t40-live-procedure, 20261003_458_connector-secret-vault-reference]
+issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, planning#716]
 -->
 
 # テスト仕様書: 秘密情報・接続設定の管理
 
 ## テスト対象・範囲
 
-**画面・境界層（`/bff/secrets`）・保管先（Vault）の書き込み権限の字面**である。
+**画面・境界層（`/bff/secrets`。群の `/bff/secrets/groups/*` を含む）・保管先（Vault）の書き込み権限の字面**である。
 
 **対象外（送り先つき）**:
 
@@ -118,6 +118,27 @@ issues: [#1411, #1467, #1477, #1502, #1523, #1682, #1472]
 | T-76 | 画面・株式自動売買の app-secrets（自動で作り直される） | 更新フォームを開いて送る →「やめる」→ 送る →「書き込む」 | 送信の押下では送らず確認ダイアログを開く。消費側・断たれ得る処理・「自動で再起動されます」・配備していない環境の一文を出し、OpenD には触れない。操作は「やめる」「書き込む」の 2 つだけ（別の再起動の操作は無い）。初期フォーカスは「やめる」。「やめる」では送らず、「書き込む」で 1 回送る。書き込み後に「自動再起動を配備していない環境では」を出す | 書き込みの確認＝再起動の確認 | 自動 |
 | T-77 | 画面・供給元が画面以外の鍵のプロパティ | 「生成」→「生成して書き込む」 | 確認ダイアログは出す（鍵が置き換わる）。生成の本文は「OpenD にもクライアントにも届きません」で、「読み込むまで」とは書かず、再起動の本文を出さない。確定ボタンは破壊的な見た目・初期フォーカスは「やめる」。書き込み後は「反映されません」 | 画面以外での生成の文言 | 自動 |
 | T-78 | 初期化スクリプトの字面・対になる秘密 | 許可リストの対象外の 2 群（認証基盤と対のもの・データストアのもの）のパスごとに、種の入れ方を見る | 各パスは「無いときだけ作る」補助関数の 1 文だけで書かれ、無条件の作成・部分更新が無い。補助関数は在否を確かめて在れば戻り、作るときは `-cas=0`。補助関数で作るパスの集合と、許可リストの対象外の 2 群の和集合が一致する（どちらかにだけ在るパスがあれば赤） | 再実行で相手と対で回した値を保管先だけ戻さない | 自動 |
+| T-79 | 群「データソースの資格情報」・成員 3 件 | 運用者と管理者で境界層の群の一覧を引く／他のロールで一覧と書き込み | 運用者・管理者とも 200 で成員が並ぶ。`writable` は管理者だけ true。他のロールは 403 で拒否が監査に残り、保管先にも後段にも触れない | 群の閲覧は運用者にも開く | 自動 |
+| T-80 | 群 | 運用者が成員へ書く（陽性対照: 同じ運用者が静的な項目へ書く） | 🔴 **403**。拒否が監査に残り、保管先にも参照の配置にも届かない。静的な項目へは 200 | 群の書き込みは管理者だけ | 自動 |
+| T-81 | 群 | 登録されていない ID・形の崩れた ID（大文字・`..`・符号化した `/`・`.`・`_`・65 文字）へ書く | 404（`..` は正規化で静的な項目の 400 になる）。🔴 保管先へ 1 度も届かない。陽性対照: 登録済みの ID は 200 | 登録済みの ID だけへ書く・接頭辞の 1 階層の外へ出ない | 自動 |
+| T-82 | 群・業務DB の成員 | 書く | 保管先への書き込みは `secret/data/datasource/<ID>` の 1 本だけ（部分更新）で、値がそこに入る | 専用接頭辞 | 自動 |
+| T-83 | 群 | 成員が宣言しないプロパティ／宣言に無い群（`msp`・静的な項目名・未知）／空・長すぎる値・長すぎる理由／JSON でない本文 | 400（JSON でなければ 415 で監査に残る）。保管先へ届かない | 入力の検査 | 自動 |
+| T-84 | 群・成員を後段から取れない | 一覧と書き込み | どちらも 502（`members-unavailable`）。🔴 空の群にしない。書き込みは保管先へ届かない | 失敗を空へ縮退させない | 自動 |
+| T-85 | 成員の設定が 参照あり／値なし／平文／未知の符号 | 群の一覧 | 参照あり・値なし → `screen`、平文・未知の符号 → `git`（表示「画面以外」）。Kubernetes API へ 1 度も触れない（同期先の有無で判定しない） | 群の供給元 | 自動 |
+| T-86 | 値なしの成員 | 書く | 200・`screen`。🔴 **保管先へ書いた後に**参照の配置（`/datasources/<ID>/credentials/<キー>/reference`）を 1 回送る。同期依頼は無い。一覧の最終更新者に書いた利用者が出る | 書いた値が次の同期から使われる（窓の増える側） | 自動 |
+| T-87 | 平文を持つ成員 | 書く | 200・`git`（後段は平文を置き換えない） | 平文は画面が黙って移送しない（窓の減る側） | 自動 |
+| T-88 | 保管先が書き込みを拒む／参照の配置が失敗 | 書く | 前者は 502 で参照を置かない。後者は 200・`unknown`、書き込みの監査は granted、参照の監査は failed | 書けていないものを指させない | 自動 |
+| T-89 | 群 | 成功・拒否・成員の取得失敗の 3 経路で書く | 値が応答・監査・ログのどこにも出ない（陽性対照: 保管先には届いている）。理由は引用符で囲んで監査に残る。保管先が構成されていなければ 503 で後段にも触れない | 値を出さない | 自動 |
+| T-90 | 群の権限の字面 | policy を読む | path は群の接頭辞の `+`（data・metadata）だけで、data は create / patch、metadata は read。`*`・list・delete・update は無い。基盤・株式自動売買・静的な項目のパスへ届かない。境界層の書き込みロールに並べて付き、外部シークレット同期のロールには付かない。データソースの読み手の権限と対（読み手が読むパスへ書けるが読めない） | 接頭辞を権限の層で限る | 自動 |
+| T-91 | 群の宣言 | 読み込む | 実ファイルは群を 1 つ（接頭辞 `datasource`・書き手は管理者）持つ。接頭辞が項目と交わる・2 階層・ワイルドカード・書き手が管理者以外・未知のキー・重複は起動しない | fail-closed | 自動 |
+| T-92 | 後段（データソース管理のサービス） | 群の成員を引く | 有効で資格情報を使う種別だけを返す（ファイルサーバー・無効化は入らない）。値も参照の文字列も返さない。正規の参照だけが `reference`。運用者は引ける、他のロールは 403 | 群の成員 | 自動 |
+| T-93 | 後段 | 参照を置く | 値なしのキーにだけ正規の参照を置き（2 度目は何もしない・ほかの設定は消さない）、平文は置き換えない。管理者だけ。未登録・無効・資格情報を使わない種別は 404、宣言しないキーは 400。置いた参照は通常の応答でマスクされる | 参照の配置 | 自動 |
+| T-94 | 画面・群（未設定・設定済み・画面以外） | 画面を開く | 群の表が 項目名／最終更新日時／最終更新者／供給元／操作 で、値の列が無い。「画面」には「実行時に取得・次の同期から効く」を添え、「画面以外」には添えない | 群の表示 | 自動 |
+| T-95 | 画面・`writable` が偽（運用者）／真（管理者） | 画面を開く | 偽なら「更新」も操作の列も無く、管理者だけが書ける旨の注記が出る。真なら成員ごとに「更新」が出る | 群の書き込みは管理者だけ | 自動 |
+| T-96 | 画面・群の更新フォーム | 確認を違えて押す → 一致させて送る／画面以外の成員へ送る／403・404 | 不一致では送れない。🔴 **確認ダイアログ（再起動の確認）を経ずに** 1 プロパティを送り、「次の同期から使われます」を出して入力を空に戻す。画面以外では送る前と後に「使われません」を出す。失敗は「値は保存されていません」を添える | 種別「入力」・再起動の確認なし | 自動 |
+| T-97 | 画面・`?datasource=<ID>` | 管理者・運用者で開く／群に無い ID／成員を取れない（502） | 当該行が強調され、管理者には更新フォームが開く（運用者には開かない）。群に無い ID は注記を出す。502 は失敗を出して表を描かない | データソース管理画面からの導線 | 自動 |
+| T-98 | データソース管理画面 | 一覧を開く（管理者・運用者） | 有効で資格情報を使う種別の行にだけ導線（管理者「認証情報を設定」・運用者「認証情報の状態」）が出て `/admin/secrets?datasource=<ID>` を指す。ファイルサーバー・無効なソースには出ない。パスワードの入力欄は 1 つも無い。注記が投入の面を名指しする | 入力欄を置かず導線を置く | 自動 |
+| T-99 | ブラウザ・運用者／管理者 | 運用者で `?datasource=` を開く／管理者がデータソース管理画面の導線を押す | 運用者: 群の当該行が強調され、群に「更新」が無い（静的な項目の「更新」は在る）。管理者: 秘密情報・接続設定の管理画面へ移り、当該行の強調と更新フォーム | 画面の通し | 自動 |
 | T-40 | 稼働クラスタ（保管先・同期あり） | 画面から 1 プロパティを更新し、同期後の Secret を長さだけで確かめる（手順・試験対象・止める条件・記録は[稼働クラスタの確認の Runbook](../operations/secret-item-live-sync-check-runbook.md)） | 更新したプロパティの長さが一致し、同居するキーが減っていない | 稼働での成立 | 手動（未実施） |
 
 ## 自動試験の所在
@@ -133,7 +154,14 @@ issues: [#1411, #1467, #1477, #1502, #1523, #1682, #1472]
 | 初期化スクリプトの字面 | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemBootstrapSeedTests.cs` | T-62・T-78 |
 | 起動器 | `scripts/k8s-local-up.test.js` | T-63 |
 | Kubernetes API の偽物 | `src/platform/backend/Bff/Platform.Bff.Tests/FakeKubernetesApi.cs` | T-57〜T-60・T-68〜T-70 が使う（既定では同期先がすべて在る。無いものは名前で指定する） |
-| ブラウザ | `src/platform/frontend/e2e/sc22-secrets.smoke.spec.ts` | T-36〜T-38 |
+| ブラウザ | `src/platform/frontend/e2e/sc22-secrets.smoke.spec.ts` | T-36〜T-38・T-99（運用者） |
+| 群（境界層の端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemGroupEndpointTests.cs` | T-79〜T-89 |
+| 群（権限の字面） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemGroupVaultPolicyTests.cs`・`src/knowledge/backend/Services/DataSourceService/Tests/Infrastructure/Secrets/ConnectorSecretVaultPolicyTests.cs` | T-90 |
+| 群（宣言） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemCatalogTests.cs` | T-91 |
+| 群（後段） | `src/knowledge/backend/Services/DataSourceService/Tests/Features/DataSources/DataSourceCredentialGroupEndpointTests.cs` | T-92・T-93 |
+| 群（画面） | `src/knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.test.tsx` | T-94〜T-97 |
+| 導線（データソース管理画面） | `src/knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.test.tsx` | T-98 |
+| ブラウザ（導線） | `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts` | T-99（管理者） |
 | 保管先の偽物 | `src/platform/backend/Bff/Platform.Bff.Tests/FakeVault.cs` | 上記の境界層試験が使う |
 
 ## 未決事項
