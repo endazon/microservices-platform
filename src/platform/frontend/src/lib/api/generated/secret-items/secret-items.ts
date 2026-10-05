@@ -24,6 +24,8 @@ import type {
 
 import type {
   ProblemDetails,
+  SecretItemGroupDto,
+  SecretItemGroupWriteResultDto,
   SecretItemStatusDto,
   SecretItemWriteResultDto,
   UpdateSecretItemRequest,
@@ -302,4 +304,262 @@ export const useBffSecretItemsUpdate = <TError = ValidationProblemDetails | void
         TContext
       > => {
       return useMutation(getBffSecretItemsUpdateMutationOptions(options));
+    }
+    export type bffSecretItemGroupListResponse200 = {
+  data: SecretItemGroupDto
+  status: 200
+}
+
+export type bffSecretItemGroupListResponse400 = {
+  data: ValidationProblemDetails
+  status: 400
+}
+
+export type bffSecretItemGroupListResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffSecretItemGroupListResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffSecretItemGroupListResponse502 = {
+  data: ProblemDetails
+  status: 502
+}
+
+export type bffSecretItemGroupListResponse503 = {
+  data: ProblemDetails
+  status: 503
+}
+
+export type bffSecretItemGroupListResponseSuccess = (bffSecretItemGroupListResponse200) & {
+  headers: Headers;
+};
+export type bffSecretItemGroupListResponseError = (bffSecretItemGroupListResponse400 | bffSecretItemGroupListResponse401 | bffSecretItemGroupListResponse403 | bffSecretItemGroupListResponse502 | bffSecretItemGroupListResponse503) & {
+  headers: Headers;
+};
+
+export type bffSecretItemGroupListResponse = (bffSecretItemGroupListResponseSuccess | bffSecretItemGroupListResponseError)
+
+export const getBffSecretItemGroupListUrl = (group: string,) => {
+
+
+
+
+  return `/bff/secrets/groups/${group}`
+}
+
+/**
+ * 群の成員ごとに、Vault の metadata（版・作成時刻。値を持たない）から状態を返す（`status` は静的な項目と同じ 3 値）。
+ * `supplySource` は**ExternalSecret の有無では判定しない**（計画 ADR-0126 決定 4。ADR-0110 決定 1 をこの群に限って部分改定）:
+ * 成員の設定が群の参照を持つ、または値を持たない → `screen`（表示「画面（実行時に取得・次の同期から効く）」）／
+ * 画面以外の値（平文など）を持つ → `git`（表示「画面以外」）。
+ * `writable` はこの利用者が群へ書けるか（管理者だけ true）。
+ * @summary SC-22 群: 成員の一覧（値の列は無い）
+ */
+export const bffSecretItemGroupList = async (group: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffSecretItemGroupListResponse> => {
+
+  return bffFetch<bffSecretItemGroupListResponse>(getBffSecretItemGroupListUrl(group),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffSecretItemGroupListQueryKey = (group: string,) => {
+    return [
+    `/bff/secrets/groups/${group}`
+    ] as const;
+    }
+
+
+export const getBffSecretItemGroupListQueryOptions = <TData = Awaited<ReturnType<typeof bffSecretItemGroupList>>, TError = ValidationProblemDetails | void | ProblemDetails>(group: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffSecretItemGroupList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffSecretItemGroupListQueryKey(group);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffSecretItemGroupList>>> = ({ signal }) => bffSecretItemGroupList(group, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: group !== null && group !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffSecretItemGroupList>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffSecretItemGroupListQueryResult = NonNullable<Awaited<ReturnType<typeof bffSecretItemGroupList>>>
+export type BffSecretItemGroupListQueryError = ValidationProblemDetails | void | ProblemDetails
+
+
+/**
+ * @summary SC-22 群: 成員の一覧（値の列は無い）
+ */
+
+export function useBffSecretItemGroupList<TData = Awaited<ReturnType<typeof bffSecretItemGroupList>>, TError = ValidationProblemDetails | void | ProblemDetails>(
+ group: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffSecretItemGroupList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffSecretItemGroupListQueryOptions(group,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffSecretItemGroupUpdateResponse200 = {
+  data: SecretItemGroupWriteResultDto
+  status: 200
+}
+
+export type bffSecretItemGroupUpdateResponse400 = {
+  data: ValidationProblemDetails
+  status: 400
+}
+
+export type bffSecretItemGroupUpdateResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffSecretItemGroupUpdateResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffSecretItemGroupUpdateResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffSecretItemGroupUpdateResponse409 = {
+  data: ProblemDetails
+  status: 409
+}
+
+export type bffSecretItemGroupUpdateResponse413 = {
+  data: ProblemDetails
+  status: 413
+}
+
+export type bffSecretItemGroupUpdateResponse415 = {
+  data: ProblemDetails
+  status: 415
+}
+
+export type bffSecretItemGroupUpdateResponse502 = {
+  data: ProblemDetails
+  status: 502
+}
+
+export type bffSecretItemGroupUpdateResponse503 = {
+  data: ProblemDetails
+  status: 503
+}
+
+export type bffSecretItemGroupUpdateResponseSuccess = (bffSecretItemGroupUpdateResponse200) & {
+  headers: Headers;
+};
+export type bffSecretItemGroupUpdateResponseError = (bffSecretItemGroupUpdateResponse400 | bffSecretItemGroupUpdateResponse401 | bffSecretItemGroupUpdateResponse403 | bffSecretItemGroupUpdateResponse404 | bffSecretItemGroupUpdateResponse409 | bffSecretItemGroupUpdateResponse413 | bffSecretItemGroupUpdateResponse415 | bffSecretItemGroupUpdateResponse502 | bffSecretItemGroupUpdateResponse503) & {
+  headers: Headers;
+};
+
+export type bffSecretItemGroupUpdateResponse = (bffSecretItemGroupUpdateResponseSuccess | bffSecretItemGroupUpdateResponseError)
+
+export const getBffSecretItemGroupUpdateUrl = (group: string,
+    memberId: string,) => {
+
+
+
+
+  return `/bff/secrets/groups/${group}/${memberId}`
+}
+
+/**
+ * **管理者だけ**（計画 ADR-0126 決定 3）。運用者は 403（監査に残る）。
+ * **登録済みの成員だけ**へ書く（決定 2）。成員に無い ID・形の崩れた ID は 404 で、Vault へ届かない。
+ * 本文・値・理由の規則と上限は `/bff/secrets/{item}` と同じ（64 KiB・8192 文字・500 文字。種別は `value` だけ）。
+ * Vault へ書いた**後に**、成員の設定が値を持たないプロパティにだけ群の参照を置く（平文は置き換えない＝移送は別段）。
+ * 参照を置けなくても 200 のまま（`supplySource: unknown`）。**同期依頼・再起動の確認は無い**（消費側は次の同期で読む）。
+ * 🔴 **値・値の長さは監査・ログ・応答のどこにも残らない。**
+ * @summary SC-22 群: 成員 1 件の 1 プロパティを書く（管理者だけ）
+ */
+export const bffSecretItemGroupUpdate = async (group: string,
+    memberId: string,
+    updateSecretItemRequest: UpdateSecretItemRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffSecretItemGroupUpdateResponse> => {
+
+  return bffFetch<bffSecretItemGroupUpdateResponse>(getBffSecretItemGroupUpdateUrl(group,memberId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateSecretItemRequest)
+  }
+);}
+
+
+
+
+
+export const getBffSecretItemGroupUpdateMutationOptions = <TError = ValidationProblemDetails | void | ProblemDetails,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSecretItemGroupUpdate>>, TError,{group: string;memberId: string;data: UpdateSecretItemRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffSecretItemGroupUpdate>>, TError,{group: string;memberId: string;data: UpdateSecretItemRequest}, TContext> => {
+
+const mutationKey = ['bffSecretItemGroupUpdate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffSecretItemGroupUpdate>>, {group: string;memberId: string;data: UpdateSecretItemRequest}> = (props) => {
+          const {group,memberId,data} = props ?? {};
+
+          return  bffSecretItemGroupUpdate(group,memberId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffSecretItemGroupUpdateMutationResult = NonNullable<Awaited<ReturnType<typeof bffSecretItemGroupUpdate>>>
+    export type BffSecretItemGroupUpdateMutationBody = UpdateSecretItemRequest
+    export type BffSecretItemGroupUpdateMutationError = ValidationProblemDetails | void | ProblemDetails
+
+    /**
+ * @summary SC-22 群: 成員 1 件の 1 プロパティを書く（管理者だけ）
+ */
+export const useBffSecretItemGroupUpdate = <TError = ValidationProblemDetails | void | ProblemDetails,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSecretItemGroupUpdate>>, TError,{group: string;memberId: string;data: UpdateSecretItemRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffSecretItemGroupUpdate>>,
+        TError,
+        {group: string;memberId: string;data: UpdateSecretItemRequest},
+        TContext
+      > => {
+      return useMutation(getBffSecretItemGroupUpdateMutationOptions(options));
     }

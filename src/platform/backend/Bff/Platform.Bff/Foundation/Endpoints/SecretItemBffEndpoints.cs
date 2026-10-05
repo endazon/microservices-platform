@@ -47,7 +47,7 @@ public static class SecretItemBffEndpoints
     /// </summary>
     public const int MaxRequestBodyBytes = 64 * 1024;
 
-    private const string ProblemTypePrefix = "urn:microservices-platform:secret-items:";
+    internal const string ProblemTypePrefix = "urn:microservices-platform:secret-items:";
 
     public static IEndpointRouteBuilder MapSecretItemBffEndpoints(this IEndpointRouteBuilder app)
     {
@@ -210,31 +210,9 @@ public static class SecretItemBffEndpoints
             var written = await vault.WritePropertyAsync(
                 catalog.VaultMount, definition.VaultPath, property,
                 SecretPropertyValues.Derive(propertyDefinition.Kind, body.Value), ct);
-            switch (written.Outcome)
-            {
-                case VaultWriteOutcome.Written:
-                    break;
-                case VaultWriteOutcome.Rejected:
-                    audit.Record(UpdateAction, subject, "failed", $"{target} reason=vault-rejected");
-                    return Results.Problem(
-                        statusCode: StatusCodes.Status502BadGateway,
-                        type: ProblemTypePrefix + "vault-rejected",
-                        title: "秘密情報の保管先（Vault）が書き込みを受け付けませんでした。");
-                case VaultWriteOutcome.CurrentVersionDeleted:
-                    // IADR-0454 決定 1 (#1467): 現在版が Vault で削除・破棄されている。🔴 **権限を広げて書かない。**
-                    // 運用者はコンソールで版を復元してから画面で更新し直す（運用 Runbook の失敗の分岐）。
-                    audit.Record(UpdateAction, subject, "failed", $"{target} reason=current-version-deleted");
-                    return Results.Problem(
-                        statusCode: StatusCodes.Status409Conflict,
-                        type: ProblemTypePrefix + "current-version-deleted",
-                        title: "この項目の現在の版は保管先（Vault）で削除されているため、画面から書き込めません。");
-                case VaultWriteOutcome.NotConfigured:
-                    audit.Record(UpdateAction, subject, "failed", $"{target} reason=vault-not-configured");
-                    return NotConfiguredProblem();
-                default:
-                    audit.Record(UpdateAction, subject, "failed", $"{target} reason=vault-unavailable");
-                    return UnavailableProblem();
-            }
+            var writeFailure = VaultWriteFailure(written.Outcome, audit, UpdateAction, subject, target);
+            if (writeFailure is not null)
+                return writeFailure;
 
             await records.SaveAsync(definition.Item,
                 new SecretWriteRecord(written.Version, subject, property, written.UpdatedAt), ct);
@@ -261,7 +239,42 @@ public static class SecretItemBffEndpoints
           .ProducesProblem(StatusCodes.Status502BadGateway)
           .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
+        // IADR-0501 (#458 段 S2): 群（`/bff/secrets/groups/{group}`）。同じ `/bff/secrets` の下に置く。
+        app.MapSecretItemGroupBffEndpoints();
+
         return app;
+    }
+
+    // IADR-0453 決定 5, IADR-0454 決定 1 (#1467): Vault への書き込みの結果を応答へ写す（成立なら null）。
+    // IADR-0501 (#458 段 S2): 群の書き込みも同じ写像を使う（`action` で監査の行を分ける）。
+    internal static IResult? VaultWriteFailure(
+        VaultWriteOutcome outcome, IAuditLogger audit, string action, string subject, string target)
+    {
+        switch (outcome)
+        {
+            case VaultWriteOutcome.Written:
+                return null;
+            case VaultWriteOutcome.Rejected:
+                audit.Record(action, subject, "failed", $"{target} reason=vault-rejected");
+                return Results.Problem(
+                    statusCode: StatusCodes.Status502BadGateway,
+                    type: ProblemTypePrefix + "vault-rejected",
+                    title: "秘密情報の保管先（Vault）が書き込みを受け付けませんでした。");
+            case VaultWriteOutcome.CurrentVersionDeleted:
+                // IADR-0454 決定 1 (#1467): 現在版が Vault で削除・破棄されている。🔴 **権限を広げて書かない。**
+                // 運用者はコンソールで版を復元してから画面で更新し直す（運用 Runbook の失敗の分岐）。
+                audit.Record(action, subject, "failed", $"{target} reason=current-version-deleted");
+                return Results.Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    type: ProblemTypePrefix + "current-version-deleted",
+                    title: "この項目の現在の版は保管先（Vault）で削除されているため、画面から書き込めません。");
+            case VaultWriteOutcome.NotConfigured:
+                audit.Record(action, subject, "failed", $"{target} reason=vault-not-configured");
+                return NotConfiguredProblem();
+            default:
+                audit.Record(action, subject, "failed", $"{target} reason=vault-unavailable");
+                return UnavailableProblem();
+        }
     }
 
     // IADR-0456 決定 4 (#1477): 同期依頼の結果を監査へ写す。detail は項目と ExternalSecret の名前だけ（値に関わるものは無い）。
@@ -292,12 +305,14 @@ public static class SecretItemBffEndpoints
     // IADR-0454 決定 2 (#1467): `PUT` 本文を上限付きで手読みする。拒否はすべて監査へ `denied` を残して返す。
     // 🔴 **`Content-Length` だけに頼らない**（持たない送り方がある）。読むのは上限 ＋ 1 バイトまでで、超えた時点でやめる。
     // 🔴 本文・例外メッセージ・長さはログにも監査にも出さない（`JsonException` のメッセージは本文の位置や断片を含み得る）。
-    private static async Task<(UpdateSecretItemRequest? Body, IResult? Rejected)> ReadUpdateBodyAsync(
-        HttpRequest request, JsonSerializerOptions json, IAuditLogger audit, string subject, string item, CancellationToken ct)
+    // IADR-0501 (#458 段 S2): 群の書き込みも同じ手読みを使う（`action` で監査の行を分ける）。
+    internal static async Task<(UpdateSecretItemRequest? Body, IResult? Rejected)> ReadUpdateBodyAsync(
+        HttpRequest request, JsonSerializerOptions json, IAuditLogger audit, string subject, string item, CancellationToken ct,
+        string action = UpdateAction)
     {
         if (!request.HasJsonContentType())
         {
-            audit.Record(UpdateAction, subject, "denied", $"item={item} reason=unsupported-media-type");
+            audit.Record(action, subject, "denied", $"item={item} reason=unsupported-media-type");
             return (null, Results.Problem(
                 statusCode: StatusCodes.Status415UnsupportedMediaType,
                 type: ProblemTypePrefix + "unsupported-media-type",
@@ -332,7 +347,7 @@ public static class SecretItemBffEndpoints
 
         if (body is null)
         {
-            audit.Record(UpdateAction, subject, "denied", $"item={item} reason=invalid-body");
+            audit.Record(action, subject, "denied", $"item={item} reason=invalid-body");
             return (null, Invalid("body", "本文を解釈できません（JSON の形を確認してください）。"));
         }
 
@@ -340,7 +355,7 @@ public static class SecretItemBffEndpoints
 
         IResult TooLarge()
         {
-            audit.Record(UpdateAction, subject, "denied", $"item={item} reason=body-too-large");
+            audit.Record(action, subject, "denied", $"item={item} reason=body-too-large");
             return Results.Problem(
                 statusCode: StatusCodes.Status413PayloadTooLarge,
                 type: ProblemTypePrefix + "body-too-large",
@@ -350,6 +365,9 @@ public static class SecretItemBffEndpoints
 
     // 運用者・システム管理者か（`SecretItemWriter`）。拒否は監査へ `denied` を残して 403。
     // 権限ありは null を返して続行する。
+    // 🔴 ポリシー名はこの本体に直書きする（`check-bff-authz-docs.js` が同一ファイルのヘルパ本体の
+    // `AuthorizeAsync(…, PlatformAuthPolicies.X)` から実効ロールを読むため）。群（IADR-0501）は同じ形の
+    // ヘルパを `SecretItemGroupBffEndpoints` に持ち、拒否の記録だけを `Forbidden` で共有する。
     private static async Task<IResult?> DenyUnlessWriterAsync(
         HttpContext http, IAuthorizationService authz, IAuditLogger audit, string action, string? item)
     {
@@ -358,13 +376,19 @@ public static class SecretItemBffEndpoints
         if (authorized)
             return null;
 
+        return Forbidden(http, audit, action, item);
+    }
+
+    // 拒否を監査へ `denied` で残して 403 を返す（存在は秘匿しない）。
+    internal static IResult Forbidden(HttpContext http, IAuditLogger audit, string action, string? item)
+    {
         var detail = item is null ? "reason=forbidden" : $"item={Clip(item)} reason=forbidden";
         audit.Record(action, SubjectOf(http), "denied", detail);
         return Results.StatusCode(StatusCodes.Status403Forbidden);
     }
 
     // IADR-0453 決定 5: Vault を配備していない構成・ログインできない状況を 503 で見せる。
-    private static async Task<IResult?> VaultUnavailableAsync(
+    internal static async Task<IResult?> VaultUnavailableAsync(
         IVaultKvClient vault, IAuditLogger audit, string action, string subject, string? target,
         CancellationToken ct, bool probeLogin = true)
     {
@@ -384,17 +408,17 @@ public static class SecretItemBffEndpoints
         return null;
     }
 
-    private static IResult NotConfiguredProblem() => Results.Problem(
+    internal static IResult NotConfiguredProblem() => Results.Problem(
         statusCode: StatusCodes.Status503ServiceUnavailable,
         type: ProblemTypePrefix + "vault-not-configured",
         title: "秘密情報の保管先（Vault）が構成されていません。");
 
-    private static IResult UnavailableProblem() => Results.Problem(
+    internal static IResult UnavailableProblem() => Results.Problem(
         statusCode: StatusCodes.Status503ServiceUnavailable,
         type: ProblemTypePrefix + "vault-unavailable",
         title: "秘密情報の保管先（Vault）に接続できません。");
 
-    private static IResult Invalid(string field, string message) =>
+    internal static IResult Invalid(string field, string message) =>
         Results.ValidationProblem(new Dictionary<string, string[]> { [field] = [message] });
 
     // ADR-0104 決定 2, IADR-0460 決定 1: 有無の 3 値を契約の 3 値へ写す（1 対 1。畳まない）。
@@ -405,7 +429,7 @@ public static class SecretItemBffEndpoints
         _ => SecretItemSupplySources.Unknown,
     };
 
-    private static string StatusOf(VaultMetadataState state) => state switch
+    internal static string StatusOf(VaultMetadataState state) => state switch
     {
         VaultMetadataState.Present => "set",
         VaultMetadataState.Absent => "notSet",
@@ -414,9 +438,9 @@ public static class SecretItemBffEndpoints
         _ => "unavailable",
     };
 
-    private static string SubjectOf(HttpContext http) => http.User.Identity?.Name ?? "unknown";
+    internal static string SubjectOf(HttpContext http) => http.User.Identity?.Name ?? "unknown";
 
     // 利用者が送った識別子（項目名・プロパティ名）を監査へ載せるときの上限。改行等の除去は AuditLogger が行う。
-    private static string Clip(string? text) =>
+    internal static string Clip(string? text) =>
         text is null ? "(none)" : text.Length <= 100 ? text : text[..100];
 }

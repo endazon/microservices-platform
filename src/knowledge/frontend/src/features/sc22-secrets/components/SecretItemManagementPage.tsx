@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
+import { useSearch } from '@tanstack/react-router';
 import {
   Alert,
   Button,
@@ -23,6 +24,7 @@ import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { DataTable } from '../../../components/DataTable';
 import type { DataTableColumns } from '../../../components/DataTable';
 import { useSecretItemUpdate, useSecretItems } from '../api/useSecretItems';
+import { DataSourceCredentialGroupPanel } from './DataSourceCredentialGroupPanel';
 import {
   MAX_REASON_LENGTH,
   MAX_VALUE_LENGTH,
@@ -55,10 +57,13 @@ import {
 //   確認して初めて送る。🔴 **書き込みとは別の再起動の操作は置かない**（BFF に Deployment を動かす権限を与えない）。
 //   鍵の生成の確認（IADR-0456 決定 3）もこの確認の段へ統合した（2 度確認させない）。
 // ■ 到達できるのは運用者・システム管理者だけ。ガードはルート側（RequireRole → NotFound）にある。
+// ■ 計画 ADR-0126, IADR-0501 (#458 段 S3): 静的な項目の下に群「データソースの資格情報」を置く（`DataSourceCredentialGroupPanel`）。
+//   群の書き込みは管理者だけで、再起動の確認は無い。SC-06 の導線（`?datasource=<ID>`）は群の当該行を指す。
 
 export function SecretItemManagementPage() {
   const { t, i18n } = useLingui();
   const items = useSecretItems();
+  const search = useSearch({ from: '/_shell/admin/secrets' });
   const [editingItem, setEditingItem] = useState<string | null>(null);
 
   const rows = useMemo(() => items.data ?? [], [items.data]);
@@ -200,6 +205,8 @@ export function SecretItemManagementPage() {
       {editing && (
         <SecretUpdateForm key={editing.item} row={editing} onClose={() => setEditingItem(null)} />
       )}
+
+      <DataSourceCredentialGroupPanel focusId={search.datasource} />
     </section>
   );
 }

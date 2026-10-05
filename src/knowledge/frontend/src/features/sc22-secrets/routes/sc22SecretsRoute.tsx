@@ -4,6 +4,7 @@ import type { ShellRoute } from '@foundation/routing/shell';
 import type { FeatureBreadcrumb, PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
+import { validateSecretsSearch } from '../types/secretItemVocabulary';
 
 // SC-22, FR-05, ADR-0095, ADR-0042 決定 2, IADR-0453 決定 1: 秘密情報・接続設定の管理
 // （05_screens: ルート /admin/secrets）。
@@ -25,6 +26,8 @@ export const createSc22SecretsRoute = (shell: ShellRoute) =>
   createRoute({
     getParentRoute: () => shell,
     path: '/admin/secrets',
+    // 計画 ADR-0126 決定 1, IADR-0501 (#458 段 S3): SC-06 の導線（`?datasource=<ID>`）。群の当該行を強調する。
+    validateSearch: validateSecretsSearch,
     // NFR, ADR-0031 / IADR-0134: ガード（RequireRole）は初期チャンクに残し、画面だけを遅延させる。
     // ガードが先に評価されるため、権限外の利用者は画面チャンクも一覧も取得しない（存在秘匿。IADR-0009）。
     wrapInSuspense: true,

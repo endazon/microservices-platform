@@ -38,8 +38,15 @@ vexec 'vault write auth/kubernetes/role/eso bound_service_account_names=external
 echo "==> policy: bff-secret-write（SC-22 の項目だけ・完全一致パス・data の read なし）"
 vexec 'vault policy write bff-secret-write -' < "$ROOT/deploy/local/vault/eso/policy-bff-secret-write.hcl"
 
+# SC-22, 計画 ADR-0126 決定 2, IADR-0501 決定 2 (#458 段 S2): SC-22 の**群**（データソースの資格情報）の書き込み権限。
+# 🔴 専用接頭辞の 1 セグメント（`secret/data/datasource/+`）に create・patch、metadata に read だけ。`*`・list・delete なし。
+#    接頭辞の単一情報源は sc22-secret-items.json の groups[] で、HCL との一致は Platform.Bff.Tests が固定する。
+#    同じ role（bff-secret-writer）に並べて付ける —— 新しい role・ServiceAccount は作らない（名乗りは BFF のまま）。
+echo "==> policy: bff-secret-group-write（SC-22 の群だけ・専用接頭辞の 1 セグメント・data の read なし）"
+vexec 'vault policy write bff-secret-group-write -' < "$ROOT/deploy/local/vault/eso/policy-bff-secret-group-write.hcl"
+
 echo "==> role: bff-secret-writer（BFF 専用 SA microservices-platform/bff に束縛）"
-vexec 'vault write auth/kubernetes/role/bff-secret-writer bound_service_account_names=bff bound_service_account_namespaces=microservices-platform policies=bff-secret-write ttl=1h'
+vexec 'vault write auth/kubernetes/role/bff-secret-writer bound_service_account_names=bff bound_service_account_namespaces=microservices-platform policies=bff-secret-write,bff-secret-group-write ttl=1h'
 
 # FR-01, UC-04, NFR-18, IADR-0495 決定 1 (#458 段 S1): datasource-service がコネクタの資格情報（`vault:datasource/…#<key>`）を
 # 実行時に読む権限。🔴 policy は専用接頭辞 `secret/data/datasource/*` の read だけ（ESO の `msp/*` の外。書き込み・削除なし）。

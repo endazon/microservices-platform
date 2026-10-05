@@ -391,6 +391,45 @@ describe('DataSourceManagementPage (SC-06)', () => {
     await renderPage();
 
     expect(await screen.findByText(/接続情報（認証情報）は Vault 管理です。/)).toBeInTheDocument();
+    // 計画 ADR-0126 決定 1 (#458 段 S3): 投入の面（SC-22）を名指しする。
+    expect(screen.getByText(/「秘密情報・接続設定の管理」画面で設定します/)).toBeInTheDocument();
+  });
+
+  // SC-06 主要素, 計画 ADR-0126 決定 1・3 (#458 段 S3): 各行から SC-22 の群の当該項目への導線。
+  // 🔴 本画面に入力欄は置かない。管理者には「認証情報を設定」、運用者には「認証情報の状態」。
+  // 無効なソース・資格情報を使わない種別（ファイルサーバー）には出さない。
+  it('links each credential-bearing active source to its SC-22 credential item', async () => {
+    const WIKI_SOURCE = {
+      ...ACTIVE_SOURCE,
+      id: '44444444-4444-4444-4444-444444444444',
+      name: '社内Wiki',
+      sourceType: 'wiki',
+    };
+    mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE, DISABLED_SOURCE, WIKI_SOURCE]));
+    await renderPage();
+
+    const link = await screen.findByRole('link', { name: '認証情報を設定' });
+    expect(link).toHaveAttribute('href', `/admin/secrets?datasource=${WIKI_SOURCE.id}`);
+    // 陰性対照: 無効なソース（saas）とファイルサーバーには導線が無い（導線は 1 本だけ）。
+    expect(screen.getAllByRole('link', { name: '認証情報を設定' })).toHaveLength(1);
+    expect(screen.queryByTestId(`datasource-credential-link-${DISABLED_SOURCE.id}`)).toBeNull();
+    expect(screen.queryByTestId(`datasource-credential-link-${ACTIVE_SOURCE.id}`)).toBeNull();
+    // 🔴 入力欄を置かない（パスワード入力が 1 つも無い）。
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+  });
+
+  it('offers operators a status link instead of a set link', async () => {
+    const WIKI_SOURCE = {
+      ...ACTIVE_SOURCE,
+      id: '55555555-5555-5555-5555-555555555555',
+      sourceType: 'wiki',
+    };
+    mocks.apiRequest.mockResolvedValue(jsonResponse([WIKI_SOURCE]));
+    await renderPage(['platform-operator']);
+
+    const link = await screen.findByRole('link', { name: '認証情報の状態' });
+    expect(link).toHaveAttribute('href', `/admin/secrets?datasource=${WIKI_SOURCE.id}`);
+    expect(screen.queryByRole('link', { name: '認証情報を設定' })).toBeNull();
   });
 
   // BFF は後段障害を空一覧へ縮退させない（502）。「未登録」と誤認させて重複登録を招かないため。

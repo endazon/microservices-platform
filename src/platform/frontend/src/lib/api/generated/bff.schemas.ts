@@ -2176,6 +2176,127 @@ export interface SecretItemStatusDto {
   supplySource: SecretItemStatusDtoSupplySource;
 }
 
+export type SecretItemGroupMemberStatusDtoStatus = typeof SecretItemGroupMemberStatusDtoStatus[keyof typeof SecretItemGroupMemberStatusDtoStatus];
+
+
+export const SecretItemGroupMemberStatusDtoStatus = {
+  set: 'set',
+  notSet: 'notSet',
+  unavailable: 'unavailable',
+} as const;
+
+/**
+ * screen = 群の参照を持つ／値を持たない（保管先も空。表示「画面（実行時に取得・次の同期から効く）」）／git = 画面以外の値を持つ（表示「画面以外」）／unknown = 判定できない（未知の符号・保管先に値があるのに設定が値を持たない。表示「確認できない」。2 値へ寄せない）
+ */
+export type SecretItemGroupMemberStatusDtoSupplySource = typeof SecretItemGroupMemberStatusDtoSupplySource[keyof typeof SecretItemGroupMemberStatusDtoSupplySource];
+
+
+export const SecretItemGroupMemberStatusDtoSupplySource = {
+  screen: 'screen',
+  git: 'git',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * SC-22 群の成員 1 件の状態。🔴 **値の項目を持たない。**
+ */
+export interface SecretItemGroupMemberStatusDto {
+  /** 成員 ID（Vault のパスの 1 セグメント。例 データソース ID） */
+  memberId: string;
+  /** 成員の名前（例 データソース名） */
+  displayName: string;
+  /** 成員の種別（例 wiki / saas / db） */
+  kind: string;
+  /** Vault の KV パス（マウントを除く。例 datasource/<ID>） */
+  vaultPath: string;
+  /** 書けるプロパティ（群の項目は種別 value・秘密） */
+  propertyDetails: SecretItemPropertyDto[];
+  status: SecretItemGroupMemberStatusDtoStatus;
+  currentVersion?: number | null;
+  lastUpdatedAt?: string | null;
+  /** BFF が書いた版が現在版のときだけ */
+  lastUpdatedBy?: string | null;
+  /** screen = 群の参照を持つ／値を持たない（保管先も空。表示「画面（実行時に取得・次の同期から効く）」）／git = 画面以外の値を持つ（表示「画面以外」）／unknown = 判定できない（未知の符号・保管先に値があるのに設定が値を持たない。表示「確認できない」。2 値へ寄せない） */
+  supplySource: SecretItemGroupMemberStatusDtoSupplySource;
+}
+
+/**
+ * SC-22 群（計画 ADR-0126 / IADR-0501）: 群と成員の一覧。`writable` はこの利用者が群へ書けるか（管理者だけ true）。
+ */
+export interface SecretItemGroupDto {
+  /** 群の名前 */
+  group: string;
+  /** この利用者が群へ書けるか（管理者だけ。運用者は閲覧だけ）。実効境界は PUT 側 */
+  writable: boolean;
+  members: SecretItemGroupMemberStatusDto[];
+}
+
+/**
+ * 書き込み後の供給元。unknown は参照の配置を確かめられなかった（書き込みは成立している）
+ */
+export type SecretItemGroupWriteResultDtoSupplySource = typeof SecretItemGroupWriteResultDtoSupplySource[keyof typeof SecretItemGroupWriteResultDtoSupplySource];
+
+
+export const SecretItemGroupWriteResultDtoSupplySource = {
+  screen: 'screen',
+  git: 'git',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * SC-22 群の書き込みの結果。**値は返さない。** 同期依頼は無い（消費側は次の同期で読む）。
+ */
+export interface SecretItemGroupWriteResultDto {
+  group: string;
+  memberId: string;
+  property: string;
+  /** 書き込み後の版 */
+  version: number;
+  /** 書き込み後の版の作成時刻 */
+  updatedAt: string;
+  /** 書き込み後の供給元。unknown は参照の配置を確かめられなかった（書き込みは成立している） */
+  supplySource: SecretItemGroupWriteResultDtoSupplySource;
+}
+
+export type DataSourceCredentialPropertyDtoSupply = typeof DataSourceCredentialPropertyDtoSupply[keyof typeof DataSourceCredentialPropertyDtoSupply];
+
+
+export const DataSourceCredentialPropertyDtoSupply = {
+  reference: 'reference',
+  other: 'other',
+  absent: 'absent',
+} as const;
+
+export interface DataSourceCredentialPropertyDto {
+  /** 資格情報のキー名（例 apiToken / password） */
+  name: string;
+  supply: DataSourceCredentialPropertyDtoSupply;
+}
+
+/**
+ * SC-22 群の後段の成員 1 件（DataSourceService）。値も参照の文字列も持たない。
+ */
+export interface DataSourceCredentialItemDto {
+  id: string;
+  name: string;
+  sourceType: string;
+  properties: DataSourceCredentialPropertyDto[];
+}
+
+export type DataSourceCredentialReferenceResultDtoSupply = typeof DataSourceCredentialReferenceResultDtoSupply[keyof typeof DataSourceCredentialReferenceResultDtoSupply];
+
+
+export const DataSourceCredentialReferenceResultDtoSupply = {
+  reference: 'reference',
+  other: 'other',
+  absent: 'absent',
+} as const;
+
+export interface DataSourceCredentialReferenceResultDto {
+  property: string;
+  supply: DataSourceCredentialReferenceResultDtoSupply;
+}
+
 /**
  * SC-22 入力/バリデーション: 1 プロパティだけを書く。値は書き込み専用で、どの応答にも返らない。
  */

@@ -406,9 +406,14 @@
     ],
     "docs/tests/SC-22_secret-item-management.md": [
       "BffSecretItemEndpointTests",
+      "BffSecretItemGroupEndpointTests",
+      "ConnectorSecretVaultPolicyTests",
+      "CredentialReferencePlacementTests",
+      "DataSourceCredentialGroupEndpointTests",
       "SecretItemBootstrapSeedTests",
       "SecretItemCatalogTests",
       "SecretItemExternalSecretRbacTests",
+      "SecretItemGroupVaultPolicyTests",
       "SecretItemVaultPolicyTests",
       "VaultKvClientTests"
     ],

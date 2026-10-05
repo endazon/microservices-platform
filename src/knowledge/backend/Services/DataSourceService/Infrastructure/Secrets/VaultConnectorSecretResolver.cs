@@ -38,7 +38,8 @@ public sealed class VaultConnectorSecretResolver(
     public const string ClientName = "ConnectorSecretVault";
 
     /// <summary>参照のパスが置かれる専用接頭辞（KV マウントからの相対）。policy の path と対で固定する。</summary>
-    public const string PathPrefix = "datasource/";
+    // [[IADR-0501]] (#458 段 S2): 値は Domain の 1 箇所に置く（BFF が書く正規の参照と同じ接頭辞を指すため）。
+    public const string PathPrefix = ConnectorSecretReference.DedicatedPathPrefix;
 
     // リース満了のこれだけ手前で取り直す（満了ちょうどで 403 を踏まないため。BFF の VaultKvClient と同じ）。
     private static readonly TimeSpan RenewMargin = TimeSpan.FromSeconds(30);

@@ -53,6 +53,22 @@ public sealed record SecretItemDefinition(
         name is null ? null : PropertyDefinitions.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.Ordinal));
 }
 
+/// <summary>
+/// SC-22 の**群**（計画 ADR-0126 決定 1・2・3, [[IADR-0501]] 決定 2 / #458 段 S2）。成員は実行時に増え、
+/// 可変ユニットのポート（`ISecretItemGroupSource`）が供給する。成員のパスは `VaultPathPrefix/&lt;成員 ID&gt;` の 1 セグメントだけ。
+/// </summary>
+/// <param name="Group">群の名前（API の経路 `/bff/secrets/groups/{group}` と、ポートの `Group`）。</param>
+/// <param name="VaultPathPrefix">専用接頭辞（1 セグメント）。`items[]` のどのパスの先頭セグメントとも交わらない。</param>
+/// <param name="Writers">書ける役割。いまは `admin`（管理者だけ。ADR-0126 決定 3）の 1 値だけを受ける。</param>
+public sealed record SecretItemGroupDefinition(string Group, string VaultPathPrefix, string Writers)
+{
+    /// <summary>成員 1 件の Vault のパス（KV マウントからの相対）。成員 ID の形は呼び出し側が先に検査する。</summary>
+    public string VaultPathOf(string memberId) => $"{VaultPathPrefix}/{memberId}";
+
+    /// <summary>書き込みの記録（`ISecretWriteRecordStore`）のキー。静的な項目名（`/` を含まない）と交わらない。</summary>
+    public string RecordKeyOf(string memberId) => $"{Group}/{memberId}";
+}
+
 public sealed class SecretItemCatalogException(string message, Exception? inner = null)
     : Exception(message, inner);
 
@@ -67,14 +83,30 @@ public sealed partial class SecretItemCatalog
 
     private static readonly HashSet<string> PropertyObjectKeys = new(StringComparer.Ordinal) { "name", "kind", "sensitive" };
 
-    private readonly Dictionary<string, SecretItemDefinition> _byItem;
+    /// <summary>群の書き手の値（計画 ADR-0126 決定 3。管理者だけ）。</summary>
+    public const string GroupWritersAdmin = "admin";
 
-    private SecretItemCatalog(string vaultMount, IReadOnlyList<SecretItemDefinition> items)
+    private static readonly HashSet<string> GroupObjectKeys = new(StringComparer.Ordinal) { "group", "vaultPathPrefix", "writers", "why" };
+
+    private readonly Dictionary<string, SecretItemDefinition> _byItem;
+    private readonly Dictionary<string, SecretItemGroupDefinition> _byGroup;
+
+    private SecretItemCatalog(
+        string vaultMount, IReadOnlyList<SecretItemDefinition> items, IReadOnlyList<SecretItemGroupDefinition> groups)
     {
         VaultMount = vaultMount;
         Items = items;
+        Groups = groups;
         _byItem = items.ToDictionary(i => i.Item, StringComparer.Ordinal);
+        _byGroup = groups.ToDictionary(g => g.Group, StringComparer.Ordinal);
     }
+
+    /// <summary>群（`groups[]`。無ければ空）。[[IADR-0501]] 決定 2。</summary>
+    public IReadOnlyList<SecretItemGroupDefinition> Groups { get; }
+
+    /// <summary>群を名前で引く。無ければ null（呼び出し側は 400 を返す）。</summary>
+    public SecretItemGroupDefinition? FindGroup(string group) =>
+        _byGroup.TryGetValue(group, out var definition) ? definition : null;
 
     /// <summary>KV v2 のマウント名（例 `secret`）。</summary>
     public string VaultMount { get; }
@@ -181,7 +213,8 @@ public sealed partial class SecretItemCatalog
             if (items.Count == 0)
                 throw Invalid(source, "items[] が空");
 
-            return new SecretItemCatalog(mount, items);
+            var groups = GroupArray(root, items, source);
+            return new SecretItemCatalog(mount, items, groups);
         }
     }
 
@@ -237,6 +270,51 @@ public sealed partial class SecretItemCatalog
                 throw Invalid(source, $"sensitive: false は kind が value のプロパティにだけ付けられる: {item}（{name}）");
 
             list.Add(new SecretPropertyDefinition(name, kind, sensitive));
+        }
+
+        return list;
+    }
+
+    // 計画 ADR-0126 決定 1・2・3, [[IADR-0501]] 決定 2 (#458 段 S2): `groups[]`（任意）。
+    // 🔴 **fail-closed。** 未知のキー・形の誤り・重複・`items[]` と交わる接頭辞・`admin` 以外の書き手は起動しない。
+    // 接頭辞は 1 セグメントに限る（policy は `<接頭辞>/+` の 1 セグメントで書く。2 セグメント以上を許すと字面の突合が崩れる）。
+    private static List<SecretItemGroupDefinition> GroupArray(
+        JsonElement root, IReadOnlyList<SecretItemDefinition> items, string source)
+    {
+        if (!root.TryGetProperty("groups", out var value))
+            return [];
+        if (value.ValueKind != JsonValueKind.Array)
+            throw Invalid(source, "groups が配列ではない");
+
+        var itemRoots = items.Select(i => i.VaultPath.Split('/')[0]).ToHashSet(StringComparer.Ordinal);
+        var list = new List<SecretItemGroupDefinition>();
+        foreach (var element in value.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+                throw Invalid(source, "groups[] の要素がオブジェクトではない");
+            foreach (var key in element.EnumerateObject())
+            {
+                if (!GroupObjectKeys.Contains(key.Name))
+                    throw Invalid(source, $"groups[] の要素に未知のキーがある: {key.Name}");
+            }
+
+            var group = RequiredString(element, "group", source);
+            if (!SegmentPattern().IsMatch(group))
+                throw Invalid(source, $"group の書式が不正: {group}");
+            var prefix = RequiredString(element, "vaultPathPrefix", source);
+            if (!SegmentPattern().IsMatch(prefix))
+                throw Invalid(source, $"vaultPathPrefix は 1 セグメント（ワイルドカード・/・.. は不可）: {group}");
+            if (itemRoots.Contains(prefix))
+                throw Invalid(source, $"vaultPathPrefix が items[] のパスと交わる: {group}");
+            var writers = RequiredString(element, "writers", source);
+            if (!string.Equals(writers, GroupWritersAdmin, StringComparison.Ordinal))
+                throw Invalid(source, $"writers は {GroupWritersAdmin} だけを受ける: {group}");
+            if (list.Exists(g => string.Equals(g.Group, group, StringComparison.Ordinal)))
+                throw Invalid(source, $"group が重複している: {group}");
+            if (list.Exists(g => string.Equals(g.VaultPathPrefix, prefix, StringComparison.Ordinal)))
+                throw Invalid(source, $"vaultPathPrefix が重複している: {group}");
+
+            list.Add(new SecretItemGroupDefinition(group, prefix, writers));
         }
 
         return list;
@@ -303,19 +381,20 @@ public sealed partial class SecretItemCatalog
     private static SecretItemCatalogException Invalid(string source, string reason, Exception? inner = null) =>
         new($"SC-22 の項目一覧（allowlist）が不正: {source}: {reason}。BFF は起動しない（fail-closed）。", inner);
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9-]*$")]
+    // 🔴 終端は `\z`（`$` は末尾の改行の前でも一致し、"a\n" を通してしまう。#458 段 S2 の独立監査の指摘。下の型も同じ）。
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9-]*\z")]
     private static partial Regex SegmentPattern();
 
-    [GeneratedRegex("^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")]
+    [GeneratedRegex(@"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*\z")]
     private static partial Regex VaultPathPattern();
 
-    [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]*$")]
+    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._-]*\z")]
     private static partial Regex PropertyPattern();
 
     // k8s のオブジェクト名（DNS-1123 subdomain）と名前空間名（DNS-1123 label）。
-    [GeneratedRegex(@"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$")]
+    [GeneratedRegex(@"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*\z")]
     private static partial Regex KubernetesNamePattern();
 
-    [GeneratedRegex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")]
+    [GeneratedRegex(@"^[a-z0-9]([-a-z0-9]*[a-z0-9])?\z")]
     private static partial Regex KubernetesNamespacePattern();
 }

@@ -51,3 +51,59 @@ test('SC-06: a user with no administrative role gets the same not-found page', a
   expect(traffic.calls.map((c) => c.key)).not.toContain('GET /datasources');
   expectBffTrafficIsComplete(traffic);
 });
+
+// SC-06 主要素, 計画 ADR-0126 決定 1 (#458 段 S3): 各行から SC-22 の群の当該項目への導線（「認証情報を設定」）。
+// 🔴 本画面に入力欄は置かない。導線で SC-22 へ移り、群の当該行が強調される。
+test('SC-06: an admin follows the credentials link to the SC-22 group item', async ({ page }) => {
+  const id = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-admin']),
+    handlers: {
+      'GET /datasources': [
+        {
+          id,
+          name: '社内 Wiki',
+          sourceType: 'wiki',
+          connectionUri: 'https://wiki.example.test',
+          status: 'active',
+          lastSyncedAt: null,
+          config: {},
+          defaultAttributes: { confidentiality: 'internal' },
+          createdAt: '2026-10-01T00:00:00Z',
+        },
+      ],
+      'GET /secrets': [],
+      'GET /secrets/groups/datasource-credentials': {
+        group: 'datasource-credentials',
+        writable: true,
+        members: [
+          {
+            memberId: id,
+            displayName: '社内 Wiki',
+            kind: 'wiki',
+            vaultPath: `datasource/${id}`,
+            propertyDetails: [{ name: 'apiToken', kind: 'value', sensitive: true }],
+            status: 'notSet',
+            currentVersion: null,
+            lastUpdatedAt: null,
+            lastUpdatedBy: null,
+            supplySource: 'screen',
+          },
+        ],
+      },
+    },
+  });
+
+  await page.goto('/admin/sources');
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  await page.getByRole('link', { name: '認証情報を設定' }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/admin/secrets\\?datasource=${id}$`));
+  await expect(page.getByTestId(`datasource-credential-row-${id}`)).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
+  await expect(page.getByTestId('datasource-credential-update-form')).toBeVisible();
+
+  expectBffTrafficIsComplete(traffic);
+});

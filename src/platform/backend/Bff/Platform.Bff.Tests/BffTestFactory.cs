@@ -491,6 +491,32 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // SC-06（裁定 Q16 / #534）: 更新系で後段へ転送された本文を捕捉する（PATCH の意味論が
     // BFF で潰れていないことの検証に用いる）。
     public string? LastDataSourceUpdateBody { get; internal set; }
+
+    // SC-22, 計画 ADR-0126, IADR-0501 (#458 段 S2): 群「データソースの資格情報」の成員（`GET /datasources/credentials`）と、
+    // 参照の配置（`PUT /datasources/{id}/credentials/{key}/reference`）のスタブ。
+    public List<DataSourceCredentialItemDto> StubDataSourceCredentials { get; set; } = [];
+    public HttpStatusCode DataSourceCredentialsStatusCode { get; set; } = HttpStatusCode.OK;
+    public HttpStatusCode DataSourceReferenceStatusCode { get; set; } = HttpStatusCode.OK;
+
+    /// <summary>
+    /// 後段の呼び出しが（HTTP の失敗ではない）予期しない例外で落ちる状態を作る（#458 段 S2 の独立監査）。
+    /// null なら投げない。
+    /// </summary>
+    public Func<Exception>? DataSourceCredentialsException { get; set; }
+    public Func<Exception>? DataSourceReferenceException { get; set; }
+
+    /// <summary>参照の配置の要求（パス・伝播された Authorization・その時点までに Vault へ届いた data の書き込みの数）。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<(string Path, string? Authorization, int VaultDataWrites)> DataSourceReferenceRequests { get; } = new();
+
+    public void ResetDataSourceCredentials()
+    {
+        StubDataSourceCredentials = [];
+        DataSourceCredentialsStatusCode = HttpStatusCode.OK;
+        DataSourceReferenceStatusCode = HttpStatusCode.OK;
+        DataSourceCredentialsException = null;
+        DataSourceReferenceException = null;
+        DataSourceReferenceRequests.Clear();
+    }
     public HttpMethod? LastDataSourceUpdateMethod { get; internal set; }
 
     // Issue #283 (AST/SC-01 設定画面): ConfigurationService(/assumptions) への pass-through をスタブ制御する。
@@ -1305,6 +1331,34 @@ public class BffTestFactory : WebApplicationFactory<Program>
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
             var method = request.Method;
+
+            // SC-22 の群（#458 段 S2）: 成員の一覧と参照の配置。汎用の PUT の分岐より前に置く。
+            if (path == "/datasources/credentials" && method == HttpMethod.Get)
+            {
+                if (owner.DataSourceCredentialsException is { } listFault)
+                    throw listFault();
+                if (owner.DataSourceCredentialsStatusCode != HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(owner.DataSourceCredentialsStatusCode));
+                return Json(HttpStatusCode.OK, owner.StubDataSourceCredentials);
+            }
+
+            if (method == HttpMethod.Put && path.EndsWith("/reference", StringComparison.Ordinal))
+            {
+                owner.DataSourceReferenceRequests.Enqueue((
+                    path,
+                    request.Headers.Authorization?.ToString(),
+                    owner.Vault.Requests.Count(r => r.Path.Contains("/data/", StringComparison.Ordinal) && r.Method != "GET")));
+                if (owner.DataSourceReferenceException is { } referenceFault)
+                    throw referenceFault();
+                if (owner.DataSourceReferenceStatusCode != HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(owner.DataSourceReferenceStatusCode));
+                // 後段（DataSourceService）と同じ規則: 値なしなら参照を置く、それ以外はそのまま。
+                var segments = path.Split('/');
+                var member = owner.StubDataSourceCredentials.FirstOrDefault(c => c.Id.ToString("D") == segments[2]);
+                var current = member?.Properties.FirstOrDefault(p => p.Name == segments[4])?.Supply;
+                var supply = current is null or DataSourceCredentialSupplies.Absent ? DataSourceCredentialSupplies.Reference : current;
+                return Json(HttpStatusCode.OK, new DataSourceCredentialReferenceResultDto(segments[4], supply));
+            }
 
             if (path.EndsWith("/sync", StringComparison.Ordinal))
                 return Json(HttpStatusCode.Accepted,

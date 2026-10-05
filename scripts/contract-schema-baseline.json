@@ -904,6 +904,89 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.DataSourceCredentialItemDto": {
+        "kind": "record",
+        "members": {
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Properties": {
+            "source": "positional",
+            "type": "List<DataSourceCredentialPropertyDto>",
+            "required": true,
+            "position": 3
+          },
+          "SourceType": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DataSourceCredentialPropertyDto": {
+        "kind": "record",
+        "members": {
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Supply": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DataSourceCredentialReferenceResultDto": {
+        "kind": "record",
+        "members": {
+          "Property": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Supply": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DataSourceCredentialSupplies": {
+        "kind": "class",
+        "members": {
+          "Absent": {
+            "source": "const",
+            "type": "string",
+            "value": "\"absent\""
+          },
+          "Other": {
+            "source": "const",
+            "type": "string",
+            "value": "\"other\""
+          },
+          "Reference": {
+            "source": "const",
+            "type": "string",
+            "value": "\"reference\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.DataSourceDto": {
         "kind": "record",
         "members": {
@@ -4096,6 +4179,135 @@
             "source": "property",
             "type": "IReadOnlySet<string>",
             "required": false
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.SecretItemGroupDto": {
+        "kind": "record",
+        "members": {
+          "Group": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Members": {
+            "source": "positional",
+            "type": "List<SecretItemGroupMemberStatusDto>",
+            "required": true,
+            "position": 2
+          },
+          "Writable": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.SecretItemGroupMemberStatusDto": {
+        "kind": "record",
+        "members": {
+          "CurrentVersion": {
+            "source": "positional",
+            "type": "int?",
+            "required": true,
+            "position": 6
+          },
+          "DisplayName": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Kind": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "LastUpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 7
+          },
+          "LastUpdatedBy": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 8
+          },
+          "MemberId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "PropertyDetails": {
+            "source": "positional",
+            "type": "List<SecretItemPropertyDto>",
+            "required": true,
+            "position": 4
+          },
+          "Status": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 5
+          },
+          "SupplySource": {
+            "source": "positional",
+            "type": "string",
+            "required": false,
+            "position": 9
+          },
+          "VaultPath": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.SecretItemGroupWriteResultDto": {
+        "kind": "record",
+        "members": {
+          "Group": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "MemberId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Property": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "SupplySource": {
+            "source": "positional",
+            "type": "string",
+            "required": false,
+            "position": 5
+          },
+          "UpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 4
+          },
+          "Version": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 3
           }
         }
       },

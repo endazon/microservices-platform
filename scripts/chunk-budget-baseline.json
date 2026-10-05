@@ -294,7 +294,17 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 616268,
+  "initialTotalBytes": 626054,
+  "$comment_initialTotalBytes_20261006_458_audit-fixes": [
+    "［2026-10-06 / #458 段 S2 の独立監査の是正］625,500 → 626,054（+554 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
+    "+0.55 kB 超過を報告し、--update で床を更新した）。増分は SC-22 の群の注記に足した「確認できない」の説明の文言 1 件（ja / en のカタログは初期ロードに入る。",
+    "画面の部品は遅延チャンクのままで、初期ロードの index に新しい部品は入っていない）。"
+  ],
+  "$comment_initialTotalBytes_20261006_458_sc22-datasource-credentials": [
+    "［2026-10-06 / #458 段 S2・S3］616,268 → 625,500（+9,232 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
+    "+9.23 kB 超過を報告し、--update で床を更新した）。増分は SC-22 の群「データソースの資格情報」と SC-06 の導線に足した文言 26 件（ja / en のカタログは初期ロードに入る。",
+    "画面の部品 SecretItemManagementPage は遅延チャンクのままで、初期ロードの index に新しい部品は入っていない）。"
+  ],
   "$comment_initialTotalBytes_20260928_1666_sc09-dynamic-binding": [
     "［2026-09-28 / #1666］615,916 → 616,268（+352 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
     "+0.35 kB 超過を報告し、--update で床を更新した）。増分は SC-09 の動的束縛の条件に足した文言 4 件（ja / en のカタログは初期ロードに入る。",
