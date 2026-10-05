@@ -69,7 +69,11 @@
     ],
     "docs/tests/FR-05_abac-access-control.md": [
       "AbacEvaluatorTests",
+      "AbacValidationTests",
       "AccessScopeContractTests",
+      "AstKbReaderPolicySaveTests",
+      "AstKbReaderPolicySeedTests",
+      "AstKbReaderSearchScopeTests",
       "AuthorizationServiceRegistrarAttributesTests",
       "AuthzGrpcClientCallerCancellationTests",
       "BffAttributeValuesGrpcTests",
