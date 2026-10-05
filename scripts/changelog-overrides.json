@@ -62,6 +62,11 @@
       "action": "remap",
       "desc": "AI ワークフローの許可リストへ `git -C <submodule> grep` を 3 パス分足す",
       "reason": "元コミット件名に HTML エンティティがそのまま入っている（実測: git log --format=%s -1 e3cb1075 | cat -A で `&lt;submodule&gt;` を確認）。PR タイトルへ素の山括弧を書いたため GitHub が PR 作成時にエスケープし、その文字列がスカッシュマージの件名になった。gen-changelog.js:134 は `- ${scope}${c.desc} (${c.hash})` と desc を逐語で埋めるため、生成物 CHANGELOG.md にもエンティティのまま載る（実測: 再生成した出力の 441 行目、および origin/automation/changelog-update-develop:CHANGELOG.md の 440 行目）。CHANGELOG.md も GitHub が描画する面であり、読み手にはエスケープが解けないまま原文と食い違って見える。恒久履歴は force push 禁止で書き換えられないため CHANGELOG 生成時のみ補正する。desc のみを指定し type（ci）と scope（NFR）は元コミットの値を保つ——誤っているのは表記だけで種別も起点 ID も正しいため（先例 3441861 と同型。あちらもクロスリポ参照の表記違反を desc のみの remap で是正している）。差し替え後の desc では山括弧をバッククォートで囲む（.claude/rules/traceability.md「バッククォートで囲むか、山括弧を使わない書き方にする」）——素の山括弧を入れ直すと、生成物側で同じ壊れ方を再生産するためである。PR タイトル / コミット件名のエンティティ検査はキット側の check-commit-messages.js が正本であり（#836 で機能差 0）、本リポへローカル差分を作らないよう別 issue で環流する。波 12 末クロス監査（adr-guardian / traceability-auditor・2026-08-18）。"
+    },
+    {
+      "hash": "5192a7a",
+      "action": "exclude",
+      "reason": "PR #1750 のマージが GitHub の 502 応答で失敗したように見えたため再試行した結果、同じ件名の squash コミットが develop に 2 本載った。c4c1c460 が実際の変更（計画 ADR レンジの引き直し）を持ち、5192a7a4 は差分を 1 つも持たない空の重複コミットである（git show --stat 5192a7a4 で変更ファイル 0 を実測）。CHANGELOG には #1750 を c4c1c460 の 1 行だけで載せるべきであり、空の重複を載せると同じ変更が 2 回計上される。恒久履歴は force push 禁止のため書き換えず、そのまま残す。CHANGELOG 生成時にのみ除外する。hash の 7 桁接頭辞 5192a7a に一致するコミットは全 ref で 1 本だけである（git rev-list --all で実測）。"
     }
   ]
 }
