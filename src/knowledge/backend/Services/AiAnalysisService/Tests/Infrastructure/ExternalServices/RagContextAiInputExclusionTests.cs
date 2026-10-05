@@ -168,7 +168,7 @@ public class RagContextAiInputExclusionTests
     // 語彙索引の導入で、未指定・未知の文書が検索に現れ RAG の文脈に入る経路が開いた（#1746 段 S1）。
     // ここが `public` へ倒れると、ZDR を要さない送信先へ本文が出る。非ストリーミング・ストリーミングの両方で測る。
     // 陽性対照: 組織文書（internal）だけなら internal（既存の `越境判定は除外後の集合で測る` も同じ値を見る）。
-    public static TheoryData<string?> UnsetOrUnknownLevels => new() { null, "", "secret-ish", " public " };
+    public static TheoryData<string?> UnsetOrUnknownLevels => new(new string?[] { null, "", "secret-ish", " public " });
 
     private static SearchResultDto UnclassifiedChunk(string? level)
     {

@@ -365,3 +365,8 @@ $ POST /collections/vec_f/facet (vector collection, no keyword index)
 - 単体: IngestionService.Tests 138・RetrievalService.Tests 475・AiAnalysisService.Tests 170 緑
 - 統合（手元の Docker・実 Qdrant v1.18.1）: `Knowledge.IntegrationTests.Search` ＋ `DocumentUpdatedFanOutTests` 17 件緑（`LexicalIndexQdrantTests` 6 件を含む）
 - `dotnet format --verify-no-changes` 差分なし・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 918 緑（初回は test-spec-coverage の床の上げ忘れと未追跡のファイルで赤 → 直した）・check-trace-blocks・check-doc-updated・check-test-traceability・gen-knowledge-graph --check・check-cross-repo-refs・check-plan-id-qualification・check-doc-links・check-adr-numbering OK。check-commit-messages と gitleaks はコミット後に実行
+
+> **［2026-10-05 追記 / #1746］AI 再レビューの 🟢 への対応。** 7a6e8ea7 で足した `RagContextAiInputExclusionTests` の
+> `TheoryData<string?>` をコレクション初期化子で書いたため、null の要素で CS8625 の警告が 1 件増えていた（上の検証表は
+> 「警告 1 件（既存の CS0618）」のままで、記録と食い違っていた）。配列を渡す形へ改めて CS8625 を消した。
+> AiAnalysisService.Tests は警告 0・170 件合格。knowledge slnx の警告は既存の CS0618 の 1 件だけに戻る。
