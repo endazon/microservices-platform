@@ -3,15 +3,15 @@ title: AI 回答・出典提示 機能仕様書
 type: functional-spec
 status: draft
 created: 2026-06-27
-updated: 2026-09-02
+updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
-ids: [FR-04, FR-05, FR-11, SC-01, SC-08, UC-01, UC-02]
-adrs: []
-iadrs: [IADR-0009, IADR-0037, IADR-0111, IADR-0131, IADR-0132]
-specs: []
-issues: [#201, #403, #541]
+ids: [FR-04, FR-03, FR-05, FR-11, SC-01, SC-08, UC-01, UC-02]
+adrs: [ADR-0127]
+iadrs: [IADR-0009, IADR-0037, IADR-0111, IADR-0131, IADR-0132, IADR-0498]
+specs: [20261006_1746_claude-rerank]
+issues: [#201, #403, #541, #1746]
 -->
 
 # 機能仕様書: AI 回答・出典提示
@@ -72,6 +72,11 @@ flowchart TD
   E -->|成功| F[回答 + 出典を返す]
   E -->|失敗/縮退| G[出典のみ提示し縮退メッセージ]
 ```
+
+- **候補の並び（2026-10-06）**: 検索サービスの再順位付けの段（Claude。既定は無効）を有効にすると、RAG 回答の候補も
+  その段を通って並べ替わる（AI 分析は検索サービスの検索で候補を得るため。AI 分析の側には段を置かない）。並べ替えは
+  切り詰め（既定 5 件）の前に掛かるので、文脈に入る候補そのものが変わり得る。出典の番号付け・機密区分の付け方・
+  「AI の入力に含める」による文脈の選択は変わらない。詳細は [ハイブリッド検索 機能仕様書](./FR-03_hybrid-search.md) §Claude による再順位付け。
 
 ## 例外・エラー処理
 

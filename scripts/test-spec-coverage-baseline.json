@@ -43,6 +43,8 @@
       "AttributeValuesTrustedRelayTests",
       "BffSearchEndpointTests",
       "BodylessDocumentSearchTests",
+      "ClaudeRerankTests",
+      "ClaudeRerankWiringTests",
       "DocumentBodyPresenceTests",
       "DocumentSearchRelayDeploymentWiringTests",
       "DocumentSearchRelayOptionsTests",
@@ -156,7 +158,8 @@
       "OpenAiProviderStopReasonTests",
       "QdrantVectorStoreTests",
       "RagContextAiInputExclusionTests",
-      "RagOrchestratorStopReasonTests"
+      "RagOrchestratorStopReasonTests",
+      "RerankPurposeEndpointTests"
     ],
     "docs/tests/FR-12_document-normalization.md": [
       "ConversionJobStoreTests",

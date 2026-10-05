@@ -3130,6 +3130,33 @@ ok('IADR-0497: 語彙索引は ingestion と retrieval の両方へ同じキー�
 });
 
 // ---------------------------------------------------------------------------
+// T-108, FR-03, ADR-0127 決定 3・4, IADR-0498 (#1746 段 S2): Claude による再順位付けの段は**どこでも既定で無効**。
+//
+// 🔴 有効にすると検索のたびに LLM の費用が生じ、restricted と機密区分が未指定・未知の本文がティア B へ出る。
+// 4 か所（コード・appsettings・helm・compose）のどれか 1 つでも既定が真になると、構成の欠落で黙って有効になる。
+// ---------------------------------------------------------------------------
+const RERANK_OPTIONS_CS = readAt(
+  REPO_ROOT, 'src', 'knowledge', 'backend', 'Services', 'RetrievalService',
+  'Features', 'Search', 'Hybrid', 'SearchRerankOptions.cs');
+
+ok('IADR-0498: 再順位付けの段は コード・appsettings・helm・compose のすべてで既定が無効', () => {
+  assert.match(RERANK_OPTIONS_CS, /SectionName\s*=\s*"Rerank"/, '構成の節の名前が読めない');
+  assert.match(RERANK_OPTIONS_CS, /public bool Enabled \{ get; set; \}\s*$/m,
+    'SearchRerankOptions.Enabled に既定値（true）が書かれている');
+  assert.strictEqual(RETRIEVAL_APPSETTINGS.Rerank.Enabled, false, '検索の appsettings.json の Rerank:Enabled が false でない');
+  const at = CHART_VALUES.search(/^searchRerank:\s*$/m);
+  assert.ok(at !== -1, 'values.yaml に searchRerank: が無い');
+  assert.match(CHART_VALUES.slice(at), /^ {2}enabled:\s*false\s*$/m, 'values.yaml の searchRerank.enabled が false でない');
+  const block = CHART_DEPLOYMENT.slice(CHART_DEPLOYMENT.indexOf('- name: Rerank__Enabled'));
+  assert.ok(block.startsWith('- name: Rerank__Enabled'), 'deployment.yaml が Rerank__Enabled を描画しない');
+  assert.match(block.split('\n')[1], /\$\.Values\.searchRerank\.enabled \| default false/,
+    'Rerank__Enabled の値が searchRerank.enabled（既定 false）から来ていない');
+  const lines = COMPOSE_YAML.match(/^\s+Rerank__Enabled: .*$/gm) || [];
+  assert.strictEqual(lines.length, 1, 'docker-compose.yml の Rerank__Enabled が retrieval の 1 か所でない');
+  assert.match(lines[0], /\$\{SEARCH_RERANK_ENABLED:-false\}/, 'docker-compose.yml の Rerank__Enabled の既定が false でない');
+});
+
+// ---------------------------------------------------------------------------
 // #782 / ADR-0021: エッジを Istio Ingress Gateway へ移す overlay の静的検査。
 //
 // ここで固定するのは **STRICT が成立するための前提**だけである。実クラスタでの疎通は
