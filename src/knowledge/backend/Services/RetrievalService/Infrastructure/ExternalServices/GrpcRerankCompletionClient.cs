@@ -1,4 +1,6 @@
+using Grpc.Core;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using Platform.Shared.Infrastructure.Foundation.Llm;
 using RetrievalService.Domain.Ports;
 using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
@@ -11,11 +13,29 @@ namespace RetrievalService.Infrastructure.ExternalServices;
 // `LlmGrpcMapping` を通す（輸送ごとに要求の形を作り分けない）。
 //
 // 🔴 **失敗は例外のまま上げる**（`RpcException`・s2s トークンの取得失敗）。縮退は段が決める。
+//
+// 🔴 ［2026-10-06 / #1746 監査 F4］**取り消しは `OperationCanceledException` で上げる。** チャネルは
+// `ThrowOperationCanceledOnCancellation` を立てていない（`GrpcClientExtensions.CreatePlatformChannel`）ので、
+// 呼び出し元の取り消し（利用者の中断・段の期限）は `RpcException(Cancelled / DeadlineExceeded)` で表れる。
+// そのまま上げると、段は利用者の中断を「輸送の失敗」として縮退させ、期限切れも `transport` と数え違える。
+// **`ct` が取り消されているときだけ**写す —— 取り消していないのに来た Cancelled は上流の不調（輸送の失敗）である。
 public sealed class GrpcRerankCompletionClient(Pb.LlmCompletion.LlmCompletionClient client) : IRerankCompletionClient
 {
-    public async Task<CompletionApiResponse> CompleteAsync(CompletionApiRequest request, CancellationToken ct)
+    public async Task<CompletionApiResponse> CompleteAsync(
+        CompletionApiRequest request, bool isSynthetic, CancellationToken ct)
     {
-        var response = await client.CompleteAsync(LlmGrpcMapping.ToProto(request), cancellationToken: ct);
-        return LlmGrpcMapping.ToDto(response);
+        // NFR-02, ADR-0076 決定 4, [[IADR-0378]], [[IADR-0400]] 決定 3: 標識は**メタデータ**で運ぶ（AI 分析の生成の輸送と同じ）。
+        var headers = new Metadata();
+        SyntheticTraffic.PropagateTo(headers, isSynthetic);
+        try
+        {
+            var response = await client.CompleteAsync(LlmGrpcMapping.ToProto(request), headers, cancellationToken: ct);
+            return LlmGrpcMapping.ToDto(response);
+        }
+        catch (RpcException ex) when (ex.StatusCode is StatusCode.Cancelled or StatusCode.DeadlineExceeded
+                                      && ct.IsCancellationRequested)
+        {
+            throw new OperationCanceledException("LLM gateway rerank call was cancelled by the caller", ex, ct);
+        }
     }
 }

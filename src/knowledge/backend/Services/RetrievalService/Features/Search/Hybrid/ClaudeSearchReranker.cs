@@ -48,7 +48,9 @@ public sealed class ClaudeSearchReranker(
 
         // NFR-02, ADR-0076 決定 4, [[IADR-0378]]: 🔴 **合成監視の検索に費用を出さない。**
         // 外周（BFF）・AI 分析が付けた内周の標識を読む（RAG 回答の `SuppressLlmForSynthetic` と同じ判定）。
-        if (SyntheticTraffic.IsSyntheticInternalRequest(httpContextAccessor?.HttpContext?.Request))
+        // ［2026-10-06 / #1746 監査 F1］標識は AI 分析の検索の輸送（REST・gRPC）と BFF の検索が付ける。
+        var synthetic = SyntheticTraffic.IsSyntheticInternalRequest(httpContextAccessor?.HttpContext?.Request);
+        if (synthetic)
             return Skip(candidates, RerankMetrics.Synthetic);
 
         // [[IADR-0498]] 決定 3・4: 窓の中で、AI の入力に含めてよい候補だけを送る。
@@ -77,7 +79,8 @@ public sealed class ClaudeSearchReranker(
             timeout.CancelAfter(TimeSpan.FromSeconds(options.TimeoutSeconds));
             try
             {
-                response = await llm.CompleteAsync(body, timeout.Token);
+                // 標識はゲートウェイへも引き継ぐ（上で合成監視は止めているので通常は偽。段の判定が外れたときの二重の守り）。
+                response = await llm.CompleteAsync(body, synthetic, timeout.Token);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {

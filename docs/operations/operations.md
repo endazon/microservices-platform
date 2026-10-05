@@ -834,6 +834,11 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
   個人資料の「AI の入力に含める」だけである。
 - **費用の目安**（単価表 `claude-haiku-4-5` $1 / $5 per 1M tokens）: 1 回 平均 約 $0.0055・最大 約 $0.011。1 日 1,000 検索で 約 $165／月。
   実績は `llm_cost_total{llm_purpose="rerank"}`（回答生成 `rag-answer` と別の軸）で見る。
+  🔴 **検索の回数には MCP のツールの検索も入る**（同じ検索の出口を通る）。検索結果一覧と RAG 回答だけで見積もらない。
+  合成監視の検索（`/bff/analysis/ask` 等）は内周の標識で見分けて再順位付けを呼ばない（費用に入らない）。
+- **用途のモデルを変えるとき**: `rerank` の割当モデルを ZDR 非対応（`NonZdrModels`）にすると、ゲートウェイは既定モデル
+  （`claude-opus-5`）へ倒れる。ZDR の外へは出ないが、費用は最大で約 5 倍になる。
+- 🔴 **有効化は #1746 の段 S5 で扱う**（検索 p95 の目標 1.5 秒と、再順位付けの往復〔期限 8 秒〕の扱いの裁定が前提）。
 - **調整の口**（範囲外は既定へ倒れ、警告ログが出る）: `Rerank__CandidateCount`（既定 20・2〜50）・`Rerank__MaxCharsPerCandidate`（既定 400・50〜2000）・
   `Rerank__TimeoutSeconds`（既定 8・1〜30）・`Rerank__MaxOutputTokens`（既定 512・64〜2048）。
 - **監視**: `search_rerank_total{search_rerank_result="degraded"}` が増えたら、理由（`search_rerank_reason`）を見る。

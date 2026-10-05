@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using RetrievalService.Domain.Ports;
 
 namespace RetrievalService.Infrastructure.ExternalServices;
@@ -14,9 +15,16 @@ public sealed class HttpRerankCompletionClient(HttpClient http) : IRerankComplet
 {
     public const string HttpClientName = "LlmGatewayRerank";
 
-    public async Task<CompletionApiResponse> CompleteAsync(CompletionApiRequest request, CancellationToken ct)
+    public async Task<CompletionApiResponse> CompleteAsync(
+        CompletionApiRequest request, bool isSynthetic, CancellationToken ct)
     {
-        using var response = await http.PostAsJsonAsync("/complete", request, ct);
+        using var message = new HttpRequestMessage(HttpMethod.Post, "/complete")
+        {
+            Content = JsonContent.Create(request),
+        };
+        // NFR-02, ADR-0076 決定 4, [[IADR-0378]]: 合成監視の標識をゲートウェイへ引き継ぐ（費用から外すのはゲートウェイ）。
+        SyntheticTraffic.PropagateTo(message, isSynthetic);
+        using var response = await http.SendAsync(message, ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<CompletionApiResponse>(ct)
             ?? throw new InvalidOperationException("LLM gateway returned an empty completion body");

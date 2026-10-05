@@ -2,7 +2,7 @@
 title: IADR-0498 検索結果の候補は、検索サービスの唯一の出口で Claude（用途 rerank・claude-haiku-4-5・ZDR 必須）に再順位付けさせる。RAG 回答と SC-02 の両方に効き、送るのは ABAC 後・ai_input が許す候補だけ、失敗は元の順で返す。既定は無効
 type: impl-adr
 status: Accepted
-related_ids: [FR-03, FR-04, FR-05, FR-10, FR-11, FR-19, UC-01, SC-02, ADR-0127, ADR-0010, ADR-0018, ADR-0038, ADR-0044, ADR-0061, ADR-0076, ADR-0092, IADR-0497, IADR-0022, IADR-0104, IADR-0225, IADR-0283, IADR-0340, IADR-0378, IADR-0396, IADR-0400, IADR-0422, IADR-0426]
+related_ids: [FR-03, FR-04, FR-05, FR-10, FR-11, FR-19, UC-01, SC-02, ADR-0127, ADR-0010, ADR-0018, ADR-0038, ADR-0044, ADR-0061, ADR-0076, ADR-0092, IADR-0497, IADR-0022, IADR-0104, IADR-0225, IADR-0283, IADR-0340, IADR-0378, IADR-0396, IADR-0400, IADR-0422, IADR-0426, ADR-0079, NFR-01]
 author: claude
 created: 2026-10-06
 updated: 2026-10-06
@@ -106,6 +106,17 @@ related_specs:
 
 - `Rerank:Enabled` が真、並びが `relevance`（未指定・未知を含む）、モードが `hybrid` / `keyword`（未指定・未知は hybrid）のとき。
 - `semantic`・`updated`・合成監視（`X-Synthetic-Traffic`。ADR-0076 決定 4・RAG の `SuppressLlmForSynthetic` と同じ判定）では掛けない。
+- ［2026-10-06 追記 / #1746 監査 F1］🔴 **合成監視の標識は、検索サービスへ届けて初めて効く。** 当初は標識を運ぶ経路が 1 つも無かった
+  （AI 分析の REST 検索輸送は `Authorization` だけを転送し、gRPC 検索輸送は何も載せず、RAG は LLM の抑止
+  `SuppressLlmForSynthetic` より前に検索する）。したがって両方を有効にすると、60 秒ごとの合成監視（`/bff/analysis/ask`・`/ask/stream`）が
+  1 日 約 2,880 回の再順位付けを実利用として計上するところであった（ADR-0076 決定 4・ADR-0079 決定 1 に反する）。次で塞いだ:
+  - AI 分析: `RagSearchQuery.IsSynthetic`（受信要求の内周の標識）を、REST 検索輸送はヘッダ、gRPC 検索輸送はメタデータで
+    `X-Synthetic-Traffic` として引き継ぐ（生成の輸送 `GrpcLlmCompletionTransport` と同じ運び方）。
+  - BFF の横断検索（`/bff/search`）: 合成監視の主体（検証済み JWT）なら標識を付ける（合成監視の対象の経路は構成 `PROBE_PATHS` で変えられる）。
+    受信ヘッダは転送しない（回答の経路と同じ規則）。
+  - 検索サービスは REST・gRPC のどちらでも `IHttpContextAccessor` 越しの受信ヘッダで判定する（gRPC のメタデータは受信ヘッダとして見える）。
+  - 段の輸送（`IRerankCompletionClient`）も標識をゲートウェイへ引き継ぐ（段は合成監視では呼ばないので通常は偽。段の判定が外れたときに
+    ゲートウェイが費用から外す二重の守り）。
 - 高機密を含むかどうかでは分けない。
 
 ### 決定 3: 候補の幅
@@ -127,6 +138,12 @@ related_specs:
 - **ゲートウェイは用途 `rerank` を区分によらず ZDR 必須として扱う**（`LlmRoutingOptions.ZeroDataRetentionPurposes`。コードに持ち、設定で外せない）。
   非 ZDR モデル（`NonZdrModels`）を第 1 候補・鎖の両方から除き、ティア C を候補から外す。区分の規則（`EgressMatrix`）は変えない。
 - 輸送は失敗を例外のまま上げ、段が縮退を決める。**ゲートウェイ以外の送信先へ倒す枝は無い。**
+- ［2026-10-06 追記 / #1746 監査 F4］gRPC の輸送は、呼び出し元の取り消し（利用者の中断・段の期限）による
+  `RpcException(Cancelled / DeadlineExceeded)` を `OperationCanceledException` へ写す（チャネルは `ThrowOperationCanceledOnCancellation` を
+  立てていない）。写さないと、段は利用者の中断を `transport` の縮退として数え、期限切れも `timeout` でなく `transport` と数え違える。
+  取り消していないのに来た `Cancelled` は上流の不調として `RpcException` のまま（`transport`）。
+- ［2026-10-06 追記 / #1746 監査］用途 `rerank` の割当モデルが将来 非 ZDR になった場合（`NonZdrModels` に載る）、`ResolveModel` は
+  `DefaultModel`（`claude-opus-5`）へ倒れる。ZDR の外へは出ないが、費用は最大で約 5 倍になる（$5 / $25 対 $1 / $5）。
 
 ### 決定 6: 用途 `rerank` と費用
 
@@ -184,18 +201,24 @@ related_specs:
   - 応答の `Score` は検索の値（RRF 等）のままで、並びと単調でなくなる（並びは段が決め、`Score` は検索の関連度の値として残す。グラフの近さで並べ替えたときと同じ扱い）。
 - **残るもの**
   - 🔴 **既定は無効**。ADR-0127 決定 3 が開くのは有効にしたとき（運用の判断）。計画 SC-02 の「再順位付けは未実装である」は、有効にするまで振る舞いとして真のまま。
-  - 合成監視の判定は内周の標識（`X-Synthetic-Traffic`）を読む。AI 分析の gRPC 検索輸送（`GrpcRagSearchTransport`）はこの標識を運ばないので、gRPC 経路の合成監視の RAG は再順位付けの費用を出し得る（REST 経路は運ぶ）。
+  - ~~合成監視の判定は内周の標識（`X-Synthetic-Traffic`）を読む。AI 分析の gRPC 検索輸送（`GrpcRagSearchTransport`）はこの標識を運ばないので、gRPC 経路の合成監視の RAG は再順位付けの費用を出し得る（REST 経路は運ぶ）。~~
+    ［2026-10-06 訂正 / #1746 監査 F1］**「REST 経路は運ぶ」は誤りであった**（REST 検索輸送も `Authorization` しか転送していなかった）。
+    標識は REST・gRPC の検索輸送と BFF の横断検索の 3 経路で運ぶようにした（決定 2 の追記）。
+  - 🔴 **有効化は #1746 S5（F1 解消・S3 計測・NFR-01 の扱いの裁定が前提）。** 本 IADR は段の形を決めたもので、有効化の判断は含まない。
+  - 🔴 **NFR-01 との衝突**: 検索 p95 の目標 1.5 秒（アラート `SearchLatencyP95High`）に対し、段は 1 回の検索に LLM の往復（期限 8 秒）を足す。
+    有効にすると p95 は目標を超え得る。扱い（目標・期限・掛ける経路の見直し）は計画側の裁定に委ねる（S5 の前提）。
+  - MCP のツールの検索も同じ出口を通るので、有効にすると再順位付けの費用に含まれる。
   - 窓 20・本文 400 字・期限 8 秒・haiku の品質は実測ではない。段 S3（nDCG@10）で測る。
   - 二段検索を有効にした構成では、グラフの近さで合成した後の並びに掛かる（グラフの重みの効果を上書きし得る）。
   - 実ゲートウェイ（実 Claude）での疎通は未実測（単体・端点の試験は偽の輸送）。
 - **フォローアップ**
   1. 段 S3: nDCG@10 の差（「全文のみ＋Claude の再順位付け」と「ハイブリッド（voyage）」）を IADR-0422 のハーネスで測り、窓・本文の字数・モデルを見直す。
-  2. 有効化の判断（運用）。有効にしたら `search.rerank.total` と `llm.cost.total{llm_purpose="rerank"}` を見る。
-  3. gRPC 検索輸送の合成監視の標識（上の「残るもの」）。
+  2. 有効化（#1746 S5）。有効にしたら `search.rerank.total` と `llm.cost.total{llm_purpose="rerank"}` を見る。
+  3. ~~gRPC 検索輸送の合成監視の標識（上の「残るもの」）。~~ ［2026-10-06 / #1746 監査 F1］本 PR で解消。
 
 ## 試験
 
-受け入れ基準と試験の対応（T-ID）は作業仕様書 §受け入れ基準 → 試験 と `docs/tests/FR-03_hybrid-search.md`（T-100〜T-108）・`docs/tests/FR-11_llm-egress-routing.md`（T-28・T-29）。
+受け入れ基準と試験の対応（T-ID）は作業仕様書 §受け入れ基準 → 試験 と `docs/tests/FR-03_hybrid-search.md`（T-100〜T-111。T-109〜T-111 は 2026-10-06 の監査対応）・`docs/tests/FR-11_llm-egress-routing.md`（T-28・T-29）。
 
 ## 関連
 

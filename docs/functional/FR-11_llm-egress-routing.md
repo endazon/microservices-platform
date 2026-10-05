@@ -74,6 +74,8 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   **機密区分によらず** ZDR を要件とする —— `NonZdrModels` のモデルを第 1 候補・鎖の両方から除き、ティア C を候補から外す。
   区分の規則（`EgressMatrix`）は変えず、用途の規則を重ねる（強める向きだけ）。再順位付けは検索の候補（`restricted` と機密区分が未指定・未知を
   含み得る）の本文をまとめて送るため、候補が `public` だけのときにも ZDR の外へ出さない。
+  なお `rerank` の割当モデルを ZDR 非対応にすると、`ResolveModel` は `DefaultModel`（`claude-opus-5`）へ倒れる（ZDR の外へは出ないが、
+  費用は最大で約 5 倍になる）。全 `PurposeModels` の割当が非 ZDR でないことは T-23 が固定する。
 - **用途別モデルは `Models`（利用許可集合）にも登録する**: `ResolveModel` は `eligible.Contains(purposeModel)` を条件とするため、`PurposeModels` にのみ書いて `Models` へ登録し忘れると、例外もログも出さずに `DefaultModel` へフォールバックし割当が無音で失効する。
   `Models` は「割当」ではなく「利用を許可するモデル集合」であり、版数改定時は**追加**する（削除は明示 `Model` 要求をしている呼び出し側に対する破壊的変更）。
   **ただし計画 ADR（`ADR-0038` 決定 2）が利用そのものを禁じたモデルは例外で、`Models` から除去する** —— 破壊的変更であることを承知のうえで、非 ZDR モデルを基盤から無くすことを優先した。

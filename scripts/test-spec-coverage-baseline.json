@@ -60,6 +60,9 @@
       "MetadataIndexTextTests",
       "MultiCollectionFusionTests",
       "QdrantVectorStoreTests",
+      "RagSearchSyntheticMarkerTests",
+      "RerankCompletionTransportTests",
+      "SyntheticTrafficExclusionTests",
       "TrustedUserContextRelayTests"
     ],
     "docs/tests/FR-04_ai-answer-citations.md": [

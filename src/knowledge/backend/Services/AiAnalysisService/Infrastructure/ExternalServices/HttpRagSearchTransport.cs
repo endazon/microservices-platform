@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using AiAnalysisService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace AiAnalysisService.Infrastructure.ExternalServices;
 
@@ -33,6 +34,11 @@ public sealed class HttpRagSearchTransport(
         var auth = httpContextAccessor?.HttpContext?.Request.Headers.Authorization.ToString();
         if (!string.IsNullOrEmpty(auth))
             retrievalClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
+        // NFR-02, ADR-0076 決定 4, [[IADR-0378]], [[IADR-0498]]（2026-10-06 / #1746 監査 F1）: 合成監視の標識を引き継ぐ
+        // （検索サービスの再順位付けが合成監視に LLM の費用を出さないため）。**合成のときだけ付ける。**
+        if (query.IsSynthetic)
+            retrievalClient.DefaultRequestHeaders.TryAddWithoutValidation(
+                SyntheticTraffic.HeaderName, SyntheticTraffic.HeaderValue);
 
         try
         {

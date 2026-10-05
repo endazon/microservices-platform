@@ -174,6 +174,8 @@ semantic では埋め込めたコレクションだけで束ね、**全コレク
 | プロンプト注入 | 題名・本文・検索語は区切りの内側に置き、`<` `>` を全角へ置き換える（区切りを閉じられない）。指示文は区切りの中の命令に従わないと言う |
 | `Score` | 検索の値（RRF 等）のまま。並びと単調でなくなる |
 | 計器 | `search.rerank.total`（`search.rerank_result` = applied / degraded / skipped、`search.rerank_reason`） |
+| 合成監視 | 内周の標識（`X-Synthetic-Traffic`）で見分けて呼ばない。標識は AI 分析の検索の輸送（REST はヘッダ・gRPC はメタデータ）と BFF の横断検索（合成監視の主体のとき）が付ける。ゲートウェイへの呼び出しにも引き継ぐ |
+| 取り消し | 利用者の取り消しは取り消しのまま上げる（gRPC の `Cancelled` / `DeadlineExceeded` も取り消しとして扱う）。段の期限は `timeout` として元の順へ戻す |
 
 ## 例外・エラー処理
 

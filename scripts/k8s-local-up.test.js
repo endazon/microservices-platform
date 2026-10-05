@@ -3144,9 +3144,9 @@ ok('IADR-0498: 再順位付けの段は コード・appsettings・helm・compose
   assert.match(RERANK_OPTIONS_CS, /public bool Enabled \{ get; set; \}\s*$/m,
     'SearchRerankOptions.Enabled に既定値（true）が書かれている');
   assert.strictEqual(RETRIEVAL_APPSETTINGS.Rerank.Enabled, false, '検索の appsettings.json の Rerank:Enabled が false でない');
-  const at = CHART_VALUES.search(/^searchRerank:\s*$/m);
-  assert.ok(at !== -1, 'values.yaml に searchRerank: が無い');
-  assert.match(CHART_VALUES.slice(at), /^ {2}enabled:\s*false\s*$/m, 'values.yaml の searchRerank.enabled が false でない');
+  // ［2026-10-06 / #1746 監査 F6］節の**直下の行**に錨を下ろす（後ろのどこかの `enabled: false` に当たらないように）。
+  assert.match(CHART_VALUES, /^searchRerank:[ \t]*\n {2}enabled:[ \t]*false[ \t]*$/m,
+    'values.yaml の searchRerank: の直下が enabled: false でない');
   const block = CHART_DEPLOYMENT.slice(CHART_DEPLOYMENT.indexOf('- name: Rerank__Enabled'));
   assert.ok(block.startsWith('- name: Rerank__Enabled'), 'deployment.yaml が Rerank__Enabled を描画しない');
   assert.match(block.split('\n')[1], /\$\.Values\.searchRerank\.enabled \| default false/,
