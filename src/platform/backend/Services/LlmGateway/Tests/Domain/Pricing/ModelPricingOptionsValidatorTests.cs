@@ -60,8 +60,10 @@ public class ModelPricingOptionsValidatorTests
         => Validator.Validate(null, new ModelPricingOptions { Models = { ["m"] = [] } })
             .Failed.Should().BeTrue();
 
-    // FR-10, ADR-0044 決定 3 (T-14): 実際に配備する appsettings の単価表は検証を通る
-    // （設定と検証器が同時に壊れていないことの陽性対照）。
+    // FR-10, ADR-0044 決定 3 (T-14): **検証器の陽性対照**。配備中の単価表と同じ形（期限なしの 1 区間を
+    // 複数モデル分）の手書きの表が検証を通る。［2026-10-05 / #1741］従前は「実際に配備する appsettings」を
+    // 検証すると書いていたが、ここは手書きの写しであり実設定を読まない。実設定の値は DeployedPriceTableTests が、
+    // 実設定の形は起動時検証（ValidateOnStart）が守る。
     [Fact]
     public void 既定の単価表は検証を通る()
     {
