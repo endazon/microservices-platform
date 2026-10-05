@@ -8395,7 +8395,14 @@ ${r.stderr}`);
         //    （`check-unit-service-ownership.js` と同じ扱い。submodule 未取得なら縮退する点も同じだが、
         //    縮退の形は**既知の一覧へのフォールバックではなく明示的な skip** である ——
         //    写しの内容は「既知の一覧」として持てないからである）。
-        assert.strictEqual(scripts.length, 58, `検査器の母集合が 58 本から変わった（${scripts.length} 件）`);
+        // ★ #1534 / NFR-07・ADR-0032・IADR-0251 決定 5 で `check-bff-multi-replica-session.js`（BFF のセッション Cookie を
+        //    2 レプリカの各 Pod へ port-forward で投げ、相互に復号できることと改ざんした Cookie を拒むことを測る）を
+        //    新設したため 58 → 59（ラチェットが設計どおり発火した）。
+        //    🔴 **これは「同型の事故が 2 回」ではなく issue の受け入れ基準（稼働環境が要る 2 件）に基づく新設である**
+        //    （IADR-0251 決定 5 が「2 レプリカ以上で測る」を検証手段に名指ししていた）。CI のゲートではなく
+        //    `--live` の後ろの測定器であり、git を一切呼ばない（helm / kubectl を外部コマンドとして叩く）ため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-stack-ready.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 59, `検査器の母集合が 59 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -13340,6 +13347,420 @@ exit 0
       const viaEnv = spawnSync1245(process.execPath, [script, '--live'], { env: { ...env, LOGIN_PROBE_USERNAME: 'developer' }, encoding: 'utf8' });
       assert.strictEqual(viaEnv.status, 1, viaEnv.stderr);
       assert.ok(/realm 宣言に在る共有の利用者/.test(viaEnv.stderr), `環境変数の上書きが run へ届いていない: ${viaEnv.stderr}`);
+    });
+  }
+
+  // --- #1534 / NFR-07・ADR-0032・IADR-0251 決定 5: BFF のセッション Cookie を 2 レプリカで相互に復号できるか（稼働側の検査器） ------
+  //
+  // 🔴 **稼働の経路は走らせない。** 試すのは純関数と、スタブの経路（--plan は helm のスタブ、--live は helm と kubectl のスタブを
+  // PATH の先頭に置き、呼び出しの記録を見る。ログインの手前で止まる経路だけ）。
+  {
+    const fs1534 = require('fs');
+    const os1534 = require('os');
+    const path1534 = require('path');
+    const { spawnSync: spawnSync1534 } = require('child_process');
+    const m1534 = require('./check-bff-multi-replica-session.js');
+    const script1534 = path1534.join(__dirname, 'check-bff-multi-replica-session.js');
+
+    // helm template の出力の縮約（# Source 行・Service・Deployment。Deployment は env のリストを持つ）。
+    const deploy1534 = ({ replicas = 1, env = ['A', 'B'] } = {}) => [
+      '---', '# Source: microservices-platform/templates/deployment.yaml', 'apiVersion: apps/v1', 'kind: Deployment', 'metadata:',
+      '  name: bff-service', '  labels:', '    app: bff-service', 'spec:', ...(replicas === null ? [] : [`  replicas: ${replicas}`]),
+      '  template:', '    spec:', '      containers:', '        - name: bff-service', '          env:',
+      ...env.flatMap((n) => [`            - name: ${n}`, '              value: "x"']),
+    ].join('\n');
+    const others1534 = ({ docReplicas = 1 } = {}) => [
+      '---', 'apiVersion: v1', 'kind: Service', 'metadata:', '  name: bff-service', 'spec:', '  ports: [{ port: 8080 }]',
+      '---', 'apiVersion: apps/v1', 'kind: Deployment', 'metadata:', '  name: document-service', 'spec:', `  replicas: ${docReplicas}`,
+    ].join('\n');
+    const render1534 = (o = {}) => `${others1534(o)}\n${deploy1534(o)}\n`;
+
+    ok('#1534: 上書きの差分が bff-service の replicas 1 行だけなら合格（陽性）', () => {
+      const r = m1534.evaluateReplicaOverlayDiff(render1534(), render1534({ replicas: 2 }));
+      assert.deepStrictEqual(r.failures, []);
+      assert.deepStrictEqual(r.changed.map((c) => [c.before.trim(), c.after.trim()]), [['replicas: 1', 'replicas: 2']]);
+    });
+
+    ok('#1534: 上書きが extraEnv（リスト）を置換して env が消える → 不合格（#1389 の形）', () => {
+      const r = m1534.evaluateReplicaOverlayDiff(render1534(), render1534({ replicas: 2, env: ['Probe'] }));
+      assert.ok(r.failures.some((f) => /行数が上書きで変わる|1 行ではない/.test(f)), r.failures.join('\n'));
+    });
+
+    ok('#1534: env の値だけが変わる（行数は同じ）→ 不合格（変わる行が 2 行）', () => {
+      const r = m1534.evaluateReplicaOverlayDiff(render1534(), render1534({ replicas: 2, env: ['A', 'C'] }));
+      assert.ok(r.failures.some((f) => /1 行ではない/.test(f)), r.failures.join('\n'));
+    });
+
+    ok('#1534: BFF 以外の文書が変わる → 不合格（上書きが他を巻き込む）', () => {
+      const r = m1534.evaluateReplicaOverlayDiff(render1534(), render1534({ replicas: 2, docReplicas: 3 }));
+      assert.ok(r.failures.some((f) => /document-service/.test(f)), r.failures.join('\n'));
+    });
+
+    ok('#1534: HPA 所有（replicas を描かない）で描画が変わらない → 不合格（helm を触る経路へ進ませない）', () => {
+      const r = m1534.evaluateReplicaOverlayDiff(render1534({ replicas: null }), render1534({ replicas: null }));
+      assert.ok(r.failures.some((f) => /変わらない/.test(f)), r.failures.join('\n'));
+    });
+
+    ok('#1534: 空の描画・replicas の行き先が 2 でない → 不合格（0 文書の比較を緑にしない）', () => {
+      assert.ok(m1534.evaluateReplicaOverlayDiff('', render1534()).failures.length > 0);
+      const r = m1534.evaluateReplicaOverlayDiff(render1534(), render1534({ replicas: 3 }));
+      assert.ok(r.failures.some((f) => /1 行ではない/.test(f)), r.failures.join('\n'));
+    });
+
+    ok('#1534: 上書きの values は replicas だけを持つ（リストを書かない）', () => {
+      const y = m1534.overlayValuesYaml();
+      assert.strictEqual(y, 'services:\n  bff:\n    replicas: 2\n');
+      assert.ok(!/extraEnv|-\s/.test(y));
+    });
+
+    ok('#1534: 版のずれ — 稼働とチェックアウトの描画が一致すれば空、違えば食い違う文書を返す。hook は描画側から外す', () => {
+      const hook = '---\napiVersion: batch/v1\nkind: Job\nmetadata:\n  name: drift\n  annotations:\n    helm.sh/hook: post-upgrade\n';
+      assert.deepStrictEqual(m1534.evaluateChartDrift(render1534(), render1534() + hook), []);
+      assert.deepStrictEqual(m1534.evaluateChartDrift(render1534(), render1534({ docReplicas: 2 })), ['Deployment//document-service']);
+      assert.ok(m1534.evaluateChartDrift('', render1534()).length > 0, '空の稼働マニフェストを一致と読んだ');
+      // 行末の空白と改行の違いは版のずれではない。
+      assert.deepStrictEqual(m1534.evaluateChartDrift(render1534().replace(/\n/g, ' \r\n'), render1534()), []);
+    });
+
+    ok('#1534: HPA の所有者 — scaleTargetRef が bff-service の Deployment を指すものだけ', () => {
+      const list = (name, kind = 'Deployment') => ({ items: [{ metadata: { name: 'h' }, spec: { scaleTargetRef: { kind, name } } }] });
+      assert.strictEqual(m1534.findOwningHpa(list('bff-service')), 'h');
+      assert.strictEqual(m1534.findOwningHpa(list('document-service')), null);
+      assert.strictEqual(m1534.findOwningHpa(list('bff-service', 'StatefulSet')), null);
+      assert.strictEqual(m1534.findOwningHpa({}), null);
+    });
+
+    ok('#1534: Pod の選択 — Running・Ready・削除中でない Pod だけ、ポートは BFF のコンテナから（サイドカーを掴まない）', () => {
+      const pod = (name, o = {}) => ({
+        metadata: { name, ...(o.deleting ? { deletionTimestamp: 'x' } : {}) },
+        spec: { containers: [{ name: 'istio-proxy', ports: [{ containerPort: 15090 }] }, { name: 'bff-service', ports: [{ containerPort: 8080 }] }] },
+        status: { phase: o.phase || 'Running', conditions: [{ type: 'Ready', status: o.ready === false ? 'False' : 'True' }] },
+      });
+      const got = m1534.selectReadyPods({ items: [pod('b'), pod('a'), pod('c', { ready: false }), pod('d', { deleting: true }), pod('e', { phase: 'Pending' })] });
+      assert.deepStrictEqual(got, [{ name: 'a', port: 8080 }, { name: 'b', port: 8080 }]);
+    });
+
+    ok('#1534: port-forward の出力からローカルポートを読む', () => {
+      assert.strictEqual(m1534.parsePortForwardPort('Forwarding from 127.0.0.1:41234 -> 8080\nForwarding from [::1]:41234 -> 8080\n'), 41234);
+      assert.strictEqual(m1534.parsePortForwardPort('error: unable to forward'), null);
+    });
+
+    ok('#1534: セッション Cookie（分割片を含む）だけを取り出し、改ざんは最も長い値の 1 文字だけを変える', () => {
+      const pairs = m1534.sessionCookiePairs('AUTH_SESSION_ID=k; __Host-msp-session=chunks-2; __Host-msp-sessionC1=AAAAzzzzBBBB; __Host-msp-sessionC2=xy; __Host-msp-sessionC3=; .AspNetCore.Correlation.x=; other=1');
+      // 値の空な片（削除の Set-Cookie を jar が吸ったもの）は送らない。
+      assert.deepStrictEqual(pairs.map((p) => p[0]), ['__Host-msp-session', '__Host-msp-sessionC1', '__Host-msp-sessionC2']);
+      const plain = m1534.buildCookieHeader(pairs);
+      const bad = m1534.buildCookieHeader(pairs, { tamper: true });
+      assert.strictEqual(plain.length, bad.length);
+      const diff = [...plain].filter((ch, i) => ch !== bad[i]).length;
+      assert.strictEqual(diff, 1, `${plain} / ${bad}`);
+      assert.ok(bad.includes('__Host-msp-sessionC1=') && !bad.includes('AAAAzzzzBBBB'), bad);
+      assert.strictEqual(m1534.tamperValue(''), null);
+      for (const v of ['A', 'AA', 'abcA', 'zzzz']) assert.notStrictEqual(m1534.tamperValue(v), v);
+      assert.strictEqual(m1534.buildCookieHeader([]), null);
+    });
+
+    const pod1534 = (name, o = {}) => ({ name, statuses: o.statuses || Array(10).fill(200), users: o.users || Array(10).fill('tester1'), tamperedStatuses: o.tampered || [401], ...(o.error ? { error: o.error } : {}) });
+    ok('#1534: 判定（陽性）— 2 Pod とも同じ Cookie で 200・同じ利用者、改ざんは 401', () => {
+      assert.deepStrictEqual(m1534.evaluateCrossReplica({ pods: [pod1534('a'), pod1534('b')], expectedUser: 'tester1', minPerPod: 10 }), []);
+    });
+
+    ok('#1534: 判定（陰性）— 片方の Pod が 401 → 不合格（鍵リングかセッションストアの非共有）', () => {
+      const f = m1534.evaluateCrossReplica({ pods: [pod1534('a'), pod1534('b', { statuses: Array(10).fill(401), users: [] })], expectedUser: 'tester1' });
+      assert.ok(f.some((x) => /b: 同じ Cookie で 200 以外が 10\/10/.test(x)), f.join('\n'));
+    });
+
+    ok('#1534: 判定（陰性）— Pod が 1 つ・標本不足・利用者の不一致・改ざんが 200・改ざん未測定・送れなかった Pod', () => {
+      const one = m1534.evaluateCrossReplica({ pods: [pod1534('a')], expectedUser: 'tester1' });
+      assert.ok(one.some((x) => /Pod が 1 個/.test(x)), one.join('\n'));
+      const few = m1534.evaluateCrossReplica({ pods: [pod1534('a', { statuses: [200], users: ['tester1'] }), pod1534('b')], expectedUser: 'tester1', minPerPod: 10 });
+      assert.ok(few.some((x) => /a: 陽性の標本が 1 件/.test(x)), few.join('\n'));
+      const who = m1534.evaluateCrossReplica({ pods: [pod1534('a'), pod1534('b', { users: ['someone'] })], expectedUser: 'tester1' });
+      assert.ok(who.some((x) => /別の利用者/.test(x)), who.join('\n'));
+      const open = m1534.evaluateCrossReplica({ pods: [pod1534('a', { tampered: [200] }), pod1534('b')], expectedUser: 'tester1' });
+      assert.ok(open.some((x) => /改ざんした Cookie が 401 にならない/.test(x)), open.join('\n'));
+      const none = m1534.evaluateCrossReplica({ pods: [pod1534('a', { tampered: [] }), pod1534('b')], expectedUser: 'tester1' });
+      assert.ok(none.some((x) => /陰性対照.*測っていない/.test(x)), none.join('\n'));
+      const err = m1534.evaluateCrossReplica({ pods: [pod1534('a', { error: 'pf' }), pod1534('b')], expectedUser: 'tester1' });
+      assert.ok(err.some((x) => /送れなかった/.test(x)), err.join('\n'));
+      assert.ok(m1534.evaluateCrossReplica({ pods: [], expectedUser: 'tester1' }).length > 0, '0 Pod を合格にした');
+    });
+
+    ok('#1534: 鍵リングの件数 — 0 件は失敗、読めないときは未測定（0 件と取り違えない）', () => {
+      assert.ok(m1534.evaluateKeyRing({ ok: true, count: 0 }).failure);
+      assert.strictEqual(m1534.evaluateKeyRing({ ok: true, count: 2 }).failure, null);
+      const unread = m1534.evaluateKeyRing({ ok: false, error: 'forbidden' });
+      assert.strictEqual(unread.failure, null);
+      assert.ok(/未測定/.test(unread.notice));
+    });
+
+    ok('#1534: 引数 — 既定は live・各 Pod 10 回、--plan の既定 values は values-local、誤りは error', () => {
+      const d = m1534.parseArgs(['--live'], {});
+      assert.strictEqual(d.mode, 'live');
+      assert.strictEqual(d.perPod, 10);
+      assert.strictEqual(d.override, null);
+      assert.deepStrictEqual(m1534.parseArgs(['--plan'], {}).values, [path1534.join('deploy', 'local', 'values-local.yaml')]);
+      assert.strictEqual(m1534.parseArgs(['--live'], { BFF_PROBE_USERNAME: 'tester1' }).override, 'tester1');
+      assert.strictEqual(m1534.parseArgs(['--username', 'cli'], { BFF_PROBE_USERNAME: 'env' }).override, 'cli', 'CLI が環境変数に勝つ');
+      for (const bad of [['--per-pod', '0'], ['--per-pod'], ['--values'], ['--username'], ['--username', 'a', '--username', 'b'], ['--plan', '--restart'], ['--live', '--values', 'x'], ['--nope']]) {
+        assert.ok(m1534.parseArgs(bad, {}).error, `${JSON.stringify(bad)} を受け付けた`);
+      }
+    });
+
+    ok('#1534: 利用者 — 指定なし・空・宣言の利用者（大小無視）・パスワードなしは止める。既定へ倒さない', () => {
+      const { resolveLoginTarget } = require('./check-login-existence-disclosure.js');
+      const realm = { users: [{ username: 'developer', email: 'dev@example.com' }] };
+      const r = (override, password = 'pw') => m1534.resolveProbeUser({ override, password, realm, resolveLoginTarget });
+      assert.strictEqual(r(null).ok, false);
+      assert.strictEqual(r('').ok, false);
+      assert.strictEqual(r(' tester1').ok, false);
+      assert.strictEqual(r('Developer').ok, false);
+      assert.strictEqual(r('dev@example.com').ok, false);
+      assert.strictEqual(r('tester1', '').ok, false);
+      assert.deepStrictEqual(r('tester1'), { ok: true, username: 'tester1' });
+    });
+
+    ok('#1534: --live の利用者の誤りは、ツールを 1 つも起動せずに exit 2 で止まる', () => {
+      const env = { ...process.env, PATH: path1534.dirname(process.execPath), KUBECONFIG: '/nonexistent-kubeconfig-1534' };
+      delete env.LIVE;
+      delete env.BFF_PROBE_USERNAME;
+      delete env.BFF_PROBE_PASSWORD;
+      const run = (args, extra = {}) => spawnSync1534(process.execPath, [script1534, ...args], { env: { ...env, ...extra }, encoding: 'utf8' });
+      const none = run(['--live']);
+      assert.strictEqual(none.status, 2, none.stderr);
+      assert.ok(/既定の利用者は無い/.test(none.stderr), none.stderr);
+      const shared = run(['--live', '--username', 'Developer'], { BFF_PROBE_PASSWORD: 'pw' });
+      assert.strictEqual(shared.status, 2, shared.stderr);
+      assert.ok(/realm 宣言に在る共有の利用者/.test(shared.stderr), shared.stderr);
+      const nopw = run(['--live', '--username', 'tester1']);
+      assert.strictEqual(nopw.status, 2, nopw.stderr);
+      assert.ok(/BFF_PROBE_PASSWORD/.test(nopw.stderr), nopw.stderr);
+      // 指定なしは #1550 の拒否（引数の誤りより先）。
+      assert.strictEqual(run(['--username', 'tester1']).status, 3);
+    });
+
+    ok('#1534: --plan は helm template を 2 回呼び、差分 1 行で exit 0、リストの置換で exit 1（helm はスタブ）', () => {
+      const work = fs1534.mkdtempSync(path1534.join(os1534.tmpdir(), 'bff-plan-1534-'));
+      try {
+        fs1534.writeFileSync(path1534.join(work, 'base.yaml'), render1534());
+        fs1534.writeFileSync(path1534.join(work, 'two.yaml'), render1534({ replicas: 2 }));
+        fs1534.writeFileSync(path1534.join(work, 'bad.yaml'), render1534({ replicas: 2, env: ['Probe'] }));
+        const stub = path1534.join(work, 'helm');
+        fs1534.writeFileSync(stub, [
+          '#!/usr/bin/env bash',
+          'printf "%s\\n" "$*" >> "$STUB_DIR/calls.log"',
+          '[ "$1" = template ] || exit 97',
+          'n=0; for a in "$@"; do [ "$a" = -f ] && n=$((n+1)); done',
+          'if [ "$n" -ge 2 ]; then cat "$STUB_DIR/$STUB_OVERLAY"; else cat "$STUB_DIR/base.yaml"; fi',
+          '',
+        ].join('\n'));
+        fs1534.chmodSync(stub, 0o755);
+        const env = { ...process.env, HELM: stub, STUB_DIR: work };
+        delete env.LIVE;
+        const good = spawnSync1534(process.execPath, [script1534, '--plan'], { env: { ...env, STUB_OVERLAY: 'two.yaml' }, encoding: 'utf8' });
+        assert.strictEqual(good.status, 0, good.stderr + good.stdout);
+        const calls = fs1534.readFileSync(path1534.join(work, 'calls.log'), 'utf8').trim().split('\n');
+        assert.strictEqual(calls.length, 2, calls.join('\n'));
+        assert.ok(calls.every((c) => c.startsWith('template msp ') && c.includes('-n microservices-platform') && c.includes('values-local.yaml')), calls.join('\n'));
+        const bad = spawnSync1534(process.execPath, [script1534, '--plan'], { env: { ...env, STUB_OVERLAY: 'bad.yaml' }, encoding: 'utf8' });
+        assert.strictEqual(bad.status, 1, bad.stderr + bad.stdout);
+        const missing = spawnSync1534(process.execPath, [script1534, '--plan'], { env: { ...env, HELM: path1534.join(work, 'no-such-helm') }, encoding: 'utf8' });
+        assert.strictEqual(missing.status, 2, missing.stderr);
+      } finally {
+        fs1534.rmSync(work, { recursive: true, force: true });
+      }
+    });
+
+    // ---- 独立監査（2026-10-05）の指摘への追加 ----
+
+    ok('#1534: 判定（陰性）— 改ざんした Cookie が 0（送れない）・500 も不合格（401 以外はすべて失敗）', () => {
+      for (const s of [0, 500, 403]) {
+        const f = m1534.evaluateCrossReplica({ pods: [pod1534('a', { tampered: [s] }), pod1534('b')], expectedUser: 'tester1' });
+        assert.ok(f.some((x) => /改ざんした Cookie が 401 にならない/.test(x)), `${s}: ${f.join('\n')}`);
+      }
+    });
+
+    ok('#1534: 判定 — 名前の無い 200 は不合格、利用者名は大小を無視して突き合わせる', () => {
+      const noName = m1534.evaluateCrossReplica({ pods: [pod1534('a', { users: Array(9).fill('tester1') }), pod1534('b')], expectedUser: 'tester1' });
+      assert.ok(noName.some((x) => /a: 200 の応答 10 件のうち利用者名を返したのが 9 件/.test(x)), noName.join('\n'));
+      assert.deepStrictEqual(m1534.evaluateCrossReplica({ pods: [pod1534('a', { users: Array(10).fill('tester1') }), pod1534('b')], expectedUser: 'Tester1' }), []);
+      assert.deepStrictEqual(m1534.evaluateCrossReplica({ pods: [pod1534('a', { users: Array(10).fill('TESTER1') }), pod1534('b')], expectedUser: 'tester1' }), []);
+    });
+
+    ok('#1534: 上書きで文書が増える・消える → 不合格（文書の集合の変化を見る）', () => {
+      const extra = '---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: probe-extra\n';
+      const added = m1534.evaluateReplicaOverlayDiff(render1534(), `${render1534({ replicas: 2 })}${extra}`);
+      assert.ok(added.failures.some((f) => /文書の集合が変わる.*増える: ConfigMap\/\/probe-extra/.test(f)), added.failures.join('\n'));
+      const removed = m1534.evaluateReplicaOverlayDiff(`${render1534()}${extra}`, render1534({ replicas: 2 }));
+      assert.ok(removed.failures.some((f) => /文書の集合が変わる.*消える: ConfigMap\/\/probe-extra/.test(f)), removed.failures.join('\n'));
+    });
+
+    ok('#1534: 引数 — --plan と --username の併用は拒む（--plan は稼働に触れない）', () => {
+      assert.ok(m1534.parseArgs(['--plan', '--username', 'tester1'], {}).error);
+      assert.ok(m1534.parseArgs(['--username', 'tester1', '--plan'], {}).error);
+    });
+
+    ok('#1534: リリースの状態 — deployed で版が整数のときだけ版 N を返す', () => {
+      assert.deepStrictEqual(m1534.evaluateReleaseStatus('{"version":7,"info":{"status":"deployed"}}'), { ok: true, revision: 7 });
+      for (const bad of ['', 'not json', '{"version":7,"info":{"status":"pending-upgrade"}}', '{"version":7,"info":{"status":"failed"}}', '{"info":{"status":"deployed"}}', '{"version":0,"info":{"status":"deployed"}}']) {
+        assert.strictEqual(m1534.evaluateReleaseStatus(bad).ok, false, bad);
+      }
+    });
+
+    ok('#1534: 中断 — SIGINT / SIGTERM / SIGHUP で port-forward を閉じて戻し、戻せたら 130・戻せなければ 1', () => {
+      const { EventEmitter } = require('events');
+      const quiet = console.error;
+      console.error = () => {};
+      try {
+        for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+          for (const restored of [true, false]) {
+            const proc = new EventEmitter();
+            const killed = [];
+            const exits = [];
+            let restores = 0;
+            const children = new Set([{ kill: () => killed.push('pf1') }, { kill: () => killed.push('pf2') }]);
+            const off = m1534.installSignalRestore({ restore: () => { restores += 1; return restored; }, children, exit: (c) => exits.push(c), proc });
+            proc.emit(sig, sig);
+            assert.deepStrictEqual(killed, ['pf1', 'pf2'], sig);
+            assert.strictEqual(restores, 1, sig);
+            assert.deepStrictEqual(exits, [restored ? 130 : 1], `${sig} restored=${restored}`);
+            off();
+            assert.strictEqual(proc.listenerCount(sig), 0, `${sig} の登録が外れない`);
+          }
+        }
+      } finally {
+        console.error = quiet;
+      }
+    });
+
+    // --live を helm と kubectl のスタブで走らせる（稼働クラスタへは当たらない。PATH はスタブと /usr/bin:/bin だけ）。
+    const live1534 = (o = {}) => {
+      const work = fs1534.mkdtempSync(path1534.join(os1534.tmpdir(), 'bff-live-1534-'));
+      const tmp = path1534.join(work, 'tmp');
+      fs1534.mkdirSync(tmp);
+      try {
+        fs1534.writeFileSync(path1534.join(work, 'base.yaml'), render1534());
+        fs1534.writeFileSync(path1534.join(work, 'two.yaml'), render1534({ replicas: 2 }));
+        fs1534.writeFileSync(path1534.join(work, 'drift.yaml'), render1534({ docReplicas: 2 }));
+        fs1534.writeFileSync(path1534.join(work, 'values.json'), JSON.stringify(o.values || {}));
+        fs1534.writeFileSync(path1534.join(work, 'status.json'), o.status || '{"version":7,"info":{"status":"deployed"}}');
+        fs1534.writeFileSync(path1534.join(work, 'hpa.json'), JSON.stringify(o.hpa || { items: [] }));
+        const helm = path1534.join(work, 'helm');
+        fs1534.writeFileSync(helm, [
+          '#!/usr/bin/env bash',
+          'printf "helm %s\\n" "$*" >> "$STUB_DIR/calls.log"',
+          'n=0; for a in "$@"; do [ "$a" = -f ] && n=$((n+1)); done',
+          'case "$1 $2" in',
+          '  "get values") cat "$STUB_DIR/values.json" ;;',
+          '  "get manifest") cat "$STUB_DIR/${STUB_MANIFEST:-base.yaml}" ;;',
+          '  status\\ *) cat "$STUB_DIR/status.json" ;;',
+          '  template\\ *) if [ "$n" -ge 2 ]; then cat "$STUB_DIR/two.yaml"; else cat "$STUB_DIR/base.yaml"; fi ;;',
+          '  upgrade\\ *) if [ "$n" -ge 2 ]; then exit "${STUB_UP_EXIT:-0}"; else exit "${STUB_RESTORE_EXIT:-0}"; fi ;;',
+          '  *) exit 97 ;;',
+          'esac',
+          '',
+        ].join('\n'));
+        const kubectl = path1534.join(work, 'kubectl');
+        fs1534.writeFileSync(kubectl, [
+          '#!/usr/bin/env bash',
+          'printf "kubectl %s\\n" "$*" >> "$STUB_DIR/calls.log"',
+          'case "$*" in',
+          '  "config current-context") [ -n "$STUB_NO_CTX" ] && exit 1; echo stub-ctx ;;',
+          '  *" get hpa "*) cat "$STUB_DIR/hpa.json" ;;',
+          '  *" rollout status "*)',
+          '    c=$(( $(cat "$STUB_DIR/rollouts" 2>/dev/null || echo 0) + 1 )); echo "$c" > "$STUB_DIR/rollouts"',
+          '    [ "$c" = "${STUB_KILL_AT:-}" ] && kill -TERM "$PPID"',
+          '    v="STUB_ROLLOUT_$c"; exit "${!v:-0}" ;;',
+          '  *" get pods "*) echo \'{"items":[]}\' ;;',
+          '  *) exit 97 ;;',
+          'esac',
+          '',
+        ].join('\n'));
+        fs1534.chmodSync(helm, 0o755);
+        fs1534.chmodSync(kubectl, 0o755);
+        const env = { ...process.env, PATH: `${work}:/usr/bin:/bin`, HELM: helm, STUB_DIR: work, TMPDIR: tmp, KUBECONFIG: '/nonexistent-kubeconfig-1534', BFF_PROBE_USERNAME: 'bff-replica-probe', BFF_PROBE_PASSWORD: 'pw', ...(o.env || {}) };
+        delete env.LIVE;
+        const r = spawnSync1534(process.execPath, [script1534, '--live'], { env, encoding: 'utf8', timeout: 60000 });
+        const logFile = path1534.join(work, 'calls.log');
+        const calls = fs1534.existsSync(logFile) ? fs1534.readFileSync(logFile, 'utf8').trim().split('\n') : [];
+        return { r, calls, leftovers: fs1534.readdirSync(tmp), out: `${r.stdout}\n${r.stderr}` };
+      } finally {
+        fs1534.rmSync(work, { recursive: true, force: true });
+      }
+    };
+    const upgrades1534 = (calls) => calls.filter((c) => c.startsWith('helm upgrade '));
+    const scaleUp1534 = (c) => /^helm upgrade msp \S+ -n microservices-platform -f \S+current-values\.json -f \S+bff-replicas\.yaml$/.test(c);
+    const restore1534 = (c) => /^helm upgrade msp \S+ -n microservices-platform -f \S+current-values\.json$/.test(c);
+
+    ok('#1534: --live — 何かを変える前に kubectl の context を出す。読めなければ何も呼ばずに exit 2', () => {
+      const good = live1534({ env: { STUB_MANIFEST: 'drift.yaml' } });
+      assert.strictEqual(good.calls[0], 'kubectl config current-context', good.calls.join('\n'));
+      assert.ok(/kubectl context: stub-ctx/.test(good.r.stdout), good.out);
+      const none = live1534({ env: { STUB_NO_CTX: '1' } });
+      assert.strictEqual(none.r.status, 2, none.out);
+      assert.deepStrictEqual(none.calls, ['kubectl config current-context'], none.calls.join('\n'));
+    });
+
+    ok('#1534: --live — 稼働とチェックアウトの描画がずれていれば exit 2・upgrade を 1 度も呼ばない', () => {
+      const x = live1534({ env: { STUB_MANIFEST: 'drift.yaml' } });
+      assert.strictEqual(x.r.status, 2, x.out);
+      assert.deepStrictEqual(upgrades1534(x.calls), [], x.calls.join('\n'));
+      assert.ok(/食い違う.*document-service/.test(x.r.stderr), x.out);
+      assert.deepStrictEqual(x.leftovers, [], '退避の一時ファイルが残った');
+    });
+
+    ok('#1534: --live — 既に services.bff.replicas が 1 以外（2 も 3 も）なら exit 2・upgrade しない', () => {
+      for (const n of [2, 3, 0]) {
+        const x = live1534({ values: { services: { bff: { replicas: n } } } });
+        assert.strictEqual(x.r.status, 2, `${n}: ${x.out}`);
+        assert.deepStrictEqual(upgrades1534(x.calls), [], `${n}: ${x.calls.join('\n')}`);
+        assert.ok(new RegExp(`replicas=${n} を持つ`).test(x.r.stderr), x.out);
+      }
+    });
+
+    ok('#1534: --live — リリースが deployed でなければ exit 2・upgrade しない', () => {
+      const x = live1534({ status: '{"version":7,"info":{"status":"pending-upgrade"}}' });
+      assert.strictEqual(x.r.status, 2, x.out);
+      assert.deepStrictEqual(upgrades1534(x.calls), [], x.calls.join('\n'));
+      assert.ok(x.calls.some((c) => c === 'helm status msp -n microservices-platform -o json'), x.calls.join('\n'));
+    });
+
+    ok('#1534: --live — HPA が所有していれば helm を 1 度も呼ばない', () => {
+      const hpa = { items: [{ metadata: { name: 'bff-service' }, spec: { scaleTargetRef: { kind: 'Deployment', name: 'bff-service' } } }] };
+      const x = live1534({ hpa });
+      assert.strictEqual(x.r.status, 2, x.out); // スタブの Pod は 0 個 → [前提]
+      assert.deepStrictEqual(x.calls.filter((c) => c.startsWith('helm ')), [], x.calls.join('\n'));
+      assert.ok(/HPA bff-service が bff-service を所有/.test(x.r.stdout), x.out);
+    });
+
+    ok('#1534: --live — upgrade は通ったが rollout が終わらない → 退避した values だけで upgrade し直し、その rollout を待つ', () => {
+      const x = live1534({ env: { STUB_ROLLOUT_1: '1' } });
+      assert.strictEqual(x.r.status, 2, x.out);
+      const ups = upgrades1534(x.calls);
+      assert.strictEqual(ups.length, 2, ups.join('\n'));
+      assert.ok(scaleUp1534(ups[0]), ups[0]);
+      assert.ok(restore1534(ups[1]), `戻しに上書きが混ざった: ${ups[1]}`);
+      const iRestore = x.calls.indexOf(ups[1]);
+      assert.ok(x.calls.slice(iRestore + 1).some((c) => /rollout status deploy\/bff-service/.test(c)), `戻しの rollout を待っていない: ${x.calls.join('\n')}`);
+      assert.deepStrictEqual(x.leftovers, [], '戻しが済んだのに退避の一時ファイルが残った');
+    });
+
+    ok('#1534: --live — 戻しの upgrade か、その rollout が失敗したら exit 1 と「upgrade 前の版 N へ rollback」を出す', () => {
+      for (const env of [{ STUB_ROLLOUT_1: '1', STUB_RESTORE_EXIT: '1' }, { STUB_ROLLOUT_1: '1', STUB_ROLLOUT_2: '1' }]) {
+        const x = live1534({ env });
+        assert.strictEqual(x.r.status, 1, `${JSON.stringify(env)}: ${x.out}`);
+        assert.ok(x.r.stderr.includes('helm rollback msp 7 -n microservices-platform'), x.out);
+        assert.ok(!/helm rollback msp -n/.test(x.out), '版を書かない rollback を案内した');
+      }
+    });
+
+    ok('#1534: --live — upgrade 中に SIGTERM を受けても戻す（シグナルで落ちない。戻しは 1 回だけ）', () => {
+      const x = live1534({ env: { STUB_KILL_AT: '1' } });
+      assert.strictEqual(x.r.signal, null, `シグナルで落ちた（戻さずに終わる）: ${x.out}`);
+      assert.ok([2, 130].includes(x.r.status), x.out);
+      const ups = upgrades1534(x.calls);
+      assert.strictEqual(ups.length, 2, ups.join('\n'));
+      assert.ok(restore1534(ups[1]), ups[1]);
     });
   }
 

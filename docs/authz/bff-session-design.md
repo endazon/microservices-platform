@@ -3,15 +3,15 @@ title: BFF セッション設計 実装ガイド — Cookie 属性・有効期�
 type: authz-spec
 status: draft
 created: 2026-08-22
-updated: 2026-09-02
+updated: 2026-10-04
 author: claude
 ---
 <!-- trace:
 ids: [NFR, SC-13, SC-16]
 adrs: [ADR-0005, ADR-0021, ADR-0024, ADR-0026, ADR-0031, ADR-0032]
 iadrs: [IADR-0033, IADR-0121, IADR-0248, IADR-0251, IADR-0273, IADR-0316, IADR-0336]
-specs: [20260822_issue-439_bff-session-token-handler, 20260823_issue-439_bff-session-completion, 20260830_issue-1107_bff-session-deploy-config, 20260902_issue-1115_backchannel-logout-destination]
-issues: [#439, #446, #780, #1088, #1107, #1115]
+specs: [20260822_issue-439_bff-session-token-handler, 20260823_issue-439_bff-session-completion, 20260830_issue-1107_bff-session-deploy-config, 20260902_issue-1115_backchannel-logout-destination, 20261004_1534_bff-multi-replica-session-cookie]
+issues: [#439, #446, #780, #1088, #1107, #1115, #1534]
 -->
 
 # BFF セッション設計 実装ガイド
@@ -172,6 +172,10 @@ Envoy が平文流入を落とす（接続は張れて即座に切られるの�
 2. **鍵の永続化先が設定されていることを、構成の側から固定する検査**
 
 **どちらも置かずに「テストが緑だから大丈夫」と読まないこと。**
+
+稼働クラスタで 2 レプリカにして測る手順（values で増やす方法・Pod ごとに同じ Cookie を投げる測り方・陰性対照・戻し方）は
+[運用 Runbook](../operations/bff-multi-replica-session-runbook.md) にある。**本番像の配備は BFF を水平スケールの対象に
+含めている（最小 2）ので、この共有は本番では最初から前提である。**
 
 ## 7. 構成の供給（配備）
 
