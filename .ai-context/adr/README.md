@@ -575,3 +575,4 @@
 | [IADR-0495](./IADR-0495_connector-secret-vault-read-path-dedicated-prefix.md) | コネクタの資格情報は datasource-service が専用接頭辞 secret/data/datasource/* の read だけを持つ k8s auth ロールで Vault の KV v2 から読む。ESO の msp/* の外に置き、Vault が読めなければ平文へ倒さず失敗する（#458 段 S1） | Accepted |
 | [IADR-0496](./IADR-0496_cluster-detection-phase-from-last-success.md) | 日次のクラスタ検出は位相を前回の成功に付ける。成功の時刻を graph_batch_runs に検出と同じ保存で書き、起動の短い待ち（既定 2 分）の後にリースの内側で期限を判定して取りこぼしを追いつく。失敗は試行の記録で指数バックオフする。最後の成功の時刻をゲージで出す（#1733） | Accepted |
 | [IADR-0497](./IADR-0497_high-confidentiality-lexical-index-vectorless-collection.md) | 高機密文書（confidential・restricted・未指定・未知）は埋め込みを呼ぶ前に分け、ベクトルを持たない専用のコレクション（語彙索引）へ全文索引だけで書く。検索は語彙索引を全文の系統だけで束ね、意味検索のモードには入れない（#1746 段 S1） | Accepted |
+| [IADR-0499](./IADR-0499_adr-0128-review-conditions-not-machine-checked.md) | 計画 ADR-0128 の見直し 3 条件（生成プロバイダの数と種類・運用 UI・共有範囲）は棚卸し（backlog-audit）で機械的に確かめない。報告だけの行も足さない。代わりに生成エンドポイントの定義を説明する機能仕様書へ照合の注記を書き、計画側の暫定手段と併せる（#1747。0498 は並行 PR が使用中） | Accepted |

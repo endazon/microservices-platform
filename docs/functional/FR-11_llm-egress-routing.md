@@ -3,15 +3,15 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-05
+updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02]
-adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038]
-iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374]
-specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis]
-issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, AST#290, AST#571, planning#50, planning#426]
+adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0128]
+iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0499]
+specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1747_adr-0128-review-conditions]
+issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1747, AST#290, AST#571, planning#50, planning#426, planning#720]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -133,6 +133,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   `selfhosted-oss`（Tier=A, Provider=`selfhosted`, Enabled=false, Priority=20）、`copilot-managed`（Tier=C, Provider=`copilot`, Enabled=false, Priority=30）。
 - セルフホスト（OpenAI 互換 `/v1/chat/completions`）は LLM ゲートウェイの計画 ADR のとおり**後付け可能**とし、既定は無効エンドポイント（`Llm:SelfHosted:BaseUrl` 未設定時は利用不可）。
 - GitHub Copilot（最難関の別経路。LLM ゲートウェイの計画 ADR と既定モデル改定の実装 ADR）は `CopilotProvider`（OpenAI 互換 `/chat/completions`）で追加。送信先ティア（08_data-egress-policy の契約条件）が未確定のため**安全側でティアC・既定無効**とし、確定後に設定で有効化・ティア再判定する。
+- **生成のエンドポイントを足す・有効にする、または新しい種類のアダプタを足すときは、OSS ゲートウェイとの併用の見直し条件（計画）と照らす。** 条件は「有効な生成プロバイダが 4 つ以上になる、または Claude 以外を常用するようになる」「運用者向けの UI が計画に入る」「ゲートウェイの共有範囲が変わる」の 3 つで、いずれかが成立するなら計画へ再評価を依頼する。**この照合は機械では確かめていない**（定期棚卸しにも検査器にも無い）。リポジトリから数えられるのは既定値だけで、実環境の有効化は環境変数・Secret で行えるためである。照合の場所はこの節が説明する設定とアダプタを変える PR であり、計画側も送信先を足すときに同じ条件と照らす。
 
 ## 処理フロー / 状態遷移
 
