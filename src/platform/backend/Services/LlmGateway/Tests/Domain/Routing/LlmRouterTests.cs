@@ -580,6 +580,69 @@ public class LlmRouterTests
         decision.Fallbacks.Should().BeEmpty();
     }
 
+    // T-29, FR-11, ADR-0127 決定 3, [[IADR-0498]] 決定 5 (#1746 段 S2): **用途 `rerank` は機密区分によらず ZDR を要件とする。**
+    // 非 ZDR モデル（合成 config の claude-fable-5）を `rerank` に割り当てても、public でも選ばれない。
+    // 陽性対照: ZDR を要件としない用途（analysis）× public では同じモデルが選ばれる（除外が区分だけで決まる従来の規則）。
+    [Theory]
+    [InlineData("rerank", SensitivityClass.Public, false)]
+    [InlineData("rerank", SensitivityClass.Internal, false)]
+    [InlineData("RERANK", SensitivityClass.Public, false)]
+    [InlineData("rerank", SensitivityClass.Restricted, false)]
+    [InlineData("analysis", SensitivityClass.Public, true)]
+    public void Route_RerankPurpose_ExcludesNonZdrModelRegardlessOfSensitivity(
+        string purpose, SensitivityClass sensitivity, bool nonZdrChosen)
+    {
+        var options = Opts(Claude());
+        options.PurposeModels["rerank"] = "claude-fable-5";
+
+        var decision = Build(options).Route(new RoutingRequest(sensitivity, purpose));
+
+        decision.Allowed.Should().BeTrue();
+        (decision.Model == "claude-fable-5").Should().Be(nonZdrChosen);
+    }
+
+    // T-29: 用途 `rerank` はティア C（ZDR の契約が無い標準外部 API）へ送らない。public でも拒否へ倒れ、別のティアへは
+    // 構成上の候補が無い限り倒れない。陽性対照: 同じ構成で default × public はティア C へ送れる（従来の越境マトリクス）。
+    [Fact]
+    public void Route_RerankPurpose_NeverRoutesToTierC()
+    {
+        var router = Build(Opts(StandardExternal()));
+
+        router.Route(new RoutingRequest(SensitivityClass.Public, "rerank")).Allowed.Should().BeFalse();
+        router.Route(new RoutingRequest(SensitivityClass.Public, "default")).Allowed.Should().BeTrue();
+    }
+
+    // T-29: ティア C が優先度で先頭にいても、用途 `rerank` はティア B（ZDR）を選ぶ。
+    [Fact]
+    public void Route_RerankPurpose_SkipsHigherPriorityTierCForTierB()
+    {
+        var decision = Build(Opts(StandardExternal(priority: 1), Claude(priority: 10)))
+            .Route(new RoutingRequest(SensitivityClass.Public, "rerank"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Tier.Should().Be(ProtectionTier.B);
+        decision.EndpointName.Should().Be("claude-managed");
+    }
+
+    // T-29: 鎖にも非 ZDR を入れない（区分が public でも）。
+    [Fact]
+    public void Route_RerankPurpose_DropsNonZdrFallbackModel()
+    {
+        var options = Opts(Claude());
+        options.PurposeModels["rerank"] = "claude-haiku-4-5";
+        options.PurposeFallbackModels["rerank"] = ["claude-fable-5", "claude-sonnet-5"];
+
+        var decision = Build(options).Route(new RoutingRequest(SensitivityClass.Public, "rerank"));
+
+        decision.Model.Should().Be("claude-haiku-4-5");
+        decision.Fallbacks.Should().Equal("claude-sonnet-5");
+    }
+
+    // T-29: ZDR を要件とする用途の集合は**コードが持つ**（設定で外せない）。
+    [Fact]
+    public void ZeroDataRetentionPurposes_ContainRerank()
+        => LlmRoutingOptions.ZeroDataRetentionPurposes.Should().Contain("rerank");
+
     // 複数文書の最高機密区分で判定する。
     [Fact]
     public void Highest_TakesMostSensitive()
