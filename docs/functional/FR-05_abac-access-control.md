@@ -3,15 +3,15 @@ title: ABAC 文書アクセス制御 機能仕様書
 type: functional-spec
 status: draft
 created: 2026-06-27
-updated: 2026-09-08
+updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-19, FR-21, SC-01, SC-06, SC-08, UC-01, UC-04, UC-05]
-adrs: [ADR-0034, ADR-0036, ADR-0043, ADR-0046, ADR-0074, ADR-0088]
-iadrs: [IADR-0151, IADR-0253, IADR-0272, IADR-0359, IADR-0392, IADR-0413]
-specs: [20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-752_connector-updated-by, 20260908_issue-1333_authz-resolves-user-attributes]
-issues: [#540, #542, #752, #989, #993, #1194, #1333, planning#466, planning#470, planning#518]
+adrs: [ADR-0125, ADR-0034, ADR-0036, ADR-0043, ADR-0046, ADR-0074, ADR-0088]
+iadrs: [IADR-0500, IADR-0151, IADR-0253, IADR-0272, IADR-0359, IADR-0392, IADR-0413]
+specs: [20261006_1755_ast-kb-reader-confidentiality-cap, 20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-752_connector-updated-by, 20260908_issue-1333_authz-resolves-user-attributes]
+issues: [#1755, #540, #542, #752, #989, #993, #1194, #1333, planning#466, planning#470, planning#518]
 -->
 
 # 機能仕様書: ABAC 文書アクセス制御
@@ -76,7 +76,9 @@ ABAC ポリシーで突き合わせ、**アクセス可能な文書のみ**を�
   （据え置き面の既知の限界。複数キーのポリシー運用は消費側の分岐移行の完了が前提）。
   🔴 **［2026-08-23 追加］この限界は暫定統制で塞いだ** —— **文書条件に 2 つ以上の属性キーを持つ
   ポリシーは保存できない**（ポリシー管理の保存 2 経路と dry-run が共有する検証で拒否する）。
-  **恒久の制限ではなく、消費側が分岐へ移行し終えた時点で外す。** 今日漏れていないのは
+  **恒久の制限ではなく、消費側が分岐へ移行し終えた時点で外す。** ［2026-10-06 追加］例外は取引ユニットの KB の読み手の
+  read ポリシー 1 つだけで、文書の条件を `project` と機密区分の上限（`public`・`internal`）の 2 キーで持つ。値まで固定した形に限るので、
+  キー単位 union の混成は生じない（運用仕様書 §AST の KB の読み手のポリシーの投入）。 今日漏れていないのは
   実効軸が機密区分 1 本だからであって、統制が効いていたからではない。
 - **消費側の移行状態**: Wiki 閲覧（`AbacPageFilter`）は分岐対応済み。グラフ・検索・AI 分析は
   未移行（`AllowedFilters` を読む。別作業で移行する）。

@@ -44,7 +44,14 @@
     "",
     "AST の KB の読み手の read（AST/FR-08・AST/FR-04 / IADR-0492 / #1696 の裁定〔案 B〕・AST#1078）:",
     "ai-stock-trading の取引判断が RAG で KB を読むためのポリシー 1 本。利用者の条件は projects ∋ ai-stock-trading",
-    "（参加プロジェクト。集合値キーなので交差で判定する。ADR-0080 決定 2）、文書の条件は project ∈ {ai-stock-trading} だけ。",
+    "（参加プロジェクト。集合値キーなので交差で判定する。ADR-0080 決定 2）、文書の条件は project ∈ {ai-stock-trading} かつ",
+    "confidentiality ∈ {public, internal}（機密区分の上限。計画 ADR-0125 決定 2 / IADR-0500 / #1755）。",
+    "🔴 上限を外さない —— 外すと、project=ai-stock-trading を付けた confidential・restricted の文書が取引判断の LLM のプロンプトに載る。",
+    "上限が効くのはこの枝だけで、所有者・共有先の分岐（全主体に効く）は変えない。",
+    "文書の条件が 2 キーなのは、保存時の検証（文書の条件は 1 キーまで）の唯一の例外として値まで固定した形だからである",
+    "（AbacValidation.IsAstKbReaderCeilingPolicy / IADR-0500 決定 4）。値を変えると投入が 400 で止まる。",
+    "🔴 名前を変えない —— seed は名前で冪等なので、変えると投入済みの環境で旧（上限なし）と新が並び、分岐の和で上限が効かなくなる。",
+    "投入済みの環境は再投入では直らない（同名があると作らない）。既存のポリシーを PUT で書き換える（operations.md の同じ節）。",
     "これを持つ主体は realm の読み手のサービスアカウント（service-account-ai-stock-trading-kb-reader）だけである。",
     "🔴 clearance で絞らない・clearance を与えない —— 与えると基盤全体の internal が読める（裁定が退けた案 A）。",
     "🔴 read だけである。write / analyze を足さない（読み手は書けない。書き手は ai-stock-trading-kb-writer）。",
@@ -100,7 +107,7 @@
       "name": "dev: AST の KB の読み手は AST の文書を読める",
       "action": "read",
       "userConditions": { "projects": ["ai-stock-trading"] },
-      "documentConditions": { "project": ["ai-stock-trading"] }
+      "documentConditions": { "project": ["ai-stock-trading"], "confidentiality": ["public", "internal"] }
     },
     {
       "name": "dev: 所有者は自分の文書を書ける",

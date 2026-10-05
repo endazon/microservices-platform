@@ -17,7 +17,8 @@
     "実 Keycloak 24 は username と exact=true の照会でサービスアカウントの利用者も返すので、認可サービスはこの名前を引ける。",
     "service-account-ai-stock-trading-kb-reader（#1696・IADR-0492・AST#1078）: AST の KB の読み手のサービスアカウント。",
     "属性は realm が宣言する projects=ai-stock-trading だけ（AstKbReaderPolicySeedTests が realm の宣言と突き合わせる）。",
-    "AST の文書（project=ai-stock-trading）の分岐と、自分の名前に束縛された所有者・共有先の分岐だけにマッチする。clearance の階段には 1 段もマッチしない。"
+    "AST の文書（project=ai-stock-trading）の分岐と、自分の名前に束縛された所有者・共有先の分岐だけにマッチする。clearance の階段には 1 段もマッチしない。",
+    "［2026-10-06 / #1755・IADR-0500］AST の文書の分岐は confidentiality ∈ {public, internal} との連言である（計画 ADR-0125 決定 2。機密区分の上限）。"
   ],
   "subjects": [
     {
@@ -79,12 +80,13 @@
         "allowedFilters": [
           { "key": "shared_with", "allowedValues": ["${current_user}", "${current_groups}"] },
           { "key": "project", "allowedValues": ["ai-stock-trading"] },
+          { "key": "confidentiality", "allowedValues": ["public", "internal"] },
           { "key": "owner", "allowedValues": ["${current_user}"] }
         ],
         "granted": true,
         "branches": [
           { "name": "dev: 共有された個人資料を読める", "filters": [{ "key": "shared_with", "allowedValues": ["service-account-ai-stock-trading-kb-reader"] }] },
-          { "name": "dev: AST の KB の読み手は AST の文書を読める", "filters": [{ "key": "project", "allowedValues": ["ai-stock-trading"] }] },
+          { "name": "dev: AST の KB の読み手は AST の文書を読める", "filters": [{ "key": "project", "allowedValues": ["ai-stock-trading"] }, { "key": "confidentiality", "allowedValues": ["public", "internal"] }] },
           { "name": "dev: 所有者は自分の文書を読める", "filters": [{ "key": "owner", "allowedValues": ["service-account-ai-stock-trading-kb-reader"] }] }
         ]
       }

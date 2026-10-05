@@ -577,3 +577,4 @@
 | [IADR-0497](./IADR-0497_high-confidentiality-lexical-index-vectorless-collection.md) | 高機密文書（confidential・restricted・未指定・未知）は埋め込みを呼ぶ前に分け、ベクトルを持たない専用のコレクション（語彙索引）へ全文索引だけで書く。検索は語彙索引を全文の系統だけで束ね、意味検索のモードには入れない（#1746 段 S1） | Accepted |
 | [IADR-0498](./IADR-0498_claude-rerank-stage-at-search-exit.md) | 検索結果の候補は、検索サービスの唯一の出口で Claude（用途 rerank・claude-haiku-4-5・ZDR 必須）に再順位付けさせる。RAG 回答と SC-02 の両方に効き、送るのは ABAC 後・ai_input が許す候補だけ、失敗は元の順で返す。既定は無効 | Accepted |
 | [IADR-0499](./IADR-0499_adr-0128-review-conditions-not-machine-checked.md) | 計画 ADR-0128 の見直し 3 条件（生成プロバイダの数と種類・運用 UI・共有範囲）は棚卸し（backlog-audit）で機械的に確かめない。報告だけの行も足さない。代わりに生成エンドポイントの定義を説明する機能仕様書へ照合の注記を書き、計画側の暫定手段と併せる（#1747） | Accepted |
+| [IADR-0500](./IADR-0500_ast-kb-reader-confidentiality-ceiling.md) | AST の KB の読み手の read ポリシーの文書の条件へ機密区分の上限（public・internal）を足し、保存時の「1 キーまで」に値まで固定した例外を置く（IADR-0492 決定 1 の部分改定。#1755） | Accepted |

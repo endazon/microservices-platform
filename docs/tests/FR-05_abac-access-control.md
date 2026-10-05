@@ -3,15 +3,15 @@ title: ABAC 文書アクセス制御 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-06-27
-updated: 2026-09-28
+updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
 ids: [NFR-21, FR-02, FR-03, FR-05, UC-01, UC-05, FR-19, NFR-09]
-adrs: [ADR-0004, ADR-0043, ADR-0121, ADR-0036, ADR-0062, ADR-0119, ADR-0034, ADR-0056]
-iadrs: [IADR-0483, IADR-0476, IADR-0481, IADR-0004, IADR-0151, IADR-0379, IADR-0401, IADR-0253, IADR-0384, IADR-0480]
-specs: [20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1646_caller-cancellation-remaining, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step]
-issues: [#1676, #1615, #1665, #525, #540, #1646, #1664]
+adrs: [ADR-0125, ADR-0004, ADR-0043, ADR-0121, ADR-0036, ADR-0062, ADR-0119, ADR-0034, ADR-0056]
+iadrs: [IADR-0492, IADR-0500, IADR-0483, IADR-0476, IADR-0481, IADR-0004, IADR-0151, IADR-0379, IADR-0401, IADR-0253, IADR-0384, IADR-0480]
+specs: [20261006_1755_ast-kb-reader-confidentiality-cap, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1646_caller-cancellation-remaining, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step]
+issues: [#1755, #1676, #1615, #1665, #525, #540, #1646, #1664]
 -->
 
 # テスト仕様書: ABAC 文書アクセス制御（deny-by-default）
@@ -108,6 +108,9 @@ issues: [#1676, #1615, #1665, #525, #540, #1646, #1664]
 | T-67 | 開発用の初期投入のポリシーと、運用仕様書の所有者の読み取りのポリシーの投入の本文（どちらもファイルから読む） | 所有者の読み取りのポリシーの形の判定に通す | 初期投入は**ちょうど 1 件**「在る」、運用仕様書の本文も「在る」。本文の値を崩すと赤になる | 手順どおりの投入で門が開く | 自動 |
 | T-68 | `On`・閉じた門で 2 つの評価が並行して問い合わせる | 先の評価に「在る」、遅れた評価に「無い」を返す | 先の評価で開き、**遅れた「無い」で閉じ直さない**（遅れた評価も「開」を返す） | 1 度開いた門を揺らさない | 自動 |
 | T-69 | 門が開き、利用者文脈の無い gRPC 呼び出し（主体は呼び出し元サービス自身のサービスアカウント）に、その名前で束縛した所有者・共有先の分岐を与える | その名前を所有者に持つ個人資料・共有先に持つ他人の個人資料を読む | どちらも読めない。同じ主体が所有する組織文書は読める（陽性対照） | サービスアカウントは個人資料を対象外 | 自動 |
+| T-70 | 開発用の初期投入を入れた認可サービス。取引ユニットの KB の読み手（属性は参加プロジェクトだけ） | 読み手の名前で `read` の範囲を解決する | 利用者名に束縛されない分岐は 1 本だけで、その中身は「`project` が取引ユニット」かつ「機密区分が `public`・`internal`」の 2 つの条件である。`confidential`・`restricted` を許す束縛されない分岐は無い | 機密区分の上限 | 自動 |
+| T-71 | 同じ範囲を検索の絞り込みと索引に通す（呼び出し元の主張あり・なし） | `project` が取引ユニットで機密区分が `public`・`internal`・`confidential`・`restricted`・欠落の文書と、読み手へ共有された `confidential` の文書を検索する | `public`・`internal` は出て、`confidential`・`restricted`・欠落は出ない。読み手へ共有された文書は共有先の分岐で出る（上限は読み手の枝だけに効く）。本番の索引への写しでも、読み手の枝は 2 つの条件を AND で持つ | 機密区分の上限 | 自動 |
+| T-72 | 認可サービスの保存の口と検証 | 初期投入の読み手のポリシー（文書の条件 2 キー）を登録・同じ本文で書き換える／上限に `confidential` を足して書き換える／形を 1 箇所ずつ崩す | 前者は通る。後者はいずれも「文書の条件は 1 キーまで」で拒否される（例外は読み手の形に限る） | 例外の射程 | 自動 |
 
 > **T-17 / T-18 は `T-01` / `T-04` と観点が違う。** あちらは `AbacEvaluator` が返す **C# オブジェクト**の
 > `Granted` を見ており、**シリアライズを通っていない**。#525 が言っているのは「**契約から**区別できない」
@@ -158,6 +161,9 @@ issues: [#1676, #1615, #1665, #525, #540, #1646, #1664]
 | `GrpcOwnerReadPolicyStatusSourceTests` | T-52（門が問う口の呼び出し元の縮退） |
 | `DocumentReadContentAbacTests` | T-54〜T-61・T-69（読み取りの判定点。門の開閉・所有者・共有先・機械・縮退・固定・利用者文脈の無い gRPC 呼び出し） |
 | `DocumentReadContentAbacEndpointTests` | T-54・T-62〜T-66（読み取りの全ての口。門が閉じた器と開いた器） |
+| `AstKbReaderPolicySeedTests` | T-70（取引ユニットの KB の読み手の範囲。機密区分の上限） |
+| `AstKbReaderSearchScopeTests` | T-71（読み手の検索。上限の両側・共有先の分岐・本番の索引への写し） |
+| `AstKbReaderPolicySaveTests` / `AbacValidationTests` | T-72（保存の口と検証の例外の射程） |
 
 ## 関連仕様
 

@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09]
-adrs: [ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127]
-iadrs: [IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
-specs: [20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
-issues: [#1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712]
+adrs: [ADR-0125, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127]
+iadrs: [IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
+specs: [20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
+issues: [#1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712]
 -->
 
 # 運用仕様書
@@ -516,10 +516,15 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
 （`deploy/local/abac-seed/policies.json`・`node scripts/seed-abac-policies.js --live`）が入れる。**本番では配備の手順としてシステム管理者が投入する。**
 このポリシーが無い環境では、読み手の検索は常に 0 件になる（拒否はエラーとして表に出ず、判断は参考情報なしで続く）。
 
-> 🔴 **本番への投入は保留中である。** このポリシーは文書の機密区分で絞らない。そのため、書き込みのロールを持つ利用者が任意の文書へ `project=ai-stock-trading` を付けると、その文書は区分を問わず（個人資料を除く）読み手へ届く。機密区分の上限を足すかどうかを計画側で判断中であり、**判断が出るまで本番へは入れない**。開発環境の初期投入は対象外である。
+> 🔴 **本番への投入は保留中である。** 計画側の判断で、このポリシーの文書の条件へ機密区分の上限（`public`・`internal`）を足すと決まった（下の「形」）。上限を入れたこの手順の改定がマージされた後で、保留を解く作業を別に行う。**保留が解かれるまで本番へは入れない。** 開発環境の初期投入は対象外である。
 
 - **形（これ以外にしない）**: 動作は `read`、利用者の条件は `projects` が `ai-stock-trading` を含むこと**だけ**、
-  文書の条件は `project` が `ai-stock-trading` に一致すること**だけ**。
+  文書の条件は `project` が `ai-stock-trading` に一致し、**かつ** `confidentiality` が `public`・`internal` のどちらかであること（この 2 つだけ）。
+  - 🔴 **文書の条件から機密区分の上限を外さない。** 管理者と operator は `project=ai-stock-trading` を持つ文書を区分を問わず作れる。
+    上限が無いと、`confidential`・`restricted` の文書がこのラベルだけで読み手へ届き、取引判断の LLM のプロンプトに載る。
+    取引ユニットが自分で保存する文書は `internal` 以下なので、上限で失うものは無い。
+  - 上限が効くのはこのポリシーの枝だけである。所有者・共有先の分岐は全主体に効き、文書の所有者が読み手の識別子へ明示的に共有した文書は、
+    区分を問わず届く（所有者の裁量による開示）。
   - 🔴 **利用者の条件へ取扱区分（`clearance`）を足さない・読み手へ `clearance` を与えない。** 与えると、取扱区分の階段のポリシーに
     マッチして基盤全体の `internal` の文書が読める。読み手が読めるのは取引ユニットの文書だけである。
   - 🔴 **`read` 以外の動作で作らない。** 読み手は書かない（書き手は別の主体である）。
@@ -538,13 +543,23 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
     "name": "AST の KB の読み手は AST の文書を読める",
     "action": "read",
     "userConditions": { "projects": ["ai-stock-trading"] },
-    "documentConditions": { "project": ["ai-stock-trading"] }
+    "documentConditions": { "project": ["ai-stock-trading"], "confidentiality": ["public", "internal"] }
   }
   ```
 
-- **投入済みかの確かめ方**: `GET /authz/policies` で、上の形（`action`・2 つの条件）に一致する有効なポリシーが**ちょうど 1 件**あること（名前では判定しない）。
+- **上限の無い旧い形が入っている環境**（文書の条件が `project` だけのポリシー。開発環境の初期投入を上限の追加より前に行った環境を含む）:
+  🔴 **初期投入の再実行では直らない**（同じ名前のポリシーがあると作らない）。再実行すると、seed と食い違う同名のポリシーを名指しで警告する（書き換えはしない）ので、残っている環境の見つけ方には使える。**新しいポリシーを足して旧いものを残すことも、しない**
+  （評価器は分岐の和を取るので、旧い枝が残る限り上限は効かない）。管理者が既存のポリシーを書き換える。
+  1. `GET /authz/policies` で、`action` が `read`・利用者の条件が `{"projects":["ai-stock-trading"]}` の有効なポリシーを探し、`id` を控える（ちょうど 1 件であること）。
+  2. `PUT /authz/policies/{id}` で、本文を上の JSON にする（名前・動作・利用者の条件は同じで、文書の条件だけが増える）。
+     口・資格（`platform-admin` のアクセストークン・クラスタの内側から）は投入と同じである。
+     🔴 **文書の条件に 2 つの属性キーを持てるのは、この形のポリシーだけである**（保存時の検証は、ほかのポリシーでは 2 つ以上のキーを拒否する）。
+     値を変えると（`project` を増やす・機密区分に `confidential` / `restricted` を足す・利用者の条件を変える）、保存は拒否される。
+  3. 下の「投入済みかの確かめ方」で、文書の条件が 2 キーになっていることと、分岐の形を確かめる。
+- **投入済みかの確かめ方**: `GET /authz/policies` で、上の形（`action`・利用者の条件・文書の条件の 2 キー）に一致する有効なポリシーが**ちょうど 1 件**あり、
+  `projects` / `project` を条件に持つ有効なポリシーがほかに無いこと（名前では判定しない）。
   効き目は、認可サービスの `POST /authz/scope` に読み手の名前（`service-account-ai-stock-trading-kb-reader`）と `action: read` を送り、
-  `granted` が `true` で、利用者名に束縛されない分岐が `project ∈ {ai-stock-trading}` の 1 本だけであることで確かめる。
+  `granted` が `true` で、利用者名に束縛されない分岐が「`project ∈ {ai-stock-trading}` かつ `confidentiality ∈ {public, internal}`」の 1 本だけであることで確かめる。
 - **切り戻し**: ポリシーを削除するか無効にする。読み手の検索は 0 件に戻る（取引判断は参考情報なしで続く）。消えたことを知らせる計器は持たない。
 - **本番の前提（別件）**: 取引ユニットの名前空間から検索サービスへの通信は、本番の既定拒否の NetworkPolicy で塞がれている。
   本番で読み手を使うには、その許可を別に入れる必要がある（本手順の外）。
