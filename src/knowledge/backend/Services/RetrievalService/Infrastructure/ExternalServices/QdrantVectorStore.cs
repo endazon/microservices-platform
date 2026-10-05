@@ -7,6 +7,7 @@ using Qdrant.Client;
 using Qdrant.Client.Grpc;
 using RetrievalService.Common.Observability;
 using RetrievalService.Domain.Ports;
+using Platform.Shared.Infrastructure.Foundation.Logging;
 
 namespace RetrievalService.Infrastructure.ExternalServices;
 
@@ -305,7 +306,7 @@ public class QdrantVectorStore(
             logger.LogInformation(
                 "Qdrant collection {Collection} has no keyword payload index for {PayloadKey}; "
                 + "no point carries the key yet (or the ingestion service has not indexed it), returning no values",
-                _collection, payloadKey);
+                _collection, LogSanitizer.Sanitize(payloadKey));
             return [];
         }
 
