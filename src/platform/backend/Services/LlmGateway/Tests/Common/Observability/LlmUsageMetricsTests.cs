@@ -72,6 +72,7 @@ public class LlmUsageMetricsTests
         IMeterFactory meterFactory, bool withPrice = true, ModelPricingOptions? custom = null)
     {
         var pricing = custom ?? new ModelPricingOptions();
+        // custom を渡したときは withPrice を見ない（単価表は custom がすべてを決める）。
         // #1741: 合成のモデル名と任意の単価（実価格ではない）。実モデル名を使うと、実価格の誤りを
         // 文字列で走査したときにこの合成値まで引っかかるため中立の名前にする。
         if (withPrice && custom is null)
