@@ -5,7 +5,7 @@ status: done
 related_ids: [FR-17, FR-18, FR-10, SC-10, SC-18, ADR-0035, ADR-0083, ADR-0076, IADR-0496, IADR-0425, IADR-0430, IADR-0299, IADR-0389]
 author: claude
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0035 決定 3（クラスタ検出は定期バッチ・日次）
   - planning:projects/microservices-platform/07_adr/ADR-0076 決定 3（沈黙を観測できる系列）
@@ -100,7 +100,7 @@ issue: "#1733"
 
 試験側の誤り 1 件を変異の前に直した（T-70 の入力が「1 分前」を「1 時間前」と取り違えていた。期待値は 23 時間のまま、入力を 60 分へ）。
 
-## 独立監査の反映（2026-10-04・MSP#1738 の条件付き GO）
+## ［2026-10-05 追記 / #1733］独立監査の反映（#1738 の条件付き GO）
 
 最初のコミット `ef3059d1` に対する独立監査の指摘を、同じブランチの 2 つ目のコミットで直した。
 
@@ -131,3 +131,12 @@ M8（未来の記録を頭打ちにしない）は、頭打ちの意味が 🟡1
 | N2 | 成功の後の待ちの下限を外す | T-78「成功の後の待ちの下限は再試行の待ちである」 |
 | N3 | 成功の後の待ちを周期そのものにする | T-78「成功の後の待ちは周期の開始時刻から 1 周期である」 |
 | N16 | 判定へ停止のトークンを渡さない | T-79「停止要求は走っている判定へ届く」 |
+
+### 検証（2026-10-05・コンテナの再起動で中断した後の確認）
+
+2 つ目のコミット `15d1cace` を、押し出す前に同じ作業木で検証し直した。
+
+- `dotnet build src/knowledge/backend/backend.slnx`: エラー 0・警告 1（`IngestToSearchQdrantTests.cs` の CS0618。本件の差分の外で、既存）。
+- `GraphService.Tests`: 805 件すべて成功。統合試験 `Knowledge.IntegrationTests`（`GraphService` で絞る・実 PostgreSQL）: 6 件すべて成功（🟡4 の `GraphServiceFactory` の変更を含む器で起動する）。
+- `dotnet format --verify-no-changes`（knowledge の slnx）: 差分なし。
+- 変異 N2・N3・N7・N12・N16 を当て直し、5 件とも赤になることを確かめた（殺した試験は上の表のとおり）。N12 は錨を `GraphBatchRun.Succeeded` の行まで含めて一意にした（試行の記録の側の同じ形の行に当たらないため）。
