@@ -124,6 +124,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // 二段検索の段はこのヘッダを GraphService まで運んでホップごと ABAC を効かせる（方式 A）。
     // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
     public string? LastSearchForwardedAuthorization { get; set; }
+    // NFR-02, ADR-0076 決定 4 (#1746 監査 F1): /bff/search が後段（RetrievalService）へ付けた合成監視の標識。null＝付いていない。
+    // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
+    public string? LastSearchForwardedSyntheticHeader { get; set; }
     // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会。後段が返す候補と、BFF が渡した本文。
     public List<string> StubAttributeValues { get; set; } = ["社内", "規程"];
     // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
@@ -1553,6 +1556,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-05, ADR-0034 (#970): BFF が伝播した Authorization を記録する（方式 A の観測点）。
             owner.LastSearchForwardedAuthorization = request.Headers.TryGetValues("Authorization", out var auth)
                 ? string.Join(' ', auth)
+                : null;
+            owner.LastSearchForwardedSyntheticHeader = request.Headers.TryGetValues(
+                Platform.Shared.Infrastructure.Foundation.Observability.SyntheticTraffic.HeaderName, out var synth)
+                ? string.Join(",", synth)
                 : null;
 
             return new HttpResponseMessage(HttpStatusCode.OK)

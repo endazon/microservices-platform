@@ -112,6 +112,29 @@ builder.Services.AddPlatformConsumerTimeouts();
 // FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 RRF 統合）
 builder.Services.AddScoped<HybridSearchService>();
 
+// FR-03, FR-04, FR-10, FR-11, SC-02, ADR-0127 決定 3・4, ADR-0010, ADR-0018, [[IADR-0498]] (#1746 段 S2):
+// **Claude による再順位付けの段**（検索結果の一覧と RAG 回答の候補の両方。出口 `FinishAsync` に挟まる）。
+//
+// 🔴 **既定オフ**（`Rerank:Enabled=false`）。無効なら段の型を **DI に登録しない** —— `HybridSearchService` の
+// 省略可能な引数が null のまま残り、結果は段を足す前と同一である（二段検索と同じ「着脱可能な段」）。
+// 有効なら、用途 `rerank` で LLM ゲートウェイだけを呼ぶ（REST が並走中の正。`Services:LlmGatewayGrpc` が在れば gRPC）。
+// 計器（縮退の観測）は無効でも登録する（0 が「掛けていない」の観測になる）。
+var rerank = (builder.Configuration.GetSection(SearchRerankOptions.SectionName).Get<SearchRerankOptions>()
+    ?? new SearchRerankOptions()).Normalize();
+builder.Services.AddSingleton(rerank);
+builder.Services.AddSingleton<RerankMetrics>();
+if (rerank.Enabled)
+{
+    if (embedOverGrpc)
+        builder.Services.AddSingleton<IRerankCompletionClient, GrpcRerankCompletionClient>();
+    else
+        builder.Services.AddHttpClient<IRerankCompletionClient, HttpRerankCompletionClient>(
+            HttpRerankCompletionClient.HttpClientName, c =>
+            c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"))
+            .AddLlmGatewayServiceToken(builder.Configuration);
+    builder.Services.AddScoped<ISearchReranker, ClaudeSearchReranker>();
+}
+
 // FR-04, FR-14, FR-17, UC-10, ADR-0035 決定 1・2, ADR-0018 (#970): 二段検索の段（グラフ近傍展開）。
 //
 // 🔴 **既定オフ・opt-in である**（ADR-0035 決定 2）。既定では段の型を **DI に登録しない** ——
@@ -257,6 +280,11 @@ builder.Services.AddPlatformIntrospection("retrieval-service", pipeline,
 
         if (graphExpansion.Enabled)
             i.AddPort("graph-expansion", nameof(GraphServiceNeighborExpander), graphServiceUrl);
+
+        // FR-03, ADR-0127 決定 3, [[IADR-0498]] 決定 11 (#1746 段 S2): 再順位付けの段も**有効なときだけ**申告する
+        // （応答の形は同じなので、段の有無は外から申告でしか読めない）。
+        if (rerank.Enabled)
+            i.AddPort("search-rerank", nameof(ClaudeSearchReranker), "llm-gateway");
     });
 
 var app = builder.Build();

@@ -7,11 +7,11 @@ updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
-ids: [FR-11, NFR-21, UC-01, UC-02]
-adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0128]
-iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0499]
-specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1747_adr-0128-review-conditions]
-issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1747, AST#290, AST#571, planning#50, planning#426, planning#720]
+ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, SC-02]
+adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0127, ADR-0128]
+iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499]
+specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions]
+issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, AST#290, AST#571, planning#50, planning#426, planning#720]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -39,7 +39,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 
 | 項目 | 内容 |
 | --- | --- |
-| 入力 | `CompletionApiRequest`（`Prompt`, `MaxTokens`, `Model`(任意), `Confidentiality`(任意), `Purpose`(任意)）。呼び出し元（`RagOrchestrator` 等）が入力文脈文書の**最高機密区分**（`SensitivityClasses.Highest`）と用途（`rag-answer` / `analysis` / `diagram-coding` / `report-monthly` / `report-weekly` / `report-daily` / `trade-decision` / `trade-decision-screening`）を付与する。 |
+| 入力 | `CompletionApiRequest`（`Prompt`, `MaxTokens`, `Model`(任意), `Confidentiality`(任意), `Purpose`(任意)）。呼び出し元（`RagOrchestrator` 等）が入力文脈文書の**最高機密区分**（`SensitivityClasses.Highest`）と用途（`rag-answer` / `analysis` / `diagram-coding` / `report-monthly` / `report-weekly` / `report-daily` / `trade-decision` / `trade-decision-screening` / `rerank`）を付与する。 |
 | 処理 | ① `SensitivityClasses.Parse` で `Confidentiality` を `SensitivityClass`（Public/Internal/Confidential/Restricted）へ写像。② `EgressMatrix.AllowedTiers` で許容ティア集合を算出。③ `LlmRouter.Route` が「有効・許容ティア・（要承認でない）」エンドポイントを `Priority` 昇順→ティア昇順（A<B<C, 保護の強い順）で選び先頭を採用。④ `ResolveModel` で用途→モデルを解決。⑤ `decision.Provider` を keyed DI（`claude` / `selfhosted`）で解決し送信。 |
 | 出力 | `CompletionApiResponse`（`Text`, `Model`, `InputTokens`, `OutputTokens`, `Sent`, `Endpoint`, `RoutingReason`）。`Sent=false` 時は呼び出し元が出典のみ返す等の縮退へ切替可能。判定（機密区分・用途・ティア・エンドポイント・モデル・要承認・理由）を監査ログへ記録。 |
 | 業務ルール | **機密区分→許容ティア**は越境マトリクス（下表）に固定。`Confidential`/`Restricted` は**ティアA/B のみ**でティアC（標準外部API）へは送信不可。`Internal × ティアC` は「条件付き可（要承認）」で、`AllowUnapprovedTierC=false`（既定）の間は候補から除外。許容ティアに送信可能な有効エンドポイントが無ければ**送信拒否（縮退）**。未指定・未知の機密区分は `Restricted` へ倒す（安全側）。 |
@@ -67,6 +67,15 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   **取引判断の一次スクリーニング `trade-decision-screening→claude-haiku-4-5`（二段判断の層別用途登録の実装 ADR）**——
   本判断とは別の軽量モデルを充てる用途であり、`AST/ADR-0014` §決定1・`AST/ADR-0017` 決定1 が定める層別割当を
   基盤側の用途登録として反映する。
+  **検索結果の再順位付け `rerank→claude-haiku-4-5`（2026-10-06）**—— 検索サービスが検索結果の候補（RAG 回答の候補・検索結果一覧）を
+  並べ替えるための用途であり、回答生成（`rag-answer`）と分けて費用を計上する。検索のたびに呼ぶので軽量モデルを充て、**鎖は持たない**
+  （最安のモデルからさらに安い先が無い。失敗は検索サービスが元の順へ戻す）。
+- **用途による ZDR の要件（2026-10-06）**: `LlmRoutingOptions.ZeroDataRetentionPurposes`（コードに持つ。現在は `rerank` だけ）の用途は、
+  **機密区分によらず** ZDR を要件とする —— `NonZdrModels` のモデルを第 1 候補・鎖の両方から除き、ティア C を候補から外す。
+  区分の規則（`EgressMatrix`）は変えず、用途の規則を重ねる（強める向きだけ）。再順位付けは検索の候補（`restricted` と機密区分が未指定・未知を
+  含み得る）の本文をまとめて送るため、候補が `public` だけのときにも ZDR の外へ出さない。
+  なお `rerank` の割当モデルを ZDR 非対応にすると、`ResolveModel` は `DefaultModel`（`claude-opus-5`）へ倒れる（ZDR の外へは出ないが、
+  費用は最大で約 5 倍になる）。全 `PurposeModels` の割当が非 ZDR でないことは T-23 が固定する。
 - **用途別モデルは `Models`（利用許可集合）にも登録する**: `ResolveModel` は `eligible.Contains(purposeModel)` を条件とするため、`PurposeModels` にのみ書いて `Models` へ登録し忘れると、例外もログも出さずに `DefaultModel` へフォールバックし割当が無音で失効する。
   `Models` は「割当」ではなく「利用を許可するモデル集合」であり、版数改定時は**追加**する（削除は明示 `Model` 要求をしている呼び出し側に対する破壊的変更）。
   **ただし計画 ADR（`ADR-0038` 決定 2）が利用そのものを禁じたモデルは例外で、`Models` から除去する** —— 破壊的変更であることを承知のうえで、非 ZDR モデルを基盤から無くすことを優先した。
@@ -89,7 +98,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   呼び出し側の機密区分設定（report-service の `LlmGateway:Confidentiality`。既定 `internal`）を上げても報告書の割当モデルは変わらない。
 - **`Sent=false` は「越境拒否」だけを意味しない**: `/complete` が `Sent=false` を返す分岐は ①越境拒否（`decision.Allowed=false`）②プロバイダ未登録 ③プロバイダ呼び出しの例外 の 3 つである。
   区別は応答の `RoutingReason` / `Endpoint` に現れる（①は拒否理由、③は「呼び出し先 {Endpoint} が現在利用できません。」）。呼び出し側が `Sent=false` を機密区分による縮退と決め打つと原因を取り違える。
-  なお **ZDR 除外は `internal` では効かない**（`RequiresZeroDataRetention` が真になるのは `confidential`/`restricted`/未知区分のみ）。
+  なお **ZDR 除外は `internal` では効かない**（`RequiresZeroDataRetention` が真になるのは `confidential`/`restricted`/未知区分のみ）。**ただし用途 `rerank` は区分によらず効く**（前掲「用途による ZDR の要件」）。
 - **既定 `max_tokens`**: Opus 5 / Sonnet 5 は thinking（拡張思考）が既定で有効であり、`max_tokens` は**思考トークンと本文の合算上限**になる。既定値は 4096（本文想定長＋思考の作業領域）とする。切り詰めると本文が途中で切れ、例外にならず短い回答へ静かに縮退する。
 - `PurposeModels` のキーは**呼び出し側が送る purpose 値と一致させる**（`StringComparer.OrdinalIgnoreCase`）。図コード化は契約値 `diagram-coding` に統一済み（旧 `diagram` の不一致を修正。#58 #1。設定駆動のエンドポイント定義による）。
 
@@ -279,6 +288,7 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 - [x] **429 ではフォールバックしない**（429 は再試行であってフォールバックではない。#863 / 分析用途のモデル割当の計画 ADR 決定 4）。5xx・ステータス不明の失敗も同様に従来の縮退へ落ちる。
 - [x] フォールバックの発火が `llm.completion.total{llm_result="fallback"}` として観測でき、見送った候補と実際に使った候補が `llm.model` で区別できる（#863 / 分析用途のモデル割当の計画 ADR 決定 6）。
 - [x] フォールバック先が `Models`（利用許可集合）に登録済みであることをガードが固定する（#863 / 分析用途のモデル割当の計画 ADR 決定 5。既存 T-19 の射程を拡大）。`trade-decision` / `trade-decision-screening` は鎖を持たない。
+- [x] 用途 `rerank` は `claude-haiku-4-5` へ解決され（鎖なし）、費用は `llm.purpose=rerank` として回答生成と分けて積まれる。機密区分によらず ZDR 必須（非 ZDR モデル・ティア C を除く）。
 - [x] `trade-decision-screening` は `Models` に登録済みの軽量モデルへ解決され、既定（`DefaultModel`）へ無音で落ちない（二段判断の層別用途登録の実装 ADR）。
 - [x] 報告書 3 種（`report-monthly` / `report-weekly` / `report-daily`）は HTTP 400 系で第 1 候補が失敗したとき、それぞれの第 2 候補へフォールバックして応答が返る（二段判断の層別用途登録の実装 ADR）。
 

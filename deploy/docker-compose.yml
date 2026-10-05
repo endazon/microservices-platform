@@ -476,6 +476,9 @@ services:
       # FR-03, ADR-0092 決定 1, IADR-0467 (#336): 束ねて読む追加コレクション（ティア A を有効化するときに
       # SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3 を .env で与える）。既定は空＝検索は主の 1 本だけ。
       Qdrant__FusedCollections__0: ${SEARCH_FUSED_COLLECTION:-}
+      # FR-03, FR-04, SC-02, ADR-0127 決定 3, IADR-0498 (#1746 段 S2): Claude による再順位付けの段（既定は無効）。
+      # 有効にするときは .env で SEARCH_RERANK_ENABLED=true を与える（検索のたびに LLM の費用が生じる）。
+      Rerank__Enabled: ${SEARCH_RERANK_ENABLED:-false}
       Services__LlmGateway: http://llm-gateway:8080
       # FR-03 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0397 (#1255): east-west gRPC。
       # **`Services__LlmGatewayGrpc` が在るときだけ**クエリ埋め込みが gRPC 経路になる

@@ -13,9 +13,12 @@ namespace RetrievalService.Features.Search.Hybrid;
 // 🔴 **スコアを比べない**（モデルが違えばスコアは同じ意味を持たない）。定数は下の `RrfK`・候補幅・重み 1 を共用する。
 // 🔴 **ABAC フィルタは全コレクションの全系統へ同じ 1 本を渡す**（決定 3。問い合わせを省いて守る設計にしない）。
 // 🔴 **`fused` が空（既定）なら、全モードで従来と 1 バイトも違わない**（戻り値・Score・呼び出し回数）。
+//
+// FR-03, FR-04, SC-02, ADR-0127 決定 3, [[IADR-0498]] 決定 1 (#1746 段 S2): `reranker` は Claude による再順位付けの段。
+// **既定（構成で無効）では DI に登録されず null** であり、そのとき結果は段を足す前と 1 バイトも違わない。
 public class HybridSearchService(
     IVectorStore store, IEmbeddingService embed, ILogger<HybridSearchService> logger,
-    FusedCollections? fused = null)
+    FusedCollections? fused = null, ISearchReranker? reranker = null)
     : IHybridSearchService
 {
     // RRF の平滑化定数（順位ベース統合。上位の影響を緩める一般的な既定値）
@@ -30,7 +33,8 @@ public class HybridSearchService(
     // （語彙索引だけが束ねられている既定の構成では、意味検索は従来の単一コレクションの経路のまま）。
     private int VectorFusedCount => _fused.Count(f => !f.LexicalOnly);
 
-    // FR-03, UC-01: 既存の呼び出し面。**振る舞いは従前と 1 バイトも変わらない。**
+    // FR-03, UC-01: 既存の呼び出し面。**再順位付けの段が無い構成（既定）では、振る舞いは従前と 1 バイトも変わらない。**
+    // ［2026-10-06 / #1746］[[IADR-0498]] 決定 1: 出口は `FinishAsync`（段 → `Finish`）である。
     //
     // 🔴 `user` は**段が無いこの実装では使わない**（[[IADR-0426]] 決定 2）。
     // それでもポートが必須引数で受けるのは、**段を挟んだ瞬間に必要になるもの**を
@@ -39,7 +43,25 @@ public class HybridSearchService(
         SearchRequest request, SearchUserContext user, CancellationToken ct = default)
     {
         var outcome = await SearchDetailedAsync(request, ct);
-        return Finish(outcome.Fused, outcome.Sort, outcome.TopK);
+        return await FinishAsync(request, outcome.Fused, outcome.Sort, outcome.TopK, ct);
+    }
+
+    // FR-03, FR-04, FR-19, SC-02, ADR-0127 決定 3, [[IADR-0498]] 決定 1・4 (#1746 段 S2): **結果の一覧の唯一の出口。**
+    //
+    // 素の検索と二段検索（`GraphExpandingSearchService` の 3 つの return）の**すべてがここを通る**。
+    // ① 露出の用途 `search` で落とす（`Finish` と同じ述語。段へ渡す前に落とす —— 一覧に出ない候補を外部へ送らない）
+    // ② 再順位付けの段（登録されていれば）。段が受け取るのは ABAC 後・露出後・**切り詰め前**の候補である
+    // ③ `Finish` で並び順を適用して `topK` へ切る（① の述語は冪等なので 2 度通しても結果は同じ）
+    // 🔴 **段は候補の並べ替えだけをする**（`ISearchReranker` の契約）。切り詰めは段の後に 1 度だけ行う。
+    internal async Task<List<SearchResultDto>> FinishAsync(
+        SearchRequest request, List<SearchResultDto> results, string sort, int topK, CancellationToken ct)
+    {
+        if (reranker is null || results.Count == 0)
+            return Finish(results, sort, topK);
+
+        var exposed = results.Where(r => DocumentExposure.IsSearchAllowed(r.Attributes)).ToList();
+        var reranked = await reranker.RerankAsync(request, sort, exposed, ct);
+        return Finish(reranked, sort, topK);
     }
 
     // FR-04, FR-17, ADR-0035 決定 1 (#970): 二段検索の段が要る**中間値**を添えて返す内部口。
@@ -293,7 +315,8 @@ public class HybridSearchService(
     // ここを足したことで認可が緩むことはない（絞る向きにしか働かない）。
     //
     // **なぜ `Finish` なのか。** 結果の一覧を返す口が**ここ 1 つに集まっている**
-    // （`SearchAsync` と `GraphExpandingSearchService` の 3 つの return がすべて通る）。
+    // （`SearchAsync` と `GraphExpandingSearchService` の 3 つの return がすべて `FinishAsync` を経てここを通る。
+    // ［2026-10-06 / #1746］[[IADR-0498]] 決定 1: 再順位付けの段は `FinishAsync` が本関数の手前に挟む）。
     // 経路ごとに書くと、後から段を足した人が落としても誰も気づかない。
     // **切り詰め（`topK`）より前に落とす** —— 後だと除外した分だけ結果が減る。
     //

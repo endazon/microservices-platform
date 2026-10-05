@@ -2,7 +2,7 @@
 title: IADR-0499 計画 ADR-0128 の見直し 3 条件（生成プロバイダの数と種類・運用 UI・共有範囲）は棚卸し（backlog-audit）で機械的に確かめない。報告だけの行も足さない。代わりに生成エンドポイントの定義を説明する機能仕様書へ「足す・有効にするときは計画の見直し条件と照らす」を書き、計画側の暫定手段と併せる
 type: impl-adr
 status: Accepted
-related_ids: [NFR, FR-11, ADR-0128, ADR-0010, ADR-0044, IADR-0007]
+related_ids: [NFR, FR-11, ADR-0128, ADR-0010, IADR-0007]
 author: claude
 created: 2026-10-06
 updated: 2026-10-06

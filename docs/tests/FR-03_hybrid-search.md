@@ -3,14 +3,14 @@ title: ハイブリッド検索 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-05
+updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
-ids: [FR-02, FR-03, FR-05, SC-01, SC-02, UC-01, FR-19, NFR-09, FR-04]
-adrs: [ADR-0086, ADR-0119, ADR-0016, ADR-0057, ADR-0070, ADR-0092, ADR-0127]
-iadrs: [IADR-0417, IADR-0426, IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467, IADR-0497]
-specs: [20260927_issue-1658_relay-options-shared, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index]
+ids: [FR-02, FR-03, FR-05, SC-01, SC-02, UC-01, FR-19, NFR-09, FR-04, FR-11]
+adrs: [ADR-0086, ADR-0119, ADR-0016, ADR-0057, ADR-0070, ADR-0092, ADR-0127, ADR-0010, ADR-0018, ADR-0035, ADR-0061, ADR-0076]
+iadrs: [IADR-0417, IADR-0426, IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467, IADR-0497, IADR-0498]
+specs: [20260927_issue-1658_relay-options-shared, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank]
 issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995]
 -->
 
@@ -39,6 +39,9 @@ issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1
   `scripts/verify-oidc-edge-flow.sh` の全文側の段（統合スタック）が持つ。
 - 対象: **全文インデックスが無いことの可観測化**（検索サービスの readiness が Degraded になること・
   縮退カウンタが上がること）。
+- 対象: **Claude による再順位付けの段**（`ClaudeSearchReranker`・`RerankPrompt`・出口 `HybridSearchService.FinishAsync`・合成点・輸送・合成監視の標識の引き継ぎ。T-100〜T-111）。
+  ゲートウェイの輸送は偽物に差し替える（要求の中身・回数・期限・失敗の扱いを観測する）。用途 `rerank` の解決と費用の計上は
+  LLM 送信先切替のテスト仕様書（T-28・T-29）が持つ。**実 Claude の並べ替えの品質は対象外**（nDCG@10 の差の測定で扱う）。
 - 対象外: 実埋め込みモデルの精度、反映時間（インジェスト責務）、負荷/p95、画面。
 - 対象外（回帰評価セット）: **チャンク化**（取り込み側の責務であり本サービスにコードが無い）と
   **実モデルによる nDCG@10 の実測**（実配備が要る。#336）。本セットが検知するのは
@@ -155,6 +158,18 @@ issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1
 | T-97 | 文書削除イベント。語彙索引のコレクションがまだ無い場合（`LexicalCollectionDeleteTests`） | 削除の購読 | 主と語彙索引の両方から消す。語彙索引が無い（`NotFound`）なら no-op。主の `NotFound`・語彙索引の `NotFound` 以外は従来どおり例外（陽性対照）。合成点は語彙索引だけを no-op の扱いで組む | 削除の伝播／展開順序に依らない |
 | T-98 | 語彙索引の名前の構成・クエリを埋めない客体 | 名前を未設定・前後空白つきで与える／主・追加コレクションと同名にする。客体を呼ぶ | 未設定は既定名（無効化の口は無い）。同名は起動時に止まる。客体は常に空ベクトル | 置き場所の決定 |
 | T-99 | 本番の合成点（`FusedQueryEmbeddingTests` の T-Q-06）・配備の配線（`k8s-local-up.test.js`）・実 Qdrant（`LexicalIndexQdrantTests`） | 合成点を構成なし／追加コレクションありで組む。values・両 appsettings・コード上の既定名・helm・compose を突き合わせる。実 Qdrant で 3 モード | 構成なしでも語彙索引 1 本が `LexicalOnly` で束ねられ、追加コレクションがあれば最後に付く。6 か所の名前が一致し、helm は ingestion と retrieval の両方へ常に描画する。実 Qdrant で高機密文書はキーワード・ハイブリッドで現れ意味検索で現れない | 既定の構成で効くこと |
+| T-100 | 候補 3 件（`ClaudeRerankTests`）。再順位付けを有効にし、偽の輸送が `{"ranking":[3,1,2]}` を返す | keyword・hybrid・モード／並び未指定・未知のモードと並びで検索 | 一覧がモデルの順（3,1,2）になる。ゲートウェイを 1 回だけ、用途 `rerank`・モデル未指定・出力上限 512 で呼ぶ。計器 `applied` が 1 | 再順位付けは検索結果一覧（関連度）に掛かる |
+| T-101 | 候補 6 件で AI 分析が送る形（TopK 5・モード／並び指定なし）。二段検索の 3 つの出口（起点なし・近傍なし・合成後）。合成点を有効にした検索サービス（`ClaudeRerankWiringTests`） | 検索。二段検索を通す。`/search` に RAG の形で投げる | 6 位をモデルが 1 位にすると上位 5 件に入る（切り詰めの前に並べ替える）。二段検索のどの出口も段を通り、段が無いときの並びの逆になる。有効にした合成点は段を登録し、`/search` の結果がモデルの順になる | 再順位付けは RAG 回答の候補にも掛かる |
+| T-102 | 組織文書 2 件・「AI の入力に含める」OFF／ON の個人資料（「横断検索に含める」ON） | 検索 | OFF の個人資料の題名・本文はプロンプトに無く、一覧の元の位置に留まる。送った 3 件だけが送れる候補の位置の間で並べ替わる。送れる候補が 1 件なら呼ばない（`too_few`） | AI の入力に含めない候補は送らない |
+| T-103 | スコープ無し・許可無し。「横断検索に含める」OFF・「AI の入力に含める」ON の個人資料。権限外（`dept=hr`）の文書を含む索引（`ClaudeRerankWiringTests`） | 検索 | 権限が無ければ検索は空で段を呼ばない。一覧に出ない個人資料は送らない。権限外の文書の本文はプロンプトにも結果にも無い | ABAC で絞った後の候補だけを送る |
+| T-104 | 送る候補の機密区分の組（public / internal / confidential / restricted / 属性なし / 空 / 未知 / 前後空白つき）と、送らない `confidential` の個人資料 | 検索 | 要求の `Confidentiality` が送った候補の最も高い区分。属性なし・空・未知・前後空白つきは `restricted`。送らない候補の区分は数えない | 越境は最も高い機密区分で判定する |
+| T-105 | T-100・T-101 の要求 | 検索 | 用途は常に `rerank`（費用の軸）。ゲートウェイ側の計上は LLM 送信先切替のテスト仕様書の T-28 | 費用を回答生成と分けて計上する |
+| T-106 | モデルの出力（推奨の形・前後に文・裸の配列・重複・範囲外・小数・文字列の数字・言い漏らし・大文字の鍵・他の型、JSON でない・空の配列・全部範囲外・別の鍵・閉じていない・空文字）。区切りを閉じて指示を書いた本文・候補を足そうとする出力。長い本文・長い題名・サロゲートペア | 検索・プロンプトの組み立て | 有効な番号だけを採り、言い漏らしは元の順で後ろに付く。解釈できない出力は元の順で `unparseable`。本文は区切りを閉じられず（`</documents>`・`</document>`・`</query>` は組み立てた数だけ）、結果は入力の置換のまま。本文・題名は字数で切り、サロゲートペアを割らない | 出力の検証・プロンプト注入への備え |
+| T-107 | ゲートウェイの輸送の失敗・`Sent=false`・`refusal`・時間切れ（期限 1 秒）・利用者の取り消し | 検索 | 元の順で返し、理由つきの `degraded` を 1 つ数える。ゲートウェイは 1 回しか呼ばない（別の経路へ投げ直さない）。利用者の取り消しは例外のまま上がる | 失敗は元の順・ZDR でない経路へ倒れない |
+| T-108 | semantic・updated・合成監視の標識・無効の構成。構成の範囲外の値。窓 2 件。既定の合成点。配備の既定（`k8s-local-up.test.js`） | 検索・構成の正規化・合成点を組む | 掛けない検索では呼ばず、段が無いときと同じ結果。範囲外は既定へ倒れ、既定は無効。窓の外は送らず元の順で後ろに付く。既定の合成点は段の型を登録しない。コード・appsettings・helm・compose の既定がすべて無効 | 既定は無効・着脱可能な段 |
+| T-109 | 合成監視の要求（内周の標識あり／なし）。AI 分析の質問・分析・逐次の 3 経路と REST・gRPC の検索輸送（`RagSearchSyntheticMarkerTests`）。BFF の横断検索の合成監視の主体・通常の主体・外からの偽装（`SyntheticTrafficExclusionTests`）。検索サービスの gRPC の受け口（`RerankCompletionTransportTests`） | 質問・分析・逐次・検索 | 合成のときだけ標識が検索サービスへ届く（REST はヘッダ、gRPC はメタデータ）。通常の主体・偽装では付かない。gRPC のメタデータの標識を受け口の判定（`IHttpContextAccessor` 越し）が読める。段は合成監視の検索では呼ばない | 合成監視に再順位付けの費用を出さない |
+| T-110 | 再順位付けの輸送（REST・gRPC。`RerankCompletionTransportTests`） | ゲートウェイを呼ぶ | REST の本文・gRPC の proto の欄に `purpose = rerank`・段が算出した `confidentiality`・出力上限が載る。合成のときだけ標識が付く。非 2xx は例外のまま上がる | 用途と越境の区分をゲートウェイへ正しく渡す |
+| T-111 | gRPC の取り消し（偽のクライアントの `Cancelled` / `DeadlineExceeded`・取り消していない `Cancelled`・ループバックの応答しない受け口） | ゲートウェイを呼ぶ・段を通す | 呼び出し元の取り消しは `OperationCanceledException` で上がり、取り消していない `Cancelled` は `RpcException`（輸送の失敗）のまま。実チャネルで段の期限は `timeout` として元の順へ戻り、利用者の取り消しは縮退として数えずに上がる | 失敗の理由を数え違えない |
 
 ## テストデータ
 

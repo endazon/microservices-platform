@@ -35,8 +35,14 @@ internal sealed class LoopbackGrpcServer : IAsyncDisposable
 
     public static Task<LoopbackGrpcServer> StartAsync<TService>(TService service, CancellationToken ct)
         where TService : class
+        => StartAsync(service, _ => { }, ct);
+
+    // #1746 監査 F1: 受け口の器へ追加の登録（例: `IHttpContextAccessor`）を足す口。
+    public static Task<LoopbackGrpcServer> StartAsync<TService>(
+        TService service, Action<IServiceCollection> extra, CancellationToken ct)
+        where TService : class
         => StartCoreAsync(
-            services => { services.AddGrpc(); services.AddSingleton(service); },
+            services => { services.AddGrpc(); services.AddSingleton(service); extra(services); },
             app => app.MapGrpcService<TService>(),
             ct);
 
