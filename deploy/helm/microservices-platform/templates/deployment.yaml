@@ -297,6 +297,12 @@ spec:
             - name: Qdrant__LexicalCollection
               value: {{ required "lexicalIndex.collection は必須（IADR-0497）" $.Values.lexicalIndex.collection | quote }}
           {{- end }}
+          {{- if eq $name "retrieval" }}
+            # FR-03, FR-04, SC-02, ADR-0127 決定 3, IADR-0498 (#1746 段 S2): Claude による再順位付けの段（既定は無効）。
+            # 有効なら用途 rerank で llm-gateway だけを呼ぶ（Services__LlmGateway / Services__LlmGatewayGrpc。埋め込みと同じ宛先）。
+            - name: Rerank__Enabled
+              value: {{ $.Values.searchRerank.enabled | default false | quote }}
+          {{- end }}
           {{- /* FR-02, FR-03, ADR-0016, IADR-0284, IADR-0313 (#992 案 2): 決定的ローカル埋め込み。
                  🔴 **使い捨ての検証スタック専用**（意味は values.yaml の embedding.deterministicLocal）。
                  埋め込みの鍵が無いスタックでも索引に点が入り「検索が実際に効くこと」を観測できる。

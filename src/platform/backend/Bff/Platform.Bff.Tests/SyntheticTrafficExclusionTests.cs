@@ -160,6 +160,33 @@ public class SyntheticTrafficExclusionTests(BffTestFactory factory) : IClassFixt
             .Should().BeTrue();
     }
 
+    // ★ 内周への伝播（検索。#1746 監査 F1 / IADR-0498）。合成監視の主体の検索は、後段（検索サービス）へ標識を付ける
+    // —— 付かないと、検索サービスの再順位付けの段が合成監視のたびに LLM の費用を出す。陰性対照（通常の主体・外からの偽装）は
+    // 付けない（常に付けると陽性が空振りし、偽装を転送すると外から費用を免れる）。
+    [Theory]
+    [InlineData("synthetic", "1")]
+    [InlineData("ordinary", null)]
+    [InlineData("forged", null)]
+    public async Task PostSearch_PropagatesMarkerOnlyForSyntheticPrincipal(string who, string? expected)
+    {
+        factory.ResetUsageEvents();
+        factory.SearchScopeGranted = true;
+        factory.LastSearchForwardedSyntheticHeader = "unset";
+        var client = who == "synthetic" ? SyntheticClient() : factory.CreateClient();
+        if (who == "forged")
+            client.DefaultRequestHeaders.Add(SyntheticTraffic.HeaderName, SyntheticTraffic.HeaderValue);
+
+        var resp = await client.PostAsJsonAsync(
+            "/bff/search", new { query = "標識の伝播", topK = 5 }, TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        factory.LastSearchForwardedSyntheticHeader.Should().Be(expected);
+
+        // 後始末: 合成でない検索は利用イベントを 1 件発火する。次のテストへ遅れて届かないよう排出しきる。
+        if (who != "synthetic")
+            (await factory.WaitForUsageEventAsync(Arrival, TestContext.Current.CancellationToken)).Should().BeTrue();
+    }
+
     // ★ 偽装（内周への伝播）。外から付けたヘッダを**転送しない**。
     // 転送してしまうと、外周で主体判定を厳しくしても**内周で費用が外れる**。
     [Fact]
