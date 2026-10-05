@@ -24,6 +24,17 @@ public interface IIngestionVectorStore
     // 起動後にバックグラウンドで走る（[[IADR-0339]] 決定 2）。既定実装（0 件）の位置づけは上と同じ。
     Task<int> BackfillCjkNgramAsync(CancellationToken ct = default) => Task.FromResult(0);
 
+    // FR-04, FR-05, SC-01, SC-08, [[IADR-0502]] 決定 2 (i) (#1760): facet と ABAC フィルタが引く**集合値キー**
+    // （`tags`・`shared_with`）のキーワード索引を全コレクションへ張る（新規・既存とも、存在の有無によらず冪等に）。
+    // 起動時ブートストラップが `EnsureCjkNgramIndexAsync` の直後に呼ぶ。属性キー（`attributes.<key>`）は動的なので、
+    // 実装は書き込みの口（`Upsert*`）でも張る。既定実装の位置づけは上の 2 つと同じ（索引を持たない偽物用）。
+    Task EnsureKeywordIndexesAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+    // FR-04, FR-05, [[IADR-0502]] 決定 3 (#1760): 既存の点に現れる属性キーを拾い、キーワード索引を張る。
+    // 張った数を返す。**再起動後に一度も書かれていないキー**にも索引を付けるための経路であり、
+    // 起動後にバックグラウンドで走る（`QdrantKeywordIndexDiscoveryHostedService`）。既定実装（0 件）の位置づけは上と同じ。
+    Task<int> EnsureKeywordIndexesForExistingPointsAsync(CancellationToken ct = default) => Task.FromResult(0);
+
     // FR-02: 指定コレクションへチャンクを索引する（コレクションはゲートウェイの機密区分ルーティングが決める）。
     // FR-03, SC-02, #536: `updatedAt` は文書の更新日時（DocumentUpdated.UpdatedAt）である。
     // **取り込み時刻を渡さないこと**（IADR-0149 決定 5）——渡すと再索引のたびに全文書の

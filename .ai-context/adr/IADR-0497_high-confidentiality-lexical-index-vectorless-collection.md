@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-02, FR-03, FR-05, FR-19, UC-01, UC-04, SC-02, ADR-0127, ADR-0092, ADR-0016, ADR-0017, ADR-0070, ADR-0057, ADR-0061, IADR-0025, IADR-0085, IADR-0467, IADR-0422, IADR-0318, IADR-0339, IADR-0358, IADR-0014, IADR-0012]
 author: claude
 created: 2026-10-05
-updated: 2026-10-05
+updated: 2026-10-06
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0127_high-confidentiality-lexical-only-and-claude-rerank.md (決定 1・2・4・7。フォローアップ 1・2)
   - planning:projects/microservices-platform/07_adr/ADR-0092_multi-collection-search-fusion-and-query-egress.md (決定 1・3)
@@ -191,6 +191,8 @@ S1 は再順位付けを実装しない。S2 が要るものを次のとおり�
   2. 段 S3: nDCG@10 の差（「全文のみ＋Claude」と「ハイブリッド（voyage）」）を IADR-0422 のハーネスで測る。
   3. 段 S4: Ruri の配備物と関連文書の後始末。ADR-0017 の引用の追随（本 PR で注記した範囲は作業仕様書 §ADR-0017 の引用）。
   4. 別 issue: 権限内属性値の facet のキーワード索引。
+     > **［2026-10-06 追記 / #1760］** 切り出した issue は #1760。[IADR-0502](./IADR-0502_qdrant-keyword-indexes-for-facet-and-abac-keys.md) が、
+     > 語彙索引を含む全コレクションへ facet と ABAC フィルタが引くキーのキーワード索引を張ると決めた（§実測「参考」の欠陥の是正）。上の本文は書き換えない。
 
 ## 試験
 

@@ -182,6 +182,7 @@ public class LexicalIndexStoreTests
     {
         internal List<UpsertPoints> Upserts { get; } = [];
         internal List<string> Deletes { get; } = [];
+        internal List<CreateFieldIndexCollection> FieldIndexes { get; } = [];
         // このコレクションへの呼び出しは Qdrant と同じく NotFound で失敗させる。
         internal string? MissingCollection { get; init; }
 
@@ -198,6 +199,8 @@ public class LexicalIndexStoreTests
             {
                 "Upsert" => Ok(() => Upserts.Add((UpsertPoints)(object)request!)),
                 "Delete" => Ok(() => Deletes.Add(((DeletePoints)(object)request!).CollectionName)),
+                // [[IADR-0502]] 決定 2 (ii) (#1760): 書き込みの口は書く前にキーワード索引を張る（記録だけする）。
+                "CreateFieldIndex" => Ok(() => FieldIndexes.Add((CreateFieldIndexCollection)(object)request!)),
                 _ => throw new NotSupportedException($"想定していない RPC が出た: {method.Name}"),
             };
             return new AsyncUnaryCall<TResponse>(

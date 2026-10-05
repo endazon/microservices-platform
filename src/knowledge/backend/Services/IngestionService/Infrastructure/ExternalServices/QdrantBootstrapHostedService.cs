@@ -24,8 +24,13 @@ public class QdrantBootstrapHostedService(
             // FR-03, #1118, [[IADR-0339]] 決定 2: 日本語 2-gram（`text_ngram`）の索引も同じ作法で張る。
             // 既存の点への後付けは `QdrantCjkNgramBackfillHostedService` が起動後に行う（ここで待たない）。
             await store.EnsureCjkNgramIndexAsync(ct);
+            // FR-04, FR-05, SC-01, SC-08, [[IADR-0502]] 決定 2 (i) (#1760): facet と ABAC フィルタが引く集合値キー
+            // （`tags`・`shared_with`）のキーワード索引も同じ作法で張る。属性キーは書き込み時と
+            // `QdrantKeywordIndexDiscoveryHostedService`（既存の点からの発見）が張る。
+            await store.EnsureKeywordIndexesAsync(ct);
             logger.LogInformation(
-                "Qdrant collections and full-text payload indexes (text, text_ngram) ensured for ingestion index (per-model)");
+                "Qdrant collections, full-text payload indexes (text, text_ngram) and keyword payload indexes "
+                + "(tags, shared_with) ensured for ingestion index (per-model and lexical)");
         }
         catch (Exception ex)
         {

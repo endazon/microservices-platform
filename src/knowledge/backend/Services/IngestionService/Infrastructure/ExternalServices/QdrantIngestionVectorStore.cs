@@ -1,7 +1,10 @@
+using System.Collections.Concurrent;
 using IngestionService.Domain.Ports;
 using IngestionService.Domain;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Indexing;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
@@ -14,12 +17,23 @@ namespace IngestionService.Infrastructure.ExternalServices;
 // 名前は `lexicalCollection`。省略時は `LexicalCollection.DefaultName`）も同じ実装が持つ。
 // ベクトルのコレクション（`Embedding:Collections`）とは**作り方だけが違い**（ベクトルの設定が空）、
 // 全文索引・`text_ngram` の後付け・文書単位の削除は全コレクションに同じく効く。
+//
+// FR-04, FR-05, SC-01, SC-08, [[IADR-0502]] (#1760): facet と ABAC フィルタが引くキー（`tags`・`shared_with`・
+// `attributes.<key>`）の**キーワード索引**も同じ実装が張る（起動時・書き込み時・既存の点からの発見の 3 か所）。
 public class QdrantIngestionVectorStore(
     QdrantClient client, IOptions<EmbeddingCollectionsOptions> collections,
-    string? lexicalCollection = null)
+    string? lexicalCollection = null,
+    ILogger<QdrantIngestionVectorStore>? logger = null)
     : IIngestionVectorStore
 {
     private readonly IReadOnlyList<EmbeddingCollectionOptions> _collections = collections.Value.Collections;
+
+    private readonly ILogger _logger = logger ?? NullLogger<QdrantIngestionVectorStore>.Instance;
+
+    // [[IADR-0502]] 決定 2: キーワード索引を張り終えた（コレクション, ペイロードキー）。**プロセス内だけ**の記憶であり、
+    // 再起動すれば空から始まる（起動時と発見の走査が張り直す。`CreatePayloadIndex` は冪等）。
+    // 書き込みのたびに同じキーへ RPC を出さないためのものである。
+    private readonly ConcurrentDictionary<(string Collection, string Key), byte> _keywordIndexed = new();
 
     // [[IADR-0497]] 決定 1: 語彙索引のコレクション名。
     private readonly string _lexical = string.IsNullOrWhiteSpace(lexicalCollection)
@@ -219,6 +233,123 @@ public class QdrantIngestionVectorStore(
             }
         };
 
+    // FR-04, FR-05, SC-01, SC-08, [[IADR-0502]] 決定 4 (#1760): キーワード索引のパラメータ。
+    //
+    // **`is_tenant` / `on_disk` は既定（偽）のまま。** 属性は全問い合わせに付くテナントの区切りではなく
+    // （`is_tenant` は 1 つのキーで点を分割する最適化）、規模（NFR-08 の数十万点）はメモリ上の索引で足りる。
+    // 宣言を空のまま明示して置くのは、ここが変わったことを試験で捕まえるためである（純関数）。
+    internal static PayloadIndexParams BuildKeywordIndexParams() =>
+        new() { KeywordIndexParams = new KeywordIndexParams() };
+
+    // FR-04, FR-05, SC-01, SC-08, [[IADR-0502]] 決定 2 (i) (#1760): **集合値キー（`tags`・`shared_with`）の
+    // キーワード索引を、全コレクションへ存在の有無によらず張る**（`EnsureCollectionsAsync` の `text` と同じ作法）。
+    // 属性キー（`attributes.<key>`）は動的なので、書き込み時（下の `EnsureAttributeKeywordIndexesAsync`）と
+    // 既存の点からの発見（`EnsureKeywordIndexesForExistingPointsAsync`）が張る。
+    //
+    // 🔴 失敗は呼び出し元（起動時のブートストラップ）へ上げる —— 全文索引と同じく Error で残る。
+    public async Task EnsureKeywordIndexesAsync(CancellationToken ct = default)
+    {
+        var keys = AttributeValueKeys.KeywordIndexKeys([]);
+        foreach (var name in AllCollectionNames)
+        {
+            foreach (var key in keys)
+            {
+                await client.CreatePayloadIndexAsync(name, key, PayloadSchemaType.Keyword,
+                    BuildKeywordIndexParams(), cancellationToken: ct);
+                _keywordIndexed.TryAdd((name, key), 0);
+            }
+        }
+    }
+
+    // FR-04, FR-05, [[IADR-0502]] 決定 2 (ii) (#1760): 書き込む点の属性キー（と集合値キー）のうち、
+    // このプロセスでまだ張っていないものだけにキーワード索引を張る。張った数を返す。
+    //
+    // 🔴 **書き込みを止めない。** 索引の失敗で取り込みを再試行へ落とすと、facet の候補のために本文の索引まで止まる。
+    //   - `wait: false`: 索引の構築を取り込みの期限（`IngestionTimeouts`）に入れない（受け付けだけを待つ）。
+    //   - JSON パスとして不正なキー（`InvalidArgument`。実測 m-9）は覚えて二度と呼ばない —— そのキーは facet もできない。
+    //   - それ以外の失敗（Qdrant の不調・コレクションが無い）は覚えず、次の書き込みで張り直す。Warning を残す。
+    //   - 呼び出し元の取り消しは上げる（書き込みそのものも取り消される）。
+    internal async Task<int> EnsureAttributeKeywordIndexesAsync(
+        string collection, IEnumerable<string> attributeKeys, CancellationToken ct)
+    {
+        var created = 0;
+        foreach (var key in AttributeValueKeys.KeywordIndexKeys(attributeKeys))
+        {
+            if (_keywordIndexed.ContainsKey((collection, key)))
+                continue;
+            try
+            {
+                await client.CreatePayloadIndexAsync(collection, key, PayloadSchemaType.Keyword,
+                    BuildKeywordIndexParams(), wait: false, cancellationToken: ct);
+                _keywordIndexed.TryAdd((collection, key), 0);
+                created++;
+            }
+            catch (Grpc.Core.RpcException ex) when (!ct.IsCancellationRequested)
+            {
+                if (ex.StatusCode == Grpc.Core.StatusCode.InvalidArgument)
+                    _keywordIndexed.TryAdd((collection, key), 0);
+                _logger.LogWarning(ex,
+                    "Failed to ensure Qdrant keyword payload index {Key} on {Collection}; "
+                    + "scoped attribute values (facet) for this key return no candidates from this collection "
+                    + "until the index exists", key, collection);
+            }
+        }
+
+        return created;
+    }
+
+    // 既存の点からキーを拾う 1 回の scroll の点の数（`attributes` だけを読むので軽い）。
+    internal const uint KeyDiscoveryPageSize = 1024;
+
+    // FR-04, FR-05, [[IADR-0502]] 決定 3 (#1760): **既存の点に現れる属性キーを拾い、キーワード索引を張る。**
+    // 張った数を返す。
+    //
+    // 書き込み時の付与（上）は「このプロセスが書いたキー」にしか効かない。稼働中の配備には、再起動後に
+    // 一度も書かれていないキーを持つ点が残る —— その軸の facet は索引が無いまま空集合になる。
+    // 起動後のバックグラウンドで全コレクションの点を `attributes` だけ読んで走査し、書き込み時と同じ経路で張る。
+    //
+    // 🔴 **全点を読む**（標本にしない）。標本では少数の文書にだけ付いたキーを取りこぼし、
+    // 「その値を持つ文書は在るのに候補に出ない」形が残る。費用は IADR-0502 §結果。
+    public async Task<int> EnsureKeywordIndexesForExistingPointsAsync(CancellationToken ct = default)
+    {
+        var created = 0;
+        foreach (var name in AllCollectionNames)
+        {
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            PointId? offset = null;
+            do
+            {
+                var page = await client.ScrollAsync(name,
+                    limit: KeyDiscoveryPageSize,
+                    offset: offset,
+                    payloadSelector: new WithPayloadSelector
+                    {
+                        Include = new PayloadIncludeSelector { Fields = { AttributeValueKeys.AttributesPrefix } }
+                    },
+                    vectorsSelector: new WithVectorsSelector { Enable = false },
+                    cancellationToken: ct);
+
+                foreach (var point in page.Result)
+                    keys.UnionWith(ReadAttributeKeys(point.Payload));
+
+                offset = page.NextPageOffset;
+            }
+            while (offset is not null && !ct.IsCancellationRequested);
+
+            ct.ThrowIfCancellationRequested();
+            created += await EnsureAttributeKeywordIndexesAsync(name, keys, ct);
+        }
+
+        return created;
+    }
+
+    // 点のペイロードから属性キー（ネスト構造体 `attributes -> {k: v}` のキー）を読む（純関数。[[IADR-0014]]）。
+    internal static IEnumerable<string> ReadAttributeKeys(IDictionary<string, Value> payload) =>
+        payload.TryGetValue(AttributeValueKeys.AttributesPrefix, out var attrs)
+        && attrs.KindCase == Value.KindOneofCase.StructValue
+            ? attrs.StructValue.Fields.Keys
+            : [];
+
     public async Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
@@ -228,6 +359,8 @@ public class QdrantIngestionVectorStore(
     {
         var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes,
             tags, updatedAt, sharedWith: sharedWith);
+        // [[IADR-0502]] 決定 2 (ii) (#1760): 書く点の属性キーへキーワード索引を張る（張り済みなら RPC を出さない）。
+        await EnsureAttributeKeywordIndexesAsync(collection, attributes.Keys, ct);
 
         await client.UpsertAsync(collection,
             [new PointStruct { Id = new PointId { Uuid = chunkId.ToString() }, Vectors = vector, Payload = { payload } }],
@@ -249,6 +382,8 @@ public class QdrantIngestionVectorStore(
     {
         var payload = BuildChunkPayload(documentId, title, indexText, ChunkId.MetadataChunkIndex,
             markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith);
+        // [[IADR-0502]] 決定 2 (ii) (#1760): チャンクの口と同じ。
+        await EnsureAttributeKeywordIndexesAsync(collection, attributes.Keys, ct);
 
         await client.UpsertAsync(collection,
             [new PointStruct { Id = new PointId { Uuid = pointId.ToString() }, Vectors = vector, Payload = { payload } }],
@@ -268,6 +403,8 @@ public class QdrantIngestionVectorStore(
     {
         var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes,
             tags, updatedAt, sharedWith: sharedWith);
+        // [[IADR-0502]] 決定 2 (ii) (#1760): 語彙索引にも張る（検索は語彙索引でも facet する）。
+        await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
 
         await client.UpsertAsync(_lexical, [BuildLexicalPoint(chunkId, payload)], cancellationToken: ct);
     }
@@ -283,6 +420,8 @@ public class QdrantIngestionVectorStore(
     {
         var payload = BuildChunkPayload(documentId, title, indexText, ChunkId.MetadataChunkIndex,
             markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith);
+        // [[IADR-0502]] 決定 2 (ii) (#1760): 語彙索引のチャンクの口と同じ。
+        await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
 
         await client.UpsertAsync(_lexical, [BuildLexicalPoint(pointId, payload)], cancellationToken: ct);
     }
