@@ -311,3 +311,19 @@ $ POST /collections/vec_f/facet (vector collection, no keyword index)
   - `.ai-context/adr/README.md` の IADR-0422 の行 —— 索引のタイトルセルは本体 `title:` と字を共有する規則（12 字以上）があり、注記を足すと本体と離れる。本体の `related_ids` に併記した。
   - `docs/api/openapi.yaml:47` —— `/embed` の説明文。`docs/` の表示テキストへ計画 ID を足さない規則に当たる（既存の 1 行。trace ブロックを持たない生成物の形であり、S4 で見直す）。
   - `.ai-context/specs/` —— 凍結。
+
+## 検証（2026-10-05。`origin/develop` `5192a7a4` 基点）
+
+| 検査 | 結果 |
+| --- | --- |
+| `dotnet build src/knowledge/backend/backend.slnx` | 0 エラー・警告 1 件（`IngestToSearchQdrantTests.cs` の `QdrantBuilder()` の CS0618。develop に既存。新しい統合試験は版を引数で渡して出さない） |
+| `dotnet build src/platform/backend/backend.slnx` | 0 エラー・0 警告 |
+| `dotnet test src/knowledge/backend/backend.slnx --filter "Category!=Integration"` | 全件緑（Ingestion 136・Retrieval 472・他ユニットも緑） |
+| `dotnet test LlmGateway.Tests`（コメントだけの変更の確認） | 333 件緑 |
+| 統合試験（手元の Docker・`Knowledge.IntegrationTests.Search` と `DocumentUpdatedFanOutTests`） | 16 件緑（実 Qdrant v1.18.1 の `LexicalIndexQdrantTests` 5 件を含む。skip ではなく実走） |
+| `dotnet format --verify-no-changes`（knowledge・platform） | 差分なし |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 918 件緑（初回は `check-test-spec-coverage` の床の上げ忘れと、注記の試験名の誤りで赤 → 直した） |
+| `k8s-local-up.test.js`・helm の 2 本 | 緑（語彙索引の 2 本を含む） |
+| `helm template`（既定・`embedding.enabled=true`）・`helm lint` | 描画できる。既定で ingestion・retrieval の 2 つにだけ `Qdrant__LexicalCollection` が増える（他の差分なし）。`lexicalIndex.collection` を空にすると描画が失敗する |
+| check-trace-blocks / check-doc-updated / check-test-traceability / check-commit-messages / gen-knowledge-graph --check / check-cross-repo-refs / check-plan-id-qualification / check-unit-dependencies / check-doc-links / check-adr-numbering | すべて OK |
+| gitleaks（`origin/develop..HEAD`） | no leaks found |

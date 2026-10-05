@@ -28,8 +28,13 @@
       "ConsumerCallTimeoutsTests",
       "DocumentUpdatedConsumerTests",
       "EmbeddingBudgetDeadLetterPipelineTests",
+      "IngestToSearchInProcessTests",
       "IngestionTimeoutTests",
+      "LexicalIndexQdrantTests",
+      "LexicalIndexStoreTests",
       "MetadataIndexTextTests",
+      "QdrantCjkNgramIndexTests",
+      "QdrantFullTextIndexBootstrapTests",
       "QdrantIngestionVectorStoreTests"
     ],
     "docs/tests/FR-03_hybrid-search.md": [
@@ -47,6 +52,8 @@
       "EmbeddingRouterTargetCollectionTests",
       "FusedQueryEmbeddingTests",
       "HybridSearchServiceTests",
+      "LexicalIndexFusionTests",
+      "LexicalIndexQdrantTests",
       "MetadataIndexTextTests",
       "MultiCollectionFusionTests",
       "QdrantVectorStoreTests",

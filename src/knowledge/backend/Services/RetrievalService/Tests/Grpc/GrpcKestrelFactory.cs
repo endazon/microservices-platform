@@ -94,7 +94,7 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             services.AddSingleton<IVectorStore>(Index);
             // #1746 / [[IADR-0497]] 決定 5: 本番の合成点は語彙索引を常に束ねる（実 Qdrant のクライアントを要する）。
             // 器は Qdrant を持たないので束ねない形へ戻す —— 本器を使う試験の主題は束ね方ではない
-            // （語彙索引の束ね方は `LexicalIndexFusionTests`、合成は `LexicalFusedCompositionTests` が測る）。
+            // （語彙索引の束ね方は `LexicalIndexFusionTests`、合成は `FusedQueryEmbeddingTests` の T-Q-06 が測る）。
             services.RemoveAll<FusedCollections>();
             services.AddScoped(_ => FusedCollections.None);
 
