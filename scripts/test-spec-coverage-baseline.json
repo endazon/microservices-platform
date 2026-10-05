@@ -43,6 +43,8 @@
       "AttributeValuesTrustedRelayTests",
       "BffSearchEndpointTests",
       "BodylessDocumentSearchTests",
+      "ClaudeRerankTests",
+      "ClaudeRerankWiringTests",
       "DocumentBodyPresenceTests",
       "DocumentSearchRelayDeploymentWiringTests",
       "DocumentSearchRelayOptionsTests",
@@ -58,6 +60,9 @@
       "MetadataIndexTextTests",
       "MultiCollectionFusionTests",
       "QdrantVectorStoreTests",
+      "RagSearchSyntheticMarkerTests",
+      "RerankCompletionTransportTests",
+      "SyntheticTrafficExclusionTests",
       "TrustedUserContextRelayTests"
     ],
     "docs/tests/FR-04_ai-answer-citations.md": [
@@ -160,7 +165,8 @@
       "OpenAiProviderStopReasonTests",
       "QdrantVectorStoreTests",
       "RagContextAiInputExclusionTests",
-      "RagOrchestratorStopReasonTests"
+      "RagOrchestratorStopReasonTests",
+      "RerankPurposeEndpointTests"
     ],
     "docs/tests/FR-12_document-normalization.md": [
       "ConversionJobStoreTests",

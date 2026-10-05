@@ -3,6 +3,7 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using Pb = Knowledge.Contracts.Grpc.Retrieval.V1;
 
 namespace AiAnalysisService.Infrastructure.ExternalServices;
@@ -50,7 +51,12 @@ public sealed class GrpcRagSearchTransport(
 
         try
         {
-            var resp = await client.SearchAsync(request, cancellationToken: ct);
+            // NFR-02, ADR-0076 決定 4, [[IADR-0378]], [[IADR-0498]]（2026-10-06 / #1746 監査 F1）: 合成監視の標識は
+            // **メタデータ**で運ぶ（生成の輸送 `GrpcLlmCompletionTransport` と同じ）。合成のときだけ付く ——
+            // 利用者の資格情報は従来どおり載せない。
+            var headers = new Metadata();
+            SyntheticTraffic.PropagateTo(headers, query.IsSynthetic);
+            var resp = await client.SearchAsync(request, headers, cancellationToken: ct);
             return [.. resp.Results.Select(ToDto).OfType<SearchResultDto>()];
         }
         catch (Exception ex) when (IsTransportFailure(ex, ct))

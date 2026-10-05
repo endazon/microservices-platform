@@ -240,7 +240,11 @@ public class RagOrchestrator(
         string query, AccessScope scope, int topK, SearchPrincipal principal, CancellationToken ct)
         => SelectContext(await _search.SearchAsync(
             new RagSearchQuery(query, topK, scope, principal.UserId, principal.UserAttributes,
-                principal.NarrowTo),
+                principal.NarrowTo,
+                // NFR-02, ADR-0076 決定 4, [[IADR-0498]]（2026-10-06 追記 / #1746 監査 F1）: 合成監視の標識を
+                // 検索サービスへ引き継ぐ。検索は LLM の抑止（`SuppressLlmForSynthetic`）より前に走るので、
+                // 引き継がないと検索サービスの再順位付けが合成監視のたびに LLM の費用を出す。
+                IsSynthetic: IsSyntheticRequest()),
             ct));
 
     // FR-05, FR-07, 計画 ADR-0086 決定 1, [[IADR-0415]], [[IADR-0426]] 決定 1 (#1255):

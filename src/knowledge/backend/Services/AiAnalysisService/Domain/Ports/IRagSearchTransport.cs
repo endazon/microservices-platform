@@ -36,6 +36,9 @@ public interface IRagSearchTransport
 /// 受け口が自分でスコープを解決する（判定の位置は動かない）。</item>
 /// <item><see cref="NarrowTo"/> … 利用者が指定したデータ範囲そのもの。
 /// <b>交差前の値である</b> —— gRPC 輸送はこれを送り、交差は受け口が同じ <c>ScopeNarrowing</c> で行う。</item>
+/// <item><see cref="IsSynthetic"/> … ［2026-10-06 / #1746 監査 F1］合成監視の要求か（外周が付けた内周の標識）。
+/// 輸送が検索サービスへ**標識として引き継ぐ**（REST はヘッダ、gRPC はメタデータ）。検索サービスの再順位付けの段が
+/// 合成監視の検索に LLM の費用を出さないため（ADR-0076 決定 4）。既定は偽（標識を付けない）。</item>
 /// </list>
 /// </summary>
 public sealed record RagSearchQuery(
@@ -44,4 +47,5 @@ public sealed record RagSearchQuery(
     AccessScope EffectiveScope,
     string UserId,
     IReadOnlyDictionary<string, string> UserAttributes,
-    IReadOnlyDictionary<string, List<string>>? NarrowTo);
+    IReadOnlyDictionary<string, List<string>>? NarrowTo,
+    bool IsSynthetic = false);

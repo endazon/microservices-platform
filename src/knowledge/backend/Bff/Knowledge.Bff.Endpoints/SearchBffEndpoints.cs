@@ -67,6 +67,14 @@ public static class SearchBffEndpoints
             var auth = http.Request.Headers.Authorization.ToString();
             if (!string.IsNullOrEmpty(auth))
                 retrievalClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
+            // NFR-02, ADR-0076 決定 4, [[IADR-0378]], [[IADR-0498]]（2026-10-06 / #1746 監査 F1）: 🔴 **合成監視の主体なら
+            // 内周の標識を付ける**（検索サービスの再順位付けが合成監視に LLM の費用を出さないため。合成監視の
+            // 対象の経路は構成 `PROBE_PATHS` で変えられ、`/bff/search` を含め得る）。判定は**検証済み JWT の主体だけ**
+            // —— 受信ヘッダは転送しない（外から付けて費用・集計を免れる経路を作らない。回答の経路と同じ規則）。
+            var isSynthetic = SyntheticTraffic.IsSyntheticPrincipal(http.User, synthetic.Value);
+            if (isSynthetic)
+                retrievalClient.DefaultRequestHeaders.TryAddWithoutValidation(
+                    SyntheticTraffic.HeaderName, SyntheticTraffic.HeaderValue);
             try
             {
                 // #531: 検索モードは利用者の指定をそのまま透過する（Scope と違い信頼性の問題が無い——
@@ -94,8 +102,7 @@ public static class SearchBffEndpoints
                 // NFR-02, ADR-0071, ADR-0076 決定 4, [[IADR-0378]] (#1203): 🔴 **合成監視の主体からの
                 // 検索は数えない。** 判定は**検証済み JWT の主体だけ**を見る（`http.User`）——
                 // 受信ヘッダを見ると、外から印を付けて実利用を SC-10 の集計から隠せてしまう。
-                usage.Report(new UsageEventSignal(UsageEventType.Search, req.Query, auth,
-                    SyntheticTraffic.IsSyntheticPrincipal(http.User, synthetic.Value)));
+                usage.Report(new UsageEventSignal(UsageEventType.Search, req.Query, auth, isSynthetic));
 
                 return Results.Ok(result ?? new SearchResponse([], 0, 0));
             }

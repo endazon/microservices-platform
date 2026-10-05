@@ -1167,6 +1167,14 @@ seaweedfs:
 lexicalIndex:
   collection: knowledge_chunks_lexical
 
+# FR-03, FR-04, SC-02, ADR-0127 決定 3・4, IADR-0498 (#1746 段 S2): 検索結果の候補を Claude（用途 rerank・ティア B・ZDR）で
+# 再順位付けする段。RAG 回答の候補と検索結果一覧（並び「関連度」・hybrid / keyword）の両方に効く。
+# deployment.yaml が retrieval へ Rerank__Enabled として描画する（appsettings.json の Rerank:Enabled と同じ既定）。
+# 🔴 既定は無効。有効にすると検索のたびに LLM の費用（用途 rerank）が生じ、restricted と機密区分が未指定・未知の
+# 本文がティア B（ZDR）へ出る（ADR-0127 決定 4 の受け入れたリスク）。費用の目安と手順は運用仕様書 §検索の再順位付け。
+searchRerank:
+  enabled: false
+
 # FR-02, FR-03, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
 # ［2026-10-05 / #1746］ADR-0127 / IADR-0497: 高機密文書は埋め込まず語彙索引（ベクトルを持たないコレクション）にだけ
 # 載せるようになった。本基盤を有効にしても高機密文書は埋め込まれない（opt-in の配備物として残す。検索クエリと測定用）。

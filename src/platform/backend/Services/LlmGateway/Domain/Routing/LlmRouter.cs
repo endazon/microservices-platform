@@ -11,6 +11,11 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
     public RoutingDecision Route(RoutingRequest request)
     {
         var allowedTiers = EgressMatrix.AllowedTiers(request.Sensitivity);
+        // FR-11, ADR-0127 決定 3, [[IADR-0498]] 決定 5 (#1746): 用途が ZDR を要件とするなら、区分によらず
+        // ティア C（標準外部 API。ZDR の契約が無い）を候補から外し、非 ZDR モデルを除く（強める向きだけ）。
+        var zdrRequired = RequiresZeroDataRetention(request);
+        if (zdrRequired)
+            allowedTiers = allowedTiers.Where(t => t != ProtectionTier.C).ToHashSet();
         // CodeQL(log-forging): purpose は呼び出し側（利用者）由来の自由文字列のため、ログ出力前に
         // 改行・制御文字を除去してログ行の偽造を防ぐ（Sanitize）。Sensitivity は enum のため安全。
         var loggedPurpose = Sanitize(request.Purpose);
@@ -41,7 +46,7 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
         string model = string.Empty;
         foreach (var candidate in candidates)
         {
-            var resolved = ResolveModel(candidate, request);
+            var resolved = ResolveModel(candidate, request, zdrRequired);
             if (!string.IsNullOrEmpty(resolved))
             {
                 endpoint = candidate;
@@ -60,7 +65,7 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
         }
 
         // ADR-0038 決定 3 (#863): 用途ごとのフォールバック順序を解決する（第 2 候補以降）。
-        var fallbacks = ResolveFallbackModels(endpoint, request, model, loggedPurpose);
+        var fallbacks = ResolveFallbackModels(endpoint, request, model, loggedPurpose, zdrRequired);
 
         var requiresApproval = EgressMatrix.RequiresApproval(request.Sensitivity, endpoint.Tier);
         // CodeQL(log-forging)予防: Reason は現状 API レスポンス（RoutingReason）としてのみ返し ILogger には
@@ -87,13 +92,14 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
     //  ② 第 1 候補と同じモデルは落とす（同じモデルへ 2 回投げない）。
     //  ③ 重複を落とし、設定に書かれた順序を保つ。
     private IReadOnlyList<string> ResolveFallbackModels(
-        LlmEndpointOptions endpoint, RoutingRequest request, string primaryModel, string loggedPurpose)
+        LlmEndpointOptions endpoint, RoutingRequest request, string primaryModel, string loggedPurpose,
+        bool zdrRequired)
     {
         if (!_options.PurposeFallbackModels.TryGetValue(request.Purpose, out var configured)
             || configured is not { Count: > 0 })
             return [];
 
-        var eligible = EligibleModels(endpoint, request.Sensitivity);
+        var eligible = EligibleModels(endpoint, zdrRequired);
         var resolved = new List<string>();
         foreach (var candidate in configured)
         {
@@ -131,9 +137,9 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
     // IADR-0022: ZDR を要件とする機密区分（confidential/restricted）では、ZDR 非対応モデル
     // （endpoint.NonZdrModels）を候補から除外し、ZDR 対応モデルへフォールバックする。
     // 適格モデルが 1 つも無ければ空文字を返し、呼び出し側で送信拒否へ縮退させる。
-    private string ResolveModel(LlmEndpointOptions endpoint, RoutingRequest request)
+    private string ResolveModel(LlmEndpointOptions endpoint, RoutingRequest request, bool zdrRequired)
     {
-        var eligible = EligibleModels(endpoint, request.Sensitivity);
+        var eligible = EligibleModels(endpoint, zdrRequired);
 
         // CodeQL(cs/log-forging): 要求モデルが対応する場合でも、利用者由来の文字列（request.RequestedModel）
         // ではなく設定側（eligible=endpoint.Models）が保持する正規の文字列を返す。返却値は監査ログ（model）へ
@@ -157,15 +163,21 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
 
     // IADR-0022: ZDR 要件のある機密区分では ZDR 非対応モデルを除外した適格モデル一覧を返す。
     // 要件が無い区分（public/internal）や NonZdrModels 未設定なら Models をそのまま返す。
-    private static IReadOnlyList<string> EligibleModels(LlmEndpointOptions endpoint, SensitivityClass sensitivity)
+    // ［2026-10-06 / #1746］[[IADR-0498]] 決定 5: 要件は「区分が要求する」か「用途が要求する」かの**和**である。
+    private static IReadOnlyList<string> EligibleModels(LlmEndpointOptions endpoint, bool zdrRequired)
     {
-        if (endpoint.NonZdrModels.Count == 0 || !EgressMatrix.RequiresZeroDataRetention(sensitivity))
+        if (endpoint.NonZdrModels.Count == 0 || !zdrRequired)
             return endpoint.Models;
 
         return endpoint.Models
             .Where(m => !endpoint.NonZdrModels.Contains(m, StringComparer.OrdinalIgnoreCase))
             .ToList();
     }
+
+    // FR-11, IADR-0022, [[IADR-0498]] 決定 5: ZDR を要件とするか（区分の規則 ∨ 用途の規則）。
+    private static bool RequiresZeroDataRetention(RoutingRequest request)
+        => EgressMatrix.RequiresZeroDataRetention(request.Sensitivity)
+           || LlmRoutingOptions.ZeroDataRetentionPurposes.Contains(request.Purpose);
 
     private static string Format(IReadOnlySet<ProtectionTier> tiers)
         => string.Join(",", tiers.OrderBy(t => t));

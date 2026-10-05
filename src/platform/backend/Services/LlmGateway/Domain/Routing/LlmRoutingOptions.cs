@@ -17,7 +17,8 @@ public sealed class LlmRoutingOptions
     //  1. 対象モデルを当該エンドポイントの Models（利用許可集合）へ登録しないと、ResolveModel の
     //     eligible.Contains(purposeModel) を満たさず例外もログも無く DefaultModel へ落ちる（IADR-0102 / IADR-0106）。
     //  2. NonZdrModels に載るモデルを割り当てた用途は、機密区分 confidential/restricted で除外され
-    //     DefaultModel へ落ちる（IADR-0112 決定2）。
+    //     DefaultModel へ落ちる（IADR-0112 決定2）。［2026-10-06 / #1746］`ZeroDataRetentionPurposes` の用途
+    //     （`rerank`）は**機密区分によらず**除外される（[[IADR-0498]] 決定 5）。
     // また、割当値が現在の DefaultModel と同値でも**エントリは省略しない**。既定の改定で無音に失効するため
     // （IADR-0101 の既定改定が IADR-0102 のピンを必要にした実例。IADR-0112 決定1）。
     public Dictionary<string, string> PurposeModels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -48,6 +49,17 @@ public sealed class LlmRoutingOptions
 
     // internal × ティアC（要承認）を自動許可するか。既定は安全側で false（承認が無ければ C を使わない）。
     public bool AllowUnapprovedTierC { get; set; }
+
+    // FR-03, FR-11, ADR-0127 決定 3・4, [[IADR-0498]] 決定 5 (#1746 段 S2): **機密区分によらず ZDR を要件とする用途。**
+    //
+    // `rerank`（検索結果の再順位付け）は、検索の候補（`restricted` と機密区分が未指定・未知を含み得る）の本文を
+    // まとめて送る。呼び出し側は送る候補の最も高い区分を名乗るが、ADR-0127 決定 3 は再順位付けの送信を
+    // 「ZDR に対応するモデルに限る」と書いているので、**区分が public / internal でも ZDR を要件にする**
+    // （非 ZDR モデルを除き、ティア C を候補から外す）。区分の規則（`EgressMatrix`）は変えず、用途の規則を重ねる
+    // —— **強める向きにしか働かない**。
+    // 🔴 **設定ではなくコードに置く。** 構成から外せると、ZDR の要件が設定 1 つで黙って消える。
+    public static readonly IReadOnlySet<string> ZeroDataRetentionPurposes =
+        new HashSet<string>(["rerank"], StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class LlmEndpointOptions
