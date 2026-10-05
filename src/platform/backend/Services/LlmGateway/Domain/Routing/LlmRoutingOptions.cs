@@ -40,7 +40,8 @@ public sealed class LlmRoutingOptions
     //     default → claude-sonnet-5 / rag-answer → claude-haiku-4-5 を確定させており、
     //     ADR-0038 §未決事項の行は**はじめから追随が漏れていた**（裁定が実測で確認）。
     //     計画側は 3 箇所を打ち消し線＋日付つき追記で是正済み（planning#427）。
-    //     **すべての用途で鎖は安価側へ向かう**（opus-5 $5/$25 → sonnet-5 $3/$15 → haiku-4-5 $1/$5 per 1M）。
+    //     **すべての用途で鎖は安価側へ向かう**（opus-5 $5/$25 → sonnet-5 $2/$10 → haiku-4-5 $1/$5 per 1M。
+    //     ［2026-10-05 / #1741］sonnet-5 は $3/$15 と書いていたが、その引き上げは中止された）。
     //     発火によって費用が上振れすることはない。
     public Dictionary<string, List<string>> PurposeFallbackModels { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);

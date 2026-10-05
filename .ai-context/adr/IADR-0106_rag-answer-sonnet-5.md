@@ -15,7 +15,7 @@ related_ids:
   - IADR-0102
 author: claude
 created: 2026-07-26
-updated: 2026-08-18
+updated: 2026-10-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0022_llm-model-sonnet-5.md (定型RAG回答を Claude Sonnet 5 へ改定・Accepted)
   - planning:projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Opus 5 へ改定・Accepted。§決定が他層=Sonnet 5 を明記)
@@ -71,6 +71,11 @@ plan_refs:
 | 標準単価 | $3 / $15 per MTok | **同額**（2026-08-31 まで導入価格 $2 / $10） |
 | 非既定サンプリングパラメータ | 可 | **不可**（`temperature` 等は 400） |
 | ZDR | 対応 | 対応（30 日保持要件は Fable 5 / Mythos 5 のみ） |
+
+> **［2026-10-05 追記 / #1741］上表の「標準単価」行の Sonnet 5 側は成り立たない。** 提供元は $2 / $10 を
+> 標準価格とし、2026-09-01 に予定されていた $3 / $15 への引き上げは行わないと公表した（計画 ADR-0044 の
+> 2026-09-09 訂正）。Sonnet 5 の単価は Sonnet 4.6 と同額ではなく、**$2 / $10 のまま**である。
+> 本決定（割当と許可モデル集合への登録）は単価に依存しないため動かない。単価表の是正は #1741（IADR-0265 の追記）。
 
 `ClaudeProvider` は `thinking` / `temperature` / `top_p` / `top_k` / assistant prefill を**一切送っていない**
 （[IADR-0101](./IADR-0101_default-model-opus-5.md) の決定）ため、Sonnet 5 で 400 を返す破壊的パラメータは持ち込まれない。差分は上表の

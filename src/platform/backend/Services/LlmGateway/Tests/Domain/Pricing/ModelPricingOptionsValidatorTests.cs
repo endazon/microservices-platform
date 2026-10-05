@@ -70,7 +70,7 @@ public class ModelPricingOptionsValidatorTests
             Models =
             {
                 ["claude-opus-5"] = [Entry(null, null, 5m)],
-                ["claude-sonnet-5"] = [Entry(null, Day(1), 2m), Entry(Day(1), null, 3m)],
+                ["claude-sonnet-5"] = [Entry(null, null, 2m)], // #1741: 区切りなしの 1 区間
                 ["claude-haiku-4-5"] = [Entry(null, null, 1m)],
             },
         };
