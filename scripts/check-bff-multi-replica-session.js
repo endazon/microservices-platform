@@ -2,8 +2,11 @@
 'use strict';
 /*
  * check-bff-multi-replica-session.js
- * NFR, ADR-0032, IADR-0251 決定 5, #1534:
+ * NFR-07, ADR-0032, IADR-0251 決定 5, #1534:
  * **BFF のセッション Cookie を、2 つのレプリカのどちらでも復号できること**を稼働クラスタで測る。
+ *
+ * 🔴 **これは利用者が手で走らせる訓練（drill）であって、CI のゲートではない。** IADR-0251 決定 5 の検証手段
+ * （(a) 2 レプリカの統合テスト／(b) 構成側の固定検査）の代わりにはならない（稼働で 1 度測るための道具である）。
  *
  * ## なぜ要るか
  *
@@ -43,7 +46,9 @@
  *   BFF_PROBE_USERNAME=<試験利用者> BFF_PROBE_PASSWORD=<…> \
  *     node scripts/check-bff-multi-replica-session.js --live [--per-pod N] [--restart]
  *
- * 終了コード: 0=合格 / 1=不合格（または戻しの失敗） / 2=前提未整備・停止条件 / 3=明示の指定なし（#1550）
+ * 終了コード: 0=合格 / 1=不合格（または戻しの失敗。🔴 戻しに失敗したら他の理由より優先して 1） /
+ *   2=前提未整備・停止条件（`[前提]` の失敗はすべて 2） / 3=明示の指定なし（#1550） /
+ *   130=中断（SIGINT / SIGTERM / SIGHUP）を受けて戻しまで済んだ（戻しに失敗したら 1）
  *
  * 手順書: docs/operations/bff-multi-replica-session-runbook.md
  */
@@ -80,6 +85,10 @@ const PASSWORD_ENV = 'BFF_PROBE_PASSWORD';
 /** 1 Pod あたりの陽性の要求数。2 Pod で合計 20（#1534 の受け入れ基準「20 回以上」）。 */
 const DEFAULT_PER_POD = 10;
 const MIN_PER_POD = 1;
+/** 受けたら port-forward を閉じて 1 レプリカへ戻すシグナル。 */
+const RESTORE_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+/** 開いている port-forward の子プロセス（中断時に閉じる）。 */
+const liveChildren = new Set();
 
 // ---------------------------------------------------------------- 純関数
 
@@ -284,7 +293,15 @@ function evaluateCrossReplica(input) {
       failures.push(`${TAG} [${label}] ${p.name}: 同じ Cookie で 200 以外が ${bad.length}/${statuses.length} 件（${[...new Set(bad)].join(' / ')}）。`
         + ' 401 なら、この Pod は Cookie を復号できない（鍵リングかセッションストアが共有されていない）。');
     }
-    const strangers = (p.users || []).filter((u) => u !== input.expectedUser);
+    // 認証基盤の preferred_username は小文字へ正規化される。大小の違いを別の利用者と読まない。
+    const expected = String(input.expectedUser || '').toLowerCase();
+    const users = p.users || [];
+    const strangers = users.filter((u) => String(u).toLowerCase() !== expected);
+    const ok200 = statuses.filter((s) => s === 200).length;
+    if (users.length !== ok200) {
+      failures.push(`${TAG} [${label}] ${p.name}: 200 の応答 ${ok200} 件のうち利用者名を返したのが ${users.length} 件。`
+        + ' 名前の無い 200 は「誰として通ったか」を示さない。');
+    }
     if (strangers.length > 0) {
       failures.push(`${TAG} [${label}] ${p.name}: 別の利用者として認証された（${[...new Set(strangers)].join(', ')}。期待 ${input.expectedUser}）。`);
     }
@@ -301,11 +318,45 @@ function evaluateCrossReplica(input) {
 
 /** Redis の鍵リングの件数（`LLEN`）の読み。**読めないときは測っていないと言う**（0 件と取り違えない）。 */
 function evaluateKeyRing(r) {
-  if (!r || r.ok !== true) return { failure: null, notice: `${TAG} [前提] 鍵リングの件数を読めなかった（${(r && r.error) || '不明'}）。未測定として扱う。` };
+  if (!r || r.ok !== true) return { failure: null, notice: `${TAG} [鍵リング] 鍵リングの件数を読めなかった（${(r && r.error) || '不明'}）。未測定として扱う。` };
   if (!Number.isInteger(r.count) || r.count < 1) {
-    return { failure: `${TAG} [前提] Redis の bff:dataprotection-keys が ${r.count} 件。ログインした後なのに鍵が永続化されていない（鍵リングを共有していない）。`, notice: null };
+    return { failure: `${TAG} [鍵リング] Redis の bff:dataprotection-keys が ${r.count} 件。ログインした後なのに鍵が永続化されていない（鍵リングを共有していない）。`, notice: null };
   }
-  return { failure: null, notice: `${TAG} [前提] Redis の bff:dataprotection-keys: ${r.count} 件` };
+  return { failure: null, notice: `${TAG} [鍵リング] Redis の bff:dataprotection-keys: ${r.count} 件` };
+}
+
+/**
+ * `helm status <release> -o json` の読み。🔴 **`deployed` でなければ upgrade しない**（前回の upgrade が途中で
+ * 止まった・失敗したリリースへ重ねると、戻し先の版が定まらない）。戻せないときに手で戻す先の版（N）を返す。
+ * @returns {{ok: true, revision: number}|{ok: false, error: string}}
+ */
+function evaluateReleaseStatus(text) {
+  let j;
+  try { j = JSON.parse(String(text || '')); } catch (e) { return { ok: false, error: `helm status の JSON を読めない（${e.message}）` }; }
+  const revision = j && j.version;
+  const status = j && j.info && j.info.status;
+  if (!Number.isInteger(revision) || revision < 1) return { ok: false, error: `リリースの版（version）を読めない（${revision}）` };
+  if (status !== 'deployed') {
+    return { ok: false, error: `リリースの状態が deployed でない（${status}。前回の upgrade が途中か失敗している疑い）。手順書の戻し方で整えてから走らせる。` };
+  }
+  return { ok: true, revision };
+}
+
+/**
+ * 中断（SIGINT / SIGTERM / SIGHUP）を受けたら、port-forward の子を閉じ、戻しを走らせて終わる。
+ * 戻しに成功したら 130、失敗したら 1（戻しの失敗は中断より優先して知らせる）。
+ * @returns {() => void} 登録を外す関数
+ */
+function installSignalRestore({ restore, children = liveChildren, exit = (c) => process.exit(c), proc = process }) {
+  const onSignal = (sig) => {
+    console.error(`${TAG} 中断（${sig}）を受けた。port-forward を閉じ、1 レプリカへ戻す。`);
+    for (const c of children) { try { c.kill(); } catch { /* 既に終わっている */ } }
+    const ok = restore();
+    if (!ok) console.error(`${TAG} 🔴 中断後の戻しに失敗した（exit 1）。手順書の戻し方で手で戻す。`);
+    exit(ok ? 130 : 1);
+  };
+  for (const s of RESTORE_SIGNALS) proc.on(s, onSignal);
+  return () => { for (const s of RESTORE_SIGNALS) proc.removeListener(s, onSignal); };
 }
 
 /**
@@ -412,6 +463,7 @@ function readKeyRingCount() {
 function openPortForward(pod) {
   return new Promise((resolve) => {
     const child = spawn('kubectl', ['-n', NAMESPACE, 'port-forward', `pod/${pod.name}`, `:${pod.port}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+    liveChildren.add(child);
     let buf = '';
     const timer = setTimeout(() => { child.kill(); resolve({ ok: false, error: 'port-forward が 15 秒で開かない' }); }, 15000);
     const onData = (d) => {
@@ -421,7 +473,7 @@ function openPortForward(pod) {
     };
     child.stdout.on('data', onData);
     child.stderr.on('data', (d) => { buf += d.toString(); });
-    child.on('exit', (code) => { clearTimeout(timer); resolve({ ok: false, error: `port-forward が終了した（exit ${code}）: ${buf.trim().slice(0, 200)}` }); });
+    child.on('exit', (code) => { liveChildren.delete(child); clearTimeout(timer); resolve({ ok: false, error: `port-forward が終了した（exit ${code}）: ${buf.trim().slice(0, 200)}` }); });
   });
 }
 
@@ -461,6 +513,7 @@ async function measurePods(pods, cookie, tampered, perPod) {
       console.log(`${TAG}   ${pod.name}: 同じ Cookie → ${statuses.join(',')} ／ 改ざん → ${t.status}`);
     } finally {
       pf.child.kill();
+      liveChildren.delete(pf.child);
     }
   }
   return results;
@@ -565,28 +618,40 @@ async function liveMode(opts) {
     restore = null;
     return ok;
   };
-  const onSignal = () => { console.error(`${TAG} 中断を受けた。1 レプリカへ戻す。`); doRestore(); process.exit(130); };
-  process.on('SIGINT', onSignal);
-  process.on('SIGTERM', onSignal);
+  const uninstallSignals = installSignalRestore({ restore: doRestore });
   let code = 1;
   try {
     code = await (async () => {
+    // ── 0. どのクラスタへ当たるかを、何かを変える前に出す（記録表の「context」欄に写す）
+    const ctx = run('kubectl', ['config', 'current-context']);
+    if (ctx.error || ctx.status !== 0 || !String(ctx.stdout || '').trim()) {
+      failures.push(`${TAG} [前提] kubectl の current-context を読めない。どのクラスタへ当たるか分からないまま変えない。`);
+      return 2;
+    }
+    console.log(`${TAG} kubectl context: ${String(ctx.stdout).trim()}`);
+
     // ── 1. 誰がレプリカ数を持っているか
     const hpa = kubectlJson(['-n', NAMESPACE, 'get', 'hpa']);
-    if (!hpa.ok) { console.error(`${TAG} HPA の一覧を読めない: ${hpa.error}`); return 2; }
+    if (!hpa.ok) { failures.push(`${TAG} [前提] HPA の一覧を読めない: ${hpa.error}`); return 2; }
     const owner = findOwningHpa(hpa.value);
     if (owner) {
       console.log(`${TAG} HPA ${owner} が ${DEPLOYMENT} を所有している。helm は触らず、居る Pod で測る。`);
     } else {
-      // ── 2. 現在の values を退避し、版のずれと上書きの差分を確かめてから upgrade する
+      // ── 2. 現在の values を退避し、リリースの状態・版のずれ・上書きの差分を確かめてから upgrade する
       const got = run(helmBin(), ['get', 'values', RELEASE, '-n', NAMESPACE, '-o', 'json']);
-      if (got.status !== 0) { console.error(`${TAG} helm get values が失敗: ${String(got.stderr).trim()}`); return 2; }
-      const current = JSON.parse(String(got.stdout).trim() || 'null') || {};
+      if (got.error || got.status !== 0) { failures.push(`${TAG} [前提] helm get values が失敗: ${String(got.stderr || (got.error && got.error.message) || '').trim()}`); return 2; }
+      let current;
+      try { current = JSON.parse(String(got.stdout).trim() || 'null') || {}; } catch (e) { failures.push(`${TAG} [前提] helm get values の JSON を読めない（${e.message}）。`); return 2; }
       const already = current.services && current.services[SERVICE_KEY] && current.services[SERVICE_KEY].replicas;
       if (already !== undefined && already !== 1) {
-        console.error(`${TAG} 稼働のリリースは既に services.${SERVICE_KEY}.replicas=${already} を持つ（前回の中断の残りの疑い）。手順書の戻し方で 1 へ戻してから走らせる。`);
+        failures.push(`${TAG} [前提] 稼働のリリースは既に services.${SERVICE_KEY}.replicas=${already} を持つ（前回の中断の残りの疑い）。手順書の戻し方で 1 へ戻してから走らせる。`);
         return 2;
       }
+      const st = run(helmBin(), ['status', RELEASE, '-n', NAMESPACE, '-o', 'json']);
+      const rel = (st.error || st.status !== 0) ? { ok: false, error: `helm status が失敗: ${String(st.stderr || '').trim()}` } : evaluateReleaseStatus(st.stdout);
+      if (!rel.ok) { failures.push(`${TAG} [前提] ${rel.error} upgrade しない。`); return 2; }
+      const rollbackHint = `helm rollback ${RELEASE} ${rel.revision} -n ${NAMESPACE}`;
+      console.log(`${TAG} 稼働のリリース: ${RELEASE} 版 ${rel.revision}（deployed）。戻せなかったときの手の戻し先: ${rollbackHint}`);
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bff-replicas-'));
       const saved = path.join(dir, 'current-values.json');
       const overlay = path.join(dir, 'bff-replicas.yaml');
@@ -596,26 +661,28 @@ async function liveMode(opts) {
       const base = helmTemplate([saved]);
       const scaled = base.ok ? helmTemplate([saved, overlay]) : base;
       if (manifest.status !== 0 || !base.ok || !scaled.ok) {
-        console.error(`${TAG} helm の読み出し・描画に失敗した。upgrade しない。`);
+        failures.push(`${TAG} [前提] helm の読み出し・描画に失敗した。upgrade しない。`);
         fs.rmSync(dir, { recursive: true, force: true });
         return 2;
       }
       const drift = evaluateChartDrift(manifest.stdout, base.value);
       if (drift.length > 0) {
-        console.error(`${TAG} 稼働のマニフェストとチェックアウトの描画が ${drift.length} 文書で食い違う（${drift.slice(0, 8).join(', ')}${drift.length > 8 ? ' …' : ''}）。`
+        failures.push(`${TAG} [前提] 稼働のマニフェストとチェックアウトの描画が ${drift.length} 文書で食い違う（${drift.slice(0, 8).join(', ')}${drift.length > 8 ? ' …' : ''}）。`
           + ' upgrade すると replicas 以外の差まで稼働へ押し込むので止める。稼働と同じ版をチェックアウトして走らせる。');
         fs.rmSync(dir, { recursive: true, force: true });
         return 2;
       }
       const plan = evaluateReplicaOverlayDiff(base.value, scaled.value);
       printPlan(plan);
-      if (plan.failures.length > 0) { for (const f of plan.failures) console.error(f); fs.rmSync(dir, { recursive: true, force: true }); return 2; }
+      if (plan.failures.length > 0) { failures.push(...plan.failures); fs.rmSync(dir, { recursive: true, force: true }); return 2; }
+      // 戻しは「退避した values のまま upgrade → rollout を待つ」。版のずれが無いことは上で確かめてあるので、
+      // 描画は upgrade 前の版 N と同じになる。これが失敗したときだけ、版 N へ手で rollback する。
       restore = () => {
         console.log(`${TAG} 戻す: helm upgrade（退避した values のまま）→ 1 レプリカ`);
         const u = run(helmBin(), ['upgrade', RELEASE, CHART, '-n', NAMESPACE, '-f', saved], { stdio: ['ignore', 'inherit', 'inherit'] });
         const ok = u.status === 0 && rolloutStatus();
         if (!ok) {
-          console.error(`${TAG} 🔴 戻しに失敗した。手で戻す: helm rollback ${RELEASE} -n ${NAMESPACE}（直前の版へ）。退避した values: ${saved}`);
+          console.error(`${TAG} 🔴 戻しに失敗した。手で戻す: ${rollbackHint}（upgrade 前の版 ${rel.revision} へ。「直前の版」ではない）。退避した values: ${saved}`);
           return false;
         }
         fs.rmSync(dir, { recursive: true, force: true });
@@ -623,22 +690,22 @@ async function liveMode(opts) {
       };
       console.log(`${TAG} helm upgrade: services.${SERVICE_KEY}.replicas=${TARGET_REPLICAS}`);
       const up = run(helmBin(), ['upgrade', RELEASE, CHART, '-n', NAMESPACE, '-f', saved, '-f', overlay], { stdio: ['ignore', 'inherit', 'inherit'] });
-      if (up.status !== 0 || !rolloutStatus()) { failures.push(`${TAG} [前提] ${TARGET_REPLICAS} レプリカへの upgrade か rollout が完了しない。`); return 1; }
+      if (up.status !== 0 || !rolloutStatus()) { failures.push(`${TAG} [前提] ${TARGET_REPLICAS} レプリカへの upgrade か rollout が完了しない。`); return 2; }
     }
 
     // ── 3. Pod を選ぶ
     const pods0 = kubectlJson(['-n', NAMESPACE, 'get', 'pods', '-l', POD_SELECTOR]);
     const pods = pods0.ok ? selectReadyPods(pods0.value) : [];
-    if (pods.length < TARGET_REPLICAS) { failures.push(`${TAG} [前提] Ready の ${DEPLOYMENT} が ${pods.length} 個（${TARGET_REPLICAS} 個以上が要る）。`); return 1; }
+    if (pods.length < TARGET_REPLICAS) { failures.push(`${TAG} [前提] Ready の ${DEPLOYMENT} が ${pods.length} 個（${TARGET_REPLICAS} 個以上が要る）。`); return 2; }
 
     // ── 4. 試験利用者でエッジ経由のログイン
     const ca = edgeCa();
     if (!ca.ok) { failures.push(`${TAG} [前提] エッジ CA を読めない（${ca.error}）。検証を切らない。`); return 2; }
     const edge = (process.env.EDGE_URL || 'https://localhost').replace(/\/+$/, '');
     const login = await loginViaEdge({ edge, ca: ca.value, username: who.username, password: process.env[PASSWORD_ENV], realmName: realm.value.realm || 'platform' });
-    if (!login.ok) { failures.push(`${TAG} [前提] ログインできない: ${login.error}`); return 1; }
+    if (!login.ok) { failures.push(`${TAG} [前提] ログインできない: ${login.error}`); return 2; }
     const pairs = sessionCookiePairs(login.cookieHeader, process.env.BFF_SESSION_COOKIE || DEFAULT_COOKIE_NAME);
-    if (pairs.length === 0) { failures.push(`${TAG} [前提] BFF がセッション Cookie を発行しなかった（コールバック status=${login.callbackStatus}）。`); return 1; }
+    if (pairs.length === 0) { failures.push(`${TAG} [前提] BFF がセッション Cookie を発行しなかった（コールバック status=${login.callbackStatus}）。`); return 2; }
     const cookie = buildCookieHeader(pairs);
     const tampered = buildCookieHeader(pairs, { tamper: true });
     console.log(`${TAG} ${who.username} でログインした（Cookie ${pairs.length} 片。値は出さない）`);
@@ -651,7 +718,7 @@ async function liveMode(opts) {
     const first = await measurePods(pods, cookie, tampered, opts.perPod);
     failures.push(...evaluateCrossReplica({ pods: first, expectedUser: who.username, minPerPod: opts.perPod, label: '相互復号' }));
 
-    // ── 6. 作り直した Pod でも同じ Cookie が通るか（鍵がメモリでなく Redis にある）
+    // ── 6. 作り直した Pod でも同じ Cookie が通るか（鍵がメモリでなく Redis にある）。測るのは作り直しが終わった後。
     if (opts.restart) {
       const r = run('kubectl', ['-n', NAMESPACE, 'rollout', 'restart', `deploy/${DEPLOYMENT}`], { stdio: ['ignore', 'inherit', 'inherit'] });
       if (r.status !== 0 || !rolloutStatus()) {
@@ -668,10 +735,9 @@ async function liveMode(opts) {
   } finally {
     if (!doRestore()) {
       failures.push(`${TAG} 🔴 1 レプリカへ戻せていない（上の手順で手で戻す）。`);
-      if (code !== 2) code = 1;
+      code = 1; // 戻しの失敗は前提の停止（2）より優先して知らせる
     }
-    process.removeListener('SIGINT', onSignal);
-    process.removeListener('SIGTERM', onSignal);
+    uninstallSignals();
     for (const n of notices) console.log(n);
     if (failures.length > 0) {
       console.error(`${TAG} ${failures.length} 件の失敗:`);
@@ -689,7 +755,7 @@ async function liveMode(opts) {
 async function main() {
   const argv = process.argv.slice(2);
   if (!argv.includes('--plan')) {
-    // NFR, #1550: 稼働の helm リリースを変え（レプリカを増やす）、Keycloak へログインする。明示の指定が無ければ何もしない。
+    // NFR-07, #1534, #1550: 稼働の helm リリースを変え（レプリカを増やす）、Keycloak へログインする。明示の指定が無ければ何もしない。
     requireLiveOptIn('check-bff-multi-replica-session', argv, { offline: '--plan' });
   }
   const opts = parseArgs(argv, process.env);
@@ -718,6 +784,8 @@ module.exports = {
   buildCookieHeader,
   evaluateCrossReplica,
   evaluateKeyRing,
+  evaluateReleaseStatus,
+  installSignalRestore,
   parseArgs,
   resolveProbeUser,
   DEPLOYMENT,

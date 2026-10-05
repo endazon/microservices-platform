@@ -4,10 +4,10 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 <!-- trace:
-ids: [NFR]
+ids: [NFR-07]
 adrs: [ADR-0032]
 iadrs: [IADR-0251, IADR-0273, IADR-0316, IADR-0427]
 specs: [20261004_1534_bff-multi-replica-session-cookie, 20260926_issue-1550_live-script-opt-in]
@@ -22,6 +22,10 @@ issues: [#1534, #439, #1389, #1550]
 > 🔴 **本書を実行するのは利用者（クラスタの持ち主）だけである。** 本書を書いた AI は稼働クラスタに 1 度も触れていない。
 > **本書のコマンドと期待値は、リポジトリのコード・チャート・`helm template` の描画から導いたものであって、稼働での実測ではない。**
 > 期待値と違う結果が出たら、**期待値に合わせて読み替えず、出た値をそのまま記録する**（§8）。
+>
+> 🔴 **これは利用者が手で走らせる訓練（drill）であって、CI のゲートではない。** 鍵リングの共有を常時守る検証
+> （2 レプリカを起こす統合テスト、または永続化先の設定を構成の側から固定する検査）の**代わりにはならない**。
+> 本書の合格は「その版・そのクラスタで 1 度測れた」ことだけを示す。
 
 ## この手順を実行する条件（いつ走らせるか）
 
@@ -59,6 +63,7 @@ issues: [#1534, #439, #1389, #1550]
 | 片方の Pod だけ同じ Cookie で 401、もう片方は 200 | 鍵リングかセッションストアが共有されていない（**この 2 つは応答では区別できない**。§1.1 の件数で切り分ける） |
 | 両方の Pod で 401（ログイン直後から） | Pod の共有の問題ではない。ログインが完了していない、Cookie 名の不一致（`BFF_SESSION_COOKIE`）、Redis の再起動でセッションが消えた、のいずれか |
 | 改ざんした Cookie が 200 | Cookie の保護を検証していない。**陽性の 200 は何も証明しない**（停止して記録する） |
+| ログインが認可コードの戻り（コールバック）で止まる・失敗する | **パスワードの誤りとは限らない。** ログイン開始と戻りが別の Pod に振られ、相関（correlation / nonce）の Cookie を戻り側の Pod が復号できないと、ここで止まる。**これ自体が本書の測る症状であり得る**（§7） |
 | §5 の作り直し後だけ 401 | 鍵が Pod のメモリにしか無く、Redis へ永続化されていない |
 
 🔴 **ログでは判定できない。** BFF のログ水準は `Microsoft.AspNetCore: Warning`（`Platform.Bff/appsettings.json`）であり、
@@ -131,16 +136,22 @@ node scripts/check-bff-multi-replica-session.js --live
 | `BFF_SESSION_COOKIE` | `__Host-msp-session` | セッション Cookie 名（BFF の既定。同上） |
 | `HELM` | `helm` | 使う helm の実体 |
 
+🔴 **検査器は何かを変える前に `kubectl config current-context` の値を `kubectl context: <名前>` として出す。** 意図したクラスタでなければ、
+すぐ Ctrl-C で止める（その時点ではまだ何も変えていない）。値は §8 の記録表へ写す。
+
 検査器がすること（順に。どこで止まっても §6 の戻しは必ず走る）:
 
-1. HPA が `bff-service` を所有しているかを見る。所有していれば 2〜3 を飛ばす。
+1. `kubectl config current-context` を出し（読めなければ止まる）、HPA が `bff-service` を所有しているかを見る。所有していれば 2〜3 を飛ばす。
 2. `helm get values msp` で**現在の values を退避**し（一時ファイル・権限 600）、
-   ①稼働のマニフェストとチェックアウトの描画が一致すること ②上書きの差分が 1 行であること を確かめる。どちらかが崩れたら**何も変えずに止まる**（exit 2）。
+   ①`helm status msp` が `deployed` であること（**その版 N を出す**。§6 で手で戻すときの戻し先）
+   ②稼働のマニフェストとチェックアウトの描画が一致すること ③上書きの差分が 1 行であること を確かめる。どれかが崩れたら**何も変えずに止まる**（exit 2）。
 3. `helm upgrade msp … -f 退避した values -f 上書き` → `kubectl rollout status`。**`kubectl scale` は使わない**（helm の持つ値と稼働が食い違う）。
 4. Ready の Pod が 2 つ以上あることを確かめ、試験利用者でエッジ経由のログインを通す（Cookie の値は画面へ出さない）。
 5. **Pod ごとに port-forward** し、同じ Cookie で `/bff/auth/me` を各 10 回（`--per-pod N` で変える。2 Pod で合計 20）、
    1 文字だけ変えた Cookie を各 1 回送る。**どの要求がどの Pod に当たったかは構成で決まる**ので、アクセスログで振り分けを確かめる必要は無い。
-6. 判定（すべて満たして合格）: 各 Pod で同じ Cookie が全部 200・`/me` の利用者名が試験利用者・改ざんした Cookie が 401。
+   🔴 **Pod へ直接つなぐので、エッジ（Ingress）と Service の振り分けは通らない。** 測るのは「どの Pod でも同じ Cookie を受け入れるか」であり、
+   エッジの振り分け方（セッションの固定の有無など）は測らない。
+6. 判定（すべて満たして合格）: 各 Pod で同じ Cookie が全部 200・200 の応答すべてが利用者名を返し、それが試験利用者（大小は無視）・改ざんした Cookie が 401（0 や 500 も不合格）。
 7. §6 の戻し。
 
 期待する出力（合格のとき。Pod 名は環境で変わる）:
@@ -148,11 +159,12 @@ node scripts/check-bff-multi-replica-session.js --live
 ```text
 [check-bff-multi-replica-session]   bff-service-xxxxx-aaaaa: 同じ Cookie → 200,200,200,200,200,200,200,200,200,200 ／ 改ざん → 401
 [check-bff-multi-replica-session]   bff-service-xxxxx-bbbbb: 同じ Cookie → 200,200,200,200,200,200,200,200,200,200 ／ 改ざん → 401
-[check-bff-multi-replica-session] [前提] Redis の bff:dataprotection-keys: 1 件
+[check-bff-multi-replica-session] [鍵リング] Redis の bff:dataprotection-keys: 1 件
 [check-bff-multi-replica-session] OK: 同じ Cookie をすべての Pod が同じ利用者として受け入れ、改ざんした Cookie はすべての Pod が 401 で拒んだ。
 ```
 
-終了コード: 0=合格 / 1=不合格（または戻しの失敗） / 2=前提未整備・停止条件 / 3=`--live` の指定なし。
+終了コード: 0=合格 / 1=不合格（または戻しの失敗。戻しに失敗したら他の理由より優先して 1） / 2=前提未整備・停止条件（`[前提]` の行はすべて 2） / 3=`--live` の指定なし /
+130=中断（Ctrl-C・SIGTERM・端末の切断）を受けて戻しまで済んだ（戻しに失敗したら 1）。
 
 ## 5. Pod を作り直しても同じ Cookie が通るか（任意）
 
@@ -163,18 +175,23 @@ node scripts/check-bff-multi-replica-session.js --live --restart
 §4 の測定の後に `kubectl rollout restart deploy/bff-service` を行い（既定の RollingUpdate なので 1 つずつ入れ替わる）、
 **新しく起きた Pod だけ**で同じ Cookie を測り直す。新しい Pod は鍵リングを Redis から読むので、ここで 401 なら鍵はメモリにしか無かった。
 
+- **測るのは作り直しが終わった後である**（`rollout status` が完了してから新しい Pod を測る）。入れ替わりの**最中**に要求が通り続けるかは測っていない。
+- 🔴 **`--restart` は稼働の Pod を実際に作り直す。HPA が所有する配備（本番像）でも helm は触らないが、Pod は作り直す。**
+  その配備では、持ち主の承認なしに `--restart` を付けて走らせない。
+
 `rollout restart` は Pod テンプレートに `kubectl.kubernetes.io/restartedAt` の注釈を残す（helm はこれを消さない）。害は無いが、次の `helm upgrade` の差分に出ても驚かないこと。
 
 ---
 
 ## 6. 戻し方
 
-**検査器は終了時に必ず戻す**（合格・不合格・途中の失敗・Ctrl-C のいずれでも）: 退避した values だけで `helm upgrade` し直し、`rollout status` を待つ。
-戻しに失敗したら `🔴 戻しに失敗した` と退避ファイルの場所を出して exit 1 で終わる。そのときは手で戻す:
+**検査器は終了時に必ず戻す**（合格・不合格・途中の失敗・Ctrl-C・SIGTERM・端末の切断のいずれでも）: 開いている port-forward を閉じ、退避した values だけで `helm upgrade` し直し、`rollout status` を待つ。
+戻しに失敗したら `🔴 戻しに失敗した` と、**upgrade 前の版 N を入れた `helm rollback` のコマンド**と退避ファイルの場所を出して exit 1 で終わる。そのときは手で戻す:
 
 ```bash
-helm history msp -n microservices-platform          # replicas=2 にした版の 1 つ前の REVISION を探す
-helm rollback msp <その REVISION> -n microservices-platform
+# N は検査器が upgrade 前に出した「稼働のリリース: msp 版 N（deployed）」の N。
+# 🔴 版を省いた rollback（直前の版へ）は使わない —— 戻しの upgrade が版を 1 つ進めていると、直前の版は replicas=2 の版である。
+helm rollback msp <N> -n microservices-platform
 kubectl -n microservices-platform rollout status deploy/bff-service --timeout=300s
 kubectl -n microservices-platform get deploy bff-service -o jsonpath='{.spec.replicas}{"\n"}'   # 1 を期待
 ```
@@ -183,8 +200,9 @@ kubectl -n microservices-platform get deploy bff-service -o jsonpath='{.spec.rep
 
 ## 7. 停止条件（ここで止めて記録する）
 
-- 検査器が **exit 2** で止まった（版のずれ・上書きの差分が 1 行でない・既に `replicas` が上書きされている・利用者やパスワードの指定漏れ・エッジ CA が読めない）。**値を合わせ込んで再実行しない**。出た文言を記録する。
+- 検査器が **exit 2** で止まった（context が読めない・リリースが `deployed` でない・版のずれ・上書きの差分が 1 行でない・既に `replicas` が上書きされている・利用者やパスワードの指定漏れ・エッジ CA が読めない・Ready の Pod が 2 つ未満・ログインできない）。**値を合わせ込んで再実行しない**。出た文言を記録する。
 - ログインが失敗した（パスワード誤り・必須アクション）。**再試行を重ねない**（一時ロックの計数を消費する）。
+  ただし**コールバックの段で止まった**なら、パスワードではなく相関の Cookie を別の Pod が復号できない症状であり得る（§1 の表）。それも記録する。
 - 改ざんした Cookie が 200 を返した（§1 の表）。それ以上の測定は意味が無い。
 - 測定中に Redis かエッジが作り直された。その回は捨てる。
 - 戻しが失敗した（§6 の手で戻すまで、ほかの作業へ進まない）。
@@ -194,11 +212,13 @@ kubectl -n microservices-platform get deploy bff-service -o jsonpath='{.spec.rep
 | 項目 | 値 |
 | --- | --- |
 | 実施日時・実施者 | |
+| kubectl の context | 検査器の `kubectl context:` 行 |
 | チェックアウトのコミット | `git rev-parse --short HEAD` |
 | helm の版 | `helm version --short` |
 | レプリカ数を持つもの | helm の values ／ HPA（名前） |
 | Pod 名と応答（同じ Cookie／改ざん） | 検査器の出力をそのまま |
-| 鍵リングの件数 | 検査器の `[前提]` 行（未測定ならそう書く） |
+| upgrade 前のリリースの版 N | 検査器の `稼働のリリース: msp 版 N` 行（HPA 所有なら「helm を触らず」） |
+| 鍵リングの件数 | 検査器の `[鍵リング]` 行（未測定ならそう書く） |
 | `--restart` の結果 | 実施した／しない。した場合は新しい Pod 名と応答 |
 | 戻しの確認 | `kubectl -n microservices-platform get deploy bff-service -o jsonpath='{.spec.replicas}'` の値 |
 | 期待と違った点 | そのまま書く（読み替えない） |

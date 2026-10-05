@@ -3,14 +3,14 @@ title: 作業仕様書 — BFF のセッション Cookie を 2 レプリカで�
 type: spec
 status: done
 related_ids:
-  - NFR
+  - NFR-07
   - ADR-0032
   - IADR-0251
   - IADR-0273
   - IADR-0427
 author: claude
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md
 related_specs:
@@ -107,3 +107,25 @@ issue: "#1534"
 - 稼働クラスタで 1 度も走らせていない。期待値はコードと構成から導いたもの。
 - 本番像（HPA 所有）では本検査器は helm を触らないが、エッジ経由のログインと port-forward の前提（`kubectl` の権限・エッジ CA）は本番像で確かめていない。
 - Helm 4 で入れたリリースに対する `helm get values` / `helm upgrade` の互換は手元の Helm 3 でしか確かめていない（描画の差分だけ）。
+
+## ［2026-10-05 追記 / #1534］独立監査（条件付き GO）への対応
+
+起点 ID を **NFR-07**（スケーラビリティ。HPA による水平スケール）へ寄せた（コードのコメント・手順書の trace ブロック・本仕様書の frontmatter。ブランチ名は据え置き）。
+
+🔴 **本検査器と手順書は利用者が手で走らせる訓練（drill）であって、CI のゲートではない。** IADR-0251 決定 5 の検証手段
+（(a) 2 レプリカ以上の統合テスト／(b) 永続化先の設定を構成の側から固定する検査）の代わりにはならない。合格は「その版・そのクラスタで 1 度測れた」ことだけを示す。
+
+| 指摘 | 対応 |
+| --- | --- |
+| 🔴-1 `--live` の経路が未試験 | helm と kubectl のスタブを PATH の先頭に置き、呼び出しの記録を見る子プロセス試験を足した: 版のずれ → exit 2・upgrade 0 回／upgrade 後の rollout 失敗 → 退避した values だけ（上書きなし）で upgrade し直し、その rollout を待つ／既存の `services.bff.replicas` が 2・3・0 → exit 2・upgrade なし／HPA 所有 → helm を 1 度も呼ばない／リリースが `deployed` でない → exit 2／context が読めない → 何も呼ばずに exit 2／rollout 中の SIGTERM → シグナルで落ちず戻しは 1 回。シグナルの処理（SIGINT / SIGTERM / SIGHUP・port-forward の子を閉じる・戻せたら 130・戻せなければ 1）は `installSignalRestore` を偽の `process` で単体試験した |
+| 🟡-1 手で戻す案内の `helm rollback`（直前の版）が誤り | upgrade の前に `helm status msp -o json` の `.version`（N）を読み、`.info.status` が `deployed` でなければ何も変えずに exit 2。戻しに失敗したら `helm rollback msp <N> -n …` を出す。戻し自体は従来どおり「退避した values で upgrade → rollout を待つ」（版のずれが無いことを upgrade 前に確かめてあり、`--wait` の意味が helm のメジャー版で違う rollback より単純）。手順書 §6 も同じ形にした |
+| 🟡-2 どのクラスタか | 何かを変える前に `kubectl config current-context` を出す（読めなければ止める）。手順書 §4 と §8 の記録表に context 欄を足した |
+| 🟡-3 HPA 所有の配備でも `--restart` は Pod を作り直す | 手順書 §5 に明記（承認なしに走らせない） |
+| 🟡-4 利用者名の大小 | 小文字へ正規化して突き合わせる |
+| 🟡-5 改ざんの 0 / 500 | 不合格になることを試験で固定した |
+| 🟢-1 名前の無い 200 | 200 の件数と利用者名の件数が一致しなければ不合格 |
+| 🟢-2 中断 | SIGHUP も受ける。port-forward の子を閉じる。戻しに失敗したら 1 |
+| 🟢-3 `[前提]` の終了コード | `[前提]` の失敗（upgrade・rollout の未完了、Ready の Pod 不足、ログイン失敗、Cookie 未発行を含む）はすべて 2 に揃えた。戻しの失敗は優先して 1。鍵リングの件数は前提ではなく測定なので `[鍵リング]` へ改名した |
+| 🟢-4 文書集合の変化・`--plan` と `--username` の併用 | 試験を足した |
+| 🟢-6 / 🟢-7 手順書 | `--restart` は作り直しの後を測る（最中は測らない）・Pod へ直接つなぐのでエッジと Service の振り分けは通らない・コールバックで止まるのは症状そのものであり得る、を明記した |
+
