@@ -39,9 +39,10 @@ internal static class RegistrarScopeReading
     ///   </item>
     /// </list>
     ///
-    /// **過小に倒れうることは受容する。** 07_abac-attribute-model は「消費側が選言へ対応するまで
-    /// **多キーの文書条件を持つポリシーを運用しない**」を暫定の統制として定めており、
-    /// 多キーの分岐は運用上そもそも存在しない。現 seed の階段ポリシーは 1 件も落ちない。
+    /// **過小に倒れうることは受容する。** 多キーの文書条件を持つポリシーは、保存時の検証が
+    /// AST の KB の読み手（`project` ＋ `confidentiality` の上限。IADR-0500）だけに許している。
+    /// その分岐はここでは空集合（過小）に倒れるだけで、過大には倒れない。
+    /// 現 seed の階段ポリシーは 1 件も落ちない。
     /// </summary>
     internal static (bool Unrestricted, IReadOnlyList<string> Confidentiality) ReadAssignableConfidentiality(
         AccessScopeResponse scope)

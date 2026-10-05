@@ -449,6 +449,31 @@ module.exports = ({ ok, assert }) => {
       assert.strictEqual(seed.selectMissingPolicies(wanted, []).length, 2);
     });
 
+    // FR-09, #1755: 同名で中身が食い違う既存を名指しする（投入器は既存を書き換えないため、
+    // seed を改めても稼働中の環境は旧い形のまま残る。上限の無い AST の KB の読み手が実例）。
+    ok('seed: 同名で中身が食い違う既存ポリシーを返す（値の並びは無視・綴りは厳密）', () => {
+      const want = {
+        name: 'AST: KB reader',
+        action: 'read',
+        userConditions: { projects: ['ai-stock-trading'] },
+        documentConditions: { project: ['ai-stock-trading'], confidentiality: ['public', 'internal'] },
+      };
+      const same = { ...want, name: 'ast: kb reader', action: 'Read',
+        documentConditions: { confidentiality: ['internal', 'public'], project: ['ai-stock-trading'] } };
+      assert.deepStrictEqual(seed.selectDriftedPolicies([want], [same]), []);
+      const old = { ...want, documentConditions: { project: ['ai-stock-trading'] } };
+      assert.deepStrictEqual(seed.selectDriftedPolicies([want], [old]),
+        [{ name: 'AST: KB reader', fields: ['documentConditions'] }]);
+      const wider = { ...want, action: 'analyze',
+        documentConditions: { project: ['ai-stock-trading'], confidentiality: ['public', 'internal', 'confidential'] } };
+      assert.deepStrictEqual(seed.selectDriftedPolicies([want], [wider]).map((d) => d.fields),
+        [['action', 'documentConditions']]);
+      const casing = { ...want, userConditions: { Projects: ['ai-stock-trading'] } };
+      assert.deepStrictEqual(seed.selectDriftedPolicies([want], [casing]).map((d) => d.fields), [['userConditions']]);
+      // 未登録は missing の側が扱う（drift には出さない）。
+      assert.deepStrictEqual(seed.selectDriftedPolicies([want], []), []);
+    });
+
     // --- 投入器の資格情報が realm から drift しないこと（#972 / #933 の実例） ---------
     //
     // 実際に起きたこと: 既定が `admin`/`admin` の直書きで、#933 が realm のパスワードを

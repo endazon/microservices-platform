@@ -235,6 +235,35 @@ function selectMissingPolicies(seed, existing) {
   return seed.filter((p) => !have.has(String(p.name).toLowerCase()));
 }
 
+// FR-09, #1755: 同名の既存ポリシーが seed と食い違うものを返す（書き換えはしない）。
+// 投入は「無いものを足す」だけなので、seed を改めても稼働中の環境の既存は旧い形のまま残る
+// （例: AST の KB の読み手に機密区分の上限が無い）。黙って残さず、名指しして運用手順へ誘導する。
+// 値の並びは意味を持たない（値集合内は OR）ので並べ替えて比べる。キーと値の綴りは保存時の検証と同じく厳密に比べる。
+function canonicalConditions(conditions) {
+  const c = conditions || {};
+  return JSON.stringify(
+    Object.keys(c)
+      .sort()
+      .map((k) => [k, [...(c[k] || [])].map(String).sort()]),
+  );
+}
+function selectDriftedPolicies(seed, existing) {
+  const byName = new Map(existing.map((p) => [String(p.name).toLowerCase(), p]));
+  const drifted = [];
+  for (const want of seed) {
+    const have = byName.get(String(want.name).toLowerCase());
+    if (!have) continue;
+    const fields = [];
+    if (String(have.action || '').toLowerCase() !== String(want.action || '').toLowerCase()) fields.push('action');
+    if (canonicalConditions(have.userConditions) !== canonicalConditions(want.userConditions)) fields.push('userConditions');
+    if (canonicalConditions(have.documentConditions) !== canonicalConditions(want.documentConditions)) {
+      fields.push('documentConditions');
+    }
+    if (fields.length > 0) drifted.push({ name: want.name, fields });
+  }
+  return drifted;
+}
+
 async function main(argv) {
   const dryRun = argv.includes('--dry-run');
   const attributes = loadSeed('attributes.json').attributes || [];
@@ -301,6 +330,14 @@ async function main(argv) {
     await postJson(`${authzUrl}/authz/policies`, token, p);
     log(`  + ポリシー ${p.name}`);
   }
+  // 同名で中身が違うものは書き換えない（運用者の変更を消さない）。名指しで知らせる。
+  const driftedPolicies = selectDriftedPolicies(policies, existingPolicies);
+  for (const d of driftedPolicies) {
+    warn(`  ! ポリシー ${d.name} は seed と食い違います（${d.fields.join(', ')}）。投入器は書き換えません。`);
+  }
+  if (driftedPolicies.length > 0) {
+    warn('  揃えるには管理 API の PUT /authz/policies/{id} で書き換えてください（AST の KB の読み手は docs/operations/operations.md「AST の KB の読み手のポリシーの投入」）。');
+  }
 
   if (missingAttrs.length === 0 && missingPolicies.length === 0) {
     log('投入済みのため変更はありません（冪等・no-op）。');
@@ -313,6 +350,7 @@ async function main(argv) {
 module.exports = {
   selectMissingAttributes,
   selectMissingPolicies,
+  selectDriftedPolicies,
   clientSecretFromRealm,
   isConfidentialInRealm,
   buildTokenForm,
