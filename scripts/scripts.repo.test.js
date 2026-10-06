@@ -12971,6 +12971,8 @@ if [ "$verb" = "exec" ]; then
       f="\${cmd#*-field=}"; f="\${f%% *}"; p="\${cmd#*secret/}"; p="\${p%% *}"
       [ -e "$(kvf "$p")" ] || exit 2
       line="$(grep -m1 "^$f=" "$(kvf "$p")")" || exit 2
+      # Pod の中の sh が受ける出力の向け先（\`>/dev/null\`）を写す（#1764: 在るかだけを見る呼び出しは値を出さない）
+      case "$cmd" in *">/dev/null"*) exit 0 ;; esac
       printf '%s\\n' "\${line#*=}"; exit 0 ;;
     *"vault kv patch"*)
       v="$(cat)"; p="\${cmd#*secret/}"; p="\${p%% *}"; f="\${cmd#*secret/$p }"; f="\${f%%=-*}"
@@ -13057,6 +13059,8 @@ exit 0
         const kv = (p, props) => fs1728.writeFileSync(path1728.join(state, 'kv', p.split('/').join('__')),
           Object.entries(props).map(([k, v]) => `${k}=${v}\n`).join(''));
         for (const p of allKvPaths()) kv(p, {});
+        // #1764 / IADR-0504: 移行後の llm-provider-credentials は voyage-api-key を（空でも）持つ。無い世界は下の #1764 の試験が作る。
+        kv('msp/llm-provider-credentials', { 'voyage-api-key': '' });
         kv('ai-stock-trading/app-secrets', AUTH);
         kv('msp/keycloak-smtp', { host: 'mailpit.platform-infra.svc.cluster.local', port: '1025', starttls: 'false' });
         fs1728.writeFileSync(path1728.join(state, 'es-list'), ES_LIST);
@@ -13065,7 +13069,7 @@ exit 0
         const log = path1728.join(dir, 'calls.log');
         fs1728.writeFileSync(log, '');
         const baseEnv = { ...process.env };
-        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|SMTP_|WIKIJS_SYNC|ESO_)/.test(k)) delete baseEnv[k];
+        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_)/.test(k)) delete baseEnv[k];
         const r = spawn1728('bash', [...bashArgs, BOOTSTRAP.split(path1728.sep).join('/')], {
           encoding: 'utf8',
           timeout: 60000,
@@ -13114,6 +13118,31 @@ exit 0
       assert.strictEqual(r.status, 0, r.stderr + r.stdout);
       assert.ok(r.calls.includes('VAULT PUT msp/llm-provider-credentials'));
       assert.deepStrictEqual(annotated(r.calls).sort(), ['ai-stock-trading/ast-secrets', 'microservices-platform/llm-provider-credentials']);
+    });
+
+    ok('#1764: 在る llm-provider-credentials に voyage-api-key が無ければ空で足し（ESO の同期を壊さない）、それを読む ExternalSecret に付ける', () => {
+      const r = run1728({ setup: ({ kv }) => kv('msp/llm-provider-credentials', { 'anthropic-api-key': '' }) });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      assert.deepStrictEqual(r.calls.filter((c) => c.startsWith('VAULT PATCH msp/llm-provider-credentials ')),
+        ['VAULT PATCH msp/llm-provider-credentials voyage-api-key'], '足すのは voyage-api-key だけ（在る anthropic-api-key は触らない）');
+      assert.ok(!r.calls.includes('VAULT PUT msp/llm-provider-credentials'), '在る KV を put で置き換えた（画面の値が消える）');
+      assert.ok(annotated(r.calls).includes('microservices-platform/llm-provider-credentials'), annotated(r.calls).join(','));
+    });
+
+    ok('#1764: voyage-api-key が既に在れば（空でも）、env が無い再実行では書かない', () => {
+      const r = run1728({ setup: ({ kv }) => kv('msp/llm-provider-credentials', { 'voyage-api-key': '' }) });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      assert.deepStrictEqual(r.calls.filter((c) => c.startsWith('VAULT PATCH msp/llm-provider-credentials ')), []);
+    });
+
+    ok('#1764: VOYAGE_API_KEY を渡すと、在る KV の voyage-api-key だけを差し替える（値は標準入力で渡し、出力に出さない）', () => {
+      const probe = ['probe', '1764', 'embedding'].join('-');
+      const r = run1728({ env: { VOYAGE_API_KEY: probe } });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      assert.deepStrictEqual(r.calls.filter((c) => c.startsWith('VAULT PATCH msp/llm-provider-credentials ')),
+        ['VAULT PATCH msp/llm-provider-credentials voyage-api-key']);
+      assert.ok(!`${r.stdout}${r.stderr}`.includes(probe), '鍵の値が出力に出た');
+      assert.ok(!r.calls.some((c) => c.includes(probe)), '鍵の値が kubectl の引数に載った（標準入力で渡すこと）');
     });
 
     ok('#1728: 対になる秘密の KV を無いときだけ作ったら（vkv_create_if_absent）、それを読む ExternalSecret に付ける', () => {

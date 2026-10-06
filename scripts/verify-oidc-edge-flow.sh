@@ -595,8 +595,8 @@ fi
 #        `if (ev.MarkdownUri is null) { ...; return; }` と早期 return し、
 #        **parse→chunk→embed→index に一度も入らない。**
 #      - `SEARCHSEED=1` で起こせば本文つき文書が入る（scripts/seed-search-documents.js）。
-#        **それでも索引には入らない** —— `Embedding__Voyage__ApiKey` がどこにも配線されておらず、
-#        取り込みは `Embedded=false` のチャンクを**索引しない**（fail-closed）ためである。
+#        **それでも索引には入らない** —— `Embedding__Voyage__ApiKey` の値が空であり（#1764 で Secret からの配線は
+#        入ったが、鍵を Vault へ入れない限り空のまま）、取り込みは `Embedded=false` のチャンクを**索引しない**（fail-closed）ためである。
 #
 #    よって本段では**観測できることだけ**を門にする —— 認証が要ること、応答が契約どおりの形であること。
 #    「空であること」は PASS の根拠にしていない。**seed 文書が実際にヒットすることの判定は
@@ -902,7 +902,7 @@ if [ "$SEARCH_HITS" = "1" ]; then
       info "$(head -c 200 "$body_file")"
     elif [ "${hit_state%%:*}" = "0" ]; then
       fail "seed 文書（$SEARCH_PROBE_TERM）がヒットしない（0 件）。索引に入っていない疑い"
-      info "🔴 疑う順: ①取り込みが埋め込みを得られず索引をスキップした（Embedding__Voyage__ApiKey 未配線・fail-closed）"
+      info "🔴 疑う順: ①取り込みが埋め込みを得られず索引をスキップした（Embedding__Voyage__ApiKey が空・fail-closed）"
       info "         ②本文が永続化されず parse 段で失敗した ③ABAC が deny へ縮退した（段 S2 と併せて読む）"
     elif [ "${hit_state##*:}" = "0" ]; then
       fail "ヒット ${hit_state%%:*} 件だが seed 文書（$SEARCH_PROBE_TERM）を含まない"

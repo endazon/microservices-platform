@@ -14,7 +14,7 @@
 # 本ファイルの path 集合がそれと完全一致することを Platform.Bff.Tests（SecretItemVaultPolicyTests）が固定する。
 # `deferred[]` / `excluded[]` のパスをここへ足さないこと（足すと上記テストが落ちる）。
 
-# msp/llm-provider-credentials（anthropic-api-key / openai-api-key）
+# msp/llm-provider-credentials（anthropic-api-key / openai-api-key / voyage-api-key）
 path "secret/data/msp/llm-provider-credentials" {
   capabilities = ["create", "patch"]
 }

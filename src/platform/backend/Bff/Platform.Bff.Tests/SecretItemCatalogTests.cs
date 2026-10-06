@@ -24,7 +24,8 @@ public class SecretItemCatalogTests
         }
         """;
 
-    // SC-22, IADR-0433 決定 3, IADR-0456 決定 1 (#1477): 実ファイル（単一情報源）を読める。6 KV・21 プロパティ。
+    // SC-22, IADR-0433 決定 3, IADR-0456 決定 1 (#1477): 実ファイル（単一情報源）を読める。6 KV・22 プロパティ。
+    // ［2026-10-06 / #1764・IADR-0504］21 → 22: llm-provider-credentials に voyage-api-key（埋め込みの鍵）を足した。
     [Fact]
     public void Loads_the_repository_allowlist()
     {
@@ -33,7 +34,8 @@ public class SecretItemCatalogTests
         catalog.VaultMount.Should().Be("secret");
         catalog.Items.Select(i => i.Item).Should().Equal(
             "llm-provider-credentials", "keycloak-smtp", "wikijs-sync", "ast-app-secrets", "ast-moomoo", "ast-moomoo-rsa");
-        catalog.Items.Sum(i => i.Properties.Count).Should().Be(21);
+        catalog.Items.Sum(i => i.Properties.Count).Should().Be(22);
+        catalog.Find("llm-provider-credentials")!.Properties.Should().Equal("anthropic-api-key", "openai-api-key", "voyage-api-key");
         // 🔴 notWritable（構成）は書けるプロパティに入らない。
         catalog.Find("keycloak-smtp")!.Properties.Should().Equal("from", "user", "password");
     }

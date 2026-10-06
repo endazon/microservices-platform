@@ -6,7 +6,7 @@
 #
 # 前提ツール: docker / k3d / kubectl / helm（scripts/README や docs/operations 参照）。
 # 機密の上書きは環境変数で: PG_PASSWORD / RABBITMQ_PASSWORD / KEYCLOAK_ADMIN_PASSWORD /
-#   OBJECT_STORAGE_ACCESS_KEY / OBJECT_STORAGE_SECRET_KEY（IADR-0461。旧 MINIO_*）/ WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY /
+#   OBJECT_STORAGE_ACCESS_KEY / OBJECT_STORAGE_SECRET_KEY（IADR-0461。旧 MINIO_*）/ WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY（#1764。埋め込み） /
 #   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）/
 #   WIKIJS_OIDC_CLIENT_SECRET（#1127。WIKIJS_OIDC=1 のときだけ使う。realm の wiki-js client と揃えること）/
 #   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）/
@@ -463,7 +463,8 @@ fi
 # スキップする（ExternalSecret が Secret を所有＝二重所有回避）。既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
 if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" llm-provider-credentials \
-    "anthropic-api-key=${ANTHROPIC_API_KEY:-}" "openai-api-key=${OPENAI_API_KEY:-}"
+    "anthropic-api-key=${ANTHROPIC_API_KEY:-}" "openai-api-key=${OPENAI_API_KEY:-}" \
+    "voyage-api-key=${VOYAGE_API_KEY:-}"
 fi
 
 # ADR-0005, #782: サービスメッシュ（Istio）。opt-in（既定オフ・fail-safe）。
@@ -861,7 +862,7 @@ if [ "${ESO:-}" = "1" ]; then
 
   # 2) 供給後の値で env を作り直す。対象＝**ESO 管理 Secret を env(secretKeyRef) で参照する Deployment**。
   #      seaweedfs         : object-storage-credentials（S3 の管理者資格情報。IADR-0461）
-  #      llmgateway-service: llm-provider-credentials（Llm__ApiKey）
+  #      llmgateway-service: llm-provider-credentials（Llm__ApiKey・Embedding__Voyage__ApiKey）
   #      wiki-service      : wikijs-sync（WikiJs__ApiKey）
   #      wiki-js           : wikijs-db（DB_PASS）
   #      retrieval-service : retrieval-service-token（ServiceToken__ClientSecret。#1255）

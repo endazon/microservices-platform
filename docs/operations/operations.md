@@ -43,6 +43,7 @@ issues: [#1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #
 | Wiki.js の初期セットアップ・OIDC 連携をしたい | §Wiki.js の起動・初期セットアップ・ヘルスチェック |
 | データソース定期同期を有効化・監視したい | §データソース定期同期の有効化と監視 |
 | 埋め込みプロバイダのゼロ保持・fail-closed 挙動を確認したい | §埋め込みプロバイダの設定・ゼロ保持・再索引 |
+| 経路B の LLM ゲートウェイへ埋め込み（Voyage）の鍵を入れる・届いたか確かめる | [`voyage-embedding-key-runbook.md`](voyage-embedding-key-runbook.md) |
 | HPA/PDB でスケール・可用性を確保したい | §可用性・水平スケール |
 | アラートが実際にどこへ届くか（未配線の現状）を確認したい | §監視・アラート |
 | 利用イベントがいつ消えるか・消えていないときの見方を知りたい | §データ保持期間（利用イベント） |
@@ -745,11 +746,19 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
   のティアB要件（ゼロ保持・学習不使用・レジデンシー）を契約で確認し、確認できるまで本番文書を索引しない。
   未認定の間は `Embedding__Routing__Endpoints__0__Enabled=false` で Voyage 経路を止められる。
   - API キーは Secret 経由で投入する（コミットしない）。compose: `.env` の `VOYAGE_API_KEY`
-    （`Embedding__Voyage__ApiKey`）。k8s は Secret（例 `embedding-voyage`、key=`api-key`）。
+    （`Embedding__Voyage__ApiKey`）。~~k8s は Secret（例 `embedding-voyage`、key=`api-key`）。~~
+    **［2026-10-06］k8s（Helm）は Secret `llm-provider-credentials` のキー `voyage-api-key` を `Embedding__Voyage__ApiKey` へ渡す**
+    （`optional: true`。本番像の `values.yaml` と経路B の `values-local.yaml` の両方。外部 LLM の鍵と同じ Secret）。
+    経路B は Vault の KV `secret/msp/llm-provider-credentials` のプロパティ `voyage-api-key` を ESO が写す。
+    鍵の入れ方と、値を表示せずに届いたことを確かめる手順は [`voyage-embedding-key-runbook.md`](voyage-embedding-key-runbook.md)。
+    **再索引の前に行う**（鍵が無いまま再発行すると、`public` / `internal` の文書は全件が再試行の後 DLQ へ行くだけになる）。
   - キー未設定でも起動する（fail-open しない）。Voyage 呼び出しが失敗した文書は索引されないだけで、
     高機密文書の本文が外部へ出ることはない（ルーティングで候補にならないため）。
+    ［2026-10-06］Secret にキーが無い（古い Secret）場合も起動する（`optional: true` で env を置かない）。
   - **ゼロ保持認定状況の記録（#303 受け入れ基準）**: 実環境構築前チェックリストの一項目として、契約でのゼロ保持
     （学習不使用・レジデンシー含む）認定の可否をここに記録する。**現状: 未認定（2026-07-19 時点）**。
+    **［2026-10-06］未認定のまま（#1740）。オーナーは同日、認定の前に経路B（稼働の開発クラスタ）で Voyage の鍵を配線して使うことを受け入れた。**
+    本番相当の環境は従来どおり、認定まで本番文書を流さない。
     - ⚠️ **既定構成は Voyage 経路が有効**（`appsettings.json` の `voyage-managed`＝index 0 が `Enabled: true`。
       compose/Helm に既定の無効化上書きは無い）。したがって「未認定＝自動で停止」ではない。**未認定の環境へデプロイ
       する場合は、運用者が本番文書を流す前に明示的に Voyage 経路を無効化すること**（`Embedding__Routing__Endpoints__0__Enabled=false`。
