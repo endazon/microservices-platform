@@ -580,3 +580,4 @@
 | [IADR-0500](./IADR-0500_ast-kb-reader-confidentiality-ceiling.md) | AST の KB の読み手の read ポリシーの文書の条件へ機密区分の上限（public・internal）を足し、保存時の「1 キーまで」に値まで固定した例外を置く（IADR-0492 決定 1 の部分改定。#1755） | Accepted |
 | [IADR-0501](./IADR-0501_sc22-datasource-credential-group.md) | SC-22 の群「データソースの資格情報」は基盤の BFF が仕組み（専用接頭辞の 1 階層・管理者だけ・値を返さない）を持ち、成員と参照の配置は knowledge がポートで供給する。書いた後に値の無いキーにだけ参照を置き、供給元は設定の参照の有無で判定する（#458 段 S2・S3） | Accepted |
 | [IADR-0502](./IADR-0502_qdrant-keyword-indexes-for-facet-and-abac-keys.md) | 権限内属性値の facet と ABAC フィルタが引くキー（tags・shared_with・attributes.<key>）に Qdrant のキーワード索引を張る。キーの集合は照会の写像から導き、起動時・書き込み時・既存の点からの発見の 3 か所で冪等に張る。索引が無いキーの facet は空集合（#1760） | Accepted |
+| [IADR-0503](./IADR-0503_republish-document-updated-admin-endpoint-and-driver.md) | DocumentUpdated の再発行（再索引の手段）は DocumentService の管理者だけの口（`POST /documents/republish-updated`）が通常の発行の門で 1 ページずつ行い（作成時刻昇順のキーセット・dryRun 必須・状態を持たない）、量の制御・中断と再開・DLQ の監視（カナリア）は駆動スクリプトが持つ（#1762） | Accepted |

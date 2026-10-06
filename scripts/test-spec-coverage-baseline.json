@@ -120,7 +120,8 @@
       "GrpcDocumentTagWriteTests",
       "MachineClientOwnDocumentWriteTests",
       "MachineClientOwnerSubjectTests",
-      "PrivateNoteExposurePublishTests"
+      "PrivateNoteExposurePublishTests",
+      "RepublishDocumentUpdatedEndpointTests"
     ],
     "docs/tests/FR-07_data-range-analysis.md": [
       "AnalysisEndpointTests",

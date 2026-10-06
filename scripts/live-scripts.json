@@ -21,6 +21,7 @@
     { "path": "seed-abac-policies.js", "offline": ["--dry-run"] },
     { "path": "seed-search-documents.js", "offline": ["--dry-run", "--print-probe-term", "--print-keyword-only-query", "--print-japanese-keyword-query"] },
     { "path": "seed-tag-dictionary.js", "offline": ["--dry-run"] },
+    { "path": "republish-document-updated.js", "offline": ["--help"] },
     { "path": "measure-abac-combinations.js", "offline": ["--input"] },
     { "path": "measure-cutover-inventory.js", "offline": ["--input", "--print-recreate-sql"] },
     { "path": "measure-search-ndcg.js", "offline": ["--input"] },
