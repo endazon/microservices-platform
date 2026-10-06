@@ -581,7 +581,7 @@ fi
 #      (a) Query が空 / (b) BffScopeResolver が null（ABAC が deny へ縮退・認可サービス不調）
 #      (c) RetrievalService への HttpRequestException / TaskCanceledException
 #      (d) クエリ埋め込みが得られない（LLM ゲートウェイが 200 ＋ 空ベクトルで応答。#995 / IADR-0256）
-#          —— このスタックは埋め込み API キーを配線していないので **(d) は必ず起きる**。
+#          —— このスタックの埋め込み API キーは値が空なので（#1764 で Secret からの配線は入った） **(d) は必ず起きる**。
 #    つまり「検索が全く動いていない」と「該当が無い」がエッジからは区別できない。
 #
 #    🔴 **(d) は #995 以前は 500 だった。** 空ベクトルをそのままベクトルDB へ渡していたためである

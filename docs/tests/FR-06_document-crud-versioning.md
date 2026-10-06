@@ -3,15 +3,15 @@ title: 文書CRUD・バージョン管理 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-28
+updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
-ids: [FR-08, FR-03, FR-04, FR-05, FR-06, SC-05, UC-03, NFR-09, FR-19, FR-12]
-adrs: [ADR-0121, ADR-0058, ADR-0122, ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056, ADR-0027]
-iadrs: [IADR-0484, IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
-specs: [20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1658_relay-options-shared, 20260927_issue-1657_document-normalized-consumer-content-timeout, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
+ids: [FR-02, UC-04, FR-08, FR-03, FR-04, FR-05, FR-06, SC-05, UC-03, NFR-09, FR-19, FR-12]
+adrs: [ADR-0013, ADR-0121, ADR-0058, ADR-0122, ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056, ADR-0027]
+iadrs: [IADR-0503, IADR-0484, IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
+specs: [20261006_1762_republish-document-updated, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1658_relay-options-shared, 20260927_issue-1657_document-normalized-consumer-content-timeout, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#1762, #1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
 -->
 
 # テスト仕様書: 文書CRUD・バージョン管理
@@ -111,11 +111,17 @@ issues: [#1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1
 | T-73 | 利用者名を持たずクライアント識別だけを持つ機械クライアントが作った文書、同じクライアントの利用者名つきの主体が作った文書、別の機械クライアント（利用者名つき・無し）と人の利用者が作った文書 | 利用者名の無い機械クライアントで本文を投入する。人の利用者の文書へ所有者・別の利用者（管理者ロール）・名前もクライアント識別も無い主体・機械で投入する | 自分の文書（どちらの形で作ったものでも）は 200 で本文と本文指紋が入り、同じクライアントの利用者名つきの主体でも 200。他の主体の文書は 404 で本文は入らず、同じ文書に所有者自身は入れられる（陽性対照）。人の文書は所有者だけが 200 で他は 404（従前どおり）。利用者名と文書閲覧の経路のクライアント識別を両方持つ人（本番の人のトークンの形）も、所有者は利用者名で、自分の文書には本文・共有・タグを入れられ、同じクライアント識別を持つ別の人は 404（人の主体をクライアント識別から組み立てない） | 本文の投入の主体は作成時に所有者へ入れる名前と同じ | 自動（エンドポイント） |
 | T-74 | 利用者名の無い機械クライアントが作った文書、別の機械クライアントが作った文書、辞書にあるタグ | 利用者名の無い機械クライアントで共有の付与・一覧・取り消し、タグの反映を呼ぶ | 自分の文書は付与 201・一覧 200（付与者はサービスアカウント名）・取り消し 204、タグは 200。別の機械クライアントの文書はいずれも 404 で、タグは付かない | 共有・タグ反映の主体も同じ名前 | 自動（エンドポイント） |
 | T-75 | 同じ台帳に、外部システムの書き手が作った報告書・記事の写し（所有者なし・`system`、project のあり・なし、本文のあり・なし）と、1 つだけ属性の違う文書（取り込みの経路の `system`・別の project・個人資料・表題の違う project なしの報告書・人が作った文書〔所有者なし・`system`〕・現在のサービスアカウントの写し・他の主体の写し）を置く。作成の口を、名前の取れない主体と現在のサービスアカウントで呼ぶ | 管理者で古い写しの列挙の口を引く。運用者の人・外部システムの書き手・一般の利用者でも引く。2 回引く。空の台帳でも引く | 写しだけが対象になり、除いた文書は理由ごとに 1 件ずつ数えられ、見た件数は対象と除いた件数の合計に等しい。報告書・記事の件数と期間（記事は公開日時）が返る。現在のサービスアカウントの報告書の写しの重複の組が返る。管理者以外は 403。台帳・版・所有者は変わらずイベントも出ない。空なら 0 件で理由は 0 件でも並び期間は null。所有者の条件・作成の経路の条件・project の条件・個人資料の除外を外す変異は赤 | 古い写しは所有者でなく作成の経路と属性で見分ける | 自動（エンドポイント・単体） |
+| T-76 | 内部区分の文書 1 件 | 再発行の口（`POST /documents/republish-updated`）を運用者の人・運用者ロールの機械の書き手・一般の利用者・管理者で呼ぶ。口の認可の宣言を読む | 管理者以外は 403 で 1 件も発行しない。管理者は発行する（陽性対照）。口は `AdminOnly` を積む |
+| T-77 | 作成時刻が同じものを含む 7 件／開始時刻の前に 2 件・走査の途中に 1 件 | 3 件ずつカーソルを辿る。開始時刻を作成時刻の上限に固定して辿り、途中で 1 件作る。上限なしで最初から辿る | 作成時刻昇順・同時刻は ID 昇順で、重複も抜けも無く 1 回ずつ発行し、3 ページ目でカーソルが尽きる。上限ありでは途中で作られた文書を選ばず、上限なしでは末尾に 1 回だけ現れる |
+| T-78 | 属性の大小だけ違う文書・機密区分の違う文書 | 属性の完全一致（AND）と ID の集合で絞る。`dryRun` の省略・空の属性キー・空の値・501 件の ID・空の ID の集合・上限を超える操作者と理由の札・不正なカーソルを送る | 絞り込みは大小を区別する完全一致の AND で効き、ID の集合は指定した文書だけを選ぶ。不正な要求は 400（違反の鍵つき）で 1 件も発行しない（空の ID の集合を全件として扱わない） |
+| T-79 | 公開・内部・本文なしの内部・秘・機密区分なし・露出 OFF と ON の個人資料 | `dryRun=true` で呼ぶ | 何も発行せず、件数（全件・残り）・本文の所在が無い件数・門で止まる件数・機密区分の内訳（欠落は取扱制限へ倒し、0 件の区分も並べる）を返す |
+| T-80 | 辞書のタグ・共有先・本文指紋を持つ文書／露出 OFF の個人資料・露出 ON の個人資料・組織文書 | 公開の口で発行した後に再発行する。台帳の版と更新時刻を見る。1 件ずつ辿る | 再発行の中身は通常の経路と同じ（タグは表示名・共有先・本文指紋・本文の所在）。版も更新時刻も動かず、イベントは台帳の更新時刻を運ぶ。露出 OFF の個人資料は発行せず門で止めた件数に数え、カーソルはその先へ進む |
+| T-81 | 内部区分の文書 1 件 | 管理者が操作者と理由の札を付けて dry-run と発行を 1 回ずつ呼ぶ（dry-run の理由には改行を混ぜる） | dry-run も発行も 1 行ずつ記録し、各行に認証済みの主体・操作者・理由が載る。札の改行は潰して出す（記録の行を偽造できない） |
 
 対応テスト実装:
 
 - 単体（ドメイン）: `src/knowledge/backend/Services/DocumentService/Tests/Domain/DocumentVersioningTests.cs`（T-01〜T-05）、`DocumentAttributesTests.cs`（T-23）
-- 単体（エンドポイント, InMemory）: `.../AstStaleCopies/AstStaleCopiesEndpointTests.cs`・`AstStaleCopyRulesTests.cs`（T-75）、`.../MachineClientOwnDocumentWriteTests.cs`（T-64〜T-69）、`.../MachineClientOwnerSubjectTests.cs`（T-73〜T-74）、`.../AdminWritePrivateNoteScopeTests.cs`（T-60〜T-63）、`.../AddTag/GrpcDocumentTagWriteTests.cs`（T-62 の gRPC 面）、`.../PrivateNotes/PrivateNoteExposurePublishTests.cs`（T-63）、`.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28・T-38）、`DocumentPageTests.cs`（T-30〜T-37・T-39〜T-41）
+- 単体（エンドポイント, InMemory）: `.../AstStaleCopies/AstStaleCopiesEndpointTests.cs`・`AstStaleCopyRulesTests.cs`（T-75）、`.../Republish/RepublishDocumentUpdatedEndpointTests.cs`（T-76〜T-81）、`.../MachineClientOwnDocumentWriteTests.cs`（T-64〜T-69）、`.../MachineClientOwnerSubjectTests.cs`（T-73〜T-74）、`.../AdminWritePrivateNoteScopeTests.cs`（T-60〜T-63）、`.../AddTag/GrpcDocumentTagWriteTests.cs`（T-62 の gRPC 面）、`.../PrivateNotes/PrivateNoteExposurePublishTests.cs`（T-63）、`.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28・T-38）、`DocumentPageTests.cs`（T-30〜T-37・T-39〜T-41）
 - 単体（契約）: `src/knowledge/backend/Shared/Knowledge.Contracts.Tests/DocumentReadGrpcMappingTests.cs`（T-29）
 - 単体（カタログ登録の受け口の本文の取得の期限）: `src/knowledge/backend/Services/DocumentService/Tests/Features/Documents/Catalog/CatalogTimeoutTests.cs`（T-71。配線は同じファイルの `CatalogTimeoutWiringTests`）
 - 単体（検索索引からの削除の受け口）: `src/knowledge/backend/Services/RetrievalService/Tests/Features/Search/RemoveDeleted/DocumentDeletedTimeoutTests.cs`（T-70。配線は同じファイルの `DocumentDeletedTimeoutWiringTests`）

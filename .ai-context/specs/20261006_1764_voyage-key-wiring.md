@@ -115,3 +115,9 @@ issue: "#1764"
 - SC-22 の語彙（`secretItemVocabulary.ts` の purpose・interrupts）と画面仕様書の再起動の表、ja / en のカタログ（`pnpm run i18n`）。
 - trace ブロック: `docs/operations/operations.md`・`docs/screens/SC-22_secret-item-management.md`・`docs/tests/SC-22_secret-item-management.md`。
 - 範囲外として残したもの: `msp/wikijs-sync` の作成経路（`apiKey='${WIKIJS_SYNC_APIKEY:-}'`）も同じ形で引数へ展開しているが、本 PR の差分の外（既存）であり別件で扱う。
+
+［2026-10-06 追記 / #1764］#1763 が先にマージされたので develop を取り込み、規則 10 の最後の項（運用仕様書の「経路B の Helm の値はこの鍵を配線していない」）を直した
+（配線は Secret から入った・値は Runbook の手順で Vault へ入れる・env の名前は空でも出るので値は長さで測る）。規則 9 で `docs/`・`scripts/`・IADR-0503・#1762 の作業仕様書を
+「配線していない／未配線」で引き直し、`scripts/verify-oidc-edge-flow.sh:584` を「値が空」へ直し、#1762 の作業仕様書（f-6）へ日付つき追記を置いた。
+IADR-0503 は鍵が無い構成を条件として書くだけ（「無いと全件が DLQ へ行く」）で、配線の有無を断定していないので追記しない。
+`operations.md:817` の「鍵の未配線」は DLQ の原因の列挙（鍵が無い状態一般）であり、誤りにならないので直さない。
