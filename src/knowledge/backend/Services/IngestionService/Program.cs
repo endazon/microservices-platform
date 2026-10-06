@@ -58,7 +58,9 @@ LexicalCollection.EnsureDistinct(lexicalCollection, embeddingCollections.Select(
 builder.Services.AddSingleton<IIngestionVectorStore>(sp => new QdrantIngestionVectorStore(
     sp.GetRequiredService<QdrantClient>(),
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<EmbeddingCollectionsOptions>>(),
-    lexicalCollection));
+    lexicalCollection,
+    // [[IADR-0502]] 決定 2 (ii) (#1760): 書き込み時のキーワード索引の失敗を Warning で残す。
+    sp.GetRequiredService<ILogger<QdrantIngestionVectorStore>>()));
 
 // FR-02, ADR-0027 (#1640): 取り込みの受け口の時間の上限（呼び出しごとの期限・埋め込みの総枠・受け口の実行期限）。
 // 受け口の実行期限に最悪の所要時間が収まらない構成は、ここで起動を止める（`IngestionTimeouts.From`）。
@@ -74,6 +76,9 @@ builder.Services.AddHostedService<QdrantBootstrapHostedService>();
 // FR-03, #1118 / [[IADR-0339]] 決定 2: 既存の点へ日本語 2-gram（`text_ngram`）を後付けする（起動後・非同期）。
 // **上のブートストラップより後に登録する**（索引を張ってから埋める。hosted service は登録順に始まる）。
 builder.Services.AddHostedService<QdrantCjkNgramBackfillHostedService>();
+// FR-04, FR-05, SC-01, SC-08, [[IADR-0502]] 決定 3 (#1760): 既存の点に現れる属性キーへキーワード索引を張る（起動後・非同期）。
+// ブートストラップより後に登録する（コレクションを作ってから走査する）。
+builder.Services.AddHostedService<QdrantKeywordIndexDiscoveryHostedService>();
 
 // FR-06, ADR-0014/ADR-0015（Superseded by ADR-0106）: オブジェクトストレージ（SeaweedFS）クライアント（storage:// 本文の実取得用）。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);

@@ -7,6 +7,7 @@ using Qdrant.Client;
 using Qdrant.Client.Grpc;
 using RetrievalService.Common.Observability;
 using RetrievalService.Domain.Ports;
+using Platform.Shared.Infrastructure.Foundation.Logging;
 
 namespace RetrievalService.Infrastructure.ExternalServices;
 
@@ -289,8 +290,28 @@ public class QdrantVectorStore(
         ScopeFilter? filters,
         CancellationToken ct = default)
     {
-        var facets = await client.FacetAsync(_collection, payloadKey,
-            filter: BuildAttributeFilter(filters), cancellationToken: ct);
+        FacetResponse facets;
+        try
+        {
+            facets = await client.FacetAsync(_collection, payloadKey,
+                filter: BuildAttributeFilter(filters), cancellationToken: ct);
+        }
+        // FR-04, SC-01, SC-08, [[IADR-0502]] 決定 5 (#1760): **facet するキーに索引が無いなら、このコレクションの値は返さない（空集合）。**
+        // 索引が無いのは「このコレクションのどの点もそのキーを持たない」（例: 軸 `project` を 1 文書も持たない配備）か、
+        // **「索引がまだ構築されていない」**かのどちらかである。後者は、書き込み時の `wait=false` の作成が構築前・
+        // 作成の一時的な失敗（取り込みは Warning だけ残して書き込みを続ける）・再起動後の発見の走査が未了／失敗、で起きる
+        // （独立監査 🟡2）。空集合へ倒さないと、その軸の候補の照会全体が例外になる。後者を運用者が気付けるよう Warning で残す。
+        // 🔴 **捕まえるのはこの 1 つの失敗だけ**（他は従来どおり上げる）。
+        // 空集合は候補を減らす向きであり、ABAC を緩めない。検索は索引を張らない（索引の持ち主は取り込み）。
+        catch (RpcException ex) when (IsMissingFacetIndex(ex) && !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(
+                "Qdrant collection {Collection} has no keyword payload index for {PayloadKey}; "
+                + "no point carries the key, or its index is not built yet (ingestion creates it asynchronously "
+                + "on write and on startup discovery), returning no values",
+                _collection, LogSanitizer.Sanitize(payloadKey));
+            return [];
+        }
 
         // **値だけを取り出す。`Count` は読まない**（ADR-0043 決定 2）。
         // 明示的なループにしてあるのは、**件数へ触れていないことが読んで分かる**ようにするためである。
@@ -305,6 +326,15 @@ public class QdrantVectorStore(
 
         return [.. values];
     }
+
+    // [[IADR-0502]] 決定 5 (#1760): Qdrant が「facet するキーに索引が無い」で拒んだか（純関数。試験が形を固定する）。
+    // 実 Qdrant v1.18.1 / v1.13.4 は `InvalidArgument` と本文 `No appropriate index for faceting: <key>` を返す（実測）。
+    // 状態コードだけで判定しない —— 不正なキー（JSON パスにならない）も `InvalidArgument` であり、そちらは従来どおり上げる。
+    internal const string MissingFacetIndexMessage = "No appropriate index for faceting";
+
+    internal static bool IsMissingFacetIndex(RpcException ex) =>
+        ex.StatusCode == StatusCode.InvalidArgument
+        && ex.Status.Detail.Contains(MissingFacetIndexMessage, StringComparison.Ordinal);
 
     private static Filter? BuildAttributeFilter(ScopeFilter? filters)
     {

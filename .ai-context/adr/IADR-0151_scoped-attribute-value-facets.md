@@ -12,7 +12,7 @@ related_ids:
   - IADR-0014
 author: claude
 created: 2026-08-09
-updated: 2026-08-09
+updated: 2026-10-06
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0043_scoped-attribute-value-lookup.md
   - planning:projects/microservices-platform/05_screens/01_screens.md
@@ -128,6 +128,11 @@ ADR-0043 は「キャッシュする場合は**キャッシュキーに主体を
   実 Qdrant を立てるテスト構成が無いため（`Knowledge.IntegrationTests` に Qdrant 系は存在しない）、
   **実測は稼働環境が用意できた時点で行う**。呼び出し頻度が問題になったときに、
   索引の付与とキャッシュ（決定 3）を**同じ場で**判断する。
+  > **［2026-10-06 追記 / #1760］実測し、索引の付与を決めた（[IADR-0502](./IADR-0502_qdrant-keyword-indexes-for-facet-and-abac-keys.md)）。**
+  > 実 Qdrant（v1.18.1 / v1.13.4）の facet は、対象キーにキーワード索引が無いと `No appropriate index for faceting` で失敗する
+  > （「性能判断」ではなく**動作の前提**であった）。取り込みが `tags`・`shared_with`・`attributes.<key>` にキーワード索引を張り
+  > （キーの集合は `ToPayloadKey` から導く）、索引の無いキーの facet は空集合にする。フィルタの意味は索引で変わらないことも実測した。
+  > キャッシュ（決定 3）は本追記でも変えない。上の本文は書き換えない。
 - **#542**: タグ辞書の管理者スコープ（値集合・使用件数・追加・改名・削除）を同じ口へ足す。
   **(c) 改名の追随は保持方式の変更を伴う**ため、着手時に判断し必要なら計画へ裁定を仰ぐ
   （[IADR-0139](./IADR-0139_domain-bundled-contract-prs.md) 決定 5 の 2026-08-09 追記）。

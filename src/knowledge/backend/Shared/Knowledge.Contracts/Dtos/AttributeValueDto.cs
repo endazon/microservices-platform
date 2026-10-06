@@ -89,4 +89,23 @@ public static class AttributeValueKeys
         string.Equals(key, Tags, StringComparison.OrdinalIgnoreCase) ? Tags
         : string.Equals(key, SharedWith, StringComparison.OrdinalIgnoreCase) ? SharedWith
         : $"{AttributesPrefix}.{key}";
+
+    // FR-04, FR-05, SC-01, SC-08, [[IADR-0502]] 決定 1 (#1760): **Qdrant のキーワード索引を張るペイロードキー。**
+    //
+    // facet（`ListAttributeValuesAsync`）は対象キーにキーワード索引が無いと `No appropriate index for faceting` で
+    // 失敗する（実 Qdrant v1.18.1 / v1.13.4 で実測。[[IADR-0497]] §実測「参考」）。ABAC フィルタも同じキーを引く。
+    //
+    // 🔴 **照会とフィルタが通る写像（`ToPayloadKey`）をそのまま通して導く。** 張るキーを別に列挙すると、
+    // 照会側だけ増えたキーに索引が無い（＝その軸の候補だけ例外になる）形が作れる。
+    //
+    // 集合値キー（`tags`・`shared_with`）は常に入る —— 語彙は `DocumentAttributeEncoding.SetValuedKeys` が持つ
+    // （[[IADR-0448]]）。属性キーは動的（属性辞書）なので、書き込む点が持つキー・既存の点に現れたキーを渡す。
+    // 空・空白のキーは捨てる（`attributes.` は JSON パスとして不正で、索引にも facet にもならない）。
+    // 順序は序数順・重複なし（呼び出しの順を決定的にする）。
+    public static IReadOnlyList<string> KeywordIndexKeys(IEnumerable<string> attributeKeys) =>
+        [.. DocumentAttributeEncoding.SetValuedKeys
+            .Concat(attributeKeys.Where(k => !string.IsNullOrWhiteSpace(k)))
+            .Select(ToPayloadKey)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)];
 }

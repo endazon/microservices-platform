@@ -30,12 +30,15 @@
       "EmbeddingBudgetDeadLetterPipelineTests",
       "IngestToSearchInProcessTests",
       "IngestionTimeoutTests",
+      "KeywordIndexQdrantTests",
       "LexicalIndexQdrantTests",
       "LexicalIndexStoreTests",
       "MetadataIndexTextTests",
       "QdrantCjkNgramIndexTests",
       "QdrantFullTextIndexBootstrapTests",
-      "QdrantIngestionVectorStoreTests"
+      "QdrantIngestionVectorStoreTests",
+      "QdrantKeywordIndexHostedServiceTests",
+      "QdrantKeywordIndexTests"
     ],
     "docs/tests/FR-03_hybrid-search.md": [
       "AttributeValuesRelayDeploymentWiringTests",
@@ -79,6 +82,7 @@
       "AstKbReaderPolicySaveTests",
       "AstKbReaderPolicySeedTests",
       "AstKbReaderSearchScopeTests",
+      "AttributeValuesMissingIndexTests",
       "AuthorizationServiceRegistrarAttributesTests",
       "AuthzGrpcClientCallerCancellationTests",
       "BffAttributeValuesGrpcTests",

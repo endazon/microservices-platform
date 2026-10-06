@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-19, FR-21, SC-01, SC-06, SC-08, UC-01, UC-04, UC-05]
 adrs: [ADR-0125, ADR-0034, ADR-0036, ADR-0043, ADR-0046, ADR-0074, ADR-0088]
-iadrs: [IADR-0500, IADR-0151, IADR-0253, IADR-0272, IADR-0359, IADR-0392, IADR-0413]
-specs: [20261006_1755_ast-kb-reader-confidentiality-cap, 20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-752_connector-updated-by, 20260908_issue-1333_authz-resolves-user-attributes]
-issues: [#1755, #540, #542, #752, #989, #993, #1194, #1333, planning#466, planning#470, planning#518]
+iadrs: [IADR-0502, IADR-0500, IADR-0151, IADR-0253, IADR-0272, IADR-0359, IADR-0392, IADR-0413]
+specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-752_connector-updated-by, 20260908_issue-1333_authz-resolves-user-attributes]
+issues: [#1760, #1755, #540, #542, #752, #989, #993, #1194, #1333, planning#466, planning#470, planning#518]
 -->
 
 # 機能仕様書: ABAC 文書アクセス制御
@@ -114,6 +114,23 @@ ABAC ポリシーで突き合わせ、**アクセス可能な文書のみ**を�
 - **検索段と同じ ABAC フィルタ**で Qdrant の facet を呼び、**件数を捨ててから**返す（実装 ADR による）。
 - **スコープ未解決は空配列**（決定 5）——404 にも 403 にもしない。
 - **読み取り口は 1 系統**（同決定 4）。**#542 が同じ口へシステム管理者スコープを足す。**
+
+### ベクトル DB のキーワード索引（facet の前提）
+
+Qdrant の facet は、**数えるキーにキーワード索引が無いと失敗する**（実機で実測。ベクトルを持たない語彙索引のコレクションでも同じ）。
+取り込みサービスが、facet と ABAC フィルタが引くキーへキーワード索引を張る。
+
+| 張るキー | いつ張るか |
+| --- | --- |
+| `tags`・`shared_with`（集合値キー） | 起動のたびに、全コレクションへ存在の有無によらず張る（冪等） |
+| `attributes.<key>`（ABAC 属性。キーは動的） | 点を書くたびに、その点の属性キーへ（同じコレクション・キーへは 1 プロセスで 1 回）。加えて、起動後のバックグラウンドで既存の点を走査し、現れたキーへ張る |
+
+- **張るキーの集合は、候補の照会とフィルタが通るキーの写像と同じ関数から導く**（片方だけ増える形にしない）。
+- 対象のコレクションは取り込みが持つ全部（モデル別のコレクション・束ねる追加コレクション・語彙索引）。
+- **索引はフィルタの意味を変えない**（完全一致・大小文字の区別・リストの「いずれか一致」・キーの欠落の扱い。実機で張る前と後を比べた）。
+- **索引が無いキーの候補は空集合を返す**（そのコレクションのどの点もそのキーを持たないか、その索引がまだ構築されていない —— 非同期の作成が構築前・作成の一時的な失敗・再起動後の既存の点の走査が未了か失敗）。後者に気付けるよう検索サービスが Warning を残す。それ以外の失敗は従来どおりエラーになる。
+- 既存の点の走査は、1 つのコレクションの走査に失敗しても他のコレクションを続ける（失敗したコレクションはコレクション名と状態コードを Warning に残す）。
+- 索引の失敗は文書の取り込みを止めない（取り込みサービスの Warning に残り、次の書き込みで張り直す）。属性キーが JSON パスとして不正なら索引は付かない（その軸の照会もできない）。
 
 ## 関連仕様
 
