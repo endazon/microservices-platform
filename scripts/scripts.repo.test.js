@@ -13942,6 +13942,225 @@ exit 0
       assert.match(line, /^\[page 2\] 7\/10（70\.0%）/);
       assert.match(line, /累計 発行 7/);
     });
+
+    // --- #1762 独立監査（R1・Y1・Y2・Y5）: 止まる条件・確かめた位置・再開・終わりの DLQ 確認 ---------------------
+
+    ok('#1762 監査 Y2: DLQ の判定 —— カナリアは増加 0 だけを許し、それ以外は --max-dlq-growth まで許す（超えたら止まる）', () => {
+      // S1（カナリアの許容を広げる）・S2（止まる判定が発火しない）の変異をここで殺す。
+      assert.deepStrictEqual(rp.dlqVerdict({ isCanary: true, baseline: 5, current: 6, maxGrowth: 20 }), { growth: 1, allowed: 0, stop: true });
+      assert.deepStrictEqual(rp.dlqVerdict({ isCanary: true, baseline: 5, current: 5, maxGrowth: 20 }), { growth: 0, allowed: 0, stop: false });
+      assert.deepStrictEqual(rp.dlqVerdict({ isCanary: false, baseline: 5, current: 25, maxGrowth: 20 }), { growth: 20, allowed: 20, stop: false });
+      assert.deepStrictEqual(rp.dlqVerdict({ isCanary: false, baseline: 5, current: 26, maxGrowth: 20 }), { growth: 21, allowed: 20, stop: true });
+      assert.strictEqual(rp.dlqVerdict({ isCanary: false, baseline: 0, current: 1, maxGrowth: 0 }).stop, true, '許容 0 なら 1 件で止まる');
+      assert.strictEqual(rp.dlqVerdict({ isCanary: false, baseline: 9, current: 3, maxGrowth: 0 }).stop, false, '減った分では止まらない');
+    });
+
+    ok('#1762 監査 Y2: キューの待ち方 —— カナリア以外は深さの上限まで待ってから出し、発行したカナリアだけは空になるまで待つ', () => {
+      // S8（深さの待ちを外す）の変異をここで殺す。
+      const base = { maxQueueDepth: 200, drainTimeoutMs: 300000 };
+      assert.deepStrictEqual(rp.queueWaitPlan({ ...base, queueWatch: true, isCanary: false, published: 50 }),
+        { before: { limit: 200, timeoutMs: 30 * 60 * 1000 }, after: null });
+      assert.deepStrictEqual(rp.queueWaitPlan({ ...base, queueWatch: true, isCanary: true, published: 10 }),
+        { before: null, after: { limit: 0, timeoutMs: 300000 } });
+      assert.deepStrictEqual(rp.queueWaitPlan({ ...base, queueWatch: true, isCanary: true, published: 0 }),
+        { before: null, after: null }, '何も発行しなかったカナリア（0 件）は待たない');
+      assert.deepStrictEqual(rp.queueWaitPlan({ ...base, queueWatch: true, isCanary: false, maxQueueDepth: 0 }).before,
+        { limit: 0, timeoutMs: 30 * 60 * 1000 }, '深さの上限 0 は「空になるまで」であって「待たない」ではない');
+      assert.deepStrictEqual(rp.queueWaitPlan({ ...base, queueWatch: false, isCanary: true, published: 10 }), { before: null, after: null });
+    });
+
+    ok('#1762 監査 R1: 確かめた位置は DLQ の確認を通り取り込みのキューが空のときだけ進み、止まるときはそこへ戻す', () => {
+      let st = rp.newState(rp.parseArgs([]), new Date('2026-10-06T00:00:00Z'));
+      assert.strictEqual(st.confirmedCursor, null);
+      assert.strictEqual(rp.hasUnconfirmed(st), false);
+      st = rp.applyPage({ ...st, canaryPassed: true }, { nextCursor: 'c1', matched: 5, published: 1 });
+      assert.strictEqual(st.confirmedCursor, null, 'applyPage は確かめた位置を動かさない');
+      assert.strictEqual(rp.hasUnconfirmed(st), true);
+      st = rp.confirmChecked(st, { queueWatch: true, ingestDepth: 0 });
+      assert.strictEqual(st.confirmedCursor, 'c1');
+      st = rp.applyPage(st, { nextCursor: 'c3', matched: 5, published: 2 });
+      const notYet = rp.confirmChecked(st, { queueWatch: true, ingestDepth: 2 });
+      assert.strictEqual(notYet.confirmedCursor, 'c1', 'キューに残りがあるうちは DLQ へ行くかが決まっていない —— 進めない');
+      assert.strictEqual(rp.confirmChecked(st, { queueWatch: false }).confirmedCursor, 'c3', 'キューを見ない実行はページごとに進める');
+      st = rp.applyPage(notYet, { nextCursor: null, matched: 5, published: 2 });
+      assert.strictEqual(st.done, true);
+      const back = rp.rollbackToConfirmed(st);
+      assert.strictEqual(back.cursor, 'c1', '確かめていないページは再開で再発行される');
+      assert.strictEqual(back.done, false);
+      assert.strictEqual(back.canaryPassed, false, '止まった後はカナリアからやり直す');
+      assert.strictEqual(back.totals.published, 5, '累計（発行した回数）は戻さない');
+      const finished = rp.confirmChecked(st, { queueWatch: true, ingestDepth: 0 });
+      assert.strictEqual(rp.hasUnconfirmed(finished), false);
+      assert.strictEqual(rp.rollbackToConfirmed(finished), finished, '全部確かめた後は戻さない（終わりを先頭と取り違えない）');
+      assert.match(rp.stateProblem({ ...st, confirmedCursor: 1 }), /confirmedCursor/);
+      assert.match(rp.stateProblem({ ...st, confirmedDone: undefined }), /confirmedDone/);
+      assert.match(rp.stateProblem({ ...st, version: 1 }), /版/, '確かめた位置の無い版 1 からは続けない');
+    });
+
+    ok('#1762 監査 R1: --resume は DLQ の基準を今の深さへ取り直し、前後の数を返す', () => {
+      const st = { ...rp.newState(rp.parseArgs([]), new Date('2026-10-06T00:00:00Z')), dlqBaseline: 3 };
+      const r = rp.rebaselineDlq(st, 9);
+      assert.deepStrictEqual([r.previous, r.current, r.state.dlqBaseline], [3, 9, 9]);
+      assert.strictEqual(st.dlqBaseline, 3, '元の状態を書き換えない');
+      assert.deepStrictEqual([rp.rebaselineDlq({ ...st, dlqBaseline: null }, undefined).previous, rp.rebaselineDlq(st, undefined).current], [null, 0]);
+    });
+
+    ok('#1762 監査 Y5: --operator と --reason を解析して口へ送り、発行する実行（再開を含む）は --reason を必須にする', () => {
+      const o = rp.parseArgs(['--live', '--operator', ' alice ', '--reason', 'Voyage へ切替']);
+      assert.deepStrictEqual([o.operator, o.reason], ['alice', 'Voyage へ切替']);
+      assert.strictEqual(rp.missingReason(o), null);
+      assert.match(rp.missingReason(rp.parseArgs(['--live'])), /--reason/);
+      assert.match(rp.missingReason(rp.parseArgs(['--live', '--resume'])), /--reason/);
+      assert.strictEqual(rp.missingReason(rp.parseArgs(['--live', '--dry-run'])), null, 'dry-run では任意');
+      assert.strictEqual(rp.missingReason(rp.parseArgs(['--help'])), null);
+      assert.throws(() => rp.parseArgs(['--reason', 'x'.repeat(501)]), /--reason/);
+      assert.throws(() => rp.parseArgs(['--operator', 'x'.repeat(101)]), /--operator/);
+      assert.throws(() => rp.parseArgs(['--reason', '   ']), /--reason/);
+      assert.deepStrictEqual(rp.buildRequestBody({}, { dryRun: true, requestedBy: 'alice', reason: 'r' }),
+        { dryRun: true, requestedBy: 'alice', reason: 'r' });
+    });
+
+    // 駆動器を丸ごと走らせる（口と Keycloak は偽の HTTP、kubectl は PATH のスタブ）。
+    // スタブはキューを模す: 発行で取り込みのキューが増え、読むたびに 1 件ずつ減り、空になった時点で「毒」の文書の数だけ DLQ が増える
+    // —— 失敗は**発行の直後ではなく後から** DLQ に現れる（実機の再試行と同じ時間差）。
+    const runDriver1762 = (cfg) => {
+      const dir = fs1762.mkdtempSync(path1762.join(os1762.tmpdir(), 'rp1762-drv-'));
+      try {
+        const bin = path1762.join(dir, 'bin');
+        fs1762.mkdirSync(bin);
+        fs1762.writeFileSync(path1762.join(bin, 'kubectl'), `#!${process.execPath}
+const fs = require('fs'); const f = process.env.SIM_FILE; const a = process.argv.slice(2);
+if (a[0] === 'cluster-info') process.exit(0);
+if (!a.includes('list_queues')) process.exit(1);
+const s = JSON.parse(fs.readFileSync(f, 'utf8'));
+process.stdout.write('ingestion-service.DocumentUpdated\\t' + s.ingest + '\\nwolverine-dead-letter-queue\\t' + s.dlq + '\\n');
+if (s.ingest > 0) { s.ingest--; if (s.ingest === 0) { s.dlq += s.pendingFail; s.pendingFail = 0; } }
+fs.writeFileSync(f, JSON.stringify(s));
+`, { mode: 0o755 });
+        const harness = path1762.join(dir, 'harness.js');
+        fs1762.writeFileSync(harness, `
+const http = require('http'); const fs = require('fs');
+const [scriptPath, cfgPath, simFile] = process.argv.slice(2);
+const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+fs.writeFileSync(simFile, JSON.stringify({ ingest: cfg.ingest || 0, dlq: 0, pendingFail: 0 }));
+const requests = []; let poison = new Set();
+const server = http.createServer((req, res) => {
+  let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+    const send = (o) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+    if (req.url.includes('/token')) return send({ access_token: 't' });
+    if (req.url !== '/documents/republish-updated') return send({});
+    const body = JSON.parse(b); requests.push(body);
+    const docs = cfg.docs; const start = body.cursor ? Number(body.cursor) : 0;
+    const page = docs.slice(start, start + body.limit); const end = start + page.length;
+    const sim = JSON.parse(fs.readFileSync(simFile, 'utf8'));
+    sim.ingest += page.length; sim.pendingFail += page.filter((d) => poison.has(d)).length;
+    fs.writeFileSync(simFile, JSON.stringify(sim));
+    send({ dryRun: false, matched: docs.length, remaining: docs.length - start, selected: page.length, published: page.length,
+      skippedByGate: 0, withoutBody: 0, byConfidentiality: {}, nextCursor: end < docs.length ? String(end) : null, ids: page });
+  });
+});
+server.listen(0, '127.0.0.1', async () => {
+  const url = 'http://127.0.0.1:' + server.address().port;
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1' });
+  const rp = require(scriptPath);
+  const out = [];
+  for (const run of cfg.runs) {
+    poison = new Set(run.poison || []);
+    if (run.purgeDlq) { const s = JSON.parse(fs.readFileSync(simFile, 'utf8')); s.dlq = 0; fs.writeFileSync(simFile, JSON.stringify(s)); }
+    const before = requests.length;
+    const code = await rp.main(run.argv);
+    out.push({ code, state: JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')),
+      requests: requests.slice(before).map((r) => ({ cursor: r.cursor ?? null, limit: r.limit, reason: r.reason, requestedBy: r.requestedBy })) });
+  }
+  server.close();
+  process.stdout.write('\\n@@RESULT@@' + JSON.stringify(out));
+  process.exit(0);
+});
+`);
+        const stateFile = path1762.join(dir, 'state.json');
+        const cfgPath = path1762.join(dir, 'cfg.json');
+        const common = ['--live', '--state', stateFile, '--sleep-ms', '0', '--operator', 'alice', '--reason', 'test'];
+        fs1762.writeFileSync(cfgPath, JSON.stringify({
+          ...cfg, stateFile,
+          runs: cfg.runs.map((r) => ({ ...r, argv: [...common, ...r.argv] })),
+        }));
+        const env = { ...process.env, PATH: `${bin}${path1762.delimiter}${process.env.PATH}`, SIM_FILE: path1762.join(dir, 'sim.json'),
+          NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' };
+        for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'LIVE']) delete env[k];
+        const r = require('child_process').spawnSync(process.execPath,
+          [harness, path1762.join(__dirname, 'republish-document-updated.js'), cfgPath, env.SIM_FILE],
+          { encoding: 'utf8', env, timeout: 60000 });
+        const i = (r.stdout || '').indexOf('@@RESULT@@');
+        assert.ok(i >= 0, `駆動器の試験器が結果を出さなかった（exit ${r.status}）:\n${r.stdout}\n${r.stderr}`);
+        return { runs: JSON.parse(r.stdout.slice(i + '@@RESULT@@'.length)), stdout: r.stdout, stderr: r.stderr };
+      } finally {
+        fs1762.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const docs1762 = ['d0', 'd1', 'd2', 'd3', 'd4'];
+    const paging1762 = ['--canary', '1', '--page-size', '2', '--max-dlq-growth', '0'];
+
+    ok('#1762 監査 R1: DLQ で止まると確かめた位置へ戻して保存し、DLQ を purge してから再開しても取りこぼさない', () => {
+      const { runs, stderr } = runDriver1762({
+        docs: docs1762,
+        runs: [
+          { argv: paging1762, poison: ['d1'] },
+          { argv: [...paging1762, '--resume'], purgeDlq: true },
+        ],
+      });
+      const [first, resumed] = runs;
+      assert.strictEqual(first.code, 1, 'DLQ が増えたら止まる');
+      assert.deepStrictEqual(first.requests.map((q) => q.cursor), [null, '1', '3'], '失敗は後から現れる —— 3 ページ目の後の確認で気づく');
+      assert.strictEqual(first.state.cursor, '1', 'カナリアの後（確かめた位置）へ戻す。3 ページ目の後の位置で保存すると d1〜d4 を取りこぼす');
+      assert.strictEqual(first.state.confirmedCursor, '1');
+      assert.strictEqual(first.state.done, false);
+      assert.match(stderr, /確かめた位置へ戻しました/);
+      assert.strictEqual(resumed.code, 0);
+      assert.strictEqual(resumed.requests[0].cursor, '1', '再開は確かめた位置から —— 毒の文書 d1 をもう一度発行する');
+      assert.strictEqual(resumed.requests[0].limit, 1, '止まった後はカナリアからやり直す');
+      assert.strictEqual(resumed.state.done, true);
+      assert.strictEqual(resumed.state.dlqBaseline, 0, 'purge 後の深さへ取り直す');
+    });
+
+    ok('#1762 監査 R1: DLQ を purge せずに再開しても、前の増加で直後に止まらず、基準の前後を表示して最後まで流す', () => {
+      const { runs, stdout } = runDriver1762({
+        docs: docs1762,
+        runs: [
+          { argv: paging1762, poison: ['d1'] },
+          { argv: [...paging1762, '--resume'] },
+        ],
+      });
+      assert.strictEqual(runs[0].code, 1);
+      assert.strictEqual(runs[1].code, 0, '前の実行の増加を持ち越すとカナリア（許容 0）で直後に止まり続ける');
+      assert.match(stdout, /DLQ の基準を取り直しました: 前の基準 0 → 今の深さ 1/);
+      assert.deepStrictEqual(runs[1].requests.map((q) => q.cursor), ['1', '2', '4']);
+      assert.strictEqual(runs[1].state.done, true);
+      assert.ok(runs[1].requests.every((q) => q.reason === 'test' && q.requestedBy === 'alice'), '操作者と理由を毎回送る');
+    });
+
+    ok('#1762 監査 Y1: 最後のページの失敗は走査の終わりにキューが空になるのを待って捕まえ、完了と言わずに止まる', () => {
+      const { runs, stdout } = runDriver1762({ docs: docs1762, runs: [{ argv: paging1762, poison: ['d4'] }] });
+      assert.strictEqual(runs[0].code, 1, '終わりの DLQ の確認が無いと「完了」で exit 0 になる');
+      assert.doesNotMatch(stdout, /完了:/);
+      assert.strictEqual(runs[0].state.done, false);
+      assert.strictEqual(runs[0].state.cursor, '1', '確かめていないページ（d1〜d4）は再開で再発行される');
+    });
+
+    ok('#1762 監査 Y1: 失敗の無い走査は終わりにキューが空になるのを待ち、確かめてから完了を出す', () => {
+      const { runs, stdout } = runDriver1762({ docs: docs1762, runs: [{ argv: paging1762 }] });
+      assert.strictEqual(runs[0].code, 0);
+      assert.match(stdout, /取り込みのキューが空になるまで待って DLQ を確かめます/);
+      assert.match(stdout, /完了: 発行 5 件/);
+      assert.deepStrictEqual([runs[0].state.done, runs[0].state.confirmedDone], [true, true]);
+    });
+
+    ok('#1762 AI レビュー: 絞り込みが 0 件ならカナリアの待ちをせずにきれいに終わる', () => {
+      // 取り込みのキューに他の配信が残っていて、空になるまでの待ちの上限が短い —— 待てば超過で exit 1 になる。
+      const { runs } = runDriver1762({ docs: [], ingest: 5, runs: [{ argv: [...paging1762, '--drain-timeout-ms', '1'] }] });
+      assert.strictEqual(runs[0].code, 0);
+      assert.strictEqual(runs[0].requests.length, 1);
+      assert.strictEqual(runs[0].state.done, true);
+    });
   }
 
 };

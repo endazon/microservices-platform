@@ -165,6 +165,8 @@ node scripts/republish-document-updated.js --live --dry-run
 | AC-5 | 発行の中身は通常の経路と同じ（共有先・タグの表示名・本文指紋・hasBody 等） | `発行する中身は通常の経路と同じ…` |
 | AC-6 | 3 トグルとも OFF の個人資料は発行せず `skippedByGate` に数え、カーソルは進む | `門で止まる個人資料は…` |
 | AC-7 | 駆動スクリプトの純関数: 引数解析・状態ファイルの再開と不一致の拒否・連続失敗で止まる・キューの深さの解析・DLQ の増加の判定 | `scripts.repo.test.js` の `#1762` 節 |
+| AC-8 | （独立監査 R1・Y1・Y2）DLQ で止まると状態のカーソルを確かめた位置へ戻し、purge の有無に依らず `--resume` で取りこぼさない。`--resume` は DLQ の基準を取り直す。走査の終わりにキューが空になるまで待って DLQ を確かめてから完了を出す。停止条件（カナリアの許容 0・DLQ の停止・深さの待ち）を純関数で固定する。0 件は待たずに終わる | `scripts.repo.test.js` の `#1762 監査` 節（純関数 5 本・駆動器全体 5 本） |
+| AC-9 | （独立監査 Y4・Y5）空の `ids` は 400。dry-run も発行も、主体・操作者・理由をログへ残し、札の制御文字を潰す。発行する実行は `--reason` 必須 | `不正な要求は400…`・`dryRunも発行も_認証済みの主体と操作者と理由をログへ残し…`（T-78・T-81）・`#1762 監査 Y5` |
 
 ## 残るもの（受け入れたもの）
 
@@ -174,13 +176,16 @@ node scripts/republish-document-updated.js --live --dry-run
   「索引された」位置ではない。疑わしいときは `--resume` ではなく新規の走査（状態ファイルを消す）でやり直す。
 - 再発行は fan-out であり、Wiki 同期（`published` / `normalized` の組織文書を Wiki.js へ upsert）とグラフ同期（順序ガードで no-op）も動く（f-12）。
 - 埋め込みの費用: `public` / `internal` の文書は 1 チャンクにつき埋め込み 1 回。dry-run の内訳から見積もる（単価は契約の価格表を見る）。
+- （独立監査 Y3）口と `GET /documents/page` はページごとに台帳を全件読む（1 ページ O(N)・1 走査 O(N²)。22,564 件・ページ 50 で約 453 回 ≈ 1,020 万行）。
+  キーセットを SQL へ移し `(CreatedAt, Id)` の索引を張る直しは **#1765** へ切り出した（Postgres の uuid と .NET の Guid の並びを両側で揃える注意つき）。
+- 確かめた位置はキューが空になった時点でしか進まないので、止まったときに戻る幅が大きいと再開で重ねて発行する件数（費用）が増える（取りこぼしより重複を選んだ）。
 
 ## 試験の対応（実装後）
 
 | 試験クラス | 本数 | 何を固定するか |
 | --- | --- | --- |
-| `DocumentService.Tests/Features/Documents/Republish/RepublishDocumentUpdatedEndpointTests` | 10 | AC-1〜AC-6（テスト仕様書 FR-06 の T-76〜T-80） |
-| `scripts/scripts.repo.test.js`（`#1762` 節） | 8 | AC-7 |
+| `DocumentService.Tests/Features/Documents/Republish/RepublishDocumentUpdatedEndpointTests` | 11 | AC-1〜AC-6・AC-9（テスト仕様書 FR-06 の T-76〜T-81） |
+| `scripts/scripts.repo.test.js`（`#1762` 節） | 18 | AC-7・AC-8・AC-9 |
 
 ## 変異試験の結果（2026-10-06。scratch `msp1762-mut/`〔作業ツリーの写し〕の `mut.py`。1 変異ずつ当て、.NET は `RepublishDocumentUpdated` の試験、スクリプトは `#1762` 節を走らせ、戻す。**8 件すべて検出**）
 
@@ -195,15 +200,47 @@ node scripts/republish-document-updated.js --live --dry-run
 | M-7 | スクリプト: 連続失敗の判定を「以上」から「超え」にする | `#1762: 連続失敗が上限に達したら止まる…`（1） |
 | M-8 | スクリプト: 状態の絞り込みの突き合わせを外す | `#1762: 状態ファイルの絞り込みが違えば同じ走査とみなさず…`（1） |
 
+## 独立監査（NO-GO）の指摘の是正（2026-10-06・同じ PR）
+
+| 指摘 | 是正 | 試験 |
+| --- | --- | --- |
+| 🔴 R1 DLQ で止まったあとの `--resume` が、基準を持ち越して直後に止まり続けるか、DLQ を purge していると DLQ へ行った文書を黙って飛ばして「完了」と言う（カーソルを DLQ の確認より前に進めて保存していた） | 状態に**確かめた位置**（`confirmedCursor` / `confirmedDone`。DLQ の確認を通り、かつ取り込みのキューが空だった時点）を持つ。DLQ の増加・キューの待ちの超過・連続失敗・Ctrl-C で止まるときは cursor を確かめた位置へ戻して保存し、カナリアもやり直す。`--resume` は DLQ の基準を今の深さへ取り直し、前の基準と今の深さを表示する。状態ファイルの版を 2 へ上げた | 純関数（`confirmChecked`・`rollbackToConfirmed`・`rebaselineDlq`）と、駆動器全体を偽の口と kubectl のスタブ（失敗が後から DLQ に現れる時間差を模す）で走らせる 2 本（purge あり／なし） |
+| 🟡 Y1 走査の終わりに DLQ を確かめない | 最後のページ（と `--max-pages` の区切り）の後、キューが空になるまで待って（上限 `--drain-timeout-ms`）同じ判定をかけ、増えていれば確かめた位置へ戻して exit 1。通ってから「完了」 | 駆動器全体 2 本（最後のページの失敗で止まる／失敗なしで完了） |
+| 🟡 Y2 停止条件が試験されていない（S1・S2・S8 が生き残った） | `dlqVerdict` / `queueWaitPlan` を切り出して試験 | 純関数 2 本 |
+| 🟡 Y4 `ids: []` を全件として扱う | 400（鍵 `ids`）。openapi に `minItems: 1` | `不正な要求は400…`（T-78） |
+| 🟡 Y5 dry-run を記録しない・操作者と理由が残らない | dry-run もログへ 1 行。要求に任意の札 `requestedBy`（100 文字）・`reason`（500 文字）を足し、`LogSanitizer` で制御文字を潰して主体と一緒に出す。スクリプトは `--operator`（既定 `USER`）・`--reason` から埋め、**発行する実行（再開を含む）は `--reason` 必須**（`--live` の判定より後で見る —— 素の実行は exit 3 のまま） | `dryRunも発行も_認証済みの主体と操作者と理由をログへ残し…`（T-81）・`#1762 監査 Y5` |
+| 🟢 AI レビュー: dry-run が残り全件を件数ごとに列挙し直す／0 件でもカナリアの待ちをする | 内訳を 1 回の走査で数える（`RepublishSelection.Summarize`。`CountByConfidentiality` は吸収して消した）。確かめていない発行が無く、このページも何も発行しなかったら待たずに進め、終わりの確認も要らない | 既存の dry-run の試験（T-79）・駆動器全体 1 本（0 件・他の配信でキューが空でない・待ちの上限 1ms で exit 0） |
+| 🟡 Y3 1 ページ O(N)・1 走査 O(N²) | **本 PR では直さない。#1765 へ切り出した**（キーセットを SQL へ・`(CreatedAt, Id)` の索引・Postgres の uuid と .NET の Guid の並びの注意。22,564 件・ページ 50 で約 453 回 ≈ 1,020 万行） | — |
+
+**変異試験（是正分。scratch `msp1763-fix-mut/` の `mut.py`。1 変異ずつ当てて `node scripts/scripts.test.js` 全体または DocumentService の `Republish` の試験を走らせ、戻す。13 件すべて検出）**:
+
+| # | 変異 | 最初に落ちた試験 |
+| --- | --- | --- |
+| S1 | カナリアの許容を `--max-dlq-growth` にする | `#1762 監査 Y2: DLQ の判定…` |
+| S2 | DLQ の停止が発火しない（`stop: false`） | `#1762 監査 Y2: DLQ の判定…` |
+| S8 | 深さの待ちを外す（`before: null`） | `#1762 監査 Y2: キューの待ち方…` |
+| R1a | 止まるときに確かめた位置へ戻さない（`rollbackToConfirmed` が恒等） | `#1762 監査 R1: 確かめた位置は…` |
+| R1b | `--resume` で DLQ の基準を取り直さない | `#1762 監査 R1: DLQ を purge せずに再開しても…`（exit 1） |
+| R1c | キューに残りがあっても確かめた位置を進める | `#1762 監査 R1: 確かめた位置は…` |
+| R1d | DLQ の停止で状態を戻さずに止まる（旧形） | `#1762 監査 R1: DLQ で止まると確かめた位置へ戻して保存し…` |
+| Y1 | 走査の終わりの確認を外す | `#1762 監査 Y1: 最後のページの失敗は…`（exit 0 で完了と言う） |
+| AI | 何も発行しなかったページでも確認を待つ | `#1762 AI レビュー: 絞り込みが 0 件なら…`（exit 1） |
+| Y5 | `--reason` を必須にしない | `#1762 監査 Y5: --operator と --reason…` |
+| Y4 | 空の `ids` の検証を外す | `不正な要求は400…`（200 が返る） |
+| Y5a | dry-run を記録しない | `dryRunも発行も_認証済みの主体と…` |
+| Y5b | 理由の札を潰さずにログへ出す | `dryRunも発行も_認証済みの主体と…` |
+
+（Y5c〔発行の行に操作者を載せない〕も同じ試験で落ちる。）
+
 ## 検証（2026-10-06。`origin/develop` `34ee800e` 基点）
 
 | コマンド | 結果 |
 | --- | --- |
 | `dotnet build src/knowledge/backend/backend.slnx --no-incremental` | 成功。警告は既存の CS0618（`Knowledge.IntegrationTests` の `QdrantBuilder()`）だけ |
 | `dotnet build src/platform/backend/backend.slnx` | 警告 0・エラー 0 |
-| `dotnet test .../DocumentService.Tests.csproj` | 988 件すべて成功（新規 10 件を含む） |
+| `dotnet test .../DocumentService.Tests.csproj` | 988 件すべて成功（新規 10 件を含む）。監査の是正後 989 件すべて成功（T-81 の 1 件を足した） |
 | `dotnet format <knowledge / platform の slnx> --verify-no-changes` | 両方 exit 0 |
-| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 928 件成功（`#1762` の 8 件・#1550 の閉包と README の網羅を含む） |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 928 件成功（`#1762` の 8 件・#1550 の閉包と README の網羅を含む）。監査の是正後 938 件成功（`#1762` 18 件） |
 | `check-trace-blocks` / `check-adr-numbering` / `gen-knowledge-graph --check` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-test-traceability` / `check-doc-links` / `check-unit-dependencies` / `check-bff-authz-docs` / `check-openapi-dto-drift` / `check-contract-schema` / `check-event-topology` / `check-backend-libraries` / `check-reading-budget` | すべて exit 0 |
 | `check-test-spec-coverage` | `--update` で床を上げた（FR-06 × `RepublishDocumentUpdatedEndpointTests`）後 exit 0 |
 | `check-doc-updated --base origin/develop` | exit 0 |
@@ -211,7 +248,11 @@ node scripts/republish-document-updated.js --live --dry-run
 ## PoC の操作者向けの手順（要約。正は運用仕様書の再索引の節）
 
 1. 上の確認 a〜d を実行し、埋め込み先が用意されているか確かめる（無ければ再発行しない）。
-2. `node scripts/republish-document-updated.js --live --dry-run` で件数と内訳を見る。
-3. `node scripts/republish-document-updated.js --live`（カナリア 10 件 → 取り込みのキューが空になるまで待つ → DLQ が増えていなければ続ける）。
-4. 中断したら `--resume`。止まったら表示された理由（DLQ の増加・連続失敗）を直してから `--resume`。
+2. `node scripts/republish-document-updated.js --live --dry-run --operator <名前>` で件数と内訳を見る（dry-run も口のログに残る）。
+3. `node scripts/republish-document-updated.js --live --operator <名前> --reason "<理由>"`（`--reason` は必須。カナリア 10 件 → 取り込みのキューが空になるまで待つ →
+   DLQ が増えていなければ続ける → 走査の終わりにキューが空になるまで待って DLQ を確かめてから「完了」）。
+4. 止まったら（Ctrl-C・連続失敗・キューの待ちの超過・DLQ の増加）、状態のカーソルは**確かめた位置**へ戻してある。表示された理由を直してから
+   `node scripts/republish-document-updated.js --live --resume --operator <名前> --reason "<直した原因>"`（量の指定を変えていたら同じものを渡す）。
+   再開は DLQ の基準を今の深さへ取り直し（前の基準 → 今の深さを表示）、カナリアからやり直し、確かめていないページ（DLQ へ行った文書を含む）をもう一度発行する。
+   DLQ を purge してから再開しても取りこぼさない。
 5. Qdrant の `points_count` が増えることを確かめる。

@@ -17,6 +17,8 @@ internal static class RepublishSelection
     internal const int DefaultLimit = 100;
     internal const int MaxLimit = 500;
     internal const int MaxIds = 500;
+    internal const int MaxRequestedByLength = 100;
+    internal const int MaxReasonLength = 500;
 
     // 台帳から絞り込みに要る列だけを投影した行（本体は選んだページの分だけ読み直す）。
     internal sealed record Row(Guid Id, DateTimeOffset CreatedAt,
@@ -62,16 +64,24 @@ internal static class RepublishSelection
         return (page, new DocumentPageCursor(last.CreatedAt.UtcTicks, last.Id).Encode());
     }
 
-    // 機密区分の内訳。**欠落・未知は安全側（restricted）へ倒す** —— 取り込みが語彙索引へ回す判定
+    // 内訳（門で止まる件数・本文なし・機密区分）を **1 回の走査で**数える（dry-run は残り全件を数えるので、件数ごとに列挙し直さない）。
+    // 門の判定は発行の門と同じ関数（`DocumentEndpoints.PassesPublishGate`）を属性に対して使う。
+    // 機密区分の内訳: **欠落・未知は安全側（restricted）へ倒す** —— 取り込みが語彙索引へ回す判定
     // （`LexicalIndexPolicy`）と同じ入力（`ConfidentialityLevels.FromAttributes`）であり、
     // `public` / `internal` の件数が埋め込みへ進む件数（費用の見積もりの母数）になる。
     // 0 件の区分も並べる（「無い」と「数えていない」を取り違えない）。
-    internal static Dictionary<string, int> CountByConfidentiality(IEnumerable<Row> rows)
+    internal static (int SkippedByGate, int WithoutBody, Dictionary<string, int> ByConfidentiality) Summarize(IEnumerable<Row> rows)
     {
         var counts = ConfidentialityLevels.All.ToDictionary(l => l, _ => 0, StringComparer.Ordinal);
+        var skippedByGate = 0;
+        var withoutBody = 0;
         foreach (var r in rows)
+        {
             counts[ConfidentialityLevels.FromAttributes(r.Attributes)]++;
-        return counts;
+            if (!DocumentEndpoints.PassesPublishGate(r.Attributes)) skippedByGate++;
+            if (!r.HasMarkdownUri) withoutBody++;
+        }
+        return (skippedByGate, withoutBody, counts);
     }
 
     // 要求の検証。**先頭の 1 件を、その鍵で返す**（他の口と同じ作法）。
@@ -80,6 +90,9 @@ internal static class RepublishSelection
     {
         if (req.DryRun is null)
             return ("dryRun", "dryRun を明示してください（true で件数と内訳だけを返し、false で発行します）。");
+        // 🔴 **空の `ids` は「全件」ではない。** 絞り込みの指定が空になった呼び出し（組み立ての誤り）を全件の発行に倒さない。
+        if (req.Ids is { Count: 0 })
+            return ("ids", "ids が空です。全件を対象にするなら ids を省略してください。");
         if (req.Ids is { Count: > MaxIds })
             return ("ids", $"ids は {MaxIds} 件までです。");
         if (req.Attributes is not null)
@@ -92,6 +105,10 @@ internal static class RepublishSelection
                     return ($"attributes.{key}", "属性の値が空です。");
             }
         }
+        if (req.RequestedBy is { Length: > MaxRequestedByLength })
+            return ("requestedBy", $"requestedBy は {MaxRequestedByLength} 文字までです。");
+        if (req.Reason is { Length: > MaxReasonLength })
+            return ("reason", $"reason は {MaxReasonLength} 文字までです。");
         if (req.Cursor is not null && !DocumentPageCursor.TryDecode(req.Cursor, out _))
             return ("cursor", "カーソルが不正です。前の応答の nextCursor をそのまま渡してください。");
         return null;
@@ -100,13 +117,17 @@ internal static class RepublishSelection
 
 // FR-02, FR-06, [[IADR-0503]] 決定 2 (#1762): 要求。
 // `dryRun` は必須（省略は 400）。`limit` は既定 100・1〜500 に丸める。`createdBefore` はこの時刻**より前**に作られた文書だけ。
+// `ids` は空を 400 にする（省略が全件）。`requestedBy` / `reason` は記録のためだけの任意の札（認証済みの主体と一緒にログへ出す。
+// 長さの上限を超えたら 400。ログへは制御文字を潰してから出す）—— 口の主体は駆動スクリプトの機械の client なので、人の名前と理由はここで運ぶ。
 public sealed record RepublishDocumentUpdatedRequest(
     bool? DryRun,
     int? Limit = null,
     string? Cursor = null,
     DateTimeOffset? CreatedBefore = null,
     List<Guid>? Ids = null,
-    Dictionary<string, string>? Attributes = null);
+    Dictionary<string, string>? Attributes = null,
+    string? RequestedBy = null,
+    string? Reason = null);
 
 // FR-02, FR-06, [[IADR-0503]] 決定 2 (#1762): 応答。
 // `matched` はカーソルに依らない絞り込みの全件、`remaining` はこの呼び出しの前に残っていた件数。

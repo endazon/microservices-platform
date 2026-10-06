@@ -6,10 +6,13 @@ using DocumentService.Features.Documents.Republish;
 using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace DocumentService.Tests.Features.Documents.Republish;
@@ -196,7 +199,7 @@ public class RepublishDocumentUpdatedEndpointTests
     }
 
     [Fact]
-    public async Task 不正な要求は400で何も発行しない_dryRunの省略_空のキー_空の値_ids超過_不正なカーソル()
+    public async Task 不正な要求は400で何も発行しない_dryRunの省略_空のキー_空の値_ids超過_空のids_札の超過_不正なカーソル()
     {
         await using var factory = new TestWebApplicationFactory();
         await SeedAsync(factory, "a", Attrs("internal"));
@@ -208,6 +211,10 @@ public class RepublishDocumentUpdatedEndpointTests
             (new { dryRun = false, attributes = new Dictionary<string, string> { [" "] = "x" } }, "attributes"),
             (new { dryRun = false, attributes = new Dictionary<string, string> { ["department"] = "" } }, "attributes.department"),
             (new { dryRun = false, ids = Enumerable.Range(0, RepublishSelection.MaxIds + 1).Select(_ => Guid.NewGuid()).ToArray() }, "ids"),
+            // #1762 監査 Y4: 空の ids は「全件」ではない（省略だけが全件）。
+            (new { dryRun = false, ids = Array.Empty<Guid>() }, "ids"),
+            (new { dryRun = false, requestedBy = new string('a', RepublishSelection.MaxRequestedByLength + 1) }, "requestedBy"),
+            (new { dryRun = false, reason = new string('a', RepublishSelection.MaxReasonLength + 1) }, "reason"),
             (new { dryRun = false, cursor = "not-a-cursor" }, "cursor"),
         };
         foreach (var (body, key) in cases)
@@ -331,6 +338,57 @@ public class RepublishDocumentUpdatedEndpointTests
         rest.Published.Should().Be(2);
         rest.NextCursor.Should().BeNull();
         Published(factory).Select(e => e.DocumentId).Should().Equal([on.Id, org.Id]);
+    }
+
+    // ── AC-7: 記録（#1762 監査 Y5） ───────────────────────────────────────────
+
+    [Fact]
+    public async Task dryRunも発行も_認証済みの主体と操作者と理由をログへ残し_札の改行は潰す()
+    {
+        await using var factory = new LogCapturingFactory();
+        await SeedAsync(factory, "a", Attrs("internal"));
+        var admin = Admin(factory);
+
+        await CallAsync(admin, new { dryRun = true, requestedBy = "alice", reason = "voyage へ切替\nFAKE LINE" });
+        await CallAsync(admin, new { dryRun = false, requestedBy = "alice", reason = "再索引 #1762" });
+
+        var lines = factory.Logs.Lines.Where(l => l.Category == typeof(RepublishDocumentUpdatedEndpoint).FullName).ToList();
+        lines.Should().HaveCount(2, "dry-run も発行も 1 行ずつ記録する");
+        lines[0].Message.Should().StartWith("Republish dry-run").And.Contain("by admin-1").And.Contain("requestedBy alice")
+            .And.Contain("voyage へ切替_FAKE LINE").And.NotContain("\n", "改行を潰さないとログ行を偽造できる");
+        lines[1].Message.Should().StartWith("Republished DocumentUpdated for 1").And.Contain("by admin-1")
+            .And.Contain("requestedBy alice").And.Contain("reason 再索引 #1762");
+    }
+
+    private sealed class LogCapturingFactory : TestWebApplicationFactory
+    {
+        public CapturingLoggerProvider Logs { get; } = new();
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.ConfigureLogging(l => l.AddProvider(Logs));
+        }
+    }
+
+    private sealed class CapturingLoggerProvider : ILoggerProvider
+    {
+        public ConcurrentQueue<(string Category, string Message)> Lines { get; } = new();
+
+        public ILogger CreateLogger(string categoryName) => new Logger(this, categoryName);
+
+        public void Dispose() { }
+
+        private sealed class Logger(CapturingLoggerProvider owner, string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter)
+                => owner.Lines.Enqueue((category, formatter(state, exception)));
+        }
     }
 
     private static Dictionary<string, string> PrivateNote(bool search) => new()

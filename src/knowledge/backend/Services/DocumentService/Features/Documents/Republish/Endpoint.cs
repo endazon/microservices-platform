@@ -3,6 +3,7 @@ using DocumentService.Features.Documents.ListPage;
 using DocumentService.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Logging;
 
 namespace DocumentService.Features.Documents.Republish;
 
@@ -57,17 +58,28 @@ internal static class RepublishDocumentUpdatedEndpoint
             var ordered = RepublishSelection.Order(rows, req.Attributes);
             var remaining = RepublishSelection.Remaining(ordered, after);
 
+            var logger = loggers.CreateLogger(typeof(RepublishDocumentUpdatedEndpoint).FullName!);
+            var principal = http.User.Identity?.Name ?? "(unnamed)";
+            var requestedBy = LogSanitizer.Sanitize(req.RequestedBy, RepublishSelection.MaxRequestedByLength);
+            var reason = LogSanitizer.Sanitize(req.Reason, RepublishSelection.MaxReasonLength);
+
             if (req.DryRun == true)
             {
+                // 🔴 **dry-run も記録する**（誰がいつ全件の内訳を引いたか。発行の前段であり、監査で追えるようにする）。
+                var summary = RepublishSelection.Summarize(remaining);
+                logger.LogInformation(
+                    "Republish dry-run: {Remaining} of {Matched} document(s) remaining (skipped by the publish gate {Skipped}; "
+                    + "without body {WithoutBody}) by {Principal} (requestedBy {RequestedBy}; reason {Reason})",
+                    remaining.Count, ordered.Count, summary.SkippedByGate, summary.WithoutBody, principal, requestedBy, reason);
                 return Results.Ok(new RepublishDocumentUpdatedResponse(
                     DryRun: true,
                     Matched: ordered.Count,
                     Remaining: remaining.Count,
                     Selected: remaining.Count,
                     Published: 0,
-                    SkippedByGate: remaining.Count(r => !DocumentEndpoints.PassesPublishGate(r.Attributes)),
-                    WithoutBody: remaining.Count(r => !r.HasMarkdownUri),
-                    ByConfidentiality: RepublishSelection.CountByConfidentiality(remaining),
+                    SkippedByGate: summary.SkippedByGate,
+                    WithoutBody: summary.WithoutBody,
+                    ByConfidentiality: summary.ByConfidentiality,
                     NextCursor: null));
             }
 
@@ -93,11 +105,11 @@ internal static class RepublishDocumentUpdatedEndpoint
                 published++;
             }
 
-            loggers.CreateLogger(typeof(RepublishDocumentUpdatedEndpoint).FullName!).LogInformation(
+            logger.LogInformation(
                 "Republished DocumentUpdated for {Published} document(s) (skipped by the publish gate {Skipped}; "
-                + "remaining before this page {Remaining} of {Matched}; more={More}) by {Principal}",
-                published, skippedByGate, remaining.Count, ordered.Count, next is not null,
-                http.User.Identity?.Name ?? "(unnamed)");
+                + "remaining before this page {Remaining} of {Matched}; more={More}) by {Principal} (requestedBy {RequestedBy}; reason {Reason})",
+                published, skippedByGate, remaining.Count, ordered.Count, next is not null, principal, requestedBy, reason);
+            var pageSummary = RepublishSelection.Summarize(page);
 
             return Results.Ok(new RepublishDocumentUpdatedResponse(
                 DryRun: false,
@@ -106,8 +118,8 @@ internal static class RepublishDocumentUpdatedEndpoint
                 Selected: page.Count,
                 Published: published,
                 SkippedByGate: skippedByGate,
-                WithoutBody: page.Count(r => !r.HasMarkdownUri),
-                ByConfidentiality: RepublishSelection.CountByConfidentiality(page),
+                WithoutBody: pageSummary.WithoutBody,
+                ByConfidentiality: pageSummary.ByConfidentiality,
                 NextCursor: next));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly)
           .WithName("RepublishDocumentUpdated")

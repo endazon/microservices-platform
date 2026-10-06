@@ -2002,6 +2002,7 @@ paths:
           `createdBefore` を走査の開始時刻に固定すると、途中で作られた文書（作成の経路で発行済み）は選ばれない。
         - 台帳は書き換えない（版も更新時刻も動かない）。中身は通常の経路と同じ（共有先・タグの表示名・本文指紋・本文の所在）。
         - 露出の 3 トグルが OFF の個人資料は発行しない（`skippedByGate` に数え、カーソルはその先へ進む）。
+        - dry-run も発行も 1 呼び出しごとにログへ 1 行残す（認証済みの主体と `requestedBy` / `reason` の札）。
         - 発行は耐久アウトボックスを持たない。200 はブローカへの到達の保証ではない（確かめ方は Qdrant の `points_count`）。
       operationId: republish-document-updated
       security:
@@ -2018,11 +2019,13 @@ paths:
                 limit: { type: integer, default: 100, minimum: 1, maximum: 500, description: 1 ページの件数（範囲外は丸める） }
                 cursor: { type: string, description: "前の応答の `nextCursor`（不透明）。不正な値は 400" }
                 createdBefore: { type: string, format: date-time, description: この時刻より前に作られた文書だけ }
-                ids: { type: array, maxItems: 500, items: { type: string, format: uuid }, description: 文書 ID の集合（501 件以上は 400） }
+                ids: { type: array, minItems: 1, maxItems: 500, items: { type: string, format: uuid }, description: "文書 ID の集合（空の配列・501 件以上は 400。全件は省略で表す）" }
                 attributes:
                   type: object
                   additionalProperties: { type: string }
                   description: 属性の完全一致（AND。キー・値とも大文字小文字を区別）。空のキー・空の値は 400
+                requestedBy: { type: string, maxLength: 100, description: "操作者の札（記録だけに使う。認証済みの主体と一緒にログへ出る。制御文字は潰す）" }
+                reason: { type: string, maxLength: 500, description: "理由の札（記録だけに使う。駆動スクリプトは発行する実行で必須にする）" }
       responses:
         "200":
           description: 発行した 1 ページ（dry-run は残り全件の内訳）
@@ -2045,7 +2048,7 @@ paths:
                     description: 機密区分の内訳（public / internal / confidential / restricted。欠落・未知は restricted。0 件も並べる）
                   nextCursor: { type: [string, "null"], description: 続きのカーソル。尽きたら null（dry-run は常に null） }
         "400":
-          description: dryRun の省略・空の属性キー／値・ids の超過・不正なカーソル
+          description: dryRun の省略・空の属性キー／値・空の ids・ids の超過・requestedBy／reason の長さの超過・不正なカーソル
         "401":
           description: 未認証
         "403":

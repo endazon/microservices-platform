@@ -20,16 +20,23 @@
  *
  * 実行方法:
  *   node scripts/republish-document-updated.js --help
- *   node scripts/republish-document-updated.js --live --dry-run           # 件数と内訳だけ（発行しない）
- *   node scripts/republish-document-updated.js --live                     # 全件（カナリア → ページごと）
- *   node scripts/republish-document-updated.js --live --resume            # 状態ファイルから続ける
- *   node scripts/republish-document-updated.js --live --attr confidentiality=internal --page-size 20 --sleep-ms 5000
+ *   node scripts/republish-document-updated.js --live --dry-run --operator alice                        # 件数と内訳だけ（発行しない）
+ *   node scripts/republish-document-updated.js --live --operator alice --reason "Voyage へ切替後の再索引"   # 全件（カナリア → ページごと）
+ *   node scripts/republish-document-updated.js --live --resume --operator alice --reason "DLQ の原因を直した"  # 状態ファイルから続ける
+ *   node scripts/republish-document-updated.js --live --reason "internal だけ" --attr confidentiality=internal --page-size 20 --sleep-ms 5000
  *
  * 主な環境変数:
  *   REPUBLISH_DOCUMENT_URL / REPUBLISH_KC_URL（与えれば port-forward を張らない）
  *   REPUBLISH_NS（既定 microservices-platform）/ REPUBLISH_INFRA_NS（既定 platform-infra）
  *   REPUBLISH_REALM（既定 platform）/ REPUBLISH_CLIENT_ID（既定 abac-seeder）/ REPUBLISH_CLIENT_SECRET
  *   REPUBLISH_INGEST_QUEUE（既定 ingestion-service.DocumentUpdated）/ REPUBLISH_DLQ（既定 wolverine-dead-letter-queue）
+ *   REPUBLISH_POLL_MS（キューの待ちで読み直す間隔。既定 5000。試験が短くするためのもの）
+ *
+ * 🔴 **確かめた位置（confirmedCursor）まで戻して止まる。** DLQ の確認を通り、かつ取り込みのキューが空だった時点までのページだけを
+ *    「確かめた」とする。DLQ の増加・キューの待ちの超過・連続失敗・中断（Ctrl-C）で止まるときは、状態の cursor を確かめた位置へ
+ *    戻して保存する —— 確かめていないページは --resume で**もう一度発行される**（再発行は冪等）。--resume は DLQ の基準を
+ *    その時点の深さへ取り直す（前の増加で再開の直後に止まり続けないため。戻したページは再発行されるので取りこぼさない）。
+ *    走査の終わり（と --max-pages の区切り）では取り込みのキューが空になるまで待って DLQ を確かめてから「完了」を出す。
  *
  * 終了コード: 0=完了（または --max-pages で区切って止めた） / 1=失敗・安全のための停止（状態は残る） /
  *            2=前提未整備（k8s へ到達できない・キューを読めない等） / 3=明示の指定が無い（#1550）
@@ -52,7 +59,10 @@ const DEFAULTS = Object.freeze({
   maxConsecutiveFailures: 3,
   stateFile: 'republish-document-updated.state.json',
 });
-const STATE_VERSION = 1;
+// 版 2（#1762 監査 R1）: confirmedCursor を足した。版 1 の状態からは続けない（確かめた位置が分からない）。
+const STATE_VERSION = 2;
+const MAX_OPERATOR_LENGTH = 100;
+const MAX_REASON_LENGTH = 500;
 
 const log = (s) => process.stdout.write(`${s}\n`);
 const warn = (s) => process.stderr.write(`${s}\n`);
@@ -73,7 +83,9 @@ const USAGE = `使い方: node scripts/republish-document-updated.js --live [オ
   --max-consecutive-failures <n> 連続でこの回数失敗したら止まる（既定 ${DEFAULTS.maxConsecutiveFailures}）
   --ids <id,id,...>             文書 ID で絞る（500 件まで）
   --attr <key=value>            属性の完全一致で絞る（繰り返し可・AND）
-  --created-before <ISO8601>    この時刻より前に作られた文書だけ（既定は新規の走査の開始時刻）`;
+  --created-before <ISO8601>    この時刻より前に作られた文書だけ（既定は新規の走査の開始時刻）
+  --operator <name>             操作者（口のログへ認証済みの主体と並べて残す。既定は環境変数 USER。${MAX_OPERATOR_LENGTH} 文字まで）
+  --reason <text>               理由（発行する実行では必須。口のログへ残す。${MAX_REASON_LENGTH} 文字まで）`;
 
 // --- 純粋関数（実機なしで試験できるように切り出す） ---------------------------------
 
@@ -97,6 +109,7 @@ function parseArgs(argv) {
     maxQueueDepth: DEFAULTS.maxQueueDepth, maxDlqGrowth: DEFAULTS.maxDlqGrowth,
     maxConsecutiveFailures: DEFAULTS.maxConsecutiveFailures,
     stateFile: DEFAULTS.stateFile, ids: null, attributes: null, createdBefore: null,
+    operator: null, reason: null,
   };
   const value = (i, name) => {
     if (i + 1 >= argv.length || String(argv[i + 1]).startsWith('--'))
@@ -138,6 +151,20 @@ function parseArgs(argv) {
         i++;
         break;
       }
+      case '--operator': {
+        const v = value(i, a).trim();
+        if (!v || v.length > MAX_OPERATOR_LENGTH) throw new Error(`--operator は 1〜${MAX_OPERATOR_LENGTH} 文字で指定してください。`);
+        o.operator = v;
+        i++;
+        break;
+      }
+      case '--reason': {
+        const v = value(i, a).trim();
+        if (!v || v.length > MAX_REASON_LENGTH) throw new Error(`--reason は 1〜${MAX_REASON_LENGTH} 文字で指定してください。`);
+        o.reason = v;
+        i++;
+        break;
+      }
       case '--created-before': {
         const raw = value(i, a);
         const t = Date.parse(raw);
@@ -156,6 +183,16 @@ function parseArgs(argv) {
   return o;
 }
 
+/**
+ * 発行する実行（再開を含む）は理由を必須にする（#1762 監査 Y5。口の主体は機械の client なので、誰が何のためにを札で運ぶ）。
+ * `--live` の判定（exit 3）より後で見る —— 指定の無い素の実行は、理由の有無に依らず何もせずに終わる（#1550）。
+ * @returns {string|null} 違反の文言（null なら続けてよい）
+ */
+function missingReason(o) {
+  if (o.help || o.dryRun || o.reason) return null;
+  return '発行する実行では --reason <理由> が必須です（口のログへ残す。dry-run では任意）。';
+}
+
 /** 絞り込みの正規形（状態ファイルとの突き合わせに使う。キーの順に依らない）。 */
 function filtersOf(o) {
   const attributes = o.attributes
@@ -172,6 +209,8 @@ function newState(o, now = new Date()) {
     startedAt: now.toISOString(),
     filters: { ...f, createdBefore: f.createdBefore || now.toISOString() },
     cursor: null,
+    confirmedCursor: null,
+    confirmedDone: false,
     done: false,
     canaryPassed: false,
     dlqBaseline: null,
@@ -190,6 +229,8 @@ function stateProblem(state) {
   if (!state.filters || typeof state.filters.createdBefore !== 'string')
     return '状態ファイルに絞り込み（createdBefore）がありません。';
   if (state.cursor !== null && typeof state.cursor !== 'string') return '状態ファイルの cursor が不正です。';
+  if (state.confirmedCursor !== null && typeof state.confirmedCursor !== 'string') return '状態ファイルの confirmedCursor が不正です。';
+  if (typeof state.confirmedDone !== 'boolean') return '状態ファイルの confirmedDone が不正です。';
   if (!state.totals || typeof state.totals.published !== 'number') return '状態ファイルの累計が不正です。';
   return null;
 }
@@ -218,18 +259,20 @@ function saveState(file, state, fsImpl = fs) {
   fsImpl.renameSync(tmp, file);
 }
 
-/** 口へ送る要求の本文。 */
-function buildRequestBody(filters, { dryRun, limit, cursor }) {
+/** 口へ送る要求の本文。`requestedBy` / `reason` は口のログへ残る札（#1762 監査 Y5）。 */
+function buildRequestBody(filters, { dryRun, limit, cursor, requestedBy, reason }) {
   const body = { dryRun: Boolean(dryRun) };
   if (!dryRun) body.limit = limit;
   if (cursor) body.cursor = cursor;
+  if (requestedBy) body.requestedBy = requestedBy;
+  if (reason) body.reason = reason;
   if (filters.createdBefore) body.createdBefore = filters.createdBefore;
   if (filters.ids) body.ids = filters.ids;
   if (filters.attributes) body.attributes = filters.attributes;
   return body;
 }
 
-/** 1 ページの応答を状態へ積む（新しい状態を返す。元は変えない）。 */
+/** 1 ページの応答を状態へ積む（新しい状態を返す。元は変えない）。confirmedCursor は動かさない（確かめるのは confirmChecked）。 */
 function applyPage(state, res) {
   const t = state.totals;
   return {
@@ -243,6 +286,71 @@ function applyPage(state, res) {
       skippedByGate: t.skippedByGate + (res.skippedByGate || 0),
       withoutBody: t.withoutBody + (res.withoutBody || 0),
     },
+  };
+}
+
+/**
+ * DLQ の確認を通ったページを「確かめた」へ進める（#1762 監査 R1）。
+ * 🔴 **取り込みのキューが空のときだけ進める。** キューに残っている配信（再試行で待っているものを含む）は、
+ *    まだ DLQ へ行くかどうかが決まっていない —— その時点で進めると、後から DLQ へ行った文書の位置を越えてしまい、
+ *    止まって再開したときに取りこぼす。キューを見ない実行（--no-queue-watch）は確かめようがないので、ページごとに進める。
+ * @param {object} state
+ * @param {{ queueWatch: boolean, ingestDepth?: number }} p
+ */
+function confirmChecked(state, { queueWatch, ingestDepth }) {
+  if (queueWatch && (ingestDepth || 0) > 0) return state;
+  return { ...state, confirmedCursor: state.cursor, confirmedDone: state.done };
+}
+
+/** 確かめていないページがあるか（止まるときに戻す必要があるか）。 */
+function hasUnconfirmed(state) {
+  return state.cursor !== state.confirmedCursor || state.done !== state.confirmedDone;
+}
+
+/**
+ * 止まるときに、状態を確かめた位置へ戻す（#1762 監査 R1）。
+ * 戻したページは --resume で**もう一度発行される**（再発行は冪等。費用は重なるが取りこぼさない）。
+ * カナリアもやり直す —— 止まった原因を直したかを、また小さく確かめてから流す。累計は「発行した回数」なので戻さない。
+ */
+function rollbackToConfirmed(state) {
+  if (!hasUnconfirmed(state)) return state;
+  return { ...state, cursor: state.confirmedCursor, done: state.confirmedDone, canaryPassed: false };
+}
+
+/**
+ * --resume のときに DLQ の基準を今の深さへ取り直す（#1762 監査 R1）。
+ * 前の実行の増加をそのまま持ち越すと、許容 0 のカナリアで再開の直後に止まり続ける。
+ * 取り直して取りこぼさないのは、止まるときに cursor を確かめた位置へ戻しているからである（rollbackToConfirmed）。
+ * @returns {{ state: object, previous: number|null, current: number }}
+ */
+function rebaselineDlq(state, currentDepth) {
+  const current = currentDepth || 0;
+  return { state: { ...state, dlqBaseline: current }, previous: state.dlqBaseline ?? null, current };
+}
+
+/**
+ * DLQ の判定（#1762 監査 Y2）。カナリアは増加 0 だけを許し、それ以外のページと走査の終わりは --max-dlq-growth まで許す。
+ * @param {{ isCanary: boolean, baseline: number|null, current: number|undefined, maxGrowth: number }} p
+ * @returns {{ growth: number, allowed: number, stop: boolean }}
+ */
+function dlqVerdict({ isCanary, baseline, current, maxGrowth }) {
+  const growth = dlqGrowth(baseline, current);
+  const allowed = isCanary ? 0 : maxGrowth;
+  return { growth, allowed, stop: growth > allowed };
+}
+
+/**
+ * ページの前後でキューをどう待つか（#1762 監査 Y2）。null は待たない。
+ *   - before: カナリア以外は、取り込みのキューが --max-queue-depth 以下になるまで次のページを出さない（量の制御）。
+ *   - after:  カナリアで実際に発行したときは、キューが空になるまで待ってから DLQ を見る（埋め込み先の失敗をここで捕まえる）。
+ *             何も発行しなかったカナリア（0 件・全件が門で止まった）は待たない。
+ * @param {{ queueWatch: boolean, isCanary: boolean, published?: number, maxQueueDepth: number, drainTimeoutMs: number }} p
+ */
+function queueWaitPlan({ queueWatch, isCanary, published, maxQueueDepth, drainTimeoutMs }) {
+  if (!queueWatch) return { before: null, after: null };
+  return {
+    before: isCanary ? null : { limit: maxQueueDepth, timeoutMs: 30 * 60 * 1000 },
+    after: isCanary && (published || 0) > 0 ? { limit: 0, timeoutMs: drainTimeoutMs } : null,
   };
 }
 
@@ -301,7 +409,10 @@ const DLQ_GUIDANCE = (dlq) => [
   '  - ゲートウェイに埋め込み先があるか（Voyage の鍵 Embedding__Voyage__ApiKey、または検証スタックの LOCALEMBED=1）',
   '      kubectl -n microservices-platform logs deploy/llmgateway-service --since=15m | grep -E "Embedding call failed|API キーが未設定"',
   '  - 取り込みのログ: kubectl -n microservices-platform logs deploy/ingestion-service --since=15m | grep -E "transient|Ingestion|Exception"',
-  '  - DLQ のメッセージは古い状態の写しなので再投入しない。原因を直したら --resume（または状態ファイルを消して最初から）で再発行する。',
+  '  - 状態の cursor は「確かめた位置」（DLQ の確認を通り取り込みのキューが空だった時点）へ戻してある。',
+  '    確かめていないページ（DLQ へ行った文書を含む）は --resume でもう一度発行される（再発行は冪等）。',
+  '  - DLQ のメッセージは古い状態の写しなので再投入しない。原因を直したら --resume で再発行する（カナリアからやり直す）。',
+  '    --resume は DLQ の基準をその時点の深さへ取り直す（前の増加では止まらない。基準の前後の数を表示する）。',
   '    DLQ は全サービスで共有している。中身を確かめずに purge しない（管理 UI: kubectl -n platform-infra port-forward svc/rabbitmq 15672）。',
 ];
 
@@ -359,12 +470,18 @@ async function main(argv) {
   }
   // NFR, #1550: ここから先は稼働クラスタへ当たる。明示の指定が無ければ何もしない。
   requireLiveOptIn('republish-document-updated', argv, { offline: '--help' });
+  const reasonProblem = missingReason(o);
+  if (reasonProblem) {
+    warn(`[republish-document-updated] ${reasonProblem}`);
+    return 1;
+  }
 
   const NS = env('REPUBLISH_NS', 'microservices-platform');
   const INFRA_NS = env('REPUBLISH_INFRA_NS', 'platform-infra');
   const REALM = env('REPUBLISH_REALM', 'platform');
   const INGEST_QUEUE = env('REPUBLISH_INGEST_QUEUE', 'ingestion-service.DocumentUpdated');
   const DLQ = env('REPUBLISH_DLQ', 'wolverine-dead-letter-queue');
+  const POLL_MS = positiveInt('REPUBLISH_POLL_MS', env('REPUBLISH_POLL_MS', '5000'));
   const abacSeed = require('./seed-abac-policies.js');
   const CLIENT_ID = env('REPUBLISH_CLIENT_ID', abacSeed.CLIENT_ID);
   const CLIENT_SECRET = process.env.REPUBLISH_CLIENT_SECRET || abacSeed.clientSecretFromRealm(CLIENT_ID) || '';
@@ -372,8 +489,11 @@ async function main(argv) {
   const io = makeIo();
   process.on('exit', () => io.cleanup());
   let state = null;
+  // 中断: 確かめていないページがあれば確かめた位置へ戻してから終わる（状態を読んだ後で onInterrupt を差し込む）。
+  let onInterrupt = () => {};
   process.on('SIGINT', () => {
     io.cleanup();
+    try { onInterrupt(); } catch (e) { warn(`[republish-document-updated] 状態を戻せませんでした: ${e.message}`); }
     if (state) warn(`\n中断しました。状態は ${o.stateFile} に残っています。続けるには --resume。`);
     process.exit(130);
   });
@@ -427,9 +547,13 @@ async function main(argv) {
     return JSON.parse(text);
   }
 
+  const requestedBy = o.operator || process.env.USER || process.env.USERNAME || null;
+  const tags = { requestedBy, reason: o.reason };
+  log(`操作者: ${requestedBy ?? '(未指定)'}${o.reason ? ` / 理由: ${o.reason}` : ''}（口のログへ認証済みの主体と並べて残る）`);
+
   if (o.dryRun) {
     const f = filtersOf(o);
-    const res = await call(buildRequestBody(f, { dryRun: true }));
+    const res = await call(buildRequestBody(f, { dryRun: true, ...tags }));
     for (const line of summarizeDryRun(res)) log(line);
     log('--dry-run のため発行しません。');
     return 0;
@@ -461,14 +585,27 @@ async function main(argv) {
     log(`新規の走査を始めます（createdBefore ${state.filters.createdBefore}・状態 ${o.stateFile}）。`);
   }
 
-  // DLQ の基準値（開始時）。キューを読めなければ黙って監視なしに倒さず、前提未整備で止める。
+  // 止まるとき（DLQ・待ちの超過・連続失敗・中断）は、確かめた位置へ戻して保存する（#1762 監査 R1）。
+  function stopAtConfirmed() {
+    if (!hasUnconfirmed(state)) return;
+    state = rollbackToConfirmed(state);
+    saveState(o.stateFile, state);
+    warn(`状態の cursor を確かめた位置へ戻しました（${state.confirmedCursor ?? '先頭'}）。確かめていないページは --resume でもう一度発行されます（冪等）。`);
+  }
+  onInterrupt = stopAtConfirmed;
+
+  // DLQ の基準。新規は開始時の深さ、--resume は今の深さへ取り直す（#1762 監査 R1）。
+  // キューを読めなければ黙って監視なしに倒さず、前提未整備で止める。
   const depths = () => readQueueDepths(INFRA_NS);
   if (o.queueWatch) {
     try {
       const d = depths();
-      if (state.dlqBaseline == null) {
-        state = { ...state, dlqBaseline: d[DLQ] || 0 };
+      if (state.dlqBaseline == null || o.resume) {
+        const r = rebaselineDlq(state, d[DLQ]);
+        state = r.state;
         saveState(o.stateFile, state);
+        if (o.resume)
+          log(`DLQ の基準を取り直しました: 前の基準 ${r.previous ?? '(なし)'} → 今の深さ ${r.current}（前の実行の増加は数えない。確かめていないページは戻してあるので再発行される）。`);
       }
       log(`キュー: ${INGEST_QUEUE}=${d[INGEST_QUEUE] ?? '(未宣言)'} / ${DLQ}=${d[DLQ] ?? 0}（基準 ${state.dlqBaseline}）`);
     } catch (e) {
@@ -485,8 +622,42 @@ async function main(argv) {
       const depth = d[INGEST_QUEUE] || 0;
       if (depth <= limit) return d;
       if (Date.now() > deadline) throw new Error(`取り込みのキューが ${timeoutMs}ms のうちに ${limit} 件以下になりませんでした（${depth} 件）。`);
-      await sleep(5000);
+      await sleep(POLL_MS);
     }
+  }
+
+  // DLQ を確かめる。通れば（キューが空なら）確かめた位置を進め、止まるなら戻して false を返す。
+  function checkDlq(d, isCanary) {
+    const v = dlqVerdict({ isCanary, baseline: state.dlqBaseline, current: d[DLQ], maxGrowth: o.maxDlqGrowth });
+    if (v.stop) {
+      warn(`[republish-document-updated] ${isCanary ? 'カナリアの後に' : ''}DLQ が基準から ${v.growth} 件増えました（許容 ${v.allowed}）。止めます。`);
+      stopAtConfirmed();
+      for (const line of DLQ_GUIDANCE(DLQ)) warn(line);
+      return false;
+    }
+    state = confirmChecked(state, { queueWatch: true, ingestDepth: d[INGEST_QUEUE] });
+    saveState(o.stateFile, state);
+    return true;
+  }
+
+  // 走査の終わり（と --max-pages の区切り）: 確かめていないページがあれば、キューが空になるまで待って DLQ を確かめる（#1762 監査 Y1）。
+  async function settle() {
+    if (!o.queueWatch || !hasUnconfirmed(state)) return true;
+    log(`取り込みのキューが空になるまで待って DLQ を確かめます（上限 ${o.drainTimeoutMs}ms）。`);
+    let d;
+    try {
+      d = await waitQueueAtMost(0, o.drainTimeoutMs);
+    } catch (e) {
+      warn(`[republish-document-updated] ${e.message}`);
+      stopAtConfirmed();
+      warn(`止めます。キューが落ち着いたら --resume。`);
+      return false;
+    }
+    if (!checkDlq(d, false)) return false;
+    const growth = dlqGrowth(state.dlqBaseline, d[DLQ]);
+    if (growth > 0)
+      warn(`DLQ は基準から ${growth} 件増えています（許容 ${o.maxDlqGrowth} の内）。該当の文書は DLQ の中身で確かめ、--ids で再発行してください。`);
+    return true;
   }
 
   const started = Date.now();
@@ -494,21 +665,24 @@ async function main(argv) {
   let pagesThisRun = 0;
   while (!state.done) {
     if (o.maxPages > 0 && pagesThisRun >= o.maxPages) {
+      if (!(await settle())) return 1;
       log(`--max-pages ${o.maxPages} に達したので止めます。続けるには --resume。`);
       return 0;
     }
     const isCanary = o.canary > 0 && !state.canaryPassed;
     let res;
     try {
-      if (o.queueWatch && !isCanary) await waitQueueAtMost(o.maxQueueDepth, 30 * 60 * 1000);
+      const before = queueWaitPlan({ ...o, queueWatch: o.queueWatch, isCanary }).before;
+      if (before) await waitQueueAtMost(before.limit, before.timeoutMs);
       res = await call(buildRequestBody(state.filters, {
-        dryRun: false, limit: isCanary ? o.canary : o.pageSize, cursor: state.cursor,
+        dryRun: false, limit: isCanary ? o.canary : o.pageSize, cursor: state.cursor, ...tags,
       }));
     } catch (e) {
       failures++;
       warn(`[republish-document-updated] 失敗 ${failures}/${o.maxConsecutiveFailures}: ${e.message}`);
       if (shouldStopOnFailures(failures, o.maxConsecutiveFailures)) {
-        warn(`連続 ${failures} 回失敗したので止めます。状態は ${o.stateFile}（カーソルはまだ進めていない）。原因を直して --resume。`);
+        warn(`連続 ${failures} 回失敗したので止めます。状態は ${o.stateFile}。原因を直して --resume。`);
+        stopAtConfirmed();
         return 1;
       }
       await sleep(backoffMs(o.sleepMs, failures));
@@ -516,49 +690,57 @@ async function main(argv) {
     }
     failures = 0;
     pagesThisRun++;
+    const nothingInFlight = !hasUnconfirmed(state) && !(res.published > 0);
     state = applyPage(state, res);
     saveState(o.stateFile, state);
     log(formatProgress(state, res, Date.now() - started));
 
-    if (o.queueWatch) {
+    if (nothingInFlight) {
+      // 確かめていない発行が無く、このページも何も発行しなかった（絞り込みが 0 件・全件が門で止まった）。
+      // 待つものも DLQ で確かめるものも無い —— 他の配信でキューが空でなくても、ここで待たずに進める。
+      state = confirmChecked(state, { queueWatch: false });
+      saveState(o.stateFile, state);
+    } else if (o.queueWatch) {
+      const after = queueWaitPlan({ ...o, queueWatch: true, isCanary, published: res.published }).after;
       let d;
       try {
-        d = isCanary ? await waitQueueAtMost(0, o.drainTimeoutMs) : depths();
+        d = after ? await waitQueueAtMost(after.limit, after.timeoutMs) : depths();
       } catch (e) {
         warn(`[republish-document-updated] ${e.message}`);
+        stopAtConfirmed();
         warn(`止めます。状態は ${o.stateFile}。キューが落ち着いたら --resume。`);
         return 1;
       }
-      const growth = dlqGrowth(state.dlqBaseline, d[DLQ]);
-      const allowed = isCanary ? 0 : o.maxDlqGrowth;
-      if (growth > allowed) {
-        warn(`[republish-document-updated] ${isCanary ? 'カナリアの後に' : ''}DLQ が開始時から ${growth} 件増えました（許容 ${allowed}）。止めます。`);
-        for (const line of DLQ_GUIDANCE(DLQ)) warn(line);
-        return 1;
-      }
-      if (isCanary) {
+      if (!checkDlq(d, isCanary)) return 1;
+      if (isCanary && res.published > 0) {
         state = { ...state, canaryPassed: true };
         saveState(o.stateFile, state);
         log(`カナリア ${res.selected} 件: 取り込みのキューが空になり、DLQ は増えていません。続けます。`);
       }
-    } else if (isCanary) {
-      state = { ...state, canaryPassed: true };
+    } else {
+      state = confirmChecked(state, { queueWatch: false });
+      if (isCanary) state = { ...state, canaryPassed: true };
       saveState(o.stateFile, state);
     }
     if (!state.done && o.sleepMs > 0) await sleep(o.sleepMs);
   }
 
+  // 絞り込みが 0 件（または再開時点で尽きていた）なら、待つものも確かめるものも無い。
+  if (!(await settle())) return 1;
   log(`完了: 発行 ${state.totals.published} 件 / 門で止めた ${state.totals.skippedByGate} 件 / 本文なし ${state.totals.withoutBody} 件（${state.totals.pages} ページ）。`);
-  log('確かめ方: 取り込みのキューが空になってから、Qdrant の各コレクションの points_count が増えていること（読み取りだけ）:');
+  if (state.totals.published === 0) return 0;
+  log('確かめ方: Qdrant の各コレクションの points_count が増えていること（読み取りだけ）:');
   log(`  kubectl -n ${INFRA_NS} run qdrant-check --rm -i --restart=Never --image=curlimages/curl -- sh -c \\`);
   log('    \'for c in knowledge_chunks_voyage_3_5 knowledge_chunks_lexical knowledge_chunks_ruri_v3; do curl -s http://qdrant:6333/collections/$c; echo; done\'');
   return 0;
 }
 
 module.exports = {
+  main,
   DEFAULTS,
   STATE_VERSION,
   parseArgs,
+  missingReason,
   filtersOf,
   newState,
   stateProblem,
@@ -571,6 +753,12 @@ module.exports = {
   backoffMs,
   parseQueueDepths,
   dlqGrowth,
+  dlqVerdict,
+  queueWaitPlan,
+  confirmChecked,
+  hasUnconfirmed,
+  rollbackToConfirmed,
+  rebaselineDlq,
   summarizeDryRun,
   formatProgress,
 };

@@ -859,22 +859,36 @@ kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl list_queues -q nam
 1. **dry-run で件数と内訳を見る**（発行しない）。埋め込みへ進む件数（`public` + `internal`）が費用の母数である
    （1 チャンクにつき埋め込み 1 回。本文なしの文書は題名などで 1 回。単価は契約の価格表を見る）。
    ```console
-   node scripts/republish-document-updated.js --live --dry-run
-   node scripts/republish-document-updated.js --live --dry-run --attr confidentiality=internal   # 絞った場合
+   node scripts/republish-document-updated.js --live --dry-run --operator <あなたの名前>
+   node scripts/republish-document-updated.js --live --dry-run --operator <あなたの名前> --attr confidentiality=internal   # 絞った場合
    ```
+   - **記録**: 口は dry-run も発行も 1 呼び出しごとにログへ 1 行残す（認証済みの主体＝駆動スクリプトの client と、`--operator`〔既定は環境変数 `USER`〕・`--reason` の札）。
+     **発行する実行（`--resume` を含む）は `--reason <理由>` が必須**（dry-run では任意）。札は改行などの制御文字を潰してからログへ出す。
 2. **流す**。最初のページは**カナリア**（既定 10 件）で、取り込みのキューが空になるまで待ち（再試行を含めて 1 件あたり最大でおよそ 1 分）、
    DLQ が 1 件でも増えていれば止まる。以後は、取り込みのキューが `--max-queue-depth`（既定 200）以下になってから次のページ（`--page-size` 既定 50）を出し、
    ページの間に `--sleep-ms`（既定 2000）待つ。DLQ の増加が `--max-dlq-growth`（既定 20）を超えたら止まる。
+   **走査の終わり（と `--max-pages` の区切り）では、取り込みのキューが空になるまで待って（上限 `--drain-timeout-ms`）DLQ を確かめてから「完了」を出す**
+   （最後のページの失敗は後から DLQ に現れるため）。増えていれば完了と言わずに exit 1 で止まる。許容の内で増えていたら件数を出すので、DLQ の中身で文書を確かめて `--ids` で流し直す。
+   絞り込みが 0 件なら待たずに終わる。
    ```console
-   node scripts/republish-document-updated.js --live
-   node scripts/republish-document-updated.js --live --page-size 20 --sleep-ms 5000 --max-pages 50   # 控えめに区切る
+   node scripts/republish-document-updated.js --live --operator <あなたの名前> --reason "<理由>"
+   node scripts/republish-document-updated.js --live --operator <あなたの名前> --reason "<理由>" --page-size 20 --sleep-ms 5000 --max-pages 50   # 控えめに区切る
    ```
    - 目安: 取り込みは 1 件ずつ外部の埋め込みを呼ぶので、2 万件規模は数時間かかる。ゲートウェイの埋め込みの速度制限やクラスタの負荷を見て `--page-size` / `--sleep-ms` を下げる。
    - 絞り込み: `--attr <キー>=<値>`（完全一致・AND・繰り返し可）／`--ids <id,id,...>`（500 件まで）／`--created-before <ISO8601>`。
      新規の走査は `createdBefore` を開始時刻に固定する（走査の途中で作られた文書は作成の経路で既に発行されているので選ばない）。
    - 副作用: fan-out なので Wiki 同期（`published` / `normalized` の組織文書を Wiki.js へ書き直す）とグラフ同期（同じ更新時刻なら何もしない）も動く。
-3. **中断と再開**。状態（カーソル・`createdBefore`・絞り込み・累計）は `./republish-document-updated.state.json`（`--state` で変更）に**ページごとに**書かれる。
-   Ctrl-C・連続失敗（既定 3 回）・DLQ の増加で止まったら、原因を直して `--resume` で続ける。状態ファイルが在るまま新規に流すと拒否される（やり直すなら状態ファイルを消す）。
+3. **中断と再開**。状態（カーソル・**確かめた位置**・`createdBefore`・絞り込み・累計）は `./republish-document-updated.state.json`（`--state` で変更）に**ページごとに**書かれる。
+   **確かめた位置**は、DLQ の確認を通り、かつ取り込みのキューが空だった時点のカーソルである（キューに残っている配信は、まだ DLQ へ行くかが決まっていない）。
+   Ctrl-C・連続失敗（既定 3 回）・キューの待ちの超過・DLQ の増加で止まるときは、**状態のカーソルを確かめた位置へ戻して保存する** ——
+   確かめていないページ（DLQ へ行った文書を含む）は `--resume` で**もう一度発行される**（再発行は冪等。埋め込みの費用はその分重なる）。止まった後の `--resume` はカナリアからやり直す。
+   原因を直したら、同じ指定で `--resume` する（`--resume` も発行する実行なので `--reason` が要る。`--page-size` などの量の指定は状態に残らないので毎回渡す）:
+   ```console
+   node scripts/republish-document-updated.js --live --resume --operator <あなたの名前> --reason "<直した原因>"
+   ```
+   **`--resume` は DLQ の基準をその時点の DLQ の深さへ取り直し、前の基準と今の深さを表示する**（前の実行の増加でカナリアが直後に止まり続けないため。
+   取り直しても取りこぼさないのは、止まったときに確かめた位置へ戻してあるからである）。DLQ を purge してから再開してもよい（戻したページが再発行される）。
+   状態ファイルが在るまま新規に流すと拒否される（やり直すなら状態ファイルを消す）。版の違う（確かめた位置を持たない）状態ファイルからは再開しない。
    ブローカ（RabbitMQ。経路B は PVC を持たない）が途中で作り直された疑いがあるときは、`--resume` ではなく状態ファイルを消して最初から流す
    （カーソルは「発行した」位置であり「索引された」位置ではない。再発行は冪等なので重ねて流してよい）。
 4. **確かめる**。取り込みのキューが空になってから、各コレクションの `points_count` が増えていること（読み取りだけ）:
@@ -885,11 +899,13 @@ kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl list_queues -q nam
    `points_count` は文書数ではなくチャンク数である（本文の所在が無い文書は点を作らない。dry-run の「本文の所在が無い」件数を差し引いて読む）。
 
 **DLQ の扱い**: DLQ（`wolverine-dead-letter-queue`）は全サービスで共有している。再発行で増えたメッセージは古い状態の写しなので**再投入しない**。
-原因（埋め込み先・本文の取得）を直したら、同じ範囲をもう一度再発行する（冪等）。中身を確かめずに DLQ を purge しない
+駆動スクリプトが DLQ の増加で止まったときは、状態のカーソルを確かめた位置へ戻してあるので、原因（埋め込み先・本文の取得）を直して `--resume` すれば
+DLQ へ行った文書を含む確かめていないページがもう一度発行される（冪等。`--resume` は DLQ の基準を今の深さへ取り直す）。中身を確かめずに DLQ を purge しない
 （確かめるときは `kubectl -n platform-infra port-forward svc/rabbitmq 15672` で管理画面を開く）。
 
 **口の仕様**（直接叩く場合。メッシュ内部・管理者のトークンが要る）: 要求は `dryRun`（必須）・`limit`（既定 100・1〜500）・`cursor`（前の応答の `nextCursor`）・
-`createdBefore`・`ids`・`attributes`。応答は `matched`（絞り込みの全件）・`remaining`（この呼び出しの前に残っていた件数）・`selected`・`published`・
+`createdBefore`・`ids`（空の配列は 400。省略が全件）・`attributes`・`requestedBy`（100 文字まで）・`reason`（500 文字まで）。`requestedBy` / `reason` は記録だけに使う札で、
+認証済みの主体と一緒にログへ出る（dry-run も記録する）。応答は `matched`（絞り込みの全件）・`remaining`（この呼び出しの前に残っていた件数）・`selected`・`published`・
 `skippedByGate`（露出の 3 トグルが OFF の個人資料は発行しない）・`withoutBody`・`byConfidentiality`・`nextCursor`（尽きたら null）。詳細は `docs/api/openapi.yaml`。
 
 - **ペイロード項目を増やしたときの再索引（#536）**: 索引ペイロードへ**新しい項目**を
