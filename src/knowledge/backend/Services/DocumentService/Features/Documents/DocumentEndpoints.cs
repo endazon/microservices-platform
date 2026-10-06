@@ -12,6 +12,7 @@ using DocumentService.Features.Documents.ListPage;
 using DocumentService.Features.Documents.ListVersions;
 using DocumentService.Features.Documents.Publish;
 using DocumentService.Features.Documents.PutBody;
+using DocumentService.Features.Documents.Republish;
 using DocumentService.Features.Documents.Update;
 using DocumentService.Features.Documents.UpdateMetadata;
 using DocumentService.Infrastructure.Persistence;
@@ -100,6 +101,10 @@ public static class DocumentEndpoints
         // FR-06, SC-05, 計画 ADR-0122 決定 1・3 (#1667): AST の古い写しの列挙（読み取り専用）。
         // `read` 群（認証）に置き、口の側で `AdminOnly` を積む（管理者だけ。運用者・機械の書き手には開けない）。
         ListAstStaleCopiesEndpoint.Map(read);
+
+        // FR-02, FR-06, UC-04, ADR-0013, [[IADR-0503]] (#1762): 全文書（または絞った文書）への `DocumentUpdated` の再発行（再索引の手段）。
+        // `write` 群（admin / operator）に置き、口の側で `AdminOnly` を積む（管理者だけ。運用者・機械の書き手には開けない）。
+        RepublishDocumentUpdatedEndpoint.Map(write);
 
         return app;
     }
@@ -286,8 +291,12 @@ public static class DocumentEndpoints
     // 明示値を文書種別より優先するため、露出キーを全 `excluded` にした組織文書は `IsIndexable` が偽になる
     // （そうした属性を拒否する検証は無い）。門で止めると `WikiService` へアーカイブ（ページの非公開化）が
     // 届かない。**組織文書は常に通す** —— 既存経路の挙動はデータに依らず変わらない。
-    internal static bool PassesPublishGate(Document d)
-        => !DocumentScopes.IsPrivateNote(d.Attributes) || DocumentExposure.IsIndexable(d.Attributes);
+    internal static bool PassesPublishGate(Document d) => PassesPublishGate(d.Attributes);
+
+    // FR-02, [[IADR-0503]] 決定 2 (#1762): 同じ門を属性だけで評価する形。再発行の dry-run が、本体を読まずに
+    // 投影した行（属性だけ）で「門で止まる件数」を数えるために使う。**述語は上と同じ 1 つ**（形を 2 つに割らない）。
+    internal static bool PassesPublishGate(IReadOnlyDictionary<string, string> attributes)
+        => !DocumentScopes.IsPrivateNote(attributes) || DocumentExposure.IsIndexable(attributes);
 
     internal static Task PublishUpdatedIfIndexableAsync(IDocumentUpdatedPublisher bus,
         DocumentDbContext db, Document d,

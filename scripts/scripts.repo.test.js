@@ -8292,6 +8292,9 @@ ${r.stderr}`);
           // 辞書へ行を入れる口は POST /tags だけで初期投入の仕組みが無く、外部ユニットの文書が
           // 100% 400 で弾かれていた（実測 既存 0 件）。
           'seed-tag-dictionary.js',
+          // #1762 / IADR-0503: DocumentUpdated の再発行の**駆動器**（稼働クラスタへ発行を起こす副作用を持ち、判定を返さない）。
+          // 投入器と同じく検査器ではない。母集合に数えない。
+          'republish-document-updated.js',
           // #1617 / 計画 ADR-0118 決定 4: T-25 の p の分布の**月次の集計器**。`measure-*` と同じく数字を出すだけで
           // 合否を返さない。走らせると GitHub の API を読みに行くので、検査器として spawn する母集合に入れない。
           't25-monthly-summary.js',
@@ -13810,6 +13813,134 @@ exit 0
       const ups = upgrades1534(x.calls);
       assert.strictEqual(ups.length, 2, ups.join('\n'));
       assert.ok(restore1534(ups[1]), ups[1]);
+    });
+  }
+
+  // --- #1762 / IADR-0503: DocumentUpdated の再発行の駆動器（純関数） ---------------------------------
+  //
+  // 実クラスタ無しで固定できるのは、引数解析・状態ファイル（新規・再開・不一致の拒否）・連続失敗で止まる判定・
+  // キューの深さの解析・DLQ の増加の判定・要求の本文である。口（DocumentService）の挙動は DocumentService.Tests が持つ。
+  {
+    const fs1762 = require('fs');
+    const os1762 = require('os');
+    const path1762 = require('path');
+    const rp = require('./republish-document-updated.js');
+
+    ok('#1762: 引数解析 — 既定値・絞り込み・知らない引数と値の欠けた引数は落とす', () => {
+      const d = rp.parseArgs(['--live']);
+      assert.strictEqual(d.pageSize, rp.DEFAULTS.pageSize);
+      assert.strictEqual(d.canary, 10);
+      assert.strictEqual(d.queueWatch, true);
+      assert.strictEqual(d.dryRun, false);
+      const o = rp.parseArgs(['--live', '--page-size', '900', '--attr', 'confidentiality=internal', '--attr', 'project=x=y',
+        '--ids', 'b,a,a', '--created-before', '2026-10-06T10:00:00+09:00', '--no-queue-watch', '--canary', '0']);
+      assert.strictEqual(o.pageSize, 500, '口の上限 500 に丸める');
+      assert.deepStrictEqual(o.attributes, { confidentiality: 'internal', project: 'x=y' }, '値の中の = は値に残す');
+      assert.deepStrictEqual(o.ids, ['a', 'b'], '重複を除き並べる');
+      assert.strictEqual(o.createdBefore, '2026-10-06T01:00:00.000Z', 'UTC へ寄せる');
+      assert.strictEqual(o.queueWatch, false);
+      assert.strictEqual(o.canary, 0);
+      assert.throws(() => rp.parseArgs(['--bogus']), /知らない引数/);
+      assert.throws(() => rp.parseArgs(['--page-size']), /値がありません/);
+      assert.throws(() => rp.parseArgs(['--page-size', '0']), /1 以上/);
+      assert.throws(() => rp.parseArgs(['--attr', 'novalue=']), /key=value/);
+      assert.throws(() => rp.parseArgs(['--attr', 'a=1', '--attr', 'a=2']), /重複/);
+      assert.throws(() => rp.parseArgs(['--created-before', 'yesterday']), /ISO 8601/);
+      assert.throws(() => rp.parseArgs(['--resume', '--dry-run']), /同時に/);
+      assert.throws(() => rp.parseArgs(['--resume', '--attr', 'a=1']), /状態ファイルの絞り込み/);
+    });
+
+    ok('#1762: 新規の状態は createdBefore を開始時刻に固定し、要求の本文へ絞り込みとカーソルを載せる', () => {
+      const now = new Date('2026-10-06T12:00:00Z');
+      const st = rp.newState(rp.parseArgs(['--attr', 'confidentiality=internal']), now);
+      assert.strictEqual(st.filters.createdBefore, '2026-10-06T12:00:00.000Z');
+      assert.strictEqual(st.cursor, null);
+      assert.strictEqual(rp.stateProblem(st), null);
+      const live = rp.buildRequestBody(st.filters, { dryRun: false, limit: 50, cursor: 'c1' });
+      assert.deepStrictEqual(live, {
+        dryRun: false, limit: 50, cursor: 'c1', createdBefore: '2026-10-06T12:00:00.000Z',
+        attributes: { confidentiality: 'internal' },
+      });
+      // dry-run は limit を送らない（残り全件を数える）。dryRun は必ず明示する（口は省略を 400 にする）。
+      const dry = rp.buildRequestBody(st.filters, { dryRun: true });
+      assert.strictEqual(dry.dryRun, true);
+      assert.ok(!('limit' in dry));
+      assert.ok('dryRun' in rp.buildRequestBody({}, { dryRun: false, limit: 1 }));
+    });
+
+    ok('#1762: 状態ファイルは書いて読み戻せ、ページを積むとカーソルと累計が進み、尽きれば done になる', () => {
+      const dir = fs1762.mkdtempSync(path1762.join(os1762.tmpdir(), 'rp1762-'));
+      try {
+        const file = path1762.join(dir, 'state.json');
+        assert.strictEqual(rp.loadState(file), null);
+        let st = rp.newState(rp.parseArgs([]), new Date('2026-10-06T00:00:00Z'));
+        st = rp.applyPage(st, { nextCursor: 'c1', matched: 5, published: 2, skippedByGate: 1, withoutBody: 0 });
+        rp.saveState(file, st);
+        assert.ok(!fs1762.existsSync(`${file}.tmp`), '一時ファイルが残った');
+        const back = rp.loadState(file);
+        assert.deepStrictEqual(back, st);
+        assert.strictEqual(back.cursor, 'c1');
+        assert.strictEqual(back.done, false);
+        assert.deepStrictEqual(back.totals, { pages: 1, published: 2, skippedByGate: 1, withoutBody: 0 });
+        const last = rp.applyPage(back, { nextCursor: null, matched: 5, published: 2, skippedByGate: 0, withoutBody: 1 });
+        assert.strictEqual(last.done, true);
+        assert.strictEqual(last.cursor, null);
+        assert.strictEqual(last.totals.published, 4);
+        assert.strictEqual(back.totals.published, 2, 'applyPage は元の状態を書き換えない');
+      } finally {
+        fs1762.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('#1762: 状態ファイルの絞り込みが違えば同じ走査とみなさず、版や形の合わない状態からは再開しない', () => {
+      const st = rp.newState(rp.parseArgs(['--attr', 'b=2', '--attr', 'a=1']), new Date('2026-10-06T00:00:00Z'));
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs(['--attr', 'a=1', '--attr', 'b=2'])), true, 'キーの順に依らない');
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs(['--attr', 'a=1'])), false);
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs(['--attr', 'a=1', '--attr', 'b=2', '--ids', 'x'])), false);
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs(['--attr', 'a=1', '--attr', 'b=2', '--created-before', '2020-01-01T00:00:00Z'])), false);
+      assert.match(rp.stateProblem({ ...st, version: 99 }), /版/);
+      assert.match(rp.stateProblem({ ...st, filters: {} }), /createdBefore/);
+      assert.match(rp.stateProblem({ ...st, cursor: 3 }), /cursor/);
+      assert.match(rp.stateProblem(null), /オブジェクト/);
+    });
+
+    ok('#1762: 連続失敗が上限に達したら止まる（上限 3 なら 3 回目で止まり、2 回目では止まらない）。待ちは倍々で上限 60 秒', () => {
+      assert.strictEqual(rp.shouldStopOnFailures(2, 3), false);
+      assert.strictEqual(rp.shouldStopOnFailures(3, 3), true);
+      assert.strictEqual(rp.shouldStopOnFailures(1, 1), true);
+      assert.strictEqual(rp.backoffMs(2000, 1), 2000);
+      assert.strictEqual(rp.backoffMs(2000, 2), 4000);
+      assert.strictEqual(rp.backoffMs(0, 1), 1000, '間隔 0 でも失敗の後は待つ');
+      assert.strictEqual(rp.backoffMs(2000, 10), 60000);
+    });
+
+    ok('#1762: キューの深さの解析と DLQ の増加 —— 数値でない行は捨て、無いキューは 0、減った分は増加にしない', () => {
+      const d = rp.parseQueueDepths('ingestion-service.DocumentUpdated\t12\nwolverine-dead-letter-queue\t3\nTimeout: 60.0 seconds ...\n\n');
+      assert.deepStrictEqual(d, { 'ingestion-service.DocumentUpdated': 12, 'wolverine-dead-letter-queue': 3 });
+      assert.strictEqual(rp.dlqGrowth(3, d['wolverine-dead-letter-queue']), 0);
+      assert.strictEqual(rp.dlqGrowth(3, 25), 22);
+      assert.strictEqual(rp.dlqGrowth(10, 0), 0, 'ブローカの作り直しで減った分を負の増加にしない');
+      assert.strictEqual(rp.dlqGrowth(null, undefined), 0);
+    });
+
+    ok('#1762: dry-run の要約は埋め込みへ進む件数（public + internal）と語彙索引だけの件数を分けて出す', () => {
+      const lines = rp.summarizeDryRun({
+        matched: 10, remaining: 9, withoutBody: 2, skippedByGate: 1,
+        byConfidentiality: { public: 1, internal: 5, confidential: 1, restricted: 2 },
+      });
+      const text = lines.join('\n');
+      assert.match(text, /対象: 9 件（絞り込みの全件 10 件）/);
+      assert.match(text, /埋め込みへ進む（public \+ internal）: 6 件/);
+      assert.match(text, /語彙索引だけ（埋め込まない）: 3 件/);
+      assert.match(text, /本文の所在が無い.*: 2 件/);
+      assert.match(text, /門で止まる.*: 1 件/);
+    });
+
+    ok('#1762: 進捗は「処理済み/全件」を応答の matched・remaining・selected から出す', () => {
+      const st = { totals: { pages: 2, published: 7 } };
+      const line = rp.formatProgress(st, { matched: 10, remaining: 6, selected: 3, published: 3, skippedByGate: 0, withoutBody: 0 }, 4200);
+      assert.match(line, /^\[page 2\] 7\/10（70\.0%）/);
+      assert.match(line, /累計 発行 7/);
     });
   }
 

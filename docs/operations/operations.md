@@ -7,11 +7,11 @@ updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09]
-adrs: [ADR-0125, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127]
-iadrs: [IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
-specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
-issues: [#1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712]
+ids: [FR-06, FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09]
+adrs: [ADR-0013, ADR-0027, ADR-0125, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127]
+iadrs: [IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
+specs: [20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
+issues: [#1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712]
 -->
 
 # 運用仕様書
@@ -805,7 +805,9 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
   - **一時障害**（送信先の不調・タイムアウト・予期しない空応答など、`Retryable=true`）: 取り込み消費側
     （`DocumentUpdatedConsumer`）は当該メッセージを**恒久スキップにせず例外を送出**し、MassTransit の
     受信リトライ／(枯渇後) DLQ に回す。一括再索引中に Voyage が一時的に不調でもチャンクを取りこぼさない。
-    → 運用: DLQ（`*_error` キュー）を監視し、滞留があれば原因（Voyage 障害・URL 誤設定等）を解消して再投入する。
+    → 運用: DLQ を監視し、滞留があれば原因（Voyage 障害・鍵の未配線・URL 誤設定等）を解消して再発行する。
+    ［2026-10-06］取り込みは Wolverine へ移っており、DLQ は RabbitMQ の `wolverine-dead-letter-queue`（全サービスで共有）である
+    （`*_error` は MassTransit の段の命名）。DLQ のメッセージは古い状態の写しなので再投入せず、下の「`DocumentUpdated` の再発行」で今の台帳から作り直す。
     → 注意（削除後・再構築前の空白期間）: 取り込みは冒頭で当該文書の既存チャンクを全モデル別コレクションから
     削除してから再索引する（機密区分変更時の残存防止）。一時障害でリトライ枯渇→DLQ 送りとなった文書は、
     **削除済み・未索引（0 チャンク）の状態で一時的に検索不可**となる（恒久欠落ではなく DLQ 再投入で回復する）。
@@ -819,6 +821,7 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
      検証スタックでは `_deterministic_v1` も）を実次元で自動作成する（`QdrantBootstrapHostedService`）。旧 `knowledge_chunks`（1536 次元）は使用しない。
   2. 全文書に対し `DocumentUpdated` を再発行する（原本→正規化→取り込みを再走）。取り込み冒頭で全モデル別
      コレクションから当該文書を削除してから再索引するため、決定的チャンク ID により冪等に再構築される。
+     ［2026-10-06］**手段は下の「`DocumentUpdated` の再発行（再索引の手段）」**（`scripts/republish-document-updated.js`）。
   3. 旧コレクション `knowledge_chunks` は移行完了後に手動削除する（`DELETE /collections/knowledge_chunks`）。
   - モデル差し替え（例 ruri-v3→BGE-M3）時も、当該コレクションを作り直し同手順で再索引する。
   - **［2026-10-05］語彙索引の展開順序**: 語彙索引のコレクション（既定 `knowledge_chunks_lexical`）を作るのは**取り込みサービスの起動時だけ**である。
@@ -828,6 +831,67 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
     （理由 `backend_error`）が増える（検索は 200 で続く。文書削除は語彙索引の分だけ何もしないので失敗しない）。取り込みサービスを再起動して作らせれば収まる。
   - **［2026-10-05］語彙索引の導入後は、既に取り込まれた高機密文書（confidential・restricted・機密区分なし）に対して手順 2 を行う。**
     これらは従来どこにも索引されておらず、再発行するまで語彙索引にも入らない。語彙索引のコレクションは取り込みサービスが起動時に自動で作る。
+    高機密文書だけを流すなら `--attr confidentiality=confidential` / `--attr confidentiality=restricted` で絞る（機密区分の無い文書は属性の一致では選べないので、全件か `--ids` で流す）。
+#### `DocumentUpdated` の再発行（再索引の手段）
+
+射影（Qdrant の索引・Wiki.js・グラフ）は文書台帳の写しであり、作り直す手段は `DocumentUpdated` の再発行である。
+文書サービスの**管理者だけの口** `POST /documents/republish-updated` が、通常の発行の門を通して 1 ページずつ発行する
+（中身は通常の経路と同じ。台帳は書き換えない＝版も更新時刻も動かない）。量の制御・進捗・中断と再開・DLQ の監視は
+駆動スクリプト `scripts/republish-document-updated.js` が持つ。**稼働クラスタへ当たる**ので `--live` が要る。
+
+**🔴 流す前に、埋め込み先があることを確かめる。** `public` / `internal` の文書は埋め込み（既定は Voyage）へ進む。
+LLM ゲートウェイに Voyage の鍵（`Embedding__Voyage__ApiKey`）が無いと、埋め込みは一時障害として扱われ、**全件が再試行の後 DLQ へ行くだけになる**
+（索引には 1 点も入らない。取り込みは書く前に当該文書の点を消すため）。経路B の Helm の値はこの鍵を配線していない。
+用意の仕方は、鍵を Secret で配線する（課金が発生する。ゼロ保持の認定は本節の上の注記のとおり未了）か、
+**使い捨ての検証スタックに限り** `LOCALEMBED=1`（決定的ローカル埋め込み。意味的な近さは無い）で立てるかである。高機密文書（語彙索引だけ）は鍵が無くても入る。
+
+```console
+# 埋め込み先の確認（無ければ流さない）
+kubectl -n microservices-platform get deploy llmgateway-service \
+  -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}{"\n"}{end}' | grep -iE 'voyage|Endpoints__2__Enabled'
+# 取り込みのキューと DLQ の深さ（ready + unacked）
+kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl list_queues -q name messages \
+  | grep -E 'wolverine-dead-letter-queue|ingestion-service\.DocumentUpdated'
+```
+
+**手順**:
+
+1. **dry-run で件数と内訳を見る**（発行しない）。埋め込みへ進む件数（`public` + `internal`）が費用の母数である
+   （1 チャンクにつき埋め込み 1 回。本文なしの文書は題名などで 1 回。単価は契約の価格表を見る）。
+   ```console
+   node scripts/republish-document-updated.js --live --dry-run
+   node scripts/republish-document-updated.js --live --dry-run --attr confidentiality=internal   # 絞った場合
+   ```
+2. **流す**。最初のページは**カナリア**（既定 10 件）で、取り込みのキューが空になるまで待ち（再試行を含めて 1 件あたり最大でおよそ 1 分）、
+   DLQ が 1 件でも増えていれば止まる。以後は、取り込みのキューが `--max-queue-depth`（既定 200）以下になってから次のページ（`--page-size` 既定 50）を出し、
+   ページの間に `--sleep-ms`（既定 2000）待つ。DLQ の増加が `--max-dlq-growth`（既定 20）を超えたら止まる。
+   ```console
+   node scripts/republish-document-updated.js --live
+   node scripts/republish-document-updated.js --live --page-size 20 --sleep-ms 5000 --max-pages 50   # 控えめに区切る
+   ```
+   - 目安: 取り込みは 1 件ずつ外部の埋め込みを呼ぶので、2 万件規模は数時間かかる。ゲートウェイの埋め込みの速度制限やクラスタの負荷を見て `--page-size` / `--sleep-ms` を下げる。
+   - 絞り込み: `--attr <キー>=<値>`（完全一致・AND・繰り返し可）／`--ids <id,id,...>`（500 件まで）／`--created-before <ISO8601>`。
+     新規の走査は `createdBefore` を開始時刻に固定する（走査の途中で作られた文書は作成の経路で既に発行されているので選ばない）。
+   - 副作用: fan-out なので Wiki 同期（`published` / `normalized` の組織文書を Wiki.js へ書き直す）とグラフ同期（同じ更新時刻なら何もしない）も動く。
+3. **中断と再開**。状態（カーソル・`createdBefore`・絞り込み・累計）は `./republish-document-updated.state.json`（`--state` で変更）に**ページごとに**書かれる。
+   Ctrl-C・連続失敗（既定 3 回）・DLQ の増加で止まったら、原因を直して `--resume` で続ける。状態ファイルが在るまま新規に流すと拒否される（やり直すなら状態ファイルを消す）。
+   ブローカ（RabbitMQ。経路B は PVC を持たない）が途中で作り直された疑いがあるときは、`--resume` ではなく状態ファイルを消して最初から流す
+   （カーソルは「発行した」位置であり「索引された」位置ではない。再発行は冪等なので重ねて流してよい）。
+4. **確かめる**。取り込みのキューが空になってから、各コレクションの `points_count` が増えていること（読み取りだけ）:
+   ```console
+   kubectl -n platform-infra run qdrant-check --rm -i --restart=Never --image=curlimages/curl -- sh -c \
+     'for c in knowledge_chunks_voyage_3_5 knowledge_chunks_lexical knowledge_chunks_ruri_v3; do curl -s http://qdrant:6333/collections/$c; echo; done'
+   ```
+   `points_count` は文書数ではなくチャンク数である（本文の所在が無い文書は点を作らない。dry-run の「本文の所在が無い」件数を差し引いて読む）。
+
+**DLQ の扱い**: DLQ（`wolverine-dead-letter-queue`）は全サービスで共有している。再発行で増えたメッセージは古い状態の写しなので**再投入しない**。
+原因（埋め込み先・本文の取得）を直したら、同じ範囲をもう一度再発行する（冪等）。中身を確かめずに DLQ を purge しない
+（確かめるときは `kubectl -n platform-infra port-forward svc/rabbitmq 15672` で管理画面を開く）。
+
+**口の仕様**（直接叩く場合。メッシュ内部・管理者のトークンが要る）: 要求は `dryRun`（必須）・`limit`（既定 100・1〜500）・`cursor`（前の応答の `nextCursor`）・
+`createdBefore`・`ids`・`attributes`。応答は `matched`（絞り込みの全件）・`remaining`（この呼び出しの前に残っていた件数）・`selected`・`published`・
+`skippedByGate`（露出の 3 トグルが OFF の個人資料は発行しない）・`withoutBody`・`byConfidentiality`・`nextCursor`（尽きたら null）。詳細は `docs/api/openapi.yaml`。
+
 - **ペイロード項目を増やしたときの再索引（#536）**: 索引ペイロードへ**新しい項目**を
   足した場合も、上記手順 2（**全文書に対する `DocumentUpdated` の再発行**）がそのまま使える。
   コレクションの作り直しは要らない —— 決定的チャンク ID により同じ点が上書きされる。
@@ -1264,7 +1328,8 @@ LlmGateway）に在るため、**当該イメージが更新済みであるこ�
 
 - **リストア手順（概略）**: ①対象データストアを停止/隔離 → ②該当バックアップからリストア（Postgres は
   `pg_restore`、オブジェクトストレージは複製からの書き戻し、Qdrant はスナップショット復元）→ ③依存サービスを再起動しヘルス確認 →
-  ④整合確認（Qdrant/Wiki は必要なら `DocumentUpdated` 再発行で再構築。埋め込み再索引は本書「埋め込みプロバイダ」節参照）。
+  ④整合確認（Qdrant/Wiki は必要なら `DocumentUpdated` 再発行で再構築。埋め込み再索引は本書「埋め込みプロバイダ」節参照。
+  再発行の手段は同節の「`DocumentUpdated` の再発行（再索引の手段）」）。
 - **リストア演習**: ステージング整備後に定期実施し、RTO の実測と手順の妥当性を検証する（follow-up）。
 
 ### ローカル環境（`deploy/local`）で稼働しているもの
