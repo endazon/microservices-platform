@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-05, NFR-18, SC-06, SC-22]
 adrs: [ADR-0032, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124, ADR-0126]
-iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0495, IADR-0501]
-specs: [20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261004_issue-1472_sc22-t40-live-procedure, 20261003_458_connector-secret-vault-reference]
-issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, planning#716]
+iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0495, IADR-0501, IADR-0504]
+specs: [20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261004_issue-1472_sc22-t40-live-procedure, 20261003_458_connector-secret-vault-reference, 20261006_1764_voyage-key-wiring]
+issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, #1764, planning#716]
 -->
 
 # テスト仕様書: 秘密情報・接続設定の管理
@@ -70,7 +70,7 @@ issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, planning#716]
 | T-26 | 保管先が書き込みを拒む | 更新 | 502。失敗が監査に残り、最終更新者の記録を作らない | 黙って成功にしない | 自動 |
 | T-27 | — | 起動した境界層を見る | 実ファイルの項目集合（6 項目）を読み込んでいる | 起動時の読み込み | 自動 |
 | T-28 | 項目集合のファイルが無い | 境界層を起動する | 起動しない | fail-closed | 自動 |
-| T-29 | 項目集合の実ファイル | 読み込む | 6 項目・21 プロパティ。構成値は書けるプロパティに入らない。出力ディレクトリに同梱されている | 単一情報源 | 自動 |
+| T-29 | 項目集合の実ファイル | 読み込む | 6 項目・22 プロパティ（［2026-10-06］21 → 22。`llm-provider-credentials` に `voyage-api-key`）。構成値は書けるプロパティに入らない。出力ディレクトリに同梱されている | 単一情報源 | 自動 |
 | T-30 | 保留・対象外を含むファイル | 読み込む | 一覧に入るのは `items[]` だけ | `items[]` だけを読む | 自動 |
 | T-31 | 書ける／書けないの交差・ワイルドカード・`..`・空・壊れた JSON | 読み込む | いずれも例外（起動しない） | fail-closed | 自動 |
 | T-32 | 保管先の権限ファイル | path を数える | 項目集合の data ＋ metadata と**完全一致**（多くも少なくもない） | 完全一致パス | 自動 |

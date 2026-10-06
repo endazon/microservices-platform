@@ -37,7 +37,7 @@ rm -f /tmp/microservices-platform-secrets.yaml
 | --- | --- | --- |
 | `wikijs-db` | `wikijs.db.existingSecret` | Wiki.js の DB パスワード |
 | `wikijs-sync` | `services.wiki.extraEnv` | WikiService → Wiki.js 同期 API キー |
-| `llm-provider-credentials` | `services.llmgateway.extraEnv` | 外部 LLM プロバイダ資格情報（`Llm__ApiKey` ← `anthropic-api-key`。#308） |
+| `llm-provider-credentials` | `services.llmgateway.extraEnv` | 外部 LLM プロバイダ資格情報（`Llm__ApiKey` ← `anthropic-api-key`。#308）・埋め込みの鍵（`Embedding__Voyage__ApiKey` ← `voyage-api-key`。キーが無くても起動する。#1764） |
 
 ## 3. Harbor レジストリ Pull Secret（ADR-0007）
 

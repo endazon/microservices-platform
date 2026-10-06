@@ -256,3 +256,7 @@ node scripts/republish-document-updated.js --live --dry-run
    再開は DLQ の基準を今の深さへ取り直し（前の基準 → 今の深さを表示）、カナリアからやり直し、確かめていないページ（DLQ へ行った文書を含む）をもう一度発行する。
    DLQ を purge してから再開しても取りこぼさない。
 5. Qdrant の `points_count` が増えることを確かめる。
+
+［2026-10-06 追記 / #1764］f-6・§原因の分析の「経路B は Voyage の鍵を配線していない」は本仕様書の時点の観測である。#1764（IADR-0504）で
+`Embedding__Voyage__ApiKey` は Secret `llm-provider-credentials` のキー `voyage-api-key` から optional で渡す配線になった（値は Vault へ入れるまで空。
+手順は `docs/operations/voyage-embedding-key-runbook.md`）。運用仕様書の再発行の節の同じ文も同 PR で改めた。

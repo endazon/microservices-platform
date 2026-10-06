@@ -240,6 +240,10 @@ spec:
                 secretKeyRef:
                   name: {{ .secretKeyRef.name }}
                   key: {{ .secretKeyRef.key }}
+                  {{- /* FR-02, IADR-0504 (#1764): optional は「キーが無ければ env を置かない」。書いた項目にだけ描く（無指定は従来と同じ字面）。 */}}
+                  {{- if .secretKeyRef.optional }}
+                  optional: true
+                  {{- end }}
               {{- end }}
           {{- end }}
           {{- /* #1389: 上書きファイル（values-local 等）が env を**足す**ための鍵。Helm はリストを置換するため、
@@ -255,6 +259,10 @@ spec:
                 secretKeyRef:
                   name: {{ .secretKeyRef.name }}
                   key: {{ .secretKeyRef.key }}
+                  {{- /* FR-02, IADR-0504 (#1764): optional は「キーが無ければ env を置かない」。書いた項目にだけ描く（無指定は従来と同じ字面）。 */}}
+                  {{- if .secretKeyRef.optional }}
+                  optional: true
+                  {{- end }}
               {{- end }}
           {{- end }}
           {{- /* NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1, IADR-0378, IADR-0469 (#1287): 合成監視の標識の許可集合。

@@ -3,7 +3,7 @@
 # runtime bootstrap（再実行可・[[IADR-0094]] と同型）。Vault は既定で永続化（IADR-0457）＝Pod 再起動では消えない。
 # vault-data PVC を消したとき・PERSIST=0（インメモリ）の Vault を再起動したときは再実行する。
 #
-#   [ANTHROPIC_API_KEY=... OPENAI_API_KEY=...] bash deploy/local/vault/eso/bootstrap.sh
+#   [ANTHROPIC_API_KEY=... OPENAI_API_KEY=... VOYAGE_API_KEY=...] bash deploy/local/vault/eso/bootstrap.sh
 #
 # 前提: VAULT=1 で dev Vault が起動済み（platform-infra）。root トークンは vault Pod の env VAULT_DEV_ROOT_TOKEN_ID。
 # 全 vault 操作は vault Pod 内で実行する（kubectl exec）。ホストに vault CLI は不要。
@@ -130,9 +130,19 @@ echo "==> seed: secret/msp/*（env 由来 or dev 既定・平文の実 secret �
 if vkv_exists msp/llm-provider-credentials; then
   vkv_patch_nonempty msp/llm-provider-credentials anthropic-api-key "${ANTHROPIC_API_KEY:-}"
   vkv_patch_nonempty msp/llm-provider-credentials openai-api-key "${OPENAI_API_KEY:-}"
+  vkv_patch_nonempty msp/llm-provider-credentials voyage-api-key "${VOYAGE_API_KEY:-}"
+  # FR-02, IADR-0504 (#1764): voyage-api-key は後から足したプロパティである。ExternalSecret（externalsecret-llm.yaml）は
+  # data[] のプロパティが KV に無いと同期全体を失敗させる（anthropic-api-key の差し替えまで届かなくなる）ので、
+  # **無いときだけ空で足す**（在る値は触らない。空＝鍵なし＝埋め込みは一時障害で DLQ へ。値は Runbook の手順で入れる）。
+  vkv_patch_if_missing msp/llm-provider-credentials voyage-api-key ''
 else
-  vexec "vault kv put -cas=0 secret/msp/llm-provider-credentials anthropic-api-key='${ANTHROPIC_API_KEY:-}' openai-api-key='${OPENAI_API_KEY:-}'"
+  # FR-02, IADR-0504 (#1764 監査): 作るときも鍵を `sh -c` の引数へ埋め込まない（Pod 内の ps・監査ログに載る）。
+  # 全プロパティを空で作ってから、env が空でないものだけを vkv_patch_nonempty（値は stdin）で入れる。
+  vexec "vault kv put -cas=0 secret/msp/llm-provider-credentials anthropic-api-key='' openai-api-key='' voyage-api-key=''"
   mark_changed msp/llm-provider-credentials
+  vkv_patch_nonempty msp/llm-provider-credentials anthropic-api-key "${ANTHROPIC_API_KEY:-}"
+  vkv_patch_nonempty msp/llm-provider-credentials openai-api-key "${OPENAI_API_KEY:-}"
+  vkv_patch_nonempty msp/llm-provider-credentials voyage-api-key "${VOYAGE_API_KEY:-}"
 fi
 # IADR-0097 (#310) PR-2: object-storage-credentials / wikijs-db / wikijs-sync。
 # IADR-0461 決定 3 (#1499): オブジェクトストレージ（SeaweedFS）の S3 資格情報。旧 msp/minio-credentials。

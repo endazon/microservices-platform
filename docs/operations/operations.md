@@ -7,11 +7,11 @@ updated: 2026-10-06
 author: claude
 ---
 <!-- trace:
-ids: [FR-06, FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09]
-adrs: [ADR-0013, ADR-0027, ADR-0125, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127]
-iadrs: [IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
-specs: [20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
-issues: [#1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712]
+ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06]
+adrs: [ADR-0125, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027]
+iadrs: [IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
+specs: [20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
+issues: [#1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712]
 -->
 
 # 運用仕様書
@@ -43,6 +43,7 @@ issues: [#1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #
 | Wiki.js の初期セットアップ・OIDC 連携をしたい | §Wiki.js の起動・初期セットアップ・ヘルスチェック |
 | データソース定期同期を有効化・監視したい | §データソース定期同期の有効化と監視 |
 | 埋め込みプロバイダのゼロ保持・fail-closed 挙動を確認したい | §埋め込みプロバイダの設定・ゼロ保持・再索引 |
+| 経路B の LLM ゲートウェイへ埋め込み（Voyage）の鍵を入れる・届いたか確かめる | [`voyage-embedding-key-runbook.md`](voyage-embedding-key-runbook.md) |
 | HPA/PDB でスケール・可用性を確保したい | §可用性・水平スケール |
 | アラートが実際にどこへ届くか（未配線の現状）を確認したい | §監視・アラート |
 | 利用イベントがいつ消えるか・消えていないときの見方を知りたい | §データ保持期間（利用イベント） |
@@ -745,11 +746,19 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
   のティアB要件（ゼロ保持・学習不使用・レジデンシー）を契約で確認し、確認できるまで本番文書を索引しない。
   未認定の間は `Embedding__Routing__Endpoints__0__Enabled=false` で Voyage 経路を止められる。
   - API キーは Secret 経由で投入する（コミットしない）。compose: `.env` の `VOYAGE_API_KEY`
-    （`Embedding__Voyage__ApiKey`）。k8s は Secret（例 `embedding-voyage`、key=`api-key`）。
+    （`Embedding__Voyage__ApiKey`）。~~k8s は Secret（例 `embedding-voyage`、key=`api-key`）。~~
+    **［2026-10-06］k8s（Helm）は Secret `llm-provider-credentials` のキー `voyage-api-key` を `Embedding__Voyage__ApiKey` へ渡す**
+    （`optional: true`。本番像の `values.yaml` と経路B の `values-local.yaml` の両方。外部 LLM の鍵と同じ Secret）。
+    経路B は Vault の KV `secret/msp/llm-provider-credentials` のプロパティ `voyage-api-key` を ESO が写す。
+    鍵の入れ方と、値を表示せずに届いたことを確かめる手順は [`voyage-embedding-key-runbook.md`](voyage-embedding-key-runbook.md)。
+    **再索引の前に行う**（鍵が無いまま再発行すると、`public` / `internal` の文書は全件が再試行の後 DLQ へ行くだけになる）。
   - キー未設定でも起動する（fail-open しない）。Voyage 呼び出しが失敗した文書は索引されないだけで、
     高機密文書の本文が外部へ出ることはない（ルーティングで候補にならないため）。
+    ［2026-10-06］Secret にキーが無い（古い Secret）場合も起動する（`optional: true` で env を置かない）。
   - **ゼロ保持認定状況の記録（#303 受け入れ基準）**: 実環境構築前チェックリストの一項目として、契約でのゼロ保持
     （学習不使用・レジデンシー含む）認定の可否をここに記録する。**現状: 未認定（2026-07-19 時点）**。
+    **［2026-10-06］未認定のまま（#1740）。オーナーは同日、認定の前に経路B（稼働の開発クラスタ）で Voyage の鍵を配線して使うことを受け入れた。**
+    本番相当の環境は従来どおり、認定まで本番文書を流さない。
     - ⚠️ **既定構成は Voyage 経路が有効**（`appsettings.json` の `voyage-managed`＝index 0 が `Enabled: true`。
       compose/Helm に既定の無効化上書きは無い）。したがって「未認定＝自動で停止」ではない。**未認定の環境へデプロイ
       する場合は、運用者が本番文書を流す前に明示的に Voyage 経路を無効化すること**（`Embedding__Routing__Endpoints__0__Enabled=false`。
@@ -841,12 +850,14 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
 
 **🔴 流す前に、埋め込み先があることを確かめる。** `public` / `internal` の文書は埋め込み（既定は Voyage）へ進む。
 LLM ゲートウェイに Voyage の鍵（`Embedding__Voyage__ApiKey`）が無いと、埋め込みは一時障害として扱われ、**全件が再試行の後 DLQ へ行くだけになる**
-（索引には 1 点も入らない。取り込みは書く前に当該文書の点を消すため）。経路B の Helm の値はこの鍵を配線していない。
-用意の仕方は、鍵を Secret で配線する（課金が発生する。ゼロ保持の認定は本節の上の注記のとおり未了）か、
+（索引には 1 点も入らない。取り込みは書く前に当該文書の点を消すため）。
+［2026-10-06］チャート（経路B の値を含む）は、この鍵を Secret `llm-provider-credentials` のキー `voyage-api-key` から渡すよう配線してある（キーが無い・空でも起動する）。
+**鍵の値はチャートにもリポジトリにも無い。** 用意の仕方は、鍵の値を Vault へ入れて同期させる（手順は [Voyage の鍵の Runbook](voyage-embedding-key-runbook.md)。課金が発生する。ゼロ保持の認定は本節の上の注記のとおり未了）か、
 **使い捨ての検証スタックに限り** `LOCALEMBED=1`（決定的ローカル埋め込み。意味的な近さは無い）で立てるかである。高機密文書（語彙索引だけ）は鍵が無くても入る。
+env の名前（`Embedding__Voyage__ApiKey`）は鍵が空でも下の確認に出るので、**値が入っていることは同 Runbook の手順 4（長さで測る）で確かめる。**
 
 ```console
-# 埋め込み先の確認（無ければ流さない）
+# 埋め込み先の確認（無ければ流さない。env の名前だけを見る。値の長さは Voyage の鍵の Runbook の手順 4）
 kubectl -n microservices-platform get deploy llmgateway-service \
   -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}{"\n"}{end}' | grep -iE 'voyage|Endpoints__2__Enabled'
 # 取り込みのキューと DLQ の深さ（ready + unacked）

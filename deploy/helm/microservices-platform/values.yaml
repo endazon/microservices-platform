@@ -683,6 +683,16 @@ services:
         secretKeyRef:
           name: llm-provider-credentials
           key: anthropic-api-key
+      # FR-02, ADR-0016, IADR-0504 (#1764): 埋め込み（ティアB・Voyage AI）の API キー。同じ Secret の voyage-api-key を読む。
+      # 🔴 optional: true —— キーが Secret に無くても Pod は起動する（env を置かない＝鍵なし）。鍵なしの埋め込みは
+      #    一時障害（Retryable）として返り、取り込みは再試行の後 DLQ へ送る（索引に入らない。高機密文書は影響を受けない）。
+      #    既存の Secret（voyage-api-key を持たない）のまま upgrade しても LLM ゲートウェイを CreateContainerConfigError で
+      #    止めないためである（テキスト生成まで巻き込まない）。値は Vault / ESO 側で用意し、ここには書かない。
+      - name: Embedding__Voyage__ApiKey
+        secretKeyRef:
+          name: llm-provider-credentials
+          key: voyage-api-key
+          optional: true
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
