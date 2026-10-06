@@ -3389,12 +3389,12 @@ msgid "検索・質問"
 msgstr "検索・質問"
 
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
-msgid "検索・質問応答・分析での外部 LLM の呼び出し"
-msgstr "検索・質問応答・分析での外部 LLM の呼び出し"
+msgid "検索・質問応答・分析での外部 LLM の呼び出しと、文書の索引づけ・検索での埋め込みの呼び出し"
+msgstr "検索・質問応答・分析での外部 LLM の呼び出しと、文書の索引づけ・検索での埋め込みの呼び出し"
 
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
-msgid "検索・質問応答・分析で外部の LLM を呼び出すための API キーです。"
-msgstr "検索・質問応答・分析で外部の LLM を呼び出すための API キーです。"
+msgid "検索・質問応答・分析で外部の LLM を呼び出すための API キーと、文書の索引づけと検索で埋め込み（Voyage AI）を呼び出すための API キーです。"
+msgstr "検索・質問応答・分析で外部の LLM を呼び出すための API キーと、文書の索引づけと検索で埋め込み（Voyage AI）を呼び出すための API キーです。"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "検索に失敗しました。"

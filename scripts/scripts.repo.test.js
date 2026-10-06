@@ -12963,6 +12963,8 @@ done
 kvf() { printf '%s/kv/%s' "$S" "\${1//\\//__}"; }
 if [ "$verb" = "exec" ]; then
   cmd="$last"
+  # Pod の中の sh -c へ渡した引数をそのまま控える（#1764 監査: 鍵が引数に載っていないことを試験が確かめる）
+  printf '%s\\n' "$cmd" >> "$STUB_LOG.argv"
   case "$cmd" in
     *"vault kv metadata get secret/"*)
       p="\${cmd#*vault kv metadata get secret/}"; p="\${p%% *}"
@@ -13079,7 +13081,9 @@ exit 0
         });
         // どの実行でも、同期先 Secret の値は stdout / stderr に出ない（キー名だけを引く。#1728 独立監査）。
         assert.ok(!`${r.stdout}${r.stderr}`.includes(SECRET_VAL), `同期先 Secret の値が出力に出た:\n${r.stdout}${r.stderr}`);
-        return { ...r, calls: fs1728.readFileSync(log, 'utf8').split('\n').filter(Boolean) };
+        const argvLog = `${log}.argv`;
+        const execArgv = fs1728.existsSync(argvLog) ? fs1728.readFileSync(argvLog, 'utf8').split('\n').filter(Boolean) : [];
+        return { ...r, calls: fs1728.readFileSync(log, 'utf8').split('\n').filter(Boolean), execArgv };
       } finally {
         fs1728.rmSync(dir, { recursive: true, force: true });
       }
@@ -13143,6 +13147,35 @@ exit 0
         ['VAULT PATCH msp/llm-provider-credentials voyage-api-key']);
       assert.ok(!`${r.stdout}${r.stderr}`.includes(probe), '鍵の値が出力に出た');
       assert.ok(!r.calls.some((c) => c.includes(probe)), '鍵の値が kubectl の引数に載った（標準入力で渡すこと）');
+    });
+
+    ok('#1764 監査: llm-provider-credentials を新しく作るときも、鍵は sh -c の引数に載せず空で作ってから標準入力で入れる', () => {
+      const probes = ['anthropic', 'openai', 'voyage'].map((p) => [p, '1764', 'argv', 'probe'].join('-'));
+      const r = run1728({
+        setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__llm-provider-credentials')),
+        env: { ANTHROPIC_API_KEY: probes[0], OPENAI_API_KEY: probes[1], VOYAGE_API_KEY: probes[2] },
+      });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      for (const probe of probes) {
+        assert.ok(!r.execArgv.some((c) => c.includes(probe)), `鍵の値が sh -c の引数に載った: ${r.execArgv.find((c) => c.includes(probe))}`);
+        assert.ok(!r.calls.some((c) => c.includes(probe)), '鍵の値が kubectl の引数に載った');
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(probe), '鍵の値が出力に出た');
+      }
+      const put = r.execArgv.filter((c) => c.includes('vault kv put -cas=0 secret/msp/llm-provider-credentials '));
+      assert.strictEqual(put.length, 1, r.execArgv.join('\n'));
+      assert.ok(/anthropic-api-key='' openai-api-key='' voyage-api-key=''/.test(put[0]), `作成は全プロパティ空であること: ${put[0]}`);
+      const llm = r.calls.filter((c) => c.startsWith('VAULT ') && c.includes(' msp/llm-provider-credentials'));
+      assert.deepStrictEqual(llm, ['VAULT PUT msp/llm-provider-credentials',
+        'VAULT PATCH msp/llm-provider-credentials anthropic-api-key',
+        'VAULT PATCH msp/llm-provider-credentials openai-api-key',
+        'VAULT PATCH msp/llm-provider-credentials voyage-api-key'], '空で作ってから、env が空でない鍵だけを stdin で入れること');
+    });
+
+    ok('#1764 監査: env が無い初回は llm-provider-credentials を空で作るだけで、部分更新はしない', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__llm-provider-credentials')) });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      assert.deepStrictEqual(r.calls.filter((c) => c.startsWith('VAULT ') && c.includes(' msp/llm-provider-credentials')),
+        ['VAULT PUT msp/llm-provider-credentials']);
     });
 
     ok('#1728: 対になる秘密の KV を無いときだけ作ったら（vkv_create_if_absent）、それを読む ExternalSecret に付ける', () => {

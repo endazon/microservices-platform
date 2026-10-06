@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-05, NFR-11, NFR-18, SC-11, SC-12, SC-22]
 adrs: [ADR-0007, ADR-0031, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124, ADR-0126]
-iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0124, IADR-0125, IADR-0134, IADR-0433, IADR-0437, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0493, IADR-0495, IADR-0501]
-specs: [20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference]
-issues: [#458, #1411, #1416, #1467, #1477, #1502, #1523, #1682, planning#599, planning#631, planning#635, planning#652, planning#700, planning#716]
+iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0124, IADR-0125, IADR-0134, IADR-0433, IADR-0437, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0493, IADR-0495, IADR-0501, IADR-0504]
+specs: [20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference, 20261006_1764_voyage-key-wiring]
+issues: [#458, #1411, #1416, #1467, #1477, #1502, #1523, #1682, #1764, planning#599, planning#631, planning#635, planning#652, planning#700, planning#716]
 -->
 
 # 画面仕様書: 秘密情報・接続設定の管理
@@ -100,7 +100,7 @@ issues: [#458, #1411, #1416, #1467, #1477, #1502, #1523, #1682, planning#599, pl
 
 | 項目 | 再起動する消費側 | 断たれ得る処理 | 確認ダイアログの本文 |
 | --- | --- | --- | --- |
-| 外部 LLM の API キー | LLM ゲートウェイ | 検索・質問応答・分析での外部 LLM の呼び出し | 確認して書き込むと、即時同期のあとで消費側が**自動で再起動される**（自動再起動を配備した環境の場合）。配備していない環境では、再起動するまで書いた値は反映されない |
+| 外部 LLM の API キー | LLM ゲートウェイ | 検索・質問応答・分析での外部 LLM の呼び出しと、文書の索引づけ・検索での埋め込みの呼び出し | 確認して書き込むと、即時同期のあとで消費側が**自動で再起動される**（自動再起動を配備した環境の場合）。配備していない環境では、再起動するまで書いた値は反映されない |
 | メール送信の認証情報 | メール中継 | 通知メール（パスワード再設定など）の送信 | 同上 |
 | Wiki 同期の API キー | Wiki 同期 | Wiki.js との文書の同期 | 同上 |
 | 株式自動売買の外部 API キーと通知 | 株式自動売買のアプリケーション | 売買・市場データと開示情報の取得・Discord への通知 | 同上 |

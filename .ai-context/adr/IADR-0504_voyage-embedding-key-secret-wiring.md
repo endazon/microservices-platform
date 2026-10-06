@@ -89,3 +89,15 @@ helm（本番像の `values.yaml`・経路B の `values-local.yaml`）と ESO �
 - **Voyage のゼロ保持の認定は未了である（#1740）。** 本決定は鍵の配線だけで、認定の代わりにはならない。オーナーは経路B での使用を受け入れた（2026-10-06）。
 - 鍵の欠落を自動で検知する仕組み（例: ゲートウェイの埋め込み失敗の率のアラート）は足していない。
 - 本番像の Secret（`secret-templates.example.yaml` 由来の手作り）へ `voyage-api-key` を足すのは本番の go-live 側の作業である（無くても起動する）。
+
+> ［2026-10-06 追記 / #1764］監査（PR の AI レビューと独立監査）の指摘を閉じた（決定は変えていない）。
+> - **Vault の種は、KV を作るときも鍵を `sh -c` の引数へ埋め込まない。** 従前の作成経路は `vault kv put -cas=0 … anthropic-api-key='${ANTHROPIC_API_KEY:-}' …` で、
+>   env を展開した値が vault Pod 内の `sh -c` の引数（`ps`）に載り得た。全プロパティを空で作ってから、env が空でないものだけを
+>   `vkv_patch_nonempty`（値は stdin）で入れる形へ改めた。冪等性（在る KV は put しない・空の env で値を消さない）は変えていない。
+>   `scripts.repo.test.js` の器が `sh -c` へ渡した引数を控え、鍵の目印が載ると赤になる（展開を戻す変異・作成後の部分更新を落とす変異の双方で実測）。
+> - 手順書の 5-a（鍵そのものの疎通）は鍵を `curl` の引数に置かず、組み込みの `printf` で作った設定を `curl -K -` へ標準入力で渡す。
+>   失敗の応答で `grep` が非 0 を返して Pod が `Failed` になり `kubectl wait` が 90 秒待たされる形を、`|| true` で直した。
+> - 描画試験（`helm-llm-provider-keys.test.js`）: `extraEnvAppend` 側の `optional` の分岐を固定する描画を足し、`optional:` を数える範囲を
+>   描画物全体から llmgateway-service の Deployment へ狭めた（他のワークロードが正当に使い始めても誤って赤にしない）。
+> - SC-22 の文言（用途・中断される処理）に、この項目が埋め込みの鍵も持ち、再起動で索引づけ・検索の埋め込みも中断されることを足した。
+> - 運用仕様書・SC-22 の画面／テスト仕様書の trace ブロックへ本 IADR・作業仕様書・#1764 を足した。

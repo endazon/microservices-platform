@@ -174,10 +174,11 @@ spec:
       command: ["sh", "-c"]
       args:
         - >-
-          curl -sS -o /tmp/r -w 'http=%{http_code}\n' https://api.voyageai.com/v1/embeddings
-          -H "Authorization: Bearer ${VOYAGE_KEY}" -H 'content-type: application/json'
+          printf 'header = "Authorization: Bearer %s"\n' "$VOYAGE_KEY"
+          | curl -sS -K - -o /tmp/r -w 'http=%{http_code}\n' https://api.voyageai.com/v1/embeddings
+          -H 'content-type: application/json'
           -d '{"input":["probe"],"model":"voyage-3.5","output_dimension":1024,"input_type":"query"}';
-          grep -o '"total_tokens":[0-9]*' /tmp/r
+          grep -o '"total_tokens":[0-9]*' /tmp/r || true
 EOF
 kubectl -n "$NS" wait --for=jsonpath='{.status.phase}'=Succeeded pod/voyage-key-probe --timeout=90s
 kubectl -n "$NS" logs voyage-key-probe
@@ -186,6 +187,11 @@ kubectl -n "$NS" delete pod voyage-key-probe
 
 期待: `http=200` と `"total_tokens":<小さな数>`。`http=401` は鍵の誤り、`http=000` はクラスタから外へ出られない（egress）。
 応答本文（ベクトル）は Pod の中にだけ置き、表示しない。
+
+- 🔴 鍵は `curl` の引数に書かない（`-H "Authorization: Bearer ..."` と書くと、展開後の値が Pod 内の `ps` に載る）。
+  シェル組み込みの `printf` で設定（`header = ...`）を作り、`curl -K -` へ標準入力で渡す。
+- 失敗の応答（`http=401` 等）では `total_tokens` が無いので `grep` は何も出さないが、`|| true` で Pod は `Succeeded` で終わる。
+  `kubectl wait` が 90 秒待たされずに、すぐ `logs` で `http=` の行を読める。
 
 **5-b. ゲートウェイの経路**（検索クエリの埋め込み）: 検索画面で無害な語（例「テスト」）を 1 回検索し、直後にゲートウェイのログを数える。
 

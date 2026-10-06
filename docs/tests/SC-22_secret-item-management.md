@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-05, NFR-18, SC-06, SC-22]
 adrs: [ADR-0032, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124, ADR-0126]
-iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0495, IADR-0501]
-specs: [20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261004_issue-1472_sc22-t40-live-procedure, 20261003_458_connector-secret-vault-reference]
-issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, planning#716]
+iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0495, IADR-0501, IADR-0504]
+specs: [20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261004_issue-1472_sc22-t40-live-procedure, 20261003_458_connector-secret-vault-reference, 20261006_1764_voyage-key-wiring]
+issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, #1764, planning#716]
 -->
 
 # テスト仕様書: 秘密情報・接続設定の管理

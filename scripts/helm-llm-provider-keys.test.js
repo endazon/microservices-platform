@@ -17,10 +17,14 @@
  *      `value:`（リテラル）を持たない。他のワークロードには現れない。
  *   2. 同じ Deployment に `Llm__ApiKey`（anthropic-api-key）が残っている（values-local の extraEnv はリストの置換なので、
  *      片方だけ書くともう片方が消える）。
- *   3. `optional:` は描画物の中でこの 1 行にしか現れない（テンプレートの変更が他の secretKeyRef の字面を変えていない）。
+ *   3. llmgateway-service の Deployment の中で `optional:` は Voyage の項目の 1 行にしか現れない（Llm__ApiKey 等の
+ *      他の secretKeyRef の字面を変えていない）。［2026-10-06 追記 / #1764 監査］数える範囲を描画物全体からこの
+ *      Deployment へ狭めた（他のワークロードが正当に optional を使い始めても誤って赤にしない）。
+ *   3'. extraEnvAppend 側の分岐も optional を描く・無指定なら描かない（extraEnv 側と同じ形。#1764 監査）。
  *   4. ExternalSecret（deploy/local/vault/eso/externalsecret-llm.yaml）のキーは anthropic・openai・voyage の 3 つちょうどで、
  *      voyage-api-key は msp/llm-provider-credentials の同名プロパティを読む。SC-22 の項目表の properties と集合が一致する。
  *   5. Vault の種（bootstrap.sh）が voyage-api-key を「無いときだけ空で足す」（ESO はプロパティが無いと同期全体を失敗させる）、
+ *      作るときは全プロパティを空で作り、鍵を `sh -c` の引数へ埋め込まない（#1764 監査）、
  *      ESO 無しの手動 Secret（k8s-local-up.sh）も voyage-api-key を持つ。
  *   6. 変異: リテラルの値・別のワークロードへの混入・Llm__ApiKey の欠落を、実際に `helm template` で描かせると本試験の判定が赤になる。
  *
@@ -124,8 +128,11 @@ function checkRender(rendered) {
     const llm = envEntries(owner.text, 'Llm__ApiKey');
     if (llm.length !== 1 || !/^\s*key:\s*anthropic-api-key\s*$/m.test(llm[0])) errors.push(`${OWNER} の Llm__ApiKey（anthropic-api-key）が無い（extraEnv の置換で落ちた）`);
   }
-  const optionals = (rendered.match(/^\s*optional:/gm) || []).length;
-  if (optionals !== 1) errors.push(`optional: が描画物に ${optionals} 回現れた（期待は ${ENV_NAME} の 1 回）`);
+  // ［2026-10-06 追記 / #1764 監査］数えるのは llmgateway-service の Deployment の中だけ（描画物全体ではない）。
+  if (owner) {
+    const optionals = (owner.text.match(/^\s*optional:/gm) || []).length;
+    if (optionals !== 1) errors.push(`optional: が ${OWNER} に ${optionals} 回現れた（期待は ${ENV_NAME} の 1 回）`);
+  }
   return errors;
 }
 
@@ -179,10 +186,32 @@ ok('Vault の種は voyage-api-key を「無いときだけ空で足す」・作
     'bootstrap.sh が在る KV へ voyage-api-key を空で足していない（ESO の同期全体が失敗する）');
   assert.ok(/^\s*vkv_patch_nonempty msp\/llm-provider-credentials voyage-api-key "\$\{VOYAGE_API_KEY:-\}"\s*$/m.test(b),
     'bootstrap.sh が VOYAGE_API_KEY を部分更新で受けていない');
-  assert.ok(/vault kv put -cas=0 secret\/msp\/llm-provider-credentials [^\n]*voyage-api-key='\$\{VOYAGE_API_KEY:-\}'/.test(b),
-    'bootstrap.sh が KV を作るときに voyage-api-key を持たせていない');
+  // ［2026-10-06 追記 / #1764 監査］作るときは全プロパティを空で作り、鍵は作った後に vkv_patch_nonempty（stdin）で入れる。
+  //   `sh -c` の引数へ env を展開して埋め込む形（Pod 内の ps に鍵が載る）へ戻ると赤。
+  const put = b.match(/vault kv put -cas=0 secret\/msp\/llm-provider-credentials [^\n]*/);
+  assert.ok(put && /voyage-api-key=''/.test(put[0]), 'bootstrap.sh が KV を作るときに voyage-api-key を（空で）持たせていない');
+  assert.ok(!/\$\{?[A-Z_]*API_KEY/.test(put[0]), `bootstrap.sh が KV を作るときに鍵を sh -c の引数へ埋め込んでいる: ${put[0]}`);
   assert.ok(/apply_secret "\$MSP_NS" llm-provider-credentials[\s\S]{0,300}"voyage-api-key=\$\{VOYAGE_API_KEY:-\}"/.test(read(LOCAL_UP)),
     'k8s-local-up.sh の手動 Secret（ESO 無し）に voyage-api-key が無い');
+});
+
+ok('extraEnvAppend の secretKeyRef も optional: true を描き、無指定なら描かない（extraEnv 側と同じ分岐。#1764 監査）', () => {
+  const append = JSON.stringify([
+    { name: 'Probe__Optional', secretKeyRef: { name: SECRET_NAME, key: SECRET_KEY, optional: true } },
+    { name: 'Probe__Required', secretKeyRef: { name: SECRET_NAME, key: 'anthropic-api-key' } },
+  ]);
+  const rendered = mustRender(['-f', VALUES_LOCAL, '--set-json', `services.wiki.extraEnvAppend=${append}`]);
+  const wiki = documents(rendered).find((d) => d.kind === 'Deployment' && d.name === 'wiki-service');
+  assert.ok(wiki, 'Deployment/wiki-service が描画されていない');
+  const opt = envEntries(wiki.text, 'Probe__Optional');
+  assert.strictEqual(opt.length, 1, wiki.text);
+  assert.ok(/^\s*secretKeyRef:\s*$/m.test(opt[0]) && /^\s*optional:\s*true\s*$/m.test(opt[0]),
+    `extraEnvAppend の optional: true が描かれていない:\n${opt[0]}`);
+  const req = envEntries(wiki.text, 'Probe__Required');
+  assert.strictEqual(req.length, 1, wiki.text);
+  assert.ok(!/^\s*optional:/m.test(req[0]), `無指定の項目に optional が描かれた:\n${req[0]}`);
+  // 他のワークロードが optional を使っても、llmgateway-service の判定は緑のまま（数える範囲の狭め）。
+  assert.deepStrictEqual(checkRender(rendered), []);
 });
 
 // ---------------------------------------------------------------- mutation（判定器が赤になること）

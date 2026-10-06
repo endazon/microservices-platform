@@ -103,3 +103,15 @@ issue: "#1764"
 
 - #1740（ゼロ保持の認定）は未了。鍵の欠落の自動検知は無い（IADR-0504 §残るもの）。
 - 経路B へ当てるのは PoC の運用者（手順書）。本作業はクラスタに触らない。
+
+［2026-10-06 追記 / #1764］監査の指摘への対応（IADR-0504 末尾の追記と同じ内容）:
+
+- `deploy/local/vault/eso/bootstrap.sh`: `llm-provider-credentials` の作成は全プロパティ空の `put -cas=0`、続けて env が空でない鍵だけ `vkv_patch_nonempty`（stdin）。
+  `scripts.repo.test.js` の #1728 の器に `sh -c` の引数の控え（`$STUB_LOG.argv`）を足し、#1764 監査の 2 本（env ありの作成で鍵が引数に載らない・env なしの作成は put だけ）を足した。
+  変異: 作成の put へ `${…_API_KEY:-}` の展開を戻す → 赤／作成後の `vkv_patch_nonempty` 3 行を落とす → 赤。
+- `helm-llm-provider-keys.test.js`: put の字面の検査を「`voyage-api-key=''` を持ち、`API_KEY` の展開を持たない」へ。`extraEnvAppend` の optional の描画を 1 本足し、
+  `optional:` を数える範囲を llmgateway-service の Deployment へ。変異: append 側の `if .secretKeyRef.optional` を消す → 赤／常に `optional: true` を描く → 赤。
+- `docs/operations/voyage-embedding-key-runbook.md` 5-a: `printf 'header = …' | curl -K -`、`grep … || true`。
+- SC-22 の語彙（`secretItemVocabulary.ts` の purpose・interrupts）と画面仕様書の再起動の表、ja / en のカタログ（`pnpm run i18n`）。
+- trace ブロック: `docs/operations/operations.md`・`docs/screens/SC-22_secret-item-management.md`・`docs/tests/SC-22_secret-item-management.md`。
+- 範囲外として残したもの: `msp/wikijs-sync` の作成経路（`apiKey='${WIKIJS_SYNC_APIKEY:-}'`）も同じ形で引数へ展開しているが、本 PR の差分の外（既存）であり別件で扱う。

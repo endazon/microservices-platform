@@ -136,8 +136,13 @@ if vkv_exists msp/llm-provider-credentials; then
   # **無いときだけ空で足す**（在る値は触らない。空＝鍵なし＝埋め込みは一時障害で DLQ へ。値は Runbook の手順で入れる）。
   vkv_patch_if_missing msp/llm-provider-credentials voyage-api-key ''
 else
-  vexec "vault kv put -cas=0 secret/msp/llm-provider-credentials anthropic-api-key='${ANTHROPIC_API_KEY:-}' openai-api-key='${OPENAI_API_KEY:-}' voyage-api-key='${VOYAGE_API_KEY:-}'"
+  # FR-02, IADR-0504 (#1764 監査): 作るときも鍵を `sh -c` の引数へ埋め込まない（Pod 内の ps・監査ログに載る）。
+  # 全プロパティを空で作ってから、env が空でないものだけを vkv_patch_nonempty（値は stdin）で入れる。
+  vexec "vault kv put -cas=0 secret/msp/llm-provider-credentials anthropic-api-key='' openai-api-key='' voyage-api-key=''"
   mark_changed msp/llm-provider-credentials
+  vkv_patch_nonempty msp/llm-provider-credentials anthropic-api-key "${ANTHROPIC_API_KEY:-}"
+  vkv_patch_nonempty msp/llm-provider-credentials openai-api-key "${OPENAI_API_KEY:-}"
+  vkv_patch_nonempty msp/llm-provider-credentials voyage-api-key "${VOYAGE_API_KEY:-}"
 fi
 # IADR-0097 (#310) PR-2: object-storage-credentials / wikijs-db / wikijs-sync。
 # IADR-0461 決定 3 (#1499): オブジェクトストレージ（SeaweedFS）の S3 資格情報。旧 msp/minio-credentials。

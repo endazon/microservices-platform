@@ -15,7 +15,7 @@ export interface SecretItemLabel {
 const LABELS: Readonly<Record<string, SecretItemLabel>> = {
   'llm-provider-credentials': {
     name: msg`外部 LLM の API キー`,
-    purpose: msg`検索・質問応答・分析で外部の LLM を呼び出すための API キーです。`,
+    purpose: msg`検索・質問応答・分析で外部の LLM を呼び出すための API キーと、文書の索引づけと検索で埋め込み（Voyage AI）を呼び出すための API キーです。`,
   },
   'keycloak-smtp': {
     name: msg`メール送信（SMTP）の認証情報`,
@@ -86,7 +86,7 @@ const CONSUMERS: Readonly<Record<string, SecretConsumer>> = {
   'llm-provider-credentials': {
     restart: 'automatic',
     consumer: msg`LLM ゲートウェイ`,
-    interrupts: msg`検索・質問応答・分析での外部 LLM の呼び出し`,
+    interrupts: msg`検索・質問応答・分析での外部 LLM の呼び出しと、文書の索引づけ・検索での埋め込みの呼び出し`,
   },
   'keycloak-smtp': {
     restart: 'automatic',
