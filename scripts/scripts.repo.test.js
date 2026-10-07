@@ -13225,6 +13225,45 @@ exit 0
         ['VAULT PUT msp/llm-provider-credentials']);
     });
 
+    // NFR-18 (#1767): llm-provider-credentials（#1764）と同じ形を、残っていた wikijs-sync / keycloak-smtp の作成経路へ揃えた。
+    // 値は「ダミー」と分かる目印を実行時に組み立てる（直書きすると gitleaks が鍵と区別できない）。
+    const create1767 = (kvPath, env) => {
+      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', kvPath.split('/').join('__'))), env });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      for (const probe of Object.values(env)) {
+        assert.ok(!r.execArgv.some((c) => c.includes(probe)), `秘密値が sh -c の引数に載った: ${r.execArgv.find((c) => c.includes(probe))}`);
+        assert.ok(!r.calls.some((c) => c.includes(probe)), '秘密値が kubectl の引数に載った');
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(probe), '秘密値が出力に出た');
+      }
+      const put = r.execArgv.filter((c) => c.includes(`vault kv put -cas=0 secret/${kvPath} `) || c.endsWith(`vault kv put -cas=0 secret/${kvPath}`));
+      assert.strictEqual(put.length, 1, r.execArgv.join('\n'));
+      return { r, put: put[0], writes: r.calls.filter((c) => c.startsWith('VAULT ') && c.includes(` ${kvPath}`)) };
+    };
+    const probe1767 = (name) => ['dummy', 'value', '1767', name].join('-');
+
+    ok('#1767: wikijs-sync を新しく作るときも、API キーは sh -c の引数に載せず空で作ってから標準入力で入れる', () => {
+      const { put, writes } = create1767('msp/wikijs-sync', { WIKIJS_SYNC_APIKEY: probe1767('wikijs') });
+      assert.ok(/apiKey=''/.test(put), `作成は apiKey を空にすること: ${put}`);
+      assert.deepStrictEqual(writes, ['VAULT PUT msp/wikijs-sync', 'VAULT PATCH msp/wikijs-sync apiKey']);
+    });
+
+    ok('#1767: keycloak-smtp を新しく作るときも、from / user / password は sh -c の引数に載せず空で作ってから標準入力で入れる', () => {
+      const { put, writes } = create1767('msp/keycloak-smtp',
+        { SMTP_FROM: probe1767('from'), SMTP_USER: probe1767('user'), SMTP_PASSWORD: probe1767('password') });
+      assert.ok(/from='' user='' password=''/.test(put), `作成は from / user / password を空にすること: ${put}`);
+      assert.ok(/host='mailpit\.platform-infra\.svc\.cluster\.local' port='1025' starttls='false'/.test(put),
+        `構成値（host / port / starttls）は従来どおり作成時に入れること: ${put}`);
+      assert.deepStrictEqual(writes, ['VAULT PUT msp/keycloak-smtp',
+        'VAULT PATCH msp/keycloak-smtp from', 'VAULT PATCH msp/keycloak-smtp user', 'VAULT PATCH msp/keycloak-smtp password']);
+    });
+
+    ok('#1767: env が無い初回は wikijs-sync / keycloak-smtp を空で作るだけで、部分更新はしない', () => {
+      for (const kvPath of ['msp/wikijs-sync', 'msp/keycloak-smtp']) {
+        const { writes } = create1767(kvPath, {});
+        assert.deepStrictEqual(writes, [`VAULT PUT ${kvPath}`]);
+      }
+    });
+
     ok('#1728: 対になる秘密の KV を無いときだけ作ったら（vkv_create_if_absent）、それを読む ExternalSecret に付ける', () => {
       const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__bff-oidc')) });
       assert.strictEqual(r.status, 0, r.stderr + r.stdout);

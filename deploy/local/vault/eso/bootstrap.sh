@@ -159,8 +159,11 @@ vkv_create_if_absent msp/wikijs-db "password='${WIKIJS_DB_PASSWORD:-kp}'"
 if vkv_exists msp/wikijs-sync; then
   vkv_patch_nonempty msp/wikijs-sync apiKey "${WIKIJS_SYNC_APIKEY:-}"
 else
-  vexec "vault kv put -cas=0 secret/msp/wikijs-sync apiKey='${WIKIJS_SYNC_APIKEY:-}'"
+  # NFR-18 (#1767): 作るときも鍵を `sh -c` の引数へ埋め込まない（kubectl と Pod 内プロセスの argv・/proc に載る）。
+  # llm-provider-credentials（#1764）と同じく、空で作ってから env が空でないときだけ vkv_patch_nonempty（値は stdin）で入れる。
+  vexec "vault kv put -cas=0 secret/msp/wikijs-sync apiKey=''"
   mark_changed msp/wikijs-sync
+  vkv_patch_nonempty msp/wikijs-sync apiKey "${WIKIJS_SYNC_APIKEY:-}"
 fi
 # IADR-0098 (#310) PR-3: OIDC client secret 群（grafana/vault/headlamp）。既定は各 <tool>-dev-secret-change-me
 # （現行 apply_secret の env 既定と同値）。env は作るときだけ効く（#1682）。realm import の dev client secret と一致させること。
@@ -256,10 +259,16 @@ if vkv_exists msp/keycloak-smtp; then
   vkv_patch_nonempty msp/keycloak-smtp user "${SMTP_USER:-}"
   vkv_patch_nonempty msp/keycloak-smtp password "${SMTP_PASSWORD:-}"
 else
+  # NFR-18 (#1767): 作るときも from / user / password を `sh -c` の引数へ埋め込まない（argv・/proc に載る）。
+  # 構成値（host / port / starttls）は従来どおり作成時に入れ、from / user / password は空で作ってから
+  # env が空でないものだけを vkv_patch_nonempty（値は stdin）で入れる。
   vexec "vault kv put -cas=0 secret/msp/keycloak-smtp \
     host='$smtp_host' port='${SMTP_PORT:-$smtp_port_default}' starttls='${SMTP_STARTTLS:-$smtp_starttls_default}' \
-    from='${SMTP_FROM:-}' user='${SMTP_USER:-}' password='${SMTP_PASSWORD:-}'"
+    from='' user='' password=''"
   mark_changed msp/keycloak-smtp
+  vkv_patch_nonempty msp/keycloak-smtp from "${SMTP_FROM:-}"
+  vkv_patch_nonempty msp/keycloak-smtp user "${SMTP_USER:-}"
+  vkv_patch_nonempty msp/keycloak-smtp password "${SMTP_PASSWORD:-}"
 fi
 
 # SC-22, ADR-0095 決定 1, IADR-0456 決定 6 (#1477): AST が ESO で受ける ai-stock-trading/app-secrets（契約 #1477 の表）。
