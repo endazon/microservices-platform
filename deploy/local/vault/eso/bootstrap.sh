@@ -119,10 +119,12 @@ vkv_patch_if_missing() { # <path> <property> <value>
 #   🔴 llm-provider-credentials のように「空で作る → patch」に分けない —— 途中で落ちると空の秘密を持つ KV が残り、
 #   次回以降は「在るので触らない」ため**空の秘密が恒久化する**（対になる秘密は原子的に作る）。
 #   JSON はホストの bash の置換だけで組む（exec しない＝値はどのプロセスの引数にも載らない）。
-json_str() { # <value> → JSON 文字列（引用符つき）
+json_str() { # <value> → JSON 文字列（引用符つき）。組み込みの置換だけで組む（値をどのプロセスの引数にも載せない）
   local s="$1"
   s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
   s="${s//$'\n'/\\n}"; s="${s//$'\r'/\\r}"; s="${s//$'\t'/\\t}"
+  # 上の 5 種以外の制御文字は JSON にそのまま置けない。壊れた JSON を書くより止める（値は表示しない）。
+  case "$s" in *[[:cntrl:]]*) echo "error: JSON に置けない制御文字を含む値がある（値は表示しない）" >&2; return 1 ;; esac
   printf '"%s"' "$s"
 }
 vkv_create_if_absent() { # <path> <key> <value> [<key> <value> ...]
@@ -131,9 +133,10 @@ vkv_create_if_absent() { # <path> <key> <value> [<key> <value> ...]
     echo "    keep: secret/$path は在るので触らない（対になる秘密。回すときは paired-secret-rotation-runbook.md）"
     return 0
   fi
-  local json="" sep=""
+  local json="" sep="" k v
   while [ "$#" -ge 2 ]; do
-    json="${json}${sep}$(json_str "$1"):$(json_str "$2")"; sep=","; shift 2
+    k="$(json_str "$1")" || return 1; v="$(json_str "$2")" || return 1
+    json="${json}${sep}${k}:${v}"; sep=","; shift 2
   done
   printf '{%s}' "$json" | vexec "vault kv put -cas=0 secret/$path -"
   mark_changed "$path"

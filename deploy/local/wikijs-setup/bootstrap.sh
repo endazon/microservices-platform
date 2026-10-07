@@ -90,6 +90,16 @@ graphql() { # $1=query  $2=bearer
 # 最小の JSON 文字列エスケープ（本 script が組み立てる値だけを通す）。
 json_string() { printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr '\n' ' ')"; }
 
+# Secret の patch 用（#1793）。値を欠かさず往復させる（json_string は改行を空白へ潰すので使わない）。
+json_str() { # <value> → JSON 文字列（引用符つき）。組み込みの置換だけで組む（値をどのプロセスの引数にも載せない）
+  local s="$1"
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"; s="${s//$'\r'/\\r}"; s="${s//$'\t'/\\t}"
+  # 上の 5 種以外の制御文字は JSON にそのまま置けない。壊れた JSON を書くより止める（値は表示しない）。
+  case "$s" in *[[:cntrl:]]*) echo "error: JSON に置けない制御文字を含む値がある（値は表示しない）" >&2; return 1 ;; esac
+  printf '"%s"' "$s"
+}
+
 # Secret の 1 キーを取り出す（不在なら空文字）。
 read_secret() { # $1=name $2=key
   local raw
@@ -107,7 +117,8 @@ write_secret() ( # $1=name $2=key $3=value
   d="$(mktemp -d)"
   trap 'rm -rf "$d"' EXIT
   if kubectl -n "$MSP_NS" get secret "$1" >/dev/null 2>&1; then
-    printf '{"stringData":{"%s":"%s"}}' "$2" "$3" > "$d/patch.json"
+    k="$(json_str "$2")" || exit 1; v="$(json_str "$3")" || exit 1
+    printf '{"stringData":{%s:%s}}' "$k" "$v" > "$d/patch.json"
     kubectl -n "$MSP_NS" patch secret "$1" --patch-file "$d/patch.json" >/dev/null
   else
     printf '%s' "$3" > "$d/value"

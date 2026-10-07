@@ -13319,6 +13319,16 @@ exit 0
       assert.deepStrictEqual(JSON.parse(r.putStdin['msp/rabbitmq']), { username: 'guest', password: 'guest' });
     });
 
+    ok('#1793: 引用符・バックスラッシュ・改行を含む値も、壊れずに同じ値の JSON で入る／JSON に置けない制御文字は書かずに止まる', () => {
+      const tricky = ['dummy"q', 'b\\s', 'line\nnext'].join('-');
+      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__bff-oidc')), env: { BFF_OIDC_CLIENT_SECRET: tricky } });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      assert.strictEqual(JSON.parse(r.putStdin['msp/bff-oidc'])['client-secret'] ?? Object.values(JSON.parse(r.putStdin['msp/bff-oidc']))[0], tricky);
+      const bad = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__bff-oidc')), env: { BFF_OIDC_CLIENT_SECRET: 'dummy\x01ctl' } });
+      assert.notStrictEqual(bad.status, 0, '制御文字を含む値で緑になった');
+      assert.deepStrictEqual(bad.calls.filter((c) => / msp\/bff-oidc( |$)/.test(c) && c.startsWith('VAULT PUT')), [], '壊れた JSON で書き込んだ');
+    });
+
     ok('#1793: 作成が失敗したら KV は残らず、空で作ってから入れる経路にも落ちない（非 0 で止まる）', () => {
       const r = run1728({ setup: ({ state }) => {
         const f = path1728.join(state, 'kv', 'msp__bff-oidc');
@@ -14584,6 +14594,27 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(r.files.includes(`FILE wikijs-sync apiKey=${P.key}`), `Secret wikijs-sync の apiKey がファイルで届いていない: ${r.files.join(' / ')}`);
       assert.ok(r.files.includes(`PATCH wikijs-admin {"stringData":{"password":"${P.pw}"}}`), `wikijs-admin の password が patch ファイルで届いていない: ${r.files.join(' / ')}`);
       assert.ok(!r.calls.some((c) => /--from-literal|stringData/.test(c)), '--from-literal / -p の stringData が残っている');
+    });
+
+    ok('#1793: 3 本の json_str（eso / wikijs-setup / k8s-local-up）は引用符・バックスラッシュ・改行を往復させ、JSON に置けない制御文字は拒む', () => {
+      const files = [['deploy', 'local', 'vault', 'eso', 'bootstrap.sh'], ['deploy', 'local', 'wikijs-setup', 'bootstrap.sh'], ['scripts', 'k8s-local-up.sh']];
+      const tricky = ['dummy"q', 'b\\s', 'line\nnext\ttab'].join('-');
+      for (const f of files) {
+        const src = fs1793.readFileSync(path1793.join(REPO1793, ...f), 'utf8');
+        const fn = src.match(/^json_str\(\) \{[\s\S]*?^\}$/m);
+        assert.ok(fn, `${f.join('/')} に json_str が無い`);
+        const ok1 = spawn1793('bash', ['-c', `${fn[0]}\njson_str "$V"`], { encoding: 'utf8', env: { PATH: process.env.PATH, V: tricky } });
+        assert.strictEqual(ok1.status, 0, ok1.stderr);
+        assert.strictEqual(JSON.parse(ok1.stdout), tricky, `${f.join('/')} の json_str が値を往復させない`);
+        const bad = spawn1793('bash', ['-c', `${fn[0]}\njson_str "$V"`], { encoding: 'utf8', env: { PATH: process.env.PATH, V: 'dummy\x01ctl' } });
+        assert.notStrictEqual(bad.status, 0, `${f.join('/')} の json_str が制御文字を通した`);
+        assert.ok(!bad.stderr.includes('dummy'), '拒むときに値を表示した');
+      }
+      // 呼び出し側: patch / put の JSON は json_str を通す（値を "%s" へ直に埋めない）
+      for (const f of files.slice(1)) {
+        const src = fs1793.readFileSync(path1793.join(REPO1793, ...f), 'utf8');
+        assert.ok(!/stringData":\{"[^"]*":"%s"/.test(src) && !/stringData":\{"%s":"%s"/.test(src), `${f.join('/')} が値を JSON へ未エスケープで埋めている`);
+      }
     });
 
     ok('#1793: wikijs-setup は既存の API キーを確かめるときも、キーを引数に載せずヘッダで届ける（有効なら再発行しない）', () => {

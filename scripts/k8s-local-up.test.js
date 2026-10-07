@@ -1800,6 +1800,15 @@ ok('#1793: Secret の値（env）はどの kubectl の引数にも載らず、�
     `argocd-secret の patch がファイルで届いていない: ${res.patches.join(' / ')}`);
 });
 
+ok('#1793: argocd-secret の patch は、引用符・バックスラッシュを含む client secret でも正しい JSON で同じ値を届ける', () => {
+  const tricky = ['dummy"q', 'b\\s'].join('-');
+  const res = runUp({ ARGOCD_OIDC_CLIENT_SECRET: tricky, VAULT: '1', ARGOCD: '1', LOCALEDGE: '1' });
+  assert.strictEqual(res.status, 0, res.stderr);
+  const patch = res.patches.find((p) => p.startsWith('{"stringData":{"oidc.keycloak.clientSecret"'));
+  assert.ok(patch, `argocd-secret の patch が無い: ${res.patches.join(' / ')}`);
+  assert.deepStrictEqual(JSON.parse(patch), { stringData: { 'oidc.keycloak.clientSecret': tricky } });
+});
+
 ok('#1793: 既定（env なし）の Secret の中身は従前の --from-literal と同じ値（dev 既定）', () => {
   for (const kv of ['postgres password=postgres', 'rabbitmq username=guest', 'rabbitmq password=guest', 'keycloak-admin username=admin',
     'keycloak-admin password=admin', 'keycloak-smtp password=']) {
