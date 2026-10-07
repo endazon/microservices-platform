@@ -28,7 +28,7 @@ public class StorageDocumentContentReader(
         if (Uri.TryCreate(markdownUri, UriKind.Absolute, out var uri)
             && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
         {
-            // 実本文を取得（E2: 失敗時は例外を送出し MassTransit のリトライへ委ねる）
+            // 実本文を取得（E2: 失敗時は例外を送出し Wolverine の再試行→デッドレターへ委ねる。#1771）
             var content = await http.GetStringAsync(uri, ct);
             logger.LogInformation("Fetched markdown body from {Uri} ({Length} chars)",
                 markdownUri, content.Length);

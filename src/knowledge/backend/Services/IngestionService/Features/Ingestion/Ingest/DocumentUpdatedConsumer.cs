@@ -21,6 +21,7 @@ namespace IngestionService.Features.Ingestion.Ingest;
 // 受け口の ct で「取り消し」として切られる。自分の期限の時間切れは `ConsumerTimeoutException` として投げ
 // （警告ログ・計器 `messaging.consumer.timeout`）、呼び出し元の取り消しはそのまま外へ出す。
 // 埋め込みはチャンクごとに総枠（`EmbeddingBudget`）を判定し、使い切ったら残りを呼ばずに時間切れとして投げる。
+// ［#1771］この辺の移行は IADR-0234 の単位 E4 として追跡する（購読者の要否は planning#741 項目 6 の裁定待ち）。
 public class DocumentUpdatedConsumer(
     IDocumentContentReader reader,
     IChunkingService chunker,

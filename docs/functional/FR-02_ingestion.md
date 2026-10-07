@@ -3,15 +3,15 @@ title: 機能仕様書 — FR-02 取り込み（パース・チャンク化・�
 type: functional-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-10-05
+updated: 2026-10-07
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, UC-04]
 adrs: [ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0070, ADR-0127, ADR-0016, ADR-0092]
 iadrs: [IADR-0002, IADR-0149, IADR-0358, IADR-0388, IADR-0497, IADR-0025]
-specs: [20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261005_1746_high-confidentiality-lexical-index]
-issues: [#532, #536, #580, #1193, #1253, #1254, #1746]
+specs: [20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261005_1746_high-confidentiality-lexical-index, 20261007_1771_ingestion-event-wiring-docs]
+issues: [#532, #536, #580, #1193, #1253, #1254, #1746, #1771]
 -->
 
 # 機能仕様書: 取り込み
@@ -64,7 +64,7 @@ issues: [#532, #536, #580, #1193, #1253, #1254, #1746]
 ### 例外フロー
 
 - **E1（本文所在なし）**: `MarkdownUri` が null。警告ログを残し、何も登録せず正常終了する（メッセージは ack）。
-- **E2（本文取得失敗）**: HTTP 取得が失敗した場合、`IDocumentContentReader` は例外を送出し、MassTransit のリトライ/エラーキューに委ねる。
+- **E2（本文取得失敗）**: HTTP 取得が失敗した場合、`IDocumentContentReader` は例外を送出し、**Wolverine の再試行（2 秒・10 秒・30 秒の 3 回。全サービス共通の既定）を使い切ったらデッドレターへ送る**。`DocumentUpdated` の購読は Wolverine のハンドラであり、MassTransit に残っているのは `IngestionCompleted` の発行だけである（この例外の扱いには関わらない）。
 
 ## チャンク化規則（`MarkdownChunkingService`）
 

@@ -12,7 +12,7 @@ related_ids:
   - IADR-0233
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-10-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0027_messaging-wolverine.md (§決定・再試行は Wolverine の耐久メッセージ機能で賄う)
   - planning:projects/microservices-platform/06_technical/12_backend-application-stack.md (§Wolverine 移行チェックリスト = 8 手順の原典・§リスク・未決事項)
@@ -180,6 +180,35 @@ only [DocumentDeleted]    -> violations=0   only [DocumentUpdated]    -> violati
 >
 > ⚠️ **限界。** 再現に使ったのは自前の TCP 中継の切断であり、**ブローカのクラッシュとバイト等価ではない**
 > （RST / 無応答 / 半開の違いがある）。再現できたのは「確立済み接続が落ち、再接続もできない」形である。
+
+> 🔴 ［2026-10-07 追記 / #1771］**単位表に所有者の無い MT 行が 2 行あった。単位 `E4`（辺 `IngestionCompleted`）を足し、残件数の期待値を実物へ直す。**
+> 第 4 回全体監査（指摘 B-13）の実測で判明した。上の表は「E3b で 3 行」としていたが、E3b が動かしたのは
+> `DocumentUpdated` の**購読**（IngestionService・WikiService・GraphService）だけであり、IngestionService が
+> **発行する** `IngestionCompleted` は MassTransit のまま残った（`IngestionService/Program.cs` の `AddMassTransit` と
+> `MassTransitIngestionCompletedPublisher`）。そのため `IngestionService.csproj` / `IngestionService.Tests.csproj` の
+> 2 行は**どの単位にも属さず、E3b 後も落ちない**。状況 2 の辺の表にもこの辺が無かった（購読 0 件の辺だったため）。
+>
+> **2026-10-07 の実測（develop abe9a251）:** `scripts/backend-library-baseline.json` は **9 行** ＝
+> 固定 3（`Knowledge.Contracts.Tests` / `Knowledge.IntegrationTests` / `Platform.Shared.Infrastructure`）＋
+> E2 の 4（`ConversionService` / `ConversionService.Tests` / `DocumentService` / `DocumentService.Tests`）＋
+> IngestionService の 2。E1・E3a・E3b は完了済み、E2 は未着手である。
+>
+> | 単位 | 内容 | 完了後の baseline（**実際の順序での累計**） |
+> | --- | --- | --- |
+> | E2 | 辺 `DocumentNormalized`（未着手） | **5**（固定 3 ＋ E4 の 2） |
+> | **E4（新設）** | 辺 `IngestionCompleted` —— IngestionService の MT 発行（`AddMassTransit`・`MassTransitIngestionCompletedPublisher`）を Wolverine へ移し、`IngestionService` / `IngestionService.Tests` の `MassTransit.RabbitMQ` 参照を落とす | **3**（固定 3。E2 と E4 は独立で、どちらを先にしても両方の完了で 3 になる） |
+> | C1〜C3 | 上の表のとおり | 2 → 1 → 0 |
+>
+> - 上の表の「完了後の baseline」列は **W1→C3 の順で着手する前提の累計**であり、実際には E3b が E2 より先に入った。
+>   行はそのプロジェクトに残る**最後の** MT の辺が移ったときに落ちるので、**各単位が何行落とすかも順序で変わる**
+>   （表の順なら E2 は 2 行・E3b は 6 行の想定だったが、実際の順では E3a・E3b を経て落ちたのは WikiService の 2 行だけで、
+>   E2 が ConversionService と DocumentService の 4 行を落とす）。順序に依らないのは「**残る行が、どの辺を待っているか**」の
+>   対応である —— 2026-10-07 時点で ConversionService / DocumentService の 4 行は E2 だけを、IngestionService の 2 行は E4 だけを待つ。
+> - **E4 の中身（購読側を同じ PR で足すか）は本追記では決めない。** `IngestionCompleted` に購読者を結線するか、
+>   FR-01 / FR-02 の文書から結線の記述を外すかは計画側の裁定待ちである（planning#741 項目 6）。購読者が 0 件の間は
+>   `transportMismatches()` が突き合わせる購読側が無く、発行側だけを移しても検査は緑のままである ——
+>   **E4 の正しさは検査器では測れず、移した PR が発行の到達（または購読 0 の明記）を自分で示す必要がある。**
+> - 同じ監査で、発行 0・購読 0 の死んだ契約型 `IngestionRequested` は契約から削除した（#1771。どの単位の行にも関与しない）。
 
 ### 決定 4: U5 は「型制約の緩和」としては発生しない。IADR-0233 決定 4 をここで改める
 
