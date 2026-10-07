@@ -163,3 +163,5 @@ issue は「MassTransit は Conversion・Document・Ingestion の**発行**（`A
 
 `check-trace-blocks` / `gen-knowledge-graph --check` / `check-doc-links` / `check-cross-repo-refs` / `check-plan-id-qualification` /
 `check-reading-budget` / `check-doc-type-vocabulary` / `check-doc-status-vocabulary` / `check-doc-updated` / `check-commit-messages`。結果は PR 本文に記す。
+
+［2026-10-08 追記 / #1799］独立監査の 🟡 2 件（`deploy/helm/microservices-platform/files/README.md` と `docs/tests/FR-14_composability.md` が「`enabled: false` で購読・キューを生成しない」と書き、Wolverine の段では成り立たない）を「ハンドラを登録しない（受信キューは現状まだ宣言される）」へ弱めた。実装を受け入れ基準へ寄せるか文書を寄せるかは #1801 へ切り出した。🟢 `DocumentService/Program.cs:91` のコメントから、既に Wolverine へ移った `DocumentUpdated` 発行を外した。

@@ -88,7 +88,7 @@ builder.Services.AddPlatformHealthChecks()
     .AddNpgSql(
         connStr,
         tags: ["ready"]);
-// #269: MassTransit 側（DocumentNormalized 購読・DocumentUpdated 発行が残る間）のブローカ疎通は
+// #269: MassTransit 側（DocumentNormalized 購読が残る間）のブローカ疎通は
 // MassTransit 組み込みの "masstransit-bus"（tag "ready"）で満たす。
 // 外部 AspNetCore.HealthChecks.Rabbitmq は RabbitMQ.Client 7 と非互換（TypeLoadException 'IModel'）のため使用しない。
 builder.Services.AddOpenApi();

@@ -29,7 +29,8 @@
   ConfigMap 化し、`Pipeline__ConfigPath` でサービスへ渡る
 - 各段は `IPipelineStep.StepName` で構成と対応付く。次の不整合は**起動失敗**になる:
   段の宣言漏れ／`consumer` 型完全名の不一致／`input` と実装の購読イベント型の不一致
-- `enabled: false` の段は購読・キューを生成しない（警告ログのみ）
+- `enabled: false` の段はハンドラ（購読）を登録しない（警告ログのみ）。Wolverine の段では受信キューの宣言・束縛は
+  現状まだ行われる（`Program.cs` が `Enabled` を見ずに張るため）
 - 構成が全く無い場合（ローカル・テスト）は既定配線（全段有効）で動作する
 
 ## 新しい段（プラグイン）の追加
