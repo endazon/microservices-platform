@@ -3,15 +3,15 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-06
+updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
-ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, SC-02]
-adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0127, ADR-0128]
-iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499]
-specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions]
-issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, AST#290, AST#571, planning#50, planning#426, planning#720]
+ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02]
+adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
+iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511]
+specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models]
+issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, AST#290, AST#571, planning#50, planning#426, planning#720]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -39,7 +39,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 
 | 項目 | 内容 |
 | --- | --- |
-| 入力 | `CompletionApiRequest`（`Prompt`, `MaxTokens`, `Model`(任意), `Confidentiality`(任意), `Purpose`(任意)）。呼び出し元（`RagOrchestrator` 等）が入力文脈文書の**最高機密区分**（`SensitivityClasses.Highest`）と用途（`rag-answer` / `analysis` / `diagram-coding` / `report-monthly` / `report-weekly` / `report-daily` / `trade-decision` / `trade-decision-screening` / `rerank`）を付与する。 |
+| 入力 | `CompletionApiRequest`（`Prompt`, `MaxTokens`, `Model`(任意), `Confidentiality`(任意), `Purpose`(任意)）。呼び出し元（`RagOrchestrator` 等）が入力文脈文書の**最高機密区分**（`SensitivityClasses.Highest`）と用途（`rag-answer` / `analysis` / `diagram-coding` / `report-monthly` / `report-weekly` / `report-daily` / `trade-decision` / `trade-decision-screening` / `rerank` / `graph-suggestion` / `graph-cluster-summary`）を付与する。 |
 | 処理 | ① `SensitivityClasses.Parse` で `Confidentiality` を `SensitivityClass`（Public/Internal/Confidential/Restricted）へ写像。② `EgressMatrix.AllowedTiers` で許容ティア集合を算出。③ `LlmRouter.Route` が「有効・許容ティア・（要承認でない）」エンドポイントを `Priority` 昇順→ティア昇順（A<B<C, 保護の強い順）で選び先頭を採用。④ `ResolveModel` で用途→モデルを解決。⑤ `decision.Provider` を keyed DI（`claude` / `selfhosted`）で解決し送信。 |
 | 出力 | `CompletionApiResponse`（`Text`, `Model`, `InputTokens`, `OutputTokens`, `Sent`, `Endpoint`, `RoutingReason`）。`Sent=false` 時は呼び出し元が出典のみ返す等の縮退へ切替可能。判定（機密区分・用途・ティア・エンドポイント・モデル・要承認・理由）を監査ログへ記録。 |
 | 業務ルール | **機密区分→許容ティア**は越境マトリクス（下表）に固定。`Confidential`/`Restricted` は**ティアA/B のみ**でティアC（標準外部API）へは送信不可。`Internal × ティアC` は「条件付き可（要承認）」で、`AllowUnapprovedTierC=false`（既定）の間は候補から除外。許容ティアに送信可能な有効エンドポイントが無ければ**送信拒否（縮退）**。未指定・未知の機密区分は `Restricted` へ倒す（安全側）。 |
@@ -70,6 +70,12 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   **検索結果の再順位付け `rerank→claude-haiku-4-5`（2026-10-06）**—— 検索サービスが検索結果の候補（RAG 回答の候補・検索結果一覧）を
   並べ替えるための用途であり、回答生成（`rag-answer`）と分けて費用を計上する。検索のたびに呼ぶので軽量モデルを充て、**鎖は持たない**
   （最安のモデルからさらに安い先が無い。失敗は検索サービスが元の順へ戻す）。
+  **知識グラフの AI 提案 `graph-suggestion→claude-sonnet-5`・クラスタ要約 `graph-cluster-summary→claude-opus-5`（2026-10-08）**——
+  どちらもグラフサービスが送る用途で、登録が無かった間は既定（`claude-opus-5`）へ無音で落ち、費用は `other` へ丸められていた
+  （提案生成の費用を他の用途と切り分けられなかった）。AI 提案は候補・辺の型・タグを閉じた一覧から選んで JSON で返す選別の仕事なので
+  定型層（`rag-answer`・`diagram-coding` と同じ）を充てる。クラスタ要約は GraphRAG の計画 ADR がコミュニティ要約の生成モデルとして
+  `claude-opus-5` を名指ししているので、既定と同値でも明示エントリで固定する（既定の改定で無音に失効させない）。
+  両用途とも区分によらない ZDR の要件は持たない（送る文書の最高区分を名乗るので、区分の規則が効く）。
 - **用途による ZDR の要件（2026-10-06）**: `LlmRoutingOptions.ZeroDataRetentionPurposes`（コードに持つ。現在は `rerank` だけ）の用途は、
   **機密区分によらず** ZDR を要件とする —— `NonZdrModels` のモデルを第 1 候補・鎖の両方から除き、ティア C を候補から外す。
   区分の規則（`EgressMatrix`）は変えず、用途の規則を重ねる（強める向きだけ）。再順位付けは検索の候補（`restricted` と機密区分が未指定・未知を
@@ -100,7 +106,10 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   区別は応答の `RoutingReason` / `Endpoint` に現れる（①は拒否理由、③は「呼び出し先 {Endpoint} が現在利用できません。」）。呼び出し側が `Sent=false` を機密区分による縮退と決め打つと原因を取り違える。
   なお **ZDR 除外は `internal` では効かない**（`RequiresZeroDataRetention` が真になるのは `confidential`/`restricted`/未知区分のみ）。**ただし用途 `rerank` は区分によらず効く**（前掲「用途による ZDR の要件」）。
 - **既定 `max_tokens`**: Opus 5 / Sonnet 5 は thinking（拡張思考）が既定で有効であり、`max_tokens` は**思考トークンと本文の合算上限**になる。既定値は 4096（本文想定長＋思考の作業領域）とする。切り詰めると本文が途中で切れ、例外にならず短い回答へ静かに縮退する。
-- `PurposeModels` のキーは**呼び出し側が送る purpose 値と一致させる**（`StringComparer.OrdinalIgnoreCase`）。図コード化は契約値 `diagram-coding` に統一済み（旧 `diagram` の不一致を修正。#58 #1。設定駆動のエンドポイント定義による）。
+- `PurposeModels` のキーは**呼び出し側が送る purpose 値と一致させる**（`StringComparer.OrdinalIgnoreCase`）。
+  **［2026-10-08］呼び出し側が送る用途名の全数がキーに在ることを、リポジトリの横断テスト（`scripts/scripts.repo.test.js`。走査は `scripts/lib/llm-purposes.js`）が突き合わせる。**
+  呼び出し側は用途名を**名前に `Purpose` を含む定数**（`PurposeName` 等）か、名前付き引数 `Purpose:` への文字列で宣言する ——
+  文字列リテラルを位置引数で中継する形は走査が拾えない（AI 分析サービスの `RagOrchestrator` はこのため定数へ改めた）。図コード化は契約値 `diagram-coding` に統一済み（旧 `diagram` の不一致を修正。#58 #1。設定駆動のエンドポイント定義による）。
 
 ### 用途別フォールバック順序（`Llm:Routing:PurposeFallbackModels`・#863）
 
@@ -111,7 +120,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 | 項目 | 内容 |
 | --- | --- |
 | 設定 | `Llm:Routing:PurposeFallbackModels`（用途 → **第 2 候補以降**の順序つきモデル配列）。第 1 候補は `PurposeModels`（無ければ `DefaultModel`） |
-| 既定値 | `analysis: ["claude-sonnet-5"]` / `diagram-coding: ["claude-haiku-4-5"]` / `default: ["claude-sonnet-5"]` / `rag-answer: ["claude-haiku-4-5"]` / `report-monthly: ["claude-sonnet-5"]` / `report-weekly: ["claude-sonnet-5"]` / `report-daily: ["claude-haiku-4-5"]` の 7 用途。**いずれも第 1 候補より安価側の 1 段下位**であり、発火で費用が上振れすることはない |
+| 既定値 | `analysis: ["claude-sonnet-5"]` / `diagram-coding: ["claude-haiku-4-5"]` / `default: ["claude-sonnet-5"]` / `rag-answer: ["claude-haiku-4-5"]` / `report-monthly: ["claude-sonnet-5"]` / `report-weekly: ["claude-sonnet-5"]` / `report-daily: ["claude-haiku-4-5"]` / `graph-suggestion: ["claude-haiku-4-5"]` / `graph-cluster-summary: ["claude-sonnet-5"]` の 9 用途。**いずれも第 1 候補より安価側の 1 段下位**であり、発火で費用が上振れすることはない |
 | 発火条件 | **上流が HTTP 400〜499（429 を除く）** |
 | **発火しない** | **429（レート制限）**・5xx・通信断・ステータスの取れない失敗 |
 | 適用範囲 | **非ストリーミング `/complete` のみ**（`/complete/stream` は実装しない） |
@@ -291,6 +300,8 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 - [x] 用途 `rerank` は `claude-haiku-4-5` へ解決され（鎖なし）、費用は `llm.purpose=rerank` として回答生成と分けて積まれる。機密区分によらず ZDR 必須（非 ZDR モデル・ティア C を除く）。
 - [x] `trade-decision-screening` は `Models` に登録済みの軽量モデルへ解決され、既定（`DefaultModel`）へ無音で落ちない（二段判断の層別用途登録の実装 ADR）。
 - [x] 報告書 3 種（`report-monthly` / `report-weekly` / `report-daily`）は HTTP 400 系で第 1 候補が失敗したとき、それぞれの第 2 候補へフォールバックして応答が返る（二段判断の層別用途登録の実装 ADR）。
+- [x] 知識グラフの 2 用途（AI 提案 `graph-suggestion`・クラスタ要約 `graph-cluster-summary`）は登録したモデル（`claude-sonnet-5`・`claude-opus-5`）へ解決され、既定（`DefaultModel`）を別のモデルへ差し替えても割当が選ばれる。鎖は 1 段下位（`claude-haiku-4-5`・`claude-sonnet-5`）。費用は `llm.purpose` の用途名の軸に積まれ、`other` へ丸められない（`GraphPurposeEndpointTests`）。
+- [x] 呼び出し側が送る用途名の全数が `PurposeModels` のキーに在ることを横断テストが突き合わせ、未登録の用途が増えると落ちる（`scripts/scripts.repo.test.js`。変異で確認）。
 
 > 検証: `LlmRouterTests`（越境マトリクス・ティア除外・フォールバック・ZDR・縮退）／
 > `CompletionRoutingEndpointTests`／`EmbeddingRouterTests`・`EmbeddingEndpointTests`（埋め込み egress）。

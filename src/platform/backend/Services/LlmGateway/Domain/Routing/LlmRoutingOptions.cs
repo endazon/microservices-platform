@@ -11,7 +11,11 @@ public sealed class LlmRoutingOptions
 
     // 用途（purpose）→ 既定モデル。用途別にコスト・品質を最適化する（ADR-0010 / IADR-0022）。
     // キーは呼び出し側が送る purpose 値と一致させる。実際の割当値は appsettings.json を正とし、
-    // 各割当の根拠は IADR を参照する（ADR-0025/IADR-0101 既定・IADR-0106 定型 RAG・IADR-0112 報告書と取引判断）。
+    // 各割当の根拠は IADR を参照する（ADR-0025/IADR-0101 既定・IADR-0106 定型 RAG・IADR-0112 報告書と取引判断・
+    // [[IADR-0511]] グラフの提案生成とクラスタ要約）。
+    // ［2026-10-08 / #1785］**呼び出し側が送る用途名はすべてキーに在ること**を `scripts.repo.test.js`
+    // （`scripts/lib/llm-purposes.js`）が突き合わせる。無い用途は DefaultModel へ落ち、計器では `other` へ丸められる
+    // （LlmMetricValues.NormalizePurpose）—— 費用を用途で切り分けられなくなる。
     //
     // ⚠️ 用途を追加・変更するときの 2 つの無音失効:
     //  1. 対象モデルを当該エンドポイントの Models（利用許可集合）へ登録しないと、ResolveModel の
