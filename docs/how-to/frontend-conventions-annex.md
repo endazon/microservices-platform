@@ -7,7 +7,7 @@ updated: 2026-10-07
 author: claude
 ---
 <!-- trace:
-ids: [NFR]
+ids: [NFR, NFR-17]
 adrs: [ADR-0031, ADR-0032]
 iadrs: [IADR-0034, IADR-0056, IADR-0121, IADR-0124, IADR-0125, IADR-0172, IADR-0190, IADR-0203, IADR-0251, IADR-0273]
 specs: [20261007_1770_reading-budget-frontend-annex]
@@ -50,7 +50,7 @@ issues: [#562, #1770]
 - `@platform/ui` へ入れてよいのは**デザイントークン・`cn()`・shadcn/ui 派生プリミティブのみ**で、
   ドメイン・通信・ルーティング・認証・**表示文言**は入れない。
 - 公開面は `src/index.ts` の 1 ファイルで、深い参照は ESLint が禁止する。
-- **外部 CDN・Web フォント・analytics を使わない**（データの外部送信方針による）。フォントはシステムフォント、
+- **外部 CDN・Web フォント・analytics を使わない**（計画の技術検討「データ越境・LLM 送信ポリシー」の非 LLM 外部送信の統制による。SPA のアセットは自己ホストでバンドルする）。フォントはシステムフォント、
   アイコンは lucide-react を使う。この禁止は `node scripts/check-static-egress.js --require <dist>` が
   **ビルド成果物を走査して**強制する。
 - 状態表示は**色だけで意味を持たせない**（色 ＋ アイコン ＋ テキスト）。`StatusBadge` / `Alert` / `notify` が
@@ -73,7 +73,7 @@ issues: [#562, #1770]
 
 - **Storybook**（`src/packages/ui/.storybook/`）。ビルドは `pnpm --filter @platform/ui run build-storybook`。
 - 対象は `@platform/ui` のプリミティブのみで、画面（features）は入れない。
-- テレメトリとクラッシュレポートは無効化する（データの外部送信方針による）。
+- テレメトリとクラッシュレポートは無効化する（同ポリシーの、既定の外部通信〔自動更新・テレメトリ等〕を無効化する原則による）。
 
 ## BFF 境界
 
