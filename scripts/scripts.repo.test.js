@@ -14337,6 +14337,8 @@ server.listen(0, '127.0.0.1', async () => {
       // 🔴 TRX が出ていなければ検査は「宣言はあるのに実走 0 件」で赤になるが、配線の欠落は先にここで止める。
       assert.match(yml, /--collect:"XPlat Code Coverage" --logger trx --verbosity normal/, 'dotnet test に --logger trx が無い');
       assert.match(yml, /--list-tests --filter "Category=Integration" > "\$lists\/\$unit\.list"/, '統合試験の一覧をユニットごとに残していない');
+      // 🔴 TRX ロガーは Cobertura を TestResults/<run>/In/ へ複製する。消さないと床の件数突合が 2 倍で落ちる（PR #1794 の初回実行）。
+      assert.match(yml, /find "src\/\$unit" -type d -path '\*\/TestResults\/\*\/In' -prune -exec rm -rf \{\} \+/, 'TRX が複製した Cobertura（TestResults/*/In）を消していない');
       assert.match(yml, /check-integration-executed\.js --self-test/, '検査器の自己試験が integration.yml に無い');
       assert.match(yml, /check-integration-executed\.js --lists "\$RUNNER_TEMP\/integration-lists"/, '本検査が integration.yml に無い');
       // 🔴 実行（--collect の行）に --filter を足すと IADR-0232 改定 3 の「全量で 1 回」が崩れる。一覧の --filter は発見だけ。

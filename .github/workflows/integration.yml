@@ -138,6 +138,10 @@ jobs:
               echo "::error::$slnx のテストが失敗した（残りのユニットは続けて走らせる）。"
               failed="$failed $slnx"
             fi
+            # 🔴 TRX ロガーは収集した Cobertura を TestResults/<run>/In/<machine>/ へ**複製する**（実測）。
+            # 残すと床の走査が 1 プロジェクト 2 部を拾い、件数突合（期待 19 件に対し 38 件）で落ちる（PR #1794 の初回実行）。
+            # 複製だけを消す（本体は TestResults/<guid>/ にあり、TRX 自体は TestResults/ 直下に残る）。
+            find "src/$unit" -type d -path '*/TestResults/*/In' -prune -exec rm -rf {} +
             dotnet test "$slnx" --no-build --configuration Release \
               --list-tests --filter "Category=Integration" > "$lists/$unit.list" 2>&1 \
               || echo "::warning::$slnx の統合試験の一覧を取れなかった（実走検査が赤にする）。"

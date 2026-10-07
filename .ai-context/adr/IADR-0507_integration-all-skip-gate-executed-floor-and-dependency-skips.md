@@ -53,7 +53,7 @@ related_specs:
 
 ## 決定
 
-1. **`integration.yml` の試験 step はユニットごとに 2 つの入力を残す。** `dotnet test` に `--logger trx` を足す（TRX は各試験プロジェクトの `TestResults/`。Cobertura と同じ場所で、床の走査は `coverage.cobertura.xml` しか拾わない）。続けて `dotnet test <slnx> --no-build --list-tests --filter "Category=Integration"` の出力を `$RUNNER_TEMP/integration-lists/<unit>.list` へ残す。**`--filter` は発見だけに掛かり、実行は全量のまま**（IADR-0232 改定 3 を崩さない）。
+1. **`integration.yml` の試験 step はユニットごとに 2 つの入力を残す。** `dotnet test` に `--logger trx` を足す（TRX は各試験プロジェクトの `TestResults/`）。🔴 **TRX ロガーは収集した Cobertura を `TestResults/<run>/In/<machine>/` へ複製する**（PR #1794 の初回の回収実行で床の件数突合が「38 件 / 期待 19 件」で落ちて判明。ローカルでも再現）。複製は試験の直後に `find "src/$unit" -type d -path '*/TestResults/*/In' -prune -exec rm -rf {} +` で消す（本体の `TestResults/<guid>/coverage.cobertura.xml` と TRX は残る）。床の判定器・床の値には触れない。続けて `dotnet test <slnx> --no-build --list-tests --filter "Category=Integration"` の出力を `$RUNNER_TEMP/integration-lists/<unit>.list` へ残す。**`--filter` は発見だけに掛かり、実行は全量のまま**（IADR-0232 改定 3 を崩さない）。
 2. **`scripts/check-integration-executed.js` がユニットごとに判定する。** 一覧の名前（引数部を落とした「クラス.メソッド」）と TRX の結果を突き合わせ、宣言・実走（合格＋失敗）・skip（うち依存不足）・結果なしを数える。次のいずれかで赤:
    - 一覧が読めない（見出しが無い＝ビルド失敗・コマンド失敗。「宣言 0 件」と読まない）
    - 宣言のあるユニットで実走が下限（既定 1）を割る

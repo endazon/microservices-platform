@@ -91,4 +91,5 @@ issue: "#1788"
 
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` → 953 件 OK。
 - `actionlint .github/workflows/integration.yml` → 指摘なし。起動条件（push: develop・schedule・workflow_dispatch）とジョブ名は不変。
-- `integration.yml` は PR では起動しない。PR の枝で `workflow_dispatch` を 1 回起こし、依存が揃った実行で門が緑になり表が出ることを確かめる（結果は PR に書く）。
+- `integration.yml` は PR では起動しない。PR の枝で `workflow_dispatch` を起こし、依存が揃った実行で門が緑になり表が出ることを確かめる（結果は PR に書く）。
+- ［2026-10-08 追記 / #1788］初回の dispatch（run 37657656611）は **本検査は合格**（`| knowledge | 59 | 58 | 58 | 0 | 1 | 0 | 0 | 0 | 12 |`・`| platform | 0 | …`）だったが、**床の件数突合が「レポート 38 件 / 期待 19 件」で落ちた**。原因は TRX ロガーが Cobertura を `TestResults/<run>/In/<machine>/` へ複製すること（ローカルで再現）。試験の直後に `TestResults/*/In` を消す 1 行を足し、`scripts.repo.test.js` で固定した（IADR-0507 決定 1）。床の値・判定器は変えていない。
