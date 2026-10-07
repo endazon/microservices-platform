@@ -15,8 +15,10 @@
  *   2. `.ai-context/specs/` で `done` / `completed` / `superseded` 以外のまま `updated:` が古い作業仕様書
  *   3. `docs/` で `draft` / `in-progress` / `pending` のまま `updated:` が古い文書
  *   4. `scripts/test-traceability-allowlist.json` に残る「写像を後回しにした」テスト（件数）
- *   5. GitHub: `blocked*` ラベルの open issue のうち、更新が古いもの（**blocked 判定は棚卸しごとに再検証する**。
- *      CLAUDE.md）
+ *   5. GitHub: `blocked*` ラベルの open issue のうち、**再検証期限が無いか過ぎたもの**（**blocked 判定には再検証の
+ *      期限を付け、棚卸しごとに再検証する**。CLAUDE.md）。期限は本文かコメントの `再検証期限: YYYY-MM-DD`
+ *      （最後に書かれたものが効く）。経過日数は**最後のコメント**から数える —— `updated_at` はラベル操作で戻り、
+ *      参照されても戻らないため使わない（#1773 / IADR-0506）。全件を台帳として報告に並べる
  *   6. GitHub: `ci-failure` ラベルの open issue（後段で落ちたまま放置されているもの）
  *   7. GitHub: 更新が古い open PR
  *
@@ -61,6 +63,18 @@ function parseFrontmatter(text) {
 }
 
 function daysBetween(a, b) { return Math.floor((b - a) / 86400000); }
+
+/**
+ * 本文とコメント（時系列順）から最後の `再検証期限` の日付を抜く（純関数。無ければ null）。
+ * `再検証期限: 2026-10-19` / `再検証期限：…` / テンプレート欄（`### 再検証期限…` の次行）のいずれも読む。
+ */
+function parseRevalidationDeadline(texts) {
+  let last = null;
+  for (const t of texts) {
+    for (const m of String(t || '').matchAll(/再検証期限[^\n\d]*\s*(\d{4}-\d{2}-\d{2})/g)) last = m[1];
+  }
+  return last;
+}
 
 /** `updated:` が閾値より古いか（純関数。日付が読めなければ「古い」と扱う —— 読めないのも滞留の一種）。 */
 function isStale(updated, now, staleDays) {
@@ -133,10 +147,18 @@ async function collectGithubFindings({ repo, token, now = Date.now(), staleDays 
   const issues = (await api(`${base}/issues?state=open`, token)).filter((i) => !i.pull_request);
   const prs = await api(`${base}/pulls?state=open`, token);
   const labelsOf = (i) => (i.labels || []).map((l) => (typeof l === 'string' ? l : l.name));
-  const blocked = issues
-    .filter((i) => labelsOf(i).some((l) => BLOCKED_LABELS.includes(l)))
-    .map((i) => ({ number: i.number, title: i.title, labels: labelsOf(i).filter((l) => BLOCKED_LABELS.includes(l)), ageDays: daysBetween(Date.parse(i.updated_at), now) }));
-  const staleBlocked = blocked.filter((b) => b.ageDays > staleDays);
+  const blocked = [];
+  for (const i of issues.filter((x) => labelsOf(x).some((l) => BLOCKED_LABELS.includes(l)))) {
+    // #1773: 日数の基準は `updated_at` ではなく最後のコメント（ラベル操作で戻らない）。
+    const comments = await api(`${base}/issues/${i.number}/comments`, token);
+    const lastAt = comments.length ? comments[comments.length - 1].created_at : i.created_at;
+    const deadline = parseRevalidationDeadline([i.body, ...comments.map((c) => c.body)]);
+    blocked.push({
+      number: i.number, title: i.title, labels: labelsOf(i).filter((l) => BLOCKED_LABELS.includes(l)),
+      deadline, overdue: deadline ? Date.parse(deadline) <= now : false, ageDays: daysBetween(Date.parse(lastAt), now),
+    });
+  }
+  const staleBlocked = blocked.filter((b) => !b.deadline || b.overdue);
   const ciFailures = issues.filter((i) => labelsOf(i).includes('ci-failure')).map((i) => ({ number: i.number, title: i.title, ageDays: daysBetween(Date.parse(i.updated_at), now) }));
   const stalePrs = prs.filter((p) => daysBetween(Date.parse(p.updated_at), now) > staleDays).map((p) => ({ number: p.number, title: p.title, ageDays: daysBetween(Date.parse(p.updated_at), now) }));
   return { blocked, staleBlocked, ciFailures, stalePrs, openIssues: issues.length, openPrs: prs.length };
@@ -148,6 +170,12 @@ function section(title, items, render, none = '指摘なし') {
   else for (const it of items) lines.push(`- ${render(it)}`);
   lines.push('');
   return lines;
+}
+
+function renderBlocked(b) {
+  const kind = b.labels.includes('blocked') ? '・🔴 種別なしの `blocked`' : '';
+  const due = b.deadline ? `期限 ${b.deadline}${b.overdue ? '（過ぎた）' : ''}` : '🔴 期限なし';
+  return `#${b.number} ${b.title}（${b.labels.join(' / ')}${kind}・${due}・最後のコメントから ${b.ageDays} 日）`;
 }
 
 /** 報告 Markdown を組み立てる（純関数）。指摘 0 件でも全節を持つ。 */
@@ -169,8 +197,9 @@ function renderReport({ repoFindings, gh, ghError, runId, date, staleDays = DEFA
   ];
   if (gh) {
     lines.push(
-      ...section(`blocked 系ラベルの open issue のうち ${staleDays} 日以上更新が無いもの（再検証が要る）`, gh.staleBlocked, (b) => `#${b.number} ${b.title}（${b.labels.join(' / ')}・${b.ageDays} 日）`),
-      `（blocked 系ラベルの open issue は全部で ${gh.blocked.length} 件 / open issue ${gh.openIssues} 件）`, '',
+      ...section('blocked 系ラベルの open issue のうち再検証期限が無い・過ぎたもの（再検証が要る）', gh.staleBlocked, renderBlocked),
+      `（blocked 系ラベルの open issue は全部で ${gh.blocked.length} 件 / open issue ${gh.openIssues} 件。台帳として全件を並べる）`, '',
+      ...gh.blocked.map((b) => `- ${renderBlocked(b)}`), ...(gh.blocked.length ? [''] : []),
       ...section('ci-failure ラベルの open issue（後段の失敗が放置されている）', gh.ciFailures, (c) => `#${c.number} ${c.title}（${c.ageDays} 日）`),
       ...section(`${staleDays} 日以上動いていない open PR`, gh.stalePrs, (p) => `#${p.number} ${p.title}（${p.ageDays} 日）`),
       `（open PR は全部で ${gh.openPrs} 件）`, '',
@@ -270,19 +299,40 @@ async function selfTest() {
     const r = renderReport({ repoFindings: { ...repoFindings, proposedAdrs: [{ file: 'a.md', updated: '2026-01-01' }] }, gh: null, ghError: 'boom', runId: 'r2', date: 'd' });
     assert.ok(r.includes('指摘 1 件')); assert.ok(r.includes('取得できなかった: boom')); assert.ok(r.includes('`a.md`'));
   });
-  await ok('collectGithubFindings: blocked の古いものだけを staleBlocked に、ci-failure と古い PR を拾う', async () => {
+  await ok('parseRevalidationDeadline: 本文・コメントの最後の期限を読む（欄の見出し形も読む）', () => {
+    assert.strictEqual(parseRevalidationDeadline(['x\n再検証期限: 2026-10-01', '再検証期限：2026-10-19（次回）']), '2026-10-19');
+    assert.strictEqual(parseRevalidationDeadline(['### 再検証期限（blocked のときだけ）\n\n2026-11-02', null]), '2026-11-02');
+    assert.strictEqual(parseRevalidationDeadline(['### 再検証期限（blocked のときだけ）\n\n_No response_', '期限は来週']), null);
+  });
+  await ok('collectGithubFindings: blocked は期限が無い・過ぎたものを staleBlocked に（日数はラベル操作で戻らない）、ci-failure と古い PR を拾う', async () => {
+    const comments = {
+      1: [{ created_at: '2026-08-01T00:00:00Z', body: '再検証期限: 2026-09-01' }],
+      2: [{ created_at: '2026-08-20T00:00:00Z', body: '再検証期限: 2026-09-20' }],
+      5: [],
+    };
     const api = async (url) => {
+      const m = url.match(/\/issues\/(\d+)\/comments$/);
+      if (m) return comments[m[1]];
       if (url.includes('/issues?')) return [
-        { number: 1, title: 'b', labels: [{ name: 'blocked:env' }], updated_at: '2026-08-01T00:00:00Z' },
-        { number: 2, title: 'fresh', labels: [{ name: 'blocked' }], updated_at: '2026-09-08T00:00:00Z' },
+        { number: 1, title: 'overdue', labels: [{ name: 'blocked:env' }], updated_at: '2026-09-08T00:00:00Z', created_at: '2026-07-01T00:00:00Z', body: '' },
+        // ラベル付与で updated_at が新しくても、日数は最後のコメント（08-20）から数える。期限が先なので挙げない
+        { number: 2, title: 'fresh', labels: [{ name: 'blocked' }], updated_at: '2026-09-08T00:00:00Z', created_at: '2026-07-01T00:00:00Z', body: '' },
         { number: 3, title: 'ci', labels: [{ name: 'ci-failure' }], updated_at: '2026-09-08T00:00:00Z' },
         { number: 4, title: 'pr-as-issue', labels: [{ name: 'blocked' }], updated_at: '2026-01-01T00:00:00Z', pull_request: {} },
+        { number: 5, title: 'no-deadline', labels: [{ name: 'blocked:human' }], updated_at: '2026-09-08T00:00:00Z', created_at: '2026-09-07T00:00:00Z', body: '期限は未定' },
       ];
       return [{ number: 9, title: 'old pr', updated_at: '2026-08-01T00:00:00Z' }, { number: 10, title: 'new pr', updated_at: '2026-09-08T00:00:00Z' }];
     };
     return collectGithubFindings({ repo: 'o/r', token: 't', now, staleDays: 14, api }).then((g) => {
-      assert.deepStrictEqual(g.staleBlocked.map((b) => b.number), [1]);
-      assert.strictEqual(g.blocked.length, 2);
+      assert.deepStrictEqual(g.staleBlocked.map((b) => b.number), [1, 5]);
+      assert.strictEqual(g.blocked.length, 3);
+      const two = g.blocked.find((b) => b.number === 2);
+      assert.strictEqual(two.ageDays, 20); assert.strictEqual(two.deadline, '2026-09-20'); assert.strictEqual(two.overdue, false);
+      assert.strictEqual(g.blocked.find((b) => b.number === 5).ageDays, 2, 'コメントが無ければ作成日から数える');
+      const r = renderReport({ repoFindings, gh: g, runId: 'r3', date: 'd' });
+      assert.ok(r.includes('#5 no-deadline（blocked:human・🔴 期限なし'), r);
+      assert.ok(r.includes('#2 fresh（blocked・🔴 種別なしの `blocked`・期限 2026-09-20・最後のコメントから 20 日）'), r);
+      assert.ok(r.includes('#1 overdue（blocked:env・期限 2026-09-01（過ぎた）'), r);
       assert.deepStrictEqual(g.ciFailures.map((c) => c.number), [3]);
       assert.deepStrictEqual(g.stalePrs.map((p) => p.number), [9]);
     });
@@ -299,4 +349,4 @@ async function selfTest() {
 
 if (require.main === module) main().catch((e) => { console.error(`[backlog-audit] ${e.stack || e}`); process.exit(1); });
 
-module.exports = { parseFrontmatter, isStale, collectRepoFindings, collectGithubFindings, renderReport, MARKER, LABEL, BLOCKED_LABELS };
+module.exports = { parseFrontmatter, isStale, parseRevalidationDeadline, collectRepoFindings, collectGithubFindings, renderReport, MARKER, LABEL, BLOCKED_LABELS };

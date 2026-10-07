@@ -64,6 +64,18 @@ body:
     validations:
       required: false
 
+  - type: input
+    id: revalidation_deadline
+    attributes:
+      label: 再検証期限（blocked のときだけ）
+      description: >-
+        `blocked:*` ラベルを付ける（AI だけでは完結しないと判定する）ときは、再検証する日を YYYY-MM-DD で書く。
+        期限が無い・過ぎた blocked issue は週次の棚卸し（`scripts/backlog-audit.js`）が挙げる。
+        後から変えるときはコメントに `再検証期限: YYYY-MM-DD` を書く（最後に書かれたものが効く）。
+      placeholder: "例: 2026-10-19"
+    validations:
+      required: false
+
   - type: textarea
     id: notes
     attributes:
