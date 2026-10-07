@@ -28,13 +28,12 @@ namespace Knowledge.IntegrationTests.Search;
 //   - 既存の配備: 索引を張る前の版が書いた点の属性キーを、発見の走査が拾って索引を張ること
 //   - 索引を張っても ABAC フィルタの意味（完全一致・大小文字の区別）が変わらないこと
 //
-// 🔴 **Qdrant の版は配備と同じ v1.18.1 に固定する**（`LexicalIndexQdrantTests` と同じ理由）。
+// 🔴 **Qdrant の版は配備と同じ v1.18.1 に固定する**（`LexicalIndexQdrantTests` と同じ理由。置き場所は `QdrantTestImage`。#1790）。
 // `Category=Integration` を付ける（実コンテナを起こす。`integration.yml` が回収する）。
 [Trait("Category", "Integration")]
 [Trait("TestKind", "Integration")]
 public sealed class KeywordIndexQdrantTests : IAsyncLifetime
 {
-    private const string QdrantImage = "qdrant/qdrant:v1.18.1";
     private const int Dimensions = 8;
 
     // 1 回の試験ごとに別の名前（外部の Qdrant を共有しても混ざらない）。
@@ -57,7 +56,7 @@ public sealed class KeywordIndexQdrantTests : IAsyncLifetime
 
         if (!DockerRequired.IsAvailable()) return;
 
-        _qdrant = new QdrantBuilder(QdrantImage).Build();
+        _qdrant = new QdrantBuilder(QdrantTestImage.Reference).Build();
         await _qdrant.StartAsync();
 
         var uri = new Uri(_qdrant.GetGrpcConnectionString());
