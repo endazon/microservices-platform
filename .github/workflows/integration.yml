@@ -109,6 +109,13 @@ jobs:
       # 下の床の評価は「全ユニットのレポートが揃っていること」を前提にしているので、
       # ここで抜けると床が**部分集合**で測られる（あるいは件数不一致で warn になる）。
       # 失敗は記録して最後に exit 1 にする —— ジョブの赤は変わらず、床の評価だけが完走する。
+      #
+      # 🔴 NFR / #1788 / IADR-0507: 下の「統合試験の実走検査」（全 skip で緑にしない。計画 ADR-0090 決定 3）の入力を
+      # ユニットごとに 2 つ残す。(1) `--logger trx` の TRX（各試験プロジェクトの TestResults/。Cobertura と同じ場所で、
+      # 床の走査は coverage.cobertura.xml しか拾わない）。(2) `--list-tests --filter "Category=Integration"` の一覧
+      # （TRX は xUnit の Trait を書かないため、どの結果が統合試験かを発見に訊く）。
+      # 🔴 一覧の --filter は**発見だけ**に掛かり、実行は従来どおり全量（上の「--filter を付けない」は崩れない）。
+      # 一覧の失敗（ビルド失敗のユニット等）は出力ごと残し、検査器が「一覧を読めない」として赤にする。
       - name: All tests including real containers (all units, with coverage)
         id: tests
         run: |
@@ -116,18 +123,28 @@ jobs:
           shopt -s nullglob
           found=0
           failed=""
+          lists="$RUNNER_TEMP/integration-lists"
+          mkdir -p "$lists"
           for slnx in src/*/backend/backend.slnx; do
             found=$((found + 1))
+            unit=$(echo "$slnx" | cut -d/ -f2)
             echo "::group::$slnx"
             if dotnet restore "$slnx" \
               && dotnet build "$slnx" --no-restore --configuration Release \
               && dotnet test "$slnx" --no-build --configuration Release \
-                   --collect:"XPlat Code Coverage" --verbosity normal; then
+                   --collect:"XPlat Code Coverage" --logger trx --verbosity normal; then
               echo "OK: $slnx"
             else
               echo "::error::$slnx のテストが失敗した（残りのユニットは続けて走らせる）。"
               failed="$failed $slnx"
             fi
+            # 🔴 TRX ロガーは収集した Cobertura を TestResults/<run>/In/<machine>/ へ**複製する**（実測）。
+            # 残すと床の走査が 1 プロジェクト 2 部を拾い、件数突合（期待 19 件に対し 38 件）で落ちる（PR #1794 の初回実行）。
+            # 複製だけを消す（本体は TestResults/<guid>/ にあり、TRX 自体は TestResults/ 直下に残る）。
+            find "src/$unit" -type d -path '*/TestResults/*/In' -prune -exec rm -rf {} +
+            dotnet test "$slnx" --no-build --configuration Release \
+              --list-tests --filter "Category=Integration" > "$lists/$unit.list" 2>&1 \
+              || echo "::warning::$slnx の統合試験の一覧を取れなかった（実走検査が赤にする）。"
             echo "::endgroup::"
           done
           if [ "$found" -eq 0 ]; then
@@ -175,6 +192,22 @@ jobs:
       - name: Check backend coverage floor (床の強制はここだけ。テストが赤くても評価する)
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         run: node scripts/check-coverage-floor.js
+      # 🔴 **「全 skip で緑」を実走した実行と区別する門**（NFR / #1788 / IADR-0507。正本は計画 ADR-0090 決定 3・planning#575）。
+      #
+      # 統合試験の門（IADR-0414 の RequiredServices / BrokerRequired）は依存を得られなければ理由つきで skip する
+      # （ADR-0090 決定 1）。🔴 **カバレッジ床はこれを止めない** —— 床は単体試験で満たせる（ADR-0090 決定 3 が名指しで退けた）。
+      # 本検査はユニットごとに Category=Integration の宣言・実走・skip（うち依存不足）を数えて summary に出し、
+      # **宣言のあるユニットで実走 0 件** か **依存不足の skip が 1 件でも出た**ら赤にする。
+      # 依存不足の skip を見るのは、依存を要らない統合試験が 1 件あり「依存が 1 つも揃わない実行」でも実走 1 件になるため
+      # （実測は IADR-0507）。submodule のユニット（ai-stock-trading）は対象外で、AST 自身の integration.yml が同じ守りを持つ。
+      #
+      # 床と同じく、テストが赤くても評価する（skip と失敗は独立した観測）。テスト step が走らなかったとき（force_failure）だけ走らない。
+      - name: Self-test integration executed checker
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        run: node scripts/check-integration-executed.js --self-test
+      - name: Check integration tests actually ran (全 skip で緑にしない。テストが赤くても評価する)
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        run: node scripts/check-integration-executed.js --lists "$RUNNER_TEMP/integration-lists"
 
   # 🔴 PR から外した分の担保が落ちたことを issue として残す（IADR-0232 決定 1）。
   # これが無ければ「PR から外した」は「やめた」と同義になる。
