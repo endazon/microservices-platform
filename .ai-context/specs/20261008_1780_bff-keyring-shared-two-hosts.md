@@ -2,7 +2,7 @@
 title: 作業仕様書 — BFF の DataProtection 鍵リング共有を 2 つの WebApplicationFactory で統合テストに固定する（#1780）
 type: spec
 status: done
-related_ids: [NFR, NFR-09, ADR-0032, IADR-0251, IADR-0273, IADR-0510]
+related_ids: [NFR-07, NFR-09, ADR-0032, IADR-0251, IADR-0273, IADR-0510]
 author: claude
 created: 2026-10-08
 updated: 2026-10-08
@@ -16,7 +16,7 @@ issue: "#1780"
 
 ## 起点（トレーサビリティ）
 
-- NFR（BFF セッションの可用性。当たる番号なし。#1534 の起点と同じ）。計画 ADR-0032（BFF セッション方式・セッションストアは Redis）。
+- NFR-07（スケーラビリティ。HPA による水平スケール。#1534 の起点と同じ）。計画 ADR-0032（BFF セッション方式・セッションストアは Redis）。
 - IADR-0251 決定 5（DataProtection の鍵リングを Redis に共有する）・IADR-0273（セッションの失効・refresh）。本文は凍結記録として書き換えない。
 - #1534（`blocked:env`）の受け入れ基準 1（「AI で先行できる」）の切り出し。#1773 の独立監査の指摘による。
   稼働クラスタでの確認（Runbook・`scripts/check-bff-multi-replica-session.js`。#1736）は #1534 に残す。

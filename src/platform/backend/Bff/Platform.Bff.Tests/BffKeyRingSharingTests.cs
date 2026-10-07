@@ -21,7 +21,7 @@ using System.Security.Claims;
 
 namespace Platform.Bff.Tests;
 
-// NFR, ADR-0032, IADR-0251 決定 5, [[IADR-0510]] (#1780 / #1534 受け入れ基準 1):
+// NFR-07, ADR-0032, IADR-0251 決定 5, [[IADR-0510]] (#1780 / #1534 受け入れ基準 1):
 // **2 つの BFF レプリカが同じ DataProtection 鍵リングを引き、互いのセッション Cookie を復号できること**を、
 // 本番の配線（Program → AddBffSession）のまま 2 つの WebApplicationFactory で測る。
 //
@@ -141,6 +141,12 @@ public class BffKeyRingSharingTests
             base.ConfigureWebHost(builder);
             builder.ConfigureServices(services =>
             {
+                // NFR-07, IADR-0510 (#1780 監査 🟡): 鍵リングは本番の DI 登録の IConnectionMultiplexer を引く唯一の利用者である。
+                // 差し替える前に本番の登録が在ることを確かめる（消すと本番では初回のログインで GetRequiredService が落ちるのに、
+                // 差し替えるテストは緑のまま残る）。
+                services.Should().Contain(
+                    d => d.ServiceType == typeof(IConnectionMultiplexer),
+                    "鍵リングの保存先は本番の DI 登録の IConnectionMultiplexer を引く（AddBffSession が登録する）");
                 services.RemoveAll<IConnectionMultiplexer>();
                 services.AddSingleton(keyRing.Multiplexer);
                 services.RemoveAll<IDistributedCache>();

@@ -7,7 +7,7 @@ updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
-ids: [FR-03, FR-04, FR-06, FR-07, NFR-09, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-13, UC-01, UC-02, UC-03]
+ids: [FR-03, FR-04, FR-06, FR-07, NFR-07, NFR-09, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-13, UC-01, UC-02, UC-03]
 adrs: [ADR-0004, ADR-0032]
 iadrs: [IADR-0009, IADR-0039, IADR-0044, IADR-0156, IADR-0160, IADR-0251, IADR-0273, IADR-0429, IADR-0510]
 specs: [20260926_issue-1535_drop-bff-bearer-user-arm, 20261008_1780_bff-keyring-shared-two-hosts]

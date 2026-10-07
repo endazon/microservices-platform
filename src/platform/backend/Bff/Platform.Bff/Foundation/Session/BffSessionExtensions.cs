@@ -71,10 +71,12 @@ public static class BffSessionExtensions
         // Redis 不在の環境でも起動時に落ちる（＝配線の都合でテストが Redis を要求することになる）。
         var lazyRedis = new Lazy<IConnectionMultiplexer>(
             () => ConnectionMultiplexer.Connect(options.RedisConnectionString));
+        // 🔴 NFR-07, IADR-0510: この登録の利用者は鍵リングの保存先（下の KeyManagementOptions）である。死んだ登録に見えても消さない
+        //   （消すと初回の DataProtection 利用で GetRequiredService が落ち、すべてのログインと Cookie が失敗する）。
         services.AddSingleton<IConnectionMultiplexer>(_ => lazyRedis.Value);
         services.AddDataProtection()
             .SetApplicationName(DataProtectionApplicationName);
-        // 🔴 NFR, ADR-0032, [[IADR-0510]] (#1780): **鍵の保存先は DI の `IConnectionMultiplexer` から引く。**
+        // 🔴 NFR-07, ADR-0032, [[IADR-0510]] (#1780): **鍵の保存先は DI の `IConnectionMultiplexer` から引く。**
         // `PersistKeysToStackExchangeRedis(() => lazyRedis.Value.GetDatabase(), ...)` は接続をクロージャに
         // 閉じ込めるため、テストが Redis の器を差し替えられず、「2 レプリカが同じ鍵リングを引く」ことを
         // 本番の配線のまま測れなかった。置くリポジトリは拡張メソッドが内部で置くのと同じ `RedisXmlRepository`

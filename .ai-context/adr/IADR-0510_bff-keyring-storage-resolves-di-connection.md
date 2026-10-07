@@ -2,7 +2,7 @@
 title: IADR-0510 BFF の DataProtection 鍵の保存先は DI の IConnectionMultiplexer から引く RedisXmlRepository を KeyManagementOptions に置き、2 つの WebApplicationFactory で共有と陰性対照を固定する
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0032, IADR-0251, IADR-0273]
+related_ids: [NFR-07, ADR-0032, IADR-0251, IADR-0273]
 author: claude
 created: 2026-10-08
 updated: 2026-10-08
@@ -21,7 +21,7 @@ related_specs:
 ## 起点・関連
 
 - 起点 issue: #1780（#1534 の受け入れ基準 1。#1773 の独立監査が「blocked の下で見落とされる」と指摘）
-- 計画: ADR-0032（BFF セッション方式。セッションストアは Redis）。NFR（BFF セッションの可用性。番号なし）
+- 計画: ADR-0032（BFF セッション方式。セッションストアは Redis）。NFR-07（スケーラビリティ。HPA による水平スケール。#1534 と同じ起点）
 - 前提の決定: IADR-0251 決定 5（DataProtection の鍵リングを Redis に共有する）。本文は書き換えない
 - 基点コミット: `origin/develop` `b3208a1d`
 
