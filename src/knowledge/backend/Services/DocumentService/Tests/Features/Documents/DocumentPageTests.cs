@@ -364,6 +364,7 @@ public class DocumentPageTests(TestWebApplicationFactory factory)
     [InlineData("attr.project=")]
     [InlineData("cursor=not-a-cursor")]
     [InlineData("cursor=djE6YWJjOmRlZg")]
+    [InlineData("cursor=djE6OTIyMzM3MjAzNjg1NDc3NTgwNzowMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZg")] // #1765: DateTimeOffset で表せない時刻（500 ではなく 400）
     public async Task 不正な絞り込みやカーソルは400(string query)
     {
         var client = ClientAs("ast-kb-writer", "platform-operator");

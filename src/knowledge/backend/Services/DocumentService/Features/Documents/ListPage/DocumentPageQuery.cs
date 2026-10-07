@@ -191,6 +191,10 @@ internal readonly record struct DocumentPageCursor(long CreatedAtUtcTicks, Guid 
             || !long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var ticks)
             || !Guid.TryParseExact(parts[2], "N", out var id))
             return false;
+        // #1765（監査 Y1）: SQL 側の比較は DateTimeOffset で行うので、表せない時刻は壊れたカーソルとして 400 にする
+        //   （通さないと CreatedAt の組み立てで ArgumentOutOfRangeException になり 500 で落ちる）。
+        if (ticks > DateTimeOffset.MaxValue.UtcTicks)
+            return false;
 
         cursor = new DocumentPageCursor(ticks, id);
         return true;

@@ -42,7 +42,7 @@ internal static class RepublishSelection
             .OrderBy(r => r.CreatedAt.UtcTicks)
             .ThenBy(r => r.Id)];
 
-    // 並びでカーソルより後ろにあるか（`DocumentPageCursor.Precedes` と同じ比較を行に対して行う）。
+    // 並びでカーソルより後ろにあるか（`DocumentPageQuery.AfterCursor` が SQL で行うのと同じ比較を、メモリ上の行に対して行う）。
     // 🔴 **厳密に後ろ**である。「以上」にすると前ページの末尾をもう一度選ぶ（重複は冪等だが件数が嘘になる）。
     internal static bool IsAfter(DocumentPageCursor? after, Row r)
     {
