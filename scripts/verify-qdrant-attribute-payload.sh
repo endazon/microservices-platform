@@ -15,7 +15,7 @@
 #
 # 実行方法:
 #   1) 実機 Qdrant を用意する。例（ローカル）:
-#        docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:latest
+#        docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:v1.18.1   # 配備・試験と同じ版（QdrantTestImage.Reference）
 #   2) 本スクリプトを実行する:
 #        QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-attribute-payload.sh --live
 #      API キーが必要な場合:
