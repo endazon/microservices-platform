@@ -9136,6 +9136,7 @@ ${r.stderr}`);
         'docs/how-to/adr-supersede-citation-annex.md',
         'docs/how-to/cross-project-id-refs-annex.md',
         'docs/how-to/changelog-overrides-annex.md',
+        'docs/how-to/frontend-conventions-annex.md', // ★ #1770 で追加。CLAUDE.md から出した別紙も同じ扱いにする
       ];
       for (const rel of targets) {
         const lines = fs.readFileSync(path.join(REPO, rel), 'utf8').replace(/\r\n/g, '\n').split('\n');
