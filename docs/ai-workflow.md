@@ -1,8 +1,8 @@
 <!-- trace:
 adrs: [ADR-0048, ADR-0118]
 iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507, IADR-0508]
-specs: [20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
-issues: [#1775, #1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
+specs: [20261008_1796_integration-gate-hardening, 20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
+issues: [#1796, #1775, #1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -198,7 +198,7 @@ GitHub Actions が report する status check の context は**ジョブ側の�
 | 経路 | 契機 | 床の扱い | 備考 |
 | --- | --- | --- | --- |
 | `ci.yml` `build-and-test` | 全 PR | **報告のみ**（`--report-only`） | 統合テストを PR から外しているため、全量実測から置いた床を当てると必ず割れる |
-| `integration.yml` `integration` | `develop` への push・日次 | **強制**（床割れは失敗） | 🔴 **post-merge であり、PR をマージ前に止める経路ではない** |
+| `integration.yml` `integration` | `develop` への push・日次 | **強制**（床割れ・統合試験の全 skip・依存不足の skip・統合試験の一覧の失敗は失敗） | 🔴 **post-merge であり、PR をマージ前に止める経路ではない** |
 
 **統制の現状を正直に書く**: **PR をマージ前に止める床の経路は 0 本である**。床は「マージ後に検知して issue を立てる」統制であって、
 「割れた PR を止める」統制ではない。**PR 段階で強制する政策**（`integration` を必須 check にする——所要 8〜9 分がマージ待ちに乗る／
@@ -213,6 +213,8 @@ PR 側に床相当の step を置く——床が 2 つ並ぶ）は**利用者の
 - **床は統合テストが全 skip でも割れない**（単体試験で満たせる）。そこで `integration.yml` は床とは別に
   `scripts/check-integration-executed.js` で、ユニットごとに `Category=Integration` の宣言・実走・skip（うち依存不足）を
   Step Summary へ出し、**実走 0 件か依存不足の skip が 1 件でも出た実行を赤にする**（テストが赤くても評価する）。
+  統合試験の一覧の取得がユニットの一部でも失敗した実行（一覧の終了コードが 0 でない・名前も「該当なし」も返さない試験プロジェクトがある）も赤にする。
+  依存の判定は CI でもローカルと同じであり（CI だからと Docker を「ある」とは見なさない）、CI で依存が欠ければ試験は skip になってこの検査が赤にする。
 - **床割れ・テスト失敗は `ci-failure` issue に残る**（`ci-failure-issue.yml`）。放置は週次の定期棚卸し（`backlog-audit.yml`）が列挙する。
 - **暫定手段（PR 段階）**: レビュー時に `build-and-test` の Step Summary「バックエンドのカバレッジ」を目視し、実測が床を下回る
   PR は理由（統合テストぶんの不足か、被覆の実減か）を PR 本文に書く。

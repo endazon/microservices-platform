@@ -125,6 +125,23 @@ slug が一意索引に衝突すること（受信後の処理側）の 2 つで
 🔴 **実機（外部供給のブローカ ＋ DB）での再実測は未了**であり、この段の「残るもの」は
 その実測をもって閉じる。
 
+### ［2026-10-08 追記 / #1796］`DockerRequired.IsAvailable()` の `CI=true` 近道を外した
+
+`IsAvailable()` は `CI=true` のとき常に「Docker がある」と答えていた（#997 で入った。本 IADR の決定には記載が無かった）。
+そのため CI で依存が欠けると、`RequiredServices` / `BrokerRequired` の門は skip せず、試験は**失敗**になった
+（ローカルでは skip）。これは計画 ADR-0090 が退けた「CI では fail・ローカルでは skip」の形であり、
+IADR-0507 の「依存を得られない skip」の門が CI で発火できない原因だった。
+
+- **CI でもローカルと同じ問いに答える。** 判定は `DOCKER_HOST` か既定の端点（ソケット／名前付きパイプ）だけで決まる。
+  GitHub の ubuntu ランナーには `/var/run/docker.sock` が在るので、Docker のある CI の挙動は変わらない。
+- **実測**: Docker の daemon に届かない環境で `CI=true` を与えて `Knowledge.IntegrationTests` を走らせると、
+  外す前は 59 件が**失敗**、外した後は 58 件が skip（うち門の「依存を得られない」57 件）になり、
+  IADR-0507 の門が「依存を得られない skip 57 件」で赤にした。
+- 近道の再混入は `DockerRequiredTests`（環境変数と既定の端点の探りを注入して、`CI=true` だけでは「ある」と答えないことを固定）と
+  `scripts.repo.test.js`（`DockerRequired.cs` のコードが環境変数 `CI` を見ないこと）が止める。
+- 決定 5（`IsAvailable()` を直接使ってよいのは `ContainerStartupFailure` だけ）は変えない。Docker の無い CI では、
+  起動失敗は skip へ倒れ、門が赤にする（作業仕様書 `20261008_1796_integration-gate-hardening`）。
+
 ## 関連
 
 - 前提として扱い覆さないもの: [[IADR-0231]] 決定 3（動的 skip は `Assert.Skip*`）／

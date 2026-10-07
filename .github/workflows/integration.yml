@@ -115,7 +115,7 @@ jobs:
       # 床の走査は coverage.cobertura.xml しか拾わない）。(2) `--list-tests --filter "Category=Integration"` の一覧
       # （TRX は xUnit の Trait を書かないため、どの結果が統合試験かを発見に訊く）。
       # 🔴 一覧の --filter は**発見だけ**に掛かり、実行は従来どおり全量（上の「--filter を付けない」は崩れない）。
-      # 一覧の失敗（ビルド失敗のユニット等）は出力ごと残し、検査器が「一覧を読めない」として赤にする。
+      # 一覧の失敗（ビルド失敗のユニット等）は出力と終了コード（<unit>.exit）ごと残し、検査器が赤にする（#1796）。
       - name: All tests including real containers (all units, with coverage)
         id: tests
         run: |
@@ -142,9 +142,15 @@ jobs:
             # 残すと床の走査が 1 プロジェクト 2 部を拾い、件数突合（期待 19 件に対し 38 件）で落ちる（PR #1794 の初回実行）。
             # 複製だけを消す（本体は TestResults/<guid>/ にあり、TRX 自体は TestResults/ 直下に残る）。
             find "src/$unit" -type d -path '*/TestResults/*/In' -prune -exec rm -rf {} +
+            # 🔴 NFR / #1796: 一覧の終了コードを捨てない。ユニットごとに <unit>.exit へ残し、検査器が読む
+            # （非 0・記録なしは赤。見出しが 1 つ出ただけの部分的な失敗を「宣言 0 件」と読ませない）。
+            list_rc=0
             dotnet test "$slnx" --no-build --configuration Release \
-              --list-tests --filter "Category=Integration" > "$lists/$unit.list" 2>&1 \
-              || echo "::warning::$slnx の統合試験の一覧を取れなかった（実走検査が赤にする）。"
+              --list-tests --filter "Category=Integration" > "$lists/$unit.list" 2>&1 || list_rc=$?
+            echo "$list_rc" > "$lists/$unit.exit"
+            if [ "$list_rc" -ne 0 ]; then
+              echo "::warning::$slnx の統合試験の一覧が終了コード $list_rc で終わった（実走検査が赤にする）。"
+            fi
             echo "::endgroup::"
           done
           if [ "$found" -eq 0 ]; then
