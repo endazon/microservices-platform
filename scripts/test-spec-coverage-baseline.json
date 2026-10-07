@@ -335,7 +335,8 @@
     "docs/tests/NFR-09_bff-edge-authentication.md": [
       "BearerArmPipelineTests",
       "BearerCallerPolicyTests",
-      "BffEndpointAuthenticationTests"
+      "BffEndpointAuthenticationTests",
+      "BffKeyRingSharingTests"
     ],
     "docs/tests/NFR_test-isolation.md": [
       "TestDbIsolationTests"
