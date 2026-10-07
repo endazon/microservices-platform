@@ -130,7 +130,9 @@ public class PipelineStepRegistrationTests
     [Fact]
     public async Task 無効化した段は登録されず購読されない()
     {
-        // 規則8: enabled: false → 登録しない（購読・キューを生成しない＝構成のみで段を外せる＝FR-14）
+        // 規則8: enabled: false → ハンドラを登録しない（構成のみで段を外せる＝FR-14）。
+        // 受信キューの束ね・リスナーを張らないことは段宣言版の Bind/Listen が担い、
+        // 共有基盤の WolverineExtensionsTests（段宣言版_*）が固定する（#1801）。
         //
         // 🔴 **「IncludeType を呼ばない」だけでは足りない。** 規約探索が独立に段の型を拾うので、
         // ヘルパは明示的に除外する（`CustomizeHandlerDiscovery` の Excludes）。

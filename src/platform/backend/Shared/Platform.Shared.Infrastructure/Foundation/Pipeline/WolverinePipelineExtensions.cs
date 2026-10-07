@@ -41,9 +41,10 @@ public static class WolverinePipelineExtensions
     // 入力イベント型は `IPipelineStep<TIn>` から取る。
     //
     // 戻り値は解決済みの段宣言である。**受信キューの設定（手順 3）は本経路の射程外**であり、
-    // 呼び出し側が `WolverineExtensions.ListenToPlatformQueue` へ渡す。戻り値で返すのは、
-    // `queue` 宣言を黙って無視すると「宣言したのに効かない」形になるためである。
-    // 宣言が無い（規則 1）ときは null を返す。
+    // 呼び出し側が段宣言を受ける `WolverineExtensions.BindPlatformQueue<TIn>(service, step)` /
+    // `ListenToPlatformQueue<TIn>(service, step)` へ渡す（`enabled: false` の段ではキューを束ねず
+    // リスナーも立てない。#1801）。戻り値で返すのは、`queue` 宣言を黙って無視すると
+    // 「宣言したのに効かない」形になるためである。宣言が無い（規則 1）ときは null を返す。
     public static PipelineStepOptions? AddPlatformWolverineStep<TStep>(
         this WolverineOptions options, PipelineOptions pipeline, ILogger? logger = null)
         where TStep : class, IPipelineStep
@@ -142,7 +143,9 @@ public static class WolverinePipelineExtensions
                 $"段 '{stepName}' の input 宣言 '{step.Input}' が実装の購読イベント '{inputType.Name}' と一致しません。");
         }
 
-        // 規則 8: enabled:false → 登録しない（購読・キューを生成しない）。
+        // 規則 8: enabled:false → ハンドラを登録しない（規約探索からも除外する）。
+        // 受信キューの束ね・リスナーは、戻り値を受けた段宣言版の Bind/Listen が張らない（#1801）。
+        // 本メソッドだけではキューは止まらない —— 文字列版の Bind/Listen を呼べばキューは作られる。
         if (!step.Enabled)
         {
             // 🔴 **「IncludeType を呼ばない」だけでは段は無効にならない。**
@@ -162,7 +165,8 @@ public static class WolverinePipelineExtensions
 
             logger?.LogWarning(
                 "Pipeline step {Step} ({Handler}) is disabled by configuration; "
-                + "no subscription or queue will be created", stepName, typeof(TStep).Name);
+                + "no handler is registered, and the step-aware queue binding and listener are skipped",
+                stepName, typeof(TStep).Name);
             return step;
         }
 

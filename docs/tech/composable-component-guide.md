@@ -10,8 +10,8 @@ author: claude
 ids: [FR-11, FR-14, FR-15]
 adrs: [ADR-0002, ADR-0018, ADR-0032]
 iadrs: [IADR-0007, IADR-0022, IADR-0024, IADR-0025, IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056, IADR-0121, IADR-0131, IADR-0135, IADR-0232, IADR-0273, IADR-0429]
-specs: [20260709_composable-component-implementation-guide, 20260911_issue-1393_remove-platform-spa-public-client, 20260928_issue-1686_knowledge-test-sharding, 20261008_1799_composability-docs-wolverine-wiring]
-issues: [#195, #206, #217, #218, #219, #519, #1393, #1686, #1799]
+specs: [20260709_composable-component-implementation-guide, 20260911_issue-1393_remove-platform-spa-public-client, 20260928_issue-1686_knowledge-test-sharding, 20261008_1799_composability-docs-wolverine-wiring, 20261008_1801_disabled-wolverine-step-no-queue]
+issues: [#195, #206, #217, #218, #219, #519, #1393, #1686, #1799, #1801]
 -->
 
 # 可変部品（Composable コンポーネント）共通実装ガイド
@@ -84,12 +84,13 @@ issues: [#195, #206, #217, #218, #219, #519, #1393, #1686, #1799]
    `builder.AddPlatformPipelineConfig();` ＋ `var pipeline = builder.Configuration.GetPlatformPipeline();`
 3. `builder.Host.UseWolverine(opts => { ... })` の中で次を行う。
    - `var step = opts.AddPlatformWolverineStep<T>(pipeline);` —— 宣言との突合と登録。戻り値は段宣言
-     （宣言が無ければ null）であり、**受信キューの設定はこのメソッドの射程外**なので次で使う。
-   - `var queue = step?.Queue ?? nameof(TIn);`（`queue` 宣言があればそれ、無ければイベント型名）
-   - `opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision().BindPlatformQueue<TIn>("<service>", queue);`
+     （宣言が無ければ null）であり、**受信キューの設定はこのメソッドの射程外**なので次の 2 つへそのまま渡す。
+   - `opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision().BindPlatformQueue<TIn>("<service>", step);`
      —— 自分のキューをイベント型名の fan-out exchange へ束ねる（束ねないと何も届かない）
-   - `opts.ListenToPlatformQueue("<service>", queue);` —— キュー名は `<service>.<queue>` になる
-     （`ListenToRabbitQueue` の直接呼び出しは検査器が落とす）
+   - `opts.ListenToPlatformQueue<TIn>("<service>", step);` —— キュー名は `<service>.<queue>` になる
+     （`queue` 宣言があればそれ、無ければイベント型名。`ListenToRabbitQueue` の直接呼び出しは検査器が落とす）
+   - この 2 つは段宣言を見て、`enabled: false` の段では**キューを束ねずリスナーも立てない**。キュー名の文字列を受ける
+     多重定義は段の有効・無効を見ないので、段の配線には使わない
    - 段が Wolverine で発行する出力イベントごとに `opts.RoutePlatformEvent<TOut>();`
      （これが無いと発行はブローカへ出て行かず、例外も出ない）
    - `opts.UsePlatformMessagingDefaults();` —— 規約ルーティングの無効化・サービスロケーションの許可・
@@ -115,7 +116,7 @@ issues: [#195, #206, #217, #218, #219, #519, #1393, #1686, #1799]
   （Database per Service。上流 `10_composability-design` §2 とサービス境界の決定による）。
 - 宣言と実装の不整合（段の宣言漏れ・`consumer` 型名不一致・`input` と `IPipelineStep<TIn>` の不一致・
   入力型を受けるハンドラメソッドの欠落）は **起動失敗**する。`enabled: false` の段はハンドラとして登録されない
-  （規約探索からも除外される）。
+  （規約探索からも除外される）。受信キューの宣言・束縛とリスナーも作られない（上の手順 3 の段宣言を受ける 2 呼び出しによる）。
 - **入力イベント型の変更は構成のみでは行えない**。プラグイン改版（コード変更＋宣言更新）として扱う
   。
 

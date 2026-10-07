@@ -10,8 +10,8 @@ author: claude
 ids: [FR-14, FR-15]
 adrs: [ADR-0018]
 iadrs: [IADR-0027, IADR-0028]
-specs: [20260708_issue-102_composability-fixed-variable-separation, 20260708_issue-111_declarative-pipeline-config, 20261008_1799_composability-docs-wolverine-wiring]
-issues: [#444, #1799]
+specs: [20260708_issue-102_composability-fixed-variable-separation, 20260708_issue-111_declarative-pipeline-config, 20261008_1799_composability-docs-wolverine-wiring, 20261008_1801_disabled-wolverine-step-no-queue]
+issues: [#444, #1799, #1801]
 -->
 
 # 機能仕様書: コンポーザビリティ（宣言的パイプライン構成による組み替え）
@@ -49,7 +49,7 @@ issues: [#444, #1799]
 | 項目 | 内容 |
 | --- | --- |
 | 入力 | `pipeline.json`（Git 管理。events / sources / steps）。Helm ConfigMap（`pipeline-config.yaml`）が `{"Pipeline": {...}}` 形のオーバレイへ変換し、`Pipeline__ConfigPath` で各サービスへ供給 |
-| 処理 | 起動時に `AddPlatformPipelineConfig()` が宣言を読み込み、`UseWolverine` の中で `AddPlatformWolverineStep<TStep>(pipeline)` が宣言に従い段をハンドラとして登録する（`enabled: false` の段は規約探索からも除外して登録しない）。受信キューは戻り値の `queue` 宣言（無ければイベント型名）で `ListenToPlatformQueue` / `BindPlatformQueue` が張る。MassTransit の段は `AddPlatformPipelineStep<TConsumer>(pipeline)` が同じ規則で登録する |
+| 処理 | 起動時に `AddPlatformPipelineConfig()` が宣言を読み込み、`UseWolverine` の中で `AddPlatformWolverineStep<TStep>(pipeline)` が宣言に従い段をハンドラとして登録する（`enabled: false` の段は規約探索からも除外して登録しない）。受信キューは戻り値の段宣言を受ける `BindPlatformQueue<TIn>` / `ListenToPlatformQueue<TIn>` が `queue` 宣言（無ければイベント型名）で張り、`enabled: false` の段では束縛もリスナーも張らない（受信キューを作らない）。MassTransit の段は `AddPlatformPipelineStep<TConsumer>(pipeline)` が同じ規則で登録する |
 | 出力 | 宣言どおりの RabbitMQ の購読（サービス名を前置したキューと、イベント型名の fan-out exchange への束ね）。実効構成は読み取り専用の構成情報 API で可視化 |
 | 業務ルール | 宣言と実装の不整合は起動時 fail-fast（下記） |
 
