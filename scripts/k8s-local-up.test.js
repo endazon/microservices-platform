@@ -57,7 +57,7 @@ const OPTIN_TOKENS = [
   'deploy/argocd/', //                 ARGOCD（配下の appproject/application のみが apply される）
   'namespace argocd', //               ARGOCD (namespace)
   'argocd-cm-patch.yaml', //           ARGOCD OIDC (CM patch, IADR-0092)
-  'oidc.keycloak.clientSecret', //     ARGOCD OIDC (secret patch, IADR-0092)
+  'argocd-secret-patch.json', //       ARGOCD OIDC (secret patch, IADR-0092。#1793: 値は patch ファイル経由)
   'kube-apiserver-arg', //             apiserver 引数（IADR-0105 で除去済み・どのゲートでも書かない）
   'deploy/local/edge', //              LOCALEDGE (edge overlay, IADR-0091)
   '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
@@ -260,6 +260,9 @@ const HELM_STUB = [
 const KUBECTL_STUB = [
   '#!/usr/bin/env bash',
   'echo "kubectl $*" >> "$STUB_LOG"',
+  // #1793: Secret の値はファイル経由で渡る（--from-file / --patch-file）。中身を控えて、値が引数ではなくファイルで届いたことを試験が見る。
+  'if [ "${1:-} ${2:-} ${3:-}" = "create secret generic" ]; then for a in "$@"; do case "$a" in --from-file=*=*) f="${a#--from-file=}"; printf "%s %s=%s\\n" "$4" "${f%%=*}" "$(cat "${f#*=}")" >> "$STUB_LOG.secrets";; esac; done; fi',
+  'prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && { printf "%s\\n" "$(cat "$a")" >> "$STUB_LOG.patches"; }; prev="$a"; done',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
@@ -397,12 +400,16 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
 
   const raw = fs.readFileSync(logFile, 'utf8');
   const lines = raw.split('\n').filter((l) => l.length > 0);
+  // #1793: ファイル経由で渡った Secret の値（「名前 キー=値」）と patch の中身
+  const readLog = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter((l) => l.length > 0) : []);
+  const secrets = readLog(`${logFile}.secrets`);
+  const patches = readLog(`${logFile}.patches`);
   try {
     fs.rmSync(workdir, { recursive: true, force: true });
   } catch {
     /* best-effort cleanup */
   }
-  return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '' };
+  return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '', secrets, patches };
 }
 
 // 採取ログから `k3d cluster create ...` の 1 行を取り出す（無ければ null）。
@@ -1004,7 +1011,7 @@ ok('IADR-0369: 後追いは Keycloak の rollout の後に走り、Job は毎回
 
 ok('IADR-0369: 管理者名・パスワードの単一情報源は Secret keycloak-admin（Keycloak と Job が同じキーを読む）', () => {
   const secret = DEFAULT.lines.find((l) => l.startsWith('kubectl create secret generic keycloak-admin '));
-  assert.ok(secret && secret.includes('--from-literal=username=') && secret.includes('--from-literal=password='),
+  assert.ok(secret && secret.includes('--from-file=username=') && secret.includes('--from-file=password='),
     'keycloak-admin に username / password の両方が無い');
   for (const [yaml, label] of [[KEYCLOAK_INFRA_YAML, 'keycloak.yaml'], [RECONCILE_JOB_YAML, 'realm-reconcile-job.yaml']]) {
     for (const key of ['username', 'password']) {
@@ -1765,14 +1772,49 @@ ok('#1102: eso_wait が platform-infra の keycloak-smtp を待つ（rollout で
 // deploy/local/infra/rabbitmq.yaml は RABBITMQ_DEFAULT_USER を `secretKeyRef: rabbitmq/username` で
 // **非 optional** に参照するので、username を作らないとブローカ Pod が起動しない。
 // 基盤 secret は bootstrap 必須のため **ESO=1 でも手動 apply をスキップしない**（PR-4/IADR-0099）。
+// NFR-18 (#1793): apply_secret と argocd-secret の patch は、Secret の値（env）を kubectl の引数（ps・/proc/*/cmdline）へ載せない。
+// 値は 0600 の一時ファイル経由（--from-file / --patch-file）で渡り、Secret の中身は従前（--from-literal）と同じであること。
+// 対象の env は apply_secret の呼び出しから引く（書き写さない）。
+ok('#1793: Secret の値（env）はどの kubectl の引数にも載らず、ファイル経由で同じ値が届く', () => {
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
+  const statements = src.replace(/\\\n/g, ' ').split('\n').filter((l) => /^\s*apply_secret\s/.test(l));
+  assert.ok(statements.length >= 20, `apply_secret の呼び出しを読めない（${statements.length} 件）`);
+  const vars = new Set(['ARGOCD_OIDC_CLIENT_SECRET']);
+  for (const st of statements) for (const m of st.matchAll(/"[A-Za-z0-9._-]+=\$\{([A-Z0-9_]+):-/g)) vars.add(m[1]);
+  assert.ok(vars.has('PG_PASSWORD') && vars.has('SMTP_PASSWORD'), `env を読めない: ${[...vars].join(' ')}`);
+  const probe = (v) => ['dummy', 'value', '1793', v.toLowerCase()].join('-');
+  const env = Object.fromEntries([...vars].map((v) => [v, probe(v)]));
+  const res = runUp({ ...env, VAULT: '1', HEADLAMP: '1', ARGOCD: '1', SYNTHETIC: '1', OBSERVABILITY: '1', LOCALEDGE: '1' });
+  assert.strictEqual(res.status, 0, res.stderr);
+  assert.ok(!res.lines.some((l) => l.includes('--from-literal')), `--from-literal が残っている: ${res.lines.find((l) => l.includes('--from-literal'))}`);
+  for (const v of vars) {
+    const leak = res.lines.find((l) => l.includes(probe(v)));
+    assert.ok(!leak, `${v} の値が kubectl の引数に載った: ${leak}`);
+  }
+  // 値はファイル経由で届く（陽性対照。何も渡さない実装で緑にならない）
+  for (const [name, kv] of [['postgres', `password=${probe('PG_PASSWORD')}`], ['keycloak-smtp', `password=${probe('SMTP_PASSWORD')}`],
+    ['rabbitmq', `username=${probe('RABBITMQ_USER')}`], ['vault-dev-token', `token=${probe('VAULT_DEV_ROOT_TOKEN')}`]]) {
+    assert.ok(res.secrets.includes(`${name} ${kv}`), `${name} の ${kv.split('=')[0]} がファイルで届いていない: ${res.secrets.filter((l) => l.startsWith(`${name} `)).join(' / ')}`);
+  }
+  assert.ok(res.patches.includes(`{"stringData":{"oidc.keycloak.clientSecret":"${probe('ARGOCD_OIDC_CLIENT_SECRET')}"}}`),
+    `argocd-secret の patch がファイルで届いていない: ${res.patches.join(' / ')}`);
+});
+
+ok('#1793: 既定（env なし）の Secret の中身は従前の --from-literal と同じ値（dev 既定）', () => {
+  for (const kv of ['postgres password=postgres', 'rabbitmq username=guest', 'rabbitmq password=guest', 'keycloak-admin username=admin',
+    'keycloak-admin password=admin', 'keycloak-smtp password=']) {
+    assert.ok(DEFAULT.secrets.includes(kv), `${kv} が無い: ${DEFAULT.secrets.join(' / ')}`);
+  }
+});
+
 ok('#1022: 基盤 secret rabbitmq は username と password の両方を作る（ESO=1 でもスキップしない）', () => {
   for (const lines of [DEFAULT.lines, runUp({ VAULT: '1', ESO: '1' }).lines]) {
     const line = lines.find((l) => l.includes('create secret generic rabbitmq ')
       || /create secret generic rabbitmq$/.test(l.trim())
       || /create secret generic rabbitmq\s/.test(l));
     assert.ok(line, 'rabbitmq の手動 apply が無い（infra rollout がブロックされる）');
-    assert.ok(line.includes('--from-literal=username='), 'rabbitmq Secret に username が無い');
-    assert.ok(line.includes('--from-literal=password='), 'rabbitmq Secret に password が無い');
+    assert.ok(line.includes('--from-file=username='), 'rabbitmq Secret に username が無い');
+    assert.ok(line.includes('--from-file=password='), 'rabbitmq Secret に password が無い');
   }
 });
 
@@ -1892,9 +1934,11 @@ ok('ARGOCD=1: Keycloak OIDC 配線（CM patch＋secret patch＋rollout restart�
     assert.ok(line.includes('patch') && line.includes('--type merge'), `${f} が merge patch でない: ${line}`);
   }
   // client secret は argocd-secret への merge patch（apply による全置換ではない＝server.secretkey を保持）。
-  const secLine = res.lines.find((l) => l.includes('oidc.keycloak.clientSecret'));
+  // #1793: 値は引数ではなく patch ファイル（--patch-file）で渡す。
+  const secLine = res.lines.find((l) => l.includes('argocd-secret-patch.json'));
   assert.ok(secLine, 'argocd-secret への clientSecret patch 行が無い');
   assert.ok(secLine.includes('patch secret argocd-secret') && secLine.includes('--type merge'), `secret が merge patch でない: ${secLine}`);
+  assert.ok(secLine.includes('--patch-file ') && !secLine.includes('argocd-dev-secret-change-me'), `client secret が引数に載っている: ${secLine}`);
   assert.ok(!secLine.includes('create secret'), 'argocd-secret を create（全置換）している');
   // server.insecure/oidc の反映のため argocd-server を rollout restart する。
   assert.ok(anyLineHas(res.lines, 'rollout restart deploy/argocd-server'), 'argocd-server の rollout restart が無い');
@@ -4194,12 +4238,10 @@ ok('SYNTHETIC=1: 標識の許可集合が除外の 3 サービスすべてへ与
 });
 
 ok('SYNTHETIC=1: プローブの Secret は dev 既定（realm の置き値）で作られる（ESO 未設定）', () => {
+  // #1793: 値は引数ではなくファイル経由（--from-file）で届く。届いた中身（キー=値）を見る。
   assert.ok(
-    SYNTHETIC_ON.lines.some(
-      (l) =>
-        l.includes('create secret generic synthetic-monitor-oidc') &&
-        l.includes('client-secret=synthetic-monitor-dev-secret-change-me'),
-    ),
+    SYNTHETIC_ON.lines.some((l) => l.includes('create secret generic synthetic-monitor-oidc')) &&
+      SYNTHETIC_ON.secrets.includes('synthetic-monitor-oidc client-secret=synthetic-monitor-dev-secret-change-me'),
     'synthetic-monitor-oidc の手動 apply_secret が無い（プローブは 401 を打ち続ける）',
   );
 });

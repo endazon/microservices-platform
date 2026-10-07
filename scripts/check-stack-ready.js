@@ -276,6 +276,12 @@ function fetchDiscovery(url) {
   }
 }
 
+// NFR-18 (#1793): ベアラー（API キー）を kubectl と Pod 内 curl の引数へ載せない。stdin の 1 行目がベアラー（空行＝付けない）、
+// 2 行目以降が本文。Pod 内の sh が 1 行目を `read`（組み込み）で取り、ヘッダを組み込みの printf でパイプへ書いて
+// curl に `-H @/dev/fd/3` で読ませる。deploy/local/wikijs-setup/bootstrap.sh の WIKI_POST_SH と同じ形である。
+const WIKIJS_POST_SH = 'IFS= read -r B || exit 90; if [ -z "$B" ]; then exec "$@"; fi; exec 4<&0; '
+  + 'printf "Authorization: Bearer %s\\n" "$B" | "$@" -H @/dev/fd/3 3<&0 0<&4';
+
 /**
  * G7: wiki-js コンテナ内の loopback へ GraphQL を投げる。
  *
@@ -285,12 +291,13 @@ function fetchDiscovery(url) {
  */
 function wikiJsGraphql(query, bearer) {
   const args = ['-n', WIKIJS_NS, 'exec', '-i', `deploy/${WIKIJS_DEPLOY}`, '-c', WIKIJS_CONTAINER, '--',
+    'sh', '-c', WIKIJS_POST_SH, 'sh',
     'curl', '-sS', '--max-time', '30', '-w', '\\n%{http_code}',
-    '-X', 'POST', 'http://127.0.0.1:3000/graphql', '-H', 'Content-Type: application/json'];
-  if (bearer) args.push('-H', `Authorization: Bearer ${bearer}`);
-  args.push('--data-binary', '@-');
+    '-X', 'POST', 'http://127.0.0.1:3000/graphql', '-H', 'Content-Type: application/json',
+    '--data-binary', '@-'];
   const r = spawnSync('kubectl', args, {
-    input: JSON.stringify({ query }), encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
+    input: `${bearer || ''}\n${JSON.stringify({ query })}`,
+    encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
   });
   const lines = String(r.stdout || '').split('\n');
   const status = (lines.pop() || '').trim();
@@ -2419,6 +2426,7 @@ module.exports = {
   evaluateIssuer,
   evaluatePodDnsOutput,
   evaluateWikiJs,
+  wikiJsGraphql, // #1793: 引数に API キーを載せないことを試験が実走で確かめる
   wikiSyncLocale,
   evaluateRealmDrift,
   declaredPersistence,

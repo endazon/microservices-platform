@@ -143,8 +143,16 @@ OIDC_USER="${OIDC_USER:-developer}"
 OIDC_PASSWORD="${OIDC_PASSWORD:-Developer-2026}"
 # セッション Cookie を収めた jar は資格情報である。終了時に必ず消す（途中で落ちても）。
 SESSION_JARS=()
-cleanup_session_jars() { [ "${#SESSION_JARS[@]}" -gt 0 ] && rm -f "${SESSION_JARS[@]}"; return 0; }
+# NFR-18 (#1793): フォームへ送る秘密（TOTP の生シークレット・OTP）を curl の引数へ載せないための私用の置き場
+# （mktemp -d ＝ 0700。ファイルは umask 077 で 0600）。jar と同じく終了時に必ず消す。
+SECRET_DIR="$(mktemp -d)"
+cleanup_session_jars() { [ "${#SESSION_JARS[@]}" -gt 0 ] && rm -f "${SESSION_JARS[@]}"; rm -rf "$SECRET_DIR"; return 0; }
 trap cleanup_session_jars EXIT
+# 値を私用の置き場の 0600 のファイルへ書き、そのパスを返す（printf は bash の組み込み＝値は引数に載らない）。
+secret_file() { # $1=名前 $2=値
+  ( umask 077; printf '%s' "$2" > "$SECRET_DIR/$1" )
+  printf '%s' "$SECRET_DIR/$1"
+}
 
 # ---- TOTP シークレットの持ち回し（#780 基準 4） --------------------------------
 #
@@ -341,8 +349,9 @@ acquire_session() {
   [ "$verbose" = "1" ] && step "4/$TOTAL" "資格情報を POST し、redirect の認可コードを取る"
   local hdr body
   hdr=$(mktemp); body=$(mktemp)
-  curl -s $CURL_K -c "$jar" -b "$jar" -m 15 -o "$body" -D "$hdr" -X POST "$form_action" \
-    --data-urlencode "username=$user" --data-urlencode "password=$password" >/dev/null
+  # NFR-18 (#1793): パスワードは curl の引数に載せない。`password@-` で stdin から読ませる（`printf '%s'` は組み込み）。
+  printf '%s' "$password" | curl -s $CURL_K -c "$jar" -b "$jar" -m 15 -o "$body" -D "$hdr" -X POST "$form_action" \
+    --data-urlencode "username=$user" --data-urlencode "password@-" >/dev/null
   location=$(grep -i '^location:' "$hdr" | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: //')
   code=$(printf '%s' "$location" | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')
 
@@ -400,7 +409,8 @@ acquire_session() {
         # だが `2>/dev/null` まで付けると**失敗した理由まで消える** —— 本 PR で踏んだ事故そのもの
         # （`node -e` の require が MODULE_NOT_FOUND になったのに、黙って空文字になった）である。
         # **黙って空になるのは許すが、なぜ空になったかは CI ログへ残す。**
-        otp_secret=$(node "$SCRIPT_DIR/lib/totp.js" --encode "$otp_raw" || printf '')
+        # NFR-18 (#1793): 生シークレットは node の引数ではなく stdin で渡す（`-`）。
+        otp_secret=$(printf '%s' "$otp_raw" | node "$SCRIPT_DIR/lib/totp.js" --encode - || printf '')
         [ "$verbose" = "1" ] && [ -n "$otp_secret" ] \
           && pass "表示用 base32 が無いので hidden の生シークレットから導出した"
       fi
@@ -417,12 +427,13 @@ acquire_session() {
         ACQUIRE_ERR="OTP の段に入ったがシークレットを解決できない（$user・field=$otp_field・生シークレット=$([ -n "$otp_raw" ] && printf 'あり' || printf 'なし')）。field=totp なら初回登録画面の抽出が外れている。field=otp なら 2 回目以降なので OIDC_TOTP_SECRET を与えるか、状態ファイル $(totp_state_file "$user") を置くこと。"
         rm -f "$jar" "$hdr" "$body"; return 1
       fi
-      otp_code=$(node "$SCRIPT_DIR/lib/totp.js" "$otp_secret")
+      otp_code=$(printf '%s' "$otp_secret" | node "$SCRIPT_DIR/lib/totp.js" -)
       [ "$verbose" = "1" ] && pass "OTP の段を検出（field=$otp_field）。第二要素を計算して送る"
       local -a otp_form
-      otp_form=(--data-urlencode "$otp_field=$otp_code")
+      # NFR-18 (#1793): OTP と生シークレットは curl の引数に載せず、0600 のファイルから `name@file` で読ませる。
+      otp_form=(--data-urlencode "$otp_field@$(secret_file otp "$otp_code")")
       # 初回登録の画面だけが持つ隠しフィールド。**在るときだけ送る**（login-otp には無い）。
-      [ -n "$otp_raw" ] && otp_form+=(--data-urlencode "totpSecret=$otp_raw")
+      [ -n "$otp_raw" ] && otp_form+=(--data-urlencode "totpSecret@$(secret_file totp-secret "$otp_raw")")
       [ -n "$otp_mode" ] && otp_form+=(--data-urlencode "mode=$otp_mode")
       [ "$otp_field" = "totp" ] && otp_form+=(--data-urlencode "userLabel=verify-oidc-edge-flow")
       location=$(curl -s $CURL_K -c "$jar" -b "$jar" -m 15 -o /dev/null -D - -X POST "$otp_action" \

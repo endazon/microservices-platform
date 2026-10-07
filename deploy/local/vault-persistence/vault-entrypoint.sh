@@ -93,7 +93,10 @@ ensure_unsealed() {
 		log "ERROR: unseal key not found in $VAULT_INIT_FILE"
 		return 1
 	fi
-	vault operator unseal "$key" >/dev/null || return 1
+	# NFR-18 (#1793): unseal 鍵を vault の引数（`ps`・`/proc/*/cmdline`）へ載せない。`vault operator unseal` は鍵を
+	#   引数か端末からしか読まないので、同じ API（PUT sys/unseal）を `vault write … key=-`（stdin）で叩く。
+	#   末尾の改行まで鍵に入らないよう `printf '%s'` で渡す（kv-builder は stdin を改行ごと読む。#1767 の実測）。
+	printf '%s' "$key" | vault write sys/unseal key=- >/dev/null || return 1
 	log "unsealed"
 }
 

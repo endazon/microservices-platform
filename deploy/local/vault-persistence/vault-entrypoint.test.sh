@@ -35,6 +35,9 @@ case "$1 $2" in
     printf 'Unseal Key 1: STUB-UNSEAL-KEY\n\nInitial Root Token: STUB-ROOT-TOKEN\n'
     : > "$STATE/initialized"; exit 0 ;;
   "operator unseal")   [ "${3:-}" = "STUB-UNSEAL-KEY" ] && { : > "$STATE/unsealed"; exit 0; } || exit 1 ;;
+  # #1793: unseal は `write sys/unseal key=-`（鍵は stdin）。受けた鍵を控え、正しければ unseal 済みにする。
+  "write sys/unseal")  [ "${3:-}" = "key=-" ] || exit 1; k="$(cat)"; printf '%s' "$k" > "$STATE/unseal-stdin"
+                       [ "$k" = "STUB-UNSEAL-KEY" ] && { : > "$STATE/unsealed"; exit 0; } || exit 1 ;;
   "token lookup")      [ -f "$STATE/token-ok" ] && exit 0 || exit 1 ;;
   "token create")      [ "${VAULT_TOKEN:-}" = "STUB-ROOT-TOKEN" ] && { : > "$STATE/token-ok"; exit 0; } || exit 1 ;;
   "secrets list")      [ -f "$STATE/kv-mounted" ] && echo '{"secret/":{}}' || echo '{"sys/":{}}'; exit 0 ;;
@@ -64,7 +67,9 @@ bootstrap_after_start >/dev/null 2>&1; RC=$?
 assert_eq 'T-1479-01 初回: 正常終了する' "$RC" "0"
 assert_contains 'T-1479-01 初回: operator init を 1 鍵で実行する' "$(cat "$STUB_LOG")" 'operator init -key-shares=1 -key-threshold=1'
 assert_eq 'T-1479-01 初回: init の出力を 0600 で保存する' "$(stat -c '%a' "$VAULT_INIT_FILE")" "600"
-assert_contains 'T-1479-01 初回: 保存した鍵で unseal する' "$(cat "$STUB_LOG")" 'operator unseal STUB-UNSEAL-KEY'
+assert_contains 'T-1479-01 初回: 保存した鍵で unseal する（#1793: 鍵は stdin）' "$(cat "$STUB_LOG")" 'write sys/unseal key=-'
+assert_eq 'T-1793-01 初回: unseal 鍵は stdin で渡る（末尾の改行なし）' "$(cat "$STATE/unseal-stdin")" "STUB-UNSEAL-KEY"
+assert_missing 'T-1793-01 初回: unseal 鍵が vault の引数に載らない' "$(cat "$STUB_LOG")" 'STUB-UNSEAL-KEY'
 assert_contains 'T-1479-01 初回: 固定 root トークンを init の root トークンで作る' "$(cat "$STUB_LOG")" 'token create -id=devroot-test -policy=root -orphan'
 assert_contains 'T-1479-01 初回: kv-v2 を secret/ に mount する' "$(cat "$STUB_LOG")" 'secrets enable -path=secret kv-v2'
 
@@ -76,7 +81,8 @@ bootstrap_after_start >/dev/null 2>&1; RC=$?
 assert_eq 'T-1479-02 再起動: 正常終了する' "$RC" "0"
 assert_eq 'T-1479-02 再起動: 緩んだ init ファイルを 0600 へ戻す' "$(stat -c '%a' "$VAULT_INIT_FILE")" "600"
 assert_missing 'T-1479-02 再起動: operator init を実行しない' "$(cat "$STUB_LOG")" 'operator init -key-shares'
-assert_contains 'T-1479-02 再起動: 保存済みの鍵で unseal する' "$(cat "$STUB_LOG")" 'operator unseal STUB-UNSEAL-KEY'
+assert_contains 'T-1479-02 再起動: 保存済みの鍵で unseal する（#1793: 鍵は stdin）' "$(cat "$STUB_LOG")" 'write sys/unseal key=-'
+assert_missing 'T-1793-02 再起動: unseal 鍵が vault の引数に載らない' "$(cat "$STUB_LOG")" 'STUB-UNSEAL-KEY'
 assert_missing 'T-1479-02 再起動: 固定トークンが在れば作らない' "$(cat "$STUB_LOG")" 'token create'
 assert_missing 'T-1479-02 再起動: kv-v2 が在れば mount しない' "$(cat "$STUB_LOG")" 'secrets enable'
 
@@ -87,7 +93,7 @@ rm -f "$VAULT_INIT_FILE"
 OUT="$(bootstrap_after_start 2>&1)"; RC=$?
 assert_eq 'T-1479-03 鍵ファイル不在: 非ゼロ終了する' "$RC" "1"
 assert_contains 'T-1479-03 鍵ファイル不在: 理由を示す' "$OUT" 'unseal key not found'
-assert_missing 'T-1479-03 鍵ファイル不在: unseal を試みない' "$(cat "$STUB_LOG")" 'operator unseal'
+assert_missing 'T-1479-03 鍵ファイル不在: unseal を試みない' "$(cat "$STUB_LOG")" 'sys/unseal'
 
 # ---- T-1479-04: 秘密をログへ出さない（init の出力はファイルへだけ） ----
 reset_state

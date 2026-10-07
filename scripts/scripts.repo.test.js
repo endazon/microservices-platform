@@ -13036,8 +13036,13 @@ if [ "$verb" = "exec" ]; then
       grep -v "^$f=" "$(kvf "$p")" > "$(kvf "$p").tmp" 2>/dev/null; echo "$f=$v" >> "$(kvf "$p").tmp"; mv "$(kvf "$p").tmp" "$(kvf "$p")"
       exit 0 ;;
     *"vault kv put -cas=0 secret/"*)
-      cat >/dev/null; p="\${cmd#*vault kv put -cas=0 secret/}"; p="\${p%% *}"
-      echo "VAULT PUT $p" >> "$STUB_LOG"; : > "$(kvf "$p")"; exit 0 ;;
+      in="$(cat)"; p="\${cmd#*vault kv put -cas=0 secret/}"; p="\${p%% *}"
+      # #1793: kv/<パス>.put-fail が在れば作成を失敗させる（KV は作らない＝Vault の put は全か無か）
+      [ -e "$(kvf "$p").put-fail" ] && exit 2
+      echo "VAULT PUT $p" >> "$STUB_LOG"; : > "$(kvf "$p")"
+      # #1793: 値を stdin（JSON。\`… -\`）で受けた put は、その中身を控える（試験が値の行き先を確かめる）
+      case "$cmd" in *" -") printf '%s %s\\n' "$p" "$in" >> "$STUB_LOG.stdin" ;; esac
+      exit 0 ;;
     *) cat >/dev/null; exit 0 ;;
   esac
 fi
@@ -13136,7 +13141,11 @@ exit 0
         assert.ok(!`${r.stdout}${r.stderr}`.includes(SECRET_VAL), `同期先 Secret の値が出力に出た:\n${r.stdout}${r.stderr}`);
         const argvLog = `${log}.argv`;
         const execArgv = fs1728.existsSync(argvLog) ? fs1728.readFileSync(argvLog, 'utf8').split('\n').filter(Boolean) : [];
-        return { ...r, calls: fs1728.readFileSync(log, 'utf8').split('\n').filter(Boolean), execArgv };
+        // #1793: stdin で値を受けた put（パス → JSON）
+        const stdinLog = `${log}.stdin`;
+        const putStdin = Object.fromEntries((fs1728.existsSync(stdinLog) ? fs1728.readFileSync(stdinLog, 'utf8').split('\n').filter(Boolean) : [])
+          .map((l) => [l.slice(0, l.indexOf(' ')), l.slice(l.indexOf(' ') + 1)]));
+        return { ...r, calls: fs1728.readFileSync(log, 'utf8').split('\n').filter(Boolean), execArgv, putStdin };
       } finally {
         fs1728.rmSync(dir, { recursive: true, force: true });
       }
@@ -13268,6 +13277,68 @@ exit 0
         const { writes } = create1767(kvPath, {});
         assert.deepStrictEqual(writes, [`VAULT PUT ${kvPath}`]);
       }
+    });
+
+    // NFR-18 (#1793): 対になる秘密（vkv_create_if_absent）も、作るときに値を sh -c の引数へ埋め込まない。
+    // 🔴 「空で作る → patch」には分けない（途中で落ちると空の秘密を持つ KV が残り、在るので以後触らない＝恒久化する）。
+    //    JSON を stdin で `vault kv put -cas=0 secret/<path> -` の 1 回へ渡す。呼び出しの env 名は bootstrap.sh から引く（書き写さない）。
+    const paired1793 = () => {
+      const src = fs1728.readFileSync(BOOTSTRAP, 'utf8');
+      return [...src.matchAll(/^vkv_create_if_absent\s+(\S+)(.*)$/gm)].map((m) => ({
+        kvPath: m[1],
+        props: [...m[2].matchAll(/([A-Za-z0-9._-]+)\s+"\$\{([A-Z0-9_]+):-[^}]*\}"/g)].map((p) => ({ key: p[1], env: p[2] })),
+      }));
+    };
+    const probe1793 = (name) => ['dummy', 'value', '1793', name.toLowerCase()].join('-');
+
+    ok('#1793: 対になる秘密の KV を新しく作るとき、値は sh -c / kubectl の引数・出力に載らず、stdin の JSON 1 回の put で入る', () => {
+      const paired = paired1793();
+      assert.ok(paired.length >= 20, `vkv_create_if_absent の呼び出しを読めない（${paired.length} 件）`);
+      for (const { kvPath, props } of paired) assert.ok(props.length > 0, `${kvPath} の「キー "\${ENV:-既定}"」を読めない`);
+      const env = Object.fromEntries(paired.flatMap(({ props }) => props.map(({ env: e }) => [e, probe1793(e)])));
+      const r = run1728({ setup: ({ state }) => { for (const { kvPath } of paired) fs1728.rmSync(path1728.join(state, 'kv', kvPath.split('/').join('__'))); }, env });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      for (const probe of Object.values(env)) {
+        assert.ok(!r.execArgv.some((c) => c.includes(probe)), `秘密値が sh -c の引数に載った: ${r.execArgv.find((c) => c.includes(probe))}`);
+        assert.ok(!r.calls.some((c) => c.includes(probe)), '秘密値が kubectl の引数に載った');
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(probe), '秘密値が出力に出た');
+      }
+      for (const { kvPath, props } of paired) {
+        // 作成は PUT の 1 回だけ（後から patch しない＝原子的）
+        assert.deepStrictEqual(r.calls.filter((c) => c.startsWith('VAULT ') && c.split(' ')[2] === kvPath),
+          [`VAULT PUT ${kvPath}`], `${kvPath} の書き込み`);
+        assert.ok(r.putStdin[kvPath], `${kvPath} の値を stdin で渡していない`);
+        assert.deepStrictEqual(JSON.parse(r.putStdin[kvPath]), Object.fromEntries(props.map(({ key, env: e }) => [key, env[e]])),
+          `${kvPath} の stdin の JSON が env の値と一致しない`);
+      }
+    });
+
+    ok('#1793: env が無いときは、従来どおり既定値を同じ形（stdin の JSON）で入れる', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq')) });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      assert.deepStrictEqual(JSON.parse(r.putStdin['msp/rabbitmq']), { username: 'guest', password: 'guest' });
+    });
+
+    ok('#1793: 作成が失敗したら KV は残らず、空で作ってから入れる経路にも落ちない（非 0 で止まる）', () => {
+      const r = run1728({ setup: ({ state }) => {
+        const f = path1728.join(state, 'kv', 'msp__bff-oidc');
+        fs1728.rmSync(f);
+        fs1728.writeFileSync(`${f}.put-fail`, '');
+      }, env: { BFF_OIDC_CLIENT_SECRET: probe1793('bff') } });
+      assert.notStrictEqual(r.status, 0, '作成に失敗したのに緑で終わった');
+      assert.deepStrictEqual(r.calls.filter((c) => / msp\/bff-oidc( |$)/.test(c) && c.startsWith('VAULT ')), [], '失敗した後に別の書き込みをした');
+      assert.ok(!r.execArgv.some((c) => c.includes(probe1793('bff'))), '秘密値が sh -c の引数に載った');
+    });
+
+    ok('#1793: 対になる秘密の KV が在るときは、env を渡しても何も書かない（冪等・既存の値を変えない）', () => {
+      const paired = paired1793();
+      const env = Object.fromEntries(paired.flatMap(({ props }) => props.map(({ env: e }) => [e, probe1793(e)])));
+      const r = run1728({ env });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      for (const { kvPath } of paired) {
+        assert.deepStrictEqual(r.calls.filter((c) => c.startsWith('VAULT ') && c.split(' ')[2] === kvPath), [], `${kvPath} へ書いた`);
+      }
+      for (const probe of Object.values(env)) assert.ok(!r.execArgv.some((c) => c.includes(probe)), '秘密値が sh -c の引数に載った');
     });
 
     ok('#1728: 対になる秘密の KV を無いときだけ作ったら（vkv_create_if_absent）、それを読む ExternalSecret に付ける', () => {
@@ -14363,6 +14434,296 @@ server.listen(0, '127.0.0.1', async () => {
     ok('scripts/README.md: 本リポジトリ固有の表に check-integration-executed.js を記載している', () => {
       const readme = fsIe.readFileSync(pathIe.join(ROOT_IE, 'scripts', 'README.md'), 'utf8');
       assert.match(readme, /\| `check-integration-executed\.js` \|/, 'scripts/README.md に記載が無い');
+    });
+  }
+
+  // --- NFR-18, ADR-0095 (#1793): ローカル・PoC のスクリプトは秘密値・資格情報をプロセスの引数へ載せない ---------------
+  //
+  // 引数（`ps`・`/proc/<pid>/cmdline`）は同じノードの誰でも読める。値は stdin か 0600 の一時ファイルで渡す。
+  // **ホストと Pod の両方**を見るため、kubectl スタブは `exec … -- <cmd>` を**手元で実行する**（Pod 内の sh・curl・vault・kcadm も
+  // PATH のスタブに差し替わり、それぞれの引数を控える）。目印は実行時に組み立てる（直書きすると gitleaks が鍵と区別できない）。
+  {
+    const fs1793 = require('fs');
+    const os1793 = require('os');
+    const path1793 = require('path');
+    const { spawnSync: spawn1793 } = require('child_process');
+    const REPO1793 = path1793.join(__dirname, '..');
+    const probe = (name) => ['dummy', 'value', '1793', name].join('-');
+    // bash を JS の文字列へ書くので、`${` は `%{` と書いて置き換える（テンプレートリテラルの展開と衝突させない）。
+    const sh = (lines) => `${lines.join('\n').replace(/%\{/g, '${')}\n`;
+
+    // kubectl: 1 呼び出し 1 行で $STUB_LOG へ控える。状態は $STUB_STATE:
+    //   secret/<name>/<key> … Secret の値（平文）。ディレクトリが在る＝Secret が在る
+    //   `create secret generic` の --from-file と `patch --patch-file` は中身を $STUB_LOG.files へ控える
+    //   `exec … -- <cmd>` は手元で実行する（/opt/keycloak/bin/kcadm.sh は PATH の kcadm.sh へ読み替える）
+    const KUBECTL = sh([
+      '#!/usr/bin/env bash',
+      'S="$STUB_STATE"',
+      'printf "kubectl %s\\n" "$(printf "%s " "$@" | tr "\\n" " ")" >> "$STUB_LOG"',
+      'args=("$@"); cmd=(); pos=(); verb=""; kind=""; name=""; jp=""',
+      'for ((i=0; i<%{#args[@]}; i++)); do',
+      '  a="%{args[$i]}"',
+      '  if [ "$a" = "--" ]; then cmd=("%{args[@]:$((i+1))}"); break; fi',
+      '  case "$a" in',
+      '    -n|-c) i=$((i+1)) ;;',
+      '    -o) i=$((i+1)); jp="%{args[$i]}" ;;',
+      '    -i|--dry-run=*|--type|merge|-f|-) ;;',
+      // create secret generic <name> … の <name> は 4 番目の位置引数
+      '    --from-file=*=*) f="%{a#--from-file=}"; printf "FILE %s %s=%s\\n" "%{pos[3]:-$name}" "%{f%%=*}" "$(cat "%{f#*=}")" >> "$STUB_LOG.files" ;;',
+      '    --patch-file) i=$((i+1)); printf "PATCH %s %s\\n" "$name" "$(cat "%{args[$i]}")" >> "$STUB_LOG.files" ;;',
+      '    -*) ;;',
+      '    *) pos+=("$a"); if [ -z "$verb" ]; then verb="$a"; elif [ -z "$kind" ]; then kind="$a"; elif [ -z "$name" ]; then name="$a"; fi ;;',
+      '  esac',
+      'done',
+      'if [ "$verb" = "exec" ]; then',
+      '  cmd=("%{cmd[@]//\\/opt\\/keycloak\\/bin\\/kcadm.sh/kcadm.sh}")',
+      '  exec "%{cmd[@]}"',
+      'fi',
+      'if [ "$verb" = "get" ] && [ "$kind" = "secret" ]; then',
+      '  [ -d "$S/secret/$name" ] || exit 1',
+      '  case "$jp" in *"{.data."*) k="%{jp#*\\{.data.}"; k="%{k%\\}}"; [ -f "$S/secret/$name/$k" ] && base64 < "$S/secret/$name/$k" | tr -d "\\n" ;; esac',
+      '  exit 0',
+      'fi',
+      '[ "$verb" = "apply" ] && cat >/dev/null',
+      'exit 0',
+    ]);
+    // Pod 内（手元で実行）のコマンドのスタブ。引数を $STUB_LOG.pod へ、stdin で受けた秘密を $STUB_LOG.stdin へ控える。
+    // curl は wiki-js の GraphQL を真似る: ベアラーが合わなければ失敗の本文を返す（ヘッダが届かない実装は緑にならない）。
+    const CURL = sh([
+      '#!/usr/bin/env bash',
+      'printf "curl %s\\n" "$*" >> "$STUB_LOG.pod"',
+      'auth=""; prev=""',
+      'for a in "$@"; do',
+      '  if [ "$prev" = "-H" ]; then case "$a" in @*) h="$(cat "%{a#@}")"; printf "HEADER %s\\n" "$h" >> "$STUB_LOG.stdin"; auth="%{h#Authorization: Bearer }" ;; esac; fi',
+      '  prev="$a"',
+      'done',
+      'body="$(cat)"',
+      'ok=\'{"data":{"x":{"y":{"responseResult":{"succeeded":true}}}}}\'',
+      'case "$body" in',
+      '  *"pages{list"*) printf \'{"data":{}}\\n200\' ;;',
+      '  *"login("*) printf \'{"data":{"authentication":{"login":{"jwt":"%s"}}}}\\n200\' "$STUB_JWT" ;;',
+      '  *"apiState}"*) if [ -n "$auth" ] && [ "$auth" = "%{STUB_VALID_KEY:-}" ]; then printf \'{"data":{"authentication":{"apiState":true}}}\\n200\'; else printf \'{"errors":[]}\\n200\'; fi ;;',
+      '  *createApiKey*) [ "$auth" = "$STUB_JWT" ] && printf \'{"data":{"authentication":{"createApiKey":{"key":"%s"}}}}\\n200\' "$STUB_NEW_KEY" || printf \'{"errors":[]}\\n200\' ;;',
+      '  *) [ -n "$auth" ] && { [ "$auth" = "$STUB_JWT" ] || [ "$auth" = "%{STUB_VALID_KEY:-}" ]; } && printf "%s\\n200" "$ok" || printf \'{"errors":[]}\\n200\' ;;',
+      'esac',
+    ]);
+    const VAULT = sh([
+      '#!/usr/bin/env bash',
+      'printf "vault %s\\n" "$*" >> "$STUB_LOG.pod"',
+      'for a in "$@"; do case "$a" in *=-|-) printf "VAULT %s %s\\n" "$a" "$(cat)" >> "$STUB_LOG.stdin" ;; esac; done',
+      'case "$*" in "auth list -format=json") echo "{}" ;; esac',
+      'exit 0',
+    ]);
+    const KCADM = sh([
+      '#!/usr/bin/env bash',
+      'printf "kcadm %s\\n" "$*" >> "$STUB_LOG.pod"',
+      'case "$1 $2" in',
+      '  "config credentials") IFS= read -r pw || true; printf "KCADM %s\\n" "$pw" >> "$STUB_LOG.stdin"; [ "$pw" = "$STUB_KC_PASSWORD" ] || exit 1 ;;',
+      '  "get realms/"*) echo \'{"resetPasswordAllowed":true,"smtpServer":{"host":"mailpit","from":"a@example.invalid"}}\' ;;',
+      'esac',
+      'exit 0',
+    ]);
+    const PLAIN = sh(['#!/usr/bin/env bash', 'printf "%s %s\\n" "$(basename "$0")" "$*" >> "$STUB_LOG.pod"', 'cat >/dev/null', 'exit 0']);
+
+    const world1793 = (setup = () => {}) => {
+      const dir = fs1793.mkdtempSync(path1793.join(os1793.tmpdir(), 'argv1793-'));
+      const bin = path1793.join(dir, 'bin');
+      const state = path1793.join(dir, 'state');
+      fs1793.mkdirSync(bin, { recursive: true });
+      fs1793.mkdirSync(path1793.join(state, 'secret'), { recursive: true });
+      for (const [n, body] of [['kubectl', KUBECTL], ['curl', CURL], ['vault', VAULT], ['kcadm.sh', KCADM], ['psql', PLAIN], ['jq', PLAIN]]) {
+        fs1793.writeFileSync(path1793.join(bin, n), body, { mode: 0o755 });
+      }
+      const secret = (name, kv) => {
+        fs1793.mkdirSync(path1793.join(state, 'secret', name), { recursive: true });
+        for (const [k, v] of Object.entries(kv)) fs1793.writeFileSync(path1793.join(state, 'secret', name, k), v);
+      };
+      setup({ secret, bin });
+      const log = path1793.join(dir, 'calls.log');
+      fs1793.writeFileSync(log, '');
+      const read = (f) => (fs1793.existsSync(f) ? fs1793.readFileSync(f, 'utf8').split('\n').filter(Boolean) : []);
+      const env = (extra) => ({ ...process.env, PATH: `${bin}${path1793.delimiter}${process.env.PATH}`, STUB_STATE: state, STUB_LOG: log, ...extra });
+      const collect = () => ({ calls: read(log), pod: read(`${log}.pod`), stdin: read(`${log}.stdin`), files: read(`${log}.files`) });
+      const done = () => fs1793.rmSync(dir, { recursive: true, force: true });
+      return { env, collect, done };
+    };
+    // どのプロセスの引数（ホストの kubectl・Pod 内のコマンド）にも、どの目印も現れない。
+    const assertNoArgv = (seen, probes) => {
+      for (const p of probes) {
+        const host = seen.calls.find((c) => c.includes(p));
+        assert.ok(!host, `秘密値がホストの kubectl の引数に載った: ${host}`);
+        const pod = seen.pod.find((c) => c.includes(p));
+        assert.ok(!pod, `秘密値が Pod 内のコマンドの引数に載った: ${pod}`);
+      }
+    };
+
+    const runWikiSetup = ({ setup, env }) => {
+      const w = world1793(setup);
+      try {
+        const r = spawn1793('bash', [path1793.join(REPO1793, 'deploy', 'local', 'wikijs-setup', 'bootstrap.sh')], {
+          encoding: 'utf8', timeout: 60000, env: w.env({ WIKIJS_ROLLOUT_TIMEOUT: '1s', ...env }),
+        });
+        return { ...r, ...w.collect() };
+      } finally {
+        w.done();
+      }
+    };
+
+    ok('#1793: wikijs-setup は管理者パスワード・JWT・発行した API キーを kubectl と Pod 内 curl / vault の引数に載せない（新しく発行する経路）', () => {
+      const P = { pw: probe('admin'), jwt: probe('jwt'), key: probe('apikey') };
+      const r = runWikiSetup({
+        setup: ({ secret }) => secret('wikijs-admin', { email: 'admin@example.invalid' }), // 在る＝patch の経路。wikijs-sync は無い＝create の経路
+        env: { WIKIJS_ADMIN_PASSWORD: P.pw, STUB_JWT: P.jwt, STUB_NEW_KEY: P.key },
+      });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      assertNoArgv(r, Object.values(P));
+      assert.ok(!`${r.stdout}${r.stderr}`.includes(P.key) && !`${r.stdout}${r.stderr}`.includes(P.jwt), '秘密値が出力に出た');
+      // 陽性対照: 値は stdin・ファイルで届いている（ヘッダが届かなければ curl スタブが失敗を返し、script は非 0 で止まる）
+      assert.ok(r.stdin.includes(`HEADER Authorization: Bearer ${P.jwt}`), `JWT がヘッダとして届いていない: ${r.stdin.join(' / ')}`);
+      assert.ok(r.stdin.includes(`VAULT apiKey=- ${P.key}`), `Vault へ API キーが stdin で届いていない: ${r.stdin.join(' / ')}`);
+      assert.ok(r.files.includes(`FILE wikijs-sync apiKey=${P.key}`), `Secret wikijs-sync の apiKey がファイルで届いていない: ${r.files.join(' / ')}`);
+      assert.ok(r.files.includes(`PATCH wikijs-admin {"stringData":{"password":"${P.pw}"}}`), `wikijs-admin の password が patch ファイルで届いていない: ${r.files.join(' / ')}`);
+      assert.ok(!r.calls.some((c) => /--from-literal|stringData/.test(c)), '--from-literal / -p の stringData が残っている');
+    });
+
+    ok('#1793: wikijs-setup は既存の API キーを確かめるときも、キーを引数に載せずヘッダで届ける（有効なら再発行しない）', () => {
+      const P = { pw: probe('admin2'), jwt: probe('jwt2'), old: probe('oldkey') };
+      const r = runWikiSetup({
+        setup: ({ secret }) => { secret('wikijs-admin', { email: 'admin@example.invalid' }); secret('wikijs-sync', { apiKey: P.old }); },
+        env: { WIKIJS_ADMIN_PASSWORD: P.pw, STUB_JWT: P.jwt, STUB_VALID_KEY: P.old, STUB_NEW_KEY: probe('unused') },
+      });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      assertNoArgv(r, Object.values(P));
+      assert.ok(r.stdin.includes(`HEADER Authorization: Bearer ${P.old}`), '既存の API キーがヘッダとして届いていない');
+      assert.ok(/既存の wikijs-sync\.apiKey は有効/.test(r.stdout), r.stdout);
+      assert.ok(!r.pod.some((c) => c.startsWith('vault ')), '有効なキーがあるのに Vault へ書いた');
+    });
+
+    ok('#1793: check-stack-ready の G7 は API キーを kubectl と Pod 内 curl の引数に載せず、ヘッダで届ける', () => {
+      const key = probe('g7key');
+      const w = world1793();
+      try {
+        // 別プロセスで呼ぶ（PATH のスタブを効かせる）
+        const code = 'const { wikiJsGraphql } = require(process.argv[1]); const r = wikiJsGraphql("{localization{locales{code}}}", process.argv[2]);'
+          + ' process.stdout.write(JSON.stringify(r));';
+        const r = spawn1793(process.execPath, ['-e', code, path1793.join(REPO1793, 'scripts', 'check-stack-ready.js'), key], {
+          encoding: 'utf8', env: w.env({ STUB_JWT: probe('none'), STUB_VALID_KEY: key }),
+        });
+        assert.strictEqual(r.status, 0, r.stderr);
+        const res = JSON.parse(r.stdout);
+        assert.strictEqual(res.status, '200', r.stdout);
+        assert.ok(/succeeded/.test(res.body), `ヘッダが届かず認証に失敗した: ${res.body}`);
+        const seen = w.collect();
+        assert.ok(seen.stdin.includes(`HEADER Authorization: Bearer ${key}`), seen.stdin.join(' / '));
+        // 鍵は G7 を呼ぶ node の引数には在る（試験の都合）。見るのは kubectl と Pod 内の curl の引数だけ。
+        assertNoArgv(seen, [key]);
+        // ベアラーなしの呼び出しは素の curl（ヘッダを付けない）
+        const r2 = spawn1793(process.execPath, ['-e', code, path1793.join(REPO1793, 'scripts', 'check-stack-ready.js'), ''], { encoding: 'utf8', env: w.env({ STUB_JWT: probe('none') }) });
+        assert.strictEqual(JSON.parse(r2.stdout).status, '200', r2.stdout + r2.stderr);
+      } finally {
+        w.done();
+      }
+    });
+
+    ok('#1793: check-password-reset-mail の稼働 realm の読み出しは、管理者パスワードを Pod 内 kcadm の引数に載せない（stdin で渡す）', () => {
+      const pw = probe('kcadmin');
+      const w = world1793();
+      try {
+        const code = 'const { runtimeResetConfig } = require(process.argv[1]); process.stdout.write(JSON.stringify(runtimeResetConfig("platform")));';
+        const r = spawn1793(process.execPath, ['-e', code, path1793.join(REPO1793, 'scripts', 'check-password-reset-mail.js')], {
+          encoding: 'utf8', env: w.env({ KEYCLOAK_ADMIN: 'admin', KEYCLOAK_ADMIN_PASSWORD: pw, STUB_KC_PASSWORD: pw }),
+        });
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.strictEqual(JSON.parse(r.stdout).ok, true, `kcadm のログインが通らない（パスワードが stdin で届いていない）: ${r.stdout}`);
+        const seen = w.collect();
+        assert.ok(seen.stdin.includes(`KCADM ${pw}`), seen.stdin.join(' / '));
+        assert.ok(seen.pod.some((c) => c.startsWith('kcadm config credentials ')) && !seen.pod.some((c) => c.includes('--password')), seen.pod.join(' / '));
+        assertNoArgv(seen, [pw]);
+      } finally {
+        w.done();
+      }
+    });
+
+    ok('#1793: vault/oidc/bootstrap.sh は client secret をホストの vault の引数に載せない（oidc_client_secret=- で stdin）', () => {
+      const secret = probe('vaultoidc');
+      const w = world1793();
+      try {
+        const r = spawn1793('bash', [path1793.join(REPO1793, 'deploy', 'local', 'vault', 'oidc', 'bootstrap.sh')], {
+          encoding: 'utf8', timeout: 60000,
+          env: w.env({ VAULT_TOKEN: 'dummy-root', VAULT_OIDC_CLIENT_SECRET: secret, VAULT_OIDC_DISCOVERY_URL: 'http://keycloak.invalid/realms/platform' }),
+        });
+        assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+        const seen = w.collect();
+        const cfg = seen.pod.find((c) => c.startsWith('vault write auth/oidc/config '));
+        assert.ok(cfg && cfg.includes('oidc_client_secret=-'), `auth/oidc/config の書き込みが stdin を使っていない: ${cfg}`);
+        assert.ok(seen.stdin.includes(`VAULT oidc_client_secret=- ${secret}`), seen.stdin.join(' / '));
+        assertNoArgv(seen, [secret]);
+      } finally {
+        w.done();
+      }
+    });
+
+    ok('#1793: totp.js は `-` を受けたらシークレットを標準入力から読む（引数と同じ結果）', () => {
+      const totpJs = path1793.join(REPO1793, 'scripts', 'lib', 'totp.js');
+      const viaArg = spawn1793(process.execPath, [totpJs, 'GEZDGNBVGY3TQOJQ', '59'], { encoding: 'utf8' });
+      const viaStdin = spawn1793(process.execPath, [totpJs, '-', '59'], { encoding: 'utf8', input: 'GEZDGNBVGY3TQOJQ' });
+      assert.strictEqual(viaStdin.status, 0, viaStdin.stderr);
+      assert.strictEqual(viaStdin.stdout, viaArg.stdout);
+      const encArg = spawn1793(process.execPath, [totpJs, '--encode', '1234567890'], { encoding: 'utf8' });
+      const encStdin = spawn1793(process.execPath, [totpJs, '--encode', '-'], { encoding: 'utf8', input: '1234567890' });
+      assert.strictEqual(encStdin.stdout, encArg.stdout);
+      assert.notStrictEqual(spawn1793(process.execPath, [totpJs, '-'], { encoding: 'utf8', input: '' }).status, 0, '空の stdin を受け付けた');
+    });
+
+    // 実走にエッジ・Keycloak・Qdrant が要る経路は字面で固定する（旧形へ戻すと落ちる）。
+    const read1793 = (...p) => fs1793.readFileSync(path1793.join(REPO1793, ...p), 'utf8');
+    const code1793 = (src) => src.split('\n').filter((l) => !/^\s*(#|\/\/|\*)/.test(l)).join('\n');
+
+    ok('#1793: verify-oidc-edge-flow.sh はパスワード・TOTP の生シークレット・OTP を curl / node の引数に載せない', () => {
+      const src = code1793(read1793('scripts', 'verify-oidc-edge-flow.sh'));
+      assert.ok(/printf '%s' "\$password" \| curl [^\n]*\\\n\s+--data-urlencode "username=\$user" --data-urlencode "password@-"/.test(src), 'パスワードを stdin（password@-）で渡していない');
+      assert.ok(!/password=\$password/.test(src), 'パスワードを引数で渡している');
+      assert.ok(!/"totpSecret=\$/.test(src) && /"totpSecret@\$\(secret_file /.test(src), 'TOTP の生シークレットを引数で渡している');
+      assert.ok(/"\$otp_field@\$\(secret_file otp /.test(src) && !/"\$otp_field=\$otp_code"/.test(src), 'OTP を引数で渡している');
+      assert.ok(!/totp\.js" (--encode )?"\$otp_(raw|secret)"/.test(src), 'TOTP のシークレットを node の引数で渡している');
+      assert.ok(/SECRET_DIR="\$\(mktemp -d\)"/.test(src) && /cleanup_session_jars\(\) \{[^\n]*rm -rf "\$SECRET_DIR"/.test(src) && /trap cleanup_session_jars EXIT/.test(src),
+        '秘密の置き場を 0700 で作り、終了時に消していない');
+      assert.ok(/secret_file\(\) \{[^\n]*\n\s*\( umask 077; printf '%s' "\$2" > "\$SECRET_DIR\/\$1" \)/.test(src), 'secret_file が 0600 で書いていない');
+    });
+
+    ok('#1793: Pod 内 kcadm のログイン（measure-abac-combinations / measure-cutover-inventory）は --password を使わず stdin で渡す', () => {
+      for (const f of ['measure-abac-combinations.js', 'measure-cutover-inventory.js', 'check-password-reset-mail.js']) {
+        const src = code1793(read1793('scripts', f));
+        assert.ok(!/'--password'|--password "/.test(src), `${f} が kcadm の --password を使っている`);
+        assert.ok(/'config',\s*'credentials'|config credentials/.test(src), `${f} の kcadm ログインを読めない（陽性対照）`);
+      }
+      assert.ok(/kcadm\(\[[\s\S]*?'--user',\s*env\('ABAC_KC_ADMIN_USER', 'admin'\),\s*\], `\$\{env\('ABAC_KC_ADMIN_PASSWORD', 'admin'\)\}\\n`\)/
+        .test(read1793('scripts', 'measure-abac-combinations.js')), 'measure-abac-combinations のパスワードを stdin で渡していない');
+      assert.ok(/'exec', '-i', pod, '--', '\/opt\/keycloak\/bin\/kcadm\.sh', 'config', 'credentials'[\s\S]*?`\$\{env\('CUTOVER_KC_ADMIN_PASSWORD', 'admin'\)\}\\n`\)/
+        .test(read1793('scripts', 'measure-cutover-inventory.js')), 'measure-cutover-inventory のパスワードを stdin で渡していない');
+    });
+
+    ok('#1793: Qdrant の検証スクリプトは API キーを curl の引数に載せない（-H @- で stdin）', () => {
+      for (const f of ['verify-qdrant-attribute-payload.sh', 'verify-qdrant-fulltext-index.sh']) {
+        const src = code1793(read1793('scripts', f));
+        assert.ok(!/-H "api-key: \$\{?QDRANT_API_KEY/.test(src), `${f} が API キーを引数で渡している`);
+        assert.ok(/printf 'api-key: %s\\n' "\$QDRANT_API_KEY" \| curl "\$\{args\[@\]\}" -H @-/.test(src), `${f} が API キーを stdin で渡していない`);
+      }
+    });
+
+    ok('#1793: 母集合の字面の再走査 —— 対象のスクリプトに --from-literal・stringData の -p・Bearer の引数・kcadm の --password が戻っていない', () => {
+      const files = [
+        ['deploy', 'local', 'wikijs-setup', 'bootstrap.sh'], ['scripts', 'k8s-local-up.sh'], ['deploy', 'local', 'vault', 'eso', 'bootstrap.sh'],
+        ['deploy', 'local', 'vault', 'oidc', 'bootstrap.sh'], ['scripts', 'check-stack-ready.js'], ['deploy', 'local', 'vault-persistence', 'vault-entrypoint.sh'],
+      ];
+      for (const f of files) {
+        const src = code1793(read1793(...f));
+        assert.ok(!/--from-literal/.test(src), `${f.join('/')} に --from-literal が残っている`);
+        assert.ok(!/\s-p\s+["']\{\\?"stringData/.test(src), `${f.join('/')} に -p の stringData が残っている`);
+        assert.ok(!/-H\s+"Authorization: Bearer \$/.test(src), `${f.join('/')} がベアラーを引数に載せている`);
+        assert.ok(!/(args\.push|args\+=)\([^)]*Authorization: Bearer/.test(src), `${f.join('/')} がベアラーを引数に載せている`);
+        assert.ok(!/operator unseal "\$/.test(src), `${f.join('/')} が unseal 鍵を引数に載せている`);
+      }
     });
   }
 
