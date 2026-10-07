@@ -19,7 +19,7 @@ GitHub 上の URL を直接開くか、隣接クローン（既定パス `../pro
 ## アーキテクチャ概要
 
 フロントエンド（SPA）→ BFF → 各マイクロサービス、というエッジ集約構成。サービス間は同期 API
-（内部専用・ホスト非公開）またはイベント（RabbitMQ / MassTransit）で疎結合に連携する。
+（内部専用・ホスト非公開）またはイベント（RabbitMQ / Wolverine。移行中のため一部の辺〔発行・購読〕はまだ MassTransit）で疎結合に連携する。
 **太枠＝基盤（platform ユニット）、それ以外＝可変機能（knowledge ユニット）**という区分で読む。
 
 ```mermaid
@@ -173,7 +173,7 @@ bash scripts/compose-up.sh up -d
 
 ## 技術スタック（要約）
 
-バックエンドは .NET 10 / C# 13、フロントエンドは React 18 + TypeScript 5.6 + Vite 5。詳細な規約
+バックエンドは .NET 10 / C# 13、フロントエンドは React 19 + TypeScript 5.6 + Vite 6。詳細な規約
 （命名規則・パッケージ管理・lint/format・サービス境界等）は [`CLAUDE.md`](CLAUDE.md) の
 「技術スタック別ルール」を参照。
 

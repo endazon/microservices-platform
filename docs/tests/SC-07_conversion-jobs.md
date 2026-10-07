@@ -3,15 +3,15 @@ title: SC-07 変換ジョブ テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-26
+updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
 ids: [FR-12, NFR-09, SC-03, SC-06, SC-07, UC-06]
 adrs: [ADR-0031, ADR-0070, ADR-0084, ADR-0109]
 iadrs: [IADR-0009, IADR-0035, IADR-0042, IADR-0044, IADR-0127, IADR-0128, IADR-0132, IADR-0154, IADR-0157, IADR-0162, IADR-0356, IADR-0388, IADR-0458, IADR-0465]
-specs: [20260926_1520_conversion-service-auth, 20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
-issues: [#1520, #533, #543, #553, #651, #658, #1192, #1254, planning#198]
+specs: [20260926_1520_conversion-service-auth, 20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261008_1782_sc07-test-spec-and-readme-rot]
+issues: [#1782, #1520, #533, #543, #553, #651, #658, #1192, #1254, planning#198]
 -->
 
 # テスト仕様書: 変換ジョブ
@@ -61,7 +61,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | --- | --- | --- |
 | **代替（2026-08-04 追記）. 変換ジョブの状況を照会する** | 一覧 ＋ 状態フィルタ | `lists jobs with the four-value status model` ／ `sends the status filter to the query API` |
 | **代替（2026-08-04 追記）. 失敗した変換を再実行する** | `failed` の行の再変換ボタン（管理者のみ） | `lets an administrator retry a failed job` |
-| **例外. 恒久失敗は再試行し、継続失敗はデッドレターへ送る** | `failed` として表示する（**画面では**内訳を区別しない） | 画面: `lists jobs with the four-value status model`（`failed` の表示）。**契約・後段**: `Consume_failure_exhausting_retries_marks_dead_lettered` ／ `Fail_at_attempt_limit_marks_dead_letter_without_changing_status` |
+| **例外. 恒久失敗は再試行し、継続失敗はデッドレターへ送る** | `failed` として表示する（**画面では**内訳を区別しない） | 画面: `lists jobs with the four-value status model`（`failed` の表示）。**契約・後段**: `Consume_failure_on_last_attempt_marks_dead_lettered` ／ `Fail_at_attempt_limit_marks_dead_letter_without_changing_status` |
 | 基本 1〜4（受領・pandoc・図の LLM コード化・登録） | **写像しない**（ワーカー側の責務） | — |
 
 ## テストケース
@@ -148,8 +148,8 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | --- | --- | --- | --- |
 | 1 | 成功記録 | succeeded を記録 | `Consume_success_records_succeeded_job` |
 | 2 | 失敗記録＋再送出 | failed を記録し例外再送出（リトライ保持）。**試行上限前なので標識は立たない** | `Consume_failure_records_failed_job_and_rethrows` |
-| 3 | **再試行を使い切った失敗** | 本番と同じ試行上限で消費させ、最後の失敗で標識が立つ（`Fault<T>` 発行で待つ） | `Consume_failure_exhausting_retries_marks_dead_lettered` |
-| 4 | **試行上限の単一情報源** | 契約の `ConversionJobRetryPolicy.MaxAttempts` が再試行設定（`UsePlatformRetry`）と一致する | `MaxAttempts_contract_constant_matches_platform_retry_policy` |
+| 3 | **再試行を使い切った失敗** | 試行回数（`Envelope.Attempts`）を 1 から上限まで直に与えてハンドラを回し、上限未満の各回では標識が立たず、上限の回で立つ（状態は `failed`・試行回数は上限）。ランタイムが何回目で諦めるかは本ファイルでは測らず、基盤の再試行既定の試験（`再試行既定_試行上限に達して初めてデッドレターへ移る`）が測る | `Consume_failure_on_last_attempt_marks_dead_lettered` |
+| 4 | **試行上限の単一情報源** | 契約の `ConversionJobRetryPolicy.MaxAttempts` が再試行設定（`UsePlatformMessagingDefaults` の試行上限 `WolverineExtensions.MaxAttempts`）と一致する | `MaxAttempts_contract_constant_matches_platform_retry_policy` |
 
 ## BFF（xUnit・#501 で権限テストを追加）
 
@@ -216,7 +216,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
   裁定 **Q19**（2026-08-05）が「**閲覧は管理者・運用者／破壊的操作は管理者限定**」と定め、
   **実装（admin/operator の閲覧）が追認された**（計画 `01_screens.md:124` / `:314`）。
   **照会側のテストを置く理由は変わらない** —— 巻き添えの検出は裁定の有無と独立である。
-- 失敗記録後に例外再送出で MassTransit の再試行→デッドレターを保持（コンシューマ 2）。
+- 失敗記録後に例外再送出で Wolverine の再試行（`UsePlatformMessagingDefaults`。2 秒・10 秒・30 秒）→ 使い切ったらデッドレター（`MoveToErrorQueue`）を保持（コンシューマ 2）。
 
 ## 実行
 
