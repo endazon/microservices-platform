@@ -76,10 +76,11 @@ planning#741 項目 6（`IngestionCompleted`）は台帳の行ではないが、
 **誤りの側から引く**: 「計画の対応表で `—`（実装 IADR なし）」を起点にし、その計画 ADR の本文が名指す IADR のうち
 `related_ids` に当の計画 ADR を持たないものを数えた（`scratchpad` の一時スクリプト。計画 `origin/main`・develop `260dc3de`）。
 
-1. 計画の対応表（`07_adr/README.md`）で `—` の計画 ADR は 11 件: ADR-0020・0024・0055・0062・0081・0090・0107・0112・0123・0127・0129。
-2. develop の `related_ids` で引き直すと、ADR-0024（8 件）・ADR-0062（11 件）・ADR-0127（12 件）は既に IADR を持つ（対応表が古いだけ。週次の再生成で埋まる）→ 除外。
-3. 残る 8 件のうち、本文が IADR を名指さず、かつ develop にも IADR が無いのは ADR-0107（実装 IADR なし。行 5 の #1787 が作る）→ 除外。
-   ADR-0020 は本文が IADR を名指さないが、IADR-0048 の本文が「根拠 ADR: ADR-0020」と引く → 対象。
+1. 計画の対応表（`07_adr/README.md`、計画 `origin/main`）で `—` の計画 ADR は 7 件: ADR-0020・0055・0081・0090・0112・0123・0129。
+   ［独立監査で訂正］当初は 11 件と数え、ADR-0024・0062・0107・0127 を含めていたが、対応表の実物ではこの 4 件は既に IADR を持つ
+   （ADR-0107 は IADR-0461。IADR-0461 の `related_ids` も ADR-0107 を持つ）。11 件は対応表の古い写しから数えた誤りである。
+2. （欠番。当初の手順 2・3 は、上の 4 件を除くための手順だった。7 件から始めれば不要であり、対象 8 件の結論は変わらない）
+3. 7 件のうち ADR-0020 は本文が IADR を名指さないが、IADR-0048 の本文が「根拠 ADR: ADR-0020」と引く → 対象。
 4. 対象（8 件）:
 
 | IADR | 足す計画 ADR | 根拠 | 出所 |
@@ -113,7 +114,7 @@ planning#741 項目 6（`IngestionCompleted`）は台帳の行ではないが、
 
 - `node scripts/check-trace-blocks.js`・`node scripts/gen-knowledge-graph.js --check`・`node scripts/check-cross-repo-refs.js`・
   `node scripts/check-plan-id-qualification.js`・`node scripts/check-reading-budget.js`・`node scripts/check-doc-type-vocabulary.js`・
-  `node scripts/check-commit-messages.js`・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`・`node scripts/scripts.repo.test.js`。
+  `node scripts/check-commit-messages.js`・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（`scripts.repo.test.js` は companion であり、単体で走らせると設計どおり exit 1 で拒否するので、`scripts.test.js` 経由で走らせる）。
 - `.cs`・構成の変更は無いので `dotnet build` / `format` / `test` は対象外。
 
 ## 受け入れ基準
