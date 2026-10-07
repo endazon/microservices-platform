@@ -7696,6 +7696,33 @@ ${r.stderr}`);
       }
     });
 
+    // ★ #1773 / IADR-0506: blocked の再検証期限は issue 本文の定型欄で持つ（台帳を別に置かない）。
+    //   欄の見出しに数字が入ると棚卸しの読み取り（`再検証期限` の後の最初の日付）がずれるので、
+    //   レンダリング後の形（`### <label>` の次の段落に値）を棚卸しの関数そのものに読ませて固定する。
+    ok('#1773: issue テンプレートが再検証期限の欄を持ち、棚卸しがその欄を読める', () => {
+      const t = fs.readFileSync(path.join(REPO, TEMPLATE), 'utf8');
+      const m = t.match(/id: revalidation_deadline\n\s*attributes:\n\s*label: (.+)\n/);
+      assert.ok(m, '再検証期限の欄（revalidation_deadline）が消えた');
+      const { parseRevalidationDeadline } = require('./backlog-audit.js');
+      assert.strictEqual(parseRevalidationDeadline([`### ${m[1]}\n\n2026-10-19`]), '2026-10-19', `欄名 ${m[1]} を棚卸しが読めない`);
+      assert.strictEqual(parseRevalidationDeadline([`### ${m[1]}\n\n_No response_`]), null, '未記入を期限ありと読んだ');
+    });
+
+    // ★ #1773（AI レビュー指摘）: Markdown 形式のテンプレート（implementation-task.md）はヒントを
+    //   HTML コメントで残し、GitHub はそれを消さない。コメントの下に日付を書く形を、テンプレートの
+    //   実物から組み立てて棚卸しに読ませる（コメントが日付の手前に挟まると読めなかった）。
+    ok('#1773: Markdown テンプレートのヒントを残したまま書いた再検証期限も棚卸しが読める', () => {
+      const md = fs.readFileSync(path.join(REPO, '.github/ISSUE_TEMPLATE/implementation-task.md'), 'utf8');
+      const sec = md.match(/(## 再検証期限[^\n]*\n\n<!--[\s\S]*?-->)/);
+      assert.ok(sec, 'implementation-task.md の再検証期限の節（見出し＋ヒントのコメント）が消えた');
+      const { parseRevalidationDeadline } = require('./backlog-audit.js');
+      assert.strictEqual(parseRevalidationDeadline([`${sec[1]}\n2026-10-19\n`]), '2026-10-19', 'ヒントのコメントを残すと期限を読めない');
+      assert.strictEqual(parseRevalidationDeadline([`${sec[1]}\n`]), null, 'ヒントだけ（未記入）を期限ありと読んだ');
+      // 未記入（`_No response_`）の後ろの別の節の日付を期限と読まない。暦に無い日付は期限なし。
+      assert.strictEqual(parseRevalidationDeadline(['### 再検証期限（blocked のときだけ）\n\n_No response_\n\n### 補足\n\n2026-10-19']), null, '未記入の後の別節の日付を期限と読んだ');
+      assert.strictEqual(parseRevalidationDeadline(['再検証期限: 2026-13-45']), null, '暦に無い日付を期限ありと読んだ');
+    });
+
     // ★ #1092: ここには「issue テンプレートはキットとバイト一致（分類 A）」があった。
     //   入力は `planning/tools/impl-handoff-kit/repo-template/…` ——**撤去済みの planning submodule
     //   配下のパス**であり、`fs.existsSync` が必ず偽になって「未 populate のため省略」を印字して
