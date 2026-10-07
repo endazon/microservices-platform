@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-10-05
+updated: 2026-10-08
 ---
 <!-- trace:
 ids: [FR-11, SC-08, NFR-18, NFR-19]
 adrs: [ADR-0010, ADR-0025, ADR-0038, ADR-0044, ADR-0095]
-iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466]
-specs: [20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement, 20260926_issue-1558_runbook-nits, 20261005_1741_sonnet5-price-correction]
-issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558, #1741]
+iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466, IADR-0511]
+specs: [20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement, 20260926_issue-1558_runbook-nits, 20261005_1741_sonnet5-price-correction, 20261008_1785_graph-purpose-models]
+issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558, #1741, #1785]
 -->
 
 # 運用 Runbook: 既定層 LLM の出力トークン実測
@@ -167,8 +167,8 @@ AI 分析が渡す文脈は既定で上位 5 チャンク、1 チャンクは最
 - **フォールバック**: AI 分析の第 1 候補が 4xx（429 を除く）で断られると、同じ依頼が `claude-sonnet-5` で 1 回だけ再送される。
   断られた試行は応答を生成していないので通常は加算されないが、仮に両方を数えても 1 依頼あたり
   0.1824 + 0.07296 = **0.25536 USD**（入力 16,000 のとき）を超えない。
-- 🔴 **キーを入れた時点で、標本以外の経路も費用を出し始める。** グラフの AI 提案（文書の更新を購読して発火し、`claude-opus-5` へ行く。
-  メトリクス上の用途は `other`）、検索チャット、図のコード化、同じゲートウェイを使う他ユニットの呼び出しである。
+- 🔴 **キーを入れた時点で、標本以外の経路も費用を出し始める。** グラフの AI 提案（文書の更新を購読して発火し、`claude-sonnet-5` へ行く。
+  メトリクス上の用途は `graph-suggestion`。［2026-10-08］以前は用途の登録が無く `claude-opus-5` へ落ち、用途は `other` だった）、検索チャット、図のコード化、同じゲートウェイを使う他ユニットの呼び出しである。
   標本の期間中は文書の大量取り込みを避け、§4-4 の費用の累計を**用途別に**見て、承認額を超えそうなら §3-4 で止める。
 
 ### N の選び方（統計的な意味）

@@ -3,15 +3,15 @@ title: 運用 Runbook — ピン留め LLM モデルの版数移行と利用不�
 type: runbook
 status: fixed
 created: 2026-08-11
-updated: 2026-08-31
+updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
 ids: [FR-11]
 adrs: [ADR-0038, ADR-0048, AST:ADR-0011]
-iadrs: [IADR-0058, IADR-0102, IADR-0112, IADR-0141, IADR-0225, IADR-0228, IADR-0331]
-specs: [20260811_issue-587_pin-migration-runbook, 20260831_issue-1092_planning-submodule-residual-refs]
-issues: [#382, #440, #587, #1092, AST#296, planning#50, planning#426]
+iadrs: [IADR-0058, IADR-0102, IADR-0112, IADR-0141, IADR-0225, IADR-0228, IADR-0331, IADR-0511]
+specs: [20260811_issue-587_pin-migration-runbook, 20260831_issue-1092_planning-submodule-residual-refs, 20261008_1785_graph-purpose-models]
+issues: [#382, #440, #587, #1092, #1785, AST#296, planning#50, planning#426]
 -->
 
 # 運用 Runbook: ピン留め LLM モデルの版数移行と利用不能時の振る舞い
@@ -55,7 +55,10 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 > **手順書は運用者が実行するもの**であり、**手元に無い処理系へ依存させない。**
 
 **用途は 1 つではない。** `trade-decision` のほか `rag-answer` / `analysis` / `diagram-coding` /
-`report-monthly` / `report-weekly` / `report-daily` / `default` がそれぞれ独立にピンされている。
+`report-monthly` / `report-weekly` / `report-daily` / `trade-decision-screening` / `rerank` /
+`graph-suggestion` / `graph-cluster-summary` / `default` がそれぞれ独立にピンされている
+（［2026-10-08 / #1785］`trade-decision-screening`・`rerank` の数え落としと、知識グラフの 2 用途の登録を反映した。
+現在の一覧は上のコマンドの出力を正とする）。
 **監視も移行も用途ごとに要る**（後述 §提供終了の監視）。
 
 ---

@@ -588,3 +588,4 @@
 | [IADR-0508](./IADR-0508_plan-range-lag-weekly-audit-with-nfr.md) | 計画 ID レンジ・NFR 採番の宣言のずれは週次棚卸しの前段が NFR も含めて突き合わせ、専用 issue へ起票し、届かなければ未確認として数える（#1775） | Accepted |
 | [IADR-0509](./IADR-0509_document-keyset-in-sql-and-created-at-id-index.md) | 文書のキーセット（作成時刻昇順・同時刻は ID 昇順）は SQL で並べて比べ、(CreatedAt, Id) の複合索引で引く。GET /documents/page は塊ごとに読んでメモリの述語を当て、再発行の口は属性の絞り込みが無いとき limit + 1 行と COUNT(*) で答える（#1765） | Accepted |
 | [IADR-0510](./IADR-0510_bff-keyring-storage-resolves-di-connection.md) | BFF の DataProtection 鍵の保存先は DI の IConnectionMultiplexer から引く RedisXmlRepository を KeyManagementOptions に置き、2 つの WebApplicationFactory で共有と陰性対照を固定する（#1780） | Accepted |
+| [IADR-0511](./IADR-0511_graph-purpose-model-assignment.md) | グラフの 2 用途を `PurposeModels` へ登録する（`graph-suggestion`＝`claude-sonnet-5`・`graph-cluster-summary`＝`claude-opus-5`。鎖は 1 段下位）。呼び出し側の用途名の全数とキーを試験で突き合わせる（#1785） | Accepted |

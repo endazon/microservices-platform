@@ -14820,4 +14820,83 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+  // --- #1785 / IADR-0511 決定 4: 呼び出し側の LLM 用途名 ⊆ ゲートウェイの PurposeModels のキー ---------------------
+  //
+  // 用途が PurposeModels に無いと、ゲートウェイは例外もログも無く DefaultModel（最も高い単価）へ落とし、
+  // 計器は用途を other へ丸める（費用を用途で切り分けられない。ADR-0081 フォローアップ 2）。
+  // trade-decision（IADR-0102）・trade-decision-screening（IADR-0340）・graph-suggestion / graph-cluster-summary（#1785）と
+  // 同じ形の欠落が繰り返し起きたので、**呼び出し側の宣言から母集合を引いて**突き合わせる（列挙を持たない）。
+  {
+    const lp = require('./lib/llm-purposes.js');
+
+    ok('#1785: 呼び出し側が送る LLM 用途名はすべて Llm:Routing:PurposeModels のキーに在る（実ツリー）', () => {
+      const r = lp.scanTree();
+      // fail-closed: 走査が壊れて 0 件になったのを「未登録なし」と読まない。
+      assert.ok(r.files > 0, '走査対象の .cs が 0 件（走査範囲が壊れた）');
+      assert.ok(r.callers.length > 0, '呼び出し側の用途名が 0 件（宣言の形が変わった可能性。0 件を緑にしない）');
+      assert.deepStrictEqual(
+        r.unregistered.map((c) => `${c.purpose}（${c.file}:${c.line} ${c.form}）`),
+        [],
+        'PurposeModels に無い用途を送っている（DefaultModel へ落ち、費用が other へ丸められる）。'
+          + ' 割当を決めて src/platform/backend/Services/LlmGateway/appsettings.json の PurposeModels へ足すこと',
+      );
+    });
+
+    ok('#1785: 走査は既知の 6 用途を拾う（定数で中継する rag-answer / analysis を含む。陽性対照）', () => {
+      const names = new Set(lp.scanTree().callers.map((c) => c.purpose));
+      for (const p of ['rag-answer', 'analysis', 'diagram-coding', 'rerank', 'graph-suggestion', 'graph-cluster-summary']) {
+        assert.ok(names.has(p), `用途 ${p} を拾えていない（走査の取りこぼし）`);
+      }
+    });
+
+    ok('#1785: 拾う形は「名前に Purpose を含む const string」と「Purpose: / Purpose = への文字列リテラル」。属性名（…Tag）は拾わない', () => {
+      const src = [
+        'public const string PurposeName = "graph-suggestion";',
+        'internal const string AnalysisPurpose = "analysis";',
+        'public const string Purpose = "rerank";',
+        'public const string PurposeTag = "ai.purpose";',
+        'var req = new CompletionApiRequest(text, Purpose: "inline-purpose");',
+        'var o = new { Prompt = "p", Purpose = "init-purpose" };',
+        'const string Other = "not-a-purpose";',
+      ].join('\n');
+      const got = lp.extractCallerPurposes(src).map((c) => c.purpose);
+      assert.deepStrictEqual(got.sort(), ['analysis', 'graph-suggestion', 'init-purpose', 'inline-purpose', 'rerank']);
+    });
+
+    ok('#1785（監査 F3）: 小文字の名前付き引数・static readonly・プロパティ初期値・既定引数も拾い、二重に数えない', () => {
+      const src = [
+        'await orchestrator.GenerateAsync(prompt, purpose: "named-lower");',
+        'private static readonly string SuggestPurpose = "static-readonly";',
+        'public string Purpose { get; set; } = "property-init";',
+        'Task F(string prompt, string purpose = "default-param") => Task.CompletedTask;',
+      ].join('\n');
+      const got = lp.extractCallerPurposes(src).map((c) => c.purpose);
+      assert.deepStrictEqual(got.sort(), ['default-param', 'named-lower', 'property-init', 'static-readonly']);
+    });
+
+    ok('#1785: 変異 —— 未登録の用途を宣言すると findUnregistered が拾う（登録済み・大小違い・default は拾わない）', () => {
+      const keys = lp.readPurposeModelKeys(JSON.stringify({ Llm: { Routing: { PurposeModels: { 'rag-answer': 'm', 'graph-suggestion': 'm' } } } }));
+      const callers = lp.extractCallerPurposes([
+        'public const string PurposeName = "graph-suggestion";',
+        'public const string RagAnswerPurpose = "RAG-ANSWER";',
+        'public const string DefaultPurpose = "default";',
+        'public const string PurposeName = "graph-new-unregistered";',
+      ].join('\n'));
+      assert.deepStrictEqual(lp.findUnregistered(callers, keys).map((c) => c.purpose), ['graph-new-unregistered']);
+    });
+
+    ok('#1785: PurposeModels が無い構成は 0 件として読まず例外にする（fail-closed）', () => {
+      assert.throws(() => lp.readPurposeModelKeys(JSON.stringify({ Llm: { Routing: {} } })), /PurposeModels/);
+    });
+
+    ok('#1785: 走査は試験・bin/obj・ゲートウェイ自身を外す（試験ディレクトリの判定）', () => {
+      for (const seg of ['Tests', 'tests', 'GraphService.Tests', 'Platform.Bff.IntegrationTests']) {
+        assert.ok(lp.isTestSegment(seg), `${seg} を試験と判定しない`);
+      }
+      for (const seg of ['Features', 'Infrastructure', 'Contests', 'Requests']) {
+        assert.ok(!lp.isTestSegment(seg), `${seg} を試験と誤判定した`);
+      }
+    });
+  }
+
 };

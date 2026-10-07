@@ -164,6 +164,7 @@
       "CompletionMetricsTests",
       "CompletionRoutingEndpointTests",
       "CompletionStopReasonEndpointTests",
+      "GraphPurposeEndpointTests",
       "LlmFallbackPolicyTests",
       "LlmGatewayDiagramCoderTests",
       "LlmRouterTests",

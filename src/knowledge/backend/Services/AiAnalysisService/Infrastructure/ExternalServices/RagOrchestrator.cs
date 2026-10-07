@@ -70,6 +70,14 @@ public class RagOrchestrator(
     // （proto3 の空文字も呼び出し先が read へ写すが、既定への依存を輸送ごとに隠さない）。
     private const string ScopeAction = "read";
 
+    // FR-11, FR-10, ADR-0044 決定 1, [[IADR-0511]] 決定 4 (#1785): LLM ゲートウェイへ送る用途名。
+    // **値は `Llm:Routing:PurposeModels`（LlmGateway の appsettings.json）のキーと一致させる** ——
+    // 無い用途はゲートウェイで既定モデルへ落ち、費用は `other` へ丸められる。
+    // 文字列リテラルを引数で中継すると呼び出し側の用途名の突合（`scripts/lib/llm-purposes.js`）が拾えないため、
+    // 名前に Purpose を含む定数として宣言する（値は従来と同じ）。
+    internal const string RagAnswerPurpose = "rag-answer";
+    internal const string AnalysisPurpose = "analysis";
+
     // FR-11, IADR-0111 (#403): 「モデル未使用（AI へ送信していない）」を表す応答契約上の値。
     // モデル名を決めてよいのは実際に route を行った LlmGateway だけであり、呼び出し側は運び手に徹する。
     // ゲートウェイ自身も未送信の縮退（越境拒否・プロバイダ未登録）で Model に空文字を載せるため、
@@ -104,7 +112,7 @@ public class RagOrchestrator(
         // FR-11, UC-01: 用途は rag-answer。呼び出し先は LlmGateway が機密区分に応じて切り替える。
         return await GenerateAsync(question, scope, DefaultAskTopK,
             new SearchPrincipal(userId, userAttributes, attributeFilters),
-            context => BuildAskPrompt(question, context), "rag-answer", ct);
+            context => BuildAskPrompt(question, context), RagAnswerPurpose, ct);
     }
 
     // FR-07, UC-02: 指定データ範囲での分析・比較・抽出。
@@ -128,7 +136,7 @@ public class RagOrchestrator(
         // FR-11, UC-02: 用途は analysis。機密区分の高いデータは LlmGateway が外部送信を抑止する。
         return await GenerateAsync(query, scope, topK,
             new SearchPrincipal(userId, userAttributes, request.Range?.AttributeFilters),
-            context => AnalysisPromptBuilder.Build(request, context), "analysis", ct);
+            context => AnalysisPromptBuilder.Build(request, context), AnalysisPurpose, ct);
     }
 
     // IADR-0037, FR-04, UC-01: 自然文質問への回答をストリーミングする。
@@ -183,7 +191,7 @@ public class RagOrchestrator(
         var outputTokens = 0;
         var emittedAny = false;
 
-        await foreach (var ev in StreamCompletionAsync(prompt, confidentiality, "rag-answer", ct))
+        await foreach (var ev in StreamCompletionAsync(prompt, confidentiality, RagAnswerPurpose, ct))
         {
             if (!string.IsNullOrEmpty(ev.Delta))
             {
