@@ -251,16 +251,16 @@ builder.Host.UseWolverine(opts =>
     // 戻り値の段宣言を受けるのは、queue 上書きを黙って無視しないためである（IADR-0239 決定 4）。
     var step = opts.AddPlatformWolverineStep<DocumentDeletedConsumer>(pipeline);
 
-    var retrievalQueue = step?.Queue ?? nameof(DocumentDeleted);
-
     // 手順 3（購読側の束ね）/ #992: 自分のキューをイベント型名の fan-out exchange へ束ねる。
     // **キュー名を分けるだけでは何も届かない** —— 束ねて初めて発行が届く。
+    // FR-14 / #1801: 段宣言（step）を渡す。queue 宣言があればそれ、無ければイベント型名で束ね・購読し、
+    // `enabled: false` の段ではキューを束ねずリスナーも立てない（WolverineExtensions の段宣言版）。
     opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision()
-        .BindPlatformQueue<DocumentDeleted>("retrieval-service", retrievalQueue);
+        .BindPlatformQueue<DocumentDeleted>("retrieval-service", step);
 
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う
     // （fan-out の保存: wiki-service / graph-service と別キューになりサービス名前置で分かれる）。
-    opts.ListenToPlatformQueue("retrieval-service", retrievalQueue);
+    opts.ListenToPlatformQueue<DocumentDeleted>("retrieval-service", step);
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();

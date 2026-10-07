@@ -29,16 +29,19 @@
   ConfigMap 化し、`Pipeline__ConfigPath` でサービスへ渡る
 - 各段は `IPipelineStep.StepName` で構成と対応付く。次の不整合は**起動失敗**になる:
   段の宣言漏れ／`consumer` 型完全名の不一致／`input` と実装の購読イベント型の不一致
-- `enabled: false` の段はハンドラ（購読）を登録しない（警告ログのみ）。Wolverine の段では受信キューの宣言・束縛は
-  現状まだ行われる（`Program.cs` が `Enabled` を見ずに張るため）
+- `enabled: false` の段はハンドラ（購読）を登録せず、受信キューの宣言・exchange への束縛・リスナーの起動も行わない
+  （警告ログのみ。Wolverine の段は段宣言を受ける `BindPlatformQueue<TIn>` / `ListenToPlatformQueue<TIn>` が張らない）
+- ただし**既に作られたキューと束縛は消さない**。有効だった段を後から無効にした場合、ブローカに残るキューは束縛されたままで、
+  届いたメッセージが溜まる。不要なら RabbitMQ の管理画面か `rabbitmqctl` でキュー（`<service>.<queue>`）を削除する
 - 構成が全く無い場合（ローカル・テスト）は既定配線（全段有効）で動作する
 
 ## 新しい段（プラグイン）の追加
 
 1. 対象サービスの `Features/<集約>/<操作>/` に Wolverine のハンドラとして段を実装する —— `IPipelineStep<TIn>` ＋
    `Handle(TIn ...)`（コア改修不要。`*Consumer.cs`。旧 `Composable/Steps/` は単一プロジェクト構成への移送で無くなった）
-2. `Program.cs` の合成ルートの `UseWolverine` 内で `AddPlatformWolverineStep<T>(pipeline)` を呼び、戻り値の `queue` 宣言
-   （無ければイベント型名）で `BindPlatformQueue<TIn>` / `ListenToPlatformQueue` を張り、`UsePlatformMessagingDefaults()` を呼ぶ
+2. `Program.cs` の合成ルートの `UseWolverine` 内で `AddPlatformWolverineStep<T>(pipeline)` を呼び、戻り値の段宣言をそのまま
+   `BindPlatformQueue<TIn>("<service>", step)` / `ListenToPlatformQueue<TIn>("<service>", step)` へ渡し（`queue` 宣言が無ければ
+   イベント型名。`enabled: false` なら張らない）、`UsePlatformMessagingDefaults()` を呼ぶ
    （手順の全体と出力イベントの経路 `RoutePlatformEvent<TOut>` は `docs/tech/composable-component-guide.md` §2.1）
 3. `pipeline.json` に段を宣言する（イベント型は `events` に列挙されていること）
 

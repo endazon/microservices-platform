@@ -10,7 +10,7 @@ author: claude
 ids: [FR-14, FR-15]
 adrs: [ADR-0018]
 iadrs: [IADR-0027, IADR-0028, IADR-0268]
-specs: [20260708_issue-111_declarative-pipeline-config, 20261008_1799_composability-docs-wolverine-wiring]
+specs: [20260708_issue-111_declarative-pipeline-config, 20261008_1799_composability-docs-wolverine-wiring, 20261008_1801_disabled-wolverine-step-no-queue]
 issues: [#444, #1799, #1801]
 -->
 
@@ -33,7 +33,7 @@ issues: [#444, #1799, #1801]
 
 - 既定互換: 宣言なしでは既定配線で登録される（ローカル・テスト回帰なし）。
 - fail-fast: 未宣言の段・consumer 型名不一致・input 型名不一致で起動失敗する。
-- 組み替え: `enabled: false` で段のハンドラ（購読）が登録されない（Wolverine の段の受信キューは現状まだ宣言される）。`queue` 指定で受信エンドポイント名が変わる。
+- 組み替え: `enabled: false` で段のハンドラ（購読）が登録されず、受信キューの宣言・束縛とリスナーの起動も行われない。`queue` 指定で受信エンドポイント名が変わる。
   **宣言の値が実効構成の表示（イベント接続）にまで届くことを、宣言が在ることとは別に確かめる。**
 - ポート差し替え: 接続先コンポーネントの選択が構成だけで入れ替わり、宣言的な段の登録を乱さない。
 - 宣言検証: スキーマ違反・発行元のないイベント購読・循環・型名形式違反を CI 段階で検出する。

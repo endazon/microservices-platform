@@ -2,6 +2,7 @@ using System.Reflection;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
@@ -127,6 +128,40 @@ public static class WolverineExtensions
             PlatformExchangeName<TEvent>(),
             ex => ex.BindQueue(PlatformQueueName(serviceName, queueName)));
     }
+
+    // FR-14, IADR-0028 / #1801: 段宣言（`AddPlatformWolverineStep` の戻り値）を受ける購読側の束ね。
+    //
+    // 🔴 **`enabled: false` の段は束ねない（受信キューを宣言しない）。** 段のハンドラを外すだけでキューを
+    // 束ねると、exchange へ届いたメッセージが**ハンドラの無いキュー**へ溜まり続ける。
+    // 宣言が無い（null。規則 1 の既定登録）・`enabled: true` は従来どおり束ねる。
+    //
+    // 名前を `BindPlatformQueue<TEvent>` のまま多重定義にしているのは、`check-event-topology.js` が
+    // 購読側の束ねをこの字面で検出するためである（名前を変えると「束ねていない」と誤判定される）。
+    public static RabbitMqTransportExpression BindPlatformQueue<TEvent>(
+        this RabbitMqTransportExpression rabbit, string serviceName, PipelineStepOptions? step)
+    {
+        ArgumentNullException.ThrowIfNull(rabbit);
+        return step is { Enabled: false }
+            ? rabbit
+            : rabbit.BindPlatformQueue<TEvent>(serviceName, PlatformStepQueueName<TEvent>(step));
+    }
+
+    // FR-14, IADR-0028 / #1801: 段宣言を受ける手順 3 の適用点。`enabled: false` の段では**リスナーを立てない**
+    // （null を返す）。上の束ねと対で使う —— 片方だけ抑えると「束ねたのに誰も読まない」か
+    // 「読むのに何も届かない」形になる。
+    public static RabbitMqListenerConfiguration? ListenToPlatformQueue<TEvent>(
+        this WolverineOptions options, string serviceName, PipelineStepOptions? step)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return step is { Enabled: false }
+            ? null
+            : options.ListenToPlatformQueue(serviceName, PlatformStepQueueName<TEvent>(step));
+    }
+
+    // 段の受信キュー名（前置前）の単一情報源。`queue` 宣言があればそれ、無ければイベント型名
+    // （IADR-0239 決定 4: queue 宣言を黙って無視しない）。従前は各 `Program.cs` が同じ式を複写していた。
+    public static string PlatformStepQueueName<TEvent>(PipelineStepOptions? step) =>
+        step?.Queue ?? typeof(TEvent).Name;
 
     // exchange 名の単一情報源。**メッセージ型名そのもの**であり、前置も接尾も付けない。
     // 発行側と購読側が同じ値を導くことが要点であり、値そのものに意味は無い。

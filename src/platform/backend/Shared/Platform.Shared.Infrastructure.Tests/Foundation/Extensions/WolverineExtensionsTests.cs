@@ -2,6 +2,7 @@ using System.Reflection;
 using AwesomeAssertions;
 using JasperFx.CodeGeneration.Model;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
@@ -351,5 +352,104 @@ public class WolverineExtensionsTests
         var uris = RabbitEndpointUrisOf(options);
         uris.Should().Contain(u => u.Contains("ingestion-service." + nameof(ProbeEvent)));
         uris.Should().Contain(u => u.Contains("wiki-service." + nameof(ProbeEvent)));
+    }
+
+    // --- FR-14 / IADR-0028 / #1801: 段宣言を受ける束ね・購読（enabled:false はキューを作らない） ---------
+    //
+    // 🔴 `AddPlatformWolverineStep` は無効の段の**ハンドラ**を外すだけであり、受信キューの束ね・リスナーは
+    // 呼び出し側が張る。従前の各 `Program.cs` は `Enabled` を見ずに張っていたため、無効の段でも
+    // キューが exchange へ束ねられ、**ハンドラの無いリスナー**が立っていた。ガードは段宣言版の
+    // 多重定義に 1 箇所で置き、ここで固定する。
+    private static PipelineStepOptions ProbeStep(bool enabled, string? queue = null) => new()
+    {
+        Name = "probe",
+        Service = "ingestion-service",
+        Input = nameof(ProbeEvent),
+        Enabled = enabled,
+        Queue = queue,
+    };
+
+    private static Wolverine.Configuration.Endpoint[] RabbitEndpointsOf(WolverineOptions options) =>
+        [.. options.Transports.Single(t => t.Protocol == "rabbitmq").Endpoints()];
+
+    [Fact]
+    public void 段宣言版_無効の段はキューを束ねず宣言もしない()
+    {
+        var options = new WolverineOptions();
+        options.UseRabbitMq().BindPlatformQueue<ProbeEvent>("ingestion-service", ProbeStep(enabled: false));
+
+        var uris = RabbitEndpointUrisOf(options);
+        uris.Should().NotContain(u => u.Contains("ingestion-service." + nameof(ProbeEvent)),
+            "enabled:false の段は受信キューを宣言しない（FR-14 / IADR-0028）");
+        uris.Should().NotContain(u => u.Contains("exchange/" + nameof(ProbeEvent)),
+            "束ねないので購読側から exchange を宣言する理由も無い");
+    }
+
+    [Fact]
+    public void 段宣言版_無効の段はリスナーを立てない()
+    {
+        var options = new WolverineOptions();
+        options.UseRabbitMq();
+
+        var listener = options.ListenToPlatformQueue<ProbeEvent>("ingestion-service", ProbeStep(enabled: false));
+
+        listener.Should().BeNull();
+        RabbitEndpointsOf(options).Should().NotContain(e => e.IsListener,
+            "enabled:false の段にハンドラの無いリスナーを立てない");
+        RabbitEndpointUrisOf(options).Should().NotContain(u => u.Contains("ingestion-service." + nameof(ProbeEvent)));
+    }
+
+    [Fact]
+    public void 段宣言版_有効の段はqueue宣言の名前で束ねてリスナーを立てる()
+    {
+        var options = new WolverineOptions();
+        var step = ProbeStep(enabled: true, queue: "custom-queue");
+        options.UseRabbitMq().BindPlatformQueue<ProbeEvent>("ingestion-service", step);
+
+        var listener = options.ListenToPlatformQueue<ProbeEvent>("ingestion-service", step);
+
+        listener.Should().NotBeNull();
+        RabbitEndpointUrisOf(options).Should().Contain(u => u.Contains("exchange/" + nameof(ProbeEvent)));
+        RabbitEndpointsOf(options).Should().Contain(
+            e => e.EndpointName == "ingestion-service.custom-queue" && e.IsListener,
+            "queue 宣言を黙って無視しない（IADR-0239 決定 4）");
+    }
+
+    [Fact]
+    public void 段宣言版_宣言なしの段はイベント型名で束ねてリスナーを立てる()
+    {
+        // 規則 1（宣言なし＝既定登録）。`AddPlatformWolverineStep` は null を返す。
+        var options = new WolverineOptions();
+        options.UseRabbitMq().BindPlatformQueue<ProbeEvent>("ingestion-service", step: null);
+
+        var listener = options.ListenToPlatformQueue<ProbeEvent>("ingestion-service", step: null);
+
+        listener.Should().NotBeNull();
+        RabbitEndpointUrisOf(options).Should().Contain(u => u.Contains("exchange/" + nameof(ProbeEvent)));
+        RabbitEndpointsOf(options).Should().Contain(
+            e => e.EndpointName == "ingestion-service." + nameof(ProbeEvent) && e.IsListener);
+    }
+
+    [Fact]
+    public void 段宣言版_無効の段でも発行側の経路は残る()
+    {
+        // 発行（RoutePlatformEvent）は段の有無と独立である（ConversionService は再試行で入力イベントを再発行する）。
+        var options = new WolverineOptions();
+        options.UseRabbitMq().BindPlatformQueue<ProbeEvent>("conversion-service", ProbeStep(enabled: false));
+        options.ListenToPlatformQueue<ProbeEvent>("conversion-service", ProbeStep(enabled: false));
+
+        options.RoutePlatformEvent<ProbeEvent>();
+
+        RabbitEndpointUrisOf(options).Should().Contain(u => u.Contains("exchange/" + nameof(ProbeEvent)));
+        RabbitEndpointsOf(options).Should().NotContain(e => e.IsListener);
+    }
+
+    [Theory]
+    [InlineData(null, nameof(ProbeEvent))]
+    [InlineData("custom-queue", "custom-queue")]
+    public void 段宣言版_受信キュー名はqueue宣言か既定のイベント型名(string? queue, string expected)
+    {
+        WolverineExtensions.PlatformStepQueueName<ProbeEvent>(ProbeStep(enabled: true, queue)).Should().Be(expected);
+        WolverineExtensions.PlatformStepQueueName<ProbeEvent>(null).Should().Be(nameof(ProbeEvent));
     }
 }
