@@ -11,6 +11,7 @@ related_ids:
   - ADR-0106
   - ADR-0107
   - ADR-0057
+  - ADR-0112
   - IADR-0024
   - IADR-0093
   - IADR-0296
@@ -19,7 +20,7 @@ related_ids:
   - IADR-0459
 author: claude
 created: 2026-09-25
-updated: 2026-09-26
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0106_object-storage-seaweedfs.md (Accepted 2026-09-25)
   - planning:projects/microservices-platform/07_adr/ADR-0107_infrastructure-product-selection-criteria.md (Accepted 2026-09-25)

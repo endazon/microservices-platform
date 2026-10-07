@@ -2,10 +2,10 @@
 title: IADR-0266 AI 提案の LLM 境界を「候補列挙の段で絞る」型ゲートで表し、生成は要求時・利用者スコープで走らせる
 type: impl-adr
 status: Accepted
-related_ids: [FR-18, UC-10, SC-03, SC-21, ADR-0033, ADR-0034, ADR-0051, IADR-0242]
+related_ids: [FR-18, UC-10, SC-03, SC-21, ADR-0033, ADR-0034, ADR-0051, ADR-0081, IADR-0242]
 author: claude
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0051_ai-suggestion-abac-boundary.md
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md

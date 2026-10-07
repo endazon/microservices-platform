@@ -5,13 +5,14 @@ status: Accepted
 related_ids:
   - NFR
   - ADR-0031
+  - ADR-0055
   - IADR-0060
   - IADR-0115
   - IADR-0121
   - IADR-0141
 author: claude
 created: 2026-08-15
-updated: 2026-08-21
+updated: 2026-10-08
 plan_refs: []
 ---
 

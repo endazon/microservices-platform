@@ -2,10 +2,10 @@
 title: IADR-0498 検索結果の候補は、検索サービスの唯一の出口で Claude（用途 rerank・claude-haiku-4-5・ZDR 必須）に再順位付けさせる。RAG 回答と SC-02 の両方に効き、送るのは ABAC 後・ai_input が許す候補だけ、失敗は元の順で返す。既定は無効
 type: impl-adr
 status: Accepted
-related_ids: [FR-03, FR-04, FR-05, FR-10, FR-11, FR-19, UC-01, SC-02, ADR-0127, ADR-0010, ADR-0018, ADR-0038, ADR-0044, ADR-0061, ADR-0076, ADR-0092, IADR-0497, IADR-0022, IADR-0104, IADR-0225, IADR-0283, IADR-0340, IADR-0378, IADR-0396, IADR-0400, IADR-0422, IADR-0426, ADR-0079, NFR-01]
+related_ids: [FR-03, FR-04, FR-05, FR-10, FR-11, FR-19, UC-01, SC-02, ADR-0127, ADR-0010, ADR-0018, ADR-0038, ADR-0044, ADR-0061, ADR-0076, ADR-0092, IADR-0497, IADR-0022, IADR-0104, IADR-0225, IADR-0283, IADR-0340, IADR-0378, IADR-0396, IADR-0400, IADR-0422, IADR-0426, ADR-0079, ADR-0129, NFR-01]
 author: claude
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0127_high-confidentiality-lexical-only-and-claude-rerank.md (決定 3・4・7。フォローアップ 3)
   - planning:projects/microservices-platform/07_adr/ADR-0038_analysis-purpose-drop-fable-5.md (決定 3〜5)
@@ -182,6 +182,10 @@ related_specs:
 - 🔴 **既定を無効にしたのは、有効化が費用と越境（`restricted` 等の本文がティア B へ出る）の両方を伴う運用の判断だからである**。
   ADR-0127 決定 3 は掛けると決めたが、構成の欠落で黙って有効になる形にはしない。有効化の手順と費用の目安は運用仕様書 §検索の再順位付け。
   **有効にするまでは ADR-0127 決定 7 の表の「再順位付けの段: 無い」と同じ振る舞い**（並びは RRF とグラフの近さ）である。
+
+> **［2026-10-08 追記 / #1772］計画 ADR-0129（2026-10-06）決定 3 が、本決定の「既定は無効」を計画の側から追認した。** 有効にする条件は、
+> 段 S3 の計測（nDCG@10 と遅延）が済み、NFR-29 の値が利用者裁定で定まることである。有効にした時点で警報 `SearchLatencyP95High` を
+> NFR-29 の値へ切り替える（同 決定 2）。計測・警報の切り替え・有効化は #1746 の段 S3・S5 で追う。上の本文は書き換えない。
 
 ## 理由
 

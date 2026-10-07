@@ -2,10 +2,10 @@
 title: IADR-0479 MCP のツールの実行口は MCP サーバー（許可集合）が運んだ利用者文脈だけを信じ、その利用者で認可サービスへ自分で判定を問う。MCP サーバーは利用者名と操作だけを運ぶ
 type: impl-adr
 status: Accepted
-related_ids: [FR-16, UC-08, NFR-09, NFR-16, ADR-0024, ADR-0034, ADR-0086, ADR-0088, ADR-0117, ADR-0121, IADR-0483, IADR-0269, IADR-0292, IADR-0379, IADR-0416, IADR-0426, IADR-0462]
+related_ids: [FR-16, UC-08, NFR-09, NFR-16, ADR-0024, ADR-0034, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, IADR-0483, IADR-0269, IADR-0292, IADR-0379, IADR-0416, IADR-0426, IADR-0462]
 author: claude
 created: 2026-09-27
-updated: 2026-09-28
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0117_mcp-tool-destination-and-execution-context.md 決定 1〜4
   - planning:projects/microservices-platform/07_adr/ADR-0086_user-context-in-body-not-token-exchange.md 決定 1・4・§結果
@@ -78,6 +78,10 @@ ADR-0117 決定 3 は、本文を利用者文脈（`user_id`・`action`）とツ
   - **サービスアカウントの属性**: MCP サーバーの登録簿でサービスアカウントへ割り当てた属性（ADR-0024 §3）は下流の判定に使われなくなる。
     判定は認可サービスが IdP の `service-account-<client>` の利用者から引き直した属性で行う（ADR-0088）。登録簿の属性と IdP の属性の関係は計画に
     定めが無い（計画への環流の要否は利用者の判断に委ねる）。どちらに転んでも個人資料は受け手と MCP サーバーの 2 層で落ちる。
+    > **［2026-10-08 追記 / #1772］計画が定めた。** 計画 ADR-0123（2026-09-28）が、MCP のサービスアカウントの属性は IdP を正とし（決定 1）、
+    > SC-12 の登録で Keycloak のクライアントを作って属性を IdP へ書き、登録簿はその写しとする（決定 2）、部分集合規則と個人資料の割当禁止は
+    > IdP へ書く前に掛ける（決定 3）と定めた（同 フォローアップ 4 が本項の改めを求めた）。本 IADR の判定（認可サービスが IdP から引き直す）は決定 1 と一致する。
+    > 決定 2・3 の実装（Keycloak への書き込みの口・食い違いの検知）は #1786 で追う。上の本文は書き換えない。
   - 検索結果の参照リンク（`reference_url`）は返さない（索引が持つのは内部の格納先であり、利用者へ見せるリンクではない）。越境不可の文書は本文だけが落ちる。
 
 ## 残るもの
