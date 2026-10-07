@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-06, FR-21, UC-03, SC-05, NFR-08, ADR-0050, ADR-0036, ADR-0034, ADR-0054, ADR-0060, ADR-0091, ADR-0029, ADR-0065, IADR-0012, IADR-0041, IADR-0045, IADR-0075, IADR-0122, IADR-0379, IADR-0401, IADR-0402]
 author: claude
 created: 2026-09-26
-updated: 2026-09-27
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0050_document-body-fingerprint.md 決定 1・フォローアップ 3
   - planning:projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md D-07・D-08・§未確定事項 6
@@ -119,6 +119,9 @@ REST と同じ形を保つ（presence で運び、null を空文字へ化けさ�
 **決定 4 — 絞り込みは台帳を読んだ後にメモリ上で行う。** 属性は jsonb へ値変換で写しており、LINQ から SQL へ訳せない。
 既存の `GET /documents` も全件をメモリへ読むので DB の負荷は増えない（減るのは応答の量）。
 
+> ［2026-10-08 追記 / #1765］**読み方を改めた**（[IADR-0509](./IADR-0509_document-keyset-in-sql-and-created-at-id-index.md)）。並べる・カーソルと比べるは SQL で行い
+> （`(CreatedAt, Id)` の複合索引）、台帳は塊ごとに読む。絞り込みの述語は本決定どおりメモリのまま（属性は SQL へ訳せない）であり、集合・並び・カーソルの意味は変わらない。
+
 **決定 5 — 項目 1（外部 ID）と項目 4（機械の主体の所有文書の更新・削除）は実装しない。** 計画の裁定を待つ。
 環流の下書きは PR 本文に置く（起票は利用者・コーディネータ）。既存の管理者限定（`Write_OperatorRole_Returns403` ほか）は変えない。
 
@@ -153,4 +156,6 @@ REST と同じ形を保つ（presence で運び、null を空文字へ化けさ�
 - フォローアップ:
   1. 項目 1・4 の環流（計画の裁定）。裁定が出たら新しい IADR で実装する。
   2. 台帳の規模が問題になったら、jsonb の包含演算子による SQL 側の絞り込みへ移す（属性の写し方の変更を伴う）。
+     ［2026-10-08 追記 / #1765］規模が問題になった（再発行の走査で O(N²)）。並びとカーソルだけを SQL へ移した（IADR-0509）。
+     「1 ページごとに台帳全体を読む」（悪い影響の 1 項目め）は、絞り込みが緩い限り解消した。属性の絞り込みを SQL へ移すことは引き続き残る。
 - 再検討の条件: 呼び出し側が指紋の算出方法に依存できなくなる変更（正規化の追加・関数の差し替え）が要るとき。

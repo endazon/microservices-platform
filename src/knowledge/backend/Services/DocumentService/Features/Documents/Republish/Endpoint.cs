@@ -1,3 +1,4 @@
+using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents.ListPage;
 using DocumentService.Infrastructure.Persistence;
@@ -21,6 +22,10 @@ namespace DocumentService.Features.Documents.Republish;
 //
 // 量の制御（ページの大きさ・間隔・取り込みのキューの深さ・DLQ の監視）と中断・再開は駆動スクリプト
 // （`scripts/republish-document-updated.js`）が持つ。口が持つのは「1 ページを選んで発行する」ことと、続きのカーソルだけである。
+//
+// ［2026-10-08 / #1765 / [[IADR-0509]]］**1 ページで読むのは `limit + 1` 行**（属性の絞り込みが無いとき）。キーセットは SQL で
+// `(CreatedAt, Id)` の索引を引き、件数（`matched` / `remaining`）は `COUNT(*)` で取る。従前はページごとに絞り込みの全件の
+// 投影を読んでいた（1 ページ O(N)、1 回の走査 O(N²)）。属性の絞り込みがあるときは従前の経路のまま（決定 3）。
 internal static class RepublishDocumentUpdatedEndpoint
 {
     public const string Route = "/republish-updated";
@@ -39,7 +44,7 @@ internal static class RepublishDocumentUpdatedEndpoint
                 after = decoded;
 
             // 絞り込みに要る列だけを投影して読む（22,564 件の本体をページごとに読まない）。
-            // `createdBefore` と `ids` は SQL 側で絞る。属性は jsonb の値変換で SQL へ訳せないのでメモリで絞る（`GET /documents/page` と同じ）。
+            // `createdBefore` と `ids` は SQL 側で絞る。
             // 🔴 `createdBefore` は UTC へ寄せて渡す —— Npgsql は offset 0 の `DateTimeOffset` しか timestamptz へ書けない。
             var query = db.Documents.AsNoTracking();
             if (req.CreatedBefore is { } before)
@@ -50,32 +55,63 @@ internal static class RepublishDocumentUpdatedEndpoint
             if (req.Ids is { Count: > 0 } ids)
                 query = query.Where(d => ids.Contains(d.Id));
 
-            var rows = (await query
-                    .Select(d => new { d.Id, d.CreatedAt, d.Attributes, HasMarkdownUri = d.MarkdownUri != null })
-                    .ToListAsync(ct))
-                .Select(r => new RepublishSelection.Row(r.Id, r.CreatedAt, r.Attributes, r.HasMarkdownUri));
-
-            var ordered = RepublishSelection.Order(rows, req.Attributes);
-            var remaining = RepublishSelection.Remaining(ordered, after);
+            var dryRun = req.DryRun == true;
+            var limit = RepublishSelection.ClampLimit(req.Limit);
+            int matched;
+            int remainingCount;
+            List<RepublishSelection.Row> selected;
+            string? next = null;
+            if (req.Attributes is { Count: > 0 })
+            {
+                // 属性の絞り込みがあるときは従前の経路（全件の投影をメモリで絞って並べる。1 ページ O(N)）。
+                // 属性は jsonb の値変換で SQL へ訳せず、`matched` / `remaining` を正しく数えるには全件の属性を見るしかない
+                // （[[IADR-0509]] 決定 3。全件の再索引＝属性なしの経路が主な用途である）。
+                var ordered = RepublishSelection.Order(await ProjectAsync(query, ct), req.Attributes);
+                var remaining = RepublishSelection.Remaining(ordered, after);
+                matched = ordered.Count;
+                remainingCount = remaining.Count;
+                if (dryRun) selected = remaining;
+                else (selected, next) = RepublishSelection.Slice(remaining, limit);
+            }
+            else
+            {
+                // FR-02, FR-06, [[IADR-0509]] (#1765): **キーセットを SQL で行う**（`(CreatedAt, Id)` の索引で引く）。
+                // 1 ページで読む行は `limit + 1` 件（続きの有無を知るため）。件数は `COUNT(*)` で別に取る（行は運ばない）。
+                // 🔴 並べる・カーソルと比べるは**どちらも SQL**（`AfterCursor` / `InPageOrder`）。.NET 側で並べ直さない。
+                matched = await query.CountAsync(ct);
+                var keyed = query.AfterCursor(after);
+                if (dryRun)
+                {
+                    // dry-run は残り全件の内訳を数える（従前どおり O(N)。走査の前に 1 回だけ呼ぶ）。
+                    selected = await ProjectAsync(keyed.InPageOrder(), ct);
+                    remainingCount = selected.Count;
+                }
+                else
+                {
+                    remainingCount = after is null ? matched : await keyed.CountAsync(ct);
+                    var head = await ProjectAsync(keyed.InPageOrder().Take(limit + 1), ct);
+                    (selected, next) = RepublishSelection.Slice(head, limit);
+                }
+            }
 
             var logger = loggers.CreateLogger(typeof(RepublishDocumentUpdatedEndpoint).FullName!);
             var principal = http.User.Identity?.Name ?? "(unnamed)";
             var requestedBy = LogSanitizer.Sanitize(req.RequestedBy, RepublishSelection.MaxRequestedByLength);
             var reason = LogSanitizer.Sanitize(req.Reason, RepublishSelection.MaxReasonLength);
 
-            if (req.DryRun == true)
+            if (dryRun)
             {
                 // 🔴 **dry-run も記録する**（誰がいつ全件の内訳を引いたか。発行の前段であり、監査で追えるようにする）。
-                var summary = RepublishSelection.Summarize(remaining);
+                var summary = RepublishSelection.Summarize(selected);
                 logger.LogInformation(
                     "Republish dry-run: {Remaining} of {Matched} document(s) remaining (skipped by the publish gate {Skipped}; "
                     + "without body {WithoutBody}) by {Principal} (requestedBy {RequestedBy}; reason {Reason})",
-                    remaining.Count, ordered.Count, summary.SkippedByGate, summary.WithoutBody, principal, requestedBy, reason);
+                    remainingCount, matched, summary.SkippedByGate, summary.WithoutBody, principal, requestedBy, reason);
                 return Results.Ok(new RepublishDocumentUpdatedResponse(
                     DryRun: true,
-                    Matched: ordered.Count,
-                    Remaining: remaining.Count,
-                    Selected: remaining.Count,
+                    Matched: matched,
+                    Remaining: remainingCount,
+                    Selected: selected.Count,
                     Published: 0,
                     SkippedByGate: summary.SkippedByGate,
                     WithoutBody: summary.WithoutBody,
@@ -83,7 +119,7 @@ internal static class RepublishDocumentUpdatedEndpoint
                     NextCursor: null));
             }
 
-            var (page, next) = RepublishSelection.Slice(remaining, RepublishSelection.ClampLimit(req.Limit));
+            var page = selected;
 
             // ページの文書だけを本体ごと読み直し、選んだ並びのまま発行する。
             // 投影から読み直しまでの間に消えた文書は飛ばす（削除の経路が `DocumentDeleted` を出している）。
@@ -108,13 +144,13 @@ internal static class RepublishDocumentUpdatedEndpoint
             logger.LogInformation(
                 "Republished DocumentUpdated for {Published} document(s) (skipped by the publish gate {Skipped}; "
                 + "remaining before this page {Remaining} of {Matched}; more={More}) by {Principal} (requestedBy {RequestedBy}; reason {Reason})",
-                published, skippedByGate, remaining.Count, ordered.Count, next is not null, principal, requestedBy, reason);
+                published, skippedByGate, remainingCount, matched, next is not null, principal, requestedBy, reason);
             var pageSummary = RepublishSelection.Summarize(page);
 
             return Results.Ok(new RepublishDocumentUpdatedResponse(
                 DryRun: false,
-                Matched: ordered.Count,
-                Remaining: remaining.Count,
+                Matched: matched,
+                Remaining: remainingCount,
                 Selected: page.Count,
                 Published: published,
                 SkippedByGate: skippedByGate,
@@ -125,4 +161,11 @@ internal static class RepublishDocumentUpdatedEndpoint
           .WithName("RepublishDocumentUpdated")
           .Produces<RepublishDocumentUpdatedResponse>();
     }
+
+    // 絞り込みと内訳に要る列だけを投影して読む（並びは渡された問い合わせのまま）。
+    private static async Task<List<RepublishSelection.Row>> ProjectAsync(IQueryable<Document> query, CancellationToken ct)
+        => [.. (await query
+                .Select(d => new { d.Id, d.CreatedAt, d.Attributes, HasMarkdownUri = d.MarkdownUri != null })
+                .ToListAsync(ct))
+            .Select(r => new RepublishSelection.Row(r.Id, r.CreatedAt, r.Attributes, r.HasMarkdownUri))];
 }

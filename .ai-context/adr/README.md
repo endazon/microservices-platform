@@ -586,3 +586,4 @@
 | [IADR-0506](./IADR-0506_blocked-revalidation-deadline-field-over-ledger.md) | blocked の再検証期限は issue 本文の定型欄（`再検証期限: YYYY-MM-DD`）で持ち、AST 型の台帳ファイルは置かない。週次棚卸しが期限なし・期限切れを挙げ、全件を台帳として報告に並べる。経過日数は `updated_at` ではなく最後のコメントから数える（#1773） | Accepted |
 | [IADR-0507](./IADR-0507_integration-all-skip-gate-executed-floor-and-dependency-skips.md) | `integration.yml` は `Category=Integration` の試験をユニットごとに数え（識別は TRX ではなく `--list-tests --filter` の発見）、宣言のあるユニットで実走 0 件か「依存を得られない」skip が 1 件でもあれば赤にする。skip 件数そのものの上限は置かない（計画 ADR-0090 決定 3。#1788） | Accepted |
 | [IADR-0508](./IADR-0508_plan-range-lag-weekly-audit-with-nfr.md) | 計画 ID レンジ・NFR 採番の宣言のずれは週次棚卸しの前段が NFR も含めて突き合わせ、専用 issue へ起票し、届かなければ未確認として数える（#1775） | Accepted |
+| [IADR-0509](./IADR-0509_document-keyset-in-sql-and-created-at-id-index.md) | 文書のキーセット（作成時刻昇順・同時刻は ID 昇順）は SQL で並べて比べ、(CreatedAt, Id) の複合索引で引く。GET /documents/page は塊ごとに読んでメモリの述語を当て、再発行の口は属性の絞り込みが無いとき limit + 1 行と COUNT(*) で答える（#1765） | Accepted |

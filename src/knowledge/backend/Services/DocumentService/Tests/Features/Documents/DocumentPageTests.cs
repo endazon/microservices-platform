@@ -244,8 +244,9 @@ public class DocumentPageTests(TestWebApplicationFactory factory)
     }
 
     // FR-06, NFR-08 (#1575): **作成時刻が同じ文書は `Id` 昇順で切り分ける**（カーソルの同時刻の枝）。
-    // 作成時刻を台帳で同じ tick に揃え、1 件ずつ辿る。同時刻の枝（`Precedes` の `Id` 比較）を
+    // 作成時刻を台帳で同じ tick に揃え、1 件ずつ辿る。同時刻の枝（`AfterCursor` の `Id` 比較。#1765 で SQL へ移した）を
     // 落とす・向きを逆にする・`>=` にすると、読み飛ばし・重複・無限の繰り返しのいずれかになる。
+    // 実 PostgreSQL の uuid の順・timestamptz の丸めでの同じ性質は `Knowledge.IntegrationTests` の `DocumentKeysetPostgresTests` が見る。
     [Fact]
     public async Task 作成時刻が同じtickの文書はIdの昇順で1件ずつ重複なく辿れる()
     {
@@ -286,6 +287,37 @@ public class DocumentPageTests(TestWebApplicationFactory factory)
         } while (cursor is not null && pages < 20);
 
         seen.Should().Equal(seeded, "時刻の昇順、同時刻は Id の昇順で、ちょうど 1 回ずつ");
+    }
+
+    // FR-06, NFR-08, IADR-0509 (#1765): **台帳は SQL のキーセットで塊ごとに読み、塊の中で絞る。**
+    // 一致する文書の間に一致しない文書が塊の大きさより多く挟まっても、塊を渡って続きを見つける（塊の境目で抜けない）。
+    // 塊を 1 回で打ち切る・塊の続きを一致した文書の末尾から作る（一致しない行を読み直し続ける／飛ばす）変異はここで落ちる。
+    [Fact]
+    public async Task 一致する文書の間に塊より多くの一致しない文書が挟まっても続きを見つける()
+    {
+        var project = $"p-{Guid.NewGuid():N}";
+        var first = await SeedAsync("先頭", Org(project));
+        for (var i = 0; i < 12; i++)
+            await SeedAsync($"挟まる{i}", Org($"q-{Guid.NewGuid():N}"));
+        await SeedAsync("挟まる個人資料", PrivateNote(project, owner: "alice"));
+        var second = await SeedAsync("末尾", Org(project));
+
+        var client = ClientAs("ast-kb-writer", "platform-operator");
+        var page1 = await PageAsync(client, $"attr.project={project}&limit=1");
+        page1.Items.Select(d => d.Id).Should().Equal([first.Id]);
+        page1.NextCursor.Should().NotBeNull("一致する文書がもう 1 件ある");
+
+        var page2 = await PageAsync(client, $"attr.project={project}&limit=1&cursor={Uri.EscapeDataString(page1.NextCursor!)}");
+        page2.Items.Select(d => d.Id).Should().Equal([second.Id]);
+        page2.NextCursor.Should().BeNull();
+    }
+
+    // FR-06, IADR-0509 (#1765): 塊の大きさは初回 `limit + 1`、以降 2 倍で、上限で止まる（往復の回数を台帳の件数に比例させない）。
+    [Fact]
+    public void 塊の上限は2000でlimitの上限より大きい()
+    {
+        DocumentPageQuery.MaxScanChunk.Should().Be(2000);
+        DocumentPageQuery.MaxScanChunk.Should().BeGreaterThan(DocumentPageQuery.MaxLimit + 1, "初回の塊（limit + 1）が上限で切られない");
     }
 
     // FR-06 (#1575): `limit` は 1〜500 に丸める（FeedbackService の一覧と同じ作法）。

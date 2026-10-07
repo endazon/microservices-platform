@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-02, FR-06, UC-04, NFR-09, ADR-0013, ADR-0016, ADR-0027, ADR-0127, IADR-0313, IADR-0314, IADR-0455, IADR-0484, IADR-0497]
 author: claude
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0013_embedding-model.md（フォローアップ「再索引運用（モデル更新時）の手順整備」）
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md
@@ -127,6 +127,8 @@ related_specs:
 - 22,564 件規模では、ページごとに台帳の投影（4 列）を全件読む（**1 ページ O(N)・1 走査 O(N²)**。既定のページ 50 で約 453 回の呼び出し ≈ 1,020 万行）。
   `GET /documents/page` も同じ形である。キーセットを SQL へ移し `(CreatedAt, Id)` の索引を張る直し（Postgres の uuid と .NET の Guid の並びを両側で揃える注意つき）は
   **#1765 へ切り出した**（独立監査 Y3。本 PR では直さない）。
+  ［2026-10-08 追記 / #1765］**属性の絞り込みが無い走査は直した**（[IADR-0509](./IADR-0509_document-keyset-in-sql-and-created-at-id-index.md)）。1 ページは `limit + 1` 行の索引走査と
+  `COUNT(*)` で答える。応答・並び・カーソルの意味は変えていない。**属性の絞り込みつき（`--attr`）は従前どおり 1 ページ O(N)** である（IADR-0509 決定 3）。
 - **確かめた位置はキューが空になった時点でしか進まない。** 取り込みが追いつかずキューが空にならないまま流れ続けると、止まったときに戻る幅が大きくなり、
   再開で重ねて発行する（費用が重なる）件数が増える。取りこぼしよりも重複を選んだ（再発行は冪等）。`--max-pages` で区切れば区切りごとに空になるまで待って確かめる。
 - **`--max-dlq-growth` の許容の内の増加は止めない。** その文書は索引に入らないまま走査が進む（確かめた位置も進む）。終わりに件数を出すので、DLQ の中身で文書を確かめて `--ids` で流し直す。

@@ -37,6 +37,10 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
         mb.Entity<Document>(e =>
         {
             e.HasKey(d => d.Id);
+            // FR-02, FR-06, NFR-08, [[IADR-0509]] (#1765): キーセット（作成時刻昇順・同時刻は ID 昇順）の索引。
+            // `GET /documents/page` と再発行の口が `WHERE "CreatedAt" >= c AND (…) ORDER BY "CreatedAt", "Id" LIMIT n` をこれで引く
+            // （述語の形は `DocumentPageQuery.AfterCursor`）。
+            e.HasIndex(d => new { d.CreatedAt, d.Id });
             e.Property(d => d.Title).HasMaxLength(500).IsRequired();
             e.Property(d => d.Status).HasMaxLength(50).IsRequired();
             e.Property(d => d.MarkdownUri).HasMaxLength(2048);

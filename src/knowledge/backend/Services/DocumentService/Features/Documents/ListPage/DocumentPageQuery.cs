@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using DocumentService.Domain;
 using Knowledge.Contracts.Dtos;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Features.Documents.ListPage;
 
@@ -59,7 +60,12 @@ internal static class DocumentPageQuery
     // FeedbackService の一覧と同じ作法で丸める（1〜500。未指定は 100）。
     internal static int ClampLimit(int? limit) => Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
 
-    // 対象集合（組織文書 ∩ 全絞り込みに一致）を全順序（`CreatedAt` 昇順・同時刻は `Id` 昇順）で並べ、
+    // FR-06, NFR-08, [[IADR-0509]] (#1765): 台帳を SQL のキーセットで塊ごとに読む大きさ。
+    // 初回は `limit + 1` 行（絞り込みが緩ければ 1 回で足りる）、続きは 2 倍ずつ広げ、この上限で止める
+    // （厳しい絞り込みで往復の回数が台帳の件数に比例しないようにする）。
+    internal const int MaxScanChunk = 2000;
+
+    // 対象集合（組織文書 ∩ 全絞り込みに一致 ∩ 読める）を全順序（`CreatedAt` 昇順・同時刻は `Id` 昇順）で辿り、
     // カーソルの後ろから `limit` 件を切り出す。
     //
     // 🔴 **並びのキーは作成時刻（不変）である。更新時刻にしない。** 更新時刻で並べると、走査の途中で
@@ -67,28 +73,74 @@ internal static class DocumentPageQuery
     // 作成時刻は台帳の初期化子でしか決まらないので、**走査の間ずっと在った文書はちょうど 1 回ずつ返る**。
     // 走査の途中で作られた文書は末尾に現れ、削除はカーソルの位置を動かさない。
     //
-    // 🔴 **メモリ上で絞る。** 属性は jsonb へ値変換で写しており（`DocumentDbContext`）、LINQ から SQL へ
-    // 訳せない。呼び出し側は既存の `GET /documents` と同じく台帳を読んでから渡す（DB の負荷は増えない）。
-    internal static (List<Document> Page, string? NextCursor) Slice(
-        IEnumerable<Document> ledger, IReadOnlyDictionary<string, string> filters,
-        int limit, DocumentPageCursor? after)
+    // ［2026-10-08 / #1765 / [[IADR-0509]]］**並べる・カーソルと比べるは SQL で行う**（`AfterCursor` / `InPageOrder`）。
+    // 従前は台帳の全件を読んでメモリで並べていた（1 ページ O(N)、1 回の走査 O(N²)）。
+    // 🔴 **絞り込みの述語はメモリのまま**である —— 属性は jsonb へ値変換で写しており LINQ から SQL へ訳せず、
+    //   個人資料の判定（`DocumentScopes.IsPrivateNote`）は大文字小文字を区別しないので jsonb の包含でも同じ意味にならない。
+    //   そこで台帳を SQL の並びで**塊ごとに**読み、塊の中で述語を当て、一致が `limit + 1` 件に達するか台帳が尽きるまで進む。
+    //   塊の続きは塊の末尾の行（DB から読んだ値）から作るので、塊の境目でも抜け・重複は起きない。
+    // 🔴 **.NET 側で並べ直さない。** Postgres の uuid の順と `Guid.CompareTo` の順を、並べる側と比べる側で混ぜない。
+    //
+    // `readable` は内容の ABAC の門が開いたときだけ渡す（切り出しの**前**に絞る。#1615）。塊の中の、述語に一致した文書だけを渡す。
+    internal static async Task<(List<Document> Page, string? NextCursor)> ReadPageAsync(
+        IQueryable<Document> ledger, IReadOnlyDictionary<string, string> filters, int limit, DocumentPageCursor? after,
+        Func<List<Document>, CancellationToken, Task<List<Document>>>? readable, CancellationToken ct)
     {
-        var ordered = ledger
-            .Where(d => !DocumentScopes.IsPrivateNote(d.Attributes))
-            .Where(d => filters.All(f =>
-                d.Attributes.TryGetValue(f.Key, out var v) && string.Equals(v, f.Value, StringComparison.Ordinal)))
-            .OrderBy(d => d.CreatedAt.UtcTicks)
-            .ThenBy(d => d.Id)
-            .Where(d => after is null || after.Value.Precedes(d))
-            .Take(limit + 1)
-            .ToList();
+        var matches = new List<Document>(limit + 1);
+        var position = after;
+        var chunk = limit + 1;
+        while (true)
+        {
+            var batch = await ledger.AfterCursor(position).InPageOrder().Take(chunk).ToListAsync(ct);
+            var admitted = batch.Where(d => Matches(d, filters)).ToList();
+            if (readable is not null && admitted.Count > 0)
+                admitted = await readable(admitted, ct);
 
-        if (ordered.Count <= limit)
-            return (ordered, null);
+            foreach (var d in admitted)
+            {
+                matches.Add(d);
+                if (matches.Count > limit) break;
+            }
 
-        var page = ordered.Take(limit).ToList();
+            if (matches.Count > limit || batch.Count < chunk)
+                break;
+            position = DocumentPageCursor.After(batch[^1]);
+            chunk = Math.Min(chunk * 2, MaxScanChunk);
+        }
+
+        if (matches.Count <= limit)
+            return (matches, null);
+
+        var page = matches.Take(limit).ToList();
         return (page, DocumentPageCursor.After(page[^1]).Encode());
     }
+
+    // 組織文書であり、全絞り込みに一致する（AND・キーも値も大文字小文字を区別する完全一致）。
+    private static bool Matches(Document d, IReadOnlyDictionary<string, string> filters)
+        => !DocumentScopes.IsPrivateNote(d.Attributes)
+            && filters.All(f =>
+                d.Attributes.TryGetValue(f.Key, out var v) && string.Equals(v, f.Value, StringComparison.Ordinal));
+
+    // FR-02, FR-06, [[IADR-0509]] (#1765): 並び（`CreatedAt` 昇順・同時刻は `Id` 昇順）でカーソルより**厳密に後ろ**の行。
+    // SQL では `"CreatedAt" >= @c AND ("CreatedAt" > @c OR "Id" > @id)` に訳される。
+    // 🔴 **先頭の `CreatedAt >= c` を外さない**（意味は `CreatedAt > c OR (CreatedAt = c AND Id > id)` と同じで、冗長に見える）。
+    //   Postgres はこの項だけを `(CreatedAt, Id)` の索引の**開始位置**（Index Cond）に使える。素の OR の形だと索引を先頭から
+    //   なめて述語で捨てるので、カーソルの位置に比例して読む（22,564 件の台帳の 15,000 件目で 15,001 行を捨てた。実測は IADR-0509）。
+    //   行値の比較（`(CreatedAt, Id) > (c, id)`）は EF の InMemory で評価できないので採らない。
+    // 🔴 時刻は offset 0 で渡す（Npgsql は offset 0 の `DateTimeOffset` しか timestamptz へ書けない）。
+    // 🔴 「以上」にしない —— 前ページの末尾をもう一度返す。
+    internal static IQueryable<Document> AfterCursor(this IQueryable<Document> ledger, DocumentPageCursor? after)
+    {
+        if (after is not { } cursor)
+            return ledger;
+        var createdAt = cursor.CreatedAt;
+        var id = cursor.Id;
+        return ledger.Where(d => d.CreatedAt >= createdAt && (d.CreatedAt > createdAt || d.Id > id));
+    }
+
+    // FR-02, FR-06, [[IADR-0509]] (#1765): ページの並び。**キーセットの述語（`AfterCursor`）と同じ 2 列・同じ向き**で並べる。
+    internal static IOrderedQueryable<Document> InPageOrder(this IQueryable<Document> ledger)
+        => ledger.OrderBy(d => d.CreatedAt).ThenBy(d => d.Id);
 
     private static IResult Problem(string key, string message) =>
         Results.ValidationProblem(new Dictionary<string, string[]> { [key] = [message] });
@@ -107,12 +159,9 @@ internal readonly record struct DocumentPageCursor(long CreatedAtUtcTicks, Guid 
 
     internal static DocumentPageCursor After(Document d) => new(d.CreatedAt.UtcTicks, d.Id);
 
-    // 並び（`CreatedAt` 昇順・`Id` 昇順）でカーソルより後ろにあるか。
-    internal bool Precedes(Document d)
-    {
-        var ticks = d.CreatedAt.UtcTicks;
-        return ticks > CreatedAtUtcTicks || (ticks == CreatedAtUtcTicks && d.Id.CompareTo(Id) > 0);
-    }
+    // カーソルの作成時刻（UTC・offset 0）。SQL の比較へ渡す値（#1765）。
+    // 🔴 カーソルは DB から読んだ値（timestamptz＝マイクロ秒に丸まった値）から作るので、境界の行とちょうど等しく比べられる。
+    internal DateTimeOffset CreatedAt => new(CreatedAtUtcTicks, TimeSpan.Zero);
 
     internal string Encode()
     {
