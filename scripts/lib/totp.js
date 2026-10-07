@@ -86,16 +86,21 @@ if (require.main === module) {
   // 🔴 **`node -e` + `require()` で呼ばない。** `-e` の require は相対パスを**モジュール名**として
   // 解決するため `scripts/lib/totp.js` が MODULE_NOT_FOUND になる（実測して踏んだ）。
   // 既存の呼び出しと同じ「スクリプトを直接実行する」形に揃えれば、この落とし穴が消える。
+  // NFR-18 (#1793): シークレットの位置に `-` を渡すと、値を標準入力から読む（プロセスの引数に秘密を載せない）。
+  // 呼び出し側（verify-oidc-edge-flow.sh）はこちらを使う。引数で渡す形は互換のために残す。
+  const readArg = (v) => (v === '-' ? require('fs').readFileSync(0, 'utf8') : v);
   if (argv[0] === '--encode') {
-    if (!argv[1]) {
-      process.stderr.write('使い方: node scripts/lib/totp.js --encode <生シークレット>\n');
+    const raw = argv[1] ? readArg(argv[1]) : '';
+    if (!raw) {
+      process.stderr.write('使い方: node scripts/lib/totp.js --encode <生シークレット | ->\n');
       process.exit(2);
     }
-    process.stdout.write(base32Encode(argv[1]));
+    process.stdout.write(base32Encode(raw));
   } else {
-    const [secret, at] = argv;
+    const [arg, at] = argv;
+    const secret = arg ? readArg(arg).trim() : '';
     if (!secret) {
-      process.stderr.write('使い方: node scripts/lib/totp.js <base32-secret> [unix-seconds]\n');
+      process.stderr.write('使い方: node scripts/lib/totp.js <base32-secret | -> [unix-seconds]\n');
       process.exit(2);
     }
     process.stdout.write(totp(secret, at ? { t: Number(at) } : {}));

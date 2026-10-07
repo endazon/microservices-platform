@@ -52,11 +52,13 @@ fi
 ACCESSOR="$(vault auth list -format=json | jq -r '."oidc/".accessor')"
 
 echo "==> auth/oidc/config"
-vault write auth/oidc/config \
+# NFR-18 (#1793): client secret をホストの vault の引数（`ps`・`/proc/*/cmdline`）へ載せない。`key=-` で stdin から読ませる
+# （他の引数は秘密でない）。末尾の改行まで値に入らないよう here-string ではなく `printf '%s'` で渡す（#1767 の実測）。
+printf '%s' "$CLIENT_SECRET" | vault write auth/oidc/config \
   oidc_discovery_url="$ISSUER" \
   oidc_discovery_ca_pem="$CA_PEM" \
   oidc_client_id="vault" \
-  oidc_client_secret="$CLIENT_SECRET" \
+  oidc_client_secret=- \
   default_role="default"
 
 echo "==> auth/oidc/role/default（既定 policy=default＝fail-safe・secret アクセスは group 経由でのみ）"

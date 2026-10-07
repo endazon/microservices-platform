@@ -170,6 +170,8 @@ public class SecretItemBootstrapSeedTests
     // 従前は毎回全置換で env か開発用既定値へ戻し、相手（認証基盤・データストア）と Vault を対で回した値を Vault 側だけ戻していた。
     // 各パスは `vkv_create_if_absent <path> …` の 1 文だけで書かれ、それ以外の文（put / patch）がそのパスへ書かないこと。
     // 補助関数は「在れば return 0」を `kv put -cas=0` より前に持つこと。母集合は許可リストから引く（件数を書き写さない）。
+    // ［2026-10-08 / #1793］呼び出しは `vkv_create_if_absent <path> <key> "<value>" …`（キーと値を別の引数）へ変えた。
+    // 補助関数は値を `sh -c` の引数へ埋め込まず、JSON を stdin で `vault kv put -cas=0 secret/$path -` の 1 回へ渡す（原子的に作る）。
     [Fact]
     public void Paired_secret_kvs_are_created_only_when_absent()
     {
@@ -184,7 +186,7 @@ public class SecretItemBootstrapSeedTests
         // 逆方向の突合（PR #1684 監査 M6）: bootstrap が無いときだけ作るパスの集合と、許可リストの deferred ∪ excluded が**一致する**。
         // 許可リストから 1 件落としても（bootstrap にだけ在る）、bootstrap から 1 件落としても（許可リストにだけ在る）赤にする。
         var created = statements
-            .Select(s => Regex.Match(s, @"^\s*vkv_create_if_absent\s+(?<path>\S+)\s+"""))
+            .Select(s => Regex.Match(s, @"^\s*vkv_create_if_absent\s+(?<path>\S+)(?:\s+[A-Za-z0-9._-]+\s+""[^""]*"")+\s*$"))
             .Where(m => m.Success)
             .Select(m => m.Groups["path"].Value)
             .ToList();
@@ -193,7 +195,7 @@ public class SecretItemBootstrapSeedTests
         foreach (var path in paired)
         {
             var escaped = Regex.Escape(path);
-            var creates = statements.Where(s => Regex.IsMatch(s, $@"^\s*vkv_create_if_absent\s+{escaped}\s+""")).ToList();
+            var creates = statements.Where(s => Regex.IsMatch(s, $@"^\s*vkv_create_if_absent\s+{escaped}\s+")).ToList();
             creates.Should().ContainSingle($"secret/{path} は vkv_create_if_absent の 1 文で作ること（対になる秘密。無いときだけ）");
 
             var writes = statements.Where(s => Regex.IsMatch(s, $@"kv\s+(put|patch)[^
@@ -210,6 +212,10 @@ public class SecretItemBootstrapSeedTests
         exists.Should().BeGreaterThanOrEqualTo(0, "在否を確かめること");
         keep.Should().BeGreaterThan(exists, "在れば何もせず戻ること");
         put.Should().BeGreaterThan(keep, "作るのは無いときだけで、-cas=0 を持つこと");
+        // 🔴 NFR-18 (#1793): 値は `sh -c` の引数へ埋め込まない。JSON を stdin で渡し（`… -`）、作成は 1 回（後から patch しない）。
+        body.Should().Contain("vault kv put -cas=0 secret/$path -\"", "値は JSON の stdin で渡すこと（argv に載せない）");
+        body.Should().NotContain("$*", "呼び出しの引数（値）をコマンド文字列へ連結しないこと");
+        body.Should().NotContain("kv patch", "作成を「空で作る → patch」に分けないこと（途中で落ちると空の秘密が残る）");
     }
 
     // SC-22, IADR-0456 決定 6: moomoo / moomoo-rsa は seed しない（未設定のあいだ OpenD は Secret 不在で待機する＝fail-closed）。

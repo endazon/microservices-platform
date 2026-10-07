@@ -52,12 +52,33 @@ cd "$ROOT"
 INFRA_NS="platform-infra"
 MSP_NS="microservices-platform"
 
-apply_secret() { # ns name key=val [key=val...]
-  local ns="$1"; local name="$2"; shift 2
-  local args=(); for kv in "$@"; do args+=(--from-literal="$kv"); done
+# NFR-18 (#1793): **値を kubectl の引数（`ps`・`/proc/*/cmdline`）へ載せない**（従前は `--from-literal=<key>=<value>`）。
+#   値は 0700 の一時ディレクトリの 0600 のファイルへ組み込みの printf で書き、`--from-file=<key>=<file>` にパスだけを渡す
+#   （Secret の中身は `--from-literal` と同じ）。サブシェルの関数にして EXIT trap で必ず消す（呼び出し側の trap を汚さない）。
+# Secret の patch 用（#1793）。
+json_str() { # <value> → JSON 文字列（引用符つき）。組み込みの置換だけで組む（値をどのプロセスの引数にも載せない）
+  local s="$1"
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"; s="${s//$'\r'/\\r}"; s="${s//$'\t'/\\t}"
+  # 上の 5 種以外の制御文字は JSON にそのまま置けない。壊れた JSON を書くより止める（値は表示しない）。
+  case "$s" in *[[:cntrl:]]*) echo "error: JSON に置けない制御文字を含む値がある（値は表示しない）" >&2; return 1 ;; esac
+  printf '"%s"' "$s"
+}
+
+apply_secret() ( # ns name key=val [key=val...]
+  ns="$1"; name="$2"; shift 2
+  umask 077
+  d="$(mktemp -d)"
+  trap 'rm -rf "$d"' EXIT
+  args=(); i=0
+  for kv in "$@"; do
+    i=$((i + 1))
+    printf '%s' "${kv#*=}" > "$d/$i"
+    args+=(--from-file="${kv%%=*}=$d/$i")
+  done
   kubectl create secret generic "$name" -n "$ns" "${args[@]}" \
     --dry-run=client -o yaml | kubectl apply -f -
-}
+)
 
 echo "==> [1/7] cluster"
 # ランタイム自動判定: Rancher Desktop（内蔵 k3s・nerdctl）か、docker+k3d か。
@@ -961,8 +982,14 @@ if [ "${ARGOCD:-}" = "1" ]; then
   rm -f "$ARGOCD_CM_PATCH" "$ARGOCD_CA_FILE"; rmdir "$ARGOCD_TMPDIR" 2>/dev/null || true
   kubectl -n argocd patch configmap argocd-rbac-cm --type merge --patch-file deploy/local/argocd/oidc/argocd-rbac-cm-patch.yaml
   kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge --patch-file deploy/local/argocd/oidc/argocd-cmdparams-patch.yaml
-  kubectl -n argocd patch secret argocd-secret --type merge \
-    -p "{\"stringData\":{\"oidc.keycloak.clientSecret\":\"${ARGOCD_OIDC_CLIENT_SECRET:-argocd-dev-secret-change-me}\"}}"
+  # NFR-18 (#1793): client secret を kubectl の引数へ載せない（従前は `-p '{"stringData":…}'`）。0600 の patch ファイル経由で渡す。
+  #   サブシェルの EXIT trap で必ず消す（apply_secret と同じ形）。
+  ( umask 077
+    d="$(mktemp -d)"
+    trap 'rm -rf "$d"' EXIT
+    v="$(json_str "${ARGOCD_OIDC_CLIENT_SECRET:-argocd-dev-secret-change-me}")" || exit 1
+    printf '{"stringData":{"oidc.keycloak.clientSecret":%s}}' "$v" > "$d/argocd-secret-patch.json"
+    kubectl -n argocd patch secret argocd-secret --type merge --patch-file "$d/argocd-secret-patch.json" )
   # server.insecure（cmd-params）と oidc の反映のため argocd-server を再起動する（CM は live 反映だが params は要再起動）。
   kubectl -n argocd rollout restart deploy/argocd-server >/dev/null 2>&1 || true
   echo "    ArgoCD OIDC: https://argocd.localhost:50000 (LOCALEDGE=1) — Keycloak でログイン（local admin は break-glass）。"
