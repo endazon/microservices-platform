@@ -10,7 +10,7 @@ author: claude
 ids: [FR-05, FR-06, NFR-09, UC-03, UC-05]
 adrs: [ADR-0004, ADR-0027, ADR-0106]
 iadrs: [IADR-0130, IADR-0231, IADR-0232, IADR-0414, IADR-0461]
-specs: [20260908_issue-1336_integration-gate-asks-for-services, 20260909_issue-1337_fanout-tests-on-shared-broker, 20260915_issue-1434_minio-image-registry, 20260925_1499_object-storage-seaweedfs]
+specs: [20260908_issue-1336_integration-gate-asks-for-services, 20260909_issue-1337_fanout-tests-on-shared-broker, 20260915_issue-1434_minio-image-registry, 20260925_1499_object-storage-seaweedfs, 20261008_1790_qdrant-test-image-pin]
 issues: [#455, #1073, #1336, #1337, #1434, #1499, #1790]
 -->
 
