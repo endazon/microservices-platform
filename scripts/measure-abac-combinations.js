@@ -411,8 +411,8 @@ function renderText(r, topN = 10) {
 
 const env = (k, d) => process.env[k] || d;
 
-function run(cmd, args, what) {
-  const res = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+function run(cmd, args, what, input) {
+  const res = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, input });
   if (res.error) throw new Error(`${what}: ${cmd} を実行できません（${res.error.message}）`);
   if (res.status !== 0) {
     throw new Error(`${what}: ${cmd} が失敗しました（exit ${res.status}）\n${(res.stderr || '').trim()}`);
@@ -450,12 +450,16 @@ function psqlJson(db, sql, dsn) {
 
 // kcadm を kubectl exec 経由で叩く。--fields は使わない:
 // kcadm の項目フィルタは attributes（入れ子オブジェクト）を空にして返すため、属性が測れなくなる。
-function kcadm(args) {
+function kcadm(args, input) {
   const ns = env('ABAC_NS', 'platform-infra');
   const pod = podName(ns, env('ABAC_KC_LABEL', 'app=keycloak'));
-  return run('kubectl', ['-n', ns, 'exec', pod, '--', '/opt/keycloak/bin/kcadm.sh', ...args], `kcadm ${args[0]}`);
+  // 標準入力を渡すとき（ログインのパスワード）だけ `exec -i` にする。
+  const exec = input === undefined ? ['exec'] : ['exec', '-i'];
+  return run('kubectl', ['-n', ns, ...exec, pod, '--', '/opt/keycloak/bin/kcadm.sh', ...args], `kcadm ${args[0]}`, input);
 }
 
+// NFR-18 (#1793): パスワードを kubectl と Pod 内 kcadm の引数へ載せない。`--password` を省くと kcadm は stdin から読む
+// （Keycloak 24 の `config credentials` の用法「echo <pw> | kcadm.sh config credentials …」）。
 function kcadmLogin() {
   kcadm([
     'config',
@@ -466,9 +470,7 @@ function kcadmLogin() {
     'master',
     '--user',
     env('ABAC_KC_ADMIN_USER', 'admin'),
-    '--password',
-    env('ABAC_KC_ADMIN_PASSWORD', 'admin'),
-  ]);
+  ], `${env('ABAC_KC_ADMIN_PASSWORD', 'admin')}\n`);
 }
 
 // Keycloak Admin REST を直接叩く（ABAC_KC_URL 指定時）。

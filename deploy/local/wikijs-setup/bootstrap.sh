@@ -24,7 +24,9 @@
 #   エッジ（Traefik / Istio Ingress Gateway）にも port-forward にも STRICT mTLS（#1109）にも依存しない。
 # - **秘密をリポジトリにもログにも書かない**: 管理者パスワードは Secret `wikijs-admin`、API キーは
 #   Secret `wikijs-sync`（既存キー名 `apiKey`・消費側は無改変）。**標準出力へは長さしか出さない。**
-#   なお curl の引数はコンテナ内のプロセス表に一瞬現れる（dev 専用・ローカル単一ノード前提で許容する）。
+#   ［2026-10-08 / #1793］**プロセスの引数（`ps`・`/proc/*/cmdline`）にも載せない。** 従前は「curl の引数は
+#   コンテナ内のプロセス表に一瞬現れる（許容する）」としていたが、ベアラー・API キー・パスワードは
+#   stdin（kubectl exec -i）か 0600 の一時ファイル経由で渡す（wiki_post・write_secret・段 7 の Vault 書き込み）。
 # - **best-effort**: 失敗しても `k8s-local-up.sh` を止めない。**fail-closed の門は
 #   `scripts/check-stack-ready.js` の G7**（setup モードを検知して落とす）に置く。
 #
@@ -61,15 +63,20 @@ warn() { echo "    [wikijs-setup] WARN: $*" >&2; }
 
 # wiki-js コンテナ内 loopback へ POST する。stdin = リクエストボディ。
 # 出力は「ボディ ＋ 改行 ＋ HTTP ステータス」。呼び出し側が最終行を切り出す。
+#
+# NFR-18 (#1793): **ベアラー（管理者の JWT・API キー）を kubectl と Pod 内 curl の引数へ載せない。**
+#   kubectl の stdin の 1 行目にベアラー（空行＝付けない）、2 行目以降に本文を流す。Pod 内の sh は 1 行目を
+#   `read`（組み込み。1 バイトずつ読むので残りの本文は欠けない）で取り、ヘッダを組み込みの printf でパイプへ書いて
+#   curl に `-H @/dev/fd/3` で読ませる（元の stdin は fd 4 へ退避して curl の stdin＝本文へ戻す）。
+#   1 行の script にしておく（kubectl の記録スタブが 1 呼び出し 1 行で控える。scripts/k8s-local-up.test.js）。
+#   同じ形を scripts/check-stack-ready.js の G7（wikiJsGraphql）も使う。
+WIKI_POST_SH='IFS= read -r B || exit 90; if [ -z "$B" ]; then exec "$@"; fi; exec 4<&0; printf "Authorization: Bearer %s\n" "$B" | "$@" -H @/dev/fd/3 3<&0 0<&4'
 wiki_post() { # $1=path  $2=bearer(任意)  stdin=body
-  local path="$1" bearer="${2:-}" args
-  args=(curl -sS --max-time 60 -w '\n%{http_code}' -X POST "${WIKI_URL}${path}"
-        -H 'Content-Type: application/json')
-  # 🔴 `[ ... ] && args+=(...)` と書かない —— 偽のとき終了ステータス 1 が返り、`set -e` が
-  #   script ごと落とす（しかも「Wiki.js が壊れている」ように見える無関係な失敗になる）。
-  if [ -n "$bearer" ]; then args+=(-H "Authorization: Bearer ${bearer}"); fi
-  args+=(--data-binary @-)
-  kubectl -n "$MSP_NS" exec -i "deploy/${WIKI_DEPLOY}" -c "$WIKI_CONTAINER" -- "${args[@]}" 2>/dev/null
+  local path="$1" bearer="${2:-}"
+  { printf '%s\n' "$bearer"; cat; } \
+    | kubectl -n "$MSP_NS" exec -i "deploy/${WIKI_DEPLOY}" -c "$WIKI_CONTAINER" -- \
+        sh -c "$WIKI_POST_SH" sh curl -sS --max-time 60 -w '\n%{http_code}' -X POST "${WIKI_URL}${path}" \
+        -H 'Content-Type: application/json' --data-binary @- 2>/dev/null
 }
 
 http_status() { printf '%s' "$1" | tail -n 1; }
@@ -83,6 +90,16 @@ graphql() { # $1=query  $2=bearer
 # 最小の JSON 文字列エスケープ（本 script が組み立てる値だけを通す）。
 json_string() { printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr '\n' ' ')"; }
 
+# Secret の patch 用（#1793）。値を欠かさず往復させる（json_string は改行を空白へ潰すので使わない）。
+json_str() { # <value> → JSON 文字列（引用符つき）。組み込みの置換だけで組む（値をどのプロセスの引数にも載せない）
+  local s="$1"
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"; s="${s//$'\r'/\\r}"; s="${s//$'\t'/\\t}"
+  # 上の 5 種以外の制御文字は JSON にそのまま置けない。壊れた JSON を書くより止める（値は表示しない）。
+  case "$s" in *[[:cntrl:]]*) echo "error: JSON に置けない制御文字を含む値がある（値は表示しない）" >&2; return 1 ;; esac
+  printf '"%s"' "$s"
+}
+
 # Secret の 1 キーを取り出す（不在なら空文字）。
 read_secret() { # $1=name $2=key
   local raw
@@ -92,15 +109,23 @@ read_secret() { # $1=name $2=key
 }
 
 # Secret の 1 キーを書く（在れば patch・無ければ create）。**値は表示しない。**
-write_secret() { # $1=name $2=key $3=value
+# NFR-18 (#1793): **値を kubectl の引数へ載せない**（従前は `-p '{"stringData":…}'` / `--from-literal`）。
+#   0700 の一時ディレクトリの 0600 のファイルへ組み込みの printf で書き、patch は `--patch-file`、create は
+#   `--from-file` にパスだけを渡す（Secret の中身は従前と同じ）。サブシェルの EXIT trap で必ず消す。
+write_secret() ( # $1=name $2=key $3=value
+  umask 077
+  d="$(mktemp -d)"
+  trap 'rm -rf "$d"' EXIT
   if kubectl -n "$MSP_NS" get secret "$1" >/dev/null 2>&1; then
-    kubectl -n "$MSP_NS" patch secret "$1" \
-      -p "{\"stringData\":{\"$2\":\"$3\"}}" >/dev/null
+    k="$(json_str "$2")" || exit 1; v="$(json_str "$3")" || exit 1
+    printf '{"stringData":{%s:%s}}' "$k" "$v" > "$d/patch.json"
+    kubectl -n "$MSP_NS" patch secret "$1" --patch-file "$d/patch.json" >/dev/null
   else
-    kubectl -n "$MSP_NS" create secret generic "$1" --from-literal="$2=$3" \
+    printf '%s' "$3" > "$d/value"
+    kubectl -n "$MSP_NS" create secret generic "$1" --from-file="$2=$d/value" \
       --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   fi
-}
+)
 
 # ---------------------------------------------------------------- 判定
 
@@ -272,10 +297,12 @@ else
   # Vault が居るなら **そちらにも書く**。ESO（creationPolicy: Owner）が復旧したときに
   # 空文字で上書きされて静かに壊れるのを防ぐ。#458 の供給経路と同じ場所（secret/msp/wikijs-sync）で、
   # **新しいパターンを増やさない**。
+  # NFR-18 (#1793): 鍵は Pod 内の vault の引数にも載せない（従前は `read -r K; … apiKey="$K"`）。`apiKey=-` で stdin から読ませる。
+  #   vault 1.16 の kv-builder は stdin を末尾の改行ごと読むので、here-string ではなく `printf '%s'` で渡す（#1767 の実測）。
   if kubectl -n "$INFRA_NS" get deploy vault >/dev/null 2>&1; then
-    kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -c \
-      'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"; read -r K; vault kv put secret/msp/wikijs-sync apiKey="$K" >/dev/null' \
-      <<< "$new_key" 2>/dev/null \
+    printf '%s' "$new_key" | kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -c \
+      'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"; vault kv put secret/msp/wikijs-sync apiKey=- >/dev/null' \
+      2>/dev/null \
       && log "Vault secret/msp/wikijs-sync も更新した" \
       || warn "Vault への書き込みに失敗した（ESO 経路を使っていないなら無害）"
   fi

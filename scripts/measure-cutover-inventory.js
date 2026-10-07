@@ -373,8 +373,8 @@ function renderText(result) {
 
 const env = (k, d) => process.env[k] || d;
 
-function run(cmd, args, what) {
-  const res = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+function run(cmd, args, what, input) {
+  const res = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, input });
   if (res.error) throw new Error(`${what}: ${cmd} を実行できません（${res.error.message}）`);
   if (res.status !== 0) throw new Error(`${what}: ${cmd} が失敗しました（exit ${res.status}）\n${(res.stderr || '').trim()}`);
   return res.stdout;
@@ -443,8 +443,11 @@ async function collect(databases) {
   const keycloak = await tryCollect('Keycloak', () => {
     const pod = podName(infra, 'app=keycloak');
     const kcadm = (args) => run('kubectl', ['-n', infra, 'exec', pod, '--', '/opt/keycloak/bin/kcadm.sh', ...args], `kcadm ${args[0]}`);
-    kcadm(['config', 'credentials', '--server', env('CUTOVER_KC_INTERNAL_URL', 'http://localhost:8080'), '--realm', 'master',
-      '--user', env('CUTOVER_KC_ADMIN_USER', 'admin'), '--password', env('CUTOVER_KC_ADMIN_PASSWORD', 'admin')]);
+    // NFR-18 (#1793): パスワードを kubectl と Pod 内 kcadm の引数へ載せない。`--password` を省き stdin（`exec -i`）で渡す
+    // （Keycloak 24 の `config credentials` は省くと stdin から読む）。
+    run('kubectl', ['-n', infra, 'exec', '-i', pod, '--', '/opt/keycloak/bin/kcadm.sh', 'config', 'credentials',
+      '--server', env('CUTOVER_KC_INTERNAL_URL', 'http://localhost:8080'), '--realm', 'master',
+      '--user', env('CUTOVER_KC_ADMIN_USER', 'admin')], 'kcadm config', `${env('CUTOVER_KC_ADMIN_PASSWORD', 'admin')}\n`);
     const realms = JSON.parse(kcadm(['get', 'realms', '--fields', 'realm'])).map((r) => r.realm);
     if (!realms.includes(realm)) return { realms, users: [], clients: [] };
     const users = JSON.parse(kcadm(['get', 'users', '-r', realm, '--limit', '1000', '--fields', 'username,createdTimestamp']));

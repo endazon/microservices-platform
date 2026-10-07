@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, ADR-0048, ADR-0093, IADR-0228, IADR-0200]
 author: endazon (with Claude Code)
 created: 2026-09-09
-updated: 2026-09-09
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0093_plan-id-ranges-derived-and-published.md
   - planning:projects/microservices-platform/07_adr/ADR-0048_impl-docs-restructure.md
@@ -89,6 +89,7 @@ warn 閾値（90%）を新たに越えた。** 短縮しても `46,092`（90.02%
 
 - `scanned` は突き合わせられた種別の数である。🔴 **`scanned: 0` は「ずれが無い」ではなく「検査が動いていない」。**
 - **常に exit 0。** secret 不在・API 失敗・宣言不読はいずれも `status: "unverified"` ＋ 理由。ADR-0093 決定 3 が言う「fail-open のままにしない」の内容は、**同決定の本文どおり走査件数の併記**である。
+- **［2026-10-08 追記 / #1775］** 「宣言不読」だけを改めた（[IADR-0508](./IADR-0508_plan-range-lag-weekly-audit-with-nfr.md) 決定 3）。宣言が読めないのは本リポジトリの欠陥であり `status: "error"`・exit 1。secret 不在・API 失敗は従来どおり exit 0 の `unverified`。あわせて、週次の `backlog-audit.yml` に限って `--with-nfr` で NFR 採番も突き合わせ、ずれたら専用 issue を起票する（同 決定 1・2。PR CI は 4 種のまま）。
 
 ### 決定 4: `ci.yml` の `static-checks` へ自己試験と本検査を配線する
 

@@ -273,9 +273,12 @@ function runtimeResetConfig(realmName) {
   if (!/^[A-Za-z0-9._-]+$/.test(String(realmName || ''))) {
     return { ok: false, error: `realm 名が想定の字種でない: ${JSON.stringify(realmName)}` };
   }
+  // NFR-18 (#1793): パスワードを kcadm（Pod 内の java）の引数へ載せない。`--password` を省くと kcadm は
+  // パスワードを stdin から読む（Keycloak 24 の `config credentials` の用法「echo <pw> | kcadm.sh config credentials …」）。
+  // printf は sh の組み込みなので、値はどのプロセスの引数にも載らない。
   const script =
-    '/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master'
-    + ' --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null 2>&1'
+    'printf \'%s\\n\' "$KEYCLOAK_ADMIN_PASSWORD" | /opt/keycloak/bin/kcadm.sh config credentials'
+    + ' --server http://localhost:8080 --realm master --user "$KEYCLOAK_ADMIN" >/dev/null 2>&1'
     + ` && /opt/keycloak/bin/kcadm.sh get realms/${realmName}`;
   const r = kubectl(
     ['-n', KEYCLOAK_NS, 'exec', '-i', `deploy/${KEYCLOAK_DEPLOY}`, '-c', KEYCLOAK_DEPLOY, '--',
@@ -1875,6 +1878,7 @@ if (require.main === module) {
  * 🔴 **判定ロジック（evaluate*）は 1 行も変えていない。** 足したのは export だけである。
  */
 module.exports = {
+  runtimeResetConfig, // #1793: Pod 内 kcadm の引数にパスワードを載せないことを試験が実走で確かめる
   pickTargetUser,
   pickBrowserFlowClient,
   linkLifetimeMinutes,

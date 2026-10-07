@@ -67,9 +67,14 @@ done
 qcurl() {
   local method="$1" path="$2" body_file="${3:-}"
   local -a args=(-sS -X "$method" "${QDRANT_URL}${path}" -H 'Content-Type: application/json')
-  [ -n "$QDRANT_API_KEY" ] && args+=(-H "api-key: ${QDRANT_API_KEY}")
   [ -n "$body_file" ] && args+=(--data-binary "@${body_file}")
-  curl "${args[@]}"
+  # NFR-18 (#1793): API キーを curl の引数（`ps`・`/proc/*/cmdline`）へ載せない。ヘッダを stdin から `-H @-` で読ませる
+  #   （本文は引数かファイルで渡しているので curl の stdin は空いている）。printf は bash の組み込み。
+  if [ -n "$QDRANT_API_KEY" ]; then
+    printf 'api-key: %s\n' "$QDRANT_API_KEY" | curl "${args[@]}" -H @-
+  else
+    curl "${args[@]}"
+  fi
 }
 
 # JSON 応答から `result.points` の件数を読む（-1 は応答が読めなかったことを表す）。

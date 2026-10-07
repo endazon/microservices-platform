@@ -1,8 +1,8 @@
 <!-- trace:
 adrs: [ADR-0048, ADR-0118]
-iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507]
+iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507, IADR-0508]
 specs: [20261008_1796_integration-gate-hardening, 20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
-issues: [#1796, #1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
+issues: [#1796, #1775, #1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -282,7 +282,7 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 | `openapi.yml` の `openapi` | `contents` / `pull-requests` | — | 更新ブランチの push・更新 PR |
 | `obsidian-plugin-release.yml` の `release` | `contents` | — | Release と資産 |
 | `codeql.yml` の `analyze` | `security-events` | `actions` | 解析結果のアップロード |
-| `backlog-audit.yml` の `audit` | `issues` | `pull-requests` | 棚卸し issue の更新・PR の列挙 |
+| `backlog-audit.yml` の `audit` | `issues` | `pull-requests` | 棚卸し issue と計画 ID レンジのずれの専用 issue の更新・PR の列挙 |
 | `ci-latency-watch.yml` の `watch` | — | `pull-requests` / `checks` | PR 一覧と check-runs を読む（足りないと 403） |
 | 各ワークフローの `report-failure` と `ci-failure-issue.yml` の `report` | `issues` | `actions` | 後段の失敗の起票と、失敗したジョブ名の取得 |
 | `integration-stack-rerun.yml` の `rerun` | `actions` / `issues` | — | 統合スタックの所要時間の判定だけが赤の実行を 1 回だけ再実行し（失敗したジョブの再実行）、結果を起票済みの issue へ書く。実行・ジョブ・ログの読み取りも同じトークンで行う |
