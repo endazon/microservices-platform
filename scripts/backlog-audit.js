@@ -71,9 +71,12 @@ function daysBetween(a, b) { return Math.floor((b - a) / 86400000); }
 function parseRevalidationDeadline(texts) {
   let last = null;
   for (const t of texts) {
-    for (const m of String(t || '').matchAll(/再検証期限[^\n\d]*\s*(\d{4}-\d{2}-\d{2})/g)) last = m[1];
+    // テンプレートのヒント（HTML コメント）を残したまま下に日付を書いても読めるよう、コメントを除いてから探す（#1773）。
+    const text = String(t || '').replace(/<!--[\s\S]*?-->/g, '');
+    for (const m of text.matchAll(/再検証期限[^\n\d]*\s*(\d{4}-\d{2}-\d{2})/g)) last = m[1];
   }
-  return last;
+  // 暦に無い日付（2026-13-45 など）は期限として扱わない —— NaN は「過ぎた」判定を素通りし、黙って期限ありになる。
+  return last && !Number.isNaN(Date.parse(last)) ? last : null;
 }
 
 /** `updated:` が閾値より古いか（純関数。日付が読めなければ「古い」と扱う —— 読めないのも滞留の一種）。 */
