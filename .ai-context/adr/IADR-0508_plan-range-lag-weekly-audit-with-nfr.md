@@ -59,7 +59,7 @@ related_specs:
 ### 決定 3: 計画側に届かないときは exit 0 のまま、棚卸しが「未確認」として数える。宣言の不読は exit 1
 
 - 届かない（`unverified`・`scanned: 0`）、または一部の種別だけ届かない（`unverifiedKinds`）は exit 0（ADR-0093 決定 3）。**棚卸し報告の節 8 は「指摘なし」と書かず、🔴 未確認として指摘に数える。** 前段が結果を書かなかったときも同じ。
-- 宣言が読めない（節が無い・書式が崩れた・ADR の宣言が無い）は `unverified` ではなく `error`・exit 1。計画側の到達性ではなく本リポジトリの欠陥であり、`readPlanIds()` が例外で落とすのと揃える。従前は `planAdrRange()` の null を黙って 3 種の突合へ縮めていた。**IADR-0423 決定 3 の「宣言不読も exit 0」を改める。** この 1 点は PR CI にも及ぶが、宣言が崩れていれば `check-trace-blocks` / `check-commit-messages` も既に落ちる。
+- 宣言が読めない（節が無い・書式が崩れた・ADR の宣言が無い）は `unverified` ではなく `error`・exit 1。計画側の到達性ではなく本リポジトリの欠陥であり、`readPlanIds()` が例外で落とすのと揃える。従前は `planAdrRange()` の null を黙って 3 種の突合へ縮めていた。**IADR-0423 決定 3 の「宣言不読も exit 0」を改める。** この 1 点は PR CI にも及び、**PR CI の新たな fail-loud 点になる**。`check-trace-blocks` / `check-commit-messages` は ADR の宣言だけが崩れた場合（FR/UC/SC は読める）に `planAdrRange()` の null を notice に留めて ADR の実在性検査を skip する（fail-open）ため、この場合に落ちるのは本検査器だけである（意図した変更）。
 - ずれを検知したのに起票できない（token 不在・API 失敗）も exit 1。ジョブが赤になれば `report-failure` が ci-failure issue を立てる。棚卸し本体は `!cancelled()`（自己試験が通っていること）で前段の失敗に巻き込まれずに出る。
 
 ## 理由

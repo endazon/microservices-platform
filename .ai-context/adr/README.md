@@ -585,4 +585,4 @@
 | [IADR-0505](./IADR-0505_codeowners-and-static-checks-gate.md) | `.github/CODEOWNERS` を AST と同じ形（`* @endazon`）で置き、文書はルールセットの実態（管理者ロールは exempt）をそのまま書く。`static-checks` は単独の必須 check にせず、必須 check の集約 `build-and-test` の `needs` で拾う（#1768） | Accepted |
 | [IADR-0506](./IADR-0506_blocked-revalidation-deadline-field-over-ledger.md) | blocked の再検証期限は issue 本文の定型欄（`再検証期限: YYYY-MM-DD`）で持ち、AST 型の台帳ファイルは置かない。週次棚卸しが期限なし・期限切れを挙げ、全件を台帳として報告に並べる。経過日数は `updated_at` ではなく最後のコメントから数える（#1773） | Accepted |
 | [IADR-0507](./IADR-0507_integration-all-skip-gate-executed-floor-and-dependency-skips.md) | `integration.yml` は `Category=Integration` の試験をユニットごとに数え（識別は TRX ではなく `--list-tests --filter` の発見）、宣言のあるユニットで実走 0 件か「依存を得られない」skip が 1 件でもあれば赤にする。skip 件数そのものの上限は置かない（計画 ADR-0090 決定 3。#1788） | Accepted |
-| [IADR-0508](./IADR-0508_plan-range-lag-weekly-audit-with-nfr.md) | 計画 ID レンジ・NFR 採番の宣言のずれは週次棚卸しの前段が NFR も含めて突き合わせ、専用 issue へ起票し、届かなければ未確認として数える | Accepted |
+| [IADR-0508](./IADR-0508_plan-range-lag-weekly-audit-with-nfr.md) | 計画 ID レンジ・NFR 採番の宣言のずれは週次棚卸しの前段が NFR も含めて突き合わせ、専用 issue へ起票し、届かなければ未確認として数える（#1775） | Accepted |

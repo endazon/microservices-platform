@@ -46,7 +46,7 @@ issue: "#1775"
 
 **射程外**:
 
-- PR CI（`ci.yml`）の挙動: 4 種のまま・起票しない（NFR は週次の報告に限る。計画 ADR-0093 決定 2 の裁定待ちの射程を PR 経路まで広げない）。宣言不読の exit 1 だけは同じ検査器なので PR CI にも及ぶ（宣言が崩れていれば `check-trace-blocks` / `check-commit-messages` も既に落ちる）
+- PR CI（`ci.yml`）の挙動: 4 種のまま・起票しない（NFR は週次の報告に限る。計画 ADR-0093 決定 2 の裁定待ちの射程を PR 経路まで広げない）。宣言不読の exit 1 だけは同じ検査器なので PR CI にも及ぶ（ADR の宣言だけが崩れた場合、`check-trace-blocks` / `check-commit-messages` は ADR の実在性検査を fail-open で skip するため、PR CI で落ちるのは本検査器だけになる。意図した新しい fail-loud 点）
 - 引き直し PR の自動作成、実行頻度の変更（週次のまま）
 - 計画側へ「NFR を公開レンジ表へ足す」裁定を求める環流（フォローアップ 3 は計画側の残件として既にある）
 
