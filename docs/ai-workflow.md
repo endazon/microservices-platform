@@ -1,8 +1,8 @@
 <!-- trace:
 adrs: [ADR-0048, ADR-0118]
-iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505]
-specs: [20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
-issues: [#1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
+iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507]
+specs: [20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
+issues: [#1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -210,6 +210,9 @@ PR 側に床相当の step を置く——床が 2 つ並ぶ）は**利用者の
   あっても残りのユニットを走らせ切る）。従前は前段が落ちるとそのコミットでは床が 1 度も測られなかった。
 - **レポート件数を期待値（`src/` 配下の `*Tests.csproj` 数）と突き合わせる**。同じテストプロジェクトの二重実行は床では
   見えない（重複排除で分母が倍にならない）ため、件数で止める。期待値は手で写さず判定器が導出する。
+- **床は統合テストが全 skip でも割れない**（単体試験で満たせる）。そこで `integration.yml` は床とは別に
+  `scripts/check-integration-executed.js` で、ユニットごとに `Category=Integration` の宣言・実走・skip（うち依存不足）を
+  Step Summary へ出し、**実走 0 件か依存不足の skip が 1 件でも出た実行を赤にする**（テストが赤くても評価する）。
 - **床割れ・テスト失敗は `ci-failure` issue に残る**（`ci-failure-issue.yml`）。放置は週次の定期棚卸し（`backlog-audit.yml`）が列挙する。
 - **暫定手段（PR 段階）**: レビュー時に `build-and-test` の Step Summary「バックエンドのカバレッジ」を目視し、実測が床を下回る
   PR は理由（統合テストぶんの不足か、被覆の実減か）を PR 本文に書く。

@@ -3,15 +3,15 @@ title: テスト戦略（退行防止テスト基盤）
 type: test-spec
 status: in-progress
 created: 2026-08-03
-updated: 2026-09-26
+updated: 2026-10-08
 author: Claude
 ---
 <!-- trace:
 ids: [SC-05, SC-06, SC-07, SC-08]
 adrs: [ADR-0027, ADR-0030, ADR-0065, ADR-0068]
-iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0161, IADR-0195, IADR-0231, IADR-0232, IADR-0236, IADR-0282, IADR-0334, IADR-0368]
-specs: [20260926_issue-1551_submodule-backend-pr-ci, 20260803_issue-453_regression-test-foundation, 20260831_issue-1063_tests-mirror-body-structure, 20260903_issue-1146_template-tests-mirror, 20260904_issue-1145_unit-integration-trait, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
-issues: [#1551, #454, #503, #1063, #510, #568, #571, #580, #882, #899, #900, #901, #1145, #1146, planning#146, planning#160, planning#161, planning#162, planning#180]
+iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0161, IADR-0195, IADR-0231, IADR-0232, IADR-0236, IADR-0282, IADR-0334, IADR-0368, IADR-0507]
+specs: [20261008_1788_integration-all-skip-gate, 20260926_issue-1551_submodule-backend-pr-ci, 20260803_issue-453_regression-test-foundation, 20260831_issue-1063_tests-mirror-body-structure, 20260903_issue-1146_template-tests-mirror, 20260904_issue-1145_unit-integration-trait, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
+issues: [#1788, #1551, #454, #503, #1063, #510, #568, #571, #580, #882, #899, #900, #901, #1145, #1146, planning#146, planning#160, planning#161, planning#162, planning#180]
 -->
 
 # テスト戦略 — 再実装の退行防止基盤
@@ -347,7 +347,7 @@ public class CreateSampleEndpointTests : IClassFixture<WebApplicationFactory<Pro
 >
 > | トレイト | 問い | 使い手 |
 > | --- | --- | --- |
-> | `Category` | **実コンテナ（Docker）を起こすか** | CI の振り分け（PR は `Category!=Integration`、回収実行は全量） |
+> | `Category` | **実コンテナ（Docker）を起こすか** | CI の振り分け（PR は `Category!=Integration`、回収実行は全量）。回収実行は `Category=Integration` の実走を数え、全 skip・依存不足の skip を赤にする |
 > | `TestKind` | **単体か結合か** | 手元の選択実行・区分の宣言 |
 >
 > サービス内 `Tests/` の結合テストは `WebApplicationFactory` ＋ InMemory DB ＋ 差し替えたブローカで

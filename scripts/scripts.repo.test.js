@@ -8497,7 +8497,13 @@ ${r.stderr}`);
         //    （IADR-0251 決定 5 が「2 レプリカ以上で測る」を検証手段に名指ししていた）。CI のゲートではなく
         //    `--live` の後ろの測定器であり、git を一切呼ばない（helm / kubectl を外部コマンドとして叩く）ため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-stack-ready.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 59, `検査器の母集合が 59 本から変わった（${scripts.length} 件）`);
+        // ★ #1788 / 計画 ADR-0090 決定 3 / IADR-0507 で `check-integration-executed.js`（integration.yml の回収実行で
+        //    `Category=Integration` の試験が実走 0 件・依存不足の skip ありなら赤にする。「全 skip で緑」を区別する門）を
+        //    新設したため 59 → 60（ラチェットが設計どおり発火した）。
+        //    🔴 **これは「同型の事故が 2 回」ではなく計画側の名指しに基づく新設である**（ADR-0090 決定 3 とフォローアップ 2 が
+        //    実装側へ担保を求めた）。git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS の
+        //    どちらにも載らない（`check-coverage-floor.js` と同じ扱い。引数なしの素実行は使い方を出して exit 2）。
+        assert.strictEqual(scripts.length, 60, `検査器の母集合が 60 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -14305,6 +14311,56 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(runs[0].code, 0);
       assert.strictEqual(runs[0].requests.length, 1);
       assert.strictEqual(runs[0].state.done, true);
+    });
+  }
+
+
+  // --- check-integration-executed: integration.yml の「全 skip で緑」を区別する（NFR / #1788 / IADR-0507） ---
+  //
+  // 🔴 統合試験の門（IADR-0414）は依存を得られなければ skip する。門と本検査は対で 1 つの統制であり
+  // （計画 ADR-0090 決定 1・3）、**検査だけが配線から外れると「1 件も実走していないのに緑」が通る**。
+  // 自己試験（発火・非発火の両側）・integration.yml の配線・門の文言の目印をここで固定する。
+  {
+    const fsIe = require('fs');
+    const pathIe = require('path');
+    const { spawnSync: spawnIe } = require('child_process');
+    const ROOT_IE = pathIe.resolve(__dirname, '..');
+    const ie = require('./check-integration-executed.js');
+
+    ok('check-integration-executed: 自己試験が全件通る', () => {
+      const r = spawnIe(process.execPath, [pathIe.join(__dirname, 'check-integration-executed.js'), '--self-test'], { encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('integration.yml: テストが TRX と統合試験の一覧を残し、実走検査（自己試験＋本検査）がテストの合否によらず走る', () => {
+      const yml = fsIe.readFileSync(pathIe.join(ROOT_IE, '.github', 'workflows', 'integration.yml'), 'utf8');
+      // 🔴 TRX が出ていなければ検査は「宣言はあるのに実走 0 件」で赤になるが、配線の欠落は先にここで止める。
+      assert.match(yml, /--collect:"XPlat Code Coverage" --logger trx --verbosity normal/, 'dotnet test に --logger trx が無い');
+      assert.match(yml, /--list-tests --filter "Category=Integration" > "\$lists\/\$unit\.list"/, '統合試験の一覧をユニットごとに残していない');
+      assert.match(yml, /check-integration-executed\.js --self-test/, '検査器の自己試験が integration.yml に無い');
+      assert.match(yml, /check-integration-executed\.js --lists "\$RUNNER_TEMP\/integration-lists"/, '本検査が integration.yml に無い');
+      // 🔴 実行（--collect の行）に --filter を足すと IADR-0232 改定 3 の「全量で 1 回」が崩れる。一覧の --filter は発見だけ。
+      const testCmd = yml.split('\n').filter((l) => l.includes('--collect:"XPlat Code Coverage"'));
+      assert.strictEqual(testCmd.length, 1, 'テスト実行の行がちょうど 1 本ではない');
+      assert.ok(!/--filter/.test(testCmd[0]), 'テスト実行に --filter が付いた');
+      // テストが赤くても評価する（skip と失敗は独立した観測）。床の 3 step ＋ 本検査の 2 step。
+      const guards = yml.split('\n').filter((l) => l.includes("if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}"));
+      assert.ok(guards.length >= 5, `!cancelled() の条件つき step が ${guards.length} 本（setup-node・床 2・実走検査 2 の 5 本が要る）`);
+      assert.match(yml, /id: tests/, 'テストの step に id: tests が無い（条件が常に偽になる）');
+    });
+
+    ok('check-integration-executed: 依存不足の skip の目印が統合試験の門の実装に在る（文言を変えたら目印も変える）', () => {
+      const fixtures = pathIe.join(ROOT_IE, 'src', 'knowledge', 'backend', 'Tests', 'Knowledge.IntegrationTests', 'Fixtures');
+      const gateSource = ['RequiredServices.cs', 'BrokerRequired.cs'].map((f) => fsIe.readFileSync(pathIe.join(fixtures, f), 'utf8')).join('\n');
+      assert.ok(ie.DEPENDENCY_SKIP_MARKERS.length >= 2, '目印が減った');
+      for (const m of ie.DEPENDENCY_SKIP_MARKERS) {
+        assert.ok(gateSource.includes(`"${m}`), `目印「${m}」が門（RequiredServices.cs / BrokerRequired.cs）の skip 理由の先頭に無い`);
+      }
+    });
+
+    ok('scripts/README.md: 本リポジトリ固有の表に check-integration-executed.js を記載している', () => {
+      const readme = fsIe.readFileSync(pathIe.join(ROOT_IE, 'scripts', 'README.md'), 'utf8');
+      assert.match(readme, /\| `check-integration-executed\.js` \|/, 'scripts/README.md に記載が無い');
     });
   }
 
