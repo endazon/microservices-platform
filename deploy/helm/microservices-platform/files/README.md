@@ -34,10 +34,15 @@
 
 ## 新しい段（プラグイン）の追加
 
-1. 対象サービスの `Features/<集約>/<操作>/` に `IConsumer<TIn>` ＋ `IPipelineStep` を実装する
-   （コア改修不要。`*Consumer.cs`。旧 `Composable/Steps/` は単一プロジェクト構成への移送で無くなった）
-2. `Program.cs` の合成ルートに `AddPlatformPipelineStep<T>(pipeline)` を 1 行追加する
+1. 対象サービスの `Features/<集約>/<操作>/` に Wolverine のハンドラとして段を実装する —— `IPipelineStep<TIn>` ＋
+   `Handle(TIn ...)`（コア改修不要。`*Consumer.cs`。旧 `Composable/Steps/` は単一プロジェクト構成への移送で無くなった）
+2. `Program.cs` の合成ルートの `UseWolverine` 内で `AddPlatformWolverineStep<T>(pipeline)` を呼び、戻り値の `queue` 宣言
+   （無ければイベント型名）で `BindPlatformQueue<TIn>` / `ListenToPlatformQueue` を張り、`UsePlatformMessagingDefaults()` を呼ぶ
+   （手順の全体と出力イベントの経路 `RoutePlatformEvent<TOut>` は `docs/tech/composable-component-guide.md` §2.1）
 3. `pipeline.json` に段を宣言する（イベント型は `events` に列挙されていること）
 
-> 段の**入力イベント型の変更**は構成のみでは行えない（`IConsumer<TIn>` の型安全性を優先。IADR-0028）。
+移行の済んでいない MassTransit の段（`DocumentNormalizedConsumer`）だけは `IConsumer<TIn>` ＋ `IPipelineStep` を実装し、
+`AddMassTransit` の中の `AddPlatformPipelineStep<T>(pipeline)` で登録されている。新しい段にこの経路は使わない。
+
+> 段の**入力イベント型の変更**は構成のみでは行えない（`IPipelineStep<TIn>` の型安全性を優先。IADR-0028）。
 > 入力を変える場合はプラグイン改版（コード変更）として扱う。

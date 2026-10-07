@@ -3,15 +3,15 @@ title: コンポーザビリティ（宣言的パイプライン構成による�
 type: functional-spec
 status: draft
 created: 2026-07-08
-updated: 2026-08-30
+updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
 ids: [FR-14, FR-15]
 adrs: [ADR-0018]
 iadrs: [IADR-0027, IADR-0028]
-specs: [20260708_issue-102_composability-fixed-variable-separation, 20260708_issue-111_declarative-pipeline-config]
-issues: [#444]
+specs: [20260708_issue-102_composability-fixed-variable-separation, 20260708_issue-111_declarative-pipeline-config, 20261008_1799_composability-docs-wolverine-wiring]
+issues: [#444, #1799]
 -->
 
 # 機能仕様書: コンポーザビリティ（宣言的パイプライン構成による組み替え）
@@ -39,17 +39,18 @@ issues: [#444]
   `Foundation/` / `Composable/` をそのまま用い、**サービス**（`Services/<Name>/`）では
   固定が `Domain/`（ポートは `Domain/Ports/`）、可変が段 `Features/<集約>/<操作>/` と
   外部アダプタ `Infrastructure/ExternalServices/` である（単一プロジェクト＋VSA/DDD 構成への移送による）。
-- **宣言的段構成**: パイプライン段（MassTransit コンシューマ）は `IPipelineStep` を実装し、
+- **宣言的段構成**: パイプライン段（Wolverine のハンドラ）は `IPipelineStep<TIn>`（入力イベント型の申告）を実装し、
   `pipeline.json` の `steps[]` 宣言（name / service / consumer / input / outputs / enabled / queue）に
-  従って登録される。
+  従って登録される。移行の済んでいない段（`DocumentNormalized` を購読するカタログ登録の段）だけは
+  MassTransit のコンシューマ（`IConsumer<TIn>` ＋ `IPipelineStep`）のまま、同じ宣言で登録される。
 
 ## 機能詳細
 
 | 項目 | 内容 |
 | --- | --- |
 | 入力 | `pipeline.json`（Git 管理。events / sources / steps）。Helm ConfigMap（`pipeline-config.yaml`）が `{"Pipeline": {...}}` 形のオーバレイへ変換し、`Pipeline__ConfigPath` で各サービスへ供給 |
-| 処理 | 起動時に `AddPlatformPipelineConfig()` が宣言を読み込み、`AddPlatformPipelineStep<TConsumer>()` が宣言に従いコンシューマを登録（`enabled: false` は購読・キューを生成しない） |
-| 出力 | 宣言どおりの MassTransit トポロジ（購読・キュー）。実効構成は読み取り専用の構成情報 API で可視化 |
+| 処理 | 起動時に `AddPlatformPipelineConfig()` が宣言を読み込み、`UseWolverine` の中で `AddPlatformWolverineStep<TStep>(pipeline)` が宣言に従い段をハンドラとして登録する（`enabled: false` の段は規約探索からも除外して登録しない）。受信キューは戻り値の `queue` 宣言（無ければイベント型名）で `ListenToPlatformQueue` / `BindPlatformQueue` が張る。MassTransit の段は `AddPlatformPipelineStep<TConsumer>(pipeline)` が同じ規則で登録する |
+| 出力 | 宣言どおりの RabbitMQ の購読（サービス名を前置したキューと、イベント型名の fan-out exchange への束ね）。実効構成は読み取り専用の構成情報 API で可視化 |
 | 業務ルール | 宣言と実装の不整合は起動時 fail-fast（下記） |
 
 ### 誤構成対策（起動時 fail-fast。10_composability-design §5 安全弁）
@@ -57,7 +58,9 @@ issues: [#444]
 1. 宣言なし（`Steps` 空）→ 既定配線で登録（ローカル・テスト互換）
 2. 宣言があり対象段が未宣言 → 起動失敗（適用漏れ・名称ずれ検出）
 3. `consumer` 型完全名の不一致 → 起動失敗（段名の付け替え誤り検出）
-4. `IConsumer<TIn>` の TIn 型名と `input` の不一致 → 起動失敗（配線ずれ検出）
+4. 段の入力イベント型名と `input` の不一致 → 起動失敗（配線ずれ検出）。入力型は Wolverine の段では `IPipelineStep<TIn>` から、
+   MassTransit の段では `IConsumer<TIn>` から導出する。Wolverine の段は、入力型を導出できないこと・その型を受ける
+   ハンドラメソッドが無いことも起動失敗にする
 5. `enabled: false` → 登録しない、`enabled: true` → 登録（`queue` 指定時は受信エンドポイント名を上書き）
 
 ### CI・GitOps での検証・適用
@@ -74,7 +77,7 @@ flowchart LR
   G[Git: pipeline.json] -->|CI schema/接続性検証| G
   G -->|ArgoCD 同期| CM[ConfigMap pipeline-config]
   CM -->|Pipeline__ConfigPath| S[各サービス起動]
-  S -->|宣言と実装を突合| OK[MassTransit トポロジ生成]
+  S -->|宣言と実装を突合| OK[段の登録と購読キュー生成]
   S -->|不整合| NG[起動失敗 fail-fast]
 ```
 
@@ -83,7 +86,7 @@ flowchart LR
 | 条件 | 振る舞い | 検出箇所 |
 | --- | --- | --- |
 | スキーマ違反・接続性欠落・循環 | CI 失敗（マージ不可） | `validate-pipeline-config.js` |
-| 宣言と実装の名称・型不整合 | サービス起動失敗（fail-fast） | `PipelineExtensions` |
+| 宣言と実装の名称・型不整合 | サービス起動失敗（fail-fast） | `WolverinePipelineExtensions`（MassTransit の段は `PipelineExtensions`） |
 | 宣言ファイル欠落（ローカル） | 既定配線で動作（警告ログ） | `AddPlatformPipelineConfig` |
 
 ## 受け入れ基準

@@ -1,8 +1,9 @@
 namespace Platform.Shared.Infrastructure.Foundation.Pipeline;
 
 // FR-14, ADR-0018: パイプライン段の共通ステップインタフェース。
-// 段（MassTransit コンシューマ）は本インタフェースを実装し、宣言的構成（pipeline.json の steps[].name）
-// との対応をコンパイル時に固定する。購読は IConsumer<TIn>、発行は IPublishEndpoint が担い、
+// 段は本インタフェースを実装し、宣言的構成（pipeline.json の steps[].name）との対応をコンパイル時に固定する。
+// 段は Wolverine のハンドラであり、下の IPipelineStep<TIn> で入力イベント型を申告する（購読は Handle(TIn)）。
+// 移行の済んでいない MassTransit の段だけは購読を IConsumer<TIn> で表す（ADR-0027 / IADR-0234）。
 // 計画（10_composability-design.md §2）の Subscribe / Process / Publish 概念に対応する。
 public interface IPipelineStep
 {

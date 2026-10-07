@@ -3,15 +3,15 @@ title: FR-14 コンポーザビリティ（宣言的パイプライン構成） 
 type: test-spec
 status: draft
 created: 2026-07-08
-updated: 2026-08-30
+updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
 ids: [FR-14, FR-15]
 adrs: [ADR-0018]
 iadrs: [IADR-0027, IADR-0028, IADR-0268]
-specs: [20260708_issue-111_declarative-pipeline-config]
-issues: [#444]
+specs: [20260708_issue-111_declarative-pipeline-config, 20261008_1799_composability-docs-wolverine-wiring]
+issues: [#444, #1799]
 -->
 
 # テスト仕様書: コンポーザビリティ（宣言的パイプライン構成）
@@ -25,9 +25,9 @@ issues: [#444]
 
 ## テスト対象・範囲
 
-- 対象: `PipelineExtensions`（宣言に基づく段登録と fail-fast）、`scripts/validate-pipeline-config.js`
+- 対象: `WolverinePipelineExtensions`（宣言に基づく段登録と fail-fast。移行の済んでいない MassTransit の段は `PipelineExtensions`）、`scripts/validate-pipeline-config.js`
   （宣言のスキーマ・接続性・循環検証）、段の組み替え（enabled/queue 変更）。
-- 対象外: MassTransit 本体・RabbitMQ ブローカーの挙動、Helm/ArgoCD の適用動作（運用検証）。
+- 対象外: Wolverine・MassTransit 本体と RabbitMQ ブローカーの挙動、Helm/ArgoCD の適用動作（運用検証）。
 
 ## テスト観点
 

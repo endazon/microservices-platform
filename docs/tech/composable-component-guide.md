@@ -3,15 +3,15 @@ title: 可変部品（Composable コンポーネント）共通実装ガイド �
 type: tech
 status: completed
 created: 2026-07-09
-updated: 2026-09-28
+updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, FR-14, FR-15]
 adrs: [ADR-0002, ADR-0018, ADR-0032]
 iadrs: [IADR-0007, IADR-0022, IADR-0024, IADR-0025, IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056, IADR-0121, IADR-0131, IADR-0135, IADR-0232, IADR-0273, IADR-0429]
-specs: [20260709_composable-component-implementation-guide, 20260911_issue-1393_remove-platform-spa-public-client, 20260928_issue-1686_knowledge-test-sharding]
-issues: [#195, #206, #217, #218, #219, #519, #1393, #1686]
+specs: [20260709_composable-component-implementation-guide, 20260911_issue-1393_remove-platform-spa-public-client, 20260928_issue-1686_knowledge-test-sharding, 20261008_1799_composability-docs-wolverine-wiring]
+issues: [#195, #206, #217, #218, #219, #519, #1393, #1686, #1799]
 -->
 
 # 可変部品（Composable コンポーネント）共通実装ガイド
@@ -51,8 +51,8 @@ issues: [#195, #206, #217, #218, #219, #519, #1393, #1686]
 
 | 提供物 | 内容 | 可変部品からの使い方 |
 | --- | --- | --- |
-| メッセージ基盤 | MassTransit + RabbitMQ 配線（`AddPlatformMassTransit`） | 直接触らない。段の登録は §2.1 の拡張メソッド経由 |
-| 宣言的パイプライン構成 | `Foundation/Pipeline/`（`IPipelineStep`・`AddPlatformPipelineConfig`・`AddPlatformPipelineStep<T>`） | 段が実装・利用する（§2.1） |
+| メッセージ基盤 | RabbitMQ 配線（Wolverine。`Foundation/Extensions/WolverineExtensions` の `UsePlatformMessagingDefaults`・`ListenToPlatformQueue`・`BindPlatformQueue`・`RoutePlatformEvent`・`AddPlatformWolverineBroker`。移行の済んでいない辺〔`DocumentNormalized` の発行・購読、`IngestionCompleted` の発行〕だけ各サービスの `AddMassTransit` ＋ `UsePlatformRetry` が残る） | 中身は変えない。段の登録と受信キューの設定は §2.1 の手順でこれらの拡張メソッドを呼ぶ |
+| 宣言的パイプライン構成 | `Foundation/Pipeline/`（`IPipelineStep<TIn>`・`AddPlatformPipelineConfig`・`GetPlatformPipeline`・`AddPlatformWolverineStep<T>`。移行の済んでいない MassTransit の段は `AddPlatformPipelineStep<T>`） | 段が実装・利用する（§2.1） |
 | 認証 | JWT/Keycloak・ロール変換 | 自動適用（サービス側 Program.cs の基盤登録で有効） |
 | 可観測性 | OTel・相関 ID・ヘルスチェック | 自動適用。独自計装を追加する場合も OTel API に統一 |
 | ストレージポート | `IObjectStorageClient`（S3/Null 実装。バケット/キー設計は実装 ADR が定める） | アダプタから委譲先として利用可 |
@@ -73,15 +73,39 @@ issues: [#195, #206, #217, #218, #219, #519, #1393, #1686]
 `Foundation/` / `Composable/` のフォルダ名が残るのは共有基盤プロジェクトだけである。
 [区分表 §4](./composability-classification.md) の写像表を参照）。
 
-1. `IConsumer<TIn>`（MassTransit）と `IPipelineStep`（`Shared.Infrastructure.Foundation.Pipeline`）を
-   実装する。`static abstract string StepName` は `pipeline.json` の `steps[].name` と一致させる。
-2. 対象サービスの `Program.cs`（合成ルート）に `AddPlatformPipelineStep<T>(pipeline)` を
-   1 行追加する。
-3. `pipeline.json` に段を宣言する（`name` / `service` / `consumer`＝型完全名 / `input` / `outputs` /
+新しい段は **Wolverine のハンドラ**として書く（MassTransit は不採用である。baseline に無いプロジェクトへの新たな参照は
+バックエンドライブラリの ratchet 検査が CI で落とす）。手本は変換の段（`ConversionService` の `RawDocumentFetchedConsumer` とその `Program.cs`）である。
+
+1. 段のクラスに `IPipelineStep<TIn>`（`Shared.Infrastructure.Foundation.Pipeline`。`TIn` は入力イベント型）を実装する。
+   `static string StepName` は `pipeline.json` の `steps[].name` と一致させる。入力イベントを受ける
+   ハンドラメソッド（`Handle(TIn ...)` または `Consume(TIn ...)` ほか Wolverine が認める名前）を置く。
+   試行回数が要るときは引数に `Envelope` を取る（`Envelope.Attempts`）。
+2. 対象サービスの `Program.cs`（合成ルート）で宣言を読み込む:
+   `builder.AddPlatformPipelineConfig();` ＋ `var pipeline = builder.Configuration.GetPlatformPipeline();`
+3. `builder.Host.UseWolverine(opts => { ... })` の中で次を行う。
+   - `var step = opts.AddPlatformWolverineStep<T>(pipeline);` —— 宣言との突合と登録。戻り値は段宣言
+     （宣言が無ければ null）であり、**受信キューの設定はこのメソッドの射程外**なので次で使う。
+   - `var queue = step?.Queue ?? nameof(TIn);`（`queue` 宣言があればそれ、無ければイベント型名）
+   - `opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision().BindPlatformQueue<TIn>("<service>", queue);`
+     —— 自分のキューをイベント型名の fan-out exchange へ束ねる（束ねないと何も届かない）
+   - `opts.ListenToPlatformQueue("<service>", queue);` —— キュー名は `<service>.<queue>` になる
+     （`ListenToRabbitQueue` の直接呼び出しは検査器が落とす）
+   - 段が Wolverine で発行する出力イベントごとに `opts.RoutePlatformEvent<TOut>();`
+     （これが無いと発行はブローカへ出て行かず、例外も出ない）
+   - `opts.UsePlatformMessagingDefaults();` —— 規約ルーティングの無効化・サービスロケーションの許可・
+     再試行（2・10・30 秒）の後のデッドレター送りを全サービス共通で与える
+4. 自己申告と readiness を登録する:
+   `builder.Services.AddPlatformIntrospection("<service>", pipeline, i => i.AddWolverineStep<T>());`、
+   ヘルスチェックに `.AddPlatformWolverineBroker()`（段をホストするサービスが新規の場合）。
+5. `pipeline.json` に段を宣言する（`name` / `service` / `consumer`＝型完全名 / `input` / `outputs` /
    `enabled`）。入力イベント型は `events` に列挙済みであること。
    ローカル検証: `node scripts/validate-pipeline-config.js deploy/helm/microservices-platform/files/pipeline.json`
-4. 段をホストするサービスが新規なら Helm `values.yaml` で `pipelineSteps: true` を設定する
+6. 段をホストするサービスが新規なら Helm `values.yaml` で `pipelineSteps: true` を設定する
    （ConfigMap checksum によるロールアウト対象になる）。
+
+> 移行の済んでいない段（`DocumentService` の `DocumentNormalizedConsumer`）だけは MassTransit のコンシューマ
+> （`IConsumer<TIn>` ＋ `IPipelineStep`）であり、`AddMassTransit` の中の `AddPlatformPipelineStep<T>(pipeline)` で登録されている。
+> 新しい段にこの経路を使わない。
 
 **制約**（違反は起動時 fail-fast または規約違反）:
 
@@ -89,8 +113,9 @@ issues: [#195, #206, #217, #218, #219, #519, #1393, #1686]
   `Domain/` のみ。**段どうしの直接参照は禁止**（連携はイベント経由のみ）。
 - 段は**ステートレス**を原則とし、ジョブ状態は自サービスの専用 DB に閉じる
   （Database per Service。上流 `10_composability-design` §2 とサービス境界の決定による）。
-- 宣言と実装の不整合（段の宣言漏れ・`consumer` 型名不一致・`input` と `IConsumer<TIn>` の不一致）は
-  **起動失敗**する。`enabled: false` は購読・キューを生成しない。
+- 宣言と実装の不整合（段の宣言漏れ・`consumer` 型名不一致・`input` と `IPipelineStep<TIn>` の不一致・
+  入力型を受けるハンドラメソッドの欠落）は **起動失敗**する。`enabled: false` の段はハンドラとして登録されない
+  （規約探索からも除外される）。
 - **入力イベント型の変更は構成のみでは行えない**。プラグイン改版（コード変更＋宣言更新）として扱う
   。
 
