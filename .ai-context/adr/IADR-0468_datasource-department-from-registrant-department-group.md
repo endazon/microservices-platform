@@ -2,10 +2,10 @@
 title: IADR-0468 データソースの既定部門は、登録した管理者のトークンが運ぶ所属グループのフルパスから `/department/<コード>` がちょうど 1 つのときだけ導く（解決順②の中で・登録時だけ・値域の検証はフォローアップ）
 type: impl-adr
 status: Accepted
-related_ids: [FR-05, FR-01, UC-04, SC-06, ADR-0074, ADR-0088, ADR-0109, IADR-0019, IADR-0199, IADR-0359, IADR-0379, IADR-0401, IADR-0447, IADR-0465]
+related_ids: [FR-05, FR-01, UC-04, SC-06, ADR-0074, ADR-0088, ADR-0109, ADR-0115, IADR-0019, IADR-0199, IADR-0359, IADR-0379, IADR-0401, IADR-0447, IADR-0465]
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/06_technical/09_datasource-connectors.md §メタデータ・属性マッピング／§システム投入経路での owner / department / lifecycle（★未確定表「部門コードの値域」「フォルダ写像表の置き場所（器）」）
   - planning:projects/microservices-platform/07_adr/ADR-0074_owner-mapping-table-container-in-sc06.md 決定 2・4

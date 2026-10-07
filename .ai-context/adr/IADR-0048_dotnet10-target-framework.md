@@ -5,9 +5,10 @@ status: Accepted
 related_ids:
   - NFR
   - ADR-0001
+  - ADR-0020
 author: claude
 created: 2026-07-10
-updated: 2026-08-05
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md (制約条件: .NET 8)
   - planning:projects/microservices-platform/06_technical/03_tech-stack-selection.md (実装フレームワーク)

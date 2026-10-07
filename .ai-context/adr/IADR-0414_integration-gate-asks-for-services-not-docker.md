@@ -2,10 +2,10 @@
 title: IADR-0414 統合テストの門は「要るサービスを得られるか」を依存ごとに訊く（「Docker が入っているか」ではない）
 type: impl-adr
 status: Accepted
-related_ids: [FR-05, FR-06, NFR-09, UC-03, UC-05, ADR-0004, ADR-0027, ADR-0088, IADR-0130, IADR-0141, IADR-0231, IADR-0232, IADR-0301, IADR-0413]
+related_ids: [FR-05, FR-06, NFR-09, UC-03, UC-05, ADR-0004, ADR-0027, ADR-0088, ADR-0090, IADR-0130, IADR-0141, IADR-0231, IADR-0232, IADR-0301, IADR-0413]
 author: claude
 created: 2026-09-08
-updated: 2026-09-09
+updated: 2026-10-08
 ---
 
 # IADR-0414: 統合テストの門が訊く問い
