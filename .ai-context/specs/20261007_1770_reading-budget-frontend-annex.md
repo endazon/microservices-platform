@@ -111,3 +111,22 @@ trace ブロックへ置き、表示テキストには書かない。
 検査: `check-doc-links` / `check-trace-blocks` / `check-trace-followthrough` / `gen-knowledge-graph --check` /
 `check-reading-budget` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-doc-updated --base origin/develop` /
 `check-commit-messages --range origin/develop..HEAD` / `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（943 件）がすべて緑。
+
+## ［2026-10-07 追記 / #1770］監査の指摘への追随（判断時の禁止を CLAUDE.md へ戻す）
+
+監査で、判断時に要る禁止が別紙 `docs/how-to/frontend-conventions-annex.md` にしか残っていない箇所が見つかった。
+`.claude/agents/test-author.md` はテスト規約を CLAUDE.md からしか読まないため、テストのロケール固定も対象にした。
+CLAUDE.md の TS/React 要約へ短い節として戻した（別紙は全文を保持したまま変更しない）。
+
+- **UI / CSS**: `@platform/ui` にドメイン・通信・ルーティング・認証・**表示文言**を入れない。
+- **BFF 境界**: 接続先をビルドに焼き込まず、実行時 config（`platform/frontend/public/config.js`）で注入する。
+- **テスト**: ロケールは ja に固定（詳細は別紙 §i18n）。
+
+`node scripts/check-reading-budget.js`（追随後）:
+
+| ファイル | 減量後 | 追随後 | 差 |
+| --- | ---: | ---: | ---: |
+| `CLAUDE.md` | 20,781 | 21,045 | +264 |
+| **Claude 集合** | **43,340（84.6%）** | **43,604（85.2%・ok）** | **+264** |
+
+余白は 51,200 − 43,604 = 7,596 B（warn 閾値 46,080 B まで 2,476 B）。受け入れ基準 1（90% 未満・目安 85% 前後）は引き続き満たす。

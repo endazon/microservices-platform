@@ -126,12 +126,12 @@ knowledge ユニット（ナレッジ機能）は付随する可変機能セッ�
 - **スタック**: **React 19** + TypeScript 5.6 + **Vite 6**（ESM）・**Vitest 3**・Node **22**。移行の段と進捗の正本は [IADR-0121](.ai-context/adr/IADR-0121_spa-stack-migration-staging.md)（ここへ書かない）。ルーティングは **TanStack Router**（[IADR-0124](.ai-context/adr/IADR-0124_tanstack-router-unit-composition.md)。`react-router-dom` は ESLint が止める）。
 - **構成**: pnpm workspace（ルート = `src/`）。`platform/frontend`（foundation + アプリホスト）と `knowledge/frontend`（画面 features）を分離し（[IADR-0056](.ai-context/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）、import はエイリアス `@foundation` / `@features` / `@knowledge` を使う。
 - **サーバー状態**: **TanStack Query** に一元化（`foundation/api/queryClient.ts` が唯一の生成点）。**Redux は持たない**（ESLint が error）。
-- **UI / CSS**: **Tailwind CSS v4** ＋ **`@platform/ui`**（[`src/packages/ui`](src/packages/ui/README.md)。トークン・`cn()`・shadcn/ui 派生プリミティブのみ。Storybook の対象もこれだけ）。**外部 CDN・Web フォント・analytics を使わない**（`check-static-egress.js` が成果物で止める）。状態表示は**色だけで意味を持たせない**。
+- **UI / CSS**: **Tailwind CSS v4** ＋ **`@platform/ui`**（[`src/packages/ui`](src/packages/ui/README.md)。トークン・`cn()`・shadcn/ui 派生プリミティブのみで、ドメイン・通信・ルーティング・認証・**表示文言**は入れない。Storybook の対象もこれだけ）。**外部 CDN・Web フォント・analytics を使わない**（`check-static-egress.js` が成果物で止める）。状態表示は**色だけで意味を持たせない**。
 - **i18n**: **Lingui（ja / en）**。マクロ設定は `src/vitest.config.ts` と `vite.config.ts` の**両方**に置く。カタログはコミットし、再生成差分と未翻訳キーは CI が止める。**切替 UI は持たない**。
-- **BFF 境界**: バックエンドへは必ず `/bff/*` 経由で、**orval 生成フック**（生成物はコミット）か `foundation/api` の `apiFetch` / `apiStream` だけを使う。**手書き HTTP クライアント・各サービスの直叩きは禁止**（ESLint が error）。
+- **BFF 境界**: バックエンドへは必ず `/bff/*` 経由で、**orval 生成フック**（生成物はコミット）か `foundation/api` の `apiFetch` / `apiStream` だけを使う。**手書き HTTP クライアント・各サービスの直叩きは禁止**（ESLint が error）。接続先は**ビルドに焼き込まず**実行時 config（`platform/frontend/public/config.js`）で注入する。
 - **認証**: **BFF セッション方式（ADR-0032・Token Handler）**。**SPA はトークンを扱わない**（`oidc-client-ts` は再導入しない。論拠 [IADR-0251](.ai-context/adr/IADR-0251_bff-session-token-handler.md) / [IADR-0273](.ai-context/adr/IADR-0273_bff-session-completion.md)）。
 - **Lint / 型 / 整形**: `src/` で `pnpm run lint` / `pnpm run typecheck` / `pnpm run format:check` が通ること（CI が強制）。整形対象の単一情報源は [`src/.prettierignore`](src/.prettierignore) で、除外グロブを他所へ複写しない。
-- **テスト**: 単体は **Vitest**（jsdom）+ Testing Library、E2E は **Playwright**。実装と同居し `*.{test,spec}.{ts,tsx}`。`pnpm run test:coverage` のしきい値は**ラチェット**（テストを増やしたら引き上げ、床を割る変更は CI が止める）。
+- **テスト**: 単体は **Vitest**（jsdom）+ Testing Library、E2E は **Playwright**。実装と同居し `*.{test,spec}.{ts,tsx}`。ロケールは **ja に固定**（別紙 §i18n）。`pnpm run test:coverage` のしきい値は**ラチェット**（テストを増やしたら引き上げ、床を割る変更は CI が止める）。
 
 ### CI（GitHub Actions）
 
