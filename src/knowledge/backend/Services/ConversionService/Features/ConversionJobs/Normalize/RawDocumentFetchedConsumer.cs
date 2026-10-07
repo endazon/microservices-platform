@@ -88,8 +88,9 @@ public class RawDocumentFetchedConsumer(
         }
         catch (Exception ex)
         {
-            // SC-07: 失敗を記録してから再送出する。変換失敗（pandoc/保存の恒久失敗）は MassTransit の
-            // 再試行→デッドレターへ委ねる（記録は状況可視化・人手補正のためで、リトライ挙動は変えない）。
+            // SC-07: 失敗を記録してから再送出する。変換失敗（pandoc/保存の恒久失敗）は Wolverine の
+            // 再試行（UsePlatformMessagingDefaults。2/10/30 秒）→ MoveToErrorQueue へ委ねる
+            // （記録は状況可視化・人手補正のためで、リトライ挙動は変えない）。
             // 例外メッセージは admin/operator UI に露出するため、単一行・長さ上限に要約する（内部詳細の露出抑制）。
             // 失敗記録は best-effort（CancellationToken.None）で行い、元例外を消さずに再送出する
             // （ct 失効時に SaveChanges がキャンセル例外を投げて元の変換失敗を隠さないため）。

@@ -3,15 +3,15 @@ title: 技術要件書
 type: tech-requirements
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-25
+updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065, ADR-0068, ADR-0075, ADR-0077, ADR-0106]
 iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0195, IADR-0196, IADR-0216, IADR-0219, IADR-0229, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334, IADR-0349, IADR-0350, IADR-0371, IADR-0379, IADR-0383, IADR-0429, IADR-0458, IADR-0461]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_xunit-v3-migration, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260822_issue-455_wolverine-shared-helper, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs, 20260904_issue-1064_backend-stack-reference-impl, 20260905_issue-1249-1250-1251_rotten-derived-values, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1397_bff-user-credential-relay-is-edge, 20260925_1499_object-storage-seaweedfs]
-issues: [#1499, #1397, #1062, #1064, #1393, #1093, #1094, #1179, #1196, #1249, #1251, #184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390, planning#490, planning#527, planning#532]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_xunit-v3-migration, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260822_issue-455_wolverine-shared-helper, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs, 20260904_issue-1064_backend-stack-reference-impl, 20260905_issue-1249-1250-1251_rotten-derived-values, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1397_bff-user-credential-relay-is-edge, 20260925_1499_object-storage-seaweedfs, 20261008_1799_composability-docs-wolverine-wiring]
+issues: [#1799, #1499, #1397, #1062, #1064, #1393, #1093, #1094, #1179, #1196, #1249, #1251, #184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390, planning#490, planning#527, planning#532]
 -->
 
 # 技術要件書
@@ -55,7 +55,7 @@ issues: [#1499, #1397, #1062, #1064, #1393, #1093, #1094, #1179, #1196, #1249, #
 | データストア（業務） | PostgreSQL | — | DB per Service。jsonb 属性は EF Core の ValueComparer で content 比較 |
 | データストア（ベクトル） | Qdrant | — | モデル別コレクション・決定的チャンク ID |
 | オブジェクトストレージ | SeaweedFS（S3 互換） | 4.47（digest で固定） | 正規化本文・資産。ClusterIP のみ（バケット/キー設計の実装 ADR）。資格情報は k8s Secret。テレメトリは無効化（既定で有効なため）。管理 Console は持たない |
-| メッセージング | RabbitMQ / Kafka（**Wolverine**） | — | メッセージング基盤とブローカーの計画 ADR。イベント駆動パイプライン。契約は `Shared.Contracts`。**現行実装は MassTransit で、Wolverine への置き換えは各サービスの再実装 issue（#438〜#451）で行う** |
+| メッセージング | RabbitMQ / Kafka（**Wolverine**） | — | メッセージング基盤とブローカーの計画 ADR。イベント駆動パイプライン。契約は `Shared.Contracts`。**現行実装は Wolverine である**（購読は段の登録 `AddPlatformWolverineStep` と共通ヘルパ `UsePlatformMessagingDefaults` ほか。再試行は 2・10・30 秒の後にデッドレター）。**MassTransit が残るのは移行の済んでいない辺 —— `DocumentNormalized` の発行・購読と `IngestionCompleted` の発行 —— だけである** |
 | 実行基盤 | k3s（Kubernetes） | — | ランタイムの計画 ADR。Helm `deploy/helm/microservices-platform`、Namespace `microservices-platform` |
 | サービスメッシュ | Istio（Envoy mTLS） | — | サービスメッシュの計画 ADR と STRICT mTLS の実装判断。（`PeerAuthentication`/`DestinationRule`） |
 | CI/CD・GitOps | ArgoCD + Helm | — | GitOps の計画 ADR。Git を単一の真実源に宣言的同期（`deploy/argocd/`） |

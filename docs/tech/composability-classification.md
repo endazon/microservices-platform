@@ -3,15 +3,15 @@ title: 固定/可変 区分表（実装版）— コンポーザビリティ対�
 type: tech
 status: completed
 created: 2026-07-08
-updated: 2026-10-07
+updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15]
 adrs: [ADR-0015, ADR-0018, ADR-0106]
 iadrs: [IADR-0002, IADR-0007, IADR-0014, IADR-0021, IADR-0022, IADR-0023, IADR-0024, IADR-0025, IADR-0027, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0059, IADR-0461]
-specs: [20260708_issue-102_composability-fixed-variable-separation, 20260925_1499_object-storage-seaweedfs, 20261007_1771_ingestion-event-wiring-docs]
-issues: [#102, #195, #217, #218, #219, #229, #1499, #1771]
+specs: [20260708_issue-102_composability-fixed-variable-separation, 20260925_1499_object-storage-seaweedfs, 20261007_1771_ingestion-event-wiring-docs, 20261008_1799_composability-docs-wolverine-wiring]
+issues: [#102, #195, #217, #218, #219, #229, #1499, #1771, #1799]
 -->
 
 # 固定/可変 区分表（実装版）
@@ -112,7 +112,7 @@ Issue #102の作業項目 1「棚卸し」の成果物である。
 
 | 要素 | 場所 | 区分 |
 | --- | --- | --- |
-| MassTransit + RabbitMQ 配線（`AddPlatformMassTransit`） | Shared.Infrastructure | 固定（基盤そのもの。トポロジの宣言化は後続） |
+| RabbitMQ 配線（Wolverine。共通ヘルパ `Foundation/Extensions/WolverineExtensions` の `UsePlatformMessagingDefaults`〔再試行 2・10・30 秒 → デッドレター〕・`ListenToPlatformQueue`・`BindPlatformQueue`・`RoutePlatformEvent`・`AddPlatformWolverineBroker`。移行の済んでいない辺〔`DocumentNormalized` の発行・購読、`IngestionCompleted` の発行〕だけ、各サービスの `AddMassTransit` ＋ `UsePlatformRetry` が残る） | Shared.Infrastructure | 固定（基盤そのもの。トポロジの宣言化は後続） |
 | JWT/Keycloak 認証・ロール変換 | Shared.Infrastructure | 固定 |
 | OTel 可観測性・相関 ID | Shared.Infrastructure | 固定 |
 | ヘルスチェック | Shared.Infrastructure | 固定 |

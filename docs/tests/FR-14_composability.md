@@ -3,15 +3,15 @@ title: FR-14 コンポーザビリティ（宣言的パイプライン構成） 
 type: test-spec
 status: draft
 created: 2026-07-08
-updated: 2026-08-30
+updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
 ids: [FR-14, FR-15]
 adrs: [ADR-0018]
 iadrs: [IADR-0027, IADR-0028, IADR-0268]
-specs: [20260708_issue-111_declarative-pipeline-config]
-issues: [#444]
+specs: [20260708_issue-111_declarative-pipeline-config, 20261008_1799_composability-docs-wolverine-wiring]
+issues: [#444, #1799, #1801]
 -->
 
 # テスト仕様書: コンポーザビリティ（宣言的パイプライン構成）
@@ -25,15 +25,15 @@ issues: [#444]
 
 ## テスト対象・範囲
 
-- 対象: `PipelineExtensions`（宣言に基づく段登録と fail-fast）、`scripts/validate-pipeline-config.js`
+- 対象: `WolverinePipelineExtensions`（宣言に基づく段登録と fail-fast。移行の済んでいない MassTransit の段は `PipelineExtensions`）、`scripts/validate-pipeline-config.js`
   （宣言のスキーマ・接続性・循環検証）、段の組み替え（enabled/queue 変更）。
-- 対象外: MassTransit 本体・RabbitMQ ブローカーの挙動、Helm/ArgoCD の適用動作（運用検証）。
+- 対象外: Wolverine・MassTransit 本体と RabbitMQ ブローカーの挙動、Helm/ArgoCD の適用動作（運用検証）。
 
 ## テスト観点
 
 - 既定互換: 宣言なしでは既定配線で登録される（ローカル・テスト回帰なし）。
 - fail-fast: 未宣言の段・consumer 型名不一致・input 型名不一致で起動失敗する。
-- 組み替え: `enabled: false` で購読・キューが生成されない。`queue` 指定で受信エンドポイント名が変わる。
+- 組み替え: `enabled: false` で段のハンドラ（購読）が登録されない（Wolverine の段の受信キューは現状まだ宣言される）。`queue` 指定で受信エンドポイント名が変わる。
   **宣言の値が実効構成の表示（イベント接続）にまで届くことを、宣言が在ることとは別に確かめる。**
 - ポート差し替え: 接続先コンポーネントの選択が構成だけで入れ替わり、宣言的な段の登録を乱さない。
 - 宣言検証: スキーマ違反・発行元のないイベント購読・循環・型名形式違反を CI 段階で検出する。

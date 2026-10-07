@@ -3,15 +3,15 @@ title: システム構成図（microservices-platform 基盤 + knowledge ユニ�
 type: tech-architecture
 status: draft
 created: 2026-07-16
-updated: 2026-09-25
+updated: 2026-10-08
 author: endazon (with Claude Code)
 ---
 <!-- trace:
 ids: [SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11]
 adrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, ADR-0020, ADR-0027, ADR-0106]
 iadrs: [IADR-0017, IADR-0026, IADR-0048, IADR-0056, IADR-0121, IADR-0461]
-specs: [20260925_1499_object-storage-seaweedfs]
-issues: [#497, #580, #591, #1499]
+specs: [20260925_1499_object-storage-seaweedfs, 20261008_1799_composability-docs-wolverine-wiring]
+issues: [#497, #580, #591, #1499, #1799]
 -->
 
 # システム構成図: microservices-platform（基盤 + knowledge ユニット）
@@ -72,7 +72,7 @@ flowchart TB
 
   subgraph infra["共有インフラ / 横断的関心事"]
     direction LR
-    MQ[["RabbitMQ<br/>MassTransit"]]
+    MQ[["RabbitMQ<br/>Wolverine（移行中の一部の辺は MassTransit）"]]
     PG[("PostgreSQL<br/>Database per Service")]
     QD[("Qdrant<br/>ベクトル DB")]
     OBJ[("SeaweedFS<br/>オブジェクトストレージ")]
