@@ -43,7 +43,7 @@ issue: "#1782"
 | `Consume_failure_exhausting_retries_marks_dead_lettered` は**どの .cs にも無い** | `git grep -n Consume_failure_exhausting_retries -- '*.cs'` が空 |
 | React 19 / Vite 6 / TypeScript 5.6 | `src/package.json:88` (`react ^19.2.0`) / `:90` (`typescript ^5.6.2`) / `:92` (`vite ^6.4.3`)、`src/platform/frontend/package.json:25` / `:45` / `:46` |
 | .NET 10 / C# 13 | `src/Directory.Build.props:3`（`net10.0`）/ `:6`（`LangVersion 13`） |
-| 発行がまだ MassTransit のサービス（README:22 の根拠） | `src/knowledge/backend/Services/ConversionService/Program.cs:155`・`DocumentService/Program.cs:299`・`IngestionService/Program.cs:130`（いずれも `AddMassTransit`） |
+| まだ MassTransit の辺が残るサービス（README:22 の根拠） | `src/knowledge/backend/Services/ConversionService/Program.cs:155`・`IngestionService/Program.cs:130`（発行のみ。`AddMassTransit` に consumer なし）・`DocumentService/Program.cs:299-313`（`DocumentNormalizedConsumer` の購読＝辺 E2。同 `:315-321` のコメント）。［独立監査で訂正: 当初は 3 サービスとも「発行」とした］ |
 
 ## 是正（旧 → 新）
 
@@ -54,7 +54,7 @@ issue: "#1782"
 | SC-07 :152 | `UsePlatformRetry` | `UsePlatformMessagingDefaults` の試行上限 `WolverineExtensions.MaxAttempts` |
 | SC-07 :219 | MassTransit の再試行→デッドレター | Wolverine の再試行（`UsePlatformMessagingDefaults`。2/10/30 秒）→ `MoveToErrorQueue` |
 | README :176 | React 18 … Vite 5 | React 19 … Vite 6 |
-| README :22 | イベント（RabbitMQ / MassTransit） | イベント（RabbitMQ / Wolverine。移行中のため一部の発行はまだ MassTransit） |
+| README :22 | イベント（RabbitMQ / MassTransit） | イベント（RabbitMQ / Wolverine。移行中のため一部の辺〔発行・購読〕はまだ MassTransit） |
 
 ## 母集合（規則 9 / 10。誤りの側の文字列で全走査）
 
@@ -86,7 +86,7 @@ issue: "#1782"
 | ヒット | 判断 |
 | --- | --- |
 | `docs/tests/SC-07_conversion-jobs.md:219` | **是正** |
-| `README.md:22` | **是正**（購読は Wolverine。発行は 3 サービスでまだ MassTransit） |
+| `README.md:22` | **是正**（大半は Wolverine。Conversion・Ingestion の発行と Document の DocumentNormalized の購読〔辺 E2〕がまだ MassTransit） |
 | `CLAUDE.md:120`・`docs/operations/operations.md:1533`・`docs/tech/tech-requirements.md:240`・`scripts/README.md:32`・`templates/unit-template/README.md:110` | 除外（不採用ライブラリとしての言及。真） |
 | `docs/data/data-source.md:25`・`docs/functional/FR-01_data-source-catalog.md:25`・`docs/functional/FR-02_ingestion.md:22`・`docs/tests/FR-01_data-source-catalog.md:23`・`docs/tech/system-architecture.md:28` | 除外（Superseded な計画 ADR の引用。後継併記の書式どおり） |
 | `docs/tests/FR-12_document-normalization.md:65` | 除外（`MassTransitDocumentNormalizedPublisherTests` は実在する） |
@@ -108,7 +108,7 @@ issue: "#1782"
 ### 6. 規則 10（この変更で新たに誤りになる自分の記述）
 
 - SC-07 :151 の新記述が引く `再試行既定_試行上限に達して初めてデッドレターへ移る` は実在する（上表）。
-- README :22 の「一部の発行はまだ MassTransit」は E 系の移行が進むと古くなる。**移行完了の PR で消す対象**として残す（README は `docs/` 外で日付の欄が無い）。
+- README :22 の「一部の辺〔発行・購読〕はまだ MassTransit」は E 系の移行が進むと古くなる。**移行完了の PR で消す対象**として残す（README は `docs/` 外で日付の欄が無い）。
 - SC-07 の `updated:` を 2026-10-08 へ進め、trace ブロックの `issues` に `#1782` を足した（表示テキストに ID を増やしていない）。
 
 ## 検証
