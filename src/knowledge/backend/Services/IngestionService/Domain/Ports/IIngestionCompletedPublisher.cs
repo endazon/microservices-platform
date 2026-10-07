@@ -10,6 +10,7 @@ namespace IngestionService.Domain.Ports;
 // IDocumentNormalizedPublisher と同じ理由。IADR-0245）。
 //
 // ⚠️ イベントの構築は実装側（アダプタ）に置く（`findPublishers` の可視性を保つため）。
+// ［#1771］この辺の移行は IADR-0234 の単位 E4 として追跡する（購読者の要否は planning#741 項目 6 の裁定待ち）。
 public interface IIngestionCompletedPublisher
 {
     Task PublishCompletedAsync(

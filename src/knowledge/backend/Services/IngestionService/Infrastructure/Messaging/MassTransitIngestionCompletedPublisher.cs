@@ -15,6 +15,7 @@ namespace IngestionService.Infrastructure.Messaging;
 //
 // **辺 IngestionCompleted は本 PR（E3b）の射程外である。** トランスポートは変えない ——
 // 変えるのは「どのファイルに置くか」だけである。
+// ［#1771］この辺の移行は IADR-0234 の単位 E4 として追跡する（購読者の要否は planning#741 項目 6 の裁定待ち）。
 public sealed class MassTransitIngestionCompletedPublisher(IPublishEndpoint bus)
     : IIngestionCompletedPublisher
 {

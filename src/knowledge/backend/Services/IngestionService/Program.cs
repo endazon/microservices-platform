@@ -20,7 +20,7 @@ using Wolverine.RabbitMQ;
 const string ServiceName = "microservices-platform.ingestion-service";
 
 // FR-15, IADR-0029: 自己申告エンドポイントの最小 HTTP サーフェスのため WebApplication を用いる。
-// MassTransit コンシューマ（取り込みワーカー）は従来どおり IHostedService として稼働する。
+// 取り込みワーカーは Wolverine のハンドラとして稼働する（E3b）。MassTransit は IngestionCompleted の発行だけに残る（単位 E4。IADR-0234 の #1771 追記）。
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
