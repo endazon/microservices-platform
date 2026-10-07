@@ -31,13 +31,13 @@ namespace Knowledge.IntegrationTests.Search;
 // 🔴 **Qdrant の版は配備と同じ v1.18.1 に固定する**（`deploy/docker-compose.yml`・`deploy/local/infra/qdrant.yaml`）。
 // 既定の `QdrantBuilder()` は v1.13.4 を起こす（Testcontainers 4.12.0）。置き場所の可否は版で変わり得るので、
 // 配備の版で測る（作業仕様書 §実測。v1.13.4 でも同じ結果であった）。
+// 版の置き場所は `QdrantTestImage`（#1790。配備との一致は `QdrantTestImageDefinitionTests` が止める）。
 //
 // `Category=Integration` を付ける（実コンテナを起こす。`integration.yml` が回収する。PR の緑はこれが通ったことを意味しない）。
 [Trait("Category", "Integration")]
 [Trait("TestKind", "Integration")]
 public sealed class LexicalIndexQdrantTests : IAsyncLifetime
 {
-    private const string QdrantImage = "qdrant/qdrant:v1.18.1";
     private const int Dimensions = 8;
     private const string VectorCollection = "knowledge_chunks_lexical_it_vector";
     private const string LexicalCollection = "knowledge_chunks_lexical_it";
@@ -60,7 +60,7 @@ public sealed class LexicalIndexQdrantTests : IAsyncLifetime
 
         if (!DockerRequired.IsAvailable()) return;
 
-        _qdrant = new QdrantBuilder(QdrantImage).Build();
+        _qdrant = new QdrantBuilder(QdrantTestImage.Reference).Build();
         await _qdrant.StartAsync();
 
         var uri = new Uri(_qdrant.GetGrpcConnectionString());
