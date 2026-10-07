@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.AspNetCore.DataProtection.StackExchangeRedis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,6 +32,18 @@ public static class BffSessionExtensions
     /// </summary>
     public const string SmartScheme = "BffSmart";
 
+    /// <summary>
+    /// DataProtection の鍵リングを置く Redis のキー（リスト）。**全レプリカで同じでなければならない**
+    /// （IADR-0251 決定 5）。Runbook の `LLEN bff:dataprotection-keys` と同じ綴りである。
+    /// </summary>
+    public const string DataProtectionKeysRedisKey = "bff:dataprotection-keys";
+
+    /// <summary>
+    /// DataProtection のアプリケーション識別子。既定（content root のパス）だと配置パスが変わった版の
+    /// レプリカと鍵の目的が食い違うため、固定する（IADR-0251 決定 5）。
+    /// </summary>
+    public const string DataProtectionApplicationName = "microservices-platform-bff";
+
     public static IServiceCollection AddBffSession(
         this IServiceCollection services, IConfiguration config)
     {
@@ -57,10 +71,21 @@ public static class BffSessionExtensions
         // Redis 不在の環境でも起動時に落ちる（＝配線の都合でテストが Redis を要求することになる）。
         var lazyRedis = new Lazy<IConnectionMultiplexer>(
             () => ConnectionMultiplexer.Connect(options.RedisConnectionString));
+        // 🔴 NFR-07, IADR-0510: この登録の利用者は鍵リングの保存先（下の KeyManagementOptions）である。死んだ登録に見えても消さない
+        //   （消すと初回の DataProtection 利用で GetRequiredService が落ち、すべてのログインと Cookie が失敗する）。
         services.AddSingleton<IConnectionMultiplexer>(_ => lazyRedis.Value);
         services.AddDataProtection()
-            .PersistKeysToStackExchangeRedis(() => lazyRedis.Value.GetDatabase(), "bff:dataprotection-keys")
-            .SetApplicationName("microservices-platform-bff");
+            .SetApplicationName(DataProtectionApplicationName);
+        // 🔴 NFR-07, ADR-0032, [[IADR-0510]] (#1780): **鍵の保存先は DI の `IConnectionMultiplexer` から引く。**
+        // `PersistKeysToStackExchangeRedis(() => lazyRedis.Value.GetDatabase(), ...)` は接続をクロージャに
+        // 閉じ込めるため、テストが Redis の器を差し替えられず、「2 レプリカが同じ鍵リングを引く」ことを
+        // 本番の配線のまま測れなかった。置くリポジトリは拡張メソッドが内部で置くのと同じ `RedisXmlRepository`
+        // である。データベースは使う時に解決する（登録時に Connect しない —— 上の遅延を保つ）。
+        // `BffKeyRingSharingTests` が 2 つの WebApplicationFactory で共有と陰性対照を固定している。
+        services.AddOptions<KeyManagementOptions>()
+            .Configure<IServiceProvider>((o, sp) => o.XmlRepository = new RedisXmlRepository(
+                () => sp.GetRequiredService<IConnectionMultiplexer>().GetDatabase(),
+                DataProtectionKeysRedisKey));
 
         // 🔴 **［3b］既定は「振り分けスキーム」にする。Cookie と Bearer の**両方**を受理する。**
         //
