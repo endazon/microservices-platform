@@ -18,6 +18,15 @@
  *
  * 🔴 判定（ユニットごと。対象外ユニット＝.gitmodules の submodule は lib/excluded-units.js で除く）:
  *   G1 **一覧が読めなければ赤**（発見の見出しが無い＝ビルド失敗・コマンド失敗。「宣言 0 件」と読まない）。
+ *   G6 🔴 **一覧の部分的な失敗も赤**（#1796）。見出しが 1 つでもあれば G1 は通るので、次の 3 つを別に見る:
+ *      (a) 一覧コマンドの終了状態（integration.yml が <lists>/<unit>.exit に残す）が無い・0 でない。
+ *      (b) 一覧が宣言 0 件なのに、`Test run for <dll>` を出した試験プロジェクトのうち `No test matches … in <dll>` を
+ *          返さなかったものがある（＝発見が名前も「該当なし」も返さずに終わった。2026-10-08 実測: 正常な一覧は
+ *          全プロジェクトが `Test run for` と見出しを出し、宣言の無いプロジェクトは必ず `No test matches` を出す）。
+ *          あわせて、見出しの数が `Test run for` の数より少なければ赤（発見の前に落ちたプロジェクトがある）。
+ *      (c) TRX に「依存を得られない」skip（門の目印つき＝統合試験の門を通った結果）があるのに、その試験が一覧に無い。
+ *      PR #1794 の監査の実験（knowledge の一覧が見出しだけ・TRX に依存不足 skip・platform は 1 件宣言で合格）が
+ *      exit 0 になった穴を塞ぐ。
  *   G2 **統合試験の宣言が 1 件以上あるユニットで、実走（合格＋失敗）が下限（既定 1）を割ったら赤。**
  *      これが ADR-0090 決定 3 の要求「1 件も実走しなかった実行を区別する」そのものである。
  *   G3 **壊れた TRX は読み飛ばさず赤**（不明を 0 と読まない）。
@@ -54,6 +63,9 @@ const DEPENDENCY_SKIP_MARKERS = Object.freeze([
   'No broker available', // Knowledge.IntegrationTests/Fixtures/BrokerRequired.cs
 ]);
 const LIST_HEADER = 'The following Tests are available:';
+// 一覧の試験プロジェクトごとの行（#1796）。dll の絶対パスで突き合わせる。
+const RUN_FOR = /^Test run for (.+?) \([^()]*\)\s*$/;
+const NO_MATCH = /^No test matches the given testcase filter `[^`]*` in (.+?)\s*$/;
 // 一覧に出す skip の件数の上限（ログを溢れさせない。件数そのものは常に全数を出す）。
 const LIST_LIMIT = 30;
 const SKIP_DIRS = new Set(['node_modules', '.git', 'obj']);
@@ -86,15 +98,37 @@ function baseName(name) {
  */
 function parseList(text) {
   const names = new Set();
+  const runs = new Set();
+  const noMatch = new Set();
   let headers = 0;
   for (const raw of String(text).replace(/\r/g, '').split('\n')) {
     if (raw.trim() === LIST_HEADER) {
       headers++;
       continue;
     }
+    const run = RUN_FOR.exec(raw);
+    if (run) {
+      runs.add(run[1]);
+      continue;
+    }
+    const none = NO_MATCH.exec(raw);
+    if (none) {
+      noMatch.add(none[1]);
+      continue;
+    }
     if (headers > 0 && /^ {4}\S/.test(raw)) names.add(baseName(raw));
   }
-  return { ok: headers > 0, names };
+  // 🔴 名前も「該当なし」も返さなかった試験プロジェクト（#1796 G6 (b)）。名前は並列出力でプロジェクトへ
+  //   帰属できないため、宣言 0 件のときだけ判定に使う（名前が 1 件でもあれば、どれかが名前を返している）。
+  const silent = [...runs].filter((r) => !noMatch.has(r));
+  return { ok: headers > 0, names, headers, runs: runs.size, silent };
+}
+
+/** 一覧コマンドの終了状態の記録（<unit>.exit）を読む。戻り値: 数値、記録が無い／読めなければ null。 */
+function parseExit(text) {
+  if (typeof text !== 'string') return null;
+  const t = text.trim();
+  return /^\d+$/.test(t) ? Number(t) : null;
 }
 
 /** TRX 1 つから結果を取り出す。🔴 TestRun 要素が無ければ例外（黙って 0 件を返すと G3 が空洞化する）。 */
@@ -153,26 +187,36 @@ function isDependencySkip(message) {
 }
 
 /** 1 ユニットを集計する。 */
-function collectUnit(unit, listText, root) {
+function collectUnit(unit, listText, root, exitText = '0') {
   const list = parseList(listText);
   const files = listTrxFiles(path.join(root, unit, 'backend'));
   const malformed = [];
   const matched = [];
+  // 🔴 一覧に無いのに門の「依存を得られない」で skip した結果（#1796 G6 (c)）。門を通るのは統合試験だけである。
+  const undeclaredDependencySkips = [];
   for (const f of files) {
     let results;
     try {
-      results = parseTrx(fs.readFileSync(f, 'utf8').replace(/^﻿/, ''));
+      results = parseTrx(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, ''));
     } catch (e) {
       malformed.push({ file: f, reason: e.message });
       continue;
     }
-    for (const r of results) if (list.names.has(baseName(r.testName))) matched.push(r);
+    for (const r of results) {
+      if (list.names.has(baseName(r.testName))) matched.push(r);
+      else if (r.outcome === 'NotExecuted' && isDependencySkip(r.message)) undeclaredDependencySkips.push(r.testName);
+    }
   }
   const seen = new Set(matched.map((r) => baseName(r.testName)));
   const skipped = matched.filter((r) => r.outcome === 'NotExecuted');
   return {
     unit,
     listOk: list.ok,
+    listExit: parseExit(exitText),
+    listHeaders: list.headers,
+    listRuns: list.runs,
+    listSilent: list.silent,
+    undeclaredDependencySkips,
     declared: list.names.size,
     trxFiles: files.length,
     malformed,
@@ -185,6 +229,25 @@ function collectUnit(unit, listText, root) {
   };
 }
 
+/** 一覧の部分的な失敗（G6）の理由を並べる（無ければ空）。 */
+function listPartialFailures(u) {
+  const r = [];
+  if (u.listExit === null) r.push('一覧コマンドの終了状態の記録（<unit>.exit）が無いか読めない');
+  else if (u.listExit !== 0) r.push(`一覧コマンドが終了コード ${u.listExit} で終わった`);
+  if (u.listHeaders < u.listRuns) r.push(`見出しが ${u.listHeaders} 個しかない（試験プロジェクト ${u.listRuns} 個）`);
+  if (u.declared === 0 && u.listSilent.length > 0) {
+    r.push(`宣言 0 件なのに「該当なし」も返さなかった試験プロジェクトがある: ${u.listSilent.join(', ')}`);
+  }
+  if (u.undeclaredDependencySkips.length > 0) {
+    const shown = u.undeclaredDependencySkips.slice(0, 5).join(', ');
+    r.push(
+      `一覧に無い試験が「依存を得られない」で skip している（${u.undeclaredDependencySkips.length} 件: ${shown}` +
+        `${u.undeclaredDependencySkips.length > 5 ? ' ほか' : ''}）`
+    );
+  }
+  return r;
+}
+
 /** 判定する。戻り値: 違反の文（空なら合格）。 */
 function judge(units, { minExecuted, maxDependencySkips }) {
   const v = [];
@@ -195,6 +258,13 @@ function judge(units, { minExecuted, maxDependencySkips }) {
           'ビルドかコマンドが失敗している。「宣言 0 件」と読んで緑にはしない。'
       );
       continue;
+    }
+    const partial = listPartialFailures(u);
+    if (partial.length > 0) {
+      v.push(
+        `${u.unit}: 統合試験の一覧が部分的に失敗している（#1796）: ${partial.join(' / ')}。` +
+          '一覧の取りこぼしを「宣言が少ない」と読んで緑にはしない。'
+      );
     }
     if (u.malformed.length > 0) {
       v.push(
@@ -236,18 +306,19 @@ function formatReport(units, skippedUnits, opts, violations) {
       `依存不足の skip の上限: ${opts.maxDependencySkips} 件`
   );
   L.push('');
-  L.push('| ユニット | 宣言 | 実走 | 合格 | 失敗 | skip | うち依存不足 | その他 | 結果なし | TRX |');
-  L.push('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+  L.push('| ユニット | 宣言 | 実走 | 合格 | 失敗 | skip | うち依存不足 | その他 | 結果なし | TRX | 一覧の終了 |');
+  L.push('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+  const exitCell = (u) => (u.listExit === null ? '記録なし' : String(u.listExit));
   for (const u of units) {
     if (!u.listOk) {
-      L.push(`| ${u.unit} | 一覧なし | — | — | — | — | — | — | — | ${u.trxFiles} |`);
+      L.push(`| ${u.unit} | 一覧なし | — | — | — | — | — | — | — | ${u.trxFiles} | ${exitCell(u)} |`);
       continue;
     }
     L.push(
-      `| ${u.unit} | ${u.declared} | ${u.passed + u.failed} | ${u.passed} | ${u.failed} | ${u.skipped.length} | ${u.dependencySkipped} | ${u.other} | ${u.noResult} | ${u.trxFiles} |`
+      `| ${u.unit} | ${u.declared} | ${u.passed + u.failed} | ${u.passed} | ${u.failed} | ${u.skipped.length} | ${u.dependencySkipped} | ${u.other} | ${u.noResult} | ${u.trxFiles} | ${exitCell(u)} |`
     );
   }
-  for (const s of skippedUnits) L.push(`| ${s} | 対象外（submodule） | — | — | — | — | — | — | — | — |`);
+  for (const s of skippedUnits) L.push(`| ${s} | 対象外（submodule） | — | — | — | — | — | — | — | — | — |`);
   for (const u of units) {
     if (u.skipped.length === 0) continue;
     L.push('');
@@ -280,7 +351,13 @@ function run(listsDir, opts = {}, { quiet = false, excluded = null } = {}) {
       skippedUnits.push(unit);
       continue;
     }
-    units.push(collectUnit(unit, fs.readFileSync(path.join(listsDir, f), 'utf8'), o.root));
+    let exitText = null;
+    try {
+      exitText = fs.readFileSync(path.join(listsDir, `${unit}.exit`), 'utf8');
+    } catch {
+      exitText = null; // 記録が無い ＝ G6 (a) で赤
+    }
+    units.push(collectUnit(unit, fs.readFileSync(path.join(listsDir, f), 'utf8'), o.root, exitText));
   }
   const violations = judge(units, o);
   if (!quiet) {
@@ -321,10 +398,16 @@ function trx(results) {
   );
 }
 
+// 実出力（2026-10-08 実測。knowledge の slnx）と同じ形: プロジェクトごとに `Test run for <dll> (…)` と見出しを出し、
+// 宣言の無いプロジェクトは `No test matches … in <dll>` を出す。
+const DLL = (p) => `/w/src/knowledge/backend/Tests/${p}/bin/Release/net10.0/${p}.dll`;
+const runFor = (p) => `Test run for ${DLL(p)} (.NETCoreApp,Version=v10.0)`;
+const noMatch = (p) => `No test matches the given testcase filter \`Category=Integration\` in ${DLL(p)}`;
+
 function listOutput(names, { header = true } = {}) {
-  const lines = ['Test run for /w/src/knowledge/backend/Tests/K.IntegrationTests/bin/Release/net10.0/K.IntegrationTests.dll (.NETCoreApp,Version=v10.0)'];
+  const lines = [runFor('K.IntegrationTests')];
   if (header) lines.push(LIST_HEADER);
-  if (header && names.length === 0) lines.push('No test matches the given testcase filter `Category=Integration` in /w/x.dll');
+  if (header && names.length === 0) lines.push(noMatch('K.IntegrationTests'));
   for (const n of names) lines.push(`    ${n}`);
   return lines.join('\n') + '\n';
 }
@@ -353,6 +436,9 @@ function selfTest() {
     fs.mkdirSync(lists, { recursive: true });
     for (const [unit, spec] of Object.entries(units)) {
       if (spec.list !== undefined) fs.writeFileSync(path.join(lists, `${unit}.list`), spec.list);
+      // 一覧コマンドの終了状態（既定は 0）。null なら記録しない（記録の欠落を作る）。
+      const exit = spec.exit === undefined ? '0\n' : spec.exit;
+      if (spec.list !== undefined && exit !== null) fs.writeFileSync(path.join(lists, `${unit}.exit`), exit);
       for (const [rel, body] of Object.entries(spec.files || {})) {
         const p = path.join(root, unit, 'backend', rel);
         fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -500,9 +586,89 @@ function selfTest() {
     });
     const u = collectUnit('knowledge', fs.readFileSync(path.join(fx.lists, 'knowledge.list'), 'utf8'), fx.root);
     const report = formatReport([u], ['ai-stock-trading'], DEFAULTS, judge([u], DEFAULTS));
-    for (const want of ['| knowledge | 1 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 1 |', 'K.I.日本語の名前', '理由: No broker available & PLATFORM_TEST_RABBITMQ', 'ai-stock-trading | 対象外', '不合格']) {
+    for (const want of ['| knowledge | 1 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 1 | 0 |', 'K.I.日本語の名前', '理由: No broker available & PLATFORM_TEST_RABBITMQ', 'ai-stock-trading | 対象外', '不合格']) {
       if (!report.includes(want)) throw new Error(`報告に「${want}」が無い:\n${report}`);
     }
+  });
+
+  // ---- #1796: 一覧の部分的な失敗（G6）
+  t('🔴 #1796 監査の実験: 一覧が見出しだけ（名前なし）・TRX に依存不足 skip・他ユニットは合格 → 赤', () => {
+    const fx = fixture({
+      knowledge: {
+        list: `${runFor('K.IntegrationTests')}\n${LIST_HEADER}\n`,
+        files: { [TR]: trx([S('K.I.A.one'), S('K.I.A.two')]) },
+      },
+      platform: { list: listOutput(['P.I.one']), files: { [TR]: trx([P('P.I.one')]) } },
+    });
+    eq(go(fx), 1, '終了コード');
+  });
+
+  t('🔴 一覧コマンドが非 0 で終わったユニットは、出力が正常に見えても赤', () => {
+    const fx = fixture({ knowledge: { list: listOutput(['K.I.A.one']), exit: '1\n', files: { [TR]: trx([P('K.I.A.one')]) } } });
+    eq(go(fx), 1, '終了コード');
+    const fx0 = fixture({ knowledge: { list: listOutput(['K.I.A.one']), exit: '0\n', files: { [TR]: trx([P('K.I.A.one')]) } } });
+    eq(go(fx0), 0, '0 なら合格（対照）');
+  });
+
+  t('🔴 一覧コマンドの終了状態の記録が無い・読めないユニットは赤（記録の欠落を 0 と読まない）', () => {
+    const fx = fixture({ knowledge: { list: listOutput(['K.I.A.one']), exit: null, files: { [TR]: trx([P('K.I.A.one')]) } } });
+    eq(go(fx), 1, '記録なし');
+    const u = collectUnit('knowledge', fs.readFileSync(path.join(fx.lists, 'knowledge.list'), 'utf8'), fx.root, null);
+    if (!listPartialFailures(u).some((r) => r.includes('終了状態の記録'))) throw new Error('理由に「終了状態の記録」が無い');
+    const fx2 = fixture({ knowledge: { list: listOutput(['K.I.A.one']), exit: '', files: { [TR]: trx([P('K.I.A.one')]) } } });
+    eq(go(fx2), 1, '空の記録');
+  });
+
+  t('🔴 宣言 0 件なのに「該当なし」も返さなかった試験プロジェクトがあれば赤', () => {
+    // platform: 2 プロジェクトのうち 1 つ（P.IntegrationTests）が名前も「該当なし」も返さずに終わった形。
+    const list = [runFor('P.Tests'), runFor('P.IntegrationTests'), LIST_HEADER, LIST_HEADER, noMatch('P.Tests')].join('\n') + '\n';
+    const fx = fixture({
+      knowledge: { list: listOutput(['K.I.A.one']), files: { [TR]: trx([P('K.I.A.one')]) } },
+      platform: { list, files: { [UT]: trx([P('P.U.one')]) } },
+    });
+    eq(go(fx), 1, '終了コード');
+  });
+
+  t('否定形: 全プロジェクトが「該当なし」を返した宣言 0 件のユニットは赤にしない（実出力の形）', () => {
+    const list = [runFor('P.Tests'), runFor('P.Other.Tests'), LIST_HEADER, LIST_HEADER, noMatch('P.Other.Tests'), noMatch('P.Tests')].join('\n') + '\n';
+    const fx = fixture({
+      knowledge: { list: listOutput(['K.I.A.one']), files: { [TR]: trx([P('K.I.A.one')]) } },
+      platform: { list, files: { [UT]: trx([P('P.U.one')]) } },
+    });
+    eq(go(fx), 0, '終了コード');
+  });
+
+  t('🔴 見出しが「Test run for」より少なければ赤（発見の前に落ちたプロジェクトがある）', () => {
+    // 名前は出ているので「該当なし」の突合では捕まらない形。
+    const list = [runFor('K.IntegrationTests'), runFor('K.Broken.Tests'), LIST_HEADER, '    K.I.A.one', 'error: testhost crashed'].join('\n') + '\n';
+    const fx = fixture({ knowledge: { list, files: { [TR]: trx([P('K.I.A.one')]) } } });
+    eq(go(fx), 1, '終了コード');
+  });
+
+  t('🔴 一覧に無い試験が依存不足で skip していれば赤（宣言のあるユニットでも、一覧の取りこぼしを見逃さない）', () => {
+    const fx = fixture({
+      knowledge: { list: listOutput(['K.I.A.one']), files: { [TR]: trx([P('K.I.A.one'), S('K.I.B.missing')]) } },
+    });
+    const u = collectUnit('knowledge', fs.readFileSync(path.join(fx.lists, 'knowledge.list'), 'utf8'), fx.root);
+    eq(u.undeclaredDependencySkips.length, 1, '一覧に無い依存不足 skip');
+    eq(u.dependencySkipped, 0, '一覧の側の依存不足 skip（G5 には数えない）');
+    eq(go(fx), 1, '終了コード');
+  });
+
+  t('否定形: 一覧に無い試験の条件 skip（依存不足の目印なし）は赤にしない', () => {
+    const fx = fixture({
+      knowledge: { list: listOutput(['K.I.A.one']), files: { [TR]: trx([P('K.I.A.one'), C('K.U.cond')]) } },
+    });
+    eq(go(fx), 0, '終了コード');
+  });
+
+  t('一覧の解析: 実出力の行（Test run for・該当なし）を名前に数えず、プロジェクトごとに突き合わせる', () => {
+    const text = [runFor('A.Tests'), runFor('B.Tests'), LIST_HEADER, LIST_HEADER, noMatch('A.Tests'), '    B.X.y'].join('\r\n');
+    const l = parseList(text);
+    eq(l.headers, 2, '見出し');
+    eq(l.runs, 2, 'プロジェクト');
+    eq(l.silent.join(','), DLL('B.Tests'), '該当なしを返さなかったプロジェクト');
+    eq([...l.names].join(','), 'B.X.y', '名前');
   });
 
   t('一覧の解析は最初の見出しより後の 4 空白行を名前にする（並列出力の割り込みで名前を落とさない）', () => {
@@ -565,4 +731,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { parseList, parseTrx, baseName, isDependencySkip, collectUnit, judge, formatReport, run, DEFAULTS, DEPENDENCY_SKIP_MARKERS };
+module.exports = { parseList, parseExit, listPartialFailures, parseTrx, baseName, isDependencySkip, collectUnit, judge, formatReport, run, DEFAULTS, DEPENDENCY_SKIP_MARKERS };

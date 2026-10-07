@@ -11,17 +11,19 @@ namespace Knowledge.IntegrationTests.Fixtures;
 //   両 fixture は `catch { IsAvailable = false; }` で**例外を握り潰し、理由を 1 行も残さなかった**。
 //   その結果:
 //     1. 試験クラスが `if (!postgres.IsAvailable) return;` で早期 return し `_client` は `null!` のまま
-//     2. 試験本体のガード `RequiredServices.SkipUnlessObtainable(...)` は **CI では無条件に真**を返す
+//     2. 試験本体のガード `RequiredServices.SkipUnlessObtainable(...)` は **CI では無条件に真**を返した（当時。#1796 で近道を外した）
 //     3. ⇒ skip されず、null の `_client` に触って
 //        `ArgumentNullException: Value cannot be null. (Parameter 'client')` で落ちる
 //     4. しかも**なぜ起動に失敗したかはログに 1 行も無い**
 //   5 件がこの形で落ち、原因は特定できなかった（`ryuk` / `testcontainers.org` / `Cannot connect to
 //   the Docker` はいずれもログに 0 件）。
 //
-// ■ 🔴 `DockerRequired.IsAvailable()` が CI で無条件に真を返すのは、ここでは前提であって欠陥ではない
+// ■ 🔴 Docker があるのにコンテナが起きないのは、skip すべき事情ではなく報告すべき失敗である
 //   CI は Docker がある前提で回っている（同 run で 84 件中 78 件が実際に走っている）。
-//   **そこでコンテナが起きないのは skip すべき事情ではなく、報告すべき失敗である。**
 //   [[IADR-0231]] 決定 3 が撲滅した「走っていないのに Passed」と同じ向きである。
+//   ［2026-10-08 / #1796］`DockerRequired.IsAvailable()` は `CI=true` を理由に真を返さなくなった
+//   （ランナーのソケットの有無をそのまま答える）。Docker のある CI での倒し方は変わらない。
+//   Docker の無い CI では、ここは skip へ倒し、回収実行の門（IADR-0507）が「依存を得られない skip」で赤にする。
 internal static class ContainerStartupFailure
 {
     /// <summary>

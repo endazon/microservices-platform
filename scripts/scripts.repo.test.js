@@ -14336,7 +14336,10 @@ server.listen(0, '127.0.0.1', async () => {
       const yml = fsIe.readFileSync(pathIe.join(ROOT_IE, '.github', 'workflows', 'integration.yml'), 'utf8');
       // 🔴 TRX が出ていなければ検査は「宣言はあるのに実走 0 件」で赤になるが、配線の欠落は先にここで止める。
       assert.match(yml, /--collect:"XPlat Code Coverage" --logger trx --verbosity normal/, 'dotnet test に --logger trx が無い');
-      assert.match(yml, /--list-tests --filter "Category=Integration" > "\$lists\/\$unit\.list"/, '統合試験の一覧をユニットごとに残していない');
+      assert.match(yml, /--list-tests --filter "Category=Integration" > "\$lists\/\$unit\.list" 2>&1 \|\| list_rc=\$\?/, '統合試験の一覧をユニットごとに残していない（終了コードを捨てている）');
+      // 🔴 #1796: 一覧の終了コードをユニットごとに残す（検査器が <unit>.exit を読み、非 0・記録なしを赤にする）。
+      assert.match(yml, /echo "\$list_rc" > "\$lists\/\$unit\.exit"/, '一覧の終了コードを <unit>.exit へ残していない');
+      assert.ok(!/--list-tests[^\n]*\n[^\n]*\|\| echo/.test(yml), '一覧の終了コードを echo で捨てる形が戻った');
       // 🔴 TRX ロガーは Cobertura を TestResults/<run>/In/ へ複製する。消さないと床の件数突合が 2 倍で落ちる（PR #1794 の初回実行）。
       assert.match(yml, /find "src\/\$unit" -type d -path '\*\/TestResults\/\*\/In' -prune -exec rm -rf \{\} \+/, 'TRX が複製した Cobertura（TestResults/*/In）を消していない');
       assert.match(yml, /check-integration-executed\.js --self-test/, '検査器の自己試験が integration.yml に無い');
@@ -14358,6 +14361,15 @@ server.listen(0, '127.0.0.1', async () => {
       for (const m of ie.DEPENDENCY_SKIP_MARKERS) {
         assert.ok(gateSource.includes(`"${m}`), `目印「${m}」が門（RequiredServices.cs / BrokerRequired.cs）の skip 理由の先頭に無い`);
       }
+    });
+
+    ok('DockerRequired: CI=true を理由に Docker を「ある」と答えない（#1796。CI でも依存不足を skip にし、門を発火させる）', () => {
+      const src = fsIe.readFileSync(
+        pathIe.join(ROOT_IE, 'src', 'knowledge', 'backend', 'Tests', 'Knowledge.IntegrationTests', 'Fixtures', 'DockerRequired.cs'),
+        'utf8'
+      );
+      const code = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+      assert.ok(!/"CI"/.test(code), 'DockerRequired.cs のコードが環境変数 CI を見ている（計画 ADR-0090 が退けた「CI では fail・ローカルでは skip」の形）');
     });
 
     ok('scripts/README.md: 本リポジトリ固有の表に check-integration-executed.js を記載している', () => {
