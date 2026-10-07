@@ -15,6 +15,9 @@
     <!-- #637: 取り込み経路のタグ絞り込み（DocumentNormalizedConsumer.KnownTagsAsync）を
          ConsumeContext を組み立てずに検証するため。RetrievalService と同じ作法。 -->
     <InternalsVisibleTo Include="DocumentService.Tests" />
+    <!-- FR-02, FR-06, IADR-0509 (#1765): キーセットの SQL（`DocumentPageQuery.AfterCursor` / `InPageOrder` / `ReadPageAsync`）を
+         実 PostgreSQL で辿る試験（`DocumentKeysetPostgresTests`）のため。InMemory は Postgres の uuid の順も timestamptz の丸めも測れない。 -->
+    <InternalsVisibleTo Include="Knowledge.IntegrationTests" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />

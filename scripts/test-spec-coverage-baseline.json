@@ -110,6 +110,7 @@
       "DocumentDeletedTimeoutTests",
       "DocumentEndpointVersioningTests",
       "DocumentFingerprintResponseTests",
+      "DocumentKeysetPostgresTests",
       "DocumentNormalizedSyncTests",
       "DocumentPageTests",
       "DocumentReadGrpcMappingTests",

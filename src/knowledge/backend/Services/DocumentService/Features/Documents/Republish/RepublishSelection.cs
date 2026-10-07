@@ -9,6 +9,9 @@ namespace DocumentService.Features.Documents.Republish;
 // 並びのキーが不変なので、走査の間ずっと在った文書はちょうど 1 回ずつ選ばれる。途中で作られた文書は末尾に現れ、
 // 呼び出し側が `createdBefore` を走査の開始時刻に固定すれば選ばれない（それらは作成の経路で既に発行されている）。
 // 削除はカーソルを動かさない。**更新時刻で並べない** —— 走査の途中で更新された文書が前へ移り、読み飛ばされる。
+// ［2026-10-08 / #1765 / [[IADR-0509]]］属性の絞り込みが無いときの並び・カーソルの比較は SQL で行う
+// （`DocumentPageQuery.AfterCursor` / `InPageOrder`）。下の `Order` / `IsAfter` / `Remaining` は属性の絞り込みがある経路だけが使う
+// （その経路の中では並べる・比べるがどちらも .NET なので、規則は経路の中で閉じている）。`Slice` と `Summarize` は両方の経路が使う。
 //
 // 🔴 **個人資料を除かない。** 露出のトグルが ON の個人資料は索引に載るべき文書であり、除くと再索引から漏れる。
 // 載せるかどうかは発行の門（`DocumentEndpoints.PassesPublishGate`）が決める —— 判定を 2 か所に割らない。
@@ -39,7 +42,7 @@ internal static class RepublishSelection
             .OrderBy(r => r.CreatedAt.UtcTicks)
             .ThenBy(r => r.Id)];
 
-    // 並びでカーソルより後ろにあるか（`DocumentPageCursor.Precedes` と同じ比較を行に対して行う）。
+    // 並びでカーソルより後ろにあるか（`DocumentPageQuery.AfterCursor` が SQL で行うのと同じ比較を、メモリ上の行に対して行う）。
     // 🔴 **厳密に後ろ**である。「以上」にすると前ページの末尾をもう一度選ぶ（重複は冪等だが件数が嘘になる）。
     internal static bool IsAfter(DocumentPageCursor? after, Row r)
     {

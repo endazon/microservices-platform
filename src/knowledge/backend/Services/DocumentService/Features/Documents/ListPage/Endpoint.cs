@@ -21,6 +21,8 @@ namespace DocumentService.Features.Documents.ListPage;
 // ［2026-09-28 更新 / #1615］🔴 **内容の ABAC の門が開いたときだけ、この口も `DocumentReadAccess` を通す**（計画 ADR-0119 決定 3）。
 //   絞るのは**切り出す前**である（切り出した後に落とすと、ページが短くなり続きのカーソルがずれる）。共有先は台帳の全件分を
 //   1 クエリで引く（判定の像に要る）。門が閉じている間は従前どおり通さない（問い合わせも共有先の全件の読み出しも増やさない）。
+//   ［2026-10-08 / #1765］台帳は塊ごとに読むようになったので、判定と共有先の読み出しは**塊の中で絞り込みに一致した文書**の分だけ行う
+//   （集合は従前と同じ: 読める ∩ 組織文書 ∩ 絞り込みに一致）。
 internal static class ListDocumentPageEndpoint
 {
     internal static void Map(RouteGroupBuilder pageRead)
@@ -42,13 +44,13 @@ internal static class ListDocumentPageEndpoint
                 after = decoded;
             }
 
-            // 台帳を読んでからメモリで絞る（属性は jsonb の値変換で SQL へ訳せない。
-            // 既存の `GET /documents` と同じ読み方であり、DB の負荷は増えない）。
-            var ledger = await db.Documents.AsNoTracking().ToListAsync(ct);
-            if (access.ContentAbacEnabled)
-                ledger = await ReadableAsync(ledger, DocumentReadPrincipal.FromUser(http.User), db, access, ct);
-            var (page, next) = DocumentPageQuery.Slice(
-                ledger, filters!, DocumentPageQuery.ClampLimit(limit), after);
+            // ［2026-10-08 / #1765 / [[IADR-0509]]］台帳を SQL のキーセットで塊ごとに読み、塊の中で絞る
+            // （従前は全件を読んでからメモリで絞っていた＝1 ページ O(N)）。述語・並び・カーソルの意味は変えない。
+            var principal = access.ContentAbacEnabled ? DocumentReadPrincipal.FromUser(http.User) : null;
+            var (page, next) = await DocumentPageQuery.ReadPageAsync(
+                db.Documents.AsNoTracking(), filters!, DocumentPageQuery.ClampLimit(limit), after,
+                principal is null ? null : (docs, token) => ReadableAsync(docs, principal, db, access, token),
+                ct);
 
             // 共有先は 1 クエリで引いて分配する（`DocumentReadUseCase.ListAsync` と同じ規律）。
             var names = await TagResolver.NamesAsync(db);
@@ -64,7 +66,7 @@ internal static class ListDocumentPageEndpoint
         }).WithName("DocumentPage").Produces<DocumentPageDto>();
     }
 
-    // #1615: 内容の ABAC の門が開いたときの絞り込み（切り出しの前）。
+    // #1615: 内容の ABAC の門が開いたときの絞り込み（切り出しの前。#1765 以降は塊ごと）。
     private static async Task<List<Document>> ReadableAsync(List<Document> ledger, DocumentReadPrincipal principal,
         DocumentDbContext db, DocumentReadAccess access, CancellationToken ct)
     {
