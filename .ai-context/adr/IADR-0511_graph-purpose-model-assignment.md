@@ -121,7 +121,7 @@ updated: 2026-10-08
   `scripts/scripts.repo.test.js`（#1785 の節。`scripts-tests` ジョブ）が実ツリーと合成の本文の両方を叩く。
 - **同型の事故は 3 回目である**（`trade-decision` IADR-0102・`trade-decision-screening` IADR-0340・本件）。列挙を持たず、宣言から母集合を引く。
   **0 件走査は赤**にする（`check-secret-injected-options.js` と同じ姿勢）。
-- **拾う形**: ① 名前に `Purpose` を含む `const string`（名前が `Tag` で終わる属性名は除く） ② `Purpose:` / `Purpose =` への文字列リテラル。
+- **拾う形**: ① 名前に `Purpose` を含む `const string` / `static readonly string`（名前が `Tag` で終わる属性名は除く） ② `Purpose:` / `Purpose =` / `purpose:` / `purpose =` への文字列リテラル（小文字の名前付き引数、プロパティの初期値 `string Purpose { get; set; } = "x"`、既定引数 `string purpose = "x"` を含む。独立監査 🟡 F3 で足した）。
 - 🔴 **拾わない形と、その塞ぎ方**: 文字列リテラルを**位置引数で中継**する形（`GenerateAsync(…, "analysis", ct)`）。
   引数の分割に入れ子のラムダ・括弧が絡むので正規表現では脆い。**宣言の形をそろえる側で塞ぐ** ——
   `RagOrchestrator` の `"rag-answer"`・`"analysis"` を定数（`RagAnswerPurpose`・`AnalysisPurpose`）へ改めた（値は同じ）。

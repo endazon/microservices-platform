@@ -59,14 +59,17 @@ function extractCallerPurposes(source) {
   const lineOf = (index) => source.slice(0, index).split('\n').length;
 
   // ① 名前に Purpose を含む const string。
-  const constRe = /\bconst\s+string\s+(\w*Purpose\w*)\s*=\s*"([^"\\]*)"\s*;/g;
+  //   `static readonly string XxxPurpose = "x";` も同じ扱い（#1785 監査 🟡 F3）。
+  const constRe = /\b(?:const|static\s+readonly)\s+string\s+(\w*Purpose\w*)\s*=\s*"([^"\\]*)"\s*;/g;
   for (let m; (m = constRe.exec(source)); ) {
     if (/Tag$/.test(m[1])) continue;
     found.push({ purpose: m[2], line: lineOf(m.index), form: `const ${m[1]}` });
   }
 
   // ② 名前付き引数・初期化子への文字列リテラル（① の定数宣言 `string Purpose = "x"` は二重に数えない）。
-  const literalRe = /(?<!\bstring\s+)\bPurpose\s*[:=]\s*"([^"\\]*)"/g;
+  //   小文字の名前付き引数（`GenerateAsync(..., purpose: "x")`）と、プロパティ・既定引数の初期値
+  //   （`string Purpose { get; set; } = "x"` / `string purpose = "x"`）も拾う（#1785 監査 🟡 F3）。
+  const literalRe = /(?<!\bconst\s+string\s+|\breadonly\s+string\s+)\b[Pp]urpose\s*(?:\{[^}]*\}\s*)?[:=]\s*"([^"\\]*)"/g;
   for (let m; (m = literalRe.exec(source)); ) {
     found.push({ purpose: m[1], line: lineOf(m.index), form: 'Purpose literal' });
   }

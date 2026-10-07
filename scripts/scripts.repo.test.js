@@ -14863,6 +14863,17 @@ server.listen(0, '127.0.0.1', async () => {
       assert.deepStrictEqual(got.sort(), ['analysis', 'graph-suggestion', 'init-purpose', 'inline-purpose', 'rerank']);
     });
 
+    ok('#1785（監査 F3）: 小文字の名前付き引数・static readonly・プロパティ初期値・既定引数も拾い、二重に数えない', () => {
+      const src = [
+        'await orchestrator.GenerateAsync(prompt, purpose: "named-lower");',
+        'private static readonly string SuggestPurpose = "static-readonly";',
+        'public string Purpose { get; set; } = "property-init";',
+        'Task F(string prompt, string purpose = "default-param") => Task.CompletedTask;',
+      ].join('\n');
+      const got = lp.extractCallerPurposes(src).map((c) => c.purpose);
+      assert.deepStrictEqual(got.sort(), ['default-param', 'named-lower', 'property-init', 'static-readonly']);
+    });
+
     ok('#1785: 変異 —— 未登録の用途を宣言すると findUnregistered が拾う（登録済み・大小違い・default は拾わない）', () => {
       const keys = lp.readPurposeModelKeys(JSON.stringify({ Llm: { Routing: { PurposeModels: { 'rag-answer': 'm', 'graph-suggestion': 'm' } } } }));
       const callers = lp.extractCallerPurposes([
