@@ -1,7 +1,7 @@
 <!-- trace:
 adrs: [ADR-0030]
-iadrs: [IADR-0034, IADR-0139, IADR-0141, IADR-0183, IADR-0194]
-issues: [#683]
+iadrs: [IADR-0034, IADR-0139, IADR-0141, IADR-0183, IADR-0194, IADR-0505]
+issues: [#683, #1768]
 -->
 
 # 完了の定義（Definition of Done）
@@ -78,6 +78,9 @@ issues: [#683]
 - [ ] PR テンプレートのチェックリストを記入した
 - [ ] CI（lint/build/test/security）が green
 - [ ] 必要なレビュー（CODEOWNERS）の承認を得た
+      （`.github/CODEOWNERS` は `* @endazon`。develop のルールセットは承認 1 件とコードオーナーの承認を要求するが、
+      **管理者ロールはルールセットの例外で素通りする**ため、管理者がマージする PR では**機械的には強制されない**。
+      その場合この項は人の確認である。現況の正本は [`ai-workflow.md`](ai-workflow.md)「必須チェックの有効化」）
 
 ### クロス監査（マージ前）
 

@@ -1,0 +1,15 @@
+# CODEOWNERS — 全ファイルのレビュアを利用者本人に指名する
+#
+# NFR, #1768（第 4 回全体監査 A-2）/ IADR-0505: AST の .github/CODEOWNERS（AST#501 / AST#1017）と同じ形で置く。
+# AI が実装し AI がレビューする運用で、必須レビュアが不在だと
+# 「AI の実装を AI が承認して同一人物がマージする」ループになる（AI_SETUP.md 共通セットアップ 4）。
+# 配置前は develop のルールセットの「Require review from Code Owners」が対象者 0 人で空振りしていた。
+#
+# 🔴 このファイルを置いただけでは関門にならない。効くかどうかは develop のルールセット側で決まる
+# （コードオーナーの承認要求は有効だが、管理者ロールが bypass_actors で exempt のため素通りする。
+#   その是非は利用者の判断であり #1768 では決めていない）。現況は docs/ai-workflow.md「必須チェックの有効化」。
+#
+# 書式: <パスパターン> <@ユーザー名 または @org/チーム名>（後の行が優先される）
+# 参考: https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+
+*       @endazon

@@ -24,6 +24,10 @@
  *      `AI_SETUP.md` / `scripts/README.md` / `.claude/rules/*.md` を走査し、名指しされたジョブ名が
  *      いずれかのワークフローに在ること。**過去形の言及**（「…はもう存在しない」）は `HISTORICAL_LINE`
  *      に当たる行に限り除外する（無条件に除外すると、生きた指示の中の廃止名を拾えない）。
+ *   D. （NFR / #1768 / IADR-0505）必須チェック表の行が「`<集約>` の `needs` で拾う」と主張するとき
+ *      （取り消し線の行を含む）、`<集約>` が表の生きた行であり、出所のワークフローで `<集約>` の `needs:` に
+ *      その行のジョブが在ること。`static-checks` は単独の必須 check ではなく `build-and-test` の `needs` で
+ *      門に入る —— 表の主張だけ残して `needs` から外すと、赤くてもマージできる状態へ黙って戻るため。
  *
  * 見ないもの:
  *   - ジョブの `paths:` / `types:` 条件（必須チェックにしてよいかの判定）。それは #705 の回帰試験と
@@ -72,6 +76,49 @@ function parseJobIds(yamlText) {
   return ids;
 }
 
+/**
+ * 面 D: ワークフロー YAML の本文から、ジョブごとの `needs:` を抜く（純関数）。
+ * `needs: [a, b]` / `needs: a` / ブロック列（`needs:` の次行から `      - a`）の 3 形を読む。
+ * 戻り値: `{ <job>: ['a', 'b'], ... }`（`needs:` を持たないジョブは空配列）。
+ */
+function parseNeedsByJob(yamlText) {
+  const out = {};
+  let inJobs = false;
+  let cur = null;
+  let inBlock = false;
+  for (const raw of String(yamlText).split(/\r?\n/)) {
+    if (/^jobs:\s*(#.*)?$/.test(raw)) { inJobs = true; continue; }
+    if (inJobs && /^\S/.test(raw) && !/^#/.test(raw)) { inJobs = false; cur = null; }
+    if (!inJobs) continue;
+    const j = raw.match(/^  ([A-Za-z_][A-Za-z0-9_-]*):\s*(#.*)?$/);
+    if (j) { cur = j[1]; out[cur] = []; inBlock = false; continue; }
+    if (!cur) continue;
+    if (inBlock) {
+      const item = raw.match(/^\s{6,}-\s*([A-Za-z0-9_-]+)\s*(#.*)?$/);
+      if (item) { out[cur].push(item[1]); continue; }
+      if (/^\s*(#.*)?$/.test(raw)) continue;
+      inBlock = false;
+    }
+    const flow = raw.match(/^    needs:\s*\[([^\]]*)\]/);
+    if (flow) { out[cur].push(...flow[1].split(',').map((x) => x.trim()).filter(Boolean)); continue; }
+    const one = raw.match(/^    needs:\s*([A-Za-z0-9_-]+)\s*(#.*)?$/);
+    if (one) { out[cur].push(one[1]); continue; }
+    if (/^    needs:\s*(#.*)?$/.test(raw)) inBlock = true;
+  }
+  return out;
+}
+
+/** 面 D: `{ 'ci.yml': { 'build-and-test': ['discover-units', ...] }, ... }` */
+function loadWorkflowNeeds(root = REPO_ROOT) {
+  const dir = path.join(root, WORKFLOW_DIR);
+  const out = {};
+  if (!fs.existsSync(dir)) return out;
+  for (const f of fs.readdirSync(dir).filter((n) => /\.ya?ml$/.test(n)).sort()) {
+    out[f] = parseNeedsByJob(fs.readFileSync(path.join(dir, f), 'utf8'));
+  }
+  return out;
+}
+
 /** `{ 'ci.yml': Set(['lint', ...]), ... }` */
 function loadWorkflows(root = REPO_ROOT) {
   const dir = path.join(root, WORKFLOW_DIR);
@@ -98,7 +145,8 @@ function parseRequiredCheckTable(md) {
   for (let i = start + 1; i < lines.length && lines[i].trim() !== ''; i++) {
     const m = lines[i].match(/^\|\s*(~~)?`([A-Za-z0-9_-]+)`(~~)?\s*\|\s*`([A-Za-z0-9_.-]+\.ya?ml)`\s*\|/);
     if (!m) continue;
-    rows.push({ job: m[2], workflow: m[4], struck: Boolean(m[1] || m[3]), line: lines[i] });
+    const picked = lines[i].match(/`([A-Za-z0-9_-]+)`\s*の\s*`needs`\s*で拾う/);
+    rows.push({ job: m[2], workflow: m[4], struck: Boolean(m[1] || m[3]), pickedBy: picked ? picked[1] : null, line: lines[i] });
   }
   return rows;
 }
@@ -164,8 +212,8 @@ function jobExists(workflows, job) {
   return Object.values(workflows).some((s) => s.has(job));
 }
 
-/** 3 面の突合本体（純関数。I/O は呼び出し側）。違反の配列を返す。 */
-function findViolations({ workflows, requiredCheckMd, readmeMd, mentionDocs }) {
+/** 4 面の突合本体（純関数。I/O は呼び出し側）。違反の配列を返す。 */
+function findViolations({ workflows, requiredCheckMd, readmeMd, mentionDocs, needs = {} }) {
   const v = [];
   const wfNames = Object.keys(workflows);
   if (wfNames.length === 0) v.push({ where: WORKFLOW_DIR, text: 'ワークフローが 1 件も無い（走査が空振りしている。fail-closed）' });
@@ -180,6 +228,22 @@ function findViolations({ workflows, requiredCheckMd, readmeMd, mentionDocs }) {
   }
   for (const n of parseCountClaims(requiredCheckMd)) {
     if (n !== live.length) v.push({ where: REQUIRED_CHECK_DOC, text: `「下表の ${n} 件」と書かれているが、表の行数（取り消し線を除く）は ${live.length} 件である` });
+  }
+
+  // 面 D（#1768）: 「`<集約>` の `needs` で拾う」の主張と needs: の実物
+  for (const r of rows.filter((x) => x.pickedBy)) {
+    if (!live.some((x) => x.job === r.pickedBy && x.workflow === r.workflow)) {
+      v.push({ where: REQUIRED_CHECK_DOC, text: `\`${r.job}\` は \`${r.pickedBy}\` の needs で拾うとあるが、\`${r.pickedBy}\`（\`${r.workflow}\`）が表の生きた行（必須チェック）に無い` });
+      continue;
+    }
+    if (!workflows[r.workflow] || !workflows[r.workflow].has(r.job)) {
+      v.push({ where: REQUIRED_CHECK_DOC, text: `\`${r.pickedBy}\` の needs で拾うとある \`${r.job}\` が \`${r.workflow}\` の jobs: に無い` });
+      continue;
+    }
+    const list = (needs[r.workflow] || {})[r.pickedBy] || [];
+    if (!list.includes(r.job)) {
+      v.push({ where: REQUIRED_CHECK_DOC, text: `\`${r.job}\` は \`${r.pickedBy}\` の needs で拾うとあるが、\`${r.workflow}\` の \`${r.pickedBy}\` の needs: に無い（[${list.join(', ')}]。赤くてもマージできる状態へ戻っている）` });
+    }
   }
 
   // 面 B
@@ -203,7 +267,7 @@ function loadInputs(root = REPO_ROOT) {
   const read = (rel) => (fs.existsSync(path.join(root, rel)) ? fs.readFileSync(path.join(root, rel), 'utf8') : '');
   const mentionDocs = {};
   for (const r of MENTION_ROOTS) for (const f of walkMarkdown(root, r)) mentionDocs[f] = read(f);
-  return { workflows: loadWorkflows(root), requiredCheckMd: read(REQUIRED_CHECK_DOC), readmeMd: read(SCRIPTS_README), mentionDocs };
+  return { workflows: loadWorkflows(root), needs: loadWorkflowNeeds(root), requiredCheckMd: read(REQUIRED_CHECK_DOC), readmeMd: read(SCRIPTS_README), mentionDocs };
 }
 
 function main() {
@@ -286,6 +350,31 @@ function selfTest() {
     const v = findViolations({ workflows: {}, requiredCheckMd: '', readmeMd: '', mentionDocs: {} });
     assert.ok(v.length >= 3, JSON.stringify(v));
   });
+  ok('parseNeedsByJob: flow 列・単一・ブロック列の 3 形を読み、needs の無いジョブは空配列（#1768）', () => {
+    const y = 'on:\n  push:\njobs:\n  a:\n    runs-on: x\n  b:\n    needs: a\n  c:\n    needs: [a, b]\n    if: always()\n  d:\n    needs:\n      - a\n      # comment\n      - c\n    steps: []\n';
+    assert.deepStrictEqual(parseNeedsByJob(y), { a: [], b: ['a'], c: ['a', 'b'], d: ['a', 'c'] });
+  });
+  ok('parseRequiredCheckTable: 「`<集約>` の `needs` で拾う」を pickedBy として読む（取り消し線の行も）', () => {
+    const rows = parseRequiredCheckTable('| 必須にする check 名 | 出所 |\n| `build-and-test` | `ci.yml` | x |\n| ~~`static-checks`~~ | `ci.yml` | **単独では必須にしない。`build-and-test` の `needs` で拾う** |');
+    assert.deepStrictEqual(rows.map((r) => [r.job, r.struck, r.pickedBy]), [['build-and-test', false, null], ['static-checks', true, 'build-and-test']]);
+  });
+  const pickedDoc = goodDoc + '\n| ~~`static-checks`~~ | `ci.yml` | `build-and-test` の `needs` で拾う |';
+  const okNeeds = { 'ci.yml': { 'build-and-test': ['lint', 'static-checks'] } };
+  ok('findViolations 面 D: 主張どおり needs に在れば 0 件（取り消し線の行は件数に数えない）', () => {
+    assert.deepStrictEqual(findViolations({ workflows, needs: okNeeds, requiredCheckMd: pickedDoc, readmeMd: goodReadme, mentionDocs: {} }), []);
+  });
+  ok('findViolations 面 D: needs から外すと落とす（#1768 の退行）', () => {
+    const v = findViolations({ workflows, needs: { 'ci.yml': { 'build-and-test': ['lint'] } }, requiredCheckMd: pickedDoc, readmeMd: goodReadme, mentionDocs: {} });
+    assert.strictEqual(v.length, 1); assert.match(v[0].text, /static-checks.*needs: に無い/);
+  });
+  ok('findViolations 面 D: needs を読めない（空）なら落とす —— fail-closed', () => {
+    const v = findViolations({ workflows, requiredCheckMd: pickedDoc, readmeMd: goodReadme, mentionDocs: {} });
+    assert.strictEqual(v.length, 1);
+  });
+  ok('findViolations 面 D: 拾う側が必須チェックの生きた行でなければ落とす', () => {
+    const v = findViolations({ workflows, needs: { 'ci.yml': { lint: ['static-checks'] } }, requiredCheckMd: goodDoc.replace('| `build-and-test` | `ci.yml` |\n', '') .replace('下表の 3 件', '下表の 2 件') + '\n| ~~`static-checks`~~ | `ci.yml` | `build-and-test` の `needs` で拾う |', readmeMd: goodReadme, mentionDocs: {} });
+    assert.strictEqual(v.length, 1); assert.match(v[0].text, /生きた行/);
+  });
   ok('実データ: 本リポジトリのワークフローからジョブを読める', () => {
     const w = loadWorkflows();
     assert.ok(Object.keys(w).length > 0); assert.ok(w['ci.yml'] && w['ci.yml'].has('static-checks'));
@@ -295,4 +384,4 @@ function selfTest() {
 
 if (require.main === module) main();
 
-module.exports = { parseJobIds, parseRequiredCheckTable, parseCountClaims, parseReadmeJobTable, findJobMentions, findViolations, loadWorkflows, loadInputs, HISTORICAL_LINE };
+module.exports = { parseJobIds, parseNeedsByJob, loadWorkflowNeeds, parseRequiredCheckTable, parseCountClaims, parseReadmeJobTable, findJobMentions, findViolations, loadWorkflows, loadInputs, HISTORICAL_LINE };

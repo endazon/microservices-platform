@@ -144,6 +144,9 @@ jobs:
   # 「これを外すと検査が空回りする」という設計要点を持つため、1 行も捨てない。
   #
   # submodule は取得しない。取得が要る検査は下の static-checks-units にある。
+  #
+  # 🔴 NFR, #1768 / IADR-0505: 本ジョブは単独の必須 check ではないが、必須 check の集約 build-and-test が needs で拾う。
+  # 赤なら build-and-test も赤になる。ジョブ ID を改名するときは build-and-test の needs と判定ステップも直すこと。
   static-checks:
     runs-on: ubuntu-latest
     env:
@@ -1121,7 +1124,10 @@ jobs:
     # NFR, #1551: submodule ユニットの合成ビルドも拾う（images.yml の image-build と同じ形。skipped は「合成を変え得る
     # 差分が無い」を意味し合格として扱う）。
     # NFR, #1686（2026-10-02 再裁定）: backend-verify-build（backend.slnx 全体の build。脚は閉包しか建てない）も拾う。
-    needs: [discover-units, backend-build, backend-verify-build, submodule-changes, submodule-backend-build]
+    # NFR, #1768 / IADR-0505: 依存ゼロの node 検査器の集約 static-checks も拾う。単独の必須 check 名にはしない
+    # （ブランチ保護の変更が要る）。直近 16 本の実測（2026-10-07）では static-checks（65〜80 秒）は
+    # すべて本ジョブの開始より前（最小 28 秒前）に終わっており、律速を延ばしていない。結果の判定は最後のステップで行う（カバレッジの報告を止めないため）。
+    needs: [discover-units, backend-build, backend-verify-build, submodule-changes, submodule-backend-build, static-checks]
     if: always()
     steps:
       - name: Report build/test result
@@ -1192,6 +1198,19 @@ jobs:
       # 現在の実現手段と暫定手段は docs/ai-workflow.md「バックエンドのカバレッジ床の強制点」が正本。
       - name: Report backend coverage (床の強制は integration.yml が行う)
         run: node scripts/check-coverage-floor.js --report-only
+      # NFR, #1768 / IADR-0505: static-checks の結果を判定する。success 以外（failure / cancelled / skipped）は落とす。
+      # 前段のステップが赤でも走らせ、ビルドと静的検査の失敗を 1 回の CI で両方見せる。
+      - name: Report static-checks result
+        if: ${{ !cancelled() }}
+        env:
+          STATIC_CHECKS_RESULT: ${{ needs.static-checks.result }}
+        run: |
+          echo "static-checks=$STATIC_CHECKS_RESULT"
+          if [ "$STATIC_CHECKS_RESULT" != "success" ]; then
+            echo "::error::依存ゼロの node 検査器（static-checks）のいずれかが失敗した（static-checks のステップ名で探すこと）。"
+            exit 1
+          fi
+          echo "✓ static-checks の全検査が成立した。"
 
   # FR-14, IADR-0056 / IADR-0060, Issue #230: 全バックエンドユニット（src/*/backend/backend.slnx）を
   # 自動発見して検査する。ユニット追加時に CI の編集は不要（discover-units が導出する）。

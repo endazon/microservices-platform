@@ -1,8 +1,8 @@
 <!-- trace:
 adrs: [ADR-0048, ADR-0118]
-iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470]
-specs: [20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
-issues: [#1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
+iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505]
+specs: [20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
+issues: [#1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -126,6 +126,7 @@ bash scripts/apply-profile.sh copilot
 > | 必須チェック | 下表の 8 件 | いずれも `paths:` を持たず `reopened` を含む＝**全 PR で起動する**ことを実測で確認した |
 > | `enforce_admins` | **`true`** | `false` だと「赤いままマージを打てば通る」が残る。このリポジトリの操作主体は管理者権限を持つため、**`false` では統制にならない** |
 > | `required_pull_request_reviews` | **`null`**（承認必須にしない） | 🔴 **下の推奨（Code Owners レビュー必須）から意図的に外れる。** 人間が 1 人であり、承認必須にすると**全 PR がその人の手作業待ち**になって流れが止まる。#936 の主題は「CI が機械的に強制されていない」ことであり、レビュー要件は別の政策判断である |
+> | ルールセット `develop-rule` の `pull_request` 規則 | 承認 **1** 件・**コードオーナーの承認**・最終 push 後の承認・スレッドの解決を要求。**管理者ロールは `bypass_actors` で `exempt`**（2026-10-07 にルールセット API で実測） | classic 保護とは**別の層**であり、上の `null` と並んで効く。`.github/CODEOWNERS`（`* @endazon`）を置いたので（#1768）、コードオーナーの承認は対象者 0 人の空振りではなくなった。**ただし管理者ロールは `exempt` のため、管理者がマージする PR には承認もコードオーナーの承認も機械的には課されない**（結果として上の `null` と同じ挙動になる）。`exempt` の是非は利用者の判断であり、ここでは決めていない。なお同じルールセットの必須 check は `image-build` の 1 件だけで、classic 側の 8 件と `enforce_admins` は classic 保護の API が 403 を返すため同日には再測定できていない |
 > | `strict` | `false` | 強制すると、待ち行列の全 PR が 1 本着地するたびに base 取り込みと CI 再走を強いられる。FIFO の規律は運用側が持つ |
 >
 > **リスクを 1 つ受け入れている**: `claude-review` を必須にしたため、**AI レビューの実行基盤が落ちると
@@ -135,7 +136,7 @@ GitHub の **ブランチ保護ルール**（Settings → Branches → Add rule�
 
 - Require a pull request before merging（直接 push 禁止）
 - Require status checks to pass before merging → **下表の check 名**を必須に
-- Require review from Code Owners（`CODEOWNERS` を配置）
+- Require review from Code Owners（`.github/CODEOWNERS` は配置済み。管理者ロールの例外は上の表）
 - Require conversation resolution before merging
 
 #### ★ 指定するのは「check の名前」であって「ワークフローの名前」ではない
@@ -147,13 +148,14 @@ GitHub Actions が report する status check の context は**ジョブ側の�
 
 | 必須にする check 名 | 出所 | 備考 |
 | --- | --- | --- |
-| `build-and-test` | `ci.yml` | ビルドとテスト。**全 PR で起動する**。集約ジョブであり、本リポジトリの実体のユニット（行列 `backend-build`。テストをシャードに分けるユニットはシャードごとに 1 脚で、割り当ては `scripts/backend-test-shards.json`。脚は必須ではないので脚の名前が変わっても恒久 pending にはならない）と、`backend.slnx` 全体を建てる行列 `backend-verify-build`（シャードの脚は自分の試験プロジェクトが参照する範囲だけを建てるため、全体のビルドはこちらで検証する。脚と並列に走る）に加えて、**submodule ユニットを本リポジトリの構成で建てる `submodule-backend-build`** の結果も拾う。後者は gitlink・`.gitmodules`・`src/Directory.*`・`global.json`・`ci.yml` を触る PR でだけ走り、それ以外では skipped（合格として扱う。`images.yml` の `image-build` と同じ形）。check 名は変わらない |
+| `build-and-test` | `ci.yml` | ビルドとテスト。**全 PR で起動する**。集約ジョブであり、本リポジトリの実体のユニット（行列 `backend-build`。テストをシャードに分けるユニットはシャードごとに 1 脚で、割り当ては `scripts/backend-test-shards.json`。脚は必須ではないので脚の名前が変わっても恒久 pending にはならない）と、`backend.slnx` 全体を建てる行列 `backend-verify-build`（シャードの脚は自分の試験プロジェクトが参照する範囲だけを建てるため、全体のビルドはこちらで検証する。脚と並列に走る）に加えて、**submodule ユニットを本リポジトリの構成で建てる `submodule-backend-build`** の結果も拾う。後者は gitlink・`.gitmodules`・`src/Directory.*`・`global.json`・`ci.yml` を触る PR でだけ走り、それ以外では skipped（合格として扱う。`images.yml` の `image-build` と同じ形）。**依存ゼロの node 検査器の集約 `static-checks` の結果も拾う**（下の取り消し線の行）。check 名は変わらない |
 | `lint` | `ci.yml` | `dotnet format --verify-no-changes` ほか |
 | `commit-messages` | `ci.yml` | 件名規約（スカッシュ前の中間コミット） |
 | `pr-title` | `pr-title.yml` | スカッシュ後件名の唯一の予防線 |
 | `image-build` | `images.yml` | サービスイメージのビルド検証（compose を単一情報源とする独立ワークフロー）の集約ジョブ |
 | `scripts-tests` | `ci.yml` | 🔴 **#936 で追加。** 検査器そのものの単体試験（`scripts.test.js` の 664 件）と、**`check-adr-numbering` / `check-doc-updated` / `check-landed-subjects` の実データ判定**がここで走る。`paths:` を持たず全 PR で起動し、matrix でもない。**これを必須にしないと、採番の欠番・`updated:` の据え置き・着地件名の規約違反が赤いまま着地できる**（#936 の作業中に前 2 者が実際に赤くなった） |
 | `static-checks-units` | `ci.yml` | submodule 取得が要る静的検査の集約ジョブ（unit 依存方向・chart / overlay のレンダリング＋スキーマ突合・unit サービス所有権）。`paths:` を持たず全 PR で起動し、matrix でもない |
+| ~~`static-checks`~~ | `ci.yml` | **単独の check 名としては必須にしない。`build-and-test` の `needs` で拾う**（#1768）。所有者のブランチ保護の変更なしに門へ入れるためである。所要は 65〜80 秒で、直近 16 本の run（2026-10-07 実測。develop への push 10 本・PR 6 本）のすべてで `build-and-test` の開始より前（最小 28 秒前）に終わっており、律速の `build-and-test` を延ばしていない。`build-and-test` が遅くなれば `check-ci-latency.js` の監視に現れる。**`static-checks` が赤なら `build-and-test` も赤になる**ので、原因は `static-checks` のステップ名で探す。表のこの主張と `ci.yml` の `needs` は `check-workflow-job-refs.js` が突合する |
 | ~~`CodeQL`~~ | `codeql.yml` | **必須にしない（#719 で除外へ変更）**。`pull_request` に `paths:` を持つため、コード変更の無い PR では check 自体が report されず、必須指定すると恒久 pending になる。集約 check 名 `CodeQL`（ジョブ名 `Analyze (csharp)` と別物）である点は従来どおり。網羅は push（develop/main）と週次 schedule の全量解析が担保する |
 | `claude-review` | `claude-code-review.yml` | **完了**を担保する（後述の注意を必ず読むこと） |
 

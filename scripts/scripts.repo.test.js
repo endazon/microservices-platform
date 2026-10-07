@@ -358,6 +358,20 @@ module.exports = ({ ok, assert }) => {
       }
     });
 
+    ok('#1768: 集約 build-and-test が static-checks を needs に持ち、success 以外を落とす判定を前段の失敗後も走らせる', () => {
+      const bt = job('build-and-test');
+      assert.ok(bt, 'build-and-test（必須 check 名）が無い');
+      assert.match(bt, /^    needs:\s*\[[^\]]*\bstatic-checks(?![\w-])[^\]]*\]/m, 'build-and-test が static-checks を needs に持たない（赤くてもマージできる状態へ戻る）');
+      assert.match(bt, /^\s+STATIC_CHECKS_RESULT: \$\{\{ needs\.static-checks\.result \}\}$/m, 'build-and-test が needs.static-checks.result を読んでいない');
+      const btc = code(bt);
+      assert.ok(/if \[ "\$STATIC_CHECKS_RESULT" != "success" \]; then\n[^\n]*\n\s*exit 1/.test(btc),
+        'build-and-test が STATIC_CHECKS_RESULT を「!= success なら exit 1」で判定していない（skipped / cancelled が素通りする）');
+      // 判定ステップは前段（ビルド結果の判定）が赤でも走る（!cancelled()）。always() だと取り消しでも走って紛らわしい。
+      const step = /- name: Report static-checks result\n([\s\S]*?)(?=\n      - |\n?$)/.exec(bt);
+      assert.ok(step, 'static-checks の判定ステップが無い');
+      assert.match(step[1], /^        if: \$\{\{ !cancelled\(\) \}\}$/m, 'static-checks の判定ステップが前段の失敗で飛ばされる');
+    });
+
     ok('#1686: 脚の手順（dotnet はスタブ）—— シャードは一時の slnx を restore / build / test し（閉包だけを建てる）、シャードしない脚は backend.slnx 全体', () => {
       const lines = job('backend-build').split('\n');
       const at = lines.findIndex((l) => /- name: Restore, build and test \(\$\{\{ matrix\.label \}\}/.test(l));
@@ -7793,6 +7807,8 @@ ${r.stderr}`);
       // 行そのものは取り消し線付きで残し、「必須にしない」の根拠が読める状態を固定する
       // （行ごと消すと除外の経緯が追えなくなり、再び必須に足す退行を止められない）。
       assert.match(t, /^\| ~~`CodeQL`~~ \|/m, 'CodeQL の除外行（取り消し線付き）が手順書から消えた');
+      // #1768: static-checks は単独では必須にせず build-and-test の needs で拾う。行を消すと check-workflow-job-refs.js の面 D が空振りする。
+      assert.match(t, /^\| ~~`static-checks`~~ \| `ci\.yml` \|.*`build-and-test` の `needs` で拾う/m, 'static-checks の行（build-and-test の needs で拾う）が手順書から消えた');
       assert.match(t, /~~`CodeQL`~~.*必須にしない/s, 'CodeQL を必須にしない旨の注記が消えた');
       // 存在しない context を「指定してはならない」と明示していること。
       assert.match(t, /`CI` \/ `Security`.*指定してはならない/s, 'ワークフロー名を禁じる記述が消えた');

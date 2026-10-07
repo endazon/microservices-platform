@@ -68,6 +68,8 @@ worker を Codex 等へ差し替える場合や、失敗時の切り戻しを設
 4. **`.github/CODEOWNERS.example` を `CODEOWNERS` にリネームし、レビュアを設定する。**
    AI が実装し AI がレビューする運用では、必須レビュアが不在だと「AI の実装を AI が承認して
    同一人物がマージする」ループになり、人間のレビュー関門が形骸化する。
+   **本リポジトリは実施済み**（`.github/CODEOWNERS` に `* @endazon`。#1768）。ファイルを置いても、管理者ロールが
+   ルールセットの例外（`bypass_actors` の `exempt`）で素通りする現況は `docs/ai-workflow.md`「必須チェックの有効化」を見ること。
 5. **ビルド/テスト/フォーマットのコマンドを技術スタックへ合わせるときは、次の 3 か所すべてを
    同じ内容に揃える。** 1 か所でも漏れると AI の実装・レビューが検証できなくなる。
    - `.claude/settings.json` の `permissions.allow`（ローカルの Claude Code 用）
