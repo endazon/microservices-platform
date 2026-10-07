@@ -57,10 +57,6 @@
       },
       "subscribers": {}
     },
-    "IngestionRequested": {
-      "publishers": {},
-      "subscribers": {}
-    },
     "RawDocumentFetched": {
       "publishers": {
         "knowledge/DataSourceService": [

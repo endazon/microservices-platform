@@ -17,7 +17,6 @@ public class EventMessageUrnTests
     [InlineData(typeof(DocumentNormalized), "urn:message:Knowledge.Contracts.Events:DocumentNormalized")]
     [InlineData(typeof(DocumentUpdated), "urn:message:Knowledge.Contracts.Events:DocumentUpdated")]
     [InlineData(typeof(DocumentDeleted), "urn:message:Knowledge.Contracts.Events:DocumentDeleted")]
-    [InlineData(typeof(IngestionRequested), "urn:message:Knowledge.Contracts.Events:IngestionRequested")]
     [InlineData(typeof(IngestionCompleted), "urn:message:Knowledge.Contracts.Events:IngestionCompleted")]
     public void Event_message_urn_derives_from_current_namespace(Type eventType, string expectedUrn)
     {

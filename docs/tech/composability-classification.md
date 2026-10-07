@@ -3,15 +3,15 @@ title: 固定/可変 区分表（実装版）— コンポーザビリティ対�
 type: tech
 status: completed
 created: 2026-07-08
-updated: 2026-09-25
+updated: 2026-10-07
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15]
 adrs: [ADR-0015, ADR-0018, ADR-0106]
 iadrs: [IADR-0002, IADR-0007, IADR-0014, IADR-0021, IADR-0022, IADR-0023, IADR-0024, IADR-0025, IADR-0027, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0059, IADR-0461]
-specs: [20260708_issue-102_composability-fixed-variable-separation, 20260925_1499_object-storage-seaweedfs]
-issues: [#102, #195, #217, #218, #219, #229, #1499]
+specs: [20260708_issue-102_composability-fixed-variable-separation, 20260925_1499_object-storage-seaweedfs, 20261007_1771_ingestion-event-wiring-docs]
+issues: [#102, #195, #217, #218, #219, #229, #1499, #1771]
 -->
 
 # 固定/可変 区分表（実装版）
@@ -49,13 +49,14 @@ Issue #102の作業項目 1「棚卸し」の成果物である。
 | --- | --- | --- | --- |
 | RawDocumentFetched | DataSourceService（同期 API 内） | ConversionService.RawDocumentFetchedConsumer | パイプライン起点 |
 | DocumentNormalized | ConversionService | DocumentService.DocumentNormalizedConsumer | 正規化完了 |
-| DocumentUpdated | DocumentService | IngestionService.DocumentUpdatedConsumer / WikiService.DocumentSyncConsumer | ファンアウト |
-| DocumentDeleted | DocumentService | WikiService.DocumentDeletedConsumer | 削除伝播 |
+| DocumentUpdated | DocumentService | IngestionService.DocumentUpdatedConsumer / WikiService.DocumentSyncConsumer / GraphService.GraphDocumentSyncConsumer | ファンアウト |
+| DocumentDeleted | DocumentService | WikiService.DocumentDeletedConsumer / RetrievalService.DocumentDeletedConsumer / GraphService.DocumentDeletedConsumer | 削除伝播 |
 | IngestionCompleted | IngestionService | （現在購読者なし） | 完了通知 |
-| IngestionRequested | （現在発行者なし） | — | 契約のみ定義済み |
 
 パイプライン（変換・取り込み）:
-`DataSource → [RawDocumentFetched] → Conversion → [DocumentNormalized] → Document → [DocumentUpdated] → {Ingestion, Wiki}`
+`DataSource → [RawDocumentFetched] → Conversion → [DocumentNormalized] → Document → [DocumentUpdated] → {Ingestion, Wiki, Graph}`
+
+削除伝播: `Document → [DocumentDeleted] → {Wiki, Retrieval, Graph}`
 
 - 段間の直接依存（イベントを介さない呼び出し・型共有）: **なし**（棚卸しで確認。段が共有するのは Shared.Contracts のイベント型のみ）
 - イベント共通エンベロープ（文書ID・バージョン・ソースメタ・ABAC属性ヒント・トレースID）: **未適用**。
@@ -122,5 +123,5 @@ Issue #102の作業項目 1「棚卸し」の成果物である。
 | --- | --- | --- |
 | イベントが共通エンベロープ未適用 | 計画とのギャップ（コンポーザブルアーキテクチャの決定 §3） | 後続 PR で標準化（issue #102 残項目として報告） |
 | 段が共通ステップインタフェース未準拠 | 同上 | エンベロープと同時に導入 |
-| `IngestionRequested` / `IngestionCompleted` が未接続（発行者/購読者なし） | 情報 | 宣言的構成導入時にバインディング定義で扱う |
+| `IngestionCompleted` に購読者が無い | 情報 | 購読者を結線するか、取り込みの仕様書から結線の記述を外すかは計画側の裁定待ち（2026-10-07 時点）。発行者の無かった取り込み依頼の契約型は 2026-10-07 に削除した |
 | ポート迂回の直接依存 | — | 検出されず（対処不要） |

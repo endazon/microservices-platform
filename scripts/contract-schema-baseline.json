@@ -83,6 +83,13 @@
       "approvedBy": "claude (実装エージェント)",
       "issue": "#1451",
       "date": "2026-09-13"
+    },
+    {
+      "key": "typeRemoved:Knowledge.Contracts.Events.IngestionRequested",
+      "reason": "#1771（第 4 回全体監査 B-13）: 発行 0・購読 0・本番参照 0 の死んだ契約型を消す。線上を流れたことが一度も無い型であり（check-event-topology.js の baseline で発行元・購読先とも空。リポジトリ全体を IngestionRequested で走査し、契約ファイル自身の外の参照は URN 固定テストの 1 行・pipeline.json の events 宣言 1 件・両 baseline・区分表の文書だけで、いずれも同 PR で外した）、消しても受け取れなくなるメッセージも壊れる消費者も無い。§6 の旧処置「宣言的構成導入時にバインディング定義で扱う」は #102 期の記述で追随先が無く、型を残すと『取り込み依頼のイベントがある』と読み違える材料だけが残るため、非推奨のまま残す互換案は採らない。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1771",
+      "date": "2026-10-07"
     }
   ],
   "projects": {
@@ -3136,29 +3143,6 @@
             "type": "Guid",
             "required": true,
             "position": 0
-          }
-        }
-      },
-      "Knowledge.Contracts.Events.IngestionRequested": {
-        "kind": "record",
-        "members": {
-          "DocumentId": {
-            "source": "positional",
-            "type": "Guid",
-            "required": true,
-            "position": 0
-          },
-          "JobId": {
-            "source": "positional",
-            "type": "Guid",
-            "required": true,
-            "position": 1
-          },
-          "RequestedAt": {
-            "source": "positional",
-            "type": "DateTimeOffset",
-            "required": true,
-            "position": 2
           }
         }
       },
