@@ -260,7 +260,9 @@ jobs:
       # 「起点 ID の種別（固有）」節）が、計画リポジトリの公開する導出結果と一致しているかを突き合わせる。
       # 宣言が遅れている間、そのレンジ外の ID を引く PR は check-trace-blocks / check-commit-messages が
       # 落として通らない。従来の契機は「自分の作業が止められたとき」という事後検知だった。
-      # 🔴 常に exit 0（警告のみ。計画 ADR-0093 決定 3「落とし方は警告に限り、ビルドの前提にしない」）。
+      # 🔴 計画側の取得失敗・ずれでは exit 0（警告のみ。計画 ADR-0093 決定 3「落とし方は警告に限り、ビルドの前提にしない」）。
+      #    宣言そのものが読めない（本リポジトリの欠陥）ときだけ exit 1（#1775 / IADR-0508）。NFR の突合と専用 issue の
+      #    起票は週次の backlog-audit.yml が担い、ここでは 4 種・起票なしのまま。
       #    PLANNING_REPO_TOKEN が無ければ status: unverified・scanned: 0 になる —— それは
       #    「ずれが無い」ではなく「検査が動いていない」であり、出力の scanned で区別できる。
       - name: Self-test planning ID range checker

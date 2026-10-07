@@ -7723,6 +7723,54 @@ ${r.stderr}`);
       assert.strictEqual(parseRevalidationDeadline(['再検証期限: 2026-13-45']), null, '暦に無い日付を期限ありと読んだ');
     });
 
+    // ★ #1775 / IADR-0508: 計画 ID レンジ宣言のずれを週次棚卸しで検知する。宣言の不読は unverified（計画側に
+    //   届かない）に混ぜず exit 1、計画側に届かないときは棚卸し報告の節 8 が「未確認」として数える。実バイナリで確かめる。
+    ok('#1775: 宣言の書式が崩れていれば check-planning-adr-range は exit 1・status error（fail-loud）', () => {
+      const { spawnSync } = require('child_process');
+      const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'plan-range-1775-'));
+      const rules = path.join(dir, 'traceability.repo.md');
+      const out = path.join(dir, 'out.json');
+      fs.writeFileSync(rules, '# x\n\n## 起点 ID の種別（固有）\n\n- レンジは `FR-01..22` / `UC-01..11` / `SC-01..22`（ADR の宣言が無い）。\n', 'utf8');
+      const env = { ...process.env };
+      delete env.PLANNING_REPO_TOKEN;
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'check-planning-adr-range.js'), '--with-nfr', '--out', out, '--rules', rules], { cwd: REPO, env, encoding: 'utf8' });
+      const j = JSON.parse(fs.readFileSync(out, 'utf8'));
+      fs.rmSync(dir, { recursive: true, force: true });
+      assert.strictEqual(r.status, 1, `宣言が読めないのに exit ${r.status}（unverified と区別できない）`);
+      assert.strictEqual(j.status, 'error');
+      assert.match(j.reason, /宣言を読めない/);
+    });
+
+    ok('#1775: 計画側に届かないとき、突合結果を受けた棚卸し報告は節 8 を「未確認」として数える（黙って緑にしない）', () => {
+      const { spawnSync } = require('child_process');
+      const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'plan-range-1775-'));
+      const json = path.join(dir, 'plan.json');
+      const env = { ...process.env };
+      delete env.PLANNING_REPO_TOKEN; delete env.GITHUB_TOKEN; delete env.GITHUB_REPOSITORY;
+      const a = spawnSync(process.execPath, [path.join(__dirname, 'check-planning-adr-range.js'), '--with-nfr', '--out', json], { cwd: REPO, env, encoding: 'utf8' });
+      assert.strictEqual(a.status, 0, `計画側に届かないだけで exit ${a.status}（計画 ADR-0093 決定 3 に反する）`);
+      const b = spawnSync(process.execPath, [path.join(__dirname, 'backlog-audit.js'), '--plan-range', json], { cwd: REPO, env, encoding: 'utf8' });
+      fs.rmSync(dir, { recursive: true, force: true });
+      assert.strictEqual(b.status, 0, b.stderr);
+      assert.match(b.stdout, /### 計画 ID レンジ宣言の鮮度（突合 0 種 \/ 5 種/, '節 8 が無いか、5 種（NFR を含む）を見ていない');
+      assert.match(b.stdout, /- 🔴 未確認（FR \/ UC \/ SC \/ ADR \/ NFR）: 計画側を取得できない/, '届かないことを未確認と書いていない');
+    });
+
+    ok('#1775: backlog-audit.yml は前段で --with-nfr --upsert-issue を渡し、結果を棚卸しへ渡す', () => {
+      const wf = fs.readFileSync(path.join(REPO, '.github/workflows/backlog-audit.yml'), 'utf8');
+      const step = wf.slice(wf.indexOf('- name: Resolve planning ID range'), wf.indexOf('- name: Audit and post to the tracking issue'));
+      assert.ok(step.length > 0 && wf.indexOf('- name: Resolve planning ID range') < wf.indexOf('- name: Audit and post to the tracking issue'), '前段が棚卸しより前に無い');
+      assert.match(step, /PLANNING_REPO_TOKEN: \$\{\{ secrets\.PLANNING_REPO_TOKEN \}\}/, '計画側を読む token が渡されていない');
+      assert.match(step, /GITHUB_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/, '起票用の GITHUB_TOKEN が渡されていない');
+      assert.match(step, /check-planning-adr-range\.js --with-nfr --upsert-issue --out "\$RUNNER_TEMP\/planning-id-range\.json"/, '前段の引数が違う（NFR を見ない・起票しない）');
+      const audit = wf.slice(wf.indexOf('- name: Audit and post to the tracking issue'), wf.indexOf('- name: Publish the report'));
+      assert.match(audit, /if: \$\{\{ !cancelled\(\) && steps\.selftest\.outcome == 'success' \}\}/, '前段が落ちると棚卸しまで止まる');
+      assert.match(audit, /--plan-range "\$RUNNER_TEMP\/planning-id-range\.json"/, '突合結果を棚卸しへ渡していない');
+      // 🔴 PR CI（ci.yml）は 4 種のまま・起票しない（NFR は週次の報告に限る＝計画 ADR-0093 決定 2 の裁定待ち）。
+      const ci = fs.readFileSync(path.join(REPO, '.github/workflows/ci.yml'), 'utf8');
+      assert.doesNotMatch(ci, /check-planning-adr-range\.js[^\n]*--(with-nfr|upsert-issue)/, 'PR CI で NFR を見るか起票している');
+    });
+
     // ★ #1092: ここには「issue テンプレートはキットとバイト一致（分類 A）」があった。
     //   入力は `planning/tools/impl-handoff-kit/repo-template/…` ——**撤去済みの planning submodule
     //   配下のパス**であり、`fs.existsSync` が必ず偽になって「未 populate のため省略」を印字して
@@ -8466,6 +8514,8 @@ ${r.stderr}`);
         //    🔴 **これは「同型の事故が 2 回」ではなく計画側の裁定に基づく新設である**（計画 ADR-0093
         //    決定 3 が実装リポへ追随を求めた）。なお事故そのものは 2026-09-08（#1333）と 2026-09-09 の
         //    2 回起きている。**常に exit 0**（警告のみ。ビルドの前提にしない＝同決定 3）。
+        //    ［2026-10-08 追記 / #1775］宣言が読めないときだけ exit 1 へ改め、`--with-nfr` / `--upsert-issue` を足した
+        //    （IADR-0508。新しいファイルは足していないので本数は不変）。
         //    `gh` で GitHub API を叩くが git は一切呼ばないため、TRACKED_CHECKERS / HEAD_CHECKERS の
         //    どちらにも載らない（`backlog-audit.js` / `check-ci-latency.js` と同じ扱い）。
         // ★ #1245 PR-0 / ADR-0078 決定 1 / IADR-0427 で `check-login-existence-disclosure.js`

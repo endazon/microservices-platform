@@ -8,7 +8,7 @@
 # ■ 何を出すか（scripts/backlog-audit.js が正本）
 # Proposed のまま止まった IADR・動いていない作業仕様書 / draft 文書・写像後回しのテスト・
 # blocked 系ラベルで再検証期限が無い・過ぎた issue（**blocked 判定には期限を付け、棚卸しごとに再検証する**。#1773）・放置された
-# ci-failure issue・動いていない PR。**列挙のみ。状態は書き換えない。**
+# ci-failure issue・動いていない PR・計画 ID レンジ宣言（FR/UC/SC/ADR/NFR）のずれ（#1775）。**列挙のみ。状態は書き換えない。**
 #
 # ■ 🔴 「success だが無産出」を作り込まない（AST 側で実測された事故。#1347 受け入れ基準 2）
 #   - 指摘 0 件でも各節が「指摘なし」を明示した報告を必ず産出する
@@ -51,12 +51,28 @@ jobs:
       # 集計ロジックの回帰試験。棚卸しそのものが壊れていないことを毎回確かめる
       # （黙って壊れた監視は、無いより悪い）。
       - name: Self-test
+        id: selftest
         run: node scripts/backlog-audit.js --self-test
+      # NFR / #1775 / IADR-0508: 計画 ID レンジ宣言（.claude/rules/traceability.repo.md）と計画側の実物の突合。
+      # PR CI（ci.yml）でも同じ検査器が FR/UC/SC/ADR を突き合わせるが、ずれても警告が出るだけで、ADR-0129 の遅れは
+      # 全体監査まで残った（#1769 / #1774）。ここでは NFR 採番も見て（--with-nfr）、ずれたら専用 issue
+      # （ラベル plan-range-lag）を起票・上書きし（--upsert-issue。自動クローズはしない）、結果を棚卸し報告の節 8 へ渡す。
+      # 計画側の取得は読み取り専用の HTTP（PLANNING_REPO_TOKEN）。届かなければ exit 0 の unverified で、報告に
+      # 「未確認」として数える（計画 ADR-0093 決定 3。黙って緑にしない）。exit 1 は宣言が読めないときと、ずれを
+      # 検知したのに issue へ書けなかったときだけ。後段は !cancelled() で走り、結果ファイルが無ければ未確認と書く。
+      - name: Resolve planning ID range
+        env:
+          PLANNING_REPO_TOKEN: ${{ secrets.PLANNING_REPO_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/check-planning-adr-range.js --with-nfr --upsert-issue --out "$RUNNER_TEMP/planning-id-range.json"
       - name: Audit and post to the tracking issue
+        # 前段（計画 ID レンジ）が落ちても棚卸しは出す。自己試験が落ちたときだけは出さない（壊れた集計を載せない）。
+        if: ${{ !cancelled() && steps.selftest.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: node scripts/backlog-audit.js --post --out "$RUNNER_TEMP/backlog-audit.md"
+        run: node scripts/backlog-audit.js --post --plan-range "$RUNNER_TEMP/planning-id-range.json" --out "$RUNNER_TEMP/backlog-audit.md"
       - name: Publish the report to the step summary
         if: ${{ !cancelled() }}
         run: |

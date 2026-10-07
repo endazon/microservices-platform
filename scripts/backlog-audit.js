@@ -21,6 +21,10 @@
  *      参照されても戻らないため使わない（#1773 / IADR-0506）。全件を台帳として報告に並べる
  *   6. GitHub: `ci-failure` ラベルの open issue（後段で落ちたまま放置されているもの）
  *   7. GitHub: 更新が古い open PR
+ *   8. 計画 ID レンジ宣言の鮮度（#1775 / IADR-0508）。前段の `check-planning-adr-range.js --with-nfr --upsert-issue`
+ *      が書いた JSON を `--plan-range <path>` で受け、FR / UC / SC / ADR / NFR のずれ・確かめられなかった種別・
+ *      専用 issue の番号を並べる。🔴 **計画側に届かなかった（`unverified` / 一部の種別だけ未確認）は「指摘なし」と
+ *      書かず、未確認として指摘に数える**（黙って緑にしない）。本スクリプト自身は計画リポジトリを読まない
  *
  * 🔴 「success だが無産出」を作り込まない設計（#1347 受け入れ基準 2。AST 側で実測された事故）:
  *   - 報告は**必ず**生成する（指摘 0 件でも「指摘なし」の節を持つ Markdown）。
@@ -35,6 +39,7 @@
  *   node scripts/backlog-audit.js --out report.md       # ファイルへも書く
  *   node scripts/backlog-audit.js --post                # GitHub の棚卸し issue へ反映（CI 用）
  *   node scripts/backlog-audit.js --stale-days 14       # 「古い」の閾値（既定 14 日）
+ *   node scripts/backlog-audit.js --plan-range r.json   # 計画 ID レンジの突合結果（前段の JSON）を節 8 に載せる
  *   node scripts/backlog-audit.js --self-test
  */
 const fs = require('fs');
@@ -167,6 +172,43 @@ async function collectGithubFindings({ repo, token, now = Date.now(), staleDays 
   return { blocked, staleBlocked, ciFailures, stalePrs, openIssues: issues.length, openPrs: prs.length };
 }
 
+/**
+ * 前段（`check-planning-adr-range.js --out`）の JSON を読む。読めなければ `{ error }`（呼び出し側が未確認と書く）。
+ * `file` が無い（`--plan-range` 未指定）なら undefined —— ローカル実行で突合していないことを示す。
+ */
+function readPlanRange(file) {
+  if (!file) return undefined;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    return { error: `突合結果 ${toPosix(file)} を読めない（前段が落ちたか書かなかった）: ${e.message}` };
+  }
+}
+
+/**
+ * 節 8 の指摘を並べる（純関数）。ずれた種別ごとに 1 件、確かめられなかったら 1 件、宣言の不読・起票の失敗も 1 件ずつ。
+ * 🔴 未確認は「指摘なし」にしない —— 計画側に届かない週が続くと、ずれも見えないまま緑が続く。
+ */
+function planRangeFindings(pr) {
+  if (pr === undefined) return null;
+  if (!pr || pr.error) return [`🔴 未確認: ${pr ? pr.error : '突合結果が空'}`];
+  const out = [];
+  const issueRef = pr.lagIssue && Number.isInteger(pr.lagIssue.number) ? `（専用 issue #${pr.lagIssue.number}）` : '';
+  if (pr.status === 'error') out.push(`🔴 宣言を読めない（本リポジトリの欠陥）: ${pr.reason}`);
+  for (const r of pr.ranges || []) {
+    if (r.status === 'ok') continue;
+    const fmt = (n) => String(n).padStart(r.kind === 'ADR' ? 4 : 2, '0');
+    const what = r.status === 'behind' ? '宣言が計画側の実物に遅れている' : '宣言が計画側の実物を超えている';
+    out.push(`\`${r.kind}\`: ${what} —— 宣言 \`${r.kind}-${fmt(r.declared[0])}..${fmt(r.declared[1])}\` / 計画側 \`${r.kind}-${fmt(r.planning[0])}..${fmt(r.planning[1])}\`${issueRef}`);
+  }
+  const unv = Array.isArray(pr.unverifiedKinds) ? pr.unverifiedKinds : [];
+  if (pr.status === 'unverified' || (pr.status !== 'error' && unv.length)) {
+    out.push(`🔴 未確認（${unv.length ? unv.join(' / ') : '全種別'}）: ${pr.reason}`);
+  }
+  if (pr.lagIssue && pr.lagIssue.action === 'failed') out.push(`🔴 ずれを専用 issue へ書けなかった: ${pr.lagIssue.reason}`);
+  return out;
+}
+
 function section(title, items, render, none = '指摘なし') {
   const lines = [`### ${title}（${items ? items.length : 0} 件）`, ''];
   if (!items || items.length === 0) lines.push(`- ${none}`);
@@ -182,9 +224,11 @@ function renderBlocked(b) {
 }
 
 /** 報告 Markdown を組み立てる（純関数）。指摘 0 件でも全節を持つ。 */
-function renderReport({ repoFindings, gh, ghError, runId, date, staleDays = DEFAULT_STALE_DAYS }) {
+function renderReport({ repoFindings, gh, ghError, runId, date, staleDays = DEFAULT_STALE_DAYS, planRange }) {
+  const planFindings = planRangeFindings(planRange);
   const total = repoFindings.proposedAdrs.length + repoFindings.staleSpecs.length + repoFindings.staleDocs.length
-    + (gh ? gh.staleBlocked.length + gh.ciFailures.length + gh.stalePrs.length : 0);
+    + (gh ? gh.staleBlocked.length + gh.ciFailures.length + gh.stalePrs.length : 0)
+    + (planFindings ? planFindings.length : 0);
   const lines = [
     MARKER,
     `<!-- backlog-audit:run:${runId} -->`,
@@ -209,6 +253,13 @@ function renderReport({ repoFindings, gh, ghError, runId, date, staleDays = DEFA
     );
   } else {
     lines.push('### GitHub 面（blocked issue / ci-failure / 古い PR）', '', `- 🔴 取得できなかった: ${ghError || 'GITHUB_TOKEN / GITHUB_REPOSITORY が無い'}`, '');
+  }
+  if (planFindings) {
+    const scanned = planRange && !planRange.error ? `突合 ${planRange.scanned} 種 / ${planRange.expected || planRange.scanned} 種` : '突合 0 種';
+    lines.push(...section(`計画 ID レンジ宣言の鮮度（${scanned}。\`.claude/rules/traceability.repo.md\` と計画側の実物）`, planFindings, (f) => f,
+      `指摘なし（宣言と計画側の実物が一致。${planRange.reason}）`));
+  } else {
+    lines.push('### 計画 ID レンジ宣言の鮮度', '', '- 突合していない（`--plan-range` 未指定。CI では backlog-audit.yml の前段が渡す）', '');
   }
   lines.push('---', '正本: `scripts/backlog-audit.js`（`.github/workflows/backlog-audit.yml` が週次で実行）。#1347');
   return lines.join('\n');
@@ -252,6 +303,7 @@ async function main() {
   const post = process.argv.includes('--post');
   const staleDays = Number(argOf('--stale-days', DEFAULT_STALE_DAYS));
   const out = argOf('--out', null);
+  const planRange = readPlanRange(argOf('--plan-range', null));
   const repo = process.env.GITHUB_REPOSITORY;
   const token = process.env.GITHUB_TOKEN;
   const runId = process.env.GITHUB_RUN_ID || `local-${Date.now()}`;
@@ -263,7 +315,7 @@ async function main() {
   const repoFindings = collectRepoFindings({ staleDays });
   let gh = null; let ghError = null;
   try { gh = await collectGithubFindings({ repo, token, staleDays }); } catch (e) { ghError = e.message; }
-  const report = renderReport({ repoFindings, gh, ghError, runId, date, staleDays });
+  const report = renderReport({ repoFindings, gh, ghError, runId, date, staleDays, planRange });
   console.log(report);
   if (out) fs.writeFileSync(out, report + '\n');
   if (ghError) {
@@ -301,6 +353,45 @@ async function selfTest() {
   await ok('renderReport: 指摘があれば数え上げ、GitHub 面が取れなければその旨を書く', () => {
     const r = renderReport({ repoFindings: { ...repoFindings, proposedAdrs: [{ file: 'a.md', updated: '2026-01-01' }] }, gh: null, ghError: 'boom', runId: 'r2', date: 'd' });
     assert.ok(r.includes('指摘 1 件')); assert.ok(r.includes('取得できなかった: boom')); assert.ok(r.includes('`a.md`'));
+  });
+  // #1775 / IADR-0508: 節 8（計画 ID レンジ宣言の鮮度）。
+  const rangeRow = (kind, d, p, status) => ({ kind, declared: d, planning: p, status });
+  const PR_OK = { status: 'ok', scanned: 5, expected: 5, unverifiedKinds: [], reason: '宣言と実物が一致（5 種を突合）', ranges: [rangeRow('ADR', [1, 129], [1, 129], 'ok')] };
+  await ok('renderReport: 計画 ID レンジが一致なら節 8 は「指摘なし」・指摘に数えない', () => {
+    const r = renderReport({ repoFindings, gh: null, ghError: 'x', runId: 'p1', date: 'd', planRange: PR_OK });
+    assert.ok(r.includes('### 計画 ID レンジ宣言の鮮度（突合 5 種 / 5 種'), r);
+    assert.ok(r.includes('- 指摘なし（宣言と計画側の実物が一致'), r);
+    assert.ok(r.includes('指摘 0 件'), r);
+  });
+  await ok('renderReport: 計画側が ADR / NFR とも先へ進んでいれば、種別ごとに遅れを名指しし専用 issue の番号を添える', () => {
+    const pr = { ...PR_OK, status: 'behind', reason: 'ADR … / NFR …', lagIssue: { action: 'updated', number: 1801 }, ranges: [
+      rangeRow('FR', [1, 22], [1, 22], 'ok'), rangeRow('ADR', [1, 128], [1, 129], 'behind'), rangeRow('NFR', [1, 28], [1, 29], 'behind')] };
+    const r = renderReport({ repoFindings, gh: null, ghError: 'x', runId: 'p2', date: 'd', planRange: pr });
+    assert.ok(r.includes('- `ADR`: 宣言が計画側の実物に遅れている —— 宣言 `ADR-0001..0128` / 計画側 `ADR-0001..0129`（専用 issue #1801）'), r);
+    assert.ok(r.includes('- `NFR`: 宣言が計画側の実物に遅れている —— 宣言 `NFR-01..28` / 計画側 `NFR-01..29`（専用 issue #1801）'), r);
+    assert.ok(!r.includes('`FR`: 宣言'), '一致した種別まで指摘にしている');
+    assert.ok(r.includes('指摘 2 件'), r);
+  });
+  await ok('🔴 renderReport: 計画側に届かない・一部だけ未確認・結果ファイルが読めない、はいずれも「指摘なし」にせず数える', () => {
+    const unv = renderReport({ repoFindings, gh: null, ghError: 'x', runId: 'p3', date: 'd', planRange: { ...PR_OK, status: 'unverified', scanned: 0, unverifiedKinds: ['FR', 'UC', 'SC', 'ADR', 'NFR'], reason: '計画側を取得できない: 404', ranges: [] } });
+    assert.ok(unv.includes('- 🔴 未確認（FR / UC / SC / ADR / NFR）: 計画側を取得できない: 404'), unv);
+    assert.ok(unv.includes('突合 0 種 / 5 種'), unv); assert.ok(unv.includes('指摘 1 件'), unv);
+    const part = renderReport({ repoFindings, gh: null, ghError: 'x', runId: 'p4', date: 'd', planRange: { ...PR_OK, scanned: 4, unverifiedKinds: ['NFR'], reason: '一致（ただし NFR を導けない）' } });
+    assert.ok(part.includes('- 🔴 未確認（NFR）'), part); assert.ok(part.includes('指摘 1 件'), part);
+    const missing = renderReport({ repoFindings, gh: null, ghError: 'x', runId: 'p5', date: 'd', planRange: readPlanRange('/nonexistent/plan-range.json') });
+    assert.ok(missing.includes('- 🔴 未確認: 突合結果 /nonexistent/plan-range.json を読めない'), missing);
+    assert.ok(missing.includes('指摘 1 件'), missing);
+  });
+  await ok('renderReport: 宣言の不読（error）と起票の失敗を指摘に数える', () => {
+    const r = renderReport({ repoFindings, gh: null, ghError: 'x', runId: 'p6', date: 'd', planRange: { status: 'error', scanned: 0, expected: 5, unverifiedKinds: ['FR', 'UC', 'SC', 'ADR', 'NFR'], reason: '宣言を読めない: 節が無い', ranges: [], lagIssue: { action: 'failed', reason: 'token が無い' } } });
+    assert.ok(r.includes('- 🔴 宣言を読めない（本リポジトリの欠陥）: 宣言を読めない: 節が無い'), r);
+    assert.ok(r.includes('- 🔴 ずれを専用 issue へ書けなかった: token が無い'), r);
+    assert.ok(!r.includes('🔴 未確認（'), 'error の週に未確認まで重ねて数えている');
+    assert.ok(r.includes('指摘 2 件'), r);
+  });
+  await ok('renderReport: --plan-range 未指定（ローカル）は「突合していない」と書き、指摘に数えない', () => {
+    const r = renderReport({ repoFindings, gh: null, ghError: 'x', runId: 'p7', date: 'd' });
+    assert.ok(r.includes('- 突合していない（`--plan-range` 未指定'), r); assert.ok(r.includes('指摘 0 件'), r);
   });
   await ok('parseRevalidationDeadline: 本文・コメントの最後の期限を読む（欄の見出し形も読む）', () => {
     assert.strictEqual(parseRevalidationDeadline(['x\n再検証期限: 2026-10-01', '再検証期限：2026-10-19（次回）']), '2026-10-19');
@@ -352,4 +443,4 @@ async function selfTest() {
 
 if (require.main === module) main().catch((e) => { console.error(`[backlog-audit] ${e.stack || e}`); process.exit(1); });
 
-module.exports = { parseFrontmatter, isStale, parseRevalidationDeadline, collectRepoFindings, collectGithubFindings, renderReport, MARKER, LABEL, BLOCKED_LABELS };
+module.exports = { parseFrontmatter, isStale, parseRevalidationDeadline, collectRepoFindings, collectGithubFindings, readPlanRange, planRangeFindings, renderReport, MARKER, LABEL, BLOCKED_LABELS };
