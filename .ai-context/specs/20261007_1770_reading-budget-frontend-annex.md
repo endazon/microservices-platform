@@ -97,4 +97,17 @@ trace ブロックへ置き、表示テキストには書かない。
 
 ## 結果
 
-（実測は PR 本文に記載する）
+`node scripts/check-reading-budget.js`（変更後）:
+
+| ファイル | 変更前 | 変更後 | 差 |
+| --- | ---: | ---: | ---: |
+| `CLAUDE.md` | 23,775 | 20,781 | −2,994 |
+| `.claude/rules/traceability.md` | 15,955 | 15,955 | 0（キット配布物。触らない） |
+| `.claude/rules/traceability.repo.md` | 6,604 | 6,604 | 0 |
+| **Claude 集合** | **46,334（90.5%・warn）** | **43,340（84.6%・ok）** | **−2,994** |
+
+余白は 51,200 − 43,340 = 7,860 B（warn 閾値 46,080 B まで 2,740 B）。
+
+検査: `check-doc-links` / `check-trace-blocks` / `check-trace-followthrough` / `gen-knowledge-graph --check` /
+`check-reading-budget` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-doc-updated --base origin/develop` /
+`check-commit-messages --range origin/develop..HEAD` / `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（943 件）がすべて緑。
