@@ -135,7 +135,7 @@ issue: "#1817"
 
 ### 検証の結果
 
-- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 1009 件緑。`node scripts/k8s-local-up.test.js`: 265 件緑。`node scripts/helm-mcp-client-provisioning.test.js`: 8 件緑。`node scripts/check-mcp-client-provisioning.js --self-test`: 7 件緑（指定なしは exit 3）。
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 1009 件緑。`node scripts/k8s-local-up.test.js`: 265 件緑。`node scripts/helm-mcp-client-provisioning.test.js`: 8 件緑。`node scripts/check-mcp-client-provisioning.js --self-test`: 9 件緑（独立監査の是正で M6 の陰性対照 2 件を追加。指定なしは exit 3）。
 - `check-realm-constraints`・`keycloak-realm-reconcile.test.js`（38）・`check-deploy-manifests`（chart 1 / overlay 17）・`check-trace-blocks`・`check-adr-numbering`・`check-workflow-job-refs`・`gen-knowledge-graph --check`・`check-cross-repo-refs`・`check-plan-id-qualification`・`check-doc-links`・`check-default-credentials`・`check-reading-budget`・`actionlint`（変更した 2 本）: 緑。
 - `dotnet test` McpServer.Tests 298 件・Platform.Bff.Tests の SecretItem* 186 件: 緑。`dotnet build src/platform/backend/backend.slnx`: 警告 0。
 - 🔴 **稼働の Keycloak での実測（M1〜M6）は本 PR の中では走っていない。** integration-stack は PR で起動しないので、develop へのマージ後の最初の実行が初回の実測になる（稼働中のクラスタには何も実行していない）。
