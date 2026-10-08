@@ -35,7 +35,13 @@ public static class ServiceAccountProvisioningRegistration
     public static IServiceCollection AddServiceAccountProvisioning(this IServiceCollection services)
     {
         services.AddHttpClient(KeycloakClientName, (sp, client) =>
-            client.BaseAddress = new Uri(sp.GetRequiredService<ServiceAccountProvisioningOptions>().BaseUrl.TrimEnd('/') + "/"));
+        {
+            var options = sp.GetRequiredService<ServiceAccountProvisioningOptions>();
+            client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
+            // PR #1816 監査 🟡-1: 期限は明示する。口は要求の取り消しを伝えないので、時間切れだけが書き込みを止める
+            // （時間切れは `Failed`＝502 へ写し、作りかけは補償で消す）。
+            client.Timeout = options.Timeout;
+        });
         services.AddSingleton(sp => ServiceAccountProvisioningOptions.FromConfiguration(sp.GetRequiredService<IConfiguration>()));
         services.AddSingleton<InMemoryServiceAccountProvisioner>();
         services.AddSingleton<UnconfiguredServiceAccountProvisioner>();
@@ -85,6 +91,11 @@ public sealed class ServiceAccountProvisioningOptions
     public required string ClientId { get; init; }
     public required string ClientSecret { get; init; }
 
+    /// <summary>1 回の管理要求の期限（`McpClientProvisioning:Keycloak:TimeoutSeconds`。既定 10 秒・1〜120 秒）。</summary>
+    public TimeSpan Timeout { get; init; } = DefaultTimeout;
+
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
+
     public static ServiceAccountProvisioningOptions FromConfiguration(IConfiguration configuration)
     {
         var section = configuration.GetSection("McpClientProvisioning:Keycloak");
@@ -94,7 +105,19 @@ public sealed class ServiceAccountProvisioningOptions
             Realm = Require(section, "Realm"),
             ClientId = Require(section, "ClientId"),
             ClientSecret = Require(section, "ClientSecret"),
+            Timeout = TimeoutOf(section["TimeoutSeconds"]),
         };
+    }
+
+    // 値域外は起動時に落とす（打ち間違いを既定へ黙って倒さない）。
+    private static TimeSpan TimeoutOf(string? declared)
+    {
+        if (string.IsNullOrWhiteSpace(declared)) return DefaultTimeout;
+        if (int.TryParse(declared.Trim(), System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var seconds) && seconds is >= 1 and <= 120)
+            return TimeSpan.FromSeconds(seconds);
+        throw new InvalidOperationException(
+            $"McpClientProvisioning:Keycloak:TimeoutSeconds の値 '{declared}' は不正である（1〜120 の整数）。");
     }
 
     private static string Require(IConfiguration section, string key)
@@ -118,18 +141,21 @@ public sealed class UnconfiguredServiceAccountProvisioner : IServiceAccountProvi
         => throw Unavailable();
 
     public Task<IdpWrite> ReplaceAttributesAsync(
-        string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
+        string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, bool enabled, CancellationToken ct)
         => throw Unavailable();
 
     public Task UndoAsync(IdpWrite write, CancellationToken ct) => Task.CompletedTask;
 }
 
-// 非配備ホスト用。IdP の代わりにプロセス内へ書く（Keycloak 版と同じ意味論: 在れば AlreadyExists・差し替えは無ければ作る）。
-// 試験はこの状態を読んで「IdP へ何も書いていない」を確かめる。
+// 非配備ホスト用。IdP の代わりにプロセス内へ書く（Keycloak 版と同じ意味論: 登録は在れば AlreadyExists・差し替えは無ければ作る・
+// 入口の印が無い〔`Seed` で置いた〕ものへは書かない・取り消しは現在値が書いた値のままのときだけ戻す）。
+// 試験はこの状態を読んで「IdP に何が書かれたか（書かれなかったか）」を確かめる。
 public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvisioner
 {
+    private sealed record Account(Dictionary<string, string> Attributes, bool Managed, bool Enabled);
+
     private readonly Lock _gate = new();
-    private readonly Dictionary<string, Dictionary<string, string>> _accounts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Account> _accounts = new(StringComparer.Ordinal);
 
     /// <summary>IdP 側に在るクライアントの写し（clientId → 属性）。</summary>
     public IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Snapshot()
@@ -137,14 +163,22 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
         lock (_gate)
             return _accounts.ToDictionary(
                 kv => kv.Key,
-                kv => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(kv.Value),
+                kv => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(kv.Value.Attributes),
                 StringComparer.Ordinal);
     }
 
-    /// <summary>入口を通らずに IdP に在るクライアントを置く（試験用）。</summary>
+    /// <summary>IdP 側のクライアントが有効か（無ければ null）。</summary>
+    public bool? IsEnabled(string clientId)
+    {
+        lock (_gate) return _accounts.TryGetValue(clientId, out var a) ? a.Enabled : null;
+    }
+
+    /// <summary>入口を通らずに IdP に在るクライアント（**入口の印が無い**）を置く（試験用）。</summary>
     public void Seed(string clientId, IReadOnlyDictionary<string, string>? attributes = null)
     {
-        lock (_gate) _accounts[clientId] = new Dictionary<string, string>(attributes ?? new Dictionary<string, string>());
+        lock (_gate)
+            _accounts[clientId] = new Account(
+                new Dictionary<string, string>(attributes ?? new Dictionary<string, string>()), Managed: false, Enabled: true);
     }
 
     public Task<IdpWrite> CreateAsync(
@@ -153,23 +187,22 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
         lock (_gate)
         {
             if (_accounts.ContainsKey(clientId)) return Task.FromResult(IdpWrite.AlreadyExisting(clientId));
-            _accounts[clientId] = new Dictionary<string, string>(attributes);
-            return Task.FromResult(new IdpWrite(IdpWriteKind.Created, clientId, clientId, clientId));
+            return Task.FromResult(Create(clientId, attributes, enabled: true));
         }
     }
 
     public Task<IdpWrite> ReplaceAttributesAsync(
-        string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
+        string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, bool enabled, CancellationToken ct)
     {
         lock (_gate)
         {
-            if (!_accounts.TryGetValue(clientId, out var previous))
-            {
-                _accounts[clientId] = new Dictionary<string, string>(attributes);
-                return Task.FromResult(new IdpWrite(IdpWriteKind.Created, clientId, clientId, clientId));
-            }
-            _accounts[clientId] = new Dictionary<string, string>(attributes);
-            return Task.FromResult(new IdpWrite(IdpWriteKind.Updated, clientId, clientId, clientId, previous));
+            if (!_accounts.TryGetValue(clientId, out var current))
+                return Task.FromResult(Create(clientId, attributes, enabled));
+            if (!current.Managed) return Task.FromResult(IdpWrite.AlreadyExisting(clientId));
+
+            _accounts[clientId] = current with { Attributes = new Dictionary<string, string>(attributes) };
+            return Task.FromResult(new IdpWrite(IdpWriteKind.Updated, clientId, clientId, clientId,
+                current.Attributes, new Dictionary<string, string>(attributes)));
         }
     }
 
@@ -182,12 +215,24 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
                 case IdpWriteKind.Created:
                     _accounts.Remove(write.ClientId);
                     break;
-                case IdpWriteKind.Updated:
-                    _accounts[write.ClientId] = new Dictionary<string, string>(
-                        write.PreviousAttributes ?? new Dictionary<string, string>());
+                case IdpWriteKind.Updated when _accounts.TryGetValue(write.ClientId, out var current):
+                    if (write.WrittenAttributes is { } written
+                        && !KeycloakServiceAccountProvisioner.SameAttributes(written, current.Attributes))
+                        break;
+                    _accounts[write.ClientId] = current with
+                    {
+                        Attributes = new Dictionary<string, string>(write.PreviousAttributes ?? new Dictionary<string, string>()),
+                    };
                     break;
             }
         }
         return Task.CompletedTask;
+    }
+
+    private IdpWrite Create(string clientId, IReadOnlyDictionary<string, string> attributes, bool enabled)
+    {
+        _accounts[clientId] = new Account(new Dictionary<string, string>(attributes), Managed: true, Enabled: enabled);
+        return new IdpWrite(IdpWriteKind.Created, clientId, clientId, clientId,
+            WrittenAttributes: new Dictionary<string, string>(attributes));
     }
 }

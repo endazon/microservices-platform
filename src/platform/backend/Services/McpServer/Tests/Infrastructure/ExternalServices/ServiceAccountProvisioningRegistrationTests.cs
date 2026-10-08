@@ -83,4 +83,43 @@ public class ServiceAccountProvisioningRegistrationTests
         var act = () => Resolve(Register("Development", ("McpClientProvisioning:Provider", "ldap")));
         act.Should().Throw<InvalidOperationException>().WithMessage("*不正*");
     }
+
+    // T-1786-46（監査 🟡-1）: 管理要求の期限は明示する（既定 10 秒）。値域外は起動時に落とす。
+    [Theory]
+    [InlineData(null, 10)]
+    [InlineData("30", 30)]
+    public void 期限は既定10秒で構成で変えられる(string? declared, int seconds)
+    {
+        var settings = new List<(string, string)>
+        {
+            ("McpClientProvisioning:Keycloak:BaseUrl", "http://keycloak:8080"),
+            ("McpClientProvisioning:Keycloak:Realm", "platform"),
+            ("McpClientProvisioning:Keycloak:ClientId", "mcp-client-admin"),
+            ("McpClientProvisioning:Keycloak:ClientSecret", "injected-at-deploy-time"),
+        };
+        if (declared is not null) settings.Add(("McpClientProvisioning:Keycloak:TimeoutSeconds", declared));
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings.Select(s => new KeyValuePair<string, string?>(s.Item1, s.Item2))).Build();
+
+        ServiceAccountProvisioningOptions.FromConfiguration(configuration).Timeout.Should().Be(TimeSpan.FromSeconds(seconds));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("121")]
+    [InlineData("ten")]
+    public void 期限の値域外は落ちる(string declared)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["McpClientProvisioning:Keycloak:BaseUrl"] = "http://keycloak:8080",
+            ["McpClientProvisioning:Keycloak:Realm"] = "platform",
+            ["McpClientProvisioning:Keycloak:ClientId"] = "mcp-client-admin",
+            ["McpClientProvisioning:Keycloak:ClientSecret"] = "injected-at-deploy-time",
+            ["McpClientProvisioning:Keycloak:TimeoutSeconds"] = declared,
+        }).Build();
+
+        var act = () => ServiceAccountProvisioningOptions.FromConfiguration(configuration);
+        act.Should().Throw<InvalidOperationException>().WithMessage("*TimeoutSeconds*");
+    }
 }

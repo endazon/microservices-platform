@@ -23,7 +23,7 @@ public class IdpFirstWriteTests
             IReadOnlyDictionary<string, string> attributes, CancellationToken ct) => throw new NotSupportedException();
 
         public Task<IdpWrite> ReplaceAttributesAsync(string clientId, string displayName,
-            IReadOnlyDictionary<string, string> attributes, CancellationToken ct) => throw new NotSupportedException();
+            IReadOnlyDictionary<string, string> attributes, bool enabled, CancellationToken ct) => throw new NotSupportedException();
 
         public Task UndoAsync(IdpWrite write, CancellationToken ct)
         {
@@ -76,6 +76,37 @@ public class IdpFirstWriteTests
             _ => throw new InvalidOperationException("db down"), provisioner);
 
         (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage("db down");
+    }
+
+    // T-1786-26（監査 🟢）: 登録簿への書き込みが失敗の結果（例外でなく 4xx / 5xx）を返しても取り消す。
+    [Fact]
+    public async Task 登録簿が失敗の結果を返しても取り消す()
+    {
+        var provisioner = new RecordingProvisioner();
+        var written = new IdpWrite(IdpWriteKind.Created, "agent-a", "c1", "u1");
+
+        var result = await Run(_ => Task.FromResult(written),
+            _ => Task.FromResult(Results.Problem("x", statusCode: 409)), provisioner);
+
+        result.Should().BeOfType<ProblemHttpResult>().Which.StatusCode.Should().Be(409);
+        provisioner.Undone.Should().ContainSingle();
+    }
+
+    // T-1786-27（監査 🟡-1）: 登録簿の書き込みが取り消し（OperationCanceledException）で止まっても補償し、
+    // IdP の書き込みと補償には要求の取り消しを伝えない。
+    [Fact]
+    public async Task 取り消しで止まっても補償し補償へは取り消しを伝えない()
+    {
+        var provisioner = new RecordingProvisioner();
+        var written = new IdpWrite(IdpWriteKind.Created, "agent-a", "c1", "u1");
+        CancellationToken seenByIdp = default;
+
+        var act = () => Run(token => { seenByIdp = token; return Task.FromResult(written); },
+            _ => throw new OperationCanceledException(), provisioner);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        provisioner.Undone.Should().ContainSingle("取り消しでも作ったクライアントを残さない");
+        seenByIdp.CanBeCanceled.Should().BeFalse("IdP への書き込みは要求の取り消しで止めない");
     }
 
     // T-1786-24（否定形）: IdP へ書けなければ登録簿へ書かない（Failed は 502・Unavailable は 503）。

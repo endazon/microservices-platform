@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using AwesomeAssertions;
+using McpServer.Domain;
 using McpServer.Domain.Ports;
+using McpServer.Infrastructure.Persistence;
 using McpServer.Features.McpClients;
 using McpServer.Infrastructure.ExternalServices;
 using Microsoft.AspNetCore.Hosting;
@@ -118,6 +120,50 @@ public class IdpProvisioningEndpointTests(TestWebApplicationFactory factory)
         Idp.Snapshot()["idp-preexisting"]["clearance"].Should().Be("public", "入口を通らない主体へ属性を書かない");
         var list = await factory.CreateClient().GetFromJsonAsync<List<McpClientView>>("/mcp-clients", Ct);
         list.Should().NotContain(c => c.ClientId == "idp-preexisting");
+    }
+
+    // T-1786-39（否定形・監査 🔴-1）: 本入口ができる前に登録簿へ載った無人の行が、IdP の入口が作っていないクライアント
+    // （例: プラットフォームの `abac-seeder`）と同名なら、差し替えは 400 で拒み、その主体の IdP の属性を書き換えない。
+    [Fact]
+    public async Task 差し替えは入口が作っていないクライアントの属性を書き換えない()
+    {
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<McpDbContext>();
+            db.Clients.Add(McpClient.Register("abac-seeder-like", "旧い行", McpClientKind.ServiceAccount,
+                new Dictionary<string, string> { ["clearance"] = "public" }, EgressTier.StandardExternal, DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync(Ct);
+        }
+        Idp.Seed("abac-seeder-like", new Dictionary<string, string> { ["clearance"] = "restricted" });
+
+        var response = await Registrar(clearance: "public,internal").PutAsJsonAsync("/mcp-clients/abac-seeder-like/attributes",
+            new ReplaceMcpClientAttributesRequest(new Dictionary<string, string> { ["clearance"] = "internal" }), Ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        Idp.Snapshot()["abac-seeder-like"]["clearance"].Should().Be("restricted", "入口が作っていない主体の属性を上書きしない");
+        var list = await factory.CreateClient().GetFromJsonAsync<List<McpClientView>>("/mcp-clients", Ct);
+        list!.Single(c => c.ClientId == "abac-seeder-like").Attributes["clearance"].Should().Be("public", "登録簿も書かない");
+    }
+
+    // T-1786-40（Q3 の決定）: 無効化した行の差し替えで IdP に作るときは、無効のまま作る。
+    [Fact]
+    public async Task 無効化した行の差し替えはIdPに無効のまま作る()
+    {
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<McpDbContext>();
+            var row = McpClient.Register("legacy-disabled", "旧い行", McpClientKind.ServiceAccount,
+                new Dictionary<string, string>(), EgressTier.StandardExternal, DateTimeOffset.UtcNow);
+            row.SetEnabled(false, DateTimeOffset.UtcNow);
+            db.Clients.Add(row);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        var response = await Registrar().PutAsJsonAsync("/mcp-clients/legacy-disabled/attributes",
+            new ReplaceMcpClientAttributesRequest(new Dictionary<string, string> { ["clearance"] = "public" }), Ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        Idp.IsEnabled("legacy-disabled").Should().BeFalse();
     }
 
     // T-1786-37: 有人は IdP へ書かない（テンプレートが計画に無い。IADR-0515 決定 3・§残余）。登録簿へは従来どおり書く。

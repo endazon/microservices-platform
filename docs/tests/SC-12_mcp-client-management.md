@@ -11,7 +11,7 @@ ids: [FR-09, FR-16, SC-09, SC-12, UC-09]
 adrs: [ADR-0021, ADR-0024, ADR-0031, ADR-0034, ADR-0054, ADR-0062, ADR-0123]
 iadrs: [IADR-0009, IADR-0035, IADR-0044, IADR-0089, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0269, IADR-0288, IADR-0297, IADR-0366, IADR-0515]
 specs: [20260828_issue-452_sc12-mcp-client-management, 20260823_issue-445_mcp-server-integration, 20260903_issue-1185_unattended-account-attribute-subset, 20261008_1786_sc12-keycloak-provisioning]
-issues: [#445, #452, #1020, #1185, #1786]
+issues: [#445, #452, #1020, #1185, #1786, #1817, #1818]
 -->
 
 # テスト仕様書: MCP クライアント登録管理

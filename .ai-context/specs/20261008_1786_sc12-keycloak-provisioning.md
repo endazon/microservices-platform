@@ -35,11 +35,13 @@ issue: "#1786"
 | 食い違いは検知して知らせる（決定 2） | 順序と補償・検知の仕組み | — |
 | 入口ができるまで Keycloak で直接割り当てない（決定 2・4） | フォローアップ 3 の確かめ方 | — |
 
-### 計画への問い（推測で埋めない）
+### 計画とのずれ・計画への問い（推測で埋めない）
 
-- **Q1（有人）**: ADR-0123 決定 2 は「Keycloak のクライアント（無人ならサービスアカウントを持つ機密クライアント）を作り」と書き、有人のクライアントも作る読みを許す。有人（認可コード + PKCE）のクライアントには、少なくともリダイレクト先と公開／機密の別が要るが、SC-12 の入力（計画の画面・登録の契約）に無い。**本段は有人を IdP へ書かない**（従来どおり登録簿だけ）。有人も作るなら、入力とテンプレートの裁定が要る。
-- **Q2（secret の受け渡し）**: 機密クライアントの secret は Keycloak が生成する。本段は応答で返さず、管理者が Keycloak の管理画面で取得する前提にした（属性の直接割当ではないので決定 2 の禁止には当たらない、と読んだ）。SC-12 で表示・再発行させるか、別の秘密の経路（SC-22）に載せるかは計画が決めていない。
-- **Q3（無効化）**: SC-12 の無効化は登録簿の `Enabled` を切り替え、MCP サーバーが呼び出しごとに拒否する（UC-09）。IdP のクライアントも無効化してトークンの発行を止めるかは決めていない。本段は写さない。
+> ［2026-10-08 追記 / PR #1816 の監査］Q1 は問いではなく**既知の逸脱**として扱う（計画の SC-12 は種別を限らずクライアントの作成を定める）。Q1・Q2 は planning#751 へ環流した。Q3 は計画が答えている（下記）。
+
+- **Q1（有人）＝既知の逸脱**: ADR-0123 決定 2 は「Keycloak のクライアント（無人ならサービスアカウントを持つ機密クライアント）を作り」と書き、有人のクライアントも作る読みを許す。有人（認可コード + PKCE）のクライアントには、少なくともリダイレクト先と公開／機密の別が要るが、SC-12 の入力（計画の画面・登録の契約）に無い。**本段は有人を IdP へ書かない**（従来どおり登録簿だけ）。有人も作るなら、入力とテンプレートの裁定が要る。 → planning#751。
+- **Q2（secret の受け渡し）**: 機密クライアントの secret は Keycloak が生成する。本段は応答で返さず、管理者が Keycloak の管理画面で取得する前提にした（属性の直接割当ではないので決定 2 の禁止には当たらない、と読んだ）。SC-12 で表示・再発行させるか、別の秘密の経路（SC-22）に載せるかは計画が決めていない。 → planning#751。
+- **Q3（無効化）＝計画が答えている**: 無効化は「即時に接続拒否」であり、MCP サーバーが呼び出しごとに登録簿を引いて拒否する形で満たしている。多層の防御として IdP のクライアントの `enabled` へ写すことを IADR-0515 決定 4a で決め、実装は #1817 で行う。差し替えで IdP に作るときは、無効な行から有効なクライアントを生まない（無効のまま作る）。
 
 ## 現状（実測。`5748d5d9`）
 
@@ -97,15 +99,38 @@ issue: "#1786"
 | フォローアップ 3: 認可サービスの照会がサービスアカウントの利用者を返す | 🔶 **コードの経路は固定**・稼働の Keycloak での実測は無い | T-1786-11（認可サービス `KeycloakIdentityAdminClientTests`）／T-1786-02・03（書き込み口が同じ照会で確かめ、返らなければ書かない） |
 | 補償（IADR-0515 決定 4） | ✅ | T-1786-03・05・06・07・21・22・23 |
 | 口の選択（同 決定 2） | ✅ | T-1786-41〜45 |
-| 有人は IdP へ書かない（同 決定 3・Q1） | ✅ | T-1786-37・38 の陽性対照 |
+| 有人は IdP へ書かない（同 決定 3・既知の逸脱。planning#751） | ✅ | T-1786-37・38 の陽性対照 |
+| 🔴 差し替えは入口の印が無いクライアントへ書かない（PR #1816 監査 🔴-1） | ✅ | T-1786-12（偽の Keycloak）／T-1786-39（API 面） |
+| 取り消し・時間切れでも補償し、時間切れは 502（監査 🟡-1） | ✅ | T-1786-14・27・46 |
+| 取り消しは後から書かれた値を潰さない（監査 🟡-2） | ✅ | T-1786-17 |
+| 無効な行から有効なクライアントを生まない（Q3） | ✅ | T-1786-18・40 |
+| テンプレート `fullScopeAllowed=false`・401 の取り直し・失敗の結果での補償・Location 欠けでの補償（監査 🟢） | ✅ | T-1786-13・16・26・15 |
+| クライアントの照会は完全一致 | ✅ | T-1786-19 |
 
 ## 段の分け方（issue の受け入れ基準に沿う）
 
 - **段 1（本 PR）**: 書く前の検証 ＋ IdP への書き込みの口（作成・差し替え・補償・フォローアップ 3 の確かめ）。配備では口を宣言しない（503）。
-- **段 2（後続の issue）**: 配備の配線 ——realm へ `mcp-client-admin`（`manage-clients`・`manage-users`）、secret の供給（ExternalSecret `mcp-client-admin-oidc`・Vault の初期投入 `deploy/local/vault/eso/bootstrap.sh`・`scripts/k8s-local-up.sh` の手動経路とその試験・`deploy/bootstrap/sc22-secret-items.json`）、helm values の `McpClientProvisioning__Provider=keycloak` と `ClientSecret` の secretKeyRef、compose の配線。**稼働の Keycloak での実測**（AC1 の統合の証跡・フォローアップ 3）。
-- **段 3（後続の issue）**: 食い違いの検知（IADR-0515 決定 5）—— McpServer の常駐の照合・計器（ゲージ ＋ 結末のカウンタ）・警報 2 本（写し 4 か所）・`scripts.repo.test.js` の突合。AC3。
+- **段 2（#1817）**: 配備の配線 ——realm へ `mcp-client-admin`（`manage-clients`・`manage-users`）、secret の供給（ExternalSecret `mcp-client-admin-oidc`・Vault の初期投入 `deploy/local/vault/eso/bootstrap.sh`・`scripts/k8s-local-up.sh` の手動経路とその試験・`deploy/bootstrap/sc22-secret-items.json`）、helm values の `McpClientProvisioning__Provider=keycloak` と `ClientSecret` の secretKeyRef、compose の配線。**稼働の Keycloak での実測**（AC1 の統合の証跡・フォローアップ 3）。 無効化の IdP への写し（IADR-0515 決定 4a）も含む。
+- **段 3（#1818）**: 食い違いの検知（IADR-0515 決定 5）—— McpServer の常駐の照合・計器（ゲージ ＋ 結末のカウンタ）・警報 2 本（写し 4 か所）・`scripts.repo.test.js` の突合。AC3。 交差した差し替えの残る競合（IdP は後の要求・登録簿は先の要求）もここで拾う。
 
 ## 検証
 
 - `dotnet build src/platform/backend/backend.slnx`（警告 0）・`dotnet format --verify-no-changes`・`dotnet test`（McpServer・AuthorizationService）。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` と文書系の検査器一式。
+
+## ［2026-10-08 追記 / PR #1816 の監査への対応］
+
+- 🔴-1: 差し替えは `GET /clients/{id}` の入口の印（`msp.mcp-client.managed-by=mcp-server`）を確かめ、無ければ何も書かずに 400。プロセス内の口も `Seed` したものを印なしとして同じ意味論にした。偽の Keycloak は `GET /clients/{id}`（`attributes` つき）を返し、`clientId=` を完全一致（`search=true` で部分一致）で扱う。
+- 🟡-1: IdP への書き込みと補償は要求の取り消しを伝えない（`CancellationToken.None`）。補償は `OperationCanceledException` も含めて走る。HttpClient の `Timeout` を明示し（`McpClientProvisioning:Keycloak:TimeoutSeconds`。既定 10 秒）、時間切れは `Failed`（502）へ写す。
+- 🟡-2: 取り消しは現在値がこの要求の書いた値のままのときだけ書き戻す（`IdpWrite.WrittenAttributes`）。残る競合は #1818。
+- 🟡-3・4・5: IADR-0515 §結果・§残余・番号の注記・決定 3 を改めた。
+- 🟢: `fullScopeAllowed=false`・401 の 1 度の取り直し・失敗の結果での補償・`Location` 欠けでの補償・`throw;` での再送出。
+
+### 変異試験（push 前に実施。すべて戻し、`git status` で残渣 0 を確認）
+
+| # | 変異 | 落ちた試験 |
+| --- | --- | --- |
+| M1 | 登録と差し替えの端点から検証の早期 return を外す（書く前の検証を消す） | 16 件（`McpClientEndpointTests`・`ServiceAccountAttributeSubsetEndpointTests`・`McpValidationProblemContractTests`・`IdpProvisioningEndpointTests` ほか） |
+| M2 | `IdpFirstWrite` の補償（`UndoAsync`）を消す | 4 件（`IdpFirstWriteTests` の T-1786-21・22・26・27） |
+| M3a | Keycloak 版の差し替えの印の確かめを外す | 1 件（T-1786-12） |
+| M3b | プロセス内の口の差し替えの印の確かめを外す | 1 件（T-1786-39） |

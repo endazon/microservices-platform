@@ -130,7 +130,7 @@ public class KeycloakServiceAccountProvisionerTests
         var provisioner = Provisioner(keycloak);
         await provisioner.CreateAsync("agent-r", "R", Attrs(("clearance", "public")), Ct);
 
-        var written = await provisioner.ReplaceAttributesAsync("agent-r", "R", Attrs(("clearance", "internal")), Ct);
+        var written = await provisioner.ReplaceAttributesAsync("agent-r", "R", Attrs(("clearance", "internal")), true, Ct);
 
         written.Kind.Should().Be(IdpWriteKind.Updated);
         written.PreviousAttributes.Should().BeEquivalentTo(Attrs(("clearance", "public")));
@@ -148,7 +148,7 @@ public class KeycloakServiceAccountProvisionerTests
         var keycloak = new FakeKeycloak();
         var provisioner = Provisioner(keycloak);
 
-        var written = await provisioner.ReplaceAttributesAsync("legacy", "旧", Attrs(("clearance", "public")), Ct);
+        var written = await provisioner.ReplaceAttributesAsync("legacy", "旧", Attrs(("clearance", "public")), true, Ct);
 
         written.Kind.Should().Be(IdpWriteKind.Created);
         keycloak.ServiceAccountOf("legacy").Attributes["clearance"].Should().Equal("public");
@@ -166,7 +166,7 @@ public class KeycloakServiceAccountProvisionerTests
         var provisioner = Provisioner(keycloak);
         await provisioner.CreateAsync("agent-w", "W", Attrs(("clearance", "public"), ("tags", "sales")), Ct);
 
-        await provisioner.ReplaceAttributesAsync("agent-w", "W", Attrs(("clearance", "internal")), Ct);
+        await provisioner.ReplaceAttributesAsync("agent-w", "W", Attrs(("clearance", "internal")), true, Ct);
 
         keycloak.ServiceAccountOf("agent-w").Attributes.Keys.Should().Equal("clearance");
     }
@@ -194,6 +194,111 @@ public class KeycloakServiceAccountProvisionerTests
         KeycloakServiceAccountProvisioner.SameAttributes(
                 Attrs(("clearance", "internal")), Attrs(("clearance", "confidential")))
             .Should().BeFalse();
+    }
+
+    // T-1786-12（否定形・監査 🔴-1）: 差し替えでも、入口の印が無いクライアント（`abac-seeder` 等）へは何も書かない。
+    [Fact]
+    public async Task 差し替えでも入口の印が無いクライアントへは書かない()
+    {
+        var keycloak = new FakeKeycloak();
+        keycloak.SeedClient("abac-seeder", new Dictionary<string, string[]> { ["clearance"] = ["restricted"] });
+
+        var written = await Provisioner(keycloak).ReplaceAttributesAsync(
+            "abac-seeder", "旧", Attrs(("clearance", "public")), true, Ct);
+
+        written.Kind.Should().Be(IdpWriteKind.AlreadyExists);
+        keycloak.Requests.Should().NotContain(r => r.Method == "PUT", "入口が作っていない主体の属性を上書きしない");
+        keycloak.ServiceAccountOf("abac-seeder").Attributes["clearance"].Should().Equal("restricted");
+        keycloak.Requests.Should().Contain(r => r.Method == "GET" && r.Path.EndsWith("/clients/" + keycloak.Clients[0].Id),
+            "印はクライアントの表現から読む");
+    }
+
+    // T-1786-13: テンプレートは realm の全ロールをトークンへ載せない。
+    [Fact]
+    public void テンプレートはfullScopeAllowedを閉じる()
+        => KeycloakServiceAccountProvisioner.ServiceAccountClientTemplate("a", "A")["fullScopeAllowed"].Should().Be(false);
+
+    // T-1786-14（監査 🟡-1）: POST /clients の後の時間切れでも、作ったクライアントを消して Failed（502）にする。
+    [Fact]
+    public async Task 作成の後の時間切れでもクライアントを消してFailedにする()
+    {
+        var keycloak = new FakeKeycloak { TimeoutAfterCreate = true };
+
+        var act = () => Provisioner(keycloak).CreateAsync("agent-t", "T", Attrs(("clearance", "public")), Ct);
+
+        (await act.Should().ThrowAsync<IdpProvisioningException>())
+            .Which.Failure.Should().Be(IdpProvisioningFailure.Failed, "時間切れは 500 ではなく 502 へ写す");
+        keycloak.Clients.Should().BeEmpty("時間切れでも補償する");
+    }
+
+    // T-1786-15（監査 🟢）: Location が無く引き直しも失敗したら、補償で引き直して消す（try の外へ投げない）。
+    [Fact]
+    public async Task Locationが無く引き直しに失敗しても補償で消す()
+    {
+        var keycloak = new FakeKeycloak { OmitLocation = true, ClientLookupFailures = 1 };
+        var provisioner = Provisioner(keycloak);
+
+        var act = () => provisioner.CreateAsync("agent-l", "L", Attrs(("clearance", "public")), Ct);
+
+        await act.Should().ThrowAsync<IdpProvisioningException>();
+        // 1 回目の引き直しは失敗した。補償は引き直してから消す —— 照会が直っていれば消せる。
+        keycloak.Clients.Should().BeEmpty();
+    }
+
+    // T-1786-16（監査 🟢）: 管理用トークンが 401 で拒まれたら、1 度だけ取り直して送り直す。
+    [Fact]
+    public async Task 管理要求が401なら1度だけトークンを取り直す()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-k", "K", Attrs(("clearance", "public")), Ct);
+        var before = keycloak.TokenRequests;
+
+        keycloak.RejectNextAdminCallOnce = true;
+        var written = await provisioner.ReplaceAttributesAsync("agent-k", "K", Attrs(("clearance", "internal")), true, Ct);
+
+        written.Kind.Should().Be(IdpWriteKind.Updated);
+        keycloak.TokenRequests.Should().Be(before + 1);
+    }
+
+    // T-1786-17（監査 🟡-2）: 取り消しは、現在値がこの要求の書いた値のままのときだけ戻す（後の差し替えを潰さない）。
+    [Fact]
+    public async Task 取り消しは後から書かれた値を潰さない()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-c", "C", Attrs(("clearance", "public")), Ct);
+        var first = await provisioner.ReplaceAttributesAsync("agent-c", "C", Attrs(("clearance", "internal")), true, Ct);
+        await provisioner.ReplaceAttributesAsync("agent-c", "C", Attrs(("clearance", "confidential")), true, Ct);
+
+        await provisioner.UndoAsync(first, Ct);
+
+        keycloak.ServiceAccountOf("agent-c").Attributes["clearance"].Should().Equal("confidential");
+    }
+
+    // T-1786-18（Q3 の決定）: 登録簿で無効化された行の差し替えで IdP に作るときは、無効のまま作る。
+    [Fact]
+    public async Task 無効な行の差し替えでは無効のまま作る()
+    {
+        var keycloak = new FakeKeycloak();
+
+        await Provisioner(keycloak).ReplaceAttributesAsync("legacy-off", "旧", Attrs(("clearance", "public")), false, Ct);
+
+        keycloak.Clients.Single().Representation["enabled"]!.GetValue<bool>().Should().BeFalse();
+    }
+
+    // T-1786-19: 偽の Keycloak も `clientId=` を完全一致で扱う（前方一致の別クライアントを拾わない）。
+    [Fact]
+    public async Task クライアントの照会は完全一致である()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-long", "L", Attrs(("clearance", "public")), Ct);
+
+        var written = await provisioner.ReplaceAttributesAsync("agent", "A", Attrs(("clearance", "public")), true, Ct);
+
+        written.Kind.Should().Be(IdpWriteKind.Created, "`agent` は `agent-long` ではない");
+        keycloak.ServiceAccountOf("agent-long").Attributes["clearance"].Should().Equal("public");
     }
 
     // ── 状態を持つ偽の Keycloak ──────────────────────────────────────────────
@@ -226,10 +331,25 @@ public class KeycloakServiceAccountProvisionerTests
         public bool LookupHidesServiceAccounts { get; init; }
         public bool DropAttributesOnPut { get; init; }
         public bool Unreachable { get; init; }
+        /// <summary>`POST /clients` の後の最初の要求で時間切れ（TaskCanceledException）を投げる。</summary>
+        public bool TimeoutAfterCreate { get; init; }
+        /// <summary>`POST /clients` の応答に Location を付けない。</summary>
+        public bool OmitLocation { get; init; }
+        /// <summary>`clients?clientId=` の照会を、この回数だけ 500 にする。</summary>
+        public int ClientLookupFailures { get; set; }
+        /// <summary>次の管理要求を 1 度だけ 401 にする（トークンの取り直しを見る）。</summary>
+        public bool RejectNextAdminCallOnce { get; set; }
+        public int TokenRequests { get; private set; }
+        private bool _timedOut;
 
         public void SeedClient(string clientId, Dictionary<string, string[]> attributes)
         {
-            var client = NewClient(clientId, new JsonObject { ["clientId"] = clientId });
+            // 入口を通らずに作られたクライアント: **入口の印（managed-by）を持たない**。
+            var client = NewClient(clientId, new JsonObject
+            {
+                ["clientId"] = clientId,
+                ["attributes"] = new JsonObject { ["client.secret.creation.time"] = "0" },
+            });
             Users[client.ServiceAccountUserId].Attributes = attributes;
         }
 
@@ -255,7 +375,22 @@ public class KeycloakServiceAccountProvisionerTests
 
             var method = request.Method.Method;
             if (method == "POST" && path == "realms/platform/protocol/openid-connect/token")
+            {
+                TokenRequests++;
                 return Ok("""{"access_token":"admin-token","expires_in":300}""");
+            }
+
+            if (RejectNextAdminCallOnce)
+            {
+                RejectNextAdminCallOnce = false;
+                return Status(HttpStatusCode.Unauthorized);
+            }
+
+            if (TimeoutAfterCreate && Clients.Count > 0 && !_timedOut && method != "DELETE")
+            {
+                _timedOut = true;
+                throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout");
+            }
 
             if (method == "POST" && path == Admin + "clients")
             {
@@ -264,15 +399,37 @@ public class KeycloakServiceAccountProvisionerTests
                 if (Clients.Any(c => c.ClientId == clientId)) return Status(HttpStatusCode.Conflict);
                 var created = NewClient(clientId, rep);
                 var response = Status(HttpStatusCode.Created);
-                response.Headers.Location = new Uri($"https://auth.example.test/{Admin}clients/{created.Id}");
+                if (!OmitLocation)
+                    response.Headers.Location = new Uri($"https://auth.example.test/{Admin}clients/{created.Id}");
                 return response;
             }
 
             if (method == "GET" && path.StartsWith(Admin + "clients?clientId=", StringComparison.Ordinal))
             {
-                var clientId = Uri.UnescapeDataString(path[(Admin + "clients?clientId=").Length..]);
-                return Ok(JsonSerializer.Serialize(Clients.Where(c => c.ClientId == clientId)
+                if (ClientLookupFailures > 0)
+                {
+                    ClientLookupFailures--;
+                    return Status(HttpStatusCode.InternalServerError);
+                }
+                // Keycloak と同じく、`search=true` が無ければ完全一致（あれば部分一致）。
+                var query = path[(Admin + "clients?").Length..].Split('&')
+                    .Select(p => p.Split('=', 2)).ToDictionary(p => p[0], p => Uri.UnescapeDataString(p[1]));
+                var clientId = query["clientId"];
+                var search = query.TryGetValue("search", out var v) && v == "true";
+                return Ok(JsonSerializer.Serialize(Clients
+                    .Where(c => search ? c.ClientId.Contains(clientId, StringComparison.OrdinalIgnoreCase) : c.ClientId == clientId)
                     .Select(c => new { id = c.Id, clientId = c.ClientId })));
+            }
+
+            if (method == "GET" && path.StartsWith(Admin + "clients/", StringComparison.Ordinal)
+                && !path[(Admin + "clients/").Length..].Contains('/'))
+            {
+                var client = Clients.SingleOrDefault(c => c.Id == path[(Admin + "clients/").Length..]);
+                if (client is null) return Status(HttpStatusCode.NotFound);
+                var rep = client.Representation.DeepClone().AsObject();
+                rep["id"] = client.Id;
+                rep["attributes"] ??= new JsonObject();
+                return Ok(rep.ToJsonString());
             }
 
             if (method == "GET" && path.StartsWith(Admin + "clients/", StringComparison.Ordinal)

@@ -11,7 +11,7 @@ ids: [FR-05, FR-16, UC-08, UC-09, SC-12, NFR-09, NFR-16]
 adrs: [ADR-0004, ADR-0018, ADR-0024, ADR-0029, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0062, ADR-0075, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123]
 iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0515]
 specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning]
-issues: [#445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786]
+issues: [#445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818]
 -->
 
 # テスト仕様書: MCP サーバー統合
@@ -137,6 +137,11 @@ CI は緑のままで、**壊れた構成のまま Web サーバーが起動し�
 | C-21 | 書き込み口が構成されていない | 無人の登録・差し替えは 503。登録簿にも書かない。有人の登録は通る（陽性対照） |
 | C-22 | 偽の書き込み口を配備ホストで選ぶ・値域外・資格情報の欠け | 起動時に落ちる |
 | C-23 | 認可サービスの名指しの照会でサービスアカウントの利用者を引く | 落とさずに返す（全件の列挙と違い、機械の主体を除かない） |
+| C-24 | 差し替えで、認可サーバーのクライアントに入口の印が無い（同名のプラットフォームの機密クライアント等） | 何も書かずに 400。その主体の属性も登録簿も変えない |
+| C-25 | 作成の後に時間切れ／要求の取り消し | 作りかけを消して 502（時間切れ）。補償は取り消しに依らず走る |
+| C-26 | 交差した差し替えの取り消し | 現在値が書いた値のままのときだけ書き戻す（後の値を潰さない） |
+| C-27 | 無効化した行の差し替えで認可サーバーに作る | 無効のまま作る |
+| C-28 | 管理用トークンが 401 で拒まれる | 1 度だけ取り直して送り直す |
 
 ## データ越境の受け入れ基準
 
@@ -380,9 +385,9 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
 - `McpClientEndpointTests` — クライアント登録簿の管理
 - `ServiceAccountAttributeSubsetTests` — 部分集合の判定そのもの（C-7〜C-9・C-11・C-12・C-14。器を起こさない純関数）
 - `ServiceAccountAttributeSubsetEndpointTests` — 判定の経路（C-7〜C-13。登録と差し替えの両方・拒否応答の本文）
-- `KeycloakServiceAccountProvisionerTests` — 認可サーバーへの書き込みの口（C-15・C-17〜C-19・差し替えと取り消し。偽の認可サーバー）
+- `KeycloakServiceAccountProvisionerTests` — 認可サーバーへの書き込みの口（C-15・C-17〜C-19・C-24〜C-28・差し替えと取り消し。偽の認可サーバー）
 - `IdpFirstWriteTests` — 書く順序と取り消し（C-20・C-21 の 503 / 502 の写し方・C-17）
-- `IdpProvisioningEndpointTests` — API 面での書き込み（C-15〜C-17・C-21。有人は書かない）
+- `IdpProvisioningEndpointTests` — API 面での書き込み（C-15〜C-17・C-21・C-24・C-27。有人は書かない）
 - `ServiceAccountProvisioningRegistrationTests` — 書き込み口の選択（C-21・C-22）
 - `KeycloakIdentityAdminClientTests`（認可サービス） — 名指しの照会がサービスアカウントを返すこと（C-23）
 - `LogForgingSanitizationTests` — 要求由来のツール名をログへ落とす際の制御文字除去
