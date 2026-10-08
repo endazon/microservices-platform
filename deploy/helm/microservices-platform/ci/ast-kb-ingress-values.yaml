@@ -1,0 +1,13 @@
+# NFR-09, ADR-0125 決定 4, IADR-0513 (#1756):
+# CI 専用の values。**配備には使わない**（helm / chart-testing の `ci/` 慣習）。
+#
+# AST の名前空間からの ingress の許可は既定で閉じている（values.yaml の networkPolicy.fromAst.*.enabled: false）ので、
+# 既定の描画だけを検査すると有効時の NetworkPolicy は 1 度も描画・スキーマ突合されない。
+# scripts/check-deploy-manifests.js は chart の `ci/*.yaml` を走査で見つけ、この values でも helm lint / helm template /
+# kubeconform を回す。scripts/helm-ast-kb-ingress.test.js も「有効」をこのファイルで描く（有効の定義を 2 か所に書かない）。
+networkPolicy:
+  fromAst:
+    kbReader:
+      enabled: true
+    kbWriter:
+      enabled: true

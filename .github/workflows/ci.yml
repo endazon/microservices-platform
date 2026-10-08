@@ -695,6 +695,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-private-notes-sync-authz.test.js
 
+      # NFR-09, ADR-0125 決定 4, IADR-0513, Issue #1756: 取引ユニット（AST）の名前空間 → KB の読み手（検索）・書き手（文書の保存）への
+      # ingress の NetworkPolicy（既定は閉）を**実際に helm template で描いて**固定する —— 既定と values-local は描かない（陰性対照）、
+      # 有効時は行き先・from の AND・REST のポートだけ、k8s の評価規則で呼び出し元の一覧へ当てると読み手・書き手だけが通る、描画で止まる条件、変異。
+      - name: Test helm AST KB ingress network policy (render, caller evaluation, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-ast-kb-ingress.test.js
+
       # FR-02, ADR-0016, IADR-0504, Issue #1764: 埋め込みの鍵（Embedding__Voyage__ApiKey）を**実際に helm template で描いて**固定する
       # —— 既定と values-local の両方で llmgateway-service にだけ secretKeyRef（optional）で 1 回・リテラルの値を持たない・
       # Llm__ApiKey が残る、ExternalSecret / SC-22 の項目表 / Vault の種 / 手動 Secret が同じキー名で揃う、変異。helm が要るのでこのジョブ。
