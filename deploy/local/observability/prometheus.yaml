@@ -223,6 +223,28 @@ data:
               summary: "所有者の読み取りのポリシーを見ていない: authz_owner_read_policy_active の系列が存在しない"
               description: "認可サービスの所有者の読み取りのポリシーの検査が値を出していない。OwnerReadPolicyMissing は空ベクタになり、ポリシーが消えても発火しない。認可サービスの停止、検査の失敗の継続（ポリシーの表を読めない。authz_owner_read_policy_checks_total{authz_owner_read_policy_outcome=\"failed\"} とエラーログ）、または収集の欠落を疑う。"
 
+      # FR-16, SC-12, ADR-0123 決定 2, IADR-0516 決定 5 (#1818): SC-12 の登録簿と IdP のサービスアカウントの食い違い（**0 が正常**）。
+      # 🔴 **ゲージは直近の照合の食い違いの件数そのもの**であり、照合に失敗した・未照合のときは系列が無い（古い値も 0 も出さない）。
+      #   したがって「食い違いがある」は `>= 1`、「見ていない」は `absent()` の 2 本で分けて知らせる（IADR-0481 と同じ形）。
+      #   複数レプリカは同じ登録簿と IdP を照合するので、どのレプリカの値で鳴らしてもよい（集約しない）。
+      # 🔴 **照合は直さない**（検知だけ）。登録・差し替えの途中を照合が見た一時の食い違いは次の周期で消えるので、`for: 5m` が吸収する。
+      - name: mcp-client-idp-reconciliation
+        rules:
+          - alert: McpClientIdpDrift
+            expr: 'mcp_idp_reconciliation_drifted >= 1'
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "SC-12 の登録簿と IdP のサービスアカウントが食い違っている（0 が正常）"
+              description: "McpServer の定期の照合（既定 1 分ごと）で、SC-12 の登録簿の無人の行と認証基盤（Keycloak）のサービスアカウントが食い違ったクライアントが 1 件以上ある（mcp_idp_reconciliation_drifted）。種類は IdP にクライアントが無い・入口の印（managed-by）が無い・サービスアカウントが無い・属性が違う・印つきのクライアントに登録簿の行が無い（孤児）。判定は IdP の属性で行われるので、登録簿の表示と判定がずれている。McpServer の Warning ログ（client=… kind=…）でクライアントと種類を特定し、運用仕様書「MCP クライアント登録簿と認証基盤の照合」の手順で確かめる。照合は直さない（検知だけ）。"
+          - alert: McpClientIdpReconciliationSeriesAbsent
+            expr: absent(mcp_idp_reconciliation_drifted)
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "SC-12 の登録簿と IdP の照合を見ていない: mcp_idp_reconciliation_drifted の系列が存在しない"
+              description: "McpServer の登録簿と IdP の照合が値を出していない。McpClientIdpDrift は空ベクタになり、食い違いがあっても発火しない。McpServer の停止、照合の失敗の継続（IdP・登録簿を読めない、1 回の照合の期限切れ、または IdP への口の未構成。mcp_idp_reconciliation_checks_total{mcp_idp_reconciliation_outcome=\"failed\"} とエラーログ）、または収集の欠落を疑う。"
+
       # SC-10 / SC-15, ADR-0045 決定 8 → ADR-0078 決定 3, IADR-0421 (#1245 PR-B): 近接 MTA のキュー。
       # 🔴 **観測点が移った。** 近接 MTA を挟んだ以後、上流が止まっていても Keycloak の送出は成功する。
       #   監査ログだけを見ていると上流停止を見逃す。系列は mail-relay:9154 の exporter を

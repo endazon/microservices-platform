@@ -12682,6 +12682,63 @@ exit $RC
     });
   }
 
+  // --- #1818: SC-12 の登録簿と IdP の食い違いの警報は、C# のゲージ名から導いた Prometheus 名を 4 か所で見る -----------
+  //
+  // #1665 と同じ形（IADR-0516 決定 5 は IADR-0481 と同じ「定期の検査 ＋ 計器 ＋ 警報」と定めた）。名前がずれると式は構文として
+  // 正当なまま**永久に空ベクタ**になり、食い違いがあっても鳴らない（#1110・#1111 と同型）。
+  // 「食い違いがある」（`>= 1` / Grafana は `gt 0`）と「見ていない」（`absent()`）の 2 本が、同じゲージを見ていることを確かめる。
+  // 説明文が指す失敗の数え方（カウンタ名・結末の属性名）も C# の名前から導いて突き合わせる（運用者が引く式を腐らせない）。
+  {
+    const fsD = require('fs');
+    const pathD = require('path');
+    const ROOT_D = pathD.resolve(__dirname, '..');
+    const METRICS_CS_D = 'src/platform/backend/Services/McpServer/Features/McpClients/IdpReconciliation/IdpReconciliationCheck.cs';
+    const RULE_FILES_D = [
+      'deploy/prometheus/alerts.yml',
+      'deploy/local/observability/prometheus.yaml',
+      'deploy/grafana/provisioning/alerting/slo-alerts.yaml',
+      'deploy/local/observability/grafana.yaml',
+    ];
+    const readD = (rel) => fsD.readFileSync(pathD.join(ROOT_D, rel), 'utf8');
+    const ruleBodyD = (text, name) => {
+      const def = new RegExp(`(?:alert|title):\\s*${name}\\s*$`, 'm').exec(text);
+      if (!def) return null;
+      const rest = text.slice(def.index + def[0].length);
+      const next = /(?:- alert|title):\s*\w+\s*$/m.exec(rest);
+      return next ? rest.slice(0, next.index) : rest;
+    };
+    const constOf = (cs, name) => {
+      const m = new RegExp(`${name}\\s*=\\s*"([^"]+)"`).exec(cs);
+      assert.ok(m, `${METRICS_CS_D} に ${name} が見つからない（走査が壊れている）`);
+      return m[1];
+    };
+
+    ok('#1818: 登録簿と IdP の食い違いの警報 2 本が、C# のゲージ名から導いた Prometheus 名を 4 か所で見る（実データ）', () => {
+      const cs = readD(METRICS_CS_D);
+      // OTel → prometheusremotewrite: `.` は `_` へ。単位 `{client}` は注記で接尾辞にならず、ゲージに `_total` は付かない。
+      const promName = constOf(cs, 'DriftedGaugeName').replace(/\./g, '_');
+      assert.strictEqual(promName, 'mcp_idp_reconciliation_drifted');
+      const counter = constOf(cs, 'CheckCounterName').replace(/\./g, '_');
+      const outcomeTag = constOf(cs, 'OutcomeTag').replace(/\./g, '_');
+      const failed = constOf(cs, 'OutcomeFailed');
+      for (const rel of RULE_FILES_D) {
+        const text = readD(rel);
+        const drift = ruleBodyD(text, 'McpClientIdpDrift');
+        assert.ok(drift, `${rel} に McpClientIdpDrift のルール定義が無い`);
+        assert.ok(drift.includes(promName), `${rel} の McpClientIdpDrift が ${promName} を見ていない`);
+        assert.ok(!drift.includes('absent('), `${rel} の McpClientIdpDrift が absent() になっている（「ある」と「見ていない」を混ぜない）`);
+        // 「1 件以上で鳴る」: Prometheus 版は式の `>= 1`、Grafana 版は評価器の `gt 0`。
+        assert.ok(/>=\s*1\b/.test(drift) || /type:\s*gt,\s*params:\s*\[0\]/.test(drift),
+          `${rel} の McpClientIdpDrift が「1 件以上」で鳴らない`);
+        const absent = ruleBodyD(text, 'McpClientIdpReconciliationSeriesAbsent');
+        assert.ok(absent, `${rel} に McpClientIdpReconciliationSeriesAbsent のルール定義が無い`);
+        assert.ok(absent.includes(`absent(${promName})`), `${rel} の McpClientIdpReconciliationSeriesAbsent が absent(${promName}) でない`);
+        assert.ok(absent.includes(`${counter}{${outcomeTag}=\\"${failed}\\"}`),
+          `${rel} の McpClientIdpReconciliationSeriesAbsent の説明が失敗の数え方 ${counter}{${outcomeTag}="${failed}"} を指していない`);
+      }
+    });
+  }
+
   // --- #1550: 稼働クラスタへ当たる scripts は、明示の指定（--live か LIVE=1）が無ければ何もせずに終わる ------------
   //
   // 事故（2026-09-26）: ワークフローの `node scripts/...` の行をまとめて実行した作業エージェントが、稼働中の Keycloak へ

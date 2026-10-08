@@ -79,6 +79,15 @@ else
 // 無人の登録・属性の差し替えは、検証の後に Keycloak へ機密クライアントとサービスアカウントの属性を書いてから登録簿へ書く。
 // 口が構成されていなければ（`McpClientProvisioning:Provider` 未設定）無人の登録・差し替えを 503 で拒む（登録簿にも書かない）。
 builder.Services.AddServiceAccountProvisioning();
+// FR-16, SC-12, 計画 ADR-0123 決定 2, ADR-0006, [[IADR-0516]] 決定 5（#1818）: 登録簿と IdP のサービスアカウントの属性の食い違いを
+// 検知して知らせる定期の照合（計器 `mcp.idp_reconciliation.*` ＋ 警報 McpClientIdpDrift）。**照合は書かない。** opt-in にしない。
+builder.Services.AddOpenTelemetry().WithMetrics(metrics => metrics.AddMeter(
+    McpServer.Features.McpClients.IdpReconciliation.IdpReconciliationMetrics.MeterName));
+builder.Services.AddSingleton(
+    McpServer.Features.McpClients.IdpReconciliation.IdpReconciliationOptions.FromConfiguration(builder.Configuration));
+builder.Services.AddSingleton<McpServer.Features.McpClients.IdpReconciliation.IdpReconciliationMetrics>();
+builder.Services.AddScoped<McpServer.Features.McpClients.IdpReconciliation.IdpReconciliationCheck>();
+builder.Services.AddHostedService<McpServer.Features.McpClients.IdpReconciliation.IdpReconciliationHostedService>();
 
 // FR-16, ADR-0024: 宣言的公開構成・自己申告の集約・実効ツール一覧
 builder.Services.AddSingleton<ToolPublicationConfigLoader>();

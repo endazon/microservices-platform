@@ -51,6 +51,10 @@ public static class ServiceAccountProvisioningRegistration
         services.AddSingleton<KeycloakServiceAccountProvisioner>();
         services.AddSingleton<IServiceAccountProvisioner>(sp => Select(
             sp, sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
+        // [[IADR-0516]] 決定 5（#1818）: 照合の読み取りの口は、選ばれた書き込み口そのもの（3 つの実装がどれも兼ねる）。
+        // 選択を 2 つにしない —— 書く先と照合が読む先が別の IdP になる構成を作れないようにする。
+        services.AddSingleton<IServiceAccountDirectory>(sp =>
+            (IServiceAccountDirectory)sp.GetRequiredService<IServiceAccountProvisioner>());
         return services;
     }
 
@@ -132,7 +136,8 @@ public sealed class ServiceAccountProvisioningOptions
 }
 
 // 書き込み口が構成されていない配備。**何も書かずに** Unavailable を投げる（呼び出し元は登録簿にも書かない）。
-public sealed class UnconfiguredServiceAccountProvisioner : IServiceAccountProvisioner
+// ［#1818］照合の読み取りも Unavailable を投げる（照合は失敗＝ゲージの系列を出さず、警報「系列が無い」が鳴る）。
+public sealed class UnconfiguredServiceAccountProvisioner : IServiceAccountProvisioner, IServiceAccountDirectory
 {
     private static IdpProvisioningException Unavailable() => new(
         IdpProvisioningFailure.Unavailable,
@@ -148,12 +153,19 @@ public sealed class UnconfiguredServiceAccountProvisioner : IServiceAccountProvi
         => throw Unavailable();
 
     public Task UndoAsync(IdpWrite write, CancellationToken ct) => Task.CompletedTask;
+
+    public Task<IReadOnlyList<IdpClientEntry>> ListClientsAsync(CancellationToken ct) => throw Unavailable();
+
+    public Task<IReadOnlyDictionary<string, string>?> ReadServiceAccountAttributesAsync(string clientId, CancellationToken ct)
+        => throw Unavailable();
 }
 
 // 非配備ホスト用。IdP の代わりにプロセス内へ書く（Keycloak 版と同じ意味論: 登録は在れば AlreadyExists・差し替えは無ければ作る・
 // 入口の印が無い〔`Seed` で置いた〕ものへは書かない・取り消しは現在値が書いた値のままのときだけ戻す）。
 // 試験はこの状態を読んで「IdP に何が書かれたか（書かれなかったか）」を確かめる。
-public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvisioner
+// ［#1818］照合の読み取り（`IServiceAccountDirectory`）も持つ。試験は `Tamper` / `SeedManaged` / `Remove` で、入口を通らない
+// IdP の直接の操作（ADR-0123 決定 2 が禁じた操作）や補償の残骸を作り、照合がそれを拾うことを確かめる。
+public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvisioner, IServiceAccountDirectory
 {
     private sealed record Account(Dictionary<string, string> Attributes, bool Managed, bool Enabled);
 
@@ -182,6 +194,43 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
         lock (_gate)
             _accounts[clientId] = new Account(
                 new Dictionary<string, string>(attributes ?? new Dictionary<string, string>()), Managed: false, Enabled: true);
+    }
+
+    /// <summary>入口の印つきのクライアントを、登録簿を通らずに置く（補償が走らなかった残骸＝孤児の再現。試験用）。</summary>
+    public void SeedManaged(string clientId, IReadOnlyDictionary<string, string>? attributes = null)
+    {
+        lock (_gate)
+            _accounts[clientId] = new Account(
+                new Dictionary<string, string>(attributes ?? new Dictionary<string, string>()), Managed: true, Enabled: true);
+    }
+
+    /// <summary>サービスアカウントの属性を、入口を通らずに書き換える（IdP の管理画面での直接の割当の再現。試験用）。</summary>
+    public void Tamper(string clientId, IReadOnlyDictionary<string, string> attributes)
+    {
+        lock (_gate)
+            _accounts[clientId] = _accounts[clientId] with { Attributes = new Dictionary<string, string>(attributes) };
+    }
+
+    /// <summary>クライアントを IdP から消す（IdP の管理画面での直接の削除の再現。試験用）。</summary>
+    public void Remove(string clientId)
+    {
+        lock (_gate) _accounts.Remove(clientId);
+    }
+
+    public Task<IReadOnlyList<IdpClientEntry>> ListClientsAsync(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_gate)
+            return Task.FromResult<IReadOnlyList<IdpClientEntry>>(
+                [.. _accounts.Select(kv => new IdpClientEntry(kv.Key, kv.Value.Managed))]);
+    }
+
+    public Task<IReadOnlyDictionary<string, string>?> ReadServiceAccountAttributesAsync(string clientId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (_gate)
+            return Task.FromResult<IReadOnlyDictionary<string, string>?>(
+                _accounts.TryGetValue(clientId, out var a) ? new Dictionary<string, string>(a.Attributes) : null);
     }
 
     public Task<IdpWrite> CreateAsync(

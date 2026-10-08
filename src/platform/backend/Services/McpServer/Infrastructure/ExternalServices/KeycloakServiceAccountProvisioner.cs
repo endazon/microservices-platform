@@ -26,6 +26,8 @@ namespace McpServer.Infrastructure.ExternalServices;
 //   2〜5 のどこかで失敗したら（時間切れを含む）、1 で作ったクライアントを消してから投げる（補償。決定 4）。
 //
 // ■ 差し替えは `GET /clients/{id}` で入口の印（`managed-by=mcp-server`）を確かめ、無ければ何も書かない（PR #1816 監査 🔴-1）。
+// ■ ［2026-10-09 / #1818］照合の読み取り（`IServiceAccountDirectory`）も同じ口が持つ: `GET /clients`（頁で列挙・入口の印の有無）と
+//   `GET /users?username=service-account-<client>&exact=true`（認可サービスと同じ照会）。**読むだけで書かない**（IADR-0516 決定 5）。
 // ■ 🔴 **要求の取り消しは IdP への書き込みへ伝えない**（書きかけの孤児を作らない）。期限は HttpClient の Timeout が持ち、
 //   時間切れは `Failed`（502）へ写す。管理用トークンが 401 で拒まれたら、1 度だけ取り直して送り直す。
 //
@@ -36,7 +38,7 @@ public sealed class KeycloakServiceAccountProvisioner(
     IHttpClientFactory httpClientFactory,
     ServiceAccountProvisioningOptions options,
     TimeProvider clock,
-    ILogger<KeycloakServiceAccountProvisioner> logger) : IServiceAccountProvisioner
+    ILogger<KeycloakServiceAccountProvisioner> logger) : IServiceAccountProvisioner, IServiceAccountDirectory
 {
     /// <summary>作ったクライアントへ付ける印（クライアント属性）。照合と運用者の識別のために置く。</summary>
     public const string ManagedByAttribute = "msp.mcp-client.managed-by";
@@ -50,6 +52,11 @@ public sealed class KeycloakServiceAccountProvisioner(
         ["access", "disableableCredentialTypes", "userProfileMetadata"];
 
     private const string WriteFailed = "サービスアカウントへの属性の書き込みに失敗した。";
+
+    // [[IADR-0516]] 決定 5 の 2026-10-09 追記（#1818）: 照合がクライアントを列挙する頁の大きさと上限（100 頁 ＝ 1 万件）。
+    // 上限を超えたら読み切らずに失敗させる（途中までの一覧で孤児を数えると、読まなかった分を「無い」と取り違える）。
+    internal const int ClientListPageSize = 100;
+    internal const int ClientListMaxPages = 100;
 
     private readonly SemaphoreSlim _tokenLock = new(1, 1);
     private string? _token;
@@ -129,6 +136,52 @@ public sealed class KeycloakServiceAccountProvisioner(
                 await WriteAttributesAsync(client, userId, write.PreviousAttributes ?? new Dictionary<string, string>());
                 break;
         }
+    }
+
+    // ---- 照合の読み取り（IServiceAccountDirectory。IADR-0516 決定 5 / #1818）----------------------------------------
+    // 🔴 **読むだけで書かない。** 書き込みの口と違い、要求の取り消しを伝える（途中で止めても孤児は生まれない）。
+
+    public async Task<IReadOnlyList<IdpClientEntry>> ListClientsAsync(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var client = await AuthorizedClientAsync();
+        var result = new List<IdpClientEntry>();
+        for (var page = 0; page < ClientListMaxPages; page++)
+        {
+            // 一覧の表現はクライアント属性（入口の印）を含む（`briefRepresentation` は clients の一覧には無い）。
+            var response = await Send(client, () => client.GetAsync(
+                $"admin/realms/{Realm}/clients?first={page * ClientListPageSize}&max={ClientListPageSize}", ct), ct);
+            EnsureSuccess(response, "クライアントの列挙");
+            var clients = await ReadJsonAsync<List<KeycloakClient>>(response, ct) ?? [];
+            foreach (var c in clients)
+            {
+                if (!string.IsNullOrEmpty(c.ClientId)) result.Add(new IdpClientEntry(c.ClientId, IsManaged(c)));
+            }
+            if (clients.Count < ClientListPageSize) return result;
+        }
+        throw Failed($"IdP のクライアントが {ClientListPageSize * ClientListMaxPages} 件以上ある。照合の上限を超えたので読み切らない。");
+    }
+
+    public async Task<IReadOnlyDictionary<string, string>?> ReadServiceAccountAttributesAsync(string clientId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var client = await AuthorizedClientAsync();
+        // 認可サービスの `FindByUsernameAsync` と同じ照会（判定に効いている値を読む。IADR-0516 決定 6）。
+        var userName = ToolUserContext.ServiceAccountUserName(clientId);
+        var lookup = await Send(client, () => client.GetAsync(
+            $"admin/realms/{Realm}/users?username={Uri.EscapeDataString(userName)}"
+            + "&exact=true&briefRepresentation=false&max=2", ct), ct);
+        EnsureSuccess(lookup, "サービスアカウントの利用者の照会");
+        var found = (await ReadJsonAsync<List<KeycloakUser>>(lookup, ct) ?? [])
+            .Where(u => !string.IsNullOrEmpty(u.Id)
+                        && string.Equals(u.Username, userName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return found.Count switch
+        {
+            0 => null,
+            1 => Decode(found[0].Attributes),
+            _ => throw Failed($"利用者名の完全一致の照会が {found.Count} 人を返した（1 人であるべき）。"),
+        };
     }
 
     private async Task<IdpWrite> CreateWithAttributesAsync(
@@ -216,11 +269,14 @@ public sealed class KeycloakServiceAccountProvisioner(
         var response = await Send(client, () => client.GetAsync(
             $"admin/realms/{Realm}/clients/{Uri.EscapeDataString(internalId)}", CancellationToken.None));
         EnsureSuccess(response, "クライアントの取得");
-        var representation = await ReadJsonAsync<KeycloakClient>(response);
-        return representation?.Attributes is { } attributes
-               && attributes.TryGetValue(ManagedByAttribute, out var value)
-               && string.Equals(value, ManagedByValue, StringComparison.Ordinal);
+        return IsManaged(await ReadJsonAsync<KeycloakClient>(response));
     }
+
+    // 入口の印（クライアント属性 `managed-by=mcp-server`）があるか。書き込みの確かめと照合の列挙が同じ 1 つを使う。
+    private static bool IsManaged(KeycloakClient? representation)
+        => representation?.Attributes is { } attributes
+           && attributes.TryGetValue(ManagedByAttribute, out var value)
+           && string.Equals(value, ManagedByValue, StringComparison.Ordinal);
 
     // 🔴 ADR-0123 フォローアップ 3: クライアントのサービスアカウントの利用者が、**認可サービスと同じ照会**で引けることを確かめる。
     private async Task<string> ResolveServiceAccountUserAsync(HttpClient client, string clientId, string internalId)
@@ -397,9 +453,11 @@ public sealed class KeycloakServiceAccountProvisioner(
 
     // 管理要求を送る。到達できない・時間切れ（HttpClient の Timeout）は `Failed` へ写す。
     // 401 は 1 度だけトークンを取り直して送り直す（失効の境界・鍵の更新）。
-    private async Task<HttpResponseMessage> Send(HttpClient client, Func<Task<HttpResponseMessage>> call)
+    // `ct` は照合の読み取りだけが渡す（書き込みと補償は渡さない＝取り消しを伝えない）。
+    private async Task<HttpResponseMessage> Send(
+        HttpClient client, Func<Task<HttpResponseMessage>> call, CancellationToken ct = default)
     {
-        var response = await SendRaw(call);
+        var response = await SendRaw(call, ct);
         if (response.StatusCode != HttpStatusCode.Unauthorized) return response;
 
         response.Dispose();
@@ -408,10 +466,11 @@ public sealed class KeycloakServiceAccountProvisioner(
         client.DefaultRequestHeaders.Authorization = null;
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", await AccessTokenAsync(client));
-        return await SendRaw(call);
+        return await SendRaw(call, ct);
     }
 
-    private static async Task<HttpResponseMessage> SendRaw(Func<Task<HttpResponseMessage>> call)
+    private static async Task<HttpResponseMessage> SendRaw(
+        Func<Task<HttpResponseMessage>> call, CancellationToken ct = default)
     {
         try
         {
@@ -421,19 +480,28 @@ public sealed class KeycloakServiceAccountProvisioner(
         {
             throw Failed("IdP（Keycloak）へ到達できない。", ex);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // 照合の読み取りの呼び出し元の取り消し（停止要求・1 回の照合の期限）。時間切れの失敗へ畳まない。
+            throw;
+        }
         catch (OperationCanceledException ex)
         {
-            // 要求の取り消しは伝えていない（CancellationToken.None）ので、ここへ来るのは HttpClient の Timeout である。
+            // 書き込みは要求の取り消しを伝えていない（CancellationToken.None）ので、ここへ来るのは HttpClient の Timeout である。
             throw Failed("IdP（Keycloak）の応答が期限内に返らない。", ex);
         }
     }
 
     // 応答の本文が読めない（形が違う・途中で切れた）は `Failed`（502）へ写す。差し替えの try の外でも 500 にしない。
-    private static async Task<T?> ReadJsonAsync<T>(HttpResponseMessage response)
+    private static async Task<T?> ReadJsonAsync<T>(HttpResponseMessage response, CancellationToken ct = default)
     {
         try
         {
-            return await response.Content.ReadFromJsonAsync<T>(Json);
+            return await response.Content.ReadFromJsonAsync<T>(Json, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException or HttpRequestException or OperationCanceledException)
         {

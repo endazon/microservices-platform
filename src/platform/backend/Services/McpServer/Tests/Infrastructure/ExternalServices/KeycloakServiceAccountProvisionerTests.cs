@@ -416,6 +416,12 @@ public class KeycloakServiceAccountProvisionerTests
         /// <summary>次の管理要求を 1 度だけ 401 にする（トークンの取り直しを見る）。</summary>
         public bool RejectNextAdminCallOnce { get; set; }
         public int TokenRequests { get; private set; }
+        /// <summary>［#1818］`clients?first=&max=` の列挙が、頁の大きさちょうどの合成のクライアントを返し続ける（上限の試験）。</summary>
+        public bool EndlessClientList { get; init; }
+        /// <summary>［#1818］`clients?first=&max=` の列挙が、呼び出し元の取り消しまで返らない。</summary>
+        public bool HangOnClientList { get; init; }
+        /// <summary>［#1818］`clients?first=&max=` の列挙で時間切れ（TaskCanceledException。呼び出し元は取り消していない）を投げる。</summary>
+        public bool TimeoutOnClientList { get; init; }
         private bool _timedOut;
 
         public void SeedClient(string clientId, Dictionary<string, string[]> attributes)
@@ -481,6 +487,25 @@ public class KeycloakServiceAccountProvisionerTests
                 if (!OmitLocation)
                     response.Headers.Location = new Uri($"https://auth.example.test/{Admin}clients/{created.Id}");
                 return response;
+            }
+
+            // ［#1818］照合の列挙（`clients?first=&max=`）。表現はクライアント属性（入口の印）を含む。
+            if (method == "GET" && path.StartsWith(Admin + "clients?first=", StringComparison.Ordinal))
+            {
+                if (HangOnClientList) await Task.Delay(Timeout.Infinite, ct);
+                if (TimeoutOnClientList)
+                    throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout");
+                var query = path[(Admin + "clients?").Length..].Split('&')
+                    .Select(p => p.Split('=', 2)).ToDictionary(p => p[0], p => int.Parse(p[1]));
+                if (EndlessClientList)
+                    return Ok(JsonSerializer.Serialize(Enumerable.Range(query["first"], query["max"])
+                        .Select(i => new { id = $"synthetic-{i}", clientId = $"synthetic-{i}" })));
+                return Ok(new JsonArray([.. Clients.Skip(query["first"]).Take(query["max"]).Select(c =>
+                {
+                    var rep = c.Representation.DeepClone().AsObject();
+                    rep["id"] = c.Id;
+                    return (JsonNode)rep;
+                })]).ToJsonString());
             }
 
             if (method == "GET" && path.StartsWith(Admin + "clients?clientId=", StringComparison.Ordinal))
@@ -574,7 +599,7 @@ public class KeycloakServiceAccountProvisionerTests
             => new(status) { Content = new StringContent("") };
     }
 
-    private sealed class StubFactory(FakeKeycloak handler) : IHttpClientFactory
+    internal sealed class StubFactory(FakeKeycloak handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false)
         {

@@ -13,6 +13,7 @@ plan_refs:
 related_specs:
   - ../specs/20261008_1786_sc12-keycloak-provisioning.md
   - ../specs/20261009_1817_sc12-provisioning-wiring.md
+  - ../specs/20261009_1818_sc12-idp-drift-detection.md
 ---
 
 # IADR-0516: SC-12 を IdP への入口にする —— Keycloak への書き込みの口・管理用の資格情報・テンプレート・順序と補償・食い違いの検知（#1786）
@@ -162,6 +163,51 @@ SC-12 の登録・属性の差し替えは McpServer の登録簿へ書くだけ
   - 🟡3 **§結果の「realm の設定（`manage-realm`）と impersonation は持たない」は、直接のロールとしては正しいが影響範囲としては過小だった。** `manage-clients` は全クライアントの secret を読めるので、`reset-gate`（`manage-realm`）と `identity-admin`（`manage-users`）の secret も読め、レルムの設定まで間接的に届く。**漏えいはレルムの全権の漏えいとして扱う**（`security.md`・runbook を改めた。runbook の手順 2「群 1 の全件を回す」は変えない）。
   - 🟡4 **dev 以外のクラスタに公知の dev の値が入る。** 起動器は env が無ければ dev の値で保管先・Secret を作り、後追いも無い client を dev の値で作る（`identity-admin`・`reset-gate` と同じ型だが、権限が最も広い）。`security.md`「本番流用の禁止」と runbook に「dev 以外では起動の直後に回す」を書いた。起動器には dev かどうかを判定する文脈が無く、既存の仕組みで安く止められないので、機械の守りは #1830 へ分離した。
   - 🟡2 M6 は 5xx なら何でも通していた（IdP への書き込み自体の失敗＝502 でも「何も残らない」は自明に真）。**500 に限定**した —— 登録簿への書き込みの例外は IdpFirstWrite が補償してから投げ直し、McpServer に例外の写し替えが無いのでホストの既定の 500 になる（502 / 503 は IdpFirstWrite が ProblemDetails で返す）。併せて管理イベントで `mcp-client-admin` の「作成 → 削除」を確かめる（realm は管理イベントの詳細の記録が有効）。自己試験に 502 / 503 の陰性対照を足した。
+
+## ［2026-10-09 追記 / #1818］段 3: 食い違いの検知（決定 5 の実装）
+
+決定 5 が形（IADR-0481 と同じ「定期の検査 ＋ 計器 ＋ 警報」）を決めていた。**本段で決めたのは具体値と、決定 5 が書いていなかった細部だけである**（新しい IADR は起こさない）。
+基点は `origin/develop` `ff20ce19`。作業仕様書 [20261009_1818_sc12-idp-drift-detection](../specs/20261009_1818_sc12-idp-drift-detection.md)。
+
+- **読み取りの口は書き込みの口と別の型にする**（`Domain/Ports/IServiceAccountDirectory`: クライアントの一覧〔入口の印の有無〕と、サービスアカウントの属性）。
+  照合が書けないことを型で保つ（決定 5 は検知して知らせるだけ）。実装は書き込みの口の 3 つ（Keycloak・プロセス内・未構成）が兼ね、
+  **選択は `McpClientProvisioning:Provider` の 1 つ**（書く先と照合が読む先が別の IdP になる構成を作れない）。資格情報は `mcp-client-admin` のまま
+  （列挙と照会は `manage-clients` / `manage-users` に含まれる view で足りる。権限は増やさない）。
+  - Keycloak 版は `GET clients?first=&max=100` を頁で読み（上限 100 頁 ＝ 1 万件。超えたら読み切らずに失敗＝途中までの一覧で孤児を数えない）、
+    属性は**認可サービスと同じ照会**（`users?username=service-account-<client>&exact=true`）で読む（決定 6。判定に効いている値と比べる）。
+  - 読み取りには**要求の取り消しを伝える**（書き込みと違い、途中で止めても孤児は生まれない）。時間切れは HttpClient の `Timeout`（既定 10 秒）で `Failed`。
+- **食い違いの種類は 5 つ**: 決定 5 の 3 つ（`client_missing`・`attributes_differ`・`not_managed`）に、`service_account_missing`（印つきのクライアントはあるが
+  同じ照会で SA が引けない。判定ではその主体は拒否になる）と `orphan`（印つきのクライアントに登録簿の無人の行が無い。issue #1818 の受け入れ基準 2）を足した。
+  比べ方は書き込みの読み戻しと同じ `SameAttributes`（集合値は集合。IADR-0385）。**有人の行と `enabled` は比べない**（決定 3 の逸脱・決定 4a の未実装。
+  比べると無効化した行がすべて食い違いになる）。
+- **計器**（Meter `microservices-platform.mcp-server`。McpServer に初めて足した）: ゲージ `mcp.idp_reconciliation.drifted`（`{client}`。直近の照合の件数。
+  未照合・失敗は系列なし）と `mcp.idp_reconciliation.checks.total{mcp.idp_reconciliation.outcome=match|drift|failed}`（**1 回の照合に 1 つ**。行ごとではない）。
+  🔴 **クライアント ID を計器の属性に載せない**（系列の数を有界に保つ）。行はログ（Warning `client=<id> kind=<種類>`。1 回に 20 件まで）で名指しする。値は出さない。
+- **周期と期限**: `McpClientProvisioning:Reconciliation:Interval`（既定 `00:01:00`・下限 1 分・`hh:mm:ss`・値域外は起動時に落とす。IADR-0481 と同じ規則）。
+  **1 回の照合の期限は周期と同じ長さ**（次の周期に重ねない。超えたら失敗）。行ごとの読み取りの並行は 4 まで。周期・期限は `TimeProvider` で数える。
+  helm・compose には値を置かない（IADR-0481 の検査も置いていない。コードの既定で回す）。
+  - **検知までの最大の遅れ**: 食い違いが起きてから `McpClientIdpDrift` が鳴るまで **およそ 7 分**（周期 1 分 ＋ 1 回の照合の期限 1 分 ＋ `for: 5m`）。
+    照合の失敗が続き始めてから `McpClientIdpReconciliationSeriesAbsent` が鳴るまで **およそ 12 分**（＋ 瞬間ベクタの lookback 約 5 分。IADR-0481 の 2026-09-28 追記と同じ理由）。
+  - 1 回の照合が IdP へ送る要求は「一覧 ⌈クライアント数 / 100⌉ ＋ 印つきのクライアントの無人の行の数」。**レプリカごとに照合する**（レプリカの間で揃えない）ので、
+    負荷はレプリカ数倍になる。行が数百を超えるなら周期を延ばす。
+- **警報**（4 か所の写し。`scripts.repo.test.js` #1818 が C# の名前と突き合わせる）: `McpClientIdpDrift`（warning。Prometheus `mcp_idp_reconciliation_drifted >= 1`、
+  Grafana は生の値を `gt 0`・`noDataState: OK`）と `McpClientIdpReconciliationSeriesAbsent`（warning。`absent(…)`）。どちらも `for: 5m`。
+  - **critical にしない理由**: 判定は IdP の値で行われており（決定 1）、照合が知らせるのは「写しがずれた」ことである。IdP を直接書き換えて属性を広げる操作は
+    Keycloak の管理権限を要する（それ自体が ADR-0123 決定 2 の禁止）。対応は時間単位でよく、人を即時に起こす種類ではない。
+  - **一時の食い違い**: 登録・差し替えの最中（IdP へ書いた後・登録簿へ書く前）を照合が見ると、孤児・属性違いが 1 周期だけ出る。次の周期で消えるので `for: 5m` が吸収する。
+- **未構成（`Provider` 未設定）は失敗として数える**（系列なし → 「見ていない」が鳴る）。照合を opt-in にしない（IADR-0481 と同じ）。ログは Error ではなく Warning。
+- **決定 4 の残余**: 交差した差し替えの後勝ち（IdP は後の要求・登録簿は先の要求）は照合が `attributes_differ` として**検知する**（`IdpReconciliationRaceTests` で固定。
+  本物の `IdpFirstWrite` を 2 本交差させる）。**防ぎはしない**（行の排他は入れていない）。並行登録で時間切れの側の補償が成功した側のクライアントを消した場合は
+  `client_missing`、補償の失敗の残骸は `orphan` として拾う。
+- **稼働の Keycloak での実測**（integration-stack の門 `check-mcp-client-provisioning.js --live` の M7）: このスタックは Prometheus を起こさないので**ゲージは読めない**。
+  代わりに `kubectl logs` で照合のログを読み、master の管理者で直接書き換えた属性が `attributes_differ`、登録簿を通らずに作った印つきのクライアントが `orphan` として
+  名指しされることを最大 150 秒待って確かめる。照合が失敗し続けていれば名指しは出ないので赤になる（＝一覧が印を含むこと・`mcp-client-admin` で列挙と照会が通ることの実測）。
+  「M1〜M6 の後にゲージが 0」は測らない（観測の器が無い。後片付けの前は M5 の古い行などで 0 にならない）。
+- **統制表の更新**: 「登録簿と IdP の食い違いを知らせる（決定 2）」の現在の実現手段は **ある**（定期の照合 ＋ 計器 ＋ 警報 2 本）。暫定手段（補償とログだけ）は不要になった。
+- 🔴 **配備の直後に鳴り得る**: 書き込みの口ができる前（段 1 より前）に登録した無人の行は IdP にクライアントが無く、`client_missing` として数えられる。
+  運用仕様書の手順（画面から属性を差し替える＝IdP に作られる）で解消する。これは計画（ADR-0123 決定 2）が求めた「知らせる」そのものであり、警報を弱めない。
+- 残余: 自動の修復はしない（決定 5）。行の排他は無い（交差は検知だけ）。`enabled` の写しと比較は決定 4a とともに後続。計器と警報の発火そのものは稼働では測っていない
+  （式の一致は `scripts.repo.test.js`、発火し得ることは `check-grafana-alerting.js` の検査 6 が見る）。
 
 ## 関連
 
