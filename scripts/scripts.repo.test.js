@@ -10694,6 +10694,20 @@ ${r.stderr}`);
     // CI がこれを立てると、ツール導入が失敗しても検査が緑を返し、**壊れた overlay がマージされる**。
     // 「検査がある」と「検査が働いている」を読み分けられない状態であり、本リポジトリが
     // 繰り返し踏んできた型である（#558 / #562 / #747 / #801 / IADR-0209）。
+    // NFR, #1820: CRD スキーマのカタログは不変の参照（40 桁のコミット SHA）で引く。ブランチ名（main 等）へ
+    // 戻すと、上流の更新ひとつで全 PR の static-checks-units が落ちる（2026-10-08 に実測）。
+    ok('NFR / #1820: kubeconform の CRD スキーマカタログはコミット SHA で固定し、ブランチを引かない', () => {
+      const { SCHEMA_LOCATIONS, CRDS_CATALOG_REF } = require('./check-deploy-manifests.js');
+      assert.match(CRDS_CATALOG_REF, /^[0-9a-f]{40}$/, 'CRDS_CATALOG_REF が 40 桁のコミット SHA でない');
+      const catalog = SCHEMA_LOCATIONS.filter((l) => l.includes('datreeio/CRDs-catalog'));
+      assert.strictEqual(catalog.length, 1, 'CRDs-catalog の参照がちょうど 1 つでない');
+      assert.ok(
+        catalog[0].includes(`/CRDs-catalog/${CRDS_CATALOG_REF}/`),
+        `CRDs-catalog の参照が固定 SHA を通っていない: ${catalog[0]}`,
+      );
+      assert.ok(!/\/CRDs-catalog\/(main|master|HEAD)\//.test(catalog[0]), 'CRDs-catalog をブランチで参照している');
+    });
+
     ok('NFR / #783: ci.yml に deploy-manifests ジョブが在り、fail-open の抜け道を立てていない', () => {
       const REPO = path.join(__dirname, '..');
       const ciPath = path.join(REPO, '.github/workflows/ci.yml');
