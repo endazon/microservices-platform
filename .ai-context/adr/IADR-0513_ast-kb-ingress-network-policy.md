@@ -2,7 +2,7 @@
 title: IADR-0513 本番の NetworkPolicy は、取引ユニット（AST）の名前空間から KB の読み手（取引判断 → 検索の REST）と書き手（情報収集・報告書 → 文書の REST）への ingress を、用途ごとの values で開ける。既定は閉じ、送り元は名前空間と Pod の AND、ポートは REST だけ
 type: impl-adr
 status: Accepted
-related_ids: [NFR-09, FR-02, FR-03, ADR-0125, ADR-0119, ADR-0121, ADR-0085, ADR-0084, IADR-0026, IADR-0076, IADR-0078, IADR-0348, IADR-0461, IADR-0492, IADR-0500]
+related_ids: [NFR-09, FR-02, FR-03, FR-04, FR-11, ADR-0125, ADR-0119, ADR-0121, ADR-0085, ADR-0084, ADR-0044, IADR-0026, IADR-0076, IADR-0078, IADR-0348, IADR-0461, IADR-0492, IADR-0500, IADR-0424, IADR-0466]
 author: claude
 created: 2026-10-08
 updated: 2026-10-08
@@ -11,6 +11,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0119_document-machine-client-own-docs-and-read-abac.md（AST の書き手は DocumentService へ書く）
 related_specs:
   - ../specs/20261008_1756_ast-kb-ingress-netpol.md
+  - ../specs/20261008_1811_ast-llmgw-ingress-netpol.md
 ---
 
 # IADR-0513: AST の名前空間から KB の読み手・書き手への ingress の NetworkPolicy（#1756）
@@ -108,6 +109,26 @@ AST は MSP へ次の 2 用途で REST を呼ぶ（AST の chart と appsettings
    穴を開けても平文は拒否されて届かない。本番で開けるときは AST 側のメッシュ参入と組で行う（運用仕様書に記した）。
 2. **LLM ゲートウェイ**: AST の報告書・取引判断は `llmgateway-service:8080` も呼ぶ。同じ既定拒否で塞がれるが、#1756 の射程（KB）の外であり本 IADR では開けない
    （試験の呼び出し元の一覧に「閉じたまま」として載せた）。#1811 で追う。
+
+   ［2026-10-08 追記 / #1811］**同じ形で 3 つ目の用途 `networkPolicy.fromAst.llmGateway` を足した（既定は閉）。** 決定 2〜4 をそのまま適用し、新しい判断は持ち込まない
+   （新しい IADR を起こさない理由。作業仕様書 [`20261008_1811_ast-llmgw-ingress-netpol`](../specs/20261008_1811_ast-llmgw-ingress-netpol.md)）。
+   - **形**: NetworkPolicy `allow-ast-llm-gateway-ingress`。行き先は `app: llmgateway-service`、`from` は同じ要素の `namespaceSelector`（`kubernetes.io/metadata.name`）＋
+     `podSelector`（`app In clients`）、ポートは `services.llmgateway.port`（REST 8080）だけ。`target` は `llmgateway` だけを受け、ほかの値・空の値は描画で止まる（決定 4 と同じ `fail`）。
+   - **clients**: `[report-service, trade-decision-service]`。AST `origin/develop` `8c7205cc` の実測 —— `LlmGateway__BaseUrl` を持つのは chart の `report`・`trade-decision` の 2 つだけ
+     （本番既定は空＝Placeholder、経路B は `http://llmgateway-service.microservices-platform:8080`）。コードの呼び出し元も ReportService・TradeDecisionService の 2 つ
+     （REST の輸送 `RestLlmCompletionTransport` の `/complete`）。NotificationService の当たりは試験の中だけ、情報収集は配線していない。
+   - **gRPC 8081 は開けない**: AST の `LlmGateway__Grpc` は values にコメントでだけ示され、本番既定・経路B とも置いていない。AST が gRPC へ切り替えるときは届かない（安全側）。
+     そのときは本 values に別のポートを足すのではなく、用途の形（REST だけ）を変える判断として改めて扱う。
+   - **アプリ層の前提（書き手の内容の ABAC の門に当たるもの）の実測**: 閉じていると情報が漏れる門は**無い**。
+     - 認可: REST 3 口・gRPC 2 面は `ServiceCaller`（realm ロール `platform-service`）を要する（[[IADR-0424]]）。穴を開けても認可は緩まない。
+     - 主体: `ai-stock-trading-llm-caller`（KB の書き手と別の主体。`platform-service` だけ）。`platform-service` は他の東西の `ServiceCaller` 端点にも通るので、
+       **行き先の固定（`target` = `llmgateway`）が L4 の射程を LLM ゲートウェイに留める理由**になる（試験に「報告書 → 認可サービスは落ちる」と、固定を外す変異を置いた）。
+     - 費用: 月次予算は**用途別**で呼び出し元ごとではなく、**アラートだけ**（要求を止めない）。金額は未設定で不活性（[[IADR-0466]]）。AST の 5 用途は `PurposeModels` に登録済み。
+       開けると AST の分だけ費用と外部送信が増えるが、保存済みの組織データの読み取りは広がらない（kbWriter との違い）。
+     - よって前提は (1) 主体の秘密の投入、(2) 費用の監視（月次の手動確認、金額の設定後はアラート）の 2 つで、運用仕様書の「本番の前提」に確かめ事項として載せた。どちらも欠けても安全側（401 で縮退／鳴らない）だが、(2) は「定めたが働いていない」統制になりうる。
+   - **§結果の数え直し**（本文は凍結）: 穴は 3 サービス（検索・文書・LLM ゲートウェイ）× REST の 1 ポート × AST の 3 種の Pod（取引判断は検索と LLM、報告書は文書と LLM、情報収集は文書だけ）に限られる。Pod の種類は増えない。
+   - 試験 `scripts/helm-ast-kb-ingress.test.js` の「閉じたまま」の 1 行を、陰性対照（既定で 2 本落ちる）・有効時の形・呼び出し元の評価（gRPC・情報収集・通知・発注・app の無い Pod・別の名前空間・認可サービス）・
+     描画で止まる条件・変異（用途の一覧から外す／行き先の固定を外す。既存の AND を割る・ポートを外すも LLM の呼び出し元で赤になる）へ改めた。
 3. **認証基盤への到達**: 読み手・書き手のトークンは認証基盤（`platform-infra`）から取る。MSP の chart の外であり、本 IADR は扱わない。
 4. **L7 の絞り込みは無い**: パス単位で絞る AuthorizationPolicy は置かない（決定の結果の欄）。必要になれば DocumentService のエッジの DENY（[[IADR-0348]] 追記）と
    同じ型で、AST の主体（`cluster.local/ns/ai-stock-trading/sa/...`）を対象に足す。ALLOW にすると他の呼び出し元を切るので DENY の形にする。

@@ -1,4 +1,4 @@
-# NFR-09, ADR-0125 決定 4, IADR-0513 (#1756):
+# NFR-09, ADR-0125 決定 4, IADR-0513 (#1756・#1811):
 # CI 専用の values。**配備には使わない**（helm / chart-testing の `ci/` 慣習）。
 #
 # AST の名前空間からの ingress の許可は既定で閉じている（values.yaml の networkPolicy.fromAst.*.enabled: false）ので、
@@ -10,4 +10,7 @@ networkPolicy:
     kbReader:
       enabled: true
     kbWriter:
+      enabled: true
+    # #1811: LLM ゲートウェイ（ファイル名は #1756 の KB のままにしている。参照の追随を増やさないため）。
+    llmGateway:
       enabled: true
