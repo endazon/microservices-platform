@@ -266,16 +266,15 @@ jobs:
       - name: 🔴 Gate — verify the rebuild (procedure 5)
         id: verify
         run: |
-          set -uo pipefail
+          set -euo pipefail
           # 2 つの判定は片方の赤で他方を飛ばさない（1 回の run で得られる証拠を減らさない）。合否はどちらも緑のときだけ緑。
-          node scripts/measure-cutover-inventory.js --live --since "$CUTOVER_SINCE" --baseline "$OUT/before.json" --dump "$OUT/after.json"
-          m=$?
-          node scripts/check-stack-ready.js --live
-          g=$?
+          # 🔴 `x=$?` の形にしない —— 既定のシェルは `bash -e` なので、赤の時点で手順ごと終わり、後の判定が走らない（run 37734487908 で実測）。
+          m=0; g=0
+          node scripts/measure-cutover-inventory.js --live --since "$CUTOVER_SINCE" --baseline "$OUT/before.json" --dump "$OUT/after.json" || m=$?
+          node scripts/check-stack-ready.js --live || g=$?
           echo "VERIFY_RESULT=measure=${m} / check-stack-ready=${g}" >> "$GITHUB_ENV"
-          [ "$m" = 0 ] && [ "$g" = 0 ] || exit 1
+          if [ "$m" != 0 ] || [ "$g" != 0 ]; then exit 1; fi
           echo "CUTOVER_T1=$(date -u +%s)" >> "$GITHUB_ENV"
-          set -e
           node - "$OUT/after.json" <<'NODE'
           const d = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));
           const users = (d.keycloak?.users || []).map((u) => u.username);
@@ -365,7 +364,10 @@ jobs:
             [ -f "$OUT/$f.json" ] || continue
             echo "::group::$f"
             if [ "$f" = before ]; then node scripts/measure-cutover-inventory.js --input "$OUT/before.json"
-            elif [ "$f" = after ]; then node scripts/measure-cutover-inventory.js --input "$OUT/after.json" --since "$CUTOVER_SINCE" --baseline "$OUT/before.json"
+            elif [ "$f" = after ]; then
+              node scripts/measure-cutover-inventory.js --input "$OUT/after.json" --since "$CUTOVER_SINCE" --baseline "$OUT/before.json"
+              # 判定の材料の生の値（秘密は入らない）: 利用者の ID と作成時刻、オブジェクトストレージのバケット。
+              node -e 'for (const f of process.argv.slice(1)) { const d = JSON.parse(require("fs").readFileSync(f, "utf8")); console.log(f.split("/").pop(), JSON.stringify({ users: d.keycloak?.users, objectStorage: d.objectStorage })); }' "$OUT/before.json" "$OUT/after.json"
             else cat "$OUT/$f.json"; fi
             echo "::endgroup::"
           done

@@ -187,7 +187,9 @@ function countFilerObjects(listDir) {
     }
   };
   for (const e of listAll(listDir, FILER_BUCKETS_ROOT)) {
-    if (!isFilerDir(e)) continue;
+    // `.` で始まるもの（`.system` ほか）は S3 のバケット名になり得ない（先頭は英小文字か数字）。SeaweedFS の内部の置き場であり、
+    // 作り直した直後にも在る（run 37734487908 で `.system` に 1 件を実測）ので数えない。
+    if (!isFilerDir(e) || baseName(e.FullPath).startsWith('.')) continue;
     buckets.push(baseName(e.FullPath));
     walk(e.FullPath);
   }
@@ -287,9 +289,30 @@ function evaluate(data, expected, sinceIso, before = null) {
     }
   }
   const humans = (kc.users || []).filter((u) => !String(u.username).toLowerCase().startsWith(SERVICE_ACCOUNT_PREFIX));
-  const stale = humans.filter((u) => !(toMillis(u.createdTimestamp) >= since)).map((u) => u.username);
-  out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', stale.length ? 'fail' : 'ok',
-    stale.length ? `作り直し前の利用者: ${stale.join(', ')}` : `${humans.length} 人`));
+  // #1781: realm.json から取り込んだ利用者は作成時刻を持たない（宣言に createdTimestamp が無く、取り込みは宣言の値をそのまま入れる）。
+  // CI の k3d の切替リハーサルで、作り直した realm の seed 利用者 4 人がすべて「作り直し前」と判定された（run 37734487908）。
+  // 作成時刻が無い利用者は、--baseline の同じ利用者の ID と比べる（realm.json は ID を宣言しないので、取り込み直すと ID が変わる）。
+  const beforeIds = before
+    ? new Set((before.keycloak?.users || []).map((u) => u.id).filter(Boolean))
+    : null;
+  const stale = [];
+  const unknown = [];
+  for (const u of humans) {
+    const t = toMillis(u.createdTimestamp);
+    if (t !== null) {
+      if (t < since) stale.push(`${u.username}（作成 ${new Date(t).toISOString()}）`);
+    } else if (beforeIds && u.id) {
+      if (beforeIds.has(u.id)) stale.push(`${u.username}（作成時刻なし・ID が切替前と同じ）`);
+    } else unknown.push(u.username);
+  }
+  if (stale.length) {
+    out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', 'fail', `作り直し前の利用者: ${stale.join(', ')}`));
+  } else if (unknown.length) {
+    out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', before ? 'fail' : 'skip',
+      `作成時刻が無く ID で比べられない利用者: ${unknown.join(', ')}${before ? '（収集に id が無い）' : '（--baseline が無い）'}`));
+  } else {
+    out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', 'ok', `${humans.length} 人`));
+  }
   const liveHumanNames = humans.map((u) => String(u.username).toLowerCase());
   const missing = expected.realm.humanUsers.filter((u) => !liveHumanNames.includes(u));
   out.push(finding('Keycloak', 'realm.json の seed 利用者がそろっている', missing.length ? 'fail' : 'ok',
@@ -473,7 +496,7 @@ async function collect(databases) {
       '--user', env('CUTOVER_KC_ADMIN_USER', 'admin')], 'kcadm config', `${env('CUTOVER_KC_ADMIN_PASSWORD', 'admin')}\n`);
     const realms = JSON.parse(kcadm(['get', 'realms', '--fields', 'realm'])).map((r) => r.realm);
     if (!realms.includes(realm)) return { realms, users: [], clients: [] };
-    const users = JSON.parse(kcadm(['get', 'users', '-r', realm, '--limit', '1000', '--fields', 'username,createdTimestamp']));
+    const users = JSON.parse(kcadm(['get', 'users', '-r', realm, '--limit', '1000', '--fields', 'id,username,createdTimestamp']));
     const clients = JSON.parse(kcadm(['get', 'clients', '-r', realm, '--fields', 'clientId'])).map((c) => c.clientId);
     return { realms, users, clients };
   });

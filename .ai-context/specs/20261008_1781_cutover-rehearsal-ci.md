@@ -20,7 +20,7 @@ issue: "#1781"
 - 親: #457（切替計画。`blocked:env`）。独立監査 #1773 が「CI の k3d で回せる部分は AI で先行できる」と指摘した。
 - 手順の正本: `docs/migration/cutover-discard-and-rebuild.md`（§手順・§リハーサル）。判定器: `scripts/measure-cutover-inventory.js`（IADR-0459）。
 - 起こし方の正本: `.github/workflows/integration-stack.yml`（`scripts/k8s-local-up.sh` ＋ `scripts/check-stack-ready.js`）。
-- 新しい設計判断は IADR-0515（新しいワークフローにする・手順を scripts/ の道具にしない・一時の pull_request 起動）。
+- 新しい設計判断は IADR-0515（新しいワークフローにする・手順を scripts/ の道具にしない・一時の pull_request 起動・検証スクリプトの追随）。
 
 ## 受け入れ基準
 
@@ -119,4 +119,17 @@ issue: "#1781"
 
 ## 実行の記録
 
-（CI の run の結果をここへ追記する。）
+### run 37734487908（`pull_request`・head `9e16d5e1`）— failure（手順 5 の検証）
+
+- 起動・事前実測（空振りでない: Qdrant の点 3・オブジェクト 3・合成の利用者あり）・静止・破棄 3(a)〜(d)・再構築は緑。窓（2 の開始から 4 の終わり）は約 5.5 分。
+- 検証スクリプトの fail 2 件。**いずれも検証スクリプトの側の誤りであり、手順は正しく動いていた**:
+  1. `[Keycloak] 人間の利用者はすべて作り直し後に作られた` — seed 利用者 4 人が「作り直し前」。realm.json は利用者の `createdTimestamp` を宣言せず、
+     取り込みは宣言の値をそのまま入れるので、取り込んだ利用者は作成時刻を持たない（判定は `null >= since` で偽）。合成の利用者は消えており
+     （利用者 5 → 4）、realm は作り直されていた。→ 作成時刻の無い利用者は `--baseline` の同じ利用者の ID と比べる（realm.json は ID を宣言しないので、取り込み直すと変わる）。
+     収集に `id` を足す。
+  2. `[オブジェクトストレージ] オブジェクトが 0 件` — バケット `.system` に 1 件。SeaweedFS の内部の置き場であり、S3 のバケット名になり得ない（先頭が `.`）。→ 数えない。
+- ワークフローの誤り: 検証の手順で `m=$?` の形にしていたため、既定のシェル（`bash -e`）が検証スクリプトの赤で手順を終え、`check-stack-ready.js` が走らなかった。→ `|| m=$?` の形へ。
+  失敗時の材料として、記録の手順に事前・事後の利用者（ID・作成時刻）とオブジェクトストレージの生の値を出す。
+- 同じ head の `static-checks` の赤（`Check knowledge graph edge existence`）は、作業仕様書が `related_ids` で引く IADR-0515 をまだ置いていなかったため（実在しないエッジ先 1 件）。IADR-0515 を置いて解消。
+
+（以降の run をここへ追記する。）

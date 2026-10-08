@@ -3966,6 +3966,28 @@ module.exports = ({ ok, assert }) => {
       assert.deepStrictEqual(cut.evaluate(goodAfter(), expectedCut, SINCE, baselineOf()).filter((f) => f.status === 'fail'), []);
     });
 
+    // #1781（run 37734487908）: realm.json から取り込んだ利用者は作成時刻を持たない。ID（取り込み直すと変わる）で比べる。
+    ok('cutover: 作成時刻の無い利用者は --baseline の ID で判定する（同じ ID は fail・違う ID は ok・基準なしは skip）', () => {
+      const withIds = (d, prefix, ts) => {
+        d.keycloak.users = d.keycloak.users.map((u) => ({ ...u, id: `${prefix}-${u.username}`, createdTimestamp: ts }));
+        return d;
+      };
+      const base = withIds(baselineOf(), 'old', undefined);
+      const rec = (r) => r.find((f) => f.check === '人間の利用者はすべて作り直し後に作られた');
+      // 作り直した（ID が変わった）→ ok
+      assert.strictEqual(rec(cut.evaluate(withIds(goodAfter(), 'new', undefined), expectedCut, SINCE, base)).status, 'ok');
+      // 作り直していない（ID が同じ）→ fail
+      const same = rec(cut.evaluate(withIds(goodAfter(), 'old', undefined), expectedCut, SINCE, base));
+      assert.strictEqual(same.status, 'fail');
+      assert.match(same.detail, /ID が切替前と同じ/);
+      // 基準なしでは判定できない → skip（緑にも赤にもしない。「基準」の skip 行と並ぶ）
+      assert.strictEqual(rec(cut.evaluate(withIds(goodAfter(), 'new', undefined), expectedCut, SINCE)).status, 'skip');
+      // 作成時刻があれば従来どおり時刻で見る（詳細に時刻を出す）
+      const old = rec(cut.evaluate(withIds(goodAfter(), 'new', Date.parse(BEFORE)), expectedCut, SINCE, base));
+      assert.strictEqual(old.status, 'fail');
+      assert.match(old.detail, /作成 2026-09-01T00:00:00\.000Z/);
+    });
+
     ok('cutover: Prometheus の head の最古サンプルは合否に使わない（判定は prometheus-data の PVC）', () => {
       const d = goodAfter();
       d.prometheus = { minTime: BEFORE }; // 古いブロックが残っているように見えても、head の値では判定しない
@@ -3976,11 +3998,12 @@ module.exports = ({ ok, assert }) => {
     });
 
     // #1781: MinIO は SeaweedFS へ置き換わった（#1499 / IADR-0461）。filer の一覧（JSON）をページ送りしながら辿って数える。
-    ok('cutover: SeaweedFS の filer の一覧を辿り、ディレクトリのビットで判定し、.uploads を数えない', () => {
+    ok('cutover: SeaweedFS の filer の一覧を辿り、ディレクトリのビットで判定し、.uploads と . で始まる内部の置き場を数えない', () => {
       const DIR = 2147484141; // os.ModeDir | 0755
       const FILE = 420; // 0644
       const tree = {
-        '/buckets': [{ FullPath: '/buckets/knowledge-normalized', Mode: DIR }, { FullPath: '/buckets/assets', Mode: DIR }],
+        '/buckets': [{ FullPath: '/buckets/knowledge-normalized', Mode: DIR }, { FullPath: '/buckets/assets', Mode: DIR }, { FullPath: '/buckets/.system', Mode: DIR }],
+        '/buckets/.system': [{ FullPath: '/buckets/.system/meta', Mode: FILE }],
         '/buckets/knowledge-normalized': [
           { FullPath: '/buckets/knowledge-normalized/doc-1.md', Mode: FILE },
           { FullPath: '/buckets/knowledge-normalized/sub', Mode: DIR },
@@ -4002,6 +4025,7 @@ module.exports = ({ ok, assert }) => {
       };
       assert.deepStrictEqual(cut.countFilerObjects(listDir), { buckets: ['assets', 'knowledge-normalized'], objects: 2 });
       assert.ok(!calls.some((c) => c.startsWith('/buckets/knowledge-normalized/.uploads')), '.uploads を辿っている');
+      assert.ok(!calls.some((c) => c.startsWith('/buckets/.system')), '内部の置き場（. で始まる）を辿っている（run 37734487908 の偽の 1 件）');
       assert.ok(calls.includes('/buckets|knowledge-normalized'), 'ページ送りしていない（2 件目以降を落とす）');
       // 空（バケットだけが在る）は 0 件。応答を読めなければ例外（0 件として扱わない）。
       assert.deepStrictEqual(cut.countFilerObjects((dir) => (dir === '/buckets' ? { Entries: [{ FullPath: '/buckets/b', Mode: DIR }] } : { Entries: null })),
