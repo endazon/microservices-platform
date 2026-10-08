@@ -59,14 +59,14 @@ issue: "#1811"
 
 | 観点 | 実測 | 開ける前提になるか |
 | --- | --- | --- |
-| 認証・認可 | REST 3 口（`/complete`・`/complete/stream`・`/embed`）と gRPC 2 面は `ServiceCaller`（realm ロール `platform-service`）を要する（`Features/Completions/Complete/Endpoint.cs`・`Program.cs`。IADR-0424） | **ならない（既に閉じている）**。匿名・利用者のトークンは 401/403。穴を開けても認可は緩まない |
+| 認証・認可 | 生成・埋め込みの REST 3 口（`/complete`・`/complete/stream`・`/embed`）と gRPC 2 面は `ServiceCaller`（realm ロール `platform-service`）を要する（`Features/Completions/Complete/Endpoint.cs`・`Program.cs`。IADR-0424）。8080 のヘルス・自己申告・OpenAPI（`/health/*`・`/internal/introspection`・`/openapi/v1.json`）は匿名だが、保存済みデータを返さない（KB の穴と同じ） | **ならない（生成・埋め込みの口は既に閉じている）**。匿名・利用者のトークンは 401/403。穴を開けても認可は緩まない |
 | AST の主体 | `ai-stock-trading-llm-caller` は KB の書き手と**別の主体**で、`platform-service` だけを持つ（realm の注記: 書き手へ `platform-service` を足すと東西端点すべてへ届くので分けた） | **前提**: 本番の認証基盤に同 client と秘密があり、AST の `ast-secrets` に `llm-auth-client-*` があること。無くても安全側（AST は Placeholder／401 で縮退） |
 | `platform-service` の射程 | `platform-service` は LLM ゲートウェイ以外の東西の `ServiceCaller` 端点にも通る | **ネットワークで行き先を `llmgateway` に固定する理由**（`target` 固定・`fail`）。穴が LLM ゲートウェイだけなので他の東西端点へは L4 で届かない |
 | 費用の統制 | 月次予算は**用途別**の設定値（`Llm:Budget:MonthlyLimits`。既定なし）で、**アラートだけ**（ゲージ `llm_budget_monthly_limit` と `llm_cost_total` を比べる。要求を止めない。IADR-0466） | **門ではない**（呼び出し元ごとの予算は無い。用途で数える）。金額が未設定のあいだアラートは不活性 → 運用仕様書で「開ける前に AST の用途の上限を設定する」ことを確かめ事項に書く |
 | 用途の登録 | AST の 5 用途はすべて `Llm:Routing:PurposeModels` に登録済み（`appsettings.json`） | ならない（未登録なら `default` へ倒れる） |
 | 越境の判定 | 送信先は越境マトリクス（`req.Confidentiality`）で決まる。保存済みデータを読む口ではない | **ならない**。kbWriter と違い、穴を開けても**保存済みの組織データの読み取りは広がらない**（費用と外部送信の量が増えうるだけ） |
 
-**結論**: kbWriter の「内容の ABAC の門」に相当する、開ける前に**閉じていると情報が漏れる**アプリ層の門は無い。前提は (1) 主体 `ai-stock-trading-llm-caller` の秘密の投入、(2) 費用の監視（AST の用途の月次上限の設定）の 2 つで、どちらも欠けても安全側（呼べない／アラートが鳴らない）に倒れる。(2) は統制が「定めたが働いていない」状態になりうるので運用仕様書の確かめ事項に置く。
+**結論**: kbWriter の「内容の ABAC の門」に相当する、開ける前に**閉じていると保存済みの組織データが漏れる**アプリ層の門は無い。前提は (1) 主体 `ai-stock-trading-llm-caller` の秘密の投入、(2) 費用の監視（AST の用途の月次上限の設定）の 2 つで、どちらも欠けても安全側（呼べない／アラートが鳴らない）に倒れる。(2) は統制が「定めたが働いていない」状態になりうるので運用仕様書の確かめ事項に置く。
 
 ## 設計（正は IADR-0513 の追記）
 
@@ -89,7 +89,7 @@ issue: "#1811"
 | B3 | 有効時、`allow-ast-llm-gateway-ingress` がちょうどこの形（`app: llmgateway-service`・from の AND・ポート 8080 だけ） | 試験 |
 | B4 | 呼び出し元の評価: 報告書・取引判断 → LLM REST だけが通り、LLM gRPC 8081・情報収集・発注・app の無い Pod・別の名前空間の同名 Pod は落ちる。KB の穴とは互いに混ざらない | 試験の評価器 |
 | B5 | 片方だけの有効化（`llmGateway` だけ）はその 1 枚だけ。knob の追随（`clients`・`services.llmgateway.port`） | 試験 |
-| B6 | 描画で止まる: `llmGateway.clients` が空・`services.llmgateway.enabled=false`・`target` が `llmgateway` 以外（`document`・`bff`） | 試験 |
+| B6 | 描画で止まる: `llmGateway.clients` が空・`services.llmgateway.enabled=false`・`target` が `llmgateway` 以外（`document`・`authorization`・空） | 試験 |
 | B7 | 変異: `range` の一覧から `llmGateway` を外すと（黙って描かない）、from の AND を割ると、ポートを外すと、LLM の呼び出し元の判定が赤になる | 試験 |
 | B8 | 運用仕様書「本番の前提（ネットワーク）」の表に LLM ゲートウェイの行があり、前提（主体の秘密・費用の上限）と確かめ方・切り戻しが書かれている | 文書 |
 
@@ -124,4 +124,4 @@ issue: "#1811"
 ## 範囲外
 
 - LLM ゲートウェイ側の認可・費用統制の変更（呼び出し元ごとの予算・要求の遮断は持ち込まない）。稼働中のクラスタへの適用。
-- gRPC（8081）の穴。AST が `LlmGateway__Grpc` を有効にするときに別に足す（残余）。
+- gRPC（8081）の穴。AST が `LlmGateway__Grpc` を有効にするときは、用途の形（REST だけ）を変える判断として改めて判断する（残余。IADR-0513 の追記と同じ）。

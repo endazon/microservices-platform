@@ -119,12 +119,14 @@ AST は MSP へ次の 2 用途で REST を呼ぶ（AST の chart と appsettings
      （REST の輸送 `RestLlmCompletionTransport` の `/complete`）。NotificationService の当たりは試験の中だけ、情報収集は配線していない。
    - **gRPC 8081 は開けない**: AST の `LlmGateway__Grpc` は values にコメントでだけ示され、本番既定・経路B とも置いていない。AST が gRPC へ切り替えるときは届かない（安全側）。
      そのときは本 values に別のポートを足すのではなく、用途の形（REST だけ）を変える判断として改めて扱う。
-   - **アプリ層の前提（書き手の内容の ABAC の門に当たるもの）の実測**: 閉じていると情報が漏れる門は**無い**。
-     - 認可: REST 3 口・gRPC 2 面は `ServiceCaller`（realm ロール `platform-service`）を要する（[[IADR-0424]]）。穴を開けても認可は緩まない。
+   - **アプリ層の前提（書き手の内容の ABAC の門に当たるもの）の実測**: 閉じていると**保存済みの組織データが**漏れる門は**無い**（費用と外部送信の量は下の (2) の統制に依る）。
+     - 認可: 生成・埋め込みの口（REST の `/complete`・`/complete/stream`・`/embed` と gRPC 2 面）はどれも `ServiceCaller`（realm ロール `platform-service`）を要する（[[IADR-0424]]）。
+       8080 のヘルス・自己申告・OpenAPI（`/health/*`・`/internal/introspection`・`/openapi/v1.json`）は匿名だが、保存済みデータを返さない（KB の穴と同じ）。穴を開けても認可は緩まない。
      - 主体: `ai-stock-trading-llm-caller`（KB の書き手と別の主体。`platform-service` だけ）。`platform-service` は他の東西の `ServiceCaller` 端点にも通るので、
        **行き先の固定（`target` = `llmgateway`）が L4 の射程を LLM ゲートウェイに留める理由**になる（試験に「報告書 → 認可サービスは落ちる」と、固定を外す変異を置いた）。
      - 費用: 月次予算は**用途別**で呼び出し元ごとではなく、**アラートだけ**（要求を止めない）。金額は未設定で不活性（[[IADR-0466]]）。AST の 5 用途は `PurposeModels` に登録済み。
        開けると AST の分だけ費用と外部送信が増えるが、保存済みの組織データの読み取りは広がらない（kbWriter との違い）。
+       用途（`purpose`）は呼び出し側が名乗る値なので、穴を開けると AST は登録済みのどの用途でも要求でき、費用の帰属は自己申告になる（変えるのは本件の射程外）。
      - よって前提は (1) 主体の秘密の投入、(2) 費用の監視（月次の手動確認、金額の設定後はアラート）の 2 つで、運用仕様書の「本番の前提」に確かめ事項として載せた。どちらも欠けても安全側（401 で縮退／鳴らない）だが、(2) は「定めたが働いていない」統制になりうる。
    - **§結果の数え直し**（本文は凍結）: 穴は 3 サービス（検索・文書・LLM ゲートウェイ）× REST の 1 ポート × AST の 3 種の Pod（取引判断は検索と LLM、報告書は文書と LLM、情報収集は文書だけ）に限られる。Pod の種類は増えない。
    - 試験 `scripts/helm-ast-kb-ingress.test.js` の「閉じたまま」の 1 行を、陰性対照（既定で 2 本落ちる）・有効時の形・呼び出し元の評価（gRPC・情報収集・通知・発注・app の無い Pod・別の名前空間・認可サービス）・
