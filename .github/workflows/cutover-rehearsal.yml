@@ -23,9 +23,8 @@
 #
 # ■ 必須チェックにはしない・既存のワークフローの起動条件は変えない
 #
-# 起動は workflow_dispatch だけである（IADR-0515 決定 1）。下の pull_request は**初回の成功までの一時のもの**であり、
-# paths を本ファイルだけに絞っている（新しいワークフローは既定ブランチに載るまで dispatch できないため。#1781）。
-# 🔴 **初回の成功の後に pull_request の節を消す**（消す作業は #1781 の残余として PR 本文に書いた）。
+# 起動は workflow_dispatch だけである（IADR-0515 決定 1）。初回の成功（run 37743784649）までは、本ファイルだけに paths を絞った
+# 一時の pull_request で起動していた（新しいワークフローは既定ブランチに載るまで dispatch できないため。#1781）。緑の後に消した。
 name: Cutover Rehearsal
 
 on:
@@ -35,10 +34,6 @@ on:
         description: "メッシュを入れて起こす（integration-stack と同じ既定）。false にすると比較のため無しで起こす"
         type: boolean
         default: true
-  # 🔴 一時（#1781）: 初回の成功の後に消す。本ファイルを変える PR でだけ起動する。
-  pull_request:
-    paths:
-      - ".github/workflows/cutover-rehearsal.yml"
 
 # 同時実行は 1 本。新しいコミットが来たら古いリハーサルは意味を失うので取り消す。
 concurrency:

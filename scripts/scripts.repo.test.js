@@ -10915,21 +10915,17 @@ ${r.stderr}`);
     // 🔴 **ここで固定するのは「破壊的な手順が使い捨てのクラスタにしか当たらない形」と「判定が外れていないこと」である。**
     // 起こし方は integration-stack.yml を写しているので、pin が片方だけ動くと「同じ起こし方」が静かに崩れる。
     {
-      const RH_PATH = '.github/workflows/cutover-rehearsal.yml';
-      const rh = fs.readFileSync(path.join(REPO_IS, RH_PATH), 'utf8').replace(/\r\n/g, '\n');
+      const rh = fs.readFileSync(path.join(REPO_IS, '.github/workflows/cutover-rehearsal.yml'), 'utf8').replace(/\r\n/g, '\n');
       const onBlockOf = (text) => (/\non:\n([\s\S]*?)\n[a-z]/.exec(text) || [])[1];
       // 注記を落とした実行行（run: の中の `#` 行も落とす）。
       const code = rh.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
 
-      ok('#1781: 起動は workflow_dispatch と、本ファイルだけに絞った一時の pull_request だけ（schedule / push を持たない）', () => {
+      // 初回の成功（run 37743784649）までは本ファイルだけに絞った一時の pull_request を置いていた。緑の後に消した（IADR-0515 決定 4）。
+      ok('#1781: 起動は workflow_dispatch だけ（schedule / push / pull_request を持たない）', () => {
         const on = onBlockOf(rh);
         assert.ok(on, 'on: ブロックを切り出せない');
         assert.match(on, /workflow_dispatch:/);
-        assert.ok(!/schedule:|push:|workflow_run:|pull_request_target:/.test(on), `余計な契機がある:\n${on}`);
-        if (/pull_request:/.test(on)) {
-          const paths = [...on.matchAll(/^\s+-\s+"?([^"\n]+)"?\s*$/gm)].map((m) => m[1]);
-          assert.deepStrictEqual(paths, [RH_PATH], '一時の pull_request の paths が本ファイル以外を含む（他の PR で重いジョブが走る）');
-        }
+        assert.ok(!/schedule:|push:|workflow_run:|pull_request:|pull_request_target:/.test(on), `余計な契機がある:\n${on}`);
       });
 
       ok('#1781: k3d と k3s の pin が integration-stack.yml と同じ（起こし方を写している前提）', () => {
