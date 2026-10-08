@@ -44,7 +44,7 @@ public sealed class GraphExpandingSearchService(
             .ToList();
 
         if (seeds.Count == 0 || outcome.QueryVector.Length == 0)
-            return await inner.FinishAsync(request, outcome.Fused, outcome.Sort, outcome.TopK, ct);
+            return await inner.FinishAsync(request, outcome.Fused, outcome.Sort, outcome.TopK, user, ct);
 
         // 🔴 **利用者文脈はここを素通りする**（[[IADR-0426]] 決定 2）—— 段が器から拾い直すと、
         //    east-west gRPC の入口で呼び出し元サービスの s2s 主体が利用者に化ける。
@@ -55,7 +55,7 @@ public sealed class GraphExpandingSearchService(
         // 空を返すが、**呼ばないことをここでも明示する** —— 「空を全件と読む」誤りが
         // 生きるのは 2 か所（ポートの実装と、その呼び出し側）だからである。
         if (proximity.Count == 0)
-            return await inner.FinishAsync(request, outcome.Fused, outcome.Sort, outcome.TopK, ct);
+            return await inner.FinishAsync(request, outcome.Fused, outcome.Sort, outcome.TopK, user, ct);
 
         // ③ 文書 ID を絞ったベクトル検索。**ABAC フィルタは AND で重なる**（IADR-0259 決定 3）——
         //    グラフ側が誤って権限外の文書を返しても、ここで落ちる（多層防御）。
@@ -72,6 +72,6 @@ public sealed class GraphExpandingSearchService(
         var merged = GraphRerank.Merge(
             outcome.Fused, expanded, proximity, options.SearchWeight, options.GraphWeight);
 
-        return await inner.FinishAsync(request, merged, outcome.Sort, outcome.TopK, ct);
+        return await inner.FinishAsync(request, merged, outcome.Sort, outcome.TopK, user, ct);
     }
 }

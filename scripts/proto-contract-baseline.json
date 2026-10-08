@@ -822,6 +822,11 @@
               "type": "map<string,NarrowTo>",
               "label": "map"
             },
+            "purpose": {
+              "number": 5,
+              "type": "ExposurePurpose",
+              "label": "singular"
+            },
             "query": {
               "number": 1,
               "type": "string",
@@ -915,7 +920,19 @@
           }
         }
       },
-      "enums": {},
+      "enums": {
+        "ExposurePurpose": {
+          "values": {
+            "EXPOSURE_PURPOSE_AI_INPUT": 2,
+            "EXPOSURE_PURPOSE_SEARCH": 1,
+            "EXPOSURE_PURPOSE_UNSPECIFIED": 0
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
       "services": {
         "DocumentSearch": {
           "rpcs": {

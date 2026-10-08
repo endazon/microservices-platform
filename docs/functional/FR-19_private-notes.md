@@ -3,15 +3,15 @@ title: FR-19 個人資料（private-note） 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-09-26
+updated: 2026-10-08
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-21, FR-22, UC-11, SC-10, SC-17, SC-19, SC-20]
 adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0057, ADR-0058, ADR-0061, ADR-0082, ADR-0096, ADR-0105, ADR-0110, ADR-0114]
-iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
-issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, planning#472, planning#475, planning#492, planning#652]
+iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose]
+issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752, planning#472, planning#475, planning#492, planning#652]
 -->
 
 # 機能仕様書: 個人資料（private-note）
@@ -111,7 +111,12 @@ issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, plann
    （プラグインは写しを送るときに元の資料の ID を添え、ナレッジベースは**本人の資料であるときだけ**タグを写す。
    プラグインの写しの版は、送った編集の数から始まる）。
 2. **用途の別は索引を分けずに文書属性で表す。** グラフのためだけに載った資料は横断検索の結果に
-   出ないし、AI の入力にも入らない。
+   出ないし、AI の入力にも入らない。**各用途は自分のトグルだけを見る** —— 「横断検索に含める」OFF・
+   「AI の入力に含める」ON の資料は、横断検索の一覧には出ないが、AI 回答の文脈には入る（逆も同じ）。
+   検索サービスは結果を返す相手の用途で落とす。一覧（画面・外部公開の検索・MCP のツール）は「横断検索に含める」、
+   AI 回答の文脈集めは「AI の入力に含める」で落とす。AI の用途を名乗れるのは、利用者文脈を運ぶことを許した
+   サービス間の検索の呼び出し元（AI 分析）だけで、利用者のトークンで呼ぶ検索の口は常に一覧の用途である。
+   AI 分析を利用者のトークンを転送する輸送へ切り戻した構成では、「横断検索に含める」OFF の資料は AI 回答の文脈に入らない。
 3. **ON → OFF の切り替えは索引からの削除まで及ぶ。** 属性で弾くだけにはしない —— 残った本文は
    絞り込みの実装ミス 1 つで露出に変わる。
 4. **判定軸は文書スコープ・所有者・共有先・機密区分・露出の投影である。** 🔴 **機密区分だけで

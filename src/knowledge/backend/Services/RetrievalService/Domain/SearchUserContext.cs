@@ -1,3 +1,4 @@
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 
 namespace RetrievalService.Domain;
@@ -30,6 +31,25 @@ public sealed record SearchUserContext(
     bool IsAuthenticated,
     string? ForwardableCredential)
 {
+    /// <summary>
+    /// FR-19, FR-21 ⑨, ADR-0061 決定 3, [[IADR-0512]] (#1752): **この検索の結果を何に使うか**（露出の用途）。
+    /// 値は露出の投影キーそのもの（<see cref="DocumentExposure.SearchKey"/> / <see cref="DocumentExposure.AiKey"/>）で、
+    /// 出口（`HybridSearchService.Finish`）が <see cref="DocumentExposure.IsAllowed"/> へそのまま渡す。
+    /// </summary>
+    /// <remarks>
+    /// 🔴 **既定は横断検索（`search_exposure`）である。** 利用者へ一覧を返す用途であり、入口が何も言わなければここへ倒す
+    /// （AI 入力の用途は `search_exposure` OFF の資料を返すので、取り違えると一覧に出てはならない資料が出る）。
+    /// 🔴 **AI 入力へ切り替える口は <see cref="ForAiInput"/> の 1 つだけ**であり、呼ぶのは信頼された中継者の門を通った
+    /// gRPC の入口だけである（REST の入口は呼び出し元が利用者本人なので呼ばない）。
+    /// </remarks>
+    public string ExposureKey { get; private init; } = DocumentExposure.SearchKey;
+
+    /// <summary>
+    /// FR-19, ADR-0061 決定 3, [[IADR-0512]] 決定 1: 同じ利用者文脈で、用途を **AI の入力（`ai_input`）** にしたもの。
+    /// RAG の文脈を集める検索だけが使う —— 出口は `search_exposure` ではなく `ai_input` で落とす。
+    /// </summary>
+    public SearchUserContext ForAiInput() => this with { ExposureKey = DocumentExposure.AiKey };
+
     /// <summary>未認証のときに応答へ載せる利用者 ID（判定には使わない）。</summary>
     public const string AnonymousUserId = "anonymous";
 

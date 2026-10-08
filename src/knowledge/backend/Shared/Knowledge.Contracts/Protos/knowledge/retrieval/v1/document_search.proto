@@ -1,7 +1,7 @@
 // FR-03, FR-04, FR-05, FR-07, FR-17, NFR-02, NFR-09, NFR-16, UC-01, UC-02, UC-10, SC-01, SC-08,
 // ADR-0004, ADR-0029, ADR-0034 決定 1, ADR-0035 決定 2, ADR-0075, ADR-0086 決定 1, ADR-0087 決定 2,
 // IADR-0009, IADR-0151, IADR-0253, IADR-0272, IADR-0379, IADR-0401, IADR-0410, IADR-0415,
-// IADR-0416, IADR-0417, IADR-0418, IADR-0426 (#1255):
+// IADR-0416, IADR-0417, IADR-0418, IADR-0426 (#1255), IADR-0512 (#1752):
 // ハイブリッド検索（REST `POST /search` と同じ意味論）の gRPC 契約。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）: 所有者は RetrievalService。置き場は knowledge ユニットの
@@ -68,6 +68,24 @@ message SearchRequest {
   // 🔴 **絞り込み。** 権限とは別項目で運ぶ（混ぜない）。省略可。
   // `NarrowTo` も `attribute_values.proto` の定義を共有する。
   map<string, NarrowTo> narrow_to = 4;
+
+  // FR-19, FR-21 ⑨, ADR-0061 決定 3, IADR-0512 (#1752): **結果を何に使うか（露出の用途）。** 省略可。
+  // 呼び出し先は結果の一覧を、この用途の露出属性で落とす（`SEARCH` は「横断検索に含める」、
+  // `AI_INPUT` は「AI の入力に含める」）。🔴 **未指定（0）・未知の値は `SEARCH` と同じ**である
+  // —— 旧い呼び出し元は従来どおり、取り違えは一覧に出てはならない資料が出ない側へ倒れる。
+  // 🔴 **`AI_INPUT` は利用者文脈と同じく、信頼された中継者が運んだときだけ意味を持つ**
+  // （`DocumentSearch:TrustedUserContextClients`。それ以外は用途を読む前に PERMISSION_DENIED）。
+  ExposurePurpose purpose = 5;
+}
+
+// FR-19, ADR-0061 決定 3, IADR-0512 (#1752): 検索結果の露出の用途。
+enum ExposurePurpose {
+  // 未指定。`EXPOSURE_PURPOSE_SEARCH` と同じに扱う。
+  EXPOSURE_PURPOSE_UNSPECIFIED = 0;
+  // 利用者へ一覧を返す（「横断検索に含める」で落とす）。
+  EXPOSURE_PURPOSE_SEARCH = 1;
+  // RAG の文脈を集める（「AI の入力に含める」で落とす）。
+  EXPOSURE_PURPOSE_AI_INPUT = 2;
 }
 
 message SearchResponse {
