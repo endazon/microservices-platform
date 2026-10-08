@@ -15324,6 +15324,16 @@ server.listen(0, '127.0.0.1', async () => {
       const security = read('docs/security/security.md');
       assert.ok(security.includes(`\`${CLIENT}\``), 'security.md に mcp-client-admin の項が無い');
       assert.ok(/fine-grained|FGAP/i.test(security), 'security.md に Keycloak 24 では絞れない件（残余）が無い');
+      // PR #1827 監査 🟡3: 読める secret を経由してレルムの設定まで間接的に届く（「届かない」と書かない）。
+      for (const [name, text] of [['security.md', security], ['paired-secret-rotation-runbook.md', runbook]]) {
+        assert.ok(/レルムの全権/.test(text) && text.includes('`reset-gate`'), `${name} が間接的にレルムの設定へ届くこと（reset-gate 経由）を書いていない`);
+        assert.ok(!/届かないもの[^\n]*レルムの設定/.test(text), `${name} が「レルムの設定には届かない」と書いている（過小）`);
+      }
+      // PR #1827 監査 🟡4: 本番流用の禁止の「必ず変える値」に入れ、dev 以外では起動の直後に回すと書く（機械の守りは #1830）。
+      const ban = security.slice(security.indexOf('**本番流用の禁止**'));
+      assert.ok(/シークレット（[^）]*`mcp-client-admin`[^）]*）は環境ごとに必ず変更/.test(ban), '本番流用の禁止の一覧に mcp-client-admin が無い');
+      assert.ok(/dev 以外のクラスタでは\s*起動の直後に回す/.test(ban) && /dev 以外のクラスタでは、起動の直後に回す/.test(runbook),
+        'dev 以外のクラスタで直ちに回す旨が無い');
     });
   }
 

@@ -158,6 +158,10 @@ SC-12 の登録・属性の差し替えは McpServer の登録簿へ書くだけ
 - **決定 4a（無効化の IdP の `enabled` への写し）は本段に入れなかった。** 段 1 の作業仕様書は段 2 に含めたが、issue #1817 の受け入れ基準に無い。503 を閉じる本段を小さく保つため外す。それまでも差し替えで作るときは無効な行から有効なクライアントを生まない（決定 4）。後続の issue で入れる。
 - **残余 5（権限の絞り込み）は変わらない。** 配備の Keycloak は 24.0 で、fine-grained admin permissions v2（26.2 以降）が無い。漏えい時の影響範囲（全クライアントの secret・全利用者の属性とロール）とローテーションは `docs/security/security.md` と `docs/operations/paired-secret-rotation-runbook.md` に書いた。
 - 統制表の「無人の属性は検証の後に IdP へ書く」の暫定手段（配備では未宣言 → 503）は、本段で**配備でも宣言済み**になった。
+- ［PR #1827 監査への対応］
+  - 🟡3 **§結果の「realm の設定（`manage-realm`）と impersonation は持たない」は、直接のロールとしては正しいが影響範囲としては過小だった。** `manage-clients` は全クライアントの secret を読めるので、`reset-gate`（`manage-realm`）と `identity-admin`（`manage-users`）の secret も読め、レルムの設定まで間接的に届く。**漏えいはレルムの全権の漏えいとして扱う**（`security.md`・runbook を改めた。runbook の手順 2「群 1 の全件を回す」は変えない）。
+  - 🟡4 **dev 以外のクラスタに公知の dev の値が入る。** 起動器は env が無ければ dev の値で保管先・Secret を作り、後追いも無い client を dev の値で作る（`identity-admin`・`reset-gate` と同じ型だが、権限が最も広い）。`security.md`「本番流用の禁止」と runbook に「dev 以外では起動の直後に回す」を書いた。起動器には dev かどうかを判定する文脈が無く、既存の仕組みで安く止められないので、機械の守りは #1830 へ分離した。
+  - 🟡2 M6 は 5xx なら何でも通していた（IdP への書き込み自体の失敗＝502 でも「何も残らない」は自明に真）。**500 に限定**した —— 登録簿への書き込みの例外は IdpFirstWrite が補償してから投げ直し、McpServer に例外の写し替えが無いのでホストの既定の 500 になる（502 / 503 は IdpFirstWrite が ProblemDetails で返す）。併せて管理イベントで `mcp-client-admin` の「作成 → 削除」を確かめる（realm は管理イベントの詳細の記録が有効）。自己試験に 502 / 503 の陰性対照を足した。
 
 ## 関連
 

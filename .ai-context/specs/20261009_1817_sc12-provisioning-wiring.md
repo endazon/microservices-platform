@@ -139,3 +139,9 @@ issue: "#1817"
 - `check-realm-constraints`・`keycloak-realm-reconcile.test.js`（38）・`check-deploy-manifests`（chart 1 / overlay 17）・`check-trace-blocks`・`check-adr-numbering`・`check-workflow-job-refs`・`gen-knowledge-graph --check`・`check-cross-repo-refs`・`check-plan-id-qualification`・`check-doc-links`・`check-default-credentials`・`check-reading-budget`・`actionlint`（変更した 2 本）: 緑。
 - `dotnet test` McpServer.Tests 298 件・Platform.Bff.Tests の SecretItem* 186 件: 緑。`dotnet build src/platform/backend/backend.slnx`: 警告 0。
 - 🔴 **稼働の Keycloak での実測（M1〜M6）は本 PR の中では走っていない。** integration-stack は PR で起動しないので、develop へのマージ後の最初の実行が初回の実測になる（稼働中のクラスタには何も実行していない）。
+
+## ［2026-10-09 追記 / PR #1827 の監査（条件付き GO）への対応］
+
+- 🟡2 M6 を 500 に限定し（`evaluateCompensationResponse`）、管理イベントで `mcp-client-admin` の「作成 → 削除」を確かめる（`evaluateCompensationEvents`）。自己試験 9 件（502・503・504・400・201 と、作成なし・削除なし・削除が作成より前・資源違い・主体違いの陰性対照）。
+- 🟡3 影響範囲の「届かないもの: レルムの設定」を改めた（`reset-gate` / `identity-admin` の secret を経由して間接的に届く。レルムの全権の漏えいとして扱う）。
+- 🟡4 「本番流用の禁止」と runbook に `mcp-client-admin` と「dev 以外では起動の直後に回す」を足した。機械の守りは #1830 へ分離（起動器に dev かどうかの文脈が無い）。

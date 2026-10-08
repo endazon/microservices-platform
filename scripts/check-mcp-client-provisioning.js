@@ -23,7 +23,8 @@
  *   M5 プラットフォームのクライアント名（abac-seeder）の登録は 400 で、その SA の属性は変わらない。差し替えは、入口ができる前の
  *      登録簿の行（psql で置く無人の行）に対して 400 で、属性は変わらない（入口の印の確かめ）。
  *   M6 補償: 表示名が登録簿の上限（200 文字）を超え Keycloak の上限（255 文字）に収まる登録は「IdP へ書けて登録簿で落ちる」ので
- *      5xx になり、Keycloak にクライアントも SA 利用者も残らず、登録簿にも行が無い。併せて mcp-client-admin の資格情報で
+ *      **500**（502 / 503 は IdP 側の失敗で補償を通らないので赤）になり、Keycloak にクライアントも SA 利用者も残らず、登録簿にも
+ *      行が無く、管理イベントに mcp-client-admin の「作成 → 削除」が在る。併せて mcp-client-admin の資格情報で
  *      M1 のクライアントを消せる（補償が使う削除の権限）。
  *
  * 主体は 3 つに分ける（測る側と測られる側を同じにしない）:
@@ -146,6 +147,46 @@ function evaluateNothingCreated(clients, users, clientId) {
   return errors;
 }
 
+/**
+ * M6: 補償の経路を通った応答か（PR #1827 監査 🟡2）。
+ * 🔴 **5xx なら何でもよい、にしない。** IdP への書き込みそのものが失敗した 502（IdpFirstWrite が ProblemDetails で返す）や
+ *    書き込み口の無い 503 でも「何も残らない」は自明に真になり、補償は一度も走っていない。
+ *    登録簿への書き込みが例外で落ちたとき IdpFirstWrite は補償してから**元の例外を投げ直す**。McpServer は例外の写し替えを
+ *    持たない（UsePlatformMiddleware に例外ハンドラが無い）ので、ホストの既定の **500** になり、IdpFirstWrite の
+ *    502 / 503 の題名（「IdP へ書けなかった」「書き込み口が構成されていない」）は本文に現れない。
+ */
+function evaluateCompensationResponse(status, text) {
+  const body = String(text || '');
+  if (status !== 500) {
+    return [`状態が ${status}（期待 500 ＝ IdP へ書けた後に登録簿で落ちた）。502 / 503 は IdP 側の失敗で、補償の経路を通っていない: ${body.slice(0, 300)}`];
+  }
+  if (/IdP へ書けなかった|書き込み口が構成されていない/.test(body)) return [`500 だが本文が IdP 側の失敗を告げる: ${body.slice(0, 300)}`];
+  return [];
+}
+
+/**
+ * M6: 管理イベントで「作成 → 削除」が実際に起きたこと。events は Keycloak の admin-events（resourceType=CLIENT）。
+ * 作成の表現（詳細の記録が有効）が clientId を含む CREATE を 1 件、その resourcePath への DELETE がそれ以後に在ること。
+ * actorUserId を与えれば、両方の主体がその利用者（mcp-client-admin の SA）であること。
+ */
+function evaluateCompensationEvents(events, clientId, actorUserId) {
+  const list = Array.isArray(events) ? events : [];
+  const creates = list.filter((e) => e.operationType === 'CREATE' && e.resourceType === 'CLIENT'
+    && (() => { try { return JSON.parse(e.representation || '{}').clientId === clientId; } catch { return false; } })());
+  if (creates.length !== 1) return [`クライアント ${clientId} の作成の管理イベントが ${creates.length} 件（ちょうど 1 件であるべき。0 件なら IdP へ書いていない＝補償を測れていない）`];
+  const created = creates[0];
+  const deletes = list.filter((e) => e.operationType === 'DELETE' && e.resourceType === 'CLIENT'
+    && e.resourcePath === created.resourcePath && Number(e.time) >= Number(created.time));
+  const errors = [];
+  if (deletes.length !== 1) errors.push(`${created.resourcePath} の削除の管理イベントが ${deletes.length} 件（補償の削除が起きていない）`);
+  if (actorUserId) {
+    for (const [label, e] of [['作成', created], ['削除', deletes[0]]]) {
+      if (e && (e.authDetails || {}).userId !== actorUserId) errors.push(`${label}の主体が mcp-client-admin の SA でない（${JSON.stringify(e.authDetails)}）`);
+    }
+  }
+  return errors;
+}
+
 /** M6 の前提: 登録簿では落ち、Keycloak では書ける長さの表示名。 */
 function overlongDisplayName() {
   const name = `SC-12 compensation probe ${'x'.repeat(230)}`.slice(0, 230);
@@ -195,6 +236,22 @@ function selfTest() {
   t('M5: 属性の比較は順序に依らず、値・キーの違いは不一致', () => {
     assert.ok(sameAttributes(normalizeAttributes({ a: ['2', '1'] }), normalizeAttributes({ a: ['1', '2'] })));
     assert.ok(!sameAttributes(normalizeAttributes({ a: ['1'] }), normalizeAttributes({ a: ['1'], b: ['x'] })));
+  });
+  t('M6: 補償の応答は 500 だけ。502（IdP へ書けなかった）・503・400・201 は赤（陰性対照）', () => {
+    assert.deepStrictEqual(evaluateCompensationResponse(500, ''), []);
+    for (const st of [502, 503, 504, 400, 201]) assert.strictEqual(evaluateCompensationResponse(st, '').length, 1, String(st));
+    assert.strictEqual(evaluateCompensationResponse(500, '{"title":"IdP へ書けなかった（登録簿にも書いていない）"}').length, 1);
+  });
+  t('M6: 管理イベントは作成 1 件 ＋ 同じ資源の削除が後に 1 件。作成が無い（IdP へ書いていない）・削除が無い・主体違いは赤', () => {
+    const cr = { operationType: 'CREATE', resourceType: 'CLIENT', resourcePath: 'clients/u1', time: 10,
+      representation: JSON.stringify({ clientId: 'p' }), authDetails: { userId: 'sa' } };
+    const del = { operationType: 'DELETE', resourceType: 'CLIENT', resourcePath: 'clients/u1', time: 11, authDetails: { userId: 'sa' } };
+    assert.deepStrictEqual(evaluateCompensationEvents([cr, del], 'p', 'sa'), []);
+    assert.ok(evaluateCompensationEvents([], 'p', 'sa')[0].includes('0 件'));
+    assert.strictEqual(evaluateCompensationEvents([cr], 'p', 'sa').length, 1);
+    assert.strictEqual(evaluateCompensationEvents([cr, { ...del, time: 9 }], 'p', 'sa').length, 1, '作成より前の削除を数えない');
+    assert.strictEqual(evaluateCompensationEvents([cr, { ...del, resourcePath: 'clients/u2' }], 'p', 'sa').length, 1);
+    assert.strictEqual(evaluateCompensationEvents([cr, { ...del, authDetails: { userId: 'other' } }], 'p', 'sa').length, 1);
   });
   t('M6: 補償の表示名は登録簿の上限を超え、Keycloak の上限に収まる', () => {
     const name = overlongDisplayName();
@@ -429,10 +486,16 @@ async function live() {
     const compId = id('comp');
     const r6 = await register(compId, { department: 'engineering' }, overlongDisplayName());
     if (r6.status === 201) created.push(compId);
-    step('M6 IdP へ書けて登録簿で落ちる登録は 5xx（400 なら補償の経路を通っていない）',
-      r6.status >= 500 ? [] : [`状態が ${r6.status}（期待 5xx）: ${String(r6.text).slice(0, 300)}`]);
+    step('M6 IdP へ書けて登録簿で落ちる登録は 500（502 / 503 は IdP 側の失敗で補償の経路を通っていない）',
+      evaluateCompensationResponse(r6.status, r6.text));
     step('M6 補償で Keycloak にクライアントも SA 利用者も残らない', evaluateNothingCreated(await clientsOf(compId), await usersOf(compId), compId));
     step('M6 登録簿にも行が無い', (await registryRows()).some((c) => c.clientId === compId) ? ['登録簿に行が残っている'] : []);
+    // 「作成 → 削除」が実際に起きたことを管理イベントで確かめる（realm は adminEventsEnabled / adminEventsDetailsEnabled）。
+    const adminSa = (await usersOf(ADMIN_CLIENT))[0];
+    const ev = await call('GET', `${kcAdmin}/admin-events?resourceTypes=CLIENT&max=500`, admin);
+    step(`M6 管理イベントで、${ADMIN_CLIENT} がクライアントを作ってから消した（補償が実際に走った）`,
+      ev.status === 200 ? evaluateCompensationEvents(ev.json, compId, adminSa && adminSa.id)
+        : [`GET admin-events が ${ev.status}`]);
 
     // 補償が使う削除の権限を、mcp-client-admin の資格情報そのもので測る（M1 のクライアントを消す＝片付けを兼ねる）。
     const target = (await clientsOf(okId)).find((c) => c.clientId === okId);
@@ -465,6 +528,7 @@ async function live() {
 }
 
 module.exports = {
+  evaluateCompensationResponse, evaluateCompensationEvents,
   serviceAccountUserName, expectedKeycloakAttributes, normalizeAttributes, sameAttributes,
   evaluateCreatedClient, evaluateServiceAccountLookup, evaluateNothingCreated, overlongDisplayName,
 };

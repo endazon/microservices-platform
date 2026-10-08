@@ -362,7 +362,10 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
   - **レルムの全クライアント**の作成・変更・削除と、**全クライアントの secret の読み取り**（他のサービス・道具へのなりすまし、削除による認証の停止）。
   - **レルムの全利用者**（人を含む）の属性とロールの書き換え（機密区分の引き上げ・管理者ロールの付与など。部分集合の規則と
     利用者アカウント管理を経ない権限昇格と、属性による判定の書き換え）。
-  - 届かないもの: レルムの設定（認証フロー・送信設定）、なりすまし、他のレルム。
+  - 🔴 **レルムの設定にも間接的に届く。** 読める secret の中に、レルムの管理を持つ申請の門（`reset-gate`）と利用者の管理を持つ
+    反映先（`identity-admin`）の secret がある。それを使えば認証フロー・送信設定・総当たり対策などのレルムの設定まで書ける。
+    **このクライアントの漏えいは、レルムの全権の漏えいとして扱う。**
+  - 直接は届かないもの: 他のレルム（master を含む）。
   緩和は 3 つである。コードは入口の印（`msp.mcp-client.managed-by=mcp-server`）のあるクライアントとそのサービスアカウントにしか
   書かない。secret は配備の秘密の経路（Vault → ExternalSecret → Secret。非 optional な参照で、無ければ後段が起動しない）だけで配る。
   ローテーションと漏えい時の手順は[対になる秘密のローテーション](../operations/paired-secret-rotation-runbook.md)の
@@ -386,8 +389,13 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
   **dev 専用**であり、本番の Vault 化（unseal/監査/HA/ローテーション）充足ではない（Tier 3）。
 - **本番流用の禁止**: 共有／ステージング／本番の realm には **PoC ユーザーを含めない**。運用ユーザーは
   Keycloak 管理画面／IaC で個別に作成し、パスワードは realm import にコミットしない。クライアント
-  シークレット（`wiki-js` / `ai-stock-trading-kb-writer` / `ai-stock-trading-kb-reader`）は環境ごとに必ず変更し、環境変数／Secret 経由で注入する
+  シークレット（`wiki-js` / `ai-stock-trading-kb-writer` / `ai-stock-trading-kb-reader` / `mcp-client-admin`）は環境ごとに必ず変更し、環境変数／Secret 経由で注入する
   （上記「Wiki.js 前段」§秘密情報を参照）。
+  🔴 **［2026-10-09］管理権限を持つ機密クライアント（`mcp-client-admin`・`identity-admin`・`reset-gate`）は、dev 以外のクラスタでは
+  起動の直後に回す。** 起動器（Vault の初期投入・手動の Secret 作成）は env が無ければ dev の値を入れ、レルムの後追いも無い client を
+  dev の値で作る。リポジトリは公開なので、dev の値のままだと認可基盤のトークン端点に届く誰でもその権限のトークンを得られる
+  （`mcp-client-admin` ならレルムの全権。上の項）。回し方は[対になる秘密のローテーション](../operations/paired-secret-rotation-runbook.md)。
+  dev 以外の文脈で dev の値を拒む機械の守りは起動器に無い（後続の作業で入れる）。
 - **リスク受容の根拠**: dev realm は host 公開されるが、格納データは合成のテスト属性のみで機密を含まず、
   ネットワークもローカルに閉じる。平文値は「変更前提の既知シード」であり、秘密として扱わない。
 
