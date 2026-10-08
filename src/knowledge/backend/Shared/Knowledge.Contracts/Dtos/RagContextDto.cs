@@ -19,11 +19,15 @@ namespace Knowledge.Contracts.Dtos;
 // （[[IADR-0283]] 決定 1・2）。属性キーは `ai_input`、値は `included` / `excluded` である。
 // **本型の構造は変えていない** —— 述語を必須引数で受ける形のまま、その中身が決まっただけである。
 public sealed record RagContextSelection(
-    // 利用者へ返す検索結果（絞り込まない）。
+    // RAG の文脈集めのために引いた検索結果。［2026-10-08 / #1752］[[IADR-0512]]: gRPC 輸送では検索の用途が
+    // AI 入力なので、**既に「AI の入力に含める」で落とされている**（「横断検索に含める」OFF の資料を含み得る）。
+    // 🔴 **利用者へ一覧として返してはならない**（横断検索の一覧ではない）。出典も `ContextChunks` から作る。
     IReadOnlyList<SearchResultDto> SearchResults,
     // LLM へ渡してよいチャンクだけの集合。**SearchResults の部分集合である。**
     IReadOnlyList<SearchResultDto> ContextChunks,
-    // 検索結果には出したが、AI の入力からは外したチャンク（監査・説明のために残す）。
+    // RAG の検索が返したが、AI の入力からは外したチャンク（監査・説明のために残す）。
+    // ［2026-10-08 / #1752］出口が AI 入力の用途で落とす経路（gRPC 輸送）では ai_input 起因の除外はここに現れず、
+    // 主に本文を持たない文書と、用途を運べない REST 輸送で届いた ai_input OFF の資料が残る。
     IReadOnlyList<Guid> ExcludedFromContextChunkIds);
 
 // FR-21 受け入れ基準 ⑨: 検索結果から RAG コンテキストを**導出する**唯一の点。

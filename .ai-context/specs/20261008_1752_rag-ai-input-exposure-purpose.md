@@ -91,6 +91,8 @@ FR-21 ⑨ が逆向きを書いていないのは ⑨ が FR-21（本文の直�
 - `RetrievalService.Tests`: 新規 `PrivateNoteAiInputPurposeTests`（出口の用途別の落とし方・二段検索・再順位付けの手前）、
   `DocumentSearchTrustedRelayTests` / `GrpcDocumentSearchTests` の流儀で gRPC 面の用途の写し（`AI_INPUT` / 未指定 / 未知の値・信頼されない呼び出し元）。
 - `AiAnalysisService.Tests`: `GrpcRagSearchTransport` が `purpose = AI_INPUT` を送ること。
+- ［2026-10-08 追記 / 独立監査 🟡］AC3 の REST の半分: `DocumentSearchExposurePurposeTests` で REST `POST /search` の本文に用途を名乗る項目を足しても
+  「横断検索に含める」OFF の資料が返らないこと（T-34）と、`SearchRequest` に用途の項目が無いことを固定する。
 
 ## 射程外・残余
 

@@ -111,6 +111,8 @@ FR-19 の独立性・ADR-0061 決定 3 の「各経路が**自分の**属性を�
 
 - `PrivateNoteAiInputPurposeTests`（単体）・`DocumentSearchExposurePurposeTests`（実 Kestrel の gRPC 往復）・
   `GrpcRagSearchTransportTests`（`用途をAIの入力として送る`）。
+- REST `POST /search` の本文に用途を名乗る項目（`purpose` / `exposureKey`）を足しても横断検索で落ちること（決定 4。独立監査 🟡 を受けて追加）。
+  REST の入口で `ForAiInput()` を呼ぶ変異で 3 件が赤。
 - 出口の述語を `IsSearchAllowed` 固定へ戻す変異で 5 件が赤。`WithPurpose` を「`SEARCH` 以外は AI 入力」へ変える変異で 4 件が赤（未指定・未知の値）。
 
 ### 残るもの

@@ -1,3 +1,6 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using AwesomeAssertions;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -103,6 +106,45 @@ public class DocumentSearchExposurePurposeTests
 
         ids.Should().Equal([searchOnly.ToString()], "陽性対照: 同じ点・同じスコープで、横断検索 ON の資料は返る");
         ids.Should().NotContain(aiOnly.ToString(), "取り違えは一覧に出てはならない資料が出ない側へ倒す");
+    }
+
+    // 🔴 AC3（REST の半分）・[[IADR-0512]] 決定 4: **REST `POST /search` は用途を受けない。**
+    // 本文に用途らしき項目（`purpose` / `exposureKey`。値は proto の名前と属性キーの両方）を足しても、
+    // 結果は「横断検索に含める」で落ちる —— 利用者が AI 入力を名乗って一覧の外の資料を見られない。
+    // 陽性対照: 同じ要求で横断検索 ON の資料は返る（「何も返さない」で緑にならない）。
+    [Theory]
+    [InlineData("AI_INPUT")]
+    [InlineData("EXPOSURE_PURPOSE_AI_INPUT")]
+    [InlineData("ai_input")]
+    public async Task REST検索は本文で用途AI入力を名乗っても横断検索OFFの個人資料を返さない(string claimed)
+    {
+        var (aiOnly, searchOnly) = await SeedAsync();
+
+        var body = JsonSerializer.SerializeToNode(
+            new SearchRequest("検索", 50, null, new AccessScope([], GrantsAccess: true)),
+            JsonSerializerOptions.Web)!.AsObject();
+        body["purpose"] = claimed;
+        body["exposureKey"] = claimed;
+        body["ExposureKey"] = claimed;
+
+        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
+        http.DefaultRequestHeaders.TryAddWithoutValidation(
+            "Authorization", $"Bearer {GrpcKestrelFactory.IssueToken("alice", [])}");
+        var resp = await http.PostAsJsonAsync("/search", body, Ct);
+        resp.EnsureSuccessStatusCode();
+        var ids = (await resp.Content.ReadFromJsonAsync<SearchResponse>(Ct))!
+            .Results.Select(r => r.DocumentId).ToList();
+
+        ids.Should().Contain(searchOnly, "陽性対照: 横断検索 ON の資料は返る");
+        ids.Should().NotContain(aiOnly, "REST の面は用途を受けない（呼び出し元を中継者と区別できない）");
+    }
+
+    // 同じ主張の構造側: REST の本文の型に用途を運ぶ項目が無い（足すと上の振る舞いの試験と併せて気づける）。
+    [Fact]
+    public void REST検索の本文の型は用途を運ぶ項目を持たない()
+    {
+        typeof(SearchRequest).GetProperties().Select(p => p.Name).Should()
+            .NotContain(["Purpose", "ExposureKey", "ExposurePurpose"]);
     }
 
     // AC4: 用途は利用者文脈と同じ信頼の下で運ばれる。信頼されない呼び出し元は AI 入力を名乗っても通らない。
