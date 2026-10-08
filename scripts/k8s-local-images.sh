@@ -83,7 +83,7 @@ MAPPING=(
 #    Dockerfile を上げても古いイメージが使われ続ける。Dockerfile の FROM・age の版と、利用側の image と、ここの 3 か所を
 #    同じ値に保つ（scripts/platform-backup.test.js が突き合わせる）。
 LOCAL_ONLY_IMAGES=(
-  "platform-backup:pg16.15-age1.3.1-r6|deploy/local/platform-backup/image|Dockerfile"
+  "platform-backup:pg16.15-age1.3.2-r0|deploy/local/platform-backup/image|Dockerfile"
 )
 
 k3d_images=()
