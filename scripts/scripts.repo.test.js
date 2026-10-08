@@ -8553,7 +8553,12 @@ ${r.stderr}`);
         //    🔴 **これは「同型の事故が 2 回」ではなく計画側の名指しに基づく新設である**（ADR-0090 決定 3 とフォローアップ 2 が
         //    実装側へ担保を求めた）。git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS の
         //    どちらにも載らない（`check-coverage-floor.js` と同じ扱い。引数なしの素実行は使い方を出して exit 2）。
-        assert.strictEqual(scripts.length, 60, `検査器の母集合が 60 本から変わった（${scripts.length} 件）`);
+        // ★ #1787 / 計画 ADR-0107 決定 3 / IADR-0514 で `check-image-digests.js`（deploy/ のインフラのイメージの参照が
+        //    digest で固定されていること。tag だけの参照・実在しない例外・同じ tag の digest の食い違いを落とす）を
+        //    新設したため 60 → 61（ラチェットが設計どおり発火した）。🔴 **「同型の事故が 2 回」ではなく計画側の名指し**
+        //    （ADR-0107 決定 3・フォローアップ 2、issue #1787 の受け入れ基準「検知する仕組み」）に基づく新設である。
+        //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 61, `検査器の母集合が 61 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -14896,6 +14901,81 @@ server.listen(0, '127.0.0.1', async () => {
       for (const seg of ['Features', 'Infrastructure', 'Contests', 'Requests']) {
         assert.ok(!lp.isTestSegment(seg), `${seg} を試験と誤判定した`);
       }
+    });
+  }
+
+  // --- #1787 / 計画 ADR-0107 決定 3 / IADR-0514: deploy/ のインフラのイメージの digest 固定 ---------------
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const { spawnSync } = require('child_process');
+    const REPO = path.resolve(__dirname, '..');
+    const dg = require('./check-image-digests.js');
+
+    ok('#1787: 実ツリーで check-image-digests が緑（インフラの参照はすべて digest 付き）', () => {
+      const r = spawnSync(process.execPath, [path.join(REPO, 'scripts/check-image-digests.js')], { cwd: REPO, encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, r.stderr || r.stdout);
+      assert.match(r.stdout, /すべて digest で固定されている/);
+    });
+
+    ok('#1787: 母集合は空でない（compose・deploy/local・helm values・Dockerfile の 4 種の置き場をすべて拾う。陽性対照）', () => {
+      const { refs } = dg.collect(REPO);
+      const infra = refs.filter((r) => !dg.isSelfBuilt(r.ref));
+      const has = (pred, what) => assert.ok(infra.some(pred), `${what} の参照を拾えていない（走査の取りこぼし）`);
+      has((r) => r.file === 'deploy/docker-compose.yml', 'compose');
+      has((r) => r.file.startsWith('deploy/local/'), 'deploy/local');
+      has((r) => r.file.endsWith('values.yaml') && r.kind === 'values-block', 'helm values の 3 キー形式');
+      has((r) => r.file.endsWith('values.yaml') && r.kind === 'image', 'helm values の単一文字列');
+      has((r) => r.kind === 'from', 'Dockerfile の FROM');
+      // 自製は対象外として数えられている（境界が消えて自製まで要求し始めたら気づく）。
+      assert.ok(refs.some((r) => dg.isSelfBuilt(r.ref)), '自製イメージの参照が 1 件も無い（境界の判定が壊れた）');
+    });
+
+    ok('#1787: 変異 —— compose の参照から digest を外すと落ちる', () => {
+      const text = fs.readFileSync(path.join(REPO, 'deploy/docker-compose.yml'), 'utf8');
+      const broken = text.replace(/(image: redis:7-alpine)@sha256:[0-9a-f]{64}/, '$1');
+      assert.notStrictEqual(broken, text, '変異を入れられなかった（redis の行の形が変わった）');
+      const { errors } = dg.evaluate(dg.extractRefs('deploy/docker-compose.yml', broken), []);
+      assert.ok(errors.some((e) => e.startsWith('[tag-only]') && e.includes('redis:7-alpine')), errors.join('\n'));
+    });
+
+    ok('#1787: 3 キー形式のインフラを描くテンプレートは digest を描く（values に digest を足しても描かれなければ固定にならない）', () => {
+      const dir = path.join(REPO, 'deploy/helm/microservices-platform/templates');
+      const offenders = [];
+      let seen = 0;
+      for (const f of fs.readdirSync(dir)) {
+        const text = fs.readFileSync(path.join(dir, f), 'utf8');
+        for (const m of text.matchAll(/image:\s*"\{\{\s*\$(\w+)\.registry\s*\}\}\/\{\{\s*\$\1\.image\s*\}\}:\{\{\s*\$\1\.tag\s*\}\}([^"]*)"/g)) {
+          seen++;
+          if (!m[2].includes(`$${m[1]}.digest`)) offenders.push(`${f}: ${m[0]}`);
+        }
+      }
+      assert.ok(seen >= 3, `registry/image/tag の 3 キー形式のテンプレートが ${seen} 件しか見つからない（走査が壊れた）`);
+      assert.deepStrictEqual(offenders, [], 'digest を描かないテンプレートがある');
+    });
+
+    ok('#1787: 例外ファイルは配列を持ち、各例外に理由がある', () => {
+      const json = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts/image-digest-exceptions.json'), 'utf8'));
+      assert.ok(Array.isArray(json.exceptions));
+      for (const e of json.exceptions) assert.ok(e.file && e.ref && String(e.reason || '').trim(), JSON.stringify(e));
+    });
+
+    ok('#1787: QdrantTestImage.Reference は配備と同じ digest 付きの参照（統合試験も固定した版で起こす）', () => {
+      const cs = fs.readFileSync(
+        path.join(REPO, 'src/knowledge/backend/Tests/Knowledge.IntegrationTests/Fixtures/QdrantTestImage.cs'), 'utf8');
+      const m = /Reference\s*=\s*"([^"]+)"/.exec(cs);
+      assert.ok(m, 'Reference の定数が見つからない');
+      assert.match(m[1], /@sha256:[0-9a-f]{64}$/);
+      const compose = fs.readFileSync(path.join(REPO, 'deploy/docker-compose.yml'), 'utf8');
+      assert.ok(compose.includes(`image: ${m[1]}`), 'compose の qdrant と一致しない');
+    });
+
+    ok('#1787: ci.yml の static-checks が自己試験と本検査を呼び、scripts/README.md が載せている', () => {
+      const ci = fs.readFileSync(path.join(REPO, '.github/workflows/ci.yml'), 'utf8');
+      assert.ok(ci.includes('node scripts/check-image-digests.js --self-test'), '自己試験の配線が無い');
+      assert.ok(/run: node scripts\/check-image-digests\.js\s*$/m.test(ci), '本検査の配線が無い');
+      const readme = fs.readFileSync(path.join(REPO, 'scripts/README.md'), 'utf8');
+      assert.ok(readme.includes('`check-image-digests.js`'), 'scripts/README.md に行が無い');
     });
   }
 

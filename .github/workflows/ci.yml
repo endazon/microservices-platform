@@ -225,6 +225,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-default-credentials.js
 
+      # NFR, 計画 ADR-0107 決定 3 / IADR-0514 (#1787): deploy/ のインフラのイメージの参照が digest で固定されていること。
+      # tag だけの参照・理由の無い例外・実在しない例外・同じ tag の digest の食い違いを落とす。走査 0 件は赤（fail-closed）。
+      # 自製イメージ（microservices-platform/*・k3d-local/*）は対象外（CD が一意タグ/digest を渡す）。fs だけで走査し、
+      # ネットワークは使わない（digest の解決は人が行う。手順は運用仕様書 §インフラ製品の点検）。
+      - name: Self-test image digest checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-image-digests.js --self-test
+      - name: Check image digests (#1787)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-image-digests.js
+
       # NFR, #1040: 「ビルダ構築時に読まれる構成キーを、統合テストの器が UseSetting で与えているか」。
       # 🔴 **同じ罠を 3 回踏んだ**（Pipeline:ConfigPath / RabbitMq:ConnectionString /
       #    ConnectionStrings:DefaultConnection）。器のコメントが 2 度警告し、2 回目を直した本人が

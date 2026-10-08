@@ -9,6 +9,10 @@ namespace Knowledge.IntegrationTests.Fixtures;
 // 配備側との一致は `QdrantTestImageDefinitionTests`（コンテナを起こさない。PR の ci.yml で走る）が止める。
 public static class QdrantTestImage
 {
-    /// <summary>配備（compose・k8s マニフェスト）と同じ参照。</summary>
-    public const string Reference = "qdrant/qdrant:v1.18.1";
+    /// <summary>
+    /// 配備（compose・k8s マニフェスト）と同じ参照。ADR-0107 決定 3 / [[IADR-0514]] (#1787): 配備が digest で固定したので、
+    /// 試験も同じ multi-arch の image index の digest で起こす（tag は読みやすさのために残す。SeaweedFsContainer.Image と同型）。
+    /// </summary>
+    public const string Reference =
+        "qdrant/qdrant:v1.18.1@sha256:45f8e3ddc2570a4d029877e1b5ec1045c19b3852b4e22a55c7f43b05aea0ca89";
 }

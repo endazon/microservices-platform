@@ -45,7 +45,7 @@ spec:
     spec:
       containers:
         - name: tempo
-          image: grafana/tempo:2.5.0
+          image: grafana/tempo:2.5.0@sha256:f0200a9bff6d14eb3a4332194f7b77c37ee1a3535e7e41db024d95aab6f1b4e8
           args: ["-config.file=/etc/tempo/config.yaml"]
           # Tempo は OTLP 受信を 4317(grpc)/4318(http) で待つ。collector の otlp/tempo exporter が tempo:4317 へ送る。
           ports:

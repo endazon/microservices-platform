@@ -1,0 +1,4 @@
+{
+  "$comment": "check-image-digests.js（IADR-0514）の例外。deploy/ のインフラのイメージで digest を付けられない参照だけを、file・ref（ファイルに書かれたとおり）・reason つきで載せる。直ったら外す（実在しない例外は検査器が落とす）。2026-10-08（#1787）時点で 0 件。",
+  "exceptions": []
+}

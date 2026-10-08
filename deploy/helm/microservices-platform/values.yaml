@@ -218,7 +218,7 @@ drift:
     # Envoy を終了させて Job を完了させる（drift-postsync-job.yaml 参照）。
     # 起動待ちは --retry × --retry-delay だけが決める（180 秒。--max-time は 1 試行の上限であって
     # 総時間の上限ではない）。**この数字は実測から決めている** —— 根拠は同 template の注記（#1219）。
-    image: curlimages/curl:8.11.1
+    image: curlimages/curl:8.11.1@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69
 
 # NFR (#197): 水平スケール（HPA）と可用性（PDB）。計画 NFR「HPA で水平スケール」「可用性 99.9%」の実現手段。
 # metrics-server が必要（k3s は既定同梱）。対象はステートレスな要求処理サービス（下記 services リスト）。
@@ -1237,6 +1237,10 @@ embedding:
   image: huggingface/text-embeddings-inference
   # 実運用前に固定するプレースホルダ（CPU 版の例。GPU 版は cuda-* タグへ差し替える）。
   tag: "cpu-1.5"
+  # ADR-0107 決定 3, IADR-0514 (#1787): multi-arch の image index の digest（2026-10-08 に ghcr.io から匿名で解決。
+  # 本 tag の index は linux/amd64 のみ）。tag を変えるときは digest を対で変え、deploy/docker-compose.yml と揃える
+  # （scripts/check-image-digests.js が「同じ tag は同じ digest」を突き合わせる）。
+  digest: "sha256:0502794a4d86974839e701dadd6d06e693ec78a0f6e87f68c391e88c52154f3f"
   # ADR-0017（Superseded by ADR-0127・注記は #1746）: Ruri v3（768 次元）。実モデル取得は稼働環境依存。
   modelId: "cl-nagoya/ruri-v3-310m"
   # TEI 追加起動引数（例: ["--dtype", "float16"]）。既定なし。
@@ -1284,6 +1288,10 @@ wikijs:
   image: requarks/wiki
   # IADR-0088 (#320): 再現性のため浮動 major タグ `2` を実運用版 `2.5` へ固定する（再デプロイ安全性）。
   tag: "2.5"
+  # ADR-0107 決定 3, IADR-0514 (#1787): multi-arch の image index の digest（2026-10-08 に ghcr.io から匿名で解決）。
+  # 🔴 digest で固定すると、上の「minor 固定・patch は許容」（2.5.x の自動パッチ）は効かなくなる。patch を取り込むときは
+  # tag はそのままで digest を解決し直し、deploy/docker-compose.yml と揃える（運用仕様書 §インフラ製品の点検）。
+  digest: "sha256:fffff288a52f76e5b8c19a4fbcd0f3e538e96edea642c4f2d813d54d59a876de"
   port: 3000
   db:
     type: postgres
@@ -1378,7 +1386,7 @@ syntheticMonitor:
   #   realm（deploy/keycloak/microservices-platform-realm.json）の client `synthetic-monitor` と一致させること。
   clientId: synthetic-monitor
   # overlay（deploy/local/synthetic-monitor/synthetic-monitor.yaml）と同じ。外部依存ゼロ（Node 標準の fetch のみ）。
-  image: node:22-alpine
+  image: node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
   # ADR-0079 決定 1 の確定値（秒）。**変えるなら deploy/prometheus/alerts.yml の RagLatencySeriesAbsent の lookback も見直すこと。**
   intervalSeconds: 60
   # 費用の出ない 2 経路のみ（AiAnalysisService が合成の要求では LLM を呼ばずに縮退する）。
