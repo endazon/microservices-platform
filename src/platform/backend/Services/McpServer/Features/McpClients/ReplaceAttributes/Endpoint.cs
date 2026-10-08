@@ -34,9 +34,9 @@ public static class ReplaceMcpClientAttributesEndpoint
 
             if (client.Kind != McpClientKind.ServiceAccount) return await WriteRegistry(ct);
 
-            // 🔴 FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0515]] 決定 4 (#1786): 差し替えも **検証 → IdP → 登録簿**。
+            // 🔴 FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0516]] 決定 4 (#1786): 差し替えも **検証 → IdP → 登録簿**。
             // IdP にクライアントが無い行（本入口ができる前の登録）は、ここで IdP へ載る。
-            // 登録簿で無効化された行は IdP にも無効のまま作る（有効なクライアントを生まない。[[IADR-0515]] 決定 4）。
+            // 登録簿で無効化された行は IdP にも無効のまま作る（有効なクライアントを生まない。[[IADR-0516]] 決定 4）。
             return await IdpFirstWrite.RunAsync(
                 token => provisioner.ReplaceAttributesAsync(clientId, client.DisplayName, req.Attributes, client.Enabled, token),
                 WriteRegistry, provisioner,

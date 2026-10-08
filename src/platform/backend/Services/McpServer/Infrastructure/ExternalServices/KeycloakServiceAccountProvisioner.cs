@@ -10,10 +10,10 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace McpServer.Infrastructure.ExternalServices;
 
-// FR-16, FR-09, UC-09, SC-12, 計画 ADR-0123 決定 1・2・フォローアップ 1・3, ADR-0088 決定 1, [[IADR-0515]] (#1786):
+// FR-16, FR-09, UC-09, SC-12, 計画 ADR-0123 決定 1・2・フォローアップ 1・3, ADR-0088 決定 1, [[IADR-0516]] (#1786):
 // SC-12 の登録・属性の差し替えを Keycloak Admin REST へ書く口。
 //
-// ■ 書き方（IADR-0515 決定 1・3）
+// ■ 書き方（IADR-0516 決定 1・3）
 //   1. `POST /clients` — 無人のテンプレート（機密・サービスアカウントつき・人の流れは全部閉じる）で作る。
 //      **409 なら何も書かずに `AlreadyExists`**（入口を通らずに作られたクライアントへ属性を書かない）。
 //   2. `GET /clients/{id}/service-account-user` — 作ったクライアントのサービスアカウントの利用者。
@@ -31,7 +31,7 @@ namespace McpServer.Infrastructure.ExternalServices;
 //
 // ■ 🔴 **疎通は未検証である。** 単体テストはスタブした `HttpMessageHandler` に対する固定であり、
 //   「緑である」ことは「実 IdP へ反映できる」ことを意味しない（`KeycloakIdentityAdminClient` と同じ限界）。
-//   稼働クラスタでの実測は #1786 の残余（IADR-0515 §残余）。
+//   稼働クラスタでの実測は #1786 の残余（IADR-0516 §残余）。
 public sealed class KeycloakServiceAccountProvisioner(
     IHttpClientFactory httpClientFactory,
     ServiceAccountProvisioningOptions options,
@@ -75,7 +75,7 @@ public sealed class KeycloakServiceAccountProvisioner(
 
         // 本入口ができる前の登録簿の行には、IdP 側のクライアントが無い。差し替えはその行を IdP へ載せる唯一の経路である
         // （登録簿の重複検査が再登録を止めるため）。**検証は呼び出し元が書く前に掛け終えている。**
-        // 登録簿で無効化された行は無効のまま作る（有効なクライアントを生まない。IADR-0515 決定 4）。
+        // 登録簿で無効化された行は無効のまま作る（有効なクライアントを生まない。IADR-0516 決定 4）。
         if (internalId is null)
             return await CreateWithAttributesAsync(client, clientId, displayName, attributes, enabled);
 
@@ -176,7 +176,7 @@ public sealed class KeycloakServiceAccountProvisioner(
         }
     }
 
-    // IADR-0515 決定 3: 無人の MCP クライアントのテンプレート。
+    // IADR-0516 決定 3: 無人の MCP クライアントのテンプレート。
     // 🔴 **人の流れは全部閉じる**（認可コード・暗黙・パスワードの直接付与）。機密クライアントでサービスアカウントだけを開ける。
     // クライアントのスコープは指定しない（realm の既定）—— 判定に使う属性はトークンからではなく、認可サービスが IdP から引き直す
     // （ADR-0088 決定 1・ADR-0123 決定 1）。トークンへ属性を載せても判定は変わらない。

@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-16, UC-08, UC-09, SC-12, NFR-09, NFR-16]
 adrs: [ADR-0004, ADR-0018, ADR-0024, ADR-0029, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0062, ADR-0075, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123]
-iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0515]
+iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516]
 specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning]
 issues: [#445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818]
 -->

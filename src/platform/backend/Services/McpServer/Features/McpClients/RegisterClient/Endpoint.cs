@@ -55,10 +55,10 @@ public static class RegisterMcpClientEndpoint
 
             // 🔴 **既知の逸脱（計画とのずれ）**: 計画の SC-12 は種別を限らず「登録 → Keycloak クライアント作成」と定めるが、
             // 有人は登録簿だけへ書く。有人のクライアントの作り方（入力・テンプレート）は計画へ問うている（planning#751）。
-            // [[IADR-0515]] 決定 3。
+            // [[IADR-0516]] 決定 3。
             if (kind != McpClientKind.ServiceAccount) return await WriteRegistry(ct);
 
-            // 🔴 FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0515]] 決定 4 (#1786): 無人は **検証（上で済んだ）→ IdP → 登録簿**。
+            // 🔴 FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0516]] 決定 4 (#1786): 無人は **検証（上で済んだ）→ IdP → 登録簿**。
             // 登録簿は IdP へ書いた値の写しである。IdP へ書けなければ登録簿にも書かない。
             return await IdpFirstWrite.RunAsync(
                 token => provisioner.CreateAsync(req.ClientId, req.DisplayName, attributes, token),

@@ -3511,6 +3511,12 @@
             "required": false,
             "position": 5
           },
+          "FailureKind": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 8
+          },
           "InputTokens": {
             "source": "positional",
             "type": "int",
@@ -3552,6 +3558,32 @@
             "type": "string",
             "required": true,
             "position": 0
+          },
+          "UpstreamStatusCode": {
+            "source": "positional",
+            "type": "int?",
+            "required": false,
+            "position": 9
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.CompletionFailureKinds": {
+        "kind": "class",
+        "members": {
+          "EgressDenied": {
+            "source": "const",
+            "type": "string",
+            "value": "\"egress_denied\""
+          },
+          "ProviderMissing": {
+            "source": "const",
+            "type": "string",
+            "value": "\"provider_missing\""
+          },
+          "UpstreamError": {
+            "source": "const",
+            "type": "string",
+            "value": "\"upstream_error\""
           }
         }
       },
@@ -3600,6 +3632,12 @@
             "required": false,
             "position": 1
           },
+          "FailureKind": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 9
+          },
           "InputTokens": {
             "source": "positional",
             "type": "int",
@@ -3641,6 +3679,12 @@
             "type": "string?",
             "required": false,
             "position": 3
+          },
+          "UpstreamStatusCode": {
+            "source": "positional",
+            "type": "int?",
+            "required": false,
+            "position": 10
           }
         }
       },

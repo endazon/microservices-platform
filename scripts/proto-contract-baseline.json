@@ -1478,6 +1478,11 @@
               "type": "string",
               "label": "singular"
             },
+            "failure_kind": {
+              "number": 9,
+              "type": "string",
+              "label": "singular"
+            },
             "input_tokens": {
               "number": 3,
               "type": "int32",
@@ -1512,6 +1517,11 @@
               "number": 1,
               "type": "string",
               "label": "singular"
+            },
+            "upstream_status_code": {
+              "number": 10,
+              "type": "int32",
+              "label": "singular"
             }
           },
           "reserved": {
@@ -1529,6 +1539,11 @@
             "done": {
               "number": 2,
               "type": "bool",
+              "label": "singular"
+            },
+            "failure_kind": {
+              "number": 10,
+              "type": "string",
               "label": "singular"
             },
             "input_tokens": {
@@ -1564,6 +1579,11 @@
             "text": {
               "number": 4,
               "type": "string",
+              "label": "singular"
+            },
+            "upstream_status_code": {
+              "number": 11,
+              "type": "int32",
               "label": "singular"
             }
           },

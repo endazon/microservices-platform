@@ -8,6 +8,7 @@
  * 背景:
  *   2026-08-16 の利用者裁定（2026-09-25 にオーナーが再確認）で、6 資産（platform アプリ DB / Keycloak realm /
  *   Qdrant / MinIO / Wiki.js / 可観測性データ）はすべて破棄し、realm は realm.json から作り直すと決まった。
+ *   （MinIO は 2026-09-25 に SeaweedFS へ置き換わった（#1499 / IADR-0461）。オブジェクトストレージの行は SeaweedFS を見る。#1781）
  *   #457 は「件数突合スクリプトを再実行可能な形で残す（measure-abac-combinations.js の --json / --dump /
  *   --input で収集と集計を分離する型を踏襲する）」を残作業に挙げている。本スクリプトがその手段である。
  *
@@ -45,6 +46,7 @@
  *   CUTOVER_INFRA_NS=platform-infra / CUTOVER_MSP_NS=microservices-platform
  *   CUTOVER_PG_USER=postgres（DB の作成時刻を読むのにスーパーユーザが要る）
  *   CUTOVER_REALM=platform / CUTOVER_KC_ADMIN_USER=admin / CUTOVER_KC_ADMIN_PASSWORD（未設定なら admin）
+ *   CUTOVER_CMD_TIMEOUT_MS=120000（kubectl ほか子プロセス 1 回あたりの上限。超えたら例外にして、その資産を「収集できなかった」にする）
  *   CUTOVER_QDRANT_URL / CUTOVER_PROM_URL（未設定なら API サーバのサービスプロキシ経由で GET する。
  *     メッシュの STRICT mTLS でプロキシが通らないときは kubectl port-forward して URL を渡す）
  *
@@ -69,7 +71,9 @@ const PIPELINE_FILE = path.join(REPO, 'deploy', 'helm', 'microservices-platform'
 // 作り直す PVC。`optional: true` は配備の選択（可観測性の永続化）で存在しないことがあるもの。
 const RECREATED_PVCS = [
   { ns: 'infra', name: 'qdrant-storage' },
-  { ns: 'msp', name: 'minio-data' },
+  // #1781: MinIO（minio-data）は SeaweedFS（chart の seaweedfs-data）へ置き換わった（#1499 / IADR-0461）。
+  // 旧名のままでは、正しく作り直しても「存在しない」の fail になる。
+  { ns: 'msp', name: 'seaweedfs-data' },
   { ns: 'msp', name: 'wiki-js-data' },
   { ns: 'infra', name: 'prometheus-data', optional: true },
   { ns: 'infra', name: 'loki-data', optional: true },
@@ -148,28 +152,52 @@ function mspQueuePrefixes(pipelineJson) {
 // 収集結果の読み取り（純関数）
 // ---------------------------------------------------------------------------
 
-// `ls -R /data`（MinIO の単一ドライブ）からバケットとオブジェクト数を数える。
-// オブジェクト 1 つは `<bucket>/<key...>/xl.meta` のディレクトリで表される（版は xl.meta の中に入る）。
-// `.minio.sys` 配下はメタデータであり数えない。
-function parseMinioListing(lsText) {
-  let current = null;
-  const buckets = new Set();
-  let objects = 0;
-  for (const raw of lsText.split(/\r?\n/)) {
-    const line = raw.trimEnd();
-    const header = /^(\/data(?:\/.*)?):$/.exec(line);
-    if (header) {
-      current = header[1];
-      const rel = current.replace(/^\/data\/?/, '');
-      const top = rel.split('/')[0];
-      if (top && top !== '.minio.sys') buckets.add(top);
-      continue;
-    }
-    if (line === 'xl.meta' && current && !/^\/data\/\.minio\.sys(\/|$)/.test(current) && current !== '/data') {
-      objects += 1;
-    }
+// SeaweedFS（IADR-0461）の filer の一覧を辿り、S3 のバケットとオブジェクト数を数える（#1781。MinIO の `ls -R /data` の置き換え）。
+// バケットは filer の `/buckets/<bucket>/`、オブジェクトはその下のファイル（ディレクトリでないエントリ）である。
+// マルチパートの途中（`.uploads`）は数えない。`listDir(dirPath, lastFileName)` は filer の JSON 応答
+// （`{ Entries: [{ FullPath, Mode }], ShouldDisplayLoadMore, LastFileName }`）を返す関数で、収集部が Pod 内で読む。
+// 🔴 ディレクトリの判定は Go の os.ModeDir（最上位ビット）で行う。名前で推測しない。
+const FILER_BUCKETS_ROOT = '/buckets';
+const FILER_DIR_BIT = 0x80000000;
+const isFilerDir = (e) => ((Number(e.Mode) >>> 0) & FILER_DIR_BIT) !== 0;
+const baseName = (p) => String(p).replace(/\/+$/, '').split('/').pop();
+
+function listAll(listDir, dirPath) {
+  const entries = [];
+  let last = '';
+  for (let page = 0; ; page += 1) {
+    if (page > 10000) throw new Error(`filer の一覧が終わらない: ${dirPath}`);
+    const res = listDir(dirPath, last);
+    if (!res || typeof res !== 'object') throw new Error(`filer の応答を読めない: ${dirPath}`);
+    const got = Array.isArray(res.Entries) ? res.Entries : [];
+    entries.push(...got);
+    if (!res.ShouldDisplayLoadMore || !got.length) return entries;
+    const next = res.LastFileName || baseName(got[got.length - 1].FullPath);
+    // #1781（監査）: 続きの鍵が前のページから進まなければ、同じページを引き続けて終わらない。上限の 10000 ページを待たずに止める。
+    if (next === last) throw new Error(`filer の一覧のページ送りが進まない: ${dirPath}（lastFileName=${next}）`);
+    last = next;
   }
-  return { buckets: [...buckets].sort(), objects };
+}
+
+function countFilerObjects(listDir) {
+  const buckets = [];
+  let objects = 0;
+  const walk = (dirPath) => {
+    for (const e of listAll(listDir, dirPath)) {
+      if (isFilerDir(e)) {
+        if (baseName(e.FullPath) === '.uploads') continue;
+        walk(e.FullPath);
+      } else objects += 1;
+    }
+  };
+  for (const e of listAll(listDir, FILER_BUCKETS_ROOT)) {
+    // `.` で始まるもの（`.system` ほか）は S3 のバケット名になり得ない（先頭は英小文字か数字）。SeaweedFS の内部の置き場であり、
+    // 作り直した直後にも在る（run 37734487908 で `.system` に 1 件を実測）ので数えない。
+    if (!isFilerDir(e) || baseName(e.FullPath).startsWith('.')) continue;
+    buckets.push(baseName(e.FullPath));
+    walk(e.FullPath);
+  }
+  return { buckets: buckets.sort(), objects };
 }
 
 function toMillis(v) {
@@ -265,9 +293,35 @@ function evaluate(data, expected, sinceIso, before = null) {
     }
   }
   const humans = (kc.users || []).filter((u) => !String(u.username).toLowerCase().startsWith(SERVICE_ACCOUNT_PREFIX));
-  const stale = humans.filter((u) => !(toMillis(u.createdTimestamp) >= since)).map((u) => u.username);
-  out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', stale.length ? 'fail' : 'ok',
-    stale.length ? `作り直し前の利用者: ${stale.join(', ')}` : `${humans.length} 人`));
+  // #1781: realm.json から取り込んだ利用者は作成時刻を持たない（宣言に createdTimestamp が無く、取り込みは宣言の値をそのまま入れる）。
+  // CI の k3d の切替リハーサルで、作り直した realm の seed 利用者 4 人がすべて「作り直し前」と判定された（run 37734487908）。
+  // 作成時刻が無い利用者は、--baseline の同じ利用者の ID と比べる（realm.json は ID を宣言しないので、取り込み直すと ID が変わる）。
+  // 🔴 #1781（監査）: 基準の利用者に id の欠けた行が 1 件でもあれば、基準の ID 集合は「不明」として扱う（fail-closed）。
+  // 空集合にすると、作成時刻の無い利用者は ID を問わずすべて「作り直した」（ok）に倒れる。
+  // 基準に利用者が 0 人（切替前に realm が無かった）なら空集合のままでよい（切替後の利用者はすべて新しい）。
+  // 基準の Keycloak を収集できていない（keycloak が null・users が配列でない）ときも「不明」である（0 人と読まない）。
+  const beforeUsers = before?.keycloak?.users;
+  const baselineIdsKnown = Array.isArray(beforeUsers) && beforeUsers.every((u) => u && u.id);
+  const beforeIds = baselineIdsKnown ? new Set(beforeUsers.map((u) => u.id)) : null;
+  const stale = [];
+  const unknown = [];
+  for (const u of humans) {
+    const t = toMillis(u.createdTimestamp);
+    if (t !== null) {
+      if (t < since) stale.push(`${u.username}（作成 ${new Date(t).toISOString()}）`);
+    } else if (beforeIds && u.id) {
+      if (beforeIds.has(u.id)) stale.push(`${u.username}（作成時刻なし・ID が切替前と同じ）`);
+    } else unknown.push(u.username);
+  }
+  if (stale.length) {
+    out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', 'fail', `作り直し前の利用者: ${stale.join(', ')}`));
+  } else if (unknown.length) {
+    out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', before ? 'fail' : 'skip',
+      `作成時刻が無く ID で比べられない利用者: ${unknown.join(', ')}${!before ? '（--baseline が無い）'
+        : !baselineIdsKnown ? '（--baseline の利用者を読めていないか、id の無い行がある）' : '（収集に id が無い）'}`));
+  } else {
+    out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', 'ok', `${humans.length} 人`));
+  }
   const liveHumanNames = humans.map((u) => String(u.username).toLowerCase());
   const missing = expected.realm.humanUsers.filter((u) => !liveHumanNames.includes(u));
   out.push(finding('Keycloak', 'realm.json の seed 利用者がそろっている', missing.length ? 'fail' : 'ok',
@@ -280,8 +334,9 @@ function evaluate(data, expected, sinceIso, before = null) {
   const points = (data.qdrant?.collections || []).reduce((n, c) => n + Number(c.points || 0), 0);
   out.push(finding('Qdrant', '点が 0 件（書き込みの再開前）', data.qdrant ? (points === 0 ? 'ok' : 'fail') : 'fail',
     data.qdrant ? `コレクション ${data.qdrant.collections.length}・点 ${points}` : '読めなかった'));
-  out.push(finding('MinIO', 'オブジェクトが 0 件（書き込みの再開前）', data.minio ? (data.minio.objects === 0 ? 'ok' : 'fail') : 'fail',
-    data.minio ? `バケット ${data.minio.buckets.join(', ') || '(なし)'}・オブジェクト ${data.minio.objects}` : '読めなかった'));
+  const os = data.objectStorage;
+  out.push(finding('オブジェクトストレージ', 'オブジェクトが 0 件（書き込みの再開前）', os ? (os.objects === 0 ? 'ok' : 'fail') : 'fail',
+    os ? `バケット ${os.buckets.join(', ') || '(なし)'}・オブジェクト ${os.objects}` : '読めなかった'));
 
   const queues = data.rabbitmq?.queues;
   if (!queues) {
@@ -315,7 +370,7 @@ function countsOf(data) {
     realmClients: (data.keycloak?.clients || []).length,
     qdrantCollections: (data.qdrant?.collections || []).length,
     qdrantPoints: (data.qdrant?.collections || []).reduce((n, c) => n + Number(c.points || 0), 0),
-    minioObjects: data.minio ? data.minio.objects : null,
+    objectStorageObjects: data.objectStorage ? data.objectStorage.objects : null,
     queueMessages: (data.rabbitmq?.queues || []).reduce((n, q) => n + Number(q.messages || 0), 0),
     prometheusMinTime: data.prometheus ? data.prometheus.minTime : null,
   };
@@ -327,7 +382,7 @@ function compareCounts(before, after) {
   const rows = [];
   const dbs = [...new Set([...Object.keys(b.postgresRowsByDb), ...Object.keys(a.postgresRowsByDb)])].sort();
   for (const db of dbs) rows.push({ item: `PostgreSQL ${db}（行数の合計）`, before: b.postgresRowsByDb[db] ?? null, after: a.postgresRowsByDb[db] ?? null });
-  for (const k of ['realmUsers', 'realmClients', 'qdrantCollections', 'qdrantPoints', 'minioObjects', 'queueMessages', 'prometheusMinTime']) {
+  for (const k of ['realmUsers', 'realmClients', 'qdrantCollections', 'qdrantPoints', 'objectStorageObjects', 'queueMessages', 'prometheusMinTime']) {
     rows.push({ item: k, before: b[k], after: a[k] });
   }
   rows.push({ item: 'realms', before: b.realms.join(', '), after: a.realms.join(', ') });
@@ -360,7 +415,7 @@ function renderText(result) {
     for (const [db, n] of Object.entries(c.postgresRowsByDb)) L.push(`  PostgreSQL ${db}: ${n} 行`);
     L.push(`  Keycloak realm: ${c.realms.join(', ')}（${result.realm} の利用者 ${c.realmUsers}・クライアント ${c.realmClients}）`);
     L.push(`  Qdrant: コレクション ${c.qdrantCollections}・点 ${c.qdrantPoints}`);
-    L.push(`  MinIO: オブジェクト ${c.minioObjects ?? '(読めず)'}`);
+    L.push(`  オブジェクトストレージ: オブジェクト ${c.objectStorageObjects ?? '(読めず)'}`);
     L.push(`  RabbitMQ: 滞留 ${c.queueMessages}`);
     L.push(`  Prometheus: minTime ${c.prometheusMinTime ?? '(読めず)'}`);
   }
@@ -373,8 +428,23 @@ function renderText(result) {
 
 const env = (k, d) => process.env[k] || d;
 
-function run(cmd, args, what, input) {
-  const res = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, input });
+// #1781（監査）: 子プロセス（kubectl exec ほか）1 回あたりの上限時間。既定 120 秒、CUTOVER_CMD_TIMEOUT_MS で上書きする。
+// 上限が無いと、Pod 内のコマンドが応答を返さないまま収集が止まり、ジョブの上限まで何も出さない（run 37736890310 の検証の手順は
+// 53 分間出力が無いまま取り消された。止まった子プロセスはログからは特定できないが、この形と矛盾しない）。
+// 上限を超えたら例外にする —— tryCollect の資産は「収集できなかった」（判定は fail）、それ以外は終了コード 2 になる。
+const DEFAULT_CMD_TIMEOUT_MS = 120000;
+function cmdTimeoutMs() {
+  const raw = process.env.CUTOVER_CMD_TIMEOUT_MS;
+  if (raw === undefined || raw === '') return DEFAULT_CMD_TIMEOUT_MS;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`CUTOVER_CMD_TIMEOUT_MS は正の整数（ミリ秒）: ${raw}`);
+  return n;
+}
+
+function run(cmd, args, what, input, spawn = spawnSync) {
+  const timeout = cmdTimeoutMs();
+  const res = spawn(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, input, timeout, killSignal: 'SIGKILL' });
+  if (res.error && res.error.code === 'ETIMEDOUT') throw new Error(`${what}: ${cmd} が ${timeout} ms で終わらなかった（CUTOVER_CMD_TIMEOUT_MS）`);
   if (res.error) throw new Error(`${what}: ${cmd} を実行できません（${res.error.message}）`);
   if (res.status !== 0) throw new Error(`${what}: ${cmd} が失敗しました（exit ${res.status}）\n${(res.stderr || '').trim()}`);
   return res.stdout;
@@ -450,7 +520,7 @@ async function collect(databases) {
       '--user', env('CUTOVER_KC_ADMIN_USER', 'admin')], 'kcadm config', `${env('CUTOVER_KC_ADMIN_PASSWORD', 'admin')}\n`);
     const realms = JSON.parse(kcadm(['get', 'realms', '--fields', 'realm'])).map((r) => r.realm);
     if (!realms.includes(realm)) return { realms, users: [], clients: [] };
-    const users = JSON.parse(kcadm(['get', 'users', '-r', realm, '--limit', '1000', '--fields', 'username,createdTimestamp']));
+    const users = JSON.parse(kcadm(['get', 'users', '-r', realm, '--limit', '1000', '--fields', 'id,username,createdTimestamp']));
     const clients = JSON.parse(kcadm(['get', 'clients', '-r', realm, '--fields', 'clientId'])).map((c) => c.clientId);
     return { realms, users, clients };
   });
@@ -465,8 +535,17 @@ async function collect(databases) {
     return { collections };
   });
 
-  const minio = await tryCollect('MinIO', () =>
-    parseMinioListing(run('kubectl', ['-n', msp, 'exec', podName(msp, 'app=minio'), '--', 'ls', '-R', '/data'], 'MinIO の一覧')));
+  // #1781: SeaweedFS の filer は Pod の loopback（127.0.0.1:8888）だけで待ち受ける（IADR-0461 決定 2）ので、Pod 内の wget で読む。
+  const objectStorage = await tryCollect('オブジェクトストレージ（SeaweedFS）', () => {
+    const pod = podName(msp, 'app=seaweedfs');
+    const filer = env('CUTOVER_FILER_URL', 'http://127.0.0.1:8888');
+    return countFilerObjects((dirPath, last) => {
+      const q = `limit=1000${last ? `&lastFileName=${encodeURIComponent(last)}` : ''}`;
+      const url = `${filer}${dirPath.split('/').map(encodeURIComponent).join('/')}/?${q}`;
+      return JSON.parse(run('kubectl', ['-n', msp, 'exec', pod, '--', 'wget', '-q', '-O', '-', '--header', 'Accept: application/json', url],
+        `filer の一覧（${dirPath}）`));
+    });
+  });
 
   const rabbitmq = await tryCollect('RabbitMQ', () => ({
     queues: JSON.parse(run('kubectl', ['-n', infra, 'exec', podName(infra, 'app=rabbitmq'), '--', 'rabbitmqctl', 'list_queues', 'name', 'messages', 'consumers',
@@ -487,7 +566,7 @@ async function collect(databases) {
     postgres: { databases: dbs, tables, authz },
     keycloak,
     qdrant,
-    minio,
+    objectStorage,
     rabbitmq,
     prometheus,
   };
@@ -550,7 +629,9 @@ module.exports = {
   declaredRealm,
   declaredAbacSeed,
   mspQueuePrefixes,
-  parseMinioListing,
+  countFilerObjects,
+  run,
+  DEFAULT_CMD_TIMEOUT_MS,
   evaluate,
   countsOf,
   compareCounts,

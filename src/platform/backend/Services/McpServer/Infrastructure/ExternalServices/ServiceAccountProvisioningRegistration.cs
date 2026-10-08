@@ -2,7 +2,7 @@ using McpServer.Domain.Ports;
 
 namespace McpServer.Infrastructure.ExternalServices;
 
-// FR-16, SC-12, 計画 ADR-0123 決定 2・4, [[IADR-0515]] 決定 2・5 (#1786): IdP への書き込み口の選択と、その資格情報の受け取り。
+// FR-16, SC-12, 計画 ADR-0123 決定 2・4, [[IADR-0516]] 決定 2・5 (#1786): IdP への書き込み口の選択と、その資格情報の受け取り。
 //
 // 値域（`McpClientProvisioning:Provider`）:
 //   - `keycloak`  … Keycloak Admin REST へ書く（`McpClientProvisioning:Keycloak:{BaseUrl,Realm,ClientId,ClientSecret}` が必須）。
@@ -10,7 +10,7 @@ namespace McpServer.Infrastructure.ExternalServices;
 //   - 未設定      … 🔴 **書き込み口が無い。** 無人の登録・属性の差し替えを 503 で拒む（登録簿にも書かない）。
 //
 // 🔴 **未設定を起動失敗にしない理由**（`IdentityAdmin:Provider` との違い）: 配備の資格情報（realm の管理用クライアントと
-//   その secret の供給）は本 PR の後の段で入る（IADR-0515 §残余）。起動失敗にすると、その間 MCP サーバーそのもの
+//   その secret の供給）は本 PR の後の段で入る（IADR-0516 §残余）。起動失敗にすると、その間 MCP サーバーそのもの
 //   （ツールの公開・有人の登録・無効化）が止まる。**未設定は「無人を登録簿だけへ書く」へは倒さない** —— それは ADR-0123 が
 //   改めた現状そのもの（検証の掛からない属性を写しとして残す）であり、決定 4 の暫定手段（IdP へ配らない）と同じ側の 503 にする。
 public static class ServiceAccountProvisioningRegistration
@@ -78,7 +78,7 @@ public static class ServiceAccountProvisioningRegistration
     }
 }
 
-// [[IADR-0515]] 決定 2: Keycloak Admin REST の接続先と、管理用の機密クライアントの資格情報。
+// [[IADR-0516]] 決定 2: Keycloak Admin REST の接続先と、管理用の機密クライアントの資格情報。
 //
 // 🔴 与える `realm-management` のクライアントロールは **`manage-clients` と `manage-users` の 2 つだけ**である
 //   （作成・補償の削除・サービスアカウントの属性の書き込み。view は manage が含む）。`manage-realm` / `impersonation` は与えない。

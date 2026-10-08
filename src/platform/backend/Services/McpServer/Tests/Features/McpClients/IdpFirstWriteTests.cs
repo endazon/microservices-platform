@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace McpServer.Tests.Features.McpClients;
 
-// FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0515]] 決定 4 (#1786): **検証 → IdP → 登録簿** と補償。
+// FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0516]] 決定 4 (#1786): **検証 → IdP → 登録簿** と補償。
 // 器（WebApplicationFactory）なしで、順序と取り消しだけを固定する。
 [Trait("TestKind", "Unit")]
 public class IdpFirstWriteTests

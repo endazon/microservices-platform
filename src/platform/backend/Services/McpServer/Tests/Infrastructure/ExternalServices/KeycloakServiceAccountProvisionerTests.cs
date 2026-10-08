@@ -9,10 +9,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace McpServer.Tests.Infrastructure.ExternalServices;
 
-// FR-16, SC-12, 計画 ADR-0123 決定 1・2・フォローアップ 1・3, [[IADR-0515]] 決定 1・3・4・6 (#1786):
+// FR-16, SC-12, 計画 ADR-0123 決定 1・2・フォローアップ 1・3, [[IADR-0516]] 決定 1・3・4・6 (#1786):
 // SC-12 の IdP への書き込み口（Keycloak Admin REST）。
 //
-// 🔴 **Keycloak は状態を持つ偽物（`FakeKeycloak`）で置き換える。** 稼働の Keycloak での疎通は未検証であり（IADR-0515 §残余）、
+// 🔴 **Keycloak は状態を持つ偽物（`FakeKeycloak`）で置き換える。** 稼働の Keycloak での疎通は未検証であり（IADR-0516 §残余）、
 // ここで固定するのは「どの順で何を送り、失敗したら何を戻すか」である。**緑は「実 IdP へ反映できる」を意味しない。**
 [Trait("TestKind", "Unit")]
 public class KeycloakServiceAccountProvisionerTests

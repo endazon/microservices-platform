@@ -2,7 +2,7 @@
 title: 作業仕様書 — SC-12 の登録で Keycloak のクライアントとサービスアカウントの属性を作り、部分集合の判定を IdP へ書く前に掛ける（段 1。#1786）
 type: spec
 status: done
-related_ids: [FR-16, FR-09, UC-09, SC-12, ADR-0123, ADR-0062, ADR-0088, ADR-0024, ADR-0034, IADR-0515, IADR-0297, IADR-0329, IADR-0366, IADR-0413, IADR-0479]
+related_ids: [FR-16, FR-09, UC-09, SC-12, ADR-0123, ADR-0062, ADR-0088, ADR-0024, ADR-0034, IADR-0516, IADR-0297, IADR-0329, IADR-0366, IADR-0413, IADR-0479]
 author: claude
 created: 2026-10-08
 updated: 2026-10-08
@@ -15,7 +15,7 @@ issue: "#1786"
 
 # 作業仕様書 — SC-12 を IdP への入口にする（段 1: 書く前の検証と IdP への書き込み。#1786）
 
-> 本仕様書は実装着手前に作成した（着手 2026-10-08）。判断の記録は **IADR-0515** に置く。
+> 本仕様書は実装着手前に作成した（着手 2026-10-08）。判断の記録は **IADR-0516** に置く。
 > 計画は project-planning `origin/main` の隣接クローン（読み取り専用）で読んだ。基点は MSP `origin/develop` `5748d5d9`。
 > 🔴 **稼働中のクラスタ・Keycloak には何も実行しない。** Keycloak は試験の中の偽物（状態を持つ `HttpMessageHandler`）だけで扱う。
 
@@ -27,7 +27,7 @@ issue: "#1786"
 
 ## 計画が決めていること・決めていないこと
 
-| 計画が決めている | 計画が決めていない（本件で決める＝IADR-0515） | 計画が決めていない（**問う**） |
+| 計画が決めている | 計画が決めていない（本件で決める＝IADR-0516） | 計画が決めていない（**問う**） |
 | --- | --- | --- |
 | 属性の正は IdP の `service-account-<client>`（ADR-0123 決定 1） | 書き込みの口の置き場所と形 | **Q1** 有人のクライアントのテンプレート（リダイレクト先等の入力が契約に無い） |
 | SC-12 の登録・差し替えで機密クライアント（無人ならサービスアカウントつき）を作り、属性を利用者属性として書く。登録簿は写し（決定 2） | 管理用の資格情報と最小ロール | **Q2** 無人のクライアントの secret を誰がどの経路で受け取るか |
@@ -41,7 +41,7 @@ issue: "#1786"
 
 - **Q1（有人）＝既知の逸脱**: ADR-0123 決定 2 は「Keycloak のクライアント（無人ならサービスアカウントを持つ機密クライアント）を作り」と書き、有人のクライアントも作る読みを許す。有人（認可コード + PKCE）のクライアントには、少なくともリダイレクト先と公開／機密の別が要るが、SC-12 の入力（計画の画面・登録の契約）に無い。**本段は有人を IdP へ書かない**（従来どおり登録簿だけ）。有人も作るなら、入力とテンプレートの裁定が要る。 → planning#751。
 - **Q2（secret の受け渡し）**: 機密クライアントの secret は Keycloak が生成する。本段は応答で返さず、管理者が Keycloak の管理画面で取得する前提にした（属性の直接割当ではないので決定 2 の禁止には当たらない、と読んだ）。SC-12 で表示・再発行させるか、別の秘密の経路（SC-22）に載せるかは計画が決めていない。 → planning#751。
-- **Q3（無効化）＝計画が答えている**: 無効化は「即時に接続拒否」であり、MCP サーバーが呼び出しごとに登録簿を引いて拒否する形で満たしている。多層の防御として IdP のクライアントの `enabled` へ写すことを IADR-0515 決定 4a で決め、実装は #1817 で行う。差し替えで IdP に作るときは、無効な行から有効なクライアントを生まない（無効のまま作る）。
+- **Q3（無効化）＝計画が答えている**: 無効化は「即時に接続拒否」であり、MCP サーバーが呼び出しごとに登録簿を引いて拒否する形で満たしている。多層の防御として IdP のクライアントの `enabled` へ写すことを IADR-0516 決定 4a で決め、実装は #1817 で行う。差し替えで IdP に作るときは、無効な行から有効なクライアントを生まない（無効のまま作る）。
 
 ## 現状（実測。`5748d5d9`）
 
@@ -69,7 +69,7 @@ issue: "#1786"
 | `docs/api/FR-16_mcp-server.md`（管理 REST） | **直す**（追記） | 503 / 502 / 400（IdP に既にある）の応答が増える |
 | `docs/tests/FR-16_mcp-server.md`（§クライアント登録管理） | **直す**（追記） | 本段の試験の写像 |
 | `.ai-context/adr/IADR-0297`（§結果・§残余「クライアント作成を伴わない」） | **直さない** | 凍結記録（`.ai-context/` の本文プロズは書き換えない） |
-| `.ai-context/adr/IADR-0479`（§残るリスク「#1786 で追う」） | **直さない** | 凍結記録。2026-10-08 の追記で #1786 へ委ねており、本段の結論は IADR-0515 が持つ |
+| `.ai-context/adr/IADR-0479`（§残るリスク「#1786 で追う」） | **直さない** | 凍結記録。2026-10-08 の追記で #1786 へ委ねており、本段の結論は IADR-0516 が持つ |
 | `.ai-context/adr/IADR-0329` L80・`docs/tests/SC-17` T-42（「クライアント作成」が 403） | **対象外** | `identity-admin` の陰性対照の話であり、本段の誤りの側ではない（別クライアント `mcp-client-admin` を足すので、あちらの最小権限は変わらない） |
 
 ### 規則 10 — この変更で新たに誤りになる自分の記述
@@ -78,7 +78,7 @@ issue: "#1786"
 - 画面仕様書の「繰り延べ」「実装は未着手」は、**無人について**だけ誤りになる。有人は引き続き登録簿だけなので、「一部する」は残す（理由を有人と配備の配線へ差し替える）。
 - 導出値: `status: completed`（画面仕様書）は「記述する範囲の実装とテストが揃った」の意であり、本段の後も有人と配備の配線が残るので据え置き、注記で範囲を書く。
 
-## 設計（正は IADR-0515）
+## 設計（正は IADR-0516）
 
 1. 口 `IServiceAccountProvisioner`（Domain/Ports）と実装 `KeycloakServiceAccountProvisioner`（named `HttpClient` ＋ client_credentials）。
 2. 管理用は別の機密クライアント `mcp-client-admin`（`manage-clients`・`manage-users`）。構成 `McpClientProvisioning:*`。未設定は 503・`in-memory` は非配備ホスト限定・`keycloak` は資格情報が欠ければ起動時に落ちる。
@@ -94,10 +94,10 @@ issue: "#1786"
 | --- | --- | --- |
 | AC1: 無人の登録が成功したら、Keycloak に機密クライアントとサービスアカウントがあり、割り当てた属性が利用者属性として入っている（**統合試験**） | 🔶 **一部**（偽の Keycloak と API 面。稼働の Keycloak での統合試験は無い） | T-1786-01・02・05・08（`KeycloakServiceAccountProvisionerTests`）／T-1786-31・35（`IdpProvisioningEndpointTests`） |
 | AC2: 部分集合でない属性、または `private-note` を含む割当は、IdP へ何も書かずに拒否する（登録・差し替え） | ✅ | T-1786-32・33・34（否定形）／T-1786-24（IdP へ書けなければ登録簿へも書かない） |
-| AC3: 登録簿と IdP が食い違うとき、照合が検知して知らせる | ❌ **未実装**（IADR-0515 決定 5。後続の段） | — |
+| AC3: 登録簿と IdP が食い違うとき、照合が検知して知らせる | ❌ **未実装**（IADR-0516 決定 5。後続の段） | — |
 | AC4（否定形）: 入口ができるまで、MCP のサービスアカウントへ Keycloak で直接属性を割り当てない | ✅（コードで担える範囲）: 口が未設定の配備は無人を 503 で拒み登録簿にも書かない／入口を通らずに IdP にあるクライアントへは書かない | T-1786-38（未設定は 503・登録簿に書かない）／T-1786-04・25・36（既にあれば書かない） |
 | フォローアップ 3: 認可サービスの照会がサービスアカウントの利用者を返す | 🔶 **コードの経路は固定**・稼働の Keycloak での実測は無い | T-1786-11（認可サービス `KeycloakIdentityAdminClientTests`）／T-1786-02・03（書き込み口が同じ照会で確かめ、返らなければ書かない） |
-| 補償（IADR-0515 決定 4） | ✅ | T-1786-03・05・06・07・21・22・23 |
+| 補償（IADR-0516 決定 4） | ✅ | T-1786-03・05・06・07・21・22・23 |
 | 口の選択（同 決定 2） | ✅ | T-1786-41〜45 |
 | 有人は IdP へ書かない（同 決定 3・既知の逸脱。planning#751） | ✅ | T-1786-37・38 の陽性対照 |
 | 🔴 差し替えは入口の印が無いクライアントへ書かない（PR #1816 監査 🔴-1） | ✅ | T-1786-12（偽の Keycloak）／T-1786-39（API 面） |
@@ -110,8 +110,8 @@ issue: "#1786"
 ## 段の分け方（issue の受け入れ基準に沿う）
 
 - **段 1（本 PR）**: 書く前の検証 ＋ IdP への書き込みの口（作成・差し替え・補償・フォローアップ 3 の確かめ）。配備では口を宣言しない（503）。
-- **段 2（#1817）**: 配備の配線 ——realm へ `mcp-client-admin`（`manage-clients`・`manage-users`）、secret の供給（ExternalSecret `mcp-client-admin-oidc`・Vault の初期投入 `deploy/local/vault/eso/bootstrap.sh`・`scripts/k8s-local-up.sh` の手動経路とその試験・`deploy/bootstrap/sc22-secret-items.json`）、helm values の `McpClientProvisioning__Provider=keycloak` と `ClientSecret` の secretKeyRef、compose の配線。**稼働の Keycloak での実測**（AC1 の統合の証跡・フォローアップ 3）。 無効化の IdP への写し（IADR-0515 決定 4a）も含む。
-- **段 3（#1818）**: 食い違いの検知（IADR-0515 決定 5）—— McpServer の常駐の照合・計器（ゲージ ＋ 結末のカウンタ）・警報 2 本（写し 4 か所）・`scripts.repo.test.js` の突合。AC3。 交差した差し替えの残る競合（IdP は後の要求・登録簿は先の要求）もここで拾う。
+- **段 2（#1817）**: 配備の配線 ——realm へ `mcp-client-admin`（`manage-clients`・`manage-users`）、secret の供給（ExternalSecret `mcp-client-admin-oidc`・Vault の初期投入 `deploy/local/vault/eso/bootstrap.sh`・`scripts/k8s-local-up.sh` の手動経路とその試験・`deploy/bootstrap/sc22-secret-items.json`）、helm values の `McpClientProvisioning__Provider=keycloak` と `ClientSecret` の secretKeyRef、compose の配線。**稼働の Keycloak での実測**（AC1 の統合の証跡・フォローアップ 3）。 無効化の IdP への写し（IADR-0516 決定 4a）も含む。
+- **段 3（#1818）**: 食い違いの検知（IADR-0516 決定 5）—— McpServer の常駐の照合・計器（ゲージ ＋ 結末のカウンタ）・警報 2 本（写し 4 か所）・`scripts.repo.test.js` の突合。AC3。 交差した差し替えの残る競合（IdP は後の要求・登録簿は先の要求）もここで拾う。
 
 ## 検証
 
@@ -123,7 +123,7 @@ issue: "#1786"
 - 🔴-1: 差し替えは `GET /clients/{id}` の入口の印（`msp.mcp-client.managed-by=mcp-server`）を確かめ、無ければ何も書かずに 400。プロセス内の口も `Seed` したものを印なしとして同じ意味論にした。偽の Keycloak は `GET /clients/{id}`（`attributes` つき）を返し、`clientId=` を完全一致（`search=true` で部分一致）で扱う。
 - 🟡-1: IdP への書き込みと補償は要求の取り消しを伝えない（`CancellationToken.None`）。補償は `OperationCanceledException` も含めて走る。HttpClient の `Timeout` を明示し（`McpClientProvisioning:Keycloak:TimeoutSeconds`。既定 10 秒）、時間切れは `Failed`（502）へ写す。
 - 🟡-2: 取り消しは現在値がこの要求の書いた値のままのときだけ書き戻す（`IdpWrite.WrittenAttributes`）。残る競合は #1818。
-- 🟡-3・4・5: IADR-0515 §結果・§残余・番号の注記・決定 3 を改めた。
+- 🟡-3・4・5: IADR-0516 §結果・§残余・番号の注記・決定 3 を改めた。
 - 🟢: `fullScopeAllowed=false`・401 の 1 度の取り直し・失敗の結果での補償・`Location` 欠けでの補償・`throw;` での再送出。
 
 ### 変異試験（push 前に実施。すべて戻し、`git status` で残渣 0 を確認）
@@ -137,7 +137,7 @@ issue: "#1786"
 
 ## ［2026-10-08 追記 / PR #1816 の再監査（GO）の残りへの対応］
 
-- 🟡-A: `POST /clients` の失敗・時間切れ・5xx は、clientId で引き直して入口の印があれば消してから `Failed`（T-1786-20）。残る隙（並行登録・引き直しの失敗）は IADR-0515 決定 4 に書き、#1818 の照合へ委ねた。
+- 🟡-A: `POST /clients` の失敗・時間切れ・5xx は、clientId で引き直して入口の印があれば消してから `Failed`（T-1786-20）。残る隙（並行登録・引き直しの失敗）は IADR-0516 決定 4 に書き、#1818 の照合へ委ねた。
 - 🟡-B: 補償へ渡すトークンが取り消せないこと（`IdpFirstWriteTests`）、取り消し済みのトークンでも Keycloak 版の取り消しが走ること（T-1786-28）、書き始めた後の要求の取り消しが書き込みと補償を止めないこと（T-1786-29）を固定した。
 - 🟡-C: DI から引いた名前付きの HttpClient の `Timeout` が構成値であること（T-1786-47）。
 - 🟢: トークンの無効化を `WaitAsync` に、401 の応答を破棄してから取り直し、取り直しのトークン要求に古い Bearer を載せない（T-1786-30）。応答の本文が読めないときは `Failed`（T-1786-31b）。プロセス内の口の取り消しの守り（T-1786-48）。

@@ -12,7 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace McpServer.Tests.Features.McpClients;
 
-// FR-16, FR-09, UC-09, SC-12, 計画 ADR-0123 決定 2・3・4, ADR-0062 決定 2・3, [[IADR-0515]] (#1786):
+// FR-16, FR-09, UC-09, SC-12, 計画 ADR-0123 決定 2・3・4, ADR-0062 決定 2・3, [[IADR-0516]] (#1786):
 // SC-12 の登録・差し替えが **検証 → IdP → 登録簿** の順で書くことを、API 面から固定する。
 //
 // IdP はプロセス内の口（`InMemoryServiceAccountProvisioner`）であり、ここで見るのは「IdP へ何が書かれたか（書かれなかったか）」と
@@ -166,7 +166,7 @@ public class IdpProvisioningEndpointTests(TestWebApplicationFactory factory)
         Idp.IsEnabled("legacy-disabled").Should().BeFalse();
     }
 
-    // T-1786-37: 有人は IdP へ書かない（テンプレートが計画に無い。IADR-0515 決定 3・§残余）。登録簿へは従来どおり書く。
+    // T-1786-37: 有人は IdP へ書かない（テンプレートが計画に無い。IADR-0516 決定 3・§残余）。登録簿へは従来どおり書く。
     [Fact]
     public async Task 有人の登録はIdPへ書かない()
     {

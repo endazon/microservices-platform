@@ -3,15 +3,15 @@ title: LLM 補完メトリクス（終了理由・拒否率）ログ・可観測
 type: observability-spec
 status: in-progress
 created: 2026-07-28
-updated: 2026-09-05
+updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
-ids: [FR-11, NFR-21, UC-01, UC-02]
+ids: [FR-11, NFR-21, UC-01, UC-02, NFR-19]
 adrs: [ADR-0006, ADR-0010, ADR-0025, ADR-0038, ADR-0044]
 iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374]
-specs: [20260905_issue-1091_llm-upstream-status-axis]
-issues: [#380, #786, #787, #863, #1091]
+specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability]
+issues: [#380, #786, #787, #863, #1091, #1819]
 -->
 
 # 可観測性仕様書: LLM 補完の終了理由（拒否率）
@@ -43,6 +43,11 @@ issues: [#380, #786, #787, #863, #1091]
 | `llm.provider` | `claude` / `selfhosted` / `copilot` / `none` | 呼び出し先プロバイダ |
 | `llm.confidentiality` | `public` / `internal` / `confidential` / `restricted` | 入力の最高機密区分 |
 | `llm.upstream_status` | `none` / `rate_limited` / `client_error` / `server_error` / `transport` / `other` | **上流が返したものの軸**（`llm.result` と直交する）。#1091 で追加（下記） |
+
+**［2026-10-08 追記］** `llm.result` の未送信の 3 値（`egress_denied` / `provider_missing` / `upstream_error`）は、
+応答の `failureKind` と**同じ文字列**である（計器の定数は応答の契約の定数を引く）。計器の無い環境
+（Prometheus を持たない経路）では、呼び出し側が記録した `failureKind` と `upstreamStatusCode`、
+およびゲートウェイの warn（`LLM egress denied`。同じ用途と理由は 5 分ごとの要約 1 行）が同じ切り分けの手がかりになる。
 
 **カーディナリティ**: 非有界になり得るのは `purpose`（呼び出し側の自由文字列）と `stop_reason`
 （未知値を原文透過する。プロバイダ境界での正準語彙への正規化による）の 2 つで、いずれも既知集合以外は **`other` へ集約**する。

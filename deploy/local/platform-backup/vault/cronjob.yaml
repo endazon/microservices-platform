@@ -42,7 +42,7 @@ spec:
               # 実行時にネットワークから何も入れない（deploy/local/platform-backup/image/Dockerfile。scripts/k8s-local-images.sh が
               # ビルドする。レジストリには無いので IfNotPresent で pull しない。タグは中身の版から作り、上げるときは 3 か所を揃える）。
               # /vault/data の init ファイル（uid 100・0600）を読むため root で動かす（マウントは読み取り専用）。
-              image: k3d-local/platform-backup:pg16.15-age1.3.1-r6
+              image: k3d-local/platform-backup:pg16.15-age1.3.2-r0
               imagePullPolicy: IfNotPresent
               command: ["/bin/bash", "/opt/platform-backup/backup.sh"]
               env:

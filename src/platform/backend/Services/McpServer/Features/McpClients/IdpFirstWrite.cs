@@ -2,7 +2,7 @@ using McpServer.Domain.Ports;
 
 namespace McpServer.Features.McpClients;
 
-// FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0515]] 決定 4 (#1786): **検証 → IdP → 登録簿** の順で書き、
+// FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0516]] 決定 4 (#1786): **検証 → IdP → 登録簿** の順で書き、
 // 登録簿への書き込みが失敗したら IdP を書く前へ戻す（補償）。登録と差し替えの両方がこの 1 つを通る。
 //
 // ■ 🔴 **検証はこの関数の前で終わっている**（`McpClientEndpoints.RejectUnassignableAsync`）。ここへ来た要求だけが IdP へ書かれる。
@@ -11,7 +11,7 @@ namespace McpServer.Features.McpClients;
 // ■ 🔴 **IdP への書き込みと補償には要求の取り消しを伝えない**（PR #1816 監査 🟡-1）。書きかけで止めると孤児が残る。
 //   期限は口の HttpClient の Timeout が持つ。登録簿への書き込みが取り消し・時間切れで止まったときも補償する。
 // ■ 登録簿への書き込みが例外を投げたときだけでなく、**失敗の結果（4xx / 5xx）を返したときも**補償する。
-// ■ 補償が失敗したら、元の失敗を投げる（補償の失敗は口がログに残す）。残った食い違いは照合（IADR-0515 決定 5）が拾う。
+// ■ 補償が失敗したら、元の失敗を投げる（補償の失敗は口がログに残す）。残った食い違いは照合（IADR-0516 決定 5）が拾う。
 internal static class IdpFirstWrite
 {
     public static async Task<IResult> RunAsync(

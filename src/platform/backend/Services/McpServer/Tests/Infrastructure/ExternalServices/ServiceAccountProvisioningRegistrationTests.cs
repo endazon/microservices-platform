@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 
 namespace McpServer.Tests.Infrastructure.ExternalServices;
 
-// FR-16, SC-12, 計画 ADR-0123 決定 4, [[IADR-0515]] 決定 2・5 (#1786): IdP への書き込み口の選択。
+// FR-16, SC-12, 計画 ADR-0123 決定 4, [[IADR-0516]] 決定 2・5 (#1786): IdP への書き込み口の選択。
 [Trait("TestKind", "Unit")]
 public class ServiceAccountProvisioningRegistrationTests
 {

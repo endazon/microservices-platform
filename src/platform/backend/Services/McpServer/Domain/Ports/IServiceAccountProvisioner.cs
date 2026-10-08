@@ -1,6 +1,6 @@
 namespace McpServer.Domain.Ports;
 
-// FR-16, FR-09, UC-09, SC-12, 計画 ADR-0123 決定 1・2・3, ADR-0062 決定 3, ADR-0088 決定 1, [[IADR-0515]] (#1786):
+// FR-16, FR-09, UC-09, SC-12, 計画 ADR-0123 決定 1・2・3, ADR-0062 決定 3, ADR-0088 決定 1, [[IADR-0516]] (#1786):
 // **SC-12 を IdP への入口にする書き込み口。** 無人（サービスアカウント）の MCP クライアントについて、
 // IdP（Keycloak）に機密クライアントとサービスアカウントを作り、割り当てた ABAC 属性を
 // `service-account-<client>` の利用者属性として書く。
@@ -8,7 +8,7 @@ namespace McpServer.Domain.Ports;
 // ■ 🔴 **この口は検証しない。** 部分集合の判定と個人資料の割当禁止は呼び出し元（`McpClientEndpoints.RejectUnassignableAsync`）が
 //   **この口を呼ぶ前に**掛ける（ADR-0123 決定 3）。ここに 2 つ目の判定を置くと、片方だけが緩む。
 // ■ 🔴 **書いたものは取り消せる形で返す**（<see cref="IdpWrite"/>）。登録簿への書き込みが後で失敗したら、
-//   呼び出し元は <see cref="UndoAsync"/> で IdP を書く前の状態へ戻す（補償。IADR-0515 決定 4）。
+//   呼び出し元は <see cref="UndoAsync"/> で IdP を書く前の状態へ戻す（補償。IADR-0516 決定 4）。
 // ■ 🔴 **入口が作っていないクライアントへは書かない**（<see cref="IdpWriteKind.AlreadyExists"/>）。登録では IdP に同じ clientId が
 //   あれば、差し替えでは入口の印（`managed-by`）が無ければ、何も書かない。入口を通らずに作られたクライアント
 //   （プラットフォーム自身の機密クライアントを含む）へ属性を書くと、検証の掛からない主体ができ、その主体の本来の属性を
