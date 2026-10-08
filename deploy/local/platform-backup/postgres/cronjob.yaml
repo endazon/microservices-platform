@@ -45,7 +45,7 @@ spec:
               # scripts/k8s-local-images.sh がビルドする。レジストリには無いので IfNotPresent で pull しない。
               # タグは中身の版から作る —— 上げるときは Dockerfile・k8s-local-images.sh・2 つの CronJob の 3 か所を揃える。
               # 保管先（WSL の drvfs）への書き込みのため root で動かす。
-              image: k3d-local/platform-backup:pg16.15-age1.3.1-r6
+              image: k3d-local/platform-backup:pg16.15-age1.3.2-r0
               imagePullPolicy: IfNotPresent
               command: ["/bin/bash", "/opt/platform-backup/backup.sh"]
               env:

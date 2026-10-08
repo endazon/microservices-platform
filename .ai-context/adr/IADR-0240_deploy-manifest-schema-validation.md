@@ -12,7 +12,7 @@ plan_refs:
   - "ADR-0021（エッジ・実行基盤）"
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-10-08
 ---
 
 # IADR-0240 chart / overlay のスキーマ突合（kubeconform + CRDs-catalog）
@@ -124,3 +124,10 @@ EXIT=1
 上記 2 点は「#783 後半」（統合スタックを CI で起こす経路。#466 の土台）とは別物である —— 本 PR が
 足したのは前半（chart / overlay の検証ジョブ）への kubeconform 導入であり、後半は依然未着手のまま
 （`.ai-context/specs/20260821_issue-783_deploy-manifest-ci.md`「後半の切り分け」節を参照）。
+
+## ［2026-10-08 追記 / #1820］カタログはコミット SHA で固定する
+
+- **事象**: 上流 `datreeio/CRDs-catalog` が 2026-10-08 13:01 UTC に `external-secrets.io` の CRD を更新した（`b7e2015`「update external-secrets.io CRDs (#988)」）。新しい `clustersecretstore_v1.json` は取得できるが、kubeconform v0.6.7 がスキーマとして扱えず、`deploy/local/vault`・`deploy/local/vault-persistence` の `ClusterSecretStore` が `could not find schema` になった（`-debug` で `using schema found at …` の直後に not found を実測）。`main` を引いていたため、`deploy/` に触れない PR（#1815）まで `static-checks-units` が落ちた。
+- **決定**: 2 段目のカタログ参照を `main` から**コミット SHA**（`f1e7f6bc0537bf0622ffe6e47dbaa85914fabbec`＝`b7e2015` の直前）へ固定する（`scripts/check-deploy-manifests.js` の `CRDS_CATALOG_REF`）。このコミットのスキーマで `deploy/local/vault` は 4/4 Valid を実測した。ブランチ参照へ戻ったら `scripts/scripts.repo.test.js` が落ちる。
+- **上げ方**: 新しい CRD（新しい kind・版）を使うとき、または年次・契機の点検で、候補の SHA を置いて `node scripts/check-deploy-manifests.js` を実走し、全 chart / overlay が通ることを確かめてから上げる。上流の更新を自動では取り込まない（固定と引き換えの手間であり、意図どおり）。
+- **残余**: 固定した版のカタログに無い新しい CRD は、上げるまで fail-closed で落ちる（要点 4 のまま）。kubeconform 本体を上げると新しいスキーマを扱える可能性があるが、本件では見送る（別件）。
