@@ -58,7 +58,7 @@ jobs:
   rehearsal:
     name: cutover-rehearsal
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 75
     env:
       # integration-stack.yml と同じ読み（dispatch の istio=false だけがメッシュ無し）。無しのときは 0 を明示する ——
       # 再構築で起動器を再実行するとき、未指定は「現行を引き継ぐ」と読まれるため（IADR-0488）。
@@ -265,6 +265,8 @@ jobs:
       # 手順 5: 検証（書き込みの再開前）。両方が緑であること。
       - name: 🔴 Gate — verify the rebuild (procedure 5)
         id: verify
+        # 手順ごとの上限（ジョブの上限まで黙って待たない。後段の記録と診断の時間を残す）。
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           # 2 つの判定は片方の赤で他方を飛ばさない（1 回の run で得られる証拠を減らさない）。合否はどちらも緑のときだけ緑。
@@ -284,6 +286,7 @@ jobs:
 
       # リハーサル 4: 陰性対照（消しすぎを検証スクリプトが捕まえること）。検証の後に行う（スタックを壊すため）。
       - name: 🔴 Negative control — drop one AST database (--baseline must catch it)
+        timeout-minutes: 15
         run: |
           set -euo pipefail
           ast_db="$(node - "$OUT/before.json" <<'NODE'
@@ -311,6 +314,7 @@ jobs:
           NODE
 
       - name: 🔴 Negative control — delete and recreate postgres-data (the kept side must fail)
+        timeout-minutes: 15
         run: |
           set -euo pipefail
           kubectl -n "$INFRA_NS" get pvc postgres-data -o json | node -e '
