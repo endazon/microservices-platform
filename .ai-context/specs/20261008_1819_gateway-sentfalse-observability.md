@@ -66,8 +66,8 @@ issue: "#1819"
 
 | # | 基準 | 確かめ方 |
 | --- | --- | --- |
-| A1 | 越境拒否は Warning を 1 行出し、理由・用途・機密区分を載せる。同じ (用途, 理由) の 2 回目以降は 5 分の間出ない。5 分後の次の発生で抑えた件数つきの 1 行が出る | `EgressDeniedLogTests`（一括・逐次） |
-| A2 | `Sent=false` の 6 経路すべてが `FailureKind` を持つ（一括 3・逐次 3）。上流不調は HTTP 状態を `UpstreamStatusCode` に載せる。`Sent=true` は両方 null | `CompletionFailureKindTests`・既存の端点試験 |
+| A1 | 越境拒否は Warning を 1 行出し、理由・用途・機密区分を載せる。同じ (用途, 理由) の 2 回目以降は 5 分の間出ない。5 分後の次の発生で抑えた件数つきの 1 行が出る | `SentFalseObservabilityTests`（一括・逐次） |
+| A2 | `Sent=false` の 6 経路すべてが `FailureKind` を持つ（一括 3・逐次 3）。上流不調は HTTP 状態を `UpstreamStatusCode` に載せる。`Sent=true` は両方 null | `SentFalseObservabilityTests`・既存の端点試験 |
 | A3 | gRPC の応答・イベントが同じ 2 項目を運ぶ（REST と一致） | `GrpcCompleteTests` / `GrpcCompleteStreamTests` への追加 |
 | A4 | 鍵未設定の埋め込みはスタックを出さない。10 回呼んでも Warning は 1 行。応答は `Embedded=false`・`Retryable=true` のまま。外部へ送らない | `VoyageEmbeddingKeyTests` への追加 |
 | A5 | 取り込みの再試行は有界（4 回 → DLQ）で、鍵未設定でも空回りしない | 既存の `WolverineExtensions` の定数（変更なし）と本仕様書の実測 |
@@ -133,7 +133,7 @@ issue: "#1819"
 - `check-test-spec-coverage --update`: テスト仕様書（FR-11 の T-31・T-32）に載せた 3 クラスを床へ入れた。
 - IADR の索引（`.ai-context/adr/README.md`）の IADR-0104 / IADR-0504 の行は**変えない**。索引のタイトルセルへ追記を書くと
   `scripts.repo.test.js` の索引タイトルの検査（`title-addendum` / `title-too-long`）が赤になる（実測）。追記は本体だけに置き、状態列（Accepted）も不変。
-- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 995 本緑。
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 988 本緑（develop 6d97eaff 取込後の実測。当初記載の 995 本は誤記で、独立監査の 9c348848 での実測は 987 本）。
 - 文書: `docs/functional/FR-11_llm-egress-routing.md`（出力・例外表・新節・受け入れ基準）・`docs/tests/FR-11_llm-egress-routing.md`（T-31・T-32）・
   `docs/operations/voyage-embedding-key-runbook.md`（ログの表・5-b の数え方）・`docs/api/east-west-grpc.md`・`docs/observability/llm-completion-metrics.md`。
 
