@@ -123,7 +123,7 @@ public sealed class KeycloakServiceAccountProvisioner(
                 {
                     logger.LogWarning(
                         "サービスアカウント（利用者 ID {UserId}）の属性は、この要求の後に書き換えられていた。取り消しで書き戻さない。",
-                        userId);
+                        ForLog(userId));
                     break;
                 }
                 await WriteAttributesAsync(client, userId, write.PreviousAttributes ?? new Dictionary<string, string>());
@@ -290,7 +290,7 @@ public sealed class KeycloakServiceAccountProvisioner(
             logger.LogError(ex,
                 "作りかけのクライアント（内部 ID {InternalId}）を消せなかった。IdP に登録簿に無いクライアントが残っている。"
                 + " Keycloak の管理画面で消すこと（属性は書かれていない、または書きかけである）。",
-                internalId ?? "(不明)");
+                ForLog(internalId));
         }
     }
 
@@ -305,7 +305,7 @@ public sealed class KeycloakServiceAccountProvisioner(
         {
             logger.LogError(ex,
                 "サービスアカウント（利用者 ID {UserId}）の属性を元へ戻せなかった。登録簿と IdP の属性が食い違っている。",
-                userId);
+                ForLog(userId));
         }
     }
 
@@ -468,4 +468,14 @@ public sealed class KeycloakServiceAccountProvisioner(
         string? Id,
         string? Username,
         Dictionary<string, List<string>?>? Attributes);
+
+    // CodeQL（Log entries created from user input）: 利用者の入力（clientId）に由来する IdP の ID を
+    // 行指向のログへそのまま落とさない（制御文字を潰し、長さを切る。ToolDeclarationSource と同じ形）。
+    private static string ForLog(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "(不明)";
+        var cleaned = new string(Array.ConvertAll(value.ToCharArray(), c => char.IsControl(c) ? '_' : c));
+        return cleaned.Length <= 128 ? cleaned : cleaned[..128] + "…";
+    }
 }
