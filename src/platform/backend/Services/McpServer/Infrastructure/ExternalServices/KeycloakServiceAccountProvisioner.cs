@@ -139,6 +139,8 @@ public sealed class KeycloakServiceAccountProvisioner(
         var previous = IsEnabled(current);
         if (previous != enabled)
         {
+            // PR #1832 再監査 🟡1: SA の項目が読めない表現では書く前に止める（補償も書かない）。
+            RequireServiceAccountsFlag(current);
             try
             {
                 await WriteEnabledAsync(client, internalId, enabled, current);
@@ -337,10 +339,18 @@ public sealed class KeycloakServiceAccountProvisioner(
         ["authorizationServicesEnabled"] = authorizationServicesEnabled,
     };
 
+    // 🔴 PR #1832 再監査 🟡1（fail-closed）: `serviceAccountsEnabled` が読めない（null・欠落）表現から false を推して送ると、
+    // Keycloak 24 は SA の利用者を属性ごと消す（🔴1 と同じ事故）。Keycloak 24 の GET は primitive で必ず出すが、版の変更や
+    // 応答の加工で欠けたときに黙って壊さないよう、書かずに Failed にする。`authorizationServicesEnabled` は資源サーバが
+    // 無いとき表現に出ない（＝無効）ので、欠落を false と読んでよい（false を送っても無効のままで何も消えない）。
+    private static bool RequireServiceAccountsFlag(KeycloakClient? current)
+        => current?.ServiceAccountsEnabled
+           ?? throw Failed("クライアントの表現に serviceAccountsEnabled が無い（推して送るとサービスアカウントの利用者が消えるので書かない）。");
+
     private async Task WriteEnabledAsync(HttpClient client, string internalId, bool enabled, KeycloakClient? current)
     {
         var body = EnabledBody(enabled,
-            serviceAccountsEnabled: current?.ServiceAccountsEnabled == true,
+            serviceAccountsEnabled: RequireServiceAccountsFlag(current),
             authorizationServicesEnabled: current?.AuthorizationServicesEnabled == true);
         var put = await Send(client, () => client.PutAsJsonAsync(ClientPath(internalId), body, Json, CancellationToken.None));
         EnsureSuccess(put, "クライアントの有効・無効の書き込み");

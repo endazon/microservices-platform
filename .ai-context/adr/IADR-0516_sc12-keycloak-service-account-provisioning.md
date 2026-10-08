@@ -287,3 +287,7 @@ SC-12 の登録・属性の差し替えは McpServer の登録簿へ書くだけ
 
 - 作業仕様書: [20261008_1786_sc12-keycloak-provisioning](../specs/20261008_1786_sc12-keycloak-provisioning.md)
 - 計画: ADR-0123・ADR-0062・ADR-0088
+
+## ［2026-10-09 追記 / #1829・PR #1832 再監査 🟡1］`serviceAccountsEnabled` が読めない表現には書かない
+
+上の追記（🔴1）は現在値を同送すると定めたが、現在値が読めない（GET の表現が項目を欠く）ときに false と推して送ると、同じ事故（SA の利用者の消失）になる。**この場合は何も書かずに `Failed`（502）にする**（fail-closed）。Keycloak 24 の GET は primitive で必ず出すため通常は起きないが、版の変更・応答の加工で欠けたときに黙って壊さないための防御である。`authorizationServicesEnabled` は資源サーバが無いと表現に出ない（＝無効）ので、欠落を false と読む（送っても無効のままで何も消えない）。

@@ -39,7 +39,9 @@ public interface IServiceAccountProvisioner
     /// <c>enabled</c> を <paramref name="enabled"/> にする（同じ値なら書かない）→ <see cref="IdpWriteKind.EnabledChanged"/>。
     /// IdP に同じ clientId のクライアントが無ければ <see cref="IdpWriteKind.Absent"/>、入口の印が無ければ
     /// <see cref="IdpWriteKind.AlreadyExists"/> を返し、**どちらも何も書かない**（プラットフォームのクライアントを変えない）。
-    /// 書いた後に読み戻せなければ、前の値へ戻してから <see cref="IdpProvisioningException"/> を投げる。
+    /// 書いた後に読み戻せなければ <see cref="IdpProvisioningException"/> を投げる。前の値へ戻すのは**開く側（再有効化）の失敗だけ**で、
+    /// 閉じる側（無効化）の失敗は戻さない（通っていたかもしれない無効化を取り消して開かない）。
+    /// クライアントの表現が <c>serviceAccountsEnabled</c> を欠くときは、何も書かずに投げる（PR #1832 再監査）。
     /// </summary>
     Task<IdpWrite> SetEnabledAsync(string clientId, bool enabled, CancellationToken ct);
 

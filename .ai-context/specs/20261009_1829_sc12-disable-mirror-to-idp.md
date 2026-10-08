@@ -163,3 +163,9 @@ C-58 `check-mcp-client-provisioning.js --live` の M8（と M7 の `enabled_diff
 - 🟡3 運用仕様書に、入口の印の無い古い行は画面から再有効化できないこと（400）と復旧手順（行を消して登録し直す）を書いた。
 - 🟢 プロセス内の口の `SetEnabledAsync` に「同じ値なら書かない」を足した（Keycloak 版と揃える）。
 - IADR-0516 の #1829 追記にあった「クライアントの `PUT` は null・欠けた項目を変えない」は誤りだった。IADR には日付つきの追記で是正を書いた（本文は書き換えない）。
+
+## ［2026-10-09 追記 / PR #1832 の独立再監査（GO）の指摘への対応］
+
+- 🟡1（fail-closed）: GET の表現が `serviceAccountsEnabled` を欠く（null・欠落）とき、false を推して送らず、**何も書かずに Failed** にする（`RequireServiceAccountsFlag`。無効化・再有効化・取り消しの 3 経路とも）。`SetEnabledAsync` では書く前に判定するので、開く側の補償も書かない。`authorizationServicesEnabled` は資源サーバが無いと表現に出ない（＝無効）ので、欠落を false と読む扱いを変えない。試験は C-53 に 1 本足した（`serviceAccountsEnabledを欠く表現にはenabledを書かずFailedにする`）。
+- 🟢2: `IServiceAccountProvisioner.SetEnabledAsync` の doc コメントを実装（戻すのは開く側の失敗だけ）に合わせた。本仕様書の上の記述は凍結のため直さない。
+- 🟢1（GET と PUT の間の TOCTOU）・🟢3（未構成時の再有効化は 503）: 受容（理由は監査報告のとおり。印つきのクライアントは作成時に SA を true に固定し、他に書く経路が無い／IADR とテスト仕様書に明記済み）。

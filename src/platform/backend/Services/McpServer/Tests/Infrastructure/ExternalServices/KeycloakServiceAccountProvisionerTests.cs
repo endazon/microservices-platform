@@ -474,6 +474,28 @@ public class KeycloakServiceAccountProvisionerTests
         (await act.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
     }
 
+    // C-53（PR #1832 再監査 🟡1・fail-closed）: クライアントの表現が `serviceAccountsEnabled` を欠くときは、無効化も再有効化も
+    // 何も書かずに Failed（false を推して送ると Keycloak 24 が SA の利用者を属性ごと消す）。開く側の補償も書かない。
+    [Fact]
+    public async Task serviceAccountsEnabledを欠く表現にはenabledを書かずFailedにする()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-n", "N", Attrs(("clearance", "public")), Ct);
+        var saUserId = keycloak.Clients.Single().ServiceAccountUserId;
+        keycloak.Clients.Single().Representation.Remove("serviceAccountsEnabled");
+        keycloak.Requests.Clear();
+
+        var disable = () => provisioner.SetEnabledAsync("agent-n", false, Ct);
+        (await disable.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+        keycloak.Clients.Single().Representation["enabled"] = false;
+        var enable = () => provisioner.SetEnabledAsync("agent-n", true, Ct);
+        (await enable.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+
+        keycloak.Requests.Should().NotContain(r => r.Method == "PUT", "推した値で書かない（補償も書かない）");
+        keycloak.Users.Should().ContainKey(saUserId, "サービスアカウントの利用者を消さない");
+    }
+
     // C-54（#1829）: 再有効化の取り消し（登録簿への書き込みが失敗したときの補償）は前の値（無効）へ戻す。
     // 現在値がこの要求の書いた値でなければ（後から無効化された）書かない。値が無い取り消し（同じ値で書かなかった）も書かない。
     [Fact]
