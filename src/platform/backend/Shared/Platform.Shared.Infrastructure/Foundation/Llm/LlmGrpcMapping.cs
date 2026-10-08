@@ -126,6 +126,9 @@ public static class LlmGrpcMapping
         Endpoint = resp.Endpoint ?? string.Empty,
         RoutingReason = resp.RoutingReason ?? string.Empty,
         StopReason = resp.StopReason ?? string.Empty,
+        // #1819: proto3 に null は無い。null は空文字 / 0 へ写し、受け側（ToDto）が null へ戻す。
+        FailureKind = resp.FailureKind ?? string.Empty,
+        UpstreamStatusCode = resp.UpstreamStatusCode ?? 0,
     };
 
     public static CompletionApiResponse ToDto(Pb.CompleteResponse resp) => new(
@@ -137,7 +140,10 @@ public static class LlmGrpcMapping
         // 空文字は REST の null（未設定）へ戻す。REST 応答の JSON でも null で届く項目である。
         Endpoint: string.IsNullOrEmpty(resp.Endpoint) ? null : resp.Endpoint,
         RoutingReason: string.IsNullOrEmpty(resp.RoutingReason) ? null : resp.RoutingReason,
-        StopReason: string.IsNullOrEmpty(resp.StopReason) ? null : resp.StopReason);
+        StopReason: string.IsNullOrEmpty(resp.StopReason) ? null : resp.StopReason,
+        FailureKind: string.IsNullOrEmpty(resp.FailureKind) ? null : resp.FailureKind,
+        // HTTP の状態コードに 0 は無いので、0 を「無い」に使ってよい。
+        UpstreamStatusCode: resp.UpstreamStatusCode == 0 ? null : resp.UpstreamStatusCode);
 
     /// <summary>
     /// SSE の 1 イベント（<c>CompletionStreamEvent</c>）を proto のメッセージへ写す。
@@ -159,6 +165,8 @@ public static class LlmGrpcMapping
         OutputTokens = ev.OutputTokens,
         RoutingReason = ev.RoutingReason ?? string.Empty,
         StopReason = ev.StopReason ?? string.Empty,
+        FailureKind = ev.FailureKind ?? string.Empty,
+        UpstreamStatusCode = ev.UpstreamStatusCode ?? 0,
     };
 
     public static CompletionStreamEvent ToDto(Pb.CompletionStreamEvent ev) => new(
@@ -170,5 +178,7 @@ public static class LlmGrpcMapping
         InputTokens: ev.InputTokens,
         OutputTokens: ev.OutputTokens,
         RoutingReason: string.IsNullOrEmpty(ev.RoutingReason) ? null : ev.RoutingReason,
-        StopReason: string.IsNullOrEmpty(ev.StopReason) ? null : ev.StopReason);
+        StopReason: string.IsNullOrEmpty(ev.StopReason) ? null : ev.StopReason,
+        FailureKind: string.IsNullOrEmpty(ev.FailureKind) ? null : ev.FailureKind,
+        UpstreamStatusCode: ev.UpstreamStatusCode == 0 ? null : ev.UpstreamStatusCode);
 }

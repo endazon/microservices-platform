@@ -7,11 +7,11 @@ updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
-ids: [FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-12, FR-17, FR-18, NFR-21, UC-02]
+ids: [FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-12, FR-17, FR-18, NFR-21, UC-02, NFR-17, NFR-19, NFR-28]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127]
-iadrs: [IADR-0007, IADR-0014, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0374, IADR-0497, IADR-0498, IADR-0340, IADR-0511]
-specs: [20260702_FR-11_llm-egress-routing, 20260704_FR-11_llm-routing-runtime-fixes, 20260905_issue-1091_llm-upstream-status-axis, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261008_1785_graph-purpose-models]
-issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #440, #850, #859, #863, #1091, #1746, #1785, AST#290, AST#309, planning#426]
+iadrs: [IADR-0007, IADR-0014, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0374, IADR-0497, IADR-0498, IADR-0340, IADR-0511, IADR-0504]
+specs: [20260702_FR-11_llm-egress-routing, 20260704_FR-11_llm-routing-runtime-fixes, 20260905_issue-1091_llm-upstream-status-axis, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability]
+issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #440, #850, #859, #863, #1091, #1746, #1785, #1819, AST#290, AST#309, planning#426]
 -->
 
 # テスト仕様書: 用途別・機密度別 LLM ルーティング
@@ -56,6 +56,8 @@ issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #440, #850, 
 | T-28 | **用途 `rerank`（検索結果の再順位付け）の登録と費用の軸** | 本番の設定で `rerank` が軽量モデル `claude-haiku-4-5` へ解決し、既定（`DefaultModel`）へ無音で落ちない。区分 `public` / `confidential` / `restricted` のどれでも同じモデルで送れる。**鎖を持たない**（最安のモデルからさらに安い先が無い。失敗は検索サービスの段が元の順へ戻す）。費用（トークン累計・金額）は `llm.purpose=rerank` に、回答生成（`rag-answer`）と分けて積まれ、`other` へ集約されない | 応答 `Sent=true`・`Endpoint=claude-managed`・`Model=claude-haiku-4-5`。`PurposeFallbackModels` に `rerank` が無い。`llm.tokens.total` と `llm.cost.total`（値 > 0）に `llm.purpose=rerank`・`llm.model=claude-haiku-4-5` の計上があり、`rag-answer` は別の軸、`other` は無い | 横断検索・LLM 利用実績（用途別・モデル別）/ `RerankPurposeEndpointTests`（3 区分・設定・計上） |
 | T-29 | **用途 `rerank` は機密区分によらず ZDR 必須** | 非 ZDR モデルを `rerank` に割り当てても、`public` / `internal` / `restricted`・大文字の用途名のどれでも選ばれない（陽性対照: `analysis` × `public` では同じモデルが選ばれる）。ティア C しか無い構成では `rerank` × `public` を拒否する（陽性対照: `default` × `public` は送れる）。ティア C が優先度で先頭でもティア B を選ぶ。鎖の非 ZDR モデルは落とす。用途の集合はコードが持つ（設定で外せない） | 上記どおり（区分の規則は変えず、用途の規則を重ねる。強める向きだけ） | LLM 送信先切替 / `LlmRouterTests`（`Route_RerankPurpose_*`・`ZeroDataRetentionPurposes_ContainRerank`） |
 | T-30 | **知識グラフの 2 用途（AI 提案 `graph-suggestion`・クラスタ要約 `graph-cluster-summary`）の登録と費用の軸** | ① 本番の設定で `graph-suggestion` は `claude-sonnet-5`、`graph-cluster-summary` は `claude-opus-5` へ解決し、区分 `public` / `internal` / `confidential` / `restricted` のどれでも同じモデルで送れる。② 実設定の既定（`DefaultModel`）だけを別のモデルへ差し替えても割当が選ばれる（クラスタ要約の割当は既定と同値なので、①だけでは「割当が効いた」と「既定へ落ちた」を区別できない）。③ 鎖は 1 段下位（`claude-haiku-4-5`・`claude-sonnet-5`）をルーターが返す。④ 計器の用途の正規化は 2 用途を名前のまま返し、未登録は `other`（対照）。⑤ 費用（トークン累計・金額）は 2 用途それぞれの `llm.purpose` に積まれ、`other` は無い。**変異**: 設定から 2 用途を外すと 10 件が赤（①のクラスタ要約 4 件は既定と同値なので緑のまま —— ②がそれを補う）。あわせて **呼び出し側が送る用途名の全数 ⊆ `PurposeModels` のキー**を横断テスト（`scripts/scripts.repo.test.js`・走査は `scripts/lib/llm-purposes.js`）が突き合わせる（設定から外す／未登録の定数を足す／`Purpose:` に未登録のリテラルを書く、の 3 変異でいずれも赤） | 応答 `Sent=true`・`Endpoint=claude-managed`・割当モデル。`llm.tokens.total` と `llm.cost.total`（値 > 0）に用途名の計上があり、`other` は無い | LLM 送信先切替・LLM 利用実績（用途別・モデル別）/ `GraphPurposeEndpointTests`（解決・既定差し替え・鎖・正規化・計上） |
+| T-31 | **`Sent=false` の原因の種類を値で返す** | `Sent=false` の 6 経路（一括・逐次 × 越境拒否・プロバイダ未登録・上流の不調）で、応答と `done` イベントが `FailureKind` を名乗る。上流の不調は HTTP 状態（429・503）を `UpstreamStatusCode` に載せ、状態の無い輸送の失敗は null。送信が成立した応答・イベントは両方 null。`Text` / `RoutingReason` は従来どおり。語彙は計器の `llm.result` と同じ文字列。gRPC の応答・イベントも同じ値を運び（空文字 / 0 が「無い」）、写像を往復しても REST の応答と一致する。**変異**: 写像から `FailureKind` を落とすと写像の往復と gRPC・REST の一致の 2 本が赤 | `egress_denied` / `provider_missing` / `upstream_error`・`UpstreamStatusCode` が上記どおり | LLM 送信先切替 / `SentFalseObservabilityTests`（6 経路・成立時・語彙・写像の往復）・`GrpcCompleteTests.Upstream_failure_is_a_response_not_an_error`・`Rest_and_grpc_complete_the_same_input_identically`・`GrpcCompleteStreamTests.Upstream_failure_ends_the_stream_normally_with_sent_false` |
+| T-32 | **越境拒否の運用ログと頻度の抑制** | 越境拒否は warn を 1 行出し、理由の文言・用途・機密区分・抑えた件数を構造化値で載せる（スタックなし）。同じ用途と理由の組は 5 分の間は抑え（間隔の 1 秒前でも抑える）、間隔を過ぎた次の発生で抑えた件数つきの 1 行を出す。用途が違えば別に初回を記録する。逐次と一括は同じ鍵を共有する。用途の改行はログへ出す前に `_` へ置き換える。**変異**: 抑制を外すと要約と鍵共有の 2 本が赤 | 1 行目は抑えた件数 0、要約の行は 5 | LLM 送信先切替 / 非機能要件（可観測性・ログの完全性）/ `SentFalseObservabilityTests`（初回・抑制と要約・用途別・逐次と一括・無害化） |
 
 ## 未確認・フォローアップ
 

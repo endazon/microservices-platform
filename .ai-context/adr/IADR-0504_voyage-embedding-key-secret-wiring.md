@@ -2,15 +2,16 @@
 title: IADR-0504 埋め込み（Voyage AI）の鍵は外部 LLM の鍵と同じ Secret・同じ Vault の KV のプロパティ voyage-api-key に置き、LLM ゲートウェイへ optional の secretKeyRef で渡す。鍵が無いときの挙動（起動する・埋め込みは一時障害で DLQ）は変えない
 type: impl-adr
 status: Accepted
-related_ids: [FR-02, FR-03, SC-22, NFR-18, ADR-0016, ADR-0095, ADR-0127, IADR-0096, IADR-0103, IADR-0256, IADR-0433, IADR-0456, IADR-0494]
+related_ids: [FR-02, FR-03, SC-22, NFR-18, ADR-0016, ADR-0095, ADR-0127, IADR-0096, IADR-0103, IADR-0256, IADR-0433, IADR-0456, IADR-0494, IADR-0104, NFR-19]
 author: claude
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md（埋め込みは Voyage voyage-3.5 を既定・ティアB）
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md（秘密情報は Vault を正とし画面から入れる）
 related_specs:
   - ../specs/20261006_1764_voyage-key-wiring.md
+  - ../specs/20261008_1819_gateway-sentfalse-observability.md
 ---
 
 # IADR-0504: 埋め込み（Voyage AI）の鍵の Secret 配線（#1764）
@@ -101,3 +102,13 @@ helm（本番像の `values.yaml`・経路B の `values-local.yaml`）と ESO �
 >   描画物全体から llmgateway-service の Deployment へ狭めた（他のワークロードが正当に使い始めても誤って赤にしない）。
 > - SC-22 の文言（用途・中断される処理）に、この項目が埋め込みの鍵も持ち、再起動で索引づけ・検索の埋め込みも中断されることを足した。
 > - 運用仕様書・SC-22 の画面／テスト仕様書の trace ブロックへ本 IADR・作業仕様書・#1764 を足した。
+
+> ［2026-10-08 追記 / #1819］**鍵が無いときの「挙動」は変えず、「ログ」だけを変えた**（決定 2 の「鍵が無いときの挙動は変えない」は維持）。
+> PoC で、鍵未設定の埋め込み失敗が取り込みの再試行のたびにスタック付きの `LogError` で記録され（1,146 回）、LLM ゲートウェイのログから他の行（取引判断の呼び出し）を押し出した。
+> - `VoyageEmbeddingProvider` は鍵が空のとき `EmbeddingProviderNotConfiguredException`（`InvalidOperationException` の派生。文言は従前のまま）を投げる。
+>   `EmbedUseCase` はこれを別の catch で受け、**エンドポイントごとに初回は即時・以後は 5 分ごとに抑えた件数つきの warn 1 行（スタックなし）**を出す。
+> - **応答は変えない**（`Embedded=false`・`Retryable=true`）。取り込みは再試行の後 DLQ へ送り、鍵を入れてから DLQ を再投入すれば索引に入る。
+>   「鍵が無ければ埋め込みを試みない（`Retryable=false` で恒久スキップ）」は採らない —— 取り込みはチャンクを捨てて完了扱いにし、後から鍵を入れても索引に入らない（§検討した代替案「自動で無効にする」と同じ理由）。
+> - **取り込みの再試行は空回りしていない**ことを確かめた: Wolverine の再試行は 1 メッセージ 4 回（2s / 10s / 30s）で DLQ へ移る（`WolverineExtensions`）。1,146 回は「文書数 × 試行回数」の総和である。
+> - 鍵の欠落以外の上流失敗（401・5xx・通信断）は従来どおり 1 件ずつスタック付きの `LogError`（1 件ごとに状況が違い得るため抑えない）。
+> - §残るもの「鍵の欠落を自動で検知する仕組みは無い」は残る。ログの初回の 1 行は Pod の起動後に必ず出るので、手順書の確認（5-b）は `--since` を切らずに Pod の全ログを数える形へ改めた。

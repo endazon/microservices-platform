@@ -182,6 +182,9 @@ public class GrpcCompleteStreamTests
         done.Done.Should().BeTrue("ストリームは done で正常終了する（RpcException にしない）");
         done.Sent.Should().BeFalse();
         done.Text.Should().NotBeEmpty("縮退の理由が本文に載る");
+        // FR-11, IADR-0104 追記 (#1819): 逐次の最終イベントも原因の種類を名乗る。
+        done.FailureKind.Should().Be(CompletionFailureKinds.UpstreamError);
+        done.UpstreamStatusCode.Should().Be(0, "スクリプトの例外は HTTP 状態を持たない（輸送の失敗）");
     }
 
     // T-S-02 / T-S-03 の逐次版。s2s の面は一括 rpc と同じ強さでなければならない ——

@@ -10,9 +10,14 @@ related_ids:
   - IADR-0022
   - IADR-0037
   - IADR-0101
+  - IADR-0110
+  - IADR-0400
+  - NFR-17
+  - NFR-19
+  - NFR-28
 author: claude
 created: 2026-07-25
-updated: 2026-07-25
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Opus 5 へ改定・Accepted。§結果が stop_reason 確認を要求)
   - planning:projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)
@@ -114,3 +119,22 @@ DTO 側を `enum` にしないのは、Anthropic が将来 `stop_reason` の語�
 - Superseded by: なし
 - 関連要求 / UC: FR-11（LLM 送信可否の統制）、FR-04（AI 回答と出典）
 - 関連 IADR: [IADR-0022](./IADR-0022_default-opus-and-fable5-copilot-routes.md)（ゲートウェイ経路）、[IADR-0037](./IADR-0037_llm-sse-streaming.md)（SSE ストリーミング）、[IADR-0101](./IADR-0101_default-model-opus-5.md)（既定 Opus 5）
+
+> ［2026-10-08 追記 / #1819］**`Sent=false` の原因の種類を応答契約に載せ、越境拒否に運用ログを足した**（本 ADR の「`Sent` と `StopReason` は独立した軸」を、未送信の側へ延ばす決定）。
+> 起点は PoC の事故である: AST の取引判断が 132 件連続で `Sent=false` を受けたが、原因（越境拒否か・プロバイダ未登録か・上流の不調か）を事後に確定できなかった。
+> 応答は原因を `Text` の文言でしか区別しておらず、越境拒否の枝はログを出さず（計器だけ）、Prometheus の無い経路では計器も読めなかった。
+> 新しい IADR は起こさない（採番が並行の PR と競合していたため。決定は応答契約の末尾追加という本 ADR と同じ型である）。
+>
+> 1. **`CompletionApiResponse` / `CompletionStreamEvent` の末尾に `string? FailureKind = null` と `int? UpstreamStatusCode = null` を足す**（決定 1 と同じ末尾・既定値つき）。
+>    値は共有契約 `CompletionFailureKinds` の `egress_denied` / `provider_missing` / `upstream_error`。`UpstreamStatusCode` は `upstream_error` で上流が HTTP 状態を返したときだけ載る（輸送の失敗は null）。
+>    `Sent=true` では両方 null。**`Sent` / `Text` / `RoutingReason` / `StopReason` の意味は変えない。**
+>    gRPC（`completion.proto`）は `CompleteResponse` の 9・10、`CompletionStreamEvent` の 10・11 に同じ項目を足す（空文字 / 0 が「無い」）。
+> 2. **語彙は計器の `llm.result`（[IADR-0110](./IADR-0110_llm-completion-stop-reason-metrics.md) 決定 2）と同じ文字列**にし、計器の定数は契約の定数を引く（2 か所に書かない）。IADR-0110 の値域は変えていない。
+> 3. **enum にしない**（本 ADR §決定の末段と同じ理由。語彙が増えたとき古い呼び出し側が既定値へ黙って落ちない）。
+> 4. **越境拒否の枝に warn を足す**（理由の文言・用途・機密区分）。(用途, 理由) の組ごとに初回は即時・以後は 5 分ごとに抑えた件数つきの 1 行（`LogOccurrenceThrottle`）。
+>    抑制の鍵は値域を閉じた用途（計器と同じ正規化）で作り、ログへ出す用途は制御文字を落とす（NFR-28。ルータの `Sanitize` を共有）。
+>    ルータの `LLM routing denied`（ADR-0010 の監査ログ・呼び出しごと）は**抑制しない**（監査の件数を欠けさせない）。
+>
+> 退けた案: ①`Text` の文言を規約化して呼び出し側に解釈させる（文言は表示用で、変えると黙って割れる）。②`Sent` を列挙型へ広げる（`Sent` は越境監査の軸であり、意味を変えると本 ADR 決定 4 の前提が崩れる）。
+> ③要約をタイマーで自発的に出す（状態とスレッドを持つ割に、発生が止まった後の件数は運用上の価値が小さい。残余として記録）。
+> 回帰は `SentFalseObservabilityTests`（6 経路・抑制・無害化・写像の往復）と `GrpcCompleteTests` / `GrpcCompleteStreamTests` の追加表明で固定した（変異 3 種で赤を確認）。
