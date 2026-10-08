@@ -3,14 +3,14 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-08
+updated: 2026-10-09
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06]
 adrs: [ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027]
 iadrs: [IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
-specs: [20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
+specs: [20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
 issues: [#1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750]
 -->
 
@@ -119,19 +119,31 @@ issues: [#1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #
   wiki 等）は **`<repo>:<tag>@sha256:<digest>`** で固定する（`docker-compose.yml`・`deploy/local/`・`deploy/mail-relay/`・
   helm `values.yaml`）。digest は multi-arch の **image index（manifest list）** のもので、tag は人が版を読むために残す。
   helm values の `registry` / `image` / `tag` 形式は同じマッピングに `digest:` を置き、テンプレートが `tag@digest` を描く。
-- **tag だけの参照の再混入は CI が止める**（`node scripts/check-image-digests.js`。`static-checks` ジョブ）。
-  同じ `repo:tag` が別の digest で書かれている（compose と k8s の片側だけを更新した）ときも落ちる。
+- **自製イメージの基底イメージ**（`src/` の Dockerfile の `FROM`。`mcr.microsoft.com/dotnet/{sdk,aspnet}`・frontend の
+  `node`・`caddy`）と**統合試験の Testcontainers のイメージ**（`PostgreSqlBuilder("…")`・`RabbitMqBuilder("…")`・
+  `QdrantTestImage.Reference`・`SeaweedFsContainer.Image`）も同じ表記で固定する。自製イメージそのものは上の「自製イメージ」の節の
+  とおり対象外のままで、固定するのはそれが載る上流の基底イメージである。統合試験の `postgres:16-alpine` と frontend の
+  `node:22-alpine` は配備と同じ digest にする（試験と配備で中身を違えない）。
+- **tag だけの参照の再混入は CI が止める**（`node scripts/check-image-digests.js`。`static-checks` ジョブ）。走査するのは
+  `deploy/` の YAML・Containerfile と、`src/` の Containerfile・C#（submodule の `src/ai-stock-trading` は別リポジトリなので除く）。
+  Containerfile は `FROM` に加えて `COPY --from=<外部イメージ>`・`RUN --mount=…,from=<外部イメージ>` を、helm テンプレートは
+  `image:` 行に直書きした `default "<参照>"` を拾う。
+  同じ `repo:tag` が別の digest で書かれている（compose と k8s の片側だけ、配備と試験の片側だけを更新した）ときも落ちる。
   digest を付けられない参照は `scripts/image-digest-exceptions.json` に理由つきで載せる（2026-10-08 時点で 0 件）。
 - 🔴 **digest で固定すると、浮動 tag（`7-alpine`・`2.5`・`22-alpine` 等）の自動パッチは効かない。** 以前は
   「minor 固定・patch は許容」（Wiki.js の `2.5` は `2.5.x` 系列の自動パッチを受ける。実測 PoC は `2.5.314`＝
   `docs/tech/20260707_wikijs-poc-record.md`）としていたが、**同じ tag の中身が差し替わっても検知できない**ため改めた。
   パッチ（`-alpine` のセキュリティ修正を含む）は、年次点検と契機ごとに digest を解決し直して取り込む
   （手順は本書 [§インフラ製品の点検（基準 A〜D）](#インフラ製品の点検基準-ad選定基準の計画-adr--1787) の「digest の解決と更新」）。
+  **基底イメージ（`dotnet/aspnet`・`caddy` 等）はアプリの実行環境の修正を運ぶ**ので、上流のセキュリティ修正の告知
+  （.NET の月例のサービシングリリース等）も契機に入れる（下の点検節の契機⑤。告知の検知は人が行う。自動の検知は無い）。
 - **Harbor へのミラーは Harbor の配備後に行う**（未配備のあいだは対象外。上流のレジストリから digest で取得する）。
-- 🔴 **インフラのイメージ参照（tag・digest）を変える配備は、市場の場中を避けて引け後に行う。** 参照が変わると
+- 🔴 **インフラのイメージ参照（tag・digest）を変える配備は、市場の場中を避けて引け後に行う。**参照が変わると
   platform-infra の Postgres・RabbitMQ・Keycloak 等の Pod が作り直され、その間は上に載る全サービス（AST を含む）の
   DB 接続・認証・メッセージングが切れる。2026-10-08 の配備（場中）では AST 全サービスで DB 接続が切れ、ヘルスチェックの
   エラー（`57P01`）と現在値の補充のエラーが出た（一過性で回復）。digest の解決し直し（年次点検・契機）も同じ扱いとする。
+  基底イメージと Testcontainers のイメージの digest の更新はこれに当たらない（前者は自製イメージの次のビルドと
+  通常のロールアウトで入り、platform-infra を作り直さない。後者は CI と手元の試験だけで使う）。
 
 ### 基盤インフラの永続化（compose・非機能要件: 運用性/可観測性/信頼性 / Keycloak=共有 Postgres／Loki・Tempo=名前付きボリューム） / #282）
 
@@ -1590,13 +1602,14 @@ QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-fulltext-index.sh --
 
 計画側のインフラ製品の選定基準の ADR は、**採用済みのインフラ製品を年 1 回と契機ごとに点検する**ことを求め、
 管理用の口の基準を足した計画 ADR が点検に基準 D を加えた。本節はその手順・記録先・初回の記録である。
-上の「採用ライブラリ」の点検（アプリケーション層）とは対象が違う —— こちらは `deploy/` が配備する**インフラのイメージ**を見る。
+上の「採用ライブラリ」の点検（アプリケーション層）とは対象が違う —— こちらは `deploy/` が配備する**インフラのイメージ**と、
+自製イメージの**基底イメージ**・統合試験の**Testcontainers のイメージ**（`src/`）を見る。
 
 | 項目 | 内容 |
 | --- | --- |
 | 実施時期 | **毎年 7 月**。計画が定めるのは「採用ライブラリの年次点検と同じ時期に行う」ことであり、7 月という月は、上の採用ライブラリの点検に合わせて本リポジトリが選んだ |
-| 契機（時期を待たずに行う） | ①イメージの**取得の失敗**（CI の結合テスト・integration-stack・経路 B の起動が pull で落ちた）②上流リポジトリの **archived** ③**ライセンス変更の告知** ④新しいインフラ製品の採用（選定時に同じ基準を当てる） |
-| 母集合 | **`node scripts/check-image-digests.js --list`** の出力（製品ごとの tag・固定の有無・参照箇所）。**手で列挙しない** —— `deploy/` の参照から機械的に引く。自製イメージ（`microservices-platform/*`・`k3d-local/*`）は対象外 |
+| 契機（時期を待たずに行う） | ①イメージの**取得の失敗**（CI の結合テスト・integration-stack・経路 B の起動が pull で落ちた）②上流リポジトリの **archived** ③**ライセンス変更の告知** ④新しいインフラ製品の採用（選定時に同じ基準を当てる）⑤**基底イメージ**の上流のセキュリティ修正の告知（.NET の月例のサービシングリリース・node・caddy の修正版）—— 基準の点検は要らず、digest の解決し直しだけを行う |
+| 母集合 | **`node scripts/check-image-digests.js --list`** の出力（製品ごとの tag・固定の有無・参照箇所）。**手で列挙しない** —— `deploy/` と `src/`（基底イメージ・Testcontainers）の参照から機械的に引く。自製イメージ（`microservices-platform/*`・`k3d-local/*`）は対象外 |
 | 母集合の外（未決） | `scripts/` が chart / マニフェストで入れる製品（Istio・External Secrets・Reloader・cert-manager・Argo CD・k3s）は `deploy/` に参照が無く、`--list` に現れない。引くときは `grep -nE 'helm upgrade --install\|kubectl apply .*https' scripts/*.sh`。点検の対象に入れるかは計画へ確認中（初回の記録の「残り」） |
 | 記録先 | **本節の「点検の記録」**（回ごとに日付つきの小見出しを足し、過去の回は消さない）。判断を伴う変更（差し替え・例外の追加）は実装 ADR に残す |
 | 逸脱時 | **基準 A・B・D を満たさない製品は差し替えずに記録し、計画へ環流する**（差し替えは計画の裁定。`/plan-feedback`）。基準 C で既定の外部通信が見つかったら、配備へ無効化を入れる issue を起こし、計画のデータ外部送信方針の統制表への追加を環流する |
@@ -1626,6 +1639,10 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
 - 応答の `content-type` が **index / manifest list** であることを確かめる（単一 manifest の digest を固定すると、別アーキテクチャの手元で起動しない）。
 - **tag と digest を対で変え、`--list` が示す全参照を同じ値に揃える**（片側だけ変えると `check-image-digests.js` が落とす）。
   qdrant は統合試験の定数（`QdrantTestImage.Reference`）も同じ参照に揃える（PR の CI の定義試験が突き合わせる）。
+  postgres（`16-alpine`）と node（`22-alpine`）も `--list` に統合試験・frontend の Dockerfile の行が並ぶので、同じ値に揃える。
+- `mcr.microsoft.com` と `mirror.gcr.io` はチャレンジを返さないので、トークン無しで同じ HEAD を送る
+  （`https://mcr.microsoft.com/v2/dotnet/aspnet/manifests/10.0`・`https://mirror.gcr.io/v2/library/caddy/manifests/2.11-alpine`）。
+  frontend の基底は `mirror.gcr.io/library` から引くので、Docker Hub と同じ digest が返ることも確かめる。
 - 例外（digest を付けられない参照）は `scripts/image-digest-exceptions.json` に `file`・`ref`・`reason` で足す。直ったら外す。
 
 #### Harbor へのミラー

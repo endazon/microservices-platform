@@ -15177,6 +15177,46 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(compose.includes(`image: ${m[1]}`), 'compose の qdrant と一致しない');
     });
 
+    // --- #1814: 自製イメージの基底イメージと統合試験の Testcontainers のイメージ（src/）へ範囲を広げた ---
+    ok('#1814: src/ の母集合を拾う（基底イメージの FROM・Testcontainers のリテラルと定数。陽性対照）', () => {
+      const { refs } = dg.collect(REPO);
+      const src = refs.filter((r) => r.file.startsWith('src/'));
+      const has = (pred, what) => assert.ok(src.some(pred), `${what} を拾えていない（走査の取りこぼし）`);
+      has((r) => r.kind === 'from' && r.ref.startsWith('mcr.microsoft.com/dotnet/sdk:'), '.NET の build 段の FROM');
+      has((r) => r.kind === 'from' && r.ref.startsWith('mcr.microsoft.com/dotnet/aspnet:'), '.NET の runtime 段の FROM');
+      has((r) => r.kind === 'from' && r.file === 'src/platform/frontend/Dockerfile' && r.ref.includes('/caddy:'), 'frontend の caddy');
+      has((r) => r.kind === 'testcontainers' && r.file.endsWith('Fixtures/PostgresFixture.cs'), 'PostgresFixture の PostgreSqlBuilder');
+      has((r) => r.kind === 'testcontainers' && r.file.endsWith('Fixtures/RabbitMqFixture.cs'), 'RabbitMqFixture の RabbitMqBuilder');
+      has((r) => r.kind === 'testcontainers' && r.file.endsWith('Fixtures/QdrantTestImage.cs'), 'QdrantTestImage.Reference');
+      has((r) => r.kind === 'testcontainers' && r.file.endsWith('Fixtures/SeaweedFsContainer.cs'), 'SeaweedFsContainer.Image');
+      // 別リポジトリの submodule は読まない（CI で取得されても本リポの統制の対象外）。
+      assert.ok(!refs.some((r) => r.file.startsWith('src/ai-stock-trading/')), 'submodule の参照を拾っている');
+    });
+
+    ok('#1814: 変異 —— Testcontainers の参照と基底イメージから digest を外すと落ちる', () => {
+      const pgPath = 'src/knowledge/backend/Tests/Knowledge.IntegrationTests/Fixtures/PostgresFixture.cs';
+      const pg = fs.readFileSync(path.join(REPO, pgPath), 'utf8');
+      const pgBroken = pg.replace(/("postgres:16-alpine)@sha256:[0-9a-f]{64}"/, '$1"');
+      assert.notStrictEqual(pgBroken, pg, '変異を入れられなかった（PostgreSqlBuilder の行の形が変わった）');
+      assert.ok(dg.evaluate(dg.extractRefs(pgPath, pgBroken), []).errors.some((e) => e.startsWith('[tag-only]')), 'Testcontainers の tag だけを通した');
+      const dfPath = 'src/platform/backend/Bff/Platform.Bff/Dockerfile';
+      const df = fs.readFileSync(path.join(REPO, dfPath), 'utf8');
+      const dfBroken = df.replace(/(dotnet\/aspnet:10\.0)@sha256:[0-9a-f]{64}/, '$1');
+      assert.notStrictEqual(dfBroken, df, '変異を入れられなかった（aspnet の FROM の形が変わった）');
+      assert.ok(dg.evaluate(dg.extractRefs(dfPath, dfBroken), []).errors.some((e) => e.startsWith('[tag-only]')), '基底イメージの tag だけを通した');
+    });
+
+    ok('#1814: 統合試験の Postgres と frontend の node は配備と同じ digest（同じ repo:tag を別の digest で書かない）', () => {
+      const { refs } = dg.collect(REPO);
+      const { errors } = dg.evaluate(refs, []);
+      assert.deepStrictEqual(errors.filter((e) => e.startsWith('[digest-mismatch]')), []);
+      const digestOf = (pred) => refs.filter(pred).map((r) => dg.splitRef(r.ref).digest);
+      const pg = new Set(digestOf((r) => /(^|\/)postgres:16-alpine@/.test(r.ref)));
+      assert.strictEqual(pg.size, 1, `postgres:16-alpine の digest が ${pg.size} 種ある`);
+      assert.ok(refs.some((r) => r.file.startsWith('src/') && /postgres:16-alpine@/.test(r.ref)) &&
+        refs.some((r) => r.file.startsWith('deploy/') && /postgres:16-alpine@/.test(r.ref)), '試験と配備の両方に postgres:16-alpine が無い（突き合わせが空振りする）');
+    });
+
     ok('#1787: ci.yml の static-checks が自己試験と本検査を呼び、scripts/README.md が載せている', () => {
       const ci = fs.readFileSync(path.join(REPO, '.github/workflows/ci.yml'), 'utf8');
       assert.ok(ci.includes('node scripts/check-image-digests.js --self-test'), '自己試験の配線が無い');

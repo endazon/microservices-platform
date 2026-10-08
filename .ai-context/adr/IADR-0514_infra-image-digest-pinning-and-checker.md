@@ -5,13 +5,14 @@ status: Accepted
 related_ids: [NFR, ADR-0107, ADR-0112, ADR-0030, ADR-0007, ADR-0106, IADR-0461, IADR-0088, IADR-0315, IADR-0286]
 author: claude
 created: 2026-10-08
-updated: 2026-10-08
+updated: 2026-10-09
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0107_infrastructure-product-selection-criteria.md 決定 3（digest 固定・Harbor ミラー）・決定 5・フォローアップ 2
   - planning:projects/microservices-platform/07_adr/ADR-0112_infrastructure-admin-endpoint-criterion.md 決定 3
   - planning:projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md（Harbor）
 related_specs:
   - ../specs/20261008_1787_infra-audit-digest-pin.md
+  - ../specs/20261009_1814_base-and-testcontainers-digest.md
 ---
 
 # IADR-0514: deploy/ のインフラのイメージの digest 固定と、tag だけの参照の検知（#1787）
@@ -56,6 +57,9 @@ related_specs:
 - `microservices-platform/*`（chart の `services.*`・`frontend`）と `k3d-local/*`（経路 B の擬似レジストリ）は**対象外**。CD が一意タグ/digest を渡す（運用仕様書 §自製イメージ）。chart 既定の `tag: latest` は CD 上書き用のプレースホルダであり、digest を置く版がまだ無い。
 - テンプレートの `{{ … }}` を含む行は values 側で検査する。
 - ［2026-10-08 追記 / PR #1813 の独立監査］自製の判定は実際に使う接頭辞だけに錨を下ろす（レジストリ無しか `harbor.internal` / `k3d-local` 付きの `microservices-platform/`、および `k3d-local/`）。任意のレジストリ配下の `microservices-platform/` は免除しない。あわせて helm の `image: {repository, tag}` 形式と `*.Dockerfile` / `Containerfile` も拾うようにした。残る未対応の形は #1814。
+- ［2026-10-09 追記 / #1814］**自製イメージの基底イメージは対象に入れる。** 自製イメージ（`microservices-platform/*`）そのものは対象外のままだが、
+  それが `FROM` で載る上流のイメージ（`mcr.microsoft.com/dotnet/{sdk,aspnet}`・`node`・`caddy`）は外部イメージであり、
+  同じ tag の中身の差し替えで自製イメージの中身が変わる点は infra と同じである。統合試験の Testcontainers のイメージも同様に対象とする。
 
 ### 決定 3 — 検知は検査器（`scripts/check-image-digests.js`）。Renovate は採らない
 
@@ -67,11 +71,35 @@ related_specs:
 - 例外は `scripts/image-digest-exceptions.json` に `file`・`ref`・`reason` で載せる。**2026-10-08 時点で 0 件。**
 - `--list` は年次点検の母集合（製品ごとの参照箇所）を出す。点検は手で列挙しない（ADR-0107 決定 5 の点検の母集合）。
 - CI は既存の `static-checks` ジョブに 2 ステップを足す（ジョブ名・起動条件・必須チェックは変えない）。
+- ［2026-10-09 追記 / #1814］**走査の範囲を `src/` へ広げた。** `src/` は Containerfile（基底イメージ）と C#（Testcontainers の
+  `new <X>Builder("<ref>")`・`.WithImage("<ref>")`・`const string …Image / Reference`、引数なしのモジュールのビルダ）だけを読み、
+  YAML は読まない（配備物の `image:` は `deploy/` にしか無い）。submodule の `src/ai-stock-trading` は別リポジトリなので除く。
+  あわせて PR #1813 の監査の残り（`COPY --from=<外部イメージ>`・`RUN --mount=…,from=`・テンプレートに直書きした `default "<ref>"`）
+  を拾う。**独立した検査器は作らず本検査器を広げた**——表記・例外・`[digest-mismatch]`（配備と試験で同じ `repo:tag` を
+  別の digest で書かない）を同じ規則で効かせるためである。CI の配線（ステップ名・ジョブ）は変えない。
+  2026-10-09 時点で 24 製品・79 参照（自製 21 件は対象外）、例外 0 件。
+- ［2026-10-09 追記 / #1814 の独立監査］**C# の読み方の精度を上げた。**
+  - ビルダは**名前の許可リスト**（Testcontainers のモジュール名＋`Container`）で判定する。拒否リストだった版は
+    `AuthorizationPolicyBuilder("…")` のような無関係なビルダを読んだ。名前で判定するので、`using` の形（`global using`・
+    csproj の `<Using Include="Testcontainers…">`・完全修飾の `new Testcontainers.PostgreSql.PostgreSqlBuilder("…")`）に依らず拾う。
+  - 名前付き引数（`PostgreSqlBuilder(image: "…")`・`WithImage(image: "…")`）と `static readonly string …Image = "…"` を拾う。
+  - 引数なしのモジュールのビルダは、同じ式（次の `;` まで）に `.WithImage(` があれば既定のイメージを使わないので落とさない。
+  - コメントは行頭だけでなく行末の `//` とブロックコメントも読まない（文字列・文字リテラルの中の `//`・`"` は残す）。
+  - Containerfile は行継続（末尾の `\`）をつないだ論理行で読む（`RUN \` の次の行の `--mount=…,from=` を拾う）。
+  - **既知の限界（拾わない）**: target-typed の `new("<ref>")`（型が式に現れない）／変数・補間文字列・逐語的文字列・
+    連結で組み立てた参照／Testcontainers に言及しないファイルの `…Image` / `Reference` 定数／許可リストに無いモジュールの
+    ビルダ（新しいモジュールを使い始めたら `TC_MODULES` に足す）／許可リストと同名の無関係なビルダにイメージ形の
+    文字列を渡す形（拾って検査してしまう。実在しない）。いずれも本リポの現物には無い（2026-10-09 の走査で 0 件）。
 
 ### 決定 4 — 固定の更新は人が匿名の registry API で解決する。Harbor へのミラーは配備まで対象外
 
 - 手順は運用仕様書 §インフラ製品の点検（匿名トークン → `HEAD /v2/<repo>/manifests/<tag>`（Accept に index 型）→ `docker-content-digest`）。tag と digest を対で変え、`--list` が示す全参照を揃える。
 - **Harbor へのミラーは Harbor の配備後に行う**（ADR-0107 決定 3「配備した後」。Harbor は未配備）。配備までは上流のレジストリから digest で取得する。
+- ［2026-10-09 追記 / #1814］**基底イメージの digest は、年次点検に加えて上流のセキュリティ修正の告知を契機に解決し直す**
+  （.NET の月例のサービシングリリース等。運用仕様書 §インフラ製品の点検 の契機⑤）。基底イメージはアプリの実行環境の修正を
+  運ぶため、年 1 回では間隔が長すぎる。告知の検知は人が行う（自動の更新 PR の仕組み〔Dependabot の docker エコシステム等〕は
+  採っていない。導入するかは別に判断する）。基底イメージと Testcontainers のイメージの更新は platform-infra の Pod を
+  作り直さないので、運用仕様書の「インフラのイメージ参照を変える配備は引け後」には当たらない。
 
 ## 統制と現在の実現手段
 
@@ -90,6 +118,7 @@ related_specs:
 
 1. **`scripts/` が chart / マニフェストで入れる製品**（Istio・External Secrets・Reloader・cert-manager・Argo CD・k3s）は `deploy/` に参照が無く、本 IADR の対象外。Argo CD は `stable` ブランチのマニフェストを直接 apply しており版すら固定されていない。計画への確認を作業仕様書 §環流の記録 5 に置き、planning#750 で起票した。
 2. **統合試験の Testcontainers のイメージ**（`postgres:16-alpine`・`rabbitmq:3.13-alpine` 等。Qdrant と SeaweedFS を除く）は `deploy/` の外で、固定していない。
+   ［2026-10-09 追記 / #1814］**解消した。** 基底イメージ（`src/` の Dockerfile）とあわせて固定し、検査器の走査に入れた（決定 3 の追記）。
 3. digest は registry API から読んだ値であり、**本作業ではクラスタで pull して確かめていない**（実行機にクラスタが無い）。compose の構文（`docker compose config`）と chart の描画・スキーマ（`check-deploy-manifests.js`）は確かめた。
 
 ## 関連
