@@ -2,7 +2,7 @@
 title: IADR-0513 本番の NetworkPolicy は、取引ユニット（AST）の名前空間から KB の読み手（取引判断 → 検索の REST）と書き手（情報収集・報告書 → 文書の REST）への ingress を、用途ごとの values で開ける。既定は閉じ、送り元は名前空間と Pod の AND、ポートは REST だけ
 type: impl-adr
 status: Accepted
-related_ids: [NFR-09, FR-02, FR-03, ADR-0125, ADR-0119, ADR-0085, ADR-0084, IADR-0026, IADR-0076, IADR-0078, IADR-0348, IADR-0461, IADR-0492, IADR-0500]
+related_ids: [NFR-09, FR-02, FR-03, ADR-0125, ADR-0119, ADR-0121, ADR-0085, ADR-0084, IADR-0026, IADR-0076, IADR-0078, IADR-0348, IADR-0461, IADR-0492, IADR-0500]
 author: claude
 created: 2026-10-08
 updated: 2026-10-08
@@ -80,7 +80,8 @@ AST は MSP へ次の 2 用途で REST を呼ぶ（AST の chart と appsettings
 ### 決定 4 — 既定は閉じる。有効なのに値が欠けるときは描画で止める
 
 - `kbReader.enabled` / `kbWriter.enabled` の既定は `false`。既定（本番像）と `values-local` の描画はバイト等価のまま（`networkPolicy.enabled=false` の経路B では何も描かない）。
-- 描画で止める（`fail`）: `namespace` が空・`clients` が空または空の要素を含む・`target` のサービスが無効または `port` を持たない。
+- 描画で止める（`fail`）: `namespace` が空・`clients` が空または空の要素を含む・`target` のサービスが無効または `port` を持たない・
+  `target` が用途の行き先と違う（`kbReader` は `retrieval`、`kbWriter` は `document` だけを受ける。値の書き換えで BFF・認可サービス等へ穴を向けさせない）。
   空の `clients` を許すと `podSelector` の意味が「名前空間の全 Pod」に近づく書き方へ倒れやすく、空の `target` は行き先の無い穴になる。黙って倒さない。
 
 ## 統制と現在の実現手段
@@ -96,17 +97,22 @@ AST は MSP へ次の 2 用途で REST を呼ぶ（AST の chart と appsettings
 - 良い影響: 本番で AST の KB の読み手・書き手を使う手段が chart に入る。穴は 2 サービス × REST の 1 ポート × AST の 3 Pod に限られ、既定は閉じたまま。
 - 悪い影響 / トレードオフ: NetworkPolicy は L4 なので、開けた REST の口のどのパスにも届く（検索の `/search` 以外・文書の書き込み以外の口も）。
   何ができるかはアプリ層の認証・ロール・ABAC が決める（読み手はロールなし・書き手は `platform-operator`）。
+- 🔴 **書き手の穴は、DocumentService の読み取りの統制に依存する。** 計画 ADR-0119 決定 3 の暫定手段は「NetworkPolicy・STRICT mTLS・BFF の判定」であり、
+  組織文書の内容の ABAC は門（`IContentAbacGate`）が開いたときだけ `DocumentReadAccess` が行う（`DocumentReadUseCase.cs` の冒頭の注記。計画 ADR-0121 決定 4・5）。
+  **門が閉じている間に `kbWriter` を開けると、AST の書き手の Pod（`platform-operator` のトークン）が `GET /documents` で組織文書をすべて読める**
+  （個人資料は除かれる）。NetworkPolicy という暫定手段の一枚を、AST の書き手の Pod の分だけ外すことになる。運用仕様書のチェックに載せた。
 
 ## 残余
 
 1. 🔴 **メッシュ**: MSP は `mesh.mtlsMode: STRICT`。AST の Pod がサイドカーを持たない（AST の chart の `mesh.sidecarInjection.enabled` の既定は無効）と、
    穴を開けても平文は拒否されて届かない。本番で開けるときは AST 側のメッシュ参入と組で行う（運用仕様書に記した）。
 2. **LLM ゲートウェイ**: AST の報告書・取引判断は `llmgateway-service:8080` も呼ぶ。同じ既定拒否で塞がれるが、#1756 の射程（KB）の外であり本 IADR では開けない
-   （試験の呼び出し元の一覧に「閉じたまま」として載せた）。本番で使うときは別件で同じ形の knob を足す。
+   （試験の呼び出し元の一覧に「閉じたまま」として載せた）。#1811 で追う。
 3. **認証基盤への到達**: 読み手・書き手のトークンは認証基盤（`platform-infra`）から取る。MSP の chart の外であり、本 IADR は扱わない。
 4. **L7 の絞り込みは無い**: パス単位で絞る AuthorizationPolicy は置かない（決定の結果の欄）。必要になれば DocumentService のエッジの DENY（[[IADR-0348]] 追記）と
    同じ型で、AST の主体（`cluster.local/ns/ai-stock-trading/sa/...`）を対象に足す。ALLOW にすると他の呼び出し元を切るので DENY の形にする。
 5. **clients の追随は人手**: AST の chart で KB を呼ぶ Pod が増えたら、`clients` へ足さないと届かない（安全側に倒れる）。機械の突合は置いていない。
+6. **書き手の穴と内容の ABAC の門**: 上の §結果のとおり、門が閉じている間の `kbWriter` は組織文書の読み取りを AST の書き手の Pod へ広げる。門の状態を values から機械で突き合わせる手段は無い（運用の確かめに頼る）。
 
 ## 関連
 

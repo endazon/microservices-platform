@@ -581,7 +581,11 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
   - **確かめ方**（クラスタの外で）: `helm template` に同じ値を渡し、`allow-ast-kb-reader-ingress` / `allow-ast-kb-writer-ingress` の NetworkPolicy が描かれ、
     `from` の 1 要素に `namespaceSelector` と `podSelector` が並び、`ports` が 8080 だけであることを見る。描画の形は CI の `scripts/helm-ast-kb-ingress.test.js` が固定している。
   - **切り戻し**: 値を `false` へ戻して同期する。NetworkPolicy が消え、取引ユニットからの通信は再び塞がれる（読み手の検索も書き手の保存も届かなくなる）。
-  - 取引ユニットから LLM ゲートウェイへの通信も同じ既定拒否で塞がれるが、この値では開かない（KB の外。別に扱う）。認証基盤（`platform-infra`）への到達は本 chart の外である。
+  - 🔴 **書き手を開ける前に、内容の ABAC の門が開いているかを確かめる。** 門が閉じている間に `kbWriter` を開けると、取引ユニットの書き手の Pod が
+    文書サービスの `GET /documents` で組織文書（個人資料を除く）をすべて読めるようになる（組織文書の読み取りを、取引ユニットの書き手の Pod へ広げる）。
+    門の状態は上の「内容の ABAC の有効化の門（文書サービス）」のゲージ `documents_content_abac_gate_open` が 1（属性 `open`）であることで確かめる。読み手（`kbReader`）は検索サービスへの穴で、これには当たらない。
+  - `target` は用途ごとに固定である（読み手は `retrieval`、書き手は `document`）。ほかの値は `helm template` が失敗する。
+  - 取引ユニットから LLM ゲートウェイへの通信も同じ既定拒否で塞がれるが、この値では開かない（KB の外。#1811 で扱う）。認証基盤（`platform-infra`）への到達は本 chart の外である。
 
 ### 適用直後のドリフト即時検出（構成情報 API の要求 / 実装 ADR のフォローアップ 4 / #145）
 

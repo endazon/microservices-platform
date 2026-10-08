@@ -15,7 +15,8 @@
  *      「AST の Namespace（kubernetes.io/metadata.name）かつ clients の Pod」（同じ from の要素＝AND）、ポートは REST の 8080 だけ。
  *   3. 呼び出し元の一覧への評価: 読み手 → 検索 8080・書き手 → 文書 8080 だけが通り、gRPC・他の Pod・他の名前空間・他のサービスは落ち、
  *      名前空間の中の通信は変わらない。
- *   4. 片方だけの有効化・networkPolicy.enabled=false・knob の追随（namespace・clients・services.<target>.port）・描画で止まる 4 条件。
+ *   4. 片方だけの有効化・networkPolicy.enabled=false・knob の追随（namespace・clients・services.<target>.port）・描画で止まる条件
+ *      （target は用途ごとに 1 つ〔読み手 retrieval・書き手 document〕だけを受ける）。
  *   5. 変異: 一時複製したチャートで from の AND を OR に割る／ポートを外す／namespaceSelector を空にすると、本試験の判定が赤になる。
  *
  * 🔴 **helm が無ければ落ちる（fail-closed）。** helm-private-notes-sync-authz.test.js と同じ理由。CI は static-checks-units（azure/setup-helm 済み）で走らせる。
@@ -410,8 +411,9 @@ ok('🔴 有効: 呼び出し元の一覧へ評価すると、読み手 → 検�
 });
 
 ok('有効: 既定に対して増えるのは 2 枚の NetworkPolicy だけ（他の資源・既存の NetworkPolicy は不変）', () => {
-  const strip = (t) => t.split(/^---\n/m).filter((c) => !/^  name: allow-ast-kb-(reader|writer)-ingress$/m.test(c)).join('---\n');
-  assert.strictEqual(strip(ON), OFF);
+  // 資源ごとに末尾の空白を落として比べる（helm 4 は末尾の `---` の前に空行を残し、全文の比較だと版で結果が変わる）。
+  const docs = (t) => t.split(/^---\n/m).map((c) => c.trimEnd());
+  assert.deepStrictEqual(docs(ON).filter((c) => !/^  name: allow-ast-kb-(reader|writer)-ingress$/m.test(c)), docs(OFF));
 });
 
 ok('片方だけの有効化: 読み手だけ・書き手だけはその 1 枚だけを描き、もう片方は閉じたまま', () => {
@@ -439,13 +441,15 @@ ok('knob の追随: namespace・clients・services.<target>.port を変えると
   assert.deepStrictEqual(byName(v, 'allow-ast-kb-reader-ingress')[0], expectedPolicy({ ...READER, port: 9090 }));
 });
 
-ok('🔴 描画で止まる: clients が空・namespace が空・target が無効・target が無い', () => {
+ok('🔴 描画で止まる: clients が空・namespace が空・target が無効・target が用途の行き先と違う', () => {
   const cases = [
     [['--set', 'networkPolicy.fromAst.kbReader.clients=null'], /kbReader\.clients が空/],
     [['--set', 'networkPolicy.fromAst.kbWriter.clients={}'], /kbWriter\.clients に空の要素がある/],
     [['--set', 'networkPolicy.fromAst.namespace='], /fromAst\.namespace が空/],
     [['--set', 'services.retrieval.enabled=false'], /kbReader\.target="retrieval" のサービスが無効/],
-    [['--set', 'networkPolicy.fromAst.kbWriter.target=nope'], /kbWriter\.target="nope" のサービスが無効/],
+    [['--set', 'networkPolicy.fromAst.kbWriter.target=nope'], /kbWriter\.target は "document" だけを受ける（"nope"）/],
+    [['--set', 'networkPolicy.fromAst.kbReader.target=bff'], /kbReader\.target は "retrieval" だけを受ける（"bff"）/],
+    [['--set', 'networkPolicy.fromAst.kbWriter.target=retrieval'], /kbWriter\.target は "document" だけを受ける（"retrieval"）/],
   ];
   for (const [args, re] of cases) {
     const r = helmTemplate(['-f', CI_VALUES, ...args]);

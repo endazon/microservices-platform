@@ -108,5 +108,14 @@ AST 側（`8c7205cc`）の呼び出し:
 ## 範囲外
 
 - ABAC のポリシー（#1755 で済み）。稼働中のクラスタへの適用。
-- AST から LLM ゲートウェイ（`llmgateway-service:8080`）への ingress も同じ既定拒否で塞がれるが、#1756 の射程（KB）の外。IADR-0513 の残余に記す。
+- AST から LLM ゲートウェイ（`llmgateway-service:8080`）への ingress も同じ既定拒否で塞がれるが、#1756 の射程（KB）の外。IADR-0513 の残余に記す。#1811 で追う。
 - 認証基盤（Keycloak。`platform-infra`）への到達は MSP の chart の外。
+
+［2026-10-08 追記 / #1756］独立監査（GO）の指摘への対応:
+
+- 試験の「既定に対して増えるのは 2 枚だけ」を、全文の比較から資源ごとに末尾の空白を落とした比較へ（helm 4 は末尾の `---` の前に空行を残す）。
+  ほかの比較（`ON_LOCAL === OFF_LOCAL`）は同じ helm の 2 回の描画どうしなので版に依らない。資源の解析は空行を捨てるので影響しない。
+- LLM ゲートウェイの穴は #1811 として起票された。IADR-0513 残余 2・運用仕様書から引く。
+- 🔴 `kbWriter` は DocumentService の読み取りの統制に依存する: 内容の ABAC の門（`IContentAbacGate`）が閉じている間は、書き手の Pod が `GET /documents` で組織文書（個人資料を除く）をすべて読める。
+  IADR-0513 §結果・残余 6 と運用仕様書のチェックに足した。
+- `target` を用途ごとに固定（`kbReader`＝`retrieval`・`kbWriter`＝`document`）。別の値は描画で止まる。試験に 2 件足した（`kbReader.target=bff`・`kbWriter.target=retrieval`）。
