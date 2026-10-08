@@ -38,7 +38,7 @@ services:
   # Infrastructure
   # ─────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -55,7 +55,7 @@ services:
       retries: 5
 
   rabbitmq:
-    image: rabbitmq:3.13-management-alpine
+    image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
     environment:
       # NFR, #1022: ブローカ自身の資格情報も dev 既定のリテラルに固定しない（.env で上書き可）。
       # ⚠️ 既に初期化済みの `rabbitmq-data` ボリュームがあると、この 2 つは無視される
@@ -74,7 +74,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     ports:
       - "6379:6379"
     volumes:
@@ -86,7 +86,7 @@ services:
       retries: 5
 
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+    image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
     # ADR-0004, FR-13/UC-07, IADR-0020: realm `platform` を import して起動する。
     # wiki-js クライアント（OIDC）と ABAC 属性クレーム（clearance/department/groups）を含む。
     command: ["start-dev", "--import-realm"]
@@ -133,7 +133,7 @@ services:
         condition: service_healthy
 
   qdrant:
-    image: qdrant/qdrant:v1.18.1
+    image: qdrant/qdrant:v1.18.1@sha256:45f8e3ddc2570a4d029877e1b5ec1045c19b3852b4e22a55c7f43b05aea0ca89
     ports:
       - "6333:6333"
       - "6334:6334"
@@ -192,7 +192,7 @@ services:
       retries: 5
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.102.0
+    image: otel/opentelemetry-collector-contrib:0.102.0@sha256:26bce721ca2f83db1c2c4e8873514dfe5b3973401fe88a1208efdc74e32840c1
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
@@ -206,7 +206,7 @@ services:
       - loki
 
   prometheus:
-    image: prom/prometheus:v2.52.0
+    image: prom/prometheus:v2.52.0@sha256:5c435642ca4d8427ca26f4901c11114023004709037880cd7860d5b7176aa731
     # IADR-0210 (#787): 保持期間を args で明示する。経路B（deploy/local/observability/prometheus.yaml）と
     # **同じ 2 引数**を置く —— 現状は両方とも retention 無指定で対称であり、片方だけ入れると新たな
     # パリティ差を作るため。size(4GB) は経路B の PVC 容量(5Gi) 未満に取り、満杯→書き込み不能を形で塞ぐ。
@@ -231,7 +231,7 @@ services:
   # NFR (#198), #546: Prometheus が発火させたアラートの束ねと転送。
   # 受信先は deploy/alertmanager/alertmanager.yml が持つ（既定はどこへも送らない fail-safe）。
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
     command:
       [
         "--config.file=/etc/alertmanager/alertmanager.yml",
@@ -244,7 +244,7 @@ services:
       - "9093:9093"
 
   loki:
-    image: grafana/loki:3.0.0
+    image: grafana/loki:3.0.0@sha256:757b5fadf816a1396f1fea598152947421fa49cb8b2db1ddd2a6e30fae003253
     command: ["-config.file=/etc/loki/config.yaml"]
     # Issue #282, IADR-0079: 空の名前付きボリュームは root 所有で生成されるため、非 root イメージ
     # （uid 10001）でも storage パス配下に index/chunks を作成できるよう root 実行にする（image-user 非依存）。
@@ -257,7 +257,7 @@ services:
       - "3100:3100"
 
   tempo:
-    image: grafana/tempo:2.5.0
+    image: grafana/tempo:2.5.0@sha256:f0200a9bff6d14eb3a4332194f7b77c37ee1a3535e7e41db024d95aab6f1b4e8
     command: ["-config.file=/etc/tempo/config.yaml"]
     # Issue #282, IADR-0079: loki と同理由。空の名前付きボリューム（root 所有）へ blocks/wal を書けるよう root 実行。
     user: "0:0"
@@ -270,7 +270,7 @@ services:
       - "4327:4317"
 
   grafana:
-    image: grafana/grafana:11.0.0
+    image: grafana/grafana:11.0.0@sha256:0dc5a246ab16bb2c38a349fb588174e832b4c6c2db0981d0c3e6cd774ba66a54
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
@@ -679,7 +679,7 @@ services:
   # 公開だけを条件化できないため、dev/本番系の公開境界は「dev＝compose／本番系＝Helm」で表現する。
   wiki-js:
     # IADR-0088 (#320): 再現性のため浮動 major タグ `2` を実運用版 `2.5` へ固定する（再デプロイ安全性）。
-    image: ghcr.io/requarks/wiki:2.5
+    image: ghcr.io/requarks/wiki:2.5@sha256:fffff288a52f76e5b8c19a4fbcd0f3e538e96edea642c4f2d813d54d59a876de
     environment:
       DB_TYPE: postgres
       DB_HOST: postgres
@@ -753,7 +753,7 @@ services:
   embedding:
     profiles: ["embedding"]
     # TEI（OpenAI 互換 /v1/embeddings）。vLLM 等へ差し替える場合は image/command を上書きする。
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5@sha256:0502794a4d86974839e701dadd6d06e693ec78a0f6e87f68c391e88c52154f3f
     command: ["--model-id", "cl-nagoya/ruri-v3-310m"]
     # 内部 API のため host 公開しない（llm-gateway からサービス間呼び出し）。
     expose:

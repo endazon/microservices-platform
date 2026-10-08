@@ -1267,7 +1267,7 @@ spec:
     spec:
       containers:
         - name: grafana
-          image: grafana/grafana:11.0.0
+          image: grafana/grafana:11.0.0@sha256:0dc5a246ab16bb2c38a349fb588174e832b4c6c2db0981d0c3e6cd774ba66a54
           # IADR-0090 (#353): Keycloak OIDC(generic OAuth) 認証。匿名 Admin は廃止（fail-safe: 認証未設定/失敗時は
           # 匿名フルアクセスへ倒さず、Grafana 組み込み local admin=admin/admin へフォールバックする）。
           # issuer は https://keycloak.localhost/realms/platform（IADR-0243・#780。手順A の

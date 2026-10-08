@@ -30,7 +30,7 @@ spec:
       containers:
         - name: headlamp
           # dev 用に tag を固定（v0.43.0＝2026-06 時点の latest stable）。更新は本ファイルの image tag を手動更新する。
-          image: ghcr.io/headlamp-k8s/headlamp:v0.43.0
+          image: ghcr.io/headlamp-k8s/headlamp:v0.43.0@sha256:5d03caa26df7a715079405df2949907160518750b9b62b6bf4de8d1a6142c541
           args:
             - "-in-cluster"
           # OIDC 設定（Keycloak）。flag 相当を HEADLAMP_CONFIG_* env で与える。
