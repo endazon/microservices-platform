@@ -54,9 +54,13 @@ const REQUIRED_TOOLS = ['helm', 'kubectl', 'kubeconform'];
  * 2 段目は Istio 等 CRD のスキーマ集約カタログ（datreeio/CRDs-catalog）。
  * 両方に無ければ fail-closed（-ignore-missing-schemas は使わない。要点 4）。
  */
+// NFR, #1820: カタログはコミット SHA で固定する。`main` を引くと上流の更新ひとつで全 PR の必須チェックが落ちる
+// （2026-10-08 の external-secrets.io の更新 b7e2015 を kubeconform v0.6.7 がスキーマとして扱えず、
+// ClusterSecretStore が「could not find schema」になった）。上げるときは本走査を実走してから（IADR-0240 追記）。
+const CRDS_CATALOG_REF = 'f1e7f6bc0537bf0622ffe6e47dbaa85914fabbec';
 const SCHEMA_LOCATIONS = [
   'default',
-  'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json',
+  `https://raw.githubusercontent.com/datreeio/CRDs-catalog/${CRDS_CATALOG_REF}/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json`,
 ];
 
 /** ディレクトリを再帰的に走査し、`name` に一致するファイルの**所属ディレクトリ**を返す。 */
@@ -354,4 +358,12 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { check, discoverOverlays, discoverCharts, discoverChartCiValues, ALLOW_MISSING_TOOLS_ENV };
+module.exports = {
+  check,
+  discoverOverlays,
+  discoverCharts,
+  discoverChartCiValues,
+  ALLOW_MISSING_TOOLS_ENV,
+  SCHEMA_LOCATIONS,
+  CRDS_CATALOG_REF,
+};
