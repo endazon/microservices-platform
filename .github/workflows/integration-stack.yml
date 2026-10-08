@@ -334,10 +334,13 @@ jobs:
 
       # 🔴 SC-12 の IdP への書き込みの門（#1817 / FR-16・SC-12・ADR-0123 決定 2・3・フォローアップ 3・IADR-0516）。
       # 書き込み口（McpClientProvisioning:Provider=keycloak）は、偽の Keycloak とプロセス内の口でしか試されていなかった。
-      # **稼働の Keycloak で、作るもの・作らないものを対で測る**（M1〜M6。中身は scripts/check-mcp-client-provisioning.js の冒頭）:
+      # **稼働の Keycloak で、作るもの・作らないものを対で測る**（M1〜M7。中身は scripts/check-mcp-client-provisioning.js の冒頭）:
       #   登録が 201（503 にならない）・入口の印・`users?username=service-account-<client>&exact=true` がちょうど 1 件で属性あり・
       #   差し替えの丸ごと置き換え・部分集合の外れ / private-note は何も作らない・プラットフォームのクライアント名は 400 で相手は不変・
       #   「IdP へ書けて登録簿で落ちる」登録の補償・mcp-client-admin で入口のクライアントを消せる。
+      # ［#1818］M7: 定期の照合（McpServer の常駐。既定 1 分ごと）が、master の管理者で直接書き換えた属性を attributes_differ、
+      #   登録簿を通らずに作った印つきのクライアントを orphan として名指しする（kubectl logs で読む。最大 150 秒待つ）。
+      #   このスタックは Prometheus を起こさないので、ゲージではなくログで測る（警報の式は scripts.repo.test.js の #1818 が固定する）。
       # 作ったもの（クライアント・使い捨ての登録者・登録簿の行）は検査器が片付ける。このクラスタは次のステップで破棄される。
       # 前提はスタックの門だけ（ABAC の投入には依らない）。パスワードリセットの門の赤では飛ばさない（#1597 と同じ）。
       # 🔴 **ログイン経路の門より前に置く**（あちらを最後に置く順序の統制を変えない）。

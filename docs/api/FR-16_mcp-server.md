@@ -10,7 +10,7 @@ updated: 2026-10-09
 ids: [FR-15, FR-16, UC-08, UC-09, SC-12]
 adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054, ADR-0062, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123]
 iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516]
-specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring]
+specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection]
 issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818]
 -->
 
@@ -78,8 +78,14 @@ issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #18
   認可サービスの身元管理用とは別のクライアントであり、`realm-management` の `manage-clients`・`manage-users` だけを持つ。
   ［2026-10-09］配備は realm の `mcp-client-admin` とその secret（`mcp-client-admin-oidc` の `client-secret`。非 optional の参照）で配線した。
 - 🔴 **client secret は応答に載せない。**
-- 認可サーバーへの要求の期限は `McpClientProvisioning:Keycloak:TimeoutSeconds`（既定 10 秒）。時間切れは 502 であり、作りかけは消す（作成の要求そのものが時間切れになった場合も、引き直して入口の印があれば消す。同じクライアント ID の並行登録や引き直しの失敗では残り得るので、照合〔#1818〕が拾う）。要求を途中で取り消しても、認可サーバーへの書き込みと取り消しは最後まで走る。
+- 認可サーバーへの要求の期限は `McpClientProvisioning:Keycloak:TimeoutSeconds`（既定 10 秒）。時間切れは 502 であり、作りかけは消す（作成の要求そのものが時間切れになった場合も、引き直して入口の印があれば消す。同じクライアント ID の並行登録や引き直しの失敗では残り得るので、下の定期の照合が拾う）。要求を途中で取り消しても、認可サーバーへの書き込みと取り消しは最後まで走る。
 - 登録簿で無効化された行の差し替えで認可サーバーにクライアントを作るときは、無効のまま作る。
+- ［2026-10-09 / #1818］**登録簿と認可サーバーの定期の照合**（読むだけで書かない）: 起動時と `McpClientProvisioning:Reconciliation:Interval`（既定 `00:01:00`・下限 1 分）ごとに、
+  認可サーバーのクライアントの一覧（`GET /admin/realms/{realm}/clients?first=&max=100`。入口の印の有無）と、無人の行ごとのサービスアカウントの属性
+  （`GET /admin/realms/{realm}/users?username=service-account-<client>&exact=true`。認可サービスと同じ照会）を管理用の資格情報で読む。
+  1 回の照合の期限は周期と同じ長さ、並行は 4 要求まで。計器はゲージ `mcp.idp_reconciliation.drifted`（失敗・未照合は系列なし）と
+  カウンタ `mcp.idp_reconciliation.checks.total{mcp.idp_reconciliation.outcome=match|drift|failed}`（Meter `microservices-platform.mcp-server`）。
+  警報と対応は運用仕様書の「MCP クライアント登録簿と認証基盤の照合」。
 - 🔴 境界層は状態コードを作り替えないので 502 は画面へそのまま届くが、境界層自身の不達も 502 であり区別できない。
 
 **メッシュ内の Service 名は `mcp-service` である**（配備の chart キーは `mcp`。テンプレートが

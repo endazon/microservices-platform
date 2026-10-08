@@ -12,6 +12,8 @@
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+    <!-- #1818: 照合の周期と 1 回の期限を、実時間を待たずに進める（FakeTimeProvider）。 -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <ProjectReference Include="..\McpServer.csproj" />
   </ItemGroup>
 </Project>

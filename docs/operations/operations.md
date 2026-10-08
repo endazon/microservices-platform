@@ -7,11 +7,11 @@ updated: 2026-10-09
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06]
-adrs: [ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027]
-iadrs: [IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
-specs: [20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
-issues: [#1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750]
+ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06]
+adrs: [ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123]
+iadrs: [IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
+specs: [20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
+issues: [#1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750]
 -->
 
 # 運用仕様書
@@ -528,6 +528,64 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
   `GET /documents/ast-stale-copies`。消すのは管理者の手作業）。
 - 🔴 **配備順: authorization-service を document-service より先に（または同時に）上げる。** 門が問う口は新しい認可サービスにしか無い。
   逆順でも門は `owner_read_policy_unknown` で閉じたまま（安全側）である。
+
+### MCP クライアント登録簿と認証基盤の照合（食い違いの検知と通知）（MCP サーバーの要求 / #1818）
+
+無人（サービスアカウント）の MCP クライアントの属性は、**認証基盤（Keycloak）のサービスアカウントの属性が正**であり、
+MCP クライアント登録管理の画面の登録簿はその写しである（判定は認可サービスが認証基盤から引き直した値で行う）。
+登録・差し替えは「検証 → 認証基盤 → 登録簿」の順で書くが、認証基盤の管理画面での直接の操作・取り消しの失敗・
+2 つの差し替えの交差（行の排他は無い）で両者はずれ得る。**ずれを定期の照合で検知して知らせる。直しはしない。**
+
+- **照合**: MCP サーバーが**起動時に 1 回と、以後 1 分ごと**に、登録簿の無人の行と認証基盤を突き合わせる。
+  **構成で有効にする必要は無い**（常に働く）。周期は `McpClientProvisioning__Reconciliation__Interval`
+  （`hh:mm:ss`・`00:01:00`〜`23:59:59`。値域外は起動時に落ちる）で変えられる。helm・compose には値を置いていない（コードの既定で回る）。
+  - 1 回の照合は、認証基盤のクライアントの一覧（100 件ごとに 1 要求。最後の頁が 100 件に満たないと分かるまで読むので、クライアント数 n に対し ⌊n/100⌋＋1 要求。1 万件以上なら読み切らずに失敗）と、
+    入口の印のあるクライアントの行ごとに 1 要求（認可サービスと同じ利用者名の完全一致の照会。同時に 4 要求まで）を送る。
+    各要求の期限は書き込みと同じ `McpClientProvisioning__Keycloak__TimeoutSeconds`（既定 10 秒）、**1 回の照合の期限は周期と同じ長さ**
+    （超えたら失敗として数える）。管理用の資格情報は書き込みと同じ `mcp-client-admin` である。
+  - 有人の行は比べない（認証基盤へ書かない）。**有効・無効も比べない**（無効化はまだ認証基盤へ写していない）。
+- **食い違いの種類**（ログの `kind=`）:
+
+  | `kind` | 意味 | 主な原因 |
+  | --- | --- | --- |
+  | `client_missing` | 登録簿に無人の行があるのに、認証基盤に同じクライアント ID が無い | 認証基盤での直接の削除。認証基盤への書き込みの口ができる前に登録した行 |
+  | `not_managed` | 認証基盤に同じクライアント ID はあるが、入口の印（`msp.mcp-client.managed-by=mcp-server`）が無い | 入口を通らずに作られたクライアント（プラットフォーム自身の機密クライアントを含む）と同名の古い行 |
+  | `service_account_missing` | 印つきのクライアントはあるが、サービスアカウントの利用者が利用者名の完全一致で引けない | 認証基盤でサービスアカウントを外した。判定ではその主体は名簿に居ない（拒否） |
+  | `attributes_differ` | サービスアカウントの属性が登録簿の行と違う（集合値の順序は問わない） | 認証基盤での直接の割当。2 つの差し替えの交差（認証基盤は後の要求・登録簿は先の要求） |
+  | `orphan` | 印つきのクライアントが認証基盤にあるのに、登録簿に無人の行が無い | 補償（作りかけの削除）が走らなかった・失敗した残骸。同じクライアント ID の並行登録 |
+
+- **計器**: ゲージ `mcp_idp_reconciliation_drifted`（直近の照合で食い違ったクライアントの件数。**0 が正常**）。照合に失敗したときと
+  起動直後の未照合のときは、**系列を出さない**（古い値も 0 も出さない）。照合の結末は
+  `mcp_idp_reconciliation_checks_total{mcp_idp_reconciliation_outcome="match" | "drift" | "failed"}`（1 回の照合に 1 つ）。
+  **クライアント ID は計器の属性に載せない**（系列の数を有界に保つ）。どのクライアントかはログで見る。
+- **警報**（下の「監視・アラート」と同じ経路。Alertmanager と Grafana の Alerting 画面）:
+  - `McpClientIdpDrift`（warning）: 食い違いが 1 件以上のまま 5 分。**食い違いが起きてから鳴るまで最大およそ 7 分**
+    （照合の周期 1 分 ＋ 1 回の照合の期限 1 分 ＋ 5 分）。登録・差し替えの最中を照合が見た一時の食い違いは次の周期で消えるので、
+    5 分の持続で鳴らない。
+  - `McpClientIdpReconciliationSeriesAbsent`（warning）: ゲージの系列が無い（**見ていない**）。MCP サーバーが止まっている、
+    照合の失敗が続いている（認証基盤・登録簿を読めない、照合の期限切れ、書き込み口の未構成）、または収集が欠けている。
+    このあいだ `McpClientIdpDrift` は鳴らない。失敗が続き始めてから鳴るまで最大およそ 12 分（周期 ＋ 照合の期限 ＋ 瞬間ベクタの
+    lookback 約 5 分 ＋ 5 分。理由は上の「所有者の読み取りのポリシー」の同じ警報と同じ）。
+- **ログ**: 食い違いは照合のたびに MCP サーバーが Warning「登録簿と IdP の食い違いを検知した: `client=<クライアント ID> kind=<種類>`」を出す
+  （1 回に 20 件まで。超えた分は件数だけ）。**名指しは重大度の高い順**（`attributes_differ` → `orphan` → `not_managed` → `service_account_missing` → `client_missing`）で、
+  古い行の `client_missing` が多くても属性違いと孤児は押し出されない。種類ごとの件数は照合ごとの Information の 1 行（`attributes_differ=… orphan=… …`）に出る。属性の値はログに出さない。照合ごとに Information「無人の行 N 件・食い違い M 件」。
+  照合できなかったときは Error（書き込み口が構成されていないときは Warning）。
+- **鳴ったときの対応**（種類ごと。🔴 **認証基盤の管理画面で属性を直接割り当てて合わせない** —— 検証（登録者の属性の部分集合・個人資料の割当禁止）が掛からない）:
+  - `attributes_differ`: どちらが意図した値かを登録者に確かめ、**MCP クライアント登録管理の画面で属性を差し替え直す**（検証 → 認証基盤 → 登録簿の順で両方が揃う）。
+    繰り返すなら、認証基盤の管理イベントで `mcp-client-admin` 以外の主体による利用者属性の更新を探す（直接の操作の痕跡）。
+  - `client_missing`: 同じ画面で属性を差し替える（認証基盤にクライアントが無い行は、差し替えのときに作られる。無効化した行は無効のまま作られる）。
+  - `orphan`: 登録簿に行が無いことを確かめてから、認証基盤の管理画面でそのクライアントを消す（属性は検証を経ていない可能性がある）。
+    使い続けるなら、消した後に画面から登録し直す。
+  - `service_account_missing`: 認証基盤でそのクライアントを消し、画面で属性を差し替えて作り直す。
+  - `not_managed`: 登録簿の行が入口を通らない主体と同名の古い行である。画面の差し替えは拒まれる（入口の印が無い主体へは書かない）。
+    不要なら登録簿の行を消す（画面に削除は無いので、MCP サーバーの DB `mcp_svc` の `"Clients"` から当該クライアント ID の行を消す）。
+  - 対応の後、次の照合（1 分以内）でログの名指しが消え、ゲージが 0 へ戻ることを確かめる。
+- 🔴 **配備の直後に `McpClientIdpDrift` が鳴り得る**: 認証基盤への書き込みの口ができる前に登録した無人の行は、認証基盤にクライアントが無く
+  `client_missing` として数えられる。対処は MCP クライアント登録管理の画面でその行の属性を保存し直すこと（差し替えで認証基盤に作られる）。警報は弱めない。
+- 🔴 **`McpClientIdpReconciliationSeriesAbsent` が続くとき、原因は 1 行だけのことがある**: 照合は 1 行でも読めなければ全体を失敗にする（途中までの結果で数えない）。
+  MCP サーバーの Error ログ「登録簿と IdP を照合できなかった: 行 `client=<クライアント ID>` のサービスアカウントを IdP から読めない」でその行を特定し
+  （例: `kubectl -n microservices-platform logs deploy/mcp-service --since=15m | grep '照合できなかった'`）、認証基盤の管理画面でそのクライアントと
+  サービスアカウントの状態を確かめる。行の名指しが無い Error（一覧・登録簿を読めない・照合の期限切れ）は認証基盤そのもの・DB・管理用の資格情報を疑う。
 
 ### AST の KB の読み手のポリシーの投入（本番の配備の手順。ABAC の要求）
 
@@ -1440,6 +1498,7 @@ LlmGateway）に在るため、**当該イメージが更新済みであるこ�
 | PostgreSQL 停止 | サービス起動失敗/DB 接続エラー | DB 再起動・接続確認。書き込み不可の間は該当サービスを縮退 | データ破損時はバックアップからリストア（RPO/RTO 節） |
 | パスワードリセット申請の床の器が全滅（申請がすべて 503） | `ResetFloorNoReadyEndpoint` アラート（critical）。`ResetFloorUpSeriesAbsent` は「見ていない」（収集器の受け口の欠落）であり全滅ではない | 🔴 **503 は「申請を閉じた状態」であり、床を外さない**（本番で `RESET_FLOOR=0` を退路に使わない —— 外している間は所要時間で利用者名を列挙できる）。器を戻す: `kubectl -n platform-infra get deploy,pdb,pods -l app=reset-floor`・ログ・ConfigMap `reset-floor-script` の有無を見て直す。利用者は**管理者による一時パスワード発行**で復旧する。手順は [運用 Runbook](keycloak-smtp-relay-setup-runbook.md) の「器がすべて落ちたとき」 | 器が戻らない（イメージ取得・ノード資源・PDB による退避の停止）ならノードと Deployment の事象を確認する。全滅が繰り返すならレプリカ数・分散の見直しを計画へ環流する |
 | 所有者の読み取りのポリシーが消えた（所有者が自分の文書を読めない） | `OwnerReadPolicyMissing` アラート（critical）と認可サービスの Error ログ。`OwnerReadPolicyCheckSeriesAbsent` は「見ていない」（認可サービスの停止・ポリシーの表を読めない）であり、消えたことではない | 本書「所有者の読み取りのポリシーの投入」の確かめ方で状態を見て、無ければ手順で投入し直す（無効なら有効へ戻す）。削除そのものは止めていない。誰が消したかはポリシーの API が記録していないので、管理者の間で確かめる | 繰り返し消されるなら、管理者の操作の手順（削除の前の確認）を見直す。投入し直しは管理者設定画面から行える（所有者の条件は動的束縛で選ぶ） |
+| MCP クライアント登録簿と認証基盤が食い違った（判定に使われる属性が画面の表示と違う） | `McpClientIdpDrift` アラート（warning）と MCP サーバーの Warning ログ（`client=… kind=…`）。`McpClientIdpReconciliationSeriesAbsent` は「見ていない」（MCP サーバーの停止・照合の失敗の継続）であり、食い違いではない | 本書「MCP クライアント登録簿と認証基盤の照合」の種類ごとの対応。照合は直さないので、画面からの差し替え（または認証基盤の残骸の削除）で揃える。認証基盤の管理画面で属性を直接割り当てない | `attributes_differ` が繰り返すなら、認証基盤の管理イベントで直接の操作の主体を探し、管理者の手順を見直す。2 つの差し替えの交差が原因なら、行の排他の導入を起票する |
 | サービス 5xx スパイク | `HighHttp5xxRate` アラート | 対象サービスのログ/トレース（Tempo）で原因特定。必要ならロールバック（Git revert → ArgoCD 同期） | 依存（DB/ブローカ/外部）起因の切り分け。HPA 上限到達なら `scaling` 見直し |
 | 構成ドリフト検出 | ドリフト検出 Warning（監査/警告ログ） | 宣言（`pipeline.json`）と実効の差分を確認。意図せぬ差分は Git を正として再同期 | 起動時 fail-fastで不整合構成の反映は阻止済み。恒常化は宣言の是正 |
 

@@ -13,7 +13,7 @@
  *   - 管理用の主体 `mcp-client-admin` のロール（manage-clients / manage-users）で、作成・SA の照会・属性の書き込み・補償の削除が
  *     本当に通るかも、稼働の Keycloak でしか分からない（足りなければ 403 → 502）。
  *
- * 測ること（受け入れ基準 4。番号は作業仕様書 20261009_1817 の M1〜M6）:
+ * 測ること（受け入れ基準 4。番号は作業仕様書 20261009_1817 の M1〜M6。M7 は 20261009_1818）:
  *   M1 無人の登録が 201（503 にならない）。Keycloak のクライアントに入口の印（msp.mcp-client.managed-by=mcp-server）があり、
  *      機密・SA つき・人の流れ（標準・暗黙・直接付与）は閉・fullScopeAllowed=false。
  *   M2 `users?username=service-account-<client>&exact=true` がちょうど 1 件で、割り当てた属性が入っている（集合値は多値）。
@@ -26,6 +26,12 @@
  *      **500**（502 / 503 は IdP 側の失敗で補償を通らないので赤）になり、Keycloak にクライアントも SA 利用者も残らず、登録簿にも
  *      行が無く、管理イベントに mcp-client-admin の「作成 → 削除」が在る。併せて mcp-client-admin の資格情報で
  *      M1 のクライアントを消せる（補償が使う削除の権限）。
+ *   M7 照合（#1818 / IADR-0516 決定 5）: 入口で登録したクライアントのサービスアカウントの属性を master の管理者で直接書き換え、
+ *      入口の印つきのクライアントを登録簿を通らずに作ると、McpServer の定期の照合がそれぞれを `kind=attributes_differ` /
+ *      `kind=orphan` として名指しする（`kubectl logs` で読む。最大 RECONCILE_WAIT_MS）。
+ *      🔴 **ゲージの値は読まない** —— この使い捨てのスタックは観測スタック（Prometheus）を起こさない。読むのは照合のログである。
+ *      それでも、照合の読み取りの口（クライアントの一覧が入口の印を含むこと・mcp-client-admin の権限で一覧と照会が通ること）は
+ *      稼働の Keycloak でしか確かめられない。照合が失敗し続けていれば名指しは出ないので、この門が赤になる。
  *
  * 主体は 3 つに分ける（測る側と測られる側を同じにしない）:
  *   - 登録者: 実行のたびに master の管理者が作る**使い捨ての機密クライアント**（SA に platform-admin・既定スコープ profile / roles）。
@@ -68,6 +74,9 @@ const SET_VALUED = new Set(['tags', 'projects']);
 // 登録簿の DisplayName は varchar(200)、Keycloak のクライアントの name は 255 文字まで（M6 の前提）。
 const REGISTRY_DISPLAY_NAME_MAX = 200;
 const KEYCLOAK_NAME_MAX = 255;
+// M7: 照合の既定の周期は 1 分（IdpReconciliationOptions.DefaultInterval）。周期 ＋ 1 回の照合の期限（周期と同じ）＋ 余裕で待つ。
+const RECONCILE_WAIT_MS = Number(env('MCP_PROV_RECONCILE_WAIT_MS', '150000'));
+const RECONCILE_POLL_MS = 10000;
 
 const log = (s) => process.stdout.write(`${s}\n`);
 const warn = (s) => process.stderr.write(`${s}\n`);
@@ -194,6 +203,25 @@ function overlongDisplayName() {
   return name;
 }
 
+/**
+ * M7: 照合のログ（McpServer の Warning「client=<id> kind=<kind>」）に、期待した名指しが在るか。違反の一覧を返す。
+ * 照合の失敗（「照合できなかった」）が出ていれば、その旨を添える（名指しが無い理由の手掛かり）。
+ */
+function evaluateReconciliationLog(logText, expected) {
+  const text = String(logText || '');
+  const errors = [];
+  for (const { clientId, kind } of expected) {
+    const line = `client=${clientId} kind=${kind}`;
+    // 前後の境界: クライアント ID の前方一致（probe-x と probe-x-2）を取り違えない。
+    const re = new RegExp(`client=${clientId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} kind=${kind}(?![\\w-])`);
+    if (!re.test(text)) errors.push(`照合のログに「${line}」が無い`);
+  }
+  if (errors.length > 0 && /照合できなかった|照合の口が構成されていない/.test(text)) {
+    errors.push('照合が失敗している（McpServer のログに「照合できなかった」または「照合の口が構成されていない」がある）');
+  }
+  return errors;
+}
+
 function selfTest() {
   const assert = require('assert');
   let n = 0;
@@ -252,6 +280,19 @@ function selfTest() {
     assert.strictEqual(evaluateCompensationEvents([cr, { ...del, time: 9 }], 'p', 'sa').length, 1, '作成より前の削除を数えない');
     assert.strictEqual(evaluateCompensationEvents([cr, { ...del, resourcePath: 'clients/u2' }], 'p', 'sa').length, 1);
     assert.strictEqual(evaluateCompensationEvents([cr, { ...del, authDetails: { userId: 'other' } }], 'p', 'sa').length, 1);
+  });
+  t('M7: 照合のログに名指しが在れば 0、無い・種類違い・前方一致だけは赤。失敗のログは理由として添える', () => {
+    const log = 'warn: X[0]\n      登録簿と IdP の食い違いを検知した: client=p-drift kind=attributes_differ。照合は直さない\n'
+      + 'warn: X[0]\n      登録簿と IdP の食い違いを検知した: client=p-orphan kind=orphan。照合は直さない\n';
+    const want = [{ clientId: 'p-drift', kind: 'attributes_differ' }, { clientId: 'p-orphan', kind: 'orphan' }];
+    assert.deepStrictEqual(evaluateReconciliationLog(log, want), []);
+    assert.strictEqual(evaluateReconciliationLog('', want).length, 2);
+    assert.strictEqual(evaluateReconciliationLog(log.replace('kind=orphan', 'kind=client_missing'), want).length, 1);
+    assert.strictEqual(evaluateReconciliationLog('client=p-drift-2 kind=attributes_differ', [want[0]]).length, 1, '別のクライアントの名指しを数えない');
+    assert.strictEqual(evaluateReconciliationLog('client=p-drift kind=attributes_differ-x', [want[0]]).length, 1, '種類の前方一致を数えない');
+    const failing = evaluateReconciliationLog('fail: X[0]\n      登録簿と IdP を照合できなかった', want);
+    assert.strictEqual(failing.length, 3);
+    assert.ok(failing[2].includes('照合が失敗している'));
   });
   t('M6: 補償の表示名は登録簿の上限を超え、Keycloak の上限に収まる', () => {
     const name = overlongDisplayName();
@@ -506,6 +547,45 @@ async function live() {
     } else {
       failures.push('M6 の前提: M1 のクライアントが無い（削除の権限を測れない）');
     }
+
+    // --- M7（#1818）--------------------------------------------------------------------------------
+    // 入口を通らない IdP の直接の操作（ADR-0123 決定 2 が禁じた操作）を 2 つ作り、照合がそれぞれを名指しするのを待つ。
+    const since = new Date(Date.now() - 5000).toISOString();
+    const driftId = id('drift');
+    const r7 = await register(driftId, { department: 'engineering' });
+    if (r7.status === 201) created.push(driftId);
+    step('M7 前提: 照合の対象にする無人の登録が 201', status(r7, 201));
+    const saUser = (await usersOf(driftId))[0];
+    if (saUser) {
+      // read-modify-write（PUT は部分更新でない）。属性だけを登録簿と違う値へ書き換える。
+      const full = await call('GET', `${kcAdmin}/users/${saUser.id}`, admin);
+      const rep = { ...(full.json || {}), attributes: { ...((full.json || {}).attributes || {}), department: ['sales'] } };
+      for (const k of ['access', 'disableableCredentialTypes', 'userProfileMetadata']) delete rep[k];
+      step('M7 前提: サービスアカウントの属性を master の管理者で直接書き換える', status(await call('PUT', `${kcAdmin}/users/${saUser.id}`, admin, rep), 204));
+    } else {
+      failures.push('M7 の前提: 照合の対象のサービスアカウントが無い');
+    }
+    const orphanId = id('orphan');
+    created.push(orphanId);
+    step('M7 前提: 入口の印つきのクライアントを登録簿を通らずに作る（補償が走らなかった残骸の再現）', status(await call('POST', `${kcAdmin}/clients`, admin, {
+      clientId: orphanId, name: 'SC-12 reconciliation probe orphan', enabled: true, protocol: 'openid-connect',
+      publicClient: false, serviceAccountsEnabled: true, standardFlowEnabled: false, implicitFlowEnabled: false,
+      directAccessGrantsEnabled: false, redirectUris: [], webOrigins: [],
+      attributes: { [MANAGED_BY_ATTRIBUTE]: MANAGED_BY_VALUE },
+    }), 201));
+    const expected = [{ clientId: driftId, kind: 'attributes_differ' }, { clientId: orphanId, kind: 'orphan' }];
+    const deadline = Date.now() + RECONCILE_WAIT_MS;
+    let reconcileErrors = ['照合のログを読めていない'];
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, RECONCILE_POLL_MS));
+      const logs = spawnSync('kubectl', ['-n', NS, 'logs', 'deploy/mcp-service', '--all-containers=true', `--since-time=${since}`],
+        { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+      if (logs.status !== 0) { reconcileErrors = [`kubectl logs が失敗した（exit ${logs.status}）`]; continue; }
+      reconcileErrors = evaluateReconciliationLog(logs.stdout, expected);
+      if (reconcileErrors.length === 0) break;
+    }
+    step(`M7 照合が、属性の書き換えを attributes_differ・登録簿に無い印つきのクライアントを orphan として名指しする（${RECONCILE_WAIT_MS / 1000} 秒以内）`,
+      reconcileErrors);
   } finally {
     // 片付け（失敗しても門の判定は上の結果で決める）。使い捨ての登録者も消す（SA 利用者ごと消える）。
     for (const cid of created) {
@@ -523,7 +603,7 @@ async function live() {
     for (const f of failures) warn(`  - ${f}`);
     return 1;
   }
-  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M6）');
+  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M7）');
   return 0;
 }
 
@@ -531,6 +611,7 @@ module.exports = {
   evaluateCompensationResponse, evaluateCompensationEvents,
   serviceAccountUserName, expectedKeycloakAttributes, normalizeAttributes, sameAttributes,
   evaluateCreatedClient, evaluateServiceAccountLookup, evaluateNothingCreated, overlongDisplayName,
+  evaluateReconciliationLog,
 };
 
 if (require.main === module) {
