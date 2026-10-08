@@ -143,6 +143,60 @@ spec:
           port: {{ .Values.edge.privateNotesSync.port }}
 {{- end }}
 {{- end }}
+{{- /* NFR-09, ADR-0125 決定 4, IADR-0513 (#1756): 取引ユニット（AST）の名前空間 → KB の読み手（検索）・書き手（文書の保存）。
+       default-deny-ingress の下では別 Namespace からの ingress は L3/L4 で塞がれる。**用途ごとに values で開け、既定は閉じる**
+       （networkPolicy.fromAst.kbReader / kbWriter の enabled: false）。開ける穴は最小にする:
+         - 行き先は services.<target> の Pod（app: <target>-service）だけ。
+         - 送り元は「AST の Namespace（kubernetes.io/metadata.name。API サーバが付け、書き換えられない）**かつ** clients の Pod」。
+           namespaceSelector と podSelector を**同じ from の要素**に置く（AND）。別の要素に割ると OR になり、名前空間全体か、
+           この Namespace の同名ラベルの Pod まで開く。
+         - ポートは services.<target>.port（REST）だけ。east-west gRPC（grpcPort）は開けない（AST は REST だけを使う）。
+       有効なのに値が欠けるときは描画で止める（黙って広い穴・空の穴へ倒さない）。 */}}
+{{- $fromAst := .Values.networkPolicy.fromAst | default dict }}
+{{- $allowedTargets := dict "kbReader" "retrieval" "kbWriter" "document" }}
+{{- range $use := list "kbReader" "kbWriter" }}
+{{- $rule := index $fromAst $use | default dict }}
+{{- if $rule.enabled }}
+{{- /* 行き先は用途ごとに 1 つに固定する（読み手＝検索・書き手＝文書）。target の値で別のサービス（BFF・認可 等）へ穴を向けさせない。 */}}
+{{- $wantTarget := index $allowedTargets $use }}
+{{- if ne ($rule.target | default "") $wantTarget }}{{ fail (printf "networkPolicy.fromAst.%s.target は %q だけを受ける（%q）" $use $wantTarget ($rule.target | default "")) }}{{ end }}
+{{- $svc := index $.Values.services ($rule.target | default "") | default dict }}
+{{- if not $fromAst.namespace }}{{ fail "networkPolicy.fromAst.namespace が空である（AST の Namespace 名を与える）" }}{{ end }}
+{{- if not $rule.clients }}{{ fail (printf "networkPolicy.fromAst.%s.clients が空である（AST の Pod の app ラベルを与える。空のまま名前空間全体へ開けない）" $use) }}{{ end }}
+{{- range $rule.clients }}{{- if not . }}{{ fail (printf "networkPolicy.fromAst.%s.clients に空の要素がある" $use) }}{{ end }}{{- end }}
+{{- if not (and $svc.enabled $svc.port) }}{{ fail (printf "networkPolicy.fromAst.%s.target=%q のサービスが無効か port を持たない" $use ($rule.target | default "")) }}{{ end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ast-{{ $use | kebabcase }}-ingress
+  namespace: {{ $.Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ $rule.target }}-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $fromAst.namespace }}
+          podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  {{- range $rule.clients }}
+                  - {{ . | quote }}
+                  {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $svc.port }}
+{{- end }}
+{{- end }}
 {{- /* SC-22, ADR-0095 決定 3, IADR-0433, IADR-0453 決定 9 (#1411), IADR-0495 決定 3 (#458 段 S1): サービス → Vault。
        allow-intra-namespace が Egress を「同 Namespace ＋ DNS」に絞るため、別 Namespace の Vault へは
        L3/L4 で届かない（届かなければ BFF の /bff/secrets は 503、datasource-service の `vault:` 参照は unreachable で fail-closed）。

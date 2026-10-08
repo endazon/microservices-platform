@@ -2,10 +2,10 @@
 title: IADR-0492 AST の KB の読み手は書き手と別の機密クライアント（ロールなし・profile あり）にし、その service-account の projects=ai-stock-trading に project=ai-stock-trading の文書だけを許す read のポリシー 1 本で読ませる
 type: impl-adr
 status: Accepted
-related_ids: [FR-03, FR-05, FR-09, NFR-09, ADR-0004, ADR-0080, ADR-0085, ADR-0088, ADR-0119, ADR-0121, ADR-0124, IADR-0075, IADR-0133, IADR-0253, IADR-0373, IADR-0420, IADR-0456, IADR-0485, ADR-0125, IADR-0500]
+related_ids: [FR-03, FR-05, FR-09, NFR-09, ADR-0004, ADR-0080, ADR-0085, ADR-0088, ADR-0119, ADR-0121, ADR-0124, IADR-0075, IADR-0133, IADR-0253, IADR-0373, IADR-0420, IADR-0456, IADR-0485, ADR-0125, IADR-0500, IADR-0513]
 author: claude
 created: 2026-10-02
-updated: 2026-10-06
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0085_project-attribute-scope-and-non-axis.md 決定 2（本 IADR が例外を置く）・決定 3（静的ポリシー対）
   - planning:projects/microservices-platform/07_adr/ADR-0080_set-valued-user-attributes-and-match-semantics.md 決定 2（集合値の交差）
@@ -132,6 +132,7 @@ AST の取引判断が RAG で KB を検索すると、実環境では 0 件に�
 1. **計画側への記録**: ADR-0085 決定 2 に「AST の KB の読み手の静的ポリシー対 1 本を例外とする（#1696 の裁定）」が書かれていない。
    次に ADR-0085 を読む者が本ポリシーを違反と読む恐れがある。planning への環流（部分改定または追記の依頼）が要る。［2026-10-02 追記 / #1696］planning#712 として起票済み（2026-10-02）。
 2. **本番の NetworkPolicy**（AST 名前空間からの ingress）は別件（裁定のとおり）。本番で読み手を使うにはその許可が要る。
+   ［2026-10-08 追記 / #1756］[[IADR-0513]] で chart に入った（`networkPolicy.fromAst.kbReader`。既定は閉。取引判断の Pod → 検索の REST だけ）。本番で開けるときは AST の Pod のメッシュ参入と組で行う（運用仕様書）。
 3. **本番への投入**: 本番のポリシーは配備の手順で管理者が投入する。消えたことを知らせる計器は置いていない（所有者の読み取りと違い、
    消えても読み手が 0 件になるだけで他の主体へ影響しないため。必要になったら別件）。
 4. **実データでの受け入れ（参考情報 1 件以上）は PoC で確かめる**（試験はポリシーと絞り込みの形までを固定する）。

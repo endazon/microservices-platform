@@ -148,6 +148,27 @@ edge:
 # mesh(mTLS) 配下でも多層防御（defense-in-depth）として維持する（IADR-0026）。
 networkPolicy:
   enabled: true
+  # NFR-09, ADR-0125 決定 4, IADR-0513 (#1756): 取引ユニット（AST）の名前空間からの ingress。**用途ごとに既定は閉じる。**
+  # 有効にすると templates/networkpolicy.yaml が 1 用途 1 枚の NetworkPolicy を描く —— 行き先は services.<target> の Pod、
+  # 送り元は「namespace（kubernetes.io/metadata.name）の Namespace かつ clients の Pod」（AND）、ポートは services.<target>.port（REST）だけ。
+  # 🔴 本番の MSP は STRICT の mTLS なので、穴を開けても AST の Pod がメッシュに入っていなければ届かない（AST の chart の
+  #    mesh.sidecarInjection.enabled）。clients は AST の chart の Pod ラベル `app: <名前>-service` と一致させること。
+  # target は用途ごとに固定（kbReader＝retrieval・kbWriter＝document）。別の値は描画で止まる。
+  # 🔴 kbWriter: 内容の ABAC の門（IContentAbacGate）が閉じている間は、AST の書き手の Pod が GET /documents で組織文書を
+  #    （個人資料を除き）すべて読めるようになる。開ける前に運用仕様書の「本番の前提」を読むこと。
+  fromAst:
+    namespace: ai-stock-trading
+    # KB の読み手（ai-stock-trading-kb-reader）: 取引判断の RAG → RetrievalService の REST（POST /search）。
+    kbReader:
+      enabled: false
+      target: retrieval
+      clients: [trade-decision-service]
+    # KB の書き手（ai-stock-trading-kb-writer）: 収集記事・確定報告書の保存 → DocumentService の REST
+    # （POST /documents・GET /documents・PUT /documents/{id}/body）。
+    kbWriter:
+      enabled: false
+      target: document
+      clients: [information-collection-service, report-service]
 
 # ADR-0007: Harbor レジストリからの Pull に用いる imagePullSecrets（docker-registry 型 Secret 名）。
 # Secret 本体はコミットしない。deploy/secrets/README.md の手順で事前作成する。

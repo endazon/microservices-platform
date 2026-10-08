@@ -2,10 +2,10 @@
 title: IADR-0500 AST の KB の読み手の read ポリシーの文書の条件へ機密区分の上限（public・internal）を足す。保存時の「文書の条件は 1 キーまで」に値まで固定した例外を 1 つ置き、名前は据え置いて投入済みの環境は PUT で書き換える（IADR-0492 決定 1 の部分改定）
 type: impl-adr
 status: Accepted
-related_ids: [FR-05, FR-03, FR-09, NFR-09, SC-09, ADR-0125, ADR-0085, ADR-0080, ADR-0127, IADR-0492, IADR-0253, IADR-0133, IADR-0497]
+related_ids: [FR-05, FR-03, FR-09, NFR-09, SC-09, ADR-0125, ADR-0085, ADR-0080, ADR-0127, IADR-0492, IADR-0253, IADR-0133, IADR-0497, IADR-0513]
 author: claude
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-08
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0125_ast-kb-reader-static-project-policy-with-confidentiality-ceiling.md 決定 2（上限）・決定 4（NetworkPolicy は別件）・決定 5（3 点セット）・フォローアップ 1〜3
   - planning:projects/microservices-platform/07_adr/ADR-0085_project-attribute-scope-and-non-axis.md 決定 2（ADR-0125 が部分改定）
@@ -133,6 +133,7 @@ ADR-0125 実測 6 は、IADR-0492 残余 5 の「書き込みロールを持つ�
 1. **本番への投入の保留を解く**のは本 IADR のマージ後の別作業である（ADR-0125 フォローアップ 2）。本 PR では保留の記述の理由だけを改めた。
    ［2026-10-06 追記 / #1696］**保留を解いた。** 運用仕様書の注記を、解除の記録と投入の前提（authorization-service を先に上げる・手順書の本文だけ・NetworkPolicy が入るまで届かない）へ置き換えた（作業仕様書 `20261006_1696_lift-kb-reader-prod-hold`）。§統制と現在の実現手段の表の「保留中」も、この日をもって解けた。本番への実際の投入はシステム管理者の配備作業で、本記録の外。
 2. **本番の NetworkPolicy**（AST の名前空間からの ingress）は別件 #1756（ADR-0125 決定 4）。
+   ［2026-10-08 追記 / #1756］[[IADR-0513]] で chart に入った（`networkPolicy.fromAst.kbReader` / `kbWriter`。既定は閉）。
 3. **稼働中の開発環境**に上限の無い旧い形が入っていれば、決定 3 の手順で書き換えるまで上限は効かない。本 PR は稼働中の環境に触れない。
    初期投入（`scripts/seed-abac-policies.js`）を再実行すると、seed と食い違う同名のポリシーを名指しで警告する（書き換えはしない。独立監査の 🟡）。
 4. **PoC**（実データで取引判断の参考情報が 1 件以上載る）は #1696 に残る。
