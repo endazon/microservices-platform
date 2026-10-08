@@ -166,16 +166,8 @@ public sealed class KeycloakServiceAccountProvisioner(
     {
         ct.ThrowIfCancellationRequested();
         var client = await AuthorizedClientAsync();
-        // 認可サービスの `FindByUsernameAsync` と同じ照会（判定に効いている値を読む。IADR-0516 決定 6）。
-        var userName = ToolUserContext.ServiceAccountUserName(clientId);
-        var lookup = await Send(client, () => client.GetAsync(
-            $"admin/realms/{Realm}/users?username={Uri.EscapeDataString(userName)}"
-            + "&exact=true&briefRepresentation=false&max=2", ct), ct);
-        EnsureSuccess(lookup, "サービスアカウントの利用者の照会");
-        var found = (await ReadJsonAsync<List<KeycloakUser>>(lookup, ct) ?? [])
-            .Where(u => !string.IsNullOrEmpty(u.Id)
-                        && string.Equals(u.Username, userName, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        // 認可サービスの `FindByUsernameAsync` と同じ照会（判定に効いている値を読む。IADR-0516 決定 6）。書き込みの確かめと同じ 1 つを使う。
+        var found = await FindServiceAccountUsersAsync(client, clientId, ct);
         return found.Count switch
         {
             0 => null,
@@ -288,15 +280,7 @@ public sealed class KeycloakServiceAccountProvisioner(
         if (string.IsNullOrEmpty(serviceAccount?.Id))
             throw Failed("クライアントにサービスアカウントの利用者が無い。");
 
-        var userName = ToolUserContext.ServiceAccountUserName(clientId);
-        var lookup = await Send(client, () => client.GetAsync(
-            $"admin/realms/{Realm}/users?username={Uri.EscapeDataString(userName)}"
-            + "&exact=true&briefRepresentation=false&max=2", CancellationToken.None));
-        EnsureSuccess(lookup, "サービスアカウントの利用者の照会");
-        var found = (await ReadJsonAsync<List<KeycloakUser>>(lookup) ?? [])
-            .Where(u => !string.IsNullOrEmpty(u.Id)
-                        && string.Equals(u.Username, userName, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        var found = await FindServiceAccountUsersAsync(client, clientId, CancellationToken.None);
 
         if (found.Count != 1 || !string.Equals(found[0].Id, serviceAccount.Id, StringComparison.Ordinal))
             throw Failed(
@@ -304,6 +288,22 @@ public sealed class KeycloakServiceAccountProvisioner(
                 + " 書いた属性は判定に使われないため、書かない。");
 
         return serviceAccount.Id!;
+    }
+
+    // 🔴 IADR-0516 決定 6 の核: **認可サービスの `FindByUsernameAsync` と同じ照会**（利用者名の完全一致）。書き込みの確かめ
+    // （ResolveServiceAccountUserAsync）と照合の読み取り（ReadServiceAccountAttributesAsync）がこの 1 か所を使う（PR #1831 の AI レビュー）。
+    // 照会の結果のうち、ID があり利用者名が一致するもの（大小文字は問わない）だけを返す（`max=2`＝2 人以上は呼び出し元が判定する）。
+    private async Task<List<KeycloakUser>> FindServiceAccountUsersAsync(HttpClient client, string clientId, CancellationToken ct)
+    {
+        var userName = ToolUserContext.ServiceAccountUserName(clientId);
+        var lookup = await Send(client, () => client.GetAsync(
+            $"admin/realms/{Realm}/users?username={Uri.EscapeDataString(userName)}"
+            + "&exact=true&briefRepresentation=false&max=2", ct), ct);
+        EnsureSuccess(lookup, "サービスアカウントの利用者の照会");
+        return (await ReadJsonAsync<List<KeycloakUser>>(lookup, ct) ?? [])
+            .Where(u => !string.IsNullOrEmpty(u.Id)
+                        && string.Equals(u.Username, userName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     private async Task<Dictionary<string, string>> ReadAttributesAsync(HttpClient client, string userId)

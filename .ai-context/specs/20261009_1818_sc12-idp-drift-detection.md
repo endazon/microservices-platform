@@ -134,3 +134,11 @@ C-36〜C-40 `KeycloakServiceAccountDirectoryTests`・C-41〜C-46 `IdpReconciliat
   `check-backend-libraries`・`check-default-credentials`・`check-test-spec-coverage`（床 478 対へ上げた）・`check-test-traceability`・`check-doc-type-vocabulary`・`actionlint`（integration-stack）: 緑。
 - 🔴 **稼働の Keycloak での M7 は本 PR の中では走っていない**（integration-stack は PR で起動しない。マージ後の最初の実行が初回の実測。稼働中のクラスタには何も実行していない）。
 - promtool はリポジトリに無い（警報の式の検査は `check-grafana-alerting`・`check-prometheus-alerts-parity`・`scripts.repo.test.js` が持つ）。
+
+## ［2026-10-09 追記 / PR #1831 の監査（条件付き GO）と AI レビューへの対応］
+
+- 🟡1 名指しを重大度順（`attributes_differ` → `orphan` → `not_managed` → `service_account_missing` → `client_missing` → クライアント ID）にし、種類ごとの件数を毎回 1 行で出す。試験: 21 件の `client_missing` ＋ 孤児 ＋ 属性違い（C-42）。変異「クライアント ID 順へ戻す」で赤。
+- 🟡2 1 行の読み取りの失敗を `IdpReconciliationRowException` で包み、Error ログで行を名指しする（全体を失敗にする設計は変えない）。運用仕様書に特定の手順。試験 C-43。変異「包まずに投げ直す」で赤。
+- 🟡3 運用仕様書に配備直後の `client_missing` と対処（画面で保存し直す）。
+- AI レビュー 🟡: 利用者名の完全一致の照会を `FindServiceAccountUsersAsync` へ括り出した（既存の書き込み口の試験は緑のまま）。🟢 要求回数の式を ⌊n/100⌋＋1 へ。
+- 検証: McpServer.Tests 325 件緑、ほかは下の一式を回し直した（報告に記載）。

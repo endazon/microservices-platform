@@ -328,6 +328,51 @@ public class IdpReconciliationTests
         log.Entries.Should().Contain(e => e.Level == LogLevel.Warning && e.Message.Contains("ほかに 5 件"));
     }
 
+    // C-42（PR #1831 監査 🟡1）: 名指しは重大度順（属性違い → 孤児 → 印なし → SA なし → IdP に無い）。段 1 より前の行の
+    // `client_missing` が上限を超えても、セキュリティに関わる `orphan` / `attributes_differ` は名指しから押し出されない。
+    // 種類ごとの件数は毎回 1 行で出す。
+    [Fact]
+    public async Task 名指しは重大度順で古い行の多数に押し出されず種類ごとの件数を出す()
+    {
+        using var db = NewDb();
+        var idp = new InMemoryServiceAccountProvisioner();
+        for (var i = 0; i < 21; i++) await AddRow(db, $"a-legacy-{i:00}", Attrs(("clearance", "public")));
+        idp.SeedManaged("z-orphan", Attrs(("clearance", "secret")));
+        await Provision(db, idp, "z-tampered", Attrs(("clearance", "public")));
+        idp.Tamper("z-tampered", Attrs(("clearance", "secret")));
+        var (check, _, probe, log) = Arrange(db, idp);
+        using var _p = probe;
+
+        var drifts = await check.RunAsync(Ct);
+
+        drifts!.Select(d => d.Kind).Take(2).Should().Equal(IdpDriftKind.AttributesDiffer, IdpDriftKind.Orphan);
+        var named = log.Entries.Where(e => e.Level == LogLevel.Warning && e.Message.Contains("client=")).Select(e => e.Message).ToList();
+        named.Should().HaveCount(IdpReconciliationCheck.MaxNamedDrifts);
+        named[0].Should().Contain("client=z-tampered kind=attributes_differ");
+        named[1].Should().Contain("client=z-orphan kind=orphan");
+        log.Entries.Should().Contain(e => e.Level == LogLevel.Warning && e.Message.Contains("ほかに 3 件"));
+        log.Entries.Should().ContainSingle(e => e.Level == LogLevel.Information && e.Message.Contains("食い違い 23 件"))
+            .Which.Message.Should().Contain("attributes_differ=1 orphan=1 not_managed=0 service_account_missing=0 client_missing=21");
+    }
+
+    // C-43（PR #1831 監査 🟡2）: 1 行が読めないと照合全体を失敗にする（系列を止める）。Error ログはその行を名指しする。
+    [Fact]
+    public async Task 一行が読めなければ全体を失敗にしてその行を名指しする()
+    {
+        using var db = NewDb();
+        var idp = new InMemoryServiceAccountProvisioner();
+        await Provision(db, idp, "agent-ok", Attrs(("clearance", "public")));
+        await Provision(db, idp, "agent-bad", Attrs(("clearance", "public")));
+        var (check, _, probe, log) = Arrange(db, new RowFailingDirectory(idp, "agent-bad"));
+        using var _p = probe;
+
+        (await check.RunAsync(Ct)).Should().BeNull();
+
+        probe.CollectGauge().Should().BeEmpty();
+        probe.Outcome(IdpReconciliationMetrics.OutcomeFailed).Should().Be(1);
+        log.Entries.Should().ContainSingle(e => e.Level == LogLevel.Error).Which.Message.Should().Contain("client=agent-bad");
+    }
+
     // C-45: 周期の構成（既定 1 分・下限 1 分・`hh:mm:ss`。値域外は起動時に落とす）。
     [Theory]
     [InlineData(null, 60)]
@@ -408,6 +453,16 @@ public class IdpReconciliationTests
         public Task<IReadOnlyDictionary<string, string>?> ReadServiceAccountAttributesAsync(string clientId, CancellationToken ct)
             => clientId == hidden
                 ? Task.FromResult<IReadOnlyDictionary<string, string>?>(null)
+                : inner.ReadServiceAccountAttributesAsync(clientId, ct);
+    }
+
+    private sealed class RowFailingDirectory(IServiceAccountDirectory inner, string failing) : IServiceAccountDirectory
+    {
+        public Task<IReadOnlyList<IdpClientEntry>> ListClientsAsync(CancellationToken ct) => inner.ListClientsAsync(ct);
+
+        public Task<IReadOnlyDictionary<string, string>?> ReadServiceAccountAttributesAsync(string clientId, CancellationToken ct)
+            => clientId == failing
+                ? throw new IdpProvisioningException(IdpProvisioningFailure.Failed, "timeout")
                 : inner.ReadServiceAccountAttributesAsync(clientId, ct);
     }
 
