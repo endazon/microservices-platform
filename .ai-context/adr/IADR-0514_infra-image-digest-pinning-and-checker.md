@@ -78,6 +78,18 @@ related_specs:
   を拾う。**独立した検査器は作らず本検査器を広げた**——表記・例外・`[digest-mismatch]`（配備と試験で同じ `repo:tag` を
   別の digest で書かない）を同じ規則で効かせるためである。CI の配線（ステップ名・ジョブ）は変えない。
   2026-10-09 時点で 24 製品・79 参照（自製 21 件は対象外）、例外 0 件。
+- ［2026-10-09 追記 / #1814 の独立監査］**C# の読み方の精度を上げた。**
+  - ビルダは**名前の許可リスト**（Testcontainers のモジュール名＋`Container`）で判定する。拒否リストだった版は
+    `AuthorizationPolicyBuilder("…")` のような無関係なビルダを読んだ。名前で判定するので、`using` の形（`global using`・
+    csproj の `<Using Include="Testcontainers…">`・完全修飾の `new Testcontainers.PostgreSql.PostgreSqlBuilder("…")`）に依らず拾う。
+  - 名前付き引数（`PostgreSqlBuilder(image: "…")`・`WithImage(image: "…")`）と `static readonly string …Image = "…"` を拾う。
+  - 引数なしのモジュールのビルダは、同じ式（次の `;` まで）に `.WithImage(` があれば既定のイメージを使わないので落とさない。
+  - コメントは行頭だけでなく行末の `//` とブロックコメントも読まない（文字列・文字リテラルの中の `//`・`"` は残す）。
+  - Containerfile は行継続（末尾の `\`）をつないだ論理行で読む（`RUN \` の次の行の `--mount=…,from=` を拾う）。
+  - **既知の限界（拾わない）**: target-typed の `new("<ref>")`（型が式に現れない）／変数・補間文字列・逐語的文字列・
+    連結で組み立てた参照／Testcontainers に言及しないファイルの `…Image` / `Reference` 定数／許可リストに無いモジュールの
+    ビルダ（新しいモジュールを使い始めたら `TC_MODULES` に足す）／許可リストと同名の無関係なビルダにイメージ形の
+    文字列を渡す形（拾って検査してしまう。実在しない）。いずれも本リポの現物には無い（2026-10-09 の走査で 0 件）。
 
 ### 決定 4 — 固定の更新は人が匿名の registry API で解決する。Harbor へのミラーは配備まで対象外
 

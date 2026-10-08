@@ -58,7 +58,7 @@ issue: "#1814"
 
 | 置き場 | 参照 | 件数 | 処置 |
 | --- | --- | --- | --- |
-| `src/platform/backend/{Bff/Platform.Bff,Services/{AuthorizationService,LlmGateway,McpServer,NotificationService}}/Dockerfile`・`src/knowledge/backend/Services/*/Dockerfile`（10 本） | `mcr.microsoft.com/dotnet/sdk:10.0` | 15 | **固定** `@sha256:e70cdb7f…06317` |
+| .NET の Dockerfile 計 15 本（platform 5 本＝`src/platform/backend/{Bff/Platform.Bff,Services/{AuthorizationService,LlmGateway,McpServer,NotificationService}}/Dockerfile`、knowledge 10 本＝`src/knowledge/backend/Services/*/Dockerfile`） | `mcr.microsoft.com/dotnet/sdk:10.0` | 15 | **固定** `@sha256:e70cdb7f…06317` |
 | 同上 | `mcr.microsoft.com/dotnet/aspnet:10.0` | 15 | **固定** `@sha256:222759b3…5ad4` |
 | `src/platform/frontend/Dockerfile` | `${BASE_REGISTRY}/node:22-alpine` | 1 | **固定**（deploy と同じ `@sha256:0a7108bf…e402`） |
 | 同上 | `${BASE_REGISTRY}/caddy:2.11-alpine` | 1 | **固定** `@sha256:d8542f48…f75f` |
@@ -90,6 +90,7 @@ issue: "#1814"
 | `scripts/backup-restore-drill.sh:32` | `DEFAULT_IMAGE="postgres:16-alpine"` | 手で起動する復元訓練のスクリプトで、#1814 の受け入れ基準の母集合（`src/` の Dockerfile・統合試験）の外。`--image` で上書きできる。`scripts/` の製品は planning#750 の裁定とまとめて扱う（残余） |
 | `scripts/verify-qdrant-attribute-payload.sh:18` | コメント中の `docker run … qdrant/qdrant:v1.18.1` | 手順の例示（コメント） |
 | `scripts/` が chart / マニフェストで入れる製品 | Istio・ESO・Reloader・cert-manager・Argo CD・k3s | 受け入れ基準 3（planning#750 の裁定待ち） |
+| `.devcontainer/devcontainer.json` | `mcr.microsoft.com/devcontainers/dotnet:10.0` | 開発環境（devcontainer）のイメージで、配備物でも統合試験でもない。検査器は `.devcontainer/` を走査しない（#1814 の独立監査で追記） |
 | `.github/workflows/*.yml` の `services:`・`container:` | — | 0 件（`docker run` は自製の `platform-backup:ci` だけ） |
 | Testcontainers の Ryuk（後始末のコンテナ） | `testcontainers/ryuk:0.14.0@sha256:7c1a8a9a…` | ライブラリ（Testcontainers）が内部で決める参照で、本リポのソースに現れない。実走で digest 付きで起動されることを確かめた（下の §検証の結果） |
 
@@ -122,11 +123,30 @@ issue: "#1814"
 
 ## 検証の結果（2026-10-09）
 
-- `check-image-digests.js --self-test` 35 件通過（#1814 で 8 件追加）。本検査: **24 製品・79 参照**すべて固定（自製 21 件は対象外。#1787 時点の 21 製品・42 参照から、基底イメージ 32・Testcontainers 5 を加えた）。例外 0 件。
+- `check-image-digests.js --self-test` 40 件通過（#1814 で 8 件、独立監査の是正で 5 件を追加）。本検査: **24 製品・79 参照**すべて固定（自製 21 件は対象外。#1787 時点の 21 製品・42 参照から、基底イメージ 32・Testcontainers 5 を加えた）。例外 0 件。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 通過（#1814 で 3 件追加）。
 - `dotnet build`（`Knowledge.IntegrationTests`）警告 0。`dotnet format --verify-no-changes`（変更した 3 ファイル）差分なし。
 - 実行機で Docker デーモンを起こし、統合試験を実走した: `DataSourceSyncSingleWriterTests`（Postgres）・`WolverineBrokerReadinessTests`（RabbitMQ）・`DocumentCrudTests`（Postgres＋RabbitMQ）・定義試験（Qdrant・SeaweedFS）の計 16 件が通過。`docker events` で、起動したコンテナの参照が `postgres:16-alpine@sha256:721873c3…`・`rabbitmq:3.13-alpine@sha256:d7af1c87…` であることを確かめた。
 - 基底イメージ 4 種（`mcr.microsoft.com/dotnet/{sdk,aspnet}`・`mirror.gcr.io/library/{node,caddy}`）を digest で `docker pull` できた。`docker buildx build --check`（frontend・LlmGateway・WikiService）は警告なし。自製イメージ全体のビルドは CI（`images.yml`）に委ねる。
+
+## 独立監査（PR #1828）の是正（2026-10-09）
+
+判定 GO（🔴 0）。🟡・🟢 を同じ PR で直した。
+
+| 指摘 | 処置 |
+| --- | --- |
+| 🟡1 `new PostgreSqlBuilder().WithImage("…@sha256:…")` を既定のイメージとして誤検知 | 直した（同じ式に `.WithImage(` があれば除外）。自己試験 1 件 |
+| 🟡2 `global using`・csproj の `<Using Include>`・完全修飾名 | 直した（ビルダ名の許可リストで判定し、`using` に依らない）。自己試験 |
+| 🟡2 名前付き引数 `image: "…"` | 直した（ビルダと `WithImage` の両方）。自己試験 |
+| 🟡2 `static readonly string …Image = "…"` | 直した。自己試験 |
+| 🟡2 target-typed の `new("…")` | 既知の限界（IADR-0514 の追記に列挙）。自己試験で「拾わない」を固定 |
+| 🟡3 行継続した `RUN \` の次の行の `--mount=…,from=` | 直した（論理行で読む）。自己試験 |
+| 🟡3 行末の `//` コメント内の `new RedisBuilder()` を誤検知 | 直した（行末・ブロックコメントを空白化。文字列・文字リテラルは残す）。自己試験 |
+| 🟡3 `AuthorizationPolicyBuilder("…")` を誤検知（拒否リスト） | 直した（許可リスト化）。自己試験 |
+| 🟢 frontend の Dockerfile の `BASE_REGISTRY` の上書き | 「同じ index digest を返すミラーに限る」をコメントに足した |
+| 🟢 表 (d) に `.devcontainer/devcontainer.json` | 足した |
+| 🟢 表 (a) の「（10 本）」 | 「計 15 本（platform 5 本、knowledge 10 本）」に直した |
+| 🟢 運用仕様書の括弧の掛かり方・余分な空白 | 新しい文を手順の括弧の後ろへ移し、「引け後」の項目の追記を項目の末尾へ移した |
 
 ## digest の解決と確かめ方（2026-10-09）
 

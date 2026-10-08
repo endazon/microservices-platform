@@ -18,9 +18,12 @@
  *   4. テンプレートの `image:` 行に直書きした `default "<ref>"`（値が `/` か `:` を含むもの。`default "latest"` は拾わない。#1814）
  *   `src/` 配下（#1814。submodule `src/ai-stock-trading` は別リポジトリなので除く）:
  *   5. Containerfile（3 と同じ）—— 自製イメージの基底イメージ
- *   6. C# の Testcontainers の参照: `new <X>Builder("<ref>")`（Testcontainers を参照するファイル）・`.WithImage("<ref>")`・
- *      `const string <…Image…|Reference> = "<ref>"`（Testcontainers に言及するファイル）。引数なしのモジュールのビルダ
- *      （`new PostgreSqlBuilder()` 等）はモジュール既定の tag だけのイメージを暗黙に使うので、参照として拾って落とす。
+ *   6. C# の Testcontainers の参照: `new [名前空間.]<モジュール|Container>Builder([image:] "<ref>")`（ビルダ名の許可リスト）・
+ *      `.WithImage("<ref>")`・`const` / `static readonly string <…Image…|Reference> = "<ref>"`（Testcontainers に言及するファイル）。
+ *      引数なしのモジュールのビルダ（`new PostgreSqlBuilder()` 等）は、同じ式に `.WithImage(` が無ければモジュール既定の
+ *      tag だけのイメージを暗黙に使うので、参照として拾って落とす。コメントは読まない。
+ *      既知の限界（拾わない）: target-typed の `new("<ref>")`、変数・補間文字列・逐語的文字列で組み立てた参照、
+ *      Testcontainers に言及しないファイルの定数、許可リストに無いモジュールのビルダ（IADR-0514 の 2026-10-09 追記）。
  *
  * 対象外（理由つき）:
  *   - **自製イメージ**（`microservices-platform/*`・`k3d-local/*`）: CD が一意タグ/digest を渡す
@@ -109,8 +112,21 @@ function extractRefs(relPath, content) {
   if (isContainerfile(base)) {
     const stages = new Set();
     const isStage = (ref) => /^\d+$/.test(ref) || (stages.has(ref.toLowerCase()) && !ref.includes(':') && !ref.includes('/'));
-    lines.forEach((raw, i) => {
-      if (/^\s*#/.test(raw)) return;
+    // #1814 監査: 行継続（末尾の `\`）をつないだ論理行で読む（`RUN \` の次の行の `--mount=…,from=` を取りこぼさない）。
+    // 行番号は論理行の先頭の行。継続の途中のコメント行は Docker と同じく読み飛ばす。
+    const logical = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (/^\s*#/.test(lines[i])) continue;
+      let text = lines[i];
+      const start = i;
+      while (/\\\s*$/.test(text) && i + 1 < lines.length) {
+        i++;
+        if (/^\s*#/.test(lines[i])) continue;
+        text = text.replace(/\\\s*$/, ' ') + lines[i];
+      }
+      logical.push([text, start]);
+    }
+    logical.forEach(([raw, i]) => {
       const m = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?/i.exec(raw);
       if (m) {
         const ref = m[1];
@@ -121,7 +137,7 @@ function extractRefs(relPath, content) {
       }
       // #1814: `COPY --from=<外部イメージ>` と `RUN --mount=…,from=<外部イメージ>` も外部イメージを引く。段名・段番号は除く。
       const c = /^\s*COPY\s+(?:--\S+\s+)*?--from=(\S+)/i.exec(raw);
-      const r = /^\s*RUN\s+.*--mount=\S*?\bfrom=([^,\s]+)/i.exec(raw);
+      const r = /^\s*RUN\s+(?:.*\s)?--mount=\S*?\bfrom=([^,\s]+)/i.exec(raw);
       const ref = c ? c[1] : r ? r[1] : null;
       if (ref === null || isStage(ref)) return;
       out.push({ file: relPath, line: i + 1, ref, kind: c ? 'copy-from' : 'mount-from' });
@@ -190,10 +206,51 @@ function extractRefs(relPath, content) {
 /** イメージ参照の形（空白なし・小文字の名前。`${VAR}/` の接頭辞・tag・digest は任意）。 */
 const IMAGE_REF_RE =
   /^(?:\$\{\w+\}\/)?(?:[a-z0-9.-]+(?::\d+)?\/)?[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*(?::[\w][\w.-]{0,127})?(?:@sha256:[0-9a-f]{64})?$/;
-/** コンテナではないビルダ（`new XBuilder("…")` の誤読を防ぐ）。 */
-const NON_CONTAINER_BUILDERS = new Set(['String', 'Uri', 'Configuration', 'Host', 'WebHost', 'WebApplication', 'DbContextOptions', 'Npgsql', 'NpgsqlConnectionString', 'NpgsqlDataSource']);
-/** Testcontainers のモジュールのビルダ（引数なしだとモジュール既定の tag だけのイメージを使う）。 */
-const TC_MODULE_BUILDERS = /\bnew\s+(PostgreSql|RabbitMq|Redis|Qdrant|Minio|Keycloak|Kafka|MongoDb|MsSql|MySql|MariaDb|Elasticsearch|Nats|LocalStack|Azurite|Valkey)Builder\s*\(\s*\)/g;
+/**
+ * Testcontainers のモジュールのビルダの名前（`<名前>Builder`）。**許可リスト**である（#1814 監査: 拒否リストだと
+ * `AuthorizationPolicyBuilder("…")` 等の無関係なビルダを読んでしまう）。引数なしだとモジュール既定の tag だけのイメージを使う。
+ * 名前で判定するので、`using` の形（`global using`・csproj の `<Using Include>`・完全修飾名）に依らず拾える。
+ */
+const TC_MODULES = 'PostgreSql|RabbitMq|Redis|Qdrant|Minio|Keycloak|Kafka|MongoDb|MsSql|MySql|MariaDb|Elasticsearch|Nats|LocalStack|Azurite|Valkey';
+/** 汎用の `ContainerBuilder` も含めた、イメージを引数に取るビルダ。`new [名前空間.]<X>Builder([image:] "<ref>")`。 */
+const TC_BUILDER_LITERAL = new RegExp(`\\bnew\\s+(?:[\\w.]+\\.)?(${TC_MODULES}|Container)Builder\\s*\\(\\s*(?:image\\s*:\\s*)?"([^"]*)"`, 'g');
+const TC_BUILDER_NO_ARG = new RegExp(`\\bnew\\s+(?:[\\w.]+\\.)?(${TC_MODULES})Builder\\s*\\(\\s*\\)`, 'g');
+
+/**
+ * C# のコメント（`//`・`/* … *\/`）を空白に置き換える。文字列リテラルの中の `//`（`http://…`）は残す。
+ * 長さと改行を保つので、正規表現の位置から行番号を引ける。逐語的文字列（`@"…"`）の `""` は近似で扱う。
+ */
+function blankCsharpComments(text) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    const n = text[i + 1];
+    if (c === '/' && n === '/') {
+      while (i < text.length && text[i] !== '\n') { out += ' '; i++; }
+    } else if (c === '/' && n === '*') {
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) { out += text[i] === '\n' ? '\n' : ' '; i++; }
+      if (i < text.length) { out += '  '; i += 2; }
+    } else if (c === "'" && /^'(?:\\.|[^\\'\n])'/.test(text.slice(i, i + 4))) {
+      // 文字リテラル（`'"'` を文字列の開始と取り違えない）。
+      const len = text[i + 1] === '\\' ? 4 : 3;
+      out += text.slice(i, i + len);
+      i += len;
+    } else if (c === '"') {
+      out += c;
+      i++;
+      while (i < text.length && text[i] !== '"' && text[i] !== '\n') {
+        if (text[i] === '\\') { out += text[i]; i++; }
+        if (i < text.length) { out += text[i]; i++; }
+      }
+      if (i < text.length) { out += text[i]; i++; }
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
 
 /**
  * #1814: C# の Testcontainers の参照を拾う。コメント行は空にしてから全文へ正規表現を当てる（定数の値が次の行に来る形も読む）。
@@ -201,24 +258,25 @@ const TC_MODULE_BUILDERS = /\bnew\s+(PostgreSql|RabbitMq|Redis|Qdrant|Minio|Keyc
  */
 function extractCsharpRefs(relPath, lines) {
   const out = [];
-  const code = lines.map((l) => (/^\s*(\/\/|\*|\/\*)/.test(l) ? '' : l));
-  const text = code.join('\n');
+  const text = blankCsharpComments(lines.join('\n'));
   const mentionsTc = /Testcontainers/.test(lines.join('\n'));
-  const usesTc = /^\s*using\s+(?:DotNet\.)?Testcontainers\b/m.test(text);
   const lineOf = (idx) => text.slice(0, idx).split('\n').length;
   const push = (idx, ref, kind) => {
     if (kind === 'testcontainers' && !IMAGE_REF_RE.test(ref)) return;
     out.push({ file: relPath, line: lineOf(idx), ref, kind });
   };
-  if (usesTc) {
-    for (const m of text.matchAll(/\bnew\s+(\w*)Builder\s*\(\s*"([^"]*)"/g)) {
-      if (!NON_CONTAINER_BUILDERS.has(m[1])) push(m.index, m[2], 'testcontainers');
-    }
-    for (const m of text.matchAll(TC_MODULE_BUILDERS)) push(m.index, `${m[1]}Builder()（モジュール既定のイメージ）`, 'testcontainers-default');
+  for (const m of text.matchAll(TC_BUILDER_LITERAL)) push(m.index, m[2], 'testcontainers');
+  for (const m of text.matchAll(TC_BUILDER_NO_ARG)) {
+    // 同じ式（次の `;` まで）に `.WithImage(` があれば既定のイメージは使わない（その引数は下の規則で拾う。#1814 監査）。
+    const end = text.indexOf(';', m.index);
+    if (/\.WithImage\s*\(/.test(text.slice(m.index, end < 0 ? undefined : end))) continue;
+    push(m.index, `${m[1]}Builder()（モジュール既定のイメージ）`, 'testcontainers-default');
   }
-  for (const m of text.matchAll(/\.WithImage\s*\(\s*"([^"]*)"/g)) push(m.index, m[1], 'testcontainers');
+  for (const m of text.matchAll(/\.WithImage\s*\(\s*(?:image\s*:\s*)?"([^"]*)"/g)) push(m.index, m[1], 'testcontainers');
   if (mentionsTc) {
-    for (const m of text.matchAll(/\bconst\s+string\s+(\w*(?:Image\w*|Reference))\s*=\s*"([^"]*)"/g)) push(m.index, m[2], 'testcontainers');
+    // `const string` と `static readonly string`（#1814 監査）。名前が …Image… か Reference のもの。
+    const decl = /\b(?:const|static\s+readonly|readonly\s+static)\s+string\s+(\w*(?:Image\w*|Reference))\s*=\s*"([^"]*)"/g;
+    for (const m of text.matchAll(decl)) push(m.index, m[2], 'testcontainers');
   }
   return out;
 }
@@ -505,6 +563,31 @@ function selfTest() {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+  // --- #1814 独立監査の指摘（誤検知・取りこぼし・精度） ---
+  t('#1814 監査: 引数なしのビルダでも同じ式に .WithImage(…) があれば既定のイメージとして落とさない', () => {
+    const cs = 'using Testcontainers.PostgreSql;\nvar a = new PostgreSqlBuilder()\n    .WithImage("postgres:16@' + D + '")\n    .Build();\n';
+    const r = extractRefs('src/T/W.cs', cs);
+    return r.length === 1 && r[0].kind === 'testcontainers' && r[0].ref === `postgres:16@${D}` && errs('src/T/W.cs', cs).length === 0;
+  });
+  t('#1814 監査: global using・完全修飾名・名前付き引数・static readonly を拾う', () => {
+    const viaGlobal = refsOf('src/T/G.cs', 'var a = new PostgreSqlBuilder("postgres:16").Build();\n');
+    const qualified = refsOf('src/T/Q.cs', 'var a = new Testcontainers.RabbitMq.RabbitMqBuilder("rabbitmq:3.13").Build();\n');
+    const named = refsOf('src/T/N.cs', 'using Testcontainers.Redis;\nvar a = new RedisBuilder(image: "redis:7").Build();\n');
+    const ro = refsOf('src/T/R.cs', '// Testcontainers の参照\nprivate static readonly string PgImage = "postgres:16-alpine";\n');
+    return viaGlobal.join() === 'postgres:16' && qualified.join() === 'rabbitmq:3.13' && named.join() === 'redis:7' &&
+      ro.join() === 'postgres:16-alpine';
+  });
+  t('#1814 監査: 行継続した RUN の次の行の --mount=…,from= を拾う（行番号は論理行の先頭）', () => {
+    const r = extractRefs('src/x/Dockerfile', 'FROM a:1@' + D + '\nRUN \\\n    --mount=type=bind,from=alpine:3.20,target=/x \\\n    true\n');
+    return r.length === 2 && r[1].ref === 'alpine:3.20' && r[1].kind === 'mount-from' && r[1].line === 2;
+  });
+  t('#1814 監査: 行末コメント・ブロックコメントの中のビルダは読まず、文字列の中の // は残す', () => {
+    const cs = 'using Testcontainers.Redis;\nvar u = "http://x"; // new RedisBuilder() は使わない\n/* new PostgreSqlBuilder() */\nvar q = \'"\'; var a = new RedisBuilder("redis:7@' + D + '");\n';
+    const r = extractRefs('src/T/C.cs', cs);
+    return r.length === 1 && r[0].ref === `redis:7@${D}` && r[0].line === 4;
+  });
+  t('#1814 監査: 許可リストに無いビルダ（AuthorizationPolicyBuilder 等）と target-typed の new(…) は拾わない（後者は既知の限界）', () =>
+    refsOf('src/T/P.cs', 'using Testcontainers.PostgreSql;\nvar p = new AuthorizationPolicyBuilder("admin").Build();\nvar s = new StringBuilder("x/y:1");\nPostgreSqlBuilder b = new("postgres:16");\n').length === 0);
   t('splitRef はレジストリのポートを tag と取り違えない', () => {
     const s = splitRef(`localhost:5000/foo/bar:1.2@${D}`);
     return s.name === 'localhost:5000/foo/bar' && s.tag === '1.2' && s.digest === D;

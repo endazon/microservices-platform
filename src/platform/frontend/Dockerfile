@@ -12,6 +12,8 @@
 # mirror.gcr.io は Docker Hub 公式イメージのプルスルーキャッシュで、同一 digest（byte 等価）を返す。
 # BASE_REGISTRY は上書き可（docker.io/library や社内 Harbor 等）。既定を渡さないため compose/MAPPING に
 # build args は不要＝#275 ドリフト検査は 2 フィールドのまま緑。詳細は .ai-context/adr/IADR-0081。
+# NFR, ADR-0107 決定 3 / IADR-0514 (#1814): FROM は tag@sha256:<index digest> で固定している。BASE_REGISTRY を上書きする
+# 場合は、同じ index digest を返すミラーに限る（返さない取得元では digest が見つからず pull に失敗する）。
 ARG BASE_REGISTRY=mirror.gcr.io/library
 FROM ${BASE_REGISTRY}/node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS build
 WORKDIR /app
