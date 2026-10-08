@@ -673,6 +673,28 @@ public class KeycloakIdentityAdminClientTests
         (await Client(handler).FindByUsernameAsync("Alice", Ct))!.Username.Should().Be("alice");
     }
 
+    // FR-16, SC-12, 計画 ADR-0123 フォローアップ 3, ADR-0088 決定 1, [[IADR-0516]] 決定 6 (#1786) — T-1786-11:
+    // 🔴 **判定の引き直しはサービスアカウントの利用者を落とさない。** 全件の列挙（`ListAllUsersAsync`）は機械の主体を除くが
+    // （#1609）、名指しの照会がそれに倣うと、MCP のサービスアカウントでの実行は IdP に属性を書いても常に拒否になる。
+    // 照会の形（`username=service-account-<client>&exact=true`）と、返った表現を採ることをここで固定する。
+    // **Keycloak がこの照会でサービスアカウントの利用者を返すこと自体は、稼働の Keycloak でしか確かめられない**（IADR-0516 §残余）。
+    // 書き込み側（McpServer の `KeycloakServiceAccountProvisioner`）は登録のたびに同じ照会を引き、返らなければ書かずに失敗する。
+    [Fact]
+    public async Task FindByUsername_returns_a_service_account_user_for_the_mcp_lookup()
+    {
+        var handler = new StubHandler()
+            .Post("realms/platform/protocol/openid-connect/token", Token())
+            .Get("admin/realms/platform/users?username=service-account-agent-x&exact=true&briefRepresentation=false&max=2",
+                """[{"id":"sa1","username":"service-account-agent-x","enabled":true,"serviceAccountClientId":"agent-x","attributes":{"clearance":["internal"],"tags":["sales","hr"]}}]""");
+
+        var user = await Client(handler).FindByUsernameAsync("service-account-agent-x", Ct);
+
+        user.Should().NotBeNull("サービスアカウントの利用者を落とすと、IdP に書いた属性が判定に使われない");
+        user!.Id.Should().Be("sa1");
+        user.Attributes["clearance"].Should().Be("internal");
+        user.Attributes["tags"].Should().Be("sales,hr");
+    }
+
     // 「居ない」は null（応答）。**例外にしない** —— 呼び出し元が「引けなかった」と分けられなくなる。
     [Fact]
     public async Task FindByUsername_returns_null_when_nobody_matches()

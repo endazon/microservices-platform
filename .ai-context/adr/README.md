@@ -593,3 +593,4 @@
 | [IADR-0513](./IADR-0513_ast-kb-ingress-network-policy.md) | 本番の NetworkPolicy は AST の名前空間から KB の読み手と書き手、LLM ゲートウェイへの ingress を用途ごとの values で開ける。既定は閉じ、送り元は名前空間と Pod の AND、ポートは REST だけ（NFR-09・ADR-0125 決定 4。#1756・#1811） | Accepted |
 | [IADR-0514](./IADR-0514_infra-image-digest-pinning-and-checker.md) | deploy/ のインフラのイメージは `tag@sha256:<index digest>` で固定し、tag だけの参照の再混入は検査器（check-image-digests.js）で止める。自製イメージは対象外、Renovate は採らない。Harbor へのミラーは配備まで対象外（ADR-0107 決定 3。#1787） | Accepted |
 | [IADR-0515](./IADR-0515_cutover-rehearsal-ci-workflow.md) | 切替リハーサルの CI で再現できる部分は dispatch 専用の別ワークフローに置き、破壊的な手順はその中にだけ書く。検証はオブジェクトストレージを SeaweedFS で見る（#1781） | Accepted |
+| [IADR-0516](./IADR-0516_sc12-keycloak-service-account-provisioning.md) | SC-12 の無人の登録・差し替えは、検証の後に Keycloak へ機密クライアントとサービスアカウントの属性を書いてから登録簿へ書く（#1786） | Accepted |

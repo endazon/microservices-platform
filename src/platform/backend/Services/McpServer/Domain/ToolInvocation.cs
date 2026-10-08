@@ -25,10 +25,19 @@ public sealed record ToolUserContext(string UserId, string Action)
     public static ToolUserContext? For(McpSubject subject)
     {
         if (subject.IsServiceAccount)
-            return new(MachinePrincipal.ServiceAccountUsernamePrefix + subject.ClientId.ToLowerInvariant(), ReadAction);
+            return new(ServiceAccountUserName(subject.ClientId), ReadAction);
 
         return string.IsNullOrWhiteSpace(subject.UserName) ? null : new(subject.UserName, ReadAction);
     }
+
+    /// <summary>
+    /// FR-16, SC-12, 計画 ADR-0123 決定 1・フォローアップ 3, [[IADR-0516]] (#1786): クライアントのサービスアカウントの利用者名。
+    /// 🔴 **組み立ては ここ 1 か所である。** 実行時に下流へ運ぶ `user_id` と、SC-12 の登録で属性を書く先
+    /// （<c>IServiceAccountProvisioner</c> が認可サービスと同じ照会で引き直す利用者）が同じ綴りでなければ、
+    /// 書いた属性は判定に使われない。Keycloak はサービスアカウントの利用者名を小文字で持つ。
+    /// </summary>
+    public static string ServiceAccountUserName(string clientId)
+        => MachinePrincipal.ServiceAccountUsernamePrefix + clientId.ToLowerInvariant();
 }
 
 // FR-16: 下流サービスのツール実体を呼び出す口。本番の実装（GrpcToolInvoker）と

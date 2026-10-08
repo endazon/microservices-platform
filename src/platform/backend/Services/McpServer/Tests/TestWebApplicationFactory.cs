@@ -22,7 +22,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Otlp:Endpoint"] = "http://localhost:4317",
-                ["Auth:Authority"] = "https://localhost/realms/test"
+                ["Auth:Authority"] = "https://localhost/realms/test",
+                // FR-16, SC-12, [[IADR-0516]] (#1786): 無人の登録は IdP へ書いてから登録簿へ書く。試験はプロセス内の口へ書き、
+                // `InMemoryServiceAccountProvisioner.Snapshot()` で「IdP に何が書かれたか（書かれなかったか）」を読む。
+                ["McpClientProvisioning:Provider"] = "in-memory"
             }));
         builder.ConfigureServices(services =>
         {

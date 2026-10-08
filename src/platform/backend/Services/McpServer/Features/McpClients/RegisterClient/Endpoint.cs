@@ -14,7 +14,8 @@ public static class RegisterMcpClientEndpoint
         app.MapPost("", async (
             RegisterMcpClientRequest req, IValidator<RegisterMcpClientRequest> validator,
             McpDbContext db, TimeProvider clock,
-            IRegistrarAttributeResolver registrar, CancellationToken ct) =>
+            IRegistrarAttributeResolver registrar, IServiceAccountProvisioner provisioner,
+            ILoggerFactory loggers, CancellationToken ct) =>
         {
             // FR-16, UC-09 / 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 /
             // [[IADR-0398]] 決定 1 (b)・5: `clientId` → `kind` → `egressTier` の順で検査する。
@@ -44,9 +45,25 @@ public static class RegisterMcpClientEndpoint
 
             var client = McpClient.Register(
                 req.ClientId, req.DisplayName, kind, attributes, tier, clock.GetUtcNow());
-            db.Clients.Add(client);
-            await db.SaveChangesAsync(ct);
-            return Results.Created($"/mcp-clients/{client.ClientId}", McpClientMapper.ToView(client));
+
+            async Task<IResult> WriteRegistry(CancellationToken token)
+            {
+                db.Clients.Add(client);
+                await db.SaveChangesAsync(token);
+                return Results.Created($"/mcp-clients/{client.ClientId}", McpClientMapper.ToView(client));
+            }
+
+            // 🔴 **既知の逸脱（計画とのずれ）**: 計画の SC-12 は種別を限らず「登録 → Keycloak クライアント作成」と定めるが、
+            // 有人は登録簿だけへ書く。有人のクライアントの作り方（入力・テンプレート）は計画へ問うている（planning#751）。
+            // [[IADR-0516]] 決定 3。
+            if (kind != McpClientKind.ServiceAccount) return await WriteRegistry(ct);
+
+            // 🔴 FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0516]] 決定 4 (#1786): 無人は **検証（上で済んだ）→ IdP → 登録簿**。
+            // 登録簿は IdP へ書いた値の写しである。IdP へ書けなければ登録簿にも書かない。
+            return await IdpFirstWrite.RunAsync(
+                token => provisioner.CreateAsync(req.ClientId, req.DisplayName, attributes, token),
+                WriteRegistry, provisioner,
+                loggers.CreateLogger(typeof(RegisterMcpClientEndpoint)), ct);
         });
 
         return app;
