@@ -10,8 +10,8 @@ updated: 2026-10-09
 ids: [FR-15, FR-16, UC-08, UC-09, SC-12]
 adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054, ADR-0062, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123]
 iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516]
-specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection]
-issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818]
+specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp]
+issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818, #1829]
 -->
 
 # 通信仕様書: MCP サーバー
@@ -86,7 +86,23 @@ issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #18
   1 回の照合の期限は周期と同じ長さ、並行は 4 要求まで。計器はゲージ `mcp.idp_reconciliation.drifted`（失敗・未照合は系列なし）と
   カウンタ `mcp.idp_reconciliation.checks.total{mcp.idp_reconciliation.outcome=match|drift|failed}`（Meter `microservices-platform.mcp-server`）。
   警報と対応は運用仕様書の「MCP クライアント登録簿と認証基盤の照合」。
+  ［2026-10-09］一覧の表現のクライアントの `enabled` と登録簿の行の有効・無効も比べる（下の無効化の写し）。
 - 🔴 境界層は状態コードを作り替えないので 502 は画面へそのまま届くが、境界層自身の不達も 502 であり区別できない。
+
+### 無人の無効化・再有効化は認可サーバーのクライアントの有効・無効へも写す（［2026-10-09 追加］）
+
+`POST /mcp-clients/{clientId}/disable` と `POST /mcp-clients/{clientId}/enable` は、無人の行なら認可サーバーのクライアントの `enabled` も
+書き換える（多層の防御。即時の接続拒否そのものは、本サービスが呼び出しごとに登録簿を引いて満たす）。書き込みは
+`PUT /admin/realms/{realm}/clients/{id}` へ `{"enabled": true|false}` だけを送り（表現を丸ごと送り返さない＝secret を古い値へ戻さない）、
+読み戻して確かめる。**この入口の印（`msp.mcp-client.managed-by=mcp-server`）を持つクライアントだけ**を書く。有人の行は登録簿だけを切り替える。
+
+| 操作 | 順序 | 200 | 400 | 502 / 503 |
+| --- | --- | --- | --- | --- |
+| 無効化 | 登録簿 → 認可サーバー | 登録簿を無効にした。**認可サーバーへ写せなかった・入口の印が無い・認可サーバーに無いときも 200**（登録簿は取り消さない。ログに残し、写せなかった食い違いは定期の照合が拾う。同じ要求をもう一度送れば写し直す） | — | — |
+| 再有効化 | 認可サーバー → 登録簿 | 両方を有効にした（認可サーバーに無い行は登録簿だけ） | 入口の印が無い（入口を通らない主体へ接続を開かない。どちらにも書かない） | 認可サーバーへ書けない（502）／書き込み口が無い（503）。登録簿は無効のまま |
+
+- 再有効化で登録簿への書き込みが失敗したら、認可サーバーを無効へ戻す（現在値がこの要求の書いた値のままのときだけ）。
+- 認可サーバーへの書き込みには要求の取り消しを伝えない（期限は `McpClientProvisioning:Keycloak:TimeoutSeconds`）。再有効化の書き込みが途中で失敗したら無効へ戻す。無効化の書き込みの失敗では戻さない（開く側へ倒さない）。
 
 **メッシュ内の Service 名は `mcp-service` である**（配備の chart キーは `mcp`。テンプレートが
 `-service` を付す）。境界層のコード既定もこの名前に揃えてあり、配備 manifest 側の上書きは持たない。

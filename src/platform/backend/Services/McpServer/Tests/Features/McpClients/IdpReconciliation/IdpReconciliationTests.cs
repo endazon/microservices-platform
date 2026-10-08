@@ -144,6 +144,7 @@ public class IdpReconciliationTests
         { "サービスアカウントが無い", IdpDriftKind.ServiceAccountMissing },
         { "属性が違う", IdpDriftKind.AttributesDiffer },
         { "印つきのクライアントに登録簿の行が無い（孤児）", IdpDriftKind.Orphan },
+        { "有効・無効が違う（#1829）", IdpDriftKind.EnabledDiffers },
     };
 
     // C-42（受け入れ基準 1・2）: 種類ごとに、ゲージが 1・結末が drift・行を名指しする Warning（クライアント ID と種類）。
@@ -175,6 +176,11 @@ public class IdpReconciliationTests
             case IdpDriftKind.Orphan:
                 idp.SeedManaged("agent-x", Attrs(("clearance", "public")));
                 break;
+            case IdpDriftKind.EnabledDiffers:
+                // IdP の管理画面での直接の無効化（登録簿は有効のまま）。
+                await Provision(db, idp, "agent-x", Attrs(("clearance", "public")));
+                idp.TamperEnabled("agent-x", false);
+                break;
         }
         var (check, _, probe, log) = Arrange(db, directory);
         using var _p = probe;
@@ -187,6 +193,48 @@ public class IdpReconciliationTests
         probe.Outcome(IdpReconciliationMetrics.OutcomeMatch).Should().Be(0);
         log.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning)
             .Which.Message.Should().Contain($"client=agent-x kind={drifts![0].KindLabel}");
+    }
+
+    // C-50（#1829 受け入れ基準 3・IADR-0516 決定 4a）: 無効化の IdP への写しが失敗した形（登録簿は無効・IdP は有効）を
+    // `enabled_differs` として拾う。1 つのクライアントが属性違いと有効・無効違いを同時に持っても、ゲージは**クライアントの数**で 1。
+    // 両方が無効なら食い違いではない（陽性対照）。
+    [Fact]
+    public async Task 有効無効の食い違いを拾いゲージはクライアントの数で数える()
+    {
+        using var db = NewDb();
+        var idp = new InMemoryServiceAccountProvisioner();
+        await Provision(db, idp, "agent-disabled-ok", Attrs(("clearance", "public")));
+        await Provision(db, idp, "agent-mirror-failed", Attrs(("clearance", "public")));
+        await Provision(db, idp, "agent-both", Attrs(("clearance", "public")));
+        foreach (var row in db.Clients) row.SetEnabled(row.ClientId == "agent-both", DateTimeOffset.UtcNow);
+        await db.SaveChangesAsync(Ct);
+        idp.TamperEnabled("agent-disabled-ok", false);          // 両方とも無効 → 一致
+        // agent-mirror-failed: 登録簿は無効・IdP は有効のまま（写しの失敗）
+        idp.TamperEnabled("agent-both", false);                 // 登録簿は有効・IdP は無効
+        idp.Tamper("agent-both", Attrs(("clearance", "secret"))); // ＋ 属性も違う
+        var (check, _, probe, log) = Arrange(db, idp);
+        using var _p = probe;
+
+        var drifts = await check.RunAsync(Ct);
+
+        drifts.Should().BeEquivalentTo(new[]
+        {
+            new IdpDrift("agent-both", IdpDriftKind.AttributesDiffer),
+            new IdpDrift("agent-both", IdpDriftKind.EnabledDiffers),
+            new IdpDrift("agent-mirror-failed", IdpDriftKind.EnabledDiffers),
+        }, o => o.WithStrictOrdering());
+        probe.CollectGauge().Should().Equal(2);
+        log.Entries.Should().ContainSingle(e => e.Level == LogLevel.Information && e.Message.Contains("食い違い 2 件"))
+            .Which.Message.Should().Contain("attributes_differ=1 orphan=0 enabled_differs=2");
+        log.Entries.Should().Contain(e => e.Message.Contains("client=agent-mirror-failed kind=enabled_differs"));
+    }
+
+    // C-50（#1829）: 名指しの重大度は 属性違い → 孤児 → 有効・無効違い → 印なし → SA なし → IdP に無い。
+    [Fact]
+    public void 有効無効の違いは孤児の次で印なしより先に名指しする()
+    {
+        Enum.GetValues<IdpDriftKind>().Select(k => new IdpDrift("x", k)).OrderBy(d => d.Severity).Select(d => d.KindLabel)
+            .Should().Equal("attributes_differ", "orphan", "enabled_differs", "not_managed", "service_account_missing", "client_missing");
     }
 
     // C-43（受け入れ基準 3）: 未照合はゲージの系列を出さない。照合に失敗したら系列を止め（前の値を残さない）、結末は failed・Error を出す。
@@ -352,7 +400,7 @@ public class IdpReconciliationTests
         named[1].Should().Contain("client=z-orphan kind=orphan");
         log.Entries.Should().Contain(e => e.Level == LogLevel.Warning && e.Message.Contains("ほかに 3 件"));
         log.Entries.Should().ContainSingle(e => e.Level == LogLevel.Information && e.Message.Contains("食い違い 23 件"))
-            .Which.Message.Should().Contain("attributes_differ=1 orphan=1 not_managed=0 service_account_missing=0 client_missing=21");
+            .Which.Message.Should().Contain("attributes_differ=1 orphan=1 enabled_differs=0 not_managed=0 service_account_missing=0 client_missing=21");
     }
 
     // C-43（PR #1831 監査 🟡2）: 1 行が読めないと照合全体を失敗にする（系列を止める）。Error ログはその行を名指しする。

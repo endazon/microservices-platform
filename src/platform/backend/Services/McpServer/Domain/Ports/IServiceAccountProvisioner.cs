@@ -35,9 +35,18 @@ public interface IServiceAccountProvisioner
         string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, bool enabled, CancellationToken ct);
 
     /// <summary>
+    /// ［2026-10-09 / #1829］無効化・再有効化の写し（IADR-0516 決定 4a。多層の防御）: 入口の印つきのクライアントの
+    /// <c>enabled</c> を <paramref name="enabled"/> にする（同じ値なら書かない）→ <see cref="IdpWriteKind.EnabledChanged"/>。
+    /// IdP に同じ clientId のクライアントが無ければ <see cref="IdpWriteKind.Absent"/>、入口の印が無ければ
+    /// <see cref="IdpWriteKind.AlreadyExists"/> を返し、**どちらも何も書かない**（プラットフォームのクライアントを変えない）。
+    /// 書いた後に読み戻せなければ、前の値へ戻してから <see cref="IdpProvisioningException"/> を投げる。
+    /// </summary>
+    Task<IdpWrite> SetEnabledAsync(string clientId, bool enabled, CancellationToken ct);
+
+    /// <summary>
     /// 補償: <paramref name="write"/> を書く前の状態へ戻す（作ったなら消し、書き換えたなら元の属性を書き戻す）。
     /// 🔴 書き換えの取り消しは、IdP の現在値がまだ <see cref="IdpWrite.WrittenAttributes"/> と同じときだけ書き戻す
-    /// （並行した差し替えの新しい値を古い値で潰さない）。
+    /// （並行した差し替えの新しい値を古い値で潰さない）。<c>enabled</c> の取り消しも同じ規則（現在値が書いた値のときだけ戻す）。
     /// </summary>
     Task UndoAsync(IdpWrite write, CancellationToken ct);
 }
@@ -52,6 +61,12 @@ public enum IdpWriteKind
 
     /// <summary>入口が作っていないクライアントが IdP に既に在った（同じ clientId・または印が無い）。**何も書いていない。**</summary>
     AlreadyExists,
+
+    /// <summary>［#1829］入口の印つきのクライアントの <c>enabled</c> を書いた。取り消しは <see cref="IdpWrite.PreviousEnabled"/> の書き戻し。</summary>
+    EnabledChanged,
+
+    /// <summary>［#1829］IdP に同じ clientId のクライアントが無い（入口ができる前の行）。**何も書いていない。**取り消すものも無い。</summary>
+    Absent,
 }
 
 // 書いた結果。補償に要る情報（IdP 側の識別子・書く前の属性）だけを持つ。
@@ -61,9 +76,13 @@ public sealed record IdpWrite(
     string? ClientInternalId = null,
     string? ServiceAccountUserId = null,
     IReadOnlyDictionary<string, string>? PreviousAttributes = null,
-    IReadOnlyDictionary<string, string>? WrittenAttributes = null)
+    IReadOnlyDictionary<string, string>? WrittenAttributes = null,
+    bool? PreviousEnabled = null,
+    bool? WrittenEnabled = null)
 {
     public static IdpWrite AlreadyExisting(string clientId) => new(IdpWriteKind.AlreadyExists, clientId);
+
+    public static IdpWrite Missing(string clientId) => new(IdpWriteKind.Absent, clientId);
 }
 
 public enum IdpProvisioningFailure

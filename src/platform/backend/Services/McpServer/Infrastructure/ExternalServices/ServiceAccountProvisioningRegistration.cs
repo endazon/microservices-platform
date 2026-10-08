@@ -152,6 +152,9 @@ public sealed class UnconfiguredServiceAccountProvisioner : IServiceAccountProvi
         string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, bool enabled, CancellationToken ct)
         => throw Unavailable();
 
+    // ［#1829］無効化の写しも Unavailable（無効化は登録簿だけで続け、再有効化は 503。IADR-0516 決定 4a の追記）。
+    public Task<IdpWrite> SetEnabledAsync(string clientId, bool enabled, CancellationToken ct) => throw Unavailable();
+
     public Task UndoAsync(IdpWrite write, CancellationToken ct) => Task.CompletedTask;
 
     public Task<IReadOnlyList<IdpClientEntry>> ListClientsAsync(CancellationToken ct) => throw Unavailable();
@@ -161,7 +164,8 @@ public sealed class UnconfiguredServiceAccountProvisioner : IServiceAccountProvi
 }
 
 // 非配備ホスト用。IdP の代わりにプロセス内へ書く（Keycloak 版と同じ意味論: 登録は在れば AlreadyExists・差し替えは無ければ作る・
-// 入口の印が無い〔`Seed` で置いた〕ものへは書かない・取り消しは現在値が書いた値のままのときだけ戻す）。
+// 入口の印が無い〔`Seed` で置いた〕ものへは書かない・取り消しは現在値が書いた値のままのときだけ戻す・
+// ［#1829］有効・無効の写しは無ければ Absent・印が無ければ AlreadyExists で何も書かない）。
 // 試験はこの状態を読んで「IdP に何が書かれたか（書かれなかったか）」を確かめる。
 // ［#1818］照合の読み取り（`IServiceAccountDirectory`）も持つ。試験は `Tamper` / `SeedManaged` / `Remove` で、入口を通らない
 // IdP の直接の操作（ADR-0123 決定 2 が禁じた操作）や補償の残骸を作り、照合がそれを拾うことを確かめる。
@@ -222,7 +226,7 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
         ct.ThrowIfCancellationRequested();
         lock (_gate)
             return Task.FromResult<IReadOnlyList<IdpClientEntry>>(
-                [.. _accounts.Select(kv => new IdpClientEntry(kv.Key, kv.Value.Managed))]);
+                [.. _accounts.Select(kv => new IdpClientEntry(kv.Key, kv.Value.Managed, kv.Value.Enabled))]);
     }
 
     public Task<IReadOnlyDictionary<string, string>?> ReadServiceAccountAttributesAsync(string clientId, CancellationToken ct)
@@ -258,12 +262,35 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
         }
     }
 
+    public Task<IdpWrite> SetEnabledAsync(string clientId, bool enabled, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            if (!_accounts.TryGetValue(clientId, out var current)) return Task.FromResult(IdpWrite.Missing(clientId));
+            if (!current.Managed) return Task.FromResult(IdpWrite.AlreadyExisting(clientId));
+            _accounts[clientId] = current with { Enabled = enabled };
+            return Task.FromResult(new IdpWrite(IdpWriteKind.EnabledChanged, clientId, clientId,
+                PreviousEnabled: current.Enabled, WrittenEnabled: enabled));
+        }
+    }
+
+    /// <summary>クライアントの有効・無効を、入口を通らずに書き換える（IdP の管理画面での直接の操作の再現。試験用）。</summary>
+    public void TamperEnabled(string clientId, bool enabled)
+    {
+        lock (_gate) _accounts[clientId] = _accounts[clientId] with { Enabled = enabled };
+    }
+
     public Task UndoAsync(IdpWrite write, CancellationToken ct)
     {
         lock (_gate)
         {
             switch (write.Kind)
             {
+                case IdpWriteKind.EnabledChanged
+                    when write.PreviousEnabled is { } previousEnabled && write.WrittenEnabled is { } writtenEnabled
+                         && _accounts.TryGetValue(write.ClientId, out var target) && target.Enabled == writtenEnabled:
+                    _accounts[write.ClientId] = target with { Enabled = previousEnabled };
+                    break;
                 case IdpWriteKind.Created:
                     _accounts.Remove(write.ClientId);
                     break;

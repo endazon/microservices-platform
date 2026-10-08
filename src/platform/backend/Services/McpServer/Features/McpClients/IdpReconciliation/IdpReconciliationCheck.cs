@@ -18,8 +18,10 @@ namespace McpServer.Features.McpClients.IdpReconciliation;
 // ■ 🔴 **検知するだけで、IdP にも登録簿にも書かない**（自動の修復はしない。IADR-0516 決定 5）。読む口は書き込みを持たない
 //   `IServiceAccountDirectory` であり、登録簿は追跡なしで読む。
 // ■ 🔴 **opt-in にしない。** 書き込み口が構成されていなければ照合は失敗として数え（系列なし）、「系列が無い」の警報が鳴る。
-// ■ 有人の行は比べない（IdP へ書かない既知の逸脱。IADR-0516 決定 3）。`enabled` も比べない（無効化の IdP への写し〔決定 4a〕は未実装で、
-//   比べると無効化した行がすべて食い違いになる）。
+// ■ 有人の行は比べない（IdP へ書かない既知の逸脱。IADR-0516 決定 3）。
+// ■ ［2026-10-09 / #1829］有効・無効も比べる（`enabled_differs`）。無効化の IdP への写し（決定 4a）が入ったので、登録簿の無人の行の `Enabled` と
+//   入口の印つきのクライアントの `enabled` は揃っているはずである。無効化は登録簿を先に書き、IdP への写しが失敗しても取り消さないので、
+//   「登録簿は無効・IdP は有効」はこの照合が拾う唯一の手掛かりになる。一覧の 1 要求で読めるので、要求は増えない。
 public sealed record IdpReconciliationOptions(TimeSpan Interval)
 {
     public const string IntervalKey = "McpClientProvisioning:Reconciliation:Interval";
@@ -72,6 +74,12 @@ public enum IdpDriftKind
 
     /// <summary>入口の印つきのクライアントが IdP にあるのに、登録簿に無人の行が無い（補償が走らなかった残骸）。</summary>
     Orphan,
+
+    /// <summary>
+    /// ［#1829］登録簿の行と IdP のクライアントで有効・無効が違う（無効化の IdP への写しの失敗・IdP での直接の操作・
+    /// 無効化と再有効化の交差）。
+    /// </summary>
+    EnabledDiffers,
 }
 
 public sealed record IdpDrift(string ClientId, IdpDriftKind Kind)
@@ -84,21 +92,24 @@ public sealed record IdpDrift(string ClientId, IdpDriftKind Kind)
         IdpDriftKind.ServiceAccountMissing => "service_account_missing",
         IdpDriftKind.AttributesDiffer => "attributes_differ",
         IdpDriftKind.Orphan => "orphan",
+        IdpDriftKind.EnabledDiffers => "enabled_differs",
         _ => throw new ArgumentOutOfRangeException(nameof(Kind), Kind, null),
     };
 
     /// <summary>
     /// 名指しの順（小さいほど先）。［PR #1831 監査 🟡1］名指しは 1 回に上限があるので、**セキュリティに関わる種類を先に出す**:
-    /// 属性が違う（検証を経ない割当・交差の後勝ち）→ 孤児（検証を経ない主体）→ 印が無い → SA が無い → IdP に無い（段 1 より前の行が多い）。
-    /// 古い行の `client_missing` が多くても、後から出た `attributes_differ` / `orphan` が上限の外へ押し出されない。
+    /// 属性が違う（検証を経ない割当・交差の後勝ち）→ 孤児（検証を経ない主体）→ 有効・無効が違う（多層の防御の欠け。#1829）
+    /// → 印が無い → SA が無い → IdP に無い（段 1 より前の行が多い）。
+    /// 古い行の `client_missing` が多くても、後から出た `attributes_differ` / `orphan` / `enabled_differs` が上限の外へ押し出されない。
     /// </summary>
     public int Severity => Kind switch
     {
         IdpDriftKind.AttributesDiffer => 0,
         IdpDriftKind.Orphan => 1,
-        IdpDriftKind.NotManaged => 2,
-        IdpDriftKind.ServiceAccountMissing => 3,
-        IdpDriftKind.ClientMissing => 4,
+        IdpDriftKind.EnabledDiffers => 2,
+        IdpDriftKind.NotManaged => 3,
+        IdpDriftKind.ServiceAccountMissing => 4,
+        IdpDriftKind.ClientMissing => 5,
         _ => throw new ArgumentOutOfRangeException(nameof(Kind), Kind, null),
     };
 }
@@ -139,8 +150,8 @@ public sealed class IdpReconciliationMetrics
         meter.CreateObservableGauge(
             DriftedGaugeName, Observe, unit: "{client}",
             description: "直近の照合で、SC-12 の登録簿（無人の行）と IdP のサービスアカウントが食い違ったクライアントの件数"
-                       + "（IdP に無い・入口の印が無い・サービスアカウントが無い・属性が違う・登録簿に無い印つきのクライアント）。"
-                       + "0 が正常。直近の照合に失敗したとき・未照合のときは系列を出さない。");
+                       + "（IdP に無い・入口の印が無い・サービスアカウントが無い・属性が違う・有効無効が違う・登録簿に無い印つきのクライアント。"
+                       + "1 つのクライアントが複数の種類を持っても 1 件と数える）。0 が正常。直近の照合に失敗したとき・未照合のときは系列を出さない。");
         _checks = meter.CreateCounter<long>(
             CheckCounterName, unit: "{check}",
             description: "登録簿と IdP の照合の結末。outcome = match / drift / failed（1 回の照合に 1 つ）。");
@@ -183,7 +194,7 @@ public sealed class IdpReconciliationCheck(
     /// <summary>1 回の照合で行ごとに名指しする上限（超えた分は件数だけ。ログの量を有界に保つ）。</summary>
     internal const int MaxNamedDrifts = 20;
 
-    internal sealed record RegistryRow(string ClientId, IReadOnlyDictionary<string, string> Attributes);
+    internal sealed record RegistryRow(string ClientId, IReadOnlyDictionary<string, string> Attributes, bool Enabled = true);
 
     /// <summary>
     /// 比べる（純粋な読み取り）。IdP の一覧を 1 度読み、入口の印つきのクライアントの行だけサービスアカウントの属性を読む
@@ -193,19 +204,24 @@ public sealed class IdpReconciliationCheck(
         IReadOnlyList<RegistryRow> rows, IServiceAccountDirectory directory, CancellationToken ct)
     {
         var clients = await directory.ListClientsAsync(ct);
-        var managedById = new Dictionary<string, bool>(StringComparer.Ordinal);
-        foreach (var c in clients) managedById[c.ClientId] = c.Managed;
+        var byId = new Dictionary<string, IdpClientEntry>(StringComparer.Ordinal);
+        foreach (var c in clients) byId[c.ClientId] = c;
 
         var drifts = new ConcurrentBag<IdpDrift>();
         var toRead = new List<RegistryRow>();
         foreach (var row in rows)
         {
-            if (!managedById.TryGetValue(row.ClientId, out var managed))
+            if (!byId.TryGetValue(row.ClientId, out var entry))
                 drifts.Add(new IdpDrift(row.ClientId, IdpDriftKind.ClientMissing));
-            else if (!managed)
+            else if (!entry.Managed)
                 drifts.Add(new IdpDrift(row.ClientId, IdpDriftKind.NotManaged));
             else
+            {
+                // ［#1829］IADR-0516 決定 4a: 有効・無効は一覧の表現で比べる（行ごとの要求を増やさない）。属性の比較とは独立に数える。
+                if (entry.Enabled != row.Enabled)
+                    drifts.Add(new IdpDrift(row.ClientId, IdpDriftKind.EnabledDiffers));
                 toRead.Add(row);
+            }
         }
 
         await Parallel.ForEachAsync(
@@ -256,7 +272,7 @@ public sealed class IdpReconciliationCheck(
             var rows = (await db.Clients.AsNoTracking()
                     .Where(c => c.Kind == McpClientKind.ServiceAccount)
                     .ToListAsync(linked.Token))
-                .Select(c => new RegistryRow(c.ClientId, c.Attributes))
+                .Select(c => new RegistryRow(c.ClientId, c.Attributes, c.Enabled))
                 .ToList();
             rowCount = rows.Count;
             drifts = await FindDriftsAsync(rows, directory, linked.Token);
@@ -293,7 +309,9 @@ public sealed class IdpReconciliationCheck(
         }
 
         var previous = metrics.LastDrifted;
-        metrics.RecordDrifted(drifts.Count);
+        // ゲージは**食い違ったクライアントの数**（#1829 以後、1 行が属性違いと有効・無効違いを同時に持ち得る）。
+        var driftedClients = drifts.Select(d => d.ClientId).Distinct(StringComparer.Ordinal).Count();
+        metrics.RecordDrifted(driftedClients);
         foreach (var drift in drifts.Take(MaxNamedDrifts))
         {
             logger.LogWarning(
@@ -308,9 +326,11 @@ public sealed class IdpReconciliationCheck(
         int CountOf(IdpDriftKind kind) => drifts.Count(d => d.Kind == kind);
         logger.LogInformation(
             "登録簿と IdP を照合した: 無人の行 {Rows} 件・食い違い {Drifted} 件（attributes_differ={AttributesDiffer} orphan={Orphan}"
-            + " not_managed={NotManaged} service_account_missing={ServiceAccountMissing} client_missing={ClientMissing}）。",
-            rowCount, drifts.Count, CountOf(IdpDriftKind.AttributesDiffer), CountOf(IdpDriftKind.Orphan),
-            CountOf(IdpDriftKind.NotManaged), CountOf(IdpDriftKind.ServiceAccountMissing), CountOf(IdpDriftKind.ClientMissing));
+            + " enabled_differs={EnabledDiffers} not_managed={NotManaged} service_account_missing={ServiceAccountMissing}"
+            + " client_missing={ClientMissing}）。",
+            rowCount, driftedClients, CountOf(IdpDriftKind.AttributesDiffer), CountOf(IdpDriftKind.Orphan),
+            CountOf(IdpDriftKind.EnabledDiffers), CountOf(IdpDriftKind.NotManaged), CountOf(IdpDriftKind.ServiceAccountMissing),
+            CountOf(IdpDriftKind.ClientMissing));
         if (drifts.Count == 0 && previous is > 0)
             logger.LogInformation("登録簿と IdP の食い違いが無くなった。");
         return drifts;

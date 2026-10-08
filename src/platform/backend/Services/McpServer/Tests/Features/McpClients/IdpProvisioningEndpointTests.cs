@@ -5,10 +5,12 @@ using McpServer.Domain;
 using McpServer.Domain.Ports;
 using McpServer.Infrastructure.Persistence;
 using McpServer.Features.McpClients;
+using McpServer.Features.McpClients.IdpReconciliation;
 using McpServer.Infrastructure.ExternalServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace McpServer.Tests.Features.McpClients;
 
@@ -166,6 +168,69 @@ public class IdpProvisioningEndpointTests(TestWebApplicationFactory factory)
         Idp.IsEnabled("legacy-disabled").Should().BeFalse();
     }
 
+    private async Task AddLegacyRow(string clientId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<McpDbContext>();
+        db.Clients.Add(McpClient.Register(clientId, "旧い行", McpClientKind.ServiceAccount,
+            new Dictionary<string, string> { ["clearance"] = "public" }, EgressTier.StandardExternal, DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync(Ct);
+    }
+
+    private async Task<bool> RegistryEnabled(string clientId)
+        => (await factory.CreateClient().GetFromJsonAsync<List<McpClientView>>("/mcp-clients", Ct))!
+            .Single(c => c.ClientId == clientId).Enabled;
+
+    // C-55（#1829 受け入れ基準 1・IADR-0516 決定 4a）: 無人のクライアントを無効化すると IdP のクライアントも無効になり、
+    // 再有効化で両方とも有効へ戻る。
+    [Fact]
+    public async Task 無人の無効化と再有効化はIdPのクライアントのenabledへ写す()
+    {
+        (await Registrar().PostAsJsonAsync("/mcp-clients", ServiceAccount("idp-toggle", ("clearance", "public")), Ct))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        var admin = factory.CreateClient();
+
+        var disabled = await admin.PostAsync("/mcp-clients/idp-toggle/disable", null, Ct);
+
+        disabled.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await disabled.Content.ReadFromJsonAsync<McpClientView>(Ct))!.Enabled.Should().BeFalse();
+        Idp.IsEnabled("idp-toggle").Should().BeFalse("無効化を IdP のクライアントへ写す");
+
+        var enabled = await admin.PostAsync("/mcp-clients/idp-toggle/enable", null, Ct);
+
+        enabled.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await RegistryEnabled("idp-toggle")).Should().BeTrue();
+        Idp.IsEnabled("idp-toggle").Should().BeTrue();
+    }
+
+    // C-56（#1829 受け入れ基準 2・否定形）: 入口の印が無い同名のクライアント（例 `abac-seeder`）は、無効化の経路から変えない。
+    // 無効化は登録簿だけを無効にして 200、再有効化は接続を開かずに 400（登録簿も書かない）。IdP に無い行は登録簿だけを切り替える。
+    [Fact]
+    public async Task 入口の印が無いクライアントは無効化の経路から変えない()
+    {
+        await AddLegacyRow("seeder-like");
+        Idp.Seed("seeder-like");
+        await AddLegacyRow("legacy-absent");
+        var admin = factory.CreateClient();
+
+        var disabled = await admin.PostAsync("/mcp-clients/seeder-like/disable", null, Ct);
+        disabled.StatusCode.Should().Be(HttpStatusCode.OK, "即時の接続拒否（登録簿）は止めない");
+        (await RegistryEnabled("seeder-like")).Should().BeFalse();
+        Idp.IsEnabled("seeder-like").Should().BeTrue("プラットフォームのクライアントを止めない");
+
+        var enabled = await admin.PostAsync("/mcp-clients/seeder-like/enable", null, Ct);
+        enabled.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await enabled.Content.ReadAsStringAsync(Ct)).Should().Contain("接続を開きません");
+        (await RegistryEnabled("seeder-like")).Should().BeFalse("入口を通らない主体へ接続を開かない");
+        Idp.IsEnabled("seeder-like").Should().BeTrue();
+
+        (await admin.PostAsync("/mcp-clients/legacy-absent/disable", null, Ct)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await RegistryEnabled("legacy-absent")).Should().BeFalse();
+        (await admin.PostAsync("/mcp-clients/legacy-absent/enable", null, Ct)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await RegistryEnabled("legacy-absent")).Should().BeTrue();
+        Idp.Snapshot().Should().NotContainKey("legacy-absent", "IdP に無いクライアントを無効化の経路で作らない");
+    }
+
     // T-1786-37: 有人は IdP へ書かない（テンプレートが計画に無い。IADR-0516 決定 3・§残余）。登録簿へは従来どおり書く。
     [Fact]
     public async Task 有人の登録はIdPへ書かない()
@@ -214,6 +279,27 @@ public class UnconfiguredIdpProvisioningEndpointTests : IClassFixture<Unconfigur
             .Should().BeOfType<UnconfiguredServiceAccountProvisioner>();
     }
 
+    // C-57（#1829）: 書き込み口が無くても無効化は登録簿だけで通る（即時の接続拒否を止めない）。再有効化は接続を開く側なので 503 で、登録簿も書かない。
+    [Fact]
+    public async Task 書き込み口が無くても無効化は通り再有効化は503()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<McpDbContext>();
+            db.Clients.Add(McpClient.Register("no-idp-toggle", "無人", McpClientKind.ServiceAccount,
+                new Dictionary<string, string>(), EgressTier.StandardExternal, DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+        var client = _factory.CreateClient();
+
+        (await client.PostAsync("/mcp-clients/no-idp-toggle/disable", null, TestContext.Current.CancellationToken))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.PostAsync("/mcp-clients/no-idp-toggle/enable", null, TestContext.Current.CancellationToken))
+            .StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        var list = await client.GetFromJsonAsync<List<McpClientView>>("/mcp-clients", TestContext.Current.CancellationToken);
+        list!.Single(c => c.ClientId == "no-idp-toggle").Enabled.Should().BeFalse();
+    }
+
     // 陽性対照: 有人の登録は書き込み口が無くても通る（MCP サーバーの他の機能を止めない）。
     [Fact]
     public async Task 書き込み口が無くても有人の登録は通る()
@@ -223,4 +309,93 @@ public class UnconfiguredIdpProvisioningEndpointTests : IClassFixture<Unconfigur
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
     }
+}
+
+// C-57（#1829 受け入れ基準 3・IADR-0516 決定 4a）: IdP への有効・無効の写しが失敗しても、**登録簿の無効化は取り消さない**
+// （即時の接続拒否を優先する。200）。食い違い（登録簿は無効・IdP は有効）は照合が `enabled_differs` として拾う。
+// 再有効化（開く側）は IdP が先なので 502 で、登録簿は無効のまま。写せるようになってから無効化をもう一度送れば写し直す。
+[Trait("TestKind", "Integration")]
+public class IdpEnabledMirrorFailureEndpointTests : IClassFixture<IdpEnabledMirrorFailureEndpointTests.Factory>
+{
+    public sealed class FailingEnabledProvisioner(InMemoryServiceAccountProvisioner inner)
+        : IServiceAccountProvisioner, IServiceAccountDirectory
+    {
+        public InMemoryServiceAccountProvisioner Inner { get; } = inner;
+        public volatile bool Fail;
+
+        public Task<IdpWrite> CreateAsync(string clientId, string displayName,
+            IReadOnlyDictionary<string, string> attributes, CancellationToken ct) => Inner.CreateAsync(clientId, displayName, attributes, ct);
+
+        public Task<IdpWrite> ReplaceAttributesAsync(string clientId, string displayName,
+            IReadOnlyDictionary<string, string> attributes, bool enabled, CancellationToken ct)
+            => Inner.ReplaceAttributesAsync(clientId, displayName, attributes, enabled, ct);
+
+        public Task<IdpWrite> SetEnabledAsync(string clientId, bool enabled, CancellationToken ct)
+            => Fail
+                ? throw new IdpProvisioningException(IdpProvisioningFailure.Failed, "IdP（Keycloak）へ到達できない。")
+                : Inner.SetEnabledAsync(clientId, enabled, ct);
+
+        public Task UndoAsync(IdpWrite write, CancellationToken ct) => Inner.UndoAsync(write, ct);
+
+        public Task<IReadOnlyList<IdpClientEntry>> ListClientsAsync(CancellationToken ct) => Inner.ListClientsAsync(ct);
+
+        public Task<IReadOnlyDictionary<string, string>?> ReadServiceAccountAttributesAsync(string clientId, CancellationToken ct)
+            => Inner.ReadServiceAccountAttributesAsync(clientId, ct);
+    }
+
+    public sealed class Factory : TestWebApplicationFactory
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IServiceAccountProvisioner>();
+                services.AddSingleton(sp => new FailingEnabledProvisioner(
+                    sp.GetRequiredService<InMemoryServiceAccountProvisioner>()));
+                services.AddSingleton<IServiceAccountProvisioner>(sp => sp.GetRequiredService<FailingEnabledProvisioner>());
+            });
+        }
+    }
+
+    private readonly Factory _factory;
+
+    public IdpEnabledMirrorFailureEndpointTests(Factory factory) => _factory = factory;
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    [Fact]
+    public async Task IdPへの写しが失敗しても登録簿の無効化は取り消さず照合が拾う()
+    {
+        var idp = _factory.Services.GetRequiredService<FailingEnabledProvisioner>();
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(StubRegistrarAttributeResolver.ClearanceHeader, "public");
+        (await client.PostAsJsonAsync("/mcp-clients", new RegisterMcpClientRequest("mirror-fail", "無人", "service-account",
+            new Dictionary<string, string> { ["clearance"] = "public" }), Ct)).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        idp.Fail = true;
+        var disabled = await client.PostAsync("/mcp-clients/mirror-fail/disable", null, Ct);
+
+        disabled.StatusCode.Should().Be(HttpStatusCode.OK, "即時の接続拒否（登録簿の無効化）を優先する");
+        (await disabled.Content.ReadFromJsonAsync<McpClientView>(Ct))!.Enabled.Should().BeFalse();
+        (await Registry(client)).Should().BeFalse("登録簿の無効化は取り消さない");
+        idp.Inner.IsEnabled("mirror-fail").Should().BeTrue("写せていない");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var drifts = await scope.ServiceProvider.GetRequiredService<IdpReconciliationCheck>().RunAsync(Ct);
+            drifts.Should().Contain(new IdpDrift("mirror-fail", IdpDriftKind.EnabledDiffers), "食い違いは照合が拾う");
+        }
+
+        var enabled = await client.PostAsync("/mcp-clients/mirror-fail/enable", null, Ct);
+        enabled.StatusCode.Should().Be(HttpStatusCode.BadGateway, "開く側は IdP が先。書けなければ登録簿へ書かない");
+        (await Registry(client)).Should().BeFalse();
+
+        idp.Fail = false;
+        (await client.PostAsync("/mcp-clients/mirror-fail/disable", null, Ct)).StatusCode.Should().Be(HttpStatusCode.OK);
+        idp.Inner.IsEnabled("mirror-fail").Should().BeFalse("同じ操作をもう一度送れば写し直す");
+    }
+
+    private static async Task<bool> Registry(HttpClient client)
+        => (await client.GetFromJsonAsync<List<McpClientView>>("/mcp-clients", Ct))!.Single(c => c.ClientId == "mirror-fail").Enabled;
 }
