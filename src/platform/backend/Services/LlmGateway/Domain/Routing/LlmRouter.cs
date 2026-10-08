@@ -125,7 +125,8 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
 
     // CodeQL(cs/log-forging): ログに出力する利用者由来の文字列から改行・制御文字を除去する。
     // 改行を注入したログ行の偽造（forged log entries）を防ぐ。
-    private static string Sanitize(string? value)
+    // NFR-28 (#1819): CompletionUseCase の越境拒否のログも同じ無害化を通す（定義を 2 つにしない）。
+    internal static string Sanitize(string? value)
     {
         if (string.IsNullOrEmpty(value))
             return string.Empty;

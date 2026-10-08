@@ -1,3 +1,4 @@
+using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Routing;
 using Platform.Shared.Contracts.Dtos;
@@ -17,7 +18,8 @@ namespace LlmGateway.Features.Embeddings.Embed;
 public sealed class EmbedUseCase(
     IEmbeddingRouter router,
     IServiceProvider services,
-    ILoggerFactory loggerFactory)
+    ILoggerFactory loggerFactory,
+    LogOccurrenceThrottle logThrottle)
 {
     public const string LoggerCategory = "LlmGateway.Embed";
 
@@ -77,6 +79,26 @@ public sealed class EmbedUseCase(
                 Vector: vector, Dimensions: vector.Length, Model: decision.Model,
                 Collection: decision.Collection, Embedded: true,
                 Endpoint: decision.EndpointName, RoutingReason: decision.Reason);
+        }
+        catch (EmbeddingProviderNotConfiguredException ex)
+        {
+            // FR-02, NFR-19, IADR-0504 追記 (#1819): 鍵の欠落など**構成として使えない**状態。
+            // 🔴 **応答は下の一時障害と同じ**（Embedded=false・Retryable=true）—— 取り込みは再試行の後 DLQ へ送り、
+            // 鍵を入れてから DLQ を再投入すれば索引へ入る。恒久スキップ（Retryable=false）にすると取り込みは
+            // チャンクを捨てて完了扱いにし、後から鍵を入れても索引に入らない（IADR-0504 §検討した代替案）。
+            // 🔴 **違うのはログだけである。** 同じ原因の失敗を毎回スタック付きで残すとログを埋め、他の行を
+            // 押し出す（#1819 の PoC で 1,146 回）。エンドポイントごとに初回は即時・以後は 5 分ごとに
+            // 抑えた件数つきの 1 行（スタックなし）にする。
+            if (logThrottle.ShouldLog($"embedding-not-configured|{decision.EndpointName}", out var suppressed))
+                logger.LogWarning(
+                    "Embedding disabled at endpoint {Endpoint} ({Model}): provider not configured: {Detail} "
+                    + "suppressedSinceLast={Suppressed} (returned as retryable; logged at most once per {Interval})",
+                    decision.EndpointName, decision.Model, ex.Message, suppressed,
+                    LogOccurrenceThrottle.SummaryInterval);
+            return new EmbedApiResponse(
+                Vector: [], Dimensions: 0, Model: decision.Model, Collection: decision.Collection,
+                Embedded: false, Endpoint: decision.EndpointName,
+                RoutingReason: $"送信先 {decision.EndpointName} が現在利用できません。", Retryable: true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

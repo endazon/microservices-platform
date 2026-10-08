@@ -19,8 +19,11 @@ public sealed class VoyageEmbeddingProvider(IHttpClientFactory httpFactory, ICon
     public async Task<float[]> EmbedAsync(
         string text, string model, int dimensions, EmbeddingRoutePurpose purpose, CancellationToken ct = default)
     {
+        // #1819, IADR-0504 追記: 鍵の欠落は「構成として使えない」状態であり、上流の不調とは型で分ける
+        // （EmbedUseCase がスタックを出さず、初回と 5 分ごとの要約だけを記録する）。文言は従前のまま。
         if (string.IsNullOrWhiteSpace(_apiKey))
-            throw new InvalidOperationException("Voyage AI の API キーが未設定です（Embedding:Voyage:ApiKey）。");
+            throw new EmbeddingProviderNotConfiguredException(
+                "Voyage AI の API キーが未設定です（Embedding:Voyage:ApiKey）。");
 
         var client = httpFactory.CreateClient("VoyageEmbedding");
         client.BaseAddress = new Uri(_baseUrl);

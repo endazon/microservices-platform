@@ -24,12 +24,17 @@ namespace LlmGateway.Features.Completions;
 // 🔴 `isSynthetic` は**引数で受ける**。判定そのものは SyntheticTraffic.IsSyntheticInternalRequest が
 // 単一情報源であり（REST は http.Request、gRPC は context.GetHttpContext().Request から呼ぶ）、
 // ここで 2 つ目の定義を作らない（IADR-0378）。
+//
+// 🔴 FR-11, NFR-19, IADR-0104 追記 (#1819): **`Sent=false` の 6 経路（一括 3・逐次 3）はすべて
+// `FailureKind` を名乗る**（越境拒否・プロバイダ未登録・上流不調）。上流不調は HTTP 状態も載せる。
+// 呼び出し側が文言（Text）を解釈せずに原因を記録し分けられるようにするためである。
 public sealed class CompletionUseCase(
     ILlmRouter router,
     IServiceProvider services,
     ILoggerFactory loggerFactory,
     LlmCompletionMetrics metrics,
-    LlmUsageMetrics usage)
+    LlmUsageMetrics usage,
+    LogOccurrenceThrottle logThrottle)
 {
     public const string CompleteLoggerCategory = "LlmGateway.Complete";
     public const string StreamLoggerCategory = "LlmGateway.CompleteStream";
@@ -51,9 +56,11 @@ public sealed class CompletionUseCase(
             // IADR-0110: 未送信も計上する（分母が欠けると拒否率が過大に見える）。
             metrics.RecordCompletion(
                 LlmCompletionMetrics.ResultEgressDenied, null, decision, purpose, sensitivity);
+            LogEgressDenied(logger, decision, purpose, sensitivity);
             return new CompletionApiResponse(
                 Text: decision.Reason, Model: string.Empty, InputTokens: 0, OutputTokens: 0,
-                Sent: false, Endpoint: null, RoutingReason: decision.Reason);
+                Sent: false, Endpoint: null, RoutingReason: decision.Reason,
+                FailureKind: CompletionFailureKinds.EgressDenied);
         }
 
         var provider = services.GetKeyedService<ILlmProvider>(decision.Provider);
@@ -66,7 +73,8 @@ public sealed class CompletionUseCase(
             return new CompletionApiResponse(
                 Text: $"呼び出し先プロバイダ {decision.Provider} が未登録のため送信できません。",
                 Model: string.Empty, InputTokens: 0, OutputTokens: 0,
-                Sent: false, Endpoint: decision.EndpointName, RoutingReason: decision.Reason);
+                Sent: false, Endpoint: decision.EndpointName, RoutingReason: decision.Reason,
+                FailureKind: CompletionFailureKinds.ProviderMissing);
         }
 
         // FR-11, ADR-0038 決定 3 (#863): 第 1 候補 → フォールバック順序 の順に試す。
@@ -134,7 +142,9 @@ public sealed class CompletionUseCase(
                 return new CompletionApiResponse(
                     Text: $"呼び出し先 {attempt.EndpointName} が現在利用できません。",
                     Model: attempt.Model ?? string.Empty, InputTokens: 0, OutputTokens: 0,
-                    Sent: false, Endpoint: attempt.EndpointName, RoutingReason: attempt.Reason);
+                    Sent: false, Endpoint: attempt.EndpointName, RoutingReason: attempt.Reason,
+                    FailureKind: CompletionFailureKinds.UpstreamError,
+                    UpstreamStatusCode: LlmFallbackPolicy.StatusCodeOf(ex));
             }
         }
 
@@ -164,8 +174,10 @@ public sealed class CompletionUseCase(
             // IADR-0110: 非ストリーミングと同じ属性で計上する（経路によって観測が欠けないようにする）。
             metrics.RecordCompletion(
                 LlmCompletionMetrics.ResultEgressDenied, null, decision, purpose, sensitivity);
+            LogEgressDenied(logger, decision, purpose, sensitivity);
             yield return new CompletionStreamEvent(
-                string.Empty, Done: true, Sent: false, Text: decision.Reason, RoutingReason: decision.Reason);
+                string.Empty, Done: true, Sent: false, Text: decision.Reason, RoutingReason: decision.Reason,
+                FailureKind: CompletionFailureKinds.EgressDenied);
             yield break;
         }
 
@@ -179,7 +191,7 @@ public sealed class CompletionUseCase(
             yield return new CompletionStreamEvent(
                 string.Empty, Done: true, Sent: false,
                 Text: $"呼び出し先プロバイダ {decision.Provider} が未登録のため送信できません。",
-                RoutingReason: decision.Reason);
+                RoutingReason: decision.Reason, FailureKind: CompletionFailureKinds.ProviderMissing);
             yield break;
         }
 
@@ -203,6 +215,8 @@ public sealed class CompletionUseCase(
         // 記録するのは最終チャンクで実数を受け取れたときだけである（0 埋めをしない）。
         var sawDone = false;
         var faulted = false;
+        // #1819: 失敗の最終イベントへ上流の HTTP 状態を載せる（例外は catch の外へ持ち出せないので値だけ控える）。
+        int? upstreamStatus = null;
 
         // 🔴 反復子は yield を跨ぐ try/catch を持てない。列挙子を手で回し、`MoveNextAsync` だけを
         // try/catch で囲む（yield は try/finally の中にあってよい）。こうすると
@@ -233,6 +247,7 @@ public sealed class CompletionUseCase(
                         LlmCompletionMetrics.ResultUpstreamError, null, decision, purpose, sensitivity,
                         failure: ex);
                     faulted = true;
+                    upstreamStatus = LlmFallbackPolicy.StatusCodeOf(ex);
                     break;
                 }
 
@@ -257,7 +272,8 @@ public sealed class CompletionUseCase(
             yield return new CompletionStreamEvent(
                 string.Empty, Done: true, Sent: false,
                 Text: $"呼び出し先 {decision.EndpointName} が現在利用できません。",
-                Model: decision.Model ?? string.Empty, RoutingReason: decision.Reason);
+                Model: decision.Model ?? string.Empty, RoutingReason: decision.Reason,
+                FailureKind: CompletionFailureKinds.UpstreamError, UpstreamStatusCode: upstreamStatus);
             yield break;
         }
 
@@ -284,5 +300,29 @@ public sealed class CompletionUseCase(
             string.Empty, Done: true, Sent: true, Model: decision.Model ?? string.Empty,
             InputTokens: inputTokens, OutputTokens: outputTokens, RoutingReason: decision.Reason,
             StopReason: stopReason);
+    }
+
+    // FR-11, NFR-17, NFR-19, NFR-28, IADR-0104 追記 (#1819): 越境拒否を運用者が事後に追えるようにする。
+    // 従前この枝は計器だけを数えてログを出さず、Prometheus の無い経路B では原因（越境拒否か・上流か・鍵か）を
+    // 確定できなかった。ルータの `LLM routing denied`（ADR-0010 の監査ログ。呼び出しごと）は**そのまま残し**、
+    // ここでは**理由の文言（decision.Reason）を載せた運用向けの 1 行**を、(用途, 理由) の組ごとに
+    // 初回は即時・以後は 5 分ごとの要約（抑えた件数つき）で出す。
+    //
+    // 🔴 抑制の鍵は**値域の閉じた purpose**（計器と同じ正規化）で作る —— 自由文字列で作ると辞書が非有界に育つ。
+    // ログへ載せる purpose は呼び出し側の原文を**無害化して**載せる（NFR-28。ルータと同じ Sanitize）。
+    // decision.Reason は拒否の枝では機密区分とティアだけから組まれる（利用者由来の文字列を含まない）。
+    private void LogEgressDenied(
+        ILogger logger, RoutingDecision decision, string purpose, SensitivityClass sensitivity)
+    {
+        var key = $"egress-denied|{metrics.NormalizePurpose(purpose)}|{decision.Reason}";
+        if (!logThrottle.ShouldLog(key, out var suppressed))
+            return;
+
+        logger.LogWarning(
+            "LLM egress denied (Sent=false, failureKind={FailureKind}): reason={Reason} purpose={Purpose} "
+            + "sensitivity={Sensitivity} suppressedSinceLast={Suppressed} "
+            + "(the same purpose and reason is logged at most once per {Interval})",
+            CompletionFailureKinds.EgressDenied, decision.Reason, LlmRouter.Sanitize(purpose), sensitivity,
+            suppressed, LogOccurrenceThrottle.SummaryInterval);
     }
 }

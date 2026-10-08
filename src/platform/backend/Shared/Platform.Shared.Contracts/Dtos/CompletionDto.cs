@@ -23,6 +23,25 @@ public static class CompletionStopReasons
         string.Equals(stopReason, MaxTokens, StringComparison.OrdinalIgnoreCase);
 }
 
+// FR-11, NFR-19, IADR-0104 (#1819): `Sent=false` の原因の種類（応答の `FailureKind`）。
+// ゲートウェイの 3 つの縮退経路を**文言（Text）ではなく値で**区別できるようにする —— 呼び出し側
+// （AST の取引判断等）が「越境拒否か・構成不備か・上流の不調か」を記録し分けられないと、
+// 送信不可が連続したときに原因を事後に確定できない（#1819 の PoC で 132 件を追えなかった）。
+// 値は計器 `llm.completion.total` の `llm.result` と**同じ文字列**である（IADR-0110。計器の定数はここを引く）。
+// enum にしないのは CompletionStopReasons と同じ理由（語彙が増えたとき古い呼び出し側が既定値へ黙って落ちない）。
+// 未知の値を受けた呼び出し側は「原因不明の Sent=false」として扱えばよい。`Sent=true` では null。
+public static class CompletionFailureKinds
+{
+    // 機密区分×ティアの越境マトリクス・ZDR 要件により送信しなかった（設定どおりの拒否。再試行しても変わらない）。
+    public const string EgressDenied = "egress_denied";
+
+    // ルーティングが選んだプロバイダがゲートウェイに登録されていない（構成不備）。
+    public const string ProviderMissing = "provider_missing";
+
+    // 呼び出し先が例外を返した（HTTP 4xx/5xx・輸送の失敗）。HTTP 状態が取れれば UpstreamStatusCode に載る。
+    public const string UpstreamError = "upstream_error";
+}
+
 // FR-04, FR-11, ADR-0010: LLM ゲートウェイ /complete の要求・応答契約。
 // LlmGateway（実装側）と AiAnalysisService（呼び出し側）で二重管理せず、
 // 契約変更時の追従漏れ（ドリフト）を防ぐため共有コントラクトに一元化する。
@@ -49,6 +68,9 @@ public record CompletionApiRequest(
 //   拒否でも Sent=true を保つ（越境監査・課金集計の意味を壊さないため）。
 //   拒否時 Text は空になる（ゲートウェイが断片を破棄する）ため、本フィールドを見ない呼び出し側も
 //   従来どおり安全側へ倒れる。未送信・未対応プロバイダでは null。
+// IADR-0104 追記 (#1819): FailureKind は Sent=false の原因の種類（CompletionFailureKinds）。
+//   UpstreamStatusCode は FailureKind="upstream_error" で上流が HTTP 状態を返したときだけ載る（輸送の失敗は null）。
+//   いずれも Sent=true では null。Text / RoutingReason の意味は変えない（末尾追加＝旧い呼び出し側は無視できる）。
 public record CompletionApiResponse(
     string Text,
     string Model,
@@ -57,7 +79,9 @@ public record CompletionApiResponse(
     bool Sent = true,
     string? Endpoint = null,
     string? RoutingReason = null,
-    string? StopReason = null);
+    string? StopReason = null,
+    string? FailureKind = null,
+    int? UpstreamStatusCode = null);
 
 // IADR-0037: /complete/stream（SSE）の 1 イベント（data: 行の JSON）。gateway ↔ AiAnalysisService の内部契約。
 //   Delta        — 本文の増分（Done=false のとき）。
@@ -66,6 +90,8 @@ public record CompletionApiResponse(
 //   Text         — 縮退時の理由（Sent=false のとき）。
 //   StopReason   — IADR-0104: モデル側の終了理由（最終イベントにのみ載る）。"refusal" は送出済みの
 //                  Delta を破棄すべきことを意味する（ストリームは撤回できないため呼び出し側の責務）。
+//   FailureKind / UpstreamStatusCode — #1819: Sent=false の最終イベントにだけ載る原因の種類と上流の HTTP 状態
+//                  （CompletionApiResponse と同じ意味）。呼び出し側が輸送の失敗で合成する done(Sent=false) では null。
 public record CompletionStreamEvent(
     string Delta,
     bool Done = false,
@@ -75,4 +101,6 @@ public record CompletionStreamEvent(
     int InputTokens = 0,
     int OutputTokens = 0,
     string? RoutingReason = null,
-    string? StopReason = null);
+    string? StopReason = null,
+    string? FailureKind = null,
+    int? UpstreamStatusCode = null);

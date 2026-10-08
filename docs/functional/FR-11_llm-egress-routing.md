@@ -7,11 +7,11 @@ updated: 2026-10-08
 author: claude
 ---
 <!-- trace:
-ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02]
+ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02, NFR-17, NFR-19, NFR-28]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
 iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511]
-specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models]
-issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, AST#290, AST#571, planning#50, planning#426, planning#720]
+specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability]
+issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -41,7 +41,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 | --- | --- |
 | 入力 | `CompletionApiRequest`（`Prompt`, `MaxTokens`, `Model`(任意), `Confidentiality`(任意), `Purpose`(任意)）。呼び出し元（`RagOrchestrator` 等）が入力文脈文書の**最高機密区分**（`SensitivityClasses.Highest`）と用途（`rag-answer` / `analysis` / `diagram-coding` / `report-monthly` / `report-weekly` / `report-daily` / `trade-decision` / `trade-decision-screening` / `rerank` / `graph-suggestion` / `graph-cluster-summary`）を付与する。 |
 | 処理 | ① `SensitivityClasses.Parse` で `Confidentiality` を `SensitivityClass`（Public/Internal/Confidential/Restricted）へ写像。② `EgressMatrix.AllowedTiers` で許容ティア集合を算出。③ `LlmRouter.Route` が「有効・許容ティア・（要承認でない）」エンドポイントを `Priority` 昇順→ティア昇順（A<B<C, 保護の強い順）で選び先頭を採用。④ `ResolveModel` で用途→モデルを解決。⑤ `decision.Provider` を keyed DI（`claude` / `selfhosted`）で解決し送信。 |
-| 出力 | `CompletionApiResponse`（`Text`, `Model`, `InputTokens`, `OutputTokens`, `Sent`, `Endpoint`, `RoutingReason`）。`Sent=false` 時は呼び出し元が出典のみ返す等の縮退へ切替可能。判定（機密区分・用途・ティア・エンドポイント・モデル・要承認・理由）を監査ログへ記録。 |
+| 出力 | `CompletionApiResponse`（`Text`, `Model`, `InputTokens`, `OutputTokens`, `Sent`, `Endpoint`, `RoutingReason`, `StopReason`, `FailureKind`, `UpstreamStatusCode`）。`Sent=false` 時は呼び出し元が出典のみ返す等の縮退へ切替可能。判定（機密区分・用途・ティア・エンドポイント・モデル・要承認・理由）を監査ログへ記録。 |
 | 業務ルール | **機密区分→許容ティア**は越境マトリクス（下表）に固定。`Confidential`/`Restricted` は**ティアA/B のみ**でティアC（標準外部API）へは送信不可。`Internal × ティアC` は「条件付き可（要承認）」で、`AllowUnapprovedTierC=false`（既定）の間は候補から除外。許容ティアに送信可能な有効エンドポイントが無ければ**送信拒否（縮退）**。未指定・未知の機密区分は `Restricted` へ倒す（安全側）。 |
 
 ### 越境マトリクス（`EgressMatrix` / 08_data-egress-policy.md）
@@ -178,13 +178,13 @@ flowchart TD
 
 | 条件 | 振る舞い | 応答 |
 | --- | --- | --- |
-| 許容ティアに送信可能な有効エンドポイントが無い | 送信せず縮退（越境ポリシー上の拒否）。監査ログ warn | `Sent=false`, `Endpoint=null`, `Model=""`（未使用）, `RoutingReason=拒否理由`（`Text` に理由） |
+| 許容ティアに送信可能な有効エンドポイントが無い | 送信せず縮退（越境ポリシー上の拒否）。監査ログ warn（呼び出しごと）＋運用ログ warn（理由の文言つき。同じ用途・理由は 5 分ごとの要約 1 行） | `Sent=false`, `FailureKind="egress_denied"`, `Endpoint=null`, `Model=""`（未使用）, `RoutingReason=拒否理由`（`Text` に理由） |
 | 機密区分が未指定・未知 | `Restricted` へ倒し、ティアC を除外（安全側） | ティアA/B のみで判定（該当なければ上記拒否） |
 | `Internal × ティアC` かつ未承認（`AllowUnapprovedTierC=false`） | ティアC 候補を除外（要承認ゲート） | ティアA/B で判定、無ければ拒否 |
-| 選択プロバイダが keyed DI 未登録 | 送信せず縮退。監査ログ error | `Sent=false`, `Endpoint=採用EP`, `Model=""`（未使用）（`Text` に未登録メッセージ） |
+| 選択プロバイダが keyed DI 未登録 | 送信せず縮退。監査ログ error | `Sent=false`, `FailureKind="provider_missing"`, `Endpoint=採用EP`, `Model=""`（未使用）（`Text` に未登録メッセージ） |
 | **呼び出し先が HTTP 400 系（429 を除く）を返し、用途に鎖がある**（同計画 ADR の決定 3・4 / 用途別フォールバックの実装 ADR） | **次の候補モデルへ切り替えて再試行**。監査ログ warn（遷移と上流ステータス）、メトリクス `llm.result=fallback` | 成功すれば `Sent=true`, `Model=実際に使った候補` |
-| **呼び出し先が 429 を返した**（同計画 ADR の決定 4） | **フォールバックしない**（429 は再試行の対象であってフォールバックの対象ではない）。下段の「呼び出し先が不調」へ合流 | `Sent=false`, `Model=第 1 候補のまま` |
-| 呼び出し先が不調（例外, `OperationCanceledException` 以外） | 500 を伝播させず縮退。監査ログ error | `Sent=false`, `Endpoint=採用EP`, `Model=実 route 結果`（鎖がある場合は**最後に試した候補**）（`Text` に利用不可メッセージ） |
+| **呼び出し先が 429 を返した**（同計画 ADR の決定 4） | **フォールバックしない**（429 は再試行の対象であってフォールバックの対象ではない）。下段の「呼び出し先が不調」へ合流 | `Sent=false`, `FailureKind="upstream_error"`, `UpstreamStatusCode=429`, `Model=第 1 候補のまま` |
+| 呼び出し先が不調（例外, `OperationCanceledException` 以外） | 500 を伝播させず縮退。監査ログ error | `Sent=false`, `FailureKind="upstream_error"`, `UpstreamStatusCode=上流の HTTP 状態`（輸送の失敗は null）, `Endpoint=採用EP`, `Model=実 route 結果`（鎖がある場合は**最後に試した候補**）（`Text` に利用不可メッセージ） |
 | セルフホスト `BaseUrl` 未設定 | `SelfHostedProvider` が `InvalidOperationException`。上記「呼び出し先不調」に集約し縮退 | `Sent=false` |
 | 送信は成立したがモデルが拒否（`stop_reason="refusal"`。既定モデルの計画 ADR と `stop_reason` 契約の実装 ADR） | 縮退させず送信成立として扱い、**本文（断片を含む）を破棄**。監査ログ warn | `Sent=true`, `StopReason="refusal"`, `Text=""` |
 | 送信は成立したが出力上限に到達（`stop_reason="max_tokens"`。既定 `max_tokens` 引き上げと `stop_reason` 契約の実装 ADR） | 途中結果は破棄せず返す。監査ログ warn | `Sent=true`, `StopReason="max_tokens"`, `Text=途中結果` |
@@ -253,6 +253,30 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 既に流れている場合は空行で区切る（フロントは token を 1 つの文字列へ連結し `white-space: pre-wrap`
 で表示するため、区切らないと注記が地の文へ溶け込む）。
 
+### `Sent=false` の原因の種類（`FailureKind`）と運用ログ
+
+**［2026-10-08 追記］** `Sent=false` の 3 つの原因（越境拒否・プロバイダ未登録・上流の不調）は、
+以前は `Text` の文言でしか区別できなかった。PoC で取引判断が `Sent=false` を連続して受けたとき、
+呼び出し側も運用者も原因を事後に確定できなかったため、**原因の種類を値として返す**。
+
+| 項目 | 型 | 値 |
+| --- | --- | --- |
+| `FailureKind` | 文字列（null 可） | `egress_denied` / `provider_missing` / `upstream_error`。`Sent=true` では null |
+| `UpstreamStatusCode` | 整数（null 可） | `FailureKind="upstream_error"` で上流が HTTP 状態を返したときの状態コード（429・5xx など）。輸送の失敗・他の原因・`Sent=true` では null |
+
+- 一括（`/complete`）の応答と、逐次（`/complete/stream`）の `done` イベントの両方に載る。gRPC でも同じ項目を運ぶ
+  （proto3 に null は無いので、空文字と 0 が「無い」を表す）。
+- 語彙はメトリクスの `llm.result` と同じ文字列である。**閉じた列挙にはしない**（`StopReason` と同じ理由）。
+  知らない値は「原因不明の `Sent=false`」として扱えばよい。
+- **`Text` / `RoutingReason` / `Sent` の意味は変えていない**（末尾への追加であり、古い呼び出し側は無視できる）。
+- 呼び出し側の輸送層が自分で合成する `done(Sent=false)`（ゲートウェイに届かなかった場合）は `FailureKind` を持たない。
+
+**越境拒否の運用ログ。** 越境拒否は呼び出しごとの監査ログ（`LLM routing denied`）に加え、
+**理由の文言・用途・機密区分を載せた warn を 1 行**出す（`LLM egress denied`）。同じ用途と理由の組は
+**初回は即時、以後は 5 分ごとに 1 行**に抑え、その行に抑えた件数（`suppressedSinceLast`）を添える。
+用途は呼び出し側の自由文字列なので、ログへは制御文字を落としてから載せる。
+要約は次の発生時に出る（発生が止まった後の残りの件数は出ない）。
+
 ### 応答 content ブロックの未知型は解析前に除去する（SDK の fail-closed を止める）
 
 Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロックの判別子を列挙で分岐し、
@@ -302,6 +326,8 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 - [x] 報告書 3 種（`report-monthly` / `report-weekly` / `report-daily`）は HTTP 400 系で第 1 候補が失敗したとき、それぞれの第 2 候補へフォールバックして応答が返る（二段判断の層別用途登録の実装 ADR）。
 - [x] 知識グラフの 2 用途（AI 提案 `graph-suggestion`・クラスタ要約 `graph-cluster-summary`）は登録したモデル（`claude-sonnet-5`・`claude-opus-5`）へ解決され、既定（`DefaultModel`）を別のモデルへ差し替えても割当が選ばれる。鎖は 1 段下位（`claude-haiku-4-5`・`claude-sonnet-5`）。費用は `llm.purpose` の用途名の軸に積まれ、`other` へ丸められない（`GraphPurposeEndpointTests`）。
 - [x] 呼び出し側が送る用途名の全数が `PurposeModels` のキーに在ることを横断テストが突き合わせ、未登録の用途が増えると落ちる（`scripts/scripts.repo.test.js`。変異で確認）。
+- [x] `Sent=false` の全経路（一括 3・逐次 3）が `FailureKind` で原因の種類を返し、上流の不調は HTTP 状態を `UpstreamStatusCode` に載せる。`Sent=true` では両方 null。gRPC も同じ値を運ぶ（`SentFalseObservabilityTests`・`GrpcCompleteTests`・`GrpcCompleteStreamTests`）。
+- [x] 越境拒否は理由・用途・機密区分を載せた warn を出し、同じ用途と理由の組は 5 分ごとの要約 1 行（抑えた件数つき）に抑える。用途の制御文字はログへ出す前に落とす（`SentFalseObservabilityTests`。抑制を外す変異で赤を確認）。
 
 > 検証: `LlmRouterTests`（越境マトリクス・ティア除外・フォールバック・ZDR・縮退）／
 > `CompletionRoutingEndpointTests`／`EmbeddingRouterTests`・`EmbeddingEndpointTests`（埋め込み egress）。

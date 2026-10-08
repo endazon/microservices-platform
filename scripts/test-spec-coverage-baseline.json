@@ -165,6 +165,8 @@
       "CompletionRoutingEndpointTests",
       "CompletionStopReasonEndpointTests",
       "GraphPurposeEndpointTests",
+      "GrpcCompleteStreamTests",
+      "GrpcCompleteTests",
       "LlmFallbackPolicyTests",
       "LlmGatewayDiagramCoderTests",
       "LlmRouterTests",
@@ -173,7 +175,8 @@
       "QdrantVectorStoreTests",
       "RagContextAiInputExclusionTests",
       "RagOrchestratorStopReasonTests",
-      "RerankPurposeEndpointTests"
+      "RerankPurposeEndpointTests",
+      "SentFalseObservabilityTests"
     ],
     "docs/tests/FR-12_document-normalization.md": [
       "ConversionJobStoreTests",

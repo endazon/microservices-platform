@@ -38,9 +38,11 @@ public sealed class LlmCompletionMetrics
 
     // llm.result: 送信可否の軸（FR-11 の Sent に対応）。stop_reason とは独立した軸である（IADR-0104）。
     public const string ResultSent = "sent";                     // 越境が成立した（拒否率の分母）
-    public const string ResultEgressDenied = "egress_denied";    // 機密区分により送信しなかった
-    public const string ResultProviderMissing = "provider_missing"; // 呼び出し先プロバイダ未登録
-    public const string ResultUpstreamError = "upstream_error";  // 呼び出し先が不調（例外）
+    // #1819: 未送信の 3 値は応答の FailureKind と**同じ語彙**である。値の正は共有契約（CompletionFailureKinds）に
+    // 置き、ここはそれを引く —— 2 か所に文字列を書くと、片方だけ変わって計器と応答が食い違う。
+    public const string ResultEgressDenied = CompletionFailureKinds.EgressDenied;       // 機密区分により送信しなかった
+    public const string ResultProviderMissing = CompletionFailureKinds.ProviderMissing; // 呼び出し先プロバイダ未登録
+    public const string ResultUpstreamError = CompletionFailureKinds.UpstreamError;     // 呼び出し先が不調（例外）
     // ADR-0038 決定 6 (#863), IADR-0225: 上流が HTTP 400 系を返し、**次の候補モデルへ切り替えた**呼び出し。
     // フォールバックが起きた 1 リクエストは 2 回計上される（見送った第 1 候補が fallback、
     // 成功した第 2 候補が sent）。llm.model が候補ごとに違うため、用途別・モデル別の利用実績として読める。
@@ -208,7 +210,8 @@ public sealed class LlmCompletionMetrics
     //
     // PurposeModels は LlmRoutingOptions 側で StringComparer.OrdinalIgnoreCase の辞書として初期化されており
     // （設定バインダはその辞書インスタンスへマージする）、キー照合は大小文字非依存になる。
-    private string NormalizePurpose(string purpose)
+    // #1819: 越境拒否のログの抑制の鍵にも同じ値域（設定で閉じた purpose）を使う（CompletionUseCase）。
+    internal string NormalizePurpose(string purpose)
         => LlmMetricValues.NormalizePurpose(_routing.CurrentValue, purpose);
 
     private static string Or(string? value, string fallback)

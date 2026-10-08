@@ -63,6 +63,11 @@ message CompleteResponse {
   string routing_reason = 7;
   // モデル側の終了理由（end_turn / max_tokens / refusal ほか。IADR-0104）。未送信・未報告は空文字。
   string stop_reason = 8;
+  // #1819（IADR-0104 追記）: sent=false の原因の種類（egress_denied / provider_missing / upstream_error。
+  // REST の CompletionApiResponse.FailureKind と同じ語彙）。sent=true は空文字。
+  string failure_kind = 9;
+  // #1819: failure_kind=upstream_error で上流が HTTP 状態を返したときの状態コード。0 は「無い」（REST の null）。
+  int32 upstream_status_code = 10;
 }
 
 // REST の CompletionStreamEvent（SSE の data: 行）と同じ形。
@@ -83,4 +88,7 @@ message CompletionStreamEvent {
   int32 output_tokens = 7;
   string routing_reason = 8;
   string stop_reason = 9;
+  // #1819: done=true / sent=false のメッセージにだけ載る（CompleteResponse の 9・10 と同じ意味）。
+  string failure_kind = 10;
+  int32 upstream_status_code = 11;
 }
