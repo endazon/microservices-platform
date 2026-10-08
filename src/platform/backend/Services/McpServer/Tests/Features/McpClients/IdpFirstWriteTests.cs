@@ -17,6 +17,7 @@ public class IdpFirstWriteTests
     private sealed class RecordingProvisioner : IServiceAccountProvisioner
     {
         public List<IdpWrite> Undone { get; } = [];
+        public List<CancellationToken> UndoTokens { get; } = [];
         public bool UndoThrows { get; init; }
 
         public Task<IdpWrite> CreateAsync(string clientId, string displayName,
@@ -28,6 +29,7 @@ public class IdpFirstWriteTests
         public Task UndoAsync(IdpWrite write, CancellationToken ct)
         {
             Undone.Add(write);
+            UndoTokens.Add(ct);
             return UndoThrows ? throw new HttpRequestException("down") : Task.CompletedTask;
         }
     }
@@ -49,6 +51,7 @@ public class IdpFirstWriteTests
 
         await act.Should().ThrowAsync<InvalidOperationException>("元の失敗を投げる");
         provisioner.Undone.Should().ContainSingle().Which.Should().Be(written);
+        provisioner.UndoTokens.Should().OnlyContain(t => !t.CanBeCanceled, "補償へ要求の取り消しを伝えない");
     }
 
     // T-1786-22: 差し替えの取り消しは、書く前の属性を持った書き込みを口へ返す。
@@ -107,6 +110,7 @@ public class IdpFirstWriteTests
         await act.Should().ThrowAsync<OperationCanceledException>();
         provisioner.Undone.Should().ContainSingle("取り消しでも作ったクライアントを残さない");
         seenByIdp.CanBeCanceled.Should().BeFalse("IdP への書き込みは要求の取り消しで止めない");
+        provisioner.UndoTokens.Should().OnlyContain(t => !t.CanBeCanceled, "補償へ要求の取り消しを伝えない");
     }
 
     // T-1786-24（否定形）: IdP へ書けなければ登録簿へ書かない（Failed は 502・Unavailable は 503）。

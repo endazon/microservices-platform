@@ -301,6 +301,76 @@ public class KeycloakServiceAccountProvisionerTests
         keycloak.ServiceAccountOf("agent-long").Attributes["clearance"].Should().Equal("public");
     }
 
+    // T-1786-20（再監査 🟡-A）: `POST /clients` が Keycloak 側で作り終えてから時間切れになっても、印つきの孤児を残さず Failed。
+    [Fact]
+    public async Task 作成の要求そのものが時間切れでも作られたクライアントを消す()
+    {
+        var keycloak = new FakeKeycloak { TimeoutOnCreateAfterCommit = true };
+
+        var act = () => Provisioner(keycloak).CreateAsync("agent-p3", "P3", Attrs(("clearance", "public")), Ct);
+
+        (await act.Should().ThrowAsync<IdpProvisioningException>())
+            .Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+        keycloak.Clients.Should().BeEmpty("作成の成否が分からない失敗でも、印つきのものは消す");
+        keycloak.Requests.Should().Contain(r => r.Method == "DELETE");
+    }
+
+    // T-1786-28（再監査 🟡-B / b3）: 取り消しは渡された ct が取り消し済みでも最後まで走る。
+    [Fact]
+    public async Task 取り消しは取り消し済みのトークンでも最後まで走る()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        var written = await provisioner.CreateAsync("agent-u2", "U", Attrs(("clearance", "public")), Ct);
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        await provisioner.UndoAsync(written, cancelled.Token);
+
+        keycloak.Clients.Should().BeEmpty();
+    }
+
+    // T-1786-29（再監査 🟡-B）: 書き始めた後に要求が取り消されても、IdP への書き込みと補償は要求の取り消しで止まらない。
+    // 書き込みの途中の失敗（読み戻せない）では、作ったクライアントを消す。
+    [Fact]
+    public async Task 書き始めた後の要求の取り消しは補償を止めない()
+    {
+        using var request = new CancellationTokenSource();
+        var keycloak = new FakeKeycloak { DropAttributesOnPut = true, OnCreate = request.Cancel };
+
+        var act = () => Provisioner(keycloak).CreateAsync("agent-x2", "X", Attrs(("clearance", "public")), request.Token);
+
+        (await act.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+        keycloak.Clients.Should().BeEmpty("要求の取り消しを補償へ伝えると孤児が残る");
+        keycloak.Requests.Should().Contain(r => r.Method == "PUT", "要求の取り消しを書き込みへ伝えると途中で止まる");
+    }
+
+    // T-1786-30（再監査 🟢）: 401 の取り直しでは、古い Bearer をトークンの取得口へ運ばない。
+    [Fact]
+    public async Task 取り直しのトークン要求に古いBearerを載せない()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-b", "B", Attrs(("clearance", "public")), Ct);
+
+        keycloak.RejectNextAdminCallOnce = true;
+        await provisioner.ReplaceAttributesAsync("agent-b", "B", Attrs(("clearance", "internal")), true, Ct);
+
+        keycloak.Requests.Where(r => r.Path.EndsWith("openid-connect/token", StringComparison.Ordinal))
+            .Should().OnlyContain(r => r.Authorization == null);
+    }
+
+    // T-1786-31b（再監査 🟢）: 差し替えの try の外で応答が読めなくても 500 ではなく Failed（502）。
+    [Fact]
+    public async Task 差し替えで応答が読めなければFailed()
+    {
+        var keycloak = new FakeKeycloak { MalformedClientLookup = true };
+
+        var act = () => Provisioner(keycloak).ReplaceAttributesAsync("agent-j", "J", Attrs(("clearance", "public")), true, Ct);
+
+        (await act.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+    }
+
     // ── 状態を持つ偽の Keycloak ──────────────────────────────────────────────
 
     internal sealed record Recorded(string Method, string Path, string? Body, string? Authorization);
@@ -333,10 +403,16 @@ public class KeycloakServiceAccountProvisionerTests
         public bool Unreachable { get; init; }
         /// <summary>`POST /clients` の後の最初の要求で時間切れ（TaskCanceledException）を投げる。</summary>
         public bool TimeoutAfterCreate { get; init; }
+        /// <summary>`POST /clients` でクライアントを作り終えてから時間切れ（TaskCanceledException）を投げる。</summary>
+        public bool TimeoutOnCreateAfterCommit { get; init; }
+        /// <summary>`POST /clients` でクライアントを作った直後に呼ぶ（要求の取り消しを差し込む）。</summary>
+        public Action? OnCreate { get; init; }
         /// <summary>`POST /clients` の応答に Location を付けない。</summary>
         public bool OmitLocation { get; init; }
         /// <summary>`clients?clientId=` の照会を、この回数だけ 500 にする。</summary>
         public int ClientLookupFailures { get; set; }
+        /// <summary>`clients?clientId=` の応答を JSON として読めない本文にする。</summary>
+        public bool MalformedClientLookup { get; init; }
         /// <summary>次の管理要求を 1 度だけ 401 にする（トークンの取り直しを見る）。</summary>
         public bool RejectNextAdminCallOnce { get; set; }
         public int TokenRequests { get; private set; }
@@ -398,6 +474,9 @@ public class KeycloakServiceAccountProvisionerTests
                 var clientId = rep["clientId"]!.GetValue<string>();
                 if (Clients.Any(c => c.ClientId == clientId)) return Status(HttpStatusCode.Conflict);
                 var created = NewClient(clientId, rep);
+                OnCreate?.Invoke();
+                if (TimeoutOnCreateAfterCommit)
+                    throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout");
                 var response = Status(HttpStatusCode.Created);
                 if (!OmitLocation)
                     response.Headers.Location = new Uri($"https://auth.example.test/{Admin}clients/{created.Id}");
@@ -406,6 +485,7 @@ public class KeycloakServiceAccountProvisionerTests
 
             if (method == "GET" && path.StartsWith(Admin + "clients?clientId=", StringComparison.Ordinal))
             {
+                if (MalformedClientLookup) return Ok("{not json");
                 if (ClientLookupFailures > 0)
                 {
                     ClientLookupFailures--;

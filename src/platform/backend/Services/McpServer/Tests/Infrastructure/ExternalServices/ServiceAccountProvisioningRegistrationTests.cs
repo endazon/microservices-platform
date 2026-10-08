@@ -122,4 +122,38 @@ public class ServiceAccountProvisioningRegistrationTests
         var act = () => ServiceAccountProvisioningOptions.FromConfiguration(configuration);
         act.Should().Throw<InvalidOperationException>().WithMessage("*TimeoutSeconds*");
     }
+
+    // T-1786-47（再監査 🟡-C）: 構成した期限が、DI から引いた名前付きの HttpClient に効いている。
+    [Fact]
+    public void 名前付きHttpClientに構成した期限が効く()
+    {
+        var services = Register("Production",
+            ("McpClientProvisioning:Provider", "keycloak"),
+            ("McpClientProvisioning:Keycloak:BaseUrl", "http://keycloak:8080"),
+            ("McpClientProvisioning:Keycloak:Realm", "platform"),
+            ("McpClientProvisioning:Keycloak:ClientId", "mcp-client-admin"),
+            ("McpClientProvisioning:Keycloak:ClientSecret", "injected-at-deploy-time"),
+            ("McpClientProvisioning:Keycloak:TimeoutSeconds", "37"));
+
+        var client = services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>()
+            .CreateClient(ServiceAccountProvisioningRegistration.KeycloakClientName);
+
+        client.Timeout.Should().Be(TimeSpan.FromSeconds(37));
+        client.BaseAddress.Should().Be(new Uri("http://keycloak:8080/"));
+    }
+
+    // T-1786-48（再監査 🟢 / c2）: プロセス内の口も、取り消しは現在値が書いた値のままのときだけ書き戻す。
+    [Fact]
+    public async Task プロセス内の口も取り消しで後の値を潰さない()
+    {
+        var idp = new InMemoryServiceAccountProvisioner();
+        var ct = TestContext.Current.CancellationToken;
+        await idp.CreateAsync("c", "C", new Dictionary<string, string> { ["clearance"] = "public" }, ct);
+        var first = await idp.ReplaceAttributesAsync("c", "C", new Dictionary<string, string> { ["clearance"] = "internal" }, true, ct);
+        await idp.ReplaceAttributesAsync("c", "C", new Dictionary<string, string> { ["clearance"] = "confidential" }, true, ct);
+
+        await idp.UndoAsync(first, ct);
+
+        idp.Snapshot()["c"]["clearance"].Should().Be("confidential");
+    }
 }

@@ -135,10 +135,23 @@ public sealed class KeycloakServiceAccountProvisioner(
         HttpClient client, string clientId, string displayName,
         IReadOnlyDictionary<string, string> attributes, bool enabled)
     {
-        var created = await Send(client, () => client.PostAsJsonAsync(
-            $"admin/realms/{Realm}/clients", ServiceAccountClientTemplate(clientId, displayName, enabled), Json,
-            CancellationToken.None));
+        // 🔴 PR #1816 再監査 🟡-A: `POST /clients` そのものが時間切れ・5xx になっても、Keycloak が作り終えている場合がある
+        // （印つき・属性なし・有効の孤児が残り、再登録は 409・差し替えは書けない）。**作成の成否が分からない失敗**は、
+        // clientId で引き直し、入口の印があれば消してから `Failed` を返す。
+        HttpResponseMessage created;
+        try
+        {
+            created = await Send(client, () => client.PostAsJsonAsync(
+                $"admin/realms/{Realm}/clients", ServiceAccountClientTemplate(clientId, displayName, enabled), Json,
+                CancellationToken.None));
+        }
+        catch (IdpProvisioningException)
+        {
+            await CompensateUnconfirmedCreationAsync(client, clientId);
+            throw;
+        }
         if (created.StatusCode == HttpStatusCode.Conflict) return IdpWrite.AlreadyExisting(clientId);
+        if ((int)created.StatusCode >= 500) await CompensateUnconfirmedCreationAsync(client, clientId);
         EnsureSuccess(created, "クライアントの作成");
 
         string? internalId = InternalIdFromLocation(created.Headers.Location);
@@ -194,7 +207,7 @@ public sealed class KeycloakServiceAccountProvisioner(
         var response = await Send(client, () => client.GetAsync(
             $"admin/realms/{Realm}/clients?clientId={Uri.EscapeDataString(clientId)}", CancellationToken.None));
         EnsureSuccess(response, "クライアントの照会");
-        var clients = await response.Content.ReadFromJsonAsync<List<KeycloakClient>>(Json) ?? [];
+        var clients = await ReadJsonAsync<List<KeycloakClient>>(response) ?? [];
         return clients.FirstOrDefault(c => string.Equals(c.ClientId, clientId, StringComparison.Ordinal))?.Id;
     }
 
@@ -203,7 +216,7 @@ public sealed class KeycloakServiceAccountProvisioner(
         var response = await Send(client, () => client.GetAsync(
             $"admin/realms/{Realm}/clients/{Uri.EscapeDataString(internalId)}", CancellationToken.None));
         EnsureSuccess(response, "クライアントの取得");
-        var representation = await response.Content.ReadFromJsonAsync<KeycloakClient>(Json);
+        var representation = await ReadJsonAsync<KeycloakClient>(response);
         return representation?.Attributes is { } attributes
                && attributes.TryGetValue(ManagedByAttribute, out var value)
                && string.Equals(value, ManagedByValue, StringComparison.Ordinal);
@@ -215,7 +228,7 @@ public sealed class KeycloakServiceAccountProvisioner(
         var response = await Send(client, () => client.GetAsync(
             $"admin/realms/{Realm}/clients/{Uri.EscapeDataString(internalId)}/service-account-user", CancellationToken.None));
         EnsureSuccess(response, "サービスアカウントの利用者の取得");
-        var serviceAccount = await response.Content.ReadFromJsonAsync<KeycloakUser>(Json);
+        var serviceAccount = await ReadJsonAsync<KeycloakUser>(response);
         if (string.IsNullOrEmpty(serviceAccount?.Id))
             throw Failed("クライアントにサービスアカウントの利用者が無い。");
 
@@ -224,7 +237,7 @@ public sealed class KeycloakServiceAccountProvisioner(
             $"admin/realms/{Realm}/users?username={Uri.EscapeDataString(userName)}"
             + "&exact=true&briefRepresentation=false&max=2", CancellationToken.None));
         EnsureSuccess(lookup, "サービスアカウントの利用者の照会");
-        var found = (await lookup.Content.ReadFromJsonAsync<List<KeycloakUser>>(Json) ?? [])
+        var found = (await ReadJsonAsync<List<KeycloakUser>>(lookup) ?? [])
             .Where(u => !string.IsNullOrEmpty(u.Id)
                         && string.Equals(u.Username, userName, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -241,7 +254,7 @@ public sealed class KeycloakServiceAccountProvisioner(
     {
         var response = await Send(client, () => client.GetAsync(UserPath(userId), CancellationToken.None));
         EnsureSuccess(response, "サービスアカウントの属性の取得");
-        var user = await response.Content.ReadFromJsonAsync<KeycloakUser>(Json);
+        var user = await ReadJsonAsync<KeycloakUser>(response);
         return Decode(user?.Attributes);
     }
 
@@ -251,7 +264,7 @@ public sealed class KeycloakServiceAccountProvisioner(
         var path = UserPath(userId);
         var current = await Send(client, () => client.GetAsync(path, CancellationToken.None));
         EnsureSuccess(current, "サービスアカウントの表現の取得");
-        var representation = await current.Content.ReadFromJsonAsync<JsonObject>(Json)
+        var representation = await ReadJsonAsync<JsonObject>(current)
             ?? throw Failed("サービスアカウントの表現が空である。");
 
         foreach (var computed in ServerComputedFields) representation.Remove(computed);
@@ -291,6 +304,24 @@ public sealed class KeycloakServiceAccountProvisioner(
                 "作りかけのクライアント（内部 ID {InternalId}）を消せなかった。IdP に登録簿に無いクライアントが残っている。"
                 + " Keycloak の管理画面で消すこと（属性は書かれていない、または書きかけである）。",
                 ForLog(internalId));
+        }
+    }
+
+    // 作成の成否が分からないときの補償。**入口の印があるものだけ**消す（同名の印なしのクライアントには触れない）。
+    private async Task CompensateUnconfirmedCreationAsync(HttpClient client, string clientId)
+    {
+        string? internalId = null;
+        try
+        {
+            internalId = await FindClientInternalIdAsync(client, clientId);
+            if (internalId is not null && await IsManagedAsync(client, internalId))
+                await DeleteClientAsync(client, internalId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "作成の成否が分からないクライアント（内部 ID {InternalId}）を確かめて消せなかった。IdP に孤児が残っている可能性がある。",
+                ForLog(internalId ?? "(不明)"));
         }
     }
 
@@ -371,7 +402,10 @@ public sealed class KeycloakServiceAccountProvisioner(
         var response = await SendRaw(call);
         if (response.StatusCode != HttpStatusCode.Unauthorized) return response;
 
-        InvalidateToken();
+        response.Dispose();
+        await InvalidateTokenAsync();
+        // 古い Bearer をトークンの取得口へ運ばない。
+        client.DefaultRequestHeaders.Authorization = null;
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", await AccessTokenAsync(client));
         return await SendRaw(call);
@@ -394,6 +428,19 @@ public sealed class KeycloakServiceAccountProvisioner(
         }
     }
 
+    // 応答の本文が読めない（形が違う・途中で切れた）は `Failed`（502）へ写す。差し替えの try の外でも 500 にしない。
+    private static async Task<T?> ReadJsonAsync<T>(HttpResponseMessage response)
+    {
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<T>(Json);
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or HttpRequestException or OperationCanceledException)
+        {
+            throw Failed("IdP（Keycloak）の応答を読めない。", ex);
+        }
+    }
+
     private static void EnsureSuccess(HttpResponseMessage response, string what)
     {
         if (!response.IsSuccessStatusCode)
@@ -411,9 +458,9 @@ public sealed class KeycloakServiceAccountProvisioner(
         return client;
     }
 
-    private void InvalidateToken()
+    private async Task InvalidateTokenAsync()
     {
-        _tokenLock.Wait();
+        await _tokenLock.WaitAsync();
         try
         {
             _token = null;
@@ -445,7 +492,7 @@ public sealed class KeycloakServiceAccountProvisioner(
             var response = await SendRaw(() => client.PostAsync(
                 $"realms/{Realm}/protocol/openid-connect/token", content, CancellationToken.None));
             EnsureSuccess(response, "管理用トークンの取得");
-            var token = await response.Content.ReadFromJsonAsync<TokenResponse>(Json)
+            var token = await ReadJsonAsync<TokenResponse>(response)
                 ?? throw Failed("Keycloak のトークン応答が空である。");
 
             _token = token.AccessToken;
