@@ -1,0 +1,401 @@
+# 切替（6 資産の破棄と realm の作り直し）のリハーサルのうち、CI の k3d で再現できる部分 —— NFR / #1781（#457 の切り出し）
+#
+# ■ 何をするか
+#
+# `docs/migration/cutover-discard-and-rebuild.md` の §リハーサル（使い捨てクラスタで手順 1〜5 を通す）を、
+# 統合スタック（integration-stack.yml）と同じ起こし方の k3d の上で通す:
+#   起こす → データを入れる（検索検証用の文書・合成の利用者 1 人）→ 事前実測（--dump）→ 静止の時刻 →
+#   破棄 3(a)〜(d) → 再構築 4 → 検証 5（measure-cutover-inventory.js --since --baseline と check-stack-ready.js）→
+#   陰性対照（AST の DB を 1 つ DROP／postgres-data を消して作り直す）→ 窓の長さを記録する。
+# 再現できない部分（実データ・稼働クラスタの環境変数・AST の配備・ArgoCD・人の資格情報）と理由は
+# 作業仕様書 `.ai-context/specs/20261008_1781_cutover-rehearsal-ci.md` が持ち、#457 に記録する。
+#
+# ■ 🔴 稼働クラスタには触れない
+#
+# 本ワークフローの破壊的な手順（DB の DROP・realm の削除・PVC の削除）は**このジョブが作った k3d クラスタ**にだけ当たる。
+# 手順を scripts/ の再利用できる道具にしなかったのはそのためである（IADR-0515 決定 2）。稼働クラスタでの実行はオーナーが
+# 移行仕様書を読んで行う。
+#
+# ■ 秘密は合成値だけ
+#
+# Keycloak の管理者パスワードはジョブの中で乱数から作り、ログでは伏せる（::add-mask::）。リポジトリには何も書かない
+# （gitleaks はコミットを走査する）。他の基盤の資格情報は起動器の開発用の既定のままである（このクラスタはジョブの終わりに消える）。
+#
+# ■ 必須チェックにはしない・既存のワークフローの起動条件は変えない
+#
+# 起動は workflow_dispatch だけである（IADR-0515 決定 1）。下の pull_request は**初回の成功までの一時のもの**であり、
+# paths を本ファイルだけに絞っている（新しいワークフローは既定ブランチに載るまで dispatch できないため。#1781）。
+# 🔴 **初回の成功の後に pull_request の節を消す**（消す作業は #1781 の残余として PR 本文に書いた）。
+name: Cutover Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      istio:
+        description: "メッシュを入れて起こす（integration-stack と同じ既定）。false にすると比較のため無しで起こす"
+        type: boolean
+        default: true
+  # 🔴 一時（#1781）: 初回の成功の後に消す。本ファイルを変える PR でだけ起動する。
+  pull_request:
+    paths:
+      - ".github/workflows/cutover-rehearsal.yml"
+
+# 同時実行は 1 本。新しいコミットが来たら古いリハーサルは意味を失うので取り消す。
+concurrency:
+  group: cutover-rehearsal-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # integration-stack.yml と同じ pin（理由は同ファイルの注記）。2 つが揃っていることは scripts.repo.test.js が突き合わせる。
+  K3D_VERSION: v5.8.3
+  K3S_IMAGE: rancher/k3s:v1.35.4-k3s1
+  CLUSTER: cutover-rehearsal
+
+jobs:
+  rehearsal:
+    name: cutover-rehearsal
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      # integration-stack.yml と同じ読み（dispatch の istio=false だけがメッシュ無し）。無しのときは 0 を明示する ——
+      # 再構築で起動器を再実行するとき、未指定は「現行を引き継ぐ」と読まれるため（IADR-0488）。
+      ISTIO: ${{ (github.event_name != 'workflow_dispatch' || inputs.istio) && '1' || '0' }}
+      INFRA_NS: platform-infra
+      MSP_NS: microservices-platform
+      # 収集の生データ（DB 名・realm 名・合成の利用者名・件数。秘密は入らない）の置き場。
+      OUT: ${{ github.workspace }}/cutover-out
+      # 入れるデータの印（合成の利用者名）。作り直しの後に残っていれば消し足りない。
+      PLANTED_USER: cutover-rehearsal-planted
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # integration-stack.yml と同じ（bff と frontend のイメージビルドに submodule が要る）。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - uses: azure/setup-helm@v5
+
+      - name: Self-test the readiness gate
+        run: node scripts/check-stack-ready.js --self-test
+
+      - name: Install k3d (pinned)
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG="${K3D_VERSION}" bash
+          k3d version
+          kubectl version --client
+          helm version
+
+      # 合成の秘密。乱数で作り、伏せてから GITHUB_ENV へ渡す（後の手順と再構築の起動器が同じ値を使う）。
+      - name: Generate synthetic secrets (job-local)
+        run: |
+          set -euo pipefail
+          kc="$(openssl rand -hex 24)"
+          echo "::add-mask::${kc}"
+          {
+            echo "KEYCLOAK_ADMIN_PASSWORD=${kc}"
+            echo "CUTOVER_KC_ADMIN_PASSWORD=${kc}"
+          } >> "$GITHUB_ENV"
+          mkdir -p "$OUT"
+
+      # 手順 リハーサル 1: 起動器で経路B を立てる。integration-stack.yml と同じ環境変数（SEARCHSEED=1 は 2 の「データを入れる」を兼ねる）。
+      - name: Bring up the stack (rehearsal 1)
+        run: |
+          set -euo pipefail
+          LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1 K8S_LOCAL_RUNTIME=k3d \
+            bash scripts/k8s-local-up.sh --live "${CLUSTER}"
+
+      # integration-stack.yml と同じ待ち（判定はしない。判定は次の門）。
+      - name: Wait for pods to become Ready (待つだけ。判定はしない)
+        run: |
+          set -euo pipefail
+          for ns in "$INFRA_NS" "$MSP_NS"; do
+            tmpl='{{range .items}}{{if not .metadata.deletionTimestamp}}pod/{{.metadata.name}} {{end}}{{end}}'
+            pods="$(kubectl -n "$ns" get pods -l '!job-name,!batch.kubernetes.io/job-name' -o go-template="$tmpl")"
+            if [ -z "$pods" ]; then
+              echo "    (skip) $ns: 終了中でない Pod が 0 件。判定は check-stack-ready.js が行う"
+              continue
+            fi
+            # shellcheck disable=SC2086  # 名前は k8s の DNS-1123 に限られ、意図的に分割する。
+            if ! kubectl -n "$ns" wait --for=condition=Ready $pods --timeout=600s; then
+              echo "::warning::$ns: 期限内に Ready にならない Pod がある。判定は check-stack-ready.js に委ねる"
+            fi
+          done
+
+      - name: 🔴 Gate — the stack is up before the rehearsal
+        run: node scripts/check-stack-ready.js --live
+
+      # 手順 リハーサル 2: データを入れる。起動器の中の投入は best-effort なので、明示的に再実行して終了コードを見る。
+      - name: Plant data (search documents, ABAC seed, one synthetic user)
+        run: |
+          set -euo pipefail
+          node scripts/seed-abac-policies.js --live
+          node scripts/seed-search-documents.js --live
+          KC="$(kubectl -n "$INFRA_NS" get pod -l app=keycloak -o jsonpath='{.items[0].metadata.name}')"
+          # パスワードは引数へ載せない（#1793。kcadm は --password を省くと標準入力から読む）。
+          printf '%s\n' "$KEYCLOAK_ADMIN_PASSWORD" | kubectl -n "$INFRA_NS" exec -i "$KC" -- /opt/keycloak/bin/kcadm.sh \
+            config credentials --server http://localhost:8080 --realm master --user admin
+          kubectl -n "$INFRA_NS" exec "$KC" -- /opt/keycloak/bin/kcadm.sh \
+            create users -r platform -s "username=${PLANTED_USER}" -s enabled=true
+          # 取り込みは非同期。索引に点が入るまで待つ（入らないまま破棄すると「空を空にした」だけの空振りになる）。
+          for i in $(seq 1 60); do
+            pts="$(kubectl get --raw "/api/v1/namespaces/${INFRA_NS}/services/http:qdrant:6333/proxy/collections" \
+              | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const c=JSON.parse(s).result.collections||[];console.log(c.map(x=>x.name).join(" "))})')"
+            total=0
+            for c in $pts; do
+              n="$(kubectl get --raw "/api/v1/namespaces/${INFRA_NS}/services/http:qdrant:6333/proxy/collections/${c}" \
+                | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(Number(JSON.parse(s).result.points_count||0)))')"
+              total=$((total + n))
+            done
+            echo "    Qdrant の点: ${total}（${i}/60）"
+            [ "$total" -gt 0 ] && break
+            sleep 10
+          done
+
+      # 手順 1: 事前実測。🔴 入れたデータが見えていること（空振りでないこと）をここで確かめる。
+      - name: Pre-measure (procedure 1) and assert the rehearsal is not vacuous
+        run: |
+          set -euo pipefail
+          node scripts/measure-cutover-inventory.js --live --dump "$OUT/before.json"
+          node - "$OUT/before.json" <<'NODE'
+          const d = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));
+          const fails = [];
+          const points = (d.qdrant?.collections || []).reduce((n, c) => n + Number(c.points || 0), 0);
+          if (!(points > 0)) fails.push(`Qdrant の点が ${points}`);
+          if (!d.objectStorage) fails.push('オブジェクトストレージを読めなかった');
+          else if (!(d.objectStorage.objects > 0)) fails.push(`オブジェクトストレージのオブジェクトが ${d.objectStorage.objects}`);
+          const users = (d.keycloak?.users || []).map((u) => u.username);
+          if (!users.includes(process.env.PLANTED_USER)) fails.push(`合成の利用者 ${process.env.PLANTED_USER} が realm に無い`);
+          const docRows = (d.postgres?.tables || []).filter((t) => t.db === 'document_svc').reduce((n, t) => n + Number(t.rows || 0), 0);
+          if (!(docRows > 0)) fails.push(`document_svc の行が ${docRows}`);
+          if (!(d.keycloak?.realms || []).includes('master')) fails.push('master realm が無い');
+          console.log(`事前実測: Qdrant 点 ${points} / オブジェクト ${d.objectStorage?.objects} / document_svc 行 ${docRows} / realm ${(d.keycloak?.realms || []).join(', ')}`);
+          if (fails.length) { console.error(`::error::空振りのリハーサルになる: ${fails.join(' / ')}`); process.exit(1); }
+          NODE
+
+      # 手順 2: 静止。破棄を始めた時刻を記録する（検証の --since）。AST の書き込みの停止と ArgoCD の自動同期の停止は
+      # このクラスタには無い（AST は未配備・ARGOCD は無効）ので行わない。サービスは止めない（移行仕様書のとおり）。
+      - name: Quiesce (procedure 2) — record the start of the window
+        run: |
+          set -euo pipefail
+          sleep 2
+          since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "CUTOVER_SINCE=${since}" >> "$GITHUB_ENV"
+          echo "CUTOVER_T0=$(date -u +%s)" >> "$GITHUB_ENV"
+          echo "破棄の開始: ${since}"
+
+      # 手順 3: 破棄。移行仕様書の (a)〜(d) をこの順で行う。
+      - name: Discard (procedure 3 a–d)
+        run: |
+          set -euo pipefail
+          # (a) MSP の DB を作り直す（AST の DB は含まない）。
+          PG="$(kubectl -n "$INFRA_NS" get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')"
+          node scripts/measure-cutover-inventory.js --print-recreate-sql \
+            | kubectl -n "$INFRA_NS" exec -i "$PG" -- psql -U postgres -d postgres -v ON_ERROR_STOP=1
+          # (b) MSP のキューの滞留だけを空にする（接頭辞は measure-cutover-inventory.js と同じく pipeline.json から）。
+          RMQ="$(kubectl -n "$INFRA_NS" get pod -l app=rabbitmq -o jsonpath='{.items[0].metadata.name}')"
+          kubectl -n "$INFRA_NS" exec "$RMQ" -- rabbitmqctl list_queues name messages consumers
+          kubectl -n "$INFRA_NS" exec "$RMQ" -- rabbitmqctl list_queues name messages --formatter json --quiet > "$OUT/queues-before-purge.json"
+          node - "$OUT/queues-before-purge.json" > "$OUT/purge.txt" <<'NODE'
+          const fs = require('fs');
+          const { loadExpected } = require(`${process.cwd()}/scripts/measure-cutover-inventory.js`);
+          const prefixes = loadExpected().mspQueuePrefixes;
+          const queues = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          for (const q of queues) if (prefixes.some((p) => q.name.startsWith(p)) && Number(q.messages) > 0) console.log(q.name);
+          NODE
+          while read -r q; do
+            [ -n "$q" ] || continue
+            echo "    purge ${q}"
+            kubectl -n "$INFRA_NS" exec "$RMQ" -- rabbitmqctl purge_queue "$q"
+          done < "$OUT/purge.txt"
+          # (c) realm を消す（旧名が残っていればそれも）。master と AST の realm は消さない。
+          KC="$(kubectl -n "$INFRA_NS" get pod -l app=keycloak -o jsonpath='{.items[0].metadata.name}')"
+          printf '%s\n' "$KEYCLOAK_ADMIN_PASSWORD" | kubectl -n "$INFRA_NS" exec -i "$KC" -- /opt/keycloak/bin/kcadm.sh \
+            config credentials --server http://localhost:8080 --realm master --user admin
+          kubectl -n "$INFRA_NS" exec "$KC" -- /opt/keycloak/bin/kcadm.sh delete realms/platform
+          kubectl -n "$INFRA_NS" exec "$KC" -- /opt/keycloak/bin/kcadm.sh delete realms/microservices-platform \
+            || echo "    旧名 realm は無い（404。移行仕様書のとおり無視する）"
+          # (d) PVC ごと作り直す入れ物。可観測性（OBSERVABILITY）はこのクラスタでは無効なので PVC が無い。
+          kubectl -n "$INFRA_NS" delete pvc qdrant-storage --wait=false
+          kubectl -n "$MSP_NS" delete pvc seaweedfs-data wiki-js-data --wait=false
+          kubectl -n "$INFRA_NS" delete pod -l 'app in (qdrant)'
+          kubectl -n "$MSP_NS" delete pod -l 'app in (seaweedfs,wiki-js)'
+          kubectl -n "$INFRA_NS" wait --for=delete pvc/qdrant-storage --timeout=180s
+          kubectl -n "$MSP_NS" wait --for=delete pvc/seaweedfs-data pvc/wiki-js-data --timeout=180s
+          kubectl -n "$INFRA_NS" get pvc; kubectl -n "$MSP_NS" get pvc
+
+      # 手順 4: 再構築。起動器は 1 と同じ環境変数で再実行する（SEARCHSEED は付けない ——「点 0・オブジェクト 0」を崩す）。
+      - name: Rebuild (procedure 4)
+        run: |
+          set -euo pipefail
+          kubectl -n "$INFRA_NS" rollout restart deploy/keycloak
+          kubectl -n "$INFRA_NS" rollout status deploy/keycloak --timeout=10m
+          kubectl -n "$MSP_NS" rollout restart deployment
+          LOCALEDGE=1 ABACSEED=1 TAGSEED=1 LOCALEMBED=1 K8S_LOCAL_RUNTIME=k3d \
+            bash scripts/k8s-local-up.sh --live "${CLUSTER}"
+          kubectl -n "$MSP_NS" rollout status deployment --timeout=10m
+
+      - name: Wait for pods to become Ready after the rebuild (待つだけ)
+        run: |
+          set -euo pipefail
+          for ns in "$INFRA_NS" "$MSP_NS"; do
+            tmpl='{{range .items}}{{if not .metadata.deletionTimestamp}}pod/{{.metadata.name}} {{end}}{{end}}'
+            pods="$(kubectl -n "$ns" get pods -l '!job-name,!batch.kubernetes.io/job-name' -o go-template="$tmpl")"
+            if [ -z "$pods" ]; then
+              echo "    (skip) $ns: 終了中でない Pod が 0 件。判定は check-stack-ready.js が行う"
+              continue
+            fi
+            # shellcheck disable=SC2086  # 名前は k8s の DNS-1123 に限られ、意図的に分割する。
+            if ! kubectl -n "$ns" wait --for=condition=Ready $pods --timeout=600s; then
+              echo "::warning::$ns: 期限内に Ready にならない Pod がある。判定は check-stack-ready.js に委ねる"
+            fi
+          done
+
+      # 手順 5: 検証（書き込みの再開前）。両方が緑であること。
+      - name: 🔴 Gate — verify the rebuild (procedure 5)
+        id: verify
+        run: |
+          set -uo pipefail
+          # 2 つの判定は片方の赤で他方を飛ばさない（1 回の run で得られる証拠を減らさない）。合否はどちらも緑のときだけ緑。
+          node scripts/measure-cutover-inventory.js --live --since "$CUTOVER_SINCE" --baseline "$OUT/before.json" --dump "$OUT/after.json"
+          m=$?
+          node scripts/check-stack-ready.js --live
+          g=$?
+          echo "VERIFY_RESULT=measure=${m} / check-stack-ready=${g}" >> "$GITHUB_ENV"
+          [ "$m" = 0 ] && [ "$g" = 0 ] || exit 1
+          echo "CUTOVER_T1=$(date -u +%s)" >> "$GITHUB_ENV"
+          set -e
+          node - "$OUT/after.json" <<'NODE'
+          const d = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));
+          const users = (d.keycloak?.users || []).map((u) => u.username);
+          if (users.includes(process.env.PLANTED_USER)) { console.error(`::error::合成の利用者 ${process.env.PLANTED_USER} が作り直しの後にも残っている`); process.exit(1); }
+          console.log(`作り直しの後: 合成の利用者は無い（realm の利用者 ${users.length}）`);
+          NODE
+
+      # リハーサル 4: 陰性対照（消しすぎを検証スクリプトが捕まえること）。検証の後に行う（スタックを壊すため）。
+      - name: 🔴 Negative control — drop one AST database (--baseline must catch it)
+        run: |
+          set -euo pipefail
+          ast_db="$(node - "$OUT/before.json" <<'NODE'
+          const { loadExpected } = require(`${process.cwd()}/scripts/measure-cutover-inventory.js`);
+          const before = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));
+          const present = new Set((before.postgres?.databases || []).map((d) => d.db));
+          const db = loadExpected().databases.ast.find((x) => present.has(x));
+          if (!db) { console.error('AST の DB が切替前に 1 つも無い（陰性対照を組めない）'); process.exit(1); }
+          console.log(db);
+          NODE
+          )"
+          echo "AST_DROPPED_DB=${ast_db}" >> "$GITHUB_ENV"
+          PG="$(kubectl -n "$INFRA_NS" get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')"
+          kubectl -n "$INFRA_NS" exec "$PG" -- psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE ${ast_db} WITH (FORCE);"
+          set +e
+          node scripts/measure-cutover-inventory.js --live --since "$CUTOVER_SINCE" --baseline "$OUT/before.json" --json > "$OUT/neg-ast-db.json"
+          rc=$?
+          set -e
+          node - "$OUT/neg-ast-db.json" "$rc" "$ast_db" <<'NODE'
+          const [file, rc, db] = process.argv.slice(2);
+          const r = JSON.parse(require('fs').readFileSync(file, 'utf8'));
+          const hit = r.findings.filter((f) => f.status === 'fail' && f.check.includes(`AST の DB ${db} を消していない`));
+          console.log(`終了コード ${rc} / 該当の fail ${hit.length} 件: ${hit.map((f) => f.detail).join(' / ')}`);
+          if (rc !== '1' || hit.length !== 1) { console.error('::error::AST の DB の消失を検証スクリプトが fail にしなかった'); process.exit(1); }
+          NODE
+
+      - name: 🔴 Negative control — delete and recreate postgres-data (the kept side must fail)
+        run: |
+          set -euo pipefail
+          kubectl -n "$INFRA_NS" get pvc postgres-data -o json | node -e '
+            let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const p = JSON.parse(s);
+              const out = { apiVersion: p.apiVersion, kind: p.kind,
+                metadata: { name: p.metadata.name, namespace: p.metadata.namespace, labels: p.metadata.labels },
+                spec: { accessModes: p.spec.accessModes, resources: p.spec.resources, storageClassName: p.spec.storageClassName } };
+              console.log(JSON.stringify(out));
+            })' > "$OUT/postgres-data-pvc.json"
+          kubectl -n "$INFRA_NS" delete pvc postgres-data --wait=false
+          kubectl -n "$INFRA_NS" delete pod -l app=postgres
+          kubectl -n "$INFRA_NS" wait --for=delete pvc/postgres-data --timeout=180s
+          kubectl create -f "$OUT/postgres-data-pvc.json"
+          kubectl -n "$INFRA_NS" rollout status deploy/postgres --timeout=5m
+          PG="$(kubectl -n "$INFRA_NS" get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}')"
+          for i in $(seq 1 30); do
+            kubectl -n "$INFRA_NS" exec "$PG" -- pg_isready -U postgres && break
+            sleep 5
+          done
+          set +e
+          node scripts/measure-cutover-inventory.js --live --since "$CUTOVER_SINCE" --baseline "$OUT/before.json" --json > "$OUT/neg-postgres-data.json"
+          rc=$?
+          set -e
+          node - "$OUT/neg-postgres-data.json" "$rc" <<'NODE'
+          const [file, rc] = process.argv.slice(2);
+          const r = JSON.parse(require('fs').readFileSync(file, 'utf8'));
+          const pvc = r.findings.filter((f) => f.status === 'fail' && f.check.includes('postgres-data を消していない'));
+          const ast = r.findings.filter((f) => f.status === 'fail' && f.check.startsWith('AST の DB'));
+          console.log(`終了コード ${rc} / postgres-data の fail ${pvc.length} 件 / AST の DB の fail ${ast.length} 件`);
+          if (rc !== '1' || pvc.length !== 1 || ast.length < 1) { console.error('::error::postgres-data の作り直しを検証スクリプトが fail にしなかった'); process.exit(1); }
+          NODE
+
+      - name: Record the window and the results
+        if: always()
+        run: |
+          set +e
+          {
+            echo "## 切替リハーサル（CI の k3d。#1781）"
+            echo
+            echo "- 起動の契機: \`${{ github.event_name }}\` / ISTIO=\`${ISTIO}\` / コミット \`${{ github.sha }}\`"
+            if [ -n "${CUTOVER_T0:-}" ] && [ -n "${CUTOVER_T1:-}" ]; then
+              echo "- 窓の長さ（手順 2 の開始から 5 の緑まで）: **$((CUTOVER_T1 - CUTOVER_T0)) 秒**（このランナーでの値。稼働クラスタの見積りではない）"
+            else
+              echo "- 窓の長さ: 測れていない（5 の緑に届いていない）"
+            fi
+            echo "- 手順 5 の判定: \`${VERIFY_RESULT:-（未到達）}\`"
+            echo "- 陰性対照で DROP した AST の DB: \`${AST_DROPPED_DB:-（未到達）}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for f in before after neg-ast-db neg-postgres-data; do
+            [ -f "$OUT/$f.json" ] || continue
+            echo "::group::$f"
+            if [ "$f" = before ]; then node scripts/measure-cutover-inventory.js --input "$OUT/before.json"
+            elif [ "$f" = after ]; then node scripts/measure-cutover-inventory.js --input "$OUT/after.json" --since "$CUTOVER_SINCE" --baseline "$OUT/before.json"
+            else cat "$OUT/$f.json"; fi
+            echo "::endgroup::"
+          done
+
+      - name: Upload measurements
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cutover-rehearsal-measurements
+          path: cutover-out/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Dump cluster state (診断用・失敗時のみ)
+        if: failure()
+        run: |
+          set +e
+          echo "::group::pods"; kubectl get pods -A -o wide; echo "::endgroup::"
+          echo "::group::pvc"; kubectl get pvc -A; echo "::endgroup::"
+          echo "::group::warnings"; kubectl get events -A --field-selector type=Warning --sort-by=.lastTimestamp | tail -60; echo "::endgroup::"
+          echo "::group::app container logs"
+          for ns in "$MSP_NS" "$INFRA_NS"; do
+            for name in $(kubectl -n "$ns" get pods -o jsonpath='{.items[*].metadata.name}'); do
+              echo "=== $ns/$name"
+              kubectl -n "$ns" logs "$name" --all-containers --tail=80
+              kubectl -n "$ns" logs "$name" --all-containers --previous --tail=30 2>/dev/null
+            done
+          done
+          echo "::endgroup::"
+
+      - name: Tear down
+        if: always()
+        run: k3d cluster delete "${CLUSTER}" || true

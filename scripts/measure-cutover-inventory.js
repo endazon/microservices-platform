@@ -8,6 +8,7 @@
  * 背景:
  *   2026-08-16 の利用者裁定（2026-09-25 にオーナーが再確認）で、6 資産（platform アプリ DB / Keycloak realm /
  *   Qdrant / MinIO / Wiki.js / 可観測性データ）はすべて破棄し、realm は realm.json から作り直すと決まった。
+ *   （MinIO は 2026-09-25 に SeaweedFS へ置き換わった（#1499 / IADR-0461）。オブジェクトストレージの行は SeaweedFS を見る。#1781）
  *   #457 は「件数突合スクリプトを再実行可能な形で残す（measure-abac-combinations.js の --json / --dump /
  *   --input で収集と集計を分離する型を踏襲する）」を残作業に挙げている。本スクリプトがその手段である。
  *
@@ -69,7 +70,9 @@ const PIPELINE_FILE = path.join(REPO, 'deploy', 'helm', 'microservices-platform'
 // 作り直す PVC。`optional: true` は配備の選択（可観測性の永続化）で存在しないことがあるもの。
 const RECREATED_PVCS = [
   { ns: 'infra', name: 'qdrant-storage' },
-  { ns: 'msp', name: 'minio-data' },
+  // #1781: MinIO（minio-data）は SeaweedFS（chart の seaweedfs-data）へ置き換わった（#1499 / IADR-0461）。
+  // 旧名のままでは、正しく作り直しても「存在しない」の fail になる。
+  { ns: 'msp', name: 'seaweedfs-data' },
   { ns: 'msp', name: 'wiki-js-data' },
   { ns: 'infra', name: 'prometheus-data', optional: true },
   { ns: 'infra', name: 'loki-data', optional: true },
@@ -148,28 +151,47 @@ function mspQueuePrefixes(pipelineJson) {
 // 収集結果の読み取り（純関数）
 // ---------------------------------------------------------------------------
 
-// `ls -R /data`（MinIO の単一ドライブ）からバケットとオブジェクト数を数える。
-// オブジェクト 1 つは `<bucket>/<key...>/xl.meta` のディレクトリで表される（版は xl.meta の中に入る）。
-// `.minio.sys` 配下はメタデータであり数えない。
-function parseMinioListing(lsText) {
-  let current = null;
-  const buckets = new Set();
-  let objects = 0;
-  for (const raw of lsText.split(/\r?\n/)) {
-    const line = raw.trimEnd();
-    const header = /^(\/data(?:\/.*)?):$/.exec(line);
-    if (header) {
-      current = header[1];
-      const rel = current.replace(/^\/data\/?/, '');
-      const top = rel.split('/')[0];
-      if (top && top !== '.minio.sys') buckets.add(top);
-      continue;
-    }
-    if (line === 'xl.meta' && current && !/^\/data\/\.minio\.sys(\/|$)/.test(current) && current !== '/data') {
-      objects += 1;
-    }
+// SeaweedFS（IADR-0461）の filer の一覧を辿り、S3 のバケットとオブジェクト数を数える（#1781。MinIO の `ls -R /data` の置き換え）。
+// バケットは filer の `/buckets/<bucket>/`、オブジェクトはその下のファイル（ディレクトリでないエントリ）である。
+// マルチパートの途中（`.uploads`）は数えない。`listDir(dirPath, lastFileName)` は filer の JSON 応答
+// （`{ Entries: [{ FullPath, Mode }], ShouldDisplayLoadMore, LastFileName }`）を返す関数で、収集部が Pod 内で読む。
+// 🔴 ディレクトリの判定は Go の os.ModeDir（最上位ビット）で行う。名前で推測しない。
+const FILER_BUCKETS_ROOT = '/buckets';
+const FILER_DIR_BIT = 0x80000000;
+const isFilerDir = (e) => ((Number(e.Mode) >>> 0) & FILER_DIR_BIT) !== 0;
+const baseName = (p) => String(p).replace(/\/+$/, '').split('/').pop();
+
+function listAll(listDir, dirPath) {
+  const entries = [];
+  let last = '';
+  for (let page = 0; ; page += 1) {
+    if (page > 10000) throw new Error(`filer の一覧が終わらない: ${dirPath}`);
+    const res = listDir(dirPath, last);
+    if (!res || typeof res !== 'object') throw new Error(`filer の応答を読めない: ${dirPath}`);
+    const got = Array.isArray(res.Entries) ? res.Entries : [];
+    entries.push(...got);
+    if (!res.ShouldDisplayLoadMore || !got.length) return entries;
+    last = res.LastFileName || baseName(got[got.length - 1].FullPath);
   }
-  return { buckets: [...buckets].sort(), objects };
+}
+
+function countFilerObjects(listDir) {
+  const buckets = [];
+  let objects = 0;
+  const walk = (dirPath) => {
+    for (const e of listAll(listDir, dirPath)) {
+      if (isFilerDir(e)) {
+        if (baseName(e.FullPath) === '.uploads') continue;
+        walk(e.FullPath);
+      } else objects += 1;
+    }
+  };
+  for (const e of listAll(listDir, FILER_BUCKETS_ROOT)) {
+    if (!isFilerDir(e)) continue;
+    buckets.push(baseName(e.FullPath));
+    walk(e.FullPath);
+  }
+  return { buckets: buckets.sort(), objects };
 }
 
 function toMillis(v) {
@@ -280,8 +302,9 @@ function evaluate(data, expected, sinceIso, before = null) {
   const points = (data.qdrant?.collections || []).reduce((n, c) => n + Number(c.points || 0), 0);
   out.push(finding('Qdrant', '点が 0 件（書き込みの再開前）', data.qdrant ? (points === 0 ? 'ok' : 'fail') : 'fail',
     data.qdrant ? `コレクション ${data.qdrant.collections.length}・点 ${points}` : '読めなかった'));
-  out.push(finding('MinIO', 'オブジェクトが 0 件（書き込みの再開前）', data.minio ? (data.minio.objects === 0 ? 'ok' : 'fail') : 'fail',
-    data.minio ? `バケット ${data.minio.buckets.join(', ') || '(なし)'}・オブジェクト ${data.minio.objects}` : '読めなかった'));
+  const os = data.objectStorage;
+  out.push(finding('オブジェクトストレージ', 'オブジェクトが 0 件（書き込みの再開前）', os ? (os.objects === 0 ? 'ok' : 'fail') : 'fail',
+    os ? `バケット ${os.buckets.join(', ') || '(なし)'}・オブジェクト ${os.objects}` : '読めなかった'));
 
   const queues = data.rabbitmq?.queues;
   if (!queues) {
@@ -315,7 +338,7 @@ function countsOf(data) {
     realmClients: (data.keycloak?.clients || []).length,
     qdrantCollections: (data.qdrant?.collections || []).length,
     qdrantPoints: (data.qdrant?.collections || []).reduce((n, c) => n + Number(c.points || 0), 0),
-    minioObjects: data.minio ? data.minio.objects : null,
+    objectStorageObjects: data.objectStorage ? data.objectStorage.objects : null,
     queueMessages: (data.rabbitmq?.queues || []).reduce((n, q) => n + Number(q.messages || 0), 0),
     prometheusMinTime: data.prometheus ? data.prometheus.minTime : null,
   };
@@ -327,7 +350,7 @@ function compareCounts(before, after) {
   const rows = [];
   const dbs = [...new Set([...Object.keys(b.postgresRowsByDb), ...Object.keys(a.postgresRowsByDb)])].sort();
   for (const db of dbs) rows.push({ item: `PostgreSQL ${db}（行数の合計）`, before: b.postgresRowsByDb[db] ?? null, after: a.postgresRowsByDb[db] ?? null });
-  for (const k of ['realmUsers', 'realmClients', 'qdrantCollections', 'qdrantPoints', 'minioObjects', 'queueMessages', 'prometheusMinTime']) {
+  for (const k of ['realmUsers', 'realmClients', 'qdrantCollections', 'qdrantPoints', 'objectStorageObjects', 'queueMessages', 'prometheusMinTime']) {
     rows.push({ item: k, before: b[k], after: a[k] });
   }
   rows.push({ item: 'realms', before: b.realms.join(', '), after: a.realms.join(', ') });
@@ -360,7 +383,7 @@ function renderText(result) {
     for (const [db, n] of Object.entries(c.postgresRowsByDb)) L.push(`  PostgreSQL ${db}: ${n} 行`);
     L.push(`  Keycloak realm: ${c.realms.join(', ')}（${result.realm} の利用者 ${c.realmUsers}・クライアント ${c.realmClients}）`);
     L.push(`  Qdrant: コレクション ${c.qdrantCollections}・点 ${c.qdrantPoints}`);
-    L.push(`  MinIO: オブジェクト ${c.minioObjects ?? '(読めず)'}`);
+    L.push(`  オブジェクトストレージ: オブジェクト ${c.objectStorageObjects ?? '(読めず)'}`);
     L.push(`  RabbitMQ: 滞留 ${c.queueMessages}`);
     L.push(`  Prometheus: minTime ${c.prometheusMinTime ?? '(読めず)'}`);
   }
@@ -465,8 +488,17 @@ async function collect(databases) {
     return { collections };
   });
 
-  const minio = await tryCollect('MinIO', () =>
-    parseMinioListing(run('kubectl', ['-n', msp, 'exec', podName(msp, 'app=minio'), '--', 'ls', '-R', '/data'], 'MinIO の一覧')));
+  // #1781: SeaweedFS の filer は Pod の loopback（127.0.0.1:8888）だけで待ち受ける（IADR-0461 決定 2）ので、Pod 内の wget で読む。
+  const objectStorage = await tryCollect('オブジェクトストレージ（SeaweedFS）', () => {
+    const pod = podName(msp, 'app=seaweedfs');
+    const filer = env('CUTOVER_FILER_URL', 'http://127.0.0.1:8888');
+    return countFilerObjects((dirPath, last) => {
+      const q = `limit=1000${last ? `&lastFileName=${encodeURIComponent(last)}` : ''}`;
+      const url = `${filer}${dirPath.split('/').map(encodeURIComponent).join('/')}/?${q}`;
+      return JSON.parse(run('kubectl', ['-n', msp, 'exec', pod, '--', 'wget', '-q', '-O', '-', '--header', 'Accept: application/json', url],
+        `filer の一覧（${dirPath}）`));
+    });
+  });
 
   const rabbitmq = await tryCollect('RabbitMQ', () => ({
     queues: JSON.parse(run('kubectl', ['-n', infra, 'exec', podName(infra, 'app=rabbitmq'), '--', 'rabbitmqctl', 'list_queues', 'name', 'messages', 'consumers',
@@ -487,7 +519,7 @@ async function collect(databases) {
     postgres: { databases: dbs, tables, authz },
     keycloak,
     qdrant,
-    minio,
+    objectStorage,
     rabbitmq,
     prometheus,
   };
@@ -550,7 +582,7 @@ module.exports = {
   declaredRealm,
   declaredAbacSeed,
   mspQueuePrefixes,
-  parseMinioListing,
+  countFilerObjects,
   evaluate,
   countsOf,
   compareCounts,

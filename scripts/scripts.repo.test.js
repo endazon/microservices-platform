@@ -3822,7 +3822,7 @@ module.exports = ({ ok, assert }) => {
         clients: [...expectedCut.realm.clients, 'account', 'admin-cli'],
       },
       qdrant: { collections: [{ name: 'knowledge_chunks_voyage_3_5', points: 0 }] },
-      minio: { buckets: ['knowledge-normalized'], objects: 0 },
+      objectStorage: { buckets: ['knowledge-normalized'], objects: 0 },
       rabbitmq: { queues: [{ name: `${expectedCut.mspQueuePrefixes[0]}q`, messages: 0 }, { name: 'ast.orders', messages: 3 }] },
       prometheus: { minTime: AFTER },
     });
@@ -3903,11 +3903,11 @@ module.exports = ({ ok, assert }) => {
     ok('cutover: 収集できなかった資産は fail（読めなかったことを 0 件として扱わない）', () => {
       const d = goodAfter();
       d.qdrant = null;
-      d.minio = null;
+      d.objectStorage = null;
       d.rabbitmq = null;
       d.keycloak = null;
       const assets = failsOf(d).map((f) => f.asset);
-      for (const a of ['Qdrant', 'MinIO', 'RabbitMQ', 'Keycloak']) assert.ok(assets.includes(a), a);
+      for (const a of ['Qdrant', 'オブジェクトストレージ', 'RabbitMQ', 'Keycloak']) assert.ok(assets.includes(a), a);
     });
 
     ok('cutover: authz_svc のポリシーが seed とずれた実測は fail、可観測性の PVC が無い配備は skip', () => {
@@ -3975,17 +3975,46 @@ module.exports = ({ ok, assert }) => {
       assert.ok(failsOf(d2).some((f) => f.check.includes('prometheus-data')));
     });
 
-    ok('cutover: MinIO の ls -R から .minio.sys を除いてバケットとオブジェクトを数える', () => {
-      const ls = [
-        '/data:', '.minio.sys', 'knowledge-normalized', '',
-        '/data/.minio.sys:', 'format.json', '',
-        '/data/.minio.sys/buckets/knowledge-normalized/.metadata.bin:', 'xl.meta', '',
-        '/data/knowledge-normalized:', 'doc-1.md', 'doc-2.md', '',
-        '/data/knowledge-normalized/doc-1.md:', 'xl.meta', '',
-        '/data/knowledge-normalized/doc-2.md:', 'xl.meta', '',
-      ].join('\n');
-      assert.deepStrictEqual(cut.parseMinioListing(ls), { buckets: ['knowledge-normalized'], objects: 2 });
-      assert.deepStrictEqual(cut.parseMinioListing('/data:\n.minio.sys\n\n/data/.minio.sys:\nformat.json\n'), { buckets: [], objects: 0 });
+    // #1781: MinIO は SeaweedFS へ置き換わった（#1499 / IADR-0461）。filer の一覧（JSON）をページ送りしながら辿って数える。
+    ok('cutover: SeaweedFS の filer の一覧を辿り、ディレクトリのビットで判定し、.uploads を数えない', () => {
+      const DIR = 2147484141; // os.ModeDir | 0755
+      const FILE = 420; // 0644
+      const tree = {
+        '/buckets': [{ FullPath: '/buckets/knowledge-normalized', Mode: DIR }, { FullPath: '/buckets/assets', Mode: DIR }],
+        '/buckets/knowledge-normalized': [
+          { FullPath: '/buckets/knowledge-normalized/doc-1.md', Mode: FILE },
+          { FullPath: '/buckets/knowledge-normalized/sub', Mode: DIR },
+          { FullPath: '/buckets/knowledge-normalized/.uploads', Mode: DIR },
+        ],
+        '/buckets/knowledge-normalized/sub': [{ FullPath: '/buckets/knowledge-normalized/sub/doc-2.md', Mode: FILE }],
+        '/buckets/knowledge-normalized/.uploads': [{ FullPath: '/buckets/knowledge-normalized/.uploads/x/part-1', Mode: FILE }],
+        '/buckets/assets': [],
+      };
+      // ページ送り: 1 件ずつ返し、LastFileName で続きを引く。
+      const calls = [];
+      const listDir = (dir, last) => {
+        calls.push(`${dir}|${last}`);
+        const all = tree[dir];
+        if (!all) throw new Error(`unknown ${dir}`);
+        const at = last ? all.findIndex((e) => e.FullPath.endsWith(`/${last}`)) + 1 : 0;
+        const page = all.slice(at, at + 1);
+        return { Entries: page.length ? page : null, ShouldDisplayLoadMore: at + 1 < all.length, LastFileName: page.length ? page[0].FullPath.split('/').pop() : '' };
+      };
+      assert.deepStrictEqual(cut.countFilerObjects(listDir), { buckets: ['assets', 'knowledge-normalized'], objects: 2 });
+      assert.ok(!calls.some((c) => c.startsWith('/buckets/knowledge-normalized/.uploads')), '.uploads を辿っている');
+      assert.ok(calls.includes('/buckets|knowledge-normalized'), 'ページ送りしていない（2 件目以降を落とす）');
+      // 空（バケットだけが在る）は 0 件。応答を読めなければ例外（0 件として扱わない）。
+      assert.deepStrictEqual(cut.countFilerObjects((dir) => (dir === '/buckets' ? { Entries: [{ FullPath: '/buckets/b', Mode: DIR }] } : { Entries: null })),
+        { buckets: ['b'], objects: 0 });
+      assert.throws(() => cut.countFilerObjects(() => null), /filer の応答を読めない/);
+    });
+
+    ok('cutover: 作り直す PVC はオブジェクトストレージの現行の PVC（chart の seaweedfs-data）を指し、旧 minio-data を指さない', () => {
+      const names = cut.RECREATED_PVCS.map((p) => p.name);
+      assert.ok(names.includes('seaweedfs-data') && !names.includes('minio-data'), names.join(', '));
+      const tpl = fsCut.readFileSync(pathCut.join(REPO_CUT, 'deploy', 'helm', 'microservices-platform', 'templates', 'seaweedfs.yaml'), 'utf8');
+      assert.match(tpl, /kind: PersistentVolumeClaim\nmetadata:\n  name: seaweedfs-data\n/, 'chart の PVC 名が変わった（作り直しの行が「存在しない」になる）');
+      assert.match(tpl, /^\s+app: seaweedfs$/m, 'chart の Pod ラベルが変わった（収集部が Pod を引けない）');
     });
 
     ok('cutover: 切替前後の件数突合は DB ごとの行数と各資産の件数を並べる', () => {
@@ -10850,6 +10879,70 @@ ${r.stderr}`);
         'check-stack-ready.js が環境変数で検査を飛ばせるようになっている（fail-closed を崩している）',
       );
     });
+
+    //
+    // NFR-05 / #1781 / [[IADR-0515]]: 切替リハーサルの CI 化（cutover-rehearsal.yml）。
+    //
+    // 🔴 **ここで固定するのは「破壊的な手順が使い捨てのクラスタにしか当たらない形」と「判定が外れていないこと」である。**
+    // 起こし方は integration-stack.yml を写しているので、pin が片方だけ動くと「同じ起こし方」が静かに崩れる。
+    {
+      const RH_PATH = '.github/workflows/cutover-rehearsal.yml';
+      const rh = fs.readFileSync(path.join(REPO_IS, RH_PATH), 'utf8').replace(/\r\n/g, '\n');
+      const onBlockOf = (text) => (/\non:\n([\s\S]*?)\n[a-z]/.exec(text) || [])[1];
+      // 注記を落とした実行行（run: の中の `#` 行も落とす）。
+      const code = rh.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+      ok('#1781: 起動は workflow_dispatch と、本ファイルだけに絞った一時の pull_request だけ（schedule / push を持たない）', () => {
+        const on = onBlockOf(rh);
+        assert.ok(on, 'on: ブロックを切り出せない');
+        assert.match(on, /workflow_dispatch:/);
+        assert.ok(!/schedule:|push:|workflow_run:|pull_request_target:/.test(on), `余計な契機がある:\n${on}`);
+        if (/pull_request:/.test(on)) {
+          const paths = [...on.matchAll(/^\s+-\s+"?([^"\n]+)"?\s*$/gm)].map((m) => m[1]);
+          assert.deepStrictEqual(paths, [RH_PATH], '一時の pull_request の paths が本ファイル以外を含む（他の PR で重いジョブが走る）');
+        }
+      });
+
+      ok('#1781: k3d と k3s の pin が integration-stack.yml と同じ（起こし方を写している前提）', () => {
+        for (const key of ['K3D_VERSION', 'K3S_IMAGE']) {
+          const re = new RegExp(`^\\s+${key}:\\s*(\\S+)\\s*$`, 'm');
+          const a = (re.exec(wf) || [])[1];
+          const b = (re.exec(rh) || [])[1];
+          assert.ok(a && b, `${key} を読めない`);
+          assert.strictEqual(b, a, `${key} が integration-stack.yml（${a}）と違う（${b}）`);
+        }
+      });
+
+      ok('#1781: 起動 → 門 → 事前実測 → 破棄 → 再構築 → 検証（--since と --baseline・門）→ 陰性対照 の順に呼ぶ', () => {
+        const at = (s, from = 0) => code.indexOf(s, from);
+        const up1 = at('bash scripts/k8s-local-up.sh --live');
+        const gate1 = at('node scripts/check-stack-ready.js --live', up1);
+        const before = at('node scripts/measure-cutover-inventory.js --live --dump', gate1);
+        const discard = at('--print-recreate-sql', before);
+        const up2 = at('bash scripts/k8s-local-up.sh --live', discard);
+        const verify = at('node scripts/measure-cutover-inventory.js --live --since "$CUTOVER_SINCE" --baseline', up2);
+        const gate2 = at('node scripts/check-stack-ready.js --live', verify);
+        const neg = at('DROP DATABASE ${ast_db}', gate2);
+        for (const [name, v] of Object.entries({ up1, gate1, before, discard, up2, verify, gate2, neg })) assert.ok(v > 0, `${name} が順序どおりに無い`);
+      });
+
+      ok('#1781: 再構築の起動器は SEARCHSEED を付けず TAGSEED を付ける（移行仕様書の手順 4）', () => {
+        const ups = [...code.matchAll(/((?:[A-Z0-9_]+=\S+\s+(?:\\\n\s*)?)+)bash scripts\/k8s-local-up\.sh --live/g)].map((m) => m[1]);
+        assert.strictEqual(ups.length, 2, `起動器の呼び出しが ${ups.length} 件`);
+        assert.match(ups[0], /SEARCHSEED=1/, '1 回目（データを入れる）に SEARCHSEED が無い');
+        assert.ok(!/SEARCHSEED/.test(ups[1]), '再構築に SEARCHSEED がある（検証の「点 0・オブジェクト 0」を崩す）');
+        assert.match(ups[1], /TAGSEED=1/, '再構築に TAGSEED が無い（タグ辞書が空だと外部ユニットの文書が全件 400）');
+      });
+
+      ok('#1781: 秘密はジョブの中で乱数から作って伏せる（リポジトリに値を書かない）・kcadm に --password を渡さない・後片付けは常に走る', () => {
+        assert.match(code, /openssl rand/);
+        assert.match(code, /::add-mask::/);
+        assert.ok(!/(PASSWORD|SECRET|TOKEN)=(?!\$)[^\s"'$]{6,}/.test(code), '秘密の値が直書きされている');
+        assert.ok(!/kcadm\.sh[^\n]*--password/.test(code), 'kcadm の引数にパスワードを載せている（#1793）');
+        assert.match(rh, /- name: Tear down\n\s+if: always\(\)\n\s+run: k3d cluster delete "\$\{CLUSTER\}"/);
+        assert.ok(!/continue-on-error/.test(code), 'continue-on-error がある（赤が消える）');
+      });
+    }
 
     //
     // NFR / #1219 / [[IADR-0376]]: 間欠赤の 2 つの原因を、宣言と判定の両側で固定する。
