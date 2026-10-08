@@ -75,6 +75,11 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration[AuthzScopeGrpcClient.Addres
 else
     builder.Services.AddScoped<IRegistrarAttributeResolver, AuthorizationServiceRegistrarAttributes>();
 
+// 🔴 FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0515]] (#1786): SC-12 を IdP への入口にする書き込み口。
+// 無人の登録・属性の差し替えは、検証の後に Keycloak へ機密クライアントとサービスアカウントの属性を書いてから登録簿へ書く。
+// 口が構成されていなければ（`McpClientProvisioning:Provider` 未設定）無人の登録・差し替えを 503 で拒む（登録簿にも書かない）。
+builder.Services.AddServiceAccountProvisioning();
+
 // FR-16, ADR-0024: 宣言的公開構成・自己申告の集約・実効ツール一覧
 builder.Services.AddSingleton<ToolPublicationConfigLoader>();
 builder.Services.AddSingleton<ToolCatalog>();
@@ -135,6 +140,8 @@ using (var scope = app.Services.CreateScope())
 // ［2026-09-27 / #1516］ツールの実行器も同じ理由でここで 1 度組む（宛先が在るのに s2s の発行側が無い登録の誤りを、
 // 最初のツール呼び出しではなく起動の時点で落とす）。
 app.Services.GetRequiredService<IToolInvoker>();
+// ［#1786 / IADR-0515］IdP への書き込み口も同じ理由でここで 1 度選ぶ（値域外・配備ホストでの偽の口・資格情報の欠けを起動時に落とす）。
+app.Services.GetRequiredService<IServiceAccountProvisioner>();
 
 using (var scope = app.Services.CreateScope())
 {

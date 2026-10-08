@@ -1,0 +1,193 @@
+using McpServer.Domain.Ports;
+
+namespace McpServer.Infrastructure.ExternalServices;
+
+// FR-16, SC-12, 計画 ADR-0123 決定 2・4, [[IADR-0515]] 決定 2・5 (#1786): IdP への書き込み口の選択と、その資格情報の受け取り。
+//
+// 値域（`McpClientProvisioning:Provider`）:
+//   - `keycloak`  … Keycloak Admin REST へ書く（`McpClientProvisioning:Keycloak:{BaseUrl,Realm,ClientId,ClientSecret}` が必須）。
+//   - `in-memory` … プロセス内に書く。**非配備ホスト限定**（IADR-0329 と同じ許可集合）。
+//   - 未設定      … 🔴 **書き込み口が無い。** 無人の登録・属性の差し替えを 503 で拒む（登録簿にも書かない）。
+//
+// 🔴 **未設定を起動失敗にしない理由**（`IdentityAdmin:Provider` との違い）: 配備の資格情報（realm の管理用クライアントと
+//   その secret の供給）は本 PR の後の段で入る（IADR-0515 §残余）。起動失敗にすると、その間 MCP サーバーそのもの
+//   （ツールの公開・有人の登録・無効化）が止まる。**未設定は「無人を登録簿だけへ書く」へは倒さない** —— それは ADR-0123 が
+//   改めた現状そのもの（検証の掛からない属性を写しとして残す）であり、決定 4 の暫定手段（IdP へ配らない）と同じ側の 503 にする。
+public static class ServiceAccountProvisioningRegistration
+{
+    public const string ProviderKey = "McpClientProvisioning:Provider";
+    public const string KeycloakProvider = "keycloak";
+    public const string InMemoryProvider = "in-memory";
+
+    /// <summary>後段（Keycloak Admin REST）の named HttpClient 名。</summary>
+    public const string KeycloakClientName = "McpClientProvisioningKeycloak";
+
+    /// <summary>
+    /// 偽の書き込み口を選んでよいホストの環境名（許可集合＝deny by default）。認可サービスの
+    /// <c>IdentityAdminRegistration.NonDeployedEnvironments</c> と同じ 3 つ（IADR-0329）。
+    /// </summary>
+    public static readonly string[] NonDeployedEnvironments =
+        [Environments.Development, "Testing", "Integration"];
+
+    // 🔴 **選択は解決時に行う**（構成は DI の <see cref="IConfiguration"/> から読む）。最小ホスティングでは、ホストの構築後に
+    // 足された構成（WebApplicationFactory の上書きを含む）が登録の時点の <c>builder.Configuration</c> には見えない。
+    // 起動時に 1 度解決して落とすのは Program.cs が行う（公開構成の検証と同じ理由。要求を受ける前に落とす）。
+    public static IServiceCollection AddServiceAccountProvisioning(this IServiceCollection services)
+    {
+        services.AddHttpClient(KeycloakClientName, (sp, client) =>
+            client.BaseAddress = new Uri(sp.GetRequiredService<ServiceAccountProvisioningOptions>().BaseUrl.TrimEnd('/') + "/"));
+        services.AddSingleton(sp => ServiceAccountProvisioningOptions.FromConfiguration(sp.GetRequiredService<IConfiguration>()));
+        services.AddSingleton<InMemoryServiceAccountProvisioner>();
+        services.AddSingleton<UnconfiguredServiceAccountProvisioner>();
+        services.AddSingleton<KeycloakServiceAccountProvisioner>();
+        services.AddSingleton<IServiceAccountProvisioner>(sp => Select(
+            sp, sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>()));
+        return services;
+    }
+
+    private static IServiceAccountProvisioner Select(
+        IServiceProvider sp, IConfiguration configuration, IHostEnvironment environment)
+    {
+        var provider = configuration[ProviderKey];
+        if (string.IsNullOrWhiteSpace(provider))
+            return sp.GetRequiredService<UnconfiguredServiceAccountProvisioner>();
+
+        if (string.Equals(provider, InMemoryProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!NonDeployedEnvironments.Contains(environment.EnvironmentName, StringComparer.Ordinal))
+                throw new InvalidOperationException(
+                    $"{ProviderKey}='{InMemoryProvider}' は非配備ホスト"
+                    + $"（{string.Join(" / ", NonDeployedEnvironments)}）でしか選べない"
+                    + $"（現在の環境は '{environment.EnvironmentName}'）。"
+                    + " 偽の書き込み口は IdP へ 1 件も反映しないため、SC-12 の無人の登録が成功したように見えて判定に効かない。");
+            return sp.GetRequiredService<InMemoryServiceAccountProvisioner>();
+        }
+
+        if (!string.Equals(provider, KeycloakProvider, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"{ProviderKey} の値 '{provider}' は不正である（'{KeycloakProvider}' / '{InMemoryProvider}' のいずれか、または未設定）。");
+
+        // 既定の資格情報を埋め込まない（IADR-0286 と同型）。未設定の項目は options の解決で落ちる。
+        return sp.GetRequiredService<KeycloakServiceAccountProvisioner>();
+    }
+}
+
+// [[IADR-0515]] 決定 2: Keycloak Admin REST の接続先と、管理用の機密クライアントの資格情報。
+//
+// 🔴 与える `realm-management` のクライアントロールは **`manage-clients` と `manage-users` の 2 つだけ**である
+//   （作成・補償の削除・サービスアカウントの属性の書き込み。view は manage が含む）。`manage-realm` / `impersonation` は与えない。
+//   **認可サービスの `identity-admin` とは別のクライアントにする** —— あちらは `manage-clients` を持たないことが最小権限の要件である
+//   （IADR-0301 決定 2・IADR-0329）。
+public sealed class ServiceAccountProvisioningOptions
+{
+    public required string BaseUrl { get; init; }
+    public required string Realm { get; init; }
+    public required string ClientId { get; init; }
+    public required string ClientSecret { get; init; }
+
+    public static ServiceAccountProvisioningOptions FromConfiguration(IConfiguration configuration)
+    {
+        var section = configuration.GetSection("McpClientProvisioning:Keycloak");
+        return new ServiceAccountProvisioningOptions
+        {
+            BaseUrl = Require(section, "BaseUrl"),
+            Realm = Require(section, "Realm"),
+            ClientId = Require(section, "ClientId"),
+            ClientSecret = Require(section, "ClientSecret"),
+        };
+    }
+
+    private static string Require(IConfiguration section, string key)
+        => section[key] is { Length: > 0 } value
+            ? value
+            : throw new InvalidOperationException(
+                $"McpClientProvisioning:Keycloak:{key} が未設定である"
+                + $"（環境変数 McpClientProvisioning__Keycloak__{key} で注入する）。既定値は持たない。");
+}
+
+// 書き込み口が構成されていない配備。**何も書かずに** Unavailable を投げる（呼び出し元は登録簿にも書かない）。
+public sealed class UnconfiguredServiceAccountProvisioner : IServiceAccountProvisioner
+{
+    private static IdpProvisioningException Unavailable() => new(
+        IdpProvisioningFailure.Unavailable,
+        "IdP への書き込み口が構成されていない（McpClientProvisioning:Provider）。"
+        + " 無人のクライアントは IdP に作れないため、登録・属性の差し替えを受け付けない。");
+
+    public Task<IdpWrite> CreateAsync(
+        string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
+        => throw Unavailable();
+
+    public Task<IdpWrite> ReplaceAttributesAsync(
+        string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
+        => throw Unavailable();
+
+    public Task UndoAsync(IdpWrite write, CancellationToken ct) => Task.CompletedTask;
+}
+
+// 非配備ホスト用。IdP の代わりにプロセス内へ書く（Keycloak 版と同じ意味論: 在れば AlreadyExists・差し替えは無ければ作る）。
+// 試験はこの状態を読んで「IdP へ何も書いていない」を確かめる。
+public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvisioner
+{
+    private readonly Lock _gate = new();
+    private readonly Dictionary<string, Dictionary<string, string>> _accounts = new(StringComparer.Ordinal);
+
+    /// <summary>IdP 側に在るクライアントの写し（clientId → 属性）。</summary>
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Snapshot()
+    {
+        lock (_gate)
+            return _accounts.ToDictionary(
+                kv => kv.Key,
+                kv => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(kv.Value),
+                StringComparer.Ordinal);
+    }
+
+    /// <summary>入口を通らずに IdP に在るクライアントを置く（試験用）。</summary>
+    public void Seed(string clientId, IReadOnlyDictionary<string, string>? attributes = null)
+    {
+        lock (_gate) _accounts[clientId] = new Dictionary<string, string>(attributes ?? new Dictionary<string, string>());
+    }
+
+    public Task<IdpWrite> CreateAsync(
+        string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            if (_accounts.ContainsKey(clientId)) return Task.FromResult(IdpWrite.AlreadyExisting(clientId));
+            _accounts[clientId] = new Dictionary<string, string>(attributes);
+            return Task.FromResult(new IdpWrite(IdpWriteKind.Created, clientId, clientId, clientId));
+        }
+    }
+
+    public Task<IdpWrite> ReplaceAttributesAsync(
+        string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            if (!_accounts.TryGetValue(clientId, out var previous))
+            {
+                _accounts[clientId] = new Dictionary<string, string>(attributes);
+                return Task.FromResult(new IdpWrite(IdpWriteKind.Created, clientId, clientId, clientId));
+            }
+            _accounts[clientId] = new Dictionary<string, string>(attributes);
+            return Task.FromResult(new IdpWrite(IdpWriteKind.Updated, clientId, clientId, clientId, previous));
+        }
+    }
+
+    public Task UndoAsync(IdpWrite write, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            switch (write.Kind)
+            {
+                case IdpWriteKind.Created:
+                    _accounts.Remove(write.ClientId);
+                    break;
+                case IdpWriteKind.Updated:
+                    _accounts[write.ClientId] = new Dictionary<string, string>(
+                        write.PreviousAttributes ?? new Dictionary<string, string>());
+                    break;
+            }
+        }
+        return Task.CompletedTask;
+    }
+}
