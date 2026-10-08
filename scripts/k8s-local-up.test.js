@@ -1712,6 +1712,39 @@ ok('既定 (#1101): identity-admin-oidc を手動 apply する（ESO 未設定�
   );
 });
 
+// FR-16, SC-12, ADR-0123 決定 2, IADR-0516 決定 2 (#1817): mcp-client-admin-oidc（SC-12 の無人の登録・差し替えで
+// McpServer が Keycloak Admin REST へ書く機密クライアントの secret）も identity-admin-oidc と同じ対にする。
+// helm は **非 optional** な secretKeyRef で参照するので、ESO=1 で供給元が 1 つも無いと mcp-service が
+// `CreateContainerConfigError` で起動しない。既定（ESO 未設定）では手動 apply だけが供給元である。
+ok('ESO=1 (#1817): mcp-client-admin-oidc の ExternalSecret を apply・手動 apply はスキップ・同期を待つ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  assert.ok(
+    anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-mcp-client-admin-oidc.yaml'),
+    'externalsecret-mcp-client-admin-oidc.yaml が apply されない（ESO=1 で供給元が無くなる）',
+  );
+  assert.ok(
+    !anyLineHas(res.lines, 'create secret generic mcp-client-admin-oidc'),
+    'ESO=1 なのに mcp-client-admin-oidc を手動 apply している（二重所有）',
+  );
+  // mcp-service は env(secretKeyRef) で読むので、rollout の前に同期を待つ（IADR-0103）。
+  assert.ok(
+    anyLineHas(res.lines, 'externalsecret/mcp-client-admin-oidc'),
+    'mcp-client-admin-oidc の同期を待っていない（新しい Pod が供給前の Secret を掴む）',
+  );
+});
+
+// 回帰: 既定（ESO 未設定）は mcp-client-admin-oidc を手動 apply する（陽性対照つき）。
+ok('既定 (#1817): mcp-client-admin-oidc を手動 apply する（ESO 未設定）', () => {
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'create secret generic mcp-client-admin-oidc'),
+    'mcp-client-admin-oidc の手動 apply が無い（ESO 未設定では唯一の供給元）',
+  );
+  assert.ok(
+    !anyLineHas(DEFAULT.lines, 'externalsecret-mcp-client-admin-oidc.yaml'),
+    'ESO 未設定なのに ExternalSecret を apply した',
+  );
+});
+
 // SC-15, FR-22, ADR-0026/ADR-0045, IADR-0261/IADR-0332 (#1102): **起動器から一度も参照されない
 // ExternalSecret マニフェストが存在しないこと。**
 //

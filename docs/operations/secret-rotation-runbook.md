@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-25
-updated: 2026-10-06
+updated: 2026-10-09
 ---
 <!-- trace:
 ids: [NFR-18, SC-22]
 adrs: [ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110, ADR-0124, ADR-0126]
 iadrs: [IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501]
 specs: [20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference]
-issues: [#1696, #458, #1411, #1477, #1499, #1523, #1682, planning#700, planning#716, AST#1078]
+issues: [#1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, planning#700, planning#716, AST#1078]
 -->
 
 # 運用 Runbook: 秘密情報のローテーション
@@ -33,7 +33,7 @@ issues: [#1696, #458, #1411, #1477, #1499, #1523, #1682, planning#700, planning#
 | --- | --- | --- | --- |
 | `items[]`（6 項目） | Git に置けず画面から入れる値 —— 外部の発行元がある値（外部 LLM の API キー・メール送信のアプリパスワード・Wiki.js の API キー・取引ユニットの外部 API キー / Discord / 証券会社ログイン）と、**画面が生成する** OpenD の RSA 鍵 | ✅ **回せる** | [手順 A](#手順-a-items画面から回す)（製品の画面から） |
 | `excluded[]`（7 項目） | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db` | 🟡 **ストア側と同時なら回せる** | [手順 B](#手順-b-excludedストア側と同時に回す)（コンソール。未実測）。順序と途中で止まったときの戻し方は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) |
-| `deferred[]`（17 項目）と `items[]` の `notWritable` の `*-auth-client-*`（5 組） | 認証基盤（Keycloak）のクライアントシークレット —— OIDC クライアント 8・サービス間 9・取引ユニットの 5 | 🟡 **認証基盤と対でなら回せる** | [手順 C](#手順-c-deferred認証基盤と対で回す)（コンソール。未実測） |
+| `deferred[]`（18 項目）と `items[]` の `notWritable` の `*-auth-client-*`（5 組） | 認証基盤（Keycloak）のクライアントシークレット —— OIDC クライアント 9・サービス間 9・取引ユニットの 5 | 🟡 **認証基盤と対でなら回せる** | [手順 C](#手順-c-deferred認証基盤と対で回す)（コンソール。未実測） |
 
 `excluded[]`・`deferred[]`・`*-auth-client-*` はいずれも**対になる秘密**（相手と同時に変えないと成立しない秘密）であり、画面の対象外である。
 回し方の正は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) にある。
@@ -82,7 +82,7 @@ issues: [#1696, #458, #1411, #1477, #1499, #1523, #1682, planning#700, planning#
 | 経路 | 何をするか | 影響する分類 |
 | --- | --- | --- |
 | 手動の Secret 作成（`apply_secret`） | env が無ければ**開発用既定値**で Secret を作る。`postgres` / `rabbitmq` / `keycloak-admin`（`excluded[]`）、`reset-gate-oidc`（`deferred[]`）、`keycloak-smtp`（`items[]`）は `ESO=1` でも作る（同期は `Merge` で上書きするだけ） | `excluded[]`・`deferred[]`（`reset-gate-oidc`）・`items[]`（`keycloak-smtp`）の **Secret だけ**（保管先の値は戻らない。下の注記） |
-| 保管先の再投入（`deploy/local/vault/eso/bootstrap.sh`） | 画面が書く KV（`items[]` のうち種を入れる 4 つ）は**無いときだけ**作り、在れば env が空でないプロパティだけ差し替える。**`excluded[]` の 7 と `deferred[]` の 17、計 24 KV も無いときだけ作り、在れば env を渡しても触らない**（2026-09-28 から。それまでは毎回全置換していた） | 戻さない |
+| 保管先の再投入（`deploy/local/vault/eso/bootstrap.sh`） | 画面が書く KV（`items[]` のうち種を入れる 4 つ）は**無いときだけ**作り、在れば env が空でないプロパティだけ差し替える。**`excluded[]` の 7 と `deferred[]` の 18、計 25 KV も無いときだけ作り、在れば env を渡しても触らない**（2026-09-28 から。それまでは毎回全置換していた） | 戻さない |
 | 認証基盤の宣言の追随（`deploy/local/keycloak-setup/reconcile-realm.sh`） | realm JSON を正として稼働中の realm へ差分を当てる。**クライアントの `secret` は作成時にだけ運び、既存の client では比べず・書かない**（2026-09-28 から。それまでは realm JSON の値へ当て直していた） | 戻さない |
 
 - **`items[]` は保管先の値が戻らない**（画面で入れた値は再投入で消えない）。ただし `keycloak-smtp` は **Secret だけ**が
@@ -186,7 +186,7 @@ kubectl -n microservices-platform wait --for=condition=Available deploy --all --
 
 ## 手順 C: `deferred[]`（認証基盤と対で回す）
 
-**認証基盤のクライアントシークレット 17 項目**（OIDC クライアント: 境界層・利用者管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視／
+**認証基盤のクライアントシークレット 18 項目**（OIDC クライアント: 境界層・利用者管理・MCP クライアント登録管理の書き込み・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視／
 サービス間: 各サービスのサービスアカウント 9 本）と、取引ユニットの `*-auth-client-*` の 5 組は、**認証基盤と保管先を対で書いて回す。**
 手順は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) 手順 1 である。
 
@@ -261,7 +261,7 @@ kubectl -n microservices-platform wait --for=condition=Available deploy --all --
 ## 限界（この手順で担保できないこと）
 
 - 🔴 **リハーサル未実施。** 本書は手順を定めただけであり、「この手順で回せる」ことは最初のリハーサルではじめて確かめられる。
-- 🔴 **`deferred[]` の 17 項目と `*-auth-client-*` の 5 組は、対の手順でしか回せない**（手順 C）。手順はあるが、リハーサルは未実施である。
+- 🔴 **`deferred[]` の 18 項目と `*-auth-client-*` の 5 組は、対の手順でしか回せない**（手順 C）。手順はあるが、リハーサルは未実施である。
 - **周期の統制は無い。** 周期を定めていないので、回し忘れを知らせる仕組みも無い。
 - **旧の値の失効は発行元の操作であり、機械で確かめていない。** 失効させたかどうかは実施記録に人が書く。
 - **手順 B は監査にならない。** 記録は人が書く前提であり、書かなければ残らない。

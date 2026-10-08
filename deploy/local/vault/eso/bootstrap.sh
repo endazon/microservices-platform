@@ -195,6 +195,11 @@ vkv_create_if_absent msp/bff-oidc client-secret "${BFF_OIDC_CLIENT_SECRET:-bff-d
 # **空だと authorization-service Pod が起動しない**（helm は非 optional な secretKeyRef で読む）。
 # 既定は realm import の置き場と同値（ズレると client_credentials が 401 になり SC-17 が 500 になる）。
 vkv_create_if_absent msp/identity-admin-oidc client-secret "${IDENTITY_ADMIN_CLIENT_SECRET:-identity-admin-dev-secret-change-me}"
+# FR-16, SC-12, ADR-0123 決定 2, IADR-0516 決定 2 (#1817): McpServer が SC-12 の無人の登録・属性の差し替えで
+# Keycloak Admin REST へ書くための client secret（realm の機密クライアント `mcp-client-admin`。manage-clients / manage-users）。
+# **空だと mcp-service Pod が起動しない**（helm は非 optional な secretKeyRef で読む）。
+# 既定は realm import の置き場と同値（ズレると client_credentials が 401 になり、無人の登録・差し替えが 502 になる）。
+vkv_create_if_absent msp/mcp-client-admin-oidc client-secret "${MCP_CLIENT_ADMIN_CLIENT_SECRET:-mcp-client-admin-dev-secret-change-me}"
 # FR-02, FR-03, NFR-09, NFR-16, ADR-0029/ADR-0075, IADR-0379 決定 4 / IADR-0397 (#1255): east-west gRPC の
 # **呼び出し側**が名乗る資格情報（realm の機密クライアント `retrieval-service` / `ingestion-service`）。
 # **空だと当該 Pod が起動しない**（helm は非 optional な secretKeyRef で読む）。
@@ -427,12 +432,13 @@ eso_force_sync_changed
 
 echo ""
 echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h。この実行で書いた KV を読むものは上で force-sync した（#1728）。画面 /admin/secrets からの書き込みは BFF が force-sync で即時同期を依頼する）:"
-echo "  #1682: 対になる秘密（OIDC / s2s / データストアの資格情報の 24 KV）は無いときだけ作った（在るものは env を渡しても触らない。回すのは docs/operations/paired-secret-rotation-runbook.md）"
+echo "  #1682: 対になる秘密（OIDC / s2s / データストアの資格情報の 25 KV）は無いときだけ作った（在るものは env を渡しても触らない。回すのは docs/operations/paired-secret-rotation-runbook.md）"
 echo "  #1477: SC-22 の KV（llm-provider-credentials / wikijs-sync / keycloak-smtp / ai-stock-trading/app-secrets）は無いときだけ作った（在るものは env が空でないキーだけ差し替えた）"
 echo "  PR-1: llm-provider-credentials / PR-2: object-storage-credentials, wikijs-db, wikijs-sync"
 echo "  PR-3: grafana-oidc, vault-oidc, headlamp-oidc (platform-infra ns)"
 echo "  #1107: bff-oidc (MSP ns。BFF セッションの client secret。空だと /bff/auth/login が 500)"
 echo "  #1101: identity-admin-oidc (MSP ns。SC-17 の Keycloak Admin REST 反映。空だと authorization-service が起動しない)"
+echo "  #1817: mcp-client-admin-oidc (MSP ns。SC-12 の無人の登録・差し替えの Keycloak Admin REST 書き込み。空だと mcp-service が起動しない)"
 echo "  #1245: reset-gate-oidc (platform-infra ns。SC-15 の申請を閉じる門。空だと門が起動しない＝窓が開いたままになる)"
 echo "  #1255: retrieval-service-token, ingestion-service-token, aianalysis-service-token, graph-service-token, conversion-service-token, wiki-service-token, datasource-service-token, mcp-server-token, document-service-token (MSP ns。east-west gRPC の s2s 資格情報。空だと当該 Pod が起動しない)"
 echo "  PR-4: postgres, rabbitmq, keycloak-admin (platform-infra ns・creationPolicy: Merge・手動 apply は保持)"
@@ -443,6 +449,6 @@ echo "  #1287: synthetic-monitor-oidc (MSP ns。合成監視のプローブが e
 #    打った人が必ず NotFound を踏む）。grafana-oidc / headlamp-oidc は OBSERVABILITY=1 / HEADLAMP=1 の、
 #    wikijs-oidc は WIKIJS_OIDC=1 の、synthetic-monitor-oidc は SYNTHETIC=1 のときだけ apply されるため、
 #    無条件の並びからは外して注記に回す。
-echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
+echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
 echo "  確認(infra): kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
 echo "             （grafana-oidc は OBSERVABILITY=1、headlamp-oidc は HEADLAMP=1 のときだけ apply される）"

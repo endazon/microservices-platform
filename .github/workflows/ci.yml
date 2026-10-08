@@ -721,6 +721,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-llm-provider-keys.test.js
 
+      # FR-16, SC-12, ADR-0123 決定 2・4, IADR-0516, Issue #1817: SC-12 の IdP への書き込み口（McpClientProvisioning__*）を
+      # **実際に helm template で描いて**固定する —— 既定と values-local の両方で、書き込み口を持つ Deployment はすべて Provider=keycloak を
+      # 持つ（未宣言の配備＝無人の登録・差し替えが 503 のまま Ready、を残さない）・mcp-service だけ・ClientSecret は非 optional の
+      # secretKeyRef でリテラルを持たない、変異。helm が要るのでこのジョブ。
+      - name: Test helm MCP client provisioning wiring (render, negative, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-mcp-client-provisioning.test.js
+
       # NFR-21, ADR-0006, Issue #1090 / #546: すべての OTel Collector 設定が自己テレメトリの
       # 待受（Prometheus の**唯一の scrape 対象**）を明示していることを検査する。
       # スキーマ検査では捕まらない —— `service.telemetry` は任意項目であり、無くても正当な設定である。

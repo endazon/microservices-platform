@@ -402,6 +402,17 @@ if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" identity-admin-oidc \
     "client-secret=${IDENTITY_ADMIN_CLIENT_SECRET:-identity-admin-dev-secret-change-me}"
 fi
+# FR-16, SC-12, ADR-0123 決定 2, IADR-0516 決定 2 (#1817): SC-12 の無人の登録・属性の差し替えで McpServer が
+# Keycloak Admin REST へ書く機密クライアント `mcp-client-admin`（manage-clients / manage-users）の client secret。
+# helm の deployment.yaml が **非 optional** な secretKeyRef で参照するため、これが無いと mcp-service Pod は
+# 起動できない —— 注入漏れが「書き込み口の無いまま起動し、無人の登録・差し替えが 503 を返し続ける」静かな縮退へ
+# 倒れないようにするためである（identity-admin-oidc〔#1101〕と同型）。dev 既定は realm import の置き場と同値。
+# ズレると client_credentials が 401 になり、無人の登録・差し替えが 502 になる。
+# ESO=1 のときは Vault→ExternalSecret 供給へ委譲する（二重所有回避）。
+if [ "${ESO:-}" != "1" ]; then
+  apply_secret "$MSP_NS" mcp-client-admin-oidc \
+    "client-secret=${MCP_CLIENT_ADMIN_CLIENT_SECRET:-mcp-client-admin-dev-secret-change-me}"
+fi
 # FR-02, FR-03, NFR-09, NFR-16, ADR-0029/ADR-0075, IADR-0379 決定 4 / IADR-0397 (#1255):
 # east-west gRPC の**呼び出し側**が名乗る資格情報（realm の confidential client
 # `retrieval-service` / `ingestion-service`。service account ＋ realm ロール platform-service のみ）。
@@ -769,6 +780,9 @@ if [ "${ESO:-}" = "1" ]; then
   # ブロックでスキップされるので、**これが唯一の供給元**である（欠けると authorization-service Pod が
   # 起動しない）。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-identity-admin-oidc.yaml
+  # #1817: SC-12 の無人の登録・差し替えで Keycloak Admin REST へ書く client secret。手動 apply は上の `ESO != 1`
+  # ブロックでスキップされるので、**これが唯一の供給元**である（欠けると mcp-service Pod が起動しない）。常時供給。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-mcp-client-admin-oidc.yaml
   # #1255: east-west gRPC の呼び出し側 s2s 資格情報。手動 apply は上の `ESO != 1` ブロックで
   # スキップされるので、**これが唯一の供給元**である（欠けると retrieval / ingestion Pod が起動しない）。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-retrieval-service-token.yaml
@@ -821,8 +835,8 @@ if [ "${ESO:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml
   fi
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 17 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
-  msp_es="llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
+  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ、#1817 で mcp-client-admin-oidc を追加し 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  msp_es="llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
   [ "${SYNTHETIC:-}" = "1" ] && msp_es="$msp_es synthetic-monitor-oidc"
   infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc"
@@ -856,7 +870,8 @@ if [ "${ESO:-}" = "1" ]; then
   }
   # #1255: retrieval / ingestion の s2s 資格情報。**env(secretKeyRef) で読む Pod がある**ので
   # rollout の前に同期を待つ（待たずに restart すると新 Pod も供給前の Secret を掴む。IADR-0103）。
-  msp_sync="llm-provider-credentials object-storage-credentials wikijs-db wikijs-sync retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
+  # #1817: mcp-client-admin-oidc も同じ理由で待つ（mcp-service が env で読む。下の rollout の対象に既に居る）。
+  msp_sync="llm-provider-credentials object-storage-credentials wikijs-db wikijs-sync retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token mcp-client-admin-oidc document-service-token"
   # #1127: wikijs-oidc を待つ理由は **rollout ではない**（env で読む Pod が無い）。`up` の後段で走る
   # deploy/local/wikijs-setup/bootstrap.sh の段 8 がこの Secret を読むためである。同期前だと段 8 は
   # 「client secret を取得できない」で何もせずに終わり、**OIDC ログインが入らないまま up は緑で終わる。**
@@ -894,6 +909,7 @@ if [ "${ESO:-}" = "1" ]; then
   #      wiki-service      : wiki-service-token（ServiceToken__ClientSecret。#1255。wikijs-sync と 2 本読む）
   #      datasource-service: datasource-service-token（ServiceToken__ClientSecret。#1255）
   #      mcp-service       : mcp-server-token（ServiceToken__ClientSecret。#1255。🔴 Deployment 名は `mcp-service`）
+  #                          mcp-client-admin-oidc（McpClientProvisioning__Keycloak__ClientSecret。#1817）
   #      document-service  : document-service-token（ServiceToken__ClientSecret。#1255。IADR-0419）
   #    対象外: postgres / rabbitmq / keycloak-admin は creationPolicy: Merge で seed（step 3）と**同一値**のため
   #    env は変化せず、再起動は DB/broker を無用に落とすだけ（IADR-0099）。vault-oidc は env 参照が無く

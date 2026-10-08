@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-28
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 <!-- trace:
-ids: [SC-22, NFR-18]
-adrs: [ADR-0124, ADR-0095, ADR-0005, ADR-0023]
-iadrs: [IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133]
-specs: [20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook]
-issues: [#1696, #1682, #458, #1411, planning#700, AST#1078]
+ids: [SC-22, NFR-18, SC-12, FR-16]
+adrs: [ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
+iadrs: [IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133]
+specs: [20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook]
+issues: [#1817, #1696, #1682, #458, #1411, planning#700, AST#1078]
 -->
 
 # 運用 Runbook: 対になる秘密のローテーション
@@ -139,6 +139,7 @@ kubectl get deploy -A -o json | jq -r --arg s "<secret>" '.items[]
 | --- | --- | --- | --- |
 | `bff` | `msp/bff-oidc` の `client-secret` | `microservices-platform/bff-oidc` | 0-e で引く |
 | `identity-admin` | `msp/identity-admin-oidc` の `client-secret` | `microservices-platform/identity-admin-oidc` | 0-e で引く |
+| `mcp-client-admin` | `msp/mcp-client-admin-oidc` の `client-secret` | `microservices-platform/mcp-client-admin-oidc` | 0-e で引く（`mcp-service`）。🔴 **漏えいを疑うときは [管理用の資格情報が漏れたとき](#管理用の資格情報が漏れたときmcp-client-admin) を先に読む** |
 | `retrieval-service` / `ingestion-service` / `aianalysis-service` / `graph-service` / `conversion-service` / `wiki-service` / `datasource-service` / `mcp-server` / `document-service` | `msp/<client>-token` の `client-secret` | `microservices-platform/<client>-token` | 0-e で引く |
 | `synthetic-monitor` | `msp/synthetic-monitor-oidc` の `client-secret` | `microservices-platform/synthetic-monitor-oidc` | 0-e で引く（`SYNTHETIC=1` のときだけ在る） |
 | `reset-gate` | `msp/reset-gate-oidc` の `client-secret` | `platform-infra/reset-gate-oidc` | 0-e で引く |
@@ -191,6 +192,34 @@ CID="$(curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/cli
    `vault` / `wiki-js` は 1-0 の表のスクリプトを再実行する。
 7. **確かめる**（[確認](#確認この手順が成功したと言える条件)）。
 8. 終えたら `unset NEW_VALUE TOKEN; kill "$PF_PID"`。**[記録](#記録)する。**
+
+### 管理用の資格情報が漏れたとき（`mcp-client-admin`）
+
+MCP クライアント登録管理の後段が、無人のクライアントとそのサービスアカウントの属性を認証基盤へ書くための機密クライアントである。
+**群 1 の中でいちばん影響範囲が広い**ので、回す前に影響範囲を確かめる。
+
+**影響範囲**（認証基盤のレルム管理のロール「クライアントの管理」「利用者の管理」の 2 つが届く範囲。現行の認証基盤の版では絞れない）:
+
+| 届くもの | 漏えいした secret でできること |
+| --- | --- |
+| レルムの**全クライアント** | 作成・変更・削除。**全クライアントの secret の読み取り**（他のサービス・道具へのなりすまし）。削除による認証の停止 |
+| レルムの**全利用者**（人とサービスアカウント） | 属性とロールの書き換え（例: 機密区分を上げる・管理者ロールを付ける）。**部分集合の規則と利用者アカウント管理の画面を経ずに書ける** |
+| 🔴 レルムの設定（**間接**） | 読める secret にレルムの管理を持つ申請の門（`reset-gate`）と利用者の管理を持つ反映先（`identity-admin`）が含まれる。それを使えば認証フロー・送信設定・総当たり対策まで書ける。**レルムの全権の漏えいとして扱う** |
+| 直接は届かないもの | 他のレルム（master を含む） |
+
+🔴 **dev 以外のクラスタでは、起動の直後に回す**（漏えいが無くても）。起動器は env が無ければ dev の値（リポジトリに公開されている）で
+保管先と Secret を作り、レルムの後追いも無い client を dev の値で作る。`identity-admin`・`reset-gate` も同じである。
+dev 以外の文脈で dev の値を拒む機械の守りは起動器に無い（後続の作業で入れる）。
+
+**手順**（通常の 1-3 に次を足す）:
+
+1. **先に回す**（1-0 の行・1-3 の手順そのまま）。回した時点で旧い secret ではトークンが出なくなる（既に出ているトークンは有効期限まで残る）。
+2. **全クライアントの secret が読まれた前提に立つ。** 1-0 の表の**ほかの行もすべて**回す（群 1 の全件）。読まれたかどうかは、監査の取り込みが無い間は判定できない。
+3. **書き換えの痕跡を探す。** 認証基盤の管理イベント（このクライアントのサービスアカウントが主体のもの**と**、`reset-gate`・`identity-admin` のサービスアカウントが主体のもの）を、漏えいの疑いの期間について引く。利用者の属性・ロールの変更、クライアントの作成・削除、レルムの設定の変更（認証フロー・送信設定・総当たり対策）があれば、登録簿と宣言に照らして戻す（レルムの設定は後追いの check モードで宣言との差分を見る）。
+4. MCP クライアント登録管理の画面の無人の行と、認証基盤の入口の印つきのクライアントを突き合わせる（定期の照合が入るまでは手で行う）。
+5. [記録](#記録)する。
+
+🔴 **残余**: 認証基盤の現行の版（24.0）では、このクライアントの権限を「入口の印があるクライアントとそのサービスアカウント」へ絞れない（細粒度の管理権限の新しい版は 26.2 以降）。版を上げた後に絞る。
 
 ## 手順 2: 群 2（データストアの資格情報）
 

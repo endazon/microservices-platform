@@ -808,6 +808,24 @@
       ]
     },
     {
+      "clientId": "mcp-client-admin",
+      "name": "SC-12 MCP client provisioning (Keycloak Admin REST, client_credentials)",
+      "description": "SC-12・ADR-0123 決定 2・IADR-0516 (#1817): McpServer が無人のクライアントと SA の属性を Admin REST へ書く機密クライアント。realm-management は manage-clients/manage-users のみ・realm ロールなし。identity-admin とは別主体。漏えい時の影響は security.md。secret は dev 専用。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "mcp-client-admin-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "realm-management-roles"
+      ]
+    },
+    {
       "clientId": "reset-gate",
       "name": "SC-15 reset request gate (Admin REST, client_credentials)",
       "description": "SC-15・ADR-0078 決定 4・IADR-0404 (#1245): 近接 MTA へ投函できないとき resetPasswordAllowed を false へ倒し、回復したら宣言値へ戻す門。realm-management は view-realm/manage-realm のみで、利用者・クライアント・イベント・認証フローには触れない。manage-realm を持つ主体はこれ 1 つだけ（check-realm-constraints.js が固定）。secret は dev 専用。",
@@ -1231,6 +1249,17 @@
           "view-users",
           "manage-users",
           "view-realm"
+        ]
+      }
+    },
+    {
+      "username": "service-account-mcp-client-admin",
+      "enabled": true,
+      "serviceAccountClientId": "mcp-client-admin",
+      "clientRoles": {
+        "realm-management": [
+          "manage-clients",
+          "manage-users"
         ]
       }
     },

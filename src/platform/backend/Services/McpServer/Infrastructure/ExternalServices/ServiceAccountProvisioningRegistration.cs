@@ -13,6 +13,9 @@ namespace McpServer.Infrastructure.ExternalServices;
 //   その secret の供給）は本 PR の後の段で入る（IADR-0516 §残余）。起動失敗にすると、その間 MCP サーバーそのもの
 //   （ツールの公開・有人の登録・無効化）が止まる。**未設定は「無人を登録簿だけへ書く」へは倒さない** —— それは ADR-0123 が
 //   改めた現状そのもの（検証の掛からない属性を写しとして残す）であり、決定 4 の暫定手段（IdP へ配らない）と同じ側の 503 にする。
+//   ［2026-10-09 追記 / #1817］配備（helm・compose）は `keycloak` を宣言し、資格情報（realm の `mcp-client-admin` と Secret
+//   `mcp-client-admin-oidc`）を配線した。未設定の分岐は、構成を欠いた配備のための安全側として残す（描画で未宣言の配備が残らないことは
+//   scripts/helm-mcp-client-provisioning.test.js が固定する）。
 public static class ServiceAccountProvisioningRegistration
 {
     public const string ProviderKey = "McpClientProvisioning:Provider";

@@ -4,13 +4,13 @@ type: api-spec
 status: draft
 author: claude
 created: 2026-08-23
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 <!-- trace:
 ids: [FR-15, FR-16, UC-08, UC-09, SC-12]
 adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054, ADR-0062, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123]
 iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516]
-specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning]
+specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring]
 issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818]
 -->
 
@@ -70,12 +70,13 @@ issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #18
 | 201 / 200 | 書けた | 書いた | 書いた（写し） |
 | 400 | 検証の外れ。または、この入口が作っていないクライアントが認可サーバーにある（登録では同じクライアント ID、差し替えでは入口の印が無い） | 何も書かない | 書かない |
 | 502 | 認可サーバーへの書き込み・照会が失敗した | 作りかけを消す／元の属性へ戻す | 書かない |
-| 503 | 書き込み口が構成されていない（`McpClientProvisioning:Provider` 未設定） | 何も書かない | 書かない |
+| 503 | 書き込み口が構成されていない（`McpClientProvisioning:Provider` 未設定。［2026-10-09］標準の配備〔helm・compose〕は `keycloak` を宣言済み） | 何も書かない | 書かない |
 | 500 | 登録簿への書き込みが失敗した | 書いたものを取り消す（現在値が書いた値のままのときだけ戻す） | 書かない |
 
 - 構成: `McpClientProvisioning:Provider`（`keycloak` / `in-memory`。後者は非配備ホスト限定）と
   `McpClientProvisioning:Keycloak:{BaseUrl,Realm,ClientId,ClientSecret}`（既定値なし）。管理用の機密クライアントは
   認可サービスの身元管理用とは別のクライアントであり、`realm-management` の `manage-clients`・`manage-users` だけを持つ。
+  ［2026-10-09］配備は realm の `mcp-client-admin` とその secret（`mcp-client-admin-oidc` の `client-secret`。非 optional の参照）で配線した。
 - 🔴 **client secret は応答に載せない。**
 - 認可サーバーへの要求の期限は `McpClientProvisioning:Keycloak:TimeoutSeconds`（既定 10 秒）。時間切れは 502 であり、作りかけは消す（作成の要求そのものが時間切れになった場合も、引き直して入口の印があれば消す。同じクライアント ID の並行登録や引き直しの失敗では残り得るので、照合〔#1818〕が拾う）。要求を途中で取り消しても、認可サーバーへの書き込みと取り消しは最後まで走る。
 - 登録簿で無効化された行の差し替えで認可サーバーにクライアントを作るときは、無効のまま作る。
