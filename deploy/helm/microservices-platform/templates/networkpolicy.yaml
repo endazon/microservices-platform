@@ -143,9 +143,10 @@ spec:
           port: {{ .Values.edge.privateNotesSync.port }}
 {{- end }}
 {{- end }}
-{{- /* NFR-09, ADR-0125 決定 4, IADR-0513 (#1756): 取引ユニット（AST）の名前空間 → KB の読み手（検索）・書き手（文書の保存）。
+{{- /* NFR-09, ADR-0125 決定 4, IADR-0513 (#1756・#1811): 取引ユニット（AST）の名前空間 → KB の読み手（検索）・書き手（文書の保存）・
+       LLM ゲートウェイ（報告書・取引判断の生成）。
        default-deny-ingress の下では別 Namespace からの ingress は L3/L4 で塞がれる。**用途ごとに values で開け、既定は閉じる**
-       （networkPolicy.fromAst.kbReader / kbWriter の enabled: false）。開ける穴は最小にする:
+       （networkPolicy.fromAst.kbReader / kbWriter / llmGateway の enabled: false）。開ける穴は最小にする:
          - 行き先は services.<target> の Pod（app: <target>-service）だけ。
          - 送り元は「AST の Namespace（kubernetes.io/metadata.name。API サーバが付け、書き換えられない）**かつ** clients の Pod」。
            namespaceSelector と podSelector を**同じ from の要素**に置く（AND）。別の要素に割ると OR になり、名前空間全体か、
@@ -153,11 +154,12 @@ spec:
          - ポートは services.<target>.port（REST）だけ。east-west gRPC（grpcPort）は開けない（AST は REST だけを使う）。
        有効なのに値が欠けるときは描画で止める（黙って広い穴・空の穴へ倒さない）。 */}}
 {{- $fromAst := .Values.networkPolicy.fromAst | default dict }}
-{{- $allowedTargets := dict "kbReader" "retrieval" "kbWriter" "document" }}
-{{- range $use := list "kbReader" "kbWriter" }}
+{{- $allowedTargets := dict "kbReader" "retrieval" "kbWriter" "document" "llmGateway" "llmgateway" }}
+{{- range $use := list "kbReader" "kbWriter" "llmGateway" }}
 {{- $rule := index $fromAst $use | default dict }}
 {{- if $rule.enabled }}
-{{- /* 行き先は用途ごとに 1 つに固定する（読み手＝検索・書き手＝文書）。target の値で別のサービス（BFF・認可 等）へ穴を向けさせない。 */}}
+{{- /* 行き先は用途ごとに 1 つに固定する（読み手＝検索・書き手＝文書・llmGateway＝LLM ゲートウェイ）。target の値で別のサービス（BFF・認可 等）へ穴を向けさせない。
+       llmGateway の主体（platform-service）は他の東西端点の ServiceCaller にも通るので、行き先の固定が L4 の射程を LLM ゲートウェイに留める。 */}}
 {{- $wantTarget := index $allowedTargets $use }}
 {{- if ne ($rule.target | default "") $wantTarget }}{{ fail (printf "networkPolicy.fromAst.%s.target は %q だけを受ける（%q）" $use $wantTarget ($rule.target | default "")) }}{{ end }}
 {{- $svc := index $.Values.services ($rule.target | default "") | default dict }}

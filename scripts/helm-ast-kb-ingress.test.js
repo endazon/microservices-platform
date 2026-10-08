@@ -2,22 +2,25 @@
 'use strict';
 /*
  * helm-ast-kb-ingress.test.js
- * NFR-09, ADR-0125 決定 4, IADR-0513 (#1756):
- * **取引ユニット（AST）の名前空間 → KB の読み手（検索）・書き手（文書の保存）への ingress の許可を、実際に `helm template` で描いて固定する。**
+ * NFR-09, ADR-0125 決定 4, IADR-0513 (#1756・#1811):
+ * **取引ユニット（AST）の名前空間 → KB の読み手（検索）・書き手（文書の保存）・LLM ゲートウェイ（報告書・取引判断の生成）への
+ * ingress の許可を、実際に `helm template` で描いて固定する。**（ファイル名は #1756 の KB のまま。）
  *
  * 🔴 **守るのは「既定では 1 本も開けない」と「開けるときは最小の穴だけ」である。** NetworkPolicy は許可の和なので、
  *    字面の 1 か所の崩れ（from の AND が OR に割れる・ポートが抜ける）で名前空間全体や gRPC まで開く。だから本試験は字面だけでなく、
  *    **描いた NetworkPolicy 群を k8s の評価規則で呼び出し元の一覧へ当て**、結果（通す／落とす）で固定する。
  *
  * 固定するもの:
- *   1. 既定（本番像）・values-local: AST からの許可は 1 枚も描かれない。評価すると読み手・書き手は落ちる（陰性対照）。
- *   2. 有効（ci の values）: 2 枚がちょうどこの形 —— 行き先は retrieval-service / document-service、送り元は
+ *   1. 既定（本番像）・values-local: AST からの許可は 1 枚も描かれない。評価すると読み手・書き手・LLM ゲートウェイの呼び出し元は落ちる（陰性対照）。
+ *   2. 有効（ci の values）: 3 枚がちょうどこの形 —— 行き先は retrieval-service / document-service / llmgateway-service、送り元は
  *      「AST の Namespace（kubernetes.io/metadata.name）かつ clients の Pod」（同じ from の要素＝AND）、ポートは REST の 8080 だけ。
- *   3. 呼び出し元の一覧への評価: 読み手 → 検索 8080・書き手 → 文書 8080 だけが通り、gRPC・他の Pod・他の名前空間・他のサービスは落ち、
+ *   3. 呼び出し元の一覧への評価: 読み手 → 検索 8080・書き手 → 文書 8080・報告書 / 取引判断 → LLM ゲートウェイ 8080 だけが通り、
+ *      gRPC・他の Pod・他の名前空間・他のサービスは落ち、
  *      名前空間の中の通信は変わらない。
  *   4. 片方だけの有効化・networkPolicy.enabled=false・knob の追随（namespace・clients・services.<target>.port）・描画で止まる条件
- *      （target は用途ごとに 1 つ〔読み手 retrieval・書き手 document〕だけを受ける）。
- *   5. 変異: 一時複製したチャートで from の AND を OR に割る／ポートを外す／namespaceSelector を空にすると、本試験の判定が赤になる。
+ *      （target は用途ごとに 1 つ〔読み手 retrieval・書き手 document・llmGateway llmgateway〕だけを受ける）。
+ *   5. 変異: 一時複製したチャートで from の AND を OR に割る／ポートを外す／namespaceSelector を空にする／用途の一覧から llmGateway を外すと、
+ *      本試験の判定が赤になる。
  *
  * 🔴 **helm が無ければ落ちる（fail-closed）。** helm-private-notes-sync-authz.test.js と同じ理由。CI は static-checks-units（azure/setup-helm 済み）で走らせる。
  *
@@ -244,7 +247,18 @@ function callers(astNs) {
     { who: '🔴 AST の app ラベルの無い Pod → 文書 REST', srcNs: astNs, srcApp: null, dstApp: 'document-service', port: 8080, want: 'deny' },
     { who: '🔴 AST 取引判断 → 認可サービス', ...ast('trade-decision-service'), dstApp: 'authorization-service', port: 8080, want: 'deny' },
     { who: '🔴 AST 取引判断 → BFF', ...ast('trade-decision-service'), dstApp: 'bff-service', port: 8080, want: 'deny' },
-    { who: '🔴 AST 報告書 → LLM ゲートウェイ（#1756 の射程外。閉じたまま）', ...ast('report-service'), dstApp: 'llmgateway-service', port: 8080, want: 'deny' },
+    // #1811: LLM ゲートウェイ。呼び出し元は AST の chart の LlmGateway__BaseUrl を持つ 2 つ（報告書・取引判断。作業仕様書 §現状）。
+    { who: 'AST 報告書 → LLM ゲートウェイ REST', ...ast('report-service'), dstApp: 'llmgateway-service', port: 8080, want: 'allow', use: 'llmGateway' },
+    { who: 'AST 取引判断 → LLM ゲートウェイ REST', ...ast('trade-decision-service'), dstApp: 'llmgateway-service', port: 8080, want: 'allow', use: 'llmGateway' },
+    { who: '🔴 AST 報告書 → LLM ゲートウェイ gRPC 8081（AST は REST だけ）', ...ast('report-service'), dstApp: 'llmgateway-service', port: 8081, want: 'deny' },
+    { who: '🔴 AST 取引判断 → LLM ゲートウェイ gRPC 8081', ...ast('trade-decision-service'), dstApp: 'llmgateway-service', port: 8081, want: 'deny' },
+    { who: '🔴 AST 情報収集 → LLM ゲートウェイ REST（配線していない）', ...ast('information-collection-service'), dstApp: 'llmgateway-service', port: 8080, want: 'deny' },
+    { who: '🔴 AST 通知 → LLM ゲートウェイ REST（clients に無い Pod）', ...ast('notification-service'), dstApp: 'llmgateway-service', port: 8080, want: 'deny' },
+    { who: '🔴 AST 発注 → LLM ゲートウェイ REST（clients に無い Pod）', ...ast('order-execution-service'), dstApp: 'llmgateway-service', port: 8080, want: 'deny' },
+    { who: '🔴 AST の app ラベルの無い Pod → LLM ゲートウェイ REST', srcNs: astNs, srcApp: null, dstApp: 'llmgateway-service', port: 8080, want: 'deny' },
+    { who: '🔴 AST 報告書 → 認可サービス（LLM の主体の platform-service が通る東西端点）', ...ast('report-service'), dstApp: 'authorization-service', port: 8080, want: 'deny' },
+    { who: '🔴 別の名前空間の同名ラベルの Pod → LLM ゲートウェイ REST', srcNs: 'some-other-ns', srcApp: 'report-service', dstApp: 'llmgateway-service', port: 8080, want: 'deny' },
+    { who: '名前空間の中: RAG（検索）→ LLM ゲートウェイ REST（不変）', srcNs: RELEASE_NS, srcApp: 'retrieval-service', dstApp: 'llmgateway-service', port: 8080, want: 'allow' },
     { who: '🔴 別の名前空間の同名ラベルの Pod → 検索 REST', srcNs: 'some-other-ns', srcApp: 'trade-decision-service', dstApp: 'retrieval-service', port: 8080, want: 'deny' },
     { who: '🔴 別の名前空間の同名ラベルの Pod → 文書 REST', srcNs: 'some-other-ns', srcApp: 'report-service', dstApp: 'document-service', port: 8080, want: 'deny' },
     { who: '🔴 istio-system → 検索 REST', srcNs: 'istio-system', srcApp: 'istio-ingressgateway', dstApp: 'retrieval-service', port: 8080, want: 'deny' },
@@ -255,7 +269,7 @@ function callers(astNs) {
 }
 
 /** 描画に対する判定。enabled は有効にした用途の集合（無効の用途の allow は deny を期待する）。戻り値は問題の一覧。空なら緑。 */
-function problemsFor(text, { astNs = AST_NS, enabled = ['kbReader', 'kbWriter'] } = {}) {
+function problemsFor(text, { astNs = AST_NS, enabled = ['kbReader', 'kbWriter', 'llmGateway'] } = {}) {
   const policies = networkPolicies(text);
   const problems = [];
   for (const c of callers(astNs)) {
@@ -292,6 +306,8 @@ function expectedPolicy({ use, target, clients, astNs = AST_NS, port = 8080 }) {
 
 const READER = { use: 'kb-reader', target: 'retrieval', clients: ['trade-decision-service'] };
 const WRITER = { use: 'kb-writer', target: 'document', clients: ['information-collection-service', 'report-service'] };
+const LLM = { use: 'llm-gateway', target: 'llmgateway', clients: ['report-service', 'trade-decision-service'] };
+const ALL_NAMES = ['allow-ast-kb-reader-ingress', 'allow-ast-kb-writer-ingress', 'allow-ast-llm-gateway-ingress'];
 
 // ---------------------------------------------------------------- 静的（helm 不要）
 
@@ -335,17 +351,23 @@ ok('評価器の自己試験: 最小パーサが flow リスト・matchExpressio
   assert.deepStrictEqual(y.spec.ingress[0].ports, [{ protocol: 'TCP', port: '8080' }]);
 });
 
-ok('前提: ci の values は「両方を有効」だけを宣言している（有効の定義を 2 か所に書かない）', () => {
+ok('前提: ci の values は「3 用途を有効」だけを宣言している（有効の定義を 2 か所に書かない）', () => {
   const body = read(CI_VALUES).split('\n').filter((l) => l.trim() !== '' && !/^\s*#/.test(l));
-  assert.deepStrictEqual(body, ['networkPolicy:', '  fromAst:', '    kbReader:', '      enabled: true', '    kbWriter:', '      enabled: true']);
+  assert.deepStrictEqual(body, [
+    'networkPolicy:', '  fromAst:',
+    '    kbReader:', '      enabled: true',
+    '    kbWriter:', '      enabled: true',
+    '    llmGateway:', '      enabled: true',
+  ]);
 });
 
-ok('前提: values.yaml の既定は両方とも閉じている（enabled: false）', () => {
+ok('前提: values.yaml の既定は 3 用途とも閉じている（enabled: false）', () => {
   const v = read(`${CHART}/values.yaml`);
   const block = /^networkPolicy:\n((?:[ ]{2}.*\n|\s*\n)*)/m.exec(v);
   assert.ok(block, 'networkPolicy のブロックが無い');
   assert.match(block[1], /\n {4}kbReader:\n {6}enabled: false\n/);
   assert.match(block[1], /\n {4}kbWriter:\n {6}enabled: false\n/);
+  assert.match(block[1], /\n {4}llmGateway:\n {6}enabled: false\n {6}target: llmgateway\n/);
 });
 
 // ---------------------------------------------------------------- 描画（helm が要る）
@@ -369,10 +391,16 @@ ok('🔴 陰性対照（既定＝本番像）: AST からの許可は 1 枚も�
   assert.ok(networkPolicies(OFF).some((p) => p.metadata.name === 'default-deny-ingress'), '既定拒否が描かれていない（前提が崩れた）');
 });
 
-ok('🔴 陰性対照（既定）: 評価すると読み手・書き手の 3 本が落ち、ほかは期待どおり', () => {
+ok('🔴 陰性対照（既定）: 評価すると読み手・書き手の 3 本と LLM ゲートウェイの 2 本が落ち、ほかは期待どおり', () => {
   const problems = problemsFor(OFF);
-  assert.strictEqual(problems.length, 3, JSON.stringify(problems));
-  for (const who of ['AST 取引判断 → 検索 REST', 'AST 情報収集 → 文書 REST', 'AST 報告書 → 文書 REST']) {
+  assert.strictEqual(problems.length, 5, JSON.stringify(problems));
+  for (const who of [
+    'AST 取引判断 → 検索 REST',
+    'AST 情報収集 → 文書 REST',
+    'AST 報告書 → 文書 REST',
+    'AST 報告書 → LLM ゲートウェイ REST',
+    'AST 取引判断 → LLM ゲートウェイ REST',
+  ]) {
     assert.ok(problems.some((p) => p.startsWith(who) && p.includes('期待 allow')), `${who} が落ちていない: ${JSON.stringify(problems)}`);
   }
   assert.deepStrictEqual(problemsFor(OFF, { enabled: [] }), [], '既定は「何も開けない」と同じ判定');
@@ -383,10 +411,11 @@ ok('values-local（networkPolicy.enabled=false）: 既定でも有効にして�
   assert.strictEqual(ON_LOCAL, OFF_LOCAL, 'NetworkPolicy を無効にした構成で fromAst の knob が何かを描いた');
 });
 
-ok('有効: 2 枚がちょうどこの形（行き先・from の AND・ポート 8080 だけ）', () => {
-  assert.deepStrictEqual(astAllows(ON).map((p) => p.metadata.name), ['allow-ast-kb-reader-ingress', 'allow-ast-kb-writer-ingress']);
+ok('有効: 3 枚がちょうどこの形（行き先・from の AND・ポート 8080 だけ）', () => {
+  assert.deepStrictEqual(astAllows(ON).map((p) => p.metadata.name), ALL_NAMES);
   assert.deepStrictEqual(byName(ON, 'allow-ast-kb-reader-ingress')[0], expectedPolicy(READER));
   assert.deepStrictEqual(byName(ON, 'allow-ast-kb-writer-ingress')[0], expectedPolicy(WRITER));
+  assert.deepStrictEqual(byName(ON, 'allow-ast-llm-gateway-ingress')[0], expectedPolicy(LLM));
 });
 
 ok('有効: ポートは Service の REST の口と同じ値で、gRPC の口ではない', () => {
@@ -395,7 +424,11 @@ ok('有効: ポートは Service の REST の口と同じ値で、gRPC の口で
     assert.ok(c, `Service ${name} が無い`);
     return parseYaml(c).spec.ports;
   };
-  for (const [policy, service] of [['allow-ast-kb-reader-ingress', 'retrieval-service'], ['allow-ast-kb-writer-ingress', 'document-service']]) {
+  for (const [policy, service] of [
+    ['allow-ast-kb-reader-ingress', 'retrieval-service'],
+    ['allow-ast-kb-writer-ingress', 'document-service'],
+    ['allow-ast-llm-gateway-ingress', 'llmgateway-service'],
+  ]) {
     const ports = svc(service);
     const http = ports.find((p) => p.name === 'http') || ports[0];
     const grpc = ports.find((p) => p.name === 'grpc');
@@ -406,23 +439,26 @@ ok('有効: ポートは Service の REST の口と同じ値で、gRPC の口で
   }
 });
 
-ok('🔴 有効: 呼び出し元の一覧へ評価すると、読み手 → 検索 REST・書き手 → 文書 REST だけが新たに通り、他は 1 本も開かない', () => {
+ok('🔴 有効: 呼び出し元の一覧へ評価すると、読み手 → 検索 REST・書き手 → 文書 REST・報告書 / 取引判断 → LLM REST だけが新たに通り、他は 1 本も開かない', () => {
   assert.deepStrictEqual(problemsFor(ON), []);
 });
 
-ok('有効: 既定に対して増えるのは 2 枚の NetworkPolicy だけ（他の資源・既存の NetworkPolicy は不変）', () => {
+ok('有効: 既定に対して増えるのは 3 枚の NetworkPolicy だけ（他の資源・既存の NetworkPolicy は不変）', () => {
   // 資源ごとに末尾の空白を落として比べる（helm 4 は末尾の `---` の前に空行を残し、全文の比較だと版で結果が変わる）。
   const docs = (t) => t.split(/^---\n/m).map((c) => c.trimEnd());
-  assert.deepStrictEqual(docs(ON).filter((c) => !/^  name: allow-ast-kb-(reader|writer)-ingress$/m.test(c)), docs(OFF));
+  assert.deepStrictEqual(docs(ON).filter((c) => !/^  name: allow-ast-(kb-reader|kb-writer|llm-gateway)-ingress$/m.test(c)), docs(OFF));
 });
 
-ok('片方だけの有効化: 読み手だけ・書き手だけはその 1 枚だけを描き、もう片方は閉じたまま', () => {
+ok('1 用途だけの有効化: 読み手だけ・書き手だけ・LLM ゲートウェイだけはその 1 枚だけを描き、ほかは閉じたまま', () => {
   const r = mustRender(['--set', 'networkPolicy.fromAst.kbReader.enabled=true']);
   assert.deepStrictEqual(astAllows(r).map((p) => p.metadata.name), ['allow-ast-kb-reader-ingress']);
   assert.deepStrictEqual(problemsFor(r, { enabled: ['kbReader'] }), []);
   const w = mustRender(['--set', 'networkPolicy.fromAst.kbWriter.enabled=true']);
   assert.deepStrictEqual(astAllows(w).map((p) => p.metadata.name), ['allow-ast-kb-writer-ingress']);
   assert.deepStrictEqual(problemsFor(w, { enabled: ['kbWriter'] }), []);
+  const l = mustRender(['--set', 'networkPolicy.fromAst.llmGateway.enabled=true']);
+  assert.deepStrictEqual(astAllows(l).map((p) => p.metadata.name), ['allow-ast-llm-gateway-ingress']);
+  assert.deepStrictEqual(problemsFor(l, { enabled: ['llmGateway'] }), []);
 });
 
 ok('networkPolicy.enabled=false: 有効の values でも NetworkPolicy は 1 枚も描かれない', () => {
@@ -439,6 +475,11 @@ ok('knob の追随: namespace・clients・services.<target>.port を変えると
   assert.deepStrictEqual(byName(u, 'allow-ast-kb-writer-ingress')[0], expectedPolicy({ ...WRITER, clients: ['report-service'] }));
   const v = mustRender(['-f', CI_VALUES, '--set', 'services.retrieval.port=9090']);
   assert.deepStrictEqual(byName(v, 'allow-ast-kb-reader-ingress')[0], expectedPolicy({ ...READER, port: 9090 }));
+  const x = mustRender(['-f', CI_VALUES, '--set', 'networkPolicy.fromAst.llmGateway.clients={trade-decision-service}']);
+  assert.deepStrictEqual(byName(x, 'allow-ast-llm-gateway-ingress')[0], expectedPolicy({ ...LLM, clients: ['trade-decision-service'] }));
+  assert.ok(problemsFor(x).some((p) => p.startsWith('AST 報告書 → LLM ゲートウェイ REST')), 'clients から外した報告書が通ったまま');
+  const y = mustRender(['-f', CI_VALUES, '--set', 'services.llmgateway.port=9091']);
+  assert.deepStrictEqual(byName(y, 'allow-ast-llm-gateway-ingress')[0], expectedPolicy({ ...LLM, port: 9091 }));
 });
 
 ok('🔴 描画で止まる: clients が空・namespace が空・target が無効・target が用途の行き先と違う', () => {
@@ -450,6 +491,13 @@ ok('🔴 描画で止まる: clients が空・namespace が空・target が無�
     [['--set', 'networkPolicy.fromAst.kbWriter.target=nope'], /kbWriter\.target は "document" だけを受ける（"nope"）/],
     [['--set', 'networkPolicy.fromAst.kbReader.target=bff'], /kbReader\.target は "retrieval" だけを受ける（"bff"）/],
     [['--set', 'networkPolicy.fromAst.kbWriter.target=retrieval'], /kbWriter\.target は "document" だけを受ける（"retrieval"）/],
+    [['--set', 'networkPolicy.fromAst.llmGateway.clients=null'], /llmGateway\.clients が空/],
+    [['--set', 'networkPolicy.fromAst.llmGateway.clients={}'], /llmGateway\.clients に空の要素がある/],
+    [['--set', 'services.llmgateway.enabled=false'], /llmGateway\.target="llmgateway" のサービスが無効/],
+    [['--set', 'networkPolicy.fromAst.llmGateway.target=document'], /llmGateway\.target は "llmgateway" だけを受ける（"document"）/],
+    [['--set', 'networkPolicy.fromAst.llmGateway.target=authorization'], /llmGateway\.target は "llmgateway" だけを受ける（"authorization"）/],
+    [['--set', 'networkPolicy.fromAst.llmGateway.target='], /llmGateway\.target は "llmgateway" だけを受ける（""）/],
+    [['--set', 'networkPolicy.fromAst.kbReader.target=llmgateway'], /kbReader\.target は "retrieval" だけを受ける（"llmgateway"）/],
   ];
   for (const [args, re] of cases) {
     const r = helmTemplate(['-f', CI_VALUES, ...args]);
@@ -457,6 +505,7 @@ ok('🔴 描画で止まる: clients が空・namespace が空・target が無�
     assert.match(r.err, re, `${args.join(' ')} の失敗理由が違う: ${r.err}`);
   }
   assert.strictEqual(helmTemplate(['--set', 'networkPolicy.fromAst.kbReader.clients=null']).status, 0, '無効のままなら値が欠けても止めない');
+  assert.strictEqual(helmTemplate(['--set', 'networkPolicy.fromAst.llmGateway.target=document']).status, 0, '無効のままなら target が違っても止めない');
 });
 
 function mutatedRender(transform) {
@@ -481,12 +530,14 @@ ok('🔴 変異: from の AND を OR に割る（podSelector を別の要素へ�
   );
   const problems = problemsFor(text);
   assert.ok(problems.some((p) => p.startsWith('🔴 AST 発注 → 文書 REST') && p.includes('期待 deny')), JSON.stringify(problems));
+  assert.ok(problems.some((p) => p.startsWith('🔴 AST 発注 → LLM ゲートウェイ REST') && p.includes('期待 deny')), JSON.stringify(problems));
 });
 
 ok('🔴 変異: ports を外すと、gRPC の口が通って赤になる', () => {
   const text = mutatedRender((s) => s.replace(/\n {6}ports:\n {8}- protocol: TCP\n {10}port: \{\{ \$svc\.port \}\}/, ''));
   const problems = problemsFor(text);
   assert.ok(problems.some((p) => p.includes('検索 gRPC 8081') && p.includes('期待 deny')), JSON.stringify(problems));
+  assert.ok(problems.some((p) => p.includes('LLM ゲートウェイ gRPC 8081') && p.includes('期待 deny')), JSON.stringify(problems));
 });
 
 ok('🔴 変異: namespaceSelector を空にすると、別の名前空間の同名ラベルの Pod が通って赤になる', () => {
@@ -495,6 +546,36 @@ ok('🔴 変異: namespaceSelector を空にすると、別の名前空間の同
   );
   const problems = problemsFor(text);
   assert.ok(problems.some((p) => p.startsWith('🔴 別の名前空間の同名ラベルの Pod') && p.includes('期待 deny')), JSON.stringify(problems));
+});
+
+ok('🔴 変異: 用途の一覧から llmGateway を外す（有効でも黙って描かない）と、LLM ゲートウェイの呼び出し元が落ちて赤になる', () => {
+  const text = mutatedRender((s) => s.replace('list "kbReader" "kbWriter" "llmGateway"', 'list "kbReader" "kbWriter"'));
+  const problems = problemsFor(text);
+  assert.deepStrictEqual(
+    problems.map((p) => p.split('（')[0]).sort(),
+    ['AST 取引判断 → LLM ゲートウェイ REST', 'AST 報告書 → LLM ゲートウェイ REST'],
+    JSON.stringify(problems),
+  );
+});
+
+ok('🔴 変異: llmGateway の行き先の固定を外す（target を検査しない）と、別の行き先へ向けた値が描画を通って赤になる', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'helm-ast-kb-ingress-mut-'));
+  try {
+    const chartCopy = path.join(tmp, 'chart');
+    fs.cpSync(path.join(REPO_ROOT, CHART), chartCopy, { recursive: true });
+    const tpl = path.join(chartCopy, 'templates', 'networkpolicy.yaml');
+    const original = fs.readFileSync(tpl, 'utf8');
+    const mutated = original.replace('"llmGateway" "llmgateway"', '"llmGateway" "authorization"');
+    assert.notStrictEqual(mutated, original, '変異を当てられなかった（テンプレートの書き方が変わった）');
+    fs.writeFileSync(tpl, mutated);
+    // 変異後のチャートは target=authorization を受けてしまう。本試験の期待（"llmgateway" だけを受ける）がこの描画を拒めば赤。
+    const r = helmTemplate(['-f', path.join(REPO_ROOT, CI_VALUES), '--set', 'networkPolicy.fromAst.llmGateway.target=authorization'], chartCopy);
+    assert.strictEqual(r.status, 0, `変異後のチャートで描画が止まった（変異が効いていない）: ${r.err}`);
+    const problems = problemsFor(r.out);
+    assert.ok(problems.some((p) => p.startsWith('🔴 AST 報告書 → 認可サービス') && p.includes('期待 deny')), JSON.stringify(problems));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
