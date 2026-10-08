@@ -307,7 +307,7 @@ const KUBECTL_STUB = [
   'case "$*" in *"get job"*conditions*) echo "Complete "; exit 0;; esac',
   // #1699: バックアップの CronJob の門の入力。CronJob のイメージは実物のマニフェストと同じ形の参照を返す。
   //   受取人の ConfigMap は STUB_BACKUP_RECIPIENTS（中身そのもの）を返す。既定（未設定）は空 ＝ 受取人なし。
-  'case "$*" in *"get cronjob platform-backup-"*"containers[0].image"*) echo "k3d-local/platform-backup:pg16.15-age1.3.1-r6"; exit 0;; esac',
+  'case "$*" in *"get cronjob platform-backup-"*"containers[0].image"*) echo "k3d-local/platform-backup:pg16.15-age1.3.2-r0"; exit 0;; esac',
   'case "$*" in *"get configmap platform-backup-age-recipients"*recipients*) printf "%s" "${STUB_BACKUP_RECIPIENTS:-}"; exit 0;; esac',
   // #1699（PR #1700 監査 🟡3）: STUB_BACKUP_PATCH_FAIL=1 で CronJob の suspend の書き込みだけを失敗させる（API・RBAC の失敗）。
   'if [ "${STUB_BACKUP_PATCH_FAIL:-}" = "1" ]; then case "$*" in *"patch cronjob platform-backup-"*) echo "Error from server (Forbidden)" >&2; exit 1;; esac; fi',

@@ -504,7 +504,7 @@ ok('🔴 9. / 10. age は digest 固定のベースへ版・sha256 で同梱し�
     ['age の sha256（aarch64）を外す', (f) => { f.ageSha.aarch64 = undefined; }],
     ['LOCAL_ONLY_IMAGES から外す', (f) => { f.localOnly = []; }],
     ['タグを :latest にする', (f) => { f.localOnly[0].ref = 'platform-backup:latest'; }],
-    ['age の版を上げてタグを据え置く', (f) => { f.ageVersion = '1.3.1-r7'; }],
+    ['age の版を上げてタグを据え置く', (f) => { f.ageVersion = '1.3.2-r1'; }],
     ['CronJob のイメージを 1 つだけずらす', (f) => { f.cronJobs[1].image = 'postgres:16-alpine'; }],
     ['IfNotPresent を外す', (f) => { f.cronJobs[0].imagePullPolicy = undefined; }],
     ['BACKUP_AGE_INSTALL を env へ戻す', (f) => { f.cronJobs[0].envNames.push('BACKUP_AGE_INSTALL'); }],
