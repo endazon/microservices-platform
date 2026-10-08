@@ -28,7 +28,7 @@ public sealed class DataSourceSyncSingleWriterTests
         PostgreSqlContainer? pg = null;
         if (external is null)
         {
-            pg = new PostgreSqlBuilder("postgres:16-alpine")
+            pg = new PostgreSqlBuilder("postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea")
                 .WithDatabase("single_writer_test")
                 .WithUsername("kp")
                 .WithPassword("kp")

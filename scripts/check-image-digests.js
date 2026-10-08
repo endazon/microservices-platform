@@ -1,23 +1,32 @@
 #!/usr/bin/env node
 /**
- * NFR, 計画 ADR-0107 決定 3・決定 5 / ADR-0112 決定 3, IADR-0514 (#1787):
- * `deploy/` のインフラのイメージの参照が **digest で固定されている**ことを検査する。
+ * NFR, 計画 ADR-0107 決定 3・決定 5 / ADR-0112 決定 3, IADR-0514 (#1787, #1814):
+ * `deploy/` のインフラのイメージの参照と、`src/` の自製イメージの基底イメージ・統合試験の Testcontainers の
+ * イメージが **digest で固定されている**ことを検査する。
  *
  * **タグだけの参照では、同じタグの中身が差し替わっても検知できない**（ADR-0107 決定 3）。
  * 固定の表記は `<repo>:<tag>@sha256:<64 桁>` —— digest は multi-arch の image index のもので、
  * tag は人が読むために残す（IADR-0514 決定 1）。
  *
- * 拾う形（`deploy/` 配下の .yaml / .yml / Dockerfile）:
+ * 拾う形:
+ *   `deploy/` 配下の .yaml / .yml / Containerfile（`Dockerfile`・`*.Dockerfile`・`Containerfile`）:
  *   1. `image: <ref>`（compose・k8s マニフェスト・helm values の単一文字列。`- image:` も同じ）
  *   2. helm values の 3 キー形式（同じマッピングに `image:` と `tag:` があり、`image:` の値に `:` が無い）
  *      —— 同じマッピングに空でない `digest: "sha256:…"` があること。
- *   3. Dockerfile の `FROM <ref>`（`scratch` と多段ビルドの段名は除く。`${VAR}/` の接頭辞はそのまま読む）
+ *   3. Containerfile の `FROM <ref>`（`scratch` と多段ビルドの段名は除く。`${VAR}/` の接頭辞はそのまま読む）、
+ *      `COPY --from=<ref>`・`RUN --mount=…,from=<ref>`（段名・段番号は除く。#1814）
+ *   4. テンプレートの `image:` 行に直書きした `default "<ref>"`（値が `/` か `:` を含むもの。`default "latest"` は拾わない。#1814）
+ *   `src/` 配下（#1814。submodule `src/ai-stock-trading` は別リポジトリなので除く）:
+ *   5. Containerfile（3 と同じ）—— 自製イメージの基底イメージ
+ *   6. C# の Testcontainers の参照: `new <X>Builder("<ref>")`（Testcontainers を参照するファイル）・`.WithImage("<ref>")`・
+ *      `const string <…Image…|Reference> = "<ref>"`（Testcontainers に言及するファイル）。引数なしのモジュールのビルダ
+ *      （`new PostgreSqlBuilder()` 等）はモジュール既定の tag だけのイメージを暗黙に使うので、参照として拾って落とす。
  *
  * 対象外（理由つき）:
  *   - **自製イメージ**（`microservices-platform/*`・`k3d-local/*`）: CD が一意タグ/digest を渡す
  *     （運用仕様書 §自製イメージ）。chart 既定の `tag: latest` は CD 上書き用のプレースホルダである。
- *   - テンプレートの `{{ … }}` を含む行: 値は values 側で検査する。
- *   - コメント行。
+ *   - テンプレートの `{{ … }}` を含む行: 値は values 側で検査する（直書きの `default "<ref>"` は 4 で拾う）。
+ *   - コメント行。`src/` の YAML（配備物の `image:` は `deploy/` にしか無い。lock ファイル等を誤読しない）。
  *
  * 落とすもの:
  *   - tag だけの参照（`scripts/image-digest-exceptions.json` に理由つきで載っているものを除く）。
@@ -38,8 +47,12 @@ const path = require('path');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const DEPLOY_DIR = 'deploy';
+/** #1814: 自製イメージの基底イメージと統合試験の Testcontainers の置き場。YAML は読まない（`listFiles` の `kinds`）。 */
+const SRC_DIR = 'src';
+/** 別リポジトリ（AST）の submodule。CI で取得されても本リポの統制の対象外（変えるのは向こうのリポジトリ）。 */
+const SKIP_PATHS = new Set(['src/ai-stock-trading']);
 const EXCEPTIONS_PATH = path.join(__dirname, 'image-digest-exceptions.json');
-const SKIP_DIRS = new Set(['node_modules', '.git', 'charts']);
+const SKIP_DIRS = new Set(['node_modules', '.git', 'charts', 'bin', 'obj']);
 
 /**
  * 自製イメージの判定（IADR-0514 決定 2）。**実際に使っている接頭辞だけに錨を下ろす**（#1787 監査 (f)）:
@@ -95,16 +108,28 @@ function extractRefs(relPath, content) {
 
   if (isContainerfile(base)) {
     const stages = new Set();
+    const isStage = (ref) => /^\d+$/.test(ref) || (stages.has(ref.toLowerCase()) && !ref.includes(':') && !ref.includes('/'));
     lines.forEach((raw, i) => {
+      if (/^\s*#/.test(raw)) return;
       const m = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?/i.exec(raw);
-      if (!m) return;
-      const ref = m[1];
-      if (m[2]) stages.add(m[2].toLowerCase());
-      if (ref === 'scratch' || stages.has(ref.toLowerCase()) && !ref.includes(':') && !ref.includes('/')) return;
-      out.push({ file: relPath, line: i + 1, ref, kind: 'from' });
+      if (m) {
+        const ref = m[1];
+        if (m[2]) stages.add(m[2].toLowerCase());
+        if (ref === 'scratch' || isStage(ref)) return;
+        out.push({ file: relPath, line: i + 1, ref, kind: 'from' });
+        return;
+      }
+      // #1814: `COPY --from=<外部イメージ>` と `RUN --mount=…,from=<外部イメージ>` も外部イメージを引く。段名・段番号は除く。
+      const c = /^\s*COPY\s+(?:--\S+\s+)*?--from=(\S+)/i.exec(raw);
+      const r = /^\s*RUN\s+.*--mount=\S*?\bfrom=([^,\s]+)/i.exec(raw);
+      const ref = c ? c[1] : r ? r[1] : null;
+      if (ref === null || isStage(ref)) return;
+      out.push({ file: relPath, line: i + 1, ref, kind: c ? 'copy-from' : 'mount-from' });
     });
     return out;
   }
+
+  if (/\.cs$/.test(base)) return extractCsharpRefs(relPath, lines);
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
@@ -116,14 +141,20 @@ function extractRefs(relPath, content) {
 
     // #1787 監査 (a): helm の `image: {repository: x, tag: y}` の形（ブロックでも flow でも）。
     // `repository` を持つマッピングは、同じマッピングに digest が要る。持たない見出し（global.image 等）は拾わない。
-    if (value === '' || value.startsWith('{')) {
+    if (value === '' || (value.startsWith('{') && !value.startsWith('{{'))) {
       const keys = value === '' ? childKeys(lines, i, indent) : flowKeys(value);
       if (keys && 'repository' in keys && !String(keys.repository).includes('{{')) {
         out.push({ file: relPath, line: i + 1, ref: composeRef(keys.registry, keys.repository, keys.tag, keys.digest), kind: 'values-block' });
       }
       continue;
     }
-    if (value.includes('{{')) continue; // テンプレートの行
+    if (value.includes('{{')) {
+      // テンプレートの行。値は values 側で検査する。ただし直書きの既定値（`default "x/y:1"`）は values に現れない（#1814）。
+      for (const d of value.matchAll(/\bdefault\s+"([^"]+)"/g)) {
+        if (/[/:]/.test(d[1])) out.push({ file: relPath, line: i + 1, ref: d[1], kind: 'template-default' });
+      }
+      continue;
+    }
 
     if (value.includes(':') || value.includes('@')) {
       out.push({ file: relPath, line: i + 1, ref: value, kind: 'image' });
@@ -152,6 +183,42 @@ function extractRefs(relPath, content) {
       continue;
     }
     out.push({ file: relPath, line: i + 1, ref: composeRef(siblings.registry, value, siblings.tag, siblings.digest), kind: 'values-block' });
+  }
+  return out;
+}
+
+/** イメージ参照の形（空白なし・小文字の名前。`${VAR}/` の接頭辞・tag・digest は任意）。 */
+const IMAGE_REF_RE =
+  /^(?:\$\{\w+\}\/)?(?:[a-z0-9.-]+(?::\d+)?\/)?[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*(?::[\w][\w.-]{0,127})?(?:@sha256:[0-9a-f]{64})?$/;
+/** コンテナではないビルダ（`new XBuilder("…")` の誤読を防ぐ）。 */
+const NON_CONTAINER_BUILDERS = new Set(['String', 'Uri', 'Configuration', 'Host', 'WebHost', 'WebApplication', 'DbContextOptions', 'Npgsql', 'NpgsqlConnectionString', 'NpgsqlDataSource']);
+/** Testcontainers のモジュールのビルダ（引数なしだとモジュール既定の tag だけのイメージを使う）。 */
+const TC_MODULE_BUILDERS = /\bnew\s+(PostgreSql|RabbitMq|Redis|Qdrant|Minio|Keycloak|Kafka|MongoDb|MsSql|MySql|MariaDb|Elasticsearch|Nats|LocalStack|Azurite|Valkey)Builder\s*\(\s*\)/g;
+
+/**
+ * #1814: C# の Testcontainers の参照を拾う。コメント行は空にしてから全文へ正規表現を当てる（定数の値が次の行に来る形も読む）。
+ * kind: 'testcontainers'（リテラル）/ 'testcontainers-default'（引数なしのモジュールのビルダ）。
+ */
+function extractCsharpRefs(relPath, lines) {
+  const out = [];
+  const code = lines.map((l) => (/^\s*(\/\/|\*|\/\*)/.test(l) ? '' : l));
+  const text = code.join('\n');
+  const mentionsTc = /Testcontainers/.test(lines.join('\n'));
+  const usesTc = /^\s*using\s+(?:DotNet\.)?Testcontainers\b/m.test(text);
+  const lineOf = (idx) => text.slice(0, idx).split('\n').length;
+  const push = (idx, ref, kind) => {
+    if (kind === 'testcontainers' && !IMAGE_REF_RE.test(ref)) return;
+    out.push({ file: relPath, line: lineOf(idx), ref, kind });
+  };
+  if (usesTc) {
+    for (const m of text.matchAll(/\bnew\s+(\w*)Builder\s*\(\s*"([^"]*)"/g)) {
+      if (!NON_CONTAINER_BUILDERS.has(m[1])) push(m.index, m[2], 'testcontainers');
+    }
+    for (const m of text.matchAll(TC_MODULE_BUILDERS)) push(m.index, `${m[1]}Builder()（モジュール既定のイメージ）`, 'testcontainers-default');
+  }
+  for (const m of text.matchAll(/\.WithImage\s*\(\s*"([^"]*)"/g)) push(m.index, m[1], 'testcontainers');
+  if (mentionsTc) {
+    for (const m of text.matchAll(/\bconst\s+string\s+(\w*(?:Image\w*|Reference))\s*=\s*"([^"]*)"/g)) push(m.index, m[2], 'testcontainers');
   }
   return out;
 }
@@ -193,14 +260,19 @@ function flowKeys(value) {
 /** 走査するファイル名（#1787 監査 (d): `*.Dockerfile` と `Containerfile` も読む）。 */
 const isContainerfile = (name) => /^(Dockerfile|Containerfile)(\..*)?$/.test(name) || /\.(Dockerfile|Containerfile)$/.test(name);
 
-function listFiles(dir) {
+/**
+ * 走査するファイルを集める。`deploy/` は YAML と Containerfile、`src/` は Containerfile と C#（#1814）。
+ */
+function listFiles(dir, root, { yaml, csharp }) {
   const found = [];
   const walk = (d) => {
+    if (!fs.existsSync(d)) return;
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       if (SKIP_DIRS.has(e.name)) continue;
       const full = path.join(d, e.name);
+      if (SKIP_PATHS.has(path.relative(root, full).split(path.sep).join('/'))) continue;
       if (e.isDirectory()) walk(full);
-      else if (/\.ya?ml$/.test(e.name) || isContainerfile(e.name)) found.push(full);
+      else if ((yaml && /\.ya?ml$/.test(e.name)) || (csharp && /\.cs$/.test(e.name)) || isContainerfile(e.name)) found.push(full);
     }
   };
   walk(dir);
@@ -208,7 +280,10 @@ function listFiles(dir) {
 }
 
 function collect(root = REPO_ROOT) {
-  const files = listFiles(path.join(root, DEPLOY_DIR));
+  const files = [
+    ...listFiles(path.join(root, DEPLOY_DIR), root, { yaml: true, csharp: false }),
+    ...listFiles(path.join(root, SRC_DIR), root, { yaml: false, csharp: true }),
+  ];
   const refs = files.flatMap((f) =>
     extractRefs(path.relative(root, f).split(path.sep).join('/'), fs.readFileSync(f, 'utf8')),
   );
@@ -271,7 +346,7 @@ function run() {
   }
   const { infra, errors } = evaluate(refs, readExceptions());
   if (infra.length === 0) {
-    console.error('[check-image-digests] インフラのイメージの参照が 0 件である（自製判定か抽出が壊れている）。');
+    console.error('[check-image-digests] 外部イメージの参照が 0 件である（自製判定か抽出が壊れている）。');
     process.exit(1);
   }
   if (errors.length > 0) {
@@ -282,7 +357,7 @@ function run() {
   }
   const products = new Set(infra.map((r) => productOf(splitRef(r.ref).name)));
   console.log(
-    `[check-image-digests] OK: ${files.length} ファイル・インフラの参照 ${infra.length} 件（製品 ${products.size} 種）はすべて digest で固定されている（自製 ${refs.length - infra.length} 件は対象外）。`,
+    `[check-image-digests] OK: ${files.length} ファイル・外部イメージの参照 ${infra.length} 件（製品 ${products.size} 種）はすべて digest で固定されている（自製 ${refs.length - infra.length} 件は対象外）。`,
   );
 }
 
@@ -382,6 +457,54 @@ function selfTest() {
     !isSelfBuilt('evil.io/microservices-platform/x:1') && isSelfBuilt('microservices-platform/bff:latest') &&
     isSelfBuilt('harbor.internal/microservices-platform/bff:abc') && isSelfBuilt('k3d-local/platform-backup:r6') &&
     errs('deploy/x.yaml', '  image: evil.io/microservices-platform/x:1\n').length === 1);
+  // --- #1814: 走査の範囲を src/ へ広げ、監査の取りこぼし（COPY --from・テンプレートの直書き default）を塞ぐ ---
+  t('#1814 COPY --from=<外部イメージ> の tag だけを落とし、段名・段番号は拾わない', () => {
+    const df = 'FROM golang:1.22@' + D + ' AS build\nCOPY --from=build /a /a\nCOPY --from=0 /b /b\nCOPY --chown=1:1 --from=busybox:1.37 /bin/sh /sh\n';
+    const r = extractRefs('src/x/Dockerfile', df);
+    return r.map((x) => x.ref).join() === `golang:1.22@${D},busybox:1.37` && r[1].kind === 'copy-from' &&
+      errs('src/x/Dockerfile', df).length === 1;
+  });
+  t('#1814 RUN --mount=…,from=<外部イメージ> を拾う（段名は拾わない）', () =>
+    refsOf('src/x/Dockerfile', 'FROM a:1@' + D + ' AS deps\nRUN --mount=type=bind,from=deps,target=/d true\nRUN --mount=type=bind,from=alpine:3.20,target=/x true\n')
+      .join() === `a:1@${D},alpine:3.20`);
+  t('#1814 テンプレートの image 行に直書きした default "<参照>" を落とし、default "latest" は拾わない', () => {
+    const tpl = '  image: "{{ .Values.x.image | default "busybox:1.36" }}"\n  image: "{{ $r }}/{{ $s.image }}:{{ $s.tag | default "latest" }}"\n';
+    return refsOf('deploy/helm/t/templates/a.yaml', tpl).join() === 'busybox:1.36' && errs('deploy/helm/t/templates/a.yaml', tpl).length === 1;
+  });
+  t('#1814 C#: Testcontainers のビルダの引数・WithImage のリテラルを拾い、StringBuilder は拾わない', () => {
+    const cs = 'using Testcontainers.PostgreSql;\nvar a = new PostgreSqlBuilder("postgres:16-alpine").Build();\n' +
+      'var sb = new StringBuilder("BT /F1");\nvar u = new UriBuilder("http://x");\nvar c = new ContainerBuilder().WithImage("redis:7@' + D + '");\n';
+    const r = extractRefs('src/T/A.cs', cs);
+    return r.map((x) => x.ref).join() === `postgres:16-alpine,redis:7@${D}` && r[0].line === 2 && r[0].kind === 'testcontainers' &&
+      errs('src/T/A.cs', cs).length === 1;
+  });
+  t('#1814 C#: Testcontainers に言及するファイルの const …Image / Reference を拾う（値が次の行でも読む）', () =>
+    refsOf('src/T/I.cs', '// Testcontainers の参照\npublic const string Reference =\n    "qdrant/qdrant:v1.18.1@' + D + '";\nconst string Image = "chrislusf/seaweedfs:4.47";\nconst string Name = "redis:7";\n')
+      .join() === `qdrant/qdrant:v1.18.1@${D},chrislusf/seaweedfs:4.47`);
+  t('#1814 C#: Testcontainers に言及しないファイルの const は拾わない（接続文字列の "redis:6379" 等の誤読を防ぐ）', () =>
+    refsOf('src/A/O.cs', 'public const string Reference = "redis:6379";\n').length === 0);
+  t('#1814 C#: 引数なしのモジュールのビルダ（既定のイメージ）を落とす。コメント行は読まない', () => {
+    const cs = 'using Testcontainers.RabbitMq;\n// new RabbitMqBuilder() は廃止予定\nvar r = new RabbitMqBuilder().Build();\nvar h = new HostBuilder();\n';
+    const r = extractRefs('src/T/B.cs', cs);
+    return r.length === 1 && r[0].kind === 'testcontainers-default' && r[0].line === 3 && errs('src/T/B.cs', cs).length === 1;
+  });
+  t('#1814 src/ は Containerfile と C# だけを読み、submodule（src/ai-stock-trading）と bin/obj を読まない', () => {
+    const os = require('os');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cid-'));
+    try {
+      const w = (rel, text) => { fs.mkdirSync(path.dirname(path.join(tmp, rel)), { recursive: true }); fs.writeFileSync(path.join(tmp, rel), text); };
+      w('deploy/c.yml', 'services:\n  r:\n    image: redis:7\n');
+      w('src/a/Dockerfile', 'FROM alpine:3.20\n');
+      w('src/a/k.yaml', 'image: busybox:1\n');
+      w('src/a/T.cs', 'using Testcontainers.Redis;\nvar x = new RedisBuilder("redis:7").Build();\n');
+      w('src/a/obj/Dockerfile', 'FROM obj:1\n');
+      w('src/ai-stock-trading/Dockerfile', 'FROM ast:1\n');
+      const { refs } = collect(tmp);
+      return refs.map((r) => `${r.file}=${r.ref}`).sort().join() === 'deploy/c.yml=redis:7,src/a/Dockerfile=alpine:3.20,src/a/T.cs=redis:7';
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
   t('splitRef はレジストリのポートを tag と取り違えない', () => {
     const s = splitRef(`localhost:5000/foo/bar:1.2@${D}`);
     return s.name === 'localhost:5000/foo/bar' && s.tag === '1.2' && s.digest === D;
