@@ -41,8 +41,14 @@ const DEPLOY_DIR = 'deploy';
 const EXCEPTIONS_PATH = path.join(__dirname, 'image-digest-exceptions.json');
 const SKIP_DIRS = new Set(['node_modules', '.git', 'charts']);
 
-/** 自製イメージの判定（IADR-0514 決定 2）。レジストリ接頭辞を剥がした名前で見る。 */
-const SELF_BUILT = [/^k3d-local\//, /(^|\/)microservices-platform\//];
+/**
+ * 自製イメージの判定（IADR-0514 決定 2）。**実際に使っている接頭辞だけに錨を下ろす**（#1787 監査 (f)）:
+ *   - `microservices-platform/<名>`（chart の services.*・frontend。レジストリは global.image.registry が付ける）
+ *   - 同じ名前を本番・経路 B のレジストリ（`harbor.internal` / `k3d-local`）付きで直書きした形
+ *   - `k3d-local/<名>`（経路 B の擬似レジストリ。k3d へ import する自製イメージだけが置かれる）
+ * 任意のレジストリ配下の `microservices-platform/`（例 `evil.io/microservices-platform/x`）は免除しない。
+ */
+const SELF_BUILT = [/^(?:harbor\.internal\/|k3d-local\/)?microservices-platform\//, /^k3d-local\//];
 
 const DIGEST_RE = /@sha256:[0-9a-f]{64}$/;
 
@@ -87,7 +93,7 @@ function extractRefs(relPath, content) {
   const lines = String(content).replace(/\r\n/g, '\n').split('\n');
   const base = path.basename(relPath);
 
-  if (/^Dockerfile/.test(base)) {
+  if (isContainerfile(base)) {
     const stages = new Set();
     lines.forEach((raw, i) => {
       const m = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?/i.exec(raw);
@@ -106,8 +112,18 @@ function extractRefs(relPath, content) {
     const m = /^(\s*)(-\s+)?image:\s*(.*)$/.exec(stripComment(raw));
     if (!m) continue;
     const value = unquote(m[3]);
-    if (value === '' || value.includes('{{')) continue; // マッピングの見出し・テンプレートの行
     const indent = m[1].length + (m[2] ? m[2].length : 0);
+
+    // #1787 監査 (a): helm の `image: {repository: x, tag: y}` の形（ブロックでも flow でも）。
+    // `repository` を持つマッピングは、同じマッピングに digest が要る。持たない見出し（global.image 等）は拾わない。
+    if (value === '' || value.startsWith('{')) {
+      const keys = value === '' ? childKeys(lines, i, indent) : flowKeys(value);
+      if (keys && 'repository' in keys && !String(keys.repository).includes('{{')) {
+        out.push({ file: relPath, line: i + 1, ref: composeRef(keys.registry, keys.repository, keys.tag, keys.digest), kind: 'values-block' });
+      }
+      continue;
+    }
+    if (value.includes('{{')) continue; // テンプレートの行
 
     if (value.includes(':') || value.includes('@')) {
       out.push({ file: relPath, line: i + 1, ref: value, kind: 'image' });
@@ -135,12 +151,47 @@ function extractRefs(relPath, content) {
       out.push({ file: relPath, line: i + 1, ref: value, kind: 'image' });
       continue;
     }
-    const registry = siblings.registry && !siblings.registry.includes('{{') ? `${siblings.registry}/` : '';
-    const digest = siblings.digest ? `@${siblings.digest}` : '';
-    out.push({ file: relPath, line: i + 1, ref: `${registry}${value}:${siblings.tag}${digest}`, kind: 'values-block' });
+    out.push({ file: relPath, line: i + 1, ref: composeRef(siblings.registry, value, siblings.tag, siblings.digest), kind: 'values-block' });
   }
   return out;
 }
+
+/** registry / name / tag / digest から参照を組み立てる（テンプレートの registry は付けない）。 */
+function composeRef(registry, name, tag, digest) {
+  const reg = registry && !String(registry).includes('{{') ? `${registry}/` : '';
+  return `${reg}${name}${tag ? `:${tag}` : ''}${digest ? `@${digest}` : ''}`;
+}
+
+/** `key:` 見出しの直下の子キー（最初の子の深さだけ）を読む。子が無ければ null。 */
+function childKeys(lines, at, indent) {
+  const keys = {};
+  let childIndent = null;
+  for (let j = at + 1; j < lines.length; j++) {
+    const l = lines[j];
+    if (l.trim() === '' || /^\s*#/.test(l)) continue;
+    const ind = l.length - l.trimStart().length;
+    if (ind <= indent) break;
+    if (childIndent === null) childIndent = ind;
+    if (ind !== childIndent) continue;
+    const k = /^\s*([A-Za-z0-9_.-]+):\s*(.*)$/.exec(stripComment(l));
+    if (k) keys[k[1]] = unquote(k[2]);
+  }
+  return childIndent === null ? null : keys;
+}
+
+/** flow 形式 `{repository: x, tag: "y"}` を読む（入れ子は扱わない）。 */
+function flowKeys(value) {
+  const body = value.replace(/^\{/, '').replace(/\}\s*$/, '');
+  const keys = {};
+  for (const part of body.split(',')) {
+    const k = /^\s*([A-Za-z0-9_.-]+)\s*:\s*(.*?)\s*$/.exec(part);
+    if (k) keys[k[1]] = unquote(k[2]);
+  }
+  return keys;
+}
+
+/** 走査するファイル名（#1787 監査 (d): `*.Dockerfile` と `Containerfile` も読む）。 */
+const isContainerfile = (name) => /^(Dockerfile|Containerfile)(\..*)?$/.test(name) || /\.(Dockerfile|Containerfile)$/.test(name);
 
 function listFiles(dir) {
   const found = [];
@@ -149,7 +200,7 @@ function listFiles(dir) {
       if (SKIP_DIRS.has(e.name)) continue;
       const full = path.join(d, e.name);
       if (e.isDirectory()) walk(full);
-      else if (/\.ya?ml$/.test(e.name) || /^Dockerfile/.test(e.name)) found.push(full);
+      else if (/\.ya?ml$/.test(e.name) || isContainerfile(e.name)) found.push(full);
     }
   };
   walk(dir);
@@ -309,6 +360,28 @@ function selfTest() {
       ],
       [],
     ).errors.length === 0);
+  t('(a) helm の image: { repository, tag } ブロックで digest が無ければ落とす', () => {
+    const text = 'redis:\n  image:\n    registry: docker.io\n    repository: bitnami/redis\n    tag: "7.2"\n  port: 6379\n';
+    const r = refsOf('deploy/v.yaml', text);
+    return r.join() === 'docker.io/bitnami/redis:7.2' && errs('deploy/v.yaml', text).length === 1;
+  });
+  t('(a) image: { repository, tag, digest } ブロックは通す', () =>
+    errs('deploy/v.yaml', `x:\n  image:\n    repository: foo/bar\n    tag: "1"\n    digest: "${D}"\n`).length === 0);
+  t('(a) flow 形式の image: {repository: x, tag: y} も拾って落とす', () => {
+    const text = 'x:\n  image: {repository: foo/bar, tag: "1"}\n';
+    return refsOf('deploy/v.yaml', text).join() === 'foo/bar:1' && errs('deploy/v.yaml', text).length === 1;
+  });
+  t('(a) repository を持たない見出し（global.image）は拾わない', () =>
+    refsOf('deploy/v.yaml', 'global:\n  image:\n    registry: harbor.internal\n    pullPolicy: IfNotPresent\n').length === 0);
+  t('(d) *.Dockerfile と Containerfile を走査対象にし、FROM を読む', () =>
+    isContainerfile('backup.Dockerfile') && isContainerfile('Containerfile') && isContainerfile('Dockerfile.dev') &&
+    !isContainerfile('notes.md') && !isContainerfile('values.yaml') &&
+    errs('deploy/a/backup.Dockerfile', 'FROM alpine:3.20\n').length === 1 &&
+    errs('deploy/a/Containerfile', 'FROM alpine:3.20\n').length === 1);
+  t('(f) 任意レジストリ配下の microservices-platform/ は自製として免除しない', () =>
+    !isSelfBuilt('evil.io/microservices-platform/x:1') && isSelfBuilt('microservices-platform/bff:latest') &&
+    isSelfBuilt('harbor.internal/microservices-platform/bff:abc') && isSelfBuilt('k3d-local/platform-backup:r6') &&
+    errs('deploy/x.yaml', '  image: evil.io/microservices-platform/x:1\n').length === 1);
   t('splitRef はレジストリのポートを tag と取り違えない', () => {
     const s = splitRef(`localhost:5000/foo/bar:1.2@${D}`);
     return s.name === 'localhost:5000/foo/bar' && s.tag === '1.2' && s.digest === D;
@@ -332,7 +405,7 @@ function selfTest() {
   console.log(`✓ self-test: ${cases.length} 件すべて通過`);
 }
 
-module.exports = { extractRefs, evaluate, splitRef, productOf, isSelfBuilt, collect };
+module.exports = { extractRefs, evaluate, splitRef, productOf, isSelfBuilt, isContainerfile, collect };
 
 if (require.main === module) {
   if (process.argv.includes('--self-test')) selfTest();

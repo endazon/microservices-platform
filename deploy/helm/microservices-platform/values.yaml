@@ -1235,7 +1235,9 @@ embedding:
   replicas: 1
   registry: ghcr.io
   image: huggingface/text-embeddings-inference
-  # 実運用前に固定するプレースホルダ（CPU 版の例。GPU 版は cuda-* タグへ差し替える）。
+  # 実運用前に固定するプレースホルダ（CPU 版の例）。
+  # 🔴 GPU 版（cuda-* タグ）へ差し替えるときは、下の digest も**同時に**その tag の digest へ替えるか空にする。
+  #    tag だけを替えると `cuda-…@<CPU 版の digest>` が描かれ、digest が優先されて**黙って CPU 版が動く**（#1787）。
   tag: "cpu-1.5"
   # ADR-0107 決定 3, IADR-0514 (#1787): multi-arch の image index の digest（2026-10-08 に ghcr.io から匿名で解決。
   # 本 tag の index は linux/amd64 のみ）。tag を変えるときは digest を対で変え、deploy/docker-compose.yml と揃える

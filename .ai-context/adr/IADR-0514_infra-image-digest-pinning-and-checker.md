@@ -55,6 +55,7 @@ related_specs:
 
 - `microservices-platform/*`（chart の `services.*`・`frontend`）と `k3d-local/*`（経路 B の擬似レジストリ）は**対象外**。CD が一意タグ/digest を渡す（運用仕様書 §自製イメージ）。chart 既定の `tag: latest` は CD 上書き用のプレースホルダであり、digest を置く版がまだ無い。
 - テンプレートの `{{ … }}` を含む行は values 側で検査する。
+- ［2026-10-08 追記 / PR #1813 の独立監査］自製の判定は実際に使う接頭辞だけに錨を下ろす（レジストリ無しか `harbor.internal` / `k3d-local` 付きの `microservices-platform/`、および `k3d-local/`）。任意のレジストリ配下の `microservices-platform/` は免除しない。あわせて helm の `image: {repository, tag}` 形式と `*.Dockerfile` / `Containerfile` も拾うようにした。残る未対応の形は #1814。
 
 ### 決定 3 — 検知は検査器（`scripts/check-image-digests.js`）。Renovate は採らない
 
@@ -87,7 +88,7 @@ related_specs:
 
 ## 残余
 
-1. **`scripts/` が chart / マニフェストで入れる製品**（Istio・External Secrets・Reloader・cert-manager・Argo CD・k3s）は `deploy/` に参照が無く、本 IADR の対象外。Argo CD は `stable` ブランチのマニフェストを直接 apply しており版すら固定されていない。計画への確認を作業仕様書 §環流の下書き 5 に置いた。
+1. **`scripts/` が chart / マニフェストで入れる製品**（Istio・External Secrets・Reloader・cert-manager・Argo CD・k3s）は `deploy/` に参照が無く、本 IADR の対象外。Argo CD は `stable` ブランチのマニフェストを直接 apply しており版すら固定されていない。計画への確認を作業仕様書 §環流の記録 5 に置き、planning#750 で起票した。
 2. **統合試験の Testcontainers のイメージ**（`postgres:16-alpine`・`rabbitmq:3.13-alpine` 等。Qdrant と SeaweedFS を除く）は `deploy/` の外で、固定していない。
 3. digest は registry API から読んだ値であり、**本作業ではクラスタで pull して確かめていない**（実行機にクラスタが無い）。compose の構文（`docker compose config`）と chart の描画・スキーマ（`check-deploy-manifests.js`）は確かめた。
 
