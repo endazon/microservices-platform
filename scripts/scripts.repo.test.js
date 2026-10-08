@@ -3988,6 +3988,24 @@ module.exports = ({ ok, assert }) => {
       assert.match(old.detail, /作成 2026-09-01T00:00:00\.000Z/);
     });
 
+    // #1781（監査 🟡-1）: 基準の利用者に id が無いと ID の集合が空になり、作成時刻の無い利用者が ID を問わず ok に倒れていた。
+    ok('cutover: --baseline の利用者に id が無ければ、作成時刻の無い利用者を ok にしない（fail-closed）', () => {
+      const rec = (r) => r.find((f) => f.check === '人間の利用者はすべて作り直し後に作られた');
+      const after = goodAfter();
+      after.keycloak.users = [{ username: 'alice', id: 'same-id' }];
+      const r = rec(cut.evaluate(after, expectedCut, SINCE, { keycloak: { users: [{ username: 'alice' }] } }));
+      assert.notStrictEqual(r.status, 'ok');
+      assert.strictEqual(r.status, 'fail');
+      assert.match(r.detail, /--baseline の利用者を読めていないか、id の無い行がある/);
+      // 一部だけ id が欠けている基準も「不明」として扱う（欠けた行の利用者が同じ ID のまま残っていても見分けられない）。
+      const partial = { keycloak: { users: [{ username: 'alice' }, { username: 'bob', id: 'old-bob' }] } };
+      assert.strictEqual(rec(cut.evaluate(after, expectedCut, SINCE, partial)).status, 'fail');
+      // 基準の Keycloak を収集できていない（null）ものも「0 人」と読まない。
+      assert.strictEqual(rec(cut.evaluate(after, expectedCut, SINCE, { keycloak: null })).status, 'fail');
+      // 基準に利用者が 0 人（切替前に realm が無かった）なら、切替後の利用者はすべて新しい → ok のまま。
+      assert.strictEqual(rec(cut.evaluate(after, expectedCut, SINCE, { keycloak: { users: [] } })).status, 'ok');
+    });
+
     ok('cutover: Prometheus の head の最古サンプルは合否に使わない（判定は prometheus-data の PVC）', () => {
       const d = goodAfter();
       d.prometheus = { minTime: BEFORE }; // 古いブロックが残っているように見えても、head の値では判定しない
@@ -4031,6 +4049,48 @@ module.exports = ({ ok, assert }) => {
       assert.deepStrictEqual(cut.countFilerObjects((dir) => (dir === '/buckets' ? { Entries: [{ FullPath: '/buckets/b', Mode: DIR }] } : { Entries: null })),
         { buckets: ['b'], objects: 0 });
       assert.throws(() => cut.countFilerObjects(() => null), /filer の応答を読めない/);
+    });
+
+    // #1781（監査 🟡-2）: 続きの鍵が進まない応答で、10000 ページの上限まで同じページを引き続けていた。
+    ok('cutover: filer の一覧のページ送りが進まなければ（lastFileName が前と同じ）例外にする', () => {
+      let calls = 0;
+      const stuck = (dir) => {
+        calls += 1;
+        return dir === '/buckets'
+          ? { Entries: [{ FullPath: '/buckets/b', Mode: 2147484141 }], ShouldDisplayLoadMore: false }
+          : { Entries: [{ FullPath: '/buckets/b/x', Mode: 420 }], ShouldDisplayLoadMore: true, LastFileName: 'x' };
+      };
+      assert.throws(() => cut.countFilerObjects(stuck), /ページ送りが進まない/);
+      assert.ok(calls <= 4, `止まるまでに ${calls} 回引いた`);
+    });
+
+    // #1781（監査 🟡-2）: 子プロセスに上限時間が無く、Pod 内のコマンドが返らないと収集が止まった（run 37736890310 の 53 分の無出力）。
+    ok('cutover: 子プロセスは上限時間つきで起動し、上限を超えたら例外にする（既定 120 秒・CUTOVER_CMD_TIMEOUT_MS で上書き）', () => {
+      const saved = process.env.CUTOVER_CMD_TIMEOUT_MS;
+      try {
+        delete process.env.CUTOVER_CMD_TIMEOUT_MS;
+        let opts = null;
+        const fake = (cmd, args, o) => { opts = o; return { status: 0, stdout: 'ok', stderr: '' }; };
+        assert.strictEqual(cut.run('kubectl', ['get'], 'テスト', undefined, fake), 'ok');
+        assert.strictEqual(opts.timeout, cut.DEFAULT_CMD_TIMEOUT_MS);
+        assert.strictEqual(cut.DEFAULT_CMD_TIMEOUT_MS, 120000);
+        process.env.CUTOVER_CMD_TIMEOUT_MS = '5000';
+        cut.run('kubectl', ['get'], 'テスト', undefined, fake);
+        assert.strictEqual(opts.timeout, 5000);
+        // spawnSync が上限で殺したときの形（error.code === 'ETIMEDOUT'）は例外になる（tryCollect が「収集できなかった」にする）。
+        const timedOut = () => ({ status: null, signal: 'SIGKILL', stdout: '', stderr: '', error: Object.assign(new Error('spawnSync kubectl ETIMEDOUT'), { code: 'ETIMEDOUT' }) });
+        assert.throws(() => cut.run('kubectl', ['exec'], 'テスト', undefined, timedOut), /5000 ms で終わらなかった/);
+        // 実物の子プロセスでも上限で止まる（既定の spawnSync を使う）。
+        process.env.CUTOVER_CMD_TIMEOUT_MS = '200';
+        const t0 = Date.now();
+        assert.throws(() => cut.run(process.execPath, ['-e', 'setTimeout(() => {}, 10000)'], 'テスト'), /200 ms で終わらなかった/);
+        assert.ok(Date.now() - t0 < 5000, '上限で止まっていない');
+        process.env.CUTOVER_CMD_TIMEOUT_MS = 'abc';
+        assert.throws(() => cut.run('kubectl', ['get'], 'テスト', undefined, fake), /正の整数/);
+      } finally {
+        if (saved === undefined) delete process.env.CUTOVER_CMD_TIMEOUT_MS;
+        else process.env.CUTOVER_CMD_TIMEOUT_MS = saved;
+      }
     });
 
     ok('cutover: 作り直す PVC はオブジェクトストレージの現行の PVC（chart の seaweedfs-data）を指し、旧 minio-data を指さない', () => {
@@ -10963,6 +11023,26 @@ ${r.stderr}`);
         const gate2 = at('node scripts/check-stack-ready.js --live', verify);
         const neg = at('DROP DATABASE ${ast_db}', gate2);
         for (const [name, v] of Object.entries({ up1, gate1, before, discard, up2, verify, gate2, neg })) assert.ok(v > 0, `${name} が順序どおりに無い`);
+      });
+
+      // #1781（監査 🟡-3 / 🟡-4）: 消しすぎの対照だけでは、検証が「作り直されたこと」を見ているか（消し足りないを捕まえるか）は示せない。
+      ok('#1781: 静止の後・破棄の前に「破棄を飛ばす」陰性対照があり、資産ごとの fail と終了コード 1 を見る', () => {
+        const at = (s2, from = 0) => code.indexOf(s2, from);
+        const quiesce = at('echo "CUTOVER_SINCE=');
+        const under = at('node scripts/measure-cutover-inventory.js --input "$OUT/before.json" --since "$CUTOVER_SINCE" --baseline "$OUT/before.json" --json', quiesce);
+        const discard = at('--print-recreate-sql', under);
+        assert.ok(quiesce > 0 && under > quiesce && discard > under, '「破棄を飛ばす」陰性対照が静止と破棄の間に無い');
+        const step = code.slice(under, discard);
+        assert.match(step, /rc !== '1'/, '終了コード 1 を見ていない');
+        for (const asset of ['MSP の DB', 'Keycloak の利用者', 'Qdrant', 'オブジェクトストレージ', 'PVC', 'Wiki.js']) {
+          assert.ok(step.includes(`${asset}:`) || step.includes(`'${asset}':`), `資産 ${asset} の行を見ていない`);
+        }
+      });
+
+      ok('#1781: postgres-data の陰性対照は AST の DB の fail を「1 件以上」で済ませない（前の対照の残りで満たされる）', () => {
+        const step = code.slice(code.indexOf('neg-postgres-data.json" "$rc"'));
+        assert.ok(!/ast\.length\s*<\s*1/.test(step), 'ast.length < 1 の判定が残っている');
+        assert.match(step, /ast\.length !== want\.length/, '切替前に在った AST の DB の数と突き合わせていない');
       });
 
       ok('#1781: 再構築の起動器は SEARCHSEED を付けず TAGSEED を付ける（移行仕様書の手順 4）', () => {

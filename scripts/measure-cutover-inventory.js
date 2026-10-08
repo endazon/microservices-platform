@@ -46,6 +46,7 @@
  *   CUTOVER_INFRA_NS=platform-infra / CUTOVER_MSP_NS=microservices-platform
  *   CUTOVER_PG_USER=postgres（DB の作成時刻を読むのにスーパーユーザが要る）
  *   CUTOVER_REALM=platform / CUTOVER_KC_ADMIN_USER=admin / CUTOVER_KC_ADMIN_PASSWORD（未設定なら admin）
+ *   CUTOVER_CMD_TIMEOUT_MS=120000（kubectl ほか子プロセス 1 回あたりの上限。超えたら例外にして、その資産を「収集できなかった」にする）
  *   CUTOVER_QDRANT_URL / CUTOVER_PROM_URL（未設定なら API サーバのサービスプロキシ経由で GET する。
  *     メッシュの STRICT mTLS でプロキシが通らないときは kubectl port-forward して URL を渡す）
  *
@@ -171,7 +172,10 @@ function listAll(listDir, dirPath) {
     const got = Array.isArray(res.Entries) ? res.Entries : [];
     entries.push(...got);
     if (!res.ShouldDisplayLoadMore || !got.length) return entries;
-    last = res.LastFileName || baseName(got[got.length - 1].FullPath);
+    const next = res.LastFileName || baseName(got[got.length - 1].FullPath);
+    // #1781（監査）: 続きの鍵が前のページから進まなければ、同じページを引き続けて終わらない。上限の 10000 ページを待たずに止める。
+    if (next === last) throw new Error(`filer の一覧のページ送りが進まない: ${dirPath}（lastFileName=${next}）`);
+    last = next;
   }
 }
 
@@ -292,9 +296,13 @@ function evaluate(data, expected, sinceIso, before = null) {
   // #1781: realm.json から取り込んだ利用者は作成時刻を持たない（宣言に createdTimestamp が無く、取り込みは宣言の値をそのまま入れる）。
   // CI の k3d の切替リハーサルで、作り直した realm の seed 利用者 4 人がすべて「作り直し前」と判定された（run 37734487908）。
   // 作成時刻が無い利用者は、--baseline の同じ利用者の ID と比べる（realm.json は ID を宣言しないので、取り込み直すと ID が変わる）。
-  const beforeIds = before
-    ? new Set((before.keycloak?.users || []).map((u) => u.id).filter(Boolean))
-    : null;
+  // 🔴 #1781（監査）: 基準の利用者に id の欠けた行が 1 件でもあれば、基準の ID 集合は「不明」として扱う（fail-closed）。
+  // 空集合にすると、作成時刻の無い利用者は ID を問わずすべて「作り直した」（ok）に倒れる。
+  // 基準に利用者が 0 人（切替前に realm が無かった）なら空集合のままでよい（切替後の利用者はすべて新しい）。
+  // 基準の Keycloak を収集できていない（keycloak が null・users が配列でない）ときも「不明」である（0 人と読まない）。
+  const beforeUsers = before?.keycloak?.users;
+  const baselineIdsKnown = Array.isArray(beforeUsers) && beforeUsers.every((u) => u && u.id);
+  const beforeIds = baselineIdsKnown ? new Set(beforeUsers.map((u) => u.id)) : null;
   const stale = [];
   const unknown = [];
   for (const u of humans) {
@@ -309,7 +317,8 @@ function evaluate(data, expected, sinceIso, before = null) {
     out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', 'fail', `作り直し前の利用者: ${stale.join(', ')}`));
   } else if (unknown.length) {
     out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', before ? 'fail' : 'skip',
-      `作成時刻が無く ID で比べられない利用者: ${unknown.join(', ')}${before ? '（収集に id が無い）' : '（--baseline が無い）'}`));
+      `作成時刻が無く ID で比べられない利用者: ${unknown.join(', ')}${!before ? '（--baseline が無い）'
+        : !baselineIdsKnown ? '（--baseline の利用者を読めていないか、id の無い行がある）' : '（収集に id が無い）'}`));
   } else {
     out.push(finding('Keycloak', '人間の利用者はすべて作り直し後に作られた', 'ok', `${humans.length} 人`));
   }
@@ -419,8 +428,23 @@ function renderText(result) {
 
 const env = (k, d) => process.env[k] || d;
 
-function run(cmd, args, what, input) {
-  const res = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, input });
+// #1781（監査）: 子プロセス（kubectl exec ほか）1 回あたりの上限時間。既定 120 秒、CUTOVER_CMD_TIMEOUT_MS で上書きする。
+// 上限が無いと、Pod 内のコマンドが応答を返さないまま収集が止まり、ジョブの上限まで何も出さない（run 37736890310 の検証の手順は
+// 53 分間出力が無いまま取り消された。止まった子プロセスはログからは特定できないが、この形と矛盾しない）。
+// 上限を超えたら例外にする —— tryCollect の資産は「収集できなかった」（判定は fail）、それ以外は終了コード 2 になる。
+const DEFAULT_CMD_TIMEOUT_MS = 120000;
+function cmdTimeoutMs() {
+  const raw = process.env.CUTOVER_CMD_TIMEOUT_MS;
+  if (raw === undefined || raw === '') return DEFAULT_CMD_TIMEOUT_MS;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`CUTOVER_CMD_TIMEOUT_MS は正の整数（ミリ秒）: ${raw}`);
+  return n;
+}
+
+function run(cmd, args, what, input, spawn = spawnSync) {
+  const timeout = cmdTimeoutMs();
+  const res = spawn(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, input, timeout, killSignal: 'SIGKILL' });
+  if (res.error && res.error.code === 'ETIMEDOUT') throw new Error(`${what}: ${cmd} が ${timeout} ms で終わらなかった（CUTOVER_CMD_TIMEOUT_MS）`);
   if (res.error) throw new Error(`${what}: ${cmd} を実行できません（${res.error.message}）`);
   if (res.status !== 0) throw new Error(`${what}: ${cmd} が失敗しました（exit ${res.status}）\n${(res.stderr || '').trim()}`);
   return res.stdout;
@@ -606,6 +630,8 @@ module.exports = {
   declaredAbacSeed,
   mspQueuePrefixes,
   countFilerObjects,
+  run,
+  DEFAULT_CMD_TIMEOUT_MS,
   evaluate,
   countsOf,
   compareCounts,

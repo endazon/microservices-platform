@@ -108,7 +108,8 @@ node scripts/measure-cutover-inventory.js --input cutover-after.json --since 202
 ```
 
 環境変数（既定は経路B の値）: `CUTOVER_KC_ADMIN_USER` / `CUTOVER_KC_ADMIN_PASSWORD`（Secret `keycloak-admin` の値を渡す）、
-`CUTOVER_QDRANT_URL` / `CUTOVER_PROM_URL`（API サーバのサービスプロキシが通らないときに `kubectl port-forward` した URL を渡す）。
+`CUTOVER_QDRANT_URL` / `CUTOVER_PROM_URL`（API サーバのサービスプロキシが通らないときに `kubectl port-forward` した URL を渡す）、
+`CUTOVER_CMD_TIMEOUT_MS`（`kubectl` ほか子プロセス 1 回あたりの上限。既定 120000。超えると例外になる —— Keycloak・Qdrant ほかの資産は「収集できなかった」（判定は fail）、PVC と DB の一覧は終了コード 2）。
 
 ## 手順・スケジュール
 
@@ -278,7 +279,8 @@ done   # どちらも 0 でないこと
 ### CI で回せる部分
 
 上の 1〜5 のうち、合成データで再現できる部分は、ワークフロー `Cutover Rehearsal`（`.github/workflows/cutover-rehearsal.yml`。手動起動）が
-統合スタックと同じ起こし方の k3d の上で通す。起こす → データを入れる（検索検証用の文書・合成の利用者 1 人）→ 手順 1〜5 → 陰性対照 2 本 の順であり、
+統合スタックと同じ起こし方の k3d の上で通す。起こす → データを入れる（検索検証用の文書・合成の利用者 1 人）→ 手順 1・2 → 陰性対照（破棄を飛ばすと 6 資産がそれぞれ fail になること）→ 手順 3〜5 →
+消しすぎの陰性対照 2 本（ai-stock-trading の DB を 1 つ DROP／`postgres-data` を作り直す）の順であり、
 窓の長さはジョブの要約に出る（ランナーと合成データでの値であって、稼働クラスタの見積りではない）。秘密はジョブの中で乱数から作る。
 
 CI では確かめられず、稼働クラスタで（またはその環境変数で立てた使い捨てクラスタで）確かめる必要が残るもの:

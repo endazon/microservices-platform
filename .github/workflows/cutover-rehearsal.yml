@@ -5,7 +5,7 @@
 # `docs/migration/cutover-discard-and-rebuild.md` の §リハーサル（使い捨てクラスタで手順 1〜5 を通す）を、
 # 統合スタック（integration-stack.yml）と同じ起こし方の k3d の上で通す:
 #   起こす → データを入れる（検索検証用の文書・合成の利用者 1 人）→ 事前実測（--dump）→ 静止の時刻 →
-#   破棄 3(a)〜(d) → 再構築 4 → 検証 5（measure-cutover-inventory.js --since --baseline と check-stack-ready.js）→
+#   陰性対照（破棄を飛ばすと 6 資産がそれぞれ fail）→ 破棄 3(a)〜(d) → 再構築 4 → 検証 5（measure-cutover-inventory.js --since --baseline と check-stack-ready.js）→
 #   陰性対照（AST の DB を 1 つ DROP／postgres-data を消して作り直す）→ 窓の長さを記録する。
 # 再現できない部分（実データ・稼働クラスタの環境変数・AST の配備・ArgoCD・人の資格情報）と理由は
 # 作業仕様書 `.ai-context/specs/20261008_1781_cutover-rehearsal-ci.md` が持ち、#457 に記録する。
@@ -190,6 +190,53 @@ jobs:
           echo "CUTOVER_T0=$(date -u +%s)" >> "$GITHUB_ENV"
           echo "破棄の開始: ${since}"
 
+      # 陰性対照（消し足りない）: 何も壊さないまま検証にかけると、6 資産がそれぞれ fail になること。破棄の前に行う。
+      # 入力は事前実測（before.json）そのもの —— 「破棄をすべて飛ばした」切替後の実測と同じ形になる。
+      # 🔴 終了コード 1 だけでは足りない（1 資産の fail でも 1 になる）。資産ごとに fail の行があることを見る（#1781 監査）。
+      - name: 🔴 Negative control — skip the discard entirely (each asset must fail)
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          set +e
+          node scripts/measure-cutover-inventory.js --input "$OUT/before.json" --since "$CUTOVER_SINCE" --baseline "$OUT/before.json" --json > "$OUT/neg-under-deletion.json"
+          rc=$?
+          set -e
+          node - "$OUT/neg-under-deletion.json" "$rc" "$OUT/before.json" <<'NODE'
+          const fs = require('fs');
+          const cut = require(`${process.cwd()}/scripts/measure-cutover-inventory.js`);
+          const [file, rc, beforeFile] = process.argv.slice(2);
+          const r = JSON.parse(fs.readFileSync(file, 'utf8'));
+          const before = JSON.parse(fs.readFileSync(beforeFile, 'utf8'));
+          const expected = cut.loadExpected();
+          const fails = r.findings.filter((f) => f.status === 'fail');
+          const failed = (asset, check) => fails.some((f) => f.asset === asset && f.check === check);
+          const present = new Set((before.postgres?.databases || []).map((d) => d.db));
+          const nsOf = (p) => (p.ns === 'infra' ? before.namespaces.infra : before.namespaces.msp);
+          const pvcPresent = new Set((before.pvcs || []).map((p) => `${p.namespace}/${p.name}`));
+          // 資産ごとの「消し足りない」を捕まえる行。在る資産の行が 1 つでも fail でなければ赤にする。
+          const assets = {
+            'MSP の DB': expected.databases.msp.filter((db) => present.has(db)).map((db) => ['PostgreSQL', `MSP の DB ${db} を作り直した`]),
+            'Keycloak の利用者': [['Keycloak', '人間の利用者はすべて作り直し後に作られた']],
+            Qdrant: [['Qdrant', '点が 0 件（書き込みの再開前）']],
+            'オブジェクトストレージ': [['オブジェクトストレージ', 'オブジェクトが 0 件（書き込みの再開前）']],
+            PVC: cut.RECREATED_PVCS.filter((p) => pvcPresent.has(`${nsOf(p)}/${p.name}`)).map((p) => ['PVC', `${nsOf(p)}/${p.name} を作り直した`]),
+            // Wiki.js の実体は PVC（wiki-js-data）と DB（wikijs）。「ページが 0 件」は入れたデータにページが無いと ok のままなので使わない。
+            'Wiki.js': [['PVC', `${before.namespaces.msp}/wiki-js-data を作り直した`], ['PostgreSQL', 'MSP の DB wikijs を作り直した']],
+          };
+          const bad = [];
+          for (const [name, rows] of Object.entries(assets)) {
+            const missed = rows.filter(([a, c]) => !failed(a, c));
+            console.log(`${name}: fail ${rows.length - missed.length}/${rows.length}`);
+            if (!rows.length) bad.push(`${name}（見る行が 0 —— 事前実測に無い）`);
+            for (const [a, c] of missed) bad.push(`${name}（${a} / ${c}）`);
+          }
+          console.log(`終了コード ${rc}`);
+          if (rc !== '1' || bad.length) {
+            console.error(`::error::破棄を飛ばした切替を検証スクリプトが資産ごとに fail にしなかった: 終了コード ${rc} / ${bad.join(' / ') || '(資産の行は揃っている)'}`);
+            process.exit(1);
+          }
+          NODE
+
       # 手順 3: 破棄。移行仕様書の (a)〜(d) をこの順で行う。
       - name: Discard (procedure 3 a–d)
         run: |
@@ -334,13 +381,23 @@ jobs:
           node scripts/measure-cutover-inventory.js --live --since "$CUTOVER_SINCE" --baseline "$OUT/before.json" --json > "$OUT/neg-postgres-data.json"
           rc=$?
           set -e
-          node - "$OUT/neg-postgres-data.json" "$rc" <<'NODE'
-          const [file, rc] = process.argv.slice(2);
-          const r = JSON.parse(require('fs').readFileSync(file, 'utf8'));
+          node - "$OUT/neg-postgres-data.json" "$rc" "$OUT/before.json" <<'NODE'
+          const fs = require('fs');
+          const { loadExpected } = require(`${process.cwd()}/scripts/measure-cutover-inventory.js`);
+          const [file, rc, beforeFile] = process.argv.slice(2);
+          const r = JSON.parse(fs.readFileSync(file, 'utf8'));
           const pvc = r.findings.filter((f) => f.status === 'fail' && f.check.includes('postgres-data を消していない'));
+          // 🔴 「1 件以上」にしない —— 前の陰性対照で DROP した 1 つの残りだけで満たされる（#1781 監査）。
+          // postgres-data を作り直すと、切替前に在った AST の DB は**すべて**消えるか作り直される。その全部が fail であることを見る。
+          const present = new Set((JSON.parse(fs.readFileSync(beforeFile, 'utf8')).postgres?.databases || []).map((d) => d.db));
+          const want = loadExpected().databases.ast.filter((db) => present.has(db));
           const ast = r.findings.filter((f) => f.status === 'fail' && f.check.startsWith('AST の DB'));
-          console.log(`終了コード ${rc} / postgres-data の fail ${pvc.length} 件 / AST の DB の fail ${ast.length} 件`);
-          if (rc !== '1' || pvc.length !== 1 || ast.length < 1) { console.error('::error::postgres-data の作り直しを検証スクリプトが fail にしなかった'); process.exit(1); }
+          const missed = want.filter((db) => !ast.some((f) => f.check === `AST の DB ${db} を消していない`));
+          console.log(`終了コード ${rc} / postgres-data の fail ${pvc.length} 件 / AST の DB の fail ${ast.length} 件（切替前に在った ${want.length} 件）`);
+          if (rc !== '1' || pvc.length !== 1 || !want.length || ast.length !== want.length || missed.length) {
+            console.error(`::error::postgres-data の作り直しを検証スクリプトが fail にしなかった${missed.length ? `（fail でない AST の DB: ${missed.join(', ')}）` : ''}`);
+            process.exit(1);
+          }
           NODE
 
       - name: Record the window and the results
@@ -359,7 +416,7 @@ jobs:
             echo "- 手順 5 の判定: \`${VERIFY_RESULT:-（未到達）}\`"
             echo "- 陰性対照で DROP した AST の DB: \`${AST_DROPPED_DB:-（未到達）}\`"
           } >> "$GITHUB_STEP_SUMMARY"
-          for f in before after neg-ast-db neg-postgres-data; do
+          for f in before after neg-under-deletion neg-ast-db neg-postgres-data; do
             [ -f "$OUT/$f.json" ] || continue
             echo "::group::$f"
             if [ "$f" = before ]; then node scripts/measure-cutover-inventory.js --input "$OUT/before.json"
