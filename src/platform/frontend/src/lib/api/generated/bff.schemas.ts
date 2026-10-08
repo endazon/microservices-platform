@@ -1400,6 +1400,7 @@ export interface CompletionApiRequest {
 /**
  * sent=false は機密区分による送信拒否（縮退）または呼び出し先不調を示す。
  * IADR-0104: sent（越境させたか）と stopReason（モデル側の終了理由）は独立した軸である。
+ * #1819: sent=false の原因の種類は failureKind（と upstreamStatusCode）で値として返る。
  */
 export interface CompletionApiResponse {
   text: string;
@@ -1430,6 +1431,21 @@ export interface CompletionApiResponse {
      * - `end_turn`: 正常終了。
      */
   stopReason?: string | null;
+  /**
+     * #1819: sent=false の原因の種類。sent=true では null。値は計器 `llm.completion.total` の
+     * `llm.result` と同じ語彙である:
+     * - `egress_denied`: 機密区分×ティア（越境マトリクス）・ZDR 要件により送信しなかった。設定どおりの拒否であり、
+     *   再試行しても変わらない。理由の文言は routingReason（と text）に入る。
+     * - `provider_missing`: ルーティングが選んだプロバイダがゲートウェイに登録されていない（構成不備）。
+     * - `upstream_error`: 呼び出し先が失敗した（HTTP 4xx/5xx・輸送の失敗）。HTTP 状態は upstreamStatusCode。
+     * **閉じた enum にはしない**（stopReason と同じ理由）。未知の値は「原因不明の sent=false」として扱う。
+     */
+  failureKind?: string | null;
+  /**
+     * #1819: failureKind=`upstream_error` で、呼び出し先が HTTP 状態を返したときの状態コード
+     * （429＝レート制限・5xx＝呼び出し先の障害など）。輸送の失敗・その他の原因・sent=true では null。
+     */
+  upstreamStatusCode?: number | null;
 }
 
 /**
