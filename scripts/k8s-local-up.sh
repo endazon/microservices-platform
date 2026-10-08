@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # IADR-0066: MSP+AST 連結ローカル k8s(k3d) dev 環境の起動オーケストレーション。
 # 冪等（再実行可）。fail-safe: 機密は未設定なら dev 既定/空（no-op）で作成する。
+#   ただし dev 以外の kube context では、レルム管理のロールを持つ 3 クライアント（identity-admin / reset-gate / mcp-client-admin）の
+#   secret を dev の値で作らずに止まる（IADR-0517 / #1830。上書きは ALLOW_DEV_CLIENT_SECRETS=1）。
 #
 #   bash scripts/k8s-local-up.sh --live [cluster-name]   # --live か LIVE=1 が無ければ何もしない（#1550）
 #
@@ -11,6 +13,7 @@
 #   WIKIJS_OIDC_CLIENT_SECRET（#1127。WIKIJS_OIDC=1 のときだけ使う。realm の wiki-js client と揃えること）/
 #   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）/
 #   SYNTHETIC_MONITOR_CLIENT_SECRET（#1287。SYNTHETIC=1 のときだけ使う。realm の synthetic-monitor client と揃えること）
+#   RESET_GATE_CLIENT_SECRET / IDENTITY_ADMIN_CLIENT_SECRET / MCP_CLIENT_ADMIN_CLIENT_SECRET（#1830。dev 以外の kube context では必須）
 # 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
 #   使い捨てスタックでだけ PERSIST=0 で外す。
 # 永続化と一緒に、Postgres / Vault の日次バックアップ CronJob（age 暗号化・クラスタ外 2 か所。IADR-0471 / #1560）も入る。
@@ -134,6 +137,22 @@ else
   fi
   echo "    Rancher Desktop 内蔵 k3s を使用（context: $(kubectl config current-context))"
 fi
+
+# NFR-18, ADR-0124 決定 1, IADR-0517 (#1830): **dev 以外の kube context で、レルム管理のロールを持つ機密クライアントの secret を
+#   公知の dev の値で作らない。** 判定は scripts/lib/dev-client-secret-guard.sh の 1 本（bootstrap.sh・reconcile-realm.sh と共有）。
+#   置き場所は context が確定した直後（k3d は cluster create で `k3d-<cluster>` へ切り替える）・Secret を 1 つも書く前。
+#   対象: `reset-gate` は ESO の有無によらずここで作る（下の reset-gate-oidc）。`identity-admin`・`mcp-client-admin` は ESO=1 では
+#   Vault の種（bootstrap.sh）が作るので、そちらの判定に任せる（Vault に在る KV は触らない＝env 未設定でも dev の値は入らない）。
+# shellcheck source=scripts/lib/dev-client-secret-guard.sh
+. "$ROOT/scripts/lib/dev-client-secret-guard.sh"
+if [ "${ESO:-}" != "1" ]; then
+  dev_secret_args=("identity-admin=${IDENTITY_ADMIN_CLIENT_SECRET:-}" "reset-gate=${RESET_GATE_CLIENT_SECRET:-}"
+    "mcp-client-admin=${MCP_CLIENT_ADMIN_CLIENT_SECRET:-}")
+else
+  dev_secret_args=("reset-gate=${RESET_GATE_CLIENT_SECRET:-}")
+fi
+dev_client_secret_guard "k8s-local-up.sh" "${dev_secret_args[@]}" || exit 1
+unset dev_secret_args
 
 # NFR, ADR-0021, IADR-0317 (#1691): **入口がすでに Istio Ingress Gateway へ移っているかを、クラスタの状態で読む。**
 #   前回の istio-edge-up.sh が HelmChartConfig kube-system/traefik を `service.enabled: false`

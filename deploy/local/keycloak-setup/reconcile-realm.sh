@@ -4,6 +4,9 @@
 #
 #   bash deploy/local/keycloak-setup/reconcile-realm.sh            # 差分を当てる（apply）
 #   bash deploy/local/keycloak-setup/reconcile-realm.sh --check    # 差分を数えるだけ（書き換えない）。1 件でも在れば exit 1
+#   bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets
+#       # 管理用の 3 クライアント（identity-admin / reset-gate / mcp-client-admin）の稼働の secret が宣言の dev の値のままなら
+#       # 名指しして exit 1（読むだけ。値は出さない。IADR-0517 / #1830。dev 以外のクラスタでは起動の直後に回す）
 #
 # ## なぜ要るか —— realm JSON を直しても既存クラスタには届かない
 #
@@ -26,6 +29,13 @@
 # 環境変数（すべて任意）:
 #   INFRA_NS                 Keycloak の namespace（既定 platform-infra）
 #   RECONCILE_JOB_TIMEOUT    Job の完了待ち秒数（既定 300）
+#   ALLOW_DEV_CLIENT_SECRETS dev 以外の kube context でも、無い管理用クライアントを宣言の dev の値で作らせる（1 だけ。IADR-0517）
+#
+# ## dev の値で作ってよいかの判定（NFR-18, ADR-0124 決定 1, IADR-0517 / #1830）
+#
+# Job（reconcile-realm.js）は無い client を宣言の secret（公知の dev の値）で作る。Job はクラスタの中で動き kube context を持たないので、
+# **ホスト側のここで scripts/lib/dev-client-secret-guard.sh（k8s-local-up.sh・bootstrap.sh と同じ判定器）で決め、Job の env
+# `DEV_CLIENT_SECRETS_ALLOWED`（allow / deny）として渡す。** マニフェストの既定は deny（直接 apply しても安全側）。
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,9 +46,23 @@ JOB="keycloak-realm-reconcile"
 if [ "${1:-}" = "--check" ]; then
   MODE="check"
   JOB="keycloak-realm-check"
+elif [ "${1:-}" = "--check-dev-secrets" ]; then
+  MODE="check-dev-secrets"
+  JOB="keycloak-realm-dev-secret-check"
 elif [ -n "${1:-}" ]; then
-  echo "ERROR: 未知の引数: $1（受け付けるのは --check だけ）" >&2
+  echo "ERROR: 未知の引数: $1（受け付けるのは --check と --check-dev-secrets だけ）" >&2
   exit 2
+fi
+# shellcheck source=scripts/lib/dev-client-secret-guard.sh
+. "$HERE/../../../scripts/lib/dev-client-secret-guard.sh"
+KC_CONTEXT="$(dev_client_secret_current_context)"
+if dev_client_secret_create_allowed "$KC_CONTEXT" "${ALLOW_DEV_CLIENT_SECRETS:-}"; then
+  DEV_SECRETS="allow"
+  if ! dev_client_secret_context_is_dev "$KC_CONTEXT"; then
+    echo "    !!! WARNING: ALLOW_DEV_CLIENT_SECRETS=1: dev ではない kube context '${KC_CONTEXT:-（読めない）}' でも、無い管理用クライアントを dev の値で作らせる" >&2
+  fi
+else
+  DEV_SECRETS="deny"
 fi
 MANIFEST="$HERE/realm-reconcile-job.yaml"
 SCRIPT="$HERE/reconcile-realm.js"
@@ -62,6 +86,7 @@ kubectl -n "$INFRA_NS" delete job "$JOB" --ignore-not-found --wait=true >/dev/nu
 #    宣言は realm-reconcile-job.yaml の 1 本だけ（check 用の写しを持たない）。
 sed -e "s/^\(  name:\) keycloak-realm-reconcile\$/\1 $JOB/" \
     -e "s/^\(              value:\) \"apply\"\$/\1 \"$MODE\"/" \
+    -e "s/^\(              value:\) \"deny\"\$/\1 \"$DEV_SECRETS\"/" \
     "$MANIFEST" | kubectl apply -f - >/dev/null
 
 # 4. 完了を待つ。Complete / Failed のどちらかが立つまで見る（`kubectl wait --for=condition=complete` は

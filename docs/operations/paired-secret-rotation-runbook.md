@@ -9,9 +9,9 @@ updated: 2026-10-09
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]
 adrs: [ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
-iadrs: [IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133]
-specs: [20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook]
-issues: [#1818, #1817, #1696, #1682, #458, #1411, planning#700, AST#1078]
+iadrs: [IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133]
+specs: [20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook]
+issues: [#1830, #1818, #1817, #1696, #1682, #458, #1411, planning#700, AST#1078]
 -->
 
 # 運用 Runbook: 対になる秘密のローテーション
@@ -207,9 +207,22 @@ MCP クライアント登録管理の後段が、無人のクライアントと�
 | 🔴 レルムの設定（**間接**） | 読める secret にレルムの管理を持つ申請の門（`reset-gate`）と利用者の管理を持つ反映先（`identity-admin`）が含まれる。それを使えば認証フロー・送信設定・総当たり対策まで書ける。**レルムの全権の漏えいとして扱う** |
 | 直接は届かないもの | 他のレルム（master を含む） |
 
-🔴 **dev 以外のクラスタでは、起動の直後に回す**（漏えいが無くても）。起動器は env が無ければ dev の値（リポジトリに公開されている）で
-保管先と Secret を作り、レルムの後追いも無い client を dev の値で作る。`identity-admin`・`reset-gate` も同じである。
-dev 以外の文脈で dev の値を拒む機械の守りは起動器に無い（後続の作業で入れる）。
+🔴 **dev 以外のクラスタでは、起動の直後に dev の値が残っていないかを確かめ、残っていれば回す**（漏えいが無くても）。`identity-admin`・`reset-gate` も同じである。
+
+- 起動器（手動の Secret 作成・保管先の初期投入・レルムの後追い）は、kube context が dev の許可集合（`k3d-*`・`kind-*`・`rancher-desktop`・`docker-desktop`）に
+  無いと、この 3 つを dev の値（リポジトリに公開されている）で作ろうとした時点で名指して止まる。そのときは `IDENTITY_ADMIN_CLIENT_SECRET`・
+  `RESET_GATE_CLIENT_SECRET`・`MCP_CLIENT_ADMIN_CLIENT_SECRET` に dev 以外の値（0-a の作り方）を与えて再実行する。認証基盤の側が dev の値のままなら、
+  その後に下の確かめ方で名指されるので、1-3 の手順で対に回す。dev のクラスタだと分かっているときだけ `ALLOW_DEV_CLIENT_SECRETS=1` で通せる（警告を出す）。
+- ただし Keycloak 本体の realm の初回 import は、宣言の dev の値で 3 つを作る（起動器の外であり止められない）。
+
+**確かめ方**（読むだけ・値を出さない）:
+
+```bash
+bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets
+```
+
+稼働の secret が dev の値のままのクライアントを `dev-secret <client>` と名指して非 0 で終える。名指されたものを 1-3 の手順で回し、もう一度実行して
+0 で終わる（3 つとも `ok`）ことを確かめる。稼働に無いクライアントは `absent` と出る（作られるときは上の守りが掛かる）。
 
 **手順**（通常の 1-3 に次を足す）:
 

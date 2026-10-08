@@ -260,6 +260,9 @@ const HELM_STUB = [
 const KUBECTL_STUB = [
   '#!/usr/bin/env bash',
   'echo "kubectl $*" >> "$STUB_LOG"',
+  // #1830 / IADR-0517: 現在の kube context。既定は k3d が作る形（`k3d-<cluster>`）＝ dev の許可集合に入る。
+  //   STUB_KUBE_CONTEXT で差し替える（空文字も与えられる＝読めない context）。STUB_KUBE_CONTEXT_FAIL=1 で問い合わせ自体を失敗させる。
+  'if [ "${1:-} ${2:-}" = "config current-context" ]; then [ "${STUB_KUBE_CONTEXT_FAIL:-}" = "1" ] && { echo "error: current-context is not set" >&2; exit 1; }; printf "%s\\n" "${STUB_KUBE_CONTEXT-k3d-testcluster}"; exit 0; fi',
   // #1793: Secret の値はファイル経由で渡る（--from-file / --patch-file）。中身を控えて、値が引数ではなくファイルで届いたことを試験が見る。
   'if [ "${1:-} ${2:-} ${3:-}" = "create secret generic" ]; then for a in "$@"; do case "$a" in --from-file=*=*) f="${a#--from-file=}"; printf "%s %s=%s\\n" "$4" "${f%%=*}" "$(cat "${f#*=}")" >> "$STUB_LOG.secrets";; esac; done; fi',
   'prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && { printf "%s\\n" "$(cat "$a")" >> "$STUB_LOG.patches"; }; prev="$a"; done',
@@ -377,6 +380,11 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'BACKUP_AGE_RECIPIENTS_FILE', // #1560: バックアップの受取人。漏れていると既定で ConfigMap を作り直す
     'ISTIO', // #1710: メッシュの門。漏れていると既定のバイト等価が崩れる
     'ISTIO_MTLS_MODE', // #1710: 未指定（引き継ぎ）の経路を試すため、漏れを除く
+    // #1830: dev の値の守り。上書き・各 secret が漏れていると判定の試験が既定と違う形で走る
+    'ALLOW_DEV_CLIENT_SECRETS',
+    'RESET_GATE_CLIENT_SECRET',
+    'IDENTITY_ADMIN_CLIENT_SECRET',
+    'MCP_CLIENT_ADMIN_CLIENT_SECRET',
   ]) {
     delete base[k];
   }
@@ -4823,5 +4831,220 @@ for (const major of ['4', '3']) {
     }
   });
 }
+
+// --- NFR-18, ADR-0124 決定 1, IADR-0517 (#1830): dev 以外の kube context で管理用クライアントを dev の値で作らない -----------
+//
+// 判定は scripts/lib/dev-client-secret-guard.sh の純関数 `dev_client_secret_decide` 1 本（k8s-local-up.sh・bootstrap.sh・
+// reconcile-realm.sh が共有）。ここでは (1) 真理値表を関数そのもので (2) 起動器の実走で「書き込みの前に止まる」を
+// (3) CI の 2 本（integration-stack / cutover-rehearsal）の context が許可集合に入る（陽性対照）を (4) 後追い Job へ判定が渡る、を固定する。
+const DEV_GUARD_LIB = path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh');
+const DEV_GUARDED = ['identity-admin', 'reset-gate', 'mcp-client-admin'];
+const devValueOf = (client) => `${client}-dev-secret-change-me`;
+// 試験用の「dev ではない値」。鍵の形を避け（gitleaks）、実行時に組む。
+const customOf = (client) => ['probe', '1830', client].join('-');
+const isDevContext1830 = (ctx) => /^(k3d-.+|kind-.+|rancher-desktop|docker-desktop)$/.test(ctx);
+
+/** 判定器を bash で 1 回だけ起こし、与えた全ケースの判定・終了コード・名指しを返す。 */
+function decideAll(cases) {
+  const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  const body = cases.map((c, i) => [
+    `out="$(dev_client_secret_decide ${q(c.ctx)} ${q(c.override)} ${c.args.map(q).join(' ')})" && rc=0 || rc=$?`,
+    `printf '%s\\t%s\\t%s\\n' ${i} "$rc" "$(printf '%s' "$out" | tr '\\n' ' ')"`,
+  ].join('\n')).join('\n');
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(DEV_GUARD_LIB)}\n${body}`], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, `判定器が実行できない: ${r.stderr}`);
+  return r.stdout.split('\n').filter(Boolean).map((l) => {
+    const [i, rc, out] = l.split('\t');
+    const words = out.trim().split(/\s+/).filter(Boolean);
+    return { i: Number(i), rc: Number(rc), verdict: words[0], hits: words.slice(1) };
+  });
+}
+
+ok('#1830: 判定の真理値表 — context（dev 9 種 × 非 dev 11 種）× 値（未設定 / dev の値 / 別の値）× 上書き（無し / 1 / true / 0）', () => {
+  const contexts = [
+    'k3d-msp-ast-dev', 'k3d-integration-stack', 'k3d-cutover-rehearsal', 'k3d-testcluster', 'kind-kind', 'kind-poc',
+    'rancher-desktop', 'docker-desktop', 'k3d-a',
+    '', 'k3d-', 'kind-', 'prod', 'gke_proj_asia-northeast1_shared', 'rancher-desktop-shared', 'my-k3d-x', 'docker-desktop2',
+    'arn:aws:eks:ap-northeast-1:000000000000:cluster/poc', 'K3D-upper', 'default',
+  ];
+  const values = { unset: '', dev: devValueOf('reset-gate'), custom: customOf('reset-gate') };
+  const overrides = ['', '1', 'true', '0'];
+  const cases = [];
+  for (const ctx of contexts) for (const [vk, v] of Object.entries(values)) for (const override of overrides) {
+    cases.push({ ctx, override, vk, args: [`reset-gate=${v}`] });
+  }
+  const got = decideAll(cases);
+  assert.strictEqual(got.length, cases.length, '全ケースの結果が返っていない');
+  const tally = { dev: 0, clean: 0, override: 0, deny: 0 };
+  for (const g of got) {
+    const c = cases[g.i];
+    let verdict;
+    if (isDevContext1830(c.ctx)) verdict = 'dev';
+    else if (c.vk === 'custom') verdict = 'clean';
+    else verdict = c.override === '1' ? 'override' : 'deny';
+    const label = `ctx=${JSON.stringify(c.ctx)} value=${c.vk} override=${JSON.stringify(c.override)}`;
+    assert.strictEqual(g.verdict, verdict, `${label}: 判定が違う（${g.verdict}）`);
+    assert.strictEqual(g.rc, verdict === 'deny' ? 1 : 0, `${label}: 終了コードが違う（${g.rc}）`);
+    assert.deepStrictEqual(g.hits, ['override', 'deny'].includes(verdict) ? ['reset-gate'] : [], `${label}: 名指しが違う`);
+    tally[verdict] += 1;
+  }
+  // 陽性・陰性の対照: 4 つの判定がどれも 1 回以上現れている（表が片側に寄って緑になっていない）。
+  for (const [k, n] of Object.entries(tally)) assert.ok(n > 0, `判定 ${k} が 1 度も現れない`);
+});
+
+ok('#1830: 複数のクライアントでは dev の値になるものだけを名指し、値そのものは出さない', () => {
+  const args = [`identity-admin=${devValueOf('identity-admin')}`, `reset-gate=${customOf('reset-gate')}`, 'mcp-client-admin='];
+  const [deny, override, clean, dev] = decideAll([
+    { ctx: 'prod', override: '', args },
+    { ctx: 'prod', override: '1', args },
+    { ctx: 'prod', override: '', args: DEV_GUARDED.map((c) => `${c}=${customOf(c)}`) },
+    { ctx: 'k3d-x', override: '', args },
+  ]);
+  assert.deepStrictEqual([deny.verdict, deny.rc, deny.hits], ['deny', 1, ['identity-admin', 'mcp-client-admin']]);
+  assert.deepStrictEqual([override.verdict, override.rc, override.hits], ['override', 0, ['identity-admin', 'mcp-client-admin']]);
+  assert.deepStrictEqual([clean.verdict, clean.rc, clean.hits], ['clean', 0, []]);
+  assert.deepStrictEqual([dev.verdict, dev.rc], ['dev', 0]);
+  for (const r of [deny, override]) assert.ok(!r.hits.some((h) => h.includes('dev-secret') || h.includes('probe')), '判定の出力に値が出た');
+});
+
+const secretOf = (r, name) => r.secrets.filter((l) => l.startsWith(`${name} client-secret=`)).map((l) => l.slice(`${name} client-secret=`.length));
+const wroteAnything = (r) => r.secrets.length > 0 || r.lines.some((l) => / apply -f|helm upgrade|kubectl create /.test(l));
+
+ok('#1830: dev ではない context・env 未設定 → [1/7] の直後、何も書かないうちに 3 クライアントを名指して止まる', () => {
+  for (const env of [{ STUB_KUBE_CONTEXT: 'prod-shared' }, { STUB_KUBE_CONTEXT: '' }, { STUB_KUBE_CONTEXT_FAIL: '1' }]) {
+    const r = runUp(env);
+    assert.notStrictEqual(r.status, 0, `${JSON.stringify(env)}: 止まらなかった`);
+    assert.ok(!wroteAnything(r), `${JSON.stringify(env)}: 書いてから止まった:\n${r.lines.filter((l) => / apply -f|create /.test(l)).join('\n')}`);
+    assert.ok(/identity-admin, reset-gate, mcp-client-admin/.test(r.stderr), `${JSON.stringify(env)}: 名指していない:\n${r.stderr}`);
+    assert.ok(/ALLOW_DEV_CLIENT_SECRETS=1/.test(r.stderr) && /RESET_GATE_CLIENT_SECRET/.test(r.stderr), '対処（env・上書き）を告げていない');
+    assert.ok(!r.stderr.includes('-dev-secret-change-me'), '値を出力した');
+  }
+});
+
+ok('#1830: dev ではない context でも、3 つに dev 以外の値を与えれば進み、その値で作る（陽性対照・値は出力しない）', () => {
+  const env = { STUB_KUBE_CONTEXT: 'prod-shared' };
+  for (const c of DEV_GUARDED) env[`${c.toUpperCase().replace(/-/g, '_')}_CLIENT_SECRET`] = customOf(c);
+  const r = runUp(env);
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  for (const c of DEV_GUARDED) {
+    assert.deepStrictEqual(secretOf(r, `${c}-oidc`), [customOf(c)], `${c}-oidc が与えた値で作られていない`);
+    assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf(c)), `${c} の値が出力に出た`);
+  }
+});
+
+ok('#1830: 1 つだけ dev の値と同じ値を与えても止まり、そのクライアントだけを名指す', () => {
+  const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', IDENTITY_ADMIN_CLIENT_SECRET: devValueOf('identity-admin'),
+    RESET_GATE_CLIENT_SECRET: customOf('reset-gate'), MCP_CLIENT_ADMIN_CLIENT_SECRET: customOf('mcp-client-admin') });
+  assert.notStrictEqual(r.status, 0, '止まらなかった');
+  assert.ok(!wroteAnything(r), '書いてから止まった');
+  assert.ok(/止める: identity-admin$/m.test(r.stderr), `identity-admin だけを名指していない:\n${r.stderr}`);
+});
+
+ok('#1830: ALLOW_DEV_CLIENT_SECRETS=1 は大きく警告して通す。1 以外（true）は上書きにならない', () => {
+  const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ALLOW_DEV_CLIENT_SECRETS: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  assert.ok(/!!! WARNING: k8s-local-up\.sh: ALLOW_DEV_CLIENT_SECRETS=1/.test(r.stderr), `警告が無い:\n${r.stderr.slice(0, 800)}`);
+  assert.deepStrictEqual(secretOf(r, 'reset-gate-oidc'), [devValueOf('reset-gate')]);
+  const t = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ALLOW_DEV_CLIENT_SECRETS: 'true' });
+  assert.notStrictEqual(t.status, 0, 'ALLOW_DEV_CLIENT_SECRETS=true で通した');
+});
+
+ok('#1830: ESO=1 では identity-admin / mcp-client-admin を Vault の種（bootstrap.sh）の判定に任せ、ここでは reset-gate だけを見る', () => {
+  const ok1 = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1', RESET_GATE_CLIENT_SECRET: customOf('reset-gate') });
+  assert.strictEqual(ok1.status, 0, `止まった（スタブの Vault では KV が在る＝bootstrap も通る）:\n${ok1.stderr.slice(-800)}`);
+  const ng = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1' });
+  assert.notStrictEqual(ng.status, 0, '止まらなかった');
+  assert.ok(/止める: reset-gate$/m.test(ng.stderr), `reset-gate だけを名指していない:\n${ng.stderr}`);
+});
+
+ok('#1830 陽性対照: 既定（k3d の context）は従来どおり dev の値で 3 つを作り、警告も出さない', () => {
+  assert.strictEqual(DEFAULT.status, 0);
+  for (const c of DEV_GUARDED) assert.deepStrictEqual(secretOf(DEFAULT, `${c}-oidc`), [devValueOf(c)], `${c}-oidc が dev の値でない`);
+  assert.ok(!/ALLOW_DEV_CLIENT_SECRETS|dev の許可集合/.test(DEFAULT.stderr), '既定で守りの文言が出た');
+  assert.ok(DEFAULT.lines.includes('kubectl config current-context'), '陽性対照: context を読んでいる');
+  for (const ctx of ['rancher-desktop', 'docker-desktop', 'kind-poc']) {
+    assert.strictEqual(runUp({ STUB_KUBE_CONTEXT: ctx }).status, 0, `${ctx} で止まった`);
+  }
+});
+
+ok('#1830 陽性対照: CI の integration-stack / cutover-rehearsal は k3d で起動し、その context（k3d-<CLUSTER>）は許可集合に入る', () => {
+  for (const wf of ['integration-stack.yml', 'cutover-rehearsal.yml']) {
+    const src = fs.readFileSync(path.join(REPO_ROOT, '.github', 'workflows', wf), 'utf8');
+    const cluster = (src.match(/^\s+CLUSTER:\s*(\S+)\s*$/m) || [])[1];
+    assert.ok(cluster, `${wf}: CLUSTER が読めない`);
+    const ups = src.split('\n').filter((l) => l.includes('bash scripts/k8s-local-up.sh --live'));
+    assert.ok(ups.length > 0, `${wf}: 起動器の呼び出しが無い`);
+    assert.ok(/K8S_LOCAL_RUNTIME=k3d/.test(src), `${wf}: k3d で起動していない（context の形が k3d-<CLUSTER> でなくなる）`);
+    assert.ok(!/_CLIENT_SECRET|ALLOW_DEV_CLIENT_SECRETS/.test(src), `${wf}: secret か上書きを与えている（陽性対照にならない）`);
+    const ctx = `k3d-${cluster}`;
+    assert.ok(isDevContext1830(ctx), `${wf}: ${ctx} が許可集合に入らない`);
+    assert.strictEqual(decideAll([{ ctx, override: '', args: ['reset-gate='] }])[0].verdict, 'dev', `${wf}: 判定器が ${ctx} を dev と読まない`);
+    assert.strictEqual(runUp({ STUB_KUBE_CONTEXT: ctx }).status, 0, `${wf}: ${ctx} で起動器が止まった`);
+  }
+});
+
+ok('#1830: 3 本の呼び出し元は同じ判定器を source し、自前の許可集合を持たない', () => {
+  const files = ['scripts/k8s-local-up.sh', 'deploy/local/vault/eso/bootstrap.sh', 'deploy/local/keycloak-setup/reconcile-realm.sh'];
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(REPO_ROOT, f), 'utf8');
+    assert.ok(/^\. "[^"]*scripts\/lib\/dev-client-secret-guard\.sh"$/m.test(src), `${f} が判定器を読んでいない`);
+    const code = src.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+    assert.ok(!/k3d-\*|rancher-desktop\)|docker-desktop\)/.test(code), `${f} が許可集合を自前で持っている`);
+  }
+});
+
+// 後追い Job の起動器（reconcile-realm.sh）だけを kubectl のスタブの下で走らせ、Job へ渡したマニフェスト（apply -f - の標準入力）を読む。
+function runReconcile(args, env) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reconcile-sh-1830-'));
+  try {
+    const bin = path.join(dir, 'bin');
+    fs.mkdirSync(bin);
+    const manifest = path.join(dir, 'manifest.yaml');
+    fs.writeFileSync(path.join(bin, 'kubectl'), [
+      '#!/usr/bin/env bash',
+      'if [ "${1:-} ${2:-}" = "config current-context" ]; then printf "%s\\n" "${STUB_KUBE_CONTEXT-k3d-testcluster}"; exit 0; fi',
+      'case "$*" in',
+      '  "apply -f -") cat >> "$STUB_MANIFEST"; exit 0;;',
+      '  *"create configmap"*) cat >/dev/null 2>&1; echo "apiVersion: v1"; exit 0;;',
+      '  *"get job"*conditions*) echo "Complete "; exit 0;;',
+      'esac',
+      'exit 0',
+      '',
+    ].join('\n'), { mode: 0o755 });
+    const base = { ...process.env };
+    delete base.ALLOW_DEV_CLIENT_SECRETS;
+    const r = spawnSync('bash', ['deploy/local/keycloak-setup/reconcile-realm.sh', ...args], {
+      cwd: REPO_ROOT, encoding: 'utf8',
+      env: { ...base, PATH: bin + path.delimiter + (process.env.PATH || ''), STUB_MANIFEST: manifest, ...env },
+    });
+    const yaml = fs.existsSync(manifest) ? fs.readFileSync(manifest, 'utf8') : '';
+    const envValue = (name) => (yaml.match(new RegExp(`- name: ${name}\\n\\s+value: "([^"]*)"`)) || [])[1];
+    return { ...r, yaml, mode: envValue('RECONCILE_MODE'), allowed: envValue('DEV_CLIENT_SECRETS_ALLOWED'),
+      job: (yaml.match(/^ {2}name: (\S+)$/m) || [])[1] };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+ok('#1830: reconcile-realm.sh は同じ判定で Job の DEV_CLIENT_SECRETS_ALLOWED を決める（dev → allow / それ以外 → deny / 上書き → allow＋警告）', () => {
+  const dev = runReconcile([], { STUB_KUBE_CONTEXT: 'k3d-testcluster' });
+  assert.strictEqual(dev.status, 0, dev.stderr);
+  assert.deepStrictEqual([dev.job, dev.mode, dev.allowed], ['keycloak-realm-reconcile', 'apply', 'allow']);
+  for (const ctx of ['prod-shared', '']) {
+    const prod = runReconcile([], { STUB_KUBE_CONTEXT: ctx });
+    assert.strictEqual(prod.allowed, 'deny', `${JSON.stringify(ctx)}: deny を渡していない`);
+  }
+  const over = runReconcile([], { STUB_KUBE_CONTEXT: 'prod-shared', ALLOW_DEV_CLIENT_SECRETS: '1' });
+  assert.strictEqual(over.allowed, 'allow');
+  assert.ok(/WARNING: ALLOW_DEV_CLIENT_SECRETS=1/.test(over.stderr), '上書きの警告が無い');
+});
+
+ok('#1830: reconcile-realm.sh --check-dev-secrets は別名の Job を RECONCILE_MODE=check-dev-secrets で走らせる（apply・check の Job を消さない）', () => {
+  const r = runReconcile(['--check-dev-secrets'], { STUB_KUBE_CONTEXT: 'prod-shared' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.deepStrictEqual([r.job, r.mode], ['keycloak-realm-dev-secret-check', 'check-dev-secrets']);
+  const bad = runReconcile(['--bogus'], {});
+  assert.strictEqual(bad.status, 2, '未知の引数を受け付けた');
+});
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

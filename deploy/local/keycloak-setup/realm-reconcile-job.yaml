@@ -8,7 +8,7 @@
 # ★ platform-infra に置く。keycloak と同じ namespace なので **エッジ・TLS・メッシュのどれにも依存しない**
 #   （メッシュ内に置くとサイドカー付き Job が完了しない）。
 # ★ Keycloak pod で kcadm.sh を exec しない。別 JVM が本体を OOMKilled にする（2026-09-02 実測）。
-# ★ RECONCILE_MODE は起動器が apply / check へ書き換える（check-stack-ready.js の G9 は check で走らせる）。
+# ★ RECONCILE_MODE は起動器が apply / check / check-dev-secrets へ書き換える（check-stack-ready.js の G9 は check で走らせる）。
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -37,6 +37,10 @@ spec:
               value: /import
             - name: RECONCILE_MODE
               value: "apply"
+            # NFR-18, IADR-0517 (#1830): 無い管理用クライアント（identity-admin / reset-gate / mcp-client-admin）を宣言の dev の値で
+            # 作ってよいか。起動器が kube context から決めて allow へ書き換える。**既定は deny**（直接 apply しても安全側）。
+            - name: DEV_CLIENT_SECRETS_ALLOWED
+              value: "deny"
             # 管理者名・パスワードの単一情報源は Secret keycloak-admin（deploy/local/infra/keycloak.yaml も同じ Secret を読む）。
             - name: KC_ADMIN_USER
               valueFrom:
