@@ -1154,6 +1154,17 @@ services:
       # （ズレると client_credentials が 401）。本番は Secret / Vault から注入し既定値は使わない。
       ServiceToken__ClientId: mcp-server
       ServiceToken__ClientSecret: ${MCP_SERVER_CLIENT_SECRET:-mcp-server-dev-secret-change-me}
+      # FR-16, SC-12, ADR-0123 決定 2・4, IADR-0516 決定 2 (#1817): SC-12 の無人の登録・属性の差し替えで、
+      # 機密クライアントとサービスアカウントの属性を Keycloak Admin REST へ書く口。管理用の機密クライアントは
+      # realm の `mcp-client-admin`（realm-management の manage-clients / manage-users のみ）。
+      # 🔴 Provider を消すと無人の登録・差し替えは 503 になる（起動は止まらない）。`in-memory` は Development 等の
+      #    非配備ホスト限定。dev の client secret は realm import の置き場と同値（ズレると client_credentials が 401 →
+      #    無人の登録・差し替えが 502）。本番は Secret / Vault から注入し、この既定値は使わない。
+      McpClientProvisioning__Provider: keycloak
+      McpClientProvisioning__Keycloak__BaseUrl: http://keycloak:8080
+      McpClientProvisioning__Keycloak__Realm: platform
+      McpClientProvisioning__Keycloak__ClientId: mcp-client-admin
+      McpClientProvisioning__Keycloak__ClientSecret: ${MCP_CLIENT_ADMIN_CLIENT_SECRET:-mcp-client-admin-dev-secret-change-me}
     # 🔴 認可サービスは `depends_on` へ足さない。判定は deny 側へ倒れる（解決できなければ属性を
     # 配らない）ので起動順を強制する必要が無く、強制すると自己申告の収集先 3 サービスと扱いが
     # 食い違う（それらも `depends_on` に無い）。

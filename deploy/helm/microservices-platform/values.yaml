@@ -910,24 +910,33 @@ services:
         value: "http://retrieval-service:8081"
       - name: Mcp__GrpcServices__graph-service
         value: "http://graph-service:8081"
-      # FR-16, SC-12, ADR-0123 決定 2・4, IADR-0516 (#1786): SC-12 を IdP への入口にする書き込み口（Keycloak Admin REST）。
+      # FR-16, SC-12, ADR-0123 決定 2・4, IADR-0516 (#1786 / #1817): SC-12 を IdP への入口にする書き込み口（Keycloak Admin REST）。
       # 無人の登録・属性の差し替えは、検証の後に機密クライアントとサービスアカウントの属性を Keycloak へ書いてから登録簿へ書く。
-      # 🔴 **Provider は未宣言のまま置く**（＝無人の登録・差し替えは 503。登録簿にも書かない。ADR-0123 決定 4 の暫定手段と同じ側）。
-      #    宣言には realm の管理用機密クライアント `mcp-client-admin`（realm-management の manage-clients / manage-users のみ）と、
-      #    その secret の供給（ExternalSecret `mcp-client-admin-oidc`・キー client-secret）が要る。どちらも後続の段で入れる（IADR-0516 §残余）。
-      #    secret が無いまま下の secretKeyRef を有効にすると Pod が起動しない（非 optional）。
+      # 管理用の機密クライアントは realm の `mcp-client-admin`（realm-management の manage-clients / manage-users のみ）。
+      #
+      # 🔴 **［#1817］Provider を宣言した。** 未宣言の間（#1786 の段 1 のマージ後）、無人の登録・差し替えは 503 だった。
+      #    **ここを消すと 503 へ戻る**（起動は止まらない＝静かな縮退）。`scripts/helm-mcp-client-provisioning.test.js` が
+      #    「McpClientProvisioning__* を持つ Deployment はすべて Provider=keycloak を持つ」を描画で固定する。
+      #    `in-memory` は非配備ホスト（Development / Testing / Integration）以外では起動失敗になる。
+      #
+      # 🔴 **ClientSecret は Secret 由来で、既定値を持たない**（identity-admin と同型）。secretKeyRef は **非 optional**
+      #    なので、Secret が無ければ Pod は起動しない（供給は deploy/local/vault/eso/externalsecret-mcp-client-admin-oidc.yaml、
+      #    または ESO 未使用時は scripts/k8s-local-up.sh の手動 apply）。漏えい時の影響範囲（全クライアントの secret・
+      #    全利用者の属性とロール）とローテーションは docs/security/security.md と docs/operations/paired-secret-rotation-runbook.md。
+      - name: McpClientProvisioning__Provider
+        value: "keycloak"
+      # in-cluster の正準名（MSP ns の ExternalName エイリアス `keycloak` → platform-infra）。Admin REST の基底 URL であり、
+      # issuer 用の Auth__Authority とは別物（`/admin/realms/...` と `/realms/<realm>/protocol/openid-connect/token` を後置する）。
       - name: McpClientProvisioning__Keycloak__BaseUrl
         value: "http://keycloak:8080"
       - name: McpClientProvisioning__Keycloak__Realm
         value: "platform"
       - name: McpClientProvisioning__Keycloak__ClientId
         value: "mcp-client-admin"
-      # - name: McpClientProvisioning__Provider
-      #   value: "keycloak"
-      # - name: McpClientProvisioning__Keycloak__ClientSecret
-      #   secretKeyRef:
-      #     name: mcp-client-admin-oidc
-      #     key: client-secret
+      - name: McpClientProvisioning__Keycloak__ClientSecret
+        secretKeyRef:
+          name: mcp-client-admin-oidc
+          key: client-secret
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

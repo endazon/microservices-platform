@@ -126,6 +126,9 @@ jobs:
       - name: Self-test the login existence-disclosure probe
         run: node scripts/check-login-existence-disclosure.js --self-test
 
+      - name: Self-test the SC-12 provisioning probe
+        run: node scripts/check-mcp-client-provisioning.js --self-test
+
       - name: Install k3d (pinned)
         run: |
           set -euo pipefail
@@ -329,6 +332,20 @@ jobs:
         if: ${{ !cancelled() && steps.seed-abac.outcome == 'success' && steps.seed-search.outcome == 'success' }}
         run: ABAC_POSITIVE=1 SEARCH_HITS=1 bash scripts/verify-oidc-edge-flow.sh --live
 
+      # 🔴 SC-12 の IdP への書き込みの門（#1817 / FR-16・SC-12・ADR-0123 決定 2・3・フォローアップ 3・IADR-0516）。
+      # 書き込み口（McpClientProvisioning:Provider=keycloak）は、偽の Keycloak とプロセス内の口でしか試されていなかった。
+      # **稼働の Keycloak で、作るもの・作らないものを対で測る**（M1〜M6。中身は scripts/check-mcp-client-provisioning.js の冒頭）:
+      #   登録が 201（503 にならない）・入口の印・`users?username=service-account-<client>&exact=true` がちょうど 1 件で属性あり・
+      #   差し替えの丸ごと置き換え・部分集合の外れ / private-note は何も作らない・プラットフォームのクライアント名は 400 で相手は不変・
+      #   「IdP へ書けて登録簿で落ちる」登録の補償・mcp-client-admin で入口のクライアントを消せる。
+      # 作ったもの（クライアント・使い捨ての登録者・登録簿の行）は検査器が片付ける。このクラスタは次のステップで破棄される。
+      # 前提はスタックの門だけ（ABAC の投入には依らない）。パスワードリセットの門の赤では飛ばさない（#1597 と同じ）。
+      # 🔴 **ログイン経路の門より前に置く**（あちらを最後に置く順序の統制を変えない）。
+      - name: 🔴 Gate — SC-12 の IdP への書き込み（#1817）
+        id: mcp-provisioning
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}
+        run: node scripts/check-mcp-client-provisioning.js --live
+
       # 🔴 ここが 4 つめの門である（#1245 PR-0 / SC-13・ADR-0078 決定 1）。
       # 計画 ADR は存在秘匿の統制を「**応答の区別不能性**（ステータス・本文・所要時間）」と定め、
       # **射程に認証系の経路（ログイン）を含める**と明文化したが、**ログイン側は実測されていなかった**
@@ -350,13 +367,13 @@ jobs:
       # ［2026-09-27 / 計画 ADR-0118 決定 2 / #1617］🔴 **T-25 だけの赤（偶然の赤の候補）の印。** 判定はしない（ジョブの合否は変えない）。
       # この手順が success になるのは、パスワードリセットの門が赤で、その失敗が T-25 の順位和検定の赤ただ 1 件
       # （検査器の出力 t25_only_red。T-10 / T-16 / T-17 / 前提の失敗・評価不能が混ざれば false）であり、
-      # かつスタックの門・2 つの投入・ABAC と検索の門・ログイン経路の門がすべて success のときだけである。
+      # かつスタックの門・2 つの投入・ABAC と検索の門・SC-12 の書き込みの門（#1817）・ログイン経路の門がすべて success のときだけである。
       # integration-stack-rerun.yml がこの手順の結論を API で読み、success のときだけ同じコミットで 1 回だけ再実行する
       # （あちらでも手順の結論を数え直す。ほかの門が 1 つでも赤なら偶然の赤として扱わない）。
       # 🔴 **手順名を変えない**（scripts/t25-rerun-on-chance-red.js の CANDIDATE_STEP と一致させる。API は長い名前を切るので短い ASCII）。
       - name: T-25 only red (chance-red candidate)
         id: t25-chance-red-candidate
-        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' && steps.reset-mail.outcome == 'failure' && steps.reset-mail.outputs.t25_only_red == 'true' && steps.seed-abac.outcome == 'success' && steps.seed-search.outcome == 'success' && steps.abac-search-gate.outcome == 'success' && steps.login-disclosure.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' && steps.reset-mail.outcome == 'failure' && steps.reset-mail.outputs.t25_only_red == 'true' && steps.seed-abac.outcome == 'success' && steps.seed-search.outcome == 'success' && steps.abac-search-gate.outcome == 'success' && steps.mcp-provisioning.outcome == 'success' && steps.login-disclosure.outcome == 'success' }}
         env:
           T25_P: ${{ steps.reset-mail.outputs.t25_p }}
           T25_W: ${{ steps.reset-mail.outputs.t25_w }}

@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-10-06
+updated: 2026-10-09
 author: claude
 ---
 <!-- trace:
-ids: [FR-06, FR-04, FR-17, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
-adrs: [ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127, ADR-0126]
-iadrs: [IADR-0501, IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498]
-specs: [20261006_1755_ast-kb-reader-confidentiality-cap, 20261003_458_connector-secret-vault-reference, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20261006_1746_claude-rerank]
-issues: [#1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672, planning#700, AST#1078, planning#716]
+ids: [SC-12, FR-16, FR-06, FR-04, FR-17, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
+adrs: [ADR-0123, ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127, ADR-0126]
+iadrs: [IADR-0516, IADR-0501, IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498]
+specs: [20261009_1817_sc12-provisioning-wiring, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261003_458_connector-secret-vault-reference, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20261006_1746_claude-rerank]
+issues: [#1817, #1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672, planning#700, AST#1078, planning#716]
 -->
 
 # セキュリティ仕様書
@@ -302,7 +302,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 `deploy/keycloak/microservices-platform-realm.json` の realm import には、開発・E2E 検証用の dev ユーザーが
 平文パスワードで含まれる（`poc-user`／`poc-operator`／`developer`、および OIDC クライアントシークレット
 `wiki-js-dev-secret-change-me` / `ai-stock-trading-kb-writer-dev-secret-change-me` / `ai-stock-trading-kb-reader-dev-secret-change-me` / `headlamp-dev-secret-change-me` /
-`abac-seeder-dev-secret-change-me` / `identity-admin-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
+`abac-seeder-dev-secret-change-me` / `identity-admin-dev-secret-change-me` / `mcp-client-admin-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
 
 > **🔴 ［2026-08-28 / #438］パスワードだけではログインできない。** 計画が確定した「TOTP による多要素認証を必須」を
 > realm で実効化したため、この 3 名は初回ログインで `CONFIGURE_TOTP` を求められ、以後は毎回 6 桁を要求される。
@@ -352,6 +352,24 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
   本番は Vault → ExternalSecret → Secret 経由で注入する（`bff-oidc` と同型）。
   🔴 **この資格情報が無いと認可サービスは起動しない**（非 optional な参照）——
   注入漏れが「偽の身元プロバイダで起動し、変更が実は届いていない」へ倒れないようにするためである。
+- **`mcp-client-admin`（MCP クライアント登録管理の、認可基盤への書き込みの主体）**: MCP クライアント登録管理の後段が、
+  無人のクライアントを登録・属性を差し替えるときに、認可基盤の管理 API へ機密クライアントとそのサービスアカウントの属性を
+  書くための機密クライアント（client_credentials のみ・標準フロー・暗黙フロー・直接付与は無効）。**service-account へ与えるのは
+  レルム管理の 2 つだけ**（クライアントの管理・利用者の管理）で、**レルムロールは 1 つも与えない**。レルムの管理・なりすまし・
+  レルムの全権は与えない（宣言の検査が否定形まで固定する）。利用者アカウント管理の反映先（`identity-admin`）とは**別のクライアント**
+  にする —— あちらはクライアントの管理を持たないことが最小権限の要件である。
+  🔴 **権限は入口の用途より広い（受容した残余）。** 漏れたときの影響範囲は次のとおりである。
+  - **レルムの全クライアント**の作成・変更・削除と、**全クライアントの secret の読み取り**（他のサービス・道具へのなりすまし、削除による認証の停止）。
+  - **レルムの全利用者**（人を含む）の属性とロールの書き換え（機密区分の引き上げ・管理者ロールの付与など。部分集合の規則と
+    利用者アカウント管理を経ない権限昇格と、属性による判定の書き換え）。
+  - 届かないもの: レルムの設定（認証フロー・送信設定）、なりすまし、他のレルム。
+  緩和は 3 つである。コードは入口の印（`msp.mcp-client.managed-by=mcp-server`）のあるクライアントとそのサービスアカウントにしか
+  書かない。secret は配備の秘密の経路（Vault → ExternalSecret → Secret。非 optional な参照で、無ければ後段が起動しない）だけで配る。
+  ローテーションと漏えい時の手順は[対になる秘密のローテーション](../operations/paired-secret-rotation-runbook.md)の
+  「管理用の資格情報が漏れたとき」に置く（全クライアントの secret を回す前提に立つ）。
+  権限を印のあるものへ絞るのは、認可基盤の細粒度の管理権限（fine-grained admin permissions の新しい版。26.2 以降）を待つ ——
+  **配備の認可基盤は 24.0 であり、現行の版では絞れない**（版を上げた後に絞る）。realm import 内の
+  `mcp-client-admin-dev-secret-change-me` は **dev 専用**である。
 - **`headlamp`（#271・dev の k8s 管理 UI 用）**: Headlamp（[headlamp.dev](https://headlamp.dev/)）を
   Keycloak OIDC でログインさせる confidential クライアント。Headlamp backend が authorization code を server-side で
   交換するため client secret を要する。realm import 内の `headlamp-dev-secret-change-me` は **dev 専用**で、`k8s-local-up.sh`

@@ -8671,7 +8671,12 @@ ${r.stderr}`);
         //    新設したため 60 → 61（ラチェットが設計どおり発火した）。🔴 **「同型の事故が 2 回」ではなく計画側の名指し**
         //    （ADR-0107 決定 3・フォローアップ 2、issue #1787 の受け入れ基準「検知する仕組み」）に基づく新設である。
         //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 61, `検査器の母集合が 61 本から変わった（${scripts.length} 件）`);
+        // ★ #1817 / 計画 ADR-0123 決定 2・フォローアップ 3 / IADR-0516 で `check-mcp-client-provisioning.js`（SC-12 の無人の登録・
+        //    差し替えが稼働の Keycloak に何を作り・何を作らないかを integration-stack で測る門。M1〜M6）を新設したため 61 → 62
+        //    （ラチェットが設計どおり発火した）。🔴 **「同型の事故が 2 回」ではなく issue の受け入れ基準 4（稼働の Keycloak での実測）と
+        //    計画 ADR-0123 フォローアップ 3 の名指しに基づく新設である。** git を一切呼ばず kubectl を外部コマンドとして叩くため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-login-existence-disclosure.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 62, `検査器の母集合が 62 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -12973,6 +12978,8 @@ exit $RC
       const SEED_SEARCH = stepOf('検索検証用文書の投入を確定させる');
       const ABAC_GATE = stepOf('🔴 Gate — ABAC の正常系と検索の命中が観測できる');
       const LOGIN_GATE = stepOf('🔴 Gate — ログイン経路の存在秘匿');
+      // #1817: SC-12 の IdP への書き込みの門も「ほかの門」に入る（赤なら偶然の赤として再実行しない）。
+      const MCP_GATE = stepOf('🔴 Gate — SC-12 の IdP への書き込み');
       const CAND = stepOf(rerunScript.CANDIDATE_STEP);
       const DUMP = stepOf('Dump cluster state');
 
@@ -12980,7 +12987,8 @@ exit $RC
       assert.strictEqual(CAND.name, rerunScript.CANDIDATE_STEP, '手順名が CANDIDATE_STEP と違う（再実行の script が候補を見つけられない）');
       assert.strictEqual(RESET.id, 'reset-mail', 'パスワードリセットの門の id が reset-mail でない（出力を読めない）');
       assert.strictEqual(RESET.cond, null, `パスワードリセットの門に if: が付いた: ${RESET.cond}`);
-      for (const s of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, LOGIN_GATE]) assert.ok(s.id, `${s.name} に id が無い`);
+      for (const s of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, LOGIN_GATE]) assert.ok(s.id, `${s.name} に id が無い`);
+      assert.ok(MCP_GATE.at < LOGIN_GATE.at, 'SC-12 の書き込みの門がログイン経路の門の後にある（ログイン経路の門を最後に置く統制）');
       assert.ok(CAND.at > LOGIN_GATE.at && CAND.at < DUMP.at, '「T-25 only red」がログイン経路の門の後・診断の前に無い（後段の結果を見られない）');
       assert.ok(CAND.cond, '「T-25 only red」に if: が無い（既定 success() では赤の run で走らない）');
       assert.ok(!/always\(\)/.test(CAND.cond), 'always() は取り消しでも走らせてしまう');
@@ -12997,7 +13005,7 @@ exit $RC
       };
       const allGreen = {
         [STACK.id]: 'success', [RESET.id]: 'failure', [SEED_ABAC.id]: 'success', [SEED_SEARCH.id]: 'success',
-        [ABAC_GATE.id]: 'success', [LOGIN_GATE.id]: 'success',
+        [ABAC_GATE.id]: 'success', [MCP_GATE.id]: 'success', [LOGIN_GATE.id]: 'success',
       };
       const onlyRed = { [RESET.id]: { t25_only_red: 'true', t25_p: '0.0094', t25_w: '713' } };
 
@@ -13008,7 +13016,7 @@ exit $RC
       // 場面 3: 出力が無い（検査器が古い・前提で落ちた）→ 走らない（fail-closed）
       assert.strictEqual(run({ outcomes: allGreen, outputs: {} }), false, '出力が無くても候補になる');
       // 場面 4: 🔴 ほかの門・投入のどれか 1 つが赤または飛ばされた → 走らない
-      for (const other of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, LOGIN_GATE]) {
+      for (const other of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, LOGIN_GATE]) {
         for (const outcome of ['failure', 'skipped', 'cancelled']) {
           assert.strictEqual(run({ outcomes: { ...allGreen, [other.id]: outcome }, outputs: onlyRed }), false,
             `${other.name} が ${outcome} なのに候補になる（ほかの門の赤を偶然の赤として再実行する）`);
@@ -15183,6 +15191,139 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(/run: node scripts\/check-image-digests\.js\s*$/m.test(ci), '本検査の配線が無い');
       const readme = fs.readFileSync(path.join(REPO, 'scripts/README.md'), 'utf8');
       assert.ok(readme.includes('`check-image-digests.js`'), 'scripts/README.md に行が無い');
+    });
+  }
+
+  // --- #1817 / FR-16・SC-12・計画 ADR-0123 決定 2・IADR-0516 決定 2: SC-12 の IdP への書き込み口の配備の配線 -------------
+  //
+  // 🔴 **守るのは 2 つである。** (1) 管理用の機密クライアント `mcp-client-admin` の権限が `manage-clients` と `manage-users` の
+  // 2 つちょうどで、それ以上へ広がらないこと（realm 設定・なりすまし・realm の全権を持たない）。(2) その secret の供給の連鎖
+  // （realm の宣言 → Vault の種 → ExternalSecret → 手動 apply → SC-22 の項目表 → compose）が 1 か所も切れていないこと。
+  // 段 1（#1786）のマージ後、配備は書き込み口を宣言しておらず無人の登録・差し替えが 503 だった —— 配線は単体試験では落ちない。
+  // helm の描画は scripts/helm-mcp-client-provisioning.test.js が持つ（helm が要るので CI の別ジョブ）。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8').replace(/\r\n/g, '\n');
+    const realm = JSON.parse(read('deploy/keycloak/microservices-platform-realm.json'));
+    const CLIENT = 'mcp-client-admin';
+    const SECRET_NAME = 'mcp-client-admin-oidc';
+    const VAULT_PATH = 'msp/mcp-client-admin-oidc';
+    const ROLES = ['manage-clients', 'manage-users'];
+    const client = realm.clients.find((c) => c.clientId === CLIENT);
+    const sa = realm.users.filter((u) => u.serviceAccountClientId === CLIENT);
+    const realmSecret = client && client.secret;
+
+    ok('#1817: realm の mcp-client-admin は機密・サービスアカウントだけで、人の流れ（標準・暗黙・直接付与）を閉じる', () => {
+      assert.ok(client, 'realm に mcp-client-admin が無い');
+      assert.strictEqual(client.enabled, true);
+      assert.strictEqual(client.publicClient, false, '公開クライアントになっている（client_credentials に secret が要らなくなる）');
+      assert.strictEqual(client.serviceAccountsEnabled, true);
+      // リテラルの false だけが閉（null / 未指定 / "false" を閉と読まない）。
+      for (const k of ['standardFlowEnabled', 'implicitFlowEnabled', 'directAccessGrantsEnabled']) {
+        assert.strictEqual(client[k], false, `${k} がリテラルの false でない（人の流れが開く）: ${JSON.stringify(client[k])}`);
+      }
+      assert.deepStrictEqual(client.redirectUris, [], 'リダイレクト先を持つ（人の流れの入口）');
+      assert.deepStrictEqual(client.webOrigins, []);
+      // realm-management のロールをトークンへ載せるスコープだけ（IADR-0329 課題 A。無いと Admin REST が 403）。
+      assert.deepStrictEqual(client.defaultClientScopes, ['realm-management-roles']);
+      assert.match(String(realmSecret), /^[a-z0-9-]+-dev-secret-change-me$/, 'realm の secret が開発用の形でない（検査 8 と同じ）');
+    });
+
+    ok('#1817: service-account-mcp-client-admin の realm-management のロールは manage-clients と manage-users の 2 つちょうど（realm ロールなし）', () => {
+      assert.strictEqual(sa.length, 1, `serviceAccountClientId=${CLIENT} の利用者が ${sa.length} 件（ちょうど 1 件であるべき）`);
+      assert.strictEqual(sa[0].username, `service-account-${CLIENT}`);
+      const clientRoles = sa[0].clientRoles || {};
+      assert.deepStrictEqual(Object.keys(clientRoles), ['realm-management'], 'realm-management 以外のクライアントロールを持つ');
+      assert.deepStrictEqual([...clientRoles['realm-management']].sort(), [...ROLES].sort());
+      assert.ok(!sa[0].realmRoles || sa[0].realmRoles.length === 0, `realm ロールを持つ: ${JSON.stringify(sa[0].realmRoles)}`);
+      assert.ok(!sa[0].groups || sa[0].groups.length === 0, 'グループに入っている（グループ経由でロールが付く）');
+    });
+
+    ok('#1817 否定形: mcp-client-admin は manage-realm・impersonation・realm-admin・view-realm を持たない', () => {
+      const held = new Set(((sa[0] || {}).clientRoles || {})['realm-management'] || []);
+      assert.ok(held.size > 0, '前提: ロールを読めていない（0 件を緑にしない）');
+      for (const forbidden of ['manage-realm', 'impersonation', 'realm-admin', 'view-realm', 'manage-authorization', 'manage-events', 'manage-identity-providers']) {
+        assert.ok(!held.has(forbidden), `mcp-client-admin が ${forbidden} を持つ（IADR-0516 決定 2 の天井を超える）`);
+      }
+    });
+
+    ok('#1817: manage-clients を持つ主体は mcp-client-admin だけ（identity-admin へ足さない。IADR-0301 決定 2）', () => {
+      const holders = realm.users
+        .filter((u) => ((u.clientRoles || {})['realm-management'] || []).includes('manage-clients'))
+        .map((u) => u.serviceAccountClientId || u.username);
+      assert.deepStrictEqual(holders, [CLIENT]);
+    });
+
+    ok('#1817: secret の供給の連鎖（ExternalSecret・Vault の種・手動 apply・SC-22 の項目表）が同じ名前・キー・パスで揃う', () => {
+      const es = read(`deploy/local/vault/eso/externalsecret-${SECRET_NAME}.yaml`);
+      assert.match(es, /^kind: ExternalSecret$/m);
+      assert.match(es, new RegExp(`^  name: ${SECRET_NAME}$`, 'm'));
+      assert.match(es, /^  namespace: microservices-platform$/m);
+      assert.match(es, new RegExp(`^    name: ${SECRET_NAME}\\n    creationPolicy: Owner$`, 'm'));
+      assert.match(es, new RegExp(`- secretKey: client-secret\\n\\s+remoteRef:\\n\\s+key: ${VAULT_PATH}\\n\\s+property: client-secret`));
+
+      // Vault の種: 無いときだけ作る 1 文（対になる秘密。ADR-0124 決定 1）。dev 既定は realm の宣言と同値。
+      const boot = read('deploy/local/vault/eso/bootstrap.sh');
+      const seeds = boot.split('\n').filter((l) => l.includes(VAULT_PATH) && !/^\s*(#|echo)/.test(l));
+      assert.deepStrictEqual(seeds, [
+        `vkv_create_if_absent ${VAULT_PATH} client-secret "\${MCP_CLIENT_ADMIN_CLIENT_SECRET:-${realmSecret}}"`,
+      ]);
+
+      // 手動 apply（ESO 未使用時の唯一の供給元）。dev 既定は realm の宣言と同値。
+      const up = read('scripts/k8s-local-up.sh');
+      assert.ok(up.includes(`apply_secret "$MSP_NS" ${SECRET_NAME} \\\n    "client-secret=\${MCP_CLIENT_ADMIN_CLIENT_SECRET:-${realmSecret}}"`),
+        'k8s-local-up.sh の手動 apply が無いか、dev 既定が realm の宣言と違う');
+
+      // SC-22: 対になる秘密は deferred[]（画面から書けない）。items[] には入れない。
+      const catalog = JSON.parse(read('deploy/bootstrap/sc22-secret-items.json'));
+      const deferred = catalog.deferred.flatMap((d) => d.vaultPaths);
+      assert.ok(deferred.includes(VAULT_PATH), `${VAULT_PATH} が deferred[] に無い`);
+      assert.ok(!catalog.items.some((i) => i.vaultPath === VAULT_PATH), `${VAULT_PATH} が items[]（allowlist）に入っている`);
+    });
+
+    ok('#1817: compose の mcp-service は Provider=keycloak と mcp-client-admin の資格情報を持ち、dev 既定は realm の宣言と同値', () => {
+      const compose = read('deploy/docker-compose.yml');
+      const at = compose.indexOf('\n  mcp-service:\n');
+      assert.ok(at >= 0, 'compose に mcp-service が無い');
+      const next = compose.slice(at + 1).search(/\n  [a-z0-9-]+:\n/);
+      const svc = compose.slice(at, next < 0 ? undefined : at + 1 + next);
+      const envOf = (k) => (new RegExp(`^\\s+${k}:\\s*(.+)$`, 'm').exec(svc) || [])[1];
+      assert.strictEqual(envOf('McpClientProvisioning__Provider'), 'keycloak');
+      assert.strictEqual(envOf('McpClientProvisioning__Keycloak__ClientId'), CLIENT);
+      assert.strictEqual(envOf('McpClientProvisioning__Keycloak__Realm'), realm.realm);
+      assert.strictEqual(envOf('McpClientProvisioning__Keycloak__BaseUrl'), 'http://keycloak:8080');
+      assert.strictEqual(envOf('McpClientProvisioning__Keycloak__ClientSecret'), `\${MCP_CLIENT_ADMIN_CLIENT_SECRET:-${realmSecret}}`);
+      // 陰性対照: 他のサービスは書き込み口を持たない（管理用の資格情報を mcp-service の外へ配らない）。
+      const holders = compose.split('\n').filter((l) => /McpClientProvisioning__/.test(l) && !/^\s*#/.test(l));
+      assert.strictEqual(holders.length, 5, `compose の McpClientProvisioning__* が ${holders.length} 行（mcp-service の 5 行だけであるべき）`);
+    });
+
+    ok('#1817: check-mcp-client-provisioning.js --self-test が通る（稼働クラスタに触れない）', () => {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'check-mcp-client-provisioning.js'), '--self-test'], { encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+      assert.match(String(r.stdout), /self-test OK: \d+ 件/);
+    });
+
+    ok('#1817: integration-stack の SC-12 の書き込みの門は --live で検査器を呼び、スタックの門だけを前提にする', () => {
+      const wf = read('.github/workflows/integration-stack.yml');
+      const blocks = wf.split('\n      - name: ').slice(1);
+      const gate = blocks.filter((b) => b.startsWith('🔴 Gate — SC-12 の IdP への書き込み'));
+      assert.strictEqual(gate.length, 1, '門が 1 つでない');
+      assert.match(gate[0], /^\s+run: node scripts\/check-mcp-client-provisioning\.js --live\s*$/m);
+      assert.match(gate[0], /^\s+if: \$\{\{ !cancelled\(\) && steps\.stack-ready\.outcome == 'success' \}\}\s*$/m);
+      assert.ok(blocks.some((b) => b.startsWith('Self-test the SC-12 provisioning probe')), '高価な起動の前の自己試験が無い');
+    });
+
+    ok('#1817: 漏えい時の影響範囲とローテーションの文書が mcp-client-admin を名指しする', () => {
+      const runbook = read('docs/operations/paired-secret-rotation-runbook.md');
+      assert.ok(runbook.includes(`| \`${CLIENT}\` | \`${VAULT_PATH}\` の \`client-secret\` | \`microservices-platform/${SECRET_NAME}\``),
+        'paired-secret-rotation-runbook.md の client の表に mcp-client-admin の行が無い');
+      const security = read('docs/security/security.md');
+      assert.ok(security.includes(`\`${CLIENT}\``), 'security.md に mcp-client-admin の項が無い');
+      assert.ok(/fine-grained|FGAP/i.test(security), 'security.md に Keycloak 24 では絞れない件（残余）が無い');
     });
   }
 

@@ -5,13 +5,14 @@ status: Accepted
 related_ids: [FR-16, FR-09, UC-09, SC-12, ADR-0123, ADR-0062, ADR-0088, ADR-0024, ADR-0034, IADR-0297, IADR-0301, IADR-0329, IADR-0366, IADR-0385, IADR-0413, IADR-0479, IADR-0481, IADR-0286]
 author: claude
 created: 2026-10-08
-updated: 2026-10-08
+updated: 2026-10-09
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0123_mcp-service-account-attributes-source-of-truth-is-idp.md 決定 1〜4・§結果「悪い影響」・フォローアップ 1〜3
   - planning:projects/microservices-platform/07_adr/ADR-0062_unattended-account-attribute-subset.md 決定 2・3
   - planning:projects/microservices-platform/07_adr/ADR-0088_authz-resolves-user-attributes-itself.md 決定 1・3
 related_specs:
   - ../specs/20261008_1786_sc12-keycloak-provisioning.md
+  - ../specs/20261009_1817_sc12-provisioning-wiring.md
 ---
 
 # IADR-0516: SC-12 を IdP への入口にする —— Keycloak への書き込みの口・管理用の資格情報・テンプレート・順序と補償・食い違いの検知（#1786）
@@ -140,6 +141,23 @@ SC-12 の登録・属性の差し替えは McpServer の登録簿へ書くだけ
 3. **食い違いの検知**（決定 5。#1818）の実装と警報。交差した差し替えの残る競合（決定 4）もここで拾う。
 4. 有人のクライアントの作り方（既知の逸脱。決定 3）と client secret の受け渡しは、計画の回答（planning#751）を待つ。
 5. `mcp-client-admin` の権限を、入口の印のあるクライアントとそのサービスアカウントだけへ狭める。Keycloak の fine-grained admin permissions v2 は 26.2 以降であり、**配備の Keycloak は 24.0** なので、Keycloak の更新を待つ。
+
+## ［2026-10-09 追記 / #1817］段 2: 配備の配線と稼働の Keycloak での実測
+
+新しい決定は無い（決定 2 と §残余 1・2 が中身を決めていた）。**配線の形と、実測の取り方だけを記録する。**
+
+- **§残余 1（配備の配線）は解消した。** realm に `mcp-client-admin`（機密・SA のみ・標準 / 暗黙 / 直接付与は閉・既定スコープ `realm-management-roles` だけ・SA に `realm-management` の `manage-clients` と `manage-users` だけ・realm ロールなし）。secret は `identity-admin`（IADR-0329）と同型に供給する: Vault の種（`vkv_create_if_absent msp/mcp-client-admin-oidc`。対になる秘密なので無いときだけ作る。ADR-0124 決定 1）→ ExternalSecret `mcp-client-admin-oidc`（キー `client-secret`）→ helm の**非 optional** な secretKeyRef。ESO を使わない起動は `k8s-local-up.sh` の手動 apply。SC-22 の項目表は `deferred[]`（画面から書かせない）。helm と compose は `McpClientProvisioning__Provider=keycloak` を宣言した。
+  - 「**既定値なしで供給する**」の読み: **アプリ（McpServer）と helm は既定値を持たない**（決定 2・IADR-0286。Secret が無ければ Pod が起動しない）。dev の値（`mcp-client-admin-dev-secret-change-me`）は realm の宣言と同値で、**供給の経路（Vault の種・手動 apply・compose）だけ**が持つ。これは realm の他の全機密クライアントと同じ形であり、realm の宣言の secret は作成時だけ使われる（IADR-0485。回した後は Vault が正）。
+  - 静的な固定: `scripts.repo.test.js` の #1817 節（ロールの集合が 2 つちょうど・否定形 `manage-realm` / `impersonation` / `realm-admin` / `view-realm` ほか・`manage-clients` を持つ主体はこれ 1 つ・供給の連鎖の名前とキーと dev 値の一致）、`helm-mcp-client-provisioning.test.js`（**書き込み口を持つ Deployment はすべて Provider=keycloak を持つ** ＝ 503 のまま Ready の配備を残さない・mcp-service だけ・非 optional・変異）、`k8s-local-up.test.js`（ESO の有無の対）、`check-realm-constraints.js`（スコープ・SA 利用者 1 つ）。
+- **§残余 2（稼働の Keycloak での実測）は integration-stack の門に載せた**（`scripts/check-mcp-client-provisioning.js --live`。M1〜M6 は作業仕様書 20261009_1817）。取り方の判断:
+  - **登録者は実行ごとに作る使い捨ての機密クライアント**（SA に `platform-admin`・既定スコープ `profile` / `roles`）。realm の `abac-seeder` は既定スコープに `profile` が無く `preferred_username` が載らないので、登録者の属性を引けず、部分集合の判定は「検証できません」の 400 になる（規則そのものを測れない）。部分集合の外れは「外れた値を名指しした 400」であることまで確かめる。
+  - **照会は master の管理者**（測る側と測られる側を分ける）。**補償が使う削除の権限**は `mcp-client-admin` の資格情報そのもので M1 のクライアントを消して測る。
+  - **補償の経路は稼働の構成のまま作る**: 登録簿の `DisplayName` は `varchar(200)`、Keycloak のクライアントの `name` は 255 文字まで。201〜255 文字の表示名は「IdP へ書けて登録簿で落ちる」ので、決定 4 の補償（作ったクライアントを消してから元の例外）が稼働で走る。
+  - **差し替えの入口の印の確かめ**は、入口ができる前の登録簿の行（無人・`abac-seeder`）を psql で置いて測る（API では作れない形だから）。
+  - 🔴 **門は PR では走らない**（integration-stack は日次・develop への push・手動）。本 PR のマージ後の最初の実行が初回の実測になる。**フォローアップ 3 が成立しなければ M2 と M4 の部分集合が赤になる**（どちらも名指しの照会でサービスアカウントを引く）。
+- **決定 4a（無効化の IdP の `enabled` への写し）は本段に入れなかった。** 段 1 の作業仕様書は段 2 に含めたが、issue #1817 の受け入れ基準に無い。503 を閉じる本段を小さく保つため外す。それまでも差し替えで作るときは無効な行から有効なクライアントを生まない（決定 4）。後続の issue で入れる。
+- **残余 5（権限の絞り込み）は変わらない。** 配備の Keycloak は 24.0 で、fine-grained admin permissions v2（26.2 以降）が無い。漏えい時の影響範囲（全クライアントの secret・全利用者の属性とロール）とローテーションは `docs/security/security.md` と `docs/operations/paired-secret-rotation-runbook.md` に書いた。
+- 統制表の「無人の属性は検証の後に IdP へ書く」の暫定手段（配備では未宣言 → 503）は、本段で**配備でも宣言済み**になった。
 
 ## 関連
 
