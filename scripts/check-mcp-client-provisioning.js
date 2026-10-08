@@ -3,7 +3,7 @@
 /*
  * check-mcp-client-provisioning.js
  *
- * FR-16, SC-12, 計画 ADR-0123 決定 2・3・フォローアップ 3, IADR-0516 決定 2〜4・6 (#1817):
+ * FR-16, SC-12, 計画 ADR-0123 決定 2・3・フォローアップ 3, IADR-0516 決定 2〜4・4a・6 (#1817 / #1829):
  * **SC-12 の無人の登録・属性の差し替えが、稼働の Keycloak に何を作り・何を作らないかを実測する**（integration-stack の門）。
  *
  * 背景: 段 1（#1786）の書き込み口は、偽の Keycloak（状態を持つ HTTP の受け手）とプロセス内の口でしか試されていない。
@@ -13,7 +13,7 @@
  *   - 管理用の主体 `mcp-client-admin` のロール（manage-clients / manage-users）で、作成・SA の照会・属性の書き込み・補償の削除が
  *     本当に通るかも、稼働の Keycloak でしか分からない（足りなければ 403 → 502）。
  *
- * 測ること（受け入れ基準 4。番号は作業仕様書 20261009_1817 の M1〜M6。M7 は 20261009_1818）:
+ * 測ること（受け入れ基準 4。番号は作業仕様書 20261009_1817 の M1〜M6。M7 は 20261009_1818。M8 は 20261009_1829）:
  *   M1 無人の登録が 201（503 にならない）。Keycloak のクライアントに入口の印（msp.mcp-client.managed-by=mcp-server）があり、
  *      機密・SA つき・人の流れ（標準・暗黙・直接付与）は閉・fullScopeAllowed=false。
  *   M2 `users?username=service-account-<client>&exact=true` がちょうど 1 件で、割り当てた属性が入っている（集合値は多値）。
@@ -32,6 +32,14 @@
  *      🔴 **ゲージの値は読まない** —— この使い捨てのスタックは観測スタック（Prometheus）を起こさない。読むのは照合のログである。
  *      それでも、照合の読み取りの口（クライアントの一覧が入口の印を含むこと・mcp-client-admin の権限で一覧と照会が通ること）は
  *      稼働の Keycloak でしか確かめられない。照合が失敗し続けていれば名指しは出ないので、この門が赤になる。
+ *      ［#1829］入口の印つきのクライアントを master の管理者で直接無効にすると `kind=enabled_differs` として名指しされることも待つ
+ *      （一覧の表現が enabled を含むことの実測）。
+ *   M8 無効化の写し（#1829 / IADR-0516 決定 4a）: 入口で登録したクライアントで、無効化の前は client_credentials のトークンが出る（陽性対照）。
+ *      SC-12 で無効化（200）すると Keycloak のクライアントの enabled が false・トークン発行が拒否され（4xx・access_token なし）・
+ *      登録簿の行も無効。再有効化（200）で enabled が true・トークンが再び出て、テンプレートの項目（入口の印・人の流れの閉）が残る。
+ *      🔴 無効化の後・再有効化の後のそれぞれで、**トークンを要求する前に**サービスアカウントの利用者が同じ ID で 1 人だけ残り属性が
+ *      変わらないことを見る（PR #1832 監査 🔴1: SA の項目を欠いたクライアントの PUT は Keycloak 24 で SA を消し、トークンの要求が空の SA を作り直す）。否定形: 入口ができる前の登録簿の行（M5 が置く abac-seeder）を
+ *      無効化しても abac-seeder の enabled は true のまま、再有効化は 400 で enabled は true のまま。
  *
  * 主体は 3 つに分ける（測る側と測られる側を同じにしない）:
  *   - 登録者: 実行のたびに master の管理者が作る**使い捨ての機密クライアント**（SA に platform-admin・既定スコープ profile / roles）。
@@ -222,6 +230,45 @@ function evaluateReconciliationLog(logText, expected) {
   return errors;
 }
 
+/** M8: トークンが出たか（200 かつ access_token あり）。 */
+function evaluateTokenIssued(res) {
+  const r = res || {};
+  if (r.status === 200 && r.json && typeof r.json.access_token === 'string' && r.json.access_token) return [];
+  return [`トークンが出ない（状態 ${r.status}・error ${JSON.stringify((r.json || {}).error)}）`];
+}
+
+/**
+ * M8: トークン発行が Keycloak に**拒否された**か。🔴 5xx・到達不能は「拒否」ではない（Keycloak の不調で緑にしない）。
+ * 無効なクライアントへの client_credentials は 401 invalid_client（版によって 400 unauthorized_client）である。
+ */
+function evaluateTokenRefused(res) {
+  const r = res || {};
+  if (r.json && r.json.access_token) return [`無効化した後もトークンが出た（状態 ${r.status}）`];
+  if (r.status !== 400 && r.status !== 401) return [`状態が ${r.status}（期待 400 / 401 ＝ Keycloak がクライアントを拒否した）`];
+  return [];
+}
+
+/**
+ * M8（PR #1832 監査 🔴1）: 無効化・再有効化の後もサービスアカウントの利用者が**同じ ID で** 1 人だけ残り、属性が変わっていないか。
+ * 🔴 **トークンを要求する前に**判定する —— Keycloak は SA の利用者が無いクライアントの client_credentials で空の利用者を作り直すので、
+ *    トークンの後に見ると「消えて作り直された」を見逃す（同じ ID であることも見るのはそのため）。
+ */
+function evaluateServiceAccountIntact(users, clientId, requested, expectedUserId) {
+  const errors = evaluateServiceAccountLookup(users, clientId, requested);
+  if (errors.length > 0) return errors;
+  if (expectedUserId && users[0].id !== expectedUserId) {
+    return [`サービスアカウントの利用者の ID が変わった（前 ${expectedUserId}・後 ${users[0].id}。消えて作り直された）`];
+  }
+  return [];
+}
+
+/** M8: Keycloak のクライアントがちょうど 1 件で、enabled が期待どおりか。 */
+function evaluateClientEnabled(clients, clientId, expected) {
+  const hits = (clients || []).filter((c) => c.clientId === clientId);
+  if (hits.length !== 1) return [`クライアント ${clientId} が Keycloak に ${hits.length} 件（ちょうど 1 件であるべき）`];
+  return hits[0].enabled === expected ? [] : [`enabled が ${JSON.stringify(hits[0].enabled)}（期待 ${expected}）`];
+}
+
 function selfTest() {
   const assert = require('assert');
   let n = 0;
@@ -294,6 +341,38 @@ function selfTest() {
     assert.strictEqual(failing.length, 3);
     assert.ok(failing[2].includes('照合が失敗している'));
   });
+  t('M8: トークンは 200 かつ access_token で出たと読む。4xx・空の access_token・5xx は出ていない', () => {
+    assert.deepStrictEqual(evaluateTokenIssued({ status: 200, json: { access_token: 'x' } }), []);
+    assert.strictEqual(evaluateTokenIssued({ status: 200, json: {} }).length, 1);
+    assert.strictEqual(evaluateTokenIssued({ status: 401, json: { error: 'invalid_client' } }).length, 1);
+    assert.strictEqual(evaluateTokenIssued(undefined).length, 1);
+  });
+  t('M8: 拒否は 400 / 401 で access_token なしだけ。トークンが出た・5xx・到達不能は赤（Keycloak の不調で緑にしない）', () => {
+    assert.deepStrictEqual(evaluateTokenRefused({ status: 401, json: { error: 'invalid_client' } }), []);
+    assert.deepStrictEqual(evaluateTokenRefused({ status: 400, json: { error: 'unauthorized_client' } }), []);
+    assert.ok(evaluateTokenRefused({ status: 200, json: { access_token: 'x' } })[0].includes('トークンが出た'));
+    for (const st of [500, 502, 503, 403, undefined]) assert.strictEqual(evaluateTokenRefused({ status: st, json: null }).length, 1, String(st));
+  });
+  t('M8: enabled は 1 件の完全一致で比べる。0 件・2 件・未指定・違う値は赤', () => {
+    assert.deepStrictEqual(evaluateClientEnabled([{ clientId: 'p', enabled: false }], 'p', false), []);
+    assert.strictEqual(evaluateClientEnabled([{ clientId: 'p', enabled: true }], 'p', false).length, 1);
+    assert.strictEqual(evaluateClientEnabled([{ clientId: 'p' }], 'p', true).length, 1, '未指定を有効と読まない');
+    assert.strictEqual(evaluateClientEnabled([], 'p', true).length, 1);
+    assert.strictEqual(evaluateClientEnabled([{ clientId: 'p', enabled: true }, { clientId: 'p', enabled: true }], 'p', true).length, 1);
+    assert.strictEqual(evaluateClientEnabled([{ clientId: 'p-2', enabled: false }], 'p', false).length, 1, '前方一致を数えない');
+  });
+  t('M8: SA は同じ ID で 1 人・属性が同じなら 0。0 件（消えた）・ID 違い（作り直された）・属性違い（空）は赤', () => {
+    const sa = { id: 'u1', username: 'service-account-p', attributes: { department: ['engineering'] } };
+    const req = { department: 'engineering' };
+    assert.deepStrictEqual(evaluateServiceAccountIntact([sa], 'p', req, 'u1'), []);
+    assert.ok(evaluateServiceAccountIntact([], 'p', req, 'u1')[0].includes('0 件'));
+    assert.ok(evaluateServiceAccountIntact([{ ...sa, id: 'u2' }], 'p', req, 'u1')[0].includes('作り直された'));
+    assert.strictEqual(evaluateServiceAccountIntact([{ ...sa, id: 'u2', attributes: {} }], 'p', req, 'u1').length, 1, '空の利用者は属性違い');
+  });
+  t('M7: enabled_differs の名指しも同じ判定器で読む', () => {
+    assert.deepStrictEqual(evaluateReconciliationLog('client=p-off kind=enabled_differs。', [{ clientId: 'p-off', kind: 'enabled_differs' }]), []);
+    assert.strictEqual(evaluateReconciliationLog('client=p-off kind=attributes_differ', [{ clientId: 'p-off', kind: 'enabled_differs' }]).length, 1);
+  });
   t('M6: 補償の表示名は登録簿の上限を超え、Keycloak の上限に収まる', () => {
     const name = overlongDisplayName();
     assert.ok(name.length > REGISTRY_DISPLAY_NAME_MAX && name.length <= KEYCLOAK_NAME_MAX);
@@ -354,6 +433,20 @@ async function token(kcUrl, realm, form) {
   });
   if (!res.ok) throw new Error(`トークン取得が ${res.status}（realm ${realm}・client ${form.client_id}）`);
   return (await res.json()).access_token;
+}
+
+/** トークンの取得を試みる（M8。投げずに状態と本文を返す。secret は本文で送り、ログに出さない）。 */
+async function tokenAttempt(kcUrl, realm, form) {
+  try {
+    const res = await fetch(`${kcUrl}/realms/${realm}/protocol/openid-connect/token`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form),
+    });
+    let json = null;
+    try { json = await res.json(); } catch { /* 本文が JSON でない */ }
+    return { status: res.status, json };
+  } catch (e) {
+    return { status: undefined, json: null, error: e.message };
+  }
 }
 
 async function call(method, url, bearer, body) {
@@ -436,6 +529,7 @@ async function live() {
   const register = (clientId, attributes, displayName = 'SC-12 provisioning probe') =>
     call('POST', `${mcpUrl}/mcp-clients`, registrar, { clientId, displayName, kind: 'service-account', attributes });
   const replace = (clientId, attributes) => call('PUT', `${mcpUrl}/mcp-clients/${encodeURIComponent(clientId)}/attributes`, registrar, { attributes });
+  const toggle = (clientId, action) => call('POST', `${mcpUrl}/mcp-clients/${encodeURIComponent(clientId)}/${action}`, registrar);
   const registryRows = async () => {
     const r = await call('GET', `${mcpUrl}/mcp-clients`, registrar);
     if (r.status !== 200) throw new Error(`GET /mcp-clients が ${r.status}`);
@@ -450,6 +544,7 @@ async function live() {
   };
   const status = (r, want) => (r.status === want ? [] : [`状態が ${r.status}（期待 ${want}）: ${String(r.text).slice(0, 300)}`]);
   const legacyMarker = `SC-12 provisioning probe legacy row ${run}`;
+  let legacyInserted = false; // M5 が入口ができる前の行（abac-seeder）を置いたか（M8 の否定形の前提）
 
   try {
     created.push(registrarId); // 作りかけで落ちても片付けの対象に入れる（clientId で引いて消す）
@@ -516,6 +611,7 @@ async function live() {
     } else {
       psql(`INSERT INTO "Clients" ("Id","ClientId","DisplayName","Kind","Enabled","Attributes","EgressTier","RegisteredAt","UpdatedAt")
         VALUES (gen_random_uuid(), ${sqlLiteral(platformClient)}, ${sqlLiteral(legacyMarker)}, 1, true, '{}'::jsonb, 2, now(), now());`);
+      legacyInserted = true;
       const r5b = await replace(platformClient, { department: `probe-${run}` });
       step(`M5 差し替え: 入口ができる前の行（${platformClient}）は 400`, status(r5b, 400));
       const seederAfterReplace = normalizeAttributes(((await usersOf(platformClient))[0] || {}).attributes);
@@ -573,7 +669,22 @@ async function live() {
       directAccessGrantsEnabled: false, redirectUris: [], webOrigins: [],
       attributes: { [MANAGED_BY_ATTRIBUTE]: MANAGED_BY_VALUE },
     }), 201));
-    const expected = [{ clientId: driftId, kind: 'attributes_differ' }, { clientId: orphanId, kind: 'orphan' }];
+    // ［#1829］入口で登録したクライアントを master の管理者で直接無効にする（登録簿は有効のまま）→ enabled_differs。
+    const offId = id('off');
+    const r7c = await register(offId, { department: 'engineering' });
+    if (r7c.status === 201) created.push(offId);
+    step('M7 前提: 有効・無効の照合の対象にする無人の登録が 201', status(r7c, 201));
+    const offClient = (await clientsOf(offId)).find((c) => c.clientId === offId);
+    if (offClient) {
+      // read-modify-write（検査対象の口と同じ部分本文の形を使わない＝測る側を測られる側から独立させる）。
+      const full = (await call('GET', `${kcAdmin}/clients/${offClient.id}`, admin)).json || {};
+      step('M7 前提: 入口の印つきのクライアントを master の管理者で直接無効にする',
+        status(await call('PUT', `${kcAdmin}/clients/${offClient.id}`, admin, { ...full, enabled: false }), 204));
+    } else {
+      failures.push('M7 の前提: 有効・無効の照合の対象のクライアントが無い');
+    }
+    const expected = [{ clientId: driftId, kind: 'attributes_differ' }, { clientId: orphanId, kind: 'orphan' },
+      { clientId: offId, kind: 'enabled_differs' }];
     const deadline = Date.now() + RECONCILE_WAIT_MS;
     let reconcileErrors = ['照合のログを読めていない'];
     while (Date.now() < deadline) {
@@ -584,8 +695,56 @@ async function live() {
       reconcileErrors = evaluateReconciliationLog(logs.stdout, expected);
       if (reconcileErrors.length === 0) break;
     }
-    step(`M7 照合が、属性の書き換えを attributes_differ・登録簿に無い印つきのクライアントを orphan として名指しする（${RECONCILE_WAIT_MS / 1000} 秒以内）`,
+    step(`M7 照合が、属性の書き換えを attributes_differ・登録簿に無い印つきのクライアントを orphan・直接の無効化を enabled_differs として名指しする（${RECONCILE_WAIT_MS / 1000} 秒以内）`,
       reconcileErrors);
+
+    // --- M8（#1829）--------------------------------------------------------------------------------
+    const toggleId = id('toggle');
+    const r8 = await register(toggleId, { department: 'engineering' });
+    if (r8.status === 201) created.push(toggleId);
+    step('M8 前提: 無効化の対象にする無人の登録が 201', status(r8, 201));
+    const toggled = (await clientsOf(toggleId)).find((c) => c.clientId === toggleId);
+    if (toggled) {
+      const sec = await call('GET', `${kcAdmin}/clients/${toggled.id}/client-secret`, admin);
+      const secret = ((sec.json || {}).value) || '';
+      if (!secret) failures.push(`M8 の前提: ${toggleId} の secret を読めない（状態 ${sec.status}）`);
+      const issue = () => tokenAttempt(kcUrl, REALM, { grant_type: 'client_credentials', client_id: toggleId, client_secret: secret });
+      const toggleAttrs = { department: 'engineering' };
+      const saBefore = (await usersOf(toggleId))[0];
+      step('M8 前提: サービスアカウントの利用者が 1 人で属性が入っている', evaluateServiceAccountLookup(await usersOf(toggleId), toggleId, toggleAttrs));
+      step('M8 陽性対照: 無効化の前は client_credentials のトークンが出る', evaluateTokenIssued(await issue()));
+
+      step('M8 SC-12 の無効化が 200', status(await toggle(toggleId, 'disable'), 200));
+      step('M8 無効化で Keycloak のクライアントの enabled が false', evaluateClientEnabled(await clientsOf(toggleId), toggleId, false));
+      // 🔴 トークンを要求する前に見る（要求が SA を作り直して事故を隠す。PR #1832 監査 🔴1）。
+      step('M8 無効化の後もサービスアカウントの利用者が同じ ID で残り、属性が変わらない',
+        evaluateServiceAccountIntact(await usersOf(toggleId), toggleId, toggleAttrs, saBefore && saBefore.id));
+      step('M8 無効化の後は client_credentials のトークン発行が Keycloak に拒否される', evaluateTokenRefused(await issue()));
+      const offRow = (await registryRows()).find((c) => c.clientId === toggleId);
+      step('M8 登録簿の行も無効', offRow && offRow.enabled === false ? [] : [`登録簿の行: ${JSON.stringify(offRow)}`]);
+
+      step('M8 SC-12 の再有効化が 200', status(await toggle(toggleId, 'enable'), 200));
+      step('M8 再有効化で Keycloak のクライアントの enabled が true', evaluateClientEnabled(await clientsOf(toggleId), toggleId, true));
+      step('M8 再有効化の後もサービスアカウントの利用者が同じ ID で残り、属性が変わらない（トークンの要求より前に見る）',
+        evaluateServiceAccountIntact(await usersOf(toggleId), toggleId, toggleAttrs, saBefore && saBefore.id));
+      step('M8 再有効化の後はトークンが再び出る', evaluateTokenIssued(await issue()));
+      step('M8 再有効化の後もテンプレートの項目（入口の印・機密・人の流れの閉）が残る（enabled と SA・authorization の現在値だけを書いた）',
+        evaluateCreatedClient(await clientsOf(toggleId), toggleId));
+    } else {
+      failures.push('M8 の前提: 無効化の対象のクライアントが無い');
+    }
+    // 否定形: 入口ができる前の登録簿の行（M5 が置いた abac-seeder）。プラットフォームのクライアントを無効化の経路から変えない。
+    if (legacyInserted) {
+      step(`M8 否定形の前提: ${PLATFORM_CLIENT} は Keycloak で有効`, evaluateClientEnabled(await clientsOf(PLATFORM_CLIENT), PLATFORM_CLIENT, true));
+      step(`M8 否定形: ${PLATFORM_CLIENT} の行の無効化は 200（登録簿だけ）`, status(await toggle(PLATFORM_CLIENT, 'disable'), 200));
+      step(`M8 否定形: 無効化しても ${PLATFORM_CLIENT} の enabled は true のまま`,
+        evaluateClientEnabled(await clientsOf(PLATFORM_CLIENT), PLATFORM_CLIENT, true));
+      step(`M8 否定形: ${PLATFORM_CLIENT} の行の再有効化は 400（入口を通らない主体へ接続を開かない）`, status(await toggle(PLATFORM_CLIENT, 'enable'), 400));
+      step(`M8 否定形: 再有効化の後も ${PLATFORM_CLIENT} の enabled は true のまま`,
+        evaluateClientEnabled(await clientsOf(PLATFORM_CLIENT), PLATFORM_CLIENT, true));
+    } else {
+      failures.push(`M8 の否定形の前提: M5 が入口ができる前の行（${PLATFORM_CLIENT}）を置けていない`);
+    }
   } finally {
     // 片付け（失敗しても門の判定は上の結果で決める）。使い捨ての登録者も消す（SA 利用者ごと消える）。
     for (const cid of created) {
@@ -603,7 +762,7 @@ async function live() {
     for (const f of failures) warn(`  - ${f}`);
     return 1;
   }
-  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M7）');
+  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M8）');
   return 0;
 }
 
@@ -611,7 +770,7 @@ module.exports = {
   evaluateCompensationResponse, evaluateCompensationEvents,
   serviceAccountUserName, expectedKeycloakAttributes, normalizeAttributes, sameAttributes,
   evaluateCreatedClient, evaluateServiceAccountLookup, evaluateNothingCreated, overlongDisplayName,
-  evaluateReconciliationLog,
+  evaluateReconciliationLog, evaluateTokenIssued, evaluateTokenRefused, evaluateClientEnabled, evaluateServiceAccountIntact,
 };
 
 if (require.main === module) {

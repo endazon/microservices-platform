@@ -343,7 +343,7 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "SC-12 の登録簿と IdP のサービスアカウントが食い違っている（0 が正常）"
-          description: "McpServer の定期の照合（既定 1 分ごと）で、SC-12 の登録簿の無人の行と認証基盤（Keycloak）のサービスアカウントが食い違ったクライアントが 1 件以上ある（mcp_idp_reconciliation_drifted）。種類は IdP にクライアントが無い・入口の印（managed-by）が無い・サービスアカウントが無い・属性が違う・印つきのクライアントに登録簿の行が無い（孤児）。判定は IdP の属性で行われるので、登録簿の表示と判定がずれている。McpServer の Warning ログ（client=… kind=…）でクライアントと種類を特定し、運用仕様書「MCP クライアント登録簿と認証基盤の照合」の手順で確かめる。照合は直さない（検知だけ）。"
+          description: "McpServer の定期の照合（既定 1 分ごと）で、SC-12 の登録簿の無人の行と認証基盤（Keycloak）のサービスアカウントが食い違ったクライアントが 1 件以上ある（mcp_idp_reconciliation_drifted）。種類は IdP にクライアントが無い・入口の印（managed-by）が無い・サービスアカウントが無い・属性が違う・有効と無効が違う（無効化の IdP への写しの失敗を含む）・印つきのクライアントに登録簿の行が無い（孤児）。判定は IdP の属性で行われるので、登録簿の表示と判定がずれている。McpServer の Warning ログ（client=… kind=…）でクライアントと種類を特定し、運用仕様書「MCP クライアント登録簿と認証基盤の照合」の手順で確かめる。照合は直さない（検知だけ）。"
       - alert: McpClientIdpReconciliationSeriesAbsent
         expr: absent(mcp_idp_reconciliation_drifted)
         for: 5m

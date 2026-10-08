@@ -28,6 +28,15 @@ namespace McpServer.Infrastructure.ExternalServices;
 // ■ 差し替えは `GET /clients/{id}` で入口の印（`managed-by=mcp-server`）を確かめ、無ければ何も書かない（PR #1816 監査 🔴-1）。
 // ■ ［2026-10-09 / #1818］照合の読み取り（`IServiceAccountDirectory`）も同じ口が持つ: `GET /clients`（頁で列挙・入口の印の有無）と
 //   `GET /users?username=service-account-<client>&exact=true`（認可サービスと同じ照会）。**読むだけで書かない**（IADR-0516 決定 5）。
+// ■ ［2026-10-09 / #1829］無効化・再有効化の写し（IADR-0516 決定 4a）: クライアントの完全一致の照会 → `GET /clients/{id}`（入口の印と
+//   現在の `enabled`）→ `PUT /clients/{id}` へ **`enabled` と、`serviceAccountsEnabled`・`authorizationServicesEnabled` の現在値**を送る → 読み戻す。
+//   表現を丸ごと送り返さない（表現は secret を含み、読んでから書くまでに回された secret を古い値へ戻し得る）。
+//   🔴 **［PR #1832 監査 🔴1］`{"enabled": …}` だけでは壊れる。** Keycloak 24 の `ClientResource.updateClientFromRep` は、
+//   `rep.isServiceAccountsEnabled()` が TRUE でなければ（null を含む）既存のサービスアカウントの利用者を属性ごと消し、
+//   `updateAuthorizationSettings` も TRUE でなければ authorization を無効にする。null の項目を飛ばす `RepresentationToModel.updateClient` は
+//   この分岐より後に走る。だから**この 2 つは必ず現在値で送る**（消えた SA は次の client_credentials で空の利用者として作り直され、
+//   属性なしのトークンが出る）。
+//   **入口の印が無いクライアント（`abac-seeder` 等）・IdP に無いクライアントには何も書かない。**
 // ■ 🔴 **要求の取り消しは IdP への書き込みへ伝えない**（書きかけの孤児を作らない）。期限は HttpClient の Timeout が持ち、
 //   時間切れは `Failed`（502）へ写す。管理用トークンが 401 で拒まれたら、1 度だけ取り直して送り直す。
 //
@@ -113,12 +122,64 @@ public sealed class KeycloakServiceAccountProvisioner(
             new Dictionary<string, string>(attributes));
     }
 
+    // ［2026-10-09 / #1829］IADR-0516 決定 4a: 無効化・再有効化を IdP のクライアントの `enabled` へ写す（多層の防御）。
+    // 🔴 **入口が作ったクライアントだけを変える。** 印が無いもの（`abac-seeder` などプラットフォーム自身の機密クライアント）を
+    //    SC-12 の無効化の経路から止めたり開いたりしない（決定 4 の「入口が作っていないクライアントへは書かない」と同じ規則）。
+    // 🔴 **要求の取り消しは伝えない**（書き込みの口の規則。期限は HttpClient の Timeout）。
+    public async Task<IdpWrite> SetEnabledAsync(string clientId, bool enabled, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var client = await AuthorizedClientAsync();
+        var internalId = await FindClientInternalIdAsync(client, clientId);
+        if (internalId is null) return IdpWrite.Missing(clientId);
+
+        var current = await ReadClientAsync(client, internalId);
+        if (!IsManaged(current)) return IdpWrite.AlreadyExisting(clientId);
+
+        var previous = IsEnabled(current);
+        if (previous != enabled)
+        {
+            // PR #1832 再監査 🟡1: SA の項目が読めない表現では書く前に止める（補償も書かない）。
+            RequireServiceAccountsFlag(current);
+            try
+            {
+                await WriteEnabledAsync(client, internalId, enabled, current);
+            }
+            catch (Exception ex)
+            {
+                // 🔴 失敗したら**閉じる側へだけ**倒す: 開く（再有効化）書き込みが途中で失敗したら無効へ戻す。閉じる（無効化）書き込みの
+                // 失敗では戻さない —— 戻すと、通っていたかもしれない無効化を取り消して開いてしまう。残った食い違いは照合が拾う。
+                if (enabled) await CompensateEnabledAsync(client, clientId, internalId, false, current);
+                if (ex is IdpProvisioningException) throw;
+                throw Failed("クライアントの有効・無効の書き込みに失敗した。", ex);
+            }
+        }
+        return new IdpWrite(IdpWriteKind.EnabledChanged, clientId, internalId,
+            PreviousEnabled: previous, WrittenEnabled: enabled);
+    }
+
     public async Task UndoAsync(IdpWrite write, CancellationToken ct)
     {
         // 補償は要求の取り消しに依らず最後まで走る（ct は受けるが伝えない）。
         var client = await AuthorizedClientAsync();
         switch (write.Kind)
         {
+            case IdpWriteKind.EnabledChanged
+                when write.ClientInternalId is { } clientInternalId
+                     && write.PreviousEnabled is { } previousEnabled
+                     && write.WrittenEnabled is { } writtenEnabled
+                     && previousEnabled != writtenEnabled:
+                // 書き換えの取り消しと同じ規則: 現在値がこの要求の書いた値のままのときだけ戻す（後の無効化・再有効化を潰さない）。
+                var now = await ReadClientAsync(client, clientInternalId);
+                if (IsEnabled(now) != writtenEnabled)
+                {
+                    logger.LogWarning(
+                        "クライアント {ClientId} の有効・無効は、この要求の後に書き換えられていた。取り消しで書き戻さない。",
+                        ForLog(write.ClientId));
+                    break;
+                }
+                await WriteEnabledAsync(client, clientInternalId, previousEnabled, now);
+                break;
             case IdpWriteKind.Created when write.ClientInternalId is { } id:
                 await DeleteClientAsync(client, id);
                 break;
@@ -155,7 +216,7 @@ public sealed class KeycloakServiceAccountProvisioner(
             var clients = await ReadJsonAsync<List<KeycloakClient>>(response, ct) ?? [];
             foreach (var c in clients)
             {
-                if (!string.IsNullOrEmpty(c.ClientId)) result.Add(new IdpClientEntry(c.ClientId, IsManaged(c)));
+                if (!string.IsNullOrEmpty(c.ClientId)) result.Add(new IdpClientEntry(c.ClientId, IsManaged(c), IsEnabled(c)));
             }
             if (clients.Count < ClientListPageSize) return result;
         }
@@ -257,12 +318,62 @@ public sealed class KeycloakServiceAccountProvisioner(
     }
 
     private async Task<bool> IsManagedAsync(HttpClient client, string internalId)
+        => IsManaged(await ReadClientAsync(client, internalId));
+
+    private async Task<KeycloakClient?> ReadClientAsync(HttpClient client, string internalId)
     {
-        var response = await Send(client, () => client.GetAsync(
-            $"admin/realms/{Realm}/clients/{Uri.EscapeDataString(internalId)}", CancellationToken.None));
+        var response = await Send(client, () => client.GetAsync(ClientPath(internalId), CancellationToken.None));
         EnsureSuccess(response, "クライアントの取得");
-        return IsManaged(await ReadJsonAsync<KeycloakClient>(response));
+        return await ReadJsonAsync<KeycloakClient>(response);
     }
+
+    // クライアントの `enabled`。項目が無い表現は Keycloak の既定（有効）と読む。
+    private static bool IsEnabled(KeycloakClient? representation) => representation?.Enabled != false;
+
+    // ［#1829］`enabled` を書き、読み戻して確かめる（表現を丸ごと送り返さない理由と、SA・authorization の現在値を必ず添える理由は冒頭）。
+    // `current` は同じ要求の中で読んだクライアントの表現（SA・authorization の現在値の出どころ）。
+    internal static Dictionary<string, bool> EnabledBody(bool enabled, bool serviceAccountsEnabled, bool authorizationServicesEnabled) => new()
+    {
+        ["enabled"] = enabled,
+        ["serviceAccountsEnabled"] = serviceAccountsEnabled,
+        ["authorizationServicesEnabled"] = authorizationServicesEnabled,
+    };
+
+    // 🔴 PR #1832 再監査 🟡1（fail-closed）: `serviceAccountsEnabled` が読めない（null・欠落）表現から false を推して送ると、
+    // Keycloak 24 は SA の利用者を属性ごと消す（🔴1 と同じ事故）。Keycloak 24 の GET は primitive で必ず出すが、版の変更や
+    // 応答の加工で欠けたときに黙って壊さないよう、書かずに Failed にする。`authorizationServicesEnabled` は資源サーバが
+    // 無いとき表現に出ない（＝無効）ので、欠落を false と読んでよい（false を送っても無効のままで何も消えない）。
+    private static bool RequireServiceAccountsFlag(KeycloakClient? current)
+        => current?.ServiceAccountsEnabled
+           ?? throw Failed("クライアントの表現に serviceAccountsEnabled が無い（推して送るとサービスアカウントの利用者が消えるので書かない）。");
+
+    private async Task WriteEnabledAsync(HttpClient client, string internalId, bool enabled, KeycloakClient? current)
+    {
+        var body = EnabledBody(enabled,
+            serviceAccountsEnabled: RequireServiceAccountsFlag(current),
+            authorizationServicesEnabled: current?.AuthorizationServicesEnabled == true);
+        var put = await Send(client, () => client.PutAsJsonAsync(ClientPath(internalId), body, Json, CancellationToken.None));
+        EnsureSuccess(put, "クライアントの有効・無効の書き込み");
+        if (IsEnabled(await ReadClientAsync(client, internalId)) != enabled)
+            throw Failed("書いたクライアントの有効・無効が読み戻せない。");
+    }
+
+    private async Task CompensateEnabledAsync(
+        HttpClient client, string clientId, string internalId, bool enabled, KeycloakClient? current)
+    {
+        try
+        {
+            await WriteEnabledAsync(client, internalId, enabled, current);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "クライアント {ClientId} の有効・無効を {Enabled} へ戻せなかった。登録簿と IdP の有効・無効が食い違っている（照合が enabled_differs として拾う）。",
+                ForLog(clientId), enabled);
+        }
+    }
+
+    private string ClientPath(string internalId) => $"admin/realms/{Realm}/clients/{Uri.EscapeDataString(internalId)}";
 
     // 入口の印（クライアント属性 `managed-by=mcp-server`）があるか。書き込みの確かめと照合の列挙が同じ 1 つを使う。
     private static bool IsManaged(KeycloakClient? representation)
@@ -577,7 +688,9 @@ public sealed class KeycloakServiceAccountProvisioner(
         [property: JsonPropertyName("access_token")] string AccessToken,
         [property: JsonPropertyName("expires_in")] int ExpiresIn);
 
-    private sealed record KeycloakClient(string? Id, string? ClientId, Dictionary<string, string>? Attributes = null);
+    private sealed record KeycloakClient(
+        string? Id, string? ClientId, Dictionary<string, string>? Attributes = null, bool? Enabled = null,
+        bool? ServiceAccountsEnabled = null, bool? AuthorizationServicesEnabled = null);
 
     private sealed record KeycloakUser(
         string? Id,

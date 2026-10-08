@@ -26,6 +26,8 @@ public class IdpFirstWriteTests
         public Task<IdpWrite> ReplaceAttributesAsync(string clientId, string displayName,
             IReadOnlyDictionary<string, string> attributes, bool enabled, CancellationToken ct) => throw new NotSupportedException();
 
+        public Task<IdpWrite> SetEnabledAsync(string clientId, bool enabled, CancellationToken ct) => throw new NotSupportedException();
+
         public Task UndoAsync(IdpWrite write, CancellationToken ct)
         {
             Undone.Add(write);
@@ -143,5 +145,27 @@ public class IdpFirstWriteTests
         registryCalled.Should().BeFalse();
         result.Should().BeOfType<ProblemHttpResult>().Which.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
         provisioner.Undone.Should().BeEmpty("入口が作っていないものを消さない");
+    }
+
+    // C-56（#1829）: 再有効化で IdP に同じクライアントが無ければ（`Absent`。何も書いていない）登録簿だけを書く。
+    // 印の無いクライアント（`AlreadyExists`）の拒否の文言は呼び出し元が差し替えられ、登録簿は書かない。
+    [Fact]
+    public async Task IdPに無ければ登録簿だけを書き印が無ければ呼び出し元の文言で拒む()
+    {
+        var provisioner = new RecordingProvisioner();
+        var registryCalls = 0;
+        Task<IResult> Registry(CancellationToken _) { registryCalls++; return Task.FromResult(Results.Ok()); }
+
+        var absent = await Run(_ => Task.FromResult(IdpWrite.Missing("legacy")), Registry, provisioner);
+        var notManaged = await IdpFirstWrite.RunAsync(_ => Task.FromResult(IdpWrite.AlreadyExisting("abac-seeder")),
+            Registry, provisioner, NullLogger.Instance, Ct, alreadyExists: id => $"{id} へは接続を開きません");
+
+        absent.Should().BeOfType<Ok>();
+        registryCalls.Should().Be(1, "印が無いときは登録簿を書かない");
+        var problem = notManaged.Should().BeOfType<ProblemHttpResult>().Subject;
+        problem.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+        problem.ProblemDetails.Should().BeOfType<HttpValidationProblemDetails>()
+            .Which.Errors["request"].Should().Equal("abac-seeder へは接続を開きません");
+        provisioner.Undone.Should().BeEmpty();
     }
 }

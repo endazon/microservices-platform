@@ -12,6 +12,8 @@ namespace McpServer.Features.McpClients;
 //   期限は口の HttpClient の Timeout が持つ。登録簿への書き込みが取り消し・時間切れで止まったときも補償する。
 // ■ 登録簿への書き込みが例外を投げたときだけでなく、**失敗の結果（4xx / 5xx）を返したときも**補償する。
 // ■ 補償が失敗したら、元の失敗を投げる（補償の失敗は口がログに残す）。残った食い違いは照合（IADR-0516 決定 5）が拾う。
+// ■ ［2026-10-09 / #1829］再有効化（決定 4a）もこの 1 つを通る。`Absent`（IdP に無い）は何も書いていないので登録簿へ進む
+//   （取り消しは口の側で何もしない）。`AlreadyExists` の拒否の文言だけは呼び出し元が差し替えられる。
 internal static class IdpFirstWrite
 {
     public static async Task<IResult> RunAsync(
@@ -19,7 +21,8 @@ internal static class IdpFirstWrite
         Func<CancellationToken, Task<IResult>> writeRegistry,
         IServiceAccountProvisioner provisioner,
         ILogger logger,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<string, string>? alreadyExists = null)
     {
         // 書き始める前の取り消しだけは受ける。
         ct.ThrowIfCancellationRequested();
@@ -40,8 +43,8 @@ internal static class IdpFirstWrite
 
         // 🔴 入口が作っていないクライアントへは属性を書かない（ADR-0123 決定 2）。IdP には何も書いていない。
         if (written.Kind == IdpWriteKind.AlreadyExists)
-            return McpClientEndpoints.Problem(
-                $"クライアント '{written.ClientId}' は IdP（Keycloak）に既にあります。"
+            return McpClientEndpoints.Problem(alreadyExists?.Invoke(written.ClientId)
+                ?? $"クライアント '{written.ClientId}' は IdP（Keycloak）に既にあります。"
                 + "この画面を通らずに作られたクライアントへは属性を書きません。");
 
         IResult result;

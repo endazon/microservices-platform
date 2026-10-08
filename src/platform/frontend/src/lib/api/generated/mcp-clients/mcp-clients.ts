@@ -422,6 +422,8 @@ export const getBffMcpDisableClientUrl = (clientId: string,) => {
 /**
  * 無効化は**次の呼び出しから即座に**効く（後段は毎回登録簿を引き、キャッシュを挟まない）。
  * 存在しないクライアントは **404** であり、BFF はこれを透過する。
+ * 無人のクライアントは登録簿の後で認可サーバー（Keycloak）のクライアントも無効にする。認可サーバーへ写せなくても
+ * 登録簿の無効化は取り消さず 200 を返す（食い違いは定期の照合が検知する）。
  * @summary FR-16, UC-09, SC-12: MCP クライアントの無効化（次の呼び出しから即座に効く）
  */
 export const bffMcpDisableClient = async (clientId: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffMcpDisableClientResponse> => {
@@ -488,6 +490,11 @@ export const useBffMcpDisableClient = <TError = void,
   status: 200
 }
 
+export type bffMcpEnableClientResponse400 = {
+  data: ValidationProblemDetails
+  status: 400
+}
+
 export type bffMcpEnableClientResponse401 = {
   data: void
   status: 401
@@ -508,10 +515,15 @@ export type bffMcpEnableClientResponse502 = {
   status: 502
 }
 
+export type bffMcpEnableClientResponse503 = {
+  data: void
+  status: 503
+}
+
 export type bffMcpEnableClientResponseSuccess = (bffMcpEnableClientResponse200) & {
   headers: Headers;
 };
-export type bffMcpEnableClientResponseError = (bffMcpEnableClientResponse401 | bffMcpEnableClientResponse403 | bffMcpEnableClientResponse404 | bffMcpEnableClientResponse502) & {
+export type bffMcpEnableClientResponseError = (bffMcpEnableClientResponse400 | bffMcpEnableClientResponse401 | bffMcpEnableClientResponse403 | bffMcpEnableClientResponse404 | bffMcpEnableClientResponse502 | bffMcpEnableClientResponse503) & {
   headers: Headers;
 };
 
@@ -526,6 +538,9 @@ export const getBffMcpEnableClientUrl = (clientId: string,) => {
 }
 
 /**
+ * 無人のクライアントは**認可サーバー（Keycloak）のクライアントを先に有効にしてから**登録簿を有効にする。
+ * 認可サーバーへ書けなければ登録簿は無効のまま（502 / 503）。この画面を通らずに作られた同名のクライアントには
+ * 接続を開かない（400。どちらにも書かない）。有人のクライアントは登録簿だけを切り替える。
  * @summary FR-16, UC-09, SC-12: MCP クライアントの再有効化
  */
 export const bffMcpEnableClient = async (clientId: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffMcpEnableClientResponse> => {
@@ -543,7 +558,7 @@ export const bffMcpEnableClient = async (clientId: string, options?: Parameters<
 
 
 
-export const getBffMcpEnableClientMutationOptions = <TError = void,
+export const getBffMcpEnableClientMutationOptions = <TError = ValidationProblemDetails | void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffMcpEnableClient>>, TError,{clientId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof bffMcpEnableClient>>, TError,{clientId: string}, TContext> => {
 
@@ -572,12 +587,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type BffMcpEnableClientMutationResult = NonNullable<Awaited<ReturnType<typeof bffMcpEnableClient>>>
 
-    export type BffMcpEnableClientMutationError = void
+    export type BffMcpEnableClientMutationError = ValidationProblemDetails | void
 
     /**
  * @summary FR-16, UC-09, SC-12: MCP クライアントの再有効化
  */
-export const useBffMcpEnableClient = <TError = void,
+export const useBffMcpEnableClient = <TError = ValidationProblemDetails | void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffMcpEnableClient>>, TError,{clientId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof bffMcpEnableClient>>,
@@ -617,10 +632,15 @@ export type bffMcpReplaceClientAttributesResponse502 = {
   status: 502
 }
 
+export type bffMcpReplaceClientAttributesResponse503 = {
+  data: void
+  status: 503
+}
+
 export type bffMcpReplaceClientAttributesResponseSuccess = (bffMcpReplaceClientAttributesResponse200) & {
   headers: Headers;
 };
-export type bffMcpReplaceClientAttributesResponseError = (bffMcpReplaceClientAttributesResponse400 | bffMcpReplaceClientAttributesResponse401 | bffMcpReplaceClientAttributesResponse403 | bffMcpReplaceClientAttributesResponse404 | bffMcpReplaceClientAttributesResponse502) & {
+export type bffMcpReplaceClientAttributesResponseError = (bffMcpReplaceClientAttributesResponse400 | bffMcpReplaceClientAttributesResponse401 | bffMcpReplaceClientAttributesResponse403 | bffMcpReplaceClientAttributesResponse404 | bffMcpReplaceClientAttributesResponse502 | bffMcpReplaceClientAttributesResponse503) & {
   headers: Headers;
 };
 

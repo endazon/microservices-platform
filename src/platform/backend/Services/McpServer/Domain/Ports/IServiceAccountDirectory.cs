@@ -22,5 +22,8 @@ public interface IServiceAccountDirectory
     Task<IReadOnlyDictionary<string, string>?> ReadServiceAccountAttributesAsync(string clientId, CancellationToken ct);
 }
 
-/// <summary>IdP のクライアント 1 件。<paramref name="Managed"/> は入口の印（`msp.mcp-client.managed-by=mcp-server`）があること。</summary>
-public sealed record IdpClientEntry(string ClientId, bool Managed);
+/// <summary>
+/// IdP のクライアント 1 件。<paramref name="Managed"/> は入口の印（`msp.mcp-client.managed-by=mcp-server`）があること。
+/// <paramref name="Enabled"/> はクライアントの <c>enabled</c>（［2026-10-09 / #1829］照合が登録簿の有効・無効と比べる。IADR-0516 決定 4a）。
+/// </summary>
+public sealed record IdpClientEntry(string ClientId, bool Managed, bool Enabled = true);

@@ -371,6 +371,155 @@ public class KeycloakServiceAccountProvisionerTests
         (await act.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
     }
 
+    // ── ［2026-10-09 / #1829］無効化・再有効化の写し（IADR-0516 決定 4a）──────────────────────────
+
+    private static bool EnabledOf(FakeKeycloak keycloak, string clientId)
+        => keycloak.Clients.Single(c => c.ClientId == clientId).Representation["enabled"]!.GetValue<bool>();
+
+    // C-51（#1829 受け入れ基準 1）: 入口の印つきのクライアントの `enabled` を書き、読み戻す。送るのは `enabled` と
+    // SA・authorization の現在値だけ（表現を丸ごと送り返さない＝secret を古い値へ戻さない）。テンプレートの他の項目は変わらない。
+    // 🔴 PR #1832 監査 🔴1: 無効化・再有効化の後もサービスアカウントの利用者とその属性が残る。一覧も有効・無効を返す。
+    [Fact]
+    public async Task 無効化と再有効化はenabledを書いてサービスアカウントを壊さず読み戻す()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-t", "T", Attrs(("clearance", "public"), ("tags", "sales,hr")), Ct);
+        var saUserId = keycloak.Clients.Single().ServiceAccountUserId;
+        keycloak.Requests.Clear();
+
+        var disabled = await provisioner.SetEnabledAsync("agent-t", false, Ct);
+
+        // 🔴 PR #1832 監査 🔴1: 無効化で SA の利用者が属性ごと消えない（Keycloak は serviceAccountsEnabled が TRUE でない PUT で SA を消す）。
+        keycloak.Users.Should().ContainKey(saUserId, "無効化でサービスアカウントの利用者を消さない");
+        keycloak.Users[saUserId].Attributes["tags"].Should().Equal("sales", "hr");
+
+        disabled.Should().BeEquivalentTo(new IdpWrite(IdpWriteKind.EnabledChanged, "agent-t", "c1",
+            PreviousEnabled: true, WrittenEnabled: false));
+        EnabledOf(keycloak, "agent-t").Should().BeFalse();
+        var put = keycloak.Requests.Should().ContainSingle(r => r.Method == "PUT").Subject;
+        put.Path.Should().Be("admin/realms/platform/clients/c1");
+        var sentBody = JsonNode.Parse(put.Body!)!.AsObject();
+        sentBody.Select(kv => kv.Key).Should().BeEquivalentTo(
+            ["enabled", "serviceAccountsEnabled", "authorizationServicesEnabled"], "表現を丸ごと送らない（secret を載せない）");
+        sentBody["serviceAccountsEnabled"]!.GetValue<bool>().Should().BeTrue("現在値（SA あり）で送る");
+        keycloak.Requests.Last().Method.Should().Be("GET", "書いた後に読み戻す");
+        var rep = keycloak.Clients.Single().Representation;
+        rep["serviceAccountsEnabled"]!.GetValue<bool>().Should().BeTrue("他の項目は変えない");
+        rep["attributes"]![KeycloakServiceAccountProvisioner.ManagedByAttribute]!.GetValue<string>()
+            .Should().Be(KeycloakServiceAccountProvisioner.ManagedByValue);
+        (await provisioner.ListClientsAsync(Ct)).Single().Enabled.Should().BeFalse("照合は一覧の有効・無効を比べる");
+
+        var enabled = await provisioner.SetEnabledAsync("agent-t", true, Ct);
+
+        enabled.PreviousEnabled.Should().BeFalse();
+        EnabledOf(keycloak, "agent-t").Should().BeTrue();
+        keycloak.Users.Should().ContainKey(saUserId, "再有効化の後もサービスアカウントの利用者が同じ ID で残る");
+        keycloak.Users[saUserId].Attributes["clearance"].Should().Equal("public");
+        keycloak.Users[saUserId].Attributes["tags"].Should().Equal("sales", "hr");
+        (await provisioner.ReadServiceAccountAttributesAsync("agent-t", Ct)).Should().BeEquivalentTo(
+            new Dictionary<string, string> { ["clearance"] = "public", ["tags"] = "sales,hr" }, "認可サービスと同じ照会で属性が読める");
+        (await provisioner.ListClientsAsync(Ct)).Single().Enabled.Should().BeTrue();
+
+        keycloak.Requests.Clear();
+        (await provisioner.SetEnabledAsync("agent-t", true, Ct)).Kind.Should().Be(IdpWriteKind.EnabledChanged);
+        keycloak.Requests.Should().NotContain(r => r.Method == "PUT", "同じ値なら書かない");
+    }
+
+    // C-52（#1829 受け入れ基準 2・否定形）: 入口の印が無いクライアント（`abac-seeder` 等）と、IdP に無いクライアントには何も書かない。
+    [Fact]
+    public async Task 入口の印が無いクライアントとIdPに無いクライアントのenabledは書かない()
+    {
+        var keycloak = new FakeKeycloak();
+        keycloak.SeedClient("abac-seeder", new Dictionary<string, string[]> { ["clearance"] = ["restricted"] });
+        keycloak.Clients.Single().Representation["enabled"] = true;
+        var provisioner = Provisioner(keycloak);
+
+        var seeder = await provisioner.SetEnabledAsync("abac-seeder", false, Ct);
+        var absent = await provisioner.SetEnabledAsync("abac", false, Ct);
+
+        seeder.Kind.Should().Be(IdpWriteKind.AlreadyExists);
+        absent.Kind.Should().Be(IdpWriteKind.Absent, "`abac` は `abac-seeder` ではない（完全一致）");
+        EnabledOf(keycloak, "abac-seeder").Should().BeTrue("プラットフォームのクライアントを無効化の経路から止めない");
+        keycloak.Requests.Should().NotContain(r => r.Method == "PUT" || r.Method == "DELETE");
+    }
+
+    // C-53（#1829）: 書いた後に読み戻せなければ Failed。開く書き込み（再有効化）の失敗は無効へ戻す。閉じる書き込み（無効化）の失敗は
+    // 戻さない（通っていたかもしれない無効化を取り消して開かない）。書き込みそのものの失敗（500）も Failed。
+    [Fact]
+    public async Task 読み戻せなければFailedで開く側の失敗だけを閉じる側へ戻す()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-r", "R", Attrs(("clearance", "public")), Ct);
+        await provisioner.SetEnabledAsync("agent-r", false, Ct);
+
+        keycloak.IgnoreEnabledOnPut = 1;
+        var enable = () => provisioner.SetEnabledAsync("agent-r", true, Ct);
+        (await enable.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+        EnabledOf(keycloak, "agent-r").Should().BeFalse();
+        keycloak.Requests.Count(r => r.Method == "PUT" && r.Path.Contains("/clients/")).Should().Be(3, "無効化 1 ＋ 再有効化 1 ＋ 無効へ戻す 1");
+
+        await provisioner.SetEnabledAsync("agent-r", true, Ct);
+        keycloak.Requests.Clear();
+        keycloak.IgnoreEnabledOnPut = 1;
+        var disable = () => provisioner.SetEnabledAsync("agent-r", false, Ct);
+        (await disable.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+        keycloak.Requests.Count(r => r.Method == "PUT" && r.Path.Contains("/clients/")).Should().Be(1, "閉じる側の失敗では開く側へ戻さない");
+
+        var failing = new FakeKeycloak { FailClientPut = true };
+        var p2 = Provisioner(failing);
+        await p2.CreateAsync("agent-f", "F", Attrs(("clearance", "public")), Ct);
+        var act = () => p2.SetEnabledAsync("agent-f", false, Ct);
+        (await act.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+    }
+
+    // C-53（PR #1832 再監査 🟡1・fail-closed）: クライアントの表現が `serviceAccountsEnabled` を欠くときは、無効化も再有効化も
+    // 何も書かずに Failed（false を推して送ると Keycloak 24 が SA の利用者を属性ごと消す）。開く側の補償も書かない。
+    [Fact]
+    public async Task serviceAccountsEnabledを欠く表現にはenabledを書かずFailedにする()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-n", "N", Attrs(("clearance", "public")), Ct);
+        var saUserId = keycloak.Clients.Single().ServiceAccountUserId;
+        keycloak.Clients.Single().Representation.Remove("serviceAccountsEnabled");
+        keycloak.Requests.Clear();
+
+        var disable = () => provisioner.SetEnabledAsync("agent-n", false, Ct);
+        (await disable.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+        keycloak.Clients.Single().Representation["enabled"] = false;
+        var enable = () => provisioner.SetEnabledAsync("agent-n", true, Ct);
+        (await enable.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+
+        keycloak.Requests.Should().NotContain(r => r.Method == "PUT", "推した値で書かない（補償も書かない）");
+        keycloak.Users.Should().ContainKey(saUserId, "サービスアカウントの利用者を消さない");
+    }
+
+    // C-54（#1829）: 再有効化の取り消し（登録簿への書き込みが失敗したときの補償）は前の値（無効）へ戻す。
+    // 現在値がこの要求の書いた値でなければ（後から無効化された）書かない。値が無い取り消し（同じ値で書かなかった）も書かない。
+    [Fact]
+    public async Task enabledの取り消しは書いた値のままのときだけ前の値へ戻す()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-u", "U", Attrs(("clearance", "public")), Ct);
+        await provisioner.SetEnabledAsync("agent-u", false, Ct);
+        var reenabled = await provisioner.SetEnabledAsync("agent-u", true, Ct);
+
+        await provisioner.UndoAsync(reenabled, Ct);
+        EnabledOf(keycloak, "agent-u").Should().BeFalse("書いた値のままなら前の値へ戻す");
+
+        var again = await provisioner.SetEnabledAsync("agent-u", true, Ct);
+        await provisioner.SetEnabledAsync("agent-u", false, Ct);
+        var unchanged = await provisioner.SetEnabledAsync("agent-u", false, Ct);
+        keycloak.Requests.Clear();
+        await provisioner.UndoAsync(again, Ct);
+        await provisioner.UndoAsync(unchanged, Ct);
+        keycloak.Requests.Should().NotContain(r => r.Method == "PUT", "後から書かれた値・書かなかった値は戻さない");
+        EnabledOf(keycloak, "agent-u").Should().BeFalse();
+    }
+
     // ── 状態を持つ偽の Keycloak ──────────────────────────────────────────────
 
     internal sealed record Recorded(string Method, string Path, string? Body, string? Authorization);
@@ -422,6 +571,10 @@ public class KeycloakServiceAccountProvisionerTests
         public bool HangOnClientList { get; init; }
         /// <summary>［#1818］`clients?first=&max=` の列挙で時間切れ（TaskCanceledException。呼び出し元は取り消していない）を投げる。</summary>
         public bool TimeoutOnClientList { get; init; }
+        /// <summary>［#1829］`PUT /clients/{id}` を 500 にする。</summary>
+        public bool FailClientPut { get; init; }
+        /// <summary>［#1829］`PUT /clients/{id}` を 204 で受けるが `enabled` を変えない（読み戻しの不一致）。この回数だけ。</summary>
+        public int IgnoreEnabledOnPut { get; set; }
         private bool _timedOut;
 
         public void SeedClient(string clientId, Dictionary<string, string[]> attributes)
@@ -537,12 +690,40 @@ public class KeycloakServiceAccountProvisionerTests
                 return Ok(rep.ToJsonString());
             }
 
+            // ［#1829 / PR #1832 監査 🔴1］`PUT /clients/{id}`: Keycloak 24 の `ClientResource.updateClientFromRep` と同じ分岐を持つ。
+            // `serviceAccountsEnabled` が TRUE でなければ（null・欠落を含む）SA の利用者を属性ごと消し、`authorizationServicesEnabled` が
+            // TRUE でなければ authorization を無効にする。そのあと（`RepresentationToModel.updateClient`）送られた非 null の項目だけを変える。
+            if (method == "PUT" && path.StartsWith(Admin + "clients/", StringComparison.Ordinal)
+                && !path[(Admin + "clients/").Length..].Contains('/'))
+            {
+                var client = Clients.SingleOrDefault(c => c.Id == path[(Admin + "clients/").Length..]);
+                if (client is null) return Status(HttpStatusCode.NotFound);
+                if (FailClientPut) return Status(HttpStatusCode.InternalServerError);
+                if (IgnoreEnabledOnPut > 0)
+                {
+                    IgnoreEnabledOnPut--;
+                    return Status(HttpStatusCode.NoContent);
+                }
+                var sent = JsonNode.Parse(body!)!.AsObject();
+                if (sent["serviceAccountsEnabled"]?.GetValue<bool>() != true)
+                {
+                    Users.Remove(client.ServiceAccountUserId);
+                    client.Representation["serviceAccountsEnabled"] = false;
+                }
+                if (sent["authorizationServicesEnabled"]?.GetValue<bool>() != true)
+                    client.Representation["authorizationServicesEnabled"] = false;
+                foreach (var (key, value) in sent)
+                    if (value is not null) client.Representation[key] = value.DeepClone();
+                return Status(HttpStatusCode.NoContent);
+            }
+
             if (method == "GET" && path.StartsWith(Admin + "clients/", StringComparison.Ordinal)
                 && path.EndsWith("/service-account-user", StringComparison.Ordinal))
             {
                 var id = path[(Admin + "clients/").Length..^"/service-account-user".Length];
                 var client = Clients.SingleOrDefault(c => c.Id == id);
-                return client is null ? Status(HttpStatusCode.NotFound) : Ok(UserJson(Users[client.ServiceAccountUserId]));
+                return client is null || !Users.TryGetValue(client.ServiceAccountUserId, out var saUser)
+                    ? Status(HttpStatusCode.NotFound) : Ok(UserJson(saUser));
             }
 
             if (method == "DELETE" && path.StartsWith(Admin + "clients/", StringComparison.Ordinal))

@@ -1232,6 +1232,8 @@ paths:
       description: |
         無効化は**次の呼び出しから即座に**効く（後段は毎回登録簿を引き、キャッシュを挟まない）。
         存在しないクライアントは **404** であり、BFF はこれを透過する。
+        無人のクライアントは登録簿の後で認可サーバー（Keycloak）のクライアントも無効にする。認可サーバーへ写せなくても
+        登録簿の無効化は取り消さず 200 を返す（食い違いは定期の照合が検知する）。
       operationId: bff-mcp-disable-client
       responses:
         "200":
@@ -1252,6 +1254,10 @@ paths:
       x-roles: [platform-admin]
       tags: [McpClients]
       summary: "FR-16, UC-09, SC-12: MCP クライアントの再有効化"
+      description: |
+        無人のクライアントは**認可サーバー（Keycloak）のクライアントを先に有効にしてから**登録簿を有効にする。
+        認可サーバーへ書けなければ登録簿は無効のまま（502 / 503）。この画面を通らずに作られた同名のクライアントには
+        接続を開かない（400。どちらにも書かない）。有人のクライアントは登録簿だけを切り替える。
       operationId: bff-mcp-enable-client
       responses:
         "200":
@@ -1260,10 +1266,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/McpClientView"
+        "400":
+          description: 認可サーバーの同名のクライアントにこの入口の印が無い（RFC7807 ValidationProblem。どちらにも書かない）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblemDetails"
         "401": { description: 未認証 }
         "403": { description: 管理者ロール以外（AdminOnly） }
         "404": { description: 見つからない }
-        "502": { description: McpServer へ到達できない }
+        "502": { description: McpServer へ到達できない、または認可サーバー（Keycloak）へ書けなかった（登録簿は無効のまま） }
+        "503": { description: 認可サーバーへの書き込み口が構成されていない（登録簿は無効のまま） }
 
   /bff/admin/mcp-clients/{clientId}/attributes:
     parameters:
@@ -1298,7 +1311,8 @@ paths:
         "401": { description: 未認証 }
         "403": { description: 管理者ロール以外（AdminOnly） }
         "404": { description: 見つからない }
-        "502": { description: McpServer へ到達できない }
+        "502": { description: McpServer へ到達できない、または認可サーバー（Keycloak）へ書けなかった（登録簿にも書いていない） }
+        "503": { description: 認可サーバーへの書き込み口が構成されていない（無人の差し替えを受け付けない。登録簿にも書いていない） }
 
   # ── SC-03/SC-05, FR-06, UC-01/UC-03/UC-07: 文書 BFF ─
   # IADR-0041 / IADR-0009: 読み取りはロールで塞がず、ABAC スコープ解決の結果でのみ絞る。
