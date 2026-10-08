@@ -17,6 +17,24 @@ INFRA_NS="platform-infra"
 vexec() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -c \
   'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"; '"$1"; }
 
+# NFR-18, ADR-0124 決定 1, IADR-0517 (#1830): **dev 以外の kube context で、レルム管理のロールを持つ機密クライアントの secret を
+#   公知の dev の値で Vault へ入れない。** 判定は scripts/lib/dev-client-secret-guard.sh の 1 本（k8s-local-up.sh と共有）。
+#   対象は **KV がまだ無いもの**だけ —— 在る KV は下の vkv_create_if_absent が触らない（IADR-0485）ので、env が未設定でも dev の値は入らない。
+#   🔴 Vault へ何か書く前に判定する（止まるときは何も書かない）。
+# shellcheck source=scripts/lib/dev-client-secret-guard.sh
+. "$ROOT/scripts/lib/dev-client-secret-guard.sh"
+#   KV のパスは 3 つとも `msp/<client>-oidc`（下の vkv_create_if_absent）。env の名前は判定器が持つ（dev_client_secret_env_name）。
+dev_secret_args=()
+for dev_secret_client in $DEV_CLIENT_SECRET_GUARDED; do
+  vexec "vault kv metadata get secret/msp/${dev_secret_client}-oidc >/dev/null 2>&1" && continue
+  dev_secret_env="$(dev_client_secret_env_name "$dev_secret_client")"
+  dev_secret_args+=("${dev_secret_client}=${!dev_secret_env:-}")
+done
+if [ "${#dev_secret_args[@]}" -gt 0 ]; then
+  dev_client_secret_guard "bootstrap.sh" "${dev_secret_args[@]}" || exit 1
+fi
+unset dev_secret_args dev_secret_client dev_secret_env
+
 echo "==> kubernetes 認証を有効化（未有効時のみ・冪等）"
 vexec 'vault auth list -format=json 2>/dev/null | grep -q "\"kubernetes/\"" || vault auth enable kubernetes'
 

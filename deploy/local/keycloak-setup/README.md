@@ -9,7 +9,19 @@
 ```sh
 bash deploy/local/keycloak-setup/reconcile-realm.sh           # 差分を当てる（apply）。単独でも何度でも実行できる
 bash deploy/local/keycloak-setup/reconcile-realm.sh --check   # 差分を数えるだけ（書き換えない）。1 件でも在れば exit 1
+bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets  # 管理用 3 クライアントの secret が dev の値のままなら名指して exit 1（#1830）
 ```
+
+## dev 以外のクラスタでの守り（NFR-18 / ADR-0124 決定 1 / [IADR-0517](../../../.ai-context/adr/IADR-0517_dev-client-secret-guard-kube-context-allowlist.md) / #1830）
+
+- **作らせない**: 無い client は宣言の secret（公知の dev の値）で作られる。レルム管理のロールを持つ `identity-admin`・`reset-gate`・
+  `mcp-client-admin` について、本スクリプトは kube context を `scripts/lib/dev-client-secret-guard.sh`（`k8s-local-up.sh`・
+  Vault の種の `bootstrap.sh` と同じ判定器）で判定し、Job の env `DEV_CLIENT_SECRETS_ALLOWED` へ `allow` / `deny` を渡す
+  （許可集合 `k3d-*`・`kind-*`・`rancher-desktop`・`docker-desktop`、または `ALLOW_DEV_CLIENT_SECRETS=1`。マニフェストの既定は `deny`）。
+  `deny` で 3 つのどれかを作る計画があれば、その realm には何も書かずに名指して非 0 で終える。
+- **検知する**: `--check-dev-secrets` は別名の Job（`keycloak-realm-dev-secret-check`・`RECONCILE_MODE=check-dev-secrets`）で、
+  3 つの稼働の secret を読み、宣言の値と一致するものを `dev-secret <client>` と名指して非 0。読むだけで書かず、値は出さない。
+  Keycloak 本体の初回 import（空 PVC）が作る dev の値はこちらで拾う。回し方は `docs/operations/paired-secret-rotation-runbook.md`。
 
 ## なぜ要るか —— `--import-realm` は同名 realm が在ると黙って飛ばす
 

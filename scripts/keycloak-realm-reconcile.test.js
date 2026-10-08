@@ -17,6 +17,8 @@
  *   5. fixture は **実物の realm JSON から切り出す**（値を書き写さない。宣言が変わればここも追随する）。
  *   6. ［2026-09-28 追記 / #1682 / ADR-0124 決定 1・IADR-0485］**client の `secret` は作成時にだけ運ぶ。**
  *      既存の client では比べず・`PUT` の本文に載せず・稼働の値を読みに行かない（対の手順で回した値を戻さない）。
+ *   7. ［2026-10-09 追記 / #1830 / IADR-0517］**管理用の 3 クライアントを、許されていなければ宣言の（公知の）dev の値で作らない。**
+ *      稼働の secret が dev の値のままかを `--check-dev-secrets` が名指す（読むだけ・値を出さない）。偽の Keycloak（HTTP）で main まで通す。
  *
  * 外部依存ゼロ（Node 標準 assert のみ）。実行: node scripts/keycloak-realm-reconcile.test.js
  */
@@ -25,6 +27,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   plan, contains, merge, gateHoldsClosed, collectLive,
+  devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, DEV_SECRET_GUARDED_CLIENTS, DEV_SECRETS_ALLOWED_ENV,
   RUNTIME_OWNED_REALM_KEYS, CLIENT_CREATE_ONLY_KEYS, GATE_OWNED_REALM_KEYS, GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
 } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 
@@ -510,6 +513,141 @@ function fakeKc({ saEnabled, saUser, seen = [] }) {
     assert.ok(!seen.some((p) => /\/client-secret$/.test(p)), `client-secret を読んだ: ${seen.filter((p) => /client-secret/.test(p)).join(', ')}`);
     passed++;
     process.stdout.write('  ok  #1682: collectLive は client の secret（GET …/client-secret）を読みに行かない\n');
+  }
+  // ---------------------------------------------------------------- #1830 / IADR-0517: dev の値の管理用クライアント
+  const done1830 = (name) => { passed++; process.stdout.write(`  ok  ${name}\n`); };
+  {
+    // 宣言との結び目: 対象の 3 クライアントは宣言に在り、secret は判定器（scripts/lib/dev-client-secret-guard.sh）の dev の値と同じ形。
+    const lib = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh'), 'utf8');
+    const shellSet = (lib.match(/^DEV_CLIENT_SECRET_GUARDED="([^"]+)"$/m) || [])[1];
+    assert.ok(shellSet, '判定器の DEV_CLIENT_SECRET_GUARDED が読めない');
+    assert.deepStrictEqual(shellSet.split(/\s+/).sort(), [...DEV_SECRET_GUARDED_CLIENTS].sort(), 'shell と JS の対象集合が食い違う');
+    for (const id of DEV_SECRET_GUARDED_CLIENTS) {
+      const c = REALM.clients.find((x) => x.clientId === id);
+      assert.ok(c, `宣言に ${id} が無い`);
+      assert.strictEqual(c.secret, `${id}-dev-secret-change-me`, `${id} の宣言の secret が判定器の dev の値と違う形`);
+    }
+    assert.strictEqual(DEV_SECRETS_ALLOWED_ENV, 'DEV_CLIENT_SECRETS_ALLOWED');
+    const job = fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'local', 'keycloak-setup', 'realm-reconcile-job.yaml'), 'utf8');
+    assert.ok(/- name: DEV_CLIENT_SECRETS_ALLOWED\n\s+value: "deny"\n/.test(job), 'Job マニフェストの既定が deny でない（直接 apply で安全側に倒れない）');
+    done1830('#1830: 対象の 3 クライアントは shell の判定器と同じ集合で、宣言の secret は dev の値の形・Job の既定は deny');
+  }
+  {
+    const live = liveFrom(REALM);
+    assert.deepStrictEqual(devSecretCreations(plan(REALM, live)), [], '陰性対照: 揃っていれば作る操作は無い');
+    for (const id of DEV_SECRET_GUARDED_CLIENTS) {
+      const l = clone(live);
+      l.clients = l.clients.filter((c) => c.clientId !== id);
+      assert.deepStrictEqual(devSecretCreations(plan(REALM, l)), [id], `${id} が無いときに名指さない`);
+    }
+    const noBff = clone(live);
+    noBff.clients = noBff.clients.filter((c) => c.clientId !== 'bff');
+    assert.deepStrictEqual(devSecretCreations(plan(REALM, noBff)), [], '対象外（bff）の作成まで名指した');
+    assert.deepStrictEqual(devSecretCreations(plan(REALM, { realm: null })), [...DEV_SECRET_GUARDED_CLIENTS].sort(),
+      'realm が無い（realm.create）ときに 3 つを名指さない');
+    done1830('#1830: devSecretCreations は対象のクライアントを作る操作（client.create・realm.create）だけを名指す');
+  }
+  {
+    const live = { 'identity-admin': 'identity-admin-dev-secret-change-me', 'reset-gate': ['rotated', '1830'].join('-'), 'mcp-client-admin': null };
+    assert.deepStrictEqual(devSecretFindings(REALM, live), [
+      { clientId: 'identity-admin', state: 'dev' },
+      { clientId: 'mcp-client-admin', state: 'absent' },
+      { clientId: 'reset-gate', state: 'rotated' },
+    ]);
+    assert.ok(devSecretFindings(REALM, live).every((f) => !('value' in f) && !('secret' in f)), '判定の結果に値を持たせた');
+    done1830('#1830: devSecretFindings は dev / rotated / absent を分け、値を結果に含めない');
+  }
+
+  // 偽の Keycloak（HTTP）で main まで通す。受けた要求を控え、書き込み（GET 以外）の有無と出力に値が出ないことを見る。
+  const http = require('http');
+  const os = require('os');
+  const { spawn } = require('child_process');
+  const ROTATED = ['rotated', 'value', '1830'].join('-');
+  const runMain = async ({ realmExists = true, secrets = {}, env = {}, args = [] }) => {
+    const seen = [];
+    const R = `/admin/realms/${encodeURIComponent(REALM.realm)}`;
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (d) => { body += d; });
+      req.on('end', () => {
+        seen.push(`${req.method} ${req.url}`);
+        const json = (code, v) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(v === undefined ? '' : JSON.stringify(v)); };
+        if (req.url === '/realms/master/protocol/openid-connect/token') return json(200, { access_token: 't' });
+        if (req.method !== 'GET') return json(201);
+        if (req.url === R) return realmExists ? json(200, { realm: REALM.realm }) : json(404, { error: 'not found' });
+        const m = req.url.match(/\/clients\?clientId=([^&]+)$/);
+        if (m) {
+          const id = decodeURIComponent(m[1]);
+          return json(200, id in secrets && secrets[id] !== null ? [{ id: `c-${id}`, clientId: id }] : []);
+        }
+        const s = req.url.match(/\/clients\/c-([^/]+)\/client-secret$/);
+        if (s) return json(200, { type: 'secret', value: secrets[s[1]] });
+        return json(200, []);
+      });
+    });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reconcile-1830-'));
+    fs.copyFileSync(path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json'), path.join(dir, 'realm.json'));
+    try {
+      const childEnv = { ...process.env };
+      for (const k of ['RECONCILE_MODE', DEV_SECRETS_ALLOWED_ENV, 'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NODE_OPTIONS']) delete childEnv[k];
+      const child = spawn(process.execPath, [path.join(REPO_ROOT, 'deploy', 'local', 'keycloak-setup', 'reconcile-realm.js'), ...args], {
+        env: { ...childEnv, NO_PROXY: '*', KC_URL: `http://127.0.0.1:${server.address().port}`, KC_ADMIN_USER: 'admin',
+          KC_ADMIN_PASSWORD: 'admin', REALM_DIR: dir, ...env },
+      });
+      let out = '';
+      child.stdout.on('data', (d) => { out += d; });
+      child.stderr.on('data', (d) => { out += d; });
+      const code = await new Promise((r) => child.on('close', r));
+      return { code, out, seen, writes: seen.filter((l) => !l.startsWith('GET ') && !l.includes('/openid-connect/token')) };
+    } finally {
+      server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const devOf = (id) => `${id}-dev-secret-change-me`;
+  {
+    const r = await runMain({ args: ['--check-dev-secrets'],
+      secrets: { 'identity-admin': devOf('identity-admin'), 'reset-gate': ROTATED, 'mcp-client-admin': devOf('mcp-client-admin') } });
+    assert.strictEqual(r.code, 1, r.out);
+    assert.ok(/dev-secret\s+identity-admin/.test(r.out) && /dev-secret\s+mcp-client-admin/.test(r.out), `名指していない:\n${r.out}`);
+    assert.ok(/ok\s+reset-gate/.test(r.out) && !/dev-secret\s+reset-gate/.test(r.out), `回した reset-gate を dev と言った:\n${r.out}`);
+    assert.ok(/dev-secrets=2$/m.test(r.out), r.out);
+    for (const v of [devOf('identity-admin'), devOf('mcp-client-admin'), ROTATED]) assert.ok(!r.out.includes(v), `値が出力に出た: ${v}`);
+    assert.deepStrictEqual(r.writes, [], `読むだけのはずが書いた: ${r.writes.join(', ')}`);
+    assert.ok(r.seen.some((l) => /\/clients\/c-identity-admin\/client-secret$/.test(l)), '陽性対照: 稼働の secret を読んでいる');
+    done1830('#1830: --check-dev-secrets は dev の値のクライアントを名指して非 0（値を出さない・書かない）');
+  }
+  {
+    const r = await runMain({ env: { RECONCILE_MODE: 'check-dev-secrets' },
+      secrets: { 'identity-admin': ROTATED, 'reset-gate': ROTATED, 'mcp-client-admin': ROTATED } });
+    assert.strictEqual(r.code, 0, r.out);
+    assert.ok(/checked=3 dev-secrets=0$/m.test(r.out), r.out);
+    assert.ok(!r.out.includes(ROTATED), '値が出力に出た');
+    const absent = await runMain({ args: ['--check-dev-secrets'], secrets: { 'identity-admin': ROTATED, 'reset-gate': ROTATED, 'mcp-client-admin': null } });
+    assert.strictEqual(absent.code, 0, absent.out);
+    assert.ok(/absent\s+mcp-client-admin/.test(absent.out), absent.out);
+    done1830('#1830 陰性対照: すべて回してあれば（RECONCILE_MODE でも引数でも）0。稼働に無いクライアントは不在と言うだけ');
+  }
+  {
+    const r = await runMain({ args: ['--check-dev-secrets'], realmExists: false });
+    assert.strictEqual(r.code, 1, `realm が無いのに 0 で終えた（測れないを緑にした）:\n${r.out}`);
+    done1830('#1830: --check-dev-secrets は realm が無いと非 0（測れないを緑にしない）');
+  }
+  {
+    // 後追い（apply）: realm が無い ＝ realm.create が 3 クライアントを宣言の dev の値で作る。
+    const denied = await runMain({ realmExists: false });
+    assert.strictEqual(denied.code, 1, denied.out);
+    assert.deepStrictEqual(denied.writes, [], `拒否のはずが書いた: ${denied.writes.join(', ')}`);
+    assert.ok(/identity-admin, mcp-client-admin, reset-gate/.test(denied.out), `名指していない:\n${denied.out}`);
+    const deniedExplicit = await runMain({ realmExists: false, env: { [DEV_SECRETS_ALLOWED_ENV]: 'deny' } });
+    assert.deepStrictEqual(deniedExplicit.writes, [], 'deny で書いた');
+    const notOne = await runMain({ realmExists: false, env: { [DEV_SECRETS_ALLOWED_ENV]: '1' } });
+    assert.deepStrictEqual(notOne.writes, [], 'allow 以外（1）で書いた（値域は allow だけ）');
+    const allowed = await runMain({ realmExists: false, env: { [DEV_SECRETS_ALLOWED_ENV]: 'allow' } });
+    assert.ok(allowed.writes.includes('POST /admin/realms'), `陽性対照: allow で realm を作っていない: ${allowed.writes.join(', ')}`);
+    assert.ok(/WARN/.test(allowed.out), '許可して作るときに警告しない');
+    done1830('#1830: 後追いは DEV_CLIENT_SECRETS_ALLOWED=allow でなければ、管理用クライアントを dev の値で作る realm に何も書かず非 0');
   }
   console.log(`\n${passed} tests passed.`);
 })().catch((e) => { console.error(e); process.exit(1); });

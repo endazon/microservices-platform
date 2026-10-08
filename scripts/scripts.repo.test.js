@@ -13373,6 +13373,8 @@ if [ "$verb" = "exec" ]; then
     *) cat >/dev/null; exit 0 ;;
   esac
 fi
+# #1830 / IADR-0517: 現在の kube context（既定は k3d の形＝dev の許可集合）。STUB_KUBE_CONTEXT で差し替える。
+if [ "$verb" = "config" ] && [ "$kind" = "current-context" ]; then printf '%s\\n' "\${STUB_KUBE_CONTEXT-k3d-stub}"; exit 0; fi
 echo "kubectl $*" >> "$STUB_LOG"
 if [ "$verb" = "get" ] && [ "$kind" = "externalsecret" ] && [ -n "$all" ]; then
   [ -e "$S/es-list-fail" ] && { echo 'error: the server does not have a resource type "externalsecret"' >&2; exit 1; }
@@ -13456,7 +13458,7 @@ exit 0
         const log = path1728.join(dir, 'calls.log');
         fs1728.writeFileSync(log, '');
         const baseEnv = { ...process.env };
-        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_)/.test(k)) delete baseEnv[k];
+        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_|ALLOW_DEV_CLIENT_SECRETS$)|_CLIENT_SECRET$/.test(k)) delete baseEnv[k];
         const r = spawn1728('bash', [...bashArgs, BOOTSTRAP.split(path1728.sep).join('/')], {
           encoding: 'utf8',
           timeout: 60000,
@@ -13785,6 +13787,50 @@ exit 0
       assert.notStrictEqual(r.status, 0);
       assert.ok(/0 以上の整数/.test(r.stderr), r.stderr);
       assert.deepStrictEqual(annotated(r.calls), []);
+    });
+
+    // --- NFR-18, ADR-0124 決定 1, IADR-0517 (#1830): dev ではない kube context で、管理用の 3 クライアントの KV を dev の値で作らない ---
+    // 判定器は scripts/lib/dev-client-secret-guard.sh（真理値表は k8s-local-up.test.js #1830 節）。ここは bootstrap.sh の実走で
+    // (1) 無い KV だけを判定へ渡す (2) 止まるときは Vault へ何も書かない (3) 在る KV・dev の context・与えた値・上書きでは進む、を固定する。
+    const GUARDED1830 = { 'identity-admin': 'msp/identity-admin-oidc', 'reset-gate': 'msp/reset-gate-oidc', 'mcp-client-admin': 'msp/mcp-client-admin-oidc' };
+    const dropKv1830 = (...paths) => ({ state }) => { for (const p of paths) fs1728.rmSync(path1728.join(state, 'kv', p.split('/').join('__'))); };
+    const vaultWrites1830 = (r) => r.calls.filter((c) => c.startsWith('VAULT '));
+    const probe1830 = (c) => ['probe', '1830', c].join('-');
+
+    ok('#1830: dev ではない context で、無い管理用クライアントの KV を env 未設定（dev の値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
+      const r = run1728({ setup: dropKv1830(...Object.values(GUARDED1830), 'msp/llm-provider-credentials'), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
+      assert.notStrictEqual(r.status, 0, '止まらなかった');
+      assert.deepStrictEqual(vaultWrites1830(r), [], `止まる前に Vault へ書いた: ${vaultWrites1830(r).join(', ')}`);
+      assert.ok(/止める: identity-admin, reset-gate, mcp-client-admin$/m.test(r.stderr), `名指していない:\n${r.stderr}`);
+      assert.ok(!r.execArgv.some((c) => /vault (policy|write|auth)/.test(c)), '止まる前に Vault の設定を書いた');
+      assert.ok(!`${r.stdout}${r.stderr}`.includes('-dev-secret-change-me'), '値を出力した');
+    });
+
+    ok('#1830: 名指すのは無い KV だけ（在る KV は触らないので dev の値は入らない）', () => {
+      const r = run1728({ setup: dropKv1830(GUARDED1830['mcp-client-admin']), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
+      assert.notStrictEqual(r.status, 0);
+      assert.ok(/止める: mcp-client-admin$/m.test(r.stderr), `mcp-client-admin だけを名指していない:\n${r.stderr}`);
+      const present = run1728({ env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
+      assert.strictEqual(present.status, 0, `KV が在るのに止まった:\n${present.stderr}`);
+    });
+
+    ok('#1830 陽性対照: dev の context・dev 以外の値・上書きでは進み、無い KV を作る', () => {
+      const drop = dropKv1830(...Object.values(GUARDED1830));
+      const dev = run1728({ setup: drop });
+      assert.strictEqual(dev.status, 0, dev.stderr);
+      for (const p of Object.values(GUARDED1830)) assert.ok(dev.calls.includes(`VAULT PUT ${p}`), `dev の context で ${p} を作っていない`);
+      assert.ok(dev.putStdin['msp/reset-gate-oidc'].includes('reset-gate-dev-secret-change-me'), 'dev の context で dev の値を入れていない');
+      const env = { STUB_KUBE_CONTEXT: 'prod-shared', IDENTITY_ADMIN_CLIENT_SECRET: probe1830('identity-admin'),
+        RESET_GATE_CLIENT_SECRET: probe1830('reset-gate'), MCP_CLIENT_ADMIN_CLIENT_SECRET: probe1830('mcp-client-admin') };
+      const given = run1728({ setup: drop, env });
+      assert.strictEqual(given.status, 0, given.stderr);
+      for (const [c, p] of Object.entries(GUARDED1830)) {
+        assert.ok(given.putStdin[p].includes(probe1830(c)), `${p} が与えた値で作られていない`);
+        assert.ok(!`${given.stdout}${given.stderr}`.includes(probe1830(c)), '値が出力に出た');
+      }
+      const over = run1728({ setup: drop, env: { STUB_KUBE_CONTEXT: 'prod-shared', ALLOW_DEV_CLIENT_SECRETS: '1' } });
+      assert.strictEqual(over.status, 0, over.stderr);
+      assert.ok(/!!! WARNING: bootstrap\.sh: ALLOW_DEV_CLIENT_SECRETS=1/.test(over.stderr), '上書きで警告しない');
     });
   }
 
@@ -15426,11 +15472,18 @@ server.listen(0, '127.0.0.1', async () => {
         assert.ok(/レルムの全権/.test(text) && text.includes('`reset-gate`'), `${name} が間接的にレルムの設定へ届くこと（reset-gate 経由）を書いていない`);
         assert.ok(!/届かないもの[^\n]*レルムの設定/.test(text), `${name} が「レルムの設定には届かない」と書いている（過小）`);
       }
-      // PR #1827 監査 🟡4: 本番流用の禁止の「必ず変える値」に入れ、dev 以外では起動の直後に回すと書く（機械の守りは #1830）。
+      // PR #1827 監査 🟡4: 本番流用の禁止の「必ず変える値」に入れ、dev 以外では起動の直後に確かめて回すと書く。
+      // ［2026-10-09 / #1830 / IADR-0517］機械の守り（起動器が止まる・--check-dev-secrets で検知する）が入ったので、暫定の文言から差し替えた。
       const ban = security.slice(security.indexOf('**本番流用の禁止**'));
       assert.ok(/シークレット（[^）]*`mcp-client-admin`[^）]*）は環境ごとに必ず変更/.test(ban), '本番流用の禁止の一覧に mcp-client-admin が無い');
-      assert.ok(/dev 以外のクラスタでは\s*起動の直後に回す/.test(ban) && /dev 以外のクラスタでは、起動の直後に回す/.test(runbook),
-        'dev 以外のクラスタで直ちに回す旨が無い');
+      assert.ok(/dev 以外のクラスタでは起動の直後に[^\n]*--check-dev-secrets/.test(ban) && /dev 以外のクラスタでは、起動の直後に/.test(runbook),
+        'dev 以外のクラスタで起動の直後に確かめる旨が無い');
+      for (const [name, text] of [['security.md', ban], ['paired-secret-rotation-runbook.md', runbook]]) {
+        assert.ok(text.includes('reconcile-realm.sh --check-dev-secrets'), `${name} に検知の手順（--check-dev-secrets）が無い`);
+        assert.ok(text.includes('ALLOW_DEV_CLIENT_SECRETS=1'), `${name} に明示の上書きが無い`);
+        assert.ok(/`k3d-\*`・`kind-\*`・`rancher-desktop`・`docker-desktop`/.test(text), `${name} に dev の許可集合が無い`);
+        assert.ok(!/機械の守りは起動器に無い/.test(text), `${name} に暫定の文言（機械の守りは無い）が残っている`);
+      }
     });
   }
 

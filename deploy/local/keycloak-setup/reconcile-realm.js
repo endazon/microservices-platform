@@ -31,6 +31,16 @@
  *   （`realm.create`）にだけ宣言の値で作り、既存の client の `secret` は比べず・`PUT` の本文に載せず・読みにも行かない。
  *   宣言の値は開発用の形に限る（`scripts/check-realm-constraints.js` 検査 8）。
  *
+ * ［2026-10-09 追記 / #1830 / IADR-0517］**宣言の値は公知の dev の値である。** レルム管理のロールを持つ 3 クライアント
+ *   （`identity-admin`・`reset-gate`・`mcp-client-admin`。`DEV_SECRET_GUARDED_CLIENTS`）を、dev ではないクラスタで宣言の値のまま
+ *   作らない。Job は kube context を持たないので、ホスト側の `reconcile-realm.sh` が `scripts/lib/dev-client-secret-guard.sh` で
+ *   決めた結果を env `DEV_CLIENT_SECRETS_ALLOWED`（`allow` / それ以外は拒否。マニフェストの既定は `deny`）で受ける。
+ *   拒否のとき、3 クライアントのどれかを宣言の secret で作る操作（`client.create`・`realm.create`）があれば、**その realm には
+ *   何も書かずに**名指しして非 0 で終える（`devSecretCreations`）。
+ *   **稼働中の検知**は `--check-dev-secrets`（`RECONCILE_MODE=check-dev-secrets`）。3 クライアントの稼働の secret を
+ *   `GET …/client-secret` で読み、宣言の値と一致するものを名指して非 0 で終える。**読むだけで書かない。値は出力しない。**
+ *   🔴 稼働の secret を読むのはこのモードの `collectGuardedSecrets` だけである（apply / check の `collectLive` は今も読まない）。
+ *
  * ［2026-09-06 追記 / #1245 / IADR-0404］**`smtpServer` を実行時所有から宣言所有へ移した。**
  *   ADR-0078 決定 2 が Keycloak の送出先を**クラスタ内の近接 MTA**（`deploy/mail-relay/`）へ固定し、
  *   秘匿値（実リレーの host/user/password）は relay 側の Secret へ移った。realm に残るのは
@@ -60,7 +70,8 @@
  *   KC_ADMIN_USER       master realm の管理者（Secret keycloak-admin/username）
  *   KC_ADMIN_PASSWORD   同パスワード（Secret keycloak-admin/password）。**値は出力しない**
  *   REALM_DIR           realm JSON の置き場（既定 /import ＝ ConfigMap keycloak-realms のマウント先）
- *   RECONCILE_MODE      apply（既定）| check
+ *   RECONCILE_MODE      apply（既定）| check | check-dev-secrets（引数 `--check-dev-secrets` でも同じ）
+ *   DEV_CLIENT_SECRETS_ALLOWED  allow のときだけ、無い管理用クライアントを宣言の dev の値で作る（既定は拒否。#1830）
  */
 
 const fs = require('fs');
@@ -107,6 +118,11 @@ const CLIENT_SKIP_KEYS = new Set([
 // 🔴 ここから `secret` を外すと、対の手順で回した client シークレットを次の起動で開発用の値へ戻す。
 const CLIENT_CREATE_ONLY_KEYS = new Set(['secret']);
 const MAPPER_SKIP_KEYS = new Set(['id']);
+// ［2026-10-09 / #1830 / IADR-0517］レルム管理のロールを持つ機密クライアント。dev ではないクラスタで宣言の（公知の dev の）
+// secret のまま作らない・稼働の値が宣言の値のままかを `--check-dev-secrets` で見る。
+// 🔴 scripts/lib/dev-client-secret-guard.sh の DEV_CLIENT_SECRET_GUARDED と同じ集合（keycloak-realm-reconcile.test.js が突き合わせる）。
+const DEV_SECRET_GUARDED_CLIENTS = Object.freeze(['identity-admin', 'reset-gate', 'mcp-client-admin']);
+const DEV_SECRETS_ALLOWED_ENV = 'DEV_CLIENT_SECRETS_ALLOWED';
 // 利用者の作成時に POST /users が処理しないもの（作成後にロール割当の端点で当てる）。
 const USER_CREATE_SKIP_KEYS = new Set(['realmRoles', 'clientRoles', 'serviceAccountClientId', 'id']);
 
@@ -444,6 +460,42 @@ function plan(desired, live) {
   return ops;
 }
 
+/**
+ * ［#1830 / IADR-0517］計画のうち、管理用の 3 クライアントを**宣言の secret（公知の dev の値）で作る**操作の対象を名指す。**純関数**。
+ * `client.create` の本文、または `realm.create` の本文の `clients[]` に、対象のクライアントが `secret` つきで在れば挙げる。
+ * 宣言の `secret` は検査 8 で開発用の形に限られている（＝リポジトリに公開されている）ので、値は見ずに「在るか」だけで決める。
+ * @param {Array<object>} ops plan() の戻り値
+ * @returns {string[]} 対象の clientId（昇順・重複なし）
+ */
+function devSecretCreations(ops) {
+  const hits = new Set();
+  const guarded = (c) => isObj(c) && DEV_SECRET_GUARDED_CLIENTS.includes(c.clientId) && asStr(c.secret) !== '';
+  for (const op of ops || []) {
+    if (op.op === 'client.create' && guarded(op.body)) hits.add(op.body.clientId);
+    if (op.op === 'realm.create' && isObj(op.body)) for (const c of op.body.clients || []) if (guarded(c)) hits.add(c.clientId);
+  }
+  return [...hits].sort();
+}
+
+/**
+ * ［#1830 / IADR-0517］稼働の secret が宣言の dev の値のままかを判定する。**純関数**。値は戻り値に含めない。
+ * @param {object} desired realm の宣言
+ * @param {Record<string, string|null>} liveSecrets clientId → 稼働の secret（client が稼働に無ければ null）
+ * @returns {Array<{clientId: string, state: 'dev'|'rotated'|'absent'}>} 宣言が secret を持つ対象のクライアントだけ
+ */
+function devSecretFindings(desired, liveSecrets) {
+  const out = [];
+  for (const c of (desired && desired.clients) || []) {
+    if (!DEV_SECRET_GUARDED_CLIENTS.includes(c.clientId) || asStr(c.secret) === '') continue;
+    const live = (liveSecrets || {})[c.clientId];
+    let state = 'rotated';
+    if (live === null || live === undefined) state = 'absent';
+    else if (asStr(live) === asStr(c.secret)) state = 'dev';
+    out.push({ clientId: c.clientId, state });
+  }
+  return out.sort((a, b) => a.clientId.localeCompare(b.clientId));
+}
+
 /** protocol mappers を name で突合する（client scope と client で同型）。 */
 function planMappers(add, base, label, desiredMappers, liveMappers) {
   const have = byKey(liveMappers, 'name');
@@ -564,6 +616,55 @@ async function collectLive(kc, desired) {
   return { realm, requiredActions, realmRoles, clientScopes, clients, clientRoles, roleComposites, groups, users, serviceAccounts };
 }
 
+/**
+ * ［#1830 / IADR-0517］`--check-dev-secrets` だけが使う。宣言が secret を持つ管理用クライアントの稼働の secret を読む（GET だけ）。
+ * realm が無ければ null（測れない）。client が無ければ null の値。値はこの関数の戻り値と比較にしか使わない（出力しない）。
+ */
+async function collectGuardedSecrets(kc, desired) {
+  const R = `/admin/realms/${encodeURIComponent(desired.realm)}`;
+  if (!(await kc.get(R))) return null;
+  const out = {};
+  for (const c of desired.clients || []) {
+    if (!DEV_SECRET_GUARDED_CLIENTS.includes(c.clientId) || asStr(c.secret) === '') continue;
+    const found = (await kc.get(`${R}/clients?clientId=${encodeURIComponent(c.clientId)}`)) || [];
+    const cur = found.find((x) => x.clientId === c.clientId);
+    if (!cur) { out[c.clientId] = null; continue; }
+    const sec = await kc.get(`${R}/clients/${cur.id}/client-secret`);
+    if (!sec || typeof sec.value !== 'string') throw new Error(`${c.clientId} の client secret を読めない（値は出さない）`);
+    out[c.clientId] = sec.value;
+  }
+  return out;
+}
+
+/**
+ * ［#1830 / IADR-0517］`--check-dev-secrets` の本体。dev の値のままのクライアント数を返す。読むだけで書かない。
+ * @returns {Promise<{checked: number, dev: number}>}
+ */
+async function checkDevSecrets(kc, realms, log = console.log) {
+  let checked = 0;
+  let dev = 0;
+  for (const { file, desired } of realms) {
+    if (devSecretFindings(desired, {}).length === 0) continue; // 対象のクライアントを宣言していない realm
+    log(`==> realm '${desired.realm}' (${file}) mode=check-dev-secrets`);
+    const live = await collectGuardedSecrets(kc, desired);
+    if (live === null) throw new Error(`realm '${desired.realm}' が稼働側に無い（測れない。0 件を緑にしない）`);
+    for (const f of devSecretFindings(desired, live)) {
+      checked += 1;
+      if (f.state === 'dev') {
+        dev += 1;
+        log(`    dev-secret  ${f.clientId} — 宣言の（公知の）dev の値のまま。回す: docs/operations/paired-secret-rotation-runbook.md`);
+      } else if (f.state === 'absent') {
+        log(`    absent      ${f.clientId} — 稼働に無い（作られるときは後追いの守りが掛かる）`);
+      } else {
+        log(`    ok          ${f.clientId} — dev の値ではない`);
+      }
+    }
+  }
+  if (checked === 0) throw new Error('対象のクライアント（identity-admin / reset-gate / mcp-client-admin）を宣言する realm が無い（0 件を緑にしない）');
+  log(`realms=${realms.length} checked=${checked} dev-secrets=${dev}`);
+  return { checked, dev };
+}
+
 async function applyOps(kc, realmName, ops) {
   const R = `/admin/realms/${encodeURIComponent(realmName)}`;
   let applied = 0;
@@ -597,9 +698,12 @@ function readRealmFiles(dir) {
 
 async function main() {
   const baseUrl = (process.env.KC_URL || 'http://keycloak:8080').replace(/\/+$/, '');
-  const mode = process.env.RECONCILE_MODE || 'apply';
+  const mode = process.argv.includes('--check-dev-secrets') ? 'check-dev-secrets' : (process.env.RECONCILE_MODE || 'apply');
   const dir = process.env.REALM_DIR || '/import';
-  if (!['apply', 'check'].includes(mode)) throw new Error(`RECONCILE_MODE は apply | check（受け取った値: ${mode}）`);
+  if (!['apply', 'check', 'check-dev-secrets'].includes(mode)) {
+    throw new Error(`RECONCILE_MODE は apply | check | check-dev-secrets（受け取った値: ${mode}）`);
+  }
+  const devSecretsAllowed = process.env[DEV_SECRETS_ALLOWED_ENV] === 'allow';
   const user = process.env.KC_ADMIN_USER;
   const password = process.env.KC_ADMIN_PASSWORD;
   if (!user || !password) throw new Error('KC_ADMIN_USER / KC_ADMIN_PASSWORD が無い（Secret keycloak-admin の username / password）');
@@ -611,13 +715,33 @@ async function main() {
   }
   const kc = makeClient(baseUrl, await adminToken(baseUrl, user, password));
 
+  if (mode === 'check-dev-secrets') {
+    const { dev } = await checkDevSecrets(kc, realms);
+    if (dev > 0) {
+      console.error(`ERROR: ${dev} 件の管理用クライアントの secret が宣言の dev の値のまま（上の dev-secret の行）。dev 以外のクラスタなら直ちに回す`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   let drift = 0;
+  let guardBlocked = 0;
   let applied = 0;
   for (const { file, desired } of realms) {
     console.log(`==> realm '${desired.realm}' (${file}) mode=${mode}`);
     let ops = plan(desired, await collectLive(kc, desired));
     if (mode === 'apply') {
       for (let pass = 1; pass <= MAX_PASSES && ops.length > 0; pass += 1) {
+        // #1830 / IADR-0517: 管理用クライアントを宣言の dev の値で作る操作があり、許されていなければ、この realm には何も書かない。
+        const blocked = devSecretCreations(ops);
+        if (blocked.length > 0 && !devSecretsAllowed) {
+          console.error(`    ERROR 管理用の機密クライアントを公知の dev の値で作る操作がある: ${blocked.join(', ')}。`
+            + ` dev ではない kube context なので、この realm には何も書かない（${DEV_SECRETS_ALLOWED_ENV}=allow でない。#1830）。`
+            + ' 先に認証基盤へ dev 以外の secret で作るか、dev のクラスタなら ALLOW_DEV_CLIENT_SECRETS=1 で再実行する');
+          guardBlocked += blocked.length;
+          break;
+        }
+        if (blocked.length > 0) console.error(`    WARN 管理用の機密クライアントを宣言の dev の値で作る（許可済み）: ${blocked.join(', ')}`);
         console.log(`    pass ${pass}: ${ops.length} 件`);
         for (const op of ops) if (op.op === 'deferred') console.log(`    ${describe(op)}`);
         const r = await applyOps(kc, desired.realm, ops);
@@ -631,7 +755,7 @@ async function main() {
     drift += ops.length;
   }
   console.log(`realms=${realms.length} drift=${drift} applied=${applied}`);
-  if (drift > 0) process.exitCode = 1;
+  if (drift > 0 || guardBlocked > 0) process.exitCode = 1;
 }
 
 if (require.main === module) {
@@ -643,6 +767,7 @@ if (require.main === module) {
 
 module.exports = {
   plan, planMappers, collectLive, contains, merge, describe, gateHoldsClosed,
+  devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, DEV_SECRET_GUARDED_CLIENTS, DEV_SECRETS_ALLOWED_ENV,
   REALM_COLLECTION_KEYS, RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, CLIENT_SKIP_KEYS, CLIENT_CREATE_ONLY_KEYS, MAX_PASSES,
   GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
 };
