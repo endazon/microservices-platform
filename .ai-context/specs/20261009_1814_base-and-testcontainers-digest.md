@@ -123,7 +123,7 @@ issue: "#1814"
 
 ## 検証の結果（2026-10-09）
 
-- `check-image-digests.js --self-test` 40 件通過（#1814 で 8 件、独立監査の是正で 5 件を追加）。本検査: **24 製品・79 参照**すべて固定（自製 21 件は対象外。#1787 時点の 21 製品・42 参照から、基底イメージ 32・Testcontainers 5 を加えた）。例外 0 件。
+- `check-image-digests.js --self-test` 41 件通過（#1814 で 8 件、独立監査の是正で 5 件、AI レビュー（1 行に複数の `--mount=…,from=`）で 1 件を追加）。本検査: **24 製品・79 参照**すべて固定（自製 21 件は対象外。#1787 時点の 21 製品・42 参照から、基底イメージ 32・Testcontainers 5 を加えた）。例外 0 件。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` 通過（#1814 で 3 件追加）。
 - `dotnet build`（`Knowledge.IntegrationTests`）警告 0。`dotnet format --verify-no-changes`（変更した 3 ファイル）差分なし。
 - 実行機で Docker デーモンを起こし、統合試験を実走した: `DataSourceSyncSingleWriterTests`（Postgres）・`WolverineBrokerReadinessTests`（RabbitMQ）・`DocumentCrudTests`（Postgres＋RabbitMQ）・定義試験（Qdrant・SeaweedFS）の計 16 件が通過。`docker events` で、起動したコンテナの参照が `postgres:16-alpine@sha256:721873c3…`・`rabbitmq:3.13-alpine@sha256:d7af1c87…` であることを確かめた。

@@ -137,10 +137,15 @@ function extractRefs(relPath, content) {
       }
       // #1814: `COPY --from=<外部イメージ>` と `RUN --mount=…,from=<外部イメージ>` も外部イメージを引く。段名・段番号は除く。
       const c = /^\s*COPY\s+(?:--\S+\s+)*?--from=(\S+)/i.exec(raw);
-      const r = /^\s*RUN\s+(?:.*\s)?--mount=\S*?\bfrom=([^,\s]+)/i.exec(raw);
-      const ref = c ? c[1] : r ? r[1] : null;
-      if (ref === null || isStage(ref)) return;
-      out.push({ file: relPath, line: i + 1, ref, kind: c ? 'copy-from' : 'mount-from' });
+      if (c) {
+        if (!isStage(c[1])) out.push({ file: relPath, line: i + 1, ref: c[1], kind: 'copy-from' });
+        return;
+      }
+      // #1814 AI レビュー: 1 行（論理行）に `--mount=…,from=` が複数あっても全件を拾う（非 global の exec は最後の 1 件しか返さなかった）。
+      if (!/^\s*RUN\s/i.test(raw)) return;
+      for (const m of raw.matchAll(/--mount=\S*?\bfrom=([^,\s]+)/gi)) {
+        if (!isStage(m[1])) out.push({ file: relPath, line: i + 1, ref: m[1], kind: 'mount-from' });
+      }
     });
     return out;
   }
@@ -576,6 +581,11 @@ function selfTest() {
     const ro = refsOf('src/T/R.cs', '// Testcontainers の参照\nprivate static readonly string PgImage = "postgres:16-alpine";\n');
     return viaGlobal.join() === 'postgres:16' && qualified.join() === 'rabbitmq:3.13' && named.join() === 'redis:7' &&
       ro.join() === 'postgres:16-alpine';
+  });
+  t('#1814 AI レビュー: 1 行に複数の --mount=…,from= があれば全件を拾う（段名は除く）', () => {
+    const r = extractRefs('src/x/Dockerfile', 'FROM a:1@' + D + ' AS deps\nRUN --mount=type=bind,from=alpine:3.20,target=/a --mount=type=cache,target=/c --mount=type=bind,from=deps,target=/d --mount=type=bind,from=busybox:1.37,target=/b true\n');
+    const m = r.filter((x) => x.kind === 'mount-from').map((x) => x.ref);
+    return m.length === 2 && m[0] === 'alpine:3.20' && m[1] === 'busybox:1.37';
   });
   t('#1814 監査: 行継続した RUN の次の行の --mount=…,from= を拾う（行番号は論理行の先頭）', () => {
     const r = extractRefs('src/x/Dockerfile', 'FROM a:1@' + D + '\nRUN \\\n    --mount=type=bind,from=alpine:3.20,target=/x \\\n    true\n');
