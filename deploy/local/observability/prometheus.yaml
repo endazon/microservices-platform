@@ -293,7 +293,7 @@ spec:
     spec:
       containers:
         - name: prometheus
-          image: prom/prometheus:v2.52.0
+          image: prom/prometheus:v2.52.0@sha256:5c435642ca4d8427ca26f4901c11114023004709037880cd7860d5b7176aa731
           # push（remote-write）モデル。collector が /api/v1/write へ送るため receiver を有効化する。
           # IADR-0210 (#787): 保持期間を **args で明示**する（既定任せにしない）。compose
           # （deploy/docker-compose.yml の prometheus.command）にも同じ 2 引数を置く＝パリティを崩さない。

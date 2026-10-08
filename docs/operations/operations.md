@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06]
-adrs: [ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027]
-iadrs: [IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
-specs: [20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
-issues: [#1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712]
+adrs: [ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027]
+iadrs: [IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
+specs: [20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
+issues: [#1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750]
 -->
 
 # 運用仕様書
@@ -113,17 +113,21 @@ issues: [#1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #
   （`templates/deployment.yaml`）が変わり自動 rollout されるが、これは**イメージ更新は捕捉しない**。
   イメージ更新は上記の一意タグ運用（推奨）か `rollout restart` で行う。
 
-#### Third-party イメージ — 具体版タグ（可能なら digest）で固定
+#### Third-party イメージ — 具体版タグ ＋ digest で固定（インフラ製品の選定基準の計画 ADR / #1787）
 
 - 依存イメージ（keycloak/postgres/redis/rabbitmq/qdrant/seaweedfs/otel/prometheus/loki/tempo/grafana/
-  wiki 等）は**具体バージョンタグ**で固定する（`values.yaml`・`docker-compose.yml`）。浮動 major タグは
-  避ける（例: Wiki.js は `2` ではなく `2.5`。#320 で固定）。粒度は **minor 固定・patch は許容**
-  （`2.5` は `2.5.x` 系列内の自動パッチを受ける。実測 PoC は `2.5.314`＝`docs/tech/20260707_wikijs-poc-record.md`）。
-  完全固定が要るなら CD 層で digest ピンする。
-- 最上位の再現性は **digest ピン**（`image: <repo>@sha256:...`）である。per-arch・per-registry の digest 解決と
-  ミラー（`mirror.gcr.io`。frontend base イメージの非 docker.io 化・#325）整合の検証が要るため、
-  稼働環境の CD 自動化（ArgoCD image updater / kustomize digest 運用）で段階導入するのが望ましい。
-  infra の `-alpine` major タグはセキュリティ自動パッチの利点があり、固定と自動パッチはトレードオフで評価する。
+  wiki 等）は **`<repo>:<tag>@sha256:<digest>`** で固定する（`docker-compose.yml`・`deploy/local/`・`deploy/mail-relay/`・
+  helm `values.yaml`）。digest は multi-arch の **image index（manifest list）** のもので、tag は人が版を読むために残す。
+  helm values の `registry` / `image` / `tag` 形式は同じマッピングに `digest:` を置き、テンプレートが `tag@digest` を描く。
+- **tag だけの参照の再混入は CI が止める**（`node scripts/check-image-digests.js`。`static-checks` ジョブ）。
+  同じ `repo:tag` が別の digest で書かれている（compose と k8s の片側だけを更新した）ときも落ちる。
+  digest を付けられない参照は `scripts/image-digest-exceptions.json` に理由つきで載せる（2026-10-08 時点で 0 件）。
+- 🔴 **digest で固定すると、浮動 tag（`7-alpine`・`2.5`・`22-alpine` 等）の自動パッチは効かない。** 以前は
+  「minor 固定・patch は許容」（Wiki.js の `2.5` は `2.5.x` 系列の自動パッチを受ける。実測 PoC は `2.5.314`＝
+  `docs/tech/20260707_wikijs-poc-record.md`）としていたが、**同じ tag の中身が差し替わっても検知できない**ため改めた。
+  パッチ（`-alpine` のセキュリティ修正を含む）は、年次点検と契機ごとに digest を解決し直して取り込む
+  （手順は本書 [§インフラ製品の点検（基準 A〜D）](#インフラ製品の点検基準-ad選定基準の計画-adr--1787) の「digest の解決と更新」）。
+- **Harbor へのミラーは Harbor の配備後に行う**（未配備のあいだは対象外。上流のレジストリから digest で取得する）。
 
 ### 基盤インフラの永続化（compose・非機能要件: 運用性/可観測性/信頼性 / Keycloak=共有 Postgres／Loki・Tempo=名前付きボリューム） / #282）
 
@@ -1577,6 +1581,90 @@ QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-fulltext-index.sh --
 不採用ライブラリの混入は `scripts/check-backend-libraries.js` が CI で継続的に止めるため、本点検は
 **「採用したものが採用に値し続けているか」**だけを見る。残件（`scripts/backend-library-baseline.json`）の
 消化状況もあわせて確認する。
+
+### インフラ製品の点検（基準 A〜D）（選定基準の計画 ADR / #1787）
+
+計画側のインフラ製品の選定基準の ADR は、**採用済みのインフラ製品を年 1 回と契機ごとに点検する**ことを求め、
+管理用の口の基準を足した計画 ADR が点検に基準 D を加えた。本節はその手順・記録先・初回の記録である。
+上の「採用ライブラリ」の点検（アプリケーション層）とは対象が違う —— こちらは `deploy/` が配備する**インフラのイメージ**を見る。
+
+| 項目 | 内容 |
+| --- | --- |
+| 実施時期 | **毎年 7 月**。計画が定めるのは「採用ライブラリの年次点検と同じ時期に行う」ことであり、7 月という月は、上の採用ライブラリの点検に合わせて本リポジトリが選んだ |
+| 契機（時期を待たずに行う） | ①イメージの**取得の失敗**（CI の結合テスト・integration-stack・経路 B の起動が pull で落ちた）②上流リポジトリの **archived** ③**ライセンス変更の告知** ④新しいインフラ製品の採用（選定時に同じ基準を当てる） |
+| 母集合 | **`node scripts/check-image-digests.js --list`** の出力（製品ごとの tag・固定の有無・参照箇所）。**手で列挙しない** —— `deploy/` の参照から機械的に引く。自製イメージ（`microservices-platform/*`・`k3d-local/*`）は対象外 |
+| 母集合の外（未決） | `scripts/` が chart / マニフェストで入れる製品（Istio・External Secrets・Reloader・cert-manager・Argo CD・k3s）は `deploy/` に参照が無く、`--list` に現れない。引くときは `grep -nE 'helm upgrade --install\|kubectl apply .*https' scripts/*.sh`。点検の対象に入れるかは計画へ確認中（初回の記録の「残り」） |
+| 記録先 | **本節の「点検の記録」**（回ごとに日付つきの小見出しを足し、過去の回は消さない）。判断を伴う変更（差し替え・例外の追加）は実装 ADR に残す |
+| 逸脱時 | **基準 A・B・D を満たさない製品は差し替えずに記録し、計画へ環流する**（差し替えは計画の裁定。`/plan-feedback`）。基準 C で既定の外部通信が見つかったら、配備へ無効化を入れる issue を起こし、計画のデータ外部送信方針の統制表への追加を環流する |
+
+#### 基準と確かめ方
+
+| 基準 | 見るもの | 確かめ方（初回の実績） |
+| --- | --- | --- |
+| **A** ライセンスの持続性 | OSS ライセンスが続いているか。上流の保守が止まっていないか（archived 等） | 固定した版のタグの `LICENSE` を読む（`https://raw.githubusercontent.com/<owner>/<repo>/<tag>/LICENSE`）。イメージの OCI ラベル `org.opencontainers.image.licenses` があれば併記する。保守は上流のリリースとイメージの再ビルド日（config の `created`）で見る |
+| **B** 配布の持続性 | 匿名で取得できるか。digest で固定されているか | 下の「digest の解決と更新」の手順で**匿名で 2 回解決して一致する**こと。固定は `check-image-digests.js`（CI）が見る |
+| **C** 既定の外部通信 | テレメトリ・更新確認・外部アセット取得が既定で有効か。設定で無効化できるか。**配備に無効化が入っているか** | 上流文書の既定値と、配備側の設定（compose・`deploy/local/`・helm）を突き合わせる。可能なら通信の捕捉で実測する |
+| **D** 既定で開く管理用の口 | 構成・身元・権限を変えられる口（管理 API・管理用 gRPC・管理画面）が既定で開くか。閉じられるか。閉じられないなら認証を必須にでき、到達を制限できるか | 上流文書の既定値と、配備側のポート公開・NetworkPolicy・認証の設定を突き合わせる |
+
+#### digest の解決と更新
+
+docker のデーモンは要らない。**匿名のトークン → manifest の HEAD → `docker-content-digest`** で multi-arch の index の digest を読む。
+
+```bash
+# Docker Hub（library/ の公式イメージは repository:library/<name>）
+TOKEN=$(curl -sS "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/redis:pull" | jq -r .token)
+curl -sSI -H "Authorization: Bearer $TOKEN" \
+  -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+  https://registry-1.docker.io/v2/library/redis/manifests/7-alpine | grep -i '^docker-content-digest'
+# ghcr.io / quay.io は 401 の WWW-Authenticate が示す realm（例 https://ghcr.io/token?scope=repository:<repo>:pull）から同じ形で取る
+```
+
+- 応答の `content-type` が **index / manifest list** であることを確かめる（単一 manifest の digest を固定すると、別アーキテクチャの手元で起動しない）。
+- **tag と digest を対で変え、`--list` が示す全参照を同じ値に揃える**（片側だけ変えると `check-image-digests.js` が落とす）。
+  qdrant は統合試験の定数（`QdrantTestImage.Reference`）も同じ参照に揃える（PR の CI の定義試験が突き合わせる）。
+- 例外（digest を付けられない参照）は `scripts/image-digest-exceptions.json` に `file`・`ref`・`reason` で足す。直ったら外す。
+
+#### Harbor へのミラー
+
+**Harbor の配備後に行う。配備までは本点検の対象外である**（計画が「配備した後」と定めている。Harbor は未配備）。
+未配備のあいだ、上流の配布が止まると digest で固定していても取得できない（検知は契機①の取得の失敗に頼る）。
+
+#### 点検の記録
+
+##### 2026-10-08（初回。#1787）
+
+- 母集合: `--list` で **21 製品・42 参照**（自製 21 参照は対象外）。点検の前に固定済みだったのは seaweedfs と backup イメージの `FROM` の 3 参照だけで、**本回で 42 参照すべてを digest で固定した**（例外 0 件）。
+- 基準 C・D は**上流文書の既定値と配備側の設定の突き合わせ**であり、通信の捕捉による実測はしていない。
+- 基準 B は全製品で**匿名取得でき、index の digest を 2 回解決して一致した**（TEI の `cpu-1.5` だけは index が `linux/amd64` のみ）。下表では B 列を省く。
+
+| 製品（tag → 実体） | A ライセンス・保守 | C 既定の外部通信（配備の状態） | D 既定で開く管理用の口（配備の状態） | 判定 |
+| --- | --- | --- | --- | --- |
+| postgres（`16-alpine` → 16.15） | PostgreSQL License | 無し | 無し（SQL の口は認証必須） | 適合 |
+| rabbitmq（`3.13-management-alpine` → 3.13.7） | MPL-2.0。⚠️ 3.13 系はコミュニティ保守の外で、イメージは 2025-12-02 以降再ビルドが無い | 無し | management の UI / API（15672）。認証必須。compose はホストへ公開 | 適合（⚠️ 系列の保守。4.x への移行を次回の点検で見る） |
+| **redis（`7-alpine` → 7.4.11）** | 🔴 **RSALv2 / SSPLv1**（7.4 以降。OSI の OSS ではない） | 無し | 既定で認証が無く管理コマンド（`CONFIG`・`FLUSHALL` 等）が通る。認証（`requirepass` / ACL）と到達制限は掛けられる。**配備は認証なし**（compose はホストへ 6379 を公開） | 🔴 **A 不適合 → 環流** |
+| keycloak（`24.0` → 24.0.5） | Apache-2.0。⚠️ 24 系は保守の続く系列ではない | 無し | 管理コンソール・管理 REST（`/admin`。認証必須）。経路 B のエッジは `/` を出すので `/admin` も届く（既知。admin entrypoint の TLS 化の別件） | 適合 |
+| qdrant（`v1.18.1`） | Apache-2.0 | 🟡 **テレメトリが既定で有効**（`QDRANT__TELEMETRY_DISABLED` で無効化できる）。**配備は未設定** | REST / gRPC が管理（コレクション削除・スナップショット）を兼ね、既定で認証なし。API キーで必須にでき、到達は絞れる。**配備は認証なし**、経路 B はエッジ（`qdrant.localhost`）へ素通しで出している | 適合（配備に C・D の穴） |
+| seaweedfs（`4.47`） | Apache-2.0 | テレメトリが既定で有効 → `-master.telemetry=false` で**無効化済み** | 管理用 gRPC（18333）→ 起動ごとの署名鍵と NetworkPolicy で**塞ぎ済み** | 適合 |
+| opentelemetry-collector-contrib（`0.102.0`） | Apache-2.0 | 無し（zpages / pprof 拡張は未設定） | 無し（8888 は自己メトリクスの読み取り） | 適合 |
+| prometheus（`v2.52.0`） | Apache-2.0 | 無し | 管理 API（`--web.enable-admin-api`）と lifecycle は既定で無効、**配備も無効**。remote-write の受け口は有効（書き込み口。管理用の口ではない） | 適合 |
+| alertmanager（`v0.27.0`） | Apache-2.0 | 無し | API v2 で silence の作成・削除が既定で認証なし。web config で認証を掛けられ、到達は絞れる。**配備は認証なし** | 適合（配備の注意） |
+| loki（`3.0.0`） | AGPL-3.0 | 🟡 **利用統計の送信（`analytics.reporting_enabled`）が既定で有効。配備は未設定** | `auth_enabled: false`。運用の口（`/flush` 等）は製品単体で認証を掛けられず、前段（メッシュ・プロキシ）で掛ける形 | 判定保留（D の読み方を計画へ確認） |
+| tempo（`2.5.0`） | AGPL-3.0 | 🟡 **利用統計の送信（`usage_report.reporting_enabled`）が既定で有効。配備は未設定** | loki と同じ | 判定保留（同上） |
+| grafana（`11.0.0`） | AGPL-3.0 | 🟡 **利用統計の送信・更新確認・プラグインの更新確認が既定で有効。配備は未設定** | 管理 UI（認証必須。経路 B は OIDC・匿名無効）。**compose は匿名に Admin を与えている**（dev の利便。ホストへ 3000 を公開） | 適合（配備に C の穴・compose に D の穴） |
+| wiki（`2.5`） | AGPL-3.0。イメージは 2026-10-02 に再ビルド | テレメトリは初期設定で `false`、ロケールの同期（Graph）も初期設定で止めている | 管理画面（認証必須） | 適合 |
+| text-embeddings-inference（`cpu-1.5`） | Apache-2.0 | 起動時に Hugging Face Hub からモデルを取得する（既定は無効の opt-in。有効化の前にモデルの事前配置かミラーが要る） | 無し | 適合（有効化の前提に記録） |
+| postfix（boky、`v5.1.0`） | MIT（Postfix 本体は IPL / EPL） | 無し（上流の中継先を必須にし、宛先 MX への直接配送を塞いでいる） | 無し | 適合 |
+| mailpit（`v1.21.8`） | MIT | 🟡 最新版の確認（GitHub への問い合わせ。無効化の設定がある）。**配備は未設定** | Web UI / API（8025）が既定で認証なし（メールの閲覧・削除）。認証を掛けられる。dev 限定 | 適合（dev 限定） |
+| headlamp（`v0.43.0`） | Apache-2.0（上流は kubernetes-sigs/headlamp へ移った） | 既知の既定の外部通信は無い（未実測） | UI 自体が k8s の管理画面。OIDC と閲覧専用の RBAC | 適合 |
+| **vault（`1.16` → 1.16.3）** | 🔴 **BUSL-1.1**（1.15 以降。OSS ではない） | 無し | API は token 必須。dev モード（root token 固定）は経路 B の opt-in 限定 | 🔴 **A 不適合 → 環流** |
+| node（`22-alpine`）・busybox（`1.37`）・curl（`8.11.1`） | MIT・GPL-2.0・curl License | 無し | 無し（試験・プローブ・初期化の道具） | 適合 |
+
+**残り（次の点検または別 issue）**:
+
+- 🔴 **redis と vault の差し替え**は計画の裁定を待つ（環流）。差し替えまでは現行の版を digest で固定して使う。
+- 🟡 **基準 C の無効化が配備に入っていない 4 製品（qdrant・loki・tempo・grafana）と mailpit**は、配備へ無効化を入れる別 issue と、計画の統制表への追加の環流を要する。
+- 基準 D の「認証を必須にできる」に前段の認証（メッシュ・プロキシ）を含めてよいか（loki・tempo・otel-collector・alertmanager）を計画へ確認する。
+- `scripts/` が入れる製品（上の「母集合の外」）は本回の母集合に入っていない。**Argo CD は `stable` ブランチのマニフェストを直接 apply しており版すら固定されていない。**
 
 ## 未決事項
 

@@ -29,7 +29,7 @@ spec:
       serviceAccountName: vault
       containers:
         - name: vault
-          image: hashicorp/vault:1.16
+          image: hashicorp/vault:1.16@sha256:c5e04689611cb864b8b6247a6a845e0bdc059998f39b5c8a659562287379525c
           args: ["server", "-dev", "-dev-listen-address=0.0.0.0:8200"]
           env:
             # dev root トークン（平文コミットしない・Secret 経由）。

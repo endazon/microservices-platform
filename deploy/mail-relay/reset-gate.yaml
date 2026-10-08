@@ -60,7 +60,7 @@ spec:
       containers:
         - name: gate
           # CI（Node 22）と同じメジャー版。外部依存ゼロ（Node 標準の net / fetch / fs のみ）。
-          image: node:22-alpine
+          image: node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
           command: ["node", "/gate/reset-gate.js"]
           env:
             # 認証基盤は同じ namespace に居る（エッジ・TLS・メッシュのどれにも依存しない）。

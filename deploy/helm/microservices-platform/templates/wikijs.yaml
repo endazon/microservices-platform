@@ -29,7 +29,8 @@ spec:
     spec:
       containers:
         - name: wiki-js
-          image: "{{ $w.registry }}/{{ $w.image }}:{{ $w.tag }}"
+          # ADR-0107 決定 3, IADR-0514 (#1787): digest で固定する（タグは読みやすさのために残す。seaweedfs と同型）。
+          image: "{{ $w.registry }}/{{ $w.image }}:{{ $w.tag }}{{ if $w.digest }}@{{ $w.digest }}{{ end }}"
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
           ports:
             - containerPort: {{ $w.port }}

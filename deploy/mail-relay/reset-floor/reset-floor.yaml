@@ -82,7 +82,7 @@ spec:
       containers:
         - name: floor
           # CI（Node 22）と同じメジャー版。外部依存ゼロ（Node 標準の http / url のみ）。
-          image: node:22-alpine
+          image: node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
           command: ["node", "/floor/reset-floor.js"]
           env:
             # 上流は同じ namespace の Keycloak（メッシュ外・平文）。エッジ・TLS・メッシュに依存しない。

@@ -43,6 +43,7 @@
     { "path": "check-collector-self-telemetry.js", "reason": "collector の待受が loopback でないことを見る静的検査。localhost は正規表現に現れるだけ" },
     { "path": "check-default-credentials.js", "reason": "既定資格情報の静的検査。localhost はダミーの接続文字列の例" },
     { "path": "check-deploy-manifests.js", "reason": "kubectl kustomize と helm template と kubeconform はクラスタへ当たらない" },
+    { "path": "check-image-digests.js", "reason": "deploy/ のイメージ参照の digest の静的検査（#1787）。k3d は自製イメージの接頭辞 k3d-local の判定に、localhost は自己試験のレジストリ名に現れるだけで、クラスタにもレジストリにも当たらない" },
     { "path": "check-integration-config-timing.js", "reason": "設定の読み出し時点の静的検査。localhost は試験用の文字列" },
     { "path": "check-permission-denials.js", "reason": "kubectl は許可規則の対象コマンド名として現れるだけ" },
     { "path": "check-realm-constraints.js", "reason": "realm JSON の静的検査。localhost と port-forward は登録 URL の期待値と注記" },
