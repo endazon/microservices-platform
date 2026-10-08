@@ -93,7 +93,9 @@ issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #18
 
 `POST /mcp-clients/{clientId}/disable` と `POST /mcp-clients/{clientId}/enable` は、無人の行なら認可サーバーのクライアントの `enabled` も
 書き換える（多層の防御。即時の接続拒否そのものは、本サービスが呼び出しごとに登録簿を引いて満たす）。書き込みは
-`PUT /admin/realms/{realm}/clients/{id}` へ `{"enabled": true|false}` だけを送り（表現を丸ごと送り返さない＝secret を古い値へ戻さない）、
+`PUT /admin/realms/{realm}/clients/{id}` へ `enabled` と、`serviceAccountsEnabled`・`authorizationServicesEnabled` の**現在値**だけを送り
+（表現を丸ごと送り返さない＝secret を古い値へ戻さない。🔴 後の 2 つを欠くと、認可サーバーは「サービスアカウントを無効にする」と読んで
+サービスアカウントの利用者を属性ごと消す）、
 読み戻して確かめる。**この入口の印（`msp.mcp-client.managed-by=mcp-server`）を持つクライアントだけ**を書く。有人の行は登録簿だけを切り替える。
 
 | 操作 | 順序 | 200 | 400 | 502 / 503 |

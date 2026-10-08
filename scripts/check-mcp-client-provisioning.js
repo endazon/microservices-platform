@@ -36,8 +36,9 @@
  *      （一覧の表現が enabled を含むことの実測）。
  *   M8 無効化の写し（#1829 / IADR-0516 決定 4a）: 入口で登録したクライアントで、無効化の前は client_credentials のトークンが出る（陽性対照）。
  *      SC-12 で無効化（200）すると Keycloak のクライアントの enabled が false・トークン発行が拒否され（4xx・access_token なし）・
- *      登録簿の行も無効。再有効化（200）で enabled が true・トークンが再び出て、テンプレートの項目（入口の印・人の流れの閉）が残る
- *      （`{"enabled": …}` だけを送る PUT が他の項目を消さないことの実測）。否定形: 入口ができる前の登録簿の行（M5 が置く abac-seeder）を
+ *      登録簿の行も無効。再有効化（200）で enabled が true・トークンが再び出て、テンプレートの項目（入口の印・人の流れの閉）が残る。
+ *      🔴 無効化の後・再有効化の後のそれぞれで、**トークンを要求する前に**サービスアカウントの利用者が同じ ID で 1 人だけ残り属性が
+ *      変わらないことを見る（PR #1832 監査 🔴1: SA の項目を欠いたクライアントの PUT は Keycloak 24 で SA を消し、トークンの要求が空の SA を作り直す）。否定形: 入口ができる前の登録簿の行（M5 が置く abac-seeder）を
  *      無効化しても abac-seeder の enabled は true のまま、再有効化は 400 で enabled は true のまま。
  *
  * 主体は 3 つに分ける（測る側と測られる側を同じにしない）:
@@ -247,6 +248,20 @@ function evaluateTokenRefused(res) {
   return [];
 }
 
+/**
+ * M8（PR #1832 監査 🔴1）: 無効化・再有効化の後もサービスアカウントの利用者が**同じ ID で** 1 人だけ残り、属性が変わっていないか。
+ * 🔴 **トークンを要求する前に**判定する —— Keycloak は SA の利用者が無いクライアントの client_credentials で空の利用者を作り直すので、
+ *    トークンの後に見ると「消えて作り直された」を見逃す（同じ ID であることも見るのはそのため）。
+ */
+function evaluateServiceAccountIntact(users, clientId, requested, expectedUserId) {
+  const errors = evaluateServiceAccountLookup(users, clientId, requested);
+  if (errors.length > 0) return errors;
+  if (expectedUserId && users[0].id !== expectedUserId) {
+    return [`サービスアカウントの利用者の ID が変わった（前 ${expectedUserId}・後 ${users[0].id}。消えて作り直された）`];
+  }
+  return [];
+}
+
 /** M8: Keycloak のクライアントがちょうど 1 件で、enabled が期待どおりか。 */
 function evaluateClientEnabled(clients, clientId, expected) {
   const hits = (clients || []).filter((c) => c.clientId === clientId);
@@ -345,6 +360,14 @@ function selfTest() {
     assert.strictEqual(evaluateClientEnabled([], 'p', true).length, 1);
     assert.strictEqual(evaluateClientEnabled([{ clientId: 'p', enabled: true }, { clientId: 'p', enabled: true }], 'p', true).length, 1);
     assert.strictEqual(evaluateClientEnabled([{ clientId: 'p-2', enabled: false }], 'p', false).length, 1, '前方一致を数えない');
+  });
+  t('M8: SA は同じ ID で 1 人・属性が同じなら 0。0 件（消えた）・ID 違い（作り直された）・属性違い（空）は赤', () => {
+    const sa = { id: 'u1', username: 'service-account-p', attributes: { department: ['engineering'] } };
+    const req = { department: 'engineering' };
+    assert.deepStrictEqual(evaluateServiceAccountIntact([sa], 'p', req, 'u1'), []);
+    assert.ok(evaluateServiceAccountIntact([], 'p', req, 'u1')[0].includes('0 件'));
+    assert.ok(evaluateServiceAccountIntact([{ ...sa, id: 'u2' }], 'p', req, 'u1')[0].includes('作り直された'));
+    assert.strictEqual(evaluateServiceAccountIntact([{ ...sa, id: 'u2', attributes: {} }], 'p', req, 'u1').length, 1, '空の利用者は属性違い');
   });
   t('M7: enabled_differs の名指しも同じ判定器で読む', () => {
     assert.deepStrictEqual(evaluateReconciliationLog('client=p-off kind=enabled_differs。', [{ clientId: 'p-off', kind: 'enabled_differs' }]), []);
@@ -653,7 +676,7 @@ async function live() {
     step('M7 前提: 有効・無効の照合の対象にする無人の登録が 201', status(r7c, 201));
     const offClient = (await clientsOf(offId)).find((c) => c.clientId === offId);
     if (offClient) {
-      // read-modify-write（検査対象の口と同じ「enabled だけを送る」形を使わない＝測る側を測られる側から独立させる）。
+      // read-modify-write（検査対象の口と同じ部分本文の形を使わない＝測る側を測られる側から独立させる）。
       const full = (await call('GET', `${kcAdmin}/clients/${offClient.id}`, admin)).json || {};
       step('M7 前提: 入口の印つきのクライアントを master の管理者で直接無効にする',
         status(await call('PUT', `${kcAdmin}/clients/${offClient.id}`, admin, { ...full, enabled: false }), 204));
@@ -686,18 +709,26 @@ async function live() {
       const secret = ((sec.json || {}).value) || '';
       if (!secret) failures.push(`M8 の前提: ${toggleId} の secret を読めない（状態 ${sec.status}）`);
       const issue = () => tokenAttempt(kcUrl, REALM, { grant_type: 'client_credentials', client_id: toggleId, client_secret: secret });
+      const toggleAttrs = { department: 'engineering' };
+      const saBefore = (await usersOf(toggleId))[0];
+      step('M8 前提: サービスアカウントの利用者が 1 人で属性が入っている', evaluateServiceAccountLookup(await usersOf(toggleId), toggleId, toggleAttrs));
       step('M8 陽性対照: 無効化の前は client_credentials のトークンが出る', evaluateTokenIssued(await issue()));
 
       step('M8 SC-12 の無効化が 200', status(await toggle(toggleId, 'disable'), 200));
       step('M8 無効化で Keycloak のクライアントの enabled が false', evaluateClientEnabled(await clientsOf(toggleId), toggleId, false));
+      // 🔴 トークンを要求する前に見る（要求が SA を作り直して事故を隠す。PR #1832 監査 🔴1）。
+      step('M8 無効化の後もサービスアカウントの利用者が同じ ID で残り、属性が変わらない',
+        evaluateServiceAccountIntact(await usersOf(toggleId), toggleId, toggleAttrs, saBefore && saBefore.id));
       step('M8 無効化の後は client_credentials のトークン発行が Keycloak に拒否される', evaluateTokenRefused(await issue()));
       const offRow = (await registryRows()).find((c) => c.clientId === toggleId);
       step('M8 登録簿の行も無効', offRow && offRow.enabled === false ? [] : [`登録簿の行: ${JSON.stringify(offRow)}`]);
 
       step('M8 SC-12 の再有効化が 200', status(await toggle(toggleId, 'enable'), 200));
       step('M8 再有効化で Keycloak のクライアントの enabled が true', evaluateClientEnabled(await clientsOf(toggleId), toggleId, true));
+      step('M8 再有効化の後もサービスアカウントの利用者が同じ ID で残り、属性が変わらない（トークンの要求より前に見る）',
+        evaluateServiceAccountIntact(await usersOf(toggleId), toggleId, toggleAttrs, saBefore && saBefore.id));
       step('M8 再有効化の後はトークンが再び出る', evaluateTokenIssued(await issue()));
-      step('M8 再有効化の後もテンプレートの項目（入口の印・機密・人の流れの閉）が残る（enabled だけを書いた）',
+      step('M8 再有効化の後もテンプレートの項目（入口の印・機密・人の流れの閉）が残る（enabled と SA・authorization の現在値だけを書いた）',
         evaluateCreatedClient(await clientsOf(toggleId), toggleId));
     } else {
       failures.push('M8 の前提: 無効化の対象のクライアントが無い');
@@ -739,7 +770,7 @@ module.exports = {
   evaluateCompensationResponse, evaluateCompensationEvents,
   serviceAccountUserName, expectedKeycloakAttributes, normalizeAttributes, sameAttributes,
   evaluateCreatedClient, evaluateServiceAccountLookup, evaluateNothingCreated, overlongDisplayName,
-  evaluateReconciliationLog, evaluateTokenIssued, evaluateTokenRefused, evaluateClientEnabled,
+  evaluateReconciliationLog, evaluateTokenIssued, evaluateTokenRefused, evaluateClientEnabled, evaluateServiceAccountIntact,
 };
 
 if (require.main === module) {

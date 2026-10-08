@@ -43,7 +43,7 @@ issue: "#1829"
 | 書き込み口 `IServiceAccountProvisioner` は Create / ReplaceAttributes / Undo。Keycloak 版は入口の印の確かめ（`IsManaged`）とクライアントの完全一致の照会（`FindClientInternalIdAsync`）を持つ | `KeycloakServiceAccountProvisioner.cs` |
 | 照合は `enabled` を比べない（決定 4a が未実装で、比べると無効化した行がすべて食い違いになるため） | `IdpReconciliationCheck.cs` L21・IADR-0516 #1818 追記 |
 | 試験の器は `in-memory` の口（`InMemoryServiceAccountProvisioner.IsEnabled`）を持つ | `TestWebApplicationFactory.cs` |
-| Keycloak の `PUT /clients/{id}` は null の項目を変えない（`RepresentationToModel.updateClient` が項目ごとに null を見る）。表現を丸ごと送り返すと、読んでから書くまでの間に回された secret を古い値で戻し得る | Keycloak 24 の管理 API の実装。稼働での確かめは M8（再有効化の後にトークンが出る・テンプレートの項目が残る） |
+| 🔴 ［PR #1832 監査 🔴1 で是正］Keycloak 24 の `PUT /clients/{id}` は**部分更新として安全ではない**。`ClientResource.updateClientFromRep`（24.0.0・24.0.5 の L805〜816）は `rep.isServiceAccountsEnabled()` が TRUE でなければ（null を含む）既存の SA の利用者を `removeUser` し、`updateAuthorizationSettings` も TRUE でなければ authorization を無効にする。null の項目を飛ばす `RepresentationToModel.updateClient` はこの分岐より**後に**走る。表現を丸ごと送り返すと、読んでから書くまでの間に回された secret を古い値で戻し得る | Keycloak 24.0.0 / 24.0.5 のソース（監査が確認）。稼働での確かめは M8（無効化・再有効化の後、トークンの要求より前に SA の利用者が同じ ID で残り属性が変わらない） |
 
 ## 母集合（規則 9・10）
 
@@ -76,7 +76,7 @@ issue: "#1829"
    - `EnabledChanged`（新しい種類）: 入口の印つきのクライアントの `enabled` を書いた（同じ値なら書かない）。`PreviousEnabled` / `WrittenEnabled` を持ち、取り消しは「現在値が書いた値のままのときだけ前の値へ戻す」（決定 4 の取り消しと同じ規則）。
    - `Absent`（新しい種類）: IdP に同じ clientId のクライアントが無い（段 1 より前の行）。**何も書かない。**
    - `AlreadyExists`（既存）: 入口の印が無い（`abac-seeder` 等）。**何も書かない。**
-   - Keycloak 版: クライアントの完全一致の照会（`FindClientInternalIdAsync`。共有の 1 つ）→ `GET /clients/{id}` で印と現在の `enabled` → `PUT /clients/{id}` へ **`{"enabled": …}` だけ**を送る（表現を丸ごと送り返さない。secret を含むため）→ `GET` で読み戻す。読み戻しが合わなければ前の値へ戻してから `Failed`。要求の取り消しは伝えない（書き込みの口の規則）。
+   - Keycloak 版: クライアントの完全一致の照会（`FindClientInternalIdAsync`。共有の 1 つ）→ `GET /clients/{id}` で印と現在の `enabled` → `PUT /clients/{id}` へ **`enabled` と、`serviceAccountsEnabled`・`authorizationServicesEnabled` の現在値（同じ要求で読んだ `GET` の値）**を送る（表現を丸ごと送り返さない。secret を含むため。後の 2 つを欠くと Keycloak 24 は SA の利用者を属性ごと消し authorization を無効にする。上の現状の表）→ `GET` で読み戻す。読み戻しが合わなければ前の値へ戻してから `Failed`。要求の取り消しは伝えない（書き込みの口の規則）。
 2. **無効化は登録簿が先、IdP が後**（SC-12「即時に接続拒否」が優先）。登録簿を無効にしてから口を呼ぶ。口の失敗（`Failed` / `Unavailable`）・`Absent`・`AlreadyExists` は**登録簿を取り消さずに 200**（ログで残す: 失敗は Error、未構成は Warning、印なしは Warning、無しは Information）。食い違い（登録簿は無効・IdP は有効）は照合の `enabled_differs` が拾う。同じ操作をもう一度送れば写し直せる（冪等）。
 3. **再有効化は IdP が先、登録簿が後**（接続を開く操作。決定 4 の「IdP を先に書く」と同じ側）。`IdpFirstWrite` を通す: 口の失敗は 502 / 503 で登録簿を書かない。登録簿の失敗は IdP を取り消す（無効へ戻す）。**印なし（`AlreadyExists`）は 400 で登録簿も書かない**（入口を通らない主体へ接続を開かない）。`Absent` は IdP に何も無いので登録簿だけを書く（照合が `client_missing` を出し続ける）。
 4. **有人の行は IdP に触れない**（決定 3 の逸脱のまま）。
@@ -100,7 +100,7 @@ issue: "#1829"
 
 ### 試験の番号（テスト仕様書 FR-16）
 
-C-50 `IdpReconciliationTests`（`enabled_differs`・重大度・ゲージはクライアントの数）・C-51〜C-54 `KeycloakServiceAccountProvisionerTests`（`enabled` だけを送る・印なしと無しは書かない・読み戻しと閉じる側への補償・取り消し）・
+C-50 `IdpReconciliationTests`（`enabled_differs`・重大度・ゲージはクライアントの数）・C-51〜C-54 `KeycloakServiceAccountProvisionerTests`（`enabled` と SA・authorization の現在値だけを送り SA の利用者を消さない・印なしと無しは書かない・読み戻しと閉じる側への補償・取り消し）・
 C-55・C-56 `IdpProvisioningEndpointTests`（API 面の写し・印なしは無効化で変えず再有効化は 400・IdP に無い行）と `IdpFirstWriteTests`（`Absent` と拒否の文言）・
 C-57 `IdpEnabledMirrorFailureEndpointTests`（写しの失敗で登録簿を取り消さず照合が拾う・再有効化は 502）と `UnconfiguredIdpProvisioningEndpointTests`（未構成で無効化 200・再有効化 503）・
 C-58 `check-mcp-client-provisioning.js --live` の M8（と M7 の `enabled_differs`）。テストクラスの新しいファイルは足していない（被覆の床は 478 対のまま）。
@@ -133,3 +133,33 @@ C-58 `check-mcp-client-provisioning.js --live` の M8（と M7 の `enabled_diff
   `check-test-traceability`・`check-doc-type-vocabulary`: 緑。`check-doc-updated --base origin/develop`・`check-commit-messages` はコミット後に回した（報告に記載）。
 - 🔴 **稼働の Keycloak での M8 は本 PR の中では走っていない**（integration-stack は PR で起動しない。マージ後の最初の実行が初回の実測。稼働中のクラスタには何も実行していない）。
 - 残余: `docs/api/openapi.yaml`（手書き・orval の生成元）の再有効化の応答に 400 / 503 を載せていない（説明文が生成物へ流れるため、生成物の再生成と同時に行う。差し替えの 503 も同じく未記載）。
+
+## ［2026-10-09 追記 / PR #1832 の独立監査（NO-GO）への対応］
+
+- 🔴1 **`{"enabled": …}` だけの `PUT /clients/{id}` が、Keycloak 24 で SA の利用者を属性ごと消していた**（無効化で消え、再有効化でも戻らず、最初の
+  `client_credentials` で空の SA が作り直されて属性なしのトークンが出る。成功を返しながら ADR-0123 決定 1 の正を壊す）。根拠は上の「現状」の表。
+  - 是正: 本文を `{"enabled", "serviceAccountsEnabled": 現在値, "authorizationServicesEnabled": 現在値}` にした（`SetEnabledAsync`・補償・`UndoAsync` の 3 経路が同じ `WriteEnabledAsync` を通る）。
+  - 偽の Keycloak の `PUT /clients/{id}` を実物の分岐どおりに作り直した（SA の項目が TRUE でなければ SA の利用者を消す・authorization が TRUE でなければ無効）。
+    C-51 に「無効化・再有効化の後も SA の利用者が同じ ID で残り、属性も変わらない」を足した。**修正前の本文（`enabled` だけ）へ戻す変異で C-51 が赤**になることを確かめた
+    （ほかに「SA を現在値でなく false で送る」「authorization を送らない」の変異も赤）。
+  - M8 は無効化の後・再有効化の後のそれぞれで、**トークンを要求する前に** `users?username=service-account-<id>&exact=true` が同じ ID で 1 件・属性が不変であることを見る
+    （`evaluateServiceAccountIntact`。自己試験 15 件。ID の比較を外す変異で赤）。
+  - **規則 9 の走査**（`git grep` で C#・JS・シェルの `PutAsJsonAsync` / `PutAsync` / `HttpMethod.Put` / `method: 'PUT'` / `-X PUT` を全数）:
+
+    | 箇所 | 本文 | 扱い |
+    | --- | --- | --- |
+    | `McpServer/.../KeycloakServiceAccountProvisioner.cs` `WriteEnabledAsync`（本 PR） | 部分本文 | **是正した**（上） |
+    | 同 `WriteAttributesAsync`（`PUT /users/{id}`。#1786） | GET した全表現 ＋ 属性（read-modify-write。サーバ計算の値だけ除く） | 安全。直さない |
+    | `AuthorizationService/.../KeycloakIdentityAdminClient.cs` L372・L443・L784（`PUT /users/{id}`） | GET した全表現の read-modify-write（IADR-0329 の B） | 安全。直さない |
+    | `deploy/local/keycloak-setup/reconcile-realm.js` `client.update`（`PUT /clients/{id}`） | `merge(GET の全表現, 宣言)` から `secret` などを除いたもの。`serviceAccountsEnabled` / `authorizationServicesEnabled` は GET の値が残る | 安全。直さない |
+    | 同 `user.attributes.update`（`PUT /users/{id}`） | `merge(sa.user, {attributes})`（全表現） | 安全。直さない |
+    | `scripts/check-mcp-client-provisioning.js` M7（`PUT /users/{id}`・`PUT /clients/{id}`） | GET した全表現の read-modify-write（測る側） | 安全。直さない |
+    | `deploy/mail-relay/reset-gate.js`（`PUT /admin/realms/{realm}`） | realm の部分本文（クライアント・利用者ではない。同ファイルが根拠を書いている） | 対象外 |
+    | BFF・knowledge の `Put*` | 自サービスへの中継（Keycloak ではない） | 対象外 |
+
+    同型の書き込みは本 PR のものだけだったので、起票はしない。
+- 🟡2 `docs/api/openapi.yaml` の再有効化に 400（入口の印なし）と 503（書き込み口が未構成）を足し、502 の説明に IdP 側の失敗を含めた。無効化の説明に IdP への写しを、
+  属性の差し替えに 503 を足した。orval の生成物（`mcp-clients.ts`）を `pnpm run codegen` で再生成してコミットし、もう一度再生成して差分が空であることを確かめた。
+- 🟡3 運用仕様書に、入口の印の無い古い行は画面から再有効化できないこと（400）と復旧手順（行を消して登録し直す）を書いた。
+- 🟢 プロセス内の口の `SetEnabledAsync` に「同じ値なら書かない」を足した（Keycloak 版と揃える）。
+- IADR-0516 の #1829 追記にあった「クライアントの `PUT` は null・欠けた項目を変えない」は誤りだった。IADR には日付つきの追記で是正を書いた（本文は書き換えない）。

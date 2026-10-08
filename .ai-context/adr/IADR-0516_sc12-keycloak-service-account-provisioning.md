@@ -268,6 +268,21 @@ SC-12 の登録・属性の差し替えは McpServer の登録簿へ書くだけ
   （無効化した無人のクライアントは Keycloak からトークンを得られない）。写しの失敗は照合が知らせる。
 - 残余: 有人のクライアントは IdP に無いので写さない（決定 3）。行の排他は無い（交差は検知だけ）。IdP への写しの失敗に自動の再試行は無い（照合が知らせ、運用者が送り直す）。
 
+## ［2026-10-09 追記 / #1829・PR #1832 監査 🔴1］是正: Keycloak のクライアントの `PUT` は部分更新として安全ではない
+
+直前の追記（#1829）の「Keycloak のクライアントの `PUT` は null・欠けた項目を変えない」は**誤りだった**。
+
+- 根拠（監査が Keycloak 24.0.0 と 24.0.5 のソースで確認）: `ClientResource.updateClientFromRep`（L805〜816）は、`rep.isServiceAccountsEnabled()` が
+  TRUE でなければ（**null を含む**）既存のサービスアカウントの利用者を `removeUser` する。`updateAuthorizationSettings` も TRUE でなければ authorization を
+  無効にする。null の項目を飛ばす `RepresentationToModel.updateClient` は、これらの分岐より**後に**走る。
+- 起きていたこと: `{"enabled": …}` だけの `PUT` は、無効化で SA の利用者を ABAC 属性ごと消す。再有効化でも戻らず、最初の `client_credentials` で Keycloak が
+  空の SA の利用者を作り直し、属性なしのトークンが出る。成功を返しながら属性の正（ADR-0123 決定 1）を壊す。
+- 是正: 本文を **`enabled` ＋ `serviceAccountsEnabled`・`authorizationServicesEnabled` の現在値**（同じ要求で読んだ `GET` の値）にした。表現を丸ごと
+  送り返さない理由（secret）は変わらない。補償と取り消しも同じ書き込みを通る。偽の Keycloak を実物の分岐どおりに作り直し、単体試験（C-51）と
+  稼働の門（M8。トークンを要求する前に SA の利用者が同じ ID で残り属性が不変であることを見る）で固定した。
+- 教訓: Keycloak の管理 API の `PUT` は、利用者（IADR-0329 の B: 全置換）だけでなくクライアントでも**部分本文を安全と仮定しない**。リポジトリ全体の
+  `PUT /clients/` と `PUT /users/` を走査し、ほかの書き込みはすべて GET した全表現の read-modify-write であることを確かめた（作業仕様書 20261009_1829 の監査対応の節）。
+
 ## 関連
 
 - 作業仕様書: [20261008_1786_sc12-keycloak-provisioning](../specs/20261008_1786_sc12-keycloak-provisioning.md)

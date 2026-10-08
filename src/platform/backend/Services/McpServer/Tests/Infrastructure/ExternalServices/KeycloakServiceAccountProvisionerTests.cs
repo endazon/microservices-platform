@@ -376,24 +376,33 @@ public class KeycloakServiceAccountProvisionerTests
     private static bool EnabledOf(FakeKeycloak keycloak, string clientId)
         => keycloak.Clients.Single(c => c.ClientId == clientId).Representation["enabled"]!.GetValue<bool>();
 
-    // C-51（#1829 受け入れ基準 1）: 入口の印つきのクライアントの `enabled` を書き、読み戻す。送るのは `enabled` だけ
-    // （表現を丸ごと送り返さない＝secret を古い値へ戻さない）。テンプレートの他の項目は変わらない。一覧も有効・無効を返す。
+    // C-51（#1829 受け入れ基準 1）: 入口の印つきのクライアントの `enabled` を書き、読み戻す。送るのは `enabled` と
+    // SA・authorization の現在値だけ（表現を丸ごと送り返さない＝secret を古い値へ戻さない）。テンプレートの他の項目は変わらない。
+    // 🔴 PR #1832 監査 🔴1: 無効化・再有効化の後もサービスアカウントの利用者とその属性が残る。一覧も有効・無効を返す。
     [Fact]
-    public async Task 無効化と再有効化はクライアントのenabledだけを書いて読み戻す()
+    public async Task 無効化と再有効化はenabledを書いてサービスアカウントを壊さず読み戻す()
     {
         var keycloak = new FakeKeycloak();
         var provisioner = Provisioner(keycloak);
-        await provisioner.CreateAsync("agent-t", "T", Attrs(("clearance", "public")), Ct);
+        await provisioner.CreateAsync("agent-t", "T", Attrs(("clearance", "public"), ("tags", "sales,hr")), Ct);
+        var saUserId = keycloak.Clients.Single().ServiceAccountUserId;
         keycloak.Requests.Clear();
 
         var disabled = await provisioner.SetEnabledAsync("agent-t", false, Ct);
+
+        // 🔴 PR #1832 監査 🔴1: 無効化で SA の利用者が属性ごと消えない（Keycloak は serviceAccountsEnabled が TRUE でない PUT で SA を消す）。
+        keycloak.Users.Should().ContainKey(saUserId, "無効化でサービスアカウントの利用者を消さない");
+        keycloak.Users[saUserId].Attributes["tags"].Should().Equal("sales", "hr");
 
         disabled.Should().BeEquivalentTo(new IdpWrite(IdpWriteKind.EnabledChanged, "agent-t", "c1",
             PreviousEnabled: true, WrittenEnabled: false));
         EnabledOf(keycloak, "agent-t").Should().BeFalse();
         var put = keycloak.Requests.Should().ContainSingle(r => r.Method == "PUT").Subject;
         put.Path.Should().Be("admin/realms/platform/clients/c1");
-        JsonNode.Parse(put.Body!)!.AsObject().Select(kv => kv.Key).Should().Equal("enabled");
+        var sentBody = JsonNode.Parse(put.Body!)!.AsObject();
+        sentBody.Select(kv => kv.Key).Should().BeEquivalentTo(
+            ["enabled", "serviceAccountsEnabled", "authorizationServicesEnabled"], "表現を丸ごと送らない（secret を載せない）");
+        sentBody["serviceAccountsEnabled"]!.GetValue<bool>().Should().BeTrue("現在値（SA あり）で送る");
         keycloak.Requests.Last().Method.Should().Be("GET", "書いた後に読み戻す");
         var rep = keycloak.Clients.Single().Representation;
         rep["serviceAccountsEnabled"]!.GetValue<bool>().Should().BeTrue("他の項目は変えない");
@@ -405,6 +414,11 @@ public class KeycloakServiceAccountProvisionerTests
 
         enabled.PreviousEnabled.Should().BeFalse();
         EnabledOf(keycloak, "agent-t").Should().BeTrue();
+        keycloak.Users.Should().ContainKey(saUserId, "再有効化の後もサービスアカウントの利用者が同じ ID で残る");
+        keycloak.Users[saUserId].Attributes["clearance"].Should().Equal("public");
+        keycloak.Users[saUserId].Attributes["tags"].Should().Equal("sales", "hr");
+        (await provisioner.ReadServiceAccountAttributesAsync("agent-t", Ct)).Should().BeEquivalentTo(
+            new Dictionary<string, string> { ["clearance"] = "public", ["tags"] = "sales,hr" }, "認可サービスと同じ照会で属性が読める");
         (await provisioner.ListClientsAsync(Ct)).Single().Enabled.Should().BeTrue();
 
         keycloak.Requests.Clear();
@@ -654,7 +668,9 @@ public class KeycloakServiceAccountProvisionerTests
                 return Ok(rep.ToJsonString());
             }
 
-            // ［#1829］`PUT /clients/{id}`: Keycloak と同じく、送られた項目だけを変える（null・無い項目は変えない）。
+            // ［#1829 / PR #1832 監査 🔴1］`PUT /clients/{id}`: Keycloak 24 の `ClientResource.updateClientFromRep` と同じ分岐を持つ。
+            // `serviceAccountsEnabled` が TRUE でなければ（null・欠落を含む）SA の利用者を属性ごと消し、`authorizationServicesEnabled` が
+            // TRUE でなければ authorization を無効にする。そのあと（`RepresentationToModel.updateClient`）送られた非 null の項目だけを変える。
             if (method == "PUT" && path.StartsWith(Admin + "clients/", StringComparison.Ordinal)
                 && !path[(Admin + "clients/").Length..].Contains('/'))
             {
@@ -666,7 +682,15 @@ public class KeycloakServiceAccountProvisionerTests
                     IgnoreEnabledOnPut--;
                     return Status(HttpStatusCode.NoContent);
                 }
-                foreach (var (key, value) in JsonNode.Parse(body!)!.AsObject())
+                var sent = JsonNode.Parse(body!)!.AsObject();
+                if (sent["serviceAccountsEnabled"]?.GetValue<bool>() != true)
+                {
+                    Users.Remove(client.ServiceAccountUserId);
+                    client.Representation["serviceAccountsEnabled"] = false;
+                }
+                if (sent["authorizationServicesEnabled"]?.GetValue<bool>() != true)
+                    client.Representation["authorizationServicesEnabled"] = false;
+                foreach (var (key, value) in sent)
                     if (value is not null) client.Representation[key] = value.DeepClone();
                 return Status(HttpStatusCode.NoContent);
             }
@@ -676,7 +700,8 @@ public class KeycloakServiceAccountProvisionerTests
             {
                 var id = path[(Admin + "clients/").Length..^"/service-account-user".Length];
                 var client = Clients.SingleOrDefault(c => c.Id == id);
-                return client is null ? Status(HttpStatusCode.NotFound) : Ok(UserJson(Users[client.ServiceAccountUserId]));
+                return client is null || !Users.TryGetValue(client.ServiceAccountUserId, out var saUser)
+                    ? Status(HttpStatusCode.NotFound) : Ok(UserJson(saUser));
             }
 
             if (method == "DELETE" && path.StartsWith(Admin + "clients/", StringComparison.Ordinal))

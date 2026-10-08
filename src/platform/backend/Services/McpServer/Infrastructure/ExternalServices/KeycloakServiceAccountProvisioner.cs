@@ -29,8 +29,13 @@ namespace McpServer.Infrastructure.ExternalServices;
 // ■ ［2026-10-09 / #1818］照合の読み取り（`IServiceAccountDirectory`）も同じ口が持つ: `GET /clients`（頁で列挙・入口の印の有無）と
 //   `GET /users?username=service-account-<client>&exact=true`（認可サービスと同じ照会）。**読むだけで書かない**（IADR-0516 決定 5）。
 // ■ ［2026-10-09 / #1829］無効化・再有効化の写し（IADR-0516 決定 4a）: クライアントの完全一致の照会 → `GET /clients/{id}`（入口の印と
-//   現在の `enabled`）→ `PUT /clients/{id}` へ **`{"enabled": …}` だけ**を送る → 読み戻す。表現を丸ごと送り返さない（表現は secret を含み、
-//   読んでから書くまでに回された secret を古い値へ戻し得る。Keycloak のクライアントの PUT は null の項目を変えない）。
+//   現在の `enabled`）→ `PUT /clients/{id}` へ **`enabled` と、`serviceAccountsEnabled`・`authorizationServicesEnabled` の現在値**を送る → 読み戻す。
+//   表現を丸ごと送り返さない（表現は secret を含み、読んでから書くまでに回された secret を古い値へ戻し得る）。
+//   🔴 **［PR #1832 監査 🔴1］`{"enabled": …}` だけでは壊れる。** Keycloak 24 の `ClientResource.updateClientFromRep` は、
+//   `rep.isServiceAccountsEnabled()` が TRUE でなければ（null を含む）既存のサービスアカウントの利用者を属性ごと消し、
+//   `updateAuthorizationSettings` も TRUE でなければ authorization を無効にする。null の項目を飛ばす `RepresentationToModel.updateClient` は
+//   この分岐より後に走る。だから**この 2 つは必ず現在値で送る**（消えた SA は次の client_credentials で空の利用者として作り直され、
+//   属性なしのトークンが出る）。
 //   **入口の印が無いクライアント（`abac-seeder` 等）・IdP に無いクライアントには何も書かない。**
 // ■ 🔴 **要求の取り消しは IdP への書き込みへ伝えない**（書きかけの孤児を作らない）。期限は HttpClient の Timeout が持ち、
 //   時間切れは `Failed`（502）へ写す。管理用トークンが 401 で拒まれたら、1 度だけ取り直して送り直す。
@@ -136,13 +141,13 @@ public sealed class KeycloakServiceAccountProvisioner(
         {
             try
             {
-                await WriteEnabledAsync(client, internalId, enabled);
+                await WriteEnabledAsync(client, internalId, enabled, current);
             }
             catch (Exception ex)
             {
                 // 🔴 失敗したら**閉じる側へだけ**倒す: 開く（再有効化）書き込みが途中で失敗したら無効へ戻す。閉じる（無効化）書き込みの
                 // 失敗では戻さない —— 戻すと、通っていたかもしれない無効化を取り消して開いてしまう。残った食い違いは照合が拾う。
-                if (enabled) await CompensateEnabledAsync(client, clientId, internalId, false);
+                if (enabled) await CompensateEnabledAsync(client, clientId, internalId, false, current);
                 if (ex is IdpProvisioningException) throw;
                 throw Failed("クライアントの有効・無効の書き込みに失敗した。", ex);
             }
@@ -163,14 +168,15 @@ public sealed class KeycloakServiceAccountProvisioner(
                      && write.WrittenEnabled is { } writtenEnabled
                      && previousEnabled != writtenEnabled:
                 // 書き換えの取り消しと同じ規則: 現在値がこの要求の書いた値のままのときだけ戻す（後の無効化・再有効化を潰さない）。
-                if (IsEnabled(await ReadClientAsync(client, clientInternalId)) != writtenEnabled)
+                var now = await ReadClientAsync(client, clientInternalId);
+                if (IsEnabled(now) != writtenEnabled)
                 {
                     logger.LogWarning(
                         "クライアント {ClientId} の有効・無効は、この要求の後に書き換えられていた。取り消しで書き戻さない。",
                         ForLog(write.ClientId));
                     break;
                 }
-                await WriteEnabledAsync(client, clientInternalId, previousEnabled);
+                await WriteEnabledAsync(client, clientInternalId, previousEnabled, now);
                 break;
             case IdpWriteKind.Created when write.ClientInternalId is { } id:
                 await DeleteClientAsync(client, id);
@@ -322,21 +328,32 @@ public sealed class KeycloakServiceAccountProvisioner(
     // クライアントの `enabled`。項目が無い表現は Keycloak の既定（有効）と読む。
     private static bool IsEnabled(KeycloakClient? representation) => representation?.Enabled != false;
 
-    // ［#1829］`enabled` だけを送り、読み戻して確かめる（表現を丸ごと送り返さない理由は冒頭）。
-    private async Task WriteEnabledAsync(HttpClient client, string internalId, bool enabled)
+    // ［#1829］`enabled` を書き、読み戻して確かめる（表現を丸ごと送り返さない理由と、SA・authorization の現在値を必ず添える理由は冒頭）。
+    // `current` は同じ要求の中で読んだクライアントの表現（SA・authorization の現在値の出どころ）。
+    internal static Dictionary<string, bool> EnabledBody(bool enabled, bool serviceAccountsEnabled, bool authorizationServicesEnabled) => new()
     {
-        var put = await Send(client, () => client.PutAsJsonAsync(
-            ClientPath(internalId), new Dictionary<string, bool> { ["enabled"] = enabled }, Json, CancellationToken.None));
+        ["enabled"] = enabled,
+        ["serviceAccountsEnabled"] = serviceAccountsEnabled,
+        ["authorizationServicesEnabled"] = authorizationServicesEnabled,
+    };
+
+    private async Task WriteEnabledAsync(HttpClient client, string internalId, bool enabled, KeycloakClient? current)
+    {
+        var body = EnabledBody(enabled,
+            serviceAccountsEnabled: current?.ServiceAccountsEnabled == true,
+            authorizationServicesEnabled: current?.AuthorizationServicesEnabled == true);
+        var put = await Send(client, () => client.PutAsJsonAsync(ClientPath(internalId), body, Json, CancellationToken.None));
         EnsureSuccess(put, "クライアントの有効・無効の書き込み");
         if (IsEnabled(await ReadClientAsync(client, internalId)) != enabled)
             throw Failed("書いたクライアントの有効・無効が読み戻せない。");
     }
 
-    private async Task CompensateEnabledAsync(HttpClient client, string clientId, string internalId, bool enabled)
+    private async Task CompensateEnabledAsync(
+        HttpClient client, string clientId, string internalId, bool enabled, KeycloakClient? current)
     {
         try
         {
-            await WriteEnabledAsync(client, internalId, enabled);
+            await WriteEnabledAsync(client, internalId, enabled, current);
         }
         catch (Exception ex)
         {
@@ -662,7 +679,8 @@ public sealed class KeycloakServiceAccountProvisioner(
         [property: JsonPropertyName("expires_in")] int ExpiresIn);
 
     private sealed record KeycloakClient(
-        string? Id, string? ClientId, Dictionary<string, string>? Attributes = null, bool? Enabled = null);
+        string? Id, string? ClientId, Dictionary<string, string>? Attributes = null, bool? Enabled = null,
+        bool? ServiceAccountsEnabled = null, bool? AuthorizationServicesEnabled = null);
 
     private sealed record KeycloakUser(
         string? Id,

@@ -268,7 +268,8 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
         {
             if (!_accounts.TryGetValue(clientId, out var current)) return Task.FromResult(IdpWrite.Missing(clientId));
             if (!current.Managed) return Task.FromResult(IdpWrite.AlreadyExisting(clientId));
-            _accounts[clientId] = current with { Enabled = enabled };
+            // Keycloak 版と同じく、同じ値なら書かない（PR #1832 監査 🟢）。
+            if (current.Enabled != enabled) _accounts[clientId] = current with { Enabled = enabled };
             return Task.FromResult(new IdpWrite(IdpWriteKind.EnabledChanged, clientId, clientId,
                 PreviousEnabled: current.Enabled, WrittenEnabled: enabled));
         }
