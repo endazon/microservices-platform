@@ -591,3 +591,4 @@
 | [IADR-0511](./IADR-0511_graph-purpose-model-assignment.md) | グラフの 2 用途を `PurposeModels` へ登録する（`graph-suggestion`＝`claude-sonnet-5`・`graph-cluster-summary`＝`claude-opus-5`。鎖は 1 段下位）。呼び出し側の用途名の全数とキーを試験で突き合わせる（#1785） | Accepted |
 | [IADR-0512](./IADR-0512_search-exit-exposure-purpose.md) | 検索の出口は検索の用途（利用者文脈 `SearchUserContext.ExposureKey`。既定は横断検索）の露出属性で落とす。AI 入力の用途は信頼された中継者が gRPC `purpose = AI_INPUT` で指定したときだけ受け、REST の面は受けない（FR-19・ADR-0061 決定 3。#1752） | Accepted |
 | [IADR-0513](./IADR-0513_ast-kb-ingress-network-policy.md) | 本番の NetworkPolicy は AST の名前空間から KB の読み手と書き手、LLM ゲートウェイへの ingress を用途ごとの values で開ける。既定は閉じ、送り元は名前空間と Pod の AND、ポートは REST だけ（NFR-09・ADR-0125 決定 4。#1756・#1811） | Accepted |
+| [IADR-0515](./IADR-0515_cutover-rehearsal-ci-workflow.md) | 切替リハーサルの CI で再現できる部分は dispatch 専用の別ワークフローに置き、破壊的な手順はその中にだけ書く。検証はオブジェクトストレージを SeaweedFS で見る（#1781） | Accepted |

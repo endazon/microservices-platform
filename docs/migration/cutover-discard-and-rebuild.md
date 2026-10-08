@@ -4,14 +4,14 @@ type: migration-spec
 status: draft
 author: Claude
 created: 2026-09-25
-updated: 2026-10-03
+updated: 2026-10-08
 ---
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0008, ADR-0032, ADR-0124]
-iadrs: [IADR-0494, IADR-0492, IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
-specs: [20261003_1728_eso-force-sync-after-bootstrap, 20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
-issues: [#1728, #1696, #457, #454, #439, #458, #1682, AST#1078]
+iadrs: [IADR-0515, IADR-0461, IADR-0494, IADR-0492, IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
+specs: [20261008_1781_cutover-rehearsal-ci, 20261003_1728_eso-force-sync-after-bootstrap, 20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
+issues: [#1781, #1499, #1728, #1696, #457, #454, #439, #458, #1682, AST#1078]
 -->
 
 # 移行仕様書: 再実装版への切替 —— 6 資産の破棄と realm の作り直し
@@ -42,7 +42,7 @@ issues: [#1728, #1696, #457, #454, #439, #458, #1682, AST#1078]
 | platform アプリ DB（MSP のサービス DB。Wiki.js の DB を含む） | **破棄** | 各サービスの起動時マイグレーション。ABAC の属性辞書とポリシーは `deploy/local/abac-seed/` から、タグ辞書は `deploy/local/tag-seed/` から再投入 |
 | Keycloak realm | **realm.json から作り直す** | `deploy/keycloak/microservices-platform-realm.json`（旧 realm 名が残っていれば同時に解消する） |
 | Qdrant | **破棄** | 空（文書が入り直せば索引が作られる） |
-| MinIO | **破棄** | 空（バケットはサービスの起動時に作られる） |
+| オブジェクトストレージ（裁定の時点の MinIO。今は SeaweedFS） | **破棄** | 空（バケットはサービスの起動時に作られる） |
 | Wiki.js | **破棄** | 空（初期化は `deploy/local/wikijs-setup/bootstrap.sh`。冪等） |
 | 可観測性データ（Prometheus / Loki / Tempo） | **破棄** | 空 |
 
@@ -53,7 +53,7 @@ issues: [#1728, #1696, #457, #454, #439, #458, #1682, AST#1078]
 | Postgres（`platform-infra`・PVC `postgres-data`） | MSP のサービス DB | **ai-stock-trading の DB**（売買 PoC が使っている） | **DB 単位で作り直す。PVC は消さない** |
 | Keycloak（`platform-infra`・PVC `keycloak-data`） | realm `platform`（旧名 `microservices-platform` が残っていればそれも） | **master realm と ai-stock-trading の realm** | **realm 単位で消し、Keycloak の再起動で入れ直す。PVC は消さない** |
 | Qdrant（`platform-infra`・PVC `qdrant-storage`） | すべて | — | PVC ごと作り直す |
-| MinIO（`microservices-platform`・PVC `minio-data`） | すべて | — | PVC ごと作り直す |
+| SeaweedFS（`microservices-platform`・PVC `seaweedfs-data`。MinIO の置き換え） | すべて | — | PVC ごと作り直す |
 | Wiki.js（`microservices-platform`・PVC `wiki-js-data`） | すべて | — | PVC ごと作り直す（DB は上の Postgres の行に含まれる） |
 | Prometheus / Loki / Tempo（`platform-infra`・PVC `prometheus-data` / `loki-data` / `tempo-data`） | すべて | （ai-stock-trading のメトリクスも入っている。裁定どおり一緒に消える） | PVC ごと作り直す |
 | RabbitMQ（`platform-infra`） | **MSP のキューに滞留した旧イベント** | **ai-stock-trading のキュー** | MSP のキュー（名前が `<MSP のサービス名>.` で始まるもの）だけを空にする |
@@ -85,7 +85,7 @@ ai-stock-trading は自分の realm ではなく platform realm で認証する�
 | 捨てた側 | MSP の DB の作成時刻・realm の人間の利用者の作成時刻・作り直した PVC の作成時刻（可観測性はこれで見る） | 破棄を始めた時刻（`--since`）以降 |
 | **触らない側（作り直していないこと）** | ai-stock-trading の DB の作成時刻・`postgres-data` / `keycloak-data` / `vault-data` の作成時刻 | **`--since` より前のまま**（作り直しすぎを捕まえる） |
 | **触らない側（消えていないこと）** | 切替前の実測（`--baseline`）に在った ai-stock-trading の DB と、作り直しの対象でない realm（master・ai-stock-trading ほか） | **切替後にも在る**。master は `--baseline` が無くても見る |
-| 中身 | realm `platform` がある・旧名が無い・seed 利用者とクライアントがそろう／ABAC の属性辞書とポリシーが seed と一致／Wiki.js のページ 0／Qdrant の点 0・MinIO のオブジェクト 0／MSP のキューの滞留 0 | 各行のとおり |
+| 中身 | realm `platform` がある・旧名が無い・seed 利用者とクライアントがそろう／ABAC の属性辞書とポリシーが seed と一致／Wiki.js のページ 0／Qdrant の点 0・オブジェクトストレージのオブジェクト 0／MSP のキューの滞留 0 | 各行のとおり |
 
 - fail が 1 件でもあれば終了コード 1、収集自体の失敗は 2。**読めなかった資産は fail として出る**（0 件として扱わない）。
 - 🔴 **`--baseline` を必ず渡す。** 消えたものには作成時刻が無いので、「消えた」は切替前の実測と突き合わせないと見えない。
@@ -93,7 +93,7 @@ ai-stock-trading は自分の realm ではなく platform realm で認証する�
   その場合は「基準」の行が skip として出る。
 - Prometheus の head の最古サンプルは参考表示である。古いブロックが残っていると head の最古は TSDB 全体の最古ではないので、
   可観測性の作り直しは PVC の作成時刻で判定する（永続化を使っていない配備では PVC が無いので skip になる）。
-- 件数 0 の判定（Qdrant・MinIO）は**書き込みを再開する前**に測る。再開後は合成監視や取り込みで増えるのが正常である。
+- 件数 0 の判定（Qdrant・オブジェクトストレージ）は**書き込みを再開する前**に測る。再開後は合成監視や取り込みで増えるのが正常である。
 - DB 名の一覧は本書に書かない。`deploy/local/infra/postgres.yaml` の初期化 SQL が単一情報源であり、スクリプトがそこから MSP 側と ai-stock-trading 側を分類する。
 
 ```bash
@@ -180,9 +180,9 @@ kubectl -n platform-infra exec "$KC" -- /opt/keycloak/bin/kcadm.sh delete realms
 # (d) PVC ごと作り直す入れ物。PVC を消してから、それを使っている Pod を消す（Pod が居る間は PVC の削除が保留される）。
 #     Deployment には触らない。作り直された Pod は PVC が無いので Pending になり、4 で PVC が作られると起きる
 kubectl -n platform-infra delete pvc qdrant-storage prometheus-data loki-data tempo-data --wait=false
-kubectl -n microservices-platform delete pvc minio-data wiki-js-data --wait=false
+kubectl -n microservices-platform delete pvc seaweedfs-data wiki-js-data --wait=false
 kubectl -n platform-infra delete pod -l 'app in (qdrant,prometheus,loki,tempo)'
-kubectl -n microservices-platform delete pod -l 'app in (minio,wiki-js)'
+kubectl -n microservices-platform delete pod -l 'app in (seaweedfs,wiki-js)'
 kubectl -n platform-infra get pvc; kubectl -n microservices-platform get pvc   # 消えたことを確かめる
 ```
 
@@ -197,7 +197,7 @@ kubectl -n platform-infra get pvc; kubectl -n microservices-platform get pvc   #
 kubectl -n platform-infra rollout restart deploy/keycloak
 kubectl -n platform-infra rollout status deploy/keycloak
 # MSP のサービスを再起動し、空の DB へマイグレーションを当てさせる（再起動の注記は Helm が所有しない欄なので conflict は起きない）。
-# ここでは完了を待たない —— MinIO と Wiki.js は PVC が無いので、次の起動器が PVC を作るまで Pending のままである
+# ここでは完了を待たない —— SeaweedFS と Wiki.js は PVC が無いので、次の起動器が PVC を作るまで Pending のままである
 kubectl -n microservices-platform rollout restart deployment
 # 起動器を今のクラスタと同じ環境変数で再実行する。PVC を作り直し、realm の差分を当て、初期化と初期投入を行う。
 # ABAC とタグ辞書の初期投入を有効にする（タグ辞書が空だと外部ユニットの文書が全件 400 になる）

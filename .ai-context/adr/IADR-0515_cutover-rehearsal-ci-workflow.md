@@ -1,0 +1,93 @@
+---
+title: IADR-0515 切替リハーサルのうち CI の k3d で再現できる部分は、独立した dispatch 専用のワークフローに置き、破壊的な手順はワークフローの中にだけ書く。検証スクリプトはオブジェクトストレージを SeaweedFS で見る
+type: impl-adr
+status: Accepted
+related_ids: [NFR-05, NFR-18, IADR-0459, IADR-0461, IADR-0488, IADR-0232]
+author: claude
+created: 2026-10-08
+updated: 2026-10-08
+related_specs:
+  - ../specs/20261008_1781_cutover-rehearsal-ci.md
+---
+
+# IADR-0515: 切替リハーサルの CI 化（#1781）
+
+> 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
+
+- 状態: Accepted
+- 日付: 2026-10-08
+- 決定者: claude（#1781。#457 の切替リハーサルのうち、使い捨てクラスタを CI の k3d で代えられる部分の切り出し。独立監査 #1773 の指摘）
+
+## 起点・関連
+
+- 起点 issue: **#1781**。親 #457（切替計画。`blocked:env`）。
+- 手順の正本: `docs/migration/cutover-discard-and-rebuild.md`。判定器と破棄の境界: [IADR-0459](./IADR-0459_cutover-discard-and-rebuild-boundaries-and-verification.md)。
+- 起こし方の先例: `integration-stack.yml`（#783）。オブジェクトストレージ: [IADR-0461](./IADR-0461_object-storage-seaweedfs-deployment.md)。
+  起動器の `ISTIO` の 3 値: [IADR-0488](./IADR-0488_istio-tristate-inherit-mesh-enabled-on-rerun.md)。
+
+## コンテキストと課題
+
+#457 の §リハーサルは「使い捨てクラスタが要る」ことを理由にオーナーの作業として残ってきた。一方、統合スタックは毎日 k3d を立てて成功している。
+リハーサルの手順は破壊的（DB の DROP・realm の削除・PVC の削除）であり、置き場所と起動の仕方を誤ると、(1) 既存のワークフローの起動条件や必須チェックを
+動かす、(2) 稼働クラスタへ当たり得る道具が残る、のどちらかが起きる。また、作業の中で、検証スクリプトが MinIO の撤去（IADR-0461）に追随していない
+ことが分かった（PVC `minio-data`・Pod `app=minio`・`ls -R /data`）。このままでは正しく作り直しても検証が fail し、リハーサルは原理的に緑にならない。
+
+## 決定
+
+### 決定 1 — 新しいワークフロー `cutover-rehearsal.yml` を置き、起動は `workflow_dispatch` だけにする
+
+`integration-stack.yml` へジョブや入力を足さない。同ファイルは起動条件（`on:` に `pull_request` が無いこと）・`ISTIO` の宣言の行数・手順の並びと名前を
+試験が固定しており、ジョブを足すと日次と develop への push のたびに重い破壊的なリハーサルが同乗するか、`on:` に入力を足して起動の形を変えることになる。
+別ファイルにすれば既存の起動条件と必須チェック（`docs/ai-workflow.md` の表）は 1 バイトも動かない。失敗の自動起票（`ci-failure-issue.yml`）は付けない ——
+dispatch は起動した人が結果を見る。
+
+### 決定 2 — 破壊的な手順はワークフローの中にだけ書き、`scripts/` の道具にしない
+
+手順を再利用できるスクリプトにすると、`--live` 一つで稼働クラスタへ当たり得る破壊的な道具が残る。稼働クラスタでの実行は、オーナーが移行仕様書を読んで
+1 手ずつ行う（IADR-0459）。ワークフローの手順は**そのジョブが作った k3d クラスタ**にしか当たらない。判定（終状態）は既存の読み取り専用の器
+（`measure-cutover-inventory.js`・`check-stack-ready.js`）に任せ、ワークフローは手順と陰性対照の組み立てだけを持つ。
+
+### 決定 3 — 起こし方は integration-stack の手順を写し、pin の一致を試験で固定する
+
+再利用ワークフローや composite action へ切り出すと `integration-stack.yml` を書き換えることになる（決定 1 に反する）。写すのは checkout・submodule・
+起動器の呼び方・待ち・門である。k3d と k3s の pin が片方だけ動くと「同じ起こし方」が静かに崩れるので、`scripts.repo.test.js` が 2 ファイルの値を突き合わせる。
+
+### 決定 4 — 初回の成功までは、本ファイルだけに paths を絞った一時の `pull_request` で起動する
+
+新しいワークフローは既定ブランチ（develop）に載るまで dispatch できない（API は 404 を返す。#1781 で実測）。受け入れ基準（1 回の成功）を PR の中で
+確かめるため、`paths` を本ファイルだけにした `pull_request` を一時に置く。他の PR では起動しないので、他のワークフローと必須チェックに影響しない。
+**初回の成功の後に消す**（試験は「`pull_request` があるなら paths は本ファイルだけ」を固定しており、消しても緑のまま）。
+
+### 決定 5 — 検証スクリプトはオブジェクトストレージを SeaweedFS の filer で数える
+
+作り直す PVC を `seaweedfs-data`（chart の PVC）へ、収集を filer の一覧（Pod の loopback `127.0.0.1:8888`。Pod 内の `wget` で JSON を読む）へ直す。
+オブジェクトはディレクトリでないエントリ（Go の `os.ModeDir` のビットで判定）として数え、`.uploads`（マルチパートの途中）は数えない。ページ送りは
+`lastFileName` で行う。読めなければ従来どおり fail（0 件として扱わない）。
+
+### 決定 6 — 秘密は Keycloak の管理者パスワードだけをジョブの中で作る
+
+リハーサルが自分で使う秘密は Keycloak の管理者パスワードだけである。`openssl rand` で作って `::add-mask::` で伏せ、起動器と検証スクリプトへ環境変数で、
+kcadm へは標準入力で渡す（#1793）。他の基盤の資格情報は起動器の開発用の既定のまま（クラスタはジョブの終わりに消える）。リポジトリには値を書かない。
+
+## 統制と現在の実現手段
+
+| 統制 | 実現手段 |
+| --- | --- |
+| 既存の起動条件と必須チェックを動かさない | `integration-stack.yml` を変えない。`scripts.repo.test.js`（#783 節）が同ファイルの起動条件を、#1781 節が本ファイルの起動条件を固定する |
+| 一時の `pull_request` が他の PR で起動しない | `paths` を本ファイルだけに絞る。#1781 節が固定する。消す作業は #1781 の残余 |
+| 再構築で検証の前提を崩さない | 再構築の起動器に `SEARCHSEED` を付けず `TAGSEED` を付けることを #1781 節が固定する |
+| 判定が空振りしない | 事前実測で点・オブジェクト・document_svc の行・合成の利用者が在ることをワークフローが判定する。陰性対照 2 本が fail を出すことも判定する |
+
+## 結果
+
+- #457 のリハーサルのうち、手順 1〜5 と陰性対照は CI で回る。残る手順（実データ・資格情報・AST の配備・ArgoCD・利用者の判断）は作業仕様書の仕分けのとおり #457 に残る。
+- 窓の長さは CI のランナーでの値として毎回ジョブの要約に出る（稼働クラスタの見積りではない）。
+
+## 残余
+
+- 一時の `pull_request` の節を、初回の成功の後に消す。
+- 稼働クラスタの構成（`OBSERVABILITY` / `VAULT` / `ESO` / `ARGOCD`・STRICT の mTLS）での確かめは CI では行わない（作業仕様書の「部分的に再現できる」）。
+
+## 関連
+
+- 作業仕様書: [20261008_1781_cutover-rehearsal-ci](../specs/20261008_1781_cutover-rehearsal-ci.md)
