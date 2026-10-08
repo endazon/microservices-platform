@@ -316,7 +316,10 @@
     "docs/tests/FR-21_direct-body-intake.md": [
       "AiInputExposureTests",
       "DocumentBodyIntakeTests",
+      "DocumentSearchExposurePurposeTests",
+      "GrpcRagSearchTransportTests",
       "ObsidianSyncProtocolTests",
+      "PrivateNoteAiInputPurposeTests",
       "PrivateNoteLifecycleTests",
       "PrivateNoteSearchExposureTests",
       "RagContextAiInputExclusionTests",

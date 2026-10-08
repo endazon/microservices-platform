@@ -20,6 +20,12 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // `POST /search` は `RequireAuthorization()` を持つ（[[IADR-0418]]）ので、落とすと 401 になる。
 // **転送が消えるのは gRPC 輸送を選んだときだけ**であり、REST 実装の退役をもって
 // 「経路 1 が解けた」と数える（`ADR-0089` 決定 1）。
+//
+// ［2026-10-08 / #1752］🔴 **この輸送は露出の用途（AI 入力）を運ばない**（[[IADR-0512]] 決定 4）。
+// 受け口から見た呼び出し元は転送された利用者本人であり、「AI 分析が中継している」と区別できない ——
+// 用途を受ける口を REST に開くと、利用者が AI 入力を名乗って「横断検索に含める」OFF の資料を一覧で見られる。
+// したがってこの輸送では、「横断検索に含める」OFF・「AI の入力に含める」ON の個人資料は文脈に入らない（fail-closed）。
+// 配備（compose・helm）は gRPC 輸送を構成しており、そちらは用途を運ぶ。
 public sealed class HttpRagSearchTransport(
     IHttpClientFactory httpFactory, IHttpContextAccessor? httpContextAccessor = null)
     : IRagSearchTransport

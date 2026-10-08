@@ -35,6 +35,9 @@ namespace RetrievalService.Features.Search.Hybrid;
 // 🔴 **「該当が無い」と「権限が無い」を区別させない**（[[IADR-0009]] / [[IADR-0151]] 決定 5）——
 // どちらも**空の並び**で返る。引けなかったのは gRPC status である。
 //
+// ［2026-10-08 追記 / #1752］[[IADR-0512]]: 本文の `purpose`（露出の用途）を写す。`AI_INPUT` なら出口は
+//   「AI の入力に含める」で落とし、それ以外は従来どおり「横断検索に含める」で落とす（`WithPurpose`）。
+//
 // ［2026-09-27 追記 / #1635］🔴 **本文の `user` を信じるのは、許可集合（`DocumentSearchRelayOptions`。
 //   既定 `aianalysis-service` だけ）の機械クライアントが運んだときだけである**（[[IADR-0426]] 追記 1）。
 //   `ServiceCaller`（`platform-service`）だけでは信じない —— そのロールは 11 のサービスアカウント
@@ -80,7 +83,9 @@ public sealed class DocumentSearchGrpcService(
             search, ToDtoRequest(request), effective,
             // 🔴 **転送できる利用者の資格情報は無い**（利用者の JWT はこの面を通らない）。
             // `SearchUserContext.FromBody` がそれを型で表す。
-            SearchUserContext.FromBody(request.User.UserId, request.User.UserAttributes),
+            WithPurpose(
+                SearchUserContext.FromBody(request.User.UserId, request.User.UserAttributes),
+                request.Purpose),
             context.CancellationToken);
 
         response.Results.AddRange(results.Select(ToProto));
@@ -104,6 +109,16 @@ public sealed class DocumentSearchGrpcService(
         throw new RpcException(new Status(StatusCode.PermissionDenied,
             "この呼び出し元は利用者文脈（user）を運べません。"));
     }
+
+    // FR-19, FR-21 ⑨, ADR-0061 決定 3, [[IADR-0512]] 決定 2・3 (#1752): **露出の用途を写す。**
+    //
+    // 🔴 **`AI_INPUT` だけを AI 入力の用途へ写し、それ以外（未指定・`SEARCH`・未知の値）は横断検索の用途のまま。**
+    //   proto3 の enum は開いており、知らない番号もそのまま届く。知らない値を AI 入力へ倒すと、
+    //   一覧に出てはならない（「横断検索に含める」OFF の）資料が返る。
+    // 🔴 **ここへ来るのは `EnsureTrustedRelay` を通った呼び出しだけである**（用途は利用者文脈と同じ信頼の下で運ばれる）。
+    //   REST の入口に同じ口は無い —— REST 輸送は利用者の JWT を転送するので、呼び出し元を中継者と区別できない。
+    internal static SearchUserContext WithPurpose(SearchUserContext user, Pb.ExposurePurpose purpose)
+        => purpose == Pb.ExposurePurpose.AiInput ? user.ForAiInput() : user;
 
     // 🔴 **`top_k` の proto3 の未指定は `0` であり、DTO の既定は `10` である。**
     // 値を書き写さず、**位置引数を省いて DTO の既定へ委ねる** ——

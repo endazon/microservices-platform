@@ -142,7 +142,9 @@ public class GrpcDocumentSearchTests
         var fields = Pb.SearchRequest.Descriptor.Fields.InDeclarationOrder()
             .Select(f => f.Name).ToList();
 
-        fields.Should().BeEquivalentTo(["query", "top_k", "user", "narrow_to"]);
+        // ［2026-10-08 / #1752］[[IADR-0512]] 決定 3: `purpose`（露出の用途）を足した。用途であって権限ではない
+        // —— 返してよい集合を決めるのは利用者文脈から呼び出し先が解決したスコープのままである。
+        fields.Should().BeEquivalentTo(["query", "top_k", "user", "narrow_to", "purpose"]);
         fields.Should().NotContain("scope",
             "呼び出し元が解決したスコープを受ける口を開くと、到達できる誰もが任意の scope を主張できる");
 

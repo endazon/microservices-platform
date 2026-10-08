@@ -53,6 +53,20 @@ public class GrpcRagSearchTransportTests
         fake.LastRequest.TopK.Should().Be(5);
     }
 
+    // 🔴 FR-19, FR-21 ⑨, ADR-0061 決定 3, [[IADR-0512]] (#1752): **用途は AI の入力として送る。**
+    // 呼び出し先の出口は「AI の入力に含める」で落とすようになる。送らない（未指定）と横断検索の用途へ倒れ、
+    // 「横断検索に含める」OFF・「AI の入力に含める」ON の個人資料が RAG の文脈へ一度も届かない。
+    [Fact]
+    public async Task 用途をAIの入力として送る()
+    {
+        var fake = new FakeClient(Response());
+
+        await Transport(fake).SearchAsync(Query(), TestContext.Current.CancellationToken);
+
+        fake.LastRequest!.Purpose.Should().Be(Pb.ExposurePurpose.AiInput,
+            "RAG の候補は「AI の入力に含める」で選ぶ（FR-19 の 3 トグルは独立）");
+    }
+
     // 🔴 T-02: **利用者の JWT をメタデータへ載せない**（confused deputy の防止。
     // 計画 `ADR-0086` 決定 1 / [[IADR-0379]] 決定 4）。載るのは**チャネルに付いた s2s だけ**であり、
     // 呼び出しごとのヘッダは 1 本も足さない。

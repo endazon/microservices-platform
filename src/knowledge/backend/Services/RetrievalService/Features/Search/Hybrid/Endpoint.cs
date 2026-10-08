@@ -43,6 +43,9 @@ internal static class SearchEndpoint
             // 🔴 [[IADR-0426]] 決定 2: 利用者文脈は**入口が決めて**段まで引数で運ぶ。
             // 段が器（`IHttpContextAccessor`）から拾い直すと、east-west gRPC の入口で
             // 呼び出し元サービスの s2s 主体が利用者に化ける。
+            // 🔴 FR-19, [[IADR-0512]] 決定 4 (#1752): **REST の入口は露出の用途を受けない**（常に横断検索の用途）。
+            // 呼び出し元は利用者本人（AI 分析の REST 輸送も利用者の JWT を転送する）であり、中継者と区別できない
+            // —— 用途を受けると、利用者が AI 入力を名乗って「横断検索に含める」OFF の資料を一覧で見られる。
             var results = await ExecuteAsync(
                 search, req, effective, SearchUserContext.FromRequest(http), ct);
             sw.Stop();

@@ -44,6 +44,11 @@ public sealed class GrpcRagSearchTransport(
             Query = query.Query,
             TopK = query.TopK,
             User = ToUserContext(query),
+            // 🔴 FR-19, FR-21 ⑨, ADR-0061 決定 3, [[IADR-0512]] (#1752): **用途は AI の入力である。**
+            // 呼び出し先の出口は「横断検索に含める」ではなく「AI の入力に含める」で落とす ——
+            // 付けないと「横断検索に含める」OFF・「AI の入力に含める」ON の個人資料が文脈に一度も届かない。
+            // 取り違えても漏れない: 文脈の選別（`AiInputExposure`。[[IADR-0283]] 決定 3）は `RagOrchestrator` に残る。
+            Purpose = Pb.ExposurePurpose.AiInput,
         };
 
         foreach (var (key, values) in query.NarrowTo ?? new Dictionary<string, List<string>>())

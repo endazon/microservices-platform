@@ -36,32 +36,35 @@ public class HybridSearchService(
     // FR-03, UC-01: 既存の呼び出し面。**再順位付けの段が無い構成（既定）では、振る舞いは従前と 1 バイトも変わらない。**
     // ［2026-10-06 / #1746］[[IADR-0498]] 決定 1: 出口は `FinishAsync`（段 → `Finish`）である。
     //
-    // 🔴 `user` は**段が無いこの実装では使わない**（[[IADR-0426]] 決定 2）。
+    // 🔴 `user` の主体は**段が無いこの実装では使わない**（[[IADR-0426]] 決定 2）。
     // それでもポートが必須引数で受けるのは、**段を挟んだ瞬間に必要になるもの**を
     // 呼び出し側へ先に要求しておくためである —— 器から拾わせると入口ごとに主体が変わる。
+    // ［2026-10-08 / #1752］[[IADR-0512]] 決定 1: 出口は `user.ExposureKey`（露出の用途）で落とす。
     public async Task<List<SearchResultDto>> SearchAsync(
         SearchRequest request, SearchUserContext user, CancellationToken ct = default)
     {
         var outcome = await SearchDetailedAsync(request, ct);
-        return await FinishAsync(request, outcome.Fused, outcome.Sort, outcome.TopK, ct);
+        return await FinishAsync(request, outcome.Fused, outcome.Sort, outcome.TopK, user, ct);
     }
 
     // FR-03, FR-04, FR-19, SC-02, ADR-0127 決定 3, [[IADR-0498]] 決定 1・4 (#1746 段 S2): **結果の一覧の唯一の出口。**
     //
     // 素の検索と二段検索（`GraphExpandingSearchService` の 3 つの return）の**すべてがここを通る**。
-    // ① 露出の用途 `search` で落とす（`Finish` と同じ述語。段へ渡す前に落とす —— 一覧に出ない候補を外部へ送らない）
+    // ① 露出の用途（`user.ExposureKey`。一覧なら `search_exposure`、RAG の候補なら `ai_input`。[[IADR-0512]]）で落とす
+    //    （`Finish` と同じ述語。段へ渡す前に落とす —— 返さない候補を外部へ送らない）
     // ② 再順位付けの段（登録されていれば）。段が受け取るのは ABAC 後・露出後・**切り詰め前**の候補である
     // ③ `Finish` で並び順を適用して `topK` へ切る（① の述語は冪等なので 2 度通しても結果は同じ）
     // 🔴 **段は候補の並べ替えだけをする**（`ISearchReranker` の契約）。切り詰めは段の後に 1 度だけ行う。
     internal async Task<List<SearchResultDto>> FinishAsync(
-        SearchRequest request, List<SearchResultDto> results, string sort, int topK, CancellationToken ct)
+        SearchRequest request, List<SearchResultDto> results, string sort, int topK,
+        SearchUserContext user, CancellationToken ct)
     {
         if (reranker is null || results.Count == 0)
-            return Finish(results, sort, topK);
+            return Finish(results, sort, topK, user.ExposureKey);
 
-        var exposed = results.Where(r => DocumentExposure.IsSearchAllowed(r.Attributes)).ToList();
+        var exposed = results.Where(r => DocumentExposure.IsAllowed(r.Attributes, user.ExposureKey)).ToList();
         var reranked = await reranker.RerankAsync(request, sort, exposed, ct);
-        return Finish(reranked, sort, topK);
+        return Finish(reranked, sort, topK, user.ExposureKey);
     }
 
     // FR-04, FR-17, ADR-0035 決定 1 (#970): 二段検索の段が要る**中間値**を添えて返す内部口。
@@ -302,12 +305,18 @@ public class HybridSearchService(
     //
     // **OrderByDescending は安定ソート**である（.NET の保証）。同着（同じ日時・日時なし同士）は
     // 元の順序＝関連度の順を保つ。
-    // 🔴 FR-19, ADR-0061 決定 1・3 / [[IADR-0396]] 決定 6 (#1184): **「横断検索に含める」の評価点。**
+    // 🔴 FR-19, ADR-0061 決定 1・3 / [[IADR-0396]] 決定 6 (#1184): **露出の用途の評価点。**
+    //
+    // ［2026-10-08 / #1752］[[IADR-0512]] 決定 1・2: **見る属性は検索の用途で決まる**（`exposureKey`）。
+    // 利用者へ一覧を返す検索（REST `POST /search`・MCP のツール・用途を言わない gRPC）は `search_exposure`、
+    // RAG の文脈を集める検索（信頼された中継者が gRPC で用途 AI 入力を指定したもの）は `ai_input` である。
+    // 従前は常に `search_exposure` で落としていたので、「横断検索に含める」OFF・「AI の入力に含める」ON の個人資料が
+    // RAG 側の選別（`AiInputExposure`）に届く前に消えていた —— ADR-0061 決定 3「各経路が自分の属性を見る」に反する。
     //
     // ADR-0061 決定 1 は「1 つでも ON なら索引へ載せる」であり、決定 3 は
     // 「**用途の別は索引を分けずに文書属性で表す**」である。したがって
     // **グラフや AI のためだけに索引へ載った個人資料が、横断検索の結果に現れてはならない。**
-    // 判定は `DocumentExposure.IsSearchAllowed` —— 生産側の門と同じクラスの、同じ形の述語である。
+    // 判定は `DocumentExposure.IsAllowed(…, exposureKey)` —— 生産側の門と同じクラスの、同じ形の述語である。
     //
     // 🔴 **これは ABAC の代わりではない。** 認可（誰に見えるか）は `ScopeFilter` の分岐が索引の
     // 側で行い、ここが見るのは**露出の用途**（何に使ってよいか）だけである。
@@ -322,9 +331,9 @@ public class HybridSearchService(
     //
     // **組織文書は常に true**（露出キーを持たない）なので既存の検索結果は変わらない。
     internal static List<SearchResultDto> Finish(
-        List<SearchResultDto> results, string sort, int topK)
+        List<SearchResultDto> results, string sort, int topK, string exposureKey)
     {
-        var exposed = results.Where(r => DocumentExposure.IsSearchAllowed(r.Attributes)).ToList();
+        var exposed = results.Where(r => DocumentExposure.IsAllowed(r.Attributes, exposureKey)).ToList();
 
         if (sort != SearchSorts.Updated)
             return exposed.Take(topK).ToList();
