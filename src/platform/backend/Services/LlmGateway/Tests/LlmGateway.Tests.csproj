@@ -14,6 +14,8 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <!-- #1819: ログの抑制（5 分の間隔）を壁時計を待たずに試すための偽の時計。 -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <ProjectReference Include="..\LlmGateway.csproj" />
   </ItemGroup>
 </Project>

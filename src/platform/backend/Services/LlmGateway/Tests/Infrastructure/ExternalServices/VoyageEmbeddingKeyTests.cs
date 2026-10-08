@@ -1,13 +1,16 @@
 using System.Net;
 using System.Text;
 using AwesomeAssertions;
+using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Routing;
 using LlmGateway.Features.Embeddings.Embed;
 using LlmGateway.Infrastructure.ExternalServices;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using Platform.Shared.Contracts.Dtos;
 
 namespace LlmGateway.Tests.Infrastructure.ExternalServices;
@@ -99,7 +102,8 @@ public class VoyageEmbeddingKeyTests
         var decision = new EmbeddingRoutingDecision(
             Allowed: true, EndpointName: "voyage-managed", Provider: "voyage", Tier: ProtectionTier.B,
             Model: "voyage-3.5", Dimensions: 1024, Collection: "knowledge_chunks_voyage_3_5", Reason: "test");
-        var useCase = new EmbedUseCase(new FixedRouter(decision), services, NullLoggerFactory.Instance);
+        var useCase = new EmbedUseCase(new FixedRouter(decision), services, NullLoggerFactory.Instance,
+            new LogOccurrenceThrottle(TimeProvider.System));
 
         var resp = await useCase.ExecuteAsync(
             new EmbedApiRequest("本文", "internal", EmbedPurpose.Index), TestContext.Current.CancellationToken);
@@ -109,5 +113,81 @@ public class VoyageEmbeddingKeyTests
         resp.Endpoint.Should().Be("voyage-managed");
         resp.Vector.Should().BeEmpty();
         handler.Calls.Should().Be(0);
+    }
+
+    // ---- #1819, IADR-0504 追記: 鍵未設定の失敗でログを埋めない ----------------------------------------
+
+    private sealed class ThrowingProvider(Exception failure) : IEmbeddingProvider
+    {
+        public int Calls { get; private set; }
+
+        public Task<float[]> EmbedAsync(
+            string text, string model, int dimensions, EmbeddingRoutePurpose purpose, CancellationToken ct = default)
+        {
+            Calls++;
+            throw failure;
+        }
+    }
+
+    private static readonly EmbeddingRoutingDecision VoyageRoute = new(
+        Allowed: true, EndpointName: "voyage-managed", Provider: "voyage", Tier: ProtectionTier.B,
+        Model: "voyage-3.5", Dimensions: 1024, Collection: "knowledge_chunks_voyage_3_5", Reason: "test");
+
+    private static EmbedUseCase UseCaseWith(
+        IEmbeddingProvider provider, RecordingLoggerFactory logs, TimeProvider time)
+        => new(new FixedRouter(VoyageRoute),
+            new ServiceCollection().AddKeyedSingleton("voyage", provider).BuildServiceProvider(),
+            logs, new LogOccurrenceThrottle(time));
+
+    // PoC では取り込みの再試行のたびに鍵未設定の失敗がスタック付きで記録され（1,146 回）、他の行を押し出した。
+    // 何回呼んでも Warning 1 行（スタックなし）であり、応答（一時障害＝再試行の後 DLQ）は変わらない。
+    [Fact]
+    public async Task 鍵なしの埋め込みは何回呼んでもスタックを残さず_5分ごとの要約1行にまとまる()
+    {
+        var handler = new CountingHandler();
+        var logs = new RecordingLoggerFactory();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 8, 0, 0, 0, TimeSpan.Zero));
+        var useCase = UseCaseWith(
+            new VoyageEmbeddingProvider(new SingleClientFactory(handler), Config(null)), logs, time);
+        var ct = TestContext.Current.CancellationToken;
+
+        var responses = new List<EmbedApiResponse>();
+        for (var i = 0; i < 10; i++)
+            responses.Add(await useCase.ExecuteAsync(new EmbedApiRequest("本文", "internal", EmbedPurpose.Index), ct));
+
+        responses.Should().OnlyContain(r => !r.Embedded && r.Retryable,
+            "応答は従来どおり一時障害（取り込みは再試行の後 DLQ へ送り、鍵を入れてから再投入できる）");
+        handler.Calls.Should().Be(0, "鍵が無いのに Voyage へ要求を送ってはならない");
+        logs.Entries.Should().NotContain(e => e.Exception != null, "鍵の欠落でスタックを残さない");
+        logs.Entries.Should().NotContain(e => e.Level >= LogLevel.Error);
+        var first = logs.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning).Subject;
+        first.Message.Should().Contain("Embedding disabled at endpoint voyage-managed")
+            .And.Contain("Embedding:Voyage:ApiKey");
+        first.Values["Suppressed"].Should().Be(0L);
+
+        time.Advance(LogOccurrenceThrottle.SummaryInterval);
+        await useCase.ExecuteAsync(new EmbedApiRequest("本文", "internal", EmbedPurpose.Index), ct);
+
+        var warnings = logs.Entries.Where(e => e.Level == LogLevel.Warning).ToList();
+        warnings.Should().HaveCount(2);
+        warnings[1].Values["Suppressed"].Should().Be(9L, "間隔の間に抑えた 9 件を要約として添える");
+    }
+
+    // 対照: 鍵の欠落でない上流の失敗（5xx・通信断）は従来どおり 1 件ずつスタック付きの Error で残す
+    // （1 件ごとに状況が違い得るので抑えない）。鍵の欠落だけを型で分けたことの確認。
+    [Fact]
+    public async Task 鍵の欠落でない上流の失敗は従来どおりスタック付きのErrorで残す()
+    {
+        var logs = new RecordingLoggerFactory();
+        var provider = new ThrowingProvider(new HttpRequestException("boom", null, HttpStatusCode.BadGateway));
+        var useCase = UseCaseWith(provider, logs, TimeProvider.System);
+        var ct = TestContext.Current.CancellationToken;
+
+        var first = await useCase.ExecuteAsync(new EmbedApiRequest("本文", "internal", EmbedPurpose.Index), ct);
+        await useCase.ExecuteAsync(new EmbedApiRequest("本文", "internal", EmbedPurpose.Index), ct);
+
+        first.Retryable.Should().BeTrue();
+        logs.Entries.Where(e => e.Level == LogLevel.Error).Should().HaveCount(2)
+            .And.OnlyContain(e => e.Exception is HttpRequestException);
     }
 }

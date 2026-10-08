@@ -114,6 +114,10 @@ builder.Services.AddKeyedSingleton<IEmbeddingProvider, DeterministicEmbeddingPro
 // REST（/embed）と gRPC（LlmEmbedding/Embed）の**両方がこれを呼ぶ** —— 判定器を 2 つにしない。
 builder.Services.AddSingleton<EmbedUseCase>();
 
+// FR-11, NFR-19 (#1819): 同じ事象のログを「初回は即時・以後 5 分ごとに要約 1 行」に抑える状態。
+// 越境拒否（CompletionUseCase）と埋め込みの鍵未設定（EmbedUseCase）が共有する（鍵の接頭辞で分ける）。
+builder.Services.AddSingleton<LogOccurrenceThrottle>();
+
 // FR-04, FR-11, ADR-0010, IADR-0379 決定 5, IADR-0400 (#1255): テキスト生成の判定器本体。
 // REST（/complete・/complete/stream）と gRPC（LlmCompletion/Complete・CompleteStream）の
 // **両方がこれを呼ぶ** —— 越境判定・フォールバック鎖・計器の計上を輸送ごとに分けない。

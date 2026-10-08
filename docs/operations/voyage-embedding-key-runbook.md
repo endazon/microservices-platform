@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 <!-- trace:
-ids: [FR-02, FR-03, SC-22, NFR-18]
+ids: [FR-02, FR-03, SC-22, NFR-18, NFR-19]
 adrs: [ADR-0016, ADR-0095, ADR-0127]
 iadrs: [IADR-0504, IADR-0096, IADR-0103, IADR-0456, IADR-0494, IADR-0497]
-specs: [20261006_1764_voyage-key-wiring]
-issues: [#1764, #1762, #1740, #1696]
+specs: [20261006_1764_voyage-key-wiring, 20261008_1819_gateway-sentfalse-observability]
+issues: [#1764, #1762, #1740, #1696, #1819]
 -->
 
 # 運用 Runbook: 経路B の LLM ゲートウェイへ埋め込み（Voyage AI）の鍵を入れる
@@ -36,11 +36,16 @@ issues: [#1764, #1762, #1740, #1696]
 
 | 状態 | LLM ゲートウェイの起動 | 埋め込みの応答 | 取り込み（`public` / `internal`） | ゲートウェイのログ |
 | --- | --- | --- | --- | --- |
-| Secret にキーが無い（古い Secret） | **起動する**（env を置かない） | `embedded=false`・`retryable=true` | 再試行の後 DLQ。索引に入らない | `Embedding call failed at endpoint voyage-managed` ＋ `Voyage AI の API キーが未設定です` |
+| Secret にキーが無い（古い Secret） | **起動する**（env を置かない） | `embedded=false`・`retryable=true` | 再試行の後 DLQ。索引に入らない | `Embedding disabled at endpoint voyage-managed (...): provider not configured: Voyage AI の API キーが未設定です`（warn・スタックなし。Pod の起動後の初回と、以後 5 分ごとに抑えた件数つきの 1 行だけ） |
 | キーは在るが値が空（Vault の種の既定） | 起動する（env は空） | 同上 | 同上 | 同上 |
 | 値が誤り・失効 | 起動する | 同上（上流が 401） | 同上 | `Embedding call failed ...` ＋ `401 (Unauthorized)` |
 | 値が正しい | 起動する | `embedded=true`・1024 次元 | `knowledge_chunks_voyage_3_5` に点が入る | 失敗の行が出ない |
 
+- **［2026-10-08 追記］鍵なしの失敗は毎回スタック付きで記録しない。** 以前は取り込みの再試行のたびに
+  `Embedding call failed ...` がスタック付きで出て（PoC で 1,146 回）、ゲートウェイのログから他の行を押し出した。
+  今は上の表の warn が**初回は即時・以後 5 分ごとに 1 行**（`suppressedSinceLast=` に抑えた件数）だけ出る。
+  応答（`retryable=true`）と取り込みの扱い（再試行の後 DLQ。鍵を入れてから DLQ を再投入すれば索引に入る）は変わらない。
+  鍵の誤り（401）など**鍵の欠落以外の失敗は従来どおり 1 件ずつスタック付き**で出る。
 - 起動時に鍵の有無を検査しない（鍵が無くてもテキスト生成は使える。キーを必須にすると Secret が古いだけで LLM ゲートウェイ全体が `CreateContainerConfigError` で止まる）。
 - 鍵は**プロセスの起動時に読む**。Secret を差し替えた後は Pod の作り直しが要る（経路B は Reloader が `llm-provider-credentials` の変更で作り直す）。
 
@@ -196,11 +201,13 @@ kubectl -n "$NS" delete pod voyage-key-probe
 **5-b. ゲートウェイの経路**（検索クエリの埋め込み）: 検索画面で無害な語（例「テスト」）を 1 回検索し、直後にゲートウェイのログを数える。
 
 ```sh
-kubectl -n microservices-platform logs deploy/llmgateway-service -c llmgateway-service --since=5m \
-  | grep -c 'Embedding call failed at endpoint voyage-managed'
+# 鍵なしの行は抑制される（初回と 5 分ごと）ので、--since で窓を切らず、今の Pod の起動からの全行を数える
+kubectl -n microservices-platform logs deploy/llmgateway-service -c llmgateway-service \
+  | grep -cE 'Embedding (call failed|disabled) at endpoint voyage-managed'
 ```
 
-期待: `0`。1 以上なら同じ行の例外（`API キーが未設定` ＝ 手順 4 へ戻る／`401` ＝ 鍵の誤り）を見る。
+期待: `0`。1 以上なら行の中身を見る（`provider not configured` ＝ 鍵が届いていない・手順 4 へ戻る／`401` ＝ 鍵の誤り）。
+鍵は Pod の起動時に読まれ、抑制の状態も Pod ごとに始まるので、鍵を入れた後に作り直した Pod で鍵なしの行が 1 行も無ければ、鍵は届いている。
 
 **5-c. 取り込みの経路**（決定的な確認）: 再索引の手順（運用仕様書の「埋め込みプロバイダの設定・ゼロ保持・再索引」節の `DocumentUpdated` の再発行）の
 **カナリア**（最初の 1 ページ）を流し、DLQ が増えず、`knowledge_chunks_voyage_3_5` の `points_count` が 0 から増えることを確かめてから全件へ進む。

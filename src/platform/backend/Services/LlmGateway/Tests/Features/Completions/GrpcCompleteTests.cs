@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
+using Platform.Shared.Infrastructure.Foundation.Llm;
 using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 
 namespace LlmGateway.Tests.Features.Completions;
@@ -125,6 +126,11 @@ public class GrpcCompleteTests
         grpc.OutputTokens.Should().Be(rest.OutputTokens);
         grpc.StopReason.Should().Be(rest.StopReason);
         grpc.RoutingReason.Should().Be(rest.RoutingReason);
+        // #1819: 送信が成立した応答は原因を持たない（REST は null・proto3 は空文字 / 0）。
+        rest.FailureKind.Should().BeNull();
+        rest.UpstreamStatusCode.Should().BeNull();
+        grpc.FailureKind.Should().BeEmpty();
+        grpc.UpstreamStatusCode.Should().Be(0);
     }
 
     // T-S-06: 🔴 proto3 に null は無い（IADR-0400 決定 4）。`max_tokens=0` は「0 トークン」ではなく
@@ -223,6 +229,15 @@ public class GrpcCompleteTests
         rest.Sent.Should().BeFalse();
         resp.Text.Should().Be(rest.Text);
         resp.RoutingReason.Should().Be(rest.RoutingReason);
+
+        // FR-11, IADR-0104 追記 (#1819): 原因の種類は gRPC でも同じ値で運ばれる。上流が HTTP 状態を
+        // 返していない（スクリプトの例外は輸送の失敗に当たる）ので状態は「無い」＝ proto3 では 0・REST では null。
+        resp.FailureKind.Should().Be(CompletionFailureKinds.UpstreamError);
+        rest.FailureKind.Should().Be(CompletionFailureKinds.UpstreamError);
+        resp.UpstreamStatusCode.Should().Be(0);
+        rest.UpstreamStatusCode.Should().BeNull();
+        LlmGrpcMapping.ToDto(resp).Should().Be(rest,
+            "写像を通した gRPC の応答は REST の応答と同じ値になる");
     }
 
     // T-S-10: 構造の門。gRPC サービス型が ServiceCaller ポリシーを宣言していること
