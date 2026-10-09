@@ -7,11 +7,11 @@ updated: 2026-10-09
 author: endazon (with Claude Code)
 ---
 <!-- trace:
-ids: [NFR-18, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11]
-adrs: [ADR-0131, ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, ADR-0020, ADR-0027, ADR-0106]
-iadrs: [IADR-0522, IADR-0017, IADR-0026, IADR-0048, IADR-0056, IADR-0121, IADR-0461]
-specs: [20261009_1839_session-store-valkey, 20260925_1499_object-storage-seaweedfs, 20261008_1799_composability-docs-wolverine-wiring]
-issues: [#1839, #497, #580, #591, #1499, #1799, planning#750]
+ids: [SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, NFR-18]
+adrs: [ADR-0132, ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, ADR-0020, ADR-0027, ADR-0106, ADR-0131]
+iadrs: [IADR-0525, IADR-0017, IADR-0026, IADR-0048, IADR-0056, IADR-0121, IADR-0461, IADR-0522]
+specs: [20261009_1840_secret-store-openbao, 20260925_1499_object-storage-seaweedfs, 20261008_1799_composability-docs-wolverine-wiring, 20261009_1839_session-store-valkey]
+issues: [#1840, #497, #580, #591, #1499, #1799, #1839, planning#750]
 -->
 
 # システム構成図: microservices-platform（基盤 + knowledge ユニット）
@@ -217,7 +217,7 @@ sequenceDiagram
   `expose` のみでホスト非公開。公開は frontend(:3100) / BFF(:5000) / Keycloak(:8080) /
   Wiki.js(:3001) / Grafana(:3000)。
 - **stg / prod**: Kubernetes（k3s）＋ Helm / ArgoCD（GitOps）、Istio サービスメッシュ
-  （サービスメッシュの決定に基づき、STRICT mTLS をサービス間認証の第一防御とする）、NGINX Ingress。秘匿は Vault。イメージレジストリは Harbor。
+  （サービスメッシュの決定に基づき、STRICT mTLS をサービス間認証の第一防御とする）、NGINX Ingress。秘匿は Vault API 互換の OpenBao（HashiCorp Vault から差し替えた。経路 B の配備だけで、本番像は未配備）。イメージレジストリは Harbor。
 - **ビルド**: ユニット別 slnx（`dotnet build src/platform/backend/backend.slnx` /
   `src/knowledge/backend/backend.slnx`・.NET 10）、フロントは pnpm workspace（`src/`・Node 22。
   #591: 従前は「npm workspaces」と書いていたが、SPA 新スタック移行の実装 ADR により pnpm workspace へ移行済み）。

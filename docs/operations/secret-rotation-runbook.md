@@ -8,10 +8,10 @@ updated: 2026-10-09
 ---
 <!-- trace:
 ids: [NFR-18, SC-22]
-adrs: [ADR-0131, ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110, ADR-0124, ADR-0126]
-iadrs: [IADR-0522, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501]
-specs: [20261009_1839_session-store-valkey, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference]
-issues: [#1839, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, planning#700, planning#716, AST#1078]
+adrs: [ADR-0132, ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110, ADR-0124, ADR-0126, ADR-0131]
+iadrs: [IADR-0525, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501, IADR-0522]
+specs: [20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference, 20261009_1839_session-store-valkey]
+issues: [#1840, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, #1839, planning#700, planning#716, AST#1078]
 -->
 
 # 運用 Runbook: 秘密情報のローテーション
@@ -63,7 +63,7 @@ issues: [#1839, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, planning#
 | --- | --- |
 | 必要な権限 | 手順 A: 製品の画面（`/admin/secrets`）を開けるロール（運用者・システム管理者）。手順 B: 対象クラスタへの `kubectl exec`（`platform-infra`）と、対象名前空間の Secret / ExternalSecret / Deployment への読み書き |
 | 必要なツール | 手順 A: ブラウザ。手順 B: `kubectl` のみ（**ホストに `vault` CLI は不要**。すべて Vault Pod 内で実行する） |
-| 前提の状態 | Vault と External Secrets Operator が稼働している。Vault は既定で永続化されている（file ストレージ＋PVC） |
+| 前提の状態 | Vault と External Secrets Operator が稼働している。Vault は既定で永続化されている（raft ストレージ＋PVC） |
 | 所要時間の目安 | 手順 A: 1 項目 5〜10 分（発行元での操作を除く）。手順 B: 1 ストア 15〜30 分（消費側の再起動を含む。**その間サービスが断続的に止まる**） |
 
 ## 共通の原則

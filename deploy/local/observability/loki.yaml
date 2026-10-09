@@ -1,4 +1,8 @@
 # ADR-0006, IADR-0077 (AST#24): 経路B の Loki（opt-in・platform-infra）。config は compose（loki-config.yaml）と同内容を inline。
+# 🔴 NFR-18, ADR-0133, IADR-0526 (#1842): **`server` と `frontend` の節だけは compose と違う（乖離は意図）。**
+#    Loki は Pod の loopback（127.0.0.1:3101・gRPC 127.0.0.1:9095）だけで待ち、Service の口 3100 は同じ Pod の
+#    前段（container `gate`。observability-gate.yaml）が持つ。前段を経由しない口をネットワークに出さないためである。
+#    compose は前段も到達の制限も無い 0 段の経路として記録している（docs/security/security.md）。
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,7 +12,9 @@ data:
   config.yaml: |
     auth_enabled: false
     server:
-      http_listen_port: 3100
+      http_listen_address: 127.0.0.1
+      http_listen_port: 3101
+      grpc_listen_address: 127.0.0.1
     common:
       ring:
         instance_addr: 127.0.0.1
@@ -34,6 +40,10 @@ data:
     # ADR-0107 決定 4, #1841: 利用統計の送信を止める（compose の loki-config.yaml と同じ。理由はそちらのコメント）。
     analytics:
       reporting_enabled: false
+    # #1842: query-frontend が querier へ広告する自分の住所。既定はインターフェイスの IP で、gRPC を loopback へ
+    # 移すと querier がそこへ繋げずクエリが返らなくなる（実測）。loopback に揃える。
+    frontend:
+      address: 127.0.0.1
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -53,8 +63,7 @@ spec:
         - name: loki
           image: grafana/loki:3.0.0@sha256:757b5fadf816a1396f1fea598152947421fa49cb8b2db1ddd2a6e30fae003253
           args: ["-config.file=/etc/loki/config.yaml"]
-          ports:
-            - { containerPort: 3100, name: http }
+          # #1842: ports を宣言しない —— Loki は loopback だけで待つ（上の config）。Service の口は gate が持つ。
           volumeMounts:
             - name: config
               mountPath: /etc/loki
@@ -62,10 +71,35 @@ spec:
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits: { cpu: 500m, memory: 512Mi }
+        # NFR-18, ADR-0133 決定 1 の条件 1, IADR-0526 (#1842): 前段（認証付きのリバースプロキシ）。
+        # 🔴 containers の 0 番は loki のまま（observability-persistence の patch が containers/0 へ volumeMount を足す）。
+        - name: gate
+          image: caddy:2.11-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+          command: ["/bin/sh", "/etc/obs-gate/gate.sh", "/etc/obs-gate/loki.Caddyfile"]
+          ports:
+            - { containerPort: 3100, name: http }
+          env:
+            # fail-closed: Secret は必須の参照（optional にしない）。無ければ前段は起動せず、Loki へは誰も届かない。
+            - name: OBS_GATE_WRITER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: observability-gate, key: writer }
+            - name: OBS_GATE_READER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: observability-gate, key: reader }
+          volumeMounts:
+            - name: gate
+              mountPath: /etc/obs-gate
+              readOnly: true
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 128Mi }
       volumes:
         - name: config
           configMap:
             name: loki-config
+        - name: gate
+          configMap:
+            name: observability-gate
 ---
 apiVersion: v1
 kind: Service
@@ -76,4 +110,5 @@ metadata:
 spec:
   selector: { app: loki }
   ports:
-    - { name: http, port: 3100, targetPort: 3100 }
+    # #1842: 宛先は前段（gate）の口。Loki 本体（127.0.0.1:3101）へは Service から届かない。
+    - { name: http, port: 3100, targetPort: http }

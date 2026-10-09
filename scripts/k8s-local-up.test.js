@@ -47,6 +47,7 @@ const OPTIN_TOKENS = [
   'deploy/local/observability', //     OBSERVABILITY ＋ PERSIST=0（素の overlay）
   'deploy/local/observability-persistence', // OBSERVABILITY（永続化は既定。IADR-0210 → IADR-0369）
   'grafana-oidc', //                   OBSERVABILITY (Grafana OIDC secret, IADR-0090)
+  'observability-gate', //             OBSERVABILITY (Loki・Tempo の前段のトークン, IADR-0526 / #1842)
   'deploy/local/vault', //             VAULT ＋ PERSIST=0（素の -dev）
   'deploy/local/vault-persistence', // VAULT（永続化は既定。IADR-0457 / #1479）
   'vault-dev-token', //                VAULT (secret)
@@ -282,6 +283,10 @@ const KUBECTL_STUB = [
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
+  // NFR-18, IADR-0525 (#1840): 稼働中の deploy/vault のイメージ（移行の門の入力）。STUB_VAULT_LIVE_IMAGE で返す（既定は空 ＝ 新規クラスタ）。
+  //   PVC vault-data の有無は STUB_VAULT_PVC_ABSENT=1 で「無い」にする（既定は在る＝問い合わせは 0 を返す）。
+  'case "$*" in *"get deploy vault"*"containers[0].image"*) printf "%s" "${STUB_VAULT_LIVE_IMAGE:-}"; exit 0;; esac',
+  'if [ "${STUB_VAULT_PVC_ABSENT:-}" = "1" ]; then case "$*" in *"get pvc vault-data"*) exit 1;; esac; fi',
   'if [ "${STUB_TRAEFIK_ADMIN_MISSING:-}" = "1" ]; then case "$*" in *--for=jsonpath*svc/traefik*) exit 1;; esac; fi',
   // #1691: **HelmChartConfig kube-system/traefik の状態の模型**（状態は "$STUB_LOG.edge-istio" の有無で持つ）。
   //   - traefik-service-off.yaml の apply（istio-edge-up.sh [2/5]）で「Service 無し」になり、Service が消える。
@@ -975,6 +980,33 @@ ok('OBSERVABILITY=1: observability-persistence を apply・grafana-oidc secret �
   assert.ok(anyLineHas(res.lines, 'grafana-oidc'), 'grafana-oidc secret が作られない');
 });
 
+// NFR-18, ADR-0133, IADR-0526 (#1842): Loki・Tempo の前段のトークン（Secret observability-gate）。
+// 🔴 dev の既定値を置かない —— 乱数の 16 進 64 文字で、writer と reader は別の値。値は kubectl の引数に載らず（#1793）、
+// 作る前に既存の値を読む（再実行で値を回さない。Pod の env は起動時にしか読まれない）。
+ok('#1842: OBSERVABILITY=1 は observability-gate を乱数の 2 値で作り、既存の値を先に読む（値は引数に載らない）', () => {
+  const res = runUp({ OBSERVABILITY: '1' });
+  assert.strictEqual(res.status, 0, res.stderr);
+  const got = Object.fromEntries(
+    res.secrets.filter((l) => l.startsWith('observability-gate ')).map((l) => l.slice('observability-gate '.length).split('=')),
+  );
+  assert.deepStrictEqual(Object.keys(got).sort(), ['reader', 'writer'], `observability-gate の鍵が違う: ${JSON.stringify(Object.keys(got))}`);
+  for (const [k, v] of Object.entries(got)) {
+    assert.match(v, /^[0-9a-f]{64}$/, `observability-gate の ${k} が 16 進 64 文字でない（前段は起動しない）`);
+    assert.ok(!res.lines.some((l) => l.includes(v)), `observability-gate の ${k} の値が kubectl の引数に載った`);
+  }
+  assert.notStrictEqual(got.writer, got.reader, 'writer と reader が同じ値（前段は起動しない）');
+  // 2 回目の起動は別の乱数になる（固定の既定値ではない）。
+  const again = runUp({ OBSERVABILITY: '1' }).secrets.find((l) => l.startsWith('observability-gate writer='));
+  assert.notStrictEqual(again, `observability-gate writer=${got.writer}`, 'writer が起動のたびに同じ値（固定の既定値になっている）');
+  // 引き継ぎ: 作る前に既存の Secret の各鍵を読む。
+  const createAt = res.lines.findIndex((l) => l.includes('create secret generic observability-gate'));
+  for (const k of ['writer', 'reader']) {
+    const readAt = res.lines.findIndex((l) => l.includes('get secret observability-gate') && l.includes(`{.data.${k}}`));
+    assert.ok(readAt !== -1 && readAt < createAt, `observability-gate の ${k} の既存値を作る前に読んでいない（再実行で値が回る）`);
+  }
+  assert.ok(!DEFAULT.secrets.some((l) => l.startsWith('observability-gate ')), 'OBSERVABILITY 無効なのに observability-gate を作った');
+});
+
 // --- IADR-0210 (#787) → IADR-0369 (#1088): 可観測性スタックの永続化 overlay のゲート意味論 -------------
 //
 // `deploy/local/observability-persistence` は **OBSERVABILITY=1**（かつ PERSIST=0 でない）ときに選ばれる。
@@ -1576,7 +1608,7 @@ ok('VAULT=1 (CRD 無): vault-dev.yaml のみ apply・kustomize 経路は通ら�
   assert.ok(/非永続/.test(res.stderr), 'CRD 無フォールバックが非永続であることを WARN で言わない');
 });
 
-// --- IADR-0457 (#1479): Vault の永続化は **既定オン**（file ストレージ＋PVC・Pod 内ラッパー）。opt-out は PERSIST=0 ---
+// --- IADR-0457 (#1479): Vault の永続化は **既定オン**（ストレージ＋PVC・Pod 内ラッパー。IADR-0525 / #1840 から OpenBao の raft）。opt-out は PERSIST=0 ---
 // dev Vault（-dev＝インメモリ）は k3s 再起動で全状態（k8s auth・policy・KV・OIDC・画面 SC-22 の値）を失い、
 // ESO の store が InvalidProviderConfig に倒れた（2026-09-16 実測）。infra-persistence と同じく既定で永続化する。
 ok('VAULT=1（永続化は既定）: vault-persistence を apply し、素の deploy/local/vault は apply しない', () => {
@@ -1604,6 +1636,41 @@ ok('VAULT=1: apply の直後に deploy/vault の rollout status を待つ（unse
   assert.ok(waitAt > applyAt, 'apply の後に rollout status deploy/vault が無い');
   assert.ok(bootstrapAt >= 0, 'bootstrap.sh の kubectl exec が記録に無い（検出の空振り）');
   assert.ok(waitAt < bootstrapAt, 'rollout status が bootstrap.sh より後にある');
+});
+
+// --- NFR-18, ADR-0132, IADR-0525 (#1840): 秘匿管理は OpenBao。旧 Vault の永続データを黙って上書きしない（移行の門） ---
+// OpenBao は旧 Vault の file ストレージを開けない。稼働中の deploy/vault が旧 Vault で PVC が在るなら、apply の前に止めて手順書を名指しする。
+const OLD_VAULT_IMAGE = 'hashicorp/vault:1.16@sha256:c5e04689611cb864b8b6247a6a845e0bdc059998f39b5c8a659562287379525c';
+ok('VAULT=1 (#1840): 稼働中が旧 Vault で PVC が在れば、vault-persistence を apply せずに止め、移行の手順書を名指しする', () => {
+  const res = runUp({ VAULT: '1', STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE });
+  assert.notStrictEqual(res.status, 0, '旧 Vault の上に OpenBao を被せて先へ進んだ');
+  assert.ok(!anyLineHas(res.lines, 'apply -k deploy/local/vault-persistence'), '止まる前に vault-persistence を apply した');
+  assert.ok(res.stderr.includes('docs/operations/secret-store-openbao-migration-runbook.md'), `手順書を名指ししない: ${res.stderr}`);
+});
+
+// #1866 監査 🟡1: ESO=1 単独（VAULT=1 なし）でも、ESO ブロックの当て直し（vault-persistence の apply）の前に同じ門を通る。
+ok('ESO=1 単独 (#1866): 稼働中が旧 Vault で PVC が在れば、ESO ブロックの当て直しでも apply せずに止め、手順書を名指しする', () => {
+  const res = runUp({ ESO: '1', STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE });
+  assert.notStrictEqual(res.status, 0, 'ESO=1 単独の経路で旧 Vault の上に OpenBao を被せて先へ進んだ');
+  assert.ok(!anyLineHas(res.lines, 'apply -k deploy/local/vault-persistence'), '止まる前に vault-persistence を apply した');
+  assert.ok(res.stderr.includes('docs/operations/secret-store-openbao-migration-runbook.md'), `手順書を名指ししない: ${res.stderr}`);
+  // 陽性対照: 稼働中が OpenBao なら同じ経路は通って当て直す（門が経路ごと塞いでいない）。
+  const okRes = runUp({ ESO: '1', STUB_VAULT_LIVE_IMAGE: 'openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf' });
+  assert.strictEqual(okRes.status, 0, `稼働中が OpenBao なのに止まった: ${okRes.stderr}`);
+  assert.ok(anyLineHas(okRes.lines, 'apply -k deploy/local/vault-persistence'), '稼働中が OpenBao なのに当て直さない');
+});
+
+ok('VAULT=1 (#1840): 門の陰性対照 —— 稼働中が OpenBao・新規クラスタ・PVC 無し・PERSIST=0 のいずれも止めない', () => {
+  for (const [label, env] of [
+    ['稼働中が OpenBao', { STUB_VAULT_LIVE_IMAGE: 'openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf' }],
+    ['新規クラスタ（deploy/vault 無し）', {}],
+    ['旧 Vault だが PVC 無し（-dev で使っていた）', { STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE, STUB_VAULT_PVC_ABSENT: '1' }],
+    ['旧 Vault だが PERSIST=0', { STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE, PERSIST: '0' }],
+  ]) {
+    const res = runUp({ VAULT: '1', ...env });
+    assert.strictEqual(res.status, 0, `${label}: 非0終了: ${res.stderr}`);
+    assert.ok(anyLineHas(res.lines, env.PERSIST === '0' ? 'apply -k deploy/local/vault' : 'apply -k deploy/local/vault-persistence'), `${label}: apply が無い`);
+  }
 });
 
 // IADR-0457 (#1479) 監査 D1: **新規クラスタ**（VAULT ブロックの時点で ESO の CRD が無い）でも、ESO=1 なら ESO を入れた後に

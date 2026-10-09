@@ -13237,21 +13237,29 @@ exit $RC
       assert.ok(!/tcplog\/vault-audit:/.test(read('deploy/otel-collector-config.yaml')), 'compose の collector に Vault の受け口がある（compose に Vault は居ない）');
     });
 
-    ok('#1683: 起動器は 2 つの device をどちらも log_raw=false / hmac_accessor=true で有効にする', () => {
-      const enables = entry.split('\n').reduce((acc, line, i, all) => {
-        if (/vault audit enable/.test(line)) {
-          let j = i; let cmd = '';
-          while (j < all.length) { cmd += all[j]; if (!/\\\s*$/.test(all[j])) break; j++; }
-          acc.push(cmd);
-        }
-        return acc;
-      }, []);
-      assert.strictEqual(enables.length, 2, `audit enable が 2 つでない: ${enables.length}`);
-      assert.ok(enables.some((c) => /\bfile\b[\s\\]+file_path=stdout/.test(c)), '標準出力の file device が無い');
-      assert.ok(enables.some((c) => /\bsocket\b[\s\\]+address=/.test(c) && /socket_type=tcp/.test(c)), 'socket（tcp）の device が無い');
-      for (const c of enables) {
-        assert.match(c, /log_raw=false/, `log_raw=false を明示していない: ${c}`);
-        assert.match(c, /hmac_accessor=true/, `hmac_accessor=true を明示していない: ${c}`);
+    // NFR-18, ADR-0132, IADR-0525 (#1840): 製品は OpenBao。API での audit device の作成は拒まれるので、どちらも**設定で宣言する**
+    //   （標準出力は local.hcl、collector への socket は起動器が collector に届いてから書く宣言）。
+    ok('#1683 / #1840: 2 つの device をどちらも設定で宣言し、log_raw=false / hmac_accessor=true を明示する（API では作らない）', () => {
+      assert.ok(!/vault audit enable|bao audit enable/.test(entry.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')),
+        '起動器が API で audit device を作っている（OpenBao は拒む）');
+      const hcl = read('deploy/local/vault-persistence/local.hcl');
+      const blockAt = (text, head) => {
+        const i = text.indexOf(head);
+        if (i < 0) return null;
+        const j = text.indexOf('\n}', i);
+        return text.slice(i, j < 0 ? undefined : j);
+      };
+      const stdout = blockAt(hcl, 'audit "file" "stdout" {');
+      assert.ok(stdout, 'local.hcl に標準出力の file device の宣言が無い');
+      assert.match(stdout, /file_path\s*=\s*"stdout"/, '標準出力へ書いていない');
+      assert.ok(!/audit "socket"/.test(hcl), 'socket device を local.hcl に書いている（collector の不在で init が失敗する）');
+      const socket = blockAt(entry, 'audit "socket" "$VAULT_AUDIT_SOCKET_PATH" {');
+      assert.ok(socket, '起動器に socket device の宣言が無い');
+      assert.match(socket, /address\s*=\s*"\$VAULT_AUDIT_SOCKET_ADDRESS"/, 'socket の宛先が起動器の既定値を使っていない');
+      assert.match(socket, /socket_type\s*=\s*"tcp"/, 'socket（tcp）の device でない');
+      for (const [name, blk] of [['stdout', stdout], ['socket', socket]]) {
+        assert.match(blk, /log_raw\s*=\s*"false"/, `${name}: log_raw=false を明示していない`);
+        assert.match(blk, /hmac_accessor\s*=\s*"true"/, `${name}: hmac_accessor=true を明示していない`);
       }
     });
 
@@ -15845,6 +15853,186 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(job && step, '起動の段かジョブの上限が無い');
       assert.ok(Number(step[1]) < Number(job[1]), `起動の段の上限 ${step[1]} 分がジョブの上限 ${job[1]} 分以上`);
       assert.ok(/- name: Dump cluster state[^\n]*\n\s+if: failure\(\)/.test(wf), '失敗時の診断が無い（段の上限で失敗させる意味が無い）');
+    });
+  }
+
+  // --- NFR-18 / ADR-0133 / #1842（IADR-0526）: Loki・Tempo の管理用の口の前段（身元の検証）と到達の制限（NetworkPolicy） ---------
+  //
+  // 経路 B の 2 段を、宣言が割れている 7 ファイル（製品の config・前段の ConfigMap・Service・NetworkPolicy・collector・Grafana・kustomization）
+  // にまたがって突き合わせる。**どれか 1 つだけを動かすと 2 段のどちらかが黙って外れる**（例: 製品の待ち受けを 0.0.0.0 へ戻すと前段を迂回でき、
+  // NetworkPolicy の from を外すと全 Pod から届く）。判定は関数にして、実物の陽性対照と、1 か所ずつ壊した陰性対照を置く。
+  {
+    const REPO_G = path.join(__dirname, '..');
+    const readG = (rel) => fs.readFileSync(path.join(REPO_G, rel), 'utf8');
+    const { parseDocuments } = require('./lib/yaml-subset');
+    const FILES = {
+      loki: 'deploy/local/observability/loki.yaml',
+      tempo: 'deploy/local/observability/tempo.yaml',
+      gate: 'deploy/local/observability/observability-gate.yaml',
+      netpol: 'deploy/local/observability/observability-networkpolicy.yaml',
+      kust: 'deploy/local/observability/kustomization.yaml',
+      fwd: 'deploy/local/observability/otel-collector-forward.yaml',
+      collector: 'deploy/local/infra/otel-collector.yaml',
+      grafana: 'deploy/local/observability/grafana.yaml',
+      composeCollector: 'deploy/otel-collector-config.yaml',
+    };
+    const real = () => Object.fromEntries(Object.entries(FILES).map(([k, rel]) => [k, readG(rel)]));
+    // 管理用の口・削除・ルーラー・設定の上書き・旧 push。読み取りの道の列挙にこれらの語が混ざったら落とす。
+    const ADMIN_WORDS = /flush|config|shutdown|delete|rules|status\/(?!buildinfo)|ring|metrics$|overrides|services|memberlist|\/api\/prom\/push|ready/;
+
+    function checkGate(t) {
+      const problems = [];
+      const docs = (k) => parseDocuments(t[k]);
+      const byKind = (k, kind, name) => docs(k).find((d) => d && d.kind === kind && (!name || d.metadata.name === name));
+      const [gateCm] = docs('gate');
+      const caddy = { loki: gateCm.data['loki.Caddyfile'], tempo: gateCm.data['tempo.Caddyfile'] };
+      if (!/^\s*admin off\s*$/m.test(caddy.loki) || !/^\s*admin off\s*$/m.test(caddy.tempo)) problems.push('前段の Caddy の管理 API が閉じていない（admin off）');
+      if (!/v="?\$\{\$name:-\}"?/.test(gateCm.data['gate.sh']) && !/\$\{\$name:-\}/.test(gateCm.data['gate.sh'])) problems.push('gate.sh がトークンを読んでいない');
+      if (!/\*\[!0-9a-f\]\*\)/.test(gateCm.data['gate.sh']) || !/-lt 32/.test(gateCm.data['gate.sh']) || !/exec caddy run/.test(gateCm.data['gate.sh'])) {
+        problems.push('gate.sh の fail-closed（16 進・32 文字・exec）が崩れた');
+      }
+      for (const [prod, svcPort, upPort] of [['loki', 3100, 3101], ['tempo', 3200, 3201]]) {
+        const cfg = parseDocuments(byKind(prod, 'ConfigMap').data['config.yaml'])[0];
+        if (cfg.server.http_listen_address !== '127.0.0.1') problems.push(`${prod} の HTTP が loopback 待ちでない（前段を迂回できる）`);
+        if (cfg.server.grpc_listen_address !== '127.0.0.1') problems.push(`${prod} の gRPC が loopback 待ちでない`);
+        if (Number(cfg.server.http_listen_port) !== upPort) problems.push(`${prod} の HTTP の口が ${upPort} でない（前段の上流と食い違う）`);
+        if (prod === 'loki' && !(cfg.frontend && cfg.frontend.address === '127.0.0.1')) problems.push('loki の frontend.address が 127.0.0.1 でない（loopback 待ちでクエリが返らない）');
+        const cf = caddy[prod];
+        if (!new RegExp(`^:${svcPort} \\{`, 'm').test(cf)) problems.push(`${prod} の前段が ${svcPort} で待っていない`);
+        const ups = [...cf.matchAll(/reverse_proxy\s+@(\w+)\s+(\S+)/g)];
+        if (ups.length === 0 || ups.some((m) => m[2] !== `127.0.0.1:${upPort}`)) problems.push(`${prod} の前段の上流が 127.0.0.1:${upPort} でない`);
+        if (ups.some((m) => !['writer', 'reader'].includes(m[1]))) problems.push(`${prod} の前段が身元の matcher 以外で通している`);
+        if (!/respond @known 403\s*\n\s*respond 401\s*\n\s*\}/.test(cf)) problems.push(`${prod} の前段の既定が拒否（403 / 401）で終わっていない`);
+        // 道の抜けの断ち（#1865 監査）: path matcher は正規化した道で照合し、reverse_proxy は生の道を送る。
+        // 生の道に `..`・`//`・`.` だけのセグメント・`%2e`/`%2f` を含む要求を、身元を見る前（route の先頭）で断つ。
+        const unsafe = (cf.match(/^\s*@unsafe expression `(.+)`\s*$/m) || [])[1] || '';
+        if (!unsafe.includes('{http.request.uri.path}.matches(') || !unsafe.includes('[.][.]') || !unsafe.includes('//') || !unsafe.includes('(^|/)[.](/|$)')
+          || !unsafe.includes('{http.request.uri}.matches(') || !unsafe.includes('(?i)%2[ef]')) {
+          problems.push(`${prod} の前段に道の抜け（.. ・ // ・ %2e / %2f）の断ちが無い`);
+        }
+        if (!/route \{\s*\n\s*respond @unsafe 400\s*\n/.test(cf)) problems.push(`${prod} の前段が道の抜けを route の先頭で断っていない（身元の判定より後）`);
+        for (const who of ['writer', 'reader']) {
+          const m = cf.match(new RegExp(`@${who} \\{([^}]*\\}[^}]*)\\}`));
+          if (!m) continue;
+          const tok = who === 'writer' ? 'OBS_GATE_WRITER_TOKEN' : 'OBS_GATE_READER_TOKEN';
+          if (!m[1].includes(`header Authorization "Bearer {$${tok}}"`)) problems.push(`${prod} の @${who} が身元のトークンを条件にしていない`);
+          const method = (m[1].match(/^\s*method\s+(.+)$/m) || [])[1];
+          const paths = ((m[1].match(/^\s*path\s+(.+)$/m) || [])[1] || '').split(/\s+/).filter(Boolean);
+          if (who === 'writer' && (method !== 'POST' || paths.join(' ') !== '/loki/api/v1/push')) problems.push(`${prod} の書き込みの身元が push 以外へ届く: ${method} ${paths.join(' ')}`);
+          if (who === 'reader' && method !== 'GET') problems.push(`${prod} の読み取りの身元が GET 以外で届く: ${method}`);
+          const admin = paths.filter((x) => ADMIN_WORDS.test(x) || x === '/*' || x.endsWith('/v1/*'));
+          if (admin.length) problems.push(`${prod} の @${who} が管理用の口へ届く: ${admin.join(' ')}`);
+          if (paths.length === 0) problems.push(`${prod} の @${who} に道の列挙が無い（全部の道へ届く）`);
+        }
+        if (prod === 'tempo' && /@writer \{/.test(cf)) problems.push('tempo の HTTP に書き込みの身元の道がある（OTLP は前段を通さない）');
+        const dep = byKind(prod, 'Deployment');
+        const cs = dep.spec.template.spec.containers;
+        if (cs[0].name !== prod) problems.push(`${prod} の containers の 0 番が ${prod} でない（永続化の patch が containers/0 を指す）`);
+        if ((cs[0].ports || []).some((pp) => Number(pp.containerPort) === svcPort || Number(pp.containerPort) === upPort)) {
+          problems.push(`${prod} 本体が HTTP の口を宣言している（前段を迂回する口）`);
+        }
+        const gate = cs.find((c) => c.name === 'gate');
+        if (!gate) { problems.push(`${prod} に前段（container gate）が無い`); continue; }
+        if (!/(^|\/)caddy:[^@]+@sha256:[0-9a-f]{64}$/.test(gate.image)) problems.push(`${prod} の前段のイメージが digest で固定された caddy でない`);
+        if (!(gate.command || []).join(' ').endsWith(`/etc/obs-gate/gate.sh /etc/obs-gate/${prod}.Caddyfile`)) problems.push(`${prod} の前段が gate.sh を通らずに起動する（fail-closed が外れる）`);
+        const gp = (gate.ports || []).find((pp) => pp.name === 'http');
+        if (!gp || Number(gp.containerPort) !== svcPort) problems.push(`${prod} の前段の口（http）が ${svcPort} でない`);
+        for (const [env, key] of [['OBS_GATE_WRITER_TOKEN', 'writer'], ['OBS_GATE_READER_TOKEN', 'reader']]) {
+          const e = (gate.env || []).find((x) => x.name === env);
+          const ref = e && e.valueFrom && e.valueFrom.secretKeyRef;
+          if (!ref || ref.name !== 'observability-gate' || ref.key !== key) problems.push(`${prod} の前段の ${env} が Secret observability-gate/${key} でない`);
+          else if (String(ref.optional) === 'true') problems.push(`${prod} の前段の ${env} が optional（Secret が無くても起動して空のトークンで待つ）`);
+        }
+        const svc = byKind(prod, 'Service');
+        const sp = svc.spec.ports.find((pp) => Number(pp.port) === svcPort);
+        if (!sp || sp.targetPort !== 'http') problems.push(`${prod} の Service ${svcPort} の宛先が前段の口（http）でない`);
+      }
+      // 到達の制限（別の段）
+      const np = (name) => byKind('netpol', 'NetworkPolicy', name);
+      const want = {
+        'loki-ingress': { app: 'loki', rules: [['otel-collector,grafana', '3100']] },
+        'tempo-ingress': { app: 'tempo', rules: [['otel-collector', '4317'], ['grafana', '3200']] },
+      };
+      for (const [name, w] of Object.entries(want)) {
+        const n = np(name);
+        if (!n) { problems.push(`NetworkPolicy ${name} が無い`); continue; }
+        if (n.spec.podSelector.matchLabels.app !== w.app) problems.push(`${name} が ${w.app} を選んでいない`);
+        if (!(n.spec.policyTypes || []).includes('Ingress')) problems.push(`${name} が Ingress を制限していない`);
+        const got = (n.spec.ingress || []).map((r) => [
+          (r.from || []).map((f) => (f.podSelector && f.podSelector.matchLabels && f.podSelector.matchLabels.app) || '*').join(','),
+          (r.ports || []).map((pp) => pp.port).join(',') || '*',
+        ]);
+        if (JSON.stringify(got) !== JSON.stringify(w.rules)) problems.push(`${name} の許可が想定と違う: ${JSON.stringify(got)}`);
+      }
+      const kres = t.kust.split('\n').map((l) => (l.match(/^\s*-\s*(\S+)\s*$/) || [])[1]).filter(Boolean);
+      for (const f of ['observability-gate.yaml', 'observability-networkpolicy.yaml']) if (!kres.includes(f)) problems.push(`kustomization に ${f} が無い`);
+      // 書き込みの身元（collector）
+      const fwdCfg = parseDocuments(parseDocuments(t.fwd)[0].data['config.yaml'])[0];
+      const h = fwdCfg.exporters.loki.headers || {};
+      if (h.Authorization !== 'Bearer ${env:OBS_GATE_WRITER_TOKEN}') problems.push('collector の loki exporter が書き込みのトークンを送らない');
+      const col = byKind('collector', 'Deployment').spec.template.spec.containers[0];
+      const ce = (col.env || []).find((x) => x.name === 'OBS_GATE_WRITER_TOKEN');
+      if (!ce || ce.valueFrom.secretKeyRef.name !== 'observability-gate' || ce.valueFrom.secretKeyRef.key !== 'writer') problems.push('collector の env に書き込みのトークンが無い');
+      // 読み取りの身元（Grafana）
+      const ds = parseDocuments(byKind('grafana', 'ConfigMap', 'grafana-datasources').data['datasources.yaml'])[0].datasources;
+      for (const uid of ['loki', 'tempo']) {
+        const d = ds.find((x) => x.uid === uid);
+        if (!d || (d.jsonData || {}).httpHeaderName1 !== 'Authorization' || (d.secureJsonData || {}).httpHeaderValue1 !== 'Bearer $OBS_GATE_READER_TOKEN') {
+          problems.push(`Grafana の ${uid} の datasource が読み取りのトークンを送らない`);
+        }
+      }
+      const gc = byKind('grafana', 'Deployment').spec.template.spec.containers[0];
+      const ge = (gc.env || []).find((x) => x.name === 'OBS_GATE_READER_TOKEN');
+      if (!ge || ge.valueFrom.secretKeyRef.name !== 'observability-gate' || ge.valueFrom.secretKeyRef.key !== 'reader') problems.push('Grafana の env に読み取りのトークンが無い');
+      // compose は 0 段（前段が無い）。collector がトークンを送る宣言を持たないこと（届かない前提の宣言を置かない）。
+      if (/OBS_GATE_/.test(t.composeCollector)) problems.push('compose の collector が前段のトークンを参照している（compose に前段は無い）');
+      return problems;
+    }
+
+    ok('#1842 陽性対照: 経路 B の Loki・Tempo は前段（身元の検証）と NetworkPolicy の 2 段で、collector・Grafana の身元が揃っている', () => {
+      assert.deepStrictEqual(checkGate(real()), []);
+    });
+
+    ok('#1842 陰性対照: 2 段のどちらか・身元の配線を 1 か所ずつ壊すと落ちる', () => {
+      const cases = [
+        ['loki', '      http_listen_address: 127.0.0.1\n      http_listen_port: 3101', '      http_listen_port: 3101', 'loopback 待ちでない'],
+        ['tempo', '      grpc_listen_address: 127.0.0.1\n', '', 'gRPC が loopback'],
+        ['loki', '    frontend:\n      address: 127.0.0.1\n', '', 'frontend.address'],
+        ['gate', '        admin off\n', '', 'admin off'],
+        ['gate', '/loki/api/v1/label/*/values', '/loki/api/v1/label/*/values /flush', '管理用の口へ届く'],
+        ['gate', '/api/echo ', '/api/echo /status/config ', '管理用の口へ届く'],
+        ['gate', '/loki/api/v1/query /loki', '/loki/api/v1/* /loki', '管理用の口へ届く'],
+        ['gate', '            method POST\n', '            method POST PUT\n', '書き込みの身元が push 以外'],
+        ['gate', '            path /loki/api/v1/push\n', '            path /loki/api/v1/push /loki/api/v1/delete\n', '書き込みの身元が push 以外'],
+        ['gate', '            respond 401\n', '            reverse_proxy 127.0.0.1:3101\n', '拒否'],
+        ['gate', '      if [ "${#v}" -lt 32 ]', '      if [ "${#v}" -lt 0 ]', 'fail-closed'],
+        ['gate', "    :3100 {\n        @unsafe expression `{http.request.uri.path}.matches('[.][.]|//|(^|/)[.](/|$)') || {http.request.uri}.matches('^[^?]*(?i)%2[ef]')`\n", '    :3100 {\n', '道の抜け'],
+        ['gate', "{http.request.uri.path}.matches('[.][.]|//|(^|/)[.](/|$)') || {http.request.uri}.matches('^[^?]*(?i)%2[ef]')`\n        @reader", "{http.request.uri.path}.matches('[.][.]|//|(^|/)[.](/|$)')`\n        @reader", '道の抜け'],
+        ['gate', '        route {\n            respond @unsafe 400\n            reverse_proxy @writer', '        route {\n            reverse_proxy @writer', 'route の先頭'],
+        ['gate', '            respond @unsafe 400\n            reverse_proxy @reader 127.0.0.1:3201\n', '            reverse_proxy @reader 127.0.0.1:3201\n            respond @unsafe 400\n', 'route の先頭'],
+        ['loki', '                secretKeyRef: { name: observability-gate, key: writer }', '                secretKeyRef: { name: observability-gate, key: writer, optional: true }', 'optional'],
+        ['tempo', '          command: ["/bin/sh", "/etc/obs-gate/gate.sh", "/etc/obs-gate/tempo.Caddyfile"]', '          command: ["caddy", "run", "--config", "/etc/obs-gate/tempo.Caddyfile"]', 'gate.sh を通らず'],
+        ['loki', '    - { name: http, port: 3100, targetPort: http }', '    - { name: http, port: 3100, targetPort: 3101 }', 'Service 3100 の宛先'],
+        ['tempo', '          ports:\n            - { containerPort: 4317, name: otlp-grpc }', '          ports:\n            - { containerPort: 3201, name: direct }\n            - { containerPort: 4317, name: otlp-grpc }', '本体が HTTP の口'],
+        ['netpol', '        - podSelector:\n            matchLabels: { app: grafana }\n      ports:\n        - { protocol: TCP, port: 3100 }', '        - podSelector: {}\n      ports:\n        - { protocol: TCP, port: 3100 }', '許可が想定と違う'],
+        ['netpol', '        - { protocol: TCP, port: 4317 }', '        - { protocol: TCP, port: 4317 }\n        - { protocol: TCP, port: 4318 }', '許可が想定と違う'],
+        ['kust', '  - observability-networkpolicy.yaml\n', '', 'kustomization に observability-networkpolicy.yaml'],
+        ['fwd', '          Authorization: "Bearer ${env:OBS_GATE_WRITER_TOKEN}"', '          Authorization: "Bearer ${env:OBS_GATE_READER_TOKEN}"', 'collector の loki exporter'],
+        ['grafana', '                secretKeyRef: { name: observability-gate, key: reader, optional: true }', '                secretKeyRef: { name: observability-gate, key: writer, optional: true }', 'Grafana の env'],
+        ['composeCollector', '    endpoint: http://loki:3100/loki/api/v1/push\n', '    endpoint: http://loki:3100/loki/api/v1/push\n    headers:\n      Authorization: "Bearer ${env:OBS_GATE_WRITER_TOKEN}"\n', 'compose の collector'],
+      ];
+      for (const [k, from, to, want] of cases) {
+        const t = real();
+        assert.ok(t[k].includes(from), `変異の元の文字列が無い（実物が変わった。試験を直すこと）: ${k}: ${from}`);
+        t[k] = t[k].replace(from, to);
+        const got = checkGate(t);
+        assert.ok(got.some((x) => x.includes(want)), `${k} の変異（${want}）を通した: ${JSON.stringify(got)}`);
+      }
+      // Grafana の datasource のヘッダは 2 か所（Loki・Tempo）。片方だけ外しても落ちる。
+      const t = real();
+      const i = t.grafana.lastIndexOf('          httpHeaderValue1: Bearer $OBS_GATE_READER_TOKEN');
+      t.grafana = t.grafana.slice(0, i) + '          httpHeaderValue1: Bearer' + t.grafana.slice(i + '          httpHeaderValue1: Bearer $OBS_GATE_READER_TOKEN'.length);
+      assert.ok(checkGate(t).some((x) => x.includes('Grafana の tempo の datasource')), 'Tempo の datasource のヘッダを外しても通った');
     });
   }
 

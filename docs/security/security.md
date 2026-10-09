@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [SC-12, FR-16, FR-06, FR-04, FR-17, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
-adrs: [ADR-0131, ADR-0107, ADR-0123, ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127, ADR-0126, ADR-0134, ADR-0032]
-iadrs: [IADR-0527, IADR-0524, IADR-0522, IADR-0520, IADR-0518, IADR-0517, IADR-0516, IADR-0501, IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498, IADR-0523]
-specs: [20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20261009_1841_disable-default-egress, 20261009_1783_dept-sync-poc-fix, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1817_sc12-provisioning-wiring, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261003_458_connector-secret-vault-reference, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20261006_1746_claude-rerank, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation]
-issues: [#1859, #1839, #1841, #1783, #1834, #1830, #1817, #1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, #1845, #1846, AST#18, AST#24, AST#727, planning#383, planning#672, planning#741, planning#700, AST#1078, planning#716, planning#750, planning#770]
+adrs: [ADR-0131, ADR-0107, ADR-0123, ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127, ADR-0126, ADR-0134, ADR-0032, ADR-0133, ADR-0112, ADR-0132]
+iadrs: [IADR-0527, IADR-0524, IADR-0522, IADR-0520, IADR-0518, IADR-0517, IADR-0516, IADR-0501, IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498, IADR-0523, IADR-0526, IADR-0525]
+specs: [20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20261009_1841_disable-default-egress, 20261009_1783_dept-sync-poc-fix, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1817_sc12-provisioning-wiring, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261003_458_connector-secret-vault-reference, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20261006_1746_claude-rerank, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation, 20261009_1842_loki-tempo-front-auth, 20261009_1840_secret-store-openbao]
+issues: [#1859, #1839, #1841, #1783, #1834, #1830, #1817, #1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, #1845, #1846, #1842, #1840, AST#18, AST#24, AST#727, planning#383, planning#672, planning#741, planning#700, AST#1078, planning#716, planning#750, planning#770]
 -->
 
 # セキュリティ仕様書
@@ -330,6 +330,7 @@ ABAC が判定に使う利用者の部門は IdP の利用者属性 `department`
 
 🔴 **残る穴**: egress の既定拒否（default-deny）は実装の確認が未決であり、**表に無い製品や検査をすり抜けた設定の送信を止める手段は無い**。
 ブラウザが取りに行く通信（Grafana のニュース・アバター）は捕捉していない（上流の既定値の文書で確かめた）。
+秘匿管理（OpenBao）は既定で外へ送るものを持たない（dev サーバを 130 秒観測し、loopback 以外の接続は 0 件。メトリクスの `telemetry` は設定したときだけ出る）ので、上の表に載せていない。
 TEI（埋め込み）はモデルの取得そのものが外部通信で、設定で止めるものではない。既定で配備されず、有効化の前にモデルの事前配置か自社管理の
 ミラーが要る（未着手）。
 
@@ -375,6 +376,35 @@ Valkey は既定で認証が無く、`CONFIG`・`FLUSHALL` などの管理コマ
 - **エッジの後ろのクッキーの属性**: 認証基盤はエッジの後ろで http の要求を受けるが、エッジ越しの要求（Host が認証基盤の公開の host）では
   公開の URL（https）で安全な文脈と判定し、旧い版と同じ `Secure; SameSite=None` を出す（転送ヘッダを読ませなくても同じ。手元で測った）。
   `SameSite=Lax`・`Secure` なしになるのは、Host がクラスタ内の名前の要求（サービス間。ブラウザは通らない）だけである。
+
+### インフラ製品の管理用の口 — Loki・Tempo は前段の認証と到達の制限の 2 段で塞ぐ
+
+計画は、既定で開く管理用の口を閉じられない製品について「認証を必須にできる」と「到達を制限できる」の両方を求め、製品単体で認証を掛けられない
+製品は、**身元を検証する前段**と、**前段を経由しない到達を塞ぐ別の段**の 2 段を製品の外で組めばよいと定めた（L3/L4 の到達の制限だけでは認証と数えない）。
+Loki と Tempo は製品単体で認証を掛けられず、運用の口（`/flush`・`/config`・`/ingester/shutdown`・`/status/*`）・削除 API（Loki）・
+ルーラー・設定の上書き（Tempo）が、読み書きの口と同じ 1 つの HTTP の口に並ぶ。**Loki には保管先（Vault）の audit も入る**ので、
+削除 API へ届く相手は監査の記録を消せる。
+
+| 統制 | 現在の実現手段（2026-10-09） |
+| --- | --- |
+| **前段（身元の検証）** | 経路 B: 製品は Pod の loopback だけで待ち、Service の口は同じ Pod の**認証付きのリバースプロキシ**（Caddy）が持つ。身元は 2 つ（書き込み＝OTel Collector・読み取り＝Grafana）で、それぞれ乱数のトークン（Bearer）を検証し、身元ごとに通す道を限る —— 書き込みは Loki の push だけ、読み取りは GET の読み取り API（query・labels・series・tail・traces・search 等の列挙）だけ。**運用の口・削除 API・ルーラー・設定の上書きは、どちらの身元でも拒む**（403。トークン無し・不一致は 401）。**道に `..`・`//`・`.` だけのセグメント・`%2e` / `%2f` を含む要求は、身元を見る前に拒む**（400。プロキシは正規化した道で照合し、上流へは生の道を送るため、運用の口から許可の道へ正規化される形を通さない）。プロキシ自身の管理 API も閉じる |
+| **到達の制限（別の段）** | 経路 B: NetworkPolicy。Loki の Pod へは Collector と Grafana から前段の口だけ、Tempo の Pod へは Collector から OTLP の受け口・Grafana から前段の口だけを許す（k3s は NetworkPolicy を既定で強制する） |
+| **トークン** | Secret `observability-gate`。ローカル起動器が乱数（16 進 64 文字）で作り、再実行では引き継ぐ。**固定の既定値は無い**。前段はトークンが欠けると起動しない（fail-closed） |
+| **運用の口を使う経路** | `kubectl port-forward` で Pod の loopback へ届く（k8s の認証・認可を通る break-glass） |
+
+**経路ごとの段数**:
+
+| 経路 | 段数 | 内訳 |
+| --- | --- | --- |
+| 経路 B（`deploy/local/observability`） | **2 段** | 前段（身元の検証）＋ NetworkPolicy |
+| 経路 A（compose） | 🔴 **0 段** | 前段も到達の制限も無い。Loki・Tempo の口をホストへ公開している。開発者の手元の検証環境として受け入れる |
+| 本番像（helm chart） | — | Loki・Tempo を配備していない。**展開するときは 2 段を配備の定義に含める**（前段の無いまま足さない） |
+
+- Tempo の OTLP の受け口（トレースの書き込み）は管理用の口ではなく、前段を通さない。到達の制限（Collector だけ）の 1 段である。
+- Alertmanager は製品内（web config）で認証を掛けられるので、前段ではなく製品内で掛ける。**配備はまだ認証なし**である（運用仕様書の点検の記録）。
+- **機械の検査**: `scripts/scripts.repo.test.js` が、製品の待ち受け・前段の道の列挙と既定の拒否・前段の env の必須の参照・Service の宛先・NetworkPolicy の許可・
+  Collector と Grafana のトークンの配線を突き合わせ、1 か所ずつ壊すと落ちることを固定している。`scripts/k8s-local-up.test.js` がトークンの生成を固定している。
+- 🔴 **残る穴**: NetworkPolicy の強制は稼働クラスタで実測していない（前段の判定と通しの経路は、配備と同じ版の公式イメージで実測した）。経路 A は 0 段のまま。
 
 ## 秘密情報管理
 
@@ -478,7 +508,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 - **Vault dev root トークン（経路B の opt-in）**: 可観測性/Vault オーバーレイを opt-in で立てる際、
   Vault **dev モード**の root トークンを Secret `vault-dev-token`（`platform-infra`）へ入れる。既定は dev 値 `devroot`
   （`VAULT_DEV_ROOT_TOKEN` 環境変数で上書き可）で、**manifest に平文で置かず** `k8s-local-up.sh` の `VAULT=1` が
-  `apply_secret` で生成する（postgres/rabbitmq の dev secret と同位置づけ）。経路B の Vault は既定で file ストレージを
+  `apply_secret` で生成する（postgres/rabbitmq の dev secret と同位置づけ）。経路B の Vault（製品は OpenBao。Vault API 互換）は既定で raft ストレージを
   PVC に置き、Pod 内ラッパーが unseal 鍵を PVC 上の平文ファイルから読んで自動 unseal する（`PERSIST=0` ならインメモリ）。
   root トークンが既知の dev 値である以上、鍵をローカルディスクに置いても守りの水準は変わらない。いずれも
   **dev 専用**であり、本番の Vault 化（unseal/監査/HA/ローテーション）充足ではない（Tier 3）。
@@ -599,13 +629,14 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 | 項目 | 宣言 | 理由 |
 | --- | --- | --- |
 | audit device | `stdout/`（file。コンテナの標準出力）と `otel-collector/`（socket・tcp。collector の `tcplog/vault-audit` → Loki）の **2 つ** | Vault は有効な audit device の**少なくとも 1 つ**に書けなければ要求を拒む。socket 1 つだけだと、collector や Loki が止まった瞬間に Vault が止まる（画面の書き込みも同期も止まる）。止まらない方（標準出力）を並べる |
-| 起動時の扱い | 標準出力の device を有効にできなければ Vault を起動しない。socket の device は起動を止めずに裏で再試行する | audit の無い Vault を動かさない。collector より先に Vault が上がっても立つ |
+| 起動時の扱い | 標準出力の device は設定ファイル（`local.hcl`）で宣言し、在ることを確かめられなければ起動しない。socket の device は、起動器が collector に届いてから宣言を足して設定を読み直させる（起動を止めずに裏で再試行し、足せなかった宣言は消す） | audit の無い Vault を動かさない。collector より先に Vault が上がっても立つ。🔴 製品（OpenBao）は API での audit device の作成を既定で拒むので、どちらも設定で宣言する。socket を初めから宣言すると、collector が居ないときに**初期化が鍵を返さずに失敗する**（実測）ので、届いてから足す |
 | 値の扱い | 両方に `log_raw=false`・`hmac_accessor=true` を明示する | 値・トークン・accessor を HMAC で置き換える（Vault の既定と同じ値を**書いて**固定する）。🔴 **`log_raw=true` と、mount の `audit_non_hmac_request_keys` / `audit_non_hmac_response_keys` を置かない**（平文が残る）。`deploy/`・`scripts/` に無いことは `scripts/scripts.repo.test.js` が固定する |
 | socket の待ち | `write_timeout=2s` | collector が受け取らずに詰まったとき、要求 1 本が待つ上限 |
 
-宣言の実体は `deploy/local/vault-persistence/vault-entrypoint.sh`（起動器）と、collector の 2 つの設定
+宣言の実体は `deploy/local/vault-persistence/local.hcl`（標準出力の device）と `deploy/local/vault-persistence/vault-entrypoint.sh`（起動器。socket の device）と、collector の 2 つの設定
 （`deploy/local/infra/otel-collector.yaml`〔既定。外へ出さない〕・`deploy/local/observability/otel-collector-forward.yaml`〔Loki へ出す〕）である。
 **`PERSIST=0`（インメモリの `-dev`）の Vault は audit を持たない**（起動器を通らない使い捨ての構成）。本番の Vault は未配備である。
+audit の行の形（`type`・`request.path`・`request.operation`・`auth.metadata.role`・値の HMAC）は OpenBao でも旧 Vault と同じであり、下の抽出の条件はそのまま使える（実測）。
 
 **抽出の条件**（Grafana の Explore で Loki を選んで投げる。可観測性の転送を opt-in した構成だけで引ける）:
 

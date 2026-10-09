@@ -72,7 +72,7 @@ cert-manager.io / argoproj.io）と Bound でない PV → Traefik の Service �
 
 ```bash
 OBSERVABILITY=1 bash scripts/k8s-local-up.sh --live   # Prometheus/Loki/Tempo/Grafana + collector forwarding
-VAULT=1         bash scripts/k8s-local-up.sh --live   # Vault（既定は file ストレージ＋PVC で永続化・PERSIST=0 で -dev）+ ClusterSecretStore(vault-backend)（要 ESO CRD）
+VAULT=1         bash scripts/k8s-local-up.sh --live   # 秘匿管理 OpenBao（Vault API 互換。既定は raft ストレージ＋PVC で永続化・PERSIST=0 で -dev）+ ClusterSecretStore(vault-backend)（要 ESO CRD）
 ARGOCD=1        bash scripts/k8s-local-up.sh --live   # ArgoCD install + Application 適用（MSP/AST）
 PERSIST=0       bash scripts/k8s-local-up.sh --live   # 【opt-out】永続化を外す（使い捨てスタック専用）。永続化は既定オン（下記「永続化」節・IADR-0369）
 LOCALEDGE=1     bash scripts/k8s-local-up.sh --live   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（下記 edge 節）
@@ -121,7 +121,7 @@ PERSIST=0 bash scripts/k8s-local-up.sh --live
 | Keycloak | `keycloak-data`（1Gi・local-path） | `/opt/keycloak/data`（`start-dev` の file H2。🔴 版を上げると起動時に一方向へ移行する。上げる前に退避する ——［運用仕様書］(../../docs/operations/operations.md) の「Keycloak の版の更新」） | realm ＋ runtime state（追加ユーザー・シークレット・セッション） | `PERSIST=1` |
 | Postgres | `postgres-data`（2Gi・local-path） | `/var/lib/postgresql/data` | 全アプリ DB（MSP + AST） | `PERSIST=1` |
 | Qdrant | `qdrant-storage`（2Gi・local-path） | `/qdrant/storage` | コレクションとベクトル（再 ingest なしで検索を続けられる） | `PERSIST=1` |
-| Vault | `vault-data`（1Gi・local-path） | `/vault/data`（file ストレージ＋ unseal 鍵・初期 root トークンの 0600 ファイル） | k8s auth・policy・role・KV（画面 SC-22 で入れた秘密）・OIDC 設定。Pod 内ラッパーが自動 unseal（IADR-0457） | `PERSIST=1` ＋ `VAULT=1` |
+| Vault | `vault-data`（1Gi・local-path） | `/vault/data`（OpenBao の raft ストレージ `raft/`＋ unseal 鍵・初期 root トークンの 0600 ファイル。旧 Vault から移したなら旧 file ストレージも残る） | k8s auth・policy・role・KV（画面 SC-22 で入れた秘密）・OIDC 設定。Pod 内ラッパーが自動 unseal（IADR-0457） | `PERSIST=1` ＋ `VAULT=1` |
 | Prometheus | `prometheus-data`（5Gi・local-path） | `/prometheus`（TSDB） | メトリクス（保持期間は下記 args で 35d / 4GB） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 | Loki | `loki-data`（2Gi・local-path） | `/tmp/loki`（config の `path_prefix`） | ログ（index / chunks） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 | Tempo | `tempo-data`（2Gi・local-path） | `/tmp/tempo`（`local.path` / `wal.path` の親） | トレース（blocks / wal） | `PERSIST=1` ＋ `OBSERVABILITY=1` |

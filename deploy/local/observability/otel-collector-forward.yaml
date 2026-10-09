@@ -77,6 +77,11 @@ data:
           insecure: true
       loki:
         endpoint: http://loki:3100/loki/api/v1/push
+        # NFR-18, ADR-0133, IADR-0526 (#1842): Loki の前段は書き込みの身元をトークンで検証する（push の道だけを通す）。
+        # 値は Secret `observability-gate` の `writer`（otel-collector.yaml の env。任意の参照）。無ければ空の Bearer になり、前段が 401 で拒む。
+        # 🔴 compose の deploy/otel-collector-config.yaml には置かない —— compose の Loki に前段は無い（0 段。security.md）。
+        headers:
+          Authorization: "Bearer ${env:OBS_GATE_WRITER_TOKEN}"
       debug:
         verbosity: normal
     service:

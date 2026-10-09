@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06, FR-17]
-adrs: [ADR-0131, ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083, ADR-0086]
-iadrs: [IADR-0524, IADR-0522, IADR-0520, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0519, IADR-0488, IADR-0521, IADR-0523]
-specs: [20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20261009_1841_disable-default-egress, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1850_dept-sync-carry-over, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1846_service-audience-validation]
-issues: [#1859, #1839, #1841, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1858, #1843, #1396, #1844, #1846, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#741, planning#750]
+adrs: [ADR-0133, ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083, ADR-0132, ADR-0086, ADR-0131]
+iadrs: [IADR-0526, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0525, IADR-0523, IADR-0522, IADR-0524]
+specs: [20261009_1842_loki-tempo-front-auth, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1840_secret-store-openbao, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade]
+issues: [#1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1840, #1846, #1839, #1859, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750, planning#741]
 -->
 
 # 運用仕様書
@@ -1688,7 +1688,7 @@ LlmGateway）に在るため、**当該イメージが更新済みであるこ�
 
 ### ローカル環境（`deploy/local`）で稼働しているもの
 
-- **platform-infra の Postgres（全 DB と globals）と Vault（file ストレージ）は、日次で age の公開鍵へ暗号化して
+- **platform-infra の Postgres（全 DB と globals）と Vault（OpenBao の raft ストレージ）は、日次で age の公開鍵へ暗号化して
   本機の C: と E: の 2 か所へ置く。** 永続化の既定と一緒に CronJob が入る（JST 12:00 / 12:15）。保持は日次 30 世代、
   各月の最初の回と切替前の回は 7 年。準備（公開鍵と保管先の目印）・日々の確認・リストア試験（四半期と切替前）の手順は
   [platform-infra-backup-runbook.md](platform-infra-backup-runbook.md)。
@@ -2004,6 +2004,7 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
 **残り（次の点検または別 issue）**:
 
 - 🔴 **redis と vault の差し替え**は計画の裁定を待つ（環流）。差し替えまでは現行の版を digest で固定して使う。
+  **［2026-10-09 / #1840］vault は済んだ** —— 計画が OpenBao への差し替えを裁定し、経路 B の配備を差し替えた（下の「2026-10-09（秘匿管理の差し替え）」の記録）。
 - 🟡 **基準 C の無効化が配備に入っていない 4 製品（qdrant・loki・tempo・grafana）と mailpit**は、配備へ無効化を入れる別 issue と、計画の統制表への追加の環流を要する。
   **［2026-10-09 / #1841］済んだ** —— 計画の統制表へ製品別の行が足され、配備に無効化を入れた（下の「2026-10-09」の記録）。
 - 基準 D の「認証を必須にできる」に前段の認証（メッシュ・プロキシ）を含めてよいか（loki・tempo・otel-collector・alertmanager）を計画へ確認する。
@@ -2110,6 +2111,59 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
   更新の手順は、上の「Keycloak の版の更新」に置いた。
 - 🟡 **管理用のクライアント（`mcp-client-admin`・`identity-admin`）の権限を入口の印のあるものへ絞る**のは、26.7.4 で使えるようになった
   細粒度の管理権限（v2）で行える。本回では行っていない（[セキュリティ仕様書](../security/security.md) の同じ項）。
+
+##### 2026-10-09（秘匿管理の差し替え。#1840）
+
+計画が秘匿管理の製品を HashiCorp Vault から OpenBao へ差し替えると裁定した（Vault は 1.15 以降 BUSL-1.1、配備していた 1.16 は
+コミュニティ保守も終わっていた）。本節は差し替えの受入条件 1〜6 の**確かめ方と結果**の記録である（初回の表の vault の行は書き換えない）。
+配備の宣言の正はセキュリティ仕様書（「保管先（Vault）の audit」）と配備定義、稼働中の旧 Vault からの移し方は
+[移行の手順書](secret-store-openbao-migration-runbook.md)である。
+
+- 実測の方法: 配備と同じ `openbao/openbao:2.7.1`（digest で固定）をコンテナで起こし、リポジトリの起動器（Pod 内ラッパー・`local.hcl`）、
+  ESO の種まき（`deploy/local/vault/eso/bootstrap.sh`）、OIDC の種まき（`deploy/local/vault/oidc/bootstrap.sh`）を**そのまま**走らせた
+  （`kubectl` と kube-apiserver の TokenReview・OIDC discovery は試験用の代役）。クラスタ（k3d）では確かめていない。
+
+| 製品（tag → 実体） | A ライセンス・保守 | B 配布 | C 既定の外部通信 | D 既定で開く管理用の口（配備の状態） | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| **openbao（`2.7.1`）** | MPL-2.0（イメージの label と同梱の `/licenses`）。Linux Foundation 配下。2.7.1 は 2026-10-01 のリリース | 匿名で取得でき、index の digest を 2 回解決して一致（`sha256:6d2b9385…`。amd64・arm64 を含む） | 無し（dev サーバを 130 秒観測し、loopback 以外の接続は 0 件。メトリクスの `telemetry` は設定したときだけ出る） | API・UI（8200）は token 必須（旧 Vault と同じ）。dev モードの root トークンは Secret `vault-dev-token` の既知の dev 値で、経路 B の opt-in に限る。永続化の構成は init の鍵と root トークンを PVC 上の 0600 ファイルに置く（旧 Vault と同じ水準） | 適合 |
+
+| 受入条件 | 結果 | 確かめ方 |
+| --- | --- | --- |
+| 1 実装が使う API | 通った。KV v2 の読み書き（`patch`・`cas=0` の作成・metadata）・kubernetes auth（束縛した SA だけがログインでき、他の SA は拒まれる）・OIDC auth（config・role・external group・`auth_url`）・dev モード（固定の root トークン・`secret/` の KV v2） | BFF の書き込みのクライアントと datasource-service の読み取りのクライアントを、実際の policy と role の下で実イメージへ向けて動かした（BFF が作った群の KV を datasource-service が読めた。policy の外は拒まれた） |
+| 2 ESO の Vault プロバイダ | 読めた（kubernetes 認証のログイン・token の確認・KV v2 の読み取り。token 認証の store も同じ） | ESO の Vault プロバイダが使うクライアントライブラリ（`hashicorp/vault/api`）で同じ要求を送った。ESO のコントローラそのものはクラスタで確かめていない |
+| 3 audit device | 同じ形で残せる。ただし**作り方が変わる**: OpenBao は API での audit device の作成を既定で拒むので、標準出力は設定で宣言し、collector への socket は起動器が届いてから宣言を足して読み直させる。行の形（`type`・`request.path`・`auth.metadata.role`）と値の HMAC は同じ | 起動器の実走と、collector の代役が受けた行・コンテナログの照合（平文の値は 0 件） |
+| 4 PKI | 成り立つ（root CA の生成・role・`issue`・CSR の `sign`） | 実イメージで PKI シークレットエンジンを有効にして発行した（試した後に外した） |
+| 5 環境変数 | CLI は `BAO_*` が無いとき `VAULT_ADDR` / `VAULT_TOKEN` を読み、`BAO_*` が優先される。サーバの `-dev` の root トークンは `BAO_DEV_ROOT_TOKEN_ID` だけを読む。イメージは `vault` を `bao` へのリンクとして同梱する。アプリの設定キー（`Vault__*`）は製品と無関係 | 実イメージで両方の名前を与えて比べた |
+| 6 基準 B〜D | 上の表 | — |
+
+- 🔴 **永続化のストレージは file から raft へ改めた**（OpenBao 2.x は file ストレージを持たない）。旧 Vault を永続化して動かしていたクラスタは
+  データの移行が要る。旧 Vault 1.16.3 の `operator migrate`（file → raft）の写しを OpenBao 2.7.1 が同じ unseal 鍵で開けることを確かめた
+  （KV の値と版の履歴・policy・認証の設定・固定の root トークンが残った）。手順と戻し方は移行の手順書にある。
+- 起動器（`scripts/k8s-local-up.sh`）は、稼働中が旧 Vault で PVC が在れば入れ替えの前に止まり、手順書を名指しする。
+  Pod 内のラッパーも、移していない旧データの上に新しい鍵で初期化しない（起動を拒む）。
+- 計画への環流: 受入条件 1〜3 が通ったことの充足（計画のフォローアップ 2）。C の外部通信は無いので、データ外部送信方針への環流は要らない。
+
+##### 2026-10-09（基準 D の前段の認証。loki・tempo の判定の付け直しと alertmanager。#1842）
+
+計画が、製品単体で認証を掛けられない管理用の口は「身元を検証する前段」と「前段を経由しない到達を塞ぐ別の段」の 2 段で基準 D を満たせると定めた
+（初回の「残り」の 3 つ目への答え。前段の認証を要する製品は loki・tempo の 2 つで、otel-collector は管理用の口が無く、alertmanager は製品内で掛ける）。
+本回は**経路 B の配備に 2 段を入れて** loki・tempo の判定を付け直した（上の初回の表は書き換えない）。統制の正はセキュリティ仕様書
+「インフラ製品の管理用の口」である。
+
+| 製品 | 経路 B（`deploy/local/observability`） | 経路 A（compose） | 判定 |
+| --- | --- | --- | --- |
+| loki（`3.0.0`） | **2 段**: 製品は Pod の loopback 待ち＋同じ Pod の認証付きのリバースプロキシ（書き込み・読み取りの 2 つのトークン。運用の口・削除 API・ルーラーはどちらでも 403）＋ NetworkPolicy（collector・Grafana だけ） | **0 段**（ホストへ 3100 を公開） | 適合（経路 B）。compose は 0 段を記録 |
+| tempo（`2.5.0`） | **2 段**: 同上（運用の口・`/status/*`・`/api/overrides` は 403）。OTLP の受け口（4317）は書き込みの口で、NetworkPolicy の 1 段（collector だけ） | **0 段**（ホストへ 3200・4327 を公開） | 適合（経路 B）。compose は 0 段を記録 |
+| alertmanager（`v0.27.0`） | 製品内（web config）で認証を掛けられる製品であり、前段ではなく製品内で掛ける。**配備は認証なしのまま**（本回は変えていない） | 同左（ホストへ 9093 を公開） | 適合（配備の注意。初回と同じ） |
+| opentelemetry-collector-contrib（`0.102.0`） | 管理用の口が無い（初回と同じ）。前段の認証を要する製品に数えない | 同左 | 適合 |
+
+- 確かめ方: 配備と同じ版の公式イメージ（loki・tempo・collector・Grafana・前段の caddy）を docker の上で、**描画した ConfigMap の中身そのもの**で起動し、
+  別のコンテナから要求を投げた。トークン無し・違うトークンは 401、身元の道以外（`/flush`・`/config`・`/loki/api/v1/delete`・`/status/config`・`/api/overrides`・
+  許可の道から `..` や `%2F` で抜ける形）は 403（道の抜けの断ちを足した後は、`..`・`//`・`%2e` / `%2F` を含む道は身元を見る前に 400。運用の口から許可の道へ正規化される逆向きの形も 400 になることを同じ版の caddy で確かめた）、製品の loopback の口へは別のコンテナから接続できなかった。collector の push（OTLP のログと `tcplog` の Vault の audit の 1 行）は
+  前段を通って書け、Grafana の Explore で `{job="vault-audit"} | json` が引け、Tempo のトレースの検索も通った。前段はトークンが欠けると起動しなかった。
+- **NetworkPolicy の強制は稼働クラスタで実測していない**（この回の作業環境で k3d のクラスタを起こせなかった）。宣言は描画とスキーマの検査で確かめた。次の稼働の機会に、
+  別の Pod から loki・tempo の口へ届かないことを確かめる。
+- 機械の検査: `scripts/scripts.repo.test.js`（2 段の宣言の一致と、1 か所ずつ壊した変異）・`scripts/k8s-local-up.test.js`（トークンの生成）。
 
 ## 未決事項
 

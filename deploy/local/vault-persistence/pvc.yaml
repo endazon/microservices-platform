@@ -1,4 +1,5 @@
-# IADR-0457 (#1479): 経路B の Vault の file ストレージを永続化する PVC。
+# IADR-0457 (#1479): 経路B の秘匿管理のストレージを永続化する PVC（IADR-0525 / #1840: OpenBao の raft。/vault/data/raft）。
+# 旧 Vault の file ストレージ（/vault/data 直下の core/・logical/・sys/）は移行の後も残る（戻すときの元。手順書を参照）。
 # クラスタの local-path provisioner（k3s / Rancher Desktop 同梱・RWO）で動的プロビジョニングする。
 # 適用は scripts/k8s-local-up.sh の既定（PERSIST=0 で従来の -dev＝インメモリへ戻る）。
 apiVersion: v1
