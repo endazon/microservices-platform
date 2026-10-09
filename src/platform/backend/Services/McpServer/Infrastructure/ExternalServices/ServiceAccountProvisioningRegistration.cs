@@ -162,6 +162,11 @@ public sealed class UnconfiguredServiceAccountProvisioner : IServiceAccountProvi
 
     public Task UndoAsync(IdpWrite write, CancellationToken ct) => Task.CompletedTask;
 
+    // ［#1845］secret の読み出し・再生成も 503（登録はその前の作成で 503 になっているので、ここへ来るのは再発行だけ）。
+    public Task<ClientSecretResult> ReadClientSecretAsync(string clientId, CancellationToken ct) => throw Unavailable();
+
+    public Task<ClientSecretResult> RegenerateClientSecretAsync(string clientId, CancellationToken ct) => throw Unavailable();
+
     public Task<IReadOnlyList<IdpClientEntry>> ListClientsAsync(CancellationToken ct) => throw Unavailable();
 
     public Task<IReadOnlyDictionary<string, string>?> ReadServiceAccountAttributesAsync(string clientId, CancellationToken ct)
@@ -182,6 +187,45 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
 
     private readonly Lock _gate = new();
     private readonly Dictionary<string, Account> _accounts = new(StringComparer.Ordinal);
+
+    // ［#1845］IdP 側の client secret（機密クライアントだけ）。**偽の IdP の中の状態**であり、プラットフォームの保存ではない
+    // （Keycloak 版では Keycloak が持つ）。値は実行ごとの乱数で作る（固定の値を埋め込まない）。
+    private readonly Dictionary<string, string> _secrets = new(StringComparer.Ordinal);
+
+    /// <summary>試験で「IdP 側の現在の secret」と応答を突き合わせるための読み口（機密クライアントだけ。無ければ null）。</summary>
+    public string? CurrentSecretOf(string clientId)
+    {
+        lock (_gate) return _secrets.GetValueOrDefault(clientId);
+    }
+
+    /// <summary>［#1845］secret の読み出しを失敗させる（登録の応答を組み立てる段の失敗の再現。試験用）。</summary>
+    public bool FailSecretReads { get; set; }
+
+    private static string NewSecret() => Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+
+    public Task<ClientSecretResult> ReadClientSecretAsync(string clientId, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            if (FailSecretReads)
+                throw new IdpProvisioningException(IdpProvisioningFailure.Failed, "client secret の読み出しが失敗した（試験の再現）。");
+            return Task.FromResult(SecretOf(clientId, regenerate: false));
+        }
+    }
+
+    public Task<ClientSecretResult> RegenerateClientSecretAsync(string clientId, CancellationToken ct)
+    {
+        lock (_gate) return Task.FromResult(SecretOf(clientId, regenerate: true));
+    }
+
+    private ClientSecretResult SecretOf(string clientId, bool regenerate)
+    {
+        if (!_accounts.TryGetValue(clientId, out var account)) return ClientSecretResult.Refused(ClientSecretOutcome.Absent, clientId);
+        if (!account.Managed) return ClientSecretResult.Refused(ClientSecretOutcome.NotManaged, clientId);
+        if (account.RedirectUris is not null) return ClientSecretResult.Refused(ClientSecretOutcome.NotConfidential, clientId);
+        if (regenerate || !_secrets.ContainsKey(clientId)) _secrets[clientId] = NewSecret();
+        return ClientSecretResult.Issued(clientId, new ClientSecret(_secrets[clientId]));
+    }
 
     /// <summary>IdP 側に在るクライアントの写し（clientId → 属性）。</summary>
     public IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Snapshot()
@@ -231,7 +275,11 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
     /// <summary>クライアントを IdP から消す（IdP の管理画面での直接の削除の再現。試験用）。</summary>
     public void Remove(string clientId)
     {
-        lock (_gate) _accounts.Remove(clientId);
+        lock (_gate)
+        {
+            _accounts.Remove(clientId);
+            _secrets.Remove(clientId);
+        }
     }
 
     public Task<IReadOnlyList<IdpClientEntry>> ListClientsAsync(CancellationToken ct)
@@ -319,6 +367,7 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
                     break;
                 case IdpWriteKind.Created:
                     _accounts.Remove(write.ClientId);
+                    _secrets.Remove(write.ClientId);
                     break;
                 case IdpWriteKind.Updated when _accounts.TryGetValue(write.ClientId, out var current):
                     if (write.WrittenAttributes is { } written
@@ -337,6 +386,8 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
     private IdpWrite Create(string clientId, IReadOnlyDictionary<string, string> attributes, bool enabled)
     {
         _accounts[clientId] = new Account(new Dictionary<string, string>(attributes), Managed: true, Enabled: enabled);
+        // Keycloak と同じく、機密クライアントは作成の時点で secret を持つ。
+        _secrets[clientId] = NewSecret();
         return new IdpWrite(IdpWriteKind.Created, clientId, clientId, clientId,
             WrittenAttributes: new Dictionary<string, string>(attributes));
     }

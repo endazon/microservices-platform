@@ -31,6 +31,10 @@ public class IdpFirstWriteTests
 
         public Task<IdpWrite> SetEnabledAsync(string clientId, bool enabled, CancellationToken ct) => throw new NotSupportedException();
 
+        public Task<ClientSecretResult> ReadClientSecretAsync(string clientId, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<ClientSecretResult> RegenerateClientSecretAsync(string clientId, CancellationToken ct) => throw new NotSupportedException();
+
         public Task UndoAsync(IdpWrite write, CancellationToken ct)
         {
             Undone.Add(write);

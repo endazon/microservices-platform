@@ -18,6 +18,8 @@ import type {
 
 import type {
   EffectiveToolsView,
+  McpClientRegistrationView,
+  McpClientSecretView,
   McpClientView
 } from '../bff.schemas';
 
@@ -27,10 +29,11 @@ import {
   getBffMcpListClientsResponseMock,
   getBffMcpListToolsResponseMock,
   getBffMcpRegisterClientResponseMock,
+  getBffMcpReissueClientSecretResponseMock,
   getBffMcpReplaceClientAttributesResponseMock
 } from './mcp-clients.faker';
 
-export { getBffMcpListClientsResponseMock, getBffMcpRegisterClientResponseMock, getBffMcpListToolsResponseMock, getBffMcpDisableClientResponseMock, getBffMcpEnableClientResponseMock, getBffMcpReplaceClientAttributesResponseMock } from './mcp-clients.faker';
+export { getBffMcpListClientsResponseMock, getBffMcpRegisterClientResponseMock, getBffMcpListToolsResponseMock, getBffMcpDisableClientResponseMock, getBffMcpEnableClientResponseMock, getBffMcpReissueClientSecretResponseMock, getBffMcpReplaceClientAttributesResponseMock } from './mcp-clients.faker';
 
 
 export const getBffMcpListClientsMockHandler = (overrideResponse?: McpClientView[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<McpClientView[]> | McpClientView[]), options?: RequestHandlerOptions) => {
@@ -45,7 +48,7 @@ export const getBffMcpListClientsMockHandler = (overrideResponse?: McpClientView
   }, options)
 }
 
-export const getBffMcpRegisterClientMockHandler = (overrideResponse?: McpClientView | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<McpClientView> | McpClientView), options?: RequestHandlerOptions) => {
+export const getBffMcpRegisterClientMockHandler = (overrideResponse?: McpClientRegistrationView | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<McpClientRegistrationView> | McpClientRegistrationView), options?: RequestHandlerOptions) => {
   return http.post('*/bff/admin/mcp-clients', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
 
 
@@ -93,6 +96,18 @@ export const getBffMcpEnableClientMockHandler = (overrideResponse?: McpClientVie
   }, options)
 }
 
+export const getBffMcpReissueClientSecretMockHandler = (overrideResponse?: McpClientSecretView | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<McpClientSecretView> | McpClientSecretView), options?: RequestHandlerOptions) => {
+  return http.post('*/bff/admin/mcp-clients/:clientId/reissue-secret', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffMcpReissueClientSecretResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
 export const getBffMcpReplaceClientAttributesMockHandler = (overrideResponse?: McpClientView | ((info: Parameters<Parameters<typeof http.put>[1]>[0]) => Promise<McpClientView> | McpClientView), options?: RequestHandlerOptions) => {
   return http.put('*/bff/admin/mcp-clients/:clientId/attributes', async (info: Parameters<Parameters<typeof http.put>[1]>[0]) => {
 
@@ -110,5 +125,6 @@ export const getMcpClientsMock = () => [
   getBffMcpListToolsMockHandler(),
   getBffMcpDisableClientMockHandler(),
   getBffMcpEnableClientMockHandler(),
+  getBffMcpReissueClientSecretMockHandler(),
   getBffMcpReplaceClientAttributesMockHandler()
 ]
