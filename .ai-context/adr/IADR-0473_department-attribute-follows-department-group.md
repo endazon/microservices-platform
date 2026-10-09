@@ -5,17 +5,19 @@ status: Accepted
 related_ids: [FR-05, FR-09, UC-05, SC-17, ADR-0115, ADR-0116, ADR-0026, ADR-0088, IADR-0301, IADR-0329, IADR-0369, IADR-0385, IADR-0413, IADR-0428, IADR-0468, IADR-0472, IADR-0477]
 author: claude
 created: 2026-09-26
-updated: 2026-09-27
+updated: 2026-10-09
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0115_department-domain-is-realm-group-and-default-from-registrant.md 決定 3
   - planning:projects/microservices-platform/07_adr/ADR-0088_authz-resolves-user-attributes-itself.md 決定 1
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md §利用者属性
   - planning:projects/microservices-platform/07_adr/ADR-0116_sc17-department-edits-group-membership.md 決定 2（2026-09-27 追記 / #1609）
   - planning:projects/microservices-platform/07_adr/ADR-0116_sc17-department-edits-group-membership.md 決定 1（2026-09-27 追記 / #1610。SC-17 の部門欄は部門グループの所属を変える）
+  - planning:projects/microservices-platform/07_adr/ADR-0116_sc17-department-edits-group-membership.md 決定 1 の 2026-10-09 補完・決定 4 の 2026-10-09 追記（2026-10-09 追記 / #1783。稼働 PoC の配備値は Fix・暫定手段の訂正）
 related_specs:
   - ../specs/20260926_issue-1573_department-attribute-follows-group.md
   - ../specs/20260927_issue-1609_department-clear-and-dictionary-from-realm.md
   - ../specs/20260927_issue-1610_sc17-department-edits-group-membership.md
+  - ../specs/20261009_1783_dept-sync-poc-fix.md
 ---
 
 # IADR-0473: 利用者属性 department を部門グループ所属へ合わせる（#1573）
@@ -150,3 +152,26 @@ AST のクライアントが依存する挙動を変えない。
 3. ［2026-09-27 追記 / #1609］SC-17 の部門欄（残るもの 1）は、計画 ADR-0116 決定 1 で「部門グループの所属を変える」と裁定された（#1610）。
    属性辞書の部門の値は realm の部門グループから導く形になった（[[IADR-0477]]）。
    - ［2026-09-27 追記 / #1610］実装した（決定 13）。**2 個以上の部門グループに属する人の扱いは計画でも実装でも対象外のまま**（SC-17 は変えずに理由を示す）。
+
+## ［2026-10-09 追記 / #1783］稼働 PoC の配備値は `Fix`・コードの既定は `Off` のまま・暫定手段の訂正（計画 ADR-0116 決定 1 の 2026-10-09 補完。planning#741 項目 4）
+
+> 上の本文・追記は書き換えない。本節は利用者裁定（2026-10-09。planning#741 項目 4・第 4 回全体監査 B-12）を受けて決めたことだけを足す。
+> 作業仕様書 `20261009_1783_dept-sync-poc-fix` と対になる。計画は ADR-0116 決定 1 の 2026-10-09 補完・決定 4 の表の直後の 2026-10-09 追記・フォローアップ 5
+> （完了記録 `projects/microservices-platform/10_feedback/20261009_audit-b12-b13-dept-sync-ingestion.md`）。
+
+1. **稼働 PoC の配備値は `Fix` とする。決定 1 の既定（`Off`）は変えない。** 計画は「コードの既定を `Fix` にしない理由」を、段階的な適用（`Report` を経る）を飛ばさないこと、
+   配備するだけで稼働 realm（AST の PoC と共有）への書き込みが始まる形にしないこととした。本 IADR の §結果「稼働環境への適用」（`Report` で確かめてから `Fix`）が、
+   そのまま稼働 PoC の手順になる。
+2. **値はリポジトリの values に置かない。運用者が稼働 PoC の helm リリースへ `helm upgrade --reuse-values` で入れる。** 稼働 PoC は `scripts/k8s-local-up.sh` が
+   `deploy/local/values-local.yaml` で立てるが、同じ上書きを CI の使い捨てスタック（`ci.yml`・`integration-stack.yml`・`cutover-rehearsal.yml`）も使う。
+   `values-local.yaml` に `Fix` を書くと、計画が「変えない」とした helm の既定を CI の側でも変えることになる。env は `services.authorization.extraEnvAppend` へ足す
+   （`extraEnv` へ `--set` すると既存の `IdentityAdmin__*` が消える）。`kubectl set env` / `kubectl patch` は使わない（Helm 4 のサーバサイド apply で field manager が奪われる。IADR-0377）。
+   手順（`Report` → ログ → `Fix` → 試験利用者 1 人）は運用仕様書 `docs/operations/operations.md` §利用者の部門属性を部門グループへ合わせる同期の有効化 の「稼働 PoC を `Fix` にする手順」に置いた。
+3. **暫定手段の訂正を写す。** 計画の旧い暫定手段「SC-17 で属性を同じ値にそろえる」は決定 13（SC-17 は属性を書かない）の後は成り立たない（計画は例外 3 で訂正した）。
+   `Off` / `Report` の間は、Keycloak の管理コンソールで属性 `department` を手で直し、`Report` の後はログで食い違いが残っていないことを確かめる。運用仕様書の
+   「属性を別の手段でそろえる」をこの手順へ具体化した。決定 2 の追記の「グループから外したときは属性も手で消す」は `Off` / `Report` の間そのまま成り立つ。
+4. **実装（コード・helm values・compose）は変えない。** 本節の時点（MSP `origin/develop` `c66c5641`）で稼働 PoC の同期は `Off`（未適用）であり、適用は運用者の作業である。
+
+- 🔴 **残るリスク**: `scripts/k8s-local-up.sh` の再実行（`--reuse-values` なし）は上書きを外し、同期を `Off` へ黙って戻す（`Off` では計器の系列が無く
+  `DepartmentSyncNotCorrecting` も鳴らない）。運用仕様書に「再実行の後は当て直す」と書いた。起動器が現行の値を引き継ぐ形（`ISTIO` と同じ「明示 ＞ 現行 ＞ 初回の既定」。
+  IADR-0488）にすれば塞がるが、本 issue の範囲（裁定の反映）を超えるため作っていない。
