@@ -30,8 +30,15 @@ spec:
     spec:
       containers:
         - name: mailpit
-          image: axllent/mailpit:v1.21.8@sha256:81370195cd4a0eab9604d17c2617a7525b0486f9365555253b6c5376c6350f1a
+          # ADR-0107 決定 4, #1841: v1.21.8 は最新版の確認（api.github.com）を**止める設定を持たない**（MP_DISABLE_VERSION_CHECK は
+          # v1.26.2 で入った。v1.21.8 へ与えても /api/v1/info のたびに問い合わせることを捕捉プロキシで実測）。止められる版へ上げた。
+          image: axllent/mailpit:v1.31.4@sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48
           env:
+            # ADR-0107 決定 4, #1841: 最新版の確認（GitHub への問い合わせ。/api/v1/info を読むたびに起きる —— check-stack-ready の G8 と
+            # check-password-reset-mail が読む）を止める。🔴 外さないこと（scripts/lib/product-egress-defaults.js が検査し、
+            # 稼働では check-stack-ready の G8 が応答の LatestVersion が "disabled" であることを確かめる）。
+            - name: MP_DISABLE_VERSION_CHECK
+              value: "true"
             # 受信は認証を要求しない（dev の閉じたクラスタ内であり、資格情報を 1 つも増やさないため）。
             # Keycloak 側も auth=false / starttls=false で繋ぐ（realm.json の dev 既定）。
             - name: MP_SMTP_AUTH_ACCEPT_ANY

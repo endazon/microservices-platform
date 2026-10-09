@@ -1170,6 +1170,20 @@ function evaluateMailCapture(input) {
       `[G8] ${MAIL_CAPTURE_NS}/${deploy} の API 応答が想定と違う（"Version" を含まない）。`
       + ' 応答を読めたことと、捕捉用 MTA として答えたことは別である。',
     );
+    return failures;
+  }
+  // ADR-0107 決定 4, #1841: この API（/api/v1/info）は読むたびに最新版を GitHub へ問い合わせる（Mailpit の既定）。
+  // MP_DISABLE_VERSION_CHECK が効いていれば LatestVersion は "disabled" を返す —— **稼働している Pod で
+  // 無効化が効いていることの実測**であり、マニフェストの静的検査（product-egress-defaults.js）では見えない
+  // 「設定は在るが効かない版」（v1.26.2 より前は設定を無視する）をここで落とす。
+  const latest = /"LatestVersion"\s*:\s*"([^"]*)"/.exec(input.apiBody);
+  if (!latest || latest[1] !== 'disabled') {
+    failures.push(
+      `[G8] ${MAIL_CAPTURE_NS}/${deploy} の最新版の確認（api.github.com への問い合わせ）が止まっていない`
+      + `（LatestVersion=${latest ? JSON.stringify(latest[1]) : '(無い)'}。期待値 "disabled"）。`
+      + ' データ外部送信方針は既定の外部通信の無効化を求めている（ADR-0107 決定 4）。'
+      + ` ${MAIL_CAPTURE_MANIFEST} の MP_DISABLE_VERSION_CHECK と、イメージが v1.26.2 以上であることを確かめよ。`,
+    );
   }
   return failures;
 }
@@ -1976,7 +1990,7 @@ function selfTest() {
     target: { deploy: 'mailpit', httpPort: '8025' },
     deployExists: true,
     apiStatus: 0,
-    apiBody: '{"Version":"v1.21.8","Messages":0}',
+    apiBody: '{"Version":"v1.31.4","LatestVersion":"disabled","Messages":0}',
   };
 
   ok('G8: 捕捉用 MTA が居て API が読めれば通る（陽性対照）', () => {
@@ -1998,6 +2012,19 @@ function selfTest() {
   ok('G8: 応答が捕捉用 MTA のものでなければ失敗になる（読めたことと答えたことは別）', () => {
     assert.strictEqual(evaluateMailCapture({ ...mailOk, apiBody: '<html>404</html>' }).length, 1,
       '別物の応答を通している');
+  });
+
+  // ADR-0107 決定 4, #1841: 最新版の確認が稼働で止まっていることを応答で確かめる（増える側と減る側の両方）。
+  ok('G8: 最新版の確認が止まっていなければ失敗になる（LatestVersion が版番号・空・欠落）', () => {
+    for (const apiBody of [
+      '{"Version":"v1.31.4","LatestVersion":"v1.31.5","Messages":0}', // 問い合わせが通った
+      '{"Version":"v1.21.8","LatestVersion":"","Messages":0}', // 問い合わせたが外へ出られなかった（v1.21.8 の実測の形）
+      '{"Version":"v1.31.4","Messages":0}', // 欠落（判定できない）
+    ]) {
+      const f = evaluateMailCapture({ ...mailOk, apiBody });
+      assert.strictEqual(f.length, 1, `止まっていない応答を通している: ${apiBody}`);
+      assert.ok(f[0].includes('MP_DISABLE_VERSION_CHECK'), '復旧の手掛かり（設定名）を書いていない');
+    }
   });
 
   ok('G8: 宣言を読めなければ失敗になる（既定値へ落とさない）', () => {

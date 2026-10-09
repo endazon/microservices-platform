@@ -3,15 +3,15 @@ title: Docker Engine API が無い環境（containerd 等）で統合テスト�
 type: how-to
 status: fixed
 created: 2026-09-08
-updated: 2026-10-08
+updated: 2026-10-09
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, NFR-09, UC-03, UC-05]
-adrs: [ADR-0004, ADR-0027, ADR-0106]
-iadrs: [IADR-0130, IADR-0231, IADR-0232, IADR-0414, IADR-0461]
-specs: [20260908_issue-1336_integration-gate-asks-for-services, 20260909_issue-1337_fanout-tests-on-shared-broker, 20260915_issue-1434_minio-image-registry, 20260925_1499_object-storage-seaweedfs, 20261008_1790_qdrant-test-image-pin]
-issues: [#455, #1073, #1336, #1337, #1434, #1499, #1790]
+adrs: [ADR-0107, ADR-0004, ADR-0027, ADR-0106]
+iadrs: [IADR-0519, IADR-0130, IADR-0231, IADR-0232, IADR-0414, IADR-0461]
+specs: [20261009_1841_disable-default-egress, 20260908_issue-1336_integration-gate-asks-for-services, 20260909_issue-1337_fanout-tests-on-shared-broker, 20260915_issue-1434_minio-image-registry, 20260925_1499_object-storage-seaweedfs, 20261008_1790_qdrant-test-image-pin]
+issues: [#1841, #455, #1073, #1336, #1337, #1434, #1499, #1790]
 -->
 
 # 手順書: Docker Engine API が無い環境で統合テストを走らせる
@@ -44,10 +44,12 @@ nerdctl run -d --name msp-test-mq -p 55672:5672 rabbitmq:3.13-alpine
 Qdrant とオブジェクトストレージも要るなら:
 
 ```bash
-nerdctl run -d --name msp-test-qdrant -p 56334:6334 qdrant/qdrant:v1.18.1
+nerdctl run -d --name msp-test-qdrant -p 56334:6334 -e QDRANT__TELEMETRY_DISABLED=true qdrant/qdrant:v1.18.1
 ```
 
 Qdrant の版は試験が使う `QdrantTestImage.Reference`（配備と同じ版。試験が配備の定義との一致を検査する）に合わせる。
+🔴 **`QDRANT__TELEMETRY_DISABLED=true` を外さないこと。** Qdrant はテレメトリが既定で有効であり（起動の直後から外へ送る）、
+試験が自分で起こすときも同じ設定を与えている（`QdrantTestImage.CreateBuilder()`）。
 
 オブジェクトストレージは **SeaweedFS** である（2026-09-25 に MinIO から差し替えた。MinIO の公開イメージは匿名で
 取得できなくなっている）。**イメージと引数はテストが起こすものと同じにする**（`SeaweedFsContainer` を参照）。

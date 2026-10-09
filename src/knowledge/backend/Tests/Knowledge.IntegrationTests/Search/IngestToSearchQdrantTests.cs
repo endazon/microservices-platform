@@ -61,7 +61,7 @@ public sealed class IngestToSearchQdrantTests : IAsyncLifetime
         if (!DockerRequired.IsAvailable()) return;
 
         // #1790: 版は配備と同じものを明示する（引数なしの構築子は廃止予定で v1.13.4 を起こす）。
-        _qdrant = new QdrantBuilder(QdrantTestImage.Reference).Build();
+        _qdrant = QdrantTestImage.CreateBuilder().Build();
         await _qdrant.StartAsync();
 
         var uri = new Uri(_qdrant.GetGrpcConnectionString());
