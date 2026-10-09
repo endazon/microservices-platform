@@ -52,7 +52,8 @@ related_specs:
 ### 決定 3 — 生成点を 1 つの静的クラスへ寄せる
 
 - `LlmGateway.Infrastructure.ExternalServices.AnthropicHttpClient`（`ResolveTimeout`・`Create`）が、サニタイズの委譲ハンドラ・応答圧縮・期限をまとめて組む。
-  `Program.cs` はそれを呼ぶだけにする。試験は `Create` の返す `HttpClient.Timeout` を直接見る（`AnthropicClient` は渡された `HttpClient` を公開しないため）。
+  `Program.cs` はそれを呼ぶだけにする。試験は 2 段で見る。T-33 は `Create` の返す `HttpClient.Timeout` を直接見る。T-34 は実ホストから `AnthropicClient` を解決し、期限とハンドラ鎖を見る。
+  `AnthropicClient` は渡された `HttpClient` を非公開のプロパティに持ち、`HttpClient` もハンドラを公開しないので、T-34 は両方をリフレクションで読む（試験だけの読み取り。PR #1873 の監査で足した）。
 
 ### 決定 4 — 制約「呼び出し側の期限はこの値より短く保つ（長いならこの値を延ばす）」と現行の呼び出し側を運用文書に書く
 
@@ -61,7 +62,11 @@ related_specs:
   よって呼び出し側の期限はゲートウェイの期限より短く保ち、呼び出し側の長い予算を生かすときは、先にこの設定をそれより長く延ばす。
 - 現行の呼び出し側（2026-10-10 に呼び出し側のコードを走査した値。記憶で挙げない。PR #1873 の AI レビューの指摘で走査し直した）:
   - MSP: 検索の再順位付け 8 秒（`Rerank__TimeoutSeconds`）・図のコード化 20 秒（`Conversion:DiagramCodingTimeoutSeconds`）・
-    AI 分析／検索チャット・知識グラフの AI 提案とクラスタ要約は期限を置いておらず `HttpClient` の既定 100 秒（ゲートウェイと同値）。
+    AI 分析の一括（REST。`HttpLlmCompletionTransport` の `/complete`・`RagOrchestrator` から）と知識グラフの AI 提案・クラスタ要約（REST。`GraphService/Program.cs` の型付きクライアントに `Timeout` なし）は
+    `HttpClient` の既定 100 秒（ゲートウェイと同値）。AI 分析の逐次（REST の `/complete/stream`・`ResponseHeadersRead`）は両側とも応答ヘッダの到着までしか効かない。
+    **gRPC の経路**（AI 分析の一括・逐次〔`GrpcLlmCompletionTransport`〕と知識グラフの AI 提案〔`LlmGatewayGrpcSuggestionClient`〕。compose は ai-analysis と graph で有効）は呼び出しに deadline を付けず、
+    共通の `AddLlmGatewayGrpcClient` も付けない。したがって一括はゲートウェイの期限が唯一の上限になる。
+    gRPC の経路で呼び出し側の期限と同じ値を deadline に使うのは、AST の 2 サービスと図のコード化だけである。再順位付けは取り消し（`CancelAfter`）で両経路に 8 秒を掛ける。
   - AST（本リポの submodule の pin `58fe8c24` で走査）: 取引判断 30 秒（`LlmGateway:TimeoutSeconds`）・日報の散文 30 秒・
     **週報・月報の散文 120 秒**（`ReportNarrativeTimeouts` の `HeavyDefault`。REST の `HttpClient.Timeout` も種別の最大＝ 120 秒）・方針の改訂 60 秒。
     方針の改訂の 95 秒は AST develop `24dc448b`（AST#1289）以降であり、**pin には未反映**である。
