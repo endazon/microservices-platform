@@ -10,8 +10,8 @@ author: claude
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06]
 adrs: [ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123]
 iadrs: [IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498]
-specs: [20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
-issues: [#1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750]
+specs: [20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank]
+issues: [#1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750, planning#741]
 -->
 
 # 運用仕様書
@@ -360,6 +360,9 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
 認可サービスの定期処理 `DepartmentAttributeSyncHostedService` は、ABAC が読む利用者属性 `department` を部門グループ
 （`/department/<コード>`）の所属へ合わせる。**既定無効**（`Off`）で、有効化は構成で行う。**helm values・compose には既定値を置いていない**
 （＝デプロイしただけでは稼働 realm に何も起きない）。
+［2026-10-09 / #1783］**稼働 PoC の配備値は `Fix` とする**（計画の裁定。コードの既定 `Off` と helm values・compose の既定は変えない）。
+値は運用者が稼働 PoC の helm リリースへ下の「稼働 PoC を `Fix` にする手順」で入れる（リポジトリの values には書かない —— `values-local.yaml` は
+CI の使い捨てスタックも使うため）。**手順を終えるまでは、下の「利用者アカウント管理画面の部門欄」の `Off` / `Report` の扱い（属性を管理コンソールで手で直す）が担う。**
 
 - **構成**: env `DepartmentAttributeSync__Mode`（`Off` / `Report` / `Fix`）と `DepartmentAttributeSync__Interval`（既定 `01:00:00`）を
   authorization-service へ与える。値域外は起動時に落ちる（打ち間違いを黙って無効にしない）。
@@ -374,6 +377,46 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
      属性の見え方が違う realm であり、**同期は全員を見送り続けて誰も直さない**（周期の結末 `all_skipped_changed`・Warning ログ）。
      その場合は `Off` に戻して報告する。
   4. 以後、属性はグループのコードへ直る。2 周目以降の「直した」は 0 件になる（冪等）。
+- **稼働 PoC を `Fix` にする手順**（［2026-10-09 / #1783］。運用者が行う。**現状: 未適用**＝稼働 PoC の同期は `Off`）:
+  上の段階的な適用を、稼働 PoC の helm リリースに当てはめたものである。リポジトリの作業ツリー（稼働 PoC を立てたのと同じコミット）の根で実行する。
+  🔴 **値は helm を通してだけ書く。`kubectl set env` / `kubectl patch` で Deployment を直接書かない**（直接書いた値は helm の管理外に残り、
+  起動器を再実行しても消えない静かな乖離になる。後で helm から同じキーを別の値で書くと、Helm 4 のサーバサイド apply の field manager の
+  衝突で `helm upgrade` が落ちる。`scripts/lib/mesh-mtls-mode.sh` 冒頭の実測と同じ型）。
+  env は `extraEnvAppend` へ足す（`extraEnv` へ `--set` すると既存の `IdentityAdmin__*` が丸ごと消え、Pod が起動しない）。
+  `--reuse-values` と `--set …extraEnvAppend[0]` は authorization の `extraEnvAppend` の**リストを丸ごと置き換える**。先に
+  `helm get values msp -n microservices-platform -o yaml` で authorization の `extraEnvAppend` が無いこと（あればその要素も `--set` に含めること）を確かめる。
+  1. **`Report` で起動する**（書き込みは起きない。env が変わるので Pod が作り直され、起動直後に 1 周目が回る）:
+
+     ```bash
+     helm upgrade msp deploy/helm/microservices-platform -n microservices-platform --reuse-values \
+       --set 'services.authorization.extraEnvAppend[0].name=DepartmentAttributeSync__Mode' \
+       --set 'services.authorization.extraEnvAppend[0].value=Report'
+     kubectl -n microservices-platform rollout status deploy/authorization-service
+     kubectl -n microservices-platform logs deploy/authorization-service --since=15m | grep '部門の同期'
+     ```
+
+  2. **ログで確かめる**: まとめ行「部門の同期（Report）: 一致 … / 食い違い … / … 部門グループなし …」の件数と、
+     「部門の同期（Report）: 利用者 … が部門グループと食い違う」「… 部門グループに 1 つも属さないのに属性 department（…）を持つ」の対象（IdP 内部 ID）を見る。
+     🔴 **「部門グループに 1 つも属さない」の人は `Fix` で属性が消える**（その部門の資料が見えなくなる）。意図しない人がいれば、先に部門グループへ入れる。
+     食い違いがグループ側の誤りならグループの所属を直す。直したら次の周期（既定 1 時間）か、
+     `kubectl -n microservices-platform rollout restart deploy/authorization-service` の後のログで、残っていないことを確かめる。
+  3. **`Fix` へ切り替える**（同じ形で値だけを変える）:
+
+     ```bash
+     helm upgrade msp deploy/helm/microservices-platform -n microservices-platform --reuse-values \
+       --set 'services.authorization.extraEnvAppend[0].name=DepartmentAttributeSync__Mode' \
+       --set 'services.authorization.extraEnvAppend[0].value=Fix'
+     kubectl -n microservices-platform rollout status deploy/authorization-service
+     ```
+
+  4. **試験利用者 1 人で書けることを確かめる**（上の段階的な適用の 3）。部門グループに 1 つだけ属し、属性 `department` をわざと別の値にした試験利用者を用意し、
+     1 周後（`rollout restart` で即時）にログ「属性 department を部門グループに合わせて直した」と計器 `corrected` を見る。「見送り（変更あり）」が続き直らないなら、
+     手順 1 の形で値を `Off` に戻して報告する。
+  5. **確かめたら、本項の「現状」を適用した日と値に書き換える**（運用者の記録。リポジトリの PR で行う）。
+  - 🔴 **`scripts/k8s-local-up.sh` を再実行すると、この値は外れて `Off` に戻る**（起動器は `--reuse-values` を使わず values ファイルだけから描画する）。
+    `Off` では計器の系列が無く `DepartmentSyncNotCorrecting` も鳴らない（**黙って戻る**）。再実行の後は手順 3 を当て直し、
+    ログに「部門の同期は無効です」が出ていないことを確かめる。起動器が現行の値を引き継ぐようにする作業は #1850 で扱う。
+  - 確かめ方（いまの値）: `helm get values msp -n microservices-platform -o yaml | grep -A1 DepartmentAttributeSync__Mode`（何も出なければ `Off`）。
 - **書くもの**: 部門グループにちょうど 1 つ属する利用者の属性 `department`（グループのコードへ直す）と、部門グループに 1 つも属さない利用者の
   属性 `department`（消す。下の「部門グループから外された利用者」）だけ。グループ所属・ロール・realm の構成・マッパー・
   クライアント・secret には触れない。サービスアカウント（AST のクライアントを含む）の属性は書かない。
@@ -395,6 +438,10 @@ config（Helm values）で行う。同期ユースケースの基本フロー「
   利用者に画面で部門を付けても消える」は起きなくなった（画面が部門グループそのものを変えるため）。
   - 🔴 **`Off` / `Report` の環境では、画面で部門を変えても認可に使う属性は変わらない**（同期が追随させないため）。その環境で部門を認可へ反映させるには
     `Fix` を有効にするか、属性を別の手段でそろえる。画面の「未反映」の表示が残り続けるのはこの状態である。
+    ［2026-10-09 / #1783］**「別の手段」は、認可基盤（Keycloak）の管理コンソールで、その利用者の属性 `department` を部門グループのコードと同じ値へ手で直すことである**
+    （計画の暫定手段の訂正。**この画面では属性はそろえられない** —— 画面は属性を書かない）。部門を変えるときは、画面で部門グループの所属を変えてから
+    管理コンソールで属性を直す。`Report` にした後は、ログ「部門の同期（Report）」に食い違いが残っていないことで直したことを確かめる。
+    稼働 PoC では上の「稼働 PoC を `Fix` にする手順」を終えるまでこの扱いが続く。
   - 部門グループが 2 つ以上の利用者は画面から変えられない（理由を示す）。管理コンソールで所属を 1 つにしてから変える。
   - 所属の変更は画面から先に入れてから外す。途中で失敗したときは元に戻し、戻せなかったときも部門グループ 0 個にはせず、画面にいまの所属を示す
     （サービスのエラーログ「部門グループの変更が途中で失敗し、元に戻せなかった」に IdP 内部 ID が出る）。管理コンソールで所属を確かめる。
