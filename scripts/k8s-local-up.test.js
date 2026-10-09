@@ -5331,6 +5331,30 @@ ok('#1839: 旧 Redis（認証なし）を消し、Valkey の起動を待つ（ES
   assert.ok(applyAt >= 0 && deleteAt > applyAt, `順序が違う: apply=${applyAt} delete=${deleteAt}`);
 });
 
+ok('#1860 監査指摘 2: パスワードを変えたら Valkey → BFF の順に作り直し、変えなければ作り直さない', () => {
+  const existingValue = ['dummy', '1860', 'old'].join('-');
+  const rotatedValue = ['dummy', '1860', 'new'].join('-');
+  const restartValkey = 'kubectl -n platform-infra rollout restart deploy/valkey';
+  const restartBff = 'kubectl -n microservices-platform rollout restart deploy/bff-service';
+  const rotated = runUp({ SESSION_STORE_PASSWORD: rotatedValue, STUB_SESSION_STORE_EXISTING: existingValue });
+  assert.strictEqual(rotated.status, 0, rotated.stderr);
+  const valkeyAt = rotated.lines.indexOf(restartValkey);
+  const bffAt = rotated.lines.indexOf(restartBff);
+  const helmAt = rotated.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  assert.ok(valkeyAt >= 0, 'Valkey を作り直していない');
+  assert.ok(bffAt > valkeyAt && bffAt > helmAt, `順序が違う: valkey=${valkeyAt} helm=${helmAt} bff=${bffAt}`);
+  // 陰性対照: 同じ値の明示・既存値の使い回し・初回（既存なし）はいずれも作り直さない
+  for (const r of [
+    runUp({ SESSION_STORE_PASSWORD: existingValue, STUB_SESSION_STORE_EXISTING: existingValue }),
+    runUp({ STUB_SESSION_STORE_EXISTING: existingValue }),
+    runUp({ SESSION_STORE_PASSWORD: rotatedValue }),
+  ]) {
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(!r.lines.includes(restartValkey) && !r.lines.includes(restartBff), '値が変わらないのに作り直した');
+  }
+  assert.ok(!`${rotated.stdout}${rotated.stderr}`.includes(rotatedValue), '値を出力した');
+});
+
 // ---- #1850 / IADR-0473（2026-10-09 追記）: 再実行で部門属性の同期（DepartmentAttributeSync__Mode）を黙って Off に戻さない ----------
 //
 // 稼働 PoC の値は運用者が helm の --reuse-values で authorization の extraEnvAppend へ入れる。[6/7] は --reuse-values を使わないので、

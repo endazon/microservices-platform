@@ -1,5 +1,5 @@
 ---
-title: IADR-0522 キャッシュ・セッションストアを Redis 7.4 から Valkey 9.1 へ差し替え、認証を必須（空なら起動しない）にして到達を BFF に絞る。パスワードは Secret から BFF の構成値 1 つで注入し、ヘルスチェックとセッションが同じ構成文字列を使う
+title: IADR-0522 キャッシュ・セッションストアを Redis 7.4 から Valkey 9.1 へ差し替え、認証を必須（空なら起動しない）にして到達を BFF に絞る。パスワードは Secret から BFF の構成値 1 つで注入し、ヘルスチェックとセッションが同じ構成を使う
 type: impl-adr
 status: Accepted
 related_ids: [ADR-0131, ADR-0107, ADR-0112, ADR-0032, ADR-0030, NFR-18, IADR-0251, IADR-0316, IADR-0510, IADR-0514, IADR-0461, IADR-0066, IADR-0453]
@@ -129,14 +129,29 @@ compose は他の dev 既定と同じ形（`${SESSION_STORE_PASSWORD:-session-st
 - **compose**: `ports` を外し、ホストへ公開しない。BFF は compose のネットワークで届く。
 - **経路 B**: NetworkPolicy `valkey-ingress-bff-only`（platform-infra）。ingress は MSP ns（`kubernetes.io/metadata.name: microservices-platform`）の
   `app: bff-service` の Pod から TCP 6379 だけ。egress は 0 件（全拒否。readiness は exec なので通信を要らない）。
-- 🔴 **NetworkPolicy を強制しないクラスタでは、経路 B の防御は認証の 1 段である**（ADR-0131 決定 4 の 2 が記録を求める段数）。強制するクラスタでは 2 段。
+- 🔴 **経路 B の防御の段数（ADR-0131 決定 4 の 2 が記録を求める段数）は 2 段（認証 ＋ 到達の制限）である。ただし稼働クラスタでの実測はまだ無い**
+  （#1860 監査指摘 3 で明記）。経路 B の起動器が作るクラスタ（k3d・Rancher Desktop の内蔵 k3s）はどちらも k3s であり、k3s は NetworkPolicy の
+  コントローラ（kube-router 由来）を同梱して既定で有効にする（上流の既定。`--disable-network-policy` で外せる）。本 PR が測ったのは
+  宣言の形（`ValkeyContainerDefinitionTests`）と compose の実起動までで、**「BFF 以外の Pod から 6379 へ届かない」ことを稼働クラスタで確かめていない**。
+  確かめ方は運用仕様書のセッションストアの節（BFF 以外の Pod から `valkey-cli ping` を打ち、`NOAUTH` が返れば 1 段＝強制されていない、
+  時間切れなら 2 段）。リポジトリ内には「dev の k3d 既定は NetworkPolicy を強制しない」とする記述（`deploy/mail-relay/*.yaml` の注記）もあり、
+  運用仕様書の Argo CD の点検の行（「k3s は NetworkPolicy を既定で強制する」）と食い違っている。本 IADR は上流の既定に従って 2 段と書き、
+  実測で決着させる（フォローアップ 3）。NetworkPolicy を強制しないクラスタでは 1 段（認証だけ）に落ちる。
 
 ### 決定 5: BFF の構成値 —— パスワードを 1 つ足し、ヘルスチェックの置き場をセッションへ寄せる
 
 - `BffSessionOptions.RedisPassword`（既定は空。XML doc で「k8s Secret から環境変数で注入する」と宣言）。helm は
   `services.bff.session.storeExistingSecret` / `storePasswordKey` の非 optional な secretKeyRef、compose は変数展開で注入する。
-- `BffSessionOptions.SessionStoreConfiguration()` が接続先とパスワードを StackExchange.Redis の構成文字列にまとめ、
-  **セッション（`AddStackExchangeRedisCache`）・鍵リング（`ConnectionMultiplexer.Connect`）・ヘルスチェック（`AddRedis`）が同じ 1 つを使う**。
+- `BffSessionOptions.SessionStoreConfiguration()` が接続先とパスワードを StackExchange.Redis の構成（`ConfigurationOptions`）にまとめ、
+  **セッション（`AddStackExchangeRedisCache` の `ConfigurationOptions`）・鍵リング（`ConnectionMultiplexer.Connect`）・ヘルスチェック（`AddRedis` の
+  接続のファクトリ）が同じ組み方を使う**。
+- ［2026-10-09 追記 / #1860 監査指摘 5］**構成は文字列へ戻さず、オブジェクトのまま渡す。** 当初は `ToString(includePassword: true)` の構成文字列を
+  3 か所へ渡していたが、パスワードに構成文字列の区切り（`,` `=`）が入ると、文字列を経由した時点で別の設定として誤読される
+  （実測: パスワード `a,b=c` の構成文字列を `ConfigurationOptions.Parse` へ戻すと `Keyword 'b' is not supported` で落ちる）。
+  経路 B の乱数は 16 進だけなので踏まないが、明示指定と compose の値は利用者が選ぶ。ヘルスチェックの接続は失敗を記憶しない遅延
+  （`LazyThreadSafetyMode.PublicationOnly`）で作る —— 初回の疎通失敗を以後ずっと返し続けないため（従前の文字列の形と同じ振る舞い）。
+  `BffSessionStoreConfigurationTests`（Docker 不要。PR の ci.yml で回る）が、パスワードが構成に載ること・空なら載らないこと・区切りを含む値が欠けないことを固定する
+  （#1860 監査指摘 1。実イメージの試験は PR で回らないので、伝搬の退行はこの単体が無いと PR で捕まらない）。
 - ヘルスチェック専用の `Redis:ConnectionString`（appsettings 2 つ・compose の env・試験の器）は廃した（実測 2）。
 
 ### 決定 6: 経路 B の起動器 —— Secret を 2 か所へ置き、旧 Redis を消す
@@ -146,6 +161,28 @@ compose は他の dev 既定と同じ形（`${SESSION_STORE_PASSWORD:-session-st
 - kustomize の apply は宣言から消えたリソースを刈らないので、起動器が旧 `deploy/redis`・`svc/redis`（platform-infra）と ExternalName `svc/redis`（MSP ns）を
   `--ignore-not-found` で消す。消さないと既存クラスタに**認証なしのストアが残り続ける**。
 - `scripts/check-bff-multi-replica-session.js` の鍵リングの件数の読みは `deploy/valkey` で、パスワードを Pod の中の env から読ませる（ホストの引数に載せない）。
+
+### 決定 6 の 2: パスワードの差し替え（ローテーション）は Valkey → BFF の順に作り直す（#1860 監査指摘 2。2026-10-09 追記）
+
+- Valkey は起動時にしか設定（`requirepass`）を読まず、BFF は Pod の起動時にしか env を読まない。Secret を差し替えただけでは両方とも古い値のまま動き続ける。
+- **作り直しは Valkey が先**。BFF を先にすると、新しい値の BFF が古い値の Valkey へ認証できず readiness を落とす。Valkey を先にすると、
+  作り直しから BFF の作り直しまでの間は古い BFF が認証できない（セッションの読み書きとヘルスチェックが落ちる）。dev のストアであり、この窓を受け入れる
+  （窓を無くすには ACL で新旧 2 つのパスワードを同時に許す段取りが要り、相手が BFF だけのストアには見合わない）。
+- 経路 B の起動器は、明示指定（`SESSION_STORE_PASSWORD`）が既存の Secret の値と違うときだけ、[4/7] の apply の後に `deploy/valkey` を、
+  [6/7] の helm の後に `deploy/bff-service` を作り直す（`k8s-local-up.test.js` が順序と陰性対照を固定する）。値が変わらない再実行では作り直さない。
+- helm の Pod 注釈に Secret のハッシュを載せる形（`checksum/…`）は採らない。chart は Secret を持たず（`existingSecret` を参照するだけ）、
+  `lookup` は `helm template` と Argo CD の描画で空を返すので、注釈が値の変化を拾えない。Reloader の注釈も採らない —— BFF だけが作り直され
+  Valkey が古い値のまま残ると、順序が逆になる。手順は運用仕様書のセッションストアの節に置いた。
+
+### 決定 6 の 3: Argo CD・本番像でも BFF は Secret `session-store-credentials` を要求する（#1860 監査指摘 4。2026-10-09 追記）
+
+- chart の `BffSession__RedisPassword` の secretKeyRef は**非 optional のまま**にする（最小で安全な選択）。Secret が無ければ BFF の Pod は
+  `CreateContainerConfigError` で起動しない —— 注入漏れを「認証なしで接続する」へ倒さない（fail-closed）。
+- 条件付き（optional・値の有無で env を出し分ける）にしない理由: 本番像はストアを持たない（決定 1）が BFF のセッションはストアを要るので、
+  BFF を配備する環境には必ずストアとそのパスワードがある。optional にすると、Secret を作り忘れた環境で BFF が空のパスワードで起動し、
+  認証必須のストアに弾かれて「起動はするがログインだけ落ちる」形になる（`bff-oidc` と同じ判断）。
+- Argo CD で同期する環境の運用者は、`microservices-platform` ns に Secret `session-store-credentials`（キー `password`。値はストアの `requirepass` と同じ）を
+  先に作る。`deploy/bootstrap/`（README の表・`secret-templates.example.yaml`）と運用仕様書に載せた。
 
 ### 決定 7: 既存データは移行しない（受入条件 5）
 
@@ -157,8 +194,8 @@ compose は他の dev 既定と同じ形（`${SESSION_STORE_PASSWORD:-session-st
 
 | # | 条件 | 結果 | 確かめ方 |
 | --- | --- | --- | --- |
-| 1 | BFF の 3 用途が実イメージで通る | **通った** | `BffSessionStoreValkeyTests`（`Category=Integration`。本番の配線 `AddBffSession` のまま、配備と同じ image・起動形の Valkey 9.1.2 へ向ける）。セッションの保存・取得・更新・単独の失効・**全セッションの即時失効**（`RemoveAllForSubjectAsync`。他の利用者は残る）、2 つのレプリカの間での**鍵リングの共有**（A が保護した値を B が復号。共有のキーに鍵がちょうど 1 件）、SC-22 の**書き込み記録**の別レプリカからの読み出し、ヘルスチェックの認証つきの疎通、の 5 件が手元の Docker で緑（2026-10-09）。変異（構成文字列からパスワードを落とす）で陰性対照以外の 4 件が赤になることを確かめた |
-| 2 | 基準 D の穴を塞ぐ | **塞いだ** | 認証なしの接続が `RedisException` で拒まれる（同試験の陰性対照）。パスワードが空なら起動しない・引数に載らない（`ValkeyContainerDefinitionTests` が起動スクリプトを sh で走らせる）。compose は `ports` を持たない・経路 B は NetworkPolicy（同試験が配備の定義を読む）。compose の実起動で `healthy`・認証なしの `ping` が `NOAUTH`・`docker port` が空であることも確かめた。**経路 B は NetworkPolicy を強制しないクラスタでは 1 段**（決定 4） |
+| 1 | BFF の 3 用途が実イメージで通る | **通った** | `BffSessionStoreValkeyTests`（`Category=Integration`。本番の配線 `AddBffSession` のまま、配備と同じ image・起動形の Valkey 9.1.2 へ向ける）。セッションの保存・取得・更新・単独の失効・**全セッションの即時失効**（`RemoveAllForSubjectAsync`。他の利用者は残る）、2 つのレプリカの間での**鍵リングの共有**（A が保護した値を B が復号。共有のキーに鍵がちょうど 1 件）、SC-22 の**書き込み記録**の別レプリカからの読み出し、ヘルスチェックの認証つきの疎通、の 5 件が手元の Docker で緑（2026-10-09）。変異（構成からパスワードを落とす）で陰性対照以外の 4 件が赤になることを確かめた |
+| 2 | 基準 D の穴を塞ぐ | **塞いだ** | 認証なしの接続が `RedisException` で拒まれる（同試験の陰性対照）。パスワードが空なら起動しない・引数に載らない（`ValkeyContainerDefinitionTests` が起動スクリプトを sh で走らせる）。compose は `ports` を持たない・経路 B は NetworkPolicy（同試験が配備の定義を読む）。compose の実起動で `healthy`・認証なしの `ping` が `NOAUTH`・`docker port` が空であることも確かめた。**経路 B は 2 段（k3s は NetworkPolicy を既定で強制する）だが、稼働クラスタでの実測はまだ**（決定 4） |
 | 3 | digest で固定 | **固定した** | 匿名のトークンで index の digest を 2 回解決して一致（`sha256:48332870…`・`application/vnd.oci.image.index.v1+json`）。`check-image-digests.js` が 3 参照を固定と判定 |
 | 4 | 既定の外部通信の有無 | **無い** | 配備と同じイメージを起こし、コンテナの中で `/proc/net/{tcp,tcp6,udp,udp6}` を 0.2 秒ごとに 130 秒読んだ。loopback 以外の相手を持つ接続は 0 件。**計画の 08_data-egress-policy への環流は要らない**。経路 B は egress を閉じた（決定 4） |
 | 5 | 既存データの扱い | 移行しない | 決定 7 |
@@ -169,11 +206,27 @@ compose は他の dev 既定と同じ形（`${SESSION_STORE_PASSWORD:-session-st
   パスワードの注入漏れは CI（検査器）・起動（非 optional な secretKeyRef）・サーバ（認証必須）の 3 か所で止まる。受入条件 1 の試験が
   回収実行（integration.yml）で継続して回る。
 - 悪い影響 / トレードオフ: 既存の dev 環境は差し替えの時に全員が再ログインになる。compose の既定パスワードは公知の dev 用の値である。
-  経路 B のパスワードを変えるには Valkey と BFF の作り直しが要る（起動器は既存値を使い回すので、明示指定したときだけ起きる）。
+  経路 B のパスワードを変えるには Valkey → BFF の順の作り直しが要り、その間は BFF が認証できない窓がある（決定 6 の 2。起動器は明示指定で値が変わったときだけ行う）。
+  Argo CD で同期する環境は Secret `session-store-credentials` を先に作らないと BFF が起動しない（決定 6 の 3）。
 - 残余リスク:
-  1. NetworkPolicy を強制しないクラスタでは経路 B の防御は認証の 1 段（決定 4）。
+  1. 経路 B の 2 段のうち到達の制限は稼働クラスタで未実測である。NetworkPolicy を強制しないクラスタでは認証の 1 段に落ちる（決定 4）。
   2. 認証を通った相手には管理コマンドも通る（決定 3）。
   3. 本番像の chart にストアは無い。本番像へ足すときは、同じ統制（認証必須・到達の制限）を先に入れる（計画 ADR-0131 決定 5）。
 - フォローアップ:
   1. **計画へ**: 受入条件 1 が通ったので、ADR-0131 の着手可否の注記の充足と決定 5 の「現在の実現手段」の更新を計画へ環流する（ADR-0131 フォローアップ 2）。
   2. 本番像へセッションストアを足すときは、パスワードの供給を ESO（Vault → ExternalSecret）へ載せるかを決める（本件では経路 B の bootstrap だけ）。
+  3. 経路 B の稼働クラスタで、BFF 以外の Pod から 6379 へ届かないことを実測し、決定 4 の段数を「実測済み」へ書き換える。
+     あわせて `deploy/mail-relay/*.yaml` の「dev の k3d 既定は強制しない」の注記と運用仕様書の記述の食い違いを、実測の結果でどちらかへ寄せる。
+
+## 切り戻し（#1860 監査指摘 7。2026-10-09 追記）
+
+- **コードと配備の定義の切り戻しは本 PR の revert で行う**（Valkey → Redis 7.4・認証なしへ戻る）。revert の後に起きること:
+  - compose: `docker compose up -d --remove-orphans` で `valkey` が消え `redis` が戻る。volume `redis-data` は残っていれば読まれる（`valkey-data` は使われなくなる）。
+  - 経路 B: 起動器を再実行すると旧 `redis.yaml` が apply される。**新しい定義は旧 `valkey` を刈らない**（kustomize は刈らない）ので、
+    `kubectl -n platform-infra delete deploy/valkey svc/valkey networkpolicy/valkey-ingress-bff-only --ignore-not-found` と
+    `kubectl -n microservices-platform delete svc/valkey --ignore-not-found` を手で打つ。Secret `session-store-credentials`（2 か所）は残っても害が無いが、消してよい。
+  - どちらの向きでもセッション・鍵リング・SC-22 の書き込み記録は引き継がれない（決定 7）。全員が再ログインになる。
+- 🔴 **revert は基準 D の穴（認証なし・管理コマンドが通る）と基準 A の不適合（RSALv2 / SSPLv1）を戻す。** 一時的な退避に限り、
+  戻した事実と理由を issue に残す（計画 ADR-0131 の決定を覆すことになるので、恒久化するなら計画へ環流する）。
+- パスワードの差し替えだけを戻すときは、前の値を `SESSION_STORE_PASSWORD` に与えて起動器を再実行する（値が変わるので Valkey → BFF の作り直しが走る。決定 6 の 2）。
+  前の値を控えていなければ戻せない —— 新しい値で揃え直す方が早い。

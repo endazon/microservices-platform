@@ -51,15 +51,17 @@ public sealed class BffSessionOptions
     public string RedisPassword { get; set; } = string.Empty;
 
     /// <summary>
-    /// StackExchange.Redis へ渡す構成文字列（接続先 ＋ パスワード）。セッション・鍵リング・ヘルスチェックが
-    /// **同じ 1 つ**を使う（置き場が 2 つあると、片方だけ認証が通る状態を作れてしまう。IADR-0522）。
+    /// StackExchange.Redis へ渡す構成（接続先 ＋ パスワード）。セッション・鍵リング・ヘルスチェックが
+    /// **同じ 1 つの組み方**を使う（置き場が 2 つあると、片方だけ認証が通る状態を作れてしまう。IADR-0522）。
+    /// 🔴 **構成文字列へ戻さず、オブジェクトのまま渡す**（#1860 監査指摘 5）。パスワードに構成文字列の区切り
+    /// （`,` `=`）が入ると、文字列を経由した時点で接続先や別の設定として誤読される。呼ぶたびに新しい実体を返す。
     /// </summary>
-    public string SessionStoreConfiguration()
+    public ConfigurationOptions SessionStoreConfiguration()
     {
         var configuration = ConfigurationOptions.Parse(RedisConnectionString);
         if (!string.IsNullOrEmpty(RedisPassword))
             configuration.Password = RedisPassword;
-        return configuration.ToString(includePassword: true);
+        return configuration;
     }
 
     /// <summary>構成から <see cref="BffSessionOptions"/> を読む（ヘルスチェックと <c>AddBffSession</c> が同じ読み方をする）。</summary>

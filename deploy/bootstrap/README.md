@@ -38,6 +38,7 @@ rm -f /tmp/microservices-platform-secrets.yaml
 | `wikijs-db` | `wikijs.db.existingSecret` | Wiki.js の DB パスワード |
 | `wikijs-sync` | `services.wiki.extraEnv` | WikiService → Wiki.js 同期 API キー |
 | `llm-provider-credentials` | `services.llmgateway.extraEnv` | 外部 LLM プロバイダ資格情報（`Llm__ApiKey` ← `anthropic-api-key`。#308）・埋め込みの鍵（`Embedding__Voyage__ApiKey` ← `voyage-api-key`。キーが無くても起動する。#1764） |
+| `session-store-credentials` | `services.bff.session.storeExistingSecret` / `storePasswordKey` | キャッシュ・セッションストア（Valkey）の認証パスワード（`password`）。BFF が**必須**で読む —— 無ければ bff-service の Pod は起動しない（NFR-18 / ADR-0131 決定 4 の 2 / IADR-0522 決定 6 の 3）。値はストアの `requirepass` と同じにする。差し替えはストア → BFF の順に作り直す（`docs/operations/operations.md`「キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し」） |
 
 ## 3. Harbor レジストリ Pull Secret（ADR-0007）
 

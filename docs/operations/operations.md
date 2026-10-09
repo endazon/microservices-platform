@@ -50,6 +50,7 @@ issues: [#1839, #1841, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #
 | 検索が全件 0 件になる（応答は 200 のまま）理由を切り分けたい | §検索が全件 0 件になる（読み書き先コレクションの乖離・全文索引の欠落） |
 | 本番へ所有者の読み取りのポリシーを投入する・投入済みか確かめる | §所有者の読み取りのポリシーの投入 |
 | 取引ユニットの KB の読み手のポリシーを投入する・投入済みか確かめる | §AST の KB の読み手のポリシーの投入 |
+| キャッシュ・セッションストア（Valkey）のパスワードを回す・戻す／Argo CD の前提／到達の制限の確かめ方 | §キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し |
 | 障害発生時の一次対応を知りたい | §障害対応（Runbook） |
 
 ---
@@ -1664,6 +1665,50 @@ role `bff-secret-writer`（BFF 専用 ServiceAccount `bff` にだけ束縛）で
 対になる秘密の手順（書く順序と、途中で止まったときの戻し方）は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) にある。
 **本番の client シークレットを realm の宣言（`deploy/keycloak/microservices-platform-realm.json`）に書かない** —— 宣言が持つのは開発用の値だけで、client を作るときにだけ使われる。
 
+### キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し（非機能要件: 運用性/セキュリティ）
+
+BFF のセッション・鍵リング・秘密情報の投入画面の書き込み記録の置き場（Valkey）は認証を必須にしている。パスワードは Secret
+`session-store-credentials`（キー `password`）にあり、**`platform-infra`（Valkey が読む）と `microservices-platform`（BFF が読む）の 2 か所に同じ値**で置く。
+保管先（Vault）には無く、ESO の同期の対象でもない（起動器が置く bootstrap）。値そのものは画面にもログにも出さない。
+
+**差し替え（ローテーション）** —— 🔴 **Valkey を先に、BFF を後に作り直す。** どちらも起動時にしか値を読まないので、Secret を差し替えただけでは
+古い値のまま動き続ける。BFF を先にすると、新しい値の BFF が古い値の Valkey へ認証できず readiness を落とす。
+
+- 経路 B（起動器）: 新しい値を `SESSION_STORE_PASSWORD` に与えて `scripts/k8s-local-up.sh` を再実行する。起動器は既存の Secret と値が違うときだけ、
+  2 か所の Secret を書き換え、インフラの apply の後に `deploy/valkey`（`platform-infra`）を、helm の後に `deploy/bff-service`（`microservices-platform`）を作り直す。
+  値に `"`・`\`・空白は使えない（設定ファイルの引用符の中へ入るため。起動器が拒む）。
+- 手で回すとき（起動器を使わない環境）: 2 か所の Secret を同じ値へ書き換え → `kubectl -n platform-infra rollout restart deploy/valkey` と
+  `rollout status` → `kubectl -n microservices-platform rollout restart deploy/bff-service` と `rollout status`。
+- compose: `.env` の `SESSION_STORE_PASSWORD` を変えて `docker compose up -d valkey bff`（compose が両方を作り直す）。
+- 影響: Valkey を作り直してから BFF が作り直されるまでの間、BFF はストアへ認証できない（セッションの読み書きとヘルスチェックが落ちる）。
+  Valkey は揮発なので、**作り直した時点でセッション・鍵リング・書き込み記録が消え、全員が再ログインになる**。利用者の少ない時間に行う。
+- 確かめ方: `kubectl -n microservices-platform get pods -l app=bff-service` が Ready、BFF の `/health/ready` が 200、ブラウザでログインし直せること。
+
+**本番像・Argo CD で同期する環境の前提** —— BFF の Deployment はこの Secret を**必須**で読む（無ければ Pod は `CreateContainerConfigError` で起動しない）。
+同期の前に `microservices-platform` ns へ Secret `session-store-credentials`（`password` ＝ ストアのパスワードと同じ値）を作る（`deploy/bootstrap/README.md` の表）。
+Secret を任意にして「無ければパスワードなしで接続」へ倒すことはしない —— 認証必須のストアに弾かれ、起動はするがログインだけが落ちる形になるため。
+本番像の chart にストア自体の配備は無い。
+
+**到達の制限が効いているかの確かめ方（経路 B）** —— BFF 以外の Pod からストアへ `ping` を打つ。
+
+```sh
+kubectl -n microservices-platform run valkey-np-probe --rm -i --restart=Never \
+  --image=valkey/valkey:9.1-alpine@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11 \
+  --command -- timeout 5 valkey-cli -h valkey.platform-infra.svc.cluster.local ping
+```
+
+- 時間切れ（応答なし）＝ NetworkPolicy が強制されている（防御は 2 段）。`NOAUTH Authentication required.` ＝ 届いている（強制されていない。防御は認証の 1 段）。
+  結果は上の「インフラ製品の点検」の Valkey の回の「残り」へ書き戻す。
+
+**切り戻し**:
+
+- パスワードだけを戻す: 前の値を `SESSION_STORE_PASSWORD` に与えて起動器を再実行する（差し替えと同じ順で作り直しが走る）。前の値を控えていなければ戻せないので、新しい値で揃え直す。
+- Redis からの差し替えそのものを戻す: 差し替えの変更を revert する。revert した定義は Valkey を刈らないので、
+  `kubectl -n platform-infra delete deploy/valkey svc/valkey networkpolicy/valkey-ingress-bff-only --ignore-not-found` と
+  `kubectl -n microservices-platform delete svc/valkey --ignore-not-found` を手で打つ（Secret `session-store-credentials` は残っても害が無い）。
+  compose は `docker compose up -d --remove-orphans`。どちらの向きでもセッションは引き継がれず、全員が再ログインになる。
+  🔴 **戻すと認証なしのストア（管理コマンドが誰にでも通る）と、OSS でない版の Redis が戻る。** 一時的な退避に限り、戻した事実と理由を issue に残す。
+
 ### メッシュ設定のドリフトと、helm リリースが固まったときの復旧（NFR / #1159）
 
 サービスメッシュの `PeerAuthentication` / `AuthorizationPolicy` / `DestinationRule` は **helm チャートの
@@ -1953,7 +1998,9 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
 - 既存データ: 移行しない。compose は新しい volume `valkey-data` を使う（旧 `redis-data` は読まない。`docker compose up --remove-orphans` の後に `docker volume rm` で消してよい）。
   経路 B は揮発のまま。どちらも中身は dev のセッション・鍵リング・秘密情報の投入画面の書き込み記録だけで、失うと全員が再ログインになり、最終更新者が「記録なし」に戻る。
 - 経路 B の旧 Redis（認証なし）は起動器が消す（`deploy/redis`・`svc/redis`・MSP ns の ExternalName `redis`）。
-- **残り**: NetworkPolicy を強制しないクラスタでは経路 B の防御は認証の 1 段である。本番像の chart にストアは無い（足すときは同じ統制を先に入れる）。
+- **残り**: 経路 B の防御は **2 段**（認証 ＋ NetworkPolicy による到達の制限。経路 B のクラスタは k3s で、k3s は NetworkPolicy を既定で強制する）だが、
+  **到達の制限が効いていることは稼働クラスタでまだ実測していない**（確かめ方は下の「キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し」）。
+  NetworkPolicy を強制しないクラスタでは認証の 1 段に落ちる。本番像の chart にストアは無い（足すときは同じ統制を先に入れる）。
 
 ## 未決事項
 

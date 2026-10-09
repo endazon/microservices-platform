@@ -154,7 +154,7 @@ public sealed class BffSessionStoreValkeyTests
         (await probe.GetDatabase().KeyExistsAsync("bff:sc22:write-record:wikijs-sync")).Should().BeTrue();
     }
 
-    // ヘルスチェック（Program.cs の AddRedis）も同じ構成文字列（接続先 ＋ パスワード）で通る。
+    // ヘルスチェック（Program.cs の AddRedis）も同じ構成（接続先 ＋ パスワード）で通る。
     [Fact]
     public async Task Health_check_authenticates_with_the_session_configuration()
     {
@@ -163,7 +163,7 @@ public sealed class BffSessionStoreValkeyTests
         var options = new BffSessionOptions { RedisConnectionString = ValkeyTestContainer.EndpointOf(store), RedisPassword = password };
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddHealthChecks().AddRedis(options.SessionStoreConfiguration());
+        services.AddHealthChecks().AddRedis(_ => ConnectionMultiplexer.Connect(options.SessionStoreConfiguration()));
         await using var provider = services.BuildServiceProvider();
 
         var report = await provider.GetRequiredService<HealthCheckService>().CheckHealthAsync(TestContext.Current.CancellationToken);

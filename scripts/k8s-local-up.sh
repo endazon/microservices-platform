@@ -344,13 +344,22 @@ apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}
 # （[4/7] の rollout が消費する bootstrap であり、Vault の KV を持たない。postgres / rabbitmq と同じ扱い）。
 # 🔴 **公知の dev 既定値を持たない。** 明示指定（env）＞ 既存の Secret の値 ＞ 初回だけ乱数。既存値を使い回すのは、
 #    Valkey が起動時にしか設定を読まないため —— up のたびに変えると、走っている Valkey と BFF が食い違う。
-#    値を変えたら `kubectl -n platform-infra rollout restart deploy/valkey` と BFF の作り直しが要る。
+#    🔴 **値を変えた（明示指定が既存の Secret と違う）ときは、Valkey → BFF の順に作り直す**（#1860 監査指摘 2）。
+#    Valkey を先にする —— BFF を先に作り直すと、新しい値の BFF が古い値の Valkey へ認証できずに落ちる。
+#    Secret の差し替えだけでは Pod の env は変わらない（helm upgrade も BFF のテンプレートを変えない）。
 # 🔴 値は設定ファイルの引用符の中へ入るので、`"`・`\`・空白を含む値は拒む（乱数は 16 進のみ）。
+session_store_existing="$(kubectl -n "$INFRA_NS" get secret session-store-credentials \
+  -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null || true)"
 session_store_password="${SESSION_STORE_PASSWORD:-}"
-if [ -z "$session_store_password" ]; then
-  session_store_password="$(kubectl -n "$INFRA_NS" get secret session-store-credentials \
-    -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+session_store_rotated=""
+if [ -n "$session_store_password" ] && [ -n "$session_store_existing" ] \
+   && [ "$session_store_password" != "$session_store_existing" ]; then
+  session_store_rotated="1"
 fi
+if [ -z "$session_store_password" ]; then
+  session_store_password="$session_store_existing"
+fi
+unset session_store_existing
 if [ -z "$session_store_password" ]; then
   session_store_password="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
 fi
@@ -497,6 +506,11 @@ kubectl apply -k "$INFRA_KUSTOMIZE"
 # NFR-18, ADR-0131, IADR-0522 (#1839): 旧 Redis（認証なし）を消す。kustomize の apply は宣言から消えたリソースを
 # 刈らないので、ここで消さないと既存クラスタに**認証なしのストアが残り続ける**（基準 D の穴が塞がらない）。
 kubectl -n "$INFRA_NS" delete deployment/redis service/redis --ignore-not-found
+# #1860 監査指摘 2: パスワードを変えたら Valkey を作り直す（起動時にしか設定を読まない）。BFF は [6/7] の後。
+if [ -n "$session_store_rotated" ]; then
+  echo "    session-store password changed: restarting $INFRA_NS/valkey（BFF は [6/7] の後に作り直す）"
+  kubectl -n "$INFRA_NS" rollout restart deploy/valkey
+fi
 echo "    waiting for infra to become Ready..."
 # IADR-0100 (#354 障害2): アプリ Pod（[6/7] MSP・後続 AST）が起動する前にノードの inotify 上限を引き上げておく
 # （inotify 枯渇による FileSystemWatcher クラッシュ＝広範 CrashLoopBackOff を防ぐ）。best-effort: busybox pull 等の
@@ -752,6 +766,12 @@ fi
 helm upgrade --install msp deploy/helm/microservices-platform \
   -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}"
 if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; trap - EXIT; fi
+# NFR-18, IADR-0522（#1860 監査指摘 2）: セッションストアのパスワードを変えたときだけ、Valkey（[4/7]）の**後に**
+#   BFF を作り直す（env は Pod の起動時にしか読まれない。helm upgrade は BFF のテンプレートを変えない）。
+if [ -n "$session_store_rotated" ]; then
+  echo "    session-store password changed: restarting $MSP_NS/bff-service"
+  kubectl -n "$MSP_NS" rollout restart deploy/bff-service
+fi
 
 # #782: サイドカーは**既存 Pod には後から入らない**。注入ラベルを付けたあとに作り直す。
 # helm upgrade だけでは Pod テンプレートが変わらないサービスが残るため、明示的に restart する。
