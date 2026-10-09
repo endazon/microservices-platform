@@ -60,6 +60,7 @@ issue: "#1859"
 | 16 | ［稼働の初回］転送ヘッダの下の `jwks_uri` | — | `KC_PROXY_HEADERS=xforwarded` と `X-Forwarded-Proto` だけ（port なし。メッシュのサイドカーが付ける形）で、`jwks_uri`・`token_endpoint` が `http://keycloak/…`（80 番）になる。転送ヘッダを読ませなければ `http://keycloak:8080/…` | `KC_PROXY_HEADERS` を外す（IADR-0524 決定 5） |
 | 17 | ［稼働の初回］Pod 内の kcadm のログイン | `--password` を省くと標準入力から読む | 端末が無いと読まない（`Console is not active, but password is required`）。env `KC_CLI_PASSWORD` は読む | 検査器・測定スクリプト・切替リハーサルを `KC_CLI_PASSWORD` へ |
 | 18 | ［稼働の初回］ログイン画面の本文 | — | `checkAuthSession("<値>")` が試行ごとに変わる（値は GET で発行されるクッキー `KC_AUTH_SESSION_HASH` と同じ） | 存在秘匿の比較器の正規化で引数だけを伏せる |
+| 19 | ［稼働の 2 回目］起動の段が 45 分止まりジョブが取り消された（ログ取得不可） | — | 初回は 401 ですぐ抜けた投入スクリプトが、JWT 検証が通るようになって本来の処理へ進み、上限の無い fetch で待ち続けた疑い | 投入スクリプト 3 本の 1 要求・全体の上限、integration-stack の起動の段の上限（IADR-0524 決定 5 の補足） |
 
 ## 設計（正は IADR-0524）
 

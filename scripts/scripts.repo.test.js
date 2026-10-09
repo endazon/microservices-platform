@@ -15773,4 +15773,69 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+  // --- NFR, IADR-0524 (#1869): 起動器が呼ぶ投入スクリプトの待ちに上限を置く ------------------------------------------------
+  // #1869 の integration-stack の 2 回目の実行は、起動の段で 45 分止まりジョブごと取り消された（ログも診断も残らない）。
+  // fetch は既定で上限を持たないので、受け手が詰まると投入スクリプトは黙って待ち続ける。1 要求と全体の上限、起動の段の上限を固定する。
+  {
+    const fs1869 = require('fs');
+    const path1869 = require('path');
+    const { spawnSync: spawn1869 } = require('child_process');
+    const REPO1869 = path1869.join(__dirname, '..');
+    const LIB1869 = path1869.join(REPO1869, 'scripts', 'lib', 'bounded-wait.js');
+    const node1869 = (code, timeout = 20000) => spawn1869(process.execPath, ['-e', code, LIB1869], {
+      encoding: 'utf8', timeout, env: { ...process.env, NO_PROXY: '*', no_proxy: '*', HTTP_PROXY: '', HTTPS_PROXY: '', http_proxy: '', https_proxy: '' },
+    });
+
+    ok('#1869 fetchWithin: 受け付けて応答しない受け手には、上限で方法と URL を名指しして失敗する（黙って待たない）', () => {
+      const code = `
+        const net = require('net'); const { fetchWithin } = require(process.argv[1]);
+        const srv = net.createServer(() => {}).listen(0, '127.0.0.1', async () => {
+          const url = 'http://127.0.0.1:' + srv.address().port + '/authz/attributes';
+          const t0 = Date.now();
+          try { await fetchWithin(url, { method: 'POST' }, 300); console.log('RESOLVED'); }
+          catch (e) { console.log(JSON.stringify({ ms: Date.now() - t0, msg: e.message })); }
+          process.exit(0);
+        });`;
+      const r = node1869(code);
+      assert.strictEqual(r.status, 0, r.stderr);
+      const out = JSON.parse(r.stdout.trim().split('\n').pop());
+      assert.ok(out.ms < 5000, `上限で止まっていない（${out.ms} ms）`);
+      assert.match(out.msg, /^POST http:\/\/127\.0\.0\.1:\d+\/authz\/attributes が 300 ms 以内に応答しなかった/);
+    });
+
+    ok('#1869 startWatchdog: 全体の上限を超えたら名指しして非 0 で終える。上限の前に終わる処理は止めない（unref）', () => {
+      const hang = node1869(`
+        const { startWatchdog } = require(process.argv[1]);
+        startWatchdog('seed-probe', 200);
+        setInterval(() => {}, 1000);`);
+      assert.strictEqual(hang.status, 1, `上限で終わらない（status ${hang.status}・signal ${hang.signal}）`);
+      assert.match(hang.stderr, /\[seed-probe\] 200 ms を超えた/);
+      const quick = node1869(`
+        const { startWatchdog } = require(process.argv[1]);
+        startWatchdog('seed-probe', 60000);
+        console.log('done');`);
+      assert.strictEqual(quick.status, 0, quick.stderr);
+      assert.strictEqual(quick.stdout.trim(), 'done', '監視のタイマーがプロセスの終了を妨げている（unref していない）');
+    });
+
+    ok('#1869 起動器が呼ぶ投入スクリプト 3 本は、上限の無い fetch を持たず、全体の上限を main より前に掛ける', () => {
+      for (const f of ['seed-abac-policies.js', 'seed-search-documents.js', 'seed-tag-dictionary.js']) {
+        const src = fs1869.readFileSync(path1869.join(REPO1869, 'scripts', f), 'utf8');
+        const bare = src.split('\n').filter((l) => /\bawait fetch\(/.test(l) && !/AbortSignal\.timeout\(/.test(l));
+        assert.deepStrictEqual(bare, [], `${f} に上限の無い fetch がある`);
+        assert.ok(/fetchWithin\(/.test(src), `${f} が fetchWithin を使っていない（陽性対照）`);
+        assert.ok(/startWatchdog\('[^']+', OVERALL_TIMEOUT_MS[\s\S]*?\n\s*main\(process\.argv/.test(src), `${f} が main の前に全体の上限を掛けていない`);
+      }
+    });
+
+    ok('#1869 integration-stack: 起動の段に、ジョブの上限より短い上限がある（取り消しではなく失敗にして診断を残す）', () => {
+      const wf = fs1869.readFileSync(path1869.join(REPO1869, '.github', 'workflows', 'integration-stack.yml'), 'utf8');
+      const job = /\n    timeout-minutes: (\d+)\n/.exec(wf);
+      const step = /- name: Bring up the integration stack[^\n]*\n\s+timeout-minutes: (\d+)\n/.exec(wf);
+      assert.ok(job && step, '起動の段かジョブの上限が無い');
+      assert.ok(Number(step[1]) < Number(job[1]), `起動の段の上限 ${step[1]} 分がジョブの上限 ${job[1]} 分以上`);
+      assert.ok(/- name: Dump cluster state[^\n]*\n\s+if: failure\(\)/.test(wf), '失敗時の診断が無い（段の上限で失敗させる意味が無い）');
+    });
+  }
+
 };
