@@ -15,7 +15,7 @@ related_ids:
   - IADR-0243
 author: claude
 created: 2026-08-22
-updated: 2026-09-26
+updated: 2026-10-09
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0007_cicd.md
   - planning:projects/microservices-platform/07_adr/ADR-0021_runtime-platform.md
@@ -153,6 +153,7 @@ error calling eq: incompatible types for comparison
 6. **k3s を pin する**（k3d `v5.8.3` ＋ `rancher/k3s:v1.35.4-k3s1`）。`K3S_IMAGE` を `k8s-local-up.sh` へ
    opt-in で足す（**未設定なら 1 バイトも変えない**）。
    🔴 **pin する理由は「バージョンを揃えたいから」ではない。揃っていないことが静かに素通りするからである。**
+   ［2026-10-09 追記 / #1843］**「opt-in・未設定なら 1 バイトも変えない」は改めた。** 計画 ADR-0135 決定 2（版が固定されていない製品は即時に固定する）により、`K3S_IMAGE` の既定を `rancher/k3s:v1.35.4-k3s1` とし、未設定でも `--image` を付ける。版の情報源はスクリプトの既定 1 か所で、`integration-stack.yml`・`cutover-rehearsal.yml` は `K3S_IMAGE` を与えない（実効の引数は変わらない）。判断は [IADR-0519](./IADR-0519_scripts-installed-products-version-pinning.md) 決定 2。
 7. **列挙を持たない。** 対象 namespace は 2 つ書くが、**その中のサービス名は一切書かない**。
    realm 名も `deploy/keycloak/*-realm.json` を走査して得る（[IADR-0240] / `check-deploy-manifests.js` 要点 1 と同じ判断）。
 8. **失敗は `ci-failure-issue.yml` で issue にする**（[IADR-0232] 決定 1 と同型）。

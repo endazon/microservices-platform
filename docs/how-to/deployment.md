@@ -3,15 +3,15 @@ title: how-to — デプロイ手順（環境ごと）と GitOps 運用
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-09-26
+updated: 2026-10-09
 author: claude
 ---
 <!-- trace:
 ids: [FR-15, NFR-02, NFR-21]
-adrs: [ADR-0076, ADR-0079]
-iadrs: [IADR-0017, IADR-0026, IADR-0029, IADR-0034, IADR-0046, IADR-0069, IADR-0378, IADR-0469]
-specs: [20260926_issue-1287_helm-synthetic-monitor-optin]
-issues: [#192, #1287]
+adrs: [ADR-0076, ADR-0079, ADR-0135]
+iadrs: [IADR-0017, IADR-0026, IADR-0029, IADR-0034, IADR-0046, IADR-0069, IADR-0378, IADR-0469, IADR-0519]
+specs: [20260926_issue-1287_helm-synthetic-monitor-optin, 20261009_1843_pin-argocd-k3s-inspection-population]
+issues: [#192, #1287, #1843]
 -->
 
 # how-to: デプロイ手順（環境ごと）と GitOps 運用
@@ -65,10 +65,14 @@ Git 状態へ自動復元される）。
 
 ```bash
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.4/manifests/install.yaml
 kubectl apply -f deploy/argocd/appproject.yaml
 kubectl apply -f deploy/argocd/application.yaml
 ```
+
+> Argo CD の install manifest は**版のタグの URL**から取る（`stable` ブランチは取得のたびに中身が変わり得る）。
+> 版の正は `scripts/k8s-local-up.sh` の `ARGOCD_VERSION` の既定で、上の URL もそれに揃える。
+> `--server-side` は大きな CRD の annotation 上限を避けるために要る（`deploy/argocd/README.md`）。
 
 ## サービス単位のデプロイとロールバック
 
