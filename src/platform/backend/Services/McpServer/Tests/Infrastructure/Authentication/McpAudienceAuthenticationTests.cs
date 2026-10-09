@@ -87,6 +87,7 @@ public class McpAudienceAuthenticationTests(McpAudienceAuthenticationTests.Facto
     [Theory]
     [InlineData("account")]
     [InlineData("bff")]
+    [InlineData("platform-api")] // #1846: 既定のスキームが受け付ける共有の audience は /mcp を通らない
     [InlineData(null)]
     public async Task Audienceが違うトークンは401(string? audience)
         => (await PostMcp(Token(audience))).Should().Be(HttpStatusCode.Unauthorized);
@@ -100,18 +101,21 @@ public class McpAudienceAuthenticationTests(McpAudienceAuthenticationTests.Facto
         => (await PostMcp(Token(McpAudienceAuthentication.Audience, issuer: "https://evil.example/realms/test")))
             .Should().Be(HttpStatusCode.Unauthorized);
 
-    // C-71: 既定のスキーム（管理 API が使う。BFF が利用者のトークンを中継する）は audience を検証しないまま。`/mcp` のスキームだけが検証する。
+    // C-71: 既定のスキーム（管理 API が使う。BFF が利用者のトークンを中継する）は共有の audience（platform-api。#1846）、
+    // `/mcp` のスキームは mcp-server **だけ**を検証する（共有の設定の ValidAudiences を残すと和集合になる）。
     // 発行元の検証・名前のクレームは既定のスキームの値を写す（2 つにしない）。
     [Fact]
-    public void Mcpのスキームだけがaudienceを検証し他の検証は既定のスキームを写す()
+    public void Mcpのスキームはmcp_serverだけを検証し他の検証は既定のスキームを写す()
     {
         var all = factory.Services.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>();
         var platform = all.Get(JwtBearerDefaults.AuthenticationScheme);
         var mcp = all.Get(McpAudienceAuthentication.Scheme);
 
-        platform.TokenValidationParameters.ValidateAudience.Should().BeFalse("管理 API は既定のまま（#1846 が全サービス）");
+        platform.TokenValidationParameters.ValidateAudience.Should().BeTrue();
+        platform.TokenValidationParameters.ValidAudiences.Should().Equal("platform-api");
         mcp.TokenValidationParameters.ValidateAudience.Should().BeTrue();
         mcp.TokenValidationParameters.ValidAudience.Should().Be("mcp-server");
+        mcp.TokenValidationParameters.ValidAudiences.Should().Equal("mcp-server");
         mcp.Authority.Should().Be(platform.Authority);
         mcp.TokenValidationParameters.ValidateIssuer.Should().BeTrue();
         mcp.TokenValidationParameters.NameClaimType.Should().Be(platform.TokenValidationParameters.NameClaimType);

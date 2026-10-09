@@ -28,7 +28,8 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
 // FR-16, 計画 ADR-0134 決定 1・フォローアップ 2, [[IADR-0516]]（#1844）: `/mcp` だけはトークンの audience（mcp-server）を検証する
-// 別のスキームで認証する。管理 API（/mcp-clients。BFF が利用者のトークンを中継する）は既定のスキームのまま（#1846 は全サービス）。
+// 別のスキームで認証する。管理 API（/mcp-clients。BFF が利用者のトークンを中継する）は既定のスキーム
+// （全サービス共通の audience `platform-api` を検証する。#1846 / [[IADR-0523]]）。
 builder.Services.AddMcpAudienceAuthentication(builder.Configuration);
 // NFR: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
 // 埋め込むと、構成の注入漏れが「起動失敗」ではなく「既定の資格情報で接続成功」へ倒れ、

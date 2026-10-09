@@ -128,6 +128,8 @@ internal sealed class IntrospectionGrpcTestHost : IAsyncDisposable
         var descriptor = new SecurityTokenDescriptor
         {
             Issuer = Issuer,
+            // NFR-09, #1846: 全サービスが audience（platform-api）を検証する。実 Keycloak の呼び出し元のトークンと同じ形。
+            Audience = global::Platform.Shared.Infrastructure.Foundation.Extensions.AuthExtensions.DefaultAudience,
             IssuedAt = DateTime.UtcNow,
             NotBefore = DateTime.UtcNow.AddMinutes(-1),
             Expires = DateTime.UtcNow.AddMinutes(5),

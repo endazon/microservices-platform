@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-09, NFR-16, FR-12, UC-06, SC-07, ADR-0004, ADR-0029, ADR-0084, ADR-0109, IADR-0029, IADR-0042, IADR-0044, IADR-0128, IADR-0154, IADR-0379, IADR-0403, IADR-0424, IADR-0458]
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-10-09
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0109_bff-user-credential-relay-is-edge.md 決定 1・3・4
   - planning:projects/microservices-platform/07_adr/ADR-0084_nfr09-judgment-unit-and-interim-clause-release.md 決定 1（端点単位）・決定 4（暫定条項での追認）
@@ -72,6 +72,7 @@ ConversionService は認証を持たなかった（`AddPlatformAuth`・`RequireA
   `realm_access.roles` は `KeycloakRolesClaimsTransformation` が展開する）。新しい仕組みは足さない（ADR-0109 §理由「新しい仕組みは要らない」）。
 - 🔴 **audience は検証しない。** `AddPlatformAuth` が全サービス共通で `ValidateAudience = false` であり、ConversionService だけを変えると
   BFF が中継するトークン（audience は BFF のクライアント）で門が閉じる。**「ロール違いで 403」は試験で固定し、audience は共通設定の射程とする。**
+  ［2026-10-09 追記 / #1846］共通設定の側で audience を検証するようになった（[IADR-0523](IADR-0523_platform-api-audience-validation.md)。全サービスが `platform-api`）。
 - 配備の構成は増えない。`Auth__Authority`（と任意の `Auth__MetadataAddress` / `Auth__ValidIssuers`）は Helm の `deployment.yaml` が
   全サービスへ `global.auth` から描き、compose は `x-common-env` が ConversionService にも注入している（オフライン描画で確認。作業仕様書）。
 - **ABAC（内容の絞り込み）は掛けない。** 変換ジョブは運用資産であり、SC-07 は照会を管理者・運用者のロールで絞る画面である。

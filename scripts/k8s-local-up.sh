@@ -538,6 +538,26 @@ kubectl -n "$INFRA_NS" rollout status deploy/reset-gate --timeout=120s
 # 器の readiness は上流（Keycloak）を映さない口なので、Keycloak の起動を待たずに Ready になる。
 kubectl -n "$INFRA_NS" rollout status deploy/reset-floor --timeout=120s
 
+# FR-05, NFR-09, ADR-0004/ADR-0026, IADR-0369 (#1088 / #324): realm JSON の差分を稼働 realm へ当てる。
+# 🔴 **`--import-realm` は既存 realm があると黙って飛ばす（IGNORE_EXISTING）。永続化（既定）で realm が
+#    PVC に残るようになった瞬間から、realm JSON を直しても稼働 realm は変わらない。** ここが唯一の反映経路である
+#    （旧 reconcile-backchannel-logout.sh の 1 値だけの後追い（IADR-0336 決定 3）を、宣言全体の差分へ一般化した）。
+# 🔴 pod 内で kcadm.sh を exec しない（本体が OOMKilled になる）。同じ namespace の Job が Admin REST API を叩く。
+# NFR-09, IADR-0523（2026-10-09 追記 / #1846・PR #1864 監査）: **[6/7] の helm upgrade より前**（Keycloak の rollout の直後）に置き、
+#   **失敗したら止める（fail-closed）。** helm が入れる新しい Pod は audience（platform-api）を求めるので、realm が先に
+#   それを載せていないと既存クラスタの再実行は全 API が 401 になる（旧位置＝[7/7] の後では Job の完了＋トークン寿命
+#   最大 300 秒の窓が空き、追随が落ちれば WARN だけで 401 が恒久化した）。依存は [3/7] の ConfigMap keycloak-realms・
+#   Secret keycloak-admin と [4/7] の Keycloak だけで、[5/7] の Secret・[7/7] の ExternalName には依存しない
+#   （Job は platform-infra で http://keycloak:8080 を叩く）。新規クラスタは Keycloak が同じ宣言を取り込んだ直後なので
+#   差分は無いか後追いで収束し、収束しなければ check-stack-ready.js の G9 がもともと落とす（＝新規の経路を新たに塞がない）。
+echo "==> Keycloak realm の追随（宣言との差分を Job で当てる / 冪等 / helm の前 / IADR-0369・IADR-0523）"
+if ! bash "$ROOT/deploy/local/keycloak-setup/reconcile-realm.sh"; then
+  echo "ERROR: realm の追随に失敗した。helm upgrade（[6/7]）へ進まずに止める —— 新しい Pod は audience（platform-api）を求め、" >&2
+  echo "       追随していない realm のトークンは全 API で 401 になる（IADR-0523）。原因を直して up を再実行するか、" >&2
+  echo "       bash deploy/local/keycloak-setup/reconcile-realm.sh で個別に当ててから再実行する。" >&2
+  exit 1
+fi
+
 echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
 # ［IADR-0461 決定 5 / #1499］MinIO Console の OIDC client secret（minio-oidc。IADR-0093）の作成はここにあったが
@@ -805,16 +825,6 @@ kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
 # #1115: 逆向き（platform-infra -> microservices-platform）。Keycloak がバックチャネルログアウトを
 # 素のサービス名 `bff-service` で叩けるようにする。理由はファイル冒頭の注記を参照。
 kubectl apply -f deploy/local/aliases/platform-infra-externalnames.yaml
-
-# FR-05, NFR-09, ADR-0004/ADR-0026, IADR-0369 (#1088 / #324): realm JSON の差分を稼働 realm へ当てる。
-# 🔴 **`--import-realm` は既存 realm があると黙って飛ばす（IGNORE_EXISTING）。永続化（既定）で realm が
-#    PVC に残るようになった瞬間から、realm JSON を直しても稼働 realm は変わらない。** ここが唯一の反映経路である
-#    （旧 reconcile-backchannel-logout.sh の 1 値だけの後追い（IADR-0336 決定 3）を、宣言全体の差分へ一般化した）。
-# 🔴 pod 内で kcadm.sh を exec しない（本体が OOMKilled になる）。同じ namespace の Job が Admin REST API を叩く。
-# best-effort: 失敗しても up 全体は止めない（再実行は冪等）。**fail-closed の門は check-stack-ready.js の G9。**
-echo "==> Keycloak realm の追随（宣言との差分を Job で当てる / 冪等 / IADR-0369）"
-bash "$ROOT/deploy/local/keycloak-setup/reconcile-realm.sh" \
-  || echo "    WARN: realm の追随に失敗（best-effort）。bash deploy/local/keycloak-setup/reconcile-realm.sh で再実行できる" >&2
 
 # ADR-0006, IADR-0077 (AST#24): opt-in オーバーレイ（既定オフ・fail-safe）。
 # 既定（env 未設定）では以下は一切実行されず、上記 [1/7]..[7/7] の挙動は不変。
