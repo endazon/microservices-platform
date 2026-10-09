@@ -61,6 +61,7 @@ public class GraphDocumentSyncConsumer(
     IGraphContentReader content,
     LinkEdgeSynchronizer links,
     TermProfileSynchronizer termProfiles,
+    TagEdgeSynchronizer tagEdges,
     ConsumerCallTimeouts calls,
     GraphSyncTimeouts timeouts,
     ILogger<GraphDocumentSyncConsumer> logger) : IPipelineStep<DocumentUpdated>
@@ -69,7 +70,19 @@ public class GraphDocumentSyncConsumer(
     public static string StepName => "graph-sync";
 
     // ADR-0027 / #911: Wolverine のハンドラ。
+    //
+    // 🔴 [[IADR-0521]] 決定 7 (#1396): **1 通を 1 つのトランザクションに収める。** 共有タグの差分の排他
+    // （`ITagEdgeLocks`）はトランザクションの寿命で持ち、所属・件数の読み取りから保存までを覆う。
+    // 確定するまで排他は解けない（同じタグへ同時に入った他の通は、確定した行を読んでから差分を取る）。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
+    {
+        await using var tx = await GraphSyncTransaction.BeginAsync(db, ct);
+        await ApplyAsync(ev, ct);
+        if (tx is not null)
+            await tx.CommitAsync(ct);
+    }
+
+    private async Task ApplyAsync(DocumentUpdated ev, CancellationToken ct)
     {
         // 🔴 FR-19, ADR-0061 決定 1・3・4 / [[IADR-0396]] 決定 4・5 (#1184): **グラフの門。**
         //
@@ -93,6 +106,8 @@ public class GraphDocumentSyncConsumer(
         var attributes = AbacAttributes(ev);
 
         string? previousHash;
+        // [[IADR-0521]] (#1396): 題名の新旧（後着のリンクの作り直しの契機）。null は新規。
+        var previousTitle = node?.Title;
         if (node is null)
         {
             previousHash = null;
@@ -137,7 +152,8 @@ public class GraphDocumentSyncConsumer(
             }
             else
             {
-                linkSync = await links.SyncAsync(ev.DocumentId, body, ct);
+                linkSync = await links.SyncAsync(
+                    ev.DocumentId, body, new LinkEdgeSynchronizer.CandidateOverride(ev.DocumentId, ev.Title), ct);
             }
 
             // IADR-0380 (#1244): 同じ 1 回の読み取りから語の出現数を作り直す。本文が無ければ表題だけ。
@@ -156,12 +172,27 @@ public class GraphDocumentSyncConsumer(
             termProfile = "kept";
         }
 
+        // 🔴 [[IADR-0521]] (#1396): **後着の相手へのリンク。** 新規・改名のときだけ、この文書を指し得る
+        // リンクを持つ起点の辺を保存済みのリンクから作り直す（本文は読まない）。
+        // **共有タグの差分より先に行う** —— 作り直しで消えた本文のリンクの辺を、組がタグを共有していれば
+        // 共有タグの差分が同じ保存の中で共有タグの辺へ戻すため。
+        IReadOnlyList<Guid> relinked = [];
+        if (previousTitle is null || !string.Equals(previousTitle, ev.Title, StringComparison.Ordinal))
+            relinked = await links.RelinkReferrersAsync(ev.DocumentId, previousTitle, ev.Title, ct);
+
+        // 🔴 [[IADR-0521]] (#1396): **共有タグの辺。** タグはイベントに載っているので本文の指紋に依らず
+        // 受信のたびに作り直す（本文を読まないので ADR-0050 決定 3 の契機を増やさない）。
+        var tagSync = await tagEdges.SyncAsync(ev.DocumentId, ev.Tags, relinked, ct);
+
         await db.SaveChangesAsync(ct);
         logger.LogInformation(
             "Synced graph document {DocumentId} (attributes={AttributeCount} reinstated={Reinstated} "
-            + "links={Links} edgesAdded={Added} edgesRemoved={Removed} termProfile={TermProfile})",
+            + "links={Links} edgesAdded={Added} edgesRemoved={Removed} unresolved={Unresolved} "
+            + "relinked={Relinked} tags={Tags} tagEdgesAdded={TagAdded} tagEdgesRemoved={TagRemoved} "
+            + "hubTags={HubTags} termProfile={TermProfile})",
             ev.DocumentId, attributes.Count, reinstated,
-            linkSync.Extracted, linkSync.Added, linkSync.Removed, termProfile);
+            linkSync.Extracted, linkSync.Added, linkSync.Removed, linkSync.Unresolved,
+            relinked.Count, tagSync.Tags, tagSync.Added, tagSync.Removed, tagSync.HubTags, termProfile);
     }
 
     // 🔴 FR-19, FR-20, ADR-0036 D-06, ADR-0098 決定 1, ADR-0061 決定 5,
@@ -199,23 +230,27 @@ public class GraphDocumentSyncConsumer(
     // ノードが無いノードは**そもそも不可視**である（鮮度契約 3・[[IADR-0242]] 決定 12-3）。
     // 辺も併せて消すのは、指す先の無い辺を残さないためである（`Seal` は両端が見える辺だけを
     // 返すので出力には出ないが、件数の材料として残り続ける）。冪等（該当 0 件でも成功）。
+    //
+    // ［[[IADR-0521]] / #1396］**タグの複製も消す**（`GraphDocumentRemoval`）。残すと撤収した文書がタグの件数に
+    // 数えられ続け、上限の判定（ハブ）を狂わせる。同名の文書を指していた他文書のリンクの作り直しも同じ手順で行う。
     private async Task WithdrawAsync(Guid documentId, CancellationToken ct)
     {
         var node = await db.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId, ct);
-        var edges = await db.Edges
-            .Where(e => e.SourceDocumentId == documentId || e.TargetDocumentId == documentId)
-            .ToListAsync(ct);
+        var hasEdges = await db.Edges
+            .AnyAsync(e => e.SourceDocumentId == documentId || e.TargetDocumentId == documentId, ct);
+        var hasTags = await db.DocumentTags.AnyAsync(t => t.DocumentId == documentId, ct);
 
-        if (node is null && edges.Count == 0)
+        if (node is null && !hasEdges && !hasTags)
             return;
 
+        var removal = await GraphDocumentRemoval.DetachAsync(db, links, tagEdges, documentId, node?.Title, ct);
         if (node is not null) db.Documents.Remove(node);
-        db.Edges.RemoveRange(edges);
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation(
-            "Withdrew graph document {DocumentId} ({Edges} edge(s)): the graph exposure toggle is off",
-            documentId, edges.Count);
+            "Withdrew graph document {DocumentId} ({Edges} edge(s), relinked={Relinked}): "
+            + "the graph exposure toggle is off",
+            documentId, removal.EdgesRemoved, removal.Relinked);
     }
 
     // 当該文書を端点とする却下済み提案について、**現在の**両端指紋で解除判定を行う。

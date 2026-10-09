@@ -20,6 +20,9 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
     // 未解決リンク数はここから**集計のたびに解決し直して**数える（失敗を保存しない）。
     public DbSet<DocumentLinkTarget> DocumentLinkTargets => Set<DocumentLinkTarget>();
 
+    // FR-17, [[IADR-0521]] (#1396): 文書のタグの複製（共有タグの辺の材料）。
+    public DbSet<GraphDocumentTag> DocumentTags => Set<GraphDocumentTag>();
+
     // FR-17, FR-18, SC-10, SC-18, ADR-0035 決定 3・6, ADR-0083, [[IADR-0425]] (#1363):
     // 日次バッチが検出したクラスタ（コミュニティ）と、その所属・要約の生成時刻。
     public DbSet<GraphCluster> Clusters => Set<GraphCluster>();
@@ -239,9 +242,23 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
             e.Property(x => x.SourceDocumentId).IsRequired();
             e.Property(x => x.Target).HasMaxLength(DocumentLinkTarget.MaxTargetLength).IsRequired();
             e.Property(x => x.ExtractedAt).IsRequired();
+            // [[IADR-0521]] (#1396): 後着の相手へ辺を作り直すための 3 列。**移行前の行は NULL**（作り直さない）。
+            e.Property(x => x.Kind).HasMaxLength(32);
+            e.Property(x => x.ExplicitTypeName).HasMaxLength(DocumentLinkTarget.MaxNameLength);
+            e.Property(x => x.Anchor).HasMaxLength(DocumentLinkTarget.MaxNameLength);
 
             // 書き込み側（文書 1 件ぶんの全量置換）と削除側が同じ述語で引く。
             e.HasIndex(x => x.SourceDocumentId).HasDatabaseName("ix_document_link_targets_source");
+        });
+
+        // FR-17, [[IADR-0521]] (#1396): 文書のタグの複製。主キーは (文書, 正規化したタグ)。
+        // `Tag` の索引は「同じタグを持つ文書」「タグごとの文書数」を引くため。
+        mb.Entity<GraphDocumentTag>(e =>
+        {
+            e.ToTable("graph_document_tags");
+            e.HasKey(x => new { x.DocumentId, x.Tag });
+            e.Property(x => x.Tag).HasMaxLength(GraphDocumentTag.MaxTagLength).IsRequired();
+            e.HasIndex(x => x.Tag).HasDatabaseName("ix_graph_document_tags_tag");
         });
 
         // FR-17, ADR-0033 決定 4・5・6: 辺。
@@ -269,6 +286,9 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
             // **NULL 可でよい**（一意制約 ux_edges に参加しないため、NULL 同士が相異なる扱いでも
             // 重複防止は壊れない）。利用者付与・AI 承認済みの辺では NULL である。
             e.Property(x => x.ExtractedFrom);
+            // [[IADR-0521]] (#1396): 自動抽出の内訳（`link` / `tag`）。自動抽出以外は NULL。
+            // 一意制約 ux_edges には参加させない —— 同じ関係を本文のリンクと共有タグの両方が表明しても行は 1 本。
+            e.Property(x => x.AutoSource).HasMaxLength(16);
             // 差分更新の母集合（provenance=auto かつ起点が当該文書）を引く索引。
             e.HasIndex(x => x.ExtractedFrom).HasDatabaseName("ix_edges_extracted_from");
 

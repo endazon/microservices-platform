@@ -89,16 +89,28 @@ internal static class CreateGraphEdgeEndpoint
 
             // 重複の事前検査。**対称型は正規化後の並びで突き合わせる**（Edge.Create が正規化済み）。
             // ⚠ InMemory は一意索引を強制しないため、ここが実質唯一の防壁になる（#941）。
-            var duplicate = await db.Edges.AnyAsync(e =>
+            var duplicate = await db.Edges.FirstOrDefaultAsync(e =>
                 e.SourceDocumentId == edge.SourceDocumentId
                 && e.TargetDocumentId == edge.TargetDocumentId
                 && e.EdgeTypeId == edge.EdgeTypeId
                 && e.SourceAnchor == edge.SourceAnchor
                 && e.TargetAnchor == edge.TargetAnchor, ct);
-            if (duplicate)
+            if (duplicate is { IsTagDerived: true })
+            {
+                // [[IADR-0521]] (#1396), ADR-0033 決定 6: 同じ関係が**共有タグの辺**として既にあるなら、
+                // その行を利用者付与として引き取る（409 にしない）。引き取らないと、タグを外した時点で
+                // 利用者が張ったつもりの関係が消える。
+                duplicate.AdoptAs(EdgeProvenance.User);
+                edge = duplicate;
+            }
+            else if (duplicate is not null)
+            {
                 return Results.Conflict(new { error = "edge_exists" });
-
-            db.Edges.Add(edge);
+            }
+            else
+            {
+                db.Edges.Add(edge);
+            }
             try
             {
                 await db.SaveChangesAsync(ct);

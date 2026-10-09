@@ -206,6 +206,18 @@ builder.Services.AddPlatformConsumerTimeouts();
 builder.Services.AddScoped<LinkEdgeSynchronizer>();
 // IADR-0380 (#1244): 同じ本文読み取りから語の出現数（類似度候補の材料）を作る。
 builder.Services.AddScoped<TermProfileSynchronizer>();
+// FR-17, ADR-0035 決定 1, [[IADR-0521]] (#1396): 共有タグの辺。上限は `TagEdges:MaxDocumentsPerTag`
+// （環境変数 `TagEdges__MaxDocumentsPerTag`。既定 50。不正値は既定へ倒し、起動は落とさない）。
+builder.Services.Configure<TagEdgeOptions>(builder.Configuration.GetSection(TagEdgeOptions.SectionName));
+builder.Services.AddScoped<TagEdgeSynchronizer>();
+// 🔴 [[IADR-0521]] 決定 7 (#1396): 共有タグの差分の排他（タグ単位の `pg_advisory_xact_lock`）。購読の受け口は
+// 既定の並列度で同時に走るため、省くと同じタグへ同時に入った文書の組の辺が欠け、上限を超えた辺が残る。
+// 非リレーショナル（単体テストの InMemory）は no-op（トランザクションも持たない）。
+builder.Services.AddScoped<ITagEdgeLocks>(sp =>
+{
+    var db = sp.GetRequiredService<GraphDbContext>();
+    return db.Database.IsRelational() ? new PostgresTagEdgeLocks(db) : NoOpTagEdgeLocks.Instance;
+});
 
 // FR-10, FR-17, FR-19, UC-05, SC-10, ADR-0002, ADR-0006, IADR-0265, [[IADR-0299]] (#443):
 // ナレッジ健全性の観測値の**生産者**。受け口（DashboardService）は #443 で実装済みだが、

@@ -201,27 +201,54 @@ public static class ObsidianLinkParser
 
         // **外部 URL は辺にしない**（IADR-0281）。グラフのノードは本システムの文書であり、
         // 外部 URL に対応する文書が無い。スキーム付き絶対 URI をここで落とす。
-        if (Uri.TryCreate(value, UriKind.Absolute, out _))
-            return null;
+        // ただし **Wiki の文書ページの URL（パスが `…/doc/<GUID>`）は本システムの文書を ID で指す**
+        // （[[IADR-0521]] / #1396）。ホストは問わない（GUID が文書 ID と一致しなければ未解決に数えるだけ）。
+        //
+        // 🔴 **先頭がスラッシュのパス（`/doc/<ID>`・`/en/page`）は絶対 URI として扱わない。** Unix 系の実行環境では
+        // `Uri.TryCreate("/x", Absolute)` が `file:///x` として成功し、サイト内の絶対パスのリンクが
+        // 外部 URL として黙って捨てられていた（[[IADR-0521]] / #1396 で実測）。
+        //
+        // 🔴 **ただしスキームを省いた URL（`//host/path`）は外部 URL である**（[[IADR-0521]] / #1396）。先頭がスラッシュでも
+        // サイト内パスではない —— 最終セグメントを題名として解決しに行くと、外部サイトのページ名が同名の文書へ化ける。
+        // スキーム付きの URL と同じく扱う（Wiki の文書ページの形だけを文書 ID で解決し、他は捨てる）。
+        if (value.StartsWith("//", StringComparison.Ordinal))
+            return ExternalUrlTarget(Uri.TryCreate("https:" + value, UriKind.Absolute, out var schemeless) ? schemeless : null);
+        if (!value.StartsWith('/') && Uri.TryCreate(value, UriKind.Absolute, out var absolute))
+            return ExternalUrlTarget(absolute);
 
-        string decoded;
+        // [[IADR-0521]] (#1396): 断片（`#…`）とクエリ（`?…`）は**復号の前に**落とす。名前はパスだけから取る ——
+        // 落とさないと `設計メモ.md?v=2` の名前が `設計メモ.md?v=2` になり（`.md` も落ちない）、必ず未解決になる。
+        // 復号の前に落とすのは、名前の中のエンコードされた `%23` / `%3F` を区切りと取り違えないため。
+        var cut = value.IndexOfAny(['#', '?']);
+        var rawPath = cut >= 0 ? value[..cut] : value;
+
+        string path;
         try
         {
-            decoded = Uri.UnescapeDataString(value);
+            path = Uri.UnescapeDataString(rawPath);
         }
         catch (UriFormatException)
         {
             // 壊れたパーセントエンコードは復号せずそのまま扱う（抽出を止める理由にはならない）。
-            decoded = value;
+            path = rawPath;
         }
 
-        var hash = decoded.IndexOf('#');
-        if (hash >= 0)
-            decoded = decoded[..hash];
+        // [[IADR-0521]] (#1396): Wiki のリンク（`/doc/<ID>`・`/en/doc/<ID>`。クエリつきも）は文書 ID で指す。
+        // 最終セグメント（GUID の文字列）を題名として解決しに行くと、題名が GUID の文書は無いので必ず未解決になる。
+        if (WikiDocumentPath.TryParseLinkPath(path, out var documentId))
+            return WikiDocumentPath.Format(documentId);
 
-        var name = NormalizeName(decoded);
+        var name = NormalizeName(path);
         return name.Length == 0 ? null : name;
     }
+
+    // 外部 URL（スキーム付き・スキーム省略）の宛先。`http(s)` の Wiki の文書ページだけを文書 ID で指し、他は辺にしない。
+    private static string? ExternalUrlTarget(Uri? url)
+        => url is not null
+            && url.Scheme is "http" or "https"
+            && WikiDocumentPath.TryParseLinkPath(url.AbsolutePath, out var wikiId)
+            ? WikiDocumentPath.Format(wikiId)
+            : null;
 
     // フェンス（``` / ~~~）で囲まれた領域を空白へ置き換える（長さは変えない）。
     private static string BlankFencedBlocks(string text)

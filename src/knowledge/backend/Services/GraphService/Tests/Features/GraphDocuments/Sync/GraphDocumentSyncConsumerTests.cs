@@ -35,7 +35,7 @@ public class GraphDocumentSyncConsumerTests
         => new(db, new FixedClock(T0.AddDays(10)), new NoBodyReader(),
             new LinkEdgeSynchronizer(db, new EdgeTypeFallbackMetrics(new DummyMeterFactory()),
                 NullLogger<LinkEdgeSynchronizer>.Instance),
-            new TermProfileSynchronizer(db),
+            new TermProfileSynchronizer(db), TagEdgesForTests.Synchronizer(db),
             ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
             NullLogger<GraphDocumentSyncConsumer>.Instance);
 

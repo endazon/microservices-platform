@@ -61,7 +61,7 @@ public class DocumentDeletedConsumerTests
         db.Edges.Count().Should().Be(3);
         db.AiSuggestions.Count().Should().Be(3);
 
-        var consumer = new DocumentDeletedConsumer(db, NullLogger<DocumentDeletedConsumer>.Instance);
+        var consumer = new DocumentDeletedConsumer(db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db), NullLogger<DocumentDeletedConsumer>.Instance);
         await consumer.Handle(new DocumentDeleted(DocA, DateTimeOffset.UtcNow), ct);
 
         // 否定形: 当該文書の痕跡が 1 件も残らない。
@@ -84,7 +84,7 @@ public class DocumentDeletedConsumerTests
     {
         var ct = TestContext.Current.CancellationToken;
         var (db, _) = await SeedAsync(ct);
-        var consumer = new DocumentDeletedConsumer(db, NullLogger<DocumentDeletedConsumer>.Instance);
+        var consumer = new DocumentDeletedConsumer(db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db), NullLogger<DocumentDeletedConsumer>.Instance);
 
         await consumer.Handle(new DocumentDeleted(DocA, DateTimeOffset.UtcNow), ct);
         // 二重配信・未知 ID とも例外にしない（例外なら本テスト自体が失敗する）。
