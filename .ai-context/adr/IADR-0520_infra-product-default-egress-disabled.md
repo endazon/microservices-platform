@@ -102,6 +102,11 @@ TEI（埋め込み）の外部通信は起動時のモデルの取得そのも�
 3. **Loki・Tempo の送信は 4 時間ごと**で、捕捉プロキシの実測窓（15 秒）では送信の発生そのものを観測できない。実効設定（`/config`・`/status/config`）が `reporting_enabled: false` を返すことを実測した。
 4. **TEI**（決定 3）。
 5. 表に無い製品（headlamp 等。点検の記録では「既知の既定の外部通信は無い（未実測）」）は本検査の対象外。新しい製品は点検（基準 C）で表へ足す。
+6. ［2026-10-09 追記 / #1841・独立監査 🟡］**検査が見ない上書きの経路がある**（監査の変異試験で実測）。
+   - Testcontainers は入口（`new QdrantBuilder(` が `QdrantTestImage.CreateBuilder()` の外に無いこと）の形だけを見る。`QdrantTestImage.CreateBuilder().WithEnvironment("QDRANT__TELEMETRY_DISABLED", "false")` の後付けと、汎用の `new ContainerBuilder().WithImage(QdrantTestImage.Reference)` はすり抜ける。
+   - k8s の `envFrom`（ConfigMap・Secret）と compose の `env_file`、Grafana の `cfg:` 引数による上書きは見ない。Qdrant・Mailpit がこれで有効化の値を受けても、検査は「無効化の値が見えない」として落ちる（fail-closed）。すり抜けるのは、無効化の値を残したまま別の口で上書きする形だけである。
+   - いずれも、検査を回避する意図のある変更でしか起きない。塞ぐなら、`QdrantTestImage.Reference` の参照を `QdrantTestImage.cs` の外で禁じることと、`envFrom` / `env_file` を持つ製品のコンテナを赤にすることを、同じ検査器へ足す。
+7. ［2026-10-09 追記 / #1841・独立監査 🟡］Grafana の外部スナップショット（`[snapshots] external_enabled = true`。送信先 snapshots.raintank.io）は既定のまま残る。利用者が「Publish」を押したときだけ送る経路であり、背景の送信ではない。止めるかどうかは計画の裁定を待つ（planning#768）。
 
 ## フォローアップ
 

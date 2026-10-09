@@ -299,6 +299,7 @@ ABAC が判定に使う利用者の部門は IdP の利用者属性 `department`
 - **CI（静的）**: `check-deploy-manifests.js` が、描画した chart・各 overlay と compose・統合試験の C#・手順書とスクリプトの `docker run` を読み、
   コンテナごとに「そのプロセスから見える設定」（env・引数・マウントしたファイル）で判定する。設定を外す・上書きする（Loki / Tempo のフラグ、
   Grafana の `GF_*` の env）・版を戻す・永続化の overlay の patch で書き換える、のいずれでも落ちる。製品が 1 つも見つからなくても落ちる。
+  **ただし見ない口がある**: k8s の `envFrom`・compose の `env_file`・Grafana の `cfg:` 引数による上書きと、統合試験で Qdrant を汎用のコンテナビルダーで起こす形は検査しない（無効化の値を残したまま別の口で上書きした場合だけすり抜ける）。
 - **稼働（経路 B）**: `check-stack-ready.js` が Mailpit の状態の API の `LatestVersion` が `disabled` であることを確かめる。
 - **実測**: 公式の配布物（配備と同じ版）を、外へ転送しない捕捉プロキシの下で起動し、無効化の前後で送信の有無を比べた。
   Grafana・Qdrant・Mailpit は無効化の前に送信の試行を捕捉し、後は 0 件だった。Loki・Tempo は送信が 4 時間ごとで観測の窓に入らないため、
