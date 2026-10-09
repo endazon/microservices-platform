@@ -5,9 +5,11 @@ namespace McpServer.Infrastructure.Authentication;
 // FR-16, UC-08, 計画 ADR-0134 決定 1・フォローアップ 2, [[IADR-0516]]（2026-10-09 追記 / #1844）:
 // **MCP のプロトコル面（`/mcp`）はトークンの audience を検証する。** audience は MCP サーバー（`mcp-server`）に限る。
 //
-// ■ 🔴 **既定のスキームは変えない**（`AddPlatformAuth` の `ValidateAudience = false` のまま）。管理 API（`/mcp-clients`）は BFF が
-//   **利用者のトークン**（aud は MCP サーバーではない）を中継して呼ぶ（`McpClientBffEndpoints.Proxy`）。既定のスキームで audience を
-//   検証すると SC-12 の管理が 401 で閉じる。全サービスの共通設定（`AuthExtensions`）の是正は別 issue（#1846）。
+// ■ 🔴 **既定のスキームの audience は `mcp-server` ではない。** 管理 API（`/mcp-clients`）は BFF が
+//   **利用者のトークン**（aud は MCP サーバーではない）を中継して呼ぶ（`McpClientBffEndpoints.Proxy`）。
+//   ［2026-10-09 / #1846 / [[IADR-0523]]］既定のスキームは全サービス共通の audience（`platform-api`。`AuthExtensions.DefaultAudience`）を
+//   検証するようになった。`/mcp` はそれと**別の値**（`mcp-server`）だけを受け付け、既定のスキームは `mcp-server` を受け付けない
+//   （`AuthExtensions.ReservedMcpAudience`）。BFF・サービスのトークンは `/mcp` を通らず、MCP クライアントのトークンは管理 API を通らない。
 // ■ そのため `/mcp` にだけ、**別の JWT スキーム**（<see cref="Scheme"/>）とポリシー（<see cref="Policy"/>）を掛ける。
 //   スキームの発行元・メタデータの取得先・署名鍵の取り方・名前とロールのクレームは**既定のスキームと同じ 1 つの設定**
 //   （`AuthExtensions.PlatformJwtBearer`）を当てる（発行元の検証を 2 つにしない。IADR-0086 の分離もそのまま効く）。
@@ -36,6 +38,9 @@ public static class McpAudienceAuthentication
             platform(options);
             options.TokenValidationParameters.ValidateAudience = true;
             options.TokenValidationParameters.ValidAudience = Audience;
+            // 🔴 #1846: 共有の設定が入れた `ValidAudiences`（platform-api）を残すと、ハンドラは `ValidAudience` との和集合で
+            // 照合する ＝ platform のトークンが `/mcp` を通る。`mcp-server` だけに置き換える。
+            options.TokenValidationParameters.ValidAudiences = [Audience];
         });
         services.AddAuthorizationBuilder()
             .AddPolicy(Policy, policy => policy

@@ -50,7 +50,9 @@ public class PlatformAuthJwtBearerOptionsTests
 
         options.TokenValidationParameters.ValidateIssuer.Should().BeTrue();
         options.RequireHttpsMetadata.Should().BeFalse();
-        options.TokenValidationParameters.ValidateAudience.Should().BeFalse();
+        // NFR-09, #1846: audience は検証する（既定 platform-api）。
+        options.TokenValidationParameters.ValidateAudience.Should().BeTrue();
+        options.TokenValidationParameters.ValidAudiences.Should().Equal("platform-api");
         options.TokenValidationParameters.NameClaimType.Should().Be("preferred_username");
     }
 

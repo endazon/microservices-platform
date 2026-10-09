@@ -356,7 +356,8 @@ public sealed class KeycloakServiceAccountProvisioner(
     // 🔴 リダイレクト URI は入力そのもの（完全一致。規則は検証器が掛け終えている）。**Web オリジンは空**（CORS を開かない）。
     // `fullScopeAllowed=false`: realm の全ロールをトークンへ載せない（MCP サーバーはロールを読まない）。
     // `defaultClientScopes=["profile"]`: 利用者名（`preferred_username`）が要る（`McpSubjectResolver`。realm は既定のスコープを宣言しない）。
-    // audience の写像で `aud` を MCP サーバーに限る（他のサービスへ持ち込ませない。#1846 が全サービスの検証を入れる）。
+    // audience の写像で `aud` を MCP サーバーに限る（他のサービスへ持ち込ませない。#1846 で全サービスが `platform-api` を検証し、
+    // このテンプレートは `platform-api-audience` スコープを持たない ＝ MCP クライアントのトークンは他のサービスで 401）。
     private const string ProfileClientScope = "profile";
 
     internal static Dictionary<string, object?> PublicClientTemplate(

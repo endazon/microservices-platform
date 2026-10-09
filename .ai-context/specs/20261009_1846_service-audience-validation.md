@@ -1,8 +1,8 @@
 ---
 title: 作業仕様書 — 全サービスの JWT 検証で audience を検証する（ValidateAudience = false の是正。NFR-09・ADR-0036。#1846）
 type: spec
-status: draft
-related_ids: [NFR-09, ADR-0036, ADR-0032, ADR-0086, ADR-0134, ADR-0119, IADR-0516, IADR-0086, IADR-0379, IADR-0429]
+status: done
+related_ids: [NFR-09, ADR-0036, ADR-0032, ADR-0086, ADR-0134, ADR-0119, IADR-0523, IADR-0516, IADR-0086, IADR-0379, IADR-0429]
 author: claude
 created: 2026-10-09
 updated: 2026-10-09
@@ -19,7 +19,8 @@ issue: "#1846"
 
 > 本仕様書は実装着手前に作成した（2026-10-09）。基点は MSP `origin/develop` `1e6cfa58`（#1854 のマージ直後。`AuthExtensions.PlatformJwtBearer` と `McpAudience` スキームが在る）。
 > 計画は project-planning の隣接クローン（`origin/main` `142c3e44`。読み取り専用）で読んだ。
-> 🔴 **状態は裁定待ちである（下記「裁定が要る点」）。実装には着手していない。**
+> ［2026-10-09 追記 / #1846］**利用者裁定: 方式 C**（下記「裁定」）。計画への環流は **planning#770**（`feedback`・`decision-needed`）。
+> 実装は `origin/develop` `842b970f`（#1854・#1855・#1856 のマージ後）へ追随してから行った。記録は **IADR-0523**（0522 は並走 PR #1860 が取る。#1863 は新しい IADR を取らない）。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -27,7 +28,7 @@ issue: "#1846"
 - 計画 ADR: **ADR-0036**・**ADR-0032**（issue の受け入れ基準 4 が整合を求める 2 本）。**ADR-0086**（east-west は token exchange を採らず、呼び出し側サービス自身のトークンで呼ぶ）。**ADR-0134 決定 1**（MCP クライアントの audience を MCP サーバーに限る。#1844 で実装済み）。**ADR-0119 実測 11**（DocumentService が audience を検証していないことを記録）。
 - NFR: **NFR-09**（サービス間の認証・認可）。
 - 実装 ADR: IADR-0516（#1844 の追記。残余 3 が本件）・IADR-0086（発行元の検証）・IADR-0379 決定 4（`ServiceCaller`）・IADR-0429（BFF の Bearer 腕は無人の主体だけ）。
-- 新しい IADR は **IADR-0523** を予定する（0521・0522 は並走 PR #1855・#1839 が取る）。
+- 新しい IADR は **IADR-0523**（0521 は #1855 でマージ済み、0522 は並走 PR #1860〔#1839〕が取る）。
 
 ## 計画の読み（受け入れ基準 4 の前提）
 
@@ -117,7 +118,13 @@ issue: "#1846"
 
 **いずれの方式でも計画への環流（受け入れ基準 4）が要る**（project-planning へ `feedback.yml`・`decision-needed` で起票。起票前に同件の検索）。
 
-## 裁定後の実装の段取り（方式 C の場合）
+## 裁定（2026-10-09・利用者。オーケストレーター経由）
+
+- **方式 C** を採る。共有の audience は `platform-api`。1 つのクライアントスコープ（audience の写像）を正当な呼び出し元へ割り当て、各サービスは構成 `Auth:Audiences`（既定 `platform-api`）を検証する。サービスごとの audience へは構成だけで移れるようにする。
+- **`mcp-server` を共有の audience に流用しない**（#1854 で「MCP クライアントに発行したトークン」の意味）。MCP クライアント・運用ツール（grafana・argocd・headlamp・vault・wiki-js）・realm 管理用のクライアントのトークンは platform のサービスで拒否する。`/mcp` の `McpAudience` スキームはそのまま。
+- 計画へ環流する（planning#770 を起票した。起票前に planning の issue 200 件を audience / ADR-0036 / 1846 で検索し、同件が無いことを確かめた）。
+
+## 実装の段取り（方式 C）
 
 1. 稼働の現状測定: integration-stack で `bff` / サービス SA / AST クライアントのトークンの `aud` を evaluate-scopes で測る（現状の `aud` が空であることの確認）。
 2. realm: クライアントスコープ `platform-api-audience`（`oidc-audience-mapper`・`included.custom.audience=platform-api`・access のみ）を足し、一次の呼び出し元の `defaultClientScopes` へ割り当てる。`reconcile-realm.js` で稼働 realm へも写す。`check-realm-constraints.js` に「一次の呼び出し元は全員このスコープを持つ」「運用ツールのクライアントは持たない」を足す。
@@ -128,10 +135,16 @@ issue: "#1846"
 
 ## 受け入れ基準（issue の 4 項目の写し）
 
-- [ ] サービスごとに期待する audience を決め、realm の宣言でトークンに載せる。
-- [ ] `ValidateAudience = true` と `ValidAudiences` をサービスごとに設定し、BFF の Token Handler と east-west の経路で既存の呼び出しが通る。
-- [ ] 他のサービス向けのトークンを拒否する否定形の試験を置く。
-- [ ] 計画に audience の方針が無いので計画へ環流する（ADR-0036・ADR-0032 との整合）。
+- [x] サービスごとに期待する audience を決め、realm の宣言でトークンに載せる。（裁定 C: 全サービス既定 `platform-api`。realm のスコープ `platform-api-audience` を呼び出し元 17 件へ）
+- [x] `ValidateAudience = true` と `ValidAudiences` をサービスごとに設定し、BFF の Token Handler と east-west の経路で既存の呼び出しが通る。（`Auth:Audiences`。稼働の通過は integration-stack の既存の門＋M11 で測る）
+- [x] 他のサービス向けのトークンを拒否する否定形の試験を置く。（ConversionService REST・AuthorizationService gRPC・McpServer `/mcp`・構成の器）
+- [x] 計画に audience の方針が無いので計画へ環流する（ADR-0036・ADR-0032 との整合）。（planning#770）
+
+## 実装の結果（2026-10-09 追記）
+
+- 試験の器でトークンを作る箇所（母集合 4 の単体側）を `IssuerSigningKey|SecurityTokenDescriptor|JsonWebTokenHandler|ValidateAudience` で引き直した: 16 ファイル。うち audience を載せたもの 11（gRPC の Kestrel 8・LlmGateway・ConversionService・BFF の Bearer 腕）、変えないもの 5（`McpAudienceAuthenticationTests`＝自前で audience を指定・`BackchannelLogoutTests`＝ログアウトトークン・`RegistrantDepartmentTests`＝試験内の手組みの検証・`AuthExtensionsTests` / `PlatformAuthJwtBearerOptionsTests`＝期待値の更新）。
+- 実走の門でトークンを作る箇所（母集合 4 の稼働側）: `check-mcp-client-provisioning.js` の使い捨ての登録者（既定スコープを自前で割り当てる）にスコープを足した。`seed-*.js`・`synthetic-monitor`・`verify-oidc-edge-flow.sh` は realm のクライアント（`abac-seeder`・`synthetic-monitor`・`bff`）を使うので realm の変更で足りる。
+- `McpAudience` の `ValidAudiences` を `["mcp-server"]` へ置き換えた（共有の設定の `platform-api` が残ると和集合で照合される）。
 
 ## 残余
 

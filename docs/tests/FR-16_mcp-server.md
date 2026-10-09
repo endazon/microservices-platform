@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-16, UC-08, UC-09, SC-12, NFR-09, NFR-16]
 adrs: [ADR-0004, ADR-0018, ADR-0024, ADR-0029, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0062, ADR-0075, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134]
-iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516]
-specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client]
-issues: [#445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844]
+iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523]
+specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1846_service-audience-validation]
+issues: [#445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844, #1846]
 -->
 
 # テスト仕様書: MCP サーバー統合
@@ -211,7 +211,7 @@ CI は緑のままで、**壊れた構成のまま Web サーバーが起動し�
 | C-63 | 有人のクライアントの有効・無効（認可サーバーの口） | 有効・無効を書き、サービスアカウントの設定は現在値（無効）のまま送る。テンプレートの項目は変わらない。取り消しは作ったものを消す |
 | C-64 | 無人のテンプレート | 無人のクライアントにも audience の写像がある（MCP 面の検証を通るため） |
 | C-65 | 照合で有人の行を比べる | 入口の印と有効・無効を比べ、属性は読まない。認可サーバーに無い以前の有人の行は数えない。入口が作った有人のクライアントは孤児にしない |
-| C-66 | MCP 面の audience | audience が MCP サーバーのトークンは通る（陽性対照）。audience が違う・無い・トークンが無い・発行元が違うものは 401（器の既定の認証がどの要求も通す状態で測る）。管理 REST 面の既定の認証は audience を検証しないまま。発行元・名前とロールのクレームは既定の認証と同じ設定 |
+| C-66 | MCP 面の audience | audience が MCP サーバーのトークンは通る（陽性対照）。audience が違う・無い・トークンが無い・発行元が違うものは 401（器の既定の認証がどの要求も通す状態で測る）。［2026-10-09 更新］管理 REST 面の既定の認証は共有の audience（`platform-api`）だけを検証し、MCP 面は `mcp-server` だけ（共有の audience のトークンは MCP 面で 401）。発行元・名前とロールのクレームは既定の認証と同じ設定 |
 | C-67 | 稼働の認可サーバーで有人を登録する（統合スタックの門） | 201・テンプレートどおり・登録簿は有人。ワイルドカードは 400 で何も作らない。認可の要求で PKCE なし・`plain` は `invalid_request` でリダイレクトへ返され、S256 はログイン画面へ進む。登録していない path・host・https の port・`localhost` は 400。port なしのループバック（`127.0.0.1`・`[::1]`）の登録は 400 で何も作らない。port を明示した `http://127.0.0.1:<port>`・`http://[::1]:<port>` は登録どおりの port で進み、別の port と、利用者情報で宛先をすり替える形（`:<port>@evil.example`・`:1@evil.example`。CVE-2024-8883）は 400。例示のアクセストークンと無人のトークンの audience に MCP サーバー。無効化・再有効化・補償は無人と同じ |
 | C-68 | 稼働の認可サーバーで動的クライアント登録を試す（統合スタックの門） | 匿名（2 つの形）・偽の初期アクセストークンは 401 / 403 でクライアントが増えない。初期アクセストークンは 0 個。匿名の登録ポリシーに信頼ホストが空の Trusted Hosts がある |
 

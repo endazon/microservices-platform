@@ -374,6 +374,8 @@ audience を MCP サーバーに限り MCP サーバーが検証する・DCR は
 2. **ブラウザでの認可コードの交換と、そのトークンで `/mcp` を呼ぶ往復**は試験に無い（PKCE の強制とリダイレクト URI の照合は認可の要求の応答で、audience は例示のトークンで測る）。
 3. **他のサービスは audience を検証しない**（#1846）。それまでは、MCP クライアントのトークン（aud=mcp-server）を他のサービスが受け得る（`fullScopeAllowed=false` で realm ロールは載らないので、
    ロールで守られた面には届かない）。
+   ［2026-10-09 追記 / #1846］[IADR-0523](IADR-0523_platform-api-audience-validation.md) で解消した。全サービスの既定のスキームは `platform-api` を検証し、
+   MCP クライアントのトークン（aud=mcp-server だけ）は 401 になる。`/mcp` のスキームは `mcp-server` だけを受け付ける（`ValidAudiences` も置き換える）。
 4. 本件より前に登録簿だけへ書かれた有人の行は、IdP へ載せる経路が無い（差し替えは無人だけ）。トークンが出ないので接続はできない。使うには行を消して登録し直す必要があるが、
    登録簿の削除の API は無い（運用者が DB で消す）。照合はこの行を数えない。
 5. 無人の secret の一度だけの表示・再発行（ADR-0134 決定 2・FU4）、管理操作の監査記録（FU5）、client secret rotation の実測（FU6）は別の issue。
