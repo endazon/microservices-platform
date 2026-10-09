@@ -1234,7 +1234,8 @@ async function live() {
     // --- M9（#1844 / 計画 ADR-0134 決定 1・フォローアップ 1〜3）--------------------------------------
     const humanId = id('human');
     const httpsRedirect = `https://${humanId}.example.test/cb`;
-    // 🔴 ループバックは port を明示して登録する（CVE-2024-8883。port なしは SC-12 が 400 で拒む）。
+    // 下の固定の port は「port つきの登録は port まで完全一致」の対のためだけに使う。port なしのループバックも SC-12 は受け付ける
+    // （IADR-0527。port なしの登録と横取りの形の対はこの後の `portlessId` で測る）。
     const v4Port = 50000;
     const v4Redirect = `http://127.0.0.1:${v4Port}/cb`;
     const v6Port = 53123;
