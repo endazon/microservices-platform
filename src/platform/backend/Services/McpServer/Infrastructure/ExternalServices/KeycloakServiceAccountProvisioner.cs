@@ -357,6 +357,8 @@ public sealed class KeycloakServiceAccountProvisioner(
     // `fullScopeAllowed=false`: realm の全ロールをトークンへ載せない（MCP サーバーはロールを読まない）。
     // `defaultClientScopes=["profile"]`: 利用者名（`preferred_username`）が要る（`McpSubjectResolver`。realm は既定のスコープを宣言しない）。
     // audience の写像で `aud` を MCP サーバーに限る（他のサービスへ持ち込ませない。#1846 が全サービスの検証を入れる）。
+    private const string ProfileClientScope = "profile";
+
     internal static Dictionary<string, object?> PublicClientTemplate(
         string clientId, string displayName, IReadOnlyList<string> redirectUris) => new()
         {
@@ -374,7 +376,7 @@ public sealed class KeycloakServiceAccountProvisioner(
             ["fullScopeAllowed"] = false,
             ["redirectUris"] = redirectUris.ToArray(),
             ["webOrigins"] = Array.Empty<string>(),
-            ["defaultClientScopes"] = new[] { "profile" },
+            ["defaultClientScopes"] = new[] { ProfileClientScope },
             ["optionalClientScopes"] = Array.Empty<string>(),
             ["attributes"] = new Dictionary<string, string>
             {
@@ -419,6 +421,10 @@ public sealed class KeycloakServiceAccountProvisioner(
         if (rep.RedirectUris is not { } uris || !uris.ToHashSet(StringComparer.Ordinal).SetEquals(redirectUris))
             violations.Add("redirectUris が入力と違う");
         if (rep.WebOrigins is not { Count: 0 }) violations.Add("webOrigins が空でない");
+        if (rep.FullScopeAllowed != false) violations.Add("fullScopeAllowed が false でない");
+        // 利用者名（preferred_username）の解決に要る。realm の方針で黙って外れると、登録は通って利用時に壊れる。
+        if (rep.DefaultClientScopes is not { } scopes || !scopes.Contains(ProfileClientScope, StringComparer.Ordinal))
+            violations.Add($"defaultClientScopes に {ProfileClientScope} が無い");
         if (!HasAudienceMapper(rep)) violations.Add("audience の写像（mcp-server）が無い");
         return violations;
     }
@@ -818,7 +824,8 @@ public sealed class KeycloakServiceAccountProvisioner(
         bool? ServiceAccountsEnabled = null, bool? AuthorizationServicesEnabled = null,
         bool? PublicClient = null, bool? StandardFlowEnabled = null, bool? ImplicitFlowEnabled = null,
         bool? DirectAccessGrantsEnabled = null, List<string>? RedirectUris = null, List<string>? WebOrigins = null,
-        List<KeycloakProtocolMapper>? ProtocolMappers = null);
+        List<KeycloakProtocolMapper>? ProtocolMappers = null, bool? FullScopeAllowed = null,
+        List<string>? DefaultClientScopes = null);
 
     private sealed record KeycloakProtocolMapper(string? ProtocolMapper, Dictionary<string, string>? Config);
 

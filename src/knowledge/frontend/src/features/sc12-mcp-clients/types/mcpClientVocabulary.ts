@@ -107,7 +107,7 @@ export function requiresRedirectUris(kind: string): boolean {
 }
 
 /** 1 クライアントに登録できるリダイレクト URI の上限（後段の `RedirectUriRules.MaxCount` と同じ値）。 */
-export const MAX_REDIRECT_URIS = 10;
+const MAX_REDIRECT_URIS = 10;
 
 /** 入力欄（1 行 1 件）を URI の並びへ畳む。前後の空白と空行は落とす。 */
 export function parseRedirectUris(text: string): string[] {

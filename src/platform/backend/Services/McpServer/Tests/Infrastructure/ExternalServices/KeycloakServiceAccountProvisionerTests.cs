@@ -566,6 +566,8 @@ public class KeycloakServiceAccountProvisionerTests
     [InlineData("redirect")]
     [InlineData("webOrigins")]
     [InlineData("implicit")]
+    [InlineData("fullScope")]
+    [InlineData("profileScope")]
     public async Task 読み戻しがテンプレートに外れていれば公開クライアントを消してFailedにする(string broken)
     {
         var keycloak = new FakeKeycloak
@@ -580,6 +582,8 @@ public class KeycloakServiceAccountProvisionerTests
                     case "redirect": rep["redirectUris"] = new JsonArray("https://agent.example.test/*"); break;
                     case "webOrigins": rep["webOrigins"] = new JsonArray("+"); break;
                     case "implicit": rep.Remove("implicitFlowEnabled"); break;
+                    case "fullScope": rep["fullScopeAllowed"] = true; break;
+                    case "profileScope": rep["defaultClientScopes"] = new JsonArray("email"); break;
                 }
             },
         };
