@@ -45,8 +45,8 @@ permissions:
 
 env:
   # integration-stack.yml と同じ pin（理由は同ファイルの注記）。2 つが揃っていることは scripts.repo.test.js が突き合わせる。
+  # k3s の版は scripts/k8s-local-up.sh の K3S_IMAGE の既定が持つ（#1843・IADR-0519。ここでは与えない）。
   K3D_VERSION: v5.8.3
-  K3S_IMAGE: rancher/k3s:v1.35.4-k3s1
   CLUSTER: cutover-rehearsal
 
 jobs:

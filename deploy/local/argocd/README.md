@@ -11,7 +11,7 @@ ArgoCD 本体は大きな公式 install manifest を URL 適用するため、�
 ```sh
 # 1) ArgoCD 本体（一度だけ・URL 適用・server-side apply）
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.4/manifests/install.yaml
 
 # 2) MSP の Application/AppProject
 kubectl apply -f deploy/argocd/appproject.yaml
@@ -21,6 +21,10 @@ kubectl apply -f deploy/argocd/application.yaml
 kubectl apply -f src/ai-stock-trading/deploy/argocd/appproject.yaml
 kubectl apply -f src/ai-stock-trading/deploy/argocd/application.yaml
 ```
+
+> **版はタグで固定する（#1843 / IADR-0519）**: `stable` ブランチの manifest は取得のたびに中身が変わり得るため apply しない。
+> 版の正は `scripts/k8s-local-up.sh` の `ARGOCD_VERSION` の既定であり、本手順の URL はそれと同じ版に揃える
+> （`scripts/scripts.repo.test.js` がリポジトリ内の Argo CD の install の URL を突き合わせる）。上げるときは全箇所を同じ版へ変える。
 
 > **なぜ `--server-side`（Issue #348）**: ArgoCD 公式 install manifest は巨大な CRD
 > （`applicationsets.argoproj.io` 等）を含む。client-side apply は manifest 全体を

@@ -381,6 +381,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
     'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
+    'ARGOCD_VERSION', // #1843: Argo CD の版の上書き。漏れていると既定の版の検査が別の値で走る
     'RESET_FLOOR', // #1500: 床の経路を外す比較用の口（#1543: 本番の退路ではない）。漏れていると冒頭の検査・警告が既定と違う形で走る
     'BACKUP_AGE_RECIPIENTS_FILE', // #1560: バックアップの受取人。漏れていると既定で ConfigMap を作り直す
     'ISTIO', // #1710: メッシュの門。漏れていると既定のバイト等価が崩れる
@@ -473,7 +474,12 @@ ok('前提: traefik の宣言（実物）は現行 chart で反映が成立す�
 });
 
 // 既定（全 OFF）の cluster create 引数は現行とバイト等価（#331 の bash シミュレーションを CI 常設化）。
-const EXPECTED_DEFAULT_CREATE = `k3d cluster create ${CLUSTER} --agents 1 -p 8080:80@loadbalancer -p 8443:443@loadbalancer`;
+// #1843 / IADR-0519: 既定でも k3s の版を固定する（`--image <既定>`）。版の情報源はスクリプトの既定 1 か所なので、
+// 期待値はスクリプトから読む（ここへ版を複写しない）。版の形の検査は下の「K3S_IMAGE」節が持つ。
+const K3S_DEFAULT_IMAGE = (/^\s*K3S_IMAGE="\$\{K3S_IMAGE:-([^}]*)\}"\s*$/m.exec(
+  fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8'),
+) || [])[1];
+const EXPECTED_DEFAULT_CREATE = `k3d cluster create ${CLUSTER} --agents 1 -p 8080:80@loadbalancer -p 8443:443@loadbalancer --image ${K3S_DEFAULT_IMAGE}`;
 ok('既定: k3d cluster create 引数がバイト等価', () => {
   assert.strictEqual(clusterCreateLine(DEFAULT.lines), EXPECTED_DEFAULT_CREATE);
 });
@@ -1195,23 +1201,38 @@ ok('#953 第2次: admin の port ずれ・ports.admin の消失も捕まえる',
 // --- K3S_IMAGE による k3s の pin（NFR / #783・#442 子 5） -----------------------
 // CI では k3s のバージョンを固定する。**揃っていないことが静かに素通りする**ためであり
 // （traefik chart 25 系では admin(50000) の reconcile が型不一致で落ちるが up は EXIT=0 で返る。#953）、
-// 「好みでバージョンを合わせる」話ではない。既定（未設定）は 1 バイトも変えない。
-ok('K3S_IMAGE 未設定: cluster create 引数に --image が現れない（既定バイト等価）', () => {
-  assert.ok(!anyLineHas(DEFAULT.lines, '--image'), '既定なのに --image が現れた');
-  assert.strictEqual(clusterCreateLine(DEFAULT.lines), EXPECTED_DEFAULT_CREATE);
+// 「好みでバージョンを合わせる」話ではない。
+// ［2026-10-09 / #1843・計画 ADR-0135 決定 2・IADR-0519］**既定で固定する**（従前は未設定なら --image を付けなかった＝
+// k3d 同梱の版に浮いていた）。未設定でも `--image rancher/k3s:vX.Y.Z-k3sN` が付くこと、空を与えても浮かないことを固定する。
+ok('#1843: k3s の既定のイメージは版で固定されている（rancher/k3s:vX.Y.Z-k3sN。latest や空にしない）', () => {
+  assert.ok(K3S_DEFAULT_IMAGE, 'k8s-local-up.sh に K3S_IMAGE="${K3S_IMAGE:-<既定>}" の行が無い（既定で固定していない）');
+  assert.match(K3S_DEFAULT_IMAGE, /^rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+$/, `既定が版で固定されていない: ${K3S_DEFAULT_IMAGE}`);
 });
 
-ok('K3S_IMAGE 設定時: cluster create に --image <値> が付く', () => {
-  const line = clusterCreateLine(runUp({ K3S_IMAGE: 'rancher/k3s:v1.35.4-k3s1' }).lines);
+ok('#1843: K3S_IMAGE 未設定でも cluster create に --image <既定の版> が付く', () => {
+  const line = clusterCreateLine(DEFAULT.lines);
+  assert.ok(line.includes(`--image ${K3S_DEFAULT_IMAGE}`), `既定なのに k3s の版が固定されていない: ${line}`);
+  assert.strictEqual(line, EXPECTED_DEFAULT_CREATE);
+});
+
+ok('#1843: K3S_IMAGE を空で与えても既定の版へ戻る（浮動にできない）', () => {
+  const line = clusterCreateLine(runUp({ K3S_IMAGE: '' }).lines);
+  assert.strictEqual(line, EXPECTED_DEFAULT_CREATE, `空の K3S_IMAGE で既定から外れた: ${line}`);
+});
+
+// 上書きの値は既定と違う版にする（同じ値だと「上書きが効いた」と「既定のまま」を区別できない）。
+ok('K3S_IMAGE 設定時: cluster create に --image <値> が付く（既定より優先）', () => {
+  const line = clusterCreateLine(runUp({ K3S_IMAGE: 'rancher/k3s:v1.36.5-k3s1' }).lines);
   assert.ok(line, 'cluster create 行が採取できていない');
-  assert.ok(line.includes('--image rancher/k3s:v1.35.4-k3s1'), `--image が付いていない: ${line}`);
+  assert.ok(line.includes('--image rancher/k3s:v1.36.5-k3s1'), `--image が付いていない: ${line}`);
+  assert.strictEqual((line.match(/--image /g) || []).length, 1, `--image が重複している: ${line}`);
   // 既定のポート指定を壊していない（追加であって置換ではない）。
   assert.ok(line.includes('-p 8080:80@loadbalancer'), `既定ポートが失われた: ${line}`);
 });
 
 ok('K3S_IMAGE は LOCALEDGE=1 とも併用できる（ポートの切替を壊さない）', () => {
-  const line = clusterCreateLine(runUp({ LOCALEDGE: '1', K3S_IMAGE: 'rancher/k3s:v1.35.4-k3s1' }).lines);
-  assert.ok(line.includes('--image rancher/k3s:v1.35.4-k3s1'), `--image が付いていない: ${line}`);
+  const line = clusterCreateLine(runUp({ LOCALEDGE: '1', K3S_IMAGE: 'rancher/k3s:v1.36.5-k3s1' }).lines);
+  assert.ok(line.includes('--image rancher/k3s:v1.36.5-k3s1'), `--image が付いていない: ${line}`);
   assert.ok(line.includes('127.0.0.1:50000:50000@loadbalancer'), `LOCALEDGE のポートが失われた: ${line}`);
   assert.ok(!line.includes('8080:80@loadbalancer'), `LOCALEDGE=1 なのに既定ポートが残っている: ${line}`);
 });
@@ -1972,11 +1993,13 @@ ok('ARGOCD=1: argocd namespace と application manifest を apply', () => {
 
 // ARGOCD=1 (#348 / IADR-0077): 公式 install manifest は巨大 CRD を含み client-side apply では annotation
 // 上限（262144 バイト）を超過するため、install 行は server-side apply（--server-side --force-conflicts）で
-// 適用されなければならない。URL/バージョンは不変。一方、小さい Application/AppProject は変更最小の原則で
+// 適用されなければならない。一方、小さい Application/AppProject は変更最小の原則で
 // client-side のまま（--server-side が波及していないことも固定＝回帰ガード）。
+// #1843 / IADR-0519: URL は版のタグ（`stable` ブランチを直接 apply しない。計画 ADR-0135 決定 2）。
+const ARGOCD_INSTALL_RE = /argo-cd\/([^/\s"']+)\/manifests\/install\.yaml/;
 ok('ARGOCD=1: install は server-side・Application/AppProject は client-side（--server-side 非波及）', () => {
   const res = runUp({ ARGOCD: '1' });
-  const installLine = res.lines.find((l) => l.includes('argo-cd/stable/manifests/install.yaml'));
+  const installLine = res.lines.find((l) => ARGOCD_INSTALL_RE.test(l) && l.includes('kubectl apply'));
   assert.ok(installLine, 'ArgoCD install manifest の apply 行が無い');
   assert.ok(installLine.includes('apply --server-side'), `install が server-side apply でない: ${installLine}`);
   assert.ok(installLine.includes('--force-conflicts'), `install に --force-conflicts が無い: ${installLine}`);
@@ -1984,6 +2007,27 @@ ok('ARGOCD=1: install は server-side・Application/AppProject は client-side�
   const appLine = res.lines.find((l) => l.includes('deploy/argocd/application.yaml'));
   assert.ok(appLine, 'Application/AppProject の apply 行が無い');
   assert.ok(!appLine.includes('--server-side'), `Application/AppProject に --server-side が波及した: ${appLine}`);
+});
+
+ok('#1843: ARGOCD=1 の install は版のタグの URL（stable ブランチを apply しない）', () => {
+  const res = runUp({ ARGOCD: '1' });
+  const installs = res.lines.filter((l) => ARGOCD_INSTALL_RE.test(l) && l.includes('kubectl apply'));
+  assert.strictEqual(installs.length, 1, `install の apply 行が 1 本でない:\n${installs.join('\n')}`);
+  const ref = ARGOCD_INSTALL_RE.exec(installs[0])[1];
+  assert.match(ref, /^v\d+\.\d+\.\d+$/, `Argo CD の URL が版のタグでない（${ref}）: ${installs[0]}`);
+});
+
+ok('#1843: ARGOCD_VERSION の上書きは URL に効く', () => {
+  const res = runUp({ ARGOCD: '1', ARGOCD_VERSION: 'v3.4.9' });
+  assert.ok(anyLineHas(res.lines, 'argo-cd/v3.4.9/manifests/install.yaml'), '上書きした版の URL で apply していない');
+});
+
+ok('#1843: ARGOCD_VERSION にブランチ名（stable）を与えると、何もせずに非 0 で止まる', () => {
+  const res = runUp({ ARGOCD: '1', ARGOCD_VERSION: 'stable' });
+  assert.notStrictEqual(res.status, 0, 'ARGOCD_VERSION=stable で正常終了した（版の固定が外れる）');
+  assert.ok(/ARGOCD_VERSION/.test(res.stderr), 'stderr に ARGOCD_VERSION の案内が無い');
+  assert.ok(!anyLineHas(res.lines, 'k3d cluster create'), '拒否の前にクラスタを作った（判定は副作用より前）');
+  assert.ok(!res.lines.some((l) => ARGOCD_INSTALL_RE.test(l)), '拒否したのに install を apply した');
 });
 
 // ARGOCD=1 (#353 / IADR-0092): install 後に Keycloak OIDC を配線する。argocd-cm/rbac-cm/cmd-params-cm を
