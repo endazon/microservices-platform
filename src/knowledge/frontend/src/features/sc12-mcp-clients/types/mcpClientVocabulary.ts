@@ -90,13 +90,85 @@ export function buildAttributes(entries: readonly AttributeEntry[]): Record<stri
  * 呼び出し側が識別子を文言へ写す。
  */
 export type RegistrationIssue =
-  'client-id-required' | 'display-name-required' | 'attributes-required';
+  | 'client-id-required'
+  | 'display-name-required'
+  | 'attributes-required'
+  | 'redirect-uris-required'
+  | 'redirect-uris-too-many'
+  | 'redirect-uri-invalid'
+  | 'redirect-uri-loopback-port-required'
+  | 'redirect-uri-duplicate';
+
+/**
+ * 有人（対話型）か。**この判定が「リダイレクト URI が必須か」と同義である**（05_screens §SC-12 の入力表:
+ * 有人時必須。ADR-0134 決定 1）。無人には送らない（後段は無人に渡されたら 400 で拒む）。
+ */
+export function requiresRedirectUris(kind: string): boolean {
+  return kind === 'interactive';
+}
+
+/** 1 クライアントに登録できるリダイレクト URI の上限（後段の `RedirectUriRules.MaxCount` と同じ値）。 */
+const MAX_REDIRECT_URIS = 10;
+
+/** 入力欄（1 行 1 件）を URI の並びへ畳む。前後の空白と空行は落とす。 */
+export function parseRedirectUris(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+/**
+ * port を明示したループバック（1〜5 桁の数字の後が `/`・`?`・末尾）。後段 `RedirectUriRules` と同じ綴りの判定。
+ * `new URL` は既定の port（`:80`）を落とすので、port の有無は綴りで見る。
+ */
+const LOOPBACK_WITH_PORT = /^http:\/\/(127\.0\.0\.1|\[::1\]):(\d{1,5})([/?]|$)/;
+const LOOPBACK_WITHOUT_PORT = /^http:\/\/(127\.0\.0\.1|\[::1\])(:0*)?([/?]|$)/;
+
+/**
+ * リダイレクト URI 1 件が規則を満たすか（ADR-0134 決定 1）。
+ *
+ * `https` の URI か、**port を明示した**ループバックの `http://127.0.0.1:<port>` / `http://[::1]:<port>`（RFC 8252）だけを許す。
+ * ワイルドカード（`*`）・フラグメント・利用者情報・`localhost` は不可。
+ *
+ * 🔴 **port なしのループバックは不可**（CVE-2024-8883）。稼働の認可サーバー（Keycloak 24）は port なしで登録された
+ * `http://127.0.0.1/cb` に `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送ってしまう。
+ * port を明示した登録は完全一致で照合される。
+ *
+ * 🔴 **最終の判定は後段（`RedirectUriRules`）が持つ。** ここは送る前の写しであり、食い違えば後段の 400 が
+ * 理由を名指しして返る（画面はそれをそのまま出す）。
+ */
+export function isAllowedRedirectUri(value: string): boolean {
+  if (value.length === 0 || value.length > 2048) return false;
+  if (value.includes('*') || value.includes('#') || !value.includes('://')) return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.username !== '' || url.password !== '') return false;
+  if (url.protocol === 'https:') return true;
+  if (url.protocol !== 'http:') return false;
+  // 綴りで判定する（`localhost`・`127.1` のような別の綴りを通さない。後段も綴りで照合する）。
+  const port = LOOPBACK_WITH_PORT.exec(value)?.[2];
+  return port !== undefined && Number(port) > 0;
+}
+
+/**
+ * port を書いていない（または `:`・`:0` だけの）ループバックか（`http://127.0.0.1/cb`・`http://[::1]` など）。
+ * 「不正」と分けて理由を名指しするためだけに使う（CVE-2024-8883。上の注記）。
+ */
+function isPortlessLoopbackRedirectUri(value: string): boolean {
+  return LOOPBACK_WITHOUT_PORT.test(value) && !value.includes('*') && !value.includes('#');
+}
 
 export function validateRegistration(input: {
   clientId: string;
   displayName: string;
   kind: string;
   attributes: readonly AttributeEntry[];
+  redirectUris?: readonly string[];
 }): RegistrationIssue[] {
   const issues: RegistrationIssue[] = [];
   if (input.clientId.trim().length === 0) issues.push('client-id-required');
@@ -105,5 +177,17 @@ export function validateRegistration(input: {
   // （有人は利用者本人の属性で解決されるため、割り当てる属性が無いのが正しい）。
   if (requiresAttributes(input.kind) && input.attributes.length === 0)
     issues.push('attributes-required');
+  // 05_screens §SC-12（2026-10-09 追加）: 有人時はリダイレクト URI が必須（完全一致で照合）。
+  if (requiresRedirectUris(input.kind)) {
+    const uris = input.redirectUris ?? [];
+    if (uris.length === 0) issues.push('redirect-uris-required');
+    else if (uris.length > MAX_REDIRECT_URIS) issues.push('redirect-uris-too-many');
+    const rejected = uris.filter((uri) => !isAllowedRedirectUri(uri));
+    if (rejected.some((uri) => !isPortlessLoopbackRedirectUri(uri)))
+      issues.push('redirect-uri-invalid');
+    if (rejected.some(isPortlessLoopbackRedirectUri))
+      issues.push('redirect-uri-loopback-port-required');
+    if (new Set(uris).size !== uris.length) issues.push('redirect-uri-duplicate');
+  }
   return issues;
 }

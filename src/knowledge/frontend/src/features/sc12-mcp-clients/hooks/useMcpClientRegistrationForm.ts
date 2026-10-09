@@ -3,7 +3,9 @@ import type { AttributeDefinitionDto } from '@foundation/api/generated/bff.schem
 import {
   assignableAttributes,
   buildAttributes,
+  parseRedirectUris,
   requiresAttributes,
+  requiresRedirectUris,
   validateRegistration,
 } from '../types/mcpClientVocabulary';
 import type { AttributeEntry, ClientKind, RegistrationIssue } from '../types/mcpClientVocabulary';
@@ -41,15 +43,24 @@ export interface McpClientRegistrationForm {
   addEntry: () => void;
   /** 種別が属性を要求するか（無人＝サービスアカウントのみ）。 */
   needsAttributes: boolean;
+  /** リダイレクト URI の入力（1 行 1 件。有人のときだけ使う）。 */
+  redirectUrisText: string;
+  setRedirectUrisText: (value: string) => void;
+  /** 種別がリダイレクト URI を要求するか（有人のみ。ADR-0134 決定 1）。 */
+  needsRedirectUris: boolean;
   issues: RegistrationIssue[];
   /** 入力規則を検査し結果を保持する。**送ってよいときだけ true** を返す。 */
   validate: () => boolean;
-  /** 契約の形に畳んだ登録本文。有人には属性を含めない（送る値が無いのが正しい）。 */
+  /**
+   * 契約の形に畳んだ登録本文。有人には属性を含めない（送る値が無いのが正しい）。
+   * **無人にはリダイレクト URI を含めない**（後段は無人に渡されたら 400 で拒む）。
+   */
   body: () => {
     clientId: string;
     displayName: string;
     kind: ClientKind;
     attributes?: Record<string, string>;
+    redirectUris?: string[];
   };
   /**
    * 登録成功後の後始末。
@@ -69,6 +80,7 @@ export function useMcpClientRegistrationForm(
   const [attributeKey, setAttributeKey] = useState('');
   const [attributeValue, setAttributeValue] = useState('');
   const [entries, setEntries] = useState<AttributeEntry[]>([]);
+  const [redirectUrisText, setRedirectUrisText] = useState('');
   const [issues, setIssues] = useState<RegistrationIssue[]>([]);
 
   const definitions = useMemo(() => assignableAttributes(dictionary), [dictionary]);
@@ -89,7 +101,13 @@ export function useMcpClientRegistrationForm(
   };
 
   const validate = () => {
-    const found = validateRegistration({ clientId, displayName, kind, attributes: entries });
+    const found = validateRegistration({
+      clientId,
+      displayName,
+      kind,
+      attributes: entries,
+      redirectUris: parseRedirectUris(redirectUrisText),
+    });
     setIssues(found);
     return found.length === 0;
   };
@@ -110,6 +128,9 @@ export function useMcpClientRegistrationForm(
     entries,
     addEntry,
     needsAttributes: requiresAttributes(kind),
+    redirectUrisText,
+    setRedirectUrisText,
+    needsRedirectUris: requiresRedirectUris(kind),
     issues,
     validate,
     body: () => ({
@@ -117,11 +138,13 @@ export function useMcpClientRegistrationForm(
       displayName: displayName.trim(),
       kind,
       ...(requiresAttributes(kind) ? { attributes: buildAttributes(entries) } : {}),
+      ...(requiresRedirectUris(kind) ? { redirectUris: parseRedirectUris(redirectUrisText) } : {}),
     }),
     resetAfterRegister: () => {
       setClientId('');
       setDisplayName('');
       setEntries([]);
+      setRedirectUrisText('');
     },
   };
 }

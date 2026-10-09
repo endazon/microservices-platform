@@ -294,7 +294,11 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 626362,
+  "initialTotalBytes": 627917,
+  "$comment_initialTotalBytes_20261009_1844_sc12-interactive-public-client": [
+    "［2026-10-09 / #1844 有人の MCP クライアントの公開クライアント化］626,362 → 627,917（+1,555 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
+    "+1.55 kB 超過を報告し、--update で床を更新した）。増分は SC-12 の有人の登録（リダイレクト URI の入力・検証の文言、ループバックの port 必須の文言）を ja / en のカタログへ足した分（カタログは初期ロードに入る）。"
+  ],
   "$comment_initialTotalBytes_20261006_1764_voyage-key-wiring": [
     "［2026-10-06 / #1764 Voyage 鍵の Secret 結線の独立監査の是正］626,054 → 626,362（+308 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
     "+0.31 kB 超過を報告し、--update で床を更新した）。増分は SC-22 の外部 LLM 鍵の項目の用途・再起動で止まるものの説明に埋め込み（Voyage）を足した文言 2 件（ja / en のカタログは初期ロードに入る）。"

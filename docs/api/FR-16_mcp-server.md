@@ -8,10 +8,10 @@ updated: 2026-10-09
 ---
 <!-- trace:
 ids: [FR-15, FR-16, UC-08, UC-09, SC-12]
-adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054, ADR-0062, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123]
+adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054, ADR-0062, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134]
 iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516]
-specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp]
-issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818, #1829]
+specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client]
+issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818, #1829, #1844, #1846]
 -->
 
 # 通信仕様書: MCP サーバー
@@ -63,7 +63,8 @@ issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #18
 
 `POST /mcp-clients`（種別が無人）と `PUT /mcp-clients/{clientId}/attributes`（無人の行）は、検証の後に認可サーバー
 （Keycloak の管理 API）へ機密クライアントとサービスアカウントの属性を書き、成功したときだけ登録簿へ書く。
-**有人は従来どおり登録簿だけへ書く。** 応答の状態コードは次のとおり。
+~~**有人は従来どおり登録簿だけへ書く。**~~ ［2026-10-09 改訂］**有人の登録も認可サーバーへ書いてから登録簿へ書く**（下の「有人の登録は公開クライアントを作る」）。
+応答の状態コードは次のとおり（有人・無人で同じ）。
 
 | 状態 | 意味 | 認可サーバー | 登録簿 |
 | --- | --- | --- | --- |
@@ -87,7 +88,36 @@ issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #18
   カウンタ `mcp.idp_reconciliation.checks.total{mcp.idp_reconciliation.outcome=match|drift|failed}`（Meter `microservices-platform.mcp-server`）。
   警報と対応は運用仕様書の「MCP クライアント登録簿と認証基盤の照合」。
   ［2026-10-09］一覧の表現のクライアントの `enabled` と登録簿の行の有効・無効も比べる（下の無効化の写し）。
+  ［2026-10-09］有人の行も比べる。比べるのは入口の印と有効・無効で、属性は読まない（有人のクライアントはサービスアカウントを持たない）。
+  有人の行が認可サーバーに無いことは数えない（この改訂より前に登録簿だけへ書かれた有人の行には、認可サーバーへ載せる経路が無い。
+  対応するクライアントが無いのでトークンが出ず、接続はできない）。入口が作った有人のクライアントは孤児として数えない。
 - 🔴 境界層は状態コードを作り替えないので 502 は画面へそのまま届くが、境界層自身の不達も 502 であり区別できない。
+
+### 有人の登録は公開クライアントを作る（［2026-10-09 追加］）
+
+`POST /mcp-clients`（種別が有人）は、検証の後に認可サーバーへ**公開クライアント**を作り、読み戻して形を確かめてから登録簿へ書く。
+状態コード・補償・入口の印は上の無人と同じである。
+
+| 項目 | 値 |
+| --- | --- |
+| クライアントの種類 | 公開（`publicClient=true`。端末で動くネイティブアプリ・CLI は secret を保てない） |
+| 流れ | 認可コードだけ（`standardFlowEnabled=true`）。暗黙・パスワードの直接付与・サービスアカウント・デバイス・CIBA は無効 |
+| PKCE | `S256` 必須（クライアント属性 `pkce.code.challenge.method=S256`。`plain` と PKCE なしは認可サーバーが `invalid_request` で拒む） |
+| リダイレクト URI | 要求の `redirectUris` そのもの（完全一致） |
+| Web オリジン | 空（CORS を開かない） |
+| audience | 写像（`oidc-audience-mapper`・`included.custom.audience=mcp-server`）でアクセストークンの `aud` に MCP サーバーを入れる。無人のクライアントにも同じ写像を付ける |
+| スコープ | 既定のスコープは `profile` だけ（利用者名 `preferred_username` を読むため）。`fullScopeAllowed=false` |
+| 入口の印 | クライアント属性 `msp.mcp-client.managed-by=mcp-server` |
+
+- **要求の `redirectUris`**（有人は必須・1〜10 件）: `https` の URI か、ループバックの `http://127.0.0.1` / `http://[::1]` に限る。
+  ワイルドカード（`*`）・フラグメント・利用者情報・`localhost`・相対・重複は 400。無人に渡すと（空の配列でも）400。
+- 🔴 **ループバックは port の明示が必須**（例: `http://127.0.0.1:53123/cb`・`http://[::1]:53123/cb`）。port なし（`http://127.0.0.1/cb`）は 400。
+  現行の認可サーバー（Keycloak 24）は、port なしで登録されたループバックに `http://127.0.0.1:<任意>@evil.example/cb` を一致させ、
+  ブラウザを認可コードごと別の host へ送ってしまう（CVE-2024-8883。Keycloak 25.0.6 で修正）。port を明示した登録は
+  `127.0.0.1`・`[::1]` とも port まで完全一致で照合され、別の port も `@` で宛先をすり替える形も 400 になる（結合スタックの門で実測）。
+  RFC 8252 の「任意の port で待ち受ける」は使えない。クライアントは登録した固定の port で待ち受ける。
+- **動的クライアント登録は開かない。** 認可サーバーの既定の登録ポリシー（匿名は信頼ホストが空の Trusted Hosts で拒否・初期アクセストークンなし）のままにする。
+- 読み戻しで形が外れていれば（属性が落ちた等）、作ったクライアントを消して 502 にする。
 
 ### 無人の無効化・再有効化は認可サーバーのクライアントの有効・無効へも写す（［2026-10-09 追加］）
 
@@ -96,7 +126,8 @@ issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #18
 `PUT /admin/realms/{realm}/clients/{id}` へ `enabled` と、`serviceAccountsEnabled`・`authorizationServicesEnabled` の**現在値**だけを送り
 （表現を丸ごと送り返さない＝secret を古い値へ戻さない。🔴 後の 2 つを欠くと、認可サーバーは「サービスアカウントを無効にする」と読んで
 サービスアカウントの利用者を属性ごと消す）、
-読み戻して確かめる。**この入口の印（`msp.mcp-client.managed-by=mcp-server`）を持つクライアントだけ**を書く。有人の行は登録簿だけを切り替える。
+読み戻して確かめる。**この入口の印（`msp.mcp-client.managed-by=mcp-server`）を持つクライアントだけ**を書く。~~有人の行は登録簿だけを切り替える。~~
+［2026-10-09］有人の行も同じく写す（認可サーバーに無い、この改訂より前の有人の行は登録簿だけを切り替える）。
 
 | 操作 | 順序 | 200 | 400 | 502 / 503 |
 | --- | --- | --- | --- | --- |
@@ -287,7 +318,8 @@ Git 管理の JSON を `Mcp:PublicationConfigPath` で指す。**検証を通ら
 
 いずれも管理者ロールを要求する。登録要求の `kind` は `interactive`（有人）または
 `service-account`（無人）、`egressTier` は `self-hosted` / `protected-external` /
-`standard-external`（未指定は最も低い保護水準へ倒す）。
+`standard-external`（未指定は最も低い保護水準へ倒す）。［2026-10-09］有人は `redirectUris`（文字列の配列）が必須、無人には渡さない
+（規則は上の「有人の登録は公開クライアントを作る」）。検査の順は `clientId` → `kind` → `redirectUris` → `egressTier` で、最初の 1 件を返す。
 
 **サービスアカウントに対して個人資料を読ませる属性割当と、MCP から外すプロジェクトを読ませる
 属性割当は、登録時も差し替え時も拒否する。** 検証は宣言的公開構成と同じ 1 つの関数を通る
@@ -296,6 +328,9 @@ Git 管理の JSON を `Mcp:PublicationConfigPath` で指す。**検証を通ら
 ## 認証・認可
 
 - 認証は OAuth 2.1（Keycloak）。有人は Authorization Code + PKCE、無人は Client Credentials。
+- ［2026-10-09］**MCP 面（`/mcp`）はアクセストークンの audience を検証する**（`mcp-server` を含まないトークンは 401）。発行元・署名鍵・名前の
+  クレームの検証は他の面と同じ設定を使い、audience だけを足した別のスキームで認証する。**管理 REST 面は audience を検証しない**
+  （境界層が利用者のトークンを中継するため。全サービスでの検証は別の作業で扱う）。
 - **主体種別はトークンではなく登録簿から採る。** クライアント側の申告で除外の適用対象から
   外れられないようにするためである。
 - 本サービスは認可判定を持たず、各サービスへ委譲する。エージェント経由であることを理由に

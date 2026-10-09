@@ -175,8 +175,20 @@ namespace GraphService.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Anchor")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ExplicitTypeName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<DateTimeOffset>("ExtractedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<Guid>("SourceDocumentId")
                         .HasColumnType("uuid");
@@ -199,6 +211,10 @@ namespace GraphService.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("AutoSource")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -348,6 +364,23 @@ namespace GraphService.Infrastructure.Migrations
                     b.HasKey("DocumentId");
 
                     b.ToTable("graph_documents", (string)null);
+                });
+
+            modelBuilder.Entity("GraphService.Domain.GraphDocumentTag", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Tag")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("DocumentId", "Tag");
+
+                    b.HasIndex("Tag")
+                        .HasDatabaseName("ix_graph_document_tags_tag");
+
+                    b.ToTable("graph_document_tags", (string)null);
                 });
 
             modelBuilder.Entity("GraphService.Domain.GraphDocumentTermProfile", b =>

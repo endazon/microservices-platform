@@ -160,6 +160,42 @@ public class UserAuthoredEdgeTests : IClassFixture<TestWebApplicationFactory>
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
+    // FR-17, ADR-0033 決定 6, [[IADR-0521]] (#1396): 同じ関係が**共有タグの辺**として既にあるなら、
+    // 409 にせず利用者付与として引き取る。引き取らないと、タグを外した時点で利用者の関係が消える。
+    // 対照は直上（利用者付与どうしの重複は 409 のまま）。
+    [Fact]
+    public async Task A_tag_derived_edge_for_the_same_relation_is_adopted_as_user_asserted()
+    {
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        var type = EdgeType.Create($"sym-{Guid.NewGuid():N}", EdgeTypeLayer.Core, isSymmetric: true);
+        var tagEdge = Edge.Create(a, b, type.Id, true, EdgeProvenance.Auto, autoSource: EdgeAutoSource.Tag);
+        await _factory.SeedAsync(db =>
+        {
+            db.EdgeTypes.Add(type);
+            db.Documents.Add(Node(a, "internal"));
+            db.Documents.Add(Node(b, "internal"));
+            db.Edges.Add(tagEdge);
+            return Task.CompletedTask;
+        });
+        _factory.ScopeProvider = _ => InternalOnly();
+
+        var res = await PostAsync(b, a, type.Id);
+
+        res.StatusCode.Should().Be(HttpStatusCode.Created);
+        var dto = await res.Content.ReadFromJsonAsync<GraphEdgeCreatedDto>(TestContext.Current.CancellationToken);
+        dto!.Id.Should().Be(tagEdge.Id, "行を引き取る（重ねない）");
+        dto.Provenance.Should().Be(EdgeProvenance.User);
+        await _factory.SeedAsync(db =>
+        {
+            var rows = db.Edges.Where(e => e.EdgeTypeId == type.Id).ToList();
+            rows.Should().ContainSingle();
+            rows[0].Provenance.Should().Be(EdgeProvenance.User);
+            rows[0].AutoSource.Should().BeNull();
+            return Task.CompletedTask;
+        });
+    }
+
     // IADR-0242 決定 9: 対称型は向きを問わず同一の辺になる（正規化）。
     // したがって逆向きの再作成も重複として弾かれる。
     [Fact]

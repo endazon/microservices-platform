@@ -123,8 +123,10 @@ public class IdpReconciliationTests
         var idp = new InMemoryServiceAccountProvisioner();
         await Provision(db, idp, "agent-a", Attrs(("clearance", "internal"), ("projects", "b,a")));
         idp.Tamper("agent-a", Attrs(("clearance", "internal"), ("projects", "a, b")));
-        // 有人の行は IdP へ書かない（既知の逸脱）ので比べない。
+        // ［#1844］本件より前に登録簿だけへ書かれた有人の行（IdP に無い）は数えない。入口が作った有人の公開クライアントは孤児にしない。
         await AddRow(db, "human-ui", Attrs(("clearance", "secret")), McpClientKind.Interactive);
+        await idp.CreatePublicClientAsync("human-new", "human-new", ["https://agent.example.test/cb"], Ct);
+        await AddRow(db, "human-new", Attrs(), McpClientKind.Interactive);
         var (check, _, probe, log) = Arrange(db, idp);
         using var _p = probe;
 
@@ -135,6 +137,29 @@ public class IdpReconciliationTests
         probe.Outcome(IdpReconciliationMetrics.OutcomeDrift).Should().Be(0);
         log.Count(LogLevel.Warning).Should().Be(0);
         log.Count(LogLevel.Error).Should().Be(0);
+    }
+
+    // C-72（#1844）: 有人の行も入口の印と有効・無効を比べる（属性は読まない）。印の無い同名のクライアント・有効無効の違いは名指しする。
+    [Fact]
+    public async Task 有人の行は入口の印と有効無効を比べ属性は読まない()
+    {
+        using var db = NewDb();
+        var idp = new InMemoryServiceAccountProvisioner();
+        await idp.CreatePublicClientAsync("human-off", "human-off", ["https://agent.example.test/cb"], Ct);
+        await AddRow(db, "human-off", Attrs(("clearance", "secret")), McpClientKind.Interactive);
+        idp.TamperEnabled("human-off", false);
+        idp.Seed("platform-spa");
+        await AddRow(db, "platform-spa", Attrs(), McpClientKind.Interactive);
+        var (check, _, probe, _) = Arrange(db, idp);
+        using var _p = probe;
+
+        var drifts = await check.RunAsync(Ct);
+
+        drifts.Should().BeEquivalentTo(
+        [
+            new IdpDrift("human-off", IdpDriftKind.EnabledDiffers),
+            new IdpDrift("platform-spa", IdpDriftKind.NotManaged),
+        ], "有人の行の属性（clearance）は比べない・IdP に無い有人の行は数えない");
     }
 
     public static TheoryData<string, IdpDriftKind> Kinds() => new()
