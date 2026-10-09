@@ -58,8 +58,9 @@ env:
   # ところが `kubectl apply` は成功するため **admin(50000) が立たないまま up は EXIT=0 で返る**（#953）。
   # v1.35.4-k3s1 は**手元の Rancher Desktop と同じ k3s** であり、ローカルと CI の乖離そのものを消す。
   # 実測（run 32555313631）: v1.30.4 は不可 / v1.31.5・v1.35.4 は admin=50000 が立つ。
+  # ［2026-10-09 / #1843・IADR-0519］k3s の版は scripts/k8s-local-up.sh の K3S_IMAGE の**既定**が持つ（単一の情報源）。
+  # ここで K3S_IMAGE を与えない —— 同じ値を 2 か所に持つと片側だけ動く。与えていないことは scripts.repo.test.js が見る。
   K3D_VERSION: v5.8.3
-  K3S_IMAGE: rancher/k3s:v1.35.4-k3s1
   CLUSTER: integration-stack
 
 jobs:
@@ -138,7 +139,7 @@ jobs:
           helm version
 
       # k8s-local-up.sh 自身が k3d cluster create を行う（ポートは LOCALEDGE=1 が決める）。
-      # K3S_IMAGE で k3s のイメージだけを pin する（scripts/k8s-local-up.test.js が既定バイト等価を固定）。
+      # k3s のイメージはスクリプトの既定で固定される（#1843。scripts/k8s-local-up.test.js が既定の引数を固定）。
       # ABACSEED=1 は #517 / IADR-0133 の初期投入経路（宣言的 JSON ＋ 管理 API・冪等）。
       # 既定オフの設計は変えない —— deny-by-default はセキュリティ上の既定値であり、
       # 「dev だから」で緩めない。**この使い捨てスタックでだけ opt-in する**（#972）。

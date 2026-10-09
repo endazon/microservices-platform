@@ -48,7 +48,8 @@ LOCALEDGE=1 bash scripts/k8s-local-up.sh --live          # 必要に応じ OBSER
 > （`expose` の values スキーマは traefik chart のバージョンで型が変わる）。`k8s-local-up.sh` は overlay 適用の直後に
 > `kube-system/traefik` の `admin=50000` を最大 180 秒待ち、**来なければ非 0 で落ちる**（警告して続行はしない）。
 > 落ちたら stderr の診断（実ポート・`helmchart` の状態・`helm-install-traefik` のログ）を読み、
-> k3s の版を `K3S_IMAGE=rancher/k3s:v1.35.4-k3s1` のように固定するか、`expose` を chart の版に合わせて切替える。
+> k3s の版（k3d 経路は `k8s-local-up.sh` の `K3S_IMAGE` の既定で固定する。#1843 / IADR-0519）を上書きしていないか確かめるか、
+> `expose` を chart の版に合わせて切替える。
 > **この門が確実に効くのはクラスタ作成直後である**（既存クラスタでは前回成功時の Service が残るため）。
 
 ### k3d はポートが cluster 作成時固定 → 既存クラスタは再作成が必要（ユーザー実行）

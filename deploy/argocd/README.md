@@ -23,8 +23,12 @@ Git を単一の真実源とし、ArgoCD が本リポジトリの Helm チャー
 
 ```sh
 kubectl create namespace argocd
-kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.4/manifests/install.yaml
 ```
+
+> **版はタグで固定する（#1843 / IADR-0519）**: `stable` ブランチの manifest は取得のたびに中身が変わり得るため apply しない。
+> 版の正は `scripts/k8s-local-up.sh` の `ARGOCD_VERSION` の既定であり、本手順の URL はそれと同じ版に揃える
+> （`scripts/scripts.repo.test.js` がリポジトリ内の Argo CD の install の URL を突き合わせる）。上げるときは全箇所を同じ版へ変える。
 
 > **`--server-side` が必須（Issue #348）**: ArgoCD 公式 install manifest は巨大な CRD
 > （`applicationsets.argoproj.io` 等）を含む。client-side `kubectl apply` は manifest 全体を
