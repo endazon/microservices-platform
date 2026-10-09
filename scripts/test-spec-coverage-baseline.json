@@ -157,7 +157,9 @@
       "UsageRetentionTests"
     ],
     "docs/tests/FR-11_llm-egress-routing.md": [
+      "AnthropicClientWiringTests",
       "AnthropicContentBlockSanitizerTests",
+      "AnthropicHttpClientTests",
       "ClaudeProviderStopReasonTests",
       "ClaudeProviderThinkingTests",
       "CompletionFallbackEndpointTests",
