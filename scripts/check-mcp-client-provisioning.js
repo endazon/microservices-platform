@@ -44,16 +44,17 @@
  *      公開・認可コードだけ・PKCE S256・リダイレクト URI が入力どおり・Web オリジン空・入口の印・audience の写像（mcp-server）。
  *      ワイルドカードの URI は 400 で何も作らない。認可の要求（`/auth`。ブラウザを使わず状態コードと Location を読む）で、
  *      PKCE なし・`plain` は invalid_request でリダイレクトへ返され（ログイン画面へ進まない）、S256 は進む。登録していない path・host・
- *      https の port・`localhost` は 400（リダイレクトしない）。🔴 **ループバックの port の扱い（FU3）を測る**: ループバックは port を明示して
- *      登録する（port なしの登録は SC-12 が 400 で拒み、Keycloak に何も作らない）。Keycloak 24 の `RedirectUtils` は port なしで登録された
- *      `http://127.0.0.1/cb` に `http://127.0.0.1:<任意>@evil.example/cb` を一致させ、認可コードを evil.example へ送った（CVE-2024-8883。25.0.6 で修正）。
- *      port を明示した `http://127.0.0.1:<port>/cb` は登録どおりの port で進み、別の port・`:<port>@evil.example`・`:1@evil.example` は 400。
+ *      https の port・`localhost` は 400（リダイレクトしない）。🔴 **ループバックの port の扱い（FU3）を測る**: port を明示した
+ *      `http://127.0.0.1:<port>/cb` は登録どおりの port で進み、別の port・`:<port>@evil.example`・`:1@evil.example` は 400。
  *      `http://[::1]:<port>/cb` も port まで完全一致（別の port・`@evil.example` は 400）。例示のアクセストークン（管理 API の evaluate-scopes）の aud に mcp-server・azp・利用者名・
  *      ［#1859］`sub`（Keycloak 25 以降は `basic` スコープの写像が載せる）が在る。
- *      ［#1859 / IADR-0524］**port なしのループバックを Keycloak に直接作った公開クライアント**（SC-12 は 400 で拒むので master の管理者で作る）で、
- *      陽性対照（登録どおり・任意の port でログイン画面へ進む＝RFC 8252 §7.3。否定が空振りしていないこと）と、横取りの形
- *      （`127.0.0.1`・`[::1]` × `:<任意>@`・`:1@`・`:@`・`:<任意>:1@` で宛先を evil.example へすり替える形）がすべて 400 であることを測る。
- *      **SC-12 の port 必須を外すかの判断材料**であり、規則そのものは変えない（外すのは製品の判断の後の別 PR）。
+ *      ［#1859 / IADR-0524・IADR-0527］**port なしのループバック（`http://127.0.0.1/cb`・`http://[::1]/cb`）を SC-12 で登録する**（201・テンプレートどおり。
+ *      利用者裁定で入口の port 必須を外した）。そのクライアントで、陽性対照（登録どおり・任意の port でログイン画面へ進む＝RFC 8252 §7.3。
+ *      否定が空振りしていないこと）と、横取りの形（`127.0.0.1`・`[::1]` × `:<任意>@`・`:1@`・`:@`・`:<任意>:1@` で宛先を evil.example へすり替える形）が
+ *      すべて 400 であることを測る。🔴 **入口の port 必須を外した後は、この対が横取りの形を認可サーバーが止めていることの唯一の機械の確かめである（常設）。**
+ *      Keycloak 24 の `RedirectUtils` は port なしで登録された `http://127.0.0.1/cb` に横取りの 4 形を一致させ、認可コードを evil.example へ送った
+ *      （CVE-2024-8883。25.0.6 で修正）—— 版を戻せばこの対が赤になる。入口の否定形として、port の形が不正（`:` だけ）な登録と、
+ *      利用者情報で宛先をすり替える形の登録は 400 で Keycloak に何も作らないことも測る。
  *      無人のトークンの aud にも mcp-server が在る。無効化・再有効化が enabled へ写り、テンプレートが残る。補償（表示名の長さ）も無人と同じく走る。
  *   M11 secret の一度だけの表示と再発行（#1845 / 計画 ADR-0134 決定 2・フォローアップ 4・6 / IADR-0516 の #1845 追記）: 無人の登録の 201 の
  *      `clientSecret` が Keycloak の現在の secret（master の管理者で読む）と一致し、その値で client_credentials のトークンが出る。一覧に secret は無い。
@@ -703,6 +704,16 @@ function selfTest() {
     // 陽性対照が拒否されたら（このクライアントを Keycloak が全部拒んでいる＝否定が空振り）赤。
     assert.strictEqual(evaluateAuthOutcome(classifyAuthResponse(400, null, 'http://127.0.0.1:49152/cb'), 'login').length, 1);
   });
+  // ［#1859 / IADR-0527］port なしの対は SC-12 の実際の登録経路で作ったクライアントへ当てる（master の管理者で直接作らない）。
+  // 入口を迂回して作ると、入口の規則が緩みすぎた・テンプレートが崩れた退行を対が見ない。対そのもの（陽性対照・横取りの形）は常設。
+  t('M9 #1859: port なしの対は SC-12 で登録したクライアントに当て、横取りの形と陽性対照を残す', () => {
+    const src = require('fs').readFileSync(__filename, 'utf8');
+    assert.match(src, /const r9p = await registerHuman\(portlessId, portlessRedirects\)/, 'port なしを SC-12 で登録していない');
+    assert.match(src, /evaluatePublicClient\(await clientsOf\(portlessId\), portlessId, portlessRedirects\)/, 'port なしの登録のテンプレートを見ていない');
+    assert.doesNotMatch(src, new RegExp(['redirectUris', 'portlessRedirects'].join(': ')), 'port なしのクライアントを Keycloak に直接作っている（入口を迂回）');
+    assert.match(src, /portlessLoopbackHijackProbes\(uri\)[\s\S]{0,400}authorize\(hijack, 'S256', portlessId\), 'rejected'\)/, '横取りの形を port なしの登録へ当てていない');
+    assert.match(src, /authorize\(anyPort, 'S256', portlessId\), 'login'\)/, '任意の port の陽性対照が無い');
+  });
   t('M9: トークンの aud・azp・利用者名（aud は文字列でも配列でも読む。無ければ赤）', () => {
     const tok = (p) => `x.${Buffer.from(JSON.stringify(p)).toString('base64url')}.y`;
     assert.deepStrictEqual(evaluateTokenAudience(decodeJwtPayload(tok({ aud: ['mcp-server', 'x'], azp: 'h', preferred_username: 'u', sub: 'id-1' })), 'h', { human: true }), []);
@@ -1245,13 +1256,23 @@ async function live() {
     step('M9 ワイルドカードのリダイレクト URI は 400', status(r9w, 400));
     step('M9 ワイルドカードの登録で Keycloak に何も作られない', evaluateNothingCreated(await clientsOf(wildId), [], wildId));
 
-    // 🔴 CVE-2024-8883: port なしのループバック（127.0.0.1・[::1]）は SC-12 が 400 で拒み、Keycloak に何も作らない。
-    for (const [suffix, uri] of [['v4', 'http://127.0.0.1/cb'], ['v6', 'http://[::1]/cb']]) {
-      const portlessId = id(`human-noport-${suffix}`);
-      const r9p = await registerHuman(portlessId, [uri]);
-      if (r9p.status === 201) created.push(portlessId);
-      step(`M9 port なしのループバック（${uri}）は 400`, status(r9p, 400));
-      step(`M9 port なしのループバックの登録で Keycloak に何も作られない（${uri}）`, evaluateNothingCreated(await clientsOf(portlessId), [], portlessId));
+    // ［#1859 / IADR-0527］port なしのループバック（127.0.0.1・[::1]）は SC-12 で登録できる（201・有人のテンプレートどおり・入口の印）。
+    //   横取りの形の対（下）は、このクライアントへ当てる＝実際の登録経路で作ったものを測る。
+    const portlessId = id('human-noport');
+    const portlessRedirects = ['http://127.0.0.1/cb', 'http://[::1]/cb'];
+    const r9p = await registerHuman(portlessId, portlessRedirects);
+    if (r9p.status === 201) created.push(portlessId);
+    step('M9 #1859 port なしのループバック（127.0.0.1・[::1]）の有人の登録が 201', status(r9p, 201));
+    step('M9 #1859 port なしの登録の Keycloak のクライアントは有人のテンプレートどおり（URI は入力どおり・入口の印）',
+      evaluatePublicClient(await clientsOf(portlessId), portlessId, portlessRedirects));
+    // 🔴 入口の否定形: 緩めたのは port の有無だけ。port の形が不正（`:` だけ）と、利用者情報で宛先をすり替える形は 400 で何も作らない。
+    for (const [suffix, uri] of [['badport', 'http://127.0.0.1:/cb'], ['userinfo-v4', 'http://127.0.0.1:49152@evil.example/cb'],
+      ['userinfo-v6', 'http://[::1]:@evil.example/cb']]) {
+      const rejectId = id(`human-${suffix}`);
+      const r9r = await registerHuman(rejectId, [uri]);
+      if (r9r.status === 201) created.push(rejectId);
+      step(`M9 #1859 入口の否定形: ${uri} の登録は 400`, status(r9r, 400));
+      step(`M9 #1859 入口の否定形: ${uri} の登録で Keycloak に何も作られない`, evaluateNothingCreated(await clientsOf(rejectId), [], rejectId));
     }
 
     // 認可の要求（ブラウザを使わない）。リダイレクト URI の検査が PKCE の検査より先に走るので、URI の試験は正しい S256 を添えて送る。
@@ -1294,19 +1315,8 @@ async function live() {
     step('M9 FU3: [::1] は port まで完全一致（別の port は 400。port を落とす扱いは 127.0.0.1 / localhost だけ）',
       evaluateAuthOutcome(await authorize(`http://[::1]:${v6Port + 1}/cb`, 'S256'), 'rejected'));
 
-    // 🔴 #1859 / IADR-0524: **port なしのループバック**を Keycloak に直接作り（SC-12 は 400 で拒むので master の管理者で作る。
-    //    入口の印は付けない＝照合の orphan にもならない）、CVE-2024-8883 の横取りの形が 400 になることを測る。SC-12 の port 必須を
-    //    外すかの判断材料であり、規則は変えない。テンプレートは有人と同じ公開・認可コードだけ・PKCE S256。
-    const portlessId = id('portless-loopback');
-    const portlessRedirects = ['http://127.0.0.1/cb', 'http://[::1]/cb'];
-    const rp = await call('POST', `${kcAdmin}/clients`, admin, {
-      clientId: portlessId, name: 'SC-12 provisioning probe (portless loopback, #1859)', enabled: true, protocol: 'openid-connect',
-      publicClient: true, standardFlowEnabled: true, implicitFlowEnabled: false, directAccessGrantsEnabled: false,
-      serviceAccountsEnabled: false, fullScopeAllowed: false, redirectUris: portlessRedirects, webOrigins: [],
-      attributes: { [PKCE_ATTRIBUTE]: 'S256' },
-    });
-    if (rp.status === 201) created.push(portlessId);
-    step('M9 #1859 前提: port なしのループバックの公開クライアントを Keycloak に直接作れた', status(rp, 201));
+    // 🔴 #1859 / IADR-0524・IADR-0527: SC-12 で登録した**port なしのループバック**のクライアントに、CVE-2024-8883 の横取りの形を当てる（常設）。
+    //    入口の port 必須を外した後は、横取りの形を止めているのは認可サーバーの照合であり、その退行を見つけるのはこの対だけである。
     for (const uri of portlessRedirects) {
       // 陽性対照: 否定が空振りしていないこと（このクライアントを Keycloak が全部拒んでいれば、横取りの 400 は何も示さない）。
       step(`M9 #1859 陽性対照: ${uri} は登録どおりにログイン画面へ進む`, evaluateAuthOutcome(await authorize(uri, 'S256', portlessId), 'login'));

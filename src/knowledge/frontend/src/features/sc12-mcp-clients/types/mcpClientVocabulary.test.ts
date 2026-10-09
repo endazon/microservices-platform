@@ -19,8 +19,18 @@ describe('redirect URI rules (SC-12)', () => {
     'http://127.0.0.1:53123',
     'http://127.0.0.1:53123?x=1',
     'http://127.0.0.1:80/cb',
+    'http://127.0.0.1:65535/cb',
     'http://[::1]:53123/callback',
     'http://[::1]:53123',
+    // ［2026-10-09］port なしのループバックも通る（実行時の任意の port で戻す。後段と同じ並び）。
+    'http://127.0.0.1/callback',
+    'http://127.0.0.1/',
+    'http://127.0.0.1',
+    'http://127.0.0.1?x=1',
+    'http://[::1]/callback',
+    'http://[::1]/',
+    'http://[::1]',
+    'http://[::1]?x=1',
   ])('allows %s', (uri) => {
     expect(isAllowedRedirectUri(uri)).toBe(true);
   });
@@ -40,26 +50,29 @@ describe('redirect URI rules (SC-12)', () => {
     'myapp://callback',
     'http://127.0.0.1:49152@evil.example/cb',
     'http://[::1]:49152@evil.example/cb',
+    // 横取りの形（CVE-2024-8883）。port なしの登録に当てる 4 形 × 2 ホストも、利用者情報の拒否で写しの段から止める。
+    'http://127.0.0.1:1@evil.example/cb',
+    'http://127.0.0.1:@evil.example/cb',
+    'http://127.0.0.1:49152:1@evil.example/cb',
+    'http://[::1]:1@evil.example/cb',
+    'http://[::1]:@evil.example/cb',
+    'http://[::1]:49152:1@evil.example/cb',
+    // port を書いたなら 1〜65535 の数字だけ（`:` だけ・`:0` は不可）。
+    'http://127.0.0.1:/callback',
+    'http://127.0.0.1:0/callback',
+    'http://[::1]:/callback',
+    'http://[::1]:0/callback',
     '',
   ])('rejects %s', (uri) => {
     expect(isAllowedRedirectUri(uri)).toBe(false);
   });
 
-  // 🔴 CVE-2024-8883: port なしのループバックは不可。認可サーバーの Keycloak 24 は port なしで登録された
-  // `http://127.0.0.1/cb` に `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送った（26.7.4 へ上げた後も規則は判断待ちで残す）。
-  // 後段（`RegisterMcpClientValidatorTests` の port なしの事例）と同じ並び。理由は「不正」と分けて名指しする。
+  // ［2026-10-09］port の有無は理由を分けない。port なしは通り、`:` だけ・`:0` は「不正」として名指しする。
   it.each([
-    'http://127.0.0.1/callback',
-    'http://127.0.0.1/',
-    'http://127.0.0.1',
-    'http://127.0.0.1?x=1',
     'http://127.0.0.1:/callback',
-    'http://[::1]/callback',
-    'http://[::1]/',
-    'http://[::1]',
-    'http://[::1]:/callback',
-  ])('rejects the port-less loopback %s and names the port as the reason', (uri) => {
-    expect(isAllowedRedirectUri(uri)).toBe(false);
+    'http://[::1]:0/callback',
+    'http://127.0.0.1:@evil.example/cb',
+  ])('reports %s as an invalid redirect URI', (uri) => {
     expect(
       validateRegistration({
         clientId: 'a',
@@ -68,7 +81,19 @@ describe('redirect URI rules (SC-12)', () => {
         kind: 'interactive',
         redirectUris: [uri],
       }),
-    ).toEqual(['redirect-uri-loopback-port-required']);
+    ).toEqual(['redirect-uri-invalid']);
+  });
+
+  it('accepts a port-less loopback registration', () => {
+    expect(
+      validateRegistration({
+        clientId: 'a',
+        displayName: 'A',
+        attributes: [],
+        kind: 'interactive',
+        redirectUris: ['http://127.0.0.1/callback', 'http://[::1]/callback'],
+      }),
+    ).toEqual([]);
   });
 
   it('parses one URI per line and drops blank lines and surrounding spaces', () => {

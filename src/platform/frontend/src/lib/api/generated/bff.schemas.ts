@@ -1838,10 +1838,10 @@ export interface RegisterMcpClientRequest {
   egressTier?: RegisterMcpClientRequestEgressTier;
   /**
      * 有人（`interactive`）のリダイレクト URI。完全一致で照合する。`https` か、ループバックの
-     * `http://127.0.0.1` / `http://[::1]`（RFC 8252）に限る。ループバックは port の明示が必須
-     * （例: `http://127.0.0.1:53123/cb`。port なしは 400。認証基盤 Keycloak 24 の CVE-2024-8883 で
-     * 認可コードを横取りされる形を入れない）。ワイルドカード（`*`）・フラグメント・利用者情報・
-     * `localhost` は不可。重複は不可。
+     * `http://127.0.0.1` / `http://[::1]`（RFC 8252）に限る。ループバックの port は任意
+     * （`http://127.0.0.1/cb` は実行時の任意の port で戻る。書くなら 1〜65535）。利用者情報で宛先を
+     * すり替える横取りの形（CVE-2024-8883）は、入口が利用者情報を拒み、認証基盤の照合も拒む。
+     * ワイルドカード（`*`）・フラグメント・利用者情報・`localhost` は不可。重複は不可。
      * @maxItems 10
      * @items.maxLength 2048
      */

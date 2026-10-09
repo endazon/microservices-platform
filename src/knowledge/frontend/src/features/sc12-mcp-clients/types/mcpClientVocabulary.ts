@@ -96,7 +96,6 @@ export type RegistrationIssue =
   | 'redirect-uris-required'
   | 'redirect-uris-too-many'
   | 'redirect-uri-invalid'
-  | 'redirect-uri-loopback-port-required'
   | 'redirect-uri-duplicate';
 
 /**
@@ -119,22 +118,21 @@ export function parseRedirectUris(text: string): string[] {
 }
 
 /**
- * port を明示したループバック（1〜5 桁の数字の後が `/`・`?`・末尾）。後段 `RedirectUriRules` と同じ綴りの判定。
- * `new URL` は既定の port（`:80`）を落とすので、port の有無は綴りで見る。
+ * ループバック（port は任意。書くなら 1〜5 桁の数字の後が `/`・`?`・末尾）。後段 `RedirectUriRules` と同じ綴りの判定。
+ * `new URL` は既定の port（`:80`）を落とすので、port の有無は綴りで見る。`:` だけ（`http://127.0.0.1:/cb`）は一致しない＝不正。
  */
-const LOOPBACK_WITH_PORT = /^http:\/\/(127\.0\.0\.1|\[::1\]):(\d{1,5})([/?]|$)/;
-const LOOPBACK_WITHOUT_PORT = /^http:\/\/(127\.0\.0\.1|\[::1\])(:0*)?([/?]|$)/;
+const LOOPBACK = /^http:\/\/(127\.0\.0\.1|\[::1\])(?::(\d{1,5}))?([/?]|$)/;
 
 /**
  * リダイレクト URI 1 件が規則を満たすか（ADR-0134 決定 1）。
  *
- * `https` の URI か、**port を明示した**ループバックの `http://127.0.0.1:<port>` / `http://[::1]:<port>`（RFC 8252）だけを許す。
- * ワイルドカード（`*`）・フラグメント・利用者情報・`localhost` は不可。
+ * `https` の URI か、ループバックの `http://127.0.0.1` / `http://[::1]`（RFC 8252。port は任意）だけを許す。
+ * ワイルドカード（`*`）・フラグメント・利用者情報・`localhost` は不可。port を書くなら 1〜65535。
  *
- * 🔴 **port なしのループバックは不可**（CVE-2024-8883）。認可サーバーの Keycloak 24 は port なしで登録された
- * `http://127.0.0.1/cb` に `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送ってしまった。
- * 配備は 26.7.4 へ上がった（修正済みの版）が、規則を外すかは製品の判断待ちのため後段と同じく残す。
- * port を明示した登録は完全一致で照合される。
+ * ［2026-10-09］port なしのループバックを許す（実行時の任意の port で戻す。ネイティブのクライアントは起動のたびに port が変わる）。
+ * 当初は port の明示を必須にしていた（CVE-2024-8883: 旧い認可サーバーは port なしで登録された `http://127.0.0.1/cb` に
+ * `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送った）。修正済みの版へ上げ、横取りの形は認可サーバーの照合が拒む
+ * （結合スタックの門が日次で測る）。利用者情報の拒否は残す —— 横取りの形そのものをここでも止める。
  *
  * 🔴 **最終の判定は後段（`RedirectUriRules`）が持つ。** ここは送る前の写しであり、食い違えば後段の 400 が
  * 理由を名指しして返る（画面はそれをそのまま出す）。
@@ -152,16 +150,10 @@ export function isAllowedRedirectUri(value: string): boolean {
   if (url.protocol === 'https:') return true;
   if (url.protocol !== 'http:') return false;
   // 綴りで判定する（`localhost`・`127.1` のような別の綴りを通さない。後段も綴りで照合する）。
-  const port = LOOPBACK_WITH_PORT.exec(value)?.[2];
-  return port !== undefined && Number(port) > 0;
-}
-
-/**
- * port を書いていない（または `:`・`:0` だけの）ループバックか（`http://127.0.0.1/cb`・`http://[::1]` など）。
- * 「不正」と分けて理由を名指しするためだけに使う（CVE-2024-8883。上の注記）。
- */
-function isPortlessLoopbackRedirectUri(value: string): boolean {
-  return LOOPBACK_WITHOUT_PORT.test(value) && !value.includes('*') && !value.includes('#');
+  const match = LOOPBACK.exec(value);
+  if (match === null) return false;
+  const port = match[2];
+  return port === undefined || (Number(port) > 0 && Number(port) <= 65535);
 }
 
 export function validateRegistration(input: {
@@ -183,11 +175,7 @@ export function validateRegistration(input: {
     const uris = input.redirectUris ?? [];
     if (uris.length === 0) issues.push('redirect-uris-required');
     else if (uris.length > MAX_REDIRECT_URIS) issues.push('redirect-uris-too-many');
-    const rejected = uris.filter((uri) => !isAllowedRedirectUri(uri));
-    if (rejected.some((uri) => !isPortlessLoopbackRedirectUri(uri)))
-      issues.push('redirect-uri-invalid');
-    if (rejected.some(isPortlessLoopbackRedirectUri))
-      issues.push('redirect-uri-loopback-port-required');
+    if (uris.some((uri) => !isAllowedRedirectUri(uri))) issues.push('redirect-uri-invalid');
     if (new Set(uris).size !== uris.length) issues.push('redirect-uri-duplicate');
   }
   return issues;

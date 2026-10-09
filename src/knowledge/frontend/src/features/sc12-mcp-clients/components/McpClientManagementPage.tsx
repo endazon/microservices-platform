@@ -89,8 +89,7 @@ function useIssueLabels(): Record<RegistrationIssue, string> {
     'attributes-required': t`無人（サービスアカウント）には ABAC 属性の割当が必須です。`,
     'redirect-uris-required': t`有人にはリダイレクト URI が 1 件以上必要です。`,
     'redirect-uris-too-many': t`リダイレクト URI は 10 件以下にしてください。`,
-    'redirect-uri-invalid': t`リダイレクト URI は https か、ループバックの http://127.0.0.1 / http://[::1] に限ります（ワイルドカード・フラグメント・localhost は使えません）。`,
-    'redirect-uri-loopback-port-required': t`ループバックのリダイレクト URI には port を明示してください（例: http://127.0.0.1:53123/callback）。`,
+    'redirect-uri-invalid': t`リダイレクト URI は https か、ループバックの http://127.0.0.1 / http://[::1] に限ります（ワイルドカード・フラグメント・利用者情報・localhost は使えません。port を書くなら 1〜65535）。`,
     'redirect-uri-duplicate': t`リダイレクト URI が重複しています。`,
   };
 }
@@ -640,13 +639,14 @@ export function McpClientManagementPage() {
                 rows={3}
                 value={form.redirectUrisText}
                 onChange={(e) => form.setRedirectUrisText(e.target.value)}
-                placeholder="http://127.0.0.1:53123/callback"
+                placeholder="http://127.0.0.1/callback"
               />
               <p className="mt-1 text-xs text-fg-muted">
                 <Trans>
                   完全一致で照合します。https か、ループバックの http://127.0.0.1 / http://[::1]
                   に限ります（ワイルドカードは使えません）。ループバックは port
-                  を明示してください（例: http://127.0.0.1:53123/callback）。
+                  を省くと、実行時に空いている任意の port で戻ります（例:
+                  http://127.0.0.1/callback）。
                 </Trans>
               </p>
             </div>
