@@ -100,6 +100,41 @@ public class RagContextAiInputExclusionTests
         routes.LastPrompt.Should().Contain("社内規程の本文");
     }
 
+    // FR-19, FR-21 ⑨, [[IADR-0529]] (#1879): 🔴 **露出の 3 属性を 3 つとも `excluded` にした組織文書は、出典にも文脈にも入らない。**
+    // planning#784 の裁定（AST の承認待ちの報告書のドラフト）。検索の出口（AI 入力の用途）を抜けてきても、文脈の選別がもう一度落とす。
+    // 陽性対照: 同じ応答で、露出キーの無い組織文書と AI 入力 ON の組織文書は入る。
+    [Fact]
+    public async Task 露出を全て除外にした組織文書は出典にも文脈にも現れない()
+    {
+        var draftChunk = Guid.NewGuid();
+        var includedChunk = Guid.NewGuid();
+        Dictionary<string, string> Org(bool on)
+        {
+            var attrs = new Dictionary<string, string>
+            {
+                [DocumentScopes.Key] = DocumentScopes.Organization,
+                [ConfidentialityLevels.AttributeKey] = ConfidentialityLevels.Internal,
+            };
+            foreach (var (k, v) in DocumentExposure.Project(on, on, on)) attrs[k] = v;
+            return attrs;
+        }
+        var routes = new RoutingHandler(
+        [
+            OrganizationDocument(),
+            Chunk(draftChunk, "報告書ドラフト", "承認待ちのドラフト本文", Org(false)),
+            Chunk(includedChunk, "確定した報告書", "確定版の本文", Org(true)),
+        ]);
+        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+
+        var answer = await orchestrator.AskAsync("質問", "alice", [],
+            ct: TestContext.Current.CancellationToken);
+
+        answer.Citations.Should().NotContain(c => c.ChunkId == draftChunk, "3 つとも除外の組織文書は回答の根拠にならない");
+        routes.LastPrompt.Should().NotContain("承認待ちのドラフト本文");
+        routes.LastPrompt.Should().NotContain("報告書ドラフト");
+        answer.Citations.Select(c => c.ChunkId).Should().BeEquivalentTo([OrgChunk, includedChunk], "陽性対照");
+    }
+
     // FR-21 ⑨, [[IADR-0283]] 決定 2: 🔴 **fail-closed** —— 個人資料でトグル属性が欠落していたら
     // OFF 扱いにする。供給側が既定を書き忘れても、見える側へ倒れない。
     [Fact]

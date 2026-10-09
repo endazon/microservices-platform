@@ -155,6 +155,61 @@ public class PrivateNoteIndexProductionTests
         index.Chunks.Should().BeEmpty("トグル属性の欠落は OFF 扱い（fail-closed）");
     }
 
+    // ── FR-19, ADR-0061 決定 1・2・4, [[IADR-0529]] (#1879): 露出キーを明示した組織文書 ──────────
+    // planning#784 の裁定: AST の承認待ちの報告書（ドラフト）は 3 つとも `excluded` の組織文書として保存し、索引に載せない。
+
+    private static Dictionary<string, string> OrganizationAttributes(bool search, bool graph, bool ai)
+    {
+        var attributes = new Dictionary<string, string>
+        {
+            [DocumentScopes.Key] = DocumentScopes.Organization,
+            ["confidentiality"] = "internal",
+        };
+        foreach (var (key, value) in DocumentExposure.Project(search, graph, ai))
+            attributes[key] = value;
+        return attributes;
+    }
+
+    // 🔴 3 つとも除外の組織文書はチャンクが 1 件も作られない。陽性対照: 同じ器で露出キーの無い組織文書は索引される。
+    [Fact]
+    public async Task 露出が全て除外の組織文書は索引されない_露出キーの無い組織文書は索引される()
+    {
+        var (consumer, index) = Build();
+        var draftId = Guid.NewGuid();
+        var organizationId = Guid.NewGuid();
+
+        await consumer.Handle(Event(OrganizationAttributes(false, false, false), draftId),
+            TestContext.Current.CancellationToken);
+        await consumer.Handle(
+            Event(new Dictionary<string, string> { ["confidentiality"] = "internal" }, organizationId),
+            TestContext.Current.CancellationToken);
+
+        index.Chunks.Should().NotContain(c => c.DocumentId == draftId,
+            "3 つとも除外の組織文書は索引に載せない（planning#784。明示値は文書種別より優先する）");
+        index.Chunks.Should().Contain(c => c.DocumentId == organizationId, "陽性対照");
+    }
+
+    // 🔴 含める → 3 つとも除外: 索引から削除される。除外 → 含める: 再び索引される。
+    [Fact]
+    public async Task 組織文書を全て除外へ切り替えると索引から削除され_含めるへ戻すと再び索引される()
+    {
+        var (consumer, index) = Build();
+        var id = Guid.NewGuid();
+
+        await consumer.Handle(Event(OrganizationAttributes(true, true, true), id),
+            TestContext.Current.CancellationToken);
+        index.Chunks.Should().Contain(c => c.DocumentId == id, "陽性対照: いったんは索引に載っている");
+
+        await consumer.Handle(Event(OrganizationAttributes(false, false, false), id),
+            TestContext.Current.CancellationToken);
+        index.Chunks.Should().NotContain(c => c.DocumentId == id, "ON → OFF は索引からの削除まで及ぶ（ADR-0061 決定 4）");
+        index.Deleted.Should().Contain(id);
+
+        await consumer.Handle(Event(OrganizationAttributes(true, true, true), id),
+            TestContext.Current.CancellationToken);
+        index.Chunks.Should().Contain(c => c.DocumentId == id, "除外 → 含めるで再び索引される（確定版で置き換える流れの逆向きの対照）");
+    }
+
     // 索引の**状態**を持つ器（呼び出しの記録ではない）。削除を実際に反映するので、
     // 「索引を直接引いて 0 件」（受け入れ基準 6）をそのまま測れる。
     private sealed class IndexedChunk(Guid documentId, Dictionary<string, string> attributes,

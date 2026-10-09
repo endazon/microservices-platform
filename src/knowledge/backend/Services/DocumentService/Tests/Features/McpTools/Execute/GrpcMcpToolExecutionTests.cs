@@ -310,7 +310,50 @@ public sealed class GrpcMcpToolExecutionTests : IDisposable
         }
     }
 
+    // 🔴 X-70（FR-19, ADR-0061 決定 1・2, [[IADR-0529]] 決定 3 / #1879）: 露出の 3 属性を 3 つとも `excluded` にした組織文書
+    // （planning#784 の裁定。AST の承認待ちの報告書のドラフト）は、MCP の一覧に載らず件数にも入らない。
+    // 文書 ID を指定した個別の取得は REST（SC-03 の閲覧）と同じく返る（題名と属性だけ。本文は載らない）。
+    // 陽性対照: 同じ器・同じ利用者で、含めるへ戻した組織文書は一覧に載り、REST の一覧には全て除外の文書も載る。
+    // 🔴 文書は**この試験の利用者が所有する restricted** にする —— 器の DB はコレクションで共有され、他の試験の利用者に
+    //   見える文書を足すと X-59（MCP の一覧の件数が REST と一致する）を壊す。
+    [Fact]
+    public async Task 露出を全て除外にした組織文書はMCPの一覧に載らず個別の取得はRESTと同じく返る()
+    {
+        var s = await SeedAsync();
+        Dictionary<string, string> Owned(bool on)
+        {
+            var attrs = new Dictionary<string, string>
+            {
+                ["confidentiality"] = "restricted",
+                [DocumentScopes.Key] = DocumentScopes.Organization,
+                ["owner"] = s.User,
+            };
+            foreach (var (k, v) in DocumentExposure.Project(on, on, on)) attrs[k] = v;
+            return attrs;
+        }
+        var draft = Document.Create("報告書ドラフト", null, null, Owned(false));
+        var confirmed = Document.Create("確定した報告書", null, null, Owned(true));
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            db.Documents.AddRange(draft, confirmed);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        var (rest, restCount) = await RestViewAsync(s.User, [draft.Id, confirmed.Id]);
+        rest.Should().BeEquivalentTo([Seeded.Id(draft.Id), Seeded.Id(confirmed.Id)], "器の対照: REST（SC-03）では両方読める");
+
+        var list = await ExecuteAsync(List(s.User));
+        Ids(list).Should().NotContain(Seeded.Id(draft.Id), "3 つとも除外の組織文書は MCP の一覧に載せない（planning#784）")
+            .And.Contain(Seeded.Id(confirmed.Id), "陽性対照: 含めるの組織文書は載る");
+        list.TotalCount.Should().Be(restCount - 1, "件数にも入れない（REST の一覧より全て除外の 1 件だけ少ない）");
+
+        Ids(await ExecuteAsync(Get(s.User, draft.Id))).Should().Equal([Seeded.Id(draft.Id)],
+            "文書 ID を指定した取得は SC-03 の閲覧と同じ意味であり、ABAC の範囲で題名と属性を返す");
+    }
+
     // 🔴 X-59（［2026-09-28 改訂 / #1611 段 2 案 2］）: 門が開いている間、MCP 経路の個別・一覧の結果は REST の同じ利用者の結果と一致する
+    // （［2026-10-10 追記 / #1879］露出の 3 属性を 3 つとも除外にした組織文書だけは一覧から外す —— X-70。器の文書はその形を持たない）
     // （超えない・欠けない。一覧の件数も）。属性の合わない利用者に他人の機密の組織文書は返らない。
     // 門が閉じている間は MCP 経路は結果を返さない（REST より狭い＝安全側）—— X-68 が固定する。
     [Fact]

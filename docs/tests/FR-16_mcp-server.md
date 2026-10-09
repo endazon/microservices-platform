@@ -3,15 +3,15 @@ title: FR-16 MCP サーバー統合 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-23
-updated: 2026-10-09
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, FR-16, UC-08, UC-09, SC-12, NFR-09, NFR-16]
-adrs: [ADR-0004, ADR-0018, ADR-0024, ADR-0029, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0062, ADR-0075, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134]
-iadrs: [IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523]
-specs: [20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation]
-issues: [#1859, #445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844, #1845, #1846]
+ids: [FR-05, FR-16, FR-19, UC-08, UC-09, SC-12, NFR-09, NFR-16]
+adrs: [ADR-0004, ADR-0018, ADR-0024, ADR-0029, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0061, ADR-0062, ADR-0075, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134]
+iadrs: [IADR-0529, IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523]
+specs: [20261010_1879_exposure-org-docs-wiki-gate, 20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation]
+issues: [#1879, #1859, #445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844, #1845, #1846, planning#784]
 -->
 
 # テスト仕様書: MCP サーバー統合
@@ -402,7 +402,7 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
 | X-56 | MCP サーバーからの実行（陽性対照。門が開いた後） | MCP サーバーのサービス間トークン（利用者名の形・`azp` だけの形の両方）で 2 つのツールを本文の利用者として実行できる。応答は共通エンベロープ（題名と許可リストの属性。本文・参照リンクは無い）。有人の所有者には自分の個人資料も返る。判定点が本文の利用者名で認可サービスへ要求につき 1 度問い、門は要求につき 1 度だけ読まれる |
 | X-57 | 🔴 MCP サーバー以外の主体（否定） | 他の `platform-service` の主体（読み取りの中継者である BFF・タグ反映の中継者であるグラフを含む）・クライアント識別の接頭辞や大小文字の変種・利用者名と `azp` の食い違い・人のトークン・管理者の利用者トークンは `PERMISSION_DENIED`、資格情報なしは `UNAUTHENTICATED`。**拒否した呼び出しでは判定を問わない**。門が閉じていても `PERMISSION_DENIED`（経路の開閉より前で落ちる） |
 | X-58 | 🔴 権限の無い文書（否定。門が開いた後） | 属性の合わない利用者に機密の組織文書は返らず（1 件の取得は空・一覧に現れず件数にも入らない）、他人の個人資料も返らない。所有者の分岐で自分の機密の文書は読める（陽性対照）。許可の無い利用者には 1 件も返らない。見えない・無い・許可なしはバイト列まで同じ空の応答 |
-| X-59 | 🔴 REST の同じ利用者を超えない（門が開いた後。［2026-09-28 改訂］） | 1 件の取得・一覧の結果と一覧の件数が、同じ器の REST の同じ利用者の結果と一致する。属性の合わない利用者に他人の機密の組織文書は返らず、他人の個人資料も返らない。門が閉じている間は REST より狭い（何も返らない。X-68） |
+| X-59 | 🔴 REST の同じ利用者を超えない（門が開いた後。［2026-09-28 改訂］） | 1 件の取得・一覧の結果と一覧の件数が、同じ器の REST の同じ利用者の結果と一致する。属性の合わない利用者に他人の機密の組織文書は返らず、他人の個人資料も返らない。門が閉じている間は REST より狭い（何も返らない。X-68）。［2026-10-10 追記］露出を 3 つとも除外にした組織文書だけは一覧から外す（X-70。器の文書はその形を持たない） |
 | X-60 | 🔴 本文の scope（否定） | 旧い要求の番号 3 に機密区分を開ける scope を載せて**実際にワイヤへ送っても**、引数に `scope` / `filters` / `attributes` を書いても、結果は変わらない |
 | X-61 | 🔴 サービスアカウント実行（門が開いた後。閉じている間は X-68） | 利用者名が `service-account-` で始まる実行は、その名前が所有者・共有先でも個人資料を返さず件数にも入れない。組織文書は返り、同じ個人資料が共有先の有人には返る（陽性対照） |
 | X-62 | 🔴 所有者・部署・共有先（否定と陽性対照） | 有人とサービスアカウントの両方で、1 件の取得にも一覧にも所有者・部署・共有先の属性は載らない。同じ文書に機密区分・文書スコープ・プロジェクトは載る。応答のどの文書の属性も許可リストのキーだけ |
@@ -412,6 +412,7 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
 | X-66 | 申告との一致・信頼する中継者の集合の構成 | 受け口が実行するツール名と件数の上限・下限・既定が申告と同じで、申告の説明は本文を約束しない。集合は既定が MCP サーバーだけ（読み取り・タグ反映の中継者は入らない）・構成すると既定を置き換える・空白だけなら誰も信じない・1 つの値で書くと登録の時点で止まる |
 | X-67 | 配備の配線 | compose・helm の MCP サーバーのサービス間の client が既定の集合に入り、実行の宛先に文書サービスの h2c が在る。realm にその機密クライアントが `platform-service` を持って在る。compose・helm は集合を上書きしない |
 | X-68 | 🔴 門が閉じている間（否定。［2026-09-28 追加］） | 門が閉じている間は、2 つのツールとも有人・サービスアカウントの両方で `FAILED_PRECONDITION` になり、題名も属性も 1 件も返らない（同じ器の閉じた間の REST には他人の機密の組織文書が見える＝器の対照）。判定点を走らせない（認可サービスへ問わない）。引数の形の誤りは門に依らず `INVALID_ARGUMENT`。門が開けば同じ呼び出しが通る（陽性対照） |
+| X-70 | 🔴 露出の 3 属性を 3 つとも除外にした組織文書（［2026-10-10 追加］） | 試験の利用者が所有する、露出を 3 つとも除外にした組織文書は、一覧に載らず件数にも入らない（REST の一覧より 1 件少ない）。同じ利用者・同じ器で、3 つとも含めるの組織文書は一覧に載る（陽性対照）。REST の個別と一覧では両方読める（器の対照）。文書 ID を指定した 1 件の取得は REST の個別（文書詳細画面の閲覧）と同じく返る（題名と許可リストの属性だけ。本文は元から載らない） |
 
 ## 収集の期限と常駐処理の寿命（［2026-09-26 追加］）
 
@@ -469,6 +470,7 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
 | 呼び出し側の取り消しを拒否へ畳む | **X-6 が落ちる** |
 | 単一経路が実行できない例外を拒否へ写さない | **X-13 が落ちる** |
 | （［2026-09-28 追加］）文書の受け口が門の閉鎖を見ない（閉じた枝で答える） | **X-68 が落ちる** |
+| （［2026-10-10 追加］）一覧の露出の述語を常に真にする（3 つとも除外の組織文書を一覧に残す） | **X-70 が落ちる**（実測） |
 | （［2026-09-28 追加］）文書の受け口が門を判定点と別に読む（要求内固定の値を使わない） | **X-56 が落ちる**（門の読み取りが要求につき 2 回） |
 | 文書サービスの申告に実行先の URL を戻す | **D-8 が落ちる** |
 | 🔴 申告の名乗りと収集先の名前の結び付けを外す | **G-16・X-15 が落ちる** |
@@ -541,7 +543,7 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
 - `ToolDeclarationSourceFailFastTests` — 登録の誤りでホストが起動しないこと（G-11 の起動の側）
 - `GrpcToolInvokerTests` — ツールの実行の宛先・旧い申告元の URL を dial しないこと・失敗の畳み方・期限・取り消し・登録・2 つの形の一致・他のサービスを名乗る申告元（X-1〜X-12・X-15・X-69）
 - `ToolInvocationServiceTests` — 下流へ運ぶ利用者文脈の組み方（X-28）
-- `GrpcMcpToolExecutionTests` — 検索サービスの実行口（X-16〜X-25・X-52）・グラフサービスの実行口（X-40〜X-48・X-50・X-51・X-54）・文書サービスの実行口（X-56〜X-66・X-68。各サービスのテストプロジェクトに 1 本ずつ）
+- `GrpcMcpToolExecutionTests` — 検索サービスの実行口（X-16〜X-25・X-52）・グラフサービスの実行口（X-40〜X-48・X-50・X-51・X-54）・文書サービスの実行口（X-56〜X-66・X-68・X-70。各サービスのテストプロジェクトに 1 本ずつ）
 - `AuthorizedGraphViewTests` — グラフの出力ゲート単独での共有先の除去（X-53。出力ゲートそのものの意味論は知識グラフの仕様書が持つ）
 - `McpEnvelopeAttributesTests` — エンベロープの属性の許可リストと MCP サーバーの読み手の一致（X-55）
 - `McpToolExecutionRelayOptionsTests` — 実行口の信頼する中継者の集合の構成（検索 X-26・グラフ X-48・文書 X-66）
