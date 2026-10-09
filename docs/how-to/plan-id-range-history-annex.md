@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-10-07
+updated: 2026-10-09
 author: claude
 ---
 <!-- trace:
 ids: [FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-05, SC-06, SC-17, SC-18, SC-19, SC-20, SC-22, NFR-28, NFR-29]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099, ADR-0101, ADR-0102, ADR-0103, ADR-0104, ADR-0105, ADR-0106, ADR-0107, ADR-0108, ADR-0109, ADR-0110, ADR-0111, ADR-0112, ADR-0113, ADR-0114, ADR-0115, ADR-0116, ADR-0117, ADR-0118, ADR-0119, ADR-0120, ADR-0121, ADR-0122, ADR-0123, ADR-0124, ADR-0125, ADR-0126, ADR-0127, ADR-0128, ADR-0017, ADR-0129]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099, ADR-0101, ADR-0102, ADR-0103, ADR-0104, ADR-0105, ADR-0106, ADR-0107, ADR-0108, ADR-0109, ADR-0110, ADR-0111, ADR-0112, ADR-0113, ADR-0114, ADR-0115, ADR-0116, ADR-0117, ADR-0118, ADR-0119, ADR-0120, ADR-0121, ADR-0122, ADR-0123, ADR-0124, ADR-0125, ADR-0126, ADR-0127, ADR-0128, ADR-0017, ADR-0129, ADR-0130, ADR-0131, ADR-0132, ADR-0133, ADR-0134, ADR-0135, ADR-0107]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228, IADR-0423, IADR-0450]
-specs: [20261007_1769_plan-range-adr-0129, 20261005_1748_plan-range-adr-0128, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1676_adr0121-audit-followups, 20260927_issue-1663_singleton-cluster-summary-exclusion, 20260927_1612_plan-adr-range-0119, 20260926_1527_nfr-numbering-to-28, 20260926_1565_plan-adr-range-0115, 20260926_1553_plan-adr-range-0114, 20260926_1542_plan-adr-range-0113, 20260926_1519_plan-adr-range-0110, 20260925_1496_plan-adr-range-0107, 20260925_1487_plan-adr-range-0105]
-issues: [#1769, #1748, #1682, #1676, #1663, #1612, #1527, #1565, #1553, #1542, #1541, #1526, #1519, #1496, #1487, #1470, #1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#577, planning#591, planning#627, planning#628, planning#630, planning#633, planning#634, planning#635, planning#636, planning#639, planning#640, planning#648, planning#649, planning#650, planning#651, planning#652, planning#653, planning#654, planning#655, planning#656, planning#657, planning#658, planning#659, planning#660, planning#661, planning#662, planning#664, planning#666, planning#669, planning#672, planning#675, planning#677, planning#679, planning#680, planning#681, planning#683, planning#684]
+specs: [20261009_1838_plan-range-adr-0135, 20261007_1769_plan-range-adr-0129, 20261005_1748_plan-range-adr-0128, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1676_adr0121-audit-followups, 20260927_issue-1663_singleton-cluster-summary-exclusion, 20260927_1612_plan-adr-range-0119, 20260926_1527_nfr-numbering-to-28, 20260926_1565_plan-adr-range-0115, 20260926_1553_plan-adr-range-0114, 20260926_1542_plan-adr-range-0113, 20260926_1519_plan-adr-range-0110, 20260925_1496_plan-adr-range-0107, 20260925_1487_plan-adr-range-0105]
+issues: [#1838, #1769, #1748, #1682, #1676, #1663, #1612, #1527, #1565, #1553, #1542, #1541, #1526, #1519, #1496, #1487, #1470, #1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#577, planning#591, planning#627, planning#628, planning#630, planning#633, planning#634, planning#635, planning#636, planning#639, planning#640, planning#648, planning#649, planning#650, planning#651, planning#652, planning#653, planning#654, planning#655, planning#656, planning#657, planning#658, planning#659, planning#660, planning#661, planning#662, planning#664, planning#666, planning#669, planning#672, planning#675, planning#677, planning#679, planning#680, planning#681, planning#683, planning#684, planning#750, planning#751]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,30 @@ issues: [#1769, #1748, #1682, #1676, #1663, #1612, #1527, #1565, #1553, #1542, #
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-10-09］ADR `0001..0129` → `0001..0135`（6 件）
+
+**動いたのは `ADR` だけである。** `FR-01..22`／`UC-01..11`／`SC-01..22`／`NFR-01..29` は不動（5 種すべてを引き直した）。
+計画リポジトリの `origin/main`（`2b08fbe`）で測った。前回の出典（`b5b584f`）からの `07_adr/` の差分で、`status:` 行の変化は追加ファイルの `+status: Accepted` 6 件だけである
+（既存の 0010・0025・0030・0061・0081・0105〜0112・0114・0116〜0124 は本文が変わったが状態は動いていない。0135 が部分改定した 0107 も `Accepted` のままである）。
+要求一覧は文書の受け入れ経路の受け入れ基準へ 2 件（⑪⑫。下表の 0130 が定めた）が増え、画面一覧は MCP クライアント登録の入力表と操作が追補されたが、**いずれも採番は動いていない**。
+
+| 計画 ADR | 状態 | 内容 |
+| --- | --- | --- |
+| 0130 | `Accepted` | MCP のツール検索の結果に出す個人資料は、「横断検索に含める」と「AI の入力に含める」が両方 ON のものに限る。サービスアカウント実行の一律除外とグラフ系ツールの判定は改めない（0061 決定 3 の補完） |
+| 0131 | `Accepted` | キャッシュ・セッションストアの製品を Redis から Valkey へ差し替える（Redis は 7.4 以降 OSS でない。0107 基準 A）。計画中の「Redis」は「Redis 互換（Valkey）」と読み、版は実装の IADR に委ねる |
+| 0132 | `Accepted` | 秘匿管理の製品を HashiCorp Vault から OpenBao へ差し替える（Vault は 1.15 以降 BUSL-1.1。0107 基準 A）。計画中の「Vault」は Vault API 互換の製品と読み、版は実装の IADR に委ねる |
+| 0133 | `Accepted` | 基準 D の「認証を必須にできる」に、身元を検証する前段の認証を 4 条件つきで含める（到達の制限は別の段で掛け、製品内で掛けられるなら製品内を優先する。0112 決定 1 の補完） |
+| 0134 | `Accepted` | MCP クライアント登録は有人も Keycloak に公開クライアント（PKCE S256・リダイレクト URI の完全一致・DCR は開かない）として作り、無人の secret は登録と再発行の応答で一度だけ表示して保存しない（0123 決定 2 の補完） |
+| 0135 | `Accepted` | インフラ製品の選定基準と点検の対象に、計画が前提として引く製品を含め、配備の経路を問わない。版が固定されていない製品（Argo CD・k3s）は点検を待たず即時に固定する（0107 決定 1 の部分改定） |
+
+**出典は計画リポジトリの導出器の実測である。** `origin/main` の作業ツリーで `node tools/doc-checks/gen-plan-ranges.js --check` を走らせ、
+「宣言 [1, 135] / 実物 [1, 135]・欠番なし」を得た（NFR は参考行で実物 [1, 29]）。
+
+#### 契機
+
+計画側で 2026-10-09 に 2 件の裁定（0131・0132・0133・0135 の 1 件と、0134 の 1 件）と 0130 がマージされ、宣言が実物より 6 件遅れた（遅れの窓では 0130〜0135 を引く件名・trace ブロックが CI に拒否される）。
+`NFR` の採番は今回動いておらず、§4 の内訳と回帰テストの固定文字列は追随不要である（規則 10 で引き直して確かめた）。
 
 ### ［2026-10-07］ADR `0001..0128` → `0001..0129`（1 件）＋ `NFR-01..28` → `NFR-01..29`
 
