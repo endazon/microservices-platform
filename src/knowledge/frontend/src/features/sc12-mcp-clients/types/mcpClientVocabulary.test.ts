@@ -45,8 +45,8 @@ describe('redirect URI rules (SC-12)', () => {
     expect(isAllowedRedirectUri(uri)).toBe(false);
   });
 
-  // 🔴 CVE-2024-8883: port なしのループバックは不可。稼働の認可サーバー（Keycloak 24）は port なしで登録された
-  // `http://127.0.0.1/cb` に `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送る。
+  // 🔴 CVE-2024-8883: port なしのループバックは不可。認可サーバーの Keycloak 24 は port なしで登録された
+  // `http://127.0.0.1/cb` に `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送った（26.7.4 へ上げた後も規則は判断待ちで残す）。
   // 後段（`RegisterMcpClientValidatorTests` の port なしの事例）と同じ並び。理由は「不正」と分けて名指しする。
   it.each([
     'http://127.0.0.1/callback',

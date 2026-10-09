@@ -38,7 +38,7 @@
  *   あちらは「ローカルで部分的に走らせたい」需要がある静的検査である。本検査は
  *   クラスタが在ることが前提で、ツールが無い＝前提が崩れているので逃げ道を作らない。）
  * - **G4 エッジ / issuer**: `keycloak-edge` Ingress が在り、エッジの discovery が返す `issuer` が
- *   **デプロイ済みの `KC_HOSTNAME_URL` ＋ `/realms/<realm>` と文字列として完全一致**すること
+ *   **デプロイ済みの `KC_HOSTNAME` ＋ `/realms/<realm>` と文字列として完全一致**すること
  *   （[IADR-0243] の受け入れ基準を CI で固定する）。realm 名は `deploy/keycloak/*-realm.json` から
  *   **走査して**得る（列挙を書かない）。
  * - **G5 admin entrypoint**: **どちらかのエッジ**の Service に `50000` の port が在ること
@@ -188,7 +188,10 @@ const WIKI_CLIENT_SRC = path.join(
 const MAIL_CAPTURE_NS = 'platform-infra';
 const MAIL_CAPTURE_MANIFEST = path.join('deploy', 'local', 'infra', 'mailpit.yaml');
 
-/** Keycloak の Deployment（issuer の単一情報源 `KC_HOSTNAME_URL` を持つ）。 */
+/**
+ * Keycloak の Deployment（issuer の単一情報源 `KC_HOSTNAME` を持つ）。
+ * IADR-0524 (#1859): Keycloak 26 の hostname v2。v1 の `KC_HOSTNAME_URL` は 26 が黙って無視するので読まない（完全な URL を `KC_HOSTNAME` に置く）。
+ */
 const KEYCLOAK_NS = 'platform-infra';
 const KEYCLOAK_DEPLOY = 'keycloak';
 const KEYCLOAK_EDGE_INGRESS = 'keycloak-edge';
@@ -1447,12 +1450,12 @@ function evaluatePodDnsOutput(host, stdout) {
 
 /**
  * G4: issuer の完全一致（[IADR-0243]）。
- * `KC_HOSTNAME_URL` ＋ `/realms/<realm>` と、エッジの discovery が返す `issuer` を突き合わせる。
+ * `KC_HOSTNAME` ＋ `/realms/<realm>` と、エッジの discovery が返す `issuer` を突き合わせる。
  */
 function evaluateIssuer({ hostnameUrl, realm, discoveryIssuer }) {
   const failures = [];
   if (!hostnameUrl) {
-    failures.push(`[G4] ${KEYCLOAK_NS}/${KEYCLOAK_DEPLOY} に KC_HOSTNAME_URL が無い（issuer の単一情報源が失われている）。`);
+    failures.push(`[G4] ${KEYCLOAK_NS}/${KEYCLOAK_DEPLOY} に KC_HOSTNAME が無い（issuer の単一情報源が失われている）。`);
     return failures;
   }
   const expected = `${hostnameUrl.replace(/\/+$/, '')}/realms/${realm}`;
@@ -1543,10 +1546,10 @@ function check({ repoRoot = REPO_ROOT } = {}) {
   } else if (realms.length > 0) {
     const containers = (kc.value.spec.template.spec.containers || [])[0] || {};
     const env = containers.env || [];
-    const hostnameUrl = (env.find((e) => e.name === 'KC_HOSTNAME_URL') || {}).value;
+    const hostnameUrl = (env.find((e) => e.name === 'KC_HOSTNAME') || {}).value;
     for (const realm of realms) {
       const url = `${String(hostnameUrl || '').replace(/\/+$/, '')}/realms/${realm}/.well-known/openid-configuration`;
-      const disco = hostnameUrl ? fetchDiscovery(url) : { ok: false, error: 'KC_HOSTNAME_URL が無い' };
+      const disco = hostnameUrl ? fetchDiscovery(url) : { ok: false, error: 'KC_HOSTNAME が無い' };
       failures.push(
         ...evaluateIssuer({
           hostnameUrl,
@@ -1559,7 +1562,7 @@ function check({ repoRoot = REPO_ROOT } = {}) {
     // G6: pod 側の名前解決。**G4 が通っても、ここが割れていることがある。**
     const edgeHost = String(hostnameUrl || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     if (!edgeHost) {
-      failures.push('[G6] KC_HOSTNAME_URL からエッジ host を取り出せず、pod 側の名前解決を確かめられなかった。');
+      failures.push('[G6] KC_HOSTNAME からエッジ host を取り出せず、pod 側の名前解決を確かめられなかった。');
     } else {
       const probe = spawnSync(
         'kubectl',
@@ -1888,7 +1891,7 @@ function selfTest() {
     assert.strictEqual(
       evaluateIssuer({ ...base, hostnameUrl: '', discoveryIssuer: 'x' }).length,
       1,
-      'KC_HOSTNAME_URL 不在を通してしまっている',
+      'KC_HOSTNAME 不在を通してしまっている',
     );
   });
 

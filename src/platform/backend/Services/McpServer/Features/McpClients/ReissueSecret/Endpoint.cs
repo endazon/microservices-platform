@@ -9,7 +9,8 @@ namespace McpServer.Features.McpClients.ReissueSecret;
 // FR-16, UC-09, SC-12, 計画 ADR-0134 決定 2 の 1・4・5・フォローアップ 4, [[IADR-0516]]（2026-10-09 追記 / #1845）:
 // 無人の MCP クライアントの client secret の再発行。IdP（Keycloak）で regenerate し、**新しい値を応答で一度だけ返す**。
 //
-// ■ 🔴 **旧 secret はその時点で使えなくなる**（Keycloak 24 の client secret rotation〔preview〕は配備で無効なので猶予は無い）。
+// ■ 🔴 **旧 secret はその時点で使えなくなる**（Keycloak 24 の client secret rotation〔preview〕は配備で無効なので猶予は無い。
+//   ［#1859］26.7.4 でも regenerate の直後に旧 secret は 401 になる。手元の実測）。
 //   画面は確認を挟む。漏えいに気づいたときの手段でもあるので、無効化された行でも再発行できる。
 // ■ 🔴 **値は保存しない。** 登録簿は書かない（`updatedAt` も動かさない）。応答は `Cache-Control: no-store`。値はログにも監査にも出さない。
 // ■ 表示と再発行はシステム管理者に限る（グループの既定 `AdminOnly`。決定 2 の 4）。

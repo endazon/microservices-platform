@@ -15,7 +15,7 @@
 # （fail-safe）が、その場合 loginTheme=platform を解決できずログイン画面が 500 になる。
 #
 # NFR-09 / ADR-0023 / IADR-0076 決定3・IADR-0227・IADR-0243（#780 第2段）: 発行者(issuer)はエッジ host
-# `https://keycloak.localhost` に固定する（KC_HOSTNAME_URL がその単一情報源）。
+# `https://keycloak.localhost` に固定する（KC_HOSTNAME がその単一情報源。#1859 / IADR-0524 で KC_HOSTNAME_URL から移した）。
 # サービス間 JWT 検証（.NET）は in-cluster から到達できる `http://keycloak:8080/.../well-known/...` を
 # `Auth__MetadataAddress` で引き、`Auth__ValidIssuers` にエッジ issuer を許可リストとして足す
 # （IADR-0086 の分離。values-local.yaml global.auth 参照）。非 .NET の OIDC クライアント
@@ -37,10 +37,15 @@ spec:
     spec:
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
+          # FR-16, NFR-09, ADR-0107, IADR-0524 (#1859): 24.0 → 26.7.4（CVE-2024-8883 の修正を含む 26 系。index の digest で固定）。
+          # 26 で変わった起動の前提（下の各 env の注記）: hostname v2・ヘルスは管理用のポート 9000・取り込みのファイル名は
+          # `<realm>-realm.json`（k8s-local-up.sh の取り込み元の Secret のキー）・dev-file（H2）の既定の資格が無くなった。
+          image: quay.io/keycloak/keycloak:26.7.4@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c
           args: ["start-dev", "--import-realm"]
           env:
-            # IADR-0369 (#1088): 管理者名も Secret から読む。realm の後追い Job
+            # IADR-0369 (#1088): 管理者名も Secret から読む。26 では KEYCLOAK_ADMIN* は非推奨（KC_BOOTSTRAP_ADMIN_* が後継）だが
+            # 警告だけで有効である。名前を変えると Pod の env を読む検査器（check-password-reset-mail.js）と手順書に波及するので
+            # 本件では変えない（IADR-0524 の残余）。realm の後追い Job
             # （deploy/local/keycloak-setup/realm-reconcile-job.yaml）が同じ Secret の同じキーを読むので、
             # 管理者名の単一情報源が Secret keycloak-admin になる（scripts/k8s-local-up.sh [3/7] が作る）。
             - name: KEYCLOAK_ADMIN
@@ -55,8 +60,28 @@ spec:
                   key: password
             # エッジ issuer（#780 第2段）。単一情報源はこの1行。.NET は Auth__MetadataAddress で
             # in-cluster well-known を引くため無停止で追随する（IADR-0086）。
-            - name: KC_HOSTNAME_URL
+            # 🔴 IADR-0524 (#1859): 26 は hostname v1 の KC_HOSTNAME_URL を**警告だけ出して無視する**（issuer が要求の host に
+            # 揺れる。実測）。v2 の KC_HOSTNAME に完全な URL を与える。KC_HOSTNAME_URL を戻さない（k8s-local-up.test.js が止める）。
+            - name: KC_HOSTNAME
               value: https://keycloak.localhost
+            # IADR-0524: バックチャネル（token・jwks・userinfo・introspection）の URL は要求の host で描く（24 の v1 の既定と同じ）。
+            # .NET は in-cluster の well-known から jwks_uri を引くので、これが無いとエッジの URL（ローカル CA）を引きに行く。
+            - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
+              value: "true"
+            # IADR-0524: エッジ（Traefik / Istio）が TLS を終端して http で渡す。26 は要求の scheme で「安全な文脈」を決め、
+            # http のままだとクッキーが SameSite=Lax・Secure なしになる（24 は Secure; SameSite=None。実測）。エッジが付ける
+            # X-Forwarded-Proto を読ませて 24 と同じクッキーに戻す。issuer と認可の URL は KC_HOSTNAME で固定なので、
+            # 転送ヘッダはそれらを変えない（実測）。
+            - name: KC_PROXY_HEADERS
+              value: xforwarded
+            # IADR-0524: start-dev の dev-file（H2）。24 は資格を sa / password に差し替えていたが 26 は差し替えない。
+            # 永続化（PVC。既定）された 24 の H2 を開くために同じ値を明示する（H2 のファイルの外へ出ない値で、秘密ではない）。
+            # 新しい PVC もこの資格で作られる。
+            - name: KC_DB_USERNAME
+              value: sa
+            - name: KC_DB_PASSWORD
+              value: password
+            # 26: ヘルスは管理用のポート 9000 に出る（8080 の /health/ready は 404）。下の readinessProbe が 9000 を見る。
             - name: KC_HEALTH_ENABLED
               value: "true"
             # #438: dev ではテーマファイルを編集しながら確認できるよう、キャッシュを無効化する
@@ -75,10 +100,13 @@ spec:
               value: "-XX:MaxRAMPercentage=50"
           ports:
             - containerPort: 8080
+            # IADR-0524: 管理用のポート（ヘルス）。kubelet だけが見る。Service には出さない。
+            - name: management
+              containerPort: 9000
           readinessProbe:
             httpGet:
               path: /health/ready
-              port: 8080
+              port: 9000
             initialDelaySeconds: 20
             periodSeconds: 10
             timeoutSeconds: 5

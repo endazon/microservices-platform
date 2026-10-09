@@ -38,7 +38,7 @@
  *
  * realm 名・対象利用者・クライアント・エッジ URL・有効期限・捕捉用 MTA の宛先は**すべて走査して得る**。
  *   - realm / 利用者 / クライアント / 有効期限 → `deploy/keycloak/*-realm.json`
- *   - エッジ URL                              → Keycloak Deployment の `KC_HOSTNAME_URL`
+ *   - エッジ URL                              → Keycloak Deployment の `KC_HOSTNAME`
  *   - 捕捉用 MTA の Service 名と HTTP ポート  → `deploy/local/infra/mailpit.yaml`
  * ここへ書き写すと、宣言を変えたときに検査が静かに空回りする（check-stack-ready.js G7 と同じ姿勢）。
  *
@@ -66,7 +66,7 @@ const REALM_DIR = path.join('deploy', 'keycloak');
 /** 捕捉用 MTA の宣言（Service 名と HTTP ポートの単一情報源）。 */
 const MAIL_CAPTURE_MANIFEST = path.join('deploy', 'local', 'infra', 'mailpit.yaml');
 const MAIL_CAPTURE_NS = 'platform-infra';
-/** Keycloak の Deployment（エッジ URL の単一情報源 `KC_HOSTNAME_URL` を持つ）。 */
+/** Keycloak の Deployment（エッジ URL の単一情報源 `KC_HOSTNAME` を持つ。IADR-0524 / #1859 で v1 の `KC_HOSTNAME_URL` から移した）。 */
 const KEYCLOAK_NS = 'platform-infra';
 const KEYCLOAK_DEPLOY = 'keycloak';
 /** ローカル CA の在り処（エッジ TLS の検証に使う）。 */
@@ -232,9 +232,9 @@ function loadRealm(repoRoot = REPO_ROOT) {
 /** Keycloak のエッジ URL（issuer の単一情報源）。 */
 function keycloakBaseUrl() {
   const r = kubectl(['get', 'deploy', KEYCLOAK_DEPLOY, '-n', KEYCLOAK_NS, '-o',
-    'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="KC_HOSTNAME_URL")].value}']);
+    'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="KC_HOSTNAME")].value}']);
   const url = String(r.stdout || '').trim();
-  return r.status === 0 && url ? { ok: true, value: url.replace(/\/+$/, '') } : { ok: false, error: 'KC_HOSTNAME_URL を読めない' };
+  return r.status === 0 && url ? { ok: true, value: url.replace(/\/+$/, '') } : { ok: false, error: 'KC_HOSTNAME を読めない' };
 }
 
 /** エッジ TLS を検証するためのローカル CA（**検証を切らない**）。 */

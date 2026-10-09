@@ -543,7 +543,8 @@ public class KeycloakServiceAccountProvisionerTests
         rep["fullScopeAllowed"]!.GetValue<bool>().Should().BeFalse();
         rep["redirectUris"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal(HumanRedirects);
         rep["webOrigins"]!.AsArray().Should().BeEmpty("CORS を開かない");
-        rep["defaultClientScopes"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal("profile");
+        // ［#1859］basic は `sub` の出どころ（Keycloak 25 以降）。profile は利用者名。
+        rep["defaultClientScopes"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal("basic", "profile");
         rep["attributes"]!["pkce.code.challenge.method"]!.GetValue<string>().Should().Be("S256");
         rep["attributes"]![KeycloakServiceAccountProvisioner.ManagedByAttribute]!.GetValue<string>()
             .Should().Be(KeycloakServiceAccountProvisioner.ManagedByValue);
@@ -568,6 +569,7 @@ public class KeycloakServiceAccountProvisionerTests
     [InlineData("implicit")]
     [InlineData("fullScope")]
     [InlineData("profileScope")]
+    [InlineData("basicScope")]
     public async Task 読み戻しがテンプレートに外れていれば公開クライアントを消してFailedにする(string broken)
     {
         var keycloak = new FakeKeycloak
@@ -583,7 +585,9 @@ public class KeycloakServiceAccountProvisionerTests
                     case "webOrigins": rep["webOrigins"] = new JsonArray("+"); break;
                     case "implicit": rep.Remove("implicitFlowEnabled"); break;
                     case "fullScope": rep["fullScopeAllowed"] = true; break;
-                    case "profileScope": rep["defaultClientScopes"] = new JsonArray("email"); break;
+                    case "profileScope": rep["defaultClientScopes"] = new JsonArray("basic", "email"); break;
+                    // ［#1859］realm に basic が無いと Keycloak は黙って割り当てない（作成は成功する）。
+                    case "basicScope": rep["defaultClientScopes"] = new JsonArray("profile"); break;
                 }
             },
         };
