@@ -70,16 +70,14 @@ builder.Services.AddOpenApi();
 // ADR-0038 / #850: 割当から Fable 5 を外した（analysis は Opus 5 へ）。ハンドラは引き続き要る。
 // 一次ハンドラは既定の HttpClientHandler（システムプロキシ設定は既定で引き継がれる）を使い、
 // 応答圧縮だけは SDK 既定の内部クライアントに依存しないよう明示的に有効化する。
+// FR-11, IADR-0528 (#1872): 期限は `Llm:AnthropicTimeoutSeconds`（既定 100 秒＝従前と同じ。不正値は既定へ倒す）。
+// 呼び出し側の期限はこの値より短く保つ（docs/operations/operations.md）。
 builder.Services.AddSingleton(sp => new AnthropicClient(
     new APIAuthentication(builder.Configuration["Llm:ApiKey"] ?? "placeholder"),
-    new HttpClient(new AnthropicResponseSanitizingHandler(
-        sp.GetRequiredService<ILogger<AnthropicResponseSanitizingHandler>>())
-    {
-        InnerHandler = new HttpClientHandler
-        {
-            AutomaticDecompression = System.Net.DecompressionMethods.All,
-        },
-    })));
+    AnthropicHttpClient.Create(
+        builder.Configuration,
+        sp.GetRequiredService<ILogger<AnthropicResponseSanitizingHandler>>(),
+        sp.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AnthropicHttpClient).FullName!))));
 builder.Services.AddHttpClient();
 
 // FR-11, ADR-0010: 呼び出し先の切り替え（機密区分×ティアの越境マトリクス + 用途別モデル）。

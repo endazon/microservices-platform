@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-10-08
+updated: 2026-10-10
 ---
 <!-- trace:
 ids: [FR-11, SC-08, NFR-18, NFR-19]
 adrs: [ADR-0010, ADR-0025, ADR-0038, ADR-0044, ADR-0095]
-iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466, IADR-0511]
-specs: [20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement, 20260926_issue-1558_runbook-nits, 20261005_1741_sonnet5-price-correction, 20261008_1785_graph-purpose-models]
-issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558, #1741, #1785]
+iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466, IADR-0511, IADR-0528]
+specs: [20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement, 20260926_issue-1558_runbook-nits, 20261005_1741_sonnet5-price-correction, 20261008_1785_graph-purpose-models, 20261010_1872_anthropic-timeout-config]
+issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558, #1741, #1785, #1872]
 -->
 
 # 運用 Runbook: 既定層 LLM の出力トークン実測
@@ -376,6 +376,9 @@ N 件（§4-1 の 2 本目）のうち、上限に達した件数を H、到達�
 
 - 引き上げると 1 回あたりの最悪額の出力側が倍になる（`claude-opus-5` で 0.1024 → 0.2048 USD）。§2 の式で計算し直してから承認する。
 - 8192 を超えて上げる場合は、出力トークンの計器のバケット境界（最上段 8192）も見直しが要る —— 8192 超は全部 `+Inf` に入り、分布が読めなくなる。
+- 🔴 **引き上げるなら、期限も確かめる。** ゲートウェイの Claude 呼び出しは既定 100 秒で切れる（`Llm:AnthropicTimeoutSeconds`）。
+  非ストリーミングで 8,192 トークンを出し切るには約 100〜165 秒かかり得るため、上限だけ上げても期限で打ち切られる。
+  延ばすときは呼び出し側の期限をゲートウェイの期限より短く保つ（[運用仕様書](operations.md) §LLM ゲートウェイの Anthropic 呼び出しの期限）。
 
 ### 値を持っている場所（変えるならどこを変えるか）
 

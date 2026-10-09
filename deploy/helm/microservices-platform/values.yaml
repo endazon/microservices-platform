@@ -706,6 +706,9 @@ services:
     # 鍵は MSP 側で集中管理する（ADR-0010）。API キーは Secret 経由で注入し、リポジトリにコミットしない
     # （wiki の WikiJs__ApiKey と同型）。本 Secret は秘匿管理（Vault / External Secrets）で本番環境へ供給する
     # （事前に kubectl/ArgoCD/ESO で作成。docs/security・#310 の一元追跡）。実キー投入・実 LLM 疎通は go-live 側。
+    # FR-11, ADR-0010, IADR-0528 (#1872): Anthropic 呼び出しの期限は env Llm__AnthropicTimeoutSeconds（秒）で変えられる。
+    #   chart は値を置かない（未設定＝既定 100 秒。数値でない・0 以下は既定へ倒れ warn を 1 行出す）。
+    #   🔴 呼び出し側の期限はこの値より短く保つこと。延ばすなら下の extraEnv に足す（docs/operations/operations.md）。
     extraEnv:
       - name: Llm__ApiKey
         secretKeyRef:

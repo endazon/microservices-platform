@@ -158,6 +158,7 @@
     ],
     "docs/tests/FR-11_llm-egress-routing.md": [
       "AnthropicContentBlockSanitizerTests",
+      "AnthropicHttpClientTests",
       "ClaudeProviderStopReasonTests",
       "ClaudeProviderThinkingTests",
       "CompletionFallbackEndpointTests",
