@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, UC-04]
 adrs: [ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0070, ADR-0127, ADR-0016, ADR-0092]
-iadrs: [IADR-0002, IADR-0149, IADR-0358, IADR-0388, IADR-0497, IADR-0025]
+iadrs: [IADR-0002, IADR-0149, IADR-0358, IADR-0388, IADR-0497, IADR-0025, IADR-0314]
 specs: [20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261005_1746_high-confidentiality-lexical-index, 20261007_1771_ingestion-event-wiring-docs, 20261009_1771_ingestion-completed-no-wiring]
 issues: [#532, #536, #580, #1193, #1253, #1254, #1746, #1771, planning#741]
 -->
@@ -42,7 +42,7 @@ issues: [#532, #536, #580, #1193, #1253, #1254, #1746, #1771, planning#741]
 ### 出力イベント: `IngestionCompleted`
 
 `DocumentId` / `ChunkCount` / `CompletedAt` を発行する。**この事象に購読者は無く、結線もしない**（2026-10-09 の裁定。計画は発行だけを定める）。
-検索への反映は手順 7 の Qdrant への登録の時点で成立しており、完了通知を受けて動く後続の段は無い。
+検索への反映は手順 6・7 の登録（本文の無い文書・高機密文書は手順 6 のメタデータ点・語彙索引、それ以外は手順 7 の Qdrant）の時点で成立しており、完了通知を受けて動く後続の段は無い。
 
 ## 処理フロー（データソース登録・同期の基本フロー）
 
