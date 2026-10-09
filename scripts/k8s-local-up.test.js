@@ -3095,10 +3095,11 @@ ok('#1859: hostname v1 の KC_HOSTNAME_URL は k8s・compose のどちらにも�
   assert.ok(/^\s*KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"\s*$/m.test(COMPOSE_1859), 'compose のバックチャネルが要求の host で描かれない');
 });
 
-ok('#1859: バックチャネルは要求の host・エッジの転送ヘッダを読む・dev-file の資格は 24 と同じ（k8s）', () => {
+ok('#1859: バックチャネルは要求の host・転送ヘッダは読ませない・dev-file の資格は 24 と同じ（k8s）', () => {
   assert.strictEqual(envValueOf1859(KEYCLOAK_DEPLOY, 'KC_HOSTNAME_BACKCHANNEL_DYNAMIC'), 'true',
     'in-cluster の well-known が jwks_uri をエッジの URL で返す（.NET がローカル CA を引きに行く）');
-  assert.strictEqual(envValueOf1859(KEYCLOAK_DEPLOY, 'KC_PROXY_HEADERS'), 'xforwarded', 'エッジの後ろでクッキーが Secure を失う');
+  // integration-stack の初回の実行で実測: サイドカーが付ける X-Forwarded-Proto（port なし）を読むと jwks_uri が 80 番になり全サービスが 401。
+  assert.ok(!/- name: KC_PROXY_HEADERS\b/.test(KEYCLOAK_DEPLOY), 'KC_PROXY_HEADERS がある（メッシュの送り手の X-Forwarded-Proto で jwks_uri の port が落ちる）');
   assert.strictEqual(envValueOf1859(KEYCLOAK_DEPLOY, 'KC_DB_USERNAME'), 'sa', '24 が作った PVC の H2 を開けない');
   assert.ok(envValueOf1859(KEYCLOAK_DEPLOY, 'KC_DB_PASSWORD'), '24 が作った PVC の H2 を開けない（資格が無い）');
 });

@@ -1,5 +1,5 @@
 ---
-title: IADR-0524 Keycloak を 24.0 から 26.7.4 へ上げる。hostname v2・管理用のポートのヘルス・realm 名どおりの取り込みのファイル名・24 の file H2 の資格・basic スコープ・転送ヘッダで 24 と同じ振る舞いを保ち、ループバックの port 必須は判断材料だけを門で測って残す
+title: IADR-0524 Keycloak を 24.0 から 26.7.4 へ上げる。hostname v2・管理用のポートのヘルス・realm 名どおりの取り込みのファイル名・24 の file H2 の資格・basic スコープで 24 と同じ振る舞いを保ち（転送ヘッダは読ませない）、ループバックの port 必須は判断材料だけを門で測って残す
 type: impl-adr
 status: Accepted
 related_ids: [FR-16, SC-12, NFR-09, NFR-18, ADR-0134, ADR-0004, ADR-0107, ADR-0112, ADR-0086, ADR-0026, IADR-0516, IADR-0514, IADR-0243, IADR-0369, IADR-0518, IADR-0086, IADR-0079, IADR-0082]
@@ -57,7 +57,7 @@ PR #1854 はこれを入口の規則（ループバックは port の明示を�
 | 取り込み（`--import-realm`）はファイル名が `<realm>-realm.json` でないと起動しない | 取り込み元の Secret のキーと compose のマウント先を `platform-realm.json` へ。宣言のファイル名と ConfigMap `keycloak-realms` は変えない（読み手は Keycloak ではない）。起動器の試験が「全キー＝中身の realm 名」を固定する |
 | dev-file（H2）の資格を `sa` / `password` に差し替えなくなり、24 が作った PVC を開けない | k8s に `KC_DB_USERNAME=sa`・`KC_DB_PASSWORD=password` を明示（H2 のファイルの外へ出ない値）。compose は Postgres なので対象外 |
 | 宣言から取り込んだ realm で、利用者のアクセストークンから `sub` が落ちる（25 以降は `basic` スコープの写像。宣言がスコープを明示すると組み込みは作られない） | realm の宣言に `basic`（`oidc-sub-mapper`・`auth_time`）を足し、人の流れ（認可コード）を開く 6 クライアント（`wiki-js`・`bff`・`headlamp`・`grafana`・`argocd`・`vault`）の既定スコープの先頭へ（サービスアカウントだけのクライアントのトークンは `basic` なしでも `sub` を持つので足さない）。有人の MCP クライアントのテンプレートも `["basic","profile"]` にし、読み戻しで確かめる |
-| エッジ（TLS 終端）の後ろで、クッキーが `SameSite=Lax`・`Secure` なしになる（要求が http） | `KC_PROXY_HEADERS=xforwarded`。issuer と認可の URL は hostname で固定なので、転送ヘッダはそれらを変えない（実測） |
+| エッジ（TLS 終端）の後ろで、クッキーが `SameSite=Lax`・`Secure` なしになる（要求が http） | **合わせない**（受け入れる）。［integration-stack の初回の実行で改めた］初版は `KC_PROXY_HEADERS=xforwarded` を置いたが、メッシュの送り手のサイドカーが付ける `X-Forwarded-Proto`（port なし）を読むと Keycloak は port を落とし、in-cluster の well-known の `jwks_uri` が `http://keycloak/…`（80 番）になって全サービスの JWT 検証が 401（IDX10500）になった。手元でも `X-Forwarded-Proto: http` だけを付けて再現した |
 
 変えないもの: サービスアカウントのトークンの `client_id`・`clientHost`・`clientAddress`（26 の `service_account` スコープへ移り、宣言から作ると載らない）。読み手は `azp` を先に読み、AST のコードは読まない。
 `KEYCLOAK_ADMIN*`（26 で非推奨だが有効。改名は Pod の env を読む検査器と手順書に波及する）。
@@ -82,24 +82,35 @@ Keycloak に直接作り、**陽性対照**（登録どおり・任意の port �
 規則（port 必須）は本 PR では外さない。外すかは製品の判断であり（失う利便を戻すかと、防御を 2 段から 1 段へ減らすかの釣り合い）、
 推奨は IADR-0516 の #1859 追記に置く。
 
+### 決定 5 — 稼働の初回（integration-stack）で見つかった 26 の差を、版に合わせて直す
+
+本 PR の最初の integration-stack の実行（エッジ・メッシュ〔ISTIO=1〕・床の器を通した稼働）で、手元の単体の docker では見えなかった差が 3 つ出た。
+いずれも手元で再現してから直した。
+
+| 稼働で出たこと | 原因（手元で再現） | 直し方 |
+| --- | --- | --- |
+| 全サービスの JWT 検証が `IDX10500: No security keys were provided`（401。ABAC の投入・検索の投入・SC-12 の門が全滅） | メッシュの送り手のサイドカーは `X-Forwarded-Proto` を付けるが `X-Forwarded-Port` は付けない。`KC_PROXY_HEADERS=xforwarded` の下で Keycloak は port を落とし、in-cluster の well-known が `jwks_uri` を `http://keycloak/…`（80 番）で返した | `KC_PROXY_HEADERS` を置かない（決定 2 の表の最終行を改めた。クッキーの差は残余 9） |
+| `check-password-reset-mail` が稼働 realm を読めない（Pod 内の kcadm のログインが exit 1） | 26 の kcadm は端末が無いと標準入力からパスワードを読まない（「Console is not active, but password is required」） | env `KC_CLI_PASSWORD`（kcadm が読む）で渡す。Pod の env の値を使う検査器は代入で、ホストの値を渡す測定スクリプト 2 本と切替リハーサルは標準入力 → Pod 内の sh の `read` → env の順。どれも値はどのプロセスの引数にも載らない（#1793 の作法を保つ） |
+| ログインの存在秘匿の門の T-11（本文が実在・非実在で分かれる） | 26 のログイン画面は `checkAuthSession("<認証セッションのハッシュ>")` を埋める。値は認可要求の GET（利用者名を送る前）で発行されるクッキー `KC_AUTH_SESSION_HASH` と同じで、試行ごとに変わる | 比較器の正規化でこの呼び出しの引数だけを伏せる（呼び出しの有無と他の差は比べる）。利用者名を送る前に決まる値なので、実在の差は運ばない。手元で、伏せた後の本文が実在・非実在で一致し、伏せる前はこの 1 か所だけが違うことを確かめた |
+
 ## 統制と現在の実現手段
 
 | 統制 | 現在の実現手段 | 配備までの暫定手段 |
 | --- | --- | --- |
 | ループバックの横取りの形を一致させない（CVE-2024-8883） | 認証基盤の版（26.7.4）＋ 入口の port 必須（PR #1854。外すまで残る） | — |
-| 26 の前提の変化を黙って受けない | 起動器の試験（`KC_HOSTNAME_URL` の不在・バックチャネル・転送ヘッダ・H2 の資格・readiness 9000・取り込みのキー）。門 M9 の `sub`・`basic` | 統合スタックの初回の実行（オーケストレーターが dispatch）が稼働での初回の確かめになる |
+| 26 の前提の変化を黙って受けない | 起動器の試験（`KC_HOSTNAME_URL` の不在・バックチャネル・転送ヘッダを読ませないこと・H2 の資格・readiness 9000・取り込みのキー）。門 M9 の `sub`・`basic` | 統合スタックの初回の実行（オーケストレーターが dispatch）が稼働での初回の確かめになる |
 | 更新を戻せるようにする | 運用仕様書の手順（退避が先頭） | 退避は手作業（日次バックアップは Keycloak の PVC を含まない） |
 
 ## 結果
 
-- 良い: CVE-2024-8883 が版で閉じる。26 の前提の変化 7 つを、どれも 24 と同じ振る舞いへ合わせ、そのうち起動器・門で機械的に止められるものは止めた。
+- 良い: CVE-2024-8883 が版で閉じる。26 の前提の変化 7 つのうち 6 つを 24 と同じ振る舞いへ合わせ（エッジの後ろのクッキーの属性だけは受け入れた。残余 9）、そのうち起動器・門で機械的に止められるものは止めた。
 - 悪い: realm の宣言と MCP のテンプレートに 25 以降にしか無い `basic` を書いたので、24 へ戻すときは宣言も戻す必要がある（決定 3 の退避と同じ戻し方）。
   26 の新しい既定（`service_account` スコープ・初期管理者の新しい環境変数名）は採っていない。
 
 ## 残余
 
 1. **稼働での初回の確かめ**（M1〜M10・G4・G9・ログイン）は、本 PR のマージ後の integration-stack の実行である。手元の実測は docker の単体の Keycloak であり、
-   エッジ・メッシュ・床の器を通していない（転送ヘッダの効き方は手元で模した）。
+   エッジ・メッシュ・床の器を通していない（［integration-stack の初回の実行］メッシュの送り手が付ける転送ヘッダで jwks_uri の port が落ちることは、手元の模擬では見えず稼働で初めて分かった）。
 2. **ループバックの port 必須を外すか**は製品の判断（IADR-0516 の #1859 追記）。外す PR では入口・画面の規則・試験・`docs/api/openapi.yaml` の説明（生成物 `bff.schemas.ts` も）を同時に改める。
 3. **管理用の 2 クライアントの権限を細粒度の管理権限（v2）で絞る**のは未着手（26.2 以降で可能になった。セキュリティ仕様書の残る穴）。
 4. `KEYCLOAK_ADMIN*` → `KC_BOOTSTRAP_ADMIN_*` の改名（`check-password-reset-mail.js` が Pod の env を読む・手順書 2 本）は未着手。
@@ -112,8 +123,9 @@ Keycloak に直接作り、**陽性対照**（登録どおり・任意の port �
 8. **戻し方**（PR #1869 監査）: イメージの版だけを戻すと、realm の宣言の `basic`（25 以降の写像）を realm の後追いが 24 へ当てようとして G9 が収束しない。
    戻すのは「本件の変更の丸ごと」と「退避からの DB」の両方である（運用仕様書「Keycloak の版の更新」の「戻すとき」）。**起動器は file H2 の版を見ない** ——
    新しい版のマニフェストで `k8s-local-up.sh` を走らせるだけで一方向の移行が起きる。検知の仕掛けは置いていない（退避を手順の先頭に置くだけ）。
-9. **転送ヘッダの信頼の範囲**（PR #1869 監査）: `KC_PROXY_HEADERS=xforwarded` は送り手を絞っていない。`platform-infra` には NetworkPolicy が無いので、
-   クラスタ内の任意の Pod が `keycloak:8080` へ偽の `X-Forwarded-*` を送れる。issuer と認可の URL は `KC_HOSTNAME` で固定なので変わらないが、
-   管理イベント・ログの送信元 IP は偽れ、バックチャネルの URL は偽った本人への応答だけが変わる。是正の候補は `KC_PROXY_TRUSTED_ADDRESSES`
-   （エッジの Pod の範囲。k3d の Pod CIDR とエッジの所在が経路で変わり、ここでは確かめられないので本件では入れない）か、Keycloak への到達をエッジと
-   既知の呼び出し元に絞る NetworkPolicy。
+9. **エッジの後ろのクッキー**（integration-stack の初回の実行で改めた。旧 9「転送ヘッダの信頼の範囲」は、転送ヘッダを読ませなくなったので消えた）:
+   Keycloak は要求の scheme（エッジの後ろでは http）で「安全な文脈」を決めるので、認証のクッキーは `SameSite=Lax`・`Secure` なしになる
+   （24 は `Secure; SameSite=None` と、属性なしの `*_LEGACY` を併せて出していた）。ブラウザの既定（属性なし＝Lax）と同じ扱いで、
+   Keycloak への上位の遷移（GET）と同じオリジンの POST（ログインの送信）は通る。Keycloak へのサイト横断の POST・iframe（セッションの確かめ）は
+   使っていない。是正するには、転送ヘッダを読ませたうえでメッシュ内の送り手を `KC_PROXY_TRUSTED_ADDRESSES` から外す（エッジの所在の確定が要る）か、
+   メッシュの送り手側で `X-Forwarded-Port` も付ける必要がある。

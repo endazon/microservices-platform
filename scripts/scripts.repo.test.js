@@ -14919,7 +14919,8 @@ server.listen(0, '127.0.0.1', async () => {
       '#!/usr/bin/env bash',
       'printf "kcadm %s\\n" "$*" >> "$STUB_LOG.pod"',
       'case "$1 $2" in',
-      '  "config credentials") IFS= read -r pw || true; printf "KCADM %s\\n" "$pw" >> "$STUB_LOG.stdin"; [ "$pw" = "$STUB_KC_PASSWORD" ] || exit 1 ;;',
+      // IADR-0524 (#1859): Keycloak 26 の kcadm を真似る —— 端末が無いと stdin を読まず、パスワードは env KC_CLI_PASSWORD だけから取る。
+      '  "config credentials") pw="%{KC_CLI_PASSWORD:-}"; printf "KCADM %s\\n" "$pw" >> "$STUB_LOG.stdin"; [ -n "$pw" ] && [ "$pw" = "$STUB_KC_PASSWORD" ] || exit 1 ;;',
       '  "get realms/"*) echo \'{"resetPasswordAllowed":true,"smtpServer":{"host":"mailpit","from":"a@example.invalid"}}\' ;;',
       'esac',
       'exit 0',
@@ -15047,7 +15048,7 @@ server.listen(0, '127.0.0.1', async () => {
       }
     });
 
-    ok('#1793: check-password-reset-mail の稼働 realm の読み出しは、管理者パスワードを Pod 内 kcadm の引数に載せない（stdin で渡す）', () => {
+    ok('#1793 / #1859: check-password-reset-mail の稼働 realm の読み出しは、管理者パスワードを Pod 内 kcadm の引数に載せない（env KC_CLI_PASSWORD で渡す）', () => {
       const pw = probe('kcadmin');
       const w = world1793();
       try {
@@ -15056,7 +15057,7 @@ server.listen(0, '127.0.0.1', async () => {
           encoding: 'utf8', env: w.env({ KEYCLOAK_ADMIN: 'admin', KEYCLOAK_ADMIN_PASSWORD: pw, STUB_KC_PASSWORD: pw }),
         });
         assert.strictEqual(r.status, 0, r.stderr);
-        assert.strictEqual(JSON.parse(r.stdout).ok, true, `kcadm のログインが通らない（パスワードが stdin で届いていない）: ${r.stdout}`);
+        assert.strictEqual(JSON.parse(r.stdout).ok, true, `kcadm のログインが通らない（パスワードが KC_CLI_PASSWORD で届いていない）: ${r.stdout}`);
         const seen = w.collect();
         assert.ok(seen.stdin.includes(`KCADM ${pw}`), seen.stdin.join(' / '));
         assert.ok(seen.pod.some((c) => c.startsWith('kcadm config credentials ')) && !seen.pod.some((c) => c.includes('--password')), seen.pod.join(' / '));
@@ -15113,7 +15114,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(/secret_file\(\) \{[^\n]*\n\s*\( umask 077; printf '%s' "\$2" > "\$SECRET_DIR\/\$1" \)/.test(src), 'secret_file が 0600 で書いていない');
     });
 
-    ok('#1793: Pod 内 kcadm のログイン（measure-abac-combinations / measure-cutover-inventory）は --password を使わず stdin で渡す', () => {
+    ok('#1793 / #1859: Pod 内 kcadm のログイン（measure-abac-combinations / measure-cutover-inventory）は --password を使わず、stdin → Pod 内の sh → env KC_CLI_PASSWORD で渡す', () => {
       for (const f of ['measure-abac-combinations.js', 'measure-cutover-inventory.js', 'check-password-reset-mail.js']) {
         const src = code1793(read1793('scripts', f));
         assert.ok(!/'--password'|--password "/.test(src), `${f} が kcadm の --password を使っている`);
@@ -15121,8 +15122,14 @@ server.listen(0, '127.0.0.1', async () => {
       }
       assert.ok(/kcadm\(\[[\s\S]*?'--user',\s*env\('ABAC_KC_ADMIN_USER', 'admin'\),\s*\], `\$\{env\('ABAC_KC_ADMIN_PASSWORD', 'admin'\)\}\\n`\)/
         .test(read1793('scripts', 'measure-abac-combinations.js')), 'measure-abac-combinations のパスワードを stdin で渡していない');
-      assert.ok(/'exec', '-i', pod, '--', '\/opt\/keycloak\/bin\/kcadm\.sh', 'config', 'credentials'[\s\S]*?`\$\{env\('CUTOVER_KC_ADMIN_PASSWORD', 'admin'\)\}\\n`\)/
-        .test(read1793('scripts', 'measure-cutover-inventory.js')), 'measure-cutover-inventory のパスワードを stdin で渡していない');
+      // IADR-0524 (#1859): Keycloak 26 の kcadm は端末が無いと stdin を読まない。Pod 内の sh が stdin の 1 行を KC_CLI_PASSWORD へ入れて起こす。
+      const LOGIN_1859 = /IFS= read -r KC_CLI_PASSWORD && export KC_CLI_PASSWORD && exec \/opt\/keycloak\/bin\/kcadm\.sh "\$@"/;
+      assert.ok(LOGIN_1859.test(read1793('scripts', 'measure-abac-combinations.js')), 'measure-abac-combinations が KC_CLI_PASSWORD で渡していない');
+      assert.ok(/'exec', '-i', pod, '--', 'sh', '-c', '[^']*KC_CLI_PASSWORD[^']*', 'kcadm-login', 'config', 'credentials'[\s\S]*?`\$\{env\('CUTOVER_KC_ADMIN_PASSWORD', 'admin'\)\}\\n`\)/
+        .test(read1793('scripts', 'measure-cutover-inventory.js')), 'measure-cutover-inventory のパスワードを stdin → KC_CLI_PASSWORD で渡していない');
+      const rehearsal = read1793('.github', 'workflows', 'cutover-rehearsal.yml');
+      assert.ok(!/exec -i "\$KC" -- \/opt\/keycloak\/bin\/kcadm\.sh/.test(rehearsal), 'cutover-rehearsal が kcadm へ stdin で渡している（26 は読まない）');
+      assert.strictEqual((rehearsal.match(/exec -i "\$KC" -- sh -c 'IFS= read -r KC_CLI_PASSWORD/g) || []).length, 2, 'cutover-rehearsal の 2 か所のログインが KC_CLI_PASSWORD で渡していない');
     });
 
     ok('#1793: Qdrant の検証スクリプトは API キーを curl の引数に載せない（-H @- で stdin）', () => {
