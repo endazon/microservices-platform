@@ -231,6 +231,68 @@ public sealed class KeycloakServiceAccountProvisioner(
         }
     }
 
+    // ---- client secret（#1845。計画 ADR-0134 決定 2）------------------------------------------------------------------
+    // 🔴 **値はこの 2 つの関数の戻り値（`ClientSecret`）にしか置かない。** ログ・例外の文言・監査へは渡さない（決定 2 の 2）。
+    // 🔴 **入口の印つきの機密クライアントだけ**を読む・回す（プラットフォーム自身の機密クライアント〔`abac-seeder` 等〕の secret を
+    //    SC-12 から読ませない・回させない。決定 4 の「入口が作っていないクライアントへは書かない」と同じ規則）。
+    // Keycloak 24 の `GET clients/{id}/client-secret` は管理イベントを出さない。`POST`（regenerate）は ACTION の管理イベントを出し、
+    // realm の `adminEventsDetailsEnabled=true` では値つきの表現が管理イベントの保存先に残る（IADR-0516 の #1845 追記。計画へ環流）。
+
+    public async Task<ClientSecretResult> ReadClientSecretAsync(string clientId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var client = await AuthorizedClientAsync();
+        return await WithConfidentialClientAsync(client, clientId, async internalId =>
+        {
+            // 値を載せた応答は読み終えたら即座に破棄する（バッファを GC 任せで残さない。#1845 の独立監査）。
+            using var response = await Send(client, () => client.GetAsync(SecretPath(internalId), CancellationToken.None));
+            EnsureSuccess(response, "client secret の読み出し");
+            return await SecretFromAsync(response, clientId);
+        });
+    }
+
+    public async Task<ClientSecretResult> RegenerateClientSecretAsync(string clientId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var client = await AuthorizedClientAsync();
+        return await WithConfidentialClientAsync(client, clientId, async internalId =>
+        {
+            // 本文は要らない（Keycloak は空の POST で生成する）。Content-Type は JSON を宣言する（`@Consumes(APPLICATION_JSON)`）。
+            // 401 の取り直しで送り直すので、本文は送るたびに作る。
+            // 値を載せた応答は読み終えたら即座に破棄する（読み出しと同じ）。
+            using var response = await Send(client, () => client.PostAsync(SecretPath(internalId),
+                new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), CancellationToken.None));
+            EnsureSuccess(response, "client secret の再生成");
+            return await SecretFromAsync(response, clientId);
+        });
+    }
+
+    // 入口の印つき・機密（公開でない・SA つき）のクライアントにだけ `action` を掛ける。それ以外は何もせず種類を返す。
+    private async Task<ClientSecretResult> WithConfidentialClientAsync(
+        HttpClient client, string clientId, Func<string, Task<ClientSecretResult>> action)
+    {
+        var internalId = await FindClientInternalIdAsync(client, clientId);
+        if (internalId is null) return ClientSecretResult.Refused(ClientSecretOutcome.Absent, clientId);
+
+        var representation = await ReadClientAsync(client, internalId);
+        if (!IsManaged(representation)) return ClientSecretResult.Refused(ClientSecretOutcome.NotManaged, clientId);
+        if (representation?.PublicClient != false || representation.ServiceAccountsEnabled != true)
+            return ClientSecretResult.Refused(ClientSecretOutcome.NotConfidential, clientId);
+
+        return await action(internalId);
+    }
+
+    private static async Task<ClientSecretResult> SecretFromAsync(HttpResponseMessage response, string clientId)
+    {
+        var credential = await ReadJsonAsync<KeycloakCredential>(response);
+        // 🔴 値が空なら失敗にする（空の secret を「発行した」と表示しない）。値は例外の文言へ入れない。
+        if (string.IsNullOrEmpty(credential?.Value))
+            throw Failed("IdP（Keycloak）の client secret の応答に値が無い。");
+        return ClientSecretResult.Issued(clientId, new ClientSecret(credential.Value));
+    }
+
+    private string SecretPath(string internalId) => ClientPath(internalId) + "/client-secret";
+
     // ---- 照合の読み取り（IServiceAccountDirectory。IADR-0516 決定 5 / #1818）----------------------------------------
     // 🔴 **読むだけで書かない。** 書き込みの口と違い、要求の取り消しを伝える（途中で止めても孤児は生まれない）。
 
@@ -826,6 +888,14 @@ public sealed class KeycloakServiceAccountProvisioner(
         bool? DirectAccessGrantsEnabled = null, List<string>? RedirectUris = null, List<string>? WebOrigins = null,
         List<KeycloakProtocolMapper>? ProtocolMappers = null, bool? FullScopeAllowed = null,
         List<string>? DefaultClientScopes = null);
+
+    // Keycloak の `CredentialRepresentation`（`{"type":"secret","value":"…"}`）。🔴 record にしない（既定の ToString が値を含む）。
+    private sealed class KeycloakCredential
+    {
+        public string? Value { get; init; }
+
+        public override string ToString() => "KeycloakCredential(秘匿)";
+    }
 
     private sealed record KeycloakProtocolMapper(string? ProtocolMapper, Dictionary<string, string>? Config);
 

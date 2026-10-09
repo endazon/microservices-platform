@@ -1,5 +1,6 @@
 using McpServer.Domain.Ports;
 using McpServer.Infrastructure.Persistence;
+using Platform.Shared.Infrastructure.Foundation.Audit;
 
 namespace McpServer.Features.McpClients.DisableClient;
 
@@ -12,9 +13,12 @@ public static class DisableMcpClientEndpoint
     public static IEndpointRouteBuilder MapDisableMcpClient(this IEndpointRouteBuilder app)
     {
         app.MapPost("/{clientId}/disable", (string clientId, McpDbContext db, TimeProvider clock,
-                IServiceAccountProvisioner provisioner, ILoggerFactory loggers, CancellationToken ct) =>
-            McpClientEndpoints.SetEnabledAsync(clientId, false, db, clock, provisioner,
-                loggers.CreateLogger(typeof(DisableMcpClientEndpoint)), ct));
+                IServiceAccountProvisioner provisioner, ILoggerFactory loggers, IAuditLogger audit, HttpContext http,
+                CancellationToken ct) =>
+            // FR-16, SC-12, 計画 ADR-0134 フォローアップ 5（#1845）: 結果を監査に残す（McpClientAudit）。
+            McpClientAudit.RecordAsync(audit, http.User, McpClientAudit.DisableAction, McpClientAudit.Detail(clientId),
+                () => McpClientEndpoints.SetEnabledAsync(clientId, false, db, clock, provisioner,
+                    loggers.CreateLogger(typeof(DisableMcpClientEndpoint)), ct)));
 
         return app;
     }

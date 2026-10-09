@@ -641,6 +641,93 @@ public class KeycloakServiceAccountProvisionerTests
         mapper["config"]!["access.token.claim"]!.GetValue<string>().Should().Be("true");
     }
 
+    // ── ［#1845］client secret の読み出しと再発行（計画 ADR-0134 決定 2）──────────────────────────
+
+    // C-70: 作ったばかりの機密クライアントの secret を `GET /clients/{id}/client-secret` で読む（書かない）。
+    [Fact]
+    public async Task 機密クライアントのsecretを読み出す()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-s", "S", Attrs(("clearance", "public")), Ct);
+        var before = keycloak.Requests.Count;
+
+        var read = await provisioner.ReadClientSecretAsync("agent-s", Ct);
+
+        read.Outcome.Should().Be(ClientSecretOutcome.Issued);
+        read.Secret!.Reveal().Should().Be(keycloak.SecretOf("agent-s"), "IdP が生成した値をそのまま返す");
+        var internalId = keycloak.Clients.Single().Id;
+        keycloak.Requests.Skip(before).Should().Contain(r =>
+            r.Method == "GET" && r.Path == $"admin/realms/platform/clients/{internalId}/client-secret");
+        keycloak.Requests.Skip(before).Should().NotContain(r => r.Method != "GET" && r.Path.StartsWith("admin/", StringComparison.Ordinal),
+            "読み出しは何も書かない");
+    }
+
+    // C-71: 再発行は `POST /clients/{id}/client-secret`（regenerate）。新しい値を返し、IdP の値も新しい値になる（旧値は残らない）。
+    [Fact]
+    public async Task 再発行はregenerateで新しい値を返し旧い値を置き換える()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-r", "R", Attrs(("clearance", "public")), Ct);
+        var old = keycloak.SecretOf("agent-r");
+
+        var reissued = await provisioner.RegenerateClientSecretAsync("agent-r", Ct);
+
+        reissued.Outcome.Should().Be(ClientSecretOutcome.Issued);
+        reissued.Secret!.Reveal().Should().NotBe(old).And.Be(keycloak.SecretOf("agent-r"));
+        var internalId = keycloak.Clients.Single().Id;
+        keycloak.Requests.Should().Contain(r =>
+            r.Method == "POST" && r.Path == $"admin/realms/platform/clients/{internalId}/client-secret");
+    }
+
+    // C-72（否定形）: 入口の印が無い・公開クライアント・IdP に無いクライアントの secret は読まず・回さない。
+    [Fact]
+    public async Task 印なし公開クライアントIdPに無いクライアントのsecretは読まず回さない()
+    {
+        var keycloak = new FakeKeycloak();
+        keycloak.SeedClient("abac-seeder", []);
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreatePublicClientAsync("human-p", "P", HumanRedirects, Ct);
+
+        (await provisioner.RegenerateClientSecretAsync("abac-seeder", Ct)).Outcome.Should().Be(ClientSecretOutcome.NotManaged);
+        (await provisioner.ReadClientSecretAsync("abac-seeder", Ct)).Outcome.Should().Be(ClientSecretOutcome.NotManaged);
+        (await provisioner.RegenerateClientSecretAsync("human-p", Ct)).Outcome.Should().Be(ClientSecretOutcome.NotConfidential);
+        (await provisioner.RegenerateClientSecretAsync("nowhere", Ct)).Outcome.Should().Be(ClientSecretOutcome.Absent);
+
+        keycloak.Requests.Should().NotContain(r => r.Path.EndsWith("/client-secret", StringComparison.Ordinal),
+            "入口が作った機密クライアント以外の secret には触れない");
+    }
+
+    // C-73: regenerate の失敗は Failed（502）。例外の文言に値が入らない。
+    [Fact]
+    public async Task 再発行の失敗はFailedで文言に値を含まない()
+    {
+        var keycloak = new FakeKeycloak { FailSecretRegenerate = true };
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreateAsync("agent-f", "F", Attrs(("clearance", "public")), Ct);
+        var current = keycloak.SecretOf("agent-f");
+
+        var act = () => provisioner.RegenerateClientSecretAsync("agent-f", Ct);
+
+        var thrown = await act.Should().ThrowAsync<IdpProvisioningException>();
+        thrown.Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+        thrown.Which.ToString().Should().NotContain(current);
+    }
+
+    // C-74: 値の型は ToString で値を出さない（ログの書式化・例外の文言・record の既定の ToString から漏らさない）。
+    [Fact]
+    public void secretの値はToStringに出ない()
+    {
+        var value = "fake-" + Guid.NewGuid().ToString("N");
+        var secret = new ClientSecret(value);
+
+        secret.ToString().Should().NotContain(value);
+        ClientSecretResult.Issued("agent", secret).ToString().Should().NotContain(value);
+        new McpServer.Features.McpClients.McpClientSecretView("agent", value).ToString().Should().NotContain(value);
+        secret.Reveal().Should().Be(value, "応答の本文を組み立てる箇所だけが値を取り出す");
+    }
+
     // ── 状態を持つ偽の Keycloak ──────────────────────────────────────────────
 
     internal sealed record Recorded(string Method, string Path, string? Body, string? Authorization);
@@ -698,7 +785,15 @@ public class KeycloakServiceAccountProvisionerTests
         public bool FailClientPut { get; init; }
         /// <summary>［#1829］`PUT /clients/{id}` を 204 で受けるが `enabled` を変えない（読み戻しの不一致）。この回数だけ。</summary>
         public int IgnoreEnabledOnPut { get; set; }
+        /// <summary>［#1845］機密クライアントの client secret（内部 ID → 値）。値は実行ごとの乱数（固定の値を埋め込まない）。</summary>
+        public Dictionary<string, string> Secrets { get; } = new(StringComparer.Ordinal);
+        /// <summary>［#1845］`POST /clients/{id}/client-secret`（regenerate）を 500 にする。</summary>
+        public bool FailSecretRegenerate { get; init; }
         private bool _timedOut;
+
+        public string SecretOf(string clientId) => Secrets[Clients.Single(c => c.ClientId == clientId).Id];
+
+        private static string NewSecret() => "fake-" + Guid.NewGuid().ToString("N");
 
         public void SeedClient(string clientId, Dictionary<string, string[]> attributes)
         {
@@ -759,6 +854,8 @@ public class KeycloakServiceAccountProvisionerTests
                 MutateOnCreate?.Invoke(rep);
                 // ［#1844］公開クライアント（serviceAccountsEnabled=false）にはサービスアカウントの利用者を作らない（Keycloak と同じ）。
                 var created = NewClient(clientId, rep, withServiceAccount: rep["serviceAccountsEnabled"]?.GetValue<bool>() == true);
+                // ［#1845］Keycloak と同じく、機密クライアントは作成の時点で secret を持つ（テンプレートは secret を送らない）。
+                if (rep["publicClient"]?.GetValue<bool>() == false) Secrets[created.Id] = NewSecret();
                 OnCreate?.Invoke();
                 if (TimeoutOnCreateAfterCommit)
                     throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout");
@@ -841,6 +938,22 @@ public class KeycloakServiceAccountProvisionerTests
                 foreach (var (key, value) in sent)
                     if (value is not null) client.Representation[key] = value.DeepClone();
                 return Status(HttpStatusCode.NoContent);
+            }
+
+            // ［#1845］`GET`（読み出し）・`POST`（regenerate）`/clients/{id}/client-secret`。応答は `CredentialRepresentation`。
+            if (path.StartsWith(Admin + "clients/", StringComparison.Ordinal)
+                && path.EndsWith("/client-secret", StringComparison.Ordinal))
+            {
+                var id = path[(Admin + "clients/").Length..^"/client-secret".Length];
+                if (Clients.All(c => c.Id != id)) return Status(HttpStatusCode.NotFound);
+                if (method == "POST")
+                {
+                    if (FailSecretRegenerate) return Status(HttpStatusCode.InternalServerError);
+                    Secrets[id] = NewSecret();
+                }
+                return Secrets.TryGetValue(id, out var value)
+                    ? Ok(JsonSerializer.Serialize(new { type = "secret", value }))
+                    : Status(HttpStatusCode.NotFound);
             }
 
             if (method == "GET" && path.StartsWith(Admin + "clients/", StringComparison.Ordinal)

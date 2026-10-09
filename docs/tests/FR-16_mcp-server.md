@@ -10,8 +10,8 @@ author: claude
 ids: [FR-05, FR-16, UC-08, UC-09, SC-12, NFR-09, NFR-16]
 adrs: [ADR-0004, ADR-0018, ADR-0024, ADR-0029, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0062, ADR-0075, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134]
 iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516]
-specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client]
-issues: [#445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844]
+specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit]
+issues: [#445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844, #1845]
 -->
 
 # テスト仕様書: MCP サーバー統合
@@ -214,6 +214,34 @@ CI は緑のままで、**壊れた構成のまま Web サーバーが起動し�
 | C-66 | MCP 面の audience | audience が MCP サーバーのトークンは通る（陽性対照）。audience が違う・無い・トークンが無い・発行元が違うものは 401（器の既定の認証がどの要求も通す状態で測る）。管理 REST 面の既定の認証は audience を検証しないまま。発行元・名前とロールのクレームは既定の認証と同じ設定 |
 | C-67 | 稼働の認可サーバーで有人を登録する（統合スタックの門） | 201・テンプレートどおり・登録簿は有人。ワイルドカードは 400 で何も作らない。認可の要求で PKCE なし・`plain` は `invalid_request` でリダイレクトへ返され、S256 はログイン画面へ進む。登録していない path・host・https の port・`localhost` は 400。port なしのループバック（`127.0.0.1`・`[::1]`）の登録は 400 で何も作らない。port を明示した `http://127.0.0.1:<port>`・`http://[::1]:<port>` は登録どおりの port で進み、別の port と、利用者情報で宛先をすり替える形（`:<port>@evil.example`・`:1@evil.example`。CVE-2024-8883）は 400。例示のアクセストークンと無人のトークンの audience に MCP サーバー。無効化・再有効化・補償は無人と同じ |
 | C-68 | 稼働の認可サーバーで動的クライアント登録を試す（統合スタックの門） | 匿名（2 つの形）・偽の初期アクセストークンは 401 / 403 でクライアントが増えない。初期アクセストークンは 0 個。匿名の登録ポリシーに信頼ホストが空の Trusted Hosts がある |
+
+### 無人の client secret の一度だけの表示・再発行と、管理操作の監査（［2026-10-09 追加］）
+
+**無人の登録（201）と再発行（200）の応答だけが client secret を載せる。** 値は登録簿に保存せず、一覧にも出さない。再発行は認可サーバーで再生成し、
+旧い secret はその時点で使えなくなる。**管理操作（登録・差し替え・無効化・再有効化・secret の発行・再発行）は既存の監査ログへ残し、値は残さない。**
+登録簿の削除の操作は無いので、削除の監査は無い。
+
+| # | 観点 | 期待 |
+| --- | --- | --- |
+| C-69 | 稼働の認可サーバーで secret を受け取り再発行する（統合スタックの門） | 無人の登録の 201 の secret が認可サーバーの現在値と一致し、その値でトークンが出る。一覧に secret は無い。再発行は 200 で新しい値になり、**旧 secret は直後に拒否される**（猶予なし）。新しい値でトークンが出る。有人の 201 は secret を持たない。再発行の値が認可サーバーの管理イベントの詳細に残る件数は観測として出す（判定しない） |
+| C-70 | secret の読み出し（認可サーバーの口） | 作ったばかりの機密クライアントの現在の secret を読む。読み出しは何も書かない |
+| C-71 | secret の再発行（認可サーバーの口） | 再生成の要求を送り、新しい値を返す。認可サーバーの値も新しい値になる |
+| C-72 | 入口の印が無い・公開クライアント・認可サーバーに無いクライアント（否定形） | secret を読まず・回さない（それぞれの種類を返す）。secret の経路へ要求を送らない |
+| C-73 | 再発行の失敗 | 502 に当たる失敗。例外の文言に値が入らない |
+| C-74 | 値の型の文字列化 | 値の型・結果・再発行の応答の文字列化に値が出ない。値を取り出せるのは応答を組み立てる箇所だけ |
+| C-75 | 無人の登録の応答（API 面） | 201 の `clientSecret` が認可サーバーの現在値と一致する。キャッシュさせない |
+| C-76 | 有人の登録の応答 | `clientSecret` を持たない |
+| C-77 | 一覧と登録簿（否定形） | 一覧の応答と登録簿の行に値が無い |
+| C-78 | 再発行（API 面） | 200 で新しい値（旧い値と違い、認可サーバーの現在値と一致）。キャッシュさせない。登録簿は書かない（更新日時も動かない） |
+| C-79 | 再発行できない行（否定形） | 有人は 400・不在は 404・認可サーバーに無い行は 400・入口が作っていないクライアントは 400 で何も書かない |
+| C-80 | 再発行は管理者に限る | 運用者は 403 で、認可サーバーの値は変わらない |
+| C-81 | 登録の直後に secret を読めない | 作ったクライアントを消して 502。登録簿にも書かない |
+| C-82 | 無人の登録の監査 | 「登録」と「secret の発行」の 2 行。誰が（利用者名）・どのクライアント・種別・割り当てた属性・状態 |
+| C-83 | 有人の登録・拒否の監査 | 有人は発行の行を残さない。部分集合の外れの登録は `denied` で残し、発行は残さない |
+| C-84 | 差し替え・無効化・再有効化・再発行の監査 | それぞれの操作名で `granted`。差し替えは割り当てた属性を残す。不在の無効化は `not-found` |
+| C-85 | 再発行の拒否の監査 | 有人の再発行は `denied` で残す |
+| C-86 | 値の漏れ（否定形・陽性対照つき） | 登録・再発行・失敗の経路を通した後、ホストの全ログ（整形済みの本文・構造化の値・例外）に値が無い。監査の行とアプリケーションのログを捕まえていること自体も確かめる |
+| C-87 | 書き込み口が無いときの再発行 | 503 で何も書かない |
 
 ## データ越境の受け入れ基準
 
@@ -467,6 +495,13 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
 | `serviceAccountsEnabled` の欠落を false と推して送る | **C-53 が落ちる** |
 | 無効化で認可サーバーへの写しの失敗を外へ投げる（登録簿の無効化は保存済みのまま 500） | **C-57 が落ちる** |
 | 再有効化を登録簿が先にする | **C-56・C-57 が落ちる**（400 / 502 / 503 の後に登録簿が有効になる） |
+| （［2026-10-09 追加］以下 secret と監査）登録の応答から secret を落とす | **C-75・C-77・C-86 が落ちる**（3 件） |
+| 無人の登録で発行の監査を残さない | **C-82 が落ちる** |
+| 再発行で値をアプリケーションのログへ出す | **C-86 が落ちる** |
+| 認可サーバーの口で入口の印を確かめずに secret を回す | **C-72 が落ちる** |
+| プロセス内の口で入口の印を確かめずに secret を回す | **C-79 が落ちる** |
+| 監査の拒否（400）を失敗と数える | **C-83・C-85 が落ちる** |
+| 境界層で secret を含まない経路にもキャッシュ禁止を付ける／含む経路から外す | **境界層の試験が落ちる**（それぞれ 1 件・2 件） |
 
 ## 実装マッピング
 
@@ -481,16 +516,20 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
 - `McpAudienceAuthenticationTests` — MCP 面の audience の検証（C-66）
 - `ServiceAccountAttributeSubsetTests` — 部分集合の判定そのもの（C-7〜C-9・C-11・C-12・C-14。器を起こさない純関数）
 - `ServiceAccountAttributeSubsetEndpointTests` — 判定の経路（C-7〜C-13。登録と差し替えの両方・拒否応答の本文）
-- `KeycloakServiceAccountProvisionerTests` — 認可サーバーへの書き込みの口（C-15・C-17〜C-19・C-24〜C-28・差し替えと取り消し、有効・無効の写し C-51〜C-54・有人の公開クライアント C-61〜C-64。偽の認可サーバー）
+- `KeycloakServiceAccountProvisionerTests` — 認可サーバーへの書き込みの口（C-15・C-17〜C-19・C-24〜C-28・差し替えと取り消し、有効・無効の写し C-51〜C-54・有人の公開クライアント C-61〜C-64・secret の読み出しと再発行 C-70〜C-74。偽の認可サーバー）
 - `KeycloakServiceAccountDirectoryTests` — 照合が認可サーバーを読む口（C-36〜C-40。偽の認可サーバー）
 - `IdpReconciliationTests` — 登録簿と認可サーバーの照合・計器・ログ・期限・常駐（C-41〜C-46・C-50・有人の行 C-65）
 - `IdpReconciliationRaceTests` — 交差した差し替えの後勝ちを照合が検知すること（C-47）
 - `IdpFirstWriteTests` — 書く順序と取り消し（C-20・C-21 の 503 / 502 の写し方・C-17・再有効化の認可サーバーに無い行と拒否の文言 C-56）
 - `IdpProvisioningEndpointTests` — API 面での書き込み（C-15〜C-17・C-21・C-24・C-27・無効化と再有効化の写し C-55・C-56・書き込み口が無いときの無効化 C-57。有人の公開クライアント C-60）
 - `IdpEnabledMirrorFailureEndpointTests` — 認可サーバーへの有効・無効の写しが失敗しても登録簿の無効化を取り消さず、照合が拾うこと（C-57）
+- `McpClientSecretEndpointTests` — client secret の一度だけの表示と再発行（API 面。C-75〜C-81）
+- `McpClientAuditTests` — 管理操作の監査（C-82〜C-85）
+- `McpClientSecretLeakTests` — 値がログ・監査に出ないこと（C-86）
+- `UnconfiguredReissueSecretEndpointTests` — 書き込み口が無いときの再発行（C-87）
 - `ServiceAccountProvisioningRegistrationTests` — 書き込み口の選択（C-21・C-22）
 - `KeycloakIdentityAdminClientTests`（認可サービス） — 名指しの照会がサービスアカウントを返すこと（C-23）
-- `scripts/check-mcp-client-provisioning.js --live`（統合スタックの門） — 稼働の認可サーバーでの実測（C-29〜C-34・C-48・C-58・C-67・C-68）。`--self-test` が判定器そのものを固定する
+- `scripts/check-mcp-client-provisioning.js --live`（統合スタックの門） — 稼働の認可サーバーでの実測（C-29〜C-34・C-48・C-58・C-67〜C-69）。`--self-test` が判定器そのものを固定する
 - `scripts/scripts.repo.test.js`（#1818 の節） — 警報の定義（C-49）
 - `scripts/helm-mcp-client-provisioning.test.js` — 配備の描画（C-35。変異で赤になることも）
 - `LogForgingSanitizationTests` — 要求由来のツール名をログへ落とす際の制御文字除去
@@ -525,6 +564,9 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
   ［2026-10-09］有人の公開クライアントと MCP 面の audience を入れた（C-59〜C-68）。**ループバックの port の扱いと動的クライアント登録が閉じていることの実測（C-67・C-68）は統合スタックの門であり、PR では走らない。**
   それまでの結論は認可サーバーの版のソースの読みである。**有人の実際のログイン（ブラウザでの認可コードの交換）と、そのトークンで MCP 面を呼ぶ往復は測っていない**
   （audience は管理 API の例示のトークンで、PKCE の強制とリダイレクト URI の照合は認可の要求の応答で測る）。
+  ［2026-10-09］無人の client secret の一度だけの表示・再発行と管理操作の監査を入れた（C-69〜C-87）。稼働での実測（C-69）は統合スタックの門であり、PR では走らない。
+  🔴 **再発行の値は認可サーバーの管理イベントの詳細に残る**（認可サーバーの版のソースの読み。再生成は値つきの表現を管理イベントへ渡し、realm は詳細を保存する）。
+  本プラットフォームのログ・監査には出ないが、認可サーバー側の記録に残る扱いは計画へ問う（C-69 は件数を観測として出すだけで判定しない）。
 - ［2026-09-28 改訂］ツールの実行口は文書・検索・グラフの 3 サービスとも持つ。文書サービスの受け口も実 Kestrel で往復して検証した（X-56〜X-68）。
   文書サービスの受け口は内容の属性による絞り込みの門が開くまで結果を返さない（X-68）。門を開くまで文書のツールは一覧に出るが実行できない。
   文書取得のツールは本文を返さない（台帳は本文を持たない。本文を返すには格納先から読む経路が要る）。

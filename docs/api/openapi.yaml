@@ -1179,6 +1179,11 @@ paths:
         ループバック・ワイルドカード・フラグメント・利用者情報・`localhost` は 400）。後段は認証基盤に公開クライアント（PKCE S256・リダイレクト URI の完全一致・
         audience を MCP サーバーに限る）を作ってから登録簿へ書く。無人に `redirectUris` を渡すと 400。
         認証基盤へ書けなければ 502、書き込み口が構成されていなければ 503 で、登録簿にも書かない。
+
+        ［2026-10-09 / ADR-0134 決定 2］**無人の 201 は `clientSecret`（認証基盤が生成した client secret）を一度だけ含む**。
+        値は登録簿に保存せず、一覧・個別の応答には載らない（再表示の手段は無い。次は再発行）。有人の `clientSecret` は null。
+        応答は `Cache-Control: no-store`。値はアプリケーションのログ・監査ログに出ない（監査には「誰が・どのクライアントの secret を発行したか」だけを残す）。
+        登録の直後に secret を読めなければ、作ったクライアントを消して 502（登録簿にも書かない）。
       operationId: bff-mcp-register-client
       requestBody:
         required: true
@@ -1188,11 +1193,11 @@ paths:
               $ref: "#/components/schemas/RegisterMcpClientRequest"
       responses:
         "201":
-          description: 登録成功
+          description: 登録成功（無人は client secret を一度だけ含む）
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/McpClientView"
+                $ref: "#/components/schemas/McpClientRegistrationView"
         "400":
           description: 検証エラー（RFC7807 ValidationProblem。種別・越境ティアの値域、禁止された属性割当、重複）
           content:
@@ -1284,6 +1289,39 @@ paths:
         "404": { description: 見つからない }
         "502": { description: McpServer へ到達できない、または認可サーバー（Keycloak）へ書けなかった（登録簿は無効のまま） }
         "503": { description: 認可サーバーへの書き込み口が構成されていない（登録簿は無効のまま） }
+
+  /bff/admin/mcp-clients/{clientId}/reissue-secret:
+    parameters:
+      - { name: clientId, in: path, required: true, schema: { type: string } }
+    post:
+      x-roles: [platform-admin]
+      tags: [McpClients]
+      summary: "FR-16, UC-09, SC-12: 無人の MCP クライアントの client secret の再発行（新しい値を一度だけ返す）"
+      description: |
+        ［2026-10-09 / ADR-0134 決定 2］認証基盤（Keycloak）で client secret を再生成し、**新しい値を応答で一度だけ返す**。
+        **旧 secret はその時点で使えなくなる**（猶予は無い）。値は保存せず（登録簿も書かない）、ログ・監査ログにも出さない。
+        応答は `Cache-Control: no-store`。監査には「誰が・どのクライアントの secret を再発行したか」を残す。
+        有人（公開クライアント）・この画面を通らずに作られたクライアント・認証基盤に無い行は 400（何も書かない）。
+        無効化された行も再発行できる。
+      operationId: bff-mcp-reissue-client-secret
+      responses:
+        "200":
+          description: 再発行した client secret（一度だけ）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpClientSecretView"
+        "400":
+          description: 再発行できない（有人・この入口の印が無い・認証基盤に無い。RFC7807 ValidationProblem。何も書かない）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblemDetails"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "404": { description: 見つからない }
+        "502": { description: McpServer へ到達できない、または認証基盤で再発行できなかった }
+        "503": { description: 認証基盤への書き込み口が構成されていない（何も書かない） }
 
   /bff/admin/mcp-clients/{clientId}/attributes:
     parameters:
@@ -5990,6 +6028,39 @@ components:
         egressTier: { type: string, enum: [self-hosted, protected-external, standard-external] }
         registeredAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    McpClientRegistrationView:
+      type: object
+      description: |
+        FR-16, UC-09, SC-12: 登録の応答（201）。`McpClientView` の項目に `clientSecret` を足したもの。
+        ［2026-10-09 / ADR-0134 決定 2］`clientSecret` は**無人の登録のときだけ**、認証基盤が生成した client secret を一度だけ載せる
+        （有人は null）。値は保存されず、ここ以外では二度と表示されない。
+      required: [id, clientId, displayName, kind, enabled, attributes, egressTier, registeredAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        clientId: { type: string }
+        displayName: { type: string }
+        kind: { type: string, enum: [interactive, service-account] }
+        enabled: { type: boolean }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+        egressTier: { type: string, enum: [self-hosted, protected-external, standard-external] }
+        registeredAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        clientSecret:
+          type: string
+          nullable: true
+          description: "無人の client secret（一度だけ）。有人は null"
+
+    McpClientSecretView:
+      type: object
+      description: |
+        FR-16, SC-12: 再発行した client secret（一度だけ）。旧 secret はその時点で使えなくなる。
+      required: [clientId, clientSecret]
+      properties:
+        clientId: { type: string }
+        clientSecret: { type: string }
 
     RegisterMcpClientRequest:
       type: object
