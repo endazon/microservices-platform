@@ -5,8 +5,9 @@
 #   $STATE/unsealed     … `status` が 0（在る）／2（無い）
 #   $STATE/token-ok     … `token lookup` が 0（在る）／1（無い）
 #   $STATE/kv-mounted   … `secrets list` に "secret/" を含める（在る）／含めない（無い）
-#   $STATE/audit-<path> … `audit list` にその path を含める（在る）／含めない（無い）。`audit enable` が成功すると作る
-#   $STATE/audit-fail-<path> … その path の `audit enable` を失敗させる（出力先に届かない）
+#   $STATE/audit-<path> … `audit list` にその path を含める（在る）／含めない（無い）
+#   $STATE/no-stdout-device … `audit list` から stdout/ を外す（既定は在る＝local.hcl の宣言。#1840）
+#   $STATE/audit-fail-<path> … その path の device を足せない（出力先に届かない。サーバの代役が SIGHUP で見る）
 #
 #   bash deploy/local/vault-persistence/vault-entrypoint.test.sh
 set -u
@@ -43,7 +44,9 @@ case "$1 $2" in
   "secrets list")      [ -f "$STATE/kv-mounted" ] && echo '{"secret/":{}}' || echo '{"sys/":{}}'; exit 0 ;;
   "secrets enable")    : > "$STATE/kv-mounted"; exit 0 ;;
   "audit list")
-    printf '{'; for f in "$STATE"/audit-*; do [ -e "$f" ] || continue; n="${f##*/audit-}"; case "$n" in fail-*) continue ;; esac; printf '"%s/":{},' "$n"; done; printf '"x/":{}}\n'; exit 0 ;;
+    # #1840: 標準出力の device は local.hcl の宣言なので、在るのが既定（$STATE/no-stdout-device で「無い」にする）。
+    printf '{'; [ -f "$STATE/no-stdout-device" ] || printf '"stdout/":{},'
+    for f in "$STATE"/audit-*; do [ -e "$f" ] || continue; n="${f##*/audit-}"; case "$n" in fail-*) continue ;; esac; printf '"%s/":{},' "$n"; done; printf '"x/":{}}\n'; exit 0 ;;
   "audit enable")
     p="${3#-path=}"; [ -f "$STATE/audit-fail-$p" ] && exit 2; : > "$STATE/audit-$p"; exit 0 ;;
   "server ")           sleep 30 ;;
@@ -111,60 +114,93 @@ chmod +x "$WORK/bin/vault-down"
 ( PATH="$WORK/bin:$PATH"; vault() { vault-down "$@"; }; export -f vault; wait_for_api ) >/dev/null 2>&1; RC=$?
 assert_eq 'T-1479-05 API 到達不能: 上限回数で諦める（非ゼロ）' "$RC" "1"
 
-# ---- T-1683-01: audit（標準出力）: 無ければ有効にする。値を記録しない設定を明示する（NFR-18, ADR-0124 決定 2, IADR-0486） ----
+# ---- T-1683-01 / T-1840-01: audit（標準出力）は local.hcl で宣言し、起動器はその存在を確かめる（NFR-18, ADR-0124 決定 2, IADR-0486, IADR-0525） ----
+# OpenBao は API での audit device の作成を拒む（#1840 の実測）。起動器は `audit enable` を呼ばず、宣言した device が在ることだけを見る。
 reset_state
 bootstrap_after_start >/dev/null 2>&1; RC=$?
 LOG="$(cat "$STUB_LOG")"
 assert_eq 'T-1683-01 audit: 正常終了する' "$RC" "0"
-assert_contains 'T-1683-01 audit: 標準出力の file device を有効にする' "$LOG" 'audit enable -path=stdout file file_path=stdout'
-assert_contains 'T-1683-01 audit: 値を HMAC 化する（log_raw=false を明示）' "$(grep 'audit enable -path=stdout' "$STUB_LOG")" 'log_raw=false'
-assert_contains 'T-1683-01 audit: accessor も HMAC 化する（hmac_accessor=true を明示）' "$(grep 'audit enable -path=stdout' "$STUB_LOG")" 'hmac_accessor=true'
-assert_missing 'T-1683-01 audit: 平文を出す設定を渡さない' "$LOG" 'log_raw=true'
-# 秘密の最初の書き込みより前に記録を立てる（kv の mount より先）。
-AUDIT_AT="$(grep -n 'audit enable -path=stdout' "$STUB_LOG" | head -1 | cut -d: -f1)"
+assert_missing 'T-1840-01 audit: API で audit device を作らない（OpenBao は拒む）' "$LOG" 'audit enable'
+HCL="$(cat "$ROOT/deploy/local/vault-persistence/local.hcl")"
+STDOUT_BLOCK="$(sed -n '/^audit "file" "stdout"/,/^}/p' "$ROOT/deploy/local/vault-persistence/local.hcl")"
+assert_contains 'T-1840-01 audit: local.hcl が標準出力の file device を宣言する' "$STDOUT_BLOCK" 'file_path     = "stdout"'
+assert_contains 'T-1683-01 audit: 値を HMAC 化する（log_raw=false を明示）' "$STDOUT_BLOCK" 'log_raw       = "false"'
+assert_contains 'T-1683-01 audit: accessor も HMAC 化する（hmac_accessor=true を明示）' "$STDOUT_BLOCK" 'hmac_accessor = "true"'
+assert_missing 'T-1683-01 audit: socket device を local.hcl に書かない（collector の不在で init が失敗する）' "$HCL" 'audit "socket"'
+# 秘密の最初の書き込みより前に記録が立っていることを確かめる（kv の mount より先）。
+AUDIT_AT="$(grep -n 'audit list' "$STUB_LOG" | head -1 | cut -d: -f1)"
 KV_AT="$(grep -n 'secrets enable' "$STUB_LOG" | head -1 | cut -d: -f1)"
-[ -n "$AUDIT_AT" ] && [ -n "$KV_AT" ] && [ "$AUDIT_AT" -lt "$KV_AT" ] && ok 'T-1683-01 audit: kv の mount より先に有効にする' || ng 'T-1683-01 audit: kv の mount より先に有効にする' "audit=$AUDIT_AT kv=$KV_AT"
+[ -n "$AUDIT_AT" ] && [ -n "$KV_AT" ] && [ "$AUDIT_AT" -lt "$KV_AT" ] && ok 'T-1683-01 audit: kv の mount より先に確かめる' || ng 'T-1683-01 audit: kv の mount より先に確かめる' "audit=$AUDIT_AT kv=$KV_AT"
 
-# ---- T-1683-02: audit（標準出力）: 既に在れば触らない（再起動） ----
+# ---- T-1683-03: audit（標準出力）が無ければ起動を失敗させる（audit の無い秘匿管理を動かさない） ----
 reset_state
-: > "$STATE/initialized"; : > "$STATE/token-ok"; : > "$STATE/kv-mounted"; : > "$STATE/audit-stdout"
-printf 'Unseal Key 1: STUB-UNSEAL-KEY\n\nInitial Root Token: STUB-ROOT-TOKEN\n' > "$VAULT_INIT_FILE"
-bootstrap_after_start >/dev/null 2>&1; RC=$?
-assert_eq 'T-1683-02 audit 在り: 正常終了する' "$RC" "0"
-assert_missing 'T-1683-02 audit 在り: 有効化し直さない' "$(cat "$STUB_LOG")" 'audit enable'
+: > "$STATE/no-stdout-device"
+OUT="$(VAULT_AUDIT_STDOUT_TRIES=2 VAULT_AUDIT_STDOUT_INTERVAL=0 bootstrap_after_start 2>&1)"; RC=$?
+assert_eq 'T-1683-03 audit 不在: 非ゼロ終了する' "$RC" "1"
+assert_contains 'T-1683-03 audit 不在: 理由を示す' "$OUT" 'refusing to run Vault without audit'
+assert_missing 'T-1683-03 audit 不在: kv を mount しない（書き込みの受け口を開かない）' "$(cat "$STUB_LOG")" 'secrets enable'
 
-# ---- T-1683-03: audit（標準出力）を有効にできなければ起動を失敗させる（audit の無い Vault を動かさない） ----
-reset_state
-: > "$STATE/audit-fail-stdout"
-OUT="$(bootstrap_after_start 2>&1)"; RC=$?
-assert_eq 'T-1683-03 audit 不能: 非ゼロ終了する' "$RC" "1"
-assert_contains 'T-1683-03 audit 不能: 理由を示す' "$OUT" 'refusing to run Vault without audit'
-assert_missing 'T-1683-03 audit 不能: kv を mount しない（書き込みの受け口を開かない）' "$(cat "$STUB_LOG")" 'secrets enable'
-
-# ---- T-1683-04: audit（socket）: 可観測性基盤の collector へ tcp で出す。値を記録しない設定を明示する ----
-reset_state
-ensure_audit_socket >/dev/null 2>&1; RC=$?
-SOCK="$(grep 'audit enable -path=otel-collector' "$STUB_LOG")"
+# ---- T-1683-04 / T-1840-02: audit（socket）: collector へ tcp で出す宣言を書いて SIGHUP で読み直させる。値を記録しない設定を明示する ----
+# サーバの代役: SIGHUP を受けたら、宣言のファイルが在り collector に届く（audit-fail-* が無い）ときだけ device を足す。
+export VAULT_AUDIT_CONFIG_DIR="$WORK/audit.d"; mkdir -p "$VAULT_AUDIT_CONFIG_DIR"
+export VAULT_AUDIT_RELOAD_WAIT=0.3
+fake_server() {
+  bash -c 'trap '\''echo hup >> "$STATE/hups"; if [ -f "$VAULT_AUDIT_CONFIG_DIR/otel-collector.hcl" ] && [ ! -f "$STATE/audit-fail-otel-collector" ]; then : > "$STATE/audit-otel-collector"; fi'\'' HUP; while :; do sleep 0.05; done' &
+  FAKE_PID=$!
+  sleep 0.2
+}
+reset_state; rm -f "$VAULT_AUDIT_CONFIG_DIR"/*
+fake_server
+ensure_audit_socket "$FAKE_PID" >/dev/null 2>&1; RC=$?
+SOCK="$(cat "$VAULT_AUDIT_CONFIG_DIR/otel-collector.hcl" 2>/dev/null)"
 assert_eq 'T-1683-04 socket: 正常終了する' "$RC" "0"
-assert_contains 'T-1683-04 socket: socket device を collector の tcplog 受信へ向ける' "$SOCK" 'socket address=otel-collector.platform-infra.svc:9514 socket_type=tcp'
-assert_contains 'T-1683-04 socket: 書き込みの待ちに上限を付ける' "$SOCK" 'write_timeout=2s'
-assert_contains 'T-1683-04 socket: 値を HMAC 化する（log_raw=false を明示）' "$SOCK" 'log_raw=false'
-assert_contains 'T-1683-04 socket: accessor も HMAC 化する（hmac_accessor=true を明示）' "$SOCK" 'hmac_accessor=true'
+assert_eq 'T-1840-02 socket: SIGHUP で読み直させる' "$(grep -c hup "$STATE/hups" 2>/dev/null)" "1"
+assert_missing 'T-1840-02 socket: API で audit device を作らない' "$(cat "$STUB_LOG")" 'audit enable'
+assert_contains 'T-1683-04 socket: socket device を宣言する' "$SOCK" 'audit "socket" "otel-collector"'
+assert_contains 'T-1683-04 socket: collector の tcplog 受信へ向ける' "$SOCK" 'address       = "otel-collector.platform-infra.svc:9514"'
+assert_contains 'T-1683-04 socket: tcp で送る' "$SOCK" 'socket_type   = "tcp"'
+assert_contains 'T-1683-04 socket: 書き込みの待ちに上限を付ける' "$SOCK" 'write_timeout = "2s"'
+assert_contains 'T-1683-04 socket: 値を HMAC 化する（log_raw=false を明示）' "$SOCK" 'log_raw       = "false"'
+assert_contains 'T-1683-04 socket: accessor も HMAC 化する（hmac_accessor=true を明示）' "$SOCK" 'hmac_accessor = "true"'
 reset_state; : > "$STATE/audit-otel-collector"
-ensure_audit_socket >/dev/null 2>&1
-assert_missing 'T-1683-04 socket 在り: 有効化し直さない' "$(cat "$STUB_LOG")" 'audit enable'
+ensure_audit_socket "$FAKE_PID" >/dev/null 2>&1
+assert_eq 'T-1683-04 socket 在り: 読み直させない' "$( [ -f "$STATE/hups" ] && echo sent || echo none)" "none"
+kill "$FAKE_PID" 2>/dev/null; wait "$FAKE_PID" 2>/dev/null
 
-# ---- T-1683-05: audit（socket）: collector に届かなくても上限まで再試行して諦め、WARN を出す（起動は止めない側） ----
-reset_state
+# ---- T-1683-05 / T-1840-03: audit（socket）: collector に届かなければ上限まで再試行して諦め、宣言を残さず WARN を出す ----
+reset_state; rm -f "$VAULT_AUDIT_CONFIG_DIR"/*
 : > "$STATE/audit-fail-otel-collector"
-OUT="$(ensure_audit_socket 2>&1)"; RC=$?
+fake_server
+OUT="$(ensure_audit_socket "$FAKE_PID" 2>&1)"; RC=$?
 assert_eq 'T-1683-05 socket 不達: 非ゼロで返す（呼び出し側は裏で走らせ、起動を止めない）' "$RC" "1"
-assert_eq 'T-1683-05 socket 不達: 上限回数だけ試す' "$(grep -c 'audit enable -path=otel-collector' "$STUB_LOG")" "3"
+assert_eq 'T-1683-05 socket 不達: 上限回数だけ試す' "$(grep -c hup "$STATE/hups" 2>/dev/null)" "3"
 assert_contains 'T-1683-05 socket 不達: 標準出力だけになることを告げる' "$OUT" 'audit goes to stdout only'
-# 起動器は socket を裏で走らせる（`ensure_audit_socket &`）。前景に置くと collector の不在で起動が待たされる。
-grep -qE '^[[:space:]]*ensure_audit_socket &$' "$ROOT/deploy/local/vault-persistence/vault-entrypoint.sh" \
-  && ok 'T-1683-05 socket: 起動器は socket の有効化を裏で走らせる' \
-  || ng 'T-1683-05 socket: 起動器は socket の有効化を裏で走らせる' 'main に `ensure_audit_socket &` が無い'
+assert_eq 'T-1840-03 socket 不達: 足せなかった宣言を残さない（次の起動の unseal を巻き込まない）' "$(ls "$VAULT_AUDIT_CONFIG_DIR" | wc -l)" "0"
+kill "$FAKE_PID" 2>/dev/null; wait "$FAKE_PID" 2>/dev/null
+# 起動器は socket を裏で走らせる（`ensure_audit_socket … &`）。前景に置くと collector の不在で起動が待たされる。
+grep -qE '^[[:space:]]*ensure_audit_socket "\$server_pid" &$' "$ROOT/deploy/local/vault-persistence/vault-entrypoint.sh" \
+  && ok 'T-1683-05 socket: 起動器は socket の宣言の追加を裏で走らせる' \
+  || ng 'T-1683-05 socket: 起動器は socket の宣言の追加を裏で走らせる' 'main に `ensure_audit_socket "$server_pid" &` が無い'
+
+# ---- T-1840-04: 移行の門: 旧 Vault の file ストレージが移行されずに残っていれば止め、init ファイルに触れない ----
+reset_state
+LEGACY="$WORK/legacy"; mkdir -p "$LEGACY/core" "$LEGACY/logical" "$LEGACY/raft"
+printf 'Unseal Key 1: STUB-OLD-KEY\n' > "$LEGACY/.local-dev-init"
+OUT="$(VAULT_DATA_DIR="$LEGACY" VAULT_RAFT_DIR="$LEGACY/raft" VAULT_INIT_FILE="$LEGACY/.local-dev-init" refuse_unmigrated_file_storage 2>&1)"; RC=$?
+assert_eq 'T-1840-04 未移行: 非ゼロで止める' "$RC" "1"
+assert_contains 'T-1840-04 未移行: 手順書を名指しする' "$OUT" 'docs/operations/secret-store-openbao-migration-runbook.md'
+assert_missing 'T-1840-04 未移行: 鍵の値をログに出さない' "$OUT" 'STUB-OLD-KEY'
+: > "$LEGACY/raft/vault.db"
+VAULT_DATA_DIR="$LEGACY" VAULT_RAFT_DIR="$LEGACY/raft" refuse_unmigrated_file_storage >/dev/null 2>&1; RC=$?
+assert_eq 'T-1840-04 移行済み（raft/vault.db が在る）: 通す' "$RC" "0"
+FRESH="$WORK/fresh"; mkdir -p "$FRESH"
+VAULT_DATA_DIR="$FRESH" VAULT_RAFT_DIR="$FRESH/raft" refuse_unmigrated_file_storage >/dev/null 2>&1; RC=$?
+assert_eq 'T-1840-04 新規（何も無い）: 通す' "$RC" "0"
+# 門はサーバの起動（と init）より前にある。
+MAIN="$(sed -n '/^main() {/,/^}/p' "$ROOT/deploy/local/vault-persistence/vault-entrypoint.sh")"
+GATE_AT="$(printf '%s\n' "$MAIN" | grep -n 'refuse_unmigrated_file_storage' | head -1 | cut -d: -f1)"
+SERVER_AT="$(printf '%s\n' "$MAIN" | grep -n 'vault server' | head -1 | cut -d: -f1)"
+[ -n "$GATE_AT" ] && [ -n "$SERVER_AT" ] && [ "$GATE_AT" -lt "$SERVER_AT" ] && ok 'T-1840-04 門はサーバの起動より前にある' || ng 'T-1840-04 門はサーバの起動より前にある' "gate=$GATE_AT server=$SERVER_AT"
 
 rm -rf "$WORK"
 printf '\n%s passed, %s failed\n' "$PASSED" "$FAILED"

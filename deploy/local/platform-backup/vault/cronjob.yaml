@@ -1,10 +1,12 @@
-# NFR-21, NFR-18, ADR-0008, IADR-0471 (#1560): platform-infra の Vault（file ストレージ）を日次で暗号化してクラスタ外 2 か所へ置く。
+# NFR-21, NFR-18, ADR-0008, IADR-0471 (#1560): platform-infra の秘匿管理（/vault/data）を日次で暗号化してクラスタ外 2 か所へ置く。
+# ［2026-10-09 / #1840］IADR-0525: 製品は OpenBao、ストレージは raft（/vault/data/raft）。移行前の旧 Vault の file ストレージが
+#   /vault/data 直下に残っていれば、それも同じ写しに入る（手順書 docs/operations/secret-store-openbao-migration-runbook.md）。
 #
 # 🔴 /vault/data には Pod 内ラッパーが置いた unseal 鍵と初期 root トークンの平文ファイルがある（vault-persistence 参照）。
 #    **この写しはそれだけで Vault の中身をすべて復号できる**ため、平文の tar をディスクへ書かず、tar → gzip → age を
 #    パイプで繋いで暗号文だけを置く。
 # - PVC vault-data を**読み取り専用**でマウントする（RWO の local-path は単一ノードなら同じノードの別 Pod から読める）。
-#   稼働中の file バックエンドの写しなので、スクリプトは写す前後のファイル一覧を比べ、変わっていたらやり直す（3 回まで）。
+#   稼働中のストレージ（raft の bolt ファイル）の写しなので、スクリプトは写す前後のファイル一覧を比べ、変わっていたらやり直す（3 回まで）。
 # - 時刻: JST 12:15（Postgres の回と重ねない。米国市場の時間帯 JST 22:30〜05:00 を避ける）。後追いは 22:00 JST まで
 #   （35100 秒 = 12:15 から 9 時間 45 分）。
 # - 受取人・保管先・目印の扱いは Postgres の回（../postgres/cronjob.yaml）と同じ。

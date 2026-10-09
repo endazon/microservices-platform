@@ -13237,21 +13237,29 @@ exit $RC
       assert.ok(!/tcplog\/vault-audit:/.test(read('deploy/otel-collector-config.yaml')), 'compose の collector に Vault の受け口がある（compose に Vault は居ない）');
     });
 
-    ok('#1683: 起動器は 2 つの device をどちらも log_raw=false / hmac_accessor=true で有効にする', () => {
-      const enables = entry.split('\n').reduce((acc, line, i, all) => {
-        if (/vault audit enable/.test(line)) {
-          let j = i; let cmd = '';
-          while (j < all.length) { cmd += all[j]; if (!/\\\s*$/.test(all[j])) break; j++; }
-          acc.push(cmd);
-        }
-        return acc;
-      }, []);
-      assert.strictEqual(enables.length, 2, `audit enable が 2 つでない: ${enables.length}`);
-      assert.ok(enables.some((c) => /\bfile\b[\s\\]+file_path=stdout/.test(c)), '標準出力の file device が無い');
-      assert.ok(enables.some((c) => /\bsocket\b[\s\\]+address=/.test(c) && /socket_type=tcp/.test(c)), 'socket（tcp）の device が無い');
-      for (const c of enables) {
-        assert.match(c, /log_raw=false/, `log_raw=false を明示していない: ${c}`);
-        assert.match(c, /hmac_accessor=true/, `hmac_accessor=true を明示していない: ${c}`);
+    // NFR-18, ADR-0132, IADR-0525 (#1840): 製品は OpenBao。API での audit device の作成は拒まれるので、どちらも**設定で宣言する**
+    //   （標準出力は local.hcl、collector への socket は起動器が collector に届いてから書く宣言）。
+    ok('#1683 / #1840: 2 つの device をどちらも設定で宣言し、log_raw=false / hmac_accessor=true を明示する（API では作らない）', () => {
+      assert.ok(!/vault audit enable|bao audit enable/.test(entry.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')),
+        '起動器が API で audit device を作っている（OpenBao は拒む）');
+      const hcl = read('deploy/local/vault-persistence/local.hcl');
+      const blockAt = (text, head) => {
+        const i = text.indexOf(head);
+        if (i < 0) return null;
+        const j = text.indexOf('\n}', i);
+        return text.slice(i, j < 0 ? undefined : j);
+      };
+      const stdout = blockAt(hcl, 'audit "file" "stdout" {');
+      assert.ok(stdout, 'local.hcl に標準出力の file device の宣言が無い');
+      assert.match(stdout, /file_path\s*=\s*"stdout"/, '標準出力へ書いていない');
+      assert.ok(!/audit "socket"/.test(hcl), 'socket device を local.hcl に書いている（collector の不在で init が失敗する）');
+      const socket = blockAt(entry, 'audit "socket" "$VAULT_AUDIT_SOCKET_PATH" {');
+      assert.ok(socket, '起動器に socket device の宣言が無い');
+      assert.match(socket, /address\s*=\s*"\$VAULT_AUDIT_SOCKET_ADDRESS"/, 'socket の宛先が起動器の既定値を使っていない');
+      assert.match(socket, /socket_type\s*=\s*"tcp"/, 'socket（tcp）の device でない');
+      for (const [name, blk] of [['stdout', stdout], ['socket', socket]]) {
+        assert.match(blk, /log_raw\s*=\s*"false"/, `${name}: log_raw=false を明示していない`);
+        assert.match(blk, /hmac_accessor\s*=\s*"true"/, `${name}: hmac_accessor=true を明示していない`);
       }
     });
 

@@ -803,17 +803,34 @@ if [ "${VAULT:-}" = "1" ]; then
   if [ "${ESO:-}" != "1" ]; then
     apply_secret "$INFRA_NS" vault-oidc "client-secret=${VAULT_OIDC_CLIENT_SECRET:-vault-dev-secret-change-me}"
   fi
-  # IADR-0457 (#1479): Vault の永続化は **既定オン**（file ストレージを PVC に置き、Pod 内ラッパーが init / unseal /
+  # IADR-0457 (#1479): Vault の永続化は **既定オン**（ストレージを PVC に置き〔IADR-0525 / #1840 から OpenBao の raft〕、Pod 内ラッパーが init / unseal /
   # 固定 root トークン / kv-v2 mount を毎回行う）。-dev（インメモリ）は k3s 再起動で全状態（k8s auth・policy・KV・
   # OIDC・画面 SC-22 で入れた秘密）を失い、ESO の store が InvalidProviderConfig に倒れた（2026-09-16 実測）。
   # opt-out は上の [4/7] と同じ PERSIST=0（使い捨てスタック専用・従来の deploy/local/vault とバイト等価）。
   # StorageClass の不在は [4/7] のガードが先に止める。
+  # NFR-18, ADR-0132, IADR-0525 (#1840): 製品は OpenBao（Vault API 互換・MPL-2.0）。永続化のストレージは raft（OpenBao は
+  # file ストレージを持たない）。名前（deploy/vault・VAULT=1・Secret vault-dev-token 等）は変えていない（ADR-0132 決定 2）。
   VAULT_KUSTOMIZE="deploy/local/vault-persistence"
   if [ "${PERSIST:-1}" = "0" ]; then
     VAULT_KUSTOMIZE="deploy/local/vault"
-    echo "    [PERSIST=0] Vault は -dev（インメモリ・再起動で揮発）"
+    echo "    [PERSIST=0] 秘匿管理（OpenBao）は -dev（インメモリ・再起動で揮発）"
   else
-    echo "    [PERSIST 既定] Vault を file ストレージ＋PVC で永続化（Pod 内ラッパーが init / unseal / 固定トークンを自動化）"
+    echo "    [PERSIST 既定] 秘匿管理（OpenBao）を raft ストレージ＋PVC で永続化（Pod 内ラッパーが init / unseal / 固定トークンを自動化）"
+    # 移行の門: 稼働中の deploy/vault が旧 Vault のイメージで、PVC vault-data が在るなら、上書きの前に止める。
+    # 🔴 旧 Vault の file ストレージは OpenBao で開けない。移さずに入れ替えると Pod 内ラッパーが起動を拒み（データは守る）、
+    #    rollout の待ちが 180 秒の時間切れで落ちるだけで理由が見えない。ここで手順書を名指しして止める。
+    #    手順書の移行が済むと deploy/vault は OpenBao のイメージになり、この門は通る。
+    live_vault_image="$(kubectl -n "$INFRA_NS" get deploy vault -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+    case "$live_vault_image" in
+      *hashicorp/vault*)
+        if kubectl -n "$INFRA_NS" get pvc vault-data >/dev/null 2>&1; then
+          echo "ERROR: 稼働中の deploy/vault は旧 Vault（$live_vault_image）で、永続化の PVC vault-data が在る。" >&2
+          echo "       OpenBao は旧 Vault の file ストレージを開けないため、このまま入れ替えない（画面 SC-22 で入れた秘密を失わないため）。" >&2
+          echo "       先に移行する: docs/operations/secret-store-openbao-migration-runbook.md" >&2
+          exit 1
+        fi
+        ;;
+    esac
   fi
   if kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1; then
     kubectl apply -k "$VAULT_KUSTOMIZE"

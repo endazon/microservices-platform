@@ -599,3 +599,4 @@
 | [IADR-0519](./IADR-0519_scripts-installed-products-version-pinning.md) | scripts/ が入れる製品は版で固定する。Argo CD は stable が指していた版のタグの URL、k3s はスクリプトの既定を単一の情報源とし、chart・上流マニフェストの内側のイメージの digest 固定は理由つきで別に回す（#1843） | Accepted |
 | [IADR-0520](./IADR-0520_infra-product-default-egress-disabled.md) | インフラ製品（Grafana・Loki・Tempo・Qdrant・Mailpit）の既定の外部通信を、製品が動く全経路の配備で止め、描画結果・compose・Testcontainers を読む検査器で固定する。Mailpit は止める設定を持つ版へ上げる（#1841） | Accepted |
 | [IADR-0521](./IADR-0521_graph-edges-from-links-and-shared-tags.md) | 知識グラフの辺は明示リンクと共有タグで結ぶ。共有タグは文書数 50 を超えるタグから作らず組あたり 1 本・出所は自動抽出のまま内訳列で分ける。Wiki の文書ページへのリンクは文書 ID で解決し、後から届いた相手へは保存済みのリンクから張り直す（#1396） | Accepted |
+| [IADR-0525](./IADR-0525_secret-store-openbao-raft-declarative-audit.md) | 秘匿管理の製品を OpenBao 2.7.1 とし、名前（deploy/vault・VAULT_*・Vault__*）は変えない。永続化は raft、audit device は設定で宣言し collector への socket は届いてから足す。旧 Vault のデータは operator migrate で移し、移していない永続データの上には起動しない（#1840） | Accepted |

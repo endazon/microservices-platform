@@ -8,10 +8,10 @@ updated: 2026-10-09
 ---
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]
-adrs: [ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
-iadrs: [IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133]
-specs: [20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook]
-issues: [#1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, planning#700, AST#1078]
+adrs: [ADR-0132, ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
+iadrs: [IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133]
+specs: [20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook]
+issues: [#1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, planning#700, AST#1078]
 -->
 
 # 運用 Runbook: 対になる秘密のローテーション
@@ -72,7 +72,7 @@ issues: [#1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, planning#700, AS
 | --- | --- |
 | 必要な権限 | 対象クラスタの `kubectl exec`（`platform-infra` の Vault）・`port-forward`（Keycloak）と、対象名前空間の Secret / ExternalSecret / Deployment への読み書き。認証基盤の master realm の管理者（Secret `platform-infra/keycloak-admin`） |
 | 必要なツール | `kubectl`・`curl`・`jq`・`openssl`（新しい値の生成）。**ホストに `vault` CLI は不要**（Vault Pod 内で実行する） |
-| 前提の状態 | Vault と External Secrets Operator が稼働し、Vault は永続化されている（file ストレージ＋PVC） |
+| 前提の状態 | Vault と External Secrets Operator が稼働し、Vault は永続化されている（raft ストレージ＋PVC） |
 | 所要時間の目安 | 群 1: 1 クライアント 10〜15 分。群 2: 1 ストア 15〜30 分。🔴 **どちらも、相手を書いてから消費側の作り直しが終わるまでの間、その資格情報を使う処理が失敗する**（重ねられない） |
 
 ## 共通の原則

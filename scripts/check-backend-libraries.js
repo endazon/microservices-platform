@@ -805,7 +805,7 @@ function selfTest() {
   t('素の RabbitMQ.Client は不採用（WolverineFx.RabbitMQ が置換）',
     bannedNameOf('RabbitMQ.Client') === 'RabbitMQ.Client'
       && bannedNameOf('WolverineFx.RabbitMQ') === null);
-  t('Azure Key Vault の構成プロバイダ / クライアント SDK は不採用（HashiCorp Vault を使う）',
+  t('Azure Key Vault の構成プロバイダ / クライアント SDK は不採用（Vault API 互換の秘匿管理〔OpenBao。ADR-0132〕を使う）',
     bannedNameOf('Azure.Extensions.AspNetCore.Configuration.Secrets') === 'Azure.Extensions.AspNetCore.Configuration.Secrets'
       && bannedNameOf('Azure.Security.KeyVault.Secrets') === 'Azure.Security.KeyVault'
       && bannedNameOf('Azure.Security.KeyVault.Keys') === 'Azure.Security.KeyVault');

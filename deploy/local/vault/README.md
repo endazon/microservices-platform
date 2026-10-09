@@ -6,8 +6,17 @@
 **opt-in オーバーレイ**。AST chart 側の `ExternalSecret`（`ast-secrets` / `moomoo-*`・opt-in）がこのストアを
 参照して Vault dev から同期できる状態を作る。
 
+> **製品は OpenBao**（Vault API 互換・MPL-2.0。`openbao/openbao:2.7.1` を digest で固定。NFR-18・ADR-0132・IADR-0525・#1840）。
+> HashiCorp Vault は 1.15 以降 BUSL-1.1 で、配備していた 1.16 はコミュニティ保守も終わっていた。**名前は変えていない**
+> （`deploy/vault`・Service `vault`・Secret `vault-dev-token`・`VAULT=1`・アプリの `Vault__*`。計画中の「Vault」は Vault API 互換の製品と読む）。
+> イメージは `vault` を `bao` へのリンクとして同梱し、CLI は `BAO_*` が無いとき `VAULT_ADDR` / `VAULT_TOKEN` を読む。
+> サーバの `-dev` だけは `BAO_DEV_ROOT_TOKEN_ID` を要るので、`vault-dev.yaml` は同じ Secret を両方の名前で渡す。
+> 🔴 Pod に `BAO_ADDR` / `BAO_TOKEN` を足さない（`VAULT_*` より優先され、手順書の `VAULT_TOKEN=…` が効かなくなる）。
+> **旧 Vault を永続化して動かしていたクラスタ**は、データの移行が要る（OpenBao は file ストレージを持たない）:
+> [`docs/operations/secret-store-openbao-migration-runbook.md`](../../../docs/operations/secret-store-openbao-migration-runbook.md)。
+
 > ⚠️ **dev 専用・本番の Vault 化充足ではない**。既定（`PERSIST` 既定オン）は `deploy/local/vault-persistence/` が
-> file ストレージを PVC に置き、Pod 内ラッパーが init / unseal / 固定 root トークン / kv-v2 mount を毎回行う
+> raft ストレージを PVC に置き（`/vault/data/raft`）、Pod 内ラッパーが init / unseal / 固定 root トークン / kv-v2 mount を毎回行う
 > （unseal 鍵は PVC 上の平文・単一 Pod）。`PERSIST=0` は本ディレクトリの `-dev`（インメモリ・再起動で中身が消える）。
 > 本番は unseal / 監査 / HA / ローテーションを要する（Tier 3）。
 > **平文の秘密（root トークン・API 鍵）をコミットしない。** root トークンは Secret `vault-dev-token`
@@ -51,15 +60,18 @@ AST chart で `externalSecrets.enabled=true` ＋（API 鍵なら）`externalSecr
 
 ## audit（監査。NFR-18・ADR-0124 決定 2・IADR-0486・#1683）
 
-既定（永続化）の Vault は、起動器（`deploy/local/vault-persistence/vault-entrypoint.sh`）が audit device を 2 つ有効にする。
+既定（永続化）の Vault は audit device を 2 つ持つ。🔴 OpenBao は API での audit device の作成を既定で拒むので、どちらも**設定で宣言する**
+（`stdout/` は `deploy/local/vault-persistence/local.hcl`、`otel-collector/` は起動器 `vault-entrypoint.sh` が collector に届いてから
+`/vault/audit.d/` へ書いて SIGHUP で読み直させる）。
 
 | path | 出力先 | 止まったとき |
 | --- | --- | --- |
-| `stdout/` | Vault のコンテナログ（`kubectl -n platform-infra logs deploy/vault`） | 有効にできなければ Vault を起動しない |
-| `otel-collector/` | collector の `tcplog/vault-audit`（`otel-collector.platform-infra.svc:9514`）→ `OBSERVABILITY=1` なら Loki の `{job="vault-audit"}` | Vault は止まらない（`stdout/` が書ける）。起動器は裏で再試行し、諦めたら WARN を出す |
+| `stdout/` | Vault のコンテナログ（`kubectl -n platform-infra logs deploy/vault`） | 在ることを確かめられなければ Vault を起動しない |
+| `otel-collector/` | collector の `tcplog/vault-audit`（`otel-collector.platform-infra.svc:9514`）→ `OBSERVABILITY=1` なら Loki の `{job="vault-audit"}` | Vault は止まらない（`stdout/` が書ける）。起動器は裏で再試行し、足せなかった宣言は消し、諦めたら WARN を出す。初めから `local.hcl` に書かないのは、collector が居ないと初期化が鍵を返さずに失敗するため（実測） |
 
 - 値・トークンは HMAC（`hmac-sha256:…`）で残る（`log_raw=false`）。**`log_raw=true` や mount の `audit_non_hmac_*` を足さない。**
-- 🔴 **`stdout/` を手で外さない。** 外した状態で collector が止まると、Vault は要求をすべて拒む（起動器のトークン確認すら通らない）。
+- 🔴 **`stdout/` の宣言を `local.hcl` から外さない。** 外した状態で collector が止まると、Vault は要求をすべて拒む（起動器のトークン確認すら通らない）。
+- Loki のストリーム名 `{job="vault-audit"}` は製品の差し替えの後も変えていない（行の形も同じ。抽出の条件と試験がこの名前で突き合わせる）。
 - 秘密の書き込みの抽出の条件は `docs/security/security.md`「保管先（Vault）の audit」。
 - `PERSIST=0`（本ディレクトリの `-dev`）は audit を持たない。
 

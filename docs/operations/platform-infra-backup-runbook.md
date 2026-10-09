@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-10-02
+updated: 2026-10-09
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
-adrs: [ADR-0002, ADR-0008]
-iadrs: [IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489]
-specs: [20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper]
-issues: [#1709, #1560, #1564, #1689, #1699, AST#346]
+adrs: [ADR-0132, ADR-0002, ADR-0008]
+iadrs: [IADR-0525, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489]
+specs: [20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper]
+issues: [#1840, #1709, #1560, #1564, #1689, #1699, AST#346]
 -->
 
 # 運用 Runbook: platform-infra の暗号化バックアップ
@@ -29,7 +29,7 @@ issues: [#1709, #1560, #1564, #1689, #1699, AST#346]
 | 対象 | CronJob（名前空間 `platform-infra`） | 時刻（JST） | 成果物（回のディレクトリの中） |
 | --- | --- | --- | --- |
 | Postgres の全 DB（非テンプレート・接続可）と globals（ロール） | `platform-backup-postgres` | 毎日 12:00 | `pg-<DB 名>.dump.age`（`pg_dump -Fc`）・`pg-globals.sql.age`・`SHA256SUMS` |
-| Vault の file ストレージ（`/vault/data`） | `platform-backup-vault` | 毎日 12:15 | `vault-data.tar.gz.age`・`SHA256SUMS` |
+| 秘匿管理（OpenBao）のストレージ（`/vault/data`。raft は `raft/`） | `platform-backup-vault` | 毎日 12:15 | `vault-data.tar.gz.age`・`SHA256SUMS` |
 
 - 保管先は 2 か所: `C:\platform-infra-backups\` と `E:\platform-infra-backups\`（WSL のディストリからは
   `/mnt/c/...`・`/mnt/e/...`）。その下に `postgres\<回>\` と `vault\<回>\` が並ぶ。回の名前は UTC の時刻
@@ -261,6 +261,9 @@ issues: [#1709, #1560, #1564, #1689, #1699, AST#346]
   確かめてから**稼働側へ戻す。
 - **Vault**: Vault の Deployment を 0 にし、PVC `vault-data` の中身を復号した写しで置き換え、1 に戻す（Pod 内の
   ラッパーが写しの中の鍵で unseal する）。🔴 復号した写しは作業が終わったら消す。
+  🔴 **秘匿管理を OpenBao へ差し替える前に取った回は、旧 Vault の file ストレージの写しである**（`raft/` を含まない）。
+  OpenBao はそれを開けない（Pod 内のラッパーは起動を拒んで止まる。データは守られる）。戻した後に
+  [移行の手順書](secret-store-openbao-migration-runbook.md)の手順 3〜5 で raft へ移す。
 
 ## 6. イメージの版を上げる（age・ベース）
 

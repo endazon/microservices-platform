@@ -1,24 +1,29 @@
 #!/bin/sh
-# IADR-0457 (#1479): 経路B の Vault を **永続化して自動で使える状態に戻す** Pod 内ラッパー。
+# IADR-0457 (#1479): 経路B の秘匿管理を **永続化して自動で使える状態に戻す** Pod 内ラッパー。
 #
-# dev モード（`vault server -dev`）はインメモリで、Pod 再起動のたびに k8s auth・policy・role・KV・OIDC が消え、
+# dev モード（`server -dev`）はインメモリで、Pod 再起動のたびに k8s auth・policy・role・KV・OIDC が消え、
 # ESO の store が InvalidProviderConfig に倒れ、画面（SC-22）で入れた秘密も失われた（2026-09-16 実測）。
-# 本ラッパーは file ストレージ（PVC）のサーバを起動し、次を毎回行う:
+# 本ラッパーは PVC 上のストレージでサーバを起動し、次を毎回行う:
+#   0. 旧 Vault の file ストレージが移行されずに残っていれば止める（NFR-18, ADR-0132, IADR-0525 / #1840。下の「移行の門」）
 #   1. API 到達待ち
 #   2. 未初期化なら `operator init`（1 鍵）。出力を $INIT_FILE（PVC 上・0600）へ保存する
 #   3. unseal（保存した鍵）
 #   4. 固定 root トークン（Secret vault-dev-token の値＝VAULT_DEV_ROOT_TOKEN_ID）が無ければ root policy で作る
 #      —— bootstrap.sh / ESO store（token 認証版）/ OIDC bootstrap は従来どおり同じトークンで動く
-#   5. `secret/` に kv-v2 が無ければ mount する（dev モードが自動でしていたこと）
-#   6. audit device を有効にする（NFR-18, ADR-0124 決定 2, IADR-0486 / #1683。下の「audit device」を参照）
-#   7. サーバを待つ（SIGTERM は転送する）
+#   5. 標準出力の audit device が在ることを確かめる（local.hcl で宣言する。無ければ起動を失敗させる）
+#   6. `secret/` に kv-v2 が無ければ mount する（dev モードが自動でしていたこと）
+#   7. collector への audit device を足す（裏で再試行。下の「audit device」を参照）
+#   8. サーバを待つ（SIGTERM は転送する）
+#
+# NFR-18, ADR-0132, IADR-0525 (#1840): 製品は OpenBao（Vault API 互換）。イメージは `vault` を `bao` へのリンクとして同梱し、
+#   CLI は `BAO_ADDR` / `BAO_TOKEN` が無いとき `VAULT_ADDR` / `VAULT_TOKEN` を読む（実測）。したがって本ラッパーのコマンドと
+#   環境変数の名前は変えていない。🔴 Pod に `BAO_ADDR` / `BAO_TOKEN` を足さないこと —— `BAO_*` が `VAULT_*` より優先され、
+#   本ラッパーと bootstrap.sh が渡す `VAULT_TOKEN` が黙って効かなくなる（実測）。
 #
 # 🔴 unseal 鍵と初期 root トークンは PVC 上の平文ファイルに置く。root トークンが既知の dev 既定である現状と
 #    守りの水準は同じ（ローカル dev 専用）。k8s Secret に置く案は Pod 内に kubectl が無く Job が要り、
 #    鍵も PVC も同じローカルディスク上で差が無いため採らなかった（IADR-0457）。
 # 🔴 値をログに出さない（init の出力はファイルへだけ書く）。
-# 起動ログ先頭の `You cannot specify a custom root token ID outside of "dev" mode. Your request has been ignored.` は
-# env VAULT_DEV_ROOT_TOKEN_ID を残している（本ラッパーが固定トークンの ID として読む）ことによる無害な警告。
 #
 # 試験（vault-entrypoint.test.sh）は VAULT_ENTRYPOINT_LIB=1 で source し、`vault` を PATH 上のスタブへ差し替える。
 
@@ -28,13 +33,23 @@ VAULT_CONFIG_FILE="${VAULT_CONFIG_FILE:-/vault/config/local.hcl}"
 VAULT_ADDR="${VAULT_ADDR:-http://127.0.0.1:8200}"
 export VAULT_ADDR
 VAULT_KV_PATH="${VAULT_KV_PATH:-secret}"
+# raft のパス（local.hcl の storage "raft" の path と一致させる）。旧 Vault の file ストレージは $VAULT_DATA_DIR 直下に在る。
+VAULT_RAFT_DIR="${VAULT_RAFT_DIR:-$VAULT_DATA_DIR/raft}"
+# 追加の設定ファイルを置く場所（Pod の emptyDir）。collector への audit device の宣言をここへ書いて読み直させる。
+VAULT_AUDIT_CONFIG_DIR="${VAULT_AUDIT_CONFIG_DIR:-/vault/audit.d}"
+VAULT_MIGRATION_RUNBOOK="docs/operations/secret-store-openbao-migration-runbook.md"
 
-# ---- audit device（NFR-18, ADR-0124 決定 2, IADR-0486 / #1683）----
-# 🔴 **2 つ並べる。** Vault は、有効な audit device の**少なくとも 1 つ**が書けなければ要求を拒む。
-#    socket（可観測性基盤への取り込み）1 つだけにすると、collector / Loki の停止がそのまま Vault の停止になる
+# ---- audit device（NFR-18, ADR-0124 決定 2, IADR-0486 / #1683。OpenBao での形は IADR-0525 / #1840）----
+# 🔴 **2 つ並べる。** 有効な audit device の**少なくとも 1 つ**が書けなければ要求を拒む。
+#    socket（可観測性基盤への取り込み）1 つだけにすると、collector / Loki の停止がそのまま秘匿管理の停止になる
 #    （画面の書き込みも ESO の同期も止まる）。止まらない方の device（標準出力）を並べてそれを避ける。
-#      - stdout/         … file device（file_path=stdout）。kubelet のコンテナログへ出る。**有効にできなければ起動を失敗させる**
+#      - stdout/         … file device（file_path=stdout）。**local.hcl で宣言する**。無ければ起動を失敗させる
 #      - otel-collector/ … socket device（tcp）。collector の tcplog 受信 → Loki。**失敗しても起動は止めず、裏で再試行する**
+# 🔴 OpenBao は API での audit device の作成を既定で拒む（`audit enable` は 400。実測）ので、どちらも**設定ファイルで宣言する**。
+#    socket device を最初から local.hcl に書かないのは、宣言した device が試験の 1 行を書けないと **init が失敗する**ため
+#    （init が鍵を返さないまま初期化済みになり、PVC を消すほかなくなる。実測）。collector に届くまでは宣言せず、
+#    $VAULT_AUDIT_CONFIG_DIR へ宣言を書いて SIGHUP で読み直させる。足せなかったら宣言を消す（次の起動の unseal を巻き込まない）。
+#    一度足した device は、collector が止まっていても読み直し・unseal を妨げない（実測）。
 # 🔴 **値を記録しない。** 両方に log_raw=false / hmac_accessor=true を**明示する**（既定と同じ値を書いて固定する）。
 #    平文を出す設定（log_raw=true・audit_non_hmac_*）を足さないこと —— scripts/scripts.repo.test.js（#1683）が落ちる。
 # 宛先のポートは deploy/local/infra/otel-collector.yaml と deploy/local/observability/otel-collector-forward.yaml の
@@ -45,6 +60,22 @@ VAULT_AUDIT_SOCKET_ADDRESS="${VAULT_AUDIT_SOCKET_ADDRESS:-otel-collector.platfor
 VAULT_AUDIT_SOCKET_WRITE_TIMEOUT="${VAULT_AUDIT_SOCKET_WRITE_TIMEOUT:-2s}"
 
 log() { printf '==> vault-entrypoint: %s\n' "$*"; }
+
+# collector への socket device の宣言を置くファイル。
+audit_socket_config_file() { printf '%s/%s.hcl' "${VAULT_AUDIT_CONFIG_DIR:?}" "${VAULT_AUDIT_SOCKET_PATH:?}"; }
+
+# 移行の門（NFR-18, ADR-0132, IADR-0525 / #1840）: 旧 Vault の file ストレージ（$VAULT_DATA_DIR/core）が在り、
+# raft（$VAULT_RAFT_DIR/vault.db）がまだ無いなら止める。🔴 このまま進むと空の raft を init し、旧データの unseal 鍵が入った
+# $VAULT_INIT_FILE を新しい鍵で上書きする（旧データは二度と開けなくなる）。移行の手順は手順書にある。
+refuse_unmigrated_file_storage() {
+	if [ -d "$VAULT_DATA_DIR/core" ] && [ ! -f "$VAULT_RAFT_DIR/vault.db" ]; then
+		log "ERROR: $VAULT_DATA_DIR holds Vault file storage that has not been migrated to raft ($VAULT_RAFT_DIR)."
+		log "ERROR: refusing to initialize a new store over it (the unseal key in $VAULT_INIT_FILE would be overwritten)."
+		log "ERROR: migrate first: $VAULT_MIGRATION_RUNBOOK"
+		return 1
+	fi
+	return 0
+}
 
 # API が応答するまで待つ（`vault status` は 0=unseal 済み・2=sealed/未初期化・1=到達不能）。
 wait_for_api() {
@@ -134,38 +165,58 @@ audit_device_present() {
 	VAULT_TOKEN="$fixed" vault audit list -format=json 2>/dev/null | grep -q "\"$1/\""
 }
 
-# 止まらない方の device（標準出力）。**これが無い Vault を動かさない**（失敗したら起動を失敗させる）。
+# 止まらない方の device（標準出力）。local.hcl で宣言しており、unseal の後に在るはず。**無いまま動かさない**。
 ensure_audit_stdout() {
-	fixed="${VAULT_DEV_ROOT_TOKEN_ID:?}"
-	if audit_device_present "$VAULT_AUDIT_STDOUT_PATH"; then
-		log "audit device present at $VAULT_AUDIT_STDOUT_PATH/"
-		return 0
-	fi
-	VAULT_TOKEN="$fixed" vault audit enable -path="$VAULT_AUDIT_STDOUT_PATH" file \
-		file_path=stdout log_raw=false hmac_accessor=true format=json >/dev/null || {
-		log "ERROR: cannot enable audit device $VAULT_AUDIT_STDOUT_PATH/ (refusing to run Vault without audit)"
-		return 1
-	}
-	log "audit device enabled at $VAULT_AUDIT_STDOUT_PATH/ (file -> stdout)"
+	i=0
+	while [ "$i" -lt "${VAULT_AUDIT_STDOUT_TRIES:-10}" ]; do
+		if audit_device_present "$VAULT_AUDIT_STDOUT_PATH"; then
+			log "audit device present at $VAULT_AUDIT_STDOUT_PATH/ (declared in config)"
+			return 0
+		fi
+		i=$((i + 1))
+		sleep "${VAULT_AUDIT_STDOUT_INTERVAL:-1}"
+	done
+	log "ERROR: audit device $VAULT_AUDIT_STDOUT_PATH/ is not enabled (refusing to run Vault without audit)"
+	return 1
 }
 
-# 可観測性基盤への device（socket）。Vault は有効化のときに試験の 1 行を書くので、collector が居ないと失敗する。
+# collector への socket device の宣言（HCL）を書き出す。値（秘密）は含まない。
+write_audit_socket_config() {
+	cat > "$(audit_socket_config_file)" <<EOF
+audit "socket" "$VAULT_AUDIT_SOCKET_PATH" {
+  description = "audit to otel-collector tcplog (Loki)"
+  options {
+    address       = "$VAULT_AUDIT_SOCKET_ADDRESS"
+    socket_type   = "tcp"
+    write_timeout = "$VAULT_AUDIT_SOCKET_WRITE_TIMEOUT"
+    log_raw       = "false"
+    hmac_accessor = "true"
+    format        = "json"
+  }
+}
+EOF
+}
+
+# 可観測性基盤への device（socket）。宣言を足すと、サーバは読み直しのときに試験の 1 行を書くので、collector が居ないと足せない。
 # **起動は止めない**（標準出力の device が在る）。上限まで待って再試行し、諦めたら WARN を出す。
-# 一度有効になれば Vault の storage に残るので、2 回目以降の起動では既に在る。
+# 引数: サーバの PID（SIGHUP で設定を読み直させる）。
 ensure_audit_socket() {
-	fixed="${VAULT_DEV_ROOT_TOKEN_ID:?}"
+	server_pid="$1"
 	i=0
 	while [ "$i" -lt "${VAULT_AUDIT_SOCKET_TRIES:-60}" ]; do
 		if audit_device_present "$VAULT_AUDIT_SOCKET_PATH"; then
-			log "audit device present at $VAULT_AUDIT_SOCKET_PATH/"
+			log "audit device present at $VAULT_AUDIT_SOCKET_PATH/ (socket -> $VAULT_AUDIT_SOCKET_ADDRESS)"
 			return 0
 		fi
-		if VAULT_TOKEN="$fixed" vault audit enable -path="$VAULT_AUDIT_SOCKET_PATH" socket \
-			address="$VAULT_AUDIT_SOCKET_ADDRESS" socket_type=tcp write_timeout="$VAULT_AUDIT_SOCKET_WRITE_TIMEOUT" \
-			log_raw=false hmac_accessor=true format=json >/dev/null 2>&1; then
+		write_audit_socket_config
+		kill -HUP "$server_pid" 2>/dev/null
+		sleep "${VAULT_AUDIT_RELOAD_WAIT:-2}"
+		if audit_device_present "$VAULT_AUDIT_SOCKET_PATH"; then
 			log "audit device enabled at $VAULT_AUDIT_SOCKET_PATH/ (socket -> $VAULT_AUDIT_SOCKET_ADDRESS)"
 			return 0
 		fi
+		# 足せなかった宣言は残さない（次の読み直し・再起動の unseal で同じ失敗を起こさない）。
+		rm -f "$(audit_socket_config_file)"
 		i=$((i + 1))
 		sleep "${VAULT_AUDIT_SOCKET_INTERVAL:-5}"
 	done
@@ -178,15 +229,18 @@ bootstrap_after_start() {
 	ensure_initialized || return 1
 	ensure_unsealed || return 1
 	ensure_fixed_root_token || return 1
-	# audit を kv の mount より先に有効にする（秘密の最初の書き込みより前に記録を立てる）。
+	# audit を kv の mount より先に確かめる（秘密の最初の書き込みより前に記録が立っていること）。
 	ensure_audit_stdout || return 1
 	ensure_kv_mount || return 1
 	log "ready"
 }
 
 main() {
-	mkdir -p "$VAULT_DATA_DIR"
-	vault server -config="$VAULT_CONFIG_FILE" &
+	mkdir -p "$VAULT_DATA_DIR" "$VAULT_RAFT_DIR" "$VAULT_AUDIT_CONFIG_DIR"
+	refuse_unmigrated_file_storage || exit 1
+	# 前の起動で足した socket device の宣言は持ち越さない（collector の不在で unseal を巻き込まない。足すのは裏の再試行）。
+	rm -f "$(audit_socket_config_file)"
+	vault server -config="$VAULT_CONFIG_FILE" -config="$VAULT_AUDIT_CONFIG_DIR" &
 	server_pid=$!
 	trap 'kill -TERM "$server_pid" 2>/dev/null' TERM INT
 	if ! bootstrap_after_start; then
@@ -196,7 +250,7 @@ main() {
 	fi
 	# 裏で再試行する（collector より先に上がっても起動を待たせない）。失敗は WARN だけ。
 	# 上の trap はこの再試行には伝えない —— コンテナの終了時にはコンテナごと回収されるので、止める必要が無い。
-	ensure_audit_socket &
+	ensure_audit_socket "$server_pid" &
 	# `wait` はシグナルで中断されるので、サーバが実際に終わるまで待ち直す（PID 1 が先に抜けると残りが SIGKILL される）。
 	while kill -0 "$server_pid" 2>/dev/null; do
 		wait "$server_pid"

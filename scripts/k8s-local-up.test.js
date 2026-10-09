@@ -277,6 +277,10 @@ const KUBECTL_STUB = [
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
+  // NFR-18, IADR-0525 (#1840): 稼働中の deploy/vault のイメージ（移行の門の入力）。STUB_VAULT_LIVE_IMAGE で返す（既定は空 ＝ 新規クラスタ）。
+  //   PVC vault-data の有無は STUB_VAULT_PVC_ABSENT=1 で「無い」にする（既定は在る＝問い合わせは 0 を返す）。
+  'case "$*" in *"get deploy vault"*"containers[0].image"*) printf "%s" "${STUB_VAULT_LIVE_IMAGE:-}"; exit 0;; esac',
+  'if [ "${STUB_VAULT_PVC_ABSENT:-}" = "1" ]; then case "$*" in *"get pvc vault-data"*) exit 1;; esac; fi',
   'if [ "${STUB_TRAEFIK_ADMIN_MISSING:-}" = "1" ]; then case "$*" in *--for=jsonpath*svc/traefik*) exit 1;; esac; fi',
   // #1691: **HelmChartConfig kube-system/traefik の状態の模型**（状態は "$STUB_LOG.edge-istio" の有無で持つ）。
   //   - traefik-service-off.yaml の apply（istio-edge-up.sh [2/5]）で「Service 無し」になり、Service が消える。
@@ -1549,7 +1553,7 @@ ok('VAULT=1 (CRD 無): vault-dev.yaml のみ apply・kustomize 経路は通ら�
   assert.ok(/非永続/.test(res.stderr), 'CRD 無フォールバックが非永続であることを WARN で言わない');
 });
 
-// --- IADR-0457 (#1479): Vault の永続化は **既定オン**（file ストレージ＋PVC・Pod 内ラッパー）。opt-out は PERSIST=0 ---
+// --- IADR-0457 (#1479): Vault の永続化は **既定オン**（ストレージ＋PVC・Pod 内ラッパー。IADR-0525 / #1840 から OpenBao の raft）。opt-out は PERSIST=0 ---
 // dev Vault（-dev＝インメモリ）は k3s 再起動で全状態（k8s auth・policy・KV・OIDC・画面 SC-22 の値）を失い、
 // ESO の store が InvalidProviderConfig に倒れた（2026-09-16 実測）。infra-persistence と同じく既定で永続化する。
 ok('VAULT=1（永続化は既定）: vault-persistence を apply し、素の deploy/local/vault は apply しない', () => {
@@ -1577,6 +1581,29 @@ ok('VAULT=1: apply の直後に deploy/vault の rollout status を待つ（unse
   assert.ok(waitAt > applyAt, 'apply の後に rollout status deploy/vault が無い');
   assert.ok(bootstrapAt >= 0, 'bootstrap.sh の kubectl exec が記録に無い（検出の空振り）');
   assert.ok(waitAt < bootstrapAt, 'rollout status が bootstrap.sh より後にある');
+});
+
+// --- NFR-18, ADR-0132, IADR-0525 (#1840): 秘匿管理は OpenBao。旧 Vault の永続データを黙って上書きしない（移行の門） ---
+// OpenBao は旧 Vault の file ストレージを開けない。稼働中の deploy/vault が旧 Vault で PVC が在るなら、apply の前に止めて手順書を名指しする。
+const OLD_VAULT_IMAGE = 'hashicorp/vault:1.16@sha256:c5e04689611cb864b8b6247a6a845e0bdc059998f39b5c8a659562287379525c';
+ok('VAULT=1 (#1840): 稼働中が旧 Vault で PVC が在れば、vault-persistence を apply せずに止め、移行の手順書を名指しする', () => {
+  const res = runUp({ VAULT: '1', STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE });
+  assert.notStrictEqual(res.status, 0, '旧 Vault の上に OpenBao を被せて先へ進んだ');
+  assert.ok(!anyLineHas(res.lines, 'apply -k deploy/local/vault-persistence'), '止まる前に vault-persistence を apply した');
+  assert.ok(res.stderr.includes('docs/operations/secret-store-openbao-migration-runbook.md'), `手順書を名指ししない: ${res.stderr}`);
+});
+
+ok('VAULT=1 (#1840): 門の陰性対照 —— 稼働中が OpenBao・新規クラスタ・PVC 無し・PERSIST=0 のいずれも止めない', () => {
+  for (const [label, env] of [
+    ['稼働中が OpenBao', { STUB_VAULT_LIVE_IMAGE: 'openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf' }],
+    ['新規クラスタ（deploy/vault 無し）', {}],
+    ['旧 Vault だが PVC 無し（-dev で使っていた）', { STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE, STUB_VAULT_PVC_ABSENT: '1' }],
+    ['旧 Vault だが PERSIST=0', { STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE, PERSIST: '0' }],
+  ]) {
+    const res = runUp({ VAULT: '1', ...env });
+    assert.strictEqual(res.status, 0, `${label}: 非0終了: ${res.stderr}`);
+    assert.ok(anyLineHas(res.lines, env.PERSIST === '0' ? 'apply -k deploy/local/vault' : 'apply -k deploy/local/vault-persistence'), `${label}: apply が無い`);
+  }
 });
 
 // IADR-0457 (#1479) 監査 D1: **新規クラスタ**（VAULT ブロックの時点で ESO の CRD が無い）でも、ESO=1 なら ESO を入れた後に
