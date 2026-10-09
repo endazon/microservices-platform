@@ -43,12 +43,16 @@ internal static class TestUserTokens
 
     /// <summary>realm ロールつきの利用者トークンを発行する（BFF が中継するものと同じ形）。</summary>
     public static string Issue(string subject, IEnumerable<string> realmRoles,
-        string issuer = Issuer, bool forged = false, bool expired = false)
+        string issuer = Issuer, bool forged = false, bool expired = false,
+        string? audience = global::Platform.Shared.Infrastructure.Foundation.Extensions.AuthExtensions.DefaultAudience,
+        string[]? extraAudiences = null)
     {
         var now = DateTime.UtcNow;
         var descriptor = new SecurityTokenDescriptor
         {
             Issuer = issuer,
+            // NFR-09, #1846: 既定は platform-api。null なら aud を載せない（否定形の試験）。
+            Audience = audience,
             IssuedAt = expired ? now.AddHours(-2) : now,
             NotBefore = expired ? now.AddHours(-2) : now.AddMinutes(-1),
             Expires = expired ? now.AddHours(-1) : now.AddMinutes(5),
@@ -61,6 +65,8 @@ internal static class TestUserTokens
                 ["realm_access"] = new Dictionary<string, object> { ["roles"] = realmRoles.ToArray() },
             },
         };
+        // #1846: 実 Keycloak は複数の audience を配列で載せる（例: ["account","platform-api"]）。
+        if (extraAudiences is { Length: > 0 }) descriptor.Claims["aud"] = extraAudiences;
         return new JsonWebTokenHandler().CreateToken(descriptor);
     }
 

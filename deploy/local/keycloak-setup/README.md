@@ -4,7 +4,8 @@
 > 作業仕様書 [`.ai-context/specs/20260904_issue-1088_persist-by-default-and-realm-reconcile.md`](../../../.ai-context/specs/20260904_issue-1088_persist-by-default-and-realm-reconcile.md)
 
 `reconcile-realm.sh` は **realm JSON（宣言）と稼働 realm の差分を Admin REST API で当てる**冪等な runtime 後追いである。
-`scripts/k8s-local-up.sh` が**既定で**（[7/7] の後に）呼ぶ。
+`scripts/k8s-local-up.sh` が**既定で**（[4/7] の Keycloak の rollout の直後・[6/7] の helm upgrade の前に）呼び、失敗したら up を止める
+（IADR-0523 / #1846。サービスが audience `platform-api` を求めるので、realm が先に追随していないと全 API が 401 になる）。
 
 ```sh
 bash deploy/local/keycloak-setup/reconcile-realm.sh           # 差分を当てる（apply）。単独でも何度でも実行できる
@@ -77,7 +78,7 @@ seed 利用者の宣言（例: `requiredActions`）を変えて既存クラス�
 
 `apply` は「計画 → 適用 → 再計画」を最大 3 周し、最後の計画が 0 件でなければ非 0 で終える。`--check` は計画だけ。
 標準出力の最終行 `realms=<n> drift=<m> applied=<k>` を **`scripts/check-stack-ready.js` の G9** が読む（fail-closed）。
-up.sh からの呼び出しは best-effort（WARN）で、門は G9 が持つ。
+up.sh からの呼び出しは **fail-closed**（失敗したら helm へ進まず非 0 で止まる。IADR-0523 / #1846。旧: best-effort の WARN）。稼働の門は引き続き G9 が持つ。
 
 計画器（`plan(desired, live)`）は純粋関数で、`node scripts/keycloak-realm-reconcile.test.js` が
 「一致なら 0 件」「差分の種類ごとに 1 件」「実行時層には触れない」「前提が無い操作は deferred として残る」を固定する。

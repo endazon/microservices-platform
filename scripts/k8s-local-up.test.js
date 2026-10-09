@@ -263,6 +263,9 @@ const HELM_STUB = [
 const KUBECTL_STUB = [
   '#!/usr/bin/env bash',
   'echo "kubectl $*" >> "$STUB_LOG"',
+  // #1864 監査: `… | kubectl apply -f -` の標準入力を読み切る。読まずに終わると書き手（realm の追随の `sed … | kubectl apply -f -`）が
+  //   SIGPIPE で落ち、pipefail の下で非 0 になる（タイミング次第で揺れる）。追随を fail-closed にしたので、揺れが up の失敗として出る。
+  'case "$*" in *"apply -f -") cat >/dev/null 2>&1 || true;; esac',
   // #1830 / IADR-0517: 現在の kube context。既定は k3d が作る形（`k3d-<cluster>`）＝ dev の許可集合に入る。
   //   STUB_KUBE_CONTEXT で差し替える（空文字も与えられる＝読めない context）。STUB_KUBE_CONTEXT_FAIL=1 で問い合わせ自体を失敗させる。
   'if [ "${1:-} ${2:-}" = "config current-context" ]; then [ "${STUB_KUBE_CONTEXT_FAIL:-}" = "1" ] && { echo "error: current-context is not set" >&2; exit 1; }; printf "%s\\n" "${STUB_KUBE_CONTEXT-k3d-testcluster}"; exit 0; fi',
@@ -317,6 +320,8 @@ const KUBECTL_STUB = [
   'esac',
   // IADR-0369 (#1088): realm 後追い Job（deploy/local/keycloak-setup/reconcile-realm.sh）の完了待ち。
   // conditions の問い合わせに Complete を返す（返さないと起動器が Job の完了を 300 秒待つ）。
+  // #1864 監査: STUB_REALM_RECONCILE_FAIL=1 で後追い Job を Failed にする（追随の失敗で helm の前に止まることの変異試験）。
+  'if [ "${STUB_REALM_RECONCILE_FAIL:-}" = "1" ]; then case "$*" in *"get job keycloak-realm-reconcile"*conditions*) echo "Failed "; exit 0;; esac; fi',
   'case "$*" in *"get job"*conditions*) echo "Complete "; exit 0;; esac',
   // #1699: バックアップの CronJob の門の入力。CronJob のイメージは実物のマニフェストと同じ形の参照を返す。
   //   受取人の ConfigMap は STUB_BACKUP_RECIPIENTS（中身そのもの）を返す。既定（未設定）は空 ＝ 受取人なし。
@@ -1017,7 +1022,8 @@ ok('PERSIST=0 + OBSERVABILITY=1: 素の observability が apply され、永続�
 // **realm JSON を変えたら up の再実行で稼働 realm へ届く**ことを、次の不変条件で固定する:
 //   (1) 期待値は起動器が実 realm ファイルから毎回作る ConfigMap keycloak-realms（単一情報源）である。
 //   (2) 後追い Job はその ConfigMap と、起動器が作る keycloak-admin Secret（username / password）を読む。
-//   (3) 後追いは Keycloak の rollout が済んだ後に走る。
+//   (3) 後追いは Keycloak の rollout が済んだ後、helm upgrade（[6/7]）の前に走り、失敗したら helm へ進まずに止まる
+//       （#1864 監査 / IADR-0523。新しい Pod は aud=platform-api を求めるので、realm が先に追随していないと全 API が 401）。
 //   (4) Keycloak pod で kcadm.sh を exec しない（本体が OOMKilled になる）。旧スクリプトは撤去済み。
 const KC_SETUP_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'keycloak-setup');
 const RECONCILE_JOB_YAML = fs.readFileSync(path.join(KC_SETUP_DIR, 'realm-reconcile-job.yaml'), 'utf8');
@@ -1043,6 +1049,24 @@ ok('IADR-0369: 後追いは Keycloak の rollout の後に走り、Job は毎回
     'スクリプト本体が ConfigMap 化されていない');
   // check モード（check-stack-ready の G9）では Job 名を変える＝apply の Job を消さない。
   assert.ok(!anyLineHas(DEFAULT.lines, 'keycloak-realm-check'), 'up の既定経路で check 用 Job が現れた');
+});
+
+ok('#1864 監査: realm の追随は helm upgrade（[6/7]）より前に走る（新しい Pod が aud=platform-api を求める前に realm が載せる）', () => {
+  const rolloutIdx = DEFAULT.lines.findIndex((l) => l.includes('rollout status deploy/keycloak'));
+  const del = DEFAULT.lines.findIndex((l) => l.includes('delete job keycloak-realm-reconcile'));
+  const helmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  const msp = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create namespace microservices-platform '));
+  assert.ok(rolloutIdx >= 0 && del >= 0 && helmIdx >= 0 && msp >= 0, `行が見つからない: rollout=${rolloutIdx} delete=${del} helm=${helmIdx} msp=${msp}`);
+  assert.ok(rolloutIdx < del && del < msp && msp < helmIdx, `順序が違う: rollout=${rolloutIdx} delete=${del} [5/7]=${msp} helm=${helmIdx}`);
+  assert.strictEqual(DEFAULT.status, 0, `既定の経路が非 0: ${DEFAULT.stderr}`);
+});
+
+ok('#1864 監査: realm の追随が失敗したら helm へ進まずに非 0 で止まる（変異試験。対照は既定の経路）', () => {
+  const r = runUp({ STUB_REALM_RECONCILE_FAIL: '1' });
+  assert.notStrictEqual(r.status, 0, '追随が失敗したのに up が成功で返った（WARN だけで 401 が恒久化する）');
+  assert.ok(r.lines.some((l) => l.includes('delete job keycloak-realm-reconcile')), '追随が走っていない（別の理由で止まった）');
+  assert.ok(!r.lines.some((l) => l.startsWith('helm upgrade --install msp ')), '追随の失敗のあとで helm upgrade へ進んだ');
+  assert.ok(/helm upgrade（\[6\/7\]）へ進まずに止める/.test(r.stderr), `止まる理由を告げていない:\n${r.stderr.slice(-600)}`);
 });
 
 ok('IADR-0369: 管理者名・パスワードの単一情報源は Secret keycloak-admin（Keycloak と Job が同じキーを読む）', () => {

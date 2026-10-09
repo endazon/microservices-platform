@@ -23,7 +23,8 @@
 # - **期待値は ConfigMap keycloak-realms から読む**（起動器 [3/7] が実 realm ファイルから作る。ここへ二重に書かない）。
 # - **秘匿値を持たない**: 管理者資格情報は Secret keycloak-admin を Job の env が secretKeyRef で読む。
 #   標準出力には値を出さない（Job のログも出さない）。
-# - **best-effort は呼び出し側の責務**: 本スクリプトは失敗を非 0 で返す。`k8s-local-up.sh` は WARN に落とし、
+# - **失敗の扱いは呼び出し側の責務**: 本スクリプトは失敗を非 0 で返す。`k8s-local-up.sh` は helm（[6/7]）の前に呼び、
+#   失敗したら止める（IADR-0523 / #1846。旧: WARN に落としていた）。稼働の
 #   fail-closed の門は `scripts/check-stack-ready.js` の G9（--check）に置く。
 #
 # 環境変数（すべて任意）:

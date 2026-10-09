@@ -422,7 +422,8 @@ public sealed class KeycloakServiceAccountProvisioner(
     // `defaultClientScopes=["basic","profile"]`: 利用者名（`preferred_username`）が要る（`McpSubjectResolver`。realm は既定のスコープを宣言しない）。
     // ［2026-10-09 / #1859・IADR-0524］`basic`: Keycloak 25 以降、アクセストークンの `sub` は組み込みの `basic` スコープの写像が載せる。
     // 無いと利用者のトークンから `sub` が落ち、`McpSubjectResolver` の主体が利用者 ID から利用者名へ黙って変わる（26.7.4 で実測）。
-    // audience の写像で `aud` を MCP サーバーに限る（他のサービスへ持ち込ませない。#1846 が全サービスの検証を入れる）。
+    // audience の写像で `aud` を MCP サーバーに限る（他のサービスへ持ち込ませない。#1846 で全サービスが `platform-api` を検証し、
+    // このテンプレートは `platform-api-audience` スコープを持たない ＝ MCP クライアントのトークンは他のサービスで 401）。
     private const string ProfileClientScope = "profile";
     private const string BasicClientScope = "basic";
 

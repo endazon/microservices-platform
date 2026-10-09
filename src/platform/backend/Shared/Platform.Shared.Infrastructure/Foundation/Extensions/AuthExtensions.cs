@@ -61,6 +61,21 @@ public static class PlatformAuthPolicies
 
 public static class AuthExtensions
 {
+    // NFR-09, 計画 ADR-0036, ADR-0086, [[IADR-0523]] (#1846 / planning#770。利用者裁定 2026-10-09 の方式 C):
+    // platform の API が受け付ける**共有の audience**。realm のクライアントスコープ `platform-api-audience`
+    // （`oidc-audience-mapper`）が、正当な呼び出し元のクライアントのトークンにだけ載せる
+    // （deploy/keycloak/microservices-platform-realm.json）。
+    public const string DefaultAudience = "platform-api";
+
+    // 受け付ける audience の構成キー。未設定なら <see cref="DefaultAudience"/> ただ 1 つ。
+    // サービスごとの audience へ移るときは、この構成と realm の写像だけを変える（コードは変えない）。
+    public const string AudiencesConfigKey = "Auth:Audiences";
+
+    // 🔴 FR-16, 計画 ADR-0134 決定 1, #1854: `mcp-server` は「MCP クライアントに発行したトークン」の意味を持ち、
+    // McpServer の `/mcp`（`McpAudience` スキーム）だけが受け付ける。既定のスキームに入れると MCP クライアントの
+    // トークンが platform の API を通ってしまうため、構成で与えられても起動を止める。
+    public const string ReservedMcpAudience = "mcp-server";
+
     // ADR-0004: Keycloak OIDC/JWT 認証（P0: 認証のみ、P2: ABAC 認可を追加）
     public static IServiceCollection AddPlatformAuth(
         this IServiceCollection services,
@@ -111,8 +126,11 @@ public static class AuthExtensions
 
     // FR-16, 計画 ADR-0134 決定 1・フォローアップ 2, #1844: 既定の JWT スキームの設定（発行元・メタデータ・名前とロールのクレーム）。
     // **既定のスキームと、audience を検証する別のスキーム（McpServer の `/mcp`）が同じ 1 つを使う**ために切り出した
-    // （発行元の検証を 2 つにしない）。振る舞いは切り出す前と同じである（`ValidateAudience = false` もここで置く）。
+    // （発行元の検証を 2 つにしない）。
+    // ［2026-10-09 / #1846 / [[IADR-0523]]］audience を検証する（`ValidateAudience = true`・`ValidAudiences = Auth:Audiences`）。
+    //   `/mcp` のスキームは呼んだ後で audience を `mcp-server` だけへ置き換える（`McpAudienceAuthentication`）。
     // 🔴 構成は**呼んだ時点で読む**（切り出す前と同じく登録の時点の値。返す関数の中で読み直さない）。
+    //   audience の構成が空・`mcp-server` を含むときは**ここで例外を投げる**（＝サービスの起動の時点で止まる。fail-fast）。
     public static Action<JwtBearerOptions> PlatformJwtBearer(IConfiguration config)
     {
         var authority = config["Auth:Authority"]
@@ -123,6 +141,7 @@ public static class AuthExtensions
         // Authority 一本の現行挙動に縮退＝後方互換・fail-safe。issuer 検証は弱めない（下記参照）。
         var metadataAddress = config["Auth:MetadataAddress"];
         var validIssuers = ParseValidIssuers(config["Auth:ValidIssuers"]);
+        var validAudiences = ResolveAudiences(config);
 
         return options =>
         {
@@ -137,7 +156,10 @@ public static class AuthExtensions
                 options.Authority = authority;
             }
             options.RequireHttpsMetadata = false;
-            options.TokenValidationParameters.ValidateAudience = false;
+            // NFR-09, 計画 ADR-0036, [[IADR-0523]] (#1846): audience を検証する。`aud` が無いトークン・
+            // 運用ツールや MCP クライアントに発行されたトークン（`aud` に platform-api が無い）は 401 になる。
+            options.TokenValidationParameters.ValidateAudience = true;
+            options.TokenValidationParameters.ValidAudiences = validAudiences;
             // IADR-0086 決定3: issuer 検証は弱めない（ValidateIssuer=true のまま）。ValidIssuers は「token の iss として
             // 追加で受理する発行元 URL の許可リスト」で、エッジ host issuer（手順B）を足す。JwtBearer ハンドラは
             // metadata 由来の issuer を常に受理集合へ併合するため、in-cluster issuer（手順A）と併存＝後方互換。
@@ -157,6 +179,42 @@ public static class AuthExtensions
             options.TokenValidationParameters.NameClaimType = "preferred_username";
         };
     }
+
+    // NFR-09, [[IADR-0523]] (#1846): 受け付ける audience を構成から決める。
+    //   - 未設定 → [platform-api]。
+    //   - 配列（`Auth:Audiences:0` …）か単一の文字列（`Auth__Audiences=a,b`。カンマ/空白区切り）を受ける。
+    //   - 🔴 設定されているのに空（`Auth__Audiences=""`）→ 例外（「検証しない」へ黙って縮退させない）。
+    //   - 🔴 `mcp-server` を含む → 例外（上の <see cref="ReservedMcpAudience"/>）。
+    internal static string[] ResolveAudiences(IConfiguration config)
+    {
+        var section = config.GetSection(AudiencesConfigKey);
+        if (!section.Exists())
+        {
+            return [DefaultAudience];
+        }
+        var children = section.GetChildren().ToArray();
+        var values = (children.Length > 0
+                ? children.Select(c => c.Value).SelectMany(v => SplitList(v))
+                : SplitList(section.Value))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (values.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"{AudiencesConfigKey} が空です。受け付ける audience を 1 つ以上設定するか、キーを外して既定（{DefaultAudience}）を使ってください（#1846）。");
+        }
+        if (values.Contains(ReservedMcpAudience, StringComparer.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"{AudiencesConfigKey} に {ReservedMcpAudience} は使えません。MCP クライアントのトークンの audience であり、McpServer の /mcp だけが受け付けます（計画 ADR-0134 決定 1・#1846）。");
+        }
+        return values;
+    }
+
+    private static string[] SplitList(string? raw) =>
+        string.IsNullOrWhiteSpace(raw)
+            ? []
+            : raw.Split([',', ' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     // IADR-0086 決定1: Auth:ValidIssuers を単一 env 文字列（chart から注入）としてカンマ/空白区切りでパースする。
     // 空要素は落とし、各要素を trim する。未設定/空なら空配列（＝ValidIssuers を設定しない＝現行挙動）。

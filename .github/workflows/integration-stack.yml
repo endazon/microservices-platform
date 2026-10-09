@@ -335,7 +335,7 @@ jobs:
 
       # 🔴 SC-12 の IdP への書き込みの門（#1817 / FR-16・SC-12・ADR-0123 決定 2・3・フォローアップ 3・IADR-0516）。
       # 書き込み口（McpClientProvisioning:Provider=keycloak）は、偽の Keycloak とプロセス内の口でしか試されていなかった。
-      # **稼働の Keycloak で、作るもの・作らないものを対で測る**（M1〜M11。中身は scripts/check-mcp-client-provisioning.js の冒頭）:
+      # **稼働の Keycloak で、作るもの・作らないものを対で測る**（M1〜M12。中身は scripts/check-mcp-client-provisioning.js の冒頭）:
       #   登録が 201（503 にならない）・入口の印・`users?username=service-account-<client>&exact=true` がちょうど 1 件で属性あり・
       #   差し替えの丸ごと置き換え・部分集合の外れ / private-note は何も作らない・プラットフォームのクライアント名は 400 で相手は不変・
       #   「IdP へ書けて登録簿で落ちる」登録の補償・mcp-client-admin で入口のクライアントを消せる。
@@ -349,6 +349,9 @@ jobs:
       # ［#1845］M11: 無人の登録の 201 が client secret を一度だけ返し（Keycloak の現在値と一致）、SC-12 の再発行で旧 secret が直後に拒否され
       #   新しい secret でトークンが出る（ADR-0134 決定 2・FU4・FU6）。値はログに出さない。
       # ［#1859］M9: port なしのループバックを Keycloak に直接作り、横取りの形（CVE-2024-8883）が 400・任意の port は進むことを測る（26.7.4。IADR-0524）。
+      # ［#1846］M12: platform の audience。利用者（bff）・サービスアカウント・AST の kb-reader のトークンの aud に platform-api が在り、
+      #   運用ツール（grafana）・MCP クライアントのトークンには無いことを稼働の Keycloak で測る。MCP クライアントの実トークンは McpServer の
+      #   既定のスキームの口で 401。全サービスが audience を検証するので、ABAC の正常系の門（verify-oidc-edge-flow）が利用者の経路の陽性対照になる。
       # 作ったもの（クライアント・使い捨ての登録者・登録簿の行）は検査器が片付ける。このクラスタは次のステップで破棄される。
       # 前提はスタックの門だけ（ABAC の投入には依らない）。パスワードリセットの門の赤では飛ばさない（#1597 と同じ）。
       # 🔴 **ログイン経路の門より前に置く**（あちらを最後に置く順序の統制を変えない）。

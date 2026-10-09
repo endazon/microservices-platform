@@ -512,7 +512,7 @@ function evaluateRealmDrift({ status, stdout }) {
     failures.push(
       `[G9] realm JSON（宣言）と稼働 realm の差分が ${drift} 件（exit ${status}）。` +
         ' `--import-realm` は既存 realm を黙って飛ばす（IGNORE_EXISTING）ので、宣言を直しただけでは届かない。' +
-        ' `bash deploy/local/keycloak-setup/reconcile-realm.sh` で当てる（up.sh の後段が同じことをする）。差分:\n' +
+        ' `bash deploy/local/keycloak-setup/reconcile-realm.sh` で当てる（up.sh が helm の前に同じことをする）。差分:\n' +
         String(stdout || '').split('\n').filter((l) => /\bdrift\b|deferred/.test(l)).join('\n'),
     );
   }

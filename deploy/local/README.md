@@ -176,9 +176,11 @@ PERSIST=0 bash scripts/k8s-local-up.sh --live
 #### realm（`microservices-platform-realm.json`）を更新したときの反映（自動・IADR-0369）
 
 永続化後は `--import-realm` が **既存 realm をスキップ**（`IGNORE_EXISTING`）するため、`realm.json` を編集しても
-import では届かない。そこで `k8s-local-up.sh` は [7/7] の後に **[`keycloak-setup/reconcile-realm.sh`](keycloak-setup/README.md)**
+import では届かない。そこで `k8s-local-up.sh` は [4/7] の Keycloak の rollout の直後（[6/7] の helm より前）に **[`keycloak-setup/reconcile-realm.sh`](keycloak-setup/README.md)**
 を呼び、**realm JSON（宣言）と稼働 realm の差分を Job（Admin REST API）で当てる**。つまり **realm JSON を変えたら
 up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setup/reconcile-realm.sh` で当てられる。冪等）。
+**追随に失敗したら up は helm へ進まずに止まる**（サービスが audience `platform-api` を求めるため、追随していない realm のまま
+新しい Pod を入れると全 API が 401 になる。IADR-0523 / #1846）。
 届いているかは `node scripts/check-stack-ready.js --live` の **G9**（`--check`＝差分 0 件）が fail-closed で見る。
 
 - **宣言が当てる層**: realm 設定（テーマ・ロケール・token 寿命・パスワード／OTP ポリシー・ブルートフォース・events）／
@@ -409,7 +411,7 @@ kubectl -n microservices-platform port-forward svc/frontend-service 8081:8080
 > `invalid_redirect_uri` になる（`platform-spa` 時代の 8081 登録は SPA 自身の redirect のためだった）。
 > 別のローカルポートで OIDC まで通したい場合は、そのポートの `/bff/auth/callback` を
 > `deploy/keycloak/microservices-platform-realm.json` の **`bff`** client へ追記する（realm.json の
-> 変更は **`k8s-local-up.sh` の再実行で稼働 realm へ届く** —— 後段の realm の後追い Job が client の差分として当てる。
+> 変更は **`k8s-local-up.sh` の再実行で稼働 realm へ届く** —— helm の前に走る realm の後追い Job が client の差分として当てる。
 > 上記「realm を更新したときの反映」を参照）。
 
 frontend pod の Caddy が `/bff/*` を in-cluster の `bff-service:8080` へ内部プロキシするため、上の BFF port-forward

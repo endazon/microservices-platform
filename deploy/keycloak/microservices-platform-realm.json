@@ -522,6 +522,28 @@
       ]
     },
     {
+      "name": "platform-api-audience",
+      "description": "NFR-09・IADR-0523 (#1846): platform の API の共有 audience（platform-api）を access token の aud へ載せる。正当な呼び出し元のクライアントだけに既定で割り当てる。運用ツール・realm 管理用・MCP クライアントには割り当てない。",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "platform-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "platform-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "name": "basic",
       "description": "Keycloak 25 以降の組み込み basic スコープ（アクセストークンの sub と auth_time）。realm import で clientScopes を明示すると組み込みスコープが生成されず、利用者のアクセストークンから sub が落ちるため定義する（#1859 で実測）",
       "protocol": "openid-connect",
@@ -636,7 +658,8 @@
         "profile",
         "email",
         "roles",
-        "abac-attributes"
+        "abac-attributes",
+        "platform-api-audience"
       ]
     },
     {
@@ -654,7 +677,8 @@
       "webOrigins": [],
       "defaultClientScopes": [
         "roles",
-        "abac-attributes"
+        "abac-attributes",
+        "platform-api-audience"
       ]
     },
     {
@@ -671,7 +695,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -688,7 +713,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -705,7 +731,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -722,7 +749,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -739,7 +767,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -756,7 +785,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -773,7 +803,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -790,7 +821,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -807,7 +839,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -824,7 +857,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -893,7 +927,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -910,7 +945,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "profile"
+        "profile",
+        "platform-api-audience"
       ]
     },
     {
@@ -927,7 +963,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -944,7 +981,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
@@ -961,7 +999,8 @@
       "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
-        "roles"
+        "roles",
+        "platform-api-audience"
       ]
     },
     {
