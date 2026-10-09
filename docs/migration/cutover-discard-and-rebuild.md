@@ -4,14 +4,14 @@ type: migration-spec
 status: draft
 author: Claude
 created: 2026-09-25
-updated: 2026-10-08
+updated: 2026-10-10
 ---
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0008, ADR-0032, ADR-0124]
 iadrs: [IADR-0515, IADR-0461, IADR-0494, IADR-0492, IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
-specs: [20261008_1781_cutover-rehearsal-ci, 20261003_1728_eso-force-sync-after-bootstrap, 20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
-issues: [#1781, #1499, #1728, #1696, #457, #454, #439, #458, #1682, AST#1078]
+specs: [20261010_1877_paired-rotation-windows-portable, 20261008_1781_cutover-rehearsal-ci, 20261003_1728_eso-force-sync-after-bootstrap, 20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
+issues: [#1877, #1781, #1499, #1728, #1696, #457, #454, #439, #458, #1682, AST#1078]
 -->
 
 # 移行仕様書: 再実装版への切替 —— 6 資産の破棄と realm の作り直し
@@ -126,7 +126,7 @@ node scripts/measure-cutover-inventory.js --input cutover-after.json --since 202
    （[対になる秘密のローテーション](../operations/paired-secret-rotation-runbook.md)「起動の後に同期を促す」）。
 3. realm のクライアントの secret を realm.json の宣言値と違う値へ変えていないか確かめる。変えているなら、作り直しの後に配り直す手順を用意する
    （realm の作り直しは realm.json の開発用の値で client を作る。Vault には回した値が残るので、**両者が食い違う** ——
-   [対になる秘密のローテーション](../operations/paired-secret-rotation-runbook.md) 手順 1 の 4 で、Vault の値を認証基盤へ書き直す）。
+   [対になる秘密のローテーション](../operations/paired-secret-rotation-runbook.md) 手順 1 の 1-3 の 2 と 5 で、Vault の値を `NEW_VALUE` に入れて認証基盤へ書き直す）。
 4. オーナーが実行時に作った利用者（seed 利用者以外）を書き出しておく。作り直しでは**入り直らない**。
 5. 起動器（`scripts/k8s-local-up.sh`）を今のクラスタを作ったときと同じ環境変数で再実行できることを確かめる（`LOCALEDGE` / `OBSERVABILITY` / `VAULT` / `ARGOCD` ほか）。
 6. **ai-stock-trading の身元を書き出す**（破棄の境界の節）: realm `platform` の `ai-stock-trading-*` 4 クライアントの現在の secret と、

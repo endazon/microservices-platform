@@ -3,15 +3,15 @@ title: FR-19 個人資料（private-note） 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-10-08
+updated: 2026-10-10
 author: Claude
 ---
 <!-- trace:
-ids: [FR-19, FR-20, FR-21, FR-22, UC-11, SC-10, SC-17, SC-19, SC-20]
+ids: [FR-19, FR-13, FR-16, FR-20, FR-21, FR-22, UC-11, SC-10, SC-17, SC-19, SC-20]
 adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0057, ADR-0058, ADR-0061, ADR-0082, ADR-0096, ADR-0105, ADR-0110, ADR-0114]
-iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose]
-issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752, planning#472, planning#475, planning#492, planning#652]
+iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512, IADR-0529]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1879_exposure-org-docs-wiki-gate]
+issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752, #1879, planning#472, planning#475, planning#492, planning#652, planning#784]
 -->
 
 # 機能仕様書: 個人資料（private-note）
@@ -124,6 +124,22 @@ issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752
    あり、同じ機密区分のクリアランスを持つだけの他者に見せてはならない。
 
 Wiki.js へは従来どおり同期しない（露出の設定によらない）。
+
+#### 露出の属性を明示した組織文書（［2026-10-10 追加］）
+
+露出の 3 属性は**組織文書にも効く**。利用者の裁定（2026-10-10）で、別システム（生成 AI 株取引）の承認待ちの
+報告書（ドラフト）を、3 つとも `excluded` にした組織文書として保存すると決まった。
+
+- **明示の値は文書種別より優先する。** 3 つとも `excluded` の組織文書は、索引・横断検索・AI の入力（AI 回答・
+  取引判断の知識検索）・ナレッジグラフ・MCP（検索・グラフ・文書一覧）・Wiki（Wiki.js とその検索）のどれにも載らない。
+- **閲覧は文書詳細画面で、ABAC に従って行える**（本文は索引ではなくオブジェクトストレージから読む）。MCP でも、
+  文書 ID を指定した 1 件の取得は ABAC の範囲で題名と属性を返す（文書詳細画面の閲覧と同じ意味。本文は載らない）。
+- **含める → 除外の切り替えは撤収である。** 索引のチャンク・グラフのノード・Wiki のページ（Wiki.js の実体と
+  同期メタデータ）を消す。除外 → 含めるへ戻せば、それぞれ作り直す。
+- **露出キーを持たない組織文書（既存の文書）は従来どおり**どの面にも載る。組織文書へ露出キーを遡及して付けることはしない。
+- **一部だけ除外した組織文書**は、索引の門と同じ粒度（1 つでも含めれば載せる）で Wiki と MCP の文書一覧に載る。
+  この組み合わせの扱いは計画がまだ述べていない。
+- 作成時の検証は、組織文書の露出キーを拒否しない。発行（文書更新イベント）も止めない —— 止めると撤収とページの撤去が下流へ届かない。
 
 ## 処理フロー / 状態遷移
 

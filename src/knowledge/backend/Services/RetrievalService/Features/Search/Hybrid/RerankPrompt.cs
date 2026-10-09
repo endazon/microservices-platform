@@ -18,7 +18,8 @@ internal static class RerankPrompt
 
     // FR-19, ADR-0127 決定 3, ADR-0061, [[IADR-0283]]: **AI の入力に含めてよい候補か。**
     // 判定は `AiInputExposure.IsAllowed`（`DocumentExposure.IsAiAllowed`。RAG の文脈の選択と同じ述語）。
-    // 組織文書は常に真、個人資料は `ai_input` が `included` のときだけ真（既定は含めない）。
+    // 露出キーを持たない組織文書は真、個人資料は `ai_input` が `included` のときだけ真（既定は含めない）。
+    // 組織文書も `ai_input = excluded` を明示すれば偽になる（#1879 / [[IADR-0529]]）。
     internal static bool IsSendable(SearchResultDto candidate) =>
         AiInputExposure.IsAllowed(candidate.Attributes);
 

@@ -92,7 +92,8 @@ public class GraphDocumentSyncConsumer(
         // 複製した ABAC 属性と辺を残すと、判定の実装ミス 1 つで出力に戻る。
         //
         // 判定は `DocumentExposure.IsGraphAllowed` —— 発行側・索引側と**同じクラスの同じ形の述語**。
-        // **組織文書は常に true**（露出キーを持たない）なので既存の同期は 1 ビットも変わらない。
+        // **露出キーを持たない組織文書は true** なので既存の同期は 1 ビットも変わらない。`graph_exposure = excluded` を
+        // 明示した組織文書（#1879 / [[IADR-0529]]）はノードを作らない・既存のノードを撤収する。
         if (!DocumentExposure.IsGraphAllowed(ev.Attributes))
         {
             await WithdrawAsync(ev.DocumentId, ct);

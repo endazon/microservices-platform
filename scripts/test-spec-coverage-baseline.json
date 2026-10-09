@@ -314,6 +314,15 @@
       "TermProfileSyncTests",
       "TermProfileTests"
     ],
+    "docs/tests/FR-19_organization-document-exposure.md": [
+      "DocumentExposureTests",
+      "DocumentSyncConsumerTests",
+      "GraphDocumentSyncConsumerTests",
+      "GrpcMcpToolExecutionTests",
+      "OrganizationDocumentExposureTests",
+      "PrivateNoteIndexProductionTests",
+      "RagContextAiInputExclusionTests"
+    ],
     "docs/tests/FR-19_private-note-wikijs-exclusion.md": [
       "DocumentSyncConsumerTests"
     ],

@@ -70,6 +70,9 @@ public static class DocumentExposure
     // | 欠落・空・未知値 **かつ 個人資料** | **false** | 🔴 fail-closed。トグル属性が欠落したら OFF 扱い |
     // | 欠落・空・未知値 **かつ それ以外** | **true** | **組織文書は従来どおり**（遡及付与しない方針を壊さない） |
     //
+    // 明示値（上の 2 行）は**組織文書にも効く**（#1879 / [[IADR-0529]]）。組織文書が露出キーを持つのは、
+    // 作成者が明示的に付けたときだけである（遡及付与はしない）。
+    //
     // **判定は集合帰属で書く**（`doc_scope == "private-note"`）。否定で書くと `doc_scope` を持たない
     // 既存の組織文書が一斉に該当する（[[IADR-0270]] 決定 2 と同じ作法）。
     //
@@ -107,10 +110,38 @@ public static class DocumentExposure
     // 呼び出し側で書き下すと、軸が増えたときに片方だけ古くなる ——
     // ここが 3 つの `IsXxxAllowed` の選言そのものであることが、その事故を構造で塞ぐ。
     //
-    // **組織文書は常に true である**（全キーが欠落 → 各軸が true）。既存の取り込み経路の
+    // **露出キーを持たない組織文書は true である**（全キーが欠落 → 各軸が true）。既存の取り込み経路の
     // 挙動は 1 ビットも変わらない。
+    //
+    // ［2026-10-10 追記 / #1879］**組織文書も露出キーを持ち得る**（planning#784 の裁定。AST の承認待ちの
+    // 報告書のドラフト）。明示の `excluded` は文書種別より優先するので（上の `IsAllowed`）、**3 つとも
+    // `excluded` の組織文書は偽になる** —— 索引・検索・RAG・グラフのいずれにも載らない（[[IADR-0529]]）。
     public static bool IsIndexable(IReadOnlyDictionary<string, string> attributes)
         => IsSearchAllowed(attributes)
            || IsGraphAllowed(attributes)
            || IsAiAllowed(attributes);
+
+    // FR-13, FR-19, ADR-0061 決定 1・2, [[IADR-0529]] 決定 1 (#1879): **Wiki 同期（Wiki.js への反映と Wiki の検索）に
+    // 載せてよいか。**
+    //
+    // - **個人資料は常に偽**（ADR-0046 D-01。Wiki.js 上に個人資料のページは作らない）
+    // - **組織文書は `IsIndexable` に従う** —— 3 つとも `excluded` なら載せない（planning#784 の裁定）
+    //
+    // 🔴 **軸を 1 つ（例えば横断検索）に絞らない。** 裁定が述べたのは「3 つとも除外」の組だけであり、
+    // 一部だけ除外した組織文書の Wiki の扱いは計画が述べていない。索引の門（決定 1・2「1 つでも ON なら載せる」）と
+    // 同じ粒度に揃え、述語を `IsIndexable` から導く（条件を書き下さない）。
+    public static bool IsWikiPublishable(IReadOnlyDictionary<string, string> attributes)
+        => !DocumentScopes.IsPrivateNote(attributes) && IsIndexable(attributes);
+
+    // FR-16, FR-19, ADR-0061 決定 1・2, [[IADR-0529]] 決定 3 (#1879): **MCP の文書一覧（`document.list_documents`）に
+    // 載せてよいか。**
+    //
+    // - **組織文書は `IsIndexable` に従う** —— 3 つとも `excluded` の組織文書は、外部の AI エージェントが
+    //   列挙で見つける経路に載せない（planning#784 の裁定「MCP に載せない」）
+    // - **個人資料は本述語では落とさない（常に真）**。個人資料の MCP での扱いは ADR-0034 決定 9
+    //   （サービスアカウント実行では返さない）が別に定めており、露出トグルを MCP の一覧へ効かせることは
+    //   計画が裁定していない。ここで個人資料まで落とすと、既定（3 つとも OFF）の資料が利用者自身の
+    //   MCP の一覧から一斉に消える —— 裁定の無い挙動の変更になる
+    public static bool IsMcpListable(IReadOnlyDictionary<string, string> attributes)
+        => DocumentScopes.IsPrivateNote(attributes) || IsIndexable(attributes);
 }

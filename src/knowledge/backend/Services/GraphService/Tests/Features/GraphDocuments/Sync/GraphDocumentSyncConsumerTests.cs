@@ -176,6 +176,51 @@ public class GraphDocumentSyncConsumerTests
         attrs.Should().Contain("confidentiality", "internal");
     }
 
+    // ── FR-19, FR-17, ADR-0061 決定 1・3・4, [[IADR-0529]] (#1879): 露出キーを明示した組織文書 ──────
+    //
+    // planning#784 の裁定: AST の承認待ちの報告書（ドラフト）は 3 つとも `excluded` の組織文書として保存し、グラフに載せない。
+
+    private static DocumentUpdated OrganizationWithExposure(bool on, DateTimeOffset at)
+    {
+        var attrs = new Dictionary<string, string>
+        {
+            ["confidentiality"] = "internal",
+            [DocumentScopes.Key] = DocumentScopes.Organization,
+        };
+        foreach (var (k, v) in DocumentExposure.Project(on, on, on)) attrs[k] = v;
+        return new(DocA, "報告書", "published", "storage://b/report.md", attrs, ["report"], at, "fp-report");
+    }
+
+    // 🔴 3 つとも除外の組織文書はノードを作らない。陽性対照: 同じ器で露出キーの無い組織文書はノードになる。
+    [Fact]
+    public async Task 露出を全て除外にした組織文書はノードを作らない()
+    {
+        using var db = NewDb();
+
+        await Consumer(db).Handle(OrganizationWithExposure(false, T0), TestContext.Current.CancellationToken);
+        await Consumer(db).Handle(Event(docId: DocB), TestContext.Current.CancellationToken);
+
+        NodeOf(db, DocA).Should().BeNull("3 つとも除外の組織文書はグラフに載せない（planning#784）");
+        NodeOf(db, DocB).Should().NotBeNull("陽性対照: 露出キーの無い組織文書はノードになる");
+    }
+
+    // 🔴 含める → 除外でノードを撤収し、除外 → 含めるで作り直す。
+    [Fact]
+    public async Task 組織文書を全て除外へ切り替えるとノードが撤収され_含めるへ戻すと作り直される()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+
+        await Consumer(db).Handle(OrganizationWithExposure(true, T0), ct);
+        NodeOf(db, DocA).Should().NotBeNull("陽性対照: いったんはノードがある");
+
+        await Consumer(db).Handle(OrganizationWithExposure(false, T0.AddMinutes(1)), ct);
+        NodeOf(db, DocA).Should().BeNull("ON → OFF はノードの削除まで及ぶ（ADR-0061 決定 4）");
+
+        await Consumer(db).Handle(OrganizationWithExposure(true, T0.AddMinutes(2)), ct);
+        NodeOf(db, DocA).Should().NotBeNull("除外 → 含めるでノードを作り直す");
+    }
+
     // ── デノーマライズ（ADR-0033 決定 2）と AbacNodeFilter の実効 ──────────────
 
     [Fact]

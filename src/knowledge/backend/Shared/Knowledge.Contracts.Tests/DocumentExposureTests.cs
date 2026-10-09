@@ -75,14 +75,68 @@ public class DocumentExposureTests
         DocumentExposure.IsIndexable(attributes).Should().Be(expected);
     }
 
-    // 組織文書は常に索引可能（既存の取り込み経路の挙動を変えていない）。
+    // 露出キーを持たない組織文書は常に索引可能（既存の取り込み経路の挙動を変えていない）。
     [Fact]
-    public void 組織文書は常に索引可能である()
+    public void 露出キーを持たない組織文書は常に索引可能である()
     {
         DocumentExposure.IsIndexable(Organization()).Should().BeTrue();
         DocumentExposure.IsIndexable(
             Organization((ConfidentialityLevels.AttributeKey, ConfidentialityLevels.Restricted)))
             .Should().BeTrue();
+    }
+
+    // ── FR-19, FR-13, FR-16, ADR-0061 決定 1・2, [[IADR-0529]] (#1879): 露出キーを明示した組織文書 ──────────
+    //
+    // planning#784 の裁定: AST の承認待ちの報告書（ドラフト）は、3 つとも `excluded` の組織文書として保存する。
+    // 索引・検索・RAG・グラフ・MCP の一覧・Wiki のどれにも載せない。
+
+    private static Dictionary<string, string> OrganizationWith(bool search, bool graph, bool ai)
+    {
+        var d = Organization((ConfidentialityLevels.AttributeKey, ConfidentialityLevels.Internal),
+            (DocumentScopes.Key, DocumentScopes.Organization));
+        foreach (var (k, v) in DocumentExposure.Project(search, graph, ai)) d[k] = v;
+        return d;
+    }
+
+    // 🔴 3 つとも `excluded` の組織文書は索引できない。陽性対照: 1 つでも `included` なら索引できる。
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, false, true, true)]
+    [InlineData(true, true, true, true)]
+    public void 露出キーを明示した組織文書の索引可否は3軸の選言である(bool search, bool graph, bool ai, bool expected)
+    {
+        DocumentExposure.IsIndexable(OrganizationWith(search, graph, ai)).Should().Be(expected);
+    }
+
+    // Wiki 同期: 3 つとも除外の組織文書は載せない／露出キーの無い組織文書と 1 つでも含める組織文書は載せる／
+    // 個人資料は露出によらず載せない（ADR-0046 D-01）。
+    [Fact]
+    public void Wikiへ載せてよいかは組織文書の索引可否に従い個人資料は常に偽である()
+    {
+        DocumentExposure.IsWikiPublishable(OrganizationWith(false, false, false)).Should()
+            .BeFalse("3 つとも除外の組織文書は Wiki.js とその検索に出さない（planning#784）");
+        DocumentExposure.IsWikiPublishable(Organization()).Should()
+            .BeTrue("陽性対照: 露出キーの無い既存の組織文書は従来どおり載る");
+        DocumentExposure.IsWikiPublishable(OrganizationWith(true, true, true)).Should()
+            .BeTrue("陽性対照: 含めるへ戻した組織文書は載る");
+        DocumentExposure.IsWikiPublishable(PrivateNote(
+            (DocumentExposure.SearchKey, DocumentExposure.Included),
+            (DocumentExposure.GraphKey, DocumentExposure.Included),
+            (DocumentExposure.AiKey, DocumentExposure.Included))).Should()
+            .BeFalse("個人資料は露出によらず Wiki.js へ載せない（ADR-0046 D-01）");
+    }
+
+    // MCP の一覧: 3 つとも除外の組織文書は載せない。個人資料は本述語では落とさない（ADR-0034 決定 9 の側）。
+    [Fact]
+    public void MCPの一覧に載せてよいかは組織文書の索引可否に従い個人資料は落とさない()
+    {
+        DocumentExposure.IsMcpListable(OrganizationWith(false, false, false)).Should().BeFalse();
+        DocumentExposure.IsMcpListable(Organization()).Should().BeTrue("陽性対照: 露出キーの無い組織文書");
+        DocumentExposure.IsMcpListable(OrganizationWith(false, false, true)).Should().BeTrue("陽性対照: 1 つでも含める");
+        DocumentExposure.IsMcpListable(PrivateNote()).Should()
+            .BeTrue("個人資料の MCP での扱いは露出トグルを見ない（裁定の無い挙動を変えない）");
     }
 
     // `Project` は 3 軸すべてを書く（1 つでも欠けると fail-closed で静かに見えなくなる）。

@@ -18,18 +18,22 @@
 #      **人が気づくまでの時間は見に行く間隔に等しい。** 運用仕様書へ同じことを書いてある。
 #   3. **本ファイルが Grafana に受理されるかは未検証である**（#665 の作業仕様書 §判断 0）。
 #      実装環境で Grafana を起動できなかった（docker daemon へ到達不可）。
+#      🔴 **［2026-10-10 / #1881］実際に拒否された。** uid が Grafana の上限 40 文字を超えたルールが 3 件あり、
+#      provisioning 全体が失敗して Grafana が起動せず、**全部の SLO 警報が評価されていなかった。**
 #      機械で確かめたのは **`scripts/check-grafana-alerting.js`** の範囲
 #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
 #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、
-#      式の絞り込みの後に残る値で評価器が真になり得る（#1577）、まで。
-#      **配備時に `/api/v1/provisioning/alert-rules` が 22 件返すことを確かめること。**
+#      式の絞り込みの後に残る値で評価器が真になり得る（#1577）、
+#      ルールの `uid` が 40 文字以下・英数字と `-` `_` だけ・一意で、写しの両方で同じ集合（#1881）、まで。
+#      **配備時に `/api/v1/provisioning/alert-rules` が 24 件返すことを確かめること。**
 #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
 #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
 #      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 6
 #      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2
-#      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ department-sync 1 ／ owner-read-policy 2 ＝ **22**
+#      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ department-sync 1 ／ owner-read-policy 2
+#      ／ mcp-client-idp-reconciliation 2 ＝ **24**（［2026-10-10 / #1881］#1818 の 2 件を取りこぼして 22 のままだったので足した）
 #      （［2026-09-26 / #1577］内訳が #1573 の department-sync 1 を取りこぼして 19 のままだったので足した）
-#      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20、#1665 で 20 → 22 へ数え直した）。
+#      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20、#1665 で 20 → 22、#1818 で 22 → 24 へ数え直した）。
 #
 # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
 #
@@ -449,7 +453,7 @@ groups:
     folder: SLO
     interval: 1m
     rules:
-      - uid: knowledge-health-unresolved-links-producer-absent
+      - uid: knowledge-health-unresolved-links-absent
         title: KnowledgeHealthUnresolvedLinksProducerAbsent
         condition: C
         for: 10m
@@ -477,7 +481,7 @@ groups:
               conditions:
                 - evaluator: { type: gt, params: [0] }
 
-      - uid: knowledge-health-edge-type-usage-producer-absent
+      - uid: knowledge-health-edge-type-usage-absent
         title: KnowledgeHealthEdgeTypeUsageProducerAbsent
         condition: C
         for: 10m
@@ -683,7 +687,7 @@ groups:
               expression: A
               conditions:
                 - evaluator: { type: gt, params: [0] }
-      - uid: mcp-client-idp-reconciliation-series-absent
+      - uid: mcp-client-idp-reconcile-series-absent
         title: McpClientIdpReconciliationSeriesAbsent
         condition: C
         for: 5m

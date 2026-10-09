@@ -6537,6 +6537,10 @@ ${r.stderr}`);
         'YAML: |+ / >+ はファイル末の改行を空行として数えない',
         'YAML: ブロックスカラーの中の空白だけの行は',
         '評価器の型は Grafana 11.0.0 の threshold が受け付ける 4 つだけ',
+        // #1881: uid の制約（検査 7）
+        'uid が 40 文字を超えるルールを写しの両方で検出する',
+        'uid の許されない文字・欠落・重複を検出する',
+        'compose と k8s の inline で uid の集合が違うことを検出する',
       ]) {
         assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
       }
@@ -6615,6 +6619,38 @@ ${r.stderr}`);
             `${label} の ${title} を検出できなかった:\n${r.issues.join('\n')}`,
           );
         }
+      }
+    });
+
+    // #1881 / NFR-21: uid が 40 文字を超えると Grafana の provisioning 全体が失敗し、Grafana が起動しない
+    //   （PoC で実測。全部の SLO 警報が未評価だった）。**実データの全ルールの uid** が通ること、
+    //   **実データの uid を 41 文字へ伸ばすと写しの両方で赤**になることを固定する
+    //   （フィクスチャだけだと実書式に読み取りが合っていない型の空振りを捕まえられない）。
+    ok('check-grafana-alerting: 実データの uid を 41 文字へ伸ばすと写しの両方で赤／実データの uid は全件 40 文字以下（#1881・変異試験）', () => {
+      const g = require('./check-grafana-alerting.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const prom = read('deploy/prometheus/alerts.yml');
+      const grafana = read('deploy/grafana/provisioning/alerting/slo-alerts.yaml');
+      const datasources = read('deploy/grafana/provisioning/datasources/datasources.yaml');
+      const k8sInline = g.extractK8sInline(read('deploy/local/observability/grafana.yaml'));
+      for (const [label, text] of [['compose', grafana], ['k8s inline', k8sInline]]) {
+        const { issues, uids } = g.ruleUidIssues(text, label);
+        assert.deepStrictEqual(issues, [], label);
+        assert.ok(uids.length > 0, `${label}: uid を 1 件も拾えない（0 件走査）`);
+        for (const u of uids) assert.ok(u.length <= g.GRAFANA_RULE_UID_MAX, `${label}: ${u}`);
+      }
+      const longUid = 'x'.repeat(g.GRAFANA_RULE_UID_MAX + 1);
+      const mutate = (t) => t.replace(/(- uid: )mcp-client-idp-reconcile-series-absent\n/, `$1${longUid}\n`);
+      const g2 = mutate(grafana);
+      const k2 = mutate(k8sInline);
+      assert.notStrictEqual(g2, grafana, '変異が compose に当たっていない');
+      assert.notStrictEqual(k2, k8sInline, '変異が k8s inline に当たっていない');
+      const r = g.findIssues({ prom, grafana: g2, datasources, k8sInline: k2 });
+      for (const label of ['compose', 'k8s inline']) {
+        assert.ok(
+          r.issues.some((x) => x.startsWith(`[${label}] ルール McpClientIdpReconciliationSeriesAbsent:`) && x.includes('41 文字')),
+          `${label} の長い uid を検出できなかった:\n${r.issues.join('\n')}`,
+        );
       }
     });
 
