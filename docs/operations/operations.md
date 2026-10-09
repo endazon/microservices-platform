@@ -1952,7 +1952,7 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
 
 - 確かめ方: 配備と同じ版の公式イメージ（loki・tempo・collector・Grafana・前段の caddy）を docker の上で、**描画した ConfigMap の中身そのもの**で起動し、
   別のコンテナから要求を投げた。トークン無し・違うトークンは 401、身元の道以外（`/flush`・`/config`・`/loki/api/v1/delete`・`/status/config`・`/api/overrides`・
-  `..` や `%2F` で道を抜ける形）は 403、製品の loopback の口へは別のコンテナから接続できなかった。collector の push（OTLP のログと `tcplog` の Vault の audit の 1 行）は
+  許可の道から `..` や `%2F` で抜ける形）は 403（道の抜けの断ちを足した後は、`..`・`//`・`%2e` / `%2F` を含む道は身元を見る前に 400。運用の口から許可の道へ正規化される逆向きの形も 400 になることを同じ版の caddy で確かめた）、製品の loopback の口へは別のコンテナから接続できなかった。collector の push（OTLP のログと `tcplog` の Vault の audit の 1 行）は
   前段を通って書け、Grafana の Explore で `{job="vault-audit"} | json` が引け、Tempo のトレースの検索も通った。前段はトークンが欠けると起動しなかった。
 - **NetworkPolicy の強制は稼働クラスタで実測していない**（この回の作業環境で k3d のクラスタを起こせなかった）。宣言は描画とスキーマの検査で確かめた。次の稼働の機会に、
   別の Pod から loki・tempo の口へ届かないことを確かめる。

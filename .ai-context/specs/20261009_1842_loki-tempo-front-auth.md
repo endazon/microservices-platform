@@ -149,12 +149,26 @@ ADR-0133 は前段の形を 2 つ並べて**どちらでもよい**としてい�
 | 同（読み取り／書き込みのトークン） | 200／403 |
 | Loki `POST /loki/api/v1/push`（書き込み／読み取り） | 204／403 |
 | Loki `/config`・`/flush`・`/loki/api/v1/delete`（GET/POST）・`/loki/api/v1/rules`・`/api/prom/push`（どちらのトークンでも） | 403 |
-| 道の抜け: `/loki/api/v1/query/../../../config`・`/loki/api/v1/label/..%2F..%2F..%2F..%2Fconfig/values`・`/loki/api/v1/label/x/../../../../config`・`//loki/api/v1/labels/../../../../config`（`--path-as-is`） | すべて 403 |
+| 道の抜け: `/loki/api/v1/query/../../../config`・`/loki/api/v1/label/..%2F..%2F..%2F..%2Fconfig/values`・`/loki/api/v1/label/x/../../../../config`・`//loki/api/v1/labels/../../../../config`（`--path-as-is`） | すべて 403（是正後は 400。下の追記） |
 | 大文字の道 `/LOKI/API/V1/LABELS`（読み取り） | 404（前段は通し、Loki が知らない道として返す） |
 | Loki の loopback の口（3101）・gRPC（9095）へ別のコンテナから | 接続できない（000） |
 | Tempo `GET /api/echo`（読み取り／書き込み／無し） | 200／403／401 |
 | Tempo `/status/config`・`/flush`・`/api/overrides`・`/api/traces/../../status/config` | 403 |
 | Tempo の loopback の口（3201）へ別のコンテナから | 接続できない |
+| **逆向きの道の抜け**（監査で判明。下の追記）: 運用の口から**許可の道へ**正規化される生の道 `/config/../loki/api/v1/labels`・`/config/%2e%2e/loki/api/v1/labels`・`/config/%2E%2E/…`・`/config/.%2e/…`・`/flush/..%2F/loki/api/v1/labels`・`//loki/api/v1/labels`・`/loki//api/v1/labels`（読み取り） | 是正前 **200（前段を通り、上流へ生の道のまま届いた）** → 是正後 400 |
+| 同（Tempo）: `/status/config/../../api/echo`・`/flush/../api/echo`・`/status/config/%2e%2e/%2e%2e/api/echo`・`//api/echo`・`/api//echo`（読み取り） | 是正前 **200（同上）** → 是正後 400 |
+| 是正後も通ること: クエリ文字列の `..`・`//`（`query_range?query={job=~"a..b//c"}`）・ドットを含む名前（`/loki/api/v1/label/service.name/values`・Tempo `/api/search/tag/span.http.method/values`）・書き込みの push | 200（上流へ届く） |
+| 是正後: `.` だけのセグメント（`/loki/./api/v1/labels`・`/loki/api/v1/labels/.`）・トークン無しの抜け（`/config/../loki/api/v1/labels`） | 400（身元を見る前に断つ） |
+
+**［2026-10-09 追記 / #1865 の監査の指摘］逆向きの道の抜け**: 上の表の「道の抜け」は、**許可の道から運用の口へ**抜ける向きだけを当てていた。
+Caddy の `path` matcher は**正規化した道**で照合し、`reverse_proxy` は**生の道**を上流へ送る。そのため**運用の口から許可の道へ**正規化される
+生の道（`/config/../loki/api/v1/labels`）は、読み取りのトークンで前段を通り、上流へ生のまま届いた（同じ版の caddy で実測。上流は
+`{http.request.uri}` を返す Caddy に差し替えて、届いた生の道を確かめた）。Tempo の前段も同じ（`/flush/../api/echo` が通った）。本物の Loki は今はこの道を 301 で返すので害は無いが（監査の実測。本物の Tempo の振る舞いは本追記では実測していない）、
+安全が上流の正規化に懸かる。是正として、両方の Caddyfile の `route` の**先頭**（身元の判定より前）で、
+復号した道に `..`・`//`・`.` だけのセグメントを含むもの、生の道（クエリ文字列を除く）に `%2e` / `%2f`（大小とも）を含むものを 400 で断つ
+（`@unsafe` の `expression` matcher）。是正後の判定は上の表の「是正後」の行（同じ版の caddy で実測）。
+`scripts.repo.test.js`（#1842）に、断ちの matcher と、それが `route` の先頭にあることの検査と、4 つの変異（matcher を消す・`%2e`/`%2f` の条件を消す・
+Loki / Tempo で断ちを `route` の先頭から外す）を足した。
 
 **通しの確かめ**（collector 0.102.0 → 前段 → Loki・Tempo、Grafana 11.0.0 → 前段）:
 
@@ -179,7 +193,7 @@ ADR-0133 は前段の形を 2 つ並べて**どちらでもよい**としてい�
   OTLP のログ・トレースと `tcplog` の Vault の audit の 1 行が前段を通って書け、Grafana から `{job="vault-audit"} | json | request_operation="update"` が 1 行返った）。
   描画で、永続化の patch の volumeMount が `containers/0`（製品）に付き、前段のコンテナには付かないことを確かめた。
 - `node scripts/check-deploy-manifests.js`（helm v3.16.2・kubeconform v0.6.7・kubectl v1.33.4 あり）: chart 1 件 / overlay 17 件が描画でき、スキーマに適合。
-- `node scripts/k8s-local-up.test.js`（302 件）・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（#1842 の陽性対照・22 の変異を含む）。
+- `node scripts/k8s-local-up.test.js`（302 件）・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（#1842 の陽性対照・26 の変異を含む。#1865 の監査の是正で 22 から 4 増えた）。
 - `check-stack-ready --self-test`・`check-grafana-provisioning-parity`・`check-grafana-alerting`・`check-image-digests`・`check-trace-blocks`・
   `gen-knowledge-graph --check`・`check-cross-repo-refs`・`check-plan-id-qualification`・`check-doc-updated`・`check-commit-messages`（PR 本文に出力）。
 - k3d のクラスタ（k3s v1.35.4）はこの環境で起動できなかった（`cluster dns configmap` の待ちで打ち切り）。NetworkPolicy の強制は未実測（IADR-0526 残余 1）。

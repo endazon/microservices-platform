@@ -320,7 +320,7 @@ Loki と Tempo は製品単体で認証を掛けられず、運用の口（`/flu
 
 | 統制 | 現在の実現手段（2026-10-09） |
 | --- | --- |
-| **前段（身元の検証）** | 経路 B: 製品は Pod の loopback だけで待ち、Service の口は同じ Pod の**認証付きのリバースプロキシ**（Caddy）が持つ。身元は 2 つ（書き込み＝OTel Collector・読み取り＝Grafana）で、それぞれ乱数のトークン（Bearer）を検証し、身元ごとに通す道を限る —— 書き込みは Loki の push だけ、読み取りは GET の読み取り API（query・labels・series・tail・traces・search 等の列挙）だけ。**運用の口・削除 API・ルーラー・設定の上書きは、どちらの身元でも拒む**（403。トークン無し・不一致は 401）。プロキシ自身の管理 API も閉じる |
+| **前段（身元の検証）** | 経路 B: 製品は Pod の loopback だけで待ち、Service の口は同じ Pod の**認証付きのリバースプロキシ**（Caddy）が持つ。身元は 2 つ（書き込み＝OTel Collector・読み取り＝Grafana）で、それぞれ乱数のトークン（Bearer）を検証し、身元ごとに通す道を限る —— 書き込みは Loki の push だけ、読み取りは GET の読み取り API（query・labels・series・tail・traces・search 等の列挙）だけ。**運用の口・削除 API・ルーラー・設定の上書きは、どちらの身元でも拒む**（403。トークン無し・不一致は 401）。**道に `..`・`//`・`.` だけのセグメント・`%2e` / `%2f` を含む要求は、身元を見る前に拒む**（400。プロキシは正規化した道で照合し、上流へは生の道を送るため、運用の口から許可の道へ正規化される形を通さない）。プロキシ自身の管理 API も閉じる |
 | **到達の制限（別の段）** | 経路 B: NetworkPolicy。Loki の Pod へは Collector と Grafana から前段の口だけ、Tempo の Pod へは Collector から OTLP の受け口・Grafana から前段の口だけを許す（k3s は NetworkPolicy を既定で強制する） |
 | **トークン** | Secret `observability-gate`。ローカル起動器が乱数（16 進 64 文字）で作り、再実行では引き継ぐ。**固定の既定値は無い**。前段はトークンが欠けると起動しない（fail-closed） |
 | **運用の口を使う経路** | `kubectl port-forward` で Pod の loopback へ届く（k8s の認証・認可を通る break-glass） |

@@ -7,6 +7,9 @@
 #   - 読み取り（Grafana の datasource）: Loki・Tempo の `GET` の読み取り API だけ（下の列挙）。
 #   - 運用の口（/flush・/config・/ingester/shutdown・/status/*・ring 系・/metrics）・削除 API・ルーラー・/api/overrides・
 #     旧 push は、**どちらのトークンでも 403**。トークンが無い・違うときは 401。
+#   - 道に `..`・空のセグメント（`//`）・`.` だけのセグメント・`%2e`/`%2f`（大小とも）を含む要求は、**身元を見る前に 400**。
+#     Caddy の `path` matcher は正規化した道で照合するが、reverse_proxy は**生の道**を上流へ送る。許可の道へ正規化される
+#     生の道（例 `/config/../loki/api/v1/labels`）を通すと、上流が生の道をどう解釈するかに安全が懸かるため、前段で断つ。
 # 運用者が運用の口を使うときは `kubectl port-forward` で Pod の loopback へ届く（k8s の認証・認可を通る break-glass）。
 #
 # 🔴 到達の制限（ADR-0133 条件 2）は**別の段**の observability-networkpolicy.yaml が持つ。本 ConfigMap と兼ねない。
@@ -44,6 +47,7 @@ data:
     }
 
     :3100 {
+        @unsafe expression `{http.request.uri.path}.matches('[.][.]|//|(^|/)[.](/|$)') || {http.request.uri}.matches('^[^?]*(?i)%2[ef]')`
         @writer {
             header Authorization "Bearer {$OBS_GATE_WRITER_TOKEN}"
             method POST
@@ -59,6 +63,7 @@ data:
             header Authorization "Bearer {$OBS_GATE_READER_TOKEN}"
         }
         route {
+            respond @unsafe 400
             reverse_proxy @writer 127.0.0.1:3101
             reverse_proxy @reader 127.0.0.1:3101
             respond @known 403
@@ -75,6 +80,7 @@ data:
     }
 
     :3200 {
+        @unsafe expression `{http.request.uri.path}.matches('[.][.]|//|(^|/)[.](/|$)') || {http.request.uri}.matches('^[^?]*(?i)%2[ef]')`
         @reader {
             header Authorization "Bearer {$OBS_GATE_READER_TOKEN}"
             method GET
@@ -85,6 +91,7 @@ data:
             header Authorization "Bearer {$OBS_GATE_READER_TOKEN}"
         }
         route {
+            respond @unsafe 400
             reverse_proxy @reader 127.0.0.1:3201
             respond @known 403
             respond 401

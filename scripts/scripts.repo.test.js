@@ -15812,6 +15812,14 @@ server.listen(0, '127.0.0.1', async () => {
         if (ups.length === 0 || ups.some((m) => m[2] !== `127.0.0.1:${upPort}`)) problems.push(`${prod} の前段の上流が 127.0.0.1:${upPort} でない`);
         if (ups.some((m) => !['writer', 'reader'].includes(m[1]))) problems.push(`${prod} の前段が身元の matcher 以外で通している`);
         if (!/respond @known 403\s*\n\s*respond 401\s*\n\s*\}/.test(cf)) problems.push(`${prod} の前段の既定が拒否（403 / 401）で終わっていない`);
+        // 道の抜けの断ち（#1865 監査）: path matcher は正規化した道で照合し、reverse_proxy は生の道を送る。
+        // 生の道に `..`・`//`・`.` だけのセグメント・`%2e`/`%2f` を含む要求を、身元を見る前（route の先頭）で断つ。
+        const unsafe = (cf.match(/^\s*@unsafe expression `(.+)`\s*$/m) || [])[1] || '';
+        if (!unsafe.includes('{http.request.uri.path}.matches(') || !unsafe.includes('[.][.]') || !unsafe.includes('//') || !unsafe.includes('(^|/)[.](/|$)')
+          || !unsafe.includes('{http.request.uri}.matches(') || !unsafe.includes('(?i)%2[ef]')) {
+          problems.push(`${prod} の前段に道の抜け（.. ・ // ・ %2e / %2f）の断ちが無い`);
+        }
+        if (!/route \{\s*\n\s*respond @unsafe 400\s*\n/.test(cf)) problems.push(`${prod} の前段が道の抜けを route の先頭で断っていない（身元の判定より後）`);
         for (const who of ['writer', 'reader']) {
           const m = cf.match(new RegExp(`@${who} \\{([^}]*\\}[^}]*)\\}`));
           if (!m) continue;
@@ -15907,6 +15915,10 @@ server.listen(0, '127.0.0.1', async () => {
         ['gate', '            path /loki/api/v1/push\n', '            path /loki/api/v1/push /loki/api/v1/delete\n', '書き込みの身元が push 以外'],
         ['gate', '            respond 401\n', '            reverse_proxy 127.0.0.1:3101\n', '拒否'],
         ['gate', '      if [ "${#v}" -lt 32 ]', '      if [ "${#v}" -lt 0 ]', 'fail-closed'],
+        ['gate', "    :3100 {\n        @unsafe expression `{http.request.uri.path}.matches('[.][.]|//|(^|/)[.](/|$)') || {http.request.uri}.matches('^[^?]*(?i)%2[ef]')`\n", '    :3100 {\n', '道の抜け'],
+        ['gate', "{http.request.uri.path}.matches('[.][.]|//|(^|/)[.](/|$)') || {http.request.uri}.matches('^[^?]*(?i)%2[ef]')`\n        @reader", "{http.request.uri.path}.matches('[.][.]|//|(^|/)[.](/|$)')`\n        @reader", '道の抜け'],
+        ['gate', '        route {\n            respond @unsafe 400\n            reverse_proxy @writer', '        route {\n            reverse_proxy @writer', 'route の先頭'],
+        ['gate', '            respond @unsafe 400\n            reverse_proxy @reader 127.0.0.1:3201\n', '            reverse_proxy @reader 127.0.0.1:3201\n            respond @unsafe 400\n', 'route の先頭'],
         ['loki', '                secretKeyRef: { name: observability-gate, key: writer }', '                secretKeyRef: { name: observability-gate, key: writer, optional: true }', 'optional'],
         ['tempo', '          command: ["/bin/sh", "/etc/obs-gate/gate.sh", "/etc/obs-gate/tempo.Caddyfile"]', '          command: ["caddy", "run", "--config", "/etc/obs-gate/tempo.Caddyfile"]', 'gate.sh を通らず'],
         ['loki', '    - { name: http, port: 3100, targetPort: http }', '    - { name: http, port: 3100, targetPort: 3101 }', 'Service 3100 の宛先'],
