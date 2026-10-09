@@ -13,6 +13,9 @@ namespace LlmGateway.Infrastructure.ExternalServices;
 // 素の SDK では非ストリーミング /complete が全件失敗する。
 // ADR-0038 / #850: 割当から Fable 5 を外した（analysis は Opus 5 へ）。**本ハンドラの必要性は変わらない**
 // —— Opus 5 は thinking が既定で有効であり（ADR-0025 §結果 / IADR-0101）、analysis も Opus 5 になった。
+// ［2026-10-10 追記 / #1875］5.5 系（opus-5-5 / sonnet-5-5 / haiku-5-5）へ切り替えた（IADR-0529）。3 モデルとも
+// thinking が既定で有効で無効にできず、**Haiku も thinking ブロックを返すようになった**（4.5 は返さなかった）。
+// 本ハンドラの必要性はむしろ広がった（haiku-5-5 の thinking 先頭の応答は ClaudeProviderThinkingTests が固定する）。
 //
 // 方針: 型名の**許可リスト**で残す（拒否リストではない）。将来 API が新しいブロック型を
 // 追加しても、こちら側の更新なしに自動的に落ちる＝未知型で応答全体を失わない。

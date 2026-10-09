@@ -10,6 +10,10 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Tests.Features.Completions;
 
+// ［2026-10-10 追記 / #1875・IADR-0529］利用者裁定（planning#783）で Claude の割当を 5.5 系へ切り替えたので、
+// 本ファイルが渡す・期待するモデル名（コード）を claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5 へ改めた。
+// **コメント中の旧モデル名（claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5）は当時の決定の記録**であり、書き換えていない。
+
 // T-30, FR-10, FR-11, FR-17, FR-18, ADR-0081 決定 3・フォローアップ 2, ADR-0044 決定 1, ADR-0035 決定 3,
 // ADR-0038 決定 3・5, [[IADR-0511]] (#1785):
 // **グラフサービスの 2 用途（AI 提案 `graph-suggestion`・クラスタ要約 `graph-cluster-summary`）は、
@@ -97,14 +101,14 @@ public class GraphPurposeEndpointTests(TestWebApplicationFactory factory)
     // 提案生成は選別の仕事なので claude-sonnet-5（既定 claude-opus-5 でない）。クラスタ要約は ADR-0035 決定 3 の claude-opus-5。
     // 提案は封の最高区分・要約は封の区分を名乗るので、どの区分でも同じモデルで送れること（3 モデルとも ZDR 対応）。
     [Theory]
-    [InlineData(Suggestion, "public", "claude-sonnet-5")]
-    [InlineData(Suggestion, "internal", "claude-sonnet-5")]
-    [InlineData(Suggestion, "confidential", "claude-sonnet-5")]
-    [InlineData(Suggestion, "restricted", "claude-sonnet-5")]
-    [InlineData(ClusterSummary, "public", "claude-opus-5")]
-    [InlineData(ClusterSummary, "internal", "claude-opus-5")]
-    [InlineData(ClusterSummary, "confidential", "claude-opus-5")]
-    [InlineData(ClusterSummary, "restricted", "claude-opus-5")]
+    [InlineData(Suggestion, "public", "claude-sonnet-5-5")]
+    [InlineData(Suggestion, "internal", "claude-sonnet-5-5")]
+    [InlineData(Suggestion, "confidential", "claude-sonnet-5-5")]
+    [InlineData(Suggestion, "restricted", "claude-sonnet-5-5")]
+    [InlineData(ClusterSummary, "public", "claude-opus-5-5")]
+    [InlineData(ClusterSummary, "internal", "claude-opus-5-5")]
+    [InlineData(ClusterSummary, "confidential", "claude-opus-5-5")]
+    [InlineData(ClusterSummary, "restricted", "claude-opus-5-5")]
     public async Task PostComplete_GraphPurpose_SelectsAssignedModelAcrossSensitivities(
         string purpose, string confidentiality, string expectedModel)
     {
@@ -129,7 +133,7 @@ public class GraphPurposeEndpointTests(TestWebApplicationFactory factory)
         var decision = router.Route(new RoutingRequest(SensitivityClass.Internal, Suggestion));
 
         decision.Allowed.Should().BeTrue();
-        decision.Model.Should().Be("claude-sonnet-5");
+        decision.Model.Should().Be("claude-sonnet-5-5");
         decision.Model.Should().NotBe(claude.DefaultModel, "未登録の用途は DefaultModel（最も高い単価）へ落ちる");
     }
 
@@ -138,11 +142,11 @@ public class GraphPurposeEndpointTests(TestWebApplicationFactory factory)
     // ルーターを組み、なお claude-opus-5 が選ばれることで割当が効いていることを示す（未登録なら差し替えた既定が出る）。
     // 提案生成も同じ形で確かめる（既定の改定に無音で追随しないこと。IADR-0112 決定 1）。
     [Theory]
-    [InlineData(Suggestion, "claude-sonnet-5")]
-    [InlineData(ClusterSummary, "claude-opus-5")]
+    [InlineData(Suggestion, "claude-sonnet-5-5")]
+    [InlineData(ClusterSummary, "claude-opus-5-5")]
     public void Route_GraphPurpose_ResolvesViaPurposeModelsEvenWhenDefaultModelChanges(string purpose, string expectedModel)
     {
-        var options = WithDefaultModel(Deployed(), "claude-haiku-4-5");
+        var options = WithDefaultModel(Deployed(), "claude-haiku-5-5");
         var router = new LlmRouter(Options.Create(options), NullLogger<LlmRouter>.Instance);
 
         var decision = router.Route(new RoutingRequest(SensitivityClass.Confidential, purpose));
@@ -155,8 +159,8 @@ public class GraphPurposeEndpointTests(TestWebApplicationFactory factory)
     // T-30 ③, ADR-0038 決定 3・5, [[IADR-0511]] 決定 1・2: 鎖は 1 段下位・安価側へ向かい、ルーターが実際に返す
     // （鎖の要素が Models 未登録・ZDR 不適格なら warn を出して落とされ、空になる）。
     [Theory]
-    [InlineData(Suggestion, "claude-haiku-4-5")]
-    [InlineData(ClusterSummary, "claude-sonnet-5")]
+    [InlineData(Suggestion, "claude-haiku-5-5")]
+    [InlineData(ClusterSummary, "claude-sonnet-5-5")]
     public void Route_GraphPurpose_CarriesOneStepCheaperFallback(string purpose, string expectedFallback)
     {
         var deployed = Deployed();
@@ -196,15 +200,15 @@ public class GraphPurposeEndpointTests(TestWebApplicationFactory factory)
 
         var suggestion = probe.Items.Where(m => m.Tags[LlmCompletionMetrics.PurposeTag] == Suggestion).ToList();
         suggestion.Should().Contain(m => m.Instrument == LlmUsageMetrics.TokensCounterName
-            && m.Tags[LlmCompletionMetrics.ModelTag] == "claude-sonnet-5");
+            && m.Tags[LlmCompletionMetrics.ModelTag] == "claude-sonnet-5-5");
         suggestion.Should().Contain(m => m.Instrument == LlmUsageMetrics.CostCounterName && m.Value > 0,
-            "claude-sonnet-5 は単価表にあるので金額へ換算される");
+            "claude-sonnet-5-5 は単価表にあるので金額へ換算される");
 
         var summary = probe.Items.Where(m => m.Tags[LlmCompletionMetrics.PurposeTag] == ClusterSummary).ToList();
         summary.Should().Contain(m => m.Instrument == LlmUsageMetrics.TokensCounterName
-            && m.Tags[LlmCompletionMetrics.ModelTag] == "claude-opus-5");
+            && m.Tags[LlmCompletionMetrics.ModelTag] == "claude-opus-5-5");
         summary.Should().Contain(m => m.Instrument == LlmUsageMetrics.CostCounterName && m.Value > 0,
-            "claude-opus-5 は単価表にあるので金額へ換算される");
+            "claude-opus-5-5 は単価表にあるので金額へ換算される");
 
         probe.Items.Should().NotContain(m => m.Tags[LlmCompletionMetrics.PurposeTag] == LlmMetricValues.Other,
             "未登録なら other へ集約され、提案生成・クラスタ要約の費用を切り分けられない（ADR-0081 フォローアップ 2）");

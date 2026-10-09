@@ -148,18 +148,21 @@
     "docs/tests/FR-10_dashboard.md": [
       "BatchLoopForeignCancellationTests",
       "DashboardEndpointTests",
+      "DeployedPriceTableTests",
       "GraphDocumentBodyUpdatedAtTests",
       "GrpcKnowledgeHealthReporterTests",
       "KnowledgeHealthEndpointTests",
       "KnowledgeHealthProducerTests",
       "LlmUsageMetricsTests",
       "ModelPriceTableTests",
+      "ModelPricingOptionsValidatorTests",
       "UsageRetentionTests"
     ],
     "docs/tests/FR-11_llm-egress-routing.md": [
       "AnthropicClientWiringTests",
       "AnthropicContentBlockSanitizerTests",
       "AnthropicHttpClientTests",
+      "ClaudeProviderRequestShapeTests",
       "ClaudeProviderStopReasonTests",
       "ClaudeProviderThinkingTests",
       "CompletionFallbackEndpointTests",

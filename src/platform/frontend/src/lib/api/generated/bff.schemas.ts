@@ -1384,7 +1384,7 @@ export const CompletionApiRequestConfidentiality = {
 
 export interface CompletionApiRequest {
   prompt: string;
-  /** 出力トークン上限。thinking（拡張思考）が既定で有効なモデル（Opus 5 / Sonnet 5 等）では 思考トークンと本文の合算上限になるため、既定は本文想定長＋思考の作業領域を見込んだ 4096 とする（IADR-0101）。小さすぎると本文が空または途中で切れる。 */
+  /** 出力トークン上限。thinking（拡張思考）が既定で有効なモデル（Opus 5 / Sonnet 5、5.5 系の Opus / Sonnet / Haiku 等）では 思考トークンと本文の合算上限になるため、既定は本文想定長＋思考の作業領域を見込んだ 4096 とする（IADR-0101）。小さすぎると本文が空または途中で切れる。 */
   maxTokens?: number;
   /** 明示要求モデル。null の場合はゲートウェイが用途（purpose）に応じて選択する */
   model?: string | null;

@@ -62,7 +62,7 @@ public class RagOrchestratorStopReasonTests
     public async Task AskStreamAsync_WhenDoneReportsRefusal_EmitsRefusalToken(LlmTransportKind transport)
     {
         const string sse =
-            "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5\"," +
+            "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5-5\"," +
             "\"inputTokens\":11,\"outputTokens\":0,\"stopReason\":\"refusal\"}\n\n";
         var orchestrator = new RagOrchestrator(
             new RoutingHttpClientFactory(sse, "text/event-stream"),
@@ -86,7 +86,7 @@ public class RagOrchestratorStopReasonTests
     public async Task AskStreamAsync_WhenRefusedWithoutDeltas_EmitsNoticeWithoutLeadingBlankLine(LlmTransportKind transport)
     {
         const string sse =
-            "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5\"," +
+            "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5-5\"," +
             "\"inputTokens\":11,\"outputTokens\":0,\"stopReason\":\"refusal\"}\n\n";
         var orchestrator = new RagOrchestrator(
             new RoutingHttpClientFactory(sse, "text/event-stream"),
@@ -112,7 +112,7 @@ public class RagOrchestratorStopReasonTests
     {
         const string sse =
             "data: {\"delta\":\"書きかけの本文\"}\n\n" +
-            "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5\"," +
+            "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5-5\"," +
             "\"inputTokens\":11,\"outputTokens\":5,\"stopReason\":\"refusal\"}\n\n";
         var orchestrator = new RagOrchestrator(
             new RoutingHttpClientFactory(sse, "text/event-stream"),
@@ -132,7 +132,7 @@ public class RagOrchestratorStopReasonTests
 
     private static string CompletionJson(string stopReason, string text) =>
         $$"""
-        {"text":"{{text}}","model":"claude-opus-5","inputTokens":11,"outputTokens":0,
+        {"text":"{{text}}","model":"claude-opus-5-5","inputTokens":11,"outputTokens":0,
          "sent":true,"endpoint":"claude-managed","routingReason":"ok","stopReason":"{{stopReason}}"}
         """;
 

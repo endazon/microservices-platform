@@ -21,7 +21,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Llm:ApiKey"] = "test-key",
-                ["Llm:Model"] = "claude-opus-5",
+                ["Llm:Model"] = "claude-opus-5-5",
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 // #1364: issuer は発行器と揃える（`TestServiceTokens` が検証側も同じ値へ差し替える）。
                 ["Auth:Authority"] = TestServiceTokens.Issuer,

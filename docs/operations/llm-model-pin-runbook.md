@@ -3,15 +3,15 @@ title: 運用 Runbook — ピン留め LLM モデルの版数移行と利用不�
 type: runbook
 status: fixed
 created: 2026-08-11
-updated: 2026-10-08
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [FR-11]
 adrs: [ADR-0038, ADR-0048, AST:ADR-0011]
-iadrs: [IADR-0058, IADR-0102, IADR-0112, IADR-0141, IADR-0225, IADR-0228, IADR-0331, IADR-0511]
-specs: [20260811_issue-587_pin-migration-runbook, 20260831_issue-1092_planning-submodule-residual-refs, 20261008_1785_graph-purpose-models]
-issues: [#382, #440, #587, #1092, #1785, AST#296, planning#50, planning#426]
+iadrs: [IADR-0058, IADR-0102, IADR-0112, IADR-0141, IADR-0225, IADR-0228, IADR-0331, IADR-0511, IADR-0529]
+specs: [20260811_issue-587_pin-migration-runbook, 20260831_issue-1092_planning-submodule-residual-refs, 20261008_1785_graph-purpose-models, 20261010_1875_claude-5-5-models]
+issues: [#382, #440, #587, #1092, #1785, #1875, AST#296, planning#50, planning#426, planning#783]
 -->
 
 # 運用 Runbook: ピン留め LLM モデルの版数移行と利用不能時の振る舞い
@@ -94,6 +94,22 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 - **Stage 0 再検証の結果**（実行日・合否・根拠へのリンク）
 - 変更の理由
 
+### ［2026-10-10 追記］5.5 系への一括切替で、この手順をどう踏んだか
+
+利用者裁定（2026-10-10）で、**取引判断の 2 層（`trade-decision`・`trade-decision-screening`）を含む全用途**の割当を
+5.5 系へ切り替えた（`claude-sonnet-5` → `claude-sonnet-5-5`・`claude-haiku-4-5` → `claude-haiku-5-5` ほか）。3 段の扱いは次のとおりである。
+
+| 段 | 扱い |
+| --- | --- |
+| 1. Stage 0 の再実行 | **本切替の時点では済んでいない。** 5.5 系の両層の組での再実行は AST 側の手続きとして計画側の裁定に含まれている。**合格の確認が取れるまで、取引判断は実弾で動かさない**（Stage 0 の合格は実弾解禁の必須ゲートである。前回のピン改定と同じ扱い）。基盤側は、利用者裁定が取引判断の 2 層を明示的に含めたことを根拠に設定を先に切り替えた |
+| 2. 設定の更新 | `PurposeModels` の 2 用途を新版へ改め、`Endpoints[claude-managed].Models` に新版を**追加**した。旧版は**切り戻しのために残した**（`Models` から外すと、切り戻しの設定変更だけでは戻れなくなる）。鎖は従前どおり付けていない |
+| 3. 実装 ADR への記録 | 版数の変更・理由（利用者裁定）・Stage 0 の状態（上記。結果は AST 側で記録される）を、本切替の実装 ADR に残した |
+
+- **配備の順序**: AST はゲートウェイが返すモデル名を割当表と完全一致で照合する。**AST 側が旧・新の両方の ID を受ける段を先に配備し、その後で本切替を配備する。**
+  逆順にすると、切替から AST の配備までの間、取引判断が「割当と違うモデル」として扱われる。
+- **切り戻し**: `PurposeModels` の該当用途を旧版へ戻す（旧版は `Models` と単価表に残っている）。用途別 effort（`Llm:PurposeEffort`）は
+  effort を受けないモデル（`claude-haiku-4-5`）へは送られないので、戻すときに外さなくてよい。
+
 ---
 
 ## ★ 利用不能時の振る舞い —— 実行せず、発注もしない
@@ -142,6 +158,8 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 > **［2026-08-21 更新］鎖を持つのは 4 用途である** —— `analysis`（`claude-opus-5` → `claude-sonnet-5`）・
 > `diagram-coding`（`claude-sonnet-5` → `claude-haiku-4-5`）・`default`（`claude-opus-5` → `claude-sonnet-5`）・
 > `rag-answer`（`claude-sonnet-5` → `claude-haiku-4-5`）。
+> **［2026-10-10 追記］** 5.5 系への切替後は各モデルが 5.5 系へ置き換わり、鎖を持つ用途は報告書 3 種とグラフの 2 用途を加えた 9 用途である
+> （現在の一覧は上の §対象 のコマンドの出力を正とする）。`trade-decision` と `trade-decision-screening` が鎖を持たないことは変わらない。
 > 従前ここには「鎖を持つのは `analysis` だけ」と書いていたが、**`diagram-coding` を数え落としており、
 > `default` / `rag-answer` は計画側の裁定で確定した**。**いずれも安価側への 1 段下位**である。
 > **`trade-decision` と報告書系（`report-monthly` / `report-weekly` / `report-daily`）は鎖を持たず、

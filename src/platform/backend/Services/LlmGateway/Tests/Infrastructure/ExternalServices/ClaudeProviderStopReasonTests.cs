@@ -19,7 +19,7 @@ public class ClaudeProviderStopReasonTests
     private static ClaudeProvider Provider(HttpMessageHandler handler) =>
         new(new AnthropicClient(new APIAuthentication("test-key"), new HttpClient(handler)),
             new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> { ["Llm:Model"] = "claude-opus-5" })
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Llm:Model"] = "claude-opus-5-5" })
                 .Build());
 
     // Anthropic Messages API の応答 JSON（必要部分）。content は 0 個以上の text ブロック。
@@ -31,7 +31,7 @@ public class ClaudeProviderStopReasonTests
           "id": "msg_test",
           "type": "message",
           "role": "assistant",
-          "model": "claude-opus-5",
+          "model": "claude-opus-5-5",
           "content": [{{content}}],
           "stop_reason": "{{stopReason}}",
           "stop_sequence": null,
@@ -127,7 +127,7 @@ public class ClaudeProviderStopReasonTests
     {
         const string sse = """
         event: message_start
-        data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","model":"claude-opus-5","content":[],"stop_reason":null,"usage":{"input_tokens":11,"output_tokens":0}}}
+        data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","model":"claude-opus-5-5","content":[],"stop_reason":null,"usage":{"input_tokens":11,"output_tokens":0}}}
 
         event: content_block_delta
         data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"書きかけ"}}
@@ -156,7 +156,7 @@ public class ClaudeProviderStopReasonTests
     {
         const string sse = """
         event: message_start
-        data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","model":"claude-opus-5","content":[],"stop_reason":null,"usage":{"input_tokens":11,"output_tokens":0}}}
+        data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","model":"claude-opus-5-5","content":[],"stop_reason":null,"usage":{"input_tokens":11,"output_tokens":0}}}
 
         event: content_block_delta
         data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"回答"}}

@@ -3,29 +3,43 @@ using LlmGateway.Domain.Ports;
 using Platform.Shared.Contracts.Dtos;
 using Anthropic.SDK;
 using Anthropic.SDK.Messaging;
+using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Infrastructure.ExternalServices;
 
-// ADR-0010: Claude SDK デフォルト実装。既定モデルは claude-opus-5（ADR-0025 追従・IADR-0101。
+// ADR-0010: Claude SDK デフォルト実装。既定モデルは claude-opus-5-5（ADR-0025 追従・IADR-0101。
 // 既定 Opus 経路そのものの決定は IADR-0022）。
-// 定型用途は claude-sonnet-5（ADR-0022 追従・IADR-0106）/ claude-haiku-4-5 を
+// 定型用途は claude-sonnet-5-5（ADR-0022 追従・IADR-0106）/ claude-haiku-5-5 を
 // ルーター（用途別）で選択する。
 // ［2026-08-18 追記 / #850］計画 ADR-0038（Accepted）決定 1・2 により、最難関用途 analysis の割当は
 // claude-fable-5 → claude-opus-5 へ改定し、claude-fable-5 は claude-managed の Models からも外した
 // （基盤のいかなる用途でも用いない。ZDR 有効化の優先）。旧割当の根拠は IADR-0022 を参照。
-// ⚠️ Opus 5 / Sonnet 5 は thinking（拡張思考）が既定で有効であり、MaxTokens は思考トークンと本文の
+// ［2026-10-10 追記 / #1875］利用者裁定（planning#783）で全割当を 5.5 系へ切り替えた
+// （opus-5 → opus-5-5・sonnet-5 → sonnet-5-5・haiku-4-5 → haiku-5-5。IADR-0529）。fable は引き続き用いない。
+// ⚠️ 5.5 系は 3 モデルとも thinking（adaptive）が既定で有効で**無効にできない**。MaxTokens は思考トークンと本文の
 // 合算上限になる。切り詰めると本文が途中で切れるため、既定値は思考分の余裕を含める（IADR-0101）。
-// なお本実装は thinking / temperature / top_p / top_k / assistant prefill を送らない（Opus 5 で 400 になる
-// パラメータを持ち込まないため。変更する場合は IADR-0101 の選択肢 2 の検討結果を参照）。
-public class ClaudeProvider(AnthropicClient client, IConfiguration config) : ILlmProvider
+// 🔴 本実装は thinking / temperature / top_p / top_k / tool_choice / assistant prefill を送らない
+// （5.5 系で 400 になる。要求本文に無いことを ClaudeProviderRequestShapeTests が固定する。IADR-0529 決定 4）。
+// 思考の量を絞る手段は effort だけであり、用途別に `Llm:PurposeEffort` で与える（IADR-0529 決定 3）。
+// SDK（Anthropic.SDK 4.0.0）は effort を送れないので、AnthropicRequestShapingHandler が要求本文へ足す。
+public class ClaudeProvider(
+    AnthropicClient client,
+    IConfiguration config,
+    IOptionsMonitor<ClaudePurposeEffortOptions>? effortOptions = null) : ILlmProvider
 {
-    private readonly string _model = config["Llm:Model"] ?? "claude-opus-5";
+    private readonly string _model = config["Llm:Model"] ?? "claude-opus-5-5";
+
+    // 用途とモデルから送る effort を決める（未設定・非対応モデルは null＝送らない）。
+    private string? EffortFor(CompletionRequest request, string model)
+        => ClaudeEffort.Resolve(effortOptions?.CurrentValue, request.Purpose, model);
 
     public async Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
     {
+        var model = request.Model ?? _model;
+        using var effortScope = AnthropicRequestContext.UseEffort(EffortFor(request, model));
         var msg = await client.Messages.GetClaudeMessageAsync(new MessageParameters
         {
-            Model = request.Model ?? _model,
+            Model = model,
             MaxTokens = request.MaxTokens,
             Messages =
             [
@@ -56,9 +70,10 @@ public class ClaudeProvider(AnthropicClient client, IConfiguration config) : ILl
     public async IAsyncEnumerable<CompletionChunk> StreamAsync(
         CompletionRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
+        var model = request.Model ?? _model;
         var parameters = new MessageParameters
         {
-            Model = request.Model ?? _model,
+            Model = model,
             MaxTokens = request.MaxTokens,
             Stream = true,
             Messages =
@@ -73,6 +88,8 @@ public class ClaudeProvider(AnthropicClient client, IConfiguration config) : ILl
 
         int inputTokens = 0, outputTokens = 0;
         string? stopReason = null;
+        // IADR-0529: 要求の送信は最初の MoveNextAsync（この反復子の同じ段）で起きるので、ここで張った文脈が届く。
+        using var effortScope = AnthropicRequestContext.UseEffort(EffortFor(request, model));
         await foreach (var res in client.Messages.StreamClaudeMessageAsync(parameters, ct))
         {
             // message_start で入力トークン、message_delta で出力トークンが逐次確定する。

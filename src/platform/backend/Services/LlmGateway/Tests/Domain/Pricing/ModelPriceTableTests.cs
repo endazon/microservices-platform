@@ -172,6 +172,54 @@ public class ModelPriceTableTests
         logger.Entries.Should().BeEmpty();
     }
 
+    // FR-11, ADR-0044 決定 3, IADR-0529 (#1875): プロンプト長で単価が 2 段のモデル（claude-haiku-5-5 の形）。
+    private static ModelPricingOptions TieredTable() => new()
+    {
+        Models =
+        {
+            ["claude-haiku-5-5"] =
+            [
+                new ModelPriceEntry
+                {
+                    InputPerMillionTokens = 0.10m,
+                    OutputPerMillionTokens = 0.50m,
+                    LongPrompt = new LongPromptPrice
+                    {
+                        ThresholdInputTokens = 100_000,
+                        InputPerMillionTokens = 0.50m,
+                        OutputPerMillionTokens = 2.50m,
+                    },
+                },
+            ],
+        },
+    };
+
+    // FR-10 T-46 (IADR-0529): 段は**その要求の入力トークン数**で決まり、境界ちょうど（100,000）は下段、1 つ超えると上段。
+    // 上段は入力・出力の**両方**に効く。境界の比較を >= に変えても、上段の出力単価を下段のまま残しても赤くなる。
+    [Theory]
+    [InlineData(100_000L, 1_000_000L, false, 0.01, 0.50)]      // 境界ちょうど: 下段（入力 0.10 / 出力 0.50）
+    [InlineData(100_001L, 1_000_000L, true, 0.0500005, 2.50)] // 境界 +1: 上段（入力 0.50 / 出力 2.50）
+    [InlineData(1L, 0L, false, 0.0000001, 0)]                  // 小さな要求: 下段
+    public void プロンプト長で単価の段を要求ごとに選ぶ(
+        long inputTokens, long outputTokens, bool longPrompt, double inputCost, double outputCost)
+    {
+        var result = Table(TieredTable()).Estimate("claude-haiku-5-5", inputTokens, outputTokens, Switch);
+
+        result.Status.Should().Be(PricingStatus.Priced);
+        result.LongPromptApplied.Should().Be(longPrompt);
+        result.Cost.Should().Be((decimal)inputCost + (decimal)outputCost);
+    }
+
+    // FR-10 T-47 (IADR-0529): 上段を持たない単価（1 段）は入力がどれほど大きくても従前どおり 1 段で換算する（回帰防止）。
+    [Fact]
+    public void 上段を持たない単価は入力の大きさによらず1段()
+    {
+        var result = Table().Estimate("claude-sonnet-5", 1_000_000, 0, Switch.AddDays(-1));
+
+        result.LongPromptApplied.Should().BeFalse();
+        result.Cost.Should().Be(2.0m);
+    }
+
     // ログ出力を検証するための最小のロガー（OpenAiProviderStopReasonTests と同型）。
     private sealed class RecordingLogger<T> : ILogger<T>
     {

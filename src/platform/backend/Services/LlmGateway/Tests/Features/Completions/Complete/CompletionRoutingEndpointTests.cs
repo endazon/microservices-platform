@@ -8,6 +8,10 @@ using System.Net.Http.Json;
 
 namespace LlmGateway.Tests.Features.Completions.Complete;
 
+// ［2026-10-10 追記 / #1875・IADR-0529］利用者裁定（planning#783）で Claude の割当を 5.5 系へ切り替えたので、
+// 本ファイルが渡す・期待するモデル名（コード）を claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5 へ改めた。
+// **コメント中の旧モデル名（claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5）は当時の決定の記録**であり、書き換えていない。
+
 // FR-11, ADR-0010: /complete が機密区分・用途に応じて呼び出し先を切り替え、
 // 許容ティアが無い場合は送信を拒否（縮退）することを検証する。
 // IADR-0110 (#395): メトリクス購読テスト（CompletionMetricsTests）と直列化する。
@@ -63,12 +67,12 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     // 検証区分は public のまま据え置く（旧: ZDR 非対応の fable-5 が confidential/restricted で除外されるため。
     // 現在その制約は無いが、区分を変えると本ケースの意味も変わるので #850 では動かさない）。
     [Theory]
-    [InlineData("analysis", "claude-opus-5")]
-    [InlineData("rag-answer", "claude-sonnet-5")]
+    [InlineData("analysis", "claude-opus-5-5")]
+    [InlineData("rag-answer", "claude-sonnet-5-5")]
     // ［2026-08-21 追記 / #440］計画 06_technical/04_ai-rag-stack（fixed）§変更履歴 2026-08-02 と INDEX 決定 6 により
     // diagram-coding のピンを claude-haiku-4-5 → claude-sonnet-5 へ改定した（質問票 第4回 Q12 =(あ)・planning#83。
     // **単価 3 倍**を受け入れた裁定である）。claude-haiku-4-5 はフォールバック先として利用許可集合に残る。
-    [InlineData("diagram-coding", "claude-sonnet-5")]
+    [InlineData("diagram-coding", "claude-sonnet-5-5")]
     public async Task PostComplete_WithoutExplicitModel_SelectsPurposeModel(string purpose, string expectedModel)
     {
         var req = new { Prompt = "要約", MaxTokens = 100, Confidentiality = "public", Purpose = purpose };
@@ -98,7 +102,7 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
         body.Endpoint.Should().Be("claude-managed");
-        body.Model.Should().Be("claude-opus-5");
+        body.Model.Should().Be("claude-opus-5-5");
         body.Model.Should().NotBe("claude-fable-5");
     }
 
@@ -230,7 +234,7 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     // T-19, ADR-0022 / IADR-0106: 定型 RAG 回答は Sonnet 5 を選択し、既定（DefaultModel=claude-opus-5）へ
     // 落ちない。ADR-0022（Accepted）の確定値であり、ADR-0025 §決定も他層は Sonnet 5 と明記している。
     [Fact]
-    public async Task PostComplete_RagAnswer_SelectsSonnet5AndDoesNotFallBackToDefault()
+    public async Task PostComplete_RagAnswer_SelectsSonnet55AndDoesNotFallBackToDefault()
     {
         var req = new { Prompt = "文書を要約して", MaxTokens = 100, Confidentiality = "public", Purpose = "rag-answer" };
         var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
@@ -238,8 +242,8 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
-        body.Model.Should().Be("claude-sonnet-5");
-        body.Model.Should().NotBe("claude-opus-5");  // DefaultModel への無音フォールバックでないこと
+        body.Model.Should().Be("claude-sonnet-5-5");
+        body.Model.Should().NotBe("claude-opus-5-5");  // DefaultModel への無音フォールバックでないこと
     }
 
     // T-22, FR-11, IADR-0112, AST/04_workflows/03_reporting-cycle: 報告書は方針階層（月報→週報→日報→取引）を
@@ -253,9 +257,9 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     // 機密区分は report-service の既定値（internal）で検証する（従来は fable-5 が ZDR 非対応であることを避けて
     // public で検証していたが、その制約は無くなった）。
     [Theory]
-    [InlineData("report-monthly", "claude-opus-5")]
-    [InlineData("report-weekly", "claude-opus-5")]
-    [InlineData("report-daily", "claude-sonnet-5")]
+    [InlineData("report-monthly", "claude-opus-5-5")]
+    [InlineData("report-weekly", "claude-opus-5-5")]
+    [InlineData("report-daily", "claude-sonnet-5-5")]
     public async Task PostComplete_ReportKindPurpose_SelectsKindSpecificModel(string purpose, string expectedModel)
     {
         var req = new { Prompt = "報告書の散文", MaxTokens = 100, Confidentiality = "internal", Purpose = purpose };
@@ -271,7 +275,7 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     // ADR-0011 の「バージョン固定」原則は維持されており、改定したのはピンの値であってピンする仕組みではない。
     // DefaultModel（claude-opus-5）と異なる値を返すことが、固定が生きている（default に追随していない）証拠になる。
     [Fact]
-    public async Task PostComplete_TradeDecision_SelectsSonnet5AndDoesNotFallBackToDefault()
+    public async Task PostComplete_TradeDecision_SelectsSonnet55AndDoesNotFallBackToDefault()
     {
         var req = new { Prompt = "銘柄の売買判断", MaxTokens = 100, Confidentiality = "internal", Purpose = "trade-decision" };
         var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
@@ -279,8 +283,8 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
-        body.Model.Should().Be("claude-sonnet-5");
-        body.Model.Should().NotBe("claude-opus-5");   // DefaultModel への無音フォールバックでないこと
+        body.Model.Should().Be("claude-sonnet-5-5");
+        body.Model.Should().NotBe("claude-opus-5-5");   // DefaultModel への無音フォールバックでないこと
         body.Model.Should().NotBe("claude-opus-4-8"); // 旧ピン（IADR-0102）が残っていないこと
     }
 
@@ -289,7 +293,7 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     // 「割当外」と判定され続けていた（二段判断の層別用途登録の実装 ADR）。DefaultModel への無音フォールバック
     // でないことも併せて固定する。
     [Fact]
-    public async Task PostComplete_TradeDecisionScreening_SelectsHaiku45AndDoesNotFallBackToDefault()
+    public async Task PostComplete_TradeDecisionScreening_SelectsHaiku55AndDoesNotFallBackToDefault()
     {
         var req = new { Prompt = "銘柄の一次絞り込み", MaxTokens = 100, Confidentiality = "internal", Purpose = "trade-decision-screening" };
         var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
@@ -297,9 +301,9 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
-        body.Model.Should().Be("claude-haiku-4-5");
-        body.Model.Should().NotBe("claude-opus-5");     // DefaultModel への無音フォールバックでないこと
-        body.Model.Should().NotBe("claude-sonnet-5");   // 本判断の割当（trade-decision）と混同していないこと
+        body.Model.Should().Be("claude-haiku-5-5");
+        body.Model.Should().NotBe("claude-opus-5-5");     // DefaultModel への無音フォールバックでないこと
+        body.Model.Should().NotBe("claude-sonnet-5-5");   // 本判断の割当（trade-decision）と混同していないこと
     }
 
     // T-23, IADR-0113 (#309), IADR-0022 / 08_data-egress-policy: 報告書の割当モデルは機密区分によって
@@ -319,7 +323,7 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
         body.Endpoint.Should().Be("claude-managed");
-        body.Model.Should().Be("claude-opus-5");
+        body.Model.Should().Be("claude-opus-5-5");
         body.Model.Should().NotBe("claude-fable-5");
     }
 

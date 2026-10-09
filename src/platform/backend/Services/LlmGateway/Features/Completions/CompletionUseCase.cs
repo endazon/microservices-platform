@@ -89,7 +89,7 @@ public sealed class CompletionUseCase(
             try
             {
                 var result = await provider.CompleteAsync(
-                    new CompletionRequest(req.Prompt, req.MaxTokens, attempt.Model), ct);
+                    new CompletionRequest(req.Prompt, req.MaxTokens, attempt.Model, purpose), ct);
                 CompletionEndpoints.LogStopReason(logger, result.StopReason, attempt);
                 // IADR-0110: 越境が成立した呼び出し（拒否率の分母）。終了理由は別属性で載せる。
                 metrics.RecordCompletion(
@@ -197,7 +197,8 @@ public sealed class CompletionUseCase(
 
         // ADR-0038 決定 3 (#863): **ストリーム経路はフォールバックを実装していない**（IADR-0225 の射程外）。
         // ［2026-08-21 / #440・planning#426 裁定 (a)］鎖は analysis / diagram-coding / default / rag-answer の
-        // 4 用途が持ち、rag-answer の第 2 候補は裁定で claude-haiku-4-5 に確定した。
+        // 4 用途が持ち、rag-answer の第 2 候補は裁定で claude-haiku-4-5 に確定した（［2026-10-10 / #1875］5.5 系への
+        // 切替で claude-haiku-5-5。現在は報告書・グラフの用途も鎖を持つ。割当の正は appsettings.json）。
         // **したがって鎖を持つ用途がストリーム経路へ来ることは現に起きる。**
         // それでも実装を広げないのは、ストリームのフォールバックが「途中まで流した本文の扱い」という
         // 別の決定を要するためである（IADR-0225 が射程外と明示した理由）。下の warn が唯一の可観測点で
@@ -222,7 +223,7 @@ public sealed class CompletionUseCase(
         // try/catch で囲む（yield は try/finally の中にあってよい）。こうすると
         // **chunk が届いた瞬間に yield できる**（元の `await foreach` ＋ Send と同じ位置で送出する）。
         var enumerator = provider
-            .StreamAsync(new CompletionRequest(req.Prompt, req.MaxTokens, decision.Model), ct)
+            .StreamAsync(new CompletionRequest(req.Prompt, req.MaxTokens, decision.Model, purpose), ct)
             .GetAsyncEnumerator(ct);
         try
         {

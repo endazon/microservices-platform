@@ -8,7 +8,7 @@
  * ## なぜ要るか（同型の事故）
  *
  * 用途が `PurposeModels` に無いと、ゲートウェイは**例外もログも無く**エンドポイントの `DefaultModel`
- * （`claude-opus-5`・最も高い単価）へ落とし（`LlmRouter.ResolveModel`）、計器は用途を `other` へ丸める
+ * （`claude-opus-5-5`・最も高い単価。2026-10-10 の 5.5 系への切替前は `claude-opus-5`）へ落とし（`LlmRouter.ResolveModel`）、計器は用途を `other` へ丸める
  * （`LlmMetricValues.NormalizePurpose`）。**費用を用途で切り分けられなくなる。**
  * `trade-decision`（IADR-0102）・`trade-decision-screening`（IADR-0340）・`graph-suggestion` /
  * `graph-cluster-summary`（#1785）と、同じ形の欠落が繰り返し起きた。

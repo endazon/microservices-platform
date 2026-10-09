@@ -17,7 +17,7 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 public class AnthropicContentBlockSanitizerTests
 {
     private static string Envelope(string blocks) =>
-        "{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-5\","
+        "{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-5-5\","
         + "\"content\":[" + blocks + "],\"stop_reason\":\"end_turn\","
         + "\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}";
 

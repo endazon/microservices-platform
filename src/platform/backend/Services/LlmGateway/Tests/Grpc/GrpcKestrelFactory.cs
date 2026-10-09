@@ -68,7 +68,7 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Llm:ApiKey"] = "test-key",
-                ["Llm:Model"] = "claude-opus-5",
+                ["Llm:Model"] = "claude-opus-5-5",
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = Issuer,
             }));

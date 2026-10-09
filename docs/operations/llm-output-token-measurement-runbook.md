@@ -9,9 +9,9 @@ updated: 2026-10-10
 <!-- trace:
 ids: [FR-11, SC-08, NFR-18, NFR-19]
 adrs: [ADR-0010, ADR-0025, ADR-0038, ADR-0044, ADR-0095]
-iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466, IADR-0511, IADR-0528]
-specs: [20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement, 20260926_issue-1558_runbook-nits, 20261005_1741_sonnet5-price-correction, 20261008_1785_graph-purpose-models, 20261010_1872_anthropic-timeout-config]
-issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558, #1741, #1785, #1872]
+iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466, IADR-0511, IADR-0528, IADR-0529]
+specs: [20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement, 20260926_issue-1558_runbook-nits, 20261005_1741_sonnet5-price-correction, 20261008_1785_graph-purpose-models, 20261010_1872_anthropic-timeout-config, 20261010_1875_claude-5-5-models]
+issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558, #1741, #1785, #1872, #1875, planning#783]
 -->
 
 # 運用 Runbook: 既定層 LLM の出力トークン実測
@@ -24,6 +24,10 @@ issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558, #1741, #1785, #1872]
 > 本書はその判断に要る数字（§2）と、判断した後の手順（§3〜§6）を与える。**AI はキーを入れず、実行もしない。**
 >
 > **キーの値は本書にもリポジトリのどこにも置かない。**
+>
+> **［2026-10-10 追記］既定層は `claude-opus-5-5` へ移った**（利用者裁定で Claude の割当を全用途 5.5 系へ切り替えた）。本書の対象モデル・単価・
+> 最悪額・PromQL の `llm_model` はこれに合わせて改めた。**旧 `claude-opus-5` で取った分布は新しい既定層の判断に流用しない** ——
+> `claude-opus-5-5` は既定の effort が `medium`（旧は `high`）で、思考の量の分布が変わる。
 
 ## この手順を実行する条件（いつ走らせるか）
 
@@ -133,8 +137,8 @@ console.log(d.Llm.Pricing.Currency, JSON.stringify(d.Llm.Pricing.Models, null, 1
 
 | モデル | 入力 | 出力 | 本書での使いみち |
 | --- | --- | --- | --- |
-| `claude-opus-5` | 5.0 USD | 25.0 USD | **既定層**（`PurposeModels.default`）。標本の本体（AI 分析） |
-| `claude-sonnet-5` | 2.0 USD | 10.0 USD（［2026-10-05 訂正］予定されていた 3.0 / 15.0 への引き上げは中止された。期限なしの 1 区間） | 検索チャットの回答（任意の追加標本）・AI 分析のフォールバック先 |
+| `claude-opus-5-5` | 4.0 USD | 20.0 USD | **既定層**（`PurposeModels.default`）。標本の本体（AI 分析）。［2026-10-10］旧 `claude-opus-5` は 5.0 / 25.0 USD |
+| `claude-sonnet-5-5` | 2.0 USD | 10.0 USD（旧 `claude-sonnet-5` と同じ。旧モデルについては［2026-10-05 訂正］予定されていた 3.0 / 15.0 への引き上げは中止された） | 検索チャットの回答（任意の追加標本）・AI 分析のフォールバック先 |
 
 ### 式
 
@@ -149,14 +153,14 @@ console.log(d.Llm.Pricing.Currency, JSON.stringify(d.Llm.Pricing.Models, null, 1
 AI 分析が渡す文脈は既定で上位 5 チャンク、1 チャンクは最大 2,048 文字。5 × 2,048 = 10,240 文字を
 1 文字 1.5 トークンと見て 15,360、指示文を足して丸めた）。**16,000 は推定である。§3-3 で実測値へ置き換える。**
 
-### `claude-opus-5`（AI 分析）の最悪額
+### `claude-opus-5-5`（AI 分析）の最悪額
 
 | 入力 | 1 回あたり | N = 50 | N = 100 | N = 200 |
 | --- | --- | --- | --- | --- |
-| 4,000 | 0.020 + 0.1024 = **0.1224 USD** | 6.12 USD | 12.24 USD | 24.48 USD |
-| 16,000 | 0.080 + 0.1024 = **0.1824 USD** | 9.12 USD | 18.24 USD | 36.48 USD |
+| 4,000 | 0.016 + 0.08192 = **0.09792 USD** | 4.896 USD | 9.792 USD | 19.584 USD |
+| 16,000 | 0.064 + 0.08192 = **0.14592 USD** | 7.296 USD | 14.592 USD | 29.184 USD |
 
-### `claude-sonnet-5`（検索チャット。任意）の最悪額
+### `claude-sonnet-5-5`（検索チャット。任意）の最悪額
 
 | 入力 | 1 回あたり | N = 50 | N = 100 | N = 200 |
 | --- | --- | --- | --- | --- |
@@ -164,10 +168,10 @@ AI 分析が渡す文脈は既定で上位 5 チャンク、1 チャンクは最
 | 16,000 | 0.032 + 0.04096 = **0.07296 USD** | 3.648 USD | 7.296 USD | 14.592 USD |
 
 - **これは上限であって見込みではない。** 実際の額は出力の分布で決まり、§4-4 で読める。
-- **フォールバック**: AI 分析の第 1 候補が 4xx（429 を除く）で断られると、同じ依頼が `claude-sonnet-5` で 1 回だけ再送される。
+- **フォールバック**: AI 分析の第 1 候補が 4xx（429 を除く）で断られると、同じ依頼が `claude-sonnet-5-5` で 1 回だけ再送される。
   断られた試行は応答を生成していないので通常は加算されないが、仮に両方を数えても 1 依頼あたり
-  0.1824 + 0.07296 = **0.25536 USD**（入力 16,000 のとき）を超えない。
-- 🔴 **キーを入れた時点で、標本以外の経路も費用を出し始める。** グラフの AI 提案（文書の更新を購読して発火し、`claude-sonnet-5` へ行く。
+  0.14592 + 0.07296 = **0.21888 USD**（入力 16,000 のとき）を超えない。
+- 🔴 **キーを入れた時点で、標本以外の経路も費用を出し始める。** グラフの AI 提案（文書の更新を購読して発火し、`claude-sonnet-5-5` へ行く。
   メトリクス上の用途は `graph-suggestion`。［2026-10-08］以前は用途の登録が無く `claude-opus-5` へ落ち、用途は `other` だった）、検索チャット、図のコード化、同じゲートウェイを使う他ユニットの呼び出しである。
   標本の期間中は文書の大量取り込みを避け、§4-4 の費用の累計を**用途別に**見て、承認額を超えそうなら §3-4 で止める。
 
@@ -220,18 +224,18 @@ q 'sum by (llm_purpose, llm_model) (increase(llm_tokens_total{llm_token_type="in
    / sum by (llm_purpose, llm_model) (increase(llm_completion_total{llm_result="sent"}[1d]))'
 ```
 
-`analysis` / `claude-opus-5` の値を §2 の式の入力に入れて 1 回あたりの最悪額を出し直し、**承認額 ÷ 最悪額 ≥ 残りの N** であることを確かめる。
+`analysis` / `claude-opus-5-5` の値を §2 の式の入力に入れて 1 回あたりの最悪額を出し直し、**承認額 ÷ 最悪額 ≥ 残りの N** であることを確かめる。
 足りなければ N を減らすか、承認額を上げる判断を所有者が行う。
 
 ### 3-4. 標本を N 件までつくる
 
-- **発生源は AI 分析ダッシュボードだけにする**（本リポジトリで人が意図して `claude-opus-5` を呼べるのはここである。
-  メトリクス上は `llm_purpose="analysis"`, `llm_model="claude-opus-5"`）。
+- **発生源は AI 分析ダッシュボードだけにする**（本リポジトリで人が意図して `claude-opus-5-5` を呼べるのはここである。
+  メトリクス上は `llm_purpose="analysis"`, `llm_model="claude-opus-5-5"`）。
 - **依頼の中身は実運用に近いものにする。** 実際に使う予定の分析指示（要約・比較・抽出）を 10〜20 種用意し、
   対象範囲（タグ・部門・プロジェクト）を変えながら回す。**短い定型文の反復は、上限を測る標本にならない**
   （思考量が実運用より少なく出る）。
 - **間隔を空ける。** 自分でレート制限を起こさないよう、1 件ずつ応答を待ってから次を送る。
-- 検索チャットの追加標本（`rag-answer` / `claude-sonnet-5`）を取る場合も同じ要領で行う。
+- 検索チャットの追加標本（`rag-answer` / `claude-sonnet-5-5`）を取る場合も同じ要領で行う。
 - 合成監視の主体では標本にならない（その主体の依頼は既定で LLM を呼ばない）。
 - 途中で §4-1 の件数と §4-4 の費用を見て、N に達したか・承認額を超えそうかを確かめる。
 
@@ -299,7 +303,7 @@ q 'sum by (llm_purpose, llm_model) (increase(llm_completion_total{llm_result="se
 q 'sum by (llm_purpose, llm_model) (increase(llm_completion_output_tokens_count[<窓>]))'
 ```
 
-- 1 本目の `analysis` / `claude-opus-5` が N に達していること。
+- 1 本目の `analysis` / `claude-opus-5-5` が N に達していること。
 - 2 本目（分布に載った件数）が 1 本目とほぼ一致すること。**Counter は送信した呼び出しを全部数え、Histogram は出力トークン数を受け取れた呼び出しだけを数える**ため、
   逐次経路で途中終了があると 2 本目が少なくなる。**判断には 2 本目を分母に使う。**
 
@@ -307,19 +311,19 @@ q 'sum by (llm_purpose, llm_model) (increase(llm_completion_output_tokens_count[
 
 ```sh
 # 累積の度数（le ごと）。上限付近の厚みを見る
-q 'sum by (le) (increase(llm_completion_output_tokens_bucket{llm_purpose="analysis", llm_model="claude-opus-5"}[<窓>]))'
+q 'sum by (le) (increase(llm_completion_output_tokens_bucket{llm_purpose="analysis", llm_model="claude-opus-5-5"}[<窓>]))'
 
 # 3072 を超えた割合（上限のすぐ下に山があるか）
-q '1 - sum(increase(llm_completion_output_tokens_bucket{llm_purpose="analysis", llm_model="claude-opus-5", le="3072"}[<窓>]))
-      / sum(increase(llm_completion_output_tokens_count{llm_purpose="analysis", llm_model="claude-opus-5"}[<窓>]))'
+q '1 - sum(increase(llm_completion_output_tokens_bucket{llm_purpose="analysis", llm_model="claude-opus-5-5", le="3072"}[<窓>]))
+      / sum(increase(llm_completion_output_tokens_count{llm_purpose="analysis", llm_model="claude-opus-5-5"}[<窓>]))'
 
 # p95 / p99（参考値）
-q 'histogram_quantile(0.95, sum by (le) (increase(llm_completion_output_tokens_bucket{llm_purpose="analysis", llm_model="claude-opus-5"}[<窓>])))'
-q 'histogram_quantile(0.99, sum by (le) (increase(llm_completion_output_tokens_bucket{llm_purpose="analysis", llm_model="claude-opus-5"}[<窓>])))'
+q 'histogram_quantile(0.95, sum by (le) (increase(llm_completion_output_tokens_bucket{llm_purpose="analysis", llm_model="claude-opus-5-5"}[<窓>])))'
+q 'histogram_quantile(0.99, sum by (le) (increase(llm_completion_output_tokens_bucket{llm_purpose="analysis", llm_model="claude-opus-5-5"}[<窓>])))'
 
 # 平均出力トークン
-q 'sum(increase(llm_completion_output_tokens_sum{llm_purpose="analysis", llm_model="claude-opus-5"}[<窓>]))
-   / sum(increase(llm_completion_output_tokens_count{llm_purpose="analysis", llm_model="claude-opus-5"}[<窓>]))'
+q 'sum(increase(llm_completion_output_tokens_sum{llm_purpose="analysis", llm_model="claude-opus-5-5"}[<窓>]))
+   / sum(increase(llm_completion_output_tokens_count{llm_purpose="analysis", llm_model="claude-opus-5-5"}[<窓>]))'
 ```
 
 - バケットの境界は `0, 16, 64, 128, 256, 512, 1024, 2048, 3072, 4096, 8192`。**`le` の値の書式は 1 本目の出力で確かめてから** 2 本目の `le="3072"` を合わせる。
@@ -374,7 +378,7 @@ N 件（§4-1 の 2 本目）のうち、上限に達した件数を H、到達�
 | r ≥ 2% または S ≥ 10% | **8192 へ引き上げる候補**。上げた後に同じ N で測り直す | 本文が空または途中で切れる応答が無視できない頻度で出ている（例外にならず静かに縮退する） |
 | 下げる | **提案しない** | `max_tokens` は上限であって消費量ではない。下げても短い応答の費用は変わらず、減るのは最悪額だけで、切断の危険が増える |
 
-- 引き上げると 1 回あたりの最悪額の出力側が倍になる（`claude-opus-5` で 0.1024 → 0.2048 USD）。§2 の式で計算し直してから承認する。
+- 引き上げると 1 回あたりの最悪額の出力側が倍になる（`claude-opus-5-5` で 0.08192 → 0.16384 USD）。§2 の式で計算し直してから承認する。
 - 8192 を超えて上げる場合は、出力トークンの計器のバケット境界（最上段 8192）も見直しが要る —— 8192 超は全部 `+Inf` に入り、分布が読めなくなる。
 - 🔴 **引き上げるなら、期限も確かめる。** ゲートウェイの Claude 呼び出しは既定 100 秒で切れる（`Llm:AnthropicTimeoutSeconds`）。
   非ストリーミングで 8,192 トークンを出し切るには約 100〜165 秒かかり得るため、上限だけ上げても期限で打ち切られる。
@@ -386,8 +390,8 @@ N 件（§4-1 の 2 本目）のうち、上限に達した件数を H、到達�
 
 | 場所 | 効く経路 | 効く用途（現行の割当） |
 | --- | --- | --- |
-| `src/knowledge/backend/Services/AiAnalysisService/Infrastructure/ExternalServices/RagOrchestrator.cs` の `MaxTokens: 4096`（**2 か所**: 一括の生成と逐次の生成） | AI 分析と検索チャット。**明示指定なので下の既定値を変えても効かない** | 一括は `analysis`（`claude-opus-5`）と `rag-answer`（`claude-sonnet-5`）の**共用**、逐次は `rag-answer` |
-| `src/platform/backend/Shared/Platform.Shared.Contracts/Dtos/CompletionDto.cs` の `CompletionApiRequest(… int MaxTokens = 4096 …)` | HTTP 経路で `max_tokens` を省略した呼び出し元 | グラフの AI 提案・クラスタ要約（`claude-opus-5`。メトリクス上は `other`） |
+| `src/knowledge/backend/Services/AiAnalysisService/Infrastructure/ExternalServices/RagOrchestrator.cs` の `MaxTokens: 4096`（**2 か所**: 一括の生成と逐次の生成） | AI 分析と検索チャット。**明示指定なので下の既定値を変えても効かない** | 一括は `analysis`（`claude-opus-5-5`）と `rag-answer`（`claude-sonnet-5-5`）の**共用**、逐次は `rag-answer` |
+| `src/platform/backend/Shared/Platform.Shared.Contracts/Dtos/CompletionDto.cs` の `CompletionApiRequest(… int MaxTokens = 4096 …)` | HTTP 経路で `max_tokens` を省略した呼び出し元 | グラフの AI 提案・クラスタ要約（`claude-opus-5-5`。メトリクス上は `other`） |
 | `src/platform/backend/Services/LlmGateway/Domain/Ports/ILlmProvider.cs` の `CompletionRequest(… int MaxTokens = 4096 …)` | プロバイダを直接呼ぶ内部経路だけ（ゲートウェイの端点は常に明示して渡す） | 通常の経路には効かない。上と揃えるために変える |
 | `src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Llm/LlmGrpcMapping.cs` の `DefaultMaxTokens = 4096` | gRPC 経路で `max_tokens=0`（未指定）を受けたとき | HTTP 経路の既定の写しである。**上の DTO の既定と必ず同時に変える** |
 
@@ -433,8 +437,8 @@ q 'sum by (llm_result, llm_upstream_status) (increase(llm_completion_total{llm_r
 ### 429 が出たとき
 
 1. **標本づくりの間隔を広げて続ける。** 1 件ずつ送っていても出るなら、§3-5 で止めて次へ進む。
-2. **発行元の管理画面で、組織に割り当てられたレート制限の枠（`claude-opus-5` の枠）を確かめる。**
-   Opus 5 の枠は Opus 4.x 系とは別であり、既定層を移したことで足りなくなっている可能性がある。
+2. **発行元の管理画面で、組織に割り当てられたレート制限の枠（`claude-opus-5-5` の枠）を確かめる。**
+   枠はモデルの版ごとに分かれていることがあり、既定層を移したこと（［2026-10-10］Opus 5 → Opus 5.5）で足りなくなっている可能性がある。
 3. 🔴 **別モデルへのフォールバックで逃がさない。** 429 は再試行の対象であってフォールバックの対象ではない
    （[`llm-model-pin-runbook.md`](llm-model-pin-runbook.md) §レート制限（429）は別物である）。
    なお、429 の再試行はゲートウェイにまだ実装されていない。
@@ -446,7 +450,7 @@ q 'sum by (llm_result, llm_upstream_status) (increase(llm_completion_total{llm_r
 ## 確認（この手順が成功したと言える条件）
 
 - §1 の 5 項目がすべて陽性対照つきで満たされていた。
-- §4-1 の分布に載った件数が、所有者が決めた N 以上である（`analysis` / `claude-opus-5`）。
+- §4-1 の分布に載った件数が、所有者が決めた N 以上である（`analysis` / `claude-opus-5-5`）。
 - §4-4 の実費が承認額以内で、単価の解決漏れが 0（空）である。
 - §3-5 の停止確認で、キーの長さが 0、止めた後に `sent` が増えていない。
 - §5 の判断が提案値（または所有者が承認した基準）のどの行に当たるかを示して記録されている。
@@ -459,7 +463,7 @@ q 'sum by (llm_result, llm_upstream_status) (increase(llm_completion_total{llm_r
 | §4-0 で `llm_*` が 1 系列も出ない | collector が fail-safe 構成（§1-1）／ゲートウェイの image が古い（§1-2）／依頼が LLM まで届いていない | §1 をやり直す。**直るまで標本を増やさない**（費用だけが出る） |
 | 依頼の回答が「送信できません」「利用できません」になる | キーが同期されていない・Pod が作り直されていない／機密区分が高い文書を対象にしている | §3-1 の長さの確認と `rollout status` を見る。対象を公開・社内の文書にする |
 | `llm_purpose` が `analysis` ではなく `other` に積まれる | 設定の用途一覧から `analysis` が外れている | `appsettings.json` の `Llm:Routing:PurposeModels` を読む（[`llm-model-pin-runbook.md`](llm-model-pin-runbook.md) の列挙コマンド） |
-| `llm_model` が `claude-opus-5` ではない | 用途の割当が変わった／フォールバックが起きた（`llm_result="fallback"` の系列を見る） | 割当が変わったなら本書 §2 の単価と表を計算し直す |
+| `llm_model` が `claude-opus-5-5` ではない | 用途の割当が変わった／フォールバックが起きた（`llm_result="fallback"` の系列を見る） | 割当が変わったなら本書 §2 の単価と表を計算し直す |
 | §4-4 の単価の解決漏れが 0 でない | 単価表に該当モデルの区間が無い | 費用の読みを止め、単価表を直してから読み直す。分布と到達率の読みは影響を受けない |
 | 空文字の `patch` 後も長さが 0 にならない | 同期が走っていない／`patch` が空文字を受け付けなかった | `kubectl describe externalsecret llm-provider-credentials` を読む。**費用は 3-5 の 1（発行元での失効）で既に止まっている** |
 

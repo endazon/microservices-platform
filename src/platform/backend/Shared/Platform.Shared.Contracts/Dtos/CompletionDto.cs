@@ -49,7 +49,7 @@ public static class CompletionFailureKinds
 // FR-11: confidentiality（入力文書の最高機密区分）・purpose（用途）で呼び出し先を切り替える。
 //   Model は任意の明示要求モデル。null の場合はゲートウェイが用途（purpose）に応じて選択する。
 // IADR-0101: MaxTokens の既定は 4096。Opus 5 / Sonnet 5 のように thinking（拡張思考）が既定で
-// 有効なモデルでは MaxTokens は思考トークンと本文の合算上限になるため、本文想定長（〜1024）＋
+// 有効なモデル（［2026-10-10 / #1875・IADR-0529］現行の割当である 5.5 系は Haiku を含む 3 モデルとも該当）では MaxTokens は思考トークンと本文の合算上限になるため、本文想定長（〜1024）＋
 // 思考の作業領域（〜3000）を見込む。1024 のままだと思考が上限を食い、本文が空または途中で切れる
 // （例外にならず静かに縮退する）。エンドポイントは req.MaxTokens を常に明示的にプロバイダへ渡すため、
 // max_tokens を省略したクライアントに効く既定値は ILlmProvider 側ではなく本 DTO のこの値である。

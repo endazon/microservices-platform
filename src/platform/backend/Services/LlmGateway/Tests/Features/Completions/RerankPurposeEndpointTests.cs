@@ -9,6 +9,10 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Tests.Features.Completions;
 
+// ［2026-10-10 追記 / #1875・IADR-0529］利用者裁定（planning#783）で Claude の割当を 5.5 系へ切り替えたので、
+// 本ファイルが渡す・期待するモデル名（コード）を claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5 へ改めた。
+// **コメント中の旧モデル名（claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5）は当時の決定の記録**であり、書き換えていない。
+
 // T-28, FR-03, FR-10, FR-11, ADR-0127 決定 3, ADR-0044 決定 1, ADR-0038 決定 3・5, [[IADR-0498]] 決定 6 (#1746 段 S2):
 // **用途 `rerank`（検索結果の再順位付け）は本番の設定で軽量モデルへ解決し、費用は回答生成と分けて積まれる。**
 //
@@ -66,7 +70,7 @@ public class RerankPurposeEndpointTests(TestWebApplicationFactory factory)
     [InlineData("public")]
     [InlineData("confidential")]
     [InlineData("restricted")]
-    public async Task PostComplete_Rerank_SelectsHaiku45AcrossSensitivities(string confidentiality)
+    public async Task PostComplete_Rerank_SelectsHaiku55AcrossSensitivities(string confidentiality)
     {
         var req = new { Prompt = "並べ替え", MaxTokens = 512, Confidentiality = confidentiality, Purpose = "rerank" };
         var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
@@ -75,7 +79,7 @@ public class RerankPurposeEndpointTests(TestWebApplicationFactory factory)
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
         body.Endpoint.Should().Be("claude-managed");
-        body.Model.Should().Be("claude-haiku-4-5");
+        body.Model.Should().Be("claude-haiku-5-5");
     }
 
     // T-28, ADR-0038 決定 3: `rerank` は鎖を持たない（最安のモデルからさらに安い先が無い。鎖は安価側へ向かう）。
@@ -86,7 +90,7 @@ public class RerankPurposeEndpointTests(TestWebApplicationFactory factory)
         var options = factory.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value;
 
         options.PurposeModels.Should().ContainKey("rerank");
-        options.PurposeModels["rerank"].Should().Be("claude-haiku-4-5");
+        options.PurposeModels["rerank"].Should().Be("claude-haiku-5-5");
         options.PurposeFallbackModels.Should().NotContainKey("rerank");
     }
 
@@ -106,9 +110,9 @@ public class RerankPurposeEndpointTests(TestWebApplicationFactory factory)
 
         var rerank = probe.Items.Where(m => m.Tags[LlmCompletionMetrics.PurposeTag] == "rerank").ToList();
         rerank.Should().Contain(m => m.Instrument == LlmUsageMetrics.TokensCounterName
-            && m.Tags[LlmCompletionMetrics.ModelTag] == "claude-haiku-4-5");
+            && m.Tags[LlmCompletionMetrics.ModelTag] == "claude-haiku-5-5");
         rerank.Should().Contain(m => m.Instrument == LlmUsageMetrics.CostCounterName && m.Value > 0,
-            "claude-haiku-4-5 は単価表にあるので金額へ換算される");
+            "claude-haiku-5-5 は単価表にあるので金額へ換算される");
         probe.Items.Should().Contain(m => m.Tags[LlmCompletionMetrics.PurposeTag] == "rag-answer",
             "対照: 回答生成は別の軸に載る");
         probe.Items.Should().NotContain(m => m.Tags[LlmCompletionMetrics.PurposeTag] == "other",

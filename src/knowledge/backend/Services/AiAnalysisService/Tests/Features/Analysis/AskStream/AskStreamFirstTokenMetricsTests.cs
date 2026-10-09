@@ -175,7 +175,7 @@ public class AskStreamFirstTokenMetricsTests(TestWebApplicationFactory factory)
                     await Task.Delay(delayBeforeLastToken, ct);
                 yield return new AskTokenEvent($"本文{i} [1]");
             }
-            yield return new AskDoneEvent(Guid.NewGuid(), "claude-sonnet-4-6", 10, 20);
+            yield return new AskDoneEvent(Guid.NewGuid(), "claude-sonnet-5-5", 10, 20);
         }
     }
 
@@ -203,11 +203,11 @@ public class AskStreamFirstTokenMetricsTests(TestWebApplicationFactory factory)
             Dictionary<string, string> userAttributes,
             Dictionary<string, List<string>>? attributeFilters = null,
             CancellationToken ct = default)
-            => Task.FromResult(new AiAnswerDto("テスト回答 [1]", [Citation()], "claude-sonnet-4-6", 10, 20));
+            => Task.FromResult(new AiAnswerDto("テスト回答 [1]", [Citation()], "claude-sonnet-5-5", 10, 20));
 
         public Task<AiAnswerDto> AnalyzeAsync(AnalysisTaskRequest request, string userId,
             Dictionary<string, string> userAttributes, CancellationToken ct = default)
-            => Task.FromResult(new AiAnswerDto("分析結果 [1]", [Citation()], "claude-sonnet-4-6", 10, 20));
+            => Task.FromResult(new AiAnswerDto("分析結果 [1]", [Citation()], "claude-sonnet-5-5", 10, 20));
 
         public abstract IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
             Dictionary<string, string> userAttributes,

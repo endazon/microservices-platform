@@ -119,7 +119,7 @@ internal sealed class StubRagOrchestrator : IRagOrchestrator
         yield return new AskTokenEvent("テスト");
         yield return new AskTokenEvent("回答 [1]");
         await Task.Yield();
-        yield return new AskDoneEvent(Guid.NewGuid(), "claude-sonnet-4-6", 10, 20);
+        yield return new AskDoneEvent(Guid.NewGuid(), "claude-sonnet-5-5", 10, 20);
     }
 
     private static AiAnswerDto Answer(string text)
@@ -127,5 +127,5 @@ internal sealed class StubRagOrchestrator : IRagOrchestrator
             text,
             [new CitationDto(1, Guid.NewGuid(), "文書A", Guid.NewGuid(),
                 "s3://bucket/a.md", 0.9f, "抜粋")],
-            "claude-sonnet-4-6", 10, 20);
+            "claude-sonnet-5-5", 10, 20);
 }

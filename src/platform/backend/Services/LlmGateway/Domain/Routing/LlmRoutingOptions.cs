@@ -47,6 +47,8 @@ public sealed class LlmRoutingOptions
     //     計画側は 3 箇所を打ち消し線＋日付つき追記で是正済み（planning#427）。
     //     **すべての用途で鎖は安価側へ向かう**（opus-5 $5/$25 → sonnet-5 $2/$10 → haiku-4-5 $1/$5 per 1M。
     //     ［2026-10-05 / #1741］sonnet-5 は $3/$15 と書いていたが、その引き上げは中止された）。
+    //     ［2026-10-10 / #1875・IADR-0529］5.5 系へ切り替えた後も鎖は安価側へ向かう
+    //     （opus-5-5 $4/$20 → sonnet-5-5 $2/$10 → haiku-5-5 $0.10/$0.50。haiku-5-5 は入力 100K トークン超で $0.50/$2.50）。
     //     発火によって費用が上振れすることはない。
     public Dictionary<string, List<string>> PurposeFallbackModels { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);

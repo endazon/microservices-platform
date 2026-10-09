@@ -11,6 +11,10 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace LlmGateway.Tests.Common.Observability;
 
+// ［2026-10-10 追記 / #1875・IADR-0529］利用者裁定（planning#783）で Claude の割当を 5.5 系へ切り替えたので、
+// 本ファイルが渡す・期待するモデル名（コード）を claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5 へ改めた。
+// **コメント中の旧モデル名（claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5）は当時の決定の記録**であり、書き換えていない。
+
 // T-21, FR-11, NFR, IADR-0110 (#395): 補完の終了理由がメトリクスとして計上され、
 // 「送信していない（越境拒否）」と「送ったがモデルが拒否した（refusal）」が別軸で区別できることを固定する。
 // 以前は終了理由がログにしか出ず、拒否率を継続的に把握する手段が無かった（IADR-0104 §フォローアップ 3）。
@@ -219,7 +223,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
             {
                 s.RemoveAll<ILlmProvider>();
                 // 第 1 候補（claude-opus-5）だけを HTTP 400 で失敗させる。
-                var provider = new ModelFailingProvider("claude-opus-5", System.Net.HttpStatusCode.BadRequest);
+                var provider = new ModelFailingProvider("claude-opus-5-5", System.Net.HttpStatusCode.BadRequest);
                 s.AddKeyedSingleton<ILlmProvider>("claude", provider);
                 s.AddKeyedSingleton<ILlmProvider>("selfhosted", provider);
                 s.AddKeyedSingleton<ILlmProvider>("copilot", provider);
@@ -232,14 +236,14 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         var fallback = probe.Measurements.Should()
             .ContainSingle(m => m.Tags[LlmCompletionMetrics.ResultTag] == LlmCompletionMetrics.ResultFallback)
             .Subject;
-        fallback.Tags[LlmCompletionMetrics.ModelTag].Should().Be("claude-opus-5");
+        fallback.Tags[LlmCompletionMetrics.ModelTag].Should().Be("claude-opus-5-5");
         fallback.Tags[LlmCompletionMetrics.PurposeTag].Should().Be("analysis");
         fallback.Tags[LlmCompletionMetrics.StopReasonTag].Should().Be(LlmCompletionMetrics.ValueNone);
 
         var sent = probe.Measurements.Should()
             .ContainSingle(m => m.Tags[LlmCompletionMetrics.ResultTag] == LlmCompletionMetrics.ResultSent)
             .Subject;
-        sent.Tags[LlmCompletionMetrics.ModelTag].Should().Be("claude-sonnet-5");
+        sent.Tags[LlmCompletionMetrics.ModelTag].Should().Be("claude-sonnet-5-5");
 
         probe.Measurements.Should().NotContain(
             m => m.Tags[LlmCompletionMetrics.ResultTag] == LlmCompletionMetrics.ResultUpstreamError,
@@ -344,7 +348,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
     {
         using var probe = new MetricsProbe();
         var client = ClientFailingWith(
-            new ModelFailingProvider("claude-opus-5", System.Net.HttpStatusCode.BadRequest));
+            new ModelFailingProvider("claude-opus-5-5", System.Net.HttpStatusCode.BadRequest));
 
         await client.PostAsJsonAsync("/complete", Request("analysis"), TestContext.Current.CancellationToken);
 

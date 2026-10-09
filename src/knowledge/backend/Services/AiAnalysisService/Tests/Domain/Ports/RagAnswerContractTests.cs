@@ -10,6 +10,10 @@ using Platform.Shared.Infrastructure.Foundation.Authz;
 
 namespace AiAnalysisService.Tests.Domain.Ports;
 
+// ［2026-10-10 追記 / #1875・IADR-0529］利用者裁定（planning#783）で Claude の割当を 5.5 系へ切り替えたので、
+// 本ファイルが渡す・期待するモデル名（コード）を claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5 へ改めた。
+// **コメント中の旧モデル名（claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5）は当時の決定の記録**であり、書き換えていない。
+
 // FR-04, FR-05, FR-07, UC-01, UC-02, ADR-0038, #448: RAG 回答の**契約**を後段まで通して固定する。
 //
 // **なぜ既存テストでは足りなかったか**（#448 の突き合わせで実測した死角）。
@@ -141,7 +145,7 @@ public class RagAnswerContractTests
     // ── ADR-0038, #448: 用途（purpose）の写像 ──────────────────────────────
 
     // 🔴 用途別のモデル割当（`Llm:Routing:PurposeModels`）は**この文字列がキーである**。
-    // ADR-0038 は `analysis` → `claude-opus-5` を確定しており、AI 分析の経路が別の用途名を
+    // ADR-0038 は `analysis` → `claude-opus-5` を確定しており（ゲートウェイの割当は利用者裁定 2026-10-10 で `claude-opus-5-5`。#1875）、AI 分析の経路が別の用途名を
     // 送ると**割当が丸ごと効かなくなる**（応答は 200 のままなので気付けない）。
     // FR-07, UC-02, ADR-0038, #448
     [Fact]
@@ -199,7 +203,7 @@ public class RagAnswerContractTests
 
     private static (RagOrchestrator, RecordingGatewayFactory) Create(
         AccessScopeResponse abac,
-        string llmBody = """{"text":"回答本文 [1]","model":"claude-sonnet-5","inputTokens":1,"outputTokens":2,"sent":true}""",
+        string llmBody = """{"text":"回答本文 [1]","model":"claude-sonnet-5-5","inputTokens":1,"outputTokens":2,"sent":true}""",
         HttpStatusCode llmStatus = HttpStatusCode.OK,
         bool llmIsStream = false)
     {

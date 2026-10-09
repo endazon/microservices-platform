@@ -16,8 +16,10 @@ public enum PricingStatus
     NoEntryForModel,
 }
 
-// 解決結果。Status が Priced のときだけ Entry / Cost が意味を持つ。
-public readonly record struct PriceLookupResult(PricingStatus Status, ModelPriceEntry? Entry, decimal Cost)
+// 解決結果。Status が Priced のときだけ Entry / Cost / LongPromptApplied が意味を持つ。
+// LongPromptApplied: プロンプト長の上段（ModelPriceEntry.LongPrompt）で換算したか（IADR-0529）。
+public readonly record struct PriceLookupResult(
+    PricingStatus Status, ModelPriceEntry? Entry, decimal Cost, bool LongPromptApplied = false)
 {
     public bool IsPriced => Status == PricingStatus.Priced;
 }
@@ -65,9 +67,14 @@ public sealed class ModelPriceTable(
         }
 
         // 入力と出力は単価が異なるため別々に按分する（百万トークンあたりの単価）。
+        // FR-11, IADR-0529 (#1875): プロンプト長で単価が 2 段のモデル（claude-haiku-5-5）は、**その要求の入力トークン数**で
+        // 段を選ぶ（要求ごとに決まる。集計期間の合計で選ばない）。入力トークン数はゲートウェイが受け取る
+        // usage.input_tokens であり、本ゲートウェイはプロンプトキャッシュを使わないので、提供元の判定量
+        // （キャッシュ読み・書きを含む入力の合計）と一致する。キャッシュを使い始めたらここを見直す。
         const decimal PerMillion = 1_000_000m;
-        var cost = (inputTokens / PerMillion * entry.InputPerMillionTokens)
-                 + (outputTokens / PerMillion * entry.OutputPerMillionTokens);
-        return new PriceLookupResult(PricingStatus.Priced, entry, cost);
+        var (inputRate, outputRate, longPrompt) = entry.RatesFor(inputTokens);
+        var cost = (inputTokens / PerMillion * inputRate)
+                 + (outputTokens / PerMillion * outputRate);
+        return new PriceLookupResult(PricingStatus.Priced, entry, cost, longPrompt);
     }
 }

@@ -378,7 +378,7 @@ public class ClaudeRerankTests
             "not_sent" => new FakeRerankClient((_, _) => Task.FromResult(
                 new CompletionApiResponse("送信を拒否", string.Empty, 0, 0, Sent: false))),
             _ => new FakeRerankClient((_, _) => Task.FromResult(
-                new CompletionApiResponse(string.Empty, "claude-haiku-4-5", 10, 0, Sent: true,
+                new CompletionApiResponse(string.Empty, "claude-haiku-5-5", 10, 0, Sent: true,
                     StopReason: CompletionStopReasons.Refusal))),
         };
         using var probe = new MeterProbe();
@@ -456,6 +456,17 @@ public class ClaudeRerankTests
         withStage.Select(r => r.ChunkId).Should().Equal(without.Select(r => r.ChunkId));
     }
 
+    // T-112: FR-03, FR-11, IADR-0529 (#1875): 割当の claude-haiku-5-5 は thinking が既定で有効（無効にできない）なので、
+    // 出力の上限は思考と本文の合算になる。既定の上限は 1024（従前 512）、期限は 8 秒のまま。
+    // 上限を 512 へ戻すと思考が上限を食って JSON が切れ、元の順への縮退が増える（IADR-0529 決定 5）。
+    [Fact]
+    public void 出力上限の既定は思考の余地を含む1024で期限は8秒()
+    {
+        SearchRerankOptions.DefaultMaxOutputTokens.Should().Be(1024);
+        SearchRerankOptions.DefaultTimeoutSeconds.Should().Be(8);
+        new SearchRerankOptions().Normalize().MaxOutputTokens.Should().Be(1024);
+    }
+
     // T-108: 構成の既定は無効で、範囲外は既定へ倒れる（例外にしない）。
     [Fact]
     public void 構成の既定は無効で範囲外は既定へ倒れる()
@@ -509,7 +520,7 @@ internal sealed class FakeRerankClient(
     public List<CompletionApiRequest> Requests { get; } = [];
 
     public static FakeRerankClient Answering(string text) =>
-        new((_, _) => Task.FromResult(new CompletionApiResponse(text, "claude-haiku-4-5", 100, 10)));
+        new((_, _) => Task.FromResult(new CompletionApiResponse(text, "claude-haiku-5-5", 100, 10)));
 
     public static FakeRerankClient Throwing(Exception ex) => new((_, _) => Task.FromException<CompletionApiResponse>(ex));
 

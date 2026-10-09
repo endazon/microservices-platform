@@ -61,7 +61,7 @@ public class LlmGatewayDiagramCoderTests
     public async Task Retains_with_refusal_reason_when_model_refuses()
     {
         var coder = Coder(new CompletionApiResponse(
-            Text: "", Model: "claude-haiku-4-5", InputTokens: 1, OutputTokens: 0,
+            Text: "", Model: "claude-haiku-5-5", InputTokens: 1, OutputTokens: 0,
             Sent: true, Endpoint: "claude-managed", RoutingReason: "ok",
             StopReason: CompletionStopReasons.Refusal));
 
