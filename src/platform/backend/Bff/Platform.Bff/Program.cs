@@ -20,8 +20,11 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
 builder.Services.AddPlatformHealthChecks()
+    // NFR-18, ADR-0131, IADR-0522 (#1839): セッションストアの疎通。接続先とパスワードはセッションと同じ
+    // `BffSession` の値から組む（ヘルスチェック専用の `Redis:ConnectionString` は廃した —— 置き場が 2 つだと
+    // 認証を足したときに片方だけ通る状態を作れる）。
     .AddRedis(
-        builder.Configuration["Redis:ConnectionString"] ?? "redis:6379",
+        BffSessionOptions.From(builder.Configuration).SessionStoreConfiguration(),
         tags: ["ready"])
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:RetrievalService"] ?? "http://retrieval-service:5003") + "/health/live"),

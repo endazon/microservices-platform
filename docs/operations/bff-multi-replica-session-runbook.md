@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-04
-updated: 2026-10-05
+updated: 2026-10-09
 ---
 <!-- trace:
-ids: [NFR-07]
-adrs: [ADR-0032]
-iadrs: [IADR-0251, IADR-0273, IADR-0316, IADR-0427]
-specs: [20261004_1534_bff-multi-replica-session-cookie, 20260926_issue-1550_live-script-opt-in]
-issues: [#1534, #439, #1389, #1550]
+ids: [NFR-18, NFR-07]
+adrs: [ADR-0131, ADR-0032]
+iadrs: [IADR-0522, IADR-0251, IADR-0273, IADR-0316, IADR-0427]
+specs: [20261009_1839_session-store-valkey, 20261004_1534_bff-multi-replica-session-cookie, 20260926_issue-1550_live-script-opt-in]
+issues: [#1839, #1534, #439, #1389, #1550, planning#750]
 -->
 
 # 運用 Runbook: BFF を 2 レプリカにして、セッション Cookie の相互復号を測る
@@ -30,14 +30,14 @@ issues: [#1534, #439, #1389, #1550]
 ## この手順を実行する条件（いつ走らせるか）
 
 - #1534 の稼働側の受け入れ基準（同じ Cookie で 20 回以上 `/bff/auth/me` が全部 200・両方の Pod で測れたこと／Pod を 1 つずつ作り直しても 200 が続くこと）を取るとき。**1 回でよい。**
-- BFF のセッションの置き場（Redis の接続先・鍵リングの永続化先・アプリ名）を変えた後。
+- BFF のセッションの置き場（セッションストアの接続先・パスワード・鍵リングの永続化先・アプリ名）を変えた後。
 - 本番像（BFF を HPA が最小 2 で所有する配備）へ出す前に、同じ版で 1 度測っておきたいとき。
 
 ## 前提
 
 | 項目 | 内容 |
 | --- | --- |
-| 必要な権限 | 名前空間 `microservices-platform` で helm リリース `msp` を `upgrade` できること、`hpa` / `pods` の `get`、`pods/portforward`、`deploy` の `rollout restart`（§5 だけ）。名前空間 `platform-infra` の `deploy/redis` へ `exec`（鍵リングの件数を読むだけ。できなければ「未測定」と出る）。`cert-manager` の `secret/local-edge-root-ca` の読み取り（エッジの TLS を検証するため） |
+| 必要な権限 | 名前空間 `microservices-platform` で helm リリース `msp` を `upgrade` できること、`hpa` / `pods` の `get`、`pods/portforward`、`deploy` の `rollout restart`（§5 だけ）。名前空間 `platform-infra` の `deploy/valkey` へ `exec`（鍵リングの件数を読むだけ。できなければ「未測定」と出る）。`cert-manager` の `secret/local-edge-root-ca` の読み取り（エッジの TLS を検証するため） |
 | 必要なツール | `kubectl`（対象クラスタの context）・**`helm`（そのリリースを入れたのと同じメジャー版**。`scripts/k8s-local-up.sh` を走らせたもの）・`node` 22 |
 | チェックアウトの版 | **稼働に入っている版と同じコミット**。検査器は upgrade の前に「稼働のマニフェスト」と「チェックアウトの描画」を突き合わせ、1 文書でも違えば止まる（版のずれを稼働へ押し込まないため） |
 | 試験専用の利用者 | §2 で作る。**realm 宣言に在る利用者（`developer` など）は使わない**（検査器が大小を無視して拒否する） |
@@ -53,33 +53,34 @@ issues: [#1534, #439, #1389, #1550]
 
 | 共有するもの | 置き場（コードの事実） | 片方の Pod にしか無いと |
 | --- | --- | --- |
-| Cookie を保護する鍵（鍵リング） | Redis の鍵 `bff:dataprotection-keys`。アプリ名 `microservices-platform-bff` で分離する（`src/platform/backend/Bff/Platform.Bff/Foundation/Session/BffSessionExtensions.cs`） | 発行していない Pod が Cookie を**復号できない** → 401 |
-| セッション本体（トークン類） | 同じ Redis（`RedisTicketStore`）。接続先はコード既定の `redis:6379`（`BffSessionOptions.cs`。配備は上書きしない） | 復号はできても**セッションが見つからない** → 401 |
+| Cookie を保護する鍵（鍵リング） | セッションストア（Valkey。Redis 互換）の鍵 `bff:dataprotection-keys`。アプリ名 `microservices-platform-bff` で分離する（`src/platform/backend/Bff/Platform.Bff/Foundation/Session/BffSessionExtensions.cs`） | 発行していない Pod が Cookie を**復号できない** → 401 |
+| セッション本体（トークン類） | 同じストア（`RedisTicketStore`）。接続先はコード既定の `valkey:6379`（`BffSessionOptions.cs`。配備は上書きしない）。ストアは認証必須で、パスワードは Secret `session-store-credentials` から注入する | 復号はできても**セッションが見つからない** → 401 |
 
 **壊れたときの見え方**（検査器が出す失敗の文言と対応する）:
 
 | 観測 | 読み方 |
 | --- | --- |
 | 片方の Pod だけ同じ Cookie で 401、もう片方は 200 | 鍵リングかセッションストアが共有されていない（**この 2 つは応答では区別できない**。§1.1 の件数で切り分ける） |
-| 両方の Pod で 401（ログイン直後から） | Pod の共有の問題ではない。ログインが完了していない、Cookie 名の不一致（`BFF_SESSION_COOKIE`）、Redis の再起動でセッションが消えた、のいずれか |
+| 両方の Pod で 401（ログイン直後から） | Pod の共有の問題ではない。ログインが完了していない、Cookie 名の不一致（`BFF_SESSION_COOKIE`）、ストアの再起動でセッションが消えた、ストアの認証に失敗している（BFF の readiness も落ちる）、のいずれか |
 | 改ざんした Cookie が 200 | Cookie の保護を検証していない。**陽性の 200 は何も証明しない**（停止して記録する） |
 | ログインが認可コードの戻り（コールバック）で止まる・失敗する | **パスワードの誤りとは限らない。** ログイン開始と戻りが別の Pod に振られ、相関（correlation / nonce）の Cookie を戻り側の Pod が復号できないと、ここで止まる。**これ自体が本書の測る症状であり得る**（§7） |
-| §5 の作り直し後だけ 401 | 鍵が Pod のメモリにしか無く、Redis へ永続化されていない |
+| §5 の作り直し後だけ 401 | 鍵が Pod のメモリにしか無く、ストアへ永続化されていない |
 
 🔴 **ログでは判定できない。** BFF のログ水準は `Microsoft.AspNetCore: Warning`（`Platform.Bff/appsettings.json`）であり、
 認証の失敗や復号の失敗の情報ログは既定では出ない。**判定は応答コードで行う。**
 
-🔴 **ローカルの Redis は永続化していない**（`deploy/local/infra/redis.yaml` は `redis:7-alpine` を素で起動する）。
-Redis が作り直されると鍵リングもセッションも消え、**全 Pod で既存の Cookie が 401 になる**。これは複数レプリカの欠陥ではない
-（測っている最中に Redis が作り直されたら、その回は捨てて取り直す）。
+🔴 **ローカルのストア（Valkey）は永続化していない**（`deploy/local/infra/valkey.yaml` は volume を持たない）。
+ストアが作り直されると鍵リングもセッションも消え、**全 Pod で既存の Cookie が 401 になる**。これは複数レプリカの欠陥ではない
+（測っている最中にストアが作り直されたら、その回は捨てて取り直す）。
 
 ### 1.1 鍵リングの件数（検査器が自動で読む。手で見るなら）
 
 ```bash
-kubectl -n platform-infra exec deploy/redis -- redis-cli LLEN bff:dataprotection-keys
+kubectl -n platform-infra exec deploy/valkey -- sh -c 'VALKEYCLI_AUTH="$SESSION_STORE_PASSWORD" valkey-cli LLEN bff:dataprotection-keys'
 ```
 
-ログインした後に **1 以上**であること。0 なら鍵は Redis へ書かれていない（共有されていない）。
+ストアは認証必須である。パスワードは Pod の中の環境変数から読ませる（単引用符で囲み、手元のシェルで展開させない。値をコマンドラインへ書かない）。
+ログインした後に **1 以上**であること。0 なら鍵はストアへ書かれていない（共有されていない）。`NOAUTH` が返るなら認証に失敗している。
 
 ---
 
@@ -173,7 +174,7 @@ node scripts/check-bff-multi-replica-session.js --live --restart
 ```
 
 §4 の測定の後に `kubectl rollout restart deploy/bff-service` を行い（既定の RollingUpdate なので 1 つずつ入れ替わる）、
-**新しく起きた Pod だけ**で同じ Cookie を測り直す。新しい Pod は鍵リングを Redis から読むので、ここで 401 なら鍵はメモリにしか無かった。
+**新しく起きた Pod だけ**で同じ Cookie を測り直す。新しい Pod は鍵リングをストアから読むので、ここで 401 なら鍵はメモリにしか無かった。
 
 - **測るのは作り直しが終わった後である**（`rollout status` が完了してから新しい Pod を測る）。入れ替わりの**最中**に要求が通り続けるかは測っていない。
 - 🔴 **`--restart` は稼働の Pod を実際に作り直す。HPA が所有する配備（本番像）でも helm は触らないが、Pod は作り直す。**
@@ -204,7 +205,7 @@ kubectl -n microservices-platform get deploy bff-service -o jsonpath='{.spec.rep
 - ログインが失敗した（パスワード誤り・必須アクション）。**再試行を重ねない**（一時ロックの計数を消費する）。
   ただし**コールバックの段で止まった**なら、パスワードではなく相関の Cookie を別の Pod が復号できない症状であり得る（§1 の表）。それも記録する。
 - 改ざんした Cookie が 200 を返した（§1 の表）。それ以上の測定は意味が無い。
-- 測定中に Redis かエッジが作り直された。その回は捨てる。
+- 測定中にストアかエッジが作り直された。その回は捨てる。
 - 戻しが失敗した（§6 の手で戻すまで、ほかの作業へ進まない）。
 
 ## 8. 記録表（#1534 に貼る）
@@ -225,6 +226,6 @@ kubectl -n microservices-platform get deploy bff-service -o jsonpath='{.spec.rep
 
 ## 9. 後片付け
 
-1. §2 の試験利用者を管理コンソールで削除する。BFF のセッションは Redis に残るが、次のトークン更新で認証基盤が拒むので、その時点で BFF が自分で破棄する。
+1. §2 の試験利用者を管理コンソールで削除する。BFF のセッションはストアに残るが、次のトークン更新で認証基盤が拒むので、その時点で BFF が自分で破棄する。
 2. TOTP の状態ファイル（§2 の 2）を消す。
 3. 退避した values の一時ファイルは、戻しが成功していれば検査器が消している。

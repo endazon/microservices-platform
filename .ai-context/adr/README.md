@@ -598,3 +598,4 @@
 | [IADR-0518](./IADR-0518_realm-import-secret-with-env-client-secrets.md) | Keycloak の realm の取り込み元を Secret に分け、管理用の 3 クライアントの secret は env を与えたときその値で渡す。起動器の判定は ESO の有無によらず 3 つを見る（#1834） | Accepted |
 | [IADR-0519](./IADR-0519_scripts-installed-products-version-pinning.md) | scripts/ が入れる製品は版で固定する。Argo CD は stable が指していた版のタグの URL、k3s はスクリプトの既定を単一の情報源とし、chart・上流マニフェストの内側のイメージの digest 固定は理由つきで別に回す（#1843） | Accepted |
 | [IADR-0520](./IADR-0520_infra-product-default-egress-disabled.md) | インフラ製品（Grafana・Loki・Tempo・Qdrant・Mailpit）の既定の外部通信を、製品が動く全経路の配備で止め、描画結果・compose・Testcontainers を読む検査器で固定する。Mailpit は止める設定を持つ版へ上げる（#1841） | Accepted |
+| [IADR-0522](./IADR-0522_session-store-valkey-auth-required.md) | キャッシュ・セッションストアを Redis 7.4 から Valkey 9.1 へ差し替え、認証を必須（空なら起動しない）にして到達を BFF に絞る。パスワードは Secret から BFF の構成値 1 つで注入し、ヘルスチェックとセッションが同じ構成文字列を使う（#1839） | Accepted |

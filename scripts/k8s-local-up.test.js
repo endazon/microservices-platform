@@ -271,6 +271,8 @@ const KUBECTL_STUB = [
   '    printf "%s %s %s %s\\n" "$k" "$(stat -c %a "$src")" "$(stat -c %a "$(dirname "$src")")" "$(dirname "$src")" >> "$STUB_LOG.realm-import.modes";',
   '  else printf "%s %s=%s\\n" "$4" "$k" "$(cat "$src")" >> "$STUB_LOG.secrets"; fi;; esac; done; fi',
   'prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && { printf "%s\\n" "$(cat "$a")" >> "$STUB_LOG.patches"; }; prev="$a"; done',
+  // #1839 / IADR-0522: 既存のセッションストアの Secret（値は使い回す）。STUB_SESSION_STORE_EXISTING を与えたときだけ在るものとして返す。
+  'case "$*" in *"get secret session-store-credentials"*) [ -n "${STUB_SESSION_STORE_EXISTING:-}" ] && printf "%s" "$STUB_SESSION_STORE_EXISTING" | base64; exit 0;; esac',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
@@ -391,6 +393,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'RESET_GATE_CLIENT_SECRET',
     'IDENTITY_ADMIN_CLIENT_SECRET',
     'MCP_CLIENT_ADMIN_CLIENT_SECRET',
+    'SESSION_STORE_PASSWORD', // #1839: セッションストアのパスワード。漏れていると「乱数で作る」の既定が別の形で走る
   ]) {
     delete base[k];
   }
@@ -5264,6 +5267,57 @@ ok('#1834: 起動器は差し替えに失敗したら止まり、取り込み元
   assert.ok(!r.lines.some((l) => l.startsWith('kubectl create secret generic keycloak-realm-import ')), '取り込み元を作った');
   assert.ok(!r.lines.some((l) => /^kubectl apply -k deploy\/local\/infra/.test(l)), 'infra（Keycloak）を当てた');
   assert.ok(!`${r.stdout}${r.stderr}`.includes('probe"1834'), '値を出力した');
+});
+
+// NFR-18, ADR-0131 決定 4 の 2, IADR-0522 (#1839): セッションストア（Valkey）の認証パスワード。
+const storeSecretLines = (r) => r.lines.filter((l) => l.startsWith('kubectl create secret generic session-store-credentials '));
+const storePasswords = (r) => r.secrets.filter((l) => l.startsWith('session-store-credentials password=')).map((l) => l.slice('session-store-credentials password='.length));
+
+ok('#1839: セッションストアのパスワードは platform-infra と MSP ns の 2 か所へ同じ値で置く（既定は乱数・公知の既定値を持たない）', () => {
+  const ns = storeSecretLines(DEFAULT).map((l) => (l.match(/ -n (\S+)/) || [])[1]);
+  assert.deepStrictEqual(ns, ['platform-infra', 'microservices-platform'], `置き場が違う: ${storeSecretLines(DEFAULT).join(' / ')}`);
+  const values = storePasswords(DEFAULT);
+  assert.strictEqual(values.length, 2, values.join(' / '));
+  assert.strictEqual(values[0], values[1], '2 か所の値が食い違う（BFF が認証できない）');
+  assert.match(values[0], /^[0-9a-f]{48}$/, `乱数（16 進 48 文字）でない: ${values[0]}`);
+  // 起動のたびに作り直さない形（乱数）であることの陽性対照: 2 回の実行で値が違う＝固定の既定値ではない
+  assert.notStrictEqual(storePasswords(runUp({}))[0], values[0], '既定値が固定されている（公知の値になる）');
+  // 値はプロセスの引数へ載らない（#1793）
+  assert.ok(!DEFAULT.lines.some((l) => l.includes(values[0])), '値が kubectl の引数に載った');
+});
+
+ok('#1839: 明示指定 ＞ 既存の Secret の値 ＞ 乱数（既存値を使い回し、走っている Valkey と BFF を食い違わせない）', () => {
+  const explicit = runUp({ SESSION_STORE_PASSWORD: 'dummy-1839-explicit', STUB_SESSION_STORE_EXISTING: 'dummy-1839-existing' });
+  assert.strictEqual(explicit.status, 0, explicit.stderr);
+  assert.deepStrictEqual(storePasswords(explicit), ['dummy-1839-explicit', 'dummy-1839-explicit']);
+  const existing = runUp({ STUB_SESSION_STORE_EXISTING: 'dummy-1839-existing' });
+  assert.strictEqual(existing.status, 0, existing.stderr);
+  assert.deepStrictEqual(storePasswords(existing), ['dummy-1839-existing', 'dummy-1839-existing']);
+  assert.ok(anyLineHas(DEFAULT.lines, 'kubectl -n platform-infra get secret session-store-credentials'), '既存値を読んでいない');
+});
+
+ok('#1839: 設定ファイルの引用符を壊す値（" \\ 空白）は Secret を作らずに止まる', () => {
+  for (const bad of ['dummy"1839', 'dummy\\1839', 'dummy 1839']) {
+    const r = runUp({ SESSION_STORE_PASSWORD: bad });
+    assert.notStrictEqual(r.status, 0, `止まらなかった: ${JSON.stringify(bad)}`);
+    assert.strictEqual(storeSecretLines(r).length, 0, 'Secret を作った');
+    assert.ok(!`${r.stdout}${r.stderr}`.includes(bad), '値を出力した');
+  }
+});
+
+ok('#1839: 旧 Redis（認証なし）を消し、Valkey の起動を待つ（ESO=1 でも同じ）', () => {
+  for (const r of [DEFAULT, runUp({ VAULT: '1', ESO: '1' })]) {
+    assert.ok(r.lines.includes('kubectl -n platform-infra delete deployment/redis service/redis --ignore-not-found'), '旧 Redis を消していない');
+    assert.ok(r.lines.includes('kubectl -n microservices-platform delete service/redis --ignore-not-found'), '旧 ExternalName を消していない');
+    assert.ok(r.lines.includes('kubectl -n platform-infra rollout status deploy/valkey --timeout=120s'), 'Valkey の起動を待っていない');
+    assert.ok(!r.lines.some((l) => l.includes('rollout status deploy/redis')), '旧 Redis の起動を待っている');
+    assert.strictEqual(storeSecretLines(r).length, 2, 'ESO=1 で Secret を置いていない（[4/7] の rollout が消費する）');
+  }
+  // 旧 Redis を消すのは新しい宣言を当てた後（先に消すと、apply までの間にストアが 1 つも無い）
+  const lines = DEFAULT.lines;
+  const applyAt = lines.findIndex((l) => /^kubectl apply -k deploy\/local\/infra/.test(l));
+  const deleteAt = lines.indexOf('kubectl -n platform-infra delete deployment/redis service/redis --ignore-not-found');
+  assert.ok(applyAt >= 0 && deleteAt > applyAt, `順序が違う: apply=${applyAt} delete=${deleteAt}`);
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

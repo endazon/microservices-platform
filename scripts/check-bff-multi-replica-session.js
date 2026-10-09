@@ -453,7 +453,10 @@ function rolloutStatus() {
 }
 
 function readKeyRingCount() {
-  const r = run('kubectl', ['-n', 'platform-infra', 'exec', 'deploy/redis', '--', 'redis-cli', 'LLEN', 'bff:dataprotection-keys']);
+  // NFR-18, ADR-0131, IADR-0522 (#1839): ストアは Valkey で、認証が要る。パスワードは Pod の中の env から読ませ、
+  // ホストのプロセスの引数へ載せない（#1793）。認証に失敗すると NOAUTH の文言が返り、下の数値の読みで「読めない」になる。
+  const r = run('kubectl', ['-n', 'platform-infra', 'exec', 'deploy/valkey', '--', 'sh', '-c',
+    'VALKEYCLI_AUTH="$SESSION_STORE_PASSWORD" valkey-cli LLEN bff:dataprotection-keys']);
   if (r.error || r.status !== 0) return { ok: false, error: (r.error && r.error.message) || String(r.stderr || '').trim() || `exit ${r.status}` };
   const n = Number(String(r.stdout || '').trim().replace(/^\(integer\)\s*/, ''));
   return Number.isInteger(n) ? { ok: true, count: n } : { ok: false, error: `LLEN の応答を読めない: ${String(r.stdout).trim().slice(0, 40)}` };
