@@ -22,6 +22,8 @@
 #   経路は ISTIO=1 ＋ LOCALEDGE=1 のエッジ（istio-edge-up.sh）が足す。外すときだけ RESET_FLOOR=0
 #   （検証で床の有無を比べる用途に限る。本番の退路に使わない。ADR-0111 決定 3 / #1543）。
 #   器は 2 レプリカ ＋ PodDisruptionBudget（ADR-0111 決定 1）。下の rollout 待ちは 2 つとも ready になるまで待つ。
+# 部門属性の同期（authorization-service の DepartmentAttributeSync__Mode）は DEPT_SYNC_MODE=Off|Report|Fix で明示する。
+#   未指定の再実行は現行の helm の値を引き継ぐ（初回は何も足さない）。IADR-0473 の 2026-10-09 追記 / #1850。
 set -euo pipefail
 
 # NFR, #1550: クラスタを作り、稼働クラスタへ helm / kubectl で書き込む。明示の指定（--live か LIVE=1）が無ければ
@@ -47,6 +49,13 @@ esac
 case "${ISTIO:-}" in
   ''|0|1) ;;
   *) echo "ERROR: ISTIO は 1（メッシュを入れる）・0（外す）・未指定（現行を引き継ぐ。初回は入れない）のいずれかです: '${ISTIO}'" >&2; exit 1 ;;
+esac
+# SC-17, ADR-0116 決定 1（2026-10-09 補完）, IADR-0473（2026-10-09 追記 / #1850）: DEPT_SYNC_MODE は authorization-service の
+#   部門属性の同期（env DepartmentAttributeSync__Mode）の明示。Off / Report / Fix / 未指定（現行を引き継ぐ。初回は何も足さない）。
+#   サービス側は大小文字を区別しないが、起動器の指定は綴りを 1 つに閉じる（打ち間違いを黙って「未指定＝引き継ぎ」や Off と読まない）。
+case "${DEPT_SYNC_MODE:-}" in
+  ''|Off|Report|Fix) ;;
+  *) echo "ERROR: DEPT_SYNC_MODE は Off・Report・Fix・未指定（現行を引き継ぐ。初回は何も足さない）のいずれかです: '${DEPT_SYNC_MODE}'" >&2; exit 1 ;;
 esac
 
 # NFR, 計画 ADR-0135 決定 2, IADR-0519 (#1843): Argo CD は**版のタグの URL**から入れる（`stable` ブランチを直接 apply しない）。
@@ -200,17 +209,32 @@ fi
 #   選び方はどちらも 明示（env）＞ 現行（helm get values msp の mesh.*）＞ 初回の既定（ISTIO はメッシュ無し・mTLS は PERMISSIVE）。
 #   - ISTIO 未指定 × メッシュ宣言あり → ISTIO=1 として以降を進める（明示と同じ段: コントロールプレーン・注入・LOCALEDGE なら Istio の入口）。
 #     ISTIO_MTLS_MODE も未指定なら同じ読みからモードを引き継ぐ。外すのは ISTIO=0 の明示だけである。
-#   - ISTIO=0 は読まない（従来の「ISTIO 無し」と同じ経路。既定のバイト等価はこちらへ移した）。
+#   - ISTIO=0 はメッシュの判定のためには読まない（従来の「ISTIO 無し」と同じ経路。既定のバイト等価はこちらへ移した）。
 #   🔴 **読めないときは止める（fail-closed）。** 外す側へ倒すと #1713 を黙って起こし、入れる側へ倒すと ISTIO 無しで立てたクラスタへ
 #   推測でメッシュを入れる（全 Pod の作り直し）。どちらも推測である。読めない理由（helm に届かない・mesh.enabled: true なのに
 #   mtlsMode が壊れている）は終了コードで分けていないので、ISTIO_MTLS_MODE を明示していても ISTIO 未指定なら止める（ISTIO=1 を足せば進む）。
 #   **副作用より前**（[2/7] の前）に置き、止めるときは何も書き換えていない。読むのは 1 回だけ（両方の判定に使う）。
 #   移行済みの入口で ISTIO が 1 でない再実行は、この前（#1691 の拒否）で既に止まっている。
+#   ［2026-10-09 / #1850］読みは下の部門属性の同期の判定と共有する（read_release_values_once。リリースの値を 1 回だけ読み、両方に使う）。
+#   そのため「ISTIO=0 は読まない」はメッシュの判定についてであり、全く読まないのは DEPT_SYNC_MODE=Off を併せたとき（従来の既定とバイト等価）。
+# shellcheck source=scripts/lib/mesh-mtls-mode.sh
+. "$ROOT/scripts/lib/mesh-mtls-mode.sh"
+# shellcheck source=scripts/lib/dept-sync-mode.sh
+. "$ROOT/scripts/lib/dept-sync-mode.sh"
+RELEASE_VALUES_RC=""   # 空＝まだ読んでいない / 0＝読めた（RELEASE_VALUES）/ 1＝リリースが無い / 2＝読めない
+RELEASE_VALUES=""
+read_release_values_once() {
+  [ -n "$RELEASE_VALUES_RC" ] && return 0
+  RELEASE_VALUES_RC=0
+  RELEASE_VALUES="$(current_release_values)" || RELEASE_VALUES_RC=$?
+}
 if [ -z "${ISTIO:-}" ] || { [ "$ISTIO" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ]; }; then
-  # shellcheck source=scripts/lib/mesh-mtls-mode.sh
-  . "$ROOT/scripts/lib/mesh-mtls-mode.sh"
-  mesh_rc=0
-  mesh_current="$(current_mesh_mtls_mode)" || mesh_rc=$?
+  read_release_values_once
+  mesh_rc="$RELEASE_VALUES_RC"
+  mesh_current=""
+  if [ "$mesh_rc" = "0" ]; then
+    mesh_current="$(mesh_values_mtls_mode "$RELEASE_VALUES")" || mesh_rc=$?
+  fi
   if [ "$mesh_rc" -ge 2 ]; then
     if [ -z "${ISTIO:-}" ]; then
       echo "ERROR: 現行のメッシュ宣言（mesh.enabled / mesh.mtlsMode）を helm リリース ${MSP_HELM_RELEASE:-msp} から読めませんでした（helm get values ${MSP_HELM_RELEASE:-msp} -n $MSP_NS）。" >&2
@@ -234,6 +258,58 @@ if [ -z "${ISTIO:-}" ] || { [ "$ISTIO" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ];
   if [ "${ISTIO:-}" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ] && [ "$mesh_rc" = "0" ]; then
     ISTIO_MTLS_MODE="$mesh_current"
     echo "    INFO: mesh.mtlsMode は現行の ${mesh_current} を引き継ぎます（ISTIO_MTLS_MODE 未指定）"
+  fi
+fi
+
+# SC-17, FR-05, ADR-0116 決定 1（2026-10-09 補完）, IADR-0473（2026-10-09 追記 / #1850）: **部門属性の同期の値を、再実行で黙って Off に戻さない。**
+#   稼働 PoC の DepartmentAttributeSync__Mode は運用者が helm の --reuse-values で authorization の extraEnvAppend へ入れる
+#   （docs/operations/operations.md）。[6/7] は --reuse-values を使わないので、何もしなければ再実行で外れて Off に戻る
+#   （計器の系列が消え DepartmentSyncNotCorrecting も鳴らない＝ABAC が緩む向きが無警報で起きる）。
+#   選び方は ISTIO と同じ 明示（DEPT_SYNC_MODE）＞ 現行（helm get values msp の services.authorization.extraEnvAppend）＞ 初回の既定（何も足さない）。
+#   - 宣言するときは authorization の extraEnvAppend を**丸ごと**与える（現行の他の要素は字面のまま保つ。helm のリストは置換であり、
+#     添字 0 だけの --set は他の要素を消す）。形は [6/7] の追加の values ファイル（-f）。lib/dept-sync-mode.sh の冒頭を参照。
+#   - DEPT_SYNC_MODE=Off は読まず何も足さない（従来の起動器と同じ。同期はコードの既定 Off）。Report / Fix は他の要素を保つために読む。
+#   - 🔴 **読めないときは止める（fail-closed）。** 未指定で進むと Off へ黙って戻し、Report / Fix で進むと他の要素を黙って消す。
+#     **副作用より前**（[2/7] の前）に置き、止めるときは何も書き換えていない。読みはメッシュの判定と共有する（1 回だけ）。
+DEPT_SYNC_DECLARE=""      # 空＝何も足さない / Off|Report|Fix＝[6/7] で宣言する値
+DEPT_SYNC_OTHERS=""       # 宣言するとき、保つ他の要素（字面）
+if [ "${DEPT_SYNC_MODE:-}" = "Off" ]; then
+  echo "    INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は Off（明示: DEPT_SYNC_MODE=Off。helm を読まず何も足さない＝コードの既定）"
+else
+  read_release_values_once
+  if [ "$RELEASE_VALUES_RC" -ge 2 ]; then
+    echo "ERROR: 現行の部門属性の同期（services.authorization.extraEnvAppend の DepartmentAttributeSync__Mode）を helm リリース ${MSP_HELM_RELEASE:-msp} から読めませんでした（helm get values ${MSP_HELM_RELEASE:-msp} -n $MSP_NS）。" >&2
+    if [ -z "${DEPT_SYNC_MODE:-}" ]; then
+      echo "       DEPT_SYNC_MODE を付けない再実行は現行の値を引き継ぎます。読めないまま進むと同期を黙って Off に戻す（ABAC が緩む向き）ため、止めます。" >&2
+    else
+      echo "       DEPT_SYNC_MODE=${DEPT_SYNC_MODE} は authorization の extraEnvAppend を丸ごと宣言し直します。読めないまま進むと現行の他の要素を黙って消すため、止めます。" >&2
+    fi
+    echo "       helm がリリースを読めるようにしてから再実行してください。読まずに進めるのは DEPT_SYNC_MODE=Off の明示だけです（同期は Off になります）。" >&2
+    exit 1
+  fi
+  if [ -n "${DEPT_SYNC_MODE:-}" ]; then
+    DEPT_SYNC_DECLARE="$DEPT_SYNC_MODE"
+    echo "    INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は ${DEPT_SYNC_DECLARE}（明示: DEPT_SYNC_MODE）"
+  elif [ "$RELEASE_VALUES_RC" = "0" ]; then
+    dept_rc=0
+    dept_current="$(dept_sync_values_mode "$RELEASE_VALUES")" || dept_rc=$?
+    if [ "$dept_rc" = "0" ]; then
+      DEPT_SYNC_DECLARE="$dept_current"
+      echo "    INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は現行の ${DEPT_SYNC_DECLARE} を引き継ぎます（DEPT_SYNC_MODE 未指定。変えるなら DEPT_SYNC_MODE=Off|Report|Fix）"
+    elif [ "$dept_rc" -ge 2 ]; then
+      echo "ERROR: helm リリース ${MSP_HELM_RELEASE:-msp} の services.authorization.extraEnvAppend の DepartmentAttributeSync__Mode が読めない形です（値域外・値でない形・同名が 2 つ以上・流れ形式のリスト）。" >&2
+      echo "       DEPT_SYNC_MODE を付けない再実行は現行の値を引き継ぎます。推測で引き継がず、止めます。値を明示して再実行してください（前回と同じ他の指定も付ける）:" >&2
+      echo "         DEPT_SYNC_MODE=Fix bash scripts/k8s-local-up.sh --live（Report / Off も可。確かめ方: helm get values ${MSP_HELM_RELEASE:-msp} -n $MSP_NS -o yaml）" >&2
+      exit 1
+    fi
+  fi
+  if [ -n "$DEPT_SYNC_DECLARE" ]; then
+    if [ "$RELEASE_VALUES_RC" = "0" ]; then DEPT_SYNC_OTHERS="$(dept_sync_values_other_entries "$RELEASE_VALUES")"; fi
+    if [ -n "$DEPT_SYNC_OTHERS" ]; then
+      echo "    INFO: authorization の extraEnvAppend の他の要素も現行のまま保ちます: $(printf '%s\n' "$DEPT_SYNC_OTHERS" | sed -n 's/^- name: *//p' | tr -d "\"'" | paste -sd, -)"
+    fi
+  else
+    echo "    INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は既定（DEPT_SYNC_MODE 未指定・現行に値なし。何も足さない＝コードの既定 Off）"
   fi
 fi
 
@@ -631,9 +707,20 @@ RECREATE_DEPLOYMENTS="seaweedfs wiki-js"
 . "$ROOT/scripts/lib/recreate-strategy.sh"
 # shellcheck disable=SC2086  # RECREATE_DEPLOYMENTS は空白区切りの名前の列。意図的に分割する。
 reconcile_recreate_strategy "$MSP_NS" $RECREATE_DEPLOYMENTS
+# SC-17, IADR-0473（2026-10-09 追記 / #1850）: 部門属性の同期を宣言するときだけ、authorization の extraEnvAppend を丸ごと与える
+#   values ファイルを values-local.yaml の後ろに足す（判定は [2/7] の前）。宣言しないときは 1 バイトも足さない（CI の描画はバイト等価）。
+DEPT_SYNC_ARGS=()
+DEPT_SYNC_DIR=""
+if [ -n "$DEPT_SYNC_DECLARE" ]; then
+  DEPT_SYNC_DIR="$(mktemp -d)"
+  trap 'rm -rf "$DEPT_SYNC_DIR"' EXIT
+  dept_sync_values_file "$DEPT_SYNC_DECLARE" "$DEPT_SYNC_OTHERS" > "$DEPT_SYNC_DIR/dept-sync-values.yaml"
+  DEPT_SYNC_ARGS=(-f "$DEPT_SYNC_DIR/dept-sync-values.yaml")
+fi
 # shellcheck disable=SC2086  # ISTIO_MESH_ARGS / LOCALEMBED_ARGS は空か複数フラグ。意図的に分割する。
 helm upgrade --install msp deploy/helm/microservices-platform \
-  -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS $LOCALEMBED_ARGS
+  -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}"
+if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; trap - EXIT; fi
 
 # #782: サイドカーは**既存 Pod には後から入らない**。注入ラベルを付けたあとに作り直す。
 # helm upgrade だけでは Pod テンプレートが変わらないサービスが残るため、明示的に restart する。
