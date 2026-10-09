@@ -80,7 +80,7 @@ Istio・ESO・Reloader・cert-manager は chart / release の版で固定され�
 
 ## 残余
 
-1. **chart・上流マニフェストの内側のイメージの digest 固定**（決定 3）。基準 B の「同じタグの中身の差し替えを検知できない」は 6 製品で残る。別 issue で扱う。
+1. **chart・上流マニフェストの内側のイメージの digest 固定**（決定 3）。基準 B の「同じタグの中身の差し替えを検知できない」は 6 製品で残る。#1858 で扱う。
 2. **Rancher Desktop 経路の k3s の版**はスクリプトの統制の外にある（決定 2）。
 3. **既存のクラスタは作り直すまで版が変わらない**（k3d は `cluster create` の時点でイメージを決める）。
 4. Argo CD の `install.yaml` は git のタグで固定したが、タグの付け替えは検知しない（manifest の sha256 の照合は入れていない）。
