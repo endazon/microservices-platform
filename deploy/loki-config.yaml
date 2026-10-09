@@ -28,3 +28,10 @@ storage_config:
     cache_location: /tmp/loki/index_cache
   filesystem:
     directory: /tmp/loki/chunks
+
+# ADR-0107 決定 4, #1841: 利用統計の送信を止める（既定で有効。送信先 stats.grafana.org/loki-usage-report・4 時間ごと。
+# 上流 pkg/analytics/reporter.go v3.0.0）。データ外部送信方針（08_data-egress-policy）の製品別の行の統制である。
+# 🔴 消さないこと。経路 B の inline（deploy/local/observability/loki.yaml）にも同じ行があり、
+#    scripts/lib/product-egress-defaults.js（check-deploy-manifests が呼ぶ）が両方を検査する。
+analytics:
+  reporting_enabled: false

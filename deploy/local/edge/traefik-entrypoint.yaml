@@ -17,7 +17,7 @@
 # run 32554867883）に基づく。版の確認は `kubectl -n kube-system get helmchart traefik -o yaml`。
 #
 # **つまりこの宣言は k3s のバージョンに暗黙に依存している。** 依存に対する打ち手は 2 つあり、両方要る:
-#   1. **回避**: `K3S_IMAGE` で k3s を pin する（scripts/k8s-local-up.sh の [1/7]・#783 / IADR-0248）。
+#   1. **回避**: `K3S_IMAGE` で k3s を pin する（scripts/k8s-local-up.sh の [1/7]・#783 / IADR-0248。#1843 / IADR-0519 から既定で固定）。
 #   2. **検知**: `k8s-local-up.sh` が LOCALEDGE=1 のとき、この HelmChartConfig の**反映**（traefik svc の
 #      `admin=50000`）を待ち、来なければ**非 0 で落とす**（#953 / IADR-0258）。`kubectl apply` は
 #      reconcile の失敗を知らないため、これが無いと **admin が立たないまま up が EXIT=0 で返る**。

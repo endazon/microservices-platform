@@ -25,3 +25,10 @@ storage:
       path: /tmp/tempo/blocks
     wal:
       path: /tmp/tempo/wal
+
+# ADR-0107 決定 4, #1841: 利用統計の送信を止める（既定で有効。送信先 stats.grafana.org/tempo-usage-report・4 時間ごと。
+# 上流 pkg/usagestats/reporter.go v2.5.0）。データ外部送信方針（08_data-egress-policy）の製品別の行の統制である。
+# 🔴 消さないこと。経路 B の inline（deploy/local/observability/tempo.yaml）にも同じ行があり、
+#    scripts/lib/product-egress-defaults.js（check-deploy-manifests が呼ぶ）が両方を検査する。
+usage_report:
+  reporting_enabled: false

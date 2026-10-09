@@ -1,3 +1,5 @@
+using Testcontainers.Qdrant;
+
 namespace Knowledge.IntegrationTests.Fixtures;
 
 // FR-02, FR-03, ADR-0009, [[IADR-0315]] (#1790):
@@ -15,4 +17,16 @@ public static class QdrantTestImage
     /// </summary>
     public const string Reference =
         "qdrant/qdrant:v1.18.1@sha256:45f8e3ddc2570a4d029877e1b5ec1045c19b3852b4e22a55c7f43b05aea0ca89";
+
+    /// <summary>
+    /// 統合試験の Qdrant を組み立てる**唯一の入口**。ADR-0107 決定 4 (#1841): テレメトリを止めて起こす。
+    /// </summary>
+    /// <remarks>
+    /// 🔴 <c>QDRANT__TELEMETRY_DISABLED</c> を外さないこと。**Qdrant はテレメトリが既定で有効**であり
+    /// （上流 <c>src/common/telemetry_reporting.rs</c> v1.18.1。起動直後と 1 時間ごとに <c>telemetry.qdrant.io</c> へ送る）、
+    /// 外すと試験のたびに CI の runner から外部へ送信が起きる（08_data-egress-policy。配備の compose・k8s と同じ設定）。
+    /// <c>new QdrantBuilder(</c> をこの外に書くと <c>scripts/lib/product-egress-defaults.js</c>（check-deploy-manifests）が落とす。
+    /// </remarks>
+    public static QdrantBuilder CreateBuilder() =>
+        new QdrantBuilder(Reference).WithEnvironment("QDRANT__TELEMETRY_DISABLED", "true");
 }

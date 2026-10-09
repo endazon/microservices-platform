@@ -10946,13 +10946,17 @@ ${r.stderr}`);
       assert.ok(gateAt > upAt, '門が up より前に在る（起動前の状態を判定してしまう）');
     });
 
-    ok('NFR / #783 後半: k3s イメージが pin されている（latest 追従にしない）', () => {
+    // ［2026-10-09 / #1843・計画 ADR-0135 決定 2・IADR-0519］k3s の版の情報源は k8s-local-up.sh の K3S_IMAGE の**既定** 1 か所へ移した。
+    // ワークフローは値を持たない（同じ値を 2 か所に持つと片側だけ動く）。既定が版で固定されていることを見る。
+    ok('NFR / #783 後半: k3s イメージが pin されている（latest 追従にしない。#1843: 既定で固定・情報源はスクリプト）', () => {
+      const up = fs.readFileSync(path.join(REPO_IS, 'scripts/k8s-local-up.sh'), 'utf8');
       assert.match(
-        wf,
-        /K3S_IMAGE:\s*rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+/,
-        'K3S_IMAGE が pin されていない。**揃っていないことが静かに素通りする**（#953）ため、' +
+        up,
+        /^\s*K3S_IMAGE="\$\{K3S_IMAGE:-rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+\}"\s*$/m,
+        'k8s-local-up.sh の K3S_IMAGE の既定が版で固定されていない。**揃っていないことが静かに素通りする**（#953）ため、' +
           'ここは好みではなく検査の前提である',
       );
+      assert.ok(!/^\s*K3S_IMAGE\s*:/m.test(wf), 'integration-stack.yml が K3S_IMAGE を持っている（版の情報源が 2 か所になる。#1843）');
       assert.match(wf, /K3D_VERSION:\s*v\d+\.\d+\.\d+/, 'K3D_VERSION が pin されていない');
     });
 
@@ -11007,13 +11011,15 @@ ${r.stderr}`);
         assert.ok(!/schedule:|push:|workflow_run:|pull_request:|pull_request_target:/.test(on), `余計な契機がある:\n${on}`);
       });
 
-      ok('#1781: k3d と k3s の pin が integration-stack.yml と同じ（起こし方を写している前提）', () => {
-        for (const key of ['K3D_VERSION', 'K3S_IMAGE']) {
-          const re = new RegExp(`^\\s+${key}:\\s*(\\S+)\\s*$`, 'm');
-          const a = (re.exec(wf) || [])[1];
-          const b = (re.exec(rh) || [])[1];
-          assert.ok(a && b, `${key} を読めない`);
-          assert.strictEqual(b, a, `${key} が integration-stack.yml（${a}）と違う（${b}）`);
+      // #1843 / IADR-0519: k3s の版はスクリプトの既定が持つ。両ワークフローとも K3S_IMAGE を与えない（与えると既定を上書きし、片側だけ動く）。
+      ok('#1781: k3d の pin が integration-stack.yml と同じで、k3s はどちらも与えない（起こし方を写している前提）', () => {
+        const re = /^\s+K3D_VERSION:\s*(\S+)\s*$/m;
+        const a = (re.exec(wf) || [])[1];
+        const b = (re.exec(rh) || [])[1];
+        assert.ok(a && b, 'K3D_VERSION を読めない');
+        assert.strictEqual(b, a, `K3D_VERSION が integration-stack.yml（${a}）と違う（${b}）`);
+        for (const [name, text] of [['integration-stack.yml', wf], ['cutover-rehearsal.yml', rh]]) {
+          assert.ok(!/^\s*K3S_IMAGE\s*[:=]/m.test(text), `${name} が K3S_IMAGE を与えている（#1843: 版の情報源はスクリプトの既定）`);
         }
       });
 
@@ -15337,6 +15343,67 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+  // --- #1843 / 計画 ADR-0135 決定 2 / IADR-0519: Argo CD は版のタグの URL、k3s は既定で固定 ---------------
+  // 🔴 **`stable` ブランチは取得のたびに中身が変わり得る**（タグですらない）。スクリプト・手順書・ワークフローのどれか 1 つでも
+  // `stable` や別の版を書けば、「同じ手順で同じ版が入る」が崩れる。版の正は k8s-local-up.sh の ARGOCD_VERSION の既定。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const { execFileSync } = require('child_process');
+    const REPO = path.resolve(__dirname, '..');
+    const up = fs.readFileSync(path.join(REPO, 'scripts/k8s-local-up.sh'), 'utf8');
+    const ARGO_URL_RE = /argoproj\/argo-cd\/([^/\s"'`]+)\/manifests\/[A-Za-z0-9._-]*install\.yaml/g;
+    const argoDefault = (/^ARGOCD_VERSION="\$\{ARGOCD_VERSION:-([^}]*)\}"\s*$/m.exec(up) || [])[1];
+    /** 凍結記録（作業仕様書・superpowers）は当時の記述のまま残す（書き換えない）ので対象外。submodule は別リポジトリ。 */
+    const argoRefs = () => {
+      let out = '';
+      try {
+        out = execFileSync(
+          'git',
+          ['-C', REPO, 'grep', '-n', '-I', '-E', 'argoproj/argo-cd/[^ ]*/manifests/', '--',
+            '.', ':!.ai-context/specs', ':!.ai-context/superpowers', ':!src/ai-stock-trading'],
+          { encoding: 'utf8', maxBuffer: 1 << 26 },
+        );
+      } catch (e) {
+        if (e.status !== 1) throw e; // 1 = 一致なし
+      }
+      const refs = [];
+      for (const line of out.split('\n').filter(Boolean)) {
+        for (const m of line.matchAll(ARGO_URL_RE)) refs.push({ where: line.split(':').slice(0, 2).join(':'), ref: m[1] });
+      }
+      return refs;
+    };
+
+    ok('#1843: k8s-local-up.sh の ARGOCD_VERSION の既定は版のタグ（vX.Y.Z）', () => {
+      assert.ok(argoDefault, 'k8s-local-up.sh に ARGOCD_VERSION="${ARGOCD_VERSION:-<版>}" の行が無い');
+      assert.match(argoDefault, /^v\d+\.\d+\.\d+$/, `ARGOCD_VERSION の既定が版のタグでない: ${argoDefault}`);
+    });
+
+    ok('#1843: k8s-local-up.sh の install の URL は ARGOCD_VERSION を使う（版を直書きしない・stable を書かない）', () => {
+      const lines = up.split('\n').filter((l) => !/^\s*#/.test(l) && /argo-cd\/[^/]+\/manifests\/install\.yaml/.test(l));
+      assert.strictEqual(lines.length, 1, `install の行が 1 本でない:\n${lines.join('\n')}`);
+      assert.ok(lines[0].includes('argo-cd/${ARGOCD_VERSION}/manifests/install.yaml'), `ARGOCD_VERSION を使っていない: ${lines[0]}`);
+    });
+
+    ok('#1843: リポジトリ内の Argo CD の install の URL はすべて既定と同じ版のタグ（stable・別の版を書かない）', () => {
+      const refs = argoRefs();
+      // 陽性対照: 手順書（deploy/argocd・deploy/local/argocd・docs/how-to/deployment.md）の 3 か所は必ず拾う。
+      for (const f of ['deploy/argocd/README.md', 'deploy/local/argocd/README.md', 'docs/how-to/deployment.md']) {
+        assert.ok(refs.some((r) => r.where.startsWith(`${f}:`)), `${f} の Argo CD の URL を拾えていない（走査が壊れている）`);
+      }
+      const bad = refs.filter((r) => r.ref !== '${ARGOCD_VERSION}' && r.ref !== argoDefault);
+      assert.deepStrictEqual(bad, [], `既定（${argoDefault}）と違う版・ブランチの Argo CD の URL がある:\n${bad.map((r) => `${r.where} → ${r.ref}`).join('\n')}`);
+    });
+
+    ok('#1843: 変異 —— 手順書の URL を stable に戻すと拾う（検査の検出力）', () => {
+      // 本ファイル自身が走査に掛からないよう、変異の行は連結で組む。
+      const line = 'kubectl apply -f https://raw.githubusercontent.com/argoproj/' + 'argo-cd/stable/manifests/install.yaml';
+      const got = [...line.matchAll(ARGO_URL_RE)].map((m) => m[1]);
+      assert.deepStrictEqual(got, ['stable']);
+      assert.notStrictEqual(got[0], argoDefault);
+    });
+  }
+
   // --- #1817 / FR-16・SC-12・計画 ADR-0123 決定 2・IADR-0516 決定 2: SC-12 の IdP への書き込み口の配備の配線 -------------
   //
   // 🔴 **守るのは 2 つである。** (1) 管理用の機密クライアント `mcp-client-admin` の権限が `manage-clients` と `manage-users` の
@@ -15487,6 +15554,214 @@ server.listen(0, '127.0.0.1', async () => {
         assert.ok(text.includes('`keycloak-realm-import`'), `${name} に取り込み元（Secret keycloak-realm-import）が無い`);
         assert.ok(!/起動器の外であり止められない/.test(text), `${name} に旧い文言（初回の取り込みは止められない）が残っている`);
       }
+    });
+  }
+
+
+  // --- NFR / ADR-0107 決定 4 / #1841: インフラ製品の既定の外部通信が全経路の配備で止まっていること ---------
+  //
+  // 検査器は scripts/lib/product-egress-defaults.js（check-deploy-manifests.js が描画結果・compose・Testcontainers に対して呼ぶ）。
+  // ここでは①YAML の部分集合のパーサが描画結果の形を読めること ②実物（raw のマニフェスト・compose・.cs）が通ること（陽性対照）
+  // ③設定を 1 つずつ外す・上書きする・版を戻す変異がすべて落ちること（陰性対照）を固定する。
+  {
+    const REPO_EG = path.join(__dirname, '..');
+    const readEg = (rel) => fs.readFileSync(path.join(REPO_EG, rel), 'utf8');
+    const { parseDocuments, YamlSubsetError } = require('./lib/yaml-subset');
+    const egress = require('./lib/product-egress-defaults');
+
+    ok('#1841 yaml-subset: 描画結果の形（同じ字下げのシーケンス・コンパクトな項目・フロー・二重引用の折り返しと \\U・ブロックスカラー）を読む', () => {
+      const text = [
+        'apiVersion: v1',
+        'kind: ConfigMap',
+        'metadata:',
+        '  name: c',
+        'data:',
+        '  a.ini: "; x\\n;',
+        '    y \\U0001F534 z\\n\\n[s]\\nk = v\\n"',
+        '  b.yaml: |',
+        '    top:',
+        '      k: false',
+        '---',
+        'kind: Deployment',
+        'spec:',
+        '  template:',
+        '    spec:',
+        '      containers:',
+        '      - args:',
+        '        - -config.file=/etc/x.yaml',
+        '        env:',
+        '        - name: A',
+        '          value: "true"',
+        '        - { name: B, value: "x y" }',
+        '        image: grafana/loki:3.0.0@sha256:abc # comment',
+        '        ports: [ { containerPort: 1, name: http } ]',
+      ].join('\n');
+      const [cm, dep] = parseDocuments(text);
+      assert.strictEqual(cm.data['a.ini'], '; x\n; y \u{1F534} z\n\n[s]\nk = v\n');
+      assert.strictEqual(cm.data['b.yaml'], 'top:\n  k: false\n');
+      const c = dep.spec.template.spec.containers[0];
+      assert.deepStrictEqual(c.args, ['-config.file=/etc/x.yaml']);
+      assert.deepStrictEqual(c.env, [{ name: 'A', value: 'true' }, { name: 'B', value: 'x y' }]);
+      assert.strictEqual(c.image, 'grafana/loki:3.0.0@sha256:abc');
+      assert.deepStrictEqual(c.ports, [{ containerPort: '1', name: 'http' }]);
+    });
+
+    ok('#1841 yaml-subset: 読めない形（エイリアス・マージキー・> の折り畳み・閉じない引用）は例外で止まる（黙って空にしない）', () => {
+      for (const t of ['a: *x', 'a:\n  <<: [*x]', 'a: >\n  b', 'a: "b', 'a: [1, 2']) {
+        assert.throws(() => parseDocuments(t), YamlSubsetError, `読めない形を通した: ${JSON.stringify(t)}`);
+      }
+    });
+
+    // 経路 B（deploy/local）の素のマニフェストを 1 つの描画結果として読む（kubectl が無くても走る）。
+    const K8S_FILES = [
+      'deploy/local/observability/grafana-config.yaml',
+      'deploy/local/observability/grafana.yaml',
+      'deploy/local/observability/loki.yaml',
+      'deploy/local/observability/tempo.yaml',
+      'deploy/local/infra/qdrant.yaml',
+      'deploy/local/infra/mailpit.yaml',
+    ];
+    const k8sText = () => K8S_FILES.map(readEg).join('\n---\n');
+    const k8sCheck = (text) => egress.checkRenderedManifests(text, 'test');
+    const mutate = (text, from, to) => {
+      assert.ok(text.includes(from), `変異の元の文字列が無い（実物が変わった。試験を直すこと）: ${from}`);
+      return text.replace(from, to);
+    };
+
+    ok('#1841 陽性対照: 経路 B のマニフェストで 5 製品がすべて見つかり、無効化が効いている', () => {
+      const r = k8sCheck(k8sText());
+      assert.deepStrictEqual(r.problems, []);
+      assert.deepStrictEqual([...r.found.keys()].sort(), ['grafana', 'loki', 'mailpit', 'qdrant', 'tempo']);
+    });
+
+    ok('#1841 陰性対照（経路 B）: Grafana の ini の 7 行を 1 行ずつ外すと、その行が落ちる', () => {
+      for (const [sec, key, want] of egress.GRAFANA_INI_SETTINGS) {
+        const r = k8sCheck(mutate(k8sText(), `    ${key} = ${want}\n`, ''));
+        assert.ok(r.problems.some((p) => p.includes(`[${sec}] ${key}`)), `${sec}.${key} を外しても通った`);
+      }
+    });
+
+    ok('#1841 陰性対照（経路 B）: Grafana の ini のマウント・ConfigMap を外す／env で上書き／読む場所を変えると落ちる', () => {
+      const base = k8sText();
+      const cases = [
+        ['マウントを外す', mutate(base, '              mountPath: /etc/grafana/grafana.ini\n', '              mountPath: /etc/grafana/other.ini\n')],
+        ['ConfigMap を外す', mutate(base, '  name: grafana-config\n  namespace: platform-infra\n', '  name: grafana-config-x\n  namespace: platform-infra\n')],
+        ['env で上書き', mutate(base, '            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "false" }\n',
+          '            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "false" }\n            - { name: GF_ANALYTICS_REPORTING_ENABLED, value: "true" }\n')],
+        ['設定の置き場を変える', mutate(base, '            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "false" }\n',
+          '            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "false" }\n            - { name: GF_PATHS_CONFIG, value: "/etc/grafana/x.ini" }\n')],
+      ];
+      for (const [name, text] of cases) {
+        assert.ok(k8sCheck(text).problems.some((p) => p.includes('grafana')), `${name}: 通った`);
+      }
+    });
+
+    ok('#1841 陰性対照（経路 B）: Loki / Tempo の利用統計の鍵を外す・true にする・フラグで上書きすると落ちる', () => {
+      const base = k8sText();
+      const cases = [
+        ['loki: 鍵を外す', mutate(base, '    analytics:\n      reporting_enabled: false\n', '')],
+        ['loki: true', mutate(base, '    analytics:\n      reporting_enabled: false\n', '    analytics:\n      reporting_enabled: true\n')],
+        ['loki: 入れ子の別の場所', mutate(base, '    analytics:\n      reporting_enabled: false\n', '    server:\n      analytics:\n        reporting_enabled: false\n')],
+        ['loki: フラグで上書き', mutate(base, 'args: ["-config.file=/etc/loki/config.yaml"]', 'args: ["-config.file=/etc/loki/config.yaml", "-reporting.enabled=true"]')],
+        ['loki: 設定ファイルを読まない', mutate(base, 'args: ["-config.file=/etc/loki/config.yaml"]', 'args: ["-config.file=/etc/loki/other.yaml"]')],
+        ['tempo: 鍵を外す', mutate(base, '    usage_report:\n      reporting_enabled: false\n', '')],
+        ['tempo: フラグで上書き', mutate(base, 'args: ["-config.file=/etc/tempo/config.yaml"]', 'args: ["-config.file=/etc/tempo/config.yaml", "-reporting.enabled"]')],
+      ];
+      for (const [name, text] of cases) {
+        const product = name.split(':')[0];
+        assert.ok(k8sCheck(text).problems.some((p) => p.includes(`（${product}）`)), `${name}: 通った`);
+      }
+    });
+
+    ok('#1841 陰性対照（経路 B）: Qdrant の env を外す・false にする、Mailpit の env を外す・版を v1.21.8 へ戻すと落ちる', () => {
+      const base = k8sText();
+      const qEnv = '            - name: QDRANT__TELEMETRY_DISABLED\n              value: "true"\n';
+      const mEnv = '            - name: MP_DISABLE_VERSION_CHECK\n              value: "true"\n';
+      const cases = [
+        ['qdrant', mutate(base, qEnv, '            - name: QDRANT__OTHER\n              value: "true"\n')],
+        ['qdrant', mutate(base, qEnv, qEnv.replace('"true"', '"false"'))],
+        ['mailpit', mutate(base, mEnv, '            - name: MP_OTHER\n              value: "true"\n')],
+        ['mailpit', mutate(base, 'axllent/mailpit:v1.31.4@', 'axllent/mailpit:v1.21.8@')],
+      ];
+      for (const [product, text] of cases) {
+        assert.ok(k8sCheck(text).problems.some((p) => p.includes(`（${product}）`)), `${product} の変異が通った`);
+      }
+      // 版だけ戻した（env は在る）場合も、版の理由で落ちること（設定が在っても効かない）。
+      const old = k8sCheck(mutate(base, 'axllent/mailpit:v1.31.4@', 'axllent/mailpit:v1.21.8@')).problems;
+      assert.ok(old.some((p) => p.includes('v1.21.8 は最新版の確認を止める設定を持たない')), old.join('\n'));
+    });
+
+    ok('#1841 陽性対照（compose）: 4 製品が見つかり、無効化が効いている', () => {
+      const r = egress.checkCompose(readEg('deploy/docker-compose.yml'), 'compose', path.join(REPO_EG, 'deploy'));
+      assert.deepStrictEqual(r.problems, []);
+      assert.deepStrictEqual([...r.found.keys()].sort(), ['grafana', 'loki', 'qdrant', 'tempo']);
+    });
+
+    ok('#1841 陰性対照（compose）: env・マウントを外す、マウント先の設定ファイルから鍵を外すと落ちる', () => {
+      const compose = readEg('deploy/docker-compose.yml');
+      const dir = path.join(REPO_EG, 'deploy');
+      const run = (text, overrides = {}) => egress.checkCompose(text, 'compose', dir, {
+        readFile: (p) => {
+          const rel = path.relative(dir, p).split(path.sep).join('/');
+          if (rel in overrides) return overrides[rel];
+          try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
+        },
+        listDir: (p) => { try { return fs.statSync(p).isDirectory() ? fs.readdirSync(p).sort() : null; } catch { return null; } },
+      }).problems;
+      const cases = [
+        ['qdrant', run(mutate(compose, '      QDRANT__TELEMETRY_DISABLED: "true"\n', '      QDRANT__OTHER: "true"\n'))],
+        ['grafana', run(mutate(compose, '      - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro\n', ''))],
+        ['grafana', run(compose, { 'grafana/grafana.ini': readEg('deploy/grafana/grafana.ini').replace('check_for_updates = false', 'check_for_updates = true') })],
+        ['loki', run(compose, { 'loki-config.yaml': readEg('deploy/loki-config.yaml').replace('reporting_enabled: false', 'reporting_enabled: true') })],
+        ['tempo', run(compose, { 'tempo.yaml': readEg('deploy/tempo.yaml').replace(/usage_report:\n {2}reporting_enabled: false\n/, '') })],
+      ];
+      for (const [product, problems] of cases) {
+        assert.ok(problems.some((p) => p.includes(`（${product}）`)), `${product} の変異が通った: ${problems.join(' / ')}`);
+      }
+    });
+
+    ok('#1841 Testcontainers: 実物は通り、無効化の env の無い new QdrantBuilder( は落ち、コメントの中は数えない', () => {
+      const real = egress.checkTestcontainers(egress.collectCsFiles(REPO_EG));
+      assert.deepStrictEqual(real.problems, []);
+      assert.ok(real.builders >= 1, 'new QdrantBuilder( を 1 件も見つけていない（走査が壊れている）');
+      const bad = egress.checkTestcontainers([{ rel: 'x.cs', text: '_q = new QdrantBuilder(QdrantTestImage.Reference).Build();\n' }]);
+      assert.strictEqual(bad.problems.length, 1, '無効化の無い構築を通した');
+      const comment = egress.checkTestcontainers([{ rel: 'x.cs', text: '/// <c>new QdrantBuilder(</c> を外に書かない\n' }]);
+      assert.deepStrictEqual([comment.problems, comment.builders], [[], 0]);
+      const other = egress.checkTestcontainers([{ rel: 'x.cs', text: 'const string I = "grafana/loki:3.0.0";\n' }]);
+      assert.strictEqual(other.problems.length, 1, '検査の知らない経路（他製品の Testcontainers）を通した');
+    });
+
+    ok('#1841 手で起こす手順（docs の .md・scripts の .sh の docker|nerdctl run）: 実物は通り、env の無い行・設定ファイル頼みの行は落ちる', () => {
+      const real = egress.checkRunCommands(egress.collectRunCommandFiles(REPO_EG));
+      assert.deepStrictEqual(real.problems, []);
+      assert.ok(real.commands >= 2, `手順の docker run を拾えていない（${real.commands} 件）`);
+      const run = (text) => egress.checkRunCommands([{ rel: 'x.md', text }]).problems;
+      assert.deepStrictEqual(run('nerdctl run -d -p 1:1 -e QDRANT__TELEMETRY_DISABLED=true qdrant/qdrant:v1.18.1\n'), []);
+      assert.deepStrictEqual(run('docker run -d \\\n  --env=QDRANT__TELEMETRY_DISABLED=true \\\n  qdrant/qdrant:v1.18.1\n'), [], '行の継続を繋いでいない');
+      assert.strictEqual(run('nerdctl run -d -p 1:1 qdrant/qdrant:v1.18.1\n').length, 1, 'env の無い Qdrant を通した');
+      assert.strictEqual(run('#   docker run -d qdrant/qdrant:v1.18.1   # 例\n').length, 1, 'コメントの中の例（人が写して打つ）を見ていない');
+      assert.strictEqual(run('docker run -d grafana/loki:3.0.0 -config.file=/etc/loki/x.yaml\n').length, 1, '設定ファイルを辿れない Loki を通した');
+      assert.deepStrictEqual(run('docker run -d grafana/loki:3.0.0 -reporting.enabled=false\n'), [], 'フラグで止めた Loki を落とした');
+    });
+
+    ok('#1841 製品が走査全体で 1 度も見つからなければ missingProducts が名前を返す（0 件で緑にしない）', () => {
+      assert.deepStrictEqual(egress.missingProducts([new Map([['grafana', 1], ['loki', 1], ['tempo', 1], ['qdrant', 1], ['mailpit', 1]])]), []);
+      assert.deepStrictEqual(egress.missingProducts([new Map([['grafana', 1]]), new Map([['qdrant', 2]])]), ['loki', 'tempo', 'mailpit']);
+    });
+
+    ok('#1841 check-deploy-manifests: ツール無しの経路（compose・Testcontainers）の検査を本走査が呼ぶ', () => {
+      const dm = require('./check-deploy-manifests.js');
+      const r = dm.checkEgressWithoutTools(REPO_EG);
+      assert.deepStrictEqual(r.failures, []);
+      assert.ok(r.testcontainersBuilders >= 1);
+      assert.ok(r.runCommands >= 2, '手で起こす手順の検査を呼んでいない');
+      assert.deepStrictEqual(dm.discoverComposeFiles(REPO_EG), ['deploy/docker-compose.yml']);
+    });
+
+    ok('#1841 Grafana の ini は経路 A（ファイル）と経路 B（ConfigMap の inline）で同じ内容である', () => {
+      const [cm] = parseDocuments(readEg('deploy/local/observability/grafana-config.yaml'));
+      assert.strictEqual(cm.data['grafana.ini'], readEg('deploy/grafana/grafana.ini'));
     });
   }
 

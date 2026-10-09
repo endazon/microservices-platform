@@ -674,6 +674,9 @@ jobs:
       # overlay が増えたとき静かに検査対象から外れる（`paths:` の片側取りこぼしを 4 回踏んでいる。
       # #558 / #562 / #747 / #801）。実測でも、事前調査が 6 件と数えた overlay は実際には 8 件だった。
       #
+      # ADR-0107 決定 4, #1841: 同じ検査器が描画結果・compose・Testcontainers で Grafana・Loki・Tempo・Qdrant・Mailpit の
+      # 既定の外部通信（利用統計・更新確認・テレメトリ）が止まっていることも見る（scripts/lib/product-egress-defaults.js）。
+      #
       # **DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS をここで立てないこと。** 立てると helm / kubectl /
       # kubeconform の導入が失敗しても検査が notice を出して素通りする。scripts/scripts.repo.test.js
       # が突合する。

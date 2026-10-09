@@ -28,6 +28,9 @@ data:
           path: /tmp/tempo/blocks
         wal:
           path: /tmp/tempo/wal
+    # ADR-0107 決定 4, #1841: 利用統計の送信を止める（compose の tempo.yaml と同じ。理由はそちらのコメント）。
+    usage_report:
+      reporting_enabled: false
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -58,6 +58,15 @@ case "${DEPT_SYNC_MODE:-}" in
   *) echo "ERROR: DEPT_SYNC_MODE は Off・Report・Fix・未指定（現行を引き継ぐ。初回は何も足さない）のいずれかです: '${DEPT_SYNC_MODE}'" >&2; exit 1 ;;
 esac
 
+# NFR, 計画 ADR-0135 決定 2, IADR-0519 (#1843): Argo CD は**版のタグの URL**から入れる（`stable` ブランチを直接 apply しない）。
+#   既定は `stable` が 2026-10-09 に指していた版（v3.5.4。両 URL の install.yaml はバイト一致を実測）。上書きは ARGOCD_VERSION。
+#   🔴 **版のタグ（vX.Y.Z）以外は拒否する** —— `stable` / `master` を与えると固定が外れる。RESET_FLOOR と同じく最初に落とす。
+ARGOCD_VERSION="${ARGOCD_VERSION:-v3.5.4}"
+if [ "${ARGOCD:-}" = "1" ] && ! [[ "$ARGOCD_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "ERROR: ARGOCD_VERSION は版のタグ（例 v3.5.4）で与えてください（ブランチ名では版が固定されない。IADR-0519）: '${ARGOCD_VERSION}'" >&2
+  exit 1
+fi
+
 CLUSTER="${1:-msp-ast-dev}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -121,17 +130,18 @@ if [ "$RUNTIME" = "k3d" ]; then
   else
     CREATE_ARGS=(--agents 1 -p "8080:80@loadbalancer" -p "8443:443@loadbalancer")
   fi
-  # NFR, Issue #783 (#442 子 5): K3S_IMAGE で k3s のイメージを固定できるようにする（opt-in・既定は不変）。
+  # NFR, Issue #783 (#442 子 5): K3S_IMAGE で k3s のイメージを固定する。
+  # ［2026-10-09 / #1843・計画 ADR-0135 決定 2・IADR-0519］**既定で固定する**（従前は与えたときだけ固定し、既定は k3d 同梱の版
+  # だった）。版の情報源はこの既定 1 か所であり、CI のワークフローは値を持たない（同じ値を 2 か所に持つと片側だけ動く）。
+  # 上書きは K3S_IMAGE（空でも既定へ戻る＝浮動にはできない）。Rancher Desktop 経路は内蔵 k3s の版を使う（下の else）。
   # **理由は「バージョンを揃えたいから」ではない。揃っていないことが静かに素通りするからである。**
   # k3d の既定 k3s（5.7.4 では v1.30.4）が同梱する traefik chart は 25.0.3 で、そこでは `expose` が bool
   # であり、deploy/local/edge/traefik-entrypoint.yaml の map 形式（chart 26 以降）は型不一致で reconcile に
   # 失敗する。ところが `kubectl apply` は成功するため **admin(50000) が立たないまま本スクリプトは EXIT=0 で
   # 返る**（実測: GitHub ホストランナー / run 32554867883）。構造そのもの（reconcile 失敗が伝わらない）は
   # #953 で別途扱う。ここは「pin が外れたことに気づける」ための口である。
-  # 未設定なら引数を 1 バイトも足さない（既定はバイト等価・fail-safe）。
-  if [ -n "${K3S_IMAGE:-}" ]; then
-    CREATE_ARGS+=(--image "$K3S_IMAGE")
-  fi
+  K3S_IMAGE="${K3S_IMAGE:-rancher/k3s:v1.35.4-k3s1}"
+  CREATE_ARGS+=(--image "$K3S_IMAGE")
   if ! k3d cluster list "$CLUSTER" >/dev/null 2>&1; then
     k3d cluster create "$CLUSTER" "${CREATE_ARGS[@]}"
   else
@@ -1075,8 +1085,10 @@ if [ "${ARGOCD:-}" = "1" ]; then
   # 上限を超過し失敗する（既知問題）。server-side apply は annotation を作らず managed fields で差分管理する
   # ため大 CRD が通る。--force-conflicts は旧 client-side 実行済みクラスタ再実行時の field 所有権競合を
   # server-side manager が奪取して冪等・再実行安全にする（本ブートストラップは install manifest の再適用を
-  # 前提とし、ArgoCD 自身が同 CRD を自己管理下に置いた後の再実行は想定しない）。URL/バージョンは不変。
-  kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  # 前提とし、ArgoCD 自身が同 CRD を自己管理下に置いた後の再実行は想定しない）。
+  # IADR-0519 (#1843): URL は版のタグ（ARGOCD_VERSION。冒頭で形を検査済み）。従前の `stable` は取得のたびに中身が変わり得た。
+  echo "    -> Argo CD ${ARGOCD_VERSION} (IADR-0519)"
+  kubectl apply --server-side --force-conflicts -n argocd -f "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml"
   kubectl apply -f deploy/argocd/appproject.yaml -f deploy/argocd/application.yaml
   if [ -d src/ai-stock-trading/deploy/argocd ]; then
     kubectl apply -f src/ai-stock-trading/deploy/argocd/appproject.yaml -f src/ai-stock-trading/deploy/argocd/application.yaml
@@ -1248,7 +1260,7 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
       echo "ERROR: HelmChartConfig(traefik) の反映が確認できません。admin(50000) entrypoint が立っていません。" >&2
       echo "       **kubectl apply は成功していても reconcile は失敗し得ます**（#953）。以下を確認してください:" >&2
       echo "       - traefik chart の values スキーマは chart バージョンで変わります（deploy/local/edge/traefik-entrypoint.yaml の注記）" >&2
-      echo "       - k3s のバージョンは K3S_IMAGE で固定できます（例: K3S_IMAGE=rancher/k3s:v1.35.4-k3s1）" >&2
+      echo "       - k3s の版: ${K3S_IMAGE:-Rancher Desktop の内蔵 k3s（版は Rancher Desktop の設定が決める）}。k3d 経路の既定は本スクリプトの K3S_IMAGE（IADR-0519）" >&2
       echo "--- kube-system/traefik svc の実ポート ---" >&2
       kubectl -n kube-system get svc traefik \
         -o jsonpath='{range .spec.ports[*]}{.name}={.port}{"\n"}{end}' >&2 || true
