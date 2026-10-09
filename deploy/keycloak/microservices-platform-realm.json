@@ -542,6 +542,41 @@
           }
         }
       ]
+    },
+    {
+      "name": "basic",
+      "description": "Keycloak 25 以降の組み込み basic スコープ（アクセストークンの sub と auth_time）。realm import で clientScopes を明示すると組み込みスコープが生成されず、利用者のアクセストークンから sub が落ちるため定義する（#1859 で実測）",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "consentRequired": false,
+          "config": {
+            "introspection.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "auth_time",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usersessionmodel-note-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.session.note": "AUTH_TIME",
+            "id.token.claim": "true",
+            "introspection.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "auth_time",
+            "jsonType.label": "long"
+          }
+        }
+      ]
     }
   ],
   "clients": [
@@ -585,6 +620,7 @@
         }
       ],
       "defaultClientScopes": [
+        "basic",
         "profile",
         "email",
         "roles",
@@ -618,6 +654,7 @@
         "backchannel.logout.session.required": "true"
       },
       "defaultClientScopes": [
+        "basic",
         "profile",
         "email",
         "roles",
@@ -1003,6 +1040,7 @@
         }
       ],
       "defaultClientScopes": [
+        "basic",
         "profile",
         "email",
         "roles"
@@ -1045,6 +1083,7 @@
         }
       ],
       "defaultClientScopes": [
+        "basic",
         "profile",
         "email"
       ]
@@ -1086,6 +1125,7 @@
         }
       ],
       "defaultClientScopes": [
+        "basic",
         "profile",
         "email"
       ]
@@ -1126,6 +1166,7 @@
         }
       ],
       "defaultClientScopes": [
+        "basic",
         "profile",
         "email"
       ]

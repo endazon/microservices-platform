@@ -156,7 +156,10 @@ jobs:
       # 索引に 1 点も入らず検索は「壊れている」ときと同じ `200 ＋ 空` を返す。
       # 🔴 **越境判定（機密区分 × ティア）は緩めていない。** 本経路は HTTP を行わない＝ティアA の
       # 定義（社外送信なし）をそのまま満たす。confidential/restricted が外部へ出ないことは不変である。
+      # ［#1869］起動の段の上限。ふだんは 15 分前後で終わる。ジョブの上限（45 分）で**取り消される**と、ログも診断（下の
+      #   `Dump cluster state`。failure() のときだけ走る）も残らなかった。段の上限で**失敗**させ、診断を残す。
       - name: Bring up the integration stack (LOCALEDGE=1, ABACSEED=1, SEARCHSEED=1, LOCALEMBED=1)
+        timeout-minutes: 30
         run: |
           set -euo pipefail
           LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1 K8S_LOCAL_RUNTIME=k3d \
@@ -348,6 +351,7 @@ jobs:
       #   PKCE なし / plain は invalid_request・登録していない URI は 400・ループバックの port の扱い（FU3）を測る。M10: DCR が閉じている（FU3）。
       # ［#1845］M11: 無人の登録の 201 が client secret を一度だけ返し（Keycloak の現在値と一致）、SC-12 の再発行で旧 secret が直後に拒否され
       #   新しい secret でトークンが出る（ADR-0134 決定 2・FU4・FU6）。値はログに出さない。
+      # ［#1859］M9: port なしのループバックを Keycloak に直接作り、横取りの形（CVE-2024-8883）が 400・任意の port は進むことを測る（26.7.4。IADR-0524）。
       # ［#1846］M12: platform の audience。利用者（bff）・サービスアカウント・AST の kb-reader のトークンの aud に platform-api が在り、
       #   運用ツール（grafana）・MCP クライアントのトークンには無いことを稼働の Keycloak で測る。MCP クライアントの実トークンは McpServer の
       #   既定のスキームの口で 401。全サービスが audience を検証するので、ABAC の正常系の門（verify-oidc-edge-flow）が利用者の経路の陽性対照になる。

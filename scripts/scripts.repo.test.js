@@ -14919,7 +14919,8 @@ server.listen(0, '127.0.0.1', async () => {
       '#!/usr/bin/env bash',
       'printf "kcadm %s\\n" "$*" >> "$STUB_LOG.pod"',
       'case "$1 $2" in',
-      '  "config credentials") IFS= read -r pw || true; printf "KCADM %s\\n" "$pw" >> "$STUB_LOG.stdin"; [ "$pw" = "$STUB_KC_PASSWORD" ] || exit 1 ;;',
+      // IADR-0524 (#1859): Keycloak 26 の kcadm を真似る —— 端末が無いと stdin を読まず、パスワードは env KC_CLI_PASSWORD だけから取る。
+      '  "config credentials") pw="%{KC_CLI_PASSWORD:-}"; printf "KCADM %s\\n" "$pw" >> "$STUB_LOG.stdin"; [ -n "$pw" ] && [ "$pw" = "$STUB_KC_PASSWORD" ] || exit 1 ;;',
       '  "get realms/"*) echo \'{"resetPasswordAllowed":true,"smtpServer":{"host":"mailpit","from":"a@example.invalid"}}\' ;;',
       'esac',
       'exit 0',
@@ -15047,7 +15048,7 @@ server.listen(0, '127.0.0.1', async () => {
       }
     });
 
-    ok('#1793: check-password-reset-mail の稼働 realm の読み出しは、管理者パスワードを Pod 内 kcadm の引数に載せない（stdin で渡す）', () => {
+    ok('#1793 / #1859: check-password-reset-mail の稼働 realm の読み出しは、管理者パスワードを Pod 内 kcadm の引数に載せない（env KC_CLI_PASSWORD で渡す）', () => {
       const pw = probe('kcadmin');
       const w = world1793();
       try {
@@ -15056,7 +15057,7 @@ server.listen(0, '127.0.0.1', async () => {
           encoding: 'utf8', env: w.env({ KEYCLOAK_ADMIN: 'admin', KEYCLOAK_ADMIN_PASSWORD: pw, STUB_KC_PASSWORD: pw }),
         });
         assert.strictEqual(r.status, 0, r.stderr);
-        assert.strictEqual(JSON.parse(r.stdout).ok, true, `kcadm のログインが通らない（パスワードが stdin で届いていない）: ${r.stdout}`);
+        assert.strictEqual(JSON.parse(r.stdout).ok, true, `kcadm のログインが通らない（パスワードが KC_CLI_PASSWORD で届いていない）: ${r.stdout}`);
         const seen = w.collect();
         assert.ok(seen.stdin.includes(`KCADM ${pw}`), seen.stdin.join(' / '));
         assert.ok(seen.pod.some((c) => c.startsWith('kcadm config credentials ')) && !seen.pod.some((c) => c.includes('--password')), seen.pod.join(' / '));
@@ -15113,7 +15114,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(/secret_file\(\) \{[^\n]*\n\s*\( umask 077; printf '%s' "\$2" > "\$SECRET_DIR\/\$1" \)/.test(src), 'secret_file が 0600 で書いていない');
     });
 
-    ok('#1793: Pod 内 kcadm のログイン（measure-abac-combinations / measure-cutover-inventory）は --password を使わず stdin で渡す', () => {
+    ok('#1793 / #1859: Pod 内 kcadm のログイン（measure-abac-combinations / measure-cutover-inventory）は --password を使わず、stdin → Pod 内の sh → env KC_CLI_PASSWORD で渡す', () => {
       for (const f of ['measure-abac-combinations.js', 'measure-cutover-inventory.js', 'check-password-reset-mail.js']) {
         const src = code1793(read1793('scripts', f));
         assert.ok(!/'--password'|--password "/.test(src), `${f} が kcadm の --password を使っている`);
@@ -15121,8 +15122,14 @@ server.listen(0, '127.0.0.1', async () => {
       }
       assert.ok(/kcadm\(\[[\s\S]*?'--user',\s*env\('ABAC_KC_ADMIN_USER', 'admin'\),\s*\], `\$\{env\('ABAC_KC_ADMIN_PASSWORD', 'admin'\)\}\\n`\)/
         .test(read1793('scripts', 'measure-abac-combinations.js')), 'measure-abac-combinations のパスワードを stdin で渡していない');
-      assert.ok(/'exec', '-i', pod, '--', '\/opt\/keycloak\/bin\/kcadm\.sh', 'config', 'credentials'[\s\S]*?`\$\{env\('CUTOVER_KC_ADMIN_PASSWORD', 'admin'\)\}\\n`\)/
-        .test(read1793('scripts', 'measure-cutover-inventory.js')), 'measure-cutover-inventory のパスワードを stdin で渡していない');
+      // IADR-0524 (#1859): Keycloak 26 の kcadm は端末が無いと stdin を読まない。Pod 内の sh が stdin の 1 行を KC_CLI_PASSWORD へ入れて起こす。
+      const LOGIN_1859 = /IFS= read -r KC_CLI_PASSWORD && export KC_CLI_PASSWORD && exec \/opt\/keycloak\/bin\/kcadm\.sh "\$@"/;
+      assert.ok(LOGIN_1859.test(read1793('scripts', 'measure-abac-combinations.js')), 'measure-abac-combinations が KC_CLI_PASSWORD で渡していない');
+      assert.ok(/'exec', '-i', pod, '--', 'sh', '-c', '[^']*KC_CLI_PASSWORD[^']*', 'kcadm-login', 'config', 'credentials'[\s\S]*?`\$\{env\('CUTOVER_KC_ADMIN_PASSWORD', 'admin'\)\}\\n`\)/
+        .test(read1793('scripts', 'measure-cutover-inventory.js')), 'measure-cutover-inventory のパスワードを stdin → KC_CLI_PASSWORD で渡していない');
+      const rehearsal = read1793('.github', 'workflows', 'cutover-rehearsal.yml');
+      assert.ok(!/exec -i "\$KC" -- \/opt\/keycloak\/bin\/kcadm\.sh/.test(rehearsal), 'cutover-rehearsal が kcadm へ stdin で渡している（26 は読まない）');
+      assert.strictEqual((rehearsal.match(/exec -i "\$KC" -- sh -c 'IFS= read -r KC_CLI_PASSWORD/g) || []).length, 2, 'cutover-rehearsal の 2 か所のログインが KC_CLI_PASSWORD で渡していない');
     });
 
     ok('#1793: Qdrant の検証スクリプトは API キーを curl の引数に載せない（-H @- で stdin）', () => {
@@ -15763,6 +15770,81 @@ server.listen(0, '127.0.0.1', async () => {
     ok('#1841 Grafana の ini は経路 A（ファイル）と経路 B（ConfigMap の inline）で同じ内容である', () => {
       const [cm] = parseDocuments(readEg('deploy/local/observability/grafana-config.yaml'));
       assert.strictEqual(cm.data['grafana.ini'], readEg('deploy/grafana/grafana.ini'));
+    });
+  }
+
+  // --- NFR, IADR-0524 (#1869): 起動器が呼ぶ投入スクリプトの待ちに上限を置く ------------------------------------------------
+  // #1869 の integration-stack の 2 回目の実行は、起動の段で 45 分止まりジョブごと取り消された（ログも診断も残らない）。
+  // fetch は既定で上限を持たないので、受け手が詰まると投入スクリプトは黙って待ち続ける。1 要求と全体の上限、起動の段の上限を固定する。
+  {
+    const fs1869 = require('fs');
+    const path1869 = require('path');
+    const { spawnSync: spawn1869 } = require('child_process');
+    const REPO1869 = path1869.join(__dirname, '..');
+    const LIB1869 = path1869.join(REPO1869, 'scripts', 'lib', 'bounded-wait.js');
+    const node1869 = (code, timeout = 20000) => spawn1869(process.execPath, ['-e', code, LIB1869], {
+      encoding: 'utf8', timeout, env: { ...process.env, NO_PROXY: '*', no_proxy: '*', HTTP_PROXY: '', HTTPS_PROXY: '', http_proxy: '', https_proxy: '' },
+    });
+
+    ok('#1869 fetchWithin: 受け付けて応答しない受け手には、上限で方法と URL を名指しして失敗する（黙って待たない）', () => {
+      const code = `
+        const net = require('net'); const { fetchWithin } = require(process.argv[1]);
+        const srv = net.createServer(() => {}).listen(0, '127.0.0.1', async () => {
+          const url = 'http://127.0.0.1:' + srv.address().port + '/authz/attributes';
+          const t0 = Date.now();
+          try { await fetchWithin(url, { method: 'POST' }, 300); console.log('RESOLVED'); }
+          catch (e) { console.log(JSON.stringify({ ms: Date.now() - t0, msg: e.message })); }
+          process.exit(0);
+        });`;
+      const r = node1869(code);
+      assert.strictEqual(r.status, 0, r.stderr);
+      const out = JSON.parse(r.stdout.trim().split('\n').pop());
+      assert.ok(out.ms < 5000, `上限で止まっていない（${out.ms} ms）`);
+      assert.match(out.msg, /^POST http:\/\/127\.0\.0\.1:\d+\/authz\/attributes が 300 ms 以内に応答しなかった/);
+    });
+
+    ok('#1869 startWatchdog: 全体の上限を超えたら名指しして非 0 で終える。上限の前に終わる処理は止めない（unref）', () => {
+      const hang = node1869(`
+        const { startWatchdog } = require(process.argv[1]);
+        startWatchdog('seed-probe', 200);
+        setInterval(() => {}, 1000);`);
+      assert.strictEqual(hang.status, 1, `上限で終わらない（status ${hang.status}・signal ${hang.signal}）`);
+      assert.match(hang.stderr, /\[seed-probe\] 200 ms を超えた/);
+      const quick = node1869(`
+        const { startWatchdog } = require(process.argv[1]);
+        startWatchdog('seed-probe', 60000);
+        console.log('done');`);
+      assert.strictEqual(quick.status, 0, quick.stderr);
+      assert.strictEqual(quick.stdout.trim(), 'done', '監視のタイマーがプロセスの終了を妨げている（unref していない）');
+    });
+
+    ok('#1869 起動器が呼ぶ投入スクリプト 3 本は、上限の無い fetch を持たず、全体の上限を main より前に掛ける', () => {
+      for (const f of ['seed-abac-policies.js', 'seed-search-documents.js', 'seed-tag-dictionary.js']) {
+        const src = fs1869.readFileSync(path1869.join(REPO1869, 'scripts', f), 'utf8');
+        const bare = src.split('\n').filter((l) => /\bawait fetch\(/.test(l) && !/AbortSignal\.timeout\(/.test(l));
+        assert.deepStrictEqual(bare, [], `${f} に上限の無い fetch がある`);
+        assert.ok(/fetchWithin\(/.test(src), `${f} が fetchWithin を使っていない（陽性対照）`);
+        assert.ok(/startWatchdog\('[^']+', OVERALL_TIMEOUT_MS[\s\S]*?\n\s*main\(process\.argv/.test(src), `${f} が main の前に全体の上限を掛けていない`);
+      }
+    });
+
+    ok('#1869 verify-oidc-edge-flow: ログイン画面までの 302 は issuer と同じ origin の login-actions だけを、最大 3 段まで辿る（Keycloak 26 の PAR）', () => {
+      const src = fs1869.readFileSync(path1869.join(REPO1869, 'scripts', 'verify-oidc-edge-flow.sh'), 'utf8');
+      const loop = /for hop in 0 1 2 3; do\n([\s\S]*?)\n  done/.exec(src);
+      assert.ok(loop, 'ログイン画面を取る段に、上限つきの辿りのループが無い');
+      assert.ok(/case "\$next_loc" in\n\s+"\$KC_URL\/realms\/\$REALM\/login-actions\/"\*\)/.test(loop[1]), '辿る先を issuer の login-actions に限っていない');
+      assert.ok(/if \[ "\$hop" -lt 3 \]; then page_url="\$next_loc"; continue; fi/.test(loop[1]), '辿る段数に上限が無い');
+      assert.ok(!/curl[^\n]*\s-L\b/.test(loop[1]), 'curl -L で任意の先を辿っている（クライアントへの戻りまで黙って辿る）');
+      assert.ok(/ACQUIRE_ERR="ログインフォームを取得できない[^"]*Location=\$\{next_loc/.test(src), '失敗の文言に最後の Location を出していない');
+    });
+
+    ok('#1869 integration-stack: 起動の段に、ジョブの上限より短い上限がある（取り消しではなく失敗にして診断を残す）', () => {
+      const wf = fs1869.readFileSync(path1869.join(REPO1869, '.github', 'workflows', 'integration-stack.yml'), 'utf8');
+      const job = /\n    timeout-minutes: (\d+)\n/.exec(wf);
+      const step = /- name: Bring up the integration stack[^\n]*\n\s+timeout-minutes: (\d+)\n/.exec(wf);
+      assert.ok(job && step, '起動の段かジョブの上限が無い');
+      assert.ok(Number(step[1]) < Number(job[1]), `起動の段の上限 ${step[1]} 分がジョブの上限 ${job[1]} 分以上`);
+      assert.ok(/- name: Dump cluster state[^\n]*\n\s+if: failure\(\)/.test(wf), '失敗時の診断が無い（段の上限で失敗させる意味が無い）');
     });
   }
 

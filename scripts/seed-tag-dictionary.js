@@ -46,6 +46,10 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+// IADR-0524 (#1859 / #1869): 待ちに上限を置く（1 要求・全体）。超えたら何を待っていたかを名指しして非 0 で終える。
+const { fetchWithin, startWatchdog, msFromEnv, DEFAULT_REQUEST_MS, DEFAULT_OVERALL_MS } = require('./lib/bounded-wait.js');
+const REQUEST_TIMEOUT_MS = msFromEnv('TAG_SEED_REQUEST_TIMEOUT_MS', DEFAULT_REQUEST_MS);
+const OVERALL_TIMEOUT_MS = msFromEnv('TAG_SEED_TIMEOUT_MS', DEFAULT_OVERALL_MS);
 const { requireLiveOptIn } = require('./lib/live-opt-in.js');
 
 // `seed-abac-policies.js` は `require.main` ガードを持つので、require しても投入は走らない。
@@ -140,11 +144,11 @@ async function fetchToken(kcUrl) {
     );
   }
   const form = abacSeed.buildTokenForm({ clientId: CLIENT_ID, clientSecret: CLIENT_SECRET });
-  const res = await fetch(`${kcUrl}/realms/${REALM}/protocol/openid-connect/token`, {
+  const res = await fetchWithin(`${kcUrl}/realms/${REALM}/protocol/openid-connect/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: form,
-  });
+  }, REQUEST_TIMEOUT_MS);
   if (!res.ok) {
     throw new Error(
       `Keycloak のトークン取得に失敗しました（${res.status}）。client ${CLIENT_ID} の` +
@@ -155,7 +159,7 @@ async function fetchToken(kcUrl) {
 }
 
 async function listTags(docUrl, token) {
-  const res = await fetch(`${docUrl}/tags`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetchWithin(`${docUrl}/tags`, { headers: { Authorization: `Bearer ${token}` } }, REQUEST_TIMEOUT_MS);
   if (!res.ok) {
     // 403 は「読みのロールが足りない」。何が足りないかを言う（無音で 0 件へ落ちない）。
     throw new Error(
@@ -168,11 +172,11 @@ async function listTags(docUrl, token) {
 
 // 1 件登録する。**409 は「既にある」であって失敗ではない**（CreateTagEndpoint の契約）。
 async function createTag(docUrl, token, name) {
-  const res = await fetch(`${docUrl}/tags`, {
+  const res = await fetchWithin(`${docUrl}/tags`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
-  });
+  }, REQUEST_TIMEOUT_MS);
   if (res.status === 409) return 'exists';
   if (!res.ok) {
     throw new Error(`POST /tags に失敗しました（${res.status}）: ${name} / ${await res.text()}`);
@@ -250,6 +254,8 @@ async function main(argv) {
 module.exports = { selectMissingTags, loadSeed, CLIENT_ID };
 
 if (require.main === module) {
+  // IADR-0524 (#1869): 全体の上限。超えたら名指しして非 0（起動器は best-effort で WARN にして先へ進む）。
+  startWatchdog('seed-tag-dictionary', OVERALL_TIMEOUT_MS, { onExpire: () => { cleanup(); process.exit(1); } });
   main(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((e) => {

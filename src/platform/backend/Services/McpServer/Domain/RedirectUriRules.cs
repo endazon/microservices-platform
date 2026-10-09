@@ -17,7 +17,8 @@ namespace McpServer.Domain;
 //   port を明示した登録（`http://127.0.0.1:50000/cb`）は完全一致で照合され、`:50000@evil.example/cb` も別の port も 400 になる
 //   （Keycloak 24.0.5 の稼働で実測。integration-stack の門 M9）。`http://[::1]` も同じ規則に揃える（port まで完全一致）。
 //   **任意の port を受ける利便は失う**（クライアントは固定の port で待ち受ける）。緩めるには Keycloak を 25.0.6 以上へ上げることが前提
-//   （IADR-0516 の #1844 追記）。
+//   （IADR-0516 の #1844 追記）。［2026-10-09 / #1859・IADR-0524］配備は 26.7.4 へ上がり、port なしの登録でも横取りの形は 400 になった
+//   （手元の実測。integration-stack の門 M9 が稼働で測る）。**この規則を外すかは製品の判断であり、外すまではこのまま残す**（IADR-0516 の #1859 追記）。
 public static class RedirectUriRules
 {
     /// <summary>1 クライアントに登録できるリダイレクト URI の上限。</summary>
@@ -45,7 +46,7 @@ public static class RedirectUriRules
         if (string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal)) return null;
         if (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.Ordinal) && IsLoopbackLiteral(value, uri, out var hasExplicitPort))
         {
-            // 🔴 CVE-2024-8883: port なしのループバックは Keycloak 24 で認可コードの横取りを許す（上の注記）。
+            // 🔴 CVE-2024-8883: port なしのループバックは Keycloak 24 で認可コードの横取りを許した（上の注記。外すかは #1859 の判断待ち）。
             return hasExplicitPort
                 ? null
                 : $"ループバックのリダイレクト URI '{value}' には port を明示してください（例: http://127.0.0.1:53123/callback）。";

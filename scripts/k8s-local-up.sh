@@ -446,8 +446,11 @@ kubectl create configmap keycloak-realms -n "$INFRA_NS" "${realm_args[@]}" \
 #   env の値へ差し替える（判定器 dev_client_secret_realm_for_import。対象・env の名前・宣言の値の単一情報源）。env が無ければ宣言のまま
 #   （dev の context の既定は従来と同じ中身）。🔴 実の secret を含み得るので **ConfigMap ではなく Secret** にする。値は apply_secret が
 #   0700 の一時ディレクトリの 0600 のファイル経由で渡し、必ず消す（#1793。どのプロセスの引数にも載らない）。
+#   🔴 IADR-0524 (#1859): キー（＝取り込み先のファイル名）は **`<realm 名>-realm.json`**。Keycloak 26 の取り込みは、ファイル名と中身の
+#   realm 名が食い違うと起動しない（`File name / realm name mismatch`。実測）。宣言のファイル名（microservices-platform-realm.json）と
+#   ConfigMap `keycloak-realms` のキーは変えない（読み手は後追いの Job と門で、ファイル名を realm 名と突き合わせない）。
 realm_import_mp="$(dev_client_secret_realm_for_import deploy/keycloak/microservices-platform-realm.json)" || exit 1
-realm_import_args=("microservices-platform-realm.json=${realm_import_mp}")
+realm_import_args=("platform-realm.json=${realm_import_mp}")
 if [ -f "$ast_realm" ]; then
   realm_import_args+=("ai-stock-trading-realm.json=$(< "$ast_realm")")
 fi

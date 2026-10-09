@@ -138,8 +138,9 @@ jobs:
           node scripts/seed-abac-policies.js --live
           node scripts/seed-search-documents.js --live
           KC="$(kubectl -n "$INFRA_NS" get pod -l app=keycloak -o jsonpath='{.items[0].metadata.name}')"
-          # パスワードは引数へ載せない（#1793。kcadm は --password を省くと標準入力から読む）。
-          printf '%s\n' "$KEYCLOAK_ADMIN_PASSWORD" | kubectl -n "$INFRA_NS" exec -i "$KC" -- /opt/keycloak/bin/kcadm.sh \
+          # パスワードは引数へ載せない（#1793）。Keycloak 26 の kcadm は端末が無いと標準入力を読まないので、Pod 内の sh が標準入力の 1 行を
+          # env KC_CLI_PASSWORD（kcadm が読む）へ入れてから起こす（IADR-0524 / #1859）。
+          printf '%s\n' "$KEYCLOAK_ADMIN_PASSWORD" | kubectl -n "$INFRA_NS" exec -i "$KC" -- sh -c 'IFS= read -r KC_CLI_PASSWORD && export KC_CLI_PASSWORD && exec /opt/keycloak/bin/kcadm.sh "$@"' kcadm-login \
             config credentials --server http://localhost:8080 --realm master --user admin
           kubectl -n "$INFRA_NS" exec "$KC" -- /opt/keycloak/bin/kcadm.sh \
             create users -r platform -s "username=${PLANTED_USER}" -s enabled=true
@@ -263,7 +264,7 @@ jobs:
           done < "$OUT/purge.txt"
           # (c) realm を消す（旧名が残っていればそれも）。master と AST の realm は消さない。
           KC="$(kubectl -n "$INFRA_NS" get pod -l app=keycloak -o jsonpath='{.items[0].metadata.name}')"
-          printf '%s\n' "$KEYCLOAK_ADMIN_PASSWORD" | kubectl -n "$INFRA_NS" exec -i "$KC" -- /opt/keycloak/bin/kcadm.sh \
+          printf '%s\n' "$KEYCLOAK_ADMIN_PASSWORD" | kubectl -n "$INFRA_NS" exec -i "$KC" -- sh -c 'IFS= read -r KC_CLI_PASSWORD && export KC_CLI_PASSWORD && exec /opt/keycloak/bin/kcadm.sh "$@"' kcadm-login \
             config credentials --server http://localhost:8080 --realm master --user admin
           kubectl -n "$INFRA_NS" exec "$KC" -- /opt/keycloak/bin/kcadm.sh delete realms/platform
           kubectl -n "$INFRA_NS" exec "$KC" -- /opt/keycloak/bin/kcadm.sh delete realms/microservices-platform \

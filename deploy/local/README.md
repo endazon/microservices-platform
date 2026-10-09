@@ -118,7 +118,7 @@ PERSIST=0 bash scripts/k8s-local-up.sh --live
 
 | サービス | PVC | マウント | 保持されるもの | ゲート |
 | --- | --- | --- | --- | --- |
-| Keycloak | `keycloak-data`（1Gi・local-path） | `/opt/keycloak/data`（`start-dev` の file H2） | realm ＋ runtime state（追加ユーザー・シークレット・セッション） | `PERSIST=1` |
+| Keycloak | `keycloak-data`（1Gi・local-path） | `/opt/keycloak/data`（`start-dev` の file H2。🔴 版を上げると起動時に一方向へ移行する。上げる前に退避する ——［運用仕様書］(../../docs/operations/operations.md) の「Keycloak の版の更新」） | realm ＋ runtime state（追加ユーザー・シークレット・セッション） | `PERSIST=1` |
 | Postgres | `postgres-data`（2Gi・local-path） | `/var/lib/postgresql/data` | 全アプリ DB（MSP + AST） | `PERSIST=1` |
 | Qdrant | `qdrant-storage`（2Gi・local-path） | `/qdrant/storage` | コレクションとベクトル（再 ingest なしで検索を続けられる） | `PERSIST=1` |
 | Vault | `vault-data`（1Gi・local-path） | `/vault/data`（file ストレージ＋ unseal 鍵・初期 root トークンの 0600 ファイル） | k8s auth・policy・role・KV（画面 SC-22 で入れた秘密）・OIDC 設定。Pod 内ラッパーが自動 unseal（IADR-0457） | `PERSIST=1` ＋ `VAULT=1` |
@@ -490,7 +490,8 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
 
 > 🔴 **［2026-08-31 / #780・IADR-0243］既定は手順B（エッジ host 集約）である。**
 > issuer は **`https://keycloak.localhost/realms/platform`** であり、`deploy/local/infra/keycloak.yaml` の
-> `KC_HOSTNAME_URL` がその単一情報源である。**`http://keycloak:8080` を issuer とする記述（手順A）は
+> `KC_HOSTNAME` がその単一情報源である（［2026-10-09 / #1859］Keycloak 26 で hostname v1 の `KC_HOSTNAME_URL` から移した。
+> 26 は `KC_HOSTNAME_URL` を警告だけ出して無視する）。**`http://keycloak:8080` を issuer とする記述（手順A）は
 > 過去の姿であり、いま実行すると `iss` が合わない。** 手順A の記述は経緯として残すが、追随しないこと。
 > pod からエッジ host を引けるようにするのは `coredns-custom`（IADR-0227）で、**hosts 追記も
 > port-forward も要らない**（`scripts/verify-oidc-edge-flow.sh` がその前提なしで完走する）。
@@ -552,7 +553,7 @@ Kubernetes 1.30 以降は、レガシーな `--oidc-*` フラグを内部で**�
 apiserver が受理できる issuer（https）と realm が発行する issuer（http）が**両立し得なかった**ため、
 apiserver 側にフラグを足しても OIDC ログインは成立しなかった。
 
-> 🔴 **［2026-08-31 / #780］この前提は解消した。** `KC_HOSTNAME_URL` は
+> 🔴 **［2026-08-31 / #780］この前提は解消した。** `KC_HOSTNAME_URL`（#1859 以降は `KC_HOSTNAME`）は
 > **`https://keycloak.localhost`** であり、token の `iss` は https である（IADR-0243）。
 > apiserver 側の OIDC 検証と issuer host の名前解決は **#781（IADR-0310）**が `APISERVER_OIDC=1` の
 > opt-in として配線した。Headlamp のブラウザ OIDC ログインが成立することは #780 で実測済みである
