@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-28
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]
 adrs: [ADR-0132, ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
 iadrs: [IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524]
-specs: [20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade]
-issues: [#1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, planning#700, AST#1078]
+specs: [20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade]
+issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, planning#700, AST#1078]
 -->
 
 # 運用 Runbook: 対になる秘密のローテーション
@@ -22,7 +22,7 @@ issues: [#1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, pl
 >
 > **値そのものは本書にもリポジトリのどこにも置かない。** 手順は最後まで値を画面へ出さない。
 >
-> 🔴 **本書の手順は稼働環境で一度も実行していない（リハーサル未実施）。** 末尾「リハーサル記録」を参照。
+> 🔴 **本書の手順を通しで実行したことはまだ無い（リハーサル未実施）。** 手順 1 の 1-1〜1-3 だけは 2026-10-10 に Windows（Git Bash）で実行し、回すところまで通った。末尾「リハーサル記録」を参照。
 
 ## 対になる秘密とは
 
@@ -71,7 +71,7 @@ issues: [#1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, pl
 | 項目 | 内容 |
 | --- | --- |
 | 必要な権限 | 対象クラスタの `kubectl exec`（`platform-infra` の Vault）・`port-forward`（Keycloak）と、対象名前空間の Secret / ExternalSecret / Deployment への読み書き。認証基盤の master realm の管理者（Secret `platform-infra/keycloak-admin`） |
-| 必要なツール | `kubectl`・`curl`・`jq`・`openssl`（新しい値の生成）。**ホストに `vault` CLI は不要**（Vault Pod 内で実行する） |
+| 必要なツール | `bash`・`kubectl`・`curl`・`jq`・`openssl`（新しい値の生成）。**ホストに `vault` CLI は不要**（Vault Pod 内で実行する）。Linux・macOS・WSL・Windows の Git Bash のどれでも同じ部品で動く（Git Bash の注意は [Windows（Git Bash）での注意](#windowsgit-bashでの注意)） |
 | 前提の状態 | Vault と External Secrets Operator が稼働し、Vault は永続化されている（raft ストレージ＋PVC） |
 | 所要時間の目安 | 群 1: 1 クライアント 10〜15 分。群 2: 1 ストア 15〜30 分。🔴 **どちらも、相手を書いてから消費側の作り直しが終わるまでの間、その資格情報を使う処理が失敗する**（重ねられない） |
 
@@ -88,7 +88,28 @@ issues: [#1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, pl
 
 ## 共通の部品
 
-以下はすべて **bash** で実行する（`read -s` は bash の機能）。
+以下はすべて **bash** で実行する（`read -s` は bash の機能）。**1 つの端末で上から順に実行し、終えるまで端末を閉じない**（部品が作る変数と一時ディレクトリを後の段が使う）。
+部品は Linux・macOS・WSL・Windows の Git Bash で同じ形のまま動くように書いてある（Git Bash で壊れた形と直し方は [Windows（Git Bash）での注意](#windowsgit-bashでの注意)）。
+
+**0-0. 作業の準備**（最初に 1 回。一時ディレクトリ・片付け・パスの渡し方を用意する）:
+
+```bash
+umask 077
+WORK="$(mktemp -d)"            # 値を含むファイルはここにだけ置き、使い終えたらすぐ消す
+trap 'rm -rf -- "${WORK:?}"' EXIT   # 端末を閉じれば消える。手順の最後でも明示して消す
+case "$(uname -s)" in
+  MINGW*|MSYS*) np() { cygpath -m "$1"; } ;;   # Git Bash: ネイティブの jq・curl へは C:/ 形で渡す
+  *)            np() { printf '%s' "$1"; } ;;
+esac
+```
+
+部品の書き方の約束（以下の部品はすべてこれに従っている。部品を書き換えるときも守る）:
+
+- **ネイティブのコマンド（`jq`・`curl`）へファイルのパスを引数で渡すときは `"$(np "$WORK/…")"` で渡す。** リダイレクト（`>`・`<`）は bash が開くので `np` は要らない。
+- **値を 1 つ取り出す jq は `-j` を使う**（行末に何も足さない）。複数行を取り出すときは `jq -r … | tr -d '\r'` にする。
+- **プロセス置換（`<(…)`）を使わない。** 一時ファイルに書いて渡す。
+- **大きな JSON はパイプせず、ファイルへ書いてから jq に読ませる。**
+- **HTTP の状態コードは `curl -o … -w '%{http_code}'` で変数に受けて比べる**（`| grep -q` で判定しない）。
 
 **0-a. 新しい値を作る**（表示しない）:
 
@@ -105,6 +126,9 @@ kubectl -n platform-infra exec deploy/vault -- sh -c '
 ' | grep -E 'current_version|^Key|^---'
 ```
 
+🔴 **控えるのは最初の試行の前の版である。** 途中で止めてやり直すとき、0-c まで進んだ試行のたびに版が 1 つ進む（2026-10-10 の実行では中断した試行で 1→6 まで進んだ）。
+やり直しのたびに控え直すと、相手と一致しない版を控えることになる。
+
 **0-c. 保管先のプロパティを 1 つ書く**（`printf '%s'` で渡す。ヒアドキュメントや `echo` は末尾の改行ごと入り得る）:
 
 ```bash
@@ -120,16 +144,38 @@ printf '%s' "$NEW_VALUE" | kubectl -n platform-infra exec -i deploy/vault -- sh 
 kubectl -n <namespace> annotate externalsecret <name> force-sync="$(date +%s)" --overwrite
 ```
 
-**0-e. Secret を読む消費側を引く**（名前を書き写さずに引く。`env`・`envFrom`・ボリュームのどれで読んでいても当たる）:
+**0-e. Secret を読む消費側を引く**（名前を書き写さずに引く。`env`・`envFrom`・ボリュームのどれで読んでいても当たる。全名前空間の JSON は大きいので、ファイルへ書いてから読む）:
 
 ```bash
-kubectl get deploy -A -o json | jq -r --arg s "<secret>" '.items[]
+kubectl get deploy -A -o json > "$WORK/deploy.json"
+jq -r --arg s "<secret>" '.items[]
   | select([.spec.template.spec.containers[]? | (.env[]?.valueFrom.secretKeyRef.name), (.envFrom[]?.secretRef.name)]
            + [.spec.template.spec.volumes[]?.secret.secretName] | index($s))
-  | "\(.metadata.namespace)/\(.metadata.name)"'
+  | "\(.metadata.namespace)/\(.metadata.name)"' "$(np "$WORK/deploy.json")" | tr -d '\r'
+rm -f "$WORK/deploy.json"
 ```
 
-書き終えたら `unset NEW_VALUE`。
+**0-z. 片付ける**（手順の最後に 1 回）:
+
+```bash
+unset NEW_VALUE; rm -rf -- "${WORK:?}"; trap - EXIT
+```
+
+### Windows（Git Bash）での注意
+
+2026-10-10 に Windows の Git Bash（ネイティブの `jq` 1.8.2・`curl`・`kubectl`）で手順 1 の 1-1〜1-3 を実行したとき、部品の旧い形が次の 5 点で壊れた。
+上の部品は 5 点とも避ける形に直してある。**部品を書き換えたり手で打ち直したりするときは、旧い形へ戻さない。**
+
+| 症状 | 原因 | 部品での避け方 |
+| --- | --- | --- |
+| 1-1 のトークン要求が `invalid_user_credentials` になる。1-2 の `client ok` が出ても、その後の要求が通らない | Windows の jq は `-r` の出力の行末を CRLF にする。フォームの末尾や `CID` に `\r` が付く | 値 1 つは `jq -j`。複数行は `jq -r … \| tr -d '\r'`（Windows 版の jq なら `-b` でも LF のまま出せる） |
+| 1-3 で jq が `/dev/fd/63` を開けないと言って止まる | プロセス置換 `<(…)` が渡す `/dev/fd/N` を、ネイティブの jq は開けない | 一時ファイル（0-0 の `$WORK`）に書いて、パスで渡す |
+| 書いたはずのファイルが無い・別のファイルを読む | MSYS の `/tmp/…` をネイティブの `curl`・`jq` へ渡すと、引数の形によっては変換されず `C:\tmp\…` を読み書きする。`MSYS_NO_PATHCONV=1` の下では変換が起きない | 0-0 の `np`（`uname` が `MINGW*`・`MSYS*` のとき `cygpath -m` で `C:/…` 形にする）で渡す |
+| `kubectl get deploy -A -o json \| jq …` が返ってこないことがある | 大きな JSON のパイプが時々止まる | ファイルへ書いてから jq に読ませる（0-e） |
+| `204` が返っているのに失敗と判定される | `set -o pipefail` の下で `curl … \| grep -q 204` は、grep が先に終わると curl が SIGPIPE で落ち、パイプ全体が偽になる | 状態コードを変数に受けて比べる（1-3 の 5） |
+
+- `umask 077` は Windows のファイルの権限（ACL）には効かない。`$WORK` は利用者ごとの一時ディレクトリ（`%TEMP%` の下）に作られ、値を含むファイルは使った直後に消す。
+- 1-1 の `port-forward` を `&` で裏へ回し `kill "$PF_PID"` で止める形は、Git Bash でもそのまま動く。
 
 ## 手順 1: 群 1（認証基盤のクライアントシークレット）
 
@@ -150,17 +196,21 @@ kubectl get deploy -A -o json | jq -r --arg s "<secret>" '.items[]
 
 ### 1-1. 管理者のトークンを取る
 
+**0-0** を済ませてから行う。
+
 ```bash
 kubectl -n platform-infra port-forward deploy/keycloak 18080:8080 >/dev/null 2>&1 &
 PF_PID=$!
 KC=http://127.0.0.1:18080
 KC_ADMIN_USER="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.username}' | base64 -d)"
 TOKEN="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d \
-  | jq -Rr --arg u "$KC_ADMIN_USER" '"grant_type=password&client_id=admin-cli&username=\($u|@uri)&password=\(.|@uri)"' \
+  | jq -Rj --arg u "$KC_ADMIN_USER" '"grant_type=password&client_id=admin-cli&username=\($u|@uri)&password=\(.|@uri)"' \
   | curl -sf -X POST "$KC/realms/master/protocol/openid-connect/token" \
-      -H 'Content-Type: application/x-www-form-urlencoded' --data-binary @- | jq -r .access_token)"
+      -H 'Content-Type: application/x-www-form-urlencoded' --data-binary @- | jq -j .access_token)"
 [ -n "$TOKEN" ] && [ "$TOKEN" != null ] && echo "token ok"
 ```
+
+フォームは `jq -j` で組み立てる（行末に何も足さない）。`-r` にすると Windows の jq ではフォームの末尾に `\r` が付き、`invalid_user_credentials` になる。
 
 🔴 **Keycloak の Pod で `kcadm.sh` を exec しない**（別 JVM が本体を OOMKilled にする）。管理操作は管理 API で行う。
 
@@ -168,30 +218,47 @@ TOKEN="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data
 
 ```bash
 CLIENT=<client>   # 例: bff
-CID="$(curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients?clientId=$CLIENT" | jq -r '.[0].id')"
+CID="$(curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients?clientId=$CLIENT" | jq -j '.[0].id')"
 [ -n "$CID" ] && [ "$CID" != null ] && echo "client ok"
 ```
 
 ### 1-3. 回す
 
+**新しい client の表現を組み立てて確かめるまで、保管先にも認証基盤にも書かない。** 組み立てで止まっても、何も変わっていない状態で終えられる。
+
 1. **0-a** で新しい値を作る。
-2. **0-b** で保管先の直前の版を控える（`<path>` は 1-0 の表）。
-3. **0-c** で保管先へ書く。この時点では消費側は旧の値を持っているので、何も壊れない。
-4. **認証基盤の client の `secret` を同じ値にする**（client の表現を読み、`secret` だけを差し替えて戻す。値は標準入力で渡す）:
+2. **新しい client の表現を組み立てて確かめる**（client の表現を読み、`secret` だけを差し替える。値はファイルで渡し、引数にも画面にも出さない。まだどこにも書かない）:
 
    ```bash
-   curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients/$CID" \
-     | jq --rawfile s <(printf '%s' "$NEW_VALUE") '.secret = $s' \
-     | curl -sf -o /dev/null -w '%{http_code}\n' -X PUT -H "Authorization: Bearer $TOKEN" \
-         -H 'Content-Type: application/json' --data-binary @- "$KC/admin/realms/platform/clients/$CID"
+   curl -sf -H "Authorization: Bearer $TOKEN" -o "$(np "$WORK/client.json")" "$KC/admin/realms/platform/clients/$CID"
+   printf '%s' "$NEW_VALUE" > "$WORK/secret"
+   jq --rawfile s "$(np "$WORK/secret")" '.secret = $s' "$(np "$WORK/client.json")" > "$WORK/client-new.json"
+   rm -f "$WORK/secret" "$WORK/client.json"
+   jq -e --arg cid "$CID" --arg c "$CLIENT" --argjson n "${#NEW_VALUE}" \
+     '.id == $cid and .clientId == $c and (.secret | length) == $n' "$(np "$WORK/client-new.json")" >/dev/null \
+     && echo "body ok"
    ```
 
-   `204` が出れば書けている。🔴 **ここから、旧の値を持つ消費側は `invalid_client` になる。5・6 を続けて行う。**
-5. **0-d** で同期を促す（1-0 の ExternalSecret）。
-6. 消費側を作り直す（**0-e** で引いた Deployment を `kubectl -n <ns> rollout restart deploy/<name>`、`rollout status` で待つ）。
+   `body ok` が出なければ先へ進まない。まだ何も書いていないので、`rm -f "$WORK/client-new.json"; unset NEW_VALUE` で終えてよい（1-1 からやり直す）。
+3. **0-b** で保管先の直前の版を控える（`<path>` は 1-0 の表）。
+4. **0-c** で保管先へ書く。この時点では消費側は旧の値を持っているので、何も壊れない。
+5. **認証基盤の client の `secret` を同じ値にする**（2 で確かめた表現を `PUT` で戻す）:
+
+   ```bash
+   CODE="$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $TOKEN" \
+     -H 'Content-Type: application/json' --data-binary @"$(np "$WORK/client-new.json")" \
+     "$KC/admin/realms/platform/clients/$CID")"
+   rm -f "$WORK/client-new.json"
+   [ "$CODE" = 204 ] && echo "keycloak ok" || echo "keycloak NG: $CODE"
+   ```
+
+   `keycloak ok` が出れば書けている。🔴 **ここから、旧の値を持つ消費側は `invalid_client` になる。6・7 を続けて行う。**
+   `keycloak NG` のときは [途中で止まったとき](#途中で止まったとき)の「相手の書き込みが失敗した・成否が分からない」へ進む。
+6. **0-d** で同期を促す（1-0 の ExternalSecret）。
+7. 消費側を作り直す（**0-e** で引いた Deployment を `kubectl -n <ns> rollout restart deploy/<name>`、`rollout status` で待つ）。
    `vault` / `wiki-js` は 1-0 の表のスクリプトを再実行する。
-7. **確かめる**（[確認](#確認この手順が成功したと言える条件)）。
-8. 終えたら `unset NEW_VALUE TOKEN; kill "$PF_PID"`。**[記録](#記録)する。**
+8. **確かめる**（[確認](#確認この手順が成功したと言える条件)）。
+9. 終えたら `unset TOKEN CODE; kill "$PF_PID"` と **0-z**。**[記録](#記録)する。**
 
 ### 管理用の資格情報が漏れたとき（`mcp-client-admin`）
 
@@ -247,12 +314,12 @@ bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets
 **ストアごとのコマンド（ストア側で何をするか・同期先・作り直す消費側）は [`secret-rotation-runbook.md`](secret-rotation-runbook.md) 手順 B-1 の表が正である。**
 本書が持つのは順序と、途中で止まったときの戻し方である。
 
-1. **0-a** で新しい値を作る（ストア側の対話入力で決める場合は、その値を `read -rs NEW_VALUE` で読む）。
+1. **0-0** で準備し、**0-a** で新しい値を作る（ストア側の対話入力で決める場合は、その値を `read -rs NEW_VALUE` で読む）。
 2. **0-b** で保管先の直前の版を控える。**同値にすべき 2 つの KV**（`postgres-app` と `wikijs-db`、`rabbitmq` と `rabbitmq-app`）は**両方**控える。
 3. **0-c** で保管先へ書く（同値の組は両方）。まだ何も壊れない。
 4. **ストア側の値を同じ値にする**（B-1 の「ストア側で先に行うこと」）。🔴 **ここから、旧の値で新しく接続する処理が失敗する。**
 5. **0-d** で同期を促し、B-1 の順で消費側を作り直す。
-6. **確かめる。** 終えたら `unset NEW_VALUE`。**[記録](#記録)する。**
+6. **確かめる。** 終えたら **0-z**。**[記録](#記録)する。**
 
 ## 起動の後に同期を促す
 
@@ -292,11 +359,11 @@ kubectl -n <namespace> get secret <name> -o jsonpath='{.data.<key>}' | base64 -d
 
 | 止まった段 | 状態 | 戻し方 |
 | --- | --- | --- |
-| 保管先へ書く前（0-a・0-b） | 何も変わっていない | `unset NEW_VALUE` で終える |
-| 保管先へ書いた後・相手を書く前（群 1 の 3、群 2 の 3） | 保管先だけ新しい。消費側は旧の値を持ち、動いている | **保管先を控えた版へ戻す**: Vault Pod 内で `vault kv rollback -version=<控えた版> secret/<path>`（同値の組は両方）。**同期を促さない**（促すと消費側が新しい値を受け取って壊れる。促してしまったなら、戻した後にもう一度促す） |
-| 相手を書いた後・作り直しの前（群 1 の 4 の後、群 2 の 4 の後） | 保管先と相手は新しい値で一致。消費側だけ旧い | **戻さない。前へ進める**（同期を促し、作り直す）。新しい値を失っていても、保管先に在る |
-| 相手の書き込みが失敗した・成否が分からない | 保管先は新しい。相手は不明 | 群 1: 1-2 の client を読み直し、`secret` の長さ（`jq -r '.secret | length'`）が新しい値と同じなら書けている → 前へ進める。違えば保管先を控えた版へ戻す（上の 2 段目）。群 2: 新しい値でストアへ接続を試し、通れば前へ進める。通らなければ保管先を戻す |
-| 作り直しの後に動かない | 値は一致しているはず | 同期が `Ready` か・Secret の長さが一致するかを見る。一致しているのに動かなければ、相手を旧の値へ戻す: 保管先の控えた版の値を変数へ読み（`vault kv get -version=<控えた版> -field=<property> secret/<path>` を変数に受ける。表示しない）、群 1 は 1-3 の 4、群 2 はストア側の手順でその値を書き、保管先を `rollback` し、同期と作り直しをやり直す |
+| 保管先へ書く前（群 1 の 1〜3、群 2 の 1・2） | 何も変わっていない | **0-z** で終える |
+| 保管先へ書いた後・相手を書く前（群 1 の 4、群 2 の 3） | 保管先だけ新しい。消費側は旧の値を持ち、動いている | **保管先を控えた版へ戻す**: Vault Pod 内で `vault kv rollback -version=<控えた版> secret/<path>`（同値の組は両方）。**同期を促さない**（促すと消費側が新しい値を受け取って壊れる。促してしまったなら、戻した後にもう一度促す） |
+| 相手を書いた後・作り直しの前（群 1 の 5 の後、群 2 の 4 の後） | 保管先と相手は新しい値で一致。消費側だけ旧い | **戻さない。前へ進める**（同期を促し、作り直す）。新しい値を失っていても、保管先に在る |
+| 相手の書き込みが失敗した・成否が分からない | 保管先は新しい。相手は不明 | 群 1: 1-2 の client を読み直し、`secret` が新しい値と同じかを値を出さずに比べる（`printf '%s' "$NEW_VALUE" > "$WORK/secret"` の後、`curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients/$CID" \| jq -e --rawfile s "$(np "$WORK/secret")" '.secret == $s'` が `true` を出す。比べ終えたら `rm -f "$WORK/secret"`。長さだけでは、旧の値も同じ長さのとき区別できない）。同じなら書けている → 前へ進める。違えば保管先を控えた版へ戻す（上の 2 段目）。群 2: 新しい値でストアへ接続を試し、通れば前へ進める。通らなければ保管先を戻す |
+| 作り直しの後に動かない | 値は一致しているはず | 同期が `Ready` か・Secret の長さが一致するかを見る。一致しているのに動かなければ、相手を旧の値へ戻す: 保管先の控えた版の値を変数へ読み（`vault kv get -version=<控えた版> -field=<property> secret/<path>` を変数に受ける。表示しない）、群 1 はその値を `NEW_VALUE` に入れて 1-3 の 2 と 5、群 2 はストア側の手順でその値を書き、保管先を `rollback` し、同期と作り直しをやり直す |
 
 🔴 **保管先の版の履歴は、戻すための唯一の控えである。** 0-b を飛ばさない。`vault kv metadata delete` や `destroy` をしない。
 
@@ -314,10 +381,11 @@ kubectl -n <namespace> get secret <name> -o jsonpath='{.data.<key>}' | base64 -d
 | 実施日 | 実施者 | 環境 | 対象 | 結果 | 本書との食い違いと直した箇所 |
 | --- | --- | --- | --- | --- | --- |
 | （未実施） | — | — | — | — | 2026-09-28 時点で一度も実施していない。稼働中のクラスタは利用者の検証環境であり、そこで回さない |
+| 2026-10-10 | 利用者 | Windows の Git Bash（ネイティブの `jq` 1.8.2）から経路 B のクラスタへ | 手順 1 の 1-1〜1-3（群 1 の 1 クライアント） | 回すところまで成功した。値は一度も表示していない。中断した試行で保管先の版が 1→6 まで進んだ | 部品の旧い形が Git Bash で 5 点壊れたので、部品を移植できる形へ直した（[Windows（Git Bash）での注意](#windowsgit-bashでの注意)）。1-3 を「新しい client の表現を組み立てて確かめてから保管先へ書く」順へ並べ替えた。0-b に「控えるのは最初の試行の前の版」を足した。直した後の部品は Windows では未実行（Linux の bash で論理だけ確かめた） |
 
 ## 限界（この手順で担保できないこと）
 
-- 🔴 **リハーサル未実施。** 管理 API の要求の形（client の表現を読み `secret` を差し替えて `PUT`）も、稼働環境では確かめていない。
+- 🔴 **通しのリハーサルは未実施。** 手順 1 の 1-1〜1-3（管理 API の要求の形〔client の表現を読み `secret` を差し替えて `PUT`〕を含む）は 2026-10-10 に Windows（Git Bash）で通った。手順 2 と、途中で止まったときの戻し方は確かめていない。直した後の部品は Windows では未実行である。
 - 🔴 **重ねられない。** 相手を書いてから作り直しが終わるまで、その資格情報を使う処理は失敗する。
 - 🔴 **手動の Secret 作成は塞いでいない**（[前提](#回した値が戻らないこと前提)）。起動の後に同期を促すのは人の手順である。
 - **本番の手順ではない。** 本番の保管先（unseal・監査・HA）と認証基盤の運用が決まったら、本書を本番向けに書き直す。
