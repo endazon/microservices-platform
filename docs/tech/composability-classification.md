@@ -3,15 +3,15 @@ title: 固定/可変 区分表（実装版）— コンポーザビリティ対�
 type: tech
 status: completed
 created: 2026-07-08
-updated: 2026-10-08
+updated: 2026-10-09
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15]
 adrs: [ADR-0015, ADR-0018, ADR-0106]
 iadrs: [IADR-0002, IADR-0007, IADR-0014, IADR-0021, IADR-0022, IADR-0023, IADR-0024, IADR-0025, IADR-0027, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0059, IADR-0461]
-specs: [20260708_issue-102_composability-fixed-variable-separation, 20260925_1499_object-storage-seaweedfs, 20261007_1771_ingestion-event-wiring-docs, 20261008_1799_composability-docs-wolverine-wiring]
-issues: [#102, #195, #217, #218, #219, #229, #1499, #1771, #1799]
+specs: [20260708_issue-102_composability-fixed-variable-separation, 20260925_1499_object-storage-seaweedfs, 20261007_1771_ingestion-event-wiring-docs, 20261008_1799_composability-docs-wolverine-wiring, 20261009_1771_ingestion-completed-no-wiring]
+issues: [#102, #195, #217, #218, #219, #229, #1499, #1771, #1799, planning#741]
 -->
 
 # 固定/可変 区分表（実装版）
@@ -123,5 +123,5 @@ Issue #102の作業項目 1「棚卸し」の成果物である。
 | --- | --- | --- |
 | イベントが共通エンベロープ未適用 | 計画とのギャップ（コンポーザブルアーキテクチャの決定 §3） | 後続 PR で標準化（issue #102 残項目として報告） |
 | 段が共通ステップインタフェース未準拠 | 同上 | エンベロープと同時に導入 |
-| `IngestionCompleted` に購読者が無い | 情報 | 購読者を結線するか、取り込みの仕様書から結線の記述を外すかは計画側の裁定待ち（2026-10-07 時点）。発行者の無かった取り込み依頼の契約型は 2026-10-07 に削除した |
+| `IngestionCompleted` に購読者が無い | 情報 | **結線しない**と裁定済み（2026-10-09）。取り込みの機能仕様書から結線の記述を外した（発行は残る。発行を移すか撤去するかは Wolverine 移行の残り単位で決める）。発行者の無かった取り込み依頼の契約型は 2026-10-07 に削除した |
 | ポート迂回の直接依存 | — | 検出されず（対処不要） |

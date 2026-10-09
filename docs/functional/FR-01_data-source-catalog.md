@@ -3,15 +3,15 @@ title: データソース登録・同期・カタログ化 機能仕様書
 type: functional-spec
 status: completed
 created: 2026-06-27
-updated: 2026-09-03
+updated: 2026-10-09
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-05, FR-12, SC-06, UC-04, UC-06]
 adrs: [ADR-0002, ADR-0003, ADR-0012, ADR-0014, ADR-0027, ADR-0070]
-iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0295, IADR-0304, IADR-0320, IADR-0356]
-specs: [20260627_FR-01_data-source-catalog-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1192_pdf-text-layer-extraction]
-issues: [#195, #217, #218, #219, #458, #537, #546, #580, #1097, #1192, planning#200]
+iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0295, IADR-0304, IADR-0320, IADR-0356, IADR-0314]
+specs: [20260627_FR-01_data-source-catalog-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1192_pdf-text-layer-extraction, 20261009_1771_ingestion-completed-no-wiring]
+issues: [#195, #217, #218, #219, #458, #537, #546, #580, #1097, #1192, #1771, planning#200, planning#741]
 -->
 
 # 機能仕様書: データソース登録・同期・カタログ化
@@ -53,7 +53,7 @@ flowchart TB
   DOC -->|DocumentUpdated| ING[IngestionService]
   DOC -->|DocumentUpdated| WIKI[WikiService]
   ING -->|Upsert| QD[(Qdrant)]
-  ING -->|IngestionCompleted| DOC
+  ING -.->|IngestionCompleted| NOSUB((購読者なし))
   CLI[利用者] -->|POST /search| RET[RetrievalService]
   RET -->|vector + ABAC filter| QD
 ```
@@ -64,7 +64,8 @@ flowchart TB
 2. `POST /datasources/{id}/sync` で同期を起動 → `RawDocumentFetched` を発行。
 3. `ConversionService` が原本を Markdown へ正規化 → `DocumentNormalized` を発行。
 4. **`DocumentService` が `DocumentNormalized` を購読し、カタログへ登録**（`status=normalized`、`MarkdownUri` 付き）→ `DocumentUpdated` を発行。
-5. `IngestionService` が `DocumentUpdated` を購読し、チャンク化・埋め込み・Qdrant 登録 → `IngestionCompleted`。
+5. `IngestionService` が `DocumentUpdated` を購読し、チャンク化・埋め込み・Qdrant 登録 → `IngestionCompleted` を発行する。
+   **この事象に購読者は無く、結線もしない**（2026-10-09 の裁定）。検索への反映は Qdrant への登録の時点で成立し、完了通知を待つ段は無い。
 6. `WikiService` が `DocumentUpdated` を購読し Wiki ページへ同期。
 7. `RetrievalService` の `POST /search` がベクトル検索＋ABAC 属性フィルタで横断検索結果を返す。
 
