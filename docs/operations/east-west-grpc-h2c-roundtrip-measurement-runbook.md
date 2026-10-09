@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-10
 ---
 <!-- trace:
 ids: [NFR-09, NFR-16, FR-15, FR-16]
 adrs: [ADR-0005, ADR-0029, ADR-0075, ADR-0089, ADR-0117]
 iadrs: [IADR-0379, IADR-0462, IADR-0426, IADR-0307, IADR-0377, IADR-0487, IADR-0488]
-specs: [20261004_issue-1255_h2c-roundtrip-measurement-runbook]
-issues: [#1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
+specs: [20261004_issue-1255_h2c-roundtrip-measurement-runbook, 20261010_1882_h2c-runbook-false-alarms]
+issues: [#1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 -->
 
 # 運用 Runbook: east-west gRPC（h2c）の往復を稼働 k3s で実測する
@@ -21,6 +21,8 @@ issues: [#1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 >
 > 🔴 **本書を実行するのは利用者（クラスタの持ち主）だけである。** 本書を書いた AI は稼働クラスタに 1 度も触れていない。
 > **コマンドと期待値はリポジトリのコード・チャートから導いたものであって、実測ではない**（helm の描画差分だけは手元で実測した。§2.3）。
+> 2026-10-10 に PoC が稼働 k3s で本書に従って実測し、測った経路はすべて両モードで合格した。そのとき期待値と食い違った判定の部品
+> （§0.3 (2)・(3)、§3.4 ③、Windows の改行とパス）は、その実測に合わせて直してある。
 > 期待値と違う結果が出たら、**期待値に合わせて読み替えず、出た値をそのまま記録する**（§5）。
 
 ## この手順を実行する条件（いつ走らせるか）
@@ -89,6 +91,10 @@ conflict で恒久的に止まる —— [運用仕様書](operations.md) の「
 NS=microservices-platform
 W="${W:-$HOME/h2c-measure-$(date +%Y%m%d)}"; mkdir -p "$W"
 git rev-parse HEAD > "$W/checkout.txt"
+case "$(uname -s)" in   # node へファイルのパスを引数で渡すときの変換（§0.4）
+  MINGW*|MSYS*) np() { cygpath -m "$1"; } ;;   # Windows（Git Bash）: C:/ 形で渡す
+  *)            np() { printf '%s' "$1"; } ;;
+esac
 
 # (1) リリースの現状を保存する（切り戻しの正はここで保存した利用者値である）
 helm history msp -n "$NS" --max 3 | tee "$W/helm-history-before.txt"
@@ -97,8 +103,10 @@ helm get values msp -n "$NS" --all -o json > "$W/all-values.json"       # チャ
 helm get manifest msp -n "$NS" > "$W/manifest-before.yaml"
 
 # (2) 描画と稼働の一致（S2）。0 行であること
+#     -B は空行だけの差を無視する。helm get manifest は helm template より末尾の空行が 1 行多く、
+#     -B が無いと内容が一致していても 2 行（"NNNNaNNNN" と "> "）出る（2026-10-10 の実測）
 helm template msp deploy/helm/microservices-platform -n "$NS" -f "$W/current-values.yaml" \
-  | diff - "$W/manifest-before.yaml" | tee "$W/render-vs-live.diff" | wc -l
+  | diff -B - "$W/manifest-before.yaml" | tee "$W/render-vs-live.diff" | wc -l
 
 # (3) 現行の mTLS モードとサイドカーの有無
 . scripts/lib/mesh-mtls-mode.sh
@@ -106,12 +114,16 @@ current_mesh_mtls_mode | tee "$W/mesh-before.txt"; echo "rc=${PIPESTATUS[0]}"   
 kubectl -n "$NS" get peerauthentication microservices-platform-mtls -o jsonpath='{.spec.mtls.mode}{"\n"}' \
   | tee "$W/peerauthentication-before.txt"                                # 稼働のモード（上と一致すること）
 kubectl get ns -L istio-injection                                         # 注入ラベルは microservices-platform だけのはず
-kubectl -n "$NS" get pods -o custom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name \
-  | tee "$W/pods-containers.txt"                                          # アプリ Pod すべてに istio-proxy が在ること
+kubectl -n "$NS" get pods \
+  -o custom-columns='NAME:.metadata.name,CONTAINERS:.spec.containers[*].name,INIT:.spec.initContainers[*].name' \
+  | tee "$W/pods-containers.txt"     # アプリ Pod すべてで、CONTAINERS か INIT のどちらかに istio-proxy が在ること
+# 🔴 istio-proxy はふつう INIT の列に出る（Kubernetes のネイティブサイドカー＝restartPolicy: Always の initContainer。
+#    INIT は "istio-init,istio-proxy"）。CONTAINERS の列だけを見ると「サイドカー無し」と誤読する（2026-10-10 の実測）
 
 # (4) h2c リスナ（S1）。13 行 × 2（8080 と 8081）が出ること
 for d in authorization llmgateway notification document retrieval graph dashboard wiki conversion ingestion aianalysis datasource feedback; do
-  printf '%-14s ' "$d"; kubectl -n "$NS" logs "deploy/$d-service" -c "$d-service" | grep -oE 'Now listening on: http://[^ ]+' | tr '\n' ' '; echo
+  printf '%-14s ' "$d"; kubectl -n "$NS" logs "deploy/$d-service" -c "$d-service" | tr -d '\r' \
+    | grep -oE 'Now listening on: http://[^ ]+' | tr '\n' ' '; echo
 done | tee "$W/listeners.txt"
 
 # (5) Service のポート名と appProtocol（Istio がプロトコルを推定に頼らない前提）
@@ -122,6 +134,18 @@ kubectl -n "$NS" get svc authorization-service \
 
 `current_mesh_mtls_mode` が `rc=1`（メッシュ宣言なし）なら、メッシュが入っていない（`grep -A3 '^mesh:'` は使わない —— キーが辞書順に並ぶので `mtlsMode` まで届かない）。§3 の観測①だけは取れるが、PERMISSIVE / STRICT の測定はできないので、
 `ISTIO=1` で立て直してから始める。
+
+### 0.4 Windows（Git Bash）で実行するとき
+
+2026-10-10 に Windows の Git Bash で本書を実行したとき、次の 2 点が要った。本書の部品は 2 点とも避ける形に書いてある。
+**部品を書き換えたり手で打ち直したりするときは、旧い形へ戻さない。**
+
+| 症状 | 原因 | 部品での避け方 |
+| --- | --- | --- |
+| `kubectl logs` / `kubectl exec` の出力を grep で切り出すと、行末に `\r` が残る（表示が崩れる・行末に掛かる照合が外れる） | Windows の `kubectl` の出力の行末が CRLF になる | grep・node へ流す前に `tr -d '\r'` を挟む（§0.3 (4)・§3.1・§3.4） |
+| node が `$W` の中のファイルを開けない | MSYS の `/c/…` や `/tmp/…` の形のパスがネイティブの node へ変換されずに渡ることがある | §0.3 の冒頭で定義する `np`（`uname` が `MINGW*`・`MSYS*` のとき `cygpath -m` で `C:/…` 形にする）を通して渡す。リダイレクト（`>`・`<`）は bash が開くので `np` は要らない |
+
+Linux・macOS・WSL では `tr -d '\r'` は何も変えず、`np` はパスをそのまま返す。
 
 ---
 
@@ -231,8 +255,8 @@ for (let i = 0; i < args.length; i++) {
 process.stdout.write(JSON.stringify(overlay, null, 2) + '\n');
 EOF
 
-node "$W/gen-overlay.mjs" "$W/all-values.json" > "$W/overlay.json"                     # B-1 を測らない場合
-node "$W/gen-overlay.mjs" "$W/all-values.json" --bff-authz > "$W/overlay-bff.json"     # B-1 も測る場合
+node "$(np "$W/gen-overlay.mjs")" "$(np "$W/all-values.json")" > "$W/overlay.json"                  # B-1 を測らない場合
+node "$(np "$W/gen-overlay.mjs")" "$(np "$W/all-values.json")" --bff-authz > "$W/overlay-bff.json"  # B-1 も測る場合
 ```
 
 上書きファイルは JSON で書く（YAML の部分集合なので `helm -f` がそのまま読む）。B-1 を足すと **BFF の権限スコープ解決が利用者の要求ごとに gRPC を通る**
@@ -273,7 +297,7 @@ BFF の gRPC 宛先が introspection 13・文書・検索で、認可が無い�
 helm upgrade msp deploy/helm/microservices-platform -n "$NS" \
   -f "$W/current-values.yaml" -f "$W/overlay.json"          # B-1 も測るなら overlay-bff.json
 kubectl -n "$NS" rollout status deployment --timeout=10m    # 13 サービス（＋ B-1 なら bff）が作り直される（S5）
-helm get manifest msp -n "$NS" | diff "$W/render-after.yaml" - | wc -l   # 0 行（overlay-bff.json なら render を作り直して比べる）
+helm get manifest msp -n "$NS" | diff -B "$W/render-after.yaml" - | wc -l   # 0 行（overlay-bff.json なら render を作り直して比べる。-B は §0.3 (2) と同じ理由）
 ```
 
 `--reuse-values` ではなく保存した利用者値を明示で渡す（起動スクリプトと同じ「値を全部渡す」形にし、何が入ったかを `$W` に残す）。
@@ -309,14 +333,14 @@ DESTS="authorization llmgateway notification document retrieval graph dashboard 
 snap() {  # snap <ラベル>
   for d in $DESTS; do
     kubectl -n "$NS" exec "deploy/$d-service" -c istio-proxy -- pilot-agent request GET stats/prometheus 2>/dev/null \
-      | node "$W/istio-grpc.mjs"
+      | tr -d '\r' | node "$(np "$W/istio-grpc.mjs")"
   done | sort > "$W/istio-$MODE-$1.tsv"
 }
 snap before
 ```
 
 `pilot-agent request` が使えない版では、`kubectl -n "$NS" port-forward deploy/<宛先>-service 15000:15000` を張り、
-`curl -s http://127.0.0.1:15000/stats/prometheus | node "$W/istio-grpc.mjs"` で同じ表を取る。
+`curl -s http://127.0.0.1:15000/stats/prometheus | tr -d '\r' | node "$(np "$W/istio-grpc.mjs")"` で同じ表を取る。
 
 ### 3.2 発火させる
 
@@ -346,16 +370,23 @@ diff "$W/istio-$MODE-before.tsv" "$W/istio-$MODE-after.tsv" | grep '^>' > "$W/is
 cat "$W/istio-$MODE-delta.tsv"   # 列: 呼び出し元 宛先 HTTP gRPC状態 mTLS 累計
 
 for d in $DESTS; do   # ① 受け手の要求ログ（:8081 の gRPC と、:8080 の REST の退役対象）
-  kubectl -n "$NS" logs "deploy/$d-service" -c "$d-service" --since-time="$T0" \
+  kubectl -n "$NS" logs "deploy/$d-service" -c "$d-service" --since-time="$T0" | tr -d '\r' \
     | grep -oE 'Request finished HTTP/[0-9.]+ [A-Z]+ http://[^ ]+ - [0-9]{3}' \
     | grep -E ':8081/|/internal/(introspection|mcp-tools)' | sed "s#^#$d #"
 done | sort | uniq -c | tee "$W/requests-$MODE.txt"
 
 for c in bff mcp aianalysis graph wiki retrieval datasource document ingestion conversion; do   # ③ 呼び出し元の失敗
-  kubectl -n "$NS" logs "deploy/$c-service" -c "$c-service" --since-time="$T0" \
-    | grep -iE 'over gRPC|RpcException|service token|StatusCode=|Unavailable|Unimplemented' | sed "s#^#$c #"
+  kubectl -n "$NS" logs "deploy/$c-service" -c "$c-service" --since-time="$T0" | tr -d '\r' \
+    | grep -E 'over gRPC|RpcException|StatusCode=|service token|s2s トークン|gRPC の?(解決|照会)に失敗|was not executed|is unimplemented|送出に失敗' \
+    | sed "s#^#$c #"
 done | tee "$W/caller-errors-$MODE.txt"
 ```
+
+③の照合は、gRPC の呼び出し元が失敗のときに出す文言だけに当てる（大文字小文字を区別する）。gRPC の状態の名前は
+例外の `Status(StatusCode="Unavailable", …)` か、各クライアントの警告（`…の gRPC 解決に失敗しました（Unavailable）` など）の中に出るので、
+`StatusCode=` と各文言で拾える。🔴 **状態の名前（`Unavailable` など）を単独で、しかも `-i` で照合しない。** ASP.NET の
+DataProtection の起動時の警告（`… Protected data will be unavailable when container is destroyed.`）に当たり、
+呼び出しの失敗が無いのに行が出る（2026-10-10 の実測で mcp に 1 行出た）。
 
 | 観測 | 何を見るか（合格の形） |
 | --- | --- |
@@ -503,10 +534,10 @@ node scripts/check-stack-ready.js --live                                        
 ```bash
 MODE=STRICT; BFF=--bff-authz      # 今のモード／B-1 を適用中でなければ BFF=
 C=deploy/helm/microservices-platform
-node "$W/gen-overlay.mjs" "$W/all-values.json" $BFF > "$W/overlay-now.json"
-node "$W/gen-overlay.mjs" "$W/all-values.json" $BFF --rest mcp=Mcp__GrpcServices__document-service > "$W/overlay-rest.json"
+node "$(np "$W/gen-overlay.mjs")" "$(np "$W/all-values.json")" $BFF > "$W/overlay-now.json"
+node "$(np "$W/gen-overlay.mjs")" "$(np "$W/all-values.json")" $BFF --rest mcp=Mcp__GrpcServices__document-service > "$W/overlay-rest.json"
 helm template msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-now.json"  --set "mesh.mtlsMode=$MODE" > "$W/render-now.yaml"
-helm get manifest msp -n "$NS" | diff "$W/render-now.yaml" - | wc -l          # 0 行（今の稼働と同じものを組めている）
+helm get manifest msp -n "$NS" | diff -B "$W/render-now.yaml" - | wc -l       # 0 行（今の稼働と同じものを組めている。-B は §0.3 (2) と同じ理由）
 helm template msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.json" --set "mesh.mtlsMode=$MODE" \
   | diff "$W/render-now.yaml" - | grep '^[<>]'      # 消えるのは抜いた 2 行だけ・足される行は無いこと
 helm upgrade msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.json" --set "mesh.mtlsMode=$MODE"
@@ -529,8 +560,10 @@ helm upgrade msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.j
 
 | 症状 | 見るところ | 次の一手 |
 | --- | --- | --- |
+| §0.3 (3) で `istio-proxy` がどの列にも無い | `kubectl get ns -L istio-injection` と Pod の作成時刻 | `CONTAINERS` の列に無いだけなら正常（`INIT` の列に在ればネイティブサイドカー）。どちらにも無ければ注入前の Pod。起動スクリプトの注入の段（`rollout restart`）を経ていない |
+| §0.3 (2) で差分が出る | `render-vs-live.diff` の中身 | `-B` を付けても行が出るなら内容が違う（S2）。チェックアウトと稼働のチャート・値を揃えてから始める |
 | §0.3 (4) で 8081 の行が無い | そのサービスの env に `Grpc__Port` が在るか（`kubectl -n "$NS" get deploy <名>-service -o yaml`） | 在るならイメージが古い → イメージを作り直して起動スクリプトから立て直す。無いならチャートの版が古い |
-| ②が `connection_security_policy=none` | 呼び出し元の Pod に `istio-proxy` が在るか | 注入前に作られた Pod。起動スクリプトの注入の段（`rollout restart`）を経ていない |
+| ②が `connection_security_policy=none` | 呼び出し元の Pod に `istio-proxy` が在るか（`initContainers` も見る。§0.3 (3)） | 注入前に作られた Pod。起動スクリプトの注入の段（`rollout restart`）を経ていない |
 | ①があり③に `rejected over gRPC (Unauthenticated)` | 呼び出し元の `ServiceToken__ClientId` と Secret、realm の service account | 配線不備（不合格として記録）。realm の追随（`reconcile-realm.sh`）と Secret の同期を確かめる |
 | ③に `could not obtain the caller's service token` | 呼び出し元から Keycloak への到達・client secret の一致 | 同上 |
 | ③に `Unimplemented` | 受け手のイメージ | 面が無い＝古いイメージ |
