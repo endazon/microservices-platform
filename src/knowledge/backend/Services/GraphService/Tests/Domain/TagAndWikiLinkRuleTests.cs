@@ -88,6 +88,31 @@ public sealed class TagAndWikiLinkRuleTests
         links.Should().ContainSingle().Which.Target.Should().Be("設計メモ");
     }
 
+    // 🔴 スキームを省いた URL（`//host/path`）は先頭がスラッシュでもサイト内パスではない。最終セグメントで解決すると
+    // 外部サイトのページ名（`page`・`設計メモ`）が同名の文書へ化ける。陽性対照: Wiki の文書ページの形は ID で解決する。
+    [Theory]
+    [InlineData("[外](//example.com/page)")]
+    [InlineData("[外](//example.com/folder/設計メモ.md)")]
+    [InlineData("[外](//example.com/doc/not-a-guid)")]
+    public void スキームを省いた外部URLは辺にしない(string markdown)
+        => ObsidianLinkParser.Parse(markdown).Should().BeEmpty();
+
+    [Fact]
+    public void スキームを省いたURLでもWikiの文書ページは文書IDの名前になる()
+        => ObsidianLinkParser.Parse($"[設計](//wiki.example/ja/doc/{A})")
+            .Should().ContainSingle().Which.Target.Should().Be($"doc/{A:D}");
+
+    // 🔴 クエリ・断片は名前から落とす（`.md` も落ちる）。落とさないと必ず未解決になる。
+    // 名前の中のエンコードされた `#`・`?`（`%23`・`%3F`）は区切りではないので残す。
+    [Theory]
+    [InlineData("[n](設計メモ.md?v=2)", "設計メモ")]
+    [InlineData("[n](/folder/設計メモ.md?v=2#章)", "設計メモ")]
+    [InlineData("[n](folder/設計メモ?raw=1)", "設計メモ")]
+    [InlineData("[n](C%23%E5%85%A5%E9%96%80.md?v=1)", "C#入門")]
+    [InlineData("[n](%E3%81%AA%E3%81%9C%3F.md#x)", "なぜ?")]
+    public void 標準リンクのクエリと断片は名前から落とす(string markdown, string expected)
+        => ObsidianLinkParser.Parse(markdown).Should().ContainSingle().Which.Target.Should().Be(expected);
+
     [Fact]
     public void Wikiの名前は文書IDで解決し題名とは突き合わせない()
     {

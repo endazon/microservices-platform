@@ -70,7 +70,19 @@ public class GraphDocumentSyncConsumer(
     public static string StepName => "graph-sync";
 
     // ADR-0027 / #911: Wolverine のハンドラ。
+    //
+    // 🔴 [[IADR-0521]] 決定 7 (#1396): **1 通を 1 つのトランザクションに収める。** 共有タグの差分の排他
+    // （`ITagEdgeLocks`）はトランザクションの寿命で持ち、所属・件数の読み取りから保存までを覆う。
+    // 確定するまで排他は解けない（同じタグへ同時に入った他の通は、確定した行を読んでから差分を取る）。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
+    {
+        await using var tx = await GraphSyncTransaction.BeginAsync(db, ct);
+        await ApplyAsync(ev, ct);
+        if (tx is not null)
+            await tx.CommitAsync(ct);
+    }
+
+    private async Task ApplyAsync(DocumentUpdated ev, CancellationToken ct)
     {
         // 🔴 FR-19, ADR-0061 決定 1・3・4 / [[IADR-0396]] 決定 4・5 (#1184): **グラフの門。**
         //

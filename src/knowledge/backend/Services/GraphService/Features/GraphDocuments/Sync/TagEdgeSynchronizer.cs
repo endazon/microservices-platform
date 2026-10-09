@@ -1,4 +1,5 @@
 using GraphService.Domain;
+using GraphService.Domain.Ports;
 using GraphService.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -29,9 +30,19 @@ namespace GraphService.Features.GraphDocuments.Sync;
 //   （消して入れ直すと一意索引 `ux_edges` に当たる。`Edge.ConvertToTagDerived`）。
 //
 // 🔴 **SaveChanges を呼ばない**（`LinkEdgeSynchronizer` と同じ。呼び出し元が 1 回だけ保存する）。
+//
+// ## 同時の受信（[[IADR-0521]] 決定 7）
+//
+// 受け口は Wolverine の既定の並列度で同時に走る。所属・件数を読む**前に**、受信した文書と、その文書の
+// **新旧のタグの和**の排他を取る（`ITagEdgeLocks`。PostgreSQL では保存と同じトランザクションの寿命の
+// advisory lock）。順序は「文書 → タグを序数順」で全通そろえる（互いに待ち合わない）。
+// 同じタグに同時に入った 2 文書は、後の通が先の通の確定を待ってから所属を読む —— 組の辺が欠けず、
+// 上限ちょうどのタグで 2 通とも「ハブでない」と見て上限を超えた辺を残すこともない。
+// 呼び出し元は保存と同じトランザクションの中でこれを呼ぶ（`GraphSyncTransaction`）。
 public sealed class TagEdgeSynchronizer(
     GraphDbContext db,
     IOptions<TagEdgeOptions> options,
+    ITagEdgeLocks locks,
     ILogger<TagEdgeSynchronizer> logger)
 {
     public readonly record struct SyncResult(int Tags, int Added, int Removed, int HubTags, int Reconciled);
@@ -47,9 +58,15 @@ public sealed class TagEdgeSynchronizer(
         var max = options.Value.EffectiveMaxDocumentsPerTag;
         var next = GraphDocumentTag.Normalize(tags);
 
+        // [0] 🔴 排他（[[IADR-0521]] 決定 7）。文書を先に取ってから D の旧タグを読み、新旧の和のタグを序数順に取る。
+        // **所属・件数はこの後でしか読まない**（先に読むと、待っている間に確定した他の通の行を見落とす）。
+        await locks.LockDocumentAsync(documentId, ct);
+
         // [1] D のタグの複製を全量置換する（差分で足し引き。主キーが 2 列なので消して入れ直さない）。
         var rows = await db.DocumentTags.Where(t => t.DocumentId == documentId).ToListAsync(ct);
         var previous = rows.Select(r => r.Tag).ToHashSet(StringComparer.Ordinal);
+        await locks.LockTagsAsync(
+            previous.Union(next, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList(), ct);
         foreach (var row in rows.Where(r => !next.Contains(r.Tag)))
             db.DocumentTags.Remove(row);
         foreach (var tag in next.Where(t => !previous.Contains(t)))

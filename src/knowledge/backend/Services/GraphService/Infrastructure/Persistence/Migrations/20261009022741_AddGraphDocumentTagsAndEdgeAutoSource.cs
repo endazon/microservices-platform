@@ -67,6 +67,10 @@ namespace GraphService.Infrastructure.Persistence.Migrations
             migrationBuilder.DropTable(
                 name: "graph_document_tags");
 
+            // [[IADR-0521]] (#1396): 共有タグの辺は内訳列が無いと本文のリンクの辺と見分けられない（どちらも出所 `auto`）。
+            // 列だけ落とすと、本文のリンクの差分（起点の辺）にも共有タグの差分にも属さない辺が残り続ける。先に消す。
+            migrationBuilder.Sql("DELETE FROM edges WHERE \"AutoSource\" = 'tag';");
+
             migrationBuilder.DropColumn(
                 name: "AutoSource",
                 table: "edges");

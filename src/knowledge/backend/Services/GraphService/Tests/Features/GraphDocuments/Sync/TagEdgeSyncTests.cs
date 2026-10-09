@@ -45,13 +45,14 @@ public class TagEdgeSyncTests
         // 1 通の DocumentUpdated を新しい文脈で処理する。`body` が null なら本文は取れない。
         public async Task SendAsync(
             Guid id, string title, IEnumerable<string> tags, string? body = null, string? fingerprint = null,
-            Dictionary<string, string>? attributes = null, int? max = null, CancellationToken ct = default)
+            Dictionary<string, string>? attributes = null, int? max = null, ITagEdgeLocks? locks = null,
+            CancellationToken ct = default)
         {
             await using var db = Open();
             var reader = new CountingReader(body, () => Reads++);
             var consumer = new GraphDocumentSyncConsumer(
                 db, TimeProvider.System, reader, TagEdgesForTests.Links(db), new TermProfileSynchronizer(db),
-                TagEdgesForTests.Synchronizer(db, max), ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
+                TagEdgesForTests.Synchronizer(db, max, locks), ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
                 NullLogger<GraphDocumentSyncConsumer>.Instance);
             _tick++;
             await consumer.Handle(new DocumentUpdated(
@@ -60,10 +61,11 @@ public class TagEdgeSyncTests
                 tags.ToList(), T0.AddMinutes(_tick), fingerprint), ct);
         }
 
-        public async Task DeleteAsync(Guid id, int? max = null, CancellationToken ct = default)
+        public async Task DeleteAsync(
+            Guid id, int? max = null, ITagEdgeLocks? locks = null, CancellationToken ct = default)
         {
             await using var db = Open();
-            await new DocumentDeletedConsumer(db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db, max),
+            await new DocumentDeletedConsumer(db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db, max, locks),
                     NullLogger<DocumentDeletedConsumer>.Instance)
                 .Handle(new DocumentDeleted(id, T0.AddDays(1)), ct);
         }
@@ -98,6 +100,26 @@ public class TagEdgeSyncTests
         {
             onRead();
             return Task.FromResult(body);
+        }
+    }
+
+    // [[IADR-0521]] 決定 7: 排他の要求を順に記録する。`whileWaitingForTags` は「タグの排他を待っている間に
+    // 他の通が確定した」ことを再現する（InMemory は排他もトランザクションも持たないため、確定の時点を差し込む）。
+    private sealed class RecordingLocks(Func<Task>? whileWaitingForTags = null) : ITagEdgeLocks
+    {
+        public List<string> Calls { get; } = [];
+
+        public Task LockDocumentAsync(Guid documentId, CancellationToken ct)
+        {
+            Calls.Add($"doc:{documentId}");
+            return Task.CompletedTask;
+        }
+
+        public async Task LockTagsAsync(IReadOnlyList<string> orderedTags, CancellationToken ct)
+        {
+            Calls.Add("tags:" + string.Join(",", orderedTags));
+            if (whileWaitingForTags is not null)
+                await whileWaitingForTags();
         }
     }
 
@@ -372,5 +394,51 @@ public class TagEdgeSyncTests
         (await store.EdgesAsync(ct)).Should().BeEmpty();
         await using var db = store.Open();
         (await db.DocumentTags.CountAsync(ct)).Should().Be(2, "陽性対照: タグの複製は保存される");
+    }
+
+    // ── 同時の受信（[[IADR-0521]] 決定 7）: タグ単位の排他 ───────────────────────
+
+    // 🔴 排他は「文書 → 新旧のタグの和を序数順」で要求する。全通で順序が揃わないと互いに待ち合い、
+    // 旧タグを取らないと、抜けたタグの件数（上限を跨いだか）を同時に入った文書と読み違える。
+    [Fact]
+    public async Task 排他は文書を先に取り_新旧のタグの和を序数順に要求する()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await NewStoreAsync(ct);
+        await store.SendAsync(DocA, "A", ["Zeta", "beta"], ct: ct);
+
+        var locks = new RecordingLocks();
+        await store.SendAsync(DocA, "A", ["alpha", "zeta", " Mid "], locks: locks, ct: ct);
+
+        locks.Calls.Should().Equal($"doc:{DocA}", "tags:alpha,beta,mid,zeta");
+    }
+
+    [Fact]
+    public async Task 削除も同じ排他を取る_旧タグを序数順に要求する()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await NewStoreAsync(ct);
+        await store.SendAsync(DocA, "A", ["zeta", "alpha"], ct: ct);
+
+        var locks = new RecordingLocks();
+        await store.DeleteAsync(DocA, locks: locks, ct: ct);
+
+        locks.Calls.Should().Equal($"doc:{DocA}", "tags:alpha,zeta");
+    }
+
+    // 🔴 所属・件数は排他を取った**後に**読む。待っている間に同じタグへ入った文書の確定を見落とすと、
+    // 組の辺が欠けたまま残る（相手の通は、こちらの未確定の行を見られないので相手の側でも張らない）。
+    [Fact]
+    public async Task 排他を待つ間に同じタグへ入った文書の確定を読み_組の辺を張る()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await NewStoreAsync(ct);
+
+        // B の通は A の未確定の行を見られない（A の通の保存前に確定する）。
+        var locks = new RecordingLocks(() => store.SendAsync(DocB, "B", ["設計"], ct: ct));
+        await store.SendAsync(DocA, "A", ["設計"], locks: locks, ct: ct);
+
+        locks.Calls.Should().HaveCount(2, "陽性対照: 排他を要求し、待つ間に B が確定した");
+        (await store.TagPairsAsync(ct)).Should().BeEquivalentTo([Pair(DocA, DocB)]);
     }
 }

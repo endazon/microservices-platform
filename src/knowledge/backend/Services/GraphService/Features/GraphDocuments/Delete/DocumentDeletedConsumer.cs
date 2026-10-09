@@ -35,7 +35,19 @@ public class DocumentDeletedConsumer(
     public static string StepName => "graph-delete";
 
     // ADR-0027 / #1016: Wolverine のハンドラ。
+    //
+    // 🔴 [[IADR-0521]] 決定 7 (#1396): 共有タグの差分（タグを空にする）は `DocumentUpdated` の受け口と
+    // **同じ排他**を取る（`GraphDocumentRemoval` → `TagEdgeSynchronizer`）。取らないと、削除と同時に
+    // 同じタグへ入った文書が、消えた文書への辺を残す。排他はこのトランザクションの確定で解ける。
     public async Task Handle(DocumentDeleted ev, CancellationToken ct)
+    {
+        await using var tx = await GraphSyncTransaction.BeginAsync(db, ct);
+        await RemoveAsync(ev, ct);
+        if (tx is not null)
+            await tx.CommitAsync(ct);
+    }
+
+    private async Task RemoveAsync(DocumentDeleted ev, CancellationToken ct)
     {
         var id = ev.DocumentId;
 

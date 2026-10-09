@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using GraphService.Common.Observability;
+using GraphService.Domain.Ports;
 using GraphService.Features.GraphDocuments.Sync;
 using GraphService.Infrastructure.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -11,12 +12,16 @@ namespace GraphService.Tests;
 // 共有タグの辺の上限は本番の既定（50）。上限を変えて測る試験は `Synchronizer(db, max)` を使う。
 internal static class TagEdgesForTests
 {
-    internal static TagEdgeSynchronizer Synchronizer(GraphDbContext db, int? maxDocumentsPerTag = null)
+    // `locks` を渡さなければ排他は no-op（InMemory は advisory lock もトランザクションも持たない）。
+    // 排他の要求の順序を測る試験は記録する実装を渡す（[[IADR-0521]] 決定 7）。
+    internal static TagEdgeSynchronizer Synchronizer(
+        GraphDbContext db, int? maxDocumentsPerTag = null, ITagEdgeLocks? locks = null)
         => new(db,
             Options.Create(new TagEdgeOptions
             {
                 MaxDocumentsPerTag = maxDocumentsPerTag ?? TagEdgeOptions.DefaultMaxDocumentsPerTag,
             }),
+            locks ?? NoOpTagEdgeLocks.Instance,
             NullLogger<TagEdgeSynchronizer>.Instance);
 
     internal static LinkEdgeSynchronizer Links(GraphDbContext db)
