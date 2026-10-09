@@ -792,6 +792,27 @@ if [ "${OBSERVABILITY:-}" = "1" ]; then
   echo "    Grafana: kubectl -n $INFRA_NS port-forward svc/grafana 3000:3000  # http://localhost:3000"
 fi
 
+# NFR-18, ADR-0132, IADR-0525 (#1840): 移行の門。稼働中の deploy/vault が旧 Vault のイメージで、PVC vault-data が在るなら、
+# 永続化オーバーレイ（OpenBao）で上書きする前に止める。**vault-persistence を apply するすべての経路の直前で呼ぶ**
+# （VAULT ブロックと、ESO ブロックの当て直し。#1866 監査: ESO=1 単独の経路が門を通らずに上書きしていた）。
+# 🔴 旧 Vault の file ストレージは OpenBao で開けない。移さずに入れ替えると Pod 内ラッパーが起動を拒み（データは守る）、
+#    rollout の待ちが 180 秒の時間切れで落ちるだけで理由が見えず、Deployment のイメージも OpenBao に変わって手順書の手順 4 が
+#    旧イメージを取れなくなる。ここで手順書を名指しして止める。移行が済むと deploy/vault は OpenBao のイメージになり、門は通る。
+vault_openbao_migration_gate() {
+  local live_vault_image
+  live_vault_image="$(kubectl -n "$INFRA_NS" get deploy vault -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+  case "$live_vault_image" in
+    *hashicorp/vault*)
+      if kubectl -n "$INFRA_NS" get pvc vault-data >/dev/null 2>&1; then
+        echo "ERROR: 稼働中の deploy/vault は旧 Vault（$live_vault_image）で、永続化の PVC vault-data が在る。" >&2
+        echo "       OpenBao は旧 Vault の file ストレージを開けないため、このまま入れ替えない（画面 SC-22 で入れた秘密を失わないため）。" >&2
+        echo "       先に移行する: docs/operations/secret-store-openbao-migration-runbook.md" >&2
+        exit 1
+      fi
+      ;;
+  esac
+}
+
 if [ "${VAULT:-}" = "1" ]; then
   echo "==> [opt-in] Vault dev + ClusterSecretStore (要 External Secrets Operator CRD)"
   # dev root トークン（dev 既定 or env 上書き・平文は Git に載せない）。
@@ -816,21 +837,7 @@ if [ "${VAULT:-}" = "1" ]; then
     echo "    [PERSIST=0] 秘匿管理（OpenBao）は -dev（インメモリ・再起動で揮発）"
   else
     echo "    [PERSIST 既定] 秘匿管理（OpenBao）を raft ストレージ＋PVC で永続化（Pod 内ラッパーが init / unseal / 固定トークンを自動化）"
-    # 移行の門: 稼働中の deploy/vault が旧 Vault のイメージで、PVC vault-data が在るなら、上書きの前に止める。
-    # 🔴 旧 Vault の file ストレージは OpenBao で開けない。移さずに入れ替えると Pod 内ラッパーが起動を拒み（データは守る）、
-    #    rollout の待ちが 180 秒の時間切れで落ちるだけで理由が見えない。ここで手順書を名指しして止める。
-    #    手順書の移行が済むと deploy/vault は OpenBao のイメージになり、この門は通る。
-    live_vault_image="$(kubectl -n "$INFRA_NS" get deploy vault -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
-    case "$live_vault_image" in
-      *hashicorp/vault*)
-        if kubectl -n "$INFRA_NS" get pvc vault-data >/dev/null 2>&1; then
-          echo "ERROR: 稼働中の deploy/vault は旧 Vault（$live_vault_image）で、永続化の PVC vault-data が在る。" >&2
-          echo "       OpenBao は旧 Vault の file ストレージを開けないため、このまま入れ替えない（画面 SC-22 で入れた秘密を失わないため）。" >&2
-          echo "       先に移行する: docs/operations/secret-store-openbao-migration-runbook.md" >&2
-          exit 1
-        fi
-        ;;
-    esac
+    vault_openbao_migration_gate
   fi
   if kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1; then
     kubectl apply -k "$VAULT_KUSTOMIZE"
@@ -895,6 +902,7 @@ if [ "${ESO:-}" = "1" ]; then
   # フォールバックで立っている。ESO を入れた「後」にここで永続化オーバーレイを当て直し、unseal を待ってから seed する
   # （当て直さないと初回 run の seed と画面の値がインメモリに入り、2 回目の run で消える）。既に永続化版なら unchanged。
   if [ "${PERSIST:-1}" != "0" ]; then
+    vault_openbao_migration_gate
     kubectl apply -k deploy/local/vault-persistence
     kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
   fi

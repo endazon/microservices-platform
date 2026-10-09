@@ -1,6 +1,8 @@
 # NFR-21, NFR-18, ADR-0008, IADR-0471 (#1560): platform-infra の秘匿管理（/vault/data）を日次で暗号化してクラスタ外 2 か所へ置く。
 # ［2026-10-09 / #1840］IADR-0525: 製品は OpenBao、ストレージは raft（/vault/data/raft）。移行前の旧 Vault の file ストレージが
 #   /vault/data 直下に残っていれば、それも同じ写しに入る（手順書 docs/operations/secret-store-openbao-migration-runbook.md）。
+#   🔴 raft の bbolt はページをその場で書き換えるので、下の前後の比較では同じ秒の書き込みを見分けられない（破れた写しを残し得る）。
+#   整合したスナップショットへの改めは #1868（IADR-0525）。
 #
 # 🔴 /vault/data には Pod 内ラッパーが置いた unseal 鍵と初期 root トークンの平文ファイルがある（vault-persistence 参照）。
 #    **この写しはそれだけで Vault の中身をすべて復号できる**ため、平文の tar をディスクへ書かず、tar → gzip → age を

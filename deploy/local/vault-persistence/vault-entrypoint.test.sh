@@ -116,7 +116,7 @@ assert_eq 'T-1479-05 API 到達不能: 上限回数で諦める（非ゼロ）' 
 
 # ---- T-1683-01 / T-1840-01: audit（標準出力）は local.hcl で宣言し、起動器はその存在を確かめる（NFR-18, ADR-0124 決定 2, IADR-0486, IADR-0525） ----
 # OpenBao は API での audit device の作成を拒む（#1840 の実測）。起動器は `audit enable` を呼ばず、宣言した device が在ることだけを見る。
-reset_state
+reset_state; rm -f "$VAULT_INIT_FILE"   # 初回（未初期化・鍵ファイル無し）
 bootstrap_after_start >/dev/null 2>&1; RC=$?
 LOG="$(cat "$STUB_LOG")"
 assert_eq 'T-1683-01 audit: 正常終了する' "$RC" "0"
@@ -133,7 +133,7 @@ KV_AT="$(grep -n 'secrets enable' "$STUB_LOG" | head -1 | cut -d: -f1)"
 [ -n "$AUDIT_AT" ] && [ -n "$KV_AT" ] && [ "$AUDIT_AT" -lt "$KV_AT" ] && ok 'T-1683-01 audit: kv の mount より先に確かめる' || ng 'T-1683-01 audit: kv の mount より先に確かめる' "audit=$AUDIT_AT kv=$KV_AT"
 
 # ---- T-1683-03: audit（標準出力）が無ければ起動を失敗させる（audit の無い秘匿管理を動かさない） ----
-reset_state
+reset_state; rm -f "$VAULT_INIT_FILE"   # 初回（未初期化・鍵ファイル無し）
 : > "$STATE/no-stdout-device"
 OUT="$(VAULT_AUDIT_STDOUT_TRIES=2 VAULT_AUDIT_STDOUT_INTERVAL=0 bootstrap_after_start 2>&1)"; RC=$?
 assert_eq 'T-1683-03 audit 不在: 非ゼロ終了する' "$RC" "1"
@@ -201,6 +201,17 @@ MAIN="$(sed -n '/^main() {/,/^}/p' "$ROOT/deploy/local/vault-persistence/vault-e
 GATE_AT="$(printf '%s\n' "$MAIN" | grep -n 'refuse_unmigrated_file_storage' | head -1 | cut -d: -f1)"
 SERVER_AT="$(printf '%s\n' "$MAIN" | grep -n 'vault server' | head -1 | cut -d: -f1)"
 [ -n "$GATE_AT" ] && [ -n "$SERVER_AT" ] && [ "$GATE_AT" -lt "$SERVER_AT" ] && ok 'T-1840-04 門はサーバの起動より前にある' || ng 'T-1840-04 門はサーバの起動より前にある' "gate=$GATE_AT server=$SERVER_AT"
+
+# ---- T-1866-01: 未初期化なのに鍵ファイルが在れば init しない（移行の写し・戻したバックアップの鍵を上書きしない） ----
+reset_state
+printf 'Unseal Key 1: STUB-KEEP-KEY\n\nInitial Root Token: STUB-KEEP-ROOT\n' > "$VAULT_INIT_FILE"
+BEFORE="$(sha256sum "$VAULT_INIT_FILE" | cut -d' ' -f1)"
+OUT="$(bootstrap_after_start 2>&1)"; RC=$?
+assert_eq 'T-1866-01 鍵ファイル在り・未初期化: 非ゼロで止める' "$RC" "1"
+assert_missing 'T-1866-01 鍵ファイル在り・未初期化: operator init を実行しない' "$(cat "$STUB_LOG")" 'operator init -key-shares'
+assert_eq 'T-1866-01 鍵ファイル在り・未初期化: 鍵ファイルを書き換えない' "$(sha256sum "$VAULT_INIT_FILE" | cut -d' ' -f1)" "$BEFORE"
+assert_contains 'T-1866-01 鍵ファイル在り・未初期化: 理由を示す' "$OUT" 'refusing to init over existing keys'
+assert_missing 'T-1866-01 鍵ファイル在り・未初期化: 鍵の値をログに出さない' "$OUT" 'STUB-KEEP-KEY'
 
 rm -rf "$WORK"
 printf '\n%s passed, %s failed\n' "$PASSED" "$FAILED"

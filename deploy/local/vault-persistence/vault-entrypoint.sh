@@ -105,6 +105,13 @@ ensure_initialized() {
 		log "ERROR: cannot determine init status (rc=$rc)"
 		return 1
 	fi
+	# #1866 監査: 未初期化なのに鍵ファイルが既に在るなら init しない。init は鍵ファイルを新しい鍵で上書きし、
+	#   そのファイルが開けるはずだったデータ（移行の写し・戻したバックアップ等）の鍵を失わせる。人が確かめるまで止める。
+	if [ -e "$VAULT_INIT_FILE" ]; then
+		log "ERROR: not initialized, but $VAULT_INIT_FILE already exists; refusing to init over existing keys"
+		log "ERROR: check the storage under $VAULT_RAFT_DIR against the keys (see $VAULT_MIGRATION_RUNBOOK)"
+		return 1
+	fi
 	log "not initialized: running operator init (1 share)"
 	umask 077
 	vault operator init -key-shares=1 -key-threshold=1 > "$VAULT_INIT_FILE.tmp" || return 1

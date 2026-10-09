@@ -39,7 +39,7 @@ issues: [#1840]
 - `PERSIST=0`（`-dev`・インメモリ）で動かしていたなら移すデータは無い。起動器を走らせれば OpenBao が空から立ち、
   `ESO=1` なら起動器の種まき（`deploy/local/vault/eso/bootstrap.sh`）が入れ直す。
 - 移さずに入れ替えた場合も、Pod 内のラッパーは**旧 Vault のデータの上に新しい鍵で初期化しない**（起動を拒んで止まる）。
-  その状態からも本書の手順で移せる（手順 2 の「旧 Vault の audit device を外す」だけは、手順 7 の戻し方 (a) で旧 Vault を一度立ててから行う）。
+  その状態からも本書の手順で移せる（`deploy/vault` のイメージは既に OpenBao なので、まず手順 7 の戻し方 (b) で旧 Vault の配備を当て直し、旧 Vault が立ってから手順 1 から行う。OpenBao は起動を拒んでいたので、失う書き込みは無い）。
 
 ### なぜデータを移す必要があるか
 
@@ -100,49 +100,51 @@ IN_POD='export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOK
    写す先は `/vault/data/raft`（OpenBao の設定 `deploy/local/vault-persistence/local.hcl` の raft の path と同じ）。
    既に raft が在れば**上書きせずに止める**。イメージは稼働していた Deployment から取る（版を書き写さない）。
 
-   ```sh
-   OLD_IMAGE="$(kubectl -n platform-infra get deploy vault -o jsonpath='{.spec.template.spec.containers[0].image}')"
-   case "$OLD_IMAGE" in *hashicorp/vault*) ;; *) echo "旧 Vault のイメージではない: $OLD_IMAGE"; exit 1 ;; esac
-   cat <<'EOF' | sed "s#__OLD_IMAGE__#$OLD_IMAGE#" | kubectl apply -f -
-   apiVersion: v1
-   kind: Pod
-   metadata:
-     name: vault-to-openbao-migrate
-     namespace: platform-infra
-   spec:
-     restartPolicy: Never
-     securityContext: { runAsUser: 100, runAsGroup: 1000, fsGroup: 1000, fsGroupChangePolicy: OnRootMismatch }
-     containers:
-       - name: migrate
-         image: __OLD_IMAGE__
-         command: ["/bin/sh", "-c"]
-         args:
-           - |
-             set -eu
-             if [ -f /vault/data/raft/vault.db ]; then echo "raft already exists under /vault/data/raft; refusing to overwrite" >&2; exit 1; fi
-             mkdir -p /vault/data/raft
-             cat > /tmp/migrate.hcl <<'HCL'
-             storage_source "file" {
-               path = "/vault/data"
-             }
-             storage_destination "raft" {
-               path    = "/vault/data/raft"
-               node_id = "vault-0"
-             }
-             cluster_addr = "http://127.0.0.1:8201"
-             HCL
-             vault operator migrate -config=/tmp/migrate.hcl > /tmp/migrate.log 2>&1 || { tail -3 /tmp/migrate.log >&2; exit 1; }
-             tail -1 /tmp/migrate.log
-         volumeMounts:
-           - { name: data, mountPath: /vault/data }
-     volumes:
-       - name: data
-         persistentVolumeClaim: { claimName: vault-data }
-   EOF
-   kubectl -n platform-infra wait --for=jsonpath='{.status.phase}'=Succeeded pod/vault-to-openbao-migrate --timeout=300s
-   kubectl -n platform-infra logs pod/vault-to-openbao-migrate   # 「Success! All of the keys have been migrated.」の 1 行
-   kubectl -n platform-infra delete pod vault-to-openbao-migrate
-   ```
+   コードブロックは字下げせずに置いてある（写したときにヒアドキュメントの終端 `EOF` が行頭に来るように）。
+
+```sh
+OLD_IMAGE="$(kubectl -n platform-infra get deploy vault -o jsonpath='{.spec.template.spec.containers[0].image}')"
+case "$OLD_IMAGE" in *hashicorp/vault*) ;; *) echo "旧 Vault のイメージではない: $OLD_IMAGE"; exit 1 ;; esac
+cat <<'EOF' | sed "s#__OLD_IMAGE__#$OLD_IMAGE#" | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vault-to-openbao-migrate
+  namespace: platform-infra
+spec:
+  restartPolicy: Never
+  securityContext: { runAsUser: 100, runAsGroup: 1000, fsGroup: 1000, fsGroupChangePolicy: OnRootMismatch }
+  containers:
+    - name: migrate
+      image: __OLD_IMAGE__
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -eu
+          if [ -f /vault/data/raft/vault.db ]; then echo "raft already exists under /vault/data/raft; refusing to overwrite" >&2; exit 1; fi
+          mkdir -p /vault/data/raft
+          cat > /tmp/migrate.hcl <<'HCL'
+          storage_source "file" {
+            path = "/vault/data"
+          }
+          storage_destination "raft" {
+            path    = "/vault/data/raft"
+            node_id = "vault-0"
+          }
+          cluster_addr = "http://127.0.0.1:8201"
+          HCL
+          vault operator migrate -config=/tmp/migrate.hcl > /tmp/migrate.log 2>&1 || { tail -3 /tmp/migrate.log >&2; exit 1; }
+          tail -1 /tmp/migrate.log
+      volumeMounts:
+        - { name: data, mountPath: /vault/data }
+  volumes:
+    - name: data
+      persistentVolumeClaim: { claimName: vault-data }
+EOF
+kubectl -n platform-infra wait --for=jsonpath='{.status.phase}'=Succeeded pod/vault-to-openbao-migrate --timeout=300s
+kubectl -n platform-infra logs pod/vault-to-openbao-migrate   # 「Success! All of the keys have been migrated.」の 1 行
+kubectl -n platform-infra delete pod vault-to-openbao-migrate
+```
 
    - 写しの記録（`/tmp/migrate.log`）はキーの**パス**（ハッシュ化されたものを含む）を並べるだけで値は含まないが、Pod の外へは出さない。
 
@@ -162,8 +164,25 @@ IN_POD='export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOK
    - (a) **手順 5 の前**（OpenBao を当てる前）なら、旧 Vault をそのまま立て直す:
      `kubectl -n platform-infra scale deploy/vault --replicas=1`。旧 Vault の起動器が audit device を 2 つ作り直す。
      raft の写しは残っても旧 Vault は読まない。やり直すときは、手順 4 が上書きを拒むので、先に raft の写しを消す（下の (c)）。
-   - (b) **手順 5 の後**なら、旧 Vault の配備（差し替えの前のコミットの `deploy/local/vault` と `deploy/local/vault-persistence`）を
-     当て直す。旧 Vault は `/vault/data` 直下の file ストレージ（手順 4 で書き換えていない）を読む。
+   - (b) **手順 5 の後**（または移さずに OpenBao を当ててしまった後。`deploy/vault` のイメージが既に OpenBao）なら、
+     旧 Vault の配備（差し替えの前のコミットの `deploy/local/vault-persistence`）を当て直す。(a) の scale ではイメージが OpenBao のままなので戻らない。
+     旧 Vault は `/vault/data` 直下の file ストレージ（手順 4 で書き換えていない）を読み、raft の写しは読まない。
+     差し替えを入れたコミットはリポジトリの履歴から引き、その親を使い捨ての作業ツリーに取り出して当てる:
+
+```sh
+SWAP="$(git log --reverse --format=%H -S 'image: openbao/openbao' -- deploy/local/vault/vault-dev.yaml | head -1)"
+git log -1 --format='%h %s' "$SWAP"            # 差し替えのコミットであることを目で確かめる
+PRE="$(mktemp -d)"
+git worktree add --detach "$PRE" "$SWAP^"
+grep -n 'image: hashicorp/vault' "$PRE/deploy/local/vault/vault-dev.yaml"   # 旧 Vault のイメージであること
+kubectl apply -k "$PRE/deploy/local/vault-persistence"
+kubectl -n platform-infra rollout status deploy/vault --timeout=180s
+kubectl -n platform-infra logs deploy/vault | grep vault-entrypoint  # initialized (reusing …)・unsealed・ready
+git worktree remove "$PRE"
+```
+
+     旧 Vault の起動器が audit device を 2 つ作り直す。もう一度移すときは、(c) で raft の写しを消してから手順 1 から行う
+     （手順 4 は `deploy/vault` が旧 Vault のイメージに戻っているので通る）。
      🔴 **OpenBao に移した後に入れた値（秘密情報の投入画面 の書き込み等）は失われる。** 入れ直す。
    - (c) raft の写しを消す（やり直す前だけ。**OpenBao で使い始めた後に消すと、その後の書き込みが失われる**）:
      旧 Vault のイメージの使い捨ての Pod（手順 4 と同じ形）で `rm -rf /vault/data/raft` を 1 度だけ走らせる。
@@ -193,7 +212,8 @@ IN_POD='export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOK
 | 症状 | 原因の候補 | 次の手 |
 | --- | --- | --- |
 | 起動器が「稼働中の deploy/vault は旧 Vault …」で止まる | 本書の対象（設計どおりの門） | 本書の手順 1 から |
-| OpenBao の Pod のログに `holds Vault file storage that has not been migrated to raft` | 移さずに OpenBao を当てた（ラッパーの門。データは無事） | 7 の (a) で旧 Vault を立て直し、手順 2 から |
+| OpenBao の Pod のログに `holds Vault file storage that has not been migrated to raft` | 移さずに OpenBao を当てた（ラッパーの門。データは無事） | 7 の (b) で旧 Vault の配備を当て直し（イメージが既に OpenBao なので (a) の scale では戻らない）、手順 1 から |
+| OpenBao の Pod のログに `refusing to init over existing keys` | raft が空（または消えた）のに鍵ファイルが在る。新しい鍵で初期化すると旧データの鍵を失うので、ラッパーが止めている | 手順 4 の写しが raft に在るかを確かめる。写していなければ 7 の (b) で旧 Vault に戻して手順 1 から |
 | 手順 4 が `raft already exists` で止まる | 前の試行の写しが残っている | 7 の (c) で消してから手順 4 |
 | OpenBao が unseal の後に `was already created by API` を出して使えない | 手順 2 を飛ばした | 7 の (b) で旧 Vault に戻し、(c) で写しを消し、手順 2 から |
 | `audit device present at stdout/` が出ず `refusing to run Vault without audit` | `local.hcl` の宣言が当たっていない | `kubectl -n platform-infra get configmap vault-local-config -o yaml` に `audit "file" "stdout"` が在るか見る |

@@ -1593,6 +1593,18 @@ ok('VAULT=1 (#1840): 稼働中が旧 Vault で PVC が在れば、vault-persiste
   assert.ok(res.stderr.includes('docs/operations/secret-store-openbao-migration-runbook.md'), `手順書を名指ししない: ${res.stderr}`);
 });
 
+// #1866 監査 🟡1: ESO=1 単独（VAULT=1 なし）でも、ESO ブロックの当て直し（vault-persistence の apply）の前に同じ門を通る。
+ok('ESO=1 単独 (#1866): 稼働中が旧 Vault で PVC が在れば、ESO ブロックの当て直しでも apply せずに止め、手順書を名指しする', () => {
+  const res = runUp({ ESO: '1', STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE });
+  assert.notStrictEqual(res.status, 0, 'ESO=1 単独の経路で旧 Vault の上に OpenBao を被せて先へ進んだ');
+  assert.ok(!anyLineHas(res.lines, 'apply -k deploy/local/vault-persistence'), '止まる前に vault-persistence を apply した');
+  assert.ok(res.stderr.includes('docs/operations/secret-store-openbao-migration-runbook.md'), `手順書を名指ししない: ${res.stderr}`);
+  // 陽性対照: 稼働中が OpenBao なら同じ経路は通って当て直す（門が経路ごと塞いでいない）。
+  const okRes = runUp({ ESO: '1', STUB_VAULT_LIVE_IMAGE: 'openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf' });
+  assert.strictEqual(okRes.status, 0, `稼働中が OpenBao なのに止まった: ${okRes.stderr}`);
+  assert.ok(anyLineHas(okRes.lines, 'apply -k deploy/local/vault-persistence'), '稼働中が OpenBao なのに当て直さない');
+});
+
 ok('VAULT=1 (#1840): 門の陰性対照 —— 稼働中が OpenBao・新規クラスタ・PVC 無し・PERSIST=0 のいずれも止めない', () => {
   for (const [label, env] of [
     ['稼働中が OpenBao', { STUB_VAULT_LIVE_IMAGE: 'openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf' }],
