@@ -249,13 +249,14 @@ CID="$(curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/cli
    curl -sf -H "Authorization: Bearer $TOKEN" -o "$(np "$WORK/client.json")" "$KC/admin/realms/platform/clients/$CID"
    printf '%s' "$NEW_VALUE" > "$WORK/secret"
    jq --rawfile s "$(np "$WORK/secret")" '.secret = $s' "$(np "$WORK/client.json")" > "$WORK/client-new.json"
-   rm -f "$WORK/secret" "$WORK/client.json"
-   jq -e --arg cid "$CID" --arg c "$CLIENT" --argjson n "${#NEW_VALUE}" \
-     '.id == $cid and .clientId == $c and (.secret | length) == $n' "$(np "$WORK/client-new.json")" >/dev/null \
+   jq -e --arg cid "$CID" --arg c "$CLIENT" --rawfile s "$(np "$WORK/secret")" \
+     '.id == $cid and .clientId == $c and .secret == $s' "$(np "$WORK/client-new.json")" >/dev/null \
      && echo "body ok"
+   rm -f "$WORK/secret" "$WORK/client.json"
    ```
 
-   `body ok` が出なければ先へ進まない。まだ何も書いていないので、`rm -f "$WORK/client-new.json"; unset NEW_VALUE` で終えてよい（1-1 からやり直す）。
+   `body ok` は、組み立てた表現の `secret` が新しい値と**等しい**ことを値を出さずに確かめる（長さでは見ない。差し替えが空振りして旧の値が残っても、旧新とも 64 文字なら長さは一致する）。
+   `body ok` が出なければ先へ進まない。まだ何も書いていないので、**0-z** で終えてよい（0-0・1-1 からやり直す）。
 3. **0-b** で保管先の直前の版を控える（`<path>` は 1-0 の表）。
 4. **0-c** で保管先へ書く。この時点では消費側は旧の値を持っているので、何も壊れない。
 5. **認証基盤の client の `secret` を同じ値にする**（2 で確かめた表現を `PUT` で戻す。直前にトークンを取り直し、`token ok` を確かめてから `PUT` する）:
