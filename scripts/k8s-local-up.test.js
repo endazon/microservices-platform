@@ -5414,6 +5414,14 @@ ok('#1850: dept_sync_values_mode / other_entries の判定表（authorization �
   }
   const others = run('dept_sync_values_other_entries', deptValues(`${INTERVAL_ENTRY}\n${modeEntry('Fix')}\n${SECRET_ENTRY}`));
   assert.strictEqual(others.stdout, `${INTERVAL_ENTRY}\n${SECRET_ENTRY}\n`, 'other_entries が字面を保っていない');
+  // 監査 🟡: helm は改行を含む値を `|-` で出す。その中の空行・`#` 始まりの行を落とさない（要素の外の空行・注釈は捨てる）。
+  const BLOCK_ENTRY = '- name: Script\n  value: |-\n    line1\n\n    #line3\n    line4';
+  // deptValues は空行を落とすので、ここだけ字面を直に組む（helm の出力と同じく `- ` を親のキーと同じ字下げに置く）。
+  const indent = (e) => e.split('\n').map((l) => (l ? `    ${l}` : '')).join('\n');
+  const blockYaml = 'services:\n  authorization:\n    extraEnvAppend:\n'
+    + `${indent(BLOCK_ENTRY)}\n${indent(modeEntry('Fix'))}\n\n    # 注釈\n${indent(INTERVAL_ENTRY)}\n`;
+  const block = run('dept_sync_values_other_entries', blockYaml);
+  assert.strictEqual(block.stdout, `${BLOCK_ENTRY}\n${INTERVAL_ENTRY}\n`, '`|-` の値の中の空行・# 行を落とした（または要素の外の空行・注釈を写した）');
 });
 
 ok('#1850: 前提 —— リポジトリの values（チャート既定・values-local.yaml）は authorization の extraEnvAppend を持たない', () => {

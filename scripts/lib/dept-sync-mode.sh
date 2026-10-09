@@ -36,13 +36,19 @@ _dept_sync_awk() {
       else if (t ~ /^(secretKeyRef|valueFrom|configMapKeyRef):/) nonplain[n] = 1
     }
     { line = $0; sub(/\r$/, "", line) }
-    line ~ /^[ \t]*#/ { next }
-    line ~ /^[ \t]*$/ { next }
+    # 要素の中（state 3）の空行は保留し、次の行が同じ要素の続き（要素の "- " より深い字下げ）なら字面へ戻す
+    # （`|-` の値の中の空行を黙って落とさない）。要素の外の空行は従来どおり捨てる。
+    line ~ /^[ \t]*$/ { if (state == 3 && n > 0) blanks++; next }
     {
       match(line, /^ */); ind = RLENGTH; t = substr(line, ind + 1)
+      # `#` で始まる行は、要素の続きの深さなら `|-` の値の中身（helm の出力に注釈は出ない）として保つ。それ以外は注釈として捨てる。
+      if (t ~ /^#/ && !(state == 3 && n > 0 && dind >= 0 && ind > dind)) { blanks = 0; next }
+      if (state == 3 && n > 0 && dind >= 0 && ind > dind) { for (; blanks > 0; blanks--) text[n] = text[n] "\n" }
+      blanks = 0
       if (state == 3) {
         if (ind > eind || (ind == eind && t ~ /^-( |$)/)) {
           if (dind < 0) dind = ind
+          if (t ~ /^#/) { text[n] = text[n] "\n" substr(line, dind + 1); next }
           if (ind == dind && t ~ /^-( |$)/) {
             n++; text[n] = substr(line, dind + 1); fi = dind + 2
             r = t; sub(/^-[ \t]*/, "", r); if (r != "") field(r)
