@@ -270,8 +270,16 @@ else
 }
 builder.Services.AddHostedService<DocumentService.Features.Documents.ContentAbac.ContentAbacGateHostedService>();
 builder.Services.AddScoped<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceService>();
-builder.Services.AddHostedService<
-    DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService>();
+// NFR-16, ADR-0117, [[IADR-0530]] 決定 3 (#1887): 計測専用の前倒し（`PrivateNotes:Maintenance:InitialRunDelaySeconds`）は
+// **解決時に**構成から読む（テストホストが差し込む構成は Build 時に載る）。未設定なら従前どおり（初回は 1 周期後）。
+builder.Services.AddHostedService(sp =>
+    new DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService(
+        sp.GetRequiredService<IServiceScopeFactory>(),
+        sp.GetRequiredService<ILogger<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService>>())
+    {
+        InitialRunDelay = DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService
+            .ResolveInitialRunDelay(sp.GetRequiredService<IConfiguration>()),
+    });
 
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit + RabbitMQ
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。

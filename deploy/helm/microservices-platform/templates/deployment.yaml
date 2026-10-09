@@ -312,6 +312,18 @@ spec:
             - name: Qdrant__LexicalCollection
               value: {{ required "lexicalIndex.collection は必須（IADR-0497）" $.Values.lexicalIndex.collection | quote }}
           {{- end }}
+          {{- /* NFR-16, ADR-0117, IADR-0530 (#1887): 計測専用の発火手段。既定（無効）では 1 バイトも出ない。 */}}
+          {{- $measurement := $.Values.measurement | default dict }}
+          {{- if and $measurement.suggestionGenerate (eq $name "bff") }}
+            # IADR-0530 決定 1 (#1887): 計測専用。AI 提案の生成の口（管理者限定）を BFF に開ける。計測が終わったら外す。
+            - name: Measurement__EnableSuggestionGenerate
+              value: "true"
+          {{- end }}
+          {{- if and $measurement.privateNoteMaintenanceInitialRunDelaySeconds (eq $name "document") }}
+            # IADR-0530 決定 3 (#1887): 計測専用。個人資料の定期処理を起動の N 秒後に 1 回前倒しする。計測が終わったら外す。
+            - name: PrivateNotes__Maintenance__InitialRunDelaySeconds
+              value: {{ $measurement.privateNoteMaintenanceInitialRunDelaySeconds | int | toString | quote }}
+          {{- end }}
           {{- if eq $name "retrieval" }}
             # FR-03, FR-04, SC-02, ADR-0127 決定 3, IADR-0498 (#1746 段 S2): Claude による再順位付けの段（既定は無効）。
             # 有効なら用途 rerank で llm-gateway だけを呼ぶ（Services__LlmGateway / Services__LlmGatewayGrpc。埋め込みと同じ宛先）。

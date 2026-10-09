@@ -2994,6 +2994,38 @@ paths:
   #
   # **生成（`/graph/suggestions/generate/{documentId}`）は公開しない** —— 計画に生成を起動する
   # 導線が無く、消費者の無い書き込み口を公開面へ出さないためである。
+  # ［2026-10-10 追記 / #1887］例外は下の**計測専用の口 1 本だけ**である（既定は無効でルート表に載らない）。
+  /bff/graph/suggestions/generate/{documentId}:
+    parameters:
+      - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      x-roles: [platform-admin]
+      tags: [Graph]
+      summary: "NFR-16, FR-18: 計測専用。AI 提案の生成を 1 文書に対して起動する（既定は無効・システム管理者限定）"
+      description: |
+        NFR-16, ADR-0117, IADR-0530 決定 1・2（#1887）: **製品の口ではない。** 稼働クラスタで east-west の gRPC
+        （生成の LLM 呼び出しとタグ辞書の読み取り、および承認の材料になる保留中のタグ提案）を 1 回ずつ発火させる
+        計測のためだけに置く。
+
+        **BFF の構成 `Measurement:EnableSuggestionGenerate=true`（helm の `measurement.suggestionGenerate`）のときだけ
+        ルート表に載る。既定（無効）では 404 である。** 有効でもシステム管理者だけが呼べる（運用者・一般利用者は 403）。
+        **LLM の費用が出る。** 画面からは呼ばない（手順は east-west gRPC の実測の手順書 §1.2）。
+
+        後段（GraphService の生成）の状態コードと本文を詰め替えずに返す。起点が見えない・存在しないは 404
+        （区別しない）。類似の候補が無いときは空の配列で 200 である（LLM は呼ばれない）。
+      operationId: bff-graph-suggestion-generate-for-measurement
+      responses:
+        "200":
+          description: 生成できた提案（`pending`）の配列。候補が無ければ空
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AiSuggestion" }
+        "401": { description: 未認証 }
+        "403": { description: システム管理者ロール以外（運用者も拒否される） }
+        "404": { description: "構成で無効（口が無い）／起点が権限外・不存在（**区別しない**）" }
+        "502": { description: 後段へ到達できない }
   /bff/graph/suggestions/{id}/approve:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }

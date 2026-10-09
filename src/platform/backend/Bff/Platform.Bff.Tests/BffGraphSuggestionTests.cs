@@ -225,6 +225,8 @@ public class BffGraphSuggestionTests : IClassFixture<BffTestFactory>
             + "タイトルだけを見て機械的に承認する運用に落とす口を作らない");
 
         // 生成の口は引き続き公開しない（消費者となる導線が計画に無い）。
+        // ［2026-10-10 / #1887・[[IADR-0530]]］**既定の構成では**、である。計測専用の口は構成の鍵で開き、
+        // その門（鍵・管理者限定）は `BffMeasurementSuggestionGenerateTests` が固定する。
         suggestionRoutes.Select(r => r.Pattern).Should().NotContain(
             p => p.Contains("generate", StringComparison.OrdinalIgnoreCase));
     }

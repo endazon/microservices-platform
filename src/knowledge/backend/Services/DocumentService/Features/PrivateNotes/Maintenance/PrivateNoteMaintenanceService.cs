@@ -369,11 +369,25 @@ public sealed class PrivateNoteMaintenanceService(
 // **初回実行は起動から 1 周期後**とする —— 起動直後に走らせると、テストホストの立ち上げと
 // シードデータの投入が競合する（本番でも再起動のたびに走る必要は無い。最悪 24 時間の遅延は
 // 日・週粒度の通知では許容範囲である）。
+//
+// ［2026-10-10 追記 / #1887・[[IADR-0530]] 決定 3］**計測専用の前倒し（既定は無効）。**
+// 構成 `PrivateNotes:Maintenance:InitialRunDelaySeconds`（1〜86400）が在るときだけ、起動からその秒数の後に
+// **本物の周期を 1 回だけ前倒しで**走らせ、以後は従前どおり 24 時間ごとに走る。稼働 k3s で
+// document → notification（`NotificationIngress/Accept`）の gRPC を本番の経路のまま発火させるためである
+// （週次の削除通知 ①-a が、論理削除済みの資料を持つ所有者へ 1 通出る）。周期の中身・判定・発火記録は変えない。
+// 🔴 **未設定（既定）なら挙動は従前と 1 つも変わらない。** 値が不正なら起動を止める（黙って既定へ倒すと、
+// 計測者は「前倒しが効いた」と思ったまま 24 時間待つことになる）。
 public sealed class PrivateNoteMaintenanceHostedService(
     IServiceScopeFactory scopeFactory,
     ILogger<PrivateNoteMaintenanceHostedService> logger) : BackgroundService
 {
     public static readonly TimeSpan Interval = TimeSpan.FromHours(24);
+
+    // #1887: 計測専用の前倒しの構成の鍵（env は `PrivateNotes__Maintenance__InitialRunDelaySeconds`）。
+    public const string InitialRunDelayKey = "PrivateNotes:Maintenance:InitialRunDelaySeconds";
+
+    // #1887: 前倒しの上限。1 周期（24 時間）を超える前倒しは前倒しではない。
+    public const int MaxInitialRunDelaySeconds = 86400;
 
     // #1598: 周期の実際の長さ。**試験だけが短くする**（24 時間は待てない）。本番の組み立ては触らない。
     internal TimeSpan CycleInterval { get; init; } = Interval;
@@ -381,35 +395,68 @@ public sealed class PrivateNoteMaintenanceHostedService(
     // #1622: 周期の拍の源。**試験だけが偽の時計（FakeTimeProvider）に差し替える**（壁時計の間隔は負荷で揺れる）。本番はシステムの時計のまま。
     internal TimeProvider CycleClock { get; init; } = TimeProvider.System;
 
+    // #1887: 計測専用の前倒し。null（既定）なら前倒ししない。本番の組み立ては `ResolveInitialRunDelay` の結果を入れる。
+    internal TimeSpan? InitialRunDelay { get; init; }
+
+    // #1887, [[IADR-0530]] 決定 3: 構成から前倒しの秒数を読む。**未設定・空白は null（従前どおり）。**
+    // 整数（InvariantCulture）で 1〜86400 だけを採り、それ以外（0・負・小数・単位つき・上限超）は起動を止める。
+    public static TimeSpan? ResolveInitialRunDelay(Microsoft.Extensions.Configuration.IConfiguration configuration)
+    {
+        var raw = configuration[InitialRunDelayKey];
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        if (!int.TryParse(raw.Trim(), System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+            || seconds < 1 || seconds > MaxInitialRunDelaySeconds)
+            throw new InvalidOperationException(
+                $"{InitialRunDelayKey} は 1 以上 {MaxInitialRunDelaySeconds} 以下の整数（秒）である（値: '{raw}'）。"
+                + " 計測専用の前倒しであり、不要なら鍵ごと外す（#1887）。");
+        return TimeSpan.FromSeconds(seconds);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(CycleInterval, CycleClock);
         try
         {
-            while (await timer.WaitForNextTickAsync(stoppingToken))
+            if (InitialRunDelay is { } delay)
             {
-                try
-                {
-                    using var scope = scopeFactory.CreateScope();
-                    var maintenance = scope.ServiceProvider
-                        .GetRequiredService<PrivateNoteMaintenanceService>();
-                    await maintenance.RunAsync(DateTimeOffset.UtcNow, stoppingToken);
-                }
-                // ［2026-09-26 / #1598・[[IADR-0431]] 追記］🔴 **素通しするのは停止要求（stoppingToken）の取り消しだけである。**
-                // 下流の時間切れ（HttpClient の TaskCanceledException 等）は停止要求ではなく周期の失敗であり、ここで記録して
-                // 次周期へ進む。型だけで素通しすると外側で「シャットダウン」と読まれ、日次のループが**永久に**終わる
-                // （退職者の資料の削除・90 日の削除・通知が以後動かない）。形は DriftDetectionHostedService（#1382）と同じ。
-                catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
-                {
-                    // 定期処理の失敗でホストを落とさない。次周期で再試行する。
-                    logger.LogError(ex, "個人資料の定期処理に失敗した。次周期で再試行する。");
-                }
+                // 🔴 計測の窓の外で残っていると気付けるよう、有効なことを起動のたびに 1 行残す。
+                logger.LogWarning(
+                    "計測用の前倒しが有効である（{Key}={Seconds}）。起動のその秒数の後に個人資料の定期処理を 1 回走らせる。"
+                    + "計測が終わったら構成から外すこと（#1887）",
+                    InitialRunDelayKey, (int)delay.TotalSeconds);
+                await Task.Delay(delay, CycleClock, stoppingToken);
+                await RunCycleAsync(stoppingToken);
             }
+
+            using var timer = new PeriodicTimer(CycleInterval, CycleClock);
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+                await RunCycleAsync(stoppingToken);
         }
         // #1598: 想定外の取り消しを黙って「シャットダウン」と読まない（届いたら例外のまま出す）。
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // シャットダウン。
+        }
+    }
+
+    private async Task RunCycleAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var maintenance = scope.ServiceProvider
+                .GetRequiredService<PrivateNoteMaintenanceService>();
+            await maintenance.RunAsync(DateTimeOffset.UtcNow, stoppingToken);
+        }
+        // ［2026-09-26 / #1598・[[IADR-0431]] 追記］🔴 **素通しするのは停止要求（stoppingToken）の取り消しだけである。**
+        // 下流の時間切れ（HttpClient の TaskCanceledException 等）は停止要求ではなく周期の失敗であり、ここで記録して
+        // 次周期へ進む。型だけで素通しすると外側で「シャットダウン」と読まれ、日次のループが**永久に**終わる
+        // （退職者の資料の削除・90 日の削除・通知が以後動かない）。形は DriftDetectionHostedService（#1382）と同じ。
+        catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+        {
+            // 定期処理の失敗でホストを落とさない。次周期で再試行する。
+            logger.LogError(ex, "個人資料の定期処理に失敗した。次周期で再試行する。");
         }
     }
 }
