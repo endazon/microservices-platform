@@ -95,13 +95,22 @@ issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1
 
 ```bash
 umask 077
-WORK="$(mktemp -d)"            # 値を含むファイルはここにだけ置き、使い終えたらすぐ消す
-trap 'rm -rf -- "${WORK:?}"' EXIT   # 端末を閉じれば消える。手順の最後でも明示して消す
+WORK="$(mktemp -d /tmp/rot.XXXXXX)"   # 値を含むファイルはここにだけ置き、使い終えたらすぐ消す
+trap 'rm -rf -- "${WORK:?}"' EXIT     # シェルが正常に終わったときの保険。片付けの本体は 0-z
 case "$(uname -s)" in
   MINGW*|MSYS*) np() { cygpath -m "$1"; } ;;   # Git Bash: ネイティブの jq・curl へは C:/ 形で渡す
   *)            np() { printf '%s' "$1"; } ;;
 esac
 ```
+
+🔴 **trap は保険であり、片付けを任せない。** 次の場合は `$WORK` が残る（1-3 の 2〜5 の間なら、新しい値を含む `client-new.json` が残る）:
+
+- 対話シェルで Ctrl-C を押しても、EXIT の trap は発火しない（シェルは終わらない）。
+- Git Bash のウィンドウを強制的に閉じた・`kill -9` で止まったときは trap が走らない。`/tmp` は Windows では `%TEMP%` の下にあり、そこに残る。
+- 0-0 を 2 回実行すると、trap は最後の `$WORK` しか消さない（前の `$WORK` は残る）。
+
+**途中で止めたら、やり直す前でも終える前でも必ず 0-z を実行する。** 0-z は前の試行の `/tmp/rot.*` もまとめて消す（同じ利用者で 2 つの手順を同時に回さない）。
+端末ごと失ったときは、新しい Git Bash で 0-z の `rm` の行だけを実行する。
 
 部品の書き方の約束（以下の部品はすべてこれに従っている。部品を書き換えるときも守る）:
 
@@ -126,8 +135,9 @@ kubectl -n platform-infra exec deploy/vault -- sh -c '
 ' | grep -E 'current_version|^Key|^---'
 ```
 
-🔴 **控えるのは最初の試行の前の版である。** 途中で止めてやり直すとき、0-c まで進んだ試行のたびに版が 1 つ進む（2026-10-10 の実行では中断した試行で 1→6 まで進んだ）。
+🔴 **前の試行で `keycloak ok`（1-3 の 5）が出ていないなら、控えるのは最初の試行の前の版である。** 途中で止めてやり直すとき、0-c まで進んだ試行のたびに版が 1 つ進む（2026-10-10 の実行では中断した試行で 1→6 まで進んだ）。
 やり直しのたびに控え直すと、相手と一致しない版を控えることになる。
+前の試行で `keycloak ok` まで出ていたなら、やり直さない。保管先と相手は一致しているので、[途中で止まったとき](#途中で止まったとき)の 3 段目どおり前へ進める。
 
 **0-c. 保管先のプロパティを 1 つ書く**（`printf '%s'` で渡す。ヒアドキュメントや `echo` は末尾の改行ごと入り得る）:
 
@@ -155,10 +165,10 @@ jq -r --arg s "<secret>" '.items[]
 rm -f "$WORK/deploy.json"
 ```
 
-**0-z. 片付ける**（手順の最後に 1 回）:
+**0-z. 片付ける**（手順の最後と、途中で止めたとき。前の試行の一時ディレクトリもまとめて消す）:
 
 ```bash
-unset NEW_VALUE; rm -rf -- "${WORK:?}"; trap - EXIT
+unset NEW_VALUE; rm -rf -- /tmp/rot.*; trap - EXIT
 ```
 
 ### Windows（Git Bash）での注意
@@ -202,13 +212,19 @@ unset NEW_VALUE; rm -rf -- "${WORK:?}"; trap - EXIT
 kubectl -n platform-infra port-forward deploy/keycloak 18080:8080 >/dev/null 2>&1 &
 PF_PID=$!
 KC=http://127.0.0.1:18080
-KC_ADMIN_USER="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.username}' | base64 -d)"
-TOKEN="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d \
-  | jq -Rj --arg u "$KC_ADMIN_USER" '"grant_type=password&client_id=admin-cli&username=\($u|@uri)&password=\(.|@uri)"' \
-  | curl -sf -X POST "$KC/realms/master/protocol/openid-connect/token" \
-      -H 'Content-Type: application/x-www-form-urlencoded' --data-binary @- | jq -j .access_token)"
+kc_token() {   # 管理者のトークンを取り直す（何度でも呼べる）
+  local u; u="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.username}' | base64 -d)"
+  kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d \
+    | jq -Rj --arg u "$u" '"grant_type=password&client_id=admin-cli&username=\($u|@uri)&password=\(.|@uri)"' \
+    | curl -sf -X POST "$KC/realms/master/protocol/openid-connect/token" \
+        -H 'Content-Type: application/x-www-form-urlencoded' --data-binary @- | jq -j .access_token
+}
+TOKEN="$(kc_token)"
 [ -n "$TOKEN" ] && [ "$TOKEN" != null ] && echo "token ok"
 ```
+
+🔴 **master realm の管理者のトークンは短命である**（既定で 60 秒）。1-3 の 5 の `PUT` の前と、[途中で止まったとき](#途中で止まったとき)の確かめ方の前に、
+上の最後の 2 行（`TOKEN="$(kc_token)"` と確認）で**取り直す**。期限切れのトークンでは管理 API が `401` を返す。
 
 フォームは `jq -j` で組み立てる（行末に何も足さない）。`-r` にすると Windows の jq ではフォームの末尾に `\r` が付き、`invalid_user_credentials` になる。
 
@@ -242,18 +258,20 @@ CID="$(curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/cli
    `body ok` が出なければ先へ進まない。まだ何も書いていないので、`rm -f "$WORK/client-new.json"; unset NEW_VALUE` で終えてよい（1-1 からやり直す）。
 3. **0-b** で保管先の直前の版を控える（`<path>` は 1-0 の表）。
 4. **0-c** で保管先へ書く。この時点では消費側は旧の値を持っているので、何も壊れない。
-5. **認証基盤の client の `secret` を同じ値にする**（2 で確かめた表現を `PUT` で戻す）:
+5. **認証基盤の client の `secret` を同じ値にする**（2 で確かめた表現を `PUT` で戻す。直前にトークンを取り直し、`token ok` を確かめてから `PUT` する）:
 
    ```bash
+   TOKEN="$(kc_token)"; [ -n "$TOKEN" ] && [ "$TOKEN" != null ] && echo "token ok"
    CODE="$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $TOKEN" \
      -H 'Content-Type: application/json' --data-binary @"$(np "$WORK/client-new.json")" \
      "$KC/admin/realms/platform/clients/$CID")"
-   rm -f "$WORK/client-new.json"
+   [ "$CODE" = 204 ] && rm -f "$WORK/client-new.json"
    [ "$CODE" = 204 ] && echo "keycloak ok" || echo "keycloak NG: $CODE"
    ```
 
    `keycloak ok` が出れば書けている。🔴 **ここから、旧の値を持つ消費側は `invalid_client` になる。6・7 を続けて行う。**
-   `keycloak NG` のときは [途中で止まったとき](#途中で止まったとき)の「相手の書き込みが失敗した・成否が分からない」へ進む。
+   `keycloak NG: 401`（・`403`）は認証で断られたので **`PUT` は適用されていない**（成否不明ではなく未実行）。トークンを取り直して 5 だけをやり直す（`client-new.json` は残してある）。
+   それ以外の `keycloak NG`（`000`・`5xx` など）は [途中で止まったとき](#途中で止まったとき)の「相手の書き込みが失敗した・成否が分からない」へ進む。
 6. **0-d** で同期を促す（1-0 の ExternalSecret）。
 7. 消費側を作り直す（**0-e** で引いた Deployment を `kubectl -n <ns> rollout restart deploy/<name>`、`rollout status` で待つ）。
    `vault` / `wiki-js` は 1-0 の表のスクリプトを再実行する。
@@ -362,8 +380,36 @@ kubectl -n <namespace> get secret <name> -o jsonpath='{.data.<key>}' | base64 -d
 | 保管先へ書く前（群 1 の 1〜3、群 2 の 1・2） | 何も変わっていない | **0-z** で終える |
 | 保管先へ書いた後・相手を書く前（群 1 の 4、群 2 の 3） | 保管先だけ新しい。消費側は旧の値を持ち、動いている | **保管先を控えた版へ戻す**: Vault Pod 内で `vault kv rollback -version=<控えた版> secret/<path>`（同値の組は両方）。**同期を促さない**（促すと消費側が新しい値を受け取って壊れる。促してしまったなら、戻した後にもう一度促す） |
 | 相手を書いた後・作り直しの前（群 1 の 5 の後、群 2 の 4 の後） | 保管先と相手は新しい値で一致。消費側だけ旧い | **戻さない。前へ進める**（同期を促し、作り直す）。新しい値を失っていても、保管先に在る |
-| 相手の書き込みが失敗した・成否が分からない | 保管先は新しい。相手は不明 | 群 1: 1-2 の client を読み直し、`secret` が新しい値と同じかを値を出さずに比べる（`printf '%s' "$NEW_VALUE" > "$WORK/secret"` の後、`curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients/$CID" \| jq -e --rawfile s "$(np "$WORK/secret")" '.secret == $s'` が `true` を出す。比べ終えたら `rm -f "$WORK/secret"`。長さだけでは、旧の値も同じ長さのとき区別できない）。同じなら書けている → 前へ進める。違えば保管先を控えた版へ戻す（上の 2 段目）。群 2: 新しい値でストアへ接続を試し、通れば前へ進める。通らなければ保管先を戻す |
+| 相手の書き込みが失敗した・成否が分からない | 保管先は新しい。相手は不明 | 群 1: 下の[成否の確かめ方](#成否の確かめ方群-1)を実行する。`一致` なら書けている → 前へ進める。**`不一致` のときだけ**保管先を控えた版へ戻す（上の 2 段目）。`判定不能` なら**何も戻さない**（トークンを取り直して確かめ方からやり直す）。群 2: 新しい値でストアへ接続を試し、通れば前へ進める。通らなければ保管先を戻す |
 | 作り直しの後に動かない | 値は一致しているはず | 同期が `Ready` か・Secret の長さが一致するかを見る。一致しているのに動かなければ、相手を旧の値へ戻す: 保管先の控えた版の値を変数へ読み（`vault kv get -version=<控えた版> -field=<property> secret/<path>` を変数に受ける。表示しない）、群 1 はその値を `NEW_VALUE` に入れて 1-3 の 2 と 5、群 2 はストア側の手順でその値を書き、保管先を `rollback` し、同期と作り直しをやり直す |
+
+### 成否の確かめ方（群 1）
+
+認証基盤の client の `secret` が新しい値と同じかを、値を出さずに比べる。**3 つの結果を区別する**（長さでは比べない。旧の値も同じ長さのとき区別できない）。
+
+```bash
+TOKEN="$(kc_token)"
+printf '%s' "$NEW_VALUE" > "$WORK/secret"
+CODE="$(curl -s -o "$(np "$WORK/client-now.json")" -w '%{http_code}' \
+  -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients/$CID")"
+if [ -z "$TOKEN" ] || [ "$TOKEN" = null ] || [ "$CODE" != 200 ]; then
+  echo "判定不能: HTTP $CODE"
+else
+  RC=0
+  jq -e --rawfile s "$(np "$WORK/secret")" \
+    'if has("secret") then .secret == $s else error("secret が無い") end' "$(np "$WORK/client-now.json")" >/dev/null 2>&1 || RC=$?
+  case "$RC" in 0) echo "一致" ;; 1) echo "不一致" ;; *) echo "判定不能: jq $RC" ;; esac
+fi
+rm -f "$WORK/secret" "$WORK/client-now.json"
+```
+
+| 結果 | 意味 | 次に行うこと |
+| --- | --- | --- |
+| `一致` | 相手は新しい値になっている | 前へ進める（1-3 の 6） |
+| `不一致` | 相手は新しい値になっていない | 保管先を控えた版へ戻す（上の表の 2 段目） |
+| `判定不能` | 読めなかった（トークンの期限切れの `401`・port-forward が落ちた `000` など） | **何も戻さない。** 判定不能のまま戻すと、`PUT` が実は通っていたとき「保管先が旧・相手が新」になる。1-1 の port-forward が生きているかを確かめ、トークンを取り直してやり直す |
+
+端末を閉じて変数を失っていたら、0-0・1-1・1-2 をやり直し、保管先の新しい版の値を変数へ読み（`vault kv get -field=<property> secret/<path>` を変数に受ける。表示しない）、`NEW_VALUE` に入れてから実行する。
 
 🔴 **保管先の版の履歴は、戻すための唯一の控えである。** 0-b を飛ばさない。`vault kv metadata delete` や `destroy` をしない。
 
