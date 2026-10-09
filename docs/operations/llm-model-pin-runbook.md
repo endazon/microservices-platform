@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-11]
 adrs: [ADR-0038, ADR-0048, AST:ADR-0011]
-iadrs: [IADR-0058, IADR-0102, IADR-0112, IADR-0141, IADR-0225, IADR-0228, IADR-0331, IADR-0511, IADR-0529]
+iadrs: [IADR-0058, IADR-0102, IADR-0112, IADR-0141, IADR-0225, IADR-0228, IADR-0331, IADR-0511, IADR-0531]
 specs: [20260811_issue-587_pin-migration-runbook, 20260831_issue-1092_planning-submodule-residual-refs, 20261008_1785_graph-purpose-models, 20261010_1875_claude-5-5-models]
 issues: [#382, #440, #587, #1092, #1785, #1875, AST#296, planning#50, planning#426, planning#783]
 -->
@@ -158,8 +158,6 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 > **［2026-08-21 更新］鎖を持つのは 4 用途である** —— `analysis`（`claude-opus-5` → `claude-sonnet-5`）・
 > `diagram-coding`（`claude-sonnet-5` → `claude-haiku-4-5`）・`default`（`claude-opus-5` → `claude-sonnet-5`）・
 > `rag-answer`（`claude-sonnet-5` → `claude-haiku-4-5`）。
-> **［2026-10-10 追記］** 5.5 系への切替後は各モデルが 5.5 系へ置き換わり、鎖を持つ用途は報告書 3 種とグラフの 2 用途を加えた 9 用途である
-> （現在の一覧は上の §対象 のコマンドの出力を正とする）。`trade-decision` と `trade-decision-screening` が鎖を持たないことは変わらない。
 > 従前ここには「鎖を持つのは `analysis` だけ」と書いていたが、**`diagram-coding` を数え落としており、
 > `default` / `rag-answer` は計画側の裁定で確定した**。**いずれも安価側への 1 段下位**である。
 > **`trade-decision` と報告書系（`report-monthly` / `report-weekly` / `report-daily`）は鎖を持たず、
@@ -168,6 +166,15 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 > **429 の再試行そのものは未実装である** —— 計画側が回数・バックオフ・`Retry-After` の方針を
 > 定めていないためであり（同実装 ADR §フォローアップ 1）、**429 で別モデルへ逃げないことだけが
 > 実装されている**。発火は `llm_completion_total{llm_result="fallback"}` で観測する。
+>
+> **［2026-10-10 追記］上の「鎖を持つのは 4 用途」「報告書系は鎖を持たない」は 2026-08-21 時点の記述であり、現在は当てはまらない。**
+> 現在 `Llm:Routing:PurposeFallbackModels` に鎖を持つのは **9 用途**である —— 上の 4 用途に、報告書 3 種
+> （`report-monthly` → `claude-sonnet-5-5`・`report-weekly` → `claude-sonnet-5-5`・`report-daily` → `claude-haiku-5-5`）と
+> グラフの 2 用途（`graph-suggestion` → `claude-haiku-5-5`・`graph-cluster-summary` → `claude-sonnet-5-5`）を加えたもの。
+> 報告書 3 種とグラフの 2 用途の鎖は 5.5 系への切替より前から設定にあり、切替では各モデルが 5.5 系へ置き換わっただけである
+> （上の 4 用途も同じ。例: `analysis` は `claude-opus-5-5` → `claude-sonnet-5-5`）。**いずれも安価側への 1 段下位**である。
+> **鎖を持たないのは `trade-decision`・`trade-decision-screening`・`rerank` である** —— **`trade-decision` に鎖が付かないという制約の本体は変わらない。**
+> 現在の一覧は上の §対象 のコマンドの出力を正とする。
 
 ---
 
