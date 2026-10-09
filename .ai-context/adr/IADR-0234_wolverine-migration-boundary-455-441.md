@@ -12,7 +12,7 @@ related_ids:
   - IADR-0233
 author: claude
 created: 2026-08-22
-updated: 2026-10-07
+updated: 2026-10-09
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0027_messaging-wolverine.md (§決定・再試行は Wolverine の耐久メッセージ機能で賄う)
   - planning:projects/microservices-platform/06_technical/12_backend-application-stack.md (§Wolverine 移行チェックリスト = 8 手順の原典・§リスク・未決事項)
@@ -209,6 +209,13 @@ only [DocumentDeleted]    -> violations=0   only [DocumentUpdated]    -> violati
 >   `transportMismatches()` が突き合わせる購読側が無く、発行側だけを移しても検査は緑のままである ——
 >   **E4 の正しさは検査器では測れず、移した PR が発行の到達（または購読 0 の明記）を自分で示す必要がある。**
 > - 同じ監査で、発行 0・購読 0 の死んだ契約型 `IngestionRequested` は契約から削除した（#1771。どの単位の行にも関与しない）。
+
+> ［2026-10-09 追記 / #1771］**上の追記の「計画側の裁定待ち」は閉じた。`IngestionCompleted` は結線しない**（planning#741 項目 6 の利用者裁定。
+> 完了記録 planning `projects/microservices-platform/10_feedback/20261009_audit-b12-b13-dept-sync-ingestion.md`）。計画の改訂は無く、
+> 結線の約束は実装の機能仕様書（FR-01・FR-02）にあったので、そちらから外した（作業仕様書 `20261009_1771_ingestion-completed-no-wiring`）。
+> - **E4 は発行側だけの単位である。** 購読側を足す選択肢は無くなった。E4 の PR は上の「購読 0 の明記」の側で正しさを示す。
+> - E4 の中身（発行を Wolverine へ移すか、発行自体を撤去するか）は本追記でも決めない（完了記録が実装に委ねた）。撤去するなら、
+>   負荷試験 P-03 の計測点を Qdrant の points 数へ寄せる（`docs/tests/NFR-01_performance-load-test.md`）。
 
 ### 決定 4: U5 は「型制約の緩和」としては発生しない。IADR-0233 決定 4 をここで改める
 

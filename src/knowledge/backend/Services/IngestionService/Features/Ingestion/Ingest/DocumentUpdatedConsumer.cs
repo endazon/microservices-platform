@@ -21,7 +21,7 @@ namespace IngestionService.Features.Ingestion.Ingest;
 // 受け口の ct で「取り消し」として切られる。自分の期限の時間切れは `ConsumerTimeoutException` として投げ
 // （警告ログ・計器 `messaging.consumer.timeout`）、呼び出し元の取り消しはそのまま外へ出す。
 // 埋め込みはチャンクごとに総枠（`EmbeddingBudget`）を判定し、使い切ったら残りを呼ばずに時間切れとして投げる。
-// ［#1771］この辺の移行は IADR-0234 の単位 E4 として追跡する（購読者の要否は planning#741 項目 6 の裁定待ち）。
+// ［#1771］この辺の移行は IADR-0234 の単位 E4 として追跡する。購読者は結線しない（planning#741 項目 6 の裁定・2026-10-09）。
 public class DocumentUpdatedConsumer(
     IDocumentContentReader reader,
     IChunkingService chunker,
@@ -194,7 +194,8 @@ public class DocumentUpdatedConsumer(
                 ev.DocumentId, skipped, confidentiality ?? "(unset)");
         }
 
-        // FR-02: 取り込み完了イベント発行 → 検索反映へ連鎖（発行は MassTransit のまま。ポート越し）
+        // FR-02: 取り込み完了イベントを発行する（発行は MassTransit のまま。ポート越し）。
+        // 購読者は無く、結線もしない（#1771 / planning#741 項目 6）。検索への反映は上の Qdrant 登録で成立している。
         await bus.PublishCompletedAsync(ev.DocumentId, chunkCount, DateTimeOffset.UtcNow, ct);
 
         logger.LogInformation("Ingestion complete for {Id}: {Count} chunks", ev.DocumentId, chunkCount);
