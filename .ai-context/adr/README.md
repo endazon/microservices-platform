@@ -599,4 +599,5 @@
 | [IADR-0519](./IADR-0519_scripts-installed-products-version-pinning.md) | scripts/ が入れる製品は版で固定する。Argo CD は stable が指していた版のタグの URL、k3s はスクリプトの既定を単一の情報源とし、chart・上流マニフェストの内側のイメージの digest 固定は理由つきで別に回す（#1843） | Accepted |
 | [IADR-0520](./IADR-0520_infra-product-default-egress-disabled.md) | インフラ製品（Grafana・Loki・Tempo・Qdrant・Mailpit）の既定の外部通信を、製品が動く全経路の配備で止め、描画結果・compose・Testcontainers を読む検査器で固定する。Mailpit は止める設定を持つ版へ上げる（#1841） | Accepted |
 | [IADR-0521](./IADR-0521_graph-edges-from-links-and-shared-tags.md) | 知識グラフの辺は明示リンクと共有タグで結ぶ。共有タグは文書数 50 を超えるタグから作らず組あたり 1 本・出所は自動抽出のまま内訳列で分ける。Wiki の文書ページへのリンクは文書 ID で解決し、後から届いた相手へは保存済みのリンクから張り直す（#1396） | Accepted |
+| [IADR-0522](./IADR-0522_session-store-valkey-auth-required.md) | キャッシュ・セッションストアを Redis 7.4 から Valkey 9.1 へ差し替え、認証を必須（空なら起動しない）にして到達を BFF に絞る。パスワードは Secret から BFF の構成値 1 つで注入し、ヘルスチェックとセッションが同じ構成を使う（#1839） | Accepted |
 | [IADR-0523](./IADR-0523_platform-api-audience-validation.md) | 全サービスの JWT 検証は共有の audience（platform-api）を求め、受け付ける値はサービスごとの構成（Auth:Audiences）に持つ。audience は 1 つのクライアントスコープで正当な呼び出し元だけに載せ、mcp-server とは分ける（#1846） | Accepted |

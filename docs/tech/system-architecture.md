@@ -3,15 +3,15 @@ title: システム構成図（microservices-platform 基盤 + knowledge ユニ�
 type: tech-architecture
 status: draft
 created: 2026-07-16
-updated: 2026-10-08
+updated: 2026-10-09
 author: endazon (with Claude Code)
 ---
 <!-- trace:
-ids: [SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11]
-adrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, ADR-0020, ADR-0027, ADR-0106]
-iadrs: [IADR-0017, IADR-0026, IADR-0048, IADR-0056, IADR-0121, IADR-0461]
-specs: [20260925_1499_object-storage-seaweedfs, 20261008_1799_composability-docs-wolverine-wiring]
-issues: [#497, #580, #591, #1499, #1799]
+ids: [NFR-18, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11]
+adrs: [ADR-0131, ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, ADR-0020, ADR-0027, ADR-0106]
+iadrs: [IADR-0522, IADR-0017, IADR-0026, IADR-0048, IADR-0056, IADR-0121, IADR-0461]
+specs: [20261009_1839_session-store-valkey, 20260925_1499_object-storage-seaweedfs, 20261008_1799_composability-docs-wolverine-wiring]
+issues: [#1839, #497, #580, #591, #1499, #1799, planning#750]
 -->
 
 # システム構成図: microservices-platform（基盤 + knowledge ユニット）
@@ -76,7 +76,7 @@ flowchart TB
     PG[("PostgreSQL<br/>Database per Service")]
     QD[("Qdrant<br/>ベクトル DB")]
     OBJ[("SeaweedFS<br/>オブジェクトストレージ")]
-    REDIS[("Redis<br/>BFF キャッシュ")]
+    REDIS[("Valkey（Redis 互換）<br/>BFF セッションストア")]
     KC["Keycloak（IdP）"]
     OBS["可観測性<br/>OTel / Prometheus / Grafana / Loki"]
     WJS["Wiki.js<br/>（既存 OSS 閲覧/編集）"]
@@ -195,7 +195,7 @@ sequenceDiagram
 
 | ユニット | サービス | 責務 | 主な通信 |
 | --- | --- | --- | --- |
-| platform | `Bff` | エッジ集約（フロントの唯一の入口）・構成情報 API・ドリフト検出 | REST / Redis |
+| platform | `Bff` | エッジ集約（フロントの唯一の入口）・構成情報 API・ドリフト検出 | REST / RESP（Valkey） |
 | platform | `AuthorizationService` | ABAC 属性ポリシー管理・認可判定 | REST（同期） |
 | platform | `LlmGateway` | LLM/埋め込みプロバイダへのエグレス集約・機密区分別ルーティング | REST / 外部 API |
 | knowledge | `DocumentService` | 文書カタログ・版管理（DB 所有）・更新イベント発行・Wiki 同期 | REST / イベント |

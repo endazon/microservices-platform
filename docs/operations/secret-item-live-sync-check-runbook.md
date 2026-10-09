@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-04
-updated: 2026-10-04
+updated: 2026-10-09
 ---
 <!-- trace:
 ids: [SC-22, FR-05, NFR-18]
-adrs: [ADR-0095, ADR-0104, ADR-0110]
-iadrs: [IADR-0103, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0494]
-specs: [20261004_issue-1472_sc22-t40-live-procedure, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_1728_eso-force-sync-after-bootstrap]
-issues: [#1472, #1467, #1477, #1502, #1682, #1728]
+adrs: [ADR-0131, ADR-0095, ADR-0104, ADR-0110]
+iadrs: [IADR-0522, IADR-0103, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0494]
+specs: [20261009_1839_session-store-valkey, 20261004_issue-1472_sc22-t40-live-procedure, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_1728_eso-force-sync-after-bootstrap]
+issues: [#1839, #1472, #1467, #1477, #1502, #1682, #1728, planning#750]
 -->
 
 # 運用 Runbook: 稼働クラスタで画面から 1 プロパティを書き、同期後の Secret を長さだけで確かめる
@@ -365,7 +365,7 @@ kubectl -n ai-stock-trading get externalsecret ast-secrets
 | `syncRequested: false` | 同期依頼の Role が無い・ExternalSecret が無い・境界層の同期が無効 | 境界層のログで同期の監査行（`secret.item.sync` の `failed` と理由）を見る。値は出ない |
 | 同期が終わらない | ストアの認証切れ・パスの綴り | `kubectl describe externalsecret` の Events |
 | 長さが 1 多い | 試験値の末尾に改行か空白を入れて貼った | 手順 7 で戻し、貼り方を直して手順 3 からやり直す |
-| 「最終更新者」が「記録なし」 | 書き込み応答と metadata の作成時刻が一致しない／境界層の記録の置き場（Redis）に届かない | 手順 7 の文字列の突き合わせの結果と合わせて記録する |
+| 「最終更新者」が「記録なし」 | 書き込み応答と metadata の作成時刻が一致しない／境界層の記録の置き場（セッションストア。Valkey）に届かない | 手順 7 の文字列の突き合わせの結果と合わせて記録する |
 
 ## 記録
 

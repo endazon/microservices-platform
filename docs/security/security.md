@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [SC-12, FR-16, FR-06, FR-04, FR-17, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
-adrs: [ADR-0134, ADR-0032, ADR-0107, ADR-0123, ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127, ADR-0126]
-iadrs: [IADR-0523, IADR-0520, IADR-0518, IADR-0517, IADR-0516, IADR-0501, IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498]
-specs: [20261009_1846_service-audience-validation, 20261009_1841_disable-default-egress, 20261009_1783_dept-sync-poc-fix, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1817_sc12-provisioning-wiring, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261003_458_connector-secret-vault-reference, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20261006_1746_claude-rerank]
-issues: [#1846, #1841, #1783, #1834, #1830, #1817, #1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672, planning#741, planning#700, AST#1078, planning#716, planning#770]
+adrs: [ADR-0134, ADR-0032, ADR-0107, ADR-0123, ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127, ADR-0126, ADR-0131]
+iadrs: [IADR-0523, IADR-0520, IADR-0518, IADR-0517, IADR-0516, IADR-0501, IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498, IADR-0522]
+specs: [20261009_1846_service-audience-validation, 20261009_1841_disable-default-egress, 20261009_1783_dept-sync-poc-fix, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1817_sc12-provisioning-wiring, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261003_458_connector-secret-vault-reference, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20261006_1746_claude-rerank, 20261009_1839_session-store-valkey, 20261009_1845_sc12-secret-once-and-audit]
+issues: [#1846, #1841, #1783, #1834, #1830, #1817, #1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, #1839, #1845, AST#18, AST#24, AST#727, planning#383, planning#672, planning#741, planning#700, AST#1078, planning#716, planning#770, planning#750]
 -->
 
 # セキュリティ仕様書
@@ -202,7 +202,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 | 検証する側 | `AddPlatformAuth` の既定スキーム: `ValidateAudience=true`・受け付ける値は構成 `Auth:Audiences`（未設定なら `platform-api` だけ。配列か、カンマ／空白区切りの文字列）。**設定されているのに空・`mcp-server` を含む構成では起動しない** |
 | MCP 面 | MCP サーバーの `/mcp` は別のスキームで **`mcp-server` だけ**を受け付ける（共有の値は通さない）。MCP クライアントのトークン（`aud=mcp-server` だけ）は他の面・他のサービスで 401 |
 | 静的検査 | `scripts/check-realm-constraints.js`: スコープの写像の値・「サービスアカウントを持ち realm 管理用でないクライアントは全員持つ／それ以外は bff を除き持たない」・既定や任意スコープに置かない・**`platform-api` を出す audience の写像はスコープ `platform-api-audience` の中にだけ置く**（クライアント直付け・他のスコープは別経路として止める）・人のログインの口とサービスアカウントを両方持つクライアント（bff 以外）は要確認として名指す |
-| 稼働の実測 | 統合スタックの門（`scripts/check-mcp-client-provisioning.js` の M11）が、利用者・サービスアカウント・連携システムのクライアントのトークンの `aud` に `platform-api` が在り、運用ツールと MCP クライアントのトークンに無いこと、MCP クライアントの実トークンが MCP サーバーの管理 API で 401 になることを測る |
+| 稼働の実測 | 統合スタックの門（`scripts/check-mcp-client-provisioning.js` の M12）が、利用者・サービスアカウント・連携システムのクライアントのトークンの `aud` に `platform-api` が在り、運用ツールと MCP クライアントのトークンに無いこと、MCP クライアントの実トークンが MCP サーバーの管理 API で 401 になることを測る |
 
 - 🔴 **利用者の経路はサービスごとに絞れない。** BFF は利用者のトークンを token exchange せずに後段へ中継するため、`bff` のトークンは
   BFF が中継する全サービスの audience を持つ必要がある。サービスごとの audience で効くのはサービス間の呼び出し（呼び出し側サービス自身の
@@ -332,6 +332,33 @@ ABAC が判定に使う利用者の部門は IdP の利用者属性 `department`
 ブラウザが取りに行く通信（Grafana のニュース・アバター）は捕捉していない（上流の既定値の文書で確かめた）。
 TEI（埋め込み）はモデルの取得そのものが外部通信で、設定で止めるものではない。既定で配備されず、有効化の前にモデルの事前配置か自社管理の
 ミラーが要る（未着手）。
+
+### キャッシュ・セッションストア（Valkey）— 認証を必須にし、到達を BFF に絞る
+
+BFF のセッション・Cookie を保護する鍵リング・秘密情報の投入画面の書き込み記録は、Redis 互換のストア **Valkey** に置く
+（Redis は 7.4 以降が OSS でなくなったため差し替えた。クライアントは StackExchange.Redis のまま）。
+Valkey は既定で認証が無く、`CONFIG`・`FLUSHALL` などの管理コマンドが誰にでも通る。そのため次の 2 つを配備の定義に入れた（2026-10-09）。
+
+| 統制 | 経路 A（compose） | 経路 B（`deploy/local/`） |
+| --- | --- | --- |
+| **認証を必須にする**（パスワードが空なら起動しない） | `SESSION_STORE_PASSWORD`（既定は dev 用の置き場。`.env` で上書き） | Secret `session-store-credentials`（起動器が初回に乱数で作り、以後は使い回す。`SESSION_STORE_PASSWORD` で指定もできる） |
+| **到達を制限する** | ホストへ 6379 を公開しない（compose のネットワークの中だけ） | NetworkPolicy で ingress を BFF の Pod の 6379 だけに絞り、egress を閉じる |
+
+- パスワードは BFF へ `BffSession__RedisPassword` として Secret から注入する（helm は secretKeyRef、compose は変数展開。`check-secret-injected-options.js` が CI で両方を検査する）。
+  ストアのサーバへは標準入力の設定で渡し、**プロセスの引数に載せない**。
+- 確かめ方: 認証なしの接続が拒まれること・パスワードが空なら起動しないこと・BFF の 3 用途が認証つきで通ることを、
+  配備と同じイメージと起動形の統合試験（`BffSessionStoreValkeyTests`・`ValkeyContainerDefinitionTests`）が確かめる。
+- 既定の外部通信は無い（起動から 130 秒、コンテナのソケット表に loopback 以外の接続が現れないことを実測した）。
+
+🔴 **残る穴**:
+- **経路 B の防御は 2 段（認証 ＋ 到達の制限）だが、到達の制限は稼働クラスタでまだ実測していない。** 経路 B のクラスタは k3s で、k3s は NetworkPolicy を
+  既定で強制する（上流の既定）。本番前に確かめる手順は運用仕様書のセッションストアの節にある。NetworkPolicy を強制しないクラスタでは、
+  宣言は無害に残るだけで、防御は認証の 1 段に落ちる。
+- 認証を通った相手（BFF）には管理コマンドも通る（ACL でコマンドを絞っていない。相手は BFF だけである）。
+- compose の既定パスワードは公知の dev 用の値である（ホストへ公開しないことと合わせた dev 限定の扱い）。
+- 本番像の chart にストアの配備は無い。本番像へ足すときは、同じ 2 つの統制を先に入れる。
+- BFF はパスワードの Secret を**必須**で読む（無ければ起動しない。「パスワードなしで接続」へ倒さない）。Argo CD で同期する環境は Secret を先に作る。
+- パスワードの差し替えは Valkey → BFF の順に作り直す（逆にすると BFF が認証できない）。手順と切り戻しは運用仕様書のセッションストアの節にある。
 
 ## 秘密情報管理
 
@@ -530,6 +557,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
 | 構成情報 API アクセス（構成ビューア。`/bff/admin/config` 系） | `action`（`config.read` / `config.drift.read` / `config.history.read`）・`subject`（利用者名）・`outcome`（`granted` / `denied`）・`detail` | 可観測性基盤（OTLP 収集先）の保持設定に従う（アプリ側で固定保管期間は持たない） |
 | 秘密情報の一覧・投入（秘密情報・接続設定の管理。`/bff/secrets` 系） | `action`（`secret.item.list` / `secret.item.update` / `secret.item.sync`〔書き込みが成立した後の、同期先の ExternalSecret への即時同期の依頼。**書き込みの行とは別の行**〕）・`subject`（利用者名）・`outcome`（`granted` / `denied` / `failed`〔一覧・投入では保管先が未構成・不達・拒否・項目の現在の版が削除済み。同期の依頼では同期が未構成・依頼が通らない〕）・`detail`（項目名・プロパティ名・書き込み後の版・更新の理由・同期先の名前空間と名前、または拒否・失敗の理由）。🔴 **値・値の長さ・値のハッシュは記録しない**（テストが値の不在を監査・ログの両方で固定する） | 同上 |
 | 保管先（Vault）への秘密の書き込み（画面経由・画面以外の両方） | Vault の audit（1 要求につき request と response の 2 行の JSON）。抽出するのは response の行で、残るのは `time`（いつ）・`auth.display_name` と `auth.metadata`（誰が。経路の見分けに使う）・`request.path`（どの項目）・`request.data.data` の**キー**（どのプロパティ）・`error`（拒否・失敗）。🔴 **値は記録しない** —— 値・トークン・accessor は HMAC（`hmac-sha256:…`）で置き換わる（下の「保管先の audit」） | Loki の保持設定に従う（`deploy/local/observability/loki.yaml`。削除の設定は無く、容量は Loki の PVC で縛られる）。**同じ内容の完全な写しが Vault のコンテナログ（標準出力）にもある** |
+| MCP クライアント登録管理の管理操作（［2026-10-09 追加］。`/mcp-clients` の書き込み。MCP サーバーが記録する） | `action`（`mcp-client.register` / `mcp-client.replace-attributes` / `mcp-client.disable` / `mcp-client.enable` / `mcp-client.secret.issue`〔無人の登録が成立した後の、client secret の発行。**登録の行とは別の行**〕 / `mcp-client.secret.reissue`）・`subject`（利用者名）・`outcome`（`granted` / `denied` / `not-found` / `unavailable` / `failed`）・`detail`（クライアント ID・種別・割り当てた ABAC 属性・状態コード）。🔴 **client secret の値は記録しない**（テストがホストの全ログで値の不在を固定する）。⚠️ 認可サーバー（Keycloak 24）側では、再発行の値が管理イベントの詳細に残る（ソースの読み。扱いは計画へ問う） | 同上 |
 | LLM egress ルーティング判断（送信先切替・越境統制） | 構造化ログ（`sensitivity`・`purpose`（log-forging 対策でサニタイズ）・`allowedTiers`／拒否理由。`LlmRouter` / `EmbeddingRouter`） | 同上。※ 形式監査（`IAuditLogger`）ではなく越境統制の観測ログ。将来的な `IAuditLogger` 化はフォローアップ |
 
 - **`outcome` の値域は 2 値ではない。** `granted` / `denied` に加え、秘密情報の投入の `failed`、同期競合の `recorded`、

@@ -8,10 +8,10 @@ updated: 2026-10-09
 ---
 <!-- trace:
 ids: [NFR-18, SC-22]
-adrs: [ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110, ADR-0124, ADR-0126]
-iadrs: [IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501]
-specs: [20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference]
-issues: [#1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, planning#700, planning#716, AST#1078]
+adrs: [ADR-0131, ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110, ADR-0124, ADR-0126]
+iadrs: [IADR-0522, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501]
+specs: [20261009_1839_session-store-valkey, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference]
+issues: [#1839, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, planning#700, planning#716, AST#1078]
 -->
 
 # 運用 Runbook: 秘密情報のローテーション
@@ -208,6 +208,7 @@ kubectl -n microservices-platform wait --for=condition=Available deploy --all --
 | 保管先（Vault）自身の root トークン・unseal 鍵 | 経路B の開発専用の既知値であり、本番の Vault 運用（unseal・監査・HA）は未配備 |
 | 取引ユニットの DB 利用者 `ai` | 保管先に無い（DB の初期化スクリプトに直書き）。取引ユニットの管轄 |
 | データソースの接続資格情報 | **管理者が**秘密情報・接続設定の管理画面の「データソースの資格情報」で 1 件ずつ更新する（保管先 `datasource/<データソース ID>`。書いた値は次の同期から使われ、再起動は要らない。削除→再登録は ID と履歴を切るので行わない）。🔴 データソースの設定に平文が残っている行（画面の供給元が「画面以外」）は、画面で書いても使われない —— 平文の移送は別段であり、それまではデータソースの登録・更新の API（管理者だけ）で差し替える。直前の版へ戻すときは保管先の版で戻す |
+| キャッシュ・セッションストア（Valkey）のパスワード（Secret `session-store-credentials`） | 保管先に無い（起動器が `platform-infra` と `microservices-platform` の 2 か所へ置く bootstrap）。Valkey → BFF の順に作り直す必要がある。手順と切り戻しは [`operations.md`](operations.md) の「キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し」 |
 | Wiki.js の管理者パスワード | 保管先に無い（起動時に乱数で生成）。Wiki.js の管理画面で変える |
 | メッシュのサービス間証明書・エッジの TLS 証明書 | 自動で更新される（istiod / cert-manager） |
 | 利用者のパスワード・OTP | 利用者本人の操作であり、運用のローテーションではない |

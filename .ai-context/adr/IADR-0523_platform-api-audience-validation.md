@@ -69,9 +69,9 @@ issue の題は「サービスごとの audience」だが、ADR-0086 のため B
 - 範囲は**列挙せず形で検査する**（`check-realm-constraints.js` 検査 9）: サービスアカウントを持ち `realm-management-roles` を持たないクライアントは全員持つ／それ以外は `bff` を除き持たない／既定・任意スコープに置かない／写像の値。
 - 稼働の realm へは `reconcile-realm.js` が差分（スコープ・写像・既定スコープの割り当て）を当てる（IADR-0369。新しい仕組みは要らない）。
 
-### 決定 4: 稼働の実測は integration-stack の既存の門に足す（M11）
+### 決定 4: 稼働の実測は integration-stack の既存の門に足す（M12）
 
-`check-mcp-client-provisioning.js` は管理者のトークン・evaluate-scopes・MCP クライアントの実トークンをすでに持つので、そこへ M11 を足した: `bff`（利用者）・document-service・kb-reader・使い捨ての登録者のトークンの `aud` に `platform-api` が在り `mcp-server` は無い／grafana（利用者）・有人と無人の MCP クライアントのトークンに `platform-api` は無い／無人の MCP クライアントの実トークンで McpServer の管理 API は **401**（ロール不足の 403 ではない）。使い捨ての登録者は McpServer の管理 API を呼ぶので、既定スコープへ `platform-api-audience` を足した（足さないと門ごと 401 で赤）。利用者の経路の陽性対照は ABAC の正常系の門（`verify-oidc-edge-flow.sh`。BFF が利用者のトークンを後段へ中継する）が兼ねる。
+`check-mcp-client-provisioning.js` は管理者のトークン・evaluate-scopes・MCP クライアントの実トークンをすでに持つので、そこへ M12 を足した: `bff`（利用者）・document-service・kb-reader・使い捨ての登録者のトークンの `aud` に `platform-api` が在り `mcp-server` は無い／grafana（利用者）・有人と無人の MCP クライアントのトークンに `platform-api` は無い／無人の MCP クライアントの実トークンで McpServer の管理 API は **401**（ロール不足の 403 ではない）。使い捨ての登録者は McpServer の管理 API を呼ぶので、既定スコープへ `platform-api-audience` を足した（足さないと門ごと 401 で赤）。利用者の経路の陽性対照は ABAC の正常系の門（`verify-oidc-edge-flow.sh`。BFF が利用者のトークンを後段へ中継する）が兼ねる。
 
 ## 結果
 
@@ -85,7 +85,7 @@ issue の題は「サービスごとの audience」だが、ADR-0086 のため B
 2. **既存の BFF セッション**: 導入前に発行されたアクセストークンは `aud` を持たない。リフレッシュで既定スコープが再評価される見込みだが稼働では未実測（再ログインで解消）。
 3. **AST の配備順序**: AST の 3 経路（KB の保存・検索・LLM）は platform realm のクライアントのトークンを使う。platform realm の変更が先に当たっていないと 401。AST のコードは変えない（配備の告知だけ）。
 4. **サービスごとの audience**（方式 B）へ移るなら、呼び出しの行列と realm の写像を突き合わせる検査器が先に要る（漏れは稼働で初めて 401）。
-5. 稼働の `aud` の実値（M11）は本 PR の integration-stack の実行で初めて測られる（本 PR を書いた環境に k8s は無い）。
+5. 稼働の `aud` の実値（M12）は本 PR の integration-stack の実行で初めて測られる（本 PR を書いた環境に k8s は無い）。
 
 ## フォローアップ
 

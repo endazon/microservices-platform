@@ -10,8 +10,8 @@ updated: 2026-10-09
 ids: [FR-15, FR-16, UC-08, UC-09, SC-12]
 adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054, ADR-0062, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134]
 iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523]
-specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1846_service-audience-validation]
-issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818, #1829, #1844, #1846]
+specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1846_service-audience-validation, 20261009_1845_sc12-secret-once-and-audit]
+issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818, #1829, #1844, #1846, #1845]
 -->
 
 # 通信仕様書: MCP サーバー
@@ -41,6 +41,7 @@ issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #18
 | POST | `/mcp-clients/{clientId}/disable` | 無効化（管理者限定） |
 | POST | `/mcp-clients/{clientId}/enable` | 再有効化（管理者限定） |
 | PUT | `/mcp-clients/{clientId}/attributes` | 属性割当の差し替え（管理者限定） |
+| POST | `/mcp-clients/{clientId}/reissue-secret` | ［2026-10-09］無人の client secret の再発行（管理者限定。新しい値を一度だけ返す） |
 | GET | `/mcp-clients/tools` | 実効ツール一覧と構成ドリフト（管理者限定） |
 
 ## 管理面への到達経路
@@ -58,6 +59,7 @@ issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #18
 | `POST /bff/admin/mcp-clients/{clientId}/disable` | `POST /mcp-clients/{clientId}/disable` |
 | `POST /bff/admin/mcp-clients/{clientId}/enable` | `POST /mcp-clients/{clientId}/enable` |
 | `PUT /bff/admin/mcp-clients/{clientId}/attributes` | `PUT /mcp-clients/{clientId}/attributes` |
+| `POST /bff/admin/mcp-clients/{clientId}/reissue-secret` | `POST /mcp-clients/{clientId}/reissue-secret` |
 
 ### 無人の登録・属性の差し替えは認可サーバーへ書いてから登録簿へ書く（［2026-10-08 追加］）
 
@@ -78,7 +80,7 @@ issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #18
   `McpClientProvisioning:Keycloak:{BaseUrl,Realm,ClientId,ClientSecret}`（既定値なし）。管理用の機密クライアントは
   認可サービスの身元管理用とは別のクライアントであり、`realm-management` の `manage-clients`・`manage-users` だけを持つ。
   ［2026-10-09］配備は realm の `mcp-client-admin` とその secret（`mcp-client-admin-oidc` の `client-secret`。非 optional の参照）で配線した。
-- 🔴 **client secret は応答に載せない。**
+- ~~🔴 **client secret は応答に載せない。**~~ ［2026-10-09 改訂］**無人の登録の 201 は client secret を一度だけ載せる**（下の「無人の client secret の一度だけの表示と再発行」）。
 - 認可サーバーへの要求の期限は `McpClientProvisioning:Keycloak:TimeoutSeconds`（既定 10 秒）。時間切れは 502 であり、作りかけは消す（作成の要求そのものが時間切れになった場合も、引き直して入口の印があれば消す。同じクライアント ID の並行登録や引き直しの失敗では残り得るので、下の定期の照合が拾う）。要求を途中で取り消しても、認可サーバーへの書き込みと取り消しは最後まで走る。
 - 登録簿で無効化された行の差し替えで認可サーバーにクライアントを作るときは、無効のまま作る。
 - ［2026-10-09 / #1818］**登録簿と認可サーバーの定期の照合**（読むだけで書かない）: 起動時と `McpClientProvisioning:Reconciliation:Interval`（既定 `00:01:00`・下限 1 分）ごとに、
@@ -92,6 +94,41 @@ issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #18
   有人の行が認可サーバーに無いことは数えない（この改訂より前に登録簿だけへ書かれた有人の行には、認可サーバーへ載せる経路が無い。
   対応するクライアントが無いのでトークンが出ず、接続はできない）。入口が作った有人のクライアントは孤児として数えない。
 - 🔴 境界層は状態コードを作り替えないので 502 は画面へそのまま届くが、境界層自身の不達も 502 であり区別できない。
+
+### 無人の client secret の一度だけの表示と再発行（［2026-10-09 追加］）
+
+**値は登録と再発行の応答で一度だけ返し、本サービスは保存しない**（登録簿・一覧・個別の応答には持たない。再表示の手段は無い）。
+値を運用者へ渡すのは本システムの外である（計画が受け入れたリスク）。
+
+| 操作 | 応答 | 認可サーバー | 登録簿 |
+| --- | --- | --- | --- |
+| 無人の登録 | 201。本文は登録した行の項目に `clientSecret` を足したもの（有人は `null`） | クライアントを作った後、登録簿へ書く前に現在の secret を読む（`GET /admin/realms/{realm}/clients/{id}/client-secret`） | 書く（secret は書かない） |
+| 無人の登録で secret を読めない | 502 | 作ったクライアントを消す（上の補償と同じ） | 書かない |
+| 再発行（`POST /mcp-clients/{clientId}/reissue-secret`） | 200 `{ clientId, clientSecret }` | 再生成する（`POST …/client-secret`）。**旧 secret はその時点で使えなくなる**（現行の認可サーバーでは猶予期間の機能〔client secret rotation〕が無効） | 書かない（更新日時も動かない） |
+| 再発行: 登録簿に無い | 404 | 何もしない | — |
+| 再発行: 有人（公開クライアント）・この入口の印が無い・認可サーバーに無い・機密クライアントでない | 400（理由を名指し） | **何も書かない** | — |
+| 再発行: 書き込み口が無い／認可サーバーの失敗 | 503／502 | 何も書かない／失敗 | — |
+
+- 登録の 201 と再発行の 200 は `Cache-Control: no-store`（境界層も同じ見出しを付ける）。
+- 無効化された行も再発行できる（漏えいに気づいたときに、無効化してから回せる）。
+- 🔴 **値はアプリケーションのログ・監査ログに出さない**（値の型は文字列化で値を出さない。試験はホストの全ログを捕まえて確かめる）。
+- 🔴 **認可サーバー側の記録**: 現行の認可サーバー（Keycloak 24）の再生成は、値つきの表現を管理イベントへ渡し、realm は管理イベントの詳細を保存する
+  （ソースの読み。統合スタックの門が件数を観測として出す）。**再発行の値は認可サーバーの管理イベントの保存先に残る。** 作成の管理イベントには値は無い
+  （作成の表現は入力そのもので、secret を送らない）。扱いは計画へ問う。
+
+### 管理操作の監査（［2026-10-09 追加］）
+
+管理 REST の書き込み（登録・属性の差し替え・無効化・再有効化・secret の再発行）は、結果を**既存の監査ログ**（`Audit=true` の構造化ログ。ログ基盤へ集約される）へ 1 行ずつ残す。
+無人の登録が成功したときは、登録とは別の行で「secret を発行した」を残す。
+
+| 項目 | 値 |
+| --- | --- |
+| action | `mcp-client.register` / `mcp-client.replace-attributes` / `mcp-client.disable` / `mcp-client.enable` / `mcp-client.secret.issue` / `mcp-client.secret.reissue` |
+| subject | 利用者名（トークンの `preferred_username`。無ければ `(不明)`） |
+| outcome | 2xx `granted`・400 `denied`・404 `not-found`・503 `unavailable`・その他 `failed`（例外も `failed` を残してから投げ直す） |
+| detail | `client=<id>`・`kind=<種別>`（登録）・`attributes=<キー=値;…>`（登録・差し替え。ABAC の属性値）・`status=<状態コード>`。**secret の値は残さない** |
+
+- 認可で弾かれた要求（管理者でない 403）は端点に届かないので記録しない。登録簿の削除の操作は無いので、削除の記録も無い。
 
 ### 有人の登録は公開クライアントを作る（［2026-10-09 追加］）
 

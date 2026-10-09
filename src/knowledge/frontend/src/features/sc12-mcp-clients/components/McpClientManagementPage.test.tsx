@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { QueryClient } from '@tanstack/react-query';
 import { ApiError } from '@foundation/api/ApiError';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { jsonResponse } from '@foundation/testing/bffResponse';
@@ -520,6 +521,247 @@ describe('McpClientManagementPage (SC-12)', () => {
   });
 
   // IADR-0124 決定 5: ナビはデータであり `<Link to>` の静的検査が効かない。
+  // ── #1845: 無人の client secret の一度だけの表示と再発行（05_screens §SC-12 の 2026-10-09 補完・ADR-0134 決定 2）──
+
+  // 試験の値は明らかに偽物の綴りにする（本物の鍵の形をした文字列を置かない）。
+  const ISSUED = 'placeholder-issued-value';
+  const REISSUED = 'placeholder-reissued-value';
+
+  /** 登録（201）と再発行（200）が secret を返す後段。それ以外は `mockApi` と同じ。 */
+  function mockApiWithSecrets() {
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && String(path).endsWith('/mcp-clients')) {
+        const body = JSON.parse(String(init.body)) as { clientId: string; kind: string };
+        return Promise.resolve(
+          jsonResponse(
+            {
+              ...CLIENTS[1],
+              clientId: body.clientId,
+              kind: body.kind,
+              clientSecret: body.kind === 'service-account' ? ISSUED : null,
+            },
+            201,
+          ),
+        );
+      }
+      if (init?.method === 'POST' && String(path).endsWith('/reissue-secret')) {
+        return Promise.resolve(
+          jsonResponse({ clientId: 'nightly-digest-bot', clientSecret: REISSUED }),
+        );
+      }
+      if (String(path).includes('/mcp-clients/tools')) return Promise.resolve(jsonResponse(TOOLS));
+      if (String(path).includes('/authz/attributes'))
+        return Promise.resolve(jsonResponse(ATTRIBUTES));
+      return Promise.resolve(jsonResponse(CLIENTS));
+    });
+  }
+
+  async function registerServiceAccount(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(screen.getByLabelText('クライアント ID'), 'new-bot');
+    await user.type(screen.getByLabelText('表示名'), '新ボット');
+    await user.selectOptions(screen.getByLabelText('クライアント種別'), 'service-account');
+    const form = within(screen.getByTestId('attribute-assignment'));
+    await user.selectOptions(form.getByLabelText('属性'), 'confidentiality');
+    await user.selectOptions(form.getByLabelText('値'), 'public');
+    await user.click(form.getByRole('button', { name: '属性を追加' }));
+    await user.click(screen.getByRole('button', { name: '登録' }));
+  }
+
+  it('shows the client secret of a new unattended client once, with a copy action and a no-redisplay notice', async () => {
+    mockApiWithSecrets();
+    // user-event はクリップボードを自前の器へ差し替える（setup の後に読める）。
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    // 否定形の前提: 登録の前は何も出ていない。
+    expect(screen.queryByTestId('issued-secret')).not.toBeInTheDocument();
+    await registerServiceAccount(user);
+
+    const panel = await screen.findByTestId('issued-secret');
+    expect(within(panel).getByTestId('issued-secret-value')).toHaveTextContent(ISSUED);
+    expect(panel).toHaveTextContent('表示できるのは今回だけです');
+    expect(panel).toHaveTextContent('再表示できません');
+    expect(panel).toHaveTextContent('new-bot');
+
+    await user.click(within(panel).getByRole('button', { name: 'コピー' }));
+    expect(await navigator.clipboard.readText()).toBe(ISSUED);
+
+    // 閉じたら消え、再表示の手段は無い（一覧にも値は出ない）。
+    await user.click(within(panel).getByRole('button', { name: '閉じる' }));
+    expect(screen.queryByTestId('issued-secret')).not.toBeInTheDocument();
+    expect(screen.queryByText(ISSUED)).not.toBeInTheDocument();
+  });
+
+  it('shows no secret after registering an attended client (public client)', async () => {
+    mockApiWithSecrets();
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    await user.type(screen.getByLabelText('クライアント ID'), 'human-agent');
+    await user.type(screen.getByLabelText('表示名'), '有人エージェント');
+    await user.type(
+      screen.getByLabelText('リダイレクト URI（1 行に 1 件）'),
+      'https://agent.example.test/cb',
+    );
+    await user.click(screen.getByRole('button', { name: '登録' }));
+    // 陽性対照: 登録の要求は飛んでいる。
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          ([path, init]) =>
+            String(path).endsWith('/mcp-clients') && (init as RequestInit)?.method === 'POST',
+        ),
+      ).toBe(true),
+    );
+    expect(screen.queryByTestId('issued-secret')).not.toBeInTheDocument();
+  });
+
+  it('reissues the secret of an unattended client only after confirmation and shows the new value once', async () => {
+    mockApiWithSecrets();
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    // 有人（dev-agent）には出さない。無人の 2 行だけに出る。
+    expect(screen.getAllByRole('button', { name: 'secret を再発行' })).toHaveLength(2);
+
+    // 取消なら要求を送らない。
+    await user.click(screen.getAllByRole('button', { name: 'secret を再発行' })[0]);
+    const confirmation = await screen.findByTestId('reissue-confirmation');
+    expect(confirmation).toHaveTextContent('nightly-digest-bot');
+    expect(confirmation).toHaveTextContent('ただちに使えなくなります');
+    await user.click(within(confirmation).getByRole('button', { name: '取消' }));
+    expect(
+      mocks.apiRequest.mock.calls.some(([path]) => String(path).endsWith('/reissue-secret')),
+    ).toBe(false);
+
+    await user.click(screen.getAllByRole('button', { name: 'secret を再発行' })[0]);
+    await user.click(
+      within(await screen.findByTestId('reissue-confirmation')).getByRole('button', {
+        name: '再発行する',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          ([path, init]) =>
+            String(path).endsWith('/mcp-clients/nightly-digest-bot/reissue-secret') &&
+            (init as RequestInit)?.method === 'POST',
+        ),
+      ).toBe(true),
+    );
+    const panel = await screen.findByTestId('issued-secret');
+    expect(within(panel).getByTestId('issued-secret-value')).toHaveTextContent(REISSUED);
+    expect(panel).toHaveTextContent('再表示できません');
+
+    // 次の操作を始めたら捨てる（表示を残したまま別の操作へ進ませない）。
+    await user.click(screen.getAllByRole('button', { name: '属性を変更' })[0]);
+    expect(screen.queryByTestId('issued-secret')).not.toBeInTheDocument();
+  });
+
+  // ── #1845 の独立監査: 二重送信と、閉じた後の変更キャッシュ ──
+
+  /** 指定した POST の応答を、テストが `release()` するまで止める（送信中の状態を作る）。 */
+  function holdPost(suffix: string) {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const passThrough = mocks.apiRequest.getMockImplementation()!;
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) =>
+      init?.method === 'POST' && String(path).endsWith(suffix)
+        ? gate.then(() => passThrough(path, init))
+        : passThrough(path, init),
+    );
+    return () => release();
+  }
+
+  const postsTo = (suffix: string) =>
+    mocks.apiRequest.mock.calls.filter(
+      ([path, init]) => String(path).endsWith(suffix) && (init as RequestInit)?.method === 'POST',
+    ).length;
+
+  /** 変更キャッシュ（MutationCache）に残っている応答・変数の文字列。secret が残っていないかを見る。 */
+  const mutationMemory = (client: QueryClient) =>
+    JSON.stringify(
+      client
+        .getMutationCache()
+        .getAll()
+        .map((m) => [m.state.data, m.state.variables]),
+    );
+
+  it('sends only one reissue request while the first one is still in flight', async () => {
+    mockApiWithSecrets();
+    const release = holdPost('/reissue-secret');
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    await user.click(screen.getAllByRole('button', { name: 'secret を再発行' })[0]);
+    await user.click(
+      within(await screen.findByTestId('reissue-confirmation')).getByRole('button', {
+        name: '再発行する',
+      }),
+    );
+    await waitFor(() => expect(postsTo('/reissue-secret')).toBe(1));
+
+    // 送信中に同じ行から確認まで進もうとしても、2 本目は飛ばない（行のボタンが押せない）。
+    await user.click(screen.getAllByRole('button', { name: 'secret を再発行' })[0]);
+    const again = screen.queryByTestId('reissue-confirmation');
+    if (again) {
+      await user.dblClick(within(again).getByRole('button', { name: '再発行する' }));
+    }
+
+    release();
+    await screen.findByTestId('issued-secret');
+    expect(postsTo('/reissue-secret')).toBe(1);
+  });
+
+  it('sends only one registration while the first one is still in flight', async () => {
+    mockApiWithSecrets();
+    const release = holdPost('/mcp-clients');
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    await registerServiceAccount(user);
+    await waitFor(() => expect(postsTo('/mcp-clients')).toBe(1));
+    await user.dblClick(screen.getByRole('button', { name: '登録' }));
+
+    release();
+    await screen.findByTestId('issued-secret');
+    expect(postsTo('/mcp-clients')).toBe(1);
+  });
+
+  it('leaves no secret in the mutation cache after the issued secret is closed', async () => {
+    mockApiWithSecrets();
+    const user = userEvent.setup();
+    const { queryClient } = await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    // 登録で発行した secret: 表示の間は変更の結果に載っている（陽性対照）、閉じたら消える。
+    await registerServiceAccount(user);
+    const issuedPanel = await screen.findByTestId('issued-secret');
+    expect(mutationMemory(queryClient)).toContain(ISSUED);
+    await user.click(within(issuedPanel).getByRole('button', { name: '閉じる' }));
+    await waitFor(() => expect(mutationMemory(queryClient)).not.toContain(ISSUED));
+
+    // 再発行した secret も同じ（閉じる以外の「次の操作」で捨てる経路）。
+    await user.click(screen.getAllByRole('button', { name: 'secret を再発行' })[0]);
+    await user.click(
+      within(await screen.findByTestId('reissue-confirmation')).getByRole('button', {
+        name: '再発行する',
+      }),
+    );
+    await screen.findByTestId('issued-secret');
+    expect(mutationMemory(queryClient)).toContain(REISSUED);
+    await user.click(screen.getAllByRole('button', { name: '属性を変更' })[0]);
+    await waitFor(() => expect(mutationMemory(queryClient)).not.toContain(REISSUED));
+  });
+
   it('publishes a nav item in the admin group that resolves to the route', async () => {
     expect(sc12McpClientsNav.group).toBe('admin');
     expect(sc12McpClientsNav.requiresAnyRole).toEqual(['platform-admin']);

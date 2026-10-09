@@ -78,9 +78,17 @@ msgstr "{h} (max)"
 msgid "{h}（既定）"
 msgstr "{h} (default)"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "{issuedClientId} の client secret です。表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
+msgstr "This is the client secret of {issuedClientId}. It is shown only this once. After you close it, it cannot be shown again (you can only reissue it)."
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "{max} 文字以内で入力してください。"
 msgstr "Enter no more than {max} characters."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "{reissueTargetId} の client secret を再発行します。いまの secret はただちに使えなくなります。エージェントの設定を新しい secret に差し替えてください。"
+msgstr "Reissue the client secret of {reissueTargetId}. The current secret stops working immediately. Replace it with the new secret in the agent's configuration."
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "{sourceTitle} → {targetTitle}（{edgeTypeName}）"
@@ -304,6 +312,14 @@ msgstr "cites: solid line with arrow"
 msgid "Client Credentials"
 msgstr "Client Credentials"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "client secret の再発行"
+msgstr "Reissue client secret"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "client secret を再発行できませんでした。"
+msgstr "Could not reissue the client secret."
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "consumer"
 msgstr "consumer"
@@ -417,6 +433,10 @@ msgstr "related: thin solid line (undirected)"
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "SaaS"
 msgstr "SaaS"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "secret を再発行"
+msgstr "Reissue secret"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "supersedes: 太実線・矢印（旧→新）"
@@ -801,10 +821,16 @@ msgstr "The current version of this item has been deleted in the secret store (V
 msgid "この項目はいま画面以外（手で作った Secret・配備スクリプト・Git など）から供給されています。書き込みはできますが、配備時のスイッチを画面の経路へ切り替える（同期先を作る）まで、書いた値はアプリケーションに反映されません。"
 msgstr "This item is currently supplied from outside this screen (a hand-made Secret, a deployment script, Git, and so on). You can write it, but the value will not reach the application until the deployment switch is changed to the screen path (the sync target is created)."
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "コピー"
+msgstr "Copy"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: platform/frontend/src/components/ai-chat/CopyButton.tsx
 msgid "コピーしました"
 msgstr "Copied."
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: platform/frontend/src/components/ai-chat/CopyButton.tsx
 msgid "コピーできませんでした"
 msgstr "Could not copy."
@@ -1486,13 +1512,13 @@ msgstr "Assign at least one role (use disable to remove access)."
 msgid "ロール割当（必須・複数選択可）"
 msgstr "Role assignment (required, multiple allowed)"
 
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "ログ基盤で呼び出し監査ログを見る ↗"
-msgstr "Open the invocation audit log in the logging stack ↗"
-
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "ログ基盤で権限変更の監査ログを見る ↗"
 msgstr "Open the permission-change audit log in the logging stack ↗"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "ログ基盤で監査ログを見る ↗"
+msgstr "Open the audit log in the logging stack ↗"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "上の入力欄からタイトルを付けて作成し、本文は Obsidian 連携で書きます。"
@@ -2000,6 +2026,11 @@ msgstr "Regenerate"
 msgid "再発行したときの注意"
 msgstr "Before you reissue"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "再発行しました"
+msgstr "Reissued"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "再発行する"
 msgstr "Reissue"
@@ -2413,10 +2444,6 @@ msgstr "Name (required)"
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "名前で検索する"
 msgstr "Search by name"
-
-#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "呼び出し監査ログ"
-msgstr "Invocation audit log"
 
 #: platform/frontend/src/components/ai-chat/CopyButton.tsx
 msgid "回答をコピー"
@@ -3750,6 +3777,7 @@ msgstr "Screen"
 msgid "画面以外"
 msgstr "Outside the screen"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "発行しました"
 msgstr "Issued"
@@ -3807,8 +3835,12 @@ msgid "監査ログ"
 msgstr "Audit log"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "監査ログの参照先が未設定です。ツールの呼び出しはすべてログ基盤へ記録されています。"
-msgstr "The audit log destination is not configured. Every tool invocation is recorded in the logging stack."
+msgid "監査ログ（呼び出し・管理操作）"
+msgstr "Audit log (invocations and management operations)"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "監査ログの参照先が未設定です。ツールの呼び出しと本画面の管理操作はすべてログ基盤へ記録されています（client secret の値は記録しません）。"
+msgstr "The audit log destination is not configured. Every tool invocation and every management operation on this screen is recorded in the logging stack (client secret values are never recorded)."
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "監査ログの参照先が未設定です。権限変更とアカウント無効化は認可基盤の管理イベントとして 記録されています。"
@@ -4536,6 +4568,7 @@ msgid "鍵を生成し直すと、保管先の鍵が新しい鍵に置き換わ�
 msgstr "Regenerating replaces the key in the store with a new one. Because this item is supplied from outside this screen, the generated key reaches neither OpenD nor its clients (not even after restarting OpenD). The key is not shown on this screen either."
 
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx

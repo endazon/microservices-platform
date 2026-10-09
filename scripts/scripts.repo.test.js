@@ -15257,10 +15257,11 @@ server.listen(0, '127.0.0.1', async () => {
 
     ok('#1787: 変異 —— compose の参照から digest を外すと落ちる', () => {
       const text = fs.readFileSync(path.join(REPO, 'deploy/docker-compose.yml'), 'utf8');
-      const broken = text.replace(/(image: redis:7-alpine)@sha256:[0-9a-f]{64}/, '$1');
-      assert.notStrictEqual(broken, text, '変異を入れられなかった（redis の行の形が変わった）');
+      // #1839: 変異の対象を redis から valkey（差し替え後のキャッシュ・セッションストア）へ移した。
+      const broken = text.replace(/(image: valkey\/valkey:9\.1-alpine)@sha256:[0-9a-f]{64}/, '$1');
+      assert.notStrictEqual(broken, text, '変異を入れられなかった（valkey の行の形が変わった）');
       const { errors } = dg.evaluate(dg.extractRefs('deploy/docker-compose.yml', broken), []);
-      assert.ok(errors.some((e) => e.startsWith('[tag-only]') && e.includes('redis:7-alpine')), errors.join('\n'));
+      assert.ok(errors.some((e) => e.startsWith('[tag-only]') && e.includes('valkey/valkey:9.1-alpine')), errors.join('\n'));
     });
 
     ok('#1787: 3 キー形式のインフラを描くテンプレートは digest を描く（values に digest を足しても描かれなければ固定にならない）', () => {

@@ -136,7 +136,7 @@ issue: "#1846"
 ## 受け入れ基準（issue の 4 項目の写し）
 
 - [x] サービスごとに期待する audience を決め、realm の宣言でトークンに載せる。（裁定 C: 全サービス既定 `platform-api`。realm のスコープ `platform-api-audience` を呼び出し元 17 件へ）
-- [x] `ValidateAudience = true` と `ValidAudiences` をサービスごとに設定し、BFF の Token Handler と east-west の経路で既存の呼び出しが通る。（`Auth:Audiences`。稼働の通過は integration-stack の既存の門＋M11 で測る）
+- [x] `ValidateAudience = true` と `ValidAudiences` をサービスごとに設定し、BFF の Token Handler と east-west の経路で既存の呼び出しが通る。（`Auth:Audiences`。稼働の通過は integration-stack の既存の門＋M12 で測る）
 - [x] 他のサービス向けのトークンを拒否する否定形の試験を置く。（ConversionService REST・AuthorizationService gRPC・McpServer `/mcp`・構成の器）
 - [x] 計画に audience の方針が無いので計画へ環流する（ADR-0036・ADR-0032 との整合）。（planning#770）
 

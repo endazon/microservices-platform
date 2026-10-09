@@ -11,7 +11,7 @@
 
 ```
 [k3d cluster: msp-ast-dev]
-  ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector
+  ns platform-infra          postgres / rabbitmq / valkey / keycloak / qdrant / otel-collector
                              + mail-relay（近接 MTA。キューを持つ。deploy/mail-relay ＝環境非依存の base）
                              + reset-gate（SC-15 の門。mail-relay へ投函できないと申請を機械で閉じる）
                              + reset-floor（SC-15 の床。申請の POST を最小応答時間まで返さない。経路は Istio エッジ）
@@ -160,7 +160,7 @@ PERSIST=0 bash scripts/k8s-local-up.sh --live
   Rancher Desktop 経路では `platform-infra` ほかアプリの namespace を削除するため、**`down`→`up` の再構築サイクルでは PVC
   （上表のすべて）も消える**（= realm/DB/embeddings/メトリクスは再生成）。PVC を残したまま作り直したいときは `down` を
   使わず `kubectl -n platform-infra rollout restart deploy/keycloak deploy/postgres` 等で Pod のみ入れ替える。
-- **`PERSIST=0`（opt-out）は base の `emptyDir`**（使い捨てスタック専用）。**rabbitmq / redis / otel は emptyDir 継続**
+- **`PERSIST=0`（opt-out）は base の `emptyDir`**（使い捨てスタック専用）。**rabbitmq / valkey / otel は emptyDir 継続**
   （queue/cache は揮発前提・otel は stateless。詳細は IADR-0082。**qdrant は #787 / IADR-0210 で永続化対象へ移した**）。
 - **⚠️ 非永続で立っていた環境の移行**: up を再実行すると Deployment の volume が差し替わり Pod が作り直される（`Recreate`）。
   **初回は空 PVC のため realm/DB は import/init で再生成**される（既存 emptyDir のデータは元々 Pod 生存期間のみの揮発
@@ -649,7 +649,7 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
   立てない）。UI が要るなら compose（`deploy/docker-compose.yml`）を併用する。
 - **永続化は既定オン**: Keycloak/Postgres/Qdrant を、`OBSERVABILITY=1` なら Prometheus/Loki/Tempo/Grafana も PVC 永続化する
   （上記「永続化」節・IADR-0082 / IADR-0210 / IADR-0369）。`PERSIST=0` で emptyDir（使い捨てスタック専用）。
-  `VAULT=1` の Vault も PVC 永続化する（`deploy/local/vault-persistence`・IADR-0457）。rabbitmq / redis / otel は揮発のまま。
+  `VAULT=1` の Vault も PVC 永続化する（`deploy/local/vault-persistence`・IADR-0457）。rabbitmq / valkey / otel は揮発のまま。
 - **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
   エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
   `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときも **mTLS の既定は PERMISSIVE** である（IADR-0307 決定 4）。

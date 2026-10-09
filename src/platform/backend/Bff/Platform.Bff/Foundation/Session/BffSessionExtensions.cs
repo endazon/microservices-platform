@@ -47,12 +47,14 @@ public static class BffSessionExtensions
     public static IServiceCollection AddBffSession(
         this IServiceCollection services, IConfiguration config)
     {
-        var options = new BffSessionOptions();
-        config.GetSection(BffSessionOptions.SectionName).Bind(options);
+        var options = BffSessionOptions.From(config);
         services.AddSingleton(options);
+        // NFR-18, ADR-0131 決定 4 の 2, IADR-0522 (#1839): ストアは認証を必須にして起動する。接続先とパスワードを
+        // 1 つの構成にまとめ、セッション・鍵リング（下）・ヘルスチェック（Program.cs）が同じ組み方を使う。
+        // 構成文字列へは戻さない（パスワードの `,` `=` が区切りとして誤読される。#1860 監査指摘 5）。
 
         // ── セッション実体の置き場（IADR-0251 決定 4）
-        services.AddStackExchangeRedisCache(o => o.Configuration = options.RedisConnectionString);
+        services.AddStackExchangeRedisCache(o => o.ConfigurationOptions = options.SessionStoreConfiguration());
         services.AddSingleton<RedisTicketStore>();
 
         // ── ［3b］失効・refresh の処理系（IADR-0273）。TimeProvider は本番時計を既定にし、
@@ -70,7 +72,7 @@ public static class BffSessionExtensions
         // **接続は遅延させる。** 登録時に Connect すると、セッションを使わないテストや
         // Redis 不在の環境でも起動時に落ちる（＝配線の都合でテストが Redis を要求することになる）。
         var lazyRedis = new Lazy<IConnectionMultiplexer>(
-            () => ConnectionMultiplexer.Connect(options.RedisConnectionString));
+            () => ConnectionMultiplexer.Connect(options.SessionStoreConfiguration()));
         // 🔴 NFR-07, IADR-0510: この登録の利用者は鍵リングの保存先（下の KeyManagementOptions）である。死んだ登録に見えても消さない
         //   （消すと初回の DataProtection 利用で GetRequiredService が落ち、すべてのログインと Cookie が失敗する）。
         services.AddSingleton<IConnectionMultiplexer>(_ => lazyRedis.Value);
