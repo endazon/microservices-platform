@@ -5139,9 +5139,12 @@ ok('#1834: dev の context でも env を与えたクライアントだけ差し
 ok('#1834: 取り込み元の一時ファイルは 0600・ディレクトリは 0700 で、起動器の終了時には消えている', () => {
   const r = runUp({ STUB_KUBE_CONTEXT: 'k3d-testcluster', RESET_GATE_CLIENT_SECRET: customOf('reset-gate') });
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
-  assert.strictEqual(r.realmImportModes.length, 1, `取り込み元のファイルの数が違う: ${JSON.stringify(r.realmImportModes)}`);
+  // PR #1836 AI レビュー: AST の realm（submodule を取得した環境）は 2 つ目のキーとして同梱されるので、数は固定しない。
+  // MSP の realm が在ることと、同梱された全ファイルの権限・後始末を見る。
+  assert.ok(r.realmImportModes.some((m) => m.key === 'microservices-platform-realm.json'),
+    `MSP の realm が取り込み元に無い: ${JSON.stringify(r.realmImportModes)}`);
   for (const m of r.realmImportModes) {
-    assert.deepStrictEqual([m.key, m.fileMode, m.dirMode], ['microservices-platform-realm.json', '600', '700'], `権限が違う: ${JSON.stringify(m)}`);
+    assert.deepStrictEqual([m.fileMode, m.dirMode], ['600', '700'], `権限が違う: ${JSON.stringify(m)}`);
     assert.ok(!fs.existsSync(m.dir), `一時ディレクトリが残っている: ${m.dir}`);
   }
 });
@@ -5177,6 +5180,13 @@ ok('#1834: 差し替えは値をそのまま置く（& / + = 等）。JSON を�
     assert.ok(/MCP_CLIENT_ADMIN_CLIENT_SECRET に JSON の引用符/.test(r.stderr), `${JSON.stringify(bad)}: 名指していない: ${r.stderr}`);
     assert.ok(!r.stderr.includes('probe'), `${JSON.stringify(bad)}: 値を出力した`);
   }
+  // PR #1836 監査 🟢2: Keycloak の起動時の取り込みは `${...}` を置き換える（replacePlaceholders）ので、値に `${` があれば止める。
+  const placeholder = ['probe', '{X}1834'].join('$');
+  const r = realmForImport(PLATFORM_REALM_PATH, { MCP_CLIENT_ADMIN_CLIENT_SECRET: placeholder });
+  assert.strictEqual(r.status, 1, '${ で止まらなかった');
+  assert.strictEqual(r.stdout, '', '${ で止まったのに取り込み元を書いた');
+  assert.ok(/MCP_CLIENT_ADMIN_CLIENT_SECRET に \$\{ が含まれる/.test(r.stderr), `名指していない: ${r.stderr}`);
+  assert.ok(!r.stderr.includes('probe'), '${ の値を出力した');
 });
 
 ok('#1834: 宣言の secret（dev の値）が 1 か所でない realm では、env を与えたクライアントについて止まる（黙って差し替えずに進まない）', () => {

@@ -405,6 +405,7 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
     実の secret を含み得るので ConfigMap にしない）を読む。起動器はこれを作るとき、上の 3 つの env を与えたクライアントの secret を宣言の
     dev の値から env の値へ差し替える（値は出力せず、一時ファイルは本人だけが読める権限で作って必ず消す）。env を与えて新しいクラスタを
     起動すれば、認証基盤の側も最初からその値になる。宣言の realm を読む後追いと申請の門は、宣言のままの ConfigMap を読み続ける。
+    保管先（Vault）を使う起動で保管先に既に値が在るときは、保管先は書き換えないので、env には保管先に在る値と同じ値を与える。
   - **検知する（稼働中）**: 既に在る realm（import は飛ばされる）・上書きで通したとき・保管先（Vault）の値を回した後に env を与えずに
     空の状態から起動したときは、dev の値が残り得る。
     dev 以外のクラスタでは起動の直後に `bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets` を実行する。

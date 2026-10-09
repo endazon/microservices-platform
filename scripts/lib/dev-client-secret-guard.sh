@@ -89,6 +89,7 @@ dev_client_secret_create_allowed() {
 #   - 対象・env の名前・宣言の値は上の 3 つ（DEV_CLIENT_SECRET_GUARDED・dev_client_secret_env_name・dev_client_secret_dev_value）から引く。
 #   - 宣言の該当箇所が**ちょうど 1 か所**でなければ止める（黙って差し替えずに進むと食い違いが戻る）。
 #   - 値に `"`・`\`・制御文字があれば止める（JSON を壊さない）。
+#   - 値に `${` があれば止める（Keycloak の起動時の取り込みは `${...}` を置き換えるので、消費側と食い違う。PR #1836 監査 🟢2）。
 #   - 外部コマンドを使わない（値はどのプロセスの引数にも載らない）。差し替えたクライアント名だけを標準エラーへ出す。**値は出さない。**
 #   終了コード: 0＝書いた、1＝止める（標準出力は使わないこと）。
 dev_client_secret_realm_for_import() (
@@ -108,6 +109,10 @@ dev_client_secret_realm_for_import() (
     case "$value" in
       *[\"\\]* | *[[:cntrl:]]*)
         echo "ERROR: ${env_name} に JSON の引用符・バックスラッシュ・制御文字が含まれる。realm の取り込み元に置けない（値は表示しない）" >&2
+        return 1
+        ;;
+      *\$\{*)
+        echo "ERROR: ${env_name} に \${ が含まれる。Keycloak の取り込みが置き換えるので realm の取り込み元に置けない（値は表示しない）" >&2
         return 1
         ;;
     esac
