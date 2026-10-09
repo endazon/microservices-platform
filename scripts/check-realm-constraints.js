@@ -81,6 +81,21 @@
  * **そのまま Git に平文で残る**。開発用であることを値の形（`-dev-secret-change-me` で終わる／`dev-only-` で始まる）で表し、
  * それ以外の形の `clients[].secret` を違反にする。値そのものは出力しない（client 名だけを出す）。
  *
+ * 検査9: **platform の API の audience（`platform-api`）を載せるクライアントの範囲**（NFR-09・計画 ADR-0036・#1846・IADR-0523）。
+ * 背景: 全サービスの JWT 検証は `aud` に `platform-api` があるトークンだけを受け付ける（`AuthExtensions.DefaultAudience`）。
+ * audience はクライアントスコープ `platform-api-audience` が載せる。**載せ忘れ**は稼働で初めて 401 になり、**載せ過ぎ**（運用ツール・
+ * realm 管理用のクライアント）は気付かれないまま統制を外す。範囲は列挙せず形で決める:
+ *   - 載せる: サービスアカウントを持ち、realm 管理のロール（`realm-management-roles`）を持たないクライアント（呼び出し元）。
+ *   - 載せない: 上記以外（人のログインだけの運用ツール・realm 管理用）。例外は `bff`（利用者のトークンの発行元。
+ *     `PLATFORM_AUDIENCE_HUMAN_CLIENTS`）だけ。任意スコープ（optional）や realm の既定スコープとしても置かない
+ *     （SC-12 が作る MCP クライアントに既定で継がれる）。
+ *   - **別経路で載せない**（#1864 監査）: `platform-api` を出す audience の写像（`oidc-audience-mapper` の
+ *     `included.custom.audience` / `included.client.audience`）は、スコープ `platform-api-audience` の中にだけ置く。
+ *     クライアント直付けの写像・他のスコープ（`profile` 等の共有スコープ・別名のスコープ）に置くと、上の範囲の検査を
+ *     素通りして載る。
+ *   - **要確認**（#1864 監査）: 人のログインの口（`humanLoginGrants`）とサービスアカウントを両方持ち、`bff` でないクライアントは
+ *     「呼び出し元だから載せる」とは決められない（人のトークンにも載る）。スコープの有無によらず要確認として名指す。
+ *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
  *   node scripts/check-realm-constraints.js <path...>  # 明示したファイルのみ検査。
@@ -1498,6 +1513,88 @@ function checkRealmDeclaredSecretsText(text, patterns) {
   return collectDeclaredSecretGaps(JSON.parse(text), patterns);
 }
 
+// --- 検査9: platform の API の audience（#1846 / IADR-0523） ------------------
+
+const PLATFORM_AUDIENCE = 'platform-api';
+const PLATFORM_AUDIENCE_SCOPE = 'platform-api-audience';
+// 人のログインの口を持ちながら platform の audience を載せてよいクライアント（利用者のトークンを BFF が後段へ中継する。ADR-0086）。
+const PLATFORM_AUDIENCE_HUMAN_CLIENTS = Object.freeze(['bff']);
+// platform-api を出す audience の写像か（#1864 監査）。custom（文字列）と client（クライアント ID を audience にする）の両方を見る。
+const PLATFORM_AUDIENCE_MAPPER_KEYS = Object.freeze(['included.custom.audience', 'included.client.audience']);
+function emitsPlatformAudience(m) {
+  if (!m || m.protocolMapper !== 'oidc-audience-mapper') return false;
+  const cfg = mapperConfig(m);
+  return PLATFORM_AUDIENCE_MAPPER_KEYS.some((k) => String(cfg[k] ?? '').trim() === PLATFORM_AUDIENCE);
+}
+
+function collectPlatformAudienceGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
+  if (!realm || realm.realm !== realmName) return [];
+  const gaps = [];
+  const scope = (realm.clientScopes || []).find((s) => s && s.name === PLATFORM_AUDIENCE_SCOPE);
+  const mapperOk = !!scope && (scope.protocolMappers || []).some((m) => m && m.protocolMapper === 'oidc-audience-mapper'
+    && mapperConfig(m)['included.custom.audience'] === PLATFORM_AUDIENCE && String(mapperConfig(m)['access.token.claim']) === 'true');
+  if (!mapperOk) {
+    gaps.push({ path: `clientScopes[${PLATFORM_AUDIENCE_SCOPE}]`,
+      detail: `audience の写像（oidc-audience-mapper・included.custom.audience=${PLATFORM_AUDIENCE}・access.token.claim=true）を持つスコープが無い。全サービスが 401 になる` });
+  }
+  // #1864 監査: platform-api を出す写像は platform-api-audience の中にだけ置く（別名のスコープ・共有スコープ・クライアント直付けは
+  //   クライアントの範囲の検査を素通りする）。
+  for (const s of realm.clientScopes || []) {
+    if (!s || s.name === PLATFORM_AUDIENCE_SCOPE) continue;
+    for (const m of s.protocolMappers || []) {
+      if (!emitsPlatformAudience(m)) continue;
+      gaps.push({ path: `clientScopes[${s.name}].protocolMappers[${m.name || '?'}]`,
+        detail: `${PLATFORM_AUDIENCE} を出す audience の写像が ${PLATFORM_AUDIENCE_SCOPE} 以外のスコープにある。このスコープを持つクライアントへ範囲の検査を経ずに載る（写像は ${PLATFORM_AUDIENCE_SCOPE} の中にだけ置く）` });
+    }
+  }
+  for (const c of realm.clients || []) {
+    if (!c || !c.clientId) continue;
+    for (const m of c.protocolMappers || []) {
+      if (!emitsPlatformAudience(m)) continue;
+      gaps.push({ path: `clients[${c.clientId}].protocolMappers[${m.name || '?'}]`,
+        detail: `${PLATFORM_AUDIENCE} を出す audience の写像がクライアントに直付けされている。範囲の検査を経ずに載る（既定スコープへ ${PLATFORM_AUDIENCE_SCOPE} を入れる形にする）` });
+    }
+  }
+  for (const key of ['defaultDefaultClientScopes', 'defaultOptionalClientScopes']) {
+    if ((realm[key] || []).includes(PLATFORM_AUDIENCE_SCOPE)) {
+      gaps.push({ path: `${key}`, detail: `${PLATFORM_AUDIENCE_SCOPE} を realm の既定に置かない（後から作るクライアント＝MCP クライアント・運用ツールへ黙って継がれる）` });
+    }
+  }
+  for (const c of realm.clients || []) {
+    if (!c || !c.clientId) continue;
+    const has = (c.defaultClientScopes || []).includes(PLATFORM_AUDIENCE_SCOPE);
+    if ((c.optionalClientScopes || []).includes(PLATFORM_AUDIENCE_SCOPE)) {
+      gaps.push({ path: `clients[${c.clientId}].optionalClientScopes`, detail: `${PLATFORM_AUDIENCE_SCOPE} を任意スコープに置かない（scope を要求すれば誰でも載る）` });
+    }
+    const realmAdmin = (c.defaultClientScopes || []).includes(REALM_MANAGEMENT_ROLE_SCOPE);
+    const caller = c.serviceAccountsEnabled === true && !realmAdmin;
+    const humanAllowed = PLATFORM_AUDIENCE_HUMAN_CLIENTS.includes(c.clientId);
+    // #1864 監査: 人のログインの口とサービスアカウントの両方を持つ（bff 以外）。載せる／載せないを形からは決めない。
+    const humanGrants = humanLoginGrants(c);
+    if (caller && !humanAllowed && humanGrants.length > 0) {
+      gaps.push({ path: `clients[${c.clientId}]`,
+        detail: `要確認: サービスアカウントと人のログインの口（${humanGrants.join(' / ')}）を両方持つ。${PLATFORM_AUDIENCE_SCOPE} を`
+          + `${has ? '持つので人のトークンにも' : '持たないとサービスアカウントの呼び出しが 401。持てば人のトークンにも'} ${PLATFORM_AUDIENCE} が載る。`
+          + `呼び出し元専用なら人のログインの口を閉じる（false を明示する）。人のトークンを platform へ中継する口なら、判断を記録して PLATFORM_AUDIENCE_HUMAN_CLIENTS へ加える` });
+      continue;
+    }
+    if (caller && !has) {
+      gaps.push({ path: `clients[${c.clientId}].defaultClientScopes`, detail: `呼び出し元（サービスアカウントを持ち realm 管理用でない）なのに ${PLATFORM_AUDIENCE_SCOPE} が無い。platform のサービスで 401 になる` });
+    }
+    if (has && !caller && !humanAllowed) {
+      gaps.push({ path: `clients[${c.clientId}].defaultClientScopes`, detail: `呼び出し元でないクライアント（運用ツール・realm 管理用）に ${PLATFORM_AUDIENCE_SCOPE} がある。そのトークンが platform のサービスを通る` });
+    }
+    if (has && realmAdmin) {
+      gaps.push({ path: `clients[${c.clientId}].defaultClientScopes`, detail: `realm 管理用のクライアントに ${PLATFORM_AUDIENCE_SCOPE} がある` });
+    }
+  }
+  return gaps;
+}
+
+function checkRealmPlatformAudienceText(text, opts) {
+  return collectPlatformAudienceGaps(JSON.parse(text), opts);
+}
+
 // --- I/O（副作用は main / checkFiles に閉じる） --------------------------------
 
 // 既定の検査対象（REALM_DIR 配下の *-realm.json）をリポジトリ相対で列挙する。
@@ -1540,6 +1637,7 @@ function checkFiles(relPaths) {
       serverUrlGaps: checkRealmServerSideUrlsText(text),
       machineGaps: checkRealmMachineJudgementText(text),
       secretGaps: checkRealmDeclaredSecretsText(text),
+      audienceGaps: checkRealmPlatformAudienceText(text),
     });
   }
   return results;
@@ -2801,6 +2899,67 @@ function selfTest() {
     })(),
   });
 
+  // --- 検査9（#1846 / IADR-0523）---
+  const audRealm = () => ({
+    realm: AUTH_POLICY_REALM,
+    clientScopes: [{ name: 'platform-api-audience', protocolMappers: [{ protocolMapper: 'oidc-audience-mapper',
+      config: { 'included.custom.audience': 'platform-api', 'access.token.claim': 'true' } }] }],
+    clients: [
+      { clientId: 'bff', serviceAccountsEnabled: true, standardFlowEnabled: true, defaultClientScopes: ['profile', 'platform-api-audience'] },
+      // 人のログインの口を閉じた呼び出し元（未設定の standardFlowEnabled は Keycloak の既定で true＝要確認へ倒れる。#1864 監査）。
+      { clientId: 'document-service', serviceAccountsEnabled: true, standardFlowEnabled: false, directAccessGrantsEnabled: false,
+        defaultClientScopes: ['roles', 'platform-api-audience'] },
+      { clientId: 'grafana', standardFlowEnabled: true, defaultClientScopes: ['profile'] },
+      { clientId: 'identity-admin', serviceAccountsEnabled: true, defaultClientScopes: ['realm-management-roles'] },
+    ],
+  });
+  const audMut = (f) => { const r = audRealm(); f(r); return collectPlatformAudienceGaps(r); };
+  cases.push({ name: '検査9: 呼び出し元だけに platform-api-audience があれば 0 件', pass: audMut(() => {}).length === 0 });
+  cases.push({ name: '検査9: 呼び出し元から外すと赤', pass: audMut((r) => { r.clients[1].defaultClientScopes = ['roles']; }).length === 1 });
+  cases.push({ name: '検査9: 運用ツール（grafana）に付けると赤', pass: audMut((r) => { r.clients[2].defaultClientScopes.push('platform-api-audience'); }).length === 1 });
+  cases.push({ name: '検査9: realm 管理用（identity-admin）に付けると赤',
+    pass: audMut((r) => { r.clients[3].defaultClientScopes.push('platform-api-audience'); }).length >= 1 });
+  cases.push({ name: '検査9: 任意スコープ・realm の既定に置くと赤', pass: audMut((r) => {
+    r.clients[2].optionalClientScopes = ['platform-api-audience']; r.defaultDefaultClientScopes = ['platform-api-audience'];
+  }).length === 2 });
+  cases.push({ name: '検査9: 写像の値が mcp-server・スコープが無いと赤', pass:
+    audMut((r) => { r.clientScopes[0].protocolMappers[0].config['included.custom.audience'] = 'mcp-server'; }).length === 1
+    && audMut((r) => { r.clientScopes = []; }).length === 1 });
+  // #1864 監査: 別経路（クライアント直付け・共有スコープ・別名のスコープ）で platform-api を載せると赤。
+  const paMapper = (key = 'included.custom.audience') => ({ name: 'pa', protocolMapper: 'oidc-audience-mapper',
+    config: { [key]: 'platform-api', 'access.token.claim': 'true' } });
+  cases.push({ name: '検査9（#1864 監査）: grafana にクライアント直付けの写像（custom / client の両方）を足すと赤', pass:
+    audMut((r) => { r.clients[2].protocolMappers = [paMapper()]; }).some((g) => g.path === 'clients[grafana].protocolMappers[pa]')
+    && audMut((r) => { r.clients[2].protocolMappers = [paMapper('included.client.audience')]; }).length === 1 });
+  cases.push({ name: '検査9（#1864 監査）: profile スコープへ写像を足すと赤', pass: audMut((r) => {
+    r.clientScopes.push({ name: 'profile', protocolMappers: [paMapper()] });
+  }).some((g) => g.path === 'clientScopes[profile].protocolMappers[pa]') });
+  cases.push({ name: '検査9（#1864 監査）: 別名のスコープ pa2 に写像を置き grafana へ付けると赤', pass: audMut((r) => {
+    r.clientScopes.push({ name: 'pa2', protocolMappers: [paMapper()] }); r.clients[2].defaultClientScopes.push('pa2');
+  }).some((g) => g.path === 'clientScopes[pa2].protocolMappers[pa]') });
+  cases.push({ name: '検査9（#1864 監査）: 他の audience（mcp-server）の写像は別経路として数えない', pass: audMut((r) => {
+    r.clientScopes.push({ name: 'mcp-server-audience', protocolMappers: [{ name: 'm', protocolMapper: 'oidc-audience-mapper',
+      config: { 'included.custom.audience': 'mcp-server', 'access.token.claim': 'true' } }] });
+  }).length === 0 });
+  // #1864 監査: 人のログインの口とサービスアカウントの両方（bff 以外）は、スコープの有無によらず「要確認」で名指す（足せとは言わない）。
+  cases.push({ name: '検査9（#1864 監査）: 人のログインの口＋サービスアカウント（bff 以外）は要確認（有無の両方で 1 件・足せの文言でない）', pass: (() => {
+    const without = audMut((r) => { r.clients.push({ clientId: 'hybrid', serviceAccountsEnabled: true, standardFlowEnabled: true, defaultClientScopes: ['profile'] }); });
+    const withIt = audMut((r) => { r.clients.push({ clientId: 'hybrid', serviceAccountsEnabled: true, defaultClientScopes: ['profile', 'platform-api-audience'] }); });
+    const one = (gs) => gs.length === 1 && gs[0].path === 'clients[hybrid]' && gs[0].detail.startsWith('要確認') && !gs[0].detail.includes('なのに');
+    return one(without) && one(withIt);
+  })() });
+  cases.push({ name: '検査9: platform 以外の realm は見ない', pass: audMut((r) => { r.realm = 'other'; r.clientScopes = []; }).length === 0 });
+  cases.push({
+    name: '🔴 検査9: 実データの realm が前提を守る（呼び出し元 15 件以上が audience を持つ。0 件の走査を緑にしない）',
+    pass: (() => {
+      const realmPath = path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json');
+      if (!fs.existsSync(realmPath)) return true;
+      const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
+      const holders = (realm.clients || []).filter((c) => (c.defaultClientScopes || []).includes(PLATFORM_AUDIENCE_SCOPE));
+      return holders.length >= 15 && collectPlatformAudienceGaps(realm).length === 0;
+    })(),
+  });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -2837,11 +2996,12 @@ function main() {
   const totalServerUrlGaps = results.reduce((n, r) => n + r.serverUrlGaps.length, 0);
   const totalMachineGaps = results.reduce((n, r) => n + r.machineGaps.length, 0);
   const totalSecretGaps = results.reduce((n, r) => n + r.secretGaps.length, 0);
+  const totalAudienceGaps = results.reduce((n, r) => n + r.audienceGaps.length, 0);
   if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0
     && totalMfaGaps === 0 && totalMailGaps === 0 && totalRelayGaps === 0
     && totalServerUrlGaps === 0 && totalConcealGaps === 0 && totalSaRoleGaps === 0
-    && totalMachineGaps === 0 && totalSecretGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / 利用者が利用者名を選べる宣言 / profile を既定に持たないログイン経路のクライアント / 利用者名以外から出す preferred_username / 利用者名の落ちる軽量アクセストークン）・開発用の形でない client シークレットはありません。`);
+    && totalMachineGaps === 0 && totalSecretGaps === 0 && totalAudienceGaps === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / 利用者が利用者名を選べる宣言 / profile を既定に持たないログイン経路のクライアント / 利用者名以外から出す preferred_username / 利用者名の落ちる軽量アクセストークン）・開発用の形でない client シークレット・platform の audience を載せるクライアントの範囲の逸脱はありません。`);
     process.exit(0);
   }
 
@@ -2996,6 +3156,17 @@ function main() {
       + '\n要件の正は planning の ADR-0124 決定 1（ADR-0095 決定 1 の部分改定）、実装側の記録は IADR-0485（#1682）です。');
   }
 
+  if (totalAudienceGaps > 0) {
+    console.error(`[check-realm-constraints] platform の API の audience（${PLATFORM_AUDIENCE}）を載せるクライアントの範囲の逸脱 ${totalAudienceGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.audienceGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\n全サービスの JWT 検証は aud に platform-api があるトークンだけを受け付けます（AuthExtensions.DefaultAudience）。'
+      + '\n要件の起点は #1846（計画への環流は planning#770）、実装側の記録は IADR-0523 です。');
+  }
+
   process.exit(1);
 }
 
@@ -3033,6 +3204,10 @@ module.exports = {
   checkRealmMachineJudgementText,
   collectDeclaredSecretGaps,
   checkRealmDeclaredSecretsText,
+  collectPlatformAudienceGaps,
+  checkRealmPlatformAudienceText,
+  PLATFORM_AUDIENCE,
+  PLATFORM_AUDIENCE_SCOPE,
   DEV_SECRET_PATTERNS,
   isHumanLoginClient,
   MACHINE_USERNAME_PREFIX,

@@ -68,7 +68,7 @@ PERMISSIVE になるのは `msp` リリースが無い・メッシュを宣言�
 そのときは `ISTIO_MTLS_MODE` を明示して再実行する。
 
 **いきなり STRICT にしてはならない。** サイドカーの入っていない `platform-infra`
-（postgres / keycloak / rabbitmq / qdrant / redis …）との通信と、注入前の Pod からの通信が
+（postgres / keycloak / rabbitmq / qdrant / valkey …）との通信と、注入前の Pod からの通信が
 **同時に**壊れ、どちらが原因か切り分けられなくなる。段取りは
 **注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT** である。
 

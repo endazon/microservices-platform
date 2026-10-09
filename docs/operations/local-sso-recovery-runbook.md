@@ -31,7 +31,7 @@ issues: [#1840, #1728, #1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#
 | `ast-secrets` の実鍵 | `k8s-local-deploy.sh` を鍵未 export で実行 | STEP 1（鍵を export して再実行） |
 
 永続化（既定オン。`PERSIST=0` を付けていない）なら、vault Pod の再起動では Vault の状態は消えない（raft ストレージを PVC に置き、Pod 内ラッパーが自動で unseal する）。`vault-data` PVC を消していなければ、**STEP 2・3 はスキップ可**。
-realm の変更は起動器の後段（realm の後追い Job）が差分として当てるので、STEP 0 の再実行で届く。
+realm の変更は起動器の realm の後追い Job（Keycloak の起動の直後・アプリの配備の前）が差分として当てるので、STEP 0 の再実行で届く。
 
 ---
 

@@ -94,11 +94,14 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
 
     // テスト用 IdP の代わりに JWT を発行する。realm_access.roles は KeycloakRolesClaimsTransformation が
     // ClaimTypes.Role へ展開する（実 Keycloak トークンと同じ形）。
-    public static string IssueToken(string subject, IEnumerable<string> realmRoles)
+    // NFR-09, #1846: audience は既定で platform-api（全サービスが検証する）。null なら aud を載せない（否定形の試験）。
+    public static string IssueToken(string subject, IEnumerable<string> realmRoles,
+        string? audience = global::Platform.Shared.Infrastructure.Foundation.Extensions.AuthExtensions.DefaultAudience)
     {
         var descriptor = new SecurityTokenDescriptor
         {
             Issuer = Issuer,
+            Audience = audience,
             IssuedAt = DateTime.UtcNow,
             NotBefore = DateTime.UtcNow.AddMinutes(-1),
             Expires = DateTime.UtcNow.AddMinutes(5),

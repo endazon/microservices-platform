@@ -9,9 +9,9 @@ updated: 2026-10-09
 <!-- trace:
 ids: [FR-15, FR-16, UC-08, UC-09, SC-12]
 adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054, ADR-0062, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134]
-iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516]
-specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit]
-issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818, #1829, #1844, #1845, #1846]
+iadrs: [IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523]
+specs: [20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1846_service-audience-validation, 20261009_1845_sc12-secret-once-and-audit]
+issues: [#445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818, #1829, #1844, #1846, #1845]
 -->
 
 # 通信仕様書: MCP サーバー
@@ -366,8 +366,9 @@ Git 管理の JSON を `Mcp:PublicationConfigPath` で指す。**検証を通ら
 
 - 認証は OAuth 2.1（Keycloak）。有人は Authorization Code + PKCE、無人は Client Credentials。
 - ［2026-10-09］**MCP 面（`/mcp`）はアクセストークンの audience を検証する**（`mcp-server` を含まないトークンは 401）。発行元・署名鍵・名前の
-  クレームの検証は他の面と同じ設定を使い、audience だけを足した別のスキームで認証する。**管理 REST 面は audience を検証しない**
-  （境界層が利用者のトークンを中継するため。全サービスでの検証は別の作業で扱う）。
+  クレームの検証は他の面と同じ設定を使い、audience だけを足した別のスキームで認証する。管理 REST 面は MCP サーバーの audience を求めない
+  （境界層が利用者のトークンを中継するため）。［2026-10-09 更新］管理 REST 面は全サービスと同じ共有の audience（`platform-api`）を求め、
+  MCP クライアントのトークンは 401。共有の audience のトークンは MCP 面で 401。
 - **主体種別はトークンではなく登録簿から採る。** クライアント側の申告で除外の適用対象から
   外れられないようにするためである。
 - 本サービスは認可判定を持たず、各サービスへ委譲する。エージェント経由であることを理由に

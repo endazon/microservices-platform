@@ -13,7 +13,7 @@
  *   - 管理用の主体 `mcp-client-admin` のロール（manage-clients / manage-users）で、作成・SA の照会・属性の書き込み・補償の削除が
  *     本当に通るかも、稼働の Keycloak でしか分からない（足りなければ 403 → 502）。
  *
- * 測ること（受け入れ基準 4。番号は作業仕様書 20261009_1817 の M1〜M6。M7 は 20261009_1818。M8 は 20261009_1829。M9・M10 は 20261009_1844。M11 は 20261009_1845）:
+ * 測ること（受け入れ基準 4。番号は作業仕様書 20261009_1817 の M1〜M6。M7 は 20261009_1818。M8 は 20261009_1829。M9・M10 は 20261009_1844。M11 は 20261009_1845。M12 は 20261009_1846）:
  *   M1 無人の登録が 201（503 にならない）。Keycloak のクライアントに入口の印（msp.mcp-client.managed-by=mcp-server）があり、
  *      機密・SA つき・人の流れ（標準・暗黙・直接付与）は閉・fullScopeAllowed=false。
  *   M2 `users?username=service-account-<client>&exact=true` がちょうど 1 件で、割り当てた属性が入っている（集合値は多値）。
@@ -58,9 +58,15 @@
  *      🔴 secret の値はログ・失敗の文言に出さない（判定器は一致・不一致だけを返す）。
  *   M10 DCR が閉じている（FU3）: 匿名の動的クライアント登録（`clients-registrations/openid-connect`・`default`）と偽の初期アクセストークンは
  *      401 / 403 でクライアントが増えない。初期アクセストークンは 1 つも無い。匿名のポリシーに Trusted Hosts（信頼ホストは空）が在る。
+ *   M12 platform の audience（#1846 / IADR-0523 / planning#770）: 全サービスの JWT 検証は aud に `platform-api` があるトークンだけを受け付ける。
+ *      稼働の Keycloak で、**実際に発行されるトークンの aud** を測る（evaluate-scopes の例示のトークン・client credentials の実トークン）:
+ *      利用者のトークン（`bff`・利用者 SAMPLE_USER）と呼び出し元のサービスアカウント（document-service・AST の kb-reader）・使い捨ての登録者に
+ *      platform-api が在り mcp-server は無い。運用ツール（grafana）の利用者のトークン・MCP クライアント（M9 の有人・無人）のトークンに
+ *      platform-api は無い。MCP クライアントの実トークンで McpServer の既定のスキームの口（GET /mcp-clients）を呼ぶと 401（ロール不足の 403 ではない）。
  *
  * 主体は 3 つに分ける（測る側と測られる側を同じにしない）:
- *   - 登録者: 実行のたびに master の管理者が作る**使い捨ての機密クライアント**（SA に platform-admin・既定スコープ profile / roles）。
+ *   - 登録者: 実行のたびに master の管理者が作る**使い捨ての機密クライアント**（SA に platform-admin・既定スコープ profile / roles /
+ *     platform-api-audience〔#1846。無いと McpServer の管理 API が 401〕）。
  *     🔴 realm の abac-seeder を使わない —— 既定スコープに profile が無く preferred_username が載らないので、登録者の属性を
  *     引けず、部分集合の判定は「検証できません」の 400 になる（規則そのものを測れない）。使い捨ての登録者は名前で引けるので、
  *     McpServer → 認可サービス → Keycloak の名指しの照会（サービスアカウントを返すか）も同時に通る。終わったら消す。
@@ -105,6 +111,9 @@ const RECONCILE_WAIT_MS = Number(env('MCP_PROV_RECONCILE_WAIT_MS', '150000'));
 const RECONCILE_POLL_MS = 10000;
 // M9（#1844）: 有人のクライアントのテンプレート（KeycloakServiceAccountProvisioner.PublicClientTemplate と同じ値）。
 const MCP_AUDIENCE = 'mcp-server';
+// M12（#1846）: platform の API の共有 audience と、それを載せるクライアントスコープ（deploy/keycloak の realm と同じ値）。
+const PLATFORM_AUDIENCE = 'platform-api';
+const PLATFORM_AUDIENCE_SCOPE = 'platform-api-audience';
 const PKCE_ATTRIBUTE = 'pkce.code.challenge.method';
 // M9: 例示のアクセストークンを作る利用者（realm の宣言の人の利用者）。
 const SAMPLE_USER = env('MCP_PROV_SAMPLE_USER', 'poc-user');
@@ -392,6 +401,20 @@ function evaluateTokenAudience(payload, clientId, { human = false } = {}) {
 }
 
 /**
+ * M12（#1846）: トークンの aud に platform-api が在る（expect=true）／無い（expect=false）か。
+ * platform-api を持つトークンに mcp-server が同居していれば赤（MCP クライアントの意味の値を platform の呼び出し元へ載せない）。
+ */
+function evaluatePlatformAudience(payload, expect) {
+  if (!payload) return ['トークンの本文を読めない'];
+  const aud = Array.isArray(payload.aud) ? payload.aud : (payload.aud === undefined ? [] : [payload.aud]);
+  const has = aud.includes(PLATFORM_AUDIENCE);
+  if (expect && !has) return [`aud に ${PLATFORM_AUDIENCE} が無い（${JSON.stringify(payload.aud)}）。platform のサービスで 401 になる`];
+  if (!expect && has) return [`aud に ${PLATFORM_AUDIENCE} が在る（${JSON.stringify(payload.aud)}）。platform のサービスを通ってしまう`];
+  if (expect && aud.includes(MCP_AUDIENCE)) return [`aud に ${MCP_AUDIENCE} が同居している（${JSON.stringify(payload.aud)}）`];
+  return [];
+}
+
+/**
  * M10: 匿名・偽の資格の DCR が拒否され、クライアントが増えていないか。
  * 🔴 5xx・到達不能は「閉じている」ではない（Keycloak の不調で緑にしない）。
  */
@@ -663,6 +686,20 @@ function selfTest() {
     assert.strictEqual(evaluateNoInitialAccessTokens([{ id: 'x' }]).length, 1);
     assert.strictEqual(evaluateNoInitialAccessTokens(null).length, 1);
   });
+  t('M12: platform-api の有無を期待どおりに判定し、mcp-server の同居・aud なし・本文なしを赤にする', () => {
+    assert.deepStrictEqual(evaluatePlatformAudience({ aud: ['account', 'platform-api'] }, true), []);
+    assert.deepStrictEqual(evaluatePlatformAudience({ aud: 'platform-api' }, true), []);
+    assert.strictEqual(evaluatePlatformAudience({}, true).length, 1);
+    assert.strictEqual(evaluatePlatformAudience({ aud: ['platform-api', 'mcp-server'] }, true).length, 1);
+    assert.deepStrictEqual(evaluatePlatformAudience({ aud: 'mcp-server' }, false), []);
+    assert.deepStrictEqual(evaluatePlatformAudience({}, false), []);
+    assert.strictEqual(evaluatePlatformAudience({ aud: ['grafana', 'platform-api'] }, false).length, 1);
+    assert.strictEqual(evaluatePlatformAudience(null, false).length, 1);
+  });
+  t('M12 (#1846): 使い捨ての登録者に platform-api-audience を割り当てる（無いと McpServer の管理 API が 401 で門ごと赤）', () => {
+    const src = require('fs').readFileSync(__filename, 'utf8');
+    assert.match(src, /for \(const name of \['profile', 'roles', PLATFORM_AUDIENCE_SCOPE\]\)/);
+  });
   t('M9: PKCE の S256 の挑戦は検証子の SHA-256 の base64url', () => {
     const { verifier, challenge } = pkcePair();
     assert.ok(/^[A-Za-z0-9_-]{43}$/.test(verifier) && /^[A-Za-z0-9_-]{43}$/.test(challenge));
@@ -836,7 +873,8 @@ async function createRegistrar(kcAdmin, kcUrl, admin, clientId) {
     .find((c) => c.clientId === clientId);
   if (!created) throw new Error('使い捨ての登録者を引き直せない');
   const scopes = mustOk(await call('GET', `${kcAdmin}/client-scopes`, admin), 'client-scopes の取得', 200).json || [];
-  for (const name of ['profile', 'roles']) {
+  // #1846: platform-api-audience が無いと、登録者のトークンは McpServer の管理 API（既定のスキーム。aud=platform-api を要求）で 401 になる。
+  for (const name of ['profile', 'roles', PLATFORM_AUDIENCE_SCOPE]) {
     const scope = scopes.find((x) => x.name === name);
     if (!scope) throw new Error(`realm にスコープ ${name} が無い`);
     mustOk(await call('PUT', `${kcAdmin}/clients/${created.id}/default-client-scopes/${scope.id}`, admin), `スコープ ${name} の割当`, 204);
@@ -1298,6 +1336,46 @@ async function live() {
     // FU6 の観測（判定しない）: Keycloak 24 の regenerate は値つきの表現を管理イベントへ渡す。realm は詳細を保存する。数だけを出す。
     const ev11 = await call('GET', `${kcAdmin}/admin-events?operationTypes=ACTION&max=500`, admin);
     log(`  ℹ M11 FU6 観測（判定しない）: 再発行の値を表現に含む管理イベント ${ev11.status === 200 ? countEventsContaining(ev11.json, reissuedSecret) : `（GET admin-events が ${ev11.status}）`} 件`);
+
+    // --- M12（#1846 / IADR-0523: platform の audience）---------------------------------------------
+    // 例示のアクセストークン（evaluate-scopes）は、そのクライアントの既定スコープで実際に発行されるトークンの本文と同じ写像を通る。
+    const example = async (clientId, userId) => {
+      const c = (await clientsOf(clientId)).find((x) => x.clientId === clientId);
+      if (!c) return { errors: [`クライアント ${clientId} が realm に無い`] };
+      const ex = await call('GET', `${kcAdmin}/clients/${c.id}/evaluate-scopes/generate-example-access-token`
+        + `?scope=openid&userId=${encodeURIComponent(userId)}`, admin);
+      return ex.status === 200 ? { payload: ex.json } : { errors: [`例示のトークンが ${ex.status}`] };
+    };
+    const saUserId = async (clientId) => ((await usersOf(clientId))[0] || {}).id;
+    const measure = async (label, clientId, userId, expect) => {
+      if (!userId) { step(label, [`測る利用者（${clientId}）が引けない`]); return; }
+      const r = await example(clientId, userId);
+      const payload = r.payload;
+      step(label, r.errors || evaluatePlatformAudience(payload, expect));
+      if (payload) log(`      実測 aud(${clientId}) = ${JSON.stringify(payload.aud)}`);
+    };
+    const sampleUserId = (sample[0] || {}).id;
+    await measure('M12 利用者のトークン（bff・BFF が後段へ中継する）の aud に platform-api が在り mcp-server は無い', 'bff', sampleUserId, true);
+    await measure('M12 呼び出し元のサービスアカウント（document-service）の aud に platform-api が在る', 'document-service', await saUserId('document-service'), true);
+    await measure('M12 AST の platform realm のクライアント（ai-stock-trading-kb-reader。既定スコープが profile だけだった）の aud に platform-api が在る',
+      'ai-stock-trading-kb-reader', await saUserId('ai-stock-trading-kb-reader'), true);
+    await measure('M12 否定形: 運用ツール（grafana）の利用者のトークンの aud に platform-api は無い', 'grafana', sampleUserId, false);
+    await measure('M12 否定形: 有人の MCP クライアントのトークンの aud に platform-api は無い', humanId, sampleUserId, false);
+    step('M12 使い捨ての登録者の実トークンの aud に platform-api が在る', evaluatePlatformAudience(decodeJwtPayload(await registrar()), true));
+    if (saAud) {
+      const sec = ((await call('GET', `${kcAdmin}/clients/${saAud.id}/client-secret`, admin)).json || {}).value || '';
+      const issued = await tokenAttempt(kcUrl, REALM, { grant_type: 'client_credentials', client_id: saAudId, client_secret: sec });
+      const mcpToken = issued.json && issued.json.access_token;
+      step('M12 否定形: 無人の MCP クライアントの実トークンの aud に platform-api は無い',
+        evaluateTokenIssued(issued).concat(mcpToken ? evaluatePlatformAudience(decodeJwtPayload(mcpToken), false) : []));
+      if (mcpToken) {
+        // 🔴 401 であること（ロール不足の 403 ではない）＝ audience の検証で止まった。
+        step('M12 否定形: MCP クライアントの実トークンで McpServer の既定のスキームの口（GET /mcp-clients）は 401',
+          status(await send('GET', `${mcpUrl}/mcp-clients`, mcpToken), 401));
+      }
+    } else {
+      failures.push('M12 の前提: M9 の無人の MCP クライアントが無い（MCP クライアントの実トークンを測れない）');
+    }
   } finally {
     // 片付け（失敗しても門の判定は上の結果で決める）。使い捨ての登録者も消す（SA 利用者ごと消える）。
     for (const cid of created) {
@@ -1315,12 +1393,12 @@ async function live() {
     for (const f of failures) warn(`  - ${f}`);
     return 1;
   }
-  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M11）');
+  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M12）');
   return 0;
 }
 
 module.exports = {
-  evaluatePublicClient, evaluateAudienceMapper, classifyAuthResponse, evaluateAuthOutcome, loopbackHijackProbes, decodeJwtPayload, evaluateTokenAudience,
+  evaluatePublicClient, evaluateAudienceMapper, evaluatePlatformAudience, classifyAuthResponse, evaluateAuthOutcome, loopbackHijackProbes, decodeJwtPayload, evaluateTokenAudience,
   evaluateDcrRefused, evaluateRegistrationPolicies, evaluateNoInitialAccessTokens,
   evaluateIssuedSecret, evaluateNoSecret, evaluateRotatedSecret, countEventsContaining,
   evaluateCompensationResponse, evaluateCompensationEvents,

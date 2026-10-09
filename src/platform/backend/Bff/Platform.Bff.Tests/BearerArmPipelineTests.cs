@@ -146,6 +146,8 @@ public sealed class BearerArmPipelineTests : IAsyncLifetime
         return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Issuer = Issuer,
+            // NFR-09, #1846: 全サービスが audience（platform-api）を検証する。実 Keycloak の呼び出し元のトークンと同じ形。
+            Audience = global::Platform.Shared.Infrastructure.Foundation.Extensions.AuthExtensions.DefaultAudience,
             IssuedAt = now,
             NotBefore = now.AddMinutes(-1),
             Expires = now.AddMinutes(5),

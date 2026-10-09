@@ -14,6 +14,9 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <!-- NFR-18, ADR-0131 決定 4 の受入条件 1, IADR-0522 (#1839): セッションストア（Valkey）の実イメージを起こす。
+         専用モジュールではなく汎用の ContainerBuilder で、配備と同じ起動形（認証必須）にする（ValkeyTestContainer）。 -->
+    <PackageReference Include="Testcontainers" />
     <ProjectReference Include="..\Platform.Bff\Platform.Bff.csproj" />
   </ItemGroup>
 </Project>
