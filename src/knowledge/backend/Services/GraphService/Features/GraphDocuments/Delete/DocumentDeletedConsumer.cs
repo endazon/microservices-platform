@@ -1,3 +1,4 @@
+using GraphService.Features.GraphDocuments.Sync;
 using GraphService.Infrastructure.Persistence;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
@@ -26,20 +27,33 @@ namespace GraphService.Features.GraphDocuments.Delete;
 // サポートせず、削除件数も高々文書 1 件ぶんの近傍なので取得してから消す。
 public class DocumentDeletedConsumer(
     GraphDbContext db,
+    LinkEdgeSynchronizer links,
+    TagEdgeSynchronizer tagEdges,
     ILogger<DocumentDeletedConsumer> logger) : IPipelineStep<DocumentDeleted>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "graph-delete";
 
     // ADR-0027 / #1016: Wolverine のハンドラ。
+    //
+    // 🔴 [[IADR-0521]] 決定 7 (#1396): 共有タグの差分（タグを空にする）は `DocumentUpdated` の受け口と
+    // **同じ排他**を取る（`GraphDocumentRemoval` → `TagEdgeSynchronizer`）。取らないと、削除と同時に
+    // 同じタグへ入った文書が、消えた文書への辺を残す。排他はこのトランザクションの確定で解ける。
     public async Task Handle(DocumentDeleted ev, CancellationToken ct)
+    {
+        await using var tx = await GraphSyncTransaction.BeginAsync(db, ct);
+        await RemoveAsync(ev, ct);
+        if (tx is not null)
+            await tx.CommitAsync(ct);
+    }
+
+    private async Task RemoveAsync(DocumentDeleted ev, CancellationToken ct)
     {
         var id = ev.DocumentId;
 
-        var edges = await db.Edges
-            .Where(e => e.SourceDocumentId == id || e.TargetDocumentId == id)
-            .ToListAsync(ct);
-        db.Edges.RemoveRange(edges);
+        // ［[[IADR-0521]] / #1396］辺はタグの複製・後着のリンクの作り直しと一緒に片付ける（撤収と同じ手順）。
+        var node = await db.Documents.FirstOrDefaultAsync(d => d.DocumentId == id, ct);
+        var removal = await GraphDocumentRemoval.DetachAsync(db, links, tagEdges, id, node?.Title, ct);
 
         var suggestions = await db.AiSuggestions
             .Where(s => s.SourceDocumentId == id || s.TargetDocumentId == id)
@@ -57,7 +71,6 @@ public class DocumentDeletedConsumer(
             .ToListAsync(ct);
         db.DocumentLinkTargets.RemoveRange(linkTargets);
 
-        var node = await db.Documents.FirstOrDefaultAsync(d => d.DocumentId == id, ct);
         if (node is not null)
             db.Documents.Remove(node);
 
@@ -70,8 +83,8 @@ public class DocumentDeletedConsumer(
 
         logger.LogInformation(
             "Removed deleted document {DocumentId} from the graph: node={Node} edges={Edges} "
-            + "suggestions={Suggestions} linkTargets={LinkTargets} termProfile={TermProfile}",
-            id, node is not null ? 1 : 0, edges.Count, suggestions.Count, linkTargets.Count,
-            termProfile is not null ? 1 : 0);
+            + "suggestions={Suggestions} linkTargets={LinkTargets} termProfile={TermProfile} relinked={Relinked}",
+            id, node is not null ? 1 : 0, removal.EdgesRemoved, suggestions.Count, linkTargets.Count,
+            termProfile is not null ? 1 : 0, removal.Relinked);
     }
 }

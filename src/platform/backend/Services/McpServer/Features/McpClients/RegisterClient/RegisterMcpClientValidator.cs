@@ -36,6 +36,18 @@ internal sealed class RegisterMcpClientValidator : AbstractValidator<RegisterMcp
     internal static string EgressTierInvalidMessage(string? egressTier)
         => $"egressTier の値 '{egressTier}' は不正です。";
 
+    // 無人にリダイレクト URI を渡したときの本文（空配列も「渡した」と読む。受け取って黙って捨てない）。
+    internal const string RedirectUrisNotAllowedMessage =
+        "無人（service-account）にはリダイレクト URI を渡せません（人の流れは閉じています）。";
+
+    internal static string? RedirectUrisViolation(RegisterMcpClientRequest request)
+    {
+        if (!RegisterMcpClientEndpoint.TryParseKind(request.Kind, out var kind)) return null;
+        return kind == McpServer.Domain.McpClientKind.Interactive
+            ? McpServer.Domain.RedirectUriRules.ListViolation(request.RedirectUris)
+            : request.RedirectUris is null ? null : RedirectUrisNotAllowedMessage;
+    }
+
     public RegisterMcpClientValidator()
     {
         // 🔴 述語を写す。`IsNullOrWhiteSpace` を `NotEmpty()` へ置き換えない
@@ -47,6 +59,12 @@ internal sealed class RegisterMcpClientValidator : AbstractValidator<RegisterMcp
         RuleFor(r => r.Kind)
             .Must(v => RegisterMcpClientEndpoint.TryParseKind(v, out _))
             .WithMessage(r => KindInvalidMessage(r.Kind));
+
+        // ［2026-10-09 / #1844］FR-16, SC-12, 計画 ADR-0134 決定 1: 有人はリダイレクト URI が必須（規則は `RedirectUriRules` の 1 つ）、
+        // 無人は渡せない。**`kind` の後・`egressTier` の前**に置く（種別が決まらなければ判定しない＝`kind` の違反が先に出る）。
+        RuleFor(r => r.RedirectUris)
+            .Must((r, _) => RedirectUrisViolation(r) is null)
+            .WithMessage(r => RedirectUrisViolation(r) ?? string.Empty);
 
         RuleFor(r => r.EgressTier)
             .Must(v => RegisterMcpClientEndpoint.TryParseTier(v, out _))

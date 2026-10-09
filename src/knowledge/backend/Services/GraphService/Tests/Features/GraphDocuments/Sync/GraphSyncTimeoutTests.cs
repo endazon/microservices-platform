@@ -33,7 +33,7 @@ public class GraphSyncTimeoutTests
         db, TimeProvider.System, new HangingReader(),
         new LinkEdgeSynchronizer(db, new EdgeTypeFallbackMetrics(new MeterFactory()),
             NullLogger<LinkEdgeSynchronizer>.Instance),
-        new TermProfileSynchronizer(db),
+        new TermProfileSynchronizer(db), TagEdgesForTests.Synchronizer(db),
         ConsumerTimeoutsForTests.Calls(), new GraphSyncTimeouts(contentRead),
         NullLogger<GraphDocumentSyncConsumer>.Instance);
 

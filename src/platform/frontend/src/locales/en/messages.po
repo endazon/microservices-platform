@@ -1417,6 +1417,22 @@ msgstr "Light"
 msgid "ラベル"
 msgstr "Label"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "リダイレクト URI が重複しています。"
+msgstr "Redirect URIs must not be duplicated."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "リダイレクト URI は 10 件以下にしてください。"
+msgstr "Enter at most 10 redirect URIs."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "リダイレクト URI は https か、ループバックの http://127.0.0.1 / http://[::1] に限ります（ワイルドカード・フラグメント・localhost は使えません）。"
+msgstr "Redirect URIs must use https, or the loopback http://127.0.0.1 / http://[::1] (wildcards, fragments and localhost are not allowed)."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "リダイレクト URI（1 行に 1 件）"
+msgstr "Redirect URIs (one per line)"
+
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "リンク"
@@ -1425,6 +1441,10 @@ msgstr "Link"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
 msgstr "When a link target is not shown, you cannot tell whether the link is broken or whether you lack permission to view it. This is by design, so that the existence of documents you cannot view is not revealed."
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "ループバックのリダイレクト URI には port を明示してください（例: http://127.0.0.1:53123/callback）。"
+msgstr "A loopback redirect URI must specify an explicit port (e.g. http://127.0.0.1:53123/callback)."
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "ローカル {localVersion} 版 ／ サーバ {serverVersion} 版"
@@ -2544,6 +2564,10 @@ msgstr "Done"
 msgid "完全に削除する"
 msgstr "Delete permanently"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "完全一致で照合します。https か、ループバックの http://127.0.0.1 / http://[::1] に限ります（ワイルドカードは使えません）。ループバックは port を明示してください（例: http://127.0.0.1:53123/callback）。"
+msgstr "Matched exactly. Only https, or the loopback http://127.0.0.1 / http://[::1], is allowed (no wildcards). A loopback URI must specify an explicit port (e.g. http://127.0.0.1:53123/callback)."
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "完全削除まで"
 msgstr "Until permanent deletion"
@@ -3207,6 +3231,10 @@ msgstr "Writing may restart the application that reads this value. A restart int
 #: knowledge/frontend/src/features/sc12-mcp-clients/types/mcpClientVocabulary.ts
 msgid "有人"
 msgstr "Attended"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "有人にはリダイレクト URI が 1 件以上必要です。"
+msgstr "An attended client needs at least one redirect URI."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx

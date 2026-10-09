@@ -147,7 +147,8 @@ public class ServiceAccountAttributeSubsetEndpointTests(TestWebApplicationFactor
     {
         var response = await factory.CreateClient().PostAsJsonAsync("/mcp-clients",
             new RegisterMcpClientRequest("agent-subset", "有人", "interactive",
-                new Dictionary<string, string> { ["clearance"] = "restricted" }),
+                new Dictionary<string, string> { ["clearance"] = "restricted" },
+                RedirectUris: ["https://agent.example.test/callback"]),
             TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);

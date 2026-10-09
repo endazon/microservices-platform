@@ -30,7 +30,39 @@ public class DocumentLinkTarget
 
     public DateTimeOffset ExtractedAt { get; private set; } = DateTimeOffset.UtcNow;
 
+    // ［[[IADR-0521]] / #1396］**リンクを辺へ作り直すのに要る残りの 3 つ**（構文の別・明示型・アンカー）。
+    // 相手が後から届いた・改名された・曖昧が解けたとき、起点の本文を読み直さずに辺を作り直すために持つ
+    // （本文の再読込は ADR-0050 決定 3 の契機を増やす）。
+    //
+    // 🔴 **移行前の行は `Kind` が null である。** その行からは辺の型が決まらない（`[[a#h]]` は cites、
+    // `![[a]]` は embeds）ので、null の行を持つ起点は作り直さない（`LinkEdgeSynchronizer.RebuildAsync`）。
+    // 次に本文が変わったときの再取り込みで埋まる。
+    public const int MaxNameLength = 200;
+    public string? Kind { get; private set; }
+    public string? ExplicitTypeName { get; private set; }
+    public string? Anchor { get; private set; }
+
     private DocumentLinkTarget() { }
+
+    // [[IADR-0521]]: 1 リンク 1 行。名前・構文の別・明示型・アンカーの組で重複を落とすのは呼び出し側。
+    public static DocumentLinkTarget Create(Guid sourceDocumentId, ObsidianLink link, DateTimeOffset extractedAt)
+    {
+        var row = Create(sourceDocumentId, link.Target, extractedAt);
+        row.Kind = link.Kind.ToString();
+        row.ExplicitTypeName = Cut(link.ExplicitTypeName);
+        row.Anchor = Cut(link.Anchor);
+        return row;
+    }
+
+    // 保存した行からリンクを復元する。**移行前の行（`Kind` が null・未知の値）は null。**
+    public ObsidianLink? ToLink()
+        => Enum.TryParse<ObsidianLinkKind>(Kind, ignoreCase: false, out var kind)
+            && Enum.IsDefined(kind)
+            ? new ObsidianLink(Target, Anchor, ExplicitTypeName, kind)
+            : null;
+
+    private static string? Cut(string? value)
+        => value is { Length: > MaxNameLength } ? value[..MaxNameLength] : value;
 
     public static DocumentLinkTarget Create(Guid sourceDocumentId, string target, DateTimeOffset extractedAt)
         => new()

@@ -81,13 +81,16 @@ internal static class ApproveAiSuggestionEndpoint
                     suggestion.SourceDocumentId, suggestion.TargetDocumentId!.Value,
                     edgeType.Id, edgeType.IsSymmetric, EdgeProvenance.AiApproved);
 
-                var duplicate = await db.Edges.AnyAsync(e =>
+                var duplicate = await db.Edges.FirstOrDefaultAsync(e =>
                     e.SourceDocumentId == edge.SourceDocumentId
                     && e.TargetDocumentId == edge.TargetDocumentId
                     && e.EdgeTypeId == edge.EdgeTypeId
                     && e.SourceAnchor == edge.SourceAnchor
                     && e.TargetAnchor == edge.TargetAnchor, ct);
-                if (!duplicate) db.Edges.Add(edge);
+                // [[IADR-0521]] (#1396), ADR-0033 決定 6: 共有タグの辺が同じ関係を表していれば、承認済みとして引き取る
+                // （タグを外しても承認した関係は消えない）。それ以外の既存の辺には重ねない（従前どおり）。
+                if (duplicate is { IsTagDerived: true }) duplicate.AdoptAs(EdgeProvenance.AiApproved);
+                else if (duplicate is null) db.Edges.Add(edge);
             }
 
             await db.SaveChangesAsync(ct);
