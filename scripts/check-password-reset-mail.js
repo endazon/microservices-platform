@@ -38,7 +38,7 @@
  *
  * realm 名・対象利用者・クライアント・エッジ URL・有効期限・捕捉用 MTA の宛先は**すべて走査して得る**。
  *   - realm / 利用者 / クライアント / 有効期限 → `deploy/keycloak/*-realm.json`
- *   - エッジ URL                              → Keycloak Deployment の `KC_HOSTNAME_URL`
+ *   - エッジ URL                              → Keycloak Deployment の `KC_HOSTNAME`
  *   - 捕捉用 MTA の Service 名と HTTP ポート  → `deploy/local/infra/mailpit.yaml`
  * ここへ書き写すと、宣言を変えたときに検査が静かに空回りする（check-stack-ready.js G7 と同じ姿勢）。
  *
@@ -66,7 +66,7 @@ const REALM_DIR = path.join('deploy', 'keycloak');
 /** 捕捉用 MTA の宣言（Service 名と HTTP ポートの単一情報源）。 */
 const MAIL_CAPTURE_MANIFEST = path.join('deploy', 'local', 'infra', 'mailpit.yaml');
 const MAIL_CAPTURE_NS = 'platform-infra';
-/** Keycloak の Deployment（エッジ URL の単一情報源 `KC_HOSTNAME_URL` を持つ）。 */
+/** Keycloak の Deployment（エッジ URL の単一情報源 `KC_HOSTNAME` を持つ。IADR-0524 / #1859 で v1 の `KC_HOSTNAME_URL` から移した）。 */
 const KEYCLOAK_NS = 'platform-infra';
 const KEYCLOAK_DEPLOY = 'keycloak';
 /** ローカル CA の在り処（エッジ TLS の検証に使う）。 */
@@ -232,9 +232,9 @@ function loadRealm(repoRoot = REPO_ROOT) {
 /** Keycloak のエッジ URL（issuer の単一情報源）。 */
 function keycloakBaseUrl() {
   const r = kubectl(['get', 'deploy', KEYCLOAK_DEPLOY, '-n', KEYCLOAK_NS, '-o',
-    'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="KC_HOSTNAME_URL")].value}']);
+    'jsonpath={.spec.template.spec.containers[0].env[?(@.name=="KC_HOSTNAME")].value}']);
   const url = String(r.stdout || '').trim();
-  return r.status === 0 && url ? { ok: true, value: url.replace(/\/+$/, '') } : { ok: false, error: 'KC_HOSTNAME_URL を読めない' };
+  return r.status === 0 && url ? { ok: true, value: url.replace(/\/+$/, '') } : { ok: false, error: 'KC_HOSTNAME を読めない' };
 }
 
 /** エッジ TLS を検証するためのローカル CA（**検証を切らない**）。 */
@@ -273,11 +273,11 @@ function runtimeResetConfig(realmName) {
   if (!/^[A-Za-z0-9._-]+$/.test(String(realmName || ''))) {
     return { ok: false, error: `realm 名が想定の字種でない: ${JSON.stringify(realmName)}` };
   }
-  // NFR-18 (#1793): パスワードを kcadm（Pod 内の java）の引数へ載せない。`--password` を省くと kcadm は
-  // パスワードを stdin から読む（Keycloak 24 の `config credentials` の用法「echo <pw> | kcadm.sh config credentials …」）。
-  // printf は sh の組み込みなので、値はどのプロセスの引数にも載らない。
+  // NFR-18 (#1793): パスワードを kcadm（Pod 内の java）の引数へ載せない。Pod の env の値を env `KC_CLI_PASSWORD`（kcadm が読む）で渡す
+  // （代入は環境へ置くだけで、値はどのプロセスの引数にも載らない）。IADR-0524 (#1859): Keycloak 24 は `--password` を省くと stdin から
+  // 読んだが、26 の kcadm は端末が無いと stdin を読まず「Console is not active, but password is required」で落ちる（稼働で実測）。
   const script =
-    'printf \'%s\\n\' "$KEYCLOAK_ADMIN_PASSWORD" | /opt/keycloak/bin/kcadm.sh config credentials'
+    'KC_CLI_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" /opt/keycloak/bin/kcadm.sh config credentials'
     + ' --server http://localhost:8080 --realm master --user "$KEYCLOAK_ADMIN" >/dev/null 2>&1'
     + ` && /opt/keycloak/bin/kcadm.sh get realms/${realmName}`;
   const r = kubectl(
@@ -421,6 +421,11 @@ function linkLifetimeMinutes(realm) {
  * サーバが知っている事実ではない。ここを残すと比較は必ず不一致になり、**検査が常に赤で無意味**になる。
  * ①②③以外の差（文言・状態・導線）が残れば、それは**登録の有無を漏らしている**。
  *
+ * ［2026-10-09 / #1859・IADR-0524］②に **Keycloak 26 の `checkAuthSession("<値>")`**（ログイン系の画面の `<script>`）を足した。
+ * 値は認証セッションのハッシュで、認可要求の GET（利用者名を送る前）で発行されるクッキー `KC_AUTH_SESSION_HASH` と同じ値である
+ * （26.7.4 で実測）。利用者名を送る前に決まるので、実在・非実在の差を運び得ない。伏せるのはこの呼び出しの引数だけで、
+ * 呼び出しの有無・ほかの `<script>` は比べる。
+ *
  * @param {string} html 応答本文
  * @param {string} submitted 申請した利用者名（再表示を伏せるため）
  */
@@ -430,7 +435,8 @@ function normalizeConcealmentBody(html, submitted) {
   return s
     .replace(/(session_code|execution|tab_id|client_data|code|nonce|state)=[^&"'\s]*/g, '$1=<opaque>')
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<uuid>')
-    .replace(/"[A-Za-z0-9_-]{11}"/g, '"<opaque>"');
+    .replace(/"[A-Za-z0-9_-]{11}"/g, '"<opaque>"')
+    .replace(/checkAuthSession\(\s*"[A-Za-z0-9+/=_-]*"\s*\)/g, 'checkAuthSession("<opaque>")');
 }
 
 /**
@@ -1361,6 +1367,18 @@ function selfTest() {
     assert.strictEqual(a, b, '入力の再表示を伏せられていない（検査が常に赤になる）');
     const c = normalizeConcealmentBody('value="bob" 登録がありません', 'bob');
     assert.notStrictEqual(a, c, '文言の差まで伏せている（漏洩を見逃す）');
+  });
+
+  ok('#1859: Keycloak 26 の checkAuthSession の引数（認証セッションのハッシュ）だけを伏せ、呼び出しの有無と他の差は残す', () => {
+    const page = (h, msg) => `<script type="module">\n  checkAuthSession(\n    "${h}"\n  );\n</script><p>${msg}</p>`;
+    // 26.7.4 の実物の形（base64 の 64 文字。+ / を含み得る）。
+    const a = normalizeConcealmentBody(page('0+8TZZ2bw+iNbYn5SRKLOpvU9jhAH9EIzmG0Baf1jIciatA4v58Ps9vDB1mLkXBh', 'x'), 'u1');
+    const b = normalizeConcealmentBody(page('RhiHqXO2l4wvR2tc2mKtTvn4o9r7AnGZ4vrNcBh4ZGaV9YIanhibwQdIRWga756D', 'x'), 'u2');
+    assert.strictEqual(a, b, '認証セッションのハッシュの差を残している（T-11 が常に赤になる）');
+    const c = normalizeConcealmentBody(page('RhiHqXO2l4wvR2tc2mKtTvn4o9r7AnGZ4vrNcBh4ZGaV9YIanhibwQdIRWga756D', 'y'), 'u2');
+    assert.notStrictEqual(a, c, '本文の差まで伏せている');
+    const d = normalizeConcealmentBody('<p>x</p>', 'u2');
+    assert.notStrictEqual(a, d, '呼び出しの有無の差まで伏せている');
   });
 
   // ---- T-20（#1143）: 稼働状態の「申請の開閉 × 送出先」の組 ----

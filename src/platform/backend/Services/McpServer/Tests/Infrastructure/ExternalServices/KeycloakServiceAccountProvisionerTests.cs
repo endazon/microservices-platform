@@ -401,7 +401,8 @@ public class KeycloakServiceAccountProvisionerTests
         put.Path.Should().Be("admin/realms/platform/clients/c1");
         var sentBody = JsonNode.Parse(put.Body!)!.AsObject();
         sentBody.Select(kv => kv.Key).Should().BeEquivalentTo(
-            ["enabled", "serviceAccountsEnabled", "authorizationServicesEnabled"], "表現を丸ごと送らない（secret を載せない）");
+            ["enabled", "serviceAccountsEnabled", "authorizationServicesEnabled", "webOrigins"],
+            "表現を丸ごと送らない（secret を載せない）。webOrigins は Keycloak 26 が欠落を導出で埋めるので現在値を添える（#1859）");
         sentBody["serviceAccountsEnabled"]!.GetValue<bool>().Should().BeTrue("現在値（SA あり）で送る");
         keycloak.Requests.Last().Method.Should().Be("GET", "書いた後に読み戻す");
         var rep = keycloak.Clients.Single().Representation;
@@ -543,7 +544,8 @@ public class KeycloakServiceAccountProvisionerTests
         rep["fullScopeAllowed"]!.GetValue<bool>().Should().BeFalse();
         rep["redirectUris"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal(HumanRedirects);
         rep["webOrigins"]!.AsArray().Should().BeEmpty("CORS を開かない");
-        rep["defaultClientScopes"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal("profile");
+        // ［#1859］basic は `sub` の出どころ（Keycloak 25 以降）。profile は利用者名。
+        rep["defaultClientScopes"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal("basic", "profile");
         rep["attributes"]!["pkce.code.challenge.method"]!.GetValue<string>().Should().Be("S256");
         rep["attributes"]![KeycloakServiceAccountProvisioner.ManagedByAttribute]!.GetValue<string>()
             .Should().Be(KeycloakServiceAccountProvisioner.ManagedByValue);
@@ -568,6 +570,7 @@ public class KeycloakServiceAccountProvisionerTests
     [InlineData("implicit")]
     [InlineData("fullScope")]
     [InlineData("profileScope")]
+    [InlineData("basicScope")]
     public async Task 読み戻しがテンプレートに外れていれば公開クライアントを消してFailedにする(string broken)
     {
         var keycloak = new FakeKeycloak
@@ -583,7 +586,9 @@ public class KeycloakServiceAccountProvisionerTests
                     case "webOrigins": rep["webOrigins"] = new JsonArray("+"); break;
                     case "implicit": rep.Remove("implicitFlowEnabled"); break;
                     case "fullScope": rep["fullScopeAllowed"] = true; break;
-                    case "profileScope": rep["defaultClientScopes"] = new JsonArray("email"); break;
+                    case "profileScope": rep["defaultClientScopes"] = new JsonArray("basic", "email"); break;
+                    // ［#1859］realm に basic が無いと Keycloak は黙って割り当てない（作成は成功する）。
+                    case "basicScope": rep["defaultClientScopes"] = new JsonArray("profile"); break;
                 }
             },
         };
@@ -627,6 +632,39 @@ public class KeycloakServiceAccountProvisionerTests
         (await provisioner.SetEnabledAsync("human-toggle", true, Ct)).Kind.Should().Be(IdpWriteKind.EnabledChanged);
         EnabledOf(keycloak, "human-toggle").Should().BeTrue();
         keycloak.Clients.Single().Representation["publicClient"]!.GetValue<bool>().Should().BeTrue("テンプレートの項目は変えない");
+    }
+
+    // ［#1859・IADR-0524］C-67b: 無効化・再有効化の後も有人のテンプレートの webOrigins=[] が残る。Keycloak 26 は webOrigins を欠いた PUT で
+    // リダイレクト URI から Web オリジンを導くので、現在値を添えて送る（integration-stack の門 M9 が稼働で見つけた）。
+    [Fact]
+    public async Task 有人の無効化と再有効化でwebOriginsは空のまま残る()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreatePublicClientAsync("human-origins", "x", HumanRedirects, Ct);
+
+        (await provisioner.SetEnabledAsync("human-origins", false, Ct)).Kind.Should().Be(IdpWriteKind.EnabledChanged);
+        (await provisioner.SetEnabledAsync("human-origins", true, Ct)).Kind.Should().Be(IdpWriteKind.EnabledChanged);
+
+        foreach (var put in keycloak.Requests.Where(r => r.Method == "PUT"))
+            JsonNode.Parse(put.Body!)!["webOrigins"]!.AsArray().Should().BeEmpty("現在値（空）を添える。欠くと Keycloak 26 がリダイレクト URI から導く");
+        keycloak.Clients.Single().Representation["webOrigins"]!.AsArray().Should().BeEmpty("CORS を開かないテンプレートが崩れていない");
+    }
+
+    // ［#1859］C-67c（fail-closed）: webOrigins が読めない表現からは推さず、何も書かずに Failed。
+    [Fact]
+    public async Task webOriginsが読めない表現には書かない()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreatePublicClientAsync("human-noorigins", "x", HumanRedirects, Ct);
+        keycloak.OmitWebOriginsOnGet = true;
+        keycloak.Clients.Single().Representation.Remove("webOrigins");
+
+        var act = () => provisioner.SetEnabledAsync("human-noorigins", false, Ct);
+
+        (await act.Should().ThrowAsync<IdpProvisioningException>()).Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+        keycloak.Requests.Should().NotContain(r => r.Method == "PUT", "推した値で書かない");
     }
 
     // C-68: 無人のテンプレートにも audience の写像を付ける（`/mcp` が audience を検証するので、無人のトークンにも要る）。
@@ -783,6 +821,8 @@ public class KeycloakServiceAccountProvisionerTests
         public bool TimeoutOnClientList { get; init; }
         /// <summary>［#1829］`PUT /clients/{id}` を 500 にする。</summary>
         public bool FailClientPut { get; init; }
+        // ［#1859］GET の表現から webOrigins を落とす（版の変更・応答の加工で欠けたときの fail-closed を試す）。
+        public bool OmitWebOriginsOnGet { get; set; }
         /// <summary>［#1829］`PUT /clients/{id}` を 204 で受けるが `enabled` を変えない（読み戻しの不一致）。この回数だけ。</summary>
         public int IgnoreEnabledOnPut { get; set; }
         /// <summary>［#1845］機密クライアントの client secret（内部 ID → 値）。値は実行ごとの乱数（固定の値を埋め込まない）。</summary>
@@ -910,6 +950,8 @@ public class KeycloakServiceAccountProvisionerTests
                 var rep = client.Representation.DeepClone().AsObject();
                 rep["id"] = client.Id;
                 rep["attributes"] ??= new JsonObject();
+                // 実物の GET は webOrigins を必ず出す（空なら []）。
+                if (!OmitWebOriginsOnGet) rep["webOrigins"] ??= new JsonArray();
                 return Ok(rep.ToJsonString());
             }
 
@@ -935,6 +977,11 @@ public class KeycloakServiceAccountProvisionerTests
                 }
                 if (sent["authorizationServicesEnabled"]?.GetValue<bool>() != true)
                     client.Representation["authorizationServicesEnabled"] = false;
+                // ［#1859］Keycloak 26.7.4: 本文が webOrigins を欠くと、Web オリジンをリダイレクト URI の origin から導いて書く（実測）。
+                if (sent["webOrigins"] is null && client.Representation["redirectUris"] is JsonArray redirects)
+                    client.Representation["webOrigins"] = new JsonArray(redirects
+                        .Select(r => (JsonNode?)JsonValue.Create(new Uri(r!.GetValue<string>()).GetLeftPart(UriPartial.Authority)))
+                        .ToArray());
                 foreach (var (key, value) in sent)
                     if (value is not null) client.Representation[key] = value.DeepClone();
                 return Status(HttpStatusCode.NoContent);

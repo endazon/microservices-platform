@@ -27,7 +27,8 @@
 #
 # 専用の機密クライアント `reset-gate` の service account に `realm-management` の
 # **view-realm ＋ manage-realm だけ**（利用者が 2026-09-05 に承諾）。`PUT /admin/realms/{realm}` は
-# manage-realm を要求し、1 項目にだけ効く細粒度権限は Keycloak 24 に無いのでこれが下限である。
+# manage-realm を要求し、1 項目にだけ効く細粒度権限は Keycloak 24 に無いのでこれが下限である（26.7.4 の細粒度の管理権限 v2 も
+# 利用者・グループ・クライアント・ロールが対象で、realm の設定項目には効かない。IADR-0524）。
 # 面積は①コードが 4 キーしか差し替えない ②scripts/check-realm-constraints.js が
 # 「manage-realm を持つ SA は 1 つだけ」を宣言で固定する ③secret をリポジトリに置かない、で抑える。
 #

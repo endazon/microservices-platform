@@ -3112,11 +3112,58 @@ ok('LOCALEDGE=1: coredns-custom を当ててから rollout restart する（impo
 const KEYCLOAK_DEPLOY = readAt(REPO_ROOT, 'deploy', 'local', 'infra', 'keycloak.yaml');
 const VALUES_LOCAL = readAt(REPO_ROOT, 'deploy', 'local', 'values-local.yaml');
 
-ok('#780 第2段: KC_HOSTNAME_URL がエッジ host（https://keycloak.localhost）を指す', () => {
+ok('#780 第2段 / #1859: KC_HOSTNAME がエッジ host（https://keycloak.localhost）を指す', () => {
   assert.ok(
-    /KC_HOSTNAME_URL\s*\n\s*value:\s*https:\/\/keycloak\.localhost\s*$/m.test(KEYCLOAK_DEPLOY),
-    'KC_HOSTNAME_URL が https://keycloak.localhost でない（issuer の単一情報源がずれている）',
+    /- name: KC_HOSTNAME\s*\n\s*value:\s*https:\/\/keycloak\.localhost\s*$/m.test(KEYCLOAK_DEPLOY),
+    'KC_HOSTNAME が https://keycloak.localhost でない（issuer の単一情報源がずれている）',
   );
+});
+
+// IADR-0524 (#1859): Keycloak 26 で変わった起動の前提。どれも外すと「起動はするが黙って違う振る舞いになる」か「起動しない」。
+const envValueOf1859 = (yaml, name) => {
+  const m = new RegExp(`- name: ${name}\\s*\\n\\s*value:\\s*"?([^"\\n]*)"?\\s*$`, 'm').exec(yaml);
+  return m ? m[1] : undefined;
+};
+const COMPOSE_1859 = readAt(REPO_ROOT, 'deploy', 'docker-compose.yml');
+const PLATFORM_REALM_SRC_1859 = readAt(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json');
+
+ok('#1859: hostname v1 の KC_HOSTNAME_URL は k8s・compose のどちらにも無い（26 は警告だけ出して無視し、issuer が要求の host に揺れる）', () => {
+  assert.ok(!/- name: KC_HOSTNAME_URL\b/.test(KEYCLOAK_DEPLOY), 'keycloak.yaml に KC_HOSTNAME_URL が残っている');
+  assert.ok(!/^\s*KC_HOSTNAME_URL:/m.test(COMPOSE_1859), 'docker-compose.yml に KC_HOSTNAME_URL が残っている');
+  assert.ok(/^\s*KC_HOSTNAME: http:\/\/localhost:8080\s*$/m.test(COMPOSE_1859), 'compose の KC_HOSTNAME が http://localhost:8080 でない');
+  assert.ok(/^\s*KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"\s*$/m.test(COMPOSE_1859), 'compose のバックチャネルが要求の host で描かれない');
+});
+
+ok('#1859: バックチャネルは要求の host・転送ヘッダは読ませない・dev-file の資格は 24 と同じ（k8s）', () => {
+  assert.strictEqual(envValueOf1859(KEYCLOAK_DEPLOY, 'KC_HOSTNAME_BACKCHANNEL_DYNAMIC'), 'true',
+    'in-cluster の well-known が jwks_uri をエッジの URL で返す（.NET がローカル CA を引きに行く）');
+  // integration-stack の初回の実行で実測: サイドカーが付ける X-Forwarded-Proto（port なし）を読むと jwks_uri が 80 番になり全サービスが 401。
+  assert.ok(!/- name: KC_PROXY_HEADERS\b/.test(KEYCLOAK_DEPLOY), 'KC_PROXY_HEADERS がある（メッシュの送り手の X-Forwarded-Proto で jwks_uri の port が落ちる）');
+  assert.strictEqual(envValueOf1859(KEYCLOAK_DEPLOY, 'KC_DB_USERNAME'), 'sa', '24 が作った PVC の H2 を開けない');
+  assert.ok(envValueOf1859(KEYCLOAK_DEPLOY, 'KC_DB_PASSWORD'), '24 が作った PVC の H2 を開けない（資格が無い）');
+});
+
+ok('#1859: Keycloak の readiness は管理用のポート 9000 の /health/ready（26 は 8080 で 404）。compose の healthcheck も 9000', () => {
+  const probe = /readinessProbe:\n\s+httpGet:\n\s+path: (\S+)\n\s+port: (\S+)/.exec(KEYCLOAK_DEPLOY);
+  assert.ok(probe, 'keycloak.yaml に readinessProbe が無い');
+  assert.deepStrictEqual([probe[1], probe[2]], ['/health/ready', '9000']);
+  assert.ok(/- name: management\n\s+containerPort: 9000/.test(KEYCLOAK_DEPLOY), '管理用のポートを宣言していない');
+  const svc = KEYCLOAK_DEPLOY.split(/^---$/m).find((d) => /kind: Service/.test(d)) || '';
+  assert.ok(svc && !/9000/.test(svc), 'Service が管理用のポートを出している');
+  assert.ok(/\/dev\/tcp\/127\.0\.0\.1\/9000 && printf 'GET \/health\/ready /.test(COMPOSE_1859), 'compose の healthcheck が 9000 の /health/ready を見ていない');
+});
+
+ok('#1859: 取り込み元の Secret の全キーは `<中身の realm 名>-realm.json`（26 は食い違うと起動しない）。compose のマウント先も同じ形', () => {
+  assert.strictEqual(DEFAULT.status, 0);
+  const keys = Object.keys(DEFAULT.realmImport);
+  assert.ok(keys.length >= 1, '取り込み元が空');
+  for (const k of keys) {
+    const realm = JSON.parse(DEFAULT.realmImport[k]).realm;
+    assert.strictEqual(k, `${realm}-realm.json`, `取り込み元のキー ${k} が realm ${realm} の名前と合わない`);
+  }
+  const mounts = [...COMPOSE_1859.matchAll(/:\/opt\/keycloak\/data\/import\/([^:\s]+):ro/g)].map((m) => m[1]);
+  assert.deepStrictEqual(mounts, ['platform-realm.json'], `compose の取り込みのマウント先: ${JSON.stringify(mounts)}`);
+  assert.strictEqual(JSON.parse(PLATFORM_REALM_SRC_1859).realm, 'platform');
 });
 
 ok('#780 第2段: Auth:MetadataAddress は in-cluster（http://keycloak:8080）を指す', () => {
@@ -5199,9 +5246,11 @@ ok('#1830: reconcile-realm.sh --check-dev-secrets は別名の Job を RECONCILE
 const PLATFORM_REALM_PATH = path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json');
 const PLATFORM_REALM_SRC = fs.readFileSync(PLATFORM_REALM_PATH, 'utf8');
 const envNameOf1834 = (client) => `${client.toUpperCase().replace(/-/g, '_')}_CLIENT_SECRET`;
+// IADR-0524 (#1859): 取り込み元のキー（＝取り込み先のファイル名）は `<realm 名>-realm.json`（Keycloak 26 の起動条件）。
+const IMPORT_KEY_1859 = 'platform-realm.json';
 const importedRealm = (r) => {
-  const raw = r.realmImport['microservices-platform-realm.json'];
-  assert.ok(raw, `取り込み元の Secret に microservices-platform-realm.json が無い（キー: ${Object.keys(r.realmImport).join(', ')}）`);
+  const raw = r.realmImport[IMPORT_KEY_1859];
+  assert.ok(raw, `取り込み元の Secret に ${IMPORT_KEY_1859} が無い（キー: ${Object.keys(r.realmImport).join(', ')}）`);
   return { raw, json: JSON.parse(raw) };
 };
 const clientSecretOf = (realm, clientId) => (realm.clients.find((c) => c.clientId === clientId) || {}).secret;
@@ -5259,7 +5308,7 @@ ok('#1834: 取り込み元の一時ファイルは 0600・ディレクトリは 
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   // PR #1836 AI レビュー: AST の realm（submodule を取得した環境）は 2 つ目のキーとして同梱されるので、数は固定しない。
   // MSP の realm が在ることと、同梱された全ファイルの権限・後始末を見る。
-  assert.ok(r.realmImportModes.some((m) => m.key === 'microservices-platform-realm.json'),
+  assert.ok(r.realmImportModes.some((m) => m.key === IMPORT_KEY_1859),
     `MSP の realm が取り込み元に無い: ${JSON.stringify(r.realmImportModes)}`);
   for (const m of r.realmImportModes) {
     assert.deepStrictEqual([m.fileMode, m.dirMode], ['600', '700'], `権限が違う: ${JSON.stringify(m)}`);

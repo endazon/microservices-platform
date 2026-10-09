@@ -26,7 +26,7 @@ fi
 # IADR-0243 決定 3 / #780: issuer を **https のエッジ host** へ移した。
 # 🔴 **Vault は discovery URL とその文書の `issuer` が一致していないと config 書き込み自体を拒む**
 #    （"error checking oidc discovery URL"）。したがって in-cluster 名を残す選択肢が無い ——
-#    Keycloak が広告する issuer はエッジ host 1 本だからである（KC_HOSTNAME_URL・IADR-0243 決定 1）。
+#    Keycloak が広告する issuer はエッジ host 1 本だからである（KC_HOSTNAME・IADR-0243 決定 1。#1859 で v1 の KC_HOSTNAME_URL から移した）。
 ISSUER="${VAULT_OIDC_DISCOVERY_URL:-https://keycloak.localhost/realms/platform}"
 # エッジ証明書はローカル CA（cert-manager の local-edge-ca）が署名しており、Vault コンテナの
 # 既定ルートには入っていない。Vault は `oidc_discovery_ca_pem` を一次サポートするので、

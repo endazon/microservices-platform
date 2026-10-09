@@ -103,7 +103,8 @@ services:
       retries: 5
 
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
+    # IADR-0524 (#1859): 24.0 → 26.7.4（CVE-2024-8883 の修正を含む 26 系。deploy/local/infra/keycloak.yaml と同じ参照）。
+    image: quay.io/keycloak/keycloak:26.7.4@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c
     # ADR-0004, FR-13/UC-07, IADR-0020: realm `platform` を import して起動する。
     # wiki-js クライアント（OIDC）と ABAC 属性クレーム（clearance/department/groups）を含む。
     command: ["start-dev", "--import-realm"]
@@ -113,8 +114,11 @@ services:
       # Issue #88 稼働 PoC: issuer をリクエストホストで揺らさず http://localhost:8080 に固定する。
       # 固定しないと、ブラウザ経路（localhost）で発行されたトークンの iss と、コンテナ内経路
       # （keycloak:8080）の userinfo/JWT 検証が食い違い、Wiki.js の OIDC ログインが失敗する。
-      KC_HOSTNAME_URL: http://localhost:8080
-      # Issue #118 監査: /health/ready は既定で無効のため有効化する（下記 healthcheck が参照）。
+      # IADR-0524 (#1859): 26 は hostname v1 の KC_HOSTNAME_URL を警告だけ出して無視する（issuer が揺れる）。v2 の
+      # KC_HOSTNAME に完全な URL を与え、バックチャネル（token・userinfo・jwks）はコンテナ内の経路（keycloak:8080）で描く。
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      # Issue #118 監査: /health/ready は既定で無効のため有効化する（下記 healthcheck が参照。26 は管理用のポート 9000 に出る）。
       KC_HEALTH_ENABLED: "true"
       # Issue #282, IADR-0079: 共有 Postgres を外部 DB として利用し、runtime state（ユーザー・
       # シークレット・セッション等）を永続化する。start-dev を維持したまま KC_DB で H2 を上書きする。
@@ -132,15 +136,17 @@ services:
       KC_SPI_THEME_CACHE_TEMPLATES: "false"
       KC_SPI_THEME_STATIC_MAX_AGE: "-1"
     volumes:
-      - ./keycloak/microservices-platform-realm.json:/opt/keycloak/data/import/microservices-platform-realm.json:ro
+      # IADR-0524: 26 は取り込みのファイル名が `<realm>-realm.json` でないと起動しない（realm 名は platform）。
+      - ./keycloak/microservices-platform-realm.json:/opt/keycloak/data/import/platform-realm.json:ro
       - ./keycloak/themes/platform:/opt/keycloak/themes/platform:ro
     ports:
       - "8080:8080"
-    # Issue #118 監査: Keycloak 24 イメージは curl/wget 非搭載で curl 検査は常に unhealthy になる
-    # （実測）。/dev/tcp は bash 固有機能のため、qdrant と同様シェルを bash に明示する
+    # Issue #118 監査: Keycloak のイメージは curl/wget 非搭載で curl 検査は常に unhealthy になる
+    # （24・26.7.4 とも実測）。/dev/tcp は bash 固有機能のため、qdrant と同様シェルを bash に明示する
     # （CMD-SHELL の暗黙 /bin/sh 解決に依存しない）。bash で /health/ready を検査する。
+    # IADR-0524: 26 のヘルスは管理用のポート 9000（8080 の /health/ready は 404）。ホストへは公開しない。
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -994,7 +1000,7 @@ services:
       BffSession__ClientId: bff
       BffSession__ClientSecret: ${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}
       # metadata は in-cluster の http から引く（Auth__Authority と同じ発行元）。ブラウザ向けの
-      # 認可端点は Keycloak が KC_HOSTNAME_URL から描くため、ここを in-cluster にしても browser 到達は壊れない。
+      # 認可端点は Keycloak が KC_HOSTNAME から描くため、ここを in-cluster にしても browser 到達は壊れない（#1859 までは KC_HOSTNAME_URL）。
       BffSession__MetadataAddress: http://keycloak:8080/realms/platform/.well-known/openid-configuration
       # RequireHttpsMetadata / RedisConnectionString / CookieName / SessionLifetimeSeconds は
       # コード既定のままにする（既定が compose の実態および realm と一致する。IADR-0316・IADR-0522）。

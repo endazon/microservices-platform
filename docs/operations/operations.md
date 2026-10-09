@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06, FR-17]
 adrs: [ADR-0132, ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083, ADR-0086, ADR-0131]
-iadrs: [IADR-0525, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0523, IADR-0522]
-specs: [20261009_1840_secret-store-openbao, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey]
-issues: [#1840, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1846, #1839, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750, planning#741]
+iadrs: [IADR-0525, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0523, IADR-0522, IADR-0524]
+specs: [20261009_1840_secret-store-openbao, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade]
+issues: [#1840, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1846, #1839, #1859, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750, planning#741]
 -->
 
 # 運用仕様書
@@ -160,7 +160,9 @@ issues: [#1840, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #
 
 - **Keycloak の外部 DB 化**: `start-dev` を維持したまま `KC_DB=postgres`（`KC_DB_URL_HOST=postgres` /
   `KC_DB_URL_DATABASE=keycloak` / `KC_DB_USERNAME=KC_DB_PASSWORD=kp`）で H2 を置換する。`keycloak` DB は
-  `create-multiple-dbs.sh` が作成（所有者 `kp`）。`KC_HOSTNAME_URL`（issuer 固定・#88）・healthcheck・`--import-realm` は不変。
+  `create-multiple-dbs.sh` が作成（所有者 `kp`）。issuer の固定（#88）・healthcheck・`--import-realm` は不変。
+  ［2026-10-09 / #1859］issuer の固定は `KC_HOSTNAME`（26 の hostname v2。旧 `KC_HOSTNAME_URL` は 26 が無視する）、
+  healthcheck は管理用のポート `9000`、取り込みのファイル名は `platform-realm.json`（realm 名と一致しないと 26 は起動しない）。
 - **Loki/Tempo を root 実行にする理由**: 空の名前付きボリュームは root 所有で生成されるため、非 root イメージ
   （uid 10001）でも storage 配下に書き込めるよう `user: "0:0"` を付与している（dev/staging compose 限定。compose 永続化の実装 ADR §3）。
 
@@ -274,6 +276,59 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
 - **保持範囲**: 保持されるのは Pod の再起動/再作成まで。`scripts/k8s-local-down.sh --apply` はクラスタ／`platform-infra`
   ほかアプリの namespace を削除するため PVC も消える（`down`→`up` では realm/DB は再生成）。PVC を残すなら `down` を使わず
   Pod のみ再作成する。**既定（引数なし）は `--dry-run`** で、消す予定のものを表示するだけで何も変えない。
+
+#### Keycloak の版の更新（認証基盤の DB を先に退避する。24.0 → 26.7.4）
+
+🔴 **Keycloak の版の更新は認証基盤の DB を一方向に移行する。戻せるのは更新の前に取った退避からだけである。**
+起動時に Keycloak がスキーマを新しい版へ移し（Liquibase）、経路B の file H2 はファイルの形式も新しい H2 に変わる。
+**経路B の日次バックアップ（下の「バックアップ・リストア」）は Postgres と Vault だけで、Keycloak の PVC を含まない。**
+更新の前に手で退避する。
+
+経路B（k8s・永続化が既定）:
+
+```sh
+NS=platform-infra
+# 1. 止めてから PVC を読む（動いている H2 を写さない）
+kubectl -n "$NS" scale deploy/keycloak --replicas=0
+kubectl -n "$NS" wait --for=delete pod -l app=keycloak --timeout=180s
+# 2. PVC を読み取り専用で付けた使い捨ての Pod で H2 を取り出す
+kubectl -n "$NS" run kc-h2-backup --restart=Never --image=busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e \
+  --overrides='{"spec":{"volumes":[{"name":"d","persistentVolumeClaim":{"claimName":"keycloak-data","readOnly":true}}],"containers":[{"name":"c","image":"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e","command":["sleep","600"],"volumeMounts":[{"name":"d","mountPath":"/d","readOnly":true}]}]}}'
+kubectl -n "$NS" wait --for=condition=Ready pod/kc-h2-backup --timeout=120s
+kubectl -n "$NS" exec kc-h2-backup -- tar -C /d -cf - h2 > "keycloak-h2-$(date +%Y%m%d%H%M).tar"
+kubectl -n "$NS" delete pod kc-h2-backup
+tar -tf keycloak-h2-*.tar   # keycloakdb.mv.db が在ることを確かめる
+# 3. 新しい版で起こす（起動器が取り込み元の Secret と Deployment を作り直し、realm の後追いを当てる）
+bash scripts/k8s-local-up.sh --live
+# 4. 移行と収束を確かめる
+kubectl -n "$NS" logs deploy/keycloak | grep -E 'Updating database|Keycloak 26\.7\.4'
+node scripts/check-stack-ready.js --live   # G4（issuer）・G9（realm の差分 0）
+```
+
+compose（Keycloak の DB は共有 Postgres の `keycloak`）:
+
+```sh
+docker compose -f deploy/docker-compose.yml stop keycloak
+docker compose -f deploy/docker-compose.yml exec -T postgres pg_dump -U postgres -Fc keycloak > "keycloak-$(date +%Y%m%d%H%M).dump"
+docker compose -f deploy/docker-compose.yml up -d keycloak
+```
+
+- **起きること（24.0 から上げたときの実測）**: realm と実行時に足した利用者・属性は残る。移行は全クライアントの既定スコープへ
+  `basic`（アクセストークンの `sub`）を足し、必須アクションの優先度を変える。realm の宣言は `basic` を人の流れを開く 6 クライアントにだけ持ち
+  （サービスアカウントのトークンは `basic` なしでも `sub` を持つ）、realm の後追いが差（22 件）を当てて 0 に収束する（G9 が緑）。
+- **経路B の H2 の資格**: 24 は file H2 の資格を `sa` / `password` に差し替えていたが、26 は差し替えない。マニフェストは
+  同じ値を明示しているので、24 が作った PVC をそのまま開ける（値を消すと `Wrong user name or password` で起動しない）。
+- **戻すとき**（新しい版で問題が出たとき）: **イメージの版だけを戻してはならない。** 戻すのは次の 2 つの両方である。
+  1. **版の更新の変更を丸ごと戻す**（マニフェスト・compose に加え、realm の宣言と MCP の有人のクライアントのテンプレートも）。
+     realm の宣言は 25 以降にしか無い `basic` スコープ（`oidc-sub-mapper`）を持つので、イメージだけを 24 に戻すと realm の後追いが
+     24 へそれを当てようとし、realm の差分（G9）がいつまでも 0 にならない。
+  2. **認証基盤の DB を退避から戻す**（24 は移行済みの H2・スキーマを開けない）。経路B は Keycloak を止め、PVC を書き込み可で付けた
+     使い捨ての Pod で `h2` を消して退避の tar を展開する。compose は `keycloak` DB を作り直して `pg_restore` する。
+  その後に起動器（`bash scripts/k8s-local-up.sh --live`）か `docker compose up -d keycloak` で起こす。
+  🔴 **起動器は H2 の版を見ない。** 新しい版のマニフェストのまま起動器を走らせるだけで、一方向の移行が起きる（止める仕掛けは無い）。
+  退避は版を上げる変更を取り込む**前**に取る。
+  🔴 **退避の後に新しい版で入った変更（追加の利用者・パスワードの変更・TOTP の登録）は失われる。** 旧い版のまま新しい版の DB を
+  開くことはできない（スキーマも H2 の形式も戻らない）。
 
 ### Headlamp（k8s 管理 UI・dev opt-in）（非機能要件: 運用性 / #271）
 
@@ -888,7 +943,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   - Token Endpoint URL: `http://keycloak:8080/realms/platform/protocol/openid-connect/token`
     （サーバ間はコンテナ名 `keycloak`、ブラウザ経路は `localhost:8080`）。
   - **Issuer: `http://localhost:8080/realms/platform`**。issuer はブラウザ経路のホストに
-    固定される（compose の `KC_HOSTNAME_URL` で固定済み）。`keycloak:8080` を設定すると ID トークン
+    固定される（compose の `KC_HOSTNAME` で固定済み。#1859 までは `KC_HOSTNAME_URL`）。`keycloak:8080` を設定すると ID トークン
     検証と userinfo が失敗する（「Failed to fetch user profile」。Issue #88 実測）。
   - User Info / Logout: 同 realm の対応エンドポイント（User Info はコンテナ内経路 `keycloak:8080`）。
     Scope は Wiki.js 固定の `openid profile email`（realm 側は `profile`/`email` スコープを定義済み。
@@ -1989,6 +2044,7 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
 
 - **RabbitMQ 3.13 系はコミュニティ保守の外**で、イメージは 2025-12-02 以降再ビルドが無い（初回の表の行）。4.x への移行を見る。
 - **Keycloak 24.0（24.0.5）も保守の続く系列ではない**（初回の表の行）。
+  **［2026-10-09 / #1859］26.7.4 へ上げた**（下の「2026-10-09（Keycloak の版の更新）」）。
 - 上の表の ⚠️（Istio・ESO・cert-manager・k3s の新しい版、Argo CD の同梱の redis のライセンス、istiod のデバッグの口と apiserver の公開の範囲）。
 
 ##### 2026-10-09（基準 C の無効化の配備。#1841）
@@ -2038,6 +2094,23 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
 - **残り**: 経路 B の防御は **2 段**（認証 ＋ NetworkPolicy による到達の制限。経路 B のクラスタは k3s で、k3s は NetworkPolicy を既定で強制する）だが、
   **到達の制限が効いていることは稼働クラスタでまだ実測していない**（確かめ方は下の「キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し」）。
   NetworkPolicy を強制しないクラスタでは認証の 1 段に落ちる。本番像の chart にストアは無い（足すときは同じ統制を先に入れる）。
+##### 2026-10-09（Keycloak の版の更新。#1859）
+
+初回の表の keycloak の行（`24.0` → 24.0.5・「24 系は保守の続く系列ではない」）と、追補の「次回の点検へ」の Keycloak の項を受けて、
+**26.7.4 へ上げた**（初回の表は書き換えない）。24.0.5 には CVE-2024-8883（port なしで登録したループバックのリダイレクト URI に、
+利用者情報で宛先を外へすり替える形が一致する）があり、25.0.6 で直った。
+
+- 版の選び方: 26 系で、取得の日（2026-10-09）に公開から 2 週間を超えた最新のタグ。26.7.5（2026-09-30）は 2 週間に満たないので見送った。
+- 基準 B: 匿名で取得でき、`quay.io` の API が返す 26.7.4 の digest（index）とイメージの取得の digest が一致した。
+
+| 製品（tag） | A ライセンス・保守 | C 既定の外部通信（配備の状態） | D 既定で開く管理用の口（配備の状態） | 判定 |
+| --- | --- | --- | --- | --- |
+| keycloak（`26.7.4`。index `sha256:82a77884…`・2026-09-16） | Apache-2.0。26 系は保守の続く系列 | 既知の既定の外部通信は無い（上流文書。未実測） | 管理コンソール・管理 REST（`/admin`。認証必須。経路 B のエッジは `/` を出す既知の件は不変）。**26 で管理用のポート `9000`（ヘルス。メトリクスは無効）が増えた** —— 経路B は kubelet のプローブだけが使い Service に出さない。compose はホストへ公開しない | 適合 |
+
+- 26 で変わった起動の前提（hostname v2・ヘルスのポート・取り込みのファイル名・file H2 の資格・`basic` スコープ・エッジの後ろのクッキー）と
+  更新の手順は、上の「Keycloak の版の更新」に置いた。
+- 🟡 **管理用のクライアント（`mcp-client-admin`・`identity-admin`）の権限を入口の印のあるものへ絞る**のは、26.7.4 で使えるようになった
+  細粒度の管理権限（v2）で行える。本回では行っていない（[セキュリティ仕様書](../security/security.md) の同じ項）。
 
 ##### 2026-10-09（秘匿管理の差し替え。#1840）
 

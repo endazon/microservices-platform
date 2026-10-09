@@ -42,6 +42,10 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+// IADR-0524 (#1859 / #1869): 待ちに上限を置く（1 要求・全体）。超えたら何を待っていたかを名指しして非 0 で終える。
+const { fetchWithin, startWatchdog, msFromEnv, DEFAULT_REQUEST_MS, DEFAULT_OVERALL_MS } = require('./lib/bounded-wait.js');
+const REQUEST_TIMEOUT_MS = msFromEnv('ABAC_SEED_REQUEST_TIMEOUT_MS', DEFAULT_REQUEST_MS);
+const OVERALL_TIMEOUT_MS = msFromEnv('ABAC_SEED_TIMEOUT_MS', DEFAULT_OVERALL_MS);
 const { requireLiveOptIn } = require('./lib/live-opt-in.js');
 
 const env = (k, d) => process.env[k] || d;
@@ -176,16 +180,16 @@ async function waitReachable(url, timeoutMs = 30000) {
 
 // --- HTTP ヘルパ ------------------------------------------------------------------
 async function getJson(url, token) {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetchWithin(url, { headers: { Authorization: `Bearer ${token}` } }, REQUEST_TIMEOUT_MS);
   if (!res.ok) throw new Error(`GET ${url} が失敗しました（${res.status}）`);
   return res.json();
 }
 async function postJson(url, token, body) {
-  const res = await fetch(url, {
+  const res = await fetchWithin(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  }, REQUEST_TIMEOUT_MS);
   const text = await res.text();
   if (!res.ok) throw new Error(`POST ${url} が失敗しました（${res.status}）: ${text.slice(0, 300)}`);
   return text ? JSON.parse(text) : null;
@@ -202,11 +206,11 @@ async function fetchToken(kcUrl) {
     );
   }
   const form = buildTokenForm({ clientId: CLIENT_ID, clientSecret });
-  const res = await fetch(`${kcUrl}/realms/${REALM}/protocol/openid-connect/token`, {
+  const res = await fetchWithin(`${kcUrl}/realms/${REALM}/protocol/openid-connect/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: form,
-  });
+  }, REQUEST_TIMEOUT_MS);
   if (!res.ok) {
     const kind = confidential === null ? '（realm から種別を判定できず）' : confidential ? '（confidential）' : '（public）';
     throw new Error(
@@ -359,6 +363,8 @@ module.exports = {
 };
 
 if (require.main === module) {
+  // IADR-0524 (#1869): 全体の上限。超えたら名指しして非 0（起動器は best-effort で WARN にして先へ進む）。
+  startWatchdog('seed-abac-policies', OVERALL_TIMEOUT_MS, { onExpire: () => { cleanup(); process.exit(1); } });
   main(process.argv.slice(2))
     .then((code) => {
       cleanup();

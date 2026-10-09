@@ -601,4 +601,5 @@
 | [IADR-0521](./IADR-0521_graph-edges-from-links-and-shared-tags.md) | 知識グラフの辺は明示リンクと共有タグで結ぶ。共有タグは文書数 50 を超えるタグから作らず組あたり 1 本・出所は自動抽出のまま内訳列で分ける。Wiki の文書ページへのリンクは文書 ID で解決し、後から届いた相手へは保存済みのリンクから張り直す（#1396） | Accepted |
 | [IADR-0522](./IADR-0522_session-store-valkey-auth-required.md) | キャッシュ・セッションストアを Redis 7.4 から Valkey 9.1 へ差し替え、認証を必須（空なら起動しない）にして到達を BFF に絞る。パスワードは Secret から BFF の構成値 1 つで注入し、ヘルスチェックとセッションが同じ構成を使う（#1839） | Accepted |
 | [IADR-0523](./IADR-0523_platform-api-audience-validation.md) | 全サービスの JWT 検証は共有の audience（platform-api）を求め、受け付ける値はサービスごとの構成（Auth:Audiences）に持つ。audience は 1 つのクライアントスコープで正当な呼び出し元だけに載せ、mcp-server とは分ける（#1846） | Accepted |
+| [IADR-0524](./IADR-0524_keycloak-26-upgrade.md) | Keycloak を 24.0 から 26.7.4 へ上げる。hostname v2・管理用のポートのヘルス・realm 名どおりの取り込みのファイル名・24 の file H2 の資格・basic スコープで 24 と同じ振る舞いを保ち（転送ヘッダは読ませない）、ループバックの port 必須は判断材料だけを門で測って残す（#1859） | Accepted |
 | [IADR-0525](./IADR-0525_secret-store-openbao-raft-declarative-audit.md) | 秘匿管理の製品を OpenBao 2.7.1 とし、名前（deploy/vault・VAULT_*・Vault__*）は変えない。永続化は raft、audit device は設定で宣言し collector への socket は届いてから足す。旧 Vault のデータは operator migrate で移し、移していない永続データの上には起動しない（#1840） | Accepted |

@@ -454,12 +454,18 @@ function kcadm(args, input) {
   const ns = env('ABAC_NS', 'platform-infra');
   const pod = podName(ns, env('ABAC_KC_LABEL', 'app=keycloak'));
   // 標準入力を渡すとき（ログインのパスワード）だけ `exec -i` にする。
+  // IADR-0524 (#1859): Keycloak 26 の kcadm は端末が無いと stdin からパスワードを読まない（「Console is not active, but password is required」）。
+  // Pod 内の sh が stdin の 1 行を env `KC_CLI_PASSWORD`（kcadm が読む）へ入れてから kcadm を起こす。値はどのプロセスの引数にも載らない。
+  const target = input === undefined
+    ? ['/opt/keycloak/bin/kcadm.sh', ...args]
+    : ['sh', '-c', KCADM_STDIN_LOGIN, 'kcadm-login', ...args];
   const exec = input === undefined ? ['exec'] : ['exec', '-i'];
-  return run('kubectl', ['-n', ns, ...exec, pod, '--', '/opt/keycloak/bin/kcadm.sh', ...args], `kcadm ${args[0]}`, input);
+  return run('kubectl', ['-n', ns, ...exec, pod, '--', ...target], `kcadm ${args[0]}`, input);
 }
 
-// NFR-18 (#1793): パスワードを kubectl と Pod 内 kcadm の引数へ載せない。`--password` を省くと kcadm は stdin から読む
-// （Keycloak 24 の `config credentials` の用法「echo <pw> | kcadm.sh config credentials …」）。
+// NFR-18 (#1793): パスワードを kubectl と Pod 内 kcadm の引数へ載せない。stdin で Pod 内の sh へ渡し、env `KC_CLI_PASSWORD` で kcadm へ渡す
+// （Keycloak 24 は `--password` を省くと stdin から読んだが、26 は読まない。IADR-0524 / #1859）。
+const KCADM_STDIN_LOGIN = 'IFS= read -r KC_CLI_PASSWORD && export KC_CLI_PASSWORD && exec /opt/keycloak/bin/kcadm.sh "$@"';
 function kcadmLogin() {
   kcadm([
     'config',
