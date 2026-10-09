@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GraphService.Tests.Features.GraphDocuments.Sync;
 
-// FR-17, UC-10, ADR-0033 決定 5・6・8, [[IADR-0281]], [[IADR-0389]], [[IADR-0522]] (#1396):
+// FR-17, UC-10, ADR-0033 決定 5・6・8, [[IADR-0281]], [[IADR-0389]], [[IADR-0521]] (#1396):
 // **Wiki のリンク（`doc/<ID>`）の解決**と、**後から届いた相手へのリンク**（後着の作り直し）。
 //
 // 🔴 1 通ごとに DbContext を作り直す（`TagEdgeSyncTests` と同じ理由）。

@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GraphService.Tests.Features.GraphDocuments.Sync;
 
-// FR-17, UC-10, ADR-0033 決定 3・4・6, ADR-0035 決定 1, [[IADR-0522]] (#1396):
+// FR-17, UC-10, ADR-0033 決定 3・4・6, ADR-0035 決定 1, [[IADR-0521]] (#1396):
 // **同じタグを持つ文書の組を辺で結ぶ**（利用者裁定 2026-10-09）。購読の受け口を経由して測る。
 //
 // 🔴 **1 通ごとに DbContext を作り直す**（本番の 1 メッセージ 1 スコープと同じ）。同じ文脈を使い回すと、

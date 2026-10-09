@@ -39,7 +39,7 @@ public class DocumentDeletedConsumer(
     {
         var id = ev.DocumentId;
 
-        // ［[[IADR-0522]] / #1396］辺はタグの複製・後着のリンクの作り直しと一緒に片付ける（撤収と同じ手順）。
+        // ［[[IADR-0521]] / #1396］辺はタグの複製・後着のリンクの作り直しと一緒に片付ける（撤収と同じ手順）。
         var node = await db.Documents.FirstOrDefaultAsync(d => d.DocumentId == id, ct);
         var removal = await GraphDocumentRemoval.DetachAsync(db, links, tagEdges, id, node?.Title, ct);
 

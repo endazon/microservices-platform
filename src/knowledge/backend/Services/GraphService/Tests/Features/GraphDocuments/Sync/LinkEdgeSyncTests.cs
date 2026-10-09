@@ -83,7 +83,7 @@ public class LinkEdgeSyncTests
     }
 
     // ［#1396］`title` は受信した文書の題名。**他文書の題名を名乗らせない** —— 題名が変わると
-    // 後着のリンクの作り直し（[[IADR-0522]]）が走り、測りたいものと別の経路を通る。
+    // 後着のリンクの作り直し（[[IADR-0521]]）が走り、測りたいものと別の経路を通る。
     private static DocumentUpdated Event(
         Guid? docId = null, string? fingerprint = "fp-1", DateTimeOffset? updatedAt = null, string title = "文書A")
         => new(docId ?? DocA, title, "published", "storage://b/a.md",

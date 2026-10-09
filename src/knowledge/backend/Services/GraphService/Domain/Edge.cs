@@ -50,7 +50,7 @@ public class Edge
     // **正規化で入れ替えない**（Edge.Create 参照）—— 起点は端点の並びとは独立である。
     public Guid? ExtractedFrom { get; private set; }
 
-    // FR-17, ADR-0033 決定 4・6, [[IADR-0522]] (#1396): **自動抽出の辺が何から作られたか**（`EdgeAutoSource`）。
+    // FR-17, ADR-0033 決定 4・6, [[IADR-0521]] (#1396): **自動抽出の辺が何から作られたか**（`EdgeAutoSource`）。
     // provenance = auto の辺にだけ入る（利用者付与・AI 承認済みでは null）。
     //
     // 🔴 **出所（Provenance）の値は増やさない。** 計画の出所は 3 値で固定されており（ADR-0033 決定 4）、
@@ -103,12 +103,12 @@ public class Edge
             // 🔴 上の (source, target) の入れ替えに**追随させない**。抽出の起点は端点の並びと独立で
             // あり、入れ替えると対称型で起点が相手文書に化ける（差分の母集合が壊れる）。
             ExtractedFrom = extractedFrom,
-            // [[IADR-0522]]: 自動抽出で内訳の指定が無ければ本文のリンク（従前の唯一の自動抽出）。
+            // [[IADR-0521]]: 自動抽出で内訳の指定が無ければ本文のリンク（従前の唯一の自動抽出）。
             AutoSource = provenance == EdgeProvenance.Auto ? autoSource ?? EdgeAutoSource.Link : null,
         };
     }
 
-    // [[IADR-0522]] (#1396): 共有タグの辺を、同じ 5 つ組の**本文のリンクの辺として引き取る**。
+    // [[IADR-0521]] (#1396): 共有タグの辺を、同じ 5 つ組の**本文のリンクの辺として引き取る**。
     //
     // 🔴 **消して入れ直さない。** 同じ保存の中で同じ 5 つ組の行を削除して挿入すると、PostgreSQL の一意索引
     // `ux_edges` は文の順序次第で衝突する。行はそのまま、内訳と起点だけを書き換える。
@@ -121,7 +121,7 @@ public class Edge
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    // [[IADR-0522]] (#1396): 本文のリンクの辺（同じ保存で削除予定のもの）を**共有タグの辺として残す**。
+    // [[IADR-0521]] (#1396): 本文のリンクの辺（同じ保存で削除予定のもの）を**共有タグの辺として残す**。
     // 理由は `ClaimAsLink` と同じ（削除と挿入の組を作らない）。
     public void ConvertToTagDerived()
     {
@@ -132,7 +132,7 @@ public class Edge
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    // [[IADR-0522]] (#1396), ADR-0033 決定 6: 利用者付与・AI 承認が共有タグの辺と同じ関係を張るとき、
+    // [[IADR-0521]] (#1396), ADR-0033 決定 6: 利用者付与・AI 承認が共有タグの辺と同じ関係を張るとき、
     // その行を引き取る。**以後は再取り込み（タグの付け外し）で消えない。**
     public void AdoptAs(string provenance)
     {
@@ -166,7 +166,7 @@ public static class EdgeProvenance
         => value is Auto or User or AiApproved;
 }
 
-// FR-17, ADR-0033 決定 4, [[IADR-0522]] (#1396): 自動抽出の辺の内訳。
+// FR-17, ADR-0033 決定 4, [[IADR-0521]] (#1396): 自動抽出の辺の内訳。
 public static class EdgeAutoSource
 {
     // 本文のリンク（Obsidian・Wiki・標準 Markdown・フロントマターの明示指定）。#912。

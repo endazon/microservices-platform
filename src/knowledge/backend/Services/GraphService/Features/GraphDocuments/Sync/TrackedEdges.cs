@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace GraphService.Features.GraphDocuments.Sync;
 
-// FR-17, [[IADR-0522]] (#1396): **同じ保存の中の未保存の変更を含めて**、文書に触れる辺を見る。
+// FR-17, [[IADR-0521]] (#1396): **同じ保存の中の未保存の変更を含めて**、文書に触れる辺を見る。
 //
 // 1 通の `DocumentUpdated` の処理は、本文のリンクの差分・後着のリンクの作り直し・共有タグの差分を
 // **1 回の保存**に収める（途中で保存すると「辺は入ったがノードは入らなかった」が作れる）。

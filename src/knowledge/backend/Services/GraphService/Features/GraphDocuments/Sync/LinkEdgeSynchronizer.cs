@@ -44,7 +44,7 @@ public sealed class LinkEdgeSynchronizer(
     //   相手が後から改名・削除されても動かない。ログの手掛かりとしてだけ返す。
     public readonly record struct SyncResult(int Extracted, int Added, int Removed, int Unresolved, int Claimed = 0);
 
-    // [[IADR-0522]] (#1396): 名前の解決の候補を**未保存の値で上書きする**。
+    // [[IADR-0521]] (#1396): 名前の解決の候補を**未保存の値で上書きする**。
     // 同じ保存の中で新規・改名・撤収した文書は、DB の題名がまだ古い（または行が無い・まだ在る）。
     // `Title` が null は「候補から外す」（撤収・削除）。
     public readonly record struct CandidateOverride(Guid DocumentId, string? Title);
@@ -61,13 +61,13 @@ public sealed class LinkEdgeSynchronizer(
         // 未解決リンク数の材料である。🔴 **解決できたものも保存する** ——
         // 相手が後から改名・削除されると解決できなくなるため、
         // 「いま解決できた」を根拠に捨てると、その壊れ方を永久に取りこぼす。
-        // ［[[IADR-0522]]］構文の別・明示型・アンカーも保存する（後着の相手へ本文を読まずに辺を張るため）。
+        // ［[[IADR-0521]]］構文の別・明示型・アンカーも保存する（後着の相手へ本文を読まずに辺を張るため）。
         await ReplaceLinkTargetsAsync(documentId, links, ct);
 
         return await ApplyAsync(documentId, links, pending, ct);
     }
 
-    // [[IADR-0522]] (#1396): **保存済みのリンクから**起点の辺を作り直す（本文は読まない）。
+    // [[IADR-0521]] (#1396): **保存済みのリンクから**起点の辺を作り直す（本文は読まない）。
     //
     // 起点の本文が変わらなくても、**相手の側の事情で**解決が変わる —— 相手が後から届いた（先に届いた
     // 文書の `[[相手]]` が未解決のまま残る）・改名された・同名が増えて曖昧になった・同名が消えて曖昧が解けた。
@@ -98,7 +98,7 @@ public sealed class LinkEdgeSynchronizer(
         return await ApplyAsync(sourceDocumentId, restored.Select(l => l!).ToList(), pending, ct);
     }
 
-    // [[IADR-0522]] (#1396): 文書 D の新規・改名・撤収・削除のとき、**D を指し得るリンクを持つ起点**の辺を作り直す。
+    // [[IADR-0521]] (#1396): 文書 D の新規・改名・撤収・削除のとき、**D を指し得るリンクを持つ起点**の辺を作り直す。
     //
     // 起点の集合（両側から引く。規則 11）:
     //   - 増える側: 保存済みのリンク先の名前が D の新しい題名・古い題名（大小文字を無視）・`doc/<D>` のもの
@@ -201,7 +201,7 @@ public sealed class LinkEdgeSynchronizer(
 
         // [4] 差分。**端点に当該文書を含む辺を引く**（対称型は正規化で Source/Target の
         // どちらにも来るため、片側だけを見ると取りこぼす）。
-        // ［[[IADR-0522]]］同じ保存の中の未保存の追加・削除も見る（後着の作り直し・共有タグの差分と同居するため）。
+        // ［[[IADR-0521]]］同じ保存の中の未保存の追加・削除も見る（後着の作り直し・共有タグの差分と同居するため）。
         var live = (await TrackedEdges.TouchingAsync(db, documentId, ct))
             .Where(TrackedEdges.IsLive)
             .Select(e => e.Entity)
@@ -221,7 +221,7 @@ public sealed class LinkEdgeSynchronizer(
 
         // 追加は「**どの出所の**既存辺とも一致しないもの」に限る —— 利用者が既に張っている同じ
         // 関係へ auto の辺を重ねると ux_edges で衝突する（そして人の辺を auto で覆わない）。
-        // ［[[IADR-0522]]］**共有タグの辺は引き取る**（本文のリンクが同じ関係を表明している。行は消さずに書き換える）。
+        // ［[[IADR-0521]]］**共有タグの辺は引き取る**（本文のリンクが同じ関係を表明している。行は消さずに書き換える）。
         var staleSet = stale.ToHashSet();
         var current = live.Where(e => !staleSet.Contains(e)).ToList();
         var occupied = current.Where(e => !e.IsTagDerived).Select(EdgeKey.Of).ToHashSet();
@@ -264,7 +264,7 @@ public sealed class LinkEdgeSynchronizer(
             db.DocumentLinkTargets.RemoveRange(existing);
 
         var now = DateTimeOffset.UtcNow;
-        // ［[[IADR-0522]]］1 リンク 1 行。名前（ordinal）・構文の別・明示型・アンカーの組で重複を落とす。
+        // ［[[IADR-0521]]］1 リンク 1 行。名前（ordinal）・構文の別・明示型・アンカーの組で重複を落とす。
         foreach (var link in links
                      .Where(l => l.Target.Length > 0)
                      .DistinctBy(l => (l.Target, l.Kind, l.ExplicitTypeName, l.Anchor)))
@@ -299,7 +299,7 @@ public sealed class LinkEdgeSynchronizer(
         // まとめて取り、選別は `LinkTargetMatcher` に任せる
         // （PostgreSQL の既定照合順序では `=` がそのまま ordinal 比較である）。
         var lowered = targets.Select(t => t.ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToList();
-        // ［[[IADR-0522]]］Wiki のリンク（`doc/<ID>`）は ID で候補に入れる。
+        // ［[[IADR-0521]]］Wiki のリンク（`doc/<ID>`）は ID で候補に入れる。
         var wikiIds = targets
             .Select(t => WikiDocumentPath.TryParse(t, out var id) ? id : Guid.Empty)
             .Where(id => id != Guid.Empty)
@@ -311,7 +311,7 @@ public sealed class LinkEdgeSynchronizer(
             .Select(d => new { d.DocumentId, d.Title })
             .ToListAsync(ct);
         var candidates = rows
-            // ［[[IADR-0522]]］未保存の値で上書きする文書は DB の行を使わない。
+            // ［[[IADR-0521]]］未保存の値で上書きする文書は DB の行を使わない。
             .Where(r => pending is null || r.DocumentId != pending.Value.DocumentId)
             .Select(r => new LinkTargetMatcher.TitleCandidate(r.DocumentId, r.Title))
             .ToList();

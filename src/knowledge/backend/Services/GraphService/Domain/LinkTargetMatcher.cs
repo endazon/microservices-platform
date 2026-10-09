@@ -62,7 +62,7 @@ internal static class LinkTargetMatcher
 
     internal static LinkTargetMatch Match(string target, IReadOnlyList<TitleCandidate> candidates)
     {
-        // [0] [[IADR-0522]] (#1396): **Wiki のリンク（`doc/<ID>`）は文書 ID で解決する。** 題名とは突き合わせない
+        // [0] [[IADR-0521]] (#1396): **Wiki のリンク（`doc/<ID>`）は文書 ID で解決する。** 題名とは突き合わせない
         //     —— 題名が偶然 `doc/<GUID>` の文書へ解決させない。ID が候補に無ければ不在。
         if (WikiDocumentPath.TryParse(target, out var documentId))
         {

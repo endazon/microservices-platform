@@ -2,7 +2,7 @@ using GraphService.Infrastructure.Persistence;
 
 namespace GraphService.Features.GraphDocuments.Sync;
 
-// FR-17, FR-19, ADR-0033 決定 6, ADR-0061 決定 4, [[IADR-0522]] (#1396): 文書をグラフから外すときの辺とタグの片付け。
+// FR-17, FR-19, ADR-0033 決定 6, ADR-0061 決定 4, [[IADR-0521]] (#1396): 文書をグラフから外すときの辺とタグの片付け。
 //
 // 使い手は 2 つ —— 露出 OFF の撤収（`GraphDocumentSyncConsumer`）と削除（`DocumentDeletedConsumer`）。
 // 手順を 1 か所に置く（片方だけ直すと、撤収した文書だけがタグの件数に残る、といった割れ方をする）。

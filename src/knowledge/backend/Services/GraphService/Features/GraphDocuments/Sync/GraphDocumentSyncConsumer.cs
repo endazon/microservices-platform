@@ -94,7 +94,7 @@ public class GraphDocumentSyncConsumer(
         var attributes = AbacAttributes(ev);
 
         string? previousHash;
-        // [[IADR-0522]] (#1396): 題名の新旧（後着のリンクの作り直しの契機）。null は新規。
+        // [[IADR-0521]] (#1396): 題名の新旧（後着のリンクの作り直しの契機）。null は新規。
         var previousTitle = node?.Title;
         if (node is null)
         {
@@ -160,7 +160,7 @@ public class GraphDocumentSyncConsumer(
             termProfile = "kept";
         }
 
-        // 🔴 [[IADR-0522]] (#1396): **後着の相手へのリンク。** 新規・改名のときだけ、この文書を指し得る
+        // 🔴 [[IADR-0521]] (#1396): **後着の相手へのリンク。** 新規・改名のときだけ、この文書を指し得る
         // リンクを持つ起点の辺を保存済みのリンクから作り直す（本文は読まない）。
         // **共有タグの差分より先に行う** —— 作り直しで消えた本文のリンクの辺を、組がタグを共有していれば
         // 共有タグの差分が同じ保存の中で共有タグの辺へ戻すため。
@@ -168,7 +168,7 @@ public class GraphDocumentSyncConsumer(
         if (previousTitle is null || !string.Equals(previousTitle, ev.Title, StringComparison.Ordinal))
             relinked = await links.RelinkReferrersAsync(ev.DocumentId, previousTitle, ev.Title, ct);
 
-        // 🔴 [[IADR-0522]] (#1396): **共有タグの辺。** タグはイベントに載っているので本文の指紋に依らず
+        // 🔴 [[IADR-0521]] (#1396): **共有タグの辺。** タグはイベントに載っているので本文の指紋に依らず
         // 受信のたびに作り直す（本文を読まないので ADR-0050 決定 3 の契機を増やさない）。
         var tagSync = await tagEdges.SyncAsync(ev.DocumentId, ev.Tags, relinked, ct);
 
@@ -219,7 +219,7 @@ public class GraphDocumentSyncConsumer(
     // 辺も併せて消すのは、指す先の無い辺を残さないためである（`Seal` は両端が見える辺だけを
     // 返すので出力には出ないが、件数の材料として残り続ける）。冪等（該当 0 件でも成功）。
     //
-    // ［[[IADR-0522]] / #1396］**タグの複製も消す**（`GraphDocumentRemoval`）。残すと撤収した文書がタグの件数に
+    // ［[[IADR-0521]] / #1396］**タグの複製も消す**（`GraphDocumentRemoval`）。残すと撤収した文書がタグの件数に
     // 数えられ続け、上限の判定（ハブ）を狂わせる。同名の文書を指していた他文書のリンクの作り直しも同じ手順で行う。
     private async Task WithdrawAsync(Guid documentId, CancellationToken ct)
     {

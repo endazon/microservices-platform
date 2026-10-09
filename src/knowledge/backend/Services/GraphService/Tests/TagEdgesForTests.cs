@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace GraphService.Tests;
 
-// FR-17, [[IADR-0522]] (#1396): 購読の受け口を手で組み立てる試験のための部品。
+// FR-17, [[IADR-0521]] (#1396): 購読の受け口を手で組み立てる試験のための部品。
 // 共有タグの辺の上限は本番の既定（50）。上限を変えて測る試験は `Synchronizer(db, max)` を使う。
 internal static class TagEdgesForTests
 {

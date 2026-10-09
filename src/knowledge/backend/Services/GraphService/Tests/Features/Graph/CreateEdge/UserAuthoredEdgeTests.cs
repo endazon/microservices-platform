@@ -160,7 +160,7 @@ public class UserAuthoredEdgeTests : IClassFixture<TestWebApplicationFactory>
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
-    // FR-17, ADR-0033 決定 6, [[IADR-0522]] (#1396): 同じ関係が**共有タグの辺**として既にあるなら、
+    // FR-17, ADR-0033 決定 6, [[IADR-0521]] (#1396): 同じ関係が**共有タグの辺**として既にあるなら、
     // 409 にせず利用者付与として引き取る。引き取らないと、タグを外した時点で利用者の関係が消える。
     // 対照は直上（利用者付与どうしの重複は 409 のまま）。
     [Fact]

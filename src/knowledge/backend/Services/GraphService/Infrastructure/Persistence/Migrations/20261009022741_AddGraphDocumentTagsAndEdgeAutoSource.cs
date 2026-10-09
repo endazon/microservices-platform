@@ -18,7 +18,7 @@ namespace GraphService.Infrastructure.Persistence.Migrations
                 maxLength: 16,
                 nullable: true);
 
-            // [[IADR-0522]] (#1396): 既存の自動抽出の辺は、すべて本文のリンク由来である（共有タグの辺は本移行より後にしか無い）。
+            // [[IADR-0521]] (#1396): 既存の自動抽出の辺は、すべて本文のリンク由来である（共有タグの辺は本移行より後にしか無い）。
             // 埋めないと、本文のリンクの差分（`AutoSource=link` を前提にする後着の作り直し）から外れる。
             migrationBuilder.Sql("UPDATE edges SET \"AutoSource\" = 'link' WHERE \"Provenance\" = 'auto';");
 

@@ -596,4 +596,4 @@
 | [IADR-0516](./IADR-0516_sc12-keycloak-service-account-provisioning.md) | SC-12 の無人の登録・差し替えは、検証の後に Keycloak へ機密クライアントとサービスアカウントの属性を書いてから登録簿へ書く（#1786） | Accepted |
 | [IADR-0517](./IADR-0517_dev-client-secret-guard-kube-context-allowlist.md) | dev 以外の kube context では、レルム管理のロールを持つ機密クライアントを公知の dev の secret で作らない。判定は context の許可集合（未知のクラスタは安全側）、稼働中の dev の値は後追いの check-dev-secrets で検知する（#1830） | Accepted |
 | [IADR-0518](./IADR-0518_realm-import-secret-with-env-client-secrets.md) | Keycloak の realm の取り込み元を Secret に分け、管理用の 3 クライアントの secret は env を与えたときその値で渡す。起動器の判定は ESO の有無によらず 3 つを見る（#1834） | Accepted |
-| [IADR-0522](./IADR-0522_graph-edges-from-links-and-shared-tags.md) | 知識グラフの辺は明示リンクと共有タグで結ぶ。共有タグは文書数 50 を超えるタグから作らず組あたり 1 本・出所は自動抽出のまま内訳列で分ける。Wiki の文書ページへのリンクは文書 ID で解決し、後から届いた相手へは保存済みのリンクから張り直す（#1396） | Accepted |
+| [IADR-0521](./IADR-0521_graph-edges-from-links-and-shared-tags.md) | 知識グラフの辺は明示リンクと共有タグで結ぶ。共有タグは文書数 50 を超えるタグから作らず組あたり 1 本・出所は自動抽出のまま内訳列で分ける。Wiki の文書ページへのリンクは文書 ID で解決し、後から届いた相手へは保存済みのリンクから張り直す（#1396） | Accepted |

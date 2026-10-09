@@ -206,7 +206,7 @@ builder.Services.AddPlatformConsumerTimeouts();
 builder.Services.AddScoped<LinkEdgeSynchronizer>();
 // IADR-0380 (#1244): 同じ本文読み取りから語の出現数（類似度候補の材料）を作る。
 builder.Services.AddScoped<TermProfileSynchronizer>();
-// FR-17, ADR-0035 決定 1, [[IADR-0522]] (#1396): 共有タグの辺。上限は `TagEdges:MaxDocumentsPerTag`
+// FR-17, ADR-0035 決定 1, [[IADR-0521]] (#1396): 共有タグの辺。上限は `TagEdges:MaxDocumentsPerTag`
 // （環境変数 `TagEdges__MaxDocumentsPerTag`。既定 50。不正値は既定へ倒し、起動は落とさない）。
 builder.Services.Configure<TagEdgeOptions>(builder.Configuration.GetSection(TagEdgeOptions.SectionName));
 builder.Services.AddScoped<TagEdgeSynchronizer>();

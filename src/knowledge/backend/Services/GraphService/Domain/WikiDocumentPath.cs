@@ -1,6 +1,6 @@
 namespace GraphService.Domain;
 
-// FR-17, FR-13, ADR-0033 決定 8, [[IADR-0522]] (#1396): **Wiki のリンク**の名前。
+// FR-17, FR-13, ADR-0033 決定 8, [[IADR-0521]] (#1396): **Wiki のリンク**の名前。
 //
 // Wiki.js 上の文書ページの正準パスは `doc/<DocumentId>` である（WikiService の `WikiPage.PathFor`。
 // 別サービスなので参照せず、形だけを揃える）。本文に書かれた `/doc/<ID>`・`/en/doc/<ID>`・

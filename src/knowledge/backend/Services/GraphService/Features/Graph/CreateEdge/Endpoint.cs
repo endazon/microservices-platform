@@ -97,7 +97,7 @@ internal static class CreateGraphEdgeEndpoint
                 && e.TargetAnchor == edge.TargetAnchor, ct);
             if (duplicate is { IsTagDerived: true })
             {
-                // [[IADR-0522]] (#1396), ADR-0033 決定 6: 同じ関係が**共有タグの辺**として既にあるなら、
+                // [[IADR-0521]] (#1396), ADR-0033 決定 6: 同じ関係が**共有タグの辺**として既にあるなら、
                 // その行を利用者付与として引き取る（409 にしない）。引き取らないと、タグを外した時点で
                 // 利用者が張ったつもりの関係が消える。
                 duplicate.AdoptAs(EdgeProvenance.User);

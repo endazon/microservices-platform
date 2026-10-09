@@ -2,7 +2,7 @@ using GraphService.Domain;
 
 namespace GraphService.Features.GraphDocuments.Sync;
 
-// FR-17, ADR-0035 決定 1, [[IADR-0522]] (#1396): 共有タグの辺の構成。
+// FR-17, ADR-0035 決定 1, [[IADR-0521]] (#1396): 共有タグの辺の構成。
 //
 // `MaxDocumentsPerTag` — 文書数がこれを**超える**タグからは辺を作らない（`TagEdgeRule.IsHub`）。
 // 既定は探索のハブ次数上限（`GraphTraversal.MaxHubDegree`）と同じ 50。

@@ -87,7 +87,7 @@ internal static class ApproveAiSuggestionEndpoint
                     && e.EdgeTypeId == edge.EdgeTypeId
                     && e.SourceAnchor == edge.SourceAnchor
                     && e.TargetAnchor == edge.TargetAnchor, ct);
-                // [[IADR-0522]] (#1396), ADR-0033 決定 6: 共有タグの辺が同じ関係を表していれば、承認済みとして引き取る
+                // [[IADR-0521]] (#1396), ADR-0033 決定 6: 共有タグの辺が同じ関係を表していれば、承認済みとして引き取る
                 // （タグを外しても承認した関係は消えない）。それ以外の既存の辺には重ねない（従前どおり）。
                 if (duplicate is { IsTagDerived: true }) duplicate.AdoptAs(EdgeProvenance.AiApproved);
                 else if (duplicate is null) db.Edges.Add(edge);

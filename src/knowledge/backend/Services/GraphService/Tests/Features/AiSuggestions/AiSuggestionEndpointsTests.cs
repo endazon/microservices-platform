@@ -79,7 +79,7 @@ public class AiSuggestionEndpointsTests : IClassFixture<TestWebApplicationFactor
         });
     }
 
-    // FR-17, ADR-0033 決定 6, [[IADR-0522]] (#1396): 同じ関係が**共有タグの辺**として既にあるとき、
+    // FR-17, ADR-0033 決定 6, [[IADR-0521]] (#1396): 同じ関係が**共有タグの辺**として既にあるとき、
     // 承認はその行を承認済みとして引き取る（重ねない・タグを外しても消えない側へ移す）。
     [Fact]
     public async Task Approving_a_link_already_present_as_a_tag_edge_adopts_that_row()

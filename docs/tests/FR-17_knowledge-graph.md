@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-17, UC-10, SC-09, SC-10, FR-04, NFR-09, FR-10, FR-18]
 adrs: [ADR-0086, ADR-0002, ADR-0004, ADR-0033, ADR-0034, ADR-0036, ADR-0050, ADR-0027, ADR-0120, ADR-0035, ADR-0083, ADR-0076, ADR-0059]
-iadrs: [IADR-0410, IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281, IADR-0289, IADR-0478, IADR-0425, IADR-0430, IADR-0479, IADR-0496, IADR-0389, IADR-0503, IADR-0522]
+iadrs: [IADR-0410, IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281, IADR-0289, IADR-0478, IADR-0425, IADR-0430, IADR-0479, IADR-0496, IADR-0389, IADR-0503, IADR-0521]
 specs: [20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-908_graphservice-foundation, 20260823_issue-941_edge-type-db-guards, 20260828_issue-912_obsidian-link-extraction, 20260828_issue-941_edge-type-db-guard-verification, 20260927_issue-1640_consumer-outbound-call-timeouts, 20260927_issue-1663_singleton-cluster-summary-exclusion, 20260927_issue-1611_mcp-tool-execution-ports, 20261004_1733_cluster-detection-catch-up, 20261009_1396_graph-edges-links-tags]
 issues: [#1636, #450, #516, #908, #909, #910, #911, #912, #913, #941, #1640, #1663, #1611, #1733, #1396]
 -->

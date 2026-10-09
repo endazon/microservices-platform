@@ -30,7 +30,7 @@ public class DocumentLinkTarget
 
     public DateTimeOffset ExtractedAt { get; private set; } = DateTimeOffset.UtcNow;
 
-    // ［[[IADR-0522]] / #1396］**リンクを辺へ作り直すのに要る残りの 3 つ**（構文の別・明示型・アンカー）。
+    // ［[[IADR-0521]] / #1396］**リンクを辺へ作り直すのに要る残りの 3 つ**（構文の別・明示型・アンカー）。
     // 相手が後から届いた・改名された・曖昧が解けたとき、起点の本文を読み直さずに辺を作り直すために持つ
     // （本文の再読込は ADR-0050 決定 3 の契機を増やす）。
     //
@@ -44,7 +44,7 @@ public class DocumentLinkTarget
 
     private DocumentLinkTarget() { }
 
-    // [[IADR-0522]]: 1 リンク 1 行。名前・構文の別・明示型・アンカーの組で重複を落とすのは呼び出し側。
+    // [[IADR-0521]]: 1 リンク 1 行。名前・構文の別・明示型・アンカーの組で重複を落とすのは呼び出し側。
     public static DocumentLinkTarget Create(Guid sourceDocumentId, ObsidianLink link, DateTimeOffset extractedAt)
     {
         var row = Create(sourceDocumentId, link.Target, extractedAt);

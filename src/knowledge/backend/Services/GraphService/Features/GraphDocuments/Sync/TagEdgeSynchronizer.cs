@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace GraphService.Features.GraphDocuments.Sync;
 
-// FR-17, UC-10, ADR-0033 決定 3・4・6, ADR-0035 決定 1, [[IADR-0522]] (#1396):
+// FR-17, UC-10, ADR-0033 決定 3・4・6, ADR-0035 決定 1, [[IADR-0521]] (#1396):
 // **同じタグを持つ文書の組を辺で結ぶ**（利用者裁定 2026-10-09: 辺は「文書内の明示リンク」と
 // 「同じタグを持つ文書」で結ぶ。同じフォルダ・埋め込みの類似度では結ばない）。
 //

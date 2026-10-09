@@ -3,7 +3,7 @@ using GraphService.Domain;
 
 namespace GraphService.Tests.Domain;
 
-// FR-17, ADR-0033 決定 4・8, ADR-0035 決定 1, [[IADR-0522]] (#1396): 共有タグの辺と Wiki のリンクの**純粋な規則**。
+// FR-17, ADR-0033 決定 4・8, ADR-0035 決定 1, [[IADR-0521]] (#1396): 共有タグの辺と Wiki のリンクの**純粋な規則**。
 // DB も購読も要らない（受け口を通す測定は `TagEdgeSyncTests` / `LinkRelinkTests`）。
 public sealed class TagAndWikiLinkRuleTests
 {
