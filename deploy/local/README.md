@@ -660,6 +660,9 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
   **モードは `scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`（helm 経由）でしか書かない** ——
   `kubectl patch` で書くと以後の `helm upgrade` が恒久的に失敗する（IADR-0377。乖離は
   `node scripts/check-stack-ready.js --live` の G12 が落とす）。
+- **部門属性の同期（authorization-service の `DepartmentAttributeSync__Mode`）は values-local に置かない**（既定 `Off`。IADR-0473）。
+  稼働 PoC の値は運用者が helm で入れ（`docs/operations/operations.md` §部門属性の同期）、**起動器の再実行は現行の値を引き継ぐ**
+  （#1850。明示は `DEPT_SYNC_MODE=Off|Report|Fix`、未指定は現行 ＞ 初回は何も足さない。現行を読めなければ起動の前に止まる）。
 
 ## 手動でステップ実行する場合
 

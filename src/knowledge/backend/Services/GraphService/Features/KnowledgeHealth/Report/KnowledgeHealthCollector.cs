@@ -261,8 +261,11 @@ public sealed class KnowledgeHealthCollector(
     internal async Task<IReadOnlyList<KnowledgeHealthObservation>> CollectUnresolvedLinksAsync(
         CancellationToken ct = default)
     {
+        // ［[[IADR-0521]] / #1396］行は 1 リンク 1 行になった（同じ名前を構文の別・アンカー違いで複数持ち得る）。
+        // 数える単位は従前どおり (起点, 名前) なので、ここで重複を落とす。
         var targets = await db.DocumentLinkTargets.AsNoTracking()
             .Select(t => new { t.SourceDocumentId, t.Target })
+            .Distinct()
             .ToListAsync(ct);
         if (targets.Count == 0)
             return [];
