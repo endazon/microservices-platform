@@ -12,5 +12,6 @@ resources:
   - alertmanager.yaml
   - loki.yaml
   - tempo.yaml
+  - grafana-config.yaml
   - grafana.yaml
   - otel-collector-forward.yaml

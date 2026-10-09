@@ -1397,6 +1397,12 @@ spec:
             - name: dashboards
               mountPath: /etc/grafana/provisioning/dashboards
               readOnly: true
+            # ADR-0107 決定 4, #1841: 既定の外部通信を止める ini（grafana-config.yaml）。🔴 外さないこと
+            # （scripts/lib/product-egress-defaults.js が描画結果を検査する）。
+            - name: config
+              mountPath: /etc/grafana/grafana.ini
+              subPath: grafana.ini
+              readOnly: true
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits: { cpu: 500m, memory: 512Mi }
@@ -1410,6 +1416,9 @@ spec:
         - name: dashboards
           configMap:
             name: grafana-dashboards
+        - name: config
+          configMap:
+            name: grafana-config
 ---
 apiVersion: v1
 kind: Service
