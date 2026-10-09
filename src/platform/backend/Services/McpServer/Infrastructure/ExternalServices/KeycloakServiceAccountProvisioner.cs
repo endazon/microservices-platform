@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using McpServer.Domain;
 using McpServer.Domain.Ports;
+using McpServer.Infrastructure.Authentication;
 using Platform.Shared.Contracts.Dtos;
 
 namespace McpServer.Infrastructure.ExternalServices;
@@ -40,6 +41,10 @@ namespace McpServer.Infrastructure.ExternalServices;
 // ■ 🔴 **要求の取り消しは IdP への書き込みへ伝えない**（書きかけの孤児を作らない）。期限は HttpClient の Timeout が持ち、
 //   時間切れは `Failed`（502）へ写す。管理用トークンが 401 で拒まれたら、1 度だけ取り直して送り直す。
 //
+// ■ ［2026-10-09 / #1844］有人の登録（計画 ADR-0134 決定 1）: `POST /clients` を**公開クライアントのテンプレート**で送り、`GET /clients/{id}` で
+//   読み戻してテンプレートの要件（公開・PKCE S256・リダイレクト URI の集合・Web オリジン空・3 つの流れの閉・audience の写像・入口の印）を
+//   確かめる。外れていれば消してから `Failed`。作成の骨組み（409 → AlreadyExists・成否不明の補償・途中の失敗の補償）は無人と同じ 1 つ。
+//   両方のテンプレートに audience の写像（`mcp-server`）を付ける（`/mcp` が audience を検証する。`McpAudienceAuthentication`）。
 // ■ 🔴 **疎通は未検証である。** 単体テストはスタブした `HttpMessageHandler` に対する固定であり、
 //   「緑である」ことは「実 IdP へ反映できる」ことを意味しない（`KeycloakIdentityAdminClient` と同じ限界）。
 //   稼働クラスタでの実測は #1786 の残余（IADR-0516 §残余）。
@@ -53,6 +58,16 @@ public sealed class KeycloakServiceAccountProvisioner(
     public const string ManagedByAttribute = "msp.mcp-client.managed-by";
 
     public const string ManagedByValue = "mcp-server";
+
+    // ［#1844］計画 ADR-0134 決定 1: PKCE の方式をクライアントに固定する Keycloak のクライアント属性（`plain` を認めない）。
+    internal const string PkceMethodAttribute = "pkce.code.challenge.method";
+    internal const string PkceMethod = "S256";
+
+    // ［#1844］audience の写像（Keycloak の `oidc-audience-mapper`）。値は `/mcp` が検証する audience と同じ 1 つ。
+    internal const string AudienceMapperType = "oidc-audience-mapper";
+    internal const string AudienceMapperName = "mcp-server-audience";
+    internal const string CustomAudienceConfig = "included.custom.audience";
+    internal const string AccessTokenClaimConfig = "access.token.claim";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -80,6 +95,23 @@ public sealed class KeycloakServiceAccountProvisioner(
         ct.ThrowIfCancellationRequested();
         var client = await AuthorizedClientAsync();
         return await CreateWithAttributesAsync(client, clientId, displayName, attributes, enabled: true);
+    }
+
+    // ［2026-10-09 / #1844］計画 ADR-0134 決定 1: 有人は公開クライアント。作った表現を読み戻してテンプレートの要件を確かめる
+    // （読み戻せない・外れている＝ realm の既定の方針などで黙って変えられた形を、要件を満たしたものとして登録簿へ写さない）。
+    public async Task<IdpWrite> CreatePublicClientAsync(
+        string clientId, string displayName, IReadOnlyList<string> redirectUris, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var client = await AuthorizedClientAsync();
+        return await CreateClientAsync(client, clientId, PublicClientTemplate(clientId, displayName, redirectUris),
+            async internalId =>
+            {
+                var violations = PublicClientViolations(await ReadClientAsync(client, internalId), redirectUris);
+                if (violations.Count > 0)
+                    throw Failed("作った公開クライアントがテンプレートどおりに読み戻せない: " + string.Join(" / ", violations));
+                return new IdpWrite(IdpWriteKind.Created, clientId, internalId);
+            });
     }
 
     public async Task<IdpWrite> ReplaceAttributesAsync(
@@ -237,9 +269,22 @@ public sealed class KeycloakServiceAccountProvisioner(
         };
     }
 
-    private async Task<IdpWrite> CreateWithAttributesAsync(
+    private Task<IdpWrite> CreateWithAttributesAsync(
         HttpClient client, string clientId, string displayName,
         IReadOnlyDictionary<string, string> attributes, bool enabled)
+        => CreateClientAsync(client, clientId, ServiceAccountClientTemplate(clientId, displayName, enabled),
+            async internalId =>
+            {
+                var userId = await ResolveServiceAccountUserAsync(client, clientId, internalId);
+                await WriteAttributesAsync(client, userId, attributes);
+                return new IdpWrite(IdpWriteKind.Created, clientId, internalId, userId,
+                    WrittenAttributes: new Dictionary<string, string>(attributes));
+            });
+
+    // 作成の骨組み（無人・有人の共用。#1844 で切り出した）: `POST /clients` → 409 なら何も書かずに AlreadyExists → 作った内部 ID で
+    // `afterCreate`（無人は SA の照会と属性の書き込み、有人は読み戻しの確かめ）→ 途中の失敗は作ったクライアントを消してから投げる。
+    private async Task<IdpWrite> CreateClientAsync(
+        HttpClient client, string clientId, Dictionary<string, object?> template, Func<string, Task<IdpWrite>> afterCreate)
     {
         // 🔴 PR #1816 再監査 🟡-A: `POST /clients` そのものが時間切れ・5xx になっても、Keycloak が作り終えている場合がある
         // （印つき・属性なし・有効の孤児が残り、再登録は 409・差し替えは書けない）。**作成の成否が分からない失敗**は、
@@ -248,8 +293,7 @@ public sealed class KeycloakServiceAccountProvisioner(
         try
         {
             created = await Send(client, () => client.PostAsJsonAsync(
-                $"admin/realms/{Realm}/clients", ServiceAccountClientTemplate(clientId, displayName, enabled), Json,
-                CancellationToken.None));
+                $"admin/realms/{Realm}/clients", template, Json, CancellationToken.None));
         }
         catch (IdpProvisioningException)
         {
@@ -265,10 +309,7 @@ public sealed class KeycloakServiceAccountProvisioner(
         {
             internalId ??= await FindClientInternalIdAsync(client, clientId)
                 ?? throw Failed("作成したクライアントを引き直せない。");
-            var userId = await ResolveServiceAccountUserAsync(client, clientId, internalId);
-            await WriteAttributesAsync(client, userId, attributes);
-            return new IdpWrite(IdpWriteKind.Created, clientId, internalId, userId,
-                WrittenAttributes: new Dictionary<string, string>(attributes));
+            return await afterCreate(internalId);
         }
         catch (IdpProvisioningException)
         {
@@ -305,7 +346,91 @@ public sealed class KeycloakServiceAccountProvisioner(
             ["redirectUris"] = Array.Empty<string>(),
             ["webOrigins"] = Array.Empty<string>(),
             ["attributes"] = new Dictionary<string, string> { [ManagedByAttribute] = ManagedByValue },
+            // ［#1844］`/mcp` は audience（mcp-server）を検証する。無人のトークンにも載せないと MCP サーバーへ届かない。
+            ["protocolMappers"] = new[] { AudienceMapper() },
         };
+
+    // ［2026-10-09 / #1844］計画 ADR-0134 決定 1・IADR-0516 の #1844 追記: 有人の MCP クライアントのテンプレート。
+    // 🔴 **公開クライアント**（端末で動くネイティブアプリ・CLI は secret を保てない）。人の流れは**認可コードだけ**を開け、
+    //    PKCE S256 を必須にする（`plain` を認めない）。暗黙・パスワードの直接付与・サービスアカウント・デバイス・CIBA は閉じる。
+    // 🔴 リダイレクト URI は入力そのもの（完全一致。規則は検証器が掛け終えている）。**Web オリジンは空**（CORS を開かない）。
+    // `fullScopeAllowed=false`: realm の全ロールをトークンへ載せない（MCP サーバーはロールを読まない）。
+    // `defaultClientScopes=["profile"]`: 利用者名（`preferred_username`）が要る（`McpSubjectResolver`。realm は既定のスコープを宣言しない）。
+    // audience の写像で `aud` を MCP サーバーに限る（他のサービスへ持ち込ませない。#1846 が全サービスの検証を入れる）。
+    internal static Dictionary<string, object?> PublicClientTemplate(
+        string clientId, string displayName, IReadOnlyList<string> redirectUris) => new()
+        {
+            ["clientId"] = clientId,
+            ["name"] = displayName,
+            ["description"] = "SC-12 で登録した MCP の有人クライアント（公開クライアント・PKCE S256）。この入口だけが作る（Keycloak で直接変えない）。",
+            ["enabled"] = true,
+            ["protocol"] = "openid-connect",
+            ["publicClient"] = true,
+            ["standardFlowEnabled"] = true,
+            ["implicitFlowEnabled"] = false,
+            ["directAccessGrantsEnabled"] = false,
+            ["serviceAccountsEnabled"] = false,
+            ["consentRequired"] = false,
+            ["fullScopeAllowed"] = false,
+            ["redirectUris"] = redirectUris.ToArray(),
+            ["webOrigins"] = Array.Empty<string>(),
+            ["defaultClientScopes"] = new[] { "profile" },
+            ["optionalClientScopes"] = Array.Empty<string>(),
+            ["attributes"] = new Dictionary<string, string>
+            {
+                [ManagedByAttribute] = ManagedByValue,
+                [PkceMethodAttribute] = PkceMethod,
+                ["oauth2.device.authorization.grant.enabled"] = "false",
+                ["oidc.ciba.grant.enabled"] = "false",
+            },
+            ["protocolMappers"] = new[] { AudienceMapper() },
+        };
+
+    internal static Dictionary<string, object?> AudienceMapper() => new()
+    {
+        ["name"] = AudienceMapperName,
+        ["protocol"] = "openid-connect",
+        ["protocolMapper"] = AudienceMapperType,
+        ["consentRequired"] = false,
+        ["config"] = new Dictionary<string, string>
+        {
+            [CustomAudienceConfig] = McpAudienceAuthentication.Audience,
+            [AccessTokenClaimConfig] = "true",
+            ["id.token.claim"] = "false",
+            ["introspection.token.claim"] = "true",
+        },
+    };
+
+    // ［#1844］作った公開クライアントの表現がテンプレートの要件を満たすか（違反の一覧。空なら満たす）。
+    // 🔴 未指定（null）を「閉」と読まない —— 読み戻しの意味が消える。
+    private static List<string> PublicClientViolations(KeycloakClient? rep, IReadOnlyList<string> redirectUris)
+    {
+        var violations = new List<string>();
+        if (rep is null) return ["表現が空"];
+        if (!IsManaged(rep)) violations.Add("入口の印が無い");
+        if (rep.PublicClient != true) violations.Add("publicClient が true でない");
+        if (rep.StandardFlowEnabled != true) violations.Add("standardFlowEnabled が true でない");
+        if (rep.ImplicitFlowEnabled != false) violations.Add("implicitFlowEnabled が false でない");
+        if (rep.DirectAccessGrantsEnabled != false) violations.Add("directAccessGrantsEnabled が false でない");
+        if (rep.ServiceAccountsEnabled != false) violations.Add("serviceAccountsEnabled が false でない");
+        if (rep.Attributes is null || !rep.Attributes.TryGetValue(PkceMethodAttribute, out var pkce)
+            || !string.Equals(pkce, PkceMethod, StringComparison.Ordinal))
+            violations.Add($"{PkceMethodAttribute} が {PkceMethod} でない");
+        if (rep.RedirectUris is not { } uris || !uris.ToHashSet(StringComparer.Ordinal).SetEquals(redirectUris))
+            violations.Add("redirectUris が入力と違う");
+        if (rep.WebOrigins is not { Count: 0 }) violations.Add("webOrigins が空でない");
+        if (!HasAudienceMapper(rep)) violations.Add("audience の写像（mcp-server）が無い");
+        return violations;
+    }
+
+    private static bool HasAudienceMapper(KeycloakClient rep)
+        => (rep.ProtocolMappers ?? []).Any(m =>
+            string.Equals(m.ProtocolMapper, AudienceMapperType, StringComparison.Ordinal)
+            && m.Config is { } config
+            && config.TryGetValue(CustomAudienceConfig, out var audience)
+            && string.Equals(audience, McpAudienceAuthentication.Audience, StringComparison.Ordinal)
+            && config.TryGetValue(AccessTokenClaimConfig, out var inAccess)
+            && string.Equals(inAccess, "true", StringComparison.Ordinal));
 
     private async Task<string?> FindClientInternalIdAsync(HttpClient client, string clientId)
     {
@@ -690,7 +815,12 @@ public sealed class KeycloakServiceAccountProvisioner(
 
     private sealed record KeycloakClient(
         string? Id, string? ClientId, Dictionary<string, string>? Attributes = null, bool? Enabled = null,
-        bool? ServiceAccountsEnabled = null, bool? AuthorizationServicesEnabled = null);
+        bool? ServiceAccountsEnabled = null, bool? AuthorizationServicesEnabled = null,
+        bool? PublicClient = null, bool? StandardFlowEnabled = null, bool? ImplicitFlowEnabled = null,
+        bool? DirectAccessGrantsEnabled = null, List<string>? RedirectUris = null, List<string>? WebOrigins = null,
+        List<KeycloakProtocolMapper>? ProtocolMappers = null);
+
+    private sealed record KeycloakProtocolMapper(string? ProtocolMapper, Dictionary<string, string>? Config);
 
     private sealed record KeycloakUser(
         string? Id,

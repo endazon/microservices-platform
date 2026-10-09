@@ -181,6 +181,10 @@ describe('McpClientManagementPage (SC-12)', () => {
     expect(screen.queryByTestId('attribute-assignment')).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('クライアント ID'), 'new-agent');
     await user.type(screen.getByLabelText('表示名'), '新エージェント');
+    await user.type(
+      screen.getByLabelText('リダイレクト URI（1 行に 1 件）'),
+      'http://127.0.0.1/callback',
+    );
     await user.click(screen.getByRole('button', { name: '登録' }));
     await waitFor(() =>
       expect(
@@ -203,6 +207,54 @@ describe('McpClientManagementPage (SC-12)', () => {
       '無人（サービスアカウント）には ABAC 属性の割当が必須です。',
     );
     expect(mocks.apiRequest.mock.calls.length).toBe(before);
+  });
+
+  // 05_screens §SC-12 の入力表（2026-10-09 追加）・ADR-0134 決定 1: 有人はリダイレクト URI が必須で、規則に外れた URI
+  // （ワイルドカード・localhost）は送る前に止める。送る本文には有人のときだけ redirectUris を載せる（1 行 1 件）。
+  it('requires redirect URIs only for the attended kind and sends them line by line', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+    const posts = () =>
+      mocks.apiRequest.mock.calls.filter(
+        ([path, init]) =>
+          String(path).endsWith('/mcp-clients') && (init as RequestInit)?.method === 'POST',
+      );
+
+    await user.type(screen.getByLabelText('クライアント ID'), 'cli-agent');
+    await user.type(screen.getByLabelText('表示名'), 'CLI');
+    // 否定形: 未入力・ワイルドカード・localhost は送らない。
+    await user.click(screen.getByRole('button', { name: '登録' }));
+    expect(await screen.findByTestId('registration-issues')).toHaveTextContent(
+      '有人にはリダイレクト URI が 1 件以上必要です。',
+    );
+    await user.type(
+      screen.getByLabelText('リダイレクト URI（1 行に 1 件）'),
+      'https://agent.example.test/*{enter}http://localhost:8080/cb',
+    );
+    await user.click(screen.getByRole('button', { name: '登録' }));
+    expect(await screen.findByTestId('registration-issues')).toHaveTextContent(
+      'リダイレクト URI は https か',
+    );
+    expect(posts()).toHaveLength(0);
+
+    // 陽性対照: 正しい 2 件（https・ループバック）は 1 行 1 件のまま送る。
+    await user.clear(screen.getByLabelText('リダイレクト URI（1 行に 1 件）'));
+    await user.type(
+      screen.getByLabelText('リダイレクト URI（1 行に 1 件）'),
+      'https://agent.example.test/cb{enter} http://127.0.0.1/callback ',
+    );
+    await user.click(screen.getByRole('button', { name: '登録' }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(JSON.parse(String((posts()[0][1] as RequestInit).body))).toMatchObject({
+      kind: 'interactive',
+      redirectUris: ['https://agent.example.test/cb', 'http://127.0.0.1/callback'],
+    });
+
+    // 無人では入力欄が消え、本文にも載せない。
+    await user.selectOptions(screen.getByLabelText('クライアント種別'), 'service-account');
+    expect(screen.queryByTestId('redirect-uris')).not.toBeInTheDocument();
   });
 
   // 05_screens §SC-12: 定義済みの属性・許可値のみ。**文書スコープの属性は主体へ割り当てない。**
@@ -317,6 +369,10 @@ describe('McpClientManagementPage (SC-12)', () => {
 
     await user.type(screen.getByLabelText('クライアント ID'), 'bot');
     await user.type(screen.getByLabelText('表示名'), 'ボット');
+    await user.type(
+      screen.getByLabelText('リダイレクト URI（1 行に 1 件）'),
+      'https://bot.example.test/cb',
+    );
     await user.click(screen.getByRole('button', { name: '登録' }));
 
     expect(await screen.findByTestId('registration-error')).toHaveTextContent(
@@ -350,6 +406,10 @@ describe('McpClientManagementPage (SC-12)', () => {
 
     await user.type(screen.getByLabelText('クライアント ID'), 'bot');
     await user.type(screen.getByLabelText('表示名'), 'ボット');
+    await user.type(
+      screen.getByLabelText('リダイレクト URI（1 行に 1 件）'),
+      'https://bot.example.test/cb',
+    );
     await user.click(screen.getByRole('button', { name: '登録' }));
 
     const alert = await screen.findByTestId('registration-error');

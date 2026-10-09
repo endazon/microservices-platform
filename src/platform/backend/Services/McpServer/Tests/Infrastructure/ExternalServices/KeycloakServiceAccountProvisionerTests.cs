@@ -520,6 +520,123 @@ public class KeycloakServiceAccountProvisionerTests
         EnabledOf(keycloak, "agent-u").Should().BeFalse();
     }
 
+    // ── ［#1844］有人の公開クライアント（計画 ADR-0134 決定 1）──────────────────────────────────
+
+    private static readonly string[] HumanRedirects = ["https://agent.example.test/cb", "http://127.0.0.1/cb"];
+
+    // C-64: 公開クライアントのテンプレートで作り、読み戻して確かめる。サービスアカウントの利用者は作らず、属性も書かない。
+    [Fact]
+    public async Task 有人は公開クライアントでPKCE_S256とaudienceの写像つきで作り読み戻す()
+    {
+        var keycloak = new FakeKeycloak();
+
+        var written = await Provisioner(keycloak).CreatePublicClientAsync("Human-X", "有人 X", HumanRedirects, Ct);
+
+        written.Kind.Should().Be(IdpWriteKind.Created);
+        written.ServiceAccountUserId.Should().BeNull("公開クライアントはサービスアカウントを持たない");
+        var rep = keycloak.Clients.Should().ContainSingle().Subject.Representation;
+        rep["publicClient"]!.GetValue<bool>().Should().BeTrue("ネイティブアプリ・CLI は secret を保てない");
+        rep["standardFlowEnabled"]!.GetValue<bool>().Should().BeTrue("認可コードだけを開く");
+        rep["implicitFlowEnabled"]!.GetValue<bool>().Should().BeFalse();
+        rep["directAccessGrantsEnabled"]!.GetValue<bool>().Should().BeFalse();
+        rep["serviceAccountsEnabled"]!.GetValue<bool>().Should().BeFalse();
+        rep["fullScopeAllowed"]!.GetValue<bool>().Should().BeFalse();
+        rep["redirectUris"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal(HumanRedirects);
+        rep["webOrigins"]!.AsArray().Should().BeEmpty("CORS を開かない");
+        rep["defaultClientScopes"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal("profile");
+        rep["attributes"]!["pkce.code.challenge.method"]!.GetValue<string>().Should().Be("S256");
+        rep["attributes"]![KeycloakServiceAccountProvisioner.ManagedByAttribute]!.GetValue<string>()
+            .Should().Be(KeycloakServiceAccountProvisioner.ManagedByValue);
+        var mapper = rep["protocolMappers"]!.AsArray().Should().ContainSingle().Subject!;
+        mapper["protocolMapper"]!.GetValue<string>().Should().Be("oidc-audience-mapper");
+        mapper["config"]!["included.custom.audience"]!.GetValue<string>().Should().Be("mcp-server");
+        mapper["config"]!["access.token.claim"]!.GetValue<string>().Should().Be("true");
+
+        keycloak.Users.Should().BeEmpty("サービスアカウントの利用者は作らない");
+        keycloak.Requests.Should().NotContain(r => r.Method == "PUT", "属性は書かない");
+        keycloak.Requests.Should().Contain(r => r.Method == "GET" && r.Path.EndsWith("clients/" + written.ClientInternalId),
+            "作った表現を読み戻して確かめる");
+    }
+
+    // C-65（否定形）: 読み戻した表現がテンプレートの要件に外れていれば（例: PKCE の属性が落ちた）、消してから Failed。
+    [Theory]
+    [InlineData("pkce")]
+    [InlineData("public")]
+    [InlineData("audience")]
+    [InlineData("redirect")]
+    [InlineData("webOrigins")]
+    [InlineData("implicit")]
+    public async Task 読み戻しがテンプレートに外れていれば公開クライアントを消してFailedにする(string broken)
+    {
+        var keycloak = new FakeKeycloak
+        {
+            MutateOnCreate = rep =>
+            {
+                switch (broken)
+                {
+                    case "pkce": rep["attributes"]!.AsObject().Remove("pkce.code.challenge.method"); break;
+                    case "public": rep["publicClient"] = false; break;
+                    case "audience": rep.Remove("protocolMappers"); break;
+                    case "redirect": rep["redirectUris"] = new JsonArray("https://agent.example.test/*"); break;
+                    case "webOrigins": rep["webOrigins"] = new JsonArray("+"); break;
+                    case "implicit": rep.Remove("implicitFlowEnabled"); break;
+                }
+            },
+        };
+
+        var act = () => Provisioner(keycloak).CreatePublicClientAsync("human-broken", "壊れた", HumanRedirects, Ct);
+
+        (await act.Should().ThrowAsync<IdpProvisioningException>())
+            .Which.Failure.Should().Be(IdpProvisioningFailure.Failed);
+        keycloak.Clients.Should().BeEmpty("要件を満たさない公開クライアントを残さない");
+    }
+
+    // C-66（否定形）: IdP に同じ clientId があれば（入口を通らないクライアント）何も書かない。取り消しは作ったものを消す。
+    [Fact]
+    public async Task 有人も既にあるクライアントへは何も書かず取り消しは作ったものを消す()
+    {
+        var keycloak = new FakeKeycloak();
+        keycloak.SeedClient("platform-spa", []);
+        var provisioner = Provisioner(keycloak);
+
+        (await provisioner.CreatePublicClientAsync("platform-spa", "x", HumanRedirects, Ct)).Kind
+            .Should().Be(IdpWriteKind.AlreadyExists);
+        keycloak.Clients.Single().Representation.ContainsKey("publicClient").Should().BeFalse("既存のクライアントを書き換えない");
+
+        var created = await provisioner.CreatePublicClientAsync("human-undo", "x", HumanRedirects, Ct);
+        await provisioner.UndoAsync(created, Ct);
+        keycloak.Clients.Should().ContainSingle().Which.ClientId.Should().Be("platform-spa");
+    }
+
+    // C-67: 有人のクライアントの無効化・再有効化も enabled を書く（serviceAccountsEnabled は現在値 false のまま送る）。
+    [Fact]
+    public async Task 有人の公開クライアントのenabledも書ける()
+    {
+        var keycloak = new FakeKeycloak();
+        var provisioner = Provisioner(keycloak);
+        await provisioner.CreatePublicClientAsync("human-toggle", "x", HumanRedirects, Ct);
+
+        (await provisioner.SetEnabledAsync("human-toggle", false, Ct)).Kind.Should().Be(IdpWriteKind.EnabledChanged);
+        EnabledOf(keycloak, "human-toggle").Should().BeFalse();
+        var put = JsonNode.Parse(keycloak.Requests.Last(r => r.Method == "PUT").Body!)!;
+        put["serviceAccountsEnabled"]!.GetValue<bool>().Should().BeFalse();
+        (await provisioner.SetEnabledAsync("human-toggle", true, Ct)).Kind.Should().Be(IdpWriteKind.EnabledChanged);
+        EnabledOf(keycloak, "human-toggle").Should().BeTrue();
+        keycloak.Clients.Single().Representation["publicClient"]!.GetValue<bool>().Should().BeTrue("テンプレートの項目は変えない");
+    }
+
+    // C-68: 無人のテンプレートにも audience の写像を付ける（`/mcp` が audience を検証するので、無人のトークンにも要る）。
+    [Fact]
+    public void 無人のテンプレートにもaudienceの写像がある()
+    {
+        var template = JsonSerializer.SerializeToNode(
+            KeycloakServiceAccountProvisioner.ServiceAccountClientTemplate("agent-x", "x"))!;
+        var mapper = template["protocolMappers"]!.AsArray().Should().ContainSingle().Subject!;
+        mapper["protocolMapper"]!.GetValue<string>().Should().Be("oidc-audience-mapper");
+        mapper["config"]!["included.custom.audience"]!.GetValue<string>().Should().Be("mcp-server");
+        mapper["config"]!["access.token.claim"]!.GetValue<string>().Should().Be("true");
+    }
+
     // ── 状態を持つ偽の Keycloak ──────────────────────────────────────────────
 
     internal sealed record Recorded(string Method, string Path, string? Body, string? Authorization);
@@ -556,6 +673,8 @@ public class KeycloakServiceAccountProvisionerTests
         public bool TimeoutOnCreateAfterCommit { get; init; }
         /// <summary>`POST /clients` でクライアントを作った直後に呼ぶ（要求の取り消しを差し込む）。</summary>
         public Action? OnCreate { get; init; }
+        /// <summary>［#1844］`POST /clients` で保存する表現を書き換える（Keycloak が黙って落とした・変えた形の再現）。</summary>
+        public Action<JsonObject>? MutateOnCreate { get; init; }
         /// <summary>`POST /clients` の応答に Location を付けない。</summary>
         public bool OmitLocation { get; init; }
         /// <summary>`clients?clientId=` の照会を、この回数だけ 500 にする。</summary>
@@ -591,13 +710,14 @@ public class KeycloakServiceAccountProvisionerTests
         public FakeUser ServiceAccountOf(string clientId)
             => Users[Clients.Single(c => c.ClientId == clientId).ServiceAccountUserId];
 
-        private FakeClient NewClient(string clientId, JsonObject representation)
+        private FakeClient NewClient(string clientId, JsonObject representation, bool withServiceAccount = true)
         {
             var n = ++_sequence;
             var client = new FakeClient($"c{n}", clientId, $"u{n}", representation);
             Clients.Add(client);
-            Users[client.ServiceAccountUserId] = new FakeUser(client.ServiceAccountUserId,
-                "service-account-" + clientId.ToLowerInvariant());
+            if (withServiceAccount)
+                Users[client.ServiceAccountUserId] = new FakeUser(client.ServiceAccountUserId,
+                    "service-account-" + clientId.ToLowerInvariant());
             return client;
         }
 
@@ -632,7 +752,9 @@ public class KeycloakServiceAccountProvisionerTests
                 var rep = JsonNode.Parse(body!)!.AsObject();
                 var clientId = rep["clientId"]!.GetValue<string>();
                 if (Clients.Any(c => c.ClientId == clientId)) return Status(HttpStatusCode.Conflict);
-                var created = NewClient(clientId, rep);
+                MutateOnCreate?.Invoke(rep);
+                // ［#1844］公開クライアント（serviceAccountsEnabled=false）にはサービスアカウントの利用者を作らない（Keycloak と同じ）。
+                var created = NewClient(clientId, rep, withServiceAccount: rep["serviceAccountsEnabled"]?.GetValue<bool>() == true);
                 OnCreate?.Invoke();
                 if (TimeoutOnCreateAfterCommit)
                     throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout");

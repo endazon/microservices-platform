@@ -231,15 +231,63 @@ public class IdpProvisioningEndpointTests(TestWebApplicationFactory factory)
         Idp.Snapshot().Should().NotContainKey("legacy-absent", "IdP に無いクライアントを無効化の経路で作らない");
     }
 
-    // T-1786-37: 有人は IdP へ書かない（テンプレートが計画に無い。IADR-0516 決定 3・§残余）。登録簿へは従来どおり書く。
+    private static RegisterMcpClientRequest Interactive(string clientId, params string[] redirectUris)
+        => new(clientId, clientId, "interactive", RedirectUris: [.. redirectUris]);
+
+    // C-60（#1844 AC1・計画 ADR-0134 決定 1）: 有人の登録は IdP に公開クライアントを作り（入力のリダイレクト URI のまま）、それから登録簿へ書く。
+    // 旧 T-1786-37「有人は IdP へ書かない」（IADR-0516 決定 3 の既知の逸脱）を置き換えた。
     [Fact]
-    public async Task 有人の登録はIdPへ書かない()
+    public async Task 有人の登録はIdPに公開クライアントを作ってから登録簿へ書く()
     {
         var response = await factory.CreateClient().PostAsJsonAsync("/mcp-clients",
-            new RegisterMcpClientRequest("idp-human", "有人", "interactive"), Ct);
+            Interactive("idp-human", "https://agent.example.test/cb", "http://127.0.0.1/cb"), Ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
-        Idp.Snapshot().Should().NotContainKey("idp-human");
+        Idp.RedirectUrisOf("idp-human").Should().Equal("https://agent.example.test/cb", "http://127.0.0.1/cb");
+        Idp.IsEnabled("idp-human").Should().BeTrue();
+        (await response.Content.ReadFromJsonAsync<McpClientView>(Ct))!.Kind.Should().Be("interactive");
+    }
+
+    // C-61（#1844 AC1b・否定形）: 規則に外れたリダイレクト URI（ワイルドカード）は 400 で、**IdP にも登録簿にも何も作らない**。
+    [Fact]
+    public async Task 有人の不正なリダイレクトURIはIdPへ何も書かずに拒否する()
+    {
+        var client = factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/mcp-clients", Interactive("idp-human-wild", "https://agent.example.test/*"), Ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync(Ct)).Should().Contain("ワイルドカード");
+        Idp.Snapshot().Should().NotContainKey("idp-human-wild");
+        (await client.GetFromJsonAsync<List<McpClientView>>("/mcp-clients", Ct))!
+            .Should().NotContain(c => c.ClientId == "idp-human-wild");
+    }
+
+    // C-62（#1844 AC1・否定形）: IdP に同じ clientId の（入口を通らない）クライアントが在れば、有人も 400 で登録簿へ書かない。
+    [Fact]
+    public async Task 有人もIdPに在る同名のクライアントは登録しない()
+    {
+        Idp.Seed("platform-like-human");
+
+        var response = await factory.CreateClient().PostAsJsonAsync("/mcp-clients",
+            Interactive("platform-like-human", "https://agent.example.test/cb"), Ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync(Ct)).Should().Contain("有人の MCP クライアントとして登録しません");
+        Idp.RedirectUrisOf("platform-like-human").Should().BeNull("入口を通らないクライアントを書き換えない");
+    }
+
+    // C-63（#1844・IADR-0516 決定 4a の有人への拡張）: 有人の行の無効化・再有効化も、IdP の公開クライアントの enabled へ写す。
+    [Fact]
+    public async Task 有人の無効化と再有効化もIdPのenabledへ写す()
+    {
+        var admin = factory.CreateClient();
+        (await admin.PostAsJsonAsync("/mcp-clients", Interactive("idp-human-toggle", "https://agent.example.test/cb"), Ct))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+
+        (await admin.PostAsync("/mcp-clients/idp-human-toggle/disable", null, Ct)).StatusCode.Should().Be(HttpStatusCode.OK);
+        Idp.IsEnabled("idp-human-toggle").Should().BeFalse();
+        (await admin.PostAsync("/mcp-clients/idp-human-toggle/enable", null, Ct)).StatusCode.Should().Be(HttpStatusCode.OK);
+        Idp.IsEnabled("idp-human-toggle").Should().BeTrue();
     }
 }
 
@@ -300,14 +348,20 @@ public class UnconfiguredIdpProvisioningEndpointTests : IClassFixture<Unconfigur
         list!.Single(c => c.ClientId == "no-idp-toggle").Enabled.Should().BeFalse();
     }
 
-    // 陽性対照: 有人の登録は書き込み口が無くても通る（MCP サーバーの他の機能を止めない）。
+    // ［#1844］有人も書き込み口が無ければ 503 で、登録簿へ書かない（従前の陽性対照「有人は通る」は、IADR-0516 決定 3 の逸脱そのものだった。
+    // 有人だけを登録簿へ書く経路へは倒さない —— 計画 ADR-0134 決定 3 の暫定手段は「IdP に作らない」であり、登録簿にだけ在る有人の行は
+    // 計画とのずれを増やすだけである）。
     [Fact]
-    public async Task 書き込み口が無くても有人の登録は通る()
+    public async Task 書き込み口が無ければ有人の登録も503で登録簿へ書かない()
     {
-        var response = await _factory.CreateClient().PostAsJsonAsync("/mcp-clients",
-            new RegisterMcpClientRequest("no-idp-human", "有人", "interactive"), TestContext.Current.CancellationToken);
+        var client = _factory.CreateClient();
+        var response = await client.PostAsJsonAsync("/mcp-clients",
+            new RegisterMcpClientRequest("no-idp-human", "有人", "interactive", RedirectUris: ["https://agent.example.test/callback"]),
+            TestContext.Current.CancellationToken);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        (await client.GetFromJsonAsync<List<McpClientView>>("/mcp-clients", TestContext.Current.CancellationToken))!
+            .Should().NotContain(c => c.ClientId == "no-idp-human");
     }
 }
 
@@ -325,6 +379,10 @@ public class IdpEnabledMirrorFailureEndpointTests : IClassFixture<IdpEnabledMirr
 
         public Task<IdpWrite> CreateAsync(string clientId, string displayName,
             IReadOnlyDictionary<string, string> attributes, CancellationToken ct) => Inner.CreateAsync(clientId, displayName, attributes, ct);
+
+        public Task<IdpWrite> CreatePublicClientAsync(string clientId, string displayName,
+            IReadOnlyList<string> redirectUris, CancellationToken ct)
+            => Inner.CreatePublicClientAsync(clientId, displayName, redirectUris, ct);
 
         public Task<IdpWrite> ReplaceAttributesAsync(string clientId, string displayName,
             IReadOnlyDictionary<string, string> attributes, bool enabled, CancellationToken ct)

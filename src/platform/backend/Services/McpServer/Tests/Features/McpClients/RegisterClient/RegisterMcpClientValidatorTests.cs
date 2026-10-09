@@ -14,9 +14,15 @@ public class RegisterMcpClientValidatorTests
 {
     private static readonly RegisterMcpClientValidator Validator = new();
 
+    // ［#1844］有人の既定の要求は正しいリダイレクト URI を 1 件持つ（有人は必須になった。計画 ADR-0134 決定 1）。
+    private static readonly List<string> ValidRedirect = ["https://agent.example.test/callback"];
+
     private static RegisterMcpClientRequest Request(
-        string clientId = "agent-ok", string kind = "interactive", string? egressTier = null)
-        => new(clientId, "表示名", kind, null, egressTier);
+        string clientId = "agent-ok", string kind = "interactive", string? egressTier = null,
+        List<string>? redirectUris = null, bool omitRedirectUris = false)
+        => new(clientId, "表示名", kind, null, egressTier,
+            omitRedirectUris ? null
+            : redirectUris ?? (kind.Trim().Equals("interactive", StringComparison.OrdinalIgnoreCase) ? ValidRedirect : null));
 
     // 陽性対照: 全規則を満たす要求は通る。これが無いと「常に落ちる検証器」と区別できない。
     [Fact]
@@ -109,4 +115,82 @@ public class RegisterMcpClientValidatorTests
     [InlineData(" Self-Hosted ")]
     public void MissingOrLooselyWrittenEgressTier_Passes(string? egressTier)
         => Validator.Validate(Request(egressTier: egressTier)).IsValid.Should().BeTrue();
+
+    // ── ［#1844］リダイレクト URI（計画 ADR-0134 決定 1・SC-12 の入力表）────────────────────────
+
+    // 陽性対照: https・port なし／ありのループバック（v4・v6）・クエリつきは通る。
+    [Theory]
+    [InlineData("https://agent.example.test/callback")]
+    [InlineData("https://agent.example.test:8443/cb?x=1")]
+    [InlineData("http://127.0.0.1/callback")]
+    [InlineData("http://127.0.0.1:53123/callback")]
+    [InlineData("http://[::1]/callback")]
+    [InlineData("http://[::1]:53123/callback")]
+    public void InteractiveWithAllowedRedirectUri_Passes(string uri)
+        => Validator.Validate(Request(redirectUris: [uri])).IsValid.Should().BeTrue();
+
+    // 🔴 否定形: ワイルドカード・非ループバックの http・localhost・ループバックに見える別ホスト・フラグメント・利用者情報・相対・
+    // 他のスキーム・前後の空白は、いずれも 1 件の 400。
+    [Theory]
+    [InlineData("https://agent.example.test/*", "ワイルドカード")]
+    [InlineData("https://*.example.test/cb", "ワイルドカード")]
+    [InlineData("*", "ワイルドカード")]
+    [InlineData("http://agent.example.test/callback", "https か")]
+    [InlineData("http://localhost:8080/callback", "https か")]
+    [InlineData("http://127.0.0.2/callback", "https か")]
+    [InlineData("http://127.0.0.1.evil.example/callback", "https か")]
+    [InlineData("http://127.1/callback", "https か")]
+    [InlineData("https://agent.example.test/cb#frag", "フラグメント")]
+    [InlineData("https://user@agent.example.test/cb", "利用者情報")]
+    [InlineData("/callback", "絶対 URI")]
+    [InlineData("myapp://callback", "https か")]
+    [InlineData(" https://agent.example.test/cb", "空白")]
+    [InlineData("", "空の値")]
+    public void InteractiveWithForbiddenRedirectUri_FailsWithReason(string uri, string reason)
+    {
+        var result = Validator.Validate(Request(redirectUris: [uri]));
+
+        result.Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain(reason);
+    }
+
+    [Fact]
+    public void InteractiveWithoutRedirectUris_Fails()
+    {
+        Validator.Validate(Request(omitRedirectUris: true)).Errors.Should().ContainSingle()
+            .Which.ErrorMessage.Should().Be("有人（interactive）にはリダイレクト URI が 1 件以上必要です。");
+        Validator.Validate(Request(redirectUris: [])).Errors.Should().ContainSingle()
+            .Which.ErrorMessage.Should().Contain("1 件以上");
+    }
+
+    [Fact]
+    public void InteractiveWithDuplicateOrTooManyRedirectUris_Fails()
+    {
+        Validator.Validate(Request(redirectUris: ["https://a.example.test/cb", "https://a.example.test/cb"]))
+            .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("重複");
+        var eleven = Enumerable.Range(0, 11).Select(i => $"https://a.example.test/cb{i}").ToList();
+        Validator.Validate(Request(redirectUris: eleven))
+            .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("10 件以下");
+        Validator.Validate(Request(redirectUris: eleven[..10])).IsValid.Should().BeTrue("上限ちょうどは通る（境界）");
+    }
+
+    // 🔴 無人へ渡したら（空配列を含めて）400。受け取って黙って捨てない。
+    [Fact]
+    public void ServiceAccountWithRedirectUris_Fails()
+    {
+        Validator.Validate(Request(kind: "service-account", redirectUris: ["https://a.example.test/cb"]))
+            .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Be(RegisterMcpClientValidator.RedirectUrisNotAllowedMessage);
+        Validator.Validate(Request(kind: "service-account", redirectUris: []))
+            .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Be(RegisterMcpClientValidator.RedirectUrisNotAllowedMessage);
+    }
+
+    // 🔴 O 軸: リダイレクト URI の規則は `kind` の後・`egressTier` の前（種別が決まらなければ判定しない）。
+    [Fact]
+    public void RedirectUriRule_IsBetweenKindAndEgressTier()
+    {
+        var result = Validator.Validate(Request(clientId: " ", redirectUris: ["http://example.test/cb"], egressTier: "moon"));
+
+        result.Errors.Select(e => e.PropertyName).Should().Equal(["ClientId", "RedirectUris", "EgressTier"]);
+        Validator.Validate(Request(kind: "robot", redirectUris: ["http://example.test/cb"]))
+            .Errors.Should().ContainSingle("種別が決まらなければリダイレクト URI は判定しない");
+    }
 }

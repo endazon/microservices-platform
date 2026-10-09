@@ -102,10 +102,21 @@ describe('useMcpClientRegistrationForm (SC-12)', () => {
       ok = result.current.validate();
     });
     expect(ok).toBe(false);
-    expect(result.current.issues).toEqual(['client-id-required', 'display-name-required']);
+    expect(result.current.issues).toEqual([
+      'client-id-required',
+      'display-name-required',
+      'redirect-uris-required',
+    ]);
 
     act(() => result.current.setClientId(' agent-1 '));
     act(() => result.current.setDisplayName('エージェント'));
+    act(() => {
+      ok = result.current.validate();
+    });
+    // 有人（既定の種別）はリダイレクト URI が必須（ADR-0134 決定 1）。
+    expect(ok).toBe(false);
+    expect(result.current.issues).toEqual(['redirect-uris-required']);
+    act(() => result.current.setRedirectUrisText('http://127.0.0.1/callback'));
     act(() => {
       ok = result.current.validate();
     });
@@ -134,14 +145,20 @@ describe('useMcpClientRegistrationForm (SC-12)', () => {
     act(() => result.current.selectAttributeKey('clearance'));
     act(() => result.current.setAttributeValue('internal'));
     act(() => result.current.addEntry());
+    act(() =>
+      result.current.setRedirectUrisText(' https://a.example.test/cb \n\nhttp://[::1]:5000/cb'),
+    );
 
     // 有人には属性を送らない（送る値が無いのが正しい）——積んであっても本文へ載せない。
+    // リダイレクト URI は 1 行 1 件・前後の空白と空行を落として送る。
     expect(result.current.body()).toEqual({
       clientId: 'agent-1',
       displayName: 'エージェント',
       kind: 'interactive',
+      redirectUris: ['https://a.example.test/cb', 'http://[::1]:5000/cb'],
     });
 
+    // 🔴 無人にはリダイレクト URI を送らない（後段は無人に渡されたら 400 で拒む）。
     act(() => result.current.setKind('service-account'));
     expect(result.current.body()).toEqual({
       clientId: 'agent-1',
@@ -167,5 +184,12 @@ describe('useMcpClientRegistrationForm (SC-12)', () => {
     expect(result.current.entries).toEqual([]);
     // 🔴 種別は残る。同じ種別を続けて登録する管理者に毎回選び直させない。
     expect(result.current.kind).toBe('service-account');
+  });
+
+  it('clears the redirect URIs after a successful registration', () => {
+    const { result } = setup();
+    act(() => result.current.setRedirectUrisText('http://127.0.0.1/cb'));
+    act(() => result.current.resetAfterRegister());
+    expect(result.current.redirectUrisText).toBe('');
   });
 });

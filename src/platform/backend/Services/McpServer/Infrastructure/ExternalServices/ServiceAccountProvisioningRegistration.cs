@@ -142,10 +142,15 @@ public sealed class UnconfiguredServiceAccountProvisioner : IServiceAccountProvi
     private static IdpProvisioningException Unavailable() => new(
         IdpProvisioningFailure.Unavailable,
         "IdP への書き込み口が構成されていない（McpClientProvisioning:Provider）。"
-        + " 無人のクライアントは IdP に作れないため、登録・属性の差し替えを受け付けない。");
+        + " MCP クライアント（無人・有人）は IdP に作れないため、登録・属性の差し替えを受け付けない。");
 
     public Task<IdpWrite> CreateAsync(
         string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, CancellationToken ct)
+        => throw Unavailable();
+
+    // ［#1844］有人も IdP に作れないので 503（登録簿だけへ書く経路へは倒さない。IADR-0516 の #1844 追記）。
+    public Task<IdpWrite> CreatePublicClientAsync(
+        string clientId, string displayName, IReadOnlyList<string> redirectUris, CancellationToken ct)
         => throw Unavailable();
 
     public Task<IdpWrite> ReplaceAttributesAsync(
@@ -171,7 +176,9 @@ public sealed class UnconfiguredServiceAccountProvisioner : IServiceAccountProvi
 // IdP の直接の操作（ADR-0123 決定 2 が禁じた操作）や補償の残骸を作り、照合がそれを拾うことを確かめる。
 public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvisioner, IServiceAccountDirectory
 {
-    private sealed record Account(Dictionary<string, string> Attributes, bool Managed, bool Enabled);
+    // ［#1844］`RedirectUris` が null でないものは有人の公開クライアント（サービスアカウントを持たない）。
+    private sealed record Account(
+        Dictionary<string, string> Attributes, bool Managed, bool Enabled, IReadOnlyList<string>? RedirectUris = null);
 
     private readonly Lock _gate = new();
     private readonly Dictionary<string, Account> _accounts = new(StringComparer.Ordinal);
@@ -190,6 +197,12 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
     public bool? IsEnabled(string clientId)
     {
         lock (_gate) return _accounts.TryGetValue(clientId, out var a) ? a.Enabled : null;
+    }
+
+    /// <summary>［#1844］有人の公開クライアントのリダイレクト URI（無い・無人なら null）。</summary>
+    public IReadOnlyList<string>? RedirectUrisOf(string clientId)
+    {
+        lock (_gate) return _accounts.TryGetValue(clientId, out var a) ? a.RedirectUris : null;
     }
 
     /// <summary>入口を通らずに IdP に在るクライアント（**入口の印が無い**）を置く（試験用）。</summary>
@@ -234,7 +247,19 @@ public sealed class InMemoryServiceAccountProvisioner : IServiceAccountProvision
         ct.ThrowIfCancellationRequested();
         lock (_gate)
             return Task.FromResult<IReadOnlyDictionary<string, string>?>(
-                _accounts.TryGetValue(clientId, out var a) ? new Dictionary<string, string>(a.Attributes) : null);
+                _accounts.TryGetValue(clientId, out var a) && a.RedirectUris is null
+                    ? new Dictionary<string, string>(a.Attributes) : null);
+    }
+
+    public Task<IdpWrite> CreatePublicClientAsync(
+        string clientId, string displayName, IReadOnlyList<string> redirectUris, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            if (_accounts.ContainsKey(clientId)) return Task.FromResult(IdpWrite.AlreadyExisting(clientId));
+            _accounts[clientId] = new Account([], Managed: true, Enabled: true, RedirectUris: [.. redirectUris]);
+            return Task.FromResult(new IdpWrite(IdpWriteKind.Created, clientId, clientId));
+        }
     }
 
     public Task<IdpWrite> CreateAsync(

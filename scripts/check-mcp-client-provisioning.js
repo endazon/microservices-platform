@@ -40,6 +40,16 @@
  *      🔴 無効化の後・再有効化の後のそれぞれで、**トークンを要求する前に**サービスアカウントの利用者が同じ ID で 1 人だけ残り属性が
  *      変わらないことを見る（PR #1832 監査 🔴1: SA の項目を欠いたクライアントの PUT は Keycloak 24 で SA を消し、トークンの要求が空の SA を作り直す）。否定形: 入口ができる前の登録簿の行（M5 が置く abac-seeder）を
  *      無効化しても abac-seeder の enabled は true のまま、再有効化は 400 で enabled は true のまま。
+ *   M9 有人の登録（#1844 / 計画 ADR-0134 決定 1・フォローアップ 1〜3 / IADR-0516 の #1844 追記）: 有人の登録が 201 で、Keycloak のクライアントが
+ *      公開・認可コードだけ・PKCE S256・リダイレクト URI が入力どおり・Web オリジン空・入口の印・audience の写像（mcp-server）。
+ *      ワイルドカードの URI は 400 で何も作らない。認可の要求（`/auth`。ブラウザを使わず状態コードと Location を読む）で、
+ *      PKCE なし・`plain` は invalid_request でリダイレクトへ返され（ログイン画面へ進まない）、S256 は進む。登録していない path・host・
+ *      https の port・`localhost` は 400（リダイレクトしない）。🔴 **ループバックの port の扱い（FU3）を測る**: `http://127.0.0.1/cb` で登録すると
+ *      任意の port で進み（Keycloak 24 の `RedirectUtils` は 127.0.0.1 / localhost の port を落として照合し直す）、`http://[::1]:<port>/cb` は
+ *      port まで完全一致（別の port は 400）。例示のアクセストークン（管理 API の evaluate-scopes）の aud に mcp-server・azp・利用者名が在る。
+ *      無人のトークンの aud にも mcp-server が在る。無効化・再有効化が enabled へ写り、テンプレートが残る。補償（表示名の長さ）も無人と同じく走る。
+ *   M10 DCR が閉じている（FU3）: 匿名の動的クライアント登録（`clients-registrations/openid-connect`・`default`）と偽の初期アクセストークンは
+ *      401 / 403 でクライアントが増えない。初期アクセストークンは 1 つも無い。匿名のポリシーに Trusted Hosts（信頼ホストは空）が在る。
  *
  * 主体は 3 つに分ける（測る側と測られる側を同じにしない）:
  *   - 登録者: 実行のたびに master の管理者が作る**使い捨ての機密クライアント**（SA に platform-admin・既定スコープ profile / roles）。
@@ -85,6 +95,13 @@ const KEYCLOAK_NAME_MAX = 255;
 // M7: 照合の既定の周期は 1 分（IdpReconciliationOptions.DefaultInterval）。周期 ＋ 1 回の照合の期限（周期と同じ）＋ 余裕で待つ。
 const RECONCILE_WAIT_MS = Number(env('MCP_PROV_RECONCILE_WAIT_MS', '150000'));
 const RECONCILE_POLL_MS = 10000;
+// M9（#1844）: 有人のクライアントのテンプレート（KeycloakServiceAccountProvisioner.PublicClientTemplate と同じ値）。
+const MCP_AUDIENCE = 'mcp-server';
+const PKCE_ATTRIBUTE = 'pkce.code.challenge.method';
+// M9: 例示のアクセストークンを作る利用者（realm の宣言の人の利用者）。
+const SAMPLE_USER = env('MCP_PROV_SAMPLE_USER', 'poc-user');
+// M10: 既定の匿名のクライアント登録ポリシー（Keycloak 24 DefaultClientRegistrationPolicies）。
+const REGISTRATION_POLICY_TYPE = 'org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy';
 
 const log = (s) => process.stdout.write(`${s}\n`);
 const warn = (s) => process.stderr.write(`${s}\n`);
@@ -269,6 +286,127 @@ function evaluateClientEnabled(clients, clientId, expected) {
   return hits[0].enabled === expected ? [] : [`enabled が ${JSON.stringify(hits[0].enabled)}（期待 ${expected}）`];
 }
 
+/**
+ * M9（#1844）: 作られた有人のクライアントの表現を判定する。違反の一覧を返す。
+ * 🔴 未指定を「閉」と読まない（読み戻しの意味が消える）。
+ */
+function evaluatePublicClient(clients, clientId, redirectUris) {
+  const hits = (clients || []).filter((c) => c.clientId === clientId);
+  if (hits.length !== 1) return [`クライアント ${clientId} が Keycloak に ${hits.length} 件（ちょうど 1 件であるべき）`];
+  const c = hits[0];
+  const errors = [];
+  const attrs = c.attributes || {};
+  if (attrs[MANAGED_BY_ATTRIBUTE] !== MANAGED_BY_VALUE) errors.push(`入口の印 ${MANAGED_BY_ATTRIBUTE}=${MANAGED_BY_VALUE} が無い`);
+  if (c.publicClient !== true) errors.push(`publicClient が true でない（${JSON.stringify(c.publicClient)}）`);
+  if (c.standardFlowEnabled !== true) errors.push('standardFlowEnabled が true でない（認可コードが閉じている）');
+  for (const k of ['implicitFlowEnabled', 'directAccessGrantsEnabled', 'serviceAccountsEnabled', 'fullScopeAllowed']) {
+    if (c[k] !== false) errors.push(`${k} が false でない（${JSON.stringify(c[k])}）`);
+  }
+  if (attrs[PKCE_ATTRIBUTE] !== 'S256') errors.push(`${PKCE_ATTRIBUTE} が S256 でない（${JSON.stringify(attrs[PKCE_ATTRIBUTE])}）`);
+  const got = [...(c.redirectUris || [])].sort();
+  const want = [...redirectUris].sort();
+  if (JSON.stringify(got) !== JSON.stringify(want)) errors.push(`redirectUris が入力と違う（期待 ${JSON.stringify(want)}・実際 ${JSON.stringify(got)}）`);
+  if (!Array.isArray(c.webOrigins) || c.webOrigins.length !== 0) errors.push(`webOrigins が空でない（${JSON.stringify(c.webOrigins)}）`);
+  const audience = (c.protocolMappers || []).some((m) => m.protocolMapper === 'oidc-audience-mapper'
+    && (m.config || {})['included.custom.audience'] === MCP_AUDIENCE && (m.config || {})['access.token.claim'] === 'true');
+  if (!audience) errors.push(`audience の写像（${MCP_AUDIENCE}・access.token.claim=true）が無い`);
+  return errors;
+}
+
+/** 無人のクライアントの表現に audience の写像があるか（M9。#1844）。 */
+function evaluateAudienceMapper(clients, clientId) {
+  const c = (clients || []).find((x) => x.clientId === clientId);
+  if (!c) return [`クライアント ${clientId} が無い`];
+  const ok = (c.protocolMappers || []).some((m) => m.protocolMapper === 'oidc-audience-mapper'
+    && (m.config || {})['included.custom.audience'] === MCP_AUDIENCE);
+  return ok ? [] : [`audience の写像（${MCP_AUDIENCE}）が無い`];
+}
+
+/**
+ * M9: 認可の要求（`/protocol/openid-connect/auth`）の応答を分類する（fetch の redirect: 'manual'）。
+ *   login          … 200（ログイン画面へ進んだ＝リダイレクト URI と PKCE の検査を通った）
+ *   error-redirect … 30x で Location が要求のリダイレクト URI へ戻り、error を持つ（PKCE の不備など。URI は信頼された）
+ *   rejected       … 4xx で Location なし（リダイレクト URI を信頼しなかった。Keycloak はエラーページを返す）
+ *   other          … それ以外（5xx・別の場所へのリダイレクト等。どの期待にも合わない）
+ */
+function classifyAuthResponse(status, location, redirectUri) {
+  if (status === 200) return { outcome: 'login' };
+  if (status >= 300 && status < 400 && location) {
+    let url;
+    try { url = new URL(location); } catch { return { outcome: 'other', detail: `Location を読めない: ${location}` }; }
+    const target = `${url.origin}${url.pathname}`;
+    let want;
+    try { const w = new URL(redirectUri); want = `${w.origin}${w.pathname}`; } catch { want = redirectUri; }
+    if (target === want && url.searchParams.get('error')) return { outcome: 'error-redirect', error: url.searchParams.get('error') };
+    return { outcome: 'other', detail: `${status} → ${location}` };
+  }
+  if (status >= 400 && status < 500 && !location) return { outcome: 'rejected' };
+  return { outcome: 'other', detail: `状態 ${status}・Location ${JSON.stringify(location)}` };
+}
+
+/** M9: 分類の結果が期待どおりか（error-redirect は invalid_request であること）。 */
+function evaluateAuthOutcome(result, expected) {
+  if (!result || result.outcome !== expected) {
+    return [`期待 ${expected}・実際 ${result ? result.outcome : '(なし)'}${result && result.detail ? `（${result.detail}）` : ''}`];
+  }
+  if (expected === 'error-redirect' && result.error !== 'invalid_request') return [`error が invalid_request でない（${result.error}）`];
+  return [];
+}
+
+/** JWT の本文（署名は検めない。発行元から直接受け取った値の中身を読むだけ）。 */
+function decodeJwtPayload(token) {
+  const part = String(token || '').split('.')[1];
+  if (!part) return null;
+  try { return JSON.parse(Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')); } catch { return null; }
+}
+
+/** M9: アクセストークンの aud に MCP サーバーが在り、azp がクライアント、（人なら）利用者名が在るか。 */
+function evaluateTokenAudience(payload, clientId, { human = false } = {}) {
+  if (!payload) return ['トークンの本文を読めない'];
+  const errors = [];
+  const aud = Array.isArray(payload.aud) ? payload.aud : (payload.aud === undefined ? [] : [payload.aud]);
+  if (!aud.includes(MCP_AUDIENCE)) errors.push(`aud に ${MCP_AUDIENCE} が無い（${JSON.stringify(payload.aud)}）`);
+  if (payload.azp !== clientId) errors.push(`azp が ${JSON.stringify(payload.azp)}（期待 ${clientId}）`);
+  if (human && !payload.preferred_username) errors.push('preferred_username が無い（MCP サーバーが利用者名を読めない）');
+  return errors;
+}
+
+/**
+ * M10: 匿名・偽の資格の DCR が拒否され、クライアントが増えていないか。
+ * 🔴 5xx・到達不能は「閉じている」ではない（Keycloak の不調で緑にしない）。
+ */
+function evaluateDcrRefused(res, before, after) {
+  const r = res || {};
+  const errors = [];
+  if (r.status !== 401 && r.status !== 403) errors.push(`状態が ${r.status}（期待 401 / 403）: ${String(r.text || '').slice(0, 200)}`);
+  if (r.json && (r.json.client_id || r.json.clientId)) errors.push(`クライアントが作られた（${r.json.client_id || r.json.clientId}）`);
+  if (typeof before !== 'number' || typeof after !== 'number' || after !== before) errors.push(`クライアントの件数が変わった（前 ${before}・後 ${after}）`);
+  return errors;
+}
+
+/** M10: 匿名のクライアント登録ポリシーに Trusted Hosts（信頼ホストは空）が在るか。 */
+function evaluateRegistrationPolicies(components) {
+  const list = Array.isArray(components) ? components : [];
+  const trusted = list.filter((c) => c.providerId === 'trusted-hosts' && c.subType === 'anonymous');
+  if (trusted.length === 0) return ['匿名のポリシーに Trusted Hosts が無い（匿名の DCR を止めるものが無い）'];
+  const hosts = trusted.flatMap((c) => ((c.config || {})['trusted-hosts']) || []).filter((h) => String(h).trim() !== '');
+  return hosts.length === 0 ? [] : [`Trusted Hosts に信頼ホストがある（${JSON.stringify(hosts)}）。その host からは匿名の DCR が開く`];
+}
+
+/** M10: 初期アクセストークンが 1 つも無いか。 */
+function evaluateNoInitialAccessTokens(list) {
+  if (!Array.isArray(list)) return ['初期アクセストークンの一覧を読めない'];
+  return list.length === 0 ? [] : [`初期アクセストークンが ${list.length} 個ある（その数だけ DCR が開く）`];
+}
+
+/** M9: PKCE の S256 の検証子と挑戦（RFC 7636）。 */
+function pkcePair() {
+  const crypto = require('crypto');
+  const verifier = crypto.randomBytes(32).toString('base64url');
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  return { verifier, challenge };
+}
+
 function selfTest() {
   const assert = require('assert');
   let n = 0;
@@ -368,6 +506,72 @@ function selfTest() {
     assert.ok(evaluateServiceAccountIntact([], 'p', req, 'u1')[0].includes('0 件'));
     assert.ok(evaluateServiceAccountIntact([{ ...sa, id: 'u2' }], 'p', req, 'u1')[0].includes('作り直された'));
     assert.strictEqual(evaluateServiceAccountIntact([{ ...sa, id: 'u2', attributes: {} }], 'p', req, 'u1').length, 1, '空の利用者は属性違い');
+  });
+  const pub = {
+    clientId: 'h', publicClient: true, standardFlowEnabled: true, implicitFlowEnabled: false, directAccessGrantsEnabled: false,
+    serviceAccountsEnabled: false, fullScopeAllowed: false, redirectUris: ['https://a/cb', 'http://127.0.0.1/cb'], webOrigins: [],
+    attributes: { [MANAGED_BY_ATTRIBUTE]: MANAGED_BY_VALUE, [PKCE_ATTRIBUTE]: 'S256' },
+    protocolMappers: [{ protocolMapper: 'oidc-audience-mapper', config: { 'included.custom.audience': MCP_AUDIENCE, 'access.token.claim': 'true' } }],
+  };
+  t('M9: 有人のテンプレートどおりなら 0、公開・PKCE・流れ・URI・オリジン・audience・印の崩れはそれぞれ赤', () => {
+    const uris = ['http://127.0.0.1/cb', 'https://a/cb'];
+    assert.deepStrictEqual(evaluatePublicClient([pub], 'h', uris), []);
+    assert.ok(evaluatePublicClient([], 'h', uris)[0].includes('0 件'));
+    for (const [k, v] of [['publicClient', false], ['standardFlowEnabled', false], ['implicitFlowEnabled', true],
+      ['directAccessGrantsEnabled', true], ['serviceAccountsEnabled', true], ['fullScopeAllowed', true],
+      ['implicitFlowEnabled', undefined], ['webOrigins', ['+']], ['redirectUris', ['https://a/*']], ['protocolMappers', []]]) {
+      assert.strictEqual(evaluatePublicClient([{ ...pub, [k]: v }], 'h', uris).length, 1, `${k}=${JSON.stringify(v)}`);
+    }
+    assert.strictEqual(evaluatePublicClient([{ ...pub, attributes: { [MANAGED_BY_ATTRIBUTE]: MANAGED_BY_VALUE, [PKCE_ATTRIBUTE]: 'plain' } }], 'h', uris).length, 1);
+    assert.strictEqual(evaluatePublicClient([{ ...pub, attributes: { [PKCE_ATTRIBUTE]: 'S256' } }], 'h', uris).length, 1);
+    assert.strictEqual(evaluatePublicClient([{ ...pub, protocolMappers: [{ protocolMapper: 'oidc-audience-mapper', config: { 'included.custom.audience': 'account', 'access.token.claim': 'true' } }] }], 'h', uris).length, 1);
+    assert.deepStrictEqual(evaluateAudienceMapper([pub], 'h'), []);
+    assert.strictEqual(evaluateAudienceMapper([{ ...pub, protocolMappers: [] }], 'h').length, 1);
+  });
+  t('M9: 認可の要求の分類（200=login・リダイレクト URI へ error つき=error-redirect・4xx で Location なし=rejected・他は other）', () => {
+    assert.deepStrictEqual(classifyAuthResponse(200, null, 'https://a/cb'), { outcome: 'login' });
+    assert.deepStrictEqual(classifyAuthResponse(302, 'https://a/cb?error=invalid_request&state=s', 'https://a/cb'),
+      { outcome: 'error-redirect', error: 'invalid_request' });
+    assert.deepStrictEqual(classifyAuthResponse(400, null, 'https://a/cb'), { outcome: 'rejected' });
+    assert.strictEqual(classifyAuthResponse(302, 'https://evil/cb?error=x', 'https://a/cb').outcome, 'other', '別の場所へのリダイレクトを拒否と読まない');
+    assert.strictEqual(classifyAuthResponse(302, 'https://a/cb?code=x', 'https://a/cb').outcome, 'other', 'コードつきの戻りを拒否と読まない');
+    assert.strictEqual(classifyAuthResponse(500, null, 'https://a/cb').outcome, 'other', '5xx を拒否と読まない');
+    assert.deepStrictEqual(evaluateAuthOutcome({ outcome: 'error-redirect', error: 'invalid_request' }, 'error-redirect'), []);
+    assert.strictEqual(evaluateAuthOutcome({ outcome: 'error-redirect', error: 'access_denied' }, 'error-redirect').length, 1);
+    assert.strictEqual(evaluateAuthOutcome({ outcome: 'login' }, 'rejected').length, 1);
+  });
+  t('M9: トークンの aud・azp・利用者名（aud は文字列でも配列でも読む。無ければ赤）', () => {
+    const tok = (p) => `x.${Buffer.from(JSON.stringify(p)).toString('base64url')}.y`;
+    assert.deepStrictEqual(evaluateTokenAudience(decodeJwtPayload(tok({ aud: ['mcp-server', 'x'], azp: 'h', preferred_username: 'u' })), 'h', { human: true }), []);
+    assert.deepStrictEqual(evaluateTokenAudience(decodeJwtPayload(tok({ aud: 'mcp-server', azp: 's' })), 's'), []);
+    assert.strictEqual(evaluateTokenAudience(decodeJwtPayload(tok({ aud: 'account', azp: 'h' })), 'h').length, 1);
+    assert.strictEqual(evaluateTokenAudience(decodeJwtPayload(tok({ azp: 'h' })), 'h').length, 1);
+    assert.strictEqual(evaluateTokenAudience(decodeJwtPayload(tok({ aud: 'mcp-server', azp: 'h' })), 'h', { human: true }).length, 1);
+    assert.strictEqual(evaluateTokenAudience(decodeJwtPayload('garbage'), 'h').length, 1);
+  });
+  t('M10: DCR は 401 / 403 かつ件数が変わらないときだけ閉。201・5xx・件数の増加・作られた client_id は赤', () => {
+    assert.deepStrictEqual(evaluateDcrRefused({ status: 403, json: { error: 'insufficient_scope' } }, 10, 10), []);
+    assert.deepStrictEqual(evaluateDcrRefused({ status: 401, json: null }, 10, 10), []);
+    assert.ok(evaluateDcrRefused({ status: 201, json: { client_id: 'x' } }, 10, 11).length >= 2);
+    assert.strictEqual(evaluateDcrRefused({ status: 500, json: null }, 10, 10).length, 1);
+    assert.strictEqual(evaluateDcrRefused({ status: 403, json: null }, 10, 11).length, 1);
+    assert.strictEqual(evaluateDcrRefused({ status: 403, json: null }, undefined, 10).length, 1, '件数を読めなければ赤');
+  });
+  t('M10: 匿名の Trusted Hosts（信頼ホストは空）と初期アクセストークン 0 個', () => {
+    const th = { providerId: 'trusted-hosts', subType: 'anonymous', config: { 'trusted-hosts': [] } };
+    assert.deepStrictEqual(evaluateRegistrationPolicies([th, { providerId: 'max-clients', subType: 'anonymous' }]), []);
+    assert.deepStrictEqual(evaluateRegistrationPolicies([{ ...th, config: {} }]), []);
+    assert.strictEqual(evaluateRegistrationPolicies([]).length, 1);
+    assert.strictEqual(evaluateRegistrationPolicies([{ ...th, subType: 'authenticated' }]).length, 1, '認証つきの側だけでは匿名を止めない');
+    assert.strictEqual(evaluateRegistrationPolicies([{ ...th, config: { 'trusted-hosts': ['10.0.0.1'] } }]).length, 1);
+    assert.deepStrictEqual(evaluateNoInitialAccessTokens([]), []);
+    assert.strictEqual(evaluateNoInitialAccessTokens([{ id: 'x' }]).length, 1);
+    assert.strictEqual(evaluateNoInitialAccessTokens(null).length, 1);
+  });
+  t('M9: PKCE の S256 の挑戦は検証子の SHA-256 の base64url', () => {
+    const { verifier, challenge } = pkcePair();
+    assert.ok(/^[A-Za-z0-9_-]{43}$/.test(verifier) && /^[A-Za-z0-9_-]{43}$/.test(challenge));
+    assert.strictEqual(require('crypto').createHash('sha256').update(verifier).digest('base64url'), challenge);
   });
   t('M7: enabled_differs の名指しも同じ判定器で読む', () => {
     assert.deepStrictEqual(evaluateReconciliationLog('client=p-off kind=enabled_differs。', [{ clientId: 'p-off', kind: 'enabled_differs' }]), []);
@@ -745,6 +949,144 @@ async function live() {
     } else {
       failures.push(`M8 の否定形の前提: M5 が入口ができる前の行（${PLATFORM_CLIENT}）を置けていない`);
     }
+
+    // --- M9（#1844 / 計画 ADR-0134 決定 1・フォローアップ 1〜3）--------------------------------------
+    const humanId = id('human');
+    const httpsRedirect = `https://${humanId}.example.test/cb`;
+    const v4Redirect = 'http://127.0.0.1/cb';
+    const v6Port = 53123;
+    const v6Redirect = `http://[::1]:${v6Port}/cb`;
+    const humanRedirects = [httpsRedirect, v4Redirect, v6Redirect];
+    const registerHuman = (clientId, redirectUris, displayName = 'SC-12 provisioning probe (attended)') =>
+      call('POST', `${mcpUrl}/mcp-clients`, registrar, { clientId, displayName, kind: 'interactive', redirectUris });
+    const r9 = await registerHuman(humanId, humanRedirects);
+    if (r9.status === 201) created.push(humanId);
+    step('M9 有人の登録が 201（503 にならない）', status(r9, 201));
+    step('M9 Keycloak のクライアントは公開・認可コードだけ・PKCE S256・URI は入力どおり・Web オリジン空・入口の印・audience の写像',
+      evaluatePublicClient(await clientsOf(humanId), humanId, humanRedirects));
+    const humanRow = (await registryRows()).find((c) => c.clientId === humanId);
+    step('M9 登録簿の行は有人', humanRow && humanRow.kind === 'interactive' ? [] : [`登録簿の行: ${JSON.stringify(humanRow)}`]);
+
+    const wildId = id('human-wild');
+    const r9w = await registerHuman(wildId, [`https://${wildId}.example.test/*`]);
+    if (r9w.status === 201) created.push(wildId);
+    step('M9 ワイルドカードのリダイレクト URI は 400', status(r9w, 400));
+    step('M9 ワイルドカードの登録で Keycloak に何も作られない', evaluateNothingCreated(await clientsOf(wildId), [], wildId));
+
+    // 認可の要求（ブラウザを使わない）。リダイレクト URI の検査が PKCE の検査より先に走るので、URI の試験は正しい S256 を添えて送る。
+    const { challenge } = pkcePair();
+    const authorize = async (redirectUri, pkce) => {
+      const q = new URLSearchParams({ client_id: humanId, response_type: 'code', scope: 'openid', redirect_uri: redirectUri, state: 'probe' });
+      if (pkce === 'S256') { q.set('code_challenge', challenge); q.set('code_challenge_method', 'S256'); }
+      if (pkce === 'plain') { q.set('code_challenge', challenge); q.set('code_challenge_method', 'plain'); }
+      try {
+        const res = await fetch(`${kcUrl}/realms/${REALM}/protocol/openid-connect/auth?${q}`, { redirect: 'manual' });
+        await res.arrayBuffer();
+        return classifyAuthResponse(res.status, res.headers.get('location'), redirectUri);
+      } catch (e) {
+        return { outcome: 'other', detail: e.message };
+      }
+    };
+    step('M9 陽性対照: 登録した https の URI ＋ S256 はログイン画面へ進む', evaluateAuthOutcome(await authorize(httpsRedirect, 'S256'), 'login'));
+    step('M9 PKCE なしは invalid_request でリダイレクトへ返される（ログイン画面へ進まない）',
+      evaluateAuthOutcome(await authorize(httpsRedirect, 'none'), 'error-redirect'));
+    step('M9 PKCE の plain は invalid_request でリダイレクトへ返される',
+      evaluateAuthOutcome(await authorize(httpsRedirect, 'plain'), 'error-redirect'));
+    step('M9 登録していない path は 400（リダイレクトしない）', evaluateAuthOutcome(await authorize(`${httpsRedirect}2`, 'S256'), 'rejected'));
+    step('M9 登録していない host は 400', evaluateAuthOutcome(await authorize(`https://evil-${humanId}.example.test/cb`, 'S256'), 'rejected'));
+    step('M9 https の port 違いは 400', evaluateAuthOutcome(await authorize(`https://${humanId}.example.test:8443/cb`, 'S256'), 'rejected'));
+    step('M9 localhost（登録していない綴り）は 400', evaluateAuthOutcome(await authorize('http://localhost:49152/cb', 'S256'), 'rejected'));
+    // 🔴 FU3: ループバックの port の扱い（Keycloak 24 RedirectUtils の読みを稼働で確かめる）。
+    step('M9 FU3: http://127.0.0.1/cb で登録すると任意の port（49152）で進む（Keycloak は 127.0.0.1 の port を落として照合し直す）',
+      evaluateAuthOutcome(await authorize('http://127.0.0.1:49152/cb', 'S256'), 'login'));
+    step('M9 FU3: 127.0.0.1 でも path 違いは 400', evaluateAuthOutcome(await authorize('http://127.0.0.1:49152/other', 'S256'), 'rejected'));
+    step(`M9 FU3: http://[::1]:${v6Port}/cb は登録どおりの port で進む`, evaluateAuthOutcome(await authorize(v6Redirect, 'S256'), 'login'));
+    step('M9 FU3: [::1] は port まで完全一致（別の port は 400。port を落とす扱いは 127.0.0.1 / localhost だけ）',
+      evaluateAuthOutcome(await authorize(`http://[::1]:${v6Port + 1}/cb`, 'S256'), 'rejected'));
+
+    // audience: 管理 API の evaluate-scopes で、人の利用者の例示のアクセストークンを作って読む（ブラウザのログインを使わない）。
+    const humanClient = (await clientsOf(humanId)).find((c) => c.clientId === humanId);
+    const sample = (await call('GET', `${kcAdmin}/users?username=${encodeURIComponent(SAMPLE_USER)}&exact=true`, admin)).json || [];
+    if (humanClient && sample[0]) {
+      const ex = await call('GET', `${kcAdmin}/clients/${humanClient.id}/evaluate-scopes/generate-example-access-token`
+        + `?scope=openid&userId=${encodeURIComponent(sample[0].id)}`, admin);
+      step('M9 有人の例示のアクセストークンの aud に mcp-server・azp がクライアント・利用者名が在る',
+        ex.status === 200 ? evaluateTokenAudience(ex.json, humanId, { human: true }) : [`例示のトークンが ${ex.status}`]);
+    } else {
+      failures.push(`M9 の前提: 有人のクライアントか利用者 ${SAMPLE_USER} が無い（audience を測れない）`);
+    }
+
+    // 無人のトークンの aud（`/mcp` が audience を検証するので、無人にも写像が要る）。
+    const saAudId = id('aud-sa');
+    const r9s = await register(saAudId, { department: 'engineering' });
+    if (r9s.status === 201) created.push(saAudId);
+    step('M9 前提: audience を測る無人の登録が 201', status(r9s, 201));
+    step('M9 無人のクライアントにも audience の写像がある', evaluateAudienceMapper(await clientsOf(saAudId), saAudId));
+    const saAud = (await clientsOf(saAudId)).find((c) => c.clientId === saAudId);
+    if (saAud) {
+      const sec = ((await call('GET', `${kcAdmin}/clients/${saAud.id}/client-secret`, admin)).json || {}).value || '';
+      const issued = await tokenAttempt(kcUrl, REALM, { grant_type: 'client_credentials', client_id: saAudId, client_secret: sec });
+      step('M9 無人のトークンの aud に mcp-server・azp がクライアント',
+        evaluateTokenIssued(issued).concat(issued.json && issued.json.access_token
+          ? evaluateTokenAudience(decodeJwtPayload(issued.json.access_token), saAudId) : []));
+    }
+
+    // 無効化・再有効化（IADR-0516 決定 4a を有人へ広げた）。テンプレートは変えない。
+    step('M9 有人の無効化が 200', status(await toggle(humanId, 'disable'), 200));
+    step('M9 有人の無効化で Keycloak の enabled が false', evaluateClientEnabled(await clientsOf(humanId), humanId, false));
+    step('M9 有人の再有効化が 200', status(await toggle(humanId, 'enable'), 200));
+    step('M9 有人の再有効化で enabled が true', evaluateClientEnabled(await clientsOf(humanId), humanId, true));
+    step('M9 再有効化の後もテンプレートが残る', evaluatePublicClient(await clientsOf(humanId), humanId, humanRedirects));
+
+    // 補償（無人の M6 と同じ形。IdP へ書けて登録簿で落ちる → 500・何も残らない・作成 → 削除の管理イベント）。
+    const humanCompId = id('human-comp');
+    const r9c = await registerHuman(humanCompId, [`https://${humanCompId}.example.test/cb`], overlongDisplayName());
+    if (r9c.status === 201) created.push(humanCompId);
+    step('M9 有人も IdP へ書けて登録簿で落ちる登録は 500', evaluateCompensationResponse(r9c.status, r9c.text));
+    step('M9 有人の補償で Keycloak にクライアントが残らない', evaluateNothingCreated(await clientsOf(humanCompId), [], humanCompId));
+    const ev9 = await call('GET', `${kcAdmin}/admin-events?resourceTypes=CLIENT&max=500`, admin);
+    step(`M9 管理イベントで、${ADMIN_CLIENT} が有人のクライアントを作ってから消した`,
+      ev9.status === 200 ? evaluateCompensationEvents(ev9.json, humanCompId, ((await usersOf(ADMIN_CLIENT))[0] || {}).id)
+        : [`GET admin-events が ${ev9.status}`]);
+
+    // --- M10（#1844 FU3: DCR が閉じている）----------------------------------------------------------
+    const countClients = async () => {
+      const r = await call('GET', `${kcAdmin}/clients?first=0&max=10000`, admin);
+      return r.status === 200 && Array.isArray(r.json) ? r.json.length : undefined;
+    };
+    const dcr = async (path, bearer) => {
+      try {
+        const res = await fetch(`${kcUrl}/realms/${REALM}/clients-registrations/${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
+          body: JSON.stringify(path === 'openid-connect'
+            ? { client_name: `probe-dcr-${run}`, redirect_uris: [`https://dcr-${run}.example.test/cb`] }
+            : { clientId: id('dcr'), redirectUris: [`https://dcr-${run}.example.test/cb`] }),
+        });
+        const text = await res.text();
+        let json = null;
+        try { json = text ? JSON.parse(text) : null; } catch { /* 本文が JSON でない */ }
+        return { status: res.status, json, text };
+      } catch (e) {
+        return { status: undefined, json: null, text: e.message };
+      }
+    };
+    for (const [label, path, bearer] of [
+      ['匿名の OIDC DCR（clients-registrations/openid-connect）', 'openid-connect', null],
+      ['匿名の Keycloak 形式の DCR（clients-registrations/default）', 'default', null],
+      ['偽の初期アクセストークンの OIDC DCR', 'openid-connect', 'not-a-real-initial-access-token'],
+    ]) {
+      const before = await countClients();
+      const res = await dcr(path, bearer);
+      if (res.json && res.json.client_id) created.push(res.json.client_id);
+      if (res.json && res.json.clientId) created.push(res.json.clientId);
+      step(`M10 FU3: ${label} は 401 / 403 でクライアントが増えない`, evaluateDcrRefused(res, before, await countClients()));
+    }
+    const iat = await call('GET', `${kcAdmin}/clients-initial-access`, admin);
+    step('M10 FU3: 初期アクセストークンが 1 つも無い', iat.status === 200 ? evaluateNoInitialAccessTokens(iat.json) : [`GET clients-initial-access が ${iat.status}`]);
+    const policies = await call('GET', `${kcAdmin}/components?type=${encodeURIComponent(REGISTRATION_POLICY_TYPE)}`, admin);
+    step('M10 FU3: 匿名のクライアント登録ポリシーに Trusted Hosts（信頼ホストは空）が在る（realm の取り込みが既定のポリシーを足した）',
+      policies.status === 200 ? evaluateRegistrationPolicies(policies.json) : [`GET components が ${policies.status}`]);
   } finally {
     // 片付け（失敗しても門の判定は上の結果で決める）。使い捨ての登録者も消す（SA 利用者ごと消える）。
     for (const cid of created) {
@@ -762,11 +1104,13 @@ async function live() {
     for (const f of failures) warn(`  - ${f}`);
     return 1;
   }
-  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M8）');
+  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M10）');
   return 0;
 }
 
 module.exports = {
+  evaluatePublicClient, evaluateAudienceMapper, classifyAuthResponse, evaluateAuthOutcome, decodeJwtPayload, evaluateTokenAudience,
+  evaluateDcrRefused, evaluateRegistrationPolicies, evaluateNoInitialAccessTokens,
   evaluateCompensationResponse, evaluateCompensationEvents,
   serviceAccountUserName, expectedKeycloakAttributes, normalizeAttributes, sameAttributes,
   evaluateCreatedClient, evaluateServiceAccountLookup, evaluateNothingCreated, overlongDisplayName,

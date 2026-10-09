@@ -19,6 +19,7 @@ import {
   TableHead,
   TableHeaderCell,
   TableRow,
+  Textarea,
 } from '@platform/ui';
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { QueryState } from '@foundation/ui/QueryState';
@@ -84,6 +85,10 @@ function useIssueLabels(): Record<RegistrationIssue, string> {
     'client-id-required': t`クライアント ID は必須です。`,
     'display-name-required': t`表示名は必須です。`,
     'attributes-required': t`無人（サービスアカウント）には ABAC 属性の割当が必須です。`,
+    'redirect-uris-required': t`有人にはリダイレクト URI が 1 件以上必要です。`,
+    'redirect-uris-too-many': t`リダイレクト URI は 10 件以下にしてください。`,
+    'redirect-uri-invalid': t`リダイレクト URI は https か、ループバックの http://127.0.0.1 / http://[::1] に限ります（ワイルドカード・フラグメント・localhost は使えません）。`,
+    'redirect-uri-duplicate': t`リダイレクト URI が重複しています。`,
   };
 }
 
@@ -451,6 +456,31 @@ export function McpClientManagementPage() {
               </Select>
             </div>
           </div>
+
+          {/*
+            有人のときだけリダイレクト URI の入力を出す（05_screens §SC-12 の入力表・ADR-0134 決定 1）。
+            後段は認証基盤に公開クライアント（PKCE S256・完全一致）を作る。無人には送らない。
+          */}
+          {form.needsRedirectUris && (
+            <div className="mt-3" data-testid="redirect-uris">
+              <Label htmlFor="mcp-redirect-uris">
+                <Trans>リダイレクト URI（1 行に 1 件）</Trans>
+              </Label>
+              <Textarea
+                id="mcp-redirect-uris"
+                rows={3}
+                value={form.redirectUrisText}
+                onChange={(e) => form.setRedirectUrisText(e.target.value)}
+                placeholder="http://127.0.0.1/callback"
+              />
+              <p className="mt-1 text-xs text-fg-muted">
+                <Trans>
+                  完全一致で照合します。https か、ループバックの http://127.0.0.1 / http://[::1]
+                  に限ります（ワイルドカードは使えません）。
+                </Trans>
+              </p>
+            </div>
+          )}
 
           {/* 無人のときだけ属性の入力を出す。**有人では要求しない**（05_screens §SC-12）。 */}
           {form.needsAttributes && (

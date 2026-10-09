@@ -27,7 +27,7 @@ public class McpClientEndpointTests(TestWebApplicationFactory factory)
     {
         var client = Admin();
         var created = await client.PostAsJsonAsync("/mcp-clients",
-            new RegisterMcpClientRequest("agent-a", "エージェントA", "interactive"), TestContext.Current.CancellationToken);
+            new RegisterMcpClientRequest("agent-a", "エージェントA", "interactive", RedirectUris: ["https://agent.example.test/callback"]), TestContext.Current.CancellationToken);
         created.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var list = await client.GetFromJsonAsync<List<McpClientView>>("/mcp-clients", TestContext.Current.CancellationToken);
