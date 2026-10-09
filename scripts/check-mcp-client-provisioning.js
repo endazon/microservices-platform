@@ -13,7 +13,7 @@
  *   - 管理用の主体 `mcp-client-admin` のロール（manage-clients / manage-users）で、作成・SA の照会・属性の書き込み・補償の削除が
  *     本当に通るかも、稼働の Keycloak でしか分からない（足りなければ 403 → 502）。
  *
- * 測ること（受け入れ基準 4。番号は作業仕様書 20261009_1817 の M1〜M6。M7 は 20261009_1818。M8 は 20261009_1829）:
+ * 測ること（受け入れ基準 4。番号は作業仕様書 20261009_1817 の M1〜M6。M7 は 20261009_1818。M8 は 20261009_1829。M9・M10 は 20261009_1844。M11 は 20261009_1845）:
  *   M1 無人の登録が 201（503 にならない）。Keycloak のクライアントに入口の印（msp.mcp-client.managed-by=mcp-server）があり、
  *      機密・SA つき・人の流れ（標準・暗黙・直接付与）は閉・fullScopeAllowed=false。
  *   M2 `users?username=service-account-<client>&exact=true` がちょうど 1 件で、割り当てた属性が入っている（集合値は多値）。
@@ -50,6 +50,12 @@
  *      port を明示した `http://127.0.0.1:<port>/cb` は登録どおりの port で進み、別の port・`:<port>@evil.example`・`:1@evil.example` は 400。
  *      `http://[::1]:<port>/cb` も port まで完全一致（別の port・`@evil.example` は 400）。例示のアクセストークン（管理 API の evaluate-scopes）の aud に mcp-server・azp・利用者名が在る。
  *      無人のトークンの aud にも mcp-server が在る。無効化・再有効化が enabled へ写り、テンプレートが残る。補償（表示名の長さ）も無人と同じく走る。
+ *   M11 secret の一度だけの表示と再発行（#1845 / 計画 ADR-0134 決定 2・フォローアップ 4・6 / IADR-0516 の #1845 追記）: 無人の登録の 201 の
+ *      `clientSecret` が Keycloak の現在の secret（master の管理者で読む）と一致し、その値で client_credentials のトークンが出る。一覧に secret は無い。
+ *      SC-12 の再発行が 200 で、新しい値は旧い値と違い Keycloak の現在の secret と一致する。**再発行の直後に旧 secret は拒否される**（FU6: client secret
+ *      rotation〔preview〕が無効で猶予が無い）。新しい値でトークンが出る。有人の 201 は `clientSecret` を持たない。
+ *      FU6 の観測（判定しない）: 再発行の値が Keycloak の管理イベントの詳細（`adminEventsDetailsEnabled=true`）に残るかを数えて出す（値は出さない）。
+ *      🔴 secret の値はログ・失敗の文言に出さない（判定器は一致・不一致だけを返す）。
  *   M10 DCR が閉じている（FU3）: 匿名の動的クライアント登録（`clients-registrations/openid-connect`・`default`）と偽の初期アクセストークンは
  *      401 / 403 でクライアントが増えない。初期アクセストークンは 1 つも無い。匿名のポリシーに Trusted Hosts（信頼ホストは空）が在る。
  *
@@ -421,6 +427,39 @@ function pkcePair() {
   return { verifier, challenge };
 }
 
+/**
+ * M11（#1845）: 登録の 201 が client secret を一度だけ含み、それが Keycloak の現在の secret と一致するか。
+ * 🔴 値は文言に出さない（一致・不一致・欠落だけを返す）。
+ */
+function evaluateIssuedSecret(body, keycloakSecret) {
+  const secret = (body || {}).clientSecret;
+  if (typeof secret !== 'string' || secret.length === 0) return ['登録の応答に clientSecret が無い'];
+  if (typeof keycloakSecret !== 'string' || keycloakSecret.length === 0) return ['Keycloak の現在の secret を読めない'];
+  return secret === keycloakSecret ? [] : ['応答の clientSecret が Keycloak の現在の secret と違う'];
+}
+
+/** M11（#1845）: 応答（有人の 201・一覧）が client secret を持たないか。 */
+function evaluateNoSecret(body) {
+  const items = Array.isArray(body) ? body : [body || {}];
+  return items.some((x) => x && x.clientSecret !== undefined && x.clientSecret !== null)
+    ? ['応答に clientSecret が載っている'] : [];
+}
+
+/** M11（#1845）: 再発行の値が新しく（旧い値と違い）、Keycloak の現在の secret と一致するか。値は文言に出さない。 */
+function evaluateRotatedSecret(previous, reissued, keycloakSecret) {
+  if (typeof reissued !== 'string' || reissued.length === 0) return ['再発行の応答に clientSecret が無い'];
+  const errors = [];
+  if (reissued === previous) errors.push('再発行の値が旧い値と同じ');
+  if (reissued !== keycloakSecret) errors.push('再発行の値が Keycloak の現在の secret と違う');
+  return errors;
+}
+
+/** M11（FU6 の観測）: 管理イベントの表現に値を含むものの数（判定には使わない。値は返さない）。 */
+function countEventsContaining(events, value) {
+  if (!Array.isArray(events) || typeof value !== 'string' || value.length === 0) return 0;
+  return events.filter((e) => typeof (e || {}).representation === 'string' && e.representation.includes(value)).length;
+}
+
 function selfTest() {
   const assert = require('assert');
   let n = 0;
@@ -580,6 +619,30 @@ function selfTest() {
     assert.strictEqual(evaluateTokenAudience(decodeJwtPayload(tok({ azp: 'h' })), 'h').length, 1);
     assert.strictEqual(evaluateTokenAudience(decodeJwtPayload(tok({ aud: 'mcp-server', azp: 'h' })), 'h', { human: true }).length, 1);
     assert.strictEqual(evaluateTokenAudience(decodeJwtPayload('garbage'), 'h').length, 1);
+  });
+  t('M11: 登録の secret は Keycloak の現在値と一致するときだけ緑。欠落・不一致・Keycloak を読めないは赤。文言に値を出さない', () => {
+    const v = 'placeholder-value-a';
+    assert.deepStrictEqual(evaluateIssuedSecret({ clientSecret: v }, v), []);
+    assert.strictEqual(evaluateIssuedSecret({ clientSecret: null }, v).length, 1);
+    assert.strictEqual(evaluateIssuedSecret({}, v).length, 1);
+    assert.strictEqual(evaluateIssuedSecret({ clientSecret: v }, undefined).length, 1);
+    const mismatch = evaluateIssuedSecret({ clientSecret: v }, 'placeholder-value-b');
+    assert.strictEqual(mismatch.length, 1);
+    assert.ok(!mismatch.join('').includes(v) && !mismatch.join('').includes('placeholder-value-b'), '値を文言に出さない');
+  });
+  t('M11: 有人の 201・一覧は clientSecret を持たない（null・欠落は緑、値があれば赤）', () => {
+    assert.deepStrictEqual(evaluateNoSecret({ clientId: 'h', clientSecret: null }), []);
+    assert.deepStrictEqual(evaluateNoSecret([{ clientId: 'a' }, { clientId: 'b' }]), []);
+    assert.strictEqual(evaluateNoSecret({ clientSecret: 'placeholder-value-a' }).length, 1);
+    assert.strictEqual(evaluateNoSecret([{ clientId: 'a' }, { clientSecret: 'placeholder-value-a' }]).length, 1);
+  });
+  t('M11: 再発行の値は新しく Keycloak の現在値と一致するときだけ緑。旧い値のまま・不一致・欠落は赤', () => {
+    assert.deepStrictEqual(evaluateRotatedSecret('placeholder-old', 'placeholder-new', 'placeholder-new'), []);
+    assert.strictEqual(evaluateRotatedSecret('placeholder-old', 'placeholder-old', 'placeholder-old').length, 1);
+    assert.strictEqual(evaluateRotatedSecret('placeholder-old', 'placeholder-new', 'placeholder-old').length, 1);
+    assert.strictEqual(evaluateRotatedSecret('placeholder-old', undefined, 'placeholder-new').length, 1);
+    assert.strictEqual(countEventsContaining([{ representation: '{"value":"placeholder-new"}' }, {}], 'placeholder-new'), 1);
+    assert.strictEqual(countEventsContaining(null, 'placeholder-new'), 0);
   });
   t('M10: DCR は 401 / 403 かつ件数が変わらないときだけ閉。201・5xx・件数の増加・作られた client_id は赤', () => {
     assert.deepStrictEqual(evaluateDcrRefused({ status: 403, json: { error: 'insufficient_scope' } }, 10, 10), []);
@@ -1205,6 +1268,36 @@ async function live() {
     const policies = await call('GET', `${kcAdmin}/components?type=${encodeURIComponent(REGISTRATION_POLICY_TYPE)}`, admin);
     step('M10 FU3: 匿名のクライアント登録ポリシーに Trusted Hosts（信頼ホストは空）が在る（realm の取り込みが既定のポリシーを足した）',
       policies.status === 200 ? evaluateRegistrationPolicies(policies.json) : [`GET components が ${policies.status}`]);
+
+    // --- M11（#1845 / 計画 ADR-0134 決定 2・FU4・FU6）。🔴 secret の値はログ・文言に出さない ----------------------
+    const secretId = id('secret');
+    const keycloakSecretOf = async (cid) => {
+      const c = (await clientsOf(cid)).find((x) => x.clientId === cid);
+      if (!c) return undefined;
+      const r = await call('GET', `${kcAdmin}/clients/${c.id}/client-secret`, admin);
+      return r.status === 200 ? (r.json || {}).value : undefined;
+    };
+    const tokenWith = (secret) => tokenAttempt(kcUrl, REALM, { grant_type: 'client_credentials', client_id: secretId, client_secret: secret || '' });
+    const r11 = await register(secretId, { department: 'engineering' });
+    if (r11.status === 201) created.push(secretId);
+    step('M11 前提: 無人の登録が 201', r11.status === 201 ? [] : [`状態が ${r11.status}（期待 201）`]);
+    const issuedSecret = (r11.json || {}).clientSecret;
+    step('M11 FU4: 登録の 201 の clientSecret が Keycloak の現在の secret と一致する', evaluateIssuedSecret(r11.json, await keycloakSecretOf(secretId)));
+    step('M11 応答の secret で client_credentials のトークンが出る', evaluateTokenIssued(await tokenWith(issuedSecret)));
+    step('M11 一覧（登録簿）に clientSecret が無い', evaluateNoSecret(await registryRows()));
+    const r11b = await call('POST', `${mcpUrl}/mcp-clients/${encodeURIComponent(secretId)}/reissue-secret`, registrar);
+    step('M11 FU4: SC-12 の再発行が 200', r11b.status === 200 ? [] : [`状態が ${r11b.status}（期待 200）`]);
+    const reissuedSecret = (r11b.json || {}).clientSecret;
+    step('M11 FU4: 再発行の値は新しく、Keycloak の現在の secret と一致する', evaluateRotatedSecret(issuedSecret, reissuedSecret, await keycloakSecretOf(secretId)));
+    step('M11 FU6: 再発行の直後に旧 secret は拒否される（client secret rotation が無効で猶予が無い）', evaluateTokenRefused(await tokenWith(issuedSecret)));
+    step('M11 再発行した secret でトークンが出る', evaluateTokenIssued(await tokenWith(reissuedSecret)));
+    const humanSecretId = id('human-nosecret');
+    const r11h = await registerHuman(humanSecretId, [`https://${humanSecretId}.example.test/cb`]);
+    if (r11h.status === 201) created.push(humanSecretId);
+    step('M11 有人の登録の 201 は clientSecret を持たない', r11h.status === 201 ? evaluateNoSecret(r11h.json) : [`状態が ${r11h.status}（期待 201）`]);
+    // FU6 の観測（判定しない）: Keycloak 24 の regenerate は値つきの表現を管理イベントへ渡す。realm は詳細を保存する。数だけを出す。
+    const ev11 = await call('GET', `${kcAdmin}/admin-events?operationTypes=ACTION&max=500`, admin);
+    log(`  ℹ M11 FU6 観測（判定しない）: 再発行の値を表現に含む管理イベント ${ev11.status === 200 ? countEventsContaining(ev11.json, reissuedSecret) : `（GET admin-events が ${ev11.status}）`} 件`);
   } finally {
     // 片付け（失敗しても門の判定は上の結果で決める）。使い捨ての登録者も消す（SA 利用者ごと消える）。
     for (const cid of created) {
@@ -1222,13 +1315,14 @@ async function live() {
     for (const f of failures) warn(`  - ${f}`);
     return 1;
   }
-  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M10）');
+  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M11）');
   return 0;
 }
 
 module.exports = {
   evaluatePublicClient, evaluateAudienceMapper, classifyAuthResponse, evaluateAuthOutcome, loopbackHijackProbes, decodeJwtPayload, evaluateTokenAudience,
   evaluateDcrRefused, evaluateRegistrationPolicies, evaluateNoInitialAccessTokens,
+  evaluateIssuedSecret, evaluateNoSecret, evaluateRotatedSecret, countEventsContaining,
   evaluateCompensationResponse, evaluateCompensationEvents,
   serviceAccountUserName, expectedKeycloakAttributes, normalizeAttributes, sameAttributes,
   evaluateCreatedClient, evaluateServiceAccountLookup, evaluateNothingCreated, overlongDisplayName,

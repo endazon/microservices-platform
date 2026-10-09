@@ -395,6 +395,12 @@ public class IdpEnabledMirrorFailureEndpointTests : IClassFixture<IdpEnabledMirr
 
         public Task UndoAsync(IdpWrite write, CancellationToken ct) => Inner.UndoAsync(write, ct);
 
+        public Task<ClientSecretResult> ReadClientSecretAsync(string clientId, CancellationToken ct)
+            => Inner.ReadClientSecretAsync(clientId, ct);
+
+        public Task<ClientSecretResult> RegenerateClientSecretAsync(string clientId, CancellationToken ct)
+            => Inner.RegenerateClientSecretAsync(clientId, ct);
+
         public Task<IReadOnlyList<IdpClientEntry>> ListClientsAsync(CancellationToken ct) => Inner.ListClientsAsync(ct);
 
         public Task<IReadOnlyDictionary<string, string>?> ReadServiceAccountAttributesAsync(string clientId, CancellationToken ct)
