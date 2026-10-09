@@ -581,8 +581,45 @@ function selfTest() {
     const name = overlongDisplayName();
     assert.ok(name.length > REGISTRY_DISPLAY_NAME_MAX && name.length <= KEYCLOAK_NAME_MAX);
   });
-  log(`self-test OK: ${n} 件`);
-  return 0;
+  // #1835: 期限切れの 401 は 1 度だけ取り直して送り直す。本当の 401・取り直せないトークン・401 以外は送り直さない。
+  const retryCases = async () => {
+    const fake = (statuses) => {
+      const seen = [];
+      return { seen, sendFn: async (b) => { seen.push(b); return { status: statuses[seen.length - 1] }; } };
+    };
+    const counter = () => { let k = 0; return bearerSource(async () => `t${++k}`); };
+    let f = fake([401, 200]);
+    assert.strictEqual((await sendWithRefresh(f.sendFn, counter())).status, 200, '期限切れの後に取り直して通らない');
+    assert.deepStrictEqual(f.seen, ['t1', 't2'], '取り直したトークンで送り直していない');
+    f = fake([401, 401]);
+    assert.strictEqual((await sendWithRefresh(f.sendFn, counter())).status, 401, '2 度目の 401 を緑にした');
+    assert.strictEqual(f.seen.length, 2, '送り直しは 1 度だけ');
+    f = fake([403]);
+    assert.strictEqual((await sendWithRefresh(f.sendFn, counter())).status, 403);
+    assert.deepStrictEqual(f.seen, ['t1'], '401 以外で送り直した');
+    f = fake([401]);
+    assert.strictEqual((await sendWithRefresh(f.sendFn, 'fixed')).status, 401, '取り直せないトークンで送り直した');
+    assert.deepStrictEqual(f.seen, ['fixed']);
+    const src = counter();
+    assert.strictEqual(await src(), 't1');
+    assert.strictEqual(await src(), 't1', '取り直す前に毎回取りに行った');
+    assert.strictEqual(await src.refresh(), 't2');
+    assert.strictEqual(await src(), 't2', '取り直した値を使い続けない');
+  };
+  // #1835 監査 🟡1: 取り直しの部品だけでなく、live の 3 つのトークンが取り直せる形で配線されていることも固定する（外れると同じ 401 の赤が戻る）。
+  t('#1835: live の管理者・登録者・mcp-client-admin のトークンは取り直せる形（bearerSource）で持つ', () => {
+    const src = require('fs').readFileSync(__filename, 'utf8');
+    assert.match(src, /const admin = bearerSource\(/, '管理者のトークンが取り直せる形でない');
+    assert.match(src, /const provisioner = bearerSource\(/, 'mcp-client-admin のトークンが取り直せる形でない');
+    assert.match(src, /const registrarToken = bearerSource\(/, '登録者のトークンが取り直せる形でない');
+    assert.match(src, /return \{ id: created\.id, token: registrarToken \}/, '登録者の取り直せるトークンを返していない');
+  });
+  return retryCases().then(() => {
+    n++;
+    log('  ok  #1835: 期限切れの 401 は取り直して 1 度だけ送り直す。2 度目の 401・401 以外・取り直せないトークンはそのまま返す');
+    log(`self-test OK: ${n} 件`);
+    return 0;
+  });
 }
 
 // ---------------------------------------------------------------- 稼働クラスタへの I/O
@@ -653,7 +690,7 @@ async function tokenAttempt(kcUrl, realm, form) {
   }
 }
 
-async function call(method, url, bearer, body) {
+async function send(method, url, bearer, body) {
   const res = await fetch(url, {
     method,
     headers: { Authorization: `Bearer ${bearer}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
@@ -664,6 +701,30 @@ async function call(method, url, bearer, body) {
   try { json = text ? JSON.parse(text) : null; } catch { /* 本文が JSON でない（5xx 等） */ }
   return { status: res.status, json, text };
 }
+
+/**
+ * #1835: 取り直せるトークン。実走は M7 の照合待ち（最大 150 秒）を挟んで長く、master の管理者のトークン（既定の寿命 60 秒）や
+ * 登録者のトークンが途中で切れる。最初に 1 度だけ取ったトークンを使い回すと、期限切れの 401 を「期待と違う」と取り違えて門が赤になる。
+ */
+function bearerSource(fetchToken) {
+  let current = null;
+  const source = async () => (current ??= await fetchToken());
+  source.refresh = async () => (current = await fetchToken());
+  return source;
+}
+
+/**
+ * 401 なら 1 度だけ取り直して送り直す（取り直せるトークンのときだけ）。2 度目も 401 なら、その 401 をそのまま返す
+ * （本当に拒まれたものを緑にしない）。`sendFn` は差し替えられる（self-test 用）。
+ */
+async function sendWithRefresh(sendFn, bearer) {
+  if (typeof bearer !== 'function') return sendFn(bearer);
+  const first = await sendFn(await bearer());
+  if (first.status !== 401) return first;
+  return sendFn(await bearer.refresh());
+}
+
+const call = (method, url, bearer, body) => sendWithRefresh((b) => send(method, url, b, body), bearer);
 
 /**
  * 使い捨ての登録者を作る（master の管理者で）。機密・SA のみ・人の流れは閉・既定スコープ profile / roles・SA に platform-admin。
@@ -689,7 +750,9 @@ async function createRegistrar(kcAdmin, kcUrl, admin, clientId) {
   const role = mustOk(await call('GET', `${kcAdmin}/roles/${REGISTRAR_ROLE}`, admin), `ロール ${REGISTRAR_ROLE} の取得`, 200).json;
   mustOk(await call('POST', `${kcAdmin}/users/${saUser.id}/role-mappings/realm`, admin, [role]), 'ロールの割当', 204);
   const secret = mustOk(await call('GET', `${kcAdmin}/clients/${created.id}/client-secret`, admin), '登録者の secret の取得', 200).json.value;
-  return { id: created.id, token: await token(kcUrl, REALM, { grant_type: 'client_credentials', client_id: clientId, client_secret: secret }) };
+  const registrarToken = bearerSource(() => token(kcUrl, REALM, { grant_type: 'client_credentials', client_id: clientId, client_secret: secret }));
+  await registrarToken(); // 取れることをここで確かめる（従来どおり、取れなければこの場で落ちる）
+  return { id: created.id, token: registrarToken };
 }
 
 async function live() {
@@ -708,13 +771,16 @@ async function live() {
   log(`接続先: mcp=${mcpUrl} / keycloak=${kcUrl} / realm=${REALM}`);
 
   const adminUser = readSecretKey(INFRA_NS, 'keycloak-admin', 'username');
-  const admin = await token(kcUrl, 'master', {
+  // #1835: 管理者・管理用の主体のトークンは取り直せる形で持つ（期限切れの 401 で門を赤にしない）。
+  const admin = bearerSource(() => token(kcUrl, 'master', {
     grant_type: 'password', client_id: 'admin-cli', username: adminUser, password: readSecretKey(INFRA_NS, 'keycloak-admin', 'password'),
-  });
+  }));
+  await admin();
   // 管理用の主体のトークンが出ること自体が、Secret（供給の連鎖）と realm の宣言の secret の一致の実測である。
-  const provisioner = await token(kcUrl, REALM, {
+  const provisioner = bearerSource(() => token(kcUrl, REALM, {
     grant_type: 'client_credentials', client_id: ADMIN_CLIENT, client_secret: readSecretKey(NS, ADMIN_SECRET, 'client-secret'),
-  });
+  }));
+  await provisioner();
   const kcAdmin = `${kcUrl}/admin/realms/${REALM}`;
   const run = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
   const id = (suffix) => `probe-mcp-${run}-${suffix}`;
@@ -1115,11 +1181,15 @@ module.exports = {
   serviceAccountUserName, expectedKeycloakAttributes, normalizeAttributes, sameAttributes,
   evaluateCreatedClient, evaluateServiceAccountLookup, evaluateNothingCreated, overlongDisplayName,
   evaluateReconciliationLog, evaluateTokenIssued, evaluateTokenRefused, evaluateClientEnabled, evaluateServiceAccountIntact,
+  bearerSource, sendWithRefresh,
 };
 
 if (require.main === module) {
   const argv = process.argv.slice(2);
-  if (argv.includes('--self-test')) process.exit(selfTest());
+  if (argv.includes('--self-test')) {
+    selfTest().then((code) => process.exit(code), (e) => { warn(e.stack || e.message); process.exit(1); });
+    return;
+  }
   // NFR, #1550: ここから先は稼働クラスタへ当たる。明示の指定が無ければ何もせずに終わる（副作用の前）。
   requireLiveOptIn('check-mcp-client-provisioning', argv, { offline: '--self-test' });
   live()

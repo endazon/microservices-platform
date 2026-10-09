@@ -7,7 +7,7 @@ related_ids:
   - UC-04
 author: claude
 created: 2026-06-27
-updated: 2026-06-27
+updated: 2026-10-09
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
 related_specs:
@@ -84,6 +84,7 @@ flowchart LR
 - [ ] 同一文書の再取り込みが冪等である（旧チャンク削除 + 決定的チャンク ID により重複しない）。
 - [ ] 検索インデックス（コレクション）が起動時に存在保証され、登録先が未作成で失敗しない。
 - [ ] 取り込み完了時に `IngestionCompleted` を発行し、後続（検索反映）へ連鎖できる（更新 → 反映時間の前提を満たす）。
+  ［2026-10-09 追記 / #1771］`IngestionCompleted` の購読者は結線しない（planning#741 項目 6 の裁定）。「後続（検索反映）へ連鎖」は成立しない記述である。反映時間の前提は Qdrant への登録の時点で満たされ、完了通知に依存しない。
 - [ ] 権限属性（ABAC）はペイロードに保持し、検索側でのフィルタ前提を提供する（権限外文書の非表示は検索側で担保）。
 
 ## テスト方針

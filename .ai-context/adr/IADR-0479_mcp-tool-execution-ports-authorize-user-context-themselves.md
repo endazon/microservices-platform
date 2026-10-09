@@ -5,14 +5,16 @@ status: Accepted
 related_ids: [FR-16, UC-08, NFR-09, NFR-16, ADR-0024, ADR-0034, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, IADR-0483, IADR-0269, IADR-0292, IADR-0379, IADR-0416, IADR-0426, IADR-0462]
 author: claude
 created: 2026-09-27
-updated: 2026-10-08
+updated: 2026-10-09
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0117_mcp-tool-destination-and-execution-context.md 決定 1〜4
+  - planning:projects/microservices-platform/07_adr/ADR-0117_mcp-tool-destination-and-execution-context.md 決定 4（2026-10-08 追記。2026-10-09 追記 / #1783 で追認）
   - planning:projects/microservices-platform/07_adr/ADR-0086_user-context-in-body-not-token-exchange.md 決定 1・4・§結果
   - planning:projects/microservices-platform/07_adr/ADR-0088_authz-resolves-user-attributes-itself.md 決定 1
   - planning:projects/microservices-platform/06_technical/11_mcp-server-integration.md §3・§6
 related_specs:
   - ../specs/20260927_issue-1611_mcp-tool-execution-ports.md
+  - ../specs/20261009_1783_dept-sync-poc-fix.md
 ---
 
 # IADR-0479: MCP のツールの実行口の認可（#1611）
@@ -168,3 +170,15 @@ ADR-0117 決定 3 は、本文を利用者文脈（`user_id`・`action`）とツ
 - **応答**: 共通エンベロープ。属性は `McpEnvelopeAttributes.IsCarried` のキーだけ（#1671 の申し送り）。**本文・参照リンクは返さない** —— 台帳は本文を持たず
   （`MarkdownUri` は内部の格納先）、格納先から本文を読む経路は DocumentService に無い。申告の説明から「本文の参照」を外した（段 3 の `graph.traverse` と同じ扱い。
   返らないものを LLM に約束しない）。一覧は判定の後の全体件数を `total_count` に返し、`limit`（1〜100・既定 20）を超えたら `truncated`。
+
+## ［2026-10-09 追記 / #1783］計画 ADR-0117 決定 4 の 3 点セットが本 IADR の実行口を写した（追認。planning#741 項目 5）
+
+> 上の本文・追記は書き換えない。本節は計画側の追記を引いて、実装と一致していることを記録するだけである（実装の変更は無い）。作業仕様書 `20261009_1783_dept-sync-poc-fix` と対になる。
+
+- **計画の追記**: 計画 ADR-0117 決定 4 の表の「現在の実現手段」を「ある」へ、「配備までの暫定手段」を「RetrievalService・GraphService は不要。DocumentService は内容の ABAC の門が
+  開くまで `FAILED_PRECONDITION` で失敗する（fail-closed）」へ改めた（2026-10-08 追記。計画の規約の例外 4＝実現手段の変化の記録で、決定の値は動かない。
+  環流 planning#737 の追随 PR planning#753、`project-planning` `origin/main` `82be7dc` でマージ済み）。
+- **利用者裁定（2026-10-09。planning#741 項目 5）**: 「本記録では何もしない。PR planning#753 で対応済みである」。
+- **実装との突き合わせ**（MSP `origin/develop` `c66c5641`）: 実行口は RetrievalService・GraphService・DocumentService の 3 つにあり（本 IADR の決定・段 3・段 2）、
+  DocumentService は門が閉じている間 `FAILED_PRECONDITION` を返す（段 2）。計画の写しと一致する。**追認する。** 計画が引く実装の箇所（`DocumentService/Features/McpTools/Execute/GrpcService.cs`
+  ほか）は本節の時点で変わっていない。
