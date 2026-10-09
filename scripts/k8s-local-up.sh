@@ -820,7 +820,8 @@ if [ "${ISTIO:-}" = "1" ]; then
   # check-stack-ready.js の G1**（Deployment の available と Pod の Ready）に置く。
   kubectl -n "$MSP_NS" rollout status deployment --timeout="${ISTIO_ROLLOUT_TIMEOUT:-10m}" \
     || echo "    WARN: サイドカー注入後の rollout が期限内に Ready にならない（ESO=1 なら Secret 供給後に Ready になる。判定は check-stack-ready.js の G1）" >&2
-  echo "    注入の確認: kubectl -n $MSP_NS get pods -o custom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name"
+  # #1882: istio-proxy はネイティブサイドカー（initContainers）に入るので、containers だけを見ると「注入 0 件」と誤読する
+  echo "    注入の確認: kubectl -n $MSP_NS get pods -o custom-columns='NAME:.metadata.name,CONTAINERS:.spec.containers[*].name,INIT:.spec.initContainers[*].name'（istio-proxy はふつう INIT の列に出る）"
 fi
 
 echo "==> [7/7] ExternalName aliases (素のサービス名 -> platform-infra FQDN)"
