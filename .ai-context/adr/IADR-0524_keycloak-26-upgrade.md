@@ -104,6 +104,16 @@ Keycloak に直接作り、**陽性対照**（登録どおり・任意の port �
 3. **管理用の 2 クライアントの権限を細粒度の管理権限（v2）で絞る**のは未着手（26.2 以降で可能になった。セキュリティ仕様書の残る穴）。
 4. `KEYCLOAK_ADMIN*` → `KC_BOOTSTRAP_ADMIN_*` の改名（`check-password-reset-mail.js` が Pod の env を読む・手順書 2 本）は未着手。
 5. アカウントコンソールの `platform` テーマは、親 `keycloak` の account テーマが無く組み込みへ落ちる（24 でも同じ。既存の不具合）。
-6. **AST の realm**（同じ Keycloak へ取り込む）も、宣言から作ると利用者のアクセストークンから `sub` が落ちる。AST のコードは `sub` を読まない（`git grep`）が、
-   AST 側で宣言を合わせるかは AST の判断である（本リポジトリでは変えない）。
+6. **AST の realm**（同じ Keycloak へ取り込む）は、宣言に `clientScopes` を持たない（submodule の pin の `realm-export.json` で確認）。その場合は Keycloak が
+   組み込みのスコープ（`basic` を含む）を作るので、**利用者のアクセストークンの `sub` は落ちないと推定する**（推定。26.7.4 で AST の realm を取り込んで測ってはいない）。
+   ［PR #1869 監査で訂正］初版は「宣言から作ると `sub` が落ちる」と書いていたが、それは本リポジトリの realm のように `clientScopes` を明示した場合の話である。
+   なお AST のコードは `sub` を読まない（`git grep`）。
 7. **計画 ADR-0086 フォローアップ 4**（Keycloak の版更新時に token exchange の着手可否の 2 条件を確かめる）は計画側の作業で、本件がその契機に当たる。計画への環流が要る。
+8. **戻し方**（PR #1869 監査）: イメージの版だけを戻すと、realm の宣言の `basic`（25 以降の写像）を realm の後追いが 24 へ当てようとして G9 が収束しない。
+   戻すのは「本件の変更の丸ごと」と「退避からの DB」の両方である（運用仕様書「Keycloak の版の更新」の「戻すとき」）。**起動器は file H2 の版を見ない** ——
+   新しい版のマニフェストで `k8s-local-up.sh` を走らせるだけで一方向の移行が起きる。検知の仕掛けは置いていない（退避を手順の先頭に置くだけ）。
+9. **転送ヘッダの信頼の範囲**（PR #1869 監査）: `KC_PROXY_HEADERS=xforwarded` は送り手を絞っていない。`platform-infra` には NetworkPolicy が無いので、
+   クラスタ内の任意の Pod が `keycloak:8080` へ偽の `X-Forwarded-*` を送れる。issuer と認可の URL は `KC_HOSTNAME` で固定なので変わらないが、
+   管理イベント・ログの送信元 IP は偽れ、バックチャネルの URL は偽った本人への応答だけが変わる。是正の候補は `KC_PROXY_TRUSTED_ADDRESSES`
+   （エッジの Pod の範囲。k3d の Pod CIDR とエッジの所在が経路で変わり、ここでは確かめられないので本件では入れない）か、Keycloak への到達をエッジと
+   既知の呼び出し元に絞る NetworkPolicy。

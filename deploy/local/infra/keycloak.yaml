@@ -71,7 +71,8 @@ spec:
             # IADR-0524: エッジ（Traefik / Istio）が TLS を終端して http で渡す。26 は要求の scheme で「安全な文脈」を決め、
             # http のままだとクッキーが SameSite=Lax・Secure なしになる（24 は Secure; SameSite=None。実測）。エッジが付ける
             # X-Forwarded-Proto を読ませて 24 と同じクッキーに戻す。issuer と認可の URL は KC_HOSTNAME で固定なので、
-            # 転送ヘッダはそれらを変えない（実測）。
+            # 転送ヘッダはそれらを変えない（実測）。🔴 送り手は絞っていない（platform-infra に NetworkPolicy が無く、任意の Pod が
+            # 偽の X-Forwarded-* を送れる。ログ・管理イベントの送信元 IP は偽れる）。KC_PROXY_TRUSTED_ADDRESSES か到達の制限が是正の候補（IADR-0524 の残余 9）。
             - name: KC_PROXY_HEADERS
               value: xforwarded
             # IADR-0524: start-dev の dev-file（H2）。24 は資格を sa / password に差し替えていたが 26 は差し替えない。
