@@ -7,6 +7,7 @@ namespace LlmGateway.Infrastructure.ExternalServices;
 // 期限（HttpClient.Timeout）は `Llm:AnthropicTimeoutSeconds` から読む。**既定は 100 秒**（.NET の既定と同値。
 // 従前は Timeout を設定せず暗黙に 100 秒だった。利用者裁定 2026-10-10 で既定は据え置き）。
 // 非ストリーミングの /complete は全文の生成を待つため、長い出力（max_tokens 8192 等）はこの期限で頭打ちになる。
+// ストリーミングでは最初の応答ヘッダが届くまでにしか効かない（SDK はヘッダ到着で SendAsync を完了し、SSE は素通し）。
 // 延ばすのは運用者の判断であり、**呼び出し側の期限はこの値より短く保つ**（docs/operations/operations.md）。
 //
 // 不正な値（数値でない・0 以下・HttpClient が受け付けない大きさ）は既定へ倒し、起動は止めない。
@@ -17,7 +18,7 @@ public static class AnthropicHttpClient
     public const int DefaultTimeoutSeconds = 100;
 
     // HttpClient.Timeout の setter は int.MaxValue ミリ秒を超える値で ArgumentOutOfRangeException を投げる。
-    // それを超える秒数は「不正」として既定へ倒す（起動時に AnthropicClient の解決が落ちるのを避ける）。
+    // それを超える秒数は「不正」として既定へ倒す（AnthropicClient の初回解決＝最初の Claude 呼び出しが落ちるのを避ける）。
     public const int MaxTimeoutSeconds = int.MaxValue / 1000;
 
     public static TimeSpan ResolveTimeout(IConfiguration configuration, ILogger? logger = null)

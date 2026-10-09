@@ -44,7 +44,7 @@ issue: "#1872"
    - `Create(IConfiguration, ILogger<AnthropicResponseSanitizingHandler>, ILogger?)` は従来の構成（サニタイズの委譲ハンドラ＋
      `AutomaticDecompression = All` の `HttpClientHandler`）に `Timeout` を設定した `HttpClient` を返す。
    - 上限を `HttpClient` の受け付ける値に置くのは、それを超えると `Timeout` の setter が `ArgumentOutOfRangeException` を投げて
-     起動時に `AnthropicClient` の解決が落ちるためである（裁定 3「不正は既定へ倒す」の射程に入れる）。運用上の上限は置かない（裁定に無い）。
+     `AnthropicClient` の初回解決（最初の Claude 呼び出し）が落ちるためである（裁定 3「不正は既定へ倒す」の射程に入れる）。運用上の上限は置かない（裁定に無い）。
 2. `Program.cs`: `new HttpClient(new AnthropicResponseSanitizingHandler(...){...})` を `AnthropicHttpClient.Create(...)` へ置き換える。
 3. 文書: 上記 4・5。`docs/` の表示テキストに修飾付き issue（`AST#…`）と IADR を書かず、trace ブロックへ入れる。
 
@@ -57,8 +57,9 @@ issue: "#1872"
   - helm で LLM ゲートウェイの env を列挙しているのは `llmgateway.extraEnv` だけ（`deploy/local/values-local.yaml` は値の上書きであり列挙ではない）。
 - 新たに誤りになる自分の記述（規則 10）: Runbook §5 の「8192 へ引き上げる候補」は、100 秒の期限と組み合わせると打ち切りが起き得る。
   同節に「引き上げるなら期限も確かめる」を足して塞ぐ。
-- 呼び出し側の期限（参考・本変更は変えない）: AST の方針の改訂 95 秒（AST#1289）。検索の再順位付け 8 秒（`Rerank__TimeoutSeconds`）。
-  いずれも 100 秒より短く、既定のままなら関係は崩れない。
+- 呼び出し側の期限（本変更は変えない）: **［PR #1873 の AI レビュー後に走査し直した。下の「監査の指摘への対応」の表が正］**
+  着手時は「AST の方針の改訂 95 秒・検索の再順位付け 8 秒で、いずれも 100 秒より短い」と記憶で挙げたが、95 秒は submodule の pin に未反映で、
+  週報・月報の散文（120 秒）を落としていた（規則 9 の違反）。
 
 ## 試験（T-33）
 
@@ -69,6 +70,24 @@ issue: "#1872"
 | `0`・`-5`・`abc`・`1.5`・空白・上限超（`2147484`） | 100 秒。空白以外は warn 1 行 |
 | 上限ちょうど（`2147483`） | 採る（`HttpClient.Timeout` へ設定しても例外にならない） |
 | `Create` | 返る `HttpClient` の `Timeout` が設定値（未設定なら 100 秒） |
+
+## 監査・AI レビューの指摘への対応（PR #1873・同 PR 内の追記）
+
+- 🟡1 ストリーミングの記述: `HttpClient.Timeout` は逐次 `/complete/stream` では最初の応答ヘッダが届くまでにしか効かない（SDK はヘッダ到着で `SendAsync` を完了し、
+  サニタイズの委譲ハンドラは SSE を素通しする。監査の実測: `Timeout` 2 秒・1 秒ごとの SSE 6 件で 7.1 秒正常完了）。IADR-0528 の残余リスクと運用仕様書の「効く範囲」を改め、
+  長い出力はストリーミングへ寄せれば頭打ちを避けられることを書いた。
+- 🟡2 配線の試験: **T-34**（`AnthropicClientWiringTests`）を足した。実ホストから `AnthropicClient` を解決して期限（`7` → 7 秒・未設定 → 100 秒）とハンドラ鎖を見る。
+  生成点のハンドラ鎖（サニタイズ → `HttpClientHandler`・`AutomaticDecompression = All`）も直接見る。
+  変異: `Program.cs` を素の `new HttpClient(handler)` へ戻す → 1 本赤（期限 7 秒）。`Create` から応答圧縮を外す → 2 本赤（ハンドラ鎖）。
+- 🔴（AI レビュー）呼び出し側の期限の一覧が不正確: 呼び出し側を走査し直した（記憶で挙げない）。
+  - 走査: AST は submodule（pin `58fe8c24`）で `git grep` の `LlmGateway|/complete|LlmCompletion` → 呼び出し元 2 サービス（取引判断・報告書）を得て、各 `timeout` の解決を読んだ。
+    方針の改訂は AST develop `24dc448b`（AST#1289）の差分も読んだ。MSP は `AddLlmGatewayServiceToken` と gRPC の生成クライアントの登録から呼び出し元を取り、各 `Timeout` / deadline を読んだ。
+  - 結果: 再順位付け 8 秒・図のコード化 20 秒・AI 分析／検索チャット・知識グラフ AI 提案・クラスタ要約は期限なし（`HttpClient` 既定 100 秒＝同値）・
+    取引判断 30 秒・日報の散文 30 秒・**週報・月報の散文 120 秒（ゲートウェイより長い）**・方針の改訂 60 秒（pin）／95 秒（AST develop `24dc448b` 以降・pin 未反映）。
+  - 週報・月報の出力の実測 931 / 1,048 トークンは、AST develop `24dc448b` の IADR-0522（AST 側）の表で確かめた（レビューの数えをそのまま転記していない）。
+  - 運用仕様書の節と IADR-0528 決定 4 を表と「呼び出し側の期限 > ゲートウェイの期限ならゲートウェイが先に切る。長い予算を生かすにはこの設定を延ばす」へ書き直した。
+- 🟡（AI レビュー）compose の llm-gateway の `environment` に設定の仕方のコメントを足した（値は置かない）。
+- 🟢 読む時点: 値は起動時ではなく、シングルトンの初回解決（最初の Claude 呼び出し）で 1 回だけ読む。再起動が要るという結論は変わらない。文言を改めた。
 
 ## 受け入れ基準
 
