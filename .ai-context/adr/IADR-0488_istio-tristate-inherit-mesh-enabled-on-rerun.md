@@ -5,12 +5,13 @@ status: Accepted
 related_ids: [NFR-16, ADR-0005, ADR-0021, IADR-0487, IADR-0307, IADR-0317, IADR-0377]
 author: claude
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-09
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/ (NFR-16 通信暗号化。恒久: サービス間 mTLS)
   - planning:projects/microservices-platform/07_adr/ADR-0005 (サービスメッシュ / Istio / mTLS)
 related_specs:
   - ../specs/20261001_1713_mesh-enabled-inherit.md
+  - ../specs/20261009_1850_dept-sync-carry-over.md
 ---
 
 # IADR-0488: ISTIO を付けない再実行はメッシュ宣言を引き継ぎ、外すのは ISTIO=0 の明示だけにする（#1713）
@@ -121,3 +122,13 @@ IADR-0487 論点 2 の採用案 a（`helm get values msp -n <ns> -o yaml`。`--a
 
 - 作業仕様書: `.ai-context/specs/20261001_1713_mesh-enabled-inherit.md`
 - [[IADR-0307]] 決定 1 と [[IADR-0487]] の残余へ、本決定を指す日付つき追記を置いた。
+
+## ［2026-10-09 追記 / #1850］同じ形を部門属性の同期へ当てはめ、読みを共有した
+
+> 上の本文は書き換えない。判断の本体は [[IADR-0473]] の 2026-10-09 追記（#1850）に置いた。ここには本決定の記述の射程が変わったことだけを足す（規則 10）。
+
+- `k8s-local-up.sh` は同じ「明示 ＞ 現行 ＞ 初回の既定」と fail-closed で `DepartmentAttributeSync__Mode` を引き継ぐ（env `DEPT_SYNC_MODE`）。
+- **リリースの値の読みは 1 回で、メッシュの判定と部門属性の同期の判定が共有する**（`scripts/lib/mesh-mtls-mode.sh` の `current_release_values`。`current_mesh_mtls_mode` は振る舞いを変えずそれを呼ぶ形にした）。
+- そのため決定 3・論点 3 の「`ISTIO=0` は読まない（読めなくても進む）」は**メッシュの判定について**の記述になった。`ISTIO=0` でも `DEPT_SYNC_MODE` が未指定・`Report`・`Fix` なら
+  部門属性の同期のために読み、読めなければ止まる。従来の既定と完全に同じ（helm を読まない・読めなくても進む）のは `ISTIO=0 DEPT_SYNC_MODE=Off`。
+  `k8s-local-up.test.js` の #1710 / #1713 節の「明示なら読まない」「`ISTIO=0` は読まない」の試験は `DEPT_SYNC_MODE=Off` を併せた形へ改めた。

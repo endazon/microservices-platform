@@ -212,6 +212,9 @@ const DOCKER_STUB = [
 const HELM_STUB = [
   '#!/usr/bin/env bash',
   'echo "helm $*" >> "$STUB_LOG"',
+  // #1850: [6/7] の `-f` のうちリポジトリの外のファイル（部門属性の同期の values ファイル。一時ファイル）の中身を "$STUB_LOG.values-files" へ写す。
+  //   一時ファイルは起動器が [6/7] の直後に消すので、渡された時点で控える。
+  'case "$*" in "upgrade --install msp "*) prev=""; for a in "$@"; do if [ "$prev" = "-f" ]; then case "$a" in deploy/*) ;; *) { echo "--- $a"; cat "$a"; } >> "$STUB_LOG.values-files";; esac; fi; prev="$a"; done;; esac',
   'in_ns=0; case " $* " in *" -n microservices-platform "*) in_ns=1;; esac',
   'case "$*" in "list "*)',
   '  major="${STUB_HELM_MAJOR:-4}"; all=0',
@@ -385,6 +388,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'BACKUP_AGE_RECIPIENTS_FILE', // #1560: バックアップの受取人。漏れていると既定で ConfigMap を作り直す
     'ISTIO', // #1710: メッシュの門。漏れていると既定のバイト等価が崩れる
     'ISTIO_MTLS_MODE', // #1710: 未指定（引き継ぎ）の経路を試すため、漏れを除く
+    'DEPT_SYNC_MODE', // #1850: 部門属性の同期の明示。漏れていると未指定（引き継ぎ）の経路と既定のバイト等価が崩れる
     // #1830: dev の値の守り。上書き・各 secret が漏れていると判定の試験が既定と違う形で走る
     'ALLOW_DEV_CLIENT_SECRETS',
     'RESET_GATE_CLIENT_SECRET',
@@ -417,6 +421,8 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   const readLog = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter((l) => l.length > 0) : []);
   const secrets = readLog(`${logFile}.secrets`);
   const patches = readLog(`${logFile}.patches`);
+  // #1850: [6/7] へ渡った追加の values ファイル（"--- <パス>" の見出しつき）。無ければ空文字
+  const valuesFiles = fs.existsSync(`${logFile}.values-files`) ? fs.readFileSync(`${logFile}.values-files`, 'utf8') : '';
   // #1834: realm の取り込み元（キー → 中身）と、受け取ったファイルの権限（「キー ファイル ディレクトリ パス」）
   const realmImportDir = `${logFile}.realm-import`;
   const realmImport = {};
@@ -430,7 +436,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   } catch {
     /* best-effort cleanup */
   }
-  return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '', secrets, patches, realmImport, realmImportModes };
+  return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '', secrets, patches, realmImport, realmImportModes, valuesFiles };
 }
 
 // 採取ログから `k3d cluster create ...` の 1 行を取り出す（無ければ null）。
@@ -3731,8 +3737,9 @@ ok('#1710: 移行済み ＋ 未指定 ＋ 現行 PERMISSIVE → PERMISSIVE の�
 });
 
 ok('#1710: 明示が勝つ（現行 STRICT でも ISTIO_MTLS_MODE=PERMISSIVE なら PERMISSIVE。現行 PERMISSIVE でも STRICT なら STRICT）', () => {
+  // ［2026-10-09 / #1850］読みは部門属性の同期の判定と共有するので、「メッシュの判定は読まない」は DEPT_SYNC_MODE=Off（同期も読まない）を併せて見る。
   const down = runUp({
-    ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1', ISTIO_MTLS_MODE: 'PERMISSIVE', STUB_HELM_VALUES: helmValues('STRICT'),
+    ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1', ISTIO_MTLS_MODE: 'PERMISSIVE', STUB_HELM_VALUES: helmValues('STRICT'), DEPT_SYNC_MODE: 'Off',
   });
   assert.strictEqual(mtlsOf(down), 'PERMISSIVE', '明示の PERMISSIVE より現行を優先した（緩める正規の手段が効かない）');
   assert.doesNotMatch(down.stdout, INHERIT_INFO, '明示があるのに引き継ぎを告げた');
@@ -3742,7 +3749,7 @@ ok('#1710: 明示が勝つ（現行 STRICT でも ISTIO_MTLS_MODE=PERMISSIVE な
   });
   assert.strictEqual(mtlsOf(up), 'STRICT', '明示の STRICT より現行を優先した');
   // 明示なら読めなくても止めない（読む必要が無い）。
-  const failOk = runUp({ ISTIO: '1', ISTIO_MTLS_MODE: 'STRICT', STUB_HELM_LIST_FAIL: '1' });
+  const failOk = runUp({ ISTIO: '1', ISTIO_MTLS_MODE: 'STRICT', STUB_HELM_LIST_FAIL: '1', DEPT_SYNC_MODE: 'Off' });
   assert.strictEqual(failOk.status, 0, `明示があるのに読み取りの失敗で止まった:\n${failOk.stderr.slice(-600)}`);
   assert.strictEqual(mtlsOf(failOk), 'STRICT');
 });
@@ -3875,13 +3882,14 @@ ok('#1713: 未指定 ＋ リリースが無い（初回）→ 従来どおり（
 });
 
 ok('#1713: ISTIO=0 ＋ 現行 mesh true → 外す（mesh.* を付けない）。helm を読まない（従来の既定とバイト等価）', () => {
-  const r = runUp({ ISTIO: '0', STUB_HELM_VALUES: helmValues('STRICT') });
+  // ［2026-10-09 / #1850］読みは部門属性の同期の判定と共有する。全く読まないのは DEPT_SYNC_MODE=Off を併せたとき（従来の既定とバイト等価）。
+  const r = runUp({ ISTIO: '0', STUB_HELM_VALUES: helmValues('STRICT'), DEPT_SYNC_MODE: 'Off' });
   assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
   assert.ok(!meshArgsOf(r).anyMesh, 'ISTIO=0 なのにメッシュ宣言を残した（明示的に外す手段が効かない）');
   assert.ok(!readsHelm(r), 'ISTIO=0 なのに現行の宣言を読みに行った');
   assert.doesNotMatch(r.stdout, MESH_INHERIT_INFO);
   // 読めなくても止まらない（読まない）。
-  const failOk = runUp({ ISTIO: '0', STUB_HELM_LIST_FAIL: '1' });
+  const failOk = runUp({ ISTIO: '0', STUB_HELM_LIST_FAIL: '1', DEPT_SYNC_MODE: 'Off' });
   assert.strictEqual(failOk.status, 0, `ISTIO=0 なのに読み取りの失敗で止まった:\n${failOk.stderr.slice(-600)}`);
   // 従来の既定（ISTIO 無し・リリース無し）と helm の呼び出しが同じ（読み取りの 1 行を除く）。全コマンド列では比べない ——
   //   `create … | kubectl apply -f -` のパイプの両端の記録順や待ちの回数が実行ごとに揺れる（実測）。helm の列は揺れない。
@@ -5220,6 +5228,208 @@ ok('#1834: 起動器は差し替えに失敗したら止まり、取り込み元
   assert.ok(!r.lines.some((l) => l.startsWith('kubectl create secret generic keycloak-realm-import ')), '取り込み元を作った');
   assert.ok(!r.lines.some((l) => /^kubectl apply -k deploy\/local\/infra/.test(l)), 'infra（Keycloak）を当てた');
   assert.ok(!`${r.stdout}${r.stderr}`.includes('probe"1834'), '値を出力した');
+});
+
+// ---- #1850 / IADR-0473（2026-10-09 追記）: 再実行で部門属性の同期（DepartmentAttributeSync__Mode）を黙って Off に戻さない ----------
+//
+// 稼働 PoC の値は運用者が helm の --reuse-values で authorization の extraEnvAppend へ入れる。[6/7] は --reuse-values を使わないので、
+// 以前は再実行のたびに外れて Off に戻っていた（計器の系列が消え DepartmentSyncNotCorrecting も鳴らない）。選び方は ISTIO と同じ
+// 明示（DEPT_SYNC_MODE）＞ 現行（helm get values）＞ 何も足さない。宣言するときは extraEnvAppend を他の要素ごと values ファイルで与える。
+// 入力は helm スタブの STUB_HELM_VALUES。窓の表（規則 11）は作業仕様書 20261009_1850_dept-sync-carry-over.md。
+
+const DEPT_LIB_REL = 'scripts/lib/dept-sync-mode.sh';
+// helm get values -o yaml の形（`- ` を親のキーと同じ字下げに置く）。entries は要素の YAML（字下げ 0 の `- name: …` の列）
+const deptValues = (entries, { mesh = 'mesh:\n  enabled: false\n' } = {}) =>
+  mesh + 'services:\n  authorization:\n    extraEnvAppend:\n'
+  + entries.split('\n').filter((l) => l).map((l) => `    ${l}`).join('\n') + '\n'
+  + '  bff:\n    extraEnvAppend:\n    - name: OpendAuth__BaseUrl\n      value: http://opend:8080\n';
+const modeEntry = (v) => `- name: DepartmentAttributeSync__Mode\n  value: ${v}`;
+const INTERVAL_ENTRY = '- name: DepartmentAttributeSync__Interval\n  value: "00:10:00"';
+const SECRET_ENTRY = '- name: Probe__Flag\n  value: "true"\n- name: Probe__Secret\n  secretKeyRef:\n    key: k\n    name: probe-secret\n    optional: true';
+const upgradeLineOf = (r) => {
+  const line = r.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, `helm upgrade --install msp の行が無い（status=${r.status}）:\n${r.stderr.slice(-600)}`);
+  return line;
+};
+// [6/7] へ渡った追加の values ファイル（values-local.yaml より後ろ・リポジトリの外）のパスと中身。無ければ null
+const deptFileOf = (r) => {
+  const line = upgradeLineOf(r);
+  const m = / -f deploy\/local\/values-local\.yaml(.*)$/.exec(line);
+  assert.ok(m, `values-local.yaml の -f が無い: ${line}`);
+  const extra = / -f (\S+)/.exec(m[1]);
+  if (!extra) {
+    assert.strictEqual(r.valuesFiles, '', 'upgrade 行に -f が無いのに values ファイルを控えた');
+    return null;
+  }
+  const head = `--- ${extra[1]}\n`;
+  assert.ok(r.valuesFiles.startsWith(head), `values ファイルの中身を控えていない: ${JSON.stringify(r.valuesFiles.slice(0, 200))}`);
+  return { path: extra[1], body: r.valuesFiles.slice(head.length) };
+};
+const expectedFile = (mode, others = '') =>
+  'services:\n  authorization:\n    extraEnvAppend:\n'
+  + (others ? others.split('\n').map((l) => `      ${l}`).join('\n') + '\n' : '')
+  + `      - name: DepartmentAttributeSync__Mode\n        value: "${mode}"\n`;
+const DEPT_INFO_CARRY = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は現行の (\S+) を引き継ぎます（DEPT_SYNC_MODE 未指定/;
+const DEPT_INFO_EXPLICIT = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は (\S+)（明示: DEPT_SYNC_MODE）/;
+const DEPT_INFO_DEFAULT = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は既定（DEPT_SYNC_MODE 未指定・現行に値なし。何も足さない/;
+const DEPT_INFO_OFF = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は Off（明示: DEPT_SYNC_MODE=Off/;
+const LEGACY_UPGRADE = 'helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform -f deploy/local/values-local.yaml';
+
+ok('#1850 P1: 未指定 ＋ 現行 Fix → [6/7] は Fix を宣言し直す（黙って Off へ戻さない）・引き継ぎを告げる・一時ファイルは消す', () => {
+  const r = runUp({ STUB_HELM_VALUES: deptValues(modeEntry('Fix')) });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  const f = deptFileOf(r);
+  assert.ok(f, '#1850 の再発: 現行 Fix のリリースへ未指定で再実行したのに宣言を足さなかった（Off へ戻る）');
+  assert.strictEqual(f.body, expectedFile('Fix'));
+  assert.strictEqual(DEPT_INFO_CARRY.exec(r.stdout)?.[1], 'Fix', '引き継いだことを告げていない');
+  assert.ok(!fs.existsSync(f.path), `一時ファイルが残った: ${f.path}`);
+  assert.strictEqual(r.lines.filter((l) => l.startsWith('helm get values')).length, 1, 'helm get values を 2 回以上読んだ（メッシュの判定と共有していない）');
+});
+
+ok('#1850 P2: 未指定 ＋ リリースが無い（初回・CI）／要素が無い → 何も足さない（[6/7] は従来の既定とバイト等価）', () => {
+  assert.strictEqual(upgradeLineOf(DEFAULT), LEGACY_UPGRADE, '既定の [6/7] が従来と違う（CI の描画のバイト等価が崩れた）');
+  assert.strictEqual(DEFAULT.valuesFiles, '');
+  assert.match(DEFAULT.stdout, DEPT_INFO_DEFAULT, '既定を選んだことを告げていない');
+  for (const [what, values] of [
+    ['メッシュの宣言だけ（authorization の要素なし）', NO_MESH_VALUES],
+    ['他の要素だけ（Mode なし）', deptValues(INTERVAL_ENTRY)],
+    ['空のリスト', 'services:\n  authorization:\n    extraEnvAppend: []\n'],
+    ['bff にだけ同名の要素', 'services:\n  bff:\n    extraEnvAppend:\n    - name: DepartmentAttributeSync__Mode\n      value: Fix\n'],
+  ]) {
+    const r = runUp({ STUB_HELM_VALUES: values });
+    assert.strictEqual(r.status, 0, `${what}: 起動器が止まった:\n${r.stderr.slice(-600)}`);
+    assert.strictEqual(upgradeLineOf(r), LEGACY_UPGRADE, `${what}: 何も無いのに宣言を足した`);
+    assert.match(r.stdout, DEPT_INFO_DEFAULT, `${what}: 既定を告げていない`);
+  }
+});
+
+ok('#1850 P3・P4: 明示の Report / Fix が勝つ（初回でも入る・現行 Report から Fix へ切り替わる）', () => {
+  const fresh = runUp({ DEPT_SYNC_MODE: 'Fix' });
+  assert.strictEqual(fresh.status, 0, `起動器が止まった:\n${fresh.stderr.slice(-600)}`);
+  assert.strictEqual(deptFileOf(fresh)?.body, expectedFile('Fix'));
+  assert.strictEqual(DEPT_INFO_EXPLICIT.exec(fresh.stdout)?.[1], 'Fix', '明示を告げていない');
+  const sw = runUp({ DEPT_SYNC_MODE: 'Fix', STUB_HELM_VALUES: deptValues(modeEntry('Report')) });
+  assert.strictEqual(deptFileOf(sw)?.body, expectedFile('Fix'), '明示の Fix より現行の Report を優先した');
+  assert.doesNotMatch(sw.stdout, DEPT_INFO_CARRY, '明示があるのに引き継ぎを告げた');
+  const back = runUp({ DEPT_SYNC_MODE: 'Report', STUB_HELM_VALUES: deptValues(modeEntry('Fix')) });
+  assert.strictEqual(deptFileOf(back)?.body, expectedFile('Report'), '明示の Report より現行の Fix を優先した');
+});
+
+ok('#1850 P5: DEPT_SYNC_MODE=Off は helm を読まず何も足さない（ISTIO=0 と併せて従来の既定と完全に同じ）', () => {
+  const r = runUp({ ISTIO: '0', DEPT_SYNC_MODE: 'Off', STUB_HELM_VALUES: deptValues(modeEntry('Fix')) });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  assert.strictEqual(upgradeLineOf(r), LEGACY_UPGRADE, 'Off の明示なのに宣言を足した（明示的に外す手段が効かない）');
+  assert.ok(!readsHelm(r), 'Off の明示（ISTIO=0）なのに helm を読んだ');
+  assert.match(r.stdout, DEPT_INFO_OFF);
+  const failOk = runUp({ ISTIO: '0', DEPT_SYNC_MODE: 'Off', STUB_HELM_LIST_FAIL: '1' });
+  assert.strictEqual(failOk.status, 0, `Off の明示なのに読み取りの失敗で止まった:\n${failOk.stderr.slice(-600)}`);
+});
+
+ok('#1850 P6: 読めない（helm list / get values の失敗）× 未指定・Report・Fix → [2/7] の前に止まる。Off だけが進む', () => {
+  for (const [what, env] of [
+    ['helm list が失敗', { STUB_HELM_LIST_FAIL: '1' }],
+    ['helm get values が失敗', { STUB_HELM_VALUES: deptValues(modeEntry('Fix')), STUB_HELM_VALUES_FAIL: '1' }],
+  ]) {
+    for (const mode of [undefined, 'Report', 'Fix']) {
+      const label = `${what} × DEPT_SYNC_MODE=${mode ?? '未指定'}`;
+      const r = runUp({ ISTIO: '0', ...env, ...(mode ? { DEPT_SYNC_MODE: mode } : {}) });
+      assert.notStrictEqual(r.status, 0, `${label}: 読めないのに進んだ（Off へ黙って戻すか、他の要素を黙って消す）`);
+      assert.match(r.stderr, /DEPT_SYNC_MODE=Off/, `${label}: 読まずに進む唯一の明示を告げていない`);
+      assert.ok(!touchedCluster(r), `${label}: 副作用（[2/7] 以降）へ進んでから止まった`);
+    }
+  }
+});
+
+ok('#1850 P7・P8: 現行の他の要素（値・secretKeyRef の形）を字面のまま保つ（未指定の引き継ぎ・明示の切り替えとも）', () => {
+  const others = `${INTERVAL_ENTRY}\n${SECRET_ENTRY}`;
+  const carry = runUp({ STUB_HELM_VALUES: deptValues(`${INTERVAL_ENTRY}\n${modeEntry('Fix')}\n${SECRET_ENTRY}`) });
+  assert.strictEqual(carry.status, 0, `起動器が止まった:\n${carry.stderr.slice(-600)}`);
+  assert.strictEqual(deptFileOf(carry)?.body, expectedFile('Fix', others), '他の要素を落とした・字面を変えた（"true" が bool に化ける等）');
+  assert.match(carry.stdout, /他の要素も現行のまま保ちます: DepartmentAttributeSync__Interval,Probe__Flag,Probe__Secret/, '保った要素を告げていない');
+  const sw = runUp({ DEPT_SYNC_MODE: 'Report', STUB_HELM_VALUES: deptValues(`${modeEntry('Fix')}\n${INTERVAL_ENTRY}\n${SECRET_ENTRY}`) });
+  assert.strictEqual(deptFileOf(sw)?.body, expectedFile('Report', others), '明示の切り替えで他の要素を落とした（添字 0 の --set と同じ罠）');
+});
+
+ok('#1850: 現行の要素が壊れている → 未指定は止まり明示を告げる。明示は置き換えて進む（他の要素は保つ）', () => {
+  for (const [what, entries] of [
+    ['値域外', modeEntry('Fixx')],
+    ['値でない形（secretKeyRef）', '- name: DepartmentAttributeSync__Mode\n  secretKeyRef:\n    key: mode\n    name: dept-sync'],
+    ['同名が 2 つ', `${modeEntry('Fix')}\n${modeEntry('Report')}`],
+  ]) {
+    const values = deptValues(`${INTERVAL_ENTRY}\n${entries}`);
+    const r = runUp({ ISTIO: '0', STUB_HELM_VALUES: values });
+    assert.notStrictEqual(r.status, 0, `${what}: 推測で進んだ`);
+    assert.match(r.stderr, /DEPT_SYNC_MODE=Fix bash scripts\/k8s-local-up\.sh --live/, `${what}: 明示を告げていない`);
+    assert.ok(!touchedCluster(r), `${what}: 副作用へ進んでから止まった`);
+    const fixed = runUp({ ISTIO: '0', DEPT_SYNC_MODE: 'Fix', STUB_HELM_VALUES: values });
+    assert.strictEqual(fixed.status, 0, `${what}: 明示でも進まない:\n${fixed.stderr.slice(-600)}`);
+    assert.strictEqual(deptFileOf(fixed)?.body, expectedFile('Fix', INTERVAL_ENTRY), `${what}: 壊れた要素を置き換えていない`);
+  }
+  const flow = runUp({ ISTIO: '0', STUB_HELM_VALUES: 'services:\n  authorization:\n    extraEnvAppend: [{name: DepartmentAttributeSync__Mode, value: Fix}]\n' });
+  assert.notStrictEqual(flow.status, 0, '流れ形式のリストを「無い」と読んで進んだ（Off へ黙って戻す）');
+});
+
+ok('#1850: 値域外の DEPT_SYNC_MODE は副作用より前に拒否する（綴りは Off / Report / Fix の 1 つ）', () => {
+  for (const v of ['fix', 'FIX', 'true', '1', 'Fix ']) {
+    const r = runUp({ DEPT_SYNC_MODE: v });
+    assert.notStrictEqual(r.status, 0, `DEPT_SYNC_MODE='${v}' を受け付けた`);
+    assert.match(r.stderr, /DEPT_SYNC_MODE は Off・Report・Fix・未指定/, `'${v}': 値域を告げていない`);
+    assert.deepStrictEqual(r.lines, [], `'${v}': 拒否の前に何かを実行した: ${r.lines.slice(0, 3).join(' | ')}`);
+  }
+});
+
+ok('#1850: メッシュと部門の同期を同時に引き継ぐ再実行でも、helm の読みは 1 回', () => {
+  const r = runUp({ STUB_HELM_VALUES: deptValues(modeEntry('Fix'), { mesh: helmValues('STRICT').replace(/namespace:[\s\S]*$/, '') }) });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  assert.ok(meshArgsOf(r).enabled, 'メッシュを引き継いでいない');
+  assert.strictEqual(deptFileOf(r)?.body, expectedFile('Fix'));
+  assert.strictEqual(r.lines.filter((l) => l.startsWith('helm list ')).length, 1, 'helm list を 2 回以上読んだ');
+  assert.strictEqual(r.lines.filter((l) => l.startsWith('helm get values')).length, 1, 'helm get values を 2 回以上読んだ');
+});
+
+ok('#1850: dept_sync_values_mode / other_entries の判定表（authorization 直下の extraEnvAppend だけ・helm の字下げと 2 段下げの両方）', () => {
+  const run = (fn, yaml) => spawnSync('bash', ['-c', `. "${DEPT_LIB_REL}"; ${fn} "$1"`, '_', yaml], { cwd: REPO_ROOT, encoding: 'utf8' });
+  const indented = 'services:\n  authorization:\n    extraEnvAppend:\n      - name: "DepartmentAttributeSync__Mode"\n        value: " fix "\n';
+  const table = [
+    [deptValues(modeEntry('Fix')), 0, 'Fix'],
+    [deptValues(modeEntry('report')), 0, 'Report'],
+    [deptValues(modeEntry('"Off"')), 0, 'Off'],
+    [indented, 0, 'Fix'],
+    [indented.replace(/\n/g, '\r\n'), 0, 'Fix'],
+    ['', 1, ''],
+    [NO_MESH_VALUES, 1, ''],
+    [deptValues(INTERVAL_ENTRY), 1, ''],
+    ['services:\n  authorization:\n    other:\n      extraEnvAppend:\n      - name: DepartmentAttributeSync__Mode\n        value: Fix\n', 1, ''],
+    ['other:\n  services:\n    authorization:\n      extraEnvAppend:\n      - name: DepartmentAttributeSync__Mode\n        value: Fix\n', 1, ''],
+    ['services:\n  authorization:\n    extraEnvAppend: null\n', 1, ''],
+    [deptValues(modeEntry('')), 2, ''],
+    [deptValues(modeEntry('Fixx')), 2, ''],
+    [deptValues(`${modeEntry('Fix')}\n${modeEntry('Fix')}`), 2, ''],
+    ['services:\n  authorization:\n    extraEnvAppend: [{name: x}]\n', 2, ''],
+  ];
+  for (const [yaml, rc, out] of table) {
+    const r = run('dept_sync_values_mode', yaml);
+    assert.strictEqual(r.status, rc, `rc が違う: ${JSON.stringify(yaml)} → ${r.status} ${r.stderr}`);
+    assert.strictEqual(r.stdout.trim(), out, `出力が違う: ${JSON.stringify(yaml)}`);
+  }
+  const others = run('dept_sync_values_other_entries', deptValues(`${INTERVAL_ENTRY}\n${modeEntry('Fix')}\n${SECRET_ENTRY}`));
+  assert.strictEqual(others.stdout, `${INTERVAL_ENTRY}\n${SECRET_ENTRY}\n`, 'other_entries が字面を保っていない');
+});
+
+ok('#1850: 前提 —— リポジトリの values（チャート既定・values-local.yaml）は authorization の extraEnvAppend を持たない', () => {
+  // 起動器が与えるリストは「現行の他の要素 ＋ Mode」であり、リポジトリ側の要素を足し合わせない。リポジトリの values が
+  // authorization の extraEnvAppend を持ち始めたら、[6/7] の values ファイルがそれを黙って置き換える —— その日はここで赤にして設計を見直す。
+  const look = (text) => spawnSync('bash', ['-c', `. "${DEPT_LIB_REL}"; dept_sync_values_mode "$1"; echo "rc=$?"; dept_sync_values_other_entries "$1"`, '_', text],
+    { cwd: REPO_ROOT, encoding: 'utf8' }).stdout;
+  for (const rel of ['deploy/helm/microservices-platform/values.yaml', 'deploy/local/values-local.yaml']) {
+    const text = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+    assert.strictEqual(look(text), 'rc=1\n', `${rel} が services.authorization.extraEnvAppend を持つ`);
+  }
+  // 判定器が目を閉じていない対照: チャート既定の authorization（コメント・extraEnv・resources を持つ実物）へ要素を足すと見える
+  const chart = fs.readFileSync(path.join(REPO_ROOT, 'deploy/helm/microservices-platform/values.yaml'), 'utf8');
+  const probe = chart.replace(/^  authorization:\n/m, '  authorization:\n    extraEnvAppend:\n      - name: Probe\n        value: x\n');
+  assert.notStrictEqual(probe, chart, '対照を作れない（チャート既定に authorization の行が無い）');
+  assert.strictEqual(look(probe), 'rc=1\n- name: Probe\n  value: x\n', '実物の values の authorization の extraEnvAppend を判定器が読めていない');
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

@@ -721,6 +721,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-llm-provider-keys.test.js
 
+      # SC-17, FR-05, ADR-0116 決定 1, IADR-0473（2026-10-09 追記）, Issue #1850: 起動器が部門属性の同期を宣言し直すときに [6/7] へ渡す
+      # values ファイルを**実際に helm template で描いて**固定する —— authorization-service に Mode と現行の他の要素が字面どおり（"false" が
+      # bool に化けない・secretKeyRef optional）、既定（values-local だけ）では描かない、採らなかった添字 0 の --set が実際に壊れる対照。helm が要るのでこのジョブ。
+      - name: Test helm department sync values carry-over (render, contrast)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-dept-sync-values.test.js
+
       # FR-16, SC-12, ADR-0123 決定 2・4, IADR-0516, Issue #1817: SC-12 の IdP への書き込み口（McpClientProvisioning__*）を
       # **実際に helm template で描いて**固定する —— 既定と values-local の両方で、書き込み口を持つ Deployment はすべて Provider=keycloak を
       # 持つ（未宣言の配備＝無人の登録・差し替えが 503 のまま Ready、を残さない）・mcp-service だけ・ClientSecret は非 optional の
