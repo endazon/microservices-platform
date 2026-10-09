@@ -29,6 +29,12 @@
  *    `datreeio/CRDs-catalog`（[IADR-0240]で選定・実測確認済み）で解決する。**未知の CRD で
  *    スキーマが見つからない場合も fail-closed**（`-ignore-missing-schemas` は使わない）——
  *    「スキーマが無い」を人が気づける形にするためで、要点 3 と同じ設計判断である。
+ *
+ * 5. **描画結果で、インフラ製品の既定の外部通信が止まっていることも見る**（ADR-0107 決定 4 / #1841）。
+ *    レンダリングでき、スキーマに適合しても、Grafana・Loki・Tempo・Qdrant・Mailpit は既定で外へ送る。
+ *    判定は `lib/product-egress-defaults.js`（描画した chart・overlay に加え、compose・Testcontainers・手順書とスクリプトの
+ *    `docker run` も見る）。**これらはツールが無くても見る**（helm / kubectl が要らない）。
+ *    走査全体で製品が 1 つも見つからなければ失敗にする（要点 2 と同じ。照合が壊れて 0 件になったときに緑を返さない）。
  */
 
 'use strict';
@@ -36,6 +42,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const egress = require('./lib/product-egress-defaults');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const DEPLOY_DIR = 'deploy';
@@ -161,12 +168,50 @@ function validateSchema(yaml, cwd = REPO_ROOT) {
   return run('kubeconform', args, cwd, yaml);
 }
 
+/** compose（`deploy/` 直下の docker-compose*.yml）。要点 1 と同じく列挙を持たない。 */
+function discoverComposeFiles(repoRoot = REPO_ROOT) {
+  let entries;
+  try {
+    entries = fs.readdirSync(path.join(repoRoot, DEPLOY_DIR));
+  } catch {
+    return [];
+  }
+  return entries.filter((n) => /^docker-compose[^/]*\.ya?ml$/.test(n)).sort().map((n) => `${DEPLOY_DIR}/${n}`);
+}
+
+/**
+ * 要点 5（#1841）: ツールの要らない経路（compose・Testcontainers）の外部通信の検査。
+ * 戻り値の `found` は製品ごとの出現数（描画結果の分と合わせて `missingProducts` へ渡す）。
+ */
+function checkEgressWithoutTools(repoRoot) {
+  const failures = [];
+  const found = [];
+  const composeFiles = discoverComposeFiles(repoRoot);
+  if (composeFiles.length === 0) failures.push(`compose（${DEPLOY_DIR}/docker-compose*.yml）が 0 件だった。走査が壊れている可能性がある。`);
+  for (const rel of composeFiles) {
+    const r = egress.checkCompose(fs.readFileSync(path.join(repoRoot, rel), 'utf8'), rel, path.join(repoRoot, path.dirname(rel)));
+    failures.push(...r.problems.map((p) => `既定の外部通信が止まっていない: ${p}`));
+    found.push(r.found);
+  }
+  const tc = egress.checkTestcontainers(egress.collectCsFiles(repoRoot));
+  failures.push(...tc.problems.map((p) => `既定の外部通信が止まっていない（Testcontainers）: ${p}`));
+  const manual = egress.checkRunCommands(egress.collectRunCommandFiles(repoRoot));
+  failures.push(...manual.problems.map((p) => `既定の外部通信が止まっていない（手で起こす手順）: ${p}`));
+  return { failures, found, testcontainersBuilders: tc.builders, runCommands: manual.commands };
+}
+
 /** 検査本体。結果オブジェクトを返す（プロセスは終了させない — 自己試験から呼べるようにするため）。 */
 function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
   const overlays = discoverOverlays(repoRoot);
   const charts = discoverCharts(repoRoot);
   const failures = [];
   const notices = [];
+  const egressFound = [];
+  const renderedEgress = (yaml, label) => {
+    const r = egress.checkRenderedManifests(yaml, label);
+    failures.push(...r.problems.map((p) => `既定の外部通信が止まっていない: ${p}`));
+    egressFound.push(r.found);
+  };
 
   // 要点 2: 0 件走査で緑を返さない。
   if (overlays.length === 0) {
@@ -176,6 +221,11 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
     failures.push(`chart（${HELM_DIR}/**/Chart.yaml）が 0 件だった。走査が壊れている可能性がある。`);
   }
   if (failures.length > 0) return { overlays, charts, failures, notices, skipped: false };
+
+  // 要点 5: compose と Testcontainers はツール無しで見る（ツール不在で飛ばす分に含めない）。
+  const offline = checkEgressWithoutTools(repoRoot);
+  failures.push(...offline.failures);
+  egressFound.push(...offline.found);
 
   // 要点 3: ツール不在は fail-closed。
   const missing = REQUIRED_TOOLS.filter((b) => !hasTool(b));
@@ -191,7 +241,8 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
     }
     notices.push(
       `notice: ${missing.join(' / ')} が無いため chart / overlay の検証を飛ばした` +
-        `（${ALLOW_MISSING_TOOLS_ENV}=1）。overlay ${overlays.length} 件 / chart ${charts.length} 件は**検査していない**。`,
+        `（${ALLOW_MISSING_TOOLS_ENV}=1）。overlay ${overlays.length} 件 / chart ${charts.length} 件は**検査していない**` +
+        '（既定の外部通信の検査も compose と Testcontainers の分だけ行った）。',
     );
     return { overlays, charts, failures, notices, skipped: true };
   }
@@ -209,6 +260,7 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
       } else {
         const schema = validateSchema(tpl.out, repoRoot);
         if (!schema.ok) failures.push(`kubeconform（chart）でスキーマ不整合: ${label}\n${schema.out}`);
+        renderedEgress(tpl.out, label);
       }
     }
   }
@@ -222,7 +274,20 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
     } else {
       const schema = validateSchema(built.out, repoRoot);
       if (!schema.ok) failures.push(`kubeconform（overlay）でスキーマ不整合: ${o}\n${schema.out}`);
+      renderedEgress(built.out, o);
     }
+  }
+
+  // 要点 5 / 要点 2: 製品が走査全体で 1 度も見つからなければ失敗（照合が壊れて 0 件になったときに緑を返さない）。
+  const missingEgress = egress.missingProducts(egressFound);
+  if (missingEgress.length > 0) {
+    failures.push(
+      `既定の外部通信の検査で ${missingEgress.join(' / ')} が 1 度も見つからなかった（chart・overlay・compose のどこにも無い）。` +
+        ' イメージの照合が壊れたか、製品を外した。外したなら lib/product-egress-defaults.js の PRODUCTS から除くこと。',
+    );
+  }
+  if (offline.testcontainersBuilders === 0) {
+    failures.push('Testcontainers の new QdrantBuilder( が 0 件だった（走査が壊れたか、試験を外した。外したなら本検査を見直すこと）。');
   }
 
   return { overlays, charts, failures, notices, skipped: false };
@@ -352,7 +417,9 @@ function main() {
   }
   console.log(
     `[check-deploy-manifests] OK: chart ${r.charts.length} 件 / overlay ${r.overlays.length} 件が` +
-      `レンダリングでき、スキーマにも適合する。\n  chart:   ${r.charts.join(', ')}\n  overlay: ${r.overlays.join(', ')}`,
+      `レンダリングでき、スキーマにも適合する。描画結果・compose・Testcontainers で` +
+      ` ${egress.PRODUCTS.map((p) => p.name).join(' / ')} の既定の外部通信が止まっている（#1841）。` +
+      `\n  chart:   ${r.charts.join(', ')}\n  overlay: ${r.overlays.join(', ')}`,
   );
 }
 
@@ -360,6 +427,8 @@ if (require.main === module) main();
 
 module.exports = {
   check,
+  checkEgressWithoutTools,
+  discoverComposeFiles,
   discoverOverlays,
   discoverCharts,
   discoverChartCiValues,

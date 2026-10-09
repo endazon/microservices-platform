@@ -50,6 +50,7 @@
     { "path": "check-realm-constraints.js", "reason": "realm JSON の静的検査。localhost と port-forward は登録 URL の期待値と注記" },
     { "path": "check-test-spec-coverage.js", "reason": "kubectl は偽陽性の説明と試験用の文字列に現れるだけ" },
     { "path": "lib/live-opt-in.js", "reason": "判定器そのもの。注記に kubectl が現れるだけ" },
+    { "path": "lib/product-egress-defaults.js", "reason": "静的な判定器（#1841）。手順書の起動コマンドを読む正規表現にコンテナの実行器の名前が現れるだけで、何も起動しない" },
     { "path": "lib/mesh-mtls-mode.sh", "reason": "source される関数定義だけ（sourcing は何もしない）。呼ぶのは live の istio-edge-up.sh / istio-edge-down.sh" },
     { "path": "lib/backup-cronjob-gate.sh", "reason": "source される関数定義だけ（sourcing は何もしない）。呼ぶのは live の k8s-local-up.sh（#1699）" },
     { "path": "lib/edge-state.sh", "reason": "source される関数定義だけ（sourcing は何もしない）。呼ぶのは live の k8s-local-up.sh / k8s-local-down.sh（#1691）" },
