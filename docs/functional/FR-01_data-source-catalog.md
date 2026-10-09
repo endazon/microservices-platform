@@ -64,8 +64,8 @@ flowchart TB
 2. `POST /datasources/{id}/sync` で同期を起動 → `RawDocumentFetched` を発行。
 3. `ConversionService` が原本を Markdown へ正規化 → `DocumentNormalized` を発行。
 4. **`DocumentService` が `DocumentNormalized` を購読し、カタログへ登録**（`status=normalized`、`MarkdownUri` 付き）→ `DocumentUpdated` を発行。
-5. `IngestionService` が `DocumentUpdated` を購読し、チャンク化・埋め込み・Qdrant 登録 → `IngestionCompleted` を発行する。
-   **この事象に購読者は無く、結線もしない**（2026-10-09 の裁定）。検索への反映は Qdrant への登録の時点で成立し、完了通知を待つ段は無い。
+5. `IngestionService` が `DocumentUpdated` を購読し、チャンク化・埋め込み・Qdrant 登録（本文の無い文書・高機密文書は埋め込まず、メタデータ点・語彙索引へ登録）→ `IngestionCompleted` を発行する。
+   **この事象に購読者は無く、結線もしない**（2026-10-09 の裁定）。検索への反映はこれらの登録の時点で成立し、完了通知を待つ段は無い。
 6. `WikiService` が `DocumentUpdated` を購読し Wiki ページへ同期。
 7. `RetrievalService` の `POST /search` がベクトル検索＋ABAC 属性フィルタで横断検索結果を返す。
 
