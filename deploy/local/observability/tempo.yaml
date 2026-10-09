@@ -1,4 +1,8 @@
 # ADR-0006, IADR-0077 (AST#24): 経路B の Tempo（opt-in・platform-infra）。config は compose（tempo.yaml）と同内容を inline。
+# 🔴 NFR-18, ADR-0133, IADR-0526 (#1842): **`server` の節だけは compose と違う（乖離は意図）。**
+#    Tempo の HTTP（運用の口 /flush・/status 等を兼ねる）は Pod の loopback（127.0.0.1:3201・gRPC 127.0.0.1:9095）だけで待ち、
+#    Service の口 3200 は同じ Pod の前段（container `gate`。observability-gate.yaml）が持つ。
+#    OTLP の受け口（4317）は書き込みの口であり管理用の口ではないので前段を通さない（NetworkPolicy で collector だけに絞る）。
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,7 +11,9 @@ metadata:
 data:
   config.yaml: |
     server:
-      http_listen_port: 3200
+      http_listen_address: 127.0.0.1
+      http_listen_port: 3201
+      grpc_listen_address: 127.0.0.1
     distributor:
       receivers:
         otlp:
@@ -51,8 +57,8 @@ spec:
           image: grafana/tempo:2.5.0@sha256:f0200a9bff6d14eb3a4332194f7b77c37ee1a3535e7e41db024d95aab6f1b4e8
           args: ["-config.file=/etc/tempo/config.yaml"]
           # Tempo は OTLP 受信を 4317(grpc)/4318(http) で待つ。collector の otlp/tempo exporter が tempo:4317 へ送る。
+          # #1842: HTTP（3201）は loopback 待ちなので宣言しない。Service の口 3200 は gate が持つ。
           ports:
-            - { containerPort: 3200, name: http }
             - { containerPort: 4317, name: otlp-grpc }
           volumeMounts:
             - name: config
@@ -61,10 +67,35 @@ spec:
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits: { cpu: 500m, memory: 512Mi }
+        # NFR-18, ADR-0133 決定 1 の条件 1, IADR-0526 (#1842): 前段（認証付きのリバースプロキシ）。loki.yaml と同じ形。
+        # 🔴 containers の 0 番は tempo のまま（observability-persistence の patch が containers/0 へ volumeMount を足す）。
+        - name: gate
+          image: caddy:2.11-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+          command: ["/bin/sh", "/etc/obs-gate/gate.sh", "/etc/obs-gate/tempo.Caddyfile"]
+          ports:
+            - { containerPort: 3200, name: http }
+          env:
+            # fail-closed: Secret は必須の参照（optional にしない）。
+            - name: OBS_GATE_WRITER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: observability-gate, key: writer }
+            - name: OBS_GATE_READER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: observability-gate, key: reader }
+          volumeMounts:
+            - name: gate
+              mountPath: /etc/obs-gate
+              readOnly: true
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 128Mi }
       volumes:
         - name: config
           configMap:
             name: tempo-config
+        - name: gate
+          configMap:
+            name: observability-gate
 ---
 apiVersion: v1
 kind: Service
@@ -75,5 +106,6 @@ metadata:
 spec:
   selector: { app: tempo }
   ports:
-    - { name: http, port: 3200, targetPort: 3200 }
+    # #1842: 3200 の宛先は前段（gate）の口。Tempo 本体の HTTP（127.0.0.1:3201）へは Service から届かない。
+    - { name: http, port: 3200, targetPort: http }
     - { name: otlp-grpc, port: 4317, targetPort: 4317 }

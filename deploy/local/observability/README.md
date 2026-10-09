@@ -6,6 +6,7 @@
 既定（`deploy/local/infra` のみ）は otel-collector が **debug exporter のみ**＝外部送信なし（fail-safe）。
 config は compose（`deploy/prometheus.yml`・`loki-config.yaml`・`tempo.yaml`・`otel-collector-config.yaml`・
 `grafana/provisioning/datasources`・`grafana/grafana.ini`）と同内容を inline する（kustomize の root 外参照制約に従う二重管理）。
+**例外は Loki・Tempo の `server` の節**（と Loki の `frontend.address`）で、経路 B は製品を Pod の loopback で待たせる（下の「管理用の口の前段と到達の制限」）。
 
 **既定の外部通信は止めてある**（ADR-0107 決定 4・#1841・IADR-0520）: Loki・Tempo は設定の利用統計の鍵（`analytics` / `usage_report` の
 `reporting_enabled: false`）、Grafana は `grafana-config.yaml` の ini（利用統計・更新確認・ニュース・Gravatar・公開鍵と Angular 検出パターンの取得）。
@@ -21,6 +22,8 @@ config は compose（`deploy/prometheus.yml`・`loki-config.yaml`・`tempo.yaml`
 | `grafana.yaml` | Grafana（datasource=Prometheus/Loki/Tempo・Keycloak OIDC 認証／local admin フォールバック・IADR-0090） |
 | `grafana-config.yaml` | Grafana の既定の外部通信を止める ini（`/etc/grafana/grafana.ini` へ subPath でマウント。compose の `deploy/grafana/grafana.ini` と同内容） |
 | `otel-collector-forward.yaml` | otel-collector を forwarding 構成へ差し替える ConfigMap（同名上書き） |
+| `observability-gate.yaml` | Loki・Tempo の前段（認証付きのリバースプロキシ。Caddy の設定と起動前の検査） |
+| `observability-networkpolicy.yaml` | Loki・Tempo の Pod への到達の制限（collector と Grafana だけ） |
 
 メトリクス経路: アプリ → OTLP → otel-collector → prometheusremotewrite / otlp tempo / loki push（push モデル）。
 
@@ -99,6 +102,24 @@ Loki の `{job="vault-audit"}` へ出す（1 行 = Vault の JSON 1 件）。**�
 値で落とす段は置いていない。秘密の書き込みの抽出の条件は `docs/security/security.md`「保管先（Vault）の audit」。
 
 - `OBSERVABILITY=1` を後から opt-in した場合、socket の device は Vault を再起動するまで有効にならない（起動器の再試行は約 5 分〔5 秒 × 60 回〕で打ち切る）。一度有効になれば Vault の storage に残る。
+
+## 管理用の口の前段と到達の制限（NFR-18・ADR-0133・IADR-0526・#1842）
+
+Loki・Tempo は製品単体で認証を掛けられず、運用の口（`/flush`・`/config`・削除 API 等）が読み書きの口と同じ HTTP の口に並ぶ。
+経路 B では次の **2 段**で塞ぐ（前段と到達の制限を別の仕組みにする）。
+
+| 段 | 何が | 中身 |
+| --- | --- | --- |
+| 前段（身元の検証） | 同じ Pod のサイドカー `gate`（Caddy） | 製品は Pod の loopback（Loki `127.0.0.1:3101`・Tempo `127.0.0.1:3201`）だけで待ち、Service の口（3100・3200）は `gate` が持つ。書き込み（collector）と読み取り（Grafana）の 2 つのトークンを検証し、書き込みは Loki の push だけ、読み取りは GET の読み取り API だけを通す。運用の口・削除 API は両方とも 403、トークン無しは 401 |
+| 到達の制限 | NetworkPolicy `loki-ingress`・`tempo-ingress` | Loki の Pod へは collector と Grafana から 3100 だけ、Tempo の Pod へは collector から 4317（OTLP）、Grafana から 3200 だけ |
+
+- トークンは Secret `observability-gate`（`writer` / `reader`）。`OBSERVABILITY=1` の起動器が乱数で作り、**再実行では既存の値を引き継ぐ**。
+  前段はトークンが無いと起動しない（fail-closed）。collector と Grafana は任意の参照で、無ければ前段が 401 で拒む。
+- **運用の口を使うとき（break-glass）**は Pod の loopback へ port-forward する（k8s の認証・認可を通る）:
+  `kubectl -n platform-infra port-forward deploy/loki 3101:3101` → `curl -X POST http://localhost:3101/flush`（Tempo は `deploy/tempo 3201:3201`）。
+- トークンを回すときは Secret を消して起動器を再実行し、`loki`・`tempo`・`grafana`・`otel-collector` を `rollout restart` する。
+- Grafana の Explore（`{job="vault-audit"}` を含む）はそのまま使える（datasource が読み取りのトークンを送る）。
+- compose（経路 A）には前段も到達の制限も無い（0 段）。datasource のヘッダの宣言は compose にも同じ形で置いてあり、値は空になる。
 
 ## 切り戻し
 

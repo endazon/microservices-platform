@@ -1,0 +1,49 @@
+# NFR-18, ADR-0133 決定 1 の条件 2, IADR-0526 (#1842): Loki・Tempo の Pod への到達の制限（前段とは**別の段**）。
+#
+# 前段（observability-gate.yaml。身元の検証）を誤っても、もう一方の段が残るようにする（ADR-0112 理由「1 段の防御では
+# 設定の誤りひとつで開く」）。届いてよい相手は 2 つだけである:
+#   - otel-collector（`app: otel-collector`）… Loki の前段 3100（push）・Tempo の OTLP 4317（トレースの書き込み）
+#   - Grafana（`app: grafana`）              … Loki の前段 3100・Tempo の前段 3200（datasource の読み取り）
+# 他の口（製品の loopback の口 3101 / 3201・gRPC 9095・Tempo の OTLP HTTP 4318）は、そもそも Pod の外へ出ていないか
+# （loopback 待ち）、ここで許していない。Prometheus は Loki・Tempo を scrape しない（唯一の scrape 対象は collector）。
+# k3s（k3d・Rancher Desktop）は NetworkPolicy を既定で強制する。
+# 🔴 届く相手を足すときは、前段の身元（トークン）と道の列挙も同時に見直すこと（ここだけ開けても前段が 401 / 403 で拒む）。
+# 一致（口・ラベル）は scripts/scripts.repo.test.js（#1842）が突き合わせる。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: loki-ingress
+  namespace: platform-infra
+spec:
+  podSelector:
+    matchLabels: { app: loki }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: otel-collector }
+        - podSelector:
+            matchLabels: { app: grafana }
+      ports:
+        - { protocol: TCP, port: 3100 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tempo-ingress
+  namespace: platform-infra
+spec:
+  podSelector:
+    matchLabels: { app: tempo }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: otel-collector }
+      ports:
+        - { protocol: TCP, port: 4317 }
+    - from:
+        - podSelector:
+            matchLabels: { app: grafana }
+      ports:
+        - { protocol: TCP, port: 3200 }

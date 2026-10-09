@@ -17,6 +17,14 @@ datasources:
     type: loki
     access: proxy
     url: http://loki:3100
+    # NFR-18, ADR-0133, IADR-0526 (#1842): 経路 B の Loki・Tempo の前段が検証する読み取りのトークン。
+    # 経路 B（deploy/local/observability/grafana.yaml）と同じ宣言を置く（check-grafana-provisioning-parity.js が 1 対 1 で突き合わせる）。
+    # 🔴 compose では env が無く値は空になる。compose の Loki・Tempo に前段は無く（0 段。docs/security/security.md）、
+    #    `auth_enabled: false` の製品はこのヘッダを読まない。
+    jsonData:
+      httpHeaderName1: Authorization
+    secureJsonData:
+      httpHeaderValue1: Bearer $OBS_GATE_READER_TOKEN
 
   - name: Tempo
     uid: tempo
@@ -24,6 +32,7 @@ datasources:
     access: proxy
     url: http://tempo:3200
     jsonData:
+      httpHeaderName1: Authorization
       tracesToLogs:
         datasourceUid: loki
         spanStartTimeShift: -5m
@@ -34,3 +43,5 @@ datasources:
         hide: false
       nodeGraph:
         enabled: true
+    secureJsonData:
+      httpHeaderValue1: Bearer $OBS_GATE_READER_TOKEN

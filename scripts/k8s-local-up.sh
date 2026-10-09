@@ -841,6 +841,17 @@ if [ "${OBSERVABILITY:-}" = "1" ]; then
     apply_secret "$INFRA_NS" grafana-oidc \
       "client-secret=${GRAFANA_OIDC_CLIENT_SECRET:-grafana-dev-secret-change-me}"
   fi
+  # NFR-18, ADR-0133, IADR-0526 (#1842): Loki・Tempo の前段（認証付きのリバースプロキシ）が検証する 2 つの身元のトークン
+  # （writer＝collector の push・reader＝Grafana の datasource）。**既存の値を引き継ぎ、無ければ乱数で作る** ——
+  # Pod の env は起動時にしか読まれないので、再実行で値を回すと前段と collector / Grafana の値が食い違う。
+  # 🔴 dev の既定値（固定の文字列）は置かない。前段は 16 進 32 文字以上でなければ起動しない（observability-gate.yaml）。
+  # 値は apply_secret のファイル経由で渡し、どのプロセスの引数にも載せない（#1793）。ESO へは委譲しない（クラスタ内で閉じる値）。
+  obs_gate_token() { # <key> → 既存の値（16 進 64 文字のときだけ）か、新しい乱数
+    local cur
+    cur="$(kubectl -n "$INFRA_NS" get secret observability-gate -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true)"
+    if [[ "$cur" =~ ^[0-9a-f]{64}$ ]]; then printf '%s' "$cur"; else od -An -tx1 -N32 /dev/urandom | tr -d ' \n'; fi
+  }
+  apply_secret "$INFRA_NS" observability-gate "writer=$(obs_gate_token writer)" "reader=$(obs_gate_token reader)"
   # IADR-0210 (#787) → IADR-0369 (#1088): 可観測性側も永続化オーバーレイが**既定**（INFRA_KUSTOMIZE と同じ意味論）。
   # **OBSERVABILITY=1 のときだけ効く**（永続化単独ではスタック自体が立たない）。opt-out は PERSIST=0。
   OBS_KUSTOMIZE="deploy/local/observability-persistence"

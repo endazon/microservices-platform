@@ -122,6 +122,13 @@ spec:
         - name: otel-collector
           image: otel/opentelemetry-collector-contrib:0.102.0@sha256:26bce721ca2f83db1c2c4e8873514dfe5b3973401fe88a1208efdc74e32840c1
           args: ["--config=/etc/otelcol-contrib/config.yaml"]
+          # NFR-18, ADR-0133, IADR-0526 (#1842): Loki の前段へ出す書き込みのトークン。読むのは転送構成
+          # （deploy/local/observability/otel-collector-forward.yaml の loki exporter）だけで、本ファイルの既定構成は使わない。
+          # optional: 可観測性を opt-in していない（Secret が無い）既定の起動を止めない。
+          env:
+            - name: OBS_GATE_WRITER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: observability-gate, key: writer, optional: true }
           ports:
             - { containerPort: 4317, name: otlp-grpc }
             - { containerPort: 4318, name: otlp-http }
