@@ -3,6 +3,8 @@
 # **dev 以外のクラスタで、レルム管理のロールを持つ機密クライアントの secret を公知の dev の値で作らせない**判定の唯一の口。
 # `source` して使う。呼び出し元は scripts/k8s-local-up.sh（手動の Secret）・deploy/local/vault/eso/bootstrap.sh（Vault の種）・
 # deploy/local/keycloak-setup/reconcile-realm.sh（realm の後追い Job へ判定を env で渡す）の 3 本。**判定をここ以外へ複写しない。**
+# Keycloak の初回の取り込み（`--import-realm`）へ env の値を渡す差し替え（dev_client_secret_realm_for_import。IADR-0518 / #1834）も
+# 同じ対象集合・env の名前・宣言の値を使うのでここに置く（呼び出し元は k8s-local-up.sh の [3/7]）。
 #
 # ## なぜ要るか
 #
@@ -79,6 +81,58 @@ dev_client_secret_create_allowed() {
   dev_client_secret_context_is_dev "$1" || [ "$2" = "1" ]
 }
 
+# NFR-18, ADR-0124 決定 1, IADR-0518 (#1834):
+# dev_client_secret_realm_for_import <realm ファイル>
+#   Keycloak の `--import-realm` へ渡す realm JSON を標準出力へ書く。対象の 3 クライアントのうち **env（*_CLIENT_SECRET）が空でない
+#   もの**だけ、宣言の `"secret": "<dev の値>"` を `"secret": "<env の値>"` へ置き換える（どの context でも env が勝つ。env が無ければ宣言のまま）。
+#   これが無いと、dev 以外のクラスタの初回の取り込みで Keycloak 側だけ公知の dev の値になり、env の値を持つ消費側と食い違う（invalid_client）。
+#   - 対象・env の名前・宣言の値は上の 3 つ（DEV_CLIENT_SECRET_GUARDED・dev_client_secret_env_name・dev_client_secret_dev_value）から引く。
+#   - 宣言の該当箇所が**ちょうど 1 か所**でなければ止める（黙って差し替えずに進むと食い違いが戻る）。
+#   - 値に `"`・`\`・制御文字があれば止める（JSON を壊さない）。
+#   - 値に `${` があれば止める（Keycloak の起動時の取り込みは `${...}` を置き換えるので、消費側と食い違う。PR #1836 監査 🟢2）。
+#   - 外部コマンドを使わない（値はどのプロセスの引数にも載らない）。差し替えたクライアント名だけを標準エラーへ出す。**値は出さない。**
+#   終了コード: 0＝書いた、1＝止める（標準出力は使わないこと）。
+dev_client_secret_realm_for_import() (
+  # bash 5.2 の patsub_replacement は置換先の `&` を一致部分へ展開する。値の `&` をそのまま置くため切る（古い bash には無い）。
+  shopt -u patsub_replacement 2>/dev/null || true
+  file="$1"
+  if [ ! -r "$file" ]; then
+    echo "ERROR: realm の取り込み元を作れない: ${file} を読めない" >&2
+    return 1
+  fi
+  content="$(< "$file")"
+  done_names=""
+  for client in $DEV_CLIENT_SECRET_GUARDED; do
+    env_name="$(dev_client_secret_env_name "$client")"
+    value="${!env_name:-}"
+    [ -n "$value" ] || continue
+    case "$value" in
+      *[\"\\]* | *[[:cntrl:]]*)
+        echo "ERROR: ${env_name} に JSON の引用符・バックスラッシュ・制御文字が含まれる。realm の取り込み元に置けない（値は表示しない）" >&2
+        return 1
+        ;;
+      *\$\{*)
+        echo "ERROR: ${env_name} に \${ が含まれる。Keycloak の取り込みが置き換えるので realm の取り込み元に置けない（値は表示しない）" >&2
+        return 1
+        ;;
+    esac
+    pattern="\"secret\": \"$(dev_client_secret_dev_value "$client")\""
+    stripped="${content//"$pattern"/}"
+    count=$(((${#content} - ${#stripped}) / ${#pattern}))
+    if [ "$count" -ne 1 ]; then
+      echo "ERROR: ${file} の ${client} の宣言の secret（dev の値）が 1 か所でない（${count} か所）。${env_name} を取り込み元へ渡せないので止める" >&2
+      return 1
+    fi
+    replacement="\"secret\": \"${value}\""
+    content=${content/"$pattern"/$replacement}
+    done_names="${done_names:+$done_names, }${client}"
+  done
+  printf '%s\n' "$content"
+  if [ -n "$done_names" ]; then
+    echo "    realm の取り込み元: env の値で secret を渡す: ${done_names}（値は表示しない）" >&2
+  fi
+)
+
 # 現在の kube context（KUBECONFIG は kubectl が尊重する）。読めなければ空 ＝ dev ではない。
 dev_client_secret_current_context() { kubectl config current-context 2>/dev/null || true; }
 
@@ -104,6 +158,7 @@ dev_client_secret_guard() {
       echo "!!!          レルム管理の権限を持つ機密クライアントを公知の dev の値で作る: ${names}"
       echo "!!!          リポジトリは公開である。トークン端点に届く誰でもこれらの権限のトークンを得られる。"
       echo "!!!          dev のクラスタでないなら、起動の直後に回す（docs/operations/paired-secret-rotation-runbook.md）。"
+      echo "!!!          稼働中の Keycloak に dev の値が残っていないかは bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets で確かめる。"
     } >&2
     return 0
   fi
@@ -113,6 +168,8 @@ dev_client_secret_guard() {
     echo "       理由: レルム管理のロールを持つクライアントである。環境変数（${envs}）が未設定か、dev の値と同じ。"
     echo "       対処: それぞれに dev 以外の値を与えて再実行する（認証基盤の側と対で書く。docs/operations/paired-secret-rotation-runbook.md）。"
     echo "       dev のクラスタだと分かっているときだけ ALLOW_DEV_CLIENT_SECRETS=1 で通せる（警告を出す。#1830）。"
+    echo "       確認: 稼働中の Keycloak に dev の値が残っていないかは bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets で確かめる"
+    echo "             （dev の値のクライアントを名指して非 0。読むだけで値は出さない。残っていれば上の手順書で対に回す。#1834）。"
   } >&2
   return 1
 }

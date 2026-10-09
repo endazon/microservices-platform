@@ -15483,6 +15483,9 @@ server.listen(0, '127.0.0.1', async () => {
         assert.ok(text.includes('ALLOW_DEV_CLIENT_SECRETS=1'), `${name} に明示の上書きが無い`);
         assert.ok(/`k3d-\*`・`kind-\*`・`rancher-desktop`・`docker-desktop`/.test(text), `${name} に dev の許可集合が無い`);
         assert.ok(!/機械の守りは起動器に無い/.test(text), `${name} に暫定の文言（機械の守りは無い）が残っている`);
+        // ［2026-10-09 / #1834 / IADR-0518］初回の取り込みへ env の値を渡すようになった（取り込み元は Secret）。旧い「止められない」を残さない。
+        assert.ok(text.includes('`keycloak-realm-import`'), `${name} に取り込み元（Secret keycloak-realm-import）が無い`);
+        assert.ok(!/起動器の外であり止められない/.test(text), `${name} に旧い文言（初回の取り込みは止められない）が残っている`);
       }
     });
   }

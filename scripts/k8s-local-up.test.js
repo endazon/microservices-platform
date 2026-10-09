@@ -264,7 +264,12 @@ const KUBECTL_STUB = [
   //   STUB_KUBE_CONTEXT で差し替える（空文字も与えられる＝読めない context）。STUB_KUBE_CONTEXT_FAIL=1 で問い合わせ自体を失敗させる。
   'if [ "${1:-} ${2:-}" = "config current-context" ]; then [ "${STUB_KUBE_CONTEXT_FAIL:-}" = "1" ] && { echo "error: current-context is not set" >&2; exit 1; }; printf "%s\\n" "${STUB_KUBE_CONTEXT-k3d-testcluster}"; exit 0; fi',
   // #1793: Secret の値はファイル経由で渡る（--from-file / --patch-file）。中身を控えて、値が引数ではなくファイルで届いたことを試験が見る。
-  'if [ "${1:-} ${2:-} ${3:-}" = "create secret generic" ]; then for a in "$@"; do case "$a" in --from-file=*=*) f="${a#--from-file=}"; printf "%s %s=%s\\n" "$4" "${f%%=*}" "$(cat "${f#*=}")" >> "$STUB_LOG.secrets";; esac; done; fi',
+  // #1834 / IADR-0518: realm の取り込み元（Secret keycloak-realm-import）は複数行の JSON なので .secrets へは混ぜず、ファイルごと
+  //   "$STUB_LOG.realm-import/<キー>" へ写す。あわせて受け取ったファイルと一時ディレクトリの権限・ディレクトリのパスを控える（後で消えたかを見る）。
+  'if [ "${1:-} ${2:-} ${3:-}" = "create secret generic" ]; then for a in "$@"; do case "$a" in --from-file=*=*) f="${a#--from-file=}"; k="${f%%=*}"; src="${f#*=}";',
+  '  if [ "$4" = "keycloak-realm-import" ]; then mkdir -p "$STUB_LOG.realm-import"; cp "$src" "$STUB_LOG.realm-import/$k";',
+  '    printf "%s %s %s %s\\n" "$k" "$(stat -c %a "$src")" "$(stat -c %a "$(dirname "$src")")" "$(dirname "$src")" >> "$STUB_LOG.realm-import.modes";',
+  '  else printf "%s %s=%s\\n" "$4" "$k" "$(cat "$src")" >> "$STUB_LOG.secrets"; fi;; esac; done; fi',
   'prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && { printf "%s\\n" "$(cat "$a")" >> "$STUB_LOG.patches"; }; prev="$a"; done',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
@@ -412,12 +417,20 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   const readLog = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter((l) => l.length > 0) : []);
   const secrets = readLog(`${logFile}.secrets`);
   const patches = readLog(`${logFile}.patches`);
+  // #1834: realm の取り込み元（キー → 中身）と、受け取ったファイルの権限（「キー ファイル ディレクトリ パス」）
+  const realmImportDir = `${logFile}.realm-import`;
+  const realmImport = {};
+  if (fs.existsSync(realmImportDir)) for (const k of fs.readdirSync(realmImportDir)) realmImport[k] = fs.readFileSync(path.join(realmImportDir, k), 'utf8');
+  const realmImportModes = readLog(`${logFile}.realm-import.modes`).map((l) => {
+    const [key, fileMode, dirMode, dir] = l.split(' ');
+    return { key, fileMode, dirMode, dir };
+  });
   try {
     fs.rmSync(workdir, { recursive: true, force: true });
   } catch {
     /* best-effort cleanup */
   }
-  return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '', secrets, patches };
+  return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '', secrets, patches, realmImport, realmImportModes };
 }
 
 // 採取ログから `k3d cluster create ...` の 1 行を取り出す（無ければ null）。
@@ -4917,6 +4930,8 @@ ok('#1830: dev ではない context・env 未設定 → [1/7] の直後、何も
     assert.ok(!wroteAnything(r), `${JSON.stringify(env)}: 書いてから止まった:\n${r.lines.filter((l) => / apply -f|create /.test(l)).join('\n')}`);
     assert.ok(/identity-admin, reset-gate, mcp-client-admin/.test(r.stderr), `${JSON.stringify(env)}: 名指していない:\n${r.stderr}`);
     assert.ok(/ALLOW_DEV_CLIENT_SECRETS=1/.test(r.stderr) && /RESET_GATE_CLIENT_SECRET/.test(r.stderr), '対処（env・上書き）を告げていない');
+    // #1834（issue AC3）: 止めたときに、稼働中の dev の値の確かめ方（--check-dev-secrets）も告げる。
+    assert.ok(/bash deploy\/local\/keycloak-setup\/reconcile-realm\.sh --check-dev-secrets/.test(r.stderr), `確認の手順（--check-dev-secrets）を告げていない:\n${r.stderr}`);
     assert.ok(!r.stderr.includes('-dev-secret-change-me'), '値を出力した');
   }
 });
@@ -4944,17 +4959,24 @@ ok('#1830: ALLOW_DEV_CLIENT_SECRETS=1 は大きく警告して通す。1 以外�
   const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ALLOW_DEV_CLIENT_SECRETS: '1' });
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   assert.ok(/!!! WARNING: k8s-local-up\.sh: ALLOW_DEV_CLIENT_SECRETS=1/.test(r.stderr), `警告が無い:\n${r.stderr.slice(0, 800)}`);
+  assert.ok(/!!! .*reconcile-realm\.sh --check-dev-secrets/.test(r.stderr), '上書きの警告に確認の手順（--check-dev-secrets）が無い（#1834）');
   assert.deepStrictEqual(secretOf(r, 'reset-gate-oidc'), [devValueOf('reset-gate')]);
   const t = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ALLOW_DEV_CLIENT_SECRETS: 'true' });
   assert.notStrictEqual(t.status, 0, 'ALLOW_DEV_CLIENT_SECRETS=true で通した');
 });
 
-ok('#1830: ESO=1 では identity-admin / mcp-client-admin を Vault の種（bootstrap.sh）の判定に任せ、ここでは reset-gate だけを見る', () => {
-  const ok1 = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1', RESET_GATE_CLIENT_SECRET: customOf('reset-gate') });
-  assert.strictEqual(ok1.status, 0, `止まった（スタブの Vault では KV が在る＝bootstrap も通る）:\n${ok1.stderr.slice(-800)}`);
-  const ng = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1' });
-  assert.notStrictEqual(ng.status, 0, '止まらなかった');
-  assert.ok(/止める: reset-gate$/m.test(ng.stderr), `reset-gate だけを名指していない:\n${ng.stderr}`);
+// ［2026-10-09 / #1834 / IADR-0518］ESO=1 でも 3 つとも見る。取り込み元の Secret が ESO の有無によらず 3 つの env から作られ、
+//   bootstrap.sh（Vault の種の判定）は Keycloak の初回の取り込み（[4/7]）より後に走るため、従来の「reset-gate だけ」では
+//   止まる前に Keycloak が dev の値で identity-admin / mcp-client-admin を作っていた。
+ok('#1830/#1834: ESO=1 でも 3 クライアントを見る（取り込み元の Secret が env から作られ、bootstrap より前に Keycloak が取り込むため）', () => {
+  const ng = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1', RESET_GATE_CLIENT_SECRET: customOf('reset-gate') });
+  assert.notStrictEqual(ng.status, 0, 'reset-gate だけ与えて止まらなかった');
+  assert.ok(!wroteAnything(ng), '書いてから止まった');
+  assert.ok(/止める: identity-admin, mcp-client-admin$/m.test(ng.stderr), `identity-admin と mcp-client-admin を名指していない:\n${ng.stderr}`);
+  const env = { STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1' };
+  for (const c of DEV_GUARDED) env[`${c.toUpperCase().replace(/-/g, '_')}_CLIENT_SECRET`] = customOf(c);
+  const ok1 = runUp(env);
+  assert.strictEqual(ok1.status, 0, `陽性対照: 3 つ与えて止まった（スタブの Vault では KV が在る＝bootstrap も通る）:\n${ok1.stderr.slice(-800)}`);
 });
 
 ok('#1830 陽性対照: 既定（k3d の context）は従来どおり dev の値で 3 つを作り、警告も出さない', () => {
@@ -5045,6 +5067,159 @@ ok('#1830: reconcile-realm.sh --check-dev-secrets は別名の Job を RECONCILE
   assert.deepStrictEqual([r.job, r.mode], ['keycloak-realm-dev-secret-check', 'check-dev-secrets']);
   const bad = runReconcile(['--bogus'], {});
   assert.strictEqual(bad.status, 2, '未知の引数を受け付けた');
+});
+
+// --- NFR-18, ADR-0124 決定 1, IADR-0518 (#1834): Keycloak の初回の取り込みへ、管理用の 3 クライアントの secret を env の値で渡す ---------
+//
+// 取り込み元は Secret keycloak-realm-import（k8s-local-up.sh [3/7] が作り、deploy/local/infra/keycloak.yaml がマウントする）。
+// 差し替えは判定器の dev_client_secret_realm_for_import 1 本（対象・env の名前・宣言の値は判定器が持つ）。ここでは
+// (1) env を与えたクライアントだけ取り込み元の secret が env の値になる（どの context でも）
+// (2) env が無ければ宣言とバイト等価（dev の陽性対照・CI の 2 本の既定）
+// (3) 値は出力・引数に出ない・一時ファイルは 0600／0700 で消える
+// (4) 取り込み元は Secret であり ConfigMap ではない（宣言の ConfigMap は残る）
+// (5) 壊れた宣言・JSON を壊す値で止まる、を固定する。
+const PLATFORM_REALM_PATH = path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json');
+const PLATFORM_REALM_SRC = fs.readFileSync(PLATFORM_REALM_PATH, 'utf8');
+const envNameOf1834 = (client) => `${client.toUpperCase().replace(/-/g, '_')}_CLIENT_SECRET`;
+const importedRealm = (r) => {
+  const raw = r.realmImport['microservices-platform-realm.json'];
+  assert.ok(raw, `取り込み元の Secret に microservices-platform-realm.json が無い（キー: ${Object.keys(r.realmImport).join(', ')}）`);
+  return { raw, json: JSON.parse(raw) };
+};
+const clientSecretOf = (realm, clientId) => (realm.clients.find((c) => c.clientId === clientId) || {}).secret;
+/** 3 クライアントの secret を宣言の値へ戻した realm（差し替え以外が何も変わっていないことを比べる用） */
+const withDeclaredSecrets = (realm) => {
+  const copy = JSON.parse(JSON.stringify(realm));
+  for (const c of copy.clients) if (DEV_GUARDED.includes(c.clientId)) c.secret = devValueOf(c.clientId);
+  return copy;
+};
+
+ok('#1834: 既定（k3d・env 未設定）— 取り込み元は Secret keycloak-realm-import で、中身は宣言とバイト等価（陽性対照・CI の 2 本と同じ形）', () => {
+  assert.strictEqual(DEFAULT.status, 0);
+  const creates = DEFAULT.lines.filter((l) => /^kubectl create (secret generic|configmap) keycloak-realm-import /.test(l));
+  assert.deepStrictEqual(creates.map((l) => l.split(' ').slice(0, 5).join(' ')), ['kubectl create secret generic keycloak-realm-import'],
+    `取り込み元が Secret として 1 回だけ作られていない:\n${creates.join('\n')}`);
+  assert.ok(/ -n platform-infra /.test(creates[0]) && /--dry-run=client -o yaml/.test(creates[0]), '名前空間・冪等の形が違う');
+  assert.strictEqual(importedRealm(DEFAULT).raw.trimEnd(), PLATFORM_REALM_SRC.trimEnd(), '既定で取り込み元の中身が宣言と違う');
+  assert.ok(!/env の値で secret を渡す/.test(DEFAULT.stderr), '既定で差し替えの告知が出た');
+  // 宣言の ConfigMap は残る（後追い Job・申請の門の読み手）。取り込み元は infra の apply（[4/7]）より前に作る。
+  const cmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-realms '));
+  const secIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create secret generic keycloak-realm-import '));
+  const infraIdx = DEFAULT.lines.findIndex((l) => /^kubectl apply -k deploy\/local\/infra(-persistence)?$/.test(l));
+  assert.ok(cmIdx >= 0 && secIdx >= 0 && infraIdx >= 0, '宣言の ConfigMap・取り込み元・infra の apply のどれかが無い');
+  assert.ok(secIdx < infraIdx, '取り込み元が infra の apply（Keycloak の起動）より後に作られている');
+});
+
+ok('#1834: dev 以外の context で 3 つの env を与える → 取り込み元の 3 クライアントの secret は env の値、ほかは宣言のまま（値は出力・引数に出ない）', () => {
+  const env = { STUB_KUBE_CONTEXT: 'prod-shared' };
+  for (const c of DEV_GUARDED) env[envNameOf1834(c)] = customOf(c);
+  const r = runUp(env);
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  const { json } = importedRealm(r);
+  for (const c of DEV_GUARDED) assert.strictEqual(clientSecretOf(json, c), customOf(c), `${c} の secret が env の値でない`);
+  assert.deepStrictEqual(withDeclaredSecrets(json), JSON.parse(PLATFORM_REALM_SRC), '3 つの secret 以外も変わっている');
+  assert.ok(/env の値で secret を渡す: identity-admin, reset-gate, mcp-client-admin（値は表示しない）/.test(r.stderr), `差し替えの告知が無い:\n${r.stderr.slice(-800)}`);
+  for (const c of DEV_GUARDED) {
+    assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf(c)), `${c} の値が出力に出た`);
+    assert.ok(!r.lines.some((l) => l.includes(customOf(c))), `${c} の値がコマンドの引数に出た`);
+  }
+  // 消費側（*-oidc）と取り込み元が同じ値（invalid_client の食い違いが無い）
+  for (const c of DEV_GUARDED) assert.deepStrictEqual(secretOf(r, `${c}-oidc`), [clientSecretOf(json, c)], `${c}: 消費側と取り込み元が食い違う`);
+});
+
+ok('#1834: dev の context でも env を与えたクライアントだけ差し替える（どの context でも env が勝つ）', () => {
+  const r = runUp({ STUB_KUBE_CONTEXT: 'k3d-testcluster', RESET_GATE_CLIENT_SECRET: customOf('reset-gate') });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  const { json } = importedRealm(r);
+  assert.strictEqual(clientSecretOf(json, 'reset-gate'), customOf('reset-gate'));
+  for (const c of ['identity-admin', 'mcp-client-admin']) assert.strictEqual(clientSecretOf(json, c), devValueOf(c), `${c} を差し替えた（env は無い）`);
+  assert.ok(/env の値で secret を渡す: reset-gate（値は表示しない）/.test(r.stderr), '告知が reset-gate だけを名指していない');
+});
+
+ok('#1834: 取り込み元の一時ファイルは 0600・ディレクトリは 0700 で、起動器の終了時には消えている', () => {
+  const r = runUp({ STUB_KUBE_CONTEXT: 'k3d-testcluster', RESET_GATE_CLIENT_SECRET: customOf('reset-gate') });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  // PR #1836 AI レビュー: AST の realm（submodule を取得した環境）は 2 つ目のキーとして同梱されるので、数は固定しない。
+  // MSP の realm が在ることと、同梱された全ファイルの権限・後始末を見る。
+  assert.ok(r.realmImportModes.some((m) => m.key === 'microservices-platform-realm.json'),
+    `MSP の realm が取り込み元に無い: ${JSON.stringify(r.realmImportModes)}`);
+  for (const m of r.realmImportModes) {
+    assert.deepStrictEqual([m.fileMode, m.dirMode], ['600', '700'], `権限が違う: ${JSON.stringify(m)}`);
+    assert.ok(!fs.existsSync(m.dir), `一時ディレクトリが残っている: ${m.dir}`);
+  }
+});
+
+ok('#1834: keycloak.yaml は取り込み元を Secret keycloak-realm-import からマウントし、ConfigMap からは取り込まない', () => {
+  const vol = KEYCLOAK_INFRA_YAML.match(/^ {8}- name: realms\n((?: {10}.*\n)+)/m);
+  assert.ok(vol, 'keycloak.yaml に realms ボリュームが無い');
+  assert.ok(/^ {10}secret:\n {12}secretName: keycloak-realm-import\s*$/m.test(vol[1]), `realms ボリュームが Secret keycloak-realm-import でない:\n${vol[1]}`);
+  assert.ok(!/configMap/.test(vol[1]), 'realms ボリュームが ConfigMap を参照している');
+  assert.ok(/- name: realms\n\s+mountPath: \/opt\/keycloak\/data\/import\n\s+readOnly: true/.test(KEYCLOAK_INFRA_YAML), '取り込みの置き場へ読み取り専用でマウントしていない');
+  assert.ok(!/name: keycloak-realms\b/.test(KEYCLOAK_INFRA_YAML), 'keycloak.yaml が宣言の ConfigMap を参照している');
+});
+
+/** 差し替えの関数を bash で直接呼ぶ（env を与えて）。 */
+function realmForImport(file, env) {
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. "$1"\ndev_client_secret_realm_for_import "$2"`, 'realm-for-import', DEV_GUARD_LIB, file], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH || '', ...env },
+  });
+  return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+
+ok('#1834: 差し替えは値をそのまま置く（& / + = 等）。JSON を壊す値（引用符・バックスラッシュ・制御文字）は値を出さずに止まる', () => {
+  // 鍵の形を避けた試験用の値（gitleaks）。bash 5.2 の patsub_replacement で & が一致部分へ化けないことも見る。
+  const literal = ['probe&1834', 'a/b+c=d'].join('~');
+  const good = realmForImport(PLATFORM_REALM_PATH, { IDENTITY_ADMIN_CLIENT_SECRET: literal });
+  assert.strictEqual(good.status, 0, good.stderr);
+  assert.strictEqual(clientSecretOf(JSON.parse(good.stdout), 'identity-admin'), literal, '値がそのまま置かれていない');
+  for (const bad of ['probe"1834', 'probe\\1834', 'probe\n1834', 'probe\t1834']) {
+    const r = realmForImport(PLATFORM_REALM_PATH, { MCP_CLIENT_ADMIN_CLIENT_SECRET: bad });
+    assert.strictEqual(r.status, 1, `${JSON.stringify(bad)}: 止まらなかった`);
+    assert.strictEqual(r.stdout, '', `${JSON.stringify(bad)}: 止まったのに取り込み元を書いた`);
+    assert.ok(/MCP_CLIENT_ADMIN_CLIENT_SECRET に JSON の引用符/.test(r.stderr), `${JSON.stringify(bad)}: 名指していない: ${r.stderr}`);
+    assert.ok(!r.stderr.includes('probe'), `${JSON.stringify(bad)}: 値を出力した`);
+  }
+  // PR #1836 監査 🟢2: Keycloak の起動時の取り込みは `${...}` を置き換える（replacePlaceholders）ので、値に `${` があれば止める。
+  const placeholder = ['probe', '{X}1834'].join('$');
+  const r = realmForImport(PLATFORM_REALM_PATH, { MCP_CLIENT_ADMIN_CLIENT_SECRET: placeholder });
+  assert.strictEqual(r.status, 1, '${ で止まらなかった');
+  assert.strictEqual(r.stdout, '', '${ で止まったのに取り込み元を書いた');
+  assert.ok(/MCP_CLIENT_ADMIN_CLIENT_SECRET に \$\{ が含まれる/.test(r.stderr), `名指していない: ${r.stderr}`);
+  assert.ok(!r.stderr.includes('probe'), '${ の値を出力した');
+});
+
+ok('#1834: 宣言の secret（dev の値）が 1 か所でない realm では、env を与えたクライアントについて止まる（黙って差し替えずに進まない）', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'realm-1834-'));
+  try {
+    const pattern = `"secret": "${devValueOf('reset-gate')}"`;
+    assert.strictEqual(PLATFORM_REALM_SRC.split(pattern).length - 1, 1, '前提: 宣言に reset-gate の secret がちょうど 1 か所');
+    const cases = {
+      missing: PLATFORM_REALM_SRC.replace(pattern, `"secret":"${devValueOf('reset-gate')}"`), // 書式が違う＝見つからない
+      twice: PLATFORM_REALM_SRC.replace(pattern, `${pattern}, "x-dup": {${pattern}}`),
+    };
+    for (const [name, text] of Object.entries(cases)) {
+      const file = path.join(dir, `${name}.json`);
+      fs.writeFileSync(file, text);
+      const r = realmForImport(file, { RESET_GATE_CLIENT_SECRET: customOf('reset-gate') });
+      assert.strictEqual(r.status, 1, `${name}: 止まらなかった`);
+      assert.strictEqual(r.stdout, '', `${name}: 止まったのに取り込み元を書いた`);
+      assert.ok(/reset-gate の宣言の secret（dev の値）が 1 か所でない/.test(r.stderr), `${name}: 名指していない: ${r.stderr}`);
+      assert.ok(!r.stderr.includes(customOf('reset-gate')), `${name}: 値を出力した`);
+      // env が無ければ宣言のまま通す（差し替えないものは検査しない）
+      assert.strictEqual(realmForImport(file, {}).status, 0, `${name}: env が無いのに止まった`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+ok('#1834: 起動器は差し替えに失敗したら止まり、取り込み元も Keycloak も作らない', () => {
+  const r = runUp({ STUB_KUBE_CONTEXT: 'k3d-testcluster', IDENTITY_ADMIN_CLIENT_SECRET: 'probe"1834' });
+  assert.notStrictEqual(r.status, 0, '止まらなかった');
+  assert.ok(!r.lines.some((l) => l.startsWith('kubectl create secret generic keycloak-realm-import ')), '取り込み元を作った');
+  assert.ok(!r.lines.some((l) => /^kubectl apply -k deploy\/local\/infra/.test(l)), 'infra（Keycloak）を当てた');
+  assert.ok(!`${r.stdout}${r.stderr}`.includes('probe"1834'), '値を出力した');
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

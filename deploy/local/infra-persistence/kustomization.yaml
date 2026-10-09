@@ -6,8 +6,8 @@
 # 既定（PERSIST 未設定）は base（emptyDir）が適用され、本オーバーレイは一切効かない（後方互換・fail-safe）。
 # ［2026-09-26 / #1560］IADR-0471: 永続化した Postgres の日次バックアップ CronJob（deploy/local/platform-backup/postgres）も取り込む。
 #
-# realm import 用 ConfigMap `keycloak-realms` は base と同様 kustomize の外（scripts/k8s-local-up.sh）で
-# 実 realm ファイル（単一情報源）から生成する（base の NOTE 参照）。
+# realm の取り込み元の Secret `keycloak-realm-import`（IADR-0518 / #1834）と宣言の ConfigMap `keycloak-realms` は、
+# base と同様 kustomize の外（scripts/k8s-local-up.sh）で実 realm ファイル（単一情報源）から生成する（base の NOTE 参照）。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -32,7 +32,7 @@ patches:
           persistentVolumeClaim:
             claimName: postgres-data
   # keycloak: base は /opt/keycloak/data を未マウント（H2 はコンテナ層）。PVC volume と volumeMount を追加する。
-  # realm import ConfigMap は /opt/keycloak/data/import（readOnly）に入れ子で重なり、import は不変で機能する。
+  # realm の取り込み元（Secret keycloak-realm-import。IADR-0518）は /opt/keycloak/data/import（readOnly）に入れ子で重なり、import は不変で機能する。
   - target:
       kind: Deployment
       name: keycloak
