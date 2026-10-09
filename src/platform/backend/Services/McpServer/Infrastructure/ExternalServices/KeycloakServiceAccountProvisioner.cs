@@ -174,6 +174,7 @@ public sealed class KeycloakServiceAccountProvisioner(
         {
             // PR #1832 再監査 🟡1: SA の項目が読めない表現では書く前に止める（補償も書かない）。
             RequireServiceAccountsFlag(current);
+            RequireWebOrigins(current);
             try
             {
                 await WriteEnabledAsync(client, internalId, enabled, current);
@@ -535,12 +536,17 @@ public sealed class KeycloakServiceAccountProvisioner(
 
     // ［#1829］`enabled` を書き、読み戻して確かめる（表現を丸ごと送り返さない理由と、SA・authorization の現在値を必ず添える理由は冒頭）。
     // `current` は同じ要求の中で読んだクライアントの表現（SA・authorization の現在値の出どころ）。
-    internal static Dictionary<string, bool> EnabledBody(bool enabled, bool serviceAccountsEnabled, bool authorizationServicesEnabled) => new()
-    {
-        ["enabled"] = enabled,
-        ["serviceAccountsEnabled"] = serviceAccountsEnabled,
-        ["authorizationServicesEnabled"] = authorizationServicesEnabled,
-    };
+    // ［2026-10-09 / #1859・IADR-0524］`webOrigins` の現在値も添える。Keycloak 26.7.4 の `PUT /clients/{id}` は `webOrigins` を欠いた本文を
+    //   受けると、Web オリジンを**リダイレクト URI から導いて書く**（有人のクライアントの `webOrigins=[]` が `http://127.0.0.1:50000` 等へ
+    //   変わり、テンプレートの「CORS を開かない」が無効化・再有効化で崩れた。integration-stack の門 M9 と手元で実測）。現在値を送れば変わらない。
+    internal static Dictionary<string, object> EnabledBody(
+        bool enabled, bool serviceAccountsEnabled, bool authorizationServicesEnabled, IReadOnlyList<string> webOrigins) => new()
+        {
+            ["enabled"] = enabled,
+            ["serviceAccountsEnabled"] = serviceAccountsEnabled,
+            ["authorizationServicesEnabled"] = authorizationServicesEnabled,
+            ["webOrigins"] = webOrigins.ToArray(),
+        };
 
     // 🔴 PR #1832 再監査 🟡1（fail-closed）: `serviceAccountsEnabled` が読めない（null・欠落）表現から false を推して送ると、
     // Keycloak 24 は SA の利用者を属性ごと消す（🔴1 と同じ事故）。Keycloak 24・26.7.4 の GET は primitive で必ず出すが、版の変更や
@@ -550,11 +556,17 @@ public sealed class KeycloakServiceAccountProvisioner(
         => current?.ServiceAccountsEnabled
            ?? throw Failed("クライアントの表現に serviceAccountsEnabled が無い（推して送るとサービスアカウントの利用者が消えるので書かない）。");
 
+    // ［#1859］`webOrigins` も読めない表現からは推さない（空を推して送ると Web オリジンを消し、欠いて送ると 26 はリダイレクト URI から導く）。
+    private static IReadOnlyList<string> RequireWebOrigins(KeycloakClient? current)
+        => current?.WebOrigins
+           ?? throw Failed("クライアントの表現に webOrigins が無い（欠いて送ると Keycloak 26 がリダイレクト URI から導いて書くので書かない）。");
+
     private async Task WriteEnabledAsync(HttpClient client, string internalId, bool enabled, KeycloakClient? current)
     {
         var body = EnabledBody(enabled,
             serviceAccountsEnabled: RequireServiceAccountsFlag(current),
-            authorizationServicesEnabled: current?.AuthorizationServicesEnabled == true);
+            authorizationServicesEnabled: current?.AuthorizationServicesEnabled == true,
+            webOrigins: RequireWebOrigins(current));
         var put = await Send(client, () => client.PutAsJsonAsync(ClientPath(internalId), body, Json, CancellationToken.None));
         EnsureSuccess(put, "クライアントの有効・無効の書き込み");
         if (IsEnabled(await ReadClientAsync(client, internalId)) != enabled)

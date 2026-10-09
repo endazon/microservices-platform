@@ -72,7 +72,8 @@ spec:
             #   メッシュの送り手側のサイドカー（Envoy）は X-Forwarded-Proto を付けるが X-Forwarded-Port は付けない。転送ヘッダを読ませると
             #   Keycloak は port を落とし、in-cluster の well-known が jwks_uri を http://keycloak/…（80 番）で返して、全サービスの
             #   JWT 検証が「署名の鍵が無い」（IDX10500）で 401 になった（手元でも X-Forwarded-Proto だけを付けて再現）。
-            #   代わりに、エッジの後ろのクッキーは 24 と違い SameSite=Lax・Secure なしになる（残余。セキュリティ仕様書）。
+            #   エッジ越しの要求（Host が KC_HOSTNAME の host）は、転送ヘッダが無くても https の公開 URL で安全な文脈と判定され、
+            #   クッキーは 24 と同じ Secure; SameSite=None になる（手元で実測）。
             # IADR-0524: start-dev の dev-file（H2）。24 は資格を sa / password に差し替えていたが 26 は差し替えない。
             # 永続化（PVC。既定）された 24 の H2 を開くために同じ値を明示する（H2 のファイルの外へ出ない値で、秘密ではない）。
             # 新しい PVC もこの資格で作られる。

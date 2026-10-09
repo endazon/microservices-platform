@@ -15828,6 +15828,16 @@ server.listen(0, '127.0.0.1', async () => {
       }
     });
 
+    ok('#1869 verify-oidc-edge-flow: ログイン画面までの 302 は issuer と同じ origin の login-actions だけを、最大 3 段まで辿る（Keycloak 26 の PAR）', () => {
+      const src = fs1869.readFileSync(path1869.join(REPO1869, 'scripts', 'verify-oidc-edge-flow.sh'), 'utf8');
+      const loop = /for hop in 0 1 2 3; do\n([\s\S]*?)\n  done/.exec(src);
+      assert.ok(loop, 'ログイン画面を取る段に、上限つきの辿りのループが無い');
+      assert.ok(/case "\$next_loc" in\n\s+"\$KC_URL\/realms\/\$REALM\/login-actions\/"\*\)/.test(loop[1]), '辿る先を issuer の login-actions に限っていない');
+      assert.ok(/if \[ "\$hop" -lt 3 \]; then page_url="\$next_loc"; continue; fi/.test(loop[1]), '辿る段数に上限が無い');
+      assert.ok(!/curl[^\n]*\s-L\b/.test(loop[1]), 'curl -L で任意の先を辿っている（クライアントへの戻りまで黙って辿る）');
+      assert.ok(/ACQUIRE_ERR="ログインフォームを取得できない[^"]*Location=\$\{next_loc/.test(src), '失敗の文言に最後の Location を出していない');
+    });
+
     ok('#1869 integration-stack: 起動の段に、ジョブの上限より短い上限がある（取り消しではなく失敗にして診断を残す）', () => {
       const wf = fs1869.readFileSync(path1869.join(REPO1869, '.github', 'workflows', 'integration-stack.yml'), 'utf8');
       const job = /\n    timeout-minutes: (\d+)\n/.exec(wf);
