@@ -1033,6 +1033,14 @@ services:
       clientId: bff
       existingSecret: bff-oidc
       clientSecretKey: client-secret
+      # NFR-18, ADR-0131 決定 4 の 2, IADR-0522 (#1839): セッションストア（Valkey）の認証パスワード。
+      # 🔴 **ストアは認証を必須にして起動する**ので、BFF はこの Secret の値が無いとセッションも鍵リングも読めない。
+      # secretKeyRef は**非 optional** —— Secret が無ければ Pod は起動しない（注入漏れを「認証なしで接続」へ倒さない）。
+      # Secret 名は製品名を持たない（ストアのサーバと BFF が同じ値を読む。IADR-0461 決定 3 と同じ理由）。
+      # ローカルは scripts/k8s-local-up.sh が platform-infra と本 ns の 2 か所へ作る。接続先はコード既定の
+      # `valkey:6379`（IADR-0316 の判断を IADR-0522 が引き継ぐ）。🔴 本番像にストアの配備は無い（計画 ADR-0131 決定 5）。
+      storeExistingSecret: session-store-credentials
+      storePasswordKey: password
     # SC-22, ADR-0095 決定 3, IADR-0433 決定 4, IADR-0453 決定 9 (#1411): BFF 専用の ServiceAccount。
     # 🔴 Vault の k8s auth ロール `bff-secret-writer` はこの名前にだけ束縛する（`default` に束縛しない）。
     serviceAccount:

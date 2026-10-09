@@ -554,7 +554,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
         builder.ConfigureAppConfiguration((_, cfg) =>
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Redis:ConnectionString"] = "localhost:6379",
+                ["BffSession:RedisConnectionString"] = "localhost:6379",
                 // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の主体（許可集合）。
                 // **空だと何も合成と見なさない**（fail-closed）ため、テストでは明示的に 1 件入れる。
                 ["SyntheticMonitoring:Subjects:0"] = SyntheticSubject,

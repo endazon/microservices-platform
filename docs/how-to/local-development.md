@@ -3,15 +3,15 @@ title: how-to — ローカル開発フロー
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-09-25
+updated: 2026-10-09
 author: claude
 ---
 <!-- trace:
-ids: [FR-13, FR-14, UC-07]
-adrs: [ADR-0032, ADR-0048, ADR-0106]
-iadrs: [IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0273, IADR-0331, IADR-0429, IADR-0461]
-specs: [20260831_issue-1092_planning-submodule-residual-refs, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1499_object-storage-seaweedfs]
-issues: [#1092, #1393, #1499]
+ids: [NFR-18, FR-13, FR-14, UC-07]
+adrs: [ADR-0131, ADR-0032, ADR-0048, ADR-0106]
+iadrs: [IADR-0522, IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0273, IADR-0331, IADR-0429, IADR-0461]
+specs: [20261009_1839_session-store-valkey, 20260831_issue-1092_planning-submodule-residual-refs, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1499_object-storage-seaweedfs]
+issues: [#1839, #1092, #1393, #1499, planning#750]
 -->
 
 # how-to: ローカル開発フロー
@@ -81,7 +81,7 @@ Keycloak ログインを伴う開発には、dev スタック（`docker compose 
 
 ## 5. インフラ + 全サービスの起動（dev）
 
-`docker-compose.yml` は Postgres / RabbitMQ / Redis / Keycloak / Qdrant / SeaweedFS（オブジェクトストレージ）/ 可観測性スタック
+`docker-compose.yml` は Postgres / RabbitMQ / Valkey（セッションストア。認証必須・ホストへ公開しない）/ Keycloak / Qdrant / SeaweedFS（オブジェクトストレージ）/ 可観測性スタック
 （OTel Collector・Prometheus・Loki・Tempo・Grafana）と、全マイクロサービス・BFF・フロントエンドを
 定義する（[`deploy/docker-compose.yml`](../../deploy/docker-compose.yml)）。
 

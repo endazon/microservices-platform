@@ -21,14 +21,16 @@ spec:
   type: ExternalName
   externalName: rabbitmq.platform-infra.svc.cluster.local
 ---
+# NFR-18, ADR-0131, IADR-0522 (#1839): キャッシュ・セッションストア（Valkey）。BFF のコード既定 `valkey:6379` が引く。
+# 旧名 `redis` は k8s-local-up.sh が消す（apply は消えた宣言を刈らない）。
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis
+  name: valkey
   namespace: microservices-platform
 spec:
   type: ExternalName
-  externalName: redis.platform-infra.svc.cluster.local
+  externalName: valkey.platform-infra.svc.cluster.local
 ---
 apiVersion: v1
 kind: Service

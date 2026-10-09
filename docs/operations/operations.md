@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06, FR-17]
-adrs: [ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083]
-iadrs: [IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521]
-specs: [20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client]
-issues: [#1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750, planning#741]
+adrs: [ADR-0131, ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083]
+iadrs: [IADR-0522, IADR-0520, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0519, IADR-0488, IADR-0521]
+specs: [20261009_1839_session-store-valkey, 20261009_1841_disable-default-egress, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1850_dept-sync-carry-over, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client]
+issues: [#1839, #1841, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1858, #1843, #1396, #1844, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#741, planning#750]
 -->
 
 # 運用仕様書
@@ -50,6 +50,7 @@ issues: [#1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #
 | 検索が全件 0 件になる（応答は 200 のまま）理由を切り分けたい | §検索が全件 0 件になる（読み書き先コレクションの乖離・全文索引の欠落） |
 | 本番へ所有者の読み取りのポリシーを投入する・投入済みか確かめる | §所有者の読み取りのポリシーの投入 |
 | 取引ユニットの KB の読み手のポリシーを投入する・投入済みか確かめる | §AST の KB の読み手のポリシーの投入 |
+| キャッシュ・セッションストア（Valkey）のパスワードを回す・戻す／Argo CD の前提／到達の制限の確かめ方 | §キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し |
 | 障害発生時の一次対応を知りたい | §障害対応（Runbook） |
 
 ---
@@ -115,7 +116,7 @@ issues: [#1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #
 
 #### Third-party イメージ — 具体版タグ ＋ digest で固定（インフラ製品の選定基準の計画 ADR / #1787）
 
-- 依存イメージ（keycloak/postgres/redis/rabbitmq/qdrant/seaweedfs/otel/prometheus/loki/tempo/grafana/
+- 依存イメージ（keycloak/postgres/valkey/rabbitmq/qdrant/seaweedfs/otel/prometheus/loki/tempo/grafana/
   wiki 等）は **`<repo>:<tag>@sha256:<digest>`** で固定する（`docker-compose.yml`・`deploy/local/`・`deploy/mail-relay/`・
   helm `values.yaml`）。digest は multi-arch の **image index（manifest list）** のもので、tag は人が版を読むために残す。
   helm values の `registry` / `image` / `tag` 形式は同じマッピングに `digest:` を置き、テンプレートが `tag@digest` を描く。
@@ -225,7 +226,7 @@ docker compose -f deploy/docker-compose.yml up -d
 Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 config の storage パスと一致させ、config は書き換えない）。
 **opt-out は `PERSIST=0`（使い捨てスタック専用）。StorageClass `local-path` が無ければ起動器は止まる**（黙って emptyDir へは
 落とさない —— 稼働 dev クラスタが誰にも気付かれず非永続で立っていたのが #1088 である）。
-**rabbitmq/redis/otel は emptyDir 継続**（queue/cache は揮発前提・otel は stateless。**qdrant は #787 で永続化対象へ移った**）。
+**rabbitmq/valkey/otel は emptyDir 継続**（queue/cache は揮発前提・otel は stateless。**qdrant は #787 で永続化対象へ移った**）。
 
 - **Prometheus の保持期間**は `--storage.tsdb.retention.time=35d` / `--storage.tsdb.retention.size=4GB` を
   args で明示する（[`deploy/local/observability/prometheus.yaml`](../../deploy/local/observability/prometheus.yaml) の base
@@ -1664,6 +1665,50 @@ role `bff-secret-writer`（BFF 専用 ServiceAccount `bff` にだけ束縛）で
 対になる秘密の手順（書く順序と、途中で止まったときの戻し方）は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) にある。
 **本番の client シークレットを realm の宣言（`deploy/keycloak/microservices-platform-realm.json`）に書かない** —— 宣言が持つのは開発用の値だけで、client を作るときにだけ使われる。
 
+### キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し（非機能要件: 運用性/セキュリティ）
+
+BFF のセッション・鍵リング・秘密情報の投入画面の書き込み記録の置き場（Valkey）は認証を必須にしている。パスワードは Secret
+`session-store-credentials`（キー `password`）にあり、**`platform-infra`（Valkey が読む）と `microservices-platform`（BFF が読む）の 2 か所に同じ値**で置く。
+保管先（Vault）には無く、ESO の同期の対象でもない（起動器が置く bootstrap）。値そのものは画面にもログにも出さない。
+
+**差し替え（ローテーション）** —— 🔴 **Valkey を先に、BFF を後に作り直す。** どちらも起動時にしか値を読まないので、Secret を差し替えただけでは
+古い値のまま動き続ける。BFF を先にすると、新しい値の BFF が古い値の Valkey へ認証できず readiness を落とす。
+
+- 経路 B（起動器）: 新しい値を `SESSION_STORE_PASSWORD` に与えて `scripts/k8s-local-up.sh` を再実行する。起動器は既存の Secret と値が違うときだけ、
+  2 か所の Secret を書き換え、インフラの apply の後に `deploy/valkey`（`platform-infra`）を、helm の後に `deploy/bff-service`（`microservices-platform`）を作り直す。
+  値に `"`・`\`・空白は使えない（設定ファイルの引用符の中へ入るため。起動器が拒む）。
+- 手で回すとき（起動器を使わない環境）: 2 か所の Secret を同じ値へ書き換え → `kubectl -n platform-infra rollout restart deploy/valkey` と
+  `rollout status` → `kubectl -n microservices-platform rollout restart deploy/bff-service` と `rollout status`。
+- compose: `.env` の `SESSION_STORE_PASSWORD` を変えて `docker compose up -d valkey bff`（compose が両方を作り直す）。
+- 影響: Valkey を作り直してから BFF が作り直されるまでの間、BFF はストアへ認証できない（セッションの読み書きとヘルスチェックが落ちる）。
+  Valkey は揮発なので、**作り直した時点でセッション・鍵リング・書き込み記録が消え、全員が再ログインになる**。利用者の少ない時間に行う。
+- 確かめ方: `kubectl -n microservices-platform get pods -l app=bff-service` が Ready、BFF の `/health/ready` が 200、ブラウザでログインし直せること。
+
+**本番像・Argo CD で同期する環境の前提** —— BFF の Deployment はこの Secret を**必須**で読む（無ければ Pod は `CreateContainerConfigError` で起動しない）。
+同期の前に `microservices-platform` ns へ Secret `session-store-credentials`（`password` ＝ ストアのパスワードと同じ値）を作る（`deploy/bootstrap/README.md` の表）。
+Secret を任意にして「無ければパスワードなしで接続」へ倒すことはしない —— 認証必須のストアに弾かれ、起動はするがログインだけが落ちる形になるため。
+本番像の chart にストア自体の配備は無い。
+
+**到達の制限が効いているかの確かめ方（経路 B）** —— BFF 以外の Pod からストアへ `ping` を打つ。
+
+```sh
+kubectl -n microservices-platform run valkey-np-probe --rm -i --restart=Never \
+  --image=valkey/valkey:9.1-alpine@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11 \
+  --command -- timeout 5 valkey-cli -h valkey.platform-infra.svc.cluster.local ping
+```
+
+- 時間切れ（応答なし）＝ NetworkPolicy が強制されている（防御は 2 段）。`NOAUTH Authentication required.` ＝ 届いている（強制されていない。防御は認証の 1 段）。
+  結果は上の「インフラ製品の点検」の Valkey の回の「残り」へ書き戻す。
+
+**切り戻し**:
+
+- パスワードだけを戻す: 前の値を `SESSION_STORE_PASSWORD` に与えて起動器を再実行する（差し替えと同じ順で作り直しが走る）。前の値を控えていなければ戻せないので、新しい値で揃え直す。
+- Redis からの差し替えそのものを戻す: 差し替えの変更を revert する。revert した定義は Valkey を刈らないので、
+  `kubectl -n platform-infra delete deploy/valkey svc/valkey networkpolicy/valkey-ingress-bff-only --ignore-not-found` と
+  `kubectl -n microservices-platform delete svc/valkey --ignore-not-found` を手で打つ（Secret `session-store-credentials` は残っても害が無い）。
+  compose は `docker compose up -d --remove-orphans`。どちらの向きでもセッションは引き継がれず、全員が再ログインになる。
+  🔴 **戻すと認証なしのストア（管理コマンドが誰にでも通る）と、OSS でない版の Redis が戻る。** 一時的な退避に限り、戻した事実と理由を issue に残す。
+
 ### メッシュ設定のドリフトと、helm リリースが固まったときの復旧（NFR / #1159）
 
 サービスメッシュの `PeerAuthentication` / `AuthorizationPolicy` / `DestinationRule` は **helm チャートの
@@ -1935,6 +1980,27 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
 - 機械の検査: `check-deploy-manifests.js`（CI）が描画結果・compose・統合試験・手順書の `docker run` で無効化を検査する。稼働の経路 B は
   `check-stack-ready.js` が mailpit の `LatestVersion` を見る。**egress の既定拒否は未確認のまま**であり、表に無い製品の送信は止まらない。
 - TEI は対象外（モデルの取得そのものが外部通信。既定で配備しない。有効化の前にモデルの事前配置かミラーが要る）。
+
+##### 2026-10-09（キャッシュ・セッションストアの差し替え。#1839）
+
+初回の表で 🔴 A 不適合とした redis を、計画の裁定どおり **Valkey** へ差し替えた（上の初回の表は書き換えない）。
+差し替えの判断と受入条件の結果は実装 ADR に残した。ここには点検の記録として**確かめ方と結果**だけを残す。
+
+| 製品（tag → 実体） | A ライセンス・保守 | B 配布 | C 既定の外部通信 | D 既定で開く管理用の口（配備の状態） | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| valkey（`9.1-alpine` → 9.1.2） | BSD-3-Clause（上流 `valkey-io/valkey@9.1.2/COPYING`）。Linux Foundation 配下。9.1 系の保守の期限は 2031-05-19。イメージは 2026-09-21 に再ビルド | 匿名で取得でき、index の digest を 2 回解決して一致（`sha256:48332870…`）。compose・経路 B・統合試験の 3 参照を同じ値で固定 | **無し**（起動から 130 秒、コンテナのソケット表に loopback 以外の接続が現れない。下の実測） | 既定で認証が無く管理コマンドが通る → **認証を必須にした**（パスワードが空なら起動しない）。compose はホストへ公開しない、経路 B は NetworkPolicy で BFF の Pod だけに絞り egress を閉じた | 適合 |
+
+- 実測の方法（基準 C）: 配備と同じ digest のイメージを `docker run` で起こし、コンテナの中で `/proc/net/{tcp,tcp6,udp,udp6}` を 0.2 秒ごとに 130 秒読み、
+  loopback 以外の相手を持つ行を集めた。現れたのは手元の `valkey-cli` の loopback の接続だけだった。上流にもテレメトリ・更新確認の機能は無い。
+  **計画のデータ外部送信方針への環流は要らない**。
+- 基準 D の実測: 認証なしの `valkey-cli ping` は `NOAUTH Authentication required.` を返す（**終了コードは 0** なので、readiness・healthcheck は応答の文字列 `PONG` で判定する）。
+  パスワードを空にすると起動しない。`ps` にパスワードが現れない（標準入力の設定で渡す）。
+- 既存データ: 移行しない。compose は新しい volume `valkey-data` を使う（旧 `redis-data` は読まない。`docker compose up --remove-orphans` の後に `docker volume rm` で消してよい）。
+  経路 B は揮発のまま。どちらも中身は dev のセッション・鍵リング・秘密情報の投入画面の書き込み記録だけで、失うと全員が再ログインになり、最終更新者が「記録なし」に戻る。
+- 経路 B の旧 Redis（認証なし）は起動器が消す（`deploy/redis`・`svc/redis`・MSP ns の ExternalName `redis`）。
+- **残り**: 経路 B の防御は **2 段**（認証 ＋ NetworkPolicy による到達の制限。経路 B のクラスタは k3s で、k3s は NetworkPolicy を既定で強制する）だが、
+  **到達の制限が効いていることは稼働クラスタでまだ実測していない**（確かめ方は下の「キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し」）。
+  NetworkPolicy を強制しないクラスタでは認証の 1 段に落ちる。本番像の chart にストアは無い（足すときは同じ統制を先に入れる）。
 
 ## 未決事項
 
