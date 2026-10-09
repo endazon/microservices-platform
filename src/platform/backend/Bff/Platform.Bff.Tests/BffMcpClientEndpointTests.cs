@@ -58,7 +58,7 @@ public class BffMcpClientEndpointTests : IClassFixture<BffTestFactory>
         return client;
     }
 
-    // ── 1. 陽性対照: 管理者は 6 端点すべてを使える ──────────────────────
+    // ── 1. 陽性対照: 管理者は 6 端点すべてを使える（［#1845］7 つ目の再発行は ReissueSecret_AsAdmin_…）──
 
     [Fact]
     public async Task ListClients_AsAdmin_ReturnsClients()
@@ -129,6 +129,50 @@ public class BffMcpClientEndpointTests : IClassFixture<BffTestFactory>
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         _factory.LastMcpPath.Should().Be("/mcp-clients/a%3Fb/disable");
+    }
+
+    // ［#1845］計画 ADR-0134 決定 2 の 5: 無人の client secret の再発行。後段の経路へ中継し、応答（新しい secret を含む）を
+    // キャッシュさせない（`no-store`）。登録の 201 も secret を含み得るので同じ見出しを付ける。
+    [Fact]
+    public async Task ReissueSecret_AsAdmin_HitsTheDownstreamPathWithNoStore()
+    {
+        var resp = await AsAdmin().PostAsync(
+            "/bff/admin/mcp-clients/nightly-digest-bot/reissue-secret", content: null,
+            TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        _factory.LastMcpMethod.Should().Be("POST");
+        _factory.LastMcpPath.Should().Be("/mcp-clients/nightly-digest-bot/reissue-secret");
+        resp.Headers.CacheControl!.NoStore.Should().BeTrue("応答は client secret を含む");
+    }
+
+    [Fact]
+    public async Task RegisterClient_AsAdmin_ReturnsNoStore()
+    {
+        var resp = await AsAdmin().PostAsync("/bff/admin/mcp-clients",
+            Json("""{"clientId":"bot","displayName":"bot","kind":"service-account"}"""),
+            TestContext.Current.CancellationToken);
+
+        resp.Headers.CacheControl!.NoStore.Should().BeTrue("無人の登録の 201 は client secret を一度だけ含む");
+    }
+
+    // 陽性対照の対: secret を含まない経路には no-store を付けない（全経路へ一律に付けた変異で赤になる）。
+    [Fact]
+    public async Task ListClients_DoesNotAddNoStore()
+    {
+        var resp = await AsAdmin().GetAsync("/bff/admin/mcp-clients", TestContext.Current.CancellationToken);
+
+        (resp.Headers.CacheControl?.NoStore ?? false).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ReissueSecret_AsOperator_IsForbidden()
+    {
+        var resp = await AsOperator().PostAsync(
+            "/bff/admin/mcp-clients/nightly-digest-bot/reissue-secret", content: null,
+            TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]

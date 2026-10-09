@@ -5,6 +5,7 @@ using McpServer.Features.McpClients.EnableClient;
 using McpServer.Features.McpClients.ListClients;
 using McpServer.Features.McpClients.ListEffectiveTools;
 using McpServer.Features.McpClients.RegisterClient;
+using McpServer.Features.McpClients.ReissueSecret;
 using McpServer.Features.McpClients.ReplaceAttributes;
 using McpServer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +30,8 @@ public static class McpClientEndpoints
         g.MapDisableMcpClient();
         g.MapEnableMcpClient();
         g.MapReplaceMcpClientAttributes();
+        // ［#1845］計画 ADR-0134 決定 2 の 5: 無人の client secret の再発行（新しい値を一度だけ返す）。
+        g.MapReissueMcpClientSecret();
         g.MapListEffectiveTools();
 
         return app;

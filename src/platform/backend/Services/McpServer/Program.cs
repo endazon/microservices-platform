@@ -12,6 +12,8 @@ using McpServer.Domain.Ports;
 using McpServer.Infrastructure.Authentication;
 using McpServer.Infrastructure.ExternalServices;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
@@ -83,6 +85,9 @@ else
 // 無人の登録・属性の差し替えは、検証の後に Keycloak へ機密クライアントとサービスアカウントの属性を書いてから登録簿へ書く。
 // 口が構成されていなければ（`McpClientProvisioning:Provider` 未設定）無人の登録・差し替えを 503 で拒む（登録簿にも書かない）。
 builder.Services.AddServiceAccountProvisioning();
+// FR-16, SC-12, 計画 ADR-0134 決定 2 の 3・フォローアップ 5, ADR-0004（#1845）: SC-12 の管理操作の監査記録。器は既存の監査ログ
+// （`AuditLogger`。Audit=true の構造化ログ → OTel → ログ基盤）であり、新しい記録先を作らない。
+builder.Services.TryAddSingleton<IAuditLogger, AuditLogger>();
 // FR-16, SC-12, 計画 ADR-0123 決定 2, ADR-0006, [[IADR-0516]] 決定 5（#1818）: 登録簿と IdP のサービスアカウントの属性の食い違いを
 // 検知して知らせる定期の照合（計器 `mcp.idp_reconciliation.*` ＋ 警報 McpClientIdpDrift）。**照合は書かない。** opt-in にしない。
 builder.Services.AddOpenTelemetry().WithMetrics(metrics => metrics.AddMeter(

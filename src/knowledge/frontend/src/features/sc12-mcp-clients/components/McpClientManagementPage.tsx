@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import { i18n } from '@foundation/i18n';
@@ -22,6 +22,7 @@ import {
   Textarea,
 } from '@platform/ui';
 import { appConfig } from '@foundation/config/runtimeConfig';
+import { notify } from '@foundation/ui/notifications';
 import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import type { McpClientView } from '@foundation/api/generated/bff.schemas';
@@ -42,6 +43,7 @@ import {
 import type { ClientKind, RegistrationIssue } from '../types/mcpClientVocabulary';
 import { useMcpClientRegistrationForm } from '../hooks/useMcpClientRegistrationForm';
 import { useMcpClientAttributeEditor } from '../hooks/useMcpClientAttributeEditor';
+import { useIssuedClientSecret } from '../hooks/useIssuedClientSecret';
 
 // SC-12, UC-09, FR-16, ADR-0024: MCP クライアント登録管理（05_screens: ルート /admin/mcp-clients）。
 //
@@ -115,11 +117,37 @@ export function McpClientManagementPage() {
   // （`editor` ごと依存に入れるとフックの戻り値は毎描画で新しく、列定義が作り直される）。
   const { start: startEditingAttributes } = editor;
 
+  // SC-12（2026-10-09 補完）・#1845: 無人の client secret は登録・再発行の応答で一度だけ受け取り、**この画面のローカル状態にだけ**持つ。
+  // 閉じたとき・次の操作を始めたときに捨てる（再表示の手段は無い）。
+  // 🔴 捨てるのは表示だけではない —— 応答を受け取った変更（mutation）の結果にも同じ secret が載っている。
+  // 表示を捨てるたびに変更も `reset()` して、クエリのメモリに写しを残さない（#1845 の独立監査）。
+  // **送信中の変更は捨てない** —— 捨てると応答の後始末（表示）が呼ばれず、再発行では旧 secret だけが失効して
+  // 新しい値を誰も見られない状態になる。
+  const registerPending = actions.register.isPending;
+  const reissuePending = actions.reissueSecret.isPending;
+  const { reset: resetRegister } = actions.register;
+  const { reset: resetReissue } = actions.reissueSecret;
+  const discardSecretResponses = useCallback(() => {
+    if (!registerPending) resetRegister();
+    if (!reissuePending) resetReissue();
+  }, [registerPending, reissuePending, resetRegister, resetReissue]);
+  const {
+    issued: issuedSecret,
+    show: showIssuedSecret,
+    clear: clearIssuedSecret,
+  } = useIssuedClientSecret(discardSecretResponses);
+  // 再発行は旧 secret を即時に失効させるので、確認を挟む（対象の clientId。確認していないときは null）。
+  const [confirmingReissue, setConfirmingReissue] = useState<string | null>(null);
+  // 翻訳文へ差し込む値は単純な変数で渡す（`lingui/no-expression-in-message`）。
+  const issuedClientId = issuedSecret?.clientId ?? '';
+  const reissueTargetId = confirmingReissue ?? '';
+
   const definitions = form.definitions;
 
   const rows = useMemo(() => clients.data ?? [], [clients.data]);
 
   // 呼び出し監査ログは可観測性基盤（ログ集約）に在る。**SPA 側に監査ログ画面は無い。**
+  // ［#1845］本画面の管理操作（登録・差し替え・無効化・再有効化・secret の発行と再発行）の監査記録も同じログ基盤に在る。
   // 接続先はビルドへ焼き込まず実行時 config から取り、未設定なら導線を出さず所在を文言で示す
   // （SC-10 の外部ツール導線と同じ作法。存在しないリンクを描かない）。
   const auditLogUrl = appConfig().opsLinks.grafanaUrl;
@@ -194,16 +222,38 @@ export function McpClientManagementPage() {
               <Button
                 variant="danger"
                 size="sm"
-                onClick={() => actions.disable.mutate({ clientId: row.original.clientId })}
+                onClick={() => {
+                  clearIssuedSecret();
+                  actions.disable.mutate({ clientId: row.original.clientId });
+                }}
               >
                 <Trans>無効化</Trans>
               </Button>
             ) : (
               <Button
                 size="sm"
-                onClick={() => actions.enable.mutate({ clientId: row.original.clientId })}
+                onClick={() => {
+                  clearIssuedSecret();
+                  actions.enable.mutate({ clientId: row.original.clientId });
+                }}
               >
                 <Trans>再有効化</Trans>
+              </Button>
+            )}
+            {/* #1845: client secret の再発行は無人だけ（有人は公開クライアントで secret を持たない）。確認を挟む。 */}
+            {requiresAttributes(row.original.kind) && (
+              <Button
+                variant="secondary"
+                size="sm"
+                // 🔴 送信中は押させない。応答を待つ間に再び確認まで進めると要求が 2 本飛び、先に表示された secret が
+                // 後の再発行で黙って失効する（#1845 の独立監査）。
+                disabled={reissuePending}
+                onClick={() => {
+                  clearIssuedSecret();
+                  setConfirmingReissue(row.original.clientId);
+                }}
+              >
+                <Trans>secret を再発行</Trans>
               </Button>
             )}
             {/* 有人には出さない。属性は利用者本人のもので解決され、割り当てる対象が無い。 */}
@@ -211,9 +261,10 @@ export function McpClientManagementPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() =>
-                  startEditingAttributes(row.original.clientId, row.original.attributes)
-                }
+                onClick={() => {
+                  clearIssuedSecret();
+                  startEditingAttributes(row.original.clientId, row.original.attributes);
+                }}
               >
                 <Trans>属性を変更</Trans>
               </Button>
@@ -224,13 +275,60 @@ export function McpClientManagementPage() {
     ],
     // `startEditingAttributes` は `useCallback` で参照が固定してあるので、依存に入れても列定義は
     // 毎描画で作り直されない（従前ここは eslint-disable で規則を止めていた。IADR-0341）。
-    [t, actions.disable, actions.enable, startEditingAttributes],
+    [t, actions.disable, actions.enable, startEditingAttributes, clearIssuedSecret, reissuePending],
   );
 
   const submit = () => {
+    // 送信中は 2 本目を送らない（同じ clientId の二重登録。無人なら 2 本目の応答の secret が先の表示を上書きする）。
+    if (registerPending) return;
     // 有人には属性を送らない（送る値が無いのが正しい）—— 本文の組み立ては form.body() が持つ。
     if (!form.validate()) return;
-    actions.register.mutate({ data: form.body() }, { onSuccess: form.resetAfterRegister });
+    clearIssuedSecret();
+    actions.register.mutate(
+      { data: form.body() },
+      {
+        onSuccess: (response) => {
+          form.resetAfterRegister();
+          // 無人の 201 だけが client secret を一度だけ含む（有人は null）。
+          if (response.status === 201 && response.data.clientSecret) {
+            showIssuedSecret({
+              clientId: response.data.clientId,
+              secret: response.data.clientSecret,
+              origin: 'issued',
+            });
+          }
+        },
+      },
+    );
+  };
+
+  const confirmReissue = () => {
+    // 送信中は 2 本目を送らない（ボタンの無効化と二重に塞ぐ）。
+    if (confirmingReissue === null || reissuePending) return;
+    const clientId = confirmingReissue;
+    setConfirmingReissue(null);
+    actions.reissueSecret.mutate(
+      { clientId },
+      {
+        onSuccess: (response) => {
+          if (response.status === 200) {
+            showIssuedSecret({
+              clientId: response.data.clientId,
+              secret: response.data.clientSecret,
+              origin: 'reissued',
+            });
+          }
+        },
+      },
+    );
+  };
+
+  const copySecret = (secret: string) => {
+    // 結果は notify で伝える。**失敗も伝える**（非 HTTPS・権限拒否で reject する。黙って何も起きないのが最も分かりにくい）。
+    navigator.clipboard.writeText(secret).then(
+      () => notify.success(t`コピーしました`),
+      () => notify.error(t`コピーできませんでした`),
+    );
   };
 
   return (
@@ -251,7 +349,7 @@ export function McpClientManagementPage() {
 
       <div>
         <h2 className="mb-2 text-sm font-medium text-fg-muted">
-          <Trans>呼び出し監査ログ</Trans>
+          <Trans>監査ログ（呼び出し・管理操作）</Trans>
         </h2>
         {auditLogUrl ? (
           <a
@@ -261,13 +359,14 @@ export function McpClientManagementPage() {
             className="text-sm text-brand hover:underline"
             data-testid="audit-log-link"
           >
-            <Trans>ログ基盤で呼び出し監査ログを見る ↗</Trans>
+            <Trans>ログ基盤で監査ログを見る ↗</Trans>
           </a>
         ) : (
           // 🔴 **無いリンクを描かない。** 導線が未設定であることと、記録が残っている場所は書く。
           <p className="text-sm text-fg-muted" data-testid="audit-log-unavailable">
             <Trans>
-              監査ログの参照先が未設定です。ツールの呼び出しはすべてログ基盤へ記録されています。
+              監査ログの参照先が未設定です。ツールの呼び出しと本画面の管理操作はすべてログ基盤へ記録されています（client
+              secret の値は記録しません）。
             </Trans>
           </p>
         )}
@@ -299,6 +398,75 @@ export function McpClientManagementPage() {
           )}
         </QueryState>
       </Panel>
+
+      {/* #1845: 再発行の確認。旧 secret はただちに使えなくなる（猶予は無い）。 */}
+      {confirmingReissue !== null && (
+        <Alert
+          tone="warning"
+          role="alertdialog"
+          label={t`client secret の再発行`}
+          data-testid="reissue-confirmation"
+        >
+          <span className="flex flex-col gap-2">
+            <span>
+              <Trans>
+                {reissueTargetId} の client secret を再発行します。いまの secret
+                はただちに使えなくなります。エージェントの設定を新しい secret に差し替えてください。
+              </Trans>
+            </span>
+            <span className="flex gap-2">
+              <Button variant="danger" size="sm" disabled={reissuePending} onClick={confirmReissue}>
+                <Trans>再発行する</Trans>
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setConfirmingReissue(null)}>
+                <Trans>取消</Trans>
+              </Button>
+            </span>
+          </span>
+        </Alert>
+      )}
+
+      {actions.reissueSecret.isError && (
+        <Alert tone="danger" role="alert" label={t`エラー`} data-testid="reissue-error">
+          {toMessages(
+            actions.reissueSecret.error,
+            t`client secret を再発行できませんでした。`,
+          ).join(' / ')}
+        </Alert>
+      )}
+
+      {/* 🔴 #1845: 平文の client secret が現れるのはここだけである。**再表示できない**旨を同じ枠の中に置く。 */}
+      {issuedSecret && (
+        <Alert
+          tone="success"
+          role="status"
+          label={issuedSecret.origin === 'issued' ? t`発行しました` : t`再発行しました`}
+          data-testid="issued-secret"
+        >
+          <span className="flex flex-col gap-2">
+            <span>
+              <Trans>
+                {issuedClientId} の client secret
+                です。表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。
+              </Trans>
+            </span>
+            <code
+              className="break-all rounded bg-surface-muted p-2 text-xs"
+              data-testid="issued-secret-value"
+            >
+              {issuedSecret.secret}
+            </code>
+            <span className="flex gap-2">
+              <Button size="sm" onClick={() => copySecret(issuedSecret.secret)}>
+                <Trans>コピー</Trans>
+              </Button>
+              <Button variant="secondary" size="sm" onClick={clearIssuedSecret}>
+                <Trans>閉じる</Trans>
+              </Button>
+            </span>
+          </span>
+        </Alert>
+      )}
 
       {/* FR-16, UC-09, SC-12: 登録後の ABAC 属性の差し替え。**置換であって追加ではない** ——
           後段の端点が属性の集合ごと入れ替えるので、画面も現在値を読み込んでから編集させる。 */}
@@ -570,7 +738,7 @@ export function McpClientManagementPage() {
             </Alert>
           )}
 
-          <Button variant="primary" className="mt-3" onClick={submit}>
+          <Button variant="primary" className="mt-3" disabled={registerPending} onClick={submit}>
             <Trans>登録</Trans>
           </Button>
         </Panel>
