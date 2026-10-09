@@ -24,6 +24,8 @@ import type {
 
 import type {
   EffectiveToolsView,
+  McpClientRegistrationView,
+  McpClientSecretView,
   McpClientView,
   RegisterMcpClientRequest,
   ReplaceMcpClientAttributesRequest,
@@ -158,7 +160,7 @@ export function useBffMcpListClients<TData = Awaited<ReturnType<typeof bffMcpLis
 
 
 export type bffMcpRegisterClientResponse201 = {
-  data: McpClientView
+  data: McpClientRegistrationView
   status: 201
 }
 
@@ -217,6 +219,11 @@ export const getBffMcpRegisterClientUrl = () => {
  * ループバック・ワイルドカード・フラグメント・利用者情報・`localhost` は 400）。後段は認証基盤に公開クライアント（PKCE S256・リダイレクト URI の完全一致・
  * audience を MCP サーバーに限る）を作ってから登録簿へ書く。無人に `redirectUris` を渡すと 400。
  * 認証基盤へ書けなければ 502、書き込み口が構成されていなければ 503 で、登録簿にも書かない。
+ *
+ * ［2026-10-09 / ADR-0134 決定 2］**無人の 201 は `clientSecret`（認証基盤が生成した client secret）を一度だけ含む**。
+ * 値は登録簿に保存せず、一覧・個別の応答には載らない（再表示の手段は無い。次は再発行）。有人の `clientSecret` は null。
+ * 応答は `Cache-Control: no-store`。値はアプリケーションのログ・監査ログに出ない（監査には「誰が・どのクライアントの secret を発行したか」だけを残す）。
+ * 登録の直後に secret を読めなければ、作ったクライアントを消して 502（登録簿にも書かない）。
  * @summary FR-16, UC-09, SC-12: MCP クライアント登録（有人 / 無人）
  */
 export const bffMcpRegisterClient = async (registerMcpClientRequest: RegisterMcpClientRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffMcpRegisterClientResponse> => {
@@ -612,6 +619,125 @@ export const useBffMcpEnableClient = <TError = ValidationProblemDetails | void,
         TContext
       > => {
       return useMutation(getBffMcpEnableClientMutationOptions(options));
+    }
+    export type bffMcpReissueClientSecretResponse200 = {
+  data: McpClientSecretView
+  status: 200
+}
+
+export type bffMcpReissueClientSecretResponse400 = {
+  data: ValidationProblemDetails
+  status: 400
+}
+
+export type bffMcpReissueClientSecretResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffMcpReissueClientSecretResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffMcpReissueClientSecretResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffMcpReissueClientSecretResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffMcpReissueClientSecretResponse503 = {
+  data: void
+  status: 503
+}
+
+export type bffMcpReissueClientSecretResponseSuccess = (bffMcpReissueClientSecretResponse200) & {
+  headers: Headers;
+};
+export type bffMcpReissueClientSecretResponseError = (bffMcpReissueClientSecretResponse400 | bffMcpReissueClientSecretResponse401 | bffMcpReissueClientSecretResponse403 | bffMcpReissueClientSecretResponse404 | bffMcpReissueClientSecretResponse502 | bffMcpReissueClientSecretResponse503) & {
+  headers: Headers;
+};
+
+export type bffMcpReissueClientSecretResponse = (bffMcpReissueClientSecretResponseSuccess | bffMcpReissueClientSecretResponseError)
+
+export const getBffMcpReissueClientSecretUrl = (clientId: string,) => {
+
+
+
+
+  return `/bff/admin/mcp-clients/${clientId}/reissue-secret`
+}
+
+/**
+ * ［2026-10-09 / ADR-0134 決定 2］認証基盤（Keycloak）で client secret を再生成し、**新しい値を応答で一度だけ返す**。
+ * **旧 secret はその時点で使えなくなる**（猶予は無い）。値は保存せず（登録簿も書かない）、ログ・監査ログにも出さない。
+ * 応答は `Cache-Control: no-store`。監査には「誰が・どのクライアントの secret を再発行したか」を残す。
+ * 有人（公開クライアント）・この画面を通らずに作られたクライアント・認証基盤に無い行は 400（何も書かない）。
+ * 無効化された行も再発行できる。
+ * @summary FR-16, UC-09, SC-12: 無人の MCP クライアントの client secret の再発行（新しい値を一度だけ返す）
+ */
+export const bffMcpReissueClientSecret = async (clientId: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffMcpReissueClientSecretResponse> => {
+
+  return bffFetch<bffMcpReissueClientSecretResponse>(getBffMcpReissueClientSecretUrl(clientId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffMcpReissueClientSecretMutationOptions = <TError = ValidationProblemDetails | void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffMcpReissueClientSecret>>, TError,{clientId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffMcpReissueClientSecret>>, TError,{clientId: string}, TContext> => {
+
+const mutationKey = ['bffMcpReissueClientSecret'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffMcpReissueClientSecret>>, {clientId: string}> = (props) => {
+          const {clientId} = props ?? {};
+
+          return  bffMcpReissueClientSecret(clientId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffMcpReissueClientSecretMutationResult = NonNullable<Awaited<ReturnType<typeof bffMcpReissueClientSecret>>>
+
+    export type BffMcpReissueClientSecretMutationError = ValidationProblemDetails | void
+
+    /**
+ * @summary FR-16, UC-09, SC-12: 無人の MCP クライアントの client secret の再発行（新しい値を一度だけ返す）
+ */
+export const useBffMcpReissueClientSecret = <TError = ValidationProblemDetails | void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffMcpReissueClientSecret>>, TError,{clientId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffMcpReissueClientSecret>>,
+        TError,
+        {clientId: string},
+        TContext
+      > => {
+      return useMutation(getBffMcpReissueClientSecretMutationOptions(options));
     }
     export type bffMcpReplaceClientAttributesResponse200 = {
   data: McpClientView

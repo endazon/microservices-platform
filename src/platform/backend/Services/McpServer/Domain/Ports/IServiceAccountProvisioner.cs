@@ -65,6 +65,64 @@ public interface IServiceAccountProvisioner
     /// （並行した差し替えの新しい値を古い値で潰さない）。<c>enabled</c> の取り消しも同じ規則（現在値が書いた値のときだけ戻す）。
     /// </summary>
     Task UndoAsync(IdpWrite write, CancellationToken ct);
+
+    /// <summary>
+    /// ［2026-10-09 / #1845］計画 ADR-0134 決定 2 の 1: 入口の印つきの**機密クライアント**の現在の client secret を読む
+    /// （無人の登録の応答で一度だけ返すため。プラットフォームは値を保存しない）。
+    /// IdP に無ければ <see cref="ClientSecretOutcome.Absent"/>、印が無ければ <see cref="ClientSecretOutcome.NotManaged"/>、
+    /// 公開クライアント（有人）なら <see cref="ClientSecretOutcome.NotConfidential"/> を返し、値は読まない。
+    /// 🔴 要求の取り消しは伝えない（登録の補償の経路にある。書き込みの口の規則と同じ）。
+    /// </summary>
+    Task<ClientSecretResult> ReadClientSecretAsync(string clientId, CancellationToken ct);
+
+    /// <summary>
+    /// ［2026-10-09 / #1845］計画 ADR-0134 決定 2 の 5: 入口の印つきの機密クライアントの client secret を IdP で**再生成**する
+    /// （Keycloak の regenerate。旧 secret はその時点で使えなくなる）。結果の種類は <see cref="ReadClientSecretAsync"/> と同じ。
+    /// 印が無い・公開クライアント・IdP に無いときは**何も書かない**。
+    /// </summary>
+    Task<ClientSecretResult> RegenerateClientSecretAsync(string clientId, CancellationToken ct);
+}
+
+// ［2026-10-09 / #1845］計画 ADR-0134 決定 2: MCP クライアントの client secret の値。
+// 🔴 **`ToString()` は値を出さない。** record や匿名型にすると既定の `ToString` が値を含み、ログの書式化・例外の文言・
+//    デバッガの表示から漏れる（決定 2 の 2「応答以外に値を出さない」）。値を取り出せるのは <see cref="Reveal"/> だけで、
+//    呼ぶのは応答の本文を組み立てる箇所に限る。
+public sealed class ClientSecret
+{
+    private readonly string _value;
+
+    public ClientSecret(string value)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(value);
+        _value = value;
+    }
+
+    /// <summary>応答の本文へ載せるときだけ呼ぶ。ログ・監査・例外へ渡さない。</summary>
+    public string Reveal() => _value;
+
+    public override string ToString() => "ClientSecret(秘匿)";
+}
+
+public enum ClientSecretOutcome
+{
+    /// <summary>値を読んだ（再生成した）。<see cref="ClientSecretResult.Secret"/> を持つ。</summary>
+    Issued,
+
+    /// <summary>IdP に同じ clientId のクライアントが無い（入口ができる前の行）。何も書いていない。</summary>
+    Absent,
+
+    /// <summary>IdP のクライアントに入口の印が無い（入口が作っていない）。何も読まず・書いていない。</summary>
+    NotManaged,
+
+    /// <summary>公開クライアント（有人）・サービスアカウントを持たないクライアント。secret を持たない。何も書いていない。</summary>
+    NotConfidential,
+}
+
+public sealed record ClientSecretResult(ClientSecretOutcome Outcome, string ClientId, ClientSecret? Secret = null)
+{
+    public static ClientSecretResult Issued(string clientId, ClientSecret secret) => new(ClientSecretOutcome.Issued, clientId, secret);
+
+    public static ClientSecretResult Refused(ClientSecretOutcome outcome, string clientId) => new(outcome, clientId);
 }
 
 public enum IdpWriteKind

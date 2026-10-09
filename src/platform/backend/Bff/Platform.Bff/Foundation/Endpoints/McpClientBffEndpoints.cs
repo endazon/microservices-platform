@@ -34,8 +34,9 @@ public static class McpClientBffEndpoints
         // SC-12 主要素 2 / UC-09 基本フロー 1: クライアント登録（有人 / 無人）。
         // 後段は種別・越境ティアの値域と、**無人アカウントへの個人資料属性割当の禁止**（ADR-0034 決定 9）を
         // 400 ValidationProblem で拒む。**その 400 を透過する**（画面が理由を出す）。
+        // ［#1845］無人の登録の 201 は client secret を一度だけ含む（計画 ADR-0134 決定 2）。キャッシュさせない（`no-store`）。
         g.MapPost("", (IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Post, "/mcp-clients", ct))
+            Proxy(f, h, HttpMethod.Post, "/mcp-clients", ct, noStore: true))
             .WithName("BffMcpRegisterClient");
 
         // SC-12 主要素 2 / UC-09: 無効化・再有効化。**次の呼び出しから即座に効く**（後段がキャッシュを挟まない）。
@@ -46,6 +47,12 @@ public static class McpClientBffEndpoints
         g.MapPost("/{clientId}/enable", (string clientId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
             Proxy(f, h, HttpMethod.Post, $"/mcp-clients/{Uri.EscapeDataString(clientId)}/enable", ct))
             .WithName("BffMcpEnableClient");
+
+        // ［#1845］SC-12 / 計画 ADR-0134 決定 2 の 5: 無人の client secret の再発行。新しい値を応答で一度だけ返す（旧 secret は即時失効）。
+        // 本文を中継するだけで、BFF は値を読まない・残さない。キャッシュさせない（`no-store`）。
+        g.MapPost("/{clientId}/reissue-secret", (string clientId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Post, $"/mcp-clients/{Uri.EscapeDataString(clientId)}/reissue-secret", ct, noStore: true))
+            .WithName("BffMcpReissueClientSecret");
 
         // SC-12 主要素 3: 無人アカウントの ABAC 属性割当（機密区分上限・アクセス可能タグ）。
         g.MapPut("/{clientId}/attributes", (string clientId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
@@ -65,9 +72,12 @@ public static class McpClientBffEndpoints
     // McpServer へ透過中継する。要求本文（書き込み時）と Authorization を後段へ引き継ぎ、
     // 応答は status・content-type・本文をそのまま返す（400 / 404 を保つ）。
     // 応答本文は一括読み込みする（管理系の小さなペイロードを前提とする。AuthzBffEndpoints と同じ判断）。
+    // `noStore`: 応答が秘密（client secret）を含み得る経路。後段の見出しは運ばないので、BFF の側で `Cache-Control: no-store` を付ける。
     private static async Task<IResult> Proxy(
-        IHttpClientFactory httpFactory, HttpContext http, HttpMethod method, string path, CancellationToken ct)
+        IHttpClientFactory httpFactory, HttpContext http, HttpMethod method, string path, CancellationToken ct,
+        bool noStore = false)
     {
+        if (noStore) http.Response.Headers.CacheControl = "no-store";
         var client = httpFactory.CreateClient(ClientName);
         using var req = new HttpRequestMessage(method, path);
 

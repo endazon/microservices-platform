@@ -11,12 +11,14 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0062_unattended-account-attribute-subset.md 決定 2・3
   - planning:projects/microservices-platform/07_adr/ADR-0088_authz-resolves-user-attributes-itself.md 決定 1・3
   - planning:projects/microservices-platform/07_adr/ADR-0134_mcp-client-keycloak-template-and-secret-one-time-display.md 決定 1・決定 3・フォローアップ 1〜3（#1844 追記）
+  - planning:projects/microservices-platform/07_adr/ADR-0134_mcp-client-keycloak-template-and-secret-one-time-display.md 決定 2・決定 3・フォローアップ 4〜6（#1845 追記）
 related_specs:
   - ../specs/20261008_1786_sc12-keycloak-provisioning.md
   - ../specs/20261009_1817_sc12-provisioning-wiring.md
   - ../specs/20261009_1818_sc12-idp-drift-detection.md
   - ../specs/20261009_1829_sc12-disable-mirror-to-idp.md
   - ../specs/20261009_1844_sc12-interactive-public-client.md
+  - ../specs/20261009_1845_sc12-secret-once-and-audit.md
 ---
 
 # IADR-0516: SC-12 を IdP への入口にする —— Keycloak への書き込みの口・管理用の資格情報・テンプレート・順序と補償・食い違いの検知（#1786）
@@ -422,3 +424,72 @@ RFC 8252 §7.3 の形として受け入れていた。**この受け入れは誤
   修正を外すと port なしの 9 件が赤になることを確かめた。
 - `mcpClientVocabulary.test.ts`: 同じ 9 形が `redirect-uri-loopback-port-required` だけを返す（`redirect-uri-invalid` と分ける）。修正を外すと 9 件が赤。
 - `check-mcp-client-provisioning.js --self-test`: 横取りの形の生成と判定（上の 3）。
+
+## ［2026-10-09 追記 / #1845］無人の client secret を登録・再発行の応答で一度だけ返し、SC-12 の管理操作を監査記録に残す（計画 ADR-0134 決定 2・フォローアップ 4〜6）
+
+計画は環流（planning#751）に答え、**ADR-0134 決定 2** で無人のクライアントの secret を「登録と再発行の応答で一度だけ表示する」と定めた（統制 1〜6）。
+**決定 3 の「client secret は応答で返さない」（本文は凍結）と §残余 4・#1844 追記の残余 5 は、本追記で解消する。** 新しい IADR は起こさない
+（同じ入口の口に 2 つの操作を足すだけで、骨組み〔口・入口の印・`IdpFirstWrite` の補償〕はそのまま使う）。作業仕様書は 20261009_1845。
+
+### 決めたこと
+
+1. **口**: `IServiceAccountProvisioner` に `ReadClientSecretAsync`（`GET clients/{id}/client-secret`）と `RegenerateClientSecretAsync`（`POST` 同パス＝regenerate）を足した。
+   どちらも**入口の印つき・公開でない・SA つきのクライアントだけ**に掛け、それ以外は何も書かずに種類（`Absent` / `NotManaged` / `NotConfidential`）を返す
+   （プラットフォーム自身の機密クライアントの secret を SC-12 から読ませない・回させない。決定 4 の規則と同じ）。要求の取り消しは伝えない（書き込みの口の規則）。
+2. **値の型** `ClientSecret` は `ToString()` が値を出さない（record の既定の `ToString` から漏らさない）。値を取り出すのは応答の本文を組み立てる 2 か所だけ（`Reveal()`）。
+   応答の DTO（`McpClientRegistrationView`・`McpClientSecretView`）も `ToString` を差し替えた。
+3. **登録**: 無人は `IdpFirstWrite` の「登録簿へ書く」段で、**登録簿へ書く前に** secret を読む。読めなければ失敗の結果（502）を返し、`IdpFirstWrite` が作ったクライアントを消す
+   （既存の補償に乗せた。登録簿にも書かない）。201 の本文は `McpClientView` の項目 ＋ `clientSecret`（有人は null）。登録簿・一覧には持たない。
+4. **再発行**: `POST /mcp-clients/{clientId}/reissue-secret`（BFF `…/reissue-secret`）。登録簿に無い 404・有人 400（IdP へ問わない）・IdP に無い／印なし／公開 400・未構成 503・失敗 502・
+   成功 200。**登録簿は書かない**（値を保存しない。`updatedAt` も動かさない）。無効化された行も再発行できる（漏えいに気づいたら無効化してから回せる）。
+5. **`Cache-Control: no-store`**: 登録の 201 と再発行の 200 に、後段と BFF の両方で付ける（BFF の中継は後段の見出しを運ばない）。
+6. **監査**: 器は既存の `IAuditLogger`（`AuditLogger`。`Audit=true` の構造化ログ → OTel → ログ基盤。BFF の SC-22 と同じ）。McpServer に `TryAddSingleton` で登録し、
+   `Features/McpClients/McpClientAudit` の 1 か所から記録する。action は `mcp-client.register` / `.replace-attributes` / `.disable` / `.enable` / `.secret.issue` / `.secret.reissue`、
+   subject は利用者名（`preferred_username`）、outcome は状態コードから（2xx `granted`・400 `denied`・404 `not-found`・503 `unavailable`・他 `failed`。例外は `failed` を残して投げ直す）、
+   detail は `client=`・`kind=`・`attributes=`（ABAC の属性値。秘密ではない）・`status=`。**secret の値を受け取る引数を持たない。**
+   - 発行は無人の登録が 201 のときだけ、登録の行と別に残す（「誰が・いつ・どのクライアントの secret を発行したか」を action で引ける）。
+   - 🔴 **削除は記録しない** —— SC-12 に削除の操作が無い（#1844 追記の残余 4）。issue #1845 の受け入れ基準は削除を挙げるが、操作が無いので記録の対象が無い。
+     削除の API を足すときは同じ器で `mcp-client.delete` を残すこと。
+   - 認可で弾かれた要求（非管理者の 403）は端点に届かないので記録しない。
+7. **画面**: 値は応答から受け取り、画面のローカル状態（`useIssuedClientSecret`。SC-20 の `useIssuedToken` と同じ作法）にだけ持つ。表示・コピー・閉じる、
+   「表示できるのは今回だけ・閉じると再表示できない」。閉じたとき・次の操作を始めたときに捨てる。再発行は無人の行だけに出し、即時失効の確認を挟む。
+
+### FU6 の実測（Keycloak 24.0.5 のソースの読み。稼働での確かめは integration-stack の門 M11）
+
+| 事項 | 読んだ箇所 | 結論 |
+| --- | --- | --- |
+| client secret rotation の有無 | `common/.../Profile.java` L83 `CLIENT_SECRET_ROTATION(…, Type.PREVIEW)`。配備は `--features` を宣言しない | **preview の機能で既定は無効＝配備では働かない。** 期限（有効期間）も、再発行の後に旧 secret を残す猶予（rotated secret）も無い |
+| regenerate の旧 secret | `ClientResource.regenerateSecret`（rotation が無効なら `removeClientSecretRotationInfo`） | 旧 secret は**その時点で**使えなくなる（決定 2 の 5 と一致）。門 M11 が「再発行の直後に旧 secret でトークンが出ない」を測る |
+| 🔴 管理イベントの詳細 | `regenerateSecret` は `adminEvent…representation(rep)`（値つきの `CredentialRepresentation`）。`AdminEventBuilder.representation` は `UserRepresentation` だけを `StripSecretsUtils` に通す。realm は `adminEventsDetailsEnabled=true`。`JBossLoggingEventListenerProvider.logAdminEvent` は表現をログへ書かない | **再発行の新しい値（管理コンソールでも SC-12 でも）は Keycloak の管理イベントの保存先（DB）に平文で残る。** 作成（`ClientsResource.createClient`）の表現は入力そのもので、テンプレートは `secret` を送らないので値は残らない。`PUT /clients/{id}` で値を書く代替も表現を剥がさないので逃げ道にならない。門 M11 は件数を観測として出す（判定しない） |
+
+- **期限は置かない**（決定 2 のまま）。再発行は即時失効で、漏えいに気づいたときの手段として足りる。**期限を置くべきとは判断しない**（環流の対象ではない）。
+- 🔴 **管理イベントに値が残ることは計画へ環流する**（決定 2 の 2「応答以外に値を出さない」の射程はプラットフォームのアプリケーションのログ・監査ログで、Keycloak の管理イベントは
+  その外だが、決定 3 の表が「推論。実装の IADR で実測する」とした論点の答えである。`adminEventsDetailsEnabled` を切る・管理イベントの閲覧権限〔view-events〕を絞る・受け入れる、の選択は計画の判断）。
+  本 PR では起票しない（オーケストレーターへ依頼した）。`mcp-client-admin` は `view-events` を持たない（`manage-clients` / `manage-users` だけ）。
+
+### 統制表の更新（ADR-0134 決定 3 の 4〜8 行）
+
+| 統制 | 現在の実現手段 | 配備までの暫定手段 |
+| --- | --- | --- |
+| secret の表示は登録・再発行の応答の 1 回だけ。値を保存しない | **ある（コード）。** 上の 3・4。登録簿・一覧に持たない。単体・API 面の試験。稼働は門 M11 | — |
+| 応答以外に値を出さない | **ある（プラットフォーム）。** 値の型・DTO の `ToString`・監査が値を受けない。ホストの全ログで不在を試験（`McpClientSecretLeakTests`）。🔴 **Keycloak の管理イベントの詳細には再発行の値が残る**（上の表。計画へ環流） | — |
+| 監査ログに発行・再発行を残す | **ある。** `mcp-client.secret.issue` / `.secret.reissue`（値なし）。他の管理操作も同じ器 | — |
+| 表示・再発行はシステム管理者に限る | **ある。** 管理 API と BFF の `AdminOnly`（再発行の端点もグループの既定に乗る）。試験は 403 | — |
+| 再発行で旧 secret を失効させる | **ある。** Keycloak の regenerate（rotation は配備で無効＝猶予なし）。稼働は門 M11 | — |
+
+### 試験と変異
+
+- 単体・API 面: `KeycloakServiceAccountProvisionerTests`（C-70〜C-74）・`McpClientSecretEndpointTests`（C-75〜C-81・C-87）・`McpClientAuditTests`（C-82〜C-85）・
+  `McpClientSecretLeakTests`（C-86。ホストの全ロガーを捕まえ、整形済みの本文・構造化の値・例外に値が無い。陽性対照つき）・`BffMcpClientEndpointTests`（中継と `no-store`）・
+  画面の `McpClientManagementPage.test.tsx`（T-35〜T-37）。門 `check-mcp-client-provisioning.js`（M11 と自己試験 3 件）。
+- 変異（すべて赤になることを確かめて戻した）: 登録の応答から secret を落とす（3 件）・発行の監査を落とす（1 件）・再発行で値をログへ出す（1 件）・
+  Keycloak 版 / プロセス内の口で入口の印の確かめを外す（各 1 件）・監査の 400 を `failed` に潰す（2 件）・BFF の `no-store` を全経路へ／外す（1 件・2 件）・
+  画面: 登録で表示しない・確認を挟まない・次の操作で捨てない・有人にも出す（各 1 件）・値を描かない（2 件）。
+
+### 残余
+
+1. 🔴 **再発行の値が Keycloak の管理イベントの詳細に残る**（上の FU6 の表）。計画の判断を待つ。それまでは管理イベントを読める主体（realm の管理者）が値を読める。
+2. 門 M11 は PR では走らない（日次・develop への push・手動）。本 PR のマージ後の最初の実行が初回の実測になる。
+3. 表示した値の運用者への引き渡しはシステムの外（決定 2 の 6。受け入れたリスク）。
+4. 登録簿の削除の操作が無いので、削除の監査も無い（上の 6）。
+5. `private_key_jwt`（共有秘密を持たない形）は計画が将来の拡張とした。

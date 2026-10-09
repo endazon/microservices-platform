@@ -7,6 +7,7 @@ import {
   useBffMcpListClients,
   useBffMcpListTools,
   useBffMcpRegisterClient,
+  useBffMcpReissueClientSecret,
   useBffMcpReplaceClientAttributes,
 } from '@foundation/api/generated/mcp-clients/mcp-clients';
 import {
@@ -68,7 +69,7 @@ export function useAbacAttributeDictionary() {
 }
 
 /**
- * クライアントの登録・無効化・再有効化・属性割当。
+ * クライアントの登録・無効化・再有効化・属性割当・client secret の再発行。
  *
  * 無効化は**次の呼び出しから即座に**効く（後段がキャッシュを挟まない）。画面側も
  * 一覧を無効化して即座に状態を引き直す。
@@ -82,6 +83,8 @@ export function useMcpClientActions() {
   const disable = useBffMcpDisableClient<unknown>(onSuccess);
   const enable = useBffMcpEnableClient<unknown>(onSuccess);
   const replaceAttributes = useBffMcpReplaceClientAttributes<unknown>(onSuccess);
+  // ［#1845］再発行は登録簿を変えない（一覧を引き直す必要が無い）。新しい secret は応答にだけ載る。
+  const reissueSecret = useBffMcpReissueClientSecret<unknown>();
 
-  return { register, disable, enable, replaceAttributes };
+  return { register, disable, enable, replaceAttributes, reissueSecret };
 }

@@ -1759,6 +1759,52 @@ export interface McpClientView {
   updatedAt: string;
 }
 
+export type McpClientRegistrationViewKind = typeof McpClientRegistrationViewKind[keyof typeof McpClientRegistrationViewKind];
+
+
+export const McpClientRegistrationViewKind = {
+  interactive: 'interactive',
+  'service-account': 'service-account',
+} as const;
+
+export type McpClientRegistrationViewAttributes = {[key: string]: string};
+
+export type McpClientRegistrationViewEgressTier = typeof McpClientRegistrationViewEgressTier[keyof typeof McpClientRegistrationViewEgressTier];
+
+
+export const McpClientRegistrationViewEgressTier = {
+  'self-hosted': 'self-hosted',
+  'protected-external': 'protected-external',
+  'standard-external': 'standard-external',
+} as const;
+
+/**
+ * FR-16, UC-09, SC-12: 登録の応答（201）。`McpClientView` の項目に `clientSecret` を足したもの。
+ * ［2026-10-09 / ADR-0134 決定 2］`clientSecret` は**無人の登録のときだけ**、認証基盤が生成した client secret を一度だけ載せる
+ * （有人は null）。値は保存されず、ここ以外では二度と表示されない。
+ */
+export interface McpClientRegistrationView {
+  id: string;
+  clientId: string;
+  displayName: string;
+  kind: McpClientRegistrationViewKind;
+  enabled: boolean;
+  attributes: McpClientRegistrationViewAttributes;
+  egressTier: McpClientRegistrationViewEgressTier;
+  registeredAt: string;
+  updatedAt: string;
+  /** 無人の client secret（一度だけ）。有人は null */
+  clientSecret?: string | null;
+}
+
+/**
+ * FR-16, SC-12: 再発行した client secret（一度だけ）。旧 secret はその時点で使えなくなる。
+ */
+export interface McpClientSecretView {
+  clientId: string;
+  clientSecret: string;
+}
+
 export type RegisterMcpClientRequestKind = typeof RegisterMcpClientRequestKind[keyof typeof RegisterMcpClientRequestKind];
 
 

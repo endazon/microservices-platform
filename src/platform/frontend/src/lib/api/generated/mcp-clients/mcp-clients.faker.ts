@@ -14,6 +14,8 @@ import {
 
 import type {
   EffectiveToolsView,
+  McpClientRegistrationView,
+  McpClientSecretView,
   McpClientView
 } from '../bff.schemas';
 
@@ -22,9 +24,9 @@ export const getBffMcpListClientsResponseMock = (): McpClientView[] => (Array.fr
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
       }, egressTier: faker.helpers.arrayElement(['self-hosted','protected-external','standard-external'] as const), registeredAt: faker.date.past().toISOString().slice(0, 19) + 'Z', updatedAt: faker.date.past().toISOString().slice(0, 19) + 'Z'})))
 
-export const getBffMcpRegisterClientResponseMock = (overrideResponse: Partial<Extract<McpClientView, object>> = {}): McpClientView => ({id: faker.string.uuid(), clientId: faker.string.alpha({length: {min: 10, max: 20}}), displayName: faker.string.alpha({length: {min: 10, max: 20}}), kind: faker.helpers.arrayElement(['interactive','service-account'] as const), enabled: faker.datatype.boolean(), attributes: {
+export const getBffMcpRegisterClientResponseMock = (overrideResponse: Partial<Extract<McpClientRegistrationView, object>> = {}): McpClientRegistrationView => ({id: faker.string.uuid(), clientId: faker.string.alpha({length: {min: 10, max: 20}}), displayName: faker.string.alpha({length: {min: 10, max: 20}}), kind: faker.helpers.arrayElement(['interactive','service-account'] as const), enabled: faker.datatype.boolean(), attributes: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
-      }, egressTier: faker.helpers.arrayElement(['self-hosted','protected-external','standard-external'] as const), registeredAt: faker.date.past().toISOString().slice(0, 19) + 'Z', updatedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', ...overrideResponse})
+      }, egressTier: faker.helpers.arrayElement(['self-hosted','protected-external','standard-external'] as const), registeredAt: faker.date.past().toISOString().slice(0, 19) + 'Z', updatedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', clientSecret: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), ...overrideResponse})
 
 export const getBffMcpListToolsResponseMock = (overrideResponse: Partial<Extract<EffectiveToolsView, object>> = {}): EffectiveToolsView => ({version: faker.number.int(), tools: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({name: faker.string.alpha({length: {min: 10, max: 20}}), service: faker.string.alpha({length: {min: 10, max: 20}}), description: faker.string.alpha({length: {min: 10, max: 20}}), requiredScope: faker.string.alpha({length: {min: 10, max: 20}}), egressClass: faker.string.alpha({length: {min: 10, max: 20}})})), drifts: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({kind: faker.string.alpha({length: {min: 10, max: 20}}), target: faker.string.alpha({length: {min: 10, max: 20}}), detail: faker.string.alpha({length: {min: 10, max: 20}})})), ...overrideResponse})
 
@@ -35,6 +37,8 @@ export const getBffMcpDisableClientResponseMock = (overrideResponse: Partial<Ext
 export const getBffMcpEnableClientResponseMock = (overrideResponse: Partial<Extract<McpClientView, object>> = {}): McpClientView => ({id: faker.string.uuid(), clientId: faker.string.alpha({length: {min: 10, max: 20}}), displayName: faker.string.alpha({length: {min: 10, max: 20}}), kind: faker.helpers.arrayElement(['interactive','service-account'] as const), enabled: faker.datatype.boolean(), attributes: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
       }, egressTier: faker.helpers.arrayElement(['self-hosted','protected-external','standard-external'] as const), registeredAt: faker.date.past().toISOString().slice(0, 19) + 'Z', updatedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', ...overrideResponse})
+
+export const getBffMcpReissueClientSecretResponseMock = (overrideResponse: Partial<Extract<McpClientSecretView, object>> = {}): McpClientSecretView => ({clientId: faker.string.alpha({length: {min: 10, max: 20}}), clientSecret: faker.string.alpha({length: {min: 10, max: 20}}), ...overrideResponse})
 
 export const getBffMcpReplaceClientAttributesResponseMock = (overrideResponse: Partial<Extract<McpClientView, object>> = {}): McpClientView => ({id: faker.string.uuid(), clientId: faker.string.alpha({length: {min: 10, max: 20}}), displayName: faker.string.alpha({length: {min: 10, max: 20}}), kind: faker.helpers.arrayElement(['interactive','service-account'] as const), enabled: faker.datatype.boolean(), attributes: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
