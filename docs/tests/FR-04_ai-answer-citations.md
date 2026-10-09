@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-04, FR-05, FR-11, SC-01, SC-08, UC-01, UC-02]
 adrs: []
-iadrs: [IADR-0111, IADR-0131, IADR-0529]
+iadrs: [IADR-0111, IADR-0131, IADR-0531]
 specs: [20261010_1875_claude-5-5-models]
 issues: [#403, #448, #540, #541, #1875]
 -->

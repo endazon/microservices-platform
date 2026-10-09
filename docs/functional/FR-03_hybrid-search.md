@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-03, FR-02, FR-05, UC-01, FR-04, FR-11, FR-19, SC-02]
 adrs: [ADR-0009, ADR-0016, ADR-0017, ADR-0127, ADR-0043, ADR-0057, ADR-0070, ADR-0092, ADR-0010, ADR-0018, ADR-0044, ADR-0061]
-iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0313, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0422, IADR-0467, IADR-0497, IADR-0498, IADR-0512, IADR-0529]
+iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0313, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0422, IADR-0467, IADR-0497, IADR-0498, IADR-0512, IADR-0529, IADR-0531]
 specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261007_1771_ingestion-event-wiring-docs, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1875_claude-5-5-models, 20261010_1879_exposure-org-docs-wiki-gate]
 issues: [#1746, #336, #536, #995, #1116, #1118, #1193, #1253, #1254, #1771, #1752, #1875, planning#783, #1879]
 -->

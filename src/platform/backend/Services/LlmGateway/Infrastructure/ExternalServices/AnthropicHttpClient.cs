@@ -43,7 +43,7 @@ public static class AnthropicHttpClient
 
     // IADR-0114 (AST#290): 応答サニタイズの委譲ハンドラを噛ませる。一次ハンドラは既定の HttpClientHandler
     // （システムプロキシ設定は既定で引き継がれる）で、応答圧縮だけは明示的に有効化する。
-    // IADR-0529 (#1875): 最も外側に要求本文の整形（用途別 effort の注入）を置く。
+    // IADR-0531 (#1875): 最も外側に要求本文の整形（用途別 effort の注入）を置く。
     // 鎖: AnthropicRequestShapingHandler → AnthropicResponseSanitizingHandler → HttpClientHandler。
     public static HttpClient Create(
         IConfiguration configuration,

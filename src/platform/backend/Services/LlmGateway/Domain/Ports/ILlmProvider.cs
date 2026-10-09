@@ -22,11 +22,11 @@ public interface ILlmProvider
 
 // IADR-0101: MaxTokens の既定は 4096（HTTP 経路の既定は CompletionApiRequest 側。エンドポイントが
 // req.MaxTokens を常に明示的に渡すため、本既定値はプロバイダを直接呼ぶ内部経路にのみ効く）。
-// thinking（拡張思考）が既定で有効なモデル（Opus 5・Sonnet 5、［2026-10-10 / #1875・IADR-0529］5.5 系の 3 モデルは
+// thinking（拡張思考）が既定で有効なモデル（Opus 5・Sonnet 5、［2026-10-10 / #1875・IADR-0531］5.5 系の 3 モデルは
 // Haiku を含めて既定で有効。現行の既定 claude-opus-5-5 が該当）では
 // MaxTokens は思考トークンと本文の合算上限になるため、本文想定長（〜1024）＋思考の作業領域（〜3000）
 // を見込む。1024 のままだと思考が上限を食い、本文が途中で切れる（例外にならず静かに縮退する）。
-// IADR-0529 (#1875): Purpose は用途別 effort（`Llm:PurposeEffort`）を引くためだけに渡す。null は effort を送らない。
+// IADR-0531 (#1875): Purpose は用途別 effort（`Llm:PurposeEffort`）を引くためだけに渡す。null は effort を送らない。
 // 位置引数の末尾に既定値つきで足しているため、既存の 3 引数呼び出しは不変である。
 public record CompletionRequest(string Prompt, int MaxTokens = 4096, string? Model = null, string? Purpose = null);
 

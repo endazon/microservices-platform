@@ -70,7 +70,7 @@ public class AnthropicClientWiringTests
     }
 
     // T-34: ホストが解決する AnthropicClient のハンドラ鎖が Create と同じ形である
-    // （要求の整形 → サニタイズの委譲ハンドラ → 応答圧縮を有効にした HttpClientHandler。整形は IADR-0529 で追加）。
+    // （要求の整形 → サニタイズの委譲ハンドラ → 応答圧縮を有効にした HttpClientHandler。整形は IADR-0531 で追加）。
     [Fact]
     public void HostResolvedAnthropicClient_HasSanitizingHandlerChain()
     {
@@ -91,7 +91,7 @@ public class AnthropicClientWiringTests
         AssertSanitizingChain(HandlerOf(client));
     }
 
-    // ［2026-10-10 / #1875・IADR-0529］最も外側に要求本文の整形（用途別 effort の注入）が入った。
+    // ［2026-10-10 / #1875・IADR-0531］最も外側に要求本文の整形（用途別 effort の注入）が入った。
     // 鎖: AnthropicRequestShapingHandler → AnthropicResponseSanitizingHandler → HttpClientHandler。
     // 整形を外すと effort が送られず（rerank の思考が絞られない）、サニタイズを外すと thinking 応答で全件失敗する。
     private static void AssertSanitizingChain(HttpMessageHandler handler)

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Tests.Features.Completions;
 
-// ［2026-10-10 追記 / #1875・IADR-0529］利用者裁定（planning#783）で Claude の割当を 5.5 系へ切り替えたので、
+// ［2026-10-10 追記 / #1875・IADR-0531］利用者裁定（planning#783）で Claude の割当を 5.5 系へ切り替えたので、
 // 本ファイルが渡す・期待するモデル名（コード）を claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5 へ改めた。
 // **コメント中の旧モデル名（claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5）は当時の決定の記録**であり、書き換えていない。
 

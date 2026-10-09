@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 
-// FR-11, ADR-0010, ADR-0025, IADR-0529 (#1875・planning#783): Anthropic へ実際に出ていく**要求本文**を固定する。
+// FR-11, ADR-0010, ADR-0025, IADR-0531 (#1875・planning#783): Anthropic へ実際に出ていく**要求本文**を固定する。
 //
 // 5.5 系（opus-5-5 / sonnet-5-5 / haiku-5-5）は、thinking の無効化・budget_tokens・非既定の temperature / top_p / top_k・
 // 強制の tool_choice・assistant prefill を 400 で拒む。いまの実装はどれも送っていないが、**送らないことを固定する試験が

@@ -40,7 +40,7 @@ public class DeployedPriceTableTests(TestWebApplicationFactory factory)
         output.Cost.Should().Be(10.0m);
     }
 
-    // FR-10 T-48, FR-11, ADR-0044 決定 3, IADR-0529 (#1875・planning#783): 実設定の 5.5 系の単価（提供元の公表値。2026-10-10 確認）。
+    // FR-10 T-48, FR-11, ADR-0044 決定 3, IADR-0531 (#1875・planning#783): 実設定の 5.5 系の単価（提供元の公表値。2026-10-10 確認）。
     // 入力 / 出力の百万トークンあたり: opus-5-5 $4 / $20、sonnet-5-5 $2 / $10、
     // haiku-5-5 はプロンプト 100,000 トークン以下 $0.10 / $0.50、超 $0.50 / $2.50。
     [Theory]
@@ -62,7 +62,7 @@ public class DeployedPriceTableTests(TestWebApplicationFactory factory)
         result.Cost.Should().Be(inputTokens / 1_000_000m * (decimal)inputPerMillion + (decimal)outputPerMillion);
     }
 
-    // FR-10 T-48, IADR-0529: 切り戻し用に許可集合へ残した旧モデルも単価を持つ（外すと切り戻した瞬間から費用が「解決漏れ」になる）。
+    // FR-10 T-48, IADR-0531: 切り戻し用に許可集合へ残した旧モデルも単価を持つ（外すと切り戻した瞬間から費用が「解決漏れ」になる）。
     [Theory]
     [InlineData("claude-opus-5", 5.0)]
     [InlineData("claude-sonnet-5", 2.0)]

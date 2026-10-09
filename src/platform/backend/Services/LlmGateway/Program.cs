@@ -68,7 +68,7 @@ builder.Services.AddOpenApi();
 // 応答サニタイズ用の委譲ハンドラを噛ませた HttpClient を渡す。割当モデル（［2026-10-10 / #1875］5.5 系の
 // Opus / Sonnet / Haiku）はいずれも thinking が既定で有効なため、これが無いと非ストリーミング /complete が全件失敗する。
 // ADR-0038 / #850: 割当から Fable 5 を外した（analysis は Opus へ）。ハンドラは引き続き要る。
-// IADR-0529 (#1875): 要求側には用途別 effort を本文へ足す委譲ハンドラ（AnthropicRequestShapingHandler）を重ねる。
+// IADR-0531 (#1875): 要求側には用途別 effort を本文へ足す委譲ハンドラ（AnthropicRequestShapingHandler）を重ねる。
 // 一次ハンドラは既定の HttpClientHandler（システムプロキシ設定は既定で引き継がれる）を使い、
 // 応答圧縮だけは SDK 既定の内部クライアントに依存しないよう明示的に有効化する。
 // FR-11, IADR-0528 (#1872): 期限は `Llm:AnthropicTimeoutSeconds`（既定 100 秒＝従前と同じ。不正値は既定へ倒す）。
@@ -89,7 +89,7 @@ builder.Services.AddSingleton<ILlmRouter, LlmRouter>();
 // FR-11: ルーターの判定に従って呼び出し先を切り替えるため、プロバイダをキー付きで登録する。
 // ティアB=保護契約済み外部API（Claude）、ティアA=セルフホスト（OSS, 既定は無効エンドポイント）、
 // GitHub Copilot（最難関用途の別経路, ティア確定まで既定は無効エンドポイント）。ADR-0010 / IADR-0022。
-// FR-11, IADR-0529 (#1875・planning#783): 用途別 effort（`Llm:PurposeEffort`。既定は rerank=low のみ）。
+// FR-11, IADR-0531 (#1875・planning#783): 用途別 effort（`Llm:PurposeEffort`。既定は rerank=low のみ）。
 // 値域外は起動時に落とす（実行時に送ると全件 400 になり「上流の失敗」としか見えない）。
 builder.Services.AddOptions<ClaudePurposeEffortOptions>()
     .Configure(o => builder.Configuration.GetSection(ClaudePurposeEffortOptions.SectionName).Bind(o.Purposes))

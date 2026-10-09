@@ -22,7 +22,7 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 // ［2026-08-18 追記 / #850］計画 ADR-0038 決定 1 により analysis の割当を claude-fable-5 → claude-opus-5 へ
 // 改めたので、上の背景記述を現行値へ書き改めた。**本テストの挙動は変わらない** —— ここは背景の説明であって
 // テストが渡すモデル文字列ではない（本ファイルが実際に渡すのは claude-sonnet-5-5・claude-haiku-5-5 と null だけである）。
-// ［2026-10-10 追記 / #1875・IADR-0529］割当を 5.5 系へ切り替えたので、背景の割当名を現行値へ改めた。
+// ［2026-10-10 追記 / #1875・IADR-0531］割当を 5.5 系へ切り替えたので、背景の割当名を現行値へ改めた。
 // 5.5 系では **Haiku も thinking が既定で有効**になった（4.5 は無効）。rerank・trade-decision-screening・
 // 鎖の第 2 候補の haiku-5-5 も thinking 先頭の応答を返すので、その形を非ストリーム・ストリームの両方で固定する。
 [Trait("TestKind", "Unit")]
@@ -115,7 +115,7 @@ public class ClaudeProviderThinkingTests
         result.StopReason.Should().Be("refusal");
     }
 
-    // FR-03, FR-11, IADR-0529 (#1875, T-35): haiku-5-5 は thinking が既定で有効（4.5 は無効だった）。
+    // FR-03, FR-11, IADR-0531 (#1875, T-35): haiku-5-5 は thinking が既定で有効（4.5 は無効だった）。
     // rerank の応答（JSON の順位）が thinking ブロックの後ろに来ても、非ストリームで本文を取り出せる。
     [Fact]
     public async Task CompleteAsync_Haiku55ThinkingFirst_ReturnsRankingBody()
@@ -131,7 +131,7 @@ public class ClaudeProviderThinkingTests
         result.StopReason.Should().Be("end_turn");
     }
 
-    // FR-11, IADR-0529 (#1875, T-35): ストリーム経路は thinking ブロック（content_block_start の thinking・
+    // FR-11, IADR-0531 (#1875, T-35): ストリーム経路は thinking ブロック（content_block_start の thinking・
     // thinking_delta・signature_delta）を本文デルタとして流さず、後続の本文だけを流す（サニタイズは SSE を触らない）。
     [Fact]
     public async Task StreamAsync_Haiku55ThinkingFirst_StreamsOnlyTextDeltas()

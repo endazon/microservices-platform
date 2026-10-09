@@ -15,12 +15,12 @@ namespace LlmGateway.Infrastructure.ExternalServices;
 // claude-fable-5 → claude-opus-5 へ改定し、claude-fable-5 は claude-managed の Models からも外した
 // （基盤のいかなる用途でも用いない。ZDR 有効化の優先）。旧割当の根拠は IADR-0022 を参照。
 // ［2026-10-10 追記 / #1875］利用者裁定（planning#783）で全割当を 5.5 系へ切り替えた
-// （opus-5 → opus-5-5・sonnet-5 → sonnet-5-5・haiku-4-5 → haiku-5-5。IADR-0529）。fable は引き続き用いない。
+// （opus-5 → opus-5-5・sonnet-5 → sonnet-5-5・haiku-4-5 → haiku-5-5。IADR-0531）。fable は引き続き用いない。
 // ⚠️ 5.5 系は 3 モデルとも thinking（adaptive）が既定で有効で**無効にできない**。MaxTokens は思考トークンと本文の
 // 合算上限になる。切り詰めると本文が途中で切れるため、既定値は思考分の余裕を含める（IADR-0101）。
 // 🔴 本実装は thinking / temperature / top_p / top_k / tool_choice / assistant prefill を送らない
-// （5.5 系で 400 になる。要求本文に無いことを ClaudeProviderRequestShapeTests が固定する。IADR-0529 決定 4）。
-// 思考の量を絞る手段は effort だけであり、用途別に `Llm:PurposeEffort` で与える（IADR-0529 決定 3）。
+// （5.5 系で 400 になる。要求本文に無いことを ClaudeProviderRequestShapeTests が固定する。IADR-0531 決定 4）。
+// 思考の量を絞る手段は effort だけであり、用途別に `Llm:PurposeEffort` で与える（IADR-0531 決定 3）。
 // SDK（Anthropic.SDK 4.0.0）は effort を送れないので、AnthropicRequestShapingHandler が要求本文へ足す。
 public class ClaudeProvider(
     AnthropicClient client,
@@ -88,7 +88,7 @@ public class ClaudeProvider(
 
         int inputTokens = 0, outputTokens = 0;
         string? stopReason = null;
-        // IADR-0529: 要求の送信は最初の MoveNextAsync（この反復子の同じ段）で起きるので、ここで張った文脈が届く。
+        // IADR-0531: 要求の送信は最初の MoveNextAsync（この反復子の同じ段）で起きるので、ここで張った文脈が届く。
         using var effortScope = AnthropicRequestContext.UseEffort(EffortFor(request, model));
         await foreach (var res in client.Messages.StreamClaudeMessageAsync(parameters, ct))
         {

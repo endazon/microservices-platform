@@ -1,5 +1,5 @@
 ---
-title: IADR-0529 Claude のモデル割当を 5.5 系（opus-5-5・sonnet-5-5・haiku-5-5）へ切り替える。旧 ID は切り戻し用に残し、haiku-5-5 の単価はプロンプト長の 2 段で持ち、用途別 effort を要求本文へ注入する（既定は rerank=low）。rerank の出力上限は 1024 へ上げる
+title: IADR-0531 Claude のモデル割当を 5.5 系（opus-5-5・sonnet-5-5・haiku-5-5）へ切り替える。旧 ID は切り戻し用に残し、haiku-5-5 の単価はプロンプト長の 2 段で持ち、用途別 effort を要求本文へ注入する（既定は rerank=low）。rerank の出力上限は 1024 へ上げる
 type: impl-adr
 status: Accepted
 related_ids: [FR-03, FR-10, FR-11, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0127, IADR-0101, IADR-0102, IADR-0112, IADR-0114, IADR-0225, IADR-0340, IADR-0498, IADR-0511, IADR-0528]
@@ -14,7 +14,7 @@ related_specs:
   - ../specs/20261010_1875_claude-5-5-models.md
 ---
 
-# IADR-0529: Claude のモデル割当を 5.5 系へ切り替える（#1875）
+# IADR-0531: Claude のモデル割当を 5.5 系へ切り替える（#1875）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -22,6 +22,8 @@ related_specs:
 - 日付: 2026-10-10
 - 決定者: **利用者（製品の判断）**。裁定 2026-10-10「Claude のモデル割当をすべて 5.5 系へ切り替える」（planning#783）。
   単価の持ち方・effort の注入方式・上限の値・試験の形は claude。
+- 採番: 起草時は IADR-0529 だったが、0529 は #1886（#1879）が、0530 は先にマージされる #1889 が取ったため **IADR-0531 へ改番した**
+  （採番衝突時は後発が改番する。`.ai-context/adr/README.md` の運用ルール「一意・昇順・欠番なし」）。
 
 ## 起点・関連
 

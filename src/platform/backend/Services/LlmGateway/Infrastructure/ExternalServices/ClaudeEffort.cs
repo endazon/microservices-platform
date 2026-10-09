@@ -2,7 +2,7 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Infrastructure.ExternalServices;
 
-// FR-11, ADR-0010, ADR-0025, IADR-0529 (#1875・planning#783): 用途別の effort（`output_config.effort`）の設定。
+// FR-11, ADR-0010, ADR-0025, IADR-0531 (#1875・planning#783): 用途別の effort（`output_config.effort`）の設定。
 //
 // 構成は `Llm:PurposeEffort`（用途 → effort）。例: `{ "rerank": "low" }`。**既定は空**であり、書かない用途は
 // effort を送らない（＝提供元の既定。opus-5-5 / haiku-5-5 は medium、sonnet-5-5 は high）。
@@ -15,7 +15,7 @@ public sealed class ClaudePurposeEffortOptions
     public Dictionary<string, string> Purposes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
-// IADR-0529 決定 3: effort を送ってよいモデルと値域。
+// IADR-0531 決定 3: effort を送ってよいモデルと値域。
 public static class ClaudeEffort
 {
     // 提供元が受け付ける effort の値（2026-10-10 確認）。
@@ -43,7 +43,7 @@ public static class ClaudeEffort
     }
 }
 
-// IADR-0529 決定 3: 値域の外の effort は**起動時に落とす**（ValidateOnStart）。実行時に送ると全件 400 になり、
+// IADR-0531 決定 3: 値域の外の effort は**起動時に落とす**（ValidateOnStart）。実行時に送ると全件 400 になり、
 // 呼び出し側には「上流の失敗」としか見えない。
 public sealed class ClaudePurposeEffortOptionsValidator : IValidateOptions<ClaudePurposeEffortOptions>
 {
@@ -58,7 +58,7 @@ public sealed class ClaudePurposeEffortOptionsValidator : IValidateOptions<Claud
     }
 }
 
-// IADR-0529 決定 3: 1 回の Anthropic 呼び出しに付ける effort を、SDK の外（HttpClient の層）へ渡す文脈。
+// IADR-0531 決定 3: 1 回の Anthropic 呼び出しに付ける effort を、SDK の外（HttpClient の層）へ渡す文脈。
 // Anthropic.SDK 4.0.0 の MessageParameters は `output_config` を持たないため、要求本文への注入は
 // AnthropicRequestShapingHandler が行う。呼び出し単位の値なので AsyncLocal で渡す（シングルトンの HttpClient を
 // 共有したまま、並行する呼び出しの値が混ざらない）。

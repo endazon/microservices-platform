@@ -172,7 +172,7 @@ public class ModelPriceTableTests
         logger.Entries.Should().BeEmpty();
     }
 
-    // FR-11, ADR-0044 決定 3, IADR-0529 (#1875): プロンプト長で単価が 2 段のモデル（claude-haiku-5-5 の形）。
+    // FR-11, ADR-0044 決定 3, IADR-0531 (#1875): プロンプト長で単価が 2 段のモデル（claude-haiku-5-5 の形）。
     private static ModelPricingOptions TieredTable() => new()
     {
         Models =
@@ -194,7 +194,7 @@ public class ModelPriceTableTests
         },
     };
 
-    // FR-10 T-46 (IADR-0529): 段は**その要求の入力トークン数**で決まり、境界ちょうど（100,000）は下段、1 つ超えると上段。
+    // FR-10 T-46 (IADR-0531): 段は**その要求の入力トークン数**で決まり、境界ちょうど（100,000）は下段、1 つ超えると上段。
     // 上段は入力・出力の**両方**に効く。境界の比較を >= に変えても、上段の出力単価を下段のまま残しても赤くなる。
     [Theory]
     [InlineData(100_000L, 1_000_000L, false, 0.01, 0.50)]      // 境界ちょうど: 下段（入力 0.10 / 出力 0.50）
@@ -210,7 +210,7 @@ public class ModelPriceTableTests
         result.Cost.Should().Be((decimal)inputCost + (decimal)outputCost);
     }
 
-    // FR-10 T-47 (IADR-0529): 上段を持たない単価（1 段）は入力がどれほど大きくても従前どおり 1 段で換算する（回帰防止）。
+    // FR-10 T-47 (IADR-0531): 上段を持たない単価（1 段）は入力がどれほど大きくても従前どおり 1 段で換算する（回帰防止）。
     [Fact]
     public void 上段を持たない単価は入力の大きさによらず1段()
     {

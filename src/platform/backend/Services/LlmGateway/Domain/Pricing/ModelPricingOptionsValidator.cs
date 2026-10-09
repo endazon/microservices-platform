@@ -29,7 +29,7 @@ public sealed class ModelPricingOptionsValidator : IValidateOptions<ModelPricing
                 if (entry.InputPerMillionTokens < 0 || entry.OutputPerMillionTokens < 0)
                     errors.Add($"{model}[{i}] の単価が負値です（入力 {entry.InputPerMillionTokens} / 出力 {entry.OutputPerMillionTokens}）。");
 
-                // IADR-0529 (#1875): プロンプト長の上段。境界が 0 以下だと**全要求が上段**になり、静かに過大計上する。
+                // IADR-0531 (#1875): プロンプト長の上段。境界が 0 以下だと**全要求が上段**になり、静かに過大計上する。
                 if (entry.LongPrompt is { } lp)
                 {
                     if (lp.ThresholdInputTokens < 1)

@@ -71,7 +71,7 @@ public class ModelPricingOptionsValidatorTests
         {
             Models =
             {
-                // ［2026-10-10 / #1875・IADR-0529］5.5 系の 3 モデル（haiku-5-5 はプロンプト長の 2 段）と、切り戻し用に残す旧モデル。
+                // ［2026-10-10 / #1875・IADR-0531］5.5 系の 3 モデル（haiku-5-5 はプロンプト長の 2 段）と、切り戻し用に残す旧モデル。
                 ["claude-opus-5-5"] = [Entry(null, null, 4m)],
                 ["claude-sonnet-5-5"] = [Entry(null, null, 2m)],
                 ["claude-haiku-5-5"] = [Haiku55()],
@@ -84,7 +84,7 @@ public class ModelPricingOptionsValidatorTests
         Validator.Validate(null, options).Succeeded.Should().BeTrue();
     }
 
-    // FR-11, ADR-0044 決定 3, IADR-0529 (#1875): 配備中の haiku-5-5 と同じ形の 2 段の単価。
+    // FR-11, ADR-0044 決定 3, IADR-0531 (#1875): 配備中の haiku-5-5 と同じ形の 2 段の単価。
     private static ModelPriceEntry Haiku55(long threshold = 100_000, decimal longInput = 0.50m, decimal longOutput = 2.50m)
         => new()
         {
@@ -98,7 +98,7 @@ public class ModelPricingOptionsValidatorTests
             },
         };
 
-    // FR-11, ADR-0044 決定 3, IADR-0529 (FR-10 T-43): 上段の境界が 1 未満だと**全要求が上段**になり静かに過大計上するので、起動時に落とす。
+    // FR-11, ADR-0044 決定 3, IADR-0531 (FR-10 T-43): 上段の境界が 1 未満だと**全要求が上段**になり静かに過大計上するので、起動時に落とす。
     [Theory]
     [InlineData(0L)]
     [InlineData(-1L)]
@@ -110,12 +110,12 @@ public class ModelPricingOptionsValidatorTests
         result.FailureMessage.Should().Contain("ThresholdInputTokens");
     }
 
-    // FR-11, ADR-0044 決定 3, IADR-0529 (FR-10 T-44): 上段の単価が負なら落とす（下段と同じ規則）。
+    // FR-11, ADR-0044 決定 3, IADR-0531 (FR-10 T-44): 上段の単価が負なら落とす（下段と同じ規則）。
     [Fact]
     public void プロンプト長の上段の単価が負なら落とす()
         => Validator.Validate(null, With(Haiku55(longOutput: -2.5m))).Failed.Should().BeTrue();
 
-    // FR-11, ADR-0044 決定 3, IADR-0529 (FR-10 T-45): 境界 1（最小）は通る（陽性対照。境界の比較を > 0 に緩めても < 1 に締めても赤くなる対）。
+    // FR-11, ADR-0044 決定 3, IADR-0531 (FR-10 T-45): 境界 1（最小）は通る（陽性対照。境界の比較を > 0 に緩めても < 1 に締めても赤くなる対）。
     [Fact]
     public void プロンプト長の上段の境界1は通る()
         => Validator.Validate(null, With(Haiku55(threshold: 1))).Succeeded.Should().BeTrue();

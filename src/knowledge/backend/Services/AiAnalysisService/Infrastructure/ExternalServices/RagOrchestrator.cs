@@ -313,7 +313,7 @@ public class RagOrchestrator(
 
         // IADR-0101: MaxTokens は思考トークンと本文の合算上限（thinking が既定有効な Opus / Sonnet / 5.5 系の場合）。
         // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-5-5（ADR-0022 追随済み・IADR-0106。
-        // ［2026-10-10 / #1875］5.5 系へ切替・IADR-0529）。第 2 候補の claude-haiku-5-5 も thinking が既定有効である。
+        // ［2026-10-10 / #1875］5.5 系へ切替・IADR-0531）。第 2 候補の claude-haiku-5-5 も thinking が既定有効である。
         // Sonnet 5 以降は新トークナイザ（同一テキストで約 +30% トークン）のため、
         // 4096 は実測前の出発値である（再調整は #380）。
         var body = new CompletionApiRequest(prompt, MaxTokens: 4096, Model: null,
@@ -405,7 +405,7 @@ public class RagOrchestrator(
         // FR-11: Model は明示せず（null）、用途（purpose）と機密区分をゲートウェイへ渡して呼び出し先・モデル選択を委ねる。
         // IADR-0101: MaxTokens は思考トークンと本文の合算上限（thinking が既定有効な Opus / Sonnet / 5.5 系の場合）。
         // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-5-5（ADR-0022 追随済み・IADR-0106。
-        // ［2026-10-10 / #1875］5.5 系へ切替・IADR-0529）。第 2 候補の claude-haiku-5-5 も thinking が既定有効である。
+        // ［2026-10-10 / #1875］5.5 系へ切替・IADR-0531）。第 2 候補の claude-haiku-5-5 も thinking が既定有効である。
         // Sonnet 5 以降は新トークナイザ（同一テキストで約 +30% トークン）のため、
         // 4096 は実測前の出発値である（再調整は #380）。
         //

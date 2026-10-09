@@ -456,9 +456,9 @@ public class ClaudeRerankTests
         withStage.Select(r => r.ChunkId).Should().Equal(without.Select(r => r.ChunkId));
     }
 
-    // T-112: FR-03, FR-11, IADR-0529 (#1875): 割当の claude-haiku-5-5 は thinking が既定で有効（無効にできない）なので、
+    // T-112: FR-03, FR-11, IADR-0531 (#1875): 割当の claude-haiku-5-5 は thinking が既定で有効（無効にできない）なので、
     // 出力の上限は思考と本文の合算になる。既定の上限は 1024（従前 512）、期限は 8 秒のまま。
-    // 上限を 512 へ戻すと思考が上限を食って JSON が切れ、元の順への縮退が増える（IADR-0529 決定 5）。
+    // 上限を 512 へ戻すと思考が上限を食って JSON が切れ、元の順への縮退が増える（IADR-0531 決定 5）。
     [Fact]
     public void 出力上限の既定は思考の余地を含む1024で期限は8秒()
     {

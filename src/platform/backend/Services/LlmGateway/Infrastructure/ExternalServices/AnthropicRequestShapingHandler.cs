@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 
 namespace LlmGateway.Infrastructure.ExternalServices;
 
-// FR-11, ADR-0010, IADR-0529 (#1875・planning#783): Anthropic Messages API への**要求本文**へ
+// FR-11, ADR-0010, IADR-0531 (#1875・planning#783): Anthropic Messages API への**要求本文**へ
 // `output_config.effort` を足す委譲ハンドラ（応答側の AnthropicResponseSanitizingHandler と対になる要求側）。
 //
 // ここ（HttpClient の層）で行う理由: Anthropic.SDK 4.0.0 は effort を送る口を持たない（#1749 の SDK 移行の判断とは独立に、
@@ -14,7 +14,7 @@ namespace LlmGateway.Infrastructure.ExternalServices;
 //   - 文脈に effort が無い（既定。設定 `Llm:PurposeEffort` に無い用途・effort 非対応のモデル）。
 //   - POST でない・本文が無い・本文が JSON オブジェクトでない。
 //   - 本文に既に `output_config.effort` がある（呼び出し側の明示を上書きしない）。
-// 🔴 temperature / top_p / top_k / thinking / tool_choice は**足さない**（5.5 系で 400 になる。IADR-0529 決定 4）。
+// 🔴 temperature / top_p / top_k / thinking / tool_choice は**足さない**（5.5 系で 400 になる。IADR-0531 決定 4）。
 public sealed class AnthropicRequestShapingHandler : DelegatingHandler
 {
     private const string JsonMediaType = "application/json";

@@ -38,7 +38,7 @@ public sealed class ModelPriceEntry
     // 百万トークンあたりの出力単価。
     public decimal OutputPerMillionTokens { get; set; }
 
-    // FR-11, ADR-0044 決定 3, IADR-0529 (#1875・planning#783): **プロンプト長で単価が変わるモデルの上段。**
+    // FR-11, ADR-0044 決定 3, IADR-0531 (#1875・planning#783): **プロンプト長で単価が変わるモデルの上段。**
     // 省略時（null）は 1 段（従前どおり）。`claude-haiku-5-5` は、1 要求の入力トークンの合計が
     // 100,000 を**超える**とその要求の入力・出力の両方が上段の単価になる（提供元の公表値。2026-10-10 確認）。
     // 🔴 上段へ寄せた 1 段で持たない —— 大半の要求（≦100K）を 5 倍に過大計上し、費用の増加の検知が鈍る。
@@ -57,7 +57,7 @@ public sealed class ModelPriceEntry
             : (InputPerMillionTokens, OutputPerMillionTokens, false);
 }
 
-// FR-11, ADR-0044 決定 3, IADR-0529: プロンプト長による上段の単価。区間（有効期間）は親の ModelPriceEntry に従う。
+// FR-11, ADR-0044 決定 3, IADR-0531: プロンプト長による上段の単価。区間（有効期間）は親の ModelPriceEntry に従う。
 public sealed class LongPromptPrice
 {
     // この値を**超える**入力トークン数の要求に上段を適用する（以下は下段）。1 以上（検証器が落とす）。

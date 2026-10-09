@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-11, NFR-21, SC-10]
 adrs: [ADR-0006, ADR-0038, ADR-0044]
-iadrs: [IADR-0110, IADR-0164, IADR-0265, IADR-0304, IADR-0322, IADR-0466, IADR-0529]
+iadrs: [IADR-0110, IADR-0164, IADR-0265, IADR-0304, IADR-0322, IADR-0466, IADR-0531]
 specs: [20260810_issue-546_llm-cost-monthly-review, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models]
 issues: [#440, #443, #546, #1090, #1111, #1741, #1875, planning#783]
 -->

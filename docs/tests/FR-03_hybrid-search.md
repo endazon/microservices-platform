@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, SC-01, SC-02, UC-01, FR-19, NFR-09, FR-04, FR-11]
 adrs: [ADR-0086, ADR-0119, ADR-0016, ADR-0057, ADR-0070, ADR-0092, ADR-0127, ADR-0010, ADR-0018, ADR-0035, ADR-0061, ADR-0076]
-iadrs: [IADR-0417, IADR-0426, IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467, IADR-0497, IADR-0498, IADR-0529]
+iadrs: [IADR-0417, IADR-0426, IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467, IADR-0497, IADR-0498, IADR-0531]
 specs: [20260927_issue-1658_relay-options-shared, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261010_1875_claude-5-5-models]
 issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995, #1875, planning#783]
 -->
