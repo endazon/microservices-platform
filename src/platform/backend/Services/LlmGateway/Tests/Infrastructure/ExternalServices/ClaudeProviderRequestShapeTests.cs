@@ -5,8 +5,11 @@ using Anthropic.SDK;
 using AwesomeAssertions;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Infrastructure.ExternalServices;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Tests.Infrastructure.ExternalServices;
@@ -189,6 +192,47 @@ public class ClaudeProviderRequestShapeTests
 
         options.Purposes.Should().BeEquivalentTo(new Dictionary<string, string> { ["rerank"] = "low" });
         ClaudeEffort.Resolve(options, "rerank", "claude-haiku-5-5").Should().Be("low");
+    }
+
+    // FR-11, IADR-0531 (#1875) T-40: 本番の DI 合成（Program.cs の `AddKeyedSingleton<ILlmProvider, ClaudeProvider>("claude")`）で、
+    // ClaudeProvider が `IOptionsMonitor<ClaudePurposeEffortOptions>` を受け取り、既定の rerank=low が要求本文まで届く。
+    // ClaudeProvider の effort 設定は省略可能な引数（既定 null）なので、DI が渡さなくても起動は通り、
+    // **effort が黙って送られなくなるだけ**になる（上の試験はどれも手で組んだ ClaudeProvider なので気付けない）。
+    // TestWebApplicationFactory は ILlmProvider をスタブへ差し替えるため使わず、AnthropicClient だけを記録用へ替える。
+    [Fact]
+    public async Task HostComposedClaudeProvider_ReceivesEffortOptions_AndSendsRerankLow()
+    {
+        var capture = new CapturingHandler();
+        using var host = new CapturingAnthropicHost(capture);
+
+        var provider = host.Services.GetRequiredKeyedService<ILlmProvider>("claude");
+
+        provider.Should().BeOfType<ClaudeProvider>();
+        await provider.CompleteAsync(new CompletionRequest("q", 1024, "claude-haiku-5-5", "rerank"), TestContext.Current.CancellationToken);
+        capture.SingleBody().GetProperty("output_config").GetProperty("effort").GetString().Should().Be("low");
+    }
+
+    // 本番の Program.cs の登録をそのまま使い、AnthropicClient の送信先だけを記録用ハンドラへ差し替えるホスト。
+    private sealed class CapturingAnthropicHost(CapturingHandler capture) : WebApplicationFactory<Program>
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Testing");
+            builder.ConfigureAppConfiguration((_, cfg) =>
+                cfg.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Llm:ApiKey"] = "test-key",
+                    ["Otlp:Endpoint"] = "http://localhost:4317",
+                    ["Auth:Authority"] = TestServiceTokens.Issuer,
+                }));
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<AnthropicClient>();
+                services.AddSingleton(_ => new AnthropicClient(
+                    new APIAuthentication("test-key"),
+                    new HttpClient(new AnthropicRequestShapingHandler { InnerHandler = capture })));
+            });
+        }
     }
 
     private static ClaudeProvider Provider(CapturingHandler capture, Dictionary<string, string>? effort)
