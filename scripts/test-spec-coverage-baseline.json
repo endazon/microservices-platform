@@ -259,6 +259,7 @@
     "docs/tests/FR-17_knowledge-graph.md": [
       "AbacNodeFilterTests",
       "AbacUnenforcedAxisTests",
+      "AiSuggestionEndpointsTests",
       "BatchLoopForeignCancellationTests",
       "ClusterDetectionCatchUpTests",
       "ClusterDetectionMetricsTests",
@@ -275,7 +276,11 @@
       "GraphSyncTimeoutTests",
       "GraphTypeGateArchitectureTests",
       "LinkEdgeSyncTests",
+      "LinkRelinkTests",
       "ObsidianLinkParserTests",
+      "TagAndWikiLinkRuleTests",
+      "TagEdgeAbacTests",
+      "TagEdgeSyncTests",
       "UnsummarizedClusterRuleTests",
       "UserAuthoredEdgeTests"
     ],

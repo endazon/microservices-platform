@@ -76,15 +76,17 @@ public class LinkEdgeSyncTests
         var reader = new StubReader(body);
         var sync = new LinkEdgeSynchronizer(db, metrics, NullLogger<LinkEdgeSynchronizer>.Instance);
         var consumer = new GraphDocumentSyncConsumer(
-            db, new FixedClock(T0.AddDays(1)), reader, sync, new TermProfileSynchronizer(db),
+            db, new FixedClock(T0.AddDays(1)), reader, sync, new TermProfileSynchronizer(db), TagEdgesForTests.Synchronizer(db),
             ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
             NullLogger<GraphDocumentSyncConsumer>.Instance);
         return (consumer, reader, probe);
     }
 
+    // ［#1396］`title` は受信した文書の題名。**他文書の題名を名乗らせない** —— 題名が変わると
+    // 後着のリンクの作り直し（[[IADR-0522]]）が走り、測りたいものと別の経路を通る。
     private static DocumentUpdated Event(
-        Guid? docId = null, string? fingerprint = "fp-1", DateTimeOffset? updatedAt = null)
-        => new(docId ?? DocA, "文書A", "published", "storage://b/a.md",
+        Guid? docId = null, string? fingerprint = "fp-1", DateTimeOffset? updatedAt = null, string title = "文書A")
+        => new(docId ?? DocA, title, "published", "storage://b/a.md",
             new Dictionary<string, string> { ["confidentiality"] = "internal" },
             ["ops"], updatedAt ?? T0, fingerprint);
 
@@ -395,7 +397,8 @@ public class LinkEdgeSyncTests
         await consumerA.Handle(Event(docId: DocA, fingerprint: "fp-a2", updatedAt: T0.AddMinutes(1)), ct);
         // DocB → 文書A（逆向きの同じ関係）
         var (consumerB, _, _) = Build(db, "[[文書A]]");
-        await consumerB.Handle(Event(docId: DocB, fingerprint: "fp-b2", updatedAt: T0.AddMinutes(2)), ct);
+        await consumerB.Handle(
+            Event(docId: DocB, fingerprint: "fp-b2", updatedAt: T0.AddMinutes(2), title: "文書B"), ct);
 
         var edges = await db.Edges.ToListAsync(ct);
         edges.Should().ContainSingle("対称型は (min, max) へ正規化され 1 行になる（IADR-0242 決定 9）");

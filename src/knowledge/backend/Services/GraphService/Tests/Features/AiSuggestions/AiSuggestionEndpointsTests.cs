@@ -79,6 +79,34 @@ public class AiSuggestionEndpointsTests : IClassFixture<TestWebApplicationFactor
         });
     }
 
+    // FR-17, ADR-0033 決定 6, [[IADR-0522]] (#1396): 同じ関係が**共有タグの辺**として既にあるとき、
+    // 承認はその行を承認済みとして引き取る（重ねない・タグを外しても消えない側へ移す）。
+    [Fact]
+    public async Task Approving_a_link_already_present_as_a_tag_edge_adopts_that_row()
+    {
+        _factory.ScopeProvider = _ => InternalOnly();
+        var source = Guid.NewGuid();
+        var target = Guid.NewGuid();
+        var (id, typeId) = await SeedLinkAsync(source, target);
+        var tagEdge = Edge.Create(source, target, typeId, false, EdgeProvenance.Auto,
+            autoSource: EdgeAutoSource.Tag);
+        await _factory.SeedAsync(db => { db.Edges.Add(tagEdge); return Task.CompletedTask; });
+
+        var res = await _factory.CreateClient().PostAsync(
+            $"/graph/suggestions/{id}/approve", null, TestContext.Current.CancellationToken);
+
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+        await ReadAsync(db =>
+        {
+            var edges = db.Edges.Where(e => e.EdgeTypeId == typeId).ToList();
+            edges.Should().ContainSingle("重ねない（一意索引と同じ粒度）");
+            edges[0].Id.Should().Be(tagEdge.Id, "行を引き取る（消して入れ直さない）");
+            edges[0].Provenance.Should().Be(EdgeProvenance.AiApproved);
+            edges[0].AutoSource.Should().BeNull("承認済みの辺は自動抽出の内訳を持たない");
+            return Task.CompletedTask;
+        });
+    }
+
     // S-05 🔴 pending / rejected の提案は辺を 1 本も作らない。
     //
     // **これは探索側のフィルタで実現していない。** `EdgeProvenance` は `ai-approved` しか

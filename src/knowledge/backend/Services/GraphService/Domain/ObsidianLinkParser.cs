@@ -201,8 +201,19 @@ public static class ObsidianLinkParser
 
         // **外部 URL は辺にしない**（IADR-0281）。グラフのノードは本システムの文書であり、
         // 外部 URL に対応する文書が無い。スキーム付き絶対 URI をここで落とす。
-        if (Uri.TryCreate(value, UriKind.Absolute, out _))
-            return null;
+        // ただし **Wiki の文書ページの URL（パスが `…/doc/<GUID>`）は本システムの文書を ID で指す**
+        // （[[IADR-0522]] / #1396）。ホストは問わない（GUID が文書 ID と一致しなければ未解決に数えるだけ）。
+        //
+        // 🔴 **先頭がスラッシュのパス（`/doc/<ID>`・`/en/page`）は絶対 URI として扱わない。** Unix 系の実行環境では
+        // `Uri.TryCreate("/x", Absolute)` が `file:///x` として成功し、サイト内の絶対パスのリンクが
+        // 外部 URL として黙って捨てられていた（[[IADR-0522]] / #1396 で実測）。
+        if (!value.StartsWith('/') && Uri.TryCreate(value, UriKind.Absolute, out var absolute))
+        {
+            return absolute.Scheme is "http" or "https"
+                && WikiDocumentPath.TryParseLinkPath(absolute.AbsolutePath, out var wikiId)
+                ? WikiDocumentPath.Format(wikiId)
+                : null;
+        }
 
         string decoded;
         try
@@ -218,6 +229,13 @@ public static class ObsidianLinkParser
         var hash = decoded.IndexOf('#');
         if (hash >= 0)
             decoded = decoded[..hash];
+
+        // [[IADR-0522]] (#1396): Wiki のリンク（`/doc/<ID>`・`/en/doc/<ID>`。クエリつきも）は文書 ID で指す。
+        // 最終セグメント（GUID の文字列）を題名として解決しに行くと、題名が GUID の文書は無いので必ず未解決になる。
+        var query = decoded.IndexOf('?');
+        var path = query >= 0 ? decoded[..query] : decoded;
+        if (WikiDocumentPath.TryParseLinkPath(path, out var documentId))
+            return WikiDocumentPath.Format(documentId);
 
         var name = NormalizeName(decoded);
         return name.Length == 0 ? null : name;
