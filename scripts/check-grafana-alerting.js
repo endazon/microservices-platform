@@ -21,7 +21,7 @@
  *    #1818 で SC-12 の登録簿と IdP の照合の `McpClientIdpDrift` と `McpClientIdpReconciliationSeriesAbsent` を足して 22 → 24。
  *    🔴 **件数は導出値なので数え直すこと** —— この行は #1246 の 2 件を取りこぼして
  *    「9 件」のまま 2 世代残っていた。**走査ではなく計算し直す。**）
- *   ここで見るのは下の 6 点だけである。
+ *   ここで見るのは下の 7 点だけである（7 は「受理されるか」の一部＝uid の制約だけを先回りして見る）。
  *
  * 検査:
  *   1. ルール数が deploy/prometheus/alerts.yml と一致する
@@ -42,6 +42,12 @@
  *      （射程の詳細は下の「6.」の節）
  *      #1605: plain の数を Grafana 11.0.0 の yaml.v3 と同じに読む（`010` は 8 進で 8）。`absent` のラベルを
  *      Prometheus と同じに作る。評価器の型は Grafana 11.0.0 が受け付ける 4 つ（gt / lt / within_range / outside_range）だけ
+ *
+ *   7. ルールの uid が Grafana の制約を満たす（#1881）: 必須・40 文字以下（Grafana の util.MaxUIDLength）・
+ *      英数字と `-` `_` だけ（util.IsValidShortUID）・ファイル内で一意。compose と k8s の inline の両方を見て、
+ *      両者の uid の集合が一致することも見る（4 が同内容を見るが、乖離しているときに片方の違反を黙らせない）。
+ *      🔴 1 件でも違反すると **provisioning 全体が失敗して Grafana が起動しない**（#1881 の PoC で実測。
+ *      `UID is longer than 40 symbols`）。だから警報が 1 件も評価されない。
  *
  * fail-closed（#664 / IADR-0130）: 走査結果が 0 件なら fail する。
  *   「検査しているつもりで何も見ていない」状態を緑で返さない。
@@ -1514,6 +1520,7 @@ function grafanaRuleConditions(text) {
       if (!isYamlMap(r)) throw new YamlSubsetError(`groups[${gi}].rules[${ri}] が写像ではない`);
       const nodes = Array.isArray(r.data) ? r.data.map(readDataNode) : [];
       rules.push({
+        uid: yamlScalarText(r.uid),
         title: yamlScalarText(r.title) ?? `(title なし: groups[${gi}].rules[${ri}])`,
         condition: yamlScalarText(r.condition),
         nodes,
@@ -1648,6 +1655,47 @@ function filterEvaluatorIssues(text, label, allowlist = UNVERIFIABLE_ALLOWLIST) 
   return { issues, checked, allowlisted };
 }
 
+// ---------------------------------------------------------------------------
+// 7. ルールの uid の制約（#1881 / ADR-0006 / NFR-21）
+//
+// Grafana は警報ルールの uid を 40 文字以下・`^[a-zA-Z0-9\-\_]*$` に制限する（pkg/util の
+// MaxUIDLength / IsValidShortUID）。provisioning は 1 件でも不正なルールがあると**全体が失敗し、
+// Grafana が起動しない**（#1881。49 / 48 / 43 文字の uid が 3 件あり、全部の SLO 警報が未評価だった）。
+// 空の uid は Grafana が自動採番するが、uid は永続キーであり再プロビジョニングのたびに別物になるので必須にする。
+const GRAFANA_RULE_UID_MAX = 40;
+const GRAFANA_RULE_UID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+/** 写しの 1 つについて uid の違反を返す。読めない YAML は違反にする（素通りさせない）。 */
+function ruleUidIssues(text, label) {
+  const issues = [];
+  let rules;
+  try {
+    rules = grafanaRuleConditions(text);
+  } catch (e) {
+    if (!(e instanceof YamlSubsetError)) throw e;
+    issues.push(`[${label}] provisioning を YAML として読めない（${e.message}）—— uid を 1 件も確かめられない（#1881）`);
+    return { issues, uids: null };
+  }
+  const seen = new Map();
+  for (const r of rules) {
+    const { uid, title } = r;
+    if (uid === null || uid === '') {
+      issues.push(`[${label}] ルール ${title}: uid が無い（永続キーなので明示すること。#1881）`);
+      continue;
+    }
+    if (uid.length > GRAFANA_RULE_UID_MAX) {
+      issues.push(`[${label}] ルール ${title}: uid "${uid}" が ${uid.length} 文字で、Grafana の上限 ${GRAFANA_RULE_UID_MAX} 文字を超える` +
+        '（provisioning 全体が失敗し Grafana が起動しない。#1881）');
+    }
+    if (!GRAFANA_RULE_UID_PATTERN.test(uid)) {
+      issues.push(`[${label}] ルール ${title}: uid "${uid}" に英数字と - _ 以外の文字がある（Grafana が拒否する。#1881）`);
+    }
+    if (seen.has(uid)) issues.push(`[${label}] uid "${uid}" がルール ${seen.get(uid)} と ${title} で重複している（#1881）`);
+    else seen.set(uid, title);
+  }
+  return { issues, uids: [...seen.keys()] };
+}
+
 /** 検査本体。読み込んだテキストを受け取る純関数（自己試験から呼べるようにする）。 */
 function findIssues({ prom, grafana, datasources, k8sInline }) {
   const issues = [];
@@ -1694,9 +1742,27 @@ function findIssues({ prom, grafana, datasources, k8sInline }) {
   if (titles.length > 0 && composeFilter.checked === 0) {
     issues.push('式と評価器の組み合わせを 1 件も判定できなかった（0 件走査。検査しているつもりで何も見ていない）');
   }
+
+  // 7: uid の制約（#1881）。**写しの両方**を見て、uid の集合も突き合わせる。
+  const composeUids = ruleUidIssues(grafana, 'compose');
+  issues.push(...composeUids.issues);
+  if (k8sInline !== null) {
+    const k8sUids = ruleUidIssues(k8sInline, 'k8s inline');
+    issues.push(...k8sUids.issues);
+    if (composeUids.uids && k8sUids.uids) {
+      const k = new Set(k8sUids.uids);
+      const c = new Set(composeUids.uids);
+      for (const u of composeUids.uids) if (!k.has(u)) issues.push(`uid "${u}" が compose にあって k8s の inline に無い（#1881）`);
+      for (const u of k8sUids.uids) if (!c.has(u)) issues.push(`uid "${u}" が k8s の inline にあって compose に無い（#1881）`);
+    }
+  }
+  const uidChecked = composeUids.uids ? composeUids.uids.length : 0;
+  if (titles.length > 0 && uidChecked === 0) {
+    issues.push('uid を 1 件も確かめられなかった（0 件走査。検査しているつもりで何も見ていない。#1881）');
+  }
   return {
     issues, promCount: promNames.length, grafanaCount: titles.length, filterChecked: composeFilter.checked,
-    filterAllowlisted: composeFilter.allowlisted,
+    filterAllowlisted: composeFilter.allowlisted, uidChecked,
   };
 }
 
@@ -2189,6 +2255,46 @@ function selfTest() {
     }
   });
 
+  // 7: uid の制約（#1881）
+  const withUid = (from, to) => {
+    const g = base.grafana.replace(`uid: ${from}\n`, `uid: ${to}\n`);
+    assert.notStrictEqual(g, base.grafana, `フィクスチャに uid: ${from} が無い`);
+    return g;
+  };
+  t('uid が 40 文字を超えるルールを写しの両方で検出する（#1881・変異試験）', () => {
+    const long = 'knowledge-health-unresolved-links-producer-absent';
+    const g = withUid('foo', long);
+    const r = findIssues({ ...base, grafana: g, k8sInline: g });
+    for (const label of ['compose', 'k8s inline']) {
+      assert.ok(r.issues.some((x) => x.startsWith(`[${label}] ルール Foo:`) && x.includes('49 文字') && x.includes('上限 40 文字')), `${label}: ${JSON.stringify(r.issues)}`);
+    }
+    // 境界: ちょうど 40 文字は通す（陰性対照）
+    const g40 = withUid('foo', 'a'.repeat(40));
+    assert.deepStrictEqual(findIssues({ ...base, grafana: g40, k8sInline: g40 }).issues, []);
+    const g41 = withUid('foo', 'a'.repeat(41));
+    assert.ok(findIssues({ ...base, grafana: g41, k8sInline: g41 }).issues.some((x) => x.includes('41 文字')));
+  });
+
+  t('uid の許されない文字・欠落・重複を検出する（#1881・変異試験）', () => {
+    for (const bad of ['foo.bar', 'foo/bar', 'föo', '"foo bar"']) {
+      const g = withUid('foo', bad);
+      const r = findIssues({ ...base, grafana: g, k8sInline: g });
+      assert.ok(r.issues.some((x) => x.startsWith('[compose] ルール Foo:') && x.includes('英数字と - _ 以外')), `${bad}: ${JSON.stringify(r.issues)}`);
+    }
+    const gu = withUid('foo', 'A_b-9');
+    assert.deepStrictEqual(findIssues({ ...base, grafana: gu, k8sInline: gu }).issues, []);
+    const gd = withUid('foo', 'bar');
+    assert.ok(findIssues({ ...base, grafana: gd, k8sInline: gd }).issues.some((x) => x.includes('uid "bar" がルール Foo と Bar で重複')));
+    const gm = base.grafana.replace('      - uid: foo\n        title: Foo\n', '      - title: Foo\n');
+    assert.ok(findIssues({ ...base, grafana: gm, k8sInline: gm }).issues.some((x) => x.includes('ルール Foo: uid が無い')));
+  });
+
+  t('compose と k8s の inline で uid の集合が違うことを検出する（#1881・変異試験）', () => {
+    const r = findIssues({ ...base, k8sInline: withUid('foo', 'foo2') });
+    assert.ok(r.issues.some((x) => x.includes('uid "foo" が compose にあって k8s の inline に無い')), JSON.stringify(r.issues));
+    assert.ok(r.issues.some((x) => x.includes('uid "foo2" が k8s の inline にあって compose に無い')), JSON.stringify(r.issues));
+  });
+
   process.stdout.write(`\n✓ self-test: ${passed} 件すべて通過\n`);
 }
 
@@ -2212,7 +2318,7 @@ function main(argv) {
     }
   }
 
-  const { issues, promCount, grafanaCount, filterChecked, filterAllowlisted } = findIssues({
+  const { issues, promCount, grafanaCount, filterChecked, filterAllowlisted, uidChecked } = findIssues({
     prom, grafana, datasources, k8sInline: extractK8sInline(k8s),
   });
 
@@ -2229,6 +2335,7 @@ function main(argv) {
       'datasourceUid は実在し、compose と k8s は同内容で、' +
       `式の絞り込みと評価器の組み合わせ ${filterChecked} 件はいずれも発火し得ます` +
       `（検証できない式を許可リストで残したルール ${filterAllowlisted.length} 件${filterAllowlisted.length ? `: ${filterAllowlisted.join(', ')}` : ''}）。` +
+      `uid ${uidChecked} 件はいずれも ${GRAFANA_RULE_UID_MAX} 文字以下・英数字と - _ だけ・一意で、compose と k8s で同じ集合です。` +
       '（**Grafana が受理するかは本検査の対象外**。配備時に /api/v1/provisioning/alert-rules を確かめること）',
     );
     return 0;
@@ -2242,6 +2349,7 @@ module.exports = {
   findIssues, promAlertNames, grafanaRuleTitles, extractK8sInline, selfTest,
   expressionValueSet, expressionUnverifiableReason, evaluatorSet, grafanaRuleConditions, filterEvaluatorIssues,
   resolveConditionChain, UNVERIFIABLE_ALLOWLIST, PASS_THROUGH_FUNCTIONS,
+  ruleUidIssues, GRAFANA_RULE_UID_MAX,
 };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
