@@ -9,7 +9,7 @@ related_ids:
   - ADR-0006
   - ADR-0009
   - ADR-0045
-  - IADR-0519
+  - IADR-0520
   - IADR-0514
   - IADR-0461
 author: claude
@@ -31,7 +31,7 @@ issue: "#1841"
 計画の 08_data-egress-policy の統制表に planning#750 で足された製品別の行のうち、**Grafana・Loki・Tempo・Qdrant・Mailpit** は
 「配備後に無効化する」「現在は未設定であり、送信し得る」と書かれている。製品が動く**全経路**の配備に無効化を入れ、外すと CI が落ちる
 検査を置き、文書に現在の実現手段を併記する。6 行目の **TEI** は「既定で無効（opt-in）・有効化の前にモデルを事前配置／ミラー」であり、
-設定で止める対象ではない（決定は IADR-0519 決定 3。本件では配備を変えない）。
+設定で止める対象ではない（決定は IADR-0520 決定 3。本件では配備を変えない）。
 
 **射程外**: egress の既定拒否（default-deny。計画 §リスク・未決事項の別件）、表に無い製品の点検、TEI の有効化の前提作り。
 
@@ -77,7 +77,7 @@ issue: "#1841"
 
 **軸 4（Grafana の設定の置き場）**: `git grep -n -E 'grafana\.ini|/etc/grafana'` —— provisioning のマウントだけで、ini は無かった。`check-grafana-provisioning-parity.js` が `grafana.yaml` の ConfigMap の鍵を compose の `provisioning/` と 1 対 1 で突き合わせることを確かめ、ini の ConfigMap を別ファイルにした。
 
-**規則 10（この変更で新たに誤りになる自分の記述）**: Mailpit の版を上げたので `v1.21.8` を引き直した（上の軸 3）。`deploy/local/observability/README.md` の構成表に `grafana-config.yaml` を足した。`scripts/README.md` の `check-deploy-manifests.js` の行に検査の追加を書いた。trace ブロックへ本仕様書・IADR-0519・#1841 を足した（security・operations・how-to）。
+**規則 10（この変更で新たに誤りになる自分の記述）**: Mailpit の版を上げたので `v1.21.8` を引き直した（上の軸 3）。`deploy/local/observability/README.md` の構成表に `grafana-config.yaml` を足した。`scripts/README.md` の `check-deploy-manifests.js` の行に検査の追加を書いた。trace ブロックへ本仕様書・IADR-0520・#1841 を足した（security・operations・how-to）。
 
 ## 上流での設定の確認（版ごと。出典）
 
@@ -95,11 +95,11 @@ issue: "#1841"
 | Mailpit v1.21.8 | （無し） | `config/config.go`・`cmd/root.go` に `DisableVersionCheck` が無い。`internal/stats/stats.go` 81-94 行で `/api/v1/info` のたびに `updater.GithubLatest`（`internal/updater/updater.go` 52 行。api.github.com） | **設定で止められない** |
 | Mailpit v1.31.4 | `MP_DISABLE_VERSION_CHECK` | `cmd/root.go` 207 行・`internal/stats/stats.go` 100-102 行（`LatestVersion = "disabled"`）・`server/apiv1/application.go` 31 行 | タグを v1.22.0〜v1.27.0 で走査し、`DisableVersionCheck` は **v1.26.2 で初出**（v1.26.1 に無い） |
 
-## 決定（詳細は IADR-0519）
+## 決定（詳細は IADR-0520）
 
 - 設定: Grafana は ini（7 鍵）を経路 A はファイル、経路 B は ConfigMap `grafana-config`（別ファイル）で `/etc/grafana/grafana.ini` へ。Loki・Tempo は設定ファイルの鍵（compose と k8s の inline の両方）。Qdrant は env（compose・k8s・Testcontainers の唯一の入口 `QdrantTestImage.CreateBuilder()`・手順書・スクリプトの例）。Mailpit は v1.31.4 へ上げて env。
 - 検査器: `check-deploy-manifests.js` に統合（判定は `scripts/lib/product-egress-defaults.js`、YAML は `scripts/lib/yaml-subset.js`）。稼働の Mailpit は `check-stack-ready.js` の G8。
-- IADR は **IADR-0519**（push 時点の最大番号 +1。並行する PR が先に取った場合は改番する）。
+- IADR は **IADR-0520**（push 時点の最大番号 +1。並行する PR が先に取った場合は改番する）。［2026-10-09 追記］#1843（PR #1852）が先に IADR-0519 を取ってマージされたため、IADR-0520 へ改番した。
 
 ## 実測（到達しないことの確かめ）
 

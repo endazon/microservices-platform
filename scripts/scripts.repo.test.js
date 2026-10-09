@@ -10946,13 +10946,17 @@ ${r.stderr}`);
       assert.ok(gateAt > upAt, '門が up より前に在る（起動前の状態を判定してしまう）');
     });
 
-    ok('NFR / #783 後半: k3s イメージが pin されている（latest 追従にしない）', () => {
+    // ［2026-10-09 / #1843・計画 ADR-0135 決定 2・IADR-0519］k3s の版の情報源は k8s-local-up.sh の K3S_IMAGE の**既定** 1 か所へ移した。
+    // ワークフローは値を持たない（同じ値を 2 か所に持つと片側だけ動く）。既定が版で固定されていることを見る。
+    ok('NFR / #783 後半: k3s イメージが pin されている（latest 追従にしない。#1843: 既定で固定・情報源はスクリプト）', () => {
+      const up = fs.readFileSync(path.join(REPO_IS, 'scripts/k8s-local-up.sh'), 'utf8');
       assert.match(
-        wf,
-        /K3S_IMAGE:\s*rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+/,
-        'K3S_IMAGE が pin されていない。**揃っていないことが静かに素通りする**（#953）ため、' +
+        up,
+        /^\s*K3S_IMAGE="\$\{K3S_IMAGE:-rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+\}"\s*$/m,
+        'k8s-local-up.sh の K3S_IMAGE の既定が版で固定されていない。**揃っていないことが静かに素通りする**（#953）ため、' +
           'ここは好みではなく検査の前提である',
       );
+      assert.ok(!/^\s*K3S_IMAGE\s*:/m.test(wf), 'integration-stack.yml が K3S_IMAGE を持っている（版の情報源が 2 か所になる。#1843）');
       assert.match(wf, /K3D_VERSION:\s*v\d+\.\d+\.\d+/, 'K3D_VERSION が pin されていない');
     });
 
@@ -11007,13 +11011,15 @@ ${r.stderr}`);
         assert.ok(!/schedule:|push:|workflow_run:|pull_request:|pull_request_target:/.test(on), `余計な契機がある:\n${on}`);
       });
 
-      ok('#1781: k3d と k3s の pin が integration-stack.yml と同じ（起こし方を写している前提）', () => {
-        for (const key of ['K3D_VERSION', 'K3S_IMAGE']) {
-          const re = new RegExp(`^\\s+${key}:\\s*(\\S+)\\s*$`, 'm');
-          const a = (re.exec(wf) || [])[1];
-          const b = (re.exec(rh) || [])[1];
-          assert.ok(a && b, `${key} を読めない`);
-          assert.strictEqual(b, a, `${key} が integration-stack.yml（${a}）と違う（${b}）`);
+      // #1843 / IADR-0519: k3s の版はスクリプトの既定が持つ。両ワークフローとも K3S_IMAGE を与えない（与えると既定を上書きし、片側だけ動く）。
+      ok('#1781: k3d の pin が integration-stack.yml と同じで、k3s はどちらも与えない（起こし方を写している前提）', () => {
+        const re = /^\s+K3D_VERSION:\s*(\S+)\s*$/m;
+        const a = (re.exec(wf) || [])[1];
+        const b = (re.exec(rh) || [])[1];
+        assert.ok(a && b, 'K3D_VERSION を読めない');
+        assert.strictEqual(b, a, `K3D_VERSION が integration-stack.yml（${a}）と違う（${b}）`);
+        for (const [name, text] of [['integration-stack.yml', wf], ['cutover-rehearsal.yml', rh]]) {
+          assert.ok(!/^\s*K3S_IMAGE\s*[:=]/m.test(text), `${name} が K3S_IMAGE を与えている（#1843: 版の情報源はスクリプトの既定）`);
         }
       });
 
@@ -15334,6 +15340,67 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(/run: node scripts\/check-image-digests\.js\s*$/m.test(ci), '本検査の配線が無い');
       const readme = fs.readFileSync(path.join(REPO, 'scripts/README.md'), 'utf8');
       assert.ok(readme.includes('`check-image-digests.js`'), 'scripts/README.md に行が無い');
+    });
+  }
+
+  // --- #1843 / 計画 ADR-0135 決定 2 / IADR-0519: Argo CD は版のタグの URL、k3s は既定で固定 ---------------
+  // 🔴 **`stable` ブランチは取得のたびに中身が変わり得る**（タグですらない）。スクリプト・手順書・ワークフローのどれか 1 つでも
+  // `stable` や別の版を書けば、「同じ手順で同じ版が入る」が崩れる。版の正は k8s-local-up.sh の ARGOCD_VERSION の既定。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const { execFileSync } = require('child_process');
+    const REPO = path.resolve(__dirname, '..');
+    const up = fs.readFileSync(path.join(REPO, 'scripts/k8s-local-up.sh'), 'utf8');
+    const ARGO_URL_RE = /argoproj\/argo-cd\/([^/\s"'`]+)\/manifests\/[A-Za-z0-9._-]*install\.yaml/g;
+    const argoDefault = (/^ARGOCD_VERSION="\$\{ARGOCD_VERSION:-([^}]*)\}"\s*$/m.exec(up) || [])[1];
+    /** 凍結記録（作業仕様書・superpowers）は当時の記述のまま残す（書き換えない）ので対象外。submodule は別リポジトリ。 */
+    const argoRefs = () => {
+      let out = '';
+      try {
+        out = execFileSync(
+          'git',
+          ['-C', REPO, 'grep', '-n', '-I', '-E', 'argoproj/argo-cd/[^ ]*/manifests/', '--',
+            '.', ':!.ai-context/specs', ':!.ai-context/superpowers', ':!src/ai-stock-trading'],
+          { encoding: 'utf8', maxBuffer: 1 << 26 },
+        );
+      } catch (e) {
+        if (e.status !== 1) throw e; // 1 = 一致なし
+      }
+      const refs = [];
+      for (const line of out.split('\n').filter(Boolean)) {
+        for (const m of line.matchAll(ARGO_URL_RE)) refs.push({ where: line.split(':').slice(0, 2).join(':'), ref: m[1] });
+      }
+      return refs;
+    };
+
+    ok('#1843: k8s-local-up.sh の ARGOCD_VERSION の既定は版のタグ（vX.Y.Z）', () => {
+      assert.ok(argoDefault, 'k8s-local-up.sh に ARGOCD_VERSION="${ARGOCD_VERSION:-<版>}" の行が無い');
+      assert.match(argoDefault, /^v\d+\.\d+\.\d+$/, `ARGOCD_VERSION の既定が版のタグでない: ${argoDefault}`);
+    });
+
+    ok('#1843: k8s-local-up.sh の install の URL は ARGOCD_VERSION を使う（版を直書きしない・stable を書かない）', () => {
+      const lines = up.split('\n').filter((l) => !/^\s*#/.test(l) && /argo-cd\/[^/]+\/manifests\/install\.yaml/.test(l));
+      assert.strictEqual(lines.length, 1, `install の行が 1 本でない:\n${lines.join('\n')}`);
+      assert.ok(lines[0].includes('argo-cd/${ARGOCD_VERSION}/manifests/install.yaml'), `ARGOCD_VERSION を使っていない: ${lines[0]}`);
+    });
+
+    ok('#1843: リポジトリ内の Argo CD の install の URL はすべて既定と同じ版のタグ（stable・別の版を書かない）', () => {
+      const refs = argoRefs();
+      // 陽性対照: 手順書（deploy/argocd・deploy/local/argocd・docs/how-to/deployment.md）の 3 か所は必ず拾う。
+      for (const f of ['deploy/argocd/README.md', 'deploy/local/argocd/README.md', 'docs/how-to/deployment.md']) {
+        assert.ok(refs.some((r) => r.where.startsWith(`${f}:`)), `${f} の Argo CD の URL を拾えていない（走査が壊れている）`);
+      }
+      const bad = refs.filter((r) => r.ref !== '${ARGOCD_VERSION}' && r.ref !== argoDefault);
+      assert.deepStrictEqual(bad, [], `既定（${argoDefault}）と違う版・ブランチの Argo CD の URL がある:\n${bad.map((r) => `${r.where} → ${r.ref}`).join('\n')}`);
+    });
+
+    ok('#1843: 変異 —— 手順書の URL を stable に戻すと拾う（検査の検出力）', () => {
+      // 本ファイル自身が走査に掛からないよう、変異の行は連結で組む。
+      const line = 'kubectl apply -f https://raw.githubusercontent.com/argoproj/' + 'argo-cd/stable/manifests/install.yaml';
+      const got = [...line.matchAll(ARGO_URL_RE)].map((m) => m[1]);
+      assert.deepStrictEqual(got, ['stable']);
+      assert.notStrictEqual(got[0], argoDefault);
     });
   }
 

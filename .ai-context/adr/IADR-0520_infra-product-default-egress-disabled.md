@@ -1,5 +1,5 @@
 ---
-title: IADR-0519 インフラ製品（Grafana・Loki・Tempo・Qdrant・Mailpit）の既定の外部通信を、製品が動く全経路の配備で止め、描画結果・compose・Testcontainers を読む検査器で固定する。Mailpit は止める設定を持つ版へ上げる
+title: IADR-0520 インフラ製品（Grafana・Loki・Tempo・Qdrant・Mailpit）の既定の外部通信を、製品が動く全経路の配備で止め、描画結果・compose・Testcontainers を読む検査器で固定する。Mailpit は止める設定を持つ版へ上げる
 type: impl-adr
 status: Accepted
 related_ids: [ADR-0107, ADR-0135, ADR-0006, ADR-0009, ADR-0045, IADR-0514, IADR-0461, IADR-0240, IADR-0168, IADR-0344, IADR-0315]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20261009_1841_disable-default-egress.md
 ---
 
-# IADR-0519: インフラ製品の既定の外部通信を全経路の配備で止め、検査器で固定する（#1841）
+# IADR-0520: インフラ製品の既定の外部通信を全経路の配備で止め、検査器で固定する（#1841）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

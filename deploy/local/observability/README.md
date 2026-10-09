@@ -7,7 +7,7 @@
 config は compose（`deploy/prometheus.yml`・`loki-config.yaml`・`tempo.yaml`・`otel-collector-config.yaml`・
 `grafana/provisioning/datasources`・`grafana/grafana.ini`）と同内容を inline する（kustomize の root 外参照制約に従う二重管理）。
 
-**既定の外部通信は止めてある**（ADR-0107 決定 4・#1841・IADR-0519）: Loki・Tempo は設定の利用統計の鍵（`analytics` / `usage_report` の
+**既定の外部通信は止めてある**（ADR-0107 決定 4・#1841・IADR-0520）: Loki・Tempo は設定の利用統計の鍵（`analytics` / `usage_report` の
 `reporting_enabled: false`）、Grafana は `grafana-config.yaml` の ini（利用統計・更新確認・ニュース・Gravatar・公開鍵と Angular 検出パターンの取得）。
 `check-deploy-manifests.js` が描画結果で検査する。
 
