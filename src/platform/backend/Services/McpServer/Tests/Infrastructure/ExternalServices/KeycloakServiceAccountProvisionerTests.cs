@@ -522,7 +522,7 @@ public class KeycloakServiceAccountProvisionerTests
 
     // ── ［#1844］有人の公開クライアント（計画 ADR-0134 決定 1）──────────────────────────────────
 
-    private static readonly string[] HumanRedirects = ["https://agent.example.test/cb", "http://127.0.0.1/cb"];
+    private static readonly string[] HumanRedirects = ["https://agent.example.test/cb", "http://127.0.0.1:53123/cb"];
 
     // C-64: 公開クライアントのテンプレートで作り、読み戻して確かめる。サービスアカウントの利用者は作らず、属性も書かない。
     [Fact]

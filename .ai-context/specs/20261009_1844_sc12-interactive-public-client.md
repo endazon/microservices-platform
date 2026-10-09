@@ -109,3 +109,23 @@ issue: "#1844"
 - `src/` で `pnpm install --frozen-lockfile`・`pnpm run codegen`（差分なし）・`typecheck`・`lint`・`format:check`・`i18n`（差分なし）・SC-12 の vitest。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`・`node scripts/check-mcp-client-provisioning.js --self-test`・文書系の検査器一式。
 - 変異: テンプレートの PKCE / 公開 / audience の写像・検証器のループバック判定・`/mcp` のスキームを 1 つずつ崩し、対応する試験が赤になることを確かめる。
+
+## ［2026-10-09 追記 / #1844・PR #1854 セキュリティ監査 🔴］ループバックの port を必須にする
+
+監査が Keycloak 24.0.5 の稼働で、port なしで登録した `http://127.0.0.1/cb` に `redirect_uri=http://127.0.0.1:49152@evil.example/cb` が一致し、
+認可コードが evil.example へ送られることを示した（CVE-2024-8883。Keycloak 25.0.6 で修正。配備は `keycloak:24.0`）。上の設計 1 の「ループバックの port は任意」を改める。
+決定は IADR-0516 の同日の追記（PR #1854 セキュリティ監査 🔴）。
+
+| 受け入れ基準 | 試験 |
+| --- | --- |
+| AC5: `http` のループバック（`127.0.0.1`・`[::1]`）は port の明示が必須。port なし・`:` だけは理由（port の明示）を名指しして 400。port つきは通る。既存の拒否は残す | `RegisterMcpClientValidatorTests`（`InteractiveWithPortlessLoopbackRedirectUri_FailsWithReason`・`LoopbackLookalikeWithUserInfo_Fails`・陽性対照）・`mcpClientVocabulary.test.ts` |
+| AC6: 門 M9 は port つきで登録し、別の port・横取りの形（`:<port>@evil.example`・`:1@evil.example`）が 400、port なしの登録が 400 で何も作らないことを測る | `check-mcp-client-provisioning.js --self-test`（`loopbackHijackProbes`）・`--live` M9 |
+| AC7: 運用仕様書に、本件より前に作られた無人のクライアントが audience の写像を欠いて `/mcp` で 401 になる移行の注意と対処を書く | 文書（運用仕様書 §MCP クライアント登録簿と認証基盤の照合） |
+
+母集合（規則 9）: `git grep -n -e '127.0.0.1/cb' -e '127.0.0.1/callback' -e '\[::1\]/c' -e 'port を落と' -e '任意の port' -e 'port は書いても' -e 'port の有無を問わない'`
+（`.ai-context/` の凍結記録を除く）で引いた。直したもの: `RedirectUriRules.cs`・`McpClientContracts.cs` の注記・検証器と IdP の試験の例（`IdpProvisioningEndpointTests`・
+`KeycloakServiceAccountProvisionerTests`）・画面（語彙・文言・プレースホルダ・試験）・i18n のカタログ・openapi と orval の生成物・門（`check-mcp-client-provisioning.js`）・
+`docs/api/FR-16_mcp-server.md`・`docs/screens/SC-12_mcp-client-management.md`・`docs/tests/FR-16_mcp-server.md`（C-59・C-67）・`docs/tests/SC-12_mcp-client-management.md`（T-33）・
+`scripts/README.md`（門の行）。据え置いたもの: 本仕様書の上の本文と IADR-0516 の上の追記（凍結記録。日付つき追記で改める）。
+
+規則 10（新たに誤りになる自分の記述）: 門の自己試験の件数（`scripts/README.md`）・C# の試験件数（IADR の追記に書かない＝腐る導出値）。

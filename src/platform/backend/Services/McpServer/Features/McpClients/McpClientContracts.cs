@@ -5,7 +5,7 @@ namespace McpServer.Features.McpClients;
 
 // 登録要求。Kind は "interactive"（有人）/ "service-account"（無人）。
 // EgressTier は "self-hosted" / "protected-external" / "standard-external"（既定は最も低い保護水準）。
-// ［2026-10-09 / #1844］RedirectUris は**有人のときだけ必須**（1〜10 件。https かループバックの http://127.0.0.1 / http://[::1]。
+// ［2026-10-09 / #1844］RedirectUris は**有人のときだけ必須**（1〜10 件。https か port を明示したループバックの http://127.0.0.1:<port> / http://[::1]:<port>。
 // 完全一致で照合する。計画 ADR-0134 決定 1・SC-12 の入力表）。無人には渡さない（渡せば 400）。規則は `Domain/RedirectUriRules`。
 public sealed record RegisterMcpClientRequest(
     string ClientId,

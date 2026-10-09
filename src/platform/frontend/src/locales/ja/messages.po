@@ -1442,6 +1442,10 @@ msgstr "リンク"
 msgid "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
 msgstr "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "ループバックのリダイレクト URI には port を明示してください（例: http://127.0.0.1:53123/callback）。"
+msgstr "ループバックのリダイレクト URI には port を明示してください（例: http://127.0.0.1:53123/callback）。"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "ローカル {localVersion} 版 ／ サーバ {serverVersion} 版"
 msgstr "ローカル {localVersion} 版 ／ サーバ {serverVersion} 版"
@@ -2561,8 +2565,8 @@ msgid "完全に削除する"
 msgstr "完全に削除する"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "完全一致で照合します。https か、ループバックの http://127.0.0.1 / http://[::1] に限ります（ワイルドカードは使えません）。"
-msgstr "完全一致で照合します。https か、ループバックの http://127.0.0.1 / http://[::1] に限ります（ワイルドカードは使えません）。"
+msgid "完全一致で照合します。https か、ループバックの http://127.0.0.1 / http://[::1] に限ります（ワイルドカードは使えません）。ループバックは port を明示してください（例: http://127.0.0.1:53123/callback）。"
+msgstr "完全一致で照合します。https か、ループバックの http://127.0.0.1 / http://[::1] に限ります（ワイルドカードは使えません）。ループバックは port を明示してください（例: http://127.0.0.1:53123/callback）。"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "完全削除まで"

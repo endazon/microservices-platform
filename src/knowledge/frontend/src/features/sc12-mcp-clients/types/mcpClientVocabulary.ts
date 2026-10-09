@@ -96,6 +96,7 @@ export type RegistrationIssue =
   | 'redirect-uris-required'
   | 'redirect-uris-too-many'
   | 'redirect-uri-invalid'
+  | 'redirect-uri-loopback-port-required'
   | 'redirect-uri-duplicate';
 
 /**
@@ -118,10 +119,21 @@ export function parseRedirectUris(text: string): string[] {
 }
 
 /**
+ * port を明示したループバック（1〜5 桁の数字の後が `/`・`?`・末尾）。後段 `RedirectUriRules` と同じ綴りの判定。
+ * `new URL` は既定の port（`:80`）を落とすので、port の有無は綴りで見る。
+ */
+const LOOPBACK_WITH_PORT = /^http:\/\/(127\.0\.0\.1|\[::1\]):(\d{1,5})([/?]|$)/;
+const LOOPBACK_WITHOUT_PORT = /^http:\/\/(127\.0\.0\.1|\[::1\])(:0*)?([/?]|$)/;
+
+/**
  * リダイレクト URI 1 件が規則を満たすか（ADR-0134 決定 1）。
  *
- * `https` の URI か、ループバックの `http://127.0.0.1` / `http://[::1]`（RFC 8252）だけを許す。
+ * `https` の URI か、**port を明示した**ループバックの `http://127.0.0.1:<port>` / `http://[::1]:<port>`（RFC 8252）だけを許す。
  * ワイルドカード（`*`）・フラグメント・利用者情報・`localhost` は不可。
+ *
+ * 🔴 **port なしのループバックは不可**（CVE-2024-8883）。稼働の認可サーバー（Keycloak 24）は port なしで登録された
+ * `http://127.0.0.1/cb` に `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送ってしまう。
+ * port を明示した登録は完全一致で照合される。
  *
  * 🔴 **最終の判定は後段（`RedirectUriRules`）が持つ。** ここは送る前の写しであり、食い違えば後段の 400 が
  * 理由を名指しして返る（画面はそれをそのまま出す）。
@@ -139,7 +151,16 @@ export function isAllowedRedirectUri(value: string): boolean {
   if (url.protocol === 'https:') return true;
   if (url.protocol !== 'http:') return false;
   // 綴りで判定する（`localhost`・`127.1` のような別の綴りを通さない。後段も綴りで照合する）。
-  return /^http:\/\/(127\.0\.0\.1|\[::1\])([:/?]|$)/.test(value);
+  const port = LOOPBACK_WITH_PORT.exec(value)?.[2];
+  return port !== undefined && Number(port) > 0;
+}
+
+/**
+ * port を書いていない（または `:`・`:0` だけの）ループバックか（`http://127.0.0.1/cb`・`http://[::1]` など）。
+ * 「不正」と分けて理由を名指しするためだけに使う（CVE-2024-8883。上の注記）。
+ */
+function isPortlessLoopbackRedirectUri(value: string): boolean {
+  return LOOPBACK_WITHOUT_PORT.test(value) && !value.includes('*') && !value.includes('#');
 }
 
 export function validateRegistration(input: {
@@ -161,7 +182,11 @@ export function validateRegistration(input: {
     const uris = input.redirectUris ?? [];
     if (uris.length === 0) issues.push('redirect-uris-required');
     else if (uris.length > MAX_REDIRECT_URIS) issues.push('redirect-uris-too-many');
-    if (uris.some((uri) => !isAllowedRedirectUri(uri))) issues.push('redirect-uri-invalid');
+    const rejected = uris.filter((uri) => !isAllowedRedirectUri(uri));
+    if (rejected.some((uri) => !isPortlessLoopbackRedirectUri(uri)))
+      issues.push('redirect-uri-invalid');
+    if (rejected.some(isPortlessLoopbackRedirectUri))
+      issues.push('redirect-uri-loopback-port-required');
     if (new Set(uris).size !== uris.length) issues.push('redirect-uri-duplicate');
   }
   return issues;

@@ -44,9 +44,11 @@
  *      公開・認可コードだけ・PKCE S256・リダイレクト URI が入力どおり・Web オリジン空・入口の印・audience の写像（mcp-server）。
  *      ワイルドカードの URI は 400 で何も作らない。認可の要求（`/auth`。ブラウザを使わず状態コードと Location を読む）で、
  *      PKCE なし・`plain` は invalid_request でリダイレクトへ返され（ログイン画面へ進まない）、S256 は進む。登録していない path・host・
- *      https の port・`localhost` は 400（リダイレクトしない）。🔴 **ループバックの port の扱い（FU3）を測る**: `http://127.0.0.1/cb` で登録すると
- *      任意の port で進み（Keycloak 24 の `RedirectUtils` は 127.0.0.1 / localhost の port を落として照合し直す）、`http://[::1]:<port>/cb` は
- *      port まで完全一致（別の port は 400）。例示のアクセストークン（管理 API の evaluate-scopes）の aud に mcp-server・azp・利用者名が在る。
+ *      https の port・`localhost` は 400（リダイレクトしない）。🔴 **ループバックの port の扱い（FU3）を測る**: ループバックは port を明示して
+ *      登録する（port なしの登録は SC-12 が 400 で拒み、Keycloak に何も作らない）。Keycloak 24 の `RedirectUtils` は port なしで登録された
+ *      `http://127.0.0.1/cb` に `http://127.0.0.1:<任意>@evil.example/cb` を一致させ、認可コードを evil.example へ送る（CVE-2024-8883）。
+ *      port を明示した `http://127.0.0.1:<port>/cb` は登録どおりの port で進み、別の port・`:<port>@evil.example`・`:1@evil.example` は 400。
+ *      `http://[::1]:<port>/cb` も port まで完全一致（別の port・`@evil.example` は 400）。例示のアクセストークン（管理 API の evaluate-scopes）の aud に mcp-server・azp・利用者名が在る。
  *      無人のトークンの aud にも mcp-server が在る。無効化・再有効化が enabled へ写り、テンプレートが残る。補償（表示名の長さ）も無人と同じく走る。
  *   M10 DCR が閉じている（FU3）: 匿名の動的クライアント登録（`clients-registrations/openid-connect`・`default`）と偽の初期アクセストークンは
  *      401 / 403 でクライアントが増えない。初期アクセストークンは 1 つも無い。匿名のポリシーに Trusted Hosts（信頼ホストは空）が在る。
@@ -353,6 +355,18 @@ function evaluateAuthOutcome(result, expected) {
   return [];
 }
 
+/**
+ * M9: 登録したループバックの URI から、認可コードの横取り（CVE-2024-8883）の形の redirect_uri を作る。
+ * 利用者情報（`127.0.0.1:<port>@`）でブラウザの宛先を evil.example へすり替える形で、登録どおりの port と別の port（1）の 2 つ。
+ * 🔴 port の無い URI・ループバックでない URI は作らない（空を返す。呼び出し側が赤にする）。
+ */
+function loopbackHijackProbes(redirectUri) {
+  const m = /^http:\/\/(127\.0\.0\.1|\[::1\]):(\d{1,5})(\/.*)?$/.exec(String(redirectUri || ''));
+  if (!m) return [];
+  const path = m[3] || '/';
+  return [`http://${m[1]}:${m[2]}@evil.example${path}`, `http://${m[1]}:1@evil.example${path}`];
+}
+
 /** JWT の本文（署名は検めない。発行元から直接受け取った値の中身を読むだけ）。 */
 function decodeJwtPayload(token) {
   const part = String(token || '').split('.')[1];
@@ -509,12 +523,12 @@ function selfTest() {
   });
   const pub = {
     clientId: 'h', publicClient: true, standardFlowEnabled: true, implicitFlowEnabled: false, directAccessGrantsEnabled: false,
-    serviceAccountsEnabled: false, fullScopeAllowed: false, redirectUris: ['https://a/cb', 'http://127.0.0.1/cb'], webOrigins: [],
+    serviceAccountsEnabled: false, fullScopeAllowed: false, redirectUris: ['https://a/cb', 'http://127.0.0.1:50000/cb'], webOrigins: [],
     attributes: { [MANAGED_BY_ATTRIBUTE]: MANAGED_BY_VALUE, [PKCE_ATTRIBUTE]: 'S256' },
     protocolMappers: [{ protocolMapper: 'oidc-audience-mapper', config: { 'included.custom.audience': MCP_AUDIENCE, 'access.token.claim': 'true' } }],
   };
   t('M9: 有人のテンプレートどおりなら 0、公開・PKCE・流れ・URI・オリジン・audience・印の崩れはそれぞれ赤', () => {
-    const uris = ['http://127.0.0.1/cb', 'https://a/cb'];
+    const uris = ['http://127.0.0.1:50000/cb', 'https://a/cb'];
     assert.deepStrictEqual(evaluatePublicClient([pub], 'h', uris), []);
     assert.ok(evaluatePublicClient([], 'h', uris)[0].includes('0 件'));
     for (const [k, v] of [['publicClient', false], ['standardFlowEnabled', false], ['implicitFlowEnabled', true],
@@ -539,6 +553,24 @@ function selfTest() {
     assert.deepStrictEqual(evaluateAuthOutcome({ outcome: 'error-redirect', error: 'invalid_request' }, 'error-redirect'), []);
     assert.strictEqual(evaluateAuthOutcome({ outcome: 'error-redirect', error: 'access_denied' }, 'error-redirect').length, 1);
     assert.strictEqual(evaluateAuthOutcome({ outcome: 'login' }, 'rejected').length, 1);
+  });
+  t('M9: 横取りの形（CVE-2024-8883）は登録どおりの port と別の port の 2 つで、宛先は evil.example。port なし・非ループバックは作らない', () => {
+    assert.deepStrictEqual(loopbackHijackProbes('http://127.0.0.1:50000/cb'),
+      ['http://127.0.0.1:50000@evil.example/cb', 'http://127.0.0.1:1@evil.example/cb']);
+    assert.deepStrictEqual(loopbackHijackProbes('http://[::1]:53123/cb'),
+      ['http://[::1]:53123@evil.example/cb', 'http://[::1]:1@evil.example/cb']);
+    assert.deepStrictEqual(loopbackHijackProbes('http://127.0.0.1:50000'),
+      ['http://127.0.0.1:50000@evil.example/', 'http://127.0.0.1:1@evil.example/']);
+    // ブラウザ（WHATWG URL）は利用者情報を外して evil.example へ送る —— 試験の形が本当に横取りの形であること。
+    for (const u of loopbackHijackProbes('http://127.0.0.1:50000/cb')) assert.strictEqual(new URL(u).host, 'evil.example', u);
+    assert.deepStrictEqual(loopbackHijackProbes('http://127.0.0.1/cb'), [], 'port なしは作らない');
+    assert.deepStrictEqual(loopbackHijackProbes('https://a/cb'), []);
+    assert.deepStrictEqual(loopbackHijackProbes('http://localhost:50000/cb'), []);
+    // 横取りを許す Keycloak（ログイン画面へ進む＝200、または evil.example へコードつきで戻す）は rejected の期待で赤になる。
+    assert.strictEqual(evaluateAuthOutcome(classifyAuthResponse(200, null, 'http://127.0.0.1:50000@evil.example/cb'), 'rejected').length, 1);
+    assert.strictEqual(evaluateAuthOutcome(
+      classifyAuthResponse(302, 'http://evil.example/cb?code=x', 'http://127.0.0.1:50000@evil.example/cb'), 'rejected').length, 1);
+    assert.deepStrictEqual(evaluateAuthOutcome(classifyAuthResponse(400, null, 'http://127.0.0.1:50000@evil.example/cb'), 'rejected'), []);
   });
   t('M9: トークンの aud・azp・利用者名（aud は文字列でも配列でも読む。無ければ赤）', () => {
     const tok = (p) => `x.${Buffer.from(JSON.stringify(p)).toString('base64url')}.y`;
@@ -1019,7 +1051,9 @@ async function live() {
     // --- M9（#1844 / 計画 ADR-0134 決定 1・フォローアップ 1〜3）--------------------------------------
     const humanId = id('human');
     const httpsRedirect = `https://${humanId}.example.test/cb`;
-    const v4Redirect = 'http://127.0.0.1/cb';
+    // 🔴 ループバックは port を明示して登録する（CVE-2024-8883。port なしは SC-12 が 400 で拒む）。
+    const v4Port = 50000;
+    const v4Redirect = `http://127.0.0.1:${v4Port}/cb`;
     const v6Port = 53123;
     const v6Redirect = `http://[::1]:${v6Port}/cb`;
     const humanRedirects = [httpsRedirect, v4Redirect, v6Redirect];
@@ -1038,6 +1072,15 @@ async function live() {
     if (r9w.status === 201) created.push(wildId);
     step('M9 ワイルドカードのリダイレクト URI は 400', status(r9w, 400));
     step('M9 ワイルドカードの登録で Keycloak に何も作られない', evaluateNothingCreated(await clientsOf(wildId), [], wildId));
+
+    // 🔴 CVE-2024-8883: port なしのループバック（127.0.0.1・[::1]）は SC-12 が 400 で拒み、Keycloak に何も作らない。
+    for (const [suffix, uri] of [['v4', 'http://127.0.0.1/cb'], ['v6', 'http://[::1]/cb']]) {
+      const portlessId = id(`human-noport-${suffix}`);
+      const r9p = await registerHuman(portlessId, [uri]);
+      if (r9p.status === 201) created.push(portlessId);
+      step(`M9 port なしのループバック（${uri}）は 400`, status(r9p, 400));
+      step(`M9 port なしのループバックの登録で Keycloak に何も作られない（${uri}）`, evaluateNothingCreated(await clientsOf(portlessId), [], portlessId));
+    }
 
     // 認可の要求（ブラウザを使わない）。リダイレクト URI の検査が PKCE の検査より先に走るので、URI の試験は正しい S256 を添えて送る。
     const { challenge } = pkcePair();
@@ -1063,9 +1106,18 @@ async function live() {
     step('M9 https の port 違いは 400', evaluateAuthOutcome(await authorize(`https://${humanId}.example.test:8443/cb`, 'S256'), 'rejected'));
     step('M9 localhost（登録していない綴り）は 400', evaluateAuthOutcome(await authorize('http://localhost:49152/cb', 'S256'), 'rejected'));
     // 🔴 FU3: ループバックの port の扱い（Keycloak 24 RedirectUtils の読みを稼働で確かめる）。
-    step('M9 FU3: http://127.0.0.1/cb で登録すると任意の port（49152）で進む（Keycloak は 127.0.0.1 の port を落として照合し直す）',
-      evaluateAuthOutcome(await authorize('http://127.0.0.1:49152/cb', 'S256'), 'login'));
-    step('M9 FU3: 127.0.0.1 でも path 違いは 400', evaluateAuthOutcome(await authorize('http://127.0.0.1:49152/other', 'S256'), 'rejected'));
+    // 🔴 port を明示した登録は完全一致（CVE-2024-8883 の横取りの形も、別の port も 400）。
+    step(`M9 FU3: ${v4Redirect} は登録どおりの port で進む`, evaluateAuthOutcome(await authorize(v4Redirect, 'S256'), 'login'));
+    step('M9 FU3: 127.0.0.1 も port まで完全一致（別の port 49152 は 400）',
+      evaluateAuthOutcome(await authorize('http://127.0.0.1:49152/cb', 'S256'), 'rejected'));
+    step('M9 FU3: 127.0.0.1 でも path 違いは 400', evaluateAuthOutcome(await authorize(`http://127.0.0.1:${v4Port}/other`, 'S256'), 'rejected'));
+    const hijacks = [...loopbackHijackProbes(v4Redirect), ...loopbackHijackProbes(v6Redirect)];
+    step('M9 CVE-2024-8883: 横取りの形を 4 つ作れた（127.0.0.1・[::1] × 登録どおりの port・別の port）',
+      hijacks.length === 4 ? [] : [`横取りの形が ${hijacks.length} 個（期待 4）`]);
+    for (const hijack of hijacks) {
+      step(`M9 CVE-2024-8883: ${hijack}（利用者情報で宛先を evil.example へすり替える形）は 400`,
+        evaluateAuthOutcome(await authorize(hijack, 'S256'), 'rejected'));
+    }
     step(`M9 FU3: http://[::1]:${v6Port}/cb は登録どおりの port で進む`, evaluateAuthOutcome(await authorize(v6Redirect, 'S256'), 'login'));
     step('M9 FU3: [::1] は port まで完全一致（別の port は 400。port を落とす扱いは 127.0.0.1 / localhost だけ）',
       evaluateAuthOutcome(await authorize(`http://[::1]:${v6Port + 1}/cb`, 'S256'), 'rejected'));
@@ -1175,7 +1227,7 @@ async function live() {
 }
 
 module.exports = {
-  evaluatePublicClient, evaluateAudienceMapper, classifyAuthResponse, evaluateAuthOutcome, decodeJwtPayload, evaluateTokenAudience,
+  evaluatePublicClient, evaluateAudienceMapper, classifyAuthResponse, evaluateAuthOutcome, loopbackHijackProbes, decodeJwtPayload, evaluateTokenAudience,
   evaluateDcrRefused, evaluateRegistrationPolicies, evaluateNoInitialAccessTokens,
   evaluateCompensationResponse, evaluateCompensationEvents,
   serviceAccountUserName, expectedKeycloakAttributes, normalizeAttributes, sameAttributes,

@@ -240,10 +240,10 @@ public class IdpProvisioningEndpointTests(TestWebApplicationFactory factory)
     public async Task 有人の登録はIdPに公開クライアントを作ってから登録簿へ書く()
     {
         var response = await factory.CreateClient().PostAsJsonAsync("/mcp-clients",
-            Interactive("idp-human", "https://agent.example.test/cb", "http://127.0.0.1/cb"), Ct);
+            Interactive("idp-human", "https://agent.example.test/cb", "http://127.0.0.1:53123/cb"), Ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
-        Idp.RedirectUrisOf("idp-human").Should().Equal("https://agent.example.test/cb", "http://127.0.0.1/cb");
+        Idp.RedirectUrisOf("idp-human").Should().Equal("https://agent.example.test/cb", "http://127.0.0.1:53123/cb");
         Idp.IsEnabled("idp-human").Should().BeTrue();
         (await response.Content.ReadFromJsonAsync<McpClientView>(Ct))!.Kind.Should().Be("interactive");
     }

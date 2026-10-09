@@ -116,7 +116,7 @@ describe('useMcpClientRegistrationForm (SC-12)', () => {
     // 有人（既定の種別）はリダイレクト URI が必須（ADR-0134 決定 1）。
     expect(ok).toBe(false);
     expect(result.current.issues).toEqual(['redirect-uris-required']);
-    act(() => result.current.setRedirectUrisText('http://127.0.0.1/callback'));
+    act(() => result.current.setRedirectUrisText('http://127.0.0.1:53123/callback'));
     act(() => {
       ok = result.current.validate();
     });
@@ -188,7 +188,7 @@ describe('useMcpClientRegistrationForm (SC-12)', () => {
 
   it('clears the redirect URIs after a successful registration', () => {
     const { result } = setup();
-    act(() => result.current.setRedirectUrisText('http://127.0.0.1/cb'));
+    act(() => result.current.setRedirectUrisText('http://127.0.0.1:53123/cb'));
     act(() => result.current.resetAfterRegister());
     expect(result.current.redirectUrisText).toBe('');
   });

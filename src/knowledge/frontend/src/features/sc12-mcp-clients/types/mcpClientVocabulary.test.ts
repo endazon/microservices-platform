@@ -14,10 +14,13 @@ describe('redirect URI rules (SC-12)', () => {
   it.each([
     'https://agent.example.test/callback',
     'https://agent.example.test:8443/cb?x=1',
-    'http://127.0.0.1/callback',
+    'https://agent.example.test/cb',
     'http://127.0.0.1:53123/callback',
-    'http://[::1]/callback',
+    'http://127.0.0.1:53123',
+    'http://127.0.0.1:53123?x=1',
+    'http://127.0.0.1:80/cb',
     'http://[::1]:53123/callback',
+    'http://[::1]:53123',
   ])('allows %s', (uri) => {
     expect(isAllowedRedirectUri(uri)).toBe(true);
   });
@@ -35,16 +38,43 @@ describe('redirect URI rules (SC-12)', () => {
     'https://user@agent.example.test/cb',
     '/callback',
     'myapp://callback',
+    'http://127.0.0.1:49152@evil.example/cb',
+    'http://[::1]:49152@evil.example/cb',
     '',
   ])('rejects %s', (uri) => {
     expect(isAllowedRedirectUri(uri)).toBe(false);
   });
 
+  // 🔴 CVE-2024-8883: port なしのループバックは不可。稼働の認可サーバー（Keycloak 24）は port なしで登録された
+  // `http://127.0.0.1/cb` に `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送る。
+  // 後段（`RegisterMcpClientValidatorTests` の port なしの事例）と同じ並び。理由は「不正」と分けて名指しする。
+  it.each([
+    'http://127.0.0.1/callback',
+    'http://127.0.0.1/',
+    'http://127.0.0.1',
+    'http://127.0.0.1?x=1',
+    'http://127.0.0.1:/callback',
+    'http://[::1]/callback',
+    'http://[::1]/',
+    'http://[::1]',
+    'http://[::1]:/callback',
+  ])('rejects the port-less loopback %s and names the port as the reason', (uri) => {
+    expect(isAllowedRedirectUri(uri)).toBe(false);
+    expect(
+      validateRegistration({
+        clientId: 'a',
+        displayName: 'A',
+        attributes: [],
+        kind: 'interactive',
+        redirectUris: [uri],
+      }),
+    ).toEqual(['redirect-uri-loopback-port-required']);
+  });
+
   it('parses one URI per line and drops blank lines and surrounding spaces', () => {
-    expect(parseRedirectUris(' https://a.example.test/cb \r\n\n http://127.0.0.1/cb')).toEqual([
-      'https://a.example.test/cb',
-      'http://127.0.0.1/cb',
-    ]);
+    expect(
+      parseRedirectUris(' https://a.example.test/cb \r\n\n http://127.0.0.1:53123/cb'),
+    ).toEqual(['https://a.example.test/cb', 'http://127.0.0.1:53123/cb']);
   });
 
   it('requires redirect URIs only for the attended kind', () => {

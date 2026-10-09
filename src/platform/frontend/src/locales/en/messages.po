@@ -1442,6 +1442,10 @@ msgstr "Link"
 msgid "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
 msgstr "When a link target is not shown, you cannot tell whether the link is broken or whether you lack permission to view it. This is by design, so that the existence of documents you cannot view is not revealed."
 
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "ループバックのリダイレクト URI には port を明示してください（例: http://127.0.0.1:53123/callback）。"
+msgstr "A loopback redirect URI must specify an explicit port (e.g. http://127.0.0.1:53123/callback)."
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "ローカル {localVersion} 版 ／ サーバ {serverVersion} 版"
 msgstr "Local v{localVersion} / server v{serverVersion}"
@@ -2561,8 +2565,8 @@ msgid "完全に削除する"
 msgstr "Delete permanently"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
-msgid "完全一致で照合します。https か、ループバックの http://127.0.0.1 / http://[::1] に限ります（ワイルドカードは使えません）。"
-msgstr "Matched exactly. Only https, or the loopback http://127.0.0.1 / http://[::1], is allowed (no wildcards)."
+msgid "完全一致で照合します。https か、ループバックの http://127.0.0.1 / http://[::1] に限ります（ワイルドカードは使えません）。ループバックは port を明示してください（例: http://127.0.0.1:53123/callback）。"
+msgstr "Matched exactly. Only https, or the loopback http://127.0.0.1 / http://[::1], is allowed (no wildcards). A loopback URI must specify an explicit port (e.g. http://127.0.0.1:53123/callback)."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "完全削除まで"

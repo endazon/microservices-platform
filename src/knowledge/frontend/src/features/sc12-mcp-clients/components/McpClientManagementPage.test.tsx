@@ -183,7 +183,7 @@ describe('McpClientManagementPage (SC-12)', () => {
     await user.type(screen.getByLabelText('表示名'), '新エージェント');
     await user.type(
       screen.getByLabelText('リダイレクト URI（1 行に 1 件）'),
-      'http://127.0.0.1/callback',
+      'http://127.0.0.1:53123/callback',
     );
     await user.click(screen.getByRole('button', { name: '登録' }));
     await waitFor(() =>
@@ -243,13 +243,13 @@ describe('McpClientManagementPage (SC-12)', () => {
     await user.clear(screen.getByLabelText('リダイレクト URI（1 行に 1 件）'));
     await user.type(
       screen.getByLabelText('リダイレクト URI（1 行に 1 件）'),
-      'https://agent.example.test/cb{enter} http://127.0.0.1/callback ',
+      'https://agent.example.test/cb{enter} http://127.0.0.1:53123/callback ',
     );
     await user.click(screen.getByRole('button', { name: '登録' }));
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(JSON.parse(String((posts()[0][1] as RequestInit).body))).toMatchObject({
       kind: 'interactive',
-      redirectUris: ['https://agent.example.test/cb', 'http://127.0.0.1/callback'],
+      redirectUris: ['https://agent.example.test/cb', 'http://127.0.0.1:53123/callback'],
     });
 
     // 無人では入力欄が消え、本文にも載せない。

@@ -118,14 +118,17 @@ public class RegisterMcpClientValidatorTests
 
     // ── ［#1844］リダイレクト URI（計画 ADR-0134 決定 1・SC-12 の入力表）────────────────────────
 
-    // 陽性対照: https・port なし／ありのループバック（v4・v6）・クエリつきは通る。
+    // 陽性対照: https・port を明示したループバック（v4・v6。path・クエリの有無を問わない）は通る。
     [Theory]
     [InlineData("https://agent.example.test/callback")]
     [InlineData("https://agent.example.test:8443/cb?x=1")]
-    [InlineData("http://127.0.0.1/callback")]
+    [InlineData("https://agent.example.test/cb")]
     [InlineData("http://127.0.0.1:53123/callback")]
-    [InlineData("http://[::1]/callback")]
+    [InlineData("http://127.0.0.1:53123")]
+    [InlineData("http://127.0.0.1:53123?x=1")]
+    [InlineData("http://127.0.0.1:80/cb")]
     [InlineData("http://[::1]:53123/callback")]
+    [InlineData("http://[::1]:53123")]
     public void InteractiveWithAllowedRedirectUri_Passes(string uri)
         => Validator.Validate(Request(redirectUris: [uri])).IsValid.Should().BeTrue();
 
@@ -152,6 +155,33 @@ public class RegisterMcpClientValidatorTests
 
         result.Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain(reason);
     }
+
+    // 🔴 ［2026-10-09 / #1844］CVE-2024-8883: port なしのループバックは 400。Keycloak 24 は port なしで登録された
+    // `http://127.0.0.1/cb` に `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送る。
+    // `[::1]` も同じ規則に揃える。path の有無・クエリつき・`:` だけで数字が無い形も port の明示とは見ない。
+    [Theory]
+    [InlineData("http://127.0.0.1/callback")]
+    [InlineData("http://127.0.0.1/")]
+    [InlineData("http://127.0.0.1")]
+    [InlineData("http://127.0.0.1?x=1")]
+    [InlineData("http://127.0.0.1:/callback")]
+    [InlineData("http://[::1]/callback")]
+    [InlineData("http://[::1]/")]
+    [InlineData("http://[::1]")]
+    [InlineData("http://[::1]:/callback")]
+    public void InteractiveWithPortlessLoopbackRedirectUri_FailsWithReason(string uri)
+    {
+        var result = Validator.Validate(Request(redirectUris: [uri]));
+
+        result.Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("port を明示");
+    }
+
+    // 🔴 port を明示しても、利用者情報で host を偽る形は従来どおり 400（Keycloak 24 の横取りの形そのもの）。
+    [Theory]
+    [InlineData("http://127.0.0.1:49152@evil.example/cb")]
+    [InlineData("http://[::1]:49152@evil.example/cb")]
+    public void LoopbackLookalikeWithUserInfo_Fails(string uri)
+        => Validator.Validate(Request(redirectUris: [uri])).IsValid.Should().BeFalse();
 
     [Fact]
     public void InteractiveWithoutRedirectUris_Fails()
