@@ -118,7 +118,8 @@ public class RegisterMcpClientValidatorTests
 
     // ── ［#1844］リダイレクト URI（計画 ADR-0134 決定 1・SC-12 の入力表）────────────────────────
 
-    // 陽性対照: https・port を明示したループバック（v4・v6。path・クエリの有無を問わない）は通る。
+    // 陽性対照: https・ループバック（v4・v6。port の有無・path・クエリの有無を問わない）は通る。
+    // ［2026-10-09 / #1859・IADR-0527］port なしのループバックも通る（利用者裁定「外す」。RFC 8252 §7.3 の任意の port で戻す使い方）。
     [Theory]
     [InlineData("https://agent.example.test/callback")]
     [InlineData("https://agent.example.test:8443/cb?x=1")]
@@ -127,8 +128,17 @@ public class RegisterMcpClientValidatorTests
     [InlineData("http://127.0.0.1:53123")]
     [InlineData("http://127.0.0.1:53123?x=1")]
     [InlineData("http://127.0.0.1:80/cb")]
+    [InlineData("http://127.0.0.1:65535/cb")]
     [InlineData("http://[::1]:53123/callback")]
     [InlineData("http://[::1]:53123")]
+    [InlineData("http://127.0.0.1/callback")]
+    [InlineData("http://127.0.0.1/")]
+    [InlineData("http://127.0.0.1")]
+    [InlineData("http://127.0.0.1?x=1")]
+    [InlineData("http://[::1]/callback")]
+    [InlineData("http://[::1]/")]
+    [InlineData("http://[::1]")]
+    [InlineData("http://[::1]?x=1")]
     public void InteractiveWithAllowedRedirectUri_Passes(string uri)
         => Validator.Validate(Request(redirectUris: [uri])).IsValid.Should().BeTrue();
 
@@ -156,31 +166,34 @@ public class RegisterMcpClientValidatorTests
         result.Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain(reason);
     }
 
-    // 🔴 ［2026-10-09 / #1844］CVE-2024-8883: port なしのループバックは 400。Keycloak 24 は port なしで登録された
-    // `http://127.0.0.1/cb` に `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送った（配備は #1859 で 26.7.4 へ上がったが、
-    // 規則を外すかは製品の判断待ちのため残す。IADR-0516 の #1859 追記）。
-    // `[::1]` も同じ規則に揃える。path の有無・クエリつき・`:` だけで数字が無い形も port の明示とは見ない。
+    // 🔴 ［2026-10-09 / #1859・IADR-0527］port は任意になったが、**書いたときは 1〜65535 の数字だけ**。
+    // `:` だけ・`:0`・数字以外の形は「port が不正」を名指しして 400（緩めたのは port の有無だけで、形の検査は残す）。
     [Theory]
-    [InlineData("http://127.0.0.1/callback")]
-    [InlineData("http://127.0.0.1/")]
-    [InlineData("http://127.0.0.1")]
-    [InlineData("http://127.0.0.1?x=1")]
     [InlineData("http://127.0.0.1:/callback")]
-    [InlineData("http://[::1]/callback")]
-    [InlineData("http://[::1]/")]
-    [InlineData("http://[::1]")]
+    [InlineData("http://127.0.0.1:0/callback")]
+    [InlineData("http://127.0.0.1:/")]
     [InlineData("http://[::1]:/callback")]
-    public void InteractiveWithPortlessLoopbackRedirectUri_FailsWithReason(string uri)
+    [InlineData("http://[::1]:0/callback")]
+    public void InteractiveWithMalformedLoopbackPort_FailsWithReason(string uri)
     {
         var result = Validator.Validate(Request(redirectUris: [uri]));
 
-        result.Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("port を明示");
+        result.Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("port が不正");
     }
 
-    // 🔴 port を明示しても、利用者情報で host を偽る形は従来どおり 400（Keycloak 24 の横取りの形そのもの）。
+    // 🔴 利用者情報で host を偽る形は従来どおり 400（CVE-2024-8883 の横取りの形そのもの）。port つきの 2 形に加え、
+    // ［#1859・IADR-0527］port なしの登録に当てる横取りの 4 形 × 2 ホスト（門 M9 の `portlessLoopbackHijackProbes` と同じ並び）も入口で止める。
+    // 入口では 3 つの判定がそれぞれ止める（利用者情報・綴りと解析後の host の突き合わせ・port の形）。1 つでも残れば 400 で、
+    // 3 つとも外すと 8 件すべてが赤になることを確かめた（port 必須を外した後も、横取りの形を入口で登録させない）。
     [Theory]
     [InlineData("http://127.0.0.1:49152@evil.example/cb")]
     [InlineData("http://[::1]:49152@evil.example/cb")]
+    [InlineData("http://127.0.0.1:1@evil.example/cb")]
+    [InlineData("http://127.0.0.1:@evil.example/cb")]
+    [InlineData("http://127.0.0.1:49152:1@evil.example/cb")]
+    [InlineData("http://[::1]:1@evil.example/cb")]
+    [InlineData("http://[::1]:@evil.example/cb")]
+    [InlineData("http://[::1]:49152:1@evil.example/cb")]
     public void LoopbackLookalikeWithUserInfo_Fails(string uri)
         => Validator.Validate(Request(redirectUris: [uri])).IsValid.Should().BeFalse();
 

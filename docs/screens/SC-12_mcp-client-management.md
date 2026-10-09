@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-09, FR-16, SC-09, SC-10, SC-12, UC-09]
 adrs: [ADR-0021, ADR-0024, ADR-0031, ADR-0032, ADR-0034, ADR-0054, ADR-0062, ADR-0123, ADR-0134]
-iadrs: [IADR-0524, IADR-0009, IADR-0035, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0134, IADR-0135, IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0385, IADR-0385, IADR-0479, IADR-0516]
-specs: [20261009_1859_keycloak-26-upgrade, 20260828_issue-452_sc12-mcp-client-management, 20260823_issue-445_mcp-server-integration, 20260903_issue-1185_unattended-account-attribute-subset, 20260905_issue-1242_registrar-clearance-scope-fail-open, 20260905_issue-1243_registrar-tag-encoding, 20261007_1772_residual-ledger, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit]
+iadrs: [IADR-0527, IADR-0524, IADR-0009, IADR-0035, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0134, IADR-0135, IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0385, IADR-0385, IADR-0479, IADR-0516]
+specs: [20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260828_issue-452_sc12-mcp-client-management, 20260823_issue-445_mcp-server-integration, 20260903_issue-1185_unattended-account-attribute-subset, 20260905_issue-1242_registrar-clearance-scope-fail-open, 20260905_issue-1243_registrar-tag-encoding, 20261007_1772_residual-ledger, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit]
 issues: [#1859, #445, #452, #1020, #1185, #1242, #1243, #1772, #1786, #1817, #1818, #1829, #1844, #1845]
 -->
 
@@ -225,10 +225,15 @@ flowchart LR
   リダイレクト URI は入力そのもの（完全一致）・Web オリジンは空・アクセストークンの audience に MCP サーバーを入れる写像つき。
   作った後に読み戻して形を確かめ、外れていれば消して 502 にする。サービスアカウントが無いので属性は書かない。
   ~~`http://127.0.0.1/cb` のように port なしで登録したループバックは任意の port で受け、`http://[::1]` は port まで完全一致になる（認可サーバーの照合の挙動）。~~
-  ［2026-10-09］**ループバックは port の明示が必須**（例: `http://127.0.0.1:53123/callback`）。port なしは入力の検査で止め、後段も 400 で拒む。
+  ~~［2026-10-09］**ループバックは port の明示が必須**（例: `http://127.0.0.1:53123/callback`）。port なしは入力の検査で止め、後段も 400 で拒む。~~
   規則を入れた時点の認可サーバー（Keycloak 24）は port なしの登録に `http://127.0.0.1:<任意>@evil.example/cb` を一致させて認可コードを外へ送った（CVE-2024-8883）。
-  ［2026-10-09］認可サーバーは 26.7.4 へ上がった（修正済み）。規則を外すかは製品の判断を待つので、画面の検査もそれまで残す。
-  port を明示した登録は `127.0.0.1`・`[::1]` とも port まで完全一致になる。理由は「port を明示してください」と名指しして出す。
+  ［2026-10-09］認可サーバーは 26.7.4 へ上がった（修正済み）。
+  ［2026-10-09 改定］**ループバックの port は任意である**（利用者の裁定で port の必須を外した）。port なしの `http://127.0.0.1/callback` は実行時に空いている任意の port で戻る
+  （ネイティブのクライアントは起動のたびに port が変わる）。port を明示した登録は `127.0.0.1`・`[::1]` とも port まで完全一致になる。
+  port を書くなら 1〜65535 の数字だけで、`:` だけ・`:0` は入力の検査で「リダイレクト URI は https か…」と出し、後段も「port が不正」で 400 にする。
+  利用者情報（`user@`）・ワイルドカード・フラグメント・`localhost` の拒否は変えない。理由の名指し「port を明示してください」は撤去した。
+  入力欄の説明は「ループバックは port を省くと、実行時に空いている任意の port で戻ります」に改め、例（プレースホルダ）は `http://127.0.0.1/callback` にした。
+  横取りの形を止めるのは認可サーバーの照合であり、その退行は結合スタックの門が日次で測る。
   動的クライアント登録は開かない（認可サーバーの既定の登録ポリシーのまま）。
 - **［2026-10-09］無人の client secret は、登録と再発行の応答で一度だけ返す。** 登録の後段は認可サーバーにクライアントを作った後、登録簿へ書く前に secret を読み、
   応答の本文にだけ載せる（登録簿・一覧には持たない）。読めなければ作ったクライアントを消して 502。再発行は認可サーバーで再生成し（旧 secret はその時点で使えなくなる。
