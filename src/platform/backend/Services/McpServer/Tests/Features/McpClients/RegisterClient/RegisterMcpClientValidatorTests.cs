@@ -157,7 +157,8 @@ public class RegisterMcpClientValidatorTests
     }
 
     // 🔴 ［2026-10-09 / #1844］CVE-2024-8883: port なしのループバックは 400。Keycloak 24 は port なしで登録された
-    // `http://127.0.0.1/cb` に `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送る。
+    // `http://127.0.0.1/cb` に `http://127.0.0.1:49152@evil.example/cb` を一致させ、認可コードを外へ送った（配備は #1859 で 26.7.4 へ上がったが、
+    // 規則を外すかは製品の判断待ちのため残す。IADR-0516 の #1859 追記）。
     // `[::1]` も同じ規則に揃える。path の有無・クエリつき・`:` だけで数字が無い形も port の明示とは見ない。
     [Theory]
     [InlineData("http://127.0.0.1/callback")]

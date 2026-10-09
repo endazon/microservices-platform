@@ -11,7 +11,7 @@
 
 ```
 [k3d cluster: msp-ast-dev]
-  ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector
+  ns platform-infra          postgres / rabbitmq / valkey / keycloak / qdrant / otel-collector
                              + mail-relay（近接 MTA。キューを持つ。deploy/mail-relay ＝環境非依存の base）
                              + reset-gate（SC-15 の門。mail-relay へ投函できないと申請を機械で閉じる）
                              + reset-floor（SC-15 の床。申請の POST を最小応答時間まで返さない。経路は Istio エッジ）
@@ -72,7 +72,7 @@ cert-manager.io / argoproj.io）と Bound でない PV → Traefik の Service �
 
 ```bash
 OBSERVABILITY=1 bash scripts/k8s-local-up.sh --live   # Prometheus/Loki/Tempo/Grafana + collector forwarding
-VAULT=1         bash scripts/k8s-local-up.sh --live   # Vault（既定は file ストレージ＋PVC で永続化・PERSIST=0 で -dev）+ ClusterSecretStore(vault-backend)（要 ESO CRD）
+VAULT=1         bash scripts/k8s-local-up.sh --live   # 秘匿管理 OpenBao（Vault API 互換。既定は raft ストレージ＋PVC で永続化・PERSIST=0 で -dev）+ ClusterSecretStore(vault-backend)（要 ESO CRD）
 ARGOCD=1        bash scripts/k8s-local-up.sh --live   # ArgoCD install + Application 適用（MSP/AST）
 PERSIST=0       bash scripts/k8s-local-up.sh --live   # 【opt-out】永続化を外す（使い捨てスタック専用）。永続化は既定オン（下記「永続化」節・IADR-0369）
 LOCALEDGE=1     bash scripts/k8s-local-up.sh --live   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（下記 edge 節）
@@ -118,10 +118,10 @@ PERSIST=0 bash scripts/k8s-local-up.sh --live
 
 | サービス | PVC | マウント | 保持されるもの | ゲート |
 | --- | --- | --- | --- | --- |
-| Keycloak | `keycloak-data`（1Gi・local-path） | `/opt/keycloak/data`（`start-dev` の file H2） | realm ＋ runtime state（追加ユーザー・シークレット・セッション） | `PERSIST=1` |
+| Keycloak | `keycloak-data`（1Gi・local-path） | `/opt/keycloak/data`（`start-dev` の file H2。🔴 版を上げると起動時に一方向へ移行する。上げる前に退避する ——［運用仕様書］(../../docs/operations/operations.md) の「Keycloak の版の更新」） | realm ＋ runtime state（追加ユーザー・シークレット・セッション） | `PERSIST=1` |
 | Postgres | `postgres-data`（2Gi・local-path） | `/var/lib/postgresql/data` | 全アプリ DB（MSP + AST） | `PERSIST=1` |
 | Qdrant | `qdrant-storage`（2Gi・local-path） | `/qdrant/storage` | コレクションとベクトル（再 ingest なしで検索を続けられる） | `PERSIST=1` |
-| Vault | `vault-data`（1Gi・local-path） | `/vault/data`（file ストレージ＋ unseal 鍵・初期 root トークンの 0600 ファイル） | k8s auth・policy・role・KV（画面 SC-22 で入れた秘密）・OIDC 設定。Pod 内ラッパーが自動 unseal（IADR-0457） | `PERSIST=1` ＋ `VAULT=1` |
+| Vault | `vault-data`（1Gi・local-path） | `/vault/data`（OpenBao の raft ストレージ `raft/`＋ unseal 鍵・初期 root トークンの 0600 ファイル。旧 Vault から移したなら旧 file ストレージも残る） | k8s auth・policy・role・KV（画面 SC-22 で入れた秘密）・OIDC 設定。Pod 内ラッパーが自動 unseal（IADR-0457） | `PERSIST=1` ＋ `VAULT=1` |
 | Prometheus | `prometheus-data`（5Gi・local-path） | `/prometheus`（TSDB） | メトリクス（保持期間は下記 args で 35d / 4GB） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 | Loki | `loki-data`（2Gi・local-path） | `/tmp/loki`（config の `path_prefix`） | ログ（index / chunks） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 | Tempo | `tempo-data`（2Gi・local-path） | `/tmp/tempo`（`local.path` / `wal.path` の親） | トレース（blocks / wal） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
@@ -160,7 +160,7 @@ PERSIST=0 bash scripts/k8s-local-up.sh --live
   Rancher Desktop 経路では `platform-infra` ほかアプリの namespace を削除するため、**`down`→`up` の再構築サイクルでは PVC
   （上表のすべて）も消える**（= realm/DB/embeddings/メトリクスは再生成）。PVC を残したまま作り直したいときは `down` を
   使わず `kubectl -n platform-infra rollout restart deploy/keycloak deploy/postgres` 等で Pod のみ入れ替える。
-- **`PERSIST=0`（opt-out）は base の `emptyDir`**（使い捨てスタック専用）。**rabbitmq / redis / otel は emptyDir 継続**
+- **`PERSIST=0`（opt-out）は base の `emptyDir`**（使い捨てスタック専用）。**rabbitmq / valkey / otel は emptyDir 継続**
   （queue/cache は揮発前提・otel は stateless。詳細は IADR-0082。**qdrant は #787 / IADR-0210 で永続化対象へ移した**）。
 - **⚠️ 非永続で立っていた環境の移行**: up を再実行すると Deployment の volume が差し替わり Pod が作り直される（`Recreate`）。
   **初回は空 PVC のため realm/DB は import/init で再生成**される（既存 emptyDir のデータは元々 Pod 生存期間のみの揮発
@@ -176,9 +176,11 @@ PERSIST=0 bash scripts/k8s-local-up.sh --live
 #### realm（`microservices-platform-realm.json`）を更新したときの反映（自動・IADR-0369）
 
 永続化後は `--import-realm` が **既存 realm をスキップ**（`IGNORE_EXISTING`）するため、`realm.json` を編集しても
-import では届かない。そこで `k8s-local-up.sh` は [7/7] の後に **[`keycloak-setup/reconcile-realm.sh`](keycloak-setup/README.md)**
+import では届かない。そこで `k8s-local-up.sh` は [4/7] の Keycloak の rollout の直後（[6/7] の helm より前）に **[`keycloak-setup/reconcile-realm.sh`](keycloak-setup/README.md)**
 を呼び、**realm JSON（宣言）と稼働 realm の差分を Job（Admin REST API）で当てる**。つまり **realm JSON を変えたら
 up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setup/reconcile-realm.sh` で当てられる。冪等）。
+**追随に失敗したら up は helm へ進まずに止まる**（サービスが audience `platform-api` を求めるため、追随していない realm のまま
+新しい Pod を入れると全 API が 401 になる。IADR-0523 / #1846）。
 届いているかは `node scripts/check-stack-ready.js --live` の **G9**（`--check`＝差分 0 件）が fail-closed で見る。
 
 - **宣言が当てる層**: realm 設定（テーマ・ロケール・token 寿命・パスワード／OTP ポリシー・ブルートフォース・events）／
@@ -409,7 +411,7 @@ kubectl -n microservices-platform port-forward svc/frontend-service 8081:8080
 > `invalid_redirect_uri` になる（`platform-spa` 時代の 8081 登録は SPA 自身の redirect のためだった）。
 > 別のローカルポートで OIDC まで通したい場合は、そのポートの `/bff/auth/callback` を
 > `deploy/keycloak/microservices-platform-realm.json` の **`bff`** client へ追記する（realm.json の
-> 変更は **`k8s-local-up.sh` の再実行で稼働 realm へ届く** —— 後段の realm の後追い Job が client の差分として当てる。
+> 変更は **`k8s-local-up.sh` の再実行で稼働 realm へ届く** —— helm の前に走る realm の後追い Job が client の差分として当てる。
 > 上記「realm を更新したときの反映」を参照）。
 
 frontend pod の Caddy が `/bff/*` を in-cluster の `bff-service:8080` へ内部プロキシするため、上の BFF port-forward
@@ -488,7 +490,8 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
 
 > 🔴 **［2026-08-31 / #780・IADR-0243］既定は手順B（エッジ host 集約）である。**
 > issuer は **`https://keycloak.localhost/realms/platform`** であり、`deploy/local/infra/keycloak.yaml` の
-> `KC_HOSTNAME_URL` がその単一情報源である。**`http://keycloak:8080` を issuer とする記述（手順A）は
+> `KC_HOSTNAME` がその単一情報源である（［2026-10-09 / #1859］Keycloak 26 で hostname v1 の `KC_HOSTNAME_URL` から移した。
+> 26 は `KC_HOSTNAME_URL` を警告だけ出して無視する）。**`http://keycloak:8080` を issuer とする記述（手順A）は
 > 過去の姿であり、いま実行すると `iss` が合わない。** 手順A の記述は経緯として残すが、追随しないこと。
 > pod からエッジ host を引けるようにするのは `coredns-custom`（IADR-0227）で、**hosts 追記も
 > port-forward も要らない**（`scripts/verify-oidc-edge-flow.sh` がその前提なしで完走する）。
@@ -550,7 +553,7 @@ Kubernetes 1.30 以降は、レガシーな `--oidc-*` フラグを内部で**�
 apiserver が受理できる issuer（https）と realm が発行する issuer（http）が**両立し得なかった**ため、
 apiserver 側にフラグを足しても OIDC ログインは成立しなかった。
 
-> 🔴 **［2026-08-31 / #780］この前提は解消した。** `KC_HOSTNAME_URL` は
+> 🔴 **［2026-08-31 / #780］この前提は解消した。** `KC_HOSTNAME_URL`（#1859 以降は `KC_HOSTNAME`）は
 > **`https://keycloak.localhost`** であり、token の `iss` は https である（IADR-0243）。
 > apiserver 側の OIDC 検証と issuer host の名前解決は **#781（IADR-0310）**が `APISERVER_OIDC=1` の
 > opt-in として配線した。Headlamp のブラウザ OIDC ログインが成立することは #780 で実測済みである
@@ -647,7 +650,7 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
   立てない）。UI が要るなら compose（`deploy/docker-compose.yml`）を併用する。
 - **永続化は既定オン**: Keycloak/Postgres/Qdrant を、`OBSERVABILITY=1` なら Prometheus/Loki/Tempo/Grafana も PVC 永続化する
   （上記「永続化」節・IADR-0082 / IADR-0210 / IADR-0369）。`PERSIST=0` で emptyDir（使い捨てスタック専用）。
-  `VAULT=1` の Vault も PVC 永続化する（`deploy/local/vault-persistence`・IADR-0457）。rabbitmq / redis / otel は揮発のまま。
+  `VAULT=1` の Vault も PVC 永続化する（`deploy/local/vault-persistence`・IADR-0457）。rabbitmq / valkey / otel は揮発のまま。
 - **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
   エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
   `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときも **mTLS の既定は PERMISSIVE** である（IADR-0307 決定 4）。

@@ -14,6 +14,7 @@
 #   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）/
 #   SYNTHETIC_MONITOR_CLIENT_SECRET（#1287。SYNTHETIC=1 のときだけ使う。realm の synthetic-monitor client と揃えること）
 #   RESET_GATE_CLIENT_SECRET / IDENTITY_ADMIN_CLIENT_SECRET / MCP_CLIENT_ADMIN_CLIENT_SECRET（#1830。dev 以外の kube context では必須）
+#   SESSION_STORE_PASSWORD（#1839。セッションストア Valkey の認証。未指定なら既存の Secret の値、無ければ初回だけ乱数で作る）
 # 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
 #   使い捨てスタックでだけ PERSIST=0 で外す。
 # 永続化と一緒に、Postgres / Vault の日次バックアップ CronJob（age 暗号化・クラスタ外 2 か所。IADR-0471 / #1560）も入る。
@@ -337,6 +338,37 @@ apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "pas
 # realm 後追い Job（deploy/local/keycloak-setup/realm-reconcile-job.yaml の KC_ADMIN_USER）が同じキーを読む
 # ＝管理者名の単一情報源。ESO の externalsecret-keycloak-admin.yaml は Merge なので password だけ供給しても壊れない。
 apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}" "password=${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+# NFR-18, ADR-0131 決定 4 の 2, IADR-0522 (#1839): キャッシュ・セッションストア（Valkey）の認証パスワード。
+# deploy/local/infra/valkey.yaml が**非 optional** に読み、空なら起動しない（fail-closed）。BFF も同じ値を読む
+# （[5/7] で MSP ns へ同じ値を置く。helm の services.bff.session.storeExistingSecret）。ESO=1 でも手で置く
+# （[4/7] の rollout が消費する bootstrap であり、Vault の KV を持たない。postgres / rabbitmq と同じ扱い）。
+# 🔴 **公知の dev 既定値を持たない。** 明示指定（env）＞ 既存の Secret の値 ＞ 初回だけ乱数。既存値を使い回すのは、
+#    Valkey が起動時にしか設定を読まないため —— up のたびに変えると、走っている Valkey と BFF が食い違う。
+#    🔴 **値を変えた（明示指定が既存の Secret と違う）ときは、Valkey → BFF の順に作り直す**（#1860 監査指摘 2）。
+#    Valkey を先にする —— BFF を先に作り直すと、新しい値の BFF が古い値の Valkey へ認証できずに落ちる。
+#    Secret の差し替えだけでは Pod の env は変わらない（helm upgrade も BFF のテンプレートを変えない）。
+# 🔴 値は設定ファイルの引用符の中へ入るので、`"`・`\`・空白を含む値は拒む（乱数は 16 進のみ）。
+session_store_existing="$(kubectl -n "$INFRA_NS" get secret session-store-credentials \
+  -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+session_store_password="${SESSION_STORE_PASSWORD:-}"
+session_store_rotated=""
+if [ -n "$session_store_password" ] && [ -n "$session_store_existing" ] \
+   && [ "$session_store_password" != "$session_store_existing" ]; then
+  session_store_rotated="1"
+fi
+if [ -z "$session_store_password" ]; then
+  session_store_password="$session_store_existing"
+fi
+unset session_store_existing
+if [ -z "$session_store_password" ]; then
+  session_store_password="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+fi
+case "$session_store_password" in
+  '' | *[\"\\[:space:]]*)
+    echo "ERROR: セッションストアのパスワードが空か、使えない文字（\" \\ 空白）を含みます（SESSION_STORE_PASSWORD を確かめてください）。" >&2
+    exit 1 ;;
+esac
+apply_secret "$INFRA_NS" session-store-credentials "password=$session_store_password"
 
 # SC-15, ADR-0045 決定 2-b/5/9 ＋ ADR-0078 決定 2, IADR-0332 / IADR-0404 (#438 / #1102 / #1245):
 # 近接 MTA（deploy/mail-relay/）が **env(secretKeyRef) で読む**上流の接続条件。
@@ -414,8 +446,11 @@ kubectl create configmap keycloak-realms -n "$INFRA_NS" "${realm_args[@]}" \
 #   env の値へ差し替える（判定器 dev_client_secret_realm_for_import。対象・env の名前・宣言の値の単一情報源）。env が無ければ宣言のまま
 #   （dev の context の既定は従来と同じ中身）。🔴 実の secret を含み得るので **ConfigMap ではなく Secret** にする。値は apply_secret が
 #   0700 の一時ディレクトリの 0600 のファイル経由で渡し、必ず消す（#1793。どのプロセスの引数にも載らない）。
+#   🔴 IADR-0524 (#1859): キー（＝取り込み先のファイル名）は **`<realm 名>-realm.json`**。Keycloak 26 の取り込みは、ファイル名と中身の
+#   realm 名が食い違うと起動しない（`File name / realm name mismatch`。実測）。宣言のファイル名（microservices-platform-realm.json）と
+#   ConfigMap `keycloak-realms` のキーは変えない（読み手は後追いの Job と門で、ファイル名を realm 名と突き合わせない）。
 realm_import_mp="$(dev_client_secret_realm_for_import deploy/keycloak/microservices-platform-realm.json)" || exit 1
-realm_import_args=("microservices-platform-realm.json=${realm_import_mp}")
+realm_import_args=("platform-realm.json=${realm_import_mp}")
 if [ -f "$ast_realm" ]; then
   realm_import_args+=("ai-stock-trading-realm.json=$(< "$ast_realm")")
 fi
@@ -471,6 +506,14 @@ else
   echo "    [PERSIST 既定] Keycloak(realm+runtime state)/Postgres/Qdrant(embeddings) を PVC 永続化（local-path）"
 fi
 kubectl apply -k "$INFRA_KUSTOMIZE"
+# NFR-18, ADR-0131, IADR-0522 (#1839): 旧 Redis（認証なし）を消す。kustomize の apply は宣言から消えたリソースを
+# 刈らないので、ここで消さないと既存クラスタに**認証なしのストアが残り続ける**（基準 D の穴が塞がらない）。
+kubectl -n "$INFRA_NS" delete deployment/redis service/redis --ignore-not-found
+# #1860 監査指摘 2: パスワードを変えたら Valkey を作り直す（起動時にしか設定を読まない）。BFF は [6/7] の後。
+if [ -n "$session_store_rotated" ]; then
+  echo "    session-store password changed: restarting $INFRA_NS/valkey（BFF は [6/7] の後に作り直す）"
+  kubectl -n "$INFRA_NS" rollout restart deploy/valkey
+fi
 echo "    waiting for infra to become Ready..."
 # IADR-0100 (#354 障害2): アプリ Pod（[6/7] MSP・後続 AST）が起動する前にノードの inotify 上限を引き上げておく
 # （inotify 枯渇による FileSystemWatcher クラッシュ＝広範 CrashLoopBackOff を防ぐ）。best-effort: busybox pull 等の
@@ -479,7 +522,7 @@ kubectl -n "$INFRA_NS" rollout status ds/inotify-sysctl --timeout=120s \
   || echo "    WARN: inotify-sysctl DaemonSet が未 Ready（best-effort・後追いで適用される）" >&2
 kubectl -n "$INFRA_NS" rollout status deploy/postgres --timeout=180s
 kubectl -n "$INFRA_NS" rollout status deploy/rabbitmq --timeout=180s
-kubectl -n "$INFRA_NS" rollout status deploy/redis --timeout=120s
+kubectl -n "$INFRA_NS" rollout status deploy/valkey --timeout=120s
 kubectl -n "$INFRA_NS" rollout status deploy/keycloak --timeout=300s
 kubectl -n "$INFRA_NS" rollout status deploy/qdrant --timeout=120s
 kubectl -n "$INFRA_NS" rollout status deploy/otel-collector --timeout=120s
@@ -498,6 +541,26 @@ kubectl -n "$INFRA_NS" rollout status deploy/reset-gate --timeout=120s
 # 器の readiness は上流（Keycloak）を映さない口なので、Keycloak の起動を待たずに Ready になる。
 kubectl -n "$INFRA_NS" rollout status deploy/reset-floor --timeout=120s
 
+# FR-05, NFR-09, ADR-0004/ADR-0026, IADR-0369 (#1088 / #324): realm JSON の差分を稼働 realm へ当てる。
+# 🔴 **`--import-realm` は既存 realm があると黙って飛ばす（IGNORE_EXISTING）。永続化（既定）で realm が
+#    PVC に残るようになった瞬間から、realm JSON を直しても稼働 realm は変わらない。** ここが唯一の反映経路である
+#    （旧 reconcile-backchannel-logout.sh の 1 値だけの後追い（IADR-0336 決定 3）を、宣言全体の差分へ一般化した）。
+# 🔴 pod 内で kcadm.sh を exec しない（本体が OOMKilled になる）。同じ namespace の Job が Admin REST API を叩く。
+# NFR-09, IADR-0523（2026-10-09 追記 / #1846・PR #1864 監査）: **[6/7] の helm upgrade より前**（Keycloak の rollout の直後）に置き、
+#   **失敗したら止める（fail-closed）。** helm が入れる新しい Pod は audience（platform-api）を求めるので、realm が先に
+#   それを載せていないと既存クラスタの再実行は全 API が 401 になる（旧位置＝[7/7] の後では Job の完了＋トークン寿命
+#   最大 300 秒の窓が空き、追随が落ちれば WARN だけで 401 が恒久化した）。依存は [3/7] の ConfigMap keycloak-realms・
+#   Secret keycloak-admin と [4/7] の Keycloak だけで、[5/7] の Secret・[7/7] の ExternalName には依存しない
+#   （Job は platform-infra で http://keycloak:8080 を叩く）。新規クラスタは Keycloak が同じ宣言を取り込んだ直後なので
+#   差分は無いか後追いで収束し、収束しなければ check-stack-ready.js の G9 がもともと落とす（＝新規の経路を新たに塞がない）。
+echo "==> Keycloak realm の追随（宣言との差分を Job で当てる / 冪等 / helm の前 / IADR-0369・IADR-0523）"
+if ! bash "$ROOT/deploy/local/keycloak-setup/reconcile-realm.sh"; then
+  echo "ERROR: realm の追随に失敗した。helm upgrade（[6/7]）へ進まずに止める —— 新しい Pod は audience（platform-api）を求め、" >&2
+  echo "       追随していない realm のトークンは全 API で 401 になる（IADR-0523）。原因を直して up を再実行するか、" >&2
+  echo "       bash deploy/local/keycloak-setup/reconcile-realm.sh で個別に当ててから再実行する。" >&2
+  exit 1
+fi
+
 echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
 # ［IADR-0461 決定 5 / #1499］MinIO Console の OIDC client secret（minio-oidc。IADR-0093）の作成はここにあったが
@@ -510,6 +573,11 @@ kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
 if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" bff-oidc "client-secret=${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}"
 fi
+# NFR-18, ADR-0131 決定 4 の 2, IADR-0522 (#1839): BFF が読むセッションストアのパスワード（[3/7] と同じ値）。
+# helm の deployment.yaml が**非 optional** な secretKeyRef で読むので、無ければ bff-service は起動しない。
+# ESO の有無によらず置く（[3/7] の platform-infra 側と同じ bootstrap）。旧名の ExternalName `redis` は消す。
+apply_secret "$MSP_NS" session-store-credentials "password=$session_store_password"
+kubectl -n "$MSP_NS" delete service/redis --ignore-not-found
 # FR-05, FR-09, SC-17, ADR-0004/ADR-0026, IADR-0301/IADR-0329 (#1101): SC-17（利用者アカウント管理）の
 # 変更を Keycloak Admin REST へ反映する機密クライアント `identity-admin` の client secret。
 # helm の deployment.yaml が **非 optional** な secretKeyRef で参照するため、これが無いと
@@ -627,7 +695,7 @@ fi
 #   ［2026-10-01 / #1710］ISTIO_MTLS_MODE を付けない**再実行**は現行の mesh.mtlsMode を引き継ぐ（[2/7] の前の判定。IADR-0487）。
 #   PERMISSIVE へ戻すのも ISTIO_MTLS_MODE=PERMISSIVE の明示だけである。
 #   いきなり STRICT にすると、サイドカーの入っていない platform-infra（postgres / keycloak /
-#   rabbitmq / qdrant / redis …）との通信と、注入前の Pod からの通信が**同時に**壊れる。
+#   rabbitmq / qdrant / valkey …）との通信と、注入前の Pod からの通信が**同時に**壊れる。
 #   段取りは「注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT」である。
 ISTIO_MESH_ARGS=""
 if [ "${ISTIO:-}" = "1" ]; then
@@ -721,12 +789,18 @@ fi
 helm upgrade --install msp deploy/helm/microservices-platform \
   -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}"
 if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; trap - EXIT; fi
+# NFR-18, IADR-0522（#1860 監査指摘 2）: セッションストアのパスワードを変えたときだけ、Valkey（[4/7]）の**後に**
+#   BFF を作り直す（env は Pod の起動時にしか読まれない。helm upgrade は BFF のテンプレートを変えない）。
+if [ -n "$session_store_rotated" ]; then
+  echo "    session-store password changed: restarting $MSP_NS/bff-service"
+  kubectl -n "$MSP_NS" rollout restart deploy/bff-service
+fi
 
 # #782: サイドカーは**既存 Pod には後から入らない**。注入ラベルを付けたあとに作り直す。
 # helm upgrade だけでは Pod テンプレートが変わらないサービスが残るため、明示的に restart する。
 if [ "${ISTIO:-}" = "1" ]; then
   # #1316: **別名を注入の前に当てる。** 注入の rollout restart で作り直された Pod は、
-  # 依存（postgres / rabbitmq / redis …）の ExternalName 別名がまだ無い状態で起動する。
+  # 依存（postgres / rabbitmq / valkey …）の ExternalName 別名がまだ無い状態で起動する。
   # 実測（run 34037589847）: 14:05:33 注入 → 14:06:07 `connection refused` → 14:18:33 別名（**12 分後**）。
   # health が 500 を返して probe が落ち、**8 回まで再起動**し、rollout status は 10 分の空待ちで WARN を出す。
   # 🔴 **ISTIO 無しでは表面化しない** —— 作り直しが起きないので、別名が [7/7] で当たるまで Pod は待てる。
@@ -754,16 +828,6 @@ kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
 # #1115: 逆向き（platform-infra -> microservices-platform）。Keycloak がバックチャネルログアウトを
 # 素のサービス名 `bff-service` で叩けるようにする。理由はファイル冒頭の注記を参照。
 kubectl apply -f deploy/local/aliases/platform-infra-externalnames.yaml
-
-# FR-05, NFR-09, ADR-0004/ADR-0026, IADR-0369 (#1088 / #324): realm JSON の差分を稼働 realm へ当てる。
-# 🔴 **`--import-realm` は既存 realm があると黙って飛ばす（IGNORE_EXISTING）。永続化（既定）で realm が
-#    PVC に残るようになった瞬間から、realm JSON を直しても稼働 realm は変わらない。** ここが唯一の反映経路である
-#    （旧 reconcile-backchannel-logout.sh の 1 値だけの後追い（IADR-0336 決定 3）を、宣言全体の差分へ一般化した）。
-# 🔴 pod 内で kcadm.sh を exec しない（本体が OOMKilled になる）。同じ namespace の Job が Admin REST API を叩く。
-# best-effort: 失敗しても up 全体は止めない（再実行は冪等）。**fail-closed の門は check-stack-ready.js の G9。**
-echo "==> Keycloak realm の追随（宣言との差分を Job で当てる / 冪等 / IADR-0369）"
-bash "$ROOT/deploy/local/keycloak-setup/reconcile-realm.sh" \
-  || echo "    WARN: realm の追随に失敗（best-effort）。bash deploy/local/keycloak-setup/reconcile-realm.sh で再実行できる" >&2
 
 # ADR-0006, IADR-0077 (AST#24): opt-in オーバーレイ（既定オフ・fail-safe）。
 # 既定（env 未設定）では以下は一切実行されず、上記 [1/7]..[7/7] の挙動は不変。
@@ -803,6 +867,27 @@ if [ "${OBSERVABILITY:-}" = "1" ]; then
   echo "    Grafana: kubectl -n $INFRA_NS port-forward svc/grafana 3000:3000  # http://localhost:3000"
 fi
 
+# NFR-18, ADR-0132, IADR-0525 (#1840): 移行の門。稼働中の deploy/vault が旧 Vault のイメージで、PVC vault-data が在るなら、
+# 永続化オーバーレイ（OpenBao）で上書きする前に止める。**vault-persistence を apply するすべての経路の直前で呼ぶ**
+# （VAULT ブロックと、ESO ブロックの当て直し。#1866 監査: ESO=1 単独の経路が門を通らずに上書きしていた）。
+# 🔴 旧 Vault の file ストレージは OpenBao で開けない。移さずに入れ替えると Pod 内ラッパーが起動を拒み（データは守る）、
+#    rollout の待ちが 180 秒の時間切れで落ちるだけで理由が見えず、Deployment のイメージも OpenBao に変わって手順書の手順 4 が
+#    旧イメージを取れなくなる。ここで手順書を名指しして止める。移行が済むと deploy/vault は OpenBao のイメージになり、門は通る。
+vault_openbao_migration_gate() {
+  local live_vault_image
+  live_vault_image="$(kubectl -n "$INFRA_NS" get deploy vault -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+  case "$live_vault_image" in
+    *hashicorp/vault*)
+      if kubectl -n "$INFRA_NS" get pvc vault-data >/dev/null 2>&1; then
+        echo "ERROR: 稼働中の deploy/vault は旧 Vault（$live_vault_image）で、永続化の PVC vault-data が在る。" >&2
+        echo "       OpenBao は旧 Vault の file ストレージを開けないため、このまま入れ替えない（画面 SC-22 で入れた秘密を失わないため）。" >&2
+        echo "       先に移行する: docs/operations/secret-store-openbao-migration-runbook.md" >&2
+        exit 1
+      fi
+      ;;
+  esac
+}
+
 if [ "${VAULT:-}" = "1" ]; then
   echo "==> [opt-in] Vault dev + ClusterSecretStore (要 External Secrets Operator CRD)"
   # dev root トークン（dev 既定 or env 上書き・平文は Git に載せない）。
@@ -814,17 +899,20 @@ if [ "${VAULT:-}" = "1" ]; then
   if [ "${ESO:-}" != "1" ]; then
     apply_secret "$INFRA_NS" vault-oidc "client-secret=${VAULT_OIDC_CLIENT_SECRET:-vault-dev-secret-change-me}"
   fi
-  # IADR-0457 (#1479): Vault の永続化は **既定オン**（file ストレージを PVC に置き、Pod 内ラッパーが init / unseal /
+  # IADR-0457 (#1479): Vault の永続化は **既定オン**（ストレージを PVC に置き〔IADR-0525 / #1840 から OpenBao の raft〕、Pod 内ラッパーが init / unseal /
   # 固定 root トークン / kv-v2 mount を毎回行う）。-dev（インメモリ）は k3s 再起動で全状態（k8s auth・policy・KV・
   # OIDC・画面 SC-22 で入れた秘密）を失い、ESO の store が InvalidProviderConfig に倒れた（2026-09-16 実測）。
   # opt-out は上の [4/7] と同じ PERSIST=0（使い捨てスタック専用・従来の deploy/local/vault とバイト等価）。
   # StorageClass の不在は [4/7] のガードが先に止める。
+  # NFR-18, ADR-0132, IADR-0525 (#1840): 製品は OpenBao（Vault API 互換・MPL-2.0）。永続化のストレージは raft（OpenBao は
+  # file ストレージを持たない）。名前（deploy/vault・VAULT=1・Secret vault-dev-token 等）は変えていない（ADR-0132 決定 2）。
   VAULT_KUSTOMIZE="deploy/local/vault-persistence"
   if [ "${PERSIST:-1}" = "0" ]; then
     VAULT_KUSTOMIZE="deploy/local/vault"
-    echo "    [PERSIST=0] Vault は -dev（インメモリ・再起動で揮発）"
+    echo "    [PERSIST=0] 秘匿管理（OpenBao）は -dev（インメモリ・再起動で揮発）"
   else
-    echo "    [PERSIST 既定] Vault を file ストレージ＋PVC で永続化（Pod 内ラッパーが init / unseal / 固定トークンを自動化）"
+    echo "    [PERSIST 既定] 秘匿管理（OpenBao）を raft ストレージ＋PVC で永続化（Pod 内ラッパーが init / unseal / 固定トークンを自動化）"
+    vault_openbao_migration_gate
   fi
   if kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1; then
     kubectl apply -k "$VAULT_KUSTOMIZE"
@@ -889,6 +977,7 @@ if [ "${ESO:-}" = "1" ]; then
   # フォールバックで立っている。ESO を入れた「後」にここで永続化オーバーレイを当て直し、unseal を待ってから seed する
   # （当て直さないと初回 run の seed と画面の値がインメモリに入り、2 回目の run で消える）。既に永続化版なら unchanged。
   if [ "${PERSIST:-1}" != "0" ]; then
+    vault_openbao_migration_gate
     kubectl apply -k deploy/local/vault-persistence
     kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
   fi

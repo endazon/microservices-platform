@@ -3,15 +3,15 @@ title: how-to — ローカル開発フロー
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-09-25
+updated: 2026-10-09
 author: claude
 ---
 <!-- trace:
-ids: [FR-13, FR-14, UC-07]
-adrs: [ADR-0032, ADR-0048, ADR-0106]
-iadrs: [IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0273, IADR-0331, IADR-0429, IADR-0461]
-specs: [20260831_issue-1092_planning-submodule-residual-refs, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1499_object-storage-seaweedfs]
-issues: [#1092, #1393, #1499]
+ids: [NFR-18, FR-13, FR-14, UC-07]
+adrs: [ADR-0131, ADR-0032, ADR-0048, ADR-0106]
+iadrs: [IADR-0524, IADR-0522, IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0273, IADR-0331, IADR-0429, IADR-0461]
+specs: [20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20260831_issue-1092_planning-submodule-residual-refs, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1499_object-storage-seaweedfs]
+issues: [#1859, #1839, #1092, #1393, #1499, planning#750]
 -->
 
 # how-to: ローカル開発フロー
@@ -81,7 +81,7 @@ Keycloak ログインを伴う開発には、dev スタック（`docker compose 
 
 ## 5. インフラ + 全サービスの起動（dev）
 
-`docker-compose.yml` は Postgres / RabbitMQ / Redis / Keycloak / Qdrant / SeaweedFS（オブジェクトストレージ）/ 可観測性スタック
+`docker-compose.yml` は Postgres / RabbitMQ / Valkey（セッションストア。認証必須・ホストへ公開しない）/ Keycloak / Qdrant / SeaweedFS（オブジェクトストレージ）/ 可観測性スタック
 （OTel Collector・Prometheus・Loki・Tempo・Grafana）と、全マイクロサービス・BFF・フロントエンドを
 定義する（[`deploy/docker-compose.yml`](../../deploy/docker-compose.yml)）。
 
@@ -132,7 +132,7 @@ Wiki.js を使う機能を試す場合、初回のみ管理 UI（`http://localho
 | --- | --- |
 | `src/ai-stock-trading/` が空 | `git submodule update --init --recursive` を実行する |
 | 計画書（FR/UC/SC/計画 ADR）が見つからない | **本リポジトリには入っていない**（submodule ではない）。隣接クローン `../project-planning` を用意するか、GitHub 上で開く |
-| Keycloak の healthcheck が unhealthy のまま | Keycloak 24 イメージは curl/wget 非搭載。compose の healthcheck は bash の `/dev/tcp` で検査するため数十秒〜1分程度は正常な起動待ち（`deploy/docker-compose.yml` のコメント参照） |
+| Keycloak の healthcheck が unhealthy のまま | Keycloak のイメージは curl/wget 非搭載。compose の healthcheck は bash の `/dev/tcp` で管理用のポート 9000 の `/health/ready` を検査するため数十秒〜1分程度は正常な起動待ち（`deploy/docker-compose.yml` のコメント参照）。8080 の `/health/ready` は 26 では 404 |
 | Wiki.js の OIDC ログインが `Failed to fetch user profile` | Issuer は `http://localhost:8080/realms/platform`（ブラウザ経路）で設定する。`keycloak:8080` を指定すると失敗する（`docs/operations/operations.md` 実測記録） |
 | フロントエンドから BFF に到達しない | dev は `pnpm run dev` の Vite プロキシ（`VITE_BFF_TARGET` で上書き可）または compose の Caddy `/bff` プロキシ経由。BFF(5000) が起動しているか確認する |
 | LLM/埋め込み呼び出しが失敗する | `.env`（gitignore 済み）に `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY` 等を設定する（`deploy/docker-compose.yml` の `llm-gateway` 環境変数を参照）。キー未設定でも起動はするが呼び出しは失敗する |

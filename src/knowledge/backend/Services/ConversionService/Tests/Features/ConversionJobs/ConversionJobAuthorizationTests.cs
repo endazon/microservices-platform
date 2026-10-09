@@ -95,6 +95,35 @@ public class ConversionJobAuthorizationTests
 
     // NFR-09, ADR-0109 決定 3: **検証しているのは「Bearer が付いていること」ではなく資格情報そのもの**である。
     // 署名が違う（偽造）・発行元が違う・期限切れのトークンは、管理者ロールを名乗っていても 401。
+    // NFR-09, 計画 ADR-0036, [[IADR-0523]] (#1846): audience（platform-api）を持たないトークンは、管理者を名乗っても 401。
+    // aud が無い・MCP クライアント（mcp-server）・運用ツール（grafana）・Keycloak 既定の account はいずれも
+    // **platform の API 宛てに発行されていない**（realm の `platform-api-audience` スコープを持たないクライアントのトークン）。
+    [Theory]
+    [InlineData(null)]
+    [InlineData("mcp-server")]
+    [InlineData("grafana")]
+    [InlineData("account")]
+    public async Task TokenWithoutPlatformAudience_EvenClaimingAdmin_Returns401(string? audience)
+    {
+        using var factory = new Factory();
+        var id = await SeedFailedJobAsync(factory);
+        var token = TestUserTokens.Issue("mallory", [AdminRole], audience: audience);
+
+        (await SendAsync(factory, "GET", "/jobs", id, token)).Should().Be(HttpStatusCode.Unauthorized);
+        (await SendAsync(factory, "POST", "/jobs/{id}/retry", id, token)).Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // #1846 陽性対照: 共有の audience に加えて他の値を併せ持つトークン（aud が配列）は通る。
+    [Fact]
+    public async Task TokenWithPlatformAudienceAmongOthers_PassesAuthentication()
+    {
+        using var factory = new Factory();
+        var id = await SeedFailedJobAsync(factory);
+        var token = TestUserTokens.Issue("olivia", [OperatorRole], audience: null, extraAudiences: ["account", "platform-api"]);
+
+        (await SendAsync(factory, "GET", "/jobs", id, token)).Should().Be(HttpStatusCode.OK);
+    }
+
     [Theory]
     [InlineData("forged")]
     [InlineData("foreign-issuer")]

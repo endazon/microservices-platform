@@ -1,5 +1,8 @@
-# ADR-0006, IADR-0077 (AST#24): Vault **dev モード**（opt-in・platform-infra）。
-# ⚠️ dev 専用（インメモリ・単一 Pod・unseal 不要）。**本番の Vault 化充足ではない**（本番は unseal/監査/HA/ローテーション）。
+# ADR-0006, IADR-0077 (AST#24): 秘匿管理の **dev モード**（opt-in・platform-infra）。
+# NFR-18, ADR-0132, IADR-0525 (#1840): 製品は **OpenBao**（Vault API 互換・MPL-2.0）。HashiCorp Vault（1.15 以降 BUSL-1.1・
+#   1.16 はコミュニティ保守も終了）から差し替えた。Deployment・Service・ServiceAccount の名前 `vault` と、Secret・opt-in の
+#   フラグ（VAULT=1）・アプリの設定キーは変えていない（ADR-0132 決定 2。計画中の「Vault」は Vault API 互換の製品と読む）。
+# ⚠️ dev 専用（インメモリ・単一 Pod・unseal 不要）。**本番の秘匿管理の充足ではない**（本番は unseal/監査/HA/ローテーション）。
 # root トークンは平文で置かない: Secret `vault-dev-token`（k8s-local-up.sh が dev 既定 or env で作成）から注入する。
 # IADR-0096 (#310): Vault 専用 ServiceAccount。k8s auth の TokenReview 権限（system:auth-delegator）は
 # 共有の default SA ではなく本 SA にのみ bind する（blast radius を Vault に限定）。権限付与自体は ESO=1 の
@@ -29,16 +32,25 @@ spec:
       serviceAccountName: vault
       containers:
         - name: vault
-          image: hashicorp/vault:1.16@sha256:c5e04689611cb864b8b6247a6a845e0bdc059998f39b5c8a659562287379525c
+          # OpenBao 2.7.1（index の digest。匿名で 2 回解決して一致。2026-10-09）。イメージは `vault` を `bao` へのリンクとして同梱する。
+          image: openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf
           args: ["server", "-dev", "-dev-listen-address=0.0.0.0:8200"]
           env:
             # dev root トークン（平文コミットしない・Secret 経由）。
+            # 🔴 OpenBao のサーバ（-dev）は BAO_DEV_ROOT_TOKEN_ID しか読まない（イメージの docker-entrypoint.sh が
+            #    `-dev-root-token-id="$BAO_DEV_ROOT_TOKEN_ID"` を渡す。VAULT_* だけだと乱数の root トークンになる。実測）。
+            - name: BAO_DEV_ROOT_TOKEN_ID
+              valueFrom:
+                secretKeyRef: { name: vault-dev-token, key: token }
+            # 同じ値を VAULT_DEV_ROOT_TOKEN_ID でも渡す。Pod 内で root として操作する手順（eso/bootstrap.sh・手順書の
+            # `kubectl exec … VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"`）と永続化のラッパーがこの名前で読む。
+            # CLI は BAO_* が無いとき VAULT_ADDR / VAULT_TOKEN を読むので、名前を改めずに動く（実測）。
             - name: VAULT_DEV_ROOT_TOKEN_ID
               valueFrom:
                 secretKeyRef: { name: vault-dev-token, key: token }
           ports:
             - { containerPort: 8200, name: http }
-          # dev モードは mlock を無効化するため IPC_LOCK capability は不要（付与しない）。
+          # OpenBao は mlock を使わない（設定 disable_mlock を与えると未対応の項目として警告される。実測）ので IPC_LOCK capability は不要（付与しない）。
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits: { cpu: 500m, memory: 512Mi }

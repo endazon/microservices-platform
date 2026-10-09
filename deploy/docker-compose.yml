@@ -73,20 +73,38 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
-    ports:
-      - "6379:6379"
+  # NFR-18, ADR-0131 決定 1・4, IADR-0522 (#1839): キャッシュ・セッションストア（BFF のセッション・鍵リング・SC-22 の
+  # 書き込み記録）。Redis 7.4 以降が OSS でなくなったため Valkey へ差し替えた（BSD-3。RESP 互換で、BFF は
+  # StackExchange.Redis のまま）。🔴 **認証なしでは起動しない** —— パスワードが空なら valkey-server を呼ばずに終わる。
+  # パスワードは here-document で標準入力の設定（`valkey-server -`）へ渡し、プロセスの引数へ載せない（#1793）。
+  # 🔴 **ホストへ 6379 を公開しない**（BFF は compose のネットワークで届く。ADR-0131 決定 4 の 2）。
+  # 既定のパスワードは dev 用の置き場で、BFF の `BffSession__RedisPassword` と同じ値にする（.env の
+  # SESSION_STORE_PASSWORD で両方を上書きする）。起動スクリプトは統合試験の定数と同じ（ValkeyTestContainer）。
+  # 旧 `redis` コンテナと volume `redis-data` は読まない（dev のセッションだけ。`up --remove-orphans` で消える）。
+  valkey:
+    image: valkey/valkey:9.1-alpine@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11
+    environment:
+      SESSION_STORE_PASSWORD: ${SESSION_STORE_PASSWORD:-session-store-dev-password-change-me}
+    command:
+      - sh
+      - -c
+      - |
+        [ -n "$$SESSION_STORE_PASSWORD" ] || { echo 'valkey: SESSION_STORE_PASSWORD が空。認証なしでは起動しない' >&2; exit 1; }
+        exec docker-entrypoint.sh valkey-server - <<EOF
+        requirepass "$$SESSION_STORE_PASSWORD"
+        EOF
     volumes:
-      - redis-data:/data
+      - valkey-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # 認証なしの ping は NOAUTH を返しても終了コード 0 なので、応答の文字列で判定する。
+      test: ["CMD-SHELL", "VALKEYCLI_AUTH=\"$$SESSION_STORE_PASSWORD\" valkey-cli ping | grep -qx PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
+    # IADR-0524 (#1859): 24.0 → 26.7.4（CVE-2024-8883 の修正を含む 26 系。deploy/local/infra/keycloak.yaml と同じ参照）。
+    image: quay.io/keycloak/keycloak:26.7.4@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c
     # ADR-0004, FR-13/UC-07, IADR-0020: realm `platform` を import して起動する。
     # wiki-js クライアント（OIDC）と ABAC 属性クレーム（clearance/department/groups）を含む。
     command: ["start-dev", "--import-realm"]
@@ -96,8 +114,11 @@ services:
       # Issue #88 稼働 PoC: issuer をリクエストホストで揺らさず http://localhost:8080 に固定する。
       # 固定しないと、ブラウザ経路（localhost）で発行されたトークンの iss と、コンテナ内経路
       # （keycloak:8080）の userinfo/JWT 検証が食い違い、Wiki.js の OIDC ログインが失敗する。
-      KC_HOSTNAME_URL: http://localhost:8080
-      # Issue #118 監査: /health/ready は既定で無効のため有効化する（下記 healthcheck が参照）。
+      # IADR-0524 (#1859): 26 は hostname v1 の KC_HOSTNAME_URL を警告だけ出して無視する（issuer が揺れる）。v2 の
+      # KC_HOSTNAME に完全な URL を与え、バックチャネル（token・userinfo・jwks）はコンテナ内の経路（keycloak:8080）で描く。
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      # Issue #118 監査: /health/ready は既定で無効のため有効化する（下記 healthcheck が参照。26 は管理用のポート 9000 に出る）。
       KC_HEALTH_ENABLED: "true"
       # Issue #282, IADR-0079: 共有 Postgres を外部 DB として利用し、runtime state（ユーザー・
       # シークレット・セッション等）を永続化する。start-dev を維持したまま KC_DB で H2 を上書きする。
@@ -115,15 +136,17 @@ services:
       KC_SPI_THEME_CACHE_TEMPLATES: "false"
       KC_SPI_THEME_STATIC_MAX_AGE: "-1"
     volumes:
-      - ./keycloak/microservices-platform-realm.json:/opt/keycloak/data/import/microservices-platform-realm.json:ro
+      # IADR-0524: 26 は取り込みのファイル名が `<realm>-realm.json` でないと起動しない（realm 名は platform）。
+      - ./keycloak/microservices-platform-realm.json:/opt/keycloak/data/import/platform-realm.json:ro
       - ./keycloak/themes/platform:/opt/keycloak/themes/platform:ro
     ports:
       - "8080:8080"
-    # Issue #118 監査: Keycloak 24 イメージは curl/wget 非搭載で curl 検査は常に unhealthy になる
-    # （実測）。/dev/tcp は bash 固有機能のため、qdrant と同様シェルを bash に明示する
+    # Issue #118 監査: Keycloak のイメージは curl/wget 非搭載で curl 検査は常に unhealthy になる
+    # （24・26.7.4 とも実測）。/dev/tcp は bash 固有機能のため、qdrant と同様シェルを bash に明示する
     # （CMD-SHELL の暗黙 /bin/sh 解決に依存しない）。bash で /health/ready を検査する。
+    # IADR-0524: 26 のヘルスは管理用のポート 9000（8080 の /health/ready は 404）。ホストへは公開しない。
     healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -966,7 +989,9 @@ services:
       - "5000:8080"
     environment:
       <<: *common-env
-      Redis__ConnectionString: redis:6379
+      # NFR-18, ADR-0131, IADR-0522 (#1839): セッションストアのパスワード（上の valkey と同じ値）。接続先は
+      # コード既定の `valkey:6379` のまま（IADR-0316 の判断を引き継ぐ）。
+      BffSession__RedisPassword: ${SESSION_STORE_PASSWORD:-session-store-dev-password-change-me}
       # NFR, SC-13, ADR-0026/ADR-0032, IADR-0251/IADR-0273, #1107: BFF セッション（Token Handler）。
       # 🔴 これが無いと `BffSessionOptions.ClientSecret` が空のままになり、BFF はコンフィデンシャル
       # クライアントとして認証できず **`GET /bff/auth/login` が 500** で落ちる（PAR 端点が 401 を返す）。
@@ -975,10 +1000,10 @@ services:
       BffSession__ClientId: bff
       BffSession__ClientSecret: ${BFF_OIDC_CLIENT_SECRET:-bff-dev-secret-change-me}
       # metadata は in-cluster の http から引く（Auth__Authority と同じ発行元）。ブラウザ向けの
-      # 認可端点は Keycloak が KC_HOSTNAME_URL から描くため、ここを in-cluster にしても browser 到達は壊れない。
+      # 認可端点は Keycloak が KC_HOSTNAME から描くため、ここを in-cluster にしても browser 到達は壊れない（#1859 までは KC_HOSTNAME_URL）。
       BffSession__MetadataAddress: http://keycloak:8080/realms/platform/.well-known/openid-configuration
       # RequireHttpsMetadata / RedisConnectionString / CookieName / SessionLifetimeSeconds は
-      # コード既定のままにする（既定が compose の実態および realm と一致する。IADR-0316）。
+      # コード既定のままにする（既定が compose の実態および realm と一致する。IADR-0316・IADR-0522）。
       # FR-15, IADR-0029, #146: 宣言（正の pipeline.json）を BFF にマウントし、ドリフト検出の突合基準にする。
       # これが無いと BFF の宣言が空になり、実効の全購読が UndeclaredSubscription と誤判定される（#118 監査）。
       Pipeline__ConfigPath: /etc/microservices-platform/pipeline/pipeline.json
@@ -1077,7 +1102,7 @@ services:
     volumes:
       - ./helm/microservices-platform/files/pipeline.json:/etc/microservices-platform/pipeline/pipeline.json:ro
     depends_on:
-      redis:
+      valkey:
         condition: service_healthy
       feedback-service:
         condition: service_started
@@ -1182,7 +1207,7 @@ services:
 volumes:
   postgres-data:
   rabbitmq-data:
-  redis-data:
+  valkey-data:
   qdrant-data:
   seaweedfs-data:
   prometheus-data:

@@ -71,12 +71,73 @@ public class AuthExtensionsTests
         options.RequireHttpsMetadata.Should().BeFalse();
     }
 
+    // NFR-09, 計画 ADR-0036, [[IADR-0523]] (#1846 / planning#770。利用者裁定 2026-10-09 の方式 C):
+    // 既定は共有の audience（platform-api）ただ 1 つを検証する。
     [Fact]
-    public void Audience検証は行わない()
+    public void Audienceを検証し既定はplatform_apiだけを受け付ける()
     {
         var options = BuildJwtBearerOptions([]);
 
-        options.TokenValidationParameters.ValidateAudience.Should().BeFalse();
+        options.TokenValidationParameters.ValidateAudience.Should().BeTrue();
+        options.TokenValidationParameters.ValidAudiences.Should().Equal("platform-api");
+        options.TokenValidationParameters.ValidAudience.Should().BeNull();
+        AuthExtensions.DefaultAudience.Should().Be("platform-api");
+    }
+
+    // #1846: サービスごとの audience へは構成（Auth:Audiences）だけで移れる。単一の文字列（env）と配列の両方を受ける。
+    [Theory]
+    [InlineData("document-service", new[] { "document-service" })]
+    [InlineData("platform-api,document-service", new[] { "platform-api", "document-service" })]
+    [InlineData(" platform-api  document-service ", new[] { "platform-api", "document-service" })]
+    [InlineData("platform-api,platform-api", new[] { "platform-api" })]
+    public void Auth_Audiencesの文字列を区切り文字で分割して受け付ける(string raw, string[] expected)
+    {
+        var options = BuildJwtBearerOptions(new Dictionary<string, string?> { ["Auth:Audiences"] = raw });
+
+        options.TokenValidationParameters.ValidateAudience.Should().BeTrue();
+        options.TokenValidationParameters.ValidAudiences.Should().Equal(expected);
+    }
+
+    [Fact]
+    public void Auth_Audiencesの配列を受け付ける()
+    {
+        var options = BuildJwtBearerOptions(new Dictionary<string, string?>
+        {
+            ["Auth:Audiences:0"] = "platform-api",
+            ["Auth:Audiences:1"] = "graph-service",
+        });
+
+        options.TokenValidationParameters.ValidAudiences.Should().Equal("platform-api", "graph-service");
+    }
+
+    // 🔴 #1846: 設定されているのに空なら起動を止める（検証しない形へ黙って縮退させない）。登録の時点で投げる。
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(" , ")]
+    public void Auth_Audiencesが空なら登録の時点で例外(string raw)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Auth:Audiences"] = raw }).Build();
+
+        var act = () => new ServiceCollection().AddPlatformAuth(config);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*Auth:Audiences*");
+    }
+
+    // 🔴 FR-16, 計画 ADR-0134 決定 1, #1854 / #1846: mcp-server は MCP クライアントのトークンの audience で、/mcp だけが受け付ける。
+    // 既定のスキームに入れると MCP クライアントのトークンが platform の API を通るので、起動を止める。
+    [Theory]
+    [InlineData("mcp-server")]
+    [InlineData("platform-api,mcp-server")]
+    public void Auth_Audiencesにmcp_serverを入れると登録の時点で例外(string raw)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Auth:Audiences"] = raw }).Build();
+
+        var act = () => new ServiceCollection().AddPlatformAuth(config);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*mcp-server*");
     }
 
     [Fact]

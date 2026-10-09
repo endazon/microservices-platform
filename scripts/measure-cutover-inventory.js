@@ -513,9 +513,9 @@ async function collect(databases) {
   const keycloak = await tryCollect('Keycloak', () => {
     const pod = podName(infra, 'app=keycloak');
     const kcadm = (args) => run('kubectl', ['-n', infra, 'exec', pod, '--', '/opt/keycloak/bin/kcadm.sh', ...args], `kcadm ${args[0]}`);
-    // NFR-18 (#1793): パスワードを kubectl と Pod 内 kcadm の引数へ載せない。`--password` を省き stdin（`exec -i`）で渡す
-    // （Keycloak 24 の `config credentials` は省くと stdin から読む）。
-    run('kubectl', ['-n', infra, 'exec', '-i', pod, '--', '/opt/keycloak/bin/kcadm.sh', 'config', 'credentials',
+    // NFR-18 (#1793): パスワードを kubectl と Pod 内 kcadm の引数へ載せない。stdin（`exec -i`）で Pod 内の sh へ渡し、env `KC_CLI_PASSWORD` で
+    // kcadm へ渡す（Keycloak 24 は `--password` を省くと stdin から読んだが、26 は端末が無いと読まない。IADR-0524 / #1859）。
+    run('kubectl', ['-n', infra, 'exec', '-i', pod, '--', 'sh', '-c', 'IFS= read -r KC_CLI_PASSWORD && export KC_CLI_PASSWORD && exec /opt/keycloak/bin/kcadm.sh "$@"', 'kcadm-login', 'config', 'credentials',
       '--server', env('CUTOVER_KC_INTERNAL_URL', 'http://localhost:8080'), '--realm', 'master',
       '--user', env('CUTOVER_KC_ADMIN_USER', 'admin')], 'kcadm config', `${env('CUTOVER_KC_ADMIN_PASSWORD', 'admin')}\n`);
     const realms = JSON.parse(kcadm(['get', 'realms', '--fields', 'realm'])).map((r) => r.realm);

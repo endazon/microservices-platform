@@ -338,10 +338,26 @@ acquire_session() {
   esac
   [ "$verbose" = "1" ] && pass "BFF のログイン開始が認可端点へ redirect する（${authz_location%%\?*}）"
   # (b) 認可端点 → ログイン画面。
-  login_html=$(curl -s $CURL_K -c "$jar" -b "$jar" -m 15 "$authz_location")
+  #     IADR-0524 (#1859): Keycloak 26 は PAR の request_uri を受けると、**同じ認証基盤の login-actions/** へ 302 で
+  #     1 段送ってから画面を返す（認証セッションのクッキーに結び付いた遷移。26.7.4 で実測。24 は認可端点が直接 200 だった）。
+  #     追うのは「issuer と同じ origin の /realms/<realm>/login-actions/」だけで、最大 3 段（ほかの先・それ以上は追わずに失敗させる。
+  #     クライアントへのリダイレクト〔コードつき〕をここで黙って辿らない）。
+  local page_url="$authz_location" page_hdr hop next_loc=""
+  page_hdr=$(mktemp)
+  for hop in 0 1 2 3; do
+    : > "$page_hdr"
+    login_html=$(curl -s $CURL_K -c "$jar" -b "$jar" -m 15 -D "$page_hdr" "$page_url")
+    next_loc=$(grep -i '^location:' "$page_hdr" | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: //')
+    case "$next_loc" in
+      "$KC_URL/realms/$REALM/login-actions/"*)
+        if [ "$hop" -lt 3 ]; then page_url="$next_loc"; continue; fi ;;
+    esac
+    break
+  done
+  rm -f "$page_hdr"
   form_action=$(printf '%s' "$login_html" | grep -o 'action="[^"]*"' | head -1 | sed 's/action="//; s/"$//; s/&amp;/\&/g')
   if [ -z "$form_action" ]; then
-    ACQUIRE_ERR="ログインフォームを取得できない（redirect_uri が realm に未登録の可能性）: $(printf '%s' "$login_html" | head -c 160)"
+    ACQUIRE_ERR="ログインフォームを取得できない（redirect_uri が realm に未登録の可能性）: Location=${next_loc:-（無し）} 本文=$(printf '%s' "$login_html" | head -c 160)"
     return 1
   fi
   [ "$verbose" = "1" ] && pass "ログインフォームが返る"

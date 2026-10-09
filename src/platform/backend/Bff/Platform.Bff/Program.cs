@@ -19,9 +19,18 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
+// NFR-18, IADR-0522: セッションストアのヘルスチェック用の接続（下の AddRedis）。構成は使う時に読む。
+var sessionStoreHealthConnection = new Lazy<StackExchange.Redis.IConnectionMultiplexer>(
+    () => StackExchange.Redis.ConnectionMultiplexer.Connect(BffSessionOptions.From(builder.Configuration).SessionStoreConfiguration()),
+    LazyThreadSafetyMode.PublicationOnly);
 builder.Services.AddPlatformHealthChecks()
+    // NFR-18, ADR-0131, IADR-0522 (#1839): セッションストアの疎通。接続先とパスワードはセッションと同じ
+    // `BffSession` の値から組む（ヘルスチェック専用の `Redis:ConnectionString` は廃した —— 置き場が 2 つだと
+    // 認証を足したときに片方だけ通る状態を作れる）。
+    // 構成はオブジェクトのまま渡す（文字列へ戻すとパスワードの `,` `=` が区切りとして誤読される。#1860 監査指摘 5）。
+    // 接続は失敗を記憶しない遅延（PublicationOnly）にする —— 初回の疎通失敗を以後ずっと返し続けないため。
     .AddRedis(
-        builder.Configuration["Redis:ConnectionString"] ?? "redis:6379",
+        _ => sessionStoreHealthConnection.Value,
         tags: ["ready"])
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:RetrievalService"] ?? "http://retrieval-service:5003") + "/health/live"),

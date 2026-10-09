@@ -264,6 +264,9 @@ const HELM_STUB = [
 const KUBECTL_STUB = [
   '#!/usr/bin/env bash',
   'echo "kubectl $*" >> "$STUB_LOG"',
+  // #1864 監査: `… | kubectl apply -f -` の標準入力を読み切る。読まずに終わると書き手（realm の追随の `sed … | kubectl apply -f -`）が
+  //   SIGPIPE で落ち、pipefail の下で非 0 になる（タイミング次第で揺れる）。追随を fail-closed にしたので、揺れが up の失敗として出る。
+  'case "$*" in *"apply -f -") cat >/dev/null 2>&1 || true;; esac',
   // #1830 / IADR-0517: 現在の kube context。既定は k3d が作る形（`k3d-<cluster>`）＝ dev の許可集合に入る。
   //   STUB_KUBE_CONTEXT で差し替える（空文字も与えられる＝読めない context）。STUB_KUBE_CONTEXT_FAIL=1 で問い合わせ自体を失敗させる。
   'if [ "${1:-} ${2:-}" = "config current-context" ]; then [ "${STUB_KUBE_CONTEXT_FAIL:-}" = "1" ] && { echo "error: current-context is not set" >&2; exit 1; }; printf "%s\\n" "${STUB_KUBE_CONTEXT-k3d-testcluster}"; exit 0; fi',
@@ -275,9 +278,15 @@ const KUBECTL_STUB = [
   '    printf "%s %s %s %s\\n" "$k" "$(stat -c %a "$src")" "$(stat -c %a "$(dirname "$src")")" "$(dirname "$src")" >> "$STUB_LOG.realm-import.modes";',
   '  else printf "%s %s=%s\\n" "$4" "$k" "$(cat "$src")" >> "$STUB_LOG.secrets"; fi;; esac; done; fi',
   'prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && { printf "%s\\n" "$(cat "$a")" >> "$STUB_LOG.patches"; }; prev="$a"; done',
+  // #1839 / IADR-0522: 既存のセッションストアの Secret（値は使い回す）。STUB_SESSION_STORE_EXISTING を与えたときだけ在るものとして返す。
+  'case "$*" in *"get secret session-store-credentials"*) [ -n "${STUB_SESSION_STORE_EXISTING:-}" ] && printf "%s" "$STUB_SESSION_STORE_EXISTING" | base64; exit 0;; esac',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
+  // NFR-18, IADR-0525 (#1840): 稼働中の deploy/vault のイメージ（移行の門の入力）。STUB_VAULT_LIVE_IMAGE で返す（既定は空 ＝ 新規クラスタ）。
+  //   PVC vault-data の有無は STUB_VAULT_PVC_ABSENT=1 で「無い」にする（既定は在る＝問い合わせは 0 を返す）。
+  'case "$*" in *"get deploy vault"*"containers[0].image"*) printf "%s" "${STUB_VAULT_LIVE_IMAGE:-}"; exit 0;; esac',
+  'if [ "${STUB_VAULT_PVC_ABSENT:-}" = "1" ]; then case "$*" in *"get pvc vault-data"*) exit 1;; esac; fi',
   'if [ "${STUB_TRAEFIK_ADMIN_MISSING:-}" = "1" ]; then case "$*" in *--for=jsonpath*svc/traefik*) exit 1;; esac; fi',
   // #1691: **HelmChartConfig kube-system/traefik の状態の模型**（状態は "$STUB_LOG.edge-istio" の有無で持つ）。
   //   - traefik-service-off.yaml の apply（istio-edge-up.sh [2/5]）で「Service 無し」になり、Service が消える。
@@ -316,6 +325,8 @@ const KUBECTL_STUB = [
   'esac',
   // IADR-0369 (#1088): realm 後追い Job（deploy/local/keycloak-setup/reconcile-realm.sh）の完了待ち。
   // conditions の問い合わせに Complete を返す（返さないと起動器が Job の完了を 300 秒待つ）。
+  // #1864 監査: STUB_REALM_RECONCILE_FAIL=1 で後追い Job を Failed にする（追随の失敗で helm の前に止まることの変異試験）。
+  'if [ "${STUB_REALM_RECONCILE_FAIL:-}" = "1" ]; then case "$*" in *"get job keycloak-realm-reconcile"*conditions*) echo "Failed "; exit 0;; esac; fi',
   'case "$*" in *"get job"*conditions*) echo "Complete "; exit 0;; esac',
   // #1699: バックアップの CronJob の門の入力。CronJob のイメージは実物のマニフェストと同じ形の参照を返す。
   //   受取人の ConfigMap は STUB_BACKUP_RECIPIENTS（中身そのもの）を返す。既定（未設定）は空 ＝ 受取人なし。
@@ -396,6 +407,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'RESET_GATE_CLIENT_SECRET',
     'IDENTITY_ADMIN_CLIENT_SECRET',
     'MCP_CLIENT_ADMIN_CLIENT_SECRET',
+    'SESSION_STORE_PASSWORD', // #1839: セッションストアのパスワード。漏れていると「乱数で作る」の既定が別の形で走る
   ]) {
     delete base[k];
   }
@@ -1042,7 +1054,8 @@ ok('PERSIST=0 + OBSERVABILITY=1: 素の observability が apply され、永続�
 // **realm JSON を変えたら up の再実行で稼働 realm へ届く**ことを、次の不変条件で固定する:
 //   (1) 期待値は起動器が実 realm ファイルから毎回作る ConfigMap keycloak-realms（単一情報源）である。
 //   (2) 後追い Job はその ConfigMap と、起動器が作る keycloak-admin Secret（username / password）を読む。
-//   (3) 後追いは Keycloak の rollout が済んだ後に走る。
+//   (3) 後追いは Keycloak の rollout が済んだ後、helm upgrade（[6/7]）の前に走り、失敗したら helm へ進まずに止まる
+//       （#1864 監査 / IADR-0523。新しい Pod は aud=platform-api を求めるので、realm が先に追随していないと全 API が 401）。
 //   (4) Keycloak pod で kcadm.sh を exec しない（本体が OOMKilled になる）。旧スクリプトは撤去済み。
 const KC_SETUP_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'keycloak-setup');
 const RECONCILE_JOB_YAML = fs.readFileSync(path.join(KC_SETUP_DIR, 'realm-reconcile-job.yaml'), 'utf8');
@@ -1068,6 +1081,24 @@ ok('IADR-0369: 後追いは Keycloak の rollout の後に走り、Job は毎回
     'スクリプト本体が ConfigMap 化されていない');
   // check モード（check-stack-ready の G9）では Job 名を変える＝apply の Job を消さない。
   assert.ok(!anyLineHas(DEFAULT.lines, 'keycloak-realm-check'), 'up の既定経路で check 用 Job が現れた');
+});
+
+ok('#1864 監査: realm の追随は helm upgrade（[6/7]）より前に走る（新しい Pod が aud=platform-api を求める前に realm が載せる）', () => {
+  const rolloutIdx = DEFAULT.lines.findIndex((l) => l.includes('rollout status deploy/keycloak'));
+  const del = DEFAULT.lines.findIndex((l) => l.includes('delete job keycloak-realm-reconcile'));
+  const helmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  const msp = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create namespace microservices-platform '));
+  assert.ok(rolloutIdx >= 0 && del >= 0 && helmIdx >= 0 && msp >= 0, `行が見つからない: rollout=${rolloutIdx} delete=${del} helm=${helmIdx} msp=${msp}`);
+  assert.ok(rolloutIdx < del && del < msp && msp < helmIdx, `順序が違う: rollout=${rolloutIdx} delete=${del} [5/7]=${msp} helm=${helmIdx}`);
+  assert.strictEqual(DEFAULT.status, 0, `既定の経路が非 0: ${DEFAULT.stderr}`);
+});
+
+ok('#1864 監査: realm の追随が失敗したら helm へ進まずに非 0 で止まる（変異試験。対照は既定の経路）', () => {
+  const r = runUp({ STUB_REALM_RECONCILE_FAIL: '1' });
+  assert.notStrictEqual(r.status, 0, '追随が失敗したのに up が成功で返った（WARN だけで 401 が恒久化する）');
+  assert.ok(r.lines.some((l) => l.includes('delete job keycloak-realm-reconcile')), '追随が走っていない（別の理由で止まった）');
+  assert.ok(!r.lines.some((l) => l.startsWith('helm upgrade --install msp ')), '追随の失敗のあとで helm upgrade へ進んだ');
+  assert.ok(/helm upgrade（\[6\/7\]）へ進まずに止める/.test(r.stderr), `止まる理由を告げていない:\n${r.stderr.slice(-600)}`);
 });
 
 ok('IADR-0369: 管理者名・パスワードの単一情報源は Secret keycloak-admin（Keycloak と Job が同じキーを読む）', () => {
@@ -1577,7 +1608,7 @@ ok('VAULT=1 (CRD 無): vault-dev.yaml のみ apply・kustomize 経路は通ら�
   assert.ok(/非永続/.test(res.stderr), 'CRD 無フォールバックが非永続であることを WARN で言わない');
 });
 
-// --- IADR-0457 (#1479): Vault の永続化は **既定オン**（file ストレージ＋PVC・Pod 内ラッパー）。opt-out は PERSIST=0 ---
+// --- IADR-0457 (#1479): Vault の永続化は **既定オン**（ストレージ＋PVC・Pod 内ラッパー。IADR-0525 / #1840 から OpenBao の raft）。opt-out は PERSIST=0 ---
 // dev Vault（-dev＝インメモリ）は k3s 再起動で全状態（k8s auth・policy・KV・OIDC・画面 SC-22 の値）を失い、
 // ESO の store が InvalidProviderConfig に倒れた（2026-09-16 実測）。infra-persistence と同じく既定で永続化する。
 ok('VAULT=1（永続化は既定）: vault-persistence を apply し、素の deploy/local/vault は apply しない', () => {
@@ -1605,6 +1636,41 @@ ok('VAULT=1: apply の直後に deploy/vault の rollout status を待つ（unse
   assert.ok(waitAt > applyAt, 'apply の後に rollout status deploy/vault が無い');
   assert.ok(bootstrapAt >= 0, 'bootstrap.sh の kubectl exec が記録に無い（検出の空振り）');
   assert.ok(waitAt < bootstrapAt, 'rollout status が bootstrap.sh より後にある');
+});
+
+// --- NFR-18, ADR-0132, IADR-0525 (#1840): 秘匿管理は OpenBao。旧 Vault の永続データを黙って上書きしない（移行の門） ---
+// OpenBao は旧 Vault の file ストレージを開けない。稼働中の deploy/vault が旧 Vault で PVC が在るなら、apply の前に止めて手順書を名指しする。
+const OLD_VAULT_IMAGE = 'hashicorp/vault:1.16@sha256:c5e04689611cb864b8b6247a6a845e0bdc059998f39b5c8a659562287379525c';
+ok('VAULT=1 (#1840): 稼働中が旧 Vault で PVC が在れば、vault-persistence を apply せずに止め、移行の手順書を名指しする', () => {
+  const res = runUp({ VAULT: '1', STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE });
+  assert.notStrictEqual(res.status, 0, '旧 Vault の上に OpenBao を被せて先へ進んだ');
+  assert.ok(!anyLineHas(res.lines, 'apply -k deploy/local/vault-persistence'), '止まる前に vault-persistence を apply した');
+  assert.ok(res.stderr.includes('docs/operations/secret-store-openbao-migration-runbook.md'), `手順書を名指ししない: ${res.stderr}`);
+});
+
+// #1866 監査 🟡1: ESO=1 単独（VAULT=1 なし）でも、ESO ブロックの当て直し（vault-persistence の apply）の前に同じ門を通る。
+ok('ESO=1 単独 (#1866): 稼働中が旧 Vault で PVC が在れば、ESO ブロックの当て直しでも apply せずに止め、手順書を名指しする', () => {
+  const res = runUp({ ESO: '1', STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE });
+  assert.notStrictEqual(res.status, 0, 'ESO=1 単独の経路で旧 Vault の上に OpenBao を被せて先へ進んだ');
+  assert.ok(!anyLineHas(res.lines, 'apply -k deploy/local/vault-persistence'), '止まる前に vault-persistence を apply した');
+  assert.ok(res.stderr.includes('docs/operations/secret-store-openbao-migration-runbook.md'), `手順書を名指ししない: ${res.stderr}`);
+  // 陽性対照: 稼働中が OpenBao なら同じ経路は通って当て直す（門が経路ごと塞いでいない）。
+  const okRes = runUp({ ESO: '1', STUB_VAULT_LIVE_IMAGE: 'openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf' });
+  assert.strictEqual(okRes.status, 0, `稼働中が OpenBao なのに止まった: ${okRes.stderr}`);
+  assert.ok(anyLineHas(okRes.lines, 'apply -k deploy/local/vault-persistence'), '稼働中が OpenBao なのに当て直さない');
+});
+
+ok('VAULT=1 (#1840): 門の陰性対照 —— 稼働中が OpenBao・新規クラスタ・PVC 無し・PERSIST=0 のいずれも止めない', () => {
+  for (const [label, env] of [
+    ['稼働中が OpenBao', { STUB_VAULT_LIVE_IMAGE: 'openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf' }],
+    ['新規クラスタ（deploy/vault 無し）', {}],
+    ['旧 Vault だが PVC 無し（-dev で使っていた）', { STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE, STUB_VAULT_PVC_ABSENT: '1' }],
+    ['旧 Vault だが PERSIST=0', { STUB_VAULT_LIVE_IMAGE: OLD_VAULT_IMAGE, PERSIST: '0' }],
+  ]) {
+    const res = runUp({ VAULT: '1', ...env });
+    assert.strictEqual(res.status, 0, `${label}: 非0終了: ${res.stderr}`);
+    assert.ok(anyLineHas(res.lines, env.PERSIST === '0' ? 'apply -k deploy/local/vault' : 'apply -k deploy/local/vault-persistence'), `${label}: apply が無い`);
+  }
 });
 
 // IADR-0457 (#1479) 監査 D1: **新規クラスタ**（VAULT ブロックの時点で ESO の CRD が無い）でも、ESO=1 なら ESO を入れた後に
@@ -3074,11 +3140,58 @@ ok('LOCALEDGE=1: coredns-custom を当ててから rollout restart する（impo
 const KEYCLOAK_DEPLOY = readAt(REPO_ROOT, 'deploy', 'local', 'infra', 'keycloak.yaml');
 const VALUES_LOCAL = readAt(REPO_ROOT, 'deploy', 'local', 'values-local.yaml');
 
-ok('#780 第2段: KC_HOSTNAME_URL がエッジ host（https://keycloak.localhost）を指す', () => {
+ok('#780 第2段 / #1859: KC_HOSTNAME がエッジ host（https://keycloak.localhost）を指す', () => {
   assert.ok(
-    /KC_HOSTNAME_URL\s*\n\s*value:\s*https:\/\/keycloak\.localhost\s*$/m.test(KEYCLOAK_DEPLOY),
-    'KC_HOSTNAME_URL が https://keycloak.localhost でない（issuer の単一情報源がずれている）',
+    /- name: KC_HOSTNAME\s*\n\s*value:\s*https:\/\/keycloak\.localhost\s*$/m.test(KEYCLOAK_DEPLOY),
+    'KC_HOSTNAME が https://keycloak.localhost でない（issuer の単一情報源がずれている）',
   );
+});
+
+// IADR-0524 (#1859): Keycloak 26 で変わった起動の前提。どれも外すと「起動はするが黙って違う振る舞いになる」か「起動しない」。
+const envValueOf1859 = (yaml, name) => {
+  const m = new RegExp(`- name: ${name}\\s*\\n\\s*value:\\s*"?([^"\\n]*)"?\\s*$`, 'm').exec(yaml);
+  return m ? m[1] : undefined;
+};
+const COMPOSE_1859 = readAt(REPO_ROOT, 'deploy', 'docker-compose.yml');
+const PLATFORM_REALM_SRC_1859 = readAt(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json');
+
+ok('#1859: hostname v1 の KC_HOSTNAME_URL は k8s・compose のどちらにも無い（26 は警告だけ出して無視し、issuer が要求の host に揺れる）', () => {
+  assert.ok(!/- name: KC_HOSTNAME_URL\b/.test(KEYCLOAK_DEPLOY), 'keycloak.yaml に KC_HOSTNAME_URL が残っている');
+  assert.ok(!/^\s*KC_HOSTNAME_URL:/m.test(COMPOSE_1859), 'docker-compose.yml に KC_HOSTNAME_URL が残っている');
+  assert.ok(/^\s*KC_HOSTNAME: http:\/\/localhost:8080\s*$/m.test(COMPOSE_1859), 'compose の KC_HOSTNAME が http://localhost:8080 でない');
+  assert.ok(/^\s*KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"\s*$/m.test(COMPOSE_1859), 'compose のバックチャネルが要求の host で描かれない');
+});
+
+ok('#1859: バックチャネルは要求の host・転送ヘッダは読ませない・dev-file の資格は 24 と同じ（k8s）', () => {
+  assert.strictEqual(envValueOf1859(KEYCLOAK_DEPLOY, 'KC_HOSTNAME_BACKCHANNEL_DYNAMIC'), 'true',
+    'in-cluster の well-known が jwks_uri をエッジの URL で返す（.NET がローカル CA を引きに行く）');
+  // integration-stack の初回の実行で実測: サイドカーが付ける X-Forwarded-Proto（port なし）を読むと jwks_uri が 80 番になり全サービスが 401。
+  assert.ok(!/- name: KC_PROXY_HEADERS\b/.test(KEYCLOAK_DEPLOY), 'KC_PROXY_HEADERS がある（メッシュの送り手の X-Forwarded-Proto で jwks_uri の port が落ちる）');
+  assert.strictEqual(envValueOf1859(KEYCLOAK_DEPLOY, 'KC_DB_USERNAME'), 'sa', '24 が作った PVC の H2 を開けない');
+  assert.ok(envValueOf1859(KEYCLOAK_DEPLOY, 'KC_DB_PASSWORD'), '24 が作った PVC の H2 を開けない（資格が無い）');
+});
+
+ok('#1859: Keycloak の readiness は管理用のポート 9000 の /health/ready（26 は 8080 で 404）。compose の healthcheck も 9000', () => {
+  const probe = /readinessProbe:\n\s+httpGet:\n\s+path: (\S+)\n\s+port: (\S+)/.exec(KEYCLOAK_DEPLOY);
+  assert.ok(probe, 'keycloak.yaml に readinessProbe が無い');
+  assert.deepStrictEqual([probe[1], probe[2]], ['/health/ready', '9000']);
+  assert.ok(/- name: management\n\s+containerPort: 9000/.test(KEYCLOAK_DEPLOY), '管理用のポートを宣言していない');
+  const svc = KEYCLOAK_DEPLOY.split(/^---$/m).find((d) => /kind: Service/.test(d)) || '';
+  assert.ok(svc && !/9000/.test(svc), 'Service が管理用のポートを出している');
+  assert.ok(/\/dev\/tcp\/127\.0\.0\.1\/9000 && printf 'GET \/health\/ready /.test(COMPOSE_1859), 'compose の healthcheck が 9000 の /health/ready を見ていない');
+});
+
+ok('#1859: 取り込み元の Secret の全キーは `<中身の realm 名>-realm.json`（26 は食い違うと起動しない）。compose のマウント先も同じ形', () => {
+  assert.strictEqual(DEFAULT.status, 0);
+  const keys = Object.keys(DEFAULT.realmImport);
+  assert.ok(keys.length >= 1, '取り込み元が空');
+  for (const k of keys) {
+    const realm = JSON.parse(DEFAULT.realmImport[k]).realm;
+    assert.strictEqual(k, `${realm}-realm.json`, `取り込み元のキー ${k} が realm ${realm} の名前と合わない`);
+  }
+  const mounts = [...COMPOSE_1859.matchAll(/:\/opt\/keycloak\/data\/import\/([^:\s]+):ro/g)].map((m) => m[1]);
+  assert.deepStrictEqual(mounts, ['platform-realm.json'], `compose の取り込みのマウント先: ${JSON.stringify(mounts)}`);
+  assert.strictEqual(JSON.parse(PLATFORM_REALM_SRC_1859).realm, 'platform');
 });
 
 ok('#780 第2段: Auth:MetadataAddress は in-cluster（http://keycloak:8080）を指す', () => {
@@ -5161,9 +5274,11 @@ ok('#1830: reconcile-realm.sh --check-dev-secrets は別名の Job を RECONCILE
 const PLATFORM_REALM_PATH = path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json');
 const PLATFORM_REALM_SRC = fs.readFileSync(PLATFORM_REALM_PATH, 'utf8');
 const envNameOf1834 = (client) => `${client.toUpperCase().replace(/-/g, '_')}_CLIENT_SECRET`;
+// IADR-0524 (#1859): 取り込み元のキー（＝取り込み先のファイル名）は `<realm 名>-realm.json`（Keycloak 26 の起動条件）。
+const IMPORT_KEY_1859 = 'platform-realm.json';
 const importedRealm = (r) => {
-  const raw = r.realmImport['microservices-platform-realm.json'];
-  assert.ok(raw, `取り込み元の Secret に microservices-platform-realm.json が無い（キー: ${Object.keys(r.realmImport).join(', ')}）`);
+  const raw = r.realmImport[IMPORT_KEY_1859];
+  assert.ok(raw, `取り込み元の Secret に ${IMPORT_KEY_1859} が無い（キー: ${Object.keys(r.realmImport).join(', ')}）`);
   return { raw, json: JSON.parse(raw) };
 };
 const clientSecretOf = (realm, clientId) => (realm.clients.find((c) => c.clientId === clientId) || {}).secret;
@@ -5221,7 +5336,7 @@ ok('#1834: 取り込み元の一時ファイルは 0600・ディレクトリは 
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   // PR #1836 AI レビュー: AST の realm（submodule を取得した環境）は 2 つ目のキーとして同梱されるので、数は固定しない。
   // MSP の realm が在ることと、同梱された全ファイルの権限・後始末を見る。
-  assert.ok(r.realmImportModes.some((m) => m.key === 'microservices-platform-realm.json'),
+  assert.ok(r.realmImportModes.some((m) => m.key === IMPORT_KEY_1859),
     `MSP の realm が取り込み元に無い: ${JSON.stringify(r.realmImportModes)}`);
   for (const m of r.realmImportModes) {
     assert.deepStrictEqual([m.fileMode, m.dirMode], ['600', '700'], `権限が違う: ${JSON.stringify(m)}`);
@@ -5300,6 +5415,84 @@ ok('#1834: 起動器は差し替えに失敗したら止まり、取り込み元
   assert.ok(!r.lines.some((l) => l.startsWith('kubectl create secret generic keycloak-realm-import ')), '取り込み元を作った');
   assert.ok(!r.lines.some((l) => /^kubectl apply -k deploy\/local\/infra/.test(l)), 'infra（Keycloak）を当てた');
   assert.ok(!`${r.stdout}${r.stderr}`.includes('probe"1834'), '値を出力した');
+});
+
+// NFR-18, ADR-0131 決定 4 の 2, IADR-0522 (#1839): セッションストア（Valkey）の認証パスワード。
+const storeSecretLines = (r) => r.lines.filter((l) => l.startsWith('kubectl create secret generic session-store-credentials '));
+const storePasswords = (r) => r.secrets.filter((l) => l.startsWith('session-store-credentials password=')).map((l) => l.slice('session-store-credentials password='.length));
+
+ok('#1839: セッションストアのパスワードは platform-infra と MSP ns の 2 か所へ同じ値で置く（既定は乱数・公知の既定値を持たない）', () => {
+  const ns = storeSecretLines(DEFAULT).map((l) => (l.match(/ -n (\S+)/) || [])[1]);
+  assert.deepStrictEqual(ns, ['platform-infra', 'microservices-platform'], `置き場が違う: ${storeSecretLines(DEFAULT).join(' / ')}`);
+  const values = storePasswords(DEFAULT);
+  assert.strictEqual(values.length, 2, values.join(' / '));
+  assert.strictEqual(values[0], values[1], '2 か所の値が食い違う（BFF が認証できない）');
+  assert.match(values[0], /^[0-9a-f]{48}$/, `乱数（16 進 48 文字）でない: ${values[0]}`);
+  // 起動のたびに作り直さない形（乱数）であることの陽性対照: 2 回の実行で値が違う＝固定の既定値ではない
+  assert.notStrictEqual(storePasswords(runUp({}))[0], values[0], '既定値が固定されている（公知の値になる）');
+  // 値はプロセスの引数へ載らない（#1793）
+  assert.ok(!DEFAULT.lines.some((l) => l.includes(values[0])), '値が kubectl の引数に載った');
+});
+
+ok('#1839: 明示指定 ＞ 既存の Secret の値 ＞ 乱数（既存値を使い回し、走っている Valkey と BFF を食い違わせない）', () => {
+  // 値は実行時に組み立てる（パスワードの鍵名の隣に字面を置くと gitleaks の generic-api-key が鍵と見分けられない）
+  const explicitValue = ['dummy', '1839', 'explicit'].join('-');
+  const existingValue = ['dummy', '1839', 'existing'].join('-');
+  const explicit = runUp({ SESSION_STORE_PASSWORD: explicitValue, STUB_SESSION_STORE_EXISTING: existingValue });
+  assert.strictEqual(explicit.status, 0, explicit.stderr);
+  assert.deepStrictEqual(storePasswords(explicit), [explicitValue, explicitValue]);
+  const existing = runUp({ STUB_SESSION_STORE_EXISTING: existingValue });
+  assert.strictEqual(existing.status, 0, existing.stderr);
+  assert.deepStrictEqual(storePasswords(existing), [existingValue, existingValue]);
+  assert.ok(anyLineHas(DEFAULT.lines, 'kubectl -n platform-infra get secret session-store-credentials'), '既存値を読んでいない');
+});
+
+ok('#1839: 設定ファイルの引用符を壊す値（" \\ 空白）は Secret を作らずに止まる', () => {
+  for (const bad of ['dummy"1839', 'dummy\\1839', 'dummy 1839']) {
+    const r = runUp({ SESSION_STORE_PASSWORD: bad });
+    assert.notStrictEqual(r.status, 0, `止まらなかった: ${JSON.stringify(bad)}`);
+    assert.strictEqual(storeSecretLines(r).length, 0, 'Secret を作った');
+    assert.ok(!`${r.stdout}${r.stderr}`.includes(bad), '値を出力した');
+  }
+});
+
+ok('#1839: 旧 Redis（認証なし）を消し、Valkey の起動を待つ（ESO=1 でも同じ）', () => {
+  for (const r of [DEFAULT, runUp({ VAULT: '1', ESO: '1' })]) {
+    assert.ok(r.lines.includes('kubectl -n platform-infra delete deployment/redis service/redis --ignore-not-found'), '旧 Redis を消していない');
+    assert.ok(r.lines.includes('kubectl -n microservices-platform delete service/redis --ignore-not-found'), '旧 ExternalName を消していない');
+    assert.ok(r.lines.includes('kubectl -n platform-infra rollout status deploy/valkey --timeout=120s'), 'Valkey の起動を待っていない');
+    assert.ok(!r.lines.some((l) => l.includes('rollout status deploy/redis')), '旧 Redis の起動を待っている');
+    assert.strictEqual(storeSecretLines(r).length, 2, 'ESO=1 で Secret を置いていない（[4/7] の rollout が消費する）');
+  }
+  // 旧 Redis を消すのは新しい宣言を当てた後（先に消すと、apply までの間にストアが 1 つも無い）
+  const lines = DEFAULT.lines;
+  const applyAt = lines.findIndex((l) => /^kubectl apply -k deploy\/local\/infra/.test(l));
+  const deleteAt = lines.indexOf('kubectl -n platform-infra delete deployment/redis service/redis --ignore-not-found');
+  assert.ok(applyAt >= 0 && deleteAt > applyAt, `順序が違う: apply=${applyAt} delete=${deleteAt}`);
+});
+
+ok('#1860 監査指摘 2: パスワードを変えたら Valkey → BFF の順に作り直し、変えなければ作り直さない', () => {
+  const existingValue = ['dummy', '1860', 'old'].join('-');
+  const rotatedValue = ['dummy', '1860', 'new'].join('-');
+  const restartValkey = 'kubectl -n platform-infra rollout restart deploy/valkey';
+  const restartBff = 'kubectl -n microservices-platform rollout restart deploy/bff-service';
+  const rotated = runUp({ SESSION_STORE_PASSWORD: rotatedValue, STUB_SESSION_STORE_EXISTING: existingValue });
+  assert.strictEqual(rotated.status, 0, rotated.stderr);
+  const valkeyAt = rotated.lines.indexOf(restartValkey);
+  const bffAt = rotated.lines.indexOf(restartBff);
+  const helmAt = rotated.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  assert.ok(valkeyAt >= 0, 'Valkey を作り直していない');
+  assert.ok(bffAt > valkeyAt && bffAt > helmAt, `順序が違う: valkey=${valkeyAt} helm=${helmAt} bff=${bffAt}`);
+  // 陰性対照: 同じ値の明示・既存値の使い回し・初回（既存なし）はいずれも作り直さない
+  for (const r of [
+    runUp({ SESSION_STORE_PASSWORD: existingValue, STUB_SESSION_STORE_EXISTING: existingValue }),
+    runUp({ STUB_SESSION_STORE_EXISTING: existingValue }),
+    runUp({ SESSION_STORE_PASSWORD: rotatedValue }),
+  ]) {
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(!r.lines.includes(restartValkey) && !r.lines.includes(restartBff), '値が変わらないのに作り直した');
+  }
+  assert.ok(!`${rotated.stdout}${rotated.stderr}`.includes(rotatedValue), '値を出力した');
 });
 
 // ---- #1850 / IADR-0473（2026-10-09 追記）: 再実行で部門属性の同期（DepartmentAttributeSync__Mode）を黙って Off に戻さない ----------

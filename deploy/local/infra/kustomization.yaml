@@ -8,7 +8,7 @@ resources:
   - inotify-sysctl.yaml
   - postgres.yaml
   - rabbitmq.yaml
-  - redis.yaml
+  - valkey.yaml
   - keycloak.yaml
   - qdrant.yaml
   - otel-collector.yaml

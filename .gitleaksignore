@@ -20,3 +20,8 @@ a154bc7e337e168417d81ca9380bafbc78780202:scripts/scripts.test.js:generic-api-key
 # （平文の目印を符号化しただけ）が、形は鍵と見分けが付かない。後続のコミットで実行時に
 # 組み立てる形へ改めた。ここに残すのは履歴の 1 コミットぶんだけである。
 142fcdc106d17ec7f8f85061d5d97775d68596a8:scripts/scripts.repo.test.js:generic-api-key:12970
+
+# #1839 の試験で、セッションストアのパスワードの明示指定を試すダミー値（`dummy-1839-explicit`）を
+# 鍵名 SESSION_STORE_PASSWORD の隣に直書きしていた。値は秘密ではないが、generic-api-key は鍵と見分けられない。
+# 後続のコミットで実行時に組み立てる形へ改めた。ここに残すのは履歴の 1 コミットぶんだけである。
+102de5ff5150c38e040668c72f68c731eb2192c2:scripts/k8s-local-up.test.js:generic-api-key:5290

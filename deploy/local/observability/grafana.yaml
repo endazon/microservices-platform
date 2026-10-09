@@ -1383,7 +1383,7 @@ spec:
             # Grafana の generic_oauth が 3 URL を別々に取る設計をそのまま使っている。
             #
             # 認可コードは Keycloak 側のセッションに紐づくので、**受け口が違っても交換できる**
-            # （hostname-v2 の KC_HOSTNAME_URL 固定により、どの経路から叩いても広告値は同じエッジ URL）。
+            # （hostname-v2 の KC_HOSTNAME 固定により、どの経路から叩いても issuer と認可の URL は同じエッジ URL。IADR-0524）。
             - { name: GF_AUTH_GENERIC_OAUTH_AUTH_URL, value: "https://keycloak.localhost/realms/platform/protocol/openid-connect/auth" }
             - { name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL, value: "http://keycloak:8080/realms/platform/protocol/openid-connect/token" }
             - { name: GF_AUTH_GENERIC_OAUTH_API_URL, value: "http://keycloak:8080/realms/platform/protocol/openid-connect/userinfo" }

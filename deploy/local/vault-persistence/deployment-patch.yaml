@@ -1,6 +1,8 @@
-# IADR-0457 (#1479): base の vault Deployment（-dev）を file ストレージ＋ラッパー起動へ差し替える JSON patch。
+# IADR-0457 (#1479): base の vault Deployment（-dev）を永続ストレージ＋ラッパー起動へ差し替える JSON patch。
 # base の containers[0].args は ["server","-dev","-dev-listen-address=0.0.0.0:8200"]。これを外して command をラッパーにする。
 # env VAULT_DEV_ROOT_TOKEN_ID（Secret vault-dev-token）は base のまま残す＝ラッパーが固定 root トークンの ID に使う。
+# NFR-18, ADR-0132, IADR-0525 (#1840): 製品は OpenBao。ストレージは raft（local.hcl）。collector への audit device の宣言を
+#   置く emptyDir（/vault/audit.d）を足した（ラッパーが collector に届いてから書き、SIGHUP で読み直させる）。
 - op: remove
   path: /spec/template/spec/containers/0/args
 - op: add
@@ -25,6 +27,7 @@
     - { name: data, mountPath: /vault/data }
     - { name: config, mountPath: /vault/config, readOnly: true }
     - { name: entrypoint, mountPath: /vault/bin, readOnly: true }
+    - { name: audit-config, mountPath: /vault/audit.d }
 - op: add
   path: /spec/template/spec/volumes
   value:
@@ -38,7 +41,10 @@
       configMap:
         name: vault-local-entrypoint
         defaultMode: 0555
-# 公式イメージの vault ユーザー（uid 100 / gid 1000）で動かし、PVC は fsGroup で書けるようにする
+    # IADR-0525: Pod ごとに空から始める（前の起動で足した socket device の宣言を持ち越さない）。
+    - name: audit-config
+      emptyDir: { sizeLimit: 1Mi }
+# 公式イメージの実行ユーザー（OpenBao は openbao。Vault と同じ uid 100 / gid 1000）で動かし、PVC は fsGroup で書けるようにする
 # （ラッパー起動では docker-entrypoint.sh の su-exec を通らないため、ここで明示する）。
 # fsGroupChangePolicy: OnRootMismatch —— 既定（Always）だと kubelet が毎起動で /vault/data を再帰 chown ＋ g+rw し、
 # init ファイルが 0600 → 0660 になる（監査で実測）。ルートの所有が合っていれば触らせない。

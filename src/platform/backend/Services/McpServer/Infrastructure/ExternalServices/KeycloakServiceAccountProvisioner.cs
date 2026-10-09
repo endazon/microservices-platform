@@ -36,7 +36,8 @@ namespace McpServer.Infrastructure.ExternalServices;
 //   `rep.isServiceAccountsEnabled()` が TRUE でなければ（null を含む）既存のサービスアカウントの利用者を属性ごと消し、
 //   `updateAuthorizationSettings` も TRUE でなければ authorization を無効にする。null の項目を飛ばす `RepresentationToModel.updateClient` は
 //   この分岐より後に走る。だから**この 2 つは必ず現在値で送る**（消えた SA は次の client_credentials で空の利用者として作り直され、
-//   属性なしのトークンが出る）。
+//   属性なしのトークンが出る）。［2026-10-09 / #1859・IADR-0524］配備の 26.7.4 では `{"enabled": false}` だけの `PUT` でも SA の利用者は
+//   同じ ID で残った（実測）。それでも版の振る舞いに依存させないため、現在値を送り続ける。
 //   **入口の印が無いクライアント（`abac-seeder` 等）・IdP に無いクライアントには何も書かない。**
 // ■ 🔴 **要求の取り消しは IdP への書き込みへ伝えない**（書きかけの孤児を作らない）。期限は HttpClient の Timeout が持ち、
 //   時間切れは `Failed`（502）へ写す。管理用トークンが 401 で拒まれたら、1 度だけ取り直して送り直す。
@@ -173,6 +174,7 @@ public sealed class KeycloakServiceAccountProvisioner(
         {
             // PR #1832 再監査 🟡1: SA の項目が読めない表現では書く前に止める（補償も書かない）。
             RequireServiceAccountsFlag(current);
+            RequireWebOrigins(current);
             try
             {
                 await WriteEnabledAsync(client, internalId, enabled, current);
@@ -237,6 +239,7 @@ public sealed class KeycloakServiceAccountProvisioner(
     //    SC-12 から読ませない・回させない。決定 4 の「入口が作っていないクライアントへは書かない」と同じ規則）。
     // Keycloak 24 の `GET clients/{id}/client-secret` は管理イベントを出さない。`POST`（regenerate）は ACTION の管理イベントを出し、
     // realm の `adminEventsDetailsEnabled=true` では値つきの表現が管理イベントの保存先に残る（IADR-0516 の #1845 追記。計画へ環流）。
+    // ［#1859・IADR-0524］配備の 26.7.4 でも GET は管理イベントを出さず、regenerate の管理イベントの表現に値は残らない（手元の実測）。
 
     public async Task<ClientSecretResult> ReadClientSecretAsync(string clientId, CancellationToken ct)
     {
@@ -417,9 +420,13 @@ public sealed class KeycloakServiceAccountProvisioner(
     //    PKCE S256 を必須にする（`plain` を認めない）。暗黙・パスワードの直接付与・サービスアカウント・デバイス・CIBA は閉じる。
     // 🔴 リダイレクト URI は入力そのもの（完全一致。規則は検証器が掛け終えている）。**Web オリジンは空**（CORS を開かない）。
     // `fullScopeAllowed=false`: realm の全ロールをトークンへ載せない（MCP サーバーはロールを読まない）。
-    // `defaultClientScopes=["profile"]`: 利用者名（`preferred_username`）が要る（`McpSubjectResolver`。realm は既定のスコープを宣言しない）。
-    // audience の写像で `aud` を MCP サーバーに限る（他のサービスへ持ち込ませない。#1846 が全サービスの検証を入れる）。
+    // `defaultClientScopes=["basic","profile"]`: 利用者名（`preferred_username`）が要る（`McpSubjectResolver`。realm は既定のスコープを宣言しない）。
+    // ［2026-10-09 / #1859・IADR-0524］`basic`: Keycloak 25 以降、アクセストークンの `sub` は組み込みの `basic` スコープの写像が載せる。
+    // 無いと利用者のトークンから `sub` が落ち、`McpSubjectResolver` の主体が利用者 ID から利用者名へ黙って変わる（26.7.4 で実測）。
+    // audience の写像で `aud` を MCP サーバーに限る（他のサービスへ持ち込ませない。#1846 で全サービスが `platform-api` を検証し、
+    // このテンプレートは `platform-api-audience` スコープを持たない ＝ MCP クライアントのトークンは他のサービスで 401）。
     private const string ProfileClientScope = "profile";
+    private const string BasicClientScope = "basic";
 
     internal static Dictionary<string, object?> PublicClientTemplate(
         string clientId, string displayName, IReadOnlyList<string> redirectUris) => new()
@@ -438,7 +445,7 @@ public sealed class KeycloakServiceAccountProvisioner(
             ["fullScopeAllowed"] = false,
             ["redirectUris"] = redirectUris.ToArray(),
             ["webOrigins"] = Array.Empty<string>(),
-            ["defaultClientScopes"] = new[] { ProfileClientScope },
+            ["defaultClientScopes"] = new[] { BasicClientScope, ProfileClientScope },
             ["optionalClientScopes"] = Array.Empty<string>(),
             ["attributes"] = new Dictionary<string, string>
             {
@@ -485,8 +492,12 @@ public sealed class KeycloakServiceAccountProvisioner(
         if (rep.WebOrigins is not { Count: 0 }) violations.Add("webOrigins が空でない");
         if (rep.FullScopeAllowed != false) violations.Add("fullScopeAllowed が false でない");
         // 利用者名（preferred_username）の解決に要る。realm の方針で黙って外れると、登録は通って利用時に壊れる。
-        if (rep.DefaultClientScopes is not { } scopes || !scopes.Contains(ProfileClientScope, StringComparer.Ordinal))
+        var scopes = rep.DefaultClientScopes ?? [];
+        if (!scopes.Contains(ProfileClientScope, StringComparer.Ordinal))
             violations.Add($"defaultClientScopes に {ProfileClientScope} が無い");
+        // ［#1859］`sub` の出どころ。realm に `basic` が無いと Keycloak は黙って割り当てない（作成は成功する）ので、ここで止める。
+        if (!scopes.Contains(BasicClientScope, StringComparer.Ordinal))
+            violations.Add($"defaultClientScopes に {BasicClientScope} が無い");
         if (!HasAudienceMapper(rep)) violations.Add("audience の写像（mcp-server）が無い");
         return violations;
     }
@@ -525,26 +536,37 @@ public sealed class KeycloakServiceAccountProvisioner(
 
     // ［#1829］`enabled` を書き、読み戻して確かめる（表現を丸ごと送り返さない理由と、SA・authorization の現在値を必ず添える理由は冒頭）。
     // `current` は同じ要求の中で読んだクライアントの表現（SA・authorization の現在値の出どころ）。
-    internal static Dictionary<string, bool> EnabledBody(bool enabled, bool serviceAccountsEnabled, bool authorizationServicesEnabled) => new()
-    {
-        ["enabled"] = enabled,
-        ["serviceAccountsEnabled"] = serviceAccountsEnabled,
-        ["authorizationServicesEnabled"] = authorizationServicesEnabled,
-    };
+    // ［2026-10-09 / #1859・IADR-0524］`webOrigins` の現在値も添える。Keycloak 26.7.4 の `PUT /clients/{id}` は `webOrigins` を欠いた本文を
+    //   受けると、Web オリジンを**リダイレクト URI から導いて書く**（有人のクライアントの `webOrigins=[]` が `http://127.0.0.1:50000` 等へ
+    //   変わり、テンプレートの「CORS を開かない」が無効化・再有効化で崩れた。integration-stack の門 M9 と手元で実測）。現在値を送れば変わらない。
+    internal static Dictionary<string, object> EnabledBody(
+        bool enabled, bool serviceAccountsEnabled, bool authorizationServicesEnabled, IReadOnlyList<string> webOrigins) => new()
+        {
+            ["enabled"] = enabled,
+            ["serviceAccountsEnabled"] = serviceAccountsEnabled,
+            ["authorizationServicesEnabled"] = authorizationServicesEnabled,
+            ["webOrigins"] = webOrigins.ToArray(),
+        };
 
     // 🔴 PR #1832 再監査 🟡1（fail-closed）: `serviceAccountsEnabled` が読めない（null・欠落）表現から false を推して送ると、
-    // Keycloak 24 は SA の利用者を属性ごと消す（🔴1 と同じ事故）。Keycloak 24 の GET は primitive で必ず出すが、版の変更や
+    // Keycloak 24 は SA の利用者を属性ごと消す（🔴1 と同じ事故）。Keycloak 24・26.7.4 の GET は primitive で必ず出すが、版の変更や
     // 応答の加工で欠けたときに黙って壊さないよう、書かずに Failed にする。`authorizationServicesEnabled` は資源サーバが
     // 無いとき表現に出ない（＝無効）ので、欠落を false と読んでよい（false を送っても無効のままで何も消えない）。
     private static bool RequireServiceAccountsFlag(KeycloakClient? current)
         => current?.ServiceAccountsEnabled
            ?? throw Failed("クライアントの表現に serviceAccountsEnabled が無い（推して送るとサービスアカウントの利用者が消えるので書かない）。");
 
+    // ［#1859］`webOrigins` も読めない表現からは推さない（空を推して送ると Web オリジンを消し、欠いて送ると 26 はリダイレクト URI から導く）。
+    private static IReadOnlyList<string> RequireWebOrigins(KeycloakClient? current)
+        => current?.WebOrigins
+           ?? throw Failed("クライアントの表現に webOrigins が無い（欠いて送ると Keycloak 26 がリダイレクト URI から導いて書くので書かない）。");
+
     private async Task WriteEnabledAsync(HttpClient client, string internalId, bool enabled, KeycloakClient? current)
     {
         var body = EnabledBody(enabled,
             serviceAccountsEnabled: RequireServiceAccountsFlag(current),
-            authorizationServicesEnabled: current?.AuthorizationServicesEnabled == true);
+            authorizationServicesEnabled: current?.AuthorizationServicesEnabled == true,
+            webOrigins: RequireWebOrigins(current));
         var put = await Send(client, () => client.PutAsJsonAsync(ClientPath(internalId), body, Json, CancellationToken.None));
         EnsureSuccess(put, "クライアントの有効・無効の書き込み");
         if (IsEnabled(await ReadClientAsync(client, internalId)) != enabled)

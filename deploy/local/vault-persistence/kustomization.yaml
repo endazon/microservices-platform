@@ -2,9 +2,11 @@
 # base の deploy/local/vault（-dev・インメモリ）へ戻す。IADR-0369 の「永続化は既定オン」と同じ形）。
 #
 # base（deploy/local/vault）の Deployment を次のように差し替える:
-#   - command を Pod 内ラッパー（vault-entrypoint.sh）へ。`vault server -config=local.hcl`（file ストレージ）を起動し、
-#     init（初回のみ）・unseal・固定 root トークン・kv-v2 mount を自動で行う
-#   - PVC vault-data を /vault/data に、ConfigMap を /vault/config と /vault/bin にマウント
+#   - command を Pod 内ラッパー（vault-entrypoint.sh）へ。`vault server -config=local.hcl`（raft ストレージ。
+#     NFR-18, ADR-0132, IADR-0525 / #1840: 製品は OpenBao で、file ストレージを持たない）を起動し、
+#     init（初回のみ）・unseal・固定 root トークン・kv-v2 mount・collector への audit device を自動で行う
+#   - PVC vault-data を /vault/data に（raft は /vault/data/raft）、ConfigMap を /vault/config と /vault/bin に、
+#     emptyDir を /vault/audit.d にマウント
 #   - readinessProbe は `vault status`（unseal 済みで 0）。k8s-local-up.sh はこれを rollout status で待ってから bootstrap する
 # ClusterSecretStore（token 認証版）は base のまま。固定トークンをラッパーが作るので無改変で動く。
 # ［2026-09-26 / #1560］IADR-0471: /vault/data の日次バックアップ CronJob（deploy/local/platform-backup/vault）も取り込む。

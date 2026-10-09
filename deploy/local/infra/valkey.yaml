@@ -1,0 +1,90 @@
+# NFR-18, ADR-0131 決定 1・4, IADR-0522 (#1839): 共有のキャッシュ・セッションストア（dev）。
+# BFF のセッション・DataProtection の鍵リング・SC-22 の書き込み記録の置き場。BFF はコード既定の `valkey:6379`
+# （MSP ns の ExternalName `valkey`）で引き、パスワードは helm が Secret から注入する（BffSession__RedisPassword）。
+# Redis 7.4 以降が OSS でなくなったため Valkey へ差し替えた（BSD-3。RESP 互換。旧 redis.yaml / IADR-0066）。
+#
+# 🔴 **認証なしでは起動しない**: パスワード（Secret `session-store-credentials` の `password`）が空なら
+#    valkey-server を呼ばずに終わる（fail-closed。ADR-0131 決定 4 の 2）。Secret は scripts/k8s-local-up.sh が
+#    platform-infra と MSP ns の 2 か所へ同じ値で作る（与えなければ初回だけ乱数で作り、以後は使い回す）。
+# 🔴 パスワードはプロセスの引数へ載せない（#1793）。here-document で標準入力の設定（`valkey-server -`）へ渡す。
+#    `command` ではなく `args` で与え、イメージの entrypoint（tini → docker-entrypoint.sh。valkey 利用者へ落とす）を残す。
+#    起動スクリプトは compose と統合試験の定数（ValkeyTestContainer.StartupScript）と同じ文字列である。
+# 揮発（emptyDir 相当。volume を持たない）。作り直すとセッション・鍵リング・SC-22 の記録が消え、全員が再ログインになる。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: valkey
+  namespace: platform-infra
+  labels: { app: valkey }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: valkey }
+  template:
+    metadata:
+      labels: { app: valkey }
+    spec:
+      containers:
+        - name: valkey
+          image: valkey/valkey:9.1-alpine@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11
+          env:
+            - name: SESSION_STORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: session-store-credentials
+                  key: password
+          args:
+            - sh
+            - -c
+            - |
+              [ -n "$SESSION_STORE_PASSWORD" ] || { echo 'valkey: SESSION_STORE_PASSWORD が空。認証なしでは起動しない' >&2; exit 1; }
+              exec docker-entrypoint.sh valkey-server - <<EOF
+              requirepass "$SESSION_STORE_PASSWORD"
+              EOF
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              # 認証なしの ping は NOAUTH を返しても終了コード 0 なので、応答の文字列で判定する。
+              command: ["sh", "-c", "VALKEYCLI_AUTH=\"$SESSION_STORE_PASSWORD\" valkey-cli ping | grep -qx PONG"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey
+  namespace: platform-infra
+  labels: { app: valkey }
+spec:
+  selector: { app: valkey }
+  ports:
+    - port: 6379
+      targetPort: 6379
+---
+# NFR-18, ADR-0112 決定 1（基準 D）, ADR-0131 決定 4 の 2, IADR-0522 (#1839): 到達の制限。
+# ingress は MSP ns の BFF の Pod（helm の `app: bff-service`）から 6379 だけ。egress は 1 件も許さない
+# （Valkey は外へ出る必要が無い。基準 C の補強）。readiness は exec なので通信を要らない。
+# 🔴 NetworkPolicy を強制しないクラスタでは無害な宣言として残るだけで、そのとき防御は認証の 1 段である
+#    （ADR-0131 決定 4 の 2 が記録を求める段数。IADR-0522）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: valkey-ingress-bff-only
+  namespace: platform-infra
+  labels: { app: valkey }
+spec:
+  podSelector: { matchLabels: { app: valkey } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: microservices-platform }
+          podSelector:
+            matchLabels: { app: bff-service }
+      ports:
+        - { protocol: TCP, port: 6379 }
+  egress: []
