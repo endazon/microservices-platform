@@ -18,7 +18,11 @@ namespace McpServer.Features.McpClients.IdpReconciliation;
 // ■ 🔴 **検知するだけで、IdP にも登録簿にも書かない**（自動の修復はしない。IADR-0516 決定 5）。読む口は書き込みを持たない
 //   `IServiceAccountDirectory` であり、登録簿は追跡なしで読む。
 // ■ 🔴 **opt-in にしない。** 書き込み口が構成されていなければ照合は失敗として数え（系列なし）、「系列が無い」の警報が鳴る。
-// ■ 有人の行は比べない（IdP へ書かない既知の逸脱。IADR-0516 決定 3）。
+// ■ ［2026-10-09 / #1844］有人の行も比べる（有人も IdP に公開クライアントとして作るようになった。計画 ADR-0134 決定 1）。比べるのは
+//   入口の印（`not_managed`）と有効・無効（`enabled_differs`）で、**属性は読まない**（有人のクライアントはサービスアカウントを持たない）。
+//   🔴 **有人の行が IdP に無いこと（`client_missing`）は数えない** —— 本件より前に登録簿だけへ書かれた有人の行は、IdP へ載せる経路が無い
+//   （差し替えは無人だけ）。数えると警報が鳴り止まない。そのような行は対応するクライアントが IdP に無いのでトークンが出ず、接続できない。
+//   登録簿の全行を「登録済み」として数えるので、入口が作った有人のクライアントは `orphan` にならない。
 // ■ ［2026-10-09 / #1829］有効・無効も比べる（`enabled_differs`）。無効化の IdP への写し（決定 4a）が入ったので、登録簿の無人の行の `Enabled` と
 //   入口の印つきのクライアントの `enabled` は揃っているはずである。無効化は登録簿を先に書き、IdP への写しが失敗しても取り消さないので、
 //   「登録簿は無効・IdP は有効」はこの照合が拾う唯一の手掛かりになる。一覧の 1 要求で読めるので、要求は増えない。
@@ -60,7 +64,7 @@ public sealed record IdpReconciliationOptions(TimeSpan Interval)
 /// <summary>食い違いの種類（issue #1818 の受け入れ基準 2）。</summary>
 public enum IdpDriftKind
 {
-    /// <summary>登録簿に無人の行があるのに、IdP に同じ clientId のクライアントが無い（直接の削除・入口ができる前の行）。</summary>
+    /// <summary>登録簿に無人の行があるのに、IdP に同じ clientId のクライアントが無い（直接の削除・入口ができる前の行）。［#1844］有人の行は数えない。</summary>
     ClientMissing,
 
     /// <summary>IdP にクライアントはあるが、入口の印（managed-by）が無い（入口を通らずに作られた主体と同名の行）。</summary>
@@ -72,7 +76,7 @@ public enum IdpDriftKind
     /// <summary>サービスアカウントの属性が登録簿の行と違う（IdP での直接の割当・交差した差し替えの後勝ち）。</summary>
     AttributesDiffer,
 
-    /// <summary>入口の印つきのクライアントが IdP にあるのに、登録簿に無人の行が無い（補償が走らなかった残骸）。</summary>
+    /// <summary>入口の印つきのクライアントが IdP にあるのに、登録簿に行が無い（補償が走らなかった残骸）。［#1844］有人の行も「在る」と数える。</summary>
     Orphan,
 
     /// <summary>
@@ -149,7 +153,7 @@ public sealed class IdpReconciliationMetrics
         var meter = meterFactory.Create(MeterName);
         meter.CreateObservableGauge(
             DriftedGaugeName, Observe, unit: "{client}",
-            description: "直近の照合で、SC-12 の登録簿（無人の行）と IdP のサービスアカウントが食い違ったクライアントの件数"
+            description: "直近の照合で、SC-12 の登録簿と IdP のクライアント（無人はサービスアカウントの属性まで）が食い違ったクライアントの件数"
                        + "（IdP に無い・入口の印が無い・サービスアカウントが無い・属性が違う・有効無効が違う・登録簿に無い印つきのクライアント。"
                        + "1 つのクライアントが複数の種類を持っても 1 件と数える）。0 が正常。直近の照合に失敗したとき・未照合のときは系列を出さない。");
         _checks = meter.CreateCounter<long>(
@@ -194,7 +198,9 @@ public sealed class IdpReconciliationCheck(
     /// <summary>1 回の照合で行ごとに名指しする上限（超えた分は件数だけ。ログの量を有界に保つ）。</summary>
     internal const int MaxNamedDrifts = 20;
 
-    internal sealed record RegistryRow(string ClientId, IReadOnlyDictionary<string, string> Attributes, bool Enabled = true);
+    internal sealed record RegistryRow(
+        string ClientId, IReadOnlyDictionary<string, string> Attributes, bool Enabled = true,
+        McpClientKind Kind = McpClientKind.ServiceAccount);
 
     /// <summary>
     /// 比べる（純粋な読み取り）。IdP の一覧を 1 度読み、入口の印つきのクライアントの行だけサービスアカウントの属性を読む
@@ -211,8 +217,12 @@ public sealed class IdpReconciliationCheck(
         var toRead = new List<RegistryRow>();
         foreach (var row in rows)
         {
+            var interactive = row.Kind != McpClientKind.ServiceAccount;
             if (!byId.TryGetValue(row.ClientId, out var entry))
-                drifts.Add(new IdpDrift(row.ClientId, IdpDriftKind.ClientMissing));
+            {
+                // ［#1844］有人の行が IdP に無いのは本件より前の行である（冒頭）。数えない。
+                if (!interactive) drifts.Add(new IdpDrift(row.ClientId, IdpDriftKind.ClientMissing));
+            }
             else if (!entry.Managed)
                 drifts.Add(new IdpDrift(row.ClientId, IdpDriftKind.NotManaged));
             else
@@ -220,7 +230,8 @@ public sealed class IdpReconciliationCheck(
                 // ［#1829］IADR-0516 決定 4a: 有効・無効は一覧の表現で比べる（行ごとの要求を増やさない）。属性の比較とは独立に数える。
                 if (entry.Enabled != row.Enabled)
                     drifts.Add(new IdpDrift(row.ClientId, IdpDriftKind.EnabledDiffers));
-                toRead.Add(row);
+                // ［#1844］有人のクライアントはサービスアカウントを持たないので属性を読まない。
+                if (!interactive) toRead.Add(row);
             }
         }
 
@@ -269,10 +280,9 @@ public sealed class IdpReconciliationCheck(
         try
         {
             // 登録簿は追跡なしで読む（照合は書かない）。
-            var rows = (await db.Clients.AsNoTracking()
-                    .Where(c => c.Kind == McpClientKind.ServiceAccount)
-                    .ToListAsync(linked.Token))
-                .Select(c => new RegistryRow(c.ClientId, c.Attributes, c.Enabled))
+            // ［#1844］有人の行も読む（入口の印・有効無効を比べ、入口が作った有人のクライアントを orphan と取り違えない）。
+            var rows = (await db.Clients.AsNoTracking().ToListAsync(linked.Token))
+                .Select(c => new RegistryRow(c.ClientId, c.Attributes, c.Enabled, c.Kind))
                 .ToList();
             rowCount = rows.Count;
             drifts = await FindDriftsAsync(rows, directory, linked.Token);
@@ -325,7 +335,7 @@ public sealed class IdpReconciliationCheck(
         // ［PR #1831 監査 🟡1］種類ごとの件数を毎回 1 行で出す（名指しの上限の外に落ちた種類も件数では見える）。
         int CountOf(IdpDriftKind kind) => drifts.Count(d => d.Kind == kind);
         logger.LogInformation(
-            "登録簿と IdP を照合した: 無人の行 {Rows} 件・食い違い {Drifted} 件（attributes_differ={AttributesDiffer} orphan={Orphan}"
+            "登録簿と IdP を照合した: 登録簿の行 {Rows} 件・食い違い {Drifted} 件（attributes_differ={AttributesDiffer} orphan={Orphan}"
             + " enabled_differs={EnabledDiffers} not_managed={NotManaged} service_account_missing={ServiceAccountMissing}"
             + " client_missing={ClientMissing}）。",
             rowCount, driftedClients, CountOf(IdpDriftKind.AttributesDiffer), CountOf(IdpDriftKind.Orphan),

@@ -2,7 +2,7 @@
 title: IADR-0516 SC-12 の無人の登録・差し替えは、検証の後に Keycloak へ機密クライアントとサービスアカウントの属性を書いてから登録簿へ書く。管理用は別の機密クライアント（manage-clients・manage-users）、失敗は補償で戻し、食い違いは定期の照合で知らせる
 type: impl-adr
 status: Accepted
-related_ids: [FR-16, FR-09, UC-09, SC-12, ADR-0123, ADR-0062, ADR-0088, ADR-0024, ADR-0034, IADR-0297, IADR-0301, IADR-0329, IADR-0366, IADR-0385, IADR-0413, IADR-0479, IADR-0481, IADR-0286]
+related_ids: [FR-16, FR-09, UC-09, SC-12, ADR-0123, ADR-0134, ADR-0062, ADR-0088, ADR-0024, ADR-0034, IADR-0297, IADR-0301, IADR-0329, IADR-0366, IADR-0385, IADR-0413, IADR-0479, IADR-0481, IADR-0286]
 author: claude
 created: 2026-10-08
 updated: 2026-10-09
@@ -10,11 +10,13 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0123_mcp-service-account-attributes-source-of-truth-is-idp.md 決定 1〜4・§結果「悪い影響」・フォローアップ 1〜3
   - planning:projects/microservices-platform/07_adr/ADR-0062_unattended-account-attribute-subset.md 決定 2・3
   - planning:projects/microservices-platform/07_adr/ADR-0088_authz-resolves-user-attributes-itself.md 決定 1・3
+  - planning:projects/microservices-platform/07_adr/ADR-0134_mcp-client-keycloak-template-and-secret-one-time-display.md 決定 1・決定 3・フォローアップ 1〜3（#1844 追記）
 related_specs:
   - ../specs/20261008_1786_sc12-keycloak-provisioning.md
   - ../specs/20261009_1817_sc12-provisioning-wiring.md
   - ../specs/20261009_1818_sc12-idp-drift-detection.md
   - ../specs/20261009_1829_sc12-disable-mirror-to-idp.md
+  - ../specs/20261009_1844_sc12-interactive-public-client.md
 ---
 
 # IADR-0516: SC-12 を IdP への入口にする —— Keycloak への書き込みの口・管理用の資格情報・テンプレート・順序と補償・食い違いの検知（#1786）
@@ -291,3 +293,132 @@ SC-12 の登録・属性の差し替えは McpServer の登録簿へ書くだけ
 ## ［2026-10-09 追記 / #1829・PR #1832 再監査 🟡1］`serviceAccountsEnabled` が読めない表現には書かない
 
 上の追記（🔴1）は現在値を同送すると定めたが、現在値が読めない（GET の表現が項目を欠く）ときに false と推して送ると、同じ事故（SA の利用者の消失）になる。**この場合は何も書かずに `Failed`（502）にする**（fail-closed）。Keycloak 24 の GET は primitive で必ず出すため通常は起きないが、版の変更・応答の加工で欠けたときに黙って壊さないための防御である。`authorizationServicesEnabled` は資源サーバが無いと表現に出ない（＝無効）ので、欠落を false と読む（送っても無効のままで何も消えない）。
+
+## ［2026-10-09 追記 / #1844］決定 3 の既知の逸脱を解く: 有人は公開クライアントとして作り、MCP サーバーの `/mcp` で audience を検証する（計画 ADR-0134 決定 1・フォローアップ 1〜3）
+
+計画は環流（planning#751）に答え、**ADR-0134 決定 1** で有人の MCP クライアントも SC-12 で Keycloak に作ると定めた（公開クライアント・PKCE S256 必須・
+リダイレクト URI の完全一致〔`https` かループバック `http://127.0.0.1` / `http://[::1]`〕・ワイルドカード不可・Web オリジン空・直接付与／暗黙／サービスアカウントは無効・
+audience を MCP サーバーに限り MCP サーバーが検証する・DCR は開かない）。細目（ループバックの port の扱い・audience の付け方と検証の置き場所・DCR が閉じていることの確かめ方）は
+実装の IADR へ委ねられた。**決定 3 の「有人は IdP へ書かない（既知の逸脱）」は本追記で解消する**（本文は凍結のため書き換えない）。新しい IADR は起こさない
+（本件は決定 3 の逸脱を解く同じ入口の拡張であり、決定 1〜6 の骨組み〔口・資格情報・順序と補償・入口の印・照合〕をそのまま使う）。作業仕様書は 20261009_1844。
+
+### 決めたこと
+
+1. **口**: `IServiceAccountProvisioner.CreatePublicClientAsync(clientId, displayName, redirectUris)` を足した（型の名前は据え置く）。作成の骨組み
+   （`POST /clients` → 409 なら何も書かずに `AlreadyExists` → 途中の失敗は作ったものを消して 502 → 成否不明の失敗は印つきなら消す）は無人と**同じ 1 つ**
+   （`CreateClientAsync`。無人の `CreateWithAttributesAsync` をその上に載せ直した）。登録の順序・状態コード・補償（`IdpFirstWrite`）・入口の印も無人と同じ。
+2. **有人のテンプレート**（`PublicClientTemplate`）: `publicClient=true`・`standardFlowEnabled=true`・`implicitFlowEnabled`／`directAccessGrantsEnabled`／`serviceAccountsEnabled=false`・
+   `consentRequired=false`・`fullScopeAllowed=false`・`redirectUris`＝入力そのもの・`webOrigins=[]`・`defaultClientScopes=["profile"]`（realm は既定のスコープを宣言しないので、
+   明示しないと `preferred_username` が載らず `McpSubjectResolver` が利用者名を読めない）・`optionalClientScopes=[]`・属性 `pkce.code.challenge.method=S256`・
+   `oauth2.device.authorization.grant.enabled=false`・`oidc.ciba.grant.enabled=false`・入口の印・`protocolMappers` に audience の写像。
+   **作成の後に `GET /clients/{id}` で読み戻し**、公開・認可コード・3 つの流れの閉（未指定を閉と読まない）・PKCE S256・リダイレクト URI の集合・Web オリジン空・audience の写像・
+   入口の印を確かめる。外れていれば消してから 502（Keycloak 側の方針で黙って変えられた形を登録簿へ写さない）。
+3. **audience の付け方**: クライアントごとの `oidc-audience-mapper`（`included.custom.audience=mcp-server`・`access.token.claim=true`・`id.token.claim=false`・
+   `introspection.token.claim=true`）。**無人のテンプレートにも同じ写像を足した**（`/mcp` が audience を検証するので、無人のトークンも `mcp-server` を持たなければ届かない）。
+   realm のクライアントスコープにしない理由: 入口が作るクライアントだけに付け、画面を通らないクライアントのトークンが `/mcp` に届かない形を保つため。
+   値は `McpAudienceAuthentication.Audience`（`mcp-server`）の 1 つで、検証側と写像の側が同じ定数を使う（構成にしない＝両側の食い違いを作れない）。
+4. **audience の検証の置き場所**: **`/mcp` だけ**に、既定のスキームと別の JWT スキーム `McpAudience` とポリシー（`AddAuthenticationSchemes(McpAudience)`・認証済み）を掛けた。
+   🔴 **既定のスキーム（`ValidateAudience=false`）は変えない** —— 管理 API（`/mcp-clients`）は BFF が利用者のトークン（aud は MCP サーバーではない）を中継して呼ぶ。
+   スキームの発行元・メタデータ・名前とロールのクレームは既定のスキームと**同じ 1 つの設定**（`AuthExtensions.PlatformJwtBearer`。今回 `AddPlatformAuth` から切り出した。
+   振る舞いは不変・構成は登録の時点で読む）を当て、`ValidateAudience=true`・`ValidAudience=mcp-server` だけを足す。
+   ⚠️ 初版は名前つきオプションの `Configure<IOptionsMonitor<JwtBearerOptions>>` で既定のスキームの値を写したが、同じオプション型への依存が循環し**ホストの起動が止まった**
+   （試験がタイムアウトで実測）。設定の関数を共有する形へ改めた。全サービスの `ValidateAudience=false` の是正は #1846。
+5. **登録の契約**: `RegisterMcpClientRequest.RedirectUris`（`string[]?`）。規則は `Domain/RedirectUriRules` の 1 つ（検証器が呼ぶ）: 有人は 1〜10 件・各 2048 文字以下・絶対 URI（`scheme://`。
+   Unix の .NET は `/callback` を `file:///callback` と読むので `://` の有無も見る）・`*` 不可・フラグメント不可・利用者情報不可・前後の空白不可・重複不可。`https` は host を問わず、
+   `http` は綴りが `http://127.0.0.1` / `http://[::1]` で始まり直後が `:` `/` `?` か終わりのものだけ（`Uri.IsLoopback` は `localhost` と `127.0.0.0/8` を真にするので使わない。
+   `localhost` は RFC 8252 §8.3 に従い認めない）。**無人に渡すと（空配列でも）400**（受け取って黙って捨てない）。検査の順は `clientId` → `kind` → `redirectUris` → `egressTier`
+   （種別が決まらなければ判定しない。[[IADR-0398]] の「宣言順が契約」）。リダイレクト URI は登録簿に持たない（正は IdP）。
+6. **書き込み口が未構成なら有人も 503**（登録簿にも書かない）。従前の陽性対照「書き込み口が無くても有人の登録は通る」は、この IADR 決定 3 の逸脱そのものだったので改めた。
+   ADR-0134 決定 3 の暫定手段は「有人は IdP に作らない」であり、作らずに登録簿へ書く経路を残すと逸脱が続く。
+7. **無効化・再有効化**（決定 4a）: 有人の行も `SetEnabledAsync` を通す（印つきのクライアントだけを変える）。公開クライアントの表現の `serviceAccountsEnabled` は false で、
+   その現在値をそのまま送るので何も消えない。本件より前の有人の行（IdP に無い）は `Absent` で登録簿だけ。
+8. **照合**（決定 5）: 登録簿の**全行**を読む。有人の行は存在・入口の印（`not_managed`）・有効無効（`enabled_differs`）を比べ、属性は読まない。🔴 **有人の行が IdP に無いこと
+   （`client_missing`）は数えない** —— 本件より前に登録簿だけへ書かれた有人の行は IdP へ載せる経路が無く（差し替えは無人だけ）、数えると警報が鳴り止まない。
+   そのような行は対応するクライアントが IdP に無いのでトークンが出ず、接続できない（fail-closed）。全行を「登録済み」と数えるので、入口が作った有人のクライアントは `orphan` にならない。
+9. **画面**: 有人のときだけリダイレクト URI の入力（1 行 1 件）を出し、`isAllowedRedirectUri`（後段と同じ事例で試験した写し）で送る前に検査する。最終の判定は後段。
+
+### FU3 の実測（本 PR の時点の結論は Keycloak 24.0.5 のソースの読み。稼働での確かめは integration-stack の門 M9・M10）
+
+配備の Keycloak は `quay.io/keycloak/keycloak:24.0`（digest 固定）である。タグ `24.0.5` のソースを読んだ:
+
+| 事項 | 読んだ箇所 | 結論 | 門 |
+| --- | --- | --- | --- |
+| リダイレクト URI の照合 | `RedirectUtils.verifyRedirectUri`（L89〜160）・`matchesRedirects` | 登録値との文字列の完全一致（登録値が `*` で終わるときだけ前方一致。`*` 単独は全許可）。入力の `*` を拒むので、入口が作るクライアントは常に完全一致 | M9: path・host・https の port・`localhost` の違いは 400 |
+| ループバックの port | 同 L121〜134・`Constants.INSTALLED_APP_URL`（`http://localhost`）/ `INSTALLED_APP_LOOPBACK`（`http://127.0.0.1`） | 一致しないとき、要求の URI が `http://localhost` か `http://127.0.0.1` で始まれば **port を落として**もう一度照合する。よって `http://127.0.0.1/cb` を（port なしで）登録すると**任意の port** を受ける（RFC 8252 §7.3 の形）。port つきで登録するとその port だけ。**`http://[::1]` にはこの扱いが無く port まで完全一致**。`localhost` は入口が登録を拒むので照合されない | M9: `127.0.0.1:49152` は進む・`127.0.0.1:49152/other` は 400・`[::1]` の登録 port は進み別 port は 400 |
+| PKCE の強制 | クライアント属性 `pkce.code.challenge.method=S256`（`AuthorizationEndpointChecker.checkPKCEParams`） | PKCE なし・`plain` は `invalid_request` でリダイレクト URI へ返す（リダイレクト URI の検査が先） | M9: PKCE なし・plain は error-redirect、S256 はログイン画面 |
+| DCR の既定の方針 | `RealmManager.importRealm` L626 → `setupClientRegistrations` → `DefaultClientRegistrationPolicies.addDefaultPolicies`（L56〜97）・`TrustedHostClientRegistrationPolicy.verifyHost`（L92〜122）・`ClientRegistrationAuth.requireCreate` | realm の宣言はクライアント登録ポリシーを持たないので、取り込みで既定が足される。匿名の `Trusted Hosts` は**信頼ホストが空**（`host-sending-registration-request-must-match=true`）で、匿名の DCR はどの host からも「Host not trusted.」で 403。Bearer の DCR は `manage-clients` / `create-client` が要る（＝管理 API と同じ権限で、開いていない）。初期アクセストークンは管理者が作らない限り無い | M10: 匿名（`openid-connect`・`default`）と偽の初期アクセストークンは 401 / 403 で件数が増えない・初期アクセストークン 0 個・匿名の Trusted Hosts は信頼ホストが空 |
+
+- 🔴 **門は PR では走らない**（日次・develop への push・手動）。本 PR のマージ後の最初の実行が初回の実測になる。ソースの読みと稼働が食い違えば門が赤になり、本表を改める。
+- audience は管理 API の `evaluate-scopes/generate-example-access-token`（人の利用者 `poc-user`）で測る（M9）。ブラウザでのログインとコードの交換は門に無い。
+
+### 統制表の更新（ADR-0134 決定 3 の 1〜3 行）
+
+| 統制 | 現在の実現手段 | 配備までの暫定手段 |
+| --- | --- | --- |
+| 有人のクライアントを SC-12 で Keycloak に作り、決定 1 の制約に従わせる | **ある（コード）。** 公開クライアントのテンプレートと読み戻し（上の 2）。検証器（上の 5）。単体・API 面・変異の試験。稼働は門 M9 | 書き込み口が未構成の配備では有人も 503（作らない） |
+| トークンの audience を MCP サーバーに限る | **ある（`/mcp` のみ）。** 写像（上の 3）と `/mcp` の検証（上の 4）。他のサービスは audience を検証しない（#1846） | — |
+| DCR を開かない | **Keycloak の既定のまま**（realm の宣言に登録ポリシーを持たない）。ソースの読みで閉と確認し、門 M10 が稼働で測る | — |
+
+### 試験と変異
+
+- 単体・API 面: `RegisterMcpClientValidatorTests`（C-59）・`KeycloakServiceAccountProvisionerTests`（C-61〜C-64）・`IdpProvisioningEndpointTests`（C-60）・`IdpReconciliationTests`（C-65）・
+  `McpAudienceAuthenticationTests`（C-66。署名した JWT で aud の有無・発行元・トークンなし。器の既定の認証がどの要求も通す状態で測る）。McpServer の試験は 383 件すべて緑。
+- 変異（すべて赤になることを確かめて戻した）: 有人のテンプレートの PKCE 属性を落とす（3 件）・機密にする（3 件）・無人の audience の写像を落とす（1 件）・読み戻しの PKCE 検査を落とす（1 件）・
+  `/mcp` のポリシーのスキーム指名を外す（5 件）・`ValidateAudience=true` を外す（4 件）・`http` をループバック以外にも許す（6 件）・ワイルドカードの検査を外す（3 件）・
+  照合で有人の `client_missing` を数える（1 件）・照合を無人の行だけ読む旧形へ戻す（2 件）・有人を IdP へ書かない旧形へ戻す（2 件）・有人の無効化を写さない旧形へ戻す（1 件）。
+  画面: `http` を全部許す（5 件）・ワイルドカードとフラグメントを許す（4 件）・本文へ載せない（2 件）・無人にも載せる（1 件）・必須を外す（3 件）。
+
+### 残余
+
+1. **稼働での初回の実測**（M9・M10）は本 PR のマージ後の integration-stack の実行である（オーケストレーターが dispatch する）。
+2. **ブラウザでの認可コードの交換と、そのトークンで `/mcp` を呼ぶ往復**は試験に無い（PKCE の強制とリダイレクト URI の照合は認可の要求の応答で、audience は例示のトークンで測る）。
+3. **他のサービスは audience を検証しない**（#1846）。それまでは、MCP クライアントのトークン（aud=mcp-server）を他のサービスが受け得る（`fullScopeAllowed=false` で realm ロールは載らないので、
+   ロールで守られた面には届かない）。
+4. 本件より前に登録簿だけへ書かれた有人の行は、IdP へ載せる経路が無い（差し替えは無人だけ）。トークンが出ないので接続はできない。使うには行を消して登録し直す必要があるが、
+   登録簿の削除の API は無い（運用者が DB で消す）。照合はこの行を数えない。
+5. 無人の secret の一度だけの表示・再発行（ADR-0134 決定 2・FU4）、管理操作の監査記録（FU5）、client secret rotation の実測（FU6）は別の issue。
+6. 既存の無人のクライアント（本件より前に作ったもの）には audience の写像が無く、`/mcp` に届かない。配備では書き込み口の配線（#1817）が直前に入ったばかりで、
+   稼働の無人のクライアントは門が作って消す使い捨てだけである。残っていれば Keycloak の管理画面で写像を足すか、行を消して登録し直す。
+
+
+## ［2026-10-09 追記 / #1844・PR #1854 セキュリティ監査 🔴］ループバックのリダイレクト URI は port の明示を必須にする（CVE-2024-8883）
+
+上の追記（#1844）の決定 5 は「ループバックの port は書いても書かなくてもよい」とし、FU3 の表は `http://127.0.0.1/cb` を port なしで登録すると任意の port を受けることを
+RFC 8252 §7.3 の形として受け入れていた。**この受け入れは誤りだった。本追記で改める**（上の本文は凍結のため書き換えない）。
+
+### 何が起きるか（監査が Keycloak 24.0.5 の稼働で実測）
+
+- 配備の Keycloak は `quay.io/keycloak/keycloak:24.0`（`deploy/local/infra/keycloak.yaml`・`deploy/docker-compose.yml`）である。
+- Keycloak 24 の `RedirectUtils` は、要求の URI が `http://127.0.0.1`（または `http://localhost`）で始まり完全一致しないとき、**最初の `:` から次の `/` までを落として**
+  もう一度照合する。このとき**利用者情報（`user@`）を見ない**。
+- よって port なしの `http://127.0.0.1/cb` を登録したクライアントは、`redirect_uri=http://127.0.0.1:49152@evil.example/cb` を一致と扱う。ブラウザはこの URI を
+  「利用者情報 `127.0.0.1:49152`・host `evil.example`」と読むので、認可コードは evil.example へ送られる。公開クライアントなので、攻撃者は自分の PKCE 検証子で
+  始めた要求のコードを引き換え、`aud=mcp-server` のアクセストークン（被害者の利用者名）を得る。PKCE はこれを止めない（要求を始めたのが攻撃者であるため）。
+- これは **CVE-2024-8883**（Keycloak 25.0.6 で修正）である。
+- port を明示した登録（`http://127.0.0.1:50000/cb`）では、`:50000@evil.example/cb`・`:1@evil.example/cb`・別の port（`:49152/cb`）のいずれも 400 になった（完全一致）。
+
+### 決めたこと
+
+1. **`http` のループバック（`127.0.0.1`・`[::1]`）は port の明示を必須にする。** port なし（`http://127.0.0.1/cb`・`http://127.0.0.1`・`http://127.0.0.1?x`）と、
+   `:` の後に数字が無い・`0` の形は 400（「ループバックのリダイレクト URI '…' には port を明示してください」）。判定は綴りで行う（`Uri.IsDefaultPort` は `:80` を書いた形と
+   書かない形を区別できない）。`RedirectUriRules`（後段・登録の検証器）と画面の写し（`isAllowedRedirectUri`。理由の識別子 `redirect-uri-loopback-port-required`）の両方に掛ける。
+   `[::1]` は Keycloak 24 で port を落とす扱いの対象外だが、規則を 2 つに割らないため同じにする。既存の拒否（ワイルドカード・フラグメント・利用者情報・`localhost`・別の綴り）は残す。
+2. **失う利便**: RFC 8252 §7.3 の「port なしで登録し、実行時に空いている任意の port で待ち受ける」は使えない。ネイティブアプリ・CLI は登録した固定の port で待ち受ける
+   （その port が塞がっていればログインできない）。複数の port を使うなら、それぞれを登録する（上限 10 件）。
+3. **門 M9** は port つき（`http://127.0.0.1:50000/cb`）で登録し、登録どおりの port で進むこと・別の port・path 違い・横取りの形（`127.0.0.1` と `[::1]` のそれぞれで
+   `:<登録 port>@evil.example` と `:1@evil.example`）が 400 であること・port なしのループバックの登録が 400 で Keycloak に何も作らないことを測る。
+   横取りの形を作る純関数（`loopbackHijackProbes`）と、横取りを許す応答（200 でログイン画面へ進む・evil.example へコードつきで戻す）が赤になることを自己試験に置いた。
+4. **この制約を緩める条件**: Keycloak を **25.0.6 以上**へ上げ、門 M9 で port なしの登録に横取りの形が 400 になることを確かめてから。#1859 で追跡する。
+
+### 既存のクライアント
+
+- 本追記より前に port なしのループバックで登録された有人のクライアントは、配備の時点では門が作って消す使い捨てだけである（有人の入口は同じ PR で入る）。
+  残っていれば、port を明示した URI で登録し直し、旧いクライアントを無効化する。照合はリダイレクト URI を比べないので警報は鳴らない。
+
+### 試験
+
+- `RegisterMcpClientValidatorTests`: port なしのループバック 9 形（`127.0.0.1`・`[::1]` × path あり・`/`・なし・クエリ・`:` だけ）が「port を明示」を名指しして 400。
+  port つき（`:53123`・`:80`・path なし・クエリつき）は通る。`127.0.0.1:49152@evil.example/cb`・`[::1]:49152@evil.example/cb` は 400。
+  修正を外すと port なしの 9 件が赤になることを確かめた。
+- `mcpClientVocabulary.test.ts`: 同じ 9 形が `redirect-uri-loopback-port-required` だけを返す（`redirect-uri-invalid` と分ける）。修正を外すと 9 件が赤。
+- `check-mcp-client-provisioning.js --self-test`: 横取りの形の生成と判定（上の 3）。

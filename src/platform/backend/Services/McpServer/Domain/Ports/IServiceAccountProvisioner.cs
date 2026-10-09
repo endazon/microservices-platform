@@ -4,6 +4,8 @@ namespace McpServer.Domain.Ports;
 // **SC-12 を IdP への入口にする書き込み口。** 無人（サービスアカウント）の MCP クライアントについて、
 // IdP（Keycloak）に機密クライアントとサービスアカウントを作り、割り当てた ABAC 属性を
 // `service-account-<client>` の利用者属性として書く。
+// ［2026-10-09 / #1844］有人（対話型）の MCP クライアントは公開クライアントとして作る（計画 ADR-0134 決定 1。
+// <see cref="CreatePublicClientAsync"/>）。型の名前は無人から始まった経緯のまま据え置く（改名は差分を広げるだけで統制を変えない）。
 //
 // ■ 🔴 **この口は検証しない。** 部分集合の判定と個人資料の割当禁止は呼び出し元（`McpClientEndpoints.RejectUnassignableAsync`）が
 //   **この口を呼ぶ前に**掛ける（ADR-0123 決定 3）。ここに 2 つ目の判定を置くと、片方だけが緩む。
@@ -24,6 +26,18 @@ public interface IServiceAccountProvisioner
     /// </summary>
     Task<IdpWrite> CreateAsync(
         string clientId, string displayName, IReadOnlyDictionary<string, string> attributes, CancellationToken ct);
+
+    /// <summary>
+    /// ［2026-10-09 / #1844］有人の登録（計画 ADR-0134 決定 1・IADR-0516 の #1844 追記）: **公開クライアント**を作る —— PKCE S256 必須・
+    /// リダイレクト URI は <paramref name="redirectUris"/> の完全一致・Web オリジンは空・直接付与／暗黙／サービスアカウントは無効・
+    /// トークンの audience を MCP サーバーに限る写像つき・入口の印つき。サービスアカウントは無いので属性は書かない。
+    /// 同じ clientId のクライアントが IdP に既に在れば何も書かずに <see cref="IdpWriteKind.AlreadyExists"/> を返す。
+    /// 作った表現を読み戻してテンプレートの要件を確かめ、外れていれば消してから <see cref="IdpProvisioningException"/> を投げる。
+    /// 取り消し（<see cref="UndoAsync"/>）はクライアントの削除である（<see cref="IdpWriteKind.Created"/>）。
+    /// 🔴 **リダイレクト URI の規則は呼び出し元（登録の検証器）が掛け終えている**（`RedirectUriRules`）。
+    /// </summary>
+    Task<IdpWrite> CreatePublicClientAsync(
+        string clientId, string displayName, IReadOnlyList<string> redirectUris, CancellationToken ct);
 
     /// <summary>
     /// 属性の差し替え: サービスアカウントの利用者属性を、与えた集合で置き換える。

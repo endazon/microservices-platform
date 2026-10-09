@@ -23,6 +23,9 @@ public class IdpFirstWriteTests
         public Task<IdpWrite> CreateAsync(string clientId, string displayName,
             IReadOnlyDictionary<string, string> attributes, CancellationToken ct) => throw new NotSupportedException();
 
+        public Task<IdpWrite> CreatePublicClientAsync(string clientId, string displayName,
+            IReadOnlyList<string> redirectUris, CancellationToken ct) => throw new NotSupportedException();
+
         public Task<IdpWrite> ReplaceAttributesAsync(string clientId, string displayName,
             IReadOnlyDictionary<string, string> attributes, bool enabled, CancellationToken ct) => throw new NotSupportedException();
 

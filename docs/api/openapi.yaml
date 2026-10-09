@@ -1173,6 +1173,12 @@ paths:
         **無人アカウントへ個人資料を読ませる属性割当は拒否される**（400 ValidationProblem）。
         登録経路と属性差し替え経路の**両方**が同じ検証を通る。
         既に登録済みのクライアント ID も 400 で拒否される。
+
+        ［2026-10-09 / ADR-0134 決定 1］**有人は `redirectUris` が必須**（1〜10 件。`https` か
+        port を明示したループバックの `http://127.0.0.1:<port>` / `http://[::1]:<port>`。port なしの
+        ループバック・ワイルドカード・フラグメント・利用者情報・`localhost` は 400）。後段は認証基盤に公開クライアント（PKCE S256・リダイレクト URI の完全一致・
+        audience を MCP サーバーに限る）を作ってから登録簿へ書く。無人に `redirectUris` を渡すと 400。
+        認証基盤へ書けなければ 502、書き込み口が構成されていなければ 503 で、登録簿にも書かない。
       operationId: bff-mcp-register-client
       requestBody:
         required: true
@@ -1195,7 +1201,8 @@ paths:
                 $ref: "#/components/schemas/ValidationProblemDetails"
         "401": { description: 未認証 }
         "403": { description: 管理者ロール以外（AdminOnly） }
-        "502": { description: McpServer へ到達できない }
+        "502": { description: McpServer へ到達できない、または認証基盤（Keycloak）へ書けなかった（登録簿にも書いていない） }
+        "503": { description: 認証基盤への書き込み口が構成されていない（登録簿にも書いていない） }
 
   # 実効ツール一覧。literal な `/tools` と、下の `{clientId}` を含む経路は**セグメント数が違う**ので
   # 衝突しない（`/tools` は 1 段、`{clientId}/disable` 等は 2 段）。
@@ -5990,6 +5997,7 @@ components:
         FR-16, UC-09, SC-12: クライアント登録。`attributes` は**無人時に必須**であり、
         個人資料を読ませる割当は後段が 400 で拒否する。`egressTier` の未指定は
         最も低い保護水準（`standard-external`）として扱われる。
+        ［2026-10-09 / ADR-0134 決定 1］`redirectUris` は**有人時に必須**・無人には渡さない。
       required: [clientId, displayName, kind]
       properties:
         clientId: { type: string }
@@ -6003,6 +6011,17 @@ components:
           type: string
           enum: [self-hosted, protected-external, standard-external]
           nullable: true
+        redirectUris:
+          type: array
+          nullable: true
+          maxItems: 10
+          description: |
+            有人（`interactive`）のリダイレクト URI。完全一致で照合する。`https` か、ループバックの
+            `http://127.0.0.1` / `http://[::1]`（RFC 8252）に限る。ループバックは port の明示が必須
+            （例: `http://127.0.0.1:53123/cb`。port なしは 400。認証基盤 Keycloak 24 の CVE-2024-8883 で
+            認可コードを横取りされる形を入れない）。ワイルドカード（`*`）・フラグメント・利用者情報・
+            `localhost` は不可。重複は不可。
+          items: { type: string, maxLength: 2048 }
 
     ReplaceMcpClientAttributesRequest:
       type: object

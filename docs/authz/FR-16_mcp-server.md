@@ -4,14 +4,14 @@ type: authz-spec
 status: draft
 author: claude
 created: 2026-08-23
-updated: 2026-09-04
+updated: 2026-10-09
 ---
 <!-- trace:
 ids: [FR-16, FR-19, UC-08, UC-09, SC-12]
-adrs: [ADR-0004, ADR-0024, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0062]
-iadrs: [IADR-0269, IADR-0297, IADR-0366]
-specs: [20260823_issue-445_mcp-server-integration, 20260903_issue-1185_unattended-account-attribute-subset]
-issues: [#445, #1185]
+adrs: [ADR-0004, ADR-0024, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0062, ADR-0134]
+iadrs: [IADR-0269, IADR-0297, IADR-0366, IADR-0516]
+specs: [20260823_issue-445_mcp-server-integration, 20260903_issue-1185_unattended-account-attribute-subset, 20261009_1844_sc12-interactive-public-client]
+issues: [#445, #1185, #1844, #1846]
 -->
 
 # 権限・認可仕様書: MCP サーバー
@@ -35,6 +35,16 @@ issues: [#445, #1185]
 | **個人資料** | 参照 | — | ○（所有者・共有先の判定に従う） | 🔴 **一律で対象外** |
 
 ## 認可ルール
+
+### 0. トークンの audience（［2026-10-09 追加］）
+
+- **MCP 面（`/mcp`）は、アクセストークンの audience に MCP サーバー（`mcp-server`）を含むことを求める。** 含まないトークンは
+  主体の解決より前に 401 で拒否する。MCP クライアントのトークンを他のサービスへ、他のクライアントのトークンを MCP 面へ持ち込ませないためである。
+- audience をトークンへ載せるのは、MCP クライアント登録管理の画面が認証基盤に作るクライアントの写像である（有人・無人とも）。
+  画面を通らずに作られたクライアントのトークンは、写像が無いので MCP 面に届かない。
+- 発行元・署名鍵・名前とロールのクレームの検証は、他の面と同じ設定である（audience の検証だけを足した別の認証の構成）。
+- 🔴 **管理 REST 面は audience を検証しない。** 境界層が管理者のトークン（audience は MCP サーバーではない）を中継して呼ぶためである。
+  プラットフォームの全サービスで audience を検証する作業は別に扱う（それまでは、他のサービスは MCP クライアントのトークンも受け得る）。
 
 ### 1. 主体の解決
 
