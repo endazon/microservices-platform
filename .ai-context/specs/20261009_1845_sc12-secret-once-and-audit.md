@@ -135,3 +135,14 @@ issue: "#1845"
 - `src/` で `pnpm run codegen`・`pnpm run i18n`（コミット後に差分なし）・`typecheck`・`lint`・`format:check`・SC-12 の vitest・ビルドと `check-chunk-budget --require`・`check-knip --require`・`check-i18n-catalogs`。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`・`check-mcp-client-provisioning.js --self-test`・文書系の検査器一式。
 - 変異: 登録の応答から secret を落とす・一覧に secret を載せる・再発行で登録簿の印の確かめを外す・監査の記録を 1 つ落とす・ログに値を出す、を 1 つずつ入れて対応する試験が赤になることを確かめる。
+
+［2026-10-09 追記 / #1845］独立監査（🟡 3 件・🟢 1 件）の是正（`4d64d265` の上の 1 コミット）
+
+- 🟡1: FU6 の環流（Keycloak の管理イベントの詳細に再発行の値が残る）は **planning#771** で起票済み。IADR-0516 の #1845 追記（FU6 の箇条・統制表・残余 1）へ番号を書いた。
+- 🟡2: 送信中は「secret を再発行」（行）・「再発行する」（確認）・「登録」を無効にし、ハンドラでも送信中なら何もしない。
+  試験は `McpClientManagementPage.test.tsx` の「sends only one reissue request …」「sends only one registration …」（応答を止めて送信中を作り、2 回目の操作で要求が 1 本のまま）。
+- 🟡3: 表示を捨てるたびに登録・再発行の変更を `reset()` する（`useIssuedClientSecret` が呼び出し側の `discardResponses` を呼ぶ。送信中の変更は捨てない）。
+  両方の変更に `gcTime: 0`（画面を離れたら変更キャッシュから即座に消える）。試験は「leaves no secret in the mutation cache …」（閉じる／次の操作の後に MutationCache の結果・変数に値が無い。表示中に在ることを陽性対照に置く）。
+  `reset()` だけでは足りない（観測者が外れても既定の gcTime 5 分は残る）ことを、`gcTime: 0` を外して赤になることで確かめた。
+- 🟢: `KeycloakServiceAccountProvisioner` の secret の読み出し・再生成で、値を載せた `HttpResponseMessage` を `using` で破棄する。
+- 変異: 是正の 3 ファイル（画面・`useMcpClients.ts`・`useIssuedClientSecret.ts`）を `4d64d265` に戻すと、追加の 3 件がすべて赤（再発行 2 本・登録 3 本・キャッシュに値が残る）。

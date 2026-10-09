@@ -79,12 +79,17 @@ export function useMcpClientActions() {
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: mcpClientsKey });
   const onSuccess = { mutation: { onSuccess: invalidate } };
 
-  const register = useBffMcpRegisterClient<unknown>(onSuccess);
+  // ［#1845］登録（無人の 201）と再発行（200）の応答は平文の client secret を載せる。🔴 **応答を変更キャッシュに残さない** ——
+  // 既定の gcTime（5 分）のままだと、画面で閉じた後も・画面を離れた後も secret がクエリのメモリ（MutationCache）に残る。
+  // 観測者が外れたら（`reset()` か画面のアンマウント）即座に捨てる（SC-22 の書き込みと同じ作法）。
+  const register = useBffMcpRegisterClient<unknown>({
+    mutation: { gcTime: 0, onSuccess: invalidate },
+  });
   const disable = useBffMcpDisableClient<unknown>(onSuccess);
   const enable = useBffMcpEnableClient<unknown>(onSuccess);
   const replaceAttributes = useBffMcpReplaceClientAttributes<unknown>(onSuccess);
   // ［#1845］再発行は登録簿を変えない（一覧を引き直す必要が無い）。新しい secret は応答にだけ載る。
-  const reissueSecret = useBffMcpReissueClientSecret<unknown>();
+  const reissueSecret = useBffMcpReissueClientSecret<unknown>({ mutation: { gcTime: 0 } });
 
   return { register, disable, enable, replaceAttributes, reissueSecret };
 }

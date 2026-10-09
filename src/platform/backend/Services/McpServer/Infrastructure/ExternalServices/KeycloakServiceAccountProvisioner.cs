@@ -244,7 +244,8 @@ public sealed class KeycloakServiceAccountProvisioner(
         var client = await AuthorizedClientAsync();
         return await WithConfidentialClientAsync(client, clientId, async internalId =>
         {
-            var response = await Send(client, () => client.GetAsync(SecretPath(internalId), CancellationToken.None));
+            // 値を載せた応答は読み終えたら即座に破棄する（バッファを GC 任せで残さない。#1845 の独立監査）。
+            using var response = await Send(client, () => client.GetAsync(SecretPath(internalId), CancellationToken.None));
             EnsureSuccess(response, "client secret の読み出し");
             return await SecretFromAsync(response, clientId);
         });
@@ -258,7 +259,8 @@ public sealed class KeycloakServiceAccountProvisioner(
         {
             // 本文は要らない（Keycloak は空の POST で生成する）。Content-Type は JSON を宣言する（`@Consumes(APPLICATION_JSON)`）。
             // 401 の取り直しで送り直すので、本文は送るたびに作る。
-            var response = await Send(client, () => client.PostAsync(SecretPath(internalId),
+            // 値を載せた応答は読み終えたら即座に破棄する（読み出しと同じ）。
+            using var response = await Send(client, () => client.PostAsync(SecretPath(internalId),
                 new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), CancellationToken.None));
             EnsureSuccess(response, "client secret の再生成");
             return await SecretFromAsync(response, clientId);

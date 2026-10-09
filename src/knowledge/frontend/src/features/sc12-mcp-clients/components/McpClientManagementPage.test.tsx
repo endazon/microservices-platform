@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { QueryClient } from '@tanstack/react-query';
 import { ApiError } from '@foundation/api/ApiError';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { jsonResponse } from '@foundation/testing/bffResponse';
@@ -659,6 +660,106 @@ describe('McpClientManagementPage (SC-12)', () => {
     // 次の操作を始めたら捨てる（表示を残したまま別の操作へ進ませない）。
     await user.click(screen.getAllByRole('button', { name: '属性を変更' })[0]);
     expect(screen.queryByTestId('issued-secret')).not.toBeInTheDocument();
+  });
+
+  // ── #1845 の独立監査: 二重送信と、閉じた後の変更キャッシュ ──
+
+  /** 指定した POST の応答を、テストが `release()` するまで止める（送信中の状態を作る）。 */
+  function holdPost(suffix: string) {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const passThrough = mocks.apiRequest.getMockImplementation()!;
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) =>
+      init?.method === 'POST' && String(path).endsWith(suffix)
+        ? gate.then(() => passThrough(path, init))
+        : passThrough(path, init),
+    );
+    return () => release();
+  }
+
+  const postsTo = (suffix: string) =>
+    mocks.apiRequest.mock.calls.filter(
+      ([path, init]) => String(path).endsWith(suffix) && (init as RequestInit)?.method === 'POST',
+    ).length;
+
+  /** 変更キャッシュ（MutationCache）に残っている応答・変数の文字列。secret が残っていないかを見る。 */
+  const mutationMemory = (client: QueryClient) =>
+    JSON.stringify(
+      client
+        .getMutationCache()
+        .getAll()
+        .map((m) => [m.state.data, m.state.variables]),
+    );
+
+  it('sends only one reissue request while the first one is still in flight', async () => {
+    mockApiWithSecrets();
+    const release = holdPost('/reissue-secret');
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    await user.click(screen.getAllByRole('button', { name: 'secret を再発行' })[0]);
+    await user.click(
+      within(await screen.findByTestId('reissue-confirmation')).getByRole('button', {
+        name: '再発行する',
+      }),
+    );
+    await waitFor(() => expect(postsTo('/reissue-secret')).toBe(1));
+
+    // 送信中に同じ行から確認まで進もうとしても、2 本目は飛ばない（行のボタンが押せない）。
+    await user.click(screen.getAllByRole('button', { name: 'secret を再発行' })[0]);
+    const again = screen.queryByTestId('reissue-confirmation');
+    if (again) {
+      await user.dblClick(within(again).getByRole('button', { name: '再発行する' }));
+    }
+
+    release();
+    await screen.findByTestId('issued-secret');
+    expect(postsTo('/reissue-secret')).toBe(1);
+  });
+
+  it('sends only one registration while the first one is still in flight', async () => {
+    mockApiWithSecrets();
+    const release = holdPost('/mcp-clients');
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    await registerServiceAccount(user);
+    await waitFor(() => expect(postsTo('/mcp-clients')).toBe(1));
+    await user.dblClick(screen.getByRole('button', { name: '登録' }));
+
+    release();
+    await screen.findByTestId('issued-secret');
+    expect(postsTo('/mcp-clients')).toBe(1);
+  });
+
+  it('leaves no secret in the mutation cache after the issued secret is closed', async () => {
+    mockApiWithSecrets();
+    const user = userEvent.setup();
+    const { queryClient } = await renderPage();
+    await screen.findByRole('table', { name: '登録された MCP クライアントの一覧' });
+
+    // 登録で発行した secret: 表示の間は変更の結果に載っている（陽性対照）、閉じたら消える。
+    await registerServiceAccount(user);
+    const issuedPanel = await screen.findByTestId('issued-secret');
+    expect(mutationMemory(queryClient)).toContain(ISSUED);
+    await user.click(within(issuedPanel).getByRole('button', { name: '閉じる' }));
+    await waitFor(() => expect(mutationMemory(queryClient)).not.toContain(ISSUED));
+
+    // 再発行した secret も同じ（閉じる以外の「次の操作」で捨てる経路）。
+    await user.click(screen.getAllByRole('button', { name: 'secret を再発行' })[0]);
+    await user.click(
+      within(await screen.findByTestId('reissue-confirmation')).getByRole('button', {
+        name: '再発行する',
+      }),
+    );
+    await screen.findByTestId('issued-secret');
+    expect(mutationMemory(queryClient)).toContain(REISSUED);
+    await user.click(screen.getAllByRole('button', { name: '属性を変更' })[0]);
+    await waitFor(() => expect(mutationMemory(queryClient)).not.toContain(REISSUED));
   });
 
   it('publishes a nav item in the admin group that resolves to the route', async () => {

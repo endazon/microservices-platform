@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import { i18n } from '@foundation/i18n';
@@ -119,11 +119,23 @@ export function McpClientManagementPage() {
 
   // SC-12（2026-10-09 補完）・#1845: 無人の client secret は登録・再発行の応答で一度だけ受け取り、**この画面のローカル状態にだけ**持つ。
   // 閉じたとき・次の操作を始めたときに捨てる（再表示の手段は無い）。
+  // 🔴 捨てるのは表示だけではない —— 応答を受け取った変更（mutation）の結果にも同じ secret が載っている。
+  // 表示を捨てるたびに変更も `reset()` して、クエリのメモリに写しを残さない（#1845 の独立監査）。
+  // **送信中の変更は捨てない** —— 捨てると応答の後始末（表示）が呼ばれず、再発行では旧 secret だけが失効して
+  // 新しい値を誰も見られない状態になる。
+  const registerPending = actions.register.isPending;
+  const reissuePending = actions.reissueSecret.isPending;
+  const { reset: resetRegister } = actions.register;
+  const { reset: resetReissue } = actions.reissueSecret;
+  const discardSecretResponses = useCallback(() => {
+    if (!registerPending) resetRegister();
+    if (!reissuePending) resetReissue();
+  }, [registerPending, reissuePending, resetRegister, resetReissue]);
   const {
     issued: issuedSecret,
     show: showIssuedSecret,
     clear: clearIssuedSecret,
-  } = useIssuedClientSecret();
+  } = useIssuedClientSecret(discardSecretResponses);
   // 再発行は旧 secret を即時に失効させるので、確認を挟む（対象の clientId。確認していないときは null）。
   const [confirmingReissue, setConfirmingReissue] = useState<string | null>(null);
   // 翻訳文へ差し込む値は単純な変数で渡す（`lingui/no-expression-in-message`）。
@@ -233,6 +245,9 @@ export function McpClientManagementPage() {
               <Button
                 variant="secondary"
                 size="sm"
+                // 🔴 送信中は押させない。応答を待つ間に再び確認まで進めると要求が 2 本飛び、先に表示された secret が
+                // 後の再発行で黙って失効する（#1845 の独立監査）。
+                disabled={reissuePending}
                 onClick={() => {
                   clearIssuedSecret();
                   setConfirmingReissue(row.original.clientId);
@@ -260,10 +275,12 @@ export function McpClientManagementPage() {
     ],
     // `startEditingAttributes` は `useCallback` で参照が固定してあるので、依存に入れても列定義は
     // 毎描画で作り直されない（従前ここは eslint-disable で規則を止めていた。IADR-0341）。
-    [t, actions.disable, actions.enable, startEditingAttributes, clearIssuedSecret],
+    [t, actions.disable, actions.enable, startEditingAttributes, clearIssuedSecret, reissuePending],
   );
 
   const submit = () => {
+    // 送信中は 2 本目を送らない（同じ clientId の二重登録。無人なら 2 本目の応答の secret が先の表示を上書きする）。
+    if (registerPending) return;
     // 有人には属性を送らない（送る値が無いのが正しい）—— 本文の組み立ては form.body() が持つ。
     if (!form.validate()) return;
     clearIssuedSecret();
@@ -286,7 +303,8 @@ export function McpClientManagementPage() {
   };
 
   const confirmReissue = () => {
-    if (confirmingReissue === null) return;
+    // 送信中は 2 本目を送らない（ボタンの無効化と二重に塞ぐ）。
+    if (confirmingReissue === null || reissuePending) return;
     const clientId = confirmingReissue;
     setConfirmingReissue(null);
     actions.reissueSecret.mutate(
@@ -397,7 +415,7 @@ export function McpClientManagementPage() {
               </Trans>
             </span>
             <span className="flex gap-2">
-              <Button variant="danger" size="sm" onClick={confirmReissue}>
+              <Button variant="danger" size="sm" disabled={reissuePending} onClick={confirmReissue}>
                 <Trans>再発行する</Trans>
               </Button>
               <Button variant="secondary" size="sm" onClick={() => setConfirmingReissue(null)}>
@@ -720,7 +738,7 @@ export function McpClientManagementPage() {
             </Alert>
           )}
 
-          <Button variant="primary" className="mt-3" onClick={submit}>
+          <Button variant="primary" className="mt-3" disabled={registerPending} onClick={submit}>
             <Trans>登録</Trans>
           </Button>
         </Panel>

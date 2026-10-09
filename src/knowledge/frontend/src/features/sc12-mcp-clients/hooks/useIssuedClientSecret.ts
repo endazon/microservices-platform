@@ -6,7 +6,12 @@ import { useCallback, useState } from 'react';
 // 閉じたとき・次の操作を始めたときに捨てる（「再表示はできない」。プラットフォームは値を保存しない）。
 //
 // 🔴 **だからこの状態を `stores/` のクライアントストアや URL に置いてはならない**（画面をまたいで生き延び、履歴・共有・再読込で漏れる）。
-// 保持先を「React のローカル状態ただ 1 つ」に閉じるために、この hook を独立させている（SC-20 の `useIssuedToken` と同じ作法）。
+// 表示用の保持先を「React のローカル状態ただ 1 つ」に閉じるために、この hook を独立させている（SC-20 の `useIssuedToken` と同じ作法）。
+//
+// 🔴 **ただし secret の写しはもう 1 つ在る** —— 応答を受け取った TanStack Query の変更（mutation）の結果である。
+// ローカル状態だけを捨てても、変更の結果が残っていればメモリから消えない（#1845 の独立監査）。だから `clear()` は
+// 呼び出し側から渡された `discardResponses`（変更の `reset()`）も呼ぶ。画面を離れたときの写しは、変更側の
+// `gcTime: 0`（`api/useMcpClients.ts`）が観測者の外れた時点で捨てる。
 
 interface IssuedClientSecret {
   /** どのクライアントの secret か。 */
@@ -23,10 +28,17 @@ interface IssuedClientSecretState {
   clear: () => void;
 }
 
-export function useIssuedClientSecret(): IssuedClientSecretState {
+/**
+ * @param discardResponses secret を載せた変更の結果を捨てる（`reset()`）。表示を閉じるたびに呼ぶ。
+ *   一覧の列定義から `clear` を呼ぶので、**参照の安定した関数**を渡す（`useCallback`）。
+ */
+export function useIssuedClientSecret(discardResponses: () => void): IssuedClientSecretState {
   const [issued, setIssued] = useState<IssuedClientSecret | null>(null);
   // 一覧の列定義（`useMemo`）から呼ぶので参照を固定する（毎描画で列定義を作り直さない）。
   const show = useCallback((value: IssuedClientSecret) => setIssued(value), []);
-  const clear = useCallback(() => setIssued(null), []);
+  const clear = useCallback(() => {
+    setIssued(null);
+    discardResponses();
+  }, [discardResponses]);
   return { issued, show, clear };
 }
