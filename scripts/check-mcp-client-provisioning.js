@@ -402,6 +402,14 @@ function selfTest() {
     assert.strictEqual(await src.refresh(), 't2');
     assert.strictEqual(await src(), 't2', '取り直した値を使い続けない');
   };
+  // #1835 監査 🟡1: 取り直しの部品だけでなく、live の 3 つのトークンが取り直せる形で配線されていることも固定する（外れると同じ 401 の赤が戻る）。
+  t('#1835: live の管理者・登録者・mcp-client-admin のトークンは取り直せる形（bearerSource）で持つ', () => {
+    const src = require('fs').readFileSync(__filename, 'utf8');
+    assert.match(src, /const admin = bearerSource\(/, '管理者のトークンが取り直せる形でない');
+    assert.match(src, /const provisioner = bearerSource\(/, 'mcp-client-admin のトークンが取り直せる形でない');
+    assert.match(src, /const registrarToken = bearerSource\(/, '登録者のトークンが取り直せる形でない');
+    assert.match(src, /return \{ id: created\.id, token: registrarToken \}/, '登録者の取り直せるトークンを返していない');
+  });
   return retryCases().then(() => {
     n++;
     log('  ok  #1835: 期限切れの 401 は取り直して 1 度だけ送り直す。2 度目の 401・401 以外・取り直せないトークンはそのまま返す');

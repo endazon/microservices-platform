@@ -37,12 +37,15 @@ develop への push（`38f2e27f`、PR #1833 のマージ）で integration-stack
 
 ## 母集合（規則 9・10）
 
-`git grep -n "await token(" scripts/` で、トークンを 1 度取って使い回す live の門を走査した。
+誤りの側の文字列（master の管理者トークンの取得 `admin-cli` / `realms/master`）で `scripts/`・`deploy/`・`.github/` を走査した（`git grep -nE "admin-cli|realms/master"`）。当初は `await token(` で引いたため `measure-abac-combinations.js` を取りこぼし、無関係の `check-stack-ready.js` を挙げていた（PR #1837 の独立監査 🟡2 で是正）。
 
-| 箇所 | 扱い |
-| --- | --- |
-| `check-mcp-client-provisioning.js` の管理者・登録者・`mcp-client-admin` | 本件で是正 |
-| 他の live の門（`check-stack-ready.js` など） | 本件では触らない。実走が短く、同じ赤は観測されていない。同じ型の赤が出たら同じ形で直す（検査器・規約の追加は同型事故 2 回から） |
+| 箇所 | 使い方 | 扱い |
+| --- | --- | --- |
+| `scripts/check-mcp-client-provisioning.js` | 管理者・登録者・`mcp-client-admin` を 1 度取って、M7 の待ち（最大 150 秒）を挟んで使い回す | 本件で是正 |
+| `deploy/local/keycloak-setup/reconcile-realm.js` `adminToken` | 1 度取って、realm の差分の収集と適用に使う。待ちを挟まない | 本件では触らない。同じ赤は観測されていない |
+| `scripts/measure-abac-combinations.js` `fetchUsersOverRest` | 1 度取って、`/users?max=1000` と利用者ごとの GET に使い回す。利用者数が多いと 60 秒を超え得る | 本件では触らない。ワークフローから呼ばれない手動の計測で、同じ赤は観測されていない |
+
+同じ型の赤がもう 1 度出たら、同じ形（`bearerSource`・`sendWithRefresh`）で直す（検査器・規約の追加は同型事故 2 回から）。
 
 ## 受け入れ基準と試験
 
@@ -50,4 +53,5 @@ develop への push（`38f2e27f`、PR #1833 のマージ）で integration-stack
 - [x] 2 度目の 401 はそのまま返す。401 以外は送り直さない。取り直せないトークンは送り直さない（self-test）
 - [x] トークンは取り直すまで同じ値を使い、取り直した後は新しい値を使う（self-test）
 - [x] 変異「401 でも送り直さない」で self-test が赤になる（実施）
+- [x] `live()` の 3 つのトークンが取り直せる形で配線されていることを self-test が固定する（監査 🟡1。配線を外すと赤）
 - [ ] integration-stack（dispatch）で門が緑になる
