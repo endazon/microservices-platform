@@ -1,5 +1,6 @@
 using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using WikiService.Domain;
@@ -9,7 +10,7 @@ using WikiService.Infrastructure.ExternalServices;
 
 namespace WikiService.Features.Wiki.SyncDocument;
 
-// FR-13, UC-07, ADR-0011, IADR-0020, IADR-0021: 文書更新イベントを受信し Wiki.js へ同期する。
+// FR-13, UC-07, FR-19, ADR-0011, ADR-0061, IADR-0020, IADR-0021, [[IADR-0529]]: 文書更新イベントを受信し Wiki.js へ同期する。
 //
 // 責務（IADR-0020 で「同期・統合・ABAC ゲートウェイ」に縮退）:
 //   1. 正規化 Markdown 本文を MarkdownUri から取得し、Wiki.js へ GraphQL push（IADR-0021。閲覧・編集の実体）。
@@ -107,6 +108,39 @@ public class DocumentSyncConsumer(
             logger.LogInformation(
                 "Skipped Wiki.js sync for private-note document {DocumentId} (ADR-0046 D-01)",
                 ev.DocumentId);
+            return;
+        }
+
+        // 🔴 FR-13, FR-19, ADR-0061 決定 1・2・4, [[IADR-0529]] 決定 1・2 (#1879): **露出の門。**
+        // 露出の 3 属性を 3 つとも `excluded` にした組織文書（planning#784 の裁定。AST の承認待ちの報告書のドラフト）は
+        // Wiki.js へ載せない。Wiki.js は本文の実体を持ち、Wiki の検索（`SearchPages`）は Wiki.js の全文検索を引くので、
+        // 載せた時点で「検索に出さない」が破れる。閲覧は SC-03（DocumentService・ABAC）が受け持つ。
+        //
+        // **判定は `DocumentExposure.IsWikiPublishable`（単一情報源）**。条件をここで書き下さない。
+        //
+        // 🔴 **含める → 除外へ切り替わったら、既存のページを撤去する**（ADR-0061 決定 4「ON → OFF は削除まで及ぶ」と同じ向き）。
+        // 撤去は削除の伝播（`DocumentDeletedConsumer`）と同じ 2 手 —— Wiki.js の実体の削除（正準パス。未存在は成功扱い）と
+        // 同期メタデータ行の削除（ゲートウェイの一覧・個別・検索から不可視）。アーカイブ（非公開化）にしないのは、
+        // 本文の実体が Wiki.js に残り、Wiki.js 側の設定 1 つで検索に戻るからである。
+        // メタデータが無くても Wiki.js 側の削除は試みる（冪等・deny-closed。削除の伝播と同じ作法）。
+        // 除外 → 含めるへ戻せば、下の通常の経路でページを作り直す。
+        //
+        // 個人資料の分岐（上）は**この門より前に置いたまま**にする —— 個人資料は「既存ページを残す」二層目の挙動を
+        // 別に固定しており（#449）、ここへ合流させると撤去が個人資料にも及ぶ。
+        if (!DocumentExposure.IsWikiPublishable(ev.Attributes))
+        {
+            await WikiJsAsync(t => wikiJs.DeletePageAsync(WikiPage.PathFor(ev.DocumentId), t), ct);
+
+            var withheld = await db.Pages
+                .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ct);
+            if (withheld is not null)
+            {
+                db.Pages.Remove(withheld);
+                await db.SaveChangesAsync(ct);
+            }
+
+            logger.LogInformation(
+                "Withheld document {DocumentId} from Wiki.js: all exposure attributes are excluded", ev.DocumentId);
             return;
         }
 

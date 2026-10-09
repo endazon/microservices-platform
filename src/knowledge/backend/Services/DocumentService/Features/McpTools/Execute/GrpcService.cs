@@ -14,7 +14,7 @@ namespace DocumentService.Features.McpTools.Execute;
 
 // FR-16, FR-06, FR-19, UC-08, UC-03, NFR-09, NFR-16, ADR-0024 §2〜§4, ADR-0034 決定 2・4・9, 計画 ADR-0086 決定 1・4,
 // ADR-0088 決定 1, ADR-0117 決定 1〜3, ADR-0119 決定 3, ADR-0121 決定 2・4・5, [[IADR-0292]], [[IADR-0379]] 決定 4,
-// [[IADR-0476]], [[IADR-0483]], [[IADR-0479]]（2026-09-28 追記 / #1611 段 2）:
+// [[IADR-0476]], [[IADR-0483]], [[IADR-0479]]（2026-09-28 追記 / #1611 段 2）, [[IADR-0529]]（#1879）:
 // **MCP のツールの実行口**（`platform.mcp.v1.McpToolExecution/Execute`）。DocumentService が申告した
 // `document.get_document` / `document.list_documents` を実行する。RetrievalService（段 1）・GraphService（段 3）の実行口と同じ形である。
 //
@@ -46,7 +46,8 @@ namespace DocumentService.Features.McpTools.Execute;
 //      「前提が満たされていない」＝ FAILED_PRECONDITION が当たる。
 //   8. 🔴 **自分で認可する**: 本文の `user_id` を主体（`DocumentReadPrincipal.RelayedUser`）にして判定点を通す。認可サービスへは
 //      利用者名で問う（`IDocumentReadScopeSource`。**属性は送らない**＝空。認可サービスが引き直す。ADR-0088）。
-//   9. 読み取り（同じ関数）→ サービスアカウント実行なら個人資料を落とす → 共通エンベロープ（件数は判定と除外の後）
+//   9. 読み取り（同じ関数）→ 一覧なら露出を 3 つとも除外にした組織文書を落とす（#1879）→ サービスアカウント実行なら個人資料を落とす
+//      → 共通エンベロープ（件数は判定と除外の後）
 //
 // 🔴 **ADR-0034 決定 9（要求側の 1 層目）**: `user_id` が `service-account-` で始まるならサービスアカウント実行であり、
 //   個人資料（`doc_scope=private-note`）を返さない。判定点（`RelayedUser` が機械として扱い、機械は個人資料を読まない）と
@@ -115,10 +116,20 @@ public sealed class McpToolExecutionGrpcService(
         var principal = DocumentReadPrincipal.RelayedUser(userId);
         IReadOnlyList<DocumentDto> visible = tool == GetDocumentTool
             ? await reads.GetAsync(principal, args.DocumentId!.Value, context.CancellationToken) is { } doc ? [doc] : []
-            : await reads.ListAsync(principal, context.CancellationToken);
+            : ListableToAgents(await reads.ListAsync(principal, context.CancellationToken));
 
         return ToResult(visible, tool == GetDocumentTool ? 1 : args.Limit, excludePrivateNote);
     }
+
+    // FR-16, FR-19, ADR-0061 決定 1・2, [[IADR-0529]] 決定 3 (#1879): **一覧（`list_documents`）は、露出の 3 属性を 3 つとも
+    //   `excluded` にした組織文書を載せない**（planning#784 の裁定「MCP に載せない」。AST の承認待ちの報告書のドラフト）。
+    //   判定は `DocumentExposure.IsMcpListable`（単一情報源）。判定点（`DocumentReadAccess`）の後・件数の数えの前に落とすので、
+    //   `total_count` にも含めない（「無い」と「載せない」を区別させない）。
+    // 🔴 **個別（`get_document`）は落とさない** —— 文書 ID を知る利用者が ABAC の範囲で題名と属性を読むのは、SC-03 の閲覧
+    //   （REST `GET /documents/{id}`）と同じ意味である。本文は MCP の応答に載らない（`ToResult` は題名と許可リストの属性だけ）。
+    //   その ID は MCP の一覧・検索・グラフのどれからも得られないので、AI エージェントが列挙で見つける経路は一覧を閉じれば閉じる。
+    internal static IReadOnlyList<DocumentDto> ListableToAgents(IEnumerable<DocumentDto> visible) =>
+        [.. visible.Where(d => DocumentExposure.IsMcpListable(d.Attributes))];
 
     // 🔴 本文の利用者文脈を信じてよいのは、それを運ぶのが**利用者の権限で動く中継者として許可集合に載った
     //   機械クライアント**（MCP サーバー）だからである（ADR-0086 §結果が受け入れた依存の範囲。ADR-0117 決定 3）。

@@ -1,5 +1,6 @@
 using Platform.Shared.Infrastructure.Foundation.Messaging;
 using AwesomeAssertions;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -251,6 +252,100 @@ public class DocumentSyncConsumerTests
         // push は 1 通目の 1 回だけ。2 通目は除外される。
         provider.GetRequiredService<RecordingWikiJsClient>().Pushed.Should().ContainSingle();
     }
+
+    // ---- FR-13, FR-19, ADR-0061 決定 1・2・4, IADR-0529 (#1879): 露出の 3 属性を 3 つとも除外にした組織文書 ----
+    //
+    // planning#784 の裁定: AST の承認待ちの報告書（ドラフト）は、3 つとも `excluded` の組織文書として保存し、
+    // Wiki.js とその検索には載せない（閲覧は SC-03）。
+    //
+    // 🔴 否定形（載らない・撤去される）には陽性対照（露出キーの無い組織文書・含めるへ戻した文書）を対で置く。
+
+    private static Dictionary<string, string> OrganizationExposure(bool search, bool graph, bool ai)
+    {
+        var attrs = new Dictionary<string, string>
+        {
+            ["confidentiality"] = "internal",
+            [DocumentScopes.Key] = DocumentScopes.Organization,
+        };
+        foreach (var (k, v) in DocumentExposure.Project(search, graph, ai)) attrs[k] = v;
+        return attrs;
+    }
+
+    // 3 つとも除外の組織文書は push されず、同期メタデータも作られない（ゲートウェイの一覧・個別・検索に出ない）。
+    // 正準パスの撤去は試みる（冪等・deny-closed）。
+    [Theory]
+    [InlineData("published")]
+    [InlineData("normalized")]
+    public async Task Consumer_WithholdsOrganizationDocument_WhenAllExposureExcluded(string status)
+    {
+        await using var provider = BuildProvider($"wiki-sync-{Guid.NewGuid()}");
+        await HandleAsync(provider, Event("報告書ドラフト", status, OrganizationExposure(false, false, false)));
+
+        var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
+        wiki.Pushed.Should().BeEmpty("3 つとも除外の組織文書は Wiki.js へ載せない（planning#784）");
+        PageOf(provider).Should().BeNull("同期メタデータが無ければゲートウェイの一覧・個別・検索から不可視");
+        wiki.Deleted.Should().ContainSingle().Which.Should().Be($"doc/{DocId}");
+    }
+
+    // 🔴 含める → 除外: 既存のページは撤去される（Wiki.js の実体とメタデータの両方）。
+    [Fact]
+    public async Task Consumer_RemovesExistingPage_WhenExposureFlipsToAllExcluded()
+    {
+        await using var provider = BuildProvider($"wiki-sync-{Guid.NewGuid()}");
+        await HandleAsync(provider, Event("報告書", "published", OrganizationExposure(true, true, true)));
+        PageOf(provider).Should().NotBeNull("陽性対照: いったんは同期されている");
+
+        await HandleAsync(provider, Event("報告書", "published", OrganizationExposure(false, false, false)));
+
+        PageOf(provider).Should().BeNull("ON → OFF はページの撤去まで及ぶ（ADR-0061 決定 4 と同じ向き）");
+        var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
+        wiki.Deleted.Should().ContainSingle().Which.Should().Be($"doc/{DocId}");
+        wiki.Pushed.Should().ContainSingle("撤去の通知で push しない（1 通目の 1 回だけ）");
+    }
+
+    // 除外 → 含める: 通常の経路でページが作られる（戻せば載る）。
+    [Fact]
+    public async Task Consumer_PublishesPage_WhenExposureFlipsBackToIncluded()
+    {
+        await using var provider = BuildProvider($"wiki-sync-{Guid.NewGuid()}");
+        await HandleAsync(provider, Event("報告書ドラフト", "published", OrganizationExposure(false, false, false)));
+        PageOf(provider).Should().BeNull();
+
+        await HandleAsync(provider, Event("報告書", "published", OrganizationExposure(true, true, true)));
+
+        PageOf(provider).Should().NotBeNull();
+        provider.GetRequiredService<RecordingWikiJsClient>().Pushed.Should().ContainSingle()
+            .Which.Path.Should().Be($"doc/{DocId}");
+    }
+
+    // 判定の粒度は索引の門と同じ（1 つでも含めるなら載せる）。裁定が述べたのは 3 つとも除外の組だけである。
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    public async Task Consumer_SyncsOrganizationDocument_WhenAnyExposureIncluded(bool search, bool graph, bool ai)
+    {
+        await using var provider = BuildProvider($"wiki-sync-{Guid.NewGuid()}");
+        await HandleAsync(provider, Event("一部除外の組織文書", "published", OrganizationExposure(search, graph, ai)));
+
+        var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
+        wiki.Pushed.Should().ContainSingle();
+        wiki.Deleted.Should().BeEmpty();
+    }
+
+    // 個人資料の分岐は露出の門より前に在る —— 個人資料の既存ページは露出によらず撤去しない（#449 の二層目を壊さない）。
+    [Fact]
+    public async Task Consumer_DoesNotRemovePage_ForPrivateNote_EvenWhenAllExposureExcluded()
+    {
+        await using var provider = BuildProvider($"wiki-sync-{Guid.NewGuid()}");
+        var note = new Dictionary<string, string> { ["confidentiality"] = "restricted", ["doc_scope"] = "private-note" };
+        foreach (var (k, v) in DocumentExposure.Project(false, false, false)) note[k] = v;
+
+        await HandleAsync(provider, Event("個人資料", "published", note));
+
+        provider.GetRequiredService<RecordingWikiJsClient>().Deleted.Should().BeEmpty();
+        provider.GetRequiredService<RecordingWikiJsClient>().Pushed.Should().BeEmpty();
+    }
 }
 
 // IADR-0021: Wiki.js への push を記録するテスト用スタブ（同期の呼び出し・内容を検証する）。
@@ -267,7 +362,15 @@ file sealed class RecordingWikiJsClient : IWikiJsClient
 
     public Task ArchivePageAsync(string path, CancellationToken ct = default) => Task.CompletedTask;
 
-    public Task DeletePageAsync(string path, CancellationToken ct = default) => Task.CompletedTask;
+    // #1879: 撤去（露出の門・削除の伝播）の呼び出しを記録する。
+    public ConcurrentQueue<string> DeletedQueue { get; } = new();
+    public IReadOnlyList<string> Deleted => DeletedQueue.ToArray();
+
+    public Task DeletePageAsync(string path, CancellationToken ct = default)
+    {
+        DeletedQueue.Enqueue(path);
+        return Task.CompletedTask;
+    }
 
     public Task<string?> GetRenderedContentAsync(string path, CancellationToken ct = default)
         => Task.FromResult<string?>($"<article data-path=\"{path}\">rendered</article>");

@@ -329,7 +329,8 @@ public class HybridSearchService(
     // 経路ごとに書くと、後から段を足した人が落としても誰も気づかない。
     // **切り詰め（`topK`）より前に落とす** —— 後だと除外した分だけ結果が減る。
     //
-    // **組織文書は常に true**（露出キーを持たない）なので既存の検索結果は変わらない。
+    // **露出キーを持たない組織文書は true** なので既存の検索結果は変わらない。露出キーを明示した組織文書
+    // （3 つとも `excluded` の承認待ちのドラフト。#1879 / [[IADR-0529]]）は、個人資料と同じく明示値で落ちる。
     internal static List<SearchResultDto> Finish(
         List<SearchResultDto> results, string sort, int topK, string exposureKey)
     {

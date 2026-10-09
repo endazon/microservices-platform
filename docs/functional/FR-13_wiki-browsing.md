@@ -3,15 +3,15 @@ title: Wiki 文書閲覧（Wiki.js 委譲・WikiService ABAC ゲートウェイ�
 type: functional-spec
 status: draft
 created: 2026-07-03
-updated: 2026-08-28
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, FR-13, UC-03, UC-07]
-adrs: [ADR-0011]
-iadrs: [IADR-0009, IADR-0013, IADR-0020, IADR-0021]
-specs: [20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment]
-issues: [#66]
+ids: [FR-05, FR-13, FR-19, UC-03, UC-07]
+adrs: [ADR-0011, ADR-0046, ADR-0061]
+iadrs: [IADR-0009, IADR-0013, IADR-0020, IADR-0021, IADR-0529]
+specs: [20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment, 20261010_1879_exposure-org-docs-wiki-gate]
+issues: [#66, #1879, planning#784]
 -->
 
 # 機能仕様書: Wiki 文書閲覧
@@ -73,6 +73,10 @@ issues: [#66]
   多層防御として機密区分由来の `isPrivate`（`confidentiality=public` 以外＝属性欠落含む は非公開・deny-closed）
   のみを付与する（表示制御であり、ABAC の代替ではない）。**削除・アーカイブ（非公開化）文書の Wiki.js
   同期経路は未実装**（既存の設計ギャップ。同期方式の実装 ADR のフォロー課題。`isPrivate` で public 以外は非公開だが実体撤去は別途）。
+  **露出の門（［2026-10-10 追加］）**: 露出の 3 属性（横断検索・グラフ・AI の入力）を 3 つとも `excluded` にした組織文書は
+  Wiki.js へ載せない（個人資料は露出によらず載せない）。判定は共有契約の `DocumentExposure.IsWikiPublishable` に置く。
+  含める → 除外へ切り替わったら、文書削除の伝播と同じ 2 手（Wiki.js の実体の削除と同期メタデータの削除）でページを撤去し、
+  除外 → 含めるへ戻せば作り直す。一部だけ除外した組織文書は従来どおり載る。閲覧は文書詳細画面が ABAC に従って受け持つ。
 - `IWikiJsClient` / `WikiJsGraphQlClient`（Services）: Wiki.js 管理 GraphQL への upsert（`singleByPath`→`create`/`update`）
   と、認可プロキシ用の本文取得。API キーは Bearer（環境変数/Secret）。
 - `IWikiContentReader` / `StorageMarkdownReader`（Services）: `MarkdownUri` から本文取得（http(s) 実取得・dev は代替）。
