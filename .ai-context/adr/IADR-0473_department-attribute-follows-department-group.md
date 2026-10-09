@@ -18,6 +18,7 @@ related_specs:
   - ../specs/20260927_issue-1609_department-clear-and-dictionary-from-realm.md
   - ../specs/20260927_issue-1610_sc17-department-edits-group-membership.md
   - ../specs/20261009_1783_dept-sync-poc-fix.md
+  - ../specs/20261009_1850_dept-sync-carry-over.md
 ---
 
 # IADR-0473: 利用者属性 department を部門グループ所属へ合わせる（#1573）
@@ -175,3 +176,27 @@ AST のクライアントが依存する挙動を変えない。
 - 🔴 **残るリスク**: `scripts/k8s-local-up.sh` の再実行（`--reuse-values` なし）は上書きを外し、同期を `Off` へ黙って戻す（`Off` では計器の系列が無く
   `DepartmentSyncNotCorrecting` も鳴らない）。運用仕様書に「再実行の後は当て直す」と書いた。起動器が現行の値を引き継ぐ形（`ISTIO` と同じ「明示 ＞ 現行 ＞ 初回の既定」。
   IADR-0488）にすれば塞がるが、本 issue の範囲（裁定の反映）を超えるため作っていない。
+
+## ［2026-10-09 追記 / #1850］起動器の再実行は部門属性の同期の値を引き継ぐ（上の「残るリスク」を塞ぐ）
+
+> 上の本文・追記は書き換えない。本節は PR #1848 の独立監査 🟡-1 から分離した #1850（利用者裁定 2026-10-09: すぐ実装する）で決めたことだけを足す。
+> 作業仕様書 `20261009_1850_dept-sync-carry-over` と対になる。形は [[IADR-0488]]（`ISTIO` の「明示 ＞ 現行 ＞ 初回の既定」と fail-closed）の直接の当てはめであり、新しい IADR は起こさない。
+
+1. **`scripts/k8s-local-up.sh` に明示の env `DEPT_SYNC_MODE`（`Off` / `Report` / `Fix` / 未指定）を置く。** それ以外の綴りは副作用より前に拒否する。
+2. **選び方は 明示 ＞ 現行（`helm get values msp` の `services.authorization.extraEnvAppend` の `DepartmentAttributeSync__Mode`）＞ 何も足さない。**
+   現行の値はサービスと同じく大小文字・前後の空白を許して正規化する。`DEPT_SYNC_MODE=Off` は helm を読まず何も足さない（従来の起動器と同じ）。
+   リリースが無い（初回・CI）・要素が無いときも何も足さない（CI の描画は従来とバイト等価）。
+3. **宣言するときは authorization の `extraEnvAppend` を丸ごと与える values ファイルを [6/7] の `-f` に足す。** 中身は「現行の他の要素（`helm get values -o yaml` の字面のまま）＋
+   `DepartmentAttributeSync__Mode`」。添字 0 の `--set` は他の要素を消すか古い値と同名で並び、他の要素を `--set` で写し直すと `"false"` が bool に化けて env の値が消える
+   （`helm-dept-sync-values.test.js` の対照で実測）。リポジトリの values（チャート既定・`values-local.yaml`）は authorization の `extraEnvAppend` を持たない
+   （持ち始めたら `k8s-local-up.test.js` の前提の試験が赤になる。そのときは足し合わせ方を決め直す）。
+4. **読めないときは止める（fail-closed）。** helm に届かない・`get values` が失敗する × 未指定・`Report`・`Fix` は [2/7] の前に止まる（未指定で進むと `Off` へ黙って戻し、
+   `Report` / `Fix` で進むと他の要素を黙って消す）。要素が壊れている（値域外・値でない形・同名が 2 つ以上・流れ形式）× 未指定も止まり、明示なら置き換えて進む。
+5. **読みはメッシュの判定と共有する（1 回）。** 読む口は `scripts/lib/mesh-mtls-mode.sh` の `current_release_values`（`current_mesh_mtls_mode` から切り出した。振る舞いは同じ）、
+   判定は `scripts/lib/dept-sync-mode.sh` の純関数。選んだ値と出どころ（明示・現行・既定）を起動器のログに出す。
+
+- 負: 既定経路（`DEPT_SYNC_MODE` 未指定）は、`ISTIO=0` でも `helm list` を 1 回読むようになる（リリースが在れば `get values` も）。全く読まないのは `DEPT_SYNC_MODE=Off` を併せたとき（[[IADR-0488]] への同日の追記）。
+- 残余: 未指定 × 現行に `DepartmentAttributeSync__Mode` が無いときは何も足さないので、authorization の `extraEnvAppend` の他の要素（運用者が helm で足したもの）は従来どおり再実行で外れる。
+  `DEPT_SYNC_MODE=Off` の明示も同じ。本件の射程は同期の値であり、他の要素は値を宣言し直すときに消さないことだけを保証する。
+- 残余: 読みと [6/7] の間に別の操作がリリースを書き換える窓（TOCTOU）は扱わない（[[IADR-0487]] と同じ）。
+- 試験: `k8s-local-up.test.js` の #1850 節（窓の表 P1〜P8・値域・壊れた要素・読み 1 回・判定表・リポジトリの values の前提）、`helm-dept-sync-values.test.js`（実物のチャートで描画・対照）。変異の結果は作業仕様書。

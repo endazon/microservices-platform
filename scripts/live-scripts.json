@@ -56,6 +56,7 @@
     { "path": "lib/edge-state.sh", "reason": "source される関数定義だけ（sourcing は何もしない）。呼ぶのは live の k8s-local-up.sh / k8s-local-down.sh（#1691）" },
     { "path": "lib/recreate-strategy.sh", "reason": "source される関数定義だけ（sourcing は何もしない）。呼ぶのは live の k8s-local-up.sh（#1688）" },
     { "path": "lib/dev-client-secret-guard.sh", "reason": "source される関数定義だけ（sourcing は何もしない）。呼ぶのは live の k8s-local-up.sh と deploy/local の bootstrap.sh / reconcile-realm.sh（#1830）" },
+    { "path": "lib/dept-sync-mode.sh", "reason": "判定だけの純関数（helm を呼ばない。注記に helm get values が現れるだけ）。呼ぶのは live の k8s-local-up.sh（#1850）" },
     { "path": "lib/tool-oidc-login.js", "reason": "判定だけの純関数。I/O は live の verify-tool-oidc-logins.sh が持つ" }
   ]
 }

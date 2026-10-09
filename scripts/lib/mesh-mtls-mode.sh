@@ -106,14 +106,24 @@ mesh_values_mtls_mode() {
 #   v4（4.2.1）で同じ集合（v3 の `-a` と同じ。deployed・failed・pending-install/upgrade/rollback・superseded・uninstalling・
 #   uninstalled）を返すことを実測した。`helm status` の終了コードは「無い」と「届かない」がどちらも 1 で分けられない。
 current_mesh_mtls_mode() {
-  local ns="${MSP_NS:-microservices-platform}"
-  local release="${MSP_HELM_RELEASE:-msp}"
-  local names values rc
-  names="$(helm list -n "$ns" -q --filter "^${release}\$" \
-    --deployed --failed --pending --superseded --uninstalling --uninstalled 2>/dev/null)" || return 2
-  printf '%s\n' "$names" | grep -qx "$release" || return 1
-  values="$(helm get values "$release" -n "$ns" -o yaml 2>/dev/null)" || return 2
+  local values rc
+  values="$(current_release_values)" || return $?
   rc=0
   mesh_values_mtls_mode "$values" || rc=$?
   return "$rc"
+}
+
+# current_release_values   リリースの利用者値（`helm get values <release> -n <ns> -o yaml`）を読む
+#   0: 値を標準出力へ / 1: リリースが無い（新規の扱い） / 2: 読めない（fail-closed の材料）
+#   ［2026-10-09 / #1850］`current_mesh_mtls_mode` から切り出した（振る舞いは同じ）。`k8s-local-up.sh` はこれを 1 回だけ読み、
+#   メッシュの判定と部門属性の同期の引き継ぎ（`scripts/lib/dept-sync-mode.sh`）の両方に使う（読み直さない）。
+#   リリースの有無と状態の絞り（6 旗の和）は上の注記のとおり。
+current_release_values() {
+  local ns="${MSP_NS:-microservices-platform}"
+  local release="${MSP_HELM_RELEASE:-msp}"
+  local names
+  names="$(helm list -n "$ns" -q --filter "^${release}\$" \
+    --deployed --failed --pending --superseded --uninstalling --uninstalled 2>/dev/null)" || return 2
+  printf '%s\n' "$names" | grep -qx "$release" || return 1
+  helm get values "$release" -n "$ns" -o yaml 2>/dev/null || return 2
 }
