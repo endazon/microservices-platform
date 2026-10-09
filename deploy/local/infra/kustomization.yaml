@@ -21,7 +21,8 @@ resources:
   # ここは dev の overlay としてそれを取り込むだけである。**opt-in にしない**（決定 2 は無条件）。
   - ../../mail-relay
 
-# NOTE: Keycloak realm import 用 ConfigMap `keycloak-realms` は kustomize の外
+# NOTE: Keycloak realm の取り込み元の Secret `keycloak-realm-import`（IADR-0518 / #1834。env の値を含み得る）と、
+# 宣言の ConfigMap `keycloak-realms`（後追い Job・申請の門が読む）は kustomize の外
 # （scripts/k8s-local-up.sh）で実 realm ファイル（単一情報源）から生成する。
 # kustomize の configMapGenerator は root 外ファイル（deploy/keycloak/…, submodule 側 AST realm）を
 # セキュリティ上参照できないため。手動適用時は README「手動でステップ実行」の手順で先に作成する。

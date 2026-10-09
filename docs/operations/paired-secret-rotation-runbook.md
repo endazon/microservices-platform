@@ -9,9 +9,9 @@ updated: 2026-10-09
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]
 adrs: [ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
-iadrs: [IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133]
-specs: [20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook]
-issues: [#1830, #1818, #1817, #1696, #1682, #458, #1411, planning#700, AST#1078]
+iadrs: [IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133]
+specs: [20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook]
+issues: [#1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, planning#700, AST#1078]
 -->
 
 # 運用 Runbook: 対になる秘密のローテーション
@@ -48,7 +48,7 @@ issues: [#1830, #1818, #1817, #1696, #1682, #458, #1411, planning#700, AST#1078]
 
 | 経路 | 今の扱い |
 | --- | --- |
-| 認証基盤の realm の宣言（`deploy/keycloak/microservices-platform-realm.json`） | 宣言の client の `secret` は**開発用の値**だけであり、**client を新しく作るときにだけ**使う。宣言の追随（`deploy/local/keycloak-setup/reconcile-realm.sh`）は既存の client の `secret` を比べず・書かない。起動時の import は realm が在れば飛ばす |
+| 認証基盤の realm の宣言（`deploy/keycloak/microservices-platform-realm.json`） | 宣言の client の `secret` は**開発用の値**だけであり、**client を新しく作るときにだけ**使う。宣言の追随（`deploy/local/keycloak-setup/reconcile-realm.sh`）は既存の client の `secret` を比べず・書かない。起動時の import は realm が在れば飛ばす。空の状態からの import では、管理用の 3 クライアント（`identity-admin`・`reset-gate`・`mcp-client-admin`）だけは起動器に与えた env の値で作る（与えなければ開発用の値） |
 | 保管先の種（`deploy/local/vault/eso/bootstrap.sh`） | 対になる秘密の KV は**無いときだけ作る**。在れば env を渡しても触らない |
 | 🔴 手動の Secret 作成（`scripts/k8s-local-up.sh` の `apply_secret`） | **塞いでいない。** `postgres` / `rabbitmq` / `keycloak-admin` / `reset-gate-oidc` は `ESO=1` でも env か開発用既定値で Secret を作る。保管先の値は戻らないが、**次の同期までの間 Secret が既定値になる。** 起動の後に同期を促す（[起動の後](#起動の後に同期を促す)） |
 
@@ -213,7 +213,12 @@ MCP クライアント登録管理の後段が、無人のクライアントと�
   無いと、この 3 つを dev の値（リポジトリに公開されている）で作ろうとした時点で名指して止まる。そのときは `IDENTITY_ADMIN_CLIENT_SECRET`・
   `RESET_GATE_CLIENT_SECRET`・`MCP_CLIENT_ADMIN_CLIENT_SECRET` に dev 以外の値（0-a の作り方）を与えて再実行する。認証基盤の側が dev の値のままなら、
   その後に下の確かめ方で名指されるので、1-3 の手順で対に回す。dev のクラスタだと分かっているときだけ `ALLOW_DEV_CLIENT_SECRETS=1` で通せる（警告を出す）。
-- ただし Keycloak 本体の realm の初回 import は、宣言の dev の値で 3 つを作る（起動器の外であり止められない）。
+  止まったときのメッセージにも、下の確かめ方が出る。
+- Keycloak 本体の realm の初回 import（空の状態からの起動・realm を消した後の再起動）は、起動器が作る取り込み元（Secret `keycloak-realm-import`）を読む。
+  起動器はこの取り込み元を作るとき、env を与えたクライアントの secret を宣言の dev の値から env の値へ差し替える（値は出力しない）。
+  よって env を与えて新しいクラスタを起動すれば、認証基盤の側も最初からその値になり、消費側の Secret と食い違わない。
+- それでも dev の値が残る場合がある: 認証基盤が既に在るクラスタ（import は飛ばされる）・`ALLOW_DEV_CLIENT_SECRETS=1` で通したとき・保管先（Vault）の値を
+  回した後に env を与えずに空の状態から起動したとき（認証基盤は宣言の値、保管先は回した値になり食い違う）。だから起動の直後に下の確かめ方を回す。
 
 **確かめ方**（読むだけ・値を出さない）:
 

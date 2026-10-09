@@ -78,7 +78,7 @@ spec:
                 secretKeyRef:
                   name: reset-gate-oidc
                   key: client-secret
-            # 開け直す先＝**宣言**の resetPasswordAllowed。realm import と同じ ConfigMap を読む
+            # 開け直す先＝**宣言**の resetPasswordAllowed。realm の宣言の ConfigMap（keycloak-realms）を読む
             # （門は「開ける主体」ではなく「宣言どおりに戻す主体」である）。
             - name: REALM_DIR
               value: /import
@@ -119,7 +119,8 @@ spec:
         - name: gate
           configMap:
             name: reset-gate-script
-        # realm import と同じ ConfigMap（宣言の単一情報源）。
+        # realm の宣言の ConfigMap（宣言の単一情報源）。Keycloak の取り込み元は別の Secret
+        # keycloak-realm-import（env の値を含み得る。IADR-0518 / #1834）であり、門は secret を使わないのでこちらを読む。
         - name: realms
           configMap:
             name: keycloak-realms

@@ -2,7 +2,7 @@
 title: IADR-0517 dev 以外の kube context では、レルム管理のロールを持つ機密クライアントを公知の dev の secret で作らない。判定は context の許可集合（未知のクラスタは安全側）、稼働中の dev の値は後追いの check-dev-secrets で検知する
 type: impl-adr
 status: Accepted
-related_ids: [NFR-18, ADR-0124, ADR-0123, IADR-0485, IADR-0516, IADR-0404, IADR-0329, IADR-0369, IADR-0286]
+related_ids: [NFR-18, ADR-0124, ADR-0123, IADR-0485, IADR-0516, IADR-0404, IADR-0329, IADR-0369, IADR-0286, IADR-0518]
 author: claude
 created: 2026-10-09
 updated: 2026-10-09
@@ -70,6 +70,8 @@ related_specs:
 
 Job へ渡すのを env にしたのは、判定の正を shell の判定器 1 本に保つためである（Job の中で context を推測する材料は無く、JS に許可集合を複写すると 2 か所になる）。
 
+［2026-10-09 追記 / #1834］**表の `scripts/k8s-local-up.sh` の行の「`identity-admin`・`mcp-client-admin` は `ESO=1` でないときだけ」は改めた。後継は [IADR-0518](./IADR-0518_realm-import-secret-with-env-client-secrets.md) 決定 4 である** —— Keycloak の取り込み元（Secret `keycloak-realm-import`）が ESO の有無によらず 3 つの env から作られるようになり、`bootstrap.sh` は Keycloak の初回の取り込みより後に走るため、[1/7] の判定は 3 つとも渡す。
+
 ### 決定 5: 稼働中の dev の値は `--check-dev-secrets` で検知する
 
 - `reconcile-realm.js --check-dev-secrets`（Job では `RECONCILE_MODE=check-dev-secrets`。ホストの入口は `bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets`、Job 名 `keycloak-realm-dev-secret-check`）。
@@ -85,6 +87,7 @@ Job へ渡すのを env にしたのは、判定の正を shell の判定器 1 �
 ## 残余
 
 1. **Keycloak 本体の `--import-realm`**（空の PVC の初回起動）は宣言の dev の値で 3 クライアントを作る。起動器の外なので止めない。dev 以外のクラスタでは起動の直後に `--check-dev-secrets` を回し、対で回す（手順書）。宣言から dev の値を外すことは ADR-0124 決定 1 の射程（本番の秘密を宣言に置かない）であり、本 IADR は扱わない。
+   ［2026-10-09 追記 / #1834］**閉じた。後継は [IADR-0518](./IADR-0518_realm-import-secret-with-env-client-secrets.md) である** —— 取り込み元を Secret `keycloak-realm-import` に分け、起動器が作るときに env を与えたクライアントの secret を env の値へ差し替える。env を与えずに取り込みが走る場合（dev・上書き）の検知は引き続き `--check-dev-secrets`（IADR-0518 残余 1）。
 2. **対象外のクライアント**（`bff`・east-west の `*-service`・道具の OIDC・`synthetic-monitor`・AST の 3 つ）も同じ形で dev の値になる。レルム管理のロールを持たないので裁定の範囲外とした。同じ守りを広げるときは判定器の対象集合（`DEV_CLIENT_SECRET_GUARDED` と `DEV_SECRET_GUARDED_CLIENTS`。試験が一致を固定する）へ足す。
 3. **判定は context の名前だけを見る。** 共有クラスタの context を `k3d-*` 等の名前にすれば dev とみなされる。名前を付ける人の責任とし、手順書に書く。
 4. **docker compose の経路**（`deploy/docker-compose.yml`）は kube context を持たない手元専用の経路であり対象外とした。

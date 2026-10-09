@@ -664,12 +664,17 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
 ## 手動でステップ実行する場合
 
 ```bash
-# 事前に infra secrets・realm ConfigMap・テーマ ConfigMap を作成（k8s-local-up.sh の [3/7] が自動化する部分）
+# 事前に infra secrets・realm ConfigMap・realm の取り込み元 Secret・テーマ ConfigMap を作成（k8s-local-up.sh の [3/7] が自動化する部分）
 kubectl create namespace platform-infra
 kubectl create secret generic postgres -n platform-infra --from-literal=password=postgres
 kubectl create secret generic rabbitmq -n platform-infra --from-literal=username=guest --from-literal=password=guest
 kubectl create secret generic keycloak-admin -n platform-infra --from-literal=password=admin
 kubectl create configmap keycloak-realms -n platform-infra \
+  --from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json
+# IADR-0518 (#1834): Keycloak の取り込み元（keycloak.yaml がマウントする。無いと Pod が起動しない）。
+# 手で作るときは宣言のまま（dev の値）になる。dev 以外のクラスタでは手で作らず k8s-local-up.sh を使う
+# （identity-admin / reset-gate / mcp-client-admin の secret を env の値へ差し替えて作る）。
+kubectl create secret generic keycloak-realm-import -n platform-infra \
   --from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json
 
 # #438: realm.json の loginTheme/accountTheme=platform を解決するテーマ実体

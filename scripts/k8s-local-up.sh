@@ -141,16 +141,14 @@ fi
 # NFR-18, ADR-0124 決定 1, IADR-0517 (#1830): **dev 以外の kube context で、レルム管理のロールを持つ機密クライアントの secret を
 #   公知の dev の値で作らない。** 判定は scripts/lib/dev-client-secret-guard.sh の 1 本（bootstrap.sh・reconcile-realm.sh と共有）。
 #   置き場所は context が確定した直後（k3d は cluster create で `k3d-<cluster>` へ切り替える）・Secret を 1 つも書く前。
-#   対象: `reset-gate` は ESO の有無によらずここで作る（下の reset-gate-oidc）。`identity-admin`・`mcp-client-admin` は ESO=1 では
-#   Vault の種（bootstrap.sh）が作るので、そちらの判定に任せる（Vault に在る KV は触らない＝env 未設定でも dev の値は入らない）。
+#   対象: 3 つとも **ESO の有無によらず**見る。［2026-10-09 / #1834 / IADR-0518］[3/7] の realm の取り込み元（Secret keycloak-realm-import）が
+#   ESO の有無によらず 3 つの env から作られ、空の PVC の Keycloak は [4/7] でそれを取り込む（＝4 つ目の作る口）。従来は ESO=1 で
+#   identity-admin・mcp-client-admin を Vault の種（bootstrap.sh）の判定に任せていたが、bootstrap は [4/7] より後に走るので、
+#   止まる前に Keycloak が dev の値で 2 つを作っていた。
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$ROOT/scripts/lib/dev-client-secret-guard.sh"
-if [ "${ESO:-}" != "1" ]; then
-  dev_secret_args=("identity-admin=${IDENTITY_ADMIN_CLIENT_SECRET:-}" "reset-gate=${RESET_GATE_CLIENT_SECRET:-}"
-    "mcp-client-admin=${MCP_CLIENT_ADMIN_CLIENT_SECRET:-}")
-else
-  dev_secret_args=("reset-gate=${RESET_GATE_CLIENT_SECRET:-}")
-fi
+dev_secret_args=("identity-admin=${IDENTITY_ADMIN_CLIENT_SECRET:-}" "reset-gate=${RESET_GATE_CLIENT_SECRET:-}"
+  "mcp-client-admin=${MCP_CLIENT_ADMIN_CLIENT_SECRET:-}")
 dev_client_secret_guard "k8s-local-up.sh" "${dev_secret_args[@]}" || exit 1
 unset dev_secret_args
 
@@ -237,7 +235,7 @@ fi
 echo "==> [2/7] build & import images"
 bash "$ROOT/scripts/k8s-local-images.sh" "$CLUSTER"
 
-echo "==> [3/7] infra namespace, secrets & realm ConfigMap (dev 既定; env で上書き可)"
+echo "==> [3/7] infra namespace, secrets, realm ConfigMap & realm import Secret (dev 既定; env で上書き可)"
 kubectl create namespace "$INFRA_NS" --dry-run=client -o yaml | kubectl apply -f -
 # IADR-0099 (#310) PR-4: 基盤 secret（postgres/rabbitmq/keycloak-admin）は下の [4/7] infra rollout（ブロッキング）で
 # **非 optional** に消費されるため、Vault/ESO がまだ存在しないこの時点で手動作成が必須（bootstrap）。よって PR-1〜3 と
@@ -311,7 +309,9 @@ kubectl create configmap reset-floor-script -n "$INFRA_NS" \
   --from-file=reset-floor.js=deploy/mail-relay/reset-floor.js \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Keycloak realm import 用 ConfigMap（実 realm ファイル＝単一情報源）。
+# realm の**宣言**の ConfigMap（実 realm ファイル＝単一情報源）。読み手は realm の後追い Job（期待値・--check-dev-secrets の比較元）と
+# 申請の門（宣言の resetPasswordAllowed）。🔴 ［2026-10-09 / #1834 / IADR-0518］Keycloak の取り込み元は下の Secret に分けた ——
+#   ここへ env の値を入れると、実の secret が平の ConfigMap に載り、--check-dev-secrets の比較元（宣言の dev の値）も壊れる。
 # AST realm（submodule）が存在すれば同一 Keycloak へ併せて import する（MSP+AST 連結）。
 realm_args=(--from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json)
 ast_realm="src/ai-stock-trading/infra/keycloak/realm-export.json"
@@ -321,6 +321,20 @@ if [ -f "$ast_realm" ]; then
 fi
 kubectl create configmap keycloak-realms -n "$INFRA_NS" "${realm_args[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
+
+# NFR-18, ADR-0124 決定 1, IADR-0518 (#1834): Keycloak の `--import-realm`（空の PVC の初回・realm を消した後の再起動）の**取り込み元**。
+#   deploy/local/infra/keycloak.yaml が /opt/keycloak/data/import へマウントする。中身は上と同じ realm ファイルだが、レルム管理のロールを
+#   持つ 3 クライアント（identity-admin / reset-gate / mcp-client-admin）は、env（*_CLIENT_SECRET）を与えたものだけ宣言の dev の値を
+#   env の値へ差し替える（判定器 dev_client_secret_realm_for_import。対象・env の名前・宣言の値の単一情報源）。env が無ければ宣言のまま
+#   （dev の context の既定は従来と同じ中身）。🔴 実の secret を含み得るので **ConfigMap ではなく Secret** にする。値は apply_secret が
+#   0700 の一時ディレクトリの 0600 のファイル経由で渡し、必ず消す（#1793。どのプロセスの引数にも載らない）。
+realm_import_mp="$(dev_client_secret_realm_for_import deploy/keycloak/microservices-platform-realm.json)" || exit 1
+realm_import_args=("microservices-platform-realm.json=${realm_import_mp}")
+if [ -f "$ast_realm" ]; then
+  realm_import_args+=("ai-stock-trading-realm.json=$(< "$ast_realm")")
+fi
+apply_secret "$INFRA_NS" keycloak-realm-import "${realm_import_args[@]}"
+unset realm_import_mp realm_import_args
 
 # IADR-0261 (#438): realm.json の loginTheme/accountTheme=platform を解決するテーマ実体
 # （deploy/keycloak/themes/platform/）を ConfigMap 化する。deploy/local/infra/keycloak.yaml 側は
