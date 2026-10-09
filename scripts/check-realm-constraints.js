@@ -89,6 +89,12 @@
  *   - 載せない: 上記以外（人のログインだけの運用ツール・realm 管理用）。例外は `bff`（利用者のトークンの発行元。
  *     `PLATFORM_AUDIENCE_HUMAN_CLIENTS`）だけ。任意スコープ（optional）や realm の既定スコープとしても置かない
  *     （SC-12 が作る MCP クライアントに既定で継がれる）。
+ *   - **別経路で載せない**（#1864 監査）: `platform-api` を出す audience の写像（`oidc-audience-mapper` の
+ *     `included.custom.audience` / `included.client.audience`）は、スコープ `platform-api-audience` の中にだけ置く。
+ *     クライアント直付けの写像・他のスコープ（`profile` 等の共有スコープ・別名のスコープ）に置くと、上の範囲の検査を
+ *     素通りして載る。
+ *   - **要確認**（#1864 監査）: 人のログインの口（`humanLoginGrants`）とサービスアカウントを両方持ち、`bff` でないクライアントは
+ *     「呼び出し元だから載せる」とは決められない（人のトークンにも載る）。スコープの有無によらず要確認として名指す。
  *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
@@ -1513,6 +1519,13 @@ const PLATFORM_AUDIENCE = 'platform-api';
 const PLATFORM_AUDIENCE_SCOPE = 'platform-api-audience';
 // 人のログインの口を持ちながら platform の audience を載せてよいクライアント（利用者のトークンを BFF が後段へ中継する。ADR-0086）。
 const PLATFORM_AUDIENCE_HUMAN_CLIENTS = Object.freeze(['bff']);
+// platform-api を出す audience の写像か（#1864 監査）。custom（文字列）と client（クライアント ID を audience にする）の両方を見る。
+const PLATFORM_AUDIENCE_MAPPER_KEYS = Object.freeze(['included.custom.audience', 'included.client.audience']);
+function emitsPlatformAudience(m) {
+  if (!m || m.protocolMapper !== 'oidc-audience-mapper') return false;
+  const cfg = mapperConfig(m);
+  return PLATFORM_AUDIENCE_MAPPER_KEYS.some((k) => String(cfg[k] ?? '').trim() === PLATFORM_AUDIENCE);
+}
 
 function collectPlatformAudienceGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
   if (!realm || realm.realm !== realmName) return [];
@@ -1523,6 +1536,24 @@ function collectPlatformAudienceGaps(realm, { realmName = AUTH_POLICY_REALM } = 
   if (!mapperOk) {
     gaps.push({ path: `clientScopes[${PLATFORM_AUDIENCE_SCOPE}]`,
       detail: `audience の写像（oidc-audience-mapper・included.custom.audience=${PLATFORM_AUDIENCE}・access.token.claim=true）を持つスコープが無い。全サービスが 401 になる` });
+  }
+  // #1864 監査: platform-api を出す写像は platform-api-audience の中にだけ置く（別名のスコープ・共有スコープ・クライアント直付けは
+  //   クライアントの範囲の検査を素通りする）。
+  for (const s of realm.clientScopes || []) {
+    if (!s || s.name === PLATFORM_AUDIENCE_SCOPE) continue;
+    for (const m of s.protocolMappers || []) {
+      if (!emitsPlatformAudience(m)) continue;
+      gaps.push({ path: `clientScopes[${s.name}].protocolMappers[${m.name || '?'}]`,
+        detail: `${PLATFORM_AUDIENCE} を出す audience の写像が ${PLATFORM_AUDIENCE_SCOPE} 以外のスコープにある。このスコープを持つクライアントへ範囲の検査を経ずに載る（写像は ${PLATFORM_AUDIENCE_SCOPE} の中にだけ置く）` });
+    }
+  }
+  for (const c of realm.clients || []) {
+    if (!c || !c.clientId) continue;
+    for (const m of c.protocolMappers || []) {
+      if (!emitsPlatformAudience(m)) continue;
+      gaps.push({ path: `clients[${c.clientId}].protocolMappers[${m.name || '?'}]`,
+        detail: `${PLATFORM_AUDIENCE} を出す audience の写像がクライアントに直付けされている。範囲の検査を経ずに載る（既定スコープへ ${PLATFORM_AUDIENCE_SCOPE} を入れる形にする）` });
+    }
   }
   for (const key of ['defaultDefaultClientScopes', 'defaultOptionalClientScopes']) {
     if ((realm[key] || []).includes(PLATFORM_AUDIENCE_SCOPE)) {
@@ -1538,6 +1569,15 @@ function collectPlatformAudienceGaps(realm, { realmName = AUTH_POLICY_REALM } = 
     const realmAdmin = (c.defaultClientScopes || []).includes(REALM_MANAGEMENT_ROLE_SCOPE);
     const caller = c.serviceAccountsEnabled === true && !realmAdmin;
     const humanAllowed = PLATFORM_AUDIENCE_HUMAN_CLIENTS.includes(c.clientId);
+    // #1864 監査: 人のログインの口とサービスアカウントの両方を持つ（bff 以外）。載せる／載せないを形からは決めない。
+    const humanGrants = humanLoginGrants(c);
+    if (caller && !humanAllowed && humanGrants.length > 0) {
+      gaps.push({ path: `clients[${c.clientId}]`,
+        detail: `要確認: サービスアカウントと人のログインの口（${humanGrants.join(' / ')}）を両方持つ。${PLATFORM_AUDIENCE_SCOPE} を`
+          + `${has ? '持つので人のトークンにも' : '持たないとサービスアカウントの呼び出しが 401。持てば人のトークンにも'} ${PLATFORM_AUDIENCE} が載る。`
+          + `呼び出し元専用なら人のログインの口を閉じる（false を明示する）。人のトークンを platform へ中継する口なら、判断を記録して PLATFORM_AUDIENCE_HUMAN_CLIENTS へ加える` });
+      continue;
+    }
     if (caller && !has) {
       gaps.push({ path: `clients[${c.clientId}].defaultClientScopes`, detail: `呼び出し元（サービスアカウントを持ち realm 管理用でない）なのに ${PLATFORM_AUDIENCE_SCOPE} が無い。platform のサービスで 401 になる` });
     }
@@ -2866,7 +2906,9 @@ function selfTest() {
       config: { 'included.custom.audience': 'platform-api', 'access.token.claim': 'true' } }] }],
     clients: [
       { clientId: 'bff', serviceAccountsEnabled: true, standardFlowEnabled: true, defaultClientScopes: ['profile', 'platform-api-audience'] },
-      { clientId: 'document-service', serviceAccountsEnabled: true, defaultClientScopes: ['roles', 'platform-api-audience'] },
+      // 人のログインの口を閉じた呼び出し元（未設定の standardFlowEnabled は Keycloak の既定で true＝要確認へ倒れる。#1864 監査）。
+      { clientId: 'document-service', serviceAccountsEnabled: true, standardFlowEnabled: false, directAccessGrantsEnabled: false,
+        defaultClientScopes: ['roles', 'platform-api-audience'] },
       { clientId: 'grafana', standardFlowEnabled: true, defaultClientScopes: ['profile'] },
       { clientId: 'identity-admin', serviceAccountsEnabled: true, defaultClientScopes: ['realm-management-roles'] },
     ],
@@ -2883,6 +2925,29 @@ function selfTest() {
   cases.push({ name: '検査9: 写像の値が mcp-server・スコープが無いと赤', pass:
     audMut((r) => { r.clientScopes[0].protocolMappers[0].config['included.custom.audience'] = 'mcp-server'; }).length === 1
     && audMut((r) => { r.clientScopes = []; }).length === 1 });
+  // #1864 監査: 別経路（クライアント直付け・共有スコープ・別名のスコープ）で platform-api を載せると赤。
+  const paMapper = (key = 'included.custom.audience') => ({ name: 'pa', protocolMapper: 'oidc-audience-mapper',
+    config: { [key]: 'platform-api', 'access.token.claim': 'true' } });
+  cases.push({ name: '検査9（#1864 監査）: grafana にクライアント直付けの写像（custom / client の両方）を足すと赤', pass:
+    audMut((r) => { r.clients[2].protocolMappers = [paMapper()]; }).some((g) => g.path === 'clients[grafana].protocolMappers[pa]')
+    && audMut((r) => { r.clients[2].protocolMappers = [paMapper('included.client.audience')]; }).length === 1 });
+  cases.push({ name: '検査9（#1864 監査）: profile スコープへ写像を足すと赤', pass: audMut((r) => {
+    r.clientScopes.push({ name: 'profile', protocolMappers: [paMapper()] });
+  }).some((g) => g.path === 'clientScopes[profile].protocolMappers[pa]') });
+  cases.push({ name: '検査9（#1864 監査）: 別名のスコープ pa2 に写像を置き grafana へ付けると赤', pass: audMut((r) => {
+    r.clientScopes.push({ name: 'pa2', protocolMappers: [paMapper()] }); r.clients[2].defaultClientScopes.push('pa2');
+  }).some((g) => g.path === 'clientScopes[pa2].protocolMappers[pa]') });
+  cases.push({ name: '検査9（#1864 監査）: 他の audience（mcp-server）の写像は別経路として数えない', pass: audMut((r) => {
+    r.clientScopes.push({ name: 'mcp-server-audience', protocolMappers: [{ name: 'm', protocolMapper: 'oidc-audience-mapper',
+      config: { 'included.custom.audience': 'mcp-server', 'access.token.claim': 'true' } }] });
+  }).length === 0 });
+  // #1864 監査: 人のログインの口とサービスアカウントの両方（bff 以外）は、スコープの有無によらず「要確認」で名指す（足せとは言わない）。
+  cases.push({ name: '検査9（#1864 監査）: 人のログインの口＋サービスアカウント（bff 以外）は要確認（有無の両方で 1 件・足せの文言でない）', pass: (() => {
+    const without = audMut((r) => { r.clients.push({ clientId: 'hybrid', serviceAccountsEnabled: true, standardFlowEnabled: true, defaultClientScopes: ['profile'] }); });
+    const withIt = audMut((r) => { r.clients.push({ clientId: 'hybrid', serviceAccountsEnabled: true, defaultClientScopes: ['profile', 'platform-api-audience'] }); });
+    const one = (gs) => gs.length === 1 && gs[0].path === 'clients[hybrid]' && gs[0].detail.startsWith('要確認') && !gs[0].detail.includes('なのに');
+    return one(without) && one(withIt);
+  })() });
   cases.push({ name: '検査9: platform 以外の realm は見ない', pass: audMut((r) => { r.realm = 'other'; r.clientScopes = []; }).length === 0 });
   cases.push({
     name: '🔴 検査9: 実データの realm が前提を守る（呼び出し元 15 件以上が audience を持つ。0 件の走査を緑にしない）',

@@ -201,7 +201,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 | 載せない側 | 運用ツールの OIDC クライアント（wiki-js・headlamp・grafana・argocd・vault）・realm 管理用（identity-admin・mcp-client-admin・reset-gate）・MCP クライアント登録管理の画面が作るクライアント。realm の既定スコープ・任意スコープにも置かない（後から作るクライアントへ継がれない） |
 | 検証する側 | `AddPlatformAuth` の既定スキーム: `ValidateAudience=true`・受け付ける値は構成 `Auth:Audiences`（未設定なら `platform-api` だけ。配列か、カンマ／空白区切りの文字列）。**設定されているのに空・`mcp-server` を含む構成では起動しない** |
 | MCP 面 | MCP サーバーの `/mcp` は別のスキームで **`mcp-server` だけ**を受け付ける（共有の値は通さない）。MCP クライアントのトークン（`aud=mcp-server` だけ）は他の面・他のサービスで 401 |
-| 静的検査 | `scripts/check-realm-constraints.js`: スコープの写像の値・「サービスアカウントを持ち realm 管理用でないクライアントは全員持つ／それ以外は bff を除き持たない」・既定や任意スコープに置かない |
+| 静的検査 | `scripts/check-realm-constraints.js`: スコープの写像の値・「サービスアカウントを持ち realm 管理用でないクライアントは全員持つ／それ以外は bff を除き持たない」・既定や任意スコープに置かない・**`platform-api` を出す audience の写像はスコープ `platform-api-audience` の中にだけ置く**（クライアント直付け・他のスコープは別経路として止める）・人のログインの口とサービスアカウントを両方持つクライアント（bff 以外）は要確認として名指す |
 | 稼働の実測 | 統合スタックの門（`scripts/check-mcp-client-provisioning.js` の M11）が、利用者・サービスアカウント・連携システムのクライアントのトークンの `aud` に `platform-api` が在り、運用ツールと MCP クライアントのトークンに無いこと、MCP クライアントの実トークンが MCP サーバーの管理 API で 401 になることを測る |
 
 - 🔴 **利用者の経路はサービスごとに絞れない。** BFF は利用者のトークンを token exchange せずに後段へ中継するため、`bff` のトークンは

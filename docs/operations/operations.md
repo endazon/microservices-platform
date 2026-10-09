@@ -286,7 +286,7 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
   OIDC client secret を Secret `headlamp-oidc`（`platform-infra`・dev 既定＝realm import の dev 値・`HEADLAMP_OIDC_CLIENT_SECRET`
   で上書き可）へ作成する。UI 到達は `kubectl -n platform-infra port-forward svc/headlamp 4466:80`（http://localhost:4466）。
 - **realm client**: `deploy/keycloak/microservices-platform-realm.json` の client `headlamp`（confidential）が単一情報源。
-  経路B の Keycloak は永続化が既定で realm が残るため、realm client の変更は起動器の後段（realm の後追い Job）が
+  経路B の Keycloak は永続化が既定で realm が残るため、realm client の変更は起動器の realm の後追い Job（helm の前）が
   差分として当てる（上記「経路B の永続化」の realm 更新の反映）。
 - **認証モデル / RBAC**: OIDC token passthrough（Headlamp が利用者 id_token を API server へ委譲）。fail-safe として
   Headlamp の ServiceAccount には広域権限を与えず、OIDC ログイン無しではクラスタ可視化不可。`developer` の OIDC
@@ -595,10 +595,17 @@ CI の使い捨てスタックも使うため）。**手順を終えるまでは
 
 - 🔴 **realm の変更とサービスの変更は同じ配備に入れ、realm を先に当てる。** サービスだけが先に入ると、`aud` を持たないトークンで
   **利用者の経路もサービス間の経路も全部 401** になる。realm だけが先に入るのは無害である（旧いサービスは `aud` を見ない）。
-  - 経路B（`scripts/k8s-local-up.sh`）は helm の適用の**後**に realm の追随（`deploy/local/keycloak-setup/reconcile-realm.sh`）を当てる。
-    永続化した既存のクラスタへ入れるときは、**先に `bash deploy/local/keycloak-setup/reconcile-realm.sh` を単独で実行し**、
-    アクセストークンの寿命（realm の既定 5 分）を待ってから up を再実行する（旧いサービスが手元に持っている `aud` の無いトークンが
-    新しいサービスで 401 になる窓を閉じる）。新しく立てるクラスタ（空の PVC）は realm の取り込みが最初から含むので順序の注意は要らない。
+  - 経路B（`scripts/k8s-local-up.sh`）は realm の追随（`deploy/local/keycloak-setup/reconcile-realm.sh`）を **Keycloak の起動の直後・
+    helm の適用（[6/7]）の前**に当て、**追随に失敗したら helm へ進まずに止まる**（非 0 で終わる）。永続化した既存のクラスタでも
+    up の再実行だけで順序は守られる。止まったときは原因（Job のログ）を直して up を再実行するか、
+    `bash deploy/local/keycloak-setup/reconcile-realm.sh` を単独で当ててから再実行する。新しく立てるクラスタ（空の PVC）は
+    realm の取り込みが最初から含むので、追随は差分なしで通る。
+  - 🔴 **docker-compose（`deploy/docker-compose.yml`）の既存環境は自動では追随しない。** Keycloak を共有 Postgres（`KC_DB=postgres`）へ
+    永続化しているため、`--import-realm` は既存の realm を**黙って飛ばし**、サービスだけが新しくなって**全経路 401** になる。
+    サービスを上げる前に、本書「基盤インフラの永続化（compose）」節の「Keycloak realm（`microservices-platform-realm.json`）を
+    更新したときの反映手順」で realm を当てる（keycloak DB を作り直して再取り込みする／管理画面の Partial import で、
+    スコープ `platform-api-audience` と、それを既定スコープに持つクライアントを既存の上書きで当てる）。
+    確かめ方は下の Evaluate と同じ。新しく作る環境（空の DB）は取り込みが最初から含むので手順は要らない。
   - 確かめ方: `node scripts/check-stack-ready.js --live` の G9（realm の宣言と稼働の差分が 0）と、認証基盤の管理画面で
     `bff` → Client scopes → Evaluate → 利用者を選んで生成したアクセストークンの `aud` に `platform-api` が在ること。
     統合スタックでは門（`scripts/check-mcp-client-provisioning.js` の M11）が同じことを測る。
@@ -609,7 +616,10 @@ CI の使い捨てスタックも使うため）。**手順を終えるまでは
   先に当たっている必要がある（当たっていないと KB の保存・検索・LLM の 3 経路が 401）。連携システムの側へ配備の告知を出す。
 - **静的な統制**: `scripts/check-realm-constraints.js` が、スコープの写像の値と「サービスアカウントを持ち realm 管理用でないクライアントは
   全員持つ／それ以外（`bff` を除く）は持たない」を CI で止める。**クライアントを足すときは、呼び出し元なら既定スコープへ
-  `platform-api-audience` を入れる**（入れないと検査が赤、入れずに配備すると稼働で 401）。
+  `platform-api-audience` を入れる**（入れないと検査が赤、入れずに配備すると稼働で 401）。`platform-api` を出す audience の写像を
+  クライアントへ直付けする・他のスコープ（共有の `profile` や別名のスコープ）へ置くのも検査が止める（範囲の検査を素通りする別経路）。
+  人のログインの口とサービスアカウントを両方持つクライアント（`bff` 以外）は「要確認」として名指される —— 呼び出し元専用なら
+  人のログインの口を閉じ、人のトークンを中継する口なら判断を記録して検査器の例外へ加える。
 - **受け付ける audience を変える**（サービスごとの audience へ移る等）ときは、各サービスの構成 `Auth__Audiences`（カンマ区切り）と
   realm の写像を**同じ配備で**変える。空の値・`mcp-server` を含む値ではサービスが起動しない（意図した fail-fast）。
 

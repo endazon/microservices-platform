@@ -90,3 +90,33 @@ issue の題は「サービスごとの audience」だが、ADR-0086 のため B
 ## フォローアップ
 
 - planning#770 の裁定（計画への方針の記録）を受けて、必要なら本 IADR に追記する。
+
+## ［2026-10-09 追記 / #1864 監査］監査の指摘の是正
+
+PR #1864 の独立監査（判定 GO）の指摘を同じ PR で是正した。
+
+1. **realm の追随を helm の前へ移し、失敗で止める（残余 1 を解消）**: `k8s-local-up.sh` は realm の追随（`reconcile-realm.sh`）を
+   [7/7] の後（best-effort の WARN）で走らせていた。永続化した既存のクラスタでは、[6/7] の helm が入れる新しい Pod が `aud=platform-api` を
+   求めるのに稼働の realm はまだ載せない —— Job の完了＋トークン寿命（最大 300 秒）のあいだ全 API が 401、追随が落ちれば WARN だけで
+   401 が恒久化する。追随を **[4/7] の Keycloak の rollout の直後（[5/7] の前）** へ移し、**失敗したら非 0 で止める（fail-closed）**。
+   - 依存の確認: Job は platform-infra で `http://keycloak:8080` を叩き、[3/7] の ConfigMap `keycloak-realms` と Secret `keycloak-admin` を
+     読むだけである。[5/7] の Secret・[7/7] の ExternalName（`platform-infra-externalnames.yaml` の逆向きの別名は Keycloak が
+     バックチャネルログアウトで叩く口で、Admin REST の書き込みには要らない）には依存しない。
+   - 新規クラスタを塞がない判断: 空の PVC の Keycloak は [4/7] で同じ宣言を取り込んだ直後なので差分は無いか後追いで収束する。
+     収束しなければ `check-stack-ready.js` の G9（`--check`＝差分 0）がもともと落とすので、CI の新規の経路で新たに赤になる場面は増えない。
+     dev 以外の kube context で管理用クライアントを dev の値で作れない（IADR-0517）ときに止まるのは意図どおり（以前も Job は非 0 だった）。
+   - 本移行に限らず恒常的に fail-closed とした（audience の検証は今後も realm の先行を前提にする。逃げ道の env は足さない）。
+     `SYNTHETIC=1` の「realm 追随 → 標識の env」の順序は保たれる（追随がさらに前へ移っただけ）。
+2. **docker-compose の既存環境の注記**: 運用仕様書の導入節が経路B と新規だけを扱っていた。compose は Keycloak を共有 Postgres へ
+   永続化しており、`--import-realm` が既存 realm を黙って飛ばして全経路 401 になる。同仕様書の既存の「realm を更新したときの反映手順」
+   （DB の作り直し／Partial import）を先に当てる手順を足した。
+3. **検査 9 の別経路**: 範囲の検査は `platform-api-audience` の割り当てしか見ておらず、`platform-api` を出す写像をクライアントへ直付けする・
+   `profile` 等の共有スコープや別名のスコープへ置く経路を素通りした。`clientScopes[].protocolMappers` と `clients[].protocolMappers` を
+   全件走査し、`oidc-audience-mapper` の `included.custom.audience` / `included.client.audience` が `platform-api` の写像は
+   `platform-api-audience` の中にだけ許す。自己試験: grafana への直付け（custom / client）・`profile` への追加・別名 `pa2` を grafana へ
+   付けた形の各々を検出し、他の audience（`mcp-server`）の写像は数えない。
+4. **人のログインの口＋サービスアカウント**: 両方を持ち `bff` でないクライアントを「呼び出し元だから足せ」と誘導していた。
+   人のログインの口は検査 7 と同じ `humanLoginGrants`（未設定の `standardFlowEnabled` は Keycloak の既定で true）で読み、
+   スコープの有無によらず「要確認」の文言で名指す（呼び出し元専用なら口を閉じる／中継の口なら判断を記録して例外へ加える）。
+   実データの realm で該当するのは `bff`（例外）だけで、新たな赤は無い。自己試験の器の呼び出し元は口を明示的に閉じた。
+5. 残余 2（既存の BFF セッションのリフレッシュで `aud` が載るか）は「見込み・未実測」のまま据え置く。
