@@ -101,7 +101,7 @@ public class McpValidationProblemContractTests(TestWebApplicationFactory factory
     public async Task RegisterClient_InvalidEgressTier_Returns400WithRequestBucket()
     {
         var resp = await RegisterAsync(Admin(),
-            new RegisterMcpClientRequest("agent-t1", "T1", "interactive", null, "moon"));
+            new RegisterMcpClientRequest("agent-t1", "T1", "interactive", null, "moon", ["https://agent.example.test/callback"]));
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ErrorsOf(resp)).Should().Equal(["request=egressTier の値 'moon' は不正です。"]);
@@ -136,7 +136,7 @@ public class McpValidationProblemContractTests(TestWebApplicationFactory factory
     public async Task RegisterClient_MissingEgressTier_IsAccepted()
     {
         var resp = await RegisterAsync(Admin(),
-            new RegisterMcpClientRequest("agent-tier-none", "既定ティア", "interactive"));
+            new RegisterMcpClientRequest("agent-tier-none", "既定ティア", "interactive", RedirectUris: ["https://agent.example.test/callback"]));
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
@@ -184,7 +184,7 @@ public class McpValidationProblemContractTests(TestWebApplicationFactory factory
     public async Task RegisterClient_InvalidKindWithDuplicateClientId_ReturnsKindMessage()
     {
         var client = Admin();
-        (await RegisterAsync(client, new RegisterMcpClientRequest("agent-dup1", "重複1", "interactive")))
+        (await RegisterAsync(client, new RegisterMcpClientRequest("agent-dup1", "重複1", "interactive", RedirectUris: ["https://agent.example.test/callback"])))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
         var resp = await RegisterAsync(client, new RegisterMcpClientRequest("agent-dup1", "重複1", "robot"));
@@ -199,10 +199,10 @@ public class McpValidationProblemContractTests(TestWebApplicationFactory factory
     public async Task RegisterClient_ValidInputWithDuplicateClientId_ReturnsDuplicateMessage()
     {
         var client = Admin();
-        (await RegisterAsync(client, new RegisterMcpClientRequest("agent-dup2", "重複2", "interactive")))
+        (await RegisterAsync(client, new RegisterMcpClientRequest("agent-dup2", "重複2", "interactive", RedirectUris: ["https://agent.example.test/callback"])))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
-        var resp = await RegisterAsync(client, new RegisterMcpClientRequest("agent-dup2", "重複2", "interactive"));
+        var resp = await RegisterAsync(client, new RegisterMcpClientRequest("agent-dup2", "重複2", "interactive", RedirectUris: ["https://agent.example.test/callback"]));
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ErrorsOf(resp)).Should().Equal(

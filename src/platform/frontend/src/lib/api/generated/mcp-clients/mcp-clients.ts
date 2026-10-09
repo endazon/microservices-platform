@@ -182,10 +182,15 @@ export type bffMcpRegisterClientResponse502 = {
   status: 502
 }
 
+export type bffMcpRegisterClientResponse503 = {
+  data: void
+  status: 503
+}
+
 export type bffMcpRegisterClientResponseSuccess = (bffMcpRegisterClientResponse201) & {
   headers: Headers;
 };
-export type bffMcpRegisterClientResponseError = (bffMcpRegisterClientResponse400 | bffMcpRegisterClientResponse401 | bffMcpRegisterClientResponse403 | bffMcpRegisterClientResponse502) & {
+export type bffMcpRegisterClientResponseError = (bffMcpRegisterClientResponse400 | bffMcpRegisterClientResponse401 | bffMcpRegisterClientResponse403 | bffMcpRegisterClientResponse502 | bffMcpRegisterClientResponse503) & {
   headers: Headers;
 };
 
@@ -206,6 +211,12 @@ export const getBffMcpRegisterClientUrl = () => {
  * **無人アカウントへ個人資料を読ませる属性割当は拒否される**（400 ValidationProblem）。
  * 登録経路と属性差し替え経路の**両方**が同じ検証を通る。
  * 既に登録済みのクライアント ID も 400 で拒否される。
+ *
+ * ［2026-10-09 / ADR-0134 決定 1］**有人は `redirectUris` が必須**（1〜10 件。`https` か
+ * port を明示したループバックの `http://127.0.0.1:<port>` / `http://[::1]:<port>`。port なしの
+ * ループバック・ワイルドカード・フラグメント・利用者情報・`localhost` は 400）。後段は認証基盤に公開クライアント（PKCE S256・リダイレクト URI の完全一致・
+ * audience を MCP サーバーに限る）を作ってから登録簿へ書く。無人に `redirectUris` を渡すと 400。
+ * 認証基盤へ書けなければ 502、書き込み口が構成されていなければ 503 で、登録簿にも書かない。
  * @summary FR-16, UC-09, SC-12: MCP クライアント登録（有人 / 無人）
  */
 export const bffMcpRegisterClient = async (registerMcpClientRequest: RegisterMcpClientRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffMcpRegisterClientResponse> => {

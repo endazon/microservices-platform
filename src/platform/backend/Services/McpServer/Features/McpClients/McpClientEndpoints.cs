@@ -43,7 +43,8 @@ public static class McpClientEndpoints
     //     ログに残す。食い違い（登録簿は無効・IdP は有効）は照合（決定 5）が `enabled_differs` として拾う。同じ操作をもう一度送れば写し直す。
     //   - **再有効化（開く）は IdP が先、登録簿が後**（決定 4 と同じ `IdpFirstWrite`）。IdP へ書けなければ 502 / 503 で登録簿を書かない。
     //     登録簿の失敗は IdP を無効へ戻す。**入口の印が無いクライアント（`abac-seeder` 等）は 400 で、どちらにも書かない。**
-    //   - 有人の行は IdP に触れない（IdP へ書かない既知の逸脱。決定 3）。
+    //   - ［2026-10-09 / #1844］有人の行も同じく写す（有人も IdP に公開クライアントとして作るようになった。計画 ADR-0134 決定 1）。
+    //     本件より前に登録簿だけへ書かれた有人の行は IdP に無い（`Absent`）ので、登録簿だけを切り替える。
     internal static async Task<IResult> SetEnabledAsync(
         string clientId, bool enabled, McpDbContext db, TimeProvider clock,
         IServiceAccountProvisioner provisioner, ILogger logger, CancellationToken ct)
@@ -57,8 +58,6 @@ public static class McpClientEndpoints
             await db.SaveChangesAsync(token);
             return Results.Ok(McpClientMapper.ToView(client));
         }
-
-        if (client.Kind != McpClientKind.ServiceAccount) return await WriteRegistry(ct);
 
         if (enabled)
             return await IdpFirstWrite.RunAsync(

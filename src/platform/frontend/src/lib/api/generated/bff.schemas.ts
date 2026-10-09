@@ -1782,6 +1782,7 @@ export const RegisterMcpClientRequestEgressTier = {
  * FR-16, UC-09, SC-12: クライアント登録。`attributes` は**無人時に必須**であり、
  * 個人資料を読ませる割当は後段が 400 で拒否する。`egressTier` の未指定は
  * 最も低い保護水準（`standard-external`）として扱われる。
+ * ［2026-10-09 / ADR-0134 決定 1］`redirectUris` は**有人時に必須**・無人には渡さない。
  */
 export interface RegisterMcpClientRequest {
   clientId: string;
@@ -1789,6 +1790,16 @@ export interface RegisterMcpClientRequest {
   kind: RegisterMcpClientRequestKind;
   attributes?: RegisterMcpClientRequestAttributes;
   egressTier?: RegisterMcpClientRequestEgressTier;
+  /**
+     * 有人（`interactive`）のリダイレクト URI。完全一致で照合する。`https` か、ループバックの
+     * `http://127.0.0.1` / `http://[::1]`（RFC 8252）に限る。ループバックは port の明示が必須
+     * （例: `http://127.0.0.1:53123/cb`。port なしは 400。認証基盤 Keycloak 24 の CVE-2024-8883 で
+     * 認可コードを横取りされる形を入れない）。ワイルドカード（`*`）・フラグメント・利用者情報・
+     * `localhost` は不可。重複は不可。
+     * @maxItems 10
+     * @items.maxLength 2048
+     */
+  redirectUris?: string[] | null;
 }
 
 export type ReplaceMcpClientAttributesRequestAttributes = {[key: string]: string};

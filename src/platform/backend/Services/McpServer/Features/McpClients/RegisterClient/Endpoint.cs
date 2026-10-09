@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace McpServer.Features.McpClients.RegisterClient;
 
 // FR-16, UC-09 基本フロー 1, SC-12: クライアント登録（有人 / サービスアカウント）。
+// ［2026-10-09 / #1844］有人は Keycloak の公開クライアント、無人は機密クライアントとして IdP へ作ってから登録簿へ書く（計画 ADR-0134 決定 1）。
 public static class RegisterMcpClientEndpoint
 {
     public static IEndpointRouteBuilder MapRegisterMcpClient(this IEndpointRouteBuilder app)
@@ -53,17 +54,23 @@ public static class RegisterMcpClientEndpoint
                 return Results.Created($"/mcp-clients/{client.ClientId}", McpClientMapper.ToView(client));
             }
 
-            // 🔴 **既知の逸脱（計画とのずれ）**: 計画の SC-12 は種別を限らず「登録 → Keycloak クライアント作成」と定めるが、
-            // 有人は登録簿だけへ書く。有人のクライアントの作り方（入力・テンプレート）は計画へ問うている（planning#751）。
-            // [[IADR-0516]] 決定 3。
-            if (kind != McpClientKind.ServiceAccount) return await WriteRegistry(ct);
+            var logger = loggers.CreateLogger(typeof(RegisterMcpClientEndpoint));
+
+            // 🔴 FR-16, SC-12, 計画 ADR-0134 決定 1・フォローアップ 1, [[IADR-0516]]（2026-10-09 追記 / #1844）: 有人も **検証 → IdP → 登録簿**。
+            // IdP には公開クライアント（PKCE S256・リダイレクト URI の完全一致・audience を MCP サーバーに限る）を作る。順序・補償・入口の印は
+            // 無人と同じ（`IdpFirstWrite`）。口が構成されていなければ 503 で登録簿にも書かない（IADR-0516 決定 3 の既知の逸脱を解いた）。
+            if (kind == McpClientKind.Interactive)
+                return await IdpFirstWrite.RunAsync(
+                    token => provisioner.CreatePublicClientAsync(req.ClientId, req.DisplayName, req.RedirectUris ?? [], token),
+                    WriteRegistry, provisioner, logger, ct,
+                    alreadyExists: id => $"クライアント '{id}' は IdP（Keycloak）に既にあります。"
+                                         + "この画面を通らずに作られたクライアントを有人の MCP クライアントとして登録しません。");
 
             // 🔴 FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0516]] 決定 4 (#1786): 無人は **検証（上で済んだ）→ IdP → 登録簿**。
             // 登録簿は IdP へ書いた値の写しである。IdP へ書けなければ登録簿にも書かない。
             return await IdpFirstWrite.RunAsync(
                 token => provisioner.CreateAsync(req.ClientId, req.DisplayName, attributes, token),
-                WriteRegistry, provisioner,
-                loggers.CreateLogger(typeof(RegisterMcpClientEndpoint)), ct);
+                WriteRegistry, provisioner, logger, ct);
         });
 
         return app;
