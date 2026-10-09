@@ -31,6 +31,9 @@ data:
         cache_location: /tmp/loki/index_cache
       filesystem:
         directory: /tmp/loki/chunks
+    # ADR-0107 決定 4, #1841: 利用統計の送信を止める（compose の loki-config.yaml と同じ。理由はそちらのコメント）。
+    analytics:
+      reporting_enabled: false
 ---
 apiVersion: apps/v1
 kind: Deployment

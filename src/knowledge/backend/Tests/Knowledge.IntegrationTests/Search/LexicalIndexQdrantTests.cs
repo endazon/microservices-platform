@@ -60,7 +60,7 @@ public sealed class LexicalIndexQdrantTests : IAsyncLifetime
 
         if (!DockerRequired.IsAvailable()) return;
 
-        _qdrant = new QdrantBuilder(QdrantTestImage.Reference).Build();
+        _qdrant = QdrantTestImage.CreateBuilder().Build();
         await _qdrant.StartAsync();
 
         var uri = new Uri(_qdrant.GetGrpcConnectionString());

@@ -5,7 +5,11 @@
 経路B（k8s）で Prometheus / Loki / Tempo / Grafana を `platform-infra` に立てる **opt-in オーバーレイ**。
 既定（`deploy/local/infra` のみ）は otel-collector が **debug exporter のみ**＝外部送信なし（fail-safe）。
 config は compose（`deploy/prometheus.yml`・`loki-config.yaml`・`tempo.yaml`・`otel-collector-config.yaml`・
-`grafana/provisioning/datasources`）と同内容を inline する（kustomize の root 外参照制約に従う二重管理）。
+`grafana/provisioning/datasources`・`grafana/grafana.ini`）と同内容を inline する（kustomize の root 外参照制約に従う二重管理）。
+
+**既定の外部通信は止めてある**（ADR-0107 決定 4・#1841・IADR-0520）: Loki・Tempo は設定の利用統計の鍵（`analytics` / `usage_report` の
+`reporting_enabled: false`）、Grafana は `grafana-config.yaml` の ini（利用統計・更新確認・ニュース・Gravatar・公開鍵と Angular 検出パターンの取得）。
+`check-deploy-manifests.js` が描画結果で検査する。
 
 ## 構成
 
@@ -15,6 +19,7 @@ config は compose（`deploy/prometheus.yml`・`loki-config.yaml`・`tempo.yaml`
 | `loki.yaml` | Loki（ログ集約） |
 | `tempo.yaml` | Tempo（トレース・OTLP 4317 受信） |
 | `grafana.yaml` | Grafana（datasource=Prometheus/Loki/Tempo・Keycloak OIDC 認証／local admin フォールバック・IADR-0090） |
+| `grafana-config.yaml` | Grafana の既定の外部通信を止める ini（`/etc/grafana/grafana.ini` へ subPath でマウント。compose の `deploy/grafana/grafana.ini` と同内容） |
 | `otel-collector-forward.yaml` | otel-collector を forwarding 構成へ差し替える ConfigMap（同名上書き） |
 
 メトリクス経路: アプリ → OTLP → otel-collector → prometheusremotewrite / otlp tempo / loki push（push モデル）。

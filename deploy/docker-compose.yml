@@ -137,6 +137,10 @@ services:
     ports:
       - "6333:6333"
       - "6334:6334"
+    # ADR-0107 決定 4, #1841: テレメトリ（既定で有効。送信先 telemetry.qdrant.io・起動時と 1 時間ごと。
+    # 上流 src/common/telemetry_reporting.rs v1.18.1）を止める。🔴 外さないこと（product-egress-defaults.js が検査する）。
+    environment:
+      QDRANT__TELEMETRY_DISABLED: "true"
     volumes:
       - qdrant-data:/qdrant/storage
     # Issue #118 監査: qdrant イメージは curl 非搭載（/bin/sh は dash）で curl 検査は常に
@@ -279,6 +283,9 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      # ADR-0107 決定 4, #1841: 既定の外部通信（利用統計・更新確認・公開鍵と Angular 検出パターンの取得 等）を止める ini。
+      # 🔴 外さないこと（scripts/lib/product-egress-defaults.js が検査する）。中身と理由は grafana.ini 側のコメント。
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
     depends_on:
       - prometheus
       - loki
