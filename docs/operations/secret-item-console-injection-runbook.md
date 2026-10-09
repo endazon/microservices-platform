@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-11
-updated: 2026-09-28
+updated: 2026-10-09
 ---
 <!-- trace:
 ids: [SC-22, SC-06, SC-15, FR-05, NFR-11, NFR-18]
-adrs: [ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0110, ADR-0124]
-iadrs: [IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0486]
-specs: [20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260926_issue-1558_runbook-nits, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1683_vault-audit-to-observability]
-issues: [#458, #310, #438, #1102, #1411, #1467, #1477, #1523, #1558, #1682, #1683, planning#599, planning#635, planning#652, planning#700]
+adrs: [ADR-0132, ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0110, ADR-0124]
+iadrs: [IADR-0525, IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0486]
+specs: [20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260926_issue-1558_runbook-nits, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1683_vault-audit-to-observability]
+issues: [#1840, #458, #310, #438, #1102, #1411, #1467, #1477, #1523, #1558, #1682, #1683, planning#599, planning#635, planning#652, planning#700]
 -->
 
 # 運用 Runbook: 画面が使えないときに秘密情報を 1 項目だけコンソールから投入する
@@ -82,7 +82,7 @@ env で値を渡さなかった項目は**既定値（多くは開発用の固�
 | 前提の状態 | Vault と External Secrets Operator が稼働している（`VAULT=1 ESO=1` で立ち上がった環境） |
 | 所要時間の目安 | 1 項目あたり 5〜10 分（記録を残す時間を含む） |
 
-**開発環境の Vault は file ストレージを PVC に置いて永続化されている**（既定。`PERSIST=0` で立てた場合だけインメモリ）。
+**開発環境の Vault（製品は OpenBao）は raft ストレージを PVC に置いて永続化されている**（既定。`PERSIST=0` で立てた場合だけインメモリ）。
 Pod の再起動で投入した値は消えない。`vault-data` PVC を消した場合は本手順ではなく通常の立ち上げ経路をやり直す。
 
 ## 手順

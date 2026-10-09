@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [NFR-09]
-adrs: [ADR-0106]
-iadrs: [IADR-0494, IADR-0492, IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
-specs: [20261003_1728_eso-force-sync-after-bootstrap, 20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
-issues: [#1728, #1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AST#1078]
+adrs: [ADR-0132, ADR-0106]
+iadrs: [IADR-0525, IADR-0494, IADR-0492, IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
+specs: [20261009_1840_secret-store-openbao, 20261003_1728_eso-force-sync-after-bootstrap, 20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
+issues: [#1840, #1728, #1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AST#1078]
 -->
 
 # 経路B SSO 復旧 Runbook
@@ -30,7 +30,7 @@ issues: [#1728, #1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AS
 | `argocd` ns の `keycloak` エイリアス | クラスタ再構築 | **STEP 0 で自動**（`ARGOCD=1` が適用） |
 | `ast-secrets` の実鍵 | `k8s-local-deploy.sh` を鍵未 export で実行 | STEP 1（鍵を export して再実行） |
 
-永続化（既定オン。`PERSIST=0` を付けていない）なら、vault Pod の再起動では Vault の状態は消えない（file ストレージを PVC に置き、Pod 内ラッパーが自動で unseal する）。`vault-data` PVC を消していなければ、**STEP 2・3 はスキップ可**。
+永続化（既定オン。`PERSIST=0` を付けていない）なら、vault Pod の再起動では Vault の状態は消えない（raft ストレージを PVC に置き、Pod 内ラッパーが自動で unseal する）。`vault-data` PVC を消していなければ、**STEP 2・3 はスキップ可**。
 realm の変更は起動器の realm の後追い Job（Keycloak の起動の直後・アプリの配備の前）が差分として当てるので、STEP 0 の再実行で届く。
 
 ---
