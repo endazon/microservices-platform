@@ -12,6 +12,9 @@ resources:
   - alertmanager.yaml
   - loki.yaml
   - tempo.yaml
+  # NFR-18, ADR-0133, IADR-0526 (#1842): Loki・Tempo の前段（身元の検証）と到達の制限（NetworkPolicy）。別の段として別のファイルに置く。
+  - observability-gate.yaml
+  - observability-networkpolicy.yaml
   - grafana-config.yaml
   - grafana.yaml
   - otel-collector-forward.yaml

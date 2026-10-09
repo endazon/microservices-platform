@@ -47,6 +47,7 @@ const OPTIN_TOKENS = [
   'deploy/local/observability', //     OBSERVABILITY ＋ PERSIST=0（素の overlay）
   'deploy/local/observability-persistence', // OBSERVABILITY（永続化は既定。IADR-0210 → IADR-0369）
   'grafana-oidc', //                   OBSERVABILITY (Grafana OIDC secret, IADR-0090)
+  'observability-gate', //             OBSERVABILITY (Loki・Tempo の前段のトークン, IADR-0526 / #1842)
   'deploy/local/vault', //             VAULT ＋ PERSIST=0（素の -dev）
   'deploy/local/vault-persistence', // VAULT（永続化は既定。IADR-0457 / #1479）
   'vault-dev-token', //                VAULT (secret)
@@ -965,6 +966,33 @@ ok('OBSERVABILITY=1: observability-persistence を apply・grafana-oidc secret �
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/observability-persistence'), 'observability-persistence が apply されない');
   // IADR-0090: Grafana generic OAuth の client secret は k8s Secret grafana-oidc 経由（平文コミットなし）。
   assert.ok(anyLineHas(res.lines, 'grafana-oidc'), 'grafana-oidc secret が作られない');
+});
+
+// NFR-18, ADR-0133, IADR-0526 (#1842): Loki・Tempo の前段のトークン（Secret observability-gate）。
+// 🔴 dev の既定値を置かない —— 乱数の 16 進 64 文字で、writer と reader は別の値。値は kubectl の引数に載らず（#1793）、
+// 作る前に既存の値を読む（再実行で値を回さない。Pod の env は起動時にしか読まれない）。
+ok('#1842: OBSERVABILITY=1 は observability-gate を乱数の 2 値で作り、既存の値を先に読む（値は引数に載らない）', () => {
+  const res = runUp({ OBSERVABILITY: '1' });
+  assert.strictEqual(res.status, 0, res.stderr);
+  const got = Object.fromEntries(
+    res.secrets.filter((l) => l.startsWith('observability-gate ')).map((l) => l.slice('observability-gate '.length).split('=')),
+  );
+  assert.deepStrictEqual(Object.keys(got).sort(), ['reader', 'writer'], `observability-gate の鍵が違う: ${JSON.stringify(Object.keys(got))}`);
+  for (const [k, v] of Object.entries(got)) {
+    assert.match(v, /^[0-9a-f]{64}$/, `observability-gate の ${k} が 16 進 64 文字でない（前段は起動しない）`);
+    assert.ok(!res.lines.some((l) => l.includes(v)), `observability-gate の ${k} の値が kubectl の引数に載った`);
+  }
+  assert.notStrictEqual(got.writer, got.reader, 'writer と reader が同じ値（前段は起動しない）');
+  // 2 回目の起動は別の乱数になる（固定の既定値ではない）。
+  const again = runUp({ OBSERVABILITY: '1' }).secrets.find((l) => l.startsWith('observability-gate writer='));
+  assert.notStrictEqual(again, `observability-gate writer=${got.writer}`, 'writer が起動のたびに同じ値（固定の既定値になっている）');
+  // 引き継ぎ: 作る前に既存の Secret の各鍵を読む。
+  const createAt = res.lines.findIndex((l) => l.includes('create secret generic observability-gate'));
+  for (const k of ['writer', 'reader']) {
+    const readAt = res.lines.findIndex((l) => l.includes('get secret observability-gate') && l.includes(`{.data.${k}}`));
+    assert.ok(readAt !== -1 && readAt < createAt, `observability-gate の ${k} の既存値を作る前に読んでいない（再実行で値が回る）`);
+  }
+  assert.ok(!DEFAULT.secrets.some((l) => l.startsWith('observability-gate ')), 'OBSERVABILITY 無効なのに observability-gate を作った');
 });
 
 // --- IADR-0210 (#787) → IADR-0369 (#1088): 可観測性スタックの永続化 overlay のゲート意味論 -------------

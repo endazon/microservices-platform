@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [SC-12, FR-16, FR-06, FR-04, FR-17, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
-adrs: [ADR-0107, ADR-0123, ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127, ADR-0126]
-iadrs: [IADR-0520, IADR-0518, IADR-0517, IADR-0516, IADR-0501, IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498]
-specs: [20261009_1841_disable-default-egress, 20261009_1783_dept-sync-poc-fix, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1817_sc12-provisioning-wiring, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261003_458_connector-secret-vault-reference, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20261006_1746_claude-rerank]
-issues: [#1841, #1783, #1834, #1830, #1817, #1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672, planning#741, planning#700, AST#1078, planning#716]
+adrs: [ADR-0133, ADR-0112, ADR-0107, ADR-0123, ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127, ADR-0126]
+iadrs: [IADR-0526, IADR-0520, IADR-0518, IADR-0517, IADR-0516, IADR-0501, IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498]
+specs: [20261009_1842_loki-tempo-front-auth, 20261009_1841_disable-default-egress, 20261009_1783_dept-sync-poc-fix, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1817_sc12-provisioning-wiring, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261003_458_connector-secret-vault-reference, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20261006_1746_claude-rerank]
+issues: [#1842, #1841, #1783, #1834, #1830, #1817, #1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, AST#18, AST#24, AST#727, planning#383, planning#672, planning#741, planning#700, AST#1078, planning#716]
 -->
 
 # セキュリティ仕様書
@@ -309,6 +309,35 @@ ABAC が判定に使う利用者の部門は IdP の利用者属性 `department`
 ブラウザが取りに行く通信（Grafana のニュース・アバター）は捕捉していない（上流の既定値の文書で確かめた）。
 TEI（埋め込み）はモデルの取得そのものが外部通信で、設定で止めるものではない。既定で配備されず、有効化の前にモデルの事前配置か自社管理の
 ミラーが要る（未着手）。
+
+### インフラ製品の管理用の口 — Loki・Tempo は前段の認証と到達の制限の 2 段で塞ぐ
+
+計画は、既定で開く管理用の口を閉じられない製品について「認証を必須にできる」と「到達を制限できる」の両方を求め、製品単体で認証を掛けられない
+製品は、**身元を検証する前段**と、**前段を経由しない到達を塞ぐ別の段**の 2 段を製品の外で組めばよいと定めた（L3/L4 の到達の制限だけでは認証と数えない）。
+Loki と Tempo は製品単体で認証を掛けられず、運用の口（`/flush`・`/config`・`/ingester/shutdown`・`/status/*`）・削除 API（Loki）・
+ルーラー・設定の上書き（Tempo）が、読み書きの口と同じ 1 つの HTTP の口に並ぶ。**Loki には保管先（Vault）の audit も入る**ので、
+削除 API へ届く相手は監査の記録を消せる。
+
+| 統制 | 現在の実現手段（2026-10-09） |
+| --- | --- |
+| **前段（身元の検証）** | 経路 B: 製品は Pod の loopback だけで待ち、Service の口は同じ Pod の**認証付きのリバースプロキシ**（Caddy）が持つ。身元は 2 つ（書き込み＝OTel Collector・読み取り＝Grafana）で、それぞれ乱数のトークン（Bearer）を検証し、身元ごとに通す道を限る —— 書き込みは Loki の push だけ、読み取りは GET の読み取り API（query・labels・series・tail・traces・search 等の列挙）だけ。**運用の口・削除 API・ルーラー・設定の上書きは、どちらの身元でも拒む**（403。トークン無し・不一致は 401）。プロキシ自身の管理 API も閉じる |
+| **到達の制限（別の段）** | 経路 B: NetworkPolicy。Loki の Pod へは Collector と Grafana から前段の口だけ、Tempo の Pod へは Collector から OTLP の受け口・Grafana から前段の口だけを許す（k3s は NetworkPolicy を既定で強制する） |
+| **トークン** | Secret `observability-gate`。ローカル起動器が乱数（16 進 64 文字）で作り、再実行では引き継ぐ。**固定の既定値は無い**。前段はトークンが欠けると起動しない（fail-closed） |
+| **運用の口を使う経路** | `kubectl port-forward` で Pod の loopback へ届く（k8s の認証・認可を通る break-glass） |
+
+**経路ごとの段数**:
+
+| 経路 | 段数 | 内訳 |
+| --- | --- | --- |
+| 経路 B（`deploy/local/observability`） | **2 段** | 前段（身元の検証）＋ NetworkPolicy |
+| 経路 A（compose） | 🔴 **0 段** | 前段も到達の制限も無い。Loki・Tempo の口をホストへ公開している。開発者の手元の検証環境として受け入れる |
+| 本番像（helm chart） | — | Loki・Tempo を配備していない。**展開するときは 2 段を配備の定義に含める**（前段の無いまま足さない） |
+
+- Tempo の OTLP の受け口（トレースの書き込み）は管理用の口ではなく、前段を通さない。到達の制限（Collector だけ）の 1 段である。
+- Alertmanager は製品内（web config）で認証を掛けられるので、前段ではなく製品内で掛ける。**配備はまだ認証なし**である（運用仕様書の点検の記録）。
+- **機械の検査**: `scripts/scripts.repo.test.js` が、製品の待ち受け・前段の道の列挙と既定の拒否・前段の env の必須の参照・Service の宛先・NetworkPolicy の許可・
+  Collector と Grafana のトークンの配線を突き合わせ、1 か所ずつ壊すと落ちることを固定している。`scripts/k8s-local-up.test.js` がトークンの生成を固定している。
+- 🔴 **残る穴**: NetworkPolicy の強制は稼働クラスタで実測していない（前段の判定と通しの経路は、配備と同じ版の公式イメージで実測した）。経路 A は 0 段のまま。
 
 ## 秘密情報管理
 

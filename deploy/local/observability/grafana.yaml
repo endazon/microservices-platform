@@ -25,12 +25,19 @@ data:
         type: loki
         access: proxy
         url: http://loki:3100
+        # NFR-18, ADR-0133, IADR-0526 (#1842): Loki・Tempo の前段は読み取りの身元をトークンで検証する。
+        # 値は env（Secret `observability-gate` の `reader`。下の Deployment）。Grafana が provisioning の読み込み時に展開する。
+        jsonData:
+          httpHeaderName1: Authorization
+        secureJsonData:
+          httpHeaderValue1: Bearer $OBS_GATE_READER_TOKEN
       - name: Tempo
         uid: tempo
         type: tempo
         access: proxy
         url: http://tempo:3200
         jsonData:
+          httpHeaderName1: Authorization
           tracesToLogs:
             datasourceUid: loki
             spanStartTimeShift: -5m
@@ -41,6 +48,8 @@ data:
             hide: false
           nodeGraph:
             enabled: true
+        secureJsonData:
+          httpHeaderValue1: Bearer $OBS_GATE_READER_TOKEN
 ---
 # #674: ダッシュボード provisioning。**compose 側の deploy/grafana/provisioning/dashboards/ を
 # そのまま inline する**（datasources / alerting と同じ二重管理の方針）。
@@ -1385,6 +1394,11 @@ spec:
             - { name: GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH, value: "contains(roles[*], 'platform-admin') && 'Admin' || contains(roles[*], 'platform-operator') && 'Editor' || 'Viewer'" }
             # strict=false: role_attribute_path が空でも既定 org ロール（Viewer）で受け入れる（Admin へ昇格させない）。
             - { name: GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT, value: "false" }
+            # NFR-18, ADR-0133, IADR-0526 (#1842): Loki・Tempo の前段へ出す読み取りのトークン（datasource の
+            # `$OBS_GATE_READER_TOKEN`）。optional: Secret が無くても Grafana は起動する（Prometheus は使え、Loki・Tempo は前段が 401 で拒む）。
+            - name: OBS_GATE_READER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: observability-gate, key: reader, optional: true }
           ports:
             - { containerPort: 3000, name: http }
           volumeMounts:

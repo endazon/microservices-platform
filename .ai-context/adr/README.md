@@ -599,3 +599,4 @@
 | [IADR-0519](./IADR-0519_scripts-installed-products-version-pinning.md) | scripts/ が入れる製品は版で固定する。Argo CD は stable が指していた版のタグの URL、k3s はスクリプトの既定を単一の情報源とし、chart・上流マニフェストの内側のイメージの digest 固定は理由つきで別に回す（#1843） | Accepted |
 | [IADR-0520](./IADR-0520_infra-product-default-egress-disabled.md) | インフラ製品（Grafana・Loki・Tempo・Qdrant・Mailpit）の既定の外部通信を、製品が動く全経路の配備で止め、描画結果・compose・Testcontainers を読む検査器で固定する。Mailpit は止める設定を持つ版へ上げる（#1841） | Accepted |
 | [IADR-0521](./IADR-0521_graph-edges-from-links-and-shared-tags.md) | 知識グラフの辺は明示リンクと共有タグで結ぶ。共有タグは文書数 50 を超えるタグから作らず組あたり 1 本・出所は自動抽出のまま内訳列で分ける。Wiki の文書ページへのリンクは文書 ID で解決し、後から届いた相手へは保存済みのリンクから張り直す（#1396） | Accepted |
+| [IADR-0526](./IADR-0526_loki-tempo-front-auth-and-networkpolicy.md) | Loki・Tempo の管理用の口は、経路 B で製品を Pod の loopback 待ちにし、同じ Pod の認証付きのリバースプロキシ（書き込み・読み取りの 2 つの身元と道の列挙）と NetworkPolicy の 2 段で塞ぐ。compose は 0 段として記録する（#1842） | Accepted |
