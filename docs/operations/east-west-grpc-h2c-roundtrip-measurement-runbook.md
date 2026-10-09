@@ -375,16 +375,27 @@ for d in $DESTS; do   # ① 受け手の要求ログ（:8081 の gRPC と、:808
     | grep -E ':8081/|/internal/(introspection|mcp-tools)' | sed "s#^#$d #"
 done | sort | uniq -c | tee "$W/requests-$MODE.txt"
 
+ST='Cancelled|Unknown|InvalidArgument|DeadlineExceeded|NotFound|AlreadyExists|PermissionDenied|ResourceExhausted|FailedPrecondition|Aborted|OutOfRange|Unimplemented|Internal|Unavailable|DataLoss|Unauthenticated'   # gRPC の状態名（OK 以外）
 for c in bff mcp aianalysis graph wiki retrieval datasource document ingestion conversion; do   # ③ 呼び出し元の失敗
   kubectl -n "$NS" logs "deploy/$c-service" -c "$c-service" --since-time="$T0" | tr -d '\r' \
-    | grep -E 'over gRPC|RpcException|StatusCode=|service token|s2s トークン|gRPC の?(解決|照会)に失敗|was not executed|is unimplemented|送出に失敗' \
+    | grep -E "over gRPC|RpcException|StatusCode=|[Ss]tatus=[A-Z]|（($ST)）|service token|s2s トークン|was not executed|is unimplemented" \
     | sed "s#^#$c #"
 done | tee "$W/caller-errors-$MODE.txt"
 ```
 
-③の照合は、gRPC の呼び出し元が失敗のときに出す文言だけに当てる（大文字小文字を区別する）。gRPC の状態の名前は
-例外の `Status(StatusCode="Unavailable", …)` か、各クライアントの警告（`…の gRPC 解決に失敗しました（Unavailable）` など）の中に出るので、
-`StatusCode=` と各文言で拾える。🔴 **状態の名前（`Unavailable` など）を単独で、しかも `-i` で照合しない。** ASP.NET の
+③の照合は、gRPC の呼び出し元が失敗のときに出す形だけに当てる（大文字小文字を区別する）。呼び出し元のコードが出す gRPC の状態の名前
+（`Unavailable`・`Unimplemented` など）は、次の 3 つの形のどれかで必ず現れる（`src` の `catch (RpcException …)` の記録をすべて引いて確かめた）。
+
+| 形 | 例 | 照合 |
+| --- | --- | --- |
+| 例外の出力 | `Grpc.Core.RpcException: Status(StatusCode="Unimplemented", …)` | `RpcException` / `StatusCode=` |
+| 全角括弧で囲んだ状態名 | `認可スコープの gRPC 解決に失敗しました（Unimplemented）。…`・`所有者の読み取りのポリシーの件数を引けなかった（Unavailable）。…` | `（<状態名>）`（状態名は gRPC の 16 種を並べた `$ST`） |
+| `status=` に続く状態名 | `タグ辞書を gRPC で引けなかった（status=Unimplemented）。…`・`通知の送出に失敗しました（status=Unavailable）。…` | `[Ss]tatus=[A-Z]`（HTTP の数字の状態は当たらない） |
+
+ほかに状態名を伴わない文言（`rejected over gRPC`・`Failed to collect … over gRPC`・`could not obtain the caller's service token`・`s2s トークンが取得できない`・
+MCP の `was not executed` / `is unimplemented`）を足してある。照合は字面の連結と選択肢だけで、マルチバイト文字に量指定子（`?` など）を掛けていないので、
+`LC_ALL=C` でも UTF-8 のロケールでも同じ行が当たる。
+🔴 **状態の名前（`Unavailable` など）を単独で、しかも `-i` で照合しない。** ASP.NET の
 DataProtection の起動時の警告（`… Protected data will be unavailable when container is destroyed.`）に当たり、
 呼び出しの失敗が無いのに行が出る（2026-10-10 の実測で mcp に 1 行出た）。
 
@@ -467,7 +478,7 @@ kubectl -n "$NS" run "h2c-probe-$(date +%s)" --rm -i --restart=Never \
 | --- | --- |
 | **合格** | ①（`HTTP/2 POST …:8081/<rpc> - 200`）・②（`request_protocol=grpc`・gRPC 状態 `0`・`mutual_tls`）・③（失敗ログ無し）がそろう。I・M は ④（REST 0 件）も |
 | **輸送のみ** | ①と②（`request_protocol=grpc`）はあるが gRPC 状態が `0` 以外（例: LLM の鍵が無い、権限外）。**h2c の往復は成立しているが業務は失敗**。状態コードと理由を書く |
-| **不合格** | ①か②が無い（受け手に gRPC が届いていない）、②が `mutual_tls` 以外、③に `rejected over gRPC` / `could not obtain the caller's service token` / `Unimplemented` などがある、I・M で ④が 1 件以上（REST を通った） |
+| **不合格** | ①か②が無い（受け手に gRPC が届いていない）、②が `mutual_tls` 以外、③に `rejected over gRPC` / `could not obtain the caller's service token` / `StatusCode="Unimplemented"`・`（Unimplemented）`・`status=Unimplemented`・`is unimplemented` などがある、I・M で ④が 1 件以上（REST を通った） |
 | **未測定** | 発火できなかった（周期を待てない・課金を承認していない・操作の手段が無い）。理由を書く |
 
 ### 5.2 モードごとの判定
@@ -566,6 +577,6 @@ helm upgrade msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.j
 | ②が `connection_security_policy=none` | 呼び出し元の Pod に `istio-proxy` が在るか（`initContainers` も見る。§0.3 (3)） | 注入前に作られた Pod。起動スクリプトの注入の段（`rollout restart`）を経ていない |
 | ①があり③に `rejected over gRPC (Unauthenticated)` | 呼び出し元の `ServiceToken__ClientId` と Secret、realm の service account | 配線不備（不合格として記録）。realm の追随（`reconcile-realm.sh`）と Secret の同期を確かめる |
 | ③に `could not obtain the caller's service token` | 呼び出し元から Keycloak への到達・client secret の一致 | 同上 |
-| ③に `Unimplemented` | 受け手のイメージ | 面が無い＝古いイメージ |
+| ③に `StatusCode="Unimplemented"`・`（Unimplemented）`・`status=Unimplemented`・`is unimplemented` のどれか | 受け手のイメージ | 面が無い＝古いイメージ |
 | ①に `HTTP/1.1 GET …/internal/introspection` が出る（I） | BFF の env の `Introspection__GrpcServices__<名>` | その宛先だけ gRPC 宛先が無い。§2.3 の差分で消していないか確かめる |
 | §3.5 が STRICT でも `401` | `kubectl -n "$NS" get peerauthentication -o yaml` | モードが切り替わっていない。§4 の 2 をやり直す（`kubectl patch` は使わない） |

@@ -24,7 +24,7 @@ issue: "#1882"
 | --- | --- | --- |
 | 1 | §0.3 (3) が `spec.containers` だけを見る。`istio-proxy` は全 Pod で `spec.initContainers` に在る（ネイティブサイドカー） | custom-columns に `INIT:.spec.initContainers[*].name` を足し、どちらかの列に在ればよいと書く。失敗の分岐表にも行を足す |
 | 2 | §0.3 (2) が 0 行でなく 2 行（`helm get manifest` の末尾の空行が 1 行多い） | `helm template` と `helm get manifest` を比べる 3 か所（§0.3 (2)・§2.4・§6.2）を `diff -B` にする。§6.1 は `helm get manifest` 同士なので変えない（実測でも 0 行） |
-| 3 | §3.4 ③ の `grep -iE '…|Unavailable|…'` が DataProtection の警告に当たる | 状態の名前の単独照合と `-i` をやめ、呼び出し元が出す文言（下表）だけに当てる |
+| 3 | §3.4 ③ の `grep -iE '…|Unavailable|…'` が DataProtection の警告に当たる | 状態の名前の単独照合と `-i` をやめ、呼び出し元が出す形（下表と「レビューでの是正」）だけに当てる |
 | 4 | Windows（Git Bash）で `kubectl logs` の CRLF を除き、node へのパスを `cygpath -m` した | `kubectl logs` / `kubectl exec` の出力を grep・node へ流す箇所に `tr -d '\r'`、node へのパスを `np` で渡す。§0.4 に Windows の注意を置く（自己完結。#1880 は未マージ） |
 
 ### ③の照合の根拠（呼び出し元が実際に出す文言。`git grep` で引いた）
@@ -40,6 +40,17 @@ issue: "#1882"
 
 DataProtection の警告（`Protected data will be unavailable when container is destroyed.`）が新しい照合に当たらないこと、上の各文言が当たることを、
 CRLF つきの見本行で手元で確かめた。
+
+### レビューでの是正（PR #1884 の 🟡 2 件）
+
+- **合否表と照合の食い違い（規則 10）**: 初版の照合は文言の列挙（`gRPC 解決に失敗` など）だったため、状態名を全角括弧で出すが文言が列挙に無い
+  `GrpcOwnerReadPolicyStatusSource`（`…件数を引けなかった（Unimplemented）`）と、`status=` で出す `GrpcTagDictionaryReader`
+  （`タグ辞書を gRPC で引けなかった（status=Unimplemented）`）を拾わず、§5.1 と失敗の分岐表の「③に `Unimplemented`」が成り立たなかった。
+  `git grep -ln 'catch (RpcException' -- 'src/*.cs'` で記録をすべて引き、状態名が現れる 3 つの形（例外の `StatusCode="…"`・`（<状態名>）`・`status=<状態名>`）で
+  照合する形に改めた。表の文言もこの 3 形と `is unimplemented` に揃えた。
+- **ロケール依存（`の?`）**: マルチバイト文字に量指定子を掛ける形をやめた（字面の連結と選択肢だけにした）。
+- 見本行 14 行（DataProtection の警告 2・HTTP の `status=404` 1・各クライアントの失敗 11）を `LC_ALL=C` と `LC_ALL=C.UTF-8` の両方で照合し、
+  失敗 11 行がすべて当たり、他の 3 行が当たらないことを確かめた。
 
 ## 母集合（規則 9。誤りの側の文字列で走査した）
 
