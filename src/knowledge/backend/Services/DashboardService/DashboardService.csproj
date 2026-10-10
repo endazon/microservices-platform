@@ -16,6 +16,9 @@
          1 つだけ置き、テストは**同じ式**を引く —— テスト側で式を書き写すと、
          本体を直しても写しが古いまま緑になる。ConversionService ほか 6 サービスと同じ形。 -->
     <InternalsVisibleTo Include="DashboardService.Tests" />
+    <!-- NFR-16 (#1895): スナップショット置換の書き手（KnowledgeHealthSnapshotWriter）を実 PostgreSQL で
+         直接呼ぶため（観測時刻に UTC 以外の値を与える試験。受け口は UtcNow しか渡さないので外からは作れない）。 -->
+    <InternalsVisibleTo Include="Knowledge.IntegrationTests" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
