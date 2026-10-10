@@ -27,11 +27,12 @@ import {
   getBffGraphNeighborsResponseMock,
   getBffGraphNodeResponseMock,
   getBffGraphSuggestionApproveResponseMock,
+  getBffGraphSuggestionGenerateForMeasurementResponseMock,
   getBffGraphSuggestionRejectResponseMock,
   getBffGraphSuggestionsResponseMock
 } from './graph.faker';
 
-export { getBffGraphEdgeTypesResponseMock, getBffGraphNodeResponseMock, getBffGraphNeighborsResponseMock, getBffGraphSuggestionsResponseMock, getBffGraphSuggestionApproveResponseMock, getBffGraphSuggestionRejectResponseMock } from './graph.faker';
+export { getBffGraphEdgeTypesResponseMock, getBffGraphNodeResponseMock, getBffGraphNeighborsResponseMock, getBffGraphSuggestionsResponseMock, getBffGraphSuggestionGenerateForMeasurementResponseMock, getBffGraphSuggestionApproveResponseMock, getBffGraphSuggestionRejectResponseMock } from './graph.faker';
 
 
 export const getBffGraphEdgeTypesMockHandler = (overrideResponse?: EdgeTypeCatalogItem[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<EdgeTypeCatalogItem[]> | EdgeTypeCatalogItem[]), options?: RequestHandlerOptions) => {
@@ -82,6 +83,18 @@ export const getBffGraphSuggestionsMockHandler = (overrideResponse?: AiSuggestio
   }, options)
 }
 
+export const getBffGraphSuggestionGenerateForMeasurementMockHandler = (overrideResponse?: AiSuggestion[] | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<AiSuggestion[]> | AiSuggestion[]), options?: RequestHandlerOptions) => {
+  return http.post('*/bff/graph/suggestions/generate/:documentId', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffGraphSuggestionGenerateForMeasurementResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
 export const getBffGraphSuggestionApproveMockHandler = (overrideResponse?: AiSuggestion | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<AiSuggestion> | AiSuggestion), options?: RequestHandlerOptions) => {
   return http.post('*/bff/graph/suggestions/:id/approve', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
 
@@ -110,6 +123,7 @@ export const getGraphMock = () => [
   getBffGraphNodeMockHandler(),
   getBffGraphNeighborsMockHandler(),
   getBffGraphSuggestionsMockHandler(),
+  getBffGraphSuggestionGenerateForMeasurementMockHandler(),
   getBffGraphSuggestionApproveMockHandler(),
   getBffGraphSuggestionRejectMockHandler()
 ]

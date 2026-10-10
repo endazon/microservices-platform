@@ -7,11 +7,11 @@ created: 2026-10-04
 updated: 2026-10-10
 ---
 <!-- trace:
-ids: [NFR-09, NFR-16, FR-15, FR-16]
-adrs: [ADR-0005, ADR-0029, ADR-0075, ADR-0089, ADR-0117]
-iadrs: [IADR-0379, IADR-0462, IADR-0426, IADR-0307, IADR-0377, IADR-0487, IADR-0488]
-specs: [20261004_issue-1255_h2c-roundtrip-measurement-runbook, 20261010_1882_h2c-runbook-false-alarms]
-issues: [#1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
+ids: [NFR-09, NFR-16, FR-15, FR-16, FR-18, FR-19, FR-22, SC-03, SC-09, SC-19, SC-21]
+adrs: [ADR-0005, ADR-0029, ADR-0075, ADR-0089, ADR-0117, ADR-0051, ADR-0037]
+iadrs: [IADR-0379, IADR-0462, IADR-0426, IADR-0307, IADR-0377, IADR-0487, IADR-0488, IADR-0530, IADR-0380, IADR-0431]
+specs: [20261004_issue-1255_h2c-roundtrip-measurement-runbook, 20261010_1882_h2c-runbook-false-alarms, 20261010_1887_h2c-measurement-triggers]
+issues: [#1887, #1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 -->
 
 # 運用 Runbook: east-west gRPC（h2c）の往復を稼働 k3s で実測する
@@ -44,7 +44,7 @@ issues: [#1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 | チェックアウトの版 | `origin/develop` の `b0eaeff7` 以降。確かめ方: `git merge-base --is-ancestor b0eaeff7 HEAD && echo OK` |
 | クラスタ | **同じチェックアウトから** `bash scripts/k8s-local-images.sh --live` → `ISTIO=1 bash scripts/k8s-local-up.sh --live`（`LOCALEDGE=1` の有無・`ISTIO_MTLS_MODE` は普段どおり）で立ててあること。🔴 イメージが古いと面が無く、全経路が `UNIMPLEMENTED` で落ちる |
 | 入口（STRICT の回） | **入口が Istio Ingress Gateway（`ISTIO=1 LOCALEDGE=1` で立てたもの）であるか、画面を `kubectl port-forward` で開くこと。** 既定の入口（`kube-system` の Traefik）はサイドカーを持たないので、STRICT では Traefik → BFF・フロントの平文が受け手のサイドカーに落とされ、画面が 5xx になる（起動スクリプトが STRICT を入口の移行後にしか宣言しないのはこのため）。**そうでない構成で STRICT で測れるのは I と M だけ**（画面操作を要らない）で、§1.2 の経路は PERMISSIVE だけで測り、STRICT は「未測定（入口がメッシュ外）」と書く |
-| 外部課金 | LLM を呼ぶ経路（§1 の表の「課金」）は外部 API の費用が出る。**実施の可否は利用者が決める**。埋め込みだけなら `LOCALEMBED=1`（決定的ローカル埋め込み。使い捨てスタック専用）で費用なしに測れる |
+| 外部課金 | LLM を呼ぶ経路（§1 の表の「課金」）は外部 API の費用が出る。**実施の可否は利用者が決める**。オーナー判断（2026-10-10）で、AI 分析（A-1・L-3・R-1）・図の変換（L-5）・AI 提案の生成（L-4）は**各モード 1 回まで**発火させてよい。埋め込みだけなら `LOCALEMBED=1`（決定的ローカル埋め込み。使い捨てスタック専用）で費用なしに測れる |
 | 所要時間の目安 | 約 2 時間（グラフ → ダッシュボードの報告を待つなら ＋1 時間。§3.3） |
 
 **gRPC 経路を有効にするための構成は、BFF → 認可の 1 経路を除き、足す必要が無い。** チャートの既定（`values.yaml`）が既に
@@ -62,6 +62,9 @@ issues: [#1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 | helm リリース `msp` の利用者値 | 呼び出し先 13 サービスの `extraEnvAppend` へ要求ログの水準 1 行を**継ぎ足す**（任意で BFF へ認可の gRPC 宛先 1 行） | §2 | §6.1（保存した利用者値で `helm upgrade`） |
 | `PeerAuthentication microservices-platform-mtls` のモード | `set_mesh_mtls_mode` で PERMISSIVE ⇔ STRICT を切り替える（helm 経由） | §4 | §6.1 と同じ 1 本で元のモードへ戻る |
 | `deploy/mcp-service` | 再起動する（起動時のツール申告の収集を発火させる） | §3.2 | 不要 |
+| helm の計測用の値 `measurement.*`（既定はすべて無効） | 計測の窓の間だけ `measurement.json` で入れる（BFF の計測用の生成の口・個人資料の定期処理の前倒し） | §2.2・§3.2.1・§3.2.2 | §6.1（保存した利用者値へ戻すと外れる。外れたことを §6.1 で確かめる） |
+| `deploy/document-service` | モードごとに 1 回再起動する（定期処理の前倒しを発火させる） | §3.2.2 | 不要 |
+| 業務データ（文書・タグ辞書・AI 提案・個人資料・通知） | 利用者が画面で作る・承認する（L-4・D-3・D-2・N-1 の材料）。計測の後も残る | §3.2.1・§3.2.2 | 任意（§3.2.1・§3.2.2 の後始末） |
 | 使い捨て Pod（`curlimages/curl:8.11.1`・サイドカー無し） | `authorization-service:8081` へ平文 h2c を 1 回送る | §3.5 | `--rm` で自動削除 |
 
 **触らないもの**: `platform-infra` / `ai-stock-trading` / `istio-system` の名前空間、realm、Secret、チャートとコード。
@@ -166,7 +169,7 @@ Linux・macOS・WSL では `tr -d '\r'` は何も変えず、`np` はパスを�
 
 | # | 呼び出し元 | 宛先（:8081） | rpc のパス | 切替の env | 発火（操作の例） |
 | --- | --- | --- | --- | --- | --- |
-| A-1 | `aianalysis-service` | authorization | `/platform.authz.v1.AuthzScope/Resolve` | `Services__AuthorizationServiceGrpc` | AI 分析で質問する（課金） |
+| A-1 | `aianalysis-service` | authorization | `/platform.authz.v1.AuthzScope/Resolve` | `Services__AuthorizationServiceGrpc` | AI 分析で質問する（課金。各モード 1 回まで。L-3・R-1 も同じ 1 回で発火する） |
 | A-2 | `graph-service` | authorization | 同上 | 同上 | グラフの閲覧（利用者の権限で動く要求） |
 | A-3 | `wiki-service` | authorization | 同上 | 同上 | Wiki の閲覧 |
 | A-4 | `retrieval-service` | authorization | 同上 | 同上 | 検索 |
@@ -176,15 +179,15 @@ Linux・macOS・WSL では `tr -d '\r'` は何も変えず、`np` はパスを�
 | L-1 | `ingestion-service` | llmgateway | `/platform.llmgateway.v1.LlmEmbedding/Embed` | `Services__LlmGatewayGrpc` | 文書の取り込み（`LOCALEMBED=1` なら課金なし） |
 | L-2 | `retrieval-service` | llmgateway | 同上 | 同上 | 検索（クエリの埋め込み） |
 | L-3 | `aianalysis-service` | llmgateway | `/platform.llmgateway.v1.LlmCompletion/Complete`・`/CompleteStream` | 同上 | AI 分析（課金） |
-| L-4 | `graph-service` | llmgateway | `/platform.llmgateway.v1.LlmCompletion/Complete` | 同上 | AI 提案の生成・要約（課金） |
-| L-5 | `conversion-service` | llmgateway | 同上 | 同上 | 図の変換（課金） |
+| L-4 | `graph-service` | llmgateway | `/platform.llmgateway.v1.LlmCompletion/Complete` | 同上 | §3.2.1 の計測用の生成の口を 1 回呼ぶ（課金。各モード 1 回まで） |
+| L-5 | `conversion-service` | llmgateway | 同上 | 同上 | 図の変換（課金。各モード 1 回まで） |
 | R-1 | `aianalysis-service` | retrieval | `/knowledge.retrieval.v1.DocumentSearch/Search` | `Services__RetrievalServiceGrpc` | AI 分析（RAG の文脈収集。課金） |
 | R-2 | `bff-service` | retrieval | `/knowledge.retrieval.v1.AttributeValues/ListValues` | 同上 | 検索画面の属性値の選択肢 |
-| G-1 | `retrieval-service` | graph | `/knowledge.graph.v1.GraphNeighbors/ExpandNeighbors`・`/ListEdgeTypeWeights` | `Services__GraphServiceGrpc` | 検索（近傍展開） |
+| G-1 | `retrieval-service` | graph | `/knowledge.graph.v1.GraphNeighbors/ExpandNeighbors`・`/ListEdgeTypeWeights` | `Services__GraphServiceGrpc` | **測定から外す**（オーナー判断 2026-10-10。稼働で近傍展開 `GraphExpansion` が無効〔既定 off〕のうえ索引が空。§5 には「対象外」と書く） |
 | D-1 | `bff-service` | document | `/knowledge.document.v1.DocumentRead/ListDocuments`・`GetDocument`・`ListVersions`・`GetVersion` | `Services__DocumentServiceGrpc` | 文書の一覧・詳細・版履歴・特定版 |
-| D-2 | `graph-service` | document | `/knowledge.document.v1.DocumentTagWrite/AddTag` | 同上 | タグの提案の承認 |
-| D-3 | `graph-service` | document | `/knowledge.document.v1.TagDictionary/ListNames` | 同上 | AI 提案の生成（タグ辞書の読み取り） |
-| N-1 | `document-service` | notification | `/platform.notification.v1.NotificationIngress/Accept` | `Services__NotificationServiceGrpc` | 個人資料の共有（通知の送出） |
+| D-2 | `graph-service` | document | `/knowledge.document.v1.DocumentTagWrite/AddTag` | 同上 | §3.2.1 で生まれた保留中の**タグ**提案を 1 件承認する（課金なし） |
+| D-3 | `graph-service` | document | `/knowledge.document.v1.TagDictionary/ListNames` | 同上 | L-4 と同じ要求（§3.2.1。類似の候補が 1 件以上あるときだけ L-4 の直前に読む） |
+| N-1 | `document-service` | notification | `/platform.notification.v1.NotificationIngress/Accept` | `Services__NotificationServiceGrpc` | §3.2.2 の定期処理の前倒し（論理削除済みの個人資料の週次の通知 ①-a）。🔴 共有では送らない |
 | H-1 | `graph-service` | dashboard | `/knowledge.dashboard.v1.KnowledgeHealthReport/Report` | `Services__DashboardServiceGrpc` | 定期（1 時間。**graph の起動から 1 周期後**が初回） |
 
 ### 1.3 gRPC だけの経路（REST の兄弟が無い。退役の対象外・測るのは任意）
@@ -262,19 +265,37 @@ node "$(np "$W/gen-overlay.mjs")" "$(np "$W/all-values.json")" --bff-authz > "$W
 上書きファイルは JSON で書く（YAML の部分集合なので `helm -f` がそのまま読む）。B-1 を足すと **BFF の権限スコープ解決が利用者の要求ごとに gRPC を通る**
 ようになる（計測の間だけ。§6.1 で外れる）。
 
+**計測用の発火手段**（L-4・D-3・D-2・N-1。§3.2.1・§3.2.2）は、チャートの `measurement.*` を別のファイルで入れる。**既定はすべて無効**であり、
+入れない限り BFF に生成の口は無く、個人資料の定期処理の初回は起動の 24 時間後のままである。
+
+```bash
+cat > "$W/measurement.json" <<'EOF'
+{ "measurement": { "suggestionGenerate": true, "privateNoteMaintenanceInitialRunDelaySeconds": 60 } }
+EOF
+```
+
+| 値 | 効き目 | 描画される env |
+| --- | --- | --- |
+| `measurement.suggestionGenerate: true` | BFF に `POST /bff/graph/suggestions/generate/{documentId}` が載る（**システム管理者限定**。運用者・一般利用者は 403。LLM の費用が出る） | `bff-service` に `Measurement__EnableSuggestionGenerate=true` |
+| `measurement.privateNoteMaintenanceInitialRunDelaySeconds: 60` | `document-service` が起動の 60 秒後に個人資料の定期処理を 1 回走らせる（以後は従前どおり 24 時間ごと。中身・判定・発火記録は本番と同じ） | `document-service` に `PrivateNotes__Maintenance__InitialRunDelaySeconds=60` |
+
+有効にしたサービスは起動のたびに警告を 1 行出す（`計測用の口 … が有効である` / `計測用の前倒しが有効である`）。L-4・D-3・D-2・N-1 を測らない回は
+`measurement.json` を作らず、下の `-f "$W/measurement.json"` を外す。
+
 ### 2.3 適用の前に描画の差分で確かめる（S3）
 
 ```bash
 C=deploy/helm/microservices-platform
 helm template msp "$C" -n "$NS" -f "$W/current-values.yaml"                       > "$W/render-before.yaml"
-helm template msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay.json" > "$W/render-after.yaml"
+helm template msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay.json" -f "$W/measurement.json" > "$W/render-after.yaml"
 diff "$W/render-before.yaml" "$W/render-after.yaml" > "$W/overlay.diff"
 echo "removed=$(grep -c '^<' "$W/overlay.diff") added=$(grep -c '^>' "$W/overlay.diff")"
 grep '^>' "$W/overlay.diff" | sort | uniq -c
 ```
 
 期待（`overlay.json`）: `removed=0 added=26`（13 Deployment × 2 行。`name:` と `value: "Information"`）。`overlay-bff.json` なら `removed=0 added=28`
-（BFF の `Services__AuthorizationServiceGrpc` の 2 行が増え、`OpendAuth__*` は残る）。**`removed` が 0 でなければ適用しない（S3）。**
+（BFF の `Services__AuthorizationServiceGrpc` の 2 行が増え、`OpendAuth__*` は残る）。**`measurement.json` を足すと、それぞれ 6 行増える**
+（`bff-service` と `document-service` に、注記・`name:`・`value:` の 3 行ずつ。`removed` は 0 のまま）。**`removed` が 0 でなければ適用しない（S3）。**
 
 本書を書いた時点の手元の実測（helm v3.16.4。`values-local.yaml` に `k8s-local-up.sh` の `ISTIO=1` の `--set` 4 つを足したものを稼働の利用者値とみなした）:
 
@@ -295,8 +316,10 @@ BFF の gRPC 宛先が introspection 13・文書・検索で、認可が無い�
 
 ```bash
 helm upgrade msp deploy/helm/microservices-platform -n "$NS" \
-  -f "$W/current-values.yaml" -f "$W/overlay.json"          # B-1 も測るなら overlay-bff.json
-kubectl -n "$NS" rollout status deployment --timeout=10m    # 13 サービス（＋ B-1 なら bff）が作り直される（S5）
+  -f "$W/current-values.yaml" -f "$W/overlay.json" -f "$W/measurement.json"   # B-1 も測るなら overlay-bff.json
+kubectl -n "$NS" rollout status deployment --timeout=10m    # 13 サービス（measurement.json か B-1 なら bff も）が作り直される（S5）
+kubectl -n "$NS" logs deploy/bff-service -c bff-service | tr -d '\r' | grep -c '計測用の口'               # 1（measurement.json を入れたとき）
+kubectl -n "$NS" logs deploy/document-service -c document-service | tr -d '\r' | grep -c '計測用の前倒し'  # 1（同上）
 helm get manifest msp -n "$NS" | diff -B "$W/render-after.yaml" - | wc -l   # 0 行（overlay-bff.json なら render を作り直して比べる。-B は §0.3 (2) と同じ理由）
 ```
 
@@ -355,7 +378,84 @@ kubectl -n "$NS" rollout restart deploy/mcp-service && kubectl -n "$NS" rollout 
 ```
 
 §1.2 の経路は、表の「発火」の操作を画面（エッジ経由のログイン）で 1 回ずつ行う。課金の経路は承認した回数だけにする（S8）。
+L-4・D-3・D-2 は §3.2.1、N-1 は §3.2.2 の手順で発火させる（画面の操作だけでは発火しない）。G-1 は測定から外す（§1.2）。
 発火できなかった経路は §5 に「未測定」と理由を書く（推測で合格にしない）。
+
+#### 3.2.1 L-4・D-3・D-2（AI 提案の生成と、タグ提案の承認）
+
+計測用の生成の口（§2.2 の `measurement.suggestionGenerate`）を**システム管理者でログインした画面のタブ**から 1 回呼ぶ。
+1 回の要求の中で、graph が D-3（タグ辞書の読み取り）→ L-4（LLM）の順に呼ぶ。D-2 はその要求で生まれた**タグ提案**を承認したときに通る。
+
+**前提（PERMISSIVE の回の前に 1 度だけ用意する。どれかが欠けると L-4・D-3 は呼ばれない）**
+
+- 🔴 **類似の候補は語の共起から引く。埋め込み（Voyage の鍵）と検索の索引は要らない。** 候補の供給元の既定は
+  `term-overlap`（GraphService の `AiSuggestions:Similarity:Source`）で、graph 自身の DB（`graph_documents` と本文の語の表）だけを読む。
+  索引が空でも、Voyage の鍵が無くても候補は出る。
+- 起点にする文書と、**表題（か本文）の語を共有する別の文書**が、管理者から見えて、グラフに載っていること（文書の取り込みの後、
+  graph への同期で載る。`GET /bff/graph/<文書 ID>` が 200 なら載っている）。共有する語は似ている度合いの下限（既定 0.1）を超える程度に要る。
+  例: 表題が「経費精算規程」「経費精算の手順」「経費精算の例外」の 3 文書。
+  - **起点はモードごとに別の文書にする**（例: PERMISSIVE は「経費精算規程」、STRICT は「経費精算の手順」）。一度提案した組（保留中・承認済み・却下済み）と、
+    既に辺がある組は候補から外れる。3 文書なら、2 回目の起点にも候補が 1 件残る。
+- **管理画面のタグ辞書に、その文書に当てはまるタグが 1 つ以上**在ること（例: 「経費」）。辞書に無い値の提案は捨てられ、D-2 の材料にならない。
+- LLM ゲートウェイに生成の鍵（Anthropic）が入っていること。無いと L-4 は届いても業務は失敗する（§5.1 の「輸送のみ」）。
+
+**発火（モードごとに 1 回。課金）**
+
+画面（`https://<エッジ>/`）に**システム管理者**でログインしたタブで開発者ツールのコンソールを開き、次を実行する
+（`X-MSP-CSRF` はセッション Cookie で呼ぶ BFF の書き込みに要るヘッダで、値は問わない）。
+
+```js
+const DOC = '<起点の文書 ID>';   // 文書の詳細画面の URL の末尾、または GET /bff/documents の id
+const r = await fetch(`/bff/graph/suggestions/generate/${DOC}`,
+  { method: 'POST', credentials: 'include', headers: { 'X-MSP-CSRF': '1' } });
+const created = r.ok ? await r.json() : [];
+console.log(r.status, created.map((s) => [s.id, s.kind, s.tagValue ?? s.targetDocumentTitle]));
+```
+
+| 応答 | 意味 | 次の一手 |
+| --- | --- | --- |
+| `200` と 1 件以上 | L-4・D-3 が通った。`kind` が `tag` の行があれば D-2 の材料がある | 下の D-2 へ |
+| `200` と `[]` | 候補が無い（語を共有する文書が無い・全部提案済み）か、LLM が何も返さなかった。**候補が無いときは D-3 も L-4 も呼ばれていない** | ① の受け手の要求ログに `graph … LlmCompletion/Complete` が無ければ候補が無い。前提を整えて別の起点で 1 回だけやり直す（課金。オーナーの承認が要る） |
+| `404` | 口が無い（`measurement.suggestionGenerate` が入っていない）か、起点が管理者から見えない・グラフに載っていない | §2.4 の `計測用の口` の行を確かめる |
+| `403` | ログインしているのがシステム管理者ではない | 管理者でログインし直す |
+
+**D-2（課金なし）**: 上で生まれた `kind: "tag"` の提案を 1 件承認する。画面なら起点の文書の詳細画面の承認欄で承認する。コンソールなら次を実行する。
+
+```js
+const tag = created.find((s) => s.kind === 'tag');
+const a = await fetch(`/bff/graph/suggestions/${tag.id}/approve`,
+  { method: 'POST', credentials: 'include', headers: { 'X-MSP-CSRF': '1' } });
+console.log(a.status, await a.text());   // 200 で state=approved。文書にタグが付く
+```
+
+タグ提案が 1 件も生まれなかった回は、D-2 をその回の「未測定（タグ提案が生まれなかった）」と書く。もう一方のモードの回で生まれたタグ提案を、
+保留のまま残しておいて**その回に**承認してもよい（承認は 1 件ずつ。1 回の生成で複数のタグ提案が生まれることがある）。
+
+**後始末（任意）**: 残った保留中の提案は AI 提案の一覧か文書の詳細画面で却下してよい。作った文書・タグ辞書の値・承認で付いたタグはそのまま残してよい。
+
+#### 3.2.2 N-1（document → notification の通知の送出）
+
+N-1 は**本番の経路のまま**発火させる。`document-service` を再起動すると、§2.2 の `measurement.privateNoteMaintenanceInitialRunDelaySeconds`（60 秒）の後に
+個人資料の定期処理が 1 回走り、**論理削除済みの個人資料を持つ所有者へ週次の通知（①-a）**を `NotificationIngress/Accept` で送る。
+定期処理の中身・判定・発火記録は 24 時間ごとの本番の周期と同じである（前倒しするのは 1 回目の時刻だけ）。
+
+- 🔴 **週次の通知は所有者ごとに 7 日に 1 通である。** 同じ利用者では 2 つ目のモードで出ない。**モードごとに別の利用者でログインして材料を作る**
+  （例: PERMISSIVE は `poc-user`、STRICT は `developer`。realm に在る人の利用者ならどれでもよい）。
+- 材料は**モードの回の中で**作る（§2.4 の適用でも `document-service` は作り直され、60 秒後に 1 回走る。その前に作った材料はそこで使われ、T0 より前に送られてしまう）。
+
+```bash
+# (1) 画面で、このモードの利用者でログインし、個人資料の画面で 1 件作って削除する（本文なし・論理削除。課金なし）
+# (2) document-service を再起動し、前倒しの周期を走らせる
+kubectl -n "$NS" rollout restart deploy/document-service && kubectl -n "$NS" rollout status deploy/document-service --timeout=5m
+kubectl -n "$NS" logs deploy/document-service -c document-service | tr -d '\r' | grep -c '計測用の前倒し'   # 1
+sleep 90   # 前倒しの 60 秒 ＋ 余裕
+kubectl -n "$NS" logs deploy/notification-service -c notification-service --since=5m | tr -d '\r' \
+  | grep -c 'NotificationIngress/Accept'      # 1 以上（§3.4 ① と同じ行。要求ログの水準は §2 で上げてある）
+```
+
+通知は画面の通知一覧（ベル）に「論理削除済みの個人資料が 1 件ある」旨で届く。**送出の失敗は業務処理を止めない**（fail-open）ので、届かないときは
+§3.4 ③（`送出に失敗`・`status=`）と計器 `notification.dispatch.total` を見る。
+**後始末（任意）**: 作った個人資料は個人資料の画面の削除済み一覧から完全削除するか復元してよい。
 
 ### 3.3 待つ
 
@@ -480,6 +580,7 @@ kubectl -n "$NS" run "h2c-probe-$(date +%s)" --rm -i --restart=Never \
 | **輸送のみ** | ①と②（`request_protocol=grpc`）はあるが gRPC 状態が `0` 以外（例: LLM の鍵が無い、権限外）。**h2c の往復は成立しているが業務は失敗**。状態コードと理由を書く |
 | **不合格** | ①か②が無い（受け手に gRPC が届いていない）、②が `mutual_tls` 以外、③に `rejected over gRPC` / `could not obtain the caller's service token` / `StatusCode="Unimplemented"`・`（Unimplemented）`・`status=Unimplemented`・`is unimplemented` などがある、I・M で ④が 1 件以上（REST を通った） |
 | **未測定** | 発火できなかった（周期を待てない・課金を承認していない・操作の手段が無い）。理由を書く |
+| **対象外** | オーナー判断で測定から外した経路（G-1）。判断の日付を書く |
 
 ### 5.2 モードごとの判定
 
@@ -491,7 +592,7 @@ kubectl -n "$NS" run "h2c-probe-$(date +%s)" --rm -i --restart=Never \
 ### 5.3 保留を解いてよいかの目安（決めるのはオーナー）
 
 - **#1517**: I-01〜I-13 と M-1〜M-3 が **両モードで合格**。
-- **#1255 残射程 2**: §1.2 の全行（B-1 を含む）が **両モードで合格**。「輸送のみ」「未測定」が残るなら、その行と理由を並べてオーナーが判断する。
+- **#1255 残射程 2**: §1.2 の全行（B-1 を含む。**G-1 はオーナー判断 2026-10-10 で測定から外したので除く**）が **両モードで合格**。「輸送のみ」「未測定」が残るなら、その行と理由を並べてオーナーが判断する。
 - **#1255 やること 7**: A-1〜A-6（と B-1）が両モードで合格し、§3.5 の対が期待どおり。
 - **H-1（グラフ → ダッシュボード）の STRICT**: 報告は 1 時間周期（初回は graph の起動から 1 周期後）で、STRICT の区間（元が PERMISSIVE なら 30 分以内）と噛み合わない。
   次のどちらかにする。
@@ -530,7 +631,17 @@ kubectl -n "$NS" get peerauthentication microservices-platform-mtls -o jsonpath=
 node scripts/check-stack-ready.js --live                                                    # 門 G12（メッシュ資材の宣言と稼働）を含め緑
 ```
 
-保存した利用者値だけを渡すので、計測用の `extraEnvAppend` も `set_mesh_mtls_mode` で変えたモードも、§0.3 の時点の宣言へ戻る。
+保存した利用者値だけを渡すので、計測用の `extraEnvAppend` も `set_mesh_mtls_mode` で変えたモードも、計測用の発火手段（`measurement.*`）も、
+§0.3 の時点の宣言へ戻る。🔴 **計測用の発火手段が外れたことを、値と稼働の両方で確かめる**（残すと、管理者が LLM の費用の出る口を叩ける状態が続く）。
+
+```bash
+helm get values msp -n "$NS" -o json | grep -c '"measurement"'                                   # 0（§0.3 の時点で入っていなければ）
+helm get values msp -n "$NS" --all -o json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.stringify(JSON.parse(s).measurement)))'
+#   → {"suggestionGenerate":false,"privateNoteMaintenanceInitialRunDelaySeconds":0}（チャートの既定）
+for d in bff document; do kubectl -n "$NS" get deploy "$d-service" -o yaml | grep -cE 'Measurement__|InitialRunDelaySeconds'; done   # 0 と 0
+```
+
+画面のタブで §3.2.1 の `fetch` をもう一度実行し、`404` が返ることも確かめる（口がルート表から消えている）。
 
 ### 6.2 経路単位の緊急切り戻し（その経路だけを REST へ戻す）
 
@@ -544,14 +655,15 @@ node scripts/check-stack-ready.js --live                                        
 
 ```bash
 MODE=STRICT; BFF=--bff-authz      # 今のモード／B-1 を適用中でなければ BFF=
+MEAS="-f $W/measurement.json"     # 計測用の発火手段を適用中でなければ MEAS=（付け忘れると発火手段が外れる。外れる向きは安全側）
 C=deploy/helm/microservices-platform
 node "$(np "$W/gen-overlay.mjs")" "$(np "$W/all-values.json")" $BFF > "$W/overlay-now.json"
 node "$(np "$W/gen-overlay.mjs")" "$(np "$W/all-values.json")" $BFF --rest mcp=Mcp__GrpcServices__document-service > "$W/overlay-rest.json"
-helm template msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-now.json"  --set "mesh.mtlsMode=$MODE" > "$W/render-now.yaml"
+helm template msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-now.json" $MEAS --set "mesh.mtlsMode=$MODE" > "$W/render-now.yaml"
 helm get manifest msp -n "$NS" | diff -B "$W/render-now.yaml" - | wc -l       # 0 行（今の稼働と同じものを組めている。-B は §0.3 (2) と同じ理由）
-helm template msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.json" --set "mesh.mtlsMode=$MODE" \
+helm template msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.json" $MEAS --set "mesh.mtlsMode=$MODE" \
   | diff "$W/render-now.yaml" - | grep '^[<>]'      # 消えるのは抜いた 2 行だけ・足される行は無いこと
-helm upgrade msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.json" --set "mesh.mtlsMode=$MODE"
+helm upgrade msp "$C" -n "$NS" -f "$W/current-values.yaml" -f "$W/overlay-rest.json" $MEAS --set "mesh.mtlsMode=$MODE"
 ```
 
 🟢 `--rest` で抜いた宛先は**上書きとしてリリースに残る**。§6.1 を飛ばして `--reuse-values` の helm（`set_mesh_mtls_mode`・`istio-edge-up.sh`）を続けると、

@@ -3,15 +3,15 @@ title: FR-18 AI 提案（リンク・タグ）テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-22
-updated: 2026-09-27
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
-ids: [FR-18, SC-03, SC-05, SC-09, NFR-09]
-adrs: [ADR-0086, ADR-0088, ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063]
-iadrs: [IADR-0401, IADR-0242, IADR-0266, IADR-0364, IADR-0380, IADR-0410, IADR-0412]
-specs: [20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20260927_issue-1637_grpc-client-caller-cancellation]
-issues: [#1636, #450, #914, #911, #915, #1014, #1187, #1244, #1637]
+ids: [FR-18, SC-03, SC-05, SC-09, NFR-09, NFR-16]
+adrs: [ADR-0086, ADR-0088, ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063, ADR-0117]
+iadrs: [IADR-0401, IADR-0242, IADR-0266, IADR-0364, IADR-0380, IADR-0410, IADR-0412, IADR-0530]
+specs: [20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20260927_issue-1637_grpc-client-caller-cancellation, 20261010_1887_h2c-measurement-triggers]
+issues: [#1636, #450, #914, #911, #915, #1014, #1187, #1244, #1637, #1887]
 -->
 
 # テスト仕様書: AI 提案（リンク・タグ）
@@ -92,6 +92,8 @@ AI が提案したリンク候補・タグ候補の**永続と状態遷移**、�
 | T-54 | タグ辞書の読み取りの gRPC 版を同じ器で繋ぐ | 同上 | 前者は**取り消しとして外へ出す**（「引けなかった」に畳まない・警告を出さない）。後者は従来どおり「引けなかった」 | 辞書照合（「引けなかった」と「空」を混ぜない） | 自動 |
 | T-55 | 所有者の無い組織文書と辞書のタグ。グラフの client（`graph-service`。実トークンの形 = 利用者名なし・`azp` あり、と `service-account-` の利用者名の形）、`platform-service` を持つ他のサービスアカウント（別プロジェクトの LLM 呼び出し用・BFF・MCP・文書・検索・AI 分析）、クライアント識別の接頭辞・大小文字の変種、利用者名だけグラフで `azp` が別のトークン、`azp=graph-service` を持つ人のトークン（`DocumentTagWriteTrustedRelayTests`・`DocumentTagWriteRelayOptionsTests`・`DocumentTagWriteRelayDeploymentWiringTests`） | 反映の gRPC 面を利用者文脈と管理者ロールつき・利用者文脈無しで呼ぶ。信頼する中継者の集合を未構成・置き換え・空白だけ・1 つの値で束縛する。compose・helm のグラフの s2s の client と realm を読む | グラフだけが利用者として反映でき、管理者の承認が通る（陽性対照・版が進む）。他はすべて拒否され（`PERMISSION_DENIED`）、**管理者ロールを名乗っても文書は変わらない**（版が 1 のまま）。空のタグ名でも拒否。利用者文脈の無い要求は呼び出し元を問わず要求の誤り。集合は未構成ならグラフだけ・構成は既定を置き換える・空白だけは誰も信じない・1 つの値は起動時に止まる。配備のグラフの client は既定の集合に入り、realm に `platform-service` 付きで在り、反映を gRPC で配線している。確認を落とす・接頭辞一致・大小文字を畳む・機械の確認を落とす・1 つの値の検査を外す変異は赤 | 利用者文脈を運べる呼び出し元 | 自動 |
 | T-56 | 所有者の無い組織文書・所有者つき文書・他人の個人資料と辞書のタグ。グラフの client の実トークンの形。承認者が管理者かを答える名簿の代役（管理者・管理者でない・引けない）。名簿の実物側は偽の身元プロバイダの既定の利用者（管理者・運用者・無効化された利用者）（`DocumentTagWriteAdminRoleTests`・`GrpcApproverRoleDirectoryTests`・`GrpcUserDirectoryTests`・`KeycloakIdentityAdminClientTests`） | 反映の gRPC 面を、要求の `user_roles` に管理者あり・なしで呼ぶ。名簿の「この 1 人はこのロールを持つか」を呼ぶ。Keycloak の実効ロールの読み口を呼ぶ | **要求が管理者を名乗っても名簿が管理者でないと答えれば反映されない**（版が 1 のまま）。要求にロールが無くても名簿が管理者と答えれば反映される（陽性対照）。名簿を引けなければ所有者でない承認者の要求は要求の失敗（書けないへ畳まない）。所有者の要求・個人資料では名簿を引かない。名簿は実効ロールで答え、無効化された利用者は持たない・ロール名は序数一致・居ないは応答・引けないは status・管理者の利用者トークンは門で拒否。Keycloak は合成ロールを展開した口を読む。要求のロールを再び信じる・引けないを「管理者でない」へ畳む・無効化の確認を落とす・直接の割当を読む・所有者でも名簿を引く変異は赤 | 管理者の上書きの判定の入力 | 自動 |
+| T-57 | BFF の構成に計測専用の鍵が無い・偽 | `POST /bff/graph/suggestions/generate/{id}` | **404**（ルート表に載らない）。後段の生成は呼ばれない | 生成は製品の口ではない（既定で閉じる） | 自動 |
+| T-58 | 計測専用の鍵が真 | システム管理者／運用者／一般利用者／未認証で同じ要求 | 管理者は後段の生成の口へ**資格情報つきで** POST し本文が素通りする（陽性対照）。運用者・一般利用者は 403、未認証は 401 で、後段へ行かない。後段の 404 はそのまま返す | 計測の口は管理者限定・存在秘匿を破らない | 自動 |
 
 ## 変異試験（類似度候補の供給元）
 
