@@ -228,6 +228,32 @@ public class SearchDegradationTests
         result.Degraded.Should().BeFalse();
     }
 
+    // ⚠ 残余リスクの固定（[[IADR-0534]] §結果 / #1871 監査 🟡-1）: 近傍展開の起点は**露出で落とす前**の
+    // ベクトル側ヒットから取る（ADR-0035 決定 2。並びを変えないため露出の後の集合へは移さない）。
+    // そのため段が有効でグラフが故障しているとき、露出 OFF の文書（本人は ABAC 上読める）だけが当たると、
+    // **結果は空なのに `graph-expand-failed` が立つ**。権限の有無・他人の文書は表さない。挙動を変えるなら IADR を改める。
+    [Fact]
+    public async Task 露出OFFの文書だけが当たりグラフが故障していると結果は空でgraph_expand_failedが立つ()
+    {
+        var hidden = new SearchResultDto(Guid.NewGuid(), Guid.NewGuid(), "hidden", "hidden", 1f, null,
+            new()
+            {
+                [DocumentScopes.Key] = DocumentScopes.PrivateNote,
+                [DocumentExposure.SearchKey] = DocumentExposure.Excluded,
+            }, []);
+        var store = new RecordingVectorStore { VectorResults = [hidden], KeywordResults = [] };
+        var expander = new FixedExpander(GraphNeighborhood.Unavailable);
+        var service = new GraphExpandingSearchService(
+            Service(store, new CountingEmbeddingService()), store, expander,
+            new GraphExpansionOptions { Enabled = true }, NullLogger<GraphExpandingSearchService>.Instance);
+
+        var result = await service.SearchWithDegradationAsync(Request(), User, Ct);
+
+        expander.Calls.Should().Be(1, "起点は露出で落とす前のベクトル側ヒットから取る");
+        result.Results.Should().BeEmpty("露出 OFF の文書は出口で落ちる");
+        result.DegradedReasons.Should().Equal(SearchDegradedReasons.GraphExpandFailed);
+    }
+
     // 埋め込みが落ちると起点が無く、段は呼ばれない —— 根の原因（embed-failed）だけが立つ。
     [Fact]
     public async Task 埋め込みが落ちて起点が無ければ段の印は足さない()
