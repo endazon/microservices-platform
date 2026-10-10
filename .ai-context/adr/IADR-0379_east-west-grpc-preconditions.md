@@ -14,9 +14,10 @@ related_ids:
   - IADR-0122
   - IADR-0229
   - IADR-0251
+  - IADR-0533
 author: claude
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-10-10
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0075_east-west-grpc-migration-order.md (Accepted 2026-09-03) 決定 1・2・6
   - planning:projects/microservices-platform/07_adr/ADR-0029_grpc-rest-usage-criteria.md (Accepted 2026-07-25 / 2026-09-03 部分改定) 決定・フォローアップ・2026-08-04 追記
@@ -129,6 +130,10 @@ plan_refs:
 5. **参照実装と並走の正**: 参照実装は BFF → AuthorizationService の権限スコープ解決（`platform.authz.v1.AuthzScope/Resolve`）
    1 経路。`Services:AuthorizationServiceGrpc` が構成されたときだけ gRPC を使い、無ければ REST。**並走中の正は REST**
    （切替も戻しも構成だけで行う）。gRPC 面は REST と**同じ評価器** `AbacEvaluator.ResolveScope` を呼ぶ。
+
+   ［2026-10-10 追記 / #1255・#1517］🔴 **決定 5 の「並走中の正は REST」は [IADR-0533](./IADR-0533_east-west-rest-retirement.md) 決定 1 で反転した。**
+   移行済みの 19 経路で REST 実装を撤去し、east-west の輸送は gRPC だけになった。宛先が未構成なら REST へは戻らず
+   `UNAVAILABLE` として縮退する（同 決定 2）。決定 1〜4 は変わらない。
 
 ## 理由
 
