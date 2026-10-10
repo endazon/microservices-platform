@@ -19,8 +19,8 @@ namespace Platform.Bff.Tests;
 // [[IADR-0009]], [[IADR-0041]], [[IADR-0045]], [[IADR-0379]], [[IADR-0402]] (#1255):
 // BFF の文書読み取り 4 箇所を east-west gRPC へ振り替える切替と、その縮退を固定する。
 //
-// 🔴 **既定は REST（正）である。** 切替は `Services:DocumentServiceGrpc` の有無だけで決まり、
-// 未設定なら gRPC クライアントは DI に 1 つも入らない（戻すのは構成を外すだけ）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］REST の並走は撤去した。器（`BffTestFactory`）の既定のクライアントも gRPC であり、
+// 器の HTTP スタブへの橋渡しの上に組まれている。本クラスは DI へ直接差し込む呼び出し器で個々の振る舞いを測る。
 public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
 {
     private readonly BffTestFactory _factory;
@@ -40,14 +40,20 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
 
     // ── 登録の門（構成でしか切り替わらないこと） ─────────────────────────────────
 
-    // 🔴 未設定なら**何も登録しない**。REST が正であることの実体はこの 1 行である。
+    // 🔴 ［2026-10-10 / #1255・[[IADR-0533]] 決定 2］未設定でも**登録する**（REST へ戻る経路はもう無い）。
+    // 生成クライアントは常に `UNAVAILABLE` を返す呼び出し器の上に組まれる。
     [Fact]
-    public void Registration_is_a_no_op_without_the_grpc_address()
+    public async Task Registration_without_the_grpc_address_answers_unavailable()
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddDocumentReadGrpcClient(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
 
-        services.Should().NotContain(d => d.ServiceType == typeof(DocumentReadGrpcClient));
+        provider.GetService<DocumentReadGrpcClient>().Should().NotBeNull();
+        var raw = provider.GetRequiredService<Pb.DocumentRead.DocumentReadClient>();
+        raw.Should().NotBeNull();
+        provider.GetService<GrpcChannel>().Should().BeNull("宛先が無ければチャネルは張らない");
     }
 
     // 陽性対照: アドレスが在れば登録される（上のテストだけだと「常に何もしない」実装でも緑になる）。
@@ -97,7 +103,7 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
     {
         _factory.DocumentStatusCode = HttpStatusCode.InternalServerError;
 
-        // 陰性対照: gRPC が無ければ REST の 500 が 404（存在秘匿）へ落ちる。
+        // 陰性対照: 器の既定（HTTP スタブへの橋渡し）では後段の 500 が 404（存在秘匿）へ落ちる。
         var viaRest = await _factory.CreateClient().GetAsync(DetailPath, TestContext.Current.CancellationToken);
         viaRest.StatusCode.Should().Be(HttpStatusCode.NotFound);
 

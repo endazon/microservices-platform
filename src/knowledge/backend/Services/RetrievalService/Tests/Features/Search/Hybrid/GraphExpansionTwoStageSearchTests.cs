@@ -11,9 +11,6 @@ using RetrievalService.Infrastructure.ExternalServices;
 using RetrievalService.Domain.Ports;
 using RetrievalService.Domain;
 using RetrievalService.Features.Search.Hybrid;
-using System.Net;
-using System.Net.Http.Json;
-using System.Text;
 
 namespace RetrievalService.Tests.Features.Search.Hybrid;
 
@@ -69,8 +66,7 @@ public class GraphExpansionTwoStageSearchTests
         scope.ServiceProvider.GetService<IGraphNeighborExpander>()
             .Should().BeNull("段が無い構成では近傍展開のポートごと登録されない");
 
-        var report = await factory.CreateClient().GetFromJsonAsync<ServiceIntrospectionDto>(
-            "/internal/introspection", TestContext.Current.CancellationToken);
+        var report = factory.Services.GetRequiredService<ServiceIntrospectionDto>();
         report!.Ports.Select(p => p.Port).Should().NotContain("graph-expansion");
     }
 
@@ -85,12 +81,11 @@ public class GraphExpansionTwoStageSearchTests
         scope.ServiceProvider.GetRequiredService<IHybridSearchService>()
             .Should().BeOfType<GraphExpandingSearchService>();
         scope.ServiceProvider.GetService<IGraphNeighborExpander>()
-            .Should().BeOfType<GraphServiceNeighborExpander>();
+            .Should().BeOfType<GrpcGraphNeighborExpander>();
 
-        var report = await factory.CreateClient().GetFromJsonAsync<ServiceIntrospectionDto>(
-            "/internal/introspection", TestContext.Current.CancellationToken);
+        var report = factory.Services.GetRequiredService<ServiceIntrospectionDto>();
         report!.Ports.Should().Contain(p =>
-            p.Port == "graph-expansion" && p.Implementation == nameof(GraphServiceNeighborExpander));
+            p.Port == "graph-expansion" && p.Implementation == nameof(GrpcGraphNeighborExpander));
     }
 
     // ── T-03 / T-04: 出典化とスコアの意味 ──────────────────────────
@@ -259,191 +254,13 @@ public class GraphExpansionTwoStageSearchTests
     public void ホップ数の構成は範囲外なら既定へ縮退する(int configured, int expected) =>
         new GraphExpansionOptions { Hops = configured }.Normalize().Hops.Should().Be(expected);
 
-    // ── T-05 / T-06: 権限伝播（否定形と陽性対照） ─────────────────
-
-    // FR-05, FR-17, ADR-0034, #916a: 🔴 **否定形。** 資格情報の無い検索では GraphService を呼ばない
-    // （呼ぶと全ホップが 404 に落ち、「グラフには何も無い」と読める静かな故障になる）。
-    [Fact]
-    public async Task Authorizationが無ければGraphServiceを呼ばない()
-    {
-        var graph = new FakeGraphHandler();
-        await using var factory = new GraphExpansionFactory(graph);
-        await SeedAsync(factory, graph);
-
-        var resp = await factory.CreateClient().PostAsJsonAsync(
-            "/search", Request(), TestContext.Current.CancellationToken);
-
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
-        graph.Requests.Should().BeEmpty("資格情報が無いなら下流を呼ばない");
-        body!.Results.Select(r => r.DocumentId).Should().NotContain(graph.NeighborDocumentId);
-    }
-
-    // FR-05, FR-17, ADR-0034, #916a: 🔴 **陽性対照。** 呼び出し元の `Authorization` が
-    // **そのまま** GraphService へ伝播し（方式 A）、グラフ由来の根拠が現れる。
-    // 否定形だけでは「常に呼ばない実装」を通してしまう。
-    [Fact]
-    public async Task Authorizationを伝播してグラフ由来の根拠が現れる()
-    {
-        var graph = new FakeGraphHandler();
-        await using var factory = new GraphExpansionFactory(graph);
-        await SeedAsync(factory, graph);
-
-        var client = factory.CreateClient();
-        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", FakeGraphHandler.AllowedToken);
-        var resp = await client.PostAsJsonAsync("/search", Request(), TestContext.Current.CancellationToken);
-
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
-        graph.Requests.Should().NotBeEmpty();
-        graph.Requests.Should().OnlyContain(r => r.Authorization == FakeGraphHandler.AllowedToken,
-            "本文で scope を渡す方式 B ではなく、ヘッダをそのまま伝播する（方式 A）");
-        body!.Results.Select(r => r.DocumentId).Should().Contain(graph.NeighborDocumentId,
-            "グラフ由来の文書が出典として現れる");
-    }
-
-    // FR-05, FR-17, ADR-0034: 権限外の起点は GraphService が 404（存在秘匿）を返す。
-    // その場合に**グラフ由来の根拠が 1 件も出ない**ことを固定する（否定形）。
-    [Fact]
-    public async Task 権限外の資格情報では404となりグラフ由来の根拠が出ない()
-    {
-        var graph = new FakeGraphHandler();
-        await using var factory = new GraphExpansionFactory(graph);
-        await SeedAsync(factory, graph);
-
-        var client = factory.CreateClient();
-        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer denied");
-        var resp = await client.PostAsJsonAsync("/search", Request(), TestContext.Current.CancellationToken);
-
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
-        graph.Requests.Should().NotBeEmpty("呼びはする（拒否するのは GraphService 側である）");
-        body!.Results.Select(r => r.DocumentId).Should().NotContain(graph.NeighborDocumentId);
-    }
-
-    // ── T-08: 候補の入口は辺だけ ──────────────────────────────────
-
-    // FR-18, FR-17, ADR-0033 決定 10 (#914): 🔴 **未承認（pending / rejected）の AI 提案は
-    // 根拠に現れない。** 提案は辺として存在せず、本段の候補の入口は**辺だけ**である
-    // （応答の `nodes` を読まない）。構造的に混ざり得ないことをここで固定する。
-    [Fact]
-    public async Task 辺で到達しない文書は候補にならない()
-    {
-        var seed = Guid.NewGuid();
-        var suggested = Guid.NewGuid();
-        var graph = new FakeGraphHandler
-        {
-            // 提案どまりの文書がノード一覧にだけ載っている応答（辺は 1 本も無い）。
-            Body = $$"""
-            {"nodes":[{"documentId":"{{seed}}","title":"起点"},
-                      {"documentId":"{{suggested}}","title":"提案どまり"}],
-             "edges":[],"truncated":false,"totalNodes":2,"totalEdges":0,"totalIsLowerBound":false}
-            """,
-        };
-
-        var expander = new GraphServiceNeighborExpander(
-            new SingleClientFactory(graph, GraphExpansionFactory.GraphBaseAddress),
-            NullLogger<GraphServiceNeighborExpander>.Instance);
-
-        var neighborhood = await expander.ExpandAsync(
-            [seed], 2, UserWithCredential(), TestContext.Current.CancellationToken);
-
-        neighborhood.Edges.Should().BeEmpty();
-        GraphProximity.From([seed], neighborhood.Edges, 2).Should().NotContainKey(suggested);
-    }
-
-    // ── R-01〜R-03: 辺の型の実重み（#970 完成。IADR-0263 決定 6 の解消） ──
-
-    private GraphServiceNeighborExpander ExpanderOver(FakeGraphHandler graph) => new(
-        new SingleClientFactory(graph, GraphExpansionFactory.GraphBaseAddress),
-        NullLogger<GraphServiceNeighborExpander>.Instance);
-
-    // FR-04, FR-17, ADR-0035 決定 2: R-01 辞書（`/graph/edge-types/catalog`）の**実重み**が辺に載り、
-    // 重い型（1.0）経由が軽い型（0.3）経由より近接度で上回る（固定値 0.5 へ戻す変異で赤になる）。
-    [Fact]
-    public async Task 辞書の実重みが辺に載り再ランクに効く()
-    {
-        var seed = Guid.NewGuid();
-        var strongDoc = Guid.NewGuid();
-        var weakDoc = Guid.NewGuid();
-        var strongType = Guid.NewGuid();
-        var weakType = Guid.NewGuid();
-        var graph = new FakeGraphHandler
-        {
-            StrongTypeId = strongType,
-            WeakTypeId = weakType,
-            Body = $$"""
-            {"nodes":[],"edges":[
-              {"id":"{{Guid.NewGuid()}}","sourceDocumentId":"{{seed}}","targetDocumentId":"{{strongDoc}}",
-               "edgeTypeId":"{{strongType}}","provenance":"User"},
-              {"id":"{{Guid.NewGuid()}}","sourceDocumentId":"{{seed}}","targetDocumentId":"{{weakDoc}}",
-               "edgeTypeId":"{{weakType}}","provenance":"User"}],
-             "truncated":false,"totalNodes":0,"totalEdges":2,"totalIsLowerBound":false}
-            """,
-        };
-
-        var neighborhood = await ExpanderOver(graph)
-            .ExpandAsync([seed], 2, UserWithCredential(), TestContext.Current.CancellationToken);
-
-        neighborhood.Edges.Should().ContainSingle(e => e.TargetDocumentId == strongDoc)
-            .Which.Weight.Should().Be(1.0, "supersedes は辞書の実重みで運ばれる");
-        neighborhood.Edges.Should().ContainSingle(e => e.TargetDocumentId == weakDoc)
-            .Which.Weight.Should().Be(0.3, "related は辞書の実重みで運ばれる");
-
-        // 重み差がそのまま再ランクの近接度の差になる（合成経路は T-12 が固定済み）。
-        var proximity = GraphProximity.From([seed], neighborhood.Edges, 2);
-        proximity[strongDoc].Should().BeGreaterThan(proximity[weakDoc],
-            "型ごとの重み付け（ADR-0035 決定 2）が実際に効いている");
-    }
-
-    // R-02: 辞書に無い型の辺はフォールバック値（0.5）で扱う（例外にも 0 にもしない）。
-    [Fact]
-    public async Task 辞書に無い型の辺はフォールバック重みで扱う()
-    {
-        var seed = Guid.NewGuid();
-        var neighbor = Guid.NewGuid();
-        var graph = new FakeGraphHandler
-        {
-            Body = $$"""
-            {"nodes":[],"edges":[
-              {"id":"{{Guid.NewGuid()}}","sourceDocumentId":"{{seed}}","targetDocumentId":"{{neighbor}}",
-               "edgeTypeId":"{{Guid.NewGuid()}}","provenance":"User"}],
-             "truncated":false,"totalNodes":0,"totalEdges":1,"totalIsLowerBound":false}
-            """,
-        };
-
-        var neighborhood = await ExpanderOver(graph)
-            .ExpandAsync([seed], 2, UserWithCredential(), TestContext.Current.CancellationToken);
-
-        neighborhood.Edges.Should().ContainSingle()
-            .Which.Weight.Should().Be(GraphServiceNeighborExpander.FallbackEdgeWeight,
-                "辞書と探索の間で型が消えても検索は落とさず、中庸の重みで続ける");
-    }
-
-    // R-03: 辞書が引けない（非 2xx）でも検索は成立し、全辺フォールバック重みで縮退する。
-    [Fact]
-    public async Task 辞書が引けなくても全辺フォールバック重みで検索は成立する()
-    {
-        var graph = new FakeGraphHandler { CatalogStatusCode = HttpStatusCode.InternalServerError };
-
-        var neighborhood = await ExpanderOver(graph)
-            .ExpandAsync([graph.SeedDocumentId], 2, UserWithCredential(),
-                TestContext.Current.CancellationToken);
-
-        // 既定 Body の辺は強い型（1.0）だが、辞書が引けないので 0.5 へ縮退する。
-        neighborhood.Edges.Should().ContainSingle()
-            .Which.Weight.Should().Be(GraphServiceNeighborExpander.FallbackEdgeWeight,
-                "辞書の不調は無差別（中庸）への縮退であって、検索の失敗ではない");
-    }
-
-    // ── 補助 ───────────────────────────────────────────────────────
-
-    private static async Task SeedAsync(GraphExpansionFactory factory, FakeGraphHandler graph)
-    {
-        var store = (StagedVectorStore)factory.Services.GetRequiredService<IVectorStore>();
-        await store.UpsertAsync(Chunk(graph.SeedDocumentId, "起点 文書", [1f, 0f]),
-            TestContext.Current.CancellationToken);
-        await store.UpsertAsync(Chunk(graph.NeighborDocumentId, "近傍 文書", [1f, 0f]),
-            TestContext.Current.CancellationToken);
-        store.VectorSideDocuments.Add(graph.SeedDocumentId);
-    }
+    // ── T-05 / T-06 / T-08 / R-01〜R-03 / U-02（撤去。［2026-10-10 / #1255］[[IADR-0533]] 決定 4） ──
+    //
+    // 近傍展開の REST 実装（`GraphServiceNeighborExpander`。利用者の `Authorization` を GraphService へ転送する方式 A）を
+    // 撤去したので、その輸送に固有の表明（ヘッダの転送・資格情報が無ければ呼ばない・404 の存在秘匿・応答の `nodes` を読まない・
+    // 辞書の実重み／フォールバック重み）を外した。gRPC 実装の同じ性質は `GrpcGraphNeighborExpanderTests` が持つ
+    // （未認証なら 1 度も呼ばない・見えない起点は空・辞書の実重みとフォールバック重み・利用者のトークンを載せない）。
+    // 段そのもの（出典化・ABAC との AND・起点・空集合・合成）は上の T-01〜T-04・T-07・T-09〜T-12 が FakeGraphExpander で測る。
 
     // ── U-01〜U-03: 利用者文脈は入口が決めて段まで引数で運ぶ（[[IADR-0426]] 決定 2 / #1255） ──
 
@@ -485,44 +302,14 @@ public class GraphExpansionTwoStageSearchTests
         await Expanding(store, inner, expander)
             .SearchAsync(Request(), UserWithCredential(), TestContext.Current.CancellationToken);
 
-        expander.User!.ForwardableCredential.Should().Be(FakeGraphHandler.AllowedToken);
-    }
-
-    // 🔴 U-02: **転送できる利用者の資格情報が無ければ GraphService を呼ばない。**
-    // 呼ぶと手元の s2s トークンが利用者の代わりに使われる（confused deputy）か、
-    // 全ホップが 404 になって「グラフには何も無い」と読める静かな故障になる。
-    // **呼ばずに警告する**のが現行の判断であり、輸送を足しても変えない。
-    [Fact]
-    public async Task 転送できる資格情報が無ければ近傍展開を呼ばない()
-    {
-        var graph = new FakeGraphHandler();
-        var noCredential = SearchUserContext.FromBody("alice", new Dictionary<string, string>());
-
-        var neighborhood = await ExpanderOver(graph).ExpandAsync(
-            [graph.SeedDocumentId], 2, noCredential, TestContext.Current.CancellationToken);
-
-        neighborhood.Edges.Should().BeEmpty();
-        graph.Requests.Should().BeEmpty("1 度も呼んでいない（s2s で代用していない）");
-    }
-
-    // ★ U-02 の陽性対照。資格情報が在れば**実際に呼ぶ**（「常に呼ばない」実装を落とす）。
-    [Fact]
-    public async Task 転送できる資格情報が在れば近傍展開を呼ぶ()
-    {
-        var graph = new FakeGraphHandler();
-
-        var neighborhood = await ExpanderOver(graph).ExpandAsync(
-            [graph.SeedDocumentId], 2, UserWithCredential(), TestContext.Current.CancellationToken);
-
-        neighborhood.Edges.Should().NotBeEmpty();
-        graph.Requests.Should().NotBeEmpty();
+        expander.User!.ForwardableCredential.Should().Be(AllowedToken);
     }
 
     // 🔴 [[IADR-0426]] 決定 2 (#1255): 方式 A の転送は**入口が決めた利用者文脈**が運ぶ。
     // 従前は `IHttpContextAccessor` から `Authorization` を拾っていたが、その形のままだと
     // east-west gRPC の入口で**呼び出し元サービスの s2s トークン**を転送してしまう。
     private static SearchUserContext UserWithCredential(
-        string authorization = FakeGraphHandler.AllowedToken)
+        string authorization = AllowedToken)
     {
         var ctx = new DefaultHttpContext();
         ctx.Request.Headers.Authorization = authorization;
@@ -532,6 +319,8 @@ public class GraphExpansionTwoStageSearchTests
                 "test"));
         return SearchUserContext.FromRequest(ctx);
     }
+
+    private const string AllowedToken = "Bearer allowed";
 }
 
 // FR-03, FR-04 (#970): 段①（ベクトル側）を**指定した文書だけに絞れる**ストア。
@@ -622,87 +411,10 @@ internal sealed class FakeGraphExpander(IReadOnlyList<GraphNeighborEdge> edges) 
     }
 }
 
-// GraphService の代役。**`Authorization` を見て応答を変える** —— 権限伝播が効いているかを、
-// 「後段が効いているから効く」ではなく RetrievalService の側から測るための装置である。
-// 辺の型辞書（`/graph/edge-types/catalog`）も演じる（#970: 再ランクの実重みの供給元）。
-internal sealed class FakeGraphHandler : HttpMessageHandler
-{
-    public const string AllowedToken = "Bearer allowed";
-
-    public Guid SeedDocumentId { get; } = Guid.NewGuid();
-    public Guid NeighborDocumentId { get; } = Guid.NewGuid();
-
-    // 辞書に載る 2 つの型（強 1.0 / 弱 0.3。ADR-0035 決定 2 の名指しの写し）。
-    public Guid StrongTypeId { get; init; } = Guid.NewGuid();
-    public Guid WeakTypeId { get; init; } = Guid.NewGuid();
-
-    // 既定の応答: 起点 → 近傍の辺が 1 本（強い型）。
-    public string? Body { get; init; }
-
-    // 辞書の応答（既定: 強・弱の 2 型）。非 2xx を返す縮退の検証用に差し替え可能。
-    public string? CatalogBody { get; init; }
-    public HttpStatusCode CatalogStatusCode { get; init; } = HttpStatusCode.OK;
-
-    public List<(string? Authorization, string Path)> Requests { get; } = [];
-
-    protected override Task<HttpResponseMessage> SendAsync(
-        HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        var authorization = request.Headers.TryGetValues("Authorization", out var values)
-            ? string.Join(' ', values)
-            : null;
-        Requests.Add((authorization, request.RequestUri!.PathAndQuery));
-
-        // ADR-0034 決定 2: 非許可・不存在はすべて同一の 404（存在秘匿）。
-        if (authorization != AllowedToken)
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
-
-        if (request.RequestUri!.AbsolutePath == "/graph/edge-types/catalog")
-        {
-            if (CatalogStatusCode != HttpStatusCode.OK)
-                return Task.FromResult(new HttpResponseMessage(CatalogStatusCode));
-
-            var catalog = CatalogBody ?? $$"""
-            [{"id":"{{StrongTypeId}}","name":"supersedes","layer":"core","isSymmetric":false,"weight":1.0},
-             {"id":"{{WeakTypeId}}","name":"related","layer":"core","isSymmetric":true,"weight":0.3}]
-            """;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(catalog, Encoding.UTF8, "application/json"),
-            });
-        }
-
-        var body = Body ?? $$"""
-        {"nodes":[{"documentId":"{{SeedDocumentId}}","title":"起点"},
-                  {"documentId":"{{NeighborDocumentId}}","title":"近傍"}],
-         "edges":[{"id":"{{Guid.NewGuid()}}","sourceDocumentId":"{{SeedDocumentId}}",
-                   "targetDocumentId":"{{NeighborDocumentId}}",
-                   "edgeTypeId":"{{StrongTypeId}}","provenance":"User"}],
-         "truncated":false,"totalNodes":2,"totalEdges":1,"totalIsLowerBound":false}
-        """;
-
-        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json"),
-        });
-    }
-}
-
-// 名前付きクライアントを 1 本だけ返すファクトリ（アダプタ単体の試験用）。
-internal sealed class SingleClientFactory(HttpMessageHandler handler, string baseAddress) : IHttpClientFactory
-{
-    public HttpClient CreateClient(string name) =>
-        new(handler, disposeHandler: false) { BaseAddress = new Uri(baseAddress) };
-}
-
 // 段を有効にした宿主。**構成（GraphExpansion:Enabled）だけで段が入る**ことを確かめるため、
 // `IHybridSearchService` の差し替えは行わない（本番と同じ登録経路を通す）。
-internal class GraphExpansionFactory(FakeGraphHandler? graph = null) : TestWebApplicationFactory
+internal class GraphExpansionFactory : TestWebApplicationFactory
 {
-    public const string GraphBaseAddress = "http://graph-service.test";
-
-    private readonly FakeGraphHandler _graph = graph ?? new FakeGraphHandler();
-
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
@@ -711,7 +423,6 @@ internal class GraphExpansionFactory(FakeGraphHandler? graph = null) : TestWebAp
         // 読む値であり、`ConfigureAppConfiguration` で足した構成はそこまでに間に合わない
         // （足しても既定オフのまま起動し、試験が「段が入らない」で落ちる）。
         builder.UseSetting("GraphExpansion:Enabled", "true");
-        builder.UseSetting("Services:GraphService", GraphBaseAddress);
 
         builder.ConfigureServices(services =>
         {
@@ -720,9 +431,6 @@ internal class GraphExpansionFactory(FakeGraphHandler? graph = null) : TestWebAp
 
             services.RemoveAll<IEmbeddingService>();
             services.AddSingleton<IEmbeddingService>(new FixedEmbeddingService([1f, 0f]));
-
-            services.AddHttpClient(GraphServiceNeighborExpander.ClientName)
-                .ConfigurePrimaryHttpMessageHandler(() => _graph);
         });
     }
 }

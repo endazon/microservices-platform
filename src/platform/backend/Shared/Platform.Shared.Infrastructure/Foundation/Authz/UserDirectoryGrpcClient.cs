@@ -1,6 +1,7 @@
 using Grpc.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
@@ -270,8 +271,9 @@ public sealed record PlatformUserRetentionStatus(
 
 public static class UserDirectoryGrpcClientExtensions
 {
-    // `Services:AuthorizationServiceGrpc`（`AuthzScopeGrpcClient.AddressKey` と**同じキー**）が
-    // 構成されたときだけ登録する。未設定なら何も登録せず、呼び出し元は REST のまま。
+    // `Services:AuthorizationServiceGrpc`（`AuthzScopeGrpcClient.AddressKey` と**同じキー**）の生成クライアントを登録する。
+    // ［2026-10-10 / [[IADR-0533]] 決定 2］**常に登録する。** 未設定なら常に `UNAVAILABLE` を返す呼び出し器の上に組む
+    // （呼び出し元は「引けなかった」へ倒れる。REST の兄弟実装は撤去した）。
     //
     // チャネルは `AddAuthzScopeGrpcClient` と**共有する**（宛先が同じ 1 つの認可サービスであり、
     // HTTP/2 は多重化される。`AuthzScopeGrpcClientExtensions.AddChannel` の注記を参照）。
@@ -279,14 +281,16 @@ public static class UserDirectoryGrpcClientExtensions
         this IServiceCollection services, IConfiguration config)
     {
         var address = config[AuthzScopeGrpcClient.AddressKey];
-        if (string.IsNullOrWhiteSpace(address))
-            return services;
+        if (!string.IsNullOrWhiteSpace(address))
+        {
+            services.AddPlatformServiceToken(config);
+            AuthzScopeGrpcClientExtensions.AddChannel(services, address);
+            services.TryAddSingleton(sp =>
+                new Pb.UserDirectory.UserDirectoryClient(sp.GetRequiredService<global::Grpc.Net.Client.GrpcChannel>()));
+        }
 
-        services.AddPlatformServiceToken(config);
-        AuthzScopeGrpcClientExtensions.AddChannel(services, address);
-        services.AddSingleton(sp =>
-            new Pb.UserDirectory.UserDirectoryClient(sp.GetRequiredService<global::Grpc.Net.Client.GrpcChannel>()));
-        services.AddSingleton<UserDirectoryGrpcClient>();
+        services.TryAddUnconfiguredGrpcClient(AuthzScopeGrpcClient.AddressKey, ci => new Pb.UserDirectory.UserDirectoryClient(ci));
+        services.TryAddSingleton<UserDirectoryGrpcClient>();
         return services;
     }
 }

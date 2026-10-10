@@ -9,13 +9,10 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Platform.Shared.Infrastructure.Foundation.Introspection;
 
 // FR-15, ADR-0018: 各サービス・段の自己申告（イントロスペクション）を組み立て、
-// メッシュ内部限定のエンドポイントとして公開する。構成情報 API（BFF）はこれを集約して
+// メッシュ内部限定の gRPC 面として公開する（［2026-10-10 / #1517・[[IADR-0533]]］REST の面は撤去した）。構成情報 API（BFF）はこれを集約して
 // 実効構成を組み立て、宣言（pipeline.json）と突合してドリフトを検出する。
 public static class IntrospectionExtensions
 {
-    // 自己申告エンドポイントの内部パス（ingress へは公開しない。メッシュ内部限定）。
-    public const string IntrospectionPath = "/internal/introspection";
-
     // サービスの自己申告（購読/発行する段・選択中ポート・コネクタ）を構築して登録する。
     // 段の実効値（enabled・outputs）は宣言（pipeline）から解決する（登録規則と同じ導出）。
     public static IServiceCollection AddPlatformIntrospection(
@@ -36,22 +33,18 @@ public static class IntrospectionExtensions
         return services;
     }
 
-    // 自己申告エンドポイント（GET /internal/introspection）をマップする。
+    // 自己申告の gRPC 面（`platform.introspection.v1.ServiceIntrospection/Get`）をマップする。
     // メッシュ内部限定（ネットワーク分離 IADR-0017 / mTLS IADR-0026 が防御）。ingress へは公開しない。
     //
     // FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379, IADR-0462 (#1514, #1255 経路 ⑤):
-    // 🔴 **REST と gRPC の両面を必ず対で張る。** 扇形の経路は「宛先の側が同じ面を実装しないと
-    // 1 経路も移らない」ので、面を各サービスの Program.cs へ個別に足す形にすると、足し忘れた
-    // サービスだけが REST のまま残り、しかも**呼び出し側からは到達不能としか見えない**。
-    // 自己申告を張る唯一の口に gRPC 面を同居させ、張り忘れを構造で起こさない。
-    // gRPC 面は `ServiceCaller` を要求する（`IntrospectionGrpcService`）。REST 面は変えない。
+    // 自己申告を張る唯一の口に gRPC 面を置き、張り忘れを構造で起こさない（扇形の経路は宛先の側が面を
+    // 実装しないと 1 経路も移らない）。gRPC 面は `ServiceCaller` を要求する（`IntrospectionGrpcService`）。
+    //
+    // ［2026-10-10 / #1517・計画 ADR-0089 決定 1・[[IADR-0533]] 決定 3］**REST の面（`GET /internal/introspection`）は撤去した。**
+    // 従前は REST と gRPC の両面を対で張っていた（並走中の正は REST）。収集側（BFF）が gRPC だけで集めるようになり、
+    // REST の面を呼ぶ呼び出し元が 0 になったので面ごと外した。
     public static IEndpointRouteBuilder MapPlatformIntrospection(this IEndpointRouteBuilder app)
     {
-        app.MapGet(IntrospectionPath,
-            (HttpContext ctx) => Results.Ok(
-                ctx.RequestServices.GetRequiredService<ServiceIntrospectionDto>()))
-           .WithName("PlatformIntrospection")
-           .ExcludeFromDescription();
         app.MapGrpcService<IntrospectionGrpcService>();
         return app;
     }

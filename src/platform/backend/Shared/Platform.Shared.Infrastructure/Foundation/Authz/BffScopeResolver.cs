@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Contracts.Dtos;
-using System.Net.Http.Json;
 using System.Security.Claims;
 
 namespace Platform.Shared.Infrastructure.Foundation.Authz;
@@ -27,11 +26,18 @@ public static class BffScopeResolver
     // （名前つき分岐）をそのまま運ぶ。BFF 内の判定には BffAccessScope を用い、
     // 後段へ渡すときは ToContractScope() で契約型へ写す（**Branches も運ばれる**。段 3 完了）。
     //
-    // NFR-09, ADR-0029, ADR-0075, IADR-0379 (#1201): **gRPC 経路（参照実装）との並走。**
-    // `Services:AuthorizationServiceGrpc` が構成されて AuthzScopeGrpcClient が DI に在れば gRPC で解決し、
-    // 無ければ従来どおり REST で解決する。**並走中の正は REST**（gRPC は opt-in）。どちらの経路も
-    // 同じ deny-by-default（null）へ縮退する。利用者の JWT は gRPC のメタデータへ載せない ——
-    // 載せるのは BFF 自身の s2s トークンであり、利用者の文脈は本文（userId / 属性 / action）で運ぶ。
+    // NFR-09, ADR-0029, ADR-0075, IADR-0379 (#1201): 解決は east-west gRPC（`AuthzScopeGrpcClient`）で行う。
+    // 利用者の JWT は gRPC のメタデータへ載せない —— 載せるのは BFF 自身の s2s トークンであり、
+    // 利用者の文脈は本文（userId / 属性 / action）で運ぶ。
+    //
+    // ［2026-10-10 / #1255・[[IADR-0533]] 決定 1］**REST（`POST /authz/scope`）の並走は撤去した。**
+    // 従前は gRPC クライアントが DI に無ければ REST で解決していた（[[IADR-0379]] 決定 5「並走中の正は REST」）。
+    // 宛先が構成されていない配備では、クライアントは常に `UNAVAILABLE` を返し（`UnconfiguredGrpcDestination`）、
+    // 認可サービスへ届かないのと同じ deny-by-default（null）へ落ちる。
+    //
+    // `httpFactory` は REST 経路のための引数であり、いまは使わない。🔴 **署名は変えていない** —— 呼び出し元は BFF の
+    // 端点群（文書・検索・グラフ・Wiki・個人資料など）に散っており、引数を外すと本変更（輸送の退役）に無関係な差分が広がるため。
+    // 外すのは別の変更で行う（[[IADR-0533]] フォローアップ）。
     public static async Task<BffAccessScope?> ResolveAsync(
         IHttpClientFactory httpFactory, HttpContext http, string action, CancellationToken ct)
     {
@@ -41,39 +47,11 @@ public static class BffScopeResolver
         if (http.RequestServices?.GetService<AuthzScopeGrpcClient>() is { } grpc)
             return await grpc.ResolveAsync(userId, userAttrs, action, ct);
 
-        var authzClient = httpFactory.CreateClient(AuthzScopeHttpClient.ClientName);
-        try
-        {
-            var scopeResp = await authzClient.PostAsJsonAsync("/authz/scope",
-                new AccessScopeRequest(userId, userAttrs, action), ct);
-
-            // FR-05, #1378: 縮退の理由（非 2xx・空本文・不達）は WARN で出す。**`Granted=false` は出さない**
-            // （正当な deny）。戻り値は従来どおり null（deny-by-default）である。
-            if (!scopeResp.IsSuccessStatusCode)
-            {
-                AuthzScopeRestLog.NonSuccess(LoggerOf(http), scopeResp.StatusCode);
-                return null;
-            }
-
-            var resolved = await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct);
-            if (resolved is null)
-            {
-                AuthzScopeRestLog.EmptyBody(LoggerOf(http), scopeResp.StatusCode);
-                return null;
-            }
-
-            // deny-by-default: 許可ポリシーが無い → 閲覧可能なし。
-            if (!resolved.Granted)
-                return null;
-
-            return new BffAccessScope(resolved.AllowedFilters, resolved.Granted, resolved.Branches);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
-        {
-            // 認可サービス不調は deny-by-default（null）へ縮退する。
-            AuthzScopeRestLog.TransportFailure(LoggerOf(http), ex);
-            return null;
-        }
+        // 🔴 登録が無いのは組み立ての誤り（`AddAuthzScopeGrpcClient` は宛先の有無に関わらず登録する）。
+        // REST へ戻る経路は無いので、deny-by-default（null）へ倒して理由を出す。
+        LoggerOf(http).LogWarning(
+            "認可スコープの gRPC クライアントが登録されていません（AddAuthzScopeGrpcClient の呼び忘れ）。deny-by-default へ縮退します。");
+        return null;
     }
 
     // FR-05, #1378: 本クラスは静的なので、ロガーは要求の DI から得る（失敗の枝でだけ引く）。
@@ -196,8 +174,8 @@ public sealed record BffAccessScope(
 // （Platform.Shared.Contracts）は値域を持たない（既定値のリテラル "read" だけを持つ）。
 // したがってここに写しを置く（GraphService の GraphAccessAction と同じ形・同じ理由）。
 //
-// **綴りがずれても緩む向きには壊れない** —— /authz/scope は値域外を 400 で返し、
-// BffScopeResolver は非 2xx を null（deny-by-default）へ縮退させる。
+// **綴りがずれても緩む向きには壊れない** —— 認可サービスは値域外を `INVALID_ARGUMENT` で返し、
+// BffScopeResolver はそれを null（deny-by-default）へ縮退させる。
 public static class BffScopeAction
 {
     // 閲覧・検索・属性値照会（存在秘匿つきの読み取り経路）。

@@ -15,8 +15,9 @@ namespace Platform.Shared.Infrastructure.Foundation.Authz;
 // ［2026-09-27 / #1646］呼び出し元の取り消しだけは null にせず、呼び出し元の token を持つ
 // `OperationCanceledException` で外へ出す（REST 経路の `BffScopeResolver` と同じ。取り消しを deny と記録しない）。
 //
-// **並走中の正は REST である。** 本クライアントは `Services:AuthorizationServiceGrpc` が構成されたときだけ
-// 登録され（AddAuthzScopeGrpcClient）、BffScopeResolver は登録が在ればこちらを使う。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**REST の並走は撤去した。認可スコープ解決の輸送は本クライアントだけである**
+// （[[IADR-0379]] 決定 5「並走中の正は REST」を反転した）。宛先 `Services:AuthorizationServiceGrpc` が構成されていなければ
+// 常に `UNAVAILABLE` を返す呼び出し器の上に組まれ（`UnconfiguredGrpcDestination`）、上の deny-by-default へ落ちる。
 public sealed class AuthzScopeGrpcClient(
     Pb.AuthzScope.AuthzScopeClient client,
     ILogger<AuthzScopeGrpcClient> logger)
@@ -56,7 +57,8 @@ public sealed class AuthzScopeGrpcClient(
         {
             // 認可サービス不調・資格情報不備は deny-by-default（null）へ縮退する。
             logger.LogWarning(
-                "認可スコープの gRPC 解決に失敗しました（{Status}）。閲覧可能なしへ縮退します。", ex.StatusCode);
+                "認可スコープの gRPC 解決に失敗しました（{Status}: {Detail}）。閲覧可能なしへ縮退します。",
+                ex.StatusCode, ex.Status.Detail);
             return null;
         }
         catch (InvalidOperationException ex)
@@ -127,7 +129,8 @@ public sealed class AuthzScopeGrpcClient(
         catch (RpcException ex)
         {
             logger.LogWarning(
-                "認可スコープの gRPC 解決に失敗しました（{Status}）。「引けなかった」として返します。", ex.StatusCode);
+                "認可スコープの gRPC 解決に失敗しました（{Status}: {Detail}）。「引けなかった」として返します。",
+                ex.StatusCode, ex.Status.Detail);
             return null;
         }
         catch (InvalidOperationException ex)
@@ -142,19 +145,23 @@ public sealed class AuthzScopeGrpcClient(
 
 public static class AuthzScopeGrpcClientExtensions
 {
-    // `Services:AuthorizationServiceGrpc`（h2c のアドレス。例: http://authorization-service:8081）が
-    // 構成されたときだけ gRPC 経路を登録する。未設定なら何も登録せず、BffScopeResolver は REST のまま。
+    // `Services:AuthorizationServiceGrpc`（h2c のアドレス。例: http://authorization-service:8081）の生成クライアントを登録する。
+    // ［2026-10-10 / [[IADR-0533]] 決定 2］**常に登録する。** 宛先が構成されていなければ、生成クライアントを
+    // 常に `UNAVAILABLE` を返す呼び出し器（`UnconfiguredGrpcDestination`）の上に組む —— 呼び出し元は
+    // 「認可サービスへ届かない」と同じ deny-by-default へ落ちる（REST へ戻る経路はもう無い）。
     public static IServiceCollection AddAuthzScopeGrpcClient(this IServiceCollection services, IConfiguration config)
     {
         var address = config[AuthzScopeGrpcClient.AddressKey];
-        if (string.IsNullOrWhiteSpace(address))
-            return services;
+        if (!string.IsNullOrWhiteSpace(address))
+        {
+            services.AddPlatformServiceToken(config);
+            AddChannel(services, address);
+            services.TryAddSingleton(sp =>
+                new Pb.AuthzScope.AuthzScopeClient(sp.GetRequiredService<global::Grpc.Net.Client.GrpcChannel>()));
+        }
 
-        services.AddPlatformServiceToken(config);
-        AddChannel(services, address);
-        services.AddSingleton(sp =>
-            new Pb.AuthzScope.AuthzScopeClient(sp.GetRequiredService<global::Grpc.Net.Client.GrpcChannel>()));
-        services.AddSingleton<AuthzScopeGrpcClient>();
+        services.TryAddUnconfiguredGrpcClient(AuthzScopeGrpcClient.AddressKey, ci => new Pb.AuthzScope.AuthzScopeClient(ci));
+        services.TryAddSingleton<AuthzScopeGrpcClient>();
         return services;
     }
 

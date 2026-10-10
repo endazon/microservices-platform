@@ -3,9 +3,9 @@ using Platform.Shared.Contracts.Dtos;
 namespace AiAnalysisService.Domain.Ports;
 
 // FR-04, FR-11, NFR-02, ADR-0010, ADR-0029, ADR-0075, IADR-0037, IADR-0379, IADR-0400 (#1255):
-// LlmGateway のテキスト生成を呼ぶ**輸送のポート**。REST（HttpLlmCompletionTransport）と
-// gRPC（GrpcLlmCompletionTransport）の 2 実装があり、Program.cs が `Services:LlmGatewayGrpc` の
-// 有無で選ぶ。**並走中の正は REST**（IADR-0379 決定 5）。
+// LlmGateway のテキスト生成を呼ぶ**輸送のポート**。［2026-10-10 / #1255・[[IADR-0533]]］実装は gRPC（GrpcLlmCompletionTransport）だけである
+// （REST の HttpLlmCompletionTransport は撤去した。IADR-0379 決定 5「並走中の正は REST」を反転）。
+// 3 値の結果型など、REST 実装の枝に合わせて決めた形は変えていない（下の注記は当時の根拠として残す）。
 //
 // 🔴 **ポートが返すのは「ゲートウェイが何と答えたか」だけである。**
 // 合成監視の抑止（SuppressLlmForSynthetic）・出典の組み立て・機密区分の算出・回答文の選択は

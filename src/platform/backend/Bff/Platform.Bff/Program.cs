@@ -82,22 +82,22 @@ builder.Services.AddOpenTelemetry()
 
 // FR-03, UC-01, SC-01: 横断検索の集約用。ABAC スコープ解決（AuthorizationService）→ 検索（RetrievalService）。
 //
-// 🔴 **クライアントは 2 本ある。混ぜてはならない**（計画 ADR-0088 決定 2 / [[IADR-0413]] / #1333）。
+// 🔴 **認可サービスへの経路は 2 本ある。混ぜてはならない**（計画 ADR-0088 決定 2 / [[IADR-0413]] / #1333）。
 //
-// | 用途 | クライアント | 資格情報 | 呼び出し先 |
+// | 用途 | 経路 | 資格情報 | 呼び出し先 |
 // | --- | --- | --- | --- |
-// | ABAC スコープ解決 | `AuthzScopeHttpClient.ClientName` | **BFF 自身の s2s** | `/authz/scope`（`ServiceCaller`） |
-// | 管理面の代理（属性辞書・利用者管理） | `"AuthorizationService"` | **利用者の `Authorization` を転送** | `/authz/*`（`AdminOnly`） |
+// | ABAC スコープ解決 | east-west gRPC `AuthzScope/Resolve`（`AddAuthzScopeGrpcClient`） | **BFF 自身の s2s** | `ServiceCaller` |
+// | 管理面の代理（属性辞書・利用者管理） | 名前つき HttpClient `"AuthorizationService"` | **利用者の `Authorization` を転送** | `/authz/*`（`AdminOnly`） |
 //
 // 意味論が逆なので、**1 本にまとめると管理面へ s2s が乗るか、スコープ解決へ利用者の資格が乗る**。
-// PR #1332（[[IADR-0412]]）が解いたのと同型の危険であり、これで 2 回目である（[[IADR-0141]]）。
-builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
+//
+// NFR-09, ADR-0029, ADR-0075, 計画 ADR-0089 決定 1, [[IADR-0379]] 決定 4, [[IADR-0533]] (#1201, #1255):
+// ［2026-10-10］**スコープ解決の REST（`POST /authz/scope`）の並走は撤去した。** 宛先 `Services:AuthorizationServiceGrpc` が
+// 構成されていなければ、生成クライアントは常に `UNAVAILABLE` を受け取り、`BffScopeResolver` は deny-by-default（null）へ倒れる。
+// 🔴 **配備は宛先を必ず与えること**（helm・compose とも `Services__AuthorizationServiceGrpc` を BFF に描画する）。
 builder.Services.AddHttpClient("AuthorizationService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
         ?? "http://authorization-service:5005"));
-// NFR-09, ADR-0029, ADR-0075, IADR-0379 (#1201): 同じ解決を gRPC でも呼べるようにする（参照実装・opt-in）。
-// `Services:AuthorizationServiceGrpc`（h2c アドレス）が在るときだけ登録され、BffScopeResolver がこちらを使う。
-// 資格情報は BFF 自身の s2s トークン（`ServiceToken:*`。利用者の JWT ではない）。並走中の正は REST。
 builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 builder.Services.AddHttpClient("RetrievalService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
@@ -160,10 +160,10 @@ builder.Services.AddHttpClient("WikiService", c =>
 builder.Services.AddHttpClient("DocumentService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]
         ?? "http://document-service:5001"));
-// FR-06, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379, IADR-0402 (#1255):
-// 文書台帳の**読み取り 4 口**を gRPC でも呼べるようにする（opt-in）。
-// `Services:DocumentServiceGrpc`（h2c アドレス）が在るときだけ登録され、DocumentBffEndpoints が使う。
-// 資格情報は BFF 自身の s2s トークン（`ServiceToken:*`。利用者の JWT ではない）。並走中の正は REST。
+// FR-06, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379, IADR-0402, [[IADR-0533]] (#1255):
+// 文書台帳の**読み取り 4 口**は east-west gRPC だけで呼ぶ（［2026-10-10］REST の並走は撤去した）。
+// `Services:DocumentServiceGrpc`（h2c アドレス）が無ければ常に `UNAVAILABLE` を受け取る（[[IADR-0533]] 決定 2）。
+// 資格情報は BFF 自身の s2s トークン（`ServiceToken:*`。利用者の JWT ではない）。利用者の文脈は本文で運ぶ。
 //
 // 🔴 **移せるのは読み取りだけである。** 同じ named client を使う書き込み経路（作成・更新・公開・
 // アーカイブ・削除・個人資料・タグ辞書）は**利用者の資格情報を後段へ運び**、後段が
@@ -172,9 +172,10 @@ builder.Services.AddDocumentReadGrpcClient(builder.Configuration);
 
 // FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1,
 // IADR-0379, IADR-0410, IADR-0416, IADR-0417 (#1255):
-// 権限内属性値の照会（SC-01 / SC-08 の対象範囲フィルタの供給源）を gRPC でも呼べるようにする（opt-in）。
-// `Services:RetrievalServiceGrpc`（h2c アドレス）が在るときだけ登録され、SearchBffEndpoints が使う。
-// 資格情報は BFF 自身の s2s トークン（利用者の JWT ではない）。並走中の正は REST。
+// 権限内属性値の照会（SC-01 / SC-08 の対象範囲フィルタの供給源）は east-west gRPC だけで呼ぶ
+// （［2026-10-10 / [[IADR-0533]]］REST `POST /search/attribute-values` の並走は撤去した）。
+// `Services:RetrievalServiceGrpc`（h2c アドレス）が無ければ常に `UNAVAILABLE` を受け取る（候補は空へ縮退）。
+// 資格情報は BFF 自身の s2s トークン（利用者の JWT ではない）。
 //
 // 🔴 **検索（`/bff/search`）は移らない。** 二段検索の近傍展開が利用者の転送トークンで動いており
 // （ADR-0087 決定 1 の「経路 1 は利用者の同一性の唯一の供給路」）、文脈の受け渡しを直す前に

@@ -3,15 +3,15 @@ title: ABAC 文書アクセス制御 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-06-27
-updated: 2026-10-06
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [NFR-21, FR-02, FR-03, FR-04, FR-05, SC-01, SC-08, UC-01, UC-05, FR-19, NFR-09]
 adrs: [ADR-0125, ADR-0004, ADR-0043, ADR-0121, ADR-0036, ADR-0062, ADR-0119, ADR-0034, ADR-0056]
-iadrs: [IADR-0502, IADR-0492, IADR-0500, IADR-0483, IADR-0476, IADR-0481, IADR-0004, IADR-0151, IADR-0379, IADR-0401, IADR-0253, IADR-0384, IADR-0480]
-specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1646_caller-cancellation-remaining, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step]
-issues: [#1760, #1755, #1676, #1615, #1665, #525, #540, #1646, #1664]
+iadrs: [IADR-0502, IADR-0492, IADR-0500, IADR-0483, IADR-0476, IADR-0481, IADR-0004, IADR-0151, IADR-0379, IADR-0401, IADR-0253, IADR-0384, IADR-0480, IADR-0533]
+specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1646_caller-cancellation-remaining, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#1760, #1755, #1676, #1615, #1665, #525, #540, #1646, #1664, #1255, #1517]
 -->
 
 # テスト仕様書: ABAC 文書アクセス制御（deny-by-default）
@@ -152,7 +152,7 @@ issues: [#1760, #1755, #1676, #1615, #1665, #525, #540, #1646, #1664]
 | `BffAttributeValuesGrpcTests` | T-15 / T-16 の gRPC 版と T-22 / T-23 |
 | `OwnerReadPolicySeedTests` | T-24〜T-27（初期投入を入れた認可サービス） |
 | `BffOwnerReadSeedTests` | T-28〜T-33（境界層の文書閲覧・一覧） |
-| `AuthorizationServiceRegistrarAttributesTests` | T-34 / T-35（MCP の登録者が配れる区分） |
+| `RegistrarScopeReadingTests` | T-34 / T-35（MCP の登録者が配れる区分） |
 | `OwnerReadSeedSearchScopeTests` | T-36 / T-37（検索のスコープ） |
 | `DocumentReadOwnerSeedTests` | T-38（文書サービスの読み取り判定） |
 | `OwnerReadPolicyShapeTests` | T-39 / T-40（所有者の読み取りのポリシーの存在の判定）・T-67（初期投入と運用仕様書の本文） |

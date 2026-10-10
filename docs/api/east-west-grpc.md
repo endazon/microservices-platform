@@ -3,15 +3,15 @@ title: east-west gRPC 通信仕様書（proto の置き場・versioning・h2c・
 type: api-spec
 status: completed
 created: 2026-09-05
-updated: 2026-10-08
+updated: 2026-10-10
 author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
 adrs: [ADR-0121, ADR-0119, ADR-0063, ADR-0089, ADR-0050, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0127, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114, ADR-0117]
-iadrs: [IADR-0483, IADR-0481, IADR-0479, IADR-0476, IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431, IADR-0512]
-specs: [20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1658_relay-options-shared, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261008_1819_gateway-sentfalse-observability]
-issues: [#1665, #1611, #1658, #1636, #1516, #1635, #1628, #1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532, #1752, #1819]
+iadrs: [IADR-0483, IADR-0481, IADR-0479, IADR-0476, IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431, IADR-0512, IADR-0533]
+specs: [20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1658_relay-options-shared, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261008_1819_gateway-sentfalse-observability, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#1665, #1611, #1658, #1636, #1516, #1635, #1628, #1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532, #1752, #1819, #1517]
 -->
 
 # 通信仕様書: east-west gRPC（サービス間の同期呼び出し）
@@ -42,7 +42,8 @@ issues: [#1665, #1611, #1658, #1636, #1516, #1635, #1628, #1614, #1575, #1515, #
   そして［2026-09-11 追記］**RAG の文脈収集の検索**（AI 分析 → 検索）、
   そして［2026-09-26 追記］**実効構成の収集**（構成情報 API → 自己申告を持つ全サービス。**扇形**）、
   そして［2026-09-26 追記］**MCP のツール申告の収集**（MCP サーバー → 申告を持つ 3 サービス。**扇形**）である。
-  **並走中の正は REST** であり、gRPC は構成で opt-in する。残りの経路の移行は別 issue で展開する。
+  ~~**並走中の正は REST** であり、gRPC は構成で opt-in する。~~ ［2026-10-10 / #1255・#1517］🔴 **移行済みの全経路で REST 実装を退役させた**（§REST 実装の退役）。
+  east-west の輸送は gRPC だけであり、構成で REST へ戻す道は無い。
   ［2026-09-06 追記］🔴 **BFF の s2s 資格情報の未配線は閉じた。** realm に BFF の service account が
   無く、`ServiceToken` が helm・compose のどちらにも無かったため、参照実装（BFF → 認可サービス）は
   配備上 1 度も走っていなかった。BFF が文書読み取りの呼び出し元になるのに合わせ、
@@ -114,7 +115,7 @@ s2s の `CallCredentials` を付ける。平文でトークンを送るには `U
 ## 参照実装: 権限スコープ解決（`platform.authz.v1.AuthzScope/Resolve`）
 
 - 概要: BFF の `BffScopeResolver` が `Services:AuthorizationServiceGrpc`（例: `http://authorization-service:8081`）の
-  構成があるときだけ gRPC で解決し、無ければ REST `POST /authz/scope` で解決する。**並走中の正は REST。**
+  宛先へ gRPC で解決する（［2026-10-10 / #1255］REST の枝は撤去した。宛先が無ければ `UNAVAILABLE` として縮退する。§REST 実装の退役）。
 - 認証・認可: `ServiceCaller`（上記）。
 - **利用者文脈を運べる呼び出し元**［2026-09-27 追記］: この面には**許可集合を置かない**（他の利用者の権限で動く面と違う）。
   `ServiceCaller` を持つ主体は任意の `user_id` を名乗ってその利用者のスコープ（属性の形）を引ける。属性は認可サービスが
@@ -173,7 +174,7 @@ s2s トークンの失敗 / 上限（5 秒）の時間切れは、いずれも�
 ## 2 つ目の面: 埋め込み生成（`platform.llmgateway.v1.LlmEmbedding/Embed`）
 
 - 概要: 取り込み・検索の 2 サービスが `Services:LlmGatewayGrpc`（例: `http://llm-gateway:8081`）の構成が
-  あるときだけ gRPC で埋め込みを得て、無ければ REST `POST /embed` で得る。**並走中の正は REST。**
+  宛先から gRPC で埋め込みを得る（［2026-10-10 / #1255］REST の枝は撤去した。宛先が無ければ `UNAVAILABLE` として縮退する。§REST 実装の退役）。
 - 認証・認可: `ServiceCaller`。［2026-09-10 更新 / #1364］**REST の `/embed` も同じ 1 つのポリシーを要する。**
   従前ここには「REST は無認可のままなので gRPC 面のほうが強い」と書いてあったが、**その非対称は解消した** ——
   2 つの面は同じ 1 つのポリシーで判定される（呼び出し側は REST 経路でも s2s トークンを載せる）。
@@ -209,8 +210,8 @@ s2s トークンの失敗 / 上限（5 秒）の時間切れは、いずれも�
 
 ## 3 つ目の面: テキスト生成（`platform.llmgateway.v1.LlmCompletion`）
 
-- 概要: AI 分析・グラフ・変換の 3 サービスが `Services:LlmGatewayGrpc` の構成があるときだけ gRPC で
-  生成を得て、無ければ REST `POST /complete` / `POST /complete/stream` で得る。**並走中の正は REST。**
+- 概要: AI 分析・グラフ・変換の 3 サービスが `Services:LlmGatewayGrpc` の宛先へ gRPC で
+  生成を得る（［2026-10-10 / #1255］REST の枝は撤去した。宛先が無ければ `UNAVAILABLE` として縮退する。§REST 実装の退役）。
 - 認証・認可: `ServiceCaller`。［2026-09-10 更新 / #1364］**REST の `/complete` 系も同じ 1 つのポリシーを要する。**
   従前の「REST は無認可のまま」という記述は解消した —— 3 口（`/complete`・`/complete/stream`・`/embed`）は
   いずれも端点ごとに `ServiceCaller` を要求する。
@@ -269,7 +270,7 @@ REST 実装がそれぞれ「出典のみ返す」「提案 0 件」「画像と
 ## 4 つ目の面: 利用者名簿の狭い読み口（`platform.authz.v1.UserDirectory`）
 
 - 概要: データソース登録の**写像先の実在検証**と、MCP クライアント登録の**登録者属性の解決**が使う。
-  `Services:AuthorizationServiceGrpc` の構成があるときだけ gRPC で、無ければ REST のまま。
+  `Services:AuthorizationServiceGrpc` の宛先へ gRPC で問い合わせる（［2026-10-10 / #1255］REST の枝は撤去した。宛先が無ければ `UNAVAILABLE` として縮退する。§REST 実装の退役）。
   ［2026-09-26 追記］**文書サービスも呼び出し元である**（`GetUserAttributes` の `found` / `enabled` と
   退職の窓の判定を読む）。こちらには REST の経路が無く、構成が無ければ縮退する（下の表）。
 - 認証・認可: `ServiceCaller`。
@@ -343,7 +344,7 @@ AI 分析・グラフ・Wiki は**参照実装と同じ rpc**を使う（proto �
 ## 5 つ目の面: 文書台帳の読み取り（`knowledge.document.v1.DocumentRead`）
 
 - 概要: **BFF の文書閲覧経路**（一覧・詳細・版履歴・特定版）が使う。
-  `Services:DocumentServiceGrpc` の構成があるときだけ gRPC で、無ければ REST のまま。
+  `Services:DocumentServiceGrpc` の宛先へ gRPC で問い合わせる（［2026-10-10 / #1255］REST の枝は撤去した。宛先が無ければ `UNAVAILABLE` として縮退する。§REST 実装の退役）。
 - 認証・認可: `ServiceCaller`。［2026-09-27 追記］**読み取りの主体は要求の利用者文脈（`user`）で決まる**（下記）。
 - 置き場: **knowledge ユニットの共有契約プロジェクト**（`Knowledge.Contracts`）。所有者は呼び出し先であり、
   置き場はその所有者が属するユニットである（§1）。platform 側へ置いてはならない。
@@ -421,7 +422,7 @@ MCP・通知・Wiki・文書・変換・データソース、基盤を拡張す�
 
 - 呼び出し元: グラフの定期処理（指標 4 つ分の観測値を周期ごとに送る生産者）。
 - 呼び出し先: ダッシュボード集計サービスの内部受け口。REST は `POST /internal/knowledge-health/observations`。
-- 切替の構成キー: `Services:DashboardServiceGrpc`（h2c のアドレス）。**未設定なら REST のまま。**
+- 切替の構成キー: `Services:DashboardServiceGrpc`（h2c のアドレス）。~~**未設定なら REST のまま。**~~ ［2026-10-10 / #1255］未設定なら `UNAVAILABLE` として縮退する（REST の枝は撤去した）。
 - 認証・認可: `ServiceCaller`。
 - 置き場: **knowledge ユニットの共有契約プロジェクト**（`Knowledge.Contracts`）。所有者は呼び出し先である（§1）。
 
@@ -469,7 +470,7 @@ REST の受け口は**認証を持たない**（利用者裁定で認証を外�
 ## 7 つ目の面: 利用者の権限で動く 2 経路（`knowledge.graph.v1.GraphNeighbors` / `knowledge.document.v1.DocumentTagWrite`）
 
 - 呼び出し元と呼び出し先: **検索 → グラフ**（二段検索の近傍展開）と **グラフ → 文書**（AI タグ提案の承認の反映）。
-- 切替の構成キー: `Services:GraphServiceGrpc` / `Services:DocumentServiceGrpc`。**未設定なら REST のまま。**
+- 切替の構成キー: `Services:GraphServiceGrpc` / `Services:DocumentServiceGrpc`。~~**未設定なら REST のまま。**~~ ［2026-10-10 / #1255］未設定なら `UNAVAILABLE` として縮退する（REST の枝は撤去した）。
 - 認証・認可: `ServiceCaller`。
 - **利用者文脈を運べる呼び出し元**［2026-09-27 追記］: 🔴 本文の利用者文脈を信じるのは、呼び出し元が**機械クライアント**で、
   そのクライアント識別（`azp`。無ければ `service-account-<clientId>` から復元）が受け口の許可集合に**序数一致**で在るときだけである。
@@ -525,7 +526,7 @@ status で割ると、**割り方そのものが存在を漏らす**（1 種類�
 ## 8 つ目の面: タグ辞書の読み取り（`knowledge.document.v1.TagDictionary`）
 
 - 呼び出し元と呼び出し先: **グラフ → 文書**（AI タグ提案の**生成段**が「LLM に選ばせる値集合」として引く）。
-- 切替の構成キー: `Services:DocumentServiceGrpc`。**未設定なら REST のまま。**
+- 切替の構成キー: `Services:DocumentServiceGrpc`。~~**未設定なら REST のまま。**~~ ［2026-10-10 / #1255］未設定なら `UNAVAILABLE` として縮退する（REST の枝は撤去した）。
 - 認証・認可: `ServiceCaller`。REST の受け口は**認証を持たない**メッシュ内部 API なので、**狭まる向き**である。
 - 置き場: `Knowledge.Contracts` の `Protos/knowledge/document/v1/tag_dictionary.proto`。
 
@@ -559,11 +560,12 @@ status で割ると、**割り方そのものが存在を漏らす**（1 種類�
 ## 9 つ目の面: 権限内属性値の照会（`knowledge.retrieval.v1.AttributeValues`）
 
 - 呼び出し元と呼び出し先: **BFF → 検索**（対象範囲フィルタの候補一覧）。
-- 切替の構成キー: `Services:RetrievalServiceGrpc`。**未設定なら REST のまま。**
+- 切替の構成キー: `Services:RetrievalServiceGrpc`。~~**未設定なら REST のまま。**~~ ［2026-10-10 / #1255］未設定なら `UNAVAILABLE` として縮退する（REST の枝は撤去した）。
 - 認証・認可: `ServiceCaller`。［2026-09-09 更新 / #1318］**REST の受け口も認証を要するようになった**
   （ポリシー無し —— realm の任意の認証済み主体を通し、見えるものは ABAC が決める）。
   gRPC 面はサービス自身の資格情報だけを通すので、**依然として狭まる向き**である。
   この非対称は**並走の期間だけ**続く（REST が運ぶのは利用者トークン、gRPC が運ぶのは s2s ＋ 本文の利用者文脈）。
+  ［2026-10-10 / #1255］east-west の REST の呼び出し元は撤去したので、受け口の非対称は呼び出し元を持たない（受け口の撤去は残余）。
 - **利用者文脈を運べる呼び出し元**［2026-09-27 追記］: 🔴 本文の `user` を信じるのは、呼び出し元が**機械クライアント**で、
   そのクライアント識別（`azp`。無ければ `service-account-<clientId>` から復元）が検索サービスの許可集合
   `AttributeValues:TrustedUserContextClients` に**序数一致**で在るときだけである。**未構成なら `bff` だけ**で、構成すると既定を置き換える
@@ -612,7 +614,7 @@ status で割ると、**割り方そのものが存在を漏らす**（1 種類�
 ## 10 つ目の面: 個人資料の通知の受け付け（`platform.notification.v1.NotificationIngress/Accept`）
 
 - 呼び出し元と呼び出し先: **文書 → 通知**（論理削除の予告・完全削除・容量警告・同期トークン期限の 4 契機）。
-- 切替の構成キー: `Services:NotificationServiceGrpc`。**未設定なら REST のまま。**
+- 切替の構成キー: `Services:NotificationServiceGrpc`。~~**未設定なら REST のまま。**~~ ［2026-10-10 / #1255］未設定なら `UNAVAILABLE` として縮退する（REST の枝は撤去した）。
 - 認証・認可: `ServiceCaller`。REST の受け口は**認証を課していない**（内部 API の既存の扱い）ので、**狭まる向き**である。
 - 置き場: `Platform.Shared.Contracts` の `Protos/platform/notification/v1/notification_ingress.proto`。
 
@@ -663,7 +665,7 @@ fail-open は「落ちない」だけでなく「待たせない」ことも要�
 ## 11 つ目の面: RAG の文脈収集の検索（`knowledge.retrieval.v1.DocumentSearch/Search`）
 
 - 呼び出し元と呼び出し先: **AI 分析 → 検索**（`RagOrchestrator` の文脈収集。質問回答・分析・逐次回答の 3 経路が通る）。
-- 切替の構成キー: `Services:RetrievalServiceGrpc`。**未設定なら REST のまま。**
+- 切替の構成キー: `Services:RetrievalServiceGrpc`。~~**未設定なら REST のまま。**~~ ［2026-10-10 / #1255］未設定なら `UNAVAILABLE` として縮退する（REST の枝は撤去した）。
 - 認証・認可: `ServiceCaller`。REST の受け口は realm の認証済み主体を要する（利用者トークンの転送）ので、**狭まる向き**である。
 - **利用者文脈を運べる呼び出し元**［2026-09-27 追記］: 🔴 本文の `user` を信じるのは、呼び出し元が**機械クライアント**で、そのクライアント識別
   （`azp`。無ければ `service-account-<clientId>` から復元）が検索サービスの許可集合 `DocumentSearch:TrustedUserContextClients` に**序数一致**で
@@ -704,14 +706,14 @@ REST の入口でだけ非 null** であり、この面から入った検索で 
 🔴 **面に出さないもの**: 検索モード・並び順・総ヒット数・所要時間。呼び出し元（RAG の文脈収集）が
 1 つも使っていない。後から足すのは非破壊の追加である。
 
-🔴 **REST と gRPC は同じ検索を通る**（`SearchEndpoint.ExecuteAsync`）。**REST の口は残す** ——
-並走中の正は REST であり、経路が「解けた」と数えられるのは REST 実装の退役をもってである。
+🔴 **REST と gRPC は同じ検索を通る**（`SearchEndpoint.ExecuteAsync`）。**REST の口は残す**（north-south の検索でもある）。
+［2026-10-10 / #1255］east-west の REST の呼び出し元（AI 分析の REST 輸送）は撤去し、経路は「解けた」。
 
 ## 12 つ目の面: 実効構成の収集（`platform.introspection.v1.ServiceIntrospection/Get`）
 
 - 呼び出し元と呼び出し先: **構成情報 API（BFF 同居）→ 自己申告を持つ全サービス**（定期ドリフト検出・構成情報の照会・適用直後の即時検出が同じ経路を通る）。
-- 切替の構成キー: 🔴 **宛先ごと**の `Introspection:GrpcServices:<サービス名>`（h2c のアドレス）。**在る宛先だけが gRPC、無い宛先は
-  `Introspection:Services:<サービス名>` の REST のまま**（両方に在れば gRPC）。戻すのは宛先ごとに 1 行を消すだけでよい。
+- 宛先の構成キー: ［2026-10-10 / #1517］🔴 **`Introspection:Services:<サービス名>`（値は h2c のアドレス）へ一本化した。** 旧キー
+  `Introspection:GrpcServices:<サービス名>` が 1 件でも残っていれば BFF は起動を止める。~~在る宛先だけが gRPC、無い宛先は REST のまま~~（REST の収集は撤去した）。
 - 認証・認可: `ServiceCaller`。REST の受け口は認証を持たない（メッシュ内部限定）ので、**狭まる向き**である。
 - 置き場: `Platform.Shared.Contracts` の `Protos/platform/introspection/v1/service_introspection.proto`。
 
@@ -738,7 +740,7 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
 ［2026-09-26 追記］**認証は着地した。** 変換サービスの gRPC 面は他サービスと同じくサービス間トークンを判定する
 （無し → `UNAUTHENTICATED`、利用者のトークン → `PERMISSION_DENIED`）。残るのは h2c リスナ・`grpcPort`・gRPC 宛先の配線だけである。
 ［2026-09-26 追記］**配線も済んだ。** 変換サービスに h2c リスナ・helm の `grpcPort`・compose の `Grpc__Port` を足し、BFF の gRPC 宛先へ加えた。
-これで**収集先 13 のすべてが gRPC で収集される**（REST の宛先は残す。並走中の正は REST）。配線の検査に保留の宛先は残っていない。
+これで**収集先 13 のすべてが gRPC で収集される**。配線の検査に保留の宛先は残っていない。［2026-10-10 / #1517］REST の宛先と受け口 `GET /internal/introspection` は撤去した。
 **MCP サーバーは自己申告を持つが収集先に無い**ので、h2c リスナは足していない（面は共通基盤が張る）。
 
 🔴 **失敗の畳み方は REST と同じ 2 値である**（申告を得た / 得られなかった）。全 status・s2s トークン取得失敗・期限切れ・
@@ -755,17 +757,17 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
 | 取り消し | 呼び出し側の取り消し（停止要求）だけを外へ出す。到達不能へ畳まない |
 | 資格情報 | BFF の既存の `bff` client（`platform-service` 付き）。realm・Secret は増やしていない |
 
+［2026-10-10 / #1517］収集器と s2s の発行側は常に登録するようになったので、次の段落の起動時の検査は「撤去した旧キーが残っていれば落とす」へ置き換わった。
 🔴 **gRPC の宛先が構成されているのに gRPC の収集器が組まれていなければ起動時に落とす。** 黙って REST へ倒すと
 「gRPC へ移したつもりで REST のまま」になり、REST の口を退役させた段で初めて到達不能として現れる。
 
-🔴 **REST と gRPC は同じ 1 つの申告を返す**（DI の同じ `ServiceIntrospectionDto` を写す）。**REST の口は残す** ——
-並走中の正は REST であり、経路が「解けた」と数えられるのは REST 実装の退役をもってである。
+🔴 **gRPC の面は DI の `ServiceIntrospectionDto` を写す。** ［2026-10-10 / #1517］~~REST の口は残す~~ —— REST の受け口と収集は撤去した。
 
 ## 13 つ目の面: MCP のツール申告の収集（`platform.mcp.v1.McpToolDeclarations/Declare`）
 
 - 呼び出し元と呼び出し先: **MCP サーバー → ツールを申告する 3 サービス**（文書・検索・グラフ）。起動時と定期（既定 5 分）の収集が同じ経路を通る。
-- 切替の構成キー: 🔴 **宛先ごと**の `Mcp:GrpcServices:<サービス名>`（h2c のアドレス）。**在る宛先だけが gRPC、無い宛先は
-  `Mcp:Services:<サービス名>` の REST のまま**（両方に在れば gRPC）。戻すのは宛先ごとに 1 行を消すだけでよい。
+- 宛先の構成キー: ［2026-10-10 / #1517］🔴 **`Mcp:Services:<サービス名>`（値は h2c のアドレス）へ一本化した。** 旧キー
+  `Mcp:GrpcServices:<サービス名>` が 1 件でも残っていれば MCP サーバーは起動を止める。~~在る宛先だけが gRPC、無い宛先は REST のまま~~（REST の収集と受け口 `GET /internal/mcp-tools` は撤去した）。
 - 認証・認可: `ServiceCaller`。REST の受け口は認証を持たない（メッシュ内部限定）ので、**狭まる向き**である。
 - 置き場: `Platform.Shared.Contracts` の `Protos/platform/mcp/v1/mcp_tool_declarations.proto`。
 
@@ -788,7 +790,7 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
 ## 14 つ目の面: MCP のツール実行（`platform.mcp.v1.McpToolExecution/Execute`）
 
 - 呼び出し元と呼び出し先: **MCP サーバー → ツールを申告したサービス**（文書・検索・グラフ）。外部エージェントの `tools/call` 1 回につき 1 呼び出し。
-- 🔴 **宛先の決め方**: 公開構成で申告を突き合わせた**サービス**の h2c アドレス（13 つ目の面と同じ `Mcp:GrpcServices:<サービス名>`）へ送り、要求に**申告名**を載せる。
+- 🔴 **宛先の決め方**: 公開構成で申告を突き合わせた**サービス**の h2c アドレス（13 つ目の面と同じ `Mcp:Services:<サービス名>`。［2026-10-10］旧 `Mcp:GrpcServices` から一本化）へ送り、要求に**申告名**を載せる。
   **申告の中身から宛先を作らない** —— 申告の実行先 URL（旧 `endpoint`）は規約から外した（URL のままだと、あるサービスが別のサービスの内部経路を
   自分のツールとして申告でき、申告元と実行先が食い違う）。さらに**申告の封筒の `service` は収集先の名前（構成のキー）と一致しなければ拒否する**
   （書き換えない）。名乗りを信じると、申告元が別のサービスを名乗るだけでその名のツールを公開し、実行先をそちらへ向けられるためである。
@@ -814,8 +816,44 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
 
 - 🔴 **要求本文は利用者文脈（利用者と操作）とツールの引数だけである**（［2026-09-27 改訂］）。暫定だった `scope`（MCP サーバーが組んだ実行スコープ）は
   番号ごと予約へ移した。旧い呼び出し元が番号 3 に載せても受け口は読み飛ばし、利用者文脈が無いので拒否する。**解決済みの scope を信じて認可する受け口は作らない。**
-- 配備: 新しい構成は要らない（`Mcp__GrpcServices__*` とサービス間トークンは 13 つ目の面のために既に在る）。宛先の Istio の認可（文書サービスの DENY のみのポリシー）は
+- 配備: 新しい構成は要らない（`Mcp__Services__*`〔［2026-10-10］旧 `Mcp__GrpcServices__*`〕とサービス間トークンは 13 つ目の面のために既に在る）。宛先の Istio の認可（文書サービスの DENY のみのポリシー）は
   MCP サーバーから h2c ポートへの呼び出しを通す（試験の呼び出し元の一覧を実行の面へ差し替えた）。
+
+## REST 実装の退役（2026-10-10）
+
+計画の数え方は「その経路に REST 実装が残り、構成でどちらかが選ばれるなら、その経路は解けたと数えない。撤去が移行の終わりである」
+である（段が on になることは条件にしない）。これに従い、**移行済みの全経路で REST 実装を撤去した**（#1255 の残射程 2・#1517）。
+
+| 経路 | 呼び出し元 → 先 | 撤去した REST 実装 |
+| --- | --- | --- |
+| 権限スコープ解決 | BFF・AI 分析・グラフ・Wiki・検索 → 認可 | `AuthzScopeHttpClient`・各リゾルバの REST 枝 |
+| 登録者の配れる区分 | MCP サーバー → 認可 | `AuthorizationServiceRegistrarAttributes` |
+| 利用者の実在照会 | データソース → 認可 | `AuthorizationServiceUserDirectory` |
+| 埋め込み | 取り込み・検索 → LLM ゲートウェイ | `LlmGatewayEmbeddingService`（2 つ） |
+| 再順位付けの生成（既定 off） | 検索 → LLM ゲートウェイ | `HttpRerankCompletionClient` |
+| RAG の生成 | AI 分析 → LLM ゲートウェイ | `HttpLlmCompletionTransport` |
+| AI 提案 | グラフ → LLM ゲートウェイ | `LlmGatewaySuggestionClient` |
+| 図のコード化 | 変換 → LLM ゲートウェイ | `LlmGatewayDiagramCoder` |
+| RAG の検索 | AI 分析 → 検索 | `HttpRagSearchTransport` |
+| 属性値照会 | BFF → 検索 | BFF の REST 枝 |
+| 近傍展開（既定 off） | 検索 → グラフ | `GraphServiceNeighborExpander` |
+| 文書の読み取り 4 種 | BFF → 文書 | BFF の REST 枝 |
+| タグの書き戻し・タグ辞書 | グラフ → 文書 | `HttpDocumentTagWriter`・`HttpTagDictionaryReader` |
+| 個人資料の通知 | 文書 → 通知 | `HttpPrivateNoteNotifier` |
+| 知識の健全性の報告 | グラフ → ダッシュボード | `HttpKnowledgeHealthReporter` |
+| 構成の自己申告（扇形 13） | BFF → 各サービス | `HttpEffectiveConfigCollector`・受け口 `GET /internal/introspection` |
+| ツール申告（扇形 3） | MCP サーバー → 文書・検索・グラフ | `HttpToolDeclarationSource`・受け口 `GET /internal/mcp-tools` |
+
+- 🔴 **宛先が構成されていない gRPC は `UNAVAILABLE` を返す。** 起動は止めず、REST へも戻らない。各経路の既存の縮退
+  （権限なし・申告なし・提案 0 件・画像保持など）へそのまま落ちる。ステータスの詳細に構成キーの名前が載る。
+- 🔴 **扇形の構成キーは `Introspection:Services` / `Mcp:Services` へ一本化した**（値は h2c のアドレス）。旧キー
+  `Introspection:GrpcServices` / `Mcp:GrpcServices` が 1 件でも残っていれば、BFF / MCP サーバーは両キーを名指して起動を止める。
+- **残したもの**: 呼び出し元が 0 になった REST の受け口（`/authz/scope`・`/embed`・`/complete/stream`・`/search/attribute-values`・
+  グラフの近傍と辺の型の辞書・`/internal/notifications`・`/internal/knowledge-health/observations`・`/internal/tags/names`・
+  `/documents/{id}/tags`）は撤去していない。数え方の基準は「構成で選ばれる」ことであり、呼び出し元の撤去で満たされる。
+  受け口の撤去は別 issue で行う。グラフ → LLM ゲートウェイのクラスタ要約（既定 off）は gRPC 実装を持たないので REST のまま残る。
+- **north-south と外部は対象外**: BFF のエッジの中継（15 本）・AST からの呼び出し・外部サービスは変えていない。readiness の
+  `/health/*` は HTTP のまま。
 
 ## シーケンス
 
@@ -836,8 +874,8 @@ sequenceDiagram
 
 ## 非機能・運用
 
-- **並走の扱い**: 1 経路について REST と gRPC が並走する期間がある。**正は REST**。gRPC への切替は構成（`Services:<Name>Grpc`）で行い、
-  戻すときは構成を外すだけでよい（コードを変えない）。
+- **並走の扱い**: ~~1 経路について REST と gRPC が並走する期間がある。**正は REST**。gRPC への切替は構成（`Services:<Name>Grpc`）で行い、
+  戻すときは構成を外すだけでよい（コードを変えない）。~~ ［2026-10-10 / #1255］**並走は終わった**（§REST 実装の退役）。新しい経路は REST の並走を持たずに作る。
 - **タイムアウト・リトライ・fail-safe**: 呼び出し元の Infrastructure に置く。参照実装は縮退（deny）だけを持ち、リトライは持たない。
 - **観測**: gRPC の状態コードは呼び出し側の警告ログに出る。gRPC 専用の計装（OTel の gRPC instrumentation）は展開 issue で扱う。
   ［2026-10-04 追記］**成功した呼び出しはどちら側にもログを残さない**（失敗だけが出る）。稼働クラスタで往復の成立を示す手順（受け手の要求ログの水準を一時的に上げる・サイドカーの計数で gRPC の状態を読む・PERMISSIVE / STRICT の両方）は
@@ -919,7 +957,7 @@ sequenceDiagram
   （オーナー裁定。§5 の判定表の直後を参照）。**したがって east-west の残りは次の 2 つである** ——
   ①扇形の 2 経路（MCP のツール申告の収集・実効構成の収集）を**全宛先に gRPC の口を実装して移す**こと
   （同日のオーナー裁定。従前ここに書いた「本リポジトリだけでは完結しない」は、宛先の側も実装する方針に改まった）、
-  ②gRPC 面を持つ経路の **REST 実装の退役**（並走中の正を gRPC へ反転する段）。
+  ②gRPC 面を持つ経路の **REST 実装の退役**（並走中の正を gRPC へ反転する段。［2026-10-10 / #1255・#1517］**済み**。§REST 実装の退役）。
   🔴 **introspection の収集は利用者の資格情報を運ばないので上の 15 本に入らない** —— 数を 15 のまま中身を取り違えないこと。
   🔴 **計画側の gRPC / REST の使い分け基準は、BFF → 各サービスを east-west の該当経路として名指ししたままである**
   （反映は計画側の判断を待っている）。

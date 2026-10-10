@@ -1,12 +1,10 @@
 using AiAnalysisService.Domain;
 using AiAnalysisService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Observability;
-using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 
 namespace AiAnalysisService.Infrastructure.ExternalServices;
@@ -14,60 +12,41 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // FR-04, FR-07, UC-01, UC-02: RAG 回答生成オーケストレーター
 // フロー: ABAC スコープ解決 → （FR-07: データ範囲と交差）→ ハイブリッド検索 → LLM 回答生成
 //
-// FR-05, ADR-0034, ADR-0035 (#970): `httpContextAccessor` は受信リクエストの `Authorization` を
-// RetrievalService へ伝播するために持つ（方式 A。IADR-0263 残件 2 の解消）。既定 null は
-// 既存テストの直接構築（`new RagOrchestrator(factory)`）を壊さないため —— DI 経由では
-// `AddHttpContextAccessor()`（Program.cs）が解決する。
 // FR-19, FR-21 受け入れ基準 ⑨, [[IADR-0283]] 決定 3 (#447):
 // 🔴 **検索結果の集合と LLM へ渡す文脈の集合は別物である。** 検索は `SearchAsync` の 1 か所でしか
 // 行われず、そこが `RagContextSelection` を返すため、**経路を足した人が生の検索結果を受け取れない**。
 // 計画が名指しした「⑨＝検索結果をそのまま LLM へ渡す構造では分離できない」を、規律ではなく型で防ぐ。
 // NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): `syntheticOptions` は合成監視の構成。
 // 本サービスは**メッシュ内部の面**なので、標識は外周（BFF）が付けたヘッダ `X-Synthetic-Traffic` から読む
-// （外周は検証済み JWT の主体から決めており、外から偽装できない）。既定 null は既存テストの
-// 直接構築（`new RagOrchestrator(factory)`）を壊さないため。
-// FR-04, NFR-02, ADR-0029, ADR-0075, [[IADR-0400]] (#1255): `completionTransport` は LlmGateway の
-// テキスト生成を呼ぶ輸送（REST の SSE ／ east-west gRPC のサーバストリーミング）。
-// **既定 null は REST 輸送**（`httpFactory` から組む）であり、既存テストの直接構築
-// （`new RagOrchestrator(factory)`）は 1 つも変わらない —— DI 経由では Program.cs が
-// `Services:LlmGatewayGrpc` の有無で gRPC 実装を差し込む。**並走中の正は REST である。**
-// FR-03, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1, ADR-0087 決定 2,
-// [[IADR-0426]] (#1255): `searchTransport` は RetrievalService のハイブリッド検索を呼ぶ輸送
-// （REST の `POST /search` ／ east-west gRPC の `DocumentSearch/Search`）。
-// **既定 null は REST 輸送**（`httpFactory` ＋ `httpContextAccessor` から組む）であり、
-// 既存テストの直接構築（`new RagOrchestrator(factory)`）は 1 つも変わらない ——
-// DI 経由では Program.cs が `Services:RetrievalServiceGrpc` の有無で gRPC 実装を差し込む。
-// 🔴 **利用者トークンの転送が消えるのは gRPC 輸送だけである**（REST の受け口は認証を要する）。
-// FR-05, NFR-09, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0401]] (#1255): `authzScopeGrpc` は
-// ABAC スコープ解決の east-west gRPC 経路。**既定 null は REST 経路**であり、既存テストの直接構築
-// （`new RagOrchestrator(factory)`）は 1 つも変わらない —— DI 経由では
-// `Services:AuthorizationServiceGrpc` が構成されたときだけ `AuthzScopeGrpcClient` が登録され、
-// 在れば gRPC で解決する（`BffScopeResolver` と同じ形）。**並走中の正は REST である。**
+// （外周は検証済み JWT の主体から決めており、外から偽装できない）。`httpContextAccessor` はその読み取りに使う。
+//
+// FR-03, FR-04, FR-05, NFR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1, 計画 ADR-0089 決定 1,
+// [[IADR-0379]], [[IADR-0400]], [[IADR-0401]], [[IADR-0426]], [[IADR-0533]] 決定 1 (#1255):
+// 後段 3 つ（テキスト生成・検索・ABAC スコープ解決）の輸送は **east-west gRPC だけである**。
+// ［2026-10-10］REST の並走（`/complete`・`/complete/stream`・`/search`・`/authz/scope`）は撤去した ——
+// 従前は引数が null なら REST 輸送を組んでいた（[[IADR-0379]] 決定 5「並走中の正は REST」）。いまは 3 つとも
+// **必須の引数**であり、REST へ戻る経路はコードに無い。宛先が構成されていない配備では各 gRPC クライアントが
+// 常に `UNAVAILABLE` を受け取り（`UnconfiguredGrpcDestination`）、それぞれ既存の縮退へ落ちる。
 // 🔴 利用者の JWT はメタデータへ載せない —— 載せるのは本サービス自身の s2s トークンであり、
 // 利用者の文脈（userId / 属性 / action）は**本文**で運ぶ（docs/api/east-west-grpc.md §4）。
 public class RagOrchestrator(
-    IHttpClientFactory httpFactory,
+    ILlmCompletionTransport completionTransport,
+    IRagSearchTransport searchTransport,
+    AuthzScopeGrpcClient authzScope,
     IHttpContextAccessor? httpContextAccessor = null,
     ILogger<RagOrchestrator>? logger = null,
-    IOptions<SyntheticMonitoringOptions>? syntheticOptions = null,
-    ILlmCompletionTransport? completionTransport = null,
-    AuthzScopeGrpcClient? authzScopeGrpc = null,
-    IRagSearchTransport? searchTransport = null) : IRagOrchestrator
+    IOptions<SyntheticMonitoringOptions>? syntheticOptions = null) : IRagOrchestrator
 {
-    private readonly ILlmCompletionTransport _llm =
-        completionTransport ?? new HttpLlmCompletionTransport(httpFactory);
+    private readonly ILlmCompletionTransport _llm = completionTransport;
 
-    // [[IADR-0426]] (#1255): 既定は REST 輸送（現行の挙動そのもの。利用者トークンの転送を含む）。
-    private readonly IRagSearchTransport _search =
-        searchTransport ?? new HttpRagSearchTransport(httpFactory, httpContextAccessor);
+    private readonly IRagSearchTransport _search = searchTransport;
 
     // FR-04: 質問回答で文脈に取り込む既定チャンク数。
     private const int DefaultAskTopK = 5;
 
     // FR-05, [[IADR-0272]] 決定 4, [[IADR-0401]] 決定 1 (#1255): 本サービスが解決するアクション。
-    // 読み取り経路（質問回答・分析）しか持たないので read である。REST 側は
-    // `AccessScopeRequest.Action` の既定値に頼っているが、**gRPC 側では明示して渡す**
-    // （proto3 の空文字も呼び出し先が read へ写すが、既定への依存を輸送ごとに隠さない）。
+    // 読み取り経路（質問回答・分析）しか持たないので read である。**明示して渡す**
+    // （proto3 の空文字も呼び出し先が read へ写すが、既定への依存を隠さない）。
     private const string ScopeAction = "read";
 
     // FR-11, FR-10, ADR-0044 決定 1, [[IADR-0511]] 決定 4 (#1785): LLM ゲートウェイへ送る用途名。
@@ -325,53 +304,12 @@ public class RagOrchestrator(
 
     // FR-05: ABAC スコープ解決。解決失敗時も deny-by-default（Granted=false）へ縮退する。
     //
-    // FR-05, NFR-09, ADR-0029, ADR-0075, [[IADR-0379]] 決定 5, [[IADR-0401]] 決定 1 (#1255):
-    // **gRPC 経路との並走。** `AuthzScopeGrpcClient` が DI に在れば gRPC で解決し、無ければ従来どおり
-    // REST で解決する（`BffScopeResolver.ResolveAsync` と同じ形）。**並走中の正は REST**（gRPC は opt-in）。
-    // どちらの経路も同じ deny-by-default（`Granted=false`）へ縮退する ——
-    // gRPC 側は `RpcException`（全 status）と s2s トークン取得失敗を、REST 側は非 2xx と不達を、
-    // それぞれ `new AccessScopeResponse(userId, [], false)` へ落とす（枝を増やさない）。
-    //
-    // 🔴 action は現行と同じ **read**（`AccessScopeRequest.Action` の既定値）である。
-    // REST 側は既定引数に頼っているが、gRPC 側は `PolicyAction.Read` を**明示して**渡す ——
-    // 空文字を送ると呼び出し先が read へ写す（同じ結果になる）が、
-    // 「既定に頼っている」ことが両輸送で見えなくなるからである。
-    private async Task<AccessScopeResponse> ResolveScopeAsync(string userId,
+    // FR-05, NFR-09, ADR-0029, ADR-0075, [[IADR-0401]] 決定 1, [[IADR-0533]] 決定 1 (#1255):
+    // 輸送は gRPC（`AuthzScope/Resolve`）だけである。`RpcException`（全 status。宛先未構成の `UNAVAILABLE` を含む）と
+    // s2s トークン取得失敗は `AuthzScopeGrpcClient` が `new AccessScopeResponse(userId, [], false)` へ落とし、理由を WARN で出す。
+    private Task<AccessScopeResponse> ResolveScopeAsync(string userId,
         Dictionary<string, string> userAttributes, CancellationToken ct)
-    {
-        if (authzScopeGrpc is not null)
-            return await authzScopeGrpc.ResolveScopeAsync(userId, userAttributes, ScopeAction, ct);
-
-        var authzClient = httpFactory.CreateClient(AuthzScopeHttpClient.ClientName);
-        try
-        {
-            var scopeResp = await authzClient.PostAsJsonAsync("/authz/scope",
-                new AccessScopeRequest(userId, userAttributes), ct);
-
-            // FR-05, #1378: 縮退の理由（非 2xx・空本文・不達）は WARN で出す（`AuthzScopeRestLog`）。
-            // **`Granted=false` は出さない**（正当な deny）。戻り値は従来と同じである。
-            if (!scopeResp.IsSuccessStatusCode)
-            {
-                AuthzScopeRestLog.NonSuccess(ScopeLog, scopeResp.StatusCode);
-                return new AccessScopeResponse(userId, [], false);
-            }
-
-            var resolved = await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct);
-            if (resolved is null)
-                AuthzScopeRestLog.EmptyBody(ScopeLog, scopeResp.StatusCode);
-            return resolved ?? new AccessScopeResponse(userId, [], false);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
-        {
-            // 認可サービスへの通信失敗（ネットワーク障害・タイムアウト）も deny-by-default へ縮退し、
-            // 500 を伝播させない。呼び出し側のキャンセル要求は通常どおり伝播させる。
-            AuthzScopeRestLog.TransportFailure(ScopeLog, ex);
-            return new AccessScopeResponse(userId, [], false);
-        }
-    }
-
-    // FR-05, #1378: スコープ解決の縮退を出す先（ロガー未注入の直接構築では出さない）。
-    private ILogger ScopeLog => logger ?? NullLogger<RagOrchestrator>.Instance;
+        => authzScope.ResolveScopeAsync(userId, userAttributes, ScopeAction, ct);
 
     // FR-04, FR-07: 実効スコープで検索 → 番号付き出典へ写像 → LLM で本文生成、の共通パイプライン。
     // FR-11: 文脈文書の最高機密区分と用途を LLM ゲートウェイへ渡し、呼び出し先の切替を委ねる。

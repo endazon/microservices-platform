@@ -15,8 +15,9 @@ namespace Platform.Shared.Infrastructure.Tests.Foundation.Authz;
 //
 // - 応答の写し（granted / filters / branches）。
 // - deny-by-default への縮退 4 経路: granted=false・RpcException（UNAUTHENTICATED / UNAVAILABLE）・s2s トークン取得失敗。
-// - BffScopeResolver の経路選択: gRPC クライアントが DI に在れば gRPC、無ければ REST（並走中の正は REST）。
-// - 登録は `Services:AuthorizationServiceGrpc` があるときだけ（無ければ DI に何も入らない）。
+// - BffScopeResolver は gRPC だけで解決する（［2026-10-10 / [[IADR-0533]]］REST の並走は撤去した）。
+// - 登録は宛先の有無に関わらず行う。`Services:AuthorizationServiceGrpc` が無ければ常に `UNAVAILABLE` を返す
+//   呼び出し器の上に組まれ、deny-by-default へ落ちる（[[IADR-0533]] 決定 2）。
 public class AuthzScopeGrpcClientTests
 {
     // 生成クライアントは CallInvoker の上に乗る。応答／例外を差し替える最小の CallInvoker。
@@ -151,26 +152,36 @@ public class AuthzScopeGrpcClientTests
         invoker.LastRequest!.UserAttributes["department"].Should().Be("engineering");
     }
 
-    // 未登録なら REST（従来経路）。RequestServices が無い（既存の単体テストの DefaultHttpContext）でも落ちない。
+    // ［2026-10-10 / [[IADR-0533]] 決定 2］🔴 **宛先が無くても登録する。** 生成クライアントは常に `UNAVAILABLE` を返し、
+    // 解決は deny-by-default（null）へ落ちる。理由（構成キーの名前）は WARN の詳細に載る。
     [Fact]
-    public async Task BffScopeResolver_falls_back_to_rest_when_no_grpc_client_is_registered()
-    {
-        var factory = new RecordingHttpClientFactory();
-        var http = new DefaultHttpContext();
-
-        var scope = await BffScopeResolver.ResolveAsync(factory, http, BffScopeAction.Read, TestContext.Current.CancellationToken);
-
-        scope.Should().BeNull("スタブは 503 を返す＝REST 経路が呼ばれ deny へ縮退した");
-        factory.Calls.Should().Be(1);
-    }
-
-    [Fact]
-    public void Registration_is_a_no_op_without_the_grpc_address()
+    public async Task Registration_without_the_grpc_address_resolves_to_deny_over_an_unavailable_destination()
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddAuthzScopeGrpcClient(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
 
-        services.Should().NotContain(d => d.ServiceType == typeof(AuthzScopeGrpcClient));
+        var client = provider.GetRequiredService<AuthzScopeGrpcClient>();
+        var scope = await client.ResolveAsync("alice", new Dictionary<string, string>(), "read", TestContext.Current.CancellationToken);
+        var raw = await client.TryResolveScopeAsync("alice", new Dictionary<string, string>(), "read", TestContext.Current.CancellationToken);
+
+        scope.Should().BeNull("宛先が無いのは認可サービスへ届かないのと同じ deny である");
+        raw.Should().BeNull("「引けなかった」として返す（McpServer はこれを Unavailable へ写す）");
+        provider.GetService<global::Grpc.Net.Client.GrpcChannel>().Should().BeNull("宛先が無ければチャネルは張らない");
+    }
+
+    // 陽性対照: 宛先の無い呼び出し器は `UNAVAILABLE` を返し、詳細に構成キーの名前を載せる。
+    [Fact]
+    public async Task Unconfigured_destination_answers_unavailable_naming_the_address_key()
+    {
+        var client = new AuthzScope.AuthzScopeClient(new UnconfiguredGrpcDestination(AuthzScopeGrpcClient.AddressKey));
+
+        var act = async () => await client.ResolveAsync(new ResolveScopeRequest(), cancellationToken: TestContext.Current.CancellationToken);
+
+        var thrown = (await act.Should().ThrowAsync<RpcException>()).Which;
+        thrown.StatusCode.Should().Be(StatusCode.Unavailable);
+        thrown.Status.Detail.Should().Contain(AuthzScopeGrpcClient.AddressKey);
     }
 
     [Fact]
@@ -193,22 +204,5 @@ public class AuthzScopeGrpcClientTests
     private sealed class ThrowingHttpClientFactory : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => throw new InvalidOperationException("REST 経路が呼ばれた");
-    }
-
-    private sealed class RecordingHttpClientFactory : IHttpClientFactory
-    {
-        public int Calls { get; private set; }
-
-        public HttpClient CreateClient(string name)
-        {
-            Calls++;
-            return new HttpClient(new StubHandler()) { BaseAddress = new Uri("http://authorization-service") };
-        }
-
-        private sealed class StubHandler : HttpMessageHandler
-        {
-            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-                => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
-        }
     }
 }

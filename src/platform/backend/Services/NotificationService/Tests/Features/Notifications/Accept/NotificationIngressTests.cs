@@ -27,7 +27,7 @@ public class NotificationIngressTests : IDisposable
 
     private static readonly DateTimeOffset Occurred = new(2026, 8, 28, 9, 0, 0, TimeSpan.Zero);
 
-    // 🔴 送信側 DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.IngressPath の値。
+    // 🔴 送信側 旧 REST の `HttpPrivateNoteNotifier.IngressPath`（［2026-10-10］撤去） の値。
     // platform → knowledge の参照は禁止のため定数を共有できない。**リテラルで書き、一致を固定する。**
     private const string SenderIngressPath = "/internal/notifications";
 
@@ -124,7 +124,7 @@ public class NotificationIngressTests : IDisposable
     public async Task 受け口のパスは送信側の宣言と同じ値である()
     {
         NotificationIngressEndpoints.IngressPath.Should().Be(SenderIngressPath,
-            "★ 送信側 HttpPrivateNoteNotifier.IngressPath と 1 バイトでも違えば通知は届かない");
+            "★ 送信側 旧 REST の `HttpPrivateNoteNotifier.IngressPath`（［2026-10-10］撤去） と 1 バイトでも違えば通知は届かない");
 
         var response = await _factory.CreateClient().PostAsJsonAsync(
             SenderIngressPath, Payload(), TestContext.Current.CancellationToken);

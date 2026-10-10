@@ -16,10 +16,12 @@ using Pb = Platform.Shared.Contracts.Grpc.Introspection.V1;
 namespace Platform.Shared.Infrastructure.Tests.Foundation.Introspection;
 
 // FR-15, NFR-09, NFR-16, ADR-0018, ADR-0029, ADR-0075, IADR-0029, IADR-0379 決定 3・4・5, IADR-0462
-// (#1514, #1255 経路 ⑤): 自己申告の gRPC 面（`platform.introspection.v1.ServiceIntrospection/Get`）と、
-// 宛先ごとに輸送を選ぶ収集器（`EffectiveConfigCollector`）を**ループバックの実 Kestrel**で往復させる。
+// (#1514, #1255 経路 ⑤), [[IADR-0533]] (#1517): 自己申告の gRPC 面（`platform.introspection.v1.ServiceIntrospection/Get`）と、
+// 収集器（`EffectiveConfigCollector`）を**ループバックの実 Kestrel**で往復させる。
+// ［2026-10-10 / #1517］REST の面（`GET /internal/introspection`）と REST の収集は撤去した。収集は gRPC だけで行い、
+// 宛先は `Introspection:Services`（値は h2c のアドレス）である。
 //
-// 陽性対照（s2s で取れる・REST と同じ）と陰性対照（トークン無し・利用者トークン）を同じ器で対にする ——
+// 陽性対照（s2s で取れる）と陰性対照（トークン無し・利用者トークン）を同じ器で対にする ——
 // 「拒否された」だけでは器が壊れているのか認可が効いているのか区別できない。
 [Trait("TestKind", "Integration")]
 public sealed class IntrospectionGrpcTests
@@ -30,10 +32,10 @@ public sealed class IntrospectionGrpcTests
 
     // ── 受け口 ─────────────────────────────────────────────────────────────
 
-    // T-01: 陽性対照。s2s トークンを CallCredentials で付けた h2c チャネルで取れば、
-    // **REST と同じ 1 つの申告**が返る（申告を輸送ごとに 2 つ持たない）。
+    // T-01: 陽性対照。s2s トークンを CallCredentials で付けた h2c チャネルで取れば、DI の 1 つの申告が返る。
+    // 🔴 ［2026-10-10 / #1517］**REST の面はもう無い**（`GET /internal/introspection` は 404）。
     [Fact]
-    public async Task Get_over_h2c_with_service_token_returns_the_same_report_as_rest()
+    public async Task Get_over_h2c_with_service_token_returns_the_report_and_the_rest_face_is_gone()
     {
         await using var host = await IntrospectionGrpcTestHost.StartAsync(ct: Ct);
         using var channel = GrpcClientExtensions.CreatePlatformChannel(
@@ -43,14 +45,12 @@ public sealed class IntrospectionGrpcTests
         var grpc = IntrospectionGrpcMapping.ToDto(
             await client.GetAsync(new Pb.GetServiceIntrospectionRequest(), cancellationToken: Ct));
 
-        using var http = new HttpClient();
-        var rest = await http.GetFromJsonAsync<ServiceIntrospectionDto>(
-            host.HttpAddress + IntrospectionExtensions.IntrospectionPath, Ct);
-
-        rest.Should().NotBeNull();
-        grpc.Should().BeEquivalentTo(rest!, o => o.WithStrictOrdering());
         grpc.Service.Should().Be("probe-service");
-        grpc.Connectors.Should().HaveCount(2, "対照: 申告が空のまま一致しているのではない");
+        grpc.Connectors.Should().HaveCount(2, "対照: 申告が空のまま返っているのではない");
+
+        using var http = new HttpClient();
+        var rest = await http.GetAsync(host.HttpAddress + "/internal/introspection", Ct);
+        rest.StatusCode.Should().Be(HttpStatusCode.NotFound, "REST の自己申告の面は撤去した（#1517）");
     }
 
     // 🔴 T-02: **`target` の presence。** 「接続先を申告しない」（null）と「空文字の接続先」が
@@ -121,23 +121,16 @@ public sealed class IntrospectionGrpcTests
             .Should().BeEquivalentTo(dto, o => o.WithStrictOrdering());
     }
 
-    // ── 収集器（宛先ごとの輸送選択） ────────────────────────────────────────────
-
-    private sealed class PlainClientFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new();
-    }
+    // ── 収集器 ─────────────────────────────────────────────────────────────
 
     private static (EffectiveConfigCollector Collector, RecordingLogger<GrpcServiceIntrospectionCollector> GrpcLog)
         Build(IntrospectionOptions options, string? token = null)
     {
         var opts = Microsoft.Extensions.Options.Options.Create(options);
-        var http = new HttpEffectiveConfigCollector(
-            new PlainClientFactory(), opts, NullLogger<HttpEffectiveConfigCollector>.Instance);
         var log = new RecordingLogger<GrpcServiceIntrospectionCollector>();
         var grpc = new GrpcServiceIntrospectionCollector(
             new FixedTokenProvider(token ?? IntrospectionGrpcTestHost.ServiceToken()), opts, log);
-        return (new EffectiveConfigCollector(http, opts, grpc), log);
+        return (new EffectiveConfigCollector(grpc, opts), log);
     }
 
     // 閉じたループバックのポート（何も待ち受けていない）。
@@ -150,54 +143,51 @@ public sealed class IntrospectionGrpcTests
         return $"http://127.0.0.1:{port}";
     }
 
-    // T-06: gRPC の宛先と REST だけの宛先が混在しても、各々が構成どおりの輸送で集まる。
-    // gRPC 側は REST の口を**死んだポート**に向けてあるので、REST へ倒れていれば到達不能になる（対照）。
+    // T-06: 宛先はすべて gRPC で集まる。🔴 宛先を HTTP/1.1 のポート（旧 REST の宛先 `:8080` 相当）へ向けると到達不能になる ——
+    // 移し忘れた上書き値が「到達不能」として現れることの観測点（REST へ倒れて集まってしまう形には戻らない）。
     [Fact]
-    public async Task Collects_each_target_over_its_configured_transport()
+    public async Task Collects_every_target_over_grpc_and_a_rest_address_is_unreachable()
     {
-        await using var grpcTarget = await IntrospectionGrpcTestHost.StartAsync(ct: Ct);
-        await using var restTarget = await IntrospectionGrpcTestHost.StartAsync(
-            new ServiceIntrospectionDto("rest-only", [], [], []), Ct);
+        await using var target = await IntrospectionGrpcTestHost.StartAsync(ct: Ct);
+        await using var other = await IntrospectionGrpcTestHost.StartAsync(
+            new ServiceIntrospectionDto("other-service", [], [], []), Ct);
+
+        var (collector, _) = Build(new IntrospectionOptions
+        {
+            TimeoutSeconds = 2,
+            Services = new(StringComparer.Ordinal)
+            {
+                ["probe-service"] = target.GrpcAddress,
+                ["other-service"] = other.HttpAddress,
+            },
+        });
+
+        var result = await collector.CollectAsync(Ct);
+
+        result.ReachableServices.Should().BeEquivalentTo(["probe-service"]);
+        result.UnreachableServices.Should().BeEquivalentTo(["other-service"], "h2c を話さない HTTP/1.1 の口は宛先にならない");
+        result.Services.Select(s => s.Service).Should().BeEquivalentTo(["probe-service"]);
+    }
+
+    // T-07: 値が空の項目は構成されていないものとして宛先に入れない（到達不能にも数えない）。
+    [Fact]
+    public async Task Blank_entries_are_not_targets()
+    {
+        await using var target = await IntrospectionGrpcTestHost.StartAsync(ct: Ct);
 
         var (collector, _) = Build(new IntrospectionOptions
         {
             Services = new(StringComparer.Ordinal)
             {
-                ["probe-service"] = DeadAddress(),
-                ["rest-only"] = restTarget.HttpAddress,
+                ["probe-service"] = target.GrpcAddress,
+                ["blank"] = "  ",
             },
-            GrpcServices = new(StringComparer.Ordinal) { ["probe-service"] = grpcTarget.GrpcAddress },
         });
 
         var result = await collector.CollectAsync(Ct);
 
-        result.ReachableServices.Should().BeEquivalentTo(["probe-service", "rest-only"]);
+        result.ReachableServices.Should().BeEquivalentTo(["probe-service"]);
         result.UnreachableServices.Should().BeEmpty();
-        result.Services.Select(s => s.Service).Should().BeEquivalentTo(["probe-service", "rest-only"]);
-    }
-
-    // T-07: gRPC の宛先だけに構成された宛先（REST の口を持たない）も集まる —— 宛先の集合は 2 つの構成の和である。
-    // 値が空の gRPC 項目は構成されていないものとして REST へ倒れる。
-    [Fact]
-    public async Task Grpc_only_targets_are_collected_and_empty_grpc_entries_fall_back_to_rest()
-    {
-        await using var grpcTarget = await IntrospectionGrpcTestHost.StartAsync(ct: Ct);
-        await using var restTarget = await IntrospectionGrpcTestHost.StartAsync(
-            new ServiceIntrospectionDto("blank-grpc", [], [], []), Ct);
-
-        var (collector, _) = Build(new IntrospectionOptions
-        {
-            Services = new(StringComparer.Ordinal) { ["blank-grpc"] = restTarget.HttpAddress },
-            GrpcServices = new(StringComparer.Ordinal)
-            {
-                ["probe-service"] = grpcTarget.GrpcAddress,
-                ["blank-grpc"] = "  ",
-            },
-        });
-
-        var result = await collector.CollectAsync(Ct);
-
-        result.ReachableServices.Should().BeEquivalentTo(["probe-service", "blank-grpc"]);
     }
 
     // 🔴 T-08: s2s の配線不備（`platform-service` を持たないトークン）は**到達不能へ隔離**し（REST と同じ 2 値）、
@@ -209,7 +199,7 @@ public sealed class IntrospectionGrpcTests
         var (collector, log) = Build(
             new IntrospectionOptions
             {
-                GrpcServices = new(StringComparer.Ordinal) { ["probe-service"] = grpcTarget.GrpcAddress },
+                Services = new(StringComparer.Ordinal) { ["probe-service"] = grpcTarget.GrpcAddress },
             },
             token: IntrospectionGrpcTestHost.IssueToken("service-account-bff", []));
 
@@ -228,7 +218,7 @@ public sealed class IntrospectionGrpcTests
         var (collector, log) = Build(new IntrospectionOptions
         {
             TimeoutSeconds = 2,
-            GrpcServices = new(StringComparer.Ordinal) { ["gone"] = DeadAddress() },
+            Services = new(StringComparer.Ordinal) { ["gone"] = DeadAddress() },
         });
 
         var result = await collector.CollectAsync(Ct);
@@ -247,7 +237,7 @@ public sealed class IntrospectionGrpcTests
             new ServiceIntrospectionDto(string.Empty, [], [], []), Ct);
         var (collector, _) = Build(new IntrospectionOptions
         {
-            GrpcServices = new(StringComparer.Ordinal) { ["blank"] = grpcTarget.GrpcAddress },
+            Services = new(StringComparer.Ordinal) { ["blank"] = grpcTarget.GrpcAddress },
         });
 
         var result = await collector.CollectAsync(Ct);
@@ -276,7 +266,7 @@ public sealed class IntrospectionGrpcTests
         var (collector, _) = Build(new IntrospectionOptions
         {
             TimeoutSeconds = 1,
-            GrpcServices = new(StringComparer.Ordinal)
+            Services = new(StringComparer.Ordinal)
             {
                 ["silent"] = $"http://127.0.0.1:{((IPEndPoint)silent.LocalEndpoint).Port}",
             },
@@ -315,7 +305,7 @@ public sealed class IntrospectionGrpcTests
         var (collector, _) = Build(new IntrospectionOptions
         {
             TimeoutSeconds = 30,
-            GrpcServices = new(StringComparer.Ordinal)
+            Services = new(StringComparer.Ordinal)
             {
                 ["silent"] = $"http://127.0.0.1:{((IPEndPoint)silent.LocalEndpoint).Port}",
             },
@@ -345,52 +335,17 @@ public sealed class IntrospectionGrpcTests
         await using var grpcTarget = await IntrospectionGrpcTestHost.StartAsync(ct: Ct);
         var opts = Microsoft.Extensions.Options.Options.Create(new IntrospectionOptions
         {
-            GrpcServices = new(StringComparer.Ordinal) { ["probe-service"] = grpcTarget.GrpcAddress },
+            Services = new(StringComparer.Ordinal) { ["probe-service"] = grpcTarget.GrpcAddress },
         });
-        var http = new HttpEffectiveConfigCollector(
-            new PlainClientFactory(), opts, NullLogger<HttpEffectiveConfigCollector>.Instance);
         var log = new RecordingLogger<GrpcServiceIntrospectionCollector>();
         using var grpc = new GrpcServiceIntrospectionCollector(new ThrowingTokenProvider(), opts, log);
 
-        var result = await new EffectiveConfigCollector(http, opts, grpc).CollectAsync(Ct);
+        var result = await new EffectiveConfigCollector(grpc, opts).CollectAsync(Ct);
 
         result.UnreachableServices.Should().BeEquivalentTo(["probe-service"]);
         var error = log.OfLevel(LogLevel.Error).Should().ContainSingle().Which;
         error.Message.Should().Contain("service token");
         error.Exception.Should().BeOfType<InvalidOperationException>("元の取得失敗をそのまま記録する");
         log.OfLevel(LogLevel.Warning).Should().BeEmpty();
-    }
-
-    // T-13: gRPC の宛先が構成されているのに gRPC の収集器が無いのは登録の誤り —— 黙って REST へ倒さず起動で落とす。
-    [Fact]
-    public void Configured_grpc_targets_without_a_grpc_collector_fail_fast()
-    {
-        var opts = Microsoft.Extensions.Options.Options.Create(new IntrospectionOptions
-        {
-            GrpcServices = new(StringComparer.Ordinal) { ["x"] = "http://x:8081" },
-        });
-        var http = new HttpEffectiveConfigCollector(
-            new PlainClientFactory(), opts, NullLogger<HttpEffectiveConfigCollector>.Instance);
-
-        var act = () => new EffectiveConfigCollector(http, opts);
-
-        act.Should().Throw<InvalidOperationException>().WithMessage("*GrpcServices*");
-    }
-
-    // T-14: 対照。gRPC の宛先が無ければ gRPC の収集器が無くても組み立てられ、REST だけで集まる（既存配備は不変）。
-    [Fact]
-    public async Task Without_grpc_targets_the_collector_is_rest_only()
-    {
-        await using var restTarget = await IntrospectionGrpcTestHost.StartAsync(ct: Ct);
-        var opts = Microsoft.Extensions.Options.Options.Create(new IntrospectionOptions
-        {
-            Services = new(StringComparer.Ordinal) { ["probe-service"] = restTarget.HttpAddress },
-        });
-        var http = new HttpEffectiveConfigCollector(
-            new PlainClientFactory(), opts, NullLogger<HttpEffectiveConfigCollector>.Instance);
-
-        var result = await new EffectiveConfigCollector(http, opts).CollectAsync(Ct);
-
-        result.ReachableServices.Should().BeEquivalentTo(["probe-service"]);
     }
 }

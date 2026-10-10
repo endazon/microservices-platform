@@ -544,7 +544,7 @@ public class AbacEvaluatorTests
     // **`Granted=true` かつ `confidentiality` フィルタ無し**である。
     //
     // **この形を「無制限」と読むと、登録者が `restricted` の無人アカウントを作れる**
-    // （McpServer 側 `AuthorizationServiceRegistrarAttributesTests` の陰性対照 3 本）。
+    // （McpServer 側 `RegistrarScopeReadingTests` の陰性対照）。
     // ★［2026-09-27 / #1664］**seed に所有者の read ポリシーが入り、この形は dev で実際に返る**
     // （計画 ADR-0121 決定 1。ADR-0062 実測 9 の契機の到来）。消費側は IADR-0384 で是正済みで、
     // seed が作る応答そのものでの確認は `OwnerReadPolicySeedTests`（期待値のファイル）と

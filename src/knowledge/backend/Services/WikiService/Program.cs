@@ -53,12 +53,10 @@ builder.Services.AddOpenApi();
 builder.Services.AddDbContext<WikiDbContext>(opt => opt.UseNpgsql(connStr));
 
 // FR-13, FR-05, ADR-0011: 閲覧の ABAC 判定は本システム（AuthorizationService）が担う。
-builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
-// FR-05, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0401 決定 1 (#1255):
-// ABAC スコープ解決の gRPC 経路。**並走中の正は REST である。**
-// `Services:AuthorizationServiceGrpc`（h2c のアドレス）が構成されたときだけ `AuthzScopeGrpcClient` が
-// 登録され、解決器は在ればそれを使う（無ければ上の名前つき HttpClient で REST のまま）。
-// 戻すのは構成を外すだけでよい（コードは変えない）。
+// FR-05, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0075, IADR-0401 決定 1, [[IADR-0533]] (#1255):
+// スコープ解決の輸送は east-west gRPC だけである（［2026-10-10］REST `POST /authz/scope` の並走は撤去した）。
+// `Services:AuthorizationServiceGrpc` が構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、
+// 解決器は deny-by-default へ倒れる。
 builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 builder.Services.AddScoped<IWikiAccessResolver, WikiAccessResolver>();
 

@@ -4,14 +4,14 @@ type: api-spec
 status: draft
 author: claude
 created: 2026-08-23
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 <!-- trace:
 ids: [FR-15, FR-16, UC-08, UC-09, SC-12]
 adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054, ADR-0062, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134]
-iadrs: [IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523]
-specs: [20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation]
-issues: [#1859, #445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818, #1829, #1844, #1845, #1846]
+iadrs: [IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523, IADR-0533]
+specs: [20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#1859, #445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818, #1829, #1844, #1845, #1846, #1255]
 -->
 
 # 通信仕様書: MCP サーバー
@@ -28,7 +28,7 @@ issues: [#1859, #445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #17
 | --- | --- | --- |
 | MCP（`/mcp`） | 外部 AI エージェント | ツール一覧・ツール実行 |
 | 管理 REST（`/mcp-clients`） | **境界層（`/bff/admin/mcp-clients`）経由の管理画面**・運用 | クライアント登録・無効化・属性割当・公開ツール一覧 |
-| メッシュ内部（各サービスの `/internal/mcp-tools` と、その gRPC 面） | 各マイクロサービス | ツール定義の自己申告（本サービスは**呼ぶ側**）。［2026-09-26 追記］宛先ごとに REST か gRPC を選ぶ（下記「gRPC での収集」） |
+| メッシュ内部（各サービスの gRPC 面 `McpToolDeclarations/Declare`） | 各マイクロサービス | ツール定義の自己申告（本サービスは**呼ぶ側**）。［2026-10-10］収集は gRPC だけである（REST の `/internal/mcp-tools` は撤去した。下記「gRPC での収集」） |
 | メッシュ内部（各サービスのツール実行の gRPC 面） | ツールを申告したサービス | ［2026-09-27 追記］ツールの実行（本サービスは**呼ぶ側**。下記「ツールの実行（gRPC）」）。［2026-09-28 改訂］受け口は文書・検索・グラフの 3 サービスとも持つ。🔴 文書の受け口は内容の属性による絞り込みの門が閉じている間（既定）は結果を返さず拒否する |
 
 ## エンドポイント一覧
@@ -212,7 +212,8 @@ issues: [#1859, #445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #17
 
 ## ツール定義の自己申告（各サービスが実装する側）
 
-`GET /internal/mcp-tools` は次を返す。メッシュ内部限定であり Ingress へ公開しない。
+申告の面（gRPC `platform.mcp.v1.McpToolDeclarations/Declare`）は次の形を返す（下の JSON は proto の項目を JSON で書いたもの）。メッシュ内部限定であり Ingress へ公開しない。
+［2026-10-10］従前の REST の口 `GET /internal/mcp-tools` は撤去した（収集は gRPC だけになった）。
 
 ```json
 {
@@ -233,36 +234,35 @@ issues: [#1859, #445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #17
   実行先の URL（旧 `endpoint`）は規約から外した —— 実行先は「申告したサービス（`service`）＋ツール名（`name`）」で決まり、
   URL を申告に持たせると、あるサービスが別のサービスの内部経路を自分のツールとして申告できてしまう。
   旧い申告元が `endpoint` を載せても本サービスは読み飛ばし、**その URL へ接続しない**。
-- 🔴 **申告の `service` は、収集先の名前（`Mcp:Services` / `Mcp:GrpcServices` のキー）と一致しなければならない。** 一致しない申告は
+- 🔴 **申告の `service` は、収集先の名前（`Mcp:Services` のキー。［2026-10-10］旧 `Mcp:GrpcServices` から一本化）と一致しなければならない。** 一致しない申告は
   **拒否して公開しない**（書き換えない。エラーとして記録し、公開構成が要求していれば「申告なし」の構成ドリフトになる）。
   申告元は、自分が集められた名前でしかツールを公開できず、他のサービスの名でツールを公開したり実行先を向けたりできない。
 - 同じサービスが同じツール名を 2 度申告した場合は、そのツールを公開しない（どちらかを推測しない）。構成ドリフトとして現れ、他のツールには影響しない。
 - `egress_class` は必須である。欠けた申告は**公開しない**。
-- `service` は自己申告（`/internal/introspection`）と同じサービス名を使う。公開構成の `service` は
+- `service` は構成の自己申告（gRPC `ServiceIntrospection/Get`）と同じサービス名を使う。公開構成の `service` は
   この値と突き合わせるため、綴りが割れると申告が見つからず構成ドリフトになる。
 - 収集は起動時と定期（既定 5 分間隔）に行う。到達できないサービスは「申告なし」として扱い、
   公開構成が要求していれば構成ドリフトとして報告する。**推測で公開しない。**
-- 端点は認可を要求しない。`/internal/introspection` と同じ防御（ネットワーク分離・相互 TLS）に置き、
-  OpenAPI の記述からも外す。**画面向け集約の契約ではないため、その定義ファイルには現れない。**
+- ~~端点は認可を要求しない。~~ ［2026-10-10］REST の端点は撤去した。gRPC の面は呼び出し側サービスの資格情報（`platform-service`）を要求する（下記）。
+  **画面向け集約の契約ではないため、OpenAPI の定義ファイルには現れない。**
 
 ### gRPC での収集（［2026-09-26 追記］）
 
-申告の口は **REST と gRPC を対で**持つ（申告を張る唯一の口が両方を張る。張り忘れた宛先は本サービスからは
-「申告なし」としか見えないため）。gRPC の面は `platform.mcp.v1.McpToolDeclarations/Declare` で、REST と**同じ 1 つの申告**を
-返す（申告を組み立てる関数は 1 つ。個人資料の除外も同じ経路を通る）。
+申告の口は gRPC の面 `platform.mcp.v1.McpToolDeclarations/Declare` である（［2026-10-10］従前は REST と対で張っていた。REST の口は撤去した）。
+申告を組み立てる関数は 1 つで、個人資料の除外も同じ経路を通る。
 
 | 項目 | 値 |
 | --- | --- |
 | 契約 | 共有契約の proto（`platform/mcp/v1`）。**申告スキーマの共有契約への昇格はこの proto で行った**。REST の JSON と項目名・数が一致する（試験で固定）。［2026-09-27］旧 `endpoint`（番号 4）は番号と名前を予約に残した（再利用しない） |
-| 切替 | **宛先ごと**の `Mcp:GrpcServices:<サービス名>`（h2c のアドレス）。在る宛先だけが gRPC、無い宛先は `Mcp:Services` の REST のまま（両方に在れば gRPC）。戻すのは 1 行を消すだけ |
+| 宛先 | ［2026-10-10］`Mcp:Services:<サービス名>`（h2c のアドレス）へ一本化した。撤去した旧キー `Mcp:GrpcServices` が残っていれば本サービスは起動を止める。~~在る宛先だけが gRPC、無い宛先は REST のまま~~ |
 | 認証・認可 | 呼び出し側サービスの資格情報（`platform-service`）を要求する。利用者のトークンは管理者でも通らない。REST の端点は認可を要求しないので**狭まる向き**である |
 | 資格情報 | 本サービス自身のサービス間トークン（realm の `mcp-server` client。認可サービスの gRPC 経路と同じもの） |
-| 期限 | REST の HTTP クライアントのタイムアウトと**同じ値**（書き写さない） |
-| 失敗 | REST と同じく「申告なし」へ畳む（全 status・期限切れ・トークン取得失敗・空の `service`）。**推測で公開しない**。資格情報の拒否とトークン取得失敗は配線不備として Error、ほかは Warning |
-| 配備 | helm・compose の本サービスに 3 宛先（文書・検索・グラフ）の gRPC アドレスを入れた。**並走中の正は REST** |
+| 期限 | `Mcp:DeclarationTimeoutSeconds`（既定 10 秒。従前の REST の HTTP クライアントのタイムアウトと同じ値） |
+| 失敗 | 「申告なし」へ畳む（全 status・期限切れ・トークン取得失敗・空の `service`）。**推測で公開しない**。資格情報の拒否とトークン取得失敗は配線不備として Error、ほかは Warning |
+| 配備 | helm・compose の本サービスに 3 宛先（文書・検索・グラフ）の gRPC アドレスを `Mcp__Services__*` で入れた。［2026-10-10］REST の並走は終わった |
 
 - ［2026-09-27 改訂］従前ここに書いた「`endpoint` は文字列のまま運ぶ。gRPC で実行するときの扱いは未決」は解消した。`endpoint` は規約から外した（上記）。
-- REST の口の退役は、他の経路と同じ段でまとめて行う（それまで REST の口と `Mcp:Services` は残す）。
+- ［2026-10-10］REST の口の退役は他の経路と同じ段で行った（REST の口と REST の収集を撤去し、`Mcp:Services` を gRPC の宛先へ一本化した）。
 
 ### 供給元と申告するツール
 
@@ -284,13 +284,13 @@ issues: [#1859, #445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #17
 | 項目 | 値 |
 | --- | --- |
 | 面 | `platform.mcp.v1.McpToolExecution/Execute`（共有契約の proto `platform/mcp/v1`） |
-| 宛先 | 🔴 **公開構成で申告を突き合わせたサービス**の h2c アドレス（申告の収集と同じ `Mcp:GrpcServices:<サービス名>`）。要求の `tool` は**申告名**（公開名ではない）。**申告の中身から宛先を作らない**（申告の `service` は収集先の名前と一致したものだけが残るので、宛先は常に申告元自身になる） |
+| 宛先 | 🔴 **公開構成で申告を突き合わせたサービス**の h2c アドレス（申告の収集と同じ `Mcp:Services:<サービス名>`）。要求の `tool` は**申告名**（公開名ではない）。**申告の中身から宛先を作らない**（申告の `service` は収集先の名前と一致したものだけが残るので、宛先は常に申告元自身になる） |
 | 資格情報 | 本サービス自身のサービス間トークン（申告の収集と同じ `mcp-server` client）。利用者のトークンは運ばない |
 | 期限 | `Mcp:ToolExecutionTimeoutSeconds`（既定 30 秒、1 未満は 1 秒）。常に有限。申告の収集の期限とは別の値である |
 | リトライ | 持たない（ツールの実行は冪等とは限らない） |
 | 失敗 | 🔴 **fail-closed。** 経路が構成されていない・受け口が無い（`UNIMPLEMENTED`）・期限切れ・拒否・トークン取得失敗・到達不能は、結果を 1 件も返さず MCP クライアントへ拒否を返す。拒否の文言は内部の宛先（サービス名・アドレス）を含めない。ログは資格情報の拒否とトークン取得失敗を Error、ほかを Warning |
 | 取り消し | 呼び出し側の取り消しは拒否へ畳まず、取り消しとして外へ出す |
-| 配備 | 新しい構成は無い（`Mcp__GrpcServices__*` とサービス間トークンは申告の収集のために既に在る）。期限のキーは本サービスの構成ファイルに既定値で並べた |
+| 配備 | 新しい構成は無い（`Mcp__Services__*` とサービス間トークンは申告の収集のために既に在る）。期限のキーは本サービスの構成ファイルに既定値で並べた |
 
 > 🔴 **受け口（各サービスの実行口）は、文書・検索・グラフの 3 サービスとも持つ**（［2026-09-28 改訂］）。受け口の無い宛先
 > （旧い版・将来の供給元）は `UNIMPLEMENTED` を返し、実行は拒否で終わる。

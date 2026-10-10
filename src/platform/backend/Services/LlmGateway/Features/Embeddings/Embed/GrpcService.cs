@@ -11,7 +11,7 @@ namespace LlmGateway.Features.Embeddings.Embed;
 // IADR-0397 (#1255): 埋め込み生成の **gRPC 面**。
 //
 // REST の `POST /embed`（EmbeddingEndpoints）と**同じ判定器**（EmbedUseCase）を呼ぶ —— 判定器を 2 つにしない。
-// REST と gRPC は並走し、**並走中の正は REST** である（IADR-0379 決定 5）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］east-west の呼び出し元は gRPC だけになった（REST の受け口の撤去は残余）。
 //
 // 🔴 **ServiceCaller を要求する。** **呼び出し側サービス自身の資格情報**（client credentials の
 // JWT・`platform-service` ロール）を要求し、**利用者のトークンでは通さない** —— 通すと「利用者が直接

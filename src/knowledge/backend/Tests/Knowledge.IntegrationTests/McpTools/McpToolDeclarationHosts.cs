@@ -1,7 +1,12 @@
+using System.Security.Claims;
 using DocumentService.Infrastructure.Persistence;
 using GraphService.Infrastructure.Persistence;
 using MassTransit;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -10,7 +15,8 @@ using Wolverine;
 
 namespace Knowledge.IntegrationTests.McpTools;
 
-// FR-16, ADR-0024 §2 (#1020): 自己申告端点（`GET /internal/mcp-tools`）を持つサービスを
+// FR-16, ADR-0024 §2 (#1020): 自己申告の面（gRPC `McpToolDeclarations/Declare`。［2026-10-10 / #1517］REST の
+// `GET /internal/mcp-tools` は撤去した）を持つサービスを
 // **in-process で**起こす器。
 //
 // 🔴 **Docker を要求しない。** Testcontainers（`PostgresFixture` / `RabbitMqFixture`）を使わず、
@@ -33,8 +39,7 @@ namespace Knowledge.IntegrationTests.McpTools;
 internal abstract class McpToolDeclarationHost<TEntryPoint> : WebApplicationFactory<TEntryPoint>
     where TEntryPoint : class
 {
-    // 収集側（`HttpToolDeclarationSource`）が引く「サービス → ベース URL」の host 部分。
-    // 実 DNS は引かない（本器の RoutingHandler が host で振り分ける）。
+    // 収集側が引く「サービス → 宛先」の host 部分。実 DNS は引かない（チャネルはテストサーバーの handler へ向ける）。
     internal abstract string MeshHost { get; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -61,6 +66,9 @@ internal abstract class McpToolDeclarationHost<TEntryPoint> : WebApplicationFact
             // 🔴 これが無いとテストホストの起動が実ブローカへ接続を試み、約 135 秒ハングする
             // （DocumentService.Tests / GraphService.Tests / RetrievalService.Tests の実測と同型）。
             services.DisableAllExternalWolverineTransports();
+            // [[IADR-0533]] (#1517): 申告の面は ServiceCaller を要求する。本器の関心は「申告 → 収集 → 突合」なので
+            // 認可の評価を通過させる（s2s の要求そのものは各サービスの `GrpcMcpToolDeclarationTests` が実 Kestrel で測る）。
+            services.AddSingleton<IPolicyEvaluator, PassThroughPolicyEvaluator>();
             ConfigureService(services);
         });
     }
@@ -83,6 +91,22 @@ internal abstract class McpToolDeclarationHost<TEntryPoint> : WebApplicationFact
 
         services.AddDbContext<TContext>(opt => opt.UseInMemoryDatabase(name));
     }
+}
+
+// 認証・認可の評価を常に通す（本器専用。s2s の主体名だけを載せる）。
+internal sealed class PassThroughPolicyEvaluator : IPolicyEvaluator
+{
+    public Task<AuthenticateResult> AuthenticateAsync(AuthorizationPolicy policy, HttpContext context)
+    {
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Name, "service-account-mcp-server")], "McpDeclarationHost"));
+        context.User = principal;
+        return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, "McpDeclarationHost")));
+    }
+
+    public Task<PolicyAuthorizationResult> AuthorizeAsync(
+        AuthorizationPolicy policy, AuthenticateResult authenticationResult, HttpContext context, object? resource) =>
+        Task.FromResult(PolicyAuthorizationResult.Success());
 }
 
 // global:: でローカル namespace（Knowledge.IntegrationTests.*）を隠さないようにする。

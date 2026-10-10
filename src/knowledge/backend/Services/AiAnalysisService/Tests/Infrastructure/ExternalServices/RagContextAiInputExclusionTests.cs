@@ -69,7 +69,7 @@ public class RagContextAiInputExclusionTests
     {
         var routes = new RoutingHandler(
             [OrganizationDocument(), AiOffPrivateNote(), AiOnPrivateNote()]);
-        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+        var orchestrator = TestRagOrchestrator.Create(new SingleHandlerFactory(routes));
 
         var answer = await orchestrator.AskAsync("質問", "alice", [],
             ct: TestContext.Current.CancellationToken);
@@ -90,7 +90,7 @@ public class RagContextAiInputExclusionTests
     {
         var routes = new RoutingHandler(
             [OrganizationDocument(), AiOffPrivateNote(), AiOnPrivateNote()]);
-        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+        var orchestrator = TestRagOrchestrator.Create(new SingleHandlerFactory(routes));
 
         var answer = await orchestrator.AskAsync("質問", "alice", [],
             ct: TestContext.Current.CancellationToken);
@@ -124,7 +124,7 @@ public class RagContextAiInputExclusionTests
             Chunk(draftChunk, "報告書ドラフト", "承認待ちのドラフト本文", Org(false)),
             Chunk(includedChunk, "確定した報告書", "確定版の本文", Org(true)),
         ]);
-        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+        var orchestrator = TestRagOrchestrator.Create(new SingleHandlerFactory(routes));
 
         var answer = await orchestrator.AskAsync("質問", "alice", [],
             ct: TestContext.Current.CancellationToken);
@@ -148,7 +148,7 @@ public class RagContextAiInputExclusionTests
                 ["owner"] = "alice",
             });
         var routes = new RoutingHandler([OrganizationDocument(), attributeless]);
-        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+        var orchestrator = TestRagOrchestrator.Create(new SingleHandlerFactory(routes));
 
         var answer = await orchestrator.AskAsync("質問", "alice", [],
             ct: TestContext.Current.CancellationToken);
@@ -166,7 +166,7 @@ public class RagContextAiInputExclusionTests
     {
         var routes = new RoutingHandler(
             [OrganizationDocument(), AiOffPrivateNote(), AiOnPrivateNote()]);
-        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+        var orchestrator = TestRagOrchestrator.Create(new SingleHandlerFactory(routes));
 
         var events = new List<AskEvent>();
         await foreach (var ev in orchestrator.AskStreamAsync("質問", "alice", [],
@@ -189,7 +189,7 @@ public class RagContextAiInputExclusionTests
     {
         // 文脈に残るのは組織文書（internal）だけ。除外されるのは restricted の個人資料。
         var routes = new RoutingHandler([OrganizationDocument(), AiOffPrivateNote()]);
-        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+        var orchestrator = TestRagOrchestrator.Create(new SingleHandlerFactory(routes));
 
         await orchestrator.AskAsync("質問", "alice", [],
             ct: TestContext.Current.CancellationToken);
@@ -217,7 +217,7 @@ public class RagContextAiInputExclusionTests
     public async Task 機密区分の無い文脈は越境判定でrestrictedとして送る(string? level)
     {
         var routes = new RoutingHandler([OrganizationDocument(), UnclassifiedChunk(level)]);
-        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+        var orchestrator = TestRagOrchestrator.Create(new SingleHandlerFactory(routes));
 
         await orchestrator.AskAsync("質問", "alice", [], ct: TestContext.Current.CancellationToken);
 
@@ -231,7 +231,7 @@ public class RagContextAiInputExclusionTests
     public async Task ストリーミング経路でも機密区分の無い文脈はrestrictedとして送る(string? level)
     {
         var routes = new RoutingHandler([OrganizationDocument(), UnclassifiedChunk(level)]);
-        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+        var orchestrator = TestRagOrchestrator.Create(new SingleHandlerFactory(routes));
 
         await foreach (var _ in orchestrator.AskStreamAsync("質問", "alice", [],
             ct: TestContext.Current.CancellationToken)) { }
@@ -245,7 +245,7 @@ public class RagContextAiInputExclusionTests
     public async Task 区分を持つ文脈だけならその区分で送る()
     {
         var routes = new RoutingHandler([OrganizationDocument()]);
-        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+        var orchestrator = TestRagOrchestrator.Create(new SingleHandlerFactory(routes));
 
         await foreach (var _ in orchestrator.AskStreamAsync("質問", "alice", [],
             ct: TestContext.Current.CancellationToken)) { }
@@ -258,7 +258,7 @@ public class RagContextAiInputExclusionTests
     public async Task 除外が無ければ検索結果と文脈は一致する()
     {
         var routes = new RoutingHandler([OrganizationDocument(), AiOnPrivateNote()]);
-        var orchestrator = new RagOrchestrator(new SingleHandlerFactory(routes));
+        var orchestrator = TestRagOrchestrator.Create(new SingleHandlerFactory(routes));
 
         var answer = await orchestrator.AskAsync("質問", "alice", [],
             ct: TestContext.Current.CancellationToken);

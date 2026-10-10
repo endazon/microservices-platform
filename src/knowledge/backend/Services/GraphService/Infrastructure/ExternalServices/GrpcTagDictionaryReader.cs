@@ -83,13 +83,14 @@ public static class TagDictionaryGrpcClientExtensions
     /// </summary>
     public const string ChannelKey = DocumentTagWriteGrpcClientExtensions.ChannelKey;
 
-    // 構成が無ければ**何も登録しない** —— 呼び出し元は登録の有無で REST 実装と gRPC 実装を選ぶ。
+    // ［2026-10-10 / #1255・[[IADR-0533]] 決定 2］**常に登録する。** 構成が無ければ、生成クライアントを常に `UNAVAILABLE` を返す
+    // 呼び出し器の上に組む（REST の兄弟実装は撤去した。呼び出し元は「届かない」の枝へ落ちる）。
     public static IServiceCollection AddTagDictionaryGrpcClient(
         this IServiceCollection services, IConfiguration config)
     {
         var address = config[AddressKey];
         if (string.IsNullOrWhiteSpace(address))
-            return services;
+            return services.TryAddUnconfiguredGrpcClient(AddressKey, ci => new Pb.TagDictionary.TagDictionaryClient(ci));
 
         services.AddPlatformServiceToken(config);
         // 🔴 **`TryAdd` である。** 書き込み側の登録と**どちらが先でも 1 本**になる ——

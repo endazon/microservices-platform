@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Grpc.Core;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Http.Json;
@@ -19,6 +21,7 @@ using WikiService.Infrastructure.Persistence;
 using Wolverine;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
+using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
 
 namespace WikiService.Tests.Features.Wiki;
 
@@ -145,7 +148,7 @@ public class AnonymousContractTestFactory : WebApplicationFactory<Program>
 {
     private readonly string _dbName = $"WikiAnonTest_{Guid.NewGuid()}";
 
-    public RecordingAuthorizationHandler Authz { get; } = new();
+    public RecordingAuthzScopeClient Authz { get; } = new();
 
     public SearchableWikiJsStub WikiJs { get; } = new();
 
@@ -173,8 +176,9 @@ public class AnonymousContractTestFactory : WebApplicationFactory<Program>
             services.RemoveAll<IServiceTokenProvider>();
             services.AddSingleton<IServiceTokenProvider>(new FixedServiceTokenProvider());
             // 🔴 `IWikiAccessResolver` は**差し替えない**。実物の短絡を測るのが目的である。
-            services.AddHttpClient(AuthzScopeHttpClient.ClientName)
-                .ConfigurePrimaryHttpMessageHandler(() => Authz);
+            // [[IADR-0533]] (#1255): 認可は east-west gRPC だけである。本物のラッパの下へ、呼ばれた回数を数える生成クライアントを差し込む。
+            services.RemoveAll<AuthzScopeGrpcClient>();
+            services.AddSingleton(new AuthzScopeGrpcClient(Authz, NullLogger<AuthzScopeGrpcClient>.Instance));
 
             services.RemoveAll<IWikiJsClient>();
             services.AddSingleton<IWikiJsClient>(WikiJs);
@@ -193,18 +197,16 @@ public class AnonymousContractTestFactory : WebApplicationFactory<Program>
 
 // 認可サービスの応答を「**全許可**（Granted=true・条件なし）」に固定し、呼ばれた回数を数える。
 // **これは最も甘い構えである** —— 未認証が素通りするなら、ここで必ず露見する。
-public class RecordingAuthorizationHandler : HttpMessageHandler
+public class RecordingAuthzScopeClient : Pb.AuthzScope.AuthzScopeClient
 {
     public int Calls { get; set; }
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    public override AsyncUnaryCall<Pb.ResolveScopeResponse> ResolveAsync(Pb.ResolveScopeRequest request, CallOptions options)
     {
         Calls++;
-        var body = """{"userId":"any","allowedFilters":[],"granted":true}""";
-        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json"),
-        });
+        return new AsyncUnaryCall<Pb.ResolveScopeResponse>(
+            Task.FromResult(new Pb.ResolveScopeResponse { UserId = "any", Granted = true }),
+            Task.FromResult(new Metadata()), () => Status.DefaultSuccess, () => [], () => { });
     }
 }
 

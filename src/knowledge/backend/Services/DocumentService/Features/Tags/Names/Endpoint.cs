@@ -20,7 +20,7 @@ namespace DocumentService.Features.Tags.Names;
 // 🔴 **使用件数を返さない。** 件数は管理面の集計値であり、生成には要らない。
 public static class TagNamesEndpoint
 {
-    // 🔴 読み手 GraphService.Infrastructure.ExternalServices.HttpTagDictionaryReader.NamesPath と同値。
+    // 🔴 読み手 旧 REST の `HttpTagDictionaryReader.NamesPath`（［2026-10-10］撤去） と同値。
     // **サービスを跨ぐため定数を共有できない**（サービス間は直接参照しない）。両側のテストで固定する。
     public const string NamesPath = "/internal/tags/names";
 

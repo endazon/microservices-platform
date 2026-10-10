@@ -2,7 +2,7 @@ namespace NotificationService.Features.Notifications.Accept;
 
 // FR-22, IADR-0215 決定 2・3, IADR-0270 決定 6: 受け口（POST /internal/notifications）の要求本文。
 //
-// ★ **送信側（DocumentService の HttpPrivateNoteNotifier）が送る形と 1 バイトずれない。**
+// ★ **送信側（DocumentService の 旧 REST の `HttpPrivateNoteNotifier`（［2026-10-10］撤去））が送る形と 1 バイトずれない。**
 // platform → knowledge の参照は禁止のため型を共有できない。**同じ形を複製し、一致はテストで固定する**
 // （通知種別の定数で採ったのと同じ扱い）。
 //

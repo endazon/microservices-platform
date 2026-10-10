@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text;
 using AwesomeAssertions;
 using Grpc.Core;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -16,7 +14,8 @@ namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 // FR-03, ADR-0016, ADR-0092 決定 2, [[IADR-0467]] (#336): **コレクションごとのクエリ埋め込み。**
 //
 // 束ねる追加コレクション用の要求だけが `TargetCollection` を名乗り、主コレクション用の要求は
-// **従来と同じ意味**（REST は `targetCollection: null`・gRPC は空文字＝線に載らない）であることを固定する。
+// **従来と同じ意味**（gRPC は空文字＝線に載らない）であることを固定する。
+// ［2026-10-10 / #1255］[[IADR-0533]]: REST の埋め込み（`LlmGatewayEmbeddingService`）を撤去したので、REST の本文の表明（旧 T-Q-02）を外した。
 // 変異 M-5（主の要求にも名前を載せる）はここで赤になる。
 [Trait("TestKind", "Unit")]
 public class FusedQueryEmbeddingTests
@@ -26,12 +25,7 @@ public class FusedQueryEmbeddingTests
     private const string Lexical = "knowledge_chunks_lexical";
     private const string Ruri = "knowledge_chunks_ruri_v3";
 
-    private static string GatewayJson(string collection) => $$"""
-        {"vector":[0.5,0.25],"dimensions":2,"model":"m","collection":"{{collection}}","embedded":true,
-         "endpoint":"e","routingReason":"r","retryable":false}
-        """;
-
-    // T-Q-01: 要求を作る関数（REST と gRPC の共有点）。主は名乗らない・追加は名乗る。
+    // T-Q-01: 要求を作る関数。主は名乗らない・追加は名乗る。
     [Fact]
     public void 主は名乗らず_追加コレクションだけが名乗る()
     {
@@ -39,30 +33,6 @@ public class FusedQueryEmbeddingTests
         QueryEmbeddingRequest.For("問い", null).TargetCollection.Should().BeNull();
         QueryEmbeddingRequest.For("問い", new QueryEmbeddingTarget(Ruri, NamedInRequest: true))
             .TargetCollection.Should().Be(Ruri);
-    }
-
-    // T-Q-02: 🔴 **REST の本文。** 主の要求は `targetCollection` を **null で書く**（キーは本文に現れるが、
-    // 受け側は未指定として扱う —— [[IADR-0467]]「影響・トレードオフ」の後方互換）。名前を載せるのは追加の要求だけ。
-    [Fact]
-    public async Task REST_主の要求本文はtargetCollectionをnullで書き追加の要求だけが名乗る()
-    {
-        var primaryHandler = new CapturingHandler(GatewayJson(Voyage));
-        await new LlmGatewayEmbeddingService(
-                new HttpClient(primaryHandler) { BaseAddress = new Uri("http://llm-gateway") },
-                new QueryEmbeddingTarget(Voyage))
-            .EmbedAsync("q", TestContext.Current.CancellationToken);
-
-        var fusedHandler = new CapturingHandler(GatewayJson(Ruri));
-        await new LlmGatewayEmbeddingService(
-                new HttpClient(fusedHandler) { BaseAddress = new Uri("http://llm-gateway") },
-                new QueryEmbeddingTarget(Ruri, NamedInRequest: true))
-            .EmbedAsync("q", TestContext.Current.CancellationToken);
-
-        // 主は名乗らない（キーは null で現れる ＝受け側は未指定として従来どおり優先度順に選ぶ）。ASCII の問いで本文ごと比べる。
-        primaryHandler.Body.Should().Be(
-            """{"text":"q","confidentiality":null,"purpose":1,"targetCollection":null}""");
-        fusedHandler.Body.Should().Be(
-            $$"""{"text":"q","confidentiality":null,"purpose":1,"targetCollection":"{{Ruri}}"}""");
     }
 
     // T-Q-03: gRPC の要求。主は target_collection が空（proto3 では線に載らない）・追加は名乗る。
@@ -83,20 +53,15 @@ public class FusedQueryEmbeddingTests
     }
 
     // T-Q-04: 名乗っても**照合は外さない**。ゲートウェイが別のコレクションを答えたらその系統を捨てる
-    // （[[IADR-0422]] 決定 3 の守りは追加コレクションにもそのまま効く）。REST / gRPC で同じ答え。
+    // （[[IADR-0422]] 決定 3 の守りは追加コレクションにもそのまま効く）。
     [Fact]
     public async Task 追加コレクションでも答えが食い違えば空ベクトルへ降りる()
     {
         var target = new QueryEmbeddingTarget(Ruri, NamedInRequest: true);
 
-        var rest = await new LlmGatewayEmbeddingService(
-                new HttpClient(new CapturingHandler(GatewayJson(Voyage))) { BaseAddress = new Uri("http://llm-gateway") },
-                target)
-            .EmbedAsync("問い", TestContext.Current.CancellationToken);
         var grpc = await new LlmGatewayGrpcEmbeddingService(new CapturingClient(Voyage), target)
             .EmbedAsync("問い", TestContext.Current.CancellationToken);
 
-        rest.Should().BeEmpty();
         grpc.Should().BeEmpty();
     }
 
@@ -120,7 +85,7 @@ public class FusedQueryEmbeddingTests
 
     // T-Q-06: 合成点。構成が無ければ**語彙索引だけ**（［2026-10-05 / #1746］[[IADR-0497]] 決定 5。従前は `None`）、
     // 在ればそのコレクションを読むストアと、そのコレクションを名乗る埋め込みの組が組み上がり、語彙索引は最後に付く。
-    // REST の客体は主と**同じ名前つきクライアント**（同じ宛先）を使う。
+    // 追加コレクションの埋め込みも主と同じ gRPC 実装である（［2026-10-10 / #1255］REST の客体は撤去した）。
     [Fact]
     public void 合成点は構成が無ければ語彙索引だけで_在れば組を作り語彙索引を最後に付ける()
     {
@@ -150,11 +115,7 @@ public class FusedQueryEmbeddingTests
         // 陽性対照: ベクトルの追加コレクションは従来どおり（無ければ削除は例外）。
         items[0].Store.Should().BeOfType<QdrantVectorStore>().Which.MissingCollectionIsEmpty.Should().BeFalse();
         items[0].Store.Should().BeOfType<QdrantVectorStore>().Which.Collection.Should().Be(Ruri);
-        items[0].Embed.Should().BeOfType<LlmGatewayEmbeddingService>();
-        fusedScope.ServiceProvider.GetRequiredService<IHttpClientFactory>()
-            .CreateClient(LlmGatewayEmbeddingService.HttpClientName).BaseAddress
-            // 基底の構成（`Services:LlmGateway`）で主の型つきクライアントが向く先と同じである。
-            .Should().Be(new Uri("http://localhost:5007"));
+        items[0].Embed.Should().BeOfType<LlmGatewayGrpcEmbeddingService>();
     }
 
     // #1746: 本番の合成点を残し、Qdrant のクライアントだけを戻す（追加コレクションの構成なし）。
@@ -182,21 +143,6 @@ public class FusedQueryEmbeddingTests
             builder.UseSetting("Qdrant:FusedCollections:0", Ruri);
             // 基底が外した Qdrant クライアントを戻す（組み立てが引く。接続は呼び出しまで起きない）。
             builder.ConfigureServices(services => services.AddSingleton(new QdrantClient("localhost")));
-        }
-    }
-
-    private sealed class CapturingHandler(string json) : HttpMessageHandler
-    {
-        public string? Body { get; private set; }
-
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            Body = await request.Content!.ReadAsStringAsync(cancellationToken);
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json"),
-            };
         }
     }
 

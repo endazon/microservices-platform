@@ -3,7 +3,7 @@ namespace NotificationService.Features.Notifications.Accept;
 
 // FR-22, ADR-0004, IADR-0215 決定 5, IADR-0270 決定 6: 通知の受け口（メッシュ内部限定）。
 //
-// **送信側は DocumentService の HttpPrivateNoteNotifier である**（発火の検知はデータの在る側で行う）。
+// **送信側は DocumentService の 旧 REST の `HttpPrivateNoteNotifier`（［2026-10-10］撤去） である**（発火の検知はデータの在る側で行う）。
 // パスは送信側の宣言と同じ `/internal/notifications` —— platform → knowledge の参照は禁止のため
 // 定数を共有できず、**文字列を複製して一致をテストで固定している**。
 //
@@ -19,7 +19,7 @@ namespace NotificationService.Features.Notifications.Accept;
 // （docs/api/openapi.yaml に /internal/* は 1 本も無い）。
 public static class NotificationIngressEndpoints
 {
-    // 🔴 送信側 DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.IngressPath と同値。
+    // 🔴 送信側 旧 REST の `HttpPrivateNoteNotifier.IngressPath`（［2026-10-10］撤去） と同値。
     public const string IngressPath = "/internal/notifications";
 
     public static IEndpointRouteBuilder MapNotificationIngressEndpoints(this IEndpointRouteBuilder app)

@@ -29,7 +29,7 @@ public class GrpcKnowledgeHealthReportTests
 {
     private const string ServiceSubject = "service-account-graph-service";
 
-    // 🔴 送信側 GraphService.Infrastructure.ExternalServices.HttpKnowledgeHealthReporter.ObservationsPath の値。
+    // 🔴 送信側 旧 REST の `HttpKnowledgeHealthReporter.ObservationsPath`（［2026-10-10］撤去） の値。
     // **サービスを跨ぐため定数を共有できない**。リテラルで持ち、一致を両側のテストで固定する。
     private const string ProducerObservationsPath = "/internal/knowledge-health/observations";
 

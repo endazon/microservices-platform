@@ -17,10 +17,9 @@ public class IntrospectionGrpcFaceTests(TestWebApplicationFactory factory)
 {
     // 対照: REST の面も同じ申告（サービス名）を返す（gRPC だけを張って REST を落としていない）。
     [Fact]
-    public async Task Reports_service_presence_over_rest()
+    public async Task Reports_service_presence_in_the_single_report()
     {
-        var report = await factory.CreateClient().GetFromJsonAsync<Platform.Shared.Contracts.Dtos.ServiceIntrospectionDto>(
-            "/internal/introspection", TestContext.Current.CancellationToken);
+        var report = factory.Services.GetRequiredService<Platform.Shared.Contracts.Dtos.ServiceIntrospectionDto>();
         report.Should().NotBeNull();
         report!.Service.Should().Be("mcp-server");
     }

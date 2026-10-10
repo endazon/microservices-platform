@@ -1,6 +1,3 @@
-using System.Net;
-using System.Text;
-using System.Text.Json;
 using AwesomeAssertions;
 using Grpc.Core;
 using Knowledge.Contracts.Dtos;
@@ -20,10 +17,11 @@ using PbSearch = Knowledge.Contracts.Grpc.Retrieval.V1;
 namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 
 // FR-03, FR-11, NFR-02, ADR-0010, ADR-0076 決定 4, ADR-0127 決定 3, [[IADR-0498]] 決定 5・7（2026-10-06 追記 / #1746 監査 F1・F4・F5）:
-// **再順位付けの輸送（REST・gRPC）が、ゲートウェイへ何を送り、失敗・取り消しをどう上げるか。**
+// **再順位付けの輸送（gRPC）が、ゲートウェイへ何を送り、失敗・取り消しをどう上げるか。**
+// ［2026-10-10 / #1255］[[IADR-0533]]: REST の輸送（`HttpRerankCompletionClient`）を撤去したので、その 2 本（本文・非 2xx）を外した。
 //
-//   - 送る中身: `purpose = rerank`・`confidentiality` = 段が算出した区分・本文・出力上限（REST の本文と proto の欄）
-//   - 合成監視の標識: 合成のときだけ付く（REST はヘッダ、gRPC はメタデータ）
+//   - 送る中身: `purpose = rerank`・`confidentiality` = 段が算出した区分・本文・出力上限（proto の欄）
+//   - 合成監視の標識: 合成のときだけ付く（gRPC のメタデータ）
 //   - 🔴 gRPC の取り消し: 呼び出し元の ct による `RpcException(Cancelled / DeadlineExceeded)` は `OperationCanceledException`
 //     へ写す（チャネルは `ThrowOperationCanceledOnCancellation` を立てていない）。取り消していない Cancelled は輸送の失敗のまま
 //   - 検索サービスの受け口: gRPC のメタデータで来た標識を、段と同じ判定（`IHttpContextAccessor` 越し）が読める
@@ -34,40 +32,6 @@ public class RerankCompletionTransportTests
 
     private static CompletionApiRequest Body(string confidentiality = ConfidentialityLevels.Restricted) =>
         new("並べ替えの指示", 512, null, confidentiality, SearchRerankOptions.Purpose);
-
-    // ───────────────────────── REST（POST /complete） ─────────────────────────
-
-    // T-110 (REST): 本文に用途 rerank・算出した区分・出力上限が載り、合成のときだけ標識が付く。
-    [Theory]
-    [InlineData(false, "internal")]
-    [InlineData(true, "restricted")]
-    public async Task REST輸送は用途と区分を本文で送り合成のときだけ標識を付ける(bool synthetic, string level)
-    {
-        var handler = new CapturingHandler();
-        var client = new HttpRerankCompletionClient(new HttpClient(handler) { BaseAddress = new Uri("http://gw/") });
-
-        var response = await client.CompleteAsync(Body(level), synthetic, Ct);
-
-        handler.Path.Should().Be("/complete");
-        using var doc = JsonDocument.Parse(handler.Body!);
-        doc.RootElement.GetProperty("purpose").GetString().Should().Be("rerank");
-        doc.RootElement.GetProperty("confidentiality").GetString().Should().Be(level);
-        doc.RootElement.GetProperty("maxTokens").GetInt32().Should().Be(512);
-        handler.Synthetic.Should().Be(synthetic ? SyntheticTraffic.HeaderValue : null);
-        response.Text.Should().Be("{\"ranking\":[1]}");
-    }
-
-    // T-110 (REST): 非 2xx は例外のまま上げる（縮退は段が決める。別の送信先を試さない）。
-    [Fact]
-    public async Task REST輸送は非2xxを例外で上げる()
-    {
-        var handler = new CapturingHandler { Status = HttpStatusCode.ServiceUnavailable };
-        var client = new HttpRerankCompletionClient(new HttpClient(handler) { BaseAddress = new Uri("http://gw/") });
-
-        var act = () => client.CompleteAsync(Body(), false, Ct);
-
-        await act.Should().ThrowAsync<HttpRequestException>();
-    }
 
     // ───────────────────────── gRPC（LlmCompletion/Complete） ─────────────────────────
 
@@ -199,27 +163,6 @@ public class RerankCompletionTransportTests
         });
         listener.Start();
         return listener;
-    }
-
-    private sealed class CapturingHandler : HttpMessageHandler
-    {
-        public HttpStatusCode Status { get; init; } = HttpStatusCode.OK;
-        public string? Path { get; private set; }
-        public string? Body { get; private set; }
-        public string? Synthetic { get; private set; }
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        {
-            Path = request.RequestUri!.AbsolutePath;
-            Body = await request.Content!.ReadAsStringAsync(ct);
-            Synthetic = request.Headers.TryGetValues(SyntheticTraffic.HeaderName, out var v) ? string.Join(",", v) : null;
-            return new HttpResponseMessage(Status)
-            {
-                Content = new StringContent(
-                    "{\"text\":\"{\\\"ranking\\\":[1]}\",\"model\":\"claude-haiku-5-5\",\"inputTokens\":1,\"outputTokens\":1,\"sent\":true}",
-                    Encoding.UTF8, "application/json"),
-            };
-        }
     }
 
     private sealed class RecordingCompletionClient : Pb.LlmCompletion.LlmCompletionClient

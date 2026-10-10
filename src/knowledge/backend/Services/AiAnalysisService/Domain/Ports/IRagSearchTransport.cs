@@ -9,7 +9,7 @@ namespace AiAnalysisService.Domain.Ports;
 // RetrievalService のハイブリッド検索を呼ぶ**輸送のポート**。
 // REST（`HttpRagSearchTransport`）と gRPC（`GrpcRagSearchTransport`）の 2 実装があり、
 // `Program.cs` が `Services:RetrievalServiceGrpc` の有無で選ぶ。
-// **並走中の正は REST**（[[IADR-0379]] 決定 5 / `ADR-0089` 決定 1）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］REST の `HttpRagSearchTransport` は撤去し、実装は gRPC だけになった（`ADR-0089` 決定 1 の「解けた」）。
 //
 // 🔴 **ポートが返すのは検索結果だけである。** 出典への写像・機密区分の算出・
 // AI 入力からの除外（[[IADR-0283]] 決定 3）は `RagOrchestrator` に残る ——

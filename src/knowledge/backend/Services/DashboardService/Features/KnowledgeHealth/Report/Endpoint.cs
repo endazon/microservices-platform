@@ -23,7 +23,7 @@ namespace DashboardService.Features.KnowledgeHealth.Report;
 // **受け口は書き込み専用で既存の観測値を読み出さない**（読み出しは閲覧の GET のみ・ロール限定）。
 public static class ReportKnowledgeHealthEndpoint
 {
-    // 🔴 送信側 GraphService.Infrastructure.ExternalServices.HttpKnowledgeHealthReporter.ObservationsPath と同値。
+    // 🔴 送信側 旧 REST の `HttpKnowledgeHealthReporter.ObservationsPath`（［2026-10-10］撤去） と同値。
     // **サービスを跨ぐため定数を共有できない**（サービス間は直接参照しない）。
     // `/internal/notifications` と同じく、**文字列の一致は両側のテストで固定している**。
     public const string ObservationsPath = "/internal/knowledge-health/observations";

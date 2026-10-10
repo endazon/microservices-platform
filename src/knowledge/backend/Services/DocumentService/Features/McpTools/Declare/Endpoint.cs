@@ -9,19 +9,12 @@ namespace DocumentService.Features.McpTools.Declare;
 // 本ファイルが (1) である。
 public static class McpToolEndpoints
 {
-    // McpServer の `HttpToolDeclarationSource.ToolsPath` と同じパス。
-    public const string ToolsPath = "/internal/mcp-tools";
-
     public static IEndpointRouteBuilder MapMcpToolEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet(ToolsPath, ()
-                => Results.Ok(McpToolDeclarationSource.Declare()))
-           .WithName("DocumentServiceMcpTools")
-           .ExcludeFromDescription();
         // FR-16, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0462]]（2026-09-26 追記 / #1515, #1255 経路 ④-a）:
-        // 🔴 **REST と gRPC の申告面を必ず対で張る。** 扇形の経路は宛先の側が面を持たないと 1 経路も移らず、
-        // 張り忘れた宛先は MCP サーバーからは「申告なし」としか見えない（収集は失敗を申告なしへ畳む）。
-        // 申告を張る唯一の口に gRPC 面を同居させ、張り忘れを構造で起こさない。面は ServiceCaller を要求する。
+        // 申告の面は gRPC だけである（張り忘れた宛先は MCP サーバーからは「申告なし」としか見えない）。面は ServiceCaller を要求する。
+        // ［2026-10-10 / #1517・計画 ADR-0089 決定 1・[[IADR-0533]] 決定 3］REST の `GET /internal/mcp-tools` は撤去した
+        // （従前は REST と gRPC の申告面を対で張っていた。収集側が gRPC だけで集めるようになり、呼び出し元が 0 になった）。
         app.MapGrpcService<McpToolDeclarationGrpcService>();
         // FR-16, ADR-0117 決定 1〜3（2026-09-28 追記 / #1611 段 2）: 🔴 **申告した口に実行口を対で張る。** 宛先は
         // 「申告したサービス＋ツール名」なので、申告を張るサービスは実行口も張る（張り忘れると、一覧に出るツールが

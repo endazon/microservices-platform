@@ -81,8 +81,8 @@ public sealed class GrpcToolInvokerTests
         await using var b = await McpToolDeclarationGrpcTestHost.StartAsync(ct: Ct, execution: other);
         var (invoker, log) = Build(new Dictionary<string, string?>
         {
-            ["Mcp:GrpcServices:svc-a"] = a.GrpcAddress,
-            ["Mcp:GrpcServices:svc-b"] = b.GrpcAddress,
+            ["Mcp:Services:svc-a"] = a.GrpcAddress,
+            ["Mcp:Services:svc-b"] = b.GrpcAddress,
         });
 
         var result = await invoker.InvokeAsync(Tool("svc-a", publishedName: "search"), Scope(), """{"query":"x"}""", Ct);
@@ -122,18 +122,17 @@ public sealed class GrpcToolInvokerTests
         await using var legacyGrpc = await McpToolDeclarationGrpcTestHost.StartAsync(
             "legacy-grpc", Ct, execution: grpcExecution, legacyEndpoint: legacyEndpoint);
 
-        // 申告を REST と gRPC で旧い形のまま集め、公開構成と突き合わせる（本番の収集器と突合のまま）。
+        // 申告を旧い形のまま集め、公開構成と突き合わせる（本番の収集器と突合のまま）。
         var collectorConfig = Config(new Dictionary<string, string?>
         {
-            ["Mcp:Services:legacy-rest"] = legacyRest.HttpAddress,
-            ["Mcp:GrpcServices:legacy-grpc"] = legacyGrpc.GrpcAddress,
+            ["Mcp:Services:legacy-rest"] = legacyRest.GrpcAddress,
+            ["Mcp:Services:legacy-grpc"] = legacyGrpc.GrpcAddress,
         });
-        var http = new HttpToolDeclarationSource(new PlainClientFactory(), collectorConfig, NullLogger<HttpToolDeclarationSource>.Instance);
         var grpc = new GrpcToolDeclarationCollector(
-            new FixedTokenProvider(McpToolDeclarationGrpcTestHost.ServiceToken()), new PlainClientFactory(),
+            new FixedTokenProvider(McpToolDeclarationGrpcTestHost.ServiceToken()), collectorConfig,
             NullLogger<GrpcToolDeclarationCollector>.Instance);
-        var declarations = await new ToolDeclarationSource(http, collectorConfig, grpc).CollectAsync(Ct);
-        (legacyRest.RestHits, legacyGrpc.GrpcHits).Should().Be((1, 1), "対照: 旧い形はそれぞれ REST と gRPC で届いている");
+        var declarations = await new ToolDeclarationSource(grpc, collectorConfig).CollectAsync(Ct);
+        (legacyRest.GrpcHits, legacyGrpc.GrpcHits).Should().Be((1, 1), "対照: 旧い形の申告も gRPC で届いている（REST の収集は撤去した。#1517）");
         var catalog = new ToolCatalog(NullLogger<ToolCatalog>.Instance);
         catalog.Refresh(new ToolPublicationConfig("test",
         [
@@ -143,11 +142,11 @@ public sealed class GrpcToolInvokerTests
         catalog.PublishedTools.Select(t => t.PublishedName).Should().BeEquivalentTo(
             ["via-rest", "via-grpc"], "旧い申告元の申告も公開の突合には使える（申告なしにしない）");
 
-        // 実行器の構成は申告の収集と同じキー（本番も `Mcp:GrpcServices` を共有する）。
+        // 実行器の構成は申告の収集と同じキー（本番も `Mcp:Services` を共有する）。
         var (invoker, _) = Build(new Dictionary<string, string?>
         {
-            ["Mcp:GrpcServices:legacy-rest"] = legacyRest.GrpcAddress,
-            ["Mcp:GrpcServices:legacy-grpc"] = legacyGrpc.GrpcAddress,
+            ["Mcp:Services:legacy-rest"] = legacyRest.GrpcAddress,
+            ["Mcp:Services:legacy-grpc"] = legacyGrpc.GrpcAddress,
             ["Mcp:ToolExecutionTimeoutSeconds"] = "2",
         });
         foreach (var tool in catalog.PublishedTools)
@@ -171,15 +170,14 @@ public sealed class GrpcToolInvokerTests
         await using var victim = await McpToolDeclarationGrpcTestHost.StartAsync("victim", Ct, execution: victimExecution);
         var config = new Dictionary<string, string?>
         {
-            ["Mcp:GrpcServices:attacker"] = attacker.GrpcAddress,
-            ["Mcp:GrpcServices:victim"] = victim.GrpcAddress,
+            ["Mcp:Services:attacker"] = attacker.GrpcAddress,
+            ["Mcp:Services:victim"] = victim.GrpcAddress,
         };
         var collectorConfig = Config(config);
-        var http = new HttpToolDeclarationSource(new PlainClientFactory(), collectorConfig, NullLogger<HttpToolDeclarationSource>.Instance);
         var grpc = new GrpcToolDeclarationCollector(
-            new FixedTokenProvider(McpToolDeclarationGrpcTestHost.ServiceToken()), new PlainClientFactory(),
+            new FixedTokenProvider(McpToolDeclarationGrpcTestHost.ServiceToken()), collectorConfig,
             NullLogger<GrpcToolDeclarationCollector>.Instance);
-        var declarations = await new ToolDeclarationSource(http, collectorConfig, grpc).CollectAsync(Ct);
+        var declarations = await new ToolDeclarationSource(grpc, collectorConfig).CollectAsync(Ct);
         var catalog = new ToolCatalog(NullLogger<ToolCatalog>.Instance);
         catalog.Refresh(new ToolPublicationConfig("test", [new ToolPublicationEntry(McpToolDeclarationGrpcTestHost.SampleTool.Name, "victim")]), declarations);
 
@@ -200,7 +198,7 @@ public sealed class GrpcToolInvokerTests
     public async Task Missing_execution_port_fails_closed_with_a_clear_message()
     {
         await using var target = await McpToolDeclarationGrpcTestHost.StartAsync(ct: Ct);
-        var (invoker, log) = Build(new Dictionary<string, string?> { ["Mcp:GrpcServices:svc"] = target.GrpcAddress });
+        var (invoker, log) = Build(new Dictionary<string, string?> { ["Mcp:Services:svc"] = target.GrpcAddress });
 
         var act = () => invoker.InvokeAsync(Tool("svc"), Scope(), "{}", Ct);
 
@@ -224,7 +222,7 @@ public sealed class GrpcToolInvokerTests
                 : Task.FromResult(new Pb.McpToolResult { Documents = { new Pb.McpToolDocument { DocumentId = "d1", Title = "t" } }, TotalCount = 1 }),
         };
         await using var target = await McpToolDeclarationGrpcTestHost.StartAsync(ct: Ct, execution: execution);
-        var (invoker, log) = Build(new Dictionary<string, string?> { ["Mcp:GrpcServices:svc"] = target.GrpcAddress });
+        var (invoker, log) = Build(new Dictionary<string, string?> { ["Mcp:Services:svc"] = target.GrpcAddress });
 
         var act = () => invoker.InvokeAsync(Tool("svc"), Scope(), "{}", Ct);
 
@@ -242,7 +240,7 @@ public sealed class GrpcToolInvokerTests
     [Fact]
     public async Task Unrouted_service_fails_closed_without_dialling_anything()
     {
-        var (invoker, log) = Build(new Dictionary<string, string?> { ["Mcp:GrpcServices:other"] = DeadAddress() });
+        var (invoker, log) = Build(new Dictionary<string, string?> { ["Mcp:Services:other"] = DeadAddress() });
 
         var act = () => invoker.InvokeAsync(Tool("svc-without-address"), Scope(), "{}", Ct);
 
@@ -259,7 +257,7 @@ public sealed class GrpcToolInvokerTests
         await using var target = await McpToolDeclarationGrpcTestHost.StartAsync(ct: Ct, execution: Hanging());
         var (invoker, log) = Build(new Dictionary<string, string?>
         {
-            ["Mcp:GrpcServices:svc"] = target.GrpcAddress,
+            ["Mcp:Services:svc"] = target.GrpcAddress,
             ["Mcp:ToolExecutionTimeoutSeconds"] = "1",
         });
 
@@ -281,7 +279,7 @@ public sealed class GrpcToolInvokerTests
         await using var target = await McpToolDeclarationGrpcTestHost.StartAsync(ct: Ct, execution: Hanging());
         var (invoker, log) = Build(new Dictionary<string, string?>
         {
-            ["Mcp:GrpcServices:svc"] = target.GrpcAddress,
+            ["Mcp:Services:svc"] = target.GrpcAddress,
             ["Mcp:ToolExecutionTimeoutSeconds"] = "30",
         });
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
@@ -300,7 +298,7 @@ public sealed class GrpcToolInvokerTests
         await using var target = await McpToolDeclarationGrpcTestHost.StartAsync(
             ct: Ct, execution: new McpToolDeclarationGrpcTestHost.StubExecution());
         var (invoker, log) = Build(
-            new Dictionary<string, string?> { ["Mcp:GrpcServices:svc"] = target.GrpcAddress },
+            new Dictionary<string, string?> { ["Mcp:Services:svc"] = target.GrpcAddress },
             new FixedTokenProvider(McpToolDeclarationGrpcTestHost.IssueToken("service-account-mcp-server", [])));
 
         var act = () => invoker.InvokeAsync(Tool("svc"), Scope(), "{}", Ct);
@@ -317,7 +315,7 @@ public sealed class GrpcToolInvokerTests
         await using var target = await McpToolDeclarationGrpcTestHost.StartAsync(
             ct: Ct, execution: new McpToolDeclarationGrpcTestHost.StubExecution());
         var (invoker, log) = Build(
-            new Dictionary<string, string?> { ["Mcp:GrpcServices:svc"] = target.GrpcAddress },
+            new Dictionary<string, string?> { ["Mcp:Services:svc"] = target.GrpcAddress },
             new ThrowingTokenProvider());
 
         var act = () => invoker.InvokeAsync(Tool("svc"), Scope(), "{}", Ct);
@@ -334,7 +332,7 @@ public sealed class GrpcToolInvokerTests
     {
         var (invoker, log) = Build(new Dictionary<string, string?>
         {
-            ["Mcp:GrpcServices:svc"] = DeadAddress(),
+            ["Mcp:Services:svc"] = DeadAddress(),
             ["Mcp:ToolExecutionTimeoutSeconds"] = "5",
         });
 
@@ -402,11 +400,13 @@ public sealed class GrpcToolInvokerTests
         configuration.GetValue<int?>(GrpcToolInvoker.TimeoutKey).Should().Be(GrpcToolInvoker.DefaultTimeoutSeconds);
     }
 
-    // X-12: 登録。gRPC の宛先が無い配備でも実行器は組め、実行は経路なしとして拒否する（s2s の資格情報を要求しない）。
+    // X-12: 登録。gRPC の宛先が無い配備でも実行器は組め、実行は経路なしとして拒否する。
+    // [[IADR-0533]] 決定 3: 宛先のキーは `Mcp:Services` に一本化したため、宛先が無い＝同節が空である。
+    // s2s の発行側は収集器と一緒に常に登録される（宛先の有無で登録を分けない）。
     [Fact]
     public async Task Without_grpc_targets_the_invoker_is_registered_and_fails_closed()
     {
-        var configuration = Config(new Dictionary<string, string?> { ["Mcp:Services:svc"] = "http://127.0.0.1:1" });
+        var configuration = Config(new Dictionary<string, string?>());
         using var sp = new ServiceCollection()
             .AddLogging()
             .AddSingleton(configuration)
@@ -414,7 +414,6 @@ public sealed class GrpcToolInvokerTests
             .AddMcpToolInvoker()
             .BuildServiceProvider();
 
-        sp.GetService<IServiceTokenProvider>().Should().BeNull();
         var invoker = sp.GetRequiredService<IToolInvoker>();
         invoker.Should().BeOfType<GrpcToolInvoker>();
 
@@ -430,7 +429,7 @@ public sealed class GrpcToolInvokerTests
     {
         var configuration = Config(new Dictionary<string, string?>
         {
-            ["Mcp:GrpcServices:svc"] = "http://127.0.0.1:1",
+            ["Mcp:Services:svc"] = "http://127.0.0.1:1",
             ["ServiceToken:ClientId"] = "mcp-server",
         });
         using var sp = new ServiceCollection()
@@ -442,11 +441,7 @@ public sealed class GrpcToolInvokerTests
         sp.GetRequiredService<IToolInvoker>().Should().BeOfType<GrpcToolInvoker>();
 
         var act = () => new GrpcToolInvoker(configuration, NullLogger<GrpcToolInvoker>.Instance);
-        act.Should().Throw<InvalidOperationException>().WithMessage("*Mcp:GrpcServices*");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*Mcp:Services*");
     }
 
-    private sealed class PlainClientFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new() { Timeout = TimeSpan.FromSeconds(10) };
-    }
 }

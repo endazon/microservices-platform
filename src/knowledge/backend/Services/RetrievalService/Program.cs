@@ -61,10 +61,9 @@ builder.Services.AddSingleton<KeywordSearchMetrics>();
 
 // ADR-0013: 埋め込みサービス（LLM ゲートウェイ経由）
 //
-// FR-03, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0397 (#1255): east-west gRPC への切替。
-// **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
-// 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま
-// （戻すのは構成を外すだけ。コードは変えない）。
+// FR-03, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0397, [[IADR-0533]] (#1255): クエリ埋め込みの輸送は east-west gRPC だけである
+// （［2026-10-10］REST の `LlmGatewayEmbeddingService` は撤去した）。`Services:LlmGatewayGrpc` が構成されていなければ
+// 生成クライアントは常に `UNAVAILABLE` を受け取り、埋め込みは例外として上がる（故障を「該当なし」に化けさせない。IADR-0256 決定 3）。
 // FR-02, FR-03, ADR-0016, [[IADR-0422]] 決定 3 (#336): **クエリ埋め込みの照合先。**
 // 埋め込みの客体（REST / gRPC）が、ゲートウェイの答えたコレクションと**この値**を突き合わせ、
 // 食い違えば空ベクトルへ降りる。**値はベクトルストアと同じ関数から引く**（別の規則で読み直すと、
@@ -73,18 +72,7 @@ builder.Services.AddSingleton(
     new QueryEmbeddingTarget(QdrantVectorStore.ResolveCollectionName(builder.Configuration)));
 
 builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
-var embedOverGrpc = !string.IsNullOrWhiteSpace(
-    builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]);
-if (embedOverGrpc)
-    builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();
-else
-    // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
-    // FR-03, [[IADR-0467]] (#336): 名前は型つきクライアントの既定名（`nameof(IEmbeddingService)`）と同値を
-    // **明示する** —— 束ねる追加コレクションの客体が同じ名前つきクライアントを引くため（下）。
-    builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(
-        LlmGatewayEmbeddingService.HttpClientName, c =>
-        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"))
-        .AddLlmGatewayServiceToken(builder.Configuration);
+builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();
 
 // FR-03, FR-05, ADR-0016, ADR-0092 決定 1・2・3, [[IADR-0467]] (#336): **束ねる追加コレクション。**
 //
@@ -101,7 +89,7 @@ var lexicalCollectionName = QdrantVectorStore.ResolveLexicalCollectionName(build
 QdrantVectorStore.EnsureLexicalCollectionDistinct(lexicalCollectionName,
     QdrantVectorStore.ResolveCollectionName(builder.Configuration), fusedCollectionNames);
 builder.Services.AddScoped(sp =>
-    FusedCollectionsComposition.Build(sp, fusedCollectionNames, embedOverGrpc, lexicalCollectionName));
+    FusedCollectionsComposition.Build(sp, fusedCollectionNames, lexicalCollectionName));
 
 // FR-06, ADR-0027 (#1640): 索引からの削除の受け口の時間の上限（Qdrant 1 回ごとの期限）。
 // 「(主 ＋ 追加コレクション数) × 期限」が Wolverine の既定の実行期限に収まらない構成は、ここで起動を止める。
@@ -117,7 +105,7 @@ builder.Services.AddScoped<HybridSearchService>();
 //
 // 🔴 **既定オフ**（`Rerank:Enabled=false`）。無効なら段の型を **DI に登録しない** —— `HybridSearchService` の
 // 省略可能な引数が null のまま残り、結果は段を足す前と同一である（二段検索と同じ「着脱可能な段」）。
-// 有効なら、用途 `rerank` で LLM ゲートウェイだけを呼ぶ（REST が並走中の正。`Services:LlmGatewayGrpc` が在れば gRPC）。
+// 有効なら、用途 `rerank` で LLM ゲートウェイだけを呼ぶ（east-west gRPC だけ。［2026-10-10 / [[IADR-0533]]］REST の並走は撤去した）。
 // 計器（縮退の観測）は無効でも登録する（0 が「掛けていない」の観測になる）。
 var rerank = (builder.Configuration.GetSection(SearchRerankOptions.SectionName).Get<SearchRerankOptions>()
     ?? new SearchRerankOptions()).Normalize();
@@ -125,13 +113,7 @@ builder.Services.AddSingleton(rerank);
 builder.Services.AddSingleton<RerankMetrics>();
 if (rerank.Enabled)
 {
-    if (embedOverGrpc)
-        builder.Services.AddSingleton<IRerankCompletionClient, GrpcRerankCompletionClient>();
-    else
-        builder.Services.AddHttpClient<IRerankCompletionClient, HttpRerankCompletionClient>(
-            HttpRerankCompletionClient.HttpClientName, c =>
-            c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"))
-            .AddLlmGatewayServiceToken(builder.Configuration);
+    builder.Services.AddSingleton<IRerankCompletionClient, GrpcRerankCompletionClient>();
     builder.Services.AddScoped<ISearchReranker, ClaudeSearchReranker>();
 }
 
@@ -179,10 +161,9 @@ RetrievalService.Features.McpTools.Execute.McpToolExecutionRegistration.AddMcpTo
 // ときだけ登録していたが、**利用者を読むのは検索そのものになった** ——
 // 段の有無で権限の根拠が変わってはならない。
 //
-// **並走中の正は REST**（[[IADR-0379]] 決定 5）。`Services:AuthorizationServiceGrpc` が
-// 構成されたときだけ gRPC で解決する（`WikiService` / `GraphService` と同型）。
+// ［2026-10-10 / [[IADR-0533]]］解決の輸送は east-west gRPC だけである（REST `POST /authz/scope` の並走は撤去した。
+// `WikiService` / `GraphService` と同型）。`Services:AuthorizationServiceGrpc` が無ければ deny-by-default へ倒れる。
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
 builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 builder.Services.AddScoped<ISearchAccessResolver, SearchAccessResolver>();
 
@@ -191,35 +172,16 @@ builder.Services.AddScoped<ISearchAccessResolver, SearchAccessResolver>();
 // HTTP/1.1 のポート（REST・/health/*・introspection）はそのまま残り、readiness も 8080 のままである。
 builder.AddPlatformGrpcListener();
 
-var graphServiceUrl = builder.Configuration["Services:GraphService"] ?? "http://graph-service:8080";
-
 if (graphExpansion.Enabled)
 {
-    // ADR-0034: 権限伝播は `Authorization` ヘッダ（方式 A）。呼び出し元の JWT を下流へ運ぶため、
-    // 要求文脈へ触れる必要がある。
-    // ★［#1339］上で**無条件に**登録済みである（検索そのものが利用者を読むようになったため）。
-    // ここは冪等なので残す —— 段の側の要求が消えたわけではない。
-    builder.Services.AddHttpContextAccessor();
-    // 🔴 **名前リテラル＋インライン既定値の確立形で書く**（Platform.Bff / AiAnalysisService と同形）。
-    // `scripts/check-bff-downstreams.js` の parseProgramDefaults がこの形から既定 URL を導出して
-    // デプロイ manifest と突合する（#970 で RetrievalService も CALLERS 入り）。名前は
-    // `GraphServiceNeighborExpander.ClientName`（"GraphService"）と一致させること。
-    // 既定は :8080（メッシュ内の実 Service ポート。後発サービスの規約 —— Platform.Bff の同名 client 参照）。
-    builder.Services.AddHttpClient("GraphService", c =>
-        c.BaseAddress = new Uri(builder.Configuration["Services:GraphService"]
-            ?? "http://graph-service:8080"));
     // FR-04 / FR-05 / NFR-09 / NFR-16, ADR-0029, ADR-0034 決定 1, ADR-0075, 計画 ADR-0086 決定 1・3,
-    // [[IADR-0379]] 決定 4・5, [[IADR-0410]] (#1255): 近傍展開の east-west gRPC 経路。
-    // **並走中の正は REST である。** `Services:GraphServiceGrpc`（h2c のアドレス）が構成された
-    // ときだけ生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ上の名前つき
-    // HttpClient で REST のまま（戻すのは構成を外すだけ。コードは変えない）。
-    // 🔴 **どちらの経路でも GraphService が自分で ABAC を解決する**（ADR-0034 決定 1）——
-    // 変わるのは利用者文脈の運び方（ヘッダ転送 → 本文）だけである。
+    // 計画 ADR-0089 決定 1, [[IADR-0379]] 決定 4, [[IADR-0410]], [[IADR-0533]] 決定 4 (#1255): 近傍展開の輸送は east-west gRPC だけである。
+    // ［2026-10-10］REST の `GraphServiceNeighborExpander`（`/graph/{id}/neighbors`・利用者の `Authorization` を転送）は撤去した ——
+    // gRPC の入口（AI 分析 → 検索）からは転送できる利用者の資格情報が無く、REST 実装は呼ばずに警告するだけだった（[[IADR-0426]] 決定 2）。
+    // 🔴 **GraphService が自分で ABAC を解決する**（ADR-0034 決定 1）—— 利用者文脈は本文で運ぶ。
+    // `Services:GraphServiceGrpc` が無ければ生成クライアントは常に `UNAVAILABLE` を受け取り、近傍展開は縮退する（一次の結果のまま）。
     builder.Services.AddGraphNeighborsGrpcClient(builder.Configuration);
-    if (!string.IsNullOrWhiteSpace(builder.Configuration[GraphNeighborsGrpcClientExtensions.AddressKey]))
-        builder.Services.AddScoped<IGraphNeighborExpander, GrpcGraphNeighborExpander>();
-    else
-        builder.Services.AddScoped<IGraphNeighborExpander, GraphServiceNeighborExpander>();
+    builder.Services.AddScoped<IGraphNeighborExpander, GrpcGraphNeighborExpander>();
     builder.Services.AddScoped<IHybridSearchService, GraphExpandingSearchService>();
 }
 else
@@ -276,10 +238,11 @@ builder.Services.AddPlatformIntrospection("retrieval-service", pipeline,
     {
         i.AddWolverineStep<DocumentDeletedConsumer>();
         i.AddPort("vector-store", nameof(QdrantVectorStore), $"qdrant:{qdrantPort}")
-         .AddPort("embedding", nameof(LlmGatewayEmbeddingService), "llm-gateway");
+         .AddPort("embedding", nameof(LlmGatewayGrpcEmbeddingService), "llm-gateway");
 
         if (graphExpansion.Enabled)
-            i.AddPort("graph-expansion", nameof(GraphServiceNeighborExpander), graphServiceUrl);
+            i.AddPort("graph-expansion", nameof(GrpcGraphNeighborExpander),
+                builder.Configuration[GraphNeighborsGrpcClientExtensions.AddressKey] ?? "(未構成)");
 
         // FR-03, ADR-0127 決定 3, [[IADR-0498]] 決定 11 (#1746 段 S2): 再順位付けの段も**有効なときだけ**申告する
         // （応答の形は同じなので、段の有無は外から申告でしか読めない）。
@@ -301,7 +264,7 @@ app.MapMcpToolEndpoints();
 // FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1,
 // [[IADR-0379]], [[IADR-0410]], [[IADR-0416]], [[IADR-0417]] (#1255):
 // 権限内属性値の照会の east-west gRPC 面。
-// 🔴 **REST の口は残す**（並走中の正は REST。切替も戻しも呼び出し元の構成だけで行う）。
+// 🔴 **REST の口は残す**（［2026-10-10 / #1255・[[IADR-0533]]］east-west の REST 呼び出し元＝BFF の属性値照会は撤去した。受け口の撤去は残余）。
 // 🔴 **本体は REST と同じ関数を通る**（`AttributeValuesEndpoint.ListAsync`）。
 app.MapGrpcService<AttributeValuesGrpcService>();
 
@@ -309,7 +272,7 @@ app.MapGrpcService<AttributeValuesGrpcService>();
 // ADR-0075, 計画 ADR-0086 決定 1, ADR-0087 決定 2, ADR-0089 決定 1,
 // [[IADR-0379]], [[IADR-0410]], [[IADR-0416]], [[IADR-0426]] (#1255):
 // ハイブリッド検索の east-west gRPC 面（呼び出し元は AI 分析の RAG 文脈収集）。
-// 🔴 **REST の口は残す**（並走中の正は REST。切替も戻しも呼び出し元の構成だけで行う）。
+// 🔴 **REST の口は残す**（north-south の `POST /search` でもある。［2026-10-10 / #1255・[[IADR-0533]]］east-west の REST 呼び出し元は撤去した）。
 // 🔴 **本体は REST と同じ関数を通る**（`SearchEndpoint.ExecuteAsync`）。
 // 🔴 **利用者の JWT はこの面を通らない** —— 利用者文脈は本文で運ばれ、受け口が自分で解決する。
 app.MapGrpcService<DocumentSearchGrpcService>();

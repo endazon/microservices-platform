@@ -15,9 +15,8 @@ namespace GraphService.Infrastructure.ExternalServices;
 // [[IADR-0379]] 決定 4・5, [[IADR-0401]], [[IADR-0402]], [[IADR-0410]] (#1255):
 // AI タグ提案の承認を DocumentService へ反映するアダプタの **gRPC 版**。
 //
-// **並走中の正は REST である。** 本実装は `Services:DocumentServiceGrpc` が構成されたときだけ
-// 登録され（`AddDocumentTagWriteGrpcClient`）、無ければ `HttpDocumentTagWriter` のままである。
-// 戻すのは構成を外すだけでよい（コードは変えない）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**REST の兄弟実装は撤去し、本実装が唯一の輸送である**（[[IADR-0379]] 決定 5
+// 「並走中の正は REST」を反転）。宛先が構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、下の縮退の枝へ落ちる。
 //
 // 🔴 **権限伝播は「利用者文脈を本文で運ぶ」へ変わった**（計画 `ADR-0086` 決定 1）。
 // 従前は承認者本人の `Authorization` ヘッダを転送していた（方式 A）。メタデータに載るのは
@@ -57,7 +56,7 @@ public sealed class GrpcDocumentTagWriter(
 
         // 🔴 **承認者が分からなければ呼ばない。値は REST と同じ `NotWritable` である。**
         // REST 版は資格情報が無いまま呼び、後段が匿名として 404 を返すので `NotWritable` になっていた
-        // （`HttpDocumentTagWriterTests.Does_not_invent_credentials_when_the_request_has_none`）。
+        // （旧 REST アダプタの試験が固定していた。REST のアダプタは [[IADR-0533]] で撤去した）。
         // gRPC で空の `user_id` を送ると後段は `INVALID_ARGUMENT` を返し、それは `Unavailable` へ
         // 落ちる —— **値が変わってしまう**。だから手前で同じ値へ倒す。
         // **要求の外（バックグラウンド）から呼ばれる経路は無い**ので、この枝は多層防御である。
@@ -150,13 +149,14 @@ public static class DocumentTagWriteGrpcClientExtensions
     /// <summary>宛先ごとにチャネルを分けるための DI キー（下の 🔴 を参照）。</summary>
     public const string ChannelKey = "DocumentServiceGrpc";
 
-    // 構成が無ければ**何も登録しない** —— 呼び出し元は登録の有無で REST 実装と gRPC 実装を選ぶ。
+    // ［2026-10-10 / #1255・[[IADR-0533]] 決定 2］**常に登録する。** 構成が無ければ、生成クライアントを常に `UNAVAILABLE` を返す
+    // 呼び出し器の上に組む（REST の兄弟実装は撤去した。呼び出し元は「届かない」の枝へ落ちる）。
     public static IServiceCollection AddDocumentTagWriteGrpcClient(
         this IServiceCollection services, IConfiguration config)
     {
         var address = config[AddressKey];
         if (string.IsNullOrWhiteSpace(address))
-            return services;
+            return services.TryAddUnconfiguredGrpcClient(AddressKey, ci => new Pb.DocumentTagWrite.DocumentTagWriteClient(ci));
 
         services.AddPlatformServiceToken(config);
         // 🔴 チャネルは**キー付き**で登録する。本サービスは既に 3 つの宛先を持ち得る ——

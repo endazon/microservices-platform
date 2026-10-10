@@ -137,43 +137,42 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         body!.Values.Should().Equal(["社内", "規程"]);
     }
 
-    // 🔴 FR-04, FR-05, NFR-09, SC-01, SC-08, ADR-0034, [[IADR-0416]]: **利用者の Authorization を
-    // 後段へ伝播する。** 受け口（RetrievalService）は**自分で** ABAC スコープを解決する型へ変わっており
-    // （呼び出し元の自称 `Scope` は絞り込みにしか効かない）、資格情報が届かない要求は
-    // **未認証として deny へ倒れ、候補は必ず空になる**。検索（`/bff/search`）は同じ理由で既に伝播している。
-    //
-    // ★ 陽性対照は「本文に scope が載っていること」ではなく**ヘッダが届くこと**である ——
-    // 本文だけでは受け口は何も許可しない。
+    // 🔴 FR-04, FR-05, NFR-09, SC-01, SC-08, ADR-0086 決定 1, [[IADR-0417]], [[IADR-0533]] (#1255):
+    // **利用者は本文の利用者文脈で運ぶ。** 受け口（RetrievalService）は**自分で** ABAC スコープを解決する型であり、
+    // 利用者を名指さない要求は deny へ倒れて候補は必ず空になる。
+    // ［2026-10-10］REST `POST /search/attribute-values`（利用者の `Authorization` を転送）の並走は撤去した。
     [Fact]
-    public async Task PostAttributeValues_ForwardsTheCallersAuthorizationToRetrieval()
+    public async Task PostAttributeValues_CarriesTheCallerAsTheUserContext()
     {
         factory.SearchScopeGranted = true;
-        factory.LastAttributeValuesForwardedAuthorization = null;
+        factory.GrpcUserContexts.Clear();
         var client = factory.CreateClient();
-        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer user-jwt");
+        client.DefaultRequestHeaders.Add(TestAuthHandler.UsernameHeader, "alice");
 
         var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" },
             TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        factory.LastAttributeValuesForwardedAuthorization.Should().Be("Bearer user-jwt",
-            "受け口が自分で解決する以上、資格情報が届かなければ候補は常に空になる");
+        factory.GrpcUserContexts.Should().ContainKey("ListValues")
+            .WhoseValue.Should().Be("alice", "受け口が自分で解決する以上、利用者が届かなければ候補は常に空になる");
     }
 
-    // 同（否定形）: 受信要求にヘッダが無ければ**付けない**（BFF がトークンを捏造しない）。
-    // 検索側 `PostSearch_DoesNotInventAnAuthorizationHeader` と対である。
+    // 🔴 同（否定形）: **利用者のトークンは後段へ載せない**（`ADR-0086` 決定 1 / [[IADR-0379]] 決定 4）。
+    // 受信要求に `Authorization` があっても、後段へ届くのは BFF 自身の s2s の資格だけである。
     [Fact]
-    public async Task PostAttributeValues_DoesNotInventAnAuthorizationHeader()
+    public async Task PostAttributeValues_DoesNotForwardTheCallersToken()
     {
         factory.SearchScopeGranted = true;
         factory.LastAttributeValuesForwardedAuthorization = "sentinel";
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer user-jwt");
 
-        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/attribute-values",
+        var resp = await client.PostAsJsonAsync("/bff/attribute-values",
             new { key = "tags" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         factory.LastAttributeValuesForwardedAuthorization.Should().BeNull(
-            "無ければ付けない（縮退の判断と警告は RetrievalService 側が一元で持つ）");
+            "利用者のトークンは east-west の面を通らない（confused deputy を作らない）");
     }
 
     // **[[IADR-0151]] 決定 5**: スコープが解決できない（deny-by-default）ときは**空配列**。
@@ -306,14 +305,16 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         factory.TagDictionaryFetched.Should().BeFalse();
     }
 
-    // FR-04, FR-05, SC-01, SC-08, #540: **後段が返した非 2xx はそのまま透過する。**
+    // FR-04, FR-05, SC-01, SC-08, #540, [[IADR-0417]] 決定 9: **後段が答えた上での失敗は 502 で返す。**
+    // ［2026-10-10 / [[IADR-0533]]］REST の並走を撤去したので、元の HTTP 状態の透過は無くなった（gRPC の status は
+    // HTTP の状態番号へ戻せない）。守るのは従来どおり「200 空配列へ畳まない」ことである。
     // **縮退（200 空配列）で潰さない** —— 縮退が守るのは「権限外の存在を示さない」ことであって、
     // **後段の障害を利用者から隠すことではない**。潰すと運用側が不調に気づけない
     // （`docs/api/BFF_bff-surface.md` の縮退表の注記・[[IADR-0151]] 決定 5 の射程）。
     [Theory]
     [InlineData(HttpStatusCode.InternalServerError)]
     [InlineData(HttpStatusCode.BadRequest)]
-    public async Task PostAttributeValues_WhenDownstreamFails_PropagatesStatus_NotEmptyList(HttpStatusCode status)
+    public async Task PostAttributeValues_WhenDownstreamFails_Returns502_NotEmptyList(HttpStatusCode status)
     {
         factory.SearchScopeGranted = true;
         factory.AttributeValuesStatusCode = status;
@@ -322,7 +323,7 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
             var resp = await factory.CreateClient()
                 .PostAsJsonAsync("/bff/attribute-values", new { key = "tags" }, TestContext.Current.CancellationToken);
 
-            resp.StatusCode.Should().Be(status, "後段の非 2xx は透過する（空配列へ畳まない）");
+            resp.StatusCode.Should().Be(HttpStatusCode.BadGateway, $"後段の失敗（{(int)status}）は 502 で返す（空配列へ畳まない）");
         }
         finally
         {

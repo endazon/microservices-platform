@@ -17,7 +17,7 @@ namespace NotificationService.Tests.Features.Notifications.Accept;
 // 🔴 **既存の 400 の試験（`NotificationIngressTests`）は状態コードしか見ていない。**
 // 鍵（`errors` の下のプロパティ名）・メッセージ・**鍵の件数**が変わる退行は 400 のままなので、
 // 状態コードでは捕まらない。呼び出し元は画面ではなく**送信側サービス（DocumentService の
-// `HttpPrivateNoteNotifier`）**であり、本文の形が変わっても誰も画面で気づかない。
+// 旧 REST の `HttpPrivateNoteNotifier`（［2026-10-10］撤去））**であり、本文の形が変わっても誰も画面で気づかない。
 //
 // 🔴 **本サイトは形 β である**（[[IADR-0398]] 決定 1 の後者）。移送前の `NotificationIngress.Validate` は
 // 項目ごとに**独立した `if`** で辞書へ積むため、**複数の鍵が同時に埋まる** —— DocumentService の
@@ -34,7 +34,7 @@ public class NotificationIngressValidationProblemContractTests : IDisposable
 
     public void Dispose() => _factory.Dispose();
 
-    // 🔴 送信側 DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.IngressPath の値。
+    // 🔴 送信側 旧 REST の `HttpPrivateNoteNotifier.IngressPath`（［2026-10-10］撤去） の値。
     private const string IngressPath = "/internal/notifications";
 
     private const string When = "\"occurredAt\":\"2026-08-28T09:00:00+00:00\"";

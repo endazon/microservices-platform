@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using AwesomeAssertions;
+using Grpc.Core;
 using ConversionService.Domain;
 using ConversionService.Domain.Ports;
 using ConversionService.Features.ConversionJobs.Normalize;
@@ -13,6 +14,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Wolverine;
+using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 
 namespace ConversionService.Tests.Features.ConversionJobs.Normalize;
 
@@ -26,9 +28,11 @@ namespace ConversionService.Tests.Features.ConversionJobs.Normalize;
 // 測ってしまう（#1621 の監査が実測した抜け。50 ms の期限つき ct を渡すと、旧版の試験器ではジョブが失敗した）。
 //
 // 本物を通す部品: `RawDocumentFetchedConsumer` → `NormalizationService`（総枠つき）→ **本番と同じ登録**
-// （`DiagramCoderRegistration.AddRestDiagramCoder`。名前付きクライアントの `Timeout` はここで決まる）の
-// `LlmGatewayDiagramCoder` → `HttpClient`。差し替えるのは LLM ゲートウェイ（応答しないハンドラ）・本文変換・
-// オブジェクトストレージ・発行口だけである。期限は本番の既定（20 秒 / 120 秒 / 300 秒・本文変換 90 秒）を
+// （`DiagramCodingLimits` の単一登録 ＋ `LlmGatewayGrpcDiagramCoder`。1 回の期限は呼び出しごとの `Deadline` で付く）。
+// 差し替えるのは LLM ゲートウェイの生成クライアント（応答せず、実チャネルと同じく期限切れ・取り消しで終わる偽物）・本文変換・
+// オブジェクトストレージ・発行口だけである。
+// ［2026-10-10 / #1255］[[IADR-0533]]: REST の `LlmGatewayDiagramCoder`（名前付きクライアントの `Timeout`）を撤去したので、
+// 器を gRPC 実装へ移した。期限の縮尺と表明は変えていない（T-47 の例外の型だけが輸送に合わせて変わる）。期限は本番の既定（20 秒 / 120 秒 / 300 秒・本文変換 90 秒）を
 // 1 秒 / 2 秒 / 40 秒・本文変換 1 秒へ縮尺する（構成の下限が 1 秒なので、これより縮めない）。
 //
 // 🔴 #1644: **受け口の期限は 1 回の期限より十分に長くする。** 当初は 4 秒にしていたが、knowledge の全試験を並列に走らせると
@@ -58,7 +62,7 @@ public class DiagramCodingTimeoutPipelineTests
     [Fact]
     public async Task Hung_gateway_keeps_the_figure_as_an_image_before_the_handler_timeout_fires()
     {
-        var gateway = new HangingGatewayHandler();
+        var gateway = new HangingGatewayClient();
         await using var pipeline = new Pipeline(gateway, figureCount: 1);
         var ev = Raw();
         using var handler = pipeline.HandlerScopedToken();
@@ -83,7 +87,7 @@ public class DiagramCodingTimeoutPipelineTests
     [Fact]
     public async Task Exhausted_budget_retains_the_remaining_figures_without_calling_the_gateway()
     {
-        var gateway = new HangingGatewayHandler();
+        var gateway = new HangingGatewayClient();
         await using var pipeline = new Pipeline(gateway, figureCount: 5);
         var ev = Raw();
         using var handler = pipeline.HandlerScopedToken();
@@ -102,17 +106,19 @@ public class DiagramCodingTimeoutPipelineTests
 
     // T-47（T-46 の対照）: 呼び出し元（受け口の ct）の取り消しは畳まずに受け口の外へ出す。
     // 図を画像として保管せず、発行もしない —— 停止要求・実行期限の最中に「変換成功」を作らない。
+    // gRPC の生成クライアントは取り消しを `RpcException(Cancelled)` で表す（チャネルは
+    // `ThrowOperationCanceledOnCancellation` を立てていない）。コード化は ct が立っていればそれを畳まずに外へ出す。
     [Fact]
     public async Task Caller_cancellation_propagates_out_of_the_consumer()
     {
         using var handler = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        await using var pipeline = new Pipeline(new HangingGatewayHandler(onSend: handler.Cancel), figureCount: 1);
+        await using var pipeline = new Pipeline(new HangingGatewayClient(onSend: handler.Cancel), figureCount: 1);
         var ev = Raw();
 
         var act = () => pipeline.HandleAsync(ev, handler.Token);
 
-        var thrown = await act.Should().ThrowAsync<OperationCanceledException>();
-        thrown.Which.CancellationToken.Should().Be(handler.Token);
+        var thrown = await act.Should().ThrowAsync<RpcException>();
+        thrown.Which.StatusCode.Should().Be(StatusCode.Cancelled);
         pipeline.Store.SavedAssets.Should().BeEmpty();
         pipeline.Publisher.Calls.Should().BeEmpty();
     }
@@ -128,13 +134,16 @@ public class DiagramCodingTimeoutPipelineTests
         private readonly int _figureCount;
         private ConversionJobDbContext? _handlerDb;
 
-        public Pipeline(HttpMessageHandler gateway, int figureCount)
+        public Pipeline(Pb.LlmCompletion.LlmCompletionClient gateway, int figureCount)
         {
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(ScaledLimits).Build();
             Limits = DiagramCodingLimits.From(configuration);
             var services = new ServiceCollection();
             services.AddLogging();
-            services.AddRestDiagramCoder(configuration, Limits).ConfigurePrimaryHttpMessageHandler(() => gateway);
+            // Program.cs と同じ登録（上限の単一登録 ＋ gRPC 実装）。生成クライアントだけを偽物にする。
+            services.AddSingleton(Limits);
+            services.AddSingleton(gateway);
+            services.AddSingleton<IDiagramCoder, LlmGatewayGrpcDiagramCoder>();
             _services = services.BuildServiceProvider();
             _figureCount = figureCount;
         }
@@ -180,20 +189,36 @@ public class DiagramCodingTimeoutPipelineTests
         }
     }
 
-    // 応答を返さず、要求の ct が立つまで待つ（LLM ゲートウェイが応答しない状態）。届いた要求の数を数える。
+    // 応答を返さない LLM ゲートウェイの生成クライアント。届いた要求の数を数える。
+    // 実チャネルと同じく、呼び出しの期限（`Deadline`）が来れば `DeadlineExceeded`、呼び出し元の ct が立てば `Cancelled` で終わる。
     // `onSend` は要求が届いた時点で呼ぶ（呼び出し元の取り消しを「要求の途中」で起こすため）。
-    private sealed class HangingGatewayHandler(Action? onSend = null) : HttpMessageHandler
+    private sealed class HangingGatewayClient(Action? onSend = null) : Pb.LlmCompletion.LlmCompletionClient
     {
         private int _requests;
         public int Requests => Volatile.Read(ref _requests);
 
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
+        public override AsyncUnaryCall<Pb.CompleteResponse> CompleteAsync(Pb.CompleteRequest request, CallOptions options)
         {
             Interlocked.Increment(ref _requests);
             onSend?.Invoke();
-            await Task.Delay(Timeout.Infinite, cancellationToken);
-            throw new UnreachableException("the delay only ends by cancellation");
+            return new AsyncUnaryCall<Pb.CompleteResponse>(HangAsync(options), Task.FromResult(new Metadata()),
+                () => Status.DefaultSuccess, () => [], () => { });
+        }
+
+        private static async Task<Pb.CompleteResponse> HangAsync(CallOptions options)
+        {
+            var remaining = options.Deadline is { } deadline ? deadline - DateTime.UtcNow : Timeout.InfiniteTimeSpan;
+            if (remaining < TimeSpan.Zero && remaining != Timeout.InfiniteTimeSpan)
+                remaining = TimeSpan.Zero;
+            try
+            {
+                await Task.Delay(remaining, options.CancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new RpcException(new Status(StatusCode.Cancelled, "cancelled by the caller"));
+            }
+            throw new RpcException(new Status(StatusCode.DeadlineExceeded, "deadline exceeded"));
         }
     }
 

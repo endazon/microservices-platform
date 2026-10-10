@@ -225,15 +225,17 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         list!.Should().HaveCount(2);
     }
 
-    // NFR-09, FR-19, 計画 ADR-0119 決定 3 (#1614): 🔴 **REST の読み取り 4 口（一覧・詳細・版の一覧・特定版）は
-    // 利用者の資格情報を後段へ中継する。** 後段の読み取りは認証を要するので、中継が切れると 401 になり
-    // （BFF は 404 秘匿・空一覧へ畳むので画面からは「文書が無い」に見える）、所有者が自分の個人資料も開けない。
-    // スタブは資格情報を見ずに 200 を返すため、**伝播したこと自体を観測する**（見ないと中継を落としても緑のまま）。
+    // NFR-09, FR-19, 計画 ADR-0119 決定 3, ADR-0086 決定 1 (#1614), [[IADR-0533]] (#1255): 🔴 **読み取り 4 口（一覧・詳細・
+    // 版の一覧・特定版）は利用者を本文の利用者文脈で運び、利用者のトークンは後段へ載せない。** 運ばないと後段は BFF 自身
+    // （機械の主体）として読み、所有者が自分の個人資料も開けない（BFF は 404 秘匿・空一覧へ畳むので「文書が無い」に見える）。
+    // ［2026-10-10］REST の並走（利用者の `Authorization` を中継）は撤去した。
     [Fact]
-    public async Task RestReads_ForwardTheCallersAuthorizationToDocumentService()
+    public async Task Reads_carry_the_caller_as_the_user_context_and_not_the_token()
     {
         _factory.DocumentReadForwardedAuthorization.Clear();
+        _factory.GrpcUserContexts.Clear();
         var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.UsernameHeader, "reader");
         client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer reader-jwt");
 
         (await client.GetAsync("/bff/documents", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
@@ -241,10 +243,10 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         (await client.GetAsync($"{DetailPath}/versions", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         (await client.GetAsync($"{DetailPath}/versions/3", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
 
-        var id = BffTestFactory.StubDocumentId;
-        _factory.DocumentReadForwardedAuthorization.Keys.Should().Contain(
-            ["/documents", $"/documents/{id}", $"/documents/{id}/versions", $"/documents/{id}/versions/3"]);
-        _factory.DocumentReadForwardedAuthorization.Values.Should().OnlyContain(a => a == "Bearer reader-jwt",
-            "読み取りのどの経路でも利用者の資格情報が後段へ届く");
+        _factory.GrpcUserContexts.Keys.Should().Contain(["ListDocuments", "GetDocument", "ListVersions", "GetVersion"]);
+        foreach (var rpc in new[] { "ListDocuments", "GetDocument", "ListVersions", "GetVersion" })
+            _factory.GrpcUserContexts[rpc].Should().Be("reader", $"{rpc} は呼び出し元の利用者を運ぶ");
+        _factory.DocumentReadForwardedAuthorization.Values.Should().OnlyContain(a => a == null,
+            "利用者のトークンは east-west の面を通らない");
     }
 }

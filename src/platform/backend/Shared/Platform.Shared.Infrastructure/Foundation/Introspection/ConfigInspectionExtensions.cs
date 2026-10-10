@@ -27,23 +27,14 @@ public static class ConfigInspectionExtensions
         builder.Services.Configure<DriftDetectionOptions>(
             builder.Configuration.GetSection(DriftDetectionOptions.SectionName));
 
-        builder.Services.AddHttpClient(HttpEffectiveConfigCollector.HttpClientName);
         builder.Services.TryAddSingletonTimeProvider();
 
-        // FR-15, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4・5, IADR-0462 (#1514, #1255 経路 ⑤):
-        // 宛先ごとに輸送を選ぶ収集器。**並走中の正は REST** —— `Introspection:GrpcServices` に
-        // アドレスが在る宛先だけが gRPC で収集される。gRPC の収集器と s2s トークンの発行側は、
-        // その構成が在るときだけ登録する（無い配備は 1 バイトも変わらない。資格情報を要求しない）。
-        builder.Services.AddSingleton<HttpEffectiveConfigCollector>();
-        var grpcTargets = builder.Configuration
-            .GetSection($"{IntrospectionOptions.SectionName}:{nameof(IntrospectionOptions.GrpcServices)}")
-            .GetChildren()
-            .Any(c => !string.IsNullOrWhiteSpace(c.Value));
-        if (grpcTargets)
-        {
-            builder.Services.AddPlatformServiceToken(builder.Configuration);
-            builder.Services.AddSingleton<GrpcServiceIntrospectionCollector>();
-        }
+        // FR-15, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4, IADR-0462, [[IADR-0533]] 決定 3 (#1514, #1517):
+        // 自己申告は gRPC（h2c）だけで収集する（REST `GET /internal/introspection` の収集は撤去した）。
+        // 資格情報は BFF 自身の s2s トークン（`ServiceToken:*`）。宛先は `Introspection:Services`（値は gRPC の宛先）。
+        EnsureRetiredKeyAbsent(builder.Configuration);
+        builder.Services.AddPlatformServiceToken(builder.Configuration);
+        builder.Services.AddSingleton<GrpcServiceIntrospectionCollector>();
         builder.Services.AddSingleton<IEffectiveConfigCollector, EffectiveConfigCollector>();
         builder.Services.AddSingleton<IConfigInspectionService, ConfigInspectionService>();
         builder.Services.AddSingleton<IDriftAlertSink, LoggingDriftAlertSink>();
@@ -78,6 +69,23 @@ public static class ConfigInspectionExtensions
             $"構成情報 API はパイプライン宣言を突合の基準として要求しますが、'{path}' から段を 1 件も"
             + " 読み込めませんでした（マウント漏れ・空ファイル・形式違いの疑い）。宣言 0 件のまま起動すると"
             + " 実効の全購読が UndeclaredSubscription として誤報されるため、起動を止めます。");
+    }
+
+    // ［2026-10-10 / #1517・[[IADR-0533]] 決定 3］🔴 **撤去した旧キー `Introspection:GrpcServices` が残っていたら起動を止める。**
+    // 構成キーは `Introspection:Services` へ一本化した（値は gRPC の宛先）。旧キーを黙って無視すると、
+    // 上書き値（helm の `extraEnv`・compose・手元の構成）の移し忘れが、収集の時点で「到達不能」としてしか現れない
+    // （旧 `Introspection:Services` の REST の宛先 `:8080` は h2c を話さない）。起動の時点で落として気づかせる。
+    private static void EnsureRetiredKeyAbsent(IConfiguration configuration)
+    {
+        var stale = configuration.GetSection(IntrospectionOptions.RetiredGrpcServicesSection).GetChildren()
+            .Select(c => c.Key).ToList();
+        if (stale.Count == 0)
+            return;
+
+        throw new InvalidOperationException(
+            $"構成キー {IntrospectionOptions.RetiredGrpcServicesSection} は撤去しました（REST の並走の退役。#1517）。"
+            + $" gRPC の宛先は {IntrospectionOptions.SectionName}:Services へ移してください（値は h2c のアドレス。例: http://document-service:8081）。"
+            + $" 残っている項目: {string.Join(", ", stale)}");
     }
 
     private static void TryAddSingletonTimeProvider(this IServiceCollection services)

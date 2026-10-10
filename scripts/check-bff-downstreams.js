@@ -49,43 +49,11 @@ const CALLERS = [
     compose: 'bff',
     helm: 'bff',
   },
-  {
-    label: 'AiAnalysisService',
-    program: 'src/knowledge/backend/Services/AiAnalysisService/Program.cs',
-    compose: 'aianalysis-service',
-    helm: 'aianalysis',
-  },
-  {
-    label: 'GraphService',
-    program: 'src/knowledge/backend/Services/GraphService/Program.cs',
-    compose: 'graph-service',
-    helm: 'graph',
-  },
-  {
-    label: 'WikiService',
-    program: 'src/knowledge/backend/Services/WikiService/Program.cs',
-    compose: 'wiki-service',
-    helm: 'wiki',
-  },
-  // #970: 二段検索の段（グラフ近傍展開）で RetrievalService → GraphService の
-  // service → service 呼び出し元になった。コード既定 :8080（後発サービスの規約）のため
-  // manifest の上書きは不要だが、CALLERS に無いとドリフトを誰も見ない（#958 と同じ死角）。
-  {
-    label: 'RetrievalService',
-    program: 'src/knowledge/backend/Services/RetrievalService/Program.cs',
-    compose: 'retrieval-service',
-    helm: 'retrieval',
-  },
-
-  // #1025: 個人資料の通知の送出で DocumentService → NotificationService の呼び出し元になった。
-  // 送出は **fail-open**（不達でも利用者側の操作は成功する）ため、宛先がずれても赤くならない ——
-  // CALLERS に無いとドリフトを誰も見ない死角のままになる（#958 / #970 と同型）。
-  {
-    label: 'DocumentService',
-    program: 'src/knowledge/backend/Services/DocumentService/Program.cs',
-    compose: 'document-service',
-    helm: 'document',
-  },
+  // ［2026-10-10 / #1255・IADR-0533］service → service の呼び出し元（AiAnalysis / Graph / Wiki / Retrieval / Document）は
+  // 外した。east-west の REST の名前つきクライアント（認可スコープ解決・検索・LlmGateway・近傍展開・通知の送出）を
+  // すべて撤去し（REST の並走の退役）、gRPC の宛先（`Services__<Name>Grpc`。:8081）は本検査の対象ではない。
+  // 外さないと各サービスの既定が 0 件になり「パーサの破綻」として落ちる。gRPC へ移っていない GraphService の
+  // クラスタ要約（型つきクライアント `AddHttpClient<IClusterSummaryLlmClient, …>`）は元から本検査の形の外である。
 ];
 const VALUES_PATH = 'deploy/helm/microservices-platform/values.yaml';
 const COMPOSE_PATH = 'deploy/docker-compose.yml';
@@ -133,20 +101,24 @@ function parseProgramDefaults(csText, constants = new Map()) {
 // `Services__<キー>` であり、専用クライアントの名前（`AuthorizationServiceScope`）ではない。
 // **キーと名前が一致しなくなったのが #1333 の変更点である**ので、ここでは
 // 共有クラスの `AddressKey` から `Services:` を剥がした値を名前として使う。
-const SHARED_REGISTRATIONS = [
-  {
-    call: 'AddPlatformAuthzScopeHttpClient',
-    source: 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Authz/AuthzScopeHttpClient.cs',
-    addressKeyConst: 'AuthzScopeHttpClient.AddressKey',
-    defaultConst: 'AuthzScopeHttpClient.DefaultAddress',
-  },
-];
+//
+// ［2026-10-10 / #1255・IADR-0533］`AddPlatformAuthzScopeHttpClient`（認可スコープ解決の REST）は撤去したので、
+// 実在する共有登録は 0 件である。仕組み（`parseSharedRegistrations`）は残し、自己試験は固定の見本で回す。
+const SHARED_REGISTRATIONS = [];
+
+// 自己試験だけが使う見本（撤去前の `AddPlatformAuthzScopeHttpClient` と同じ形）。
+const SAMPLE_SHARED_REGISTRATION = {
+  call: 'AddPlatformAuthzScopeHttpClient',
+  source: 'sample/AuthzScopeHttpClient.cs',
+  addressKeyConst: 'AuthzScopeHttpClient.AddressKey',
+  defaultConst: 'AuthzScopeHttpClient.DefaultAddress',
+};
 
 // 共有登録の呼び出しを Program.cs から拾い、{ 構成キー -> 既定 URL } を返す。
 // `constants` は共有クラスのソースから集めた { "<型>.<定数>" -> 値 }。
-function parseSharedRegistrations(csText, constantsBySource) {
+function parseSharedRegistrations(csText, constantsBySource, registrations = SHARED_REGISTRATIONS) {
   const map = new Map();
-  for (const reg of SHARED_REGISTRATIONS) {
+  for (const reg of registrations) {
     if (!String(csText).includes(`${reg.call}(`)) continue;
     const constants = constantsBySource.get(reg.source) ?? new Map();
     const addressKey = constants.get(reg.addressKeyConst);
@@ -389,14 +361,15 @@ function selfTest() {
   expect('program: DataSource の既定 URL を抽出', defs.get('DataSourceService') === 'http://datasource-service:5002', defs.get('DataSourceService'));
 
   // #1333: 共有の拡張メソッドで登録される downstream を読む。
-  const sharedSource = SHARED_REGISTRATIONS[0].source;
+  const sharedSource = SAMPLE_SHARED_REGISTRATION.source;
+  const sample = [SAMPLE_SHARED_REGISTRATION];
   const sharedConsts = new Map([[sharedSource, new Map([
     ['AuthzScopeHttpClient.AddressKey', 'Services:AuthorizationService'],
     ['AuthzScopeHttpClient.DefaultAddress', 'http://authorization-service:5005'],
   ])]]);
   const sharedCall = 'builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);';
 
-  const shared = parseSharedRegistrations(sharedCall, sharedConsts);
+  const shared = parseSharedRegistrations(sharedCall, sharedConsts, sample);
   expect('shared: 構成キーを名前として引く（クライアント名ではない）',
     shared.size === 1 && shared.has('AuthorizationService'), [...shared.keys()]);
   expect('shared: 既定 URL は共有クラスの定数から引く',
@@ -406,10 +379,10 @@ function selfTest() {
   // 🔴 陰性対照: 呼んでいない Program.cs からは 1 件も出ない
   //（出ると、その downstream を持たないサービスにまで上書きを要求してしまう）。
   expect('shared: 呼び出しが無ければ 0 件',
-    parseSharedRegistrations('builder.Services.AddHttpClient();', sharedConsts).size === 0, null);
+    parseSharedRegistrations('builder.Services.AddHttpClient();', sharedConsts, sample).size === 0, null);
 
   // 🔴 定数を解決できないときは**黙って捨てない**（捨てると downstream が 1 つ消えて誰も見なくなる）。
-  const unresolvedShared = parseSharedRegistrations(sharedCall, new Map());
+  const unresolvedShared = parseSharedRegistrations(sharedCall, new Map(), sample);
   expect('shared: 定数未解決は未解決マーカーを残す（黙って捨てない）',
     unresolvedShared.size === 1 && [...unresolvedShared.keys()][0].startsWith(UNRESOLVED_PREFIX),
     [...unresolvedShared.keys()]);

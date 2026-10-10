@@ -16,7 +16,7 @@ namespace GraphService.Tests.Infrastructure.ExternalServices;
 
 // FR-10, FR-17, FR-19, NFR-09, NFR-16, NFR-21, UC-05, SC-10, ADR-0006, ADR-0029, ADR-0075, ADR-0076,
 // [[IADR-0256]] 決定 3, [[IADR-0265]], [[IADR-0299]], [[IADR-0353]], [[IADR-0379]], [[IADR-0389]] 決定 5,
-// [[IADR-0408]] (#1255): 観測値の報告の gRPC 実装が、**REST 実装と同じ枝・同じ副作用**であることを固定する。
+// [[IADR-0408]] (#1255): 観測値の報告の gRPC 実装が、**旧 REST 実装と同じ枝・同じ副作用**であることを固定する（REST 実装は [[IADR-0533]] で撤去した）。
 //
 // 🔴 ここが本スライスの不変条件そのものである —— 輸送を替えたときに
 // **「届いていないのに届いたことになる」**か**「届かないと業務処理が止まる」**の
@@ -180,11 +180,10 @@ public class GrpcKnowledgeHealthReporterTests
         fake.LastRequest.ThresholdDays.Should().Be(180);
     }
 
-    // 🔴 タイムアウトは REST 側と**同じ 5 秒**である（`HttpClient.Timeout` の代わりに deadline）。
-    // 値は `HttpKnowledgeHealthReporter.SendTimeout` を**そのまま引く** ——
-    // 書き写すと片方だけ動いたときに気付けない。
+    // 🔴 送出 1 回あたりの期限は `GrpcKnowledgeHealthReporter.SendTimeout`（5 秒。［2026-10-10 / #1255］[[IADR-0533]] で
+    // 撤去した REST 実装の `HttpClient.Timeout` から移した）。呼び出しごとの deadline で付ける。
     [Fact]
-    public async Task 送出の期限は_REST_と同じ値である()
+    public async Task 送出の期限は構成の上限である()
     {
         var (metrics, probe) = NewProbe();
         using var _ = probe;
@@ -196,26 +195,26 @@ public class GrpcKnowledgeHealthReporterTests
             Indicator, [], ct: TestContext.Current.CancellationToken);
 
         fake.LastOptions.Deadline.Should().Be(
-            now.UtcDateTime.Add(HttpKnowledgeHealthReporter.SendTimeout));
+            now.UtcDateTime.Add(GrpcKnowledgeHealthReporter.SendTimeout));
     }
 
-    // 🔴 T-11: **切替は構成の有無だけである。** `Services:DashboardServiceGrpc` が無ければ
-    // 生成クライアントを**1 つも登録しない** —— 登録の有無で `Program.cs` が REST 実装と
-    // gRPC 実装を選ぶ（並走中の正は REST。戻すのは構成を外すだけでコードは変えない）。
+    // 🔴 T-11: **宛先の有無で登録の形が変わる。** `Services:DashboardServiceGrpc` が無ければ
+    // 生成クライアントは UNAVAILABLE を返す呼び出し器の上に組まれる（［2026-10-10 / #1255］[[IADR-0533]] 決定 2。
+    // 従前は 1 つも登録せず、`Program.cs` が REST 実装と gRPC 実装を選んでいた。REST 実装は撤去した）。
     //
     // 🔴 **`Program.cs` の DI をテストホストの構成で切り替えて測ることはできない。**
     // 選択は組み立て時（`builder.Configuration[...]`）に行われ、`WebApplicationFactory` が
     // 差し込む構成は Build 時に載るためである（`SimilaritySourceWiringTests` の注記と同じ罠）。
     // したがって**登録関数そのもの**を陽性・陰性の対で固定する。
     [Fact]
-    public void 宛先が未設定なら生成クライアントを登録しない()
+    public void 宛先が未設定でも届かない宛先として登録する()
     {
+        // ［2026-10-10 / #1255］[[IADR-0533]] 決定 2: 未設定でも生成クライアントは登録され、呼び出しは UNAVAILABLE で失敗する
+        // （従前は何も登録せず、`Program.cs` が REST 実装へ倒していた。REST 実装は撤去した）。
         var services = new ServiceCollection()
             .AddKnowledgeHealthGrpcClient(new ConfigurationBuilder().Build());
 
-        services.Should().NotContain(
-            d => d.ServiceType == typeof(Pb.KnowledgeHealthReport.KnowledgeHealthReportClient),
-            "未設定なら何も登録しない（REST のまま）");
+        services.Should().ContainSingle(d => d.ServiceType == typeof(Pb.KnowledgeHealthReport.KnowledgeHealthReportClient));
     }
 
     [Fact]

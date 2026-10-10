@@ -131,36 +131,14 @@ builder.Services.AddPlatformObjectStorage(builder.Configuration);
 // - 定期処理（90 日 purge・版刈り取り・通知検知）
 builder.Services.AddSingleton<Platform.Shared.Infrastructure.Foundation.Audit.IAuditLogger,
     Platform.Shared.Infrastructure.Foundation.Audit.AuditLogger>();
-builder.Services.AddHttpClient(
-    DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.ClientName,
-    c =>
-    {
-        c.BaseAddress = new Uri(builder.Configuration["Services:NotificationService"]
-            ?? "http://notification-service:8080");
-        // 🔴 既定の 100 秒のままにしない —— 受け口が応答しないとき、同期 push や完全削除の
-        // 要求がその間止まる（fail-open は「落ちない」だけでなく「待たせない」ことも要る）。
-        c.Timeout = DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.SendTimeout;
-    });
-// FR-22, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0412]] 決定 5,
-// [[IADR-0419]] (#1255): 通知の送出の east-west gRPC 版。
-// **並走中の正は REST である。** `Services:NotificationServiceGrpc`（h2c のアドレス。例:
-// http://notification-service:8081）が構成されたときだけ生成クライアントが登録され、
-// そのときだけ `GrpcPrivateNoteNotifier` を選ぶ（無ければ上の HTTP 版のまま。
-// 戻すのは構成を外すだけでよく、コードは変えない）。
-// 🔴 **REST の名前付きクライアントは常に登録したままにする** —— 切替は「どちらの
-// `IPrivateNoteNotifier` を採るか」だけであり、片方の配線を消すと戻せなくなる。
+// FR-22, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4, [[IADR-0412]] 決定 5,
+// [[IADR-0419]], [[IADR-0533]] (#1255): 通知の送出は east-west gRPC だけで行う
+// （［2026-10-10］REST の `HttpPrivateNoteNotifier`〔`POST /internal/notifications`〕は撤去した）。
+// `Services:NotificationServiceGrpc` が構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、
+// fail-open で送られない（エラーログと計器 `notification.dispatch.total` に「不達」で残る）。
 builder.Services.AddNotificationIngressGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(
-        builder.Configuration[NotificationIngressGrpcClientExtensions.AddressKey]))
-{
-    builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
-        DocumentService.Infrastructure.ExternalServices.GrpcPrivateNoteNotifier>();
-}
-else
-{
-    builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
-        DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier>();
-}
+builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
+    DocumentService.Infrastructure.ExternalServices.GrpcPrivateNoteNotifier>();
 // FR-06, FR-19, ADR-0057 決定 1, IADR-0296: 削除の伝播先①（オブジェクトストレージの本文・資産）。
 // 台帳から逆引きして消すため DbContext と同じ scoped にする。
 builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurger>();

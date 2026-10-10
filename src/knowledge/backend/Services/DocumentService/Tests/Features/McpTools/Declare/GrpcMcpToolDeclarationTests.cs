@@ -1,4 +1,3 @@
-using System.Net.Http.Json;
 using AwesomeAssertions;
 using DocumentService.Features.McpTools.Declare;
 using DocumentService.Tests.Grpc;
@@ -14,7 +13,7 @@ namespace DocumentService.Tests.Features.McpTools.Declare;
 // FR-16, NFR-09, NFR-16, ADR-0024 §2, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5,
 // [[IADR-0462]]（2026-09-26 追記 / #1515, #1255 経路 ④-a）: ツール定義の自己申告の gRPC 面
 // （`platform.mcp.v1.McpToolDeclarations/Declare`）を**本番の Program.cs のまま・実 Kestrel の h2c ポート**で往復し、
-// REST `GET /internal/mcp-tools` との同値と、s2s の要求（無し → UNAUTHENTICATED・利用者 → PERMISSION_DENIED）を固定する。
+// 申告の中身（`McpToolDeclarationSource.Declare()` と同じ。［2026-10-10 / #1517］旧形は REST `GET /internal/mcp-tools` との同値だった）と、s2s の要求（無し → UNAUTHENTICATED・利用者 → PERMISSION_DENIED）を固定する。
 //
 // 陽性対照（s2s で申告が返る）と陰性対照（拒否）を同じ器で対にする ——
 // 「拒否された」だけでは器が壊れているのか認可が効いているのか区別できない。
@@ -37,9 +36,9 @@ public class GrpcMcpToolDeclarationTests
         new(GrpcChannel.ForAddress(_factory.GrpcAddress));
 
     // 陽性対照 ＋ 同値: s2s トークンを CallCredentials で付けた h2c チャネル（MCP サーバーの収集器と同じ組み方）で往復し、
-    // REST と**同じ申告**（5 項目・順序とも）が返る。
+    // 申告の源（`McpToolDeclarationSource.Declare()`）と**同じ申告**（5 項目・順序とも）が返る。
     [Fact]
-    public async Task Declare_over_h2c_with_service_token_returns_the_same_declarations_as_rest()
+    public async Task Declare_over_h2c_with_service_token_returns_the_declared_tools()
     {
         var ct = TestContext.Current.CancellationToken;
         using var channel = GrpcClientExtensions.CreatePlatformChannel(
@@ -48,15 +47,14 @@ public class GrpcMcpToolDeclarationTests
         var grpc = await new Pb.McpToolDeclarations.McpToolDeclarationsClient(channel)
             .DeclareAsync(new Pb.DeclareMcpToolsRequest(), cancellationToken: ct);
 
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
-        var rest = (await http.GetFromJsonAsync<ServiceToolDeclarations>(McpToolEndpoints.ToolsPath, ct))!;
+        var declared = McpToolDeclarationSource.Declare();
 
         grpc.Service.Should().Be("document-service", "空の service は収集器が申告なしへ落とす");
-        grpc.Service.Should().Be(rest.Service);
-        grpc.Tools.Select(t => t.Name).Should().Contain(["document.get_document", "document.list_documents"], "★ 陽性対照 —— 両方が空で一致したのではない");
+        grpc.Service.Should().Be(declared.Service);
+        grpc.Tools.Select(t => t.Name).Should().Contain(["document.get_document", "document.list_documents"], "★ 陽性対照 —— 空で一致したのではない");
         grpc.Tools.Select(t => (t.Name, t.Description, t.InputSchema, t.RequiredScope, t.EgressClass))
-            .Should().Equal(rest.Tools.Select(t => (t.Name, t.Description, t.InputSchema, t.RequiredScope, t.EgressClass)),
-                "輸送を替えても申告の中身も順序も変わらない（同じ McpToolDeclarationSource.Declare を通る）");
+            .Should().Equal(declared.Tools.Select(t => (t.Name, t.Description, t.InputSchema, t.RequiredScope, t.EgressClass)),
+                "面は申告の中身も順序も変えない（McpToolDeclarationSource.Declare を通る）");
     }
 
     // 陰性対照: 資格情報が無ければ UNAUTHENTICATED。
@@ -70,7 +68,7 @@ public class GrpcMcpToolDeclarationTests
     }
 
     // 🔴 利用者トークンの転送を機械で止める点。**管理者の利用者トークンでも PERMISSION_DENIED**
-    // （REST の受け口は認証を持たないので、「認証さえあれば通る」形にすると s2s の面が利用者トークンで開く）。
+    // （「認証さえあれば通る」形にすると s2s の面が利用者トークンで開く）。
     [Fact]
     public async Task Declare_with_forwarded_admin_user_token_is_permission_denied()
     {

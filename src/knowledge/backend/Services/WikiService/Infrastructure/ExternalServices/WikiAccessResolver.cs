@@ -1,37 +1,25 @@
-using Microsoft.Extensions.Logging.Abstractions;
 using WikiService.Domain.Ports;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Authz;
-using System.Net.Http.Json;
 
 namespace WikiService.Infrastructure.ExternalServices;
 
-// FR-13, FR-05, UC-07, ADR-0011, ADR-0004: AuthorizationService の /authz/scope を呼び出し、
+// FR-13, FR-05, UC-07, ADR-0011, ADR-0004: AuthorizationService の権限スコープ解決（gRPC `AuthzScope/Resolve`）を呼び出し、
 // 閲覧要求元の ABAC 許可スコープを解決する。
 // 認可サービス障害時も deny-by-default（Granted=false）へ縮退し 500 を伝播させない
 // （RagOrchestrator.ResolveScopeAsync と同一方針）。
 // FR-13, FR-05, NFR-09, ADR-0029, ADR-0075, [[IADR-0379]] 決定 5, [[IADR-0401]] 決定 1 (#1255):
-// **gRPC 経路との並走。** `Services:AuthorizationServiceGrpc` が構成されて `AuthzScopeGrpcClient` が
-// DI に在れば gRPC で解決し、無ければ従来どおり REST で解決する。**並走中の正は REST**（gRPC は opt-in）。
-// どちらの経路も同じ deny-by-default（`Granted=false`）へ縮退する。
-// 🔴 **未認証の短絡は輸送の手前にある**（下の `IsAuthenticated` 判定）—— gRPC でも
-// **匿名では 1 度も呼ばない**。既定 null は既存テストの直接構築を壊さないためである。
-public class WikiAccessResolver(
-    IHttpClientFactory httpFactory,
-    AuthzScopeGrpcClient? authzScopeGrpc = null,
-    ILogger<WikiAccessResolver>? logger = null) : IWikiAccessResolver
+// ［2026-10-10 / #1255・[[IADR-0533]] 決定 1］**輸送は gRPC だけである**（REST `POST /authz/scope` の並走は撤去した。
+// [[IADR-0379]] 決定 5「並走中の正は REST」を反転）。失敗（宛先未構成を含む）は deny-by-default（`Granted=false`）へ縮退する。
+// 🔴 **未認証の短絡は輸送の手前にある**（下の `IsAuthenticated` 判定）—— **匿名では 1 度も呼ばない**。
+public class WikiAccessResolver(AuthzScopeGrpcClient authzScope) : IWikiAccessResolver
 {
-    // FR-05, #1378: スコープ解決の縮退を出す先。**既定 null は既存の直接構築を壊さないため**
-    // （DI は `ILogger<T>` を解決して渡す）。未注入なら出さない。
-    private readonly ILogger _logger = logger ?? NullLogger<WikiAccessResolver>.Instance;
-
     // UC-07 事前条件「**認証済み**」（#1126 / IADR-0335）。**未認証は認可サービスを呼ばずに拒否する。**
     // 匿名でも到達し得る要求へ与える身元。**認可サービスへは渡らない**（この値で問い合わせない）。
     private const string AnonymousUserId = "anonymous";
 
     // FR-05, [[IADR-0272]] 決定 4, [[IADR-0401]] 決定 1 (#1255): 本サービスが解決するアクション。
-    // 閲覧経路しか持たないので read である。REST 側は `AccessScopeRequest.Action` の既定値に
-    // 頼っているが、**gRPC 側では明示して渡す**（既定への依存を輸送ごとに隠さない）。
+    // 閲覧経路しか持たないので read である。**既定へ頼らず明示して渡す。**
     private const string ScopeAction = "read";
 
     public async Task<AccessScopeResponse> ResolveAsync(HttpContext ctx, CancellationToken ct = default)
@@ -54,36 +42,8 @@ public class WikiAccessResolver(
         var userId = ctx.User.Identity.Name ?? AnonymousUserId;
         var userAttrs = ExtractUserAttributes(ctx);
 
-        // 🔴 gRPC 経路も**この短絡の後**にある（上の未認証判定を通った要求だけが後段へ届く）。
-        // action は現行と同じ read（`AccessScopeRequest.Action` の既定値）を明示して渡す。
-        if (authzScopeGrpc is not null)
-            return await authzScopeGrpc.ResolveScopeAsync(userId, userAttrs, ScopeAction, ct);
-
-        var authzClient = httpFactory.CreateClient(AuthzScopeHttpClient.ClientName);
-        try
-        {
-            var resp = await authzClient.PostAsJsonAsync("/authz/scope",
-                new AccessScopeRequest(userId, userAttrs), ct);
-
-            // FR-05, #1378: 縮退の理由（非 2xx・空本文・不達）は WARN で出す（`AuthzScopeRestLog`）。
-            // **`Granted=false` は出さない**（正当な deny）。戻り値は従来と同じである。
-            if (!resp.IsSuccessStatusCode)
-            {
-                AuthzScopeRestLog.NonSuccess(_logger, resp.StatusCode);
-                return new AccessScopeResponse(userId, [], false);
-            }
-
-            var resolved = await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct);
-            if (resolved is null)
-                AuthzScopeRestLog.EmptyBody(_logger, resp.StatusCode);
-            return resolved ?? new AccessScopeResponse(userId, [], false);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
-        {
-            // 認可サービスへの通信失敗も deny-by-default へ縮退（権限外文書の漏えい防止）。
-            AuthzScopeRestLog.TransportFailure(_logger, ex);
-            return new AccessScopeResponse(userId, [], false);
-        }
+        // 🔴 後段への問い合わせは**この短絡の後**にある（上の未認証判定を通った要求だけが後段へ届く）。
+        return await authzScope.ResolveScopeAsync(userId, userAttrs, ScopeAction, ct);
     }
 
     // FR-05, ADR-0080, IADR-0411 (#1323): 抽出はプラットフォーム唯一の点へ委譲する。

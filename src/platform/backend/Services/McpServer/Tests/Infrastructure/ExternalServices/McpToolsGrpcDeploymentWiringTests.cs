@@ -8,9 +8,12 @@ namespace McpServer.Tests.Infrastructure.ExternalServices;
 // **正の配備ファイル**（compose・helm）と本番の `Program.cs` に対して、ツール申告の gRPC 収集の配線が揃っていることを固定する
 // （構成情報 API の `IntrospectionGrpcDeploymentWiringTests` と同型）。
 //
-// 🔴 **扇形の経路は 4 か所が揃って初めて 1 宛先が移る**: MCP サーバーの gRPC 宛先（`Mcp__GrpcServices__*`）・
+// ［2026-10-10 / #1517・[[IADR-0533]] 決定 3］REST の収集を撤去し、宛先のキーを `Mcp__Services__*`（値は gRPC の宛先）へ一本化した。
+// 旧キー `Mcp__GrpcServices` は配備ファイルに残っていてはならない（残ると McpServer は起動を止める）。
+//
+// 🔴 **扇形の経路は 4 か所が揃って初めて 1 宛先が届く**: MCP サーバーの宛先（`Mcp__Services__*`）・
 // 宛先のポート（helm `grpcPort` / compose `Grpc__Port`）・宛先の h2c リスナ（`AddPlatformGrpcListener`）・
-// gRPC 面（`MapMcpToolEndpoints` が REST と対で張る）。どれか 1 つが欠けると、その宛先は**申告なしとしか見えない**
+// gRPC 面（`MapMcpToolEndpoints` が張る）。どれか 1 つが欠けると、その宛先は**申告なしとしか見えない**
 // （収集は失敗を申告なしへ畳み、公開構成の要求はドリフトの警告に留まる）—— 例外もヘルスの赤も出ない。
 [Trait("TestKind", "Unit")]
 public class McpToolsGrpcDeploymentWiringTests
@@ -32,34 +35,29 @@ public class McpToolsGrpcDeploymentWiringTests
         return map;
     }
 
-    // 🔴 helm は REST の宛先を values に持たず、McpServer の appsettings.json の既定（`Mcp:Services`）に寄りかかっている。
-    // したがって helm の gRPC 宛先はその既定と突き合わせる（compose は REST の宛先を明示しているのでそれと突き合わせる）。
-    private static Dictionary<string, string> RestTargets(string file)
-    {
-        if (file == Compose)
-            return ReadMap(Compose, "Mcp__Services");
-        using var doc = JsonDocument.Parse(ReadRepoFile(AppSettings));
-        return doc.RootElement.GetProperty("Mcp").GetProperty("Services").EnumerateObject()
-            .ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.Ordinal);
-    }
-
-    // 1. REST の収集先すべてに gRPC の宛先があり、同じ DNS 名の h2c ポートを指す。
+    // 1. 収集先は helm・compose・appsettings.json の既定の 3 か所とも同じ 3 宛先で、h2c ポートを指す。旧キーは残っていない。
     [Theory]
     [InlineData(Compose)]
     [InlineData(Helm)]
-    public void Every_rest_tool_declaration_target_has_a_grpc_target_on_the_same_host(string file)
+    public void Every_tool_declaration_target_points_at_the_h2c_port_and_the_retired_key_is_gone(string file)
     {
-        var rest = RestTargets(file);
-        var grpc = ReadMap(file, "Mcp__GrpcServices");
+        var targets = ReadMap(file, "Mcp__Services");
+        var defaults = AppSettingsTargets();
 
-        rest.Should().NotBeEmpty("対照: 収集先を 1 件も読めていないなら以下は何も検査していない");
-        grpc.Keys.Should().BeEquivalentTo(rest.Keys, "REST の収集先はすべて gRPC の収集先でもある（片方だけの宛先を作らない）");
-        foreach (var (service, restUrl) in rest)
-        {
-            var g = new Uri(grpc[service]);
-            g.Host.Should().Be(new Uri(restUrl).Host, $"{service} の gRPC 宛先は REST と同じ Service を指す");
-            g.Port.Should().Be(GrpcPort, $"{service} の gRPC 宛先は h2c ポートを指す");
-        }
+        targets.Should().NotBeEmpty("対照: 収集先を 1 件も読めていないなら以下は何も検査していない");
+        targets.Keys.Should().BeEquivalentTo(defaults.Keys, "配備の宛先と appsettings.json の既定は同じ宛先の集合である");
+        foreach (var (service, url) in targets)
+            new Uri(url).Port.Should().Be(GrpcPort, $"{service} の宛先は h2c ポートを指す（HTTP/1.1 の :8080 は h2c を話さない）");
+        foreach (var (service, url) in defaults)
+            new Uri(url).Port.Should().Be(GrpcPort, $"appsettings.json の {service} の既定も h2c ポートを指す");
+        ReadRepoFile(file).Should().NotContain("Mcp__GrpcServices__", "旧キーが残ると McpServer は起動を止める");
+    }
+
+    private static Dictionary<string, string> AppSettingsTargets()
+    {
+        using var doc = JsonDocument.Parse(ReadRepoFile(AppSettings));
+        return doc.RootElement.GetProperty("Mcp").GetProperty("Services").EnumerateObject()
+            .ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.Ordinal);
     }
 
     // 2. gRPC の宛先が指すサービスは、helm で grpcPort を宣言している。
@@ -67,7 +65,7 @@ public class McpToolsGrpcDeploymentWiringTests
     public void Every_helm_grpc_target_declares_grpc_port()
     {
         var values = ReadRepoFile(Helm);
-        var grpc = ReadMap(Helm, "Mcp__GrpcServices");
+        var grpc = ReadMap(Helm, "Mcp__Services");
         grpc.Should().NotBeEmpty();
         foreach (var (service, url) in grpc)
         {
@@ -85,7 +83,7 @@ public class McpToolsGrpcDeploymentWiringTests
     public void Every_compose_grpc_target_declares_grpc_port_and_expose()
     {
         var compose = ReadRepoFile(Compose);
-        var grpc = ReadMap(Compose, "Mcp__GrpcServices");
+        var grpc = ReadMap(Compose, "Mcp__Services");
         grpc.Should().NotBeEmpty();
         foreach (var (service, url) in grpc)
         {
@@ -95,7 +93,7 @@ public class McpToolsGrpcDeploymentWiringTests
         }
     }
 
-    // 4. 収集先のサービスは、本番の Program.cs で h2c リスナを立て、申告の面（REST と gRPC の対）を張っている。
+    // 4. 収集先のサービスは、本番の Program.cs で h2c リスナを立て、申告の gRPC 面を張っている。
     //    申告するサービスは `McpToolDeclarationSource.ServiceName` の定数で見つける（コードからサービス名を引く）。
     [Fact]
     public void Every_tool_declaration_target_starts_the_h2c_listener_and_maps_the_grpc_face()
@@ -109,7 +107,7 @@ public class McpToolsGrpcDeploymentWiringTests
                 @"public const string ServiceName = ""([a-z0-9-]+)"";").Groups[1].Value))
             .ToList();
 
-        foreach (var service in RestTargets(Helm).Keys)
+        foreach (var service in AppSettingsTargets().Keys)
         {
             var owner = owners.Where(o => o.Name == service).ToList();
             owner.Should().ContainSingle($"'{service}' を申告するサービスはちょうど 1 つ");

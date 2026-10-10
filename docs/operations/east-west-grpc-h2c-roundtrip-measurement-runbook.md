@@ -9,8 +9,8 @@ updated: 2026-10-10
 <!-- trace:
 ids: [NFR-09, NFR-16, FR-15, FR-16, FR-18, FR-19, FR-22, SC-03, SC-09, SC-19, SC-21]
 adrs: [ADR-0005, ADR-0029, ADR-0075, ADR-0089, ADR-0117, ADR-0051, ADR-0037]
-iadrs: [IADR-0379, IADR-0462, IADR-0426, IADR-0307, IADR-0377, IADR-0487, IADR-0488, IADR-0530, IADR-0380, IADR-0431]
-specs: [20261004_issue-1255_h2c-roundtrip-measurement-runbook, 20261010_1882_h2c-runbook-false-alarms, 20261010_1887_h2c-measurement-triggers, 20261010_1887_h2c-runbook-order-and-windows]
+iadrs: [IADR-0379, IADR-0462, IADR-0426, IADR-0307, IADR-0377, IADR-0487, IADR-0488, IADR-0530, IADR-0380, IADR-0431, IADR-0533]
+specs: [20261004_issue-1255_h2c-roundtrip-measurement-runbook, 20261010_1882_h2c-runbook-false-alarms, 20261010_1887_h2c-measurement-triggers, 20261010_1887_h2c-runbook-order-and-windows, 20261010_issue-1255-1517_east-west-rest-retirement]
 issues: [#1887, #1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 -->
 
@@ -24,6 +24,15 @@ issues: [#1887, #1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 > 2026-10-10 に PoC が稼働 k3s で本書に従って実測し、測った経路はすべて両モードで合格した。そのとき期待値と食い違った判定の部品
 > （§0.3 (2)・(3)、§3.4 ③、Windows の改行とパス）と、手順の傷（§3.2 の発火の順序、Windows での `node -e`）は、その実測に合わせて直してある。
 > 期待値と違う結果が出たら、**期待値に合わせて読み替えず、出た値をそのまま記録する**（§5）。
+
+> ［2026-10-10 追記 / #1255・#1517］🔴 **REST 退役は済んだ**（[east-west gRPC 通信仕様書](../api/east-west-grpc.md) の「REST 実装の退役」）。
+> 本書を退役の後に流すときは次の 3 点が変わっている。(1) 扇形の宛先の env は `Introspection__Services__<名>` / `Mcp__Services__<名>`
+> （値は `:8081`）へ一本化された。旧名 `Introspection__GrpcServices__*` / `Mcp__GrpcServices__*` を上書きに書くと BFF / MCP サーバーは起動しない。
+> (2) REST の兄弟は無いので、**§6.2 の経路単位の緊急切り戻しは使えない**（宛先を抜くと、その経路は `UNAVAILABLE` で縮退する）。
+> (3) §1 の「REST 並走」の列と、§3.4 ④・失敗の分岐の「REST を通った」行は、退役前の観測点である（退役後は REST の受け口
+> `GET /internal/introspection`・`GET /internal/mcp-tools` が 404 を返す）。
+> (4) BFF → 認可（B-1）の gRPC 宛先 `Services__AuthorizationServiceGrpc` は**チャート既定に入った**（従前は REST で解決しており既定に無かった）。
+> §2.2 の `--bff-authz` は要らず、付けると生成器の重複の守り（「extraEnv に … が既に在る」）が例外で止める。B-1 は `overlay.json` のまま測れる。
 
 ## この手順を実行する条件（いつ走らせるか）
 
@@ -47,8 +56,8 @@ issues: [#1887, #1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 | 外部課金 | LLM を呼ぶ経路（§1 の表の「課金」）は外部 API の費用が出る。**実施の可否は利用者が決める**。オーナー判断（2026-10-10）で、AI 分析（A-1・L-3・R-1）・図の変換（L-5）・AI 提案の生成（L-4）は**各モード 1 回まで**発火させてよい。埋め込みだけなら `LOCALEMBED=1`（決定的ローカル埋め込み。使い捨てスタック専用）で費用なしに測れる |
 | 所要時間の目安 | 約 2 時間（グラフ → ダッシュボードの報告を待つなら ＋1 時間。§3.3） |
 
-**gRPC 経路を有効にするための構成は、BFF → 認可の 1 経路を除き、足す必要が無い。** チャートの既定（`values.yaml`）が既に
-呼び出し元へ gRPC の宛先（`Services__*Grpc` / `Introspection__GrpcServices__*` / `Mcp__GrpcServices__*`）と、呼び出し先 13 サービスへ
+**gRPC 経路を有効にするための構成は、BFF → 認可の 1 経路を除き、足す必要が無い。**（［2026-10-10 / #1255］B-1 の宛先 `Services__AuthorizationServiceGrpc` は退役とともにチャート既定（`services.bff.extraEnv`）に入ったので、`--bff-authz` は要らない。付けると生成器の重複の守り（「extraEnv に … が既に在る」）が例外で止める。退役後は除く経路も無い。） チャートの既定（`values.yaml`）が既に
+呼び出し元へ gRPC の宛先（`Services__*Grpc` / `Introspection__GrpcServices__*` / `Mcp__GrpcServices__*`。［2026-10-10］退役後は `Introspection__Services__*` / `Mcp__Services__*`）と、呼び出し先 13 サービスへ
 `grpcPort: 8081` を与えており、`values-local.yaml` はそれを消していない（§2.3 の描画で確認）。本書が足すのは**観測のための構成**だけである。
 
 ---
@@ -177,7 +186,7 @@ Linux・macOS・WSL では `tr -d '\r'` は何も変えず、`np` はパスを�
 | A-4 | `retrieval-service` | authorization | 同上 | 同上 | 検索 |
 | A-5 | `mcp-service` | authorization | `/platform.authz.v1.UserDirectory/GetUserAttributes` と `AuthzScope/Resolve` | 同上 | MCP クライアントの登録（無人アカウントの属性の検証） |
 | A-6 | `datasource-service` | authorization | `/platform.authz.v1.UserDirectory/CheckUsernames` | 同上 | データソースの登録・更新（利用者の写像を含む） |
-| B-1 | `bff-service` | authorization | `/platform.authz.v1.AuthzScope/Resolve` | `Services__AuthorizationServiceGrpc`（🔴 **チャート既定に無い**。§2.2 の `--bff-authz` で足す） | 権限スコープを引く画面操作（検索・文書一覧など） |
+| B-1 | `bff-service` | authorization | `/platform.authz.v1.AuthzScope/Resolve` | `Services__AuthorizationServiceGrpc`（🔴 **チャート既定に無い**。§2.2 の `--bff-authz` で足す。［2026-10-10 / #1255］B-1 の宛先 `Services__AuthorizationServiceGrpc` は退役とともにチャート既定（`services.bff.extraEnv`）に入ったので、`--bff-authz` は要らない。付けると生成器の重複の守り（「extraEnv に … が既に在る」）が例外で止める） | 権限スコープを引く画面操作（検索・文書一覧など） |
 | L-1 | `ingestion-service` | llmgateway | `/platform.llmgateway.v1.LlmEmbedding/Embed` | `Services__LlmGatewayGrpc` | 文書の取り込み（`LOCALEMBED=1` なら課金なし） |
 | L-2 | `retrieval-service` | llmgateway | 同上 | 同上 | 検索（クエリの埋め込み） |
 | L-3 | `aianalysis-service` | llmgateway | `/platform.llmgateway.v1.LlmCompletion/Complete`・`/CompleteStream` | 同上 | AI 分析（課金） |
@@ -263,7 +272,7 @@ process.stdout.write(JSON.stringify(overlay, null, 2) + '\n');
 EOF
 
 node "$(np "$W/gen-overlay.mjs")" "$(np "$W/all-values.json")" > "$W/overlay.json"                  # B-1 を測らない場合
-node "$(np "$W/gen-overlay.mjs")" "$(np "$W/all-values.json")" --bff-authz > "$W/overlay-bff.json"  # B-1 も測る場合
+node "$(np "$W/gen-overlay.mjs")" "$(np "$W/all-values.json")" --bff-authz > "$W/overlay-bff.json"  # B-1 も測る場合（退役前のチャートだけ。退役後は既定に在り、付けると例外）
 ```
 
 上書きファイルは JSON で書く（YAML の部分集合なので `helm -f` がそのまま読む）。B-1 を足すと **BFF の権限スコープ解決が利用者の要求ごとに gRPC を通る**
@@ -675,6 +684,9 @@ for d in bff document; do kubectl -n "$NS" get deploy "$d-service" -o yaml | gre
 画面のタブで §3.2.1 の `fetch` をもう一度実行し、`404` が返ることも確かめる（口がルート表から消えている）。
 
 ### 6.2 経路単位の緊急切り戻し（その経路だけを REST へ戻す）
+
+> ［2026-10-10 追記 / #1255・#1517］🔴 **REST 退役の後は使えない。** REST の実装を撤去したので、宛先を抜いても REST へは戻らず、
+> その経路は `UNAVAILABLE` で縮退する。以下は退役前の手順として残す。
 
 計測中にある経路が利用者の操作を壊していると分かったら、その経路の gRPC 宛先だけを抜く。**リストを手で書かない**。
 

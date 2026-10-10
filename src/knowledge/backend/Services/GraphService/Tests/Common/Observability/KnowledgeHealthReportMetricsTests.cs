@@ -1,11 +1,12 @@
 using System.Diagnostics.Metrics;
-using System.Net;
 using AwesomeAssertions;
+using Grpc.Core;
 using GraphService.Common.Observability;
 using GraphService.Domain.Ports;
 using GraphService.Infrastructure.ExternalServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Pb = Knowledge.Contracts.Grpc.Dashboard.V1;
 
 namespace GraphService.Tests.Common.Observability;
 
@@ -39,9 +40,9 @@ public class KnowledgeHealthReportMetricsTests
     public async Task 受け口が受理したら指標名つきで1件数える()
     {
         var (metrics, probe) = NewProbe();
-        var reporter = new HttpKnowledgeHealthReporter(
-            new SingleClientFactory(new StubHandler(HttpStatusCode.Accepted)),
-            metrics, NullLogger<HttpKnowledgeHealthReporter>.Instance);
+        var reporter = new GrpcKnowledgeHealthReporter(
+            ReportClient.Accepting(),
+            metrics, TimeProvider.System, NullLogger<GrpcKnowledgeHealthReporter>.Instance);
 
         await reporter.ReportAsync("unresolved-links", [], ct: TestContext.Current.CancellationToken);
 
@@ -56,9 +57,9 @@ public class KnowledgeHealthReportMetricsTests
     public async Task 受け口がエラーを返したら数えない()
     {
         var (metrics, probe) = NewProbe();
-        var reporter = new HttpKnowledgeHealthReporter(
-            new SingleClientFactory(new StubHandler(HttpStatusCode.InternalServerError)),
-            metrics, NullLogger<HttpKnowledgeHealthReporter>.Instance);
+        var reporter = new GrpcKnowledgeHealthReporter(
+            ReportClient.Failing(StatusCode.Internal),
+            metrics, TimeProvider.System, NullLogger<GrpcKnowledgeHealthReporter>.Instance);
 
         await reporter.ReportAsync("unresolved-links", [], ct: TestContext.Current.CancellationToken);
 
@@ -70,9 +71,9 @@ public class KnowledgeHealthReportMetricsTests
     public async Task 受け口へ到達できなければ数えない()
     {
         var (metrics, probe) = NewProbe();
-        var reporter = new HttpKnowledgeHealthReporter(
-            new SingleClientFactory(new ThrowingHandler()),
-            metrics, NullLogger<HttpKnowledgeHealthReporter>.Instance);
+        var reporter = new GrpcKnowledgeHealthReporter(
+            ReportClient.Failing(StatusCode.Unavailable),
+            metrics, TimeProvider.System, NullLogger<GrpcKnowledgeHealthReporter>.Instance);
 
         await reporter.ReportAsync("edge-type-usage", [], ct: TestContext.Current.CancellationToken);
 
@@ -104,9 +105,9 @@ public class KnowledgeHealthReportMetricsTests
                 KnowledgeHealthReportMetrics.IndicatorTag, "他クラスの指標"));
 
         // ── 陽性: 自分の計器の発行は同じ probe が拾う。
-        var reporter = new HttpKnowledgeHealthReporter(
-            new SingleClientFactory(new StubHandler(HttpStatusCode.Accepted)),
-            metrics, NullLogger<HttpKnowledgeHealthReporter>.Instance);
+        var reporter = new GrpcKnowledgeHealthReporter(
+            ReportClient.Accepting(),
+            metrics, TimeProvider.System, NullLogger<GrpcKnowledgeHealthReporter>.Instance);
         await reporter.ReportAsync("unresolved-links", [], ct: TestContext.Current.CancellationToken);
 
         probe.Measurements.Should().ContainSingle(
@@ -160,23 +161,22 @@ public class KnowledgeHealthReportMetricsTests
         public void Dispose() => _listener.Dispose();
     }
 
-    private sealed class StubHandler(HttpStatusCode status) : HttpMessageHandler
+    // 観測値の報告の生成クライアントの偽物（［2026-10-10 / #1255］[[IADR-0533]]: REST の報告器を撤去したので gRPC 実装で測る）。
+    // 受理 → 応答を返す／エラー（受け口が答えた失敗・到達できない）→ その status の RpcException。
+    private sealed class ReportClient : Pb.KnowledgeHealthReport.KnowledgeHealthReportClient
     {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(new HttpResponseMessage(status));
-    }
+        private readonly StatusCode? _failWith;
 
-    private sealed class ThrowingHandler : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-            => throw new HttpRequestException("受け口へ到達できない");
-    }
+        private ReportClient(StatusCode? failWith) => _failWith = failWith;
 
-    private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name)
-            => new(handler, disposeHandler: false) { BaseAddress = new Uri("http://dashboard-service") };
+        public static ReportClient Accepting() => new(null);
+
+        public static ReportClient Failing(StatusCode status) => new(status);
+
+        public override AsyncUnaryCall<Pb.ReportResponse> ReportAsync(Pb.ReportRequest request, CallOptions options) =>
+            new(_failWith is { } status
+                    ? Task.FromException<Pb.ReportResponse>(new RpcException(new Status(status, "fake")))
+                    : Task.FromResult(new Pb.ReportResponse()),
+                Task.FromResult(new Metadata()), () => Status.DefaultSuccess, () => [], () => { });
     }
 }

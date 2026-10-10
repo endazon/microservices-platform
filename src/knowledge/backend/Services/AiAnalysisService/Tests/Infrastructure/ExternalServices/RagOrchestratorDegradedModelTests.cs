@@ -48,7 +48,6 @@ public class RagOrchestratorDegradedModelTests
 
     // T-12: ゲートウェイが機密区分により送信拒否（sent=false・model は空）。外部送信していないため空を透過する。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskAsync_WhenGatewayDeniesEgress_ReportsNoModel(LlmTransportKind transport)
     {
@@ -64,7 +63,6 @@ public class RagOrchestratorDegradedModelTests
 
     // T-12（ストリーミング）: SSE の done も sent=false・model 空で届くため、そのまま透過する。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskStreamAsync_WhenGatewayDeniesEgress_DoneReportsNoModel(LlmTransportKind transport)
     {
@@ -81,7 +79,6 @@ public class RagOrchestratorDegradedModelTests
 
     // T-13: ゲートウェイへ到達できない（非 2xx）。モデルは解決されていないため空。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskAsync_WhenGatewayHttpFails_ReportsNoModel(LlmTransportKind transport)
     {
@@ -98,7 +95,6 @@ public class RagOrchestratorDegradedModelTests
 
     // T-13（ストリーミング）: 送信自体が失敗した場合も同様（下位ヘルパが done(Sent=false) へ縮退させる）。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskStreamAsync_WhenGatewayHttpFails_DoneReportsNoModel(LlmTransportKind transport)
     {
@@ -114,7 +110,6 @@ public class RagOrchestratorDegradedModelTests
 
     // T-14: 正常に送信できた場合は従来どおり実モデル名（route 結果）を返す（回帰防止）。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskAsync_WhenSent_ReportsResolvedModel(LlmTransportKind transport)
     {
@@ -130,7 +125,6 @@ public class RagOrchestratorDegradedModelTests
 
     // T-14（ストリーミング）: done の model をそのまま載せる（回帰防止）。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskStreamAsync_WhenSent_DoneReportsResolvedModel(LlmTransportKind transport)
     {
@@ -149,7 +143,6 @@ public class RagOrchestratorDegradedModelTests
     // T-15: 呼び出し先が不調（sent=false だがゲートウェイは route 済みで呼び出しを試みた）。
     // どのモデルへ向けた試行かは監査・障害解析の情報になるため、空へ潰さず透過する。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskAsync_WhenUpstreamFailed_KeepsResolvedModel(LlmTransportKind transport)
     {
@@ -166,7 +159,6 @@ public class RagOrchestratorDegradedModelTests
 
     // T-15（ストリーミング）: SSE の縮退 done も model を持つ場合はそのまま透過する。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskStreamAsync_WhenUpstreamFailed_KeepsResolvedModel(LlmTransportKind transport)
     {
@@ -181,22 +173,12 @@ public class RagOrchestratorDegradedModelTests
         done.Model.Should().Be(ResolvedModel);
     }
 
-    // T-16: 2xx だが本文が JSON の null（＝逆シリアル化結果が null）。モデルは解決されていないため空。
-    // ModelOrNone が null を応答契約へ載せないことの回帰固定でもある。
-    [Fact]
-    public async Task AskAsync_WhenGatewayBodyIsNull_ReportsNoModel()
-    {
-        var orchestrator = Create(new StubHttpClientFactory(llmBody: "null"));
-
-        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
-            ct: TestContext.Current.CancellationToken);
-
-        answer.Model.Should().BeEmpty();
-        answer.Answer.Should().Be("回答を生成できませんでした。");
-    }
+    // T-16（撤去。[[IADR-0533]] #1255）: 「2xx だが本文が JSON の null」は REST 輸送だけの形だった。
+    // gRPC の応答は proto3 であり null を表せない（欠けたフィールドは既定値）ので、この枝はもう存在しない。
 
     private static RagOrchestrator Create(
-        IHttpClientFactory factory, ILlmCompletionTransport? transport = null) => new(factory, completionTransport: transport);
+        IHttpClientFactory factory, ILlmCompletionTransport? transport = null) =>
+        TestRagOrchestrator.Create(factory, completion: transport);
 
     private static async Task<AskDoneEvent> LastDoneAsync(IRagOrchestrator orchestrator)
     {
@@ -223,7 +205,7 @@ public class RagOrchestratorDegradedModelTests
         {
             var (body, mediaType, status) = name switch
             {
-                AuthzScopeHttpClient.ClientName => (
+                TestRagOrchestrator.AuthzClientName => (
                     $$"""{"userId":"user-1","allowedFilters":[],"granted":{{(granted ? "true" : "false")}}}""",
                     "application/json", HttpStatusCode.OK),
                 "RetrievalService" => ("""{"results":[],"total":0,"tookMs":0}""",

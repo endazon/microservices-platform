@@ -11,7 +11,7 @@ namespace AuthorizationService.Features.Authz.ResolveScope;
 
 // FR-05, NFR-09, ADR-0004, ADR-0029, ADR-0075, IADR-0379 (#1201): 権限スコープ解決の **gRPC 面**（参照実装）。
 // REST の `POST /authz/scope`（Endpoint.cs）と**同じ評価器**（AbacEvaluator.ResolveScope）を呼ぶ —— 評価器を
-// 2 つにしない。REST と gRPC は並走し、**並走中の正は REST** である（IADR-0379）。
+// 2 つにしない。［2026-10-10 / #1255・[[IADR-0533]]］east-west の呼び出し元は gRPC だけになった（REST の受け口の撤去は残余）。
 //
 // 🔴 **ServiceCaller を要求する。** REST の `/scope` は「サービス間呼び出しのため管理者限定にしない」として
 // 認可を掛けていない（メッシュの mTLS が第一防御）。gRPC の面では**呼び出し側サービス自身の資格情報**
