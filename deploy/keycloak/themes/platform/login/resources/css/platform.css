@@ -1,60 +1,483 @@
 /*
- * platform ログインテーマ 追加 CSS（IADR-0261 / #438）。
+ * platform ログインテーマ（SC-13 / SC-14 / SC-15・ADR-0026・ADR-0031・IADR-0532）。
  *
- * - 親テーマ（keycloak）の login.css に追加で読み込まれる（theme.properties の styles 参照）。
- * - 外部フォント・外部 CDN は使わない（計画 08_data-egress-policy）。system-ui 相当のみを使う。
- * - セレクタは Keycloak 既定テーマ（PatternFly ベース）の既知クラスに対して書く。
- *   一致しない環境（テンプレート差し替え・バージョン差）でも、未使用の CSS ルールは無害である
- *   （壊れるのではなく、単に適用されないだけ）。
+ * 親（keycloak.v2 = PatternFly 5）の上に、SPA と同じ Nocturne の見た目を載せる。色・角丸・フォントは
+ * tokens.css（生成物。単一情報源は src/packages/ui/src/styles.css）の意味トークンだけを引く ——
+ * **ここに 16 進の色を書かない**（SPA 側の是正が届かなくなる）。
+ *
+ * 書き方:
+ *   - すべて `html.login-pf` の下に書く（kcHtmlClass。詳細度 0,1,1 以上）。PF5 のダーク用の変数は
+ *     `:where(.pf-v5-theme-dark)`（詳細度 0）で入るので、こちらが常に勝つ。明暗の切替は tokens.css の
+ *     メディアクエリだけが行い、本ファイルは明暗を区別しない。
+ *   - PF5 のグローバル変数（背景・文字・枠・主色・フォント）を意味トークンへ写して、テンプレートが増やす
+ *     画面（必須アクション・WebAuthn・エラー等）にも既定で効かせる。そのうえで、モックの語彙
+ *     （`.btn-primary` = 塗らずに枠と文字・`.panel` = surface の面・`.input`）に合わせて部品を直す。
+ *   - セレクタは親テンプレートの既知のクラス（pf-v5-c-*・kc-*）に対して書く。版が上がって一致しなくなっても
+ *     未使用の規則は無害である（崩れるのではなく、既定の見た目へ戻るだけ）。
  */
 
-:root {
-  --platform-brand: #0f4c81;
-  --platform-brand-dark: #0b3a63;
-  --platform-brand-contrast: #ffffff;
+/* ── PF5 のグローバル変数 → 意味トークン ─────────────────────────────────── */
+html.login-pf,
+html.login-pf.pf-v5-theme-dark {
+  --pf-v5-global--BackgroundColor--100: var(--color-surface);
+  --pf-v5-global--BackgroundColor--150: var(--color-surface);
+  --pf-v5-global--BackgroundColor--200: var(--color-bg);
+  --pf-v5-global--BackgroundColor--300: var(--color-surface-muted);
+  --pf-v5-global--BackgroundColor--400: var(--color-surface-muted);
+  --pf-v5-global--BackgroundColor--light-100: var(--color-surface);
+  --pf-v5-global--BackgroundColor--light-200: var(--color-surface-muted);
+  --pf-v5-global--BackgroundColor--light-300: var(--color-bg);
+  --pf-v5-global--BackgroundColor--dark-100: var(--color-bg);
+  --pf-v5-global--Color--100: var(--color-fg);
+  --pf-v5-global--Color--200: var(--color-fg-muted);
+  --pf-v5-global--Color--dark-100: var(--color-fg);
+  --pf-v5-global--Color--dark-200: var(--color-fg-muted);
+  --pf-v5-global--Color--light-100: var(--color-fg);
+  --pf-v5-global--Color--light-200: var(--color-fg-muted);
+  --pf-v5-global--BorderColor--100: var(--color-border);
+  --pf-v5-global--BorderColor--200: var(--color-border);
+  --pf-v5-global--BorderColor--300: var(--color-divider);
+  --pf-v5-global--BorderColor--dark-100: var(--color-border);
+  --pf-v5-global--BorderColor--light-100: var(--color-border);
+  --pf-v5-global--primary-color--100: var(--color-accent);
+  --pf-v5-global--primary-color--200: var(--color-accent);
+  --pf-v5-global--link--Color: var(--color-accent);
+  --pf-v5-global--link--Color--hover: var(--color-accent);
+  --pf-v5-global--active-color--100: var(--color-accent);
+  --pf-v5-global--active-color--300: var(--color-accent);
+  --pf-v5-global--active-color--400: var(--color-accent);
+  --pf-v5-global--danger-color--100: var(--color-danger);
+  --pf-v5-global--danger-color--200: var(--color-danger);
+  --pf-v5-global--success-color--100: var(--color-success);
+  --pf-v5-global--warning-color--100: var(--color-warning);
+  --pf-v5-global--info-color--100: var(--color-accent);
+  --pf-v5-global--icon--Color--light: var(--color-fg-muted);
+  --pf-v5-global--icon--Color--dark: var(--color-fg);
+  --pf-v5-global--FontFamily--text: var(--font-sans);
+  --pf-v5-global--FontFamily--heading: var(--font-sans);
+  --pf-v5-global--FontFamily--monospace: var(--font-mono);
+  --pf-v5-global--BorderRadius--sm: var(--radius-md);
+  --pf-v5-global--BoxShadow--xl: none;
+  --keycloak-card-top-color: transparent;
+  background-color: var(--color-bg);
+  color: var(--color-fg);
 }
 
-body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Hiragino Sans",
-    Meiryo, Roboto, Helvetica, Arial, sans-serif;
+/* 地: Keycloak の背景画像（keycloak-bg-darken.svg）を外し、SPA と同じ地の色にする。 */
+html.login-pf body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
 }
 
-/* ヘッダー・タイトル（realm displayName＝「汎用プラットフォーム」を表示する領域） */
-#kc-header-wrapper,
-.login-pf-header h1,
-#kc-page-title {
-  color: var(--platform-brand-dark);
+html.login-pf ::selection {
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
-/* カード（フォーム全体を囲む枠） */
-.card-pf,
-#kc-form-wrapper {
-  border-top: 4px solid var(--platform-brand);
+html.login-pf :focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
-/* 主ボタン（ログイン・送信） */
-.btn-primary,
-input[type="submit"].btn-primary {
-  background-color: var(--platform-brand);
-  border-color: var(--platform-brand-dark);
-  color: var(--platform-brand-contrast);
+/* ── レイアウト: モックの 392px のカードを中央に。ヘッダ（ブランド）はカードの上 ───────────── */
+html.login-pf .pf-v5-c-login__container {
+  grid-template-columns: minmax(0, 26rem);
+  justify-content: center;
 }
 
-.btn-primary:hover,
-.btn-primary:focus,
-.btn-primary:active {
-  background-color: var(--platform-brand-dark);
-  border-color: var(--platform-brand-dark);
+html.login-pf .pf-v5-c-login__header {
+  margin-block: 3rem 1.25rem;
 }
 
-/* リンク（パスワードリセット・言語切替 等） */
-#kc-form-options a,
-.login-pf-page a {
-  color: var(--platform-brand);
+/* ブランド（モックの `.hf-brand`）: accent の 9px 角 ＋ 表示名、その下に副題。大文字化・字間は外す。 */
+html.login-pf #kc-header-wrapper {
+  color: var(--color-fg) !important; /* 親の styles.css が !important で白を当てている */
+  font-size: 1.125rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.3;
 }
 
-#kc-form-options a:hover,
-.login-pf-page a:hover {
-  color: var(--platform-brand-dark);
+html.login-pf #kc-header-wrapper .platform-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+html.login-pf #kc-header-wrapper .platform-brand::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--color-accent);
+  flex: none;
+}
+
+html.login-pf #kc-header-wrapper .platform-brand-sub {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--color-fg-muted);
+}
+
+/* カード（モックの `.panel`）: surface の面・border の縁・radius-lg。影は付けない（常設の面は縁取る。IADR-0435）。 */
+html.login-pf .pf-v5-c-login__main {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+html.login-pf .pf-v5-c-login__main-header {
+  border-top: 0;
+  padding-block-start: 1.5rem;
+  align-items: center;
+}
+
+html.login-pf .pf-v5-c-login__main-header .pf-v5-c-title,
+html.login-pf #kc-page-title {
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--color-fg);
+  letter-spacing: -0.01em;
+}
+
+html.login-pf .pf-v5-c-login__main-footer-band {
+  border-top: 1px solid var(--color-divider);
+}
+
+/* ── 文字・リンク ───────────────────────────────────────────────────────── */
+html.login-pf a,
+html.login-pf .pf-v5-c-button.pf-m-link {
+  color: var(--color-accent);
+  text-underline-offset: 3px;
+}
+
+html.login-pf .pf-v5-c-form__label,
+html.login-pf .pf-v5-c-form__label-text {
+  color: var(--color-fg-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+html.login-pf .pf-v5-c-form__label-required {
+  color: var(--color-danger);
+}
+
+html.login-pf .pf-v5-c-helper-text__item-text,
+html.login-pf .pf-v5-u-color-200,
+html.login-pf .subtitle {
+  color: var(--color-fg-muted);
+}
+
+/* ── 入力（モックの `.input`）: 地の色の面・divider の枠・radius-md。フォーカスで accent。 ─────── */
+html.login-pf .pf-v5-c-form-control {
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  color: var(--color-fg);
+  caret-color: var(--color-accent);
+  min-height: 36px;
+}
+
+/* PF5 は ::before / ::after で下線つきの枠を描く。枠は上の border に一本化する。 */
+html.login-pf .pf-v5-c-form-control::before,
+html.login-pf .pf-v5-c-form-control::after {
+  border: 0;
+}
+
+html.login-pf .pf-v5-c-form-control:hover {
+  border-color: color-mix(in srgb, var(--color-fg) 45%, transparent);
+}
+
+html.login-pf .pf-v5-c-form-control:focus-within {
+  border-color: var(--color-accent);
+}
+
+html.login-pf .pf-v5-c-form-control > input,
+html.login-pf .pf-v5-c-form-control > select,
+html.login-pf .pf-v5-c-form-control > textarea {
+  background: transparent;
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+}
+
+html.login-pf .pf-v5-c-form-control > input:focus-visible,
+html.login-pf .pf-v5-c-form-control > select:focus-visible {
+  outline: none; /* 枠（:focus-within）が担う */
+}
+
+/* 入力エラー: 枠を危険色にする。色だけにしない —— 入力の中のアイコンと、下の文言（アイコン付き）が意味を持つ。 */
+html.login-pf .pf-v5-c-form-control.pf-m-error {
+  border-color: var(--color-danger);
+}
+
+html.login-pf .pf-v5-c-form-control.pf-m-readonly {
+  background: var(--color-surface-muted);
+}
+
+/* kcInputErrorMessageClass（pf-v5-c-helper-text__item-text pf-m-error）。入力欄の下（ログイン）にも、
+   入力の直後の span（OTP 初回登録）にも同じクラスで出る。 */
+html.login-pf .pf-v5-c-helper-text__item-text.pf-m-error {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--color-danger);
+}
+
+html.login-pf .pf-v5-c-helper-text__item-text.pf-m-error::before {
+  content: '';
+  flex: none;
+  width: 1em;
+  height: 1em;
+  margin-top: 0.15em;
+  background-color: currentColor;
+  -webkit-mask: var(--platform-icon-error) center / contain no-repeat;
+  mask: var(--platform-icon-error) center / contain no-repeat;
+}
+
+/* 言語の選択（ヘッダ右）: 枠だけの小さな選択。 */
+html.login-pf .pf-v5-c-login__main-header-utilities .pf-v5-c-form-control {
+  background: transparent;
+  min-height: 30px;
+}
+
+html.login-pf .pf-v5-c-login__main-header-utilities select {
+  font-size: 0.8125rem;
+  color: var(--color-fg-muted);
+}
+
+/* チェックボックス（このデバイスを記憶）: accent で塗る。 */
+html.login-pf .pf-v5-c-check__input {
+  accent-color: var(--color-accent);
+}
+
+html.login-pf .pf-v5-c-check__label {
+  color: var(--color-fg-muted);
+  font-size: 0.8125rem;
+}
+
+/* ── ボタン（モックの `.btn`）: 主は塗らずに accent の枠と文字。副は divider の枠。 ─────────── */
+html.login-pf .pf-v5-c-button {
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+html.login-pf .pf-v5-c-button.pf-m-primary {
+  --pf-v5-c-button--after--BorderWidth: 0;
+  background: transparent;
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent);
+  min-height: 36px;
+}
+
+html.login-pf .pf-v5-c-button.pf-m-primary:hover,
+html.login-pf .pf-v5-c-button.pf-m-primary:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+html.login-pf .pf-v5-c-button.pf-m-primary:active {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+html.login-pf .pf-v5-c-button.pf-m-secondary,
+html.login-pf .pf-v5-c-button.pf-m-tertiary {
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  color: var(--color-fg);
+}
+
+html.login-pf .pf-v5-c-button.pf-m-secondary::after,
+html.login-pf .pf-v5-c-button.pf-m-tertiary::after {
+  border: 0;
+}
+
+html.login-pf .pf-v5-c-button.pf-m-secondary:hover,
+html.login-pf .pf-v5-c-button.pf-m-tertiary:hover {
+  background: color-mix(in srgb, var(--color-fg) 7%, transparent);
+}
+
+html.login-pf .pf-v5-c-button:disabled,
+html.login-pf .pf-v5-c-button.pf-m-disabled,
+html.login-pf .pf-v5-c-button.pf-m-aria-disabled {
+  opacity: 0.45;
+}
+
+/* パスワード表示切替（入力の右の制御ボタン）: 入力と同じ枠で連ねる。 */
+html.login-pf .pf-v5-c-button.pf-m-control {
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  border-left: 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--color-fg-muted);
+}
+
+html.login-pf .pf-v5-c-button.pf-m-control::after {
+  border: 0;
+}
+
+html.login-pf .pf-v5-c-input-group:focus-within .pf-v5-c-button.pf-m-control {
+  border-color: var(--color-accent);
+}
+
+html.login-pf .pf-v5-c-input-group__item.pf-m-fill .pf-v5-c-form-control {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* ── 状態表示（モックの `.note` / `.err` 等）: 色＋アイコン＋テキスト（INDEX 決定 21） ───────── */
+html.login-pf .pf-v5-c-alert {
+  --pf-v5-c-alert--BoxShadow: none;
+  --pf-v5-c-alert--BorderTopWidth: 0;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  color: var(--color-fg);
+}
+
+html.login-pf .pf-v5-c-alert__title {
+  color: var(--color-fg);
+  font-weight: 500;
+}
+
+html.login-pf .pf-v5-c-alert.pf-m-danger {
+  border-color: var(--color-danger);
+}
+
+html.login-pf .pf-v5-c-alert.pf-m-warning {
+  border-color: var(--color-warning);
+}
+
+html.login-pf .pf-v5-c-alert.pf-m-success {
+  border-color: var(--color-success);
+}
+
+html.login-pf .pf-v5-c-alert.pf-m-info {
+  border-color: var(--color-accent);
+}
+
+html.login-pf .pf-v5-c-alert.pf-m-danger .pf-v5-c-alert__icon {
+  color: var(--color-danger);
+}
+
+html.login-pf .pf-v5-c-alert.pf-m-warning .pf-v5-c-alert__icon {
+  color: var(--color-warning);
+}
+
+html.login-pf .pf-v5-c-alert.pf-m-success .pf-v5-c-alert__icon {
+  color: var(--color-success);
+}
+
+html.login-pf .pf-v5-c-alert.pf-m-info .pf-v5-c-alert__icon {
+  color: var(--color-accent);
+}
+
+/*
+ * Lucide のアイコン（SPA の lucide-react と同じ図柄。ISC License, Copyright (c) Lucide Contributors）。
+ * 外部から取りに行かないよう data URI で同梱し、CSS の mask で currentColor に塗る（Font Awesome を置き換える）。
+ *   error = circle-x / warning = triangle-alert / success = circle-check / info = info
+ */
+html.login-pf {
+  --platform-icon-error: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m15 9-6 6'/%3E%3Cpath d='m9 9 6 6'/%3E%3C/svg%3E");
+  --platform-icon-warning: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E");
+  --platform-icon-success: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='m9 12 2 2 4-4'/%3E%3C/svg%3E");
+  --platform-icon-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 16v-4'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E");
+}
+
+html.login-pf .platform-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  background-color: currentColor;
+  -webkit-mask: var(--platform-icon) center / contain no-repeat;
+  mask: var(--platform-icon) center / contain no-repeat;
+}
+
+html.login-pf .platform-icon--error {
+  --platform-icon: var(--platform-icon-error);
+}
+
+html.login-pf .platform-icon--warning {
+  --platform-icon: var(--platform-icon-warning);
+}
+
+html.login-pf .platform-icon--success {
+  --platform-icon: var(--platform-icon-success);
+}
+
+html.login-pf .platform-icon--info {
+  --platform-icon: var(--platform-icon-info);
+}
+
+/* 入力の中のエラーアイコン（kcInputErrorIconClass）。 */
+html.login-pf .pf-v5-c-form-control__icon.pf-m-status {
+  color: var(--color-danger);
+}
+
+/* ── そのほかの画面の部品（OTP のデバイス選択・認証方法の選択・コードの複写） ─────────────── */
+html.login-pf .pf-v5-c-tile {
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  color: var(--color-fg);
+}
+
+html.login-pf .pf-v5-c-tile::before {
+  border: 0;
+}
+
+html.login-pf .pf-v5-c-tile.pf-m-selected {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+html.login-pf .pf-v5-c-data-list,
+html.login-pf .pf-v5-c-data-list__item {
+  background: transparent;
+  border-color: var(--color-divider);
+  color: var(--color-fg);
+}
+
+html.login-pf .pf-v5-c-data-list__item:hover {
+  background: color-mix(in srgb, var(--color-fg) 4%, transparent);
+}
+
+html.login-pf .pf-v5-c-clipboard-copy__expandable-content,
+html.login-pf pre,
+html.login-pf code {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-mono);
+  border-radius: var(--radius-sm);
+}
+
+html.login-pf hr {
+  border: 0;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--color-divider) 48px,
+    var(--color-divider) calc(100% - 48px),
+    transparent
+  );
+}
+
+/* 狭い画面: 枠の余白を詰める（モックはカード幅 392px）。 */
+@media (max-width: 30rem) {
+  html.login-pf .pf-v5-c-login__container {
+    padding-inline: 1rem;
+  }
+
+  html.login-pf .pf-v5-c-login__header {
+    margin-block: 1.5rem 1rem;
+  }
 }

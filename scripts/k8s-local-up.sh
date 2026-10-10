@@ -457,18 +457,21 @@ fi
 apply_secret "$INFRA_NS" keycloak-realm-import "${realm_import_args[@]}"
 unset realm_import_mp realm_import_args
 
-# IADR-0261 (#438): realm.json の loginTheme/accountTheme=platform を解決するテーマ実体
+# IADR-0261 (#438) / IADR-0532 (SC-13〜16): realm.json の loginTheme/accountTheme/emailTheme=platform を解決するテーマ実体
 # （deploy/keycloak/themes/platform/）を ConfigMap 化する。deploy/local/infra/keycloak.yaml 側は
 # `optional: true` の fail-safe 参照のため、この ConfigMap が無くても Pod は起動するが、その場合
-# ログイン画面が「テーマが見つからない」500 になる（従来は deploy/local/README.md「手動でステップ
-# 実行する場合」の手動コマンドが必須だった。本行で自動配線し、手動手順の必要を無くす）。
-# キー名・items の対応は keycloak.yaml のマウント定義と一致させる（単一情報源はテーマ実ファイル）。
-kubectl create configmap keycloak-theme-platform -n "$INFRA_NS" \
-  --from-file=login-theme-properties=deploy/keycloak/themes/platform/login/theme.properties \
-  --from-file=login-css=deploy/keycloak/themes/platform/login/resources/css/platform.css \
-  --from-file=account-theme-properties=deploy/keycloak/themes/platform/account/theme.properties \
-  --from-file=account-css=deploy/keycloak/themes/platform/account/resources/css/platform.css \
+# ログイン画面が「テーマが見つからない」500 になる。
+# IADR-0532: テーマ配下の**全ファイル**を列挙して載せる（ファイルを足すたびにここを直さない）。キーは相対パスの `/` を `__` に
+# 置き換えたもの（ConfigMap のキーは `/` を持てない。ファイル名の `_`〔messages_ja 等〕と区別するため 2 個）。
+# keycloak.yaml の items（キー → パス）はこの規則の写しで、集合の一致は scripts/k8s-local-up.test.js が実ファイルから固定する。
+theme_args=()
+while IFS= read -r theme_file; do
+  theme_rel="${theme_file#deploy/keycloak/themes/platform/}"
+  theme_args+=(--from-file="${theme_rel//\//__}=${theme_file}")
+done < <(find deploy/keycloak/themes/platform -type f | LC_ALL=C sort)
+kubectl create configmap keycloak-theme-platform -n "$INFRA_NS" "${theme_args[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
+unset theme_args theme_file theme_rel
 
 # NFR-21, IADR-0471 (#1560): 日次バックアップ（deploy/local/platform-backup。永続化 overlay が取り込む）の受取人＝age の**公開鍵**。
 # 🔴 kustomize の外に置き、**与えられたときだけ**作り直す —— 既定の再実行で占位へ戻さないため（CronJob 側は optional で、

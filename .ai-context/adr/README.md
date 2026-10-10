@@ -609,3 +609,4 @@
 | [IADR-0529](./IADR-0529_org-doc-exposure-wiki-gate-and-mcp-list.md) | 露出の 3 属性を 3 つとも除外にした組織文書（AST の承認待ちの報告書のドラフト）は Wiki 同期から外し（既存ページは削除の伝播と同じ手順で撤去）、MCP の文書一覧からも外す。ID 指定の取得は SC-03 と同じく残す。述語は DocumentExposure に置き、組織文書への適用を各消費面の試験で固定する（#1879） | Accepted |
 | [IADR-0530](./IADR-0530_h2c-measurement-trigger-flags.md) | h2c の実測で画面から発火できない 4 経路を、既定無効の計測用の構成（helm `measurement.*`）で発火させる。L-4・D-3・D-2 は BFF に管理者限定の生成の口を構成の鍵があるときだけ載せ、N-1 は個人資料の定期処理の初回を前倒しする（#1887） | Accepted |
 | [IADR-0531](./IADR-0531_claude-5-5-model-migration.md) | Claude のモデル割当を 5.5 系（opus-5-5・sonnet-5-5・haiku-5-5）へ切り替える。旧 ID は切り戻し用に残し、haiku-5-5 の単価はプロンプト長の 2 段で持ち、用途別 effort を要求本文へ注入する（既定は rerank=low）。rerank の出力上限は 1024 へ上げる（#1875） | Accepted |
+| [IADR-0532](./IADR-0532_keycloak-theme-nocturne-parents-and-token-sync.md) | Keycloak の画面を SPA と同じ Nocturne へ揃える —— 親テーマを keycloak.v2 / keycloak.v3 へ改め、色は @platform/ui のトークンから生成して CI で同期を守る（テンプレートは複製しない・明暗は OS 設定に従う） | Accepted |

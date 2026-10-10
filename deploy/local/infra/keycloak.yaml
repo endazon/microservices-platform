@@ -6,7 +6,7 @@
 # （dev 以外のクラスタの初回の取り込みで公知の値のクライアントを作らない・消費側の Secret と食い違わない）。
 # 宣言のままの ConfigMap `keycloak-realms` は realm の後追い Job と申請の門が読む（こちらは変えない）。
 #
-# IADR-0261 (#438): realm.json に loginTheme/accountTheme=platform を投入済み。テーマの実体
+# IADR-0261 (#438) / IADR-0532: realm.json に loginTheme/accountTheme/emailTheme=platform を投入済み。テーマの実体
 # （deploy/keycloak/themes/platform/）は下記 ConfigMap `keycloak-theme-platform` としてマウントする。
 # ★ この ConfigMap は kustomize の外（root 外ファイル参照はセキュリティ上不可。上記 realm と同型の制約）
 # のため、`scripts/k8s-local-up.sh` の [3/7] ブロック（realm の ConfigMap・取り込み元の Secret の直後）が生成する
@@ -133,15 +133,33 @@ spec:
           configMap:
             name: keycloak-theme-platform
             optional: true # #438: k8s-local-up.sh が [3/7] で自動生成する。fail-safe のため未作成でも Pod は起動する
+            # IADR-0532: キーは相対パスの `/` を `__` に置き換えたもの（k8s-local-up.sh の生成規則）。テーマにファイルを
+            # 足したらここにも足す —— 実ファイル・生成キー・items の集合の一致は scripts/k8s-local-up.test.js が止める。
             items:
-              - key: login-theme-properties
-                path: login/theme.properties
-              - key: login-css
-                path: login/resources/css/platform.css
-              - key: account-theme-properties
-                path: account/theme.properties
-              - key: account-css
+              - key: account__resources__css__platform.css
                 path: account/resources/css/platform.css
+              - key: account__resources__css__tokens.css
+                path: account/resources/css/tokens.css
+              - key: account__resources__favicon.svg
+                path: account/resources/favicon.svg
+              - key: account__resources__logo.svg
+                path: account/resources/logo.svg
+              - key: account__theme.properties
+                path: account/theme.properties
+              - key: email__html__template.ftl
+                path: email/html/template.ftl
+              - key: email__theme.properties
+                path: email/theme.properties
+              - key: login__messages__messages_en.properties
+                path: login/messages/messages_en.properties
+              - key: login__messages__messages_ja.properties
+                path: login/messages/messages_ja.properties
+              - key: login__resources__css__platform.css
+                path: login/resources/css/platform.css
+              - key: login__resources__css__tokens.css
+                path: login/resources/css/tokens.css
+              - key: login__theme.properties
+                path: login/theme.properties
 ---
 apiVersion: v1
 kind: Service

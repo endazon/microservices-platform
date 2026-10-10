@@ -38,6 +38,10 @@
  * **ブランド適用だけが静かに外れる**。styles が挙げる css の欠落も同型で、404 を出すだけでログインは成功する。
  * したがって「テーマを実装した」ことは realm.json の 1 行では担保されず、実体との突合が要る。
  * 併せて parent の宣言（テンプレート非複製の方針）と、言語切替に要る i18n 設定も静的に確かめる。
+ * ［2026-10-10 / IADR-0532］parent が**その版の Keycloak に実在するか**も確かめる（KEYCLOAK_BUILTIN_THEMES）。
+ *   24 → 26.7.4（IADR-0524）で account 型の `keycloak` テーマが消え、`parent=keycloak` の account テーマは
+ *   「Failed to find ACCOUNT theme platform, using built-in themes」で**素の既定へ黙って落ちていた**（実測）。
+ *   宣言の有無だけを見ていた本検査はそれを通していた。対象の種別に `emailTheme` も加えた。
  *
  * 検査5: MFA が実効的に強制されているか、監査イベントが記録されるか（#438・IADR-0294）。
  * 背景: IADR-0197 が検査 3 を置いた時点で、同 IADR 自身が 2 つの未達を明記して #438 へ送っていた。
@@ -109,7 +113,24 @@ const REALM_DIR = 'deploy/keycloak';
 // テーマ実体の置き場（IADR-0261 決定 1）。realm の宣言と突き合わせる。
 const THEME_ROOT = 'deploy/keycloak/themes';
 // realm のテーマ宣言フィールド → テーマ種別のディレクトリ名。
-const THEME_FIELDS = { loginTheme: 'login', accountTheme: 'account' };
+const THEME_FIELDS = { loginTheme: 'login', accountTheme: 'account', emailTheme: 'email' };
+// Keycloak 本体が同梱するテーマ（種別ごと）。**版に依存する**ので、Keycloak を上げたら配布物の
+// `META-INF/keycloak-themes.json`（lib/lib/main の org.keycloak.keycloak-themes-<版>.jar と
+// org.keycloak.keycloak-account-ui-<版>.jar）で引き直す。下は 26.7.4（IADR-0524 / IADR-0532 で実測）。
+//   keycloak-themes: base = admin/account/login/email、keycloak = login/common/email/welcome、keycloak.v2 = login
+//   keycloak-account-ui: keycloak.v3 = account
+// 🔴 `keycloak` は 26 では account 型を持たない（24 までの v1/v2 アカウントコンソールは撤去済み）。
+const KEYCLOAK_VERSION_FOR_THEMES = '26.7.4';
+const KEYCLOAK_BUILTIN_THEMES = {
+  login: ['base', 'keycloak', 'keycloak.v2'],
+  account: ['base', 'keycloak.v3'],
+  email: ['base', 'keycloak'],
+};
+// 上の表を実測した版と、実際に起動するイメージの版を結ぶ（#1893 監査）。表は版に依存するのに、
+// イメージのタグだけを上げると表は古いまま緑を出し続ける（親テーマの解決の検査が静かに空回りする）。
+// 起動するイメージの宣言はこの 2 箇所である（compose と k8s ローカル）。どちらかのタグが定数と違えば落とす。
+const KEYCLOAK_IMAGE_MANIFESTS = ['deploy/docker-compose.yml', 'deploy/local/infra/keycloak.yaml'];
+const KEYCLOAK_IMAGE_RE = /^\s*(?:-\s*)?image:\s*["']?quay\.io\/keycloak\/keycloak:([^@"'\s]+)/gm;
 // Keycloak の該当カラムはいずれも varchar(255)。閾値は 1 箇所に集約する。
 const MAX_LEN = 255;
 
@@ -601,6 +622,16 @@ function collectThemeGaps(realm, reader, themeRoot = THEME_ROOT) {
     const parent = /^\s*parent\s*=\s*(\S+)\s*$/m.exec(text);
     if (!parent) {
       gaps.push({ path: props, detail: 'parent= の宣言がない。継承しないテーマは Keycloak 本体のテンプレート更新（セキュリティ修正・新フロー）から切り離される' });
+    } else {
+      // parent は本体の同梱テーマか、同じ置き場の自前テーマ（同じ種別の実体を持つもの）でなければ解決できない。
+      const builtin = KEYCLOAK_BUILTIN_THEMES[kind] || [];
+      const own = reader.exists(`${themeRoot}/${parent[1]}/${kind}/theme.properties`);
+      if (!builtin.includes(parent[1]) && !own) {
+        gaps.push({
+          path: props,
+          detail: `parent=${parent[1]} は Keycloak ${KEYCLOAK_VERSION_FOR_THEMES} に ${kind} 型として実在しない（同梱: ${builtin.join(' / ')}）。Keycloak は既定テーマへ黙って落ちる`,
+        });
+      }
     }
     const styles = /^\s*styles\s*=\s*(.+?)\s*$/m.exec(text);
     if (styles) {
@@ -623,6 +654,35 @@ function collectThemeGaps(realm, reader, themeRoot = THEME_ROOT) {
     }
     if (supported.length < 2) {
       gaps.push({ path: 'supportedLocales', detail: `internationalizationEnabled が true なのに supportedLocales が ${supported.length} 件しかない（切替先が無い）` });
+    }
+  }
+  return gaps;
+}
+
+// 同梱テーマの表（KEYCLOAK_BUILTIN_THEMES）を実測した版と、起動するイメージのタグの食い違いを列挙する。
+// マニフェストが無い・Keycloak のイメージ宣言が無い・タグが読めない場合も**黙って通さず**齟齬として返す
+// （0 件走査を緑にしない）。返り値は [{ path, detail }]。
+function collectKeycloakVersionGaps(reader, {
+  manifests = KEYCLOAK_IMAGE_MANIFESTS,
+  expected = KEYCLOAK_VERSION_FOR_THEMES,
+} = {}) {
+  const gaps = [];
+  const redo = `同梱テーマの表（KEYCLOAK_BUILTIN_THEMES）を新しい版の配布物の META-INF/keycloak-themes.json で引き直してから KEYCLOAK_VERSION_FOR_THEMES を合わせること`;
+  for (const rel of manifests) {
+    if (!reader.exists(rel)) {
+      gaps.push({ path: rel, detail: `Keycloak のイメージを宣言するマニフェストが無い（版の突合ができない）。置き場を変えたなら KEYCLOAK_IMAGE_MANIFESTS を直すこと` });
+      continue;
+    }
+    const text = reader.read(rel);
+    const tags = [...text.matchAll(KEYCLOAK_IMAGE_RE)].map((m) => m[1]);
+    if (tags.length === 0) {
+      gaps.push({ path: rel, detail: `quay.io/keycloak/keycloak のイメージタグが読めない（版の突合ができない）。${redo}` });
+      continue;
+    }
+    for (const tag of tags) {
+      if (tag !== expected) {
+        gaps.push({ path: rel, detail: `イメージタグ ${tag} が同梱テーマの表を実測した版 ${expected} と違う。${redo}` });
+      }
     }
   }
   return gaps;
@@ -1888,14 +1948,15 @@ function selfTest() {
     exists: (rel) => Object.prototype.hasOwnProperty.call(files, rel),
     read: (rel) => files[rel],
   });
-  const okTheme = 'parent=keycloak\nimport=common/keycloak\n\nstyles=css/login.css css/platform.css\n';
+  const okTheme = 'parent=keycloak.v2\nimport=common/keycloak\n\nstyles=css/styles.css css/platform.css\n';
+  const okAccountTheme = 'parent=keycloak.v3\n\nstyles=css/platform.css\n';
   const themedRealm = {
     loginTheme: 'platform', accountTheme: 'platform',
     internationalizationEnabled: true, supportedLocales: ['ja', 'en'], defaultLocale: 'ja',
   };
   const fullFiles = {
     'deploy/keycloak/themes/platform/login/theme.properties': okTheme,
-    'deploy/keycloak/themes/platform/account/theme.properties': okTheme,
+    'deploy/keycloak/themes/platform/account/theme.properties': okAccountTheme,
   };
 
   cases.push({
@@ -1906,7 +1967,7 @@ function selfTest() {
     name: 'テーマ: realm が指すのに実体が無いと検出する（既定テーマへ黙って落ちる事故）',
     pass: (() => {
       const g = collectThemeGaps(themedRealm, fakeReader({
-        'deploy/keycloak/themes/platform/account/theme.properties': okTheme,
+        'deploy/keycloak/themes/platform/account/theme.properties': okAccountTheme,
       }));
       return g.length === 1 && g[0].path === 'loginTheme';
     })(),
@@ -1918,6 +1979,29 @@ function selfTest() {
         'deploy/keycloak/themes/platform/login/theme.properties': 'styles=css/platform.css\n',
       }));
       return g.length === 2 && g.some((x) => /parent=/.test(x.detail)) && g.some((x) => /styles の/.test(x.detail));
+    })(),
+  });
+  cases.push({
+    name: 'テーマ: parent がその版の Keycloak に無い種別を検出する（26.7.4 の account に keycloak は無い。IADR-0532）',
+    pass: (() => {
+      const g = collectThemeGaps({ accountTheme: 'platform' }, fakeReader({
+        'deploy/keycloak/themes/platform/account/theme.properties': 'parent=keycloak\n',
+      }));
+      return g.length === 1 && /実在しない/.test(g[0].detail);
+    })(),
+  });
+  cases.push({
+    name: 'テーマ: parent が自前テーマ（同じ置き場・同じ種別の実体あり）なら解決できる',
+    pass: collectThemeGaps({ loginTheme: 'platform' }, fakeReader({
+      'deploy/keycloak/themes/platform/login/theme.properties': 'parent=corp\n',
+      'deploy/keycloak/themes/corp/login/theme.properties': 'parent=keycloak.v2\n',
+    })).length === 0,
+  });
+  cases.push({
+    name: 'テーマ: emailTheme も実体を突き合わせる（宣言だけで実体が無いと検出）',
+    pass: (() => {
+      const g = collectThemeGaps({ emailTheme: 'platform' }, fakeReader({}));
+      return g.length === 1 && g[0].path === 'emailTheme';
     })(),
   });
   cases.push({
@@ -1951,9 +2035,35 @@ function selfTest() {
       if (!fs.existsSync(realmPath)) return true; // realm が無い配布物では skip
       const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
       // 実データ側が「そもそも宣言していない」状態で緑になるのを防ぐ（0 件走査の門）。
-      if (realm.loginTheme !== 'platform' || realm.accountTheme !== 'platform') return false;
+      if (realm.loginTheme !== 'platform' || realm.accountTheme !== 'platform' || realm.emailTheme !== 'platform') return false;
       return collectThemeGaps(realm, diskReader()).length === 0;
     })(),
+  });
+
+  // 同梱テーマの表を実測した版とイメージタグの突合（#1893 監査）。
+  const kcImage = (tag) => `services:\n  keycloak:\n    image: quay.io/keycloak/keycloak:${tag}@sha256:${'0'.repeat(64)}\n`;
+  const kcManifests = ['a.yml', 'b.yaml'];
+  cases.push({
+    name: 'テーマの版: 両マニフェストのタグが表の版と一致すれば齟齬なし（陽性対照）',
+    pass: collectKeycloakVersionGaps(fakeReader({ 'a.yml': kcImage('26.7.4'), 'b.yaml': `      containers:\n        - name: keycloak\n          image: quay.io/keycloak/keycloak:26.7.4\n` }), { manifests: kcManifests, expected: '26.7.4' }).length === 0,
+  });
+  cases.push({
+    name: 'テーマの版: 片方のタグだけ上げると検出する（表の引き直しを促す）',
+    pass: (() => {
+      const g = collectKeycloakVersionGaps(fakeReader({ 'a.yml': kcImage('26.8.0'), 'b.yaml': kcImage('26.7.4') }), { manifests: kcManifests, expected: '26.7.4' });
+      return g.length === 1 && g[0].path === 'a.yml' && /26\.8\.0/.test(g[0].detail) && /引き直/.test(g[0].detail);
+    })(),
+  });
+  cases.push({
+    name: 'テーマの版: タグが読めない・マニフェストが無いと黙って通さない（fail-loud）',
+    pass: (() => {
+      const g = collectKeycloakVersionGaps(fakeReader({ 'a.yml': 'services:\n  keycloak:\n    image: example/other:1\n' }), { manifests: kcManifests, expected: '26.7.4' });
+      return g.length === 2 && g[0].path === 'a.yml' && /読めない/.test(g[0].detail) && g[1].path === 'b.yaml' && /無い/.test(g[1].detail);
+    })(),
+  });
+  cases.push({
+    name: 'テーマの版: 実データの 2 マニフェストのタグが表の版と一致する（実データ・ラチェット）',
+    pass: collectKeycloakVersionGaps(diskReader()).length === 0,
   });
 
   // --- 検査5（MFA の実効的な強制・監査イベント。#438 / IADR-0294）------------------
@@ -2997,11 +3107,14 @@ function main() {
   const totalMachineGaps = results.reduce((n, r) => n + r.machineGaps.length, 0);
   const totalSecretGaps = results.reduce((n, r) => n + r.secretGaps.length, 0);
   const totalAudienceGaps = results.reduce((n, r) => n + r.audienceGaps.length, 0);
+  // 同梱テーマの表の版とイメージタグの突合は realm に依らないので、ファイルごとではなく 1 回だけ見る。
+  const versionGaps = collectKeycloakVersionGaps(diskReader());
   if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0
     && totalMfaGaps === 0 && totalMailGaps === 0 && totalRelayGaps === 0
     && totalServerUrlGaps === 0 && totalConcealGaps === 0 && totalSaRoleGaps === 0
-    && totalMachineGaps === 0 && totalSecretGaps === 0 && totalAudienceGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / 利用者が利用者名を選べる宣言 / profile を既定に持たないログイン経路のクライアント / 利用者名以外から出す preferred_username / 利用者名の落ちる軽量アクセストークン）・開発用の形でない client シークレット・platform の audience を載せるクライアントの範囲の逸脱はありません。`);
+    && totalMachineGaps === 0 && totalSecretGaps === 0 && totalAudienceGaps === 0
+    && versionGaps.length === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / 利用者が利用者名を選べる宣言 / profile を既定に持たないログイン経路のクライアント / 利用者名以外から出す preferred_username / 利用者名の落ちる軽量アクセストークン）・開発用の形でない client シークレット・platform の audience を載せるクライアントの範囲の逸脱・同梱テーマの表の版と Keycloak イメージタグの食い違いはありません。`);
     process.exit(0);
   }
 
@@ -3167,6 +3280,16 @@ function main() {
       + '\n要件の起点は #1846（計画への環流は planning#770）、実装側の記録は IADR-0523 です。');
   }
 
+  if (versionGaps.length > 0) {
+    console.error(`[check-realm-constraints] 同梱テーマの表（Keycloak ${KEYCLOAK_VERSION_FOR_THEMES} で実測）と起動する Keycloak イメージの版の食い違い ${versionGaps.length} 件を検出しました:`);
+    for (const g of versionGaps) {
+      console.error(`\n  ${g.path}: ${g.detail}`);
+    }
+    console.error('\n🔴 Keycloak を上げたら、同梱テーマの表（KEYCLOAK_BUILTIN_THEMES）を新しい版で引き直してください。'
+      + '\n表が古いままだと、本体から消えた parent を「実在する」と判定し、Keycloak が既定テーマへ黙って落ちても緑のままになります。'
+      + '\n引き直しの手順は表の直上の注記、実装側の記録は IADR-0532 です。');
+  }
+
   process.exit(1);
 }
 
@@ -3183,6 +3306,10 @@ module.exports = {
   checkRealmPolicyText,
   collectThemeGaps,
   checkRealmThemeText,
+  KEYCLOAK_BUILTIN_THEMES,
+  collectKeycloakVersionGaps,
+  KEYCLOAK_VERSION_FOR_THEMES,
+  KEYCLOAK_IMAGE_MANIFESTS,
   isServiceAccountUser,
   collectMfaAuditGaps,
   checkRealmMfaAuditText,

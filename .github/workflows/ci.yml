@@ -492,6 +492,24 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-realm-constraints.js
 
+      # SC-13〜16, ADR-0026 / ADR-0031, IADR-0532: Keycloak テーマ（deploy/keycloak/themes/platform）の色・角丸・フォントは
+      # SPA の共有 UI のトークン（src/packages/ui/src/styles.css）から生成する。生成物（tokens.css）が単一情報源と食い違う・
+      # メール外枠／アカウントのロゴの直書きの色がトークンの値でない・「このデバイスを記憶（N日）」が realm の記憶期間と違う・
+      # styles.css の明暗の対（明示ライト ⇔ system ライト／既定ダーク ⇔ 明示ダーク）が食い違う・テーマの platform.css に 16 進色がある
+      # のいずれでも exit 1。別オリジンで描かれる画面なので、手で写すと SPA の是正が届かず見た目だけが静かにずれる。
+      - name: Self-test Keycloak theme token generator
+        if: ${{ !cancelled() }}
+        run: node scripts/gen-keycloak-theme-tokens.js --self-test
+      - name: Check Keycloak theme tokens are in sync with @platform/ui
+        if: ${{ !cancelled() }}
+        run: node scripts/gen-keycloak-theme-tokens.js --check
+      # 08_data-egress-policy: テーマは利用者のブラウザが直接読む資源である。外部 CDN・Web フォント・解析を参照しないことを
+      # SPA の成果物と同じ検査器で走査する（テーマはビルド不要なので、ソースそのものが成果物）。--require で fail-closed。
+      # メールの外枠（.ftl）と HTML を値に持つ文言（messages_*.properties の loginTitleHtml 等）も走査対象に入る。
+      - name: Check Keycloak theme has no external egress
+        if: ${{ !cancelled() }}
+        run: node scripts/check-static-egress.js --require deploy/keycloak/themes
+
       # NFR, 計画 AST/ADR-0038 決定 3・フォローアップ 2, IADR-0434, Issue #1412:
       # 基盤レルムの宣言（正本）と AST 専用レルムの宣言（写し）のずれを突き合わせる。
       # 🔴 **このジョブは submodule を取得しない**（checkout に submodule 指定が無い）。したがって
