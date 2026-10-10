@@ -402,7 +402,7 @@ services:
     build:
       context: ..
       dockerfile: src/knowledge/backend/Services/ConversionService/Dockerfile
-    # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
+    # FR-15, IADR-0029, IADR-0017: 最小 HTTP サーフェス（［2026-10-10 / #1517］従前の自己申告 /internal/introspection は撤去し、自己申告は Grpc__Port の gRPC 面で行う）。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0462 フォローアップ 3 (#1537, #1255 経路 ⑤): 8081 は
     # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用。面は自己申告の読み取り 1 口だけ）。helm の grpcPort と
@@ -441,7 +441,7 @@ services:
     build:
       context: ..
       dockerfile: src/knowledge/backend/Services/IngestionService/Dockerfile
-    # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
+    # FR-15, IADR-0029, IADR-0017: 最小 HTTP サーフェス（［2026-10-10 / #1517］従前の自己申告 /internal/introspection は撤去し、自己申告は Grpc__Port の gRPC 面で行う）。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0462 (#1514, #1255 経路 ⑤): 8081 は
     # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用。面は自己申告の読み取り 1 口だけ）。helm の grpcPort と

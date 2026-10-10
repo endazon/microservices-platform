@@ -15,7 +15,7 @@
 //   ［2026-10-10 / #1255・[[IADR-0533]]］REST の受け口 `GET /internal/introspection` と、その収集は撤去した（#1517）。
 //
 // ■ 🔴 **扇形である。** 呼び出し元は構成情報 API（BFF）の 1 つ、宛先は構成
-//   （`Introspection:Services` / `Introspection:GrpcServices`）で開く。宛先ごとに
+//   （`Introspection:Services:<サービス名>`。値は h2c のアドレス。［2026-10-10 / #1517］旧 `Introspection:GrpcServices` から一本化）で開く。宛先ごとに
 //   同じ 1 つの rpc を実装するので、宛先が増えても proto は増えない。
 //
 // ■ 🔴 **proto3 に null は無い（IADR-0397 決定 5 ほか）。** REST の DTO が null を取り得るのは

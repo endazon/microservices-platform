@@ -110,6 +110,15 @@ issue: "#1255, #1517"
 - `BffSharedDocumentGrpcReadTests` の「REST と gRPC の応答が一致する」は**削除**した（REST が無く、器の既定のクライアントも
   gRPC になったので同値の対が成り立たない。性質は同クラスの `所有者への_gRPC_経路の応答に共有先の写しが載る` が持つ）。
 - `DocumentReadFailureLog.Folded` の引数 `grpc`（bool）を外し、輸送名は常に `grpc` を出す（WARN は残す）。
+- ［2026-10-10 追記・独立監査の指摘 🟡-1 / 🟡-2］
+  - **配備の配線**: `check-bff-downstreams.js` から service→service の呼び出し元を外したので、1:1 の gRPC 宛先の env を
+    helm・compose から 1 行消しても CI が赤くならなかった（起動は成功したまま UNAVAILABLE へ縮退する）。
+    呼び出し元 × キーの表を `EastWestGrpcDeploymentWiringTests`（Platform.Shared.Infrastructure.Tests）の 1 か所に置き、
+    helm の `services.<呼び出し元>` と compose の `<呼び出し元>` の両方に、各キーが宛先の `:8081` で入っていることを固定した。
+    逆向き（配備に在る `Services__*Grpc` がすべて表に載る）も固定する。変異（helm・compose で 1 行消す・ポートを 8080 にする）で赤になることを確かめた。
+  - **縮退の WARN**: REST 側の `…WarnTests` の撤去で #1378 の性質（縮退を無言で畳まない・WARN に利用者 ID・属性を載せない）の表明が消えた。
+    `AuthzScopeGrpcWarnTests` で 3 つの入口（`ResolveAsync` / `ResolveScopeAsync` / `TryResolveScopeAsync`）について、
+    輸送の失敗と宛先の未構成は WARN を出し、正当な deny と許可は出さず、WARN に利用者 ID・属性が載らないことを固定した（変異で確認）。
 
 ## 検証
 

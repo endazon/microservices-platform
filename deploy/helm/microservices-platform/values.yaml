@@ -391,7 +391,7 @@ services:
     pipelineSteps: true
     # FR-12, ADR-0015（Superseded by ADR-0106）: 正規化本文・資産をオブジェクトストレージへ保管する（書き込み側）。
     objectStorage: true
-    # FR-15, IADR-0029 (#142): 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
+    # FR-15, IADR-0029 (#142): 最小 HTTP サーフェス（［2026-10-10 / #1517］従前の自己申告 /internal/introspection は撤去し、自己申告は下の grpcPort の gRPC 面で行う）。
     # port を持つと Service が生成され BFF が到達できる。worker=true は HTTP ヘルスプローブを抑止する
     # （バックグラウンドワーカーは /health/* を持たず、可用性判定に HTTP プローブが不適なため）。
     port: 8080
@@ -436,7 +436,7 @@ services:
     pipelineSteps: true
     # FR-06: storage:// 本文をオブジェクトストレージから実取得する（読み取り側）。
     objectStorage: true
-    # FR-15, IADR-0029 (#142): 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
+    # FR-15, IADR-0029 (#142): 最小 HTTP サーフェス（［2026-10-10 / #1517］従前の自己申告 /internal/introspection は撤去し、自己申告は下の grpcPort の gRPC 面で行う）。
     # port を持つと Service が生成され BFF が到達できる。worker=true は HTTP ヘルスプローブを抑止する
     # （バックグラウンドワーカーは /health/* を持たず、可用性判定に HTTP プローブが不適なため）。
     port: 8080
