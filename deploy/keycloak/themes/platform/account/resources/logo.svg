@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 196 24" width="196" height="24" role="img" aria-label="汎用プラットフォーム">
+  <!-- SC-16 / IADR-0532: マストヘッドのブランド（SPA ヘッダの `.hf-brand` と同じ形: accent の 9px 角 ＋ 表示名）。
+       色は src/packages/ui/src/styles.css の意味トークンの値（ダーク既定・OS がライトならライト）。外部フォントは使わない。 -->
+  <style>
+    .mark { fill: #988cdb; }
+    .name { fill: #e9e9ed; font: 500 15px system-ui, -apple-system, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Noto Sans CJK JP', 'Meiryo', sans-serif; }
+    @media (prefers-color-scheme: light) {
+      .mark { fill: #5d5294; }
+      .name { fill: #1b1a17; }
+    }
+  </style>
+  <rect class="mark" x="1" y="7.5" width="9" height="9" rx="2"/>
+  <text class="name" x="19" y="17.5">汎用プラットフォーム</text>
+</svg>

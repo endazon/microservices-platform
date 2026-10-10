@@ -3,14 +3,14 @@ title: アカウント設定（Keycloak アカウントコンソール） 画面
 type: screen-spec
 status: completed
 created: 2026-08-23
-updated: 2026-08-28
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, SC-17, UC-05]
-adrs: [ADR-0026]
-iadrs: [IADR-0197, IADR-0261]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings]
+adrs: [ADR-0026, ADR-0031]
+iadrs: [IADR-0197, IADR-0261, IADR-0532]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20261010_sc13-keycloak-theme-nocturne]
 issues: [#438]
 -->
 
@@ -100,7 +100,7 @@ issues: [#438]
 | パスワード変更（最終変更日表示） | **する** | Keycloak 既定機能 | 同上 |
 | OTP デバイス管理（登録日表示・追加削除・再発行） | **する** | 必須アクションを realm へ登録済み。Keycloak 既定機能 | 同上 |
 | アクティブセッション一覧（個別・一括サインアウト） | **する** | Keycloak 既定機能 | 同上 |
-| ブランド適用 | **する** | `accountTheme=platform`（CSS 上書き。テンプレートは Keycloak 既定を継承） | 同上 |
+| ブランド適用 | **する**（**2026-10-10 に是正**） | `accountTheme=platform`（親は Keycloak 26 のアカウントコンソール。画面は複製せず、SPA のデザイントークンから生成した色と CSS・ロゴだけを持つ）。🔴 **それ以前は親が Keycloak 26 に実在せず、素の既定テーマへ黙って落ちていた**（Keycloak のログに `Failed to find ACCOUNT theme platform`。版を上げた時点で壊れた）。親の実在は realm の検査器が版ごとの表で確かめる | 同上 |
 | 共通シェル適用外（左ナビ・チャット・パンくず無し） | **する** | 認証基盤ホストで別配信するため、基盤 SPA の共通シェルは元々及ばない | 同上 |
 
 ## 関連仕様
@@ -122,6 +122,11 @@ issues: [#438]
   （`keycloak-theme-platform`）の生成は `scripts/k8s-local-up.sh` の `[3/7]` に組み込まれた
   （[ワンタイムコード（OTP）](./SC-14_otp-mfa.md) の画面仕様書と同じ）。
   **実クラスタでの見た目確認のみ環境待ちで残る。**
+- 🔴 **［2026-10-10 実測］アカウントコンソールは realm の宣言のままでは API が 401 になり、画面が「何らかの問題が発生しました」で止まる。**
+  テーマとは独立の既存の不具合である（既定テーマに戻しても同じ）。手元の Keycloak 26.7.4 で確かめた原因は 3 つ:
+  ①realm が独自に定義した `roles` スコープに、audience の解決とクライアントロールの写像が無い ②`account-console` クライアントに
+  `basic` スコープ（`sub` を出す）が付かない ③利用者に `account` クライアントの `manage-account` が付かない（`defaultRole` 無し）。
+  realm の認可に関わる変更なので本件とは分けて扱う（見た目の確認は手元で 3 点を補って行った）。
 
 <!-- trace-table:
 row1: SC-13

@@ -608,17 +608,37 @@ ok('既定: llm-provider-credentials が手動 apply される（ESO 未設定�
 // [3/7] の realm ConfigMap（keycloak-realms）と同じ --from-file + --dry-run=client|apply の
 // 冪等パターンで、opt-in ではなく既定実行として自動生成する。
 
-ok('既定: keycloak-theme-platform ConfigMap が [3/7] で自動生成される（キー名が keycloak.yaml の items と対応）', () => {
+// IADR-0532: 期待集合は**実ファイルから**作る（テーマにファイルを足したのに配線を忘れる事故を止める）。
+// キー = テーマ直下からの相対パスの `/` を `__` に置き換えたもの（k8s-local-up.sh の生成規則の写し）。
+const THEME_DIR = 'deploy/keycloak/themes/platform';
+function themeFiles() {
+  const out = [];
+  const walk = (rel) => {
+    for (const ent of fs.readdirSync(path.join(REPO_ROOT, rel), { withFileTypes: true })) {
+      const child = `${rel}/${ent.name}`;
+      if (ent.isDirectory()) walk(child);
+      else out.push(child.slice(THEME_DIR.length + 1));
+    }
+  };
+  walk(THEME_DIR);
+  return out.sort();
+}
+const themeKey = (rel) => rel.split('/').join('__');
+
+ok('既定: keycloak-theme-platform ConfigMap が [3/7] でテーマ配下の全ファイルから自動生成される（IADR-0532）', () => {
   const line = DEFAULT.lines.find((l) => l.startsWith('kubectl create configmap keycloak-theme-platform '));
   assert.ok(line, 'keycloak-theme-platform の configmap create が発行されない');
-  for (const kv of [
-    'login-theme-properties=deploy/keycloak/themes/platform/login/theme.properties',
-    'login-css=deploy/keycloak/themes/platform/login/resources/css/platform.css',
-    'account-theme-properties=deploy/keycloak/themes/platform/account/theme.properties',
-    'account-css=deploy/keycloak/themes/platform/account/resources/css/platform.css',
-  ]) {
+  const files = themeFiles();
+  // 陽性対照: 0 件走査で緑にしない（login / account / email の 3 種別の theme.properties が在ること）。
+  for (const kind of ['login', 'account', 'email']) {
+    assert.ok(files.includes(`${kind}/theme.properties`), `${THEME_DIR}/${kind}/theme.properties が無い`);
+  }
+  for (const rel of files) {
+    const kv = `${themeKey(rel)}=${THEME_DIR}/${rel}`;
     assert.ok(line.includes(`--from-file=${kv}`), `--from-file=${kv} が無い: ${line}`);
   }
+  const issued = line.match(/--from-file=/g) || [];
+  assert.strictEqual(issued.length, files.length, `--from-file の数（${issued.length}）がテーマの実ファイル数（${files.length}）と違う`);
 });
 
 ok('既定: keycloak-theme-platform は realm ConfigMap と同型の dry-run|apply 冪等パターンで適用される', () => {
@@ -710,12 +730,20 @@ ok('#1144: 捕捉用 MTA は既定（env 未設定）で rollout を待つ —�
   assert.ok(/^\s*-\s*mailpit\.yaml\s*$/m.test(kust), 'deploy/local/infra/kustomization.yaml に mailpit.yaml が無い');
 });
 
-ok('deploy/local/infra/keycloak.yaml: theme ConfigMap の items キーが k8s-local-up.sh の生成キーと一致する', () => {
+ok('deploy/local/infra/keycloak.yaml: theme ConfigMap の items（キー → パス）がテーマの実ファイルの集合と一致する（IADR-0532）', () => {
   const infraKc = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/keycloak.yaml'), 'utf8');
-  for (const key of ['login-theme-properties', 'login-css', 'account-theme-properties', 'account-css']) {
-    assert.ok(infraKc.includes(`key: ${key}`), `keycloak.yaml の items に key: ${key} が無い`);
-  }
   assert.ok(infraKc.includes('name: keycloak-theme-platform'), 'keycloak.yaml が参照する ConfigMap 名が keycloak-theme-platform でない');
+  const items = [...infraKc.matchAll(/- key: (\S+)\n\s+path: (\S+)/g)]
+    .map((m) => [m[1], m[2]])
+    .filter(([k]) => k.includes('__') || /theme|css|ftl|svg/.test(k));
+  const files = themeFiles();
+  // 1 本ずつ: 実ファイルはすべて items にあり、キーとパスの対応が生成規則どおり。余分な items も無い。
+  for (const rel of files) {
+    assert.ok(items.some(([k, p]) => k === themeKey(rel) && p === rel), `keycloak.yaml の items に ${themeKey(rel)} → ${rel} が無い`);
+  }
+  for (const [k, p] of items) {
+    assert.ok(files.includes(p), `keycloak.yaml の items の ${k} → ${p} はテーマに実在しない（キーが ConfigMap に無いと Pod が起動しない）`);
+  }
 });
 
 // --- apiserver OIDC フラグ不付与の回帰固定（IADR-0105 / #399） -----------------

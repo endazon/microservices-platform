@@ -683,15 +683,17 @@ kubectl create configmap keycloak-realms -n platform-infra \
 kubectl create secret generic keycloak-realm-import -n platform-infra \
   --from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json
 
-# #438: realm.json の loginTheme/accountTheme=platform を解決するテーマ実体
+# #438 / IADR-0532: realm.json の loginTheme/accountTheme/emailTheme=platform を解決するテーマ実体
 # （k8s-local-up.sh 経由なら自動生成される。ここは手動でステップ実行する場合の再現用）。
 # 作成しないまま Pod を起動しても keycloak.yaml 側は optional: true のため落ちないが、
 # その場合ログイン画面が「テーマが見つからない」で 500 になる。
-kubectl create configmap keycloak-theme-platform -n platform-infra \
-  --from-file=login-theme-properties=deploy/keycloak/themes/platform/login/theme.properties \
-  --from-file=login-css=deploy/keycloak/themes/platform/login/resources/css/platform.css \
-  --from-file=account-theme-properties=deploy/keycloak/themes/platform/account/theme.properties \
-  --from-file=account-css=deploy/keycloak/themes/platform/account/resources/css/platform.css \
+# テーマ配下の全ファイルを載せる。キーは相対パスの `/` を `__` に置き換えたもの（keycloak.yaml の items と同じ規則）。
+theme_args=()
+while IFS= read -r f; do
+  rel="${f#deploy/keycloak/themes/platform/}"
+  theme_args+=(--from-file="${rel//\//__}=$f")
+done < <(find deploy/keycloak/themes/platform -type f | LC_ALL=C sort)
+kubectl create configmap keycloak-theme-platform -n platform-infra "${theme_args[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 kubectl apply -k deploy/local/infra                                  # infra

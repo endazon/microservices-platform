@@ -3,14 +3,14 @@ title: ログイン（Keycloak 統合認証） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-26
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05, FR-05]
-adrs: [ADR-0026, ADR-0032, ADR-0078, ADR-0094, ADR-0106, ADR-0113]
-iadrs: [IADR-0197, IADR-0251, IADR-0261, IADR-0273, IADR-0347, IADR-0427, IADR-0429, IADR-0432, IADR-0461, IADR-0470]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1393_remove-platform-spa-public-client, 20260911_issue-1410_reset-timing-floor, 20260925_1499_object-storage-seaweedfs, 20260926_1541_timing-rank-sum-test]
+adrs: [ADR-0026, ADR-0032, ADR-0078, ADR-0094, ADR-0106, ADR-0113, ADR-0031]
+iadrs: [IADR-0197, IADR-0251, IADR-0261, IADR-0273, IADR-0347, IADR-0427, IADR-0429, IADR-0432, IADR-0461, IADR-0470, IADR-0532]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1393_remove-platform-spa-public-client, 20260911_issue-1410_reset-timing-floor, 20260925_1499_object-storage-seaweedfs, 20260926_1541_timing-rank-sum-test, 20261010_sc13-keycloak-theme-nocturne]
 issues: [#438, #1245, #1393, #1410, #1499, #1541]
 -->
 
@@ -115,7 +115,8 @@ flowchart LR
 | 5 回失敗で 15 分ロック | **する** | `bruteForceProtected` 等 | `ADR-0026` §パスワード・ロックアウト |
 | 「このデバイスを記憶（30 日）」 | **する** | `rememberMe` / セッション有効期間 | 同上 |
 | 言語切替 | **する** | `internationalizationEnabled` / `supportedLocales` | 計画側の画面設計 §ログイン |
-| ブランド適用（表示名・配色） | **する** | `loginTheme=platform`（CSS 上書き。テンプレートは Keycloak 既定を継承） | 同上 |
+| ブランド適用（表示名・配色） | **する** | `loginTheme=platform`（親は Keycloak 26 の既定ログインテーマ（PatternFly 5）。テンプレートは複製せず、SPA のデザイントークンから生成した色と CSS・計画が文言を定めたメッセージだけを持つ。明暗は OS 設定に従う）。SPA と同じ地の色・面・枠・accent・角丸・システムフォント。状態表示は色＋アイコン（Lucide）＋文言 | 同上 |
+| 失敗時の文言「社員ID またはパスワードが正しくありません」・識別子のラベル・「このデバイスを記憶（30日）」 | **する** | テーマのメッセージ（ja / en）。日数は realm の記憶期間と一致することを生成器の `--check` が確かめる。文言は実在・非実在の両側に同じく効く（存在秘匿の 3 面を変えない） | 同上 |
 | 未認証アクセス・セッション期限切れのリダイレクトと復帰 | **する** | Keycloak 既定挙動（OIDC 標準フロー） | 同上 |
 
 ## 存在秘匿の測り方

@@ -1,0 +1,49 @@
+/*
+ * 生成物 —— 手で編集しない。`node scripts/gen-keycloak-theme-tokens.js` が
+ * src/packages/ui/src/styles.css（SPA の共有 UI のトークン。IADR-0435）から作る。CI が --check で差分を止める（IADR-0532）。
+ *
+ * SPA と同じく既定はダーク、OS がライトならライト（prefers-color-scheme）。Keycloak は別オリジンのため
+ * SPA の「表示」切替（localStorage）は届かない。OS 設定に従う＝SPA の既定（system）と同じ振る舞いである。
+ */
+:root {
+  color-scheme: dark light;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Noto Sans CJK JP', 'Meiryo', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --color-bg: #161826;
+  --color-surface: #232532;
+  --color-surface-muted: #292b31;
+  --color-border: #3f424d;
+  --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+  --color-fg: #e9e9ed;
+  --color-fg-muted: #9397ab;
+  --color-brand: #988cdb;
+  --color-brand-fg: #161826;
+  --color-accent: #988cdb;
+  --color-accent-soft: #2b2741;
+  --color-success: oklch(0.74 0.09 152);
+  --color-warning: oklch(0.79 0.1 85);
+  --color-danger: oklch(0.7 0.13 20);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --color-bg: #f3f5fe;
+    --color-surface: #ffffff;
+    --color-surface-muted: #e4e7f5;
+    --color-border: #cfd3e5;
+    --color-divider: color-mix(in srgb, #1b1a17 14%, transparent);
+    --color-fg: #1b1a17;
+    --color-fg-muted: #595d6c;
+    --color-brand: #5d5294;
+    --color-brand-fg: #ffffff;
+    --color-accent: #5d5294;
+    --color-accent-soft: #e7e5fe;
+    --color-success: #2e6b4e;
+    --color-warning: #8a6210;
+    --color-danger: #a3432e;
+  }
+}

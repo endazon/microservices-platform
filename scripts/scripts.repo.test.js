@@ -8512,6 +8512,9 @@ ${r.stderr}`);
           'gen-changelog.js',
           'gen-openapi-skeleton.js',
           'gen-knowledge-graph.js',
+          // SC-13〜16 / IADR-0532: Keycloak テーマの tokens.css を @platform/ui のトークンから**生成**する。引数なしで走らせると
+          // ファイルを書くので、検査器として spawn される母集合に入れてはならない（`--check` は CI の専用ステップが走らせる）。
+          'gen-keycloak-theme-tokens.js',
           'measure-abac-combinations.js',
           // #336 / IADR-0422: 検索の関連性（nDCG@10）の**測定器**。`measure-abac-combinations.js` と
           // 同じ扱いで、判定を返さない（数字を出す）。走らせると検索 API を叩きに行くので、

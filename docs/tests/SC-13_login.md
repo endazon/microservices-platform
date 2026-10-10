@@ -3,14 +3,14 @@ title: ログイン画面 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-23
-updated: 2026-09-26
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [SC-13, SC-15, SC-16, UC-05, FR-05]
-adrs: [ADR-0026, ADR-0078, ADR-0094, ADR-0113]
-iadrs: [IADR-0197, IADR-0261, IADR-0347, IADR-0427, IADR-0432, IADR-0470]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1410_reset-timing-floor, 20260926_1541_timing-rank-sum-test]
+adrs: [ADR-0026, ADR-0078, ADR-0094, ADR-0113, ADR-0031]
+iadrs: [IADR-0197, IADR-0261, IADR-0347, IADR-0427, IADR-0432, IADR-0470, IADR-0532]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260911_issue-1245_login-existence-disclosure, 20260911_issue-1410_reset-timing-floor, 20260926_1541_timing-rank-sum-test, 20261010_sc13-keycloak-theme-nocturne]
 issues: [#438, #1245, #1410, #1541]
 -->
 
@@ -66,11 +66,19 @@ ID プロバイダは既定テーマへ**黙って落ちる**。画面は出る�
 | T-05 | 既定ロケールが対応ロケールに無い | 突合する | **検出する**（既定言語へ落ちる） | 言語切替（境界） | 自動 |
 | T-06 | 対応ロケールが 1 つしか無い | 突合する | **検出する**（切替先が無い） | 言語切替（境界） | 自動 |
 | T-07 | i18n が無効 | 突合する | **検出しない**（無効化は正当な選択） | 偽陽性を出さない | 自動 |
-| T-08 | 実データの realm とテーマ群 | 突合する | 齟齬 0 件。**かつ realm が既定でなく自前テーマを指している**ことを先に確かめる | 実データのラチェット | 自動 |
+| T-08 | 実データの realm とテーマ群 | 突合する | 齟齬 0 件。**かつ realm が既定でなく自前テーマを指している**（ログイン・アカウント・メールの 3 種別）ことを先に確かめる | 実データのラチェット | 自動 |
+| T-09 | 親がその版の ID プロバイダに実在しない（例: アカウント種別の親に、その版では消えた旧テーマ） | 突合する | **検出する**（既定テーマへ黙って落ちる。版上げで実際に起きた） | 宣言が実体と一致する | 自動 |
+| T-10 | 親が同じ置き場の自前テーマ（同じ種別の実体あり） | 突合する | **検出しない**（解決できる） | 偽陽性を出さない | 自動 |
+| T-11 | メールのテーマ名を宣言しているが実体が無い | 突合する | **検出する** | 宣言が実体と一致する | 自動 |
+| T-12 | テーマの色の生成物が SPA のトークンと食い違う／メール外枠・ロゴの直書きの色がトークンの値でない／「このデバイスを記憶（N日）」が realm の記憶期間と違う | 生成器の `--check` | **exit 1**（自己試験は抽出・欠落・変異の 6 件） | SPA と同じ見た目（ずれを止める） | 自動 |
+| T-13 | テーマ配下の資源 | 外部取得の走査 | 外部オリジンの参照 0 件（Web フォント・CDN・解析を使わない） | データ送信ポリシー | 自動 |
+| T-14 | ライト／ダーク × 日本語／英語のログイン・失敗・リセット申請・送信済み・ワンタイムコード・パスワード更新・アカウント設定・リセットメール | ID プロバイダを手元で起動してスクリーンショットを撮る | SPA と同じ地の色・面・枠・accent・角丸・フォント。状態表示が色＋アイコン＋文言 | SPA と同じ見た目 | 手動 |
 
 ## 実装マッピング
 
-- `scripts/check-realm-constraints.js` の検査 4（`collectThemeGaps`）と、その自己試験 8 件（T-01〜T-08）
+- `scripts/check-realm-constraints.js` の検査 4（`collectThemeGaps`）と、その自己試験（T-01〜T-11）
+- `scripts/gen-keycloak-theme-tokens.js` の `--self-test` と `--check`（T-12）・`scripts/check-static-egress.js --require deploy/keycloak/themes`（T-13）
+- T-14 は版上げ・見た目の変更のたびに手で行う（手順は運用仕様書のテーマの節）
 - 検査本体は CI の静的検査ジョブが実データに対して走らせる
 
 ### T-08 について — 「0 件走査の門」

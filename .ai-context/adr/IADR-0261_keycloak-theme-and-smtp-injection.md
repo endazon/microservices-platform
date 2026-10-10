@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-13, SC-14, SC-15, SC-16, ADR-0026, ADR-0045]
 author: Claude（実装）
 created: 2026-08-23
-updated: 2026-09-06
+updated: 2026-10-10
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md
   - planning:projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md
@@ -87,6 +87,11 @@ issue #438 の残作業は 2026-08-21 時点で次の 2 点に絞られている
 > **反転したのは「`host`/`port`/`starttls` を realm.json へ静的投入しない」という細部だけ**であり、
 > 理由（分割された状態を作らない）は近接 MTA によって別の形で満たされる ——
 > realm 側の値はすべて非秘匿のクラスタ内 Service 名であり、実値は 1 つも混ざらない。詳細は [IADR-0404](./IADR-0404_nearby-mta-relay-and-realm-ownership.md)。
+
+> **［2026-10-10 追記 / IADR-0532］決定 1 の「親を `keycloak` とする」部分を改めた（CSS で揃えテンプレートを複製しない方針は維持）。**
+> Keycloak 26.7.4（IADR-0524）では `keycloak` は login 型では旧 v1（PatternFly 3）を指し、**account 型を持たない**。
+> account テーマは解決できず既定へ黙って落ちていた（実測）。親は login = `keycloak.v2`・account = `keycloak.v3`・email = `keycloak` とし、
+> 色は SPA のトークンから生成する。詳細は [IADR-0532](./IADR-0532_keycloak-theme-nocturne-parents-and-token-sync.md)。
 
 ## 理由
 
