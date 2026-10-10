@@ -14,9 +14,8 @@ namespace DocumentService.Infrastructure.ExternalServices;
 // [[IADR-0379]] 決定 4・5, [[IADR-0401]], [[IADR-0408]], [[IADR-0412]] 決定 5, [[IADR-0417]] 決定 9,
 // [[IADR-0419]] (#1255): NotificationService への送出アダプタの **gRPC 版**。
 //
-// **並走中の正は REST である。** 本実装は `Services:NotificationServiceGrpc` が構成されたときだけ
-// 登録され（`AddNotificationIngressGrpcClient`）、無ければ `HttpPrivateNoteNotifier` のままである。
-// 戻すのは構成を外すだけでよい（コードは変えない）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**REST の兄弟実装は撤去し、本実装が唯一の輸送である**（[[IADR-0379]] 決定 5
+// 「並走中の正は REST」を反転）。宛先が構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、下の縮退の枝へ落ちる。
 //
 // 🔴 **利用者の資格情報は載せない**（[[IADR-0379]] 決定 4）。載るのは本サービス自身の s2s トークンだけ
 // である。これが成立するのは、**この経路が現状も利用者の資格情報を運んでいない**からである ——
@@ -41,16 +40,18 @@ namespace DocumentService.Infrastructure.ExternalServices;
 // 逆に `UNAUTHENTICATED` / `PERMISSION_DENIED` を「不達」に入れないのも同じ理由である ——
 // **要求は届いており、拒んだのは受け口である**（realm の service account の配線漏れがここに出る）。
 //
-// ★ タイムアウト: REST 側は `HttpClient.Timeout = SendTimeout`（5 秒）で与えている。gRPC には
-// `HttpClient` が無いので **`deadline` で同じ 5 秒を与える**（`HttpPrivateNoteNotifier.SendTimeout` を
-// **そのまま引く** —— 値を書き写すと片方だけ動いたときに気付けない）。期限切れは
-// `RpcException(DeadlineExceeded)` であり、上の「不達」枝になる（REST の `TaskCanceledException` と同値）。
+// ★ タイムアウト: **`deadline` で 5 秒を与える**（`SendTimeout`。撤去した REST 実装の `HttpClient.Timeout` と同じ値を
+// 引き継いだ。業務処理を待たせないための値であり、通知の重要度ではなく呼び出し元の応答性から決めている）。
+// 期限切れは `RpcException(DeadlineExceeded)` であり、上の「不達」枝になる。
 public sealed class GrpcPrivateNoteNotifier(
     Pb.NotificationIngress.NotificationIngressClient client,
     PrivateNoteNotificationMetrics metrics,
     TimeProvider clock,
     ILogger<GrpcPrivateNoteNotifier> logger) : IPrivateNoteNotifier
 {
+    /// <summary>送出 1 回あたりの上限（既定の無期限にしない。受け口が応答しないと利用者の要求がその間止まる）。</summary>
+    public static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(5);
+
     public async Task NotifyAsync(string subject, string kind, DateTimeOffset occurredAt,
         int? count = null, int? thresholdPercent = null, DateTimeOffset? deadline = null,
         CancellationToken ct = default)
@@ -59,7 +60,7 @@ public sealed class GrpcPrivateNoteNotifier(
         {
             await client.AcceptAsync(
                 ToRequest(subject, kind, occurredAt, count, thresholdPercent, deadline),
-                deadline: clock.GetUtcNow().UtcDateTime.Add(HttpPrivateNoteNotifier.SendTimeout),
+                deadline: clock.GetUtcNow().UtcDateTime.Add(SendTimeout),
                 cancellationToken: ct);
 
             metrics.RecordDispatch(kind, PrivateNoteNotificationMetrics.OutcomeSent);
@@ -136,13 +137,14 @@ public static class NotificationIngressGrpcClientExtensions
     /// <summary>宛先ごとにチャネルを分けるための DI キー（[[IADR-0402]] 決定 6）。</summary>
     public const string ChannelKey = "NotificationServiceGrpc";
 
-    // 構成が無ければ**何も登録しない** —— 呼び出し元は登録の有無で REST 実装と gRPC 実装を選ぶ。
+    // ［2026-10-10 / #1255・[[IADR-0533]] 決定 2］**常に登録する。** 構成が無ければ、生成クライアントを常に `UNAVAILABLE` を返す
+    // 呼び出し器の上に組む（REST の兄弟実装は撤去した。呼び出し元は「届かない」の枝へ落ちる）。
     public static IServiceCollection AddNotificationIngressGrpcClient(
         this IServiceCollection services, IConfiguration config)
     {
         var address = config[AddressKey];
         if (string.IsNullOrWhiteSpace(address))
-            return services;
+            return services.TryAddUnconfiguredGrpcClient(AddressKey, ci => new Pb.NotificationIngress.NotificationIngressClient(ci));
 
         // 🔴 **DocumentService が east-west gRPC の「呼び出し元」になるのはこれが最初である。**
         // 従前は受け口（`DocumentRead` / `DocumentTagWrite` / `TagDictionary`）しか持っておらず、

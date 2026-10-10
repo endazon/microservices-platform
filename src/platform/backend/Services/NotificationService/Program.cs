@@ -93,7 +93,7 @@ app.MapNotificationIngressEndpoints();
 // FR-22, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0419]] (#1255):
 // 同じ受け口の east-west gRPC 面。**本体（NotificationIngress.AcceptAsync）は上の REST と共有**し、
 // 面は `ServiceCaller`（realm ロール platform-service）を要求する ——
-// **REST の無認証の口はそのまま残す**（並走中の正は REST。切替は呼び出し元の構成 1 つで行う）。
+// **REST の無認証の口はそのまま残す**（［2026-10-10 / #1255・[[IADR-0533]]］east-west の REST 呼び出し元は撤去した。受け口の撤去は残余）。
 app.MapGrpcService<NotificationIngressGrpcService>();
 
 app.Run();

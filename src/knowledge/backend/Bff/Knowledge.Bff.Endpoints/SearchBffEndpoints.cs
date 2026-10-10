@@ -151,9 +151,9 @@ public static class SearchBffEndpoints
                 return Results.Ok(new AttributeValuesResponse([], dictionary));
 
             // FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1,
-            // [[IADR-0379]] 決定 5, [[IADR-0410]], [[IADR-0416]], [[IADR-0417]] (#1255):
-            // **gRPC 経路が登録されていればそちらで引く**（`Services:RetrievalServiceGrpc` の有無だけで
-            // 決まる。**並走中の正は REST** であり、戻すのは構成を外すだけでよい）。
+            // [[IADR-0410]], [[IADR-0416]], [[IADR-0417]], [[IADR-0533]] (#1255):
+            // **east-west gRPC で引く**（［2026-10-10］REST `POST /search/attribute-values` の並走は撤去した。
+            // `Services:RetrievalServiceGrpc` が無ければ常に `UNAVAILABLE` を受け取り、下の「不達」の枝で空の候補へ落ちる）。
             //
             // 🔴 **運ぶのは利用者文脈だけであり、上で解決した `scope` は運ばない**
             // （[[IADR-0410]] / [[IADR-0417]] 決定 2）。受け口は受け取った文脈で**自分で**
@@ -164,78 +164,38 @@ public static class SearchBffEndpoints
             //
             // 🔴 **上の `scope is null` の早期 return は残す。** 判定の位置を動かさないためではなく、
             // **認可サービスが不調なときに後段を呼ばない**という現行の振る舞いを変えないためである。
-            var grpc = http.RequestServices?.GetService<AttributeValuesGrpcClient>();
-            if (grpc is not null)
-            {
-                try
-                {
-                    var viaGrpc = await grpc.ListValuesAsync(req.Key, http.User, ct);
-                    // 後段は辞書を知らない。**辞書は BFF がここで添える**（IADR-0152 決定 3）。
-                    return Results.Ok(new AttributeValuesResponse(viaGrpc, dictionary));
-                }
-                // 🔴 **REST が持っている 2 つの枝を潰さない**（[[IADR-0417]] 決定 9）。
-                // REST は「後段が返した非 2xx」を**透過**し、「後段へ到達できない」ときだけ
-                // 空配列へ縮退する —— **障害を 200 空応答で隠さない**という判断であり、
-                // 輸送を替えたついでに畳むと運用側が後段の不調に気づけなくなる。
-                // gRPC はどちらも `RpcException` に畳むので、**status で分け直す。**
-                // 🔴 #1646: **呼び出し元（要求）の取り消しは 502 へ畳まない。** 本物のチャネルは取り消しを
-                // `RpcException(Cancelled)` で投げる（`ThrowOperationCanceledOnCancellation` は既定の false）ので、
-                // 下の無条件の `catch (RpcException)` へ落ちて「後段が答えた上での失敗」になっていた。
-                // 判定は status ではなく呼び出し元の ct で行う（後段が返した `CANCELLED` は従来どおり 502）。
-                catch (Exception) when (ct.IsCancellationRequested)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    throw;
-                }
-                catch (Exception ex) when (IsRetrievalUnreachable(ex, ct))
-                {
-                    // 不達（`UNAVAILABLE` / `DEADLINE_EXCEEDED`）と s2s トークンの取得失敗。
-                    return Results.Ok(new AttributeValuesResponse([], dictionary));
-                }
-                catch (RpcException)
-                {
-                    // 後段が**答えた上での**失敗（`INTERNAL` / `PERMISSION_DENIED` / `INVALID_ARGUMENT` 等）。
-                    // 🔴 元の HTTP 状態番号は輸送を跨いで再現できない ——
-                    // 守るのは「200 空応答にしない」ことである。
-                    return Results.StatusCode(StatusCodes.Status502BadGateway);
-                }
-            }
-
-            var retrievalClient = httpFactory.CreateClient("RetrievalService");
-
-            // 🔴 FR-04, FR-05, NFR-09, SC-01, SC-08, ADR-0034, [[IADR-0416]] (#1343):
-            // **利用者の `Authorization` を後段へ伝播する**（検索と同じ方式 A）。
-            // 受け口（RetrievalService）は #1342 から**自分で** ABAC スコープを解決し、
-            // **未認証は認可サービスへ問い合わせずに deny する**。伝播しないと、
-            // 本文の `Scope` が何であれ**候補は全利用者で常に空**になる（SC-01 / SC-08 の
-            // 対象範囲フィルタに選択肢が 1 つも出ない）。**無ければ付けない** ——
-            // BFF がトークンを捏造せず、縮退の判断と警告は受け口側が一元で持つ。
-            //
-            // 🔴 **`CreateClient` は毎回新しい `HttpClient` を返す。** 上の検索の枝で付けた
-            // ヘッダはここへは来ない —— **同じ後段でも口ごとに付ける必要がある**。
-            var valuesAuth = http.Request.Headers.Authorization.ToString();
-            if (!string.IsNullOrEmpty(valuesAuth))
-                retrievalClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", valuesAuth);
-
+            var grpc = http.RequestServices.GetRequiredService<AttributeValuesGrpcClient>();
             try
             {
-                // **クライアントが送ってきた Scope は使わない**（解決済みで置き換える）。
-                // #989 段 3: 契約型へ写して渡す。**Branches も運ばれる**（段 3 完了）——
-                // 後段の値集合照会も分岐間 OR で絞られる（候補と検索の一致。IADR-0151 決定 1）。
-                var resp = await retrievalClient.PostAsJsonAsync("/search/attribute-values",
-                    new AttributeValuesRequest(req.Key, scope.ToContractScope()), ct);
-                if (!resp.IsSuccessStatusCode)
-                    return Results.StatusCode((int)resp.StatusCode);
-
-                var result = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(ct);
+                var viaGrpc = await grpc.ListValuesAsync(req.Key, http.User, ct);
                 // 後段は辞書を知らない。**辞書は BFF がここで添える**（IADR-0152 決定 3）。
-                return Results.Ok(new AttributeValuesResponse(result?.Values ?? [], dictionary));
+                return Results.Ok(new AttributeValuesResponse(viaGrpc, dictionary));
             }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+            // 🔴 **REST が持っていた 2 つの枝を潰さない**（[[IADR-0417]] 決定 9）。
+            // REST は「後段が返した非 2xx」を**透過**し、「後段へ到達できない」ときだけ
+            // 空配列へ縮退していた —— **障害を 200 空応答で隠さない**という判断であり、
+            // 輸送を替えたついでに畳むと運用側が後段の不調に気づけなくなる。
+            // gRPC はどちらも `RpcException` に畳むので、**status で分け直す。**
+            // 🔴 #1646: **呼び出し元（要求）の取り消しは 502 へ畳まない。** 本物のチャネルは取り消しを
+            // `RpcException(Cancelled)` で投げる（`ThrowOperationCanceledOnCancellation` は既定の false）ので、
+            // 下の無条件の `catch (RpcException)` へ落ちて「後段が答えた上での失敗」になっていた。
+            // 判定は status ではなく呼び出し元の ct で行う（後段が返した `CANCELLED` は従来どおり 502）。
+            catch (Exception) when (ct.IsCancellationRequested)
             {
-                // **後段へ到達できないときだけ**空配列へ縮退する（検索と同じ扱い。存在秘匿を崩さない）。
-                // **後段が返した非 2xx は上で透過済み**である —— 障害を 200 空応答で隠さない。
+                ct.ThrowIfCancellationRequested();
+                throw;
+            }
+            catch (Exception ex) when (IsRetrievalUnreachable(ex, ct))
+            {
+                // 不達（`UNAVAILABLE` / `DEADLINE_EXCEEDED`）と s2s トークンの取得失敗。
                 return Results.Ok(new AttributeValuesResponse([], dictionary));
+            }
+            catch (RpcException)
+            {
+                // 後段が**答えた上での**失敗（`INTERNAL` / `PERMISSION_DENIED` / `INVALID_ARGUMENT` 等）。
+                // 🔴 元の HTTP 状態番号は輸送を跨いで再現できない ——
+                // 守るのは「200 空応答にしない」ことである。
+                return Results.StatusCode(StatusCodes.Status502BadGateway);
             }
         }).WithName("BffAttributeValues").Produces<AttributeValuesResponse>();
 

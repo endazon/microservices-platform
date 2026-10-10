@@ -142,7 +142,6 @@ public class RestServiceCallerGateTests(TestWebApplicationFactory factory)
     [Theory]
     [InlineData("/health/live")]
     [InlineData("/health/ready")]
-    [InlineData("/internal/introspection")]
     public async Task Operational_endpoints_stay_open(string path)
     {
         var resp = await factory.CreateAnonymousClient().GetAsync(path, TestContext.Current.CancellationToken);

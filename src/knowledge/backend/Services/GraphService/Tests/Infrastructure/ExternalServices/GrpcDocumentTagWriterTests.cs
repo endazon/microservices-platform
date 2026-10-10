@@ -77,8 +77,8 @@ public class GrpcDocumentTagWriterTests
             "利用者の資格情報は面を通らない —— 通ると呼び出し先が「利用者が直接呼んだ」と区別できない");
     }
 
-    // 🔴 T-04: **応答は REST の状態コードと 1:1 である**（`HttpDocumentTagWriterTests` の
-    // `Maps_the_document_service_status_to_an_outcome` と同じ母集合）。
+    // 🔴 T-04: **応答は旧 REST の状態コードと 1:1 である**（撤去した REST のアダプタの試験と同じ母集合。
+    // ［2026-10-10 / #1255］[[IADR-0533]]）。
     [Theory]
     [InlineData(Pb.TagWriteResult.Applied, TagWriteOutcome.Applied)]
     [InlineData(Pb.TagWriteResult.UnknownTag, TagWriteOutcome.UnknownTag)]
@@ -201,16 +201,16 @@ public class GrpcDocumentTagWriterTests
         fake.LastRequest.Should().BeNull("資格情報を発明して呼ばない");
     }
 
-    // 🔴 T-09 / T-10: **切替は構成の有無だけである**（登録関数を陽性・陰性の対で固定する）。
+    // 🔴 T-09 / T-10: **宛先の有無で登録の形が変わる**（未設定は UNAVAILABLE の呼び出し器。[[IADR-0533]] 決定 2。登録関数を陽性・陰性の対で固定する）。
     [Fact]
-    public void 宛先が未設定なら生成クライアントを登録しない()
+    public void 宛先が未設定でも届かない宛先として登録する()
     {
+        // ［2026-10-10 / #1255］[[IADR-0533]] 決定 2: 未設定でも生成クライアントは登録され、呼び出しは UNAVAILABLE で失敗する
+        // （従前は何も登録せず、`Program.cs` が REST 実装へ倒していた。REST 実装は撤去した）。
         var services = new ServiceCollection()
             .AddDocumentTagWriteGrpcClient(new ConfigurationBuilder().Build());
 
-        services.Should().NotContain(
-            d => d.ServiceType == typeof(Pb.DocumentTagWrite.DocumentTagWriteClient),
-            "未設定なら何も登録しない（REST のまま）");
+        services.Should().ContainSingle(d => d.ServiceType == typeof(Pb.DocumentTagWrite.DocumentTagWriteClient));
     }
 
     [Fact]

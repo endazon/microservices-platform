@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text;
 using AwesomeAssertions;
 using GraphService.Domain;
 using Platform.Shared.Contracts.Dtos;
@@ -13,8 +11,8 @@ namespace GraphService.Tests.Infrastructure.ExternalServices;
 
 // T-P1-05 —— FR-18, FR-11, ADR-0010, ADR-0025, ADR-0029, ADR-0034 決定 5, ADR-0075,
 // IADR-0104, IADR-0266 決定 6, IADR-0379, IADR-0400 (#1255):
-// 提案生成の gRPC 実装が、REST 実装と**同じ本文に同じ提案**を返し、**同じ枝で `[]` へ降りる**
-// ことを固定する。
+// 提案生成の gRPC 実装が、本文から提案を読み取り、縮退・輸送の失敗では `[]` へ降りることを固定する。
+// ［2026-10-10 / #1255］[[IADR-0533]]: REST 実装（`LlmGatewaySuggestionClient`）を撤去したので、REST との同値の表明は外した。
 //
 // 🔴 縮退の向きは埋め込みとは**逆**である（IADR-0400 決定 5）。埋め込みは輸送の失敗を例外のまま
 // 上げるが、提案は `[]` へ落とす —— REST 実装が非 2xx・HttpRequestException を `[]` にしており、
@@ -46,9 +44,9 @@ public class LlmGatewayGrpcSuggestionClientTests
     // 検出できなくなる —— 変異検査でそれを実測したので、DTO から写像を通す形へ改めた。
     private static Pb.CompleteResponse Gateway(
         bool sent = true, string text = ProposalJson, string stopReason = "end_turn") =>
-        LlmGrpcMapping.ToProto(RestGateway(sent, text, stopReason));
+        LlmGrpcMapping.ToProto(GatewayDto(sent, text, stopReason));
 
-    private static CompletionApiResponse RestGateway(
+    private static CompletionApiResponse GatewayDto(
         bool sent = true, string text = ProposalJson, string stopReason = "end_turn") => new(
             Text: text, Model: "claude-opus-5-5", InputTokens: 11, OutputTokens: 22,
             Sent: sent, Endpoint: "claude-managed", RoutingReason: "ok", StopReason: stopReason);
@@ -66,25 +64,6 @@ public class LlmGatewayGrpcSuggestionClientTests
         proposals.Should().ContainSingle();
         proposals[0].Kind.Should().Be("tag");
         proposals[0].TagValue.Should().Be("設計");
-    }
-
-    // T-P1-05 の本丸: **同じ JSON 本文で REST 実装と gRPC 実装の提案が一致する。**
-    // 読み取りを共通 static（SuggestionProposalParser）へ寄せたことの実効性でもある。
-    [Fact]
-    public async Task Rest_と_grpc_は同じ本文に同じ提案を返す()
-    {
-        var prompt = Prompt();
-        var grpc = await Client(Gateway()).ProposeAsync(prompt, TestContext.Current.CancellationToken);
-
-        // REST 側も**同じ DTO**から組む（本文を 2 つ書くと片方だけ直して「一致した」ことにできる）。
-        var restJson = System.Text.Json.JsonSerializer.Serialize(RestGateway(),
-            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-        var rest = await new LlmGatewaySuggestionClient(
-                new HttpClient(new StubHandler(restJson)) { BaseAddress = new Uri("http://llm-gateway") },
-                NullLogger<LlmGatewaySuggestionClient>.Instance)
-            .ProposeAsync(prompt, TestContext.Current.CancellationToken);
-
-        grpc.Should().BeEquivalentTo(rest);
     }
 
     // 🔴 IADR-0266 決定 6: **縮退した応答を根拠に使わない。**
@@ -150,13 +129,4 @@ public class LlmGatewayGrpcSuggestionClientTests
                 () => Status.DefaultSuccess, () => [], () => { });
     }
 
-    private sealed class StubHandler(string json) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json"),
-            });
-    }
 }

@@ -15,9 +15,9 @@ namespace Knowledge.Bff.Endpoints.Documents;
 // [[IADR-0009]], [[IADR-0041]], [[IADR-0045]], [[IADR-0379]], [[IADR-0402]] (#1255):
 // 文書台帳の読み取り 4 口（`knowledge.document.v1.DocumentRead`）の**呼び出し側**。
 //
-// **並走中の正は REST である。** 本クライアントは `Services:DocumentServiceGrpc` が構成された
-// ときだけ登録され（`AddDocumentReadGrpcClient`）、`DocumentBffEndpoints` は登録が在れば
-// こちらを使う。戻すのは構成を外すだけでよい（コードは変えない）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**読み取り 4 口の輸送は本クライアントだけである**（REST の並走は撤去した。
+// [[IADR-0379]] 決定 5「並走中の正は REST」を反転）。`Services:DocumentServiceGrpc` が構成されていなければ、
+// 生成クライアントは常に `UNAVAILABLE` を受け取る（`UnconfiguredGrpcDestination`。下の 4 通りの「引けなかった」の枝へ落ちる）。
 //
 // 🔴 **ここで縮退を畳まない。** 返すのは事実（「無い」＝`null` / 空、「引けなかった」＝例外）だけである。
 //   畳み方は**呼び出し元の call site ごとに違う**（[[IADR-0400]] 決定 5 / [[IADR-0401]] 決定 5 と同じ作法）——
@@ -27,8 +27,8 @@ namespace Knowledge.Bff.Endpoints.Documents;
 //     ・版履歴… 捕捉なし（**500**）。本文 null は `[]`
 //     ・特定版… 非 2xx は **404**、不達は捕捉なし（**500**）
 //   と**4 通りに割れている**。ここで 1 つに畳むと、どれか 1 つの枝が静かに変わる。
-//   したがって **REST の try/catch が在る場所へ `RpcException` を足す**形で写す
-//   （枝を新設せず、既存の枝の入口を広げる）。
+//   したがって **REST の try/catch が在った場所へ `RpcException` を足す**形で写した
+//   （枝を新設せず、既存の枝の入口を広げる。REST の枝は撤去済み）。
 //
 // 🔴 **利用者の資格情報は載せない**（[[IADR-0379]] 決定 4）。載るのは BFF 自身の s2s トークンだけである。
 //
@@ -118,14 +118,19 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
 
 public static class DocumentReadGrpcClientExtensions
 {
-    // `Services:DocumentServiceGrpc` が構成されたときだけ gRPC 経路を登録する。
-    // 未設定なら**何も登録せず**、`DocumentBffEndpoints` は REST のまま（並走中の正は REST）。
+    // `Services:DocumentServiceGrpc` の生成クライアントを登録する。［2026-10-10 / #1255・[[IADR-0533]]］**常に登録する** ——
+    // 未設定なら常に `UNAVAILABLE` を返す呼び出し器の上に組む（[[IADR-0533]] 決定 2。REST へ戻る経路は無い）。
     public static IServiceCollection AddDocumentReadGrpcClient(
         this IServiceCollection services, IConfiguration config)
     {
         var address = config[DocumentReadGrpcClient.AddressKey];
         if (string.IsNullOrWhiteSpace(address))
+        {
+            services.TryAddUnconfiguredGrpcClient(
+                DocumentReadGrpcClient.AddressKey, ci => new Pb.DocumentRead.DocumentReadClient(ci));
+            services.AddSingleton<DocumentReadGrpcClient>();
             return services;
+        }
 
         var maxReceive = ReadMaxReceiveMessageSize(config);
         services.AddPlatformServiceToken(config);

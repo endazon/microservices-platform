@@ -12,8 +12,8 @@ namespace McpServer.Tests.Infrastructure.ExternalServices;
 // 登録者の割当可能属性の **gRPC 実装に固有の性質**を固定する。
 //
 // 🔴 **「読み方」そのものはここで測らない。** 読み方（`RegistrarScopeReading`）は
-// `AuthorizationServiceRegistrarAttributesTests` の 19 件が**両輸送を通して**固定している
-// （同クラスの `ResolveAsync` が REST と gRPC の答えの一致を表明する）。
+// `RegistrarScopeReadingTests` が gRPC の輸送を通して固定している
+// （［2026-10-10 / #1255］[[IADR-0533]]: REST の輸送は撤去した。従前は同クラスが REST と gRPC の答えの一致を表明していた）。
 // ここに置くのは、REST 実装には存在しない性質 —— **何を送るか**と**輸送の失敗の落とし先**である。
 [Trait("TestKind", "Unit")]
 public class GrpcRegistrarAttributesTests
@@ -28,13 +28,13 @@ public class GrpcRegistrarAttributesTests
     private const string OpenScopeJson = """{"userId":"tanaka","allowedFilters":[],"granted":true}""";
 
     private static Platform.Shared.Contracts.Grpc.Authz.V1.ResolveScopeResponse OpenScope() =>
-        AuthorizationServiceRegistrarAttributesTests.ToProto(
+        RegistrarScopeReadingTests.ToProto(
             new AccessScopeResponse("tanaka", [], true));
 
     private static GrpcRegistrarAttributes Resolver(
         FakeUserDirectoryClient directory, FakeAuthzScopeClient scopes, string username = Registrar) =>
         new(FakeAuthzGrpc.Directory(directory), FakeAuthzGrpc.Scopes(scopes),
-            AuthorizationServiceRegistrarAttributesTests.Accessor(username),
+            RegistrarScopeReadingTests.Accessor(username),
             NullLogger<GrpcRegistrarAttributes>.Instance);
 
     // 🔴 T-P2-08: **登録者は自分自身の名前でしか引かない。**
@@ -158,7 +158,7 @@ public class GrpcRegistrarAttributesTests
     }
 
     // 陽性対照の駄目押し: 上の偽クライアントの組み立てが、REST 実装と同じ答えを返すこと。
-    // （`AuthorizationServiceRegistrarAttributesTests` の 19 件が同じ表明を毎回行うが、
+    // （`RegistrarScopeReadingTests` が同じ表明を毎回行うが、
     //   ここでも 1 本だけ明示的に置いて「器が壊れている」と「実装が違う」を分ける。）
     [Fact]
     public async Task 開いたスコープでは制約なしとして読める()

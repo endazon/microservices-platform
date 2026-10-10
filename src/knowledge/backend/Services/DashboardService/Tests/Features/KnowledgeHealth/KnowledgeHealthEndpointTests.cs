@@ -22,7 +22,7 @@ namespace DashboardService.Tests.Features.KnowledgeHealth;
 [Trait("TestKind", "Integration")]
 public class KnowledgeHealthEndpointTests
 {
-    // 🔴 送信側 GraphService.Infrastructure.ExternalServices.HttpKnowledgeHealthReporter.ObservationsPath の値。
+    // 🔴 送信側 旧 REST の `HttpKnowledgeHealthReporter.ObservationsPath`（［2026-10-10］撤去） の値。
     // **サービスを跨ぐため定数を共有できない**。**リテラルで持ち、一致を下のテストで固定する**
     // （`/internal/notifications` の送信側・受け口と同じ作法）。
     private const string ProducerObservationsPath = "/internal/knowledge-health/observations";
@@ -224,7 +224,7 @@ public class KnowledgeHealthEndpointTests
     public async Task 受け口のパスは生産者側の宣言と同じ値である()
     {
         ReportKnowledgeHealthEndpoint.ObservationsPath.Should().Be(ProducerObservationsPath,
-            "★ 送信側 HttpKnowledgeHealthReporter.ObservationsPath と 1 バイトでも違えば観測値は届かない"
+            "★ 送信側 旧 REST の `HttpKnowledgeHealthReporter.ObservationsPath`（［2026-10-10］撤去） と 1 バイトでも違えば観測値は届かない"
             + "（送出は fail-open のため、不一致は 404 のログにしか現れない）");
 
         var resp = await new TestWebApplicationFactory().CreateClient().PostAsJsonAsync(
@@ -284,7 +284,7 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        // HttpKnowledgeHealthReporter が PostAsJsonAsync へ渡す匿名オブジェクトと同じ形。
+        // 旧 REST の `HttpKnowledgeHealthReporter`（［2026-10-10］撤去） が PostAsJsonAsync へ渡す匿名オブジェクトと同じ形。
         const string body = """
             {"indicator":"orphan-documents","observations":[
               {"subjectKey":"11111111-1111-1111-1111-111111111111","docScope":null},
@@ -452,7 +452,7 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        // GraphService.Infrastructure.ExternalServices.HttpKnowledgeHealthReporter が組む本文。
+        // 旧 REST の `HttpKnowledgeHealthReporter`（［2026-10-10］撤去） が組む本文。
         var body = """
             {"indicator":"stale-documents",
              "observations":[{"subjectKey":"doc-1","docScope":null}],

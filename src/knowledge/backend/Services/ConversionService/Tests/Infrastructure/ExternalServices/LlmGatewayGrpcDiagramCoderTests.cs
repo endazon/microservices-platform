@@ -13,15 +13,16 @@ namespace ConversionService.Tests.Infrastructure.ExternalServices;
 
 // T-P1-08 —— FR-12, FR-11, ADR-0010, ADR-0012, ADR-0025, ADR-0029, ADR-0075,
 // IADR-0104, IADR-0379, IADR-0400 (#1255):
-// 図のコード化の gRPC 実装が、REST 実装と**同じゲートウェイ応答に同じ帰結**を返すことを
-// **4 経路すべて**（success / egress-denied / llm-refused / not-codeable）で固定する。
+// 図のコード化の gRPC 実装が、**4 経路すべて**（success / egress-denied / llm-refused / not-codeable）で
+// 経路ごとに違う帰結を返すことを固定する。
+// ［2026-10-10 / #1255］[[IADR-0533]]: REST 実装を撤去したので、REST との同値の Theory は撤去した（絶対値の表明だけが残る）。
+// REST 実装の単体試験の応答の読み取りと用途名の表明は `LlmGatewayGrpcDiagramCoderInterpretationTests` へ移した。
 //
 // 🔴 理由コード（`Reason`）まで一致させる。運用の集計は「何件がどの理由で画像保持になったか」で
 // 読むため、理由が輸送で割れると、gRPC へ切り替えた瞬間に集計が別物になる（例外は 1 つも出ない）。
 //
 // 🔴 輸送の失敗は例外にせず `Retain("llm-call-failed")` へ落とす（IADR-0400 決定 5）——
-// REST 実装が `EnsureSuccessStatusCode` の例外と接続失敗を同じ理由で画像保持にしているのと同じ枝。
-// 変換パイプラインを止めないための deny-by-default である。
+// 変換パイプラインを止めないための deny-by-default である（旧 REST 実装の非 2xx・接続失敗と同じ理由文字列）。
 [Trait("TestKind", "Unit")]
 public class LlmGatewayGrpcDiagramCoderTests
 {
@@ -31,11 +32,7 @@ public class LlmGatewayGrpcDiagramCoderTests
         new(new FakeClient(LlmGrpcMapping.ToProto(response)),
             NullLogger<LlmGatewayGrpcDiagramCoder>.Instance);
 
-    private static LlmGatewayDiagramCoder RestCoder(CompletionApiResponse response) =>
-        new(new HttpClient(new JsonStubHandler(response)) { BaseAddress = new Uri("http://llm-gateway:5007") },
-            NullLogger<LlmGatewayDiagramCoder>.Instance);
-
-    // 4 経路のゲートウェイ応答。**REST 実装の既存テストと同じ値**である。
+    // 4 経路のゲートウェイ応答。
     public static TheoryData<string, CompletionApiResponse> Paths() => new()
     {
         {
@@ -63,24 +60,7 @@ public class LlmGatewayGrpcDiagramCoderTests
         },
     };
 
-    // 🔴 T-P1-08 の本丸: **4 経路すべてで REST と gRPC の帰結（Coded / Language / Code / Reason）が一致する。**
-    [Theory]
-    [MemberData(nameof(Paths))]
-    public async Task Rest_と_grpc_は同じ応答に同じ帰結を返す(string path, CompletionApiResponse gateway)
-    {
-        var grpc = await Coder(gateway).CodeAsync(
-            Figure(), "internal", TestContext.Current.CancellationToken);
-        var rest = await RestCoder(gateway).CodeAsync(
-            Figure(), "internal", TestContext.Current.CancellationToken);
-
-        grpc.Coded.Should().Be(rest.Coded, "経路 {0}", path);
-        grpc.Language.Should().Be(rest.Language, "経路 {0}", path);
-        grpc.Code.Should().Be(rest.Code, "経路 {0}", path);
-        grpc.Reason.Should().Be(rest.Reason, "経路 {0}", path);
-    }
-
-    // 陽性対照つきの絶対値。上の同値だけだと「両方が同じように壊れている」場合に緑になる ——
-    // 4 経路が**それぞれ違う帰結**であることをここで固定する。
+    // 🔴 T-P1-08 の本丸: 4 経路が**それぞれ違う帰結**であることを絶対値で固定する（理由コードまで）。
     [Theory]
     [InlineData("success", true, null)]
     [InlineData("egress-denied", false, "egress-denied")]
@@ -227,15 +207,5 @@ public class LlmGatewayGrpcDiagramCoderTests
             Pb.CompleteRequest request, CallOptions options) =>
             new(Task.FromException<Pb.CompleteResponse>(exception), Task.FromResult(new Metadata()),
                 () => Status.DefaultSuccess, () => [], () => { });
-    }
-
-    private sealed class JsonStubHandler(CompletionApiResponse response) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
-            {
-                Content = System.Net.Http.Json.JsonContent.Create(response),
-            });
     }
 }

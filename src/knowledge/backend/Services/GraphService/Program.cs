@@ -73,16 +73,10 @@ builder.Services.AddOpenApi();
 // FR-17, ADR-0002, ADR-0033 決定 1: GraphService 専用 DbContext（DB-per-service）
 builder.Services.AddDbContext<GraphDbContext>(opt => opt.UseNpgsql(connStr));
 
-// FR-17, FR-05, NFR-09, ADR-0004, ADR-0034, 計画 ADR-0088 決定 2, [[IADR-0413]] (#1333):
-// ABAC 許可スコープの解決先（REST）。**登録は共有の 1 つの拡張が持つ** ——
-// WikiService / AiAnalysisService / Platform.Bff も同じものを呼ぶ。
-// 🔴 **スコープ解決専用のクライアントであり、s2s トークンが付く**（受け口が `ServiceCaller` を要る）。
-builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
-// FR-05, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0401 決定 1 (#1255):
-// ABAC スコープ解決の gRPC 経路。**並走中の正は REST である。**
-// `Services:AuthorizationServiceGrpc`（h2c のアドレス）が構成されたときだけ `AuthzScopeGrpcClient` が
-// 登録され、解決器は在ればそれを使う（無ければ上の名前つき HttpClient で REST のまま）。
-// 戻すのは構成を外すだけでよい（コードは変えない）。
+// FR-17, FR-05, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0034, ADR-0075, 計画 ADR-0088 決定 2,
+// IADR-0401 決定 1, [[IADR-0533]] (#1255): ABAC 許可スコープの解決は east-west gRPC だけで行う
+// （［2026-10-10］REST `POST /authz/scope` の並走は撤去した）。宛先 `Services:AuthorizationServiceGrpc` が
+// 構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、解決器は deny-by-default へ倒れる。
 builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 builder.Services.AddScoped<IGraphAccessResolver, GraphAccessResolver>();
 builder.Services.AddScoped<IGraphStore, EfGraphStore>();
@@ -108,19 +102,11 @@ builder.Services.AddScoped<IValidator<ListAiSuggestionsQuery>, ListAiSuggestions
 // 🔴 **LLM への送信は SuggestionPrompt（封）を通る経路しか無い。** 封の構築には
 // AuthorizedNode と AccessScopeResponse の両方が要る（IADR-0266 決定 1）。
 //
-// FR-18, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0400 (#1255): east-west gRPC への切替。
-// **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
-// 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま
-// （戻すのは構成を外すだけ。コードは変えない）。
+// FR-18, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0400, [[IADR-0533]] (#1255): 提案生成の輸送は east-west gRPC だけである
+// （［2026-10-10］REST の `LlmGatewaySuggestionClient` は撤去した）。`Services:LlmGatewayGrpc` が構成されていなければ
+// 生成クライアントは常に `UNAVAILABLE` を受け取り、提案は 0 件へ縮退する（越境も誤提案も起きない）。
 builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
-    builder.Services.AddSingleton<ISuggestionLlmClient, LlmGatewayGrpcSuggestionClient>();
-else
-    // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
-    builder.Services.AddHttpClient<ISuggestionLlmClient, LlmGatewaySuggestionClient>(c =>
-        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
-            ?? "http://llm-gateway:5010"))
-        .AddLlmGatewayServiceToken(builder.Configuration);
+builder.Services.AddSingleton<ISuggestionLlmClient, LlmGatewayGrpcSuggestionClient>();
 // FR-18, ADR-0051 決定 1, IADR-0380 (#1244): 類似度候補の供給元。
 //
 // 🔴 **既定は語の共起（TermOverlapSimilarityCandidateSource）である。** #1244 の実測で、供給元が
@@ -154,41 +140,20 @@ builder.Services.AddScoped<ISimilarityCandidateSource>(sp =>
 builder.Services.AddScoped<AiSuggestionGenerator>();
 
 // FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0364 (#1187 / #1014): DocumentService との
-// 2 本の経路 —— 生成段が引くタグ辞書（`/internal/tags/names`。本サービス自身が読む）と、
-// 承認の反映（`POST /documents/{id}/tags`。**承認者本人の資格を転送する**。サービスアカウントは持たない）。
+// 2 本の経路 —— 生成段が引くタグ辞書（本サービス自身が読む）と、承認の反映（**承認者本人の文脈を本文で運ぶ**）。
 //
-// 接続先は `Services:DocumentService`。既定 `http://document-service:8080` は compose・helm の
-// いずれでも Service 名・ポートと一致する（`DashboardService` と同じ形）。
-// `IHttpContextAccessor` は反映側が要求の `Authorization` を読むために要る（`RagOrchestrator` と同型）。
+// FR-18 / FR-05 / NFR-09 / NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1・3, [[IADR-0379]] 決定 4,
+// [[IADR-0402]] 決定 6, [[IADR-0410]], [[IADR-0412]], [[IADR-0533]] (#1255): 2 本とも east-west gRPC だけで呼ぶ
+// （［2026-10-10］REST の `HttpDocumentTagWriter`〔`POST /documents/{id}/tags`〕・`HttpTagDictionaryReader`
+// 〔`/internal/tags/names`〕は撤去した）。宛先は同じ 1 本の鍵 `Services:DocumentServiceGrpc` であり、
+// 構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取る（承認の反映は失敗、辞書は引けない扱い）。
+// 🔴 **後段が再判定する**（[[IADR-0044]]）—— 移行で変わったのは利用者文脈の運び方だけである。
+// `IHttpContextAccessor` は反映側が承認者の主体を読むために要る。
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddHttpClient(HttpDocumentTagWriter.ClientName, c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]
-        ?? "http://document-service:8080"));
-// FR-18 / FR-05 / NFR-09 / NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1・3,
-// [[IADR-0379]] 決定 4・5, [[IADR-0410]] (#1255): 承認の反映の east-west gRPC 経路。
-// **並走中の正は REST である。** `Services:DocumentServiceGrpc`（h2c のアドレス）が構成された
-// ときだけ生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ上の名前つき
-// HttpClient で REST のまま（戻すのは構成を外すだけ。コードは変えない）。
-// 🔴 **どちらの経路でも後段が再判定する**（[[IADR-0044]]）—— 変わるのは利用者文脈の運び方だけである。
 builder.Services.AddDocumentTagWriteGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[DocumentTagWriteGrpcClientExtensions.AddressKey]))
-    builder.Services.AddScoped<IDocumentTagWriter, GrpcDocumentTagWriter>();
-else
-    builder.Services.AddScoped<IDocumentTagWriter, HttpDocumentTagWriter>();
-// FR-18 / NFR-09 / NFR-16, ADR-0029, ADR-0075, ADR-0063 決定 2,
-// [[IADR-0364]] 決定 2, [[IADR-0379]] 決定 4・5, [[IADR-0402]] 決定 6, [[IADR-0412]] (#1255):
-// タグ辞書の読み取りの east-west gRPC 経路。**切替は上の書き込み側と同じ 1 本の鍵**
-// （`Services:DocumentServiceGrpc`）—— 宛先は同じ DocumentService であり、
-// 🔴 **1 つの宛先を 2 つの鍵で切り替えない**（片方だけ gRPC へ倒れる状態を作らないため）。
-//
-// 🔴 これで**名前つきクライアント `"DocumentService"` の共有が実際に解ける**。読み取りは
-// 資格情報を付けず、書き込みは承認者の文脈を運ぶ —— **意味論が逆のまま同じ HttpClient を
-// 共有していた**のが #1321 でこの経路を見送った理由であり、その危険はここで消える。
+builder.Services.AddScoped<IDocumentTagWriter, GrpcDocumentTagWriter>();
 builder.Services.AddTagDictionaryGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[TagDictionaryGrpcClientExtensions.AddressKey]))
-    builder.Services.AddScoped<ITagDictionaryReader, GrpcTagDictionaryReader>();
-else
-    builder.Services.AddScoped<ITagDictionaryReader, HttpTagDictionaryReader>();
+builder.Services.AddScoped<ITagDictionaryReader, GrpcTagDictionaryReader>();
 // 生成段で辞書外として落としたタグ提案の件数（0 が正常）。Meter は EdgeTypeFallbackMetrics と同じ。
 builder.Services.AddSingleton<TagSuggestionDropMetrics>();
 
@@ -223,35 +188,20 @@ builder.Services.AddScoped<ITagEdgeLocks>(sp =>
 // ナレッジ健全性の観測値の**生産者**。受け口（DashboardService）は #443 で実装済みだが、
 // **本番コードから送っている経路が 1 本も無かった**（呼んでいたのはテストだけ）。ここで塞ぐ。
 //
-// 接続先は `Services:DashboardService`。既定 `http://dashboard-service:8080` は compose・helm の
-// いずれでも Service 名・ポートと一致するため**上書きは要らない**（DocumentService →
-// notification-service と同じ形）。🔴 chart のキー `dashboard` を変えると Service 名が動き、
-// **fail-open のため 502 にすらならず静かに報告が止まる**。
-builder.Services.AddHttpClient(HttpKnowledgeHealthReporter.ClientName, c =>
-{
-    c.BaseAddress = new Uri(builder.Configuration["Services:DashboardService"]
-        ?? "http://dashboard-service:8080");
-    // 🔴 既定の 100 秒のままにしない —— 受け口が応答しないと定期処理がその間止まる。
-    c.Timeout = HttpKnowledgeHealthReporter.SendTimeout;
-});
-// FR-10 / NFR-09 / NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0408]] (#1255):
-// 観測値の報告の east-west gRPC 経路。**並走中の正は REST である。**
-// `Services:DashboardServiceGrpc`（h2c のアドレス）が構成されたときだけ生成クライアントが登録され、
-// そのときに限り gRPC 実装を使う。無ければ上の名前つき HttpClient で REST のまま
-// （戻すのは構成を外すだけ。コードは変えない）。
+// FR-10 / NFR-09 / NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4, [[IADR-0408]], [[IADR-0533]] (#1255):
+// 観測値の報告は east-west gRPC だけで送る（［2026-10-10］REST の `HttpKnowledgeHealthReporter`
+// 〔`/internal/knowledge-health/observations`〕は撤去した）。`Services:DashboardServiceGrpc` が構成されていなければ
+// 生成クライアントは常に `UNAVAILABLE` を受け取り、fail-open で報告が送られない（警告と計器に残る）。
 builder.Services.AddKnowledgeHealthGrpcClient(builder.Configuration);
 // FR-10, NFR-21, ADR-0076 決定 3, [[IADR-0389]] 決定 5 (#1246): 観測値を届けた回数（指標ごと）。
 // 生産者が止まると受け口の数字は最後の値で凍る。**沈黙を鳴らすための系列**である。
 // Meter は EdgeTypeFallbackMetrics と同じなので、AddMeter の追加は要らない。
 builder.Services.AddSingleton<KnowledgeHealthReportMetrics>();
-if (!string.IsNullOrWhiteSpace(builder.Configuration[KnowledgeHealthGrpcClientExtensions.AddressKey]))
-    builder.Services.AddScoped<IKnowledgeHealthReporter, GrpcKnowledgeHealthReporter>();
-else
-    builder.Services.AddScoped<IKnowledgeHealthReporter, HttpKnowledgeHealthReporter>();
+builder.Services.AddScoped<IKnowledgeHealthReporter, GrpcKnowledgeHealthReporter>();
 // FR-10, UC-05, SC-10, planning#494 決定 1・3, [[IADR-0353]] (#1186): 陳腐化のしきい値（既定 180 日）。
 // **配備時の構成で変更できる**（環境変数 KnowledgeHealth__StaleDocumentThresholdDays）。
 // 🔴 **ValidateOnStart を付けない** —— 不正値で起動を落とすと本サービスの DocumentUpdated /
-// DocumentDeleted 購読ごと止まる。既定へ倒して警告を出す（HttpKnowledgeHealthReporter の
+// DocumentDeleted 購読ごと止まる。既定へ倒して警告を出す（GrpcKnowledgeHealthReporter の
 // fail-open と同じ向き。倒した後の値がそのまま画面へ出る）。
 builder.Services.Configure<KnowledgeHealthOptions>(
     builder.Configuration.GetSection(KnowledgeHealthOptions.SectionName));
@@ -320,6 +270,8 @@ builder.Services.Configure<ClusterSummaryOptions>(
 // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]]: **REST 面は `ServiceCaller` を要する。**
 // 用途名は `graph-cluster-summary`（AI 提案の `graph-suggestion` と**別の値**にして、
 // 用途別の費用集計で 2 経路を区別できるようにする）。
+// ［2026-10-10 / [[IADR-0533]]］🔴 **この経路は gRPC へ移っていない**（gRPC 実装が無い）ので、REST の並走の退役の
+// 対象外である。east-west の REST の同期呼び出しとして残る最後の 1 本であり、gRPC への移行は別 issue で扱う。
 builder.Services.AddHttpClient<IClusterSummaryLlmClient, LlmGatewayClusterSummaryClient>(c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
         ?? "http://llm-gateway:5010"))

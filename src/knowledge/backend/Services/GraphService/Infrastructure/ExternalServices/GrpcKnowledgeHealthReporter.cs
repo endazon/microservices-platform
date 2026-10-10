@@ -11,9 +11,8 @@ namespace GraphService.Infrastructure.ExternalServices;
 // ADR-0076, [[IADR-0256]] 決定 3, [[IADR-0265]], [[IADR-0299]], [[IADR-0353]], [[IADR-0379]] 決定 4・5,
 // [[IADR-0389]] 決定 5, [[IADR-0408]] (#1255): ナレッジ健全性の観測値の送出アダプタの **gRPC 版**。
 //
-// **並走中の正は REST である。** 本実装は `Services:DashboardServiceGrpc` が構成されたときだけ
-// 登録され（`AddKnowledgeHealthGrpcClient`）、無ければ `HttpKnowledgeHealthReporter` のままである。
-// 戻すのは構成を外すだけでよい（コードは変えない）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**REST の兄弟実装は撤去し、本実装が唯一の輸送である**（[[IADR-0379]] 決定 5
+// 「並走中の正は REST」を反転）。宛先が構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、下の縮退の枝へ落ちる。
 //
 // 🔴 **利用者の資格情報は載せない**（[[IADR-0379]] 決定 4）。載るのは本サービス自身の s2s トークンだけである。
 // これが成立するのは、**この経路が現状も利用者の資格情報を運んでいない**からである ——
@@ -34,16 +33,18 @@ namespace GraphService.Infrastructure.ExternalServices;
 // 失敗時に `RecordDelivered` を呼ばないことが `absent` 系アラートの土台である。
 // **試みた回数を数える形へ変えてはならない**（受け口が死んでいる間も系列が生き続け、不在が鳴らない）。
 //
-// ★ タイムアウト: REST 側は `HttpClient.Timeout = SendTimeout`（5 秒）で与えている。gRPC には
-// `HttpClient` が無いので **`deadline` で同じ 5 秒を与える**（`HttpKnowledgeHealthReporter.SendTimeout`
-// を**そのまま引く** —— 値を書き写すと片方だけ動いたときに気付けない）。期限切れは
-// `RpcException(DeadlineExceeded)` であり、上の「受理されない」枝と同じ縮退になる。
+// ★ タイムアウト: **`deadline` で 5 秒を与える**（`SendTimeout`。撤去した REST 実装の `HttpClient.Timeout` と同じ値を
+// 引き継いだ）。期限切れは `RpcException(DeadlineExceeded)` であり、上の「受理されない」枝と同じ縮退になる。
+// ［2026-10-10 / #1255・[[IADR-0533]]］REST の兄弟実装 `HttpKnowledgeHealthReporter` は撤去し、本クラスが唯一の実装である。
 public sealed class GrpcKnowledgeHealthReporter(
     Pb.KnowledgeHealthReport.KnowledgeHealthReportClient client,
     KnowledgeHealthReportMetrics metrics,
     TimeProvider clock,
     ILogger<GrpcKnowledgeHealthReporter> logger) : IKnowledgeHealthReporter
 {
+    /// <summary>報告 1 回の期限（受け口が応答しないと定期処理がその間止まるため、既定の無期限にしない）。</summary>
+    public static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(5);
+
     public async Task ReportAsync(
         string indicator,
         IReadOnlyList<KnowledgeHealthObservation> observations,
@@ -71,7 +72,7 @@ public sealed class GrpcKnowledgeHealthReporter(
 
             await client.ReportAsync(
                 request,
-                deadline: clock.GetUtcNow().UtcDateTime.Add(HttpKnowledgeHealthReporter.SendTimeout),
+                deadline: clock.GetUtcNow().UtcDateTime.Add(SendTimeout),
                 cancellationToken: ct);
 
             // ★ [[IADR-0389]] 決定 5: **受理されたときだけ数える。**
@@ -123,13 +124,14 @@ public static class KnowledgeHealthGrpcClientExtensions
     /// <summary>宛先ごとにチャネルを分けるための DI キー（下の 🔴 を参照）。</summary>
     public const string ChannelKey = "DashboardServiceGrpc";
 
-    // 構成が無ければ**何も登録しない** —— 呼び出し元は登録の有無で REST 実装と gRPC 実装を選ぶ。
+    // ［2026-10-10 / #1255・[[IADR-0533]] 決定 2］**常に登録する。** 構成が無ければ、生成クライアントを常に `UNAVAILABLE` を返す
+    // 呼び出し器の上に組む（REST の兄弟実装は撤去した。呼び出し元は「届かない」の枝へ落ちる）。
     public static IServiceCollection AddKnowledgeHealthGrpcClient(
         this IServiceCollection services, IConfiguration config)
     {
         var address = config[AddressKey];
         if (string.IsNullOrWhiteSpace(address))
-            return services;
+            return services.TryAddUnconfiguredGrpcClient(AddressKey, ci => new Pb.KnowledgeHealthReport.KnowledgeHealthReportClient(ci));
 
         services.AddPlatformServiceToken(config);
         // 🔴 チャネルは**キー付き**で登録する。本サービスは既に 2 つの宛先を持ち得る ——

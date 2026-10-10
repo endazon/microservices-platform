@@ -89,17 +89,11 @@ builder.Services.AddHttpClient<IDocumentContentReader, StorageDocumentContentRea
 
 // ADR-0013: 埋め込みサービス（LLM ゲートウェイ経由）
 //
-// FR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0397 (#1255): east-west gRPC への切替。
-// **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
-// 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま。
+// FR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0397, [[IADR-0533]] (#1255): 埋め込みの輸送は east-west gRPC だけである
+// （［2026-10-10］REST の `LlmGatewayEmbeddingService` は撤去した）。`Services:LlmGatewayGrpc` が構成されていなければ
+// 生成クライアントは常に `UNAVAILABLE` を受け取り、埋め込みは例外として上がる（段の再試行・死に文字へ回る）。
 builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
-    builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();
-else
-    // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
-    builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
-        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"))
-        .AddLlmGatewayServiceToken(builder.Configuration);
+builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();
 
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
@@ -168,7 +162,7 @@ builder.Host.UseWolverine(opts =>
 
 var app = builder.Build();
 
-// FR-15, IADR-0029: 自己申告エンドポイント（GET /internal/introspection）。
+// FR-15, IADR-0029: 自己申告（gRPC 面 `ServiceIntrospection/Get`。［2026-10-10 / #1517］REST の GET /internal/introspection は撤去した）。
 // メッシュ内部限定（ingress へ公開しない。IADR-0017 ネットワーク分離 / IADR-0026 mTLS が防御）。
 app.MapPlatformIntrospection();
 

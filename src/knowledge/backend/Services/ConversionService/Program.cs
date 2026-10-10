@@ -88,10 +88,9 @@ builder.Services.AddSingleton<IObjectStore, StorageObjectStore>();
 
 // FR-12, ADR-0012/0010: 図のコード化（LLMゲートウェイ経由、機密区分で送信制御）。
 //
-// FR-12, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0400 (#1255): east-west gRPC への切替。
-// **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
-// 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま
-// （戻すのは構成を外すだけ。コードは変えない）。
+// FR-12, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0400, [[IADR-0533]] (#1255): 図のコード化の輸送は east-west gRPC だけである
+// （［2026-10-10］REST の `LlmGatewayDiagramCoder` は撤去した）。`Services:LlmGatewayGrpc` が構成されていなければ
+// 生成クライアントは常に `UNAVAILABLE` を受け取り、図は画像として保持される（理由 `llm-call-failed`）。
 //
 // UC-06, IADR-0008（2026-09-27 追記 / #1621）: **図のコード化の時間の上限**（1 回の期限・1 文書の総枠・受け口の実行期限）。
 // 受け口の期限が「総枠＋1 回の期限」を超えていなければ、ここで起動を止める（`DiagramCodingLimits.From`）。
@@ -99,13 +98,7 @@ var diagramCodingLimits = DiagramCodingLimits.From(builder.Configuration);
 builder.Services.AddSingleton(diagramCodingLimits);
 builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
-    builder.Services.AddSingleton<IDiagramCoder, LlmGatewayGrpcDiagramCoder>();
-else
-    // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
-    // #1621: 名前付きクライアントの `Timeout` は `DiagramCodingLimits.CallTimeout`（既定 100 秒のままにしない）。
-    builder.Services.AddRestDiagramCoder(builder.Configuration, diagramCodingLimits)
-        .AddLlmGatewayServiceToken(builder.Configuration);
+builder.Services.AddSingleton<IDiagramCoder, LlmGatewayGrpcDiagramCoder>();
 
 // FR-12, UC-06: 正規化オーケストレータ（本文＋図＋保管を束ねる）。
 builder.Services.AddScoped<INormalizationService, NormalizationService>();
@@ -211,7 +204,7 @@ app.UsePlatformMiddleware();
 // DB 到達性の readiness ヘルスチェック（/health/ready・/health/live）。
 app.MapPlatformHealthChecks();
 
-// FR-15, IADR-0029: 自己申告エンドポイント（GET /internal/introspection）。
+// FR-15, IADR-0029: 自己申告（gRPC 面 `ServiceIntrospection/Get`。［2026-10-10 / #1517］REST の GET /internal/introspection は撤去した）。
 // メッシュ内部限定（ingress へ公開しない。IADR-0017 ネットワーク分離 / IADR-0026 mTLS が防御）。
 app.MapPlatformIntrospection();
 

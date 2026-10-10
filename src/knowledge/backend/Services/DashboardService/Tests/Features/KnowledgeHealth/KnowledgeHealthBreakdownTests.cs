@@ -21,7 +21,7 @@ namespace DashboardService.Tests.Features.KnowledgeHealth;
 [Trait("TestKind", "Integration")]
 public class KnowledgeHealthBreakdownTests
 {
-    // 🔴 送信側 HttpKnowledgeHealthReporter.ObservationsPath の値（リテラルで持つ理由は
+    // 🔴 送信側 旧 REST の `HttpKnowledgeHealthReporter.ObservationsPath`（［2026-10-10］撤去） の値（リテラルで持つ理由は
     // `KnowledgeHealthEndpointTests` の同じ定数のコメント）。
     private const string ProducerObservationsPath = "/internal/knowledge-health/observations";
 
@@ -129,7 +129,7 @@ public class KnowledgeHealthBreakdownTests
     // ── 生産者が組み立てる生の JSON ────────────────────────────────
 
     // 🔴 **綴りと大小は型では守られない**（送信側は匿名オブジェクトを組み立てる）。
-    // `HttpKnowledgeHealthReporter` が実際に投げる形をそのまま束縛できることを固定する。
+    // 旧 REST の `HttpKnowledgeHealthReporter`（［2026-10-10］撤去） が実際に投げる形をそのまま束縛できることを固定する。
     [Fact]
     public async Task 生産者が組み立てる生のJSONで軸を束縛できる()
     {

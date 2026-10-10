@@ -14,9 +14,9 @@ namespace Knowledge.Bff.Endpoints.Search;
 // [[IADR-0410]], [[IADR-0411]], [[IADR-0416]], [[IADR-0417]] (#1255):
 // 権限内属性値の照会（`knowledge.retrieval.v1.AttributeValues`）の**呼び出し側**。
 //
-// **並走中の正は REST である。** 本クライアントは `Services:RetrievalServiceGrpc` が構成された
-// ときだけ登録され（`AddAttributeValuesGrpcClient`）、`SearchBffEndpoints` は登録が在れば
-// こちらを使う。戻すのは構成を外すだけでよい（コードは変えない）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**属性値の照会の輸送は本クライアントだけである**（REST `POST /search/attribute-values` の
+// 並走は撤去した）。`Services:RetrievalServiceGrpc` が構成されていなければ、生成クライアントは常に `UNAVAILABLE` を受け取り、
+// `SearchBffEndpoints` の「後段へ届かない」の枝（空の候補）へ落ちる。
 //
 // 🔴 **運ぶのは利用者文脈だけであり、解決済みのスコープは運ばない**（[[IADR-0410]] / [[IADR-0416]]）。
 // 呼び出し先は受け取った文脈で**自分で** `AuthzScope/Resolve` を呼ぶ。REST 面が本文の `Scope` を
@@ -77,13 +77,18 @@ public sealed class AttributeValuesGrpcClient(Pb.AttributeValues.AttributeValues
 // [[IADR-0417]] (#1255): RetrievalService 宛の生成クライアントの登録。
 public static class AttributeValuesGrpcClientExtensions
 {
-    // 構成が無ければ**何も登録しない** —— 呼び出し元は登録の有無で REST 経路と gRPC 経路を選ぶ。
+    // ［2026-10-10 / #1255・[[IADR-0533]]］**常に登録する。** 構成が無ければ常に `UNAVAILABLE` を返す呼び出し器の上に組む（[[IADR-0533]] 決定 2）。
     public static IServiceCollection AddAttributeValuesGrpcClient(
         this IServiceCollection services, IConfiguration config)
     {
         var address = config[AttributeValuesGrpcClient.AddressKey];
         if (string.IsNullOrWhiteSpace(address))
+        {
+            services.TryAddUnconfiguredGrpcClient(
+                AttributeValuesGrpcClient.AddressKey, ci => new Pb.AttributeValues.AttributeValuesClient(ci));
+            services.AddSingleton<AttributeValuesGrpcClient>();
             return services;
+        }
 
         services.AddPlatformServiceToken(config);
         // 🔴 チャネルは**キー付き**で登録する。BFF は既に認可サービス宛（キー無し）と

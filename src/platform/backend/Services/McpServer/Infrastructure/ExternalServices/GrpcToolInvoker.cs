@@ -16,7 +16,8 @@ namespace McpServer.Infrastructure.ExternalServices;
 // 認可サービスへ判定を問い、自分で認可する（ADR-0086 決定 1 の援用・ADR-0088）。
 //
 // ■ 🔴 **宛先は `PublishedTool.Service`（公開構成で申告を突き合わせたサービス）と申告名だけで決める**（ADR-0117 決定 1）。
-//   アドレスは申告の収集と同じ `Mcp:GrpcServices:<サービス名>`（申告元サービスの h2c アドレス）。**申告の中身から宛先を作らない** ——
+//   アドレスは申告の収集と同じ `Mcp:Services:<サービス名>`（申告元サービスの h2c アドレス。［2026-10-10 / #1517・[[IADR-0533]]］
+//   旧キー `Mcp:GrpcServices` から一本化した）。**申告の中身から宛先を作らない** ——
 //   申告に URL はもう無く、どのサービスも他のサービスを自分のツールの実行先にできない。
 //
 // ■ 🔴 **fail-closed**（ADR-0117 決定 4）。宛先の経路が構成されていない・実行口が無い（`UNIMPLEMENTED`。［#1611 段 2 で文書・検索・グラフとも持った］旧い版・将来の供給元）・
@@ -65,7 +66,7 @@ public sealed class GrpcToolInvoker : IToolInvoker, IDisposable
         // 実行のたびに気付くのではなく、起動の時点で落とす（Program.cs が要求を受ける前に 1 度組む）。
         if (_tokenProvider is null && GrpcToolDeclarationCollector.ConfiguredTargets(configuration).Count > 0)
             throw new InvalidOperationException(
-                $"{GrpcToolDeclarationCollector.GrpcServicesSection} が構成されていますが s2s トークンの発行側が登録されていません"
+                $"{GrpcToolDeclarationCollector.ServicesSection} が構成されていますが s2s トークンの発行側が登録されていません"
                 + "（AddMcpToolInvoker を AddMcpToolDeclarationSources の後に呼んでいるか確かめること）。");
     }
 
@@ -80,7 +81,7 @@ public sealed class GrpcToolInvoker : IToolInvoker, IDisposable
         {
             _logger.LogWarning(
                 "MCP tool {Tool} of {Service} was not executed: no gRPC address is configured under {Section}",
-                tool.PublishedName, service, GrpcToolDeclarationCollector.GrpcServicesSection);
+                tool.PublishedName, service, GrpcToolDeclarationCollector.ServicesSection);
             throw new ToolExecutionUnavailableException(NotRoutedMessage);
         }
 
@@ -182,8 +183,8 @@ public sealed class GrpcToolInvoker : IToolInvoker, IDisposable
 // FR-16, NFR-16, IADR-0462（2026-09-27 追記 / #1516）: ツールの実行器の登録。
 public static class ToolInvokerExtensions
 {
-    // 🔴 `AddMcpToolDeclarationSources` の後に呼ぶこと —— s2s の発行側は `Mcp:GrpcServices` が在るときにそちらが登録する
-    // （実行の宛先も同じ構成なので、宛先が在れば発行側も在る）。宛先が 1 つも無い配備では実行器は常に fail-closed で拒否する。
+    // 🔴 `AddMcpToolDeclarationSources` の後に呼ぶこと —— s2s の発行側はそちらが登録する（［2026-10-10 / [[IADR-0533]]］常に登録する）。
+    // 宛先（`Mcp:Services`）が 1 つも無い配備では実行器は常に fail-closed で拒否する。
     public static IServiceCollection AddMcpToolInvoker(this IServiceCollection services)
     {
         services.AddSingleton<GrpcToolInvoker>();

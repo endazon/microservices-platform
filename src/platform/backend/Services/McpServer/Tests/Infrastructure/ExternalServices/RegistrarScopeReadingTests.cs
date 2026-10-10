@@ -3,9 +3,7 @@ using McpServer.Domain;
 using McpServer.Domain.Ports;
 using McpServer.Infrastructure.ExternalServices;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using System.Net;
 using System.Security.Claims;
 using System.Text.Json;
 using Platform.Shared.Contracts.Dtos;
@@ -14,7 +12,11 @@ using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
 namespace McpServer.Tests.Infrastructure.ExternalServices;
 
 // FR-16, FR-05, FR-09, UC-09, SC-12, ADR-0062 決定 2・3, ADR-0036 D-01・D-02, IADR-0384 (#1242):
-// **本物の解決器**に対して AuthorizationService の HTTP をスタブし、認可スコープの読み方を固定する。
+// **本物の解決器**に対して AuthorizationService の応答をスタブし、認可スコープの読み方を固定する。
+// ［2026-10-10 / #1255・[[IADR-0533]]］REST の解決器（`AuthorizationServiceRegistrarAttributes`）は撤去した。
+// 従前は REST と gRPC の両実装を通して答えの一致を表明していたが、いまは gRPC の解決器（`GrpcRegistrarAttributes`）だけを通す。
+// 読み方（`RegistrarScopeReading`）は 1 つのままであり、本クラスの各試験はその読み方を固定する。
+// REST にしか無かった枝（2xx の空本文・非 2xx の WARN）の試験は撤去した（gRPC の失敗の枝は `GrpcRegistrarAttributesTests` が持つ）。
 //
 // 🔴 **本クラスが無かったことが #1242 の原因である。** 従前は `StubRegistrarAttributeResolver`
 // （ヘッダで集合を注入する）経由の経路テストしか無く、**「スコープをどう読むか」は 1 本も
@@ -22,42 +24,15 @@ namespace McpServer.Tests.Infrastructure.ExternalServices;
 //
 // ここで固定するのは**読み方**である。疎通（実 AuthorizationService への到達）は測らない。
 [Trait("TestKind", "Unit")]
-public class AuthorizationServiceRegistrarAttributesTests
+public class RegistrarScopeReadingTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private const string Registrar = "tanaka";
 
-    // `GET /authz/users` の応答（登録者 1 名）。タグは既定で持たせない。
-    private static string Directory(string? tags = null)
-    {
-        var tagAttr = tags is null ? string.Empty : $",\"tags\":\"{tags}\"";
-        return "[{\"id\":\"u1\",\"username\":\"" + Registrar + "\","
-            + "\"displayName\":\"田中\",\"enabled\":true,\"roles\":[\"platform-admin\"],"
-            + "\"attributes\":{\"department\":\"engineering\"" + tagAttr + "}}]";
-    }
-
-    // 🔴 [[IADR-0401]] (#1255): **本ヘルパは 2 つの輸送を通し、答えが一致することを表明してから返す。**
-    // #1255 の第 3 スライスで REST と gRPC の兄弟実装ができたため、片方だけを試験すると
-    // 「読み方は 1 か所」（[[IADR-0384]] 決定 1）の保証が輸送の追加で静かに破れる。
-    // **本クラスの 19 件すべてが、この 1 行の写しで両実装を覆う。**
-    private static async Task<RegistrarAssignableAttributes> ResolveAsync(string scopeJson, string? tags = null)
-    {
-        var handler = new StubHandler()
-            .Get("/authz/users", Directory(tags))
-            .Post("/authz/scope", scopeJson);
-
-        var resolver = new AuthorizationServiceRegistrarAttributes(
-            new StubFactory(handler), Accessor(),
-            NullLogger<AuthorizationServiceRegistrarAttributes>.Instance);
-
-        var rest = await resolver.ResolveAsync(Ct);
-        var grpc = await ResolveOverGrpcAsync(scopeJson, tags);
-
-        grpc.Should().BeEquivalentTo(rest,
-            "REST と gRPC は同じ後段の答えを同じ規則（RegistrarScopeReading）で読む");
-        return rest;
-    }
+    // 名簿の 1 行（登録者の属性）＋ スコープ JSON を east-west gRPC の偽クライアントへ載せる。
+    private static Task<RegistrarAssignableAttributes> ResolveAsync(string scopeJson, string? tags = null)
+        => ResolveOverGrpcAsync(scopeJson, tags);
 
     // 同じ入力（名簿の 1 行 ＋ スコープ JSON）を east-west gRPC の偽クライアントへ載せ替える。
     private static async Task<RegistrarAssignableAttributes> ResolveOverGrpcAsync(
@@ -345,102 +320,14 @@ public class AuthorizationServiceRegistrarAttributesTests
     [Fact]
     public async Task 認可スコープを引けなければ未解決になる()
     {
-        var handler = new StubHandler()
-            .Get("/authz/users", Directory())
-            .Status("POST", "/authz/scope", HttpStatusCode.ServiceUnavailable);
+        var directory = FakeUserDirectoryClient.Returning(Registrar, new Dictionary<string, string> { ["department"] = "engineering" });
+        var scopes = FakeAuthzScopeClient.Failing(Grpc.Core.StatusCode.Unavailable);
 
-        var accessor = new HttpContextAccessor
-        {
-            HttpContext = new DefaultHttpContext
-            {
-                User = new ClaimsPrincipal(new ClaimsIdentity(
-                    [new Claim(ClaimTypes.Name, Registrar)], "test")),
-            },
-        };
-
-        var scope = await new AuthorizationServiceRegistrarAttributes(
-            new StubFactory(handler), accessor,
-            NullLogger<AuthorizationServiceRegistrarAttributes>.Instance).ResolveAsync(Ct);
+        var scope = await new GrpcRegistrarAttributes(
+            FakeAuthzGrpc.Directory(directory), FakeAuthzGrpc.Scopes(scopes), Accessor(),
+            NullLogger<GrpcRegistrarAttributes>.Instance).ResolveAsync(Ct);
 
         scope.Available.Should().BeFalse();
-    }
-
-    // FR-05, FR-16, #1378: 2xx だが本文が空（JSON の null）でも `Unavailable` へ倒れ、**理由を WARN で出す**。
-    // 従前はこの枝だけが無言だった（非 2xx・不達は WARN 済み）。
-    [Fact]
-    public async Task 認可スコープの応答本文が空なら未解決になり警告を出す()
-    {
-        var handler = new StubHandler()
-            .Get("/authz/users", Directory())
-            .Post("/authz/scope", "null");
-        var log = new CapturingLogger();
-
-        var scope = await new AuthorizationServiceRegistrarAttributes(
-            new StubFactory(handler), Accessor(), log).ResolveAsync(Ct);
-
-        scope.Available.Should().BeFalse();
-        log.Warnings.Should().ContainSingle()
-            .Which.State.FirstOrDefault(p => p.Key == "Status").Value.Should().Be(200);
-    }
-
-    // 🔴 陰性対照（#1378）: 許可ポリシーが無い（`Granted=false`）のは「引けた」であり WARN を出さない。
-    [Fact]
-    public async Task 許可ポリシーが無い登録者では警告を出さない()
-    {
-        var handler = new StubHandler()
-            .Get("/authz/users", Directory())
-            .Post("/authz/scope", """{"userId":"tanaka","allowedFilters":[],"granted":false}""");
-        var log = new CapturingLogger();
-
-        var scope = await new AuthorizationServiceRegistrarAttributes(
-            new StubFactory(handler), Accessor(), log).ResolveAsync(Ct);
-
-        scope.Available.Should().BeTrue();
-        log.Warnings.Should().BeEmpty();
-    }
-
-    private sealed record LogEntry(LogLevel Level, IReadOnlyList<KeyValuePair<string, object?>> State);
-
-    private sealed class CapturingLogger : ILogger<AuthorizationServiceRegistrarAttributes>
-    {
-        private readonly List<LogEntry> _entries = [];
-
-        public IReadOnlyList<LogEntry> Warnings => [.. _entries.Where(e => e.Level == LogLevel.Warning)];
-
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
-            => _entries.Add(new LogEntry(logLevel, state as IReadOnlyList<KeyValuePair<string, object?>> ?? []));
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 経路の固定: `/authz/scope` は **read** を解決する（write のスコープではない）
-    // ─────────────────────────────────────────────────────────────────────────
-    [Fact]
-    public async Task 認可スコープは_read_で解決する()
-    {
-        var handler = new StubHandler()
-            .Get("/authz/users", Directory())
-            .Post("/authz/scope", """{"userId":"tanaka","allowedFilters":[],"granted":true}""");
-
-        var accessor = new HttpContextAccessor
-        {
-            HttpContext = new DefaultHttpContext
-            {
-                User = new ClaimsPrincipal(new ClaimsIdentity(
-                    [new Claim(ClaimTypes.Name, Registrar)], "test")),
-            },
-        };
-
-        await new AuthorizationServiceRegistrarAttributes(
-            new StubFactory(handler), accessor,
-            NullLogger<AuthorizationServiceRegistrarAttributes>.Instance).ResolveAsync(Ct);
-
-        handler.Requests.Should().ContainSingle(r => r.Path == "/authz/scope")
-            .Which.Body.Should().Contain("\"read\"");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -550,52 +437,5 @@ public class AuthorizationServiceRegistrarAttributesTests
         // 陽性対照つき: **`restricted` の組織文書は残る**（全部落とす実装と区別する）。
         filtered.Documents.Should().ContainSingle().Which.DocumentId.Should().Be("doc-org");
         filtered.TotalCount.Should().Be(1);
-    }
-
-    private sealed record Recorded(string Method, string Path, string? Body);
-
-    private sealed class StubHandler : HttpMessageHandler
-    {
-        private readonly Dictionary<string, (HttpStatusCode Status, string Body)> _responses =
-            new(StringComparer.Ordinal);
-
-        public List<Recorded> Requests { get; } = [];
-
-        public StubHandler Get(string path, string body) => Register("GET", path, HttpStatusCode.OK, body);
-        public StubHandler Post(string path, string body) => Register("POST", path, HttpStatusCode.OK, body);
-        public StubHandler Status(string method, string path, HttpStatusCode status)
-            => Register(method, path, status, "");
-
-        private StubHandler Register(string method, string path, HttpStatusCode status, string body)
-        {
-            _responses[$"{method} {path}"] = (status, body);
-            return this;
-        }
-
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var path = request.RequestUri!.AbsolutePath;
-            var body = request.Content is null
-                ? null
-                : await request.Content.ReadAsStringAsync(cancellationToken);
-            Requests.Add(new Recorded(request.Method.Method, path, body));
-
-            if (!_responses.TryGetValue($"{request.Method.Method} {path}", out var response))
-                return new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("") };
-
-            return new HttpResponseMessage(response.Status)
-            {
-                Content = new StringContent(response.Body, System.Text.Encoding.UTF8, "application/json"),
-            };
-        }
-    }
-
-    private sealed class StubFactory(StubHandler handler) : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false)
-        {
-            BaseAddress = new Uri("https://authz.example.test/"),
-        };
     }
 }

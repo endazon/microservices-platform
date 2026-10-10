@@ -212,11 +212,10 @@ public class ConversionJobAuthorizationTests
         (await SendAsync(factory, "POST", "/jobs/{id}/retry", id, token)).Should().Be(HttpStatusCode.Accepted);
     }
 
-    // NFR-09, FR-15, IADR-0029, IADR-0465 決定 3: ヘルスチェックと自己申告は他サービスと同じく門を持たない
+    // NFR-09, FR-15, IADR-0029, IADR-0465 決定 3: ヘルスチェックは他サービスと同じく門を持たない（［2026-10-10 / #1517・[[IADR-0533]]］REST の自己申告は撤去した）
     // （プローブと構成情報の収集は利用者の資格情報を持たない）。
     [Theory]
     [InlineData("/health/live")]
-    [InlineData("/internal/introspection")]
     public async Task ProbeAndIntrospection_WithoutCredential_Return200(string path)
     {
         using var factory = new Factory();

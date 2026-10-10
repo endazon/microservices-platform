@@ -49,54 +49,24 @@ builder.Services.AddPlatformHealthChecks()
         "llm-gateway", tags: ["ready"]);
 builder.Services.AddOpenApi();
 
-// FR-04: HTTP クライアント設定（サービス間通信）
-builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
-builder.Services.AddHttpClient("RetrievalService", c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
-        ?? "http://retrieval-service:5003"));
-// FR-03, FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0034 決定 1, ADR-0075, 計画 ADR-0086 決定 1,
-// ADR-0087 決定 2, ADR-0089 決定 1, [[IADR-0379]] 決定 4・5, [[IADR-0426]] (#1255):
-// RAG の検索の輸送。**並走中の正は REST である。** `Services:RetrievalServiceGrpc`（h2c の
-// アドレス）が構成されたときだけ生成クライアントが登録され、そのときに限り gRPC 輸送を使う。
-// 無ければ上の名前つき HttpClient で REST のまま（戻すのは構成を外すだけ。コードは変えない）。
+// FR-03, FR-04, FR-05, FR-11, NFR-02, NFR-09, NFR-16, ADR-0029, ADR-0034 決定 1, ADR-0075, 計画 ADR-0086 決定 1,
+// ADR-0087 決定 2, 計画 ADR-0089 決定 1, [[IADR-0379]] 決定 4, [[IADR-0400]], [[IADR-0401]] 決定 1, [[IADR-0426]],
+// [[IADR-0533]] (#1255): 後段 3 つ（検索・テキスト生成・ABAC スコープ解決）の輸送は **east-west gRPC だけである**。
+// ［2026-10-10］REST の並走（名前つき HttpClient `RetrievalService` / `LlmGateway` / `AuthorizationServiceScope`）は撤去した。
+// 宛先（`Services:RetrievalServiceGrpc` / `Services:LlmGatewayGrpc` / `Services:AuthorizationServiceGrpc`）が
+// 構成されていなければ、各生成クライアントは常に `UNAVAILABLE` を受け取り、それぞれの縮退へ落ちる（[[IADR-0533]] 決定 2）。
 // 🔴 **gRPC 輸送は利用者のトークンを転送しない** —— 利用者文脈（user_id / 属性 / action）を
-// 要求本文で運び、RetrievalService が受け取った文脈で**自分で** ABAC を解決する
-// （判定の位置は動かない。`ADR-0086` 実装側残作業 2 の実体）。
-// 🔴 **前提**: 呼び出し先に `Services:GraphServiceGrpc` が在ること。無いと二段検索の近傍展開は
-// REST 実装のままであり、転送できる利用者の資格情報が無いので**呼ばずに警告**する
-// （グラフ再ランクが効かない。helm・compose のどちらにも既に在る）。
-builder.Services.AddRetrievalSearchGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[RetrievalSearchGrpcClientExtensions.AddressKey]))
-    builder.Services.AddSingleton<IRagSearchTransport, GrpcRagSearchTransport>();
-// 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
-// 呼び出し側サービス自身の s2s トークンを載せる（利用者のトークンは載せない）。
-builder.Services.AddHttpClient("LlmGateway", c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
-        ?? "http://llm-gateway:5007"))
-    .AddLlmGatewayServiceToken(builder.Configuration);
-
-// FR-04, FR-11, NFR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0400 (#1255):
-// テキスト生成の輸送。**並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が
-// 構成されたときだけ生成クライアントが登録され、そのときに限り gRPC 輸送を使う。無ければ REST 輸送
-// （上の名前つき HttpClient を使う HttpLlmCompletionTransport）のまま。戻すのは構成を外すだけでよい。
-//
+// 要求本文で運び、RetrievalService が受け取った文脈で**自分で** ABAC を解決する（判定の位置は動かない）。
 // 🔴 `CompleteStream` は**サーバストリーミング**であり、最初の delta が到着した時点で
 // north-south の最初の `token` を書ける —— NFR-02 の SLI（初回トークン）の境界が保たれる。
+builder.Services.AddRetrievalSearchGrpcClient(builder.Configuration);
+builder.Services.AddSingleton<IRagSearchTransport, GrpcRagSearchTransport>();
 builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
-    builder.Services.AddSingleton<ILlmCompletionTransport, GrpcLlmCompletionTransport>();
-else
-    builder.Services.AddSingleton<ILlmCompletionTransport, HttpLlmCompletionTransport>();
-
-// FR-05, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0401 決定 1 (#1255):
-// ABAC スコープ解決の gRPC 経路。**並走中の正は REST である。**
-// `Services:AuthorizationServiceGrpc`（h2c のアドレス）が構成されたときだけ `AuthzScopeGrpcClient` が
-// 登録され、RagOrchestrator は在ればそれを使う（無ければ上の名前つき HttpClient で REST のまま）。
-// 戻すのは構成を外すだけでよい（コードは変えない）。
+builder.Services.AddSingleton<ILlmCompletionTransport, GrpcLlmCompletionTransport>();
 builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 
 // FR-04: RAG オーケストレーター
-// FR-05, ADR-0034 (#970): 受信 Authorization を RetrievalService へ伝播するため要求文脈へ触る。
+// NFR-02, [[IADR-0378]]: 合成監視の標識（`X-Synthetic-Traffic`）を読むため要求文脈へ触る。
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IRagOrchestrator, RagOrchestrator>();
 

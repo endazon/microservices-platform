@@ -11,15 +11,10 @@ namespace Platform.Shared.Infrastructure.Foundation.Llm;
 // LlmGateway の **REST 面**（`/complete`・`/complete/stream`・`/embed`）を叩くクライアントへ
 // s2s トークンを付ける。受け口が `ServiceCaller` を要するようになったためである。
 //
-// 🔴 **付け方の宣言は 1 か所である。** 呼び出し元は 5 つ（AiAnalysis / Conversion / Graph /
-// Ingestion / Retrieval）あり、**資格情報の付け方が呼び出し元ごとに散ると 1 つだけが古くなった
-// 状態が作れる** —— 本リポジトリが繰り返し踏んでいる形であり、`AuthzScopeHttpClient` が
-// 同じ理由で登録を 1 か所に畳んでいる（[[IADR-0413]]）。
-//
-// 🔴 **アドレスはここで決めない。** `AuthzScopeHttpClient` と違い、既定アドレスは呼び出し元ごとに
-// 揃っていない（`GraphService` だけ `5010`・他は `5007`）。**本 PR はその不揃いを直さない** ——
-// 直すと「認可を掛ける」変更に「宛先を変える」変更が混ざり、壊れたときにどちらが原因か分からなくなる。
-// ここが引き受けるのは**資格情報の付け方だけ**である。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**REST の並走を撤去したので、呼び出し元は 1 つだけになった** ——
+// GraphService のクラスタ要約（`LlmGatewayClusterSummaryClient`。既定 off）である。この経路は gRPC へ**移っていない**
+// （gRPC 実装が無い）ので退役の対象外であり、REST の面を使い続ける。従前の 5 呼び出し元（AiAnalysis / Conversion /
+// Graph の提案 / Ingestion / Retrieval）の REST 実装は撤去した。
 //
 // 🔴 **利用者のトークンは載せない**（`ServiceTokenHandler` の責務。載せると confused deputy になる）。
 public static class LlmGatewayHttpClient
@@ -28,15 +23,14 @@ public static class LlmGatewayHttpClient
     /// LlmGateway の REST 面を叩く名前つき／型つきクライアントへ s2s トークンを付ける。
     /// <para>
     /// トークンが取れないときは <see cref="ServiceTokenHandler"/> が
-    /// <see cref="HttpRequestException"/> へ畳む —— 呼び出し元 5 つはいずれも
-    /// 「ゲートウェイへ届かない」を既存の縮退（画像保持・提案なし・埋め込みなし・縮退文言）へ
-    /// 倒す枝を持っており、**新しい枝を作らずそこへ合流させる**。
+    /// <see cref="HttpRequestException"/> へ畳む —— 呼び出し元は「ゲートウェイへ届かない」を
+    /// 既存の縮退（要約を付けない）へ倒す枝を持っており、**新しい枝を作らずそこへ合流させる**。
     /// </para>
     /// </summary>
     public static IHttpClientBuilder AddLlmGatewayServiceToken(
         this IHttpClientBuilder builder, IConfiguration config)
     {
-        // `TryAdd` 主体なので、gRPC 客体やスコープ解決の客体を登録済みのサービスが重ねて呼んでも 1 つのままである。
+        // `TryAdd` 主体なので、gRPC 客体を登録済みのサービスが重ねて呼んでも 1 つのままである。
         builder.Services.AddPlatformServiceToken(config);
         builder.Services.TryAddTransient<ServiceTokenHandler>();
         return builder.AddHttpMessageHandler<ServiceTokenHandler>();

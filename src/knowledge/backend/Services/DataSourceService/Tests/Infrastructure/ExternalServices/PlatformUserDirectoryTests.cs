@@ -1,9 +1,7 @@
-using System.Net;
 using AwesomeAssertions;
 using DataSourceService.Domain.Ports;
 using DataSourceService.Infrastructure.ExternalServices;
 using Grpc.Core;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
@@ -12,12 +10,12 @@ namespace DataSourceService.Tests.Infrastructure.ExternalServices;
 
 // FR-05, UC-04, SC-06, SC-17, NFR-09, NFR-16, ADR-0029, ADR-0064 決定 4, ADR-0074 決定 4, ADR-0075,
 // [[IADR-0329]], [[IADR-0379]] 決定 4, [[IADR-0401]] 決定 2・3 (#1255):
-// **T-P2-04 / T-P2-05 / T-P2-06** —— 写像先の実在検証の**2 実装**（REST と gRPC）を対で固定する。
+// **T-P2-04 / T-P2-05 / T-P2-06** —— 写像先の実在検証（gRPC 実装）を固定する。
+// ［2026-10-10 / #1255］[[IADR-0533]]: REST 実装（`AuthorizationServiceUserDirectory`）を撤去したので、
+// 「両実装で同じ答え」の表明は gRPC 実装の絶対値へ書き換え、REST にしか無い表明（非 2xx・利用者の
+// `Authorization` の転送）は撤去した。
 //
-// 🔴 **本クラスが無かった。** `AuthorizationServiceUserDirectory` は #1194 で入って以来
-// 単体試験を 1 本も持たず、固定されていたのは `StubPlatformUserDirectory` 経由の端点側だけだった
-// （陽性対照: 兄弟にあたる McpServer の `AuthorizationServiceRegistrarAttributes` は 19 件を持つ）。
-// 名簿を読む側が試験されないと、「引けなかった」を「実在しない」に化けさせる変異が緑のまま通る。
+// 🔴 名簿を読む側が試験されないと、「引けなかった」を「実在しない」に化けさせる変異が緑のまま通る。
 //
 // 🔴 **陽性・陰性・縮退を必ず対にする。** 「保存されなかった」だけでは、実装が壊れているのか
 // 検証が効いているのか区別できない。
@@ -26,22 +24,8 @@ public class PlatformUserDirectoryTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    // 名簿の応答（`GET /authz/users`）。**`carol` は enabled=false**（退職者）である。
-    private const string DirectoryJson = """
-        [{"id":"u1","username":"alice","displayName":"Alice","enabled":true,"roles":[],"attributes":{}},
-         {"id":"u2","username":"bob","displayName":"Bob","enabled":true,"roles":[],"attributes":{}},
-         {"id":"u3","username":"carol","displayName":"Carol","enabled":false,"roles":[],"attributes":{}}]
-        """;
-
     private static IReadOnlySet<string> Ask(params string[] names) =>
         new HashSet<string>(names, StringComparer.Ordinal);
-
-    private static IPlatformUserDirectory Rest(Func<HttpRequestMessage, HttpResponseMessage> respond) =>
-        new AuthorizationServiceUserDirectory(
-            new StubHttpClientFactory(respond), new HttpContextAccessor(),
-            NullLogger<AuthorizationServiceUserDirectory>.Instance);
-
-    private static IPlatformUserDirectory RestOk() => Rest(_ => Json(DirectoryJson));
 
     private static IPlatformUserDirectory Grpc(FakeUserDirectoryClient client) =>
         new GrpcPlatformUserDirectory(new UserDirectoryGrpcClient(
@@ -51,39 +35,19 @@ public class PlatformUserDirectoryTests
     private static IPlatformUserDirectory GrpcOk() =>
         Grpc(FakeUserDirectoryClient.Knowing(["alice", "bob", "carol"]));
 
-    // ── T-P2-04: 陽性（実在）／陰性（不在）を両実装で ───────────────────────────
+    // ── T-P2-04: 陽性（実在）／陰性（不在） ───────────────────────────
     [Fact]
-    public async Task Rest_and_grpc_report_the_same_existing_subset()
+    public async Task Grpc_reports_the_existing_subset()
     {
-        var asked = Ask("alice", "dave");
+        var grpc = await GrpcOk().LookupAsync(Ask("alice", "dave"), Ct);
 
-        var rest = await RestOk().LookupAsync(asked, Ct);
-        var grpc = await GrpcOk().LookupAsync(asked, Ct);
-
-        rest.Available.Should().BeTrue();
-        rest.Usernames.Should().BeEquivalentTo(["alice"], "陽性は alice、陰性は dave");
-        grpc.Should().BeEquivalentTo(rest);
+        grpc.Available.Should().BeTrue();
+        grpc.Usernames.Should().BeEquivalentTo(["alice"], "陽性は alice、陰性は dave");
     }
 
-    // ── T-P2-04: 縮退（引けなかった）を両実装で ───────────────────────────────
+    // ── T-P2-04: 縮退（引けなかった） ───────────────────────────────
     // 🔴 **空集合と混ぜない。** `Available=false` は「利用者が 0 人」ではない ——
     // 呼び出し元はこれを 502 へ、実在しないを 400 へ写す。
-    [Fact]
-    public async Task Rest_degrades_to_unavailable_on_non_2xx_and_transport_failure()
-    {
-        var status = await Rest(_ => new HttpResponseMessage(HttpStatusCode.Forbidden))
-            .LookupAsync(Ask("alice"), Ct);
-        status.Available.Should().BeFalse();
-
-        var refused = await Rest(_ => throw new HttpRequestException("refused"))
-            .LookupAsync(Ask("alice"), Ct);
-        refused.Available.Should().BeFalse();
-
-        var timeout = await Rest(_ => throw new TaskCanceledException("timeout"))
-            .LookupAsync(Ask("alice"), Ct);
-        timeout.Available.Should().BeFalse();
-    }
-
     [Theory]
     [InlineData(StatusCode.Unauthenticated)]
     [InlineData(StatusCode.PermissionDenied)]
@@ -99,32 +63,24 @@ public class PlatformUserDirectoryTests
     // ── T-P2-05: 🔴 無効化された利用者も実在として数える ──────────────────────
     // ADR-0074 決定 4 が課すのは「実在すること」であって「有効であること」ではない
     // （退職者が所有者だった文書は所有者を失わない）。
+    // 呼び出し先は無効化された利用者にも `exists=true` を返す（その規則は呼び出し先の試験が測る）。
+    // 呼び出し側は `exists` だけを読み、有効かどうかで落とさないこと。
     [Fact]
-    public async Task Disabled_user_still_counts_as_existing_in_both_implementations()
+    public async Task Disabled_user_still_counts_as_existing()
     {
-        var asked = Ask("carol");
+        var grpc = await GrpcOk().LookupAsync(Ask("carol"), Ct);
 
-        var rest = await RestOk().LookupAsync(asked, Ct);
-        var grpc = await GrpcOk().LookupAsync(asked, Ct);
-
-        rest.Usernames.Should().Contain("carol");
         grpc.Usernames.Should().Contain("carol");
-        DirectoryJson.Should().Contain("\"username\":\"carol\",\"displayName\":\"Carol\",\"enabled\":false",
-            "陽性対照: 名簿側で実際に無効化されている");
     }
 
     // ── T-P2-06: 🔴 照合は序数一致（大小文字違いは不在） ──────────────────────
     // 移行で照合規則を変えない（McpServer 側の大小文字無視との不一致はそのまま写す）。
     [Fact]
-    public async Task Matching_is_ordinal_in_both_implementations()
+    public async Task Matching_is_ordinal()
     {
-        var asked = Ask("ALICE");
-
-        (await RestOk().LookupAsync(asked, Ct)).Usernames.Should().BeEmpty();
-        (await GrpcOk().LookupAsync(asked, Ct)).Usernames.Should().BeEmpty();
+        (await GrpcOk().LookupAsync(Ask("ALICE"), Ct)).Usernames.Should().BeEmpty();
 
         // 陽性対照: 綴りが一致すれば実在する。
-        (await RestOk().LookupAsync(Ask("alice"), Ct)).Usernames.Should().Contain("alice");
         (await GrpcOk().LookupAsync(Ask("alice"), Ct)).Usernames.Should().Contain("alice");
     }
 
@@ -164,45 +120,6 @@ public class PlatformUserDirectoryTests
         snapshot.Available.Should().BeTrue();
         snapshot.Usernames.Should().BeEmpty();
         fake.CallCount.Should().Be(0);
-    }
-
-    // 🔴 REST 実装は利用者の `Authorization` を転送し、gRPC 実装は転送しない
-    // （[[IADR-0401]] 決定 2。gRPC 側は s2s トークンだけで、面が狭められている）。
-    [Fact]
-    public async Task Rest_forwards_the_caller_authorization_header()
-    {
-        HttpRequestMessage? captured = null;
-        var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext() };
-        accessor.HttpContext!.Request.Headers.Authorization = "Bearer user-token";
-
-        var directory = new AuthorizationServiceUserDirectory(
-            new StubHttpClientFactory(req => { captured = req; return Json(DirectoryJson); }),
-            accessor, NullLogger<AuthorizationServiceUserDirectory>.Instance);
-
-        await directory.LookupAsync(Ask("alice"), Ct);
-
-        captured!.Headers.Authorization.Should().NotBeNull();
-        captured.Headers.Authorization!.ToString().Should().Be("Bearer user-token");
-    }
-
-    private static HttpResponseMessage Json(string body) =>
-        new(HttpStatusCode.OK)
-        {
-            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
-        };
-
-    private sealed class StubHttpClientFactory(Func<HttpRequestMessage, HttpResponseMessage> respond)
-        : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name)
-            => new(new StubHandler(respond)) { BaseAddress = new Uri("http://localhost/") };
-    }
-
-    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(respond(request));
     }
 
     // east-west gRPC の生成クライアントの偽物。**呼び出し先の照合規則（序数一致・無効も実在）を

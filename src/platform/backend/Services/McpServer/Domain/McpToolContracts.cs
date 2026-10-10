@@ -28,8 +28,8 @@ namespace McpServer.Domain;
 //
 // ［2026-09-26 追記 / #1515］🔴 **昇格は gRPC の契約で行った** —— proto `platform.mcp.v1`
 // （`Platform.Shared.Contracts/Protos/platform/mcp/v1/mcp_tool_declarations.proto`）が共有契約である（IADR-0462 の
-// 「経路 ④-a への適用」）。本ファイルは REST（並走中の正）のワイヤ形式の正本として残り、REST の退役（#1517）で消える。
-// **並走中は形が 2 つ在る** —— ここを変えるときは proto も同時に変えること（項目名・数の一致は
+// 「経路 ④-a への適用」）。本ファイルは収集した申告を McpServer の中で運ぶ型として残る
+// （［2026-10-10 / #1255・[[IADR-0533]]］REST の収集は撤去した。#1517）。**形は proto と DTO の 2 つ在る** —— ここを変えるときは proto も同時に変えること（項目名・数の一致は
 // `GrpcToolDeclarationCollectorTests.Proto_fields_match_the_rest_wire_names_of_the_dto` が固定する）。
 public sealed record McpToolDeclaration(
     [property: JsonPropertyName("name")] string Name,

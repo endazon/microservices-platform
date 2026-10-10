@@ -15,7 +15,7 @@ namespace Knowledge.Bff.Endpoints.Usage;
 // 信じるほかなく、認証済みの主体が自己申告に置き換わる（認可の後退）。
 //
 // 🔴 **fail-open である。** 停止要求以外はすべて握り、計器とエラーログへ落とす
-// （`HttpPrivateNoteNotifier` / `HttpKnowledgeHealthReporter` と同じ姿勢・同じ理由）。
+// （旧 REST の `HttpPrivateNoteNotifier`（［2026-10-10］撤去） / 旧 REST の `HttpKnowledgeHealthReporter`（［2026-10-10］撤去） と同じ姿勢・同じ理由）。
 // ここで例外を投げるとホスト全体が落ち、**計測のために検索と回答が止まる**。
 //
 // ★ **タイムアウトは既定の 100 秒ではなく SendTimeout（5 秒）である。**

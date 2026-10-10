@@ -21,7 +21,7 @@ namespace NotificationService.Features.Notifications.Accept;
 // gRPC 面は [[IADR-0379]] 決定 4 に従い realm ロール `platform-service` を要求する ——
 // **権限が狭まる向き**である（[[IADR-0401]] 決定 1 / [[IADR-0417]] 決定 4 と同じ）。
 // 🔴 **利用者トークンでは開かない**（confused deputy の防止）——「認証さえあれば通る」形にすると、
-// 転送された管理者トークンで s2s の面が開く。**REST の口は残す**（並走中の正は REST）。
+// 転送された管理者トークンで s2s の面が開く。**REST の口は残す**（［2026-10-10 / #1255・[[IADR-0533]]］east-west の REST 呼び出し元は撤去した。受け口の撤去は残余）。
 //
 // 🔴 **status への写像は REST の状態コードと 1:1 である。**
 //   検証違反 → `INVALID_ARGUMENT`（REST の 400 = `ValidationProblem`）。それ以外は成功。

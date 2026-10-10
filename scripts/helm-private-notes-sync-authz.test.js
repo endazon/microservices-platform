@@ -243,19 +243,18 @@ function policiesFor(text, app) {
  * DocumentService の呼び出し元の一覧（#1606 の作業仕様書 §2 で引いた母集合）。
  * ns: 呼び出し元の名前空間（mTLS の主体から採れる値）。null は平文（サイドカー無し）＝ principal を持たない。
  * gateway の名前空間は描画の値から与える（knob を変えた描画でも同じ一覧で評価するため）。
+ * ［2026-10-10 / #1255・#1517・IADR-0533］east-west の REST 呼び出し（BFF の構成の自己申告・GraphService のタグの書き戻し・
+ * McpServer のツール申告）を撤去したので、その 3 行を外した（REST の受け口 `/internal/introspection`・`/internal/mcp-tools` も撤去済み）。
  */
 function callers(gatewayNs, releaseNs) {
   const inNs = (sa) => ({ ns: releaseNs, sa });
   return [
     { who: 'BFF → REST 文書（閲覧・保存・個人資料・端末・競合の中継）', ...inNs('bff-service'), port: 8080, method: 'GET', path: '/documents/00000000-0000-0000-0000-000000000001', want: 'allow' },
     { who: 'BFF → REST 同期設定（sync- で始まるが sync/ ではない）', ...inNs('bff-service'), port: 8080, method: 'PUT', path: '/private-notes/sync-settings/', want: 'allow' },
-    { who: 'BFF → REST 構成の自己申告', ...inNs('bff-service'), port: 8080, method: 'GET', path: '/internal/introspection', want: 'allow' },
     { who: 'BFF → gRPC 文書の読み取り', ...inNs('bff-service'), port: 8081, method: 'POST', path: '/knowledge.document.v1.DocumentRead/GetDocument', want: 'allow' },
     { who: 'BFF → gRPC 構成の自己申告', ...inNs('bff-service'), port: 8081, method: 'POST', path: '/platform.introspection.v1.ServiceIntrospection/Get', want: 'allow' },
-    { who: 'GraphService → REST タグの書き戻し', ...inNs('graph-service'), port: 8080, method: 'POST', path: '/documents/00000000-0000-0000-0000-000000000001/tags', want: 'allow' },
     { who: 'GraphService → gRPC タグの書き戻し', ...inNs('graph-service'), port: 8081, method: 'POST', path: '/knowledge.document.v1.DocumentTagWrite/AddTag', want: 'allow' },
     { who: 'GraphService → gRPC タグ辞書', ...inNs('graph-service'), port: 8081, method: 'POST', path: '/knowledge.document.v1.TagDictionary/ListNames', want: 'allow' },
-    { who: 'McpServer → REST ツール申告', ...inNs('mcp-server'), port: 8080, method: 'GET', path: '/internal/mcp-tools', want: 'allow' },
     { who: 'McpServer → gRPC ツール実行（#1516。REST の実行経路は廃した）', ...inNs('mcp-server'), port: 8081, method: 'POST', path: '/platform.mcp.v1.McpToolExecution/Execute', want: 'allow' },
     { who: 'McpServer → gRPC ツール申告', ...inNs('mcp-server'), port: 8081, method: 'POST', path: '/platform.mcp.v1.McpToolDeclarations/Declare', want: 'allow' },
     { who: 'AST（別名前空間・サイドカー無し＝平文）→ REST KB 保存', ns: null, port: 8080, method: 'POST', path: '/documents', want: 'allow' },

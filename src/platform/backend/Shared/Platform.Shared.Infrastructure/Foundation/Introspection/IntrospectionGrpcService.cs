@@ -10,11 +10,11 @@ namespace Platform.Shared.Infrastructure.Foundation.Introspection;
 // 自己申告の **east-west gRPC 面**（`platform.introspection.v1.ServiceIntrospection/Get`）。
 //
 // 🔴 **本体は持たない。** DI の `ServiceIntrospectionDto`（`AddPlatformIntrospection` が組み立てた 1 つ）を
-// 輸送の言葉へ写すだけであり、REST の `GET /internal/introspection` と**同じ 1 つの申告**を返す
-// （申告を 2 つ持たない。片方だけ更新されて輸送ごとに違う申告が返る形を作らない）。
+// 輸送の言葉へ写すだけである（申告を 2 つ持たない）。［2026-10-10 / #1517・[[IADR-0533]]］REST の
+// `GET /internal/introspection` は撤去し、自己申告の面はこの 1 つになった。
 //
 // 🔴 **ServiceCaller を要求する。** 利用者のトークンは（管理者であっても）通らない（IADR-0379 決定 4）。
-// REST の受け口は認証を持たない（メッシュ内部限定）ので、この面は現状より**狭い**。
+// （撤去した REST の受け口は認証を持たなかった。この面はそれより**狭い**。）
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
 public sealed class IntrospectionGrpcService(Dto.ServiceIntrospectionDto report)
     : Pb.ServiceIntrospection.ServiceIntrospectionBase

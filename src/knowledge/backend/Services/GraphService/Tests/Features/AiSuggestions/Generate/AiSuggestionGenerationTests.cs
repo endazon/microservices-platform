@@ -1,8 +1,10 @@
 using System.Diagnostics.Metrics;
 using System.Net;
 using System.Text;
+using System.Net.Http.Json;
 using System.Text.Json;
 using AwesomeAssertions;
+using Grpc.Core;
 using GraphService.Common.Observability;
 using GraphService.Infrastructure.ExternalServices;
 using GraphService.Domain;
@@ -12,6 +14,8 @@ using GraphService.Domain.Ports;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Llm;
+using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 
 namespace GraphService.Tests.Features.AiSuggestions.Generate;
 
@@ -45,6 +49,28 @@ public class AiSuggestionGenerationTests
     // 「日本語の表題を含まない」という assert は、逃がされているというだけで無条件に通る**
     // ——「送っていないから通った」と区別が付かない。**否定形テストが空振りする典型**なので、
     // 表題の検査は必ず復号後（Prompts）に対して行う。ID（ASCII）は生の本文でも見られる。
+    // ［2026-10-10 / #1255］[[IADR-0533]]: 提案の LLM 呼び出しは gRPC 実装だけである（REST の `LlmGatewaySuggestionClient` は撤去した）。
+    // 試験は従来どおり「ゲートウェイの JSON 本文」を HTTP のハンドラで書き、ここが生成クライアントへ載せ替える
+    // （送信本文は REST と同じ JSON へ戻してハンドラへ渡すので、送信本文の表明もそのまま使える）。
+    private sealed class HttpBackedCompletionClient(HttpMessageHandler handler) : Pb.LlmCompletion.LlmCompletionClient
+    {
+        private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
+        private readonly HttpClient _http = new(handler) { BaseAddress = new Uri("http://llm-gateway/") };
+
+        public override AsyncUnaryCall<Pb.CompleteResponse> CompleteAsync(Pb.CompleteRequest request, CallOptions options) =>
+            new(SendAsync(request, options.CancellationToken), Task.FromResult(new Metadata()),
+                () => Status.DefaultSuccess, () => [], () => { });
+
+        private async Task<Pb.CompleteResponse> SendAsync(Pb.CompleteRequest request, CancellationToken ct)
+        {
+            using var resp = await _http.PostAsJsonAsync("/complete", LlmGrpcMapping.ToDto(request), Web, ct);
+            if (!resp.IsSuccessStatusCode)
+                throw new RpcException(new Status(StatusCode.Unavailable, $"stub returned HTTP {(int)resp.StatusCode}"));
+            var dto = await resp.Content.ReadFromJsonAsync<CompletionApiResponse>(Web, ct);
+            return LlmGrpcMapping.ToProto(dto!);
+        }
+    }
+
     private sealed class CapturingHandler(Func<string, string> respondWithText) : HttpMessageHandler
     {
         public List<string> Sent { get; } = [];
@@ -130,9 +156,8 @@ public class AiSuggestionGenerationTests
         GraphDbContext db, ISimilarityCandidateSource similarity, Func<string, string> respond)
     {
         var handler = new CapturingHandler(respond);
-        var client = new LlmGatewaySuggestionClient(
-            new HttpClient(handler) { BaseAddress = new Uri("http://llm-gateway/") },
-            NullLogger<LlmGatewaySuggestionClient>.Instance);
+        var client = new LlmGatewayGrpcSuggestionClient(
+            new HttpBackedCompletionClient(handler), NullLogger<LlmGatewayGrpcSuggestionClient>.Instance);
         return (Generator(db, similarity, client), handler);
     }
 
@@ -376,9 +401,8 @@ public class AiSuggestionGenerationTests
         var (origin, visible, _) = await SeedAsync(db);
 
         var handler = new DegradedHandler(sent, stopReason, visible);
-        var client = new LlmGatewaySuggestionClient(
-            new HttpClient(handler) { BaseAddress = new Uri("http://llm-gateway/") },
-            NullLogger<LlmGatewaySuggestionClient>.Instance);
+        var client = new LlmGatewayGrpcSuggestionClient(
+            new HttpBackedCompletionClient(handler), NullLogger<LlmGatewayGrpcSuggestionClient>.Instance);
 
         var created = await Generator(db, new StubSimilarity(new SimilarityCandidate(visible, 0.9)), client)
             .GenerateAsync(origin, InternalOnly(), TestContext.Current.CancellationToken);

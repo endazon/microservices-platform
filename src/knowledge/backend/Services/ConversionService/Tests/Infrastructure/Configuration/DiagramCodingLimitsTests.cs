@@ -175,8 +175,9 @@ public class DiagramCodingLimitsTests
             .BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(900)).And.BeLessThan(TimeSpan.FromSeconds(30));
     }
 
-    // 本番の Program.cs の配線: 受け口の実行期限は 300 秒、REST の図のコード化の名前付きクライアントの期限は 20 秒、
+    // 本番の Program.cs の配線: 受け口の実行期限は 300 秒、図のコード化は gRPC 実装（1 回の期限 20 秒は呼び出しごとの `Deadline`）、
     // 上限の値は DI から引ける（gRPC 実装と正規化が同じ値を使う）。
+    // ［2026-10-10 / #1255］[[IADR-0533]]: REST の名前付きクライアント（`Timeout` 20 秒）は撤去した。
     [Fact]
     [Trait("TestKind", "Integration")]
     public async Task 本番の配線は三つの上限を既定値で張る()
@@ -190,9 +191,9 @@ public class DiagramCodingLimitsTests
 
         services.GetRequiredService<DiagramCodingLimits>().Should().Be(DiagramCodingLimits.Default);
         using var scope = services.CreateScope();
-        scope.ServiceProvider.GetRequiredService<IDiagramCoder>().Should().BeOfType<LlmGatewayDiagramCoder>();
-        services.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(IDiagramCoder))
-            .Timeout.Should().Be(TimeSpan.FromSeconds(DiagramCodingLimits.DefaultCallTimeoutSeconds));
+        scope.ServiceProvider.GetRequiredService<IDiagramCoder>().Should().BeOfType<LlmGatewayGrpcDiagramCoder>();
+        services.GetRequiredService<DiagramCodingLimits>().CallTimeout
+            .Should().Be(TimeSpan.FromSeconds(DiagramCodingLimits.DefaultCallTimeoutSeconds));
     }
 
     // #1641: 本番の配線は、本文変換の外部プロセスの期限（既定 90 秒）を pandoc・pdftotext の両方の変換器へ渡す

@@ -14,6 +14,14 @@ using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Platform.Bff.Foundation.Secrets;
+using Grpc.Core;
+using Knowledge.Bff.Endpoints.Documents;
+using Knowledge.Bff.Endpoints.Search;
+using Knowledge.Contracts.Grpc;
+using Microsoft.Extensions.Logging;
+using AuthzPb = Platform.Shared.Contracts.Grpc.Authz.V1;
+using DocPb = Knowledge.Contracts.Grpc.Document.V1;
+using RetrievalPb = Knowledge.Contracts.Grpc.Retrieval.V1;
 
 namespace Platform.Bff.Tests;
 
@@ -622,8 +630,19 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // 「スコープ解決の要求に Bearer が実際に載る」ことを試験から観測できる状態を保つ。
             services.RemoveAll<IServiceTokenProvider>();
             services.AddSingleton<IServiceTokenProvider>(new FixedServiceTokenProvider());
-            services.AddHttpClient(AuthzScopeHttpClient.ClientName)
-                .ConfigurePrimaryHttpMessageHandler(() => new AuthzStubHandler(this));
+            // ［2026-10-10 / #1255・[[IADR-0533]]］スコープ解決・文書の読み取り 4 口・属性値の照会は east-west gRPC だけになった
+            // （REST の並走は撤去した）。gRPC の生成クライアントを**器の HTTP スタブへ橋渡しする呼び出し器**の上に組む ——
+            // スタブの状態（許可可否・フィルタ・文書・版・属性値）を各試験が従来どおり差し替えられるようにするためである。
+            services.RemoveAll<AuthzScopeGrpcClient>();
+            services.AddSingleton(sp => new AuthzScopeGrpcClient(
+                new AuthzPb.AuthzScope.AuthzScopeClient(new AuthzScopeBridge(GrpcBridgeHandler("authz"))),
+                sp.GetRequiredService<ILogger<AuthzScopeGrpcClient>>()));
+            services.RemoveAll<DocumentReadGrpcClient>();
+            services.AddSingleton(_ => new DocumentReadGrpcClient(
+                new DocPb.DocumentRead.DocumentReadClient(new DocumentReadBridge(this, GrpcBridgeHandler("document")))));
+            services.RemoveAll<AttributeValuesGrpcClient>();
+            services.AddSingleton(_ => new AttributeValuesGrpcClient(
+                new RetrievalPb.AttributeValues.AttributeValuesClient(new AttributeValuesBridge(this))));
             services.AddHttpClient("AuthorizationService")
                 .ConfigurePrimaryHttpMessageHandler(() => new AuthzStubHandler(this));
             services.AddHttpClient("RetrievalService")
@@ -1967,4 +1986,157 @@ public class BffTestFactory : WebApplicationFactory<Program>
             };
     }
 
+    // ── east-west gRPC の橋渡し（［2026-10-10 / #1255・[[IADR-0533]]］）──────────────────────────
+    //
+    // 生成クライアントの下の呼び出し器。要求を器の HTTP スタブ（認可・文書・検索）への要求へ写して答えを返す。
+    // 🔴 **写すのは輸送の形だけであり、判定はしない**（判定は従来どおりスタブの状態が持つ）。
+    // 非 2xx は gRPC の status へ写す（404 は `found=false`。400 は INVALID_ARGUMENT、その他は INTERNAL）。
+    // 利用者文脈（`user`）はスタブの観測点 `GrpcUserContexts` に rpc ごとに記録する（#1614 の観測点の gRPC 版）。
+    public System.Collections.Concurrent.ConcurrentDictionary<string, string?> GrpcUserContexts { get; } = new();
+
+    // 橋渡しの先の HTTP スタブ（"authz" / "document"）。計測用の器（`MeasuringBffFactory`）が往復を数えるために差し替える。
+    protected virtual HttpMessageHandler GrpcBridgeHandler(string service) => service switch
+    {
+        "authz" => new AuthzStubHandler(this),
+        "document" => new DocumentStubHandler(this),
+        _ => throw new ArgumentOutOfRangeException(nameof(service), service, null),
+    };
+
+    private abstract class HttpBridge(HttpMessageHandler handler) : CallInvoker
+    {
+        private readonly HttpClient _http = new(handler) { BaseAddress = new Uri("http://stub") };
+
+        protected abstract Task<object> RespondAsync(string method, object request, CancellationToken ct);
+
+        protected async Task<(HttpStatusCode Status, T? Body)> SendAsync<T>(HttpRequestMessage request, CancellationToken ct)
+        {
+            using var resp = await _http.SendAsync(request, ct);
+            if (!resp.IsSuccessStatusCode)
+                return (resp.StatusCode, default);
+            return (resp.StatusCode, await resp.Content.ReadFromJsonAsync<T>(ct));
+        }
+
+        protected static RpcException ToRpc(HttpStatusCode status) => new(new Status(
+            status == HttpStatusCode.BadRequest ? StatusCode.InvalidArgument : StatusCode.Internal,
+            $"stub returned HTTP {(int)status}"));
+
+        public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(
+            Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request)
+        {
+            var response = RespondAsync(method.Name, request!, options.CancellationToken)
+                .ContinueWith(t => (TResponse)t.GetAwaiter().GetResult(), TaskScheduler.Default);
+            return new AsyncUnaryCall<TResponse>(response, Task.FromResult(new Metadata()),
+                () => Status.DefaultSuccess, () => [], () => { });
+        }
+
+        public override TResponse BlockingUnaryCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request)
+            => throw new NotSupportedException();
+        public override AsyncClientStreamingCall<TRequest, TResponse> AsyncClientStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options)
+            => throw new NotSupportedException();
+        public override AsyncServerStreamingCall<TResponse> AsyncServerStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request)
+            => throw new NotSupportedException();
+        public override AsyncDuplexStreamingCall<TRequest, TResponse> AsyncDuplexStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options)
+            => throw new NotSupportedException();
+    }
+
+    private sealed class AuthzScopeBridge(HttpMessageHandler handler) : HttpBridge(handler)
+    {
+        protected override async Task<object> RespondAsync(string method, object request, CancellationToken ct)
+        {
+            var req = (AuthzPb.ResolveScopeRequest)request;
+            var (status, body) = await SendAsync<AccessScopeResponse>(new HttpRequestMessage(HttpMethod.Post, "/authz/scope")
+            {
+                Content = JsonContent.Create(new AccessScopeRequest(
+                    req.UserId, new Dictionary<string, string>(req.UserAttributes), req.Action)),
+            }, ct);
+            if (body is null)
+                throw ToRpc(status);
+
+            var resp = new AuthzPb.ResolveScopeResponse { UserId = body.UserId, Granted = body.Granted };
+            resp.AllowedFilters.AddRange(body.AllowedFilters.Select(ToProto));
+            foreach (var branch in body.Branches ?? [])
+            {
+                var b = new AuthzPb.AccessScopeBranch { Name = branch.Name };
+                b.Filters.AddRange(branch.Filters.Select(ToProto));
+                resp.Branches.Add(b);
+            }
+            return resp;
+        }
+
+        private static AuthzPb.AttributeFilter ToProto(AttributeFilter f)
+        {
+            var p = new AuthzPb.AttributeFilter { Key = f.Key };
+            p.AllowedValues.AddRange(f.AllowedValues);
+            return p;
+        }
+    }
+
+    private sealed class DocumentReadBridge(BffTestFactory owner, HttpMessageHandler handler) : HttpBridge(handler)
+    {
+        protected override async Task<object> RespondAsync(string method, object request, CancellationToken ct)
+        {
+            switch (request)
+            {
+                case DocPb.ListDocumentsRequest r:
+                    {
+                        Record(method, r.User);
+                        var (status, docs) = await SendAsync<List<DocumentDto>>(new HttpRequestMessage(HttpMethod.Get, "/documents"), ct);
+                        if (docs is null) throw ToRpc(status);
+                        var resp = new DocPb.ListDocumentsResponse();
+                        resp.Documents.AddRange(docs.Select(DocumentReadGrpcMapping.ToProto));
+                        return resp;
+                    }
+                case DocPb.GetDocumentRequest r:
+                    {
+                        Record(method, r.User);
+                        var (status, doc) = await SendAsync<DocumentDto>(new HttpRequestMessage(HttpMethod.Get, $"/documents/{r.Id}"), ct);
+                        if (status == HttpStatusCode.NotFound) return new DocPb.GetDocumentResponse { Found = false };
+                        if (doc is null) throw ToRpc(status);
+                        return new DocPb.GetDocumentResponse { Found = true, Document = DocumentReadGrpcMapping.ToProto(doc) };
+                    }
+                case DocPb.ListVersionsRequest r:
+                    {
+                        Record(method, r.User);
+                        var (status, versions) = await SendAsync<List<DocumentVersionDto>>(
+                            new HttpRequestMessage(HttpMethod.Get, $"/documents/{r.DocumentId}/versions"), ct);
+                        if (status == HttpStatusCode.NotFound) return new DocPb.ListVersionsResponse { Found = false };
+                        if (versions is null) throw ToRpc(status);
+                        var resp = new DocPb.ListVersionsResponse { Found = true };
+                        resp.Versions.AddRange(versions.Select(DocumentReadGrpcMapping.ToProto));
+                        return resp;
+                    }
+                case DocPb.GetVersionRequest r:
+                    {
+                        Record(method, r.User);
+                        var (status, snapshot) = await SendAsync<DocumentVersionDto>(
+                            new HttpRequestMessage(HttpMethod.Get, $"/documents/{r.DocumentId}/versions/{r.Version}"), ct);
+                        if (status == HttpStatusCode.NotFound) return new DocPb.GetVersionResponse { Found = false };
+                        if (snapshot is null) throw ToRpc(status);
+                        return new DocPb.GetVersionResponse { Found = true, Snapshot = DocumentReadGrpcMapping.ToProto(snapshot) };
+                    }
+                default:
+                    throw new NotSupportedException(method);
+            }
+        }
+
+        private void Record(string method, DocPb.UserContext? user) => owner.GrpcUserContexts[method] = user?.UserId;
+    }
+
+    private sealed class AttributeValuesBridge(BffTestFactory owner) : HttpBridge(new RetrievalStubHandler(owner))
+    {
+        protected override async Task<object> RespondAsync(string method, object request, CancellationToken ct)
+        {
+            var req = (RetrievalPb.ListValuesRequest)request;
+            owner.GrpcUserContexts[method] = req.User?.UserId;
+            var (status, body) = await SendAsync<AttributeValuesResponse>(
+                new HttpRequestMessage(HttpMethod.Post, "/search/attribute-values")
+                {
+                    Content = JsonContent.Create(new { key = req.Key }),
+                }, ct);
+            if (body is null) throw ToRpc(status);
+            var resp = new RetrievalPb.ListValuesResponse();
+            resp.Values.AddRange(body.Values);
+            return resp;
+        }
+    }
 }

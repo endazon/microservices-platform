@@ -7,10 +7,8 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 namespace IngestionService.Infrastructure.ExternalServices;
 
 // FR-02, FR-05, ADR-0013, ADR-0016, ADR-0029, ADR-0075, IADR-0256, IADR-0379, IADR-0397 (#1255):
-// 取り込み埋め込みの **east-west gRPC 経路**（REST の LlmGatewayEmbeddingService の兄弟）。
-//
-// **並走中の正は REST である。** 本クラスは `Services:LlmGatewayGrpc` が構成されたときだけ登録され
-// （Program.cs）、無ければ従来の HTTP 実装がそのまま使われる。
+// 取り込み埋め込みの **east-west gRPC 経路**。［2026-10-10 / #1255・[[IADR-0533]]］REST の兄弟実装 `LlmGatewayEmbeddingService` は撤去し、
+// 本クラスが唯一の実装である（宛先未構成は `UNAVAILABLE` の `RpcException` として上がる）。
 //
 // 🔴 **輸送の失敗は例外のまま上げる。** RpcException も s2s トークンの取得失敗も**捕まえない** ——
 // REST 実装の `EnsureSuccessStatusCode` と同じ判断である（IADR-0256 決定 3）。ここで

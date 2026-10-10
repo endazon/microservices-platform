@@ -9,10 +9,8 @@ namespace GraphService.Infrastructure.ExternalServices;
 
 // FR-18, FR-11, NFR-09, NFR-16, ADR-0010, ADR-0029, ADR-0034 決定 5, ADR-0075,
 // IADR-0104, IADR-0266 決定 6・7, IADR-0379, IADR-0397, IADR-0400 (#1255):
-// 提案生成の **east-west gRPC 経路**（REST の LlmGatewaySuggestionClient の兄弟）。
-//
-// **並走中の正は REST である。** 本クラスは `Services:LlmGatewayGrpc` が構成されたときだけ登録され
-// （Program.cs）、無ければ従来の HTTP 実装がそのまま使われる。戻すのは構成を外すだけでよい。
+// 提案生成の **east-west gRPC 経路**。［2026-10-10 / #1255・[[IADR-0533]]］REST の兄弟実装 `LlmGatewaySuggestionClient` は撤去し、
+// 本クラスが唯一の実装である（宛先未構成は `UNAVAILABLE` → 下の「提案 0 件」の枝）。
 //
 // 🔴 **引数は SuggestionPrompt のみである**（ISuggestionLlmClient）。送信本文は封が組み立てる
 // （Render）—— 組み立てを本クラスへ出すと、封を通っていない文字列を送る経路が開く。REST 実装と同じ。
@@ -26,6 +24,10 @@ public sealed class LlmGatewayGrpcSuggestionClient(
     Pb.LlmCompletion.LlmCompletionClient client,
     ILogger<LlmGatewayGrpcSuggestionClient> logger) : ISuggestionLlmClient
 {
+    // 監査・課金集計で用途が識別できるようにする（ゲートウェイ側は自由文字列として扱う）。
+    // ［2026-10-10 / #1255・[[IADR-0533]]］撤去した REST 実装から移した（値は変えていない）。
+    public const string PurposeName = "graph-suggestion";
+
     public async Task<IReadOnlyList<LlmSuggestionProposal>> ProposeAsync(
         SuggestionPrompt prompt, CancellationToken ct = default)
     {
@@ -36,7 +38,7 @@ public sealed class LlmGatewayGrpcSuggestionClient(
                 LlmGrpcMapping.ToProto(new CompletionApiRequest(
                     prompt.Render(),
                     Confidentiality: prompt.Confidentiality,
-                    Purpose: LlmGatewaySuggestionClient.PurposeName)),
+                    Purpose: PurposeName)),
                 cancellationToken: ct);
             body = LlmGrpcMapping.ToDto(resp);
         }

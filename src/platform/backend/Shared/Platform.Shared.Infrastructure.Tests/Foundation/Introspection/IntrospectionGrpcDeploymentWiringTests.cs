@@ -6,7 +6,10 @@ namespace Platform.Shared.Infrastructure.Tests.Foundation.Introspection;
 // FR-15, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 3・5, IADR-0462 (#1514, #1255 経路 ⑤):
 // **正の配備ファイル**（compose・helm）と本番の `Program.cs` に対して、自己申告の gRPC 収集の配線が揃っていることを固定する。
 //
-// 🔴 **扇形の経路は 4 か所が揃って初めて 1 宛先が移る**: BFF の gRPC 宛先（`Introspection__GrpcServices__*`）・
+// ［2026-10-10 / #1517・[[IADR-0533]] 決定 3］REST の収集を撤去し、構成キーを `Introspection__Services__*`（値は gRPC の宛先）へ
+// 一本化した。旧キー `Introspection__GrpcServices__*` は配備ファイルに 1 件も残っていてはならない（残ると BFF が起動しない）。
+//
+// 🔴 **扇形の経路は 4 か所が揃って初めて 1 宛先が届く**: BFF の宛先（`Introspection__Services__*`）・
 // 宛先のポート（helm `grpcPort` / compose `Grpc__Port`）・宛先の h2c リスナ（`AddPlatformGrpcListener`）・
 // gRPC 面（`MapPlatformIntrospection` が張る）。どれか 1 つが欠けると、その宛先は**到達不能としか見えない**
 // （収集器は失敗を到達不能へ隔離する。ドリフト検出は Info に留める）—— 例外もヘルスの赤も出ない。
@@ -15,15 +18,6 @@ public class IntrospectionGrpcDeploymentWiringTests
     private const string Compose = "deploy/docker-compose.yml";
     private const string Helm = "deploy/helm/microservices-platform/values.yaml";
     private const int GrpcPort = 8081;
-
-    // 🔴 **まだ gRPC で収集しない宛先と、その理由。** ここに在る宛先は REST のまま残し、gRPC の宛先・
-    // h2c リスナを配線しない（配線しても面が応答できないため）。理由が解けたら、ここから外して配線を足す。
-    //
-    // ［2026-09-26 / #1537］IADR-0462 フォローアップ 3: 最後の保留だった conversion-service を外し、配線を足した
-    // （認証は IADR-0465・#1520 で着地済み）。**保留は 0 件**であり、以下の 4 試験は収集先 13 すべてを検査する。
-    // 一覧そのものは残す —— 宛先を段階的に移す仕組み（IADR-0462 決定 2-A）であり、次に面を持たない宛先が
-    // 収集先へ加わったとき、理由つきでここへ置けば配線の検査から一時的に外せる。
-    private static readonly IReadOnlyDictionary<string, string> PendingGrpcTargets = new Dictionary<string, string>();
 
     // compose は `Key: value`、helm は `- name: Key` の次行 `value: "..."`。どちらの書式でも引く。
     private static Dictionary<string, string> ReadMap(string file, string prefix)
@@ -37,26 +31,18 @@ public class IntrospectionGrpcDeploymentWiringTests
         return map;
     }
 
-    // 1. REST の収集先すべてに gRPC の宛先があり、同じ DNS 名の h2c ポートを指す。
+    // 1. 収集先はすべて h2c ポートを指し、撤去した旧キーは残っていない。
     [Theory]
     [InlineData(Compose)]
     [InlineData(Helm)]
-    public void Every_rest_introspection_target_has_a_grpc_target_on_the_same_host(string file)
+    public void Every_introspection_target_points_at_the_h2c_port_and_the_retired_key_is_gone(string file)
     {
-        var rest = ReadMap(file, "Introspection__Services");
-        var grpc = ReadMap(file, "Introspection__GrpcServices");
+        var targets = ReadMap(file, "Introspection__Services");
 
-        rest.Should().NotBeEmpty("対照: 収集先を 1 件も読めていないなら以下は何も検査していない");
-        grpc.Keys.Should().BeEquivalentTo(rest.Keys.Except(PendingGrpcTargets.Keys),
-            "REST の収集先は（保留の宛先を除き）すべて gRPC の収集先でもある（片方だけの宛先を作らない）");
-        PendingGrpcTargets.Keys.Should().BeSubsetOf(rest.Keys, "保留の宛先は REST の収集先に残っている（収集から落ちていない）");
-
-        foreach (var (service, restUrl) in rest.Where(kv => !PendingGrpcTargets.ContainsKey(kv.Key)))
-        {
-            var g = new Uri(grpc[service]);
-            g.Host.Should().Be(new Uri(restUrl).Host, $"{service} の gRPC 宛先は REST と同じ Service を指す");
-            g.Port.Should().Be(GrpcPort, $"{service} の gRPC 宛先は h2c ポートを指す");
-        }
+        targets.Should().HaveCount(13, "対照: 収集先 13 を読めていないなら以下は何も検査していない");
+        foreach (var (service, url) in targets)
+            new Uri(url).Port.Should().Be(GrpcPort, $"{service} の宛先は h2c ポートを指す（HTTP/1.1 の :8080 は h2c を話さない）");
+        ReadRepoFile(file).Should().NotContain("Introspection__GrpcServices__", "旧キーが残ると BFF は起動を止める");
     }
 
     // 2. gRPC の宛先が指すサービスは、helm で grpcPort を・compose で Grpc__Port と expose を宣言している。
@@ -64,7 +50,7 @@ public class IntrospectionGrpcDeploymentWiringTests
     public void Every_helm_grpc_target_declares_grpc_port()
     {
         var values = ReadRepoFile(Helm);
-        foreach (var (service, url) in ReadMap(Helm, "Introspection__GrpcServices"))
+        foreach (var (service, url) in ReadMap(Helm, "Introspection__Services"))
         {
             // helm の Deployment / Service 名は `<key>-service`（values.yaml の scaling 節の注記）。
             var host = new Uri(url).Host;
@@ -79,7 +65,7 @@ public class IntrospectionGrpcDeploymentWiringTests
     public void Every_compose_grpc_target_declares_grpc_port_and_expose()
     {
         var compose = ReadRepoFile(Compose);
-        foreach (var (service, url) in ReadMap(Compose, "Introspection__GrpcServices"))
+        foreach (var (service, url) in ReadMap(Compose, "Introspection__Services"))
         {
             var block = Block(compose, $"  {new Uri(url).Host}:");
             block.Should().MatchRegex($@"(?m)^      Grpc__Port: ""{GrpcPort}""\s*$", $"{service} の h2c リスナ");
@@ -98,14 +84,14 @@ public class IntrospectionGrpcDeploymentWiringTests
             .Where(File.Exists)
             .ToDictionary(p => p, File.ReadAllText);
 
-        foreach (var service in ReadMap(Helm, "Introspection__Services").Keys.Except(PendingGrpcTargets.Keys))
+        foreach (var service in ReadMap(Helm, "Introspection__Services").Keys)
         {
             var owner = programs.Where(kv => kv.Value.Contains($"AddPlatformIntrospection(\"{service}\"", StringComparison.Ordinal))
                 .Select(kv => kv).ToList();
             owner.Should().ContainSingle($"'{service}' を申告する Program.cs はちょうど 1 つ");
             var source = owner[0].Value;
             source.Should().Contain("builder.AddPlatformGrpcListener();", $"{service} は h2c リスナを立てる");
-            source.Should().Contain("app.MapPlatformIntrospection();", $"{service} は自己申告の面（REST と gRPC）を張る");
+            source.Should().Contain("app.MapPlatformIntrospection();", $"{service} は自己申告の gRPC 面を張る");
         }
     }
 

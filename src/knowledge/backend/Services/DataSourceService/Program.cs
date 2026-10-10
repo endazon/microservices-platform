@@ -87,33 +87,19 @@ builder.Host.UseWolverine(opts =>
 builder.Services.AddPlatformIntrospection("datasource-service", new PipelineOptions());
 
 // FR-05, UC-04, SC-06, SC-17, ADR-0064 決定 4, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証。
-// 後段は AuthorizationService の /authz/users（`view-users` を持つ機密クライアント。IADR-0329）である。
 //
-// 🔴 **既定を 8080 にする。** 先行 3 サービス（Graph / Wiki / AiAnalysis）のコード既定は
-// `:5005` だが、**compose も k8s も 8080 で上書きしており、既定値のほうが古い**。
-// 新規に口を開く側で古い既定を写すと、配備の上書き漏れが「名前解決は通るがポートが無い」形で
-// 沈黙する（values.yaml の bff に同型の実測が記録されている）。
-builder.Services.AddHttpClient(
-    DataSourceService.Infrastructure.ExternalServices.AuthorizationServiceUserDirectory.HttpClientName,
-    c => c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
-        ?? "http://authorization-service:8080"));
-// 呼び出し元の Authorization を後段へ転送するために要る（REST 実装のみ。下の gRPC 実装は転送しない）。
-builder.Services.AddHttpContextAccessor();
-
-// FR-05, UC-04, SC-06, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4・5, IADR-0401 決定 2・3 (#1255):
-// 写像先の実在検証の輸送。**並走中の正は REST である。**
-// `Services:AuthorizationServiceGrpc`（h2c のアドレス）が構成されたときだけ gRPC 実装を使う。
+// FR-05, UC-04, SC-06, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4, IADR-0401 決定 2・3, [[IADR-0533]] (#1255):
+// 輸送は east-west gRPC（`UserDirectory/CheckUsernames`）だけである（［2026-10-10］REST の
+// `AuthorizationServiceUserDirectory`〔`/authz/users`。利用者トークンを転送〕は撤去した）。
+// `Services:AuthorizationServiceGrpc` が構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、
+// 「引けなかった」（502）へ倒れる —— 「実在しない」（400）とは混ぜない。
 //
 // 🔴 **gRPC 実装は利用者トークンを転送しない。** 代わりに呼び出し先の読み口を
 // 「これらの名前は実在するか」へ狭めてある（`UserDirectory/CheckUsernames`）——
 // 列挙も書き込みも s2s の面に無いので、SC-06 を触れない主体が名簿を引ける経路はできない。
 builder.Services.AddUserDirectoryGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[AuthzScopeGrpcClient.AddressKey]))
-    builder.Services.AddScoped<IPlatformUserDirectory,
-        DataSourceService.Infrastructure.ExternalServices.GrpcPlatformUserDirectory>();
-else
-    builder.Services.AddScoped<IPlatformUserDirectory,
-        DataSourceService.Infrastructure.ExternalServices.AuthorizationServiceUserDirectory>();
+builder.Services.AddScoped<IPlatformUserDirectory,
+    DataSourceService.Infrastructure.ExternalServices.GrpcPlatformUserDirectory>();
 
 // FR-05, UC-04, SC-06, 計画 ADR-0115 決定 5, ADR-0074 決定 4, [[IADR-0472]] 決定 2 (#1557):
 // 明示した部門の値域検証の輸送。**gRPC だけである**（REST の兄弟実装は作らない —— 利用者トークンの転送へ戻さない）。

@@ -20,7 +20,10 @@ namespace McpServer.Tests.Infrastructure.ExternalServices;
 // `BackgroundServiceExceptionBehavior.StopHost` で `ApplicationStopping` が発火した（監査の使い捨ての試験で再現。
 // 3 つの REST の宛先はいずれも既定の経路で、初回の収集は起動直後に走る）。
 //
-// 本クラスは**汎用ホスト**（既定の StopHost）で本物の `ToolCatalogRefresher` と本物の REST の収集器を動かす ——
+// ［2026-10-10 / #1517・[[IADR-0533]]］REST の収集は撤去した。以下は本物の **gRPC の収集器**（`GrpcToolDeclarationCollector`）で
+// 同じ性質（時間切れ・拒否は申告なし・停止要求は外へ出す・ホストは止まらない）を測る。s2s トークンの発行は固定値へ差し替える。
+//
+// 本クラスは**汎用ホスト**（既定の StopHost）で本物の `ToolCatalogRefresher` と本物の収集器を動かす ——
 // 例外が「ホストを止めるかどうか」は BackgroundService を直接駆動しても観測できない（`ToolPublicationFailFastTests` の注記と同じ理由）。
 // 待受は **127.0.0.1 だけ**（0.0.0.0 で待ち受けない）。周期は `CycleInterval`（試験だけが与える口）で短くする。
 [Trait("TestKind", "Integration")]
@@ -31,21 +34,23 @@ public sealed class ToolCatalogRefresherTimeoutTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     // 🔴 #1604: 接続を受けて何も返さない宛先。期限（1 秒）で打ち切られた収集は「申告なし」へ畳まれ、
-    // ホストは止まらず、次の周期の収集も起きる（待受が 2 回目の接続を受け、失敗が 2 回記録される）。
+    // ホストは止まらず、次の周期の収集も起きる（失敗が 2 回記録される）。
+    // [[IADR-0533]]: 収集器は gRPC チャネルであり、周期をまたいで同じ TCP 接続を再利用し得る。接続の受付は 1 回以上だけを見て、
+    // 2 周期目の収集は失敗の記録件数（2 件以上）で示す。
     [Fact]
     public async Task 応答しない宛先の時間切れでホストは止まらず次の周期も収集する()
     {
         using var peer = SilentPeer.Start();
-        await using var run = await RefresherRun.StartAsync(RestTarget(peer.Port, timeoutSeconds: 1));
+        await using var run = await RefresherRun.StartAsync(Target(peer.Port, timeoutSeconds: 1));
 
         // 直す前の形では約 1 秒で ApplicationStopping が立つ（待つのをそこで打ち切り、下の表明で赤にする）。
         await run.WaitUntilAsync(() => run.CollectionFailures.Count >= 2);
 
         run.StoppingFired.Should().BeFalse("時間切れは収集の一時失敗であり、ホストを止めない");
         run.Refresher.ExecuteTask!.IsCompleted.Should().BeFalse("停止要求は出していない。周期は回り続けている");
-        peer.Accepted.Should().BeGreaterThanOrEqualTo(2, "次の周期でも同じ宛先へ収集に行っている");
-        run.CollectionFailures.Should().AllSatisfy(e => e.Should().BeAssignableTo<OperationCanceledException>(
-            "記録されたのは時間切れ（HttpClient.Timeout の TaskCanceledException）である"));
+        peer.Accepted.Should().BeGreaterThanOrEqualTo(1, "宛先へ収集に行っている（2 周期目は CollectionFailures の件数が示す）");
+        run.CollectionFailures.Should().AllSatisfy(e => e.Should().BeOfType<Grpc.Core.RpcException>()
+            .Which.StatusCode.Should().Be(Grpc.Core.StatusCode.DeadlineExceeded, "記録されたのは時間切れ（期限）である"));
     }
 
     // 対照 (#1604): 接続を拒否する宛先。直す前から「申告なし」へ畳まれ、ホストは止まらなかった経路である。
@@ -54,14 +59,14 @@ public sealed class ToolCatalogRefresherTimeoutTests
     public async Task 接続を拒否する宛先でもホストは止まらず次の周期も収集する()
     {
         var port = RefusingPort();
-        await using var run = await RefresherRun.StartAsync(RestTarget(port, timeoutSeconds: 5));
+        await using var run = await RefresherRun.StartAsync(Target(port, timeoutSeconds: 5));
 
         await run.WaitUntilAsync(() => run.CollectionFailures.Count >= 2);
 
         run.StoppingFired.Should().BeFalse();
         run.Refresher.ExecuteTask!.IsCompleted.Should().BeFalse();
-        run.CollectionFailures.Should().AllSatisfy(e => e.Should().BeOfType<HttpRequestException>(
-            "拒否として処理されている（時間切れに化けていない）"));
+        run.CollectionFailures.Should().AllSatisfy(e => e.Should().BeOfType<Grpc.Core.RpcException>()
+            .Which.StatusCode.Should().Be(Grpc.Core.StatusCode.Unavailable, "拒否として処理されている（時間切れに化けていない）"));
     }
 
     // 🔴 対照 (#1604)・［#1622］: 呼び出し側の ct による取り消し（停止要求）は、REST の収集器が「申告なし」へ畳まず外へ出す。
@@ -74,27 +79,28 @@ public sealed class ToolCatalogRefresherTimeoutTests
     {
         using var peer = SilentPeer.Start();
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(RestTarget(peer.Port, timeoutSeconds: 30))
+            .AddInMemoryCollection(Target(peer.Port, timeoutSeconds: 30))
             .Build();
         var logs = new RecordingLoggerProvider();
         using var sp = new ServiceCollection()
             .AddLogging(b => b.AddProvider(logs))
             .AddSingleton<IConfiguration>(configuration)
             .AddMcpToolDeclarationSources(configuration)
+            .AddSingleton<Platform.Shared.Infrastructure.Foundation.Grpc.IServiceTokenProvider>(new FixedTokenProvider("token"))
             .BuildServiceProvider();
         using var caller = CancellationTokenSource.CreateLinkedTokenSource(Ct);
         caller.CancelAfter(TimeSpan.FromMilliseconds(300));
 
         var act = async () => await sp.GetRequiredService<IToolDeclarationSource>().CollectAsync(caller.Token);
 
-        (await act.Should().ThrowAsync<TaskCanceledException>("呼び出し側の取り消しは申告なしへ畳まず、そのまま外へ出す"))
-            .Which.CancellationToken.Should().Be(caller.Token, "前提: HttpClient は呼び出し側の取り消しを呼び出し側の token で表す");
-        logs.Exceptions(typeof(HttpToolDeclarationSource).FullName!, LogLevel.Warning)
+        (await act.Should().ThrowAsync<OperationCanceledException>("呼び出し側の取り消しは申告なしへ畳まず、そのまま外へ出す"))
+            .Which.CancellationToken.Should().Be(caller.Token, "呼び出し側の取り消しとして外へ出す");
+        logs.Exceptions(typeof(GrpcToolDeclarationCollector).FullName!, LogLevel.Warning)
             .Should().BeEmpty("停止要求を収集の失敗（申告なし）として記録していない");
     }
 
     // 🔴 #1604: 収集器の内側で畳み損ねた取り消し（停止要求ではない）が周期の捕捉まで届いても、ホストは止まらず次の周期へ進む。
-    // REST の収集器が時間切れを畳む限り、周期の捕捉の絞り込みは上の試験からは見えない（その変異はこの試験でだけ赤になる）。
+    // 収集器が時間切れを畳む限り、周期の捕捉の絞り込みは上の試験からは見えない（その変異はこの試験でだけ赤になる）。
     [Fact]
     public async Task 収集器から停止要求でない取り消しが漏れても周期は次の収集へ進む()
     {
@@ -124,30 +130,22 @@ public sealed class ToolCatalogRefresherTimeoutTests
         run.Refresher.ExecuteTask!.IsCompletedSuccessfully.Should().BeTrue("停止要求はシャットダウンとして正常に終える");
     }
 
-    // #1604 (AC-4): 名前付きクライアントの期限は構成で与えられ、既定は 10 秒、1 未満は 1 秒に丸める。
-    // gRPC の期限は同じクライアントの `Timeout` を引くので（`GrpcToolDeclarationCollectorTests` T-G8）、期限の出所は 1 つのままである。
+    // #1604 (AC-4): 収集の期限は構成で与えられ、既定は 10 秒、1 未満は 1 秒に丸める（gRPC の deadline はこの値を引く）。
     [Theory]
     [InlineData(null, 10)]
     [InlineData("3", 3)]
     [InlineData("0", 1)]
-    public void 申告の収集の名前付きクライアントに期限を明示する(string? configured, int expectedSeconds)
+    public void 申告の収集に期限を明示する(string? configured, int expectedSeconds)
     {
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [HttpToolDeclarationSource.TimeoutKey] = configured })
+            .AddInMemoryCollection(new Dictionary<string, string?> { [GrpcToolDeclarationCollector.TimeoutKey] = configured })
             .Build();
-        using var sp = new ServiceCollection()
-            .AddLogging()
-            .AddSingleton<IConfiguration>(configuration)
-            .AddMcpToolDeclarationSources(configuration)
-            .BuildServiceProvider();
 
-        sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpToolDeclarationSource.HttpClientName)
-            .Timeout.Should().Be(TimeSpan.FromSeconds(expectedSeconds));
+        GrpcToolDeclarationCollector.ConfiguredTimeout(configuration).Should().Be(TimeSpan.FromSeconds(expectedSeconds));
     }
 
     // #1608: 期限のキーは本番の appsettings.json に**周期（`RefreshIntervalSeconds`）と並べて明示する**。
     // 既定値はコードの `DefaultTimeoutSeconds` と同じ値で、運用者が構成ファイルを見ればつまみの在り処と既定が分かる。
-    // 本番の構成ファイルを読み込んで登録を通し、名前付きクライアントの期限が 10 秒になることまで見る。
     [Fact]
     public void 本番の構成ファイルは申告の収集の期限を既定値で並べる()
     {
@@ -156,22 +154,15 @@ public sealed class ToolCatalogRefresherTimeoutTests
         var configuration = new ConfigurationBuilder().AddJsonStream(json).Build();
 
         configuration[ToolCatalogRefresher.IntervalKey].Should().NotBeNull("対照: 周期のキーを読めていないなら以下は何も検査していない");
-        configuration.GetValue<int?>(HttpToolDeclarationSource.TimeoutKey).Should().Be(
-            HttpToolDeclarationSource.DefaultTimeoutSeconds, "構成ファイルに期限のキーが既定値で並んでいる");
-
-        using var sp = new ServiceCollection()
-            .AddLogging()
-            .AddSingleton<IConfiguration>(configuration)
-            .AddMcpToolDeclarationSources(configuration)
-            .BuildServiceProvider();
-        sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpToolDeclarationSource.HttpClientName)
-            .Timeout.Should().Be(TimeSpan.FromSeconds(10));
+        configuration.GetValue<int?>(GrpcToolDeclarationCollector.TimeoutKey).Should().Be(
+            GrpcToolDeclarationCollector.DefaultTimeoutSeconds, "構成ファイルに期限のキーが既定値で並んでいる");
+        GrpcToolDeclarationCollector.ConfiguredTimeout(configuration).Should().Be(TimeSpan.FromSeconds(10));
     }
 
-    private static Dictionary<string, string?> RestTarget(int port, int timeoutSeconds) => new()
+    private static Dictionary<string, string?> Target(int port, int timeoutSeconds) => new()
     {
         ["Mcp:Services:document-service"] = $"http://127.0.0.1:{port}",
-        [HttpToolDeclarationSource.TimeoutKey] = timeoutSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        [GrpcToolDeclarationCollector.TimeoutKey] = timeoutSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
     };
 
     // 待受を開いてポートを得たあと閉じる（以後そのポートへの接続は拒否される）。
@@ -204,9 +195,9 @@ public sealed class ToolCatalogRefresherTimeoutTests
 
         public bool StoppingFired => _stopping;
 
-        // REST の収集器が「申告なし」へ畳んだ失敗（警告の例外）。
+        // 収集器が「申告なし」へ畳んだ失敗（警告の例外）。
         public IReadOnlyList<Exception?> CollectionFailures =>
-            _logs.Exceptions(typeof(HttpToolDeclarationSource).FullName!, LogLevel.Warning);
+            _logs.Exceptions(typeof(GrpcToolDeclarationCollector).FullName!, LogLevel.Warning);
 
         // 周期の捕捉が記録した失敗。
         public IReadOnlyList<Exception?> RefreshErrors =>
@@ -228,7 +219,11 @@ public sealed class ToolCatalogRefresherTimeoutTests
             builder.Services.AddSingleton<ToolPublicationConfigLoader>();
             builder.Services.AddSingleton<ToolCatalog>();
             if (overrideSource is null)
+            {
                 builder.Services.AddMcpToolDeclarationSources(builder.Configuration);
+                builder.Services.AddSingleton<Platform.Shared.Infrastructure.Foundation.Grpc.IServiceTokenProvider>(
+                    new FixedTokenProvider("token"));
+            }
             else
                 overrideSource(builder.Services);
             builder.Services.AddHostedService(sp => new ToolCatalogRefresher(

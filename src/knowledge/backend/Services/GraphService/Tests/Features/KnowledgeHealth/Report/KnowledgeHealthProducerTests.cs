@@ -212,88 +212,9 @@ public sealed class KnowledgeHealthProducerTests
             .Observations.Should().BeEmpty("空のスナップショットで受け口の既存行を落とす");
     }
 
-    // FR-10 (T-42): アダプタが実際に投げるパスと本文を固定する。
-    // **型ではなく綴りが噛み合っている必要がある** —— 送るのは匿名オブジェクトであり、
-    // `docScope` を `docscope` と書いても C# は何も言わない。
-    [Fact]
-    public async Task 送出のパスと本文は指標名と観測値だけで構成される()
-    {
-        var handler = new FakeIngressHandler();
-        var reporter = new HttpKnowledgeHealthReporter(
-            new SingleClientHttpClientFactory(handler),
-            NewReportMetrics(),
-            NullLogger<HttpKnowledgeHealthReporter>.Instance);
-
-        await reporter.ReportAsync(KnowledgeHealthIndicators.OrphanDocuments,
-            [new KnowledgeHealthObservation("doc-1", GraphDocumentScope.PrivateNote)],
-            ct: TestContext.Current.CancellationToken);
-
-        handler.LastPath.Should().Be(HttpKnowledgeHealthReporter.ObservationsPath,
-            "★ 受け口 ReportKnowledgeHealthEndpoint.ObservationsPath と 1 バイトでも違えば観測値は届かない");
-
-        using var body = JsonDocument.Parse(handler.LastBody!);
-        body.RootElement.EnumerateObject().Select(p => p.Name)
-            .Should().BeEquivalentTo(["indicator", "observations"], "2 項目ちょうど");
-        var first = body.RootElement.GetProperty("observations")[0];
-        first.EnumerateObject().Select(p => p.Name)
-            .Should().BeEquivalentTo(["subjectKey", "docScope"]);
-        first.GetProperty("docScope").GetString().Should().Be(GraphDocumentScope.PrivateNote);
-    }
-
-    // FR-10 (T-43): 受け口が落ちていても例外を投げない（fail-open）。
-    // 本サービスは DocumentUpdated / DocumentDeleted の購読ホストでもあり、
-    // **指標の送出失敗で購読を止めない**。
-    [Theory]
-    [InlineData("http")]
-    [InlineData("timeout")]
-    [InlineData("invalid-op")]
-    [InlineData("status-500")]
-    [InlineData("status-404")]
-    public async Task 受け口が落ちていても報告は例外を投げない(string mode)
-    {
-        var handler = new FakeIngressHandler
-        {
-            Response = mode switch
-            {
-                "http" => () => throw new HttpRequestException("接続できない"),
-                "timeout" => () => throw new TaskCanceledException("タイムアウト"),
-                "invalid-op" => () => throw new InvalidOperationException("BaseAddress 不整合"),
-                "status-500" => () => new HttpResponseMessage(HttpStatusCode.InternalServerError),
-                _ => () => new HttpResponseMessage(HttpStatusCode.NotFound),
-            },
-        };
-        var reporter = new HttpKnowledgeHealthReporter(
-            new SingleClientHttpClientFactory(handler),
-            NewReportMetrics(),
-            NullLogger<HttpKnowledgeHealthReporter>.Instance);
-
-        var act = async () => await reporter.ReportAsync(
-            KnowledgeHealthIndicators.OrphanDocuments, [], ct: CancellationToken.None);
-
-        await act.Should().NotThrowAsync();
-    }
-
-    // FR-10 (T-44): **呼び出し元のキャンセルだけは伝播させる。**
-    // 握ると「シャットダウンされたのに続行した」ように見える。
-    [Fact]
-    public async Task 呼び出し元のキャンセルは握り潰さない()
-    {
-        var handler = new FakeIngressHandler
-        {
-            Response = () => throw new TaskCanceledException("キャンセル"),
-        };
-        var reporter = new HttpKnowledgeHealthReporter(
-            new SingleClientHttpClientFactory(handler),
-            NewReportMetrics(),
-            NullLogger<HttpKnowledgeHealthReporter>.Instance);
-        using var cts = new CancellationTokenSource();
-        await cts.CancelAsync();
-
-        var act = async () => await reporter.ReportAsync(
-            KnowledgeHealthIndicators.OrphanDocuments, [], ct: cts.Token);
-
-        await act.Should().ThrowAsync<OperationCanceledException>();
-    }
+    // FR-10 (T-42〜T-44)（撤去。［2026-10-10 / #1255］[[IADR-0533]]）: REST のアダプタ（`HttpKnowledgeHealthReporter`）の
+    // パス・本文・fail-open・呼び出し元のキャンセルの表明は、REST 実装の撤去とともに外した。gRPC のアダプタの同じ表明は
+    // `GrpcKnowledgeHealthReporterTests`（presence・RpcException の縮退・キャンセルの伝播）が持つ。
 
     // ── 6. 陳腐化文書数（stale-documents） ─────────────────────
     //
@@ -457,45 +378,8 @@ public sealed class KnowledgeHealthProducerTests
             .Should().Be(KnowledgeHealthOptions.DefaultStaleDocumentThresholdDays);
     }
 
-    // FR-10 (T-55): 送出の面。**しきい値を持つ指標だけ本文に `thresholdDays` が現れる。**
-    // 型ではなく綴りが噛み合っている必要がある（匿名オブジェクトは綴り違いを黙って通す）。
-    [Fact]
-    public async Task 陳腐化の送出本文にはしきい値が現れる()
-    {
-        var handler = new FakeIngressHandler();
-        var reporter = new HttpKnowledgeHealthReporter(
-            new SingleClientHttpClientFactory(handler),
-            NewReportMetrics(),
-            NullLogger<HttpKnowledgeHealthReporter>.Instance);
-
-        await reporter.ReportAsync(KnowledgeHealthIndicators.StaleDocuments,
-            [new KnowledgeHealthObservation("doc-1", null)], 180,
-            TestContext.Current.CancellationToken);
-
-        using var body = JsonDocument.Parse(handler.LastBody!);
-        body.RootElement.EnumerateObject().Select(p => p.Name)
-            .Should().BeEquivalentTo(["indicator", "observations", "thresholdDays"], "3 項目ちょうど");
-        body.RootElement.GetProperty("thresholdDays").GetInt32().Should().Be(180);
-    }
-
-    // FR-10 (T-56): **陰性対照。** しきい値を持たない指標の本文は 2 項目のままである
-    // （受け口は欠落を「しきい値なし」として扱う）。
-    [Fact]
-    public async Task しきい値を渡さない報告の本文は2項目のままである()
-    {
-        var handler = new FakeIngressHandler();
-        var reporter = new HttpKnowledgeHealthReporter(
-            new SingleClientHttpClientFactory(handler),
-            NewReportMetrics(),
-            NullLogger<HttpKnowledgeHealthReporter>.Instance);
-
-        await reporter.ReportAsync(KnowledgeHealthIndicators.OrphanDocuments, [],
-            ct: TestContext.Current.CancellationToken);
-
-        using var body = JsonDocument.Parse(handler.LastBody!);
-        body.RootElement.EnumerateObject().Select(p => p.Name)
-            .Should().BeEquivalentTo(["indicator", "observations"]);
-    }
+    // FR-10 (T-55・T-56)（撤去。［2026-10-10 / #1255］[[IADR-0533]]）: REST の本文の `thresholdDays` の有無の表明は外した。
+    // gRPC の同じ表明（presence）は `GrpcKnowledgeHealthReporterTests` の `しきい値を持つ指標では_presence_が立つ` / `未設定の項目は_presence_を立てない` が持つ。
 
     // ── 器 ─────────────────────────────────────────────────────────────────
 
@@ -675,31 +559,4 @@ public sealed class KnowledgeHealthProducerTests
             Task.FromResult<IAsyncDisposable?>(null);
     }
 
-    private sealed class FakeIngressHandler : HttpMessageHandler
-    {
-        public Func<HttpResponseMessage> Response { get; init; }
-            = () => new HttpResponseMessage(HttpStatusCode.Accepted);
-
-        public string? LastPath { get; private set; }
-        public string? LastBody { get; private set; }
-
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            LastPath = request.RequestUri?.AbsolutePath;
-            LastBody = request.Content is null
-                ? null
-                : await request.Content.ReadAsStringAsync(cancellationToken);
-            return Response();
-        }
-    }
-
-    private sealed class SingleClientHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false)
-        {
-            BaseAddress = new Uri("http://dashboard-service:8080"),
-            Timeout = HttpKnowledgeHealthReporter.SendTimeout,
-        };
-    }
 }

@@ -14,7 +14,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="MassTransit.RabbitMQ" />
-    <!-- FR-15 (#142): /internal/introspection の到達性を WebApplicationFactory で検証する。 -->
+    <!-- FR-15 (#142): 自己申告（gRPC 面と DI の申告）を WebApplicationFactory で検証する（REST の面は #1517 で撤去）。 -->
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <!-- FR-02 (#1640): 埋め込みの総枠を、壁時計を待たずに進めた時計で測る。 -->
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />

@@ -144,7 +144,7 @@ public class GrpcNotificationIngressTests
         }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created,
-            "★ 並走中の正は REST であり、無認証のまま残す");
+            "★ REST の受け口は無認証のまま残す（east-west の REST 呼び出し元は撤去済み。受け口の撤去は残余）");
         (await NotificationsAsync(subject)).Should().ContainSingle();
     }
 

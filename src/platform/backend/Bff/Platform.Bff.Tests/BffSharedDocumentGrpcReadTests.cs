@@ -18,8 +18,8 @@ namespace Platform.Bff.Tests;
 // **BFF の単体判定（共有先ベースの分岐）と共有先の表示が、文書の読み取りを gRPC で受ける構成でも効く。**
 //
 // #1898 の回帰: gRPC の `DocumentSummary` が `shared_with` を運ばず、BFF が受ける `DocumentDto.SharedWith` が
-// 常に null だった。REST 経路の同じ判定は `BffSharedDocumentReadTests` が固定しているが、**gRPC 経路だけが
-// 共有された相手を 404 へ倒し、所有者への応答から `sharedWith` を消していた**。
+// 常に null だった。当時の REST 経路の同じ判定は `BffSharedDocumentReadTests` が固定していたが、**gRPC 経路だけが
+// 共有された相手を 404 へ倒し、所有者への応答から `sharedWith` を消していた**（［2026-10-10 / [[IADR-0533]]］REST の並走は撤去した）。
 //
 // スタブは文書サービスの応答を `DocumentReadGrpcMapping.ToProto` で組み、**バイト列へ直列化して読み戻してから**
 // 返す（線上で落ちる項目を、生成コードの既定値まで含めて再現する）。
@@ -145,21 +145,9 @@ public class BffSharedDocumentGrpcReadTests : IClassFixture<BffTestFactory>
         body.Id.Should().Be(NoteId, "陽性対照: 読めること自体は変わらない");
     }
 
-    // AC-3: 同じ文書に REST 経路と gRPC 経路が同じ応答を返す（所有者が読む＝`sharedWith` が載る形で比べる）。
-    [Fact]
-    public async Task 共有先を含めて_REST_経路と_gRPC_経路の応答が一致する()
-    {
-        _factory.ScopeBranches = [OwnerBranch("someone-else")];
-        _factory.StubDocument = SharedNote(["alice", "g-1"]);
-
-        var rest = await _factory.CreateClient().GetFromJsonAsync<DocumentDto>(
-            $"/bff/documents/{NoteId}", TestContext.Current.CancellationToken);
-        var grpc = await GrpcClient().GetFromJsonAsync<DocumentDto>(
-            $"/bff/documents/{NoteId}", TestContext.Current.CancellationToken);
-
-        rest!.SharedWith.Should().Equal(["alice", "g-1"], "陽性対照: REST 経路は共有先を運んでいる");
-        grpc.Should().BeEquivalentTo(rest, o => o.WithStrictOrdering());
-    }
+    // ［2026-10-10 / #1255・[[IADR-0533]]］AC-3「REST 経路と gRPC 経路が同じ応答を返す」の試験は外した。
+    // REST の並走を撤去したので比べる相手が無い（器の既定のクライアントも gRPC の橋渡しになった）。
+    // 共有先が gRPC で運ばれることは上の `所有者への_gRPC_経路の応答に共有先の写しが載る` が固定している。
 
     // gRPC クライアントを DI へ差し込んだテスト用ホスト（`BffDocumentGrpcTests` と同じ作法。実チャネルは張らない）。
     private HttpClient GrpcClient() =>

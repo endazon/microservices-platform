@@ -3,59 +3,55 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace Platform.Shared.Infrastructure.Foundation.Introspection;
 
-// FR-15, NFR-16, ADR-0018, ADR-0029, ADR-0075, IADR-0029, IADR-0379 決定 5, IADR-0462 (#1514, #1255 経路 ⑤):
-// 構成情報 API が使う収集器。**宛先ごとに輸送を選ぶ。**
+// FR-15, NFR-16, ADR-0018, ADR-0029, ADR-0075, 計画 ADR-0089 決定 1, IADR-0029, IADR-0462, [[IADR-0533]]
+// (#1514, #1517, #1255 経路 ⑤): 構成情報 API が使う収集器。
 //
-// 🔴 **扇形の経路は宛先単位で移る。** 宛先の集合は構成（`Introspection:Services` /
-// `Introspection:GrpcServices`）で開き、各宛先が gRPC 面を持つかどうかは配備で決まる。
-// 経路全体を 1 つのスイッチで切り替える形にすると、gRPC 面をまだ持たない宛先が 1 つでもある間は
-// 切り替えられない（あるいは切り替えた瞬間にその宛先だけが恒久的に到達不能になる）。
+// 宛先の集合は構成 `Introspection:Services`（service 名 → **gRPC（h2c）アドレス**）で開き、各宛先を
+// `GrpcServiceIntrospectionCollector` で収集する。
 //
-// 宛先の集合 = 2 つの構成のキーの和。`GrpcServices` に（空でない）アドレスが在る宛先は gRPC、
-// それ以外は REST。**並走中の正は REST**（IADR-0379 決定 5）—— 戻すのは gRPC 側の項目を消すだけ。
-// 集約は REST だけの収集と**同じ 1 つ**（`HttpEffectiveConfigCollector.Aggregate`）を通る。
-public sealed class EffectiveConfigCollector : IEffectiveConfigCollector
+// ［2026-10-10 / #1517・[[IADR-0533]] 決定 3］**REST（`GET /internal/introspection`）の収集は撤去した。**
+// 従前は `Introspection:Services`（REST）と `Introspection:GrpcServices`（gRPC）の 2 つの構成のキーの和を宛先とし、
+// gRPC 側に在る宛先だけを gRPC で集めていた（並走中の正は REST）。いまは構成キーを `Introspection:Services` の
+// 1 つへ一本化し、値は gRPC の宛先である。旧キー `Introspection:GrpcServices` が残っていたら起動を止める
+// （`ConfigInspectionExtensions`。黙って無視すると、上書き値の取り違えが「到達不能」としてしか現れない）。
+public sealed class EffectiveConfigCollector(
+    GrpcServiceIntrospectionCollector grpc,
+    IOptions<IntrospectionOptions> options) : IEffectiveConfigCollector
 {
-    private readonly HttpEffectiveConfigCollector _http;
-    private readonly GrpcServiceIntrospectionCollector? _grpc;
-    private readonly IntrospectionOptions _options;
-
-    public EffectiveConfigCollector(
-        HttpEffectiveConfigCollector http,
-        IOptions<IntrospectionOptions> options,
-        GrpcServiceIntrospectionCollector? grpc = null)
-    {
-        _http = http;
-        _grpc = grpc;
-        _options = options.Value;
-
-        // 🔴 gRPC の宛先が構成されているのに gRPC の収集器が居ないのは登録の誤りである。
-        // 黙って REST へ倒すと「gRPC へ移したつもりで REST のまま」になり、REST の口を退役させた
-        // 段で初めて到達不能として現れる。起動の時点で落とす。
-        if (_grpc is null && _options.ConfiguredGrpcServices().Count > 0)
-            throw new InvalidOperationException(
-                "Introspection:GrpcServices が構成されていますが gRPC の収集器が登録されていません"
-                + "（AddPlatformConfigInspection を経由せずに EffectiveConfigCollector を組み立てていないか確かめること）。");
-    }
+    private readonly IntrospectionOptions _options = options.Value;
 
     public async Task<EffectiveCollection> CollectAsync(CancellationToken ct = default)
     {
-        var grpcTargets = _options.ConfiguredGrpcServices();
-        var targets = _options.Services.Keys
-            .Concat(grpcTargets.Keys)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        var targets = _options.ConfiguredServices();
 
-        // 並列に収集する（HttpEffectiveConfigCollector と同じ理由。応答時間を宛先数に比例させない）。
-        var results = await Task.WhenAll(targets.Select(async service =>
+        // FR-15: 並列に収集する（応答時間が対象サービス数に比例して増えないよう Task.WhenAll でまとめる。
+        // 集約は完了後に単一スレッドで行い競合を避ける）。
+        var results = await Task.WhenAll(targets.Select(async kv =>
+            (Service: kv.Key, Report: await grpc.CollectOneAsync(kv.Key, kv.Value, ct))));
+
+        return Aggregate(results);
+    }
+
+    // FR-15: 収集結果の集約。応答した宛先だけを Services / ReachableServices へ、応答しなかった宛先を
+    // UnreachableServices へ入れる（適用漏れと到達不能を区別する。IADR-0029）。
+    internal static EffectiveCollection Aggregate(
+        IEnumerable<(string Service, ServiceIntrospectionDto? Report)> results)
+    {
+        var services = new List<ServiceIntrospectionDto>();
+        var reachable = new HashSet<string>(StringComparer.Ordinal);
+        var unreachable = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var (service, report) in results)
         {
-            var report = grpcTargets.TryGetValue(service, out var address)
-                ? await _grpc!.CollectOneAsync(service, address, ct)
-                : await _http.CollectOneAsync(service, _options.Services[service], ct);
-            return (service, report);
-        }));
+            if (report is null)
+            {
+                unreachable.Add(service);
+                continue;
+            }
+            services.Add(report);
+            reachable.Add(service);
+        }
 
-        return HttpEffectiveConfigCollector.Aggregate(
-            results.Select(r => (r.service, (ServiceIntrospectionDto?)r.report)));
+        return new EffectiveCollection(services, reachable, unreachable);
     }
 }

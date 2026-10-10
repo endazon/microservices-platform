@@ -24,7 +24,7 @@ namespace RetrievalService.Features.Search.AttributeValues;
 //
 // 🔴 **ServiceCaller を要求する。** REST の受け口は認可を持たない（#1318 欠陥 B）が、
 // gRPC 面は [[IADR-0379]] 決定 4 に従い `platform-service` を要求する ——
-// **権限が狭まる向き**である。**REST の口は残す**（並走中の正は REST）。
+// **権限が狭まる向き**である。**REST の口は残す**（north-south の受け口でもある。［2026-10-10 / #1255・[[IADR-0533]]］east-west の REST 呼び出し元は撤去した）。
 //
 // 🔴 **「候補が無い」と「権限が無い」を区別させない**（[[IADR-0151]] 決定 5）——
 // どちらも**空の配列**で返る。引けなかったのは gRPC status である。
