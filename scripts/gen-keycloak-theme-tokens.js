@@ -18,6 +18,13 @@
  *   - 値を直書きするしかないファイル（メールの外枠＝ライトのみ・アカウントのロゴ／favicon の SVG＝ダーク∪ライト）の
  *     16 進色が**意味トークンの値に限られる**こと（CSS 変数が届かない。ずれはここで止める）。
  *   - login の「このデバイスを記憶（N日）」の N が realm の ssoSessionMaxLifespanRememberMe と一致すること。
+ *   - styles.css の明暗の対（明示ライト `:root[data-theme='light']` と system ライト
+ *     `@media (prefers-color-scheme: light) { :root:not([data-theme='dark']) }`、既定ダーク `:root` と明示ダーク
+ *     `:root[data-theme='dark']`）が同じトークンを同じ値で定義していること。生成は明示ライト・既定ダークだけを読むが、
+ *     Keycloak（tokens.css）が従うのは OS の設定＝ system 側の値である。対がずれると SPA の system 表示とテーマが
+ *     黙って食い違うので、ずれを赤にする（#1893 監査）。
+ *   - テーマの手書き CSS（deploy/keycloak/themes 配下のすべての platform.css）がコメントの外に 16 進の色を持たないこと
+ *     （色は tokens.css の意味トークンを var() で引く約束。直書きすると SPA の是正が届かない）。
  *
  * 使い方:
  *   node scripts/gen-keycloak-theme-tokens.js            # 生成（上書き）
@@ -40,6 +47,9 @@ const LITERAL_COLOR_FILES = [
   { file: `${THEME_ROOT}/account/resources/favicon.svg`, schemes: ['dark', 'light'] },
 ];
 const REALM = 'deploy/keycloak/microservices-platform-realm.json';
+// 手書き CSS の 16 進色を禁じる範囲（この下の platform.css をすべて見る）。
+const THEMES_DIR = 'deploy/keycloak/themes';
+const HAND_WRITTEN_CSS = 'platform.css';
 const LOGIN_MESSAGES = [`${THEME_ROOT}/login/messages/messages_ja.properties`, `${THEME_ROOT}/login/messages/messages_en.properties`];
 
 // テーマが使う意味トークン（IADR-0435 決定 1 の第 2 層）。styles.css に 1 つでも欠ければ生成を止める（黙って欠けた CSS を出さない）。
@@ -100,6 +110,68 @@ function extractTokens(cssText) {
     dark: SEMANTIC.map((k) => [`color-${k}`, d.get(`color-${k}`)]),
     light: SEMANTIC.map((k) => [`color-${k}`, l.get(`color-${k}`)]),
   };
+}
+
+/**
+ * styles.css の明暗の対が同じ宣言（名前と値）を持つかを突き合わせる。齟齬の説明を返す。
+ * 対のどちらかのブロックが読めなければ例外（fail-loud。突合していないのに緑にしない）。
+ */
+const SCHEME_PAIRS = [
+  {
+    label: 'ライト',
+    a: { name: ":root[data-theme='light']", re: /:root\[data-theme='light'\]\s*\{/ },
+    b: { name: "@media (prefers-color-scheme: light) :root:not([data-theme='dark'])", re: /@media\s*\(prefers-color-scheme:\s*light\)\s*\{\s*:root:not\(\[data-theme='dark'\]\)\s*\{/ },
+  },
+  {
+    label: 'ダーク',
+    a: { name: ':root', re: /(^|\n)\s*:root\s*\{/ },
+    b: { name: ":root[data-theme='dark']", re: /:root\[data-theme='dark'\]\s*\{/ },
+  },
+];
+function schemePairGaps(cssText) {
+  const css = stripComments(cssText);
+  const gaps = [];
+  for (const { label, a, b } of SCHEME_PAIRS) {
+    const ba = blockAfter(css, a.re);
+    const bb = blockAfter(css, b.re);
+    if (ba === null || bb === null) {
+      throw new Error(`${SOURCE} から${label}の対（${a.name} / ${b.name}）を読めない（突合できない）`);
+    }
+    const da = declarations(ba);
+    const db = declarations(bb);
+    for (const k of [...new Set([...da.keys(), ...db.keys()])].sort()) {
+      const va = da.has(k) ? da.get(k) : '（無し）';
+      const vb = db.has(k) ? db.get(k) : '（無し）';
+      if (va !== vb) gaps.push(`${SOURCE}: ${label}の --${k} が ${a.name} では ${va}、${b.name} では ${vb}（Keycloak は OS 設定＝ system 側に従うので対を揃える）`);
+    }
+  }
+  return gaps;
+}
+
+/** CSS のコメントの外にある、宣言の値の 16 進色を返す（`#kc-header` のような ID セレクタは拾わない）。 */
+function hexColorsInCss(cssText) {
+  const css = stripComments(cssText);
+  const found = [];
+  // 宣言 = `プロパティ: 値` が `;` か `}` で終わるもの。セレクタ（`a:hover {`）は `{` で終わるので外れる。
+  const declRe = /[a-z-]+\s*:\s*([^;{}]+)(?=[;}])/gi;
+  let m;
+  while ((m = declRe.exec(css)) !== null) {
+    for (const c of m[1].match(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/g) || []) found.push(c.toLowerCase());
+  }
+  return [...new Set(found)];
+}
+
+/** dir 配下の name というファイルをすべて列挙する（リポジトリ相対）。 */
+function findFiles(dir, name) {
+  const abs = path.join(REPO_ROOT, dir);
+  if (!fs.existsSync(abs)) return [];
+  const out = [];
+  for (const e of fs.readdirSync(abs, { withFileTypes: true })) {
+    const rel = `${dir}/${e.name}`;
+    if (e.isDirectory()) out.push(...findFiles(rel, name));
+    else if (e.name === name) out.push(rel);
+  }
+  return out.sort();
 }
 
 /** tokens.css の本文を作る。既定はダーク（SPA の `:root` と同じ）、OS がライトならライト。 */
@@ -182,6 +254,15 @@ function main(argv) {
       problems.push(`${file} の色 ${c} が意味トークン（${schemes.join(' / ')}）の値に無い（${SOURCE} の値だけを使う）`);
     }
   }
+  problems.push(...schemePairGaps(read(SOURCE)));
+  const handWritten = findFiles(THEMES_DIR, HAND_WRITTEN_CSS);
+  // 0 件走査を緑にしない（置き場や名前を変えたらここも直す）。
+  if (handWritten.length === 0) problems.push(`${THEMES_DIR} の下に ${HAND_WRITTEN_CSS} が 1 つも無い（16 進色の検査が空回りする）`);
+  for (const f of handWritten) {
+    for (const c of hexColorsInCss(read(f))) {
+      problems.push(`${f} に 16 進の色 ${c} がある（色は tokens.css の意味トークンを var(--color-*) で引く）`);
+    }
+  }
   const msgs = LOGIN_MESSAGES.filter((f) => fs.existsSync(path.join(REPO_ROOT, f))).map((f) => [f, read(f)]);
   problems.push(...rememberMeGaps(msgs, JSON.parse(read(REALM))));
   for (const p of problems) process.stderr.write(`✗ ${p}\n`);
@@ -237,6 +318,42 @@ function selfTest() {
     assert.strictEqual(rememberMeGaps([['en', 'rememberMe=Remember (14 days)']], realm).length, 1);
     assert.deepStrictEqual(rememberMeGaps([['ja', 'rememberMe=記憶する']], realm), []);
   });
+  const PAIRED = [
+    ':root {', '  --color-bg: #101010;', '  --color-fg: #eeeeee;', '}',
+    "@media (prefers-color-scheme: light) {", "  :root:not([data-theme='dark']) {", '    color-scheme: light;', '    --color-bg: #fafafa;', '    --color-fg: #111111;', '  }', '}',
+    ":root[data-theme='light'] {", '  color-scheme: light;', '  --color-bg: #fafafa;', '  --color-fg: #111111;', '}',
+    ":root[data-theme='dark'] {", '  --color-bg: #101010;', '  --color-fg: #eeeeee;', '}',
+  ].join('\n');
+  ok('schemePairGaps: 明暗の対が同じ値なら 0 件（陽性対照）', () => {
+    assert.deepStrictEqual(schemePairGaps(PAIRED), []);
+  });
+  ok('schemePairGaps: system ライトだけ値を変えると名指す（生成が読まない側のずれ）', () => {
+    const drift = PAIRED.replace('    --color-bg: #fafafa;', '    --color-bg: #f0f0f0;');
+    const g = schemePairGaps(drift);
+    assert.strictEqual(g.length, 1);
+    assert.ok(/ライトの --color-bg/.test(g[0]) && /#f0f0f0/.test(g[0]));
+  });
+  ok('schemePairGaps: 明示ダークの欠けたトークン・ブロックの欠落も名指す（fail-loud）', () => {
+    // 最後のブロック（明示ダーク）から --color-fg を落とす。
+    const g = schemePairGaps(`${PAIRED.slice(0, PAIRED.lastIndexOf('  --color-fg: #eeeeee;\n'))}}`);
+    assert.ok(g.some((x) => /ダークの --color-fg/.test(x)), g.join('\n'));
+    assert.throws(() => schemePairGaps(PAIRED.replace(":root[data-theme='dark']", ':root.other')), /ダークの対/);
+  });
+  ok('hexColorsInCss: コメントと ID セレクタは見ず、宣言の値の 16 進色だけを名指す', () => {
+    const css = [
+      '/* 直書きしない: #ffffff */',
+      '#kc-header-wrapper, #add { color: var(--color-fg); }',
+      'html.login-pf a:hover { border-color: var(--color-border) }',
+    ].join('\n');
+    assert.deepStrictEqual(hexColorsInCss(css), []);
+    assert.deepStrictEqual(hexColorsInCss(css + '\n.x { background: #1B1D21; box-shadow: 0 0 0 1px #abc }'), ['#1b1d21', '#abc']);
+  });
+  ok('実データ: styles.css の明暗の対が揃い、テーマの platform.css に 16 進色が無い', () => {
+    assert.deepStrictEqual(schemePairGaps(read(SOURCE)), []);
+    const files = findFiles(THEMES_DIR, HAND_WRITTEN_CSS);
+    assert.ok(files.length >= 2, `platform.css が ${files.length} 件しか見つからない`);
+    for (const f of files) assert.deepStrictEqual(hexColorsInCss(read(f)), [], f);
+  });
   ok('実データ: styles.css から抽出でき、生成物はダーク accent の持ち上げ（IADR-0435 決定 4）を写している', () => {
     const t = extractTokens(read(SOURCE));
     assert.strictEqual(new Map(t.dark).get('color-accent'), new Map(t.dark).get('color-brand'));
@@ -251,7 +368,7 @@ function selfTest() {
   return failed ? 1 : 0;
 }
 
-module.exports = { extractTokens, renderTokensCss, foreignColors, rememberMeGaps, SEMANTIC, OUTPUTS };
+module.exports = { extractTokens, renderTokensCss, foreignColors, rememberMeGaps, schemePairGaps, hexColorsInCss, SEMANTIC, OUTPUTS };
 
 if (require.main === module) {
   const argv = process.argv.slice(2);

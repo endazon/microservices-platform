@@ -76,6 +76,9 @@ Keycloak 26.7.4 の配布物を手元で起動し、実 realm と現行テーマ
 - 🔴 **親の実在を検査する。** `check-realm-constraints.js` 検査 4 に、Keycloak の版ごとの同梱テーマ表（`KEYCLOAK_BUILTIN_THEMES`。26.7.4 の
   `META-INF/keycloak-themes.json` から引いた）を足し、realm が名指すテーマの parent がその種別で実在しなければ落とす。
   **Keycloak を上げたら表を引き直す**（表と版の値を同じ場所に置いた）。`emailTheme` も対象に加えた。
+- **表の版と起動するイメージの版を結ぶ**（#1893 監査）。表を実測した版（`KEYCLOAK_VERSION_FOR_THEMES`）と、Keycloak のイメージを宣言する
+  2 箇所（`deploy/docker-compose.yml`・`deploy/local/infra/keycloak.yaml`）のタグが食い違えば、同じ検査器が「表を引き直せ」と言って落ちる。
+  マニフェストが無い・タグが読めない場合も黙って通さない。タグだけを上げて表が古いまま緑になる経路を塞ぐ。
 
 ### 決定 2: 色・角丸・フォントは `@platform/ui` のトークンから生成し、CI で同期を守る
 
@@ -83,7 +86,14 @@ Keycloak 26.7.4 の配布物を手元で起動し、実 realm と現行テーマ
   `@theme` のフォント・角丸を `login` / `account` の `tokens.css` へ書く。CSS 本体（`platform.css`）は**意味トークンだけを引き、16 進の色を書かない**。
 - 値を直書きするしかないファイル（メール外枠＝ライトのみ／アカウントのロゴ・favicon の SVG＝ダーク∪ライト）は、16 進の色が意味トークンの値に
   含まれることを `--check` が確かめる。
+- **「16 進の色を書かない」も `--check` が確かめる**（#1893 監査）。`deploy/keycloak/themes` 配下のすべての `platform.css` について、コメントの外の
+  宣言の値に 16 進の色があれば落とす（`#kc-header` のような ID セレクタは見ない）。
+- **生成が読まない側の明暗の対も突き合わせる**（#1893 監査）。生成はライトを明示ライト（`:root[data-theme='light']`）から読むが、Keycloak が従うのは
+  OS 設定＝ system ライト（`@media (prefers-color-scheme: light)` の `:root:not([data-theme='dark'])`）の値である。`--check` は明示ライトと system ライト、
+  既定ダーク（`:root`）と明示ダーク（`:root[data-theme='dark']`）が同じ宣言を同じ値で持つことを確かめ、ずれを赤にする。
 - CI（static-checks）に `--self-test` と `--check`、テーマ配下の egress 走査（`check-static-egress.js --require deploy/keycloak/themes`）を置いた。
+  走査はメールの外枠（`.ftl`）と HTML を値に持つ文言（`messages_*.properties` の `loginTitleHtml` 等）も対象にする —— 当初は拡張子で漏れていた
+  （#1893 監査）。拡張子の追加は検査器全体に効くが、SPA・カタログ・プラグインの成果物にはこの 2 種が無く、走査の結果は変わらない（実測）。
 
 ### 決定 3: 明暗は OS 設定（`prefers-color-scheme`）に従い、Keycloak 側に切替ボタンを置かない
 
@@ -101,8 +111,16 @@ Keycloak 26.7.4 の配布物を手元で起動し、実 realm と現行テーマ
 ### 決定 5: 文言の上書きは計画が文言を定めたものに限る
 
 - SC-13: 「社員ID またはパスワードが正しくありません」（失敗時の固定文言。存在秘匿＝実在・非実在の両側に同じく効く）・「社員ID または メールアドレス」・
-  「このデバイスを記憶（30日）」（日数は realm の `ssoSessionMaxLifespanRememberMe` と一致することを `--check` が確かめる）・「パスワードを忘れた」・見出し「サインイン」。
+  「このデバイスを記憶（30日）」（日数は realm の `ssoSessionMaxLifespanRememberMe` と一致することを `--check` が確かめる）・「パスワードを忘れた」・見出し「サインイン」・
+  送信ボタン「ログイン」（モックどおり。親の `doLogIn` はワンタイムコードの確定ボタンにも使われ、SC-14 のモック「認証してログイン」と語が揃う）。
 - SC-15: 申請後の「メールを送信しました」。
+- **モックと異なる文言を 2 つ意図して残す**（SC-15 の申請画面。#1893 監査）。いずれも親のテンプレートが語の鍵を決めており、文言だけでは分けられない
+  （分けるにはテンプレートの複製が要り、決定 1 に反する）:
+  - 識別子のラベルは「社員ID または メールアドレス」（モックは「メールアドレス」）。親は realm の設定（メールでのログイン可・メールを利用者名にしない）から
+    SC-13 と同じ鍵 `usernameOrEmail` を引く。Keycloak の申請は実際に社員ID でも受け付けるので、ラベルは挙動と一致している。存在秘匿の文言
+    （申請後は常に「メールを送信しました」）は変えていない。
+  - 送信ボタンは「送信」（モックは「リセットメールを送信」）。親の鍵 `doSubmit` はパスワード更新・OTP 登録など多数の画面の確定ボタンと共有で、
+    上書きすると他の画面の語が誤る。
 - ヘッダ: realm の `displayName`（固有名詞。ロケールで差し替えない）＋副題（統合認証 / Single sign-on）。
 
 ### 決定 6: 対象外
@@ -134,7 +152,7 @@ Keycloak 26.7.4 の配布物を手元で起動し、実 realm と現行テーマ
 - フォローアップ:
   - 🔴 **アカウントコンソール（SC-16）は realm の宣言のままでは API が 401 になる**（本 IADR の範囲外の既存の不具合。手元の Keycloak 26.7.4 で実測）。
     realm が独自に定義した `roles` スコープに audience 解決・クライアントロールの写像が無く、`account-console` に `basic` スコープ（`sub`）が付かず、
-    利用者に `account` の `manage-account` が無い（`defaultRole` 無し）。見た目の確認は手元でこの 3 点を補って行った。別 issue で扱う。
+    利用者に `account` の `manage-account` が無い（`defaultRole` 無し）。見た目の確認は手元でこの 3 点を補って行った。別 issue（#1894）で扱う。
   - Keycloak を上げるときは `KEYCLOAK_BUILTIN_THEMES` を引き直し、ログイン・OTP・リセット・アカウントのスクリーンショットを撮り直す。
 
 ## 関連

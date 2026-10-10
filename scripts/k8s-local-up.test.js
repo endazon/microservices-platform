@@ -742,7 +742,7 @@ ok('deploy/local/infra/keycloak.yaml: theme ConfigMap の items（キー → パ
     assert.ok(items.some(([k, p]) => k === themeKey(rel) && p === rel), `keycloak.yaml の items に ${themeKey(rel)} → ${rel} が無い`);
   }
   for (const [k, p] of items) {
-    assert.ok(files.includes(p), `keycloak.yaml の items の ${k} → ${p} はテーマに実在しない（キーが ConfigMap に無いと Pod が起動しない）`);
+    assert.ok(files.includes(p), `keycloak.yaml の items の ${k} → ${p} はテーマに実在しない（ConfigMap は optional: true なので、キーが無ければ Pod は起動したまま**そのファイルだけ黙ってマウントされない** —— 画面は親テーマの既定へ部分的に落ち、エラーにならない）`);
   }
 });
 

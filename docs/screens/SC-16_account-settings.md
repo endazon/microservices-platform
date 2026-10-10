@@ -11,7 +11,7 @@ ids: [SC-01, SC-13, SC-14, SC-15, SC-16, SC-17, UC-05]
 adrs: [ADR-0026, ADR-0031]
 iadrs: [IADR-0197, IADR-0261, IADR-0532]
 specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20261010_sc13-keycloak-theme-nocturne]
-issues: [#438]
+issues: [#438, #1894]
 -->
 
 # 画面仕様書: アカウント設定（Keycloak アカウントコンソール）
