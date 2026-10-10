@@ -169,6 +169,55 @@ public class AstStaleCopyRulesTests
         verdict.Category.Should().Be(AstCopyCategory.Report, "形まで通った写しは種別を持つ（重複の数えに使う）");
     }
 
+    // ── FR-19, #1891: 承認待ちの報告書の写し（`reportState=draft`。AST#1301・[[IADR-0529]]）は確定報告書の写しに数えない ──
+    //
+    // ドラフトは確定版と同じ kind・periodKey・project を持つ。数えると確定版との組が重複に出て、runbook の
+    // 「新しい方を消す」で確定版を消す。陽性（数えない）と陰性（draft 以外は従来どおり）を対で置く。
+
+    private static Dictionary<string, string> Draft(string? owner)
+    {
+        var attributes = Report(owner, project: "ai-stock-trading");
+        attributes["reportState"] = "draft";
+        foreach (var key in new[] { "search_exposure", "graph_exposure", "ai_input" }) attributes[key] = "excluded";
+        return attributes;
+    }
+
+    [Theory]
+    [InlineData("service-account-ai-stock-trading-kb-writer")]
+    [InlineData("system")]
+    [InlineData(null)]
+    public void 承認待ちの報告書の写しは所有者によらず報告書の写しに数えない(string? owner)
+    {
+        var verdict = AstStaleCopyRules.Classify("報告書ドラフト Daily 2026-08-01", Draft(owner), Created);
+
+        verdict.IsTarget.Should().BeFalse();
+        verdict.ExcludedReason.Should().Be(AstStaleCopyRules.Reasons.NotAstShape);
+        verdict.Category.Should().BeNull("ドラフトは現在のサービスアカウントの報告書の重複の数えに入らない");
+    }
+
+    [Fact]
+    public void 承認待ちの写しは表題を確定版と同じにしても報告書の写しに数えない()
+    {
+        // 表題は見ない。属性だけで外す。
+        AstStaleCopyRules.Classify(ReportTitle, Draft("service-account-ai-stock-trading-kb-writer"), Created)
+            .Category.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("confirmed")]
+    [InlineData("Draft")]
+    [InlineData(" ")]
+    public void reportStateがdraftでない報告書は従来どおり報告書の写しに数える(string state)
+    {
+        var attributes = Report("service-account-ai-stock-trading-kb-writer", project: "ai-stock-trading");
+        attributes["reportState"] = state;
+
+        var verdict = AstStaleCopyRules.Classify(ReportTitle, attributes, Created);
+
+        verdict.ExcludedReason.Should().Be(AstStaleCopyRules.Reasons.OwnedByCurrentAccount);
+        verdict.Category.Should().Be(AstCopyCategory.Report);
+    }
+
     // ── kind の値域を AST の実値で丸ごと固定する（過不足の両方を検出する。AST 側で KB のタグの語彙を固定している試験と同じ型） ──
     //
     // 出典（AST の隣接クローン 40d992e で読んだ。基盤は AST の型を参照できないので値を写して固定する）:

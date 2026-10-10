@@ -264,6 +264,50 @@ public class AstStaleCopiesEndpointTests
             .Which.Should().Be(new AstDuplicatedReport("Daily", "2026-07-01", 2));
     }
 
+    // ── FR-19, #1891: 承認待ちの写し（`reportState=draft`）は重複の組に出ない ─────────────────
+    //
+    // 陽性: 確定の後に削除が失敗して残ったドラフト（確定版より古い）と確定版は組にならない（runbook の「新しい方を消す」で確定版を消さない）。
+    // 陰性: 確定版どうしの重複は従来どおり組として出て、ドラフトを足しても組の件数は変わらない。
+
+    private static Dictionary<string, string> Draft(string periodKey)
+    {
+        var attributes = Report(periodKey, KbWriter, "ai-stock-trading");
+        attributes["reportState"] = "draft";
+        foreach (var key in new[] { "search_exposure", "graph_exposure", "ai_input" }) attributes[key] = "excluded";
+        return attributes;
+    }
+
+    [Fact]
+    public async Task 残った承認待ちの写しと確定版は重複の組にならず_古い写しの対象にもならない()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        await SeedCreatedAsync(factory, "報告書ドラフト Daily 2026-07-01", Draft("2026-07-01"), withBody: true);   // 古い（残ったドラフト）
+        await SeedCreatedAsync(factory, ReportTitle("2026-07-01"), Report("2026-07-01", KbWriter, "ai-stock-trading"), withBody: true);
+
+        var result = await ListAsync(Admin(factory));
+
+        result.Targets.Total.Should().Be(0);
+        result.CurrentAccountReports.Count.Should().Be(1);
+        result.CurrentAccountReports.Duplicates.Should().BeEmpty();
+        result.Excluded["not-ast-shape"].Should().Be(1);
+        result.Excluded["owned-by-current-account"].Should().Be(1);
+    }
+
+    [Fact]
+    public async Task 確定版どうしの重複はドラフトが同じ台帳にあっても従来どおり組として返る()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        await SeedCreatedAsync(factory, "報告書ドラフト Daily 2026-07-01", Draft("2026-07-01"), withBody: true);
+        await SeedCreatedAsync(factory, ReportTitle("2026-07-01"), Report("2026-07-01", KbWriter, "ai-stock-trading"));
+        await SeedCreatedAsync(factory, ReportTitle("2026-07-01"), Report("2026-07-01", KbWriter, "ai-stock-trading"), withBody: true);
+
+        var result = await ListAsync(Admin(factory));
+
+        result.CurrentAccountReports.Count.Should().Be(2);
+        result.CurrentAccountReports.Duplicates.Should().ContainSingle()
+            .Which.Should().Be(new AstDuplicatedReport("Daily", "2026-07-01", 2));
+    }
+
     [Fact]
     public async Task 台帳が空なら対象は0件で_理由は0件でも並び_期間はnull()
     {
