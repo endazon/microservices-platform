@@ -78,6 +78,13 @@ message DocumentSummary {
   // FR-06, ADR-0050 決定 1 (#1575): 本文指紋（REST の `DocumentDto.ContentFingerprint`）。
   // 🔴 本文を持たない文書は null。presence で運び、空文字と区別する。
   optional string content_fingerprint = 11;
+  // FR-06, FR-19, ADR-0036 D-06, ADR-0098 決定 1, IADR-0447 (#1898): 共有台帳の写し
+  // （REST の `DocumentDto.SharedWith`。個人は利用者名、グループはグループ ID。順序は台帳の解決順）。
+  // 🔴 これが無いと BFF の単体判定（共有先ベースの分岐）が gRPC 経路でだけ一致せず、
+  //   共有された相手が SC-03 で個人資料を開けない／所有者への応答から共有先が消える（#1898 の回帰）。
+  // proto3 の repeated は presence を持たない。DTO の「null＝共有なし」は**0 件**で運び、受け手は 0 件を null へ戻す
+  // （サーバは空リストを作らない〔`DocumentEndpoints.NullIfEmpty`〕ので、往復で値は変わらない）。
+  repeated string shared_with = 12;
 }
 
 // REST の DocumentVersionDto と同じ形。**本文の参照は持たない**（IADR-0290）。

@@ -19,6 +19,8 @@ namespace Knowledge.Contracts.Grpc;
 //     SC-03 が本文の位置へ「本文なし（原本を参照）」を出す（`ADR-0070` 決定 3）。
 //   - `MarkdownUri` / `ChangeNote`: `null` と `""` は画面で別物なので **presence** で運ぶ
 //     （`optional`。`HasMarkdownUri` / `HasChangeNote` を読む）。
+//   - `SharedWith`（#1898）: `repeated` は presence を持たないので、null（共有なし）は 0 件で運び、
+//     `ToDto` は 0 件を null へ戻す（空リストはサーバが作らない形で、往復で null へ正規化される）。
 //   - 時刻は `Timestamp`。台帳は `DateTimeOffset.UtcNow` で書くのでオフセットは 0 であり、
 //     `ToDateTimeOffset()` の戻り（オフセット 0）と一致する。tick 精度は保たれる。
 public static class DocumentReadGrpcMapping
@@ -42,6 +44,10 @@ public static class DocumentReadGrpcMapping
         if (d.ContentFingerprint is not null) m.ContentFingerprint = d.ContentFingerprint;
         foreach (var (key, value) in d.Attributes) m.Attributes[key] = value;
         m.Tags.AddRange(d.Tags);
+        // FR-06, FR-19, ADR-0036 D-06, ADR-0098 決定 1, [[IADR-0447]] (#1898): 共有先の写し。
+        // 🔴 写し漏れると BFF の共有先ベースの分岐が gRPC 経路でだけ一致しない（共有された相手が 404・
+        // 所有者への応答から `sharedWith` が消える）。null（共有なし）は 0 件で運ぶ。
+        if (d.SharedWith is not null) m.SharedWith.AddRange(d.SharedWith);
         return m;
     }
 
@@ -58,6 +64,9 @@ public static class DocumentReadGrpcMapping
         UpdatedAt = m.UpdatedAt.ToDateTimeOffset(),
         HasBody = m.HasBody,
         ContentFingerprint = m.HasContentFingerprint ? m.ContentFingerprint : null,
+        // FR-19 (#1898): 0 件は **null**（`DocumentDto.SharedWith` の契約「null＝共有なし」。
+        // サーバは空リストを作らない〔`DocumentEndpoints.NullIfEmpty`〕ので REST と同じ形になる）。
+        SharedWith = m.SharedWith.Count > 0 ? [.. m.SharedWith] : null,
     };
 
     public static Pb.DocumentVersionSnapshot ToProto(DocumentVersionDto v)

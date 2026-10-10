@@ -156,6 +156,11 @@
               "type": "string",
               "label": "optional"
             },
+            "shared_with": {
+              "number": 12,
+              "type": "string",
+              "label": "repeated"
+            },
             "status": {
               "number": 3,
               "type": "string",
