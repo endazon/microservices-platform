@@ -61,6 +61,10 @@
          EF InMemory であり、InMemory は一意索引も外部キーも強制しないため原理的に測れない。
          Program 型の衝突（CS0433）は GraphServiceTestMarker で避ける（IADR-0027 の作法）。 -->
     <ProjectReference Include="..\..\Services\GraphService\GraphService.csproj" />
+    <!-- FR-10, NFR-16 (#1895): ナレッジ健全性のスナップショット置換（一括 DELETE / INSERT・トランザクション）は
+         実 PostgreSQL でしか測れない。DashboardService.Tests は EF InMemory であり、InMemory は
+         ExecuteDeleteAsync・生 SQL・トランザクションを持たない。 -->
+    <ProjectReference Include="..\..\Services\DashboardService\DashboardService.csproj" />
     <!-- FR-16, ADR-0024 §2 / #1020, #1517: 収集側（gRPC の申告の写し GrpcToolDeclarationCollector.ToDto → ToolCatalog）を**実物で**
          回すため。ユニット外参照だが、check-unit-dependencies.js 規則 1 の統合テスト例外
          （Tests プロジェクト → platform サービス）に当たる。 -->

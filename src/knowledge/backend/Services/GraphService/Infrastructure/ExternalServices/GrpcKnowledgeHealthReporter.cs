@@ -35,6 +35,10 @@ namespace GraphService.Infrastructure.ExternalServices;
 //
 // ★ タイムアウト: **`deadline` で 5 秒を与える**（`SendTimeout`。撤去した REST 実装の `HttpClient.Timeout` と同じ値を
 // 引き継いだ）。期限切れは `RpcException(DeadlineExceeded)` であり、上の「受理されない」枝と同じ縮退になる。
+// ［2026-10-11 / #1895］**期限切れでも再送しない。次の周期（`KnowledgeHealthHostedService.Interval`＝1 時間）を待つ。**
+// 報告は全量のスナップショット置換なので、次の周期の報告が取りこぼしをそのまま埋める。受け口は期限で取り消されると
+// 置換をロールバックする（旧い値が残り、半端な値にはならない）。同じ周期の中で再送すると、遅い受け口へ同じ重さを重ねるだけである。
+// 期限 5 秒は延ばさない —— 受け口の置換を一括にしたので、4 万件でも 1 秒前後に収まる（実測は #1895 の作業仕様書）。
 // ［2026-10-10 / #1255・[[IADR-0533]]］REST の兄弟実装 `HttpKnowledgeHealthReporter` は撤去し、本クラスが唯一の実装である。
 public sealed class GrpcKnowledgeHealthReporter(
     Pb.KnowledgeHealthReport.KnowledgeHealthReportClient client,

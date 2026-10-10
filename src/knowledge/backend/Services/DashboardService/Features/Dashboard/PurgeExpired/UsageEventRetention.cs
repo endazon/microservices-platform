@@ -22,8 +22,9 @@ public sealed class UsageEventRetention(DashboardDbContext db)
     internal const int BatchSize = 500;
 
     // ★ `ExecuteDeleteAsync` は使わない —— テストは InMemory プロバイダで走り、
-    // InMemory は同 API を実装していない。**同じサービス内の前例**
-    // （`KnowledgeHealth/Report` のスナップショット置換）も `RemoveRange` である。
+    // InMemory は同 API を実装していない。上限 500 件の周回なので変更追跡でも足りる。
+    // ［2026-10-11 / #1895］同じサービスのスナップショット置換（`KnowledgeHealthSnapshotWriter`）は
+    // 4 万件規模を 1 往復で消す必要があり、関係 DB のときだけ `ExecuteDeleteAsync` を使う形へ移った。
     public async Task<int> PurgeExpiredAsync(CancellationToken ct = default)
     {
         var cutoff = CutoffUtc();

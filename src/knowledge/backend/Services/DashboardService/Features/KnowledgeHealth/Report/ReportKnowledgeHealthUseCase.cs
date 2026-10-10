@@ -1,7 +1,6 @@
 using DashboardService.Domain;
 using DashboardService.Infrastructure.Persistence;
 using FluentValidation;
-using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Kernel;
 
 namespace DashboardService.Features.KnowledgeHealth.Report;
@@ -37,38 +36,17 @@ public sealed class ReportKnowledgeHealthUseCase(
         var indicator = KnowledgeHealthIndicators.Normalize(req.Indicator);
         var observedAt = DateTimeOffset.UtcNow;
 
-        // スナップショット置換: 当該指標の既存行を落としてから差し替える。
-        var stale = await db.KnowledgeHealthObservations
-            .Where(o => o.Indicator == indicator)
-            .ToListAsync(ct);
-        db.KnowledgeHealthObservations.RemoveRange(stale);
-
         var observations = (req.Observations ?? [])
             .Where(o => !string.IsNullOrWhiteSpace(o.SubjectKey))
             .Select(o => KnowledgeHealthObservation.Create(
                 indicator, o.SubjectKey, o.DocScope, observedAt, o.Dimension))
             .ToList();
-        db.KnowledgeHealthObservations.AddRange(observations);
 
-        // planning#494 決定 3 (#1186): 現在のしきい値も**スナップショットとして置き換える**。
-        // 🔴 **添えられていなければ行を消す。** 残すと、生産者がしきい値の要らない指標へ
-        // 変わった後も古い日数が画面に出続ける（観測値を全量置換するのと同じ理由）。
-        var threshold = await db.KnowledgeHealthIndicatorThresholds
-            .FirstOrDefaultAsync(t => t.Indicator == indicator, ct);
-        if (req.ThresholdDays is { } days)
-        {
-            if (threshold is null)
-                db.KnowledgeHealthIndicatorThresholds.Add(
-                    KnowledgeHealthIndicatorThreshold.Create(indicator, days, observedAt));
-            else
-                threshold.Update(days, observedAt);
-        }
-        else if (threshold is not null)
-        {
-            db.KnowledgeHealthIndicatorThresholds.Remove(threshold);
-        }
-
-        await db.SaveChangesAsync(ct);
+        // スナップショット置換: 当該指標の既存行を落としてから差し替える（しきい値も同じ置換に入る）。
+        // NFR-16 (#1895): **件数に比例する往復を作らず、1 つのトランザクションで書く**。
+        // 一括の DELETE / INSERT とトランザクションの扱いは `KnowledgeHealthSnapshotWriter` が持つ。
+        await KnowledgeHealthSnapshotWriter.ReplaceAsync(
+            db, indicator, observations, req.ThresholdDays, observedAt, ct);
 
         // **受け付けた件数だけを返す**（個人資料を含み得る生の値であり、ここは集計面ではない）。
         return Result<ReportKnowledgeHealthOutcome>.Success(
