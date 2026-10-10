@@ -492,7 +492,121 @@ export function useBffGraphSuggestions<TData = Awaited<ReturnType<typeof bffGrap
 
 
 
-export type bffGraphSuggestionApproveResponse200 = {
+export type bffGraphSuggestionGenerateForMeasurementResponse200 = {
+  data: AiSuggestion[]
+  status: 200
+}
+
+export type bffGraphSuggestionGenerateForMeasurementResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffGraphSuggestionGenerateForMeasurementResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffGraphSuggestionGenerateForMeasurementResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffGraphSuggestionGenerateForMeasurementResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffGraphSuggestionGenerateForMeasurementResponseSuccess = (bffGraphSuggestionGenerateForMeasurementResponse200) & {
+  headers: Headers;
+};
+export type bffGraphSuggestionGenerateForMeasurementResponseError = (bffGraphSuggestionGenerateForMeasurementResponse401 | bffGraphSuggestionGenerateForMeasurementResponse403 | bffGraphSuggestionGenerateForMeasurementResponse404 | bffGraphSuggestionGenerateForMeasurementResponse502) & {
+  headers: Headers;
+};
+
+export type bffGraphSuggestionGenerateForMeasurementResponse = (bffGraphSuggestionGenerateForMeasurementResponseSuccess | bffGraphSuggestionGenerateForMeasurementResponseError)
+
+export const getBffGraphSuggestionGenerateForMeasurementUrl = (documentId: string,) => {
+
+
+
+
+  return `/bff/graph/suggestions/generate/${documentId}`
+}
+
+/**
+ * NFR-16, ADR-0117, IADR-0530 決定 1・2（#1887）: **製品の口ではない。** 稼働クラスタで east-west の gRPC
+ * （生成の LLM 呼び出しとタグ辞書の読み取り、および承認の材料になる保留中のタグ提案）を 1 回ずつ発火させる
+ * 計測のためだけに置く。
+ *
+ * **BFF の構成 `Measurement:EnableSuggestionGenerate=true`（helm の `measurement.suggestionGenerate`）のときだけ
+ * ルート表に載る。既定（無効）では 404 である。** 有効でもシステム管理者だけが呼べる（運用者・一般利用者は 403）。
+ * **LLM の費用が出る。** 画面からは呼ばない（手順は east-west gRPC の実測の手順書 §1.2）。
+ *
+ * 後段（GraphService の生成）の状態コードと本文を詰め替えずに返す。起点が見えない・存在しないは 404
+ * （区別しない）。類似の候補が無いときは空の配列で 200 である（LLM は呼ばれない）。
+ * @summary NFR-16, FR-18: 計測専用。AI 提案の生成を 1 文書に対して起動する（既定は無効・システム管理者限定）
+ */
+export const bffGraphSuggestionGenerateForMeasurement = async (documentId: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffGraphSuggestionGenerateForMeasurementResponse> => {
+
+  return bffFetch<bffGraphSuggestionGenerateForMeasurementResponse>(getBffGraphSuggestionGenerateForMeasurementUrl(documentId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffGraphSuggestionGenerateForMeasurementMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>, TError,{documentId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>, TError,{documentId: string}, TContext> => {
+
+const mutationKey = ['bffGraphSuggestionGenerateForMeasurement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>, {documentId: string}> = (props) => {
+          const {documentId} = props ?? {};
+
+          return  bffGraphSuggestionGenerateForMeasurement(documentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffGraphSuggestionGenerateForMeasurementMutationResult = NonNullable<Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>>
+
+    export type BffGraphSuggestionGenerateForMeasurementMutationError = void
+
+    /**
+ * @summary NFR-16, FR-18: 計測専用。AI 提案の生成を 1 文書に対して起動する（既定は無効・システム管理者限定）
+ */
+export const useBffGraphSuggestionGenerateForMeasurement = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>, TError,{documentId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>,
+        TError,
+        {documentId: string},
+        TContext
+      > => {
+      return useMutation(getBffGraphSuggestionGenerateForMeasurementMutationOptions(options));
+    }
+    export type bffGraphSuggestionApproveResponse200 = {
   data: AiSuggestion
   status: 200
 }

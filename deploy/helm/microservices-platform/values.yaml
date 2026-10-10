@@ -1253,6 +1253,18 @@ lexicalIndex:
 searchRerank:
   enabled: false
 
+# NFR-16, ADR-0117, IADR-0530 (#1887): **計測専用の発火手段（既定はすべて無効）。** 稼働 k3s で east-west の
+# gRPC（h2c）を 1 回ずつ発火させるためだけに置く（手順は docs/operations/east-west-grpc-h2c-roundtrip-measurement-runbook.md §1.2）。
+# 🔴 計測の窓の間だけ `--set` で入れ、終わったら外す（runbook §6.1 の切り戻しで外れる。`helm get values` で残っていないことを確かめる）。
+# 既定のままなら deployment.yaml は 1 行も描画しない（描画差分 0）。有効にしたサービスは起動時に警告を 1 行出す。
+measurement:
+  # true: BFF に POST /bff/graph/suggestions/generate/{documentId} を開ける（システム管理者限定）。
+  # AI 提案の生成（graph → llmgateway・graph → document のタグ辞書）を起動する。LLM の費用が出る。
+  suggestionGenerate: false
+  # 1〜86400: document の個人資料の定期処理を、起動からこの秒数の後に 1 回だけ前倒しで走らせる（以後は従前の 24 時間ごと）。
+  # 0（既定）は前倒ししない（初回は起動の 24 時間後のまま）。document → notification の通知の送出を本番の経路で起こす。
+  privateNoteMaintenanceInitialRunDelaySeconds: 0
+
 # FR-02, FR-03, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
 # ［2026-10-05 / #1746］ADR-0127 / IADR-0497: 高機密文書は埋め込まず語彙索引（ベクトルを持たないコレクション）にだけ
 # 載せるようになった。本基盤を有効にしても高機密文書は埋め込まれない（opt-in の配備物として残す。検索クエリと測定用）。
