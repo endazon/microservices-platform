@@ -17,7 +17,8 @@ namespace GraphService.Infrastructure.ExternalServices;
 // （`Seal` が落とす）ため、FR-11 の「文脈に含む文書のうち最も高い区分」と一致する。
 // ゲートウェイはこれで送信先ティアを決め、越境が許されなければ `Sent=false` を返す。
 //
-// 🔴 **モデルを指定しない。** `ADR-0035` 決定 3 は生成モデルに `claude-opus-5` を割り当てているが、
+// 🔴 **モデルを指定しない。** `ADR-0035` 決定 3 は生成モデルに `claude-opus-5` を割り当てているが
+// （［2026-10-10 / #1875］利用者裁定 planning#783 でゲートウェイの割当は `claude-opus-5-5`。IADR-0531）、
 // 実際の宛先は**ゲートウェイの経路決定**（機密区分によるティア選択）が持つ。呼び出し側から
 // `Model` を固定すると、越境判定が選んだ宛先と食い違い得る（作業仕様書 §未決事項 3）。
 public sealed class LlmGatewayClusterSummaryClient(

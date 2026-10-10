@@ -50,7 +50,7 @@ public class LlmGatewayGrpcSuggestionClientTests
 
     private static CompletionApiResponse RestGateway(
         bool sent = true, string text = ProposalJson, string stopReason = "end_turn") => new(
-            Text: text, Model: "claude-opus-5", InputTokens: 11, OutputTokens: 22,
+            Text: text, Model: "claude-opus-5-5", InputTokens: 11, OutputTokens: 22,
             Sent: sent, Endpoint: "claude-managed", RoutingReason: "ok", StopReason: stopReason);
 
     private static LlmGatewayGrpcSuggestionClient Client(Pb.CompleteResponse response) =>

@@ -37,6 +37,7 @@ public static class EgressMatrix
     // ［2026-08-18 追記 / #850］計画 ADR-0038 決定 2 により claude-fable-5 は Models から外れ、本番設定
     // （appsettings.json）の NonZdrModels は**空**になった。除外機構そのものは残す —— 非 ZDR モデルを
     // 将来再び許可集合へ入れるときの唯一の統制点であり、単体カバレッジは LlmRouterTests の合成 config が持つ。
+    // ［2026-10-10 追記 / #1875］5.5 系への切替（IADR-0531）後も fable（後継 claude-fable-5-1 を含む）は用いない。
     public static bool RequiresZeroDataRetention(SensitivityClass sensitivity) => sensitivity switch
     {
         SensitivityClass.Public => false,

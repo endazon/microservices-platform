@@ -3,15 +3,15 @@ title: 指定データ範囲AI分析 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-02
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [FR-04, FR-07, UC-02]
 adrs: [ADR-0004, ADR-0010]
-iadrs: [IADR-0004, IADR-0005]
-specs: []
-issues: [#448]
+iadrs: [IADR-0004, IADR-0005, IADR-0531]
+specs: [20261010_1875_claude-5-5-models]
+issues: [#448, #1875]
 -->
 
 # テスト仕様書: 指定データ範囲での分析・比較・抽出
@@ -70,7 +70,7 @@ issues: [#448]
 - `AnalysisTaskRequest(Instruction, TaskType)`：種別と指示（T-09〜T-13）。文脈は `"[1] 文書A\n抜粋A\n"`。
 - `ThrowingHttpClientFactory`：常に指定例外を投げる `HttpClient` スタブ（T-14/T-15）。設定 `Llm:DefaultModel=claude-sonnet-4-6`。
 - 依頼ボディ例（T-17/T-18）: `{ instruction: "2025 年の経費規程を比較して", taskType: "Compare", range: { attributeFilters: { year: ["2025"] } } }`。
-- `StubRagOrchestrator`（配線確認用）: 固定の `AiAnswerDto`（Model=claude-sonnet-4-6、Citations 空）を返す。
+- `StubRagOrchestrator`（配線確認用）: 固定の `AiAnswerDto`（Model=claude-sonnet-5-5、Citations 空）を返す（2026-10-10 に検索チャットの割当〔5.5 系〕へ揃えた。値そのものは試験の判定に使わない）。
 
 ## 関連仕様
 

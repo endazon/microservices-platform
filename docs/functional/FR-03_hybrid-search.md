@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-03, FR-02, FR-05, UC-01, FR-04, FR-11, FR-19, SC-02]
 adrs: [ADR-0009, ADR-0016, ADR-0017, ADR-0127, ADR-0043, ADR-0057, ADR-0070, ADR-0092, ADR-0010, ADR-0018, ADR-0044, ADR-0061]
-iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0313, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0422, IADR-0467, IADR-0497, IADR-0498, IADR-0512, IADR-0529]
-specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261007_1771_ingestion-event-wiring-docs, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1879_exposure-org-docs-wiki-gate]
-issues: [#1746, #336, #536, #995, #1116, #1118, #1193, #1253, #1254, #1771, #1752, #1879]
+iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0313, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0422, IADR-0467, IADR-0497, IADR-0498, IADR-0512, IADR-0529, IADR-0531]
+specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261007_1771_ingestion-event-wiring-docs, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1875_claude-5-5-models, 20261010_1879_exposure-org-docs-wiki-gate]
+issues: [#1746, #336, #536, #995, #1116, #1118, #1193, #1253, #1254, #1771, #1752, #1875, #1879, planning#783]
 -->
 
 # 機能仕様書: ハイブリッド検索
@@ -171,7 +171,7 @@ semantic では埋め込めたコレクションだけで束ね、**全コレク
 | 送る候補 | 窓の中で `AiInputExposure.IsAllowed` が真の候補（露出キーを持たない組織文書は真・個人資料は `ai_input` が `included` のときだけ。組織文書も `ai_input` を `excluded` と明示すれば偽）。**送れない候補は窓の中の元の位置に留まる**。ABAC で落ちた候補・検索の用途の露出トグル（一覧は「横断検索に含める」、RAG 回答の候補は「AI の入力に含める」）が OFF の候補は段に届かない |
 | 送る内容 | 検索語・各候補の題名（200 字まで）・本文（`Rerank:MaxCharsPerCandidate` 字まで。既定 400）。本文の無い文書は題名だけ。ID は 1 からの連番（文書 ID を見せない） |
 | 越境 | 送る候補の最も高い機密区分（未指定・未知は `restricted`）で判定させる。ゲートウェイは用途 `rerank` を**機密区分によらず ZDR 必須**として扱う（非 ZDR モデル・ティア C を除く） |
-| モデル・費用 | 用途 `rerank` → `claude-haiku-4-5`（鎖なし）。費用はゲートウェイの用途別・モデル別の計器に `rerank` として積まれる |
+| モデル・費用 | 用途 `rerank` → `claude-haiku-5-5`（鎖なし。2026-10-10 に `claude-haiku-4-5` から切替）。費用はゲートウェイの用途別・モデル別の計器に `rerank` として積まれる。`claude-haiku-5-5` は思考が既定で有効なので、ゲートウェイは effort `low` を付けて絞り、出力の上限（`Rerank:MaxOutputTokens`、既定 1024）は思考と本文の合算に使われる |
 | 出力 | `{"ranking":[番号,...]}`（裸の配列も受ける）。範囲外・重複・小数は捨て、言い漏らしは元の順で後ろに足す。**候補はモデルの出力から作らない**（並べ替えだけ） |
 | プロンプト注入 | 題名・本文・検索語は区切りの内側に置き、`<` `>` を全角へ置き換える（区切りを閉じられない）。指示文は区切りの中の命令に従わないと言う |
 | `Score` | 検索の値（RRF 等）のまま。並びと単調でなくなる |

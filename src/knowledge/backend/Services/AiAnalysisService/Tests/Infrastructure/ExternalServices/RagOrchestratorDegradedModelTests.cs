@@ -20,7 +20,7 @@ namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 public class RagOrchestratorDegradedModelTests
 {
     // 用途 rag-answer の実 route 結果（ADR-0022 / IADR-0106）。ゲートウェイが解決して報告する値。
-    private const string ResolvedModel = "claude-sonnet-5";
+    private const string ResolvedModel = "claude-sonnet-5-5";
 
     // T-10: ABAC で閲覧可能文書が無い縮退。ゲートウェイを一度も呼んでいないためモデルは未使用（空）。
     [Fact]
@@ -32,7 +32,7 @@ public class RagOrchestratorDegradedModelTests
             ct: TestContext.Current.CancellationToken);
 
         answer.Model.Should().BeEmpty();
-        answer.Model.Should().NotBe("claude-opus-5");
+        answer.Model.Should().NotBe("claude-opus-5-5");
     }
 
     // T-11: ストリーミング版の同経路。done イベントも同じく未使用（空）を名乗る。

@@ -14,8 +14,8 @@ public class LlmBudgetOptionsValidatorTests
     private static LlmBudgetOptionsValidator Validator()
     {
         var routing = new LlmRoutingOptions();
-        routing.PurposeModels["rag-answer"] = "claude-sonnet-5";
-        routing.PurposeModels["trade-decision"] = "claude-sonnet-5";
+        routing.PurposeModels["rag-answer"] = "claude-sonnet-5-5";
+        routing.PurposeModels["trade-decision"] = "claude-sonnet-5-5";
         return new LlmBudgetOptionsValidator(new Static<LlmRoutingOptions>(routing));
     }
 

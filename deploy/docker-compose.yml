@@ -747,11 +747,12 @@ services:
       # readiness は 8080 のまま（1 プロセスが両ポートを起動時に bind する）。
       Grpc__Port: "8081"
       Llm__ApiKey: ${ANTHROPIC_API_KEY:-}
-      # ADR-0010 / ADR-0025 / IADR-0022 / IADR-0101: 既定は claude-opus-5
+      # ADR-0010 / ADR-0025 / IADR-0022 / IADR-0101: 既定は claude-opus-5-5
       # （定型 sonnet・haiku は用途別ルーティング）
-      # ADR-0038 / #850: 最難関 analysis も claude-opus-5。claude-fable-5 は非 ZDR のため
+      # ADR-0038 / #850: 最難関 analysis も Opus。claude-fable-5（後継 claude-fable-5-1 も）は非 ZDR のため
       # 基盤のいかなる用途でも用いず、利用許可集合（Models）からも外した。
-      Llm__Model: claude-opus-5
+      # FR-11 / IADR-0531 (#1875・planning#783): 利用者裁定 2026-10-10 で 5.5 系へ切り替えた（旧 claude-opus-5）。
+      Llm__Model: claude-opus-5-5
       # FR-11 / ADR-0010 / IADR-0528 (#1872): Anthropic 呼び出しの期限（秒）は Llm__AnthropicTimeoutSeconds で変えられる。
       # ここでは値を置かない（未設定＝既定 100 秒。数値でない・0 以下は既定へ倒れ warn を 1 行出す）。
       # 延ばすときは、この environment に `Llm__AnthropicTimeoutSeconds: "180"` の形で足してコンテナを作り直す。

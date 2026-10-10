@@ -31,8 +31,13 @@ public sealed class SearchRerankOptions
     public const int MaxTimeoutSeconds = 30;
 
     // 出力の上限（トークン）。番号 20 個の JSON は 100 トークンに満たない。
-    // `claude-haiku-4-5` は thinking が既定で無効なので、この上限は本文だけに使われる。
-    public const int DefaultMaxOutputTokens = 512;
+    // ［2026-10-10 / #1875・IADR-0531 決定 5］割当が `claude-haiku-5-5` になり、thinking が既定で有効（無効にできない）に
+    // なった。この上限は**思考と本文の合算**に使われる（従前の `claude-haiku-4-5` は思考せず本文だけだった）。
+    // ゲートウェイは rerank に effort low を付けて思考を絞るが、上限を 512 → 1024 へ上げて思考の余地を残す。
+    // 上限に達すると本文の JSON が切れて元の順へ縮退するため（検索は止まらない）、余地を持つ側に倒す。
+    // 費用の上限は 1 回 1024 × $0.50/1M ≒ $0.0005 で、従前（512 × $5/1M ≒ $0.0026）より低い。
+    // 遅延は期限（既定 8 秒）が抑える —— 期限に掛かれば同じく元の順へ縮退する。
+    public const int DefaultMaxOutputTokens = 1024;
     public const int MinMaxOutputTokens = 64;
     public const int MaxMaxOutputTokens = 2048;
 

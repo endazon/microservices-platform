@@ -55,7 +55,7 @@ public class LlmGatewayClusterSummaryClientTests
         var handler = new CapturingHandler(_ => Json(HttpStatusCode.OK, new
         {
             text = "この集まりは設計メモである。",
-            model = "claude-opus-5",
+            model = "claude-opus-5-5",
             inputTokens = 10,
             outputTokens = 20,
             sent = true,
@@ -88,7 +88,7 @@ public class LlmGatewayClusterSummaryClientTests
         var handler = new CapturingHandler(_ => Json(HttpStatusCode.OK, new
         {
             text,
-            model = "claude-opus-5",
+            model = "claude-opus-5-5",
             inputTokens = 10,
             outputTokens = 0,
             sent,

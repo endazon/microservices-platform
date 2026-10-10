@@ -3,15 +3,15 @@ title: AI 回答・出典提示 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-06-27
-updated: 2026-08-30
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [FR-04, FR-05, FR-11, SC-01, SC-08, UC-01, UC-02]
 adrs: []
-iadrs: [IADR-0111, IADR-0131]
-specs: []
-issues: [#403, #448, #540, #541]
+iadrs: [IADR-0111, IADR-0131, IADR-0531]
+specs: [20261010_1875_claude-5-5-models]
+issues: [#403, #448, #540, #541, #1875]
 -->
 
 # テスト仕様書: AI 回答・出典提示
@@ -54,12 +54,12 @@ issues: [#403, #448, #540, #541]
 | T-07 | スタブ回答 | `POST /analysis/ask` | 200・回答本文・出典あり | 出典提示 | 自動 |
 | T-08 | スタブ後段 | `POST /bff/analysis/ask` | 200・出典を集約して返す | BFF 集約 | 自動 |
 | T-09 | Bearer 付与 | `POST /bff/analysis/ask` | 後段へ `Authorization` 伝播 | 権限制御 | 自動 |
-| T-10 | ABAC 不許可（LLM 未呼出） | `RagOrchestrator.AskAsync` | `AiAnswerDto.Model` が空（`claude-opus-5` を名乗らない） | 使用モデルの正確性 | 自動 |
+| T-10 | ABAC 不許可（LLM 未呼出） | `RagOrchestrator.AskAsync` | `AiAnswerDto.Model` が空（既定モデル `claude-opus-5-5` を名乗らない。2026-10-10 の 5.5 系への切替前は `claude-opus-5`） | 使用モデルの正確性 | 自動 |
 | T-11 | ABAC 不許可（LLM 未呼出） | `RagOrchestrator.AskStreamAsync` | `AskDoneEvent.Model` が空 | 使用モデルの正確性 | 自動 |
 | T-12 | ゲートウェイが越境拒否（`sent=false`・`model=""`） | `AskAsync` / `AskStreamAsync` | `Model` が空（ゲートウェイ値を透過） | 使用モデルの正確性 | 自動 |
 | T-13 | ゲートウェイ HTTP 失敗（非 2xx・未到達） | `AskAsync` / `AskStreamAsync` | `Model` が空 | 使用モデルの正確性 | 自動 |
-| T-14 | 送信成立（`sent=true`・`model=claude-sonnet-5`） | `AskAsync` / `AskStreamAsync` | 実 route 結果をそのまま返す（回帰防止） | 使用モデルの正確性 | 自動 |
-| T-15 | 呼び出し先不調（`sent=false`・`model=claude-sonnet-5`） | `AskAsync` / `AskStreamAsync` | route 結果を透過（空へ潰さない） | 使用モデルの正確性 | 自動 |
+| T-14 | 送信成立（`sent=true`・`model=claude-sonnet-5-5`） | `AskAsync` / `AskStreamAsync` | 実 route 結果をそのまま返す（回帰防止） | 使用モデルの正確性 | 自動 |
+| T-15 | 呼び出し先不調（`sent=false`・`model=claude-sonnet-5-5`） | `AskAsync` / `AskStreamAsync` | route 結果を透過（空へ潰さない） | 使用モデルの正確性 | 自動 |
 | T-16 | ゲートウェイが 2xx で本文 JSON `null`（逆シリアル化結果が null） | `AskAsync` | `Model` が空（`null` を応答契約へ載せない） | 使用モデルの正確性 | 自動 |
 | T-15f | 分析結果の補足表示 | `AnalysisDashboardPage` | `model` 空なら「モデル: 未使用（AI へ送信なし）」、非空ならモデル名 | 使用モデルの正確性 | 自動 |
 | T-17 | 文書属性に機密区分あり（4 値） | `ToCitations` | `Confidentiality` に当該値が載る | 出典への機密区分 | 自動 |

@@ -9,6 +9,10 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace LlmGateway.Tests.Features.Completions;
 
+// ［2026-10-10 追記 / #1875・IADR-0531］利用者裁定（planning#783）で Claude の割当を 5.5 系へ切り替えたので、
+// 本ファイルが渡す・期待するモデル名（コード）を claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5 へ改めた。
+// **コメント中の旧モデル名（claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5）は当時の決定の記録**であり、書き換えていない。
+
 // T-25, FR-11, ADR-0038 決定 3・4 (#863), IADR-0225:
 // /complete が **実設定（appsettings.json）の PurposeFallbackModels 経由で** 400 系のときだけ
 // 次の候補モデルへ落ち、429 では落ちないことを HTTP 経路で固定する。
@@ -45,17 +49,17 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     // 第 2 候補 claude-sonnet-5 へ落ちて応答が返る。応答の Model は**実際に投げたモデル**である
     // （IADR-0111: 使用モデルを偽らない）。
     [Fact]
-    public async Task PostComplete_Analysis_When400_FallsBackToSonnet5()
+    public async Task PostComplete_Analysis_When400_FallsBackToSonnet55()
     {
-        var client = ClientFailing("claude-opus-5", HttpStatusCode.BadRequest);
+        var client = ClientFailing("claude-opus-5-5", HttpStatusCode.BadRequest);
 
         var response = await client.PostAsJsonAsync("/complete", AnalysisRequest(), TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue("400 系はフォールバックの発火条件である（ADR-0038 決定 4）");
-        body.Model.Should().Be("claude-sonnet-5");
-        body.Model.Should().NotBe("claude-opus-5");
+        body.Model.Should().Be("claude-sonnet-5-5");
+        body.Model.Should().NotBe("claude-opus-5-5");
         body.Endpoint.Should().Be("claude-managed");
     }
 
@@ -65,14 +69,14 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task PostComplete_Analysis_When429_DoesNotFallBack()
     {
-        var client = ClientFailing("claude-opus-5", HttpStatusCode.TooManyRequests);
+        var client = ClientFailing("claude-opus-5-5", HttpStatusCode.TooManyRequests);
 
         var response = await client.PostAsJsonAsync("/complete", AnalysisRequest(), TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse("429 は再試行であってフォールバックではない（ADR-0038 決定 4）");
-        body.Model.Should().Be("claude-opus-5", "見送らずに第 1 候補のまま縮退する");
+        body.Model.Should().Be("claude-opus-5-5", "見送らずに第 1 候補のまま縮退する");
         body.Text.Should().Contain("現在利用できません");
     }
 
@@ -80,13 +84,13 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task PostComplete_Analysis_When5xx_DoesNotFallBack()
     {
-        var client = ClientFailing("claude-opus-5", HttpStatusCode.InternalServerError);
+        var client = ClientFailing("claude-opus-5-5", HttpStatusCode.InternalServerError);
 
         var response = await client.PostAsJsonAsync("/complete", AnalysisRequest(), TestContext.Current.CancellationToken);
 
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse();
-        body.Model.Should().Be("claude-opus-5");
+        body.Model.Should().Be("claude-opus-5-5");
     }
 
     // T-25d: 鎖が尽きたら（全候補が 400 で失敗）従来の縮退へ合流する。最後に投げたモデルを名乗る。
@@ -99,7 +103,7 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
 
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse();
-        body.Model.Should().Be("claude-sonnet-5", "鎖の最後の候補まで試したことが応答から読める");
+        body.Model.Should().Be("claude-sonnet-5-5", "鎖の最後の候補まで試したことが応答から読める");
     }
 
     // T-25e: rag-answer は第 1 候補 claude-sonnet-5 が 400 で失敗したら claude-haiku-4-5 へ落ちる。
@@ -107,9 +111,9 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     // 補わない」としてフォールバックしないことを固定していたが、裁定により鎖の登録が認められた。
     // 旧テスト名は PostComplete_RagAnswer_When400_DoesNotFallBack。
     [Fact]
-    public async Task PostComplete_RagAnswer_When400_FallsBackToHaiku45()
+    public async Task PostComplete_RagAnswer_When400_FallsBackToHaiku55()
     {
-        var client = ClientFailing("claude-sonnet-5", HttpStatusCode.BadRequest);
+        var client = ClientFailing("claude-sonnet-5-5", HttpStatusCode.BadRequest);
 
         var req = new { Prompt = "要約", MaxTokens = 100, Confidentiality = "public", Purpose = "rag-answer" };
         var response = await client.PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
@@ -117,7 +121,7 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue("400 系はフォールバックの発火条件である（ADR-0038 決定 4）");
-        body.Model.Should().Be("claude-haiku-4-5");
+        body.Model.Should().Be("claude-haiku-5-5");
         body.Endpoint.Should().Be("claude-managed");
     }
 
@@ -137,7 +141,7 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
 
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse();
-        body.Model.Should().Be("claude-haiku-4-5", "鎖が無いので第 1 候補のまま縮退する");
+        body.Model.Should().Be("claude-haiku-5-5", "鎖が無いので第 1 候補のまま縮退する");
     }
 
     // AST#571, AST/ADR-0017 決定1: 報告書 3 種は取引判断と異なりフォールバックを許す。第 1 候補が
@@ -145,9 +149,9 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     // いずれも安価側への遷移であり（月報・週報は opus-5→sonnet-5、日報は sonnet-5→haiku-4-5）、
     // 費用が上振れすることはない。
     [Theory]
-    [InlineData("report-monthly", "claude-opus-5", "claude-sonnet-5")]
-    [InlineData("report-weekly", "claude-opus-5", "claude-sonnet-5")]
-    [InlineData("report-daily", "claude-sonnet-5", "claude-haiku-4-5")]
+    [InlineData("report-monthly", "claude-opus-5-5", "claude-sonnet-5-5")]
+    [InlineData("report-weekly", "claude-opus-5-5", "claude-sonnet-5-5")]
+    [InlineData("report-daily", "claude-sonnet-5-5", "claude-haiku-5-5")]
     public async Task PostComplete_ReportKindPurpose_When400_FallsBackToKindSpecificModel(
         string purpose, string primaryModel, string expectedFallbackModel)
     {
@@ -170,13 +174,13 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task PostCompleteStream_Analysis_When400_DoesNotFallBack()
     {
-        var client = ClientFailing("claude-opus-5", HttpStatusCode.BadRequest);
+        var client = ClientFailing("claude-opus-5-5", HttpStatusCode.BadRequest);
 
         var response = await client.PostAsJsonAsync("/complete/stream", AnalysisRequest(), TestContext.Current.CancellationToken);
 
         var sse = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         sse.Should().Contain("\"sent\":false");
-        sse.Should().NotContain("claude-sonnet-5");
+        sse.Should().NotContain("claude-sonnet-5-5");
     }
 
     // 指定モデル（または全モデル）への呼び出しを HTTP ステータス付きの例外で失敗させるスタブ。

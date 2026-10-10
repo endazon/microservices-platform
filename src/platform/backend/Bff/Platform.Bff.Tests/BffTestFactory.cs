@@ -55,7 +55,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
         "集約された回答 [1]",
         [new CitationDto(1, Guid.NewGuid(), "文書A", Guid.NewGuid(),
             "s3://bucket/a.md", 0.92f, "抜粋")],
-        "claude-sonnet-4-6", 12, 34);
+        "claude-sonnet-5-5", 12, 34);
 
     // FR-08 BFF テスト: 後段 FeedbackService への転送を捕捉・スタブ化する。
     public string? LastFeedbackForwardedAuthorization { get; private set; }

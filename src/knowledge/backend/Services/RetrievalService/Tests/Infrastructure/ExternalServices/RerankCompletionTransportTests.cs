@@ -216,7 +216,7 @@ public class RerankCompletionTransportTests
             return new HttpResponseMessage(Status)
             {
                 Content = new StringContent(
-                    "{\"text\":\"{\\\"ranking\\\":[1]}\",\"model\":\"claude-haiku-4-5\",\"inputTokens\":1,\"outputTokens\":1,\"sent\":true}",
+                    "{\"text\":\"{\\\"ranking\\\":[1]}\",\"model\":\"claude-haiku-5-5\",\"inputTokens\":1,\"outputTokens\":1,\"sent\":true}",
                     Encoding.UTF8, "application/json"),
             };
         }

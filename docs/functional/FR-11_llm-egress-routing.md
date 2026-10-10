@@ -3,15 +3,15 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-08
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02, NFR-17, NFR-19, NFR-28]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
-iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511]
-specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability]
-issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720]
+iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531]
+specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models]
+issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -60,28 +60,34 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 - **ZDR（ゼロデータ保持）によるモデル除外（既定モデル改定の実装 ADR と 08_data-egress-policy）**: `EgressMatrix.RequiresZeroDataRetention` が真の機密区分（`confidential`/`restricted`、未知区分も安全側で真）では、エンドポイントの `NonZdrModels` に列挙された ZDR 非対応モデルを候補から除外する。
   **［2026-08-18 更新 / #850・分析用途のモデル割当の計画 ADR］既定の `NonZdrModels` は空である** —— 同 ADR 決定 2 により `claude-fable-5` を `Models`（利用許可集合）から外したため、列挙する対象が無くなった。
   **除外機構そのものは残す**（非 ZDR モデルを将来再び許可集合へ入れるときの唯一の統制点であり、単体カバレッジは `LlmRouterTests` の合成 config が持つ）。
+- **［2026-10-10］Claude の割当は全用途で 5.5 系である**（利用者裁定。`claude-opus-5` → `claude-opus-5-5`・`claude-sonnet-5` → `claude-sonnet-5-5`・
+  `claude-haiku-4-5` → `claude-haiku-5-5`。取引判断の 2 層を含む。fable 系は引き続き用いない）。以下の値は切替後の現行値である。
+  旧 3 モデルは**切り戻しのために利用許可集合と単価表へ残す**（割当には使わない）。各用途の割当の根拠（どの層を充てるか）は従前の決定のままで、
+  変わったのは各層のモデルの版である。5.5 系は 3 モデルとも thinking（adaptive）が既定で有効で、**無効にできない** ——
+  思考の量は用途別の effort（後掲）で絞る。
 - 既定設定（`appsettings.json`。LLM ゲートウェイ・モデル選定の各計画 ADR と、既定モデル改定・既定 `max_tokens` 引き上げ・RAG 回答の追随・報告書の用途分離とモデル改定を定めた各実装 ADR による）:
-  既定 `claude-opus-5`、定型 `rag-answer→claude-sonnet-5` / `diagram-coding→claude-haiku-4-5`、最難関 `analysis→claude-opus-5`（**分析用途のモデル割当の計画 ADR 決定 1 で `claude-fable-5` から改定**。#850）、
-  `default→claude-opus-5`、**報告書 `report-monthly→claude-opus-5`（月報のモデル改定の実装 ADR で `claude-fable-5` から改定）/ `report-weekly→claude-opus-5` / `report-daily→claude-sonnet-5`**、
-  **取引判断 `trade-decision→claude-sonnet-5`（版数固定。ピン改定の実装 ADR 決定 3）**、
-  **取引判断の一次スクリーニング `trade-decision-screening→claude-haiku-4-5`（二段判断の層別用途登録の実装 ADR）**——
+  既定 `claude-opus-5-5`、定型 `rag-answer→claude-sonnet-5-5` / `diagram-coding→claude-sonnet-5-5`（鎖の第 2 候補が `claude-haiku-5-5`。従前ここに `diagram-coding→claude-haiku-4-5` と書いていたのは #440 での改定への追随漏れだった）、最難関 `analysis→claude-opus-5-5`（**分析用途のモデル割当の計画 ADR 決定 1 で `claude-fable-5` から `claude-opus-5` へ改定**。#850）、
+  `default→claude-opus-5-5`、**報告書 `report-monthly→claude-opus-5-5`（月報のモデル改定の実装 ADR で `claude-fable-5` から改定）/ `report-weekly→claude-opus-5-5` / `report-daily→claude-sonnet-5-5`**、
+  **取引判断 `trade-decision→claude-sonnet-5-5`（版数固定。ピン改定の実装 ADR 決定 3）**、
+  **取引判断の一次スクリーニング `trade-decision-screening→claude-haiku-5-5`（二段判断の層別用途登録の実装 ADR）**——
   本判断とは別の軽量モデルを充てる用途であり、`AST/ADR-0014` §決定1・`AST/ADR-0017` 決定1 が定める層別割当を
   基盤側の用途登録として反映する。
-  **検索結果の再順位付け `rerank→claude-haiku-4-5`（2026-10-06）**—— 検索サービスが検索結果の候補（RAG 回答の候補・検索結果一覧）を
+  **検索結果の再順位付け `rerank→claude-haiku-5-5`（2026-10-06）**—— 検索サービスが検索結果の候補（RAG 回答の候補・検索結果一覧）を
   並べ替えるための用途であり、回答生成（`rag-answer`）と分けて費用を計上する。検索のたびに呼ぶので軽量モデルを充て、**鎖は持たない**
   （最安のモデルからさらに安い先が無い。失敗は検索サービスが元の順へ戻す）。
-  **知識グラフの AI 提案 `graph-suggestion→claude-sonnet-5`・クラスタ要約 `graph-cluster-summary→claude-opus-5`（2026-10-08）**——
-  どちらもグラフサービスが送る用途で、登録が無かった間は既定（`claude-opus-5`）へ無音で落ち、費用は `other` へ丸められていた
+  **知識グラフの AI 提案 `graph-suggestion→claude-sonnet-5-5`・クラスタ要約 `graph-cluster-summary→claude-opus-5-5`（2026-10-08）**——
+  どちらもグラフサービスが送る用途で、登録が無かった間は既定（当時 `claude-opus-5`）へ無音で落ち、費用は `other` へ丸められていた
   （提案生成の費用を他の用途と切り分けられなかった）。AI 提案は候補・辺の型・タグを閉じた一覧から選んで JSON で返す選別の仕事なので
   定型層（`rag-answer`・`diagram-coding` と同じ）を充てる。クラスタ要約は GraphRAG の計画 ADR がコミュニティ要約の生成モデルとして
-  `claude-opus-5` を名指ししているので、既定と同値でも明示エントリで固定する（既定の改定で無音に失効させない）。
+  `claude-opus-5` を名指ししているので、既定と同値でも明示エントリで固定する（既定の改定で無音に失効させない。
+  2026-10-10 の 5.5 系への切替で `claude-opus-5-5`）。
   両用途とも区分によらない ZDR の要件は持たない（送る文書の最高区分を名乗るので、区分の規則が効く）。
 - **用途による ZDR の要件（2026-10-06）**: `LlmRoutingOptions.ZeroDataRetentionPurposes`（コードに持つ。現在は `rerank` だけ）の用途は、
   **機密区分によらず** ZDR を要件とする —— `NonZdrModels` のモデルを第 1 候補・鎖の両方から除き、ティア C を候補から外す。
   区分の規則（`EgressMatrix`）は変えず、用途の規則を重ねる（強める向きだけ）。再順位付けは検索の候補（`restricted` と機密区分が未指定・未知を
   含み得る）の本文をまとめて送るため、候補が `public` だけのときにも ZDR の外へ出さない。
-  なお `rerank` の割当モデルを ZDR 非対応にすると、`ResolveModel` は `DefaultModel`（`claude-opus-5`）へ倒れる（ZDR の外へは出ないが、
-  費用は最大で約 5 倍になる）。全 `PurposeModels` の割当が非 ZDR でないことは T-23 が固定する。
+  なお `rerank` の割当モデルを ZDR 非対応にすると、`ResolveModel` は `DefaultModel`（`claude-opus-5-5`）へ倒れる（ZDR の外へは出ないが、
+  費用は入力で約 40 倍・出力で約 40 倍になる。haiku-5-5 の下段 $0.10 / $0.50 に対し opus-5-5 は $4 / $20）。全 `PurposeModels` の割当が非 ZDR でないことは T-23 が固定する。
 - **用途別モデルは `Models`（利用許可集合）にも登録する**: `ResolveModel` は `eligible.Contains(purposeModel)` を条件とするため、`PurposeModels` にのみ書いて `Models` へ登録し忘れると、例外もログも出さずに `DefaultModel` へフォールバックし割当が無音で失効する。
   `Models` は「割当」ではなく「利用を許可するモデル集合」であり、版数改定時は**追加**する（削除は明示 `Model` 要求をしている呼び出し側に対する破壊的変更）。
   **ただし計画 ADR（`ADR-0038` 決定 2）が利用そのものを禁じたモデルは例外で、`Models` から除去する** —— 破壊的変更であることを承知のうえで、非 ZDR モデルを基盤から無くすことを優先した。
@@ -106,6 +112,18 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   区別は応答の `RoutingReason` / `Endpoint` に現れる（①は拒否理由、③は「呼び出し先 {Endpoint} が現在利用できません。」）。呼び出し側が `Sent=false` を機密区分による縮退と決め打つと原因を取り違える。
   なお **ZDR 除外は `internal` では効かない**（`RequiresZeroDataRetention` が真になるのは `confidential`/`restricted`/未知区分のみ）。**ただし用途 `rerank` は区分によらず効く**（前掲「用途による ZDR の要件」）。
 - **既定 `max_tokens`**: Opus 5 / Sonnet 5 は thinking（拡張思考）が既定で有効であり、`max_tokens` は**思考トークンと本文の合算上限**になる。既定値は 4096（本文想定長＋思考の作業領域）とする。切り詰めると本文が途中で切れ、例外にならず短い回答へ静かに縮退する。
+  **［2026-10-10］5.5 系では Haiku も thinking が既定で有効になった**（4.5 は無効だった）。軽量モデルを充てる用途（`rerank`・
+  `trade-decision-screening`・鎖の第 2 候補）でも上限は思考と本文の合算になる。検索の再順位付けの上限は 512 → 1024 へ上げた（検索サービスの構成）。
+- **用途別 effort（`Llm:PurposeEffort`。2026-10-10）**: 用途 → effort（`low` / `medium` / `high` / `xhigh` / `max`）の対応を設定で持ち、
+  Claude への要求本文の `output_config.effort` に載せる。**既定は `rerank: low` だけ**で、書かない用途は effort を送らない（提供元の既定。
+  opus-5-5・haiku-5-5 は `medium`、sonnet-5-5 は `high`）。`rerank` は検索のたびに呼ばれ、呼び出し側の期限が 8 秒と短いため思考を絞る。
+  - 送るのは effort を受け付けるモデル（5.5 系・`claude-opus-5`・`claude-sonnet-5`・`claude-opus-4-8`）だけである。`claude-haiku-4-5` は
+    effort を 400 で拒むので、切り戻しで用途を戻しても送らない。
+  - 値域外の値は**起動時に落とす**（実行時に送ると全件 400 になり、呼び出し側には上流の失敗としか見えない）。
+  - SDK（`Anthropic.SDK` 4.0.0）は effort を送る口を持たないので、`AnthropicClient` へ渡す `HttpClient` の最も外側の委譲ハンドラ
+    （`AnthropicRequestShapingHandler`）が要求本文へ足す。呼び出し側が明示した effort は上書きしない。
+  - **5.5 系で 400 になる要求キー（`temperature` / `top_p` / `top_k` / `thinking` / `tool_choice`）と assistant の先頭埋め（prefill）は送らない。**
+    出ていく要求本文にこれらが無いことを試験で固定する。
 - `PurposeModels` のキーは**呼び出し側が送る purpose 値と一致させる**（`StringComparer.OrdinalIgnoreCase`）。
   **［2026-10-08］呼び出し側が送る用途名の全数がキーに在ることを、リポジトリの横断テスト（`scripts/scripts.repo.test.js`。走査は `scripts/lib/llm-purposes.js`）が突き合わせる。**
   呼び出し側は用途名を**名前に `Purpose` を含む定数**（`PurposeName` 等）か、名前付き引数 `Purpose:` への文字列で宣言する ——
@@ -120,7 +138,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 | 項目 | 内容 |
 | --- | --- |
 | 設定 | `Llm:Routing:PurposeFallbackModels`（用途 → **第 2 候補以降**の順序つきモデル配列）。第 1 候補は `PurposeModels`（無ければ `DefaultModel`） |
-| 既定値 | `analysis: ["claude-sonnet-5"]` / `diagram-coding: ["claude-haiku-4-5"]` / `default: ["claude-sonnet-5"]` / `rag-answer: ["claude-haiku-4-5"]` / `report-monthly: ["claude-sonnet-5"]` / `report-weekly: ["claude-sonnet-5"]` / `report-daily: ["claude-haiku-4-5"]` / `graph-suggestion: ["claude-haiku-4-5"]` / `graph-cluster-summary: ["claude-sonnet-5"]` の 9 用途。**いずれも第 1 候補より安価側の 1 段下位**であり、発火で費用が上振れすることはない |
+| 既定値 | `analysis: ["claude-sonnet-5-5"]` / `diagram-coding: ["claude-haiku-5-5"]` / `default: ["claude-sonnet-5-5"]` / `rag-answer: ["claude-haiku-5-5"]` / `report-monthly: ["claude-sonnet-5-5"]` / `report-weekly: ["claude-sonnet-5-5"]` / `report-daily: ["claude-haiku-5-5"]` / `graph-suggestion: ["claude-haiku-5-5"]` / `graph-cluster-summary: ["claude-sonnet-5-5"]` の 9 用途。**いずれも第 1 候補より安価側の 1 段下位**であり、発火で費用が上振れすることはない |
 | 発火条件 | **上流が HTTP 400〜499（429 を除く）** |
 | **発火しない** | **429（レート制限）**・5xx・通信断・ステータスの取れない失敗 |
 | 適用範囲 | **非ストリーミング `/complete` のみ**（`/complete/stream` は実装しない） |
@@ -138,16 +156,16 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   **「鎖が無い用途は落ちない」という分岐が生きていることを、鎖を持たない用途で固定し続ける。**
 - **`default` / `rag-answer` の第 2 候補は 2026-08-21 に確定した**（計画側の裁定。分析用途のモデル割当の計画 ADR §未決事項の行は、
   AI・RAG スタックの技術検討書（`fixed`）が 2026-08-07 に確定させていた値への追随が漏れていたものであり、
-  計画側で打ち消し線＋日付つき追記により是正済み）。`default` → `claude-sonnet-5`、`rag-answer` → `claude-haiku-4-5`。
+  計画側で打ち消し線＋日付つき追記により是正済み）。`default` → `claude-sonnet-5`、`rag-answer` → `claude-haiku-4-5`（2026-10-10 の切替後は `claude-sonnet-5-5`・`claude-haiku-5-5`）。
 - **報告書 3 種（`report-monthly` / `report-weekly` / `report-daily`）の第 2 候補を登録した**（二段判断の層別用途登録の
   実装 ADR。`AST/ADR-0017` 決定1 が定める用途別フォールバック順序を基盤側の鎖として反映する）。
-  `report-monthly` → `claude-sonnet-5`、`report-weekly` → `claude-sonnet-5`、`report-daily` → `claude-haiku-4-5`。
+  `report-monthly` → `claude-sonnet-5`、`report-weekly` → `claude-sonnet-5`、`report-daily` → `claude-haiku-4-5`（2026-10-10 の切替後は `claude-sonnet-5-5`・`claude-sonnet-5-5`・`claude-haiku-5-5`）。
   取引判断（前項）とは異なり報告書生成にはフォールバック禁止の制約が無く、単発の障害で方針階層（月報→週報→日報）が
   途切れる不利益のほうが大きいため、報告書 3 種はいずれも鎖を持つ。
 
 ### エンドポイント定義（`LlmEndpointOptions` / `Llm:Routing:Endpoints`）
 
-- 既定 `claude-managed`（Tier=B, Provider=`claude`, Enabled=true, Priority=10, Models は `claude-opus-5` / `claude-opus-4-8` / `claude-sonnet-5` / `claude-sonnet-4-6` / `claude-haiku-4-5` の 5 モデル。**`claude-fable-5` は分析用途のモデル割当の計画 ADR 決定 2 により除去済み**・#850）、
+- 既定 `claude-managed`（Tier=B, Provider=`claude`, Enabled=true, Priority=10, `DefaultModel` は `claude-opus-5-5`, Models は `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5` / `claude-opus-5` / `claude-opus-4-8` / `claude-sonnet-5` / `claude-sonnet-4-6` / `claude-haiku-4-5` の 8 モデル（**5.5 系の 3 つを 2026-10-10 に追加し、旧モデルは切り戻しと明示要求の呼び出し側のために残す**）。**`claude-fable-5` は分析用途のモデル割当の計画 ADR 決定 2 により除去済み**・#850）、
   `selfhosted-oss`（Tier=A, Provider=`selfhosted`, Enabled=false, Priority=20）、`copilot-managed`（Tier=C, Provider=`copilot`, Enabled=false, Priority=30）。
 - セルフホスト（OpenAI 互換 `/v1/chat/completions`）は LLM ゲートウェイの計画 ADR のとおり**後付け可能**とし、既定は無効エンドポイント（`Llm:SelfHosted:BaseUrl` 未設定時は利用不可）。
 - GitHub Copilot（最難関の別経路。LLM ゲートウェイの計画 ADR と既定モデル改定の実装 ADR）は `CopilotProvider`（OpenAI 互換 `/chat/completions`）で追加。送信先ティア（08_data-egress-policy の契約条件）が未確定のため**安全側でティアC・既定無効**とし、確定後に設定で有効化・ティア再判定する。
@@ -282,7 +300,7 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロックの判別子を列挙で分岐し、
 **`text` / `image` / `tool_use` / `tool_result` 以外**を受け取ると `JsonException: Unknown type <型>` を
 投げる。未知型が 1 個混ざるだけで配列全体＝**応答全体**が失われるため、拡張思考（`thinking`）が
-既定で有効な現行の割当モデル（`claude-opus-5` / `claude-sonnet-5` / `claude-haiku-4-5`。**#850 以降 `claude-fable-5` は含まれない**）では
+既定で有効な現行の割当モデル（`claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5`。2026-10-10 以降は Haiku も thinking を返す。**#850 以降 `claude-fable-5` は含まれない**）では
 非ストリーミング `/complete` が全件失敗する。
 
 そこで `AnthropicClient` へ渡す `HttpClient` に委譲ハンドラを挟み、**既知型の許可リスト**で
@@ -317,17 +335,22 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 - [x] 終了理由がメトリクス（`llm.completion.total`）として継続的に観測でき、拒否・上限到達・正常終了・送信拒否・呼び出し失敗が相互に区別できる。属性のカーディナリティは有限。
 - [x] 縮退応答（未送信）が使用モデルを名乗らない。呼び出し側はゲートウェイ報告値を透過し、モデル名を自分で決めない。
 - [x] SDK が解釈できない content ブロック型（`thinking` 等）が含まれても応答全体を失わず、本文テキストと既知ブロックを取得できる。未知の将来型でも同様。
-- [x] 用途 `analysis` の第 1 候補（`claude-opus-5`）が HTTP 400 系で失敗したとき、`claude-sonnet-5` へフォールバックして応答が返る（#863 / 分析用途のモデル割当の計画 ADR 決定 3 / 用途別フォールバックの実装 ADR）。
+- [x] 用途 `analysis` の第 1 候補（`claude-opus-5-5`）が HTTP 400 系で失敗したとき、`claude-sonnet-5-5` へフォールバックして応答が返る（#863 / 分析用途のモデル割当の計画 ADR 決定 3 / 用途別フォールバックの実装 ADR）。
 - [x] **429 ではフォールバックしない**（429 は再試行であってフォールバックではない。#863 / 分析用途のモデル割当の計画 ADR 決定 4）。5xx・ステータス不明の失敗も同様に従来の縮退へ落ちる。
 - [x] フォールバックの発火が `llm.completion.total{llm_result="fallback"}` として観測でき、見送った候補と実際に使った候補が `llm.model` で区別できる（#863 / 分析用途のモデル割当の計画 ADR 決定 6）。
 - [x] フォールバック先が `Models`（利用許可集合）に登録済みであることをガードが固定する（#863 / 分析用途のモデル割当の計画 ADR 決定 5。既存 T-19 の射程を拡大）。`trade-decision` / `trade-decision-screening` は鎖を持たない。
-- [x] 用途 `rerank` は `claude-haiku-4-5` へ解決され（鎖なし）、費用は `llm.purpose=rerank` として回答生成と分けて積まれる。機密区分によらず ZDR 必須（非 ZDR モデル・ティア C を除く）。
+- [x] 用途 `rerank` は `claude-haiku-5-5` へ解決され（鎖なし）、費用は `llm.purpose=rerank` として回答生成と分けて積まれる。機密区分によらず ZDR 必須（非 ZDR モデル・ティア C を除く）。
 - [x] `trade-decision-screening` は `Models` に登録済みの軽量モデルへ解決され、既定（`DefaultModel`）へ無音で落ちない（二段判断の層別用途登録の実装 ADR）。
 - [x] 報告書 3 種（`report-monthly` / `report-weekly` / `report-daily`）は HTTP 400 系で第 1 候補が失敗したとき、それぞれの第 2 候補へフォールバックして応答が返る（二段判断の層別用途登録の実装 ADR）。
-- [x] 知識グラフの 2 用途（AI 提案 `graph-suggestion`・クラスタ要約 `graph-cluster-summary`）は登録したモデル（`claude-sonnet-5`・`claude-opus-5`）へ解決され、既定（`DefaultModel`）を別のモデルへ差し替えても割当が選ばれる。鎖は 1 段下位（`claude-haiku-4-5`・`claude-sonnet-5`）。費用は `llm.purpose` の用途名の軸に積まれ、`other` へ丸められない（`GraphPurposeEndpointTests`）。
+- [x] 知識グラフの 2 用途（AI 提案 `graph-suggestion`・クラスタ要約 `graph-cluster-summary`）は登録したモデル（`claude-sonnet-5-5`・`claude-opus-5-5`）へ解決され、既定（`DefaultModel`）を別のモデルへ差し替えても割当が選ばれる。鎖は 1 段下位（`claude-haiku-5-5`・`claude-sonnet-5-5`）。費用は `llm.purpose` の用途名の軸に積まれ、`other` へ丸められない（`GraphPurposeEndpointTests`）。
 - [x] 呼び出し側が送る用途名の全数が `PurposeModels` のキーに在ることを横断テストが突き合わせ、未登録の用途が増えると落ちる（`scripts/scripts.repo.test.js`。変異で確認）。
 - [x] `Sent=false` の全経路（一括 3・逐次 3）が `FailureKind` で原因の種類を返し、上流の不調は HTTP 状態を `UpstreamStatusCode` に載せる。`Sent=true` では両方 null。gRPC も同じ値を運ぶ（`SentFalseObservabilityTests`・`GrpcCompleteTests`・`GrpcCompleteStreamTests`）。
 - [x] 越境拒否は理由・用途・機密区分を載せた warn を出し、同じ用途と理由の組は 5 分ごとの要約 1 行（抑えた件数つき）に抑える。用途の制御文字はログへ出す前に落とす（`SentFalseObservabilityTests`。抑制を外す変異で赤を確認）。
+- [x] Claude の割当が全用途で 5.5 系（`claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5`）へ解決され、旧 3 モデルは利用許可集合と単価表に残る（2026-10-10 の利用者裁定。`CompletionRoutingEndpointTests` ほか実設定を通す試験）。
+- [x] Claude へ出ていく要求本文に 5.5 系で 400 になるキー（`temperature` / `top_p` / `top_k` / `thinking` / `tool_choice`）が無く、assistant の先頭埋めも無い（非ストリーム・ストリームとも。`ClaudeProviderRequestShapeTests`）。
+- [x] 用途別 effort（`Llm:PurposeEffort`）が effort を受け付けるモデルへの要求にだけ `output_config.effort` として載り、既定は `rerank: low` だけである。値域外の値は起動時に落ちる（`ClaudeProviderRequestShapeTests`）。
+- [x] `claude-haiku-5-5` の thinking 先頭の応答から、非ストリーム・ストリームの両方で本文だけを取り出す（`ClaudeProviderThinkingTests`）。
+- [x] `claude-haiku-5-5` の費用は要求ごとの入力トークン数で 2 段の単価（100,000 以下 $0.10 / $0.50、超 $0.50 / $2.50）から換算する（利用状況ダッシュボードのテスト仕様書の単価表の節）。
 
 > 検証: `LlmRouterTests`（越境マトリクス・ティア除外・フォールバック・ZDR・縮退）／
 > `CompletionRoutingEndpointTests`／`EmbeddingRouterTests`・`EmbeddingEndpointTests`（埋め込み egress）。

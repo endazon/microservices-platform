@@ -3,15 +3,15 @@ title: ハイブリッド検索 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-06
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, SC-01, SC-02, UC-01, FR-19, NFR-09, FR-04, FR-11]
 adrs: [ADR-0086, ADR-0119, ADR-0016, ADR-0057, ADR-0070, ADR-0092, ADR-0127, ADR-0010, ADR-0018, ADR-0035, ADR-0061, ADR-0076]
-iadrs: [IADR-0417, IADR-0426, IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467, IADR-0497, IADR-0498]
-specs: [20260927_issue-1658_relay-options-shared, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank]
-issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995]
+iadrs: [IADR-0417, IADR-0426, IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467, IADR-0497, IADR-0498, IADR-0531]
+specs: [20260927_issue-1658_relay-options-shared, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261010_1875_claude-5-5-models]
+issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995, #1875, planning#783]
 -->
 
 # テスト仕様書: ハイブリッド検索
@@ -170,6 +170,7 @@ issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1
 | T-109 | 合成監視の要求（内周の標識あり／なし）。AI 分析の質問・分析・逐次の 3 経路と REST・gRPC の検索輸送（`RagSearchSyntheticMarkerTests`）。BFF の横断検索の合成監視の主体・通常の主体・外からの偽装（`SyntheticTrafficExclusionTests`）。検索サービスの gRPC の受け口（`RerankCompletionTransportTests`） | 質問・分析・逐次・検索 | 合成のときだけ標識が検索サービスへ届く（REST はヘッダ、gRPC はメタデータ）。通常の主体・偽装では付かない。gRPC のメタデータの標識を受け口の判定（`IHttpContextAccessor` 越し）が読める。段は合成監視の検索では呼ばない | 合成監視に再順位付けの費用を出さない |
 | T-110 | 再順位付けの輸送（REST・gRPC。`RerankCompletionTransportTests`） | ゲートウェイを呼ぶ | REST の本文・gRPC の proto の欄に `purpose = rerank`・段が算出した `confidentiality`・出力上限が載る。合成のときだけ標識が付く。非 2xx は例外のまま上がる | 用途と越境の区分をゲートウェイへ正しく渡す |
 | T-111 | gRPC の取り消し（偽のクライアントの `Cancelled` / `DeadlineExceeded`・取り消していない `Cancelled`・ループバックの応答しない受け口） | ゲートウェイを呼ぶ・段を通す | 呼び出し元の取り消しは `OperationCanceledException` で上がり、取り消していない `Cancelled` は `RpcException`（輸送の失敗）のまま。実チャネルで段の期限は `timeout` として元の順へ戻り、利用者の取り消しは縮退として数えずに上がる | 失敗の理由を数え違えない |
+| T-112 | 再順位付けの構成の既定（`ClaudeRerankTests`） | 構成の正規化 | 出力の上限の既定は 1024（思考と本文の合算。2026-10-10 に 512 から引き上げ）、期限の既定は 8 秒のまま | 割当の `claude-haiku-5-5` は思考が既定で有効で、512 では思考が上限を食って順位の JSON が切れ得る |
 
 ## テストデータ
 

@@ -102,14 +102,14 @@ file class StubRagOrchestrator : IRagOrchestrator
         await Task.CompletedTask;
         yield return new AskCitationsEvent([]);
         yield return new AskTokenEvent($"「{question}」への回答（統合テストスタブ）");
-        yield return new AskDoneEvent(Guid.NewGuid(), "claude-sonnet-4-6", 50, 100);
+        yield return new AskDoneEvent(Guid.NewGuid(), "claude-sonnet-5-5", 50, 100);
     }
 
     private static AiAnswerDto Answer(string text)
         => new(
             Answer: text,
             Citations: [],
-            Model: "claude-sonnet-4-6",
+            Model: "claude-sonnet-5-5",
             InputTokens: 50,
             OutputTokens: 100);
 }

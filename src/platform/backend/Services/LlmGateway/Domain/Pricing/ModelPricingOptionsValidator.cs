@@ -29,6 +29,15 @@ public sealed class ModelPricingOptionsValidator : IValidateOptions<ModelPricing
                 if (entry.InputPerMillionTokens < 0 || entry.OutputPerMillionTokens < 0)
                     errors.Add($"{model}[{i}] の単価が負値です（入力 {entry.InputPerMillionTokens} / 出力 {entry.OutputPerMillionTokens}）。");
 
+                // IADR-0531 (#1875): プロンプト長の上段。境界が 0 以下だと**全要求が上段**になり、静かに過大計上する。
+                if (entry.LongPrompt is { } lp)
+                {
+                    if (lp.ThresholdInputTokens < 1)
+                        errors.Add($"{model}[{i}] の LongPrompt:ThresholdInputTokens が 1 未満です（{lp.ThresholdInputTokens}）。上段はこの値を超える入力トークン数の要求に適用します。");
+                    if (lp.InputPerMillionTokens < 0 || lp.OutputPerMillionTokens < 0)
+                        errors.Add($"{model}[{i}] の LongPrompt の単価が負値です（入力 {lp.InputPerMillionTokens} / 出力 {lp.OutputPerMillionTokens}）。");
+                }
+
                 if (entry.EffectiveFrom is { } from && entry.EffectiveTo is { } to && from >= to)
                     errors.Add($"{model}[{i}] の有効期間が空です（EffectiveFrom {from:o} >= EffectiveTo {to:o}）。区間は [From, To) です。");
             }

@@ -5,6 +5,10 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Tests.Domain.Routing;
 
+// ［2026-10-10 追記 / #1875・IADR-0531］利用者裁定（planning#783）で Claude の割当を 5.5 系へ切り替えたので、
+// 本ファイルが渡す・期待するモデル名（コード）を claude-opus-5-5 / claude-sonnet-5-5 / claude-haiku-5-5 へ改めた。
+// **コメント中の旧モデル名（claude-opus-5 / claude-sonnet-5 / claude-haiku-4-5）は当時の決定の記録**であり、書き換えていない。
+
 // FR-11, ADR-0010, 08_data-egress-policy: 機密区分×ティアの越境マトリクスと用途による呼び出し先切替を検証する。
 //
 // ［2026-08-18 追記 / #850］本ファイルの合成 config は **本番設定（appsettings.json）の写しではない**。
@@ -28,10 +32,10 @@ public class LlmRouterTests
         Provider = "claude",
         Enabled = enabled,
         Priority = priority,
-        DefaultModel = "claude-opus-5",
+        DefaultModel = "claude-opus-5-5",
         // ADR-0022 / IADR-0106: rag-answer は claude-sonnet-5。sonnet-4-6 は明示要求の呼び出し側を
         // 壊さないため許可集合に残す（Models は「割当」ではなく「利用を許可するモデル集合」）。
-        Models = ["claude-fable-5", "claude-opus-5", "claude-opus-4-8", "claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5"],
+        Models = ["claude-fable-5", "claude-opus-5-5", "claude-opus-4-8", "claude-sonnet-5-5", "claude-sonnet-4-6", "claude-haiku-5-5"],
         // IADR-0022 / 08_data-egress-policy: fable-5 は ZDR 非対応。confidential/restricted では除外される。
         NonZdrModels = ["claude-fable-5"]
     };
@@ -83,20 +87,20 @@ public class LlmRouterTests
             // 最難関 analysis→fable-5 は **合成 config 固有の値**であり、本番は claude-opus-5 である
             // （ADR-0038 決定 1 / #850）。ZDR 除外を発火させるためにここでは旧値を保つ（ファイル冒頭の追記を参照）。
             // ADR-0022 / IADR-0106: 定型 RAG 回答は Sonnet 5（計画側 Accepted の確定値）。
-            ["rag-answer"] = "claude-sonnet-5",
+            ["rag-answer"] = "claude-sonnet-5-5",
             ["analysis"] = "claude-fable-5",
-            ["diagram-coding"] = "claude-haiku-4-5",
+            ["diagram-coding"] = "claude-haiku-5-5",
             // IADR-0112 決定1 / AST/04_workflows/03_reporting-cycle: 報告書は方針階層（月報→週報→日報→取引）を
             // なす方針書であり、上位ほど難度が高い。種別ごとに purpose を分けて割り当てる。
             // report-weekly は default と同値だが、明示エントリが無いと default 改定で無音に失効する。
             // IADR-0113 (#309): 月報は ZDR 対応の最上位 claude-opus-5（旧 claude-fable-5 は ZDR 非対応）。
-            ["report-monthly"] = "claude-opus-5",
-            ["report-weekly"] = "claude-opus-5",
-            ["report-daily"] = "claude-sonnet-5",
+            ["report-monthly"] = "claude-opus-5-5",
+            ["report-weekly"] = "claude-opus-5-5",
+            ["report-daily"] = "claude-sonnet-5-5",
             // AST/ADR-0011 / IADR-0102: 取引判断は基盤の既定モデル改定に自動追随させず版数を固定する。
             // IADR-0112 決定3: ピンの値を claude-sonnet-5 へ改定した（固定する仕組みは維持）。
-            ["trade-decision"] = "claude-sonnet-5",
-            ["default"] = "claude-opus-5"
+            ["trade-decision"] = "claude-sonnet-5-5",
+            ["default"] = "claude-opus-5-5"
         },
         // ADR-0038 決定 3 (#863): 用途別のフォールバック順序（第 2 候補以降）。**本番 appsettings.json と
         // 同じキー集合・同じ値である**（PurposeModels と違い、ここは意図的な乖離を置かない）。
@@ -106,10 +110,10 @@ public class LlmRouterTests
         // なお diagram-coding は本番に鎖があるのにここへ写し忘れていた（同時に是正）。
         PurposeFallbackModels = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["analysis"] = ["claude-sonnet-5"],
-            ["diagram-coding"] = ["claude-haiku-4-5"],
-            ["default"] = ["claude-sonnet-5"],
-            ["rag-answer"] = ["claude-haiku-4-5"]
+            ["analysis"] = ["claude-sonnet-5-5"],
+            ["diagram-coding"] = ["claude-haiku-5-5"],
+            ["default"] = ["claude-sonnet-5-5"],
+            ["rag-answer"] = ["claude-haiku-5-5"]
         }
     };
 
@@ -141,7 +145,7 @@ public class LlmRouterTests
         decision.Provider.Should().Be("claude");
         // IADR-0022 / 08_data-egress-policy: confidential は ZDR 要件のため ZDR 非対応の fable-5 は除外され、
         // ZDR 対応の既定モデル（opus）へフォールバックする。
-        decision.Model.Should().Be("claude-opus-5");
+        decision.Model.Should().Be("claude-opus-5-5");
     }
 
     // IADR-0022 / 08_data-egress-policy: public は ZDR 非要件のため analysis→fable-5（最難関）を選択できる。
@@ -166,7 +170,7 @@ public class LlmRouterTests
 
         decision.Allowed.Should().BeTrue();
         decision.Tier.Should().Be(ProtectionTier.B);
-        decision.Model.Should().Be("claude-opus-5");
+        decision.Model.Should().Be("claude-opus-5-5");
     }
 
     // IADR-0022: confidential でも明示要求モデルが ZDR 非対応（fable-5）なら採用せず ZDR 対応へフォールバックする。
@@ -181,34 +185,34 @@ public class LlmRouterTests
         decision.Model.Should().NotBe("claude-fable-5");
         // 用途 rag-answer（ZDR 対応の sonnet）が適格モデルとして選択される。
         // IADR-0106: Sonnet 5 も ZDR 対応（30 日保持要件は fable-5 / mythos-5 のみ）のため除外されない。
-        decision.Model.Should().Be("claude-sonnet-5");
+        decision.Model.Should().Be("claude-sonnet-5-5");
     }
 
     // T-19, ADR-0022 / IADR-0106: 定型 RAG 回答は Sonnet 5 を選択し、DefaultModel（claude-opus-5）へ
     // 落ちない。Models 未登録だと ResolveModel が黙って DefaultModel へフォールバックするため、
     // 「用途別モデルが選ばれたこと」と「既定へ落ちていないこと」を両方固定する（#376 / IADR-0102 の罠）。
     [Fact]
-    public void Route_RagAnswer_PinsSonnet5AndDoesNotFallBackToDefault()
+    public void Route_RagAnswer_PinsSonnet55AndDoesNotFallBackToDefault()
     {
         var router = Build(Opts(Claude()));
 
         var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "rag-answer"));
 
         decision.Allowed.Should().BeTrue();
-        decision.Model.Should().Be("claude-sonnet-5");
-        decision.Model.Should().NotBe("claude-opus-5");
+        decision.Model.Should().Be("claude-sonnet-5-5");
+        decision.Model.Should().NotBe("claude-opus-5-5");
     }
 
     // T-19, IADR-0106: ZDR 要件区分（restricted）でも Sonnet 5 は除外されず維持される。
     [Fact]
-    public void Route_Restricted_RagAnswer_KeepsSonnet5()
+    public void Route_Restricted_RagAnswer_KeepsSonnet55()
     {
         var router = Build(Opts(Claude()));
 
         var decision = router.Route(new RoutingRequest(SensitivityClass.Restricted, "rag-answer"));
 
         decision.Allowed.Should().BeTrue();
-        decision.Model.Should().Be("claude-sonnet-5");
+        decision.Model.Should().Be("claude-sonnet-5-5");
     }
 
     // T-22, IADR-0112 決定1: 報告書は種別ごとに別モデルへ解決される（月報/週報=最上位 / 日報=定型）。
@@ -216,9 +220,9 @@ public class LlmRouterTests
     // 非 ZDR の claude-fable-5 を除いた集合の最上位が opus-5 である以上これが上位方針書に対する最善である。
     // 日報が別モデルへ解決されること（3 種別が 1 モデルへ潰れていないこと）は引き続き固定する。
     [Theory]
-    [InlineData("report-monthly", "claude-opus-5")]
-    [InlineData("report-weekly", "claude-opus-5")]
-    [InlineData("report-daily", "claude-sonnet-5")]
+    [InlineData("report-monthly", "claude-opus-5-5")]
+    [InlineData("report-weekly", "claude-opus-5-5")]
+    [InlineData("report-daily", "claude-sonnet-5-5")]
     public void Route_ReportKindPurpose_ResolvesKindSpecificModel(string purpose, string expected)
     {
         var router = Build(Opts(Claude()));
@@ -317,7 +321,7 @@ public class LlmRouterTests
 
         // 未知 purpose のため既定モデル（opus）へフォールバックし、送信は許可される。
         decision.Allowed.Should().BeTrue();
-        decision.Model.Should().Be("claude-opus-5");
+        decision.Model.Should().Be("claude-opus-5-5");
         // IADR-0022: Reason へ埋め込む purpose も sanitize 済みで、改行・制御文字を含まない
         //（将来 Reason を監査ログへ出力しても偽造経路が再発しない）。
         decision.Reason.Should().NotContain("\n").And.NotContain("\r");
@@ -331,9 +335,9 @@ public class LlmRouterTests
     {
         var router = Build(Opts(Claude()));
 
-        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "rag-answer", "claude-haiku-4-5"));
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "rag-answer", "claude-haiku-5-5"));
 
-        decision.Model.Should().Be("claude-haiku-4-5");
+        decision.Model.Should().Be("claude-haiku-5-5");
     }
 
     // FR-11: 許容ティアに送信可能なエンドポイントが無ければ送信を拒否する（縮退）。
@@ -395,9 +399,9 @@ public class LlmRouterTests
     {
         var router = Build(Opts(Claude()));
 
-        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "rag-answer", "claude-haiku-4-5"));
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "rag-answer", "claude-haiku-5-5"));
 
-        decision.Model.Should().Be("claude-haiku-4-5");
+        decision.Model.Should().Be("claude-haiku-5-5");
     }
 
     // ADR-0010 / IADR-0022: 用途未指定（default）は既定モデル opus を選択する。
@@ -409,7 +413,7 @@ public class LlmRouterTests
         var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "default"));
 
         decision.Allowed.Should().BeTrue();
-        decision.Model.Should().Be("claude-opus-5");
+        decision.Model.Should().Be("claude-opus-5-5");
     }
 
     // AST/ADR-0011, IADR-0102 / IADR-0112 決定3: 取引判断は基盤の既定モデル改定に自動追随しない。用途
@@ -418,22 +422,22 @@ public class LlmRouterTests
     // 「default と異なる値が返る」ことまで確認して無効化を検知する。
     // IADR-0112: ピンの値を claude-opus-4-8 から改定した。固定する仕組み（明示エントリ）は維持されている。
     [Fact]
-    public void Route_TradeDecision_PinsSonnet5AndDoesNotFollowDefault()
+    public void Route_TradeDecision_PinsSonnet55AndDoesNotFollowDefault()
     {
         var router = Build(Opts(Claude()));
 
         var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "trade-decision"));
 
         decision.Allowed.Should().BeTrue();
-        decision.Model.Should().Be("claude-sonnet-5");
-        decision.Model.Should().NotBe("claude-opus-5");
+        decision.Model.Should().Be("claude-sonnet-5-5");
+        decision.Model.Should().NotBe("claude-opus-5-5");
         decision.Model.Should().NotBe("claude-opus-4-8"); // 旧ピン（IADR-0102）が残っていないこと
     }
 
     // AST/ADR-0011, IADR-0102 / IADR-0022: ZDR 要件区分（confidential）でもピン留めは維持される。
     // Sonnet 5 は NonZdrModels に含まれないため ZDR 除外の対象外（fable-5 とは異なる）。
     [Fact]
-    public void Route_Confidential_TradeDecision_KeepsPinnedSonnet5()
+    public void Route_Confidential_TradeDecision_KeepsPinnedSonnet55()
     {
         var router = Build(Opts(Claude()));
 
@@ -441,7 +445,7 @@ public class LlmRouterTests
 
         decision.Allowed.Should().BeTrue();
         decision.Tier.Should().Be(ProtectionTier.B);
-        decision.Model.Should().Be("claude-sonnet-5");
+        decision.Model.Should().Be("claude-sonnet-5-5");
     }
 
     // IADR-0112 決定1: 旧来の単一用途 report-narrative はエントリを持たず default へ着地する（従来どおり）。
@@ -455,7 +459,7 @@ public class LlmRouterTests
         var decision = router.Route(new RoutingRequest(SensitivityClass.Internal, "report-narrative"));
 
         decision.Allowed.Should().BeTrue();
-        decision.Model.Should().Be("claude-opus-5");
+        decision.Model.Should().Be("claude-opus-5-5");
     }
 
     // ADR-0010 / IADR-0022: Copilot（ティアC）は confidential では候補にならない（越境マトリクスで C 不可）。
@@ -507,7 +511,7 @@ public class LlmRouterTests
         var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "analysis"));
 
         decision.Allowed.Should().BeTrue();
-        decision.Fallbacks.Should().Equal("claude-sonnet-5");
+        decision.Fallbacks.Should().Equal("claude-sonnet-5-5");
         decision.Fallbacks.Should().NotContain(decision.Model!, "第 1 候補と同じモデルへ 2 回投げない");
     }
 
@@ -517,12 +521,12 @@ public class LlmRouterTests
     public void Route_DropsFallbackModelThatIsNotInEndpointModels()
     {
         var options = Opts(Claude());
-        options.PurposeFallbackModels["analysis"] = ["claude-not-registered", "claude-sonnet-5"];
+        options.PurposeFallbackModels["analysis"] = ["claude-not-registered", "claude-sonnet-5-5"];
         var router = Build(options);
 
         var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "analysis"));
 
-        decision.Fallbacks.Should().Equal("claude-sonnet-5");
+        decision.Fallbacks.Should().Equal("claude-sonnet-5-5");
         decision.Fallbacks.Should().NotContain("claude-not-registered");
     }
 
@@ -533,14 +537,14 @@ public class LlmRouterTests
     public void Route_Confidential_DropsNonZdrFallbackModel()
     {
         var options = Opts(Claude());
-        options.PurposeFallbackModels["rag-answer"] = ["claude-fable-5", "claude-haiku-4-5"];
+        options.PurposeFallbackModels["rag-answer"] = ["claude-fable-5", "claude-haiku-5-5"];
         var router = Build(options);
 
         var confidential = router.Route(new RoutingRequest(SensitivityClass.Confidential, "rag-answer"));
         var publicRoute = router.Route(new RoutingRequest(SensitivityClass.Public, "rag-answer"));
 
-        confidential.Fallbacks.Should().Equal("claude-haiku-4-5");   // 非 ZDR の fable-5 は落ちる
-        publicRoute.Fallbacks.Should().Equal("claude-fable-5", "claude-haiku-4-5"); // ZDR 非要件では残る
+        confidential.Fallbacks.Should().Equal("claude-haiku-5-5");   // 非 ZDR の fable-5 は落ちる
+        publicRoute.Fallbacks.Should().Equal("claude-fable-5", "claude-haiku-5-5"); // ZDR 非要件では残る
     }
 
     // T-25, AST/ADR-0011 / docs/operations/llm-model-pin-runbook.md: **取引判断はフォールバックしない。**
@@ -553,7 +557,7 @@ public class LlmRouterTests
 
         var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "trade-decision"));
 
-        decision.Model.Should().Be("claude-sonnet-5");
+        decision.Model.Should().Be("claude-sonnet-5-5");
         decision.Fallbacks.Should().BeEmpty("ピン留めしたモデルが使えないとき別モデルへ切り替えてはならない");
     }
 
@@ -629,13 +633,13 @@ public class LlmRouterTests
     public void Route_RerankPurpose_DropsNonZdrFallbackModel()
     {
         var options = Opts(Claude());
-        options.PurposeModels["rerank"] = "claude-haiku-4-5";
-        options.PurposeFallbackModels["rerank"] = ["claude-fable-5", "claude-sonnet-5"];
+        options.PurposeModels["rerank"] = "claude-haiku-5-5";
+        options.PurposeFallbackModels["rerank"] = ["claude-fable-5", "claude-sonnet-5-5"];
 
         var decision = Build(options).Route(new RoutingRequest(SensitivityClass.Public, "rerank"));
 
-        decision.Model.Should().Be("claude-haiku-4-5");
-        decision.Fallbacks.Should().Equal("claude-sonnet-5");
+        decision.Model.Should().Be("claude-haiku-5-5");
+        decision.Fallbacks.Should().Equal("claude-sonnet-5-5");
     }
 
     // T-29: ZDR を要件とする用途の集合は**コードが持つ**（設定で外せない）。
