@@ -4,7 +4,7 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-10-04
+updated: 2026-10-10
 ---
 <!-- trace:
 ids: [SC-15, SC-13, SC-10, FR-05, NFR-13]
@@ -743,12 +743,14 @@ echo "C2raw-restore-end $(ts)" | tee -a "$PRD/timeline.txt"
 
 ```bash
 mailrelay_alerts() {   # 発火中・保留中の MailRelay* だけを「名前 状態 activeAt」で出す
-  curl -s 'http://localhost:9090/api/v1/alerts' | node -e '
-let s = ""; process.stdin.on("data", (d) => { s += d; }).on("end", () => {
-  const alerts = JSON.parse(s).data.alerts.filter((a) => /^MailRelay/.test(a.labels.alertname));
-  if (alerts.length === 0) console.log("MailRelay のアラートなし");
+  # node -e は使わない: Windows で shim の node（Volta など）は cmd を経るので、引数の => や > を壊す。処理は標準入力で渡す
+  node <<'EOF'
+fetch('http://localhost:9090/api/v1/alerts').then((r) => r.json()).then((j) => {
+  const alerts = j.data.alerts.filter((a) => /^MailRelay/.test(a.labels.alertname));
+  if (alerts.length === 0) console.log('MailRelay のアラートなし');
   for (const a of alerts) console.log(a.labels.alertname, a.state, a.activeAt);
-});'
+}).catch((e) => console.log('Prometheus に届かない', e.message));
+EOF
 }
 while true; do
   echo "== $(ts)"

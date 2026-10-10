@@ -131,8 +131,10 @@ Prometheus の側では**最初の呼び出しの後**にしか確かめられ�
 **通貨は `USD`**、単位は**百万トークンあたり**。本書の値が古くなったら、単価表を正として次の式で計算し直す。
 
 ```sh
-node -e "const d=require('./src/platform/backend/Services/LlmGateway/appsettings.json');\
-console.log(d.Llm.Pricing.Currency, JSON.stringify(d.Llm.Pricing.Models, null, 1))"
+node <<'EOF'   # node -e は使わない（Windows の shim の node は引数の記号を壊す。処理は標準入力で渡す）
+const d = require('./src/platform/backend/Services/LlmGateway/appsettings.json');
+console.log(d.Llm.Pricing.Currency, JSON.stringify(d.Llm.Pricing.Models, null, 1));
+EOF
 ```
 
 | モデル | 入力 | 出力 | 本書での使いみち |
