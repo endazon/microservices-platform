@@ -10,7 +10,7 @@ updated: 2026-10-10
 ids: [NFR-09, NFR-16, FR-15, FR-16, FR-18, FR-19, FR-22, SC-03, SC-09, SC-19, SC-21]
 adrs: [ADR-0005, ADR-0029, ADR-0075, ADR-0089, ADR-0117, ADR-0051, ADR-0037]
 iadrs: [IADR-0379, IADR-0462, IADR-0426, IADR-0307, IADR-0377, IADR-0487, IADR-0488, IADR-0530, IADR-0380, IADR-0431]
-specs: [20261004_issue-1255_h2c-roundtrip-measurement-runbook, 20261010_1882_h2c-runbook-false-alarms, 20261010_1887_h2c-measurement-triggers]
+specs: [20261004_issue-1255_h2c-roundtrip-measurement-runbook, 20261010_1882_h2c-runbook-false-alarms, 20261010_1887_h2c-measurement-triggers, 20261010_1887_h2c-runbook-order-and-windows]
 issues: [#1887, #1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 -->
 
@@ -22,7 +22,7 @@ issues: [#1887, #1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 > 🔴 **本書を実行するのは利用者（クラスタの持ち主）だけである。** 本書を書いた AI は稼働クラスタに 1 度も触れていない。
 > **コマンドと期待値はリポジトリのコード・チャートから導いたものであって、実測ではない**（helm の描画差分だけは手元で実測した。§2.3）。
 > 2026-10-10 に PoC が稼働 k3s で本書に従って実測し、測った経路はすべて両モードで合格した。そのとき期待値と食い違った判定の部品
-> （§0.3 (2)・(3)、§3.4 ③、Windows の改行とパス）は、その実測に合わせて直してある。
+> （§0.3 (2)・(3)、§3.4 ③、Windows の改行とパス）と、手順の傷（§3.2 の発火の順序、Windows での `node -e`）は、その実測に合わせて直してある。
 > 期待値と違う結果が出たら、**期待値に合わせて読み替えず、出た値をそのまま記録する**（§5）。
 
 ## この手順を実行する条件（いつ走らせるか）
@@ -63,7 +63,7 @@ issues: [#1887, #1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 | `PeerAuthentication microservices-platform-mtls` のモード | `set_mesh_mtls_mode` で PERMISSIVE ⇔ STRICT を切り替える（helm 経由） | §4 | §6.1 と同じ 1 本で元のモードへ戻る |
 | `deploy/mcp-service` | 再起動する（起動時のツール申告の収集を発火させる） | §3.2 | 不要 |
 | helm の計測用の値 `measurement.*`（既定はすべて無効） | 計測の窓の間だけ `measurement.json` で入れる（BFF の計測用の生成の口・個人資料の定期処理の前倒し） | §2.2・§3.2.1・§3.2.2 | §6.1（保存した利用者値へ戻すと外れる。外れたことを §6.1 で確かめる） |
-| `deploy/document-service` | モードごとに 1 回再起動する（定期処理の前倒しを発火させる） | §3.2.2 | 不要 |
+| `deploy/document-service` | モードごとに 1 回再起動する（定期処理の前倒しを発火させる）。**その回の発火の最初に行う**（§3.2） | §3.2.2 | 不要 |
 | 業務データ（文書・タグ辞書・AI 提案・個人資料・通知） | 利用者が画面で作る・承認する（L-4・D-3・D-2・N-1 の材料）。計測の後も残る | §3.2.1・§3.2.2 | 任意（§3.2.1・§3.2.2 の後始末） |
 | 使い捨て Pod（`curlimages/curl:8.11.1`・サイドカー無し） | `authorization-service:8081` へ平文 h2c を 1 回送る | §3.5 | `--rm` で自動削除 |
 
@@ -140,15 +140,17 @@ kubectl -n "$NS" get svc authorization-service \
 
 ### 0.4 Windows（Git Bash）で実行するとき
 
-2026-10-10 に Windows の Git Bash で本書を実行したとき、次の 2 点が要った。本書の部品は 2 点とも避ける形に書いてある。
+2026-10-10 に Windows の Git Bash で本書を実行したとき、次の 3 点が要った。本書の部品は 3 点とも避ける形に書いてある。
 **部品を書き換えたり手で打ち直したりするときは、旧い形へ戻さない。**
 
 | 症状 | 原因 | 部品での避け方 |
 | --- | --- | --- |
 | `kubectl logs` / `kubectl exec` の出力を grep で切り出すと、行末に `\r` が残る（表示が崩れる・行末に掛かる照合が外れる） | Windows の `kubectl` の出力の行末が CRLF になる | grep・node へ流す前に `tr -d '\r'` を挟む（§0.3 (4)・§3.1・§3.4） |
 | node が `$W` の中のファイルを開けない | MSYS の `/c/…` や `/tmp/…` の形のパスがネイティブの node へ変換されずに渡ることがある | §0.3 の冒頭で定義する `np`（`uname` が `MINGW*`・`MSYS*` のとき `cygpath -m` で `C:/…` 形にする）を通して渡す。リダイレクト（`>`・`<`）は bash が開くので `np` は要らない |
+| `node -e '…'` が構文エラーになる・出力が別のファイルへ行く・途中で切れる | Volta などで入れた `node` は shim で、`cmd` を経て本体を起こす。引数の中の `=>`・`\|\|`・`&&`・`>`・`\|` を `cmd` が解釈し直す（2026-10-10 の実測） | **node へは処理を引数で渡さない。** 処理は heredoc で `$W` へファイルに書き、`node "$(np "$W/<名>.mjs")"` で実行する（§2.2・§3.1・§6.1）。データは標準入力で渡す。`node.exe` を直に呼ぶ・`winpty` を挟むといった回避は環境ごとに効き方が違うので使わない |
 
-Linux・macOS・WSL では `tr -d '\r'` は何も変えず、`np` はパスをそのまま返す。
+Linux・macOS・WSL では `tr -d '\r'` は何も変えず、`np` はパスをそのまま返す。ファイルに書いて実行する形も、どの環境でも同じに動く。
+**部品を足すときも `node -e` を使わない**（短い 1 行でも、`=>` 1 つで Windows では壊れる）。
 
 ---
 
@@ -187,8 +189,10 @@ Linux・macOS・WSL では `tr -d '\r'` は何も変えず、`np` はパスを�
 | D-1 | `bff-service` | document | `/knowledge.document.v1.DocumentRead/ListDocuments`・`GetDocument`・`ListVersions`・`GetVersion` | `Services__DocumentServiceGrpc` | 文書の一覧・詳細・版履歴・特定版 |
 | D-2 | `graph-service` | document | `/knowledge.document.v1.DocumentTagWrite/AddTag` | 同上 | §3.2.1 で生まれた保留中の**タグ**提案を 1 件承認する（課金なし） |
 | D-3 | `graph-service` | document | `/knowledge.document.v1.TagDictionary/ListNames` | 同上 | L-4 と同じ要求（§3.2.1。類似の候補が 1 件以上あるときだけ L-4 の直前に読む） |
-| N-1 | `document-service` | notification | `/platform.notification.v1.NotificationIngress/Accept` | `Services__NotificationServiceGrpc` | §3.2.2 の定期処理の前倒し（論理削除済みの個人資料の週次の通知 ①-a）。🔴 共有では送らない |
+| N-1 | `document-service` | notification | `/platform.notification.v1.NotificationIngress/Accept` | `Services__NotificationServiceGrpc` | §3.2.2 の定期処理の前倒し（論理削除済みの個人資料の週次の通知 ①-a）。🔴 共有では送らない。🔴 **モードの回の発火の最初に行う**（表の下の注） |
 | H-1 | `graph-service` | dashboard | `/knowledge.dashboard.v1.KnowledgeHealthReport/Report` | `Services__DashboardServiceGrpc` | 定期（1 時間。**graph の起動から 1 周期後**が初回） |
+
+🔴 **N-1 はモードの回の発火の最初に行う。** N-1 は `document-service` を再起動する。再起動すると document の受け手の要求ログ（①）とサイドカーの計数（②）が新しい Pod の分だけになり、それより前に document で取った証拠が消える。document が受け手の行（I-01 の document・M-1・D-1〜D-3）と呼び出し元の行（N-1・X-1）は、すべて N-1 の再起動の後に発火させる（順序は §3.2、間に合わなかったときの D-3 の取り方は §3.2.2）。
 
 ### 1.3 gRPC だけの経路（REST の兄弟が無い。退役の対象外・測るのは任意）
 
@@ -339,14 +343,16 @@ MODE=STRICT   # または PERMISSIVE（今のモード）
 T0=$(date -u +%Y-%m-%dT%H:%M:%SZ); echo "$T0" > "$W/t0-$MODE.txt"
 
 # サイドカーの istio_requests_total を、受け手側（reporter=destination）・gRPC だけ表にする
+# 引数に source を渡すと送り手側（reporter=source）の表になる（§3.2.2 の D-3 の代わりの証拠）
 cat > "$W/istio-grpc.mjs" <<'EOF'
+const reporter = process.argv[2] ?? 'destination';
 let s = '';
 process.stdin.on('data', (d) => (s += d)).on('end', () => {
   for (const line of s.split('\n')) {
     const m = line.match(/^istio_requests_total\{(.*)\} (\S+)/);
     if (!m) continue;
     const L = Object.fromEntries([...m[1].matchAll(/(\w+)="([^"]*)"/g)].map((x) => [x[1], x[2]]));
-    if (L.reporter !== 'destination' || L.request_protocol !== 'grpc') continue;
+    if (L.reporter !== reporter || L.request_protocol !== 'grpc') continue;
     console.log([L.source_workload, L.destination_workload, L.response_code, L.grpc_response_status,
       L.connection_security_policy, m[2]].join('\t'));
   }
@@ -367,6 +373,10 @@ snap before
 
 ### 3.2 発火させる
 
+🔴 **発火の順序**: **①§3.2.2 の N-1（`document-service` の再起動）→ ②下の I・M → ③§1.2 の画面の操作と §3.2.1（L-4・D-3・D-2）**の順に行う。
+再起動した Pod は、ログ（`kubectl logs deploy/…` は新しい Pod だけを読む）もサイドカーの計数も 0 から始まる。N-1 を後に回すと、それより前に document で取った証拠（I-01 の document・M-1・D-1〜D-3 の①②、X-1 の③）が消える。同じ理由で、`mcp-service` が呼び出し元の行（A-5・X-3）は M の再起動の後に発火させる（下の順に従えばそうなる）。
+再起動の前に取った §3.1 の `snap before` は取り直さなくてよい。document 宛の行は再起動で 0 から数え直すので、§3.4 の差分に出る document 宛の行の累計が、そのまま再起動の後に通った数である。
+
 ```bash
 # I-01〜I-13: 構成情報 API の即時検出（認証なし・メッシュ内部限定の口。port-forward はサイドカーを通らずに届く）
 kubectl -n "$NS" port-forward deploy/bff-service 18080:8080 >/dev/null 2>&1 & PF=$!; sleep 3
@@ -378,7 +388,7 @@ kubectl -n "$NS" rollout restart deploy/mcp-service && kubectl -n "$NS" rollout 
 ```
 
 §1.2 の経路は、表の「発火」の操作を画面（エッジ経由のログイン）で 1 回ずつ行う。課金の経路は承認した回数だけにする（S8）。
-L-4・D-3・D-2 は §3.2.1、N-1 は §3.2.2 の手順で発火させる（画面の操作だけでは発火しない）。G-1 は測定から外す（§1.2）。
+N-1 は §3.2.2、L-4・D-3・D-2 は §3.2.1 の手順で発火させる（画面の操作だけでは発火しない。順序は上の注のとおり N-1 が先）。G-1 は測定から外す（§1.2）。
 発火できなかった経路は §5 に「未測定」と理由を書く（推測で合格にしない）。
 
 #### 3.2.1 L-4・D-3・D-2（AI 提案の生成と、タグ提案の承認）
@@ -442,6 +452,8 @@ N-1 は**本番の経路のまま**発火させる。`document-service` を再�
 - 🔴 **週次の通知は所有者ごとに 7 日に 1 通である。** 同じ利用者では 2 つ目のモードで出ない。**モードごとに別の利用者でログインして材料を作る**
   （例: PERMISSIVE は `poc-user`、STRICT は `developer`。realm に在る人の利用者ならどれでもよい）。
 - 材料は**モードの回の中で**作る（§2.4 の適用でも `document-service` は作り直され、60 秒後に 1 回走る。その前に作った材料はそこで使われ、T0 より前に送られてしまう）。
+- 🔴 **N-1 はモードの回の発火の最初に行う**（§3.1 の `snap before` の直後。§3.2 の注）。再起動で、それより前に document で取った①②の証拠が消える。
+  特に D-3（graph → document）は L-4 と同じ 1 回の課金の要求でしか発火しないので、消えると取り直しにオーナーの承認が要る。
 
 ```bash
 # (1) 画面で、このモードの利用者でログインし、個人資料の画面で 1 件作って削除する（本文なし・論理削除。課金なし）
@@ -452,6 +464,21 @@ sleep 90   # 前倒しの 60 秒 ＋ 余裕
 kubectl -n "$NS" logs deploy/notification-service -c notification-service --since=5m | tr -d '\r' \
   | grep -c 'NotificationIngress/Accept'      # 1 以上（§3.4 ① と同じ行。要求ログの水準は §2 で上げてある）
 ```
+
+**順序を守れなかったとき（N-1 の前に D-3 を発火させてしまった・事情で先に L-4 を測る）**: D-3 の証拠は呼び出し元 graph のサイドカーの計数（`reporter=source`。graph は再起動しないので残る）から取る。L-4 を先に測ると決めた回は、生成の前後で次を取る。
+
+```bash
+gsrc() {  # gsrc <ラベル>: graph が送り手として数えた gRPC のうち、宛先が document の行
+  kubectl -n "$NS" exec deploy/graph-service -c istio-proxy -- pilot-agent request GET stats/prometheus 2>/dev/null \
+    | tr -d '\r' | node "$(np "$W/istio-grpc.mjs")" source | grep -F 'document-service' | sort > "$W/istio-$MODE-graph-src-$1.tsv"
+}
+gsrc before   # §3.2.1 の生成の直前
+gsrc after    # 生成の直後・D-2 の承認の前（後に取ると D-2 の分が混ざる）
+diff "$W/istio-$MODE-graph-src-before.tsv" "$W/istio-$MODE-graph-src-after.tsv" | grep '^>'   # graph-service document-service 200 0 … が増えていること
+```
+
+- この表は①（rpc のパス）を持たないので、D-2 と D-3 を区別できるのは生成の前後で取ったときだけである。前後を取らずに D-3 を落としたなら、graph → document の累計と graph の③（`タグ辞書を gRPC で引けなかった` が無いこと）を並べ、§5.4 の備考に「`reporter=source` による。rpc は区別できない」と書く。
+- `reporter=source` の行の mTLS の列は `unknown` になる（送り手は記録しない）。STRICT の回は届いたこと自体が mTLS の証拠になる。PERMISSIVE の回は`mutual_tls` を示せないので、備考にそう書く。
 
 通知は画面の通知一覧（ベル）に「論理削除済みの個人資料が 1 件ある」旨で届く。**送出の失敗は業務処理を止めない**（fail-open）ので、届かないときは
 §3.4 ③（`送出に失敗`・`status=`）と計器 `notification.dispatch.total` を見る。
@@ -636,7 +663,11 @@ node scripts/check-stack-ready.js --live                                        
 
 ```bash
 helm get values msp -n "$NS" -o json | grep -c '"measurement"'                                   # 0（§0.3 の時点で入っていなければ）
-helm get values msp -n "$NS" --all -o json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.stringify(JSON.parse(s).measurement)))'
+cat > "$W/measurement-values.mjs" <<'EOF'
+let s = '';
+process.stdin.on('data', (d) => (s += d)).on('end', () => console.log(JSON.stringify(JSON.parse(s).measurement)));
+EOF
+helm get values msp -n "$NS" --all -o json | node "$(np "$W/measurement-values.mjs")"   # node -e は使わない（§0.4）
 #   → {"suggestionGenerate":false,"privateNoteMaintenanceInitialRunDelaySeconds":0}（チャートの既定）
 for d in bff document; do kubectl -n "$NS" get deploy "$d-service" -o yaml | grep -cE 'Measurement__|InitialRunDelaySeconds'; done   # 0 と 0
 ```

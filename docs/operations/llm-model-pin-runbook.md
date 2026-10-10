@@ -38,21 +38,27 @@ src/platform/backend/Services/LlmGateway/appsettings.json
 **現在の割り当ては次のコマンドで列挙する。**
 
 ```console
-$ node -e "const d=require('./src/platform/backend/Services/LlmGateway/appsettings.json');\
-for (const [k, v] of Object.entries(d.Llm.Routing.PurposeModels)) console.log(k.padEnd(16), v)"
+$ node <<'EOF'
+const d = require('./src/platform/backend/Services/LlmGateway/appsettings.json');
+for (const [k, v] of Object.entries(d.Llm.Routing.PurposeModels)) console.log(k.padEnd(16), v);
+EOF
 ```
 
 **［2026-08-18 追記 / #863］フォールバック順序も監視対象である。** 鎖に載ったモデルも
 **実際に利用されるモデル**であり、提供終了の監視から漏らせない。次のコマンドで併せて列挙する。
 
 ```console
-$ node -e "const d=require('./src/platform/backend/Services/LlmGateway/appsettings.json');\
-for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) console.log(k.padEnd(16), v.join(' -> '))"
+$ node <<'EOF'
+const d = require('./src/platform/backend/Services/LlmGateway/appsettings.json');
+for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) console.log(k.padEnd(16), v.join(' -> '));
+EOF
 ```
 
 > **★ `node` で書くのは本リポの前提に合わせるためである。** 本リポの道具立ては **Node.js / .NET** であり、
 > **`python3` は [`scripts/setup.sh`](../../scripts/setup.sh) でコメントアウトされた opt-in**（＝**利用保証が無い**）。
 > **手順書は運用者が実行するもの**であり、**手元に無い処理系へ依存させない。**
+> 処理は `node -e` の引数ではなく heredoc（標準入力）で渡す。Windows で Volta などの shim の `node` を使うと、引数の中の `>`・`|`・`&&` などを
+> `cmd` が解釈し直して壊す（上の `' -> '` がそれに当たる）。標準入力は shim を通っても変わらない。
 
 **用途は 1 つではない。** `trade-decision` のほか `rag-answer` / `analysis` / `diagram-coding` /
 `report-monthly` / `report-weekly` / `report-daily` / `trade-decision-screening` / `rerank` /
