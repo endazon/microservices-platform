@@ -33,6 +33,7 @@ issue: "#1895"
 | 3 | 置換の途中（DELETE の後・INSERT の後）は、別の接続から旧い集合だけが見える | `置換の途中は別の接続から旧い集合だけが見える` |
 | 4 | 途中で取り消されたら（期限切れ）旧い集合としきい値が残る | `挿入の後で取り消されたら旧い集合としきい値が残る` |
 | 5 | 指標単位の置換・値の保存（null の区別・軸・切り詰め・空鍵の除外・しきい値の削除）は従前と同じ | `一括の経路でも指標単位の置換と値の保存は従前と同じである` ＋ 既存の `DashboardService.Tests`（InMemory）93 件 |
+| 6 | 観測時刻が UTC 以外（Offset ≠ 0）でも落ちず、同じ瞬間として保存される | `観測時刻がUTC以外でも同じ瞬間として保存される` |
 
 試験は `Knowledge.IntegrationTests/DashboardService/`（`Category=Integration`。実 PostgreSQL）に置いた。
 `DashboardService.Tests` は EF InMemory であり、InMemory は `ExecuteDeleteAsync`・生 SQL・トランザクションのどれも持たない。
@@ -46,8 +47,10 @@ issue: "#1895"
 関係 DB のとき、件数によらず次の文だけを 1 つのトランザクションで流す。
 
 1. `DELETE FROM "KnowledgeHealthObservations" WHERE "Indicator" = @p`（`ExecuteDeleteAsync`。行を読み込まない）
-2. `INSERT INTO "KnowledgeHealthObservations" (…) SELECT * FROM unnest(@ids, @indicators, @subject_keys, @doc_scopes, @dimensions, @observed_ats)`
-   （配列 6 本を 1 文で渡す。0 件なら流さない）
+2. `INSERT INTO "KnowledgeHealthObservations" (…) SELECT t.id, … FROM unnest(@ids, @indicators, @subject_keys, @doc_scopes, @dimensions, @observed_ats) AS t(id, …)`
+   （配列 6 本を 1 文で渡す。0 件なら流さない）。［2026-10-11 追記 / #1906 のレビュー］列の対応は位置で決まるので、
+   INSERT の列リスト・SELECT の列・`unnest` の別名を同じ並びで明記した（`SELECT *` に頼らない）。
+   観測時刻の配列は `ToUniversalTime()` で正規化する（Npgsql は `timestamptz` の配列に Offset 0 の値しか受け付けない）。
 3. しきい値の 1 行を読み（`FirstOrDefaultAsync`）、追加・更新・削除のいずれか 1 文（`SaveChangesAsync`。変化が無ければ 0 文）
 
 実測の文の数は 3 本（しきい値を持たない指標）で、10 件でも 40,000 件でも同じだった。
@@ -129,7 +132,8 @@ issue のコメントは「**必要なら**期限を延ばす」である。一�
 | `DashboardService/Features/Dashboard/PurgeExpired/UsageEventRetention.cs` | コメントの前例の記述を直す（規則 10） |
 | `GraphService/Infrastructure/ExternalServices/GrpcKnowledgeHealthReporter.cs` | コメントのみ（再送しない・期限を延ばさない） |
 | `Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj` | `DashboardService` を参照 |
-| `Tests/Knowledge.IntegrationTests/DashboardService/KnowledgeHealthSnapshotPostgresTests.cs` | 新設（受け入れ基準 1〜5） |
+| `Tests/Knowledge.IntegrationTests/DashboardService/KnowledgeHealthSnapshotPostgresTests.cs` | 新設（受け入れ基準 1〜6） |
+| `DashboardService/DashboardService.csproj` | `InternalsVisibleTo Knowledge.IntegrationTests`（受け入れ基準 6 で書き手を直接呼ぶ。受け口は `UtcNow` しか渡さない） |
 
 IADR は作らない（判断は本書に置く。期限・再試行の方針は従前どおりで、新しい設計判断は書き方の選択だけである）。
 

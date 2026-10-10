@@ -14,7 +14,8 @@ namespace DashboardService.Infrastructure.Persistence;
 // DELETE し、`AddRange` で 1 行ずつ INSERT していた。38,703 件の孤立文書で呼び出し元の期限（5 秒）を超え、
 // 期限で取り消されてロールバックしていた（毎周期、値が更新されない）。ここでは件数によらず次の文だけを流す:
 //   1. `DELETE ... WHERE Indicator = @p`（`ExecuteDeleteAsync`。行を読み込まない）
-//   2. `INSERT ... SELECT FROM unnest(@ids, @subjectKeys, @docScopes, @dimensions)`（配列 4 本を 1 文で渡す）
+//   2. `INSERT ... SELECT ... FROM unnest(@ids, @indicators, @subject_keys, @doc_scopes, @dimensions, @observed_ats)`
+//      （配列 6 本を 1 文で渡す）
 //   3. しきい値の 1 行を読み、追加・更新・削除のいずれか 1 文（`SaveChangesAsync`）
 //
 // 🔴 **3 つを 1 つのトランザクションに入れる（原子性）。** 読み手（閲覧の GET）は READ COMMITTED で読むため、
@@ -90,7 +91,9 @@ internal static class KnowledgeHealthSnapshotWriter
             subjectKeys[i] = o.SubjectKey;
             docScopes[i] = o.DocScope;
             dimensions[i] = o.Dimension;
-            observedAts[i] = o.ObservedAt;
+            // 🔴 **UTC へ正規化する。** Npgsql は `timestamptz` の配列に Offset が 0 の値しか受け付けない
+            // （非 0 は書き込み時に例外）。受け口は `UtcNow` を渡すが、呼び出し元の前提に頼らない。
+            observedAts[i] = o.ObservedAt.ToUniversalTime();
         }
 
         var insert =
@@ -101,7 +104,11 @@ internal static class KnowledgeHealthSnapshotWriter
             $"{Column(nameof(KnowledgeHealthObservation.DocScope))}, " +
             $"{Column(nameof(KnowledgeHealthObservation.Dimension))}, " +
             $"{Column(nameof(KnowledgeHealthObservation.ObservedAt))}) " +
-            "SELECT * FROM unnest(@ids, @indicators, @subject_keys, @doc_scopes, @dimensions, @observed_ats)";
+            // 🔴 **列の対応は位置で決まる。** INSERT の列リスト・SELECT の列・`unnest` の引数と別名の 3 つを
+            // 同じ並びに保つ（並びを崩すと、型が同じ text 列どうしが黙って入れ替わる）。
+            "SELECT t.id, t.indicator, t.subject_key, t.doc_scope, t.dimension, t.observed_at " +
+            "FROM unnest(@ids, @indicators, @subject_keys, @doc_scopes, @dimensions, @observed_ats) " +
+            "AS t(id, indicator, subject_key, doc_scope, dimension, observed_at)";
 
         await db.Database.ExecuteSqlRawAsync(
             insert,

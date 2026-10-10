@@ -167,6 +167,30 @@ public sealed class KnowledgeHealthSnapshotPostgresTests(PostgresFixture postgre
             t => t.Indicator == KnowledgeHealthIndicators.EdgeTypeUsage, Ct)).Should().BeFalse("しきい値を添えない報告は行を消す");
     }
 
+    // NFR-16 (#1895): 観測時刻が UTC 以外（Offset ≠ 0）でも落ちず、同じ瞬間として保存される。
+    // Npgsql は timestamptz の配列に Offset 0 の値しか受け付けないので、書き手が UTC へ正規化する。
+    [Fact]
+    public async Task 観測時刻がUTC以外でも同じ瞬間として保存される()
+    {
+        var cs = await DatabaseAsync();
+        var jst = new DateTimeOffset(2026, 10, 11, 9, 0, 0, TimeSpan.FromHours(9));
+        var observations = new List<KnowledgeHealthObservation>
+        {
+            KnowledgeHealthObservation.Create(KnowledgeHealthIndicators.OrphanDocuments, "jst-1", null, jst),
+            KnowledgeHealthObservation.Create(KnowledgeHealthIndicators.OrphanDocuments, "jst-2", null, jst),
+        };
+
+        await using (var db = NewContext(cs))
+            await KnowledgeHealthSnapshotWriter.ReplaceAsync(
+                db, KnowledgeHealthIndicators.OrphanDocuments, observations, null, jst, Ct);
+
+        await using var read = NewContext(cs);
+        var rows = await read.KnowledgeHealthObservations.AsNoTracking()
+            .Where(o => o.Indicator == KnowledgeHealthIndicators.OrphanDocuments).ToListAsync(Ct);
+        rows.Should().HaveCount(2);
+        rows.Should().OnlyContain(o => o.ObservedAt == jst && o.ObservedAt.Offset == TimeSpan.Zero);
+    }
+
     private static KnowledgeHealthReportRequest Request(
         string indicator, int count, string prefix, int? thresholdDays = null)
         => new(
