@@ -423,6 +423,8 @@ public static class DocumentBffEndpoints
             }
             catch (Exception ex) when (IsTransportFailure(ex, grpc: true, ct))
             {
+                // FR-06, NFR-16 (#1897): 畳む前に WARN（状態・経路・例外の型）。404 秘匿は変えない。
+                DocumentReadFailureLog.Folded(http, "GetDocument", grpc: true, ex, "404");
                 return null;
             }
         }
@@ -479,6 +481,9 @@ public static class DocumentBffEndpoints
         }
         catch (Exception ex) when (IsTransportFailure(ex, grpc is not null, ct))
         {
+            // FR-06, NFR-16 (#1897): 畳む前に WARN（状態・経路・例外の型）。受信上限の超過（ResourceExhausted）も
+            // ここへ落ちる —— ログが無いと「文書が 0 件」としか見えない。空一覧へ畳むこと自体は変えない（応急処置）。
+            DocumentReadFailureLog.Folded(http, "ListDocuments", grpc is not null, ex, "空一覧");
             return [];
         }
     }
