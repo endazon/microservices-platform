@@ -46,6 +46,21 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
     /// <summary>宛先ごとにチャネルを分けるための DI キー（下の 🔴 を参照）。</summary>
     public const string ChannelKey = "DocumentServiceGrpc";
 
+    /// <summary>
+    /// FR-06, NFR-16 (#1897): D-1（BFF → document）のチャネルの受信上限（バイト）。未設定なら
+    /// <see cref="DefaultMaxReceiveMessageSize"/>。環境変数では `Services__DocumentServiceGrpcMaxReceiveMessageSize`。
+    /// </summary>
+    public const string MaxReceiveMessageSizeKey = "Services:DocumentServiceGrpcMaxReceiveMessageSize";
+
+    /// <summary>
+    /// FR-06, NFR-16 (#1897): 受信上限の既定 64 MiB。
+    /// `ListDocuments` は台帳の全件を 1 応答で返す（ページングは恒久対応の段）。代表的な 1 件は約 450 バイトで、
+    /// 稼働の台帳は少なくとも 38,703 件（約 17 MB）ある。64 MiB は約 14 万件まで収める。
+    /// grpc-dotnet の既定 4 MB では約 9 千件で `ResourceExhausted` になり、BFF の一覧が空に化けていた。
+    /// 根拠の算定は作業仕様書 `20261010_1897_grpc-receive-limit-stopgap` にある。
+    /// </summary>
+    public const int DefaultMaxReceiveMessageSize = 64 * 1024 * 1024;
+
     /// <summary>FR-06, UC-03: 文書の一覧（更新の新しい順）。引けなければ例外（呼び出し元が畳む）。</summary>
     public async Task<List<DocumentDto>> ListAsync(ClaimsPrincipal user, CancellationToken ct)
     {
@@ -112,6 +127,7 @@ public static class DocumentReadGrpcClientExtensions
         if (string.IsNullOrWhiteSpace(address))
             return services;
 
+        var maxReceive = ReadMaxReceiveMessageSize(config);
         services.AddPlatformServiceToken(config);
         // 🔴 チャネルは**キー付き**で登録する。BFF は `AddAuthzScopeGrpcClient` が**キー無し**で
         // 登録する認可サービス宛のチャネルを既に持ち得る（参照実装）——
@@ -119,10 +135,26 @@ public static class DocumentReadGrpcClientExtensions
         // 文書のクライアントが認可サービスへ繋がる（あるいはその逆）。
         // `AddLlmGatewayGrpcClient` が同じ理由でキー付きにしているのと同型である。
         services.AddKeyedSingleton(DocumentReadGrpcClient.ChannelKey, (sp, _) =>
-            GrpcClientExtensions.CreatePlatformChannel(address, sp.GetRequiredService<IServiceTokenProvider>()));
+            GrpcClientExtensions.CreatePlatformChannel(
+                address, sp.GetRequiredService<IServiceTokenProvider>(), maxReceive));
         services.AddSingleton(sp => new Pb.DocumentRead.DocumentReadClient(
             sp.GetRequiredKeyedService<GrpcChannel>(DocumentReadGrpcClient.ChannelKey)));
         services.AddSingleton<DocumentReadGrpcClient>();
         return services;
+    }
+
+    // FR-06, NFR-16 (#1897): 受信上限は **D-1 のチャネルだけ**に効かせる（共有の `CreatePlatformChannel` の
+    // 既定は他の呼び出し元のために 4 MB のまま残す）。
+    // 🔴 0 以下・数値でない値は起動時に落とす。黙って既定へ戻すと、構成の誤りが「一覧が空」として再発する。
+    internal static int ReadMaxReceiveMessageSize(IConfiguration config)
+    {
+        var raw = config[DocumentReadGrpcClient.MaxReceiveMessageSizeKey];
+        if (string.IsNullOrWhiteSpace(raw))
+            return DocumentReadGrpcClient.DefaultMaxReceiveMessageSize;
+        if (int.TryParse(raw, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var bytes) && bytes > 0)
+            return bytes;
+        throw new InvalidOperationException(
+            $"{DocumentReadGrpcClient.MaxReceiveMessageSizeKey} は正の整数（バイト）で指定してください: '{raw}'");
     }
 }
