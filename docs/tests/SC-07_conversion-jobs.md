@@ -3,15 +3,15 @@ title: SC-07 変換ジョブ テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-10-08
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [FR-12, NFR-09, SC-03, SC-06, SC-07, UC-06]
 adrs: [ADR-0031, ADR-0070, ADR-0084, ADR-0109]
-iadrs: [IADR-0009, IADR-0035, IADR-0042, IADR-0044, IADR-0127, IADR-0128, IADR-0132, IADR-0154, IADR-0157, IADR-0162, IADR-0356, IADR-0388, IADR-0458, IADR-0465]
-specs: [20260926_1520_conversion-service-auth, 20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261008_1782_sc07-test-spec-and-readme-rot]
-issues: [#1782, #1520, #533, #543, #553, #651, #658, #1192, #1254, planning#198]
+iadrs: [IADR-0009, IADR-0035, IADR-0042, IADR-0044, IADR-0127, IADR-0128, IADR-0132, IADR-0154, IADR-0157, IADR-0162, IADR-0356, IADR-0388, IADR-0458, IADR-0465, IADR-0533]
+specs: [20260926_1520_conversion-service-auth, 20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261008_1782_sc07-test-spec-and-readme-rot, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#1782, #1520, #533, #543, #553, #651, #658, #1192, #1254, #1255, #1517, planning#198]
 -->
 
 # テスト仕様書: 変換ジョブ
@@ -188,7 +188,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | C5 | 運用者の照会 | 中継された運用者のトークンで一覧・個別は 200 | `Queries_WithRelayedOperatorToken_Return200` |
 | C6 | **再変換と人手補正は管理者限定**（BFF と同じ境界） | 運用者は再変換・図の一覧・人手補正の 3 口で 403。**変異試験で確認済み** —— 再変換の管理者限定を外すと当該ケースだけが落ちる | `AdminOnlyRoutes_WithRelayedOperatorToken_Return403` |
 | C7 | 管理者は 5 口すべてで門を通る | 一覧・個別・図の一覧 200、人手補正は未知の図で 404（門を通った先の判定）、再変換 202 | `EveryRoute_WithRelayedAdminToken_PassesTheGate` |
-| C8 | プローブと自己申告は門を持たない | `/health/live`・`/internal/introspection` は資格情報なしで 200、`/health/ready` は 401 / 403 にならない | `ProbeAndIntrospection_WithoutCredential_Return200` / `Readiness_WithoutCredential_IsNotGated` |
+| C8 | プローブは門を持たない | `/health/live` は資格情報なしで 200、`/health/ready` は 401 / 403 にならない（［2026-10-10］REST の自己申告 `/internal/introspection` は撤去した。gRPC の自己申告の面は s2s を要求する） | `ProbeAndIntrospection_WithoutCredential_Return200` / `Readiness_WithoutCredential_IsNotGated` |
 | C9 | 共通ミドルウェア（相関 ID）も張られている | 受け取った相関 ID が応答へ返り、門で弾かれた 401 にも付く（認証より前に居る） | `PlatformMiddleware_EchoesCorrelationId_EvenOnRejectedRequest` |
 
 ## デプロイ（Knowledge.IntegrationTests・#501）

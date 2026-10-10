@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-16, FR-19, UC-08, UC-09, SC-12, NFR-09, NFR-16]
 adrs: [ADR-0004, ADR-0018, ADR-0024, ADR-0029, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0061, ADR-0062, ADR-0075, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134]
-iadrs: [IADR-0529, IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523]
-specs: [20261010_1879_exposure-org-docs-wiki-gate, 20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation]
-issues: [#1879, #1859, #445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844, #1845, #1846, planning#784]
+iadrs: [IADR-0529, IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523, IADR-0533]
+specs: [20261010_1879_exposure-org-docs-wiki-gate, 20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#1879, #1859, #445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844, #1845, #1846, #1255, #1517, planning#784]
 -->
 
 # テスト仕様書: MCP サーバー統合
@@ -284,27 +284,27 @@ CI は緑のままで、**壊れた構成のまま Web サーバーが起動し�
 
 ## gRPC での申告と収集（［2026-09-26 追加］）
 
-申告の口は REST と gRPC を対で持ち、本サービスは宛先ごとに輸送を選んで集める。**待受はすべてループバック**
+［2026-10-10］申告の口と収集は gRPC だけである（従前は REST と gRPC を対で持ち、宛先ごとに輸送を選んでいた。REST の口と収集は撤去した）。**待受はすべてループバック**
 （申告元の実 Kestrel と、収集器を測る代役のホスト）であり、0.0.0.0 では待ち受けない。
 
 | # | 観点 | 期待 |
 | --- | --- | --- |
-| G-1 | 供給元 3 サービスの gRPC 面をサービス間トークンで呼ぶ（陽性対照） | REST と**同じ申告**（5 項目・順序とも）が返り、サービス名が空でない |
+| G-1 | 供給元 3 サービスの gRPC 面をサービス間トークンで呼ぶ（陽性対照） | 申告の源と**同じ申告**（5 項目・順序とも）が返り、サービス名が空でない。REST の口 `GET /internal/mcp-tools` は 404 |
 | G-2 | トークン無しで呼ぶ（否定形） | `UNAUTHENTICATED` |
 | G-3 | 管理者の利用者トークンで呼ぶ（否定形） | `PERMISSION_DENIED`（利用者トークンの転送で面が開かない） |
 | G-4 | 面の型の認可 | 呼び出し側サービスの資格情報を要求するポリシーを宣言している |
 | G-5 | サービス間トークンで収集する | 5 項目とも申告元のとおりに戻る |
-| G-6 | 宛先ごとの輸送選択 | 宛先 = REST と gRPC の構成のキーの和・構成の順序を保つ。gRPC のアドレスが在る宛先だけ gRPC（両方なら gRPC）、空のアドレスは REST |
+| G-6 | 宛先の構成 | 宛先 = `Mcp:Services` のキー・構成の順序を保つ。［2026-10-10］撤去した旧キー `Mcp:GrpcServices` が残っていれば起動時に落とす（両キーを名指す） |
 | G-7 | 資格情報の拒否・検証できないトークン・トークン取得失敗（否定形） | 申告なし（公開しない）。**Error** で記録する |
 | G-8 | 待ち受けの無い宛先・空のサービス名（否定形） | 申告なし。Warning。**他の宛先の収集は止まらない** |
-| G-9 | 何も返さない宛先 | REST の HTTP クライアントのタイムアウトで打ち切られ、申告なしになる |
+| G-9 | 何も返さない宛先 | 構成の期限（`Mcp:DeclarationTimeoutSeconds`）で打ち切られ、申告なしになる。ホストは止まらず次の周期も収集する |
 | G-10 | 呼び出し側の取り消し | 申告なしへ畳まず、取り消しとして外へ出る |
-| G-11 | 登録 | gRPC の構成が無い配備は gRPC の収集器もトークン発行側も登録しない。在る配備は両方を登録する。構成が在るのに収集器が無ければ**ホストが起動しない**（本番の起動処理のまま確かめる。例外を投げることと、それがホストを止めることは別の主張である。陽性対照として、収集器が在れば起動する） |
-| G-12 | 並走中の 2 つの形 | proto の項目名・数が REST の JSON と一致する |
+| G-11 | 登録 | ［2026-10-10］収集器とトークン発行側は宛先の有無によらず常に登録する。撤去した旧キーが残っていれば**ホストが起動しない**（本番の起動処理のまま確かめる。例外を投げることと、それがホストを止めることは別の主張である） |
+| G-12 | proto と DTO の 2 つの形 | proto の項目名・数が DTO の JSON の項目名と一致する |
 | G-14 | 🔴 規約は 5 項目（［2026-09-27 追加］） | proto の申告の項目は 5 つで、旧 `endpoint` の番号 4 は使われていない。DTO にも実行先の URL が無い |
-| G-15 | 🔴 旧い申告元（［2026-09-27 追加］） | gRPC の番号 4・REST の `endpoint` に URL を載せた申告は、その項目を読み飛ばして 5 項目だけが戻る（申告なしにしない。代役が番号 4 を実際にワイヤへ載せていることも確かめる） |
-| G-16 | 🔴 名乗りの結び付け（［2026-09-27 追加］） | 封筒の `service` が収集先の名前と違う申告は REST・gRPC とも**拒否**され（Error）、その名では 1 件も集まらない。名乗りを偽らない他の宛先の申告は集まる。偽った宛先にも実際に問い合わせている（対照） |
-| G-13 | 配備の配線（helm・compose・本番の起動処理） | REST の収集先すべてに同じホストの h2c の宛先があり、宛先は h2c ポートを宣言し、h2c リスナを立て、申告の口が gRPC の面を対で張る |
+| G-15 | 🔴 旧い申告元（［2026-09-27 追加］） | gRPC の番号 4 に URL を載せた申告は、その項目を読み飛ばして 5 項目だけが戻る（申告なしにしない。代役が番号 4 を実際にワイヤへ載せていることも確かめる） |
+| G-16 | 🔴 名乗りの結び付け（［2026-09-27 追加］） | 封筒の `service` が収集先の名前と違う申告は**拒否**され（Error）、その名では 1 件も集まらない。名乗りを偽らない他の宛先の申告は集まる。偽った宛先にも実際に問い合わせている（対照） |
+| G-13 | 配備の配線（helm・compose・本番の起動処理） | 収集先（`Mcp__Services__*`）がすべて h2c の宛先（:8081）で、旧キー `Mcp__GrpcServices__*` が無く、宛先は h2c ポートを宣言し、h2c リスナを立て、申告の gRPC の面を張る |
 
 ## ツールの実行（gRPC）（［2026-09-27 追加］）
 
