@@ -1,5 +1,6 @@
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
+using RetrievalService.Common.Observability;
 using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
 
@@ -16,9 +17,14 @@ namespace RetrievalService.Features.Search.Hybrid;
 //
 // FR-03, FR-04, SC-02, ADR-0127 決定 3, [[IADR-0498]] 決定 1 (#1746 段 S2): `reranker` は Claude による再順位付けの段。
 // **既定（構成で無効）では DI に登録されず null** であり、そのとき結果は段を足す前と 1 バイトも違わない。
+//
+// FR-03, NFR-06, ADR-0016, [[IADR-0534]] (#1871): 縮退（部品が働かず結果が劣化した）の理由を結果に添えて返す。
+// 理由を集めるのは中間値（`HybridSearchOutcome.DegradedReasons`）と出口（`FinishAsync`）だけであり、
+// `degradationMetrics` も出口で 1 度だけ数える（試験が組む構成では null のまま。数えないだけで結果は変わらない）。
 public class HybridSearchService(
     IVectorStore store, IEmbeddingService embed, ILogger<HybridSearchService> logger,
-    FusedCollections? fused = null, ISearchReranker? reranker = null)
+    FusedCollections? fused = null, ISearchReranker? reranker = null,
+    SearchDegradationMetrics? degradationMetrics = null)
     : IHybridSearchService
 {
     // RRF の平滑化定数（順位ベース統合。上位の影響を緩める一般的な既定値）
@@ -42,9 +48,15 @@ public class HybridSearchService(
     // ［2026-10-08 / #1752］[[IADR-0512]] 決定 1: 出口は `user.ExposureKey`（露出の用途）で落とす。
     public async Task<List<SearchResultDto>> SearchAsync(
         SearchRequest request, SearchUserContext user, CancellationToken ct = default)
+        => (await SearchWithDegradationAsync(request, user, ct)).Results;
+
+    // FR-03, NFR-06, [[IADR-0534]] (#1871): 結果に縮退の理由を添えて返す（入口が呼ぶ口）。
+    public async Task<HybridSearchResult> SearchWithDegradationAsync(
+        SearchRequest request, SearchUserContext user, CancellationToken ct = default)
     {
         var outcome = await SearchDetailedAsync(request, ct);
-        return await FinishAsync(request, outcome.Fused, outcome.Sort, outcome.TopK, user, ct);
+        return await FinishAsync(
+            request, outcome.Fused, outcome.Sort, outcome.TopK, user, outcome.DegradedReasons, ct);
     }
 
     // FR-03, FR-04, FR-19, SC-02, ADR-0127 決定 3, [[IADR-0498]] 決定 1・4 (#1746 段 S2): **結果の一覧の唯一の出口。**
@@ -55,16 +67,31 @@ public class HybridSearchService(
     // ② 再順位付けの段（登録されていれば）。段が受け取るのは ABAC 後・露出後・**切り詰め前**の候補である
     // ③ `Finish` で並び順を適用して `topK` へ切る（① の述語は冪等なので 2 度通しても結果は同じ）
     // 🔴 **段は候補の並べ替えだけをする**（`ISearchReranker` の契約）。切り詰めは段の後に 1 度だけ行う。
-    internal async Task<List<SearchResultDto>> FinishAsync(
+    // ④ ［2026-10-11 / #1871］[[IADR-0534]]: 前段が集めた縮退の理由（`degradedReasons`）に段の縮退を足し、
+    //    正の順に揃えて結果に添える。計器はここで 1 度だけ数える（出口が 1 つなので、経路ごとに数え漏れない）。
+    internal async Task<HybridSearchResult> FinishAsync(
         SearchRequest request, List<SearchResultDto> results, string sort, int topK,
-        SearchUserContext user, CancellationToken ct)
+        SearchUserContext user, IEnumerable<string> degradedReasons, CancellationToken ct)
     {
+        var reasons = degradedReasons.ToList();
+        List<SearchResultDto> finished;
         if (reranker is null || results.Count == 0)
-            return Finish(results, sort, topK, user.ExposureKey);
+        {
+            finished = Finish(results, sort, topK, user.ExposureKey);
+        }
+        else
+        {
+            var exposed = results.Where(r => DocumentExposure.IsAllowed(r.Attributes, user.ExposureKey)).ToList();
+            var reranked = await reranker.RerankAsync(request, sort, exposed, ct);
+            if (reranked.Degraded)
+                reasons.Add(SearchDegradedReasons.RerankFailed);
+            finished = Finish(reranked.Results, sort, topK, user.ExposureKey);
+        }
 
-        var exposed = results.Where(r => DocumentExposure.IsAllowed(r.Attributes, user.ExposureKey)).ToList();
-        var reranked = await reranker.RerankAsync(request, sort, exposed, ct);
-        return Finish(reranked, sort, topK, user.ExposureKey);
+        var normalized = SearchDegradedReasons.Normalize(reasons);
+        if (normalized.Count > 0)
+            degradationMetrics?.Record(normalized);
+        return new HybridSearchResult(finished, normalized);
     }
 
     // FR-04, FR-17, ADR-0035 決定 1 (#970): 二段検索の段が要る**中間値**を添えて返す内部口。
@@ -147,7 +174,11 @@ public class HybridSearchService(
             if (semanticVector.Length == 0)
             {
                 WarnEmbeddingUnavailable(mode);
-                return HybridSearchOutcome.Empty(sort, request.TopK);
+                // [[IADR-0534]] (#1871): 0 件の理由が「該当なし」ではなく埋め込みの縮退であることを添える。
+                return HybridSearchOutcome.Empty(sort, request.TopK) with
+                {
+                    DegradedReasons = [SearchDegradedReasons.EmbedFailed],
+                };
             }
 
             var semanticHits = await store.SearchAsync(semanticVector, singleModeK, filters, ct);
@@ -199,7 +230,10 @@ public class HybridSearchService(
         var fusedResults = ReciprocalRankFusion(rankings.ToArray());
         // 段②③（二段検索）の起点は**主コレクションのベクトル側のまま**である（[[IADR-0467]] 決定 5）。
         return new HybridSearchOutcome(
-            fusedResults, vectorTask.Result, vector, filters, sort, request.TopK, candidateK);
+            fusedResults, vectorTask.Result, vector, filters, sort, request.TopK, candidateK)
+        {
+            DegradedReasons = EmbeddingDegradation(vector, fusedVectors),
+        };
     }
 
     // FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): 主と追加コレクションのクエリ埋め込みを並行に得る。
@@ -257,9 +291,10 @@ public class HybridSearchService(
             if (fusedVectors[i].Length == 0 && !_fused[i].LexicalOnly)
                 WarnFusedEmbeddingUnavailable(_fused[i].Collection, mode);
 
+        var degradedReasons = EmbeddingDegradation(primaryVector, fusedVectors);
         if (primaryVector.Length == 0
             && fusedVectors.Where((_, i) => !_fused[i].LexicalOnly).All(v => v.Length == 0))
-            return HybridSearchOutcome.Empty(sort, request.TopK);
+            return HybridSearchOutcome.Empty(sort, request.TopK) with { DegradedReasons = degradedReasons };
 
         var primaryTask = primaryVector.Length > 0
             ? store.SearchAsync(primaryVector, k, filters, ct)
@@ -277,7 +312,30 @@ public class HybridSearchService(
         rankings.AddRange(fusedTasks.Select(t => (IReadOnlyList<SearchResultDto>)t.Result));
         return new HybridSearchOutcome(
             ReciprocalRankFusion(rankings.ToArray()), primaryTask.Result, primaryVector,
-            filters, sort, request.TopK, candidateK);
+            filters, sort, request.TopK, candidateK)
+        {
+            DegradedReasons = degradedReasons,
+        };
+    }
+
+    // FR-03, NFR-06, ADR-0016, ADR-0127 決定 2, [[IADR-0534]] (#1871): 埋め込みの縮退の理由。
+    // **警告を出す枝（`WarnEmbeddingUnavailable` / `WarnFusedEmbeddingUnavailable`）と同じ条件**で立てる ——
+    // 語彙索引（`LexicalOnly`）は設計どおりベクトルを持たないので数えない。
+    private List<string> EmbeddingDegradation(float[] primary, float[][] fusedVectors)
+    {
+        var reasons = new List<string>(2);
+        if (primary.Length == 0)
+            reasons.Add(SearchDegradedReasons.EmbedFailed);
+        for (var i = 0; i < _fused.Count; i++)
+        {
+            if (fusedVectors[i].Length == 0 && !_fused[i].LexicalOnly)
+            {
+                reasons.Add(SearchDegradedReasons.FusedEmbedFailed);
+                break;
+            }
+        }
+
+        return reasons;
     }
 
     // FR-03, ADR-0092 決定 1, [[IADR-0467]] (#336): 追加コレクションだけ埋め込めないときの痕跡。
@@ -289,7 +347,9 @@ public class HybridSearchService(
             + "searching it in mode {Mode} without its semantic channel", collection, mode);
 
     // FR-03, ADR-0016, #995: 🔴 **静かに縮退しない。** 「検索は 200 なのに意味検索が効いていない」は
-    // 応答からは区別できない（`SearchResponse` は縮退の有無を持たない）。**ログだけが手掛かりである。**
+    // 応答からは区別できなかった（`SearchResponse` は縮退の有無を持たなかった）。
+    // ［2026-10-11 / #1871］[[IADR-0534]]: 応答の `degradedReasons`（`embed-failed`）と計器 `search.degraded.total` にも載る。
+    // ログは引き続き残す（モードが読めるのはログだけである）。
     // 原因（送信拒否か・キー未設定か・不調か）はゲートウェイ側が `RoutingReason` 付きで記録している。
     private void WarnEmbeddingUnavailable(string mode) =>
         logger.LogWarning(
@@ -451,6 +511,10 @@ internal sealed record HybridSearchOutcome(
     int TopK,
     int CandidateK)
 {
+    // FR-03, NFR-06, [[IADR-0534]] (#1871): 一次の検索で起きた縮退の理由（埋め込み）。出口 `FinishAsync` が段の縮退を足す。
+    // 🔴 早期復帰のうち空クエリ・スコープ無し（deny）は空のまま —— 部品を呼んでいない（存在秘匿の線を崩さない）。
+    public IReadOnlyList<string> DegradedReasons { get; init; } = [];
+
     // 早期復帰（空クエリ・スコープ無し・埋め込み不能）。**段も何もできない**（起点が無い）。
     public static HybridSearchOutcome Empty(string sort, int topK) =>
         new([], [], [], null, sort, topK, topK);

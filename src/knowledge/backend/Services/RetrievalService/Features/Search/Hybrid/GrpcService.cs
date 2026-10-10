@@ -79,7 +79,7 @@ public sealed class DocumentSearchGrpcService(
         // **交差の規則は共有点 1 つだけ**（[[IADR-0415]] / #1340）。
         var effective = ScopeNarrowing.Resolve(authoritative, ToNarrowing(request.NarrowTo));
 
-        var results = await SearchEndpoint.ExecuteAsync(
+        var found = await SearchEndpoint.ExecuteAsync(
             search, ToDtoRequest(request), effective,
             // 🔴 **転送できる利用者の資格情報は無い**（利用者の JWT はこの面を通らない）。
             // `SearchUserContext.FromBody` がそれを型で表す。
@@ -88,9 +88,25 @@ public sealed class DocumentSearchGrpcService(
                 request.Purpose),
             context.CancellationToken);
 
-        response.Results.AddRange(results.Select(ToProto));
+        response.Results.AddRange(found.Results.Select(ToProto));
+
+        // FR-03, NFR-06, [[IADR-0534]] (#1871): 縮退の印を REST と同じ集合・同じ並びで写す。
+        response.Degraded = found.Degraded;
+        response.DegradedReasons.AddRange(found.DegradedReasons.Select(ToProtoReason));
         return response;
     }
+
+    // FR-03, NFR-06, [[IADR-0534]] (#1871): REST の符号 → gRPC の enum。
+    // 🔴 **知らない符号は例外にする**（`UNSPECIFIED` へ黙って倒さない）。符号を足して写しを忘れたら試験が落ちる
+    // （`GrpcDocumentSearchTests` が `SearchDegradedReasons.All` の全値の写しを固定する）。
+    internal static Pb.SearchDegradedReason ToProtoReason(string reason) => reason switch
+    {
+        SearchDegradedReasons.EmbedFailed => Pb.SearchDegradedReason.EmbedFailed,
+        SearchDegradedReasons.FusedEmbedFailed => Pb.SearchDegradedReason.FusedEmbedFailed,
+        SearchDegradedReasons.GraphExpandFailed => Pb.SearchDegradedReason.GraphExpandFailed,
+        SearchDegradedReasons.RerankFailed => Pb.SearchDegradedReason.RerankFailed,
+        _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, "gRPC の写しが無い縮退の符号"),
+    };
 
     // FR-19, NFR-09, 計画 ADR-0086 決定 1・§結果, ADR-0119 決定 3, [[IADR-0426]] 追記 1 (#1635):
     // 🔴 本文の利用者文脈を信じてよいのは、それを運ぶのが**利用者の権限で動く中継者として許可集合に載った

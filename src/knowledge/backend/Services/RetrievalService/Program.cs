@@ -100,6 +100,10 @@ builder.Services.AddPlatformConsumerTimeouts();
 // FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 RRF 統合）
 builder.Services.AddScoped<HybridSearchService>();
 
+// FR-03, NFR-06, ADR-0016, [[IADR-0534]] (#1871): 応答へ載せた縮退の印を同じ符号で数える（0 が正常）。
+// 埋め込みの縮退はこれまでログにしか無かった。全文側（`KeywordSearchMetrics`）は応答へ載せず、従来どおり計器だけで観る。
+builder.Services.AddSingleton<SearchDegradationMetrics>();
+
 // FR-03, FR-04, FR-10, FR-11, SC-02, ADR-0127 決定 3・4, ADR-0010, ADR-0018, [[IADR-0498]] (#1746 段 S2):
 // **Claude による再順位付けの段**（検索結果の一覧と RAG 回答の候補の両方。出口 `FinishAsync` に挟まる）。
 //

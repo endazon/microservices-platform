@@ -855,6 +855,16 @@
         },
         "SearchResponse": {
           "fields": {
+            "degraded": {
+              "number": 2,
+              "type": "bool",
+              "label": "singular"
+            },
+            "degraded_reasons": {
+              "number": 3,
+              "type": "SearchDegradedReason",
+              "label": "repeated"
+            },
             "results": {
               "number": 1,
               "type": "SearchResult",
@@ -931,6 +941,19 @@
             "EXPOSURE_PURPOSE_AI_INPUT": 2,
             "EXPOSURE_PURPOSE_SEARCH": 1,
             "EXPOSURE_PURPOSE_UNSPECIFIED": 0
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "SearchDegradedReason": {
+          "values": {
+            "SEARCH_DEGRADED_REASON_EMBED_FAILED": 1,
+            "SEARCH_DEGRADED_REASON_FUSED_EMBED_FAILED": 2,
+            "SEARCH_DEGRADED_REASON_GRAPH_EXPAND_FAILED": 3,
+            "SEARCH_DEGRADED_REASON_RERANK_FAILED": 4,
+            "SEARCH_DEGRADED_REASON_UNSPECIFIED": 0
           },
           "reserved": {
             "numbers": [],

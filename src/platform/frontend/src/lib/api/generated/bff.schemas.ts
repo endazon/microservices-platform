@@ -286,6 +286,16 @@ export interface TagInUseProblem {
   usageCount: number;
 }
 
+export type SearchResponseDegradedReasonsItem = typeof SearchResponseDegradedReasonsItem[keyof typeof SearchResponseDegradedReasonsItem];
+
+
+export const SearchResponseDegradedReasonsItem = {
+  'embed-failed': 'embed-failed',
+  'fused-embed-failed': 'fused-embed-failed',
+  'graph-expand-failed': 'graph-expand-failed',
+  'rerank-failed': 'rerank-failed',
+} as const;
+
 export type SearchResultDtoAttributes = {[key: string]: string};
 
 /**
@@ -325,6 +335,19 @@ export interface SearchResponse {
   results: SearchResultDto[];
   totalHits: number;
   elapsedMs: number;
+  /**
+     * FR-03, NFR-06（#1871）: 部品（埋め込み・グラフ展開・再順位付け）のどれかが働かず、結果がその分だけ劣化して返ったか。
+     * `degradedReasons` が空でないことと一致する。権限が無いのか該当が無いのかは表さない
+     * （deny・空クエリ・BFF 側の空応答への縮退は `false` のまま）。構成で無効な段は縮退に数えない。
+     */
+  degraded: boolean;
+  /**
+     * 縮退の理由（固定語彙・重複なし・この列挙の順）。本文・URL・資格情報・例外メッセージは載せない。
+     * `embed-failed`＝主コレクションのクエリ埋め込みが空（hybrid は語彙検索のみ、semantic は 0 件）／
+     * `fused-embed-failed`＝追加コレクションの埋め込みが空／`graph-expand-failed`＝近傍展開が働かない／
+     * `rerank-failed`＝再順位付けを元の順へ戻した。
+     */
+  degradedReasons: SearchResponseDegradedReasonsItem[];
 }
 
 /**
