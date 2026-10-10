@@ -46,10 +46,12 @@ internal static class SearchEndpoint
             // 🔴 FR-19, [[IADR-0512]] 決定 4 (#1752): **REST の入口は露出の用途を受けない**（常に横断検索の用途）。
             // 呼び出し元は利用者本人（AI 分析の REST 輸送も利用者の JWT を転送する）であり、中継者と区別できない
             // —— 用途を受けると、利用者が AI 入力を名乗って「横断検索に含める」OFF の資料を一覧で見られる。
-            var results = await ExecuteAsync(
+            var found = await ExecuteAsync(
                 search, req, effective, SearchUserContext.FromRequest(http), ct);
             sw.Stop();
-            return Results.Ok(new SearchResponse(results, results.Count, sw.ElapsedMilliseconds));
+            // FR-03, NFR-06, [[IADR-0534]] (#1871): 縮退の印（`degraded` / `degradedReasons`）を添える。
+            return Results.Ok(new SearchResponse(found.Results, found.Results.Count, sw.ElapsedMilliseconds)
+                .WithDegradation(found.DegradedReasons));
         }).WithName("Search").Produces<SearchResponse>();
     }
 
@@ -61,14 +63,17 @@ internal static class SearchEndpoint
     // **交差の規則そのものは `ScopeNarrowing` が持つ**（入口ごとに主張の器が違うため、
     // 交差の呼び出しは入口に残る）。ここが持つのは
     // 「**許可が無ければ 1 件も返さない**」と「実効スコープで引く」の 2 つである。
-    internal static async Task<List<SearchResultDto>> ExecuteAsync(
+    //
+    // ［2026-10-11 / #1871］[[IADR-0534]]: 結果に縮退の理由を添えて返す（REST・gRPC は応答へ写し、MCP は写さない）。
+    internal static async Task<HybridSearchResult> ExecuteAsync(
         IHybridSearchService search, SearchRequest request, AccessScope effective,
         SearchUserContext user, CancellationToken ct)
     {
         // deny-by-default: 交差の結果が「許可なし」なら何も返さない（[[IADR-0009]] の存在秘匿）。
+        // 🔴 部品を呼んでいないので縮退の理由も持たない（deny と「該当なし」を印で区別させない）。
         if (!effective.GrantsAccess)
-            return [];
+            return HybridSearchResult.Empty;
 
-        return await search.SearchAsync(request with { Scope = effective }, user, ct);
+        return await search.SearchWithDegradationAsync(request with { Scope = effective }, user, ct);
     }
 }

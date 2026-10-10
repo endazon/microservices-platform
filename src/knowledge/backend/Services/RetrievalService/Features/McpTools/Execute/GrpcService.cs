@@ -93,11 +93,12 @@ public sealed class McpToolExecutionGrpcService(
         var effective = ScopeNarrowing.Resolve(authoritative, rangeFilters: null);
 
         // 8. 検索は REST / gRPC の検索と同じ関数を通る。利用者の資格情報は転送できない（`FromBody`）。
-        var results = await SearchEndpoint.ExecuteAsync(
+        // ［2026-10-11 / #1871］[[IADR-0534]]: ツールの結果へ縮退の印は写さない（ツールの契約外。計器とログには残る）。
+        var found = await SearchEndpoint.ExecuteAsync(
             search, new SearchRequest(query, limit), effective,
             SearchUserContext.FromBody(userId, NoAttributes), context.CancellationToken);
 
-        return ToResult(results, excludePrivateNote: IsServiceAccount(userId));
+        return ToResult(found.Results, excludePrivateNote: IsServiceAccount(userId));
     }
 
     // 🔴 本文の利用者文脈を信じてよいのは、それを運ぶのが**利用者の権限で動く中継者として許可集合に載った

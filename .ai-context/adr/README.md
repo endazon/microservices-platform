@@ -611,3 +611,4 @@
 | [IADR-0531](./IADR-0531_claude-5-5-model-migration.md) | Claude のモデル割当を 5.5 系（opus-5-5・sonnet-5-5・haiku-5-5）へ切り替える。旧 ID は切り戻し用に残し、haiku-5-5 の単価はプロンプト長の 2 段で持ち、用途別 effort を要求本文へ注入する（既定は rerank=low）。rerank の出力上限は 1024 へ上げる（#1875） | Accepted |
 | [IADR-0532](./IADR-0532_keycloak-theme-nocturne-parents-and-token-sync.md) | Keycloak の画面を SPA と同じ Nocturne へ揃える —— 親テーマを keycloak.v2 / keycloak.v3 へ改め、色は @platform/ui のトークンから生成して CI で同期を守る（テンプレートは複製しない・明暗は OS 設定に従う） | Accepted |
 | [IADR-0533](./IADR-0533_east-west-rest-retirement.md) | east-west の REST 同期呼び出しを退役させる —— 移行済みの全経路で REST 実装を撤去して「並走中の正は REST」（IADR-0379 決定 5）を反転し、未構成の gRPC は UNAVAILABLE として縮退させ、扇形の構成キーを一本化する | Accepted |
+| [IADR-0534](./IADR-0534_search-response-degraded-signal.md) | 検索の応答に縮退の印（degraded と理由の固定語彙）を足す —— 部品の健全性だけを表し権限の有無は表さないので IADR-0313 決定 1 の線は崩さず、構成で無効な段と全文側は数えず、計器を同じ符号で揃える | Accepted |

@@ -30,7 +30,7 @@
 //
 // ■ 🔴 **面に出さないもの**: 検索モード（`mode`）・並び順（`sort_by`）・総ヒット数・所要時間。
 //   呼び出し元（RAG の文脈収集）が 1 つも使っていない（IADR-0401 決定 2）。
-//   後から足すのは非破壊の追加である。
+//   後から足すのは非破壊の追加である（［2026-10-11 / #1871］IADR-0534: 縮退の印 `degraded` を応答へ足した）。
 //
 // ■ 🔴 **「該当が無い」と「権限が無い」を区別させない**（IADR-0009 / IADR-0151 決定 5）。
 //   どちらも**空の並び**で返る。404 にも 403 にもしない。引けなかったのは gRPC status である。
@@ -91,6 +91,31 @@ enum ExposurePurpose {
 message SearchResponse {
   // 関連度順（REST の既定 `relevance`）。空は「該当が無い」であって「権限が無い」ではない。
   repeated SearchResult results = 1;
+
+  // FR-03, NFR-06, ADR-0016, IADR-0534 (#1871): **部品のどれかが働かず、結果がその分だけ劣化して返ったか。**
+  // `degraded_reasons` が空でないことと常に一致する。旧い呼び出し元は読まない（未知の項目は無視される）。
+  // 🔴 権限が無いのか該当が無いのかは表さない（ABAC の deny は埋め込みより前に空で返り、`false` のままである）。
+  bool degraded = 2;
+
+  // 縮退の理由（固定語彙）。REST の `degradedReasons`（`SearchDegradedReasons`）と同じ集合・同じ並び。
+  // 本文・URL・資格情報・例外メッセージは載せない。
+  repeated SearchDegradedReason degraded_reasons = 3;
+}
+
+// FR-03, NFR-06, ADR-0016, ADR-0018, ADR-0035, ADR-0127, IADR-0534 (#1871): 検索の縮退の理由。
+// 🔴 **構成で無効な段・設計どおり掛けない段は縮退ではない**（ADR-0018 の既定オフ）。
+// 足すときは REST の `SearchDegradedReasons` へも同じ値を足す（gRPC 面の写しの網羅は試験が固定する）。
+enum SearchDegradedReason {
+  // 未指定。サーバは送らない。
+  SEARCH_DEGRADED_REASON_UNSPECIFIED = 0;
+  // 主コレクションのクエリ埋め込みが空ベクトルで返った（REST `embed-failed`）。
+  SEARCH_DEGRADED_REASON_EMBED_FAILED = 1;
+  // ベクトルの系統を持つ追加コレクションのクエリ埋め込みが空ベクトルで返った（REST `fused-embed-failed`）。
+  SEARCH_DEGRADED_REASON_FUSED_EMBED_FAILED = 2;
+  // 二段検索の段が登録されていて、近傍の展開が働かなかった（REST `graph-expand-failed`）。
+  SEARCH_DEGRADED_REASON_GRAPH_EXPAND_FAILED = 3;
+  // 再順位付けの段が登録されていて、元の順へ戻した（REST `rerank-failed`）。
+  SEARCH_DEGRADED_REASON_RERANK_FAILED = 4;
 }
 
 // REST の `SearchResultDto` と同じ形（チャンク単位）。

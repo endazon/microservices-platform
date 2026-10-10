@@ -107,7 +107,8 @@ public class RerankCompletionTransportTests
 
         var result = await reranker.RerankAsync(new SearchRequest("q", 10, null, null, SearchModes.Keyword),
             SearchSorts.Relevance, [a, b], Ct);
-        result.Should().Equal(a, b);
+        result.Results.Should().Equal(a, b);
+        result.Degraded.Should().BeTrue("#1871: 時間切れは応答の縮退の印（rerank-failed）へ写る");
         degraded.Should().Equal(RerankMetrics.Timeout);
 
         using var user = CancellationTokenSource.CreateLinkedTokenSource(Ct);

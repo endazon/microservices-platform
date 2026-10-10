@@ -2181,6 +2181,31 @@
         "kind": "class",
         "members": {}
       },
+      "Knowledge.Contracts.Dtos.SearchDegradedReasons": {
+        "kind": "class",
+        "members": {
+          "EmbedFailed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"embed-failed\""
+          },
+          "FusedEmbedFailed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"fused-embed-failed\""
+          },
+          "GraphExpandFailed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"graph-expand-failed\""
+          },
+          "RerankFailed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"rerank-failed\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.SearchModes": {
         "kind": "class",
         "members": {
@@ -2245,6 +2270,16 @@
       "Knowledge.Contracts.Dtos.SearchResponse": {
         "kind": "record",
         "members": {
+          "Degraded": {
+            "source": "property",
+            "type": "bool",
+            "required": false
+          },
+          "DegradedReasons": {
+            "source": "property",
+            "type": "List<string>",
+            "required": false
+          },
           "ElapsedMs": {
             "source": "positional",
             "type": "long",

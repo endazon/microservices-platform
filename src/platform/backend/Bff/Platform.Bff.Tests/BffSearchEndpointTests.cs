@@ -36,6 +36,29 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
             "後段が返す更新日時をそのまま運ぶ（BFF で時刻を作らない）");
     }
 
+    // FR-03, NFR-06, [[IADR-0534]] (#1871): 縮退の印（`degraded` / `degradedReasons`）を**欠落させずに透過**する
+    // （BFF は SearchResponse で型付けして中継するので、init のメンバーが読み直しで落ちないことをここで固定する）。
+    [Fact]
+    public async Task PostSearch_PassesThroughDegradation()
+    {
+        factory.SearchScopeGranted = true;
+        var original = factory.StubSearchResponse;
+        factory.StubSearchResponse = original.WithDegradation([SearchDegradedReasons.EmbedFailed]);
+        try
+        {
+            var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5 }, TestContext.Current.CancellationToken);
+
+            resp.StatusCode.Should().Be(HttpStatusCode.OK);
+            var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
+            body!.Degraded.Should().BeTrue();
+            body.DegradedReasons.Should().Equal(SearchDegradedReasons.EmbedFailed);
+        }
+        finally
+        {
+            factory.StubSearchResponse = original;
+        }
+    }
+
     // FR-03, SC-02, #532: 並び順は**利用者の指定をそのまま後段へ渡す**（BFF で正規化しない）。
     // 縮退（未知値 → 既定）は RetrievalService が一箇所で行う——2 か所で正規化すると規則が割れる。
     [Theory]
@@ -96,6 +119,7 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         body!.Results.Should().BeEmpty();          // 権限外は空（存在秘匿）
         body.TotalHits.Should().Be(0);
+        body.Degraded.Should().BeFalse("[[IADR-0534]] (#1871): deny は縮退の印を持たない（印で権限の有無を区別させない）");
     }
 
     [Fact]

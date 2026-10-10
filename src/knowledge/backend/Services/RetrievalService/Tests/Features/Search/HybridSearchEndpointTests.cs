@@ -412,6 +412,49 @@ public class HybridSearchEndpointTests
         // 全文検索だけで続行するので、キーワード一致は残る（「埋め込めない＝全滅」にしない）。
         body.Results.Should().NotBeEmpty();
         body.TotalHits.Should().Be(body.Results.Count);
+        // FR-03, NFR-06, [[IADR-0534]] (#1871): ★ 語彙検索だけで返ったことが応答から読める（AST#1283 の監査の事象）。
+        body.Degraded.Should().BeTrue();
+        body.DegradedReasons.Should().Equal(SearchDegradedReasons.EmbedFailed);
+    }
+
+    // FR-03, NFR-06, [[IADR-0534]] (#1871): 縮退の印は JSON の `degraded` / `degradedReasons` として**常に**載る
+    // （呼び出し元〔AST〕が名前で読む）。健全な検索では false ＋ 空配列（陰性対照）。
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PostSearch_CarriesDegradedFlagAndReasonsInJson(bool embeddingUnavailable)
+    {
+        await using TestWebApplicationFactory factory =
+            embeddingUnavailable ? new EmptyEmbeddingFactory() : new TestWebApplicationFactory();
+        await SeedAsync(factory, Chunk("アルファ 機能 の 説明"));
+
+        var resp = await factory.CreateClient()
+            .PostAsJsonAsync("/search", new SearchRequest("アルファ", TopK: 5,
+                Scope: new AccessScope([], GrantsAccess: true)), TestContext.Current.CancellationToken);
+
+        using var json = System.Text.Json.JsonDocument.Parse(
+            await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        json.RootElement.GetProperty("degraded").GetBoolean().Should().Be(embeddingUnavailable);
+        json.RootElement.GetProperty("degradedReasons").EnumerateArray().Select(e => e.GetString())
+            .Should().Equal(embeddingUnavailable ? [SearchDegradedReasons.EmbedFailed] : []);
+    }
+
+    // 🔴 FR-05, [[IADR-0009]] / [[IADR-0313]] 決定 1, [[IADR-0534]] (#1871): deny は埋め込みが壊れていても縮退の印を持たない
+    // （「権限が無い」と「該当が無い」を印で区別させない）。
+    [Fact]
+    public async Task PostSearch_DeniedScope_IsNotMarkedDegradedEvenWhenEmbeddingIsDown()
+    {
+        await using var factory = new EmptyEmbeddingFactory();
+        await SeedAsync(factory, Chunk("アルファ 機能 の 説明"));
+
+        var resp = await factory.CreateClient()
+            .PostAsJsonAsync("/search", new SearchRequest("アルファ", TopK: 5,
+                Scope: new AccessScope([], GrantsAccess: false)), TestContext.Current.CancellationToken);
+
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
+        body!.Results.Should().BeEmpty();
+        body.Degraded.Should().BeFalse();
+        body.DegradedReasons.Should().BeEmpty();
     }
 
     // FR-03, #995: 埋め込みが得られない状態（`/embed` が 200 ＋ 空ベクトルを返す）を再現する。

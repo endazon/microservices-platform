@@ -94,6 +94,8 @@ public class GrpcGraphNeighborExpanderTests
 
         fake.LastRequest.Should().BeNull();
         result.Edges.Should().BeEmpty();
+        // [[IADR-0534]] (#1871): 呼べなかった —— 応答の縮退の印（graph-expand-failed）の根拠。
+        result.Degraded.Should().BeTrue();
     }
 
     // 🔴 T-04: **`found=false` は「見えない・無い」であり、例外ではない**（存在秘匿）。
@@ -106,6 +108,8 @@ public class GrpcGraphNeighborExpanderTests
             .ExpandAsync([Seed], 1, Authenticated("alice"), TestContext.Current.CancellationToken);
 
         result.Edges.Should().BeEmpty();
+        // [[IADR-0534]] (#1871): 見えない起点は異常ではない —— 縮退に数えない（陰性対照）。
+        result.Degraded.Should().BeFalse();
     }
 
     // 🔴 T-05: **近傍の取得が失敗しても検索そのものを落とさない**（REST 実装の非 2xx / 不達と同値）。
@@ -127,6 +131,7 @@ public class GrpcGraphNeighborExpanderTests
 
         var result = await act.Should().NotThrowAsync();
         result.Subject.Edges.Should().BeEmpty();
+        result.Subject.Degraded.Should().BeTrue("[[IADR-0534]] (#1871): 「グラフに何も無い」と見分ける印");
     }
 
     // 🔴 T-06: s2s トークンの取得失敗（`InvalidOperationException`）も**同じ縮退**である。
@@ -142,7 +147,9 @@ public class GrpcGraphNeighborExpanderTests
         var act = async () => await Expander(fake)
             .ExpandAsync([Seed], 1, Authenticated("alice"), TestContext.Current.CancellationToken);
 
-        (await act.Should().NotThrowAsync()).Subject.Edges.Should().BeEmpty();
+        var result = (await act.Should().NotThrowAsync()).Subject;
+        result.Edges.Should().BeEmpty();
+        result.Degraded.Should().BeTrue();
     }
 
     // 🔴 T-06a / T-06b (#1637): **呼び出し元の取り消しは縮退へ畳まず外へ出す**（REST 版と同じ姿勢）。
@@ -209,6 +216,9 @@ public class GrpcGraphNeighborExpanderTests
         real.Edges.Should().ContainSingle().Which.Weight.Should().Be(0.9, "★ 陽性対照");
         fallback.Edges.Should().ContainSingle().Which.Weight
             .Should().Be(GrpcGraphNeighborExpander.FallbackEdgeWeight);
+        // [[IADR-0534]] (#1871): 辞書が引けないのは縮退、引けたなら縮退ではない（対）。
+        real.Degraded.Should().BeFalse();
+        fallback.Degraded.Should().BeTrue();
     }
 
     // 🔴 T-08: 辞書に**無い型**の辺もフォールバック重みである（黙って無差別へ落ちない）。
@@ -224,6 +234,8 @@ public class GrpcGraphNeighborExpanderTests
 
         result.Edges.Should().ContainSingle().Which.Weight
             .Should().Be(GrpcGraphNeighborExpander.FallbackEdgeWeight);
+        // [[IADR-0534]] (#1871): 辞書は引けている（データの食い違い）—— 縮退には数えない。
+        result.Degraded.Should().BeFalse();
     }
 
     // 🔴 T-09: **宛先の有無で登録の形が変わる。** `Services:GraphServiceGrpc` が無ければ

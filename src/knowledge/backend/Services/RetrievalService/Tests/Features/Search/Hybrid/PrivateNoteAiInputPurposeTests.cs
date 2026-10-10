@@ -171,11 +171,11 @@ public class PrivateNoteAiInputPurposeTests
     {
         public List<SearchResultDto> Candidates { get; } = [];
 
-        public Task<List<SearchResultDto>> RerankAsync(
+        public Task<RerankOutcome> RerankAsync(
             SearchRequest request, string sort, List<SearchResultDto> candidates, CancellationToken ct = default)
         {
             Candidates.AddRange(candidates);
-            return Task.FromResult(candidates);
+            return Task.FromResult(new RerankOutcome(candidates));
         }
     }
 }

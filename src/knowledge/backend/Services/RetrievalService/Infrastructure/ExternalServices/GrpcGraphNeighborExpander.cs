@@ -74,7 +74,8 @@ public sealed class GrpcGraphNeighborExpander(
                 + "pass to GraphService as request-body context (a graph call without a user "
                 + "degrades to an empty result for every hop, which is indistinguishable from an "
                 + "empty graph)");
-            return GraphNeighborhood.Empty;
+            // ［2026-10-11 / #1871］[[IADR-0534]]: 呼べなかった —— 応答の縮退の印（`graph-expand-failed`）へ写す。
+            return GraphNeighborhood.Unavailable;
         }
 
         var userContext = ToUserContext(user);
@@ -85,10 +86,14 @@ public sealed class GrpcGraphNeighborExpander(
         var views = await Task.WhenAll(
             seedDocumentIds.Select(id => FetchAsync(id, hops, userContext, ct)));
 
+        // FR-03, NFR-06, [[IADR-0534]] (#1871): 近傍のどれか・辞書が引けなかったら**縮退**である（警告を出した枝と同じ集合）。
+        // 辞書に無い型（データの食い違い）は縮退に数えない —— 辞書は引けており、その辺だけがフォールバック重みになる。
+        var degraded = weights is null || views.Any(v => v is null);
+
         // 辺は識別子で重複排除する（起点が複数あると同じ辺を複数回持ち帰る）。
         var edges = new Dictionary<Guid, GraphNeighborEdge>();
         var unknownTypes = new HashSet<Guid>();
-        foreach (var edge in views.SelectMany(v => v))
+        foreach (var edge in views.SelectMany(v => v ?? []))
         {
             if (!Guid.TryParse(edge.Id, out var id)
                 || !Guid.TryParse(edge.SourceDocumentId, out var source)
@@ -112,7 +117,7 @@ public sealed class GrpcGraphNeighborExpander(
                 + "their edges fall back to weight {Weight}",
                 unknownTypes.Count, FallbackEdgeWeight);
 
-        return new GraphNeighborhood([.. edges.Values]);
+        return new GraphNeighborhood([.. edges.Values]) { Degraded = degraded };
     }
 
     // 辞書（型識別子 → 重み）を取る。**失敗は検索そのものを落とさない** —— 全辺フォールバック
@@ -150,7 +155,8 @@ public sealed class GrpcGraphNeighborExpander(
     }
 
     // 1 起点ぶんの近傍を取る。**失敗は検索そのものを落とさない**。
-    private async Task<IReadOnlyList<Pb.NeighborEdge>> FetchAsync(
+    // ［2026-10-11 / #1871］[[IADR-0534]]: 失敗は `null`（`found=false` の空と分ける。縮退の印の根拠）。
+    private async Task<IReadOnlyList<Pb.NeighborEdge>?> FetchAsync(
         Guid documentId, int hops, Pb.UserContext user, CancellationToken ct)
     {
         try
@@ -186,7 +192,7 @@ public sealed class GrpcGraphNeighborExpander(
             logger.LogWarning(ex,
                 "Graph neighbors request for {DocumentId} failed; continuing without graph expansion",
                 documentId);
-            return [];
+            return null;
         }
     }
 

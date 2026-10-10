@@ -80,7 +80,54 @@ public static class SearchSorts
         ?? Relevance;
 }
 
+// FR-03, NFR-06, ADR-0016, [[IADR-0534]] (#1871): 縮退の印は**位置引数ではなく init で足す**（既存の生成箇所を壊さない）。
+// 早期の空応答（スコープ無し・deny・空クエリ）は既定の「縮退なし」のまま返る —— 部品を 1 つも呼んでいないからである。
 public record SearchResponse(
     List<SearchResultDto> Results,
     int TotalHits,
-    long ElapsedMs);
+    long ElapsedMs)
+{
+    // 部品のどれかが働かず、結果がその分だけ劣化して返ったか。`DegradedReasons` が空でないことと常に一致させる
+    // （設定は `WithDegradation` の 1 か所だけで行う）。
+    public bool Degraded { get; init; }
+
+    // 縮退の理由。🔴 **`SearchDegradedReasons.All` の固定語彙だけ**（本文・URL・資格情報・例外メッセージを載せない）。
+    // 並びは `All` の順で、重複しない。
+    public List<string> DegradedReasons { get; init; } = [];
+
+    // 縮退の 2 項目を揃えて設定する唯一の口（`Degraded` と `DegradedReasons` を食い違わせない）。
+    public SearchResponse WithDegradation(IReadOnlyCollection<string> reasons) =>
+        this with { Degraded = reasons.Count > 0, DegradedReasons = [.. reasons] };
+}
+
+// FR-03, NFR-06, ADR-0016, ADR-0018, ADR-0035, ADR-0127, [[IADR-0534]] (#1871): **検索の縮退の理由（固定語彙）。**
+//
+// 🔴 **部品の健全性だけを表す。** 権限が無いのか該当が無いのか（[[IADR-0009]] / [[IADR-0313]] 決定 1）は表さない ——
+// ABAC の deny は埋め込みより前に空で返り、ここに来ない。
+// 🔴 **構成で無効な段・設計どおり掛けない段は縮退ではない**（ADR-0018 の既定オフ。数えると既定構成の全検索が縮退になる）。
+// gRPC は同じ集合を enum `SearchDegradedReason` で運ぶ（`document_search.proto`）。足すときは両方へ足す。
+public static class SearchDegradedReasons
+{
+    // 主コレクションのクエリ埋め込みが空ベクトルで返った（送信拒否・鍵なし・次元不整合・ゲートウェイ側の失敗）。
+    // hybrid は語彙検索だけで返り、semantic は 0 件で返る。
+    public const string EmbedFailed = "embed-failed";
+
+    // ベクトルの系統を持つ追加コレクションのどれかで、クエリ埋め込みが空ベクトルで返った（語彙索引は数えない）。
+    public const string FusedEmbedFailed = "fused-embed-failed";
+
+    // 二段検索の段が登録されていて、近傍・辺の型の辞書が引けなかった（または利用者文脈が無く呼べなかった）。
+    public const string GraphExpandFailed = "graph-expand-failed";
+
+    // 再順位付けの段が登録されていて、掛けようとして元の順へ戻した。
+    public const string RerankFailed = "rerank-failed";
+
+    // 並びの正（応答の `DegradedReasons` はこの順に並ぶ）。
+    public static readonly IReadOnlyList<string> All = [EmbedFailed, FusedEmbedFailed, GraphExpandFailed, RerankFailed];
+
+    // 理由を正の順に並べ、重複を除く。
+    public static List<string> Normalize(IEnumerable<string> reasons)
+    {
+        var set = reasons.ToHashSet(StringComparer.Ordinal);
+        return All.Where(set.Contains).ToList();
+    }
+}

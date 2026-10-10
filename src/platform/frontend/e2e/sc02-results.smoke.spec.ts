@@ -11,7 +11,14 @@ import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './su
 // セッションの土台と限界（＝契約の写しであって後段ではない）は `support/bffSession.ts`。
 // 一覧の中身・SC-03 への遷移は Vitest（単体＋導線テスト searchFlow.test.tsx）が引き続き担う。
 
-const empty: SearchResponse = { results: [], totalHits: 0, elapsedMs: 3 };
+// #1871: 縮退の印は契約上必須（BFF の空応答は縮退なし）。
+const empty: SearchResponse = {
+  results: [],
+  totalHits: 0,
+  elapsedMs: 3,
+  degraded: false,
+  degradedReasons: [],
+};
 
 test('unauthenticated visit to /search redirects to /login', async ({ page }) => {
   await page.goto('/search?q=%E7%B5%8C%E8%B2%BB');
