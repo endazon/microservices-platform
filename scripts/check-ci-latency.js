@@ -60,7 +60,8 @@
  *   CI_LATENCY_STEP_RATIO 定常性の門の倍率（既定 2）。中央値 ÷ 最小 がこれ以上なら判定を skip する
  *   CI_LATENCY_CONFIG_PATH  CI 構成ファイル（既定 .github/workflows/ci.yml）。epoch の導出に使う
  *   CI_LATENCY_EPOCH        epoch の上書き（ISO 8601）。**両方向の実測に使う**
- *   CI_LATENCY_MIN_SAMPLES  判定に要る最小本数（既定 3）。過去の窓が床の候補になる本数も同じ
+ *   CI_LATENCY_MIN_SAMPLES  現在の窓の判定に要る最小本数（既定 3。1 以上の整数）
+ *   CI_LATENCY_FLOOR_MIN_SAMPLES  過去の窓が床の候補になる最小本数（既定 ceil(N / 2)＝N の半分以上。1 以上の整数）
  */
 
 const TARGET = process.env.CI_LATENCY_TARGET || 'build-and-test';
@@ -74,6 +75,10 @@ const STEP_RATIO = Number(process.env.CI_LATENCY_STEP_RATIO || 2);
 const CONFIG_PATH = process.env.CI_LATENCY_CONFIG_PATH || '.github/workflows/ci.yml';
 // 🔴 中央値は本数が少ないと 1 本に引きずられる。3 本を下限とする。
 const MIN_SAMPLES = Number(process.env.CI_LATENCY_MIN_SAMPLES || 3);
+// 🔴 過去の窓が床の候補になる本数は **N に連動させる**（既定 ceil(N / 2)。#1912 のレビュー指摘）。
+// 現在の窓と同じ 3 本で候補にすると、たまたま速かった少数の窓が K 窓のあいだ床を固定し、誤報側へ倒れる。
+// 過去の窓は epoch で絞らないので本数が欠けるのは API 失敗か skip された run だけであり、半分を要求しても履歴の門はまず効かない。
+const FLOOR_MIN_SAMPLES = Number(process.env.CI_LATENCY_FLOOR_MIN_SAMPLES || Math.ceil(SAMPLES / 2));
 const FILES_PAGE_SIZE = 100;
 // GitHub の `/pulls/{n}/files` は最大 3000 件までしか返さない（＝30 ページ）。
 const FILES_MAX_PAGES = 30;
@@ -136,7 +141,14 @@ function min(xs) {
  * 🔴 **不正値を黙って既定へ戻さない。** `CI_LATENCY_FLOOR_RATIO=1` は「床から 1 秒でも伸びたら鳴る」、
  * `0` や数値でない値は `NaN` 比較で**常に緑**になる。どちらも監視が黙って壊れる形なので、設定の誤りとして赤くする。
  */
-function validateConfig({ floorWindows = FLOOR_WINDOWS, floorRatio = FLOOR_RATIO, samples = SAMPLES } = {}) {
+function validateConfig({
+  floorWindows = FLOOR_WINDOWS,
+  floorRatio = FLOOR_RATIO,
+  samples = SAMPLES,
+  minSamples = MIN_SAMPLES,
+  floorMinSamples = FLOOR_MIN_SAMPLES,
+  stepRatio = STEP_RATIO,
+} = {}) {
   if (!Number.isInteger(floorWindows) || floorWindows < 1) {
     return `CI_LATENCY_FLOOR_WINDOWS は 1 以上の整数でなければならない（現在 ${floorWindows}）`;
   }
@@ -146,12 +158,23 @@ function validateConfig({ floorWindows = FLOOR_WINDOWS, floorRatio = FLOOR_RATIO
   if (!Number.isInteger(samples) || samples < 1) {
     return `CI_LATENCY_SAMPLES は 1 以上の整数でなければならない（現在 ${samples}）`;
   }
+  // 🔴 NaN だと `length < NaN` も `t >= lo * NaN` も false になり、門を**素通り**する（#1912 のレビュー指摘）。
+  if (!Number.isInteger(minSamples) || minSamples < 1) {
+    return `CI_LATENCY_MIN_SAMPLES は 1 以上の整数でなければならない（現在 ${minSamples}）`;
+  }
+  if (!Number.isInteger(floorMinSamples) || floorMinSamples < 1) {
+    return `CI_LATENCY_FLOOR_MIN_SAMPLES は 1 以上の整数でなければならない（現在 ${floorMinSamples}）`;
+  }
+  if (!Number.isFinite(stepRatio) || stepRatio <= 1) {
+    return `CI_LATENCY_STEP_RATIO は 1 より大きい数でなければならない（現在 ${stepRatio}）`;
+  }
   return null;
 }
 
 /**
  * 床＝過去の窓それぞれの中央値の**最小値**。
- * 監視対象の値が `minSamples` 本に満たない窓は候補にしない（1〜2 本の中央値は外れ値そのものになる）。
+ * 監視対象の値が `minSamples` 本に満たない窓は候補にしない（少数の中央値は外れ値そのものになる）。
+ * 呼び出し側は `FLOOR_MIN_SAMPLES`（既定 ceil(N / 2)）を渡す。
  * 返す `windows` は候補になった窓の数（履歴の門が使う）。
  *
  * 🔴 **「全値の最小」でも「中央値の中央値」でもない。** 全値の最小は 1 本の当たりの速い run で床が下がり
@@ -198,11 +221,12 @@ function judge({
   floorRatio = FLOOR_RATIO,
   stepRatio = STEP_RATIO,
   minSamples = MIN_SAMPLES,
+  floorMinSamples = FLOOR_MIN_SAMPLES,
   epoch = null,
 }) {
   const t = median(targetDurations);
   const b = min(baselineDurations);
-  const { floor, windows } = floorOf(pastWindows, { minSamples });
+  const { floor, windows } = floorOf(pastWindows, { minSamples: floorMinSamples });
   // 参考値（判定には使わない）。旧方式の「逆転」——監視対象の中央値が claude-review の下限を超えたか。
   const ref = { target: t, baseline: b, reversed: t !== null && b !== null ? t > b : null, floor, windows };
   // 🔴 **現在の CI 構成で測られた PR が少なすぎるうちは判定しない**（IADR-0241）。
@@ -241,7 +265,7 @@ function judge({
       ok: true,
       skipped: true,
       reason:
-        `床を取る過去の窓が足りない（${minSamples} 本以上の値を持つ過去の窓が ${windows} 個。判定には ${floorWindows} 個要る）。` +
+        `床を取る過去の窓が足りない（${floorMinSamples} 本以上の値を持つ過去の窓が ${windows} 個。判定には ${floorWindows} 個要る）。` +
         '床が決まらないため判定しない',
       ...ref,
     };
@@ -734,7 +758,7 @@ async function selfTest() {
 
   // --- #1910: 判定は「監視対象自身の過去の床」。床＝過去 K 窓それぞれの中央値の最小。 ---
   // 試験の既定: K=3・R=1.25。過去の窓は 3 本ずつ（最小本数の門 3 本を満たす）。
-  const J = (o) => judge({ floorWindows: 3, floorRatio: 1.25, minSamples: 3, ...o });
+  const J = (o) => judge({ floorWindows: 3, floorRatio: 1.25, minSamples: 3, floorMinSamples: 3, ...o });
   const steady = [[100, 104, 108], [98, 100, 103], [101, 105, 110]]; // 窓の中央値 104 / 100 / 105 → 床 100
   ok('🔴 judge: 床の R 倍を超えて伸びたら NG（#1910 の本判定）', () => {
     const r = J({ targetDurations: [128, 130, 133], pastWindows: steady });
@@ -758,6 +782,19 @@ async function selfTest() {
     const r = J({ targetDurations: [300, 310, 320], pastWindows: [[100, 104, 108], [98, 100], [101, 105, 110]] });
     eq(r.skipped, true);
     eq(r.windows, 2);
+  });
+  ok('🔴 judge: 過去の窓は N の半分（floorMinSamples）以上の値が無ければ床の候補にしない（少数の速い窓で床を固定しない）', () => {
+    // N=20 相当（floorMinSamples=10）。3 本だけの速い窓（中央値 60）が床になると 100 前後の現在の窓が誤って鳴る。
+    const full = (v) => Array(10).fill(v);
+    const r = J({
+      targetDurations: [100, 104, 108],
+      pastWindows: [[58, 60, 62], full(100), full(102), full(98)],
+      floorWindows: 3,
+      floorMinSamples: 10,
+    });
+    eq(r.windows, 3, '3 本の窓を候補に数えている');
+    eq(r.floor, 98, '少数の窓が床になっている');
+    eq(r.ok, true);
   });
   ok('judge: 履歴が 0 窓でも skip（床 null を判定に使わない）', () => {
     const r = J({ targetDurations: [300, 310, 320], pastWindows: [] });
@@ -849,6 +886,17 @@ async function selfTest() {
     eq(past, [[2, 3], [4]]);
   });
   ok('validateConfig: 既定値は正しい', () => eq(validateConfig({ floorWindows: 3, floorRatio: 1.25, samples: 20 }), null));
+  ok('🔴 validateConfig: 門の値（MIN_SAMPLES・FLOOR_MIN_SAMPLES・STEP_RATIO）の不正も設定の誤り（NaN で門を素通りさせない）', () => {
+    const good = { floorWindows: 3, floorRatio: 1.25, samples: 20, minSamples: 3, floorMinSamples: 10, stepRatio: 2 };
+    eq(validateConfig(good), null);
+    for (const bad of [
+      { minSamples: NaN }, { minSamples: 0 }, { minSamples: 2.5 },
+      { floorMinSamples: NaN }, { floorMinSamples: 0 },
+      { stepRatio: NaN }, { stepRatio: 1 }, { stepRatio: 0.5 },
+    ]) {
+      if (validateConfig({ ...good, ...bad }) === null) throw new Error(`誤りとして扱われない: ${JSON.stringify(bad)}`);
+    }
+  });
   ok('🔴 validateConfig: R ≦ 1・K < 1・数値でない値は設定の誤り（NaN 比較で常に緑にしない）', () => {
     for (const bad of [
       { floorWindows: 3, floorRatio: 1, samples: 20 },
@@ -1087,9 +1135,9 @@ async function main() {
   );
   const fmt = (x) => (x === null || x === undefined ? '—' : `${Math.round(x)}`);
   console.log(
-    `[check-ci-latency] 過去の窓: マージ済み PR ${pastMerged} 本を ${SAMPLES} 本ずつ ${pastWindows.length} 窓（要 ${FLOOR_WINDOWS} 窓。epoch では絞らない）: ` +
+    `[check-ci-latency] 過去の窓: マージ済み PR ${pastMerged} 本を ${SAMPLES} 本ずつ ${pastWindows.length} 窓（要 ${FLOOR_WINDOWS} 窓。各 ${FLOOR_MIN_SAMPLES} 本以上。epoch では絞らない）: ` +
       `${TARGET} の件数 [${pastWindows.map((w) => w.length).join(', ')}] / 中央値 [${pastWindows
-        .map((w) => (w.length >= MIN_SAMPLES ? fmt(median(w)) : '—'))
+        .map((w) => (w.length >= FLOOR_MIN_SAMPLES ? fmt(median(w)) : '—'))
         .join(', ')}] 秒`,
   );
   // 🔴 該当 run が 0 件なら、まず **check 名の設定ミス**を疑わせる。

@@ -73,6 +73,7 @@ jobs:
           CI_LATENCY_SAMPLES: '20'        # N: 1 窓の PR 本数
           CI_LATENCY_FLOOR_WINDOWS: '3'   # K: 床を取る過去の窓の数
           CI_LATENCY_FLOOR_RATIO: '1.25'  # R: 床に対する倍率
+          # 過去の窓が床の候補になる本数（CI_LATENCY_FLOOR_MIN_SAMPLES）は書かない。既定 ceil(N / 2) で N に連動させる（N だけ変えて直し忘れない）。
         run: node scripts/check-ci-latency.js
 
   report-failure:
