@@ -257,7 +257,7 @@ jobs:
           # 他スタック例: Bash(npm run:*) / Bash(npx vitest:*) / Bash(pytest:*) / Bash(go test:*)
           claude_args: |
             --model ${{ steps.model.outputs.model }}
-            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git grep:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading grep:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(awk:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(which:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_pull_requests,mcp__github__list_sub_issues,mcp__github__list_workflow_runs,mcp__github__actions_list,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(bash -n:*),Bash(bash scripts/k8s-local-down.test.sh),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*),Bash(dotnet --version),Bash(dotnet --info)"
+            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git grep:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading grep:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(awk:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(which:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_pull_requests,mcp__github__list_sub_issues,mcp__github__list_workflow_runs,mcp__github__actions_list,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(bash -n:*),Bash(bash scripts/k8s-local-down.test.sh),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*),Bash(dotnet --version),Bash(dotnet --info),Bash(helm lint:*),Bash(helm template:*)"
           # 【プロンプトの書き方】prompt: の中身は毎 PR そのまま送信され課金される。事故の経緯・
           # 実測値の記録は送信されないこの YAML コメント側へ書き、prompt には AI が従う指示だけを
           # 置く（監査 2026-08-18・planning#416 の追随。#869）。prompt が禁じる各項目の経緯:
@@ -281,11 +281,40 @@ jobs:
             - **サマリの投稿はどの検証よりも優先する。** レビューの最後に、下記フォーマットの
               サマリコメントを必ず自分で投稿してから終了する。委譲したまま・**バックグラウンド実行の
               結果を待ったまま**終了してはならない（判定ゼロのまま success になり「レビュー済み・
-              指摘なし」と読まれる。planning#333）。時間が足りなければ「未検証（理由）」と書いて
-              投稿すること。
-            - **変更範囲に応じて検証を絞る。** 実装ディレクトリの差分が空（docs のみの変更等）なら
-              ビルド・テストを実行しない。**実行しなかったことは「実行できなかったこと」節へ理由を
-              添えて書く**（黙って省略しない）。
+              指摘なし」と読まれる。planning#333）。検証を打ち切って投稿を優先してよいのは、
+              **ジョブの上限（20 分）に近づいた場合だけ**である（ターン数の上限は無い）。
+              そのときは「未検証（20 分の上限）」と書いて投稿すること。
+            - **絞ってよいのは、下の【検証の下限】に含まれない検証だけである。** 実装ディレクトリの
+              差分が空（docs のみの変更等）ならビルド・テストを実行しない。**実行しなかったことは
+              「実行できなかったこと」節へ理由を添えて書く**（黙って省略しない）。
+
+            【検証の下限・最重要】（#1911。下限は省略できない。省くなら下の「理由に使えない語」以外の理由が要る）
+            まず `git diff --name-only origin/develop...HEAD` で変更ファイルの一覧を取り、次を**すべて**行う
+            （merge base が取れなければ `git fetch origin develop` を先に実行する）。
+            - **変更ファイルは全部読む。** 差分（`git diff origin/develop...HEAD -- <パス>`）か全文を、
+              1 ファイルずつ読む。除外してよいのは生成物（orval の生成物・`locales/*/messages.ts`・
+              `pnpm-lock.yaml`・`CHANGELOG.md`）だけで、除外したら本文の冒頭にその一覧を書く。
+              本文の冒頭には「変更 N ファイル中 M ファイルを読んだ」と書く。
+            - **`src/<unit>/backend/**` の差分があれば**、`dotnet build src/<unit>/backend/backend.slnx` と、
+              変更したサービスのテストプロジェクトの `dotnet test <…Tests.csproj>` を走らせる。
+              `--filter` は付けず、プロジェクト単位で全件を回す。あわせて
+              `dotnet format src/<unit>/backend/backend.slnx --verify-no-changes` も走らせる。
+            - **`scripts/` か `.github/` の差分があれば**、`scripts.test.js` を全件走らせる。
+              `REQUIRE_REPO_TESTS=1` が要るので、次の子プロセス形の 1 コマンドで呼ぶ:
+              `node -e "const r=require('child_process').spawnSync('node',['scripts/scripts.test.js'],{env:Object.assign({},process.env,{REQUIRE_REPO_TESTS:'1'}),stdio:'inherit'});process.exit(r.status===null?1:r.status);"`
+            - **`scripts/` / `.github/` / `docs/` / `.ai-context/` のどれかに差分があれば**、文書系の検査器を走らせる:
+              `node scripts/check-trace-blocks.js` / `node scripts/gen-knowledge-graph.js --check` /
+              `node scripts/check-doc-links.js` / `node scripts/check-doc-updated.js --base origin/develop` /
+              `node scripts/check-commit-messages.js` / `node scripts/check-plan-id-qualification.js`。
+            - **`deploy/helm/**` の差分があれば**、変更した chart に `helm lint <chart>` と
+              `helm template ci-check <chart>` を走らせる（`ci/*.yaml` があれば `-f` でも回す）。
+            - **理由に使えない語**: 「時間」「時間配分」「時間の都合」「時間優先」「差分が大きい」
+              「ファイル数が多い」「静的な読み取りに絞った」は、下限を省く理由として**認めない**。
+              ジョブの上限は 20 分で、ターン数の上限は無い。下限の検証を走らせても上限には遠く届かない。
+            - **ワークスペースへ書き込まない。** ファイルを作るコマンドは走らせない。出力ファイルを取る
+              引数（`--out` / `--publish-out` 等）がどうしても要るときは `/tmp/` 配下を指定し、
+              結果は標準出力で読む（#1317 相当の事故。ワークスペースへファイルを残さない）。
+            - 下限の各項目の結果（コマンドと件数・exit）は、本文の「確認できたこと」に列挙する。
 
             【使える Bash コマンドの一覧（正の一覧）・最重要】
             このレビューで実行できる Bash コマンドは**次で全部**である。**一覧に無いコマンドは
@@ -310,9 +339,11 @@ jobs:
               すべて拒否される。
             - **実行系**: `node` / `dotnet restore` / `dotnet build` / `dotnet test` /
               `dotnet format` / `dotnet --version` / `dotnet --info`。
+              helm は **`helm lint …` と `helm template …` の 2 形だけ**である（#1911。
+              `helm version` / `helm install` 等は拒否される）。
               シェルは **`bash -n <ファイル>`（構文検査のみ）** と
               **`bash scripts/k8s-local-down.test.sh`（引数なしの固定形）** の 2 形だけである
-              （#1723。他の `bash <スクリプト>` や `helm` は拒否される）。
+              （#1723。他の `bash <スクリプト>` は拒否される）。
             - Bash 以外では Read / Grep / Glob と GitHub MCP ツールが使える。
             よくある誤りと正しい手順:
             - **`python3` は許可されていない。** YAML / JSON の構文確認を `python3 -c` で
