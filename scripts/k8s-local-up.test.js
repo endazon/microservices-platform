@@ -13,12 +13,93 @@
  *
  * 外部依存ゼロ（Node 標準モジュールのみ・bash は前提ツール）。実行: node scripts/k8s-local-up.test.js
  * scripts/scripts.test.js と同型の運用（各 opt-in ゲート個別ではなく共通の一括 smoke test）。
+ *
+ * NFR, #1910: 試験を CPU 数ぶんの子プロセスへ振り分けて並列に走らせる（下の「並列実行」節）。
+ *   K8S_UP_TEST_SHARDS=1 で従来どおり 1 プロセスの直列実行になる。
  */
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
+
+// --- 並列実行（NFR, #1910） ---------------------------------------------------
+//
+// 時間のほぼすべては stub 下の `bash k8s-local-up.sh` の実行である（2026-10-12 実測: 251 回で全体の 97%）。
+// 1 回ごとは独立している（作業ディレクトリは毎回 mkdtemp・リポジトリへは書かない）が、ok() が同期の
+// spawnSync で 1 本ずつ回すため、CI（GitHub ホストランナー 4 vCPU）で 1 コアしか使っていなかった。
+// そこで親プロセスは自分自身を K8S_UP_TEST_SHARD=<i>/<n> で n 本起動し、各子は ok() の通し番号が
+// i（mod n）の試験だけを実行する。
+//
+// 🔴 検査は 1 本も減らさない。親は「各子の実行数の和 ＝ 試験の総数」かつ「全子が exit 0」を確かめ、
+//   どちらかが崩れたら赤にする（振り分けの取りこぼし・二重計上を黙って緑にしない）。
+// 🔴 名前が「前提」で**始まる**試験（ファイル冒頭の 2 件）は全子で実行する（計上は担当の子だけ）。下の「前提」節が
+//   言うとおり、ハーネスや実物の宣言が壊れたときに、無関係な試験より先にそこで落ちるためである。
+//   名前の途中に「前提」を含む試験（`#1850: 前提 —— …`・`#1159: G12 の前提 — …`・#1699 の 3 件）は対象にしない。
+//   いずれも自分の節だけの前提（リポジトリの values・テンプレート・バックアップの前提条件）を見る試験で、
+//   ハーネスの壊れを検出するものではない（壊れても他の節の試験は巻き込まれない）。
+// 🔴 試験の間で状態を受け渡さないこと（各子は自分の担当分しか実行しない）。トップレベルで runUp を呼んで
+//   複数の試験が共有する結果（DEFAULT など）は、各子が自分で作る。
+const SHARD_ENV = process.env.K8S_UP_TEST_SHARD;
+const SHARD = (() => {
+  if (!SHARD_ENV) return null;
+  const m = /^(\d+)\/(\d+)$/.exec(SHARD_ENV);
+  if (!m || Number(m[2]) < 1 || Number(m[1]) >= Number(m[2])) throw new Error(`K8S_UP_TEST_SHARD の形が不正: ${SHARD_ENV}（<i>/<n>・0 <= i < n）`);
+  return { index: Number(m[1]), count: Number(m[2]) };
+})();
+const SHARD_COUNT = (() => {
+  const v = process.env.K8S_UP_TEST_SHARDS;
+  if (v !== undefined && v !== '') {
+    if (!/^[1-9]\d*$/.test(v)) throw new Error(`K8S_UP_TEST_SHARDS は 1 以上の整数: ${v}`);
+    return Number(v);
+  }
+  const cpus = typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
+  return Math.max(1, Math.min(cpus, 8));
+})();
+
+if (SHARD === null && SHARD_COUNT > 1) {
+  const RESULT_RE = /^K8S_UP_SHARD_RESULT passed=(\d+) total=(\d+)$/m;
+  const started = Date.now();
+  const children = Array.from({ length: SHARD_COUNT }, (_, i) => new Promise((resolve) => {
+    const child = spawn(process.execPath, [__filename], {
+      env: { ...process.env, K8S_UP_TEST_SHARD: `${i}/${SHARD_COUNT}` },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (err += d));
+    child.on('close', (code, signal) => resolve({ i, code, signal, out, err }));
+  }));
+  Promise.all(children).then((results) => {
+    let sum = 0;
+    const totals = new Set();
+    let failed = false;
+    for (const r of results) {
+      process.stdout.write(`--- shard ${r.i}/${SHARD_COUNT}\n${r.out.replace(RESULT_RE, '').trimEnd()}\n`);
+      if (r.err) process.stderr.write(r.err);
+      const m = RESULT_RE.exec(r.out);
+      if (r.code !== 0 || !m) {
+        failed = true;
+        process.stderr.write(`✗ shard ${r.i}/${SHARD_COUNT} が失敗した（exit=${r.code} signal=${r.signal}${m ? '' : '・結果行なし'}）\n`);
+        continue;
+      }
+      sum += Number(m[1]);
+      totals.add(Number(m[2]));
+    }
+    if (!failed && (totals.size !== 1 || sum !== [...totals][0])) {
+      failed = true;
+      process.stderr.write(`✗ 振り分けの計上が合わない: 実行の和=${sum} 総数=${[...totals].join(',')}\n`);
+    }
+    if (failed) {
+      process.exitCode = 1;
+      return;
+    }
+    process.stdout.write(`\n✓ ${sum} tests passed（${SHARD_COUNT} 並列・${((Date.now() - started) / 1000).toFixed(1)} 秒）\n`);
+  });
+  // 親は試験本体を実行しない（CommonJS のトップレベル return）。
+  return;
+}
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 // #953: `kind: HelmChartConfig` の宣言。**ハーネスの入力でもある**（下の helm-controller 模型が読む）。
@@ -453,6 +534,22 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '', secrets, patches, realmImport, realmImportModes, valuesFiles };
 }
 
+// NFR, #1910: 複数の試験が共有する runUp の結果を、最初に読まれたときに 1 回だけ作る。
+// 並列実行（冒頭の節）では各子が担当分しか実行しないため、トップレベルで即時に作ると、どの試験も
+// 読まない子でも bash の実行が走る。読み手の側の書き方（`X.lines` / `X.status` など）は変えない。
+// 🔴 読み手は `X.prop` 形式のプロパティ参照に限る（列挙・スプレッド不可）。`Object.keys(X)`・`{ ...X }`・
+//   `JSON.stringify(X)` は列挙のトラップを転送してはいるが試験していないので、契約として保証しない。要るなら runUp を直接呼ぶ。
+function lazyRunUp(extraEnv) {
+  let value = null;
+  const get = () => (value === null ? (value = runUp(extraEnv)) : value);
+  return new Proxy({}, {
+    get: (_t, k) => get()[k],
+    has: (_t, k) => k in get(),
+    ownKeys: () => Reflect.ownKeys(get()),
+    getOwnPropertyDescriptor: (_t, k) => Object.getOwnPropertyDescriptor(get(), k),
+  });
+}
+
 // 採取ログから `k3d cluster create ...` の 1 行を取り出す（無ければ null）。
 function clusterCreateLine(lines) {
   return lines.find((l) => l.startsWith('k3d cluster create ')) || null;
@@ -462,8 +559,14 @@ const anyLineHas = (lines, needle) => lines.some((l) => l.includes(needle));
 // --- テストランナー（scripts.test.js と同型） --------------------------------
 
 let passed = 0;
+let okTotal = 0; // NFR, #1910: ok() の通し番号（＝試験の総数）。振り分けと親の突合に使う
 function ok(name, fn) {
+  const assigned = SHARD === null || okTotal % SHARD.count === SHARD.index;
+  okTotal++;
+  // 名前が「前提」で始まる試験は全子で実行する（上の「並列実行」節。`#NNNN: 前提` の節内の前提は含めない）。計上は担当の子だけ。
+  if (!assigned && !name.startsWith('前提')) return;
   fn();
+  if (!assigned) return;
   passed++;
   process.stdout.write(`  ok  ${name}\n`);
 }
@@ -3798,8 +3901,8 @@ const isGatewayInstall = (l) => l.startsWith('helm upgrade --install istio-ingre
 const isHelmChartConfigProbe = (l) =>
   l.startsWith('kubectl ') && l.includes('get helmchartconfig traefik') && l.includes('valuesContent');
 
-const EDGE_FRESH = runUp({ ISTIO: '1', LOCALEDGE: '1' });
-const EDGE_MIGRATED = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1' });
+const EDGE_FRESH = lazyRunUp({ ISTIO: '1', LOCALEDGE: '1' });
+const EDGE_MIGRATED = lazyRunUp({ ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1' });
 
 ok('#1691: 移行済み（HelmChartConfig traefik が service.enabled: false）なら Traefik へ戻さず、待たずに完走する', () => {
   const r = EDGE_MIGRATED;
@@ -4506,7 +4609,7 @@ ok('SYNTHETIC 未設定: 合成監視が 1 バイトも現れない（既定オ�
   }
 });
 
-const SYNTHETIC_ON = runUp({ SYNTHETIC: '1' });
+const SYNTHETIC_ON = lazyRunUp({ SYNTHETIC: '1' });
 
 ok('SYNTHETIC=1: 標識の許可集合が除外の 3 サービスすべてへ与えられる', () => {
   assert.strictEqual(SYNTHETIC_ON.status, 0, `非0終了: ${SYNTHETIC_ON.stderr}`);
@@ -4627,7 +4730,7 @@ ok('#1564: 既定では platform-backup のイメージもビルドし、k3d へ
   assert.ok(!/WARN: k3d-local\/platform-backup/.test(DEFAULT.stderr), '成功したのに WARN を出した');
 });
 
-const BACKUP_BUILD_FAILS = runUp({ STUB_DOCKER_BUILD_FAIL: 'platform-backup' });
+const BACKUP_BUILD_FAILS = lazyRunUp({ STUB_DOCKER_BUILD_FAIL: 'platform-backup' });
 
 ok('🔴 #1564: platform-backup のイメージだけビルドに失敗しても、起動器は最後まで進んで 0 で終わる', () => {
   assert.strictEqual(
@@ -4674,7 +4777,7 @@ ok('🔴 #1564 / #1689: 版の解決に失敗したとき（ミラーの 404）�
 });
 
 // 2026-09-28 の稼働クラスタでの実ログ（#1689）。資格情報ヘルパーがメタデータの取得で失敗した。
-const BACKUP_BUILD_FAILS_CREDS = runUp({
+const BACKUP_BUILD_FAILS_CREDS = lazyRunUp({
   STUB_DOCKER_BUILD_FAIL: 'platform-backup',
   STUB_DOCKER_BUILD_FAIL_LOG: [
     '#2 [internal] load metadata for docker.io/library/postgres:16.15-alpine3.24@sha256:7218',
@@ -4699,7 +4802,7 @@ ok('🔴 #1689 / #1709: 資格情報ヘルパーの失敗（error getting creden
 });
 
 // sha256 の不一致は「同じ版の中身が変わった」であり、版を上げて上書きしてよいものではない —— 判別不能の代表に使う。
-const BACKUP_BUILD_FAILS_UNKNOWN = runUp({
+const BACKUP_BUILD_FAILS_UNKNOWN = lazyRunUp({
   STUB_DOCKER_BUILD_FAIL: 'platform-backup',
   STUB_DOCKER_BUILD_FAIL_LOG: [
     '/tmp/tmp.x/age-1.3.1-r6.apk: FAILED',
@@ -4869,8 +4972,8 @@ ok('#1688: チャートは `rollingUpdate: null` に頼らない（SSA では既
   }
 });
 
-const RECREATE_FRESH = runUp({});
-const RECREATE_EXISTING = runUp({ STUB_LIVE_ROLLINGUPDATE: 'wiki-js' });
+const RECREATE_FRESH = lazyRunUp({});
+const RECREATE_EXISTING = lazyRunUp({ STUB_LIVE_ROLLINGUPDATE: 'wiki-js' });
 
 ok('#1688: 既存リリース（wiki-js に rollingUpdate が残る）では helm upgrade の前に strategy を Recreate へ寄せる', () => {
   const r = RECREATE_EXISTING;
@@ -5733,4 +5836,9 @@ ok('#1850: 前提 —— リポジトリの values（チャート既定・values
   assert.strictEqual(look(probe), 'rc=1\n- name: Probe\n  value: x\n', '実物の values の authorization の extraEnvAppend を判定器が読めていない');
 });
 
-process.stdout.write(`\n✓ ${passed} tests passed\n`);
+if (SHARD === null) {
+  process.stdout.write(`\n✓ ${passed} tests passed\n`);
+} else {
+  // 親が突合する結果行（親はこの行を出力から外して表示する）
+  process.stdout.write(`K8S_UP_SHARD_RESULT passed=${passed} total=${okTotal}\n`);
+}

@@ -5,11 +5,12 @@ status: Accepted
 related_ids: [NFR, ADR-0007, IADR-0182, IADR-0232]
 author: claude
 created: 2026-10-07
-updated: 2026-10-07
+updated: 2026-10-12
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0007（CI/CD）
 related_specs:
   - ../specs/20261007_1768_codeowners-static-checks-gate.md
+  - ../specs/20261012_1910_static-checks-off-critical-path.md
 ---
 
 # IADR-0505: CODEOWNERS を置き、`static-checks` を `build-and-test` の `needs` で門に入れる（#1768）
@@ -93,6 +94,8 @@ B は DoD を条件付きにしても、ルールセット側を実態に合わ�
 
 - `static-checks` の赤が `build-and-test` の赤としてマージを止める。classic 保護が文書どおり `build-and-test` を必須にしている限り、所有者の操作は要らない（classic 保護は 403 で再測定できていない。ルールセット側の必須 check は `image-build` だけである）。
 - 実測の余裕（最小 28 秒）を `static-checks` の伸びが食い潰すと、`build-and-test` の終了が遅れる。そのときは `check-ci-latency.js` の監視（`build-and-test` の中央値）に現れる。直し方は `static-checks` を割る（node 検査器を 2 ジョブへ）か、(a) へ切り替える。
+
+  ［2026-10-12 追記 / #1910］**この想定が起きた。** 10/9 以降 `static-checks` の所要は 117〜149 秒に伸び、PR の run 30 本中 13 本で `build-and-test` の律速になった（開始を 10〜27 秒遅らせた）。伸びのほぼすべてはステップ「Smoke-test k8s-local-up opt-in gates」（`scripts/k8s-local-up.test.js`）で、約 40 秒から約 110 秒になった。原因は 1 コミットの退行ではなく、新しい門の試験の積み増しで stub 下の `k8s-local-up.sh` の実行が 175 回 → 251 回に増えたことと、それを 1 コアで直列に回していたことである。直し方は上の 2 案（ジョブを割る・(a)）ではなく、**試験の中を CPU 数ぶんの子プロセスへ振り分けて並列に走らせる**ことにした。ジョブ ID・ステップ・`needs`・必須 check 名は変えず、本 IADR の決定 3〜5 はそのまま成り立つ。ジョブを割る案は新ジョブ自体が約 117 秒かかり、`needs` に入れると律速の持ち主が替わるだけになるので採らなかった。選択肢の比較と実測は作業仕様書 `20261012_1910_static-checks-off-critical-path` にある。上の実測表（65〜80 秒・最小 28 秒）は 2026-10-07 時点の記録として残す。
 - CODEOWNERS は、管理者ロールでない主体（`bypass_actors` に無い協力者など）がマージするときに効く。管理者の操作では効かない現況は変わらない。
 
 ## 残余リスク

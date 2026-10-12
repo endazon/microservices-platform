@@ -1182,8 +1182,10 @@ jobs:
     # 差分が無い」を意味し合格として扱う）。
     # NFR, #1686（2026-10-02 再裁定）: backend-verify-build（backend.slnx 全体の build。脚は閉包しか建てない）も拾う。
     # NFR, #1768 / IADR-0505: 依存ゼロの node 検査器の集約 static-checks も拾う。単独の必須 check 名にはしない
-    # （ブランチ保護の変更が要る）。直近 16 本の実測（2026-10-07）では static-checks（65〜80 秒）は
-    # すべて本ジョブの開始より前（最小 28 秒前）に終わっており、律速を延ばしていない。結果の判定は最後のステップで行う（カバレッジの報告を止めないため）。
+    # （ブランチ保護の変更が要る）。結果の判定は最後のステップで行う（カバレッジの報告を止めないため）。
+    # 🔴 NFR, #1910: static-checks がここで律速にならないことは前提ではなく、実測で保っている（10/9〜10/10 は
+    # k8s-local-up.test.js の積み増しで 117〜149 秒に伸び、PR の約半数で律速になった。同試験を並列実行にして戻した）。
+    # 所要の現況は docs/ai-workflow.md の必須 check 表の static-checks 行が正本。遅くなれば check-ci-latency.js の監視に現れる。
     needs: [discover-units, backend-build, backend-verify-build, submodule-changes, submodule-backend-build, static-checks]
     if: always()
     steps:
