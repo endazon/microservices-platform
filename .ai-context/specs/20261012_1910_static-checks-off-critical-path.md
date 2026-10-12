@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — static-checks を build-and-test の律速から外す（k8s-local-up.test.js の並列実行。#1910）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - ADR-0007
@@ -149,4 +149,14 @@ develop への push の run（成功のみ）で、`static-checks` の所要と�
 
 ## 結果
 
-（PR の CI の実測を記入する）
+PR #1913 の CI（run 38241882456・コミット 1 本目。`ci.yml` のコメントを触ったため `submodule-backend-build` も走った）:
+
+| 指標 | 変更前（develop 10/10 の push 10 本） | 変更後（PR #1913） |
+| --- | --- | --- |
+| k8s-local-up の段 | 86〜113 秒 | **43 秒**（ログ: `✓ 316 tests passed（4 並列・43.4 秒）`） |
+| `static-checks` の所要 | 120〜143 秒 | **76 秒** |
+| `static-checks` の終了（run の最初のジョブ作成から） | PR 30 本で 94〜215 秒（多くは 118〜151 秒） | **79 秒** |
+| 他の needs の終了 | PR 30 本で最小 113 秒 | 326 秒（submodule ユニットのビルドを含む） |
+
+`static-checks` の終了（79 秒）は、直近 PR 30 本の「他の needs の終了」の最小（113 秒）より 34 秒早い。ランナーは 4 vCPU で、試験の数（316 件）は並列・直列とも同じ。
+ローカル（4 コア）では直列 186〜224 秒 → 並列 66 秒。
