@@ -3,15 +3,15 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-10
+updated: 2026-10-13
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02, NFR-17, NFR-19, NFR-28]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
-iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531]
-specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models]
-issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783]
+iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531, IADR-0535]
+specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level]
+issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -311,7 +311,12 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
   （`text/event-stream`）は触らない（ストリーム経路は未知型を素通しでき壊れていない）。
 - **既知型だけの応答は 1 バイトも触らない**（サニタイズ自体が本文を変える経路を既定で持たない）。
 - 全ブロックが未知なら例外にせず `content` 空へ縮退し、既存の空応答分岐（呼び出し側の安全既定）へ合流する。
-- 除去したブロック型は warn ログに残す（**型名のみ**。本文は載せない）。
+- 除去したブロック型はログに残す（**型名のみ**。本文は載せない）。段階は形で分ける（#1917）:
+  - `thinking` / `redacted_thinking` だけを除去し、既知ブロックが残る → **debug**（5.5 系では毎応答の通常の形）。
+  - それ以外の型（`server_tool_use`・将来型・型名の無い要素）を除去した → **warn**（想定外の型名を載せる）。
+  - 除去の結果 `content` が空になった → **warn**（型を問わない。本文が失われたことに気づけるように）。
+- 除去件数は計器 `llm.anthropic.content_blocks_dropped`（型 `thinking` / `redacted_thinking` / `other`）で数える
+  （LLM 補完メトリクスの可観測性仕様書）。
 
 本節は content の解釈に関する規定であり、送信可否（`Sent`）・終了理由（`StopReason`）の
 軸（前節）とは独立である。`refusal` の本文破棄は thinking の有無に関わらず維持される。

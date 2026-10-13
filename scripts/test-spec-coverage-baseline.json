@@ -162,6 +162,7 @@
       "AnthropicClientWiringTests",
       "AnthropicContentBlockSanitizerTests",
       "AnthropicHttpClientTests",
+      "AnthropicResponseSanitizingHandlerLogLevelTests",
       "ClaudeProviderRequestShapeTests",
       "ClaudeProviderStopReasonTests",
       "ClaudeProviderThinkingTests",

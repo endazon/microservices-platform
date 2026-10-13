@@ -86,7 +86,8 @@ public class AnthropicClientWiringTests
     public void Create_BuildsSanitizingHandlerOverDecompressingHttpClientHandler()
     {
         using var client = AnthropicHttpClient.Create(
-            new ConfigurationBuilder().Build(), NullLogger<AnthropicResponseSanitizingHandler>.Instance);
+            new ConfigurationBuilder().Build(), NullLogger<AnthropicResponseSanitizingHandler>.Instance,
+            TestContentBlockMetrics.Create());
 
         AssertSanitizingChain(HandlerOf(client));
     }

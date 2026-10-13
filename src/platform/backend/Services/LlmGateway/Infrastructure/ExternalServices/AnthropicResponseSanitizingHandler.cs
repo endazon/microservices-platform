@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text;
+using LlmGateway.Common.Observability;
 
 namespace LlmGateway.Infrastructure.ExternalServices;
 
@@ -15,7 +16,15 @@ namespace LlmGateway.Infrastructure.ExternalServices;
 //   - SSE（text/event-stream）は触らない。実測で SDK のストリーム経路は thinking ブロックと
 //     thinking_delta / signature_delta を素通しでき（本文デルタも正常）、壊れていない。
 //     ストリームを丸ごとバッファリングして遅延を持ち込まないためでもある。
-public sealed class AnthropicResponseSanitizingHandler(ILogger<AnthropicResponseSanitizingHandler> logger)
+//
+// IADR-0535 (#1917): ログの段階を「想定内」と「想定外」で分ける（IADR-0114 決定 5 を改める）。
+//   - thinking / redacted_thinking だけを除去し、既知ブロックが残る → Debug（5.5 系では毎応答の通常の形）
+//   - それ以外の型（server_tool_use・将来型・型名の無い要素）を除去した → Warning
+//   - 除去の結果 content が空になった → Warning（型を問わない。本文が失われたことに気づけるように）
+//   件数は型を問わず計器（AnthropicContentBlockMetrics）で数える。
+public sealed class AnthropicResponseSanitizingHandler(
+    ILogger<AnthropicResponseSanitizingHandler> logger,
+    AnthropicContentBlockMetrics metrics)
     : DelegatingHandler
 {
     private const string JsonMediaType = "application/json";
@@ -34,20 +43,49 @@ public sealed class AnthropicResponseSanitizingHandler(ILogger<AnthropicResponse
         // ReadAsStringAsync は本文を HttpContent 内部へバッファリングするため、書き換えない場合は
         // 応答をそのまま返せば後段（SDK）が同じ本文を読み直せる。
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        if (!AnthropicContentBlockSanitizer.TrySanitize(body, out var sanitized, out var droppedTypes))
+        if (!AnthropicContentBlockSanitizer.TrySanitize(body, out var sanitized, out var droppedTypes, out var keptCount))
         {
             // 既知型だけの応答は 1 バイトも触らない。「サニタイズ自体が本文を変えてしまう」経路を
             // 既定で持たないため、再直列化も差し替えも行わない。
             return response;
         }
 
-        // 落としたブロック型は必ず記録する。無言で捨てると、モデル側の応答形状が変わったことに
-        // 気づけないまま本文が空になり得る（型名のみ・本文は載せない＝機微を残さない）。
-        logger.LogWarning(
-            "Anthropic 応答から SDK 未対応の content ブロックを除去しました（型: {DroppedTypes}）。本文と既知ブロックは保持しています。",
-            string.Join(", ", droppedTypes));
+        metrics.RecordDropped(droppedTypes);
+        LogDropped(droppedTypes, keptCount);
 
         return ReplaceContent(response, sanitized);
+    }
+
+    // 落としたブロック型は必ず記録する（型名のみ・本文は載せない＝機微を残さない。IADR-0114 決定 5）。
+    // 段階は IADR-0535 の 3 条件で決める（クラス冒頭）。
+    private void LogDropped(IReadOnlyList<string> droppedTypes, int keptCount)
+    {
+        var types = string.Join(", ", droppedTypes);
+        if (keptCount == 0)
+        {
+            logger.LogWarning(
+                "Anthropic 応答の content ブロックをすべて除去し、content が空になりました（除去した型: {DroppedTypes}）。"
+                + "本文が無い応答として扱われます。",
+                types);
+            return;
+        }
+
+        var unexpected = droppedTypes
+            .Where(t => !AnthropicContentBlockMetrics.ExpectedDroppedTypes.Contains(t))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (unexpected.Count > 0)
+        {
+            logger.LogWarning(
+                "Anthropic 応答から想定外の content ブロック型を除去しました（想定外の型: {UnexpectedTypes}／除去した型: {DroppedTypes}）。"
+                + "本文と既知ブロックは保持しています。",
+                string.Join(", ", unexpected), types);
+            return;
+        }
+
+        logger.LogDebug(
+            "Anthropic 応答から thinking 系の content ブロックを除去しました（型: {DroppedTypes}）。本文と既知ブロックは保持しています。",
+            types);
     }
 
     // ReadAsStringAsync で消費済みのストリームを、後段（SDK）が再度読めるように詰め直す。

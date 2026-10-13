@@ -14,9 +14,10 @@ related_ids:
   - IADR-0112
   - IADR-0113
   - ADR-0038
+  - IADR-0535
 author: claude
 created: 2026-08-01
-updated: 2026-08-18
+updated: 2026-10-13
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)
   - planning:projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Opus 5 へ改定・Accepted)
@@ -150,6 +151,12 @@ SDK 既定の内部クライアントの設定に依存しないよう `Automati
 無言で捨てるとモデル側の応答形状の変化に気づけないまま本文が空になり得る。ログには**型名のみ**を出し、
 本文は載せない（プロンプト・応答の全量記録は呼び出し側の `LogPrompts` の管轄であり、既定オフの
 安全側設定をゲートウェイ側から迂回させない）。
+
+> **［2026-10-13 追記 / #1917］決定 5 のログ段階は [IADR-0535](./IADR-0535_anthropic-content-block-drop-log-level.md) が改めた。本文は書き換えない。**
+> 5.5 系（IADR-0531）では thinking が全割当モデルで無効にできない通常の応答の形になり、1 応答 1 行の WARN が
+> PoC の 7 時間で 685 行になった。現行は「`thinking` / `redacted_thinking` だけの除去で既知ブロックが残る → Debug」
+> 「想定外の型の除去・除去で content が空 → Warning」で、件数は計器 `llm.anthropic.content_blocks_dropped` で数える。
+> **「型名のみを載せ、本文は載せない」の線は変わらない。** `status` は `Accepted` に据え置く（決定 1〜4・6 は不変）。
 
 **決定6: 全ブロックが未知なら content 空へ縮退する（例外にしない）。**
 呼び出し側は「空応答」として既存の安全既定（AST では Hold／プレースホルダ）で扱える。

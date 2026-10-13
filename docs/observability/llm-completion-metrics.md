@@ -3,15 +3,15 @@ title: LLM 補完メトリクス（終了理由・拒否率）ログ・可観測
 type: observability-spec
 status: in-progress
 created: 2026-07-28
-updated: 2026-10-08
+updated: 2026-10-13
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, NFR-19]
 adrs: [ADR-0006, ADR-0010, ADR-0025, ADR-0038, ADR-0044]
-iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374]
-specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability]
-issues: [#380, #786, #787, #863, #1091, #1819]
+iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374, IADR-0114, IADR-0535]
+specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability, 20261013_1917_thinking-strip-log-level]
+issues: [#380, #786, #787, #863, #1091, #1819, #1917]
 -->
 
 # 可観測性仕様書: LLM 補完の終了理由（拒否率）
@@ -212,6 +212,32 @@ Prometheus は**起きていないラベル値を 0 として持たない**。�
 sum(increase(llm_completion_total{llm_upstream_status="rate_limited"}[7d]))
 # 陽性対照: 同じ期間に計器そのものが動いていたか（これが空なら上の空には意味が無い）
 sum(increase(llm_completion_total{llm_upstream_status="none"}[7d]))
+```
+
+## 応答 content ブロックの除去件数（`llm.anthropic.content_blocks_dropped`・#1917）
+
+Claude の非ストリーミング応答から、SDK が解釈できない content ブロックを解析前に除去した件数である
+（除去そのものの規定は LLM 送信先切替の機能仕様書 §応答 content ブロック）。
+
+| 項目 | 値 |
+| --- | --- |
+| Meter 名 | `microservices-platform.llm-gateway`（上と同じ） |
+| 計器 | `llm.anthropic.content_blocks_dropped`（`Counter<long>`・単位 `{block}`）。**除去したブロック 1 個につき 1** |
+| Prometheus 側の名前 | `llm_anthropic_content_blocks_dropped_total` |
+| 属性 | `llm.content_block_type` = `thinking` / `redacted_thinking` / `other`（**3 値に閉じる**。型名は上流が決める非有界な値なので、想定内の 2 型以外は `other` へ集約する） |
+
+- 5.5 系は 3 モデルとも thinking を無効にできないため、**`thinking` が増え続けるのは通常の形**である。
+  ログは debug へ下げ、件数はこの計器で読む（1 応答 1 行の warn は、PoC の 7 時間で 685 行になり本物の警告を埋めた）。
+- **`other` の出現は応答形状の変化**（API が新しいブロック型を返し始めた）を表す。同時にゲートウェイの warn
+  （想定外の型名を構造化値 `UnexpectedTypes` に載せる）が出るので、型の原文はログで確かめる。
+- 除去の結果 `content` が空になった応答も warn が出る（型を問わない）。計器は除去したブロックを数えるだけで、
+  空になったかどうかは属性に持たない。
+
+```promql
+# 想定外の型の除去（0 であるのが通常）
+sum(increase(llm_anthropic_content_blocks_dropped_total{llm_content_block_type="other"}[1d]))
+# 型別の除去件数の推移
+sum by (llm_content_block_type) (rate(llm_anthropic_content_blocks_dropped_total[1h]))
 ```
 
 ## しきい値の方針（アラート）
