@@ -41,9 +41,19 @@ public static class AnthropicContentBlockSanitizer
     /// 呼び出し側は元の本文をそのまま使う（既知型だけの応答は 1 バイトも触らない）。
     /// </summary>
     public static bool TrySanitize(string json, out string sanitized, out IReadOnlyList<string> droppedTypes)
+        => TrySanitize(json, out sanitized, out droppedTypes, out _);
+
+    /// <summary>
+    /// <see cref="TrySanitize(string, out string, out IReadOnlyList{string})"/> に加え、除去後に残った
+    /// 既知ブロックの個数を返す（IADR-0535 / #1917: 0 個＝content 空への縮退は想定外として Warning にする）。
+    /// 書き換えなし（false）のときは 0。
+    /// </summary>
+    public static bool TrySanitize(
+        string json, out string sanitized, out IReadOnlyList<string> droppedTypes, out int keptCount)
     {
         sanitized = json;
         droppedTypes = [];
+        keptCount = 0;
 
         JsonDocument document;
         try
@@ -68,9 +78,12 @@ public static class AnthropicContentBlockSanitizer
             }
 
             var dropped = new List<string>();
+            var kept = 0;
             foreach (var block in content.EnumerateArray())
             {
-                if (!IsKnown(block))
+                if (IsKnown(block))
+                    kept++;
+                else
                     dropped.Add(TypeNameOf(block));
             }
 
@@ -78,6 +91,7 @@ public static class AnthropicContentBlockSanitizer
                 return false;
 
             droppedTypes = dropped;
+            keptCount = kept;
             sanitized = Rewrite(root, content);
             return true;
         }

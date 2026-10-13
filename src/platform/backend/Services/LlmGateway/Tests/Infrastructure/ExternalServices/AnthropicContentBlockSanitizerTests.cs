@@ -130,7 +130,8 @@ public class AnthropicContentBlockSanitizerTests
 
     private static async Task<HttpResponseMessage> SendAsync(string body, string mediaType, HttpStatusCode status)
     {
-        var handler = new AnthropicResponseSanitizingHandler(NullLogger<AnthropicResponseSanitizingHandler>.Instance)
+        var handler = new AnthropicResponseSanitizingHandler(
+            NullLogger<AnthropicResponseSanitizingHandler>.Instance, TestContentBlockMetrics.Create())
         {
             InnerHandler = new StubHandler(body, mediaType, status),
         };

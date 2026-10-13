@@ -170,7 +170,7 @@ public class ClaudeProviderThinkingTests
 
         """;
         HttpMessageHandler handler = new AnthropicResponseSanitizingHandler(
-            NullLogger<AnthropicResponseSanitizingHandler>.Instance)
+            NullLogger<AnthropicResponseSanitizingHandler>.Instance, TestContentBlockMetrics.Create())
         {
             InnerHandler = new StubHandler(sse, "text/event-stream"),
         };
@@ -196,7 +196,7 @@ public class ClaudeProviderThinkingTests
         if (sanitize)
         {
             handler = new AnthropicResponseSanitizingHandler(
-                NullLogger<AnthropicResponseSanitizingHandler>.Instance)
+                NullLogger<AnthropicResponseSanitizingHandler>.Instance, TestContentBlockMetrics.Create())
             {
                 InnerHandler = handler,
             };

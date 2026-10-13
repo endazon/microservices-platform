@@ -97,7 +97,8 @@ public class AnthropicHttpClientTests
     public void Create_AppliesResolvedTimeoutToHttpClient(string? value, int expectedSeconds)
     {
         using var client = AnthropicHttpClient.Create(
-            Config(value), NullLogger<AnthropicResponseSanitizingHandler>.Instance);
+            Config(value), NullLogger<AnthropicResponseSanitizingHandler>.Instance,
+            TestContentBlockMetrics.Create());
 
         client.Timeout.Should().Be(TimeSpan.FromSeconds(expectedSeconds));
     }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using LlmGateway.Common.Observability;
 
 namespace LlmGateway.Infrastructure.ExternalServices;
 
@@ -45,13 +46,15 @@ public static class AnthropicHttpClient
     // （システムプロキシ設定は既定で引き継がれる）で、応答圧縮だけは明示的に有効化する。
     // IADR-0531 (#1875): 最も外側に要求本文の整形（用途別 effort の注入）を置く。
     // 鎖: AnthropicRequestShapingHandler → AnthropicResponseSanitizingHandler → HttpClientHandler。
+    // IADR-0535 (#1917): サニタイズは除去件数を計器（sanitizerMetrics）へ数える。
     public static HttpClient Create(
         IConfiguration configuration,
         ILogger<AnthropicResponseSanitizingHandler> sanitizerLogger,
+        AnthropicContentBlockMetrics sanitizerMetrics,
         ILogger? logger = null) =>
         new(new AnthropicRequestShapingHandler
         {
-            InnerHandler = new AnthropicResponseSanitizingHandler(sanitizerLogger)
+            InnerHandler = new AnthropicResponseSanitizingHandler(sanitizerLogger, sanitizerMetrics)
             {
                 InnerHandler = new HttpClientHandler
                 {

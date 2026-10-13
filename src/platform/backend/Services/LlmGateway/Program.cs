@@ -34,6 +34,8 @@ builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 // AddPlatformObservability を変更せずにサービス固有の Meter を追加できる。
 builder.Services.AddMetrics();
 builder.Services.AddSingleton<LlmCompletionMetrics>();
+// FR-11, IADR-0535 (#1917): Anthropic 応答から除去した content ブロックの件数（同じ Meter）。
+builder.Services.AddSingleton<AnthropicContentBlockMetrics>();
 
 // FR-10, NFR, ADR-0006, ADR-0044 決定 1・3 (#443): LLM 利用実績（用途別・モデル別のトークン累計と
 // 金額換算）。**金額換算は単価表を読む側＝このゲートウェイで行う**（Grafana のクエリに単価を書かない）。
@@ -78,6 +80,7 @@ builder.Services.AddSingleton(sp => new AnthropicClient(
     AnthropicHttpClient.Create(
         builder.Configuration,
         sp.GetRequiredService<ILogger<AnthropicResponseSanitizingHandler>>(),
+        sp.GetRequiredService<AnthropicContentBlockMetrics>(),
         sp.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AnthropicHttpClient).FullName!))));
 builder.Services.AddHttpClient();
 
