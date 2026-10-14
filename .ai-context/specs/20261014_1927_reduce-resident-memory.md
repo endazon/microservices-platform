@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — PoC のノードの常駐メモリを下げる（MSP の .NET に AST と同じ GC の設定・Keycloak のヒープ・観測スタックの Go のヒープと Loki の保持）（#1927）
 type: spec
-status: draft
+status: done
 related_ids: [NFR, NFR-05, ADR-0006, ADR-0008, ADR-0111, IADR-0066, IADR-0077, IADR-0210, IADR-0539]
 author: claude
 created: 2026-10-14
@@ -126,6 +126,19 @@ issue: "#1927"
 | 6 | Keycloak のヒープ上限 × limits ＋非ヒープの見積り（512Mi）が limits 以下 | 同上 |
 | 7 | reset-floor は 2 レプリカのまま（計画 ADR-0111） | 既存の `reset-floor.test.js` が緑 |
 | 8 | `helm lint`・`check-deploy-manifests`・文書系の検査器が緑。`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` は IADR の欠番（0537・0538 は #1925・#1926 で未マージ）だけで赤 | 実行ログ |
+
+## 検証の結果（2026-10-14・helm v3.16.4・kubectl v1.31.4・kubeconform v0.6.7 をスクラッチに一時取得）
+
+| 検証 | 結果 |
+| --- | --- |
+| `helm lint`（既定・`-f values-local.yaml`） | 2 回とも `1 chart(s) linted, 0 chart(s) failed` |
+| `helm template` の前後の差分（既定・values-local） | どちらも追加 90 行だけ ＝ 15 Deployment × （`DOTNET_gcServer` "0"・`DOTNET_GCConserveMemory` "5"・`DOTNET_GCHeapHardLimitPercent` "60" の 3 項目 × 2 行）。削除 0 行。frontend・seaweedfs・wiki-js は不変 |
+| `kubectl kustomize deploy/local/*`・`deploy/mail-relay` の前後の差分（13 の描画） | 差分は 4 つだけ: infra・infra-persistence（Keycloak の `JAVA_OPTS_KC_HEAP` の 1 行 → 2 行）、observability・observability-persistence（loki-config の `ingester` 5 行・tempo と loki の `env: GOMEMLIMIT` 各 3 行）。他の 9 は 0 行 |
+| `node scripts/resident-memory.test.js` | 11 件合格（変異 3 件を含む） |
+| `node scripts/check-deploy-manifests.js`（と `--self-test`） | OK: chart 1 件 / overlay 17 件がレンダリングでき、スキーマにも適合（self-test 9 件） |
+| 既存の描画の試験（`helm-synthetic-monitor`・`helm-private-notes-sync-authz`・`helm-ast-kb-ingress`・`helm-llm-provider-keys`・`helm-dept-sync-values`・`helm-mcp-client-provisioning`・`reset-floor`・`platform-backup`・`k8s-local-up`）と `check-collector-self-telemetry`・`check-prometheus-alerts-parity` | すべて緑（k8s-local-up は 316 件） |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **赤（既知）**: `check-adr-numbering` が `IADR-0537`・`IADR-0538` の欠番で落ちる（#1925・#1926 が未マージ）。両方を一時の stub と索引の行で埋めた作業木では **1044 件すべて合格**（stub は消した） |
+| 文書系（`check-trace-blocks`・`gen-knowledge-graph --check`・`check-cross-repo-refs`・`check-plan-id-qualification`・`check-doc-links`・`check-reading-budget`・`check-doc-type-vocabulary`・`check-workflow-job-refs`・`check-test-traceability` ほか） | 緑（`check-adr-numbering` だけが上と同じ欠番で赤） |
 
 ## 計画書との差異
 
