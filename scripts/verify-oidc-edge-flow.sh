@@ -237,20 +237,33 @@ next_step() { step "$((STEPS + 1))/$TOTAL" "$1"; }
 # 引数: クッキー jar・出力ファイル。出力ファイルには全ページの items の配列を書く（下の判定はこれまでどおり配列を読む）。
 # - 非 200 で止まったら、その応答の本文をそのまま書く（判定は DOC_LIST_CODE を先に見る）。
 # - ページの形でなければ配列でない値（"bad"）を書く —— 配列の判定が -1 / 'bad' へ倒れる（fail-closed）。
-# 🔴 total は ABAC で絞った後の件数である（権限外の文書は数えない）。辿るのは total まで。上限 50 ページ（5,000 件）で止める。
+# 🔴 total は ABAC で絞った後の件数である（権限外の文書は数えない）。辿るのは total まで。上限 50 ページ（5,000 件）。
+# 🔴 **一部だけを「全件」として扱わない**（fail-closed）。上限に達しても total に届かない・後続のページが空で total に届かない
+#    のどちらも、集めた件数と total が合わないので、配列でない値（"bad"）を書き、理由を標準エラーへ出す。
 DOC_LIST_CODE=""
 fetch_document_list() {
-  local jar="$1" out="$2" page offset=0 total pages=0
+  local jar="$1" out="$2" page offset=0 total=0 pages=0 got=0 before
   page=$(mktemp)
   printf '[]' > "$out"
   while :; do
     DOC_LIST_CODE=$(curl -s $CURL_K -m 30 -o "$page" -w '%{http_code}' \
       -b "$jar" -H "$CSRF_HDR" "$EDGE_URL/bff/documents?offset=$offset&limit=100")
-    if [ "$DOC_LIST_CODE" != "200" ]; then cp "$page" "$out"; break; fi
-    total=$(node -e "const fs=require('fs');let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const p=JSON.parse(s);if(!p||!Array.isArray(p.items)||typeof p.total!=='number')return console.log(-1);const acc=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));fs.writeFileSync(process.argv[1],JSON.stringify(acc.concat(p.items)));console.log(p.total)}catch{console.log(-1)}})" "$out" < "$page")
-    if [ "$total" -lt 0 ] 2>/dev/null; then printf '"bad"' > "$out"; break; fi
-    offset=$((offset + 100)); pages=$((pages + 1))
-    if [ "$offset" -ge "$total" ] || [ "$pages" -ge 50 ]; then break; fi
+    if [ "$DOC_LIST_CODE" != "200" ]; then cp "$page" "$out"; rm -f "$page"; return; fi
+    # 出力: "<total> <集めた件数>"（ページの形でなければ "-1 -1"）。
+    read -r total got < <(node -e "const fs=require('fs');let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const p=JSON.parse(s);if(!p||!Array.isArray(p.items)||typeof p.total!=='number')return console.log('-1 -1');const acc=JSON.parse(fs.readFileSync(process.argv[1],'utf8')).concat(p.items);fs.writeFileSync(process.argv[1],JSON.stringify(acc));console.log(p.total+' '+acc.length)}catch{console.log('-1 -1')}})" "$out" < "$page")
+    if [ "$total" -lt 0 ] 2>/dev/null || [ -z "$total" ]; then printf '"bad"' > "$out"; break; fi
+    pages=$((pages + 1))
+    [ "$got" -ge "$total" ] && break
+    if [ "$pages" -gt 1 ] && [ "$got" = "$before" ]; then
+      printf 'WARN: 文書一覧の後続のページが空で total に届かない（集めた %s 件 / total %s 件）。一部を全件として扱わない\n' "$got" "$total" >&2
+      printf '"bad"' > "$out"; break
+    fi
+    if [ "$pages" -ge 50 ]; then
+      printf 'WARN: 文書一覧を上限 50 ページで打ち切った（集めた %s 件 / total %s 件）。一部を全件として扱わない\n' "$got" "$total" >&2
+      printf '"bad"' > "$out"; break
+    fi
+    before="$got"
+    offset=$((offset + 100))
   done
   rm -f "$page"
 }
