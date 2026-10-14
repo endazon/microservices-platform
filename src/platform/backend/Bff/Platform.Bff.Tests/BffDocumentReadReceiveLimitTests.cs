@@ -137,7 +137,8 @@ public class BffDocumentReadReceiveLimitTests : IClassFixture<BffTestFactory>
 
     // ── (c) 畳むときの WARN ─────────────────────────────────────────────
 
-    // 受け入れ基準 3（陽性）: 一覧が上限超過（ResourceExhausted）を空一覧へ畳むとき、状態・経路・例外の型を含む WARN を 1 行出す。
+    // 受け入れ基準 3（陽性）: 一覧が上限超過（ResourceExhausted）で失敗するとき、状態・経路・例外の型を含む WARN を 1 行出す。
+    // ［2026-10-14 / #1923・IADR-0537］一覧は空へ畳まず **502** を返す（本当の 0 件と区別する。#1897 の本質）。
     // 🔴 status の detail（サーバ・ライブラリの文言）は載せない。
     [Fact]
     public async Task List_fold_on_resource_exhausted_logs_one_warning_with_status_route_and_type()
@@ -147,14 +148,13 @@ public class BffDocumentReadReceiveLimitTests : IClassFixture<BffTestFactory>
 
         var resp = await HostWith(stub, sink).GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var page = await resp.Content.ReadFromJsonAsync<DocumentListPageDto>(TestContext.Current.CancellationToken);
-        page!.Items.Should().BeEmpty();
-        page.Total.Should().Be(0, "引けなかったときは部分の数も返さない");
+        resp.StatusCode.Should().Be(HttpStatusCode.BadGateway, "空の一覧へ畳まない（#1897）");
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().NotContain("detail-must-not-leak").And.NotContain("\"items\"");
         var warning = sink.Where(e => e.Category == DocumentReadFailureLogCategory).Should().ContainSingle().Which;
         warning.Level.Should().Be(LogLevel.Warning);
         warning.Message.Should().Contain("ListDocuments").And.Contain("grpc")
-            .And.Contain("ResourceExhausted").And.Contain(nameof(RpcException)).And.Contain("空一覧");
+            .And.Contain("ResourceExhausted").And.Contain(nameof(RpcException)).And.Contain("502");
         warning.Message.Should().NotContain("detail-must-not-leak");
     }
 

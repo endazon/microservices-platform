@@ -26,6 +26,7 @@ public class BffDocumentListPagingTests : IClassFixture<BffTestFactory>
         _factory.ScopeBranches = null;
         _factory.DocumentStatusCode = HttpStatusCode.OK;
         _factory.DocumentReadServerPageSize = null;
+        _factory.DocumentReadFailContinuation = false;
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -180,6 +181,26 @@ public class BffDocumentListPagingTests : IClassFixture<BffTestFactory>
         var resp = await _factory.CreateClient().GetAsync($"/bff/documents{query}", Ct);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    // 🔴 #1897 の本質: 後段のページを辿る途中で引けなくなったら **502**。空のページ（総件数 0）へも、
+    // そこまでの部分の窓・数へも畳まない（本当の 0 件・本当の件数と区別できなくなる）。
+    // 陽性対照: 同じ台帳を 1 回で引ければ（印つきの要求が無ければ）200 で 3 件と数える。
+    [Fact]
+    public async Task 後段のページを辿る途中で失敗したら空にも部分にも畳まず502()
+    {
+        _factory.StubDocumentList = Mixed();
+        _factory.DocumentReadFailContinuation = true;
+        (await PageAsync("?limit=10")).Total.Should().Be(3, "陽性対照: 1 ページで尽きれば続きの要求は出ない");
+
+        _factory.DocumentReadServerPageSize = 2;
+        var resp = await _factory.CreateClient().GetAsync("/bff/documents?limit=10", Ct);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+        resp.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+        var body = await resp.Content.ReadAsStringAsync(Ct);
+        body.Should().NotContain("\"items\"").And.NotContain("\"total\"");
+        body.Should().NotContain("internal-").And.NotContain("confidential-", "文書の表題を載せない");
     }
 
     // スコープが解決できない（許可ポリシーが無い）なら空のページ（総件数 0）。権限外の存在を示さない。

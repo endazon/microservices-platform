@@ -75,7 +75,16 @@ public static class DocumentBffEndpoints
             if (scope is null)
                 return Results.Ok(window.Empty());
 
-            return Results.Ok(await FetchListPageAsync(http, window, d => IsManageable(d, scope), d => ForViewer(d, scope), ct));
+            var page = await FetchListPageAsync(http, window, d => IsManageable(d, scope), d => ForViewer(d, scope), ct);
+            // FR-06, NFR-16 (#1897・#1923): 後段から一覧を引き切れなかったら **502**（空の一覧へ畳まない。`/bff/datasources`・`/bff/conversion/jobs` の一覧と同じ向き）。
+            // 🔴 空のページへ畳むと、画面は「文書はまだありません。」と出し、本当の 0 件と区別できない（#1897 の本質）。
+            //   応答の本文は中立の文言だけで、文書の有無も件数も載せない（存在秘匿は崩れない）。
+            return page is null
+                ? Results.Problem(
+                    statusCode: StatusCodes.Status502BadGateway,
+                    title: "文書の一覧を取得できませんでした。",
+                    detail: "文書サービスから一覧を取得できませんでした。時間をおいて再試行してください。")
+                : Results.Ok(page);
         }).WithName("BffDocumentList").Produces<DocumentListPageDto>()
             .RequireAuthorization(p => p.RequireRole(
                 PlatformAuthPolicies.AdminRole,
@@ -431,7 +440,8 @@ public static class DocumentBffEndpoints
     // FR-06, SC-05, NFR-16, [[IADR-0537]] (#1923・#1897): 後段の一覧を**ページごとに辿り**、絞った後の窓と総件数を作る。
     // 後段の 1 応答は `ListPageSize` 件で台帳の件数に比例しない。BFF が保持するのは窓の中の文書だけである。
     // 1 要求で台帳を 1 周する（総件数を ABAC で絞った後に数えるため。費用は IADR-0537 の残余）。
-    private static async Task<DocumentListPageDto> FetchListPageAsync(HttpContext http, DocumentListWindow window,
+    // **引き切れなかったら null**（呼び出し元が 502 にする。空のページにしない）。
+    private static async Task<DocumentListPageDto?> FetchListPageAsync(HttpContext http, DocumentListWindow window,
         Func<DocumentDto, bool> visible, Func<DocumentDto, DocumentDto> forViewer, CancellationToken ct)
     {
         // NFR-09, ADR-0029, [[IADR-0402]], [[IADR-0533]] (#1255): gRPC で引く（REST の並走は撤去した）。
@@ -449,10 +459,11 @@ public static class DocumentBffEndpoints
         }
         catch (Exception ex) when (IsTransportFailure(ex, ct))
         {
-            // FR-06, NFR-16 (#1897): 畳む前に WARN（状態・rpc・例外の型）。空一覧へ畳むことは変えない。
-            // 🔴 途中のページで引けなくなっても、そこまでの部分の数は返さない（総件数が黙って小さくなる）。空のページへ畳む。
-            DocumentReadFailureLog.Folded(http, "ListDocuments", ex, "空一覧");
-            return window.Empty();
+            // FR-06, NFR-16 (#1897・#1923): WARN（状態・rpc・例外の型）を出し、呼び出し元が 502 を返す。
+            // 🔴 途中のページで引けなくなっても、そこまでの部分の窓・数は返さない（総件数が黙って小さくなる）。
+            // 🔴 空のページへも畳まない（本当の 0 件と区別できなくなる。#1897 の再発）。
+            DocumentReadFailureLog.Folded(http, "ListDocuments", ex, "502");
+            return null;
         }
         return collector.ToPage();
     }

@@ -21,7 +21,10 @@ public readonly record struct DocumentListWindow(int Offset, int Limit)
     /// <summary>未指定は既定、範囲外は 1〜上限へ丸める（`GET /documents/page` の `ClampLimit` と同じ作法）。</summary>
     public static int ClampLimit(int? limit) => Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
 
-    /// <summary>空のページ（スコープ解決不能・後段の不達の縮退）。総件数 0 は「見える文書が無い」と同じ形に畳む。</summary>
+    /// <summary>
+    /// 空のページ（許可ポリシーが無い＝見える文書が無い）。総件数 0。
+    /// 🔴 後段から引けなかったときには使わない（502。本当の 0 件と区別する。#1897）。
+    /// </summary>
     public DocumentListPageDto Empty() => new() { Offset = Offset, Limit = Limit };
 
     public Collector Collect(Func<DocumentDto, bool> visible, Func<DocumentDto, DocumentDto> forViewer)

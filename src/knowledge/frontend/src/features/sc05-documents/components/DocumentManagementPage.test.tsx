@@ -410,6 +410,22 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  // FR-06, NFR-16, IADR-0537（#1897・#1923）: BFF が後段から一覧を引き切れないときは **502** を返す。
+  // 画面は**エラーとして**出し、0 件の表示（「文書はまだありません。」）へ寄せない —— 本当の 0 件と区別できなくなる（#1897 の本質）。
+  it('shows the list failure (502) as an error, not as an empty list', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith('/documents?'))
+        throw new ApiError('server', 'サーバでエラーが発生しました。', 502);
+      return listPage([]);
+    });
+    await renderPage();
+
+    expect(await screen.findByText('文書を取得できませんでした。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '再試行' })).toBeInTheDocument();
+    expect(screen.queryByText('文書はまだありません。')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'ページ送り' })).not.toBeInTheDocument();
+  });
+
   it('shows an alert when the list cannot be loaded', async () => {
     mocks.apiRequest.mockRejectedValue(
       new ApiError('server', 'サーバでエラーが発生しました。', 500),

@@ -30,6 +30,7 @@ import type {
   DocumentListPageDto,
   DocumentVersionDto,
   InvalidTransitionDto,
+  ProblemDetails,
   UpdateDocumentRequest,
   ValidationProblemDetails,
   VersionConflictDto
@@ -77,10 +78,15 @@ export type bffDocumentListResponse403 = {
   status: 403
 }
 
+export type bffDocumentListResponse502 = {
+  data: ProblemDetails
+  status: 502
+}
+
 export type bffDocumentListResponseSuccess = (bffDocumentListResponse200) & {
   headers: Headers;
 };
-export type bffDocumentListResponseError = (bffDocumentListResponse400 | bffDocumentListResponse401 | bffDocumentListResponse403) & {
+export type bffDocumentListResponseError = (bffDocumentListResponse400 | bffDocumentListResponse401 | bffDocumentListResponse403 | bffDocumentListResponse502) & {
   headers: Headers;
 };
 
@@ -116,7 +122,9 @@ export const getBffDocumentListUrl = (params?: BffDocumentListParams,) => {
  * - 送り方は**オフセット**（`offset` / `limit`）。`limit` は既定 50、1〜100 に丸める。`offset` が総件数以上なら `items` は空。
  * - 🔴 **`total` は利用者の ABAC スコープで絞った後の件数だけである。** 権限外の文書は `items` にも `total` にも入らず、
  *   ページの境界も変えない（存在秘匿）。後段の続きの印はこの口の外へ出さない。
- * - 後段（文書サービス）へ届かないときは `items` が空・`total` が 0 のページへ縮退する（従前の空配列と同じ向き）。
+ * - 後段（文書サービス）から一覧を引き切れないとき（途中のページを含む）は **502**（ProblemDetails。運用画面の一覧 `/bff/datasources`・`/bff/conversion/jobs` と同じ向き）を返す。
+ *   空のページ・部分の件数へは畳まない（本当の 0 件と区別できなくなる。#1897）。本文は中立の文言だけで、文書の有無も件数も載せない。
+ * - 許可ポリシーが無い（見える文書が無い）ときは `items` が空・`total` が 0 のページを返す（deny-by-default。従前どおり）。
  * @summary FR-06, SC-05: 文書一覧（ABAC スコープ内のみ。管理者・運用者。#656）
  */
 export const bffDocumentList = async (params?: BffDocumentListParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentListResponse> => {
@@ -141,7 +149,7 @@ export const getBffDocumentListQueryKey = (params?: BffDocumentListParams,) => {
     }
 
 
-export const getBffDocumentListQueryOptions = <TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = void>(params?: BffDocumentListParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+export const getBffDocumentListQueryOptions = <TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = void | ProblemDetails>(params?: BffDocumentListParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -160,14 +168,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type BffDocumentListQueryResult = NonNullable<Awaited<ReturnType<typeof bffDocumentList>>>
-export type BffDocumentListQueryError = void
+export type BffDocumentListQueryError = void | ProblemDetails
 
 
 /**
  * @summary FR-06, SC-05: 文書一覧（ABAC スコープ内のみ。管理者・運用者。#656）
  */
 
-export function useBffDocumentList<TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = void>(
+export function useBffDocumentList<TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = void | ProblemDetails>(
  params?: BffDocumentListParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {

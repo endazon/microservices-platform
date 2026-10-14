@@ -139,6 +139,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | P3 | 末尾を越えた | 総件数が減って現在のページが範囲外になったら末尾のページを引く | `moves back to the last page when the current page falls beyond the total` |
 | P4 | ページ番号 | 先頭・末尾・現在の前後 1 つ。間は省略 | `pageNumbers`（6 ケース） |
 | P5 | 無効化 | 一覧キーでの無効化が全ページのキーに届く | `reaches every page of the list through the list key` |
+| P6 | **失敗を 0 件に見せない** | 一覧の 502 はエラー表示（再試行つき）。0 件の文言もページ送りも出さない | `shows the list failure (502) as an error, not as an empty list` |
 
 ### BFF（xUnit）
 
@@ -154,6 +155,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | B6 | 末尾を越えた | 空の窓と同じ総件数 | `末尾を越えたoffsetは空の窓と同じ総件数を返す` |
 | B7 | 改ざん | 負・数でない `offset` / `limit` は 400 | `負や数でないoffset_limitは400` |
 | B8 | 縮退 | スコープが無ければ空のページ（総件数 0） | `スコープが無ければ空のページを返す` |
+| B9 | **失敗を 0 件に畳まない** | 後段のページを辿る途中で失敗したら 502（空のページにも部分の数にも畳まない。本文に表題・件数を載せない） | `後段のページを辿る途中で失敗したら空にも部分にも畳まず502` |
 
 ### 後段（DocumentService・xUnit）
 
