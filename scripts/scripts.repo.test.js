@@ -11458,6 +11458,69 @@ ${r.stderr}`);
       return Number(m[1]);
     };
 
+    // FR-06, IADR-0537 (#1923): `GET /bff/documents` はページ（{ items, total, offset, limit }）で返る。
+    // 一覧の全件を見る段（14・15・S1）が、配列を前提に 1 回だけ GET していると、ページの形を「配列でない」と読み、
+    // 正の対照は空・負の対照は -1 になって integration-stack の門が落ちる（#1925 のマージ後に踏んだ形）。
+    ok('#1923: 一覧を読む段はページを辿る（GET /bff/documents を配列として 1 回で読まない）', () => {
+      assert.match(VERIFY, /^fetch_document_list\(\) \{$/m, 'ページを辿る関数が無い');
+      assert.match(VERIFY, /bff\/documents\?offset=\$offset&limit=100/, 'offset / limit で辿っていない');
+      assert.match(VERIFY, /Array\.isArray\(p\.items\)/, 'ページの形（items 配列）を確かめていない');
+      // セッションつきの GET を直に叩く箇所が残っていない（POST・無トークンの 401 確認は除く）。
+      const direct = VERIFY_LINES.filter((l, i) =>
+        /"\$EDGE_URL\/bff\/documents"\)/.test(l) && !/-d /.test(l)
+        && /-b "\$(SESSION|DENY)_JAR"/.test(VERIFY_LINES[i - 1] || '') && !/-X POST/.test(VERIFY_LINES[i - 1] || ''));
+      assert.deepStrictEqual(direct, [], `一覧を配列として直に読む箇所が残っている: ${direct.join(' / ')}`);
+      assert.strictEqual((VERIFY.match(/fetch_document_list "\$(SESSION|DENY)_JAR"/g) || []).length, 3,
+        '段 14・15・S1 の 3 か所がページを辿っていない');
+    });
+
+    // FR-06, IADR-0537 (#1923 / #1930 のレビュー): ページを辿る関数を**実際に動かして**、一部だけを「全件」として扱わないことを固定する。
+    // curl を偽物（PATH の先頭に置いた node スクリプト）へ差し替え、offset ごとに決めたページを返させる（ネットワークを使わない）。
+    {
+      const { spawnSync: spawnDL } = require('child_process');
+      const osDL = require('os');
+      const fnDL = VERIFY_LINES.slice(VERIFY_LINES.indexOf('DOC_LIST_CODE=""'));
+      const fnSrc = fnDL.slice(0, fnDL.indexOf('}') + 1).join('\n');
+      // n: 実在の件数 / total: 応答が名乗る総件数 / shape: 'page' か 'array'
+      const runDL = (n, total, shape) => {
+        const dir = fsSS.mkdtempSync(pathSS.join(osDL.tmpdir(), 'doclist-'));
+        const fake = pathSS.join(dir, 'curl');
+        fsSS.writeFileSync(fake, `#!${process.execPath}
+const a=process.argv.slice(2);const out=a[a.indexOf('-o')+1];const url=new URL(a[a.length-1]);
+const o=+url.searchParams.get('offset'),l=+url.searchParams.get('limit');
+const docs=Array.from({length:${n}},(_,i)=>({id:String(i)}));
+require('fs').writeFileSync(out, ${JSON.stringify(shape)}==='array' ? JSON.stringify(docs)
+  : JSON.stringify({items:docs.slice(o,o+l),total:${total},offset:o,limit:l}));
+process.stdout.write('200');
+`, { mode: 0o755 });
+        const out = pathSS.join(dir, 'out.json');
+        const r = spawnDL('bash', ['--noprofile', '--norc', '-c',
+          `CURL_K=''; CSRF_HDR='X: 1'; EDGE_URL=http://edge.invalid\n${fnSrc}\nfetch_document_list /dev/null "${out}"`],
+          { env: { ...process.env, PATH: `${dir}${pathSS.delimiter}${process.env.PATH}` }, encoding: 'utf8' });
+        const body = JSON.parse(fsSS.readFileSync(out, 'utf8'));
+        fsSS.rmSync(dir, { recursive: true, force: true });
+        return { body, stderr: r.stderr || '' };
+      };
+
+      ok('#1923: 一覧のページを total まで辿って items を 1 つの配列へ集める（250 件＝3 ページ・0 件）', () => {
+        assert.strictEqual(runDL(250, 250, 'page').body.length, 250);
+        assert.deepStrictEqual(runDL(0, 0, 'page').body, []);
+      });
+      ok('#1923: 上限 50 ページで total に届かなければ fail-closed（配列でない値・標準エラーに件数）', () => {
+        const r = runDL(6000, 6000, 'page');
+        assert.strictEqual(r.body, 'bad');
+        assert.match(r.stderr, /上限 50 ページで打ち切った（集めた 5000 件 \/ total 6000 件）/);
+      });
+      ok('#1923: 後続のページが空で total に届かなければ fail-closed（配列でない値・標準エラーに件数）', () => {
+        const r = runDL(150, 200, 'page');
+        assert.strictEqual(r.body, 'bad');
+        assert.match(r.stderr, /後続のページが空で total に届かない（集めた 150 件 \/ total 200 件）/);
+      });
+      ok('#1923: ページの形でない応答（旧い全件の配列）は fail-closed', () => {
+        assert.strictEqual(runDL(3, 3, 'array').body, 'bad');
+      });
+    }
+
     ok('#992 / #1124: TOTAL の加算値が各ブロックの実段数と一致する', () => {
       // 固定値（TOTAL=17 / TOTAL=11 の二択）へ戻すと、SEARCH_* を足した瞬間に門が誤発火する。
       assert.match(VERIFY, /^TOTAL=11$/m, 'TOTAL の基底が 11 でない');
