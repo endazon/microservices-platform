@@ -298,6 +298,40 @@ public class GrpcDocumentReadTests
         paged.Should().BeEquivalentTo(restList, o => o.WithStrictOrdering());
     }
 
+    // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): rpc を通したページの大きさ。上限（1000）を超えた要求は 1000 件で止まり、
+    // 続きの印が付く。0（省略）は既定の 500 件。
+    // 🔴 器の DB は他の試験と共有するので、件数を満たす文書は**この試験の利用者だけが読める個人資料**として入れる
+    //   （他の試験の主体〔呼び出し元サービス・別の利用者〕の一覧には現れず、REST との同値の試験も崩さない）。
+    [Fact]
+    public async Task ListDocuments_caps_the_page_size_at_1000_and_defaults_to_500()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var owner = $"bulk-{Guid.NewGuid():N}"[..20];
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            for (var i = 0; i < DocumentReadUseCase.MaxPageSize + 1; i++)
+                db.Documents.Add(Document.Create($"bulk-{i}", null, null, new Dictionary<string, string>
+                {
+                    ["confidentiality"] = "restricted",
+                    ["doc_scope"] = "private-note",
+                    ["owner"] = owner,
+                }));
+            await db.SaveChangesAsync(ct);
+        }
+        var user = new UserContext { UserId = owner, Action = "read" };
+
+        var capped = await PlainClient().ListDocumentsAsync(
+            new ListDocumentsRequest { User = user, PageSize = 5000 }, headers: Bearer(ServiceToken()), cancellationToken: ct);
+        var byDefault = await PlainClient().ListDocumentsAsync(
+            new ListDocumentsRequest { User = user }, headers: Bearer(ServiceToken()), cancellationToken: ct);
+
+        capped.Documents.Should().HaveCount(DocumentReadUseCase.MaxPageSize, "上限を超えた要求は上限に丸める");
+        capped.NextPageToken.Should().NotBeEmpty("台帳に続きがある");
+        byDefault.Documents.Should().HaveCount(DocumentReadUseCase.DefaultPageSize, "0（省略）は既定");
+        byDefault.NextPageToken.Should().NotBeEmpty();
+    }
+
     // FR-06, [[IADR-0537]] (#1923): 壊れた続きの印と負の件数は要求の誤り（INVALID_ARGUMENT）。黙って先頭から読まない。
     [Theory]
     [InlineData(0, "not-a-token!!")]

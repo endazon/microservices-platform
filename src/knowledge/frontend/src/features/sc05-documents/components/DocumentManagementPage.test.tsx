@@ -654,6 +654,67 @@ describe('DocumentManagementPage (SC-05)', () => {
     );
   });
 
+  // 次のページを読む間は、前のページの行を出したままにし（読み込み中の表示へ切り替えない）、ページ送りを止める（busy）。
+  // 🔴 変異で確かめた: `keepPreviousData` を外すと行が消え、`busy` を外すと「次へ」が押せるままになり、どちらもここで落ちる。
+  it('keeps the previous page on screen and the pager busy while the next page loads', async () => {
+    let release: (value: unknown) => void = () => {};
+    const nextPage = new Promise((resolve) => {
+      release = resolve;
+    });
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('offset=50') ? nextPage : listPage([DRAFT_DOC], { total: 120 }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(
+      within(await screen.findByRole('navigation', { name: 'ページ送り' })).getByRole('button', {
+        name: '次へ',
+      }),
+    );
+
+    // 読み込み中: 前のページの行が残り、読み込み中の表示に替わらない。ページ送りと件数の選択は止まる。
+    const nav = within(screen.getByRole('navigation', { name: 'ページ送り' }));
+    await waitFor(() => expect(nav.getByRole('button', { name: '次へ' })).toBeDisabled());
+    expect(screen.getByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
+    expect(screen.queryByText('文書を読み込み中…')).not.toBeInTheDocument();
+    expect(nav.getByRole('button', { name: '前へ' })).toBeDisabled();
+    expect(nav.getByRole('button', { name: '1 ページ目' })).toBeDisabled();
+    expect(screen.getByLabelText('表示件数')).toBeDisabled();
+
+    release(listPage([ARCHIVED_DOC], { total: 120, offset: 50 }));
+
+    expect(await screen.findByRole('link', { name: '製品ロードマップ 2027' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '経費精算規程' })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('navigation', { name: 'ページ送り' })).getByRole('button', {
+          name: '次へ',
+        }),
+      ).toBeEnabled(),
+    );
+  });
+
+  // 最後のページでは「次へ」を押せない（先頭の「前へ」と対。画面仕様 §ページング）。
+  it('disables "next" on the last page', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('offset=100')
+        ? listPage([ARCHIVED_DOC], { total: 120, offset: 100 })
+        : listPage([DRAFT_DOC], { total: 120 }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '3 ページ目' }));
+
+    expect(await screen.findByRole('link', { name: '製品ロードマップ 2027' })).toBeInTheDocument();
+    expect(screen.getByText('全 120 件中 101–120 件')).toBeInTheDocument();
+    const nav = within(screen.getByRole('navigation', { name: 'ページ送り' }));
+    expect(nav.getByRole('button', { name: '次へ' })).toBeDisabled();
+    expect(nav.getByRole('button', { name: '前へ' })).toBeEnabled();
+    expect(nav.getByRole('button', { name: '3 ページ目' })).toHaveAttribute('aria-current', 'page');
+  });
+
   // 削除などで総件数が減り、いまのページが末尾を越えたら、末尾のページへ戻す（空のページを出したままにしない）。
   it('moves back to the last page when the current page falls beyond the total', async () => {
     let shrunk = false;

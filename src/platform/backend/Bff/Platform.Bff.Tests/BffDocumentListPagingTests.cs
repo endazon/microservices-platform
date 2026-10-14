@@ -1,8 +1,11 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using AwesomeAssertions;
 using Knowledge.Bff.Endpoints.Documents;
 using Knowledge.Contracts.Dtos;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Logging;
 using Platform.Shared.Contracts.Dtos;
 
 namespace Platform.Bff.Tests;
@@ -171,12 +174,12 @@ public class BffDocumentListPagingTests : IClassFixture<BffTestFactory>
         page.Total.Should().Be(3);
     }
 
-    // 改ざん: 負の offset・数でない値は 400（黙って先頭へ畳まない）。
+    // 改ざん: 負の offset、数でない offset / limit は 400（黙って先頭へ畳まない）。負の limit は 400 にせず 1 に丸める（上の丸めの試験）。
     [Theory]
     [InlineData("?offset=-1")]
     [InlineData("?offset=abc")]
     [InlineData("?limit=abc")]
-    public async Task 負や数でないoffset_limitは400(string query)
+    public async Task 負のoffsetと数でないoffset_limitは400(string query)
     {
         var resp = await _factory.CreateClient().GetAsync($"/bff/documents{query}", Ct);
 
@@ -194,13 +197,19 @@ public class BffDocumentListPagingTests : IClassFixture<BffTestFactory>
         (await PageAsync("?limit=10")).Total.Should().Be(3, "陽性対照: 1 ページで尽きれば続きの要求は出ない");
 
         _factory.DocumentReadServerPageSize = 2;
-        var resp = await _factory.CreateClient().GetAsync("/bff/documents?limit=10", Ct);
+        var sink = new ConcurrentQueue<(LogLevel Level, string Category, string Message)>();
+        var resp = await _factory.WithWebHostBuilder(b => b.ConfigureLogging(l => l.AddProvider(new CollectingLoggerProvider(sink))))
+            .CreateClient().GetAsync("/bff/documents?limit=10", Ct);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
         resp.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
         var body = await resp.Content.ReadAsStringAsync(Ct);
         body.Should().NotContain("\"items\"").And.NotContain("\"total\"");
         body.Should().NotContain("internal-").And.NotContain("confidential-", "文書の表題を載せない");
+        // 畳まずに返すときも WARN を 1 行出す（状態・rpc・返した状態。#1897 の観測点）。
+        var warning = sink.Where(e => e.Category == "Knowledge.Bff.Endpoints.DocumentBffEndpoints").Should().ContainSingle().Which;
+        warning.Level.Should().Be(LogLevel.Warning);
+        warning.Message.Should().Contain("ListDocuments").And.Contain("Unavailable").And.Contain("502");
     }
 
     // スコープが解決できない（許可ポリシーが無い）なら空のページ（総件数 0）。権限外の存在を示さない。
@@ -215,5 +224,24 @@ public class BffDocumentListPagingTests : IClassFixture<BffTestFactory>
         page.Items.Should().BeEmpty();
         page.Total.Should().Be(0);
         (page.Offset, page.Limit).Should().Be((0, 10));
+    }
+
+    private sealed class CollectingLoggerProvider(ConcurrentQueue<(LogLevel, string, string)> sink) : ILoggerProvider
+    {
+        public ILogger CreateLogger(string categoryName) => new Collector(sink, categoryName);
+
+        public void Dispose()
+        {
+        }
+
+        private sealed class Collector(ConcurrentQueue<(LogLevel, string, string)> sink, string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter) => sink.Enqueue((logLevel, category, formatter(state, exception)));
+        }
     }
 }

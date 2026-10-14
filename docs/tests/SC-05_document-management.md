@@ -139,6 +139,8 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | P3 | 末尾を越えた | 総件数が減って現在のページが範囲外になったら末尾のページを引く | `moves back to the last page when the current page falls beyond the total` |
 | P4 | ページ番号 | 先頭・末尾・現在の前後 1 つ。間は省略 | `pageNumbers`（6 ケース） |
 | P5 | 無効化 | 一覧キーでの無効化が全ページのキーに届く | `reaches every page of the list through the list key` |
+| P7 | 読み込み中 | 次のページを読む間は前のページの行を出したまま、ページ送り・件数の選択を止める（`keepPreviousData` と busy の変異で落ちる） | `keeps the previous page on screen and the pager busy while the next page loads` |
+| P8 | 最後のページ | 「次へ」を押せない | `disables "next" on the last page` |
 | P6 | **失敗を 0 件に見せない** | 一覧の 502 はエラー表示（再試行つき）。0 件の文言もページ送りも出さない | `shows the list failure (502) as an error, not as an empty list` |
 
 ### BFF（xUnit）
@@ -153,9 +155,9 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | B4 | 後段のページを辿る | 後段が 1 件ずつ返しても結果は同じ。後段へは上限 1000 で求め、印を渡して終端まで辿る | `後段のページを辿っても窓と総件数は変わらない` |
 | B5 | 丸め | `limit` は既定 50・1〜100 に丸める | `ページの大きさはサーバ側で丸める` |
 | B6 | 末尾を越えた | 空の窓と同じ総件数 | `末尾を越えたoffsetは空の窓と同じ総件数を返す` |
-| B7 | 改ざん | 負・数でない `offset` / `limit` は 400 | `負や数でないoffset_limitは400` |
+| B7 | 改ざん | 負の `offset`、数でない `offset` / `limit` は 400（負の `limit` は 400 にせず 1 に丸める。B5） | `負のoffsetと数でないoffset_limitは400` |
 | B8 | 縮退 | スコープが無ければ空のページ（総件数 0） | `スコープが無ければ空のページを返す` |
-| B9 | **失敗を 0 件に畳まない** | 後段のページを辿る途中で失敗したら 502（空のページにも部分の数にも畳まない。本文に表題・件数を載せない） | `後段のページを辿る途中で失敗したら空にも部分にも畳まず502` |
+| B9 | **失敗を 0 件に畳まない** | 後段のページを辿る途中で失敗したら 502（空のページにも部分の数にも畳まない。本文に表題・件数を載せない）。WARN を 1 行出す | `後段のページを辿る途中で失敗したら空にも部分にも畳まず502` |
 
 ### 後段（DocumentService・xUnit）
 
@@ -168,7 +170,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | S2 | 安定順序 | 更新日時が同じ文書は ID の降順。境界が同時刻の間に落ちても抜けない |
 | S3 | 読めない文書 | ページに入らず、続きの印も読めない文書を指さない（陽性対照: 所有者には返る）。長く続いても先へ届く |
 | S4 | 印の改ざん | 壊れた印・作成日時の口の印・表せない時刻は読めず、gRPC では `INVALID_ARGUMENT` |
-| S5 | ページの大きさ | 0 は既定 500、上限 1000 に丸める。負は `INVALID_ARGUMENT` |
+| S5 | ページの大きさ | 0 は既定 500、上限 1000 に丸める（rpc を通して: `page_size=5000` は 1000 件で止まり続きの印が付く、`0` は 500 件）。負は `INVALID_ARGUMENT` |
 | S6 | REST と同値 | 印を辿った全件が REST の一覧と順序まで一致する |
 | S7 | 実 PostgreSQL | uuid の順・マイクロ秒の丸めをまたいで抜け・重複なし。`(UpdatedAt, Id)` の索引を後ろから、印の位置から引く（`DocumentListKeysetPostgresTests`。Docker が要る） |
 

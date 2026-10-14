@@ -88,18 +88,14 @@ export function DocumentManagementPage() {
   const documents = useAdminDocuments(page);
   const total = documents.data?.total;
   // 削除などで総件数が減り、いまのページが末尾を越えたら末尾のページへ戻す（空のページを出したままにしない）。
-  // 前のページを保ったまま読み込む間（`isPlaceholderData`）の値では判断しない。
+  // 前のページを保ったまま読む間（placeholder）は、その前のページの総件数で判断することになるが、誤って戻すことは無い ——
+  // 画面が要求する位置は常に「表示中の総件数より手前」（ページ送りの選択肢も、ここで戻す先の末尾のページも）なので、
+  // placeholder の総件数に対して `offset < total` が必ず成り立つ。placeholder を除く条件は置かない（到達しない分岐になる）。
   useEffect(() => {
-    if (
-      total === undefined ||
-      documents.isPlaceholderData ||
-      page.offset < total ||
-      page.offset === 0
-    )
-      return;
+    if (total === undefined || page.offset < total || page.offset === 0) return;
     const lastOffset = Math.max(0, Math.ceil(total / page.limit) - 1) * page.limit;
     setPage({ offset: lastOffset, limit: page.limit });
-  }, [total, documents.isPlaceholderData, page.offset, page.limit]);
+  }, [total, page.offset, page.limit]);
   // SC-05（#449）: タグの選択肢は辞書（`/bff/tags`）から引く。自由入力は許さない。
   const tagOptions = useTagOptions();
   const actions = useDocumentActions();
