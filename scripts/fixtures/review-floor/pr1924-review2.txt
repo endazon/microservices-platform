@@ -1,0 +1,59 @@
+**Claude finished @endazon's task in 5m 17s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/38563963660)
+
+---
+## AI コードレビュー結果
+
+変更 38 ファイル中、次の 8 ファイルは差分か全文を読んだ。
+- `EmbeddingPendingReembedder.cs`
+- `DocumentUpdatedConsumer.cs`
+- `QdrantIngestionVectorStore.cs`（差分）
+- `EmbeddingPendingPoint.cs`
+- `IIngestionVectorStore.cs`
+- `Program.cs`
+- `EmbeddingPendingMetrics.cs`（`Program.cs` の登録からの参照のみ。中身は未読）
+- `EmbeddingPendingReembedHostedService.cs`（同上）
+
+IADR・仕様書・`docs/`・`deploy/`・`scripts/`・試験ファイル・LlmGateway の 3 ファイルは差分を精読していない（下記の機械検査の範囲で確認）。生成物の除外はない。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- `EmbeddingPendingReembedder.cs:48-63` と `QdrantIngestionVectorStore.cs` の `ListEmbeddingPendingAsync`: 先頭 64 点を固定順の scroll で読み、最初の埋め込み失敗で周期を打ち切る。この組み合わせでは、埋め込みが通らない点が先頭に居座ると、後ろの点が永久に進まない。現状は拒否が経路単位（全体）なので実害は小さい。点単位で拒否される理由（例: 次元不整合）が将来加わると、先頭の 1 点が全体を止める。`transient` と `rejected` の違いを周期の打ち切りに使うかを、IADR-0536 の「結果」に一言残すとよい。
+- 読み直しから主への書き込みまでの窓、複数 Pod での二重の埋め込みは、PR 本文と IADR に受容済みと書かれている。追加の要求はしない。
+- 前回レビューで指摘した「残り件数の推定値」は、`EmbeddingPendingReembedder.cs:75-79` で周期の終わりの数え直しに直っている。
+
+### 🟢 軽微
+- 前回指摘した `DocumentUpdatedConsumer.cs` の using 順は、並べ直されている。
+
+### 確認できたこと
+- `dotnet build src/knowledge/backend/backend.slnx`: 成功（警告 0・エラー 0）。
+- `dotnet test .../IngestionService/Tests/IngestionService.Tests.csproj`: 172 件すべて通過（`--filter` なし）。
+- `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes`: 出力なし。
+- `REQUIRE_REPO_TESTS=1` の `scripts/scripts.test.js`: 1044 件通過。
+- 文書系の検査器は、次のとおりすべて OK だった。
+  - `check-trace-blocks`
+  - `gen-knowledge-graph --check`（参考出力はあるが fail ではない）
+  - `check-doc-links`
+  - `check-doc-updated --base origin/develop`（変更された `docs/` の 5 件）
+  - `check-commit-messages`（2 件）
+  - `check-plan-id-qualification`
+- `helm lint deploy/helm/microservices-platform`: 成功。`helm template ci-check` は実行でき、出力末尾にエラーはなかった。
+- 実装は IADR-0536 決定 1〜3 に沿っている。
+  - 埋め込みに失敗したら、そのチャンクから後ろを埋め込まずに待ちの点として書く。例外は投げない。
+  - 主へ書いてから語彙索引を消す順序。
+  - 削除は ID と印の AND で行う。
+  - 高機密の点は埋め直しで二重に除外する。
+  - 最初の失敗で周期を打ち切る。
+  - 構成値が正の整数でなければ既定へ戻す。
+- 起点 ID（FR-02・FR-03・NFR-06・IADR-0536）は、コードコメントとコミットに残っている。
+
+### 🔍 実行できなかったこと
+- 変異試験は、書き込みが必要なので追試していない（未検証）。
+- `Knowledge.IntegrationTests` と LlmGateway の `dotnet test` は走らせていない。統合試験は Docker が要る。PR 本文の件数は未検証として扱う。
+- `helm template` を `values-local` で回す形は走らせていない。
+- IADR・仕様書・`docs/`・試験ファイルの本文は精読していない。受け入れ基準と試験の写像（T-40〜T-48）は、IngestionService の全件通過で間接的に確認したのみ。
+- 計画書原文は CI から届かないため、確認していない。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*

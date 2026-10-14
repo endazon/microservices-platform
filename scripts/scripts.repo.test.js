@@ -16116,4 +16116,46 @@ server.listen(0, '127.0.0.1', async () => {
       assert.match(floorProblems1911(wf1911.replace('【実行制約・最重要】', '【実行制約・最重要】時間が足りなければ')).join('\n'), /旧文言/);
     });
   }
+
+  // --- NFR, IADR-0538: 【検証の下限】と check-review-verdict.js の対を固定する ---
+  // 検査器は prompt が書かせる申告（「変更 N ファイル中 M ファイルを読んだ」・生成物 K・節）を読む。片方だけ変えると
+  // 恒久的な偽陽性か素通りになる。prompt の生成物の例が検査器の GENERATED_TOKENS に当たること、判定のステップが
+  // CHANGED_FILES を渡すことを固定する（文言の全文は固定しない）。
+  {
+    const fsRvf = require('fs');
+    const pathRvf = require('path');
+    const wfRvf = fsRvf.readFileSync(pathRvf.resolve(__dirname, '../.github/workflows/claude-code-review.yml'), 'utf8');
+    const { GENERATED_TOKENS } = require('./check-review-verdict.js');
+    const pairProblems = (text) => {
+      const problems = [];
+      const start = text.indexOf('          prompt: |\n');
+      assert.ok(start >= 0, 'claude-code-review.yml から prompt: | を切り出せない');
+      const i = text.indexOf('【検証の下限・最重要】', start);
+      if (i < 0) return ['prompt に【検証の下限・最重要】節が無い'];
+      const j = text.indexOf('\n\n', i);
+      const block = text.slice(i, j < 0 ? undefined : j);
+      for (const word of ['変更 N ファイル中 M ファイルを読んだ', '生成物 K ファイルを除外', 'check-review-verdict.js', '「読んだ」の定義', '確認できたこと', '🔍 実行できなかったこと']) {
+        if (!block.includes(word)) problems.push(`【検証の下限】節に「${word}」が無い`);
+      }
+      for (const gen of ['pnpm-lock.yaml', 'messages.po', 'CHANGELOG.md', '*.Designer.cs', '*ModelSnapshot.cs', 'src/<unit>/frontend/src/lib/api/generated/']) {
+        if (!block.includes(gen)) problems.push(`【検証の下限】節の生成物の例に「${gen}」が無い`);
+        else if (!new RegExp(GENERATED_TOKENS.source).test(gen.replace('<unit>', 'platform') + 'x.ts')) problems.push(`生成物「${gen}」が検査器の GENERATED_TOKENS に当たらない`);
+      }
+      const k = text.indexOf('      - name: Check review verdict');
+      if (k < 0) return problems.concat(['ステップ「Check review verdict」が無い']);
+      const step = text.slice(k, text.indexOf('\n\n', k) < 0 ? undefined : text.indexOf('\n\n', k));
+      for (const word of ['if: always()', 'export CHANGED_FILES', 'git diff --name-only', 'node scripts/check-review-verdict.js "$EXECUTION_FILE"']) {
+        if (!step.includes(word)) problems.push(`ステップ「Check review verdict」に「${word}」が無い`);
+      }
+      return problems;
+    };
+    ok('claude-code-review.yml[IADR-0538]: 【検証の下限】の申告・生成物と check-review-verdict.js が対になっている', () => {
+      assert.deepStrictEqual(pairProblems(wfRvf), []);
+    });
+    ok('claude-code-review.yml[IADR-0538]: 陰性対照（CHANGED_FILES を外す・K の書式を消す・生成物の例を消す）はそれぞれ赤になる', () => {
+      assert.match(pairProblems(wfRvf.replace('          export CHANGED_FILES\n', '')).join('\n'), /CHANGED_FILES/);
+      assert.match(pairProblems(wfRvf.replaceAll('生成物 K ファイルを除外', '生成物を除外')).join('\n'), /生成物 K ファイルを除外/);
+      assert.match(pairProblems(wfRvf.replace('`pnpm-lock.yaml`・`CHANGELOG.md`・`docs/api', '`CHANGELOG.md`・`docs/api')).join('\n'), /pnpm-lock/);
+    });
+  }
 };

@@ -615,3 +615,4 @@
 | [IADR-0535](./IADR-0535_anthropic-content-block-drop-log-level.md) | Anthropic 応答の content ブロック除去のログを「想定内は Debug・想定外だけ Warning」に分け、除去件数を計器で数える（IADR-0114 決定 5 を改める） | Accepted |
 | [IADR-0536](./IADR-0536_embedding-pending-lexical-points.md) | 埋め込みが使えない間も public / internal の文書を語彙索引へ全文だけの点（埋め込み待ち）として書き、使えるようになったら主へ移して消す。待ちの件数は計器と周期ごとの Warning で読む（IADR-0497 決定 2 を改める） | Accepted |
 | [IADR-0537](./IADR-0537_document-list-pagination-offset-window-after-abac.md) | 文書管理の一覧をページで返す —— gRPC ListDocuments は更新日時の降順のキーセットで 1 応答 1000 件までに切り、BFF は後段のページを辿って ABAC で絞った後の並びにオフセットの窓を当て、総件数は絞った後の数だけを返す（#1923 / #1897） | Accepted |
+| [IADR-0538](./IADR-0538_review-floor-verdict-check.md) | AI レビューの検証の下限を Check review verdict で機械的に検査する —— AST の検査器を移植し（申告 N/M/K・精読していない自認・差分に応じた helm / scripts.test.js の記載）、本リポのレビューが自認を書く 🔍 の節も読む型に限って数える | Accepted |
