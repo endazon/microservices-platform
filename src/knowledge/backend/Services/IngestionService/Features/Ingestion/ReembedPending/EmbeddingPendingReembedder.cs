@@ -73,7 +73,9 @@ public sealed class EmbeddingPendingReembedder(
         }
 
         metrics.RecordReembedded(reembedded);
-        var remaining = Math.Max(0, pending - reembedded);
+        // 🔴 残りは**数え直す**（周期の始めの件数からの引き算にしない）。周期の途中で取り込みが新しく書いた待ちの点も、
+        // ゲージと Warning の件数に含めるためである（#1924 のレビュー）。
+        var remaining = await WithTimeoutAsync(timeouts.VectorStore, store.CountEmbeddingPendingAsync, ct);
         metrics.RecordPending(remaining);
 
         if (remaining > 0)

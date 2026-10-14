@@ -1,11 +1,11 @@
-using Platform.Shared.Infrastructure.Foundation.Pipeline;
-using IngestionService.Domain.Ports;
+using IngestionService.Common.Observability;
 using IngestionService.Domain;
+using IngestionService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.Extensions.Logging;
 using Platform.Shared.Infrastructure.Foundation.Messaging;
-using IngestionService.Common.Observability;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 
 namespace IngestionService.Features.Ingestion.Ingest;
 

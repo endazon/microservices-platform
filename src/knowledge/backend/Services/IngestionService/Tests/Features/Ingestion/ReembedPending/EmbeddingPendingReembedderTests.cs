@@ -164,6 +164,24 @@ public class EmbeddingPendingReembedderTests
         logger.Warnings.Should().ContainSingle().Which.Should().Contain("1 point(s)");
     }
 
+    // T-45（#1924 のレビュー）: 残りの件数は周期の終わりに**数え直す**。周期の途中で取り込みが新しく書いた待ちの点も
+    // ゲージと Warning に含める（始めの件数からの引き算だと 0 と出て、新しい待ちが見えない）。
+    [Fact]
+    public async Task 残りの件数は周期の終わりに数え直し途中で書かれた待ちを含める()
+    {
+        var late = Point(0, documentId: Guid.Parse("33333333-3333-3333-3333-333333333333"));
+        var store = new PendingStore(Point(0));
+        // 1 点目を主へ書いた直後に、取り込みが別の文書の待ちの点を書いた。
+        store.OnPrimaryWrite = () => store.Pending.Add(late);
+        var (reembedder, metrics, logger) = Build(store, new FixedEmbedding(embedded: true), batchSize: 1);
+
+        var sweep = await reembedder.SweepAsync(Ct);
+
+        sweep.Reembedded.Should().Be(1);
+        metrics.LastPending.Should().Be(1, "途中で書かれた待ちの点を数える");
+        logger.Warnings.Should().ContainSingle().Which.Should().Contain("1 point(s)");
+    }
+
     // T-45: ゲージは数えるまで系列を出さない（0 を出すと「待ちなし」と読める）。数えた後は値を出す。
     [Fact]
     public void ゲージは数えるまで系列を出さない()
@@ -237,6 +255,9 @@ public class EmbeddingPendingReembedderTests
         // 読み直しの結果を差し替える（取り込みとの競合を模す）。既定は今の点をそのまま返す。
         public Func<Guid, EmbeddingPendingPoint, EmbeddingPendingPoint?> OnGet { get; init; } = (_, p) => p;
 
+        // 主へ書いた直後に呼ぶ（周期の途中の取り込みの書き込みを模す）。
+        public Action? OnPrimaryWrite { get; set; }
+
         public Task EnsureEmbeddingPendingIndexAsync(CancellationToken ct = default)
         {
             IndexEnsured = true;
@@ -273,6 +294,7 @@ public class EmbeddingPendingReembedderTests
             Operations.Add($"primary-chunk:{chunkId}");
             PrimaryChunks.Add(new EmbeddingPendingPoint(chunkId, documentId, title, text, chunkIndex, markdownUri,
                 attributes, tags, updatedAt, sharedWith, EmbeddingPendingReasons.Transient));
+            OnPrimaryWrite?.Invoke();
             return Task.CompletedTask;
         }
 
