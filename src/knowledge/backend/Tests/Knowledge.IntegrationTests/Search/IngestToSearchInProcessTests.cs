@@ -227,6 +227,7 @@ public sealed class IngestToSearchInProcessTests : IAsyncLifetime
                 .GetRequiredService<ConsumerCallTimeouts>(),
             IngestionTimeouts.Default,
             TimeProvider.System,
+            new IngestionService.Common.Observability.EmbeddingPendingMetrics(new QdrantTestMeterFactory()),
             NullLogger<DocumentUpdatedConsumer>.Instance);
 
         await consumer.Handle(

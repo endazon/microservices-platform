@@ -66,6 +66,19 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
             .Should().BeOneOf(StatusCode.Unauthenticated, StatusCode.PermissionDenied);
     }
 
+    // T-48 (FR-02, NFR-06, [[IADR-0536]] 決定 2・3 (#1908)): 本番の Program.cs が埋め込み待ちの埋め直しの器と計器を登録し、
+    // 器がブートストラップより後に並ぶ（コレクションを作ってから数える）。受け口が要求する計器も解決できる。
+    [Fact]
+    public void Registers_the_embedding_pending_reembed_service_after_the_bootstrap()
+    {
+        var hosted = _factory.Services.GetServices<IHostedService>().Select(s => s.GetType()).ToList();
+        hosted.Should().Contain(typeof(IngestionService.Features.Ingestion.ReembedPending.EmbeddingPendingReembedHostedService));
+        hosted.IndexOf(typeof(IngestionService.Features.Ingestion.ReembedPending.EmbeddingPendingReembedHostedService))
+            .Should().BeGreaterThan(hosted.IndexOf(typeof(QdrantKeywordIndexDiscoveryHostedService)));
+        _factory.Services.GetRequiredService<IngestionService.Common.Observability.EmbeddingPendingMetrics>()
+            .Should().NotBeNull();
+    }
+
     public sealed class Factory : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)

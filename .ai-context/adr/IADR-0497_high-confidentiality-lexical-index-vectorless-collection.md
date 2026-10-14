@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-02, FR-03, FR-05, FR-19, UC-01, UC-04, SC-02, ADR-0127, ADR-0092, ADR-0016, ADR-0017, ADR-0070, ADR-0057, ADR-0061, IADR-0025, IADR-0085, IADR-0467, IADR-0422, IADR-0318, IADR-0339, IADR-0358, IADR-0014, IADR-0012]
 author: claude
 created: 2026-10-05
-updated: 2026-10-06
+updated: 2026-10-14
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0127_high-confidentiality-lexical-only-and-claude-rerank.md (決定 1・2・4・7。フォローアップ 1・2)
   - planning:projects/microservices-platform/07_adr/ADR-0092_multi-collection-search-fusion-and-query-egress.md (決定 1・3)
@@ -111,6 +111,11 @@ IADR-0151 §結果 が「facet の payload index の要否は未検証」と残�
   `IngestionCompleted` のチャンク数は語彙索引へ書いた数である。
 - **`public` / `internal` の経路は 1 ビットも変えない。** 一時障害（`Retryable=true`）は従来どおり例外で再試行、恒久的な拒否は従来どおりスキップ（**語彙索引へは回さない**）。
 - **ゲートウェイ（`EmbeddingEgress` / `EmbeddingRouter`）は変えない。** 高機密はティア A だけ・無ければ拒否、のまま二重の守りとして残る。
+
+> **［2026-10-14 追記 / #1908］** 上の「`public` / `internal` の経路は 1 ビットも変えない」「恒久的な拒否は語彙索引へは回さない」（埋め込めるはずの文書の不調を
+> 語彙索引で覆い隠さない）は、オーナー裁定（2026-10-14）で改めた。埋め込みが `Embedded=false`（一時障害・恒久的な拒否とも）を返した public / internal の
+> チャンクは、語彙索引へ全文だけの点（印 `embedding_pending`）として書き、埋め込みが使えるようになったら主へ移して消す。覆い隠さないために、待ちの件数を
+> 計器と周期ごとの Warning で読む。詳細は [IADR-0536](./IADR-0536_embedding-pending-lexical-points.md)。高機密の経路（本決定の前半）は変えない。上の本文は書き換えない。
 
 ### 決定 3: 語彙索引のペイロードは、ベクトルのコレクションの点と同じ表現にする
 

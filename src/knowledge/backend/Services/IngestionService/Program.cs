@@ -5,6 +5,8 @@ using Platform.Shared.Infrastructure.Foundation.Llm;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using IngestionService.Domain.Ports;
 using IngestionService.Features.Ingestion.Ingest;
+using IngestionService.Features.Ingestion.ReembedPending;
+using IngestionService.Common.Observability;
 using Knowledge.Contracts.Events;
 using IngestionService.Domain;
 using IngestionService.Infrastructure.ExternalServices;
@@ -79,6 +81,18 @@ builder.Services.AddHostedService<QdrantCjkNgramBackfillHostedService>();
 // FR-04, FR-05, SC-01, SC-08, [[IADR-0502]] 決定 3 (#1760): 既存の点に現れる属性キーへキーワード索引を張る（起動後・非同期）。
 // ブートストラップより後に登録する（コレクションを作ってから走査する）。
 builder.Services.AddHostedService<QdrantKeywordIndexDiscoveryHostedService>();
+
+// FR-02, FR-03, NFR-06, [[IADR-0536]] 決定 1〜3 (#1908): **埋め込みが使えない間の全文だけの点（埋め込み待ち）。**
+// 取り込みは埋め込めなかった public / internal のチャンクを語彙索引へ全文だけで書き、ここで登録する器が
+// 周期ごとに件数を数え（ゲージ `ingestion.embedding_pending.points`・0 でなければ Warning）、埋め込みが使えるようになったら
+// 主のコレクションへ移して語彙索引の点を消す。**ブートストラップより後に登録する**（コレクションを作ってから数える）。
+builder.Services.AddMetrics();
+builder.Services.AddSingleton<EmbeddingPendingMetrics>();
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddMeter(EmbeddingPendingMetrics.MeterName));
+builder.Services.AddSingleton(EmbeddingPendingOptions.From(builder.Configuration));
+builder.Services.AddSingleton<EmbeddingPendingReembedder>();
+builder.Services.AddHostedService<EmbeddingPendingReembedHostedService>();
 
 // FR-06, ADR-0014/ADR-0015（Superseded by ADR-0106）: オブジェクトストレージ（SeaweedFS）クライアント（storage:// 本文の実取得用）。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
