@@ -1223,6 +1223,31 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.DocumentListPageDto": {
+        "kind": "record",
+        "members": {
+          "Items": {
+            "source": "property",
+            "type": "List<DocumentDto>",
+            "required": false
+          },
+          "Limit": {
+            "source": "property",
+            "type": "int",
+            "required": false
+          },
+          "Offset": {
+            "source": "property",
+            "type": "int",
+            "required": false
+          },
+          "Total": {
+            "source": "property",
+            "type": "int",
+            "required": false
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.DocumentPageDto": {
         "kind": "record",
         "members": {

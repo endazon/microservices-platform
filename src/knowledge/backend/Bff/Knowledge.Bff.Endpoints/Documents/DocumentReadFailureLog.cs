@@ -9,7 +9,7 @@ namespace Knowledge.Bff.Endpoints.Documents;
 // FR-06, NFR-09, NFR-16, ADR-0029 (#1897): BFF が文書の読み取りの失敗を**縮退へ畳む**ときに WARN を 1 行出す。
 //
 // ■ なぜ要るのか
-//   一覧（`FetchListAsync`）は `RpcException` を全 status について空一覧へ、詳細（`FetchAuthorizedAsync`）は
+//   一覧（当時の `FetchListAsync`）は `RpcException` を全 status について空一覧へ、詳細（`FetchAuthorizedAsync`）は
 //   404 へ畳んでいた。ログが無いので、`ListDocuments` の応答が受信上限を超えた（`ResourceExhausted`）ときも、
 //   画面には「文書が 0 件」としか見えなかった（#1897）。認可スコープ解決の縮退の WARN（旧 `AuthzScopeRestLog`。REST の撤去とともに消えた）と同じ形にした。
 //
@@ -17,6 +17,7 @@ namespace Knowledge.Bff.Endpoints.Documents;
 //   （s2s トークン取得失敗のメッセージは IdP の応答を含み得る。利用者 ID・属性・文書の本文や表題も載せない）。
 // 🔴 **畳み方（空一覧・404）は変えない。** 本 PR は応急処置であり、`ResourceExhausted` を空一覧へ畳むかどうかの
 //   見直しは恒久対応（ページング）の段で行う。
+// ［2026-10-14 / #1923・[[IADR-0537]]］恒久対応で**一覧は空へ畳まず 502 を返す**ようになった（`fallback` は "502"）。詳細の 404 は変えない。
 internal static class DocumentReadFailureLog
 {
     // 運用者が grep する語を固定する（カテゴリ名もここで 1 つに決める）。

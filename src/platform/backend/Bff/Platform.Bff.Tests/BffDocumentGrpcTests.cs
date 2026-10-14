@@ -136,10 +136,10 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
     {
         _factory.ScopeFilters = [new Platform.Shared.Contracts.Dtos.AttributeFilter("confidentiality", ["internal"])];
 
-        var rest = await _factory.CreateClient()
-            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents", TestContext.Current.CancellationToken);
-        var grpc = await GrpcClient(new StubDocumentReadInvoker(_factory))
-            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents", TestContext.Current.CancellationToken);
+        var rest = (await _factory.CreateClient()
+            .GetFromJsonAsync<DocumentListPageDto>("/bff/documents", TestContext.Current.CancellationToken))!.Items;
+        var grpc = (await GrpcClient(new StubDocumentReadInvoker(_factory))
+            .GetFromJsonAsync<DocumentListPageDto>("/bff/documents", TestContext.Current.CancellationToken))!.Items;
 
         rest.Should().ContainSingle("陽性対照: REST 側もスコープで 1 件へ絞られている");
         grpc.Should().BeEquivalentTo(rest, o => o.WithStrictOrdering());
@@ -203,9 +203,9 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
 
     // ── 縮退（呼び出し元ごとに向きが違う。一般化しない） ─────────────────────────
 
-    // 一覧: 引けなかったら **空一覧**（現行 REST の catch と同じ枝を共有する）。
+    // 一覧: 引けなかったら **502**（［2026-10-14 / #1923・IADR-0537］従前は空一覧。空へ畳むと本当の 0 件と区別できない。#1897）。
     [Fact]
-    public async Task List_over_grpc_degrades_to_an_empty_list_when_the_call_fails()
+    public async Task List_over_grpc_returns_502_when_the_call_fails()
     {
         var stub = new StubDocumentReadInvoker(_factory)
         {
@@ -214,9 +214,7 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
 
         var resp = await GrpcClient(stub).GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken))
-            .Should().BeEmpty();
+        resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
     }
 
     // 詳細: 引けなかったら **404 秘匿**（「不在」と区別しない。現行 REST と同じ枝）。

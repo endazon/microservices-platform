@@ -92,6 +92,8 @@ namespace DocumentService.Infrastructure.Migrations
 
                     b.HasIndex("CreatedAt", "Id");
 
+                    b.HasIndex("UpdatedAt", "Id");
+
                     b.ToTable("Documents");
                 });
 

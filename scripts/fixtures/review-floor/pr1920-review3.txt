@@ -1,0 +1,37 @@
+**Claude finished @endazon's task in 22s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/38557516381)
+
+---
+## AI コードレビュー結果
+
+変更 2 ファイル中 2 ファイルを読んだ（除外した生成物なし）。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- `deploy/local/README.md` の電源節の末尾の箇条書きは、AST の Runbook の「手順 7」に VM のメモリ上限の手順を「置いた」と書いている。submodule の pin（`bc2ab98`）の `docs/operations/host-liveness-monitor-runbook.md` を見ると、手順は 1〜6 までで（`### 6. 場中に Windows Update で再起動させない` が最後）、`wslconfig` と「手順 7」は 0 件だった。手順 5・6 の参照は一致している。AST 側の対の PR が未マージか pin が未更新である。AST 側のマージと pin の更新より先にこの PR をマージすると、読み手が手順 7 にたどり着けない。マージ順を揃えるか、「AST 側で追って追記」と書き換えるとよい。
+- 仕様書の `status: done` は、手順 7 の参照が実在するまでは早い可能性がある。
+
+### 🟢 軽微
+- 前回までの指摘（Runbook のパス・CPU 合計の表・ディストリビューション名の確認手順）は差分で直っている。
+- 表の合計値（必須＋ESO で 6,184 Mi / 24,608 Mi、CPU 3,255m など）は、仕様書内の内訳（MSP 10,368 + infra 6,944 + AST 6,784 = 24,096 Mi。+ OpenBao 512 = 24,608 Mi）で足し算としては整合する。ただし `helm template` / `kubectl kustomize` の描画そのものは再計算していない（下記）。
+
+### ✅ 確認できたこと
+- `git diff --name-only origin/develop...HEAD`: 2 ファイルのみ（仕様書・README）。`deploy/helm` と `scripts/` の差分は無いので、ビルド・テスト・helm・`scripts.test.js` は対象外とした。
+- `node scripts/check-trace-blocks.js`: OK（193 件）
+- `node scripts/check-doc-links.js`: OK（1679 件）。submodule 配下を指す 1 件は既存の fail-open。
+- `node scripts/gen-knowledge-graph.js --check`: OK。参考の 72 件は既存の警告で、本 PR の仕様書は含まれない。
+- `node scripts/check-doc-updated.js --base origin/develop`: OK（変更された `docs/` の Markdown は 0 件）
+- `node scripts/check-commit-messages.js`: 3 件を検査して適合
+- `node scripts/check-plan-id-qualification.js`: OK（3600 件）
+- トレーサビリティ: ブランチ名・コミットとも起点 ID（`NFR`、無採番）を満たす。無採番の理由は仕様書に書かれ、規約が許すメタ・運用前提の範囲に収まる。仕様書の `related_ids` は自 ID を含まない。IADR-0066 の決定は変えていない。
+- 「推測」の明記は物理メモリ・Pod の外の使用量・swap・processors の各行に付いている。
+
+### 🔍 実行できなかったこと
+- `helm template` / `kubectl kustomize` による requests / limits 合計の再計算は実施していない（このため 6,056 / 24,096 / 24,608 Mi・CPU の合計などの描画由来の値は未検証。PR 本文と仕様書の記載のまま）。
+- AST リポジトリの pin より新しい `develop` は本セッションから見えない（手順 7 の存在は pin 先でしか確認していない）。
+- 他リポジトリの issue / PR の参照は本セッションの対象外。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*
+ · branch `docs/NFR-1919-host-memory-prereq`

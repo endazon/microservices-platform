@@ -45,6 +45,17 @@ public record DocumentPageDto
     public string? NextCursor { get; init; }
 }
 
+// FR-06, SC-05, [[IADR-0537]] (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ。
+// 並びは更新日時の降順・同時刻は ID の降順。`Offset` / `Limit` は BFF が丸めた後の値である（要求の値ではない）。
+// 🔴 **`Total` は利用者の ABAC スコープで絞った後の件数だけである**（権限外の文書は数えない。IADR-0009 の存在秘匿）。
+public record DocumentListPageDto
+{
+    public List<DocumentDto> Items { get; init; } = [];
+    public int Total { get; init; }
+    public int Offset { get; init; }
+    public int Limit { get; init; }
+}
+
 // SC-03, FR-06: 文書本文（正規化 Markdown）の取得結果。BFF が ABAC 判定後にオブジェクト
 // ストレージ（storage://）から読み取り、閲覧を許可された呼び出し元にのみ払い出す。
 public record DocumentContentDto(Guid Id, string Title, string Markdown, string? SourceUri);

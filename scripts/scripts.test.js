@@ -401,6 +401,352 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
   });
 }
 
+// --- check-review-verdict: 検証の下限（NFR / IADR-0538。AST#1337・AST#1346・AST#1347 の移植） ---
+// #1915 でプロンプトへ【検証の下限】を置いたが、#1924 の AI レビューが 2 回続けて下限を満たさず緑で通った
+// （1 回目: 38 ファイル中「コード 15 ファイルと主要な文書」、2 回目: 38 ファイル中 8 ファイル。どちらも精読して
+// いないと自己申告）。規約「同型 2 回で検査器」に従い、判定の本文から下限を読む。実文の固定は
+// scripts/fixtures/review-floor/（母集合と期待の表は作業仕様書 20261014_review-floor-check）。
+{
+  const fsRf = require('fs');
+  const pathRf = require('path');
+  const osRf = require('os');
+  const {
+    findFloorViolations,
+    parseReadDeclaration,
+    findFloorAdmissions,
+    findNotReadAdmissions,
+    selectReviewBody,
+    parseChangedFiles,
+    confirmedSections,
+    notRunSections,
+  } = require('./check-review-verdict.js');
+  const fixture = (name) => fsRf.readFileSync(pathRf.join(__dirname, 'fixtures', 'review-floor', name), 'utf8');
+  const review = (head, tail = '') =>
+    `## AI コードレビュー結果\n\n${head}\n\n### 🔴 重大\n- なし\n\n### 🟡 推奨\n- なし\n\n### 🟢 軽微\n- なし\n${tail}`;
+  const notRead = (v) => v.filter((x) => /精読していないと書いている/.test(x));
+  // #1924 の変更ファイル（38 件）の種類の代表。helm・scripts・backend・docs を含む。
+  const PR1924_FILES = [
+    '.ai-context/adr/IADR-0536_embedding-pending-lexical-points.md',
+    'deploy/helm/microservices-platform/values.yaml',
+    'docs/functional/FR-02_ingestion.md',
+    'scripts/republish-document-updated.js',
+    'scripts/test-spec-coverage-baseline.json',
+    'src/knowledge/backend/Services/IngestionService/Features/Ingestion/ReembedPending/EmbeddingPendingReembedder.cs',
+  ];
+  const PR1918_FILES = [
+    '.ai-context/adr/IADR-0535_anthropic-content-block-drop-log-level.md',
+    'docs/functional/FR-11_llm-egress-routing.md',
+    'scripts/test-spec-coverage-baseline.json',
+    'src/platform/backend/Services/LlmGateway/Program.cs',
+  ];
+  const PR1915_FILES = [
+    '.ai-context/adr/IADR-0232_ci-pr-latency-reduction.md',
+    '.claude/settings.json',
+    '.github/workflows/claude-code-review.yml',
+    'scripts/scripts.repo.test.js',
+  ];
+  const DOCS_ONLY = ['.ai-context/specs/x.md', 'docs/operations/operations.md'];
+
+  ok('下限[IADR-0538]: #1924 の 1 回目（38 中「コード 15 ファイルと主要な文書」・helm / scripts.test.js を 🔍 へ）は赤', () => {
+    const v = findFloorViolations(fixture('pr1924-review1.txt'), PR1924_FILES);
+    assert.match(v[0], /N=38 は在るが、読んだ件数 M が数字で書かれていない/, v.join('\n'));
+    assert.ok(v.some((x) => /helm lint/.test(x)), v.join('\n'));
+    assert.ok(v.some((x) => /helm template/.test(x)), v.join('\n'));
+    assert.ok(v.some((x) => /scripts\.test\.js/.test(x)), v.join('\n'));
+    assert.strictEqual(v.length, 4, v.join('\n'));
+  });
+
+  ok('下限[IADR-0538]: #1924 の 2 回目（38 中 8）は赤で、helm と scripts.test.js の記載は満たしている', () => {
+    const v = findFloorViolations(fixture('pr1924-review2.txt'), PR1924_FILES);
+    assert.strictEqual(v.length, 1, v.join('\n'));
+    assert.match(v[0], /変更 38 ファイル中 8 ファイルしか読んでいない/);
+  });
+
+  ok('下限[IADR-0538]: #1921 の 2 回目（6/6 だが 🔍 に「全文を読めていない」）は赤（本リポの拡張）', () => {
+    const v = findFloorViolations(fixture('pr1921-review2.txt'), DOCS_ONLY);
+    assert.strictEqual(notRead(v).length, 1, v.join('\n'));
+    assert.strictEqual(v.length, 1, v.join('\n'));
+    assert.match(v[0], /全文を読めていない/);
+  });
+
+  ok('下限[IADR-0538]: 下限を満たした実文（#1915・#1918・#1920 の 3 回目・#1921 の 1 回目）は緑', () => {
+    assert.deepStrictEqual(findFloorViolations(fixture('pr1915-review1.txt'), PR1915_FILES), []);
+    assert.deepStrictEqual(findFloorViolations(fixture('pr1918-review1.txt'), PR1918_FILES), []);
+    assert.deepStrictEqual(findFloorViolations(fixture('pr1920-review3.txt'), ['deploy/local/README.md', DOCS_ONLY[0]]), []);
+    assert.deepStrictEqual(findFloorViolations(fixture('pr1921-review1.txt'), DOCS_ONLY), []);
+  });
+
+  // 母集合: AST#1318〜AST#1336 と本リポ #1915〜#1924 のレビューに実在した申告の書式
+  ok('下限[IADR-0538]: 実在した申告の書式から N / M を読む（陽性）', () => {
+    const cases = [
+      ['変更 9 ファイル中 9 ファイルを読んだ(生成物の除外なし)。', 9, 9],
+      ['変更 6 ファイル中 6 ファイルを読んだ（除外した生成物: なし。`.claude/settings.json` は差分で確認）。', 6, 6], // #1915
+      ['変更 19 ファイル中 19 ファイルを読んだ。除外した生成物はない。', 19, 19], // #1918
+      ['変更 2 ファイル中 2 ファイルを全文読んだ（除外した生成物なし）。', 2, 2], // #1920
+      ['変更 38 ファイル中、次の 8 ファイルは差分か全文を読んだ。', 38, 8], // #1924 の 2 回目
+      ['変更 14 ファイル中 14 ファイルの差分を読んだ（生成物の除外なし）。', 14, 14],
+      ['変更 32 ファイル中、生成物の除外なし。**全文または差分を読んだのは 18 ファイル**です。', 32, 18],
+      ['変更 １２ ファイル中 １２ ファイルを読んだ。', 12, 12], // 全角数字
+      ['変更 3 件中 3 件を読んだ。', 3, 3],
+    ];
+    for (const [text, n, m] of cases) {
+      const d = parseReadDeclaration(text);
+      assert.ok(d, text);
+      assert.strictEqual(d.n, n, text);
+      assert.strictEqual(d.m, m, text);
+    }
+  });
+
+  ok('下限[IADR-0538]: 読んだ件数が数字で無い申告は「申告なし」（陰性。#1924 の 1 回目の形）', () => {
+    for (const text of [
+      '変更 38 ファイル中、コード 15 ファイルと主要な文書を読んだ。',
+      '変更 30 ファイル中、実装・テスト・仕様の主要ファイルは全文または差分で読んだ。',
+      '変更 21 ファイル中、生成物の `messages.ts` / `messages.po` を除く 19 ファイルを対象にした。',
+    ]) {
+      const v = findFloorViolations(review(text), []);
+      assert.strictEqual(v.length, 1, text);
+      assert.match(v[0], /申告が無い/, text);
+    }
+    assert.match(findFloorViolations(review('差分を読んだ。'), [])[0], /申告が無い$/);
+  });
+
+  ok('下限[IADR-0538]: 生成物の除外数 K を足して M + K ≥ N なら緑、足りなければ赤', () => {
+    assert.deepStrictEqual(
+      findFloorViolations(review('変更 21 ファイル中 19 ファイルを読んだ（生成物 2 ファイルを除外: `messages.ts` / `messages.po`）。'), []),
+      []
+    );
+    assert.deepStrictEqual(findFloorViolations(review('変更 5 ファイル中 4 ファイルを読んだ（生成物 1 ファイル（pnpm-lock.yaml）を除外）。'), []), []);
+    const v = findFloorViolations(review('変更 21 ファイル中 18 ファイルを読んだ（生成物 2 ファイルを除外）。'), []);
+    assert.strictEqual(v.length, 1);
+    assert.match(v[0], /21 ファイル中 18/);
+  });
+
+  ok('下限[IADR-0538]: 「下限…満たして(い)ない／満たさない／満たしていません」は赤、否定の否定・引用・別の行は緑', () => {
+    for (const line of ['下限は満たしていない。', '下限を満たさない。', '下限（全ファイルを読む）は満たしていません。', '下限を満たせていません。']) {
+      assert.strictEqual(findFloorAdmissions(line).length, 1, line);
+    }
+    for (const line of [
+      '下限はすべて満たした。',
+      '下限を満たしていない項目は無い。',
+      '検査器は「下限…満たしていない」と書いた本文を落とす。', // 引用（この PR 自身のレビューで自己発火しない）
+      '`下限は満たしていない` を検出する正規表現を足した。',
+      '下限: すべて実行した。\n他の条件は満たしていない。', // 別の行
+    ]) {
+      assert.deepStrictEqual(findFloorAdmissions(line), [], line);
+    }
+  });
+
+  // 「実行した」は節で読む（AST#1337 の AI レビュー 🟡）。行内の否定語には頼らない。
+  const confirmed = (...lines) => `\n### ✅ 確認できたこと（このセッションで実走）\n${lines.map((l) => `- ${l}`).join('\n')}\n`;
+  const notRun = (...lines) => `\n### 🔍 実行できなかったこと\n${lines.map((l) => `- ${l}`).join('\n')}\n`;
+
+  ok('下限[IADR-0538]: deploy/helm の差分では helm lint と helm template の両方が「確認できたこと」に要る', () => {
+    const body = review('変更 2 ファイル中 2 ファイルを読んだ。');
+    const helm = ['deploy/helm/microservices-platform/values.yaml'];
+    assert.strictEqual(findFloorViolations(body, helm).length, 2);
+    assert.strictEqual(findFloorViolations(body + confirmed('`helm lint deploy/helm/microservices-platform`: 成功'), helm).length, 1);
+    assert.deepStrictEqual(findFloorViolations(body + confirmed('`helm lint`: 成功', '`helm template ci-check`: 成功'), helm), []);
+    // #1924 の 1 回目の形: 🔍 の節に「走らせていない」と在るだけ
+    assert.strictEqual(findFloorViolations(body + notRun('`helm lint` / `helm template` は走らせていない。'), helm).length, 2);
+    // helm の差分が無ければ要らない（deploy/local は helm の chart ではない）
+    assert.deepStrictEqual(findFloorViolations(body, ['deploy/local/README.md', 'docs/a.md']), []);
+  });
+
+  ok('下限[IADR-0538]: scripts/ か .github/ の差分では scripts.test.js が「確認できたこと」に要る', () => {
+    const body = review('変更 1 ファイル中 1 ファイルを読んだ。');
+    for (const f of ['scripts/check-x.js', '.github/workflows/ci.yml']) {
+      const v = findFloorViolations(body, [f]);
+      assert.strictEqual(v.length, 1, f);
+      assert.match(v[0], /scripts\.test\.js/);
+      assert.deepStrictEqual(findFloorViolations(body + confirmed('`scripts.test.js`（REQUIRE_REPO_TESTS=1）: 1044 件 passed'), [f]), [], f);
+      assert.strictEqual(findFloorViolations(body + notRun('`scripts.test.js`: 実行していない（未検証）。'), [f]).length, 1, f);
+    }
+    // 行内に「拒否」「省略」があっても確認できたことの節なら実行した（AST#1337 の偽陽性の是正）
+    assert.deepStrictEqual(findFloorViolations(body + confirmed('`scripts.test.js` 全件成功（権限拒否なし）'), ['scripts/a.js']), []);
+  });
+
+  ok('下限[IADR-0538]: 確認できたことの見出しの表記揺れを読み、小見出しでは閉じず、同じ深さ以浅で閉じる', () => {
+    for (const h of [
+      '### 確認できたこと',
+      '### ✅ 確認できたこと（このセッションで実走）',
+      '### ✅ 確認できたこと(このセッションで実行)',
+      '### 確認できたこと（実行した）',
+    ]) {
+      assert.match(confirmedSections(`${h}\n- scripts.test.js: ok\n### 🔍 実行できなかったこと\n- helm lint\n`), /scripts\.test\.js/, h);
+      assert.doesNotMatch(confirmedSections(`${h}\n- x\n### 🔍 実行できなかったこと\n- helm lint\n`), /helm lint/, h);
+    }
+    const t = '### 確認できたこと\n#### 検査器\n- scripts.test.js: ok\n### 🔍 実行できなかったこと\n- helm lint は未実行\n## 付記\n- x\n';
+    assert.match(confirmedSections(t), /scripts\.test\.js/);
+    assert.doesNotMatch(confirmedSections(t), /helm lint/);
+    assert.match(notRunSections(t), /helm lint は未実行/);
+    assert.doesNotMatch(notRunSections(t), /scripts\.test\.js|- x/);
+  });
+
+  ok('下限[IADR-0538]: 実在した「精読していない」の表記揺れを冒頭で読む（陽性）', () => {
+    const head = '変更 3 ファイル中 3 ファイルを読んだ（生成物の除外なし）。';
+    for (const line of [
+      '残りの文書・ADR 追記・試験ファイルは、差分全体の精読までは行っていない。', // #1924 の 1 回目
+      'テストは名前と範囲の確認にとどまり、行単位では読んでいない。', // AST#1340
+      '全行は読んでいない。', // AST#1344
+      '`docs/` と `.ai-context/` の各文書は、本文を精読せず存在と検査器の結果で確認した。', // AST#1336
+      'テストは差分の存在と PR 本文の記述の確認までである。', // AST#1326
+      '- **要点だけ確認**: IADR は残余リスク節のみ。', // AST#1336
+      '索引行は出力が切り詰められたため、先頭部分しか目視していない。', // AST#1318
+      '追記した 2 行の全文は読めていない。', // AST#1318
+      'テスト 3 本は流し読みした。',
+    ]) {
+      assert.strictEqual(notRead(findFloorViolations(review(`${head}${line}`), [])).length, 1, line);
+    }
+  });
+
+  ok('下限[IADR-0538]: 差分を読んだ・否定の否定・引用・計画書・他リポ・指摘の節は数えない（陰性）', () => {
+    const head = '変更 3 ファイル中 3 ファイルを読んだ（生成物の除外なし）。';
+    for (const line of [
+      '全文ではなく差分を読んだ。',
+      '残りは差分を 1 ファイルずつ行単位で読んだ。',
+      '未読のファイルは無い。',
+      '精読していないファイルはない。',
+      '検査器は「行単位では読んでいない」と書いた本文を落とす。',
+      '`全行は読んでいない` を検出する正規表現を足した。',
+      '計画書（FR-02）は読んでいない（計画リポ参照不可）。',
+      '他リポジトリの issue 本文は読めていない。', // 本リポの拡張（読む対象のファイルではない）
+    ]) {
+      assert.deepStrictEqual(notRead(findFloorViolations(review(`${head}${line}`), [])), [], line);
+    }
+    // 計画書とテストを並べた文は数える（AST#1346 の AI レビュー 🟢）
+    assert.strictEqual(notRead(findFloorViolations(review(`${head}計画書とテスト 2 本は精読していない。`), [])).length, 1);
+    assert.deepStrictEqual(
+      findFloorViolations(review(head).replace('### 🟢 軽微\n- なし', '### 🟢 軽微\n- テストの一部は精読していないが問題ない'), []),
+      []
+    );
+  });
+
+  // 本リポの拡張（IADR-0538 決定 2）: 🔍 の節は「読む」ことの自認の型だけを数える。
+  ok('下限[IADR-0538]: 🔍 の節の「精読していない」「読めていない」は赤、「までしか確認できない」・計画書・他リポは緑', () => {
+    const head = '変更 3 ファイル中 3 ファイルを読んだ（生成物の除外なし）。';
+    for (const line of [
+      'IADR・仕様書・`docs/`・試験ファイルの本文は精読していない。', // #1924 の 2 回目
+      'IADR-0504 と `operations.md` の差分は、出力が大きく、本セッションでは全文を読めていない。', // #1921 の 2 回目
+      'テストコードの差分は精読していない。', // #1886
+      '統合試験と仕様書は精読していない。', // #1906
+    ]) {
+      assert.strictEqual(notRead(findFloorViolations(review(head, notRun(line)), [])).length, 1, line);
+    }
+    for (const line of [
+      'CI ジョブ単位のログ: `gh run view` 等のログ取得手段が許可されておらず、結論(成功/失敗)までしか確認できない。', // #1855
+      'AST リポジトリの pin より新しい `develop` は本セッションから見えない(手順 7 の存在は pin 先でしか確認していない)。', // #1920
+      '計画書原文は CI から届かないため、確認していない。', // #1924
+      '計画の ADR と原文は精読していない。',
+      '他リポジトリの issue は読めていない。',
+      '変異試験は書き込み不可のため要点だけ確認した。',
+      'なし',
+    ]) {
+      assert.deepStrictEqual(notRead(findFloorViolations(review(head, notRun(line)), [])), [], line);
+    }
+  });
+
+  ok('下限[IADR-0538]: 「確認できたこと」の節の自認は数え、M < N のときは (a) と重ねない', () => {
+    const head = '変更 3 ファイル中 3 ファイルを読んだ（生成物の除外なし）。';
+    assert.strictEqual(notRead(findFloorViolations(review(head) + confirmed('テスト 2 本は要点だけ確認した'), [])).length, 1);
+    const v = findFloorViolations(review('変更 3 ファイル中 2 ファイルを読んだ。', notRun('テスト 1 本は精読していない。')), []);
+    assert.strictEqual(v.length, 1, v.join('\n'));
+    assert.match(v[0], /3 ファイル中 2/);
+  });
+
+  ok('下限[IADR-0538]: 生成物（orval・Lingui・pnpm-lock・EF）だけの文は K>0 を申告していれば数えず、他も並べた文は数える', () => {
+    const k2 = '変更 5 ファイル中 3 ファイルを読んだ（生成物 2 ファイルを除外: `src/platform/frontend/src/lib/api/generated/auth/auth.ts` / `pnpm-lock.yaml`）。';
+    assert.deepStrictEqual(findFloorViolations(review(`${k2}orval の生成物と \`pnpm-lock.yaml\` は精読していない。`), []), []);
+    assert.deepStrictEqual(findFloorViolations(review(`${k2}\`messages.po\` は自動生成物のため要点だけ確認した。`), []), []);
+    assert.strictEqual(
+      notRead(findFloorViolations(review(`${k2}orval の生成物とテスト 6 ファイルは精読していない。`), [])).length,
+      1
+    );
+    // K の申告が無ければ生成物だけの文も数え、K の申告を案内する
+    const v = findFloorViolations(review('変更 5 ファイル中 5 ファイルを読んだ（生成物の除外なし）。`ModelSnapshot.cs` は精読していない。'), []);
+    assert.strictEqual(notRead(v).length, 1, v.join('\n'));
+    assert.match(v[0], /生成物 K ファイルを除外/);
+    assert.deepStrictEqual(findNotReadAdmissions('前文。', null), []);
+  });
+
+  ok('下限[IADR-0538]: 申告は冒頭だけから読み、指摘の本文の「変更 N 件」を拾わない', () => {
+    const body = review('変更 3 ファイル中 3 ファイルを読んだ。').replace('### 🟢 軽微\n- なし', '### 🟢 軽微\n- 変更 1 件中 0 件を読んだ旨の記述は無い');
+    assert.deepStrictEqual(parseReadDeclaration(body), { n: 3, m: 3, k: 0 });
+    const late = review('差分を読んだ。').replace('### 🟢 軽微\n- なし', '### 🟢 軽微\n- 変更 3 ファイル中 3 ファイルを読んだ');
+    assert.match(findFloorViolations(late, [])[0], /申告が無い/);
+  });
+
+  ok('下限[IADR-0538]: 変更ファイルが不明（null）なら差分の種類に応じた判定だけを行わない', () => {
+    assert.deepStrictEqual(findFloorViolations(review('変更 1 ファイル中 1 ファイルを読んだ。'), null), []);
+    assert.deepStrictEqual(parseChangedFiles(''), []);
+    assert.deepStrictEqual(parseChangedFiles('a\n\n b \n'), ['a', 'b']);
+  });
+
+  ok('下限[IADR-0538]: 本文は判定の見出しを含む最後の候補を選ぶ（途中の独り言・進行中の投稿で赤くしない）', () => {
+    const good = fixture('pr1918-review1.txt');
+    const events = [
+      { type: 'assistant', message: { content: [{ type: 'text', text: '下限を満たしていないので、残りのファイルを読む。' }] } },
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', id: 'a', name: 'mcp__github_comment__update_claude_comment', input: { body: 'レビュー中…' } }] },
+      },
+      {
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', id: 'b', name: 'mcp__github_comment__update_claude_comment', input: { body: good } }] },
+      },
+      { type: 'result', result: 'レビューを投稿しました。' },
+    ];
+    assert.strictEqual(selectReviewBody(events), good);
+    assert.deepStrictEqual(findFloorViolations(selectReviewBody(events), PR1918_FILES), []);
+  });
+
+  // 実行形（ワークフローの「Check review verdict」と同じ呼び方）。::error が違反ごとに 1 行出ること。
+  ok('下限[IADR-0538]: 実行形 —— #1924 の 2 回目は exit 1 で ::error を出し、#1918 は exit 0', () => {
+    const { spawnSync } = require('child_process');
+    const bin = pathRf.join(__dirname, 'check-review-verdict.js');
+    const dir = fsRf.mkdtempSync(pathRf.join(osRf.tmpdir(), 'msp-review-floor-'));
+    try {
+      const run = (body, files) => {
+        const f = pathRf.join(dir, 'exec.json');
+        const events = [
+          { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'x', name: 'mcp__github_comment__update_claude_comment', input: { body } }] } },
+        ];
+        fsRf.writeFileSync(f, JSON.stringify(events));
+        const env = Object.assign({}, process.env, { GITHUB_ACTIONS: 'true', CHANGED_FILES: files.join('\n') });
+        delete env.ALLOW_MISSING_VERDICT;
+        return spawnSync(process.execPath, [bin, f], { env, encoding: 'utf8' });
+      };
+      const bad = run(fixture('pr1924-review2.txt'), PR1924_FILES);
+      assert.strictEqual(bad.status, 1, bad.stdout + bad.stderr);
+      const errors = bad.stdout.split('\n').filter((l) => l.startsWith('::error::'));
+      assert.strictEqual(errors.length, 2, bad.stdout); // 違反 1 行 + 総括 1 行
+      assert.match(errors[0], /38 ファイル中 8/);
+      const notReadRun = run(fixture('pr1921-review2.txt'), DOCS_ONLY);
+      assert.strictEqual(notReadRun.status, 1, notReadRun.stdout + notReadRun.stderr);
+      assert.match(notReadRun.stdout, /::error::.*精読していないと書いている/);
+      const good = run(fixture('pr1918-review1.txt'), PR1918_FILES);
+      assert.strictEqual(good.status, 0, good.stdout + good.stderr);
+      assert.ok(!/::error::/.test(good.stdout), good.stdout);
+      // 判定が揃っていても、helm の差分に helm lint が無ければ赤
+      const helm = run(fixture('pr1918-review1.txt'), ['deploy/helm/microservices-platform/values.yaml']);
+      assert.strictEqual(helm.status, 1, helm.stdout);
+      // ALLOW_MISSING_VERDICT は下限には効かない
+      const f = pathRf.join(dir, 'exec.json');
+      fsRf.writeFileSync(f, JSON.stringify([{ type: 'result', result: fixture('pr1924-review2.txt') }]));
+      const allow = spawnSync(process.execPath, [bin, f], {
+        env: Object.assign({}, process.env, { GITHUB_ACTIONS: 'true', CHANGED_FILES: '', ALLOW_MISSING_VERDICT: '1' }),
+        encoding: 'utf8',
+      });
+      assert.strictEqual(allow.status, 1, allow.stdout);
+      // CHANGED_FILES が空なら差分の種類の判定だけ skip を警告で明示する（#1918 は緑のまま）
+      const unknown = run(fixture('pr1918-review1.txt'), []);
+      assert.strictEqual(unknown.status, 0, unknown.stdout);
+      assert.match(unknown.stdout, /::warning::.*CHANGED_FILES/);
+    } finally {
+      fsRf.rmSync(dir, { recursive: true, force: true }); // 本試験が作った一時ディレクトリだけを消す
+    }
+  });
+}
+
 // --- check-action-versions: 配布テンプレートの Actions が巻き戻らないようにする（issue planning#148） ---
 //
 // Dependabot は github-actions エコシステムではリポジトリ直下の .github/workflows/ しか

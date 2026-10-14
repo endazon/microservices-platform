@@ -292,9 +292,24 @@ jobs:
             まず `git diff --name-only origin/develop...HEAD` で変更ファイルの一覧を取り、次を**すべて**行う
             （merge base が取れなければ `git fetch origin develop` を先に実行する）。
             - **変更ファイルは全部読む。** 差分（`git diff origin/develop...HEAD -- <パス>`）か全文を、
-              1 ファイルずつ読む。除外してよいのは生成物（orval の生成物・`locales/*/messages.ts`・
-              `pnpm-lock.yaml`・`CHANGELOG.md`）だけで、除外したら本文の冒頭にその一覧を書く。
-              本文の冒頭には「変更 N ファイル中 M ファイルを読んだ」と書く。
+              1 ファイルずつ読む。除外してよいのは生成物（orval の生成物〔`src/<unit>/frontend/src/lib/api/generated/` 配下〕・
+              Lingui の `messages.ts` / `messages.po`・`pnpm-lock.yaml`・`CHANGELOG.md`・`docs/api/openapi.yaml`・
+              EF マイグレーションの `*.Designer.cs` と `*ModelSnapshot.cs`）だけで、除外したら本文の冒頭にその一覧を書く。
+              本文の冒頭（最初の 🔴 の見出しより前）には「変更 N ファイル中 M ファイルを読んだ」と書く（N と M は数字で書く）。
+              生成物を除外したときは「変更 N ファイル中 M ファイルを読んだ（生成物 K ファイルを除外: …）」と K も数字で書く。
+              **この申告と下の各項目の実行の記載は `check-review-verdict.js` が読み、欠ければジョブを落とす**
+              （M + K が N に満たない・申告が無い・「下限を満たしていない」と書いた・読んだと申告したファイルを
+              精読していないと書いた・`deploy/helm/**` の差分で `helm lint` / `helm template` が「確認できたこと」の節に無い・
+              `scripts/` `.github/` の差分で `scripts.test.js` が「確認できたこと」の節に無い）。**実行したコマンドは
+              「確認できたこと」の節に、実行しなかったものは「🔍 実行できなかったこと」の節に書く**（検査器は節で読み分ける）。
+            - **「読んだ」の定義: 差分を行単位で読んだこと**（全文を読む必要はない。差分は 1 行ずつ全部読む）。
+              ファイル名・テスト名の一覧、検査器の結果、要点だけの確認、範囲の確認、先頭部分だけの目視は
+              「読んだ」に**数えない**。数えないファイルは M に入れない（除外した生成物は M に入れず K に数える）。
+              出力が大きくて一度に読み切れない差分は、パスを分けて読み切る。「変更 N ファイル中 N ファイルを読んだ」と
+              書いた本文で、冒頭・「確認できたこと」・「🔍 実行できなかったこと」のどこかに「全行は読んでいない」
+              「行単位では読んでいない」「精読していない」「全文を読めていない」「未読」等と書くと、申告と矛盾するとして
+              検査器が落とす。読み切れないなら M を正直に書く。計画書・他リポジトリを読めないことはこれに当たらない。
+              これらの語を論じるだけのときは「」かインラインコードで引用する（引用の中は検査器が数えない）。
             - **`src/<unit>/backend/**` の差分があれば**、`dotnet build src/<unit>/backend/backend.slnx` と、
               変更したサービスのテストプロジェクトの `dotnet test <…Tests.csproj>` を走らせる。
               `--filter` は付けず、プロジェクト単位で全件を回す。あわせて
@@ -444,6 +459,9 @@ jobs:
             ### 🟢 軽微
             - （指摘なし）または具体的な指摘内容
 
+            ### ✅ 確認できたこと（このセッションで実走）
+            - 実行したコマンドと結果（件数・exit）を列挙する（【検証の下限】の各項目を含む）
+
             ### 🔍 実行できなかったこと
             - なし / または「`<コマンド>` は権限拒否（このため <どの主張> は未検証）」の形で列挙
 
@@ -538,8 +556,20 @@ jobs:
       # **実際には何も判定されていない**。上の check-permission-denials.js では捕まらない
       # ——あちらは「ツールを 1 つも実行できなかった」形を見る。ここはツールが動いており
       # **最後の投稿だけが無い**形を見る。2 本セットで配布される。
+      #
+      # 検証の下限（NFR / IADR-0538。AST#1337・AST#1346・AST#1347 の移植）も同じステップで読む。#1924 の
+      # レビューは 2 回続けて下限を満たさず（38 ファイル中「コード 15 ファイルと主要な文書」/ 8 ファイル）緑で通った。
+      # 差分の種類に応じた下限（deploy/helm/** → helm lint / helm template、scripts/ .github/ → scripts.test.js）を
+      # 判定するため、PR の変更ファイルを CHANGED_FILES で渡す（checkout は fetch-depth: 0）。差分を引けなければ空で
+      # 渡し、検査器はその判定だけを warn 付きで skip する（fail-open）。ALLOW_MISSING_VERDICT は下限には効かない。
       - name: Check review verdict
         if: always()
         env:
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
-        run: node scripts/check-review-verdict.js "$EXECUTION_FILE"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          CHANGED_FILES="$(git diff --name-only "$BASE_SHA...$HEAD_SHA" 2>/dev/null \
+                           || git diff --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || true)"
+          export CHANGED_FILES
+          node scripts/check-review-verdict.js "$EXECUTION_FILE"
