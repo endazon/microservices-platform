@@ -270,6 +270,48 @@ public class GrpcDocumentReadTests
             .Should().BeEquivalentTo(restVersions, o => o.WithStrictOrdering());
     }
 
+    // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): 一覧はページで返り、印を辿った全件は REST の一覧と同値（順序を含む）。
+    [Fact]
+    public async Task ListDocuments_pages_through_the_same_list_as_rest()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(Document.Create("ページ 1", null, null, new Dictionary<string, string>()));
+        await SeedAsync(Document.Create("ページ 2", null, null, new Dictionary<string, string>()));
+
+        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
+        http.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ServiceToken());
+        var restList = (await http.GetFromJsonAsync<List<DocumentDto>>("/documents", ct))!;
+
+        var paged = new List<DocumentDto>();
+        var token = string.Empty;
+        do
+        {
+            var resp = await PlainClient().ListDocumentsAsync(
+                new ListDocumentsRequest { PageSize = 1, PageToken = token },
+                headers: Bearer(ServiceToken()), cancellationToken: ct);
+            resp.Documents.Should().HaveCountLessThanOrEqualTo(1);
+            paged.AddRange(resp.Documents.Select(Knowledge.Contracts.Grpc.DocumentReadGrpcMapping.ToDto));
+            token = resp.NextPageToken;
+        } while (token.Length > 0);
+
+        paged.Should().BeEquivalentTo(restList, o => o.WithStrictOrdering());
+    }
+
+    // FR-06, [[IADR-0537]] (#1923): 壊れた続きの印と負の件数は要求の誤り（INVALID_ARGUMENT）。黙って先頭から読まない。
+    [Theory]
+    [InlineData(0, "not-a-token!!")]
+    [InlineData(0, "djE6MTIzOmFiYw")]
+    [InlineData(-1, "")]
+    public async Task ListDocuments_rejects_a_tampered_token_or_negative_page_size(int pageSize, string pageToken)
+    {
+        var act = async () => await PlainClient().ListDocumentsAsync(
+            new ListDocumentsRequest { PageSize = pageSize, PageToken = pageToken },
+            headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+    }
+
     // T-08: 構造の門。gRPC サービス型が ServiceCaller ポリシーを宣言していること
     // （属性が外れると T-02 / T-03 が落ちるが、どの層で外れたかを名指しするためにここでも固定する）。
     [Fact]

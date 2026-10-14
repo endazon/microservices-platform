@@ -613,3 +613,4 @@
 | [IADR-0533](./IADR-0533_east-west-rest-retirement.md) | east-west の REST 同期呼び出しを退役させる —— 移行済みの全経路で REST 実装を撤去して「並走中の正は REST」（IADR-0379 決定 5）を反転し、未構成の gRPC は UNAVAILABLE として縮退させ、扇形の構成キーを一本化する | Accepted |
 | [IADR-0534](./IADR-0534_search-response-degraded-signal.md) | 検索の応答に縮退の印（degraded と理由の固定語彙）を足す —— 部品の健全性だけを表し権限の有無は表さないので IADR-0313 決定 1 の線は崩さず、構成で無効な段と全文側は数えず、計器を同じ符号で揃える | Accepted |
 | [IADR-0535](./IADR-0535_anthropic-content-block-drop-log-level.md) | Anthropic 応答の content ブロック除去のログを「想定内は Debug・想定外だけ Warning」に分け、除去件数を計器で数える（IADR-0114 決定 5 を改める） | Accepted |
+| [IADR-0537](./IADR-0537_document-list-pagination-offset-window-after-abac.md) | 文書管理の一覧をページで返す —— gRPC ListDocuments は更新日時の降順のキーセットで 1 応答 1000 件までに切り、BFF は後段のページを辿って ABAC で絞った後の並びにオフセットの窓を当て、総件数は絞った後の数だけを返す（#1923 / #1897） | Accepted |

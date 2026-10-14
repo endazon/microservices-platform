@@ -50,10 +50,33 @@ public sealed class DocumentReadGrpcService(
     public override async Task<ListDocumentsResponse> ListDocuments(
         ListDocumentsRequest request, ServerCallContext context)
     {
-        var docs = await reads.ListAsync(PrincipalOf(request.User, context), context.CancellationToken);
-        var resp = new ListDocumentsResponse();
+        // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): ページで返す。1 応答は台帳の件数に比例しない。
+        // 🔴 要求の誤り（負の件数・壊れた印）は主体の判定より先に弾く —— どちらも主体に依らず誤りである。
+        var pageSize = PageSizeOf(request.PageSize);
+        DocumentListCursor? after = null;
+        if (!string.IsNullOrEmpty(request.PageToken))
+        {
+            if (!DocumentListCursor.TryDecode(request.PageToken, out var decoded))
+                throw new RpcException(new Status(StatusCode.InvalidArgument,
+                    "page_token が不正です。前の応答の next_page_token をそのまま渡してください。"));
+            after = decoded;
+        }
+
+        var (docs, next) = await reads.ListPageAsync(
+            PrincipalOf(request.User, context), pageSize, after, context.CancellationToken);
+        var resp = new ListDocumentsResponse { NextPageToken = next ?? string.Empty };
         resp.Documents.AddRange(docs.Select(DocumentReadGrpcMapping.ToProto));
         return resp;
+    }
+
+    // 0（省略）は既定、上限を超えた値は上限へ丸める。負は要求の誤り（黙って既定へ畳まない）。
+    internal static int PageSizeOf(int requested)
+    {
+        if (requested < 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "page_size は 0 以上で指定してください。"));
+        return requested == 0
+            ? DocumentReadUseCase.DefaultPageSize
+            : Math.Min(requested, DocumentReadUseCase.MaxPageSize);
     }
 
     public override async Task<GetDocumentResponse> GetDocument(

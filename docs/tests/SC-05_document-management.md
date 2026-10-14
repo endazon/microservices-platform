@@ -3,15 +3,15 @@ title: SC-05 文書管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-02
+updated: 2026-10-14
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-09, SC-03, SC-05, SC-06, SC-07, UC-03]
 adrs: [ADR-0031, ADR-0066]
-iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation]
-issues: [#501, #1065]
+iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308, IADR-0537]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation, 20261014_1923_document-list-pagination]
+issues: [#501, #1065, #1923, #1897]
 -->
 
 # テスト仕様書: 文書管理
@@ -123,6 +123,53 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 **§テストケース 6（画面は `archived` の行に公開を出さない）と対である。** 画面が出さないことと
 サーバが拒むことは別の担保であり、片方だけでは実効境界にならない。
 
+## 一覧のページング（#1923）
+
+> **［2026-10-14 追記 / #1923］** 一覧をページで出すようにした（送り方はオフセット・既定 50 件・総件数は権限で絞った後の数）。
+> 3 層で固定する。**総件数が権限外の文書の存在を漏らさないこと**は BFF の層でしか測れない（絞っているのが BFF であるため）。
+
+### 画面（Vitest）
+
+テスト: `DocumentManagementPage.test.tsx` ／ `pageNumbers.test.ts`（純関数）／ `useDocumentAdmin.test.tsx`（無効化）
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| P1 | ページ送り | 総件数と表示範囲を出し、「次へ」で `offset=50` を要求する。先頭では「前へ」を押せず、現在のページに `aria-current` | `shows the total and the range, and requests the next page` |
+| P2 | 件数の選択 | 選択肢は 25 / 50 / 100（既定 50）。選ぶと `offset=0` から引き直す | `requests the first page again with the chosen page size` |
+| P3 | 末尾を越えた | 総件数が減って現在のページが範囲外になったら末尾のページを引く | `moves back to the last page when the current page falls beyond the total` |
+| P4 | ページ番号 | 先頭・末尾・現在の前後 1 つ。間は省略 | `pageNumbers`（6 ケース） |
+| P5 | 無効化 | 一覧キーでの無効化が全ページのキーに届く | `reaches every page of the list through the list key` |
+
+### BFF（xUnit）
+
+テスト: [`Platform.Bff.Tests/BffDocumentListPagingTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDocumentListPagingTests.cs)
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| B1 | 窓と総件数 | 権限内 3 件・権限外 2 件で、総件数 3・窓は絞った後の順番 | `窓と総件数は権限で絞った後の並びで数える` |
+| B2 | **存在秘匿** | 権限外の文書を混ぜても、総件数・ページの中身・境界が変わらない（陽性対照: 区分を広げれば 5 件と数える） | `権限外の文書は総件数にもページの中身にも境界にも現れない` |
+| B3 | 個人資料 | 区分では読める個人資料も総件数に入らない | `個人資料は総件数に入らない` |
+| B4 | 後段のページを辿る | 後段が 1 件ずつ返しても結果は同じ。後段へは上限 1000 で求め、印を渡して終端まで辿る | `後段のページを辿っても窓と総件数は変わらない` |
+| B5 | 丸め | `limit` は既定 50・1〜100 に丸める | `ページの大きさはサーバ側で丸める` |
+| B6 | 末尾を越えた | 空の窓と同じ総件数 | `末尾を越えたoffsetは空の窓と同じ総件数を返す` |
+| B7 | 改ざん | 負・数でない `offset` / `limit` は 400 | `負や数でないoffset_limitは400` |
+| B8 | 縮退 | スコープが無ければ空のページ（総件数 0） | `スコープが無ければ空のページを返す` |
+
+### 後段（DocumentService・xUnit）
+
+テスト: [`DocumentListPagingTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/Features/Documents/DocumentListPagingTests.cs) ／
+[`GrpcDocumentReadTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/Features/Documents/GrpcDocumentReadTests.cs)
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| S1 | ページの境界 | 5 件を 2 件ずつで 2・2・1 件、重複・抜けなし、最後に印なし（倍数ちょうどでも空のページを返さない） |
+| S2 | 安定順序 | 更新日時が同じ文書は ID の降順。境界が同時刻の間に落ちても抜けない |
+| S3 | 読めない文書 | ページに入らず、続きの印も読めない文書を指さない（陽性対照: 所有者には返る）。長く続いても先へ届く |
+| S4 | 印の改ざん | 壊れた印・作成日時の口の印・表せない時刻は読めず、gRPC では `INVALID_ARGUMENT` |
+| S5 | ページの大きさ | 0 は既定 500、上限 1000 に丸める。負は `INVALID_ARGUMENT` |
+| S6 | REST と同値 | 印を辿った全件が REST の一覧と順序まで一致する |
+| S7 | 実 PostgreSQL | uuid の順・マイクロ秒の丸めをまたいで抜け・重複なし。`(UpdatedAt, Id)` の索引を後ろから、印の位置から引く（`DocumentListKeysetPostgresTests`。Docker が要る） |
+
 ## ABAC・存在秘匿の担保
 
 - 読み取りは ABAC スコープ内のみ返る。書き込みは BFF が対象文書のスコープを先に確かめ、
@@ -139,6 +186,8 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentWriteEndpointTests`
 - `dotnet test src/knowledge/backend/Services/DocumentService/Tests --filter Publish`
+- `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentListPagingTests`（一覧のページング）
+- `dotnet test src/knowledge/backend/Services/DocumentService/Tests --filter "DocumentListPagingTests|ListDocuments_"`（同・後段）
 
 <!-- trace-table:
 row1: SC-05, FR-06

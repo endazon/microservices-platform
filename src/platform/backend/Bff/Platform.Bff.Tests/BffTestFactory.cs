@@ -1994,6 +1994,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // 利用者文脈（`user`）はスタブの観測点 `GrpcUserContexts` に rpc ごとに記録する（#1614 の観測点の gRPC 版）。
     public System.Collections.Concurrent.ConcurrentDictionary<string, string?> GrpcUserContexts { get; } = new();
 
+    // FR-06, [[IADR-0537]] (#1923): 後段の `ListDocuments` の 1 ページの件数（null は要求の値どおり）と、受けた要求（件数・印）の記録。
+    public int? DocumentReadServerPageSize { get; set; }
+    public System.Collections.Concurrent.ConcurrentQueue<(int PageSize, string PageToken)> ListDocumentsRequests { get; } = new();
+
     // 橋渡しの先の HTTP スタブ（"authz" / "document"）。計測用の器（`MeasuringBffFactory`）が往復を数えるために差し替える。
     protected virtual HttpMessageHandler GrpcBridgeHandler(string service) => service switch
     {
@@ -2080,10 +2084,18 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 case DocPb.ListDocumentsRequest r:
                     {
                         Record(method, r.User);
+                        owner.ListDocumentsRequests.Enqueue((r.PageSize, r.PageToken));
                         var (status, docs) = await SendAsync<List<DocumentDto>>(new HttpRequestMessage(HttpMethod.Get, "/documents"), ct);
                         if (docs is null) throw ToRpc(status);
+                        // FR-06, [[IADR-0537]] (#1923): 後段のページングを写す。続きの印はこの器の中だけの値（位置の整数）。
+                        // 1 ページの件数は `DocumentReadServerPageSize`（試験が後段のページを細かく刻むため）が在ればそれ、無ければ要求の値。
+                        var start = string.IsNullOrEmpty(r.PageToken) ? 0 : int.Parse(r.PageToken, System.Globalization.CultureInfo.InvariantCulture);
+                        var size = owner.DocumentReadServerPageSize ?? (r.PageSize > 0 ? r.PageSize : int.MaxValue);
+                        var slice = docs.Skip(start).Take(size).ToList();
                         var resp = new DocPb.ListDocumentsResponse();
-                        resp.Documents.AddRange(docs.Select(DocumentReadGrpcMapping.ToProto));
+                        resp.Documents.AddRange(slice.Select(DocumentReadGrpcMapping.ToProto));
+                        if (start + slice.Count < docs.Count)
+                            resp.NextPageToken = (start + slice.Count).ToString(System.Globalization.CultureInfo.InvariantCulture);
                         return resp;
                     }
                 case DocPb.GetDocumentRequest r:

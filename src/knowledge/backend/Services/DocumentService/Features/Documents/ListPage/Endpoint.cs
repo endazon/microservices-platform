@@ -10,9 +10,12 @@ namespace DocumentService.Features.Documents.ListPage;
 //   `attr.<キー>=<値>`（0 個以上・AND・完全一致）／`limit`（既定 100・1〜500 に丸める）／
 //   `cursor`（前ページの `nextCursor`）→ 200 `DocumentPageDto`。
 //
-// 🔴 **既存の `GET /documents` は変えない。** BFF の一覧（`FetchListAsync`）と gRPC `ListDocuments` が
+// 🔴 **既存の `GET /documents` は変えない。** BFF の一覧（当時の `FetchListAsync`）と gRPC `ListDocuments` が
 // 「全件・同じ並び」を前提にしている。絞り込みはこの別の口にだけ置く（gRPC 面には足さない ——
 // 呼び出し元が居ない。IADR-0401 決定 2 と同じ作法）。
+// ［2026-10-14 / #1923・[[IADR-0537]]］gRPC `ListDocuments` はページで返すようになった（更新日時の降順のキーセット。
+// `DocumentReadUseCase.ListPageAsync`）。`GET /documents` は全件のまま、集合と並びは gRPC のページを辿った全件と同じである。
+// この口（作成日時の昇順）とは並びも続きの印も共有しない。
 //
 // 認可: **認証を要する**（合成点の `read` 群。［2026-09-27 / #1614］読み取りの 5 口が同じ群になった）。
 // 集合の性質（`GET /documents` の部分集合・個人資料を主体に依らず返さない）は `DocumentPageQuery` の注記を参照。

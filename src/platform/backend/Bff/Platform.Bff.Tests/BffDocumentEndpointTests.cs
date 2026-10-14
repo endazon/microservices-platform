@@ -118,7 +118,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         var resp = await _factory.CreateClient().GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken);
+        var body = (await resp.Content.ReadFromJsonAsync<DocumentListPageDto>(TestContext.Current.CancellationToken))!.Items;
         body.Should().ContainSingle(d => d.Title == "経費規程 2025");
         body.Should().NotContain(d => d.Title == "取締役会議事録");
     }
@@ -130,7 +130,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         var resp = await _factory.CreateClient().GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken);
+        var body = (await resp.Content.ReadFromJsonAsync<DocumentListPageDto>(TestContext.Current.CancellationToken))!.Items;
         body!.Should().BeEmpty();
     }
 

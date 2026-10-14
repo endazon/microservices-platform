@@ -9,7 +9,7 @@ namespace Knowledge.Bff.Endpoints.Documents;
 // FR-06, NFR-09, NFR-16, ADR-0029 (#1897): BFF が文書の読み取りの失敗を**縮退へ畳む**ときに WARN を 1 行出す。
 //
 // ■ なぜ要るのか
-//   一覧（`FetchListAsync`）は `RpcException` を全 status について空一覧へ、詳細（`FetchAuthorizedAsync`）は
+//   一覧（`FetchListPageAsync`）は `RpcException` を全 status について空一覧へ、詳細（`FetchAuthorizedAsync`）は
 //   404 へ畳んでいた。ログが無いので、`ListDocuments` の応答が受信上限を超えた（`ResourceExhausted`）ときも、
 //   画面には「文書が 0 件」としか見えなかった（#1897）。認可スコープ解決の縮退の WARN（旧 `AuthzScopeRestLog`。REST の撤去とともに消えた）と同じ形にした。
 //

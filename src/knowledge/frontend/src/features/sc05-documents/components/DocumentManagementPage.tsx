@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Link } from '@tanstack/react-router';
 import {
@@ -23,8 +23,13 @@ import { toMessages } from '@foundation/utils/apiErrors';
 import { CONFIDENTIALITY_KEY } from '../../../lib/abac';
 import { DocumentForm } from './DocumentForm';
 import type { DocumentFormValues } from './DocumentForm';
-import { useAdminDocuments, useDocumentActions } from '../api/useDocumentAdmin';
-import type { DocumentCommand } from '../api/useDocumentAdmin';
+import {
+  DEFAULT_DOCUMENT_PAGE_SIZE,
+  useAdminDocuments,
+  useDocumentActions,
+} from '../api/useDocumentAdmin';
+import type { DocumentCommand, DocumentPageRequest } from '../api/useDocumentAdmin';
+import { DocumentPagination } from './DocumentPagination';
 import { useTagOptions } from '../api/useTagOptions';
 import { canPublish, documentStatusView } from '../types/documentStatus';
 // SC-05, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
@@ -75,7 +80,26 @@ export function DocumentManagementPage() {
   const { t } = useLingui();
   const [editing, setEditing] = useState<DocumentDto | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const documents = useAdminDocuments();
+  // SC-05, FR-06, IADR-0537（#1923 段 1）: 一覧はページで引く（既定 50 件）。総件数は BFF が権限で絞った後の数。
+  const [page, setPage] = useState<DocumentPageRequest>({
+    offset: 0,
+    limit: DEFAULT_DOCUMENT_PAGE_SIZE,
+  });
+  const documents = useAdminDocuments(page);
+  const total = documents.data?.total;
+  // 削除などで総件数が減り、いまのページが末尾を越えたら末尾のページへ戻す（空のページを出したままにしない）。
+  // 前のページを保ったまま読み込む間（`isPlaceholderData`）の値では判断しない。
+  useEffect(() => {
+    if (
+      total === undefined ||
+      documents.isPlaceholderData ||
+      page.offset < total ||
+      page.offset === 0
+    )
+      return;
+    const lastOffset = Math.max(0, Math.ceil(total / page.limit) - 1) * page.limit;
+    setPage({ offset: lastOffset, limit: page.limit });
+  }, [total, documents.isPlaceholderData, page.offset, page.limit]);
   // SC-05（#449）: タグの選択肢は辞書（`/bff/tags`）から引く。自由入力は許さない。
   const tagOptions = useTagOptions();
   const actions = useDocumentActions();
@@ -199,7 +223,7 @@ export function DocumentManagementPage() {
           query={documents}
           loadingLabel={t`文書を読み込み中…`}
           errorTitle={t`文書を取得できませんでした。`}
-          isEmpty={(data) => data.length === 0}
+          isEmpty={(data) => data.total === 0}
           empty={
             <EmptyState
               title={t`文書はまだありません。`}
@@ -211,50 +235,59 @@ export function DocumentManagementPage() {
             />
           }
         >
-          {(rows) => (
-            <Table>
-              <TableCaption>
-                <Trans>文書の一覧</Trans>
-              </TableCaption>
-              <TableHead>
-                <TableRow>
-                  <TableHeaderCell>
-                    <Trans>タイトル</Trans>
-                  </TableHeaderCell>
-                  <TableHeaderCell>
-                    <Trans>機密区分</Trans>
-                  </TableHeaderCell>
-                  <TableHeaderCell>
-                    <Trans>版</Trans>
-                  </TableHeaderCell>
-                  <TableHeaderCell>
-                    <Trans>状態</Trans>
-                  </TableHeaderCell>
-                  {/* #629: 運用者には操作が 1 つも無いので、列ごと出さない
-                      （空の「操作」列が並ぶと、押せる何かがあるように読める）。 */}
-                  {canWrite && (
+          {(data) => (
+            <>
+              <Table>
+                <TableCaption>
+                  <Trans>文書の一覧</Trans>
+                </TableCaption>
+                <TableHead>
+                  <TableRow>
                     <TableHeaderCell>
-                      <Trans>操作</Trans>
+                      <Trans>タイトル</Trans>
                     </TableHeaderCell>
-                  )}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((doc) => (
-                  <DocumentRow
-                    key={doc.id}
-                    doc={doc}
-                    busy={commandPending}
-                    canWrite={canWrite}
-                    onEdit={() => {
-                      beginOperation();
-                      setEditing(doc);
-                    }}
-                    onCommand={run}
-                  />
-                ))}
-              </TableBody>
-            </Table>
+                    <TableHeaderCell>
+                      <Trans>機密区分</Trans>
+                    </TableHeaderCell>
+                    <TableHeaderCell>
+                      <Trans>版</Trans>
+                    </TableHeaderCell>
+                    <TableHeaderCell>
+                      <Trans>状態</Trans>
+                    </TableHeaderCell>
+                    {/* #629: 運用者には操作が 1 つも無いので、列ごと出さない
+                      （空の「操作」列が並ぶと、押せる何かがあるように読める）。 */}
+                    {canWrite && (
+                      <TableHeaderCell>
+                        <Trans>操作</Trans>
+                      </TableHeaderCell>
+                    )}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {data.items.map((doc) => (
+                    <DocumentRow
+                      key={doc.id}
+                      doc={doc}
+                      busy={commandPending}
+                      canWrite={canWrite}
+                      onEdit={() => {
+                        beginOperation();
+                        setEditing(doc);
+                      }}
+                      onCommand={run}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+              <DocumentPagination
+                total={data.total}
+                offset={page.offset}
+                limit={page.limit}
+                busy={documents.isFetching}
+                onChange={setPage}
+              />
+            </>
           )}
         </QueryState>
       </div>

@@ -56,6 +56,29 @@ const TAG_DICTIONARY = {
 };
 
 /**
+ * FR-06, IADR-0537（#1923）: 一覧（`GET /bff/documents`）の応答は 1 ページ（`items` / `total` / `offset` / `limit`）である。
+ * 既定は全件が 1 ページに収まる形。総件数・位置を変える試験は引数で与える。
+ */
+function listPage(
+  items: unknown[],
+  page: { total?: number; offset?: number; limit?: number } = {},
+) {
+  return jsonResponse({
+    items,
+    total: page.total ?? items.length,
+    offset: page.offset ?? 0,
+    limit: page.limit ?? 50,
+  });
+}
+
+/** 一覧の取得（GET）の要求だけを数える（`/documents?offset=…&limit=…`）。 */
+const listCalls = () =>
+  mocks.apiRequest.mock.calls.filter(
+    ([path, init]) =>
+      String(path).startsWith('/documents?') && (init as RequestInit | undefined)?.method === 'GET',
+  );
+
+/**
  * `/tags` には辞書を、その他のパスには `rest` の応答を返す。
  *
  * **辞書を返さないと選択肢が空になり、タグを触るテストが「候補なし」で止まる。**
@@ -88,7 +111,7 @@ afterEach(() => {
 describe('DocumentManagementPage (SC-05)', () => {
   // 05_screens §SC-05: 一覧はタイトル・機密区分・版（版列＝現行版の表示）。詳細・版履歴は SC-03。
   it('lists documents with confidentiality and the current version, linking to SC-03', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage();
 
     const link = await screen.findByRole('link', { name: '経費精算規程' });
@@ -100,14 +123,14 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(table.getByText('internal')).toBeInTheDocument();
     expect(table.getByText('v3')).toBeInTheDocument();
     expect(mocks.apiRequest).toHaveBeenCalledWith(
-      '/documents',
+      '/documents?offset=0&limit=50',
       expect.objectContaining({ method: 'GET' }),
     );
   });
 
   // UC-03 基本フロー 1: 管理者が文書を登録し、属性・タグを設定する。
   it('creates a document with the required confidentiality attribute and tags', async () => {
-    withTagDictionary(() => jsonResponse([]));
+    withTagDictionary(() => listPage([]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -143,7 +166,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // 従前は自由テキスト入力で、辞書に無い値をいくらでも付けられた。
 
   it('offers tags from the dictionary instead of free text', async () => {
-    withTagDictionary(() => jsonResponse([]));
+    withTagDictionary(() => listPage([]));
     await renderPage();
 
     const tagField = await screen.findByLabelText('タグ');
@@ -164,7 +187,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // 既に付いているタグは選択肢から消える（同じタグを 2 度付けられない）。
   it('removes already-attached tags from the choices', async () => {
-    withTagDictionary(() => jsonResponse([DRAFT_DOC]));
+    withTagDictionary(() => listPage([DRAFT_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -199,7 +222,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // 画面が既存のタグを黙って落とすと、保存時に消えて破壊的になる。
   it('keeps existing tags that are no longer in the dictionary', async () => {
     const legacy = { ...DRAFT_DOC, tags: ['廃止された分類'] };
-    withTagDictionary(() => jsonResponse([legacy]));
+    withTagDictionary(() => listPage([legacy]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -218,7 +241,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // UC-03 例外フロー: 必須属性が未設定の場合は保存を拒否する（タイトルが空では保存できない）。
   it('refuses to save until the required title is filled (UC-03 exception flow)', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
+    mocks.apiRequest.mockResolvedValue(listPage([]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -240,7 +263,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // FR-06 のバージョン管理: 更新は現在版を expectedVersion として送る（楽観ロック）。
   it('updates a document with the optimistic-lock version and the change note', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -272,18 +295,16 @@ describe('DocumentManagementPage (SC-05)', () => {
   // IADR-0127 決定 5: 更新系の成功後は invalidateQueries だけを行う（手書きの再取得を持たない）。
   // これが外れると、保存したのに一覧が古いまま残る（旧実装が load() を手で呼び直していた箇所）。
   it('refetches the list after a successful save', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
     await user.click(await screen.findByRole('button', { name: '編集' }));
-    expect(mocks.apiRequest.mock.calls.filter(([path]) => path === '/documents')).toHaveLength(1);
+    expect(listCalls()).toHaveLength(1);
 
     await user.click(screen.getByRole('button', { name: '保存' }));
 
-    await waitFor(() =>
-      expect(mocks.apiRequest.mock.calls.filter(([path]) => path === '/documents')).toHaveLength(2),
-    );
+    await waitFor(() => expect(listCalls()).toHaveLength(2));
   });
 
   // 版競合（409）は「他の更新と競合した」ことが読める形で伝える（消えるトーストにしない）。
@@ -291,7 +312,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     mocks.apiRequest.mockImplementation((_path: string, init?: RequestInit) =>
       init?.method === 'PUT'
         ? Promise.reject(new ApiError('conflict', '競合が発生しました。', 409))
-        : Promise.resolve(jsonResponse([DRAFT_DOC])),
+        : Promise.resolve(listPage([DRAFT_DOC])),
     );
     const user = userEvent.setup();
     await renderPage();
@@ -307,7 +328,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // 公開は未公開状態（draft / normalized）のみ。アーカイブ済みの誤再公開を防ぐ（サーバも 409）。
   it('offers publish only for unpublished documents', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC, ARCHIVED_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC, ARCHIVED_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -328,7 +349,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   });
 
   it('deletes a document', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -348,7 +369,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     mocks.apiRequest.mockImplementation((_path: string, init?: RequestInit) =>
       init?.method === 'DELETE'
         ? Promise.reject(new ApiError('notFound', '見つかりませんでした。', 404))
-        : Promise.resolve(jsonResponse([DRAFT_DOC])),
+        : Promise.resolve(listPage([DRAFT_DOC])),
     );
     const user = userEvent.setup();
     await renderPage();
@@ -372,7 +393,7 @@ describe('DocumentManagementPage (SC-05)', () => {
               'この文書は参照中のため削除できません。',
             ]),
           )
-        : Promise.resolve(jsonResponse([DRAFT_DOC])),
+        : Promise.resolve(listPage([DRAFT_DOC])),
     );
     const user = userEvent.setup();
     await renderPage();
@@ -403,7 +424,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // **［2026-09-12］文言が変わった**（`QueryState` ＋ `EmptyState` への統一）。
   // 空は失敗ではないので再試行を促さず、**次の一手**（新規登録）を示す。実装が正・テストを追随。
   it('shows a neutral message with a next step when there is no document', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
+    mocks.apiRequest.mockResolvedValue(listPage([]));
     await renderPage();
 
     expect(await screen.findByText('文書はまだありません。')).toBeInTheDocument();
@@ -418,7 +439,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // ボタンが並ぶだけでは、いまどの状態なのかが読めない。色だけで意味を持たせない
   // （`StatusBadge` がアイコン ＋ テキストを強制する）。
   it('shows the lifecycle state of each document as a badge', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC, ARCHIVED_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC, ARCHIVED_DOC]));
     await renderPage();
 
     expect(await screen.findByRole('columnheader', { name: '状態' })).toBeInTheDocument();
@@ -430,7 +451,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // 存在秘匿（IADR-0009 / IADR-0035）: ロールを持たない利用者へ画面の存在を示さない。
   it('hides the screen from a user without any role', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage([]);
 
     expect(screen.queryByRole('heading', { name: '文書一覧' })).not.toBeInTheDocument();
@@ -445,7 +466,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // 受け入れ基準 5: 運用者へ書き込みの導線を 1 つも出さない（5 つとも書き込みである）。
   it('offers no write action to an operator', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage(['platform-operator']);
 
     // まず「見えるはずの条件」を確かめる——一覧が出ていないと、
@@ -464,7 +485,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // 受け入れ基準 4（対）: **閲覧は狭めない**。運用者にも一覧と SC-03 への導線は残る。
   it('still lets an operator read the list and reach SC-03', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage(['platform-operator']);
 
     expect(await screen.findByRole('link', { name: '経費精算規程' })).toHaveAttribute(
@@ -477,7 +498,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // 受け入れ基準 6（対）: 管理者には従来どおり出す（**狭めすぎていない**）。
   // これが無いと、全員から消しても上の 2 件は緑のまま通る。
   it('still offers every write action to an administrator', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage(['platform-admin']);
 
     for (const name of ['＋ 新規登録', '編集', '公開', 'アーカイブ', '削除']) {
@@ -490,7 +511,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // まず「見えるはずの条件」——一覧が描画され、機密区分と版の列が出ている状態——を確かめてから、
   // 契約に無い「変換」列が無いことを見る。
   it('does not render the conversion column (no contract links a document to its job)', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage();
 
     expect(await screen.findByRole('columnheader', { name: '機密区分' })).toBeInTheDocument();
@@ -499,7 +520,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   });
 
   it('renders in English when the en locale is active', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     activate('en');
     await renderPage();
 
@@ -513,10 +534,11 @@ describe('DocumentManagementPage (SC-05)', () => {
   // だった。生成物の `bffFetch` は空ボディで `{}` を返すので `??` は発火せず、`items.length === 0`
   // も `{}.length === undefined` で救えず、`items.map` が `TypeError` を投げていた。
   // `okArray` が「配列でなければ空配列」まで詰めることで、載せ替え前と同じ縮退に戻る。
+  // ［2026-10-14 / #1923］一覧はページになった。`okPage` が「`items` が配列でなければ空・総件数 0」へ同じく詰める。
   it('degrades to the empty state when the list response has no body (204)', async () => {
     mocks.apiRequest.mockImplementation(async (path: string) => {
       if (path.startsWith('/documents')) return noContent();
-      return jsonResponse([]);
+      return listPage([]);
     });
     await renderPage();
 
@@ -533,7 +555,7 @@ describe('DocumentManagementPage (SC-05)', () => {
       ...DRAFT_DOC,
       attributes: { ...DRAFT_DOC.attributes, doc_scope: 'organization' },
     };
-    mocks.apiRequest.mockResolvedValue(jsonResponse([SCOPED_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([SCOPED_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -560,5 +582,85 @@ describe('DocumentManagementPage (SC-05)', () => {
     ).toMatchObject({
       attributes: { confidentiality: 'internal', department: 'finance', doc_scope: 'organization' },
     });
+  });
+
+  // ---- FR-06, SC-05, IADR-0537（#1923 段 1）: ページネーション ----
+  //
+  // 総件数は BFF が ABAC で絞った後の数（画面はそれを描くだけ）。送り方はオフセット（`offset` / `limit`）。
+
+  // 総件数と表示範囲を出し、「次へ」で次の窓を要求する。先頭のページでは「前へ」を押せない。
+  it('shows the total and the range, and requests the next page', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('offset=50')
+        ? listPage([ARCHIVED_DOC], { total: 120, offset: 50 })
+        : listPage([DRAFT_DOC], { total: 120 }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    expect(await screen.findByText('全 120 件中 1–50 件')).toBeInTheDocument();
+    const nav = within(screen.getByRole('navigation', { name: 'ページ送り' }));
+    expect(nav.getByRole('button', { name: '前へ' })).toBeDisabled();
+    expect(nav.getByRole('button', { name: '1 ページ目' })).toHaveAttribute('aria-current', 'page');
+    expect(nav.getByRole('button', { name: '3 ページ目' })).toBeInTheDocument();
+
+    await user.click(nav.getByRole('button', { name: '次へ' }));
+
+    expect(await screen.findByRole('link', { name: '製品ロードマップ 2027' })).toBeInTheDocument();
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/documents?offset=50&limit=50',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(screen.getByText('全 120 件中 51–100 件')).toBeInTheDocument();
+  });
+
+  // 件数を選ぶと、その件数で先頭のページから引き直す（25 / 50 / 100。既定 50）。
+  it('requests the first page again with the chosen page size', async () => {
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC], { total: 120 }));
+    const user = userEvent.setup();
+    await renderPage();
+
+    const size = await screen.findByLabelText('表示件数');
+    expect(size).toHaveValue('50');
+    expect(
+      within(size)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['25', '50', '100']);
+
+    await user.selectOptions(size, '25');
+
+    await waitFor(() =>
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        '/documents?offset=0&limit=25',
+        expect.objectContaining({ method: 'GET' }),
+      ),
+    );
+  });
+
+  // 削除などで総件数が減り、いまのページが末尾を越えたら、末尾のページへ戻す（空のページを出したままにしない）。
+  it('moves back to the last page when the current page falls beyond the total', async () => {
+    let shrunk = false;
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.includes('offset=100')) {
+        shrunk = true;
+        return listPage([], { total: 40, offset: 100 });
+      }
+      return listPage([DRAFT_DOC], { total: shrunk ? 40 : 120 });
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '3 ページ目' }));
+
+    expect(await screen.findByText('全 40 件中 1–40 件')).toBeInTheDocument();
+    const offsets = mocks.apiRequest.mock.calls
+      .map(([path]) => String(path))
+      .filter((path) => path.startsWith('/documents?'));
+    expect(offsets).toEqual([
+      '/documents?offset=0&limit=50',
+      '/documents?offset=100&limit=50',
+      '/documents?offset=0&limit=50',
+    ]);
   });
 });

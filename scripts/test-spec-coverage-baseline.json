@@ -387,9 +387,13 @@
       "BffDocumentEndpointTests"
     ],
     "docs/tests/SC-05_document-management.md": [
+      "BffDocumentListPagingTests",
       "BffDocumentWriteEndpointTests",
       "DocumentEndpointVersioningTests",
-      "DocumentVersioningTests"
+      "DocumentListKeysetPostgresTests",
+      "DocumentListPagingTests",
+      "DocumentVersioningTests",
+      "GrpcDocumentReadTests"
     ],
     "docs/tests/SC-06_datasource-management.md": [
       "BffDataSourceEndpointTests",

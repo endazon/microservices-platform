@@ -86,6 +86,10 @@ msgstr "This is the client secret of {issuedClientId}. It is shown only this onc
 msgid "{max} 文字以内で入力してください。"
 msgstr "Enter no more than {max} characters."
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "{p} ページ目"
+msgstr "Page {p}"
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "{reissueTargetId} の client secret を再発行します。いまの secret はただちに使えなくなります。エージェントの設定を新しい secret に差し替えてください。"
 msgstr "Reissue the client secret of {reissueTargetId}. The current secret stops working immediately. Replace it with the new secret in the agent's configuration."
@@ -1308,6 +1312,10 @@ msgstr "Could not load the page tree."
 msgid "ページツリーを読み込み中…"
 msgstr "Loading the page tree…"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "ページ送り"
+msgstr "Pagination"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "ポート"
 msgstr "Port"
@@ -1902,6 +1910,10 @@ msgstr "Check the input"
 msgid "入力内容に誤りがあります。"
 msgstr "The input contains errors."
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "全 {total} 件中 {from}–{to} 件"
+msgstr "{from}–{to} of {total}"
+
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "全消去"
 msgstr "Clear all"
@@ -2239,6 +2251,10 @@ msgstr "Review deleted private notes"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "削除済みの資料です。削除済みタブから復元するか、Obsidian 側のファイルを削除してください。"
 msgstr "This note is in the trash. Restore it from the Deleted tab, or delete the file in Obsidian."
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "前へ"
+msgstr "Previous"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "動的束縛: {bindingLabel}（{notation}）"
@@ -3610,6 +3626,10 @@ msgstr "Highly confidential data is processed by the self-hosted LLM and is neve
 msgid "機密区分上限は必須です。"
 msgstr "Clearance ceiling is required."
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "次へ"
+msgstr "Next"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "次回同期"
 msgstr "Next sync"
@@ -4107,6 +4127,10 @@ msgstr "Filter displayed nodes by title"
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "表示中の辺はありません（孤立文書）。"
 msgstr "No displayed edges (isolated document)."
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "表示件数"
+msgstr "Rows per page"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "表示名"

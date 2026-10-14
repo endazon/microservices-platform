@@ -164,8 +164,8 @@ public class BffOwnerReadSeedTests : IClassFixture<BffTestFactory>
         As("alice");
         _factory.StubDocumentList = [PrivateNote(owner: "alice"), OrganizationDocument(owner: "alice", confidentiality: "internal")];
 
-        var body = (await _factory.CreateClient().GetFromJsonAsync<List<DocumentDto>>(
-            "/bff/documents", TestContext.Current.CancellationToken))!;
+        var body = ((await _factory.CreateClient().GetFromJsonAsync<DocumentListPageDto>(
+            "/bff/documents", TestContext.Current.CancellationToken))!.Items)!;
 
         body.Select(d => d.Id).Should().NotContain(NoteId).And.Contain(OrgId);
     }

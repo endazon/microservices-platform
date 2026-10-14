@@ -22,7 +22,7 @@ namespace Knowledge.Bff.Endpoints.Documents;
 // 🔴 **ここで縮退を畳まない。** 返すのは事実（「無い」＝`null` / 空、「引けなかった」＝例外）だけである。
 //   畳み方は**呼び出し元の call site ごとに違う**（[[IADR-0400]] 決定 5 / [[IADR-0401]] 決定 5 と同じ作法）——
 //   実測すると `DocumentBffEndpoints` の 4 箇所は
-//     ・一覧（`FetchListAsync`）… 非 2xx も不達も **`[]`**
+//     ・一覧（`FetchListPageAsync`）… 非 2xx も不達も **空のページ**（［2026-10-14 / #1923］従前は `[]`）
 //     ・詳細（`FetchAuthorizedAsync`）… 非 2xx も不達も **`null`**（→ 404 秘匿）
 //     ・版履歴… 捕捉なし（**500**）。本文 null は `[]`
 //     ・特定版… 非 2xx は **404**、不達は捕捉なし（**500**）
@@ -54,19 +54,39 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
 
     /// <summary>
     /// FR-06, NFR-16 (#1897): 受信上限の既定 64 MiB。
-    /// `ListDocuments` は台帳の全件を 1 応答で返す（ページングは恒久対応の段）。代表的な 1 件は約 450 バイトで、
+    /// 応急処置（#1899）当時の `ListDocuments` は台帳の全件を 1 応答で返していた。代表的な 1 件は約 450 バイトで、
     /// 稼働の台帳は少なくとも 38,703 件（約 17 MB）ある。64 MiB は約 14 万件まで収める。
     /// grpc-dotnet の既定 4 MB では約 9 千件で `ResourceExhausted` になり、BFF の一覧が空に化けていた。
     /// 根拠の算定は作業仕様書 `20261010_1897_grpc-receive-limit-stopgap` にある。
+    /// ［2026-10-14 / #1923・[[IADR-0537]]］`ListDocuments` はページで返すようになった（1 応答は <see cref="ListPageSize"/> 件・約 450 KB）。
+    /// 上限は**据え置く**（戻す条件は IADR-0537 の残余。配備の順序で旧い document-service が全件を返す間の保険）。
     /// </summary>
     public const int DefaultMaxReceiveMessageSize = 64 * 1024 * 1024;
 
-    /// <summary>FR-06, UC-03: 文書の一覧（更新の新しい順）。引けなければ例外（呼び出し元が畳む）。</summary>
-    public async Task<List<DocumentDto>> ListAsync(ClaimsPrincipal user, CancellationToken ct)
+    /// <summary>
+    /// FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): BFF が後段の 1 ページに求める件数（後段の上限と同じ 1000）。
+    /// 画面のページの大きさとは別物である —— BFF は後段のページを辿りながら ABAC で絞り、画面の窓を切り出す。
+    /// </summary>
+    public const int ListPageSize = 1000;
+
+    /// <summary>
+    /// FR-06, UC-03, [[IADR-0537]] (#1923): 文書の一覧の 1 ページ（更新の新しい順・同時刻は ID の降順）。
+    /// <paramref name="pageToken"/> は前の応答の続きの印（先頭は null）。戻り値の印が null なら終端。
+    /// 引けなければ例外（呼び出し元が畳む）。🔴 **続きの印は後段の内部の値である。BFF の外（画面）へ出さない。**
+    /// </summary>
+    public async Task<(List<DocumentDto> Documents, string? NextPageToken)> ListPageAsync(
+        ClaimsPrincipal user, int pageSize, string? pageToken, CancellationToken ct)
     {
         var resp = await client.ListDocumentsAsync(
-            new Pb.ListDocumentsRequest { User = ToUserContext(user) }, cancellationToken: ct);
-        return resp.Documents.Select(DocumentReadGrpcMapping.ToDto).ToList();
+            new Pb.ListDocumentsRequest
+            {
+                User = ToUserContext(user),
+                PageSize = pageSize,
+                PageToken = pageToken ?? string.Empty,
+            },
+            cancellationToken: ct);
+        return (resp.Documents.Select(DocumentReadGrpcMapping.ToDto).ToList(),
+            string.IsNullOrEmpty(resp.NextPageToken) ? null : resp.NextPageToken);
     }
 
     /// <summary>FR-06, UC-03: 文書 1 件。**台帳に無ければ <c>null</c>**（REST の 404 と同値）。</summary>

@@ -136,10 +136,10 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
     {
         _factory.ScopeFilters = [new Platform.Shared.Contracts.Dtos.AttributeFilter("confidentiality", ["internal"])];
 
-        var rest = await _factory.CreateClient()
-            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents", TestContext.Current.CancellationToken);
-        var grpc = await GrpcClient(new StubDocumentReadInvoker(_factory))
-            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents", TestContext.Current.CancellationToken);
+        var rest = (await _factory.CreateClient()
+            .GetFromJsonAsync<DocumentListPageDto>("/bff/documents", TestContext.Current.CancellationToken))!.Items;
+        var grpc = (await GrpcClient(new StubDocumentReadInvoker(_factory))
+            .GetFromJsonAsync<DocumentListPageDto>("/bff/documents", TestContext.Current.CancellationToken))!.Items;
 
         rest.Should().ContainSingle("陽性対照: REST 側もスコープで 1 件へ絞られている");
         grpc.Should().BeEquivalentTo(rest, o => o.WithStrictOrdering());
@@ -215,7 +215,7 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
         var resp = await GrpcClient(stub).GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken))
+        ((await resp.Content.ReadFromJsonAsync<DocumentListPageDto>(TestContext.Current.CancellationToken))!.Items)
             .Should().BeEmpty();
     }
 

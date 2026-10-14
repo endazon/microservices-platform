@@ -54,18 +54,29 @@ public static class DocumentBffEndpoints
         // `RequireRole anyOf={[Admin, Operator]}` で絞られているのに API が絞られていない状態で、
         // **#628 / #629 で 2 度直したのと同じ型**（画面は絞れているが API が誰でも通る）だった。
         // 群の `RequireAuthorization()` と AND 合成され、実効は admin ＋ operator になる（IADR-0128 決定 1）。
+        //
+        // FR-06, SC-05, NFR-16, [[IADR-0009]], [[IADR-0537]] (#1923・#1897): **ページで返す**（`offset` / `limit`）。
+        // 🔴 **総件数（`total`）とページの窓は、ABAC で絞った後の並びで数える。** 後段のページを辿りながら
+        //   `IsManageable` で絞り、絞った後の順番で窓を切り出す（`DocumentListWindow`）。権限外の文書は窓にも数にも入らない
+        //   ——「先に数えてから絞る」と、総件数・ページの境界が権限外の文書の存在を漏らす（IADR-0009）。
+        // 🔴 **後段の続きの印は画面へ出さない。** 画面に出るのは `offset` / `limit` / `total` だけである。
         g.MapGet("/", async (
-            IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            int? offset, int? limit, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
         {
+            if (offset is < 0)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["offset"] = ["offset は 0 以上で指定してください。"],
+                });
+            var window = new DocumentListWindow(offset ?? 0, DocumentListWindow.ClampLimit(limit));
+
             // #1010: 一覧は読み取り経路 → read を明示する。
             var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, BffScopeAction.Read, ct);
             if (scope is null)
-                return Results.Ok(new List<DocumentDto>());
+                return Results.Ok(window.Empty());
 
-            var docs = await FetchListAsync(http, ct);
-            var visible = docs.Where(d => IsManageable(d, scope)).Select(d => ForViewer(d, scope)).ToList();
-            return Results.Ok(visible);
-        }).WithName("BffDocumentList").Produces<List<DocumentDto>>()
+            return Results.Ok(await FetchListPageAsync(http, window, d => IsManageable(d, scope), d => ForViewer(d, scope), ct));
+        }).WithName("BffDocumentList").Produces<DocumentListPageDto>()
             .RequireAuthorization(p => p.RequireRole(
                 PlatformAuthPolicies.AdminRole,
                 PlatformAuthPolicies.OperatorRole));
@@ -417,21 +428,33 @@ public static class DocumentBffEndpoints
         return ForViewer(doc, scope);
     }
 
-    private static async Task<List<DocumentDto>> FetchListAsync(HttpContext http, CancellationToken ct)
+    // FR-06, SC-05, NFR-16, [[IADR-0537]] (#1923・#1897): 後段の一覧を**ページごとに辿り**、絞った後の窓と総件数を作る。
+    // 後段の 1 応答は `ListPageSize` 件で台帳の件数に比例しない。BFF が保持するのは窓の中の文書だけである。
+    // 1 要求で台帳を 1 周する（総件数を ABAC で絞った後に数えるため。費用は IADR-0537 の残余）。
+    private static async Task<DocumentListPageDto> FetchListPageAsync(HttpContext http, DocumentListWindow window,
+        Func<DocumentDto, bool> visible, Func<DocumentDto, DocumentDto> forViewer, CancellationToken ct)
     {
         // NFR-09, ADR-0029, [[IADR-0402]], [[IADR-0533]] (#1255): gRPC で引く（REST の並走は撤去した）。
         var grpc = http.RequestServices.GetRequiredService<DocumentReadGrpcClient>();
+        var collector = window.Collect(visible, forViewer);
         try
         {
-            return await grpc.ListAsync(http.User, ct);
+            string? token = null;
+            do
+            {
+                var (docs, next) = await grpc.ListPageAsync(http.User, DocumentReadGrpcClient.ListPageSize, token, ct);
+                collector.AddRange(docs);
+                token = next;
+            } while (token is not null);
         }
         catch (Exception ex) when (IsTransportFailure(ex, ct))
         {
-            // FR-06, NFR-16 (#1897): 畳む前に WARN（状態・rpc・例外の型）。受信上限の超過（ResourceExhausted）も
-            // ここへ落ちる —— ログが無いと「文書が 0 件」としか見えない。空一覧へ畳むこと自体は変えない（応急処置）。
+            // FR-06, NFR-16 (#1897): 畳む前に WARN（状態・rpc・例外の型）。空一覧へ畳むことは変えない。
+            // 🔴 途中のページで引けなくなっても、そこまでの部分の数は返さない（総件数が黙って小さくなる）。空のページへ畳む。
             DocumentReadFailureLog.Folded(http, "ListDocuments", ex, "空一覧");
-            return [];
+            return window.Empty();
         }
+        return collector.ToPage();
     }
 
     // NFR-09, ADR-0029, [[IADR-0402]], [[IADR-0533]] (#1255): 「後段から結果を得られなかった」の判定。

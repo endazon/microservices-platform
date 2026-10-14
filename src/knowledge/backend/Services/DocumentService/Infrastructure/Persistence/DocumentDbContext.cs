@@ -41,6 +41,10 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
             // `GET /documents/page` と再発行の口が `WHERE "CreatedAt" >= c AND (…) ORDER BY "CreatedAt", "Id" LIMIT n` をこれで引く
             // （述語の形は `DocumentPageQuery.AfterCursor`）。
             e.HasIndex(d => new { d.CreatedAt, d.Id });
+            // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): 一覧のページ（更新日時の降順・同時刻は ID の降順）の索引。
+            // gRPC `ListDocuments` が `WHERE "UpdatedAt" <= c AND (…) ORDER BY "UpdatedAt" DESC, "Id" DESC LIMIT n` をこれで引く
+            // （述語の形は `DocumentListOrder.Before`。降順は索引を後ろから辿るので、昇順の索引 1 本で足りる）。
+            e.HasIndex(d => new { d.UpdatedAt, d.Id });
             e.Property(d => d.Title).HasMaxLength(500).IsRequired();
             e.Property(d => d.Status).HasMaxLength(50).IsRequired();
             e.Property(d => d.MarkdownUri).HasMaxLength(2048);
