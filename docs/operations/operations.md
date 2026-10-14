@@ -1201,7 +1201,7 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
 LLM ゲートウェイに Voyage の鍵（`Embedding__Voyage__ApiKey`）が無いと、埋め込みは一時障害として扱われ、**全件が再試行の後 DLQ へ行くだけになる**
 （索引には 1 点も入らない。取り込みは書く前に当該文書の点を消すため）。
 ［2026-10-06］チャート（経路B の値を含む）は、この鍵を Secret `llm-provider-credentials` のキー `voyage-api-key` から渡すよう配線してある（キーが無い・空でも起動する）。
-**鍵の値はチャートにもリポジトリにも無い。** 用意の仕方は、鍵の値を Vault へ入れて同期させる（手順は [Voyage の鍵の Runbook](voyage-embedding-key-runbook.md)。課金が発生する。ゼロ保持の認定は本節の上の注記のとおり未了）か、
+**鍵の値はチャートにもリポジトリにも無い。** 用意の仕方は、鍵の値を Vault へ入れて同期させる（手順は [Voyage の鍵の Runbook](voyage-embedding-key-runbook.md)。課金が発生する。~~ゼロ保持の認定は本節の上の注記のとおり未了~~ ［2026-10-14］ゼロ保持の認定は済んだ。射程は本節の上の「ゼロ保持認定状況の記録」）か、
 **使い捨ての検証スタックに限り** `LOCALEMBED=1`（決定的ローカル埋め込み。意味的な近さは無い）で立てるかである。高機密文書（語彙索引だけ）は鍵が無くても入る。
 env の名前（`Embedding__Voyage__ApiKey`）は鍵が空でも下の確認に出るので、**値が入っていることは同 Runbook の手順 4（長さで測る）で確かめる。**
 
