@@ -1107,6 +1107,7 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
       公開・社内（`public` / `internal`）の文書と検索クエリの埋め込みは、既定どおり Voyage へ送ってよい。
     - **認定の射程**: opt-out は Voyage AI の**アカウントの設定**である。認定は、オーナーが opt-out を実施したアカウントの鍵に限る。
       別のアカウントの鍵を使う環境は、同じ opt-out を確かめてから本番文書を流す。規約の版が改まったら、上の 3 条件を照合し直す。
+      ⚠️ **この射程は推論による。オーナーは未確認である**（規約の opt-out が Web サイトでの設定であることから導いた。安全側に倒した制約）。
     - ⚠️ **既定構成は Voyage 経路が有効**（`appsettings.json` の `voyage-managed`＝index 0 が `Enabled: true`。
       compose/Helm に既定の無効化上書きは無い）。したがって「未認定＝自動で停止」ではない。**未認定の環境へデプロイ
       する場合は、運用者が本番文書を流す前に明示的に Voyage 経路を無効化すること**（`Embedding__Routing__Endpoints__0__Enabled=false`。
