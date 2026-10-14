@@ -637,6 +637,20 @@ export interface DocumentPageDto {
 }
 
 /**
+ * FR-06, SC-05 (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ（`Knowledge.Contracts/Dtos/DocumentDto.cs`）。
+ * `offset` / `limit` は BFF が丸めた後の値。🔴 `total` は ABAC スコープで絞った後の件数（権限外の文書を数えない）。
+ */
+export interface DocumentListPageDto {
+  items: DocumentDto[];
+  /** ABAC で絞った後の総件数 */
+  total: number;
+  /** このページの先頭の位置（丸めた後） */
+  offset: number;
+  /** 1 ページの件数（丸めた後） */
+  limit: number;
+}
+
+/**
  * SC-03, FR-06: 文書本文（正規化 Markdown）。BFF が ABAC 判定後にオブジェクトストレージ
  * （`storage://`）から読み取り、閲覧を許可された呼び出し元にのみ払い出す。
  */
@@ -2481,6 +2495,20 @@ q?: string;
  * 取得件数。既定 20、上限 50 へ後段がクランプする
  * @minimum 1
  * @maximum 50
+ */
+limit?: number;
+};
+
+export type BffDocumentListParams = {
+/**
+ * 先頭から飛ばす件数（ABAC で絞った後の並びで数える）。既定 0。負・数でない値は 400
+ * @minimum 0
+ */
+offset?: number;
+/**
+ * 1 ページの件数。既定 50。1〜100 に丸める（範囲外もエラーにしない）。数でない値は 400
+ * @minimum 1
+ * @maximum 100
  */
 limit?: number;
 };

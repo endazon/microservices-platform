@@ -319,6 +319,16 @@
         },
         "ListDocumentsRequest": {
           "fields": {
+            "page_size": {
+              "number": 2,
+              "type": "int32",
+              "label": "singular"
+            },
+            "page_token": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
             "user": {
               "number": 1,
               "type": "UserContext",
@@ -336,6 +346,11 @@
               "number": 1,
               "type": "DocumentSummary",
               "label": "repeated"
+            },
+            "next_page_token": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
             }
           },
           "reserved": {

@@ -1,10 +1,11 @@
-using Platform.Shared.Infrastructure.Foundation.Pipeline;
-using IngestionService.Domain.Ports;
+using IngestionService.Common.Observability;
 using IngestionService.Domain;
+using IngestionService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.Extensions.Logging;
 using Platform.Shared.Infrastructure.Foundation.Messaging;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 
 namespace IngestionService.Features.Ingestion.Ingest;
 
@@ -31,6 +32,7 @@ public class DocumentUpdatedConsumer(
     ConsumerCallTimeouts calls,
     IngestionTimeouts timeouts,
     TimeProvider clock,
+    EmbeddingPendingMetrics pendingMetrics,
     ILogger<DocumentUpdatedConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -134,7 +136,9 @@ public class DocumentUpdatedConsumer(
         }
 
         var chunkCount = 0;
-        var skipped = 0;
+        // FR-02, NFR-06, [[IADR-0536]] 決定 1 (#1908): 埋め込みが使えなかったチャンクの位置と理由（使えていれば -1）。
+        var pendingFrom = -1;
+        var pendingReason = EmbeddingPendingReasons.Transient;
         // #1640: 埋め込みの総枠の起点（チャンクを回し始めた時刻）。
         var embeddingStarted = clock.GetTimestamp();
 
@@ -153,27 +157,22 @@ public class DocumentUpdatedConsumer(
             // FR-02 embed: 埋め込み生成（LLM Gateway 経由 / ADR-0013・ADR-0016）。機密区分で送信先・コレクションが決まる。
             var embedding = await EmbedAsync(text, confidentiality, ct);
 
-            // FR-02（Issue #98 レビュー対応）: 一時的な障害（送信先の不調・タイムアウト等）は fail-closed
-            // （意図的拒否）と区別する。一時障害（Retryable=true）は恒久スキップにせず例外を送出し、
-            // ブローカのリトライ/DLQ（Wolverine の UsePlatformMessagingDefaults）に委ねる
-            // （一括再索引中に外部が一時不調でもチャンクを取りこぼさない）。
-            if (!embedding.Embedded && embedding.Retryable)
-            {
-                logger.LogWarning(
-                    "Ingestion {Id} chunk {Index}: transient embedding failure, retrying via broker (confidentiality={Confidentiality})",
-                    ev.DocumentId, idx, confidentiality ?? "(unset)");
-                throw new EmbeddingTransientException(ev.DocumentId, idx);
-            }
-
-            // FR-02, FR-05, ADR-0016: fail-closed。高機密でセルフホスト未有効・次元不整合など恒久的な理由は
-            // 索引しない（外部へ本文を送らず、誤ったコレクション/次元へも書かない）。再試行では解消しないためスキップ。
-            // ［2026-10-05 / #1746］[[IADR-0497]] 決定 2: 高機密文書はここへ来ない（上で語彙索引へ分けた）。
-            // ここで拒まれるのは public / internal の恒久的な拒否（Voyage 経路の無効化・次元不整合等）であり、
-            // **語彙索引へは回さない**（ADR-0127 の対象外。埋め込めるはずの文書の不調を語彙索引で覆い隠さない）。
+            // 🔴 FR-02, FR-03, NFR-06, [[IADR-0536]] 決定 1 (#1908): **埋め込めなかったら、このチャンクから後ろを
+            // 全文だけの点（埋め込み待ち）として語彙索引へ書く。** 一時障害（`Retryable=true`。鍵の未設定・送信先の不調）も
+            // 恒久的な拒否（`Retryable=false`。経路の無効化・次元不整合）も同じに扱い、例外を投げない（DLQ へ送らない）。
+            // 鍵の投入後に埋め直しの器（`EmbeddingPendingReembedder`）が主へ移し、語彙索引の点を消す。
+            //
+            // ［2026-10-14］従前は一時障害を例外で再試行の後 DLQ へ送り（#98）、恒久的な拒否をスキップして（[[IADR-0497]] 決定 2
+            // 「埋め込めるはずの文書の不調を語彙索引で覆い隠さない」）、どちらも**点を書かなかった**。そのため鍵の無い間、
+            // public / internal の文書は全文検索にも現れなかった（PoC で AST の情報収集が 0 件）。オーナー裁定（2026-10-14）で改めた。
+            // 覆い隠さないために、待ちの件数を計器（`EmbeddingPendingMetrics`）と周期ごとの Warning で読めるようにしてある。
+            //
+            // 残りのチャンクは**埋め込みを呼ばない**（使えない送信先をチャンクの数だけ叩かない。総枠も消費しない）。
             if (!embedding.Embedded)
             {
-                skipped++;
-                continue;
+                pendingFrom = idx;
+                pendingReason = EmbeddingPendingReasons.From(embedding);
+                break;
             }
 
             // FR-02 index: 機密区分ルーティングが決めたモデル別コレクションへ登録。chunk_index/tags、FR-05 ABAC 属性を保持
@@ -187,19 +186,35 @@ public class DocumentUpdatedConsumer(
             chunkCount++;
         }
 
-        if (skipped > 0)
+        var pendingCount = 0;
+        if (pendingFrom >= 0)
         {
-            // fail-closed のスキップ（高機密でセルフホスト未有効等）は監査可能にする。
+            for (var idx = pendingFrom; idx < chunks.Count; idx++)
+            {
+                var chunkId = ChunkId.Derive(ev.DocumentId, idx);
+                var text = chunks[idx];
+                var i = idx;
+                await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
+                    t => store.UpsertEmbeddingPendingChunkAsync(chunkId, ev.DocumentId, ev.Title, text, i,
+                        markdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ev.SharedWith, pendingReason, t), ct);
+                pendingCount++;
+            }
+
+            pendingMetrics.RecordWritten(pendingCount, pendingReason);
             logger.LogWarning(
-                "Ingestion {Id}: {Skipped} chunk(s) skipped (embedding fail-closed; confidentiality={Confidentiality})",
-                ev.DocumentId, skipped, confidentiality ?? "(unset)");
+                "Ingestion {Id}: embedding unavailable ({Reason}; confidentiality={Confidentiality}); {Pending} of {Total} "
+                + "chunk(s) written to the lexical index as full-text-only points awaiting embedding (keyword/hybrid search "
+                + "finds them, semantic search does not). They are re-embedded once embedding works again (IADR-0536)",
+                ev.DocumentId, pendingReason, confidentiality ?? "(unset)", pendingCount, chunks.Count);
         }
 
         // FR-02: 取り込み完了イベントを発行する（発行は MassTransit のまま。ポート越し）。
         // 購読者は無く、結線もしない（#1771 / planning#741 項目 6）。検索への反映は上の Qdrant 登録で成立している。
-        await bus.PublishCompletedAsync(ev.DocumentId, chunkCount, DateTimeOffset.UtcNow, ct);
+        // ［2026-10-14 / #1908］チャンク数は書いた点の数（埋めた数 ＋ 埋め込み待ちの数）である。
+        await bus.PublishCompletedAsync(ev.DocumentId, chunkCount + pendingCount, DateTimeOffset.UtcNow, ct);
 
-        logger.LogInformation("Ingestion complete for {Id}: {Count} chunks", ev.DocumentId, chunkCount);
+        logger.LogInformation("Ingestion complete for {Id}: {Count} chunks ({Pending} awaiting embedding)",
+            ev.DocumentId, chunkCount + pendingCount, pendingCount);
     }
 
     // FR-02, FR-03, ADR-0127 決定 1・2, [[IADR-0497]] 決定 2・3 (#1746): 高機密文書の本文チャンクを語彙索引へ書く。
@@ -300,15 +315,6 @@ public class DocumentUpdatedConsumer(
 
         var embedding = await EmbedAsync(indexText, confidentiality, ct);
 
-        // 本文チャンクと同じ規則: 一時障害は例外（ブローカの再試行へ）、恒久的な拒否はスキップ。
-        if (!embedding.Embedded && embedding.Retryable)
-        {
-            logger.LogWarning(
-                "Ingestion {Id} metadata point: transient embedding failure, retrying via broker "
-                + "(confidentiality={Confidentiality})", ev.DocumentId, confidentiality ?? "(unset)");
-            throw new EmbeddingTransientException(ev.DocumentId, ChunkId.MetadataChunkIndex);
-        }
-
         if (embedding.Embedded)
         {
             await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
@@ -323,9 +329,18 @@ public class DocumentUpdatedConsumer(
         }
         else
         {
+            // 🔴 FR-02, NFR-06, [[IADR-0536]] 決定 1 (#1908): 本文チャンクと同じ規則 —— 埋め込めなければ（一時障害・恒久的な
+            // 拒否とも）**メタデータ点を全文だけの点（埋め込み待ち）として語彙索引へ書く**。例外は投げない。
+            var reason = EmbeddingPendingReasons.From(embedding);
+            await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
+                t => store.UpsertEmbeddingPendingMetadataPointAsync(ChunkId.DeriveMetadata(ev.DocumentId),
+                    ev.DocumentId, ev.Title, indexText, ev.MarkdownUri, ev.Attributes, ev.Tags,
+                    ev.UpdatedAt, ev.SharedWith, reason, t), ct);
+            pendingMetrics.RecordWritten(1, reason);
             logger.LogWarning(
-                "Ingestion {Id}: metadata point skipped (embedding fail-closed; confidentiality={Confidentiality})",
-                ev.DocumentId, confidentiality ?? "(unset)");
+                "Ingestion {Id}: no body; embedding unavailable ({Reason}; confidentiality={Confidentiality}); metadata "
+                + "point written to the lexical index as a full-text-only point awaiting embedding (IADR-0536)",
+                ev.DocumentId, reason, confidentiality ?? "(unset)");
         }
 
         // FR-02: **本文なしでも取り込みは完了である**（ADR-0070 決定 3。失敗として溜めない）。
@@ -333,8 +348,3 @@ public class DocumentUpdatedConsumer(
         await bus.PublishCompletedAsync(ev.DocumentId, 0, DateTimeOffset.UtcNow, ct);
     }
 }
-
-// FR-02（Issue #98）: 埋め込みの一時的な障害を表す。送出するとブローカの受信リトライ／(枯渇後)DLQ に
-// 回り、外部（Voyage 等）の一時不調でチャンクを恒久的に取りこぼすのを防ぐ。fail-closed（意図的拒否）とは区別する。
-public sealed class EmbeddingTransientException(Guid documentId, int chunkIndex)
-    : Exception($"Transient embedding failure for document {documentId} chunk {chunkIndex}");

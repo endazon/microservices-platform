@@ -40,7 +40,8 @@ public class DocumentUpdatedConsumerTests
         IIngestionVectorStore store,
         IDocumentContentReader reader,
         IEmbeddingService? embed = null,
-        ILogger<DocumentUpdatedConsumer>? logger = null)
+        ILogger<DocumentUpdatedConsumer>? logger = null,
+        IngestionService.Common.Observability.EmbeddingPendingMetrics? metrics = null)
     {
         var completed = new RecordingCompletedPublisher();
         var consumer = new DocumentUpdatedConsumer(
@@ -52,6 +53,7 @@ public class DocumentUpdatedConsumerTests
             ConsumerTimeoutsForTests.Calls(),
             ConsumerTimeoutsForTests.Timeouts,
             TimeProvider.System,
+            metrics ?? TestMeterFactory.NewEmbeddingPendingMetrics(),
             logger ?? NullLogger<DocumentUpdatedConsumer>.Instance);
         return (consumer, completed);
     }
@@ -185,45 +187,94 @@ public class DocumentUpdatedConsumerTests
         store.Upserts.Should().OnlyContain(u => u.Collection == "knowledge_chunks_voyage_3_5");
     }
 
-    // T-09 (FR-02, FR-05, ADR-0016): fail-closed。埋め込みが Embedded=false（恒久的な拒否）なら
-    // 索引しない（Qdrant へも書かない）。
-    // ［2026-10-05 / #1746］[[IADR-0497]] 決定 2: 高機密文書は埋め込みを呼ぶ前に語彙索引へ分かれる（下の T-23）。
-    // ここで測るのは **public / internal の恒久的な拒否**（Voyage 経路の無効化・次元不整合等）であり、
-    // それは従来どおりスキップで、**語彙索引へは回さない**（ADR-0127 の対象外）。
+    // T-40 (FR-02, FR-05, ADR-0016。旧コメントの T-09): 埋め込みが恒久的に拒否された（`Embedded=false`・`Retryable=false`）public / internal の
+    // チャンクは、ベクトルのコレクションへは書かない。
+    // ［2026-10-14 / #1908］[[IADR-0536]] 決定 1: 従前は「スキップし語彙索引へも回さない」（[[IADR-0497]] 決定 2）だった。
+    // **今は全文だけの点（埋め込み待ち・理由 `rejected`）として語彙索引へ書く。** 高機密の口（印なし）へは書かない。
     [Fact]
-    public async Task Consumer_ShouldSkipIndexing_WhenEmbeddingFailClosed()
+    public async Task Consumer_ShouldWriteEmbeddingPendingPoints_WhenEmbeddingRejected()
     {
         var store = new RecordingVectorStore();
         var reader = new StubContentReader("# A\n\nまる\n\n# B\n\nばつ");
-        var embed = new RecordingEmbeddingService(embedded: false); // fail-closed
-        var (consumer, _) = Build(store, reader, embed);
+        var embed = new RecordingEmbeddingService(embedded: false); // 恒久的な拒否
+        var (consumer, completed) = Build(store, reader, embed);
 
         await HandleAsync(consumer, SampleEvent(confidentiality: "internal"));
 
-        // 索引は 0 件（fail-closed で書き込まない）。埋め込みは試行される（機密区分は渡る）。
-        store.Upserts.Should().BeEmpty();
-        store.LexicalUpserts.Should().BeEmpty("埋め込めるはずの文書の拒否を語彙索引で覆い隠さない");
-        embed.Requests.Should().OnlyContain(r => r.Confidentiality == "internal");
+        store.Upserts.Should().BeEmpty("埋め込めなかったチャンクをベクトルのコレクションへは書かない");
+        store.LexicalUpserts.Should().BeEmpty("高機密の口（埋め直しの対象外）へは書かない");
+        store.PendingUpserts.Should().HaveCount(2, "全チャンクを全文だけの点として書く");
+        store.PendingUpserts.Should().OnlyContain(u => u.Reason == EmbeddingPendingReasons.Rejected);
+        // 最初の失敗の後は埋め込みを呼ばない（使えない送信先をチャンクの数だけ叩かない）。
+        embed.Requests.Should().ContainSingle().Which.Confidentiality.Should().Be("internal");
+        completed.Published.Should().ContainSingle().Which.ChunkCount.Should().Be(2);
     }
 
-    // T-11 (FR-02, Issue #98): 一時的な埋め込み障害（Retryable=true）は fail-closed（意図的スキップ）と区別し、
-    // 例外を送出して再試行/DLQ に委ねる。恒久スキップ（IngestionCompleted の縮小 chunkCount 発行）にしない。
+    // T-40 (FR-02, Issue #98。旧コメントの T-11): 一時的な埋め込み障害（`Retryable=true`。鍵の未設定を含む）。
+    // ［2026-10-14 / #1908］[[IADR-0536]] 決定 1: 従前は例外を送出して再試行の後 DLQ へ送り、**点を 1 つも書かなかった**
+    // （PoC で鍵が無い間、AST の情報収集が全文検索でも 0 件）。**今は例外を投げず、全文だけの点（理由 `transient`）として
+    // 語彙索引へ書き、完了イベントを出す**（鍵の投入後に埋め直す）。
     [Fact]
-    public async Task Consumer_ShouldFaultForRetry_WhenEmbeddingTransientFailure()
+    public async Task Consumer_ShouldWriteEmbeddingPendingPoints_WhenEmbeddingTransientFailure()
     {
         var store = new RecordingVectorStore();
-        var reader = new StubContentReader("# A\n\nまる");
-        // 一時障害（送信先不調等）を模す: Embedded=false かつ Retryable=true。
+        var reader = new StubContentReader("# A\n\nまる\n\n# B\n\nばつ");
+        // 一時障害（送信先不調・鍵の未設定）を模す: Embedded=false かつ Retryable=true。
         var embed = new RecordingEmbeddingService(embedded: false, retryable: true);
         var (consumer, completed) = Build(store, reader, embed);
+        var ev = SampleEvent();
 
-        // 例外を送出して失敗する（ブローカの再試行/DLQ へ委ねる。恒久スキップにはしない）。
-        var act = () => HandleAsync(consumer, SampleEvent());
-        await act.Should().ThrowAsync<EmbeddingTransientException>();
+        await HandleAsync(consumer, ev);
 
-        // 一時障害では索引せず、完了イベントも発行しない（取りこぼしを DLQ で検知可能にする）。
         store.Upserts.Should().BeEmpty();
-        completed.Published.Should().BeEmpty();
+        store.PendingUpserts.Select(u => u.ChunkId).Should().Equal(
+            ChunkId.Derive(ev.DocumentId, 0), ChunkId.Derive(ev.DocumentId, 1));
+        store.PendingUpserts.Should().OnlyContain(u => u.Reason == EmbeddingPendingReasons.Transient);
+        store.PendingUpserts.Select(u => u.Text).Should().Contain(t => t.Contains("まる"));
+        // ABAC の判定軸（属性・タグ・更新日時・所在）をそのまま運ぶ。
+        store.PendingUpserts.Should().OnlyContain(u => u.Attributes["confidentiality"] == "internal"
+            && u.Tags.Contains("knowledge-mgmt") && u.UpdatedAt == ev.UpdatedAt && u.MarkdownUri == ev.MarkdownUri);
+        completed.Published.Should().ContainSingle().Which.ChunkCount.Should().Be(2);
+    }
+
+    // T-40 (FR-02, [[IADR-0536]] 決定 1): **途中のチャンクで埋め込めなくなったら、それより前は主へ、そこから後ろは
+    // 埋め込みを呼ばずに全文だけの点へ**。同じチャンクが両方に書かれることはない（二重に出ない）。
+    [Fact]
+    public async Task Consumer_ShouldSplitBetweenPrimaryAndPending_WhenEmbeddingFailsMidway()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("# A\n\nまる\n\n# B\n\nばつ\n\n# C\n\nさんかく");
+        var embed = new FailFromEmbeddingService(failFromCall: 2);
+        var (consumer, completed) = Build(store, reader, embed);
+        var ev = SampleEvent();
+
+        await HandleAsync(consumer, ev);
+
+        store.Upserts.Select(u => u.ChunkIndex).Should().Equal(0);
+        store.PendingUpserts.Select(u => u.ChunkIndex).Should().Equal(1, 2);
+        store.Upserts.Select(u => u.ChunkId).Should().NotIntersectWith(store.PendingUpserts.Select(u => u.ChunkId));
+        embed.Calls.Should().Be(2, "失敗の後は埋め込みを呼ばない");
+        completed.Published.Should().ContainSingle().Which.ChunkCount.Should().Be(3);
+    }
+
+    // T-40（#1924 の監査）: 待ちの点として書いた数を、理由のタグつきで計数 `ingestion.embedding_pending.written` に数える。
+    [Fact]
+    public async Task Consumer_ShouldCountEmbeddingPendingWrites_ByReason()
+    {
+        using var factory = new TestMeterFactory();
+        var metrics = new IngestionService.Common.Observability.EmbeddingPendingMetrics(factory);
+        var written = new List<(long Value, object? Reason)>();
+        using var listener = IngestionService.Tests.Features.Ingestion.ReembedPending.EmbeddingPendingReembedderTests
+            .Listen(factory, IngestionService.Common.Observability.EmbeddingPendingMetrics.WrittenCounterName,
+                (v, tags) => written.Add((v, tags.Single(t => t.Key ==
+                    IngestionService.Common.Observability.EmbeddingPendingMetrics.ReasonTag).Value)));
+        var store = new RecordingVectorStore();
+        var (consumer, _) = Build(store, new StubContentReader("# A\n\nまる\n\n# B\n\nばつ"),
+            new RecordingEmbeddingService(embedded: false, retryable: true), metrics: metrics);
+
+        await HandleAsync(consumer, SampleEvent());
+
+        written.Should().Equal((2L, (object?)EmbeddingPendingReasons.Transient));
     }
 
     // T-10 (FR-02, FR-05, ADR-0016): 取り込み冒頭で全モデル別コレクションから当該文書を削除する
@@ -288,39 +339,46 @@ public class DocumentUpdatedConsumerTests
         store.MetadataUpserts.Should().BeEmpty();
     }
 
-    // T-14 (FR-05, ADR-0016, [[IADR-0358]] 決定 7): 本文が無いことを理由に送信制御を緩めない。
-    // 埋め込みが fail-closed で拒否されたらメタデータ点も作らない（題名も文書の内容である）。
-    // ［2026-10-05 / #1746］高機密文書のメタデータ点は語彙索引へ行く（T-26）。ここは internal の恒久的な拒否。
+    // T-13 (FR-05, ADR-0016, [[IADR-0358]] 決定 7。旧コメントの T-14): 本文が無いことを理由に送信制御を緩めない —— 埋め込みが拒否されたら
+    // ベクトルのコレクションのメタデータ点は作らない（題名も文書の内容である）。
+    // ［2026-10-14 / #1908］[[IADR-0536]] 決定 1: 拒否されたメタデータ点は全文だけの点（理由 `rejected`）として語彙索引へ書く。
     [Fact]
-    public async Task Consumer_ShouldSkipMetadataPoint_WhenEmbeddingFailsClosed()
+    public async Task Consumer_ShouldWritePendingMetadataPoint_WhenEmbeddingRejected()
     {
         var store = new RecordingVectorStore();
         var reader = new StubContentReader("");
         var embed = new RecordingEmbeddingService(embedded: false);
         var (consumer, completed) = Build(store, reader, embed);
+        var ev = SampleEvent(confidentiality: "internal");
 
-        await HandleAsync(consumer, SampleEvent(confidentiality: "internal"));
+        await HandleAsync(consumer, ev);
 
         store.MetadataUpserts.Should().BeEmpty();
-        store.LexicalMetadataUpserts.Should().BeEmpty();
+        store.LexicalMetadataUpserts.Should().BeEmpty("高機密の口へは書かない");
+        var point = store.PendingMetadataUpserts.Should().ContainSingle().Subject;
+        point.PointId.Should().Be(ChunkId.DeriveMetadata(ev.DocumentId));
+        point.Reason.Should().Be(EmbeddingPendingReasons.Rejected);
         embed.Requests.Should().OnlyContain(r => r.Confidentiality == "internal");
         completed.Published.Should().ContainSingle();
     }
 
-    // T-15 (FR-02, #98 と同じ規則): 本文なしの経路でも一時障害は恒久スキップにしない。
+    // T-14 (FR-02, #98 と同じ規則。旧コメントの T-15): 本文なしの経路でも一時障害を恒久スキップにしない。
+    // ［2026-10-14 / #1908］[[IADR-0536]] 決定 1: 例外を投げず、全文だけのメタデータ点（理由 `transient`）を書いて完了する。
     [Fact]
-    public async Task Consumer_ShouldFaultForRetry_WhenMetadataEmbeddingTransientFailure()
+    public async Task Consumer_ShouldWritePendingMetadataPoint_WhenMetadataEmbeddingTransientFailure()
     {
         var store = new RecordingVectorStore();
         var reader = new StubContentReader("");
         var embed = new RecordingEmbeddingService(embedded: false, retryable: true);
         var (consumer, completed) = Build(store, reader, embed);
 
-        var act = () => HandleAsync(consumer, SampleEvent());
-        await act.Should().ThrowAsync<EmbeddingTransientException>();
+        await HandleAsync(consumer, SampleEvent());
 
         store.MetadataUpserts.Should().BeEmpty();
-        completed.Published.Should().BeEmpty();
+        var point = store.PendingMetadataUpserts.Should().ContainSingle().Subject;
+        point.Reason.Should().Be(EmbeddingPendingReasons.Transient);
+        point.IndexText.Should().Contain("テスト文書");
+        completed.Published.Should().ContainSingle().Which.ChunkCount.Should().Be(0);
     }
 
     // ── #1253 / [[IADR-0388]] 決定 4・5: 所在とデータソース名を索引テキストへ ──────────────
@@ -476,6 +534,8 @@ public class DocumentUpdatedConsumerTests
         embed.Calls.Should().Be(0, "高機密文書の本文はどの埋め込みの送信先へも渡さない（ADR-0127 決定 1）");
         store.Upserts.Should().BeEmpty("ベクトルのコレクションへは書かない");
         store.MetadataUpserts.Should().BeEmpty();
+        // #1908 / [[IADR-0536]]: 高機密は埋め込み待ちの印を付けない（埋め直しの対象にしない）。
+        store.PendingUpserts.Should().BeEmpty();
         store.LexicalUpserts.Should().HaveCount(2);
         store.LexicalUpserts.Select(u => u.Text).Should().Contain(t => t.Contains("本文アルファ"));
         // チャンク ID は本文チャンクと同じ規則（再取り込みで同じ点を上書きする）。
@@ -526,6 +586,9 @@ public class DocumentUpdatedConsumerTests
         store.Upserts.Should().HaveCount(2);
         store.LexicalUpserts.Should().BeEmpty();
         store.LexicalMetadataUpserts.Should().BeEmpty();
+        // #1908 / [[IADR-0536]]: 埋め込めたときは埋め込み待ちの点を書かない（陽性対照）。
+        store.PendingUpserts.Should().BeEmpty();
+        store.PendingMetadataUpserts.Should().BeEmpty();
     }
 
     // T-26 (FR-02, ADR-0070 決定 4, ADR-0127 決定 1): 本文の無い高機密文書は、**埋め込まずに**
@@ -544,6 +607,7 @@ public class DocumentUpdatedConsumerTests
 
         embed.Calls.Should().Be(0);
         store.MetadataUpserts.Should().BeEmpty();
+        store.PendingMetadataUpserts.Should().BeEmpty("#1908: 高機密のメタデータ点にも埋め込み待ちの印を付けない");
         var point = store.LexicalMetadataUpserts.Should().ContainSingle().Subject;
         point.PointId.Should().Be(ChunkId.DeriveMetadata(ev.DocumentId));
         point.IndexText.Should().Contain("テスト文書").And.Contain("人事ファイルサーバー");
@@ -609,6 +673,20 @@ file class RecordingEmbeddingService(
     }
 }
 
+// #1908: n 回目の呼び出しから一時障害を返す埋め込み（途中で使えなくなる送信先）。
+file class FailFromEmbeddingService(int failFromCall) : IEmbeddingService
+{
+    public int Calls { get; private set; }
+
+    public Task<EmbeddingResult> EmbedAsync(string text, string? confidentiality, CancellationToken ct = default)
+    {
+        Calls++;
+        return Task.FromResult(Calls >= failFromCall
+            ? new EmbeddingResult([], "knowledge_chunks_voyage_3_5", false, Retryable: true)
+            : new EmbeddingResult(new float[1024], "knowledge_chunks_voyage_3_5", true));
+    }
+}
+
 file class StubContentReader(string markdown) : IDocumentContentReader
 {
     public Task<string> ReadAsync(string markdownUri, string title, CancellationToken ct = default)
@@ -639,8 +717,41 @@ file record MetadataUpsertRecord(string Collection, Guid PointId, Guid DocumentI
     string IndexText, float[] Vector, string? MarkdownUri, Dictionary<string, string> Attributes,
     List<string> Tags, DateTimeOffset? UpdatedAt, List<string>? SharedWith = null);
 
+// #1908 / [[IADR-0536]]: 埋め込み待ちの点の記録（理由つき）。
+file record PendingUpsertRecord(Guid ChunkId, Guid DocumentId, string Text, int ChunkIndex, string? MarkdownUri,
+    Dictionary<string, string> Attributes, List<string> Tags, DateTimeOffset? UpdatedAt, string Reason);
+
+file record PendingMetadataUpsertRecord(Guid PointId, Guid DocumentId, string IndexText, string Reason);
+
 file class RecordingVectorStore : IIngestionVectorStore
 {
+    // #1908 / [[IADR-0536]]: 埋め込み待ちの点（語彙索引・印つき）。高機密の語彙索引の袋と分ける。
+    public List<PendingUpsertRecord> PendingUpserts { get; } = [];
+    public List<PendingMetadataUpsertRecord> PendingMetadataUpserts { get; } = [];
+
+    public Task UpsertEmbeddingPendingChunkAsync(Guid chunkId, Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
+        CancellationToken ct = default)
+    {
+        Operations.Add("pending-upsert");
+        PendingUpserts.Add(new PendingUpsertRecord(chunkId, documentId, text, chunkIndex, markdownUri,
+            attributes, tags, updatedAt, reason));
+        return Task.CompletedTask;
+    }
+
+    public Task UpsertEmbeddingPendingMetadataPointAsync(Guid pointId, Guid documentId, string title,
+        string indexText, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
+        CancellationToken ct = default)
+    {
+        Operations.Add("pending-metadata-upsert");
+        PendingMetadataUpserts.Add(new PendingMetadataUpsertRecord(pointId, documentId, indexText, reason));
+        return Task.CompletedTask;
+    }
+
     public List<UpsertRecord> Upserts { get; } = [];
     public List<MetadataUpsertRecord> MetadataUpserts { get; } = [];
     public List<Guid> DeletedFromAll { get; } = [];

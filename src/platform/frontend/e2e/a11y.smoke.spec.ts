@@ -195,7 +195,11 @@ test('SC-05: 文書管理の画面（表・フィルタ）に WCAG 2.1 A/AA ＋ 
   const traffic = await installBffSession(page, {
     // 🔴 **運用者で測る。** 表・操作列は権限のある利用者にしか描かれない（IADR-0039）。
     user: sessionUser(['platform-operator']),
-    handlers: { 'GET /documents': [doc], 'GET /tags': tags },
+    // FR-06, IADR-0537（#1923）: 一覧は 1 ページ（`items` / `total` / `offset` / `limit`）で返る。
+    handlers: {
+      'GET /documents': { items: [doc], total: 1, offset: 0, limit: 50 },
+      'GET /tags': tags,
+    },
   });
 
   await page.goto('/admin/documents');

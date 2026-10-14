@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import {
   getBffDocumentContentQueryKey,
   getBffDocumentDetailQueryKey,
@@ -11,8 +11,8 @@ import {
   useBffDocumentPublish,
   useBffDocumentUpdate,
 } from '@foundation/api/generated/documents/documents';
-import { okArray } from '@foundation/api/orvalSelect';
-import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
+import { okData } from '@foundation/api/orvalSelect';
+import type { DocumentListPageDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-05, UC-03, FR-06/FR-09: 文書管理の照会・作成・更新・状態遷移・削除
 // （サーバー状態は TanStack Query。ADR-0031）。
@@ -29,12 +29,50 @@ import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 // 書き込みは BFF が「対象文書が利用者の ABAC スコープ内か」を先に確かめ、スコープ外・不在を
 // いずれも 404 で返す（IADR-0041 / IADR-0009。閲覧できない文書は変更もできない）。
 
+/**
+ * 一覧の全ページに前方一致するキー（`['/bff/documents']`）。
+ *
+ * ［2026-10-14 / #1923］一覧はページ（`offset` / `limit`）ごとに `['/bff/documents', { offset, limit }]` で引く。
+ * TanStack Query の部分一致は配列の要素単位なので、このキーでの無効化は**全ページ**に届く（詳細群には届かない。下記）。
+ */
 export const documentsKey = getBffDocumentListQueryKey();
 
-/** 一覧（ABAC スコープ内のみ返る）。 */
-export function useAdminDocuments() {
-  return useBffDocumentList<DocumentDto[], unknown>({
-    query: { queryKey: documentsKey, select: okArray },
+/** SC-05, FR-06, IADR-0537（#1923）: 1 ページの件数の選択肢と既定（BFF の上限 100・既定 50 と同じ）。 */
+export const DOCUMENT_PAGE_SIZES = [25, 50, 100] as const;
+export const DEFAULT_DOCUMENT_PAGE_SIZE = 50;
+
+export interface DocumentPageRequest {
+  offset: number;
+  limit: number;
+}
+
+/**
+ * 応答封筒から 1 ページを取り出す。**`items` が配列でなければ空へ縮退させる**
+ * （`okArray` と同じ理由。`bffFetch` は本文なしで `{}` を返す——IADR-0135 決定 7［2026-08-06 追記］）。
+ */
+function okPage(res: Parameters<typeof okData>[0]): DocumentListPageDto {
+  const page = okData(res) as Partial<DocumentListPageDto>;
+  return {
+    items: Array.isArray(page.items) ? page.items : [],
+    total: page.total ?? 0,
+    offset: page.offset ?? 0,
+    limit: page.limit ?? DEFAULT_DOCUMENT_PAGE_SIZE,
+  };
+}
+
+/**
+ * 一覧の 1 ページ（ABAC スコープ内のみ返る。`total` も BFF が権限で絞った後の件数）。
+ *
+ * ページを替える間は前のページを出したままにする（`keepPreviousData`）——読み込み中の表示へ切り替えると、
+ * ページ送りのたびに表が消えて位置を見失う。
+ */
+export function useAdminDocuments(page: DocumentPageRequest) {
+  return useBffDocumentList<DocumentListPageDto, unknown>(page, {
+    query: {
+      queryKey: getBffDocumentListQueryKey(page),
+      select: okPage,
+      placeholderData: keepPreviousData,
+    },
   });
 }
 

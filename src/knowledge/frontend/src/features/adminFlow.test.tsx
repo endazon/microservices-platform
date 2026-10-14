@@ -74,7 +74,9 @@ const CONTENT = { id: DOC_ID, title: TITLE, markdown: '# 経費精算規程', so
 function routeResponses(path: string): Promise<unknown> {
   if (path === '/datasources') return Promise.resolve(jsonResponse([SOURCE]));
   if (path.startsWith('/conversion/jobs')) return Promise.resolve(jsonResponse([JOB]));
-  if (path === '/documents') return Promise.resolve(jsonResponse([DOCUMENT]));
+  // FR-06, IADR-0537（#1923）: 一覧はページ（`/documents?offset=…&limit=…`）で引く。
+  if (path.startsWith('/documents?'))
+    return Promise.resolve(jsonResponse({ items: [DOCUMENT], total: 1, offset: 0, limit: 50 }));
   if (path === `/documents/${DOC_ID}`) return Promise.resolve(jsonResponse(DOCUMENT));
   if (path === `/documents/${DOC_ID}/content`) return Promise.resolve(jsonResponse(CONTENT));
   if (path === `/documents/${DOC_ID}/versions`) return Promise.resolve(jsonResponse([]));

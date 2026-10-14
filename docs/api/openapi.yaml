@@ -1381,20 +1381,45 @@ paths:
         `RequireRole anyOf={[Admin, Operator]}` で絞られていたが、**API は無認証でも通っていた**。
         **同じ `/bff/documents` でも `{id}` 以下（SC-03 の文書詳細）は認証のみ**である ——
         あちらは SC-01 の出典クリックから一般利用者が遷移する。
+
+        ［2026-10-14 / #1923・#1897］**ページで返す**（IADR-0537）。並びは更新日時の降順・同時刻は ID の降順。
+        - 送り方は**オフセット**（`offset` / `limit`）。`limit` は既定 50、1〜100 に丸める。`offset` が総件数以上なら `items` は空。
+        - 🔴 **`total` は利用者の ABAC スコープで絞った後の件数だけである。** 権限外の文書は `items` にも `total` にも入らず、
+          ページの境界も変えない（存在秘匿）。後段の続きの印はこの口の外へ出さない。
+        - 後段（文書サービス）から一覧を引き切れないとき（途中のページを含む）は **502**（ProblemDetails。運用画面の一覧 `/bff/datasources`・`/bff/conversion/jobs` と同じ向き）を返す。
+          空のページ・部分の件数へは畳まない（本当の 0 件と区別できなくなる。#1897）。本文は中立の文言だけで、文書の有無も件数も載せない。
+        - 許可ポリシーが無い（見える文書が無い）ときは `items` が空・`total` が 0 のページを返す（deny-by-default。従前どおり）。
       operationId: bff-document-list
+      parameters:
+        - name: offset
+          in: query
+          required: false
+          description: 先頭から飛ばす件数（ABAC で絞った後の並びで数える）。既定 0。負・数でない値は 400
+          schema: { type: integer, format: int32, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          required: false
+          description: 1 ページの件数。既定 50。1〜100 に丸める（範囲外もエラーにしない）。数でない値は 400
+          schema: { type: integer, format: int32, minimum: 1, maximum: 100, default: 50 }
       responses:
         "200":
-          description: 文書一覧（スコープ内のみ）
+          description: 文書一覧の 1 ページ（スコープ内のみ）
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/DocumentDto"
+                $ref: "#/components/schemas/DocumentListPageDto"
+        "400":
+          description: "`offset` が負、または `offset` / `limit` が数でない"
         "401":
           description: 未認証（#656）
         "403":
           description: 管理者・運用者以外（#656）
+        "502":
+          description: 文書サービスから一覧を引き切れなかった（空の一覧へ畳まない。#1897・#1923）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
     post:
       x-roles: [platform-admin]
       tags: [Documents]
@@ -4877,6 +4902,20 @@ components:
           type: string
           nullable: true
           description: 次のページの `cursor` にそのまま渡す不透明な文字列。呼び出し側は解釈しない
+
+    DocumentListPageDto:
+      type: object
+      description: |
+        FR-06, SC-05 (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ（`Knowledge.Contracts/Dtos/DocumentDto.cs`）。
+        `offset` / `limit` は BFF が丸めた後の値。🔴 `total` は ABAC スコープで絞った後の件数（権限外の文書を数えない）。
+      required: [items, total, offset, limit]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/DocumentDto" }
+        total: { type: integer, format: int32, description: ABAC で絞った後の総件数 }
+        offset: { type: integer, format: int32, description: このページの先頭の位置（丸めた後） }
+        limit: { type: integer, format: int32, description: 1 ページの件数（丸めた後） }
 
     DocumentContentDto:
       type: object

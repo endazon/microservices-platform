@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-02, FR-06, UC-04, NFR-09, ADR-0013, ADR-0016, ADR-0027, ADR-0127, IADR-0313, IADR-0314, IADR-0455, IADR-0484, IADR-0497]
 author: claude
 created: 2026-10-06
-updated: 2026-10-08
+updated: 2026-10-14
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0013_embedding-model.md（フォローアップ「再索引運用（モデル更新時）の手順整備」）
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md
@@ -143,3 +143,7 @@ related_specs:
 ## 関連
 
 - 運用仕様書「埋め込みプロバイダの設定・ゼロ保持・再索引」（手順 2 の使い方）
+
+> ［2026-10-14 追記 / #1908］[IADR-0536](./IADR-0536_embedding-pending-lexical-points.md) の後は、埋め込み先の無い構成（Voyage の鍵が無い）で流しても
+> public / internal の文書は DLQ へ行かず、語彙索引へ全文だけの点（埋め込み待ち）として入る。上の「全件が再試行の後 DLQ へ行く」はその前の挙動であり、
+> カナリアと DLQ の監視は他の失敗（本文の取得・Qdrant・輸送）を止める仕組みとして残る。既存分（鍵の無い間に索引されなかった文書）の流し直しに本 IADR の口を使う。上の本文は書き換えない。

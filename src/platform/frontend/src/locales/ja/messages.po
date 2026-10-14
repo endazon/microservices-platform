@@ -86,6 +86,10 @@ msgstr "{issuedClientId} の client secret です。表示できるのは今回�
 msgid "{max} 文字以内で入力してください。"
 msgstr "{max} 文字以内で入力してください。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "{p} ページ目"
+msgstr "{p} ページ目"
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "{reissueTargetId} の client secret を再発行します。いまの secret はただちに使えなくなります。エージェントの設定を新しい secret に差し替えてください。"
 msgstr "{reissueTargetId} の client secret を再発行します。いまの secret はただちに使えなくなります。エージェントの設定を新しい secret に差し替えてください。"
@@ -1308,6 +1312,10 @@ msgstr "ページツリーを取得できませんでした。"
 msgid "ページツリーを読み込み中…"
 msgstr "ページツリーを読み込み中…"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "ページ送り"
+msgstr "ページ送り"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "ポート"
 msgstr "ポート"
@@ -1902,6 +1910,10 @@ msgstr "入力を確認してください"
 msgid "入力内容に誤りがあります。"
 msgstr "入力内容に誤りがあります。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "全 {total} 件中 {from}–{to} 件"
+msgstr "全 {total} 件中 {from}–{to} 件"
+
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "全消去"
 msgstr "全消去"
@@ -2239,6 +2251,10 @@ msgstr "削除済みの個人資料を確認する"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "削除済みの資料です。削除済みタブから復元するか、Obsidian 側のファイルを削除してください。"
 msgstr "削除済みの資料です。削除済みタブから復元するか、Obsidian 側のファイルを削除してください。"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "前へ"
+msgstr "前へ"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "動的束縛: {bindingLabel}（{notation}）"
@@ -3610,6 +3626,10 @@ msgstr "機密区分の高いデータは外部 API へ送信せずセルフホ�
 msgid "機密区分上限は必須です。"
 msgstr "機密区分上限は必須です。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "次へ"
+msgstr "次へ"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "次回同期"
 msgstr "次回同期"
@@ -4107,6 +4127,10 @@ msgstr "表示中のノードをタイトルで絞り込む"
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "表示中の辺はありません（孤立文書）。"
 msgstr "表示中の辺はありません（孤立文書）。"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "表示件数"
+msgstr "表示件数"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "表示名"

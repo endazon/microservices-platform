@@ -294,7 +294,11 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 629188,
+  "initialTotalBytes": 629497,
+  "$comment_initialTotalBytes_20261014_1923_document-list-pagination": [
+    "［2026-10-14 / #1923 文書管理の一覧のページネーション］629,188 → 629,497（+309 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が +0.31 kB 超過を報告し、--update で床を更新した）。",
+    "増分は初期ロードに載る ja / en のカタログ（messages.ts）にページ送りの文言 6 件が加わった分である。画面のコード（DocumentPagination）は SC-05 の遅延チャンクに入る。"
+  ],
   "$comment_initialTotalBytes_20261009_1845_sc12-secret-once-and-audit": [
     "［2026-10-09 / #1845 無人の MCP クライアントの secret の一度だけの表示・再発行と管理操作の監査］627,917 → 629,188（+1,271 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
     "+1.27 kB 超過を報告し、--update で床を更新した）。A/B で帰属を確かめた: 本件のコードのまま ja / en のカタログ（messages.ts）だけを develop の版へ戻すと 627,917（床ちょうど）になる。",

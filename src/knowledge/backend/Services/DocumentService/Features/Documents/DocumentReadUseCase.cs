@@ -37,8 +37,9 @@ public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess
     public async Task<List<DocumentDto>> ListAsync(DocumentReadPrincipal principal, CancellationToken ct = default)
     {
         var names = await TagResolver.NamesAsync(db);
+        // ［2026-10-14 / #1923・[[IADR-0537]]］並びは gRPC のページ（`ListPageAsync`）と同じ全順序（同時刻は ID の降順）。
         var docs = await db.Documents
-            .OrderByDescending(d => d.UpdatedAt)
+            .InListOrder()
             .ToListAsync(ct);
         var shares = await DocumentEndpoints.ResolveSharedWithAsync(
             db, docs.Select(d => d.Id).ToList(), ct);
@@ -51,6 +52,62 @@ public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess
                 visible.Add(DocumentEndpoints.ToDto(d, names, sharedWith));
         }
         return visible;
+    }
+
+    // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): gRPC `ListDocuments` の 1 ページ分の既定と上限。
+    // 1 件は約 450 バイト（#1899 の実測）なので、上限 1000 件で約 450 KB —— grpc-dotnet の既定の受信上限 4 MB に十分収まる。
+    internal const int DefaultPageSize = 500;
+    internal const int MaxPageSize = 1000;
+
+    // 塊読みの上限（`DocumentPageQuery.MaxScanChunk` と同じ考え方）。読めない文書が続く区間でも往復の回数を抑える。
+    private const int MaxScanChunk = 2000;
+
+    // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): 一覧の**1 ページ**（更新日時の降順・同時刻は ID の降順）。
+    // 集合は `ListAsync` と同じ（読める文書の全件）で、ここはそれを `pageSize` 件ずつ切り出す。
+    //
+    // 🔴 **読めるかの判定は切り出す前に行う。** 切り出した後に落とすと、ページが短くなり、続きの印が
+    //   読めない文書を指す（その ID と時刻を呼び出し元へ渡すことになる）。台帳を SQL のキーセットで塊ごとに読み、
+    //   塊の中で判定し、読める文書が `pageSize + 1` 件に達するか台帳が尽きるまで進む（`DocumentPageQuery.ReadPageAsync` と同じ形）。
+    // 🔴 **続きの印は返した最後の文書から作る**（`DocumentListCursor.After(page[^1])`）。塊の末尾の行（読めない文書であり得る）からは作らない。
+    // 🔴 **.NET 側で並べ直さない。** Postgres の uuid の順と `Guid.CompareTo` の順を、並べる側と比べる側で混ぜない。
+    internal async Task<(List<DocumentDto> Page, string? NextPageToken)> ListPageAsync(
+        DocumentReadPrincipal principal, int pageSize, DocumentListCursor? after, CancellationToken ct = default)
+    {
+        var page = new List<(Document Doc, List<string>? SharedWith)>(pageSize + 1);
+        var position = after;
+        var chunk = pageSize + 1;
+        while (page.Count <= pageSize)
+        {
+            var batch = await db.Documents.AsNoTracking()
+                .Before(position).InListOrder().Take(chunk).ToListAsync(ct);
+            if (batch.Count > 0)
+            {
+                var shares = await DocumentEndpoints.ResolveSharedWithAsync(db, batch.Select(d => d.Id).ToList(), ct);
+                foreach (var d in batch)
+                {
+                    var sharedWith = shares.GetValueOrDefault(d.Id);
+                    if (!await access.CanReadAsync(principal, d, sharedWith, ct))
+                        continue;
+                    page.Add((d, sharedWith));
+                    if (page.Count > pageSize) break;
+                }
+            }
+
+            if (batch.Count < chunk)
+                break;
+            position = DocumentListCursor.After(batch[^1]);
+            chunk = Math.Min(chunk * 2, MaxScanChunk);
+        }
+
+        string? next = null;
+        if (page.Count > pageSize)
+        {
+            page.RemoveRange(pageSize, page.Count - pageSize);
+            next = DocumentListCursor.After(page[^1].Doc).Encode();
+        }
+
+        var names = await TagResolver.NamesAsync(db);
+        return (page.Select(p => DocumentEndpoints.ToDto(p.Doc, names, p.SharedWith)).ToList(), next);
     }
 
     // FR-06, UC-03: 1 件の取得。台帳に無い・読めないは同じ null（#1614。ADR-0056）。
@@ -104,4 +161,26 @@ public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess
         var sharedWith = await DocumentEndpoints.ResolveSharedWithAsync(db, doc.Id, ct);
         return await access.CanReadAsync(principal, doc, sharedWith, ct) ? (doc, sharedWith) : null;
     }
+}
+
+// FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): 一覧のページの並びとキーセットの述語。
+internal static class DocumentListOrder
+{
+    // 並び（`UpdatedAt` 降順・同時刻は `Id` 降順）でカーソルより**厳密に後ろ**の行。
+    // SQL では `"UpdatedAt" <= @c AND ("UpdatedAt" < @c OR "Id" < @id)` に訳される。
+    // 🔴 **先頭の `UpdatedAt <= c` を外さない**（意味は `UpdatedAt < c OR (UpdatedAt = c AND Id < id)` と同じで冗長に見える）。
+    //   Postgres はこの項だけを `(UpdatedAt, Id)` の索引の開始位置に使える（`DocumentPageQuery.AfterCursor` の注記と同じ理由。[[IADR-0509]]）。
+    // 🔴 「以下」にしない —— 前ページの末尾をもう一度返す。
+    internal static IQueryable<Document> Before(this IQueryable<Document> ledger, DocumentListCursor? after)
+    {
+        if (after is not { } cursor)
+            return ledger;
+        var updatedAt = cursor.UpdatedAt;
+        var id = cursor.Id;
+        return ledger.Where(d => d.UpdatedAt <= updatedAt && (d.UpdatedAt < updatedAt || d.Id < id));
+    }
+
+    // ページの並び。**キーセットの述語（`Before`）と同じ 2 列・同じ向き**で並べる。
+    internal static IOrderedQueryable<Document> InListOrder(this IQueryable<Document> ledger)
+        => ledger.OrderByDescending(d => d.UpdatedAt).ThenByDescending(d => d.Id);
 }

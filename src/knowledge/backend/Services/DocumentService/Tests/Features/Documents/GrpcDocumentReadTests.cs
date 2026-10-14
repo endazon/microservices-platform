@@ -270,6 +270,82 @@ public class GrpcDocumentReadTests
             .Should().BeEquivalentTo(restVersions, o => o.WithStrictOrdering());
     }
 
+    // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): 一覧はページで返り、印を辿った全件は REST の一覧と同値（順序を含む）。
+    [Fact]
+    public async Task ListDocuments_pages_through_the_same_list_as_rest()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(Document.Create("ページ 1", null, null, new Dictionary<string, string>()));
+        await SeedAsync(Document.Create("ページ 2", null, null, new Dictionary<string, string>()));
+
+        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
+        http.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ServiceToken());
+        var restList = (await http.GetFromJsonAsync<List<DocumentDto>>("/documents", ct))!;
+
+        var paged = new List<DocumentDto>();
+        var token = string.Empty;
+        do
+        {
+            var resp = await PlainClient().ListDocumentsAsync(
+                new ListDocumentsRequest { PageSize = 1, PageToken = token },
+                headers: Bearer(ServiceToken()), cancellationToken: ct);
+            resp.Documents.Should().HaveCountLessThanOrEqualTo(1);
+            paged.AddRange(resp.Documents.Select(Knowledge.Contracts.Grpc.DocumentReadGrpcMapping.ToDto));
+            token = resp.NextPageToken;
+        } while (token.Length > 0);
+
+        paged.Should().BeEquivalentTo(restList, o => o.WithStrictOrdering());
+    }
+
+    // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): rpc を通したページの大きさ。上限（1000）を超えた要求は 1000 件で止まり、
+    // 続きの印が付く。0（省略）は既定の 500 件。
+    // 🔴 器の DB は他の試験と共有するので、件数を満たす文書は**この試験の利用者だけが読める個人資料**として入れる
+    //   （他の試験の主体〔呼び出し元サービス・別の利用者〕の一覧には現れず、REST との同値の試験も崩さない）。
+    [Fact]
+    public async Task ListDocuments_caps_the_page_size_at_1000_and_defaults_to_500()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var owner = $"bulk-{Guid.NewGuid():N}"[..20];
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            for (var i = 0; i < DocumentReadUseCase.MaxPageSize + 1; i++)
+                db.Documents.Add(Document.Create($"bulk-{i}", null, null, new Dictionary<string, string>
+                {
+                    ["confidentiality"] = "restricted",
+                    ["doc_scope"] = "private-note",
+                    ["owner"] = owner,
+                }));
+            await db.SaveChangesAsync(ct);
+        }
+        var user = new UserContext { UserId = owner, Action = "read" };
+
+        var capped = await PlainClient().ListDocumentsAsync(
+            new ListDocumentsRequest { User = user, PageSize = 5000 }, headers: Bearer(ServiceToken()), cancellationToken: ct);
+        var byDefault = await PlainClient().ListDocumentsAsync(
+            new ListDocumentsRequest { User = user }, headers: Bearer(ServiceToken()), cancellationToken: ct);
+
+        capped.Documents.Should().HaveCount(DocumentReadUseCase.MaxPageSize, "上限を超えた要求は上限に丸める");
+        capped.NextPageToken.Should().NotBeEmpty("台帳に続きがある");
+        byDefault.Documents.Should().HaveCount(DocumentReadUseCase.DefaultPageSize, "0（省略）は既定");
+        byDefault.NextPageToken.Should().NotBeEmpty();
+    }
+
+    // FR-06, [[IADR-0537]] (#1923): 壊れた続きの印と負の件数は要求の誤り（INVALID_ARGUMENT）。黙って先頭から読まない。
+    [Theory]
+    [InlineData(0, "not-a-token!!")]
+    [InlineData(0, "djE6MTIzOmFiYw")]
+    [InlineData(-1, "")]
+    public async Task ListDocuments_rejects_a_tampered_token_or_negative_page_size(int pageSize, string pageToken)
+    {
+        var act = async () => await PlainClient().ListDocumentsAsync(
+            new ListDocumentsRequest { PageSize = pageSize, PageToken = pageToken },
+            headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+    }
+
     // T-08: 構造の門。gRPC サービス型が ServiceCaller ポリシーを宣言していること
     // （属性が外れると T-02 / T-03 が落ちるが、どの層で外れたかを名指しするためにここでも固定する）。
     [Fact]

@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
-import type { DocumentDto, TagDictionaryResponse } from '../src/lib/api/generated/bff.schemas';
+import type {
+  DocumentDto,
+  DocumentListPageDto,
+  TagDictionaryResponse,
+} from '../src/lib/api/generated/bff.schemas';
 import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
 
 // SC-05 (#503 / #1139): 文書管理（`/admin/documents`）のスクリーンレベル・スモーク。
@@ -28,7 +32,11 @@ const doc: DocumentDto = {
 
 const tags: TagDictionaryResponse = { tags: [{ id: 'tag-1', name: '経費', usageCount: 1 }] };
 
-const handlers = { 'GET /documents': [doc], 'GET /tags': tags };
+// FR-06, IADR-0537（#1923）: 一覧は 1 ページ（`items` / `total` / `offset` / `limit`）で返る。
+// キーはクエリを含まない（`support/bffSession.ts`）。要求の `offset` / `limit` は下の本体で確かめる。
+const firstPage: DocumentListPageDto = { items: [doc], total: 1, offset: 0, limit: 50 };
+
+const handlers = { 'GET /documents': firstPage, 'GET /tags': tags };
 
 test('unauthenticated visit to /admin/documents redirects to /login', async ({ page }) => {
   await page.goto('/admin/documents');
@@ -56,6 +64,9 @@ test('SC-05: an operator reaches the screen and its navigation entry', async ({ 
   // （取得できた一覧を 0 件表示へ寄せる実装がここで落ちる）。
   // **［2026-09-12］`EmptyState` への統一で文言が変わった**（空は次の一手を示す）。
   await expect(page.getByText('文書はまだありません。')).toHaveCount(0);
+  // 一覧はページの引数つきで引く（既定 50 件の先頭）。総件数と表示範囲が出る。
+  expect(traffic.calls.find((c) => c.key === 'GET /documents')?.search).toBe('?offset=0&limit=50');
+  await expect(page.getByText('全 1 件中 1–1 件')).toBeVisible();
 
   expectBffTrafficIsComplete(traffic);
 });

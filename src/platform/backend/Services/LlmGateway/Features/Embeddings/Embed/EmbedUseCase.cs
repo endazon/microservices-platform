@@ -83,9 +83,9 @@ public sealed class EmbedUseCase(
         catch (EmbeddingProviderNotConfiguredException ex)
         {
             // FR-02, NFR-19, IADR-0504 追記 (#1819): 鍵の欠落など**構成として使えない**状態。
-            // 🔴 **応答は下の一時障害と同じ**（Embedded=false・Retryable=true）—— 取り込みは再試行の後 DLQ へ送り、
-            // 鍵を入れてから DLQ を再投入すれば索引へ入る。恒久スキップ（Retryable=false）にすると取り込みは
-            // チャンクを捨てて完了扱いにし、後から鍵を入れても索引に入らない（IADR-0504 §検討した代替案）。
+            // 🔴 **応答は下の一時障害と同じ**（Embedded=false・Retryable=true）—— ［2026-10-14 / #1908・IADR-0536］取り込みは
+            // public / internal のチャンクを語彙索引へ全文だけの点（埋め込み待ち・理由 transient）として書き、鍵を入れた後に
+            // 自動で埋め直す（以前は再試行の後 DLQ）。理由を transient に保つため、恒久的な拒否（Retryable=false）にはしない。
             // 🔴 **違うのはログだけである。** 同じ原因の失敗を毎回スタック付きで残すとログを埋め、他の行を
             // 押し出す（#1819 の PoC で 1,146 回）。エンドポイントごとに初回は即時・以後は 5 分ごとに
             // 抑えた件数つきの 1 行（スタックなし）にする。
