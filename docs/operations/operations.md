@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [SC-13, SC-14, SC-16, FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06, FR-17]
 adrs: [ADR-0031, ADR-0010, ADR-0133, ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083, ADR-0132, ADR-0086, ADR-0131]
-iadrs: [IADR-0532, IADR-0261, IADR-0435, IADR-0528, IADR-0114, IADR-0526, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0525, IADR-0523, IADR-0522, IADR-0524, IADR-0531, IADR-0533]
-specs: [20261014_1740_voyage-zero-retention-certification, 20261010_sc13-keycloak-theme-nocturne, 20261010_1881_grafana-alert-uid-length, 20261010_1872_anthropic-timeout-config, 20261009_1842_loki-tempo-front-auth, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1840_secret-store-openbao, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade, 20261010_1875_claude-5-5-models, 20261010_issue-1255-1517_east-west-rest-retirement]
-issues: [#1740, #1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1840, #1846, #1839, #1859, #1875, #1255, #1517, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750, planning#741, AST#1289, AST#243, planning#783]
+iadrs: [IADR-0536, IADR-0532, IADR-0261, IADR-0435, IADR-0528, IADR-0114, IADR-0526, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0525, IADR-0523, IADR-0522, IADR-0524, IADR-0531, IADR-0533]
+specs: [20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261014_1740_voyage-zero-retention-certification, 20261010_sc13-keycloak-theme-nocturne, 20261010_1881_grafana-alert-uid-length, 20261010_1872_anthropic-timeout-config, 20261009_1842_loki-tempo-front-auth, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1840_secret-store-openbao, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade, 20261010_1875_claude-5-5-models, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#1908, #1740, #1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1840, #1846, #1839, #1859, #1875, #1255, #1517, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750, planning#741, AST#1289, AST#243, planning#783]
 -->
 
 # 運用仕様書
@@ -1078,8 +1078,11 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
     （`optional: true`。本番像の `values.yaml` と経路B の `values-local.yaml` の両方。外部 LLM の鍵と同じ Secret）。
     経路B は Vault の KV `secret/msp/llm-provider-credentials` のプロパティ `voyage-api-key` を ESO が写す。
     鍵の入れ方と、値を表示せずに届いたことを確かめる手順は [`voyage-embedding-key-runbook.md`](voyage-embedding-key-runbook.md)。
-    **再索引の前に行う**（鍵が無いまま再発行すると、`public` / `internal` の文書は全件が再試行の後 DLQ へ行くだけになる）。
-  - キー未設定でも起動する（fail-open しない）。Voyage 呼び出しが失敗した文書は索引されないだけで、
+    ~~**再索引の前に行う**（鍵が無いまま再発行すると、`public` / `internal` の文書は全件が再試行の後 DLQ へ行くだけになる）。~~
+    **［2026-10-14］鍵が無いまま再発行しても DLQ へは行かない。** `public` / `internal` の文書は語彙索引へ全文だけの点（埋め込み待ち）として入り、
+    鍵を入れた後に取り込みサービスが自動で埋め直す（下の「埋め込みが使えない間の全文だけの点」）。意味検索に当てたいなら、鍵を先に入れるのが費用・手間とも少ない。
+  - キー未設定でも起動する（fail-open しない）。~~Voyage 呼び出しが失敗した文書は索引されないだけで、~~
+    ［2026-10-14］Voyage 呼び出しが失敗した `public` / `internal` の文書は、語彙索引へ全文だけの点（埋め込み待ち）として入る（上の追記）。いずれにしても、
     高機密文書の本文が外部へ出ることはない（ルーティングで候補にならないため）。
     ［2026-10-06］Secret にキーが無い（古い Secret）場合も起動する（`optional: true` で env を置かない）。
   - **ゼロ保持認定状況の記録（#303 受け入れ基準）**: 実環境構築前チェックリストの一項目として、契約でのゼロ保持
@@ -1161,20 +1164,43 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
     fail-fast で検知し、LlmGateway は起動に失敗する（ログに不整合内容を出力）。ティア↔プロバイダの
     取り違え・必須項目欠落も同時に検証される。
 - **一時障害と fail-closed（意図的拒否）の区別（Issue #98）**: `/embed` は応答に `Retryable` を返す。
-  - **一時障害**（送信先の不調・タイムアウト・予期しない空応答など、`Retryable=true`）: 取り込み消費側
+  **［2026-10-14］取り込みの扱いは改まった（下の「埋め込みが使えない間の全文だけの点」）。** 以下の 2 項は改める前の記述であり、取り消し線の部分は今は当たらない。
+  - **一時障害**（送信先の不調・タイムアウト・予期しない空応答・鍵の未設定など、`Retryable=true`）: ~~取り込み消費側
     （`DocumentUpdatedConsumer`）は当該メッセージを**恒久スキップにせず例外を送出**し、MassTransit の
-    受信リトライ／(枯渇後) DLQ に回す。一括再索引中に Voyage が一時的に不調でもチャンクを取りこぼさない。
-    → 運用: DLQ を監視し、滞留があれば原因（Voyage 障害・鍵の未配線・URL 誤設定等）を解消して再発行する。
+    受信リトライ／(枯渇後) DLQ に回す。~~ **今は例外を送出せず、そのチャンクから後ろを語彙索引へ全文だけの点（理由 `transient`）として書く。**
+    DLQ には回らない。輸送の例外（ゲートウェイへ届かない）と呼び出しごとの時間切れは従来どおり再試行の後 DLQ へ回る。
     ［2026-10-06］取り込みは Wolverine へ移っており、DLQ は RabbitMQ の `wolverine-dead-letter-queue`（全サービスで共有）である
     （`*_error` は MassTransit の段の命名）。DLQ のメッセージは古い状態の写しなので再投入せず、下の「`DocumentUpdated` の再発行」で今の台帳から作り直す。
     → 注意（削除後・再構築前の空白期間）: 取り込みは冒頭で当該文書の既存チャンクを全モデル別コレクションから
-    削除してから再索引する（機密区分変更時の残存防止）。一時障害でリトライ枯渇→DLQ 送りとなった文書は、
-    **削除済み・未索引（0 チャンク）の状態で一時的に検索不可**となる（恒久欠落ではなく DLQ 再投入で回復する）。
-    このため DLQ 滞留は検索網羅性に直結する運用指標として監視し、速やかに再投入すること。
+    削除してから再索引する（機密区分変更時の残存防止）。輸送の例外・時間切れで再試行が枯渇して DLQ 送りとなった文書は、
+    **削除済み・未索引（0 チャンク）の状態で一時的に検索不可**となる（恒久欠落ではなく再発行で回復する）。
+    このため DLQ 滞留は検索網羅性に直結する運用指標として監視し、速やかに再発行すること。
   - **fail-closed / 恒久的理由**（次元不整合・プロバイダ未登録・外部経路の無効化など、`Retryable=false`。［2026-10-05］高機密文書は
     埋め込みを呼ばずに語彙索引へ行くので、ここへは来ない。ここへ来るのは public / internal の文書だけである）:
-    設計どおり当該チャンクを**索引スキップ**し、`IngestionCompleted` は索引できた件数で発行する
-    （警告ログに機密区分を記録）。再試行では解消しないため DLQ には回さない。
+    ~~設計どおり当該チャンクを**索引スキップ**し、`IngestionCompleted` は索引できた件数で発行する
+    （警告ログに機密区分を記録）。~~ **今は一時障害と同じく、語彙索引へ全文だけの点（理由 `rejected`）として書く**（警告ログに機密区分を記録）。再試行では解消しないため DLQ には回さない。
+- **［2026-10-14］埋め込みが使えない間の全文だけの点（埋め込み待ち）**: `public` / `internal` の文書の埋め込みが `Embedded=false` を返したら
+  （鍵の未設定・送信先の不調・経路の無効化・次元不整合）、取り込みはそのチャンクから後ろを**埋め込みを呼ばずに**語彙索引（`knowledge_chunks_lexical`）へ
+  全文だけで書き、点に `embedding_pending = true` と理由（`embedding_pending_reason` = `transient` / `rejected`）を載せる。
+  - **検索**: キーワードとハイブリッドのモードで当たる（ABAC・露出の判定は他の点と同じ）。**意味検索のモードでは当たらない**（語彙索引はベクトルを持たない）。
+  - **埋め直し**: 取り込みサービスの常駐の器が、起動直後と以後 `Ingestion__EmbeddingPending__IntervalSeconds`（既定 300 秒）ごとに待ちの点を数え、
+    1 周期に `Ingestion__EmbeddingPending__BatchSize`（既定 64）点まで埋め直す。埋め込めた点は主（`knowledge_chunks_voyage_3_5`）へ同じ ID で書いてから語彙索引の点を消す
+    （二重に残らない）。埋め込めなければその周期を最初の 1 点で打ち切る（鍵の無い間、1 周期の埋め込みの呼び出しは 1 回）。
+    鍵を入れた後は運用の操作は要らない。急ぐときは取り込みの Pod を作り直す（起動直後に 1 周期が走る）:
+    `kubectl -n microservices-platform rollout restart deploy/ingestion-service`。
+  - 🔴 **覆い隠さないための観測（0 が正常）**: ゲージ `ingestion_embedding_pending_points`（取り込みサービス。周期ごとに数えた待ちの点の数。数える前は系列なし）、
+    計数 `ingestion_embedding_pending_written_total{ingestion_embedding_pending_reason}` / `ingestion_embedding_pending_reembedded_total`。
+    **待ちが 0 でない周期は取り込みのログに Warning が 1 行出る**（`point(s) in the lexical index are awaiting embedding`）。0 でない値が続くなら埋め込みが使えていない
+    —— 鍵（[Voyage の鍵の Runbook](voyage-embedding-key-runbook.md)）とゲートウェイのログを見る。Prometheus が無い環境でも、ログと Qdrant で読める:
+    ```console
+    kubectl -n microservices-platform logs deploy/ingestion-service | grep -E 'awaiting embedding' | tail -3
+    kubectl -n platform-infra run qdrant-pending --rm -i --restart=Never --image=curlimages/curl -- sh -c \
+      'curl -s -X POST http://qdrant:6333/collections/knowledge_chunks_lexical/points/count -H "content-type: application/json" \
+        -d "{\"exact\":true,\"filter\":{\"must\":[{\"key\":\"embedding_pending\",\"match\":{\"value\":true}}]}}"'
+    ```
+  - **既存分（この挙動より前に鍵の無い間に取り込まれ、どこにも書かれなかった文書）**: 新しい手段は無い。下の「`DocumentUpdated` の再発行」をそのまま使う
+    （鍵の有無を問わない。鍵が無ければ待ちの点として入り、鍵があれば主へ入る）。DLQ に溜まった `DocumentUpdated` は再投入しない（再発行が今の台帳から作り直す）。
+  - 高機密文書（語彙索引だけの文書）には印を付けない。埋め直しの対象にならず、埋め込みへ本文が渡ることもない。
 - **再索引手順（次元 1536→1024・モデル別コレクション移行）**:
   1. 取り込みサービスは起動時に不足コレクション（`knowledge_chunks_voyage_3_5` / `_ruri_v3`。
      検証スタックでは `_deterministic_v1` も）を実次元で自動作成する（`QdrantBootstrapHostedService`）。旧 `knowledge_chunks`（1536 次元）は使用しない。
@@ -1199,8 +1225,9 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
 駆動スクリプト `scripts/republish-document-updated.js` が持つ。**稼働クラスタへ当たる**ので `--live` が要る。
 
 **🔴 流す前に、埋め込み先があることを確かめる。** `public` / `internal` の文書は埋め込み（既定は Voyage）へ進む。
-LLM ゲートウェイに Voyage の鍵（`Embedding__Voyage__ApiKey`）が無いと、埋め込みは一時障害として扱われ、**全件が再試行の後 DLQ へ行くだけになる**
-（索引には 1 点も入らない。取り込みは書く前に当該文書の点を消すため）。
+LLM ゲートウェイに Voyage の鍵（`Embedding__Voyage__ApiKey`）が無いと、埋め込みは一時障害として扱われる。~~**全件が再試行の後 DLQ へ行くだけになる**~~
+［2026-10-14］今は DLQ へは行かず、語彙索引へ全文だけの点（埋め込み待ち）として入り、鍵の投入後に自動で埋め直される（上の「埋め込みが使えない間の全文だけの点」）。
+鍵が無いまま流すと、意味検索に当たるのは鍵の投入と埋め直しの後になる（~~索引には 1 点も入らない。取り込みは書く前に当該文書の点を消すため~~）。
 ［2026-10-06］チャート（経路B の値を含む）は、この鍵を Secret `llm-provider-credentials` のキー `voyage-api-key` から渡すよう配線してある（キーが無い・空でも起動する）。
 **鍵の値はチャートにもリポジトリにも無い。** 用意の仕方は、鍵の値を Vault へ入れて同期させる（手順は [Voyage の鍵の Runbook](voyage-embedding-key-runbook.md)。課金が発生する。~~ゼロ保持の認定は本節の上の注記のとおり未了~~ ［2026-10-14］ゼロ保持の認定は済んだ。射程は本節の上の「ゼロ保持認定状況の記録」）か、
 **使い捨ての検証スタックに限り** `LOCALEMBED=1`（決定的ローカル埋め込み。意味的な近さは無い）で立てるかである。高機密文書（語彙索引だけ）は鍵が無くても入る。
@@ -1257,6 +1284,7 @@ kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl list_queues -q nam
    kubectl -n platform-infra run qdrant-check --rm -i --restart=Never --image=curlimages/curl -- sh -c \
      'for c in knowledge_chunks_voyage_3_5 knowledge_chunks_lexical knowledge_chunks_ruri_v3; do curl -s http://qdrant:6333/collections/$c; echo; done'
    ```
+   ［2026-10-14］鍵の無い間に流した分は `knowledge_chunks_lexical` に入り（埋め込み待ち）、鍵の投入後の埋め直しで `knowledge_chunks_voyage_3_5` へ移る。待ちの件数は上の「埋め込みが使えない間の全文だけの点」の数え方で読む。
    `points_count` は文書数ではなくチャンク数である（本文の所在が無い文書は点を作らない。dry-run の「本文の所在が無い」件数を差し引いて読む）。
 
 **DLQ の扱い**: DLQ（`wolverine-dead-letter-queue`）は全サービスで共有している。再発行で増えたメッセージは古い状態の写しなので**再投入しない**。

@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-03, FR-04, NFR-06, ADR-0016, ADR-0018, ADR-0035, ADR-0127, IADR-0009, IADR-0256, IADR-0313, IADR-0318, IADR-0379, IADR-0467, IADR-0497, IADR-0498]
 author: claude
 created: 2026-10-11
-updated: 2026-10-11
+updated: 2026-10-14
 plan_refs:
   - planning:projects/microservices-platform/02_requirements（FR-03 / NFR-06「障害時の縮退運転: 検索は継続」）
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md
@@ -141,6 +141,8 @@ deny の経路は 2 つあり、印の出方が違う。
   - 🔴 **`embed-failed` は「語彙検索なら当たる」を意味しない。** 取り込みも同じゲートウェイで埋め込み、`public` / `internal` の文書は
     埋め込めないと点ごと書かれない（鍵待ちは再試行の後 DLQ。IADR-0497 決定 2 で語彙索引へも回さない）。`embed-failed` が続く配備では、
     その間に入った文書は全文検索にも現れない（#1908 で裁定を求めた）。
+    ［2026-10-14 追記 / #1908］裁定は「全文だけの点として書く」。[IADR-0536](./IADR-0536_embedding-pending-lexical-points.md) の後は、
+    鍵の無い間に入った public / internal の文書も語彙索引に全文だけで載るので、`embed-failed` の間も全文の系統で当たる（上の本文は書き換えない）。
   - 「索引が空」「対象が索引に無い」の符号は足さない。後者は存在秘匿（IADR-0009）を崩し、前者は検索ごとの点数の往復が増えるうえ
     全体の文書の有無を示す。運用側の観測（DLQ の件数・コレクションの点数）で補う（#1908 の問い 3）。
 - **フォローアップ**: AST 側の取り込み（`ragContext` への反映）は AST の issue で扱う。全文だけの点を書くかは #1908。

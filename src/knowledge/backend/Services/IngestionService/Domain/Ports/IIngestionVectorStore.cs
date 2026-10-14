@@ -90,6 +90,54 @@ public interface IIngestionVectorStore
         List<string>? sharedWith = null,
         CancellationToken ct = default);
 
+    // FR-02, FR-03, NFR-06, [[IADR-0536]] 決定 1・2 (#1908): **埋め込みが使えなかった public / internal のチャンクを、
+    // 全文だけの点（埋め込み待ち）として語彙索引へ書く。** ペイロードは語彙索引のチャンクの口と同じ表現に
+    // `embedding_pending = true` と理由（`EmbeddingPendingReasons`）を足したもの。鍵の投入後に埋め直しの器が拾う。
+    //
+    // 🔴 **高機密（`LexicalIndexPolicy.IsLexicalOnly`）の文書をここへ書かない。** 高機密は印の無い語彙索引の口
+    // （`UpsertLexicalChunkAsync`）へ行き、埋め直しの対象にならない。
+    //
+    // 既定実装は**投げる**（何もしない既定にすると、索引を持たない偽物で「書かない」が静かに通る —— #1908 の欠陥の形そのもの）。
+    Task UpsertEmbeddingPendingChunkAsync(Guid chunkId, Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
+        CancellationToken ct = default)
+        => throw new NotSupportedException("This vector store does not hold embedding-pending points");
+
+    // FR-02, ADR-0070 決定 4, [[IADR-0536]] 決定 1 (#1908): 本文なしの public / internal 文書のメタデータ点の埋め込み待ち版
+    // （`has_body = false`）。既定実装の位置づけはチャンクの口と同じ。
+    Task UpsertEmbeddingPendingMetadataPointAsync(Guid pointId, Guid documentId, string title,
+        string indexText, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
+        CancellationToken ct = default)
+        => throw new NotSupportedException("This vector store does not hold embedding-pending points");
+
+    // FR-02, [[IADR-0536]] 決定 2 (#1908): 語彙索引の `embedding_pending` に真偽の索引を張る（冪等）。
+    // 数える・拾う問い合わせを全走査にしないための最適化であり、無くても問い合わせは通る。
+    // 埋め直しの器が最初の周期で呼ぶ。既定実装は何もしない（索引を持たない偽物用）。
+    Task EnsureEmbeddingPendingIndexAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+    // FR-02, NFR-06, [[IADR-0536]] 決定 3 (#1908): 語彙索引の埋め込み待ちの点の件数（計器と Warning の材料）。
+    // 既定実装は 0（索引を持たない偽物用。実装〔Qdrant〕は必ず上書きする）。
+    Task<long> CountEmbeddingPendingAsync(CancellationToken ct = default) => Task.FromResult(0L);
+
+    // FR-02, [[IADR-0536]] 決定 2 (#1908): 埋め込み待ちの点を最大 `limit` 件読む（ベクトルは読まない）。既定実装は空。
+    // 印はあるのにペイロードから復元できない点（文書 ID が読めない等）は、落とさずに ID を `UnreadableIds` へ返す
+    // （#1924 のレビュー。数える側〔`CountEmbeddingPendingAsync`〕は数え続けるので、黙って落とすとゲージが永久に 0 にならない）。
+    Task<EmbeddingPendingPage> ListEmbeddingPendingAsync(int limit, CancellationToken ct = default)
+        => Task.FromResult(EmbeddingPendingPage.Empty);
+
+    // FR-02, [[IADR-0536]] 決定 2 (#1908): 1 点を読み直す（埋め直しの直前の再確認。無い・待ちでなければ null）。既定実装は null。
+    Task<EmbeddingPendingPoint?> GetEmbeddingPendingAsync(Guid pointId, CancellationToken ct = default)
+        => Task.FromResult<EmbeddingPendingPoint?>(null);
+
+    // FR-02, [[IADR-0536]] 決定 2 (#1908): 埋め直した点を語彙索引から消す（**待ちの印を持つ点だけ**を消す条件つき）。
+    // 既定実装は投げる（消し忘れを静かに通さない）。
+    Task DeleteEmbeddingPendingAsync(Guid pointId, CancellationToken ct = default)
+        => throw new NotSupportedException("This vector store does not hold embedding-pending points");
+
     // FR-02, FR-05: 全モデル別コレクションから当該文書のチャンクを削除する。
     // ［2026-10-05 / #1746］[[IADR-0497]] 決定 4: **語彙索引のコレクションからも消す**（機密区分が
     // confidential → public へ下がったとき、語彙索引の古い点が残らないように）。
