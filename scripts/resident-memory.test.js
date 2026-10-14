@@ -7,7 +7,7 @@
  *
  * 固定するもの:
  *   1. helm（既定・values-local）: `services` が描く .NET の Deployment すべてに DOTNET_gcServer=0・DOTNET_GCConserveMemory=5・
- *      DOTNET_GCHeapHardLimitPercent=60 が 1 回ずつ。.NET でない Deployment（frontend・seaweedfs・wiki-js、opt-in の embedding・
+ *      DOTNET_GCHeapHardLimitPercent=0x3C（60%）が 1 回ずつ（**env の値は 16 進数として読み、60 になること**を見る）。.NET でない Deployment（frontend・seaweedfs・wiki-js、opt-in の embedding・
  *      synthetic-monitor）には 1 つも無い。
  *   2. helm: サービス単位の上書き（値の変更・空文字で描かない）が効く。extraEnv / extraEnvAppend の同名は描画で落ちる。
  *   3. kustomize（deploy/local/observability と -persistence）＋collector と Prometheus のソース（描画は ConfigMap の値を 1 行の
@@ -31,11 +31,20 @@ const { spawnSync } = require('child_process');
 const REPO_ROOT = path.resolve(__dirname, '..');
 const CHART = 'deploy/helm/microservices-platform';
 const VALUES_LOCAL = 'deploy/local/values-local.yaml';
+/** 期待する実効値（10 進）。🔴 **GC の env の値は 16 進数として読まれる**（Microsoft Learn「Garbage collector config settings」
+ *  https://learn.microsoft.com/en-us/dotnet/core/runtime-config/garbage-collector の表:「Environment variable | 0xn or n |
+ *  n is interpreted as a hex value in either format」）。`"60"` は 0x60＝96% になる（#1928 のレビュー）。 */
 const GC_ENV = {
-  DOTNET_gcServer: '0',
-  DOTNET_GCConserveMemory: '5',
-  DOTNET_GCHeapHardLimitPercent: '60',
+  DOTNET_gcServer: 0,
+  DOTNET_GCConserveMemory: 5,
+  DOTNET_GCHeapHardLimitPercent: 60,
 };
+
+/** env の値を .NET の実行時と同じく 16 進数として読む（`0x` の有無を問わない）。読めなければ NaN。 */
+function hexValue(raw) {
+  const m = /^(?:0[xX])?([0-9A-Fa-f]+)$/.exec(raw);
+  return m ? parseInt(m[1], 16) : NaN;
+}
 /** .NET ではない Deployment（別のテンプレートが描く）。GC の env が 1 つでも現れたら誤り。 */
 const NON_DOTNET = ['frontend-service', 'seaweedfs', 'wiki-js', 'embedding-service', 'synthetic-monitor'];
 /** 非ヒープ（metaspace ≤256m・コードキャッシュ ≤240m・スレッド等）の見積り。ヒープ上限に足して limits を超えないこと。 */
@@ -94,7 +103,12 @@ function checkGc(rendered, dotnetNames) {
     if (!d) { errors.push(`.NET の Deployment ${name} が描画に無い`); continue; }
     for (const [env, want] of Object.entries(GC_ENV)) {
       const got = envValues(d.text, env);
-      if (got.length !== 1 || got[0] !== want) errors.push(`${name} の ${env} が ${JSON.stringify(want)} の 1 回ではない: ${JSON.stringify(got)}`);
+      if (got.length !== 1 || hexValue(got[0]) !== want) {
+        errors.push(`${name} の ${env} が 16 進数として読んで ${want} の 1 回ではない: ${JSON.stringify(got)}（実効値 ${got.map(hexValue)}）`);
+      } else if (want >= 10 && !/^0[xX]/.test(got[0])) {
+        // 2 桁以上を 0x 無しで書くと、人は 10 進と読み違える（"60" の事故）。16 進数であることを値から読めるようにする。
+        errors.push(`${name} の ${env} が 0x の無い 2 桁以上の値 ${JSON.stringify(got[0])}（16 進数として読まれる。0x を付けて書く）`);
+      }
     }
   }
   for (const d of deployments.filter((x) => NON_DOTNET.includes(x.name))) {
@@ -201,15 +215,31 @@ ok('opt-in（embedding・synthetic-monitor）を足しても、それらには�
 });
 
 ok('サービス単位の上書き: 値の変更はそのサービスだけ、空文字はそのサービスだけ描かない', () => {
-  const changed = helmTemplate(['--set', 'services.graph.dotnetGc.heapHardLimitPercent=75']);
+  const changed = helmTemplate(['--set', 'services.graph.dotnetGc.heapHardLimitPercent=0x4B']);
   const graph = documents(changed).find((d) => d.kind === 'Deployment' && d.name === 'graph-service');
-  assert.deepStrictEqual(envValues(graph.text, 'DOTNET_GCHeapHardLimitPercent'), ['75']);
+  assert.deepStrictEqual(envValues(graph.text, 'DOTNET_GCHeapHardLimitPercent'), ['0x4B']);
   assert.deepStrictEqual(checkGc(changed, DOTNET.filter((n) => n !== 'graph-service')), []);
   const blank = helmTemplate(['--set', 'services.graph.dotnetGc.heapHardLimitPercent=']);
   const g2 = documents(blank).find((d) => d.kind === 'Deployment' && d.name === 'graph-service');
   assert.deepStrictEqual(envValues(g2.text, 'DOTNET_GCHeapHardLimitPercent'), []);
   assert.deepStrictEqual(envValues(g2.text, 'DOTNET_gcServer'), ['0'], '空文字にした鍵だけが消え、他の 2 つは残る');
   assert.deepStrictEqual(checkGc(blank, DOTNET.filter((n) => n !== 'graph-service')), []);
+});
+
+ok('global の鍵が無く、サービスにも無いときは描かない（"<nil>" を描かない）', () => {
+  const r = helmTemplate(['--set', 'global.dotnetGc.conserveMemory=null']);
+  assert.ok(!/<nil>/.test(r), '"<nil>" が描かれた');
+  const doc = documents(r).find((d) => d.kind === 'Deployment' && d.name === 'graph-service');
+  assert.deepStrictEqual(envValues(doc.text, 'DOTNET_GCConserveMemory'), []);
+  assert.deepStrictEqual(envValues(doc.text, 'DOTNET_gcServer'), ['0'], '他の鍵は残る');
+});
+
+ok('変異: 0x の無い "60"（16 進数で 96%）へ戻すと赤', () => {
+  const mutated = DEFAULT.replace(/(- name: DOTNET_GCHeapHardLimitPercent\n\s*value: )"0x3C"/g, '$1"60"');
+  assert.notStrictEqual(mutated, DEFAULT, '前提: 変異を当てられる');
+  assert.ok(checkGc(mutated, DOTNET).some((e) => e.includes('実効値 96')), checkGc(mutated, DOTNET).slice(0, 2).join('\n'));
+  const noPrefix = DEFAULT.replace(/(- name: DOTNET_GCHeapHardLimitPercent\n\s*value: )"0x3C"/g, '$1"3C"');
+  assert.ok(checkGc(noPrefix, DOTNET).some((e) => e.includes('0x の無い')));
 });
 
 ok('extraEnv / extraEnvAppend に同じ名前を書くと描画で落ちる（同名の env を 2 つ並べない）', () => {

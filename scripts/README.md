@@ -190,7 +190,7 @@ node scripts/reset-floor.test.js                   # 床の器・マニフェス
 node scripts/helm-synthetic-monitor.test.js        # helm チャートの合成監視（既定オフ）を実際に描いて固定（無効時バイト等価・標識と同じ描画・門との一致・変異。#1287・要 helm）
 node scripts/helm-llm-provider-keys.test.js       # 埋め込みの鍵（Embedding__Voyage__ApiKey）を実際に描いて固定（llmgateway だけ・secretKeyRef〔optional〕・リテラル無し・ESO / SC-22 / Vault の種 / 手動 Secret のキー名の一致・変異。#1764・要 helm）
 node scripts/helm-mcp-client-provisioning.test.js # SC-12 の IdP への書き込み口を実際に描いて固定（Provider=keycloak の無い配備が残らない・mcp-service だけ・ClientSecret は非 optional の secretKeyRef・変異。#1817・要 helm）
-node scripts/resident-memory.test.js # 常駐メモリを下げた設定を実際に描いて固定（.NET の全 Deployment に GC の 3 つ・H-1 / AST#690 の系列の経路・Keycloak のヒープと limits・変異。#1927・要 helm と kubectl）
+node scripts/resident-memory.test.js                # 常駐メモリを下げた設定を実際に描いて固定（.NET の全 Deployment に GC の 3 つ・H-1 / AST#690 の系列の経路・Keycloak のヒープと limits・変異。#1927・要 helm と kubectl）
 node scripts/helm-private-notes-sync-authz.test.js # Obsidian 同期のエッジ公開（既定オフ）の AuthorizationPolicy を実際に描いて固定（無効時は描かない・route / NetworkPolicy と同じ値・呼び出し元の一覧への評価・変異。#1606・要 helm）
 node scripts/helm-ast-kb-ingress.test.js           # 取引ユニットの名前空間 → KB の読み手・書き手・LLM ゲートウェイの NetworkPolicy（既定は閉）を実際に描いて固定（既定は描かない・形・k8s の評価規則で呼び出し元の一覧へ当てる・描画で止まる条件・変異。#1756・#1811・要 helm）
 node deploy/mail-relay/mail-queue-exporter.js --self-test  # 近接 MTA のキュー exporter の純粋関数の自己試験（#1245 PR-B / ADR-0078 決定 3・IADR-0421）

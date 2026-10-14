@@ -77,7 +77,11 @@ spec:
           {{- $gcEnv := list }}
           {{- range $pair := list (list "DOTNET_gcServer" "gcServer") (list "DOTNET_GCConserveMemory" "conserveMemory") (list "DOTNET_GCHeapHardLimitPercent" "heapHardLimitPercent") }}
           {{- $key := index $pair 1 }}
-          {{- $gcEnv = append $gcEnv (list (index $pair 0) (ternary (index $gcSvc $key) (index $gcGlobal $key) (hasKey $gcSvc $key))) }}
+          {{- $v := ternary (index $gcSvc $key) (index $gcGlobal $key) (hasKey $gcSvc $key) }}
+          {{- /* 鍵がどちらにも無い（nil）なら描かない。toString は nil を "<nil>" にするので、空文字へ倒してから比べる（#1928 のレビュー）。
+                 default "" は使わない —— 数値の 0 も空と見なして消してしまう。 */}}
+          {{- if kindIs "invalid" $v }}{{- $v = "" }}{{- end }}
+          {{- $gcEnv = append $gcEnv (list (index $pair 0) $v) }}
           {{- end }}
           {{- range $e := concat ($svc.extraEnv | default list) ($svc.extraEnvAppend | default list) }}
           {{- range $g := $gcEnv }}

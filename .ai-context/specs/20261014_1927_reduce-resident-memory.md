@@ -106,7 +106,7 @@ issue: "#1927"
 
 ## 設計
 
-1. `deploy/helm/microservices-platform/values.yaml` の `global.dotnetGc`（`gcServer: "0"`・`conserveMemory: "5"`・`heapHardLimitPercent: "60"`）。
+1. `deploy/helm/microservices-platform/values.yaml` の `global.dotnetGc`（`gcServer: "0"`・`conserveMemory: "5"`・`heapHardLimitPercent: "0x3C"`。**env の値は 16 進数として読まれる**ので 2 桁以上は `0x` を付ける）。
    `templates/deployment.yaml` が `services` の各 Deployment の env の先頭（`Otlp__Endpoint` の次）に `DOTNET_gcServer`・`DOTNET_GCConserveMemory`・
    `DOTNET_GCHeapHardLimitPercent` を描く。`services.<名>.dotnetGc` があれば鍵ごとに上書きし、**空文字の鍵は描かない**（そのサービスだけ .NET の既定へ戻す退路）。
    `extraEnv` / `extraEnvAppend` に同じ名前があれば描画で落とす（同名の env を 2 つ置かない。#1389 の注記と同じ理由）。
@@ -118,7 +118,7 @@ issue: "#1927"
 
 | # | 基準 | 検証 |
 | --- | --- | --- |
-| 1 | 既定・values-local の両方で、.NET 15 の Deployment すべてに 3 つの env が 1 回ずつ、値は `0` / `5` / `60` | `resident-memory.test.js`（描画） |
+| 1 | 既定・values-local の両方で、.NET 15 の Deployment すべてに 3 つの env が 1 回ずつ、値は 16 進数として読んで `0` / `5` / `60`（HeapHardLimitPercent は `0x3C`） | `resident-memory.test.js`（描画） |
 | 2 | frontend・seaweedfs・wiki-js（と opt-in の embedding・synthetic-monitor）には描かれない | 同上 |
 | 3 | サービス単位の上書き（値の変更・空文字で描かない）と、`extraEnv` の同名での描画の失敗 | 同上（`--set` で描く） |
 | 4 | 描画の差分が意図した変更だけ（helm: 15 Deployment × 3 行＋コメント。kustomize: keycloak の 1 行・tempo / loki の env と loki の config） | 前後の描画の `diff`（PR 本文に要約） |
@@ -139,6 +139,16 @@ issue: "#1927"
 | 既存の描画の試験（`helm-synthetic-monitor`・`helm-private-notes-sync-authz`・`helm-ast-kb-ingress`・`helm-llm-provider-keys`・`helm-dept-sync-values`・`helm-mcp-client-provisioning`・`reset-floor`・`platform-backup`・`k8s-local-up`）と `check-collector-self-telemetry`・`check-prometheus-alerts-parity` | すべて緑（k8s-local-up は 316 件） |
 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **赤（既知）**: `check-adr-numbering` が `IADR-0537`・`IADR-0538` の欠番で落ちる（#1925・#1926 が未マージ）。両方を一時の stub と索引の行で埋めた作業木では **1044 件すべて合格**（stub は消した） |
 | 文書系（`check-trace-blocks`・`gen-knowledge-graph --check`・`check-cross-repo-refs`・`check-plan-id-qualification`・`check-doc-links`・`check-reading-budget`・`check-doc-type-vocabulary`・`check-workflow-job-refs`・`check-test-traceability` ほか） | 緑（`check-adr-numbering` だけが上と同じ欠番で赤） |
+
+### ［2026-10-14 追記 / #1928 のレビュー］GC の env の値は 16 進数
+
+- AI レビューの 🔴（オーケストレーターが Microsoft Learn「Garbage collector config settings」で確認）: 環境変数の GC の値は 16 進数として読まれる。
+  初版の `"60"` は 0x60＝96% だった。`"0x3C"` に直し、試験で「16 進数として読んで 60」「2 桁以上は 0x 付き」を固定した（`"60"` に戻す変異で赤）。
+  AST のチャートも `"60"`（＝96%）で同じ誤りを持つ（AST 側は別の issue）。
+- 🟡: どちらにも鍵が無いとき `value: "<nil>"` を描き得た（`toString` が nil を `"<nil>"` にする）。nil を空文字へ倒して描かないようにし、試験を足した
+  （直す前の描画で `--set global.dotnetGc.conserveMemory=null` に `<nil>` が 15 回出ることを確かめた）。
+- 🟢: `scripts/README.md` の行の揃えを直した。
+- 再検証: `helm lint`（既定・values-local）0 failed、`helm template` の前後の差分は追加 90 行のまま（値だけ `"0x3C"`）、`resident-memory.test.js` 13 件合格、文書系の検査器は緑（`check-adr-numbering` の既知の欠番を除く）。
 
 ## 計画書との差異
 

@@ -1,5 +1,5 @@
 ---
-title: IADR-0539 MSP の .NET サービスへ AST と同じ GC の設定（Workstation GC・GCConserveMemory=5・GCHeapHardLimitPercent=60）をチャートの共通の値として本番の既定で入れる。glibc の MALLOC_* は入れない。あわせて経路 B の Keycloak のヒープと Tempo・Loki の Go のヒープを絞る
+title: IADR-0539 MSP の .NET サービスへ AST が意図した GC の設定（Workstation GC・GCConserveMemory=5・GCHeapHardLimitPercent=0x3C＝60%。env の値は 16 進数）をチャートの共通の値として本番の既定で入れる。glibc の MALLOC_* は入れない。あわせて経路 B の Keycloak のヒープと Tempo・Loki の Go のヒープを絞る
 type: impl-adr
 status: Accepted
 related_ids: [NFR, NFR-05, ADR-0006, ADR-0007, ADR-0008, ADR-0111, IADR-0066, IADR-0077, IADR-0210]
@@ -49,7 +49,7 @@ related_specs:
 
 ## 決定
 
-1. **案 B。** `global.dotnetGc`（`gcServer: "0"`・`conserveMemory: "5"`・`heapHardLimitPercent: "60"`）を `values.yaml` に置き、`templates/deployment.yaml` が
+1. **案 B。** `global.dotnetGc`（`gcServer: "0"`・`conserveMemory: "5"`・`heapHardLimitPercent: "0x3C"`）を `values.yaml` に置き、`templates/deployment.yaml` が
    `services` の各 Deployment の env に `DOTNET_gcServer`・`DOTNET_GCConserveMemory`・`DOTNET_GCHeapHardLimitPercent` を描く。**本番の既定である。**
 2. サービス単位の上書きは `services.<名>.dotnetGc`（鍵ごと）。**空文字の鍵は描かない**（そのサービスだけ .NET の既定へ戻す退路）。
    `extraEnv` / `extraEnvAppend` に同じ名前があれば**描画で落とす**（同名の env が 2 つ並ぶと、どちらが効くかが字面から読めない）。
@@ -68,12 +68,21 @@ related_specs:
   1 コアでは小さい（推測。実測は PoC の前後で見る）。
 - **本番の処理量は Pod 内の GC の並列ではなく、HPA の水平の増減で稼ぐ設計である**（`scaling.services`・`hpa`）。1 Pod の RSS が下がれば、同じノードに載る Pod の数が増える。
 - `GCConserveMemory=5` は断片化が大きいときに圧縮を増やす（CPU を少し払ってメモリを返す）。0〜9 の中間で、AST が選んだ値である。
-- `GCHeapHardLimitPercent=60`（512Mi で ≈307Mi）は、ネイティブの分（スレッド・JIT・**Wolverine の実行時コード生成**）の余地を limits の内側に残す。
+- `GCHeapHardLimitPercent=0x3C`（16 進数で 60。512Mi で ≈307Mi）は、ネイティブの分（スレッド・JIT・**Wolverine の実行時コード生成**）の余地を limits の内側に残す。
   MSP の 7 サービス（conversion・datasource・document・graph・ingestion・retrieval・wiki）は計画が codegen の事前生成を禁じており（#1919 の所見 ②）、GC ヒープの外が伸びうる。
   既定の 75% のままだと、GC ヒープが上限に届く前にネイティブ分と合わせて limits を超え、OOMKilled（137）になる —— AST#778 / AST#782 が実測した形である。
-- **AST の実績**: 同じ 3 つの値を全 .NET サービスへ無条件に描き（テンプレートに固定＝本番の既定）、PoC で 1 か月運用して平均 ≈150 MiB。AST の記録（AST#778・AST#782・AST#808・AST#811）は
+- **AST の実績**: 同じ 3 つの env を全 .NET サービスへ無条件に描き（ただし HeapHardLimitPercent は `"60"`＝実効 96% で、上限は実質 limits の近くにある。下の「値を 16 進数で書く理由」）（テンプレートに固定＝本番の既定）、PoC で 1 か月運用して平均 ≈150 MiB。AST の記録（AST#778・AST#782・AST#808・AST#811）は
   RSS と OOMKilled の件であり、3 つの env によるスループットの劣化は論点に上がっていない。
 - 案 A（経路 B だけ）は、PoC の実測で得た数字が本番の見積りに使えなくなる。両方で同じにしておき、本番で変えたいときは values の上書き（ADR-0007）で戻せる方を採る。
+
+### 値を 16 進数で書く理由（［2026-10-14 / #1928 のレビュー］）
+
+- **GC の設定を環境変数で与えると、値は 16 進数として読まれる。** Microsoft Learn「Garbage collector config settings」
+  （https://learn.microsoft.com/en-us/dotnet/core/runtime-config/garbage-collector）の表は「Environment variable | 0xn or n | n is interpreted as a hex value in either format」と書き、
+  `GCHeapHardLimitPercent` の例を「30% → 0x1E or 1E」とする（runtimeconfig.json の値は 10 進）。
+- 初版は AST に倣って `"60"` と書いていた。これは **0x60＝96%** で、上限は 512Mi で ≈492Mi になり、ネイティブの分の余地を残す狙いが成り立たない。
+  **`"0x3C"`（60%）と書き、16 進数であることを値から読めるようにした。** 1 桁の `gcServer "0"`・`conserveMemory "5"` は 10 進と同じ値なので変えない。
+- `scripts/resident-memory.test.js` が描画した値を 16 進数として読んで 60 になること、2 桁以上の値に `0x` があることを固定する（`"60"` に戻す変異で赤）。
 
 ### MALLOC_* を入れない理由
 
@@ -101,6 +110,8 @@ related_specs:
 - フォローアップ:
   - PoC が配備の前後に `kubectl top node`・`kubectl top pod -A --containers` を取り、#1927 に書く。graph の `OutOfMemoryException`・再起動の有無も見る。
   - 実測が出たら requests を実使用量へ寄せる（#1919 の見直し案）。
+  - **AST のチャートは同じ誤りを持つ**（`DOTNET_GCHeapHardLimitPercent` が `"60"`＝16 進数で 96%）。AST の「60% に固定した」という記録（AST#782）は実効値と食い違う。
+    AST 側はオーケストレーターが別の issue で直す（本 PR の射程外）。
   - さらに要るときの候補（本 IADR では採らない）: Tempo を既定で止める（Grafana・SC-10・NetworkPolicy・永続化が前提にしている）、Istio の `Sidecar` で egress の宛先を絞る（宛先の棚卸しが要る）、
     Keycloak を `start --optimized` にして augmentation を無くす。
 
