@@ -40,6 +40,11 @@ data:
     # ADR-0107 決定 4, #1841: 利用統計の送信を止める（compose の loki-config.yaml と同じ。理由はそちらのコメント）。
     analytics:
       reporting_enabled: false
+    # NFR, IADR-0539 (#1927): 書き出す前のチャンクをメモリに持つ時間を縮める（既定 30m / 2h）。保持（ディスク）は変えない。
+    # compose の deploy/loki-config.yaml と同じ値。
+    ingester:
+      chunk_idle_period: 5m
+      max_chunk_age: 30m
     # #1842: query-frontend が querier へ広告する自分の住所。既定はインターフェイスの IP で、gRPC を loopback へ
     # 移すと querier がそこへ繋げずクエリが返らなくなる（実測）。loopback に揃える。
     frontend:
@@ -64,6 +69,10 @@ spec:
           image: grafana/loki:3.0.0@sha256:757b5fadf816a1396f1fea598152947421fa49cb8b2db1ddd2a6e30fae003253
           args: ["-config.file=/etc/loki/config.yaml"]
           # #1842: ports を宣言しない —— Loki は loopback だけで待つ（上の config）。Service の口は gate が持つ。
+          # NFR, IADR-0539 (#1927): Go のヒープのソフトな上限（tempo.yaml と同じ値・同じ理由）。
+          env:
+            - name: GOMEMLIMIT
+              value: "192MiB"
           volumeMounts:
             - name: config
               mountPath: /etc/loki

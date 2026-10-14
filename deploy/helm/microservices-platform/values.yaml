@@ -57,6 +57,20 @@ global:
     accessKeyKey: accessKey
     secretKeyKey: secretKey
 
+  # NFR, IADR-0539 (#1927): .NET サービス（下の `services` が描く Deployment すべて）の GC の設定。**本番の既定**である。
+  # 値は AST のチャート（全 .NET サービスへ同じ 3 つ）と同じ。理由と釣り合いの判断は IADR-0539:
+  #   - gcServer "0": Workstation GC。CPU の limits が 500m / 1000m なので Server GC の並列（コアごとのヒープ）は効かない。
+  #   - conserveMemory "5": ヒープの断片化を詰める方向へ寄せる（0〜9。大きいほど詰める）。
+  #   - heapHardLimitPercent "60": GC ヒープの上限を memory の limits の 60%（512Mi で ≈307Mi。.NET の既定は 75%）にし、
+  #     ネイティブの分（スレッド・JIT・Wolverine の実行時コード生成）の余地を limits の内側に残す。
+  # サービス単位の上書きは `services.<名>.dotnetGc`（鍵ごと）。**空文字の鍵は描かない**＝そのサービスだけ .NET の既定へ戻す退路。
+  # MALLOC_ARENA_MAX などの glibc の env は入れない（AST#811 の実測で保持の総量を減らさなかった。IADR-0539）。
+  # 🔴 同じ名前を extraEnv / extraEnvAppend に書かない（描画で落とす）。
+  dotnetGc:
+    gcServer: "0"
+    conserveMemory: "5"
+    heapHardLimitPercent: "60"
+
 # ADR-0008: k3s 実行基盤 — 配備先 Namespace。
 # istio-injection: enabled により、この Namespace の Pod へサイドカーが自動注入される（段階2の前提）。
 namespace:

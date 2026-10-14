@@ -614,3 +614,4 @@
 | [IADR-0534](./IADR-0534_search-response-degraded-signal.md) | 検索の応答に縮退の印（degraded と理由の固定語彙）を足す —— 部品の健全性だけを表し権限の有無は表さないので IADR-0313 決定 1 の線は崩さず、構成で無効な段と全文側は数えず、計器を同じ符号で揃える | Accepted |
 | [IADR-0535](./IADR-0535_anthropic-content-block-drop-log-level.md) | Anthropic 応答の content ブロック除去のログを「想定内は Debug・想定外だけ Warning」に分け、除去件数を計器で数える（IADR-0114 決定 5 を改める） | Accepted |
 | [IADR-0536](./IADR-0536_embedding-pending-lexical-points.md) | 埋め込みが使えない間も public / internal の文書を語彙索引へ全文だけの点（埋め込み待ち）として書き、使えるようになったら主へ移して消す。待ちの件数は計器と周期ごとの Warning で読む（IADR-0497 決定 2 を改める） | Accepted |
+| [IADR-0539](./IADR-0539_dotnet-gc-workstation-conserve-memory-default.md) | MSP の .NET サービスへ AST と同じ GC の設定（Workstation GC・GCConserveMemory=5・GCHeapHardLimitPercent=60）をチャートの共通の値として本番の既定で入れる。glibc の MALLOC_* は入れない。あわせて経路 B の Keycloak のヒープと Tempo・Loki の Go のヒープを絞る | Accepted |
