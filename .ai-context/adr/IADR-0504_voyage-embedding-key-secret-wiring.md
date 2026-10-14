@@ -5,13 +5,14 @@ status: Accepted
 related_ids: [FR-02, FR-03, SC-22, NFR-18, ADR-0016, ADR-0095, ADR-0127, IADR-0096, IADR-0103, IADR-0256, IADR-0433, IADR-0456, IADR-0494, IADR-0104, NFR-19]
 author: claude
 created: 2026-10-06
-updated: 2026-10-08
+updated: 2026-10-14
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md（埋め込みは Voyage voyage-3.5 を既定・ティアB）
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md（秘密情報は Vault を正とし画面から入れる）
 related_specs:
   - ../specs/20261006_1764_voyage-key-wiring.md
   - ../specs/20261008_1819_gateway-sentfalse-observability.md
+  - ../specs/20261014_1740_voyage-zero-retention-certification.md
 ---
 
 # IADR-0504: 埋め込み（Voyage AI）の鍵の Secret 配線（#1764）
@@ -112,3 +113,8 @@ helm（本番像の `values.yaml`・経路B の `values-local.yaml`）と ESO �
 > - **取り込みの再試行は空回りしていない**ことを確かめた: Wolverine の再試行は 1 メッセージ 4 回（2s / 10s / 30s）で DLQ へ移る（`WolverineExtensions`）。1,146 回は「文書数 × 試行回数」の総和である。
 > - 鍵の欠落以外の上流失敗（401・5xx・通信断）は従来どおり 1 件ずつスタック付きの `LogError`（1 件ごとに状況が違い得るため抑えない）。
 > - §残るもの「鍵の欠落を自動で検知する仕組みは無い」は残る。ログの初回の 1 行は Pod の起動後に必ず出るので、手順書の確認（5-b）は `--since` を切らずに Pod の全ログを数える形へ改めた。
+
+> ［2026-10-14 追記 / #1740］§残るもの の 1 行目「Voyage のゼロ保持の認定は未了である」は**解消した**（決定は変えていない）。
+> オーナーが Voyage AI Terms of Service（Last Updated: May 27, 2026）と照合して認定した。学習不使用・ゼロ保持は opt-out（2026-10-14 20:22 JST ごろ）で満たす。
+> データの所在は規約に保証が無く、オーナーが受容した。opt-out より前の 960 回の送信は、学習に使われ得るものとして受容した。
+> 照合の表と認定の射程（opt-out を実施したアカウントの鍵に限る）は `docs/operations/operations.md` の「ゼロ保持認定状況の記録」にある。
