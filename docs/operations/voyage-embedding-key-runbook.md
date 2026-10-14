@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-06
-updated: 2026-10-08
+updated: 2026-10-14
 ---
 <!-- trace:
 ids: [FR-02, FR-03, SC-22, NFR-18, NFR-19]
 adrs: [ADR-0016, ADR-0095, ADR-0127]
 iadrs: [IADR-0504, IADR-0096, IADR-0103, IADR-0456, IADR-0494, IADR-0497]
-specs: [20261006_1764_voyage-key-wiring, 20261008_1819_gateway-sentfalse-observability]
+specs: [20261014_1740_voyage-zero-retention-certification, 20261006_1764_voyage-key-wiring, 20261008_1819_gateway-sentfalse-observability]
 issues: [#1764, #1762, #1740, #1696, #1819]
 -->
 
@@ -28,8 +28,12 @@ issues: [#1764, #1762, #1740, #1696, #1819]
   LLM ゲートウェイがこの鍵（環境変数 `Embedding__Voyage__ApiKey`）を持たないと、埋め込みは失敗し、文書は索引に入らない。
 - チャートは鍵を Secret `llm-provider-credentials` のキー `voyage-api-key` から渡す（`optional: true`）。
   Secret の中身は Vault の KV `secret/msp/llm-provider-credentials` のプロパティ `voyage-api-key` を ESO（外部シークレット同期）が写したものである。
-- 🔴 **Voyage AI のゼロ保持（学習利用のオプトアウト）の認定は未了である**（#1740）。オーナーは 2026-10-06、認定の前に経路B で鍵を使うことを受け入れた。
-  本番相当の環境へは、認定が済むまで本書を当てない（運用仕様書の同節の「未認定の環境へデプロイする場合」に従う）。
+- ~~🔴 **Voyage AI のゼロ保持（学習利用のオプトアウト）の認定は未了である**。オーナーは 2026-10-06、認定の前に経路B で鍵を使うことを受け入れた。~~
+  ~~本番相当の環境へは、認定が済むまで本書を当てない（運用仕様書の同節の「未認定の環境へデプロイする場合」に従う）。~~
+  **［2026-10-14］オーナーが認定した**（学習不使用・ゼロ保持は opt-out〔2026-10-14 20:22 JST ごろ〕で満たし、所在の保証が無い点は受容した）。
+  根拠（規約の版・照合の表・opt-out 前の送信量）は運用仕様書の同節の「ゼロ保持認定状況の記録」にある。
+  🔴 **認定は opt-out を実施したアカウントの鍵に限る。** 別のアカウントの鍵を入れる環境では、先に同じ opt-out を確かめる
+  （確かめるまでは同節の「未認定の環境へデプロイする場合」に従う）。この射程は推論による。オーナーは未確認である（安全側に倒した制約）。
 - 高機密文書（`confidential` / `restricted` / 機密区分が未指定・未知）は鍵の有無に依らず埋め込まれない（語彙索引にだけ載る）。本書はそれを変えない。
 
 ## 鍵の有無による挙動

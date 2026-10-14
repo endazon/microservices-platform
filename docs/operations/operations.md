@@ -3,15 +3,15 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-10
+updated: 2026-10-14
 author: claude
 ---
 <!-- trace:
 ids: [SC-13, SC-14, SC-16, FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06, FR-17]
 adrs: [ADR-0031, ADR-0010, ADR-0133, ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083, ADR-0132, ADR-0086, ADR-0131]
 iadrs: [IADR-0532, IADR-0261, IADR-0435, IADR-0528, IADR-0114, IADR-0526, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0525, IADR-0523, IADR-0522, IADR-0524, IADR-0531, IADR-0533]
-specs: [20261010_sc13-keycloak-theme-nocturne, 20261010_1881_grafana-alert-uid-length, 20261010_1872_anthropic-timeout-config, 20261009_1842_loki-tempo-front-auth, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1840_secret-store-openbao, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade, 20261010_1875_claude-5-5-models, 20261010_issue-1255-1517_east-west-rest-retirement]
-issues: [#1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1840, #1846, #1839, #1859, #1875, #1255, #1517, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750, planning#741, AST#1289, AST#243, planning#783]
+specs: [20261014_1740_voyage-zero-retention-certification, 20261010_sc13-keycloak-theme-nocturne, 20261010_1881_grafana-alert-uid-length, 20261010_1872_anthropic-timeout-config, 20261009_1842_loki-tempo-front-auth, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1840_secret-store-openbao, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade, 20261010_1875_claude-5-5-models, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#1740, #1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1840, #1846, #1839, #1859, #1875, #1255, #1517, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750, planning#741, AST#1289, AST#243, planning#783]
 -->
 
 # 運用仕様書
@@ -1070,6 +1070,8 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
   組織設定で**学習利用のオプトアウト（ゼロ保持 / zero-day retention）を有効化**する。08_data-egress-policy
   のティアB要件（ゼロ保持・学習不使用・レジデンシー）を契約で確認し、確認できるまで本番文書を索引しない。
   未認定の間は `Embedding__Routing__Endpoints__0__Enabled=false` で Voyage 経路を止められる。
+  **［2026-10-14］認定した**（下の「ゼロ保持認定状況の記録」。オプトアウトは 2026-10-14 に実施済み）。所在（レジデンシー）だけは
+  規約に保証が無く、オーナーが受容した。
   - API キーは Secret 経由で投入する（コミットしない）。compose: `.env` の `VOYAGE_API_KEY`
     （`Embedding__Voyage__ApiKey`）。~~k8s は Secret（例 `embedding-voyage`、key=`api-key`）。~~
     **［2026-10-06］k8s（Helm）は Secret `llm-provider-credentials` のキー `voyage-api-key` を `Embedding__Voyage__ApiKey` へ渡す**
@@ -1081,14 +1083,37 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
     高機密文書の本文が外部へ出ることはない（ルーティングで候補にならないため）。
     ［2026-10-06］Secret にキーが無い（古い Secret）場合も起動する（`optional: true` で env を置かない）。
   - **ゼロ保持認定状況の記録（#303 受け入れ基準）**: 実環境構築前チェックリストの一項目として、契約でのゼロ保持
-    （学習不使用・レジデンシー含む）認定の可否をここに記録する。**現状: 未認定（2026-07-19 時点）**。
-    **［2026-10-06］未認定のまま（#1740）。オーナーは同日、認定の前に経路B（稼働の開発クラスタ）で Voyage の鍵を配線して使うことを受け入れた。**
-    本番相当の環境は従来どおり、認定まで本番文書を流さない。
+    （学習不使用・レジデンシー含む）認定の可否をここに記録する。~~**現状: 未認定（2026-07-19 時点）**。~~
+    ~~**［2026-10-06］未認定のまま。オーナーは同日、認定の前に経路B（稼働の開発クラスタ）で Voyage の鍵を配線して使うことを受け入れた。**~~
+    ~~本番相当の環境は従来どおり、認定まで本番文書を流さない。~~
+    **［2026-10-14］認定した（オーナーの認定・同日）。** 根拠と条件は次のとおりである。
+    - **照合した規約**: Voyage AI Terms of Service（**Last Updated: May 27, 2026**）。オーナーから受け取った版である
+      （本リポジトリは契約書を持たない）。
+    - **3 条件の照合**:
+
+      | 条件 | 規約の該当 | 判定 |
+      | --- | --- | --- |
+      | 学習に使わない | 第 3 条: 既定では Customer Content を学習・改善に使う利用許諾を与える（3(iii)）。Web サイトの opt-out で止められる | **opt-out で満たす** |
+      | ゼロ保持 | 第 3 条: opt-out の後に送った Customer Content は処理後ただちに削除される | **opt-out 以後は満たす** |
+      | データの所在（レジデンシー） | 所在を保証する条項は無い（個人データは DPA〔第 6 条〕が扱うが、所在の保証ではない） | **規約では満たさない。オーナーが受容した**（2026-10-14「今の状態を許容する」） |
+
+    - **opt-out の日時**: **2026-10-14 20:22 JST ごろ**（オーナーが Voyage AI の Web サイトで実施）。
+    - **opt-out の前に送った分**: 経路B で鍵を投入した後、LLM ゲートウェイの再起動（2026-10-14 11:18:57Z）から opt-out までに、
+      Voyage へ埋め込みの要求が **960 回**（すべて 200）送られた。第 3 条により、これらは学習に使われ得るまま残る。
+      中身は AST の情報収集の文書（公開ニュース・開示が中心）と DLQ からの再試行分とみる（推測）。
+      **オーナーは、学習に使われ得るものとして受容した。**
+    - **結論**: Voyage AI（ティアB）を、学習不使用・ゼロ保持を満たす送信先として**認定する**。所在の保証が無い点は
+      受け入れたリスクとして残る（計画のティアB 要件のうち所在だけは規約で担保されない）。
+      公開・社内（`public` / `internal`）の文書と検索クエリの埋め込みは、既定どおり Voyage へ送ってよい。
+    - **認定の射程**: opt-out は Voyage AI の**アカウントの設定**である。認定は、オーナーが opt-out を実施したアカウントの鍵に限る。
+      別のアカウントの鍵を使う環境は、同じ opt-out を確かめてから本番文書を流す。規約の版が改まったら、上の 3 条件を照合し直す。
+      ⚠️ **この射程は推論による。オーナーは未確認である**（規約の opt-out が Web サイトでの設定であることから導いた。安全側に倒した制約）。
     - ⚠️ **既定構成は Voyage 経路が有効**（`appsettings.json` の `voyage-managed`＝index 0 が `Enabled: true`。
       compose/Helm に既定の無効化上書きは無い）。したがって「未認定＝自動で停止」ではない。**未認定の環境へデプロイ
       する場合は、運用者が本番文書を流す前に明示的に Voyage 経路を無効化すること**（`Embedding__Routing__Endpoints__0__Enabled=false`。
       compose は `.env`、k8s は values/`--set` で上書き）。本 PR は既定挙動（Voyage 有効）を変更しない（後方互換）。
-    - 実際の契約認定は稼働環境／調達手続き依存＝分離（フォローアップ #336）。
+      ［2026-10-14］認定の後も、上の「認定の射程」の外（opt-out を確かめていないアカウントの鍵）の環境にはこの手順が当たる。
+    - ~~実際の契約認定は稼働環境／調達手続き依存＝分離（フォローアップ #336）。~~ ［2026-10-14］認定は上のとおり済んだ。
 - **セルフホスト（ティアA / Ruri v3）の有効化**: 基盤（TEI / vLLM 等の OpenAI 互換 `/v1/embeddings`）を
   構築後、`SELFHOSTED_EMBEDDING_URL`（`Embedding__SelfHosted__BaseUrl`）と
   `SELFHOSTED_EMBEDDING_ENABLED=true`（`Embedding__Routing__Endpoints__1__Enabled`）を設定して有効化する。
@@ -1177,7 +1202,7 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
 LLM ゲートウェイに Voyage の鍵（`Embedding__Voyage__ApiKey`）が無いと、埋め込みは一時障害として扱われ、**全件が再試行の後 DLQ へ行くだけになる**
 （索引には 1 点も入らない。取り込みは書く前に当該文書の点を消すため）。
 ［2026-10-06］チャート（経路B の値を含む）は、この鍵を Secret `llm-provider-credentials` のキー `voyage-api-key` から渡すよう配線してある（キーが無い・空でも起動する）。
-**鍵の値はチャートにもリポジトリにも無い。** 用意の仕方は、鍵の値を Vault へ入れて同期させる（手順は [Voyage の鍵の Runbook](voyage-embedding-key-runbook.md)。課金が発生する。ゼロ保持の認定は本節の上の注記のとおり未了）か、
+**鍵の値はチャートにもリポジトリにも無い。** 用意の仕方は、鍵の値を Vault へ入れて同期させる（手順は [Voyage の鍵の Runbook](voyage-embedding-key-runbook.md)。課金が発生する。~~ゼロ保持の認定は本節の上の注記のとおり未了~~ ［2026-10-14］ゼロ保持の認定は済んだ。射程は本節の上の「ゼロ保持認定状況の記録」）か、
 **使い捨ての検証スタックに限り** `LOCALEMBED=1`（決定的ローカル埋め込み。意味的な近さは無い）で立てるかである。高機密文書（語彙索引だけ）は鍵が無くても入る。
 env の名前（`Embedding__Voyage__ApiKey`）は鍵が空でも下の確認に出るので、**値が入っていることは同 Runbook の手順 4（長さで測る）で確かめる。**
 
