@@ -69,13 +69,13 @@ public class BffDocumentReadReceiveLimitTests : IClassFixture<BffTestFactory>
         var size = service.Response.CalculateSize();
 
         var tooSmall = ResolveClient(server, maxReceive: (size / 2).ToString(System.Globalization.CultureInfo.InvariantCulture));
-        var tight = async () => await tooSmall.ListAsync(Anonymous, TestContext.Current.CancellationToken);
+        var tight = async () => await tooSmall.ListPageAsync(Anonymous, DocumentReadGrpcClient.ListPageSize, null, TestContext.Current.CancellationToken);
         (await tight.Should().ThrowAsync<RpcException>()).Which.StatusCode
             .Should().Be(StatusCode.ResourceExhausted, "構成した上限（応答の半分）を超えた");
 
         var enough = ResolveClient(server, maxReceive: (size * 2).ToString(System.Globalization.CultureInfo.InvariantCulture));
-        (await enough.ListAsync(Anonymous, TestContext.Current.CancellationToken))
-            .Should().HaveCount(2_000, "★ 陽性対照 —— 上限の内側なら同じ応答が通る");
+        (await enough.ListPageAsync(Anonymous, DocumentReadGrpcClient.ListPageSize, null, TestContext.Current.CancellationToken))
+            .Documents.Should().HaveCount(2_000, "★ 陽性対照 —— 上限の内側なら同じ応答が通る");
     }
 
     // 未設定なら既定（64 MiB）が効き、4 MB を超える応答も受け取れる。
@@ -87,7 +87,8 @@ public class BffDocumentReadReceiveLimitTests : IClassFixture<BffTestFactory>
         await using var server = await LoopbackGrpcServer.StartAsync(service, TestContext.Current.CancellationToken);
         service.Response.CalculateSize().Should().BeGreaterThan(GrpcDefaultMaxReceive, "★ 前提 —— 応答は 4 MB を超える");
 
-        var docs = await ResolveClient(server, maxReceive: null).ListAsync(Anonymous, TestContext.Current.CancellationToken);
+        var (docs, _) = await ResolveClient(server, maxReceive: null)
+            .ListPageAsync(Anonymous, DocumentReadGrpcClient.ListPageSize, null, TestContext.Current.CancellationToken);
         docs.Should().HaveCount(10_000);
 
         using var shared = GrpcClientExtensions.CreatePlatformChannel(
@@ -112,6 +113,8 @@ public class BffDocumentReadReceiveLimitTests : IClassFixture<BffTestFactory>
     }
 
     // 受け入れ基準 1: 台帳が 4 MB 相当を超えても、`GET /bff/documents` が gRPC 経路で権限内の文書を返す（空一覧に化けない）。
+    // ［2026-10-14 / #1923・IADR-0537］応答はページになった。後段が（旧い版のように）全件を 1 応答で返しても、総件数は全件、
+    // 窓は既定の 50 件である。
     [Fact]
     public async Task Bff_document_list_over_a_real_channel_is_not_empty_when_the_response_exceeds_4MB()
     {
@@ -125,15 +128,17 @@ public class BffDocumentReadReceiveLimitTests : IClassFixture<BffTestFactory>
             b.ConfigureServices(s => s.AddSingleton(grpc));
             b.ConfigureLogging(l => l.AddProvider(new CollectingLoggerProvider(sink)));
         }).CreateClient();
-        var docs = await http.GetFromJsonAsync<List<DocumentDto>>("/bff/documents", TestContext.Current.CancellationToken);
+        var page = await http.GetFromJsonAsync<DocumentListPageDto>("/bff/documents", TestContext.Current.CancellationToken);
 
-        docs.Should().HaveCount(10_000);
+        page!.Total.Should().Be(10_000);
+        page.Items.Should().HaveCount(DocumentListWindow.DefaultLimit);
         sink.Should().NotContain(e => e.Category == DocumentReadFailureLogCategory, "成功した呼び出しで WARN を出さない");
     }
 
     // ── (c) 畳むときの WARN ─────────────────────────────────────────────
 
-    // 受け入れ基準 3（陽性）: 一覧が上限超過（ResourceExhausted）を空一覧へ畳むとき、状態・経路・例外の型を含む WARN を 1 行出す。
+    // 受け入れ基準 3（陽性）: 一覧が上限超過（ResourceExhausted）で失敗するとき、状態・経路・例外の型を含む WARN を 1 行出す。
+    // ［2026-10-14 / #1923・IADR-0537］一覧は空へ畳まず **502** を返す（本当の 0 件と区別する。#1897 の本質）。
     // 🔴 status の detail（サーバ・ライブラリの文言）は載せない。
     [Fact]
     public async Task List_fold_on_resource_exhausted_logs_one_warning_with_status_route_and_type()
@@ -143,12 +148,13 @@ public class BffDocumentReadReceiveLimitTests : IClassFixture<BffTestFactory>
 
         var resp = await HostWith(stub, sink).GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken)).Should().BeEmpty();
+        resp.StatusCode.Should().Be(HttpStatusCode.BadGateway, "空の一覧へ畳まない（#1897）");
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().NotContain("detail-must-not-leak").And.NotContain("\"items\"");
         var warning = sink.Where(e => e.Category == DocumentReadFailureLogCategory).Should().ContainSingle().Which;
         warning.Level.Should().Be(LogLevel.Warning);
         warning.Message.Should().Contain("ListDocuments").And.Contain("grpc")
-            .And.Contain("ResourceExhausted").And.Contain(nameof(RpcException)).And.Contain("空一覧");
+            .And.Contain("ResourceExhausted").And.Contain(nameof(RpcException)).And.Contain("502");
         warning.Message.Should().NotContain("detail-must-not-leak");
     }
 
@@ -180,7 +186,7 @@ public class BffDocumentReadReceiveLimitTests : IClassFixture<BffTestFactory>
             .GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken))
+        ((await resp.Content.ReadFromJsonAsync<DocumentListPageDto>(TestContext.Current.CancellationToken))!.Items)
             .Should().ContainSingle("★ 陽性対照 —— 応答が実際に通っている");
         sink.Should().NotContain(e => e.Category == DocumentReadFailureLogCategory);
     }

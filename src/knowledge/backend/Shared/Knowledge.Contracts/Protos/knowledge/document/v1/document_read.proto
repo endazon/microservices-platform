@@ -43,7 +43,8 @@ option csharp_namespace = "Knowledge.Contracts.Grpc.Document.V1";
 // **書き込み・本文・共有の口はこの面に存在しない** —— 呼び出し元が要らないものを面へ出さない
 // （IADR-0401 決定 2 と同じ作法）。
 service DocumentRead {
-  // 一覧（更新の新しい順）。REST `GET /documents` と同値。
+  // 一覧（更新の新しい順・同時刻は ID の降順）。［2026-10-14 / #1923・#1897］**ページで返す**
+  // （REST `GET /documents` は全件のまま。集合と並びは同じで、切り出しだけがこの rpc にある）。
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
 
   // 1 件の取得。REST `GET /documents/{id}` と同値。不在は found=false（NOT_FOUND ではない）。
@@ -122,16 +123,30 @@ message UserContext {
   string action = 3;
 }
 
-// 一覧に絞り込みは無い（REST も無い）。将来の絞り込みは番号を足して非破壊で入れる。
-// （#1575 の REST `GET /documents/page`〔組織文書の絞り込み・ページング〕は別の口であり、
-//  本 rpc の同値の相手ではない。`GET /documents` は従来どおり絞り込みを持たない。）
+// 一覧に絞り込みは無い（REST も無い）。将来の絞り込み・並べ替えは番号を足して非破壊で入れる。
+// （#1575 の REST `GET /documents/page`〔組織文書の絞り込み・ページング。作成日時の昇順〕は別の口であり、
+//  本 rpc の同値の相手ではない。`GET /documents` は従来どおり絞り込みもページングも持たない。）
+//
+// ■ FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): **ページング**。1 応答は台帳の件数に比例しない。
+//   - 並びは更新日時の降順・同時刻は ID の降順（全順序）。続きは**キーセット**（前ページ末尾の更新日時と ID）。
+//   - 読めない文書は**切り出す前に**除く。ページが `page_size` 件に満たないのは終端のときだけである。
+//   - 🔴 **総件数は返さない。** この面が数えられるのは「この面が読める件数」であり、呼び出し元（BFF）の
+//     ABAC で絞る前の数である。返すと権限外の文書の存在を数で漏らす経路になる（IADR-0009）。
+//   - 走査の途中で更新された文書は先頭へ移るので、その走査では読み飛ばされ得る（重複はしない）。
 message ListDocumentsRequest {
   // 読み取りの主体（#1614）。省略時は呼び出し元サービス自身。
   UserContext user = 1;
+  // 1 応答の件数。0（省略）は既定 500。上限 1000 を超えた値は 1000 に丸める。負は INVALID_ARGUMENT。
+  int32 page_size = 2;
+  // 前の応答の `next_page_token`。空（省略）は先頭から。不透明な値で、壊れていれば INVALID_ARGUMENT。
+  // 🔴 トークンは返した（読める）文書の末尾からしか作らない —— 読めない文書の ID・時刻を載せない。
+  string page_token = 3;
 }
 
 message ListDocumentsResponse {
   repeated DocumentSummary documents = 1;
+  // 続きの印。空なら終端（これ以上の文書は無い）。
+  string next_page_token = 2;
 }
 
 message GetDocumentRequest {
