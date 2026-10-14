@@ -53,6 +53,17 @@ issue: "#1919"
 | ESO 所有の経路（AST の既定） | `VAULT=1`（OpenBao）＋`ESO=1`（ESO 3・Reloader 1） | +128 Mi | +512 Mi | 4 |
 | opt-in | 可観測性 7・Istio（istiod・gateway・サイドカー 18）・Headlamp・Argo CD 7・cert-manager 3 | +2,112 Mi | +8,448 Mi | 10 |
 
+CPU（`processors` の根拠）:
+
+| 束 | requests 合計 | limits 合計 |
+| --- | --- | --- |
+| 必須（MSP チャート 1,850m・infra 695m・AST チャート 660m） | 3,205m | 23,750m |
+| ＋ESO 所有の経路（OpenBao 50m。ESO・Reloader は requests / limits 無し） | 3,255m | 24,250m |
+| ＋opt-in の全部（可観測性 245m・istiod 50m・gateway 10m・サイドカー 18×10m・Headlamp 50m） | 3,790m | 31,950m |
+
+- 再現: 描画した YAML から Deployment / StatefulSet / DaemonSet の通常コンテナ（init と CronJob / Job を除く）の
+  `resources` を replicas 倍して合計した（描画のコマンドは上の「走査した母集合」と同じ。Istio のサイドカーは `istiod-values-local.yaml` の
+  `global.proxy.resources` を MSP 名前空間の 18 Pod に掛けた）。
 - 実測 13.3 GiB は requests の合計（必須＋ESO で約 6.0 GiB）の 2 倍を超える → **requests は実際の使用量を表していない**。
 - 推奨 `memory=24GB` は、必須＋ESO の limits の合計（約 24.0 GiB）にほぼ等しい。全 Pod が同時に limits へ達しても VM の上限に収まる線である
   （k3s・containerd・イメージのビルドの分は含まない。推測）。

@@ -65,6 +65,14 @@ requests / limits の合計（`helm template` と `kubectl kustomize` の描画�
 | ESO 所有の経路（AST の既定） | `VAULT=1`（OpenBao 1）・`ESO=1`（ESO 3・Reloader 1） | +128 Mi | +512 Mi | 4（上流チャートの既定） |
 | opt-in の全部 | `OBSERVABILITY=1` 7・`ISTIO=1`（istiod・ingress gateway・サイドカー 18）・`HEADLAMP=1` 1・Argo CD 7・cert-manager 3 | +2,112 Mi | +8,448 Mi | 10（上流 manifest の既定） |
 
+CPU の合計（同じ描画から。上の `processors` の根拠）:
+
+| 束 | requests | limits |
+| --- | --- | --- |
+| 必須（MSP チャート 1,850m・infra 695m・AST チャート 660m） | 3,205m | 23,750m |
+| ＋ESO 所有の経路（OpenBao 50m。ESO・Reloader は requests 無し） | 3,255m | 24,250m |
+| ＋opt-in の全部（可観測性 245m・Istio 240m・Headlamp 50m） | 3,790m | 31,950m |
+
 - **requests の合計（必須＋ESO で約 6.0 GiB）は実使用量（13.3 GiB）の半分に満たない。** requests は実際の使用量を表していないので、
   必要メモリは requests ではなく **limits の合計と実測**で見積もる。
 - **Pod の外の使用量は上の表に入っていない**: k3s（apiserver・kubelet）・containerd・イメージのビルド（`nerdctl build` は同じ VM の中で走る）。
@@ -87,7 +95,7 @@ swap=8GB
 | --- | --- | --- |
 | `memory` | `24GB` | 上の「必要なメモリ」 |
 | `swap` | `8GB` | VM の中の Pod の外のプロセス（ビルド・k3s）の山を逃がす（推測）。k8s の Pod は既定で swap を使わないので、Pod の OOM はこれでは防げない |
-| `processors` | 指定しない | CPU の requests の合計は必須＋ESO で約 3.2 コア（3,255m）。全論理プロセッサを渡し、各 Pod の limits で抑える。絞る場合も 4 以上（推測） |
+| `processors` | 指定しない | CPU の requests の合計は必須＋ESO で約 3.3 コア（3,255m。内訳は下の CPU の表）。全論理プロセッサを渡し、各 Pod の limits で抑える。絞る場合も 4 以上（推測） |
 
 `autoMemoryReclaim` などほかのキーは、効果を測っていないのでこの節では変えない。
 
@@ -101,7 +109,7 @@ swap=8GB
 notepad "$env:USERPROFILE\.wslconfig"
 # 3. WSL の VM を止める（全ディストリビューションが止まる）
 wsl --shutdown
-wsl --list --running        # 「実行中のディストリビューションはありません」になるまで待つ
+wsl --list --running        # 一覧にディストリビューションが 1 つも出なくなるまで待つ（表示の文言は Windows の言語設定で変わる）
 # 4. （任意）WSL を更新する
 wsl --version
 wsl --update
@@ -112,6 +120,7 @@ kubectl --context rancher-desktop get nodes
 確認（反映されたと言える条件）:
 
 ```powershell
+wsl -l -v                                                              # ディストリビューション名を確かめる（Rancher Desktop の既定は rancher-desktop）
 wsl -d rancher-desktop -- grep -E 'MemTotal|SwapTotal' /proc/meminfo   # MemTotal が約 24 GB、SwapTotal が約 8 GB
 kubectl describe node | Select-String -Pattern 'memory:'               # Capacity / Allocatable の memory が約 24 GiB
 kubectl top node                                                       # 使用率が下がっている
@@ -127,8 +136,10 @@ powercfg /change hibernate-timeout-ac 0   # 電源接続時の休止: なし
 ```
 
 - 画面では「設定」→「システム」→「電源」で、電源接続時のスリープを「なし」にする。
-- ノート PC なら、カバーを閉じたときの動作（電源接続時）も「何もしない」にする。
-- 場中に Windows Update で再起動させない設定と、Rancher Desktop のログオン時の自動起動は、AST の手順書（ホスト側の死活監視の Runbook）にある。
+- ノート PC なら、カバーを閉じたときの動作（電源接続時）も「何もしない」にする:
+  `powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0` の後に `powercfg /setactive SCHEME_CURRENT`。
+- 米国株の取引時間中に Windows Update で再起動させない設定と、Rancher Desktop のログオン時の自動起動は、AST リポジトリ（`endazon/ai-stock-trading`）の
+  `docs/operations/host-liveness-monitor-runbook.md`（ホスト側の死活監視の Runbook）の手順 5・6 にある。VM のメモリ上限の手順も同じ Runbook の手順 7 に置いた。
 
 ## 起動（Git Bash 推奨。1 コマンド）
 
