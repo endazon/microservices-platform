@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — AI レビューの検証の下限を Check review verdict で機械的に検査する（AST の検査器の移植）
 type: spec
-status: draft
+status: done
 related_ids: [NFR, IADR-0198, IADR-0232, IADR-0538]
 author: claude
 created: 2026-10-14
@@ -124,14 +124,15 @@ AST は「🔍 実行できなかったこと」の節を見ない（計画書�
 - [x] 🔍 の節の「…までしか確認できない」（CI のジョブログ・他リポの pin）・計画書・他リポの文は数えない（試験で固定）。
 - [x] 生成物 K>0 の申告があれば生成物だけの文は数えず、生成物と他を並べた文は数える（AST#1347 までと同じ。試験で固定）。
 - [x] 判定のステップは `if: always()` のまま `CHANGED_FILES` を渡す。ジョブ名・ステップ名・起動条件は変えない。
-- [ ] `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が全件通る。文書系の検査器と `check-reading-budget` が通る。
+- [x] `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が全件通る。文書系の検査器と `check-reading-budget` が通る。
 - [x] この PR 自身の AI レビューが新しい検査を満たして出る（満たさなければ直す対象）。
 
 ### 効果の確認（2026-10-14 追記）
 
 - 本 PR（#1926）の head `7400aa06` の AI レビュー: 「変更 16 ファイル中 16 ファイルを読んだ（生成物の除外なし）」。`scripts.test.js` を「確認できたこと」の節に書き、精読していない自認は無い。ステップ `Check review verdict` は success（run 38568001577）。同じ本文と変更ファイル 16 件を `findFloorViolations` に当てると違反 0 件。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` は、本 PR 単独では `check-adr-numbering` が IADR-0536・IADR-0537 の欠番で 1 件落ちる（`scripts-tests` が赤）。#1924・#1925 の IADR を作業ツリーに仮に置くと 1066 件すべて通った（仮のファイルはコミットしていない）。この項目は両 PR のマージ後に develop を merge して緑を確かめるまで未チェックとする。
-- [ ] `scripts-tests` が緑（#1924・#1925 のマージ後）
+- [x] `scripts-tests` が緑（#1924・#1925 のマージ後）
+- ［2026-10-14 追記］#1924（IADR-0536）・#1925（IADR-0537）のマージ後、develop `186b57f7` を本ブランチへ merge した（索引の衝突は 0536・0537・0538 の昇順で解消）。`check-adr-numbering` は OK、ローカルの `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` は 1066 件すべて通過、CI の `scripts-tests` は merge コミット `593f11b2` で success（job 115891287777）。
 
 ## テスト方針
 
