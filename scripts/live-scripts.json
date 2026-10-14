@@ -11,7 +11,8 @@
     { "pattern": "\\.test\\.(js|sh)$", "reason": "試験器。実ツールは PATH のスタブで置き換えて走る" },
     { "pattern": "^scripts(\\.repo)?\\.test\\.js$", "reason": "試験器（受け口と companion）" },
     { "pattern": "\\.json$", "reason": "データ。実行されない" },
-    { "pattern": "\\.md$", "reason": "文書。実行されない" }
+    { "pattern": "\\.md$", "reason": "文書。実行されない" },
+    { "pattern": "^fixtures/", "reason": "試験のフィクスチャ（AI レビューの実文などのデータ）。実行されない（IADR-0538）" }
   ],
   "live": [
     { "path": "check-login-existence-disclosure.js", "offline": ["--self-test"] },

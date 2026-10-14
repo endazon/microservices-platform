@@ -613,3 +613,4 @@
 | [IADR-0533](./IADR-0533_east-west-rest-retirement.md) | east-west の REST 同期呼び出しを退役させる —— 移行済みの全経路で REST 実装を撤去して「並走中の正は REST」（IADR-0379 決定 5）を反転し、未構成の gRPC は UNAVAILABLE として縮退させ、扇形の構成キーを一本化する | Accepted |
 | [IADR-0534](./IADR-0534_search-response-degraded-signal.md) | 検索の応答に縮退の印（degraded と理由の固定語彙）を足す —— 部品の健全性だけを表し権限の有無は表さないので IADR-0313 決定 1 の線は崩さず、構成で無効な段と全文側は数えず、計器を同じ符号で揃える | Accepted |
 | [IADR-0535](./IADR-0535_anthropic-content-block-drop-log-level.md) | Anthropic 応答の content ブロック除去のログを「想定内は Debug・想定外だけ Warning」に分け、除去件数を計器で数える（IADR-0114 決定 5 を改める） | Accepted |
+| [IADR-0538](./IADR-0538_review-floor-verdict-check.md) | AI レビューの検証の下限を Check review verdict で機械的に検査する —— AST の検査器を移植し（申告 N/M/K・精読していない自認・差分に応じた helm / scripts.test.js の記載）、本リポのレビューが自認を書く 🔍 の節も読む型に限って数える | Accepted |

@@ -1,0 +1,38 @@
+**Claude finished @endazon's task in 2m 27s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/38246482427)
+
+---
+## AI コードレビュー結果
+
+変更 6 ファイル中 6 ファイルを読んだ（除外した生成物: なし。`.claude/settings.json` は差分と `.claude-pr` 退避の扱いに従い差分で確認）。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- **効果の確認が未記録**: 仕様書の受け入れ基準 `効果の確認` は、本 PR の `claude-review` 後に記録する前提のため未チェックのまま。マージ前に、このレビューの結果（`scripts.test.js` 全件の実走、6 ファイルの読了、「時間」を理由にした未検証が無いこと、所要）を PR 本文と仕様書へ追記すること。仕様書の `status: draft` もその時に見直す。
+- `Bash(git fetch:*)` を固定試験は要求するが、下限が `git fetch origin develop` を案内するのはサイクル的に妥当（問題ではなく確認事項）。
+
+### 🟢 軽微
+- `scripts/scripts.repo.test.js` の節の切り出しは `'\n\n'`（最初の空行）までである。下限節の中に空行を挟む編集をすると、後半の要の語（`/tmp/` など）が節外となって誤って赤になる。意図どおり（節の分割が検知される）とも読めるが、コメントに一言あるとよい。
+- 仕様書の節 `生成物` の列挙（`*.lock`）と prompt 側（`pnpm-lock.yaml` のみ）が微妙に異なる。実害は無い。
+
+### ✅ 確認できたこと（このセッションで実走）
+- `node scripts/scripts.test.js`（`REQUIRE_REPO_TESTS=1`・子プロセス形）: **1044 件 passed**。新規の `claude-code-review.yml[#1911]` 2 件（節の存在・陰性対照）も ok。
+- `node scripts/check-trace-blocks.js`: OK（193 件、exit 0）。
+- `node scripts/gen-knowledge-graph.js --check`: OK（参考 72 件は fail 対象外）。
+- `node scripts/check-doc-links.js`: OK（1676 件）。
+- `node scripts/check-doc-updated.js --base origin/develop`: OK（0 件。未コミット差分の警告あり＝`.claude` 復元による正常な状態）。
+- `node scripts/check-commit-messages.js`: 1 件すべて適合。
+- `node scripts/check-plan-id-qualification.js`: OK（3596 件）。
+- `node scripts/check-ai-workflow-config.js`: 問題なし。`settings.json` の allow に helm が無い旨の warning 2 件は、`.claude/settings.json` を統合ブランチ版へ復元する仕組みによるもので、PR 版には 2 行が入っている（差分で確認）。
+- 3 系統（レビュー・実装・`.claude/settings.json`）に `Bash(helm lint:*)` / `Bash(helm template:*)` が足されていることを差分で確認。
+- 旧文言「時間が足りなければ」「変更範囲に応じて検証を絞る」が prompt から除かれ、下限と矛盾しない形に直っていることを確認。
+- IADR-0232 決定 7 への追記は日付つき追記ブロックの書式で、本文は書き換えていない。トレーサビリティ（起点 `#1911`・NFR 無採番・仕様書）も整合。
+
+### 🔍 実行できなかったこと
+- `dotnet build/test/format`: `src/*/backend` の差分が無いため対象外（下限の条件外）。
+- `helm lint/template`: `deploy/helm/**` の差分が無いため対象外。
+- 効果の確認 4 点のうち所要（agent / job）: 実行中のジョブ自身の所要は自分では測れないため未検証。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*

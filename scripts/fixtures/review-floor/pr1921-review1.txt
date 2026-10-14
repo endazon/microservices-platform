@@ -1,0 +1,41 @@
+**Claude finished @endazon's task in 39s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/38556806471)
+
+---
+## AI コードレビュー結果
+
+変更 6 ファイル中 6 ファイルを読んだ（生成物の除外なし）。`docs/` 3 件と `.ai-context/` 3 件の文書だけの変更で、`src/`・`scripts/`・`.github/`・`deploy/` に差分はない。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- **認定の射程が「オーナーの文言ではない推論」なのに、docs では確定事項として書かれている。**
+  - 作業仕様書の決めたこと 2 は、これを「規約の opt-out が Web サイトの設定であることからの推論」と明記している（⚠️ 付き）。
+  - 一方、`docs/operations/operations.md` の「認定の射程」、`voyage-embedding-key-runbook.md`、`security.md` の脅威表は断定形である。`security.md` は「根拠は運用仕様書」と指す。
+  - 運用者が読むのは docs 側で、仕様書は読まれにくい。推論由来であること（オーナー確認済みではない）を「認定の射程」の 1 行に足すか、オーナーに確認してほしい。
+  - 安全側の制約なので、害は小さい。
+- **「960 回（すべて 200）」「11:18:57Z」「opt-out の 20:22 JST ごろ」は PR 本文・仕様書が引く issue コメントが根拠である。** 本セッションでは issue #1740 のコメントも Voyage の規約原文も確認していない（下の「実行できなかったこと」）。条項番号（3(iii)・第 6 条）の引用も同様に未検証である。
+
+### 🟢 軽微
+- `security.md` 683 行（クエリ文の行）は、旧文「ゼロ保持未認定の間は Voyage 経路自体を無効化して受容する」が取り消し線なしのまま残り、末尾に［2026-10-14］の追記が付く。同じ表の別行や 705 行は取り消し線方式なので、書式が揺れている。意味は読み取れる。
+- PR 本文の「計画へのフィードバック」で、ティアB のレジデンシー要件と Voyage の乖離を「環流の要否はオーナー判断」としている。計画 08_data-egress-policy の文面と実装の運用が食い違ったまま残るので、`decision-needed` の起票を早めに決めるとよい（計画書原文は未確認。要確認）。
+
+### ✅ 確認できたこと
+実行して出力を見たコマンドは次のとおり。
+- `node scripts/check-trace-blocks.js` → OK（193 件）。
+- `node scripts/gen-knowledge-graph.js --check` → OK。参考表示の 72 件は fail にならない既存分。
+- `node scripts/check-doc-links.js` → OK（1679 件）。fail-open の 1 件は既存の凍結記録。
+- `node scripts/check-doc-updated.js --base origin/develop` → OK（3 件）。
+- `node scripts/check-commit-messages.js` → 2 件すべて適合。
+- `node scripts/check-plan-id-qualification.js` → OK。
+- 凍結記録（IADR-0025・IADR-0504）は末尾の日付つき追記と `updated:` / `related_specs:` の更新だけで、本文は書き換えていない（diff を目視）。
+- `docs/` 3 件の trace ブロックに仕様書 `20261014_1740_voyage-zero-retention-certification` が追記されている。operations.md と security.md は `#1740` も `issues:` に追記済みで、runbook は既に持っていた。表示テキストに新規の issue 番号・IADR は無い。残る `#336` は既存の取り消し線部分の文言である。
+
+### 🔍 実行できなかったこと
+- 検査器の実走で足りるため、ビルド・テスト・`scripts.test.js` は実行していない。`src/`・`scripts/`・`.github/`・`deploy/helm` に差分が無く、対象外だからである。
+- issue #1740 のコメント（opt-out の日時、960 回、オーナーの受容）と Voyage AI Terms of Service の原文は、本セッションからは読めない。これらの内容の正否は PR 本文の引用のとおりに受け取っており、未検証である。
+- 計画の ADR-0016 と 08_data-egress-policy の原文は参照していない（CI の外にある）。ティアB の定義との照合は、リポジトリ内の記述だけが根拠である。「計画書原文で要確認」とする。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*
+ ・ branch: `docs/NFR-1740-voyage-zero-retention-record`
