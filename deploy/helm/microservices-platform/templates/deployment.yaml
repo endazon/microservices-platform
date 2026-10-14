@@ -68,6 +68,34 @@ spec:
           env:
             - name: Otlp__Endpoint
               value: {{ $.Values.global.otel.endpoint }}
+          {{- /* NFR, IADR-0539 (#1927): GC の設定（global.dotnetGc。本番の既定）。services.<名>.dotnetGc が鍵ごとに上書きし、
+                 空文字の鍵は描かない（そのサービスだけ .NET の既定へ戻す）。同じ名前を extraEnv / extraEnvAppend に置けば描画で落とす
+                 —— 同名の env が 2 つ並ぶと、どちらが効くかが字面から読めなくなる。 */}}
+          {{- /* merge は空文字を「未設定」と見なして global の値で埋めるので使わない（空文字の退路が効かなくなる）。鍵の有無で選ぶ。 */}}
+          {{- $gcSvc := $svc.dotnetGc | default dict }}
+          {{- $gcGlobal := $.Values.global.dotnetGc | default dict }}
+          {{- $gcEnv := list }}
+          {{- range $pair := list (list "DOTNET_gcServer" "gcServer") (list "DOTNET_GCConserveMemory" "conserveMemory") (list "DOTNET_GCHeapHardLimitPercent" "heapHardLimitPercent") }}
+          {{- $key := index $pair 1 }}
+          {{- $v := ternary (index $gcSvc $key) (index $gcGlobal $key) (hasKey $gcSvc $key) }}
+          {{- /* 鍵がどちらにも無い（nil）なら描かない。toString は nil を "<nil>" にするので、空文字へ倒してから比べる（#1928 のレビュー）。
+                 default "" は使わない —— 数値の 0 も空と見なして消してしまう。 */}}
+          {{- if kindIs "invalid" $v }}{{- $v = "" }}{{- end }}
+          {{- $gcEnv = append $gcEnv (list (index $pair 0) $v) }}
+          {{- end }}
+          {{- range $e := concat ($svc.extraEnv | default list) ($svc.extraEnvAppend | default list) }}
+          {{- range $g := $gcEnv }}
+          {{- if eq (upper ($e.name | toString)) (upper (index $g 0)) }}
+          {{- fail (printf "services.%s の extraEnv / extraEnvAppend に %s は書けません。GC の設定は global.dotnetGc か services.%s.dotnetGc で与えてください（IADR-0539 / #1927）。" $name $e.name $name) }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
+          {{- range $g := $gcEnv }}
+          {{- if ne (index $g 1 | toString) "" }}
+            - name: {{ index $g 0 }}
+              value: {{ index $g 1 | toString | quote }}
+          {{- end }}
+          {{- end }}
           {{- if $svc.grpcPort }}
             # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 (#1201): east-west gRPC の h2c リスナ。
             # 未設定ならアプリはリスナを立てない（既存サービスは 1 バイトも変わらない）。

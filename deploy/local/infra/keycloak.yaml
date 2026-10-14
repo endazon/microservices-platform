@@ -96,8 +96,14 @@ spec:
             # ヒープになり、metaspace / off-heap と合わせて 2Gi を超えて OOMKilled(137) を繰り返した（7 日で 11 回。
             # 再起動中は全サービスのトークン検証が一時的に 401 になる）。50% ≒ 1GiB に抑える。JAVA_OPTS 全体は
             # 置き換えない（Keycloak が用意した上書き点だけを使う）。
+            # ［2026-10-14 / #1927・IADR-0539］常駐を下げる。PoC の実測 787 MiB（ノード 87% の最大の Pod）。
+            #   - MaxRAMPercentage 50 → 40（≈1,024Mi → ≈819Mi）。非ヒープ（metaspace ≤256m は kc.sh の既定・コードキャッシュ ≤240m・
+            #     スレッド）を足しても ≈1.4Gi で limits 2Gi の内側。起動時の augmentation の山は limits（2Gi）で受ける（下の注記）。
+            #   - Min/MaxHeapFreeRatio 10/20 と G1PeriodicGCInterval（ms）: 26.7.4 の kc.sh は G1 で「最大ヒープまで取りに行きがち」と
+            #     自ら書く（既定の空き率は 40/70）。augmentation で広げたヒープを、暇な間の周期 GC で OS へ返させる。
+            #   キャッシュ（start-dev は local の Infinispan）は変えない —— PoC の realm は件数の上限（既定 10,000）に届かない。
             - name: JAVA_OPTS_KC_HEAP
-              value: "-XX:MaxRAMPercentage=50"
+              value: "-XX:MaxRAMPercentage=40 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20 -XX:G1PeriodicGCInterval=60000"
           ports:
             - containerPort: 8080
             # IADR-0524: 管理用のポート（ヘルス）。kubelet だけが見る。Service には出さない。

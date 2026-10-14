@@ -22,6 +22,12 @@ schema_config:
         prefix: index_
         period: 24h
 
+# NFR, IADR-0539 (#1927): 書き出す前のチャンクをメモリに持つ時間を縮める（既定 chunk_idle_period 30m / max_chunk_age 2h）。
+# 保持（ディスク）は変えない。経路 B の inline（deploy/local/observability/loki.yaml）にも同じ値がある。
+ingester:
+  chunk_idle_period: 5m
+  max_chunk_age: 30m
+
 storage_config:
   tsdb_shipper:
     active_index_directory: /tmp/loki/index
