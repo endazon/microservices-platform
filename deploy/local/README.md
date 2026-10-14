@@ -53,7 +53,7 @@ MSP と AST を 1 台に載せて**常用する**ホスト（PoC の稼働ホス
 
 | 項目 | 値 | 根拠 |
 | --- | --- | --- |
-| **VM（WSL2）に割り当てるメモリ** | **24 GB**（推奨） | 下の「limits の合計」の必須＋ESO 所有の経路（約 24.0 GiB）にほぼ等しい。全 Pod が同時に limits へ達しても VM に収まる線である |
+| **VM（WSL2）に割り当てるメモリ** | **24 GB**（推奨） | 下の「limits の合計」の必須＋ESO 所有の経路（24,608 Mi＝約 24.0 GiB）にほぼ等しい。全 Pod が同時に limits へ達しても VM に収まる線である |
 | 既定（物理の 50%）での不足 | 物理 31 GB → 上限 約 15.5 GiB | 実測（2026-10-14）: `kubectl top node` が 13,349 Mi / allocatable 15,890 Mi（86%）で張り付き、3 日で 4 回 VM が停止・一斉再起動した |
 | ホストの物理メモリ | 32 GB 以上（推測） | VM に 24 GB を渡した残り（約 7 GB）で Windows とブラウザを動かす |
 
@@ -63,6 +63,7 @@ requests / limits の合計（`helm template` と `kubectl kustomize` の描画�
 | --- | --- | --- | --- | --- |
 | 必須 | MSP チャート（values-local）18・infra（`PERSIST` 既定）13・AST チャート（values-local・OpenD 込み）13 | 6,056 Mi | 24,096 Mi | 0 |
 | ESO 所有の経路（AST の既定） | `VAULT=1`（OpenBao 1）・`ESO=1`（ESO 3・Reloader 1） | +128 Mi | +512 Mi | 4（上流チャートの既定） |
+| **必須＋ESO 所有の経路（計）** | 上の 2 行の和（常用の構成） | **6,184 Mi** | **24,608 Mi** | 4 |
 | opt-in の全部 | `OBSERVABILITY=1` 7・`ISTIO=1`（istiod・ingress gateway・サイドカー 18）・`HEADLAMP=1` 1・Argo CD 7・cert-manager 3 | +2,112 Mi | +8,448 Mi | 10（上流 manifest の既定） |
 
 CPU の合計（同じ描画から。上の `processors` の根拠）:
@@ -73,7 +74,7 @@ CPU の合計（同じ描画から。上の `processors` の根拠）:
 | ＋ESO 所有の経路（OpenBao 50m。ESO・Reloader は requests 無し） | 3,255m | 24,250m |
 | ＋opt-in の全部（可観測性 245m・Istio 240m・Headlamp 50m） | 3,790m | 31,950m |
 
-- **requests の合計（必須＋ESO で約 6.0 GiB）は実使用量（13.3 GiB）の半分に満たない。** requests は実際の使用量を表していないので、
+- **requests の合計（必須＋ESO で 6,184 Mi＝約 6.0 GiB）は実使用量（13.3 GiB）の半分に満たない。** requests は実際の使用量を表していないので、
   必要メモリは requests ではなく **limits の合計と実測**で見積もる。
 - **Pod の外の使用量は上の表に入っていない**: k3s（apiserver・kubelet）・containerd・イメージのビルド（`nerdctl build` は同じ VM の中で走る）。
   合わせて 1〜3 GiB 程度と見込む（推測）。
