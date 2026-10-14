@@ -453,6 +453,156 @@ public class QdrantIngestionVectorStore(
         await client.UpsertAsync(_lexical, [BuildLexicalPoint(pointId, payload)], cancellationToken: ct);
     }
 
+    // FR-02, FR-03, NFR-06, [[IADR-0536]] 決定 1 (#1908): 埋め込み待ちの印（真偽）と理由（文字列）のペイロードキー。
+    // 🔴 **印を持つのは埋め込み待ちの点だけ**（高機密の語彙索引の点・主の点はキー自体を持たない）。
+    // 埋め直しの器は印で拾い、印のある点だけを消す —— 高機密の点を埋め直しの対象にしない。
+    internal const string EmbeddingPendingKey = "embedding_pending";
+    internal const string EmbeddingPendingReasonKey = "embedding_pending_reason";
+
+    // FR-02, [[IADR-0536]] 決定 1 (#1908): 埋め込み待ちのチャンクを語彙索引へ書く。
+    // ペイロードはチャンクの口と同じ関数（`BuildChunkPayload`）で作り、印と理由を足す（`BuildEmbeddingPendingPayload`）。
+    public async Task UpsertEmbeddingPendingChunkAsync(Guid chunkId, Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
+        CancellationToken ct = default)
+    {
+        var payload = BuildEmbeddingPendingPayload(BuildChunkPayload(documentId, title, text, chunkIndex,
+            markdownUri, attributes, tags, updatedAt, sharedWith: sharedWith), reason);
+        await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
+
+        await client.UpsertAsync(_lexical, [BuildLexicalPoint(chunkId, payload)], cancellationToken: ct);
+    }
+
+    // FR-02, ADR-0070 決定 4, [[IADR-0536]] 決定 1 (#1908): 本文なしの public / internal 文書の埋め込み待ちのメタデータ点。
+    public async Task UpsertEmbeddingPendingMetadataPointAsync(Guid pointId, Guid documentId, string title,
+        string indexText, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
+        CancellationToken ct = default)
+    {
+        var payload = BuildEmbeddingPendingPayload(BuildChunkPayload(documentId, title, indexText,
+            ChunkId.MetadataChunkIndex, markdownUri, attributes, tags, updatedAt, hasBody: false,
+            sharedWith: sharedWith), reason);
+        await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
+
+        await client.UpsertAsync(_lexical, [BuildLexicalPoint(pointId, payload)], cancellationToken: ct);
+    }
+
+    // [[IADR-0536]] 決定 1: 印と理由を足す（純関数。試験が形を固定する）。
+    internal static Dictionary<string, Value> BuildEmbeddingPendingPayload(
+        Dictionary<string, Value> payload, string reason)
+    {
+        payload[EmbeddingPendingKey] = new Value { BoolValue = true };
+        payload[EmbeddingPendingReasonKey] = new Value { StringValue = reason };
+        return payload;
+    }
+
+    // [[IADR-0536]] 決定 2・3: 埋め込み待ちの点だけを選ぶフィルタ（純関数。数える・拾う・消すが同じ 1 本を使う）。
+    internal static Filter BuildEmbeddingPendingFilter() =>
+        new()
+        {
+            Must =
+            {
+                new Condition
+                {
+                    Field = new FieldCondition { Key = EmbeddingPendingKey, Match = new Match { Boolean = true } }
+                }
+            }
+        };
+
+    public Task EnsureEmbeddingPendingIndexAsync(CancellationToken ct = default) =>
+        client.CreatePayloadIndexAsync(_lexical, EmbeddingPendingKey, PayloadSchemaType.Bool, cancellationToken: ct);
+
+    public async Task<long> CountEmbeddingPendingAsync(CancellationToken ct = default) =>
+        (long)await client.CountAsync(_lexical, BuildEmbeddingPendingFilter(), exact: true, cancellationToken: ct);
+
+    public async Task<EmbeddingPendingPage> ListEmbeddingPendingAsync(
+        int limit, CancellationToken ct = default)
+    {
+        var page = await client.ScrollAsync(_lexical,
+            filter: BuildEmbeddingPendingFilter(),
+            limit: (uint)Math.Max(1, limit),
+            payloadSelector: new WithPayloadSelector { Enable = true },
+            vectorsSelector: new WithVectorsSelector { Enable = false },
+            cancellationToken: ct);
+
+        var points = new List<EmbeddingPendingPoint>();
+        var unreadable = new List<string>();
+        foreach (var p in page.Result)
+        {
+            if (ReadEmbeddingPendingPoint(p.Id, p.Payload) is { } point)
+                points.Add(point);
+            else
+                unreadable.Add(p.Id.HasUuid ? p.Id.Uuid : p.Id.Num.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        return new EmbeddingPendingPage(points, unreadable);
+    }
+
+    public async Task<EmbeddingPendingPoint?> GetEmbeddingPendingAsync(Guid pointId, CancellationToken ct = default)
+    {
+        var points = await client.RetrieveAsync(_lexical, pointId, withPayload: true, withVectors: false,
+            cancellationToken: ct);
+        return points.Count == 0 ? null : ReadEmbeddingPendingPoint(points[0].Id, points[0].Payload);
+    }
+
+    // 🔴 **印のある点だけを消す**（ID ＋ 印の AND）。同じ ID で高機密の点（印なし）へ書き換わっていたら消さない。
+    public Task DeleteEmbeddingPendingAsync(Guid pointId, CancellationToken ct = default)
+    {
+        var filter = BuildEmbeddingPendingFilter();
+        filter.Must.Add(new Condition
+        {
+            HasId = new HasIdCondition { HasId = { new PointId { Uuid = pointId.ToString() } } }
+        });
+        return client.DeleteAsync(_lexical, filter, cancellationToken: ct);
+    }
+
+    // [[IADR-0536]] 決定 2: 点のペイロードから埋め込み待ちの点を復元する（純関数。`BuildChunkPayload` の逆写像）。
+    // 印が無い・ID が UUID でない・文書 ID が読めない点は null（埋め直しの対象にしない）。
+    internal static EmbeddingPendingPoint? ReadEmbeddingPendingPoint(PointId id, IDictionary<string, Value> payload)
+    {
+        if (!payload.TryGetValue(EmbeddingPendingKey, out var pending) || !pending.BoolValue)
+            return null;
+        if (!Guid.TryParse(id.Uuid, out var pointId)
+            || !Guid.TryParse(StringOf(payload, "document_id"), out var documentId))
+            return null;
+
+        var attributes = payload.TryGetValue("attributes", out var attrs)
+                         && attrs.KindCase == Value.KindOneofCase.StructValue
+            ? attrs.StructValue.Fields.ToDictionary(f => f.Key, f => f.Value.StringValue, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+
+        DateTimeOffset? updatedAt = payload.TryGetValue("updated_at", out var at)
+                                    && at.KindCase == Value.KindOneofCase.IntegerValue
+            ? DateTimeOffset.FromUnixTimeMilliseconds(at.IntegerValue)
+            : null;
+
+        var markdownUri = StringOf(payload, "markdown_uri");
+        var sharedWith = ListOf(payload, AttributeValueKeys.SharedWith);
+
+        return new EmbeddingPendingPoint(
+            pointId,
+            documentId,
+            StringOf(payload, "document_title"),
+            StringOf(payload, FullTextKey),
+            payload.TryGetValue("chunk_index", out var idx) ? (int)idx.IntegerValue : 0,
+            markdownUri.Length == 0 ? null : markdownUri,
+            attributes,
+            ListOf(payload, "tags"),
+            updatedAt,
+            sharedWith.Count == 0 ? null : sharedWith,
+            StringOf(payload, EmbeddingPendingReasonKey));
+
+        static string StringOf(IDictionary<string, Value> p, string key) =>
+            p.TryGetValue(key, out var v) ? v.StringValue : "";
+
+        static List<string> ListOf(IDictionary<string, Value> p, string key) =>
+            p.TryGetValue(key, out var v) && v.KindCase == Value.KindOneofCase.ListValue
+                ? [.. v.ListValue.Values.Select(x => x.StringValue)]
+                : [];
+    }
+
     // [[IADR-0497]] 決定 1: **ベクトルを持たない点**（純関数。試験が形を固定する）。
     // 🔴 `Vectors` を未設定にすると Qdrant は「Expected some vectors」で拒む（実測）。**空の名前つきベクトル**
     // （`NamedVectors` が 0 件）を明示して「ベクトルは無い」を書く。零ベクトル・ハッシュ埋め込みは入れない

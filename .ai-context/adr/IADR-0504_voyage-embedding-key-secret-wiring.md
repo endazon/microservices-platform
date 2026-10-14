@@ -118,3 +118,8 @@ helm（本番像の `values.yaml`・経路B の `values-local.yaml`）と ESO �
 > オーナーが Voyage AI Terms of Service（Last Updated: May 27, 2026）と照合して認定した。学習不使用・ゼロ保持は opt-out（2026-10-14 20:22 JST ごろ）で満たす。
 > データの所在は規約に保証が無く、オーナーが受容した。opt-out より前の 960 回の送信は、学習に使われ得るものとして受容した。
 > 照合の表と認定の射程（opt-out を実施したアカウントの鍵に限る）は `docs/operations/operations.md` の「ゼロ保持認定状況の記録」にある。
+
+> ［2026-10-14 追記 / #1908］**ゲートウェイの応答（鍵なしは `Embedded=false`・`Retryable=true`）は変えないが、取り込み側の帰結が変わった。**
+> 取り込みは鍵の無い間、public / internal のチャンクを再試行の後 DLQ へ送らず、語彙索引へ全文だけの点（埋め込み待ち）として書く。鍵を入れた後は
+> 取り込みサービスの常駐の器が主へ移して語彙索引の点を消す（DLQ の再投入は要らない）。上の追記の「取り込みは再試行の後 DLQ へ送り、
+> 鍵を入れてから DLQ を再投入すれば索引に入る」はこれで古くなった。詳細は [IADR-0536](./IADR-0536_embedding-pending-lexical-points.md)。上の本文は書き換えない。

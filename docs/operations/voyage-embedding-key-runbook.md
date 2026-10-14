@@ -9,9 +9,9 @@ updated: 2026-10-14
 <!-- trace:
 ids: [FR-02, FR-03, SC-22, NFR-18, NFR-19]
 adrs: [ADR-0016, ADR-0095, ADR-0127]
-iadrs: [IADR-0504, IADR-0096, IADR-0103, IADR-0456, IADR-0494, IADR-0497]
-specs: [20261014_1740_voyage-zero-retention-certification, 20261006_1764_voyage-key-wiring, 20261008_1819_gateway-sentfalse-observability]
-issues: [#1764, #1762, #1740, #1696, #1819]
+iadrs: [IADR-0536, IADR-0504, IADR-0096, IADR-0103, IADR-0456, IADR-0494, IADR-0497]
+specs: [20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261014_1740_voyage-zero-retention-certification, 20261006_1764_voyage-key-wiring, 20261008_1819_gateway-sentfalse-observability]
+issues: [#1908, #1764, #1762, #1740, #1696, #1819]
 -->
 
 # 運用 Runbook: 経路B の LLM ゲートウェイへ埋め込み（Voyage AI）の鍵を入れる
@@ -25,7 +25,9 @@ issues: [#1764, #1762, #1740, #1696, #1819]
 ## 位置づけと前提の受け入れ
 
 - 公開・社内（`public` / `internal`）の文書と検索クエリの埋め込みは、既定でティアB（Voyage AI・`voyage-3.5`・1024 次元）へ送る。
-  LLM ゲートウェイがこの鍵（環境変数 `Embedding__Voyage__ApiKey`）を持たないと、埋め込みは失敗し、文書は索引に入らない。
+  LLM ゲートウェイがこの鍵（環境変数 `Embedding__Voyage__ApiKey`）を持たないと、埋め込みは失敗する。
+  ［2026-10-14］その間の `public` / `internal` の文書は、語彙索引へ全文だけの点（埋め込み待ち）として入る（キーワード・ハイブリッドの検索では当たり、意味検索では当たらない）。
+  鍵を入れると取り込みサービスが自動で埋め直す（手順 6）。
 - チャートは鍵を Secret `llm-provider-credentials` のキー `voyage-api-key` から渡す（`optional: true`）。
   Secret の中身は Vault の KV `secret/msp/llm-provider-credentials` のプロパティ `voyage-api-key` を ESO（外部シークレット同期）が写したものである。
 - ~~🔴 **Voyage AI のゼロ保持（学習利用のオプトアウト）の認定は未了である**。オーナーは 2026-10-06、認定の前に経路B で鍵を使うことを受け入れた。~~
@@ -40,7 +42,7 @@ issues: [#1764, #1762, #1740, #1696, #1819]
 
 | 状態 | LLM ゲートウェイの起動 | 埋め込みの応答 | 取り込み（`public` / `internal`） | ゲートウェイのログ |
 | --- | --- | --- | --- | --- |
-| Secret にキーが無い（古い Secret） | **起動する**（env を置かない） | `embedded=false`・`retryable=true` | 再試行の後 DLQ。索引に入らない | `Embedding disabled at endpoint voyage-managed (...): provider not configured: Voyage AI の API キーが未設定です`（warn・スタックなし。Pod の起動後の初回と、以後 5 分ごとに抑えた件数つきの 1 行だけ） |
+| Secret にキーが無い（古い Secret） | **起動する**（env を置かない） | `embedded=false`・`retryable=true` | 語彙索引へ全文だけの点（埋め込み待ち・理由 `transient`）として入る。DLQ へは行かない（［2026-10-14］以前は再試行の後 DLQ） | `Embedding disabled at endpoint voyage-managed (...): provider not configured: Voyage AI の API キーが未設定です`（warn・スタックなし。Pod の起動後の初回と、以後 5 分ごとに抑えた件数つきの 1 行だけ） |
 | キーは在るが値が空（Vault の種の既定） | 起動する（env は空） | 同上 | 同上 | 同上 |
 | 値が誤り・失効 | 起動する | 同上（上流が 401） | 同上 | `Embedding call failed ...` ＋ `401 (Unauthorized)` |
 | 値が正しい | 起動する | `embedded=true`・1024 次元 | `knowledge_chunks_voyage_3_5` に点が入る | 失敗の行が出ない |
@@ -48,7 +50,10 @@ issues: [#1764, #1762, #1740, #1696, #1819]
 - **［2026-10-08 追記］鍵なしの失敗は毎回スタック付きで記録しない。** 以前は取り込みの再試行のたびに
   `Embedding call failed ...` がスタック付きで出て（PoC で 1,146 回）、ゲートウェイのログから他の行を押し出した。
   今は上の表の warn が**初回は即時・以後 5 分ごとに 1 行**（`suppressedSinceLast=` に抑えた件数）だけ出る。
-  応答（`retryable=true`）と取り込みの扱い（再試行の後 DLQ。鍵を入れてから DLQ を再投入すれば索引に入る）は変わらない。
+  応答（`retryable=true`）は変わらない。~~取り込みの扱い（再試行の後 DLQ。鍵を入れてから DLQ を再投入すれば索引に入る）は変わらない。~~
+  **［2026-10-14］取り込みの扱いは改まった。** 鍵の無い間は語彙索引へ全文だけの点（埋め込み待ち）として書き、鍵を入れた後に取り込みサービスの常駐の器が
+  主のコレクションへ移す（DLQ の再投入は要らない。手順 6）。待ちの件数はゲージ `ingestion_embedding_pending_points` と取り込みの Warning
+  （`point(s) in the lexical index are awaiting embedding`）で読む（0 が正常）。
   鍵の誤り（401）など**鍵の欠落以外の失敗は従来どおり 1 件ずつスタック付き**で出る。
 - 起動時に鍵の有無を検査しない（鍵が無くてもテキスト生成は使える。キーを必須にすると Secret が古いだけで LLM ゲートウェイ全体が `CreateContainerConfigError` で止まる）。
 - 鍵は**プロセスの起動時に読む**。Secret を差し替えた後は Pod の作り直しが要る（経路B は Reloader が `llm-provider-credentials` の変更で作り直す）。
@@ -215,6 +220,32 @@ kubectl -n microservices-platform logs deploy/llmgateway-service -c llmgateway-s
 
 **5-c. 取り込みの経路**（決定的な確認）: 再索引の手順（運用仕様書の「埋め込みプロバイダの設定・ゼロ保持・再索引」節の `DocumentUpdated` の再発行）の
 **カナリア**（最初の 1 ページ）を流し、DLQ が増えず、`knowledge_chunks_voyage_3_5` の `points_count` が 0 から増えることを確かめてから全件へ進む。
+［2026-10-14］鍵が届いていないと、カナリアの文書は DLQ ではなく `knowledge_chunks_lexical` の埋め込み待ちへ入る（DLQ は増えない）。
+**DLQ が増えないことだけでは鍵の確認にならない** —— `knowledge_chunks_voyage_3_5` が増えること（と、手順 6 の待ちの件数が増えないこと）で確かめる。
+
+### 6. 鍵の無い間に入った埋め込み待ちの点が埋め直されることを確かめる
+
+鍵の無い間に取り込まれた `public` / `internal` の文書は、語彙索引に全文だけの点（印 `embedding_pending`）として入っている。
+鍵が届くと、取り込みサービスの常駐の器が起動直後と以後 5 分ごと（`Ingestion__EmbeddingPending__IntervalSeconds`）に 64 点ずつ
+（`Ingestion__EmbeddingPending__BatchSize`）主のコレクションへ移し、語彙索引の点を消す。**再発行も DLQ の再投入も要らない。**
+
+```sh
+NS=microservices-platform
+# 急ぐなら取り込みを作り直す（起動直後に 1 周期が走る）
+kubectl -n "$NS" rollout restart deploy/ingestion-service && kubectl -n "$NS" rollout status deploy/ingestion-service --timeout=180s
+# 周期ごとの記録（待ちが残る間は Warning、無くなったら Information）
+kubectl -n "$NS" logs deploy/ingestion-service | grep -E 'awaiting embedding|Re-embedded' | tail -5
+# 待ちの点の数（0 へ向かって減っていくこと）
+kubectl -n platform-infra run qdrant-pending --rm -i --restart=Never --image=curlimages/curl -- sh -c \
+  'curl -s -X POST http://qdrant:6333/collections/knowledge_chunks_lexical/points/count -H "content-type: application/json" \
+    -d "{\"exact\":true,\"filter\":{\"must\":[{\"key\":\"embedding_pending\",\"match\":{\"value\":true}}]}}"'
+```
+
+- 期待: Warning の `stopped by` が `(none)` になり、待ちの数が周期ごとに 64 ずつ減って 0 になる（0 になった周期は `Re-embedded ... none remain` の Information）。
+- `stopped by transient` が続く: 鍵がまだ届いていない（手順 4 へ戻る）。`stopped by rejected`: 経路が無効化されている（運用仕様書の `Endpoints__0__Enabled`）。
+- `held back as high-confidentiality` が 0 でない: 印の付いた高機密の点がある（通常は起きない）。埋め込みへは渡さず残すので、文書の機密区分を確かめて `DocumentUpdated` を再発行する。
+- 既存分（埋め込み待ちの仕組みより前に、鍵の無い間に取り込まれてどこにも書かれなかった文書）は、運用仕様書の「`DocumentUpdated` の再発行」をそのまま流す
+  （dry-run → カナリア → 全件）。本書に別の手順は持たない。
 
 ## 戻し方（鍵を外す）
 
@@ -230,4 +261,4 @@ kubectl -n microservices-platform logs deploy/llmgateway-service -c llmgateway-s
 | 手順 4 の長さが 0 | Pod が同期より前の Secret で起動した | `rollout restart` で作り直す |
 | 5-a が `http=401` | 鍵の誤り・失効・別の組織の鍵 | 手順 1 から入れ直す |
 | 5-a が `http=000` | クラスタから外へ出られない | ノードの外向き通信（プロキシ・ファイアウォール）を確かめる |
-| 5-b が 0 なのに 5-c で点が増えない | 文書が高機密（語彙索引へ行く）／本文の所在が無い／`LOCALEMBED=1` のまま | dry-run の内訳と手順 0 の env を見直す |
+| 5-b が 0 なのに 5-c で `knowledge_chunks_voyage_3_5` の点が増えない（`knowledge_chunks_lexical` の待ちが増える） | 文書が高機密（語彙索引へ行く）／本文の所在が無い／`LOCALEMBED=1` のまま | dry-run の内訳と手順 0 の env を見直す |

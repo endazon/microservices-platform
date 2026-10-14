@@ -19,7 +19,7 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 //
 // helm は env Embedding__Voyage__ApiKey を Secret llm-provider-credentials の voyage-api-key から **optional** で渡す
 // （キーが Secret に無ければ env が無い＝空）。運用の手順書（docs/operations/voyage-embedding-key-runbook.md）は
-// 「鍵なしでも Pod は起動し、埋め込みは一時障害（Retryable）として返り、取り込みが再試行の後 DLQ へ送る」と書く。
+// 「鍵なしでも Pod は起動し、埋め込みは一時障害（Retryable）として返り、取り込みは全文だけの点〔埋め込み待ち〕を書き、鍵の投入後に埋め直す（IADR-0536 / #1908。以前は再試行の後 DLQ）」と書く。
 // その前提を、外部へ 1 バイトも送らないことと併せてここで固定する。
 [Trait("TestKind", "Unit")]
 public class VoyageEmbeddingKeyTests
@@ -90,7 +90,7 @@ public class VoyageEmbeddingKeyTests
     }
 
     // 鍵なしの埋め込みは「一時障害」（Embedded=false・Retryable=true）として応答する。
-    // 取り込み（DocumentUpdatedConsumer）はこれを恒久スキップにせず再試行し、枯渇したら DLQ へ送る —— 索引に入らない。
+    // 取り込み（DocumentUpdatedConsumer）はこれを理由 transient の埋め込み待ちとして語彙索引へ全文だけで書き、後で埋め直す（IADR-0536 / #1908）。
     [Fact]
     public async Task 鍵なしの埋め込みは一時障害として応答する()
     {
@@ -109,7 +109,7 @@ public class VoyageEmbeddingKeyTests
             new EmbedApiRequest("本文", "internal", EmbedPurpose.Index), TestContext.Current.CancellationToken);
 
         resp.Embedded.Should().BeFalse();
-        resp.Retryable.Should().BeTrue("鍵の欠落は一時障害として扱い、取り込みは再試行の後 DLQ へ送る（恒久スキップにしない）");
+        resp.Retryable.Should().BeTrue("鍵の欠落は一時障害として扱う（取り込みは埋め込み待ちとして全文だけで書き、後で埋め直す。恒久的な拒否にしない）");
         resp.Endpoint.Should().Be("voyage-managed");
         resp.Vector.Should().BeEmpty();
         handler.Calls.Should().Be(0);
@@ -140,7 +140,7 @@ public class VoyageEmbeddingKeyTests
             logs, new LogOccurrenceThrottle(time));
 
     // PoC では取り込みの再試行のたびに鍵未設定の失敗がスタック付きで記録され（1,146 回）、他の行を押し出した。
-    // 何回呼んでも Warning 1 行（スタックなし）であり、応答（一時障害＝再試行の後 DLQ）は変わらない。
+    // 何回呼んでも Warning 1 行（スタックなし）であり、応答（一時障害）は変わらない。
     [Fact]
     public async Task 鍵なしの埋め込みは何回呼んでもスタックを残さず_5分ごとの要約1行にまとまる()
     {
@@ -156,7 +156,7 @@ public class VoyageEmbeddingKeyTests
             responses.Add(await useCase.ExecuteAsync(new EmbedApiRequest("本文", "internal", EmbedPurpose.Index), ct));
 
         responses.Should().OnlyContain(r => !r.Embedded && r.Retryable,
-            "応答は従来どおり一時障害（取り込みは再試行の後 DLQ へ送り、鍵を入れてから再投入できる）");
+            "応答は従来どおり一時障害（取り込みは埋め込み待ちとして全文だけで書き、鍵を入れた後に埋め直す）");
         handler.Calls.Should().Be(0, "鍵が無いのに Voyage へ要求を送ってはならない");
         logs.Entries.Should().NotContain(e => e.Exception != null, "鍵の欠落でスタックを残さない");
         logs.Entries.Should().NotContain(e => e.Level >= LogLevel.Error);

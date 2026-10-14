@@ -169,7 +169,7 @@ if vkv_exists msp/llm-provider-credentials; then
   vkv_patch_nonempty msp/llm-provider-credentials voyage-api-key "${VOYAGE_API_KEY:-}"
   # FR-02, IADR-0504 (#1764): voyage-api-key は後から足したプロパティである。ExternalSecret（externalsecret-llm.yaml）は
   # data[] のプロパティが KV に無いと同期全体を失敗させる（anthropic-api-key の差し替えまで届かなくなる）ので、
-  # **無いときだけ空で足す**（在る値は触らない。空＝鍵なし＝埋め込みは一時障害で DLQ へ。値は Runbook の手順で入れる）。
+  # **無いときだけ空で足す**（在る値は触らない。空＝鍵なし＝埋め込みは一時障害で、取り込みは全文だけの点（埋め込み待ち）を書く〔#1908〕。値は Runbook の手順で入れる）。
   vkv_patch_if_missing msp/llm-provider-credentials voyage-api-key ''
 else
   # FR-02, IADR-0504 (#1764 監査): 作るときも鍵を `sh -c` の引数へ埋め込まない（Pod 内の ps・監査ログに載る）。

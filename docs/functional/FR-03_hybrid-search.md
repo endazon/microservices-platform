@@ -3,14 +3,14 @@ title: ハイブリッド検索 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-11
+updated: 2026-10-14
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-02, FR-05, UC-01, FR-04, FR-11, FR-19, SC-02, NFR-06]
 adrs: [ADR-0009, ADR-0016, ADR-0017, ADR-0127, ADR-0043, ADR-0057, ADR-0070, ADR-0092, ADR-0010, ADR-0018, ADR-0044, ADR-0061]
-iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0313, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0422, IADR-0467, IADR-0497, IADR-0498, IADR-0512, IADR-0529, IADR-0531, IADR-0534]
-specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261007_1771_ingestion-event-wiring-docs, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1875_claude-5-5-models, 20261010_1879_exposure-org-docs-wiki-gate, 20261011_1871_search-degraded-signal]
+iadrs: [IADR-0536, IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0313, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0422, IADR-0467, IADR-0497, IADR-0498, IADR-0512, IADR-0529, IADR-0531, IADR-0534]
+specs: [20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261007_1771_ingestion-event-wiring-docs, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1875_claude-5-5-models, 20261010_1879_exposure-org-docs-wiki-gate, 20261011_1871_search-degraded-signal]
 issues: [#1746, #336, #536, #995, #1116, #1118, #1193, #1253, #1254, #1771, #1752, #1875, #1879, #1871, #1908, planning#783]
 -->
 
@@ -205,8 +205,11 @@ semantic では埋め込めたコレクションだけで束ね、**全コレク
   絞り込みとの交差が空のときは埋め込みを呼ぶので、埋め込みが壊れていれば `embed-failed` が立つ（許可の中身に依らず一様）。
 - `graph-expand-failed` は、露出（横断検索・AI の入力に含めるか）で落とす前の当たりから近傍展開を始めるので、段が有効でグラフが故障しているとき、
   本人が読めるが露出を切った文書だけが当たると「結果は空なのに印が立つ」。権限の有無や他人の文書は表さない。
-- 🔴 **`embed-failed` は「全文なら当たる」を意味しない。** 取り込みも同じゲートウェイで埋め込み、`public` / `internal` の文書は埋め込めないと
-  索引に書かれない（鍵が無い間は再試行の後に再投入待ちへ回る）。`embed-failed` が続いている配備では、その間に入った文書は全文検索にも現れない。
+- ~~🔴 **`embed-failed` は「全文なら当たる」を意味しない。** 取り込みも同じゲートウェイで埋め込み、`public` / `internal` の文書は埋め込めないと
+  索引に書かれない（鍵が無い間は再試行の後に再投入待ちへ回る）。`embed-failed` が続いている配備では、その間に入った文書は全文検索にも現れない。~~
+  **［2026-10-14］改まった。** 取り込みは、埋め込めなかった `public` / `internal` の文書を語彙索引へ全文だけの点（埋め込み待ち）として書く
+  （[取り込み 機能仕様書](./FR-02_ingestion.md) §埋め込みが使えない間）。`embed-failed` が続いている配備でも、その間に入った文書は
+  キーワードとハイブリッドの全文の系統で当たる。意味検索のモードでは、埋め直されるまで当たらない。
 - 「索引が空」「対象が索引に無い」は印にしない（後者は権限が無いのか該当が無いのかの区別そのものであり、前者も全体の文書の有無を示す）。
 
 ## 例外・エラー処理
