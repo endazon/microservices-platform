@@ -36,13 +36,99 @@ k8s ランタイムは **2 択**。スクリプトは `nerdctl`/`k3d` の有無�
 
 **B. Docker Desktop + k3d**
 ```powershell
-winget install Docker.DockerDesktop   # WSL2 backend・メモリ 8GB+ 推奨
+winget install Docker.DockerDesktop   # WSL2 backend・メモリは下の「稼働ホストの前提」
 winget install Kubernetes.kubectl
 winget install k3d                    # 無ければ choco install k3d
 winget install Helm.Helm
 ```
 
 > どちらも実体は k3s（ADR-0008）。A は内蔵 k3s をそのまま、B は k3d が k3s-in-docker を作る。
+
+## 稼働ホストの前提（メモリ・電源。Issue #1919）
+
+MSP と AST を 1 台に載せて**常用する**ホスト（PoC の稼働ホスト）の前提である。使い捨ての検証スタックにも同じ値でよい。
+**推測で置いた値には「推測」と書いた。** Pod ごとの実測（`kubectl top pod`）が揃ったら、この節と各 Pod の requests / limits を見直す。
+
+### 必要なメモリ
+
+| 項目 | 値 | 根拠 |
+| --- | --- | --- |
+| **VM（WSL2）に割り当てるメモリ** | **24 GB**（推奨） | 下の「limits の合計」の必須＋ESO 所有の経路（約 24.0 GiB）にほぼ等しい。全 Pod が同時に limits へ達しても VM に収まる線である |
+| 既定（物理の 50%）での不足 | 物理 31 GB → 上限 約 15.5 GiB | 実測（2026-10-14）: `kubectl top node` が 13,349 Mi / allocatable 15,890 Mi（86%）で張り付き、3 日で 4 回 VM が停止・一斉再起動した |
+| ホストの物理メモリ | 32 GB 以上（推測） | VM に 24 GB を渡した残り（約 7 GB）で Windows とブラウザを動かす |
+
+requests / limits の合計（`helm template` と `kubectl kustomize` の描画を合計した静的な値。コンテナ単位・replicas を掛けた値）:
+
+| 束 | 中身 | requests | limits | limits の無いコンテナ |
+| --- | --- | --- | --- | --- |
+| 必須 | MSP チャート（values-local）18・infra（`PERSIST` 既定）13・AST チャート（values-local・OpenD 込み）13 | 6,056 Mi | 24,096 Mi | 0 |
+| ESO 所有の経路（AST の既定） | `VAULT=1`（OpenBao 1）・`ESO=1`（ESO 3・Reloader 1） | +128 Mi | +512 Mi | 4（上流チャートの既定） |
+| opt-in の全部 | `OBSERVABILITY=1` 7・`ISTIO=1`（istiod・ingress gateway・サイドカー 18）・`HEADLAMP=1` 1・Argo CD 7・cert-manager 3 | +2,112 Mi | +8,448 Mi | 10（上流 manifest の既定） |
+
+- **requests の合計（必須＋ESO で約 6.0 GiB）は実使用量（13.3 GiB）の半分に満たない。** requests は実際の使用量を表していないので、
+  必要メモリは requests ではなく **limits の合計と実測**で見積もる。
+- **Pod の外の使用量は上の表に入っていない**: k3s（apiserver・kubelet）・containerd・イメージのビルド（`nerdctl build` は同じ VM の中で走る）。
+  合わせて 1〜3 GiB 程度と見込む（推測）。
+- 上流のコンポーネント（ESO・Reloader・Argo CD・cert-manager）と k3s 同梱のもの（Traefik など）は limits を持たないものがあり、上限なく伸びうる。
+
+### `.wslconfig` の推奨値
+
+Rancher Desktop（Windows）は VM のメモリと CPU を自前の設定画面では持たず、**WSL2 の `%USERPROFILE%\.wslconfig` に従う**。
+ファイルが無いと WSL2 の既定（メモリ＝物理の 50%・swap＝メモリの 25%・CPU＝全論理プロセッサ）になる。
+
+```ini
+[wsl2]
+memory=24GB
+swap=8GB
+# processors は書かない（全論理プロセッサ）。絞る場合も 4 以上にする（推測）
+```
+
+| キー | 推奨 | 理由 |
+| --- | --- | --- |
+| `memory` | `24GB` | 上の「必要なメモリ」 |
+| `swap` | `8GB` | VM の中の Pod の外のプロセス（ビルド・k3s）の山を逃がす（推測）。k8s の Pod は既定で swap を使わないので、Pod の OOM はこれでは防げない |
+| `processors` | 指定しない | CPU の requests の合計は必須＋ESO で約 3.2 コア（3,255m）。全論理プロセッサを渡し、各 Pod の limits で抑える。絞る場合も 4 以上（推測） |
+
+`autoMemoryReclaim` などほかのキーは、効果を測っていないのでこの節では変えない。
+
+### 反映の手順（閉場中に行う）
+
+🔴 **反映の間はクラスタが止まる**（AST の損切り S1 も止まる）。米国の通常取引時間の外で行う。
+
+```powershell
+# 1. Rancher Desktop を終了する（トレイのアイコン → Quit。ウィンドウを閉じるだけでは VM は止まらない）
+# 2. %USERPROFILE%\.wslconfig を上の内容で作る（既にあれば [wsl2] の節を直す）
+notepad "$env:USERPROFILE\.wslconfig"
+# 3. WSL の VM を止める（全ディストリビューションが止まる）
+wsl --shutdown
+wsl --list --running        # 「実行中のディストリビューションはありません」になるまで待つ
+# 4. （任意）WSL を更新する
+wsl --version
+wsl --update
+# 5. Rancher Desktop を起動し、ノードが Ready になるのを待つ
+kubectl --context rancher-desktop get nodes
+```
+
+確認（反映されたと言える条件）:
+
+```powershell
+wsl -d rancher-desktop -- grep -E 'MemTotal|SwapTotal' /proc/meminfo   # MemTotal が約 24 GB、SwapTotal が約 8 GB
+kubectl describe node | Select-String -Pattern 'memory:'               # Capacity / Allocatable の memory が約 24 GiB
+kubectl top node                                                       # 使用率が下がっている
+```
+
+### 電源（スリープと休止を無効にする）
+
+**スリープ・休止の間もクラスタは止まる。** 電源接続時のスリープと休止を「なし」にする（管理者でなくてよい）。
+
+```powershell
+powercfg /change standby-timeout-ac 0     # 電源接続時のスリープ: なし
+powercfg /change hibernate-timeout-ac 0   # 電源接続時の休止: なし
+```
+
+- 画面では「設定」→「システム」→「電源」で、電源接続時のスリープを「なし」にする。
+- ノート PC なら、カバーを閉じたときの動作（電源接続時）も「何もしない」にする。
+- 場中に Windows Update で再起動させない設定と、Rancher Desktop のログオン時の自動起動は、AST の手順書（ホスト側の死活監視の Runbook）にある。
 
 ## 起動（Git Bash 推奨。1 コマンド）
 
