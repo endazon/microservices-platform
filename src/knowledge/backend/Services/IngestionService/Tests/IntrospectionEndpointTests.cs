@@ -73,6 +73,8 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
     {
         var hosted = _factory.Services.GetServices<IHostedService>().Select(s => s.GetType()).ToList();
         hosted.Should().Contain(typeof(IngestionService.Features.Ingestion.ReembedPending.EmbeddingPendingReembedHostedService));
+        // #1924 の監査: 比べる相手（発見の器）が在ることも主張する（無いと IndexOf が -1 で順序の主張が素通りする）。
+        hosted.Should().Contain(typeof(QdrantKeywordIndexDiscoveryHostedService));
         hosted.IndexOf(typeof(IngestionService.Features.Ingestion.ReembedPending.EmbeddingPendingReembedHostedService))
             .Should().BeGreaterThan(hosted.IndexOf(typeof(QdrantKeywordIndexDiscoveryHostedService)));
         _factory.Services.GetRequiredService<IngestionService.Common.Observability.EmbeddingPendingMetrics>()

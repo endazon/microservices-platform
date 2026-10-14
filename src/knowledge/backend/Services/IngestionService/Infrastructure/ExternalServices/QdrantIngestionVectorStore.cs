@@ -517,7 +517,7 @@ public class QdrantIngestionVectorStore(
     public async Task<long> CountEmbeddingPendingAsync(CancellationToken ct = default) =>
         (long)await client.CountAsync(_lexical, BuildEmbeddingPendingFilter(), exact: true, cancellationToken: ct);
 
-    public async Task<IReadOnlyList<EmbeddingPendingPoint>> ListEmbeddingPendingAsync(
+    public async Task<EmbeddingPendingPage> ListEmbeddingPendingAsync(
         int limit, CancellationToken ct = default)
     {
         var page = await client.ScrollAsync(_lexical,
@@ -527,9 +527,17 @@ public class QdrantIngestionVectorStore(
             vectorsSelector: new WithVectorsSelector { Enable = false },
             cancellationToken: ct);
 
-        return [.. page.Result
-            .Select(p => ReadEmbeddingPendingPoint(p.Id, p.Payload))
-            .OfType<EmbeddingPendingPoint>()];
+        var points = new List<EmbeddingPendingPoint>();
+        var unreadable = new List<string>();
+        foreach (var p in page.Result)
+        {
+            if (ReadEmbeddingPendingPoint(p.Id, p.Payload) is { } point)
+                points.Add(point);
+            else
+                unreadable.Add(p.Id.HasUuid ? p.Id.Uuid : p.Id.Num.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        return new EmbeddingPendingPage(points, unreadable);
     }
 
     public async Task<EmbeddingPendingPoint?> GetEmbeddingPendingAsync(Guid pointId, CancellationToken ct = default)

@@ -70,6 +70,8 @@ related_specs:
 
 - `EmbeddingPendingReembedHostedService` が起動直後と以後 `Ingestion:EmbeddingPending:IntervalSeconds`（既定 300 秒）ごとに 1 周期を走らせる。
   1 周期で拾うのは `Ingestion:EmbeddingPending:BatchSize`（既定 64）点まで。正の整数でない値は既定へ倒す。
+- 高機密として残した点と、印はあるのに復元できない点（文書 ID が読めない等）は ID を覚え、その数だけ多く一覧を読んで読み飛ばす
+  （1 周期の枠を占めさせない。#1924 の監査・レビュー）。復元できない点は件数と ID（5 件まで）を周期の Warning に出す。
 - 各点について: 属性を `LexicalIndexPolicy` で判定し直し、**高機密なら埋め込みを呼ばずに残す**（二重の守り。件数に残り続けるので決定 3 の Warning で見える）。
   埋め込み → **書く直前に点を読み直す**（無い・更新日時か本文が変わっていたら捨てる。取り込みが同じ文書を書き直した場合に古い本文を主へ書かない）→
   主へ同じ ID・同じペイロード（チャンクは `UpsertChunkAsync`、メタデータ点は `UpsertMetadataPointAsync`）→ 語彙索引から**その ID で印を持つ点だけ**を消す。
@@ -120,7 +122,7 @@ related_specs:
 
 ## 試験
 
-受け入れ基準と試験の対応は作業仕様書 §受け入れ基準と試験の写像 と `docs/tests/FR-02_ingestion.md`（T-09・T-11・T-13〜T-15 の改定、T-40〜T-48）。
+受け入れ基準と試験の対応は作業仕様書 §受け入れ基準と試験の写像 と `docs/tests/FR-02_ingestion.md`（T-13・T-14 の改定、T-40〜T-48）。
 
 ## 関連
 

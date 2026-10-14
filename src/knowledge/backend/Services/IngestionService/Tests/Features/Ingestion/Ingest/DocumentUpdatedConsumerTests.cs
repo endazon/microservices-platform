@@ -40,7 +40,8 @@ public class DocumentUpdatedConsumerTests
         IIngestionVectorStore store,
         IDocumentContentReader reader,
         IEmbeddingService? embed = null,
-        ILogger<DocumentUpdatedConsumer>? logger = null)
+        ILogger<DocumentUpdatedConsumer>? logger = null,
+        IngestionService.Common.Observability.EmbeddingPendingMetrics? metrics = null)
     {
         var completed = new RecordingCompletedPublisher();
         var consumer = new DocumentUpdatedConsumer(
@@ -52,7 +53,7 @@ public class DocumentUpdatedConsumerTests
             ConsumerTimeoutsForTests.Calls(),
             ConsumerTimeoutsForTests.Timeouts,
             TimeProvider.System,
-            TestMeterFactory.NewEmbeddingPendingMetrics(),
+            metrics ?? TestMeterFactory.NewEmbeddingPendingMetrics(),
             logger ?? NullLogger<DocumentUpdatedConsumer>.Instance);
         return (consumer, completed);
     }
@@ -186,7 +187,7 @@ public class DocumentUpdatedConsumerTests
         store.Upserts.Should().OnlyContain(u => u.Collection == "knowledge_chunks_voyage_3_5");
     }
 
-    // T-09 (FR-02, FR-05, ADR-0016): 埋め込みが恒久的に拒否された（`Embedded=false`・`Retryable=false`）public / internal の
+    // T-40 (FR-02, FR-05, ADR-0016。旧コメントの T-09): 埋め込みが恒久的に拒否された（`Embedded=false`・`Retryable=false`）public / internal の
     // チャンクは、ベクトルのコレクションへは書かない。
     // ［2026-10-14 / #1908］[[IADR-0536]] 決定 1: 従前は「スキップし語彙索引へも回さない」（[[IADR-0497]] 決定 2）だった。
     // **今は全文だけの点（埋め込み待ち・理由 `rejected`）として語彙索引へ書く。** 高機密の口（印なし）へは書かない。
@@ -209,7 +210,7 @@ public class DocumentUpdatedConsumerTests
         completed.Published.Should().ContainSingle().Which.ChunkCount.Should().Be(2);
     }
 
-    // T-11 (FR-02, Issue #98): 一時的な埋め込み障害（`Retryable=true`。鍵の未設定を含む）。
+    // T-40 (FR-02, Issue #98。旧コメントの T-11): 一時的な埋め込み障害（`Retryable=true`。鍵の未設定を含む）。
     // ［2026-10-14 / #1908］[[IADR-0536]] 決定 1: 従前は例外を送出して再試行の後 DLQ へ送り、**点を 1 つも書かなかった**
     // （PoC で鍵が無い間、AST の情報収集が全文検索でも 0 件）。**今は例外を投げず、全文だけの点（理由 `transient`）として
     // 語彙索引へ書き、完了イベントを出す**（鍵の投入後に埋め直す）。
@@ -254,6 +255,26 @@ public class DocumentUpdatedConsumerTests
         store.Upserts.Select(u => u.ChunkId).Should().NotIntersectWith(store.PendingUpserts.Select(u => u.ChunkId));
         embed.Calls.Should().Be(2, "失敗の後は埋め込みを呼ばない");
         completed.Published.Should().ContainSingle().Which.ChunkCount.Should().Be(3);
+    }
+
+    // T-40（#1924 の監査）: 待ちの点として書いた数を、理由のタグつきで計数 `ingestion.embedding_pending.written` に数える。
+    [Fact]
+    public async Task Consumer_ShouldCountEmbeddingPendingWrites_ByReason()
+    {
+        using var factory = new TestMeterFactory();
+        var metrics = new IngestionService.Common.Observability.EmbeddingPendingMetrics(factory);
+        var written = new List<(long Value, object? Reason)>();
+        using var listener = IngestionService.Tests.Features.Ingestion.ReembedPending.EmbeddingPendingReembedderTests
+            .Listen(factory, IngestionService.Common.Observability.EmbeddingPendingMetrics.WrittenCounterName,
+                (v, tags) => written.Add((v, tags.Single(t => t.Key ==
+                    IngestionService.Common.Observability.EmbeddingPendingMetrics.ReasonTag).Value)));
+        var store = new RecordingVectorStore();
+        var (consumer, _) = Build(store, new StubContentReader("# A\n\nまる\n\n# B\n\nばつ"),
+            new RecordingEmbeddingService(embedded: false, retryable: true), metrics: metrics);
+
+        await HandleAsync(consumer, SampleEvent());
+
+        written.Should().Equal((2L, (object?)EmbeddingPendingReasons.Transient));
     }
 
     // T-10 (FR-02, FR-05, ADR-0016): 取り込み冒頭で全モデル別コレクションから当該文書を削除する
@@ -318,7 +339,7 @@ public class DocumentUpdatedConsumerTests
         store.MetadataUpserts.Should().BeEmpty();
     }
 
-    // T-14 (FR-05, ADR-0016, [[IADR-0358]] 決定 7): 本文が無いことを理由に送信制御を緩めない —— 埋め込みが拒否されたら
+    // T-13 (FR-05, ADR-0016, [[IADR-0358]] 決定 7。旧コメントの T-14): 本文が無いことを理由に送信制御を緩めない —— 埋め込みが拒否されたら
     // ベクトルのコレクションのメタデータ点は作らない（題名も文書の内容である）。
     // ［2026-10-14 / #1908］[[IADR-0536]] 決定 1: 拒否されたメタデータ点は全文だけの点（理由 `rejected`）として語彙索引へ書く。
     [Fact]
@@ -341,7 +362,7 @@ public class DocumentUpdatedConsumerTests
         completed.Published.Should().ContainSingle();
     }
 
-    // T-15 (FR-02, #98 と同じ規則): 本文なしの経路でも一時障害を恒久スキップにしない。
+    // T-14 (FR-02, #98 と同じ規則。旧コメントの T-15): 本文なしの経路でも一時障害を恒久スキップにしない。
     // ［2026-10-14 / #1908］[[IADR-0536]] 決定 1: 例外を投げず、全文だけのメタデータ点（理由 `transient`）を書いて完了する。
     [Fact]
     public async Task Consumer_ShouldWritePendingMetadataPoint_WhenMetadataEmbeddingTransientFailure()

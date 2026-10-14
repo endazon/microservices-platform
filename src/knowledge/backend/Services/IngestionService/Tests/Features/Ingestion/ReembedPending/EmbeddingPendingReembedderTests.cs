@@ -116,11 +116,14 @@ public class EmbeddingPendingReembedderTests
     {
         var gone = Point(0);
         var changed = Point(1);
-        var store = new PendingStore(gone, changed)
+        var rewritten = Point(2);
+        var store = new PendingStore(gone, changed, rewritten)
         {
-            // 埋め込みの最中に取り込みが同じ文書を書き直した: 1 点目は削除済み、2 点目は更新日時が新しい。
+            // 埋め込みの最中に取り込みが同じ文書を書き直した: 1 点目は削除済み、2 点目は更新日時が新しい、
+            // 3 点目は更新日時が同じまま本文だけが変わった（#1924 の監査: 本文の比較も固定する）。
             OnGet = (id, current) => id == gone.PointId ? null
-                : current with { UpdatedAt = UpdatedAt.AddMinutes(5) },
+                : id == changed.PointId ? current with { UpdatedAt = UpdatedAt.AddMinutes(5) }
+                : current with { Text = "書き直した本文" },
         };
         var (reembedder, _, _) = Build(store, new FixedEmbedding(embedded: true));
 
@@ -180,6 +183,95 @@ public class EmbeddingPendingReembedderTests
         sweep.Reembedded.Should().Be(1);
         metrics.LastPending.Should().Be(1, "途中で書かれた待ちの点を数える");
         logger.Warnings.Should().ContainSingle().Which.Should().Contain("1 point(s)");
+    }
+
+    // T-43（#1924 の監査）: 高機密として残した点が 1 周期の上限以上あっても、周期は進む（残した点が枠を占めない）。
+    [Fact]
+    public async Task 高機密として残した点が上限を占めても埋めてよい点を拾う()
+    {
+        var restricted = Point(0, "restricted");
+        var internalPoint = Point(1);
+        var store = new PendingStore(restricted, internalPoint);
+        var (reembedder, _, _) = Build(store, new FixedEmbedding(embedded: true), batchSize: 1);
+
+        var sweep = await reembedder.SweepAsync(Ct);
+
+        sweep.Reembedded.Should().Be(1, "1 周期目で埋めてよい点へ届く");
+        sweep.HeldBack.Should().Be(1);
+        store.PrimaryChunks.Should().ContainSingle().Which.PointId.Should().Be(internalPoint.PointId);
+        store.Pending.Should().ContainSingle().Which.PointId.Should().Be(restricted.PointId);
+    }
+
+    // T-45（#1924 のレビュー）: 印はあるのに復元できない点は黙って落とさない。件数と ID（数件）を Warning に出し、
+    // 枠を占めさせない（数える側は数え続けるので、出さないとゲージが 0 にならない理由が見えない）。
+    [Fact]
+    public async Task 復元できない点は件数とIDをWarningへ出し枠を占めない()
+    {
+        var store = new PendingStore(Point(0));
+        store.Unreadable.Add("broken-1");
+        var (reembedder, metrics, logger) = Build(store, new FixedEmbedding(embedded: true), batchSize: 1);
+
+        var sweep = await reembedder.SweepAsync(Ct);
+
+        sweep.Reembedded.Should().Be(1);
+        metrics.LastPending.Should().Be(1);
+        logger.Warnings.Should().ContainSingle().Which.Should()
+            .Contain("unreadable 1").And.Contain("broken-1");
+    }
+
+    // T-45（#1924 の監査）: 埋め直した数を計数 `ingestion.embedding_pending.reembedded` で数える。
+    [Fact]
+    public async Task 埋め直した数を計数で数える()
+    {
+        using var factory = new TestMeterFactory();
+        var metrics = new EmbeddingPendingMetrics(factory);
+        var reembedded = new List<long>();
+        using var listener = Listen(factory, EmbeddingPendingMetrics.ReembeddedCounterName, (v, _) => reembedded.Add(v));
+        var store = new PendingStore(Point(0), Point(1));
+        var reembedder = new EmbeddingPendingReembedder(store, new FixedEmbedding(embedded: true), metrics,
+            EmbeddingPendingOptions.Default, IngestionTimeouts.Default, new CapturingLogger());
+
+        await reembedder.SweepAsync(Ct);
+
+        reembedded.Should().Equal(2);
+    }
+
+    // T-45（#1924 の監査）: 常駐の器は、周期が例外を出しても Warning を残して次の周期へ進み、ホストを止めない。
+    [Fact]
+    public async Task 周期が例外を出しても器は次の周期へ進む()
+    {
+        var store = new PendingStore(Point(0)) { CountFailures = 1 };
+        var options = EmbeddingPendingOptions.Default with { Interval = TimeSpan.FromMilliseconds(20) };
+        var reembedder = new EmbeddingPendingReembedder(store, new FixedEmbedding(embedded: true),
+            TestMeterFactory.NewEmbeddingPendingMetrics(), options, IngestionTimeouts.Default, new CapturingLogger());
+        var hostLogger = new CapturingHostLogger();
+        var hosted = new EmbeddingPendingReembedHostedService(reembedder, options, TimeProvider.System, hostLogger);
+
+        await hosted.StartAsync(Ct);
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (store.Pending.Count > 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(20, Ct);
+        await hosted.StopAsync(Ct);
+
+        hostLogger.Warnings.Should().ContainSingle().Which.Should().Contain("re-embed cycle failed");
+        store.Pending.Should().BeEmpty("次の周期で埋め直した");
+        hosted.ExecuteTask!.IsFaulted.Should().BeFalse("例外でホストを止めない");
+    }
+
+    internal static MeterListener Listen(TestMeterFactory factory, string instrumentName,
+        Action<long, KeyValuePair<string, object?>[]> onMeasurement)
+    {
+        var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, l) =>
+            {
+                if (instrument.Meter.Scope == factory && instrument.Name == instrumentName)
+                    l.EnableMeasurementEvents(instrument);
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, tags, _) => onMeasurement(value, tags.ToArray()));
+        listener.Start();
+        return listener;
     }
 
     // T-45: ゲージは数えるまで系列を出さない（0 を出すと「待ちなし」と読める）。数えた後は値を出す。
@@ -264,13 +356,29 @@ public class EmbeddingPendingReembedderTests
             return Task.CompletedTask;
         }
 
-        public Task<long> CountEmbeddingPendingAsync(CancellationToken ct = default) =>
-            Task.FromResult((long)Pending.Count);
+        // 印はあるのに復元できない点（一覧の先頭に並ぶ。数える側は数える）。
+        public List<string> Unreadable { get; } = [];
 
-        public Task<IReadOnlyList<EmbeddingPendingPoint>> ListEmbeddingPendingAsync(int limit, CancellationToken ct = default)
+        // 数える呼び出しで投げる回数（周期の失敗を模す）。
+        public int CountFailures { get; set; }
+        public int CountCalls { get; private set; }
+
+        public Task<long> CountEmbeddingPendingAsync(CancellationToken ct = default)
+        {
+            CountCalls++;
+            if (CountFailures > 0)
+            {
+                CountFailures--;
+                throw new InvalidOperationException("qdrant unreachable (test)");
+            }
+            return Task.FromResult((long)(Pending.Count + Unreadable.Count));
+        }
+
+        public Task<EmbeddingPendingPage> ListEmbeddingPendingAsync(int limit, CancellationToken ct = default)
         {
             ListCalls++;
-            return Task.FromResult<IReadOnlyList<EmbeddingPendingPoint>>([.. Pending.Take(limit)]);
+            var unreadable = Unreadable.Take(limit).ToList();
+            return Task.FromResult(new EmbeddingPendingPage([.. Pending.Take(limit - unreadable.Count)], unreadable));
         }
 
         public Task<EmbeddingPendingPoint?> GetEmbeddingPendingAsync(Guid pointId, CancellationToken ct = default)
@@ -324,6 +432,21 @@ public class EmbeddingPendingReembedderTests
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class CapturingHostLogger : ILogger<EmbeddingPendingReembedHostedService>
+    {
+        public List<string> Warnings { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning) lock (Warnings) Warnings.Add(formatter(state, exception));
+        }
     }
 
     private sealed class CapturingLogger : ILogger<EmbeddingPendingReembedder>

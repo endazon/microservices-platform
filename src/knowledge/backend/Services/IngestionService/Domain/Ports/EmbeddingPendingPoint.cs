@@ -21,6 +21,15 @@ public sealed record EmbeddingPendingPoint(
     public bool IsMetadataPoint => ChunkIndex == ChunkId.MetadataChunkIndex;
 }
 
+// FR-02, [[IADR-0536]] 決定 2 (#1908, #1924): 一覧の 1 ページ。`UnreadableIds` は印があるのに復元できなかった点の ID（文字列）。
+// `Count` は読んだ点の総数（復元できた点 ＋ できなかった点）であり、ページが満杯かの判定に使う。
+public sealed record EmbeddingPendingPage(IReadOnlyList<EmbeddingPendingPoint> Points, IReadOnlyList<string> UnreadableIds)
+{
+    public static EmbeddingPendingPage Empty { get; } = new([], []);
+
+    public int Count => Points.Count + UnreadableIds.Count;
+}
+
 // FR-02, [[IADR-0536]] 決定 1 (#1908): 埋め込み待ちになった理由（閉じた値域。計器のタグとログに載る）。
 public static class EmbeddingPendingReasons
 {

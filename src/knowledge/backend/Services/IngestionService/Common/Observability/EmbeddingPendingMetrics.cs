@@ -11,8 +11,9 @@ namespace IngestionService.Common.Observability;
 // これを受け入れる代わりに、待ちの件数を計器とログで読めるようにすることを求めた。**0 が正常である。**
 //
 // - ゲージ `ingestion.embedding_pending.points`（Prometheus では `ingestion_embedding_pending_points`）: 埋め直しの器が
-//   周期ごとに数えた語彙索引の待ちの点の数。**まだ数えていない（起動直後・Qdrant に届かない）間は系列を出さない**
-//   （0 を出すと「待ちなし」と読めてしまう。不在は `absent()` で読む）。
+//   周期ごとに数えた語彙索引の待ちの点の数。**起動してからまだ 1 度も数えていない間は系列を出さない**
+//   （0 を出すと「待ちなし」と読めてしまう。不在は `absent()` で読む）。一度数えた後に周期が例外で抜けた
+//   （Qdrant に届かない等）ときは**前回の値を残す**（[[IADR-0536]] §結果。その間は常駐の器の Warning を合わせて読む）。
 // - 計数 `ingestion.embedding_pending.written`: 取り込みが待ちの点として書いた数（タグ `ingestion.embedding_pending_reason` = transient / rejected）。
 // - 計数 `ingestion.embedding_pending.reembedded`: 埋め直して主へ移した数。
 //

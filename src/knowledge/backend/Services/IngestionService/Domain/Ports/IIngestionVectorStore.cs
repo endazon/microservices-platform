@@ -124,8 +124,10 @@ public interface IIngestionVectorStore
     Task<long> CountEmbeddingPendingAsync(CancellationToken ct = default) => Task.FromResult(0L);
 
     // FR-02, [[IADR-0536]] 決定 2 (#1908): 埋め込み待ちの点を最大 `limit` 件読む（ベクトルは読まない）。既定実装は空。
-    Task<IReadOnlyList<EmbeddingPendingPoint>> ListEmbeddingPendingAsync(int limit, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<EmbeddingPendingPoint>>([]);
+    // 印はあるのにペイロードから復元できない点（文書 ID が読めない等）は、落とさずに ID を `UnreadableIds` へ返す
+    // （#1924 のレビュー。数える側〔`CountEmbeddingPendingAsync`〕は数え続けるので、黙って落とすとゲージが永久に 0 にならない）。
+    Task<EmbeddingPendingPage> ListEmbeddingPendingAsync(int limit, CancellationToken ct = default)
+        => Task.FromResult(EmbeddingPendingPage.Empty);
 
     // FR-02, [[IADR-0536]] 決定 2 (#1908): 1 点を読み直す（埋め直しの直前の再確認。無い・待ちでなければ null）。既定実装は null。
     Task<EmbeddingPendingPoint?> GetEmbeddingPendingAsync(Guid pointId, CancellationToken ct = default)

@@ -30,6 +30,14 @@ public sealed class EmbeddingPendingReembedder(
 {
     private bool _indexEnsured;
 
+    // 高機密として残した点・復元できなかった点の ID（プロセス内の記憶。#1924 の監査とレビュー）。
+    // 一覧の取得で読み飛ばし、周期の枠を占めさせない。
+    private readonly HashSet<Guid> _heldBack = [];
+    private readonly HashSet<string> _unreadable = new(StringComparer.Ordinal);
+
+    // 復元できなかった点の ID を Warning に出す件数の上限（全部は出さない）。
+    internal const int UnreadableIdsInLog = 5;
+
     public async Task<EmbeddingPendingSweep> SweepAsync(CancellationToken ct)
     {
         await EnsureIndexOnceAsync(ct);
@@ -39,20 +47,14 @@ public sealed class EmbeddingPendingReembedder(
         if (pending == 0)
             return new EmbeddingPendingSweep(0, 0, 0, null);
 
-        var points = await WithTimeoutAsync(timeouts.VectorStore,
-            t => store.ListEmbeddingPendingAsync(options.BatchSize, t), ct);
+        var points = await ListEmbeddableAsync(ct);
 
         var reembedded = 0;
-        var heldBack = 0;
+        var heldBack = _heldBack.Count;
+        var unreadable = _unreadable.Count;
         string? stoppedBy = null;
         foreach (var point in points)
         {
-            if (LexicalIndexPolicy.IsLexicalOnly(point.Attributes))
-            {
-                heldBack++;
-                continue;
-            }
-
             var confidentiality = point.Attributes.GetValueOrDefault(ConfidentialityLevels.AttributeKey);
             var embedding = await WithTimeoutAsync(timeouts.Embedding,
                 t => embed.EmbedAsync(point.Text, confidentiality, t), ct);
@@ -84,9 +86,11 @@ public sealed class EmbeddingPendingReembedder(
             logger.LogWarning(
                 "{Remaining} point(s) in the lexical index are awaiting embedding (full-text only: keyword/hybrid search "
                 + "finds them, semantic search does not). Re-embedded {Reembedded} this cycle; stopped by {StoppedBy}; "
-                + "held back as high-confidentiality {HeldBack}. Check the embedding provider (e.g. the Voyage API key) "
+                + "held back as high-confidentiality {HeldBack}; unreadable {Unreadable} (e.g. {UnreadableIds}). "
+                + "Check the embedding provider (e.g. the Voyage API key) "
                 + "— see docs/operations/voyage-embedding-key-runbook.md (IADR-0536)",
-                remaining, reembedded, stoppedBy ?? "(none)", heldBack);
+                remaining, reembedded, stoppedBy ?? "(none)", heldBack, unreadable,
+                string.Join(",", _unreadable.Order(StringComparer.Ordinal).Take(UnreadableIdsInLog)));
         }
         else
         {
@@ -96,6 +100,40 @@ public sealed class EmbeddingPendingReembedder(
         }
 
         return new EmbeddingPendingSweep(pending, reembedded, heldBack, stoppedBy);
+    }
+
+    // 🔴 FR-02, ADR-0127 決定 1, [[IADR-0536]] 決定 2 (#1924 の監査・レビュー): **埋めてよい点を最大 `BatchSize` 点拾う。**
+    // 高機密の属性を持つ点・復元できなかった点は埋めずに残すが、一覧の先頭に居座ると毎周期の枠（`BatchSize`）を占め、
+    // 周期が永久に進まない。そこで残した点の ID を覚え、その数だけ多く読んで読み飛ばす。新しく残す点を見つけて
+    // ページが満杯なら読み直す（読み直すたびに覚えた数が増えるので、ページが満杯でなくなるか新しく残す点が無くなった時点で止まる）。
+    // ページが満杯でなければ待ちの点を全部読んだことになるので、もう無い点を記憶から外す（件数の水増しを残さない）。
+    private async Task<List<EmbeddingPendingPoint>> ListEmbeddableAsync(CancellationToken ct)
+    {
+        while (true)
+        {
+            var limit = options.BatchSize + _heldBack.Count + _unreadable.Count;
+            var page = await WithTimeoutAsync(timeouts.VectorStore,
+                t => store.ListEmbeddingPendingAsync(limit, t), ct);
+
+            var found = false;
+            foreach (var p in page.Points.Where(p => LexicalIndexPolicy.IsLexicalOnly(p.Attributes)))
+                found |= _heldBack.Add(p.PointId);
+            foreach (var id in page.UnreadableIds)
+                found |= _unreadable.Add(id);
+
+            if (found && page.Count >= limit)
+                continue;
+
+            if (page.Count < limit)
+            {
+                _heldBack.IntersectWith(page.Points.Select(p => p.PointId));
+                _unreadable.IntersectWith(page.UnreadableIds);
+            }
+
+            return [.. page.Points
+                .Where(p => !_heldBack.Contains(p.PointId))
+                .Take(options.BatchSize)];
+        }
     }
 
     // 主へ書く（チャンクとメタデータ点で口を分ける。ペイロードは書いたときの値をそのまま運ぶ）。
