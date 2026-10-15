@@ -27,7 +27,7 @@ issue: "#1935"
 | runbook ①: 時間範囲・job を指定して `query_range` をファイルへ書き出す（10-14 の例） | `docs/operations/loki-log-read-runbook.md` §4。道具は `scripts/export-loki-logs.js` |
 | runbook ②: 前段を通る資格（Secret 名と取得コマンドだけ） | 同 §2 |
 | runbook ③: 保持期間と永続化の確認 | 同 §1・§5 |
-| 読み取り専用の補助スクリプト（`live-scripts.json` の規約・ページ送りを試験で固定） | `scripts/export-loki-logs.js`・`live-scripts.json`（`live`・offline は `--help`）・`scripts.repo.test.js` の #1935 節（7 件） |
+| 読み取り専用の補助スクリプト（`live-scripts.json` の規約・ページ送りを試験で固定） | `scripts/export-loki-logs.js`・`live-scripts.json`（`live`・offline は `--help`）・`scripts.repo.test.js` の #1935 節（8 件） |
 | サービス名・ポート・Secret 名を描画から確かめる | 下の「描画で確かめた値」 |
 
 ## 母集合（規則 9・10）
@@ -71,7 +71,7 @@ issue: "#1935"
 
 ## 試験（`scripts.repo.test.js` の #1935 節）と変異
 
-- 7 件を置いた。ページ送り（limit 4・5・3・2・1）・素朴なページ送りの陰性対照・同じ時刻の取り直しの上限・`--summary` と 401 / 403 の文言・時刻と引数・main の書き出しと上書きの拒否・前段の列挙との突き合わせ。
+- 8 件を置いた（［2026-10-15 追記 / AI レビューの 🟡］途中の失敗で書きかけを `<out>.partial` へ改名し不完全と名指しする 1 件を足した。改名を外す変異で赤）。ページ送り（limit 4・5・3・2・1）・素朴なページ送りの陰性対照・同じ時刻の取り直しの上限・`--summary` と 401 / 403 の文言・時刻と引数・main の書き出しと上書きの拒否・前段の列挙との突き合わせ。
 - 変異（1 か所ずつ戻して、#1935 節だけを走らせた）:
 
 | 変異 | 結果 |

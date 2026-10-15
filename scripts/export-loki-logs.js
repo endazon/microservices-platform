@@ -22,6 +22,8 @@
  * 稼働クラスタへ当たる（localhost の Loki）ため、--live か LIVE=1 が無ければ何もせずに exit 3（#1550。
  * scripts/live-scripts.json）。--help だけは指定なしで動く。
  *
+ * 途中で失敗したときは、書きかけのファイルを `<out>.partial` へ改名し、不完全だと標準エラーに名指しする（完了した写しと取り違えない）。
+ *
  * 終了コード: 0 = 成功 / 1 = 失敗（HTTP の誤り・取りこぼしの恐れ・出力先が既に在る等） / 2 = 引数の誤り / 3 = 明示の指定なし。
  */
 
@@ -251,15 +253,28 @@ async function main(argv, env = process.env, fetchFn = (url, init) => fetchWithi
     const fd = fs.openSync(o.out, 'wx', 0o600);
     const hash = crypto.createHash('sha256');
     let r;
+    let written = 0;
     try {
       r = await exportRange(fetchFn, o, (e) => {
         const line = `${JSON.stringify({ ts: formatNs(e.ns), ns: e.ns.toString(), labels: e.labels, line: e.line })}\n`;
         fs.writeSync(fd, line);
         hash.update(line);
+        written += 1;
       });
-    } finally {
+    } catch (e) {
+      // 途中で失敗した書き出しを、完了した写しと取り違えないようにする: `<out>.partial` へ改名し、不完全だとはっきり出す。
       fs.closeSync(fd);
+      let partial = `${o.out}.partial`;
+      try {
+        if (fs.existsSync(partial)) throw new Error('exists');
+        fs.renameSync(o.out, partial);
+      } catch {
+        partial = o.out; // 改名できなければ元の名前のまま残す（それでも不完全だと名指しする）
+      }
+      process.stderr.write(`[${NAME}] 部分的なファイル ${partial} が残った（${written} 行。保全は不完全）。原因を直して別の出力先へ取り直す\n`);
+      throw e;
     }
+    fs.closeSync(fd);
     process.stdout.write(`範囲: ${range}\nクエリ: ${o.query}\n書き出し: ${o.out}（${r.count} 行・${r.pages} ページ）\n`);
     process.stdout.write(`最古の行: ${r.first === null ? '無し' : formatNs(r.first)}\n最新の行: ${r.last === null ? '無し' : formatNs(r.last)}\nsha256: ${hash.digest('hex')}\n`);
     return 0;

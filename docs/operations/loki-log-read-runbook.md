@@ -34,6 +34,13 @@ issues: [#1935, #1842, #1867]
 | トークン | Secret `observability-gate`（鍵 `writer` / `reader`） | 起動器（`OBSERVABILITY=1`）が乱数で作り、再実行では引き継ぐ |
 | 保存先 | PVC `loki-data`（2Gi・`local-path`）→ `/tmp/loki` | chunks・index・WAL（`/tmp/loki/wal`）がすべてこの中にある。永続化は既定オン（`PERSIST=0` のときだけ外れる） |
 
+**前提（手元の環境）**:
+
+- `kubectl` が稼働クラスタへ繋がり、名前空間 `platform-infra` の Secret の get・`pods/portforward`・`pods/exec` ができる。
+- §3 以降の `curl -H @<(…)`（プロセス置換）は **bash / zsh 専用**である。sh・dash・PowerShell では動かないので、bash で実行する（WSL の既定のシェルでよい）。
+- §4 の読み方の例と `label/job/values` の一覧は **jq が前提**である（`jq --version` で確かめる。無ければ `sudo apt-get install -y jq`）。書き出し（`scripts/export-loki-logs.js`）そのものは Node だけで動き、jq は要らない。
+- MSP のリポジトリの直下で Node（18 以降）を実行できる。
+
 **運用者の読み取りの経路は 2 つある。**
 
 | 経路 | いつ使うか | 何が通るか |
@@ -287,5 +294,6 @@ unset LOKI_TOKEN
 | `HTTP 400: Loki が要求を拒んだ` | LogQL の誤り、または範囲が 30 日と 1 時間を超えている。本文を見て範囲を分ける |
 | `Loki へ要求できなかった（port-forward は動いているか）` | port-forward が落ちている。§3 を立て直す |
 | `--from は RFC 3339 の時差つきの時刻で与える` | `+09:00` か `Z` を付ける |
+| `部分的なファイル <出力先>.partial が残った（… 行。保全は不完全）` | 書き出しが途中で失敗した（直前の行に原因が出る）。`.partial` は完了した写しではない。原因を直し、別の出力先へ範囲全体を取り直す。`.partial` は取り直しが済んだら消す |
 | `出力先が既に在る（上書きしない）` | 別の名前にするか、前の写しを退避してから消す |
 | `同じ時刻（…）に 5000 件以上の行があり先へ進めない` | 同じナノ秒に 5000 件を超える行がある。範囲を分けても読めない。Loki の `max_entries_limit_per_query` を一時的に上げる判断が要る（設定の変更なので、運用者だけで決めない） |

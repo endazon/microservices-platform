@@ -16424,6 +16424,30 @@ server.listen(0, '127.0.0.1', async () => {
       }
     });
 
+    ok('#1935 export-loki-logs: 書き出しが途中で失敗したら、途中のファイルを <out>.partial へ改名し、不完全だと名指しして非 0 で終わる', () => {
+      const dir = fsLx.mkdtempSync(pathLx.join(osLx.tmpdir(), 'lx-'));
+      try {
+        const out = pathLx.join(dir, 'o.jsonl');
+        const argv = JSON.stringify(['--from', '1970-01-01T00:00:00.000001Z', '--to', '1970-01-01T00:00:00.000002Z', '--out', out, '--limit', '4', '--url', 'http://x']);
+        // 2 ページ目で前段が 401 を返す（トークンを回した・port-forward の先が替わった等を模す）。
+        const body = `let n = 0; const inner = globalThis.__fake;
+          const flaky = async (u, i) => (++n >= 2 ? { ok: false, status: 401, text: async () => 'no' } : inner(u, i));
+          const errs = []; const w = process.stderr.write.bind(process.stderr); process.stderr.write = (x) => { errs.push(String(x)); return true; };
+          const code = await lx.main(${argv}, { LOKI_TOKEN: 'abc' }, flaky);
+          process.stderr.write = w;
+          console.log(JSON.stringify({ code, errs: errs.join('') }));`;
+        const r = runLx(body, ENTRIES_LX);
+        assert.strictEqual(r.code, 1);
+        assert.ok(!fsLx.existsSync(out), '完了した写しと同じ名前のファイルが残っている');
+        const partial = fsLx.readFileSync(`${out}.partial`, 'utf8').trim().split('\n');
+        assert.strictEqual(partial.length, 4, '1 ページ目の 4 行が .partial に残っていない');
+        assert.match(r.errs, /部分的なファイル .*o\.jsonl\.partial が残った（4 行。保全は不完全）/);
+        assert.match(r.errs, /HTTP 401/);
+      } finally {
+        fsLx.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
     ok('#1935 export-loki-logs: 呼ぶ道は前段（gate）の読み取りの列挙の内側だけ（運用の口・削除 API を呼ばない）', () => {
       const gate = fsLx.readFileSync(pathLx.join(__dirname, '..', 'deploy', 'local', 'observability', 'observability-gate.yaml'), 'utf8');
       const m = /loki\.Caddyfile:[\s\S]*?@reader \{[\s\S]*?method GET\s*\n\s*path ([^\n]+)/.exec(gate);
