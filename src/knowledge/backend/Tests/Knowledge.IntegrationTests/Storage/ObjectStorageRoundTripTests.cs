@@ -193,6 +193,39 @@ public sealed class ObjectStorageRoundTripTests
     }
 
     // 警告以上の行だけを控える最小のダブル（本プロジェクトは記録用ロガーを持たない）。
+    // FR-06, [[IADR-0549]] 決定 3 (#1931 項目 3): **存在確認は実ストア（SeaweedFS）でキーの欠落とバケットの欠落を見分ける。**
+    // HEAD の 404 は両者で同じなので、範囲 0-0 の GET のエラーコードで決める（単体側は SDK の呼び出しの形しか見られない）。
+    // 消した（delete marker が積まれた）キーも「無い」。バケットが無いときは「無い」と言わずに投げる。
+    [Fact]
+    public async Task Exists_tells_missing_key_from_missing_bucket()
+    {
+        RequiredServices.SkipUnlessObtainable(RequiredServices.ObjectStorage);
+        var store = await StartUnlessSuppliedAsync();
+        try
+        {
+            var ct = TestContext.Current.CancellationToken;
+            var (s3, options) = await ConnectAsync(store);
+            var client = new S3ObjectStorageClient(s3, options, NullLogger<S3ObjectStorageClient>.Instance);
+
+            (await client.ExistsAsync(StorageUri.Build(options.Bucket, "doc-never/document.md"), ct)).Should().BeFalse();
+
+            var noBucket = () => client.ExistsAsync("storage://no-such-bucket-1931/doc/document.md", ct);
+            (await noBucket.Should().ThrowAsync<AmazonS3Exception>()).Which.ErrorCode.Should().NotBe("NoSuchKey",
+                "バケットが無いのは構成の不調であり、キーの欠落として「無い」と答えてはならない");
+
+            var present = await client.PutTextAsync("doc-exists/document.md", "# 本文", "text/markdown", ct);
+            var deleted = await client.PutTextAsync("doc-deleted/document.md", "# 消す", "text/markdown", ct);
+            await client.DeleteAsync(deleted, ct);
+
+            (await client.ExistsAsync(present, ct)).Should().BeTrue();
+            (await client.ExistsAsync(deleted, ct)).Should().BeFalse();
+        }
+        finally
+        {
+            if (store is not null) await store.DisposeAsync();
+        }
+    }
+
     private sealed class WarningCountingLogger : Microsoft.Extensions.Logging.ILogger<S3ObjectStorageClient>
     {
         public List<string> Warnings { get; } = [];

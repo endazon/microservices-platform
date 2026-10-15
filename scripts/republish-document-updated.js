@@ -835,6 +835,10 @@ module.exports = {
   rebaselineDlq,
   summarizeDryRun,
   formatProgress,
+  // #1931 項目 3 / IADR-0549: 本文の無い文書の一括アーカイブの駆動器（archive-bodyless-documents.js）が同じ I/O を使う。
+  makeIo,
+  waitReachable,
+  readQueueDepths,
 };
 
 if (require.main === module) {

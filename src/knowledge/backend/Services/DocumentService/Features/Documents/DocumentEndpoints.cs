@@ -2,6 +2,7 @@ using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents.AddTag;
 using DocumentService.Features.Documents.Archive;
+using DocumentService.Features.Documents.ArchiveBodyless;
 using DocumentService.Features.Documents.AstStaleCopies;
 using DocumentService.Features.Documents.Create;
 using DocumentService.Features.Documents.Delete;
@@ -105,6 +106,10 @@ public static class DocumentEndpoints
         // FR-02, FR-06, UC-04, ADR-0013, [[IADR-0503]] (#1762): 全文書（または絞った文書）への `DocumentUpdated` の再発行（再索引の手段）。
         // `write` 群（admin / operator）に置き、口の側で `AdminOnly` を積む（管理者だけ。運用者・機械の書き手には開けない）。
         RepublishDocumentUpdatedEndpoint.Map(write);
+
+        // FR-06, UC-03, [[IADR-0549]] (#1931 項目 3): 本文のオブジェクトが無い（NoSuchKey）古い文書の一括アーカイブ（一回限りの管理操作）。
+        // `write` 群に置き、口の側で `AdminOnly` を積む（管理者だけ。SC-05 のアーカイブと同じ基準）。
+        ArchiveBodylessDocumentsEndpoint.Map(write);
 
         return app;
     }

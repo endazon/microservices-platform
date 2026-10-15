@@ -32,6 +32,18 @@ public interface IObjectStorageClient
     // （順序の根拠は IADR-0296 決定 3。台帳を先に消すと、実体だけが不可視のまま残る）。
     Task DeleteAsync(string uri, CancellationToken ct = default);
 
+    // FR-06, [[IADR-0549]] (#1931 項目 3): storage:// URI が指すオブジェクトが**在るか**を、本文を読み出さずに確かめる。
+    //
+    // 🔴 **「無い」と答えるのはキーが無い（NoSuchKey。`ObjectStorageErrors.IsNoSuchKey`）ときだけである。**
+    // バケットが無い・権限が無い・時間切れ・5xx は例外のまま上げる（「無い」に倒さない —— 呼び出し側が
+    // 「無い」を根拠に状態を変える〔アーカイブする〕ので、構成の不調を欠落と取り違えると在る文書まで動かす）。
+    //
+    // 既定の実装は「対応していない」を投げる（試験の偽物が全部これを実装しなくて済むようにするため。
+    // 実クライアント〔`S3ObjectStorageClient`〕と縮退クライアント〔`NullObjectStorageClient`〕は自分で実装する）。
+    Task<bool> ExistsAsync(string uri, CancellationToken ct = default) =>
+        throw new NotSupportedException(
+            $"{GetType().Name} はオブジェクトの存在確認（ExistsAsync）に対応していません: {uri}");
+
     // 与えられた URI をこのクライアントで解決（取得）できるか。
     // storage:// スキームかつ実クライアントが構成済みのとき true。
     bool CanResolve(string? uri);
