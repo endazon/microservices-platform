@@ -1,7 +1,7 @@
 // FR-05, FR-06, FR-09, FR-19, NFR-09, NFR-16, UC-03, SC-03, SC-05, ADR-0002, ADR-0004, ADR-0029,
 // ADR-0036, ADR-0054, ADR-0056, ADR-0065, ADR-0070, ADR-0075, IADR-0012, IADR-0041, IADR-0045,
 // IADR-0290, IADR-0379, IADR-0388, IADR-0397, IADR-0400, IADR-0401, IADR-0402 (#1255), ADR-0119 (#1614):
-// 文書台帳の **読み取り 4 口**（［2026-10-15 / #1905・IADR-0541］＋本文の読み取り 1 口。REST `GET /documents`・`/documents/{id}`・`/documents/{id}/versions`・
+// 文書台帳の **読み取り 4 口**（［2026-10-15 / #1905・IADR-0543］＋本文の読み取り 1 口。REST `GET /documents`・`/documents/{id}`・`/documents/{id}/versions`・
 // `/documents/{id}/versions/{version}` と同じ意味論）の gRPC 契約。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）: 所有者は DocumentService。置き場は knowledge ユニットの
@@ -41,7 +41,7 @@ option csharp_namespace = "Knowledge.Contracts.Grpc.Document.V1";
 
 // 文書台帳の読み取り。ServiceCaller（platform-service）を要求する。
 // **書き込み・共有の口はこの面に存在しない** —— 呼び出し元が要らないものを面へ出さない
-// （IADR-0401 決定 2 と同じ作法）。［2026-10-15 / #1905・[[IADR-0541]]］本文の読み取り（`GetDocumentContent`）は
+// （IADR-0401 決定 2 と同じ作法）。［2026-10-15 / #1905・[[IADR-0543]]］本文の読み取り（`GetDocumentContent`）は
 // 呼び出し元（BFF の文書詳細 SC-03）が要るようになったので足した。
 service DocumentRead {
   // 一覧（更新の新しい順・同時刻は ID の降順）。［2026-10-14 / #1923・#1897］**ページで返す**
@@ -58,7 +58,7 @@ service DocumentRead {
   // 特定版の取得。REST `GET /documents/{id}/versions/{version}` と同値。
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
 
-  // FR-06, UC-03, SC-03, ADR-0014, [[IADR-0541]] (#1905): 現行版の本文（正規化 Markdown）。
+  // FR-06, UC-03, SC-03, ADR-0014, [[IADR-0543]] (#1905): 現行版の本文（正規化 Markdown）。
   // 本文の実体はオブジェクトストレージにあり、読むのは**台帳の所有者である文書サービス**である
   // （BFF はストレージの資格情報を持たない）。読めるかの判定は `GetDocument` と同じ（同じ関数を通る）。
   // 文書が無い・読めないは found=false。本文の状態（在る・参照が無い・実体が無い・大きすぎる）は応答の state で返す。
@@ -196,7 +196,7 @@ message GetVersionResponse {
   DocumentVersionSnapshot snapshot = 2;
 }
 
-// FR-06, UC-03, SC-03, [[IADR-0541]] (#1905): 本文の読み取り。
+// FR-06, UC-03, SC-03, [[IADR-0543]] (#1905): 本文の読み取り。
 message GetDocumentContentRequest {
   string document_id = 1;
   // 読み取りの主体（#1614）。省略時は呼び出し元サービス自身。

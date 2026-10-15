@@ -2,7 +2,7 @@ using AwesomeAssertions;
 
 namespace DocumentService.Tests.Features.Documents.GetContent;
 
-// FR-06, UC-03, SC-03, ADR-0014, [[IADR-0541]] (#1905): **正の配備ファイル（helm・compose）で、本文を読む側
+// FR-06, UC-03, SC-03, ADR-0014, [[IADR-0543]] (#1905): **正の配備ファイル（helm・compose）で、本文を読む側
 // （document-service）にオブジェクトストレージが配線されている**ことを固定する。
 //
 // 🔴 #1905 の壊れ方: 本文を読む側（当時は BFF）にストレージが配線されておらず、`AddPlatformObjectStorage` が

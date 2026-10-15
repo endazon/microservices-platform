@@ -17,7 +17,7 @@ namespace Knowledge.Bff.Endpoints;
 // 横断検索（/bff/search）と同じく「ABAC スコープ解決（AuthorizationService）→ 文書取得（DocumentService）」
 // を集約する。利用者スコープに合致しない文書、および不在の文書はいずれも 404 で応答し、存在を秘匿する
 // （deny-by-default・IADR-0009/IADR-0038。「拒否」と「不在」を区別しない）。
-// 本文（正規化 Markdown）は ABAC 判定後に文書サービスから east-west gRPC で受け取る（［2026-10-15 / #1905・[[IADR-0541]]］
+// 本文（正規化 Markdown）は ABAC 判定後に文書サービスから east-west gRPC で受け取る（［2026-10-15 / #1905・[[IADR-0543]]］
 // 以前は BFF がストレージを直接読み、未配備・未設定時は案内文へ縮退していた。縮退は撤去した）。
 //
 // NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0402]] (#1255):
@@ -149,7 +149,7 @@ public static class DocumentBffEndpoints
 
         // 本文（正規化 Markdown）。#1010: read。
         //
-        // FR-06, UC-03, SC-03, ADR-0014, ADR-0029, [[IADR-0541]] (#1905): 🔴 **本文は文書サービスから east-west gRPC で受け取る**
+        // FR-06, UC-03, SC-03, ADR-0014, ADR-0029, [[IADR-0543]] (#1905): 🔴 **本文は文書サービスから east-west gRPC で受け取る**
         // （`DocumentRead.GetDocumentContent`）。BFF はオブジェクトストレージを読まない —— 以前は BFF がストレージを直接読み、
         // helm・compose で未配線のまま `NullObjectStorageClient` へ縮退して**案内文を 200 で返していた**（利用者も監視も壊れていると
         // 気付けない）。ABAC の実施点は従来どおり `FetchAuthorizedAsync`（詳細と同じ判定）であり、後段も同じ主体で再判定する（AND 合成）。

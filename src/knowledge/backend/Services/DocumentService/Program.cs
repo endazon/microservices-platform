@@ -146,7 +146,7 @@ builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurg
 // **REST の 4 端点と east-west gRPC の面（DocumentReadGrpcService）が同じ実体を通る**
 // （判定器を 2 つにしない）。DbContext と同じ scoped にする。
 builder.Services.AddScoped<DocumentReadUseCase>();
-// FR-06, UC-03, SC-03, ADR-0014, [[IADR-0541]] (#1905): 現行版の本文の読み取り（gRPC `GetDocumentContent` の本体）。
+// FR-06, UC-03, SC-03, ADR-0014, [[IADR-0543]] (#1905): 現行版の本文の読み取り（gRPC `GetDocumentContent` の本体）。
 // 読めるかの判定は上の `DocumentReadUseCase` を通る。
 builder.Services.AddScoped<DocumentService.Features.Documents.GetContent.DocumentContentUseCase>();
 // FR-19, NFR-09, 計画 ADR-0086 決定 1, ADR-0119 決定 3, [[IADR-0476]] 追記 (#1628): gRPC `DocumentRead` の本文の

@@ -2,7 +2,7 @@
 title: 文書の本文（/bff/documents/{id}/content）を文書サービスから east-west gRPC で受け取り、案内文の 200 をやめる（#1905）
 type: spec
 status: done
-related_ids: [FR-06, UC-03, SC-03, NFR-09, NFR-16, ADR-0014, ADR-0029, ADR-0075, ADR-0089, ADR-0106, ADR-0119, IADR-0038, IADR-0290, IADR-0379, IADR-0401, IADR-0533, IADR-0537, IADR-0540, IADR-0541]
+related_ids: [FR-06, UC-03, SC-03, NFR-09, NFR-16, ADR-0014, ADR-0029, ADR-0075, ADR-0089, ADR-0106, ADR-0119, IADR-0038, IADR-0290, IADR-0379, IADR-0401, IADR-0533, IADR-0537, IADR-0540, IADR-0543]
 author: claude
 created: 2026-10-15
 updated: 2026-10-15
@@ -19,7 +19,7 @@ issue: "#1905"
 - FR-06（文書管理）・UC-03・SC-03（文書詳細）・NFR-09・NFR-16。
 - ADR-0014（本文はオブジェクトストレージ。アクセスは ABAC 判定を通したサービス経由）・ADR-0029 / ADR-0075（east-west は gRPC）・
   ADR-0089 決定 1（REST の並走を作らない）・ADR-0106（SeaweedFS）・ADR-0119 決定 3（読み取りの主体）。
-- 実装判断の記録: [IADR-0541](../adr/IADR-0541_document-content-via-document-service-grpc.md)。IADR-0038 決定 3 を改める（同 IADR へ日付つき追記）。
+- 実装判断の記録: [IADR-0543](../adr/IADR-0543_document-content-via-document-service-grpc.md)。IADR-0038 決定 3 を改める（同 IADR へ日付つき追記）。
 - 起点: #1905（PoC・2026-10-11。AST#565 の文書で `/content` が 381 バイトの案内文を 200 で返した）。
 
 ## 背景（コードで確認）
@@ -29,7 +29,7 @@ issue: "#1905"
   `NullObjectStorageClient`（`CanResolve` 常に偽）→ 配備では本文が一度も出ていなかった。単体試験は「題名を含む」で緑だった。
 - 文書サービスは helm・compose ともストレージ配線済み。gRPC `DocumentRead` は「本文の口は出していない」（呼び出し元が要らなかった）。
 
-## 決めたこと（要約。詳細は IADR-0541）
+## 決めたこと（要約。詳細は IADR-0543）
 
 1. 本文は文書サービスが読み、BFF は新しい rpc `DocumentRead.GetDocumentContent` で受け取る。BFF はストレージを読まない（`ReadMarkdownAsync` 撤去）。
    読めるかの判定は `DocumentReadUseCase.GetAsync` と同じ関数。BFF の ABAC（`FetchAuthorizedAsync`）を先に通る。

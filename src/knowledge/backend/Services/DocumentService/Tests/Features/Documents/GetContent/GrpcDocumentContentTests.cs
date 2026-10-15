@@ -15,7 +15,7 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace DocumentService.Tests.Features.Documents.GetContent;
 
-// FR-06, UC-03, SC-03, ADR-0014, ADR-0029, ADR-0119 決定 3, [[IADR-0540]], [[IADR-0541]] (#1905):
+// FR-06, UC-03, SC-03, ADR-0014, ADR-0029, ADR-0119 決定 3, [[IADR-0540]], [[IADR-0543]] (#1905):
 // 本文の読み取りの gRPC 面（`DocumentRead.GetDocumentContent`）を**実 Kestrel の h2c ポート**で往復して固定する。
 //
 // 受け入れ基準（作業仕様書 20261015_1905_bff-document-content の写像）:
