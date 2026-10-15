@@ -116,7 +116,6 @@ public class PrivateNoteAiInputPurposeTests
         ai.ExposureKey.Should().Be(DocumentExposure.AiKey);
         ai.UserId.Should().Be("alice", "用途を変えても主体は変わらない");
         ai.Attributes.Should().Contain("department", "dev");
-        ai.ForwardableCredential.Should().BeNull();
     }
 
     // FR-17, ADR-0035: 二段検索の出口も同じ用途で落とす（段は利用者文脈を素通しする）。

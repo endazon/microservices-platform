@@ -156,7 +156,7 @@ DocumentService.Features.Documents.DocumentReadRelayOptions.ThrowIfScalar(builde
 builder.Services.Configure<DocumentService.Features.Documents.DocumentReadRelayOptions>(
     builder.Configuration.GetSection(DocumentService.Features.Documents.DocumentReadRelayOptions.SectionName));
 // FR-05, FR-18, SC-05, ADR-0063 決定 1〜3, ADR-0065 決定 2, 計画 ADR-0086 決定 1, [[IADR-0410]] (#1255):
-// タグ反映の**本体**。🔴 **REST の端点と east-west gRPC の rpc が同じ関数を通る**（判定器を 2 つにしない）。
+// タグ反映の**本体**。east-west gRPC の rpc が呼ぶ（［2026-10-15 / #1902］REST `POST /documents/{id}/tags` は撤去した。判定器は輸送の側に持たない）。
 builder.Services.AddScoped<AddDocumentTagUseCase>();
 // FR-05, FR-18, NFR-09, 計画 ADR-0086 決定 1, [[IADR-0410]] 追記 1 (#1636): gRPC `DocumentTagWrite/AddTag` の本文の
 // 利用者文脈（とロール）を信じる呼び出し元。**未構成なら `graph-service` だけ。構成したら置き換える。**
@@ -351,15 +351,15 @@ app.MapDocumentEndpoints();
 // 🔴 **書き込み・本文・共有の口はこの面に出さない**（呼び出し元が要らないものを面へ出さない）。
 app.MapGrpcService<DocumentReadGrpcService>();
 // FR-05, FR-18, NFR-09, NFR-16, SC-03, SC-05, ADR-0029, ADR-0063, ADR-0075, 計画 ADR-0086 決定 1・3,
-// [[IADR-0044]], [[IADR-0379]], [[IADR-0410]] (#1255): タグ反映の gRPC 面。REST と**同じ本体**
+// [[IADR-0044]], [[IADR-0379]], [[IADR-0410]] (#1255): タグ反映の gRPC 面（［2026-10-15 / #1902］反映口はこれだけ）。**本体**
 // （`AddDocumentTagUseCase`）を呼ぶ。呼び出し側サービスの資格情報（ServiceCaller ポリシー）を
 // 要求する —— 承認者本人のトークンでは通らない（利用者文脈は本文で運ぶ）。
 // 🔴 **書き込みの面は読み取りの面と別である**（`document_read.proto` は「書き込みの口は無い」と宣言している）。
 app.MapGrpcService<DocumentTagWriteGrpcService>();
 // FR-18, NFR-09, NFR-16, SC-09, ADR-0029, ADR-0043, ADR-0063 決定 2, ADR-0075,
 // [[IADR-0364]] 決定 2, [[IADR-0379]], [[IADR-0412]] (#1255): タグ辞書読み取りの gRPC 面。
-// REST `GET /internal/tags/names` と**同じ問い合わせ**（`TagNamesEndpoint.ReadNamesAsync`）を通る。
-// 🔴 REST の受け口は認証を持たないが、gRPC 面は ServiceCaller を要求する（**狭まる向き**）。
+// 問い合わせ本体は `TagNamesQuery.ReadNamesAsync`（［2026-10-15 / #1902］REST `GET /internal/tags/names` は撤去した）。
+// 🔴 gRPC 面は ServiceCaller を要求する（撤去した REST の受け口は認証を持たなかった）。
 // 🔴 **書き込み・使用件数・文書の口はこの面に出さない**（呼び出し元が要らないものを面へ出さない）。
 app.MapGrpcService<TagDictionaryGrpcService>();
 // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152 決定 1）。

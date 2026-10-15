@@ -81,7 +81,7 @@ builder.Services.AddSingleton<IAuditLogger, AuditLogger>();
 builder.Services.AddScoped<IValidator<UsageEventRequest>, RecordUsageEventValidator>();
 builder.Services.AddScoped<IValidator<KnowledgeHealthReportRequest>, ReportKnowledgeHealthValidator>();
 // FR-10, FR-17, FR-18, ADR-0065 決定 2, [[IADR-0408]] (#1255): 観測値の受け口の**本体**。
-// 🔴 **REST の端点と gRPC の rpc が同じ関数を通る**（判定器を 2 つにしない）。
+// gRPC の rpc がこの本体を呼ぶ（［2026-10-15 / #1902］REST の端点は撤去した。判定器は輸送の側に持たない）。
 builder.Services.AddScoped<ReportKnowledgeHealthUseCase>();
 
 var app = builder.Build();
@@ -102,7 +102,7 @@ app.MapOpenApi();
 app.MapDashboardEndpoints();
 app.MapKnowledgeHealthEndpoints();
 // FR-10, FR-17, FR-18, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0408]] (#1255):
-// 観測値の受け口の gRPC 面。REST と**同じ本体**（`ReportKnowledgeHealthUseCase`）を呼ぶ。
+// 観測値の受け口の gRPC 面（［2026-10-15 / #1902］受け口はこれだけ）。本体は `ReportKnowledgeHealthUseCase`。
 // 呼び出し側サービスの資格情報（ServiceCaller ポリシー）を要求する —— 利用者のトークンでは通らない。
 // 🔴 **閲覧の口はこの面に出さない**（呼び出し元が要らないものを面へ出さない）。
 app.MapGrpcService<KnowledgeHealthReportGrpcService>();

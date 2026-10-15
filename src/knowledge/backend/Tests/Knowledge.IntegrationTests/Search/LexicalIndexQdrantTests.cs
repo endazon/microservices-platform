@@ -191,7 +191,7 @@ public sealed class LexicalIndexQdrantTests : IAsyncLifetime
 
         async Task<List<SearchResultDto>> Search(string mode) =>
             await service.SearchAsync(new SearchRequest(PresentTerm, 10, null, new AccessScope([], true), mode),
-                new SearchUserContext("it-user", new Dictionary<string, string>(), true, null), ct);
+                new SearchUserContext("it-user", new Dictionary<string, string>(), true), ct);
 
         (await Search(SearchModes.Keyword)).Should().Contain(r => r.DocumentId == secret);
         (await Search(SearchModes.Hybrid)).Should().Contain(r => r.DocumentId == secret);

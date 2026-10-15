@@ -1,7 +1,7 @@
 // FR-04, FR-05, NFR-09, NFR-16, SC-01, SC-08, ADR-0004, ADR-0029, ADR-0043, ADR-0075,
 // ADR-0086 決定 1, IADR-0151, IADR-0253, IADR-0379, IADR-0401, IADR-0410, IADR-0415,
 // IADR-0416, IADR-0417 (#1255):
-// 権限内属性値の照会（REST `POST /search/attribute-values` と同じ意味論）の gRPC 契約。
+// 権限内属性値の照会（撤去した REST `POST /search/attribute-values` と同じ意味論。［2026-10-15 / #1902］照会の面はこの rpc だけ）の gRPC 契約。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）: 所有者は RetrievalService。置き場は knowledge ユニットの
 //   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/retrieval/v1/`。
@@ -41,7 +41,7 @@ option csharp_namespace = "Knowledge.Contracts.Grpc.Retrieval.V1";
 // 権限内属性値の照会。ServiceCaller（platform-service）を要求する。
 // **検索そのもの・辞書・使用件数の口はこの面に存在しない。**
 service AttributeValues {
-  // 到達できる文書に実際に付与された値だけを返す。REST `POST /search/attribute-values` と同値。
+  // 到達できる文書に実際に付与された値だけを返す。撤去した REST `POST /search/attribute-values` と同値。
   rpc ListValues(ListValuesRequest) returns (ListValuesResponse);
 }
 

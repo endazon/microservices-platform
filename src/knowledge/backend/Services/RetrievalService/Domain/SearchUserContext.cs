@@ -16,8 +16,12 @@ namespace RetrievalService.Domain;
 //
 // | 実装 | 器から拾うもの | gRPC 入口だと |
 // | --- | --- | --- |
-// | `GraphServiceNeighborExpander` | `Authorization` ヘッダ | **s2s トークンを GraphService へ転送する**（confused deputy） |
+// | （撤去した REST の展開器 `GraphServiceNeighborExpander`） | `Authorization` ヘッダ | **s2s トークンを GraphService へ転送する**（confused deputy） |
 // | `GrpcGraphNeighborExpander` | `HttpContext.User` | **`service-account-…` が ABAC の主体に化ける** |
+//
+// ［2026-10-15 / #1902・[[IADR-0533]] フォローアップ 5］REST 輸送の転送のためだけの値 `ForwardableCredential`
+// （利用者自身の `Authorization`）を外した。それを運んでいた REST の展開器は #1901 で撤去済みであり、
+// 利用者の JWT を下流へ転送する経路はもう無い（[[IADR-0426]] 決定 2）。
 //
 // **どちらも例外にならない。** 観測できるのは「グラフ展開が常に空」という静かな故障だけである。
 // だから**器から拾わせない** —— 入口が決めた文脈を、既定値の無い必須引数で段まで運ぶ
@@ -28,8 +32,7 @@ namespace RetrievalService.Domain;
 public sealed record SearchUserContext(
     string UserId,
     IReadOnlyDictionary<string, string> Attributes,
-    bool IsAuthenticated,
-    string? ForwardableCredential)
+    bool IsAuthenticated)
 {
     /// <summary>
     /// FR-19, FR-21 ⑨, ADR-0061 決定 3, [[IADR-0512]] (#1752): **この検索の結果を何に使うか**（露出の用途）。
@@ -61,28 +64,24 @@ public sealed record SearchUserContext(
 
     /// <summary>
     /// **north-south の入口（REST `POST /search`）** から作る。
-    /// 🔴 `ForwardableCredential` は**利用者自身の資格情報**である —— 方式 A の転送
-    /// （`GraphServiceNeighborExpander`）はこれだけを運ぶ。
+    /// 利用者の資格情報（`Authorization`）は運ばない —— 下流へ転送する経路は無い（［2026-10-15 / #1902］）。
     /// </summary>
     public static SearchUserContext FromRequest(HttpContext ctx)
     {
         var authenticated = ctx.User.Identity?.IsAuthenticated == true;
-        var authorization = ctx.Request.Headers.Authorization.ToString();
 
         return new SearchUserContext(
             authenticated ? ctx.User.Identity!.Name ?? AnonymousUserId : AnonymousUserId,
             BffScopeResolver.ExtractUserAttributes(ctx),
-            authenticated,
-            string.IsNullOrEmpty(authorization) ? null : authorization);
+            authenticated);
     }
 
     /// <summary>
     /// **east-west の入口（gRPC `DocumentSearch/Search`）** から作る。
-    /// 🔴 **`ForwardableCredential` は常に null である。** 利用者の JWT はこの面を通らない
-    /// （計画 `ADR-0086` 決定 1 / [[IADR-0379]] 決定 4）—— 運ばれるのは利用者**文脈**だけであり、
-    /// 呼び出し元の s2s トークンを下流へ流用してはならない。
+    /// 🔴 利用者の JWT はこの面を通らない（計画 `ADR-0086` 決定 1 / [[IADR-0379]] 決定 4）——
+    /// 運ばれるのは利用者**文脈**だけであり、呼び出し元の s2s トークンを下流へ流用してはならない。
     /// </summary>
     public static SearchUserContext FromBody(
         string userId, IReadOnlyDictionary<string, string> attributes) =>
-        new(userId, attributes, IsAuthenticated: true, ForwardableCredential: null);
+        new(userId, attributes, IsAuthenticated: true);
 }

@@ -10,15 +10,11 @@ namespace DocumentService.Features.Tags.Names;
 // [[IADR-0299]], [[IADR-0364]] 決定 2, [[IADR-0379]], [[IADR-0401]], [[IADR-0402]],
 // [[IADR-0410]], [[IADR-0412]] (#1255): タグ辞書読み取りの **east-west gRPC 面**。
 //
-// 🔴 **本体は持たない。** `TagNamesEndpoint.ReadNamesAsync` を呼ぶだけであり、
-// REST `GET /internal/tags/names` と**同じ関数**を通る（問い合わせを 2 つにしない）。
-// 器（JSON か protobuf か）だけが輸送ごとに違う。
+// 🔴 **本体は持たない。** `TagNamesQuery.ReadNamesAsync` を呼ぶだけである（問い合わせを 2 つにしない）。
+// ［2026-10-15 / #1902・[[IADR-0533]]］無認証の REST `GET /internal/tags/names` は撤去した。名前の面はこれだけである。
 //
-// 🔴 **ServiceCaller を要求する。** REST 側の受け口は**認証を持たない**
-// （[[IADR-0364]] 決定 2。[[IADR-0299]] 決定 4 と同じ「認証を外したメッシュ内部 API」の姿勢）が、
-// gRPC 面は [[IADR-0379]] 決定 4 に従い `platform-service` を要求する ——
-// **権限が狭まる向き**であり、`document_read.proto` が同じ向きの判断を明記している。
-// **REST の匿名口は残す**（並走中の正は REST であり、狭める判断は撤去の段で行う）。
+// 🔴 **ServiceCaller を要求する**（[[IADR-0379]] 決定 4。`platform-service`）。撤去した REST の受け口は
+// 認証を持たなかった（[[IADR-0364]] 決定 2）—— 狭める判断は撤去の段（#1902）で済んだ。
 //
 // 🔴 **利用者の文脈を受け取らない。** 読む主体は GraphService 自身である（[[IADR-0364]] 決定 2）——
 // 辞書は提案の**生成段**で LLM に選ばせる値集合であり、利用者へ返すものではない。
@@ -37,7 +33,7 @@ public sealed class TagDictionaryGrpcService(DocumentDbContext db)
     {
         var response = new ListNamesResponse();
         response.Names.AddRange(
-            await TagNamesEndpoint.ReadNamesAsync(db, context.CancellationToken));
+            await TagNamesQuery.ReadNamesAsync(db, context.CancellationToken));
         return response;
     }
 }

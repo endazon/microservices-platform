@@ -4,7 +4,9 @@ using Platform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using RetrievalService.Domain;
 using RetrievalService.Domain.Ports;
+using RetrievalService.Features.Search.AttributeValues;
 using RetrievalService.Tests.Features.Search.Hybrid;
 using System.Net;
 using System.Net.Http.Json;
@@ -231,13 +233,17 @@ public class HybridSearchEndpointTests
 
     // --- FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（計画 ADR-0043）--------------
 
+    // ［2026-10-15 / #1902・[[IADR-0533]]］REST の受け口（`POST /search/attribute-values`）を撤去したので、
+    // 本節は**問い合わせ本体**（`AttributeValuesQuery.ListAsync`）を器の DI（シード済みのストア）の上で直接呼ぶ。
+    // 受け口が持っていた縮退（不許可・空のキー）は gRPC 面の試験（`GrpcAttributeValuesTests` T-11 / T-12）が持つ。
     private static async Task<AttributeValuesResponse> ListValuesAsync(
-        TestWebApplicationFactory factory, string key, AccessScope? scope)
+        TestWebApplicationFactory factory, string key, AccessScope scope)
     {
-        var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/search/attribute-values", new AttributeValuesRequest(key, scope), TestContext.Current.CancellationToken);
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        return (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken))!;
+        using var di = factory.Services.CreateScope();
+        return new AttributeValuesResponse(await AttributeValuesQuery.ListAsync(
+            di.ServiceProvider.GetRequiredService<IVectorStore>(),
+            di.ServiceProvider.GetRequiredService<FusedCollections>(),
+            key, scope, TestContext.Current.CancellationToken));
     }
 
     // **ADR-0043 決定 1**: 返すのは「**到達できる文書に実際に付与された値**」だけである。
@@ -259,8 +265,9 @@ public class HybridSearchEndpointTests
     }
 
     // **ADR-0043 決定 2**: 件数を返さない。「12 件だが自分の検索では 8 件」＝**見えない文書が 4 件ある**。
-    // **応答の JSON に件数らしきものが 1 つも無い**ことを、生の本文で見る
-    // （DTO にフィールドが無いだけでなく、実装が余計なものを載せていないことまで確かめる）。
+    // 値の多重度も出ない（「共有」は 2 件あるが値は 1 つ現れるだけ）。
+    // 応答の形に件数の欄が無いことは gRPC 面の `The_face_carries_a_user_context_and_never_a_resolved_scope`
+    // （応答の欄は `values` だけ）が固定する（［2026-10-15 / #1902］REST の生の本文を見る試験から移した）。
     [Fact]
     public async Task AttributeValues_ResponseCarriesNoCounts()
     {
@@ -270,14 +277,10 @@ public class HybridSearchEndpointTests
             Chunk("B", tags: ["共有"]),
             Chunk("C", tags: ["単独"]));
 
-        var resp = await factory.CreateClient().PostAsJsonAsync("/search/attribute-values",
-            new AttributeValuesRequest(AttributeValueKeys.Tags, new AccessScope([], GrantsAccess: true)), TestContext.Current.CancellationToken);
-        var raw = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var body = await ListValuesAsync(
+            factory, AttributeValueKeys.Tags, new AccessScope([], GrantsAccess: true));
 
-        raw.Should().NotContainAny("count", "Count", "件数");
-        // 「共有」は 2 件あるが、応答には値が 1 つ現れるだけで多重度も出ない。
-        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken);
-        body!.Values.Should().Equal(["共有", "単独"]);
+        body.Values.Should().Equal(["共有", "単独"]);
     }
 
     // **[[IADR-0151]] 決定 1**: ABAC フィルタは検索段と同じものを使う。
@@ -343,22 +346,6 @@ public class HybridSearchEndpointTests
         body.Values.Should().Contain("枝Bの資料");
     }
 
-    // **[[IADR-0151]] 決定 5**: スコープ未解決・不許可は**空配列**（404 にも 403 にもしない）。
-    // 候補が無いことと権限が無いことを利用者へ区別させない。
-    [Theory]
-    [InlineData(false)]  // GrantsAccess=false（deny-by-default）
-    [InlineData(true)]   // Scope 自体が null
-    public async Task AttributeValues_WhenScopeNotGranted_ReturnsEmpty(bool scopeIsNull)
-    {
-        await using var factory = new TestWebApplicationFactory();
-        await SeedAsync(factory, Chunk("A", tags: ["社内"]));
-
-        var scope = scopeIsNull ? null : new AccessScope([], GrantsAccess: false);
-        var body = await ListValuesAsync(factory, AttributeValueKeys.Tags, scope);
-
-        body.Values.Should().BeEmpty();
-    }
-
     // `tags`（リスト項目）と `attributes.<key>`（ネスト項目・[[IADR-0014]]）の**両方**を引ける。
     [Fact]
     public async Task AttributeValues_ReadsBothTagsAndAbacAttributes()
@@ -376,10 +363,8 @@ public class HybridSearchEndpointTests
             .Values.Should().Equal(["法務", "経理"], "ネスト属性も同じ口から引ける");
     }
 
-    // 未知・空のキーは空集合へ縮退する（呼び出し側の分岐を 1 か所に閉じる）。
+    // 未知のキーは空集合へ縮退する（空のキーは gRPC 面の T-12）。
     [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
     [InlineData("no-such-key")]
     public async Task AttributeValues_UnknownKey_ReturnsEmpty(string key)
     {
