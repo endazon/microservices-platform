@@ -118,6 +118,8 @@ Loki・Tempo は製品単体で認証を掛けられず、運用の口（`/flush
 - **運用の口を使うとき（break-glass）**は Pod の loopback へ port-forward する（k8s の認証・認可を通る）:
   `kubectl -n platform-infra port-forward deploy/loki 3101:3101` → `curl -X POST http://localhost:3101/flush`（Tempo は `deploy/tempo 3201:3201`）。
 - トークンを回すときは Secret を消して起動器を再実行し、`loki`・`tempo`・`grafana`・`otel-collector` を `rollout restart` する。
+- **運用者がログを読む・時間範囲を指定してファイルへ保全する**ときは、前段の口（`port-forward svc/loki 3100`）へ読み取りのトークン（`reader`）で繋ぐ（NFR-18・IADR-0543・#1935）。
+  手順・保持と永続化の確認は [`docs/operations/loki-log-read-runbook.md`](../../../docs/operations/loki-log-read-runbook.md)、書き出しは `scripts/export-loki-logs.js`。上の break-glass（3101）は日常の読み取りに使わない。
 - Grafana の Explore（`{job="vault-audit"}` を含む）はそのまま使える（datasource が読み取りのトークンを送る）。
 - compose（経路 A）には前段も到達の制限も無い（0 段）。datasource のヘッダの宣言は compose にも同じ形で置いてあり、値は空になる。
 
