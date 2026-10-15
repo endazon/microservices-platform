@@ -3,6 +3,8 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using WikiService.Common.Observability;
 using WikiService.Domain;
 using WikiService.Infrastructure.Persistence;
 using WikiService.Domain.Ports;
@@ -19,8 +21,15 @@ namespace WikiService.Features.Wiki.SyncDocument;
 //      「同期メタデータ」であり、認可の単一真実源（IADR-0021: 認可属性は Wiki.js に持ち込まない）。
 //
 // 冪等性: DocumentId 由来の安定パス（WikiPage.WikiPath）で upsert するため、再配信に対して冪等。
-// 失敗時: Wiki.js push・本文取得の失敗は例外を送出し、Wolverine のリトライ／デッドレター
+//   メタデータ行も DocumentId（一意）で引いて更新する —— 同じ文書の再同期は 1 行のまま。
+// 失敗時: Wiki.js push・本文取得・DB の一時的な失敗は例外を送出し、Wolverine のリトライ／デッドレター
 //   （UsePlatformMessagingDefaults）へ委ねる。
+//
+// 🔴 [[IADR-0541]] (#1934): **恒久的な失敗は例外にしない。** 再試行しても直らないものを DLQ へ送ると、DLQ を汚し
+// 再索引の駆動（DLQ の増分で止まる）を止める。次の 2 つだけを Warning と計数 `wiki.sync.skipped{reason}` で記録して ack する:
+//   - slug の一意制約（`IX_Pages_Slug`）に、文書 ID 32 桁の接尾辞へ付け替えてもなお当たったとき（`slug_conflict`）。
+//   - 本文のオブジェクトが無い（NoSuchKey。`WikiBodyMissingException`）とき（`body_missing`。[[IADR-0540]] と同じ判定）。
+//   slug は題名だけでは一意にならない（同名の別文書）ので、文書 ID 由来の接尾辞で一意にする（`WikiPage.SlugCandidates`）。
 //
 // 🔴 ADR-0027 / E3b: **購読は Wolverine へ移した**（IPipelineStep<DocumentUpdated>・IADR-0239）。
 // wiki-delete 段（E3a）と併せて、本サービスから MassTransit は撤去済みである。
@@ -34,6 +43,7 @@ public class DocumentSyncConsumer(
     IWikiContentReader contentReader,
     ConsumerCallTimeouts calls,
     WikiSyncTimeouts timeouts,
+    WikiSyncSkippedMetrics skippedMetrics,
     ILogger<DocumentSyncConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -148,16 +158,20 @@ public class DocumentSyncConsumer(
         var existing = await db.Pages
             .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ct);
 
+        // [[IADR-0541]] 決定 1・2 (#1934): slug は他の文書が使っていない候補を採る（既存の slug は保つ）。
+        var slugCandidates = WikiPage.SlugCandidates(ev.Title, ev.DocumentId);
+        var slug = await ChooseSlugAsync(existing, slugCandidates, ev.DocumentId, ct);
+
         var page = existing;
         if (page is null)
         {
             page = WikiPage.CreateFromDocument(ev.DocumentId, ev.Title,
-                ev.MarkdownUri, ev.Attributes, ev.Tags);
+                ev.MarkdownUri, ev.Attributes, ev.Tags, slug);
             db.Pages.Add(page);
         }
         else
         {
-            page.Sync(ev.Title, ev.MarkdownUri, ev.Attributes, ev.Tags);
+            page.Sync(ev.Title, ev.MarkdownUri, ev.Attributes, ev.Tags, slug);
         }
 
         // 2) 正規化 Markdown 本文を取得し、Wiki.js へ冪等 push（閲覧・編集の実体を Wiki.js に委譲）。
@@ -167,12 +181,102 @@ public class DocumentSyncConsumer(
         //    以外（欠落含む）は Wiki.js 上でも非公開にする（deny-closed）。ABAC の代替ではない。
         var isPublic = ev.Attributes.TryGetValue("confidentiality", out var confidentiality)
             && string.Equals(confidentiality, "public", StringComparison.OrdinalIgnoreCase);
-        var markdown = await calls.RunAsync(StepName, WikiSyncTimeouts.ContentTarget, timeouts.ContentRead,
-            t => contentReader.ReadAsync(ev.MarkdownUri, ev.Title, t), ct);
+        string markdown;
+        try
+        {
+            markdown = await calls.RunAsync(StepName, WikiSyncTimeouts.ContentTarget, timeouts.ContentRead,
+                t => contentReader.ReadAsync(ev.MarkdownUri, ev.Title, t), ct);
+        }
+        catch (WikiBodyMissingException missing)
+        {
+            // 🔴 FR-13, [[IADR-0541]] 決定 4 (#1934)・[[IADR-0540]]: **本文のオブジェクトが無い（NoSuchKey）のは恒久的な欠落である。**
+            // 例外を上げると再試行の後 DLQ へ入る。ここで記録だけして正常に終える（ack）。メタデータも Wiki.js も書かない
+            // （上で追跡に載せた変更は SaveChanges を呼ばないので捨てられる）。既存のページがあれば前の版のまま残る ——
+            // 本文の無い文書の扱いは #1931 項目 3 の裁定に従う（本件は何も消さない）。
+            skippedMetrics.RecordBodyMissing();
+            logger.LogWarning(
+                "Wiki sync {DocumentId}: body object missing (NoSuchKey) at {BodyKey} (updated_at={UpdatedAt:O}); "
+                + "skipped without retry or dead-lettering",
+                ev.DocumentId, missing.MarkdownUri, ev.UpdatedAt);
+            return;
+        }
         var wikiPage = new WikiJsPage(page.WikiPath, ev.Title, markdown, ev.Tags, IsPrivate: !isPublic);
         await WikiJsAsync(t => wikiJs.UpsertPageAsync(wikiPage, t), ct);
 
-        await db.SaveChangesAsync(ct);
-        logger.LogInformation("Synced document {DocumentId} to Wiki.js at {Path}", ev.DocumentId, page.WikiPath);
+        if (!await SaveWithSlugFallbackAsync(page, slugCandidates[^1], ev.DocumentId, ct)) return;
+        logger.LogInformation("Synced document {DocumentId} to Wiki.js at {Path} (slug {Slug})",
+            ev.DocumentId, page.WikiPath, page.Slug);
     }
+
+    // FR-13, [[IADR-0541]] 決定 1・2 (#1934): slug の選び方。
+    // - 既存ページの slug が今の題名の候補に入っていれば**そのまま保つ**（URL を壊さない。接尾辞付きで作られたページが、
+    //   元の持ち主が消えた後の再同期で素の slug へ動くこともない）。
+    // - そうでなければ（新規・題名の変更）、**他の文書が使っていない最初の候補**を採る。全部埋まっていれば末尾（32 桁）を返し、
+    //   保存時の一意制約で判定する（`SaveWithSlugFallbackAsync`）。
+    private async Task<string> ChooseSlugAsync(
+        WikiPage? existing, IReadOnlyList<string> candidates, Guid documentId, CancellationToken ct)
+    {
+        if (existing is not null && candidates.Contains(existing.Slug)) return existing.Slug;
+
+        var probe = candidates.ToArray();
+        var taken = await db.Pages
+            .Where(p => probe.Contains(p.Slug) && p.DocumentId != documentId)
+            .Select(p => p.Slug)
+            .ToListAsync(ct);
+        return candidates.FirstOrDefault(c => !taken.Contains(c)) ?? candidates[^1];
+    }
+
+    // FR-13, [[IADR-0541]] 決定 3 (#1934): 保存。slug の一意制約（`IX_Pages_Slug`）に当たったら —— 空きを確かめた後に
+    // 同名の別文書が並行して同じ slug を取った競合である —— 1 度だけ文書 ID 32 桁の接尾辞へ付け替えて保存し直す。
+    // それでも当たる（または既に 32 桁だった）なら**恒久的な失敗**として記録し false を返す（呼び出し元は ack する）。
+    // 🔴 **`IX_Pages_DocumentId` の 23505（同じ文書の並行作成）・接続断などは捕まえない** —— 次の試行で更新の経路に入って直る。
+    private async Task<bool> SaveWithSlugFallbackAsync(WikiPage page, string fallbackSlug, Guid documentId, CancellationToken ct)
+    {
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateException first) when (IsSlugUniqueViolation(first) && page.Slug != fallbackSlug)
+        {
+            logger.LogInformation(
+                "Wiki sync {DocumentId}: slug {Slug} was taken concurrently; retrying with {FallbackSlug}",
+                documentId, page.Slug, fallbackSlug);
+            page.ReassignSlug(fallbackSlug);
+        }
+        catch (DbUpdateException first) when (IsSlugUniqueViolation(first))
+        {
+            RecordSlugConflict(page, documentId, first);
+            return false;
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateException again) when (IsSlugUniqueViolation(again))
+        {
+            RecordSlugConflict(page, documentId, again);
+            return false;
+        }
+    }
+
+    private void RecordSlugConflict(WikiPage page, Guid documentId, DbUpdateException ex)
+    {
+        // Wiki.js のページ（正準パス doc/<id>）は既に書いた。メタデータ行が無い間、ゲートウェイはこのページを返さない（deny-by-default）。
+        skippedMetrics.RecordSlugConflict();
+        logger.LogWarning(ex,
+            "Wiki sync {DocumentId}: slug {Slug} still violates {Index} after the document-id suffix; "
+            + "skipped without retry or dead-lettering",
+            documentId, page.Slug, WikiDbContext.SlugIndexName);
+    }
+
+    // 判定は SQLSTATE と制約名で行う（メッセージ文字列は見ない）。
+    internal static bool IsSlugUniqueViolation(DbUpdateException ex)
+        => ex.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation,
+            ConstraintName: WikiDbContext.SlugIndexName,
+        };
 }

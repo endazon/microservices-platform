@@ -44,7 +44,7 @@ public class WikiSyncTimeoutTests
                 .Handle(new DocumentDeleted(Guid.NewGuid(), DateTimeOffset.UtcNow), ct);
 
         return new DocumentSyncConsumer(db, ports, ports, ConsumerTimeoutsForTests.Calls(), timeouts,
-                NullLogger<DocumentSyncConsumer>.Instance)
+                TestMeterFactory.NewSkippedMetrics(), NullLogger<DocumentSyncConsumer>.Instance)
             .Handle(Updated(hung == Hung.Archive ? "archived" : "published"), ct);
     }
 

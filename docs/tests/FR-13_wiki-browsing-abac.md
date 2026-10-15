@@ -3,15 +3,15 @@ title: FR-13 Wiki 閲覧の ABAC 適用 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-07-03
-updated: 2026-09-27
+updated: 2026-10-15
 author: claude
 ---
 <!-- trace:
-ids: [FR-03, FR-04, FR-05, FR-07, FR-13, UC-07]
+ids: [FR-03, FR-04, FR-05, FR-07, FR-13, UC-07, NFR-06]
 adrs: [ADR-0004, ADR-0011, ADR-0027]
-iadrs: [IADR-0023, IADR-0478]
-specs: [20260703_FR-13_wiki-browsing-abac, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#1640]
+iadrs: [IADR-0541, IADR-0540, IADR-0023, IADR-0478]
+specs: [20261015_1934_wiki-slug-unique, 20260703_FR-13_wiki-browsing-abac, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#1934, #1640]
 -->
 
 # テスト仕様書: Wiki 閲覧の ABAC 適用
@@ -63,6 +63,11 @@ issues: [#1640]
 | T-22 | アーカイブの Wiki.js 送信シェイプ | `ArchivePageAsync` | content/title/tags を含む全項目 update＋unpublish | 削除/アーカイブ伝播 | 自動 |
 | T-23 | 縮めた受け口の期限（30 秒）の下で、本文の取得・Wiki.js への反映・アーカイブ・撤去のどれかが止まる（1 回の期限 1 秒） | 発行→消費 | 受け口の期限より前に、その呼び出し先の**時間切れ**（`ConsumerTimeoutException`）として投げる（再試行・デッドレターへ）。呼び出し元の取り消しは取り消しのまま外へ出る（対照） | 更新反映・削除/アーカイブ伝播 | 自動 |
 | T-24 | 期限の構成と配線 | 起動 | 既定は本文 20 秒・Wiki.js 15 秒。同期（本文＋Wiki.js）か撤去（Wiki.js）が既定の実行期限 60 秒以上になる構成は起動を止める（等しいときも）。本番の配線は期限を DI に置き、両受け口の実行期限は既定のまま | 同上 | 自動 |
+| T-25 | 同名の題名の別文書 2 件・同じ文書の 2 回の同期・接尾辞付きの slug の再同期（元の持ち主は削除済み）・題名の変更・記号だけの題名・500 字の題名 | 発行→消費 | 別文書は両方ページになり slug は互いに異なる（先に来た方は題名だけ、後の方は文書 ID の先頭 8 桁の接尾辞）。同じ文書は 1 行のまま更新し slug を保つ。接尾辞付きの slug は保たれ、題名が変われば取り直す。記号だけの題名は `doc-<8 桁>`。候補は列の長さ 500 に収まり末尾は文書 ID を丸ごと含む | 更新反映 | 自動 |
+| T-26 | 保存時に slug の一意違反（23505・`IX_Pages_Slug`）が 1 回だけ／毎回起きる。文書 ID の一意違反・DB の接続断 | 発行→消費 | 1 回だけなら文書 ID 32 桁の接尾辞へ付け替えて保存する。毎回なら付け替えて 1 度だけ保存し直した後、例外を上げずに終え、Warning（文書 ID・索引名）と計数 `wiki.sync.skipped{reason=slug_conflict}` を 1。文書 ID の一意違反と接続断は付け替えずに例外のまま上げる。本番の索引名と判定の制約名が一致する | 更新反映（恒久的な失敗で DLQ を汚さない） | 自動 |
+| T-27 | 本文の取得でオブジェクトストレージが NoSuchKey（専用の型・汎用の型にエラーコード）・404 のバケットなし・500・503・時間切れ・接続の失敗を返す | 読み手 | NoSuchKey だけを本文の欠落へ写す（所在を運ぶ）。状態コード 404 だけでは写さず、他は元の例外のまま上げる（取り込みと同じ判定） | 同上 | 自動 |
+| T-28 | 本文が無い。本文の一時障害（500） | 発行→消費 | 欠落は例外を上げずに終え、Warning（文書 ID・本文の所在・更新日時）と計数 `reason=body_missing` を 1。メタデータも Wiki.js も書かない。一時障害は例外のまま | 同上 | 自動 |
+| T-29 | 本番と同じ共通既定の Wolverine（ローカルキュー）で、slug の恒久的な衝突・本文が無い・1 回目だけ DB の接続断 | 発行→消費 | 恒久的な失敗は試行 1 回で成功として終わり、デッドレターへ行かない（受け口の中の付け替えは 1 度だけ）。接続断は従来どおり再試行され（2 回目で保存）、デッドレターへ行かない | 同上 | 自動 |
 
 ## 実装マッピング
 
@@ -72,4 +77,5 @@ issues: [#1640]
 - `DocumentDeleteArchiveSyncTests`（T-15〜T-19）
 - `WikiJsGraphQlClientTests`（T-21〜T-22。稼働 Wiki.js 2.5.314 の実測応答を再生）
 - `WikiSyncTimeoutTests`（T-23〜T-24。配線は同じファイルの `WikiSyncTimeoutWiringTests`）
+- `WikiSyncPermanentFailureTests`（T-25〜T-29。23505 は保存の割り込みで再現する —— InMemory は一意索引を強制しない）
 - `DocumentLifecycleEventTests`（DocumentService 側: archive/delete のイベント発行）
