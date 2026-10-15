@@ -474,15 +474,6 @@ export interface AiAnswerDto {
   answerId: string;
 }
 
-export type AccessScopeRequestUserAttributes = {[key: string]: string};
-
-export interface AccessScopeRequest {
-  userId: string;
-  userAttributes: AccessScopeRequestUserAttributes;
-  /** ［2026-08-23 / #989］解決したいアクション（`read` / `analyze` / `manage` / `write`。 `enum` にしない——値域の正は `PolicyAction`）。省略時は `read`（旧クライアントは無改修で 従来どおり読み取りスコープを得る）。従前はサーバ側が `read` をハードコードしており、 書き込みの認可スコープをこの経路で出せなかった。値域外は 400（呼び出し側は非 2xx を deny へ縮退させる）。 */
-  action?: string;
-}
-
 /**
  * FR-05: 1 つの属性キーに対する許可値集合（`AttributeFilter`）
  */

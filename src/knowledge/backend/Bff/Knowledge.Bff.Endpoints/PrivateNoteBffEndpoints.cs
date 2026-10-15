@@ -266,7 +266,7 @@ public static class PrivateNoteBffEndpoints
         HttpMethod method, string path, object? body,
         IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
     {
-        var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, BffScopeAction.Write, ct);
+        var scope = await BffScopeResolver.ResolveAsync(http, BffScopeAction.Write, ct);
         if (scope is null)
             return Results.Forbid(); // write 許可ポリシー無し＝変更不可（deny-by-default）
 

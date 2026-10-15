@@ -117,8 +117,8 @@ public sealed class ScopeUserAttributeSource(
     /// FR-05, NFR-09, [[IADR-0413]] (#1333): 🔴 **ログへ出す前に制御文字を落とす。**
     ///
     /// `userId` は**呼び出し元が本文で渡す検証されていない値**である。
-    /// `ResolveScopeValidator` は `action` の値域しか持たず、`user_id` には文字種の制約が無い
-    /// （gRPC 面はそもそも validator を通らない）。
+    /// `user_id` には文字種の制約が無い（gRPC 面が検証するのは `action` の値域だけである。
+    /// ［2026-10-15 / #1902］REST 面と、その `ResolveScopeValidator` は撤去した）。
     ///
     /// 🔴 **本 PR の前提そのものが「呼び出し元の本文を信じない」である。**
     /// その値を改行ごとログへ流すと、**この PR が強化しようとしている deny の監査ログへ

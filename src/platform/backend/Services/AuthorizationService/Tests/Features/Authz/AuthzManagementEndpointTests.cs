@@ -1,3 +1,5 @@
+using Platform.Shared.Contracts.Dtos;
+using AuthorizationService.Tests.Grpc;
 using AuthorizationService.Domain;
 using AuthorizationService.Infrastructure.Persistence;
 using AwesomeAssertions;
@@ -157,7 +159,7 @@ public class AuthzManagementEndpointTests(TestWebApplicationFactory factory)
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    // FR-09, FR-05: 条件を省略（null）したポリシーでも保存でき、/scope が 500 で落ちない。
+    // FR-09, FR-05: 条件を省略（null）したポリシーでも保存でき、スコープ解決が落ちない。
     // 省略された条件は「条件なし」（空辞書）として扱われる（NRE 回帰防止）。
     [Fact]
     public async Task CreatePolicy_OmittedConditions_ScopeDoesNotCrash()
@@ -171,12 +173,11 @@ public class AuthzManagementEndpointTests(TestWebApplicationFactory factory)
         create.StatusCode.Should().Be(HttpStatusCode.Created);
 
         // 🔴 スコープ解決は `ServiceCaller` を要る（計画 ADR-0088 決定 2 / #1333）。管理 API とは面が違う。
-        var scope = await factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope", new
-        {
-            UserId = "u-omit",
-            UserAttributes = new Dictionary<string, string> { ["role"] = "member" }
-        }, TestContext.Current.CancellationToken);
-        scope.StatusCode.Should().Be(HttpStatusCode.OK);
+        // ［2026-10-15 / #1902］REST の `/authz/scope` は撤去したので gRPC 面を叩く。
+        var scope = await factory.CreateServiceCallerClient().ResolveScopeAsync(
+            new AccessScopeRequest("u-omit", new Dictionary<string, string> { ["role"] = "member" }),
+            TestContext.Current.CancellationToken);
+        scope.Status.Should().Be(global::Grpc.Core.StatusCode.OK);
 
         // 後片付け: 条件なしの有効ポリシーは全利用者にマッチするため削除しておく。
         var created = await create.Content.ReadFromJsonAsync<PolicyDto>(TestContext.Current.CancellationToken);

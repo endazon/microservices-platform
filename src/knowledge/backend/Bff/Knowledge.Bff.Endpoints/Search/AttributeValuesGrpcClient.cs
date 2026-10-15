@@ -59,7 +59,7 @@ public sealed class AttributeValuesGrpcClient(Pb.AttributeValues.AttributeValues
 
     // 🔴 **載せるのは判定の入力であって判定結果ではない**（計画 `ADR-0086` 決定 1）。
     // FR-05, ADR-0080, [[IADR-0411]] (#1323): 属性の抽出はプラットフォーム唯一の点へ委譲する。
-    // **ここでキーを列挙しない** —— REST 経路で BFF が `/authz/scope` へ送る属性と**同じ集合**になる。
+    // **ここでキーを列挙しない** —— BFF がスコープ解決（`AuthzScope/Resolve`）へ送る属性と**同じ集合**になる。
     internal static Pb.UserContext ToUserContext(ClaimsPrincipal user)
     {
         var context = new Pb.UserContext

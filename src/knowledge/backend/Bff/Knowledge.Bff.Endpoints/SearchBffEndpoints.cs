@@ -52,7 +52,7 @@ public static class SearchBffEndpoints
             // FR-05: 利用者の ABAC 許可スコープをサーバ側で解決する（deny-by-default。クライアント指定
             // Scope は信頼しない）。許可ポリシーが無い／認可サービス不調は空応答へ縮退する（存在秘匿）。
             // #1010: 検索は読み取り経路 → read を明示する。
-            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, BffScopeAction.Read, ct);
+            var scope = await BffScopeResolver.ResolveAsync(http, BffScopeAction.Read, ct);
             if (scope is null)
                 return Results.Ok(new SearchResponse([], 0, 0));
 
@@ -146,7 +146,7 @@ public static class SearchBffEndpoints
             }
 
             // #1010: 属性値の照会は読み取り経路 → read を明示する。
-            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, BffScopeAction.Read, ct);
+            var scope = await BffScopeResolver.ResolveAsync(http, BffScopeAction.Read, ct);
             if (scope is null)
                 return Results.Ok(new AttributeValuesResponse([], dictionary));
 

@@ -1,8 +1,8 @@
-using System.Net;
-using System.Net.Http.Json;
 using AuthorizationService.Domain;
 using AuthorizationService.Infrastructure.Persistence;
+using AuthorizationService.Tests.Grpc;
 using AwesomeAssertions;
+using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Contracts.Dtos;
 
@@ -62,16 +62,15 @@ public class CurrentGroupsBindingTests : IClassFixture<TestWebApplicationFactory
         return user;
     }
 
-    private Task<HttpResponseMessage> ResolveAsync(string userId) =>
-        _factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
+    private Task<TestServerScopeGrpc.Result> ResolveAsync(string userId) =>
+        _factory.CreateServiceCallerClient().ResolveScopeAsync(
             new AccessScopeRequest(userId, []), TestContext.Current.CancellationToken);
 
     private async Task<List<string>> SharedWithValuesOf(string userId)
     {
         var resp = await ResolveAsync(userId);
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var scope = (await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(
-            TestContext.Current.CancellationToken))!;
+        resp.Status.Should().Be(StatusCode.OK);
+        var scope = resp.Scope!;
         return scope.Branches!.Single(b => b.Name == _policyName)
             .Filters.Single(f => f.Key == DocumentAttributeEncoding.SharedWithKey)
             .AllowedValues;
@@ -126,7 +125,7 @@ public class CurrentGroupsBindingTests : IClassFixture<TestWebApplicationFactory
         {
             var resp = await ResolveAsync(user);
 
-            resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable,
+            resp.Status.Should().Be(StatusCode.Unavailable,
                 "『所属を引けなかった』と『そのグループに共有されていない』は別の事実である");
         }
         finally
@@ -142,7 +141,7 @@ public class CurrentGroupsBindingTests : IClassFixture<TestWebApplicationFactory
     {
         var user = NewUser("recovered", ["g-knowledge"]);
 
-        (await ResolveAsync(user)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ResolveAsync(user)).Status.Should().Be(StatusCode.OK);
     }
 
     // 🔴 T-1447-f（鮮度と費用の実測。計画 ADR-0098 フォローアップ 3 / [[IADR-0447]]）:
@@ -179,7 +178,7 @@ public class CurrentGroupsBindingTests : IClassFixture<TestWebApplicationFactory
     {
         var user = NewUser("liar", ["g-knowledge"]);
 
-        var resp = await _factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
+        var resp = await _factory.CreateServiceCallerClient().ResolveScopeAsync(
             new AccessScopeRequest(user, new Dictionary<string, string>
             {
                 [Key] = "internal",
@@ -188,9 +187,8 @@ public class CurrentGroupsBindingTests : IClassFixture<TestWebApplicationFactory
             }),
             TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var scope = (await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(
-            TestContext.Current.CancellationToken))!;
+        resp.Status.Should().Be(StatusCode.OK);
+        var scope = resp.Scope!;
         scope.Branches!.Single(b => b.Name == _policyName)
             .Filters.Single(f => f.Key == DocumentAttributeEncoding.SharedWithKey)
             .AllowedValues.Should().NotContain("g-secret")

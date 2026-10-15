@@ -1,5 +1,5 @@
 // FR-05, NFR-09, ADR-0004, ADR-0029, ADR-0075, IADR-0379 (#1201):
-// ABAC 権限スコープ解決（AuthorizationService の `POST /authz/scope` と同じ意味論）の gRPC 契約。
+// ABAC 権限スコープ解決（撤去した AuthorizationService の `POST /authz/scope` と同じ意味論。［2026-10-15 / #1902］解決の面はこの rpc だけ）の gRPC 契約。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）
 //   proto の所有者は呼び出される側（AuthorizationService）。置き場は所有サービスが属するユニットの
@@ -20,7 +20,7 @@ package platform.authz.v1;
 
 option csharp_namespace = "Platform.Shared.Contracts.Grpc.Authz.V1";
 
-// ABAC 権限スコープ解決。REST の `POST /authz/scope` と同じ評価器（AbacEvaluator）を呼ぶ。
+// ABAC 権限スコープ解決。評価器（AbacEvaluator）を呼ぶ（撤去した REST の `POST /authz/scope` と同じ評価器）。
 service AuthzScope {
   // 利用者属性 × 文書属性フィルタを解決し、許可される属性条件を返す。
   // - 不正な action → INVALID_ARGUMENT（REST の 400 と同値）

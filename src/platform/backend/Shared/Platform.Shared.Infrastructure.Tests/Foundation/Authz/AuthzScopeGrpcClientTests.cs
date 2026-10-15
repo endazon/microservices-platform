@@ -145,7 +145,7 @@ public class AuthzScopeGrpcClientTests
             [new Claim(ClaimTypes.Name, "alice"), new Claim("department", "engineering")], "test"));
 
         var scope = await BffScopeResolver.ResolveAsync(
-            new ThrowingHttpClientFactory(), http, BffScopeAction.Read, TestContext.Current.CancellationToken);
+            http, BffScopeAction.Read, TestContext.Current.CancellationToken);
 
         scope.Should().NotBeNull();
         invoker.Calls.Should().Be(1);
@@ -199,10 +199,5 @@ public class AuthzScopeGrpcClientTests
 
         provider.GetService<AuthzScopeGrpcClient>().Should().NotBeNull();
         provider.GetService<IServiceTokenProvider>().Should().BeOfType<ClientCredentialsServiceTokenProvider>();
-    }
-
-    private sealed class ThrowingHttpClientFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => throw new InvalidOperationException("REST 経路が呼ばれた");
     }
 }

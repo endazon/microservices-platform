@@ -7,7 +7,7 @@ namespace AuthorizationService.Tests.Features.Authz.ResolveScope;
 // 🔴 **deny の監査ログへ偽の行を混ぜられないこと。**
 //
 // `userId` は**呼び出し元が本文で渡す検証されていない値**である
-// （`ResolveScopeValidator` は `action` の値域しか持たず、gRPC 面は validator を通らない）。
+// （gRPC 面が検証するのは `action` の値域だけである。［2026-10-15 / #1902］REST 面の validator は撤去した）。
 // 🔴 **本 PR の前提が「呼び出し元の本文を信じない」であるのに、その値を改行ごと
 // ログへ流していた** —— PR #1334 のレビュー（CodeQL）が捕まえた私の欠陥である。
 //

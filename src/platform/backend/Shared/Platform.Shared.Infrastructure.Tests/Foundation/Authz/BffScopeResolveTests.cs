@@ -63,12 +63,6 @@ public class BffScopeResolveTests
             => throw new NotSupportedException();
     }
 
-    // REST 経路のための引数であり、いまは使われない。呼ばれたら試験を落とす（REST へ戻っていないことの観測点）。
-    private sealed class ThrowingHttpClientFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => throw new InvalidOperationException("REST 経路が呼ばれた");
-    }
-
     private static HttpContext Ctx(StubInvoker invoker, string? name = "alice", params (string Key, string Value)[] claims)
     {
         var services = new ServiceCollection();
@@ -84,7 +78,7 @@ public class BffScopeResolveTests
     }
 
     private static Task<BffAccessScope?> Resolve(HttpContext ctx, string action = BffScopeAction.Read, CancellationToken? ct = null)
-        => BffScopeResolver.ResolveAsync(new ThrowingHttpClientFactory(), ctx, action, ct ?? Ct);
+        => BffScopeResolver.ResolveAsync(ctx, action, ct ?? Ct);
 
     private static Pb.AttributeFilter Filter(string key, params string[] values)
     {

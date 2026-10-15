@@ -328,6 +328,17 @@ public class BffScopeResolverTests
             "既定値が復活すると『書き忘れ＝read で解決』が再発する（IADR-0272 決定 4）");
     }
 
+    // NFR-16, [[IADR-0533]] フォローアップ 4 (#1902): **REST 経路のための `IHttpClientFactory` を受け取らない。**
+    // 輸送は gRPC だけであり、使わない引数が残ると「REST へ戻る道がある」と読み違える材料になる。
+    [Fact]
+    public void ResolveAsync_DoesNotTakeAnHttpClientFactory()
+    {
+        var method = typeof(BffScopeResolver).GetMethod(nameof(BffScopeResolver.ResolveAsync));
+
+        method!.GetParameters().Select(p => p.ParameterType)
+            .Should().Equal([typeof(HttpContext), typeof(string), typeof(CancellationToken)]);
+    }
+
     // FR-05: JWT の clearance/department クレームを利用者属性へ写す。
     [Fact]
     public void ExtractUserAttributes_ReadsClearanceAndDepartmentClaims()
