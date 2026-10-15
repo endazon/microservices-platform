@@ -3,7 +3,7 @@ title: how-to — デプロイ手順（環境ごと）と GitOps 運用
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-10-09
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:
