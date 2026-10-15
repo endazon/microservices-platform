@@ -30,6 +30,7 @@ const gate = require('../deploy/mail-relay/reset-gate.js');
 const {
   plan, gateHoldsClosed, GATE_OWNED_REALM_KEYS,
   GATE_STATE_ATTRIBUTE: JOB_GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED: JOB_GATE_STATE_CLOSED,
+  SEED_USER_SELF_SERVICE_ROLES,
 } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -70,6 +71,14 @@ function liveFrom(desired, realmOverride) {
   }
   if (!realm.id) realm.id = uuid();
   const realmRoles = desired.roles.realm.map((r) => ({ ...clone(r), id: uuid(), composite: false }));
+  // #1894: Keycloak が import 時に自分で作る realm ロール（宣言しない）。既定ロールの合成先に現れる。
+  for (const name of ['offline_access', 'uma_authorization']) realmRoles.push({ id: uuid(), name });
+  // 宣言が合成を持つ realm ロールは、収束後は合成先まで在る（既定ロール default-roles-platform）。
+  const roleComposites = {};
+  for (const r of desired.roles.realm) {
+    if (!(r.composite && r.composites && Array.isArray(r.composites.realm))) continue;
+    roleComposites[r.name] = r.composites.realm.map((name) => realmRoles.find((x) => x.name === name));
+  }
   const clientScopes = desired.clientScopes.map((s) => ({
     ...clone(s), id: uuid(), protocolMappers: (s.protocolMappers || []).map((m) => ({ ...clone(m), id: uuid() })),
   }));
@@ -90,6 +99,7 @@ function liveFrom(desired, realmOverride) {
     ...clone(g), id: uuid(), subGroups: (g.subGroups || []).map((s) => ({ ...clone(s), id: uuid() })),
   }));
   const users = {};
+  const userClientRoles = {};
   const serviceAccounts = {};
   for (const u of desired.users) {
     if (u.serviceAccountClientId) {
@@ -100,11 +110,15 @@ function liveFrom(desired, realmOverride) {
       };
     } else {
       users[u.username] = { id: uuid(), username: u.username, attributes: clone(u.attributes || {}), requiredActions: [] };
+      // #1894 / IADR-0546: 収束後は宣言の自己管理のロールが実効の割当に在る（collectLive が読むのはこの client だけ）。
+      const cr = {};
+      for (const cid of Object.keys(SEED_USER_SELF_SERVICE_ROLES)) if ((u.clientRoles || {})[cid]) cr[cid] = [...u.clientRoles[cid]];
+      userClientRoles[u.username] = cr;
     }
   }
   return {
     realm, requiredActions: clone(desired.requiredActions), realmRoles, clientScopes, clients, clientSecrets,
-    clientRoles, roleComposites: {}, groups, users, serviceAccounts,
+    clientRoles, roleComposites, groups, users, userClientRoles, serviceAccounts,
   };
 }
 
