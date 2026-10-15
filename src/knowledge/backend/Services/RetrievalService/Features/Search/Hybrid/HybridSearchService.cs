@@ -192,7 +192,7 @@ public class HybridSearchService(
         var (vector, fusedVectors) = await EmbedQueryAsync(request.Query, ct);
 
         // FR-03, ADR-0016, #995: 🔴 **空ベクトルを後段（ベクトルDB）へ渡さない。**
-        // `/embed` は送信拒否（fail-closed）・次元不整合・呼び出し失敗のいずれでも
+        // 埋め込み（gRPC `LlmEmbedding/Embed`）は送信拒否（fail-closed）・次元不整合・呼び出し失敗のいずれでも
         // **200 ＋ 空ベクトル（`Embedded=false`）** を返す設計であり、これは**故障ではなく縮退**である。
         // それを次元付きコレクションへ投げると Qdrant が `RpcException` を返し、`/search` は
         // **本文なしの 500** になっていた（#995。統合スタックの段 11 が実測）。

@@ -16,8 +16,8 @@ namespace GraphService.Features.AiSuggestions.Approve;
 //
 // ── FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0364 (#1187 / #1014): **タグ提案の反映**
 //
-// タグ提案の反映先は DocumentService のタグである（本サービスは辺を持たない）。承認者本人の資格で
-// `POST /documents/{id}/tags` を呼び（`IDocumentTagWriter`。方式 A の権限伝播）、**反映が確定して
+// タグ提案の反映先は DocumentService のタグである（本サービスは辺を持たない）。承認者の身元を運んで
+// gRPC `DocumentTagWrite/AddTag` を呼び（`IDocumentTagWriter`。REST の `POST /documents/{id}/tags` は撤去した）、**反映が確定して
 // から状態を `approved` にする** —— 反映できていないのに承認済みと見えるのが最悪である。
 //   - 辞書に無い値 → **400 `unknown_tag`**。状態は `pending` のまま（承認できず却下のみ。決定 2 後段）。
 //     `unknown_edge_type` と同じ形（提案が指す値が辞書に無い）。

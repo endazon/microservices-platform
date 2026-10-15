@@ -285,42 +285,10 @@ public class GraphExpansionTwoStageSearchTests
         expander.User!.UserId.Should().Be("alice");
         expander.User.Attributes.Should().Contain(
             new KeyValuePair<string, string>("department", "hr"));
-        expander.User.ForwardableCredential.Should().BeNull(
-            "east-west gRPC の入口には転送できる利用者の資格情報が無い");
     }
 
-    // ★ U-01 の陽性対照。REST の入口では**転送できる資格情報が付いて**運ばれる
-    //（「常に null」の実装を落とす）。
-    [Fact]
-    public async Task REST入口では転送できる資格情報が付いて運ばれる()
-    {
-        var seedDoc = Guid.NewGuid();
-        var (store, inner) = Stage(Chunk(seedDoc, "起点 文書", [1f, 0f]));
-        store.VectorSideDocuments.Add(seedDoc);
-        var expander = new FakeGraphExpander([]);
-
-        await Expanding(store, inner, expander)
-            .SearchAsync(Request(), UserWithCredential(), TestContext.Current.CancellationToken);
-
-        expander.User!.ForwardableCredential.Should().Be(AllowedToken);
-    }
-
-    // 🔴 [[IADR-0426]] 決定 2 (#1255): 方式 A の転送は**入口が決めた利用者文脈**が運ぶ。
-    // 従前は `IHttpContextAccessor` から `Authorization` を拾っていたが、その形のままだと
-    // east-west gRPC の入口で**呼び出し元サービスの s2s トークン**を転送してしまう。
-    private static SearchUserContext UserWithCredential(
-        string authorization = AllowedToken)
-    {
-        var ctx = new DefaultHttpContext();
-        ctx.Request.Headers.Authorization = authorization;
-        ctx.User = new System.Security.Claims.ClaimsPrincipal(
-            new System.Security.Claims.ClaimsIdentity(
-                [new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "alice")],
-                "test"));
-        return SearchUserContext.FromRequest(ctx);
-    }
-
-    private const string AllowedToken = "Bearer allowed";
+    // ［2026-10-15 / #1902・[[IADR-0533]]］U-01 の陽性対照（REST の入口では転送できる資格情報が付いて運ばれる）は外した ——
+    // 転送の値（`SearchUserContext.ForwardableCredential`）を、それを使う REST の展開器（#1901 で撤去）とともに外した。
 }
 
 // FR-03, FR-04 (#970): 段①（ベクトル側）を**指定した文書だけに絞れる**ストア。

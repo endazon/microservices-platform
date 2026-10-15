@@ -10,8 +10,8 @@ namespace DashboardService.Features.KnowledgeHealth.Report;
 // ADR-0065, ADR-0075, [[IADR-0265]], [[IADR-0299]], [[IADR-0353]], [[IADR-0379]], [[IADR-0389]],
 // [[IADR-0402]], [[IADR-0408]] (#1255): ナレッジ健全性の観測値の受け口の **east-west gRPC 面**。
 //
-// 🔴 **本体は持たない。** `ReportKnowledgeHealthUseCase` を呼ぶだけであり、REST の
-// `POST /internal/knowledge-health/observations` と**同じ関数**を通る（判定器を 2 つにしない。
+// 🔴 **本体は持たない。** `ReportKnowledgeHealthUseCase` を呼ぶだけであり、撤去した REST の
+// `POST /internal/knowledge-health/observations`（［2026-10-15 / #1902］撤去）と**同じ関数**を通っていた（判定器を 2 つにしない。
 // [[IADR-0397]] / [[IADR-0400]] / [[IADR-0402]] と同じ形）。ここに在るのは
 // 「輸送の言葉へ写すこと」だけである。
 //
@@ -20,9 +20,8 @@ namespace DashboardService.Features.KnowledgeHealth.Report;
 //   （[[IADR-0379]] 決定 4）。これを機械で守るのは
 //   `GrpcKnowledgeHealthReportTests.Report_with_forwarded_admin_user_token_is_permission_denied`
 //   （管理者トークンでも PERMISSION_DENIED）である。
-//   REST 側の受け口は**認証を持たない**（[[IADR-0299]] 決定 4・利用者裁定。生産者は利用者 JWT を
-//   持たない定期処理である）ので、この面は現状より**狭い**
-//   （[[IADR-0401]] 決定 1 / [[IADR-0402]] 決定 3 と同じ向き）。**REST 側は変えない。**
+//   撤去した REST 側の受け口は**認証を持たなかった**（[[IADR-0299]] 決定 4・利用者裁定）。
+//   ［2026-10-15 / #1902・[[IADR-0533]]］生産者が gRPC だけになったので、無認証の口は撤去した。
 //
 // 🔴 **個人資料の除外はここでも行わない。** 集計から `private-note` を外すのは閲覧側であり
 //   （[[IADR-0265]]）、受け口は観測値をそのまま保存する。**移行で判定の位置を動かさない。**

@@ -44,15 +44,11 @@ public record TagDictionaryResponse(List<TagDto> Tags);
 
 // FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0364 (#1187): **文書へタグを 1 つ足す**要求。
 //
-// AI のタグ提案を承認したとき、GraphService が**承認者本人の資格情報を転送して**
-// `POST /documents/{id}/tags` を呼ぶ（サービスアカウントが代わりに書く形は採らない —— 決定 3）。
+// AI のタグ提案を承認したとき、GraphService が east-west gRPC（`DocumentTagWrite/AddTag`）で承認者の身元を運んで呼ぶ
+// （［2026-10-15 / #1902］REST `POST /documents/{id}/tags` は撤去した。gRPC 面の入力検証がこの型を使う）。
 // 名前で指定する（提案は表示名しか持たない）。**辞書に無い名前は 400 で拒まれる**
 // （SC-05「既定タグ辞書に整合」は経路を問わない不変条件。決定 2）。
 public record AddDocumentTagRequest(string Name);
 
-// FR-18, SC-09, ADR-0063 決定 2, IADR-0364 決定 2 (#1014): **辞書の名前だけ**を返す内部応答。
-//
-// GraphService が提案の**生成段**で LLM に選ばせる値集合として引く（`GET /internal/tags/names`。
-// メッシュ内部 API。利用者へは返らない）。**使用件数を持たない** —— 件数は管理面の集計値であり
-// （`TagDto.UsageCount`）、生成には要らないうえ ABAC で絞られていない値を外へ運ぶことになる。
-public record TagNamesResponse(List<string> Names);
+// ［2026-10-15 / #1902・[[IADR-0533]]］`TagNamesResponse`（`GET /internal/tags/names` の応答）は受け口とともに撤去した。
+// 名前だけの応答は gRPC の `ListNamesResponse` が運ぶ。

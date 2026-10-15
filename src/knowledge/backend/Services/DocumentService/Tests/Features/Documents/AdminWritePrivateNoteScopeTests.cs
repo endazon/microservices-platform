@@ -170,45 +170,11 @@ public class AdminWritePrivateNoteScopeTests(TestWebApplicationFactory factory)
         (await hidden.Content.ReadAsStringAsync(Ct)).Should().Be(await missing.Content.ReadAsStringAsync(Ct));
     }
 
-    // ── タグの反映口（`POST /documents/{id}/tags`）の管理者の分岐 ─────────────────────
-
-    private async Task<string> RegisterTagAsync()
-    {
-        var name = $"tag-{Guid.NewGuid():N}";
-        var resp = await ClientAs(Unique("admin"), AdminRole)
-            .PostAsJsonAsync("/tags", new CreateTagRequest(name), Ct);
-        resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        return name;
-    }
-
-    [Theory]
-    [InlineData("human-admin")]
-    [InlineData("machine-admin")]
-    public async Task タグの反映口の管理者の分岐は他人の個人資料に及ばず_所有者と組織文書には届く(string principal)
-    {
-        var tag = await RegisterTagAsync();
-        var alice = Unique("alice");
-        var note = await SeedAsync(PrivateNote(alice));
-
-        var denied = await PrincipalClient(principal, owner: alice)
-            .PostAsJsonAsync($"/documents/{note.Id}/tags", new AddDocumentTagRequest(tag), Ct);
-
-        denied.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await denied.Content.ReadAsStringAsync(Ct)).Should().NotContain(note.Title).And.NotContain(alice);
-        (await LoadAsync(note.Id))!.Version.Should().Be(note.Version, "タグは付いていない");
-
-        // ★ 陽性対照 1: 同じ資料へ、所有者（ロールなし）は足せる（FR-19 の所有者の束縛は生きている）。
-        var byOwner = await ClientAs(alice, "viewer")
-            .PostAsJsonAsync($"/documents/{note.Id}/tags", new AddDocumentTagRequest(tag), Ct);
-        byOwner.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await byOwner.Content.ReadFromJsonAsync<DocumentDto>(Ct))!.Tags.Should().Contain(tag);
-
-        // ★ 陽性対照 2: 同じ主体は、他人の組織文書へは足せる（管理者の分岐は組織文書に残る）。
-        var org = await SeedAsync(Organization(alice));
-        var byAdmin = await PrincipalClient(principal, owner: alice)
-            .PostAsJsonAsync($"/documents/{org.Id}/tags", new AddDocumentTagRequest(tag), Ct);
-        byAdmin.StatusCode.Should().Be(HttpStatusCode.OK);
-    }
+    // ── タグの反映口の管理者の分岐 ─────────────────────
+    // ［2026-10-15 / #1902・[[IADR-0533]]］REST の `POST /documents/{id}/tags` は撤去した（反映口は gRPC
+    // `DocumentTagWrite/AddTag` だけ）。「管理者の分岐は他人の個人資料に及ばず、所有者と組織文書には届く」は
+    // `GrpcDocumentTagWriteTests` の T-62 と `DocumentTagWriteAdminRoleTests.個人資料へは管理者でも反映されず認可サービスも呼ばれない`
+    // が gRPC 面で固定する。
 
     // ── 所有者の経路は変わらない ─────────────────────────────────────────────
 

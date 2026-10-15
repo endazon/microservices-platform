@@ -7,17 +7,18 @@ namespace AiAnalysisService.Domain.Ports;
 // ADR-0034 決定 1, ADR-0075, 計画 ADR-0086 決定 1, ADR-0087 決定 2, ADR-0089 決定 1,
 // [[IADR-0379]], [[IADR-0400]], [[IADR-0415]], [[IADR-0416]], [[IADR-0426]] (#1255):
 // RetrievalService のハイブリッド検索を呼ぶ**輸送のポート**。
-// REST（`HttpRagSearchTransport`）と gRPC（`GrpcRagSearchTransport`）の 2 実装があり、
-// `Program.cs` が `Services:RetrievalServiceGrpc` の有無で選ぶ。
-// ［2026-10-10 / #1255・[[IADR-0533]]］REST の `HttpRagSearchTransport` は撤去し、実装は gRPC だけになった（`ADR-0089` 決定 1 の「解けた」）。
+// 実装は gRPC（`GrpcRagSearchTransport`）の 1 つだけである（［2026-10-10 / #1255・[[IADR-0533]]］REST の
+// `HttpRagSearchTransport` を撤去した。`ADR-0089` 決定 1 の「解けた」）。宛先 `Services:RetrievalServiceGrpc` が
+// 無い配備では、生成クライアントが常に `UNAVAILABLE` を返し、下の縮退（空）へ落ちる。
+// ［2026-10-15 / #1902］「REST と gRPC の 2 実装があり `Program.cs` が選ぶ」という記述を現状へ改めた。
 //
 // 🔴 **ポートが返すのは検索結果だけである。** 出典への写像・機密区分の算出・
 // AI 入力からの除外（[[IADR-0283]] 決定 3）は `RagOrchestrator` に残る ——
-// 輸送では変わらない業務判断であり、2 実装へ写すと片方だけが直る事故の口になる。
+// 輸送では変わらない業務判断であり、輸送の側へ写すと（輸送が増えたときに）片方だけが直る事故の口になる。
 //
-// 🔴 **失敗は例外にせず空へ縮退する**（[[IADR-0426]] 決定 4）。REST の「非 2xx」「不達」と
-// gRPC の `RpcException`（全 status）・s2s トークン取得失敗は**同じ枝**である ——
-// 移行の不変条件は「挙動を変えない」であり、現行 REST 実装は 500 を伝播させていない。
+// 🔴 **失敗は例外にせず空へ縮退する**（[[IADR-0426]] 決定 4）。gRPC の `RpcException`（全 status）・
+// s2s トークン取得失敗は**同じ枝**である —— 移行の不変条件は「挙動を変えない」であり、
+// 撤去した REST 実装も 500 を伝播させていなかった（「非 2xx」「不達」を同じ枝へ落としていた）。
 public interface IRagSearchTransport
 {
     Task<IReadOnlyList<SearchResultDto>> SearchAsync(RagSearchQuery query, CancellationToken ct);
@@ -31,13 +32,14 @@ public interface IRagSearchTransport
 /// 混ぜたものが REST 面の <c>Scope</c> であり、それが信じられてしまったことが #1339 である。
 /// <list type="bullet">
 /// <item><see cref="EffectiveScope"/> … 呼び出し元が交差済みの実効スコープ。
-/// <b>REST 輸送だけが送る</b>（受け口はこれを絞り込みとしてしか使わない）。</item>
+/// <b>撤去した REST 輸送だけが送っていた</b>。gRPC 輸送は送らない（`GrpcRagSearchTransport` の 🔴）。
+/// 現在の読み手は試験の器（検索の偽物へ渡す `TestRagOrchestrator`）だけである。</item>
 /// <item><see cref="UserId"/> / <see cref="UserAttributes"/> … 🔴 <b>gRPC 輸送が本文で運ぶ判定の入力。</b>
 /// 受け口が自分でスコープを解決する（判定の位置は動かない）。</item>
 /// <item><see cref="NarrowTo"/> … 利用者が指定したデータ範囲そのもの。
 /// <b>交差前の値である</b> —— gRPC 輸送はこれを送り、交差は受け口が同じ <c>ScopeNarrowing</c> で行う。</item>
 /// <item><see cref="IsSynthetic"/> … ［2026-10-06 / #1746 監査 F1］合成監視の要求か（外周が付けた内周の標識）。
-/// 輸送が検索サービスへ**標識として引き継ぐ**（REST はヘッダ、gRPC はメタデータ）。検索サービスの再順位付けの段が
+/// 輸送が検索サービスへ**標識として引き継ぐ**（gRPC のメタデータ）。検索サービスの再順位付けの段が
 /// 合成監視の検索に LLM の費用を出さないため（ADR-0076 決定 4）。既定は偽（標識を付けない）。</item>
 /// </list>
 /// </summary>
