@@ -62,7 +62,10 @@ related_specs:
    `fullScopeAllowed=false`・`rootUrl=${authBaseUrl}`・`/realms/platform/account/*`・PKCE S256）。次も宣言で持つ:
    `roles.client.account`（`view-profile`・`manage-account`〔合成 `manage-account-links`〕・`manage-account-links`・`view-applications`・
    `view-consent`・`manage-consent`〔合成 `view-consent`〕・`view-groups`・`delete-account`）／
-   `clientScopeMappings.account`（`account-console` に `manage-account`・`view-groups`）／
+   `clientScopeMappings.account`（`account-console` に `manage-account`・`view-groups`。🔴 `view-groups` も許すのは、SC-16 の 3 画面に要るからではなく
+   **Keycloak 組み込みの既定（`setupAccountManagement` が `manage-account`・`view-groups` の 2 つを割り当てる）の写し**だからである。
+   組み込みと同じ形に揃え、アカウントコンソールの「グループ」画面も組み込みと同じに動かす。版上げの際は組み込みの realm を export して
+   この割当も突き合わせる。組み込みが変われば宣言も追随させる）／
    `defaultRole` と `roles.realm[default-roles-platform]`（合成は `offline_access` と `account` の `view-profile`・`manage-account`。
    🔴 `uma_authorization` は書かない —— import の後で Keycloak が作って既定ロールへ足す。書くと import が落ちる）。
 2. **`account-console` の既定スコープは `basic`・`profile`。** `account` のロールの写像（`oidc-usermodel-client-role-mapper`・
