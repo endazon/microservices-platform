@@ -3,7 +3,7 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-10-14
+updated: 2026-10-15
 author: claude
 ---
 <!-- trace:
@@ -32,8 +32,8 @@ issues: [#1740, #1859, #1839, #1841, #1783, #1834, #1830, #1817, #1755, #1746, #
 - **認証**: Keycloak（OIDC/JWT）による Bearer トークン認証。各サービスは `AddPlatformAuth` で JWT を検証する。
 - **認可（サービス内 RBAC）**: 属性・ポリシー管理の管理系エンドポイント（属性辞書・ABAC ポリシーの CRUD／有効無効切替／削除）は
   `AdminOnly` ポリシー（`platform-admin` ロール必須）で保護する。ロール未保持は 403。ロール名・ポリシー名は
-  `PlatformAuthPolicies` に定義。サービス間呼び出しの `POST /authz/scope`・`POST /authz/attributes/validate`
-  は本ポリシーの対象外（認証のみ）。
+  `PlatformAuthPolicies` に定義。サービス間呼び出しの `POST /authz/attributes/validate` と権限スコープ解決（gRPC
+  `AuthzScope/Resolve`。［2026-10-15］REST の `POST /authz/scope` は撤去した）は本ポリシーの対象外（サービス呼び出し用のロールを要する）。
 - **運用者ロール**: 構成情報の閲覧（構成情報 API `/bff/admin/config`・
   構成ビューア #113）は `ConfigViewer` ポリシー（`platform-admin` **または** `platform-operator`）で
   保護する。非権限（無認証を含む）には 404 で応答自体を秘匿する（構成情報 API の実装判断と、権限外は 404 とする存在秘匿）。
@@ -119,7 +119,7 @@ Wiki.js の権限モデルは**ページ／グループ単位**であり、属�
 存在秘匿を代替できない（Wiki エンジンの計画 ADR も明記）。したがって ABAC は**本システムが単一の真実源**とし、
 **WikiService を Wiki.js の前段ゲートウェイ**として強制点を集約する。
 
-- **強制内容**: 利用者 JWT 属性（`clearance` / `department`）× `/authz/scope` から許可スコープを解決し、
+- **強制内容**: 利用者 JWT 属性（`clearance` / `department`）× 権限スコープ解決（east-west gRPC）から許可スコープを解決し、
   Wiki.js の閲覧要求に deny-by-default で適用する。一覧は権限内ページのみ、個別アクセスは**権限外／不存在とも
   404 相当で存在秘匿**する（権限外は 404 とする方針の意味論を継承。403 で存在を漏らさない）。判定は既存 `AbacPageFilter`
   （検索側 `InMemoryVectorStore.MatchesFilters` と同一意味論）を到達可否へ転用する。
@@ -145,8 +145,8 @@ Wiki.js の権限モデルは**ページ／グループ単位**であり、属�
 
 ### サービス間（内部 API）の認証 — Istio STRICT mTLS を第一防御とする
 
-内部サービス API（例: DocumentService `/documents`、LlmGateway `/complete`・`/embed`、
-DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz/attributes/validate`）は
+内部サービス API（例: DocumentService `/documents`、LlmGateway `/complete`、
+DataSourceService `/datasources`、AuthorizationService `/authz/attributes/validate`。［2026-10-15］`/embed`・`/authz/scope` の REST は撤去した）は
 「サービス間呼び出しのため認証対象外」として無認証で提供されている。
 **［2026-09-27 追記］DocumentService の `/documents` の読み取りは認証を要するようになった**（上の「後段認可」の項。書き込みは従前から認証を要する）。
 これは **Istio mTLSを前提**にした

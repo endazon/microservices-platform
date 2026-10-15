@@ -2390,24 +2390,9 @@ paths:
           description: 同期キューに追加
 
   # ── AuthorizationService ──────────────────────────
-  /authz/scope:
-    post:
-      tags: [Authorization]
-      summary: "FR-05, ADR-0004: ABAC スコープ解決"
-      operationId: resolve-scope
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AccessScopeRequest"
-      responses:
-        "200":
-          description: 許可されたフィルター
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AccessScopeResponse"
+  # ［2026-10-15 / #1902］`POST /authz/scope` は撤去した（east-west の権限スコープ解決は gRPC `AuthzScope/Resolve` だけ）。
+  # 要求の形（`AccessScopeRequest`）は記述する口が無くなったので外した。応答の形（`AccessScopeResponse`）は
+  # `granted` と `allowedFilters` の読み方の契約として残す（gRPC の応答も同じ 2 状態を運ぶ）。
 
   /authz/policies:
     get:
@@ -2839,36 +2824,8 @@ paths:
         "403":
           description: platform-service ロールを持たない主体（利用者トークンは管理者でも拒否。#1364）
 
-  /embed:
-    post:
-      tags: [Embeddings]
-      summary: "FR-02, FR-05, ADR-0016/0017, IADR-0025: 埋め込み生成"
-      description: |
-        IngestionService（purpose=index）/ RetrievalService（purpose=query）が呼び出す。
-        機密区分（confidentiality）で送信先ティアを切替: confidential/restricted はティアA
-        （セルフホスト Ruri v3/768 次元）固定で外部送信しない（未構成時は fail-closed で
-        embedded=false）。それ以外はティアB（Voyage voyage-3.5/1024 次元）。検索クエリ
-        （purpose=query）は検索対象コレクションと次元を一致させるため既定外部経路へ固定する。
-        送信拒否・不調時も 500 を伝播せず embedded=false の縮退応答を 200 で返す
-        （retryable=true は一時障害で呼び出し側が再試行、false は恒久理由でスキップ）。
-      operationId: embed
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EmbedApiRequest"
-      responses:
-        "200":
-          description: 埋め込み結果（送信拒否・縮退時は embedded=false）
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EmbedApiResponse"
-        "401":
-          description: 未認証（サービス間トークンが無い。#1364）
-        "403":
-          description: platform-service ロールを持たない主体（利用者トークンは管理者でも拒否。#1364）
+  # ［2026-10-15 / #1902］`POST /embed`（と `POST /complete/stream`）は撤去した（east-west の埋め込み・逐次生成は gRPC だけ）。
+  # 要求の形（`EmbedApiRequest`）は記述する口が無くなったので外した。応答の形（`EmbedApiResponse`）は縮退の読み方の契約として残す。
 
   /bff/graph/edge-types:
     get:
@@ -4731,23 +4688,6 @@ components:
             ——`required` と同居すると「欠けてよい」と読め、契約が自己矛盾する（IADR-0132 決定 2 系）。
             **表示名（公開 / 社内限 / 秘 / 取扱制限）は契約に載せない。** 正は計画リポジトリの用語集。
 
-    AccessScopeRequest:
-      type: object
-      required: [userId, userAttributes]
-      properties:
-        userId: { type: string }
-        userAttributes:
-          type: object
-          additionalProperties: { type: string }
-        action:
-          type: string
-          description: >-
-            ［2026-08-23 / #989］解決したいアクション（`read` / `analyze` / `manage` / `write`。
-            `enum` にしない——値域の正は `PolicyAction`）。省略時は `read`（旧クライアントは無改修で
-            従来どおり読み取りスコープを得る）。従前はサーバ側が `read` をハードコードしており、
-            書き込みの認可スコープをこの経路で出せなかった。値域外は 400（呼び出し側は非 2xx を
-            deny へ縮退させる）。
-
     AccessScopeResponse:
       type: object
       description: |
@@ -5947,28 +5887,7 @@ components:
         target: { type: string }
         detail: { type: string }
 
-    # ── IADR-0025: 埋め込みゲートウェイ（/embed）─────
-    EmbedApiRequest:
-      type: object
-      required: [text]
-      properties:
-        text: { type: string, description: "埋め込み対象テキスト（取り込みは本文全量を送るため機密区分で越境判定）" }
-        confidentiality:
-          type: string
-          nullable: true
-          enum: [public, internal, confidential, restricted]
-          description: "機密区分（大文字小文字は無視）。confidential/restricted はティアA固定・外部送信しない"
-        purpose:
-          type: string
-          enum: [index, query]
-          default: index
-          description: "用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定"
-        targetCollection:
-          type: string
-          nullable: true
-          example: "knowledge_chunks_ruri_v3"
-          description: "検索クエリ（purpose=query）が読むコレクション。越境判定と有効化の篩を通った候補をそのコレクションの送信先へ絞るだけで、許可されていない区分を開くことはない。index では無視する。省略時は従来どおり優先度順に選ぶ"
-
+    # ── IADR-0025: 埋め込みゲートウェイの応答（gRPC `LlmEmbedding/Embed` の写しの DTO。REST `/embed` は撤去）─────
     EmbedApiResponse:
       type: object
       description: "embedded=false は機密区分による送信拒否（fail-closed）・次元不整合・呼び出し失敗を示す"

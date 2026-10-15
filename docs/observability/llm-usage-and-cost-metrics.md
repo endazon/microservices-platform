@@ -4,7 +4,7 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-23
-updated: 2026-10-10
+updated: 2026-10-15
 ---
 <!-- trace:
 ids: [FR-10, FR-11, NFR, NFR-21, UC-05, SC-10]
@@ -28,7 +28,7 @@ issues: [#380, #443, #546, #1111, #1203, #1741, #1875, planning#783]
 | 項目 | 値 |
 | --- | --- |
 | Meter 名 | `microservices-platform.llm-gateway`（呼び出し回数と同じ Meter） |
-| 発行元 | `LlmGateway` の `/complete`・`/complete/stream` の**送信が成立した経路だけ** |
+| 発行元 | `LlmGateway` の一括（`/complete`・gRPC `Complete`）と逐次（gRPC `CompleteStream`）の**送信が成立した経路だけ** |
 | 収集経路 | OTel SDK → OTLP（`Otlp:Endpoint`）→ Collector → Prometheus |
 
 | 計器 | 種別 | 単位 | Prometheus 側の名前 | 用途 |

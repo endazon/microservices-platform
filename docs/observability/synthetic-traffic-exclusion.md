@@ -3,7 +3,7 @@ title: 合成監視トラフィックの標識と、費用・利用状況から�
 type: observability-spec
 status: in-progress
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-10-15
 author: claude
 ---
 <!-- trace:
@@ -47,7 +47,7 @@ issues: [#1203, #1202, #1204, #1111, planning#524, planning#538]
 | 利用状況（検索・回答の件数） | BFF の発火の口（`IUsageEventReporter.Report`） | **唯一の発火点**。ここを通さなければ行が入らない |
 | 検索傾向（最小出現件数のしきい値） | 同上（独立の除外は置かない） | 行が入らないなら、しきい値を通過する語も生じない |
 | 利用イベントの受け口 | DashboardService の `POST /dashboard/events` | 多層防御。**行を作る側の性質**にする（直接叩かれた場合） |
-| LLM 費用（トークン累計・金額） | LlmGateway の `/complete` と `/complete/stream` | 単価を解決して金額を積む主体がそこである |
+| LLM 費用（トークン累計・金額） | LlmGateway の一括（`/complete`・gRPC `Complete`）と逐次（gRPC `CompleteStream`） | 単価を解決して金額を積む主体がそこである |
 
 **SLO の分子分母からは外さない。** 合成監視を置く目的が「評価対象を作ること」であり、
 そこから外すと器の意味が消える。

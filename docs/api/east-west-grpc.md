@@ -124,7 +124,7 @@ s2s の `CallCredentials` を付ける。平文でトークンを送るには `U
   呼び出し元は資源サービス（BFF・AI 分析・グラフ・Wiki・MCP・検索・文書）の多数にわたる。
   一方、スコープを使って**資源**（辺・属性値・検索の本文・文書の読み取り・タグの書き込み）を引く面は、それぞれ許可集合の中継者に
   限られている（各面の「利用者文脈を運べる呼び出し元」）ので、この面から漏れるのは**スコープの記述**に留まる。
-- 評価器: REST と**同じ** `AbacEvaluator.ResolveScope` を呼ぶ（評価器を 2 つにしない）。
+- 評価器: `AbacEvaluator.ResolveScope` を呼ぶ（［2026-10-15 / #1902］REST の `POST /authz/scope` は撤去した。スコープ解決の面はこの rpc だけである）。
 
 リクエスト（`ResolveScopeRequest`）:
 
@@ -175,10 +175,8 @@ s2s トークンの失敗 / 上限（5 秒）の時間切れは、いずれも�
 
 - 概要: 取り込み・検索の 2 サービスが `Services:LlmGatewayGrpc`（例: `http://llm-gateway:8081`）の構成が
   宛先から gRPC で埋め込みを得る（［2026-10-10 / #1255］REST の枝は撤去した。宛先が無ければ `UNAVAILABLE` として縮退する。§REST 実装の退役）。
-- 認証・認可: `ServiceCaller`。［2026-09-10 更新 / #1364］**REST の `/embed` も同じ 1 つのポリシーを要する。**
-  従前ここには「REST は無認可のままなので gRPC 面のほうが強い」と書いてあったが、**その非対称は解消した** ——
-  2 つの面は同じ 1 つのポリシーで判定される（呼び出し側は REST 経路でも s2s トークンを載せる）。
-- 判定器: REST と**同じ**越境判定・ルーティング・次元照合を通る（判定器を 2 つにしない）。
+- 認証・認可: `ServiceCaller`。［2026-10-15 更新 / #1902］REST の `/embed` は撤去した。埋め込みの面はこの rpc だけである。
+- 判定器: 越境判定・ルーティング・次元照合は判定器の本体にあり、輸送の側に持たない。
 
 リクエスト（`EmbedRequest`）:
 
@@ -212,9 +210,8 @@ s2s トークンの失敗 / 上限（5 秒）の時間切れは、いずれも�
 
 - 概要: AI 分析・グラフ・変換の 3 サービスが `Services:LlmGatewayGrpc` の宛先へ gRPC で
   生成を得る（［2026-10-10 / #1255］REST の枝は撤去した。宛先が無ければ `UNAVAILABLE` として縮退する。§REST 実装の退役）。
-- 認証・認可: `ServiceCaller`。［2026-09-10 更新 / #1364］**REST の `/complete` 系も同じ 1 つのポリシーを要する。**
-  従前の「REST は無認可のまま」という記述は解消した —— 3 口（`/complete`・`/complete/stream`・`/embed`）は
-  いずれも端点ごとに `ServiceCaller` を要求する。
+- 認証・認可: `ServiceCaller`。REST の `/complete` も同じ 1 つのポリシーを端点ごとに要求する
+  （［2026-10-15 更新 / #1902］`/complete/stream`・`/embed` の REST は撤去した。`/complete` は AST・合成監視が叩くので残す）。
 - 判定器: REST と**同じ**越境判定・ルーティング・フォールバック鎖・計器を通る（判定器を 2 つにしない）。
 
 rpc は 2 本ある。
@@ -222,7 +219,7 @@ rpc は 2 本ある。
 | rpc | 形 | REST の対応 |
 | --- | --- | --- |
 | `Complete` | unary | `POST /complete` |
-| `CompleteStream` | 🔴 **server-streaming** | `POST /complete/stream`（SSE） |
+| `CompleteStream` | 🔴 **server-streaming** | なし（［2026-10-15 / #1902］SSE の `POST /complete/stream` は撤去した） |
 
 🔴 **`CompleteStream` を unary へ潰してはならない。** 初回トークンの境界は「最初の `delta` メッセージの
 到着」であり、SSE の「最初の `data:` 行」と同じ位置にある。unary にすると最初の `delta` が生成完了後にしか
@@ -445,7 +442,7 @@ BFF はこの面で受け取る（BFF へストレージの資格情報を配ら
 ## 6 つ目の面: ナレッジ健全性の報告（`knowledge.dashboard.v1.KnowledgeHealthReport/Report`）
 
 - 呼び出し元: グラフの定期処理（指標 4 つ分の観測値を周期ごとに送る生産者）。
-- 呼び出し先: ダッシュボード集計サービスの内部受け口。REST は `POST /internal/knowledge-health/observations`。
+- 呼び出し先: ダッシュボード集計サービスの内部受け口（［2026-10-15 / #1902］無認証の REST `POST /internal/knowledge-health/observations` は撤去した）。
 - 切替の構成キー: `Services:DashboardServiceGrpc`（h2c のアドレス）。~~**未設定なら REST のまま。**~~ ［2026-10-10 / #1255］未設定なら `UNAVAILABLE` として縮退する（REST の枝は撤去した）。
 - 認証・認可: `ServiceCaller`。
 - 置き場: **knowledge ユニットの共有契約プロジェクト**（`Knowledge.Contracts`）。所有者は呼び出し先である（§1）。
@@ -476,8 +473,8 @@ BFF はこの面で受け取る（BFF へストレージの資格情報を配ら
 
 🔴 **判定の位置を動かさない。** 個人資料を集計から外すのは受け手であり、生産者は
 「対象の集合と各対象の文書スコープを正しく添える」だけである。移行はこの分担を変えない。
-REST の受け口は**認証を持たない**（利用者裁定で認証を外した経路である）ので、
-この面に `ServiceCaller` を掛けるのは**現状より狭い**向きである。**REST 側は変えない。**
+撤去した REST の受け口は**認証を持たなかった**（利用者裁定で認証を外した経路だった）。この面に `ServiceCaller` を掛けたのは
+狭める向きであり、［2026-10-15 / #1902］生産者が gRPC だけになったので無認証の口は撤去した。
 
 🔴 **縮退の枝を 1 つも増やさず・1 つも減らさない。** 現行の枝は 3 つ（受理された／受理されない／
 到達できない）＋「呼び出し元のキャンセルだけは伝播させる」であり、gRPC 版はこれを写す。
@@ -558,7 +555,7 @@ status で割ると、**割り方そのものが存在を漏らす**（1 種類�
 
 - 呼び出し元と呼び出し先: **グラフ → 文書**（AI タグ提案の**生成段**が「LLM に選ばせる値集合」として引く）。
 - 切替の構成キー: `Services:DocumentServiceGrpc`。~~**未設定なら REST のまま。**~~ ［2026-10-10 / #1255］未設定なら `UNAVAILABLE` として縮退する（REST の枝は撤去した）。
-- 認証・認可: `ServiceCaller`。REST の受け口は**認証を持たない**メッシュ内部 API なので、**狭まる向き**である。
+- 認証・認可: `ServiceCaller`。撤去した REST の受け口（`GET /internal/tags/names`。［2026-10-15 / #1902］撤去）は認証を持たなかったので、**狭めた向き**である。
 - 置き場: `Knowledge.Contracts` の `Protos/knowledge/document/v1/tag_dictionary.proto`。
 
 **この面は「呼び出し元が要らないものを面へ出さない」の教科書的な例である。** rpc は 1 本、
@@ -596,7 +593,7 @@ status で割ると、**割り方そのものが存在を漏らす**（1 種類�
   （ポリシー無し —— realm の任意の認証済み主体を通し、見えるものは ABAC が決める）。
   gRPC 面はサービス自身の資格情報だけを通すので、**依然として狭まる向き**である。
   この非対称は**並走の期間だけ**続く（REST が運ぶのは利用者トークン、gRPC が運ぶのは s2s ＋ 本文の利用者文脈）。
-  ［2026-10-10 / #1255］east-west の REST の呼び出し元は撤去したので、受け口の非対称は呼び出し元を持たない（受け口の撤去は残余）。
+  ［2026-10-15 / #1902］REST の受け口（`POST /search/attribute-values`）を撤去したので、非対称は無くなった。
 - **利用者文脈を運べる呼び出し元**［2026-09-27 追記］: 🔴 本文の `user` を信じるのは、呼び出し元が**機械クライアント**で、
   そのクライアント識別（`azp`。無ければ `service-account-<clientId>` から復元）が検索サービスの許可集合
   `AttributeValues:TrustedUserContextClients` に**序数一致**で在るときだけである。**未構成なら `bff` だけ**で、構成すると既定を置き換える
@@ -646,7 +643,7 @@ status で割ると、**割り方そのものが存在を漏らす**（1 種類�
 
 - 呼び出し元と呼び出し先: **文書 → 通知**（論理削除の予告・完全削除・容量警告・同期トークン期限の 4 契機）。
 - 切替の構成キー: `Services:NotificationServiceGrpc`。~~**未設定なら REST のまま。**~~ ［2026-10-10 / #1255］未設定なら `UNAVAILABLE` として縮退する（REST の枝は撤去した）。
-- 認証・認可: `ServiceCaller`。REST の受け口は**認証を課していない**（内部 API の既存の扱い）ので、**狭まる向き**である。
+- 認証・認可: `ServiceCaller`。撤去した REST の受け口（`POST /internal/notifications`。［2026-10-15 / #1902］撤去）は認証を課していなかったので、**狭めた向き**である。
 - 置き場: `Platform.Shared.Contracts` の `Protos/platform/notification/v1/notification_ingress.proto`。
 
 🔴 **この面が持ち込むのは輸送ではなく資格情報である。** 先行 9 面はすべて呼び出し元が
@@ -883,10 +880,13 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
   （権限なし・申告なし・提案 0 件・画像保持など）へそのまま落ちる。ステータスの詳細に構成キーの名前が載る。
 - 🔴 **扇形の構成キーは `Introspection:Services` / `Mcp:Services` へ一本化した**（値は h2c のアドレス）。旧キー
   `Introspection:GrpcServices` / `Mcp:GrpcServices` が 1 件でも残っていれば、BFF / MCP サーバーは両キーを名指して起動を止める。
-- **残したもの**: 呼び出し元が 0 になった REST の受け口（`/authz/scope`・`/embed`・`/complete/stream`・`/search/attribute-values`・
-  グラフの近傍と辺の型の辞書・`/internal/notifications`・`/internal/knowledge-health/observations`・`/internal/tags/names`・
-  `/documents/{id}/tags`）は撤去していない。数え方の基準は「構成で選ばれる」ことであり、呼び出し元の撤去で満たされる。
-  受け口の撤去は別 issue で行う。グラフ → LLM ゲートウェイのクラスタ要約（既定 off）は gRPC 実装を持たないので REST のまま残る。
+- **呼び出し元が 0 になった REST の受け口**: ［2026-10-15 / #1902］撤去した —— `/authz/scope`・`/embed`・`/complete/stream`・
+  `/search/attribute-values`・`/internal/notifications`・`/internal/knowledge-health/observations`・`/internal/tags/names`・
+  `/documents/{id}/tags`。読み手の無くなった REST の宛先の env（`Services__AuthorizationService` の 5 サービス・
+  `Services__LlmGateway` の 3 サービス）も配備から外した。
+  **残したもの**: グラフの近傍（`/graph/{id}/neighbors`）と辺の型の辞書（`/graph/edge-types/catalog`）は、近傍展開の呼び出しは
+  消えたが BFF の中継（`/bff/graph/...`。north-south）が叩くので残す。グラフ → LLM ゲートウェイのクラスタ要約（既定 off）は
+  gRPC 実装を持たないので REST のまま残る。
 - **north-south と外部は対象外**: BFF のエッジの中継（15 本）・AST からの呼び出し・外部サービスは変えていない。readiness の
   `/health/*` は HTTP のまま。
 

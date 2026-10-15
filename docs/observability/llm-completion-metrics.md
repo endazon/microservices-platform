@@ -3,7 +3,7 @@ title: LLM 補完メトリクス（終了理由・拒否率）ログ・可観測
 type: observability-spec
 status: in-progress
 created: 2026-07-28
-updated: 2026-10-13
+updated: 2026-10-15
 author: claude
 ---
 <!-- trace:
@@ -28,7 +28,7 @@ issues: [#380, #786, #787, #863, #1091, #1819, #1917]
 | --- | --- |
 | Meter 名 | `microservices-platform.llm-gateway`（サービス名と一致） |
 | 計器 | `llm.completion.total`（`Counter<long>`・単位 `{completion}`） |
-| 発行元 | `LlmGateway` の `/complete`・`/complete/stream`（**全終了経路**） |
+| 発行元 | `LlmGateway` の一括（`/complete`・gRPC `Complete`）と逐次（gRPC `CompleteStream`）（**全終了経路**） |
 | 収集経路 | OTel SDK → OTLP（`Otlp:Endpoint`）→ Collector → Prometheus |
 | Prometheus 側の名前 | `llm_completion_total`（OTel の Prometheus 変換規則による） |
 

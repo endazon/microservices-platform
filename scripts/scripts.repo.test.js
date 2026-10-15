@@ -5344,15 +5344,16 @@ ${r.stderr}`);
         '既定値つき a は見逃してよいが、既定値なし b は required を要求しなければならない');
     });
 
-    // 到達性そのもの。実データで狙った 5 件に当たっていること（規則が「たまたま」効いていない側）。
+    // 到達性そのもの。実データで狙った 4 件に当たっていること（規則が「たまたま」効いていない側）。
     ok('check-openapi-dto-drift: 実データの要求側スキーマを取れる', () => {
       const fsB = require('fs');
       const drift = require('./check-openapi-dto-drift.js');
       const yaml = fsB.readFileSync(
         pathDrift.join(__dirname, '..', 'docs/api/openapi.yaml'), 'utf8');
       const { requestOnly } = drift.collectReachability(yaml);
+      // ［2026-10-15 / #1902］`EmbedApiRequest` は REST の `/embed` とともに openapi.yaml から外した。
       for (const n of ['SearchRequest', 'AnalysisTaskRequest', 'AnalysisDataRange',
-        'CompletionApiRequest', 'EmbedApiRequest']) {
+        'CompletionApiRequest']) {
         assert.ok(requestOnly.has(n), `${n} が要求側として取れていない`);
       }
       assert.ok(!requestOnly.has('ConversionJobDto'), 'ConversionJobDto は応答側である');
