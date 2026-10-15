@@ -14730,6 +14730,9 @@ exit 0
         /^\[page 1\] 10\/60（16\.7%）/);
       st = rp.applyPage(st, { nextCursor: 'c2', matched: 100, remaining: 50, selected: 10, published: 10 });
       assert.strictEqual(st.excluded, 40, '2 ページ目以降は変えない');
+      // 開始カーソルでない位置から最初に積んだ（excluded を持たない状態を途中から再開した）ときは決めない —— 進捗の分母は口の matched のまま。
+      const mid = { ...rp.newState(rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z']), new Date('2026-10-15T00:00:00Z')), cursor: 'c5' };
+      assert.strictEqual(rp.applyPage(mid, { nextCursor: 'c6', matched: 100, remaining: 30, selected: 10 }).excluded, null, '途中の matched - remaining は対象外の件数ではない');
       assert.strictEqual(rp.applyPage(rp.newState(rp.parseArgs([]), new Date()), { nextCursor: null, matched: 5, remaining: 5 }).excluded, null);
     });
 

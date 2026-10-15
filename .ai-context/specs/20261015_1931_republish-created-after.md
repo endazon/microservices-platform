@@ -37,6 +37,17 @@ plan_refs: []
   `createdAfter` には既定が無いので、無指定と指定は違う走査である）。版は上げない（旧い状態は `createdAfter` 無し＝ null と読む）。
 - 不正な日時は止める。`after ≥ before`（空の区間を含む）は止める。`before` 無指定のときは新規の状態で開始時刻と比べる。
 
+### 口が数える件数（AI レビュー 🟡 への回答。#1932）
+
+dry-run の `remaining` と内訳が「カーソルより後ろ」について数えられることは、口の実装（`src/knowledge/backend/Services/DocumentService/Features/Documents/Republish/Endpoint.cs`）で確かめた:
+
+- 属性なしの経路: `keyed = query.AfterCursor(after)`、dry-run は `selected = ProjectAsync(keyed.InPageOrder())`・`remainingCount = selected.Count`、内訳は `Summarize(selected)`。`matched = query.CountAsync()`（カーソルに依らない）。
+- 属性ありの経路: `remaining = RepublishSelection.Remaining(ordered, after)`（`IsAfter`。`Guid.CompareTo` で `Guid.Empty` が最小）、dry-run は `selected = remaining`。
+- `AfterCursor` は `CreatedAt >= c AND (CreatedAt > c OR Id > id)`（`DocumentPageQuery.cs`）。全零の Id では `CreatedAt = c` の実在の文書も選ばれる。
+- カーソルの解読（`DocumentPageCursor.TryDecode`）は `v1`・10 進の ticks・`Guid.TryParseExact(…, "N")` で、全零の Id を受け付ける。
+
+実機の dry-run での確認は PoC の配備後に行う（この PR の時点では稼働クラスタに当たれない）。
+
 ## 走査した母集合（規則 9）
 
 `git grep -n -i 'created-before\|createdBefore\|created_before'`（`.ai-context/specs` を除く）の結果:
