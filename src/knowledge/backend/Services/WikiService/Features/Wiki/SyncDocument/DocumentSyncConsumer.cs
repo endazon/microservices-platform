@@ -204,8 +204,9 @@ public class DocumentSyncConsumer(
         await WikiJsAsync(t => wikiJs.UpsertPageAsync(wikiPage, t), ct);
 
         if (!await SaveWithSlugFallbackAsync(page, slugCandidates[^1], ev.DocumentId, ct)) return;
-        logger.LogInformation("Synced document {DocumentId} to Wiki.js at {Path} (slug {Slug})",
-            ev.DocumentId, page.WikiPath, page.Slug);
+        // [[IADR-0541]] (#1934): 成功時のログに slug を出さない（slug は題名から作るので、機密文書の題名が毎回ログに入る）。
+        // slug を出すのは異常時（競合の付け替え・恒久的な衝突）の行だけにする。
+        logger.LogInformation("Synced document {DocumentId} to Wiki.js at {Path}", ev.DocumentId, page.WikiPath);
     }
 
     // FR-13, [[IADR-0541]] 決定 1・2 (#1934): slug の選び方。
