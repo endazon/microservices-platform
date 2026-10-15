@@ -230,8 +230,11 @@ assert_ne 'T-1560-13 BACKUP_KIND が不正: 失敗で終わる' "$RC" "0"
 #       snap-500 / snap-empty / snap-truncated / snap-badsum / snap-nostate / snap-notgz
 #   - トークンは 1 回使うと無効（role の token_num_uses=1 と同じ振る舞い）
 #   - 受けた要求の行（メソッド・パス・HTTP の版・ヘッダ名）を $WORK/vault-requests.log へ書く
-FAKE_JWT="eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6cGxhdGZvcm0taW5mcmE6cGxhdGZvcm0tYmFja3VwLXZhdWx0In0.STUB-JWT-SIGNATURE"
-FAKE_VAULT_TOKEN="s.STUB-SNAPSHOT-TOKEN-DO-NOT-LEAK"
+# 🔴 JWT・トークンの形をした文字列をリポジトリに置かない（秘密の走査〔gitleaks〕が本物と見分けられない）。試験の中で組み立てる。
+b64url() { printf '%s' "$1" | base64 | tr -d '=\n' | tr '/+' '_-'; }
+fake_jwt() { printf '%s.%s.%s' "$(b64url '{"alg":"RS256"}')" "$(b64url "{\"sub\":\"$1\"}")" "$2"; }
+FAKE_JWT="$(fake_jwt 'system:serviceaccount:platform-infra:platform-backup-vault' STUB-JWT-SIGNATURE)"
+FAKE_VAULT_TOKEN="stub-snapshot-token-do-not-leak"
 SNAPDIR="$WORK/snap-src"; mkdir -p "$SNAPDIR/ok" "$SNAPDIR/badsum" "$SNAPDIR/nostate"
 printf '{"Version":1,"ID":"bolt-snapshot","Index":40}' > "$SNAPDIR/ok/meta.json"
 printf 'STATE-BIN-%s' "$(seq 1 200 | tr -d '\n')" > "$SNAPDIR/ok/state.bin"
@@ -351,7 +354,7 @@ for mark in snap-empty snap-truncated snap-badsum snap-nostate snap-notgz snap-5
 done
 
 new_vault_env
-printf '%s\n' 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJvdGhlciJ9.WRONG-SA' > "$R/sa/jwt"
+printf '%s\n' "$(fake_jwt other WRONG-SA)" > "$R/sa/jwt"
 run_backup
 assert_ne 'T-1868-03 Vault: role に束縛されていない SA（ログイン 403）なら失敗で終わる' "$RC" "0"
 assert_contains 'T-1868-03 Vault: ログインできないことをログに出す' "$OUT" 'ログインできません（HTTP 403'

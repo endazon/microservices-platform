@@ -933,7 +933,9 @@ if [ "${VAULT:-}" = "1" ]; then
   VAULT_PERSIST_APPLIED=0
   if kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1; then
     kubectl apply -k "$VAULT_KUSTOMIZE"
-    [ "$VAULT_KUSTOMIZE" = "deploy/local/vault-persistence" ] && VAULT_PERSIST_APPLIED=1
+    if [ "$VAULT_KUSTOMIZE" = "deploy/local/vault-persistence" ]; then
+      VAULT_PERSIST_APPLIED=1
+    fi
   else
     echo "    WARN: external-secrets.io CRD 未導入のため ClusterSecretStore/Vault は skip。" >&2
     echo "          先に ESO を導入する（deploy/local/vault/README.md）。Vault dev のみ適用（非永続・再起動で揮発）:" >&2
