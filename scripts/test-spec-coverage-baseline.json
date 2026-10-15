@@ -104,6 +104,7 @@
     ],
     "docs/tests/FR-06_document-crud-versioning.md": [
       "AdminWritePrivateNoteScopeTests",
+      "ArchiveBodylessDocumentsEndpointTests",
       "AstStaleCopiesEndpointTests",
       "AstStaleCopyRulesTests",
       "CatalogTimeoutTests",
@@ -124,8 +125,10 @@
       "GrpcDocumentTagWriteTests",
       "MachineClientOwnDocumentWriteTests",
       "MachineClientOwnerSubjectTests",
+      "ObjectStorageRoundTripTests",
       "PrivateNoteExposurePublishTests",
-      "RepublishDocumentUpdatedEndpointTests"
+      "RepublishDocumentUpdatedEndpointTests",
+      "S3ObjectStorageClientExistsTests"
     ],
     "docs/tests/FR-07_data-range-analysis.md": [
       "AnalysisEndpointTests",

@@ -1,5 +1,7 @@
+using Amazon.S3;
 using GraphService.Domain.Ports;
 using Microsoft.Extensions.Logging;
+using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace GraphService.Infrastructure.ExternalServices;
@@ -21,7 +23,21 @@ public class StorageContentReader(
         // 実取得の失敗（例外）は送出し、Wolverine のリトライへ委ねる。
         if (storage.CanResolve(markdownUri))
         {
-            var stored = await storage.GetTextAsync(markdownUri!, ct);
+            string stored;
+            try
+            {
+                stored = await storage.GetTextAsync(markdownUri!, ct);
+            }
+            catch (AmazonS3Exception ex) when (ObjectStorageErrors.IsNoSuchKey(ex))
+            {
+                // 🔴 FR-17, [[IADR-0549]] 決定 4 (#1931 項目 3)・[[IADR-0540]] 決定 2 と同じ判定: **キーが無いのは恒久的な欠落である。**
+                // 例外を上げると再試行の後 DLQ へ入る（IADR-0540・IADR-0541 の残余だった）。契約どおり null を返して抽出をスキップする
+                // （辺は触らない・語の出現数は表題だけ）。本文の無い古い文書のアーカイブ（`DocumentUpdated` の fan-out）がここへ届き得る。
+                // 一時障害（時間切れ・5xx・接続の失敗・バケットが無い）はここへ来ない —— 例外のまま上げて再試行へ委ねる。
+                logger.LogWarning(
+                    "Markdown body object missing (NoSuchKey) at {Uri}; link extraction is skipped", markdownUri);
+                return null;
+            }
             logger.LogInformation(
                 "Fetched normalized markdown from object storage {Uri} ({Length} chars)",
                 markdownUri, stored.Length);

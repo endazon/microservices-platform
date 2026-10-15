@@ -3,15 +3,15 @@ title: 文書CRUD・バージョン管理 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-11
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, UC-04, FR-08, FR-03, FR-04, FR-05, FR-06, SC-05, UC-03, NFR-09, FR-19, FR-12]
 adrs: [ADR-0013, ADR-0121, ADR-0058, ADR-0122, ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056, ADR-0027]
-iadrs: [IADR-0529, IADR-0509, IADR-0503, IADR-0484, IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
-specs: [20261011_1891_ast-draft-not-duplicate, 20261008_1765_document-keyset-sql, 20261006_1762_republish-document-updated, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1658_relay-options-shared, 20260927_issue-1657_document-normalized-consumer-content-timeout, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#1891, #1765, #1762, #1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
+iadrs: [IADR-0549, IADR-0529, IADR-0509, IADR-0503, IADR-0484, IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
+specs: [20261016_1931_archive-bodyless-pre-cutover-documents, 20261011_1891_ast-draft-not-duplicate, 20261008_1765_document-keyset-sql, 20261006_1762_republish-document-updated, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1658_relay-options-shared, 20260927_issue-1657_document-normalized-consumer-content-timeout, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#1931, #1891, #1765, #1762, #1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
 -->
 
 # テスト仕様書: 文書CRUD・バージョン管理
@@ -120,11 +120,17 @@ issues: [#1891, #1765, #1762, #1667, #1679, #1658, #1657, #1616, #1628, #1629, #
 | T-82 | 実 PostgreSQL の台帳に、同じ作成時刻の 13 件（先頭バイトの最上位ビットだけ・後半 8 バイトだけ・先頭 3 フィールドの上位／下位バイトだけが違う ID を含む）と直前・直後の 1 件、同じ時刻の個人資料と別 project の文書 | 絞り込みの口の本体を 1・2・3・5・500 件ずつ、再発行の口の形（続きの有無を知る 1 件を足して読み、残りを数える）を 1・4・17 件ずつ辿る。1 マイクロ秒の中で違う作成時刻を書いて辿る。空の台帳・残りがちょうど limit 件の最後のページ・最後の行を指すカーソル・走査の途中の削除と追加 | 作成時刻昇順・同時刻は ID 昇順で抜けも重複も無い（DB の並びは従前の .NET の比較の並びと一致する）。残りの件数は 1 ページずつ減る。丸めで同時刻になった群も抜けない。空の台帳は空、尽きたら続きのカーソルは出ず、最後の行の後ろは空。削除はカーソルを動かさず、途中で作った文書は末尾に現れる | ページの境目で読み飛ばしも重複も起きない | 自動（統合） |
 | T-83 | 実 PostgreSQL の台帳（マイグレーションで作る）に 50 件 | キーセットの問い合わせの実行計画を読む（逐次走査とビットマップ走査を禁じる） | 作成時刻と ID の複合索引が在り、カーソルの位置を索引の開始位置に使って並びのまま引く（素の OR の形だと索引を先頭からなめるので赤） | 1 ページで読むのはページの大きさ程度 | 自動（統合） |
 | T-84 | 一致する組織文書 2 件の間に、読み進める塊より多い一致しない文書と個人資料 | 絞り込みの口を 1 件ずつ辿る | 塊を渡って 2 件目を見つけ、その後で続きのカーソルが尽きる（塊を 1 回で打ち切る変異は赤） | 厳しい絞り込みでも続きを見落とさない | 自動（エンドポイント） |
+| T-85 | 切り替え前で本文の無い文書 1 件 | 本文の無い文書の一括アーカイブの口を運用者の人・運用者ロールの機械の書き手・一般の利用者・管理者で呼ぶ。口の認可の宣言を読む | 管理者以外は 403 で 1 件もアーカイブしない。管理者はアーカイブする（陽性対照）。口は `AdminOnly` を積む | 一括アーカイブは管理者だけ | 自動（エンドポイント） |
+| T-86 | 同上 | `dryRun`・`createdBefore` の欠落、アーカイブする呼び出しの理由の欠落・空白、`limit` の範囲外、不正なカーソルで呼ぶ | 400 で、その鍵を返す。台帳は動かず、ストレージにも当たらない | 必須の指定の無い呼び出しを通さない | 自動（エンドポイント） |
+| T-87 | 期限より前の本文なし 3 件・本文あり・期限ちょうどと期限後の本文なし・本文の参照なし・個人資料・アーカイブ済み | dry-run で全ページを辿る。続けて本番で全ページを辿る | dry-run は内訳だけを返し何も動かさない。本番は本文なしの 3 件だけを状態「アーカイブ」へ移し、版の注記を固定の文字列にし、アーカイブのイベントを 3 件だけ出す。対象外は状態・版・更新時刻が動かず、ストレージにも当たらない。本文は 1 度も読まない | 対象外を絶対に触らない | 自動（エンドポイント） |
+| T-88 | 同上 | 本番を 2 回流す。本文なし 7 件と本文あり 3 件（同じ作成時刻を含む）を 3 件ずつ辿る | 2 回目は何もアーカイブせず、版もイベントも増えない。ページを辿ると本文なしがちょうど 1 回ずつアーカイブされ、残りの件数は 1 ページずつ減る | 冪等・取りこぼしと重複が無い | 自動（エンドポイント） |
+| T-89 | 本文なし 2 件 | 2 件目の存在確認でバケットが無い（構成の不調）を注入して呼ぶ。直してからもう一度呼ぶ。ストレージ未構成を注入して呼ぶ | 失敗として返り、確かめ済みの 1 件目も含め 1 件もアーカイブしない。直せば同じ要求で 2 件ともアーカイブされる。未構成は 503 | 「無い」と言えないときは何もしない | 自動（エンドポイント） |
+| T-90 | オブジェクトストレージの偽物・実ストア（SeaweedFS） | 在るキー・無いキー・消したキー・無いバケットの存在を確かめる | 在るキーは HEAD だけで在ると答える（本文を読まない）。無いキー・消したキーは範囲 0-0 の GET のエラーコード（NoSuchKey）で無いと答える。無いバケット・403・5xx は例外。未構成は例外 | 404 だけで「無い」と判断しない | 自動（単体・統合） |
 
 対応テスト実装:
 
 - 単体（ドメイン）: `src/knowledge/backend/Services/DocumentService/Tests/Domain/DocumentVersioningTests.cs`（T-01〜T-05）、`DocumentAttributesTests.cs`（T-23）
-- 単体（エンドポイント, InMemory）: `.../AstStaleCopies/AstStaleCopiesEndpointTests.cs`・`AstStaleCopyRulesTests.cs`（T-75）、`.../Republish/RepublishDocumentUpdatedEndpointTests.cs`（T-76〜T-81）、`.../MachineClientOwnDocumentWriteTests.cs`（T-64〜T-69）、`.../MachineClientOwnerSubjectTests.cs`（T-73〜T-74）、`.../AdminWritePrivateNoteScopeTests.cs`（T-60〜T-63）、`.../AddTag/GrpcDocumentTagWriteTests.cs`（T-62 の gRPC 面）、`.../PrivateNotes/PrivateNoteExposurePublishTests.cs`（T-63）、`.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28・T-38）、`DocumentPageTests.cs`（T-30〜T-37・T-39〜T-41・T-84）
+- 単体（エンドポイント, InMemory）: `.../AstStaleCopies/AstStaleCopiesEndpointTests.cs`・`AstStaleCopyRulesTests.cs`（T-75）、`.../Republish/RepublishDocumentUpdatedEndpointTests.cs`（T-76〜T-81）、`.../ArchiveBodyless/ArchiveBodylessDocumentsEndpointTests.cs`（T-85〜T-89）、`Platform.Shared.Infrastructure.Tests/.../S3ObjectStorageClientExistsTests.cs`（T-90 の単体）・`Knowledge.IntegrationTests/Storage/ObjectStorageRoundTripTests.cs`（T-90 の統合）、`.../MachineClientOwnDocumentWriteTests.cs`（T-64〜T-69）、`.../MachineClientOwnerSubjectTests.cs`（T-73〜T-74）、`.../AdminWritePrivateNoteScopeTests.cs`（T-60〜T-63）、`.../AddTag/GrpcDocumentTagWriteTests.cs`（T-62 の gRPC 面）、`.../PrivateNotes/PrivateNoteExposurePublishTests.cs`（T-63）、`.../DocumentEndpointVersioningTests.cs`（T-06〜T-11・T-24〜T-25）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）、`DocumentFingerprintResponseTests.cs`（T-26〜T-28・T-38）、`DocumentPageTests.cs`（T-30〜T-37・T-39〜T-41・T-84）
 - 単体（契約）: `src/knowledge/backend/Shared/Knowledge.Contracts.Tests/DocumentReadGrpcMappingTests.cs`（T-29）
 - 単体（カタログ登録の受け口の本文の取得の期限）: `src/knowledge/backend/Services/DocumentService/Tests/Features/Documents/Catalog/CatalogTimeoutTests.cs`（T-71。配線は同じファイルの `CatalogTimeoutWiringTests`）
 - 単体（検索索引からの削除の受け口）: `src/knowledge/backend/Services/RetrievalService/Tests/Features/Search/RemoveDeleted/DocumentDeletedTimeoutTests.cs`（T-70。配線は同じファイルの `DocumentDeletedTimeoutWiringTests`）

@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-02, FR-05, UC-04, NFR-06, ADR-0016, ADR-0027, ADR-0070, ADR-0106, IADR-0358, IADR-0536]
 author: claude
 created: 2026-10-15
-updated: 2026-10-15
+updated: 2026-10-16
 plan_refs:
   - planning:projects/microservices-platform/02_requirements（FR-02 取り込み / NFR-06 障害時の縮退運転）
 related_specs:
@@ -59,6 +59,7 @@ related_specs:
      この削除で消える —— **これは本件が足した削除ではなく従来の挙動である**。「既存の点を残す」には削除を本文の取得の後へ動かす必要があるが、
      そうすると機密区分が上がった文書で旧い区分の点が残る（ABAC の fail-open）。高機密の扱いを変えないために、本件では動かさない。
      点を残すか・題名だけで書くか・アーカイブするか・削除するかは項目 3 の裁定で決める。
+   - ［2026-10-16 追記 / #1931 項目 3・[IADR-0549](./IADR-0549_archive-bodyless-pre-cutover-documents.md)］**未決は解消した（オーナー裁定 B: アーカイブ）。** 本文の無い切り替え前の文書は既存の状態「アーカイブ」へ移す。その発行を受けた取り込みは本決定のまま（冒頭の全消し ＋ 何も書かない）で、これが「索引から外す」の実体になる。本決定の挙動は変えていない。
 5. 時間切れ・5xx・接続の失敗・バケットが無いは**従来どおり例外のまま上げる**（再試行 → DLQ）。高機密の分岐・総枠のデッドレター（`EmbeddingBudgetDeadLetterPolicy`）・
    IADR-0536 の待ちの点の経路は変えない。
 

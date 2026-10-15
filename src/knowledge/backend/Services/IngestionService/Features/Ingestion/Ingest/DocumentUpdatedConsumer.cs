@@ -121,10 +121,12 @@ public class DocumentUpdatedConsumer(
             // 再試行しても現れない（9/26 の SeaweedFS 切り替えより前の文書は、旧ストレージの中身を破棄したため本文が無い）。
             // 例外を上げると再試行の後 DLQ へ入り、DLQ を汚す。ここで**記録だけして正常に終える**（ack される）。
             //
-            // ⚠️ **未決（#1931 項目 3）: 本文の無い文書を索引でどう扱うか**（題名だけで索引する・アーカイブする・削除する）は
-            // オーナーの裁定待ちである。本件では**何も書かない**（メタデータ点 `IndexMetadataOnlyAsync` も使わない）。
-            // 既存の点は上の全コレクション削除（FR-05, ADR-0016 の fail-closed。従来どおりの位置）で既に消えている ——
-            // 本件はその削除を足しも外しもしない。点を残す（削除を本文の取得の後へ動かす）か、題名だけの点を書くかも項目 3 で決める。
+            // ［2026-10-16 / #1931 項目 3・[[IADR-0549]]］**本文の無い文書の扱いはオーナー裁定 B（アーカイブ）で決まった。**
+            // 9/26 の切り替えより前の本文の無い文書は、DocumentService の一回限りの管理操作（`POST /documents/archive-bodyless`）で
+            // 既存の状態「アーカイブ」へ移す。その `DocumentUpdated`（status=archived）がここへ届くと、上の全コレクション削除で
+            // 旧い点が消え、本文の取得がこの分岐へ来る —— **点は書かない**（メタデータ点 `IndexMetadataOnlyAsync` も使わない）。
+            // つまり「索引から外す」は、この分岐の挙動（従来どおりの位置の全消し ＋ 何も書かない）で成り立っている。
+            // 削除を本文の取得の後へ動かす・題名だけの点を書く、はどちらも採らない（IADR-0549 決定 4）。
             //
             // 完了イベントは発行しない（取り込みは完了していない。購読者も無い —— #1771）。
             // ログに出すのは文書 ID・本文の所在（storage://<bucket>/<key>。秘密情報を含まない）・更新日時だけである。
@@ -132,7 +134,7 @@ public class DocumentUpdatedConsumer(
             bodyMissingMetrics.RecordMissing();
             logger.LogWarning(
                 "Ingestion {DocumentId}: body object missing (NoSuchKey) at {BodyKey} (updated_at={UpdatedAt:O}); "
-                + "skipped without retry or dead-lettering. How to index body-less documents is pending (#1931 item 3)",
+                + "skipped without retry or dead-lettering; no point written (body-less documents are archived: #1931 item 3, IADR-0549)",
                 ev.DocumentId, missing.MarkdownUri, ev.UpdatedAt);
             return;
         }
