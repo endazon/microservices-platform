@@ -9,6 +9,10 @@ public class WikiDbContext(DbContextOptions<WikiDbContext> options) : DbContext(
 {
     public DbSet<WikiPage> Pages => Set<WikiPage>();
 
+    // FR-13, [[IADR-0541]] 決定 3 (#1934): slug の一意索引の名前。同期の受け口が 23505 の制約名と突き合わせる
+    // （EF の既定の名前と同じ値。既存のマイグレーションの索引名を変えない）。
+    public const string SlugIndexName = "IX_Pages_Slug";
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.Entity<WikiPage>(e =>
@@ -17,8 +21,8 @@ public class WikiDbContext(DbContextOptions<WikiDbContext> options) : DbContext(
             // IADR-0021: WikiPath は DocumentId 由来の計算値（列として保持しない）。
             e.Ignore(p => p.WikiPath);
             e.Property(p => p.Title).HasMaxLength(500).IsRequired();
-            e.Property(p => p.Slug).HasMaxLength(500).IsRequired();
-            e.HasIndex(p => p.Slug).IsUnique();
+            e.Property(p => p.Slug).HasMaxLength(WikiPage.SlugMaxLength).IsRequired();
+            e.HasIndex(p => p.Slug).IsUnique().HasDatabaseName(SlugIndexName);
             e.HasIndex(p => p.DocumentId).IsUnique();
             e.Property(p => p.Attributes)
                 .HasConversion(
