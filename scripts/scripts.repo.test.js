@@ -8544,6 +8544,9 @@ ${r.stderr}`);
           // #1617 / 計画 ADR-0118 決定 2: T-25 だけの赤の run を 1 回だけ再実行し、issue へ書く**実行器**（副作用を持つ）。
           // 投入器と同じく検査器ではない。ワークフロー（integration-stack-rerun.yml）からだけ `--apply` で呼ぶ。
           't25-rerun-on-chance-red.js',
+          // #1935 / IADR-0543: 経路 B の Loki から時間範囲のログを書き出す**読み出し器**（判定を返さず、ファイルを書く）。
+          // 走らせると Loki（localhost の port-forward）を読みに行くので、検査器として spawn する母集合に入れない。
+          'export-loki-logs.js',
         ];
         const scripts = all.filter((f) => !NOT_CHECKERS.includes(f));
         // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
@@ -16293,4 +16296,169 @@ server.listen(0, '127.0.0.1', async () => {
       assert.match(pairProblems(wfRvf.replace('`pnpm-lock.yaml`・`CHANGELOG.md`・`docs/api', '`CHANGELOG.md`・`docs/api')).join('\n'), /pnpm-lock/);
     });
   }
+
+  // --- export-loki-logs: 経路 B の Loki から時間範囲のログを書き出す（NFR-18, ADR-0133, IADR-0543 / #1935） ---
+  //
+  // 🔴 **取りこぼしと重複を成功に見せないことがこの道具の値打ちである。** Loki は 1 応答を limit 件で切るので、
+  // 次のページを「前のページの最後の時刻」から含めて取り直し、同じ時刻で書いた行を落とす。同じ時刻に limit 件以上が
+  // 並ぶと先へ進めないので失敗にする。ページ送りは非同期なので子プロセスで回し、偽の Loki（limit・start を含み end を
+  // 含まない・同じ時刻の並びは固定の順）へ当てる。
+  {
+    const fsLx = require('fs');
+    const osLx = require('os');
+    const pathLx = require('path');
+    const { spawnSync: spawnLx } = require('child_process');
+    const SCRIPT_LX = pathLx.join(__dirname, 'export-loki-logs.js');
+    const lx = require(SCRIPT_LX);
+    // 偽の Loki。entries は [ns, job, line]。同じ時刻の行は job の降順で返す（並べ直しを呼び出し側に任せる形を試す）。
+    const FAKE_LOKI = `
+      const entries = JSON.parse(process.env.LX_ENTRIES);
+      const calls = [];
+      globalThis.__fake = async (url, init) => {
+        const u = new URL(url);
+        calls.push({ path: u.pathname, method: init.method, auth: (init.headers || {}).Authorization || null,
+          start: u.searchParams.get('start'), limit: u.searchParams.get('limit'), direction: u.searchParams.get('direction') });
+        const json = (o, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(o) });
+        if (process.env.LX_STATUS) return { ok: false, status: Number(process.env.LX_STATUS), text: async () => 'no' };
+        const start = BigInt(u.searchParams.get('start') || 0), end = BigInt(u.searchParams.get('end') || u.searchParams.get('time'));
+        if (u.pathname === '/loki/api/v1/query') {
+          const by = {}; for (const [, job] of entries) by[job] = (by[job] || 0) + 1;
+          return json({ status: 'success', data: { resultType: 'vector', result: Object.entries(by).map(([job, n]) => ({ metric: { job }, value: [0, String(n)] })) } });
+        }
+        const limit = Number(u.searchParams.get('limit'));
+        const dir = u.searchParams.get('direction');
+        let hit = entries.filter(([ns]) => BigInt(ns) >= start && BigInt(ns) < end)
+          .sort((a, b) => (BigInt(a[0]) === BigInt(b[0]) ? (a[1] < b[1] ? 1 : -1) : (BigInt(a[0]) < BigInt(b[0]) ? -1 : 1)));
+        if (dir === 'backward') hit = hit.reverse();
+        hit = hit.slice(0, limit);
+        const streams = {};
+        for (const [ns, job, line] of hit) (streams[job] = streams[job] || { stream: { job }, values: [] }).values.push([String(ns), line]);
+        return json({ status: 'success', data: { resultType: 'streams', result: Object.values(streams) } });
+      };
+      globalThis.__calls = calls;`;
+    const runLx = (body, entries, env = {}) => {
+      const r = spawnLx(process.execPath, ['-e', `${FAKE_LOKI}\nconst lx = require(process.argv[1]);\n(async () => { ${body} })().catch((e) => { console.log(JSON.stringify({ error: e.message })); });`, SCRIPT_LX], {
+        encoding: 'utf8', timeout: 30000, env: { ...process.env, LX_ENTRIES: JSON.stringify(entries), ...env },
+      });
+      assert.strictEqual(r.status, 0, r.stderr);
+      return JSON.parse(r.stdout.trim().split('\n').pop());
+    };
+    // 3 つの job が 10 個の時刻に 1 行ずつ（各時刻に 3 行が並ぶ）。
+    const ENTRIES_LX = [];
+    for (let t = 0; t < 10; t += 1) for (const job of ['a', 'b', 'c']) ENTRIES_LX.push([String(1000 + t), job, `${job}-${t}`]);
+    const EXPORT_LX = (limit, tieLimit = 5000) => `
+      const got = [];
+      const r = await lx.exportRange(globalThis.__fake, { url: 'http://x', query: '{job=~".+"}', startNs: 1000n, endNs: 2000n, limit: ${limit}, tieLimit: ${tieLimit}, token: 't' },
+        (e) => got.push(e.labels.job + '@' + e.ns + ':' + e.line));
+      console.log(JSON.stringify({ got, count: r.count, pages: r.pages, calls: globalThis.__calls }));`;
+
+    ok('#1935 export-loki-logs: ページの境目が同じ時刻の行の途中に来ても、ページ全体が同じ時刻でも、全行を 1 度ずつ書く（limit 4・5・3・2・1）', () => {
+      for (const limit of [4, 5, 3, 2, 1]) {
+        const r = runLx(EXPORT_LX(limit), ENTRIES_LX);
+        assert.strictEqual(r.error, undefined, r.error);
+        assert.strictEqual(r.count, 30, `limit ${limit}: ${r.count} 行`);
+        assert.strictEqual(new Set(r.got).size, 30, `limit ${limit}: 重複がある`);
+        assert.ok(r.pages > 1, `limit ${limit}: ページ送りを通っていない（陽性対照）`);
+        assert.ok(r.calls.every((c) => c.method === 'GET' && c.direction === 'forward' && c.auth === 'Bearer t'), JSON.stringify(r.calls[0]));
+      }
+    });
+
+    ok('#1935 export-loki-logs: 陰性対照 —— 境目の行を落とさない素朴なページ送りは、同じ固定で重複を出す（固定が境目を踏んでいる）', () => {
+      const r = runLx(`
+        let start = 1000n; const got = [];
+        for (;;) { const b = JSON.parse(await (await globalThis.__fake('http://x/loki/api/v1/query_range?start=' + start + '&end=2000&limit=4&direction=forward', { method: 'GET' })).text());
+          const e = lx.flattenStreams(b.data.result); e.forEach((x) => got.push(x.labels.job + x.ns)); if (e.length < 4) break; start = e[e.length - 1].ns; }
+        console.log(JSON.stringify({ n: got.length, uniq: new Set(got).size }));`, ENTRIES_LX);
+      assert.ok(r.n > r.uniq, `素朴なページ送りでも重複が出ない（固定が境目を踏んでいない）: ${JSON.stringify(r)}`);
+    });
+
+    ok('#1935 export-loki-logs: 同じ時刻の行が取り直しの上限でも切れるときは、黙って打ち切らず失敗にする', () => {
+      const r = runLx(EXPORT_LX(2, 3), ENTRIES_LX);
+      assert.match(r.error || '', /同じ時刻.*3 件以上の行があり先へ進めない/);
+      // 陽性対照: 上限が 1 件でも足りていれば通る（同じ時刻は 3 行）。
+      const okRun = runLx(EXPORT_LX(2, 4), ENTRIES_LX);
+      assert.strictEqual(okRun.count, 30, JSON.stringify(okRun.error));
+    });
+
+    ok('#1935 export-loki-logs: --summary は job ごとの件数と最古・最新を返し、401 / 403 は前段の判定として読める言葉にする', () => {
+      const s = runLx(`const r = await lx.summarize(globalThis.__fake, { url: 'http://x', query: '{job=~".+"}', startNs: 1000n, endNs: 2000n, token: '' });
+        console.log(JSON.stringify({ perJob: r.perJob, oldest: String(r.oldest), newest: String(r.newest), auth: globalThis.__calls.map((c) => c.auth) }));`, ENTRIES_LX);
+      assert.deepStrictEqual(s.perJob.map((x) => [x.job, x.count]), [['a', 10], ['b', 10], ['c', 10]]);
+      assert.deepStrictEqual([s.oldest, s.newest], ['1000', '1009']);
+      assert.ok(s.auth.every((a) => a === null), 'トークンが無いのに Authorization を送っている');
+      for (const [status, re] of [[401, /LOKI_TOKEN が無いか違う/], [403, /writer のトークン/]]) {
+        const r = runLx(EXPORT_LX(4), ENTRIES_LX, { LX_STATUS: String(status) });
+        assert.match(r.error || '', re, `HTTP ${status}`);
+      }
+    });
+
+    ok('#1935 export-loki-logs: 時刻は時差つきだけを受け付け、JST の日付の境を UTC のナノ秒へ直す。引数の誤りは拒む', () => {
+      assert.strictEqual(lx.parseInstant('2026-10-14T00:00:00+09:00', '--from'), BigInt(Date.parse('2026-10-13T15:00:00Z')) * 1000000n);
+      assert.strictEqual(lx.formatNs(lx.parseInstant('2026-10-14T01:02:03.000000123Z', '--from')), '2026-10-14T01:02:03.000000123Z');
+      assert.throws(() => lx.parseInstant('2026-10-14T00:00:00', '--from'), /時差つき/);
+      const base = ['--from', '2026-10-14T00:00:00+09:00', '--to', '2026-10-15T00:00:00+09:00'];
+      assert.strictEqual(lx.parseArgs([...base, '--out', 'x.jsonl']).limit, lx.MAX_LIMIT);
+      assert.throws(() => lx.parseArgs(base), /--out は必須/);
+      assert.ok(lx.parseArgs([...base, '--summary']).summary);
+      assert.throws(() => lx.parseArgs([...base, '--out', 'x', '--limit', String(lx.MAX_LIMIT + 1)]), /--limit/);
+      assert.throws(() => lx.parseArgs(['--from', base[3], '--to', base[1], '--out', 'x']), /--to は --from より後/);
+      assert.throws(() => lx.parseArgs([...base, '--out', 'x', '--token', 'abc']), /知らない引数/); // トークンを引数で受けない
+    });
+
+    ok('#1935 export-loki-logs: main は書き出したファイルを JSON Lines で残し、既に在る出力先は上書きしない', () => {
+      const dir = fsLx.mkdtempSync(pathLx.join(osLx.tmpdir(), 'lx-'));
+      try {
+        const out = pathLx.join(dir, 'o.jsonl');
+        const argv = JSON.stringify(['--from', '1970-01-01T00:00:00.000001Z', '--to', '1970-01-01T00:00:00.000002Z', '--out', out, '--limit', '4', '--url', 'http://x']);
+        const body = `const c1 = await lx.main(${argv}, { LOKI_TOKEN: 'abc' }, globalThis.__fake);
+          const c2 = await lx.main(${argv}, { LOKI_TOKEN: 'abc' }, globalThis.__fake);
+          console.log(JSON.stringify({ c1, c2 }));`;
+        const r = runLx(body, ENTRIES_LX);
+        assert.deepStrictEqual([r.c1, r.c2], [0, 1]);
+        const lines = fsLx.readFileSync(out, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+        assert.strictEqual(lines.length, 30);
+        assert.deepStrictEqual(Object.keys(lines[0]), ['ts', 'ns', 'labels', 'line']);
+        assert.strictEqual(lines[0].ts, '1970-01-01T00:00:00.000001000Z');
+      } finally {
+        fsLx.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('#1935 export-loki-logs: 書き出しが途中で失敗したら、途中のファイルを <out>.partial へ改名し、不完全だと名指しして非 0 で終わる', () => {
+      const dir = fsLx.mkdtempSync(pathLx.join(osLx.tmpdir(), 'lx-'));
+      try {
+        const out = pathLx.join(dir, 'o.jsonl');
+        const argv = JSON.stringify(['--from', '1970-01-01T00:00:00.000001Z', '--to', '1970-01-01T00:00:00.000002Z', '--out', out, '--limit', '4', '--url', 'http://x']);
+        // 2 ページ目で前段が 401 を返す（トークンを回した・port-forward の先が替わった等を模す）。
+        const body = `let n = 0; const inner = globalThis.__fake;
+          const flaky = async (u, i) => (++n >= 2 ? { ok: false, status: 401, text: async () => 'no' } : inner(u, i));
+          const errs = []; const w = process.stderr.write.bind(process.stderr); process.stderr.write = (x) => { errs.push(String(x)); return true; };
+          const code = await lx.main(${argv}, { LOKI_TOKEN: 'abc' }, flaky);
+          process.stderr.write = w;
+          console.log(JSON.stringify({ code, errs: errs.join('') }));`;
+        const r = runLx(body, ENTRIES_LX);
+        assert.strictEqual(r.code, 1);
+        assert.ok(!fsLx.existsSync(out), '完了した写しと同じ名前のファイルが残っている');
+        const partial = fsLx.readFileSync(`${out}.partial`, 'utf8').trim().split('\n');
+        assert.strictEqual(partial.length, 4, '1 ページ目の 4 行が .partial に残っていない');
+        assert.match(r.errs, /部分的なファイル .*o\.jsonl\.partial が残った（4 行。保全は不完全）/);
+        assert.match(r.errs, /HTTP 401/);
+      } finally {
+        fsLx.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('#1935 export-loki-logs: 呼ぶ道は前段（gate）の読み取りの列挙の内側だけ（運用の口・削除 API を呼ばない）', () => {
+      const gate = fsLx.readFileSync(pathLx.join(__dirname, '..', 'deploy', 'local', 'observability', 'observability-gate.yaml'), 'utf8');
+      const m = /loki\.Caddyfile:[\s\S]*?@reader \{[\s\S]*?method GET\s*\n\s*path ([^\n]+)/.exec(gate);
+      assert.ok(m, 'gate の Loki の @reader の path を読めない');
+      const allowed = m[1].trim().split(/\s+/).map((p) => new RegExp(`^${p.replace(/[.]/g, '\\.').replace(/\*/g, '[^/]+')}$`));
+      const src = fsLx.readFileSync(SCRIPT_LX, 'utf8');
+      const used = [...new Set([...src.matchAll(/'(\/loki\/api\/v1\/[a-z_/]+)'/g)].map((x) => x[1]))];
+      assert.ok(used.length >= 2, `スクリプトから道を拾えていない: ${used}`);
+      for (const p of used) assert.ok(allowed.some((re) => re.test(p)), `前段の読み取りの列挙の外の道を呼んでいる: ${p}`);
+      assert.ok(!/method:\s*'(POST|PUT|DELETE)'/.test(src), 'GET 以外の方法を使っている');
+    });
+  }
+
 };
