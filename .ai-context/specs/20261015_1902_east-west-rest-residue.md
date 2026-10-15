@@ -100,6 +100,40 @@ issue の列挙を鵜呑みにせず、**誤りの側の文字列**（受け口�
 - [x] 影響プロジェクトの build / test / `dotnet format --verify-no-changes`、`helm lint`・`helm template`、
       `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`、文書系検査が緑。
 
+## 契約・文書への波及（実施時に追った分）
+
+- `ResolveScopeValidator`（REST 専用の入力検証）と、その単体試験・ProblemDetails の契約試験を撤去した（gRPC 面は `action` を自分で検証する）。
+- `TagNamesResponse`（`GET /internal/tags/names` の応答型）を契約から外した。`check-contract-schema` の破壊的変更として
+  `contract-schema-baseline.json` の `$acceptedBreakingChanges` に承認を記録した（先例 #1771 と同じ扱い）。
+- `docs/api/openapi.yaml`（手書き。生成コマンドは無い）: `/authz/scope`・`/embed` の 2 口と、要求スキーマ
+  `AccessScopeRequest`・`EmbedApiRequest` を外した。応答スキーマ `AccessScopeResponse`・`EmbedApiResponse` は縮退の読み方の契約として残す
+  （`scripts.repo.test.js` の #525 回帰が `AccessScopeResponse.granted` を読む）。要求スキーマを残すと要求本文から到達しなくなり
+  `check-openapi-dto-drift` が応答側の規則（B1）を当てて赤になる。`requiredExceptions` は 2 件の上限で増やせないので、外す側を採った。
+- 文書: 通信仕様（east-west-grpc）・機能仕様（FR-05/06/10/11/13）・試験仕様（FR-05/11/22・NFR-09）・運用・セキュリティ・観測の各文書の記述を gRPC の面へ改めた。
+- [IADR-0533](../adr/IADR-0533_east-west-rest-retirement.md) へ日付つき追記（新 IADR は作らない）。
+
+## 残したもの（射程外・後続）
+
+- 試験の器が読み手の無いキー（`Services:AuthorizationService` 等）を `ConfigureAppConfiguration` で与えている箇所
+  （AiAnalysis / Graph / Retrieval の器・統合試験の器）。無害で、器の都合の値である。
+- `RagSearchQuery.EffectiveScope` は本番の輸送が送らなくなった（読み手は試験の器だけ）。記述は改めたが、欄の撤去は射程外とした。
+- 試験の器のスタブが受け口のパス文字列（`/authz/scope`・`/complete/stream`）を偽物の内部の鍵として使う箇所（`TestRagOrchestrator`・`BffTestFactory`）。
+
 ## 検証
 
-（実施後に追記する）
+| 対象 | コマンド | 結果 |
+|---|---|---|
+| LlmGateway | `dotnet test .../LlmGateway.Tests.csproj` | 457 件緑 |
+| AuthorizationService | `dotnet test .../AuthorizationService.Tests.csproj` | 599 件緑 |
+| NotificationService | `dotnet test .../NotificationService.Tests.csproj` | 88 件緑 |
+| McpServer | `dotnet test .../McpServer.Tests.csproj` | 428 件緑 |
+| BFF | `dotnet test .../Platform.Bff.Tests.csproj` | 975 件緑（1 件 skip は既存） |
+| 共有基盤 | `dotnet test .../Platform.Shared.Infrastructure.Tests.csproj` | 531 件緑（配線試験 +11） |
+| knowledge 9 サービス | Graph 841・Wiki 156・Ingestion 191・Conversion 219（skip 9 は既存）・AiAnalysis 159・DataSource 462・Retrieval 571・Document 1058・Dashboard 95 | すべて緑 |
+| ビルド | `dotnet build platform/backend/backend.slnx`・`knowledge/backend/backend.slnx`（統合試験を含む） | エラー 0（警告は既存の NuGet 監査だけ） |
+| 整形 | `dotnet format <両 slnx> --verify-no-changes` | 差分 0 |
+| helm | `helm lint`・`helm template`（ci/*.yaml の全派生）・撤去前との `diff` | lint 緑・差分は env 8 組（16 行）と注記 2 行だけ |
+| compose | `docker compose -f deploy/docker-compose.yml config -q` | 緑 |
+| scripts | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 1084 件緑 |
+| 文書・契約 | `check-trace-blocks`・`check-doc-links`・`gen-knowledge-graph --check`・`check-contract-schema`・`check-openapi-dto-drift`（＋自己試験）・`check-test-name-references`・`check-bff-downstreams`・`check-integration-config-timing`・`check-reading-budget` ほか | すべて緑 |
+| 変異 | graph の compose へ `Services__AuthorizationService` を戻す | `Retired_rest_destinations_are_not_deployed(graph…)` が赤（戻して緑） |
