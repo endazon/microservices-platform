@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Diagnostics;
 using AwesomeAssertions;
+using Google.Protobuf;
 using FluentValidation;
 using Knowledge.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;
@@ -19,7 +20,7 @@ namespace Knowledge.IntegrationTests.DashboardService;
 //
 // 稼働の PoC で、graph → dashboard の `orphan-documents`（38,703 件）の報告が毎周期 gRPC の期限（5 秒）を超えた。
 // 受け口は 1 行ずつ DELETE / INSERT しており、期限で取り消されてロールバックしていた。ここで固定するのは次の 3 点である。
-//   1. **往復の数が件数に比例しない**（10 件と 40,000 件で同じ数の SQL 文）。4 万件が期限 5 秒に収まる。
+//   1. **往復の数が件数に比例しない**（10 件と 40,000 件で同じ数の SQL 文）。4 万件が #1895 当時の期限 5 秒に収まる。
 //   2. **置換の途中は読み手に見えない**（DELETE の後・INSERT の後の時点で、別の接続からは旧い集合だけが見える）。
 //   3. **途中で取り消されたら旧い集合が残る**（期限切れは取り消しとして届く。半端な状態でコミットしない）。
 //
@@ -33,10 +34,17 @@ public sealed class KnowledgeHealthSnapshotPostgresTests(PostgresFixture postgre
     // 稼働で期限切れになった件数（38,703）を上回る規模。
     private const int LargeCount = 40_000;
 
-    // 送信側（GraphService の `GrpcKnowledgeHealthReporter.SendTimeout`）の期限。サービスを跨ぐため定数を共有できない。
-    private static readonly TimeSpan SenderDeadline = TimeSpan.FromSeconds(5);
+    // #1895 当時の送信側の期限（5 秒）。4 万件の置換はこれに収まること（一括化の効果）をそのまま固定する。
+    private static readonly TimeSpan Issue1895Budget = TimeSpan.FromSeconds(5);
 
-    // NFR-16 (#1895): 往復の数が件数に比例しない。4 万件の置換が送信側の期限に収まる。
+    // 送信側（GraphService の `GrpcKnowledgeHealthReporter.SendTimeout`）の期限。サービスを跨ぐため定数を共有できない。
+    // ［2026-10-15 / #1907・IADR-0542 決定 2］5 秒 → 30 秒。
+    private static readonly TimeSpan SenderDeadline = TimeSpan.FromSeconds(30);
+
+    // NFR-16, IADR-0542 (#1907): 15 万件の置換に求める上限。期限（30 秒）の 1/3 —— 負荷の高いホストでも 3 倍の余裕を残す。
+    private static readonly TimeSpan Target150kBudget = SenderDeadline / 3;
+
+    // NFR-16 (#1895): 往復の数が件数に比例しない。4 万件の置換が #1895 当時の送信側の期限（5 秒）に収まる。
     [Fact]
     public async Task 四万件の置換でもSQL文の数は十件のときと同じで期限内に終わる()
     {
@@ -59,7 +67,7 @@ public sealed class KnowledgeHealthSnapshotPostgresTests(PostgresFixture postgre
         counter.Count.Should().Be(small, "SQL 文の数は観測値の件数に比例してはならない");
         counter.Count.Should().BeLessThanOrEqualTo(5,
             "DELETE 1・INSERT 1・しきい値の読み 1・しきい値の書き 0〜1 で足りる");
-        sw.Elapsed.Should().BeLessThan(SenderDeadline, "送信側の期限（5 秒）に収まらなければ毎周期ロールバックする");
+        sw.Elapsed.Should().BeLessThan(Issue1895Budget, "#1895 当時の期限（5 秒）に収まらなければ毎周期ロールバックしていた");
 
         await using var db = NewContext(cs);
         (await db.KnowledgeHealthObservations.CountAsync(
@@ -67,6 +75,73 @@ public sealed class KnowledgeHealthSnapshotPostgresTests(PostgresFixture postgre
         (await db.KnowledgeHealthObservations.CountAsync(
             o => o.Indicator == KnowledgeHealthIndicators.OrphanDocuments && o.SubjectKey.StartsWith("old-"), Ct))
             .Should().Be(0, "旧い集合は 1 行も残らない");
+    }
+
+    // FR-10, FR-17, FR-18, NFR-16, IADR-0542 (#1907): 15 万件の H-1 が**受信上限と期限の両方に収まる**。
+    // 稼働の台帳は再索引で伸び続けている（#1907）。受け口の受信上限（既定 16 MiB）と送信側の期限（30 秒）の両方を、
+    // 最も重い形（解決できないリンク：65 文字の鍵・軸・個人資料の印）の 15 万件で測る。
+    // 時間は「線上のバイト列の解析 → 輸送の言葉からの写し → 置換（DELETE ＋ unnest INSERT ＋ コミット）」の合計である
+    // （h2c の転送そのものは同じホスト内の数十ミリ秒であり、ここでは含めない）。旧い集合も 15 万件を置く。
+    [Fact]
+    public async Task 十五万件の報告も受信上限と期限の両方に収まる()
+    {
+        const int count = 150_000;
+        const int maxReceive = 16 * 1024 * 1024; // dashboard の `KnowledgeHealthReportReceiveLimit.DefaultMaxReceiveMessageSize`
+        var cs = await DatabaseAsync();
+        await ReportAsync(cs, Request(KnowledgeHealthIndicators.UnresolvedLinks, count, "old"));
+
+        var wire = HeaviestShape(count).ToByteArray();
+        wire.Length.Should().BeGreaterThan(4 * 1024 * 1024, "grpc-dotnet の既定 4 MB では受け取れない規模である");
+        wire.Length.Should().BeLessThan(maxReceive, "受け口の受信上限に収まる");
+
+        var allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
+        var sw = Stopwatch.StartNew();
+        var parsed = global::Knowledge.Contracts.Grpc.Dashboard.V1.ReportRequest.Parser.ParseFrom(wire);
+        var parseMs = sw.ElapsedMilliseconds;
+        var phases = new List<string>();
+        var probe = new CommandCounter
+        {
+            AfterEach = text =>
+            {
+                phases.Add($"{text[..Math.Min(6, text.Length)]}@{sw.ElapsedMilliseconds}ms");
+                return Task.CompletedTask;
+            },
+        };
+        var outcome = await ReportAsync(cs, KnowledgeHealthReportGrpcService.ToCommand(parsed), probe);
+        sw.Stop();
+        TestContext.Current.TestOutputHelper?.WriteLine($"文の完了時刻: {string.Join(", ", phases)}");
+        var allocatedMb = (GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore) / (1024.0 * 1024.0);
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"15 万件の H-1: 要求 {wire.Length:N0} バイト, 解析 {parseMs} ms, 合計 {sw.ElapsedMilliseconds} ms, 割り当て {allocatedMb:F0} MiB");
+
+        outcome.IsSuccess.Should().BeTrue();
+        outcome.Value.Accepted.Should().Be(count);
+        sw.Elapsed.Should().BeLessThan(Target150kBudget,
+            "送信側の期限（30 秒）に 3 倍の余裕を残して収まる（収まらなければ毎周期ロールバックする）");
+
+        await using var db = NewContext(cs);
+        (await db.KnowledgeHealthObservations.CountAsync(
+            o => o.Indicator == KnowledgeHealthIndicators.UnresolvedLinks, Ct)).Should().Be(count);
+        (await db.KnowledgeHealthObservations.CountAsync(
+            o => o.Indicator == KnowledgeHealthIndicators.UnresolvedLinks && o.SubjectKey.StartsWith("old-"), Ct))
+            .Should().Be(0, "旧い集合は 1 行も残らない");
+    }
+
+    // 最も重い形（dashboard の `KnowledgeHealthReportReceiveLimitTests.HeaviestShape` と同じ。1 件 94 バイト）。
+    private static global::Knowledge.Contracts.Grpc.Dashboard.V1.ReportRequest HeaviestShape(int count)
+    {
+        var request = new global::Knowledge.Contracts.Grpc.Dashboard.V1.ReportRequest
+        {
+            Indicator = KnowledgeHealthIndicators.UnresolvedLinks,
+        };
+        for (var i = 0; i < count; i++)
+            request.Observations.Add(new global::Knowledge.Contracts.Grpc.Dashboard.V1.Observation
+            {
+                SubjectKey = $"{Guid.NewGuid():N}:{Guid.NewGuid():N}",
+                DocScope = KnowledgeDocScopes.PrivateNote,
+                Dimension = "not-found",
+            });
+        return request;
     }
 
     // FR-10, NFR-16 (#1895): 置換の途中（DELETE の後・INSERT の後）は、別の接続からは旧い集合だけが見える。
