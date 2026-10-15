@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using AwesomeAssertions;
+using DashboardService.Tests.Grpc;
 using DashboardService.Domain;
 using DashboardService.Features.KnowledgeHealth.Report;
 using DashboardService.Features.KnowledgeHealth.View;
@@ -21,9 +22,7 @@ namespace DashboardService.Tests.Features.KnowledgeHealth;
 [Trait("TestKind", "Integration")]
 public class KnowledgeHealthBreakdownTests
 {
-    // 🔴 送信側 旧 REST の `HttpKnowledgeHealthReporter.ObservationsPath`（［2026-10-10］撤去） の値（リテラルで持つ理由は
-    // `KnowledgeHealthEndpointTests` の同じ定数のコメント）。
-    private const string ProducerObservationsPath = "/internal/knowledge-health/observations";
+    // ［2026-10-15 / #1902・[[IADR-0533]]］観測値の REST の受け口は撤去した。投入は gRPC 面（`TestServerReportGrpc`）で行う。
 
     private static KnowledgeHealthIndicatorDto IndicatorOf(KnowledgeHealthDto health, string name)
         => health.Indicators.Single(i => i.Indicator == name);
@@ -36,8 +35,7 @@ public class KnowledgeHealthBreakdownTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            new KnowledgeHealthReportRequest(KnowledgeHealthIndicators.EdgeTypeUsage,
+        await client.ReportAsync(new KnowledgeHealthReportRequest(KnowledgeHealthIndicators.EdgeTypeUsage,
             [
                 new KnowledgeHealthObservationRequest("edge-1", null, "related"),
                 new KnowledgeHealthObservationRequest("edge-2", null, "related"),
@@ -63,8 +61,7 @@ public class KnowledgeHealthBreakdownTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            new KnowledgeHealthReportRequest(KnowledgeHealthIndicators.EdgeTypeUsage,
+        await client.ReportAsync(new KnowledgeHealthReportRequest(KnowledgeHealthIndicators.EdgeTypeUsage,
             [
                 new KnowledgeHealthObservationRequest("edge-1", null, "related"),
                 new KnowledgeHealthObservationRequest("edge-2", "private-note", "related"),
@@ -94,8 +91,7 @@ public class KnowledgeHealthBreakdownTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            new KnowledgeHealthReportRequest(KnowledgeHealthIndicators.OrphanDocuments,
+        await client.ReportAsync(new KnowledgeHealthReportRequest(KnowledgeHealthIndicators.OrphanDocuments,
             [
                 new KnowledgeHealthObservationRequest("doc-1"),
                 new KnowledgeHealthObservationRequest("doc-2"),
@@ -126,27 +122,24 @@ public class KnowledgeHealthBreakdownTests
         unresolved.Breakdown.Should().BeNull();
     }
 
-    // ── 生産者が組み立てる生の JSON ────────────────────────────────
+    // ── 生産者が組み立てる形 ────────────────────────────────
 
-    // 🔴 **綴りと大小は型では守られない**（送信側は匿名オブジェクトを組み立てる）。
-    // 旧 REST の `HttpKnowledgeHealthReporter`（［2026-10-10］撤去） が実際に投げる形をそのまま束縛できることを固定する。
+    // ［2026-10-15 / #1902］従前は旧 REST の生の JSON（綴りと大小）を固定していた。REST の受け口を撤去したので、
+    // 生産者（gRPC）が組む proto の形（軸だけを持ち doc_scope を持たない観測値）を束縛できることを固定する。
     [Fact]
-    public async Task 生産者が組み立てる生のJSONで軸を束縛できる()
+    public async Task 生産者が組み立てる形で軸を束縛できる()
     {
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        const string body = """
-            {"indicator":"unresolved-links","observations":[
-              {"subjectKey":"aaaa:0011","docScope":null,"dimension":"not-found"},
-              {"subjectKey":"aaaa:0022","docScope":null,"dimension":"ambiguous"},
-              {"subjectKey":"bbbb:0033","docScope":null,"dimension":"not-found"}]}
-            """;
+        // 生産者（graph の `GrpcKnowledgeHealthReporter`）が組む形: 個人資料でない観測値は doc_scope を持たない。
+        var request = new Knowledge.Contracts.Grpc.Dashboard.V1.ReportRequest { Indicator = "unresolved-links" };
+        request.Observations.Add(new Knowledge.Contracts.Grpc.Dashboard.V1.Observation { SubjectKey = "aaaa:0011", Dimension = "not-found" });
+        request.Observations.Add(new Knowledge.Contracts.Grpc.Dashboard.V1.Observation { SubjectKey = "aaaa:0022", Dimension = "ambiguous" });
+        request.Observations.Add(new Knowledge.Contracts.Grpc.Dashboard.V1.Observation { SubjectKey = "bbbb:0033", Dimension = "not-found" });
 
-        var resp = await client.PostAsync(ProducerObservationsPath,
-            new StringContent(body, Encoding.UTF8, "application/json"),
-            TestContext.Current.CancellationToken);
-        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var resp = await client.ReportAsync(request, TestContext.Current.CancellationToken);
+        resp.Status.Should().Be(global::Grpc.Core.StatusCode.OK);
 
         var health = await client.GetFromJsonAsync<KnowledgeHealthDto>(
             "/dashboard/knowledge-health", TestContext.Current.CancellationToken);
@@ -163,8 +156,7 @@ public class KnowledgeHealthBreakdownTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            new KnowledgeHealthReportRequest(KnowledgeHealthIndicators.UnresolvedLinks,
+        await client.ReportAsync(new KnowledgeHealthReportRequest(KnowledgeHealthIndicators.UnresolvedLinks,
             [
                 new KnowledgeHealthObservationRequest("k-1", null, "not-found"),
                 new KnowledgeHealthObservationRequest("k-2"),
@@ -186,8 +178,7 @@ public class KnowledgeHealthBreakdownTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            new KnowledgeHealthReportRequest(KnowledgeHealthIndicators.UnresolvedLinks,
+        await client.ReportAsync(new KnowledgeHealthReportRequest(KnowledgeHealthIndicators.UnresolvedLinks,
                 [new KnowledgeHealthObservationRequest("k-1", null, "   ")]),
             TestContext.Current.CancellationToken);
 

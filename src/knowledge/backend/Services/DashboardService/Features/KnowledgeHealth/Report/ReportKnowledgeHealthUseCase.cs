@@ -9,7 +9,7 @@ namespace DashboardService.Features.KnowledgeHealth.Report;
 // [[IADR-0265]], [[IADR-0299]], [[IADR-0353]], [[IADR-0371]] 決定 2, [[IADR-0379]], [[IADR-0389]],
 // [[IADR-0408]] (#1255): 観測値の受け口の**本体**。
 //
-// 🔴 **REST の端点と gRPC の rpc が同じ関数を通る。** 輸送を 2 つに増やすときに**本体も 2 つにすると、
+// 🔴 **輸送の側に本体を持たない**（［2026-10-15 / #1902］REST の端点は撤去し、gRPC の rpc だけが呼ぶ）。輸送を 2 つに増やすときに**本体も 2 つにすると、
 // 片方だけが直る**（置換の順序・しきい値の削除・件数の数え方はどれも「静かに違う」形で割れる）。
 // [[IADR-0397]] の `EmbedUseCase`・[[IADR-0400]] の `CompletionUseCase`・[[IADR-0402]] の
 // `DocumentReadUseCase` と同じ形である。
@@ -69,5 +69,5 @@ public sealed class ReportKnowledgeHealthUseCase(
     }
 }
 
-/// <summary>受理の結果。REST の 202 本文・gRPC の <c>ReportResponse</c> と同形である。</summary>
+/// <summary>受理の結果。gRPC の <c>ReportResponse</c> と同形である。</summary>
 public readonly record struct ReportKnowledgeHealthOutcome(string Indicator, int Accepted);
