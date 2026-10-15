@@ -4,7 +4,7 @@ namespace NotificationService.Features.Notifications.Accept;
 
 // FR-22, UC-11, 計画 ADR-0030 §決定（検証 = FluentValidation）/ ADR-0037 決定 6・17・18 /
 // IADR-0215 決定 2・4 / IADR-0371 決定 1・2 / IADR-0395 / [[IADR-0398]] 決定 1・7・9:
-// 受け口（POST /internal/notifications）の入力規則。
+// 受け口（gRPC `NotificationIngress/Accept`。［2026-10-15 / #1902］REST `POST /internal/notifications` は撤去した）の入力規則。
 // 従前は `NotificationIngress.Validate` の手書き判定 7 本であった。
 //
 // 🔴 **本サイトは形 β である**（[[IADR-0398]] 決定 1 の後者）。移送前は項目ごとに**独立した `if`** で
