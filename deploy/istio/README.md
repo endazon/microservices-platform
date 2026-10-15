@@ -32,7 +32,8 @@ ISTIO=1 ./scripts/k8s-local-up.sh --live
 `scripts/k8s-local-up.sh` が次を **[6/7] の前に** 行う（CRD が無いまま helm upgrade すると apply が失敗するため）:
 
 1. `istio/base`（CRD）と `istio/istiod`（コントロールプレーン）を Helm で導入する
-   （版は `ISTIO_VERSION`。既定 `1.30.4`。values は [`istiod-values-local.yaml`](istiod-values-local.yaml)）
+   （版は `1.30.4` に固定。values は [`istiod-values-local.yaml`](istiod-values-local.yaml)。values が pilot・proxyv2 を
+   `tag@sha256:…` で固定するので、`ISTIO_VERSION` は同じ値しか受けない。版を上げるときは values の 3 参照と起動器 2 本の版を対で改める）
 2. 4 つの CRD が `Established` になるまで待つ
 3. `microservices-platform` へ `istio-injection=enabled` を貼る
    —— 🔴 **経路B は `namespace.create=false` なので Helm は Namespace を作らない。**

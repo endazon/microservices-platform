@@ -1,0 +1,22 @@
+# NFR, 計画 ADR-0135 決定 2 / ADR-0107 決定 3, ADR-0023, IADR-0547 (#1858): cert-manager（エッジの TLS 終端。IADR-0206）。
+#
+# 上流の release の `cert-manager.yaml`（版の URL）を読み、内側の 3 イメージを digest で固定する
+#   （kustomize の images 置換。`newTag` と `digest` を両方書くと `<name>:<tag>@<digest>` で描かれる＝本リポジトリの表記）。
+# 起動器は `kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager`（大 CRD の annotation 上限を避ける）。
+# 🔴 版を上げるときは URL の版と 3 つの newTag・digest を対で改める（版の一致は scripts/scripts.repo.test.js、
+#   digest の形は scripts/check-image-digests.js、上流が足したイメージの取りこぼしは描画結果を見る
+#   scripts/check-deploy-manifests.js が止める）。k8s-local-up.sh の CERT_MANAGER_VERSION も同じ版にする。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://github.com/cert-manager/cert-manager/releases/download/v1.21.1/cert-manager.yaml
+images:
+  - name: quay.io/jetstack/cert-manager-controller
+    newTag: v1.21.1
+    digest: sha256:416a2d76870d996460e62bd7f521bf14fa017be9e3e904aab92163a331fcb61a
+  - name: quay.io/jetstack/cert-manager-webhook
+    newTag: v1.21.1
+    digest: sha256:d8b3961b51c8c7320633f8208dc46bf88aa13804d0f7cbe48a096b2c523cee42
+  - name: quay.io/jetstack/cert-manager-cainjector
+    newTag: v1.21.1
+    digest: sha256:ccf6b919ec0500745a47a910118f834f9636d0aac1ff221245cd2557ed8c7c98

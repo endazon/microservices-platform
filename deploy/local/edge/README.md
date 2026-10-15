@@ -178,7 +178,7 @@ kubectl delete -k deploy/local/edge
 kubectl -n kube-system delete helmchartconfig traefik   # admin:50000 を撤去（Traefik が既定 values で再適用される）
 
 # cert-manager 本体まで戻すなら（CRD・webhook・Deployment を撤去する。他の用途で使っていないことを確認してから）
-kubectl delete -f "https://github.com/cert-manager/cert-manager/releases/download/v1.21.1/cert-manager.yaml"
+kubectl delete -k deploy/local/edge/cert-manager   # 版の URL ＋ 内側のイメージの digest（入れたときと同じ定義）
 ```
 
 > **`kubectl delete -k deploy/local/edge` だけでは TLS 資産が残る。**

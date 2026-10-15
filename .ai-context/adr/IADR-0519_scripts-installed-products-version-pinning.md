@@ -2,10 +2,10 @@
 title: IADR-0519 scripts/ が入れる製品は版で固定する。Argo CD は stable が指していた版のタグの URL、k3s はスクリプトの既定を単一の情報源とし、chart・上流マニフェストの内側のイメージの digest 固定は理由つきで別に回す
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0135, ADR-0107, ADR-0112, ADR-0007, ADR-0008, IADR-0514, IADR-0248, IADR-0077, IADR-0258]
+related_ids: [NFR, ADR-0135, ADR-0107, ADR-0112, ADR-0007, ADR-0008, IADR-0514, IADR-0248, IADR-0077, IADR-0258, IADR-0547]
 author: claude
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-15
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0135_infrastructure-inspection-population-and-immediate-version-pinning.md 決定 1〜3
   - planning:projects/microservices-platform/07_adr/ADR-0107_infrastructure-product-selection-criteria.md 決定 3（digest 固定）・決定 5
@@ -81,6 +81,7 @@ Istio・ESO・Reloader・cert-manager は chart / release の版で固定され�
 ## 残余
 
 1. **chart・上流マニフェストの内側のイメージの digest 固定**（決定 3）。基準 B の「同じタグの中身の差し替えを検知できない」は 6 製品で残る。#1858 で扱う。
+   ［2026-10-15 追記 / #1858］**解消した。** 11 参照を values・kustomization の images 置換・起動器の既定で `tag@sha256:…` に固定した（[IADR-0547](./IADR-0547_scripts-installed-inner-image-digest-pinning.md)）。あわせて決定 1 の「`ARGOCD_VERSION` で上書きできる」は「固定と同じ値しか受けない」へ改め、Argo CD の URL は `deploy/argocd/install/kustomization.yaml` が持つ（同 決定 1・2）。
 2. **Rancher Desktop 経路の k3s の版**はスクリプトの統制の外にある（決定 2）。
 3. **既存のクラスタは作り直すまで版が変わらない**（k3d は `cluster create` の時点でイメージを決める）。
 4. Argo CD の `install.yaml` は git のタグで固定したが、タグの付け替えは検知しない（manifest の sha256 の照合は入れていない）。
