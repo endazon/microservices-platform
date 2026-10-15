@@ -392,10 +392,19 @@ function pickTargetUser(realm) {
  *
  * 選び方: standard flow が有効・bearer-only でない・redirectUri を 1 つ以上持つクライアントのうち、
  * public client があればそれ、無ければ製品自身の `bff`、それも無ければ最初の候補（決定的）。
+ *
+ * ［2026-10-16 / #1894 / IADR-0546］**Keycloak の組み込みクライアント（`KEYCLOAK_BUILTIN_CLIENTS`）は候補にしない。**
+ * SC-16 のために `account` / `account-console`（public・redirectUri は相対の `/realms/<realm>/account/*`）を宣言へ足したところ、
+ * 上の「public を優先」がそれを選び、リセット経路と存在秘匿の測定が製品のログイン経路ではなくアカウントコンソールを
+ * 叩く形へ黙って変わった（相対 URI のまま `redirect_uri` に載る）。測りたいのは製品のブラウザログインの経路である。
  */
+const KEYCLOAK_BUILTIN_CLIENTS = Object.freeze([
+  'account', 'account-console', 'admin-cli', 'broker', 'realm-management', 'security-admin-console',
+]);
 function pickBrowserFlowClient(realm) {
   const clients = Array.isArray(realm && realm.clients) ? realm.clients : [];
-  const candidates = clients.filter((x) => x && x.bearerOnly !== true && x.standardFlowEnabled !== false
+  const candidates = clients.filter((x) => x && !KEYCLOAK_BUILTIN_CLIENTS.includes(x.clientId)
+    && x.bearerOnly !== true && x.standardFlowEnabled !== false
     && Array.isArray(x.redirectUris) && x.redirectUris.length > 0);
   const c = candidates.find((x) => x.publicClient === true)
     || candidates.find((x) => x.clientId === 'bff')
@@ -1800,13 +1809,27 @@ function selfTest() {
     ] };
     assert.strictEqual(pickBrowserFlowClient(realm), null);
   });
-  ok('#1413 ラチェット: 実データの realm に public client は無く、それでも選べる', () => {
+  // ［2026-10-16 / #1894 / IADR-0546］例外は Keycloak の組み込み `account` / `account-console` だけ
+  // （scripts.repo.test.js の #1393 ラチェットと同じ集合。形の制約〈audience なし・fullScopeAllowed=false 等〉はそちらが固定する）。
+  ok('#1413 ラチェット: 実データの realm に（組み込み以外の）public client は無く、それでも製品の confidential を選べる', () => {
     const r = loadRealm();
     assert.ok(r.ok);
-    const hasPublic = (r.value.clients || []).some((x) => x && x.publicClient === true && x.standardFlowEnabled !== false);
-    assert.strictEqual(hasPublic, false, 'public client が復活している（IADR-0429 に反する。戻すなら新 IADR）');
+    const extra = (r.value.clients || []).filter((x) => x && x.publicClient === true && x.standardFlowEnabled !== false
+      && !['account', 'account-console'].includes(x.clientId)).map((x) => x.clientId);
+    assert.deepStrictEqual(extra, [], 'public client が復活している（IADR-0429 に反する。戻すなら新 IADR）');
     const c = pickBrowserFlowClient(r.value);
     assert.ok(c && c.publicClient === false, '確認: confidential の標準フロークライアントが選ばれる');
+    assert.strictEqual(c.clientId, 'bff', '確認: 製品の BFF が選ばれる（組み込みのアカウントコンソールではない）');
+    assert.match(c.redirectUri, /^https?:\/\//, '確認: redirectUri が絶対 URI');
+  });
+  ok('#1894 陰性対照: 組み込みの public client（account / account-console）は public でも選ばない', () => {
+    const realm = { clients: [
+      { clientId: 'account', publicClient: true, standardFlowEnabled: true, redirectUris: ['/realms/platform/account/*'] },
+      { clientId: 'account-console', publicClient: true, standardFlowEnabled: true, redirectUris: ['/realms/platform/account/*'] },
+      { clientId: 'bff', publicClient: false, standardFlowEnabled: true, redirectUris: ['https://localhost/bff/auth/callback'] },
+    ] };
+    assert.strictEqual(pickBrowserFlowClient(realm).clientId, 'bff');
+    assert.strictEqual(pickBrowserFlowClient({ clients: realm.clients.slice(0, 2) }), null, '組み込みしか無ければ選べない（前提なしで止まる）');
   });
 
   // ---- #1617 / 計画 ADR-0118 決定 2: 「T-25 の順位和検定の赤ただ 1 件」の判定（自動の再実行の前提）-------------
