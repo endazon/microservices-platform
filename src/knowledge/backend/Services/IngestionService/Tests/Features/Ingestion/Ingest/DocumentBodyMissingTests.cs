@@ -120,7 +120,8 @@ public class DocumentBodyMissingTests
         var warning = logger.Warnings.Should().ContainSingle().Which;
         warning.Should().Contain(DocId.ToString()).And.Contain(BodyUri).And.Contain("2026-09-20T03:04:05")
             .And.Contain("NoSuchKey");
-        // 🔴 未決（#1931 項目 3）: 点は 1 つも書かない（題名だけのメタデータ点も書かない）。
+        // 🔴 #1931 項目 3（裁定 B・[[IADR-0549]] 決定 4）: 点は 1 つも書かない（題名だけのメタデータ点も書かない）。
+        // アーカイブ（status=archived）の発行が来ても同じ —— 全消しの後に何も書かないことが「索引から外す」の実体である。
         // 冒頭の全コレクション削除は従来どおりの位置で走る（本件はそれを足しも外しもしない）。
         store.Operations.Should().Equal("delete-from-all");
         completed.Published.Should().BeEmpty("取り込みは完了していない");

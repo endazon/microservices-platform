@@ -274,11 +274,13 @@ public class Document
 
     // FR-06, UC-03, Issue #88: 文書をアーカイブ（非公開化）する。下流（Wiki.js 同期）は
     // status=archived の DocumentUpdated を受けてページを非公開化する。
-    public void Archive()
+    // FR-06, [[IADR-0549]] 決定 5 (#1931 項目 3): 版の注記（`changeNote`）を呼び出し側が与えられる。
+    // 本文の無い文書の一括アーカイブは固有の注記を残し、どの版がその操作で作られたかを台帳から引けるようにする。
+    public void Archive(string? changeNote = null)
     {
         Status = DocumentStatus.Archived;
         Touch();
-        Snapshot("archived");
+        Snapshot(changeNote ?? "archived");
     }
 
     private void Touch()

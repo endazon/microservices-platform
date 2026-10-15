@@ -158,6 +158,44 @@ public sealed class S3ObjectStorageClient(
         logger.LogInformation("Deleted object {Uri} ({Versions} versions removed)", uri, removed);
     }
 
+    // FR-06, [[IADR-0549]] 決定 3 (#1931 項目 3): オブジェクトが在るかを、本文を読み出さずに確かめる。
+    //
+    // 1. **まず HEAD（GetObjectMetadata）を撃つ。** 在れば 200 で終わる（本文は 1 バイトも運ばない）。
+    // 2. 🔴 **HEAD の 404 だけでは「無い」と言わない。** HEAD の応答は本文を持たないため、SDK のエラーコードは
+    //    状態コード由来（"NotFound"）になり、キーが無い（NoSuchKey）とバケットが無い（NoSuchBucket）を区別できない
+    //    （`IsBucketAbsent` の注記と同じ事情）。後者は構成の不調であり、「無い」に倒すと在る文書までアーカイブされる。
+    // 3. そこで HEAD が 404 のときだけ、**範囲 0-0 の GET** を撃ってエラーコードを得る。オブジェクトが無ければ
+    //    本文は返らず（エラーの XML だけ）、判定は取り込み・本文の読み取りと同じ `ObjectStorageErrors.IsNoSuchKey`
+    //    （[[IADR-0540]] 決定 2）で行う。HEAD と GET の間に作られていれば GET は成功し、在ると答える（最大 1 バイト）。
+    //    その間に長さ 0 のオブジェクトが作られた場合は GET が範囲の不正（416）になり、下の「それ以外」として投げる（安全側。止まるだけ）。
+    // それ以外の失敗（403・5xx・時間切れ・NoSuchBucket・範囲の不正）は例外のまま上げる。
+    public async Task<bool> ExistsAsync(string uri, CancellationToken ct = default)
+    {
+        var (bucket, key) = Resolve(uri);
+        try
+        {
+            await s3.GetObjectMetadataAsync(new GetObjectMetadataRequest { BucketName = bucket, Key = key }, ct);
+            return true;
+        }
+        catch (AmazonS3Exception head) when (head.StatusCode == HttpStatusCode.NotFound)
+        {
+            try
+            {
+                using var _ = await s3.GetObjectAsync(new GetObjectRequest
+                {
+                    BucketName = bucket,
+                    Key = key,
+                    ByteRange = new ByteRange(0, 0)
+                }, ct);
+                return true;
+            }
+            catch (AmazonS3Exception get) when (ObjectStorageErrors.IsNoSuchKey(get))
+            {
+                return false;
+            }
+        }
+    }
+
     // storage:// スキームなら（実クライアント構成済みのため）解決可能。
     public bool CanResolve(string? uri) => StorageUri.IsStorageUri(uri);
 

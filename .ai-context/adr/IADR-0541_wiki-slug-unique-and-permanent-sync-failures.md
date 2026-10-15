@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-13, UC-07, NFR-06, ADR-0011, ADR-0027, ADR-0106, IADR-0020, IADR-0021, IADR-0540]
 author: claude
 created: 2026-10-15
-updated: 2026-10-15
+updated: 2026-10-16
 plan_refs:
   - planning:projects/microservices-platform/02_requirements（FR-13 Wiki 閲覧 / NFR-06 障害時の縮退運転）
 related_specs:
@@ -77,6 +77,7 @@ related_specs:
   件数は `wiki_sync_skipped_total{reason=...}`（Prometheus）とログの `Wiki sync ... skipped without retry or dead-lettering` で読める。
 - 手元の PostgreSQL 16 で、マイグレーションの適用・同名の別文書 2 件と同じ文書の再同期・2 つの文脈から並行に同じ題名を保存する競合（実際の 23505 `IX_Pages_Slug` → 32 桁へ付け替え）を確かめた（仕様書）。
 - 残余: graph-service の読み手（`StorageContentReader`）は同じ NoSuchKey で再試行・DLQ になり得る（射程外）。
+  ［2026-10-16 追記 / #1931 項目 3］この残余は [IADR-0549](./IADR-0549_archive-bodyless-pre-cutover-documents.md) 決定 4 で塞いだ（グラフの読み手は NoSuchKey を本文なし＝ null として返す）。
   slug の一意違反が付け替え後も残るのは、人手で末尾の候補と同じ slug を書いた行があるときだけである（計数が 0 でなければ調べる）。
 - slug_conflict で ack した文書は、Wiki.js にだけページ（正準パス `doc/<id>`）が残り、メタデータ行は無い（Wiki.js への反映が保存より先のため）。
   ゲートウェイは deny-by-default で返さないので安全側である。**次の再同期では直らない** —— 行が無いので候補を選び直すが、末尾の候補を塞いでいる行が残る限り同じ衝突になる。

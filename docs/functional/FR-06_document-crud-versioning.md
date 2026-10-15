@@ -3,15 +3,15 @@ title: 文書CRUD・バージョン管理 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-28
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-08, UC-03, NFR-09, FR-19]
 adrs: [ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122]
-iadrs: [IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475]
-specs: [20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint]
-issues: [#1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
+iadrs: [IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475]
+specs: [20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint]
+issues: [#1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -50,6 +50,8 @@ issues: [#1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
 | `PUT /documents/{id}` | タイトル・メタデータ更新（版追記・並行制御） | 200 / 400 / 404 / 409 |
 | `PATCH /documents/{id}/metadata` | 属性・タグのみ更新（版追記） | 200 / 404 / 409 |
 | `POST /documents/{id}/publish` | 公開（`status=published`・版追記） | 200 / 404 |
+| `POST /documents/{id}/archive` | アーカイブ（`status=archived`・版追記。管理者だけ）。下流の Wiki 同期がページを非公開化する | 200 / 404 |
+| `POST /documents/archive-bodyless` | 本文のオブジェクトが無い古い文書の一括アーカイブ（一回限りの管理操作。管理者だけ。下記） | 200 / 400 / 403 / 502 / 503 |
 | `GET /documents/{id}/versions` | 版履歴一覧（新しい順）。**認証を要する** | 200 `DocumentVersionDto[]` / 401 / 404 |
 | `GET /documents/{id}/versions/{version}` | 特定版取得。**認証を要する** | 200 / 401 / 404 |
 | `DELETE /documents/{id}` | 削除（版履歴も連動削除） | 204 / 404 |
@@ -105,6 +107,17 @@ issues: [#1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
   異なる値（空文字を含む）を送ると 400。所有者の無い文書へ所有者を付けることもできない。文書管理画面の編集は応答の属性を
   そのまま送り返すので、この規則に当たらない。
 
+### 本文の無い古い文書の一括アーカイブ（`POST /documents/archive-bodyless`）
+
+- 2026-09-26 のオブジェクトストレージの切り替えより前に作られ、本文のオブジェクトが無い文書を、既存の状態 `archived` へ移す一回限りの管理操作（#1931）。
+  状態は新設しない。台帳と表題は残る。
+- 対象は `createdAt < createdBefore`（**必須**）かつ未アーカイブかつ本文の参照が `storage://` で、オブジェクトストレージへの存在確認（HEAD 相当。本文を読まない）が
+  **キーの欠落（NoSuchKey）**と答えた組織文書だけである。バケットが無い・時間切れ・5xx では「無い」と言わず、そのページを 1 件もアーカイブしない。
+- 本文が在る・期限以降・本文の参照が無い・個人資料・アーカイブ済みには触らない。2 回流しても 2 回目は何もしない。
+- アーカイブした文書は版を 1 つ進め（版の注記は固定の文字列）、単票のアーカイブと同じ `DocumentUpdated` を出す。取り込みは全コレクションから点を消し、
+  本文が無いので何も書かない。Wiki 同期はページを非公開化する。
+- 量の制御・カナリア・中断と再開は駆動スクリプト `scripts/archive-bodyless-documents.js` が持つ（運用仕様書の同名の節）。
+
 ### 本文指紋（`ContentFingerprint`）
 
 - 文書の応答（作成・取得・一覧・本文投入・メタデータ更新ほか `DocumentDto` を返すすべての口）が本文指紋を運ぶ。
@@ -139,9 +152,14 @@ stateDiagram-v2
   draft --> published: POST /publish（版++）
   normalized --> published: POST /publish（版++）
   published --> published: PUT / PATCH metadata（版++）
+  draft --> archived: POST /archive（版++）
+  normalized --> archived: POST /archive・一括アーカイブ（版++）
+  published --> archived: POST /archive（版++）
+  archived --> normalized: 再正規化（版++）
   draft --> [*]: DELETE
   normalized --> [*]: DELETE
   published --> [*]: DELETE
+  archived --> [*]: DELETE
 ```
 
 各遷移後に `DocumentUpdated` を発行し、取り込み・Wiki 同期へ連鎖する。
@@ -186,6 +204,8 @@ stateDiagram-v2
 ## 未決事項
 
 - 版間の差分（diff）表示・特定版へのロールバック（復元）API は範囲外（後続タスク）。
+- **アーカイブ解除（`archived` から公開・正規化済みへ戻す操作）は持たない。** 計画に無い遷移であり、要否・可否は計画の裁定待ちである。
+  公開の口は `archived` からの公開を拒む（409）。戻り道は再正規化（同じ文書 ID の正規化イベントが届く）だけである。
 - 本文（Markdown 本体）は**オブジェクトストレージへ実保存され、DB は参照 URI だけを持つ**。
   削除は**その実体（過去の版が指していた本文と図表資産を含む）まで及ぶ**。
   🔴 ただし**資産の台帳は遡及付与しない**ため、台帳へ資産欄を足す以前に取り込まれた文書の

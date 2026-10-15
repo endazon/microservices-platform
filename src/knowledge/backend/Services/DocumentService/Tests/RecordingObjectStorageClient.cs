@@ -69,13 +69,32 @@ public sealed class RecordingObjectStorageClient : IObjectStorageClient
     // null を返した URI は通常どおり読む。**器を共有するので、使った試験は最後に null へ戻す。**
     public Func<string, Exception?>? GetTextThrows { get; set; }
 
+    // FR-06, [[IADR-0549]] (#1931 項目 3): 本文を読んだ回数（存在確認が本文を読まないことを測る）。
+    public int GetTextCallCount;
+
     public Task<string> GetTextAsync(string uri, CancellationToken ct = default)
     {
+        Interlocked.Increment(ref GetTextCallCount);
         if (GetTextThrows?.Invoke(uri) is { } injected)
             throw injected;
         return Task.FromResult(Texts.TryGetValue(uri, out var text)
             ? text
             : throw new KeyNotFoundException(uri));
+    }
+
+    // FR-06, [[IADR-0549]] (#1931 項目 3): 存在確認。格納した本文があれば在る、無ければ NoSuchKey として「無い」。
+    // 失敗注入（`ExistsThrows`）は NoSuchBucket・時間切れなど「無い」に倒してはならない失敗を再現する。
+    // **器を共有するので、使った試験は最後に null へ戻す。** 確かめた URI は `ExistsCalls` に残す。
+    public Func<string, Exception?>? ExistsThrows { get; set; }
+
+    public ConcurrentQueue<string> ExistsCalls { get; } = new();
+
+    public Task<bool> ExistsAsync(string uri, CancellationToken ct = default)
+    {
+        ExistsCalls.Enqueue(uri);
+        if (ExistsThrows?.Invoke(uri) is { } injected)
+            throw injected;
+        return Task.FromResult(Texts.ContainsKey(uri));
     }
 
     public Task<byte[]> GetBytesAsync(string uri, CancellationToken ct = default) =>

@@ -8556,6 +8556,9 @@ ${r.stderr}`);
           // #1762 / IADR-0503: DocumentUpdated の再発行の**駆動器**（稼働クラスタへ発行を起こす副作用を持ち、判定を返さない）。
           // 投入器と同じく検査器ではない。母集合に数えない。
           'republish-document-updated.js',
+          // #1931 項目 3 / IADR-0549: 本文の無い古い文書の一括アーカイブの**駆動器**（稼働クラスタの台帳を書き換える副作用を持ち、
+          // 判定を返さない）。再発行の駆動器と同じく検査器ではない。母集合に数えない。
+          'archive-bodyless-documents.js',
           // #1617 / 計画 ADR-0118 決定 4: T-25 の p の分布の**月次の集計器**。`measure-*` と同じく数字を出すだけで
           // 合否を返さない。走らせると GitHub の API を読みに行くので、検査器として spawn する母集合に入れない。
           't25-monthly-summary.js',
@@ -14977,6 +14980,193 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+
+  // --- #1931 項目 3 / IADR-0549: 本文の無い古い文書の一括アーカイブの駆動器 ---------------------------------
+  //
+  // 口（DocumentService）の挙動（対象の選び方・存在確認・冪等・ページの途中まで保存しない）は DocumentService.Tests が持つ。
+  // ここで固定するのは引数（--created-before 必須）・状態ファイル（再発行の状態を拒む）・dry-run の集計・
+  // カナリアと DLQ で止まって確かめた位置へ戻すこと・再開と再実行の冪等である。
+  {
+    const fs1931 = require('fs');
+    const os1931 = require('os');
+    const path1931 = require('path');
+    const ab = require('./archive-bodyless-documents.js');
+
+    ok('#1931 項目 3: 引数 — --created-before は必須（既定なし）・--resume では受けない・ページは口の上限 200 に丸める', () => {
+      assert.match(ab.preconditionProblem(ab.parseArgs(['--live', '--dry-run'])), /--created-before/);
+      assert.strictEqual(ab.preconditionProblem(ab.parseArgs(['--live', '--resume', '--reason', 'r'])), null, '再開は状態ファイルの期限を使う');
+      assert.throws(() => ab.parseArgs(['--live', '--resume', '--created-before', '2026-09-27T00:00:00Z']), /--resume/);
+      assert.throws(() => ab.parseArgs(['--live', '--resume', '--dry-run']), /--resume/);
+      assert.throws(() => ab.parseArgs(['--live', '--created-before', 'yesterday']), /ISO 8601/);
+      assert.throws(() => ab.parseArgs(['--live', '--created-before', '2026-09-27T00:00:00Z', '--bogus']), /知らない引数/);
+      const o = ab.parseArgs(['--live', '--created-before', '2026-09-27T09:00:00+09:00', '--page-size', '900', '--canary', '900']);
+      assert.strictEqual(o.createdBefore, '2026-09-27T00:00:00.000Z', 'UTC へ寄せる');
+      assert.deepStrictEqual([o.pageSize, o.canary], [200, 200]);
+      assert.strictEqual(o.maxDlqGrowth, 0, '既定は DLQ の増加を 1 件も許さない（アーカイブで下流が失敗する理由は無い）');
+      assert.strictEqual(ab.parseArgs(['--resume']).resume, true);
+      assert.strictEqual(ab.parseArgs(['--help']).help, true, '--help は他の必須を問わない');
+    });
+
+    ok('#1931 項目 3: アーカイブする実行（再開を含む）は --reason を必須にし、口へ createdBefore・操作者・理由を送る', () => {
+      const cb = ['--created-before', '2026-09-27T00:00:00Z'];
+      assert.match(ab.preconditionProblem(ab.parseArgs(['--live', ...cb])), /--reason/);
+      assert.match(ab.preconditionProblem(ab.parseArgs(['--live', '--resume'])), /--reason/);
+      assert.strictEqual(ab.preconditionProblem(ab.parseArgs(['--live', '--dry-run', ...cb])), null);
+      assert.deepStrictEqual(
+        ab.buildRequestBody({ dryRun: false, createdBefore: 'T', limit: 20, cursor: 'c', requestedBy: 'alice', reason: 'r' }),
+        { dryRun: false, createdBefore: 'T', limit: 20, cursor: 'c', requestedBy: 'alice', reason: 'r' });
+    });
+
+    ok('#1931 項目 3: 状態ファイル — 再発行の駆動器の状態・版違い・期限の無い状態からは続けない', () => {
+      const s = ab.newState({ createdBefore: '2026-09-27T00:00:00.000Z' });
+      assert.strictEqual(ab.stateProblem(s), null);
+      const rp = require('./republish-document-updated.js');
+      assert.match(ab.stateProblem(rp.newState(rp.parseArgs(['--live']))), /種類/);
+      assert.match(ab.stateProblem({ ...s, version: 99 }), /版/);
+      assert.match(ab.stateProblem({ ...s, filters: {} }), /createdBefore/);
+    });
+
+    const runDriver1931 = (cfg) => {
+      const dir = fs1931.mkdtempSync(path1931.join(os1931.tmpdir(), 'ab1931-drv-'));
+      try {
+        const bin = path1931.join(dir, 'bin');
+        fs1931.mkdirSync(bin);
+        // キューの模型: アーカイブで取り込みのキューが増え、読むたびに 1 件ずつ減り、空になった時点で「毒」の数だけ DLQ が増える。
+        fs1931.writeFileSync(path1931.join(bin, 'kubectl'), `#!${process.execPath}
+const fs = require('fs'); const f = process.env.SIM_FILE; const a = process.argv.slice(2);
+if (a[0] === 'cluster-info') process.exit(0);
+if (!a.includes('list_queues')) process.exit(1);
+const s = JSON.parse(fs.readFileSync(f, 'utf8'));
+process.stdout.write('ingestion-service.DocumentUpdated\\t' + s.ingest + '\\nwiki-service.DocumentUpdated\\t0\\nwolverine-dead-letter-queue\\t' + s.dlq + '\\n');
+if (s.ingest > 0) { s.ingest--; if (s.ingest === 0) { s.dlq += s.pendingFail; s.pendingFail = 0; } }
+fs.writeFileSync(f, JSON.stringify(s));
+`, { mode: 0o755 });
+        // 口の模型: 文書は並び順の配列。カーソルは「最後に見た位置」。母集合は未アーカイブで、位置がカーソルより後ろのもの。
+        const harness = path1931.join(dir, 'harness.js');
+        fs1931.writeFileSync(harness, `
+const http = require('http'); const fs = require('fs');
+const [scriptPath, cfgPath, simFile] = process.argv.slice(2);
+const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+fs.writeFileSync(simFile, JSON.stringify({ ingest: 0, dlq: 0, pendingFail: 0 }));
+const docs = cfg.docs.map((d, i) => ({ ...d, i, archived: false }));
+const requests = []; let poison = new Set();
+const server = http.createServer((req, res) => {
+  let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+    const send = (o) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+    if (req.url.includes('/token')) return send({ access_token: 't' });
+    if (req.url !== '/documents/archive-bodyless') return send({});
+    const body = JSON.parse(b); requests.push(body);
+    const after = body.cursor ? Number(body.cursor) : -1;
+    const candidates = docs.filter((d) => !d.archived);
+    const keyed = candidates.filter((d) => d.i > after);
+    const page = keyed.slice(0, body.limit);
+    const missing = page.filter((d) => d.missing);
+    if (!body.dryRun) {
+      for (const d of missing) d.archived = true;
+      const sim = JSON.parse(fs.readFileSync(simFile, 'utf8'));
+      sim.ingest += missing.length; sim.pendingFail += missing.filter((d) => poison.has(d.id)).length;
+      fs.writeFileSync(simFile, JSON.stringify(sim));
+    }
+    send({ dryRun: body.dryRun, createdBefore: body.createdBefore, matched: candidates.length, remaining: keyed.length,
+      selected: page.length, bodyMissing: missing.length, bodyPresent: page.length - missing.length, skippedPrivateNote: 0,
+      archived: body.dryRun ? 0 : missing.length, alreadyArchived: docs.length - candidates.length, notStored: 0,
+      nextCursor: keyed.length > body.limit ? String(page[page.length - 1].i) : null });
+  });
+});
+server.listen(0, '127.0.0.1', async () => {
+  const url = 'http://127.0.0.1:' + server.address().port;
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1' });
+  const ab = require(scriptPath);
+  const out = [];
+  for (const run of cfg.runs) {
+    poison = new Set(run.poison || []);
+    if (run.removeState) fs.rmSync(cfg.stateFile, { force: true });
+    const before = requests.length;
+    const code = await ab.main(run.argv);
+    out.push({ code, state: fs.existsSync(cfg.stateFile) ? JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')) : null,
+      archived: docs.filter((d) => d.archived).map((d) => d.id),
+      requests: requests.slice(before).map((r) => ({ dryRun: r.dryRun, cursor: r.cursor ?? null, limit: r.limit, createdBefore: r.createdBefore, reason: r.reason ?? null })) });
+  }
+  server.close();
+  process.stdout.write('\\n@@RESULT@@' + JSON.stringify(out));
+  process.exit(0);
+});
+`);
+        const stateFile = path1931.join(dir, 'state.json');
+        const cfgPath = path1931.join(dir, 'cfg.json');
+        const common = ['--live', '--state', stateFile, '--sleep-ms', '0', '--operator', 'alice'];
+        fs1931.writeFileSync(cfgPath, JSON.stringify({
+          ...cfg, stateFile, runs: cfg.runs.map((r) => ({ ...r, argv: [...common, ...r.argv] })),
+        }));
+        const env = { ...process.env, PATH: `${bin}${path1931.delimiter}${process.env.PATH}`, SIM_FILE: path1931.join(dir, 'sim.json'),
+          NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' };
+        for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'LIVE']) delete env[k];
+        const r = require('child_process').spawnSync(process.execPath,
+          [harness, path1931.join(__dirname, 'archive-bodyless-documents.js'), cfgPath, env.SIM_FILE],
+          { encoding: 'utf8', env, timeout: 60000 });
+        const i = (r.stdout || '').indexOf('@@RESULT@@');
+        assert.ok(i >= 0, `駆動器の試験器が結果を出さなかった（exit ${r.status}）:\n${r.stdout}\n${r.stderr}`);
+        return { runs: JSON.parse(r.stdout.slice(i + '@@RESULT@@'.length)), stdout: r.stdout, stderr: r.stderr };
+      } finally {
+        fs1931.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    // 本文なし 5 件（m*）と本文あり 2 件（p*）を混ぜる。
+    const docs1931 = [
+      { id: 'm0', missing: true }, { id: 'p0', missing: false }, { id: 'm1', missing: true }, { id: 'm2', missing: true },
+      { id: 'p1', missing: false }, { id: 'm3', missing: true }, { id: 'm4', missing: true },
+    ];
+    const cb1931 = ['--created-before', '2026-09-27T00:00:00Z'];
+    const apply1931 = [...cb1931, '--reason', 'test', '--canary', '1', '--page-size', '2'];
+
+    ok('#1931 項目 3: dry-run は全ページを辿って内訳を集計し、何もアーカイブせず状態ファイルも作らない', () => {
+      const { runs, stdout } = runDriver1931({ docs: docs1931, runs: [{ argv: ['--dry-run', ...cb1931, '--page-size', '3'] }] });
+      assert.strictEqual(runs[0].code, 0);
+      assert.deepStrictEqual(runs[0].archived, []);
+      assert.strictEqual(runs[0].state, null);
+      assert.ok(runs[0].requests.every((q) => q.dryRun === true && q.createdBefore === '2026-09-27T00:00:00.000Z'));
+      assert.strictEqual(runs[0].requests.length, 3, '7 件を 3 件ずつ');
+      assert.match(stdout, /アーカイブの対象: 5 件/);
+      assert.match(stdout, /本文が在る（触らない）: 2 件/);
+    });
+
+    ok('#1931 項目 3: カナリアの後も DLQ を見て進み、本文なしだけを全部アーカイブして完了する', () => {
+      const { runs, stdout } = runDriver1931({ docs: docs1931, runs: [{ argv: apply1931 }] });
+      assert.strictEqual(runs[0].code, 0, stdout);
+      assert.deepStrictEqual(runs[0].archived.sort(), ['m0', 'm1', 'm2', 'm3', 'm4']);
+      assert.strictEqual(runs[0].requests[0].limit, 1, '最初のページはカナリア');
+      assert.ok(runs[0].requests.every((q) => q.dryRun === false && q.reason === 'test'));
+      assert.deepStrictEqual([runs[0].state.done, runs[0].state.confirmedDone, runs[0].state.totals.archived], [true, true, 5]);
+      assert.match(stdout, /完了: アーカイブ 5 件/);
+    });
+
+    ok('#1931 項目 3: DLQ が増えたら確かめた位置へ戻して止まり、再開と再実行は冪等（同じ文書を二度アーカイブしない）', () => {
+      const { runs, stderr } = runDriver1931({
+        docs: docs1931,
+        runs: [
+          { argv: apply1931, poison: ['m2'] },
+          { argv: ['--resume', '--reason', 'test', '--canary', '1', '--page-size', '2'] },
+          { argv: apply1931, removeState: true },
+        ],
+      });
+      const [first, resumed, again] = runs;
+      assert.strictEqual(first.code, 1, 'DLQ が増えたら止まる');
+      assert.match(stderr, /確かめた位置へ戻しました/);
+      assert.strictEqual(first.state.cursor, first.state.confirmedCursor);
+      assert.strictEqual(first.state.canaryPassed, false, '止まった後はカナリアからやり直す');
+      assert.strictEqual(resumed.code, 0);
+      assert.deepStrictEqual(resumed.archived.sort(), ['m0', 'm1', 'm2', 'm3', 'm4']);
+      assert.strictEqual(again.code, 0, '状態ファイルを消して流し直しても止まらない');
+      assert.deepStrictEqual(again.state.totals.archived, 0, '2 回目は 1 件もアーカイブしない');
+    });
+
+    ok('#1931 項目 3: 状態ファイルが残っているまま新規に流すと拒み、何も送らない', () => {
+      const { runs } = runDriver1931({ docs: docs1931, runs: [{ argv: [...apply1931, '--max-pages', '1'] }, { argv: apply1931 }] });
+      assert.strictEqual(runs[0].code, 0);
+      assert.strictEqual(runs[1].code, 1);
+      assert.strictEqual(runs[1].requests.length, 0);
+    });
+  }
 
   // --- check-integration-executed: integration.yml の「全 skip で緑」を区別する（NFR / #1788 / IADR-0507） ---
   //

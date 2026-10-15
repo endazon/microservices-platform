@@ -192,7 +192,8 @@ public class DocumentSyncConsumer(
             // 🔴 FR-13, [[IADR-0541]] 決定 4 (#1934)・[[IADR-0540]]: **本文のオブジェクトが無い（NoSuchKey）のは恒久的な欠落である。**
             // 例外を上げると再試行の後 DLQ へ入る。ここで記録だけして正常に終える（ack）。メタデータも Wiki.js も書かない
             // （上で追跡に載せた変更は SaveChanges を呼ばないので捨てられる）。既存のページがあれば前の版のまま残る ——
-            // 本文の無い文書の扱いは #1931 項目 3 の裁定に従う（本件は何も消さない）。
+            // 本文の無い文書の扱いは #1931 項目 3 の裁定 B（アーカイブ・[[IADR-0549]]）で決まった。アーカイブの発行（status=archived）は
+            // 上の分岐で本文を読まずにページを非公開化するので、ここへは来ない（本件は何も消さない）。
             skippedMetrics.RecordBodyMissing();
             logger.LogWarning(
                 "Wiki sync {DocumentId}: body object missing (NoSuchKey) at {BodyKey} (updated_at={UpdatedAt:O}); "

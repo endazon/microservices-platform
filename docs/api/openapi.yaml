@@ -2177,6 +2177,72 @@ paths:
         "403":
           description: 管理者でない
 
+  /documents/archive-bodyless:
+    post:
+      tags: [Documents]
+      summary: "FR-06, UC-03, SC-05: 本文のオブジェクトが無い（NoSuchKey）古い文書をアーカイブする（一回限りの管理操作。管理者だけ。#1931）"
+      description: |
+        `createdAt < createdBefore` かつ未アーカイブかつ本文の参照が `storage://` の組織文書について、本文のオブジェクトの有無を
+        **HEAD 相当で確かめ（本文を読まない）**、キーが無い（NoSuchKey）文書だけを既存の状態 `archived` へ移す。
+        **管理者（`platform-admin`）だけ**が呼べる。メッシュ内部の口であり、BFF には出さない。
+        量の制御・カナリア・中断と再開・キューと DLQ の監視は駆動スクリプト `scripts/archive-bodyless-documents.js` が持つ。
+
+        - 🔴 **`dryRun` と `createdBefore` は必須**（省略は 400）。アーカイブする呼び出しは `reason` も必須。
+        - 「無い」は NoSuchKey だけ。バケットが無い・時間切れ・5xx はそのページを 1 件もアーカイブせずに 502 を返す。
+          ストレージが構成されていなければ 503。
+        - 本文が在る・期限ちょうど以降・本文の参照が無い・個人資料・アーカイブ済みの文書には触らない（状態・版・更新時刻が動かない）。
+        - アーカイブした文書は版を 1 つ進め（注記は固定の文字列）、単票のアーカイブと同じ `DocumentUpdated`（status=archived）を発行する。
+        - 冪等。アーカイブ済みは母集合から外れるので、2 回流しても 2 回目は何もしない。
+        - 並び: `createdAt` 昇順、同時刻は `id` 昇順（キーセット）。dry-run も同じページ送りで確かめる。
+      operationId: archive-bodyless-documents
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dryRun, createdBefore]
+              properties:
+                dryRun: { type: boolean, description: "true で確かめて件数だけを返し、false でアーカイブする（必須）" }
+                createdBefore: { type: string, format: date-time, description: "この時刻より前に作られた文書だけ（必須。既定なし）" }
+                limit: { type: integer, default: 100, minimum: 1, maximum: 200, description: 1 ページの件数（範囲外は 400） }
+                cursor: { type: string, description: "前の応答の `nextCursor`（不透明）。不正な値は 400" }
+                requestedBy: { type: string, maxLength: 100, description: "操作者の札（認証済みの主体と一緒にログへ出る）" }
+                reason: { type: string, maxLength: 500, description: "理由の札（アーカイブする呼び出しでは必須）" }
+      responses:
+        "200":
+          description: 確かめた 1 ページ（dry-run も同じ）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dryRun, createdBefore, matched, remaining, selected, bodyMissing, bodyPresent, skippedPrivateNote, archived, alreadyArchived, notStored]
+                properties:
+                  dryRun: { type: boolean }
+                  createdBefore: { type: string, format: date-time }
+                  matched: { type: integer, description: カーソルに依らない母集合（期限より前・未アーカイブ・本文の参照が storage://） }
+                  remaining: { type: integer, description: この呼び出しの前にカーソルより後ろに残っていた件数 }
+                  selected: { type: integer, description: このページの件数 }
+                  bodyMissing: { type: integer, description: このページで本文のオブジェクトが無かった（NoSuchKey）件数 }
+                  bodyPresent: { type: integer, description: このページで本文が在った件数（触らない） }
+                  skippedPrivateNote: { type: integer, description: このページの個人資料（対象外。触らない） }
+                  archived: { type: integer, description: アーカイブした件数（dry-run は 0） }
+                  alreadyArchived: { type: integer, description: 期限より前でアーカイブ済みの件数（母集合の外） }
+                  notStored: { type: integer, description: "期限より前で本文の参照が無い・storage:// でない件数（母集合の外）" }
+                  nextCursor: { type: [string, "null"], description: 続きのカーソル。尽きたら null }
+        "400":
+          description: dryRun・createdBefore の省略、アーカイブする呼び出しの reason の省略、limit の範囲外、長さの超過、不正なカーソル
+        "401":
+          description: 未認証
+        "403":
+          description: 管理者でない
+        "502":
+          description: 本文の存在確認が NoSuchKey 以外で失敗した（バケットが無い・5xx・時間切れ。そのページは何もアーカイブしない）
+        "503":
+          description: オブジェクトストレージが構成されていない（何もアーカイブしない）
+
   /documents/{id}:
     get:
       tags: [Documents]
