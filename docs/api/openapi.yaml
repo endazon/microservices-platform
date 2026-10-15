@@ -2456,24 +2456,9 @@ paths:
           description: 同期キューに追加
 
   # ── AuthorizationService ──────────────────────────
-  /authz/scope:
-    post:
-      tags: [Authorization]
-      summary: "FR-05, ADR-0004: ABAC スコープ解決"
-      operationId: resolve-scope
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AccessScopeRequest"
-      responses:
-        "200":
-          description: 許可されたフィルター
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AccessScopeResponse"
+  # ［2026-10-15 / #1902］`POST /authz/scope` は撤去した（east-west の権限スコープ解決は gRPC `AuthzScope/Resolve` だけ）。
+  # 要求の形（`AccessScopeRequest`）は記述する口が無くなったので外した。応答の形（`AccessScopeResponse`）は
+  # `granted` と `allowedFilters` の読み方の契約として残す（gRPC の応答も同じ 2 状態を運ぶ）。
 
   /authz/policies:
     get:
@@ -4796,23 +4781,6 @@ components:
             発行側が値を持たない場合は安全側の `restricted` へ縮退する。`default` は書かない
             ——`required` と同居すると「欠けてよい」と読め、契約が自己矛盾する（IADR-0132 決定 2 系）。
             **表示名（公開 / 社内限 / 秘 / 取扱制限）は契約に載せない。** 正は計画リポジトリの用語集。
-
-    AccessScopeRequest:
-      type: object
-      required: [userId, userAttributes]
-      properties:
-        userId: { type: string }
-        userAttributes:
-          type: object
-          additionalProperties: { type: string }
-        action:
-          type: string
-          description: >-
-            ［2026-08-23 / #989］解決したいアクション（`read` / `analyze` / `manage` / `write`。
-            `enum` にしない——値域の正は `PolicyAction`）。省略時は `read`（旧クライアントは無改修で
-            従来どおり読み取りスコープを得る）。従前はサーバ側が `read` をハードコードしており、
-            書き込みの認可スコープをこの経路で出せなかった。値域外は 400（呼び出し側は非 2xx を
-            deny へ縮退させる）。
 
     AccessScopeResponse:
       type: object

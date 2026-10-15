@@ -1,8 +1,8 @@
-using System.Net;
-using System.Net.Http.Json;
 using AuthorizationService.Domain;
 using AuthorizationService.Infrastructure.Persistence;
+using AuthorizationService.Tests.Grpc;
 using AwesomeAssertions;
+using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Contracts.Dtos;
 
@@ -45,14 +45,11 @@ public class OwnerReadPolicySeedTests : IClassFixture<TestWebApplicationFactory>
         db.SaveChanges();
     }
 
-    private async Task<(HttpStatusCode Status, AccessScopeResponse? Scope)> ResolveAsync(string userId)
+    private async Task<(StatusCode Status, AccessScopeResponse? Scope)> ResolveAsync(string userId)
     {
-        var resp = await _factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
+        var resp = await _factory.CreateServiceCallerClient().ResolveScopeAsync(
             new AccessScopeRequest(userId, []), TestContext.Current.CancellationToken);
-        var scope = resp.StatusCode == HttpStatusCode.OK
-            ? await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(TestContext.Current.CancellationToken)
-            : null;
-        return (resp.StatusCode, scope);
+        return (resp.Status, resp.Scope);
     }
 
     // T-24（ADR-0121 決定 1）: **所有者の read はポリシー 1 本で、形が決まっている。**
@@ -86,7 +83,7 @@ public class OwnerReadPolicySeedTests : IClassFixture<TestWebApplicationFactory>
 
         var (status, actual) = await ResolveAsync(userId);
 
-        status.Should().Be(HttpStatusCode.OK);
+        status.Should().Be(StatusCode.OK);
         SeedScopeFixture.Normalize(actual!).Should().Be(SeedScopeFixture.Normalize(expected),
             "seed を変えたなら Fixtures/owner-read-seed-scopes.json を実物の応答に合わせて直す（消費側の試験の入力である）");
     }
@@ -126,7 +123,7 @@ public class OwnerReadPolicySeedTests : IClassFixture<TestWebApplicationFactory>
     {
         var (status, scope) = await ResolveAsync(userId);
 
-        status.Should().Be(HttpStatusCode.OK, "「居ない」は応答である");
+        status.Should().Be(StatusCode.OK, "「居ない」は応答である");
         scope!.Granted.Should().BeFalse();
         (scope.Branches ?? []).Should().BeEmpty();
         scope.AllowedFilters.Should().BeEmpty();

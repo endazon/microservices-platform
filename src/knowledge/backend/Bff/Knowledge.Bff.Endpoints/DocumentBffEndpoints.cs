@@ -66,7 +66,7 @@ public static class DocumentBffEndpoints
         // 🔴 件数（`total` / `unfilteredTotal` / `statusCounts`）はどれも ABAC で絞った後の数である。権限外の文書はどの数にも入らない。
         g.MapGet("/", async (
             int? offset, int? limit, string? sort, string? q, string? status,
-            IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            HttpContext http, CancellationToken ct) =>
         {
             var errors = new Dictionary<string, string[]>();
             if (offset is < 0)
@@ -78,7 +78,7 @@ public static class DocumentBffEndpoints
             var window = new DocumentListWindow(offset ?? 0, DocumentListWindow.ClampLimit(limit));
 
             // #1010: 一覧は読み取り経路 → read を明示する。
-            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, BffScopeAction.Read, ct);
+            var scope = await BffScopeResolver.ResolveAsync(http, BffScopeAction.Read, ct);
             if (scope is null)
                 return Results.Ok(window.Empty());
 
@@ -100,17 +100,17 @@ public static class DocumentBffEndpoints
 
         // 詳細: スコープ外・不在ともに 404（存在秘匿）。#1010: 読み取り経路 → read。
         g.MapGet("/{id:guid}", async (
-            Guid id, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            Guid id, HttpContext http, CancellationToken ct) =>
         {
-            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
+            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, http, ct);
             return doc is null ? Results.NotFound() : Results.Ok(doc);
         }).WithName("BffDocumentDetail").Produces<DocumentDto>();
 
         // 版履歴: スコープ外・不在は 404。#1010: 読み取り経路 → read。
         g.MapGet("/{id:guid}/versions", async (
-            Guid id, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            Guid id, HttpContext http, CancellationToken ct) =>
         {
-            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
+            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, http, ct);
             if (doc is null)
                 return Results.NotFound();
 
@@ -141,10 +141,10 @@ public static class DocumentBffEndpoints
         // 一覧（`/versions`）と同じ形で先に ABAC を判定する —— 判定を通さずに後段を引くと、
         // **閲覧できない文書の版メタデータが漏れる**。
         g.MapGet("/{id:guid}/versions/{version:int}", async (
-            Guid id, int version, IHttpClientFactory httpFactory, HttpContext http,
+            Guid id, int version, HttpContext http,
             CancellationToken ct) =>
         {
-            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
+            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, http, ct);
             if (doc is null)
                 return Results.NotFound();
 
@@ -169,9 +169,9 @@ public static class DocumentBffEndpoints
         //   - 上限超過 … 413 ＋ 問題詳細（大きさと上限。切り詰めない）
         //   - 引けなかった（UNAVAILABLE・ストレージ未構成の FAILED_PRECONDITION・一時障害）… 502（案内文へ畳まない）
         g.MapGet("/{id:guid}/content", async (
-            Guid id, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            Guid id, HttpContext http, CancellationToken ct) =>
         {
-            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
+            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, http, ct);
             if (doc is null)
                 return Results.NotFound();
 
@@ -218,7 +218,7 @@ public static class DocumentBffEndpoints
         write.MapPost("/", async (DocumentCreateRequest req, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>
         {
-            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, BffScopeAction.Write, ct);
+            var scope = await BffScopeResolver.ResolveAsync(http, BffScopeAction.Write, ct);
             if (scope is null)
                 return Results.Forbid(); // write 許可ポリシー無し＝作成不可（deny-by-default）
 
@@ -277,7 +277,7 @@ public static class DocumentBffEndpoints
         Guid id, HttpMethod method, string path, object? body,
         IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
     {
-        var doc = await FetchAuthorizedAsync(id, BffScopeAction.Write, httpFactory, http, ct);
+        var doc = await FetchAuthorizedAsync(id, BffScopeAction.Write, http, ct);
         if (doc is null)
             return Results.NotFound(); // write スコープ外の文書は変更できない（存在秘匿）
 
@@ -432,9 +432,9 @@ public static class DocumentBffEndpoints
     // #1010: action は呼び出し元の経路の意味で選ぶ —— 読み取り GET（詳細・版履歴・本文）は
     // BffScopeAction.Read、書き込みプリフライト（ForwardIfInScope）は BffScopeAction.Write。
     private static async Task<DocumentDto?> FetchAuthorizedAsync(
-        Guid id, string action, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
+        Guid id, string action, HttpContext http, CancellationToken ct)
     {
-        var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, action, ct);
+        var scope = await BffScopeResolver.ResolveAsync(http, action, ct);
         if (scope is null)
             return null;
 

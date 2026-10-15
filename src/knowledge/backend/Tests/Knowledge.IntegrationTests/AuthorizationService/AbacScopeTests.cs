@@ -6,6 +6,8 @@ using System.Net.Http.Json;
 using AuthorizationService.Domain.Ports;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Grpc.Net.Client;
+using Pb = Platform.Shared.Contracts.Grpc.Authz.V1;
 
 namespace Knowledge.IntegrationTests.AuthorizationService;
 
@@ -26,6 +28,19 @@ public sealed class AbacScopeTests(PostgresFixture postgres)
         client.DefaultRequestHeaders.Add(
             IntegrationTestAuthHandler.RolesHeader, PlatformAuthPolicies.ServiceRole);
         return client;
+    }
+
+    // FR-05, NFR-16, ADR-0089 決定 1, [[IADR-0533]] (#1902): REST の `POST /authz/scope` を撤去したので、
+    // スコープ解決は gRPC 面（`AuthzScope/Resolve`）を TestServer 上で叩く（資格は同じ `ServiceCaller()` の HttpClient が運ぶ）。
+    private async Task<Pb.ResolveScopeResponse> ResolveAsync(AccessScopeRequest req)
+    {
+        using var client = ServiceCaller();
+        using var channel = GrpcChannel.ForAddress(client.BaseAddress!, new GrpcChannelOptions { HttpClient = client });
+        var pb = new Pb.ResolveScopeRequest { UserId = req.UserId, Action = req.Action };
+        foreach (var (key, value) in req.UserAttributes)
+            pb.UserAttributes[key] = value;
+        return await new Pb.AuthzScope.AuthzScopeClient(channel)
+            .ResolveAsync(pb, cancellationToken: TestContext.Current.CancellationToken);
     }
 
     // FR-05, 計画 ADR-0088 決定 1, [[IADR-0413]] 決定 1 (#1333):
@@ -73,12 +88,8 @@ public sealed class AbacScopeTests(PostgresFixture postgres)
             ["department"] = "engineering"
         });
 
-        var resp = await ServiceCaller().PostAsJsonAsync("/authz/scope", req, TestContext.Current.CancellationToken);
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var result = await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(TestContext.Current.CancellationToken);
-        result.Should().NotBeNull();
-        result!.UserId.Should().Be("tanaka.taro");
+        var result = await ResolveAsync(req);
+        result.UserId.Should().Be("tanaka.taro");
         result.AllowedFilters.Should().BeEmpty();
     }
 
@@ -102,11 +113,8 @@ public sealed class AbacScopeTests(PostgresFixture postgres)
         await GiveUserAsync("u-sato", "department", "engineering");
 
         var req = new AccessScopeRequest("sato.hanako", []);
-        var scopeResp = await ServiceCaller().PostAsJsonAsync("/authz/scope", req, TestContext.Current.CancellationToken);
-        scopeResp.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var result = await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(TestContext.Current.CancellationToken);
-        result!.AllowedFilters.Should().NotBeEmpty();
+        var result = await ResolveAsync(req);
+        result.AllowedFilters.Should().NotBeEmpty();
         result.AllowedFilters.Should().Contain(f => f.Key == "department");
     }
 
