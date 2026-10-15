@@ -26,6 +26,9 @@ builder.Services.AddPlatformAuth(builder.Configuration);
 // east-west gRPC の h2c リスナ（`Grpc:Port`。未設定なら立てない）。
 // HTTP/1.1 のポート（REST・/health/*・introspection）はそのまま残り、readiness も 8080 のままである。
 builder.AddPlatformGrpcListener();
+// FR-10, FR-17, FR-18, NFR-16, [[IADR-0542]] 決定 1 (#1907): 観測値の受け口（H-1）だけ受信上限を 16 MiB（既定）へ上げる。
+// 構成キー `Grpc:KnowledgeHealthReportMaxReceiveMessageSize`。根拠は `KnowledgeHealthReportReceiveLimit`。
+builder.Services.AddKnowledgeHealthReportReceiveLimit();
 // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の標識（受け口側の多層防御）。
 builder.Services.AddSyntheticMonitoring(builder.Configuration);
 // NFR, #1012: 接続先は構成から受け取る。**既定の資格情報を埋め込まない。**
