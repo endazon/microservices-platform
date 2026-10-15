@@ -1,6 +1,7 @@
 using System.Diagnostics.Metrics;
 using System.Net.Http.Json;
 using AwesomeAssertions;
+using LlmGateway.Tests.Grpc;
 using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Routing;
@@ -82,6 +83,11 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
 
     private static object Request(string purpose, string confidentiality = "public") =>
         new { Prompt = "要求", MaxTokens = 100, Confidentiality = confidentiality, Purpose = purpose };
+
+    // ［2026-10-15 / #1902・[[IADR-0533]]］逐次の REST（`/complete/stream`）を撤去したので、逐次の経路は
+    // 同じ本体を呼ぶ gRPC 面（`LlmCompletion/CompleteStream`）を TestServer 上で叩く。計上の主張は変えていない。
+    private static CompletionApiRequest StreamRequest(string purpose) =>
+        new("要求", MaxTokens: 100, Confidentiality: "public", Purpose: purpose);
 
     // T-21a: 拒否は「送信成立（result=sent）」かつ「stop_reason=refusal」として計上される。
     // 拒否率の分子はこの系列、分母は result=sent の総和である。
@@ -257,7 +263,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new MetricsProbe();
         var client = ClientReturning(new CompletionResult("", 11, 0, CompletionStopReasons.Refusal));
 
-        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"), TestContext.Current.CancellationToken);
+        await client.CompleteStreamAsync(StreamRequest("rag-answer"), TestContext.Current.CancellationToken);
 
         var m = probe.Measurements.Should().ContainSingle().Subject;
         m.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultSent);
@@ -424,7 +430,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new MetricsProbe();
         var client = ClientFailingWith(new StatusFailingProvider(System.Net.HttpStatusCode.TooManyRequests));
 
-        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"), TestContext.Current.CancellationToken);
+        await client.CompleteStreamAsync(StreamRequest("rag-answer"), TestContext.Current.CancellationToken);
 
         var m = probe.Measurements.Should().ContainSingle().Subject;
         m.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultUpstreamError);
@@ -571,7 +577,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new OutputTokensProbe();
         var client = ClientReturning(new CompletionResult("回答本文", 11, 77, CompletionStopReasons.EndTurn));
 
-        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"), TestContext.Current.CancellationToken);
+        await client.CompleteStreamAsync(StreamRequest("rag-answer"), TestContext.Current.CancellationToken);
 
         probe.Measurements.Should().ContainSingle().Which.Value.Should().Be(77);
     }
@@ -594,7 +600,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
                 s.AddKeyedSingleton<ILlmProvider>("copilot", provider);
             })).CreateClient();
 
-        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"), TestContext.Current.CancellationToken);
+        await client.CompleteStreamAsync(StreamRequest("rag-answer"), TestContext.Current.CancellationToken);
 
         // Counter は計上する（送信は成立している）が、分布には 0 を積まない。
         counter.Measurements.Should().ContainSingle()

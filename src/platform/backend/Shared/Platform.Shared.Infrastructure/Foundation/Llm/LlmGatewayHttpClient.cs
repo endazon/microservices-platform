@@ -8,7 +8,7 @@ namespace Platform.Shared.Infrastructure.Foundation.Llm;
 
 // FR-02, FR-04, FR-11, NFR-09, ADR-0004, ADR-0010, ADR-0016, ADR-0084 決定 1,
 // [[IADR-0379]] 決定 4, [[IADR-0413]], [[IADR-0424]] (#1364):
-// LlmGateway の **REST 面**（`/complete`・`/complete/stream`・`/embed`）を叩くクライアントへ
+// LlmGateway の **REST 面**（`/complete`。［2026-10-15 / #1902］`/complete/stream`・`/embed` は撤去した）を叩くクライアントへ
 // s2s トークンを付ける。受け口が `ServiceCaller` を要するようになったためである。
 //
 // ［2026-10-10 / #1255・[[IADR-0533]]］**REST の並走を撤去したので、呼び出し元は 1 つだけになった** ——

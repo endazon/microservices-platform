@@ -9,9 +9,9 @@ namespace NotificationService.Tests.Features.Notifications.Accept;
 // 🔴 **鍵もメッセージも「定数」と「リテラル」の両方へ当てる。** 片方だけを見ると、定数の値を
 // 書き換えた変更が試験ごと追随して緑のまま通る（[[IADR-0398]] 決定 9）。
 //
-// 🔴 **本サイトは形 β である。** 端点契約試験（`NotificationIngressValidationProblemContractTests`）が
-// HTTP 応答の鍵の列を見るのに対し、本ファイルは `ValidationResult` の側で
-// **宣言順・件数・粒度**を見る。
+// 🔴 **本サイトは形 β である。** 本ファイルは `ValidationResult` の側で**宣言順・件数・粒度**を見る
+// （［2026-10-15 / #1902］HTTP 応答の鍵の列を見ていた端点契約試験は、REST の受け口とともに撤去した。
+// gRPC 面は鍵と本文を status の detail へ連結して載せる —— `GrpcNotificationIngressTests` T-06）。
 public class NotificationIngressValidatorTests
 {
     private static readonly DateTimeOffset Occurred = new(2026, 8, 28, 9, 0, 0, TimeSpan.Zero);

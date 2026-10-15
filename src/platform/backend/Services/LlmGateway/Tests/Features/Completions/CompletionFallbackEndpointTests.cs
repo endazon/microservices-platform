@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using AwesomeAssertions;
+using LlmGateway.Tests.Grpc;
 using LlmGateway.Domain.Ports;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -176,11 +177,13 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     {
         var client = ClientFailing("claude-opus-5-5", HttpStatusCode.BadRequest);
 
-        var response = await client.PostAsJsonAsync("/complete/stream", AnalysisRequest(), TestContext.Current.CancellationToken);
+        // ［2026-10-15 / #1902］逐次の REST（SSE）を撤去したので、同じ本体を呼ぶ gRPC 面を叩く。
+        var events = await client.CompleteStreamAsync(
+            new CompletionApiRequest("機密文書の分析", MaxTokens: 100, Confidentiality: "public", Purpose: "analysis"),
+            TestContext.Current.CancellationToken);
 
-        var sse = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        sse.Should().Contain("\"sent\":false");
-        sse.Should().NotContain("claude-sonnet-5-5");
+        events.Last().Sent.Should().BeFalse();
+        events.Should().NotContain(e => e.Model == "claude-sonnet-5-5" || (e.Delta + e.Text).Contains("claude-sonnet-5-5"));
     }
 
     // 指定モデル（または全モデル）への呼び出しを HTTP ステータス付きの例外で失敗させるスタブ。

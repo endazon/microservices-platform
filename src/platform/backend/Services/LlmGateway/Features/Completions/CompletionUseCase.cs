@@ -10,7 +10,7 @@ namespace LlmGateway.Features.Completions;
 // FR-04, FR-11, NFR-02, ADR-0010, ADR-0025, ADR-0029, ADR-0038, ADR-0044, ADR-0075, ADR-0076,
 // IADR-0037, IADR-0101, IADR-0104, IADR-0110, IADR-0111, IADR-0212, IADR-0225, IADR-0374, IADR-0378,
 // IADR-0379, IADR-0397, IADR-0400 (#1255): テキスト生成の**判定器本体**。
-// REST（Complete/Endpoint・CompleteStream/Endpoint）と gRPC（GrpcService）の**両方がここを呼ぶ**。
+// REST（Complete/Endpoint）と gRPC（GrpcService）の**両方がここを呼ぶ**（［2026-10-15 / #1902］逐次の REST は撤去し、逐次は gRPC だけ）。
 //
 // 🔴 **判定器を 2 つにしない**（IADR-0400 決定 2。#1290 が EmbedUseCase を括り出したのと同型）。
 // 越境判定（router.Route）・プロバイダ解決・フォールバック鎖・計器の計上・LogStopReason は
@@ -152,10 +152,10 @@ public sealed class CompletionUseCase(
         throw new UnreachableException("completion attempt chain ended without a response");
     }
 
-    // IADR-0037, FR-04, FR-11: 逐次生成（REST `POST /complete/stream` の本体）。
+    // IADR-0037, FR-04, FR-11: 逐次生成（gRPC `LlmCompletion/CompleteStream` の本体。［2026-10-15 / #1902］REST `/complete/stream` は撤去した）。
     //
     // 🔴 **1 チャンク 1 イベントで yield する。まとめてから返さない。**
-    // 呼び出し側（REST は SSE の 1 行へ書いて flush、gRPC は IServerStreamWriter.WriteAsync）が
+    // 呼び出し側（gRPC の IServerStreamWriter.WriteAsync。撤去した REST は SSE の 1 行へ書いて flush していた）が
     // 受け取った順に送出することで、初回トークンの境界が保たれる（IADR-0400 決定 1）。
     // ここでバッファリングすると、輸送を server-streaming にした意味が消える。
     public async IAsyncEnumerable<CompletionStreamEvent> StreamAsync(
@@ -205,7 +205,7 @@ public sealed class CompletionUseCase(
         // あり、**無音の穴にしないためにここで残す**。射程を広げるなら新しい ADR / IADR が要る。
         if (decision.Fallbacks.Count > 0)
             logger.LogWarning(
-                "Fallback chain {FallbackModels} is configured for this route but /complete/stream does not "
+                "Fallback chain {FallbackModels} is configured for this route but the streaming path (CompleteStream) does not "
                 + "implement fallback (ADR-0038 決定 3 / IADR-0225 の射程外). endpoint={Endpoint} model={Model}",
                 string.Join(",", decision.Fallbacks), decision.EndpointName, decision.Model);
 

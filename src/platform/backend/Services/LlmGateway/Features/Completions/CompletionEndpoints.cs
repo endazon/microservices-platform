@@ -1,13 +1,15 @@
 using Platform.Shared.Contracts.Dtos;
 using LlmGateway.Domain.Routing;
 using LlmGateway.Features.Completions.Complete;
-using LlmGateway.Features.Completions.CompleteStream;
 
 namespace LlmGateway.Features.Completions;
 
-// FR-04, FR-11, ADR-0010: テキスト生成スライスの合成点（/complete・/complete/stream）。
+// FR-04, FR-11, ADR-0010: テキスト生成スライスの合成点（REST は /complete だけ）。
+// ［2026-10-15 / #1902・[[IADR-0533]] 追記］逐次（`/complete/stream`・SSE）の REST 受け口は撤去した ——
+// 呼び出し元は east-west gRPC（`LlmCompletion/CompleteStream`）だけであり、AST も叩いていない。
+// `/complete` は AST・合成監視が叩く口として残す。
 //
-// ADR-0065 決定 2: 1 ユースケースのファイルは操作フォルダ（Complete/ ・CompleteStream/）に束ねる。
+// ADR-0065 決定 2: 1 ユースケースのファイルは操作フォルダ（Complete/）に束ねる。
 // **本ファイルに残すのは、両操作が共有するもの（グループの構築と LogStopReason）だけである。**
 public static class CompletionEndpoints
 {
@@ -16,7 +18,6 @@ public static class CompletionEndpoints
         var g = app.MapGroup("").WithTags("Completions");
 
         g.MapComplete();
-        g.MapCompleteStream();
 
         return app;
     }
@@ -26,7 +27,7 @@ public static class CompletionEndpoints
     // 原因も対処も異なるため別々に記録する。正常終了は従来どおり無出力（ログ量を増やさない）。
     // 拒否された本文の断片はログにも残さない（分類器が止めた内容を監査ログへ写さない）。
     //
-    // **非ストリーミングとストリーミングの両操作が呼ぶ**ため集約直下に残す（ADR-0065 決定 2）。
+    // **一括と逐次の両方（CompletionUseCase の 2 経路）が呼ぶ**ため集約直下に残す（ADR-0065 決定 2）。
     internal static void LogStopReason(ILogger logger, string? stopReason, RoutingDecision decision)
     {
         if (CompletionStopReasons.IsRefusal(stopReason))

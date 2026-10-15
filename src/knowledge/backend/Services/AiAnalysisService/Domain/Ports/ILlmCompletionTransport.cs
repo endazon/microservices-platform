@@ -16,7 +16,7 @@ namespace AiAnalysisService.Domain.Ports;
 public interface ILlmCompletionTransport
 {
     /// <summary>
-    /// 逐次生成（REST は SSE `POST /complete/stream`、gRPC は <c>LlmCompletion/CompleteStream</c>）。
+    /// 逐次生成（gRPC の <c>LlmCompletion/CompleteStream</c>。REST の SSE `POST /complete/stream` は撤去した）。
     /// <para>
     /// 🔴 <b>到着した順に 1 件ずつ返す。まとめてから返してはならない。</b>
     /// 呼び出し側は最初の非空 <c>Delta</c> で north-south の最初の <c>token</c> を書き、そこが

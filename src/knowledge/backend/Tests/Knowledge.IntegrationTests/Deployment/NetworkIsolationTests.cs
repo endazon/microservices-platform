@@ -37,9 +37,9 @@ public sealed class NetworkIsolationTests
         // ［2026-09-26 / #1520］NFR-09, ADR-0109 決定 3, IADR-0465: 後段も中継された利用者の資格情報で門を
         // 判定するようになった（`ConversionJobAuthorizationTests`）。ネットワーク分離は多層防御として残す。
         "conversion-service",
-        // FR-22, ADR-0045, Issue #1025: 個人資料の通知の受け口（POST /internal/notifications）の後段。
-        // 配備と同時にここへ足す —— 受け口は認証済み内部呼び出しだけを想定しており、host 公開されると
-        // 誰でも利用者宛の通知を投函できる。送出側は fail-open なので、穴が開いても不達としては現れない。
+        // FR-22, ADR-0045, Issue #1025: 個人資料の通知の受け口の後段（［2026-10-15 / #1902］無認証の REST
+        // `POST /internal/notifications` は撤去し、受け口は `ServiceCaller` を要する gRPC 面だけになった）。
+        // ネットワーク分離は多層防御として残す —— 送出側は fail-open なので、穴が開いても不達としては現れない。
         "notification-service",
         // NFR-09, Issue #458, IADR-0403 決定 6: 以下 3 本は **compose の側から母集合を引き直して**見つけた
         // 列挙漏れである（記憶で挙げず `build:` を持つサービスを機械的に数えた。traceability.repo.md 規則 9）。

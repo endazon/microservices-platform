@@ -83,7 +83,7 @@ public record CompletionApiResponse(
     string? FailureKind = null,
     int? UpstreamStatusCode = null);
 
-// IADR-0037: /complete/stream（SSE）の 1 イベント（data: 行の JSON）。gateway ↔ AiAnalysisService の内部契約。
+// IADR-0037: 逐次生成の 1 イベント（gRPC `CompletionStreamEvent` の写し。撤去した REST /complete/stream では SSE の data: 行の JSON だった）。
 //   Delta        — 本文の増分（Done=false のとき）。
 //   Done         — 最終イベント。Model/InputTokens/OutputTokens が確定する。
 //   Sent         — false は egress 拒否・呼び出し失敗の縮退（Text に理由）。プロバイダ未呼出も含む。
