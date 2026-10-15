@@ -37,23 +37,25 @@ public class WikiPage
 
     private WikiPage() { }
 
+    // FR-13, [[IADR-0541]] (#1934): slug は呼び出し元（同期の受け口）が `SlugCandidates` から空きを選んで渡す。
+    // 省略時は候補列の先頭（題名だけ由来）—— 一意性は保証しない（試験の種まき用）。
     public static WikiPage CreateFromDocument(Guid documentId, string title,
-        string? markdownUri, Dictionary<string, string> attributes, List<string> tags)
+        string? markdownUri, Dictionary<string, string> attributes, List<string> tags, string? slug = null)
         => new()
         {
             DocumentId = documentId,
             Title = title,
-            Slug = ToSlug(title),
+            Slug = slug ?? SlugCandidates(title, documentId)[0],
             MarkdownUri = markdownUri,
             Attributes = attributes,
             Tags = tags,
         };
 
     public void Sync(string title, string? markdownUri,
-        Dictionary<string, string> attributes, List<string> tags)
+        Dictionary<string, string> attributes, List<string> tags, string? slug = null)
     {
         Title = title;
-        Slug = ToSlug(title);
+        Slug = slug ?? SlugCandidates(title, DocumentId)[0];
         MarkdownUri = markdownUri;
         Attributes = attributes;
         Tags = tags;
@@ -67,6 +69,34 @@ public class WikiPage
     {
         Status = WikiPageStatus.Archived;
         SyncedAt = DateTimeOffset.UtcNow;
+    }
+
+    // 🔴 FR-13, [[IADR-0541]] 決定 1 (#1934): 保存時の slug の競合（23505 `IX_Pages_Slug`）を受けて付け替える。
+    // 付け替え先は `SlugCandidates` の末尾（文書 ID 32 桁の接尾辞）に限る（受け口が決める）。
+    public void ReassignSlug(string slug) => Slug = slug;
+
+    // slug 列の長さ（WikiDbContext の HasMaxLength と同じ値）。
+    public const int SlugMaxLength = 500;
+
+    // 🔴 FR-13, [[IADR-0541]] 決定 1 (#1934): **slug の候補列。題名だけでは一意にならない**（同じ見出しのニュース・
+    // 重複して作られた同名の規程が同じ slug へ写り、`IX_Pages_Slug` の 23505 で同期が恒久的に失敗した）。
+    // 候補は [題名由来, 題名由来-文書IDの先頭8桁, 題名由来-文書ID 32桁]。**後ろほど一意で、末尾は文書 ID を丸ごと含む**ので、
+    // 文書 ID の一意性（`IX_Pages_DocumentId`）から他の文書の末尾の候補とは重ならない。
+    // 題名由来の部分が空（記号だけの題名）なら素の候補を飛ばし `doc-<8桁>` から始める（空の slug を作らない）。
+    // **どれを採るか（他の文書が使っていない最初のもの・既存の slug の保持）は受け口が決める**（DB を引くため）。
+    public static IReadOnlyList<string> SlugCandidates(string title, Guid documentId)
+    {
+        var baseSlug = ToSlug(title);
+        var full = documentId.ToString("N");
+        var stem = baseSlug.Length == 0 ? "doc" : baseSlug;
+        // 接尾辞（"-" + 32 桁）を足しても列の長さを超えないよう、題名由来の部分を切る。
+        var room = SlugMaxLength - 1 - full.Length;
+        if (stem.Length > room) stem = stem[..room].TrimEnd('-');
+        var shortSuffixed = $"{stem}-{full[..8]}";
+        var fullSuffixed = $"{stem}-{full}";
+        return baseSlug.Length == 0
+            ? [shortSuffixed, fullSuffixed]
+            : [baseSlug, shortSuffixed, fullSuffixed];
     }
 
     private static string ToSlug(string title)
