@@ -40,6 +40,12 @@
  *    `check-image-digests.js` はリポジトリの字面（values・kustomization の `images:`）を読むが、上流のマニフェストを
  *    `resources:` の URL で読む overlay（cert-manager・Argo CD）では、上流が版の更新でイメージを**足した**とき
  *    `images:` に項目が無いまま tag だけで描かれる。字面では見えないので、描画した結果に同じ判定（自製は対象外）を当てる。
+ *
+ * 7. **描画結果に Loki・Tempo が現れたら、前段の認証と到達の制限（NetworkPolicy）の両方が同じ描画結果に揃っていることも見る**
+ *    （ADR-0133 決定 3 / #1867）。本番像の chart には現時点で両製品が無く「対象なし」で通る。chart へ足す PR が前段なしで
+ *    入るのを止めるための検査である。判定は `lib/observability-front-guard.js`（名前では通さない。前段のイメージ・Secret・
+ *    製品の loopback 待ち・Service の宛先・NetworkPolicy の名指しと許可の和）。経路 B（deploy/local/observability）が陽性対照で、
+ *    **走査全体で Loki・Tempo が 1 度も判定されなければ失敗にする**（要点 2 と同じ。識別が壊れて 0 件になったときに緑を返さない）。
  */
 
 'use strict';
@@ -49,6 +55,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const egress = require('./lib/product-egress-defaults');
 const imageDigests = require('./check-image-digests');
+const obsFront = require('./lib/observability-front-guard');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const DEPLOY_DIR = 'deploy';
@@ -238,7 +245,12 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
   const failures = [];
   const notices = [];
   const egressFound = [];
+  const obsFound = new Map();
   const renderedEgress = (yaml, label) => {
+    // 要点 7（#1867）: Loki・Tempo が現れたら前段と NetworkPolicy の両方。
+    const front = obsFront.checkObservabilityFront(yaml, label);
+    failures.push(...front.problems);
+    for (const [k, v] of front.found) obsFound.set(k, (obsFound.get(k) || 0) + v);
     const r = egress.checkRenderedManifests(yaml, label);
     failures.push(...r.problems.map((p) => `既定の外部通信が止まっていない: ${p}`));
     egressFound.push(r.found);
@@ -319,6 +331,14 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
     failures.push(
       `既定の外部通信の検査で ${missingEgress.join(' / ')} が 1 度も見つからなかった（chart・overlay・compose のどこにも無い）。` +
         ' イメージの照合が壊れたか、製品を外した。外したなら lib/product-egress-defaults.js の PRODUCTS から除くこと。',
+    );
+  }
+  // 要点 7 / 要点 2: Loki・Tempo が走査全体で 1 度も判定されなければ失敗（経路 B が陽性対照。識別が壊れて 0 件のときに緑を返さない）。
+  const obsMissing = obsFront.TARGETS.map((t) => t.name).filter((n) => !obsFound.get(n));
+  if (obsMissing.length > 0) {
+    failures.push(
+      `前段と到達の制限の検査（#1867）で ${obsMissing.join(' / ')} が 1 度も判定されなかった（chart・overlay のどこにも無い）。` +
+        ' イメージの識別（lib/observability-front-guard.js の TARGETS）が壊れたか、経路 B の overlay から外した。',
     );
   }
   if (offline.testcontainersBuilders === 0) {
@@ -443,6 +463,135 @@ function selfTest() {
     assert.ok(r.failures.some((f) => f.includes('kubeconform')), 'kubeconform 不在が失敗理由に出ていない');
   });
 
+  // ---- 要点 7（#1867）: Loki・Tempo の前段（条件 1）と到達の制限（条件 2）。陰性・陽性対照を合成の描画と実物の描画の両方で固定する。
+  const NS = 'microservices-platform';
+  /** 合成の描画: 製品（loopback 待ちの config）＋任意で前段・NetworkPolicy・Service。opts で 1 か所ずつ壊す。 */
+  const obsFixture = (prod, { front = true, netpol = true, secret = true, listen = '127.0.0.1', svcTarget = 'http', from = 'narrow' } = {}) => {
+    const upPort = prod === 'loki' ? 3101 : 3201;
+    const svcPort = prod === 'loki' ? 3100 : 3200;
+    const docs = [
+      ['apiVersion: v1', 'kind: ConfigMap', 'metadata:', `  name: ${prod}-config`, `  namespace: ${NS}`, 'data:', '  config.yaml: |',
+        '    server:', `      http_listen_address: ${listen}`, `      http_listen_port: ${upPort}`, `      grpc_listen_address: ${listen}`].join('\n'),
+      ['apiVersion: apps/v1', 'kind: Deployment', 'metadata:', `  name: ${prod}`, `  namespace: ${NS}`, 'spec:', '  selector:', `    matchLabels: { app: ${prod} }`,
+        '  template:', '    metadata:', `      labels: { app: ${prod} }`, '    spec:', '      containers:',
+        `        - name: ${prod}`, `          image: grafana/${prod}:1.0.0`, `          args: ["-config.file=/etc/${prod}/config.yaml"]`,
+        ...(prod === 'tempo' ? ['          ports:', '            - { containerPort: 4317, name: otlp-grpc }'] : []),
+        '          volumeMounts:', `            - { name: config, mountPath: /etc/${prod} }`,
+        ...(front ? ['        - name: proxy', '          image: caddy:2.11-alpine', '          ports:', `            - { containerPort: ${svcPort}, name: http }`,
+          ...(secret ? ['          env:', '            - name: TOKEN', '              valueFrom:', '                secretKeyRef: { name: obs-gate, key: reader }'] : [])] : []),
+        '      volumes:', '        - name: config', '          configMap:', `            name: ${prod}-config`].join('\n'),
+      ['apiVersion: v1', 'kind: Service', 'metadata:', `  name: ${prod}`, `  namespace: ${NS}`, 'spec:', `  selector: { app: ${prod} }`, '  ports:',
+        `    - { name: http, port: ${svcPort}, targetPort: ${svcTarget} }`].join('\n'),
+    ];
+    if (netpol) {
+      const peer = from === 'narrow' ? ['        - podSelector:', '            matchLabels: { app: grafana }'] : from === 'all-pods' ? ['        - podSelector: {}'] : ['        - ipBlock:', '            cidr: 0.0.0.0/0'];
+      const rule = from === 'none' ? ['    - ports:', `        - { protocol: TCP, port: ${svcPort} }`] : ['    - from:', ...peer];
+      docs.push(['apiVersion: networking.k8s.io/v1', 'kind: NetworkPolicy', 'metadata:', `  name: ${prod}-ingress`, `  namespace: ${NS}`, 'spec:', '  podSelector:',
+        `    matchLabels: { app: ${prod} }`, '  policyTypes: [Ingress]', '  ingress:', ...rule].join('\n'));
+    }
+    return docs.join('\n---\n') + '\n';
+  };
+  const front = (yaml) => obsFront.checkObservabilityFront(yaml, 'fixture');
+  const has = (r, re) => r.problems.some((p) => re.test(p));
+
+  for (const prod of ['loki', 'tempo']) {
+    ok(`#1867 ${prod}: 前段も NetworkPolicy も無い → 赤（条件 1・2 の両方）`, () => {
+      const r = front(obsFixture(prod, { front: false, netpol: false }));
+      assert.ok(has(r, /条件 1/) && has(r, /条件 2/), r.problems.join('\n'));
+    });
+    ok(`#1867 ${prod}: 前段だけ → 赤（条件 2）`, () => {
+      const r = front(obsFixture(prod, { netpol: false }));
+      assert.ok(has(r, /条件 2/) && !has(r, /条件 1/), r.problems.join('\n'));
+    });
+    ok(`#1867 ${prod}: NetworkPolicy だけ → 赤（条件 1）`, () => {
+      const r = front(obsFixture(prod, { front: false }));
+      assert.ok(has(r, /条件 1/) && !has(r, /条件 2/), r.problems.join('\n'));
+    });
+    ok(`#1867 ${prod}: 両方 → 緑（判定した数を返す）`, () => {
+      const r = front(obsFixture(prod));
+      assert.deepStrictEqual(r.problems, []);
+      assert.strictEqual(r.found.get(prod), 1);
+    });
+    // 名前だけで通さない（1 か所ずつ壊す）
+    for (const [what, opts, re] of [
+      ['前段が Secret を受け取らない（素通しのプロキシ）', { secret: false }, /条件 1.*Secret/],
+      ['製品が 0.0.0.0 で待つ（前段を迂回できる）', { listen: '0.0.0.0' }, /条件 1.*loopback でない/],
+      ['Service の宛先が前段の口でない', { svcTarget: prod === 'loki' ? 3101 : 3201 }, /条件 1.*Service\//],
+      ['NetworkPolicy の from が podSelector: {}（同じ名前空間の全 Pod）', { from: 'all-pods' }, /条件 2.*広い/],
+      ['NetworkPolicy の from が ipBlock 0.0.0.0/0', { from: 'ip' }, /条件 2.*ipBlock/],
+      ['NetworkPolicy の規則に from が無い（全ての送り元から届く）', { from: 'none' }, /条件 2.*from が無い/],
+    ]) {
+      ok(`#1867 ${prod}: ${what} → 赤`, () => {
+        const r = front(obsFixture(prod, opts));
+        assert.ok(has(r, re), r.problems.join('\n') || '(問題なし)');
+      });
+    }
+  }
+
+  ok('#1867: コンテナ名を gate にしても、イメージがプロキシでなければ前段と数えない（名前で通さない）', () => {
+    const y = obsFixture('loki').replace('caddy:2.11-alpine', 'busybox:1.36').replace('- name: proxy', '- name: gate');
+    assert.ok(has(front(y), /条件 1.*前段.*無い/));
+  });
+
+  ok('#1867: 名指しの NetworkPolicy があっても、Pod を選ぶ別の広い NetworkPolicy があれば赤（許可の和）／NotIn で外せば緑', () => {
+    const wide = (notIn) => ['apiVersion: networking.k8s.io/v1', 'kind: NetworkPolicy', 'metadata:', '  name: allow-intra-namespace', `  namespace: ${NS}`, 'spec:',
+      '  podSelector:', '    matchExpressions:', '      - key: app', '        operator: NotIn', `        values: [${notIn}]`, '  policyTypes: [Ingress]',
+      '  ingress:', '    - from:', '        - podSelector: {}'].join('\n');
+    assert.ok(has(front(`${obsFixture('loki')}---\n${wide('seaweedfs')}\n`), /allow-intra-namespace.*広い/));
+    assert.deepStrictEqual(front(`${obsFixture('loki')}---\n${wide('seaweedfs, loki')}\n`).problems, []);
+  });
+
+  ok('#1867: 名指しでない NetworkPolicy（podSelector: {} の既定拒否）だけでは条件 2 を満たさない', () => {
+    const y = obsFixture('loki', { netpol: false }) + ['---', 'apiVersion: networking.k8s.io/v1', 'kind: NetworkPolicy', 'metadata:', '  name: default-deny', `  namespace: ${NS}`,
+      'spec:', '  podSelector: {}', '  policyTypes: [Ingress]', ''].join('\n');
+    assert.ok(has(front(y), /名指しで選ぶ/));
+  });
+
+  ok('#1867: 対象なし（Loki・Tempo のイメージが無い描画）は何も言わず、promtail・loki 以外の名前は対象にしない', () => {
+    const r = front(['apiVersion: apps/v1', 'kind: Deployment', 'metadata:', '  name: x', 'spec:', '  template:', '    spec:', '      containers:',
+      '        - name: a', '          image: grafana/promtail:3.0.0', '        - name: b', '          image: example/lokiish:1', ''].join('\n'));
+    assert.deepStrictEqual([r.problems, [...r.found]], [[], []]);
+    assert.strictEqual(obsFront.imageSegment('registry:5000/mirror/loki:3.0.0@sha256:' + 'a'.repeat(64)), 'loki');
+  });
+
+  // 実物の描画（ツールが在る環境だけ。CI の deploy-manifests ジョブは helm / kubectl を入れている）。
+  if (hasTool('helm')) {
+    ok('#1867 実物の chart: 既定と ci/*.yaml の全派生で「対象なし」（陰性対照）、Loki・Tempo を足すと前段・NetworkPolicy・両方の 4 通りで期待どおり', () => {
+      const chart = discoverCharts()[0];
+      for (const valuesFile of [null, ...discoverChartCiValues(chart)]) {
+        const r = run('helm', ['template', 'ci-check', chart, ...(valuesFile ? ['-f', valuesFile] : [])]);
+        assert.ok(r.ok, r.out);
+        const base = front(r.out);
+        assert.deepStrictEqual([base.problems, [...base.found]], [[], []], `${valuesFile || '既定'} に Loki・Tempo が既に居る`);
+      }
+      const rendered = run('helm', ['template', 'ci-check', chart]).out;
+      assert.ok(/values: \[seaweedfs\]/.test(rendered), '前提: chart の allow-intra-namespace が NotIn [seaweedfs] で描かれる');
+      for (const prod of ['loki', 'tempo']) {
+        const add = (opts) => `${rendered}\n---\n${obsFixture(prod, opts)}`;
+        assert.ok(has(front(add({ front: false, netpol: false })), /条件 1/) && has(front(add({ front: false, netpol: false })), /条件 2/));
+        assert.ok(has(front(add({ netpol: false })), /条件 2/), `${prod} 前段だけが赤にならない`);
+        assert.ok(has(front(add({ front: false })), /条件 1/), `${prod} NetworkPolicy だけが赤にならない`);
+        // 両方を足しても、chart の allow-intra-namespace（同じ名前空間の全 Pod から）が選んでいる限り赤（許可の和）。
+        assert.ok(has(front(add({})), /allow-intra-namespace.*広い/), `${prod} 両方でも allow-intra-namespace の穴を見逃した`);
+        const excluded = add({}).replace('values: [seaweedfs]', `values: [seaweedfs, ${prod}]`);
+        assert.deepStrictEqual(front(excluded).problems, [], `${prod} 両方＋allow-intra-namespace から外す、が緑にならない`);
+      }
+    });
+  }
+  if (hasTool('kubectl')) {
+    ok('#1867 実物の経路 B（deploy/local/observability）: 緑（陽性対照）／前段のコンテナ・NetworkPolicy を外すと赤（変異）', () => {
+      const r = run('kubectl', ['kustomize', 'deploy/local/observability']);
+      assert.ok(r.ok, r.out);
+      const base = front(r.out);
+      assert.deepStrictEqual(base.problems, []);
+      assert.deepStrictEqual([base.found.get('loki'), base.found.get('tempo')], [1, 1]);
+      const noNetpol = r.out.split(/^---\n/m).filter((d) => !/^kind: NetworkPolicy$/m.test(d)).join('---\n');
+      assert.ok(has(front(noNetpol), /loki.*条件 2/) && has(front(noNetpol), /tempo.*条件 2/));
+      const noGate = r.out.replace(/image: caddy:/g, 'image: busybox:');
+      assert.ok(has(front(noGate), /loki.*条件 1/) && has(front(noGate), /tempo.*条件 1/));
+    });
+  }
+
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(`[check-deploy-manifests] self-test OK: ${n} 件`);
 }
@@ -478,6 +627,7 @@ function main() {
     `[check-deploy-manifests] OK: chart ${r.charts.length} 件 / overlay ${r.overlays.length} 件が` +
       `レンダリングでき、スキーマにも適合する。描画結果・compose・Testcontainers で` +
       ` ${egress.PRODUCTS.map((p) => p.name).join(' / ')} の既定の外部通信が止まっている（#1841）。` +
+      ` Loki・Tempo は現れた描画で前段と NetworkPolicy の両方が揃っている（#1867）。` +
       `\n  chart:   ${r.charts.join(', ')}\n  overlay: ${r.overlays.join(', ')}`,
   );
 }
