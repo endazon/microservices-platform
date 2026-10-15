@@ -354,7 +354,7 @@ spec:
           {{- end }}
           {{- if eq $name "retrieval" }}
             # FR-03, FR-04, SC-02, ADR-0127 決定 3, IADR-0498 (#1746 段 S2): Claude による再順位付けの段（既定は無効）。
-            # 有効なら用途 rerank で llm-gateway だけを呼ぶ（Services__LlmGateway / Services__LlmGatewayGrpc。埋め込みと同じ宛先）。
+            # 有効なら用途 rerank で llm-gateway だけを呼ぶ（Services__LlmGatewayGrpc。埋め込みと同じ宛先。［2026-10-15 / #1902］REST の宛先は外した）。
             - name: Rerank__Enabled
               value: {{ $.Values.searchRerank.enabled | default false | quote }}
           {{- end }}

@@ -3,15 +3,15 @@ title: ABAC 文書アクセス制御 機能仕様書
 type: functional-spec
 status: draft
 created: 2026-06-27
-updated: 2026-10-06
+updated: 2026-10-15
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-19, FR-21, SC-01, SC-06, SC-08, UC-01, UC-04, UC-05]
 adrs: [ADR-0125, ADR-0034, ADR-0036, ADR-0043, ADR-0046, ADR-0074, ADR-0088]
-iadrs: [IADR-0502, IADR-0500, IADR-0151, IADR-0253, IADR-0272, IADR-0359, IADR-0392, IADR-0413]
-specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-752_connector-updated-by, 20260908_issue-1333_authz-resolves-user-attributes]
-issues: [#1760, #1755, #540, #542, #752, #989, #993, #1194, #1333, planning#466, planning#470, planning#518]
+iadrs: [IADR-0502, IADR-0500, IADR-0151, IADR-0253, IADR-0272, IADR-0359, IADR-0392, IADR-0413, IADR-0533]
+specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-752_connector-updated-by, 20260908_issue-1333_authz-resolves-user-attributes, 20261015_1902_east-west-rest-residue]
+issues: [#1760, #1755, #540, #542, #752, #989, #993, #1194, #1333, #1902, planning#466, planning#470, planning#518]
 -->
 
 # 機能仕様書: ABAC 文書アクセス制御
@@ -33,7 +33,7 @@ ABAC ポリシーで突き合わせ、**アクセス可能な文書のみ**を�
 | 項目 | 内容 |
 | --- | --- |
 | 入力 | 利用者の識別子（`preferred_username`）, 検索クエリ。［2026-09-08 更新］🔴 **利用者属性は入力ではない** —— 認可サービスが識別子から身元プロバイダへ引き直す（呼び出し元が主張した属性は評価に用いない） |
-| 処理 | `/authz/scope` が識別子から利用者属性を引き直し、属性 × ポリシーを評価 → アクセス可否（Granted）と多値 allow-list フィルタを解決 → 検索へ伝播 → 候補段階で権限外文書を除外 |
+| 処理 | 権限スコープ解決（east-west gRPC `AuthzScope/Resolve`。［2026-10-15］REST の `/authz/scope` は撤去）が識別子から利用者属性を引き直し、属性 × ポリシーを評価 → アクセス可否（Granted）と多値 allow-list フィルタを解決 → 検索へ伝播 → 候補段階で権限外文書を除外 |
 | 出力 | 権限内文書のみの検索結果 / AI 回答＋出典 |
 | 業務ルール | ①フィルタ間は AND、許可値集合内は OR。②スコープ対象属性キーを持たない文書は除外。③利用者にマッチするポリシーが無ければアクセス不可（全件遮断）。④文書条件の無いマッチは全件許可。 |
 
@@ -53,12 +53,12 @@ ABAC ポリシーで突き合わせ、**アクセス可能な文書のみ**を�
 - 全文検索の要求が拒まれた → 全文側のみ縮退（ベクトル検索へフォールバック。**権限フィルタは維持**）。
   全文インデックスが無い状態は例外にならず応答からも見えないため、検索サービスの readiness が
   Degraded で示す。**いずれの縮退でも ABAC の絞り込みは緩まない。**
-- `/authz/scope` の `action` が値域外 → 400（呼び出し側は非 2xx を `Granted=false` へ縮退させる）。
+- スコープ解決の `action` が値域外 → `INVALID_ARGUMENT`（撤去した REST では 400。呼び出し側は失敗を `Granted=false` へ縮退させる）。
 - ［2026-09-08 追加］🔴 **利用者が身元プロバイダの名簿に居ない → 200 ＋ `Granted=false`**（応答である）。
-  **身元プロバイダから引けない → 503**（status である）。**どちらも呼び出し側では遮断へ倒れる**が、
+  **身元プロバイダから引けない → `UNAVAILABLE`**（status である。撤去した REST では 503）。**どちらも呼び出し側では遮断へ倒れる**が、
   「権限が無い」と「引けなかった」を取り違えて記録しない。
-- ［2026-09-08 追加］🔴 **`/authz/scope` は呼び出し側サービスの資格を要求する**（利用者のトークンでは通らない。
-  管理者であっても同じ）。従前この端点は認可を持たなかった。
+- ［2026-09-08 追加］🔴 **スコープ解決は呼び出し側サービスの資格を要求する**（利用者のトークンでは通らない。
+  管理者であっても同じ）。従前この端点（REST `/authz/scope`。［2026-10-15］撤去）は認可を持たなかった。
 
 ## 閲覧規則の選言（名前つき分岐）と解決アクション
 
@@ -106,7 +106,7 @@ ABAC ポリシーで突き合わせ、**アクセス可能な文書のみ**を�
 
 | 口 | 主体 | 返すもの |
 | --- | --- | --- |
-| `POST /bff/attribute-values` → `POST /search/attribute-values` | 一般利用者 | **到達できる文書に実際に付与された値のみ**（**件数なし**） |
+| `POST /bff/attribute-values` → 検索サービスの gRPC `AttributeValues/ListValues`（［2026-10-15］REST の `/search/attribute-values` は撤去） | 一般利用者 | **到達できる文書に実際に付与された値のみ**（**件数なし**） |
 
 - **辞書を丸ごと返さない**（同決定 1）——権限外の文書にしか付かない値から、その存在が推測できる。
 - **件数を返さない**（決定 2）——「12 件だが自分の検索では 8 件」＝**見えない文書が 4 件ある**と分かる。

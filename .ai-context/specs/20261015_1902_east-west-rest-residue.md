@@ -162,3 +162,5 @@ issue の列挙を鵜呑みにせず、**誤りの側の文字列**（受け口�
 **検証**: 各ブランチで、影響プロジェクトの build / test / `dotnet format --verify-no-changes`、文書・契約の検査
 （`check-trace-blocks`・`check-doc-links`・`check-test-name-references`・`check-openapi-dto-drift`〔＋自己試験〕・`check-contract-schema`・
 `gen-knowledge-graph --check` ほか）、orval の再生成一致、`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` を通す。結果は各 PR の本文に記す。
+
+［2026-10-16 追記］受け入れ基準と検証の件数は分割 4 本の合算で読む

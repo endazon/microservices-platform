@@ -3,15 +3,15 @@ title: 機能仕様書 — FR-10 利用状況・検索傾向・回答品質ダ�
 type: functional-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-09-27
+updated: 2026-10-15
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-08, FR-10, FR-16, FR-17, FR-18, FR-19, UC-05, SC-10, SC-12]
 adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0035, ADR-0083, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071, ADR-0072, ADR-0085, ADR-0120]
-iadrs: [IADR-0011, IADR-0026, IADR-0119, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367, IADR-0389, IADR-0420, IADR-0425, IADR-0430]
-specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention, 20260911_issue-1395_cluster-summary-generator, 20260927_issue-1663_singleton-cluster-summary-exclusion]
-issues: [#443, #452, #504, #1186, #1197, #1198, #1233, #1246, #1363, #1395, #1663, planning#494, planning#514, planning#515, planning#525, planning#526]
+iadrs: [IADR-0011, IADR-0026, IADR-0119, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367, IADR-0389, IADR-0420, IADR-0425, IADR-0430, IADR-0533]
+specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention, 20260911_issue-1395_cluster-summary-generator, 20260927_issue-1663_singleton-cluster-summary-exclusion, 20261015_1902_east-west-rest-residue]
+issues: [#443, #452, #504, #1186, #1197, #1198, #1233, #1246, #1363, #1395, #1663, #1902, planning#494, planning#514, planning#515, planning#525, planning#526]
 -->
 
 # 機能仕様書: 利用状況・検索傾向・回答品質ダッシュボード
@@ -55,7 +55,6 @@ issues: [#443, #452, #504, #1186, #1197, #1198, #1233, #1246, #1363, #1395, #166
 | GET | `/dashboard/usage?days=N` | admin ＋ operator（**#544**） | 日次利用状況（日付 × 種別の件数） |
 | GET | `/dashboard/trends?days=N&top=M` | admin ＋ operator（**#544**） | 検索傾向（検索語 × 件数の上位）。**出現件数の下限に満たない語は含まない** |
 | GET | `/dashboard/summary?days=N&top=M` | admin ＋ operator（**#544**） | 利用側サマリ（総件数・利用状況・検索傾向） |
-| POST | `/internal/knowledge-health/observations` | **無し**（メッシュ内部限定） | ナレッジ健全性の観測値の報告（指標 1 つ分のスナップショット置換）。202。**OpenAPI には載せない** |
 | GET | `/dashboard/knowledge-health` | **operator ＋ admin のみ** | ナレッジ健全性の指標（**件数のみ**） |
 
 - `days`：既定 7・上限 90 にクランプ。`top`：既定 10・上限 50 にクランプ（無制限集計を防ぐ）。
@@ -107,21 +106,19 @@ issues: [#443, #452, #504, #1186, #1197, #1198, #1233, #1246, #1363, #1395, #166
 | **個人資料は集計から除外**（一律） | `doc_scope` が個人資料の観測値を集計前に落とす。**集合帰属で判定する**（「組織文書でない」で書くと、スコープ属性を持たない大多数が除外され指標が一斉に 0 になる） |
 | **文書名を出さず件数のみ** | 応答は指標名と件数だけ。観測値の識別子は保持するが返さない |
 
-- 指標の語彙は**閉じる**（未知の指標名は 400）。綴り違いが「0 件の指標」として静かに現れると、改善したと読めるためである。
+- 指標の語彙は**閉じる**（未知の指標名は `INVALID_ARGUMENT`。撤去した REST では 400）。綴り違いが「0 件の指標」として静かに現れると、改善したと読めるためである。
 - 観測値は**指標ごとのスナップショット置換**で受け取る（差分ではない）。解消の取り消し漏れが件数を恒久的に膨らませないため。
 - 閲覧は監査ログに記録する（件数のみ。対象の識別子は残さない）。
 
-### 観測値の受け口は内部 API である（2026-08-29）
+### 観測値の受け口は east-west gRPC だけである（2026-10-15 更新）
 
-**生産者は利用者 JWT を持たない定期処理である。** 受け口は `/internal/...` に置き、認可を課さず、
-OpenAPI にも載せない（同リポジトリの内部 API と同じ扱い）。
+**生産者は利用者 JWT を持たない定期処理である。** 受け口は east-west gRPC の
+`KnowledgeHealthReport/Report` だけで、呼び出し側サービスの資格（`ServiceCaller`）を要求する。
 
-- **統制**（定めたもの）: 第一防御はメッシュの STRICT mTLS。多層防御としてネットワーク分離
-  （内部サービスは host 公開しない・Service は既定 ClusterIP・NetworkPolicy 既定拒否）。
-- 🔴 **統制が働いていること（測れているもの）は別である。** 機械検査が実際に押さえているのは
-  「compose が host 公開しない」「Helm の Service テンプレートに `type:` が現れない」の 2 点だけであり、
-  **mTLS が実際に遮断していることは測れていない**。残余リスク（同一ネットワーク内からは無認証で
-  観測値を差し替えられる）は受容として実装 ADR に記録している。
+- ［2026-10-15］従前の無認証の REST の受け口（`POST /internal/knowledge-health/observations`。2026-08-29 に
+  `/dashboard/...` から移して認可を外したもの）は撤去した。生産者（グラフの定期処理）は gRPC だけになっており、
+  「同一ネットワーク内からは無認証で観測値を差し替えられる」という受容していた残余リスクも消えた。
+- 多層防御としてのネットワーク分離（内部サービスは host 公開しない・Service は既定 ClusterIP・NetworkPolicy 既定拒否）は変えていない。
 - **閲覧側のロール限定は変えていない。** 全体集計を許す条件は「件数のみ・ロール限定・個人資料除外」の
   同時成立であり、受け口の認可とは独立である。
 

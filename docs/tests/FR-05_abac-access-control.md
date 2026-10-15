@@ -3,15 +3,15 @@ title: ABAC 文書アクセス制御 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-06-27
-updated: 2026-10-10
+updated: 2026-10-15
 author: claude
 ---
 <!-- trace:
 ids: [NFR-21, FR-02, FR-03, FR-04, FR-05, SC-01, SC-08, UC-01, UC-05, FR-19, NFR-09]
 adrs: [ADR-0125, ADR-0004, ADR-0043, ADR-0121, ADR-0036, ADR-0062, ADR-0119, ADR-0034, ADR-0056]
 iadrs: [IADR-0502, IADR-0492, IADR-0500, IADR-0483, IADR-0476, IADR-0481, IADR-0004, IADR-0151, IADR-0379, IADR-0401, IADR-0253, IADR-0384, IADR-0480, IADR-0533]
-specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1646_caller-cancellation-remaining, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261010_issue-1255-1517_east-west-rest-retirement]
-issues: [#1760, #1755, #1676, #1615, #1665, #525, #540, #1646, #1664, #1255, #1517]
+specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1646_caller-cancellation-remaining, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261010_issue-1255-1517_east-west-rest-retirement, 20261015_1902_east-west-rest-residue]
+issues: [#1760, #1755, #1676, #1615, #1665, #525, #540, #1646, #1664, #1255, #1517, #1902]
 -->
 
 # テスト仕様書: ABAC 文書アクセス制御（deny-by-default）
@@ -47,10 +47,10 @@ issues: [#1760, #1755, #1676, #1615, #1665, #525, #540, #1646, #1664, #1255, #15
 | T-06 | スコープ属性キーを持たない文書混在 | 同上 | 当該文書は除外される | 権限外を出さない | 自動 |
 | T-07 | `GrantsAccess=false` | 同上 | 結果 0 件（deny-by-default） | 権限外を出さない | 自動 |
 | T-08 | 単値 `AttributeFilters`（横断検索との後方互換） | `POST /search` | 既存の権限フィルタが従来どおり機能 | 横断検索 | 自動 |
-| T-09 | 権限内／権限外の文書にそれぞれ別のタグ | `POST /search/attribute-values` | **到達できる文書に付いた値だけ**が返る（辞書の全値ではない。スコープ付き属性値ルックアップの決定 1） | 権限外を出さない | 自動 |
+| T-09 | 権限内／権限外の文書にそれぞれ別のタグ | 属性値照会（問い合わせ本体。［2026-10-15］REST の `POST /search/attribute-values` は撤去し、gRPC `AttributeValues/ListValues` だけ） | **到達できる文書に付いた値だけ**が返る（辞書の全値ではない。スコープ付き属性値ルックアップの決定 1） | 権限外を出さない | 自動 |
 | T-10 | 同じタグが複数文書に付く | 同上 | **応答に件数が現れない**（生の本文で確認。同決定 2） | 権限外を出さない | 自動 |
-| T-11 | 同一スコープで検索と照会を両方引く | `POST /search` ＋ `POST /search/attribute-values` | **候補は検索に現れる集合と一致**（検索段の facet で数える実装判断） | 横断検索 | 自動 |
-| T-12 | `GrantsAccess=false` / `Scope=null` | `POST /search/attribute-values` | **空配列**（404 / 403 にしない。同実装判断） | 権限外を出さない | 自動 |
+| T-11 | 同一スコープで検索と照会を両方引く | `POST /search` ＋ 属性値照会（問い合わせ本体） | **候補は検索に現れる集合と一致**（検索段の facet で数える実装判断） | 横断検索 | 自動 |
+| T-12 | 権限が無い利用者・空のキー | gRPC `AttributeValues/ListValues` | **空配列**（404 / 403 にしない。同実装判断） | 権限外を出さない | 自動 |
 | T-13 | タグと ABAC 属性の両方 | 同上 | `tags` と `attributes.<key>` の**両方を同じ口から**引ける | 横断検索 | 自動 |
 | T-14 | 未知・空のキー | 同上 | 空集合へ縮退する | 例外フロー | 自動 |
 | T-15 | BFF 経由 | `POST /bff/attribute-values` | **クライアント指定の Scope を信頼しない**。不許可なら後段を呼ばず空配列 | 権限昇格の防止 | 自動 |
@@ -63,7 +63,7 @@ issues: [#1760, #1755, #1676, #1615, #1665, #525, #540, #1646, #1664, #1255, #15
 | T-22 | BFF 経由・後段の値の照会（gRPC 版）を同じ器で繋ぐ | 受け口が受け取った後に利用者の要求が打ち切られる | **502 にしない**（取り消しとして端点の外へ出す） | 例外フロー | 自動 |
 | T-23 | 同上 | 後段が取り消し状態を返す（利用者は打ち切っていない） | 従来どおり 502（後段が答えた上での失敗を 200 空配列で隠さない。T-16 と同じ向き） | 例外フロー | 自動 |
 | T-24 | 開発用の初期投入（ABAC のポリシー） | 投入データを読む | 所有者の読み取りのポリシーが**ちょうど 1 本**あり、利用者の条件なし・文書の条件は `owner ∈ {${current_user}}` だけ | 所有者は自分の文書を読める | 自動 |
-| T-25 | 初期投入の全ポリシーを入れた認可サービス | 属性なしの利用者・`clearance=internal` の利用者・属性なしのサービスアカウント（外部システムの知識の書き手）で `POST /authz/scope` | 応答が**期待値のファイル**と一致する（分岐・値の順序は無視）。T-28〜T-38 はこのファイルを入力にする | 同上 | 自動 |
+| T-25 | 初期投入の全ポリシーを入れた認可サービス | 属性なしの利用者・`clearance=internal` の利用者・属性なしのサービスアカウント（外部システムの知識の書き手）で権限スコープ解決（gRPC `AuthzScope/Resolve`。［2026-10-15］REST の `POST /authz/scope` は撤去） | 応答が**期待値のファイル**と一致する（分岐・値の順序は無視）。T-28〜T-38 はこのファイルを入力にする | 同上 | 自動 |
 | T-26 | 同上 | 同上 | 所有者の分岐は**本人の名前 1 つだけ**に束縛され、プレースホルダを残さない。条件の空な分岐（全件許可）は 1 本も無い | 権限外を出さない | 自動 |
 | T-27 | 同上 | 名簿に居ない名前（`anonymous`・`system`・空文字）で同上 | `granted=false`・分岐なし（束縛の失敗は許可へ倒れない） | 権限外を出さない | 自動 |
 | T-28 | T-25 の応答を境界層（BFF）の認可スコープにする | 所有者が、共有していない自分の個人資料を詳細・版・本文で開く | 200（属性なしの利用者でも、`clearance=internal` の利用者でも） | 所有者は自分の文書を読める | 自動 |
@@ -117,10 +117,10 @@ issues: [#1760, #1755, #1676, #1615, #1665, #525, #540, #1646, #1664, #1255, #15
 > `Granted` を見ており、**シリアライズを通っていない**。#525 が言っているのは「**契約から**区別できない」
 > ことなので、T-17 / T-18 は**本文（JSON）を直接読む**。
 >
-> **`POST /authz/scope` の応答値は端点越しに固定していない。** `TestWebApplicationFactory` の
+> **スコープ解決の応答値は面越しに固定していない**（［2026-10-15］REST の `POST /authz/scope` は撤去し、面は gRPC だけ）。 `TestWebApplicationFactory` の
 > InMemory DB は固定名 `AuthzTest` でプロセス内共有であり、既存テストが**利用者条件の空なポリシー**を
 > 作るため（空条件は全利用者にマッチする）、`granted=false` を端点で固定すると実行順に依存して壊れる。
-> **端点では「`granted` が本文に在ること」だけを固定する**（値は主張しない）。
+> **面では「応答が返ること」だけを固定する**（値は主張しない。`granted` は proto の bool で必ず載る）。
 
 > **T-24〜T-38 は開発用の初期投入に所有者の読み取りのポリシーを入れたことの固定である。** 期待値のファイル
 > （`src/platform/backend/Services/AuthorizationService/Tests/Fixtures/owner-read-seed-scopes.json`）は T-25 が実物の応答と

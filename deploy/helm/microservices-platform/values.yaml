@@ -383,13 +383,9 @@ services:
       authMount: kubernetes
       namespace: platform-infra
       port: 8200
-    # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段。
-    # 🔴 **k8s の Service は 8080 で待つ。** コード既定も 8080 にしてあるが、
-    # **明示しておく**（先行 3 サービスは既定 `:5005` を extraEnv で上書きしており、
-    # ここだけ暗黙にすると「なぜこのサービスだけ書いていないのか」が読めなくなる）。
+    # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段は下の gRPC 宛先だけである
+    # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
     extraEnv:
-      - name: Services__AuthorizationService
-        value: "http://authorization-service:8080"
       # FR-05 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。
       # 実在検証が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # ポートは authorization.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
@@ -430,13 +426,10 @@ services:
       clientId: conversion-service
       existingSecret: conversion-service-token
       clientSecretKey: client-secret
-    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
-    # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
-    # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
-    # k8s には同名の Service も ExternalName エイリアスも無い。上書きが無いと名前解決に失敗する。
+    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先は下の gRPC 宛先だけである
+    # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
+    # 🔴 **k8s の Service 名は `llmgateway-service` である**（compose の `llm-gateway` とは違う）。
     extraEnv:
-      - name: Services__LlmGateway
-        value: "http://llmgateway-service:8080"
       # FR-12 / NFR-16, IADR-0400 (#1255): east-west gRPC（h2c）の宛先。
       # 図のコード化が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
@@ -474,13 +467,10 @@ services:
       clientId: ingestion-service
       existingSecret: ingestion-service-token
       clientSecretKey: client-secret
-    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
-    # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
-    # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
-    # k8s には同名の Service も ExternalName エイリアスも無い。上書きが無いと名前解決に失敗する。
+    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先は下の gRPC 宛先だけである
+    # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
+    # 🔴 **k8s の Service 名は `llmgateway-service` である**（compose の `llm-gateway` とは違う）。
     extraEnv:
-      - name: Services__LlmGateway
-        value: "http://llmgateway-service:8080"
       # FR-02 / NFR-16, IADR-0397 (#1255): east-west gRPC（h2c）の宛先。
       # 埋め込みが gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
@@ -515,13 +505,10 @@ services:
       clientId: retrieval-service
       existingSecret: retrieval-service-token
       clientSecretKey: client-secret
-    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
-    # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
-    # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
-    # k8s には同名の Service も ExternalName エイリアスも無い。上書きが無いと名前解決に失敗する。
+    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先は下の gRPC 宛先だけである
+    # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
+    # 🔴 **k8s の Service 名は `llmgateway-service` である**（compose の `llm-gateway` とは違う）。
     extraEnv:
-      - name: Services__LlmGateway
-        value: "http://llmgateway-service:8080"
       # FR-03 / NFR-16, IADR-0397 (#1255): east-west gRPC（h2c）の宛先。
       # クエリ埋め込みが gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       - name: Services__LlmGatewayGrpc
@@ -537,10 +524,8 @@ services:
       # FR-05 / NFR-09, ADR-0004, ADR-0034 決定 1, IADR-0416 (#1339): ABAC 許可スコープの解決先。
       # 🔴 **本サービスが自分で引くようになった** —— 従前は呼び出し元が本文で送ってきた
       # `Scope` を信じており、到達できる相手が任意の scope を主張できた。
-      # コード既定は :5005（compose の旧ポート）なので、k8s では実 Service ポートへ上書きする。
-      - name: Services__AuthorizationService
-        value: "http://authorization-service:8080"
-      # NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5 (#1339): 同じ解決の gRPC 宛先。
+      # ［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した。
+      # NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5 (#1339): 解決の gRPC 宛先。
       # gRPC 経路で解決する（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # 資格情報は上の serviceToken を**そのまま使う**（1 サービス 1 主体）。
       - name: Services__AuthorizationServiceGrpc
@@ -571,9 +556,9 @@ services:
     # appsettings 既定はローカル用ポート（5003/5007）のため、k8s Service の実 DNS（:8080）へ上書きする。
     # llm-gateway の Service 名は llmgateway-service（chart のキー llmgateway 由来）である点に注意。
     extraEnv:
-      # FR-13 / IADR-0089 / #958: ABAC の許可スコープ解決の宛先。コード既定 :5005 は開いていない。
-      - name: Services__AuthorizationService
-        value: "http://authorization-service:8080"
+      # FR-13 / IADR-0089 / #958: ABAC の許可スコープ解決は gRPC 宛先（下の `Services__AuthorizationServiceGrpc`）だけである
+      # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
+      # 下の 2 つ（RetrievalService・LlmGateway）は readiness の `/health/live` が読む（残す）。
       - name: Services__RetrievalService
         value: "http://retrieval-service:8080"
       - name: Services__LlmGateway
@@ -684,9 +669,8 @@ services:
       existingSecret: wiki-service-token
       clientSecretKey: client-secret
     extraEnv:
-      # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決の宛先。コード既定 :5005 は開いていない。
-      - name: Services__AuthorizationService
-        value: "http://authorization-service:8080"
+      # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決は下の gRPC 宛先だけである
+      # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
       # FR-13 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。
       # 閲覧のスコープ解決が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # 🔴 未認証の短絡は輸送の手前にあるので、gRPC でも匿名では 1 度も呼ばない。
@@ -802,15 +786,12 @@ services:
       clientId: graph-service
       existingSecret: graph-service-token
       clientSecretKey: client-secret
-    # FR-17, FR-05, IADR-0089 (#342) / #958: ABAC スコープ解決先。appsettings 既定は :5005（ローカル用）で、
-    # ここで上書きしないと不達 → GraphAccessResolver が Granted=false へ縮退し、**グラフが常に空になる**。
-    # 状態コードにも出ないため live で気付けない（#958 に同型 2 件の記録）。
+    # FR-17, FR-05, IADR-0089 (#342) / #958: ABAC スコープ解決先は gRPC 宛先（`Services__AuthorizationServiceGrpc`）だけである
+    # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
     extraEnv:
-      - name: Services__AuthorizationService
-        value: "http://authorization-service:8080"
-      # FR-18, ADR-0010, IADR-0380 (#1244): AI 提案の生成が LLM ゲートウェイを呼ぶ。コード既定
-      # `http://llm-gateway:5010` は k8s に無い名前で、上書きが無いと生成が LLM の段で
-      # `Name or service not known` になり提案が 0 件のまま（#1244 の実測。aianalysis 等と同じ上書き）。
+      # FR-18, ADR-0010, IADR-0380 (#1244): クラスタ要約（REST `/complete`。既定 off）が LLM ゲートウェイを呼ぶ。コード既定
+      # `http://llm-gateway:5010` は k8s に無い名前で、上書きが無いと LLM の段で
+      # `Name or service not known` になる（#1244 の実測。aianalysis 等と同じ上書き）。AI 提案の生成は gRPC 宛先を使う。
       - name: Services__LlmGateway
         value: "http://llmgateway-service:8080"
       # FR-18 / NFR-16, IADR-0400 (#1255): east-west gRPC（h2c）の宛先。

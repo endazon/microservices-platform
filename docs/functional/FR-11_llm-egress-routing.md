@@ -3,15 +3,15 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-13
+updated: 2026-10-15
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02, NFR-17, NFR-19, NFR-28]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
-iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531, IADR-0535]
-specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level]
-issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783]
+iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531, IADR-0535, IADR-0533]
+specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue]
+issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, #1902, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -141,7 +141,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 | 既定値 | `analysis: ["claude-sonnet-5-5"]` / `diagram-coding: ["claude-haiku-5-5"]` / `default: ["claude-sonnet-5-5"]` / `rag-answer: ["claude-haiku-5-5"]` / `report-monthly: ["claude-sonnet-5-5"]` / `report-weekly: ["claude-sonnet-5-5"]` / `report-daily: ["claude-haiku-5-5"]` / `graph-suggestion: ["claude-haiku-5-5"]` / `graph-cluster-summary: ["claude-sonnet-5-5"]` の 9 用途。**いずれも第 1 候補より安価側の 1 段下位**であり、発火で費用が上振れすることはない |
 | 発火条件 | **上流が HTTP 400〜499（429 を除く）** |
 | **発火しない** | **429（レート制限）**・5xx・通信断・ステータスの取れない失敗 |
-| 適用範囲 | **非ストリーミング `/complete` のみ**（`/complete/stream` は実装しない） |
+| 適用範囲 | **一括（`/complete`・gRPC `Complete`）のみ**（逐次の gRPC `CompleteStream` は実装しない。REST の `/complete/stream` は 2026-10-15 に撤去） |
 | 鎖の適格性 | ルーターが `Models`（利用許可集合）と ZDR 除外（`NonZdrModels`）を第 1 候補と同じ規則で適用し、外れた候補は warn ログを出して鎖から落とす（同計画 ADR の決定 5） |
 
 - **429 は再試行であってフォールバックではない**（分析用途のモデル割当の計画 ADR 決定 4）。429 を「モデルが利用不能」と
@@ -265,7 +265,7 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 下流へ渡ると、本文の非空を根拠に処理を進める呼び出し側（AST 取引判断など）で fail-safe が破れる。
 `max_tokens` の途中結果は正当な観測対象であり破棄しない。
 
-ストリーミング（`/complete/stream`）では終了理由が末尾の `message_delta` で確定するため、
+ストリーミング（逐次。gRPC `CompleteStream`）では終了理由が末尾の `message_delta` で確定するため、
 既に送出したデルタは撤回できない。`done` イベントの `stopReason` を見て表示を破棄・注記するのは
 呼び出し側の責務である。`RagOrchestrator` は末尾へ拒否である旨のトークンを追記し、部分本文が
 既に流れている場合は空行で区切る（フロントは token を 1 つの文字列へ連結し `white-space: pre-wrap`
@@ -282,7 +282,7 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 | `FailureKind` | 文字列（null 可） | `egress_denied` / `provider_missing` / `upstream_error`。`Sent=true` では null |
 | `UpstreamStatusCode` | 整数（null 可） | `FailureKind="upstream_error"` で上流が HTTP 状態を返したときの状態コード（429・5xx など）。輸送の失敗・他の原因・`Sent=true` では null |
 
-- 一括（`/complete`）の応答と、逐次（`/complete/stream`）の `done` イベントの両方に載る。gRPC でも同じ項目を運ぶ
+- 一括（`/complete`）の応答と、逐次（gRPC `CompleteStream`。2026-10-15 に REST の `/complete/stream` は撤去）の `done` メッセージの両方に載る。gRPC でも同じ項目を運ぶ
   （proto3 に null は無いので、空文字と 0 が「無い」を表す）。
 - 語彙はメトリクスの `llm.result` と同じ文字列である。**閉じた列挙にはしない**（`StopReason` と同じ理由）。
   知らない値は「原因不明の `Sent=false`」として扱えばよい。
@@ -387,7 +387,7 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
   （用途別フォールバックの実装 ADR §フォローアップ 1・#863）。
 - ~~**`default` / `rag-answer` のフォールバック第 2 候補**~~ **［2026-08-21 解決］計画側の裁定により確定し、
   `PurposeFallbackModels` へ登録済みである**（上の「用途別フォールバック」節）。
-  **残るのは 1 点** —— `rag-answer` はストリーム経路（`/complete/stream`）の用途であり、
+  **残るのは 1 点** —— `rag-answer` はストリーム経路（逐次。gRPC `CompleteStream`）の用途であり、
   **鎖を持つ用途がストリーム経路へ来ることが現に起きるようになった**。ストリーム経路をフォールバックの射程に
   含めるかは、途中まで流した本文の扱いという別の決定を要するため未確定である（用途別フォールバックの実装 ADR 決定 4）。
   現状はフォールバックせず、鎖が設定されている事実を warn ログで残すに留める。
