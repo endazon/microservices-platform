@@ -197,7 +197,14 @@ test('SC-05: 文書管理の画面（表・フィルタ）に WCAG 2.1 A/AA ＋ 
     user: sessionUser(['platform-operator']),
     // FR-06, IADR-0537（#1923）: 一覧は 1 ページ（`items` / `total` / `offset` / `limit`）で返る。
     handlers: {
-      'GET /documents': { items: [doc], total: 1, offset: 0, limit: 50 },
+      'GET /documents': {
+        items: [doc],
+        total: 1,
+        offset: 0,
+        limit: 50,
+        unfilteredTotal: 1,
+        statusCounts: { published: 1 },
+      },
       'GET /tags': tags,
     },
   });

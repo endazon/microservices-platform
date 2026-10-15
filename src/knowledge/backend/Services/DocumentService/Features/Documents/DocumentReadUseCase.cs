@@ -70,16 +70,26 @@ public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess
     //   塊の中で判定し、読める文書が `pageSize + 1` 件に達するか台帳が尽きるまで進む（`DocumentPageQuery.ReadPageAsync` と同じ形）。
     // 🔴 **続きの印は返した最後の文書から作る**（`DocumentListCursor.After(page[^1])`）。塊の末尾の行（読めない文書であり得る）からは作らない。
     // 🔴 **.NET 側で並べ直さない。** Postgres の uuid の順と `Guid.CompareTo` の順を、並べる側と比べる側で混ぜない。
-    internal async Task<(List<DocumentDto> Page, string? NextPageToken)> ListPageAsync(
+    internal Task<(List<DocumentDto> Page, string? NextPageToken)> ListPageAsync(
         DocumentReadPrincipal principal, int pageSize, DocumentListCursor? after, CancellationToken ct = default)
+        => ListPageAsync(principal, after?.Sort ?? DocumentListSortKey.UpdatedDesc, pageSize, after, ct);
+
+    // FR-06, SC-05, [[IADR-0545]] (#1923): 並べ替えを選ぶ形。🔴 印の並べ替えは `sort` と一致していること
+    // （呼び出し側〔`GrpcService`〕が先に `INVALID_ARGUMENT` で弾く。ここへ不一致が届くのは配線の誤りなので例外にする）。
+    internal async Task<(List<DocumentDto> Page, string? NextPageToken)> ListPageAsync(
+        DocumentReadPrincipal principal, DocumentListSortKey sort, int pageSize, DocumentListCursor? after,
+        CancellationToken ct = default)
     {
+        if (after is { } given && given.Sort != sort)
+            throw new ArgumentException($"続きの印の並べ替え（{given.Sort}）が要求の並べ替え（{sort}）と違う。", nameof(after));
+
         var page = new List<(Document Doc, List<string>? SharedWith)>(pageSize + 1);
         var position = after;
         var chunk = pageSize + 1;
         while (page.Count <= pageSize)
         {
             var batch = await db.Documents.AsNoTracking()
-                .Before(position).InListOrder().Take(chunk).ToListAsync(ct);
+                .Before(position).InListOrder(sort).Take(chunk).ToListAsync(ct);
             if (batch.Count > 0)
             {
                 var shares = await DocumentEndpoints.ResolveSharedWithAsync(db, batch.Select(d => d.Id).ToList(), ct);
@@ -95,7 +105,7 @@ public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess
 
             if (batch.Count < chunk)
                 break;
-            position = DocumentListCursor.After(batch[^1]);
+            position = DocumentListCursor.After(sort, batch[^1]);
             chunk = Math.Min(chunk * 2, MaxScanChunk);
         }
 
@@ -103,7 +113,7 @@ public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess
         if (page.Count > pageSize)
         {
             page.RemoveRange(pageSize, page.Count - pageSize);
-            next = DocumentListCursor.After(page[^1].Doc).Encode();
+            next = DocumentListCursor.After(sort, page[^1].Doc).Encode();
         }
 
         var names = await TagResolver.NamesAsync(db);
@@ -163,24 +173,50 @@ public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess
     }
 }
 
-// FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): 一覧のページの並びとキーセットの述語。
+// FR-06, NFR-16, [[IADR-0537]] (#1923・#1897), [[IADR-0545]]: 一覧のページの並びとキーセットの述語。
 internal static class DocumentListOrder
 {
-    // 並び（`UpdatedAt` 降順・同時刻は `Id` 降順）でカーソルより**厳密に後ろ**の行。
-    // SQL では `"UpdatedAt" <= @c AND ("UpdatedAt" < @c OR "Id" < @id)` に訳される。
-    // 🔴 **先頭の `UpdatedAt <= c` を外さない**（意味は `UpdatedAt < c OR (UpdatedAt = c AND Id < id)` と同じで冗長に見える）。
-    //   Postgres はこの項だけを `(UpdatedAt, Id)` の索引の開始位置に使える（`DocumentPageQuery.AfterCursor` の注記と同じ理由。[[IADR-0509]]）。
+    // 並びでカーソルより**厳密に後ろ**の行。並べ替えはカーソルが持つ（`DocumentListCursor.Sort`）。
+    // 更新日時の降順なら SQL では `"UpdatedAt" <= @c AND ("UpdatedAt" < @c OR "Id" < @id)` に訳される。
+    // 🔴 **先頭の「キー <= c」（昇順は「>= c」）を外さない**（意味は `key < c OR (key = c AND Id < id)` と同じで冗長に見える）。
+    //   Postgres はこの項だけを複合索引（`(UpdatedAt, Id)` / `(CreatedAt, Id)` / `(Title, Id)`）の開始位置に使える
+    //   （`DocumentPageQuery.AfterCursor` の注記と同じ理由。[[IADR-0509]]）。
     // 🔴 「以下」にしない —— 前ページの末尾をもう一度返す。
+    // 🔴 表題は `string.Compare` で比べる（SQL の `<` / `>` に訳され、ORDER BY と同じ照合順序で比べる）。.NET 側で比べない。
     internal static IQueryable<Document> Before(this IQueryable<Document> ledger, DocumentListCursor? after)
     {
         if (after is not { } cursor)
             return ledger;
-        var updatedAt = cursor.UpdatedAt;
+        var at = cursor.At;
+        var title = cursor.Title ?? string.Empty;
         var id = cursor.Id;
-        return ledger.Where(d => d.UpdatedAt <= updatedAt && (d.UpdatedAt < updatedAt || d.Id < id));
+        return cursor.Sort switch
+        {
+            DocumentListSortKey.UpdatedAsc =>
+                ledger.Where(d => d.UpdatedAt >= at && (d.UpdatedAt > at || d.Id > id)),
+            DocumentListSortKey.CreatedDesc =>
+                ledger.Where(d => d.CreatedAt <= at && (d.CreatedAt < at || d.Id < id)),
+            DocumentListSortKey.CreatedAsc =>
+                ledger.Where(d => d.CreatedAt >= at && (d.CreatedAt > at || d.Id > id)),
+            DocumentListSortKey.TitleAsc =>
+                ledger.Where(d => string.Compare(d.Title, title) >= 0
+                    && (string.Compare(d.Title, title) > 0 || d.Id > id)),
+            DocumentListSortKey.TitleDesc =>
+                ledger.Where(d => string.Compare(d.Title, title) <= 0
+                    && (string.Compare(d.Title, title) < 0 || d.Id < id)),
+            _ => ledger.Where(d => d.UpdatedAt <= at && (d.UpdatedAt < at || d.Id < id)),
+        };
     }
 
-    // ページの並び。**キーセットの述語（`Before`）と同じ 2 列・同じ向き**で並べる。
-    internal static IOrderedQueryable<Document> InListOrder(this IQueryable<Document> ledger)
-        => ledger.OrderByDescending(d => d.UpdatedAt).ThenByDescending(d => d.Id);
+    // ページの並び。**キーセットの述語（`Before`）と同じ 2 列・同じ向き**で並べる。既定は更新日時の降順。
+    internal static IOrderedQueryable<Document> InListOrder(this IQueryable<Document> ledger,
+        DocumentListSortKey sort = DocumentListSortKey.UpdatedDesc) => sort switch
+        {
+            DocumentListSortKey.UpdatedAsc => ledger.OrderBy(d => d.UpdatedAt).ThenBy(d => d.Id),
+            DocumentListSortKey.CreatedDesc => ledger.OrderByDescending(d => d.CreatedAt).ThenByDescending(d => d.Id),
+            DocumentListSortKey.CreatedAsc => ledger.OrderBy(d => d.CreatedAt).ThenBy(d => d.Id),
+            DocumentListSortKey.TitleAsc => ledger.OrderBy(d => d.Title).ThenBy(d => d.Id),
+            DocumentListSortKey.TitleDesc => ledger.OrderByDescending(d => d.Title).ThenByDescending(d => d.Id),
+            _ => ledger.OrderByDescending(d => d.UpdatedAt).ThenByDescending(d => d.Id),
+        };
 }

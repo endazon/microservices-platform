@@ -28,7 +28,7 @@ related_specs:
   [IADR-0485](./IADR-0485_paired-secrets-create-only-declarations.md)（作成時だけのキー）・
   [IADR-0524](./IADR-0524_keycloak-26-upgrade.md)（26.7.4）・
   [IADR-0532](./IADR-0532_keycloak-theme-nocturne-parents-and-token-sync.md)（§フォローアップで本件を送った）。
-- 採番: `origin/develop` の最大は IADR-0544。開いている PR #1942 が 0545 を採っている。本件は **0546**。
+- 採番: `origin/develop` の最大は IADR-0545（#1942 で入った）。本件は **0546**。
 
 ## コンテキストと課題
 

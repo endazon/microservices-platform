@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-06, SC-05, SC-03, UC-03, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0009, IADR-0041, IADR-0045, IADR-0379, IADR-0402, IADR-0447, IADR-0475, IADR-0509, IADR-0533]
 author: claude
 created: 2026-10-14
-updated: 2026-10-14
+updated: 2026-10-15
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md（文書管理画面）
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（FR-06）
@@ -145,6 +145,8 @@ SC-05 の一覧は `GET /bff/documents` を 1 回呼び、台帳の全件（稼�
 - **走査の途中で更新された文書は、その走査で読み飛ばされ得る**（更新日時の降順なので先頭へ移る）。重複はしない。
   1 要求の中の走査なので、影響は「その 1 回の総件数とページが 1 件ずれる」に留まる。
   **段 1 では受容する。** 1 回の走査の中では、走査中に `UpdatedAt` が進んだ文書は数え漏れ得るが二重には数えない（`total` は少なく出る側にだけずれる）。
+  ［2026-10-15 追記 / #1923・IADR-0545］「重複はしない」は**更新日時の降順に限る**。IADR-0545 で足した昇順の並べ替えでは、走査の途中で更新された文書が
+  末尾でもう一度返り得る（監査で再現）。BFF は 1 周の中で ID で重複を除く（`DocumentListWindow`。見た ID の集合を 1 周の間だけ持つ。約 4.5 万件で数 MB）。
   ページの間（別の要求）では、更新された文書が先頭へ移るので、次のページで行が重複・欠落して見え得る（下のオフセットの項と同じ）。
   走査の開始時刻で `UpdatedAt` を上から抑える（その後の更新を次の要求まで見せない）形は、段 2 でサーバ側へ移すときに併せて判断する。
 - **オフセットのページ送りは、ページの間に文書が増減すると行がずれる**（次のページで同じ行が出る・1 行を見逃す）。

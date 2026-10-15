@@ -346,6 +346,29 @@ public class GrpcDocumentReadTests
         (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
     }
 
+    // FR-06, SC-05, [[IADR-0545]] (#1923): 🔴 別の並べ替えの続きの印は INVALID_ARGUMENT（黙って別の位置から読まない）。
+    // 陽性対照: 同じ並べ替えで渡せば続きが読める。
+    [Fact]
+    public async Task ListDocuments_rejects_a_token_from_another_sort()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await SeedAsync(Document.Create("並べ替え 1", null, null, new Dictionary<string, string>()));
+        await SeedAsync(Document.Create("並べ替え 2", null, null, new Dictionary<string, string>()));
+        var first = await PlainClient().ListDocumentsAsync(
+            new ListDocumentsRequest { PageSize = 1, Sort = DocumentListSort.TitleAsc },
+            headers: Bearer(ServiceToken()), cancellationToken: ct);
+        first.NextPageToken.Should().NotBeEmpty();
+
+        (await PlainClient().ListDocumentsAsync(
+            new ListDocumentsRequest { PageSize = 1, PageToken = first.NextPageToken, Sort = DocumentListSort.TitleAsc },
+            headers: Bearer(ServiceToken()), cancellationToken: ct)).Documents.Should().ContainSingle();
+        var act = async () => await PlainClient().ListDocumentsAsync(
+            new ListDocumentsRequest { PageSize = 1, PageToken = first.NextPageToken },
+            headers: Bearer(ServiceToken()), cancellationToken: ct);
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
+    }
+
     // T-08: 構造の門。gRPC サービス型が ServiceCaller ポリシーを宣言していること
     // （属性が外れると T-02 / T-03 が落ちるが、どの層で外れたかを名指しするためにここでも固定する）。
     [Fact]
