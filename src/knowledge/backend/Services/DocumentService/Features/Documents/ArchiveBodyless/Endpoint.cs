@@ -99,6 +99,18 @@ internal static class ArchiveBodylessDocumentsEndpoint
                         detail: "ObjectStorage:Endpoint を確かめてください。何もアーカイブしていません。",
                         statusCode: StatusCodes.Status503ServiceUnavailable);
                 }
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                {
+                    // 🔴 NoSuchKey 以外の失敗（バケットが無い・403・5xx・時間切れ）は「無い」ではない。このページは 1 件も保存せず、
+                    // 502 で返す（駆動スクリプトは連続失敗として止まる。原因を直して同じ要求を流せば回収できる）。
+                    loggers.CreateLogger(typeof(ArchiveBodylessDocumentsEndpoint).FullName!).LogWarning(ex,
+                        "Archive body-less: could not probe the body of {DocumentId} at {MarkdownUri}; nothing in this page was archived",
+                        doc.Id, doc.MarkdownUri);
+                    return Results.Problem(
+                        title: "本文の有無を確かめられませんでした。",
+                        detail: $"文書 {doc.Id} の存在確認が失敗しました（{ex.GetType().Name}）。このページは何もアーカイブしていません。",
+                        statusCode: StatusCodes.Status502BadGateway);
+                }
 
                 if (exists) bodyPresent++;
                 else missing.Add(doc);

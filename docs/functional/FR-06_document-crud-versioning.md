@@ -51,7 +51,7 @@ issues: [#1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#
 | `PATCH /documents/{id}/metadata` | 属性・タグのみ更新（版追記） | 200 / 404 / 409 |
 | `POST /documents/{id}/publish` | 公開（`status=published`・版追記） | 200 / 404 |
 | `POST /documents/{id}/archive` | アーカイブ（`status=archived`・版追記。管理者だけ）。下流の Wiki 同期がページを非公開化する | 200 / 404 |
-| `POST /documents/archive-bodyless` | 本文のオブジェクトが無い古い文書の一括アーカイブ（一回限りの管理操作。管理者だけ。下記） | 200 / 400 / 403 / 503 |
+| `POST /documents/archive-bodyless` | 本文のオブジェクトが無い古い文書の一括アーカイブ（一回限りの管理操作。管理者だけ。下記） | 200 / 400 / 403 / 502 / 503 |
 | `GET /documents/{id}/versions` | 版履歴一覧（新しい順）。**認証を要する** | 200 `DocumentVersionDto[]` / 401 / 404 |
 | `GET /documents/{id}/versions/{version}` | 特定版取得。**認証を要する** | 200 / 401 / 404 |
 | `DELETE /documents/{id}` | 削除（版履歴も連動削除） | 204 / 404 |

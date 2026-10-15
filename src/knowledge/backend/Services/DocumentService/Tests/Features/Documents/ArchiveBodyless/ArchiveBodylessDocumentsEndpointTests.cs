@@ -320,18 +320,9 @@ public class ArchiveBodylessDocumentsEndpointTests
             ? new AmazonS3Exception("simulated") { StatusCode = HttpStatusCode.NotFound, ErrorCode = "NoSuchBucket" }
             : null;
 
-        var failed = false;
-        try
-        {
-            var resp = await Admin(factory).PostAsJsonAsync(Path, Body_(dryRun: false), Ct);
-            failed = !resp.IsSuccessStatusCode;
-        }
-        catch (AmazonS3Exception)
-        {
-            failed = true; // 器が例外をそのまま運ぶ形でも、失敗として届けばよい。
-        }
+        var resp = await Admin(factory).PostAsJsonAsync(Path, Body_(dryRun: false), Ct);
 
-        failed.Should().BeTrue("確かめられないまま成功を返さない");
+        resp.StatusCode.Should().Be(HttpStatusCode.BadGateway, "確かめられないまま成功を返さない");
         (await ReadAsync(factory, first.Id)).Status.Should().NotBe(DocumentStatus.Archived, "ページの途中まで保存しない");
         (await ReadAsync(factory, second.Id)).Status.Should().NotBe(DocumentStatus.Archived);
         Published(factory).Should().BeEmpty();

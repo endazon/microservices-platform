@@ -57,7 +57,7 @@ related_specs:
      確かめた位置へ戻す・`--operator` / `--reason`・連続失敗で止まる。見張るのは取り込み・Wiki・グラフの `DocumentUpdated` のキューと共有の DLQ（許容は既定 0）。
      I/O は再発行の駆動器の関数を再利用する。
    - 🔴 **冪等**: アーカイブ済みは母集合から外れる。2 回流しても 2 回目は何もしない（版を積まない・イベントを出さない）。
-   - 🔴 **ページの途中まで保存しない**: 確かめを全件終えてから 1 回だけ保存する。確かめの失敗（NoSuchKey 以外）は失敗として返り、同じ要求の再実行で回収できる。
+   - 🔴 **ページの途中まで保存しない**: 確かめを全件終えてから 1 回だけ保存する。確かめの失敗（NoSuchKey 以外）は 502 で返り、同じ要求の再実行で回収できる。
      ストレージが未構成なら 503（`NullObjectStorageClient` は在るとも無いとも答えない）。
 3. **本文の有無は HEAD と、必要なときだけ範囲 0-0 の GET で確かめる。本文を読まない。** 共有の port に `IObjectStorageClient.ExistsAsync` を足した
    （既定の実装は `NotSupportedException`。試験の偽物 16 件を直さずに済ませ、本番の 2 実装は明示的に実装する）。
@@ -141,6 +141,8 @@ WHERE d."Status" = 'archived'
    確かめること: 取り込み・Wiki・グラフのキューが空になり DLQ が増えない（スクリプトが見る）／SC-05 の状態「アーカイブ済み」の件数が 20 増える／
    document-service のログに `Archived body-less document` が 20 行／`ingestion_body_missing_total` が 20 増える。
 3. 全件: `node scripts/archive-bodyless-documents.js --live --resume --operator <名前> --reason "#1931 項目 3"`（途中で止まったら同じコマンドで再開）。
+   終わったら、document-service のログの `Archived body-less document` の行数と、スクリプトの「完了: アーカイブ N 件」（状態ファイルの `totals.archived`）を突き合わせる。
+   口が 500 で止まった回があれば、§結果 の回収手順（発行の取りこぼし）を行う。
 4. 確認: もう一度 dry-run を流し「アーカイブの対象」が 0・「既にアーカイブ済み」が約 5,803 増えていること。SC-05 の状態別の件数の合計が「すべて」と一致すること。
    検索（SC-01）で切り替え後の文書が従前どおり当たること（新しいコレクションの `points_count` が変わらないこと）。
 5. 戻し方: 決定 6（計画の裁定の後に限る）。
