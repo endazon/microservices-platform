@@ -1,8 +1,8 @@
-using System.Net;
-using System.Net.Http.Json;
 using AuthorizationService.Domain;
 using AuthorizationService.Infrastructure.Persistence;
+using AuthorizationService.Tests.Grpc;
 using AwesomeAssertions;
+using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -47,12 +47,9 @@ public class ClaimedUserAttributesAreIgnoredTests : IClassFixture<TestWebApplica
         db.SaveChanges();
     }
 
-    private Task<HttpResponseMessage> ResolveAsync(string userId, Dictionary<string, string> claimed) =>
-        _factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
+    private Task<TestServerScopeGrpc.Result> ResolveAsync(string userId, Dictionary<string, string> claimed) =>
+        _factory.CreateServiceCallerClient().ResolveScopeAsync(
             new AccessScopeRequest(userId, claimed), TestContext.Current.CancellationToken);
-
-    private static async Task<AccessScopeResponse> BodyOf(HttpResponseMessage resp) =>
-        (await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(TestContext.Current.CancellationToken))!;
 
     // 🔴 T-01（陽性対照）: **IdP 側の属性なら通る。** 判定そのものは生きている。
     [Fact]
@@ -64,8 +61,8 @@ public class ClaimedUserAttributesAreIgnoredTests : IClassFixture<TestWebApplica
         // **本文は空である** —— それでも通ることが「主張ではなく IdP が根拠である」ことを示す。
         var resp = await ResolveAsync(user, []);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var scope = await BodyOf(resp);
+        resp.Status.Should().Be(StatusCode.OK);
+        var scope = resp.Scope!;
         scope.Granted.Should().BeTrue("IdP が持つ属性で判定される");
         scope.Branches.Should().Contain(b => b.Name == _policyName);
     }
@@ -80,8 +77,8 @@ public class ClaimedUserAttributesAreIgnoredTests : IClassFixture<TestWebApplica
         // 呼び出し元が「この利用者は internal だ」と主張する。**IdP は public と言っている。**
         var resp = await ResolveAsync(user, new Dictionary<string, string> { [Key] = "internal" });
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await BodyOf(resp)).Branches.Should().NotContain(b => b.Name == _policyName,
+        resp.Status.Should().Be(StatusCode.OK);
+        resp.Scope!.Branches.Should().NotContain(b => b.Name == _policyName,
             "主張が評価に使われていたら、ここで internal のポリシーにマッチしてしまう");
     }
 
@@ -107,8 +104,8 @@ public class ClaimedUserAttributesAreIgnoredTests : IClassFixture<TestWebApplica
 
         var resp = await ResolveAsync(user, new Dictionary<string, string> { [Key] = "internal" });
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await BodyOf(resp)).Granted.Should().BeFalse();
+        resp.Status.Should().Be(StatusCode.OK);
+        resp.Scope!.Granted.Should().BeFalse();
     }
 
     // 🔴 T-05: **「引けなかった」は status である**（`ADR-0088` 決定 1）。
@@ -125,7 +122,7 @@ public class ClaimedUserAttributesAreIgnoredTests : IClassFixture<TestWebApplica
         {
             var resp = await ResolveAsync(user, []);
 
-            resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable,
+            resp.Status.Should().Be(StatusCode.Unavailable,
                 "『引けなかった』と『権限が無い』は別の事実である");
         }
         finally
@@ -134,41 +131,41 @@ public class ClaimedUserAttributesAreIgnoredTests : IClassFixture<TestWebApplica
         }
     }
 
-    // 🔴 T-06: **REST 面にも認可が掛かっている**（`ADR-0088` 決定 2。決定 1 の着地の条件）。
+    // 🔴 T-06: **スコープ解決の面に認可が掛かっている**（［2026-10-15 / #1902］REST 面は撤去し gRPC 面だけ）（`ADR-0088` 決定 2。決定 1 の着地の条件）。
     // 資格情報が無ければ 401 —— 従前この端点は**認可を 1 つも掛けていなかった**。
     [Fact]
-    public async Task The_rest_face_rejects_a_caller_without_credentials()
+    public async Task The_scope_face_rejects_a_caller_without_service_role()
     {
         // TestAuthHandler は**ヘッダが無いと管理者**を名乗るので、
         // 「資格情報なし」は**空でないロールを持たない主体**として作る（下の T-07 と対）。
-        var resp = await _factory.CreateClient().PostAsJsonAsync("/authz/scope",
+        var resp = await _factory.CreateClient().ResolveScopeAsync(
             new AccessScopeRequest("anyone", []), TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden,
+        resp.Status.Should().Be(StatusCode.PermissionDenied,
             "認証はできても platform-service を持たない主体は通さない");
     }
 
     // 🔴 T-07: **管理者の利用者トークンでも通らない**（confused deputy の防止。[[IADR-0379]] 決定 4）。
     // これはサービスが呼ぶ面であり、**利用者の資格では開かない**。gRPC 面と同じ水準である。
     [Fact]
-    public async Task The_rest_face_rejects_an_administrators_user_token()
+    public async Task The_scope_face_rejects_an_administrators_user_token()
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, PlatformAuthPolicies.AdminRole);
 
-        var resp = await client.PostAsJsonAsync("/authz/scope",
+        var resp = await client.ResolveScopeAsync(
             new AccessScopeRequest("anyone", []), TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        resp.Status.Should().Be(StatusCode.PermissionDenied);
     }
 
     // 陽性対照（T-06 / T-07 と対）: `platform-service` を持つ主体は通る。
     // これが無いと、上の 2 つは**端点が壊れていて常に 403**でも緑になる。
     [Fact]
-    public async Task The_rest_face_accepts_a_service_caller()
+    public async Task The_scope_face_accepts_a_service_caller()
     {
         var resp = await ResolveAsync($"ok-{Guid.NewGuid():N}"[..20], []);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        resp.Status.Should().Be(StatusCode.OK);
     }
 }

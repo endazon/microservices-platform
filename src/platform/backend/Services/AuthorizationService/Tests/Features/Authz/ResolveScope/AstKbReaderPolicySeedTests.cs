@@ -1,9 +1,9 @@
-using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using AuthorizationService.Domain;
 using AuthorizationService.Infrastructure.Persistence;
+using AuthorizationService.Tests.Grpc;
 using AwesomeAssertions;
+using Grpc.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Contracts.Dtos;
 
@@ -61,10 +61,10 @@ public class AstKbReaderPolicySeedTests : IClassFixture<TestWebApplicationFactor
 
     private async Task<AccessScopeResponse> ResolveAsync(string userId, string action = PolicyAction.Read)
     {
-        var resp = await _factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
+        var resp = await _factory.CreateServiceCallerClient().ResolveScopeAsync(
             new AccessScopeRequest(userId, [], action), TestContext.Current.CancellationToken);
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        return (await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(TestContext.Current.CancellationToken))!;
+        resp.Status.Should().Be(StatusCode.OK);
+        return resp.Scope!;
     }
 
     // 束縛されない分岐（自分の名前を値に持たない分岐）。読み手にとっては「誰の文書でも一致し得る」分岐である。

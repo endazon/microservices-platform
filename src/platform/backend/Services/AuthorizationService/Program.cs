@@ -7,8 +7,6 @@ using AuthorizationService.Features.Users.Lookup;
 using AuthorizationService.Features.Users.Directory;
 using AuthorizationService.Infrastructure.ExternalServices;
 using AuthorizationService.Infrastructure.Persistence;
-using FluentValidation;
-using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
@@ -93,14 +91,11 @@ builder.Services.AddScoped<AuthorizationService.Features.Authz.AttributeDictiona
 // （属性 department は書かない。部門の同期が追いつく）。選択肢は上の属性辞書と同じ realm の読み取りを使う。
 builder.Services.AddScoped<AuthorizationService.Features.Users.Department.UserDepartmentService>();
 
-// FR-05, FR-21, UC-05 / 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 /
-// [[IADR-0398]] 決定 1 (b)（#1278 PR-C）: 端点の入力検証。
-// **アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、検証器を消しても
-// 起動が通ってしまう（明示登録なら `IValidator<T>` の解決に失敗して止まる）。
-builder.Services.AddScoped<IValidator<AccessScopeRequest>, ResolveScopeValidator>();
+// ［2026-10-15 / #1902・[[IADR-0533]] 追記］REST の `POST /authz/scope` を撤去したので、その入力検証
+// （`ResolveScopeValidator`。#1278 PR-C）も撤去した。gRPC 面は `action` の値域を自分で検証する（INVALID_ARGUMENT）。
 
 // FR-05, NFR-09, 計画 ADR-0088 決定 1・2, [[IADR-0413]] (#1333): ABAC 判定に使う利用者属性を
-// IdP から引き直す唯一の点。**REST 端点と gRPC 面の両方がこれを取る**（面ごとに書かない）。
+// IdP から引き直す唯一の点。gRPC 面がこれを取る（［2026-10-15 / #1902］REST 端点は撤去した）。
 builder.Services.AddScoped<ScopeUserAttributeSource>();
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段・合成可能ポートは
