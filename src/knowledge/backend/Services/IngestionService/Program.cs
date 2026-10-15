@@ -88,6 +88,8 @@ builder.Services.AddHostedService<QdrantKeywordIndexDiscoveryHostedService>();
 // 主のコレクションへ移して語彙索引の点を消す。**ブートストラップより後に登録する**（コレクションを作ってから数える）。
 builder.Services.AddMetrics();
 builder.Services.AddSingleton<EmbeddingPendingMetrics>();
+// FR-02, [[IADR-0540]] 決定 3 (#1931): 本文のオブジェクトが無かった取り込みの計数（同じ Meter。下の AddMeter で収集される）。
+builder.Services.AddSingleton<BodyMissingMetrics>();
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(EmbeddingPendingMetrics.MeterName));
 builder.Services.AddSingleton(EmbeddingPendingOptions.From(builder.Configuration));

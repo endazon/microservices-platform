@@ -51,6 +51,7 @@ public class IngestionTimeoutTests
             ports, new MarkdownChunkingService(), embed ?? ports, ports, ports,
             ConsumerTimeoutsForTests.Calls(), timeouts, clock ?? TimeProvider.System,
             TestMeterFactory.NewEmbeddingPendingMetrics(),
+            TestMeterFactory.NewBodyMissingMetrics(),
             NullLogger<DocumentUpdatedConsumer>.Instance);
 
     // T-18: 止まった依存先（本文・埋め込み・既存チャンクの削除・チャンクの登録・メタデータ点の登録）は、

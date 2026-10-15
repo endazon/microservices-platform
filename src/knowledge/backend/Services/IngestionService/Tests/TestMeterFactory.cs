@@ -26,4 +26,7 @@ internal sealed class TestMeterFactory : IMeterFactory
 
     // 実測に使わない場面（コンストラクタを満たすだけ）のための近道。
     internal static EmbeddingPendingMetrics NewEmbeddingPendingMetrics() => new(new TestMeterFactory());
+
+    // #1931 / [[IADR-0540]]: 本文の欠落の計数（同上）。
+    internal static BodyMissingMetrics NewBodyMissingMetrics() => new(new TestMeterFactory());
 }

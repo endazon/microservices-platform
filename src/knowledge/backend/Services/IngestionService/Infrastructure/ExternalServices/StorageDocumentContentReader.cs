@@ -1,5 +1,7 @@
 using IngestionService.Domain.Ports;
 using IngestionService.Domain;
+using Amazon.S3;
+using Amazon.S3.Model;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Microsoft.Extensions.Logging;
 
@@ -19,7 +21,18 @@ public class StorageDocumentContentReader(
         // FR-06: オブジェクトストレージ（storage://）から実本文を取得する。
         if (storage.CanResolve(markdownUri))
         {
-            var stored = await storage.GetTextAsync(markdownUri, ct);
+            string stored;
+            try
+            {
+                stored = await storage.GetTextAsync(markdownUri, ct);
+            }
+            catch (AmazonS3Exception ex) when (IsNoSuchKey(ex))
+            {
+                // 🔴 FR-02, [[IADR-0540]] 決定 1 (#1931): キーが無いのは恒久的な欠落である（再試行しても現れない）。
+                // 一時障害（時間切れ・5xx・接続の失敗・バケットが無い）はここへ来ない —— 例外のまま上げて再試行へ委ねる。
+                throw new DocumentBodyMissingException(markdownUri, ex);
+            }
+
             logger.LogInformation("Fetched markdown body from object storage {Uri} ({Length} chars)",
                 markdownUri, stored.Length);
             return stored;
@@ -40,4 +53,14 @@ public class StorageDocumentContentReader(
             "Markdown storage not available for {Uri}; using placeholder body", markdownUri);
         return $"# {title}\n\nコンテンツは {markdownUri} から取得します。";
     }
+
+    // FR-02, [[IADR-0540]] 決定 2 (#1931): **キーが無い（NoSuchKey）だけ**を恒久的な欠落とみなす。
+    // SDK の専用の型（`NoSuchKeyException`）か、S3 のエラーコード `NoSuchKey` で判定する（S3 互換の実装が
+    // 汎用の `AmazonS3Exception` で返しても拾う）。🔴 **状態コード 404 だけでは判定しない** ——
+    // バケットが無い（`NoSuchBucket`）も 404 であり、それは構成の不調（自己修復・再試行の対象）である。
+    // メッセージ文字列では判定しない。
+    internal static bool IsNoSuchKey(AmazonS3Exception ex) =>
+        ex is NoSuchKeyException || ex.ErrorCode == NoSuchKeyErrorCode;
+
+    internal const string NoSuchKeyErrorCode = "NoSuchKey";
 }
