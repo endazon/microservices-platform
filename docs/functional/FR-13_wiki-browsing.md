@@ -3,7 +3,7 @@ title: Wiki 文書閲覧（Wiki.js 委譲・WikiService ABAC ゲートウェイ�
 type: functional-spec
 status: draft
 created: 2026-07-03
-updated: 2026-10-15
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:
@@ -80,7 +80,7 @@ issues: [#66, #1879, #1902, planning#784]
 - `IWikiJsClient` / `WikiJsGraphQlClient`（Services）: Wiki.js 管理 GraphQL への upsert（`singleByPath`→`create`/`update`）
   と、認可プロキシ用の本文取得。API キーは Bearer（環境変数/Secret）。
 - `IWikiContentReader` / `StorageMarkdownReader`（Services）: `MarkdownUri` から本文取得（http(s) 実取得・dev は代替）。
-- `IWikiAccessResolver` / `WikiAccessResolver`（Services）: JWT 属性から権限スコープを解決する（east-west gRPC。［2026-10-15］REST の `/authz/scope` は撤去）。障害時は deny-by-default。
+- `IWikiAccessResolver` / `WikiAccessResolver`（Services）: JWT 属性から権限スコープを解決する（east-west gRPC。［2026-10-16］REST の `/authz/scope` は撤去）。障害時は deny-by-default。
 - `AbacPageFilter`（Services）: `AccessScopeResponse` を文書属性に適用する純粋関数。検索側
   `InMemoryVectorStore.MatchesFilters` と同一意味論。Wiki.js 前段ゲートウェイの到達可否判定へ転用する。
 - `WikiPage` / `WikiDbContext`（`wiki_svc`）: ゲートウェイの**同期メタデータ**（属性/タグ/slug/status。属性フィルタ・

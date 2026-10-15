@@ -127,7 +127,7 @@ public class EastWestGrpcDeploymentWiringTests
         found.Should().OnlyContain(f => table.Contains(f), $"{file} の gRPC 宛先はすべて呼び出し元 × キーの表に載せる（表を 1 か所に保つ）");
     }
 
-    // 5. ［2026-10-15 / #1902・[[IADR-0533]] フォローアップ 3］**読まれなくなった REST の宛先の env が戻っていない。**
+    // 5. ［2026-10-16 / #1902・[[IADR-0533]] フォローアップ 3］**読まれなくなった REST の宛先の env が戻っていない。**
     //    宛先が残っていると「REST の経路がまだある」と読み違え、構成も肥大する。読み手が残る組（BFF の管理面の代理・
     //    AI 分析の readiness・グラフのクラスタ要約）は下の対照で残っていることを確かめる。
     public static TheoryData<string, string, string> RetiredRestDestinations() => new()

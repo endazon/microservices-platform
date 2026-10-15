@@ -384,7 +384,7 @@ services:
       namespace: platform-infra
       port: 8200
     # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段は下の gRPC 宛先だけである
-    # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
+    # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
     extraEnv:
       # FR-05 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。
       # 実在検証が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
@@ -427,7 +427,7 @@ services:
       existingSecret: conversion-service-token
       clientSecretKey: client-secret
     # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先は下の gRPC 宛先だけである
-    # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
+    # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
     # 🔴 **k8s の Service 名は `llmgateway-service` である**（compose の `llm-gateway` とは違う）。
     extraEnv:
       # FR-12 / NFR-16, IADR-0400 (#1255): east-west gRPC（h2c）の宛先。
@@ -468,7 +468,7 @@ services:
       existingSecret: ingestion-service-token
       clientSecretKey: client-secret
     # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先は下の gRPC 宛先だけである
-    # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
+    # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
     # 🔴 **k8s の Service 名は `llmgateway-service` である**（compose の `llm-gateway` とは違う）。
     extraEnv:
       # FR-02 / NFR-16, IADR-0397 (#1255): east-west gRPC（h2c）の宛先。
@@ -506,7 +506,7 @@ services:
       existingSecret: retrieval-service-token
       clientSecretKey: client-secret
     # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先は下の gRPC 宛先だけである
-    # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
+    # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
     # 🔴 **k8s の Service 名は `llmgateway-service` である**（compose の `llm-gateway` とは違う）。
     extraEnv:
       # FR-03 / NFR-16, IADR-0397 (#1255): east-west gRPC（h2c）の宛先。
@@ -524,7 +524,7 @@ services:
       # FR-05 / NFR-09, ADR-0004, ADR-0034 決定 1, IADR-0416 (#1339): ABAC 許可スコープの解決先。
       # 🔴 **本サービスが自分で引くようになった** —— 従前は呼び出し元が本文で送ってきた
       # `Scope` を信じており、到達できる相手が任意の scope を主張できた。
-      # ［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した。
+      # ［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した。
       # NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5 (#1339): 解決の gRPC 宛先。
       # gRPC 経路で解決する（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # 資格情報は上の serviceToken を**そのまま使う**（1 サービス 1 主体）。
@@ -557,7 +557,7 @@ services:
     # llm-gateway の Service 名は llmgateway-service（chart のキー llmgateway 由来）である点に注意。
     extraEnv:
       # FR-13 / IADR-0089 / #958: ABAC の許可スコープ解決は gRPC 宛先（下の `Services__AuthorizationServiceGrpc`）だけである
-      # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
+      # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
       # 下の 2 つ（RetrievalService・LlmGateway）は readiness の `/health/live` が読む（残す）。
       - name: Services__RetrievalService
         value: "http://retrieval-service:8080"
@@ -670,7 +670,7 @@ services:
       clientSecretKey: client-secret
     extraEnv:
       # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決は下の gRPC 宛先だけである
-      # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
+      # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
       # FR-13 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。
       # 閲覧のスコープ解決が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # 🔴 未認証の短絡は輸送の手前にあるので、gRPC でも匿名では 1 度も呼ばない。
@@ -787,7 +787,7 @@ services:
       existingSecret: graph-service-token
       clientSecretKey: client-secret
     # FR-17, FR-05, IADR-0089 (#342) / #958: ABAC スコープ解決先は gRPC 宛先（`Services__AuthorizationServiceGrpc`）だけである
-    # （［2026-10-15 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
+    # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
     extraEnv:
       # FR-18, ADR-0010, IADR-0380 (#1244): クラスタ要約（REST `/complete`。既定 off）が LLM ゲートウェイを呼ぶ。コード既定
       # `http://llm-gateway:5010` は k8s に無い名前で、上書きが無いと LLM の段で

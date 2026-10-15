@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-09, NFR-16, ADR-0029, ADR-0075, ADR-0086, ADR-0087, ADR-0089, IADR-0379, IADR-0413, IADR-0426, IADR-0462]
 author: claude
 created: 2026-10-10
-updated: 2026-10-15
+updated: 2026-10-16
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0089_east-west-completion-rule-and-authz-service-face.md（決定 1）
   - planning:projects/microservices-platform/07_adr/ADR-0075_east-west-grpc-migration-order.md（決定 2）
@@ -113,7 +113,7 @@ REST 実装が残り、宛先の構成の有無で REST と gRPC が選ばれて
 
 ## 追記
 
-［2026-10-15 追記 / #1902］**フォローアップ 1・3・4・5 を済ませた**（決定 5 が予告した「受け口ごとの撤去」を 1 本で行った）。
+［2026-10-16 追記 / #1902］**フォローアップ 1・3・4・5 を済ませた**（決定 5 が予告した「受け口ごとの撤去」を 1 本で行った）。
 作業仕様書: [20261015_1902_east-west-rest-residue](../specs/20261015_1902_east-west-rest-residue.md)（母集合と除外の表）。
 
 - **撤去した受け口（8）**: `POST /authz/scope`・`POST /embed`・`POST /complete/stream`・`POST /search/attribute-values`・

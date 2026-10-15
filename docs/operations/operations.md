@@ -857,7 +857,7 @@ MCP クライアント登録管理の画面の登録簿はその写しである�
 - **投入済みかの確かめ方**: `GET /authz/policies` で、上の形（`action`・利用者の条件・文書の条件の 2 キー）に一致する有効なポリシーが**ちょうど 1 件**あり、
   `projects` / `project` を条件に持つ有効なポリシーがほかに無いこと（名前では判定しない）。
   効き目は、認可サービスの権限スコープ解決（gRPC `platform.authz.v1.AuthzScope/Resolve`。h2c の 8081。サービス呼び出し用のロールを持つ
-  s2s トークンが要る。［2026-10-15］REST の `POST /authz/scope` は撤去した）に読み手の名前（`service-account-ai-stock-trading-kb-reader`）と
+  s2s トークンが要る。［2026-10-16］REST の `POST /authz/scope` は撤去した）に読み手の名前（`service-account-ai-stock-trading-kb-reader`）と
   `action: read` を送り（例: `grpcurl -plaintext -import-path src/platform/backend/Shared/Platform.Shared.Contracts/Protos
   -proto platform/authz/v1/authz_scope.proto -H "authorization: Bearer <s2s トークン>" -d '{"user_id":"service-account-ai-stock-trading-kb-reader","action":"read"}'
   authorization-service:8081 platform.authz.v1.AuthzScope/Resolve`）、`granted` が `true` で、利用者名に束縛されない分岐が「`project ∈ {ai-stock-trading}` かつ `confidentiality ∈ {public, internal}`」の 1 本だけであることで確かめる。
@@ -887,7 +887,7 @@ MCP クライアント登録管理の画面の登録簿はその写しである�
   - **LLM ゲートウェイを開ける前に確かめること**（書き手の内容の ABAC の門に当たる、閉じていると保存済みの組織データが漏れる門は無い。穴は保存済みの組織データを読む口ではない）:
     1. 取引ユニットの呼び出しの主体（基盤の認証基盤の `ai-stock-trading-llm-caller`。サービス呼び出し用のロールだけを持つ）の秘密が、
        認証基盤と取引ユニットの `ast-secrets`（`llm-auth-client-id` / `llm-auth-client-secret`）の両方に入っていること。
-       生成の口（REST の `/complete`。［2026-10-15］`/complete/stream`・`/embed` の REST は撤去した）と gRPC の面はどれもサービス呼び出し用のロールを要するので、無ければ穴を開けても 401 で、
+       生成の口（REST の `/complete`。［2026-10-16］`/complete/stream`・`/embed` の REST は撤去した）と gRPC の面はどれもサービス呼び出し用のロールを要するので、無ければ穴を開けても 401 で、
        取引ユニットは定型の散文・見送りへ縮退する。ヘルス・OpenAPI の口（`/health/*`・`/openapi/v1.json`）は匿名だが（［2026-10-10］REST の自己申告 `/internal/introspection` は撤去した）、
        保存済みデータを返さない（KB の穴と同じ）。
     2. 費用の統制が働いていること。月次予算は用途ごとで（呼び出し元ごとではない）、取引ユニットの用途（`report-daily` / `report-weekly` / `report-monthly` /
@@ -1167,7 +1167,7 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
     fail-closed）は起動時バリデーション（`EmbeddingRoutingOptionsValidator` / `ValidateOnStart`）が
     fail-fast で検知し、LlmGateway は起動に失敗する（ログに不整合内容を出力）。ティア↔プロバイダの
     取り違え・必須項目欠落も同時に検証される。
-- **一時障害と fail-closed（意図的拒否）の区別（Issue #98）**: 埋め込み（gRPC `LlmEmbedding/Embed`。［2026-10-15］REST の `/embed` は撤去した）は応答に `Retryable` を返す。
+- **一時障害と fail-closed（意図的拒否）の区別（Issue #98）**: 埋め込み（gRPC `LlmEmbedding/Embed`。［2026-10-16］REST の `/embed` は撤去した）は応答に `Retryable` を返す。
   **［2026-10-14］取り込みの扱いは改まった（下の「埋め込みが使えない間の全文だけの点」）。** 以下の 2 項は改める前の記述であり、取り消し線の部分は今は当たらない。
   - **一時障害**（送信先の不調・タイムアウト・予期しない空応答・鍵の未設定など、`Retryable=true`）: ~~取り込み消費側
     （`DocumentUpdatedConsumer`）は当該メッセージを**恒久スキップにせず例外を送出**し、MassTransit の
@@ -1439,7 +1439,7 @@ LLM ゲートウェイが Claude（ティア B）を呼ぶときの HTTP の期�
 | 既定 | **100 秒**（未設定のとき。従前の固定値と同じ） |
 | 受け付ける値 | 1〜2,147,483 の整数（秒） |
 | 不正な値（数値でない・小数・0 以下・上限超） | 既定の 100 秒で動く。起動は止めず、warn を 1 行出す（キー名と値を含む） |
-| 効く範囲 | Claude への呼び出しだけ（REST・gRPC とも）。セルフホスト・Copilot の経路には効かない。**一括（REST の `/complete`・gRPC の `Complete`）では応答の全文が届くまで**に掛かる。**逐次（gRPC の `CompleteStream`。［2026-10-15］REST の `/complete/stream` は撤去した）では最初の応答ヘッダが届くまで**にしか掛からない（ヘッダが届いた後のストリームの読み取りはこの期限で切れない） |
+| 効く範囲 | Claude への呼び出しだけ（REST・gRPC とも）。セルフホスト・Copilot の経路には効かない。**一括（REST の `/complete`・gRPC の `Complete`）では応答の全文が届くまで**に掛かる。**逐次（gRPC の `CompleteStream`。［2026-10-16］REST の `/complete/stream` は撤去した）では最初の応答ヘッダが届くまで**にしか掛からない（ヘッダが届いた後のストリームの読み取りはこの期限で切れない） |
 
 - 🔴 **呼び出し側の期限は、この値より短く保つ。** どれだけ待つかは呼び出し側が決める。呼び出し側の期限がこの値より長いと、
   **ゲートウェイが先に切る**（呼び出し側には上流の不調として返り、利用実績は計上されないが、プロバイダ側の課金は発生し得る）。

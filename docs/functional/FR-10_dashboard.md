@@ -3,7 +3,7 @@ title: 機能仕様書 — FR-10 利用状況・検索傾向・回答品質ダ�
 type: functional-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-10-15
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:
@@ -110,12 +110,12 @@ issues: [#443, #452, #504, #1186, #1197, #1198, #1233, #1246, #1363, #1395, #166
 - 観測値は**指標ごとのスナップショット置換**で受け取る（差分ではない）。解消の取り消し漏れが件数を恒久的に膨らませないため。
 - 閲覧は監査ログに記録する（件数のみ。対象の識別子は残さない）。
 
-### 観測値の受け口は east-west gRPC だけである（2026-10-15 更新）
+### 観測値の受け口は east-west gRPC だけである（2026-10-16 更新）
 
 **生産者は利用者 JWT を持たない定期処理である。** 受け口は east-west gRPC の
 `KnowledgeHealthReport/Report` だけで、呼び出し側サービスの資格（`ServiceCaller`）を要求する。
 
-- ［2026-10-15］従前の無認証の REST の受け口（`POST /internal/knowledge-health/observations`。2026-08-29 に
+- ［2026-10-16］従前の無認証の REST の受け口（`POST /internal/knowledge-health/observations`。2026-08-29 に
   `/dashboard/...` から移して認可を外したもの）は撤去した。生産者（グラフの定期処理）は gRPC だけになっており、
   「同一ネットワーク内からは無認証で観測値を差し替えられる」という受容していた残余リスクも消えた。
 - 多層防御としてのネットワーク分離（内部サービスは host 公開しない・Service は既定 ClusterIP・NetworkPolicy 既定拒否）は変えていない。

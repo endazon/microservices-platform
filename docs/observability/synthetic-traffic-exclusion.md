@@ -3,7 +3,7 @@ title: 合成監視トラフィックの標識と、費用・利用状況から�
 type: observability-spec
 status: in-progress
 created: 2026-09-05
-updated: 2026-10-15
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:

@@ -3,7 +3,7 @@ title: LLM 補完メトリクス（終了理由・拒否率）ログ・可観測
 type: observability-spec
 status: in-progress
 created: 2026-07-28
-updated: 2026-10-15
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:

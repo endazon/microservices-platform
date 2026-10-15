@@ -3,7 +3,7 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-15
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:
@@ -141,7 +141,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 | 既定値 | `analysis: ["claude-sonnet-5-5"]` / `diagram-coding: ["claude-haiku-5-5"]` / `default: ["claude-sonnet-5-5"]` / `rag-answer: ["claude-haiku-5-5"]` / `report-monthly: ["claude-sonnet-5-5"]` / `report-weekly: ["claude-sonnet-5-5"]` / `report-daily: ["claude-haiku-5-5"]` / `graph-suggestion: ["claude-haiku-5-5"]` / `graph-cluster-summary: ["claude-sonnet-5-5"]` の 9 用途。**いずれも第 1 候補より安価側の 1 段下位**であり、発火で費用が上振れすることはない |
 | 発火条件 | **上流が HTTP 400〜499（429 を除く）** |
 | **発火しない** | **429（レート制限）**・5xx・通信断・ステータスの取れない失敗 |
-| 適用範囲 | **一括（`/complete`・gRPC `Complete`）のみ**（逐次の gRPC `CompleteStream` は実装しない。REST の `/complete/stream` は 2026-10-15 に撤去） |
+| 適用範囲 | **一括（`/complete`・gRPC `Complete`）のみ**（逐次の gRPC `CompleteStream` は実装しない。REST の `/complete/stream` は 2026-10-16 に撤去） |
 | 鎖の適格性 | ルーターが `Models`（利用許可集合）と ZDR 除外（`NonZdrModels`）を第 1 候補と同じ規則で適用し、外れた候補は warn ログを出して鎖から落とす（同計画 ADR の決定 5） |
 
 - **429 は再試行であってフォールバックではない**（分析用途のモデル割当の計画 ADR 決定 4）。429 を「モデルが利用不能」と
@@ -282,7 +282,7 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 | `FailureKind` | 文字列（null 可） | `egress_denied` / `provider_missing` / `upstream_error`。`Sent=true` では null |
 | `UpstreamStatusCode` | 整数（null 可） | `FailureKind="upstream_error"` で上流が HTTP 状態を返したときの状態コード（429・5xx など）。輸送の失敗・他の原因・`Sent=true` では null |
 
-- 一括（`/complete`）の応答と、逐次（gRPC `CompleteStream`。2026-10-15 に REST の `/complete/stream` は撤去）の `done` メッセージの両方に載る。gRPC でも同じ項目を運ぶ
+- 一括（`/complete`）の応答と、逐次（gRPC `CompleteStream`。2026-10-16 に REST の `/complete/stream` は撤去）の `done` メッセージの両方に載る。gRPC でも同じ項目を運ぶ
   （proto3 に null は無いので、空文字と 0 が「無い」を表す）。
 - 語彙はメトリクスの `llm.result` と同じ文字列である。**閉じた列挙にはしない**（`StopReason` と同じ理由）。
   知らない値は「原因不明の `Sent=false`」として扱えばよい。

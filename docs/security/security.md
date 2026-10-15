@@ -33,7 +33,7 @@ issues: [#1740, #1859, #1839, #1841, #1783, #1834, #1830, #1817, #1755, #1746, #
 - **認可（サービス内 RBAC）**: 属性・ポリシー管理の管理系エンドポイント（属性辞書・ABAC ポリシーの CRUD／有効無効切替／削除）は
   `AdminOnly` ポリシー（`platform-admin` ロール必須）で保護する。ロール未保持は 403。ロール名・ポリシー名は
   `PlatformAuthPolicies` に定義。サービス間呼び出しの `POST /authz/attributes/validate` と権限スコープ解決（gRPC
-  `AuthzScope/Resolve`。［2026-10-15］REST の `POST /authz/scope` は撤去した）は本ポリシーの対象外（サービス呼び出し用のロールを要する）。
+  `AuthzScope/Resolve`。［2026-10-16］REST の `POST /authz/scope` は撤去した）は本ポリシーの対象外（サービス呼び出し用のロールを要する）。
 - **運用者ロール**: 構成情報の閲覧（構成情報 API `/bff/admin/config`・
   構成ビューア #113）は `ConfigViewer` ポリシー（`platform-admin` **または** `platform-operator`）で
   保護する。非権限（無認証を含む）には 404 で応答自体を秘匿する（構成情報 API の実装判断と、権限外は 404 とする存在秘匿）。
@@ -146,7 +146,7 @@ Wiki.js の権限モデルは**ページ／グループ単位**であり、属�
 ### サービス間（内部 API）の認証 — Istio STRICT mTLS を第一防御とする
 
 内部サービス API（例: DocumentService `/documents`、LlmGateway `/complete`、
-DataSourceService `/datasources`、AuthorizationService `/authz/attributes/validate`。［2026-10-15］`/embed`・`/authz/scope` の REST は撤去した）は
+DataSourceService `/datasources`、AuthorizationService `/authz/attributes/validate`。［2026-10-16］`/embed`・`/authz/scope` の REST は撤去した）は
 「サービス間呼び出しのため認証対象外」として無認証で提供されている。
 **［2026-09-27 追記］DocumentService の `/documents` の読み取りは認証を要するようになった**（上の「後段認可」の項。書き込みは従前から認証を要する）。
 これは **Istio mTLSを前提**にした
