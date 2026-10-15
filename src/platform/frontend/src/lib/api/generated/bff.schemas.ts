@@ -474,15 +474,6 @@ export interface AiAnswerDto {
   answerId: string;
 }
 
-export type AccessScopeRequestUserAttributes = {[key: string]: string};
-
-export interface AccessScopeRequest {
-  userId: string;
-  userAttributes: AccessScopeRequestUserAttributes;
-  /** ［2026-08-23 / #989］解決したいアクション（`read` / `analyze` / `manage` / `write`。 `enum` にしない——値域の正は `PolicyAction`）。省略時は `read`（旧クライアントは無改修で 従来どおり読み取りスコープを得る）。従前はサーバ側が `read` をハードコードしており、 書き込みの認可スコープをこの経路で出せなかった。値域外は 400（呼び出し側は非 2xx を deny へ縮退させる）。 */
-  action?: string;
-}
-
 /**
  * FR-05: 1 つの属性キーに対する許可値集合（`AttributeFilter`）
  */
@@ -1585,41 +1576,6 @@ export interface DriftReportDto {
   hasDrift: boolean;
   checkedAt: string;
   findings: DriftFindingDto[];
-}
-
-/**
- * 機密区分（大文字小文字は無視）。confidential/restricted はティアA固定・外部送信しない
- */
-export type EmbedApiRequestConfidentiality = typeof EmbedApiRequestConfidentiality[keyof typeof EmbedApiRequestConfidentiality] | null;
-
-
-export const EmbedApiRequestConfidentiality = {
-  public: 'public',
-  internal: 'internal',
-  confidential: 'confidential',
-  restricted: 'restricted',
-} as const;
-
-/**
- * 用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定
- */
-export type EmbedApiRequestPurpose = typeof EmbedApiRequestPurpose[keyof typeof EmbedApiRequestPurpose];
-
-
-export const EmbedApiRequestPurpose = {
-  index: 'index',
-  query: 'query',
-} as const;
-
-export interface EmbedApiRequest {
-  /** 埋め込み対象テキスト（取り込みは本文全量を送るため機密区分で越境判定） */
-  text: string;
-  /** 機密区分（大文字小文字は無視）。confidential/restricted はティアA固定・外部送信しない */
-  confidentiality?: EmbedApiRequestConfidentiality;
-  /** 用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定 */
-  purpose?: EmbedApiRequestPurpose;
-  /** 検索クエリ（purpose=query）が読むコレクション。越境判定と有効化の篩を通った候補をそのコレクションの送信先へ絞るだけで、許可されていない区分を開くことはない。index では無視する。省略時は従来どおり優先度順に選ぶ */
-  targetCollection?: string | null;
 }
 
 /**
