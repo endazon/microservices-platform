@@ -2,7 +2,7 @@
 title: IADR-0544 文書の本文（/bff/documents/{id}/content）は文書サービスが読み、BFF は east-west gRPC（DocumentRead.GetDocumentContent）で受け取る。BFF にストレージを配線せず、案内文の 200 への縮退を撤去して 404 / 413 / 502 を返す
 type: impl-adr
 status: Accepted
-related_ids: [FR-06, UC-03, SC-03, NFR-09, NFR-16, ADR-0014, ADR-0029, ADR-0075, ADR-0089, ADR-0106, ADR-0119, IADR-0009, IADR-0038, IADR-0290, IADR-0379, IADR-0401, IADR-0402, IADR-0533, IADR-0537, IADR-0540]
+related_ids: [FR-06, UC-03, SC-03, NFR-09, NFR-16, ADR-0014, ADR-0029, ADR-0075, ADR-0089, ADR-0106, ADR-0119, IADR-0009, IADR-0038, IADR-0290, IADR-0379, IADR-0401, IADR-0402, IADR-0533, IADR-0537, IADR-0540, IADR-0541]
 author: claude
 created: 2026-10-15
 updated: 2026-10-15
@@ -83,7 +83,8 @@ related_specs:
    - 本文の欠落を 404 で返すのは、文書は読めている（BFF の判定を通った）ので秘匿の対象ではなく、「本文という資源が無い」ことを示すためである。
      問題詳細の有無で秘匿の 404 と区別できるが、区別できるのは**既に詳細を読める利用者**だけである（存在の漏れにはならない）。
    - NoSuchKey の判定は IADR-0540 決定 1 と同じ（SDK の型か `ErrorCode == "NoSuchKey"`。404 だけでは判定しない）。判定は共有の
-     `ObjectStorageErrors.IsNoSuchKey`（`Platform.Shared.Infrastructure`）へ移し、取り込みの読み手も同じ関数を呼ぶ（挙動は変えない）。
+     `ObjectStorageErrors.IsNoSuchKey`（`Platform.Shared.Infrastructure`）へ移し、取り込みの読み手と Wiki 同期の読み手（IADR-0541 決定 4 が
+     写した判定）も同じ関数を呼ぶ（挙動は変えない）。
    - 欠落・上限超過は文書サービスで WARN 1 行（文書 ID・本文の所在・大きさ。本文と利用者識別子は載せない）。
 3. **ストレージが構成されていない（`CanResolve` が偽）は「本文が無い」ではなく `FAILED_PRECONDITION`。** 配線の欠落を 404 に化けさせない（#1905 の再発防止）。
 4. **本文の上限は UTF-8 で 16 MiB（`DocumentContentUseCase.MaxBodyBytes`）。超過は本文を返さず、切り詰めない。**
@@ -111,7 +112,8 @@ related_specs:
 - 残余:
   - 変換ジョブの図画像（`/bff/conversion/jobs/{id}/figures/{figureId}/image`）は BFF のストレージを読み続けており、配備では同じく未配線（`CanResolve` 偽 → 404）。本件の射程外。
   - 上限の判定は本文を読み込んだ後である。共有のポート（`IObjectStorageClient`）に大きさの問い合わせ（HEAD）を足せば読む前に止められるが、実装が 18 あり射程を越える。
-  - wiki-service・graph-service の本文の読み手は NoSuchKey の扱いを変えていない（IADR-0540 の残余のまま）。
+  - wiki-service の本文の読み手は IADR-0541 決定 4 で NoSuchKey を恒久的な欠落として扱うようになり、その判定は本件で共有の
+    `ObjectStorageErrors.IsNoSuchKey` へ寄せた（挙動は同じ）。graph-service の本文の読み手は NoSuchKey を扱っていない（IADR-0540 の残余のまま）。
 
 ## 関連
 
