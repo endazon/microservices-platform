@@ -41,6 +41,12 @@
  *   `GET …/client-secret` で読み、宣言の値と一致するものを名指して非 0 で終える。**読むだけで書かない。値は出力しない。**
  *   🔴 稼働の secret を読むのはこのモードの `collectGuardedSecrets` だけである（apply / check の `collectLive` は今も読まない）。
  *
+ * ［2026-10-15 追記 / #1894 / IADR-0546］**既存の人間の seed 利用者にも、アカウントコンソールの自己管理のロール（`account` の
+ *   `view-profile`・`manage-account`。`SEED_USER_SELF_SERVICE_ROLES`）だけは足す。** realm import で作られる利用者は realm の既定ロール
+ *   （`default-roles-platform`）を受け取らず、SC-16 の account API が 401 / 403 になっていた。実行時に作られる利用者は Keycloak が既定ロールで
+ *   同じ 2 つを必ず与えるので、足すのは「どの利用者も持つ基線」までであり、境界（人の利用者は実行時が所有する）の例外はこの 2 つに限る。
+ *   **加えるだけで外さない。** 実効（合成を含む）の割当で比べるので、既定ロール経由で持つ利用者には何もしない。
+ *
  * ［2026-09-06 追記 / #1245 / IADR-0404］**`smtpServer` を実行時所有から宣言所有へ移した。**
  *   ADR-0078 決定 2 が Keycloak の送出先を**クラスタ内の近接 MTA**（`deploy/mail-relay/`）へ固定し、
  *   秘匿値（実リレーの host/user/password）は relay 側の Secret へ移った。realm に残るのは
@@ -123,6 +129,10 @@ const MAPPER_SKIP_KEYS = new Set(['id']);
 // 🔴 scripts/lib/dev-client-secret-guard.sh の DEV_CLIENT_SECRET_GUARDED と同じ集合（keycloak-realm-reconcile.test.js が突き合わせる）。
 const DEV_SECRET_GUARDED_CLIENTS = Object.freeze(['identity-admin', 'reset-gate', 'mcp-client-admin']);
 const DEV_SECRETS_ALLOWED_ENV = 'DEV_CLIENT_SECRETS_ALLOWED';
+// ［2026-10-15 / #1894 / IADR-0546］既存の人間の seed 利用者にも当てる client ロール（境界の唯一の例外）。
+// Keycloak が実行時に作る利用者へ既定ロールで必ず与える 2 つ（アカウントコンソールの自己管理）に限る。
+// 🔴 ここへ足すと、人の利用者の権限を宣言で上書きする口が広がる。足すなら IADR-0369 の境界表も直す。
+const SEED_USER_SELF_SERVICE_ROLES = Object.freeze({ account: Object.freeze(['view-profile', 'manage-account']) });
 // 利用者の作成時に POST /users が処理しないもの（作成後にロール割当の端点で当てる）。
 const USER_CREATE_SKIP_KEYS = new Set(['realmRoles', 'clientRoles', 'serviceAccountClientId', 'id']);
 
@@ -208,6 +218,7 @@ function gateHoldsClosed(key, wantedValue, liveRealm) {
  *     roleComposites:{ <roleName>: [...] },          // 宣言が composite を持つロールのみ
  *     groups: [ { ..., subGroups: [...] } ],
  *     users: { <username>: <UserRepresentation>|null },
+ *     userClientRoles: { <username>: { <clientId>: [names] } }, // 既存の人の seed 利用者の実効の client ロール（SEED_USER_SELF_SERVICE_ROLES の client だけ）
  *     serviceAccounts: { <clientId>: { user, realmRoles: [names], clientRoles: { <clientId>: [names] } } },
  *   }
  *
@@ -438,7 +449,22 @@ function plan(desired, live) {
       continue;
     }
     const cur = (live.users || {})[user.username];
-    if (cur) continue; // 既存の人間の利用者は実行時が所有する（境界）。触らない。
+    if (cur) {
+      // 既存の人間の利用者は実行時が所有する（境界）。例外は自己管理のロールだけ（#1894 / IADR-0546。加えるだけ）。
+      for (const [clientId, allowed] of Object.entries(SEED_USER_SELF_SERVICE_ROLES)) {
+        const wanted = ((user.clientRoles || {})[clientId] || []).filter((n) => allowed.includes(n));
+        if (wanted.length === 0) continue;
+        const have = (((live.userClientRoles || {})[user.username] || {})[clientId]) || [];
+        const missing = wanted.filter((n) => !have.includes(n));
+        if (missing.length === 0) continue;
+        const cr = clientRoleRefs(clientId, missing);
+        if (!cr) { defer(`user ${user.username} clientRoles ${clientId}`, 'client かロールがまだ無い'); continue; }
+        add({ op: 'user.clientRoles.add', target: `${user.username}:${clientId}`, method: 'POST',
+          path: `${R}/users/${cur.id}/role-mappings/clients/${cr.clientUuid}`, body: cr.refs,
+          reason: `自己管理のロールの欠落: ${missing.join(', ')}` });
+      }
+      continue;
+    }
     // 作成。POST /users は realmRoles / clientRoles を処理しないので、作成直後の割当を postSteps で運ぶ。
     const postSteps = [];
     let blocked = null;
@@ -589,6 +615,7 @@ async function collectLive(kc, desired) {
   }
 
   const users = {};
+  const userClientRoles = {};
   const serviceAccounts = {};
   for (const u of desired.users || []) {
     if (u.serviceAccountClientId) {
@@ -610,10 +637,18 @@ async function collectLive(kc, desired) {
     } else {
       const found = (await kc.get(`${R}/users?username=${encodeURIComponent(u.username)}&exact=true`)) || [];
       users[u.username] = found[0] || null;
+      // #1894 / IADR-0546: 自己管理のロールだけ、実効（合成を含む。既定ロール経由も数える）の割当を読む。
+      if (!users[u.username]) continue;
+      for (const cid of Object.keys(SEED_USER_SELF_SERVICE_ROLES)) {
+        const cc = clientByClientId.get(cid);
+        if (!cc || !((u.clientRoles || {})[cid] || []).length) continue;
+        const eff = (await kc.get(`${R}/users/${users[u.username].id}/role-mappings/clients/${cc.id}/composite`)) || [];
+        (userClientRoles[u.username] = userClientRoles[u.username] || {})[cid] = eff.map((r) => r.name);
+      }
     }
   }
 
-  return { realm, requiredActions, realmRoles, clientScopes, clients, clientRoles, roleComposites, groups, users, serviceAccounts };
+  return { realm, requiredActions, realmRoles, clientScopes, clients, clientRoles, roleComposites, groups, users, userClientRoles, serviceAccounts };
 }
 
 /**
@@ -769,5 +804,5 @@ module.exports = {
   plan, planMappers, collectLive, contains, merge, describe, gateHoldsClosed,
   devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, DEV_SECRET_GUARDED_CLIENTS, DEV_SECRETS_ALLOWED_ENV,
   REALM_COLLECTION_KEYS, RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, CLIENT_SKIP_KEYS, CLIENT_CREATE_ONLY_KEYS, MAX_PASSES,
-  GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
+  GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED, SEED_USER_SELF_SERVICE_ROLES,
 };

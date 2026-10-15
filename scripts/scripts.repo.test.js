@@ -594,12 +594,30 @@ module.exports = ({ ok, assert }) => {
         clients.some((c) => c.publicClient === false),
         'confidential client が 1 つも無い（走査が空振りしている）',
       );
+      // ［2026-10-15 / #1894 / [[IADR-0546]]］例外は Keycloak の組み込み `account` / `account-console` だけ。
+      // どの realm にも Keycloak が必ず作る（SC-16 のアカウントコンソール）ので、宣言しなくても稼働には在った。
+      // 宣言したのは、組み込みのままではスコープが付かず SC-16 が 401 になるためである（IADR-0429 は改定しない）。
+      // 足した口にならないことを形で固定する: platform-api の audience を持たない（＝BFF・各サービスの JWT 検証が
+      // aud で落とす）／fullScopeAllowed=false（利用者のレルムロールが載らない）／profile を既定に持つ（利用者名が載り、
+      // BearerCallerPolicy が人として拒否する＝無人の主体と読まれない）。
+      const BUILTIN_PUBLIC = ['account', 'account-console'];
       const pub = clients.filter((c) => c.publicClient === true).map((c) => c.clientId);
+      const extra = pub.filter((id) => !BUILTIN_PUBLIC.includes(id));
       assert.deepStrictEqual(
-        pub, [],
-        `public client が復活している: ${pub.join(', ')}。`
+        extra, [],
+        `public client が復活している: ${extra.join(', ')}。`
           + 'ブラウザが利用者トークンを取れる口になるので、足すなら IADR-0429 の改定が要る',
       );
+      for (const id of pub) {
+        const c = clients.find((x) => x.clientId === id);
+        const scopes = [...(c.defaultClientScopes || []), ...(c.optionalClientScopes || [])];
+        assert.ok(!scopes.includes('platform-api-audience'), `${id} が platform-api の audience を持つ（BFF の Bearer の口になる）`);
+        assert.ok(!(c.protocolMappers || []).some((m) => m.protocolMapper === 'oidc-audience-mapper'),
+          `${id} に audience の写像が直付けされている（aud を足せる。#1864 と同型）`);
+        assert.strictEqual(c.fullScopeAllowed, false, `${id} の fullScopeAllowed が false でない（利用者の全ロールが載る）`);
+        assert.ok((c.defaultClientScopes || []).includes('profile'), `${id} が profile を既定に持たない（人のトークンが無人の主体と読まれる）`);
+        assert.strictEqual(c.serviceAccountsEnabled, false, `${id} にサービスアカウントがある`);
+      }
     });
 
     // 🔴 #1589（NFR-09, ADR-0032, IADR-0420, IADR-0429 決定 3）: BFF の Bearer 受理は
