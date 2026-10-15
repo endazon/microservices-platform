@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * export-loki-logs.js — NFR-18, ADR-0133, IADR-0541 (#1935): 経路 B の Loki から、時間範囲を指定してログを
+ * export-loki-logs.js — NFR-18, ADR-0133, IADR-0543 (#1935): 経路 B の Loki から、時間範囲を指定してログを
  * ファイル（JSON Lines）へ書き出す。**読み取り専用**（GET の query_range / query / label の値だけを呼ぶ）。
  * 外部依存ゼロ（Node 18 以降の標準 fetch のみ）。
  *

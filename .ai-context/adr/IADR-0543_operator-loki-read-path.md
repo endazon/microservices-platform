@@ -1,5 +1,5 @@
 ---
-title: IADR-0541 運用者が経路 B の Loki を読む正規の経路は「svc/loki への port-forward ＋ 既存の読み取りの身元（Secret observability-gate の reader）」とし、新しい身元は作らない。保全は読み取り専用の scripts/export-loki-logs.js で行い、前段の内側（Pod の 3101）は break-glass のまま残す
+title: IADR-0543 運用者が経路 B の Loki を読む正規の経路は「svc/loki への port-forward ＋ 既存の読み取りの身元（Secret observability-gate の reader）」とし、新しい身元は作らない。保全は読み取り専用の scripts/export-loki-logs.js で行い、前段の内側（Pod の 3101）は break-glass のまま残す
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, ADR-0133, ADR-0112, ADR-0006, IADR-0526, IADR-0210, IADR-0369]
@@ -12,7 +12,7 @@ related_specs:
   - ../specs/20261015_1935_loki-log-read-runbook.md
 ---
 
-# IADR-0541: 運用者が経路 B の Loki を読む正規の経路（#1935）
+# IADR-0543: 運用者が経路 B の Loki を読む正規の経路（#1935）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

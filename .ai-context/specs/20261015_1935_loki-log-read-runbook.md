@@ -2,7 +2,7 @@
 title: 運用者が経路 B の Loki を前段を弱めずに読む手段（読み取りの経路・資格・保全・保持と永続化の確認）（#1935）
 type: spec
 status: done
-related_ids: [NFR-18, ADR-0133, ADR-0112, ADR-0006, IADR-0526, IADR-0210, IADR-0369, IADR-0541]
+related_ids: [NFR-18, ADR-0133, ADR-0112, ADR-0006, IADR-0526, IADR-0210, IADR-0369, IADR-0543]
 author: claude
 created: 2026-10-15
 updated: 2026-10-15
@@ -16,14 +16,14 @@ issue: "#1935"
 ## 起点となる計画書（トレーサビリティ）
 
 - NFR-18（運用の口の統制）。ADR-0133 決定 1（条件 1 の前段・条件 2 の到達の制限）は**変えない**前提として引く。
-- 実装判断の記録: [IADR-0541](../adr/IADR-0541_operator-loki-read-path.md)。前段の形は [IADR-0526](../adr/IADR-0526_loki-tempo-front-auth-and-networkpolicy.md)、可観測性の PVC は IADR-0210 / IADR-0369（永続化の既定オン）。
+- 実装判断の記録: [IADR-0543](../adr/IADR-0543_operator-loki-read-path.md)。前段の形は [IADR-0526](../adr/IADR-0526_loki-tempo-front-auth-and-networkpolicy.md)、可観測性の PVC は IADR-0210 / IADR-0369（永続化の既定オン）。
 - 起点: #1935（PoC。PC の再起動で `kubectl logs` が消え、10-14 のセッションの監査のために Loki を読もうとして前段で止まった）。関連: #1842（前段）・#1867（chart 側の追跡。本件では触れない）。
 
 ## 受け入れ基準と写像
 
 | 受け入れ基準（#1935） | 写像 |
 | --- | --- |
-| 前段・到達の制限を弱めずに、運用者がローカルから読める経路を決めて記録する（身元を足すか否かを含む） | IADR-0541 決定 1・2。`deploy/` は 1 行も変えない（差分で確認） |
+| 前段・到達の制限を弱めずに、運用者がローカルから読める経路を決めて記録する（身元を足すか否かを含む） | IADR-0543 決定 1・2。`deploy/` は 1 行も変えない（差分で確認） |
 | runbook ①: 時間範囲・job を指定して `query_range` をファイルへ書き出す（10-14 の例） | `docs/operations/loki-log-read-runbook.md` §4。道具は `scripts/export-loki-logs.js` |
 | runbook ②: 前段を通る資格（Secret 名と取得コマンドだけ） | 同 §2 |
 | runbook ③: 保持期間と永続化の確認 | 同 §1・§5 |
@@ -34,7 +34,7 @@ issue: "#1935"
 
 - 「Loki を運用者がどう読むか」を書いている箇所を、`port-forward.*loki|loki.*port-forward|3101|observability-gate` で走査した。
   - 当たり: `deploy/local/observability/observability-gate.yaml`（break-glass の注記）・`deploy/local/observability/README.md`（break-glass の 1 行）・IADR-0526 決定 2・作業仕様書 20261009_1842（凍結）。
-  - 追随: README に runbook への 1 行を足す。gate の注記と IADR-0526 は break-glass の記述として正しいので変えない（IADR-0541 決定 2 が同じ扱いを続ける）。
+  - 追随: README に runbook への 1 行を足す。gate の注記と IADR-0526 は break-glass の記述として正しいので変えない（IADR-0543 決定 2 が同じ扱いを続ける）。
 - 運用仕様書の「読む場面」の表に行を足す（`docs/operations/operations.md`）。
 - `scripts/` に新しい入口を足すので、#1550 の母集合（`live-scripts.json`）・`scripts/README.md` の 2 つの表・検査器の母集合の除外（`NOT_CHECKERS`）へ追随した。どれも試験が落ちて名指しした箇所である。
 - 新たに誤りになる自分の記述（規則 10）: 無し。runbook は新規であり、既存の文書の主張（保持・永続化）は変えていない。
@@ -90,5 +90,5 @@ issue: "#1935"
 
 ## 射程外
 
-- 保持期間の設定（削除しないまま PVC が満杯になる可能性）。IADR-0541 残余 2。
+- 保持期間の設定（削除しないまま PVC が満杯になる可能性）。IADR-0543 残余 2。
 - chart への Loki の追加と前段の強制は #1867。

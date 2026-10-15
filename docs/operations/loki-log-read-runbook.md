@@ -9,7 +9,7 @@ updated: 2026-10-15
 <!-- trace:
 ids: [NFR-18]
 adrs: [ADR-0133, ADR-0112, ADR-0006]
-iadrs: [IADR-0541, IADR-0526, IADR-0210, IADR-0369]
+iadrs: [IADR-0543, IADR-0526, IADR-0210, IADR-0369]
 specs: [20261015_1935_loki-log-read-runbook, 20261009_1842_loki-tempo-front-auth]
 issues: [#1935, #1842, #1867]
 -->
