@@ -8,6 +8,7 @@ using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Llm;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 using RetrievalService.Common.Observability;
+using RetrievalService.Domain.Ports;
 using RetrievalService.Features.Search.Hybrid;
 using RetrievalService.Infrastructure.ExternalServices;
 using RetrievalService.Tests.Grpc;
@@ -84,40 +85,60 @@ public class RerankCompletionTransportTests
 
     // T-111 (実チャネル): ループバックの受け口が応答しないまま、呼び出し元が取り消すと `OperationCanceledException`。
     // 段を通すと、利用者の取り消しは取り消しのまま上がり、段の期限は `timeout` として元の順へ戻る（`transport` と数え違えない）。
+    //
+    // ［2026-10-15 / #1890］🔴 **取り消しの源を 1 つずつにし、実時間の競争に賭けない。** 直す前は利用者の取り消し
+    // （`CancelAfter(200 ms)`）と段の期限（1 秒）の 2 つの壁時計を競わせており、CI の停止（実行 3 秒＝通常より 1 秒超長い）で
+    // 段の期限が先に立つと、段は「利用者は取り消していない」と読んで `timeout` の縮退で**正常に返り**、
+    // 「`OperationCanceledException` が投げられなかった」で落ちた（59187ce3。手元で利用者側を 1.5 秒にすると同じ文言で再現する）。
+    // 今の形: 受け口が要求を受け取ったこと（`Arrived`）を待ってから試験が明示的に取り消す。利用者の取り消しを測る段は
+    // 期限を上限（30 秒）にして、期限が先に立つ余地を構造的に無くす。段の期限を測る回は、期限のほかに取り消しの源を持たない。
     [Fact]
     public async Task 実チャネルで取り消しと期限を区別する()
     {
-        await using var server = await LoopbackGrpcServer.StartAsync(new HangingCompletion(), Ct);
+        var gateway = new HangingCompletion();
+        await using var server = await LoopbackGrpcServer.StartAsync(gateway, Ct);
         var transport = new GrpcRerankCompletionClient(new Pb.LlmCompletion.LlmCompletionClient(server.Channel));
 
+        // (1) 輸送: 要求が受け口に届いて応答待ちになってから、呼び出し元が取り消す。
         using (var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct))
         {
-            cts.CancelAfter(TimeSpan.FromMilliseconds(200));
-            var act = () => transport.CompleteAsync(Body(), false, cts.Token);
+            var call = transport.CompleteAsync(Body(), false, cts.Token);
+            await gateway.WaitArrivalAsync(Ct);
+            await cts.CancelAsync();
+            var act = () => call;
             await act.Should().ThrowAsync<OperationCanceledException>();
         }
 
         using var meters = new TestMeterFactory();
         var degraded = new List<string>();
         using var listener = Listen(meters, degraded);
-        var reranker = new ClaudeSearchReranker(transport,
-            new SearchRerankOptions { Enabled = true, TimeoutSeconds = 1 }, new RerankMetrics(meters),
-            NullLogger<ClaudeSearchReranker>.Instance);
         var a = Hit("a"); var b = Hit("b");
 
-        var result = await reranker.RerankAsync(new SearchRequest("q", 10, null, null, SearchModes.Keyword),
+        // (2) 段の期限: 取り消しの源は段の期限（1 秒）だけである（呼び出し元の ct は試験の打ち切りだけ）。
+        var timed = Reranker(transport, meters, timeoutSeconds: 1);
+        var result = await timed.RerankAsync(new SearchRequest("q", 10, null, null, SearchModes.Keyword),
             SearchSorts.Relevance, [a, b], Ct);
+        await gateway.WaitArrivalAsync(Ct);
         result.Results.Should().Equal(a, b);
         result.Degraded.Should().BeTrue("#1871: 時間切れは応答の縮退の印（rerank-failed）へ写る");
         degraded.Should().Equal(RerankMetrics.Timeout);
 
+        // (3) 利用者の取り消し: 段の期限は上限にして先に立たせない。要求が届いてから利用者が取り消す。
+        var patient = Reranker(transport, meters, timeoutSeconds: SearchRerankOptions.MaxTimeoutSeconds);
         using var user = CancellationTokenSource.CreateLinkedTokenSource(Ct);
-        user.CancelAfter(TimeSpan.FromMilliseconds(200));
-        var cancelled = () => reranker.RerankAsync(new SearchRequest("q", 10, null, null, SearchModes.Keyword),
+        var search = patient.RerankAsync(new SearchRequest("q", 10, null, null, SearchModes.Keyword),
             SearchSorts.Relevance, [a, b], user.Token);
+        await gateway.WaitArrivalAsync(Ct);
+        await user.CancelAsync();
+        var cancelled = () => search;
         await cancelled.Should().ThrowAsync<OperationCanceledException>();
         degraded.Should().Equal([RerankMetrics.Timeout], "利用者の取り消しは縮退として数えない");
     }
+
+    private static ClaudeSearchReranker Reranker(
+        IRerankCompletionClient transport, TestMeterFactory meters, int timeoutSeconds) =>
+        new(transport, new SearchRerankOptions { Enabled = true, TimeoutSeconds = timeoutSeconds },
+            new RerankMetrics(meters), NullLogger<ClaudeSearchReranker>.Instance);
 
     // ───────────────────────── 検索サービスの受け口（gRPC） ─────────────────────────
 
@@ -191,10 +212,20 @@ public class RerankCompletionTransportTests
     }
 
     // 応答しないゲートウェイ（呼び出し元の取り消しまで待つ）。
+    // ［#1890］要求を受け取ったことを 1 件ずつ知らせる（試験は届いたのを見てから取り消す。時刻で見計らわない）。
     private sealed class HangingCompletion : Pb.LlmCompletion.LlmCompletionBase
     {
+        private readonly SemaphoreSlim _arrived = new(0);
+
+        public async Task WaitArrivalAsync(CancellationToken ct)
+        {
+            if (!await _arrived.WaitAsync(TimeSpan.FromSeconds(10), ct))
+                throw new TimeoutException("10 秒待っても要求が受け口に届かなかった");
+        }
+
         public override async Task<Pb.CompleteResponse> Complete(Pb.CompleteRequest request, ServerCallContext context)
         {
+            _arrived.Release();
             await Task.Delay(Timeout.Infinite, context.CancellationToken);
             return new Pb.CompleteResponse();
         }
