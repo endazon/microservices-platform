@@ -107,6 +107,15 @@ function receivesSecret(c, pod) {
   return asArray(c.volumeMounts).some((m) => secretVolumes.has(m.name));
 }
 
+/** Pod のラベル（Pod は metadata、CronJob は jobTemplate の template、他は template）。値は文字列にそろえる。 */
+function podLabelsOf(d) {
+  let raw;
+  if (d.kind === 'Pod') raw = d.metadata?.labels;
+  else if (d.kind === 'CronJob') raw = d.spec?.jobTemplate?.spec?.template?.metadata?.labels;
+  else raw = d.spec?.template?.metadata?.labels;
+  return Object.fromEntries(Object.entries(raw || {}).map(([k, v]) => [k, String(v)]));
+}
+
 /** コンテナの口が containerPort（数）か name（文字列）で port に当たるか。 */
 const portOf = (c, target) => asArray(c.ports).find((p) => String(p.containerPort) === String(target) || (p.name !== undefined && String(p.name) === String(target)));
 
@@ -162,7 +171,7 @@ function checkObservabilityFront(yamlText, label) {
     const all = [...asArray(pod.initContainers), ...containers];
     const productContainers = all.filter((c) => targetOf(c.image));
     if (productContainers.length === 0) continue;
-    const labels = Object.fromEntries(Object.entries(d.kind === 'Pod' ? d.metadata?.labels || {} : (d.kind === 'CronJob' ? d.spec?.jobTemplate?.spec?.template?.metadata?.labels : d.spec?.template?.metadata?.labels) || {}).map(([k, v]) => [k, String(v)]));
+    const labels = podLabelsOf(d);
     const ns = nsOf(d);
     const target = targetOf(productContainers[0].image);
     found.set(target.name, (found.get(target.name) || 0) + 1);
