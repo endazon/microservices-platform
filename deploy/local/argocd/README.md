@@ -9,9 +9,9 @@ ArgoCD 本体は大きな公式 install manifest を URL 適用するため、�
 ## ブートストラップ
 
 ```sh
-# 1) ArgoCD 本体（一度だけ・URL 適用・server-side apply）
+# 1) ArgoCD 本体（一度だけ・server-side apply。版のタグの install.yaml ＋ 内側のイメージの digest は deploy/argocd/install。IADR-0547）
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.4/manifests/install.yaml
+kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install
 
 # 2) MSP の Application/AppProject
 kubectl apply -f deploy/argocd/appproject.yaml
