@@ -35,11 +35,10 @@ public static class BffScopeResolver
     // 宛先が構成されていない配備では、クライアントは常に `UNAVAILABLE` を返し（`UnconfiguredGrpcDestination`）、
     // 認可サービスへ届かないのと同じ deny-by-default（null）へ落ちる。
     //
-    // `httpFactory` は REST 経路のための引数であり、いまは使わない。🔴 **署名は変えていない** —— 呼び出し元は BFF の
-    // 端点群（文書・検索・グラフ・Wiki・個人資料など）に散っており、引数を外すと本変更（輸送の退役）に無関係な差分が広がるため。
-    // 外すのは別の変更で行う（[[IADR-0533]] フォローアップ）。
+    // ［2026-10-15 / #1902・[[IADR-0533]] フォローアップ 4］REST 経路のための引数 `IHttpClientFactory` を外した
+    // （REST の撤去後は使っていなかった）。呼び出し元（BFF の文書・検索・個人資料の端点）を追随させた。
     public static async Task<BffAccessScope?> ResolveAsync(
-        IHttpClientFactory httpFactory, HttpContext http, string action, CancellationToken ct)
+        HttpContext http, string action, CancellationToken ct)
     {
         var userId = http.User.Identity?.Name ?? "anonymous";
         var userAttrs = ExtractUserAttributes(http);

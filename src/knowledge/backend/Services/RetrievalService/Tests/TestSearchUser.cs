@@ -15,10 +15,6 @@ internal static class TestSearchUser
     internal static readonly SearchUserContext Any =
         SearchUserContext.FromBody("test-user", new Dictionary<string, string>());
 
-    /// <summary>方式 A の転送（REST の近傍展開）が使う、転送可能な資格情報つきの利用者。</summary>
-    internal static SearchUserContext WithCredential(string? authorization, string userId = "test-user") =>
-        new(userId, new Dictionary<string, string>(), IsAuthenticated: true, ForwardableCredential: authorization);
-
     /// <summary>east-west gRPC の入口が作る形（転送できる資格情報は無い）。</summary>
     internal static SearchUserContext FromBody(
         string userId, params (string Key, string Value)[] attributes) =>
