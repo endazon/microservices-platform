@@ -293,7 +293,7 @@ services:
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
     # 面は**読み取り 4 口だけ**（`knowledge.document.v1.DocumentRead`）で、書き込み・本文・共有は
     # 出していない。呼び出し元は BFF の文書閲覧経路（`Services__DocumentServiceGrpc`）。
-    # ［2026-10-15 / #1905・IADR-0543］本文の読み取り（`GetDocumentContent`）を足した。BFF の SC-03 の本文は
+    # ［2026-10-15 / #1905・IADR-0544］本文の読み取り（`GetDocumentContent`）を足した。BFF の SC-03 の本文は
     # この面で受け取る —— 本文を読むのはこのサービス（上の objectStorage: true）であり、BFF へストレージを配線しない。
     # **readiness は 8080 の /health/ready のまま** —— 1 プロセスが両ポートを起動時に bind する。
     # ［2026-09-26 追記 / #1515］このポートは MCP のツール申告の面（`platform.mcp.v1.McpToolDeclarations`）も受ける。

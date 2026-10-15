@@ -9,7 +9,7 @@ using Pb = Knowledge.Contracts.Grpc.Document.V1;
 
 namespace Platform.Bff.Tests;
 
-// FR-06, UC-03, SC-03, ADR-0014, ADR-0029, [[IADR-0543]] (#1905): `GET /bff/documents/{id}/content` の応答の写しを固定する。
+// FR-06, UC-03, SC-03, ADR-0014, ADR-0029, [[IADR-0544]] (#1905): `GET /bff/documents/{id}/content` の応答の写しを固定する。
 //
 // 🔴 #1905 の本質: BFF が本文の代わりに案内文（`# 題名\n\nコンテンツは storage://… から取得します。`・381 バイト）を
 //   **200 で返していた**。利用者も監視も壊れていると気付けない。本文が返せないときは理由ごとの状態と問題詳細を返す。

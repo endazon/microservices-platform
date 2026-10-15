@@ -13,7 +13,7 @@ namespace DocumentService.Features.Documents;
 // FR-05, FR-06, UC-03, SC-03, SC-05, NFR-09, NFR-16, ADR-0002, ADR-0004, ADR-0029, ADR-0056,
 // ADR-0065, ADR-0070, ADR-0075, [[IADR-0012]], [[IADR-0041]], [[IADR-0045]], [[IADR-0379]],
 // [[IADR-0402]] (#1255), ADR-0119 決定 3 (#1614): 文書台帳の読み取り 4 口の **east-west gRPC 面**。
-// ［2026-10-15 / #1905・[[IADR-0543]]］本文の読み取り（`GetDocumentContent`。本体は `DocumentContentUseCase`）を足した。
+// ［2026-10-15 / #1905・[[IADR-0544]]］本文の読み取り（`GetDocumentContent`。本体は `DocumentContentUseCase`）を足した。
 //
 // 🔴 **本体は持たない。** 4 つとも `DocumentReadUseCase` を呼ぶだけであり、REST の 4 口と
 // **同じ関数**を通る（判定器を 2 つにしない。[[IADR-0397]] / [[IADR-0400]] と同じ形）。
@@ -125,7 +125,7 @@ public sealed class DocumentReadGrpcService(
             : new GetVersionResponse { Found = true, Snapshot = DocumentReadGrpcMapping.ToProto(snapshot) };
     }
 
-    // FR-06, UC-03, SC-03, ADR-0014, [[IADR-0543]] (#1905): 現行版の本文。判定は `GetDocument` と同じ関数を通る。
+    // FR-06, UC-03, SC-03, ADR-0014, [[IADR-0544]] (#1905): 現行版の本文。判定は `GetDocument` と同じ関数を通る。
     // 🔴 **「本文が無い」は応答の state、「引けなかった」は status**（IADR-0401 決定 5 と同じ作法）。
     //   ストレージが構成されていないのは構成の不調なので FAILED_PRECONDITION。一時障害（時間切れ・5xx・バケットが無い）は
     //   例外のまま上げる（grpc-dotnet が INTERNAL / UNKNOWN へ写す）。呼び出し元（BFF）はどちらも 502 へ写す。

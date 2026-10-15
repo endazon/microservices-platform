@@ -4,7 +4,7 @@ using Pb = Knowledge.Contracts.Grpc.Document.V1;
 
 namespace Knowledge.Bff.Endpoints.Documents;
 
-// FR-06, UC-03, SC-03, ADR-0014, [[IADR-0543]] (#1905): `GET /bff/documents/{id}/content` の応答の写し。
+// FR-06, UC-03, SC-03, ADR-0014, [[IADR-0544]] (#1905): `GET /bff/documents/{id}/content` の応答の写し。
 //
 // 🔴 **本文の代わりに案内文を 200 で返さない。** 本文が返せないときは、理由ごとに状態と問題詳細を返す。
 //   画面は状態で出し分け（404 は「本文が保管されていない」、413 は「大きすぎる」、502 は「取得できない」）、

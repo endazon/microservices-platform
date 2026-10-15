@@ -10,7 +10,7 @@ related_ids:
   - FR-12
   - ADR-0004
   - ADR-0014
-  - IADR-0543
+  - IADR-0544
 author: claude
 created: 2026-07-09
 updated: 2026-10-15
@@ -70,7 +70,7 @@ SC-03 は正規化文書（Markdown）本文とメタデータを ID 指定で 1
 - 悪い影響・トレードオフ: BFF がオブジェクトストレージへ依存する（読み取り専用）。単一 ID 取得は「スコープ解決→取得→照合」で 2 往復になる（許容）。
 - フォローアップ: SC-05（#131）で `/bff/documents` の書き込み側（作成・更新・メタ更新・公開・アーカイブ・削除）を追加する。
 
-［2026-10-15 追記 / #1905］**決定 3（本文の BFF での直接取得とプレースホルダへの縮退）は [IADR-0543](./IADR-0543_document-content-via-document-service-grpc.md) で改めた。**
+［2026-10-15 追記 / #1905］**決定 3（本文の BFF での直接取得とプレースホルダへの縮退）は [IADR-0544](./IADR-0544_document-content-via-document-service-grpc.md) で改めた。**
 本文は文書サービスが読み、BFF は east-west gRPC（`DocumentRead.GetDocumentContent`）で受け取る。プレースホルダへの縮退は撤去し、
 本文を返せないときは 404 / 413 / 502 を返す。BFF にストレージが配線されておらず（helm・compose）、本番で案内文が 200 で返っていたため。
 決定 1・2・4（BFF 側の ABAC・存在秘匿・共通化）は変えていない。

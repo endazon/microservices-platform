@@ -5,7 +5,7 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace DocumentService.Features.Documents.GetContent;
 
-// FR-06, UC-03, SC-03, ADR-0014, ADR-0029, [[IADR-0540]], [[IADR-0543]] (#1905): 現行版の本文（正規化 Markdown）の読み取り。
+// FR-06, UC-03, SC-03, ADR-0014, ADR-0029, [[IADR-0540]], [[IADR-0544]] (#1905): 現行版の本文（正規化 Markdown）の読み取り。
 //
 // 🔴 **本文を読むのは台帳の所有者（文書サービス）である。** BFF はオブジェクトストレージの資格情報を持たず、
 //   east-west gRPC（`DocumentRead.GetDocumentContent`）で本文を受け取る（ADR-0014「ABAC 判定を通したサービス経由」）。
@@ -29,7 +29,7 @@ public sealed class DocumentContentUseCase(
 {
     /// <summary>
     /// 本文の上限（UTF-8 のバイト数）。16 MiB。BFF の D-1 チャネルの受信上限（既定 64 MiB）より十分に小さく、
-    /// 本文の直接投入の上限（1 MB）より十分に大きい。根拠は [[IADR-0543]] 決定 4。
+    /// 本文の直接投入の上限（1 MB）より十分に大きい。根拠は [[IADR-0544]] 決定 4。
     /// </summary>
     public const long MaxBodyBytes = 16L * 1024 * 1024;
 

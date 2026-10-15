@@ -144,7 +144,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<DocumentContentDto>(TestContext.Current.CancellationToken);
-        // ［2026-10-15 / #1905・[[IADR-0543]]］本文は文書サービスから gRPC で受け取る（BFF はストレージを読まない）。
+        // ［2026-10-15 / #1905・[[IADR-0544]]］本文は文書サービスから gRPC で受け取る（BFF はストレージを読まない）。
         // 以前はストレージ未配備で案内文へ縮退していた（「タイトルを含む」で緑になっていた）。本文そのものを比べる。
         body!.Markdown.Should().Be(_factory.StubContentMarkdown);
         body.SourceUri.Should().Be("storage://bucket/expense.md");
@@ -246,7 +246,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         (await client.GetAsync(DetailPath, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         (await client.GetAsync($"{DetailPath}/versions", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         (await client.GetAsync($"{DetailPath}/versions/3", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
-        // ［2026-10-15 / #1905・[[IADR-0543]]］本文も同じ面で読む（利用者文脈を運ぶ。運ばないと所有者が自分の個人資料の本文を読めない）。
+        // ［2026-10-15 / #1905・[[IADR-0544]]］本文も同じ面で読む（利用者文脈を運ぶ。運ばないと所有者が自分の個人資料の本文を読めない）。
         (await client.GetAsync($"{DetailPath}/content", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
 
         _factory.GrpcUserContexts.Keys.Should().Contain(["ListDocuments", "GetDocument", "ListVersions", "GetVersion", "GetDocumentContent"]);

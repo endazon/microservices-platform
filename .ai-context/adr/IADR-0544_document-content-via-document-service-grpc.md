@@ -1,5 +1,5 @@
 ---
-title: IADR-0543 文書の本文（/bff/documents/{id}/content）は文書サービスが読み、BFF は east-west gRPC（DocumentRead.GetDocumentContent）で受け取る。BFF にストレージを配線せず、案内文の 200 への縮退を撤去して 404 / 413 / 502 を返す
+title: IADR-0544 文書の本文（/bff/documents/{id}/content）は文書サービスが読み、BFF は east-west gRPC（DocumentRead.GetDocumentContent）で受け取る。BFF にストレージを配線せず、案内文の 200 への縮退を撤去して 404 / 413 / 502 を返す
 type: impl-adr
 status: Accepted
 related_ids: [FR-06, UC-03, SC-03, NFR-09, NFR-16, ADR-0014, ADR-0029, ADR-0075, ADR-0089, ADR-0106, ADR-0119, IADR-0009, IADR-0038, IADR-0290, IADR-0379, IADR-0401, IADR-0402, IADR-0533, IADR-0537, IADR-0540]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20261015_1905_bff-document-content.md
 ---
 
-# IADR-0543: 文書の本文は文書サービスが読み、BFF は east-west gRPC で受け取る（#1905）
+# IADR-0544: 文書の本文は文書サービスが読み、BFF は east-west gRPC で受け取る（#1905）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -35,7 +35,7 @@ related_specs:
   [IADR-0533](./IADR-0533_east-west-rest-retirement.md)（REST の並走は作らない）・
   [IADR-0537](./IADR-0537_document-list-pagination-offset-window-after-abac.md)（D-1 チャネルの受信上限 64 MiB）・
   [IADR-0540](./IADR-0540_ingestion-body-missing-is-permanent.md) 決定 1（NoSuchKey の判定）。
-- 採番: `origin/develop` の最大は IADR-0540。開いている PR #1936 が 0541、#1937 が 0542 を採っている（push の直前に確かめた）。本件は **0543**。
+- 採番: `origin/develop` の最大は IADR-0540。開いている PR #1936 が 0541、#1937 が 0542、#1938 が 0543 を採っている（2026-10-15 にオーケストレーターの指示で 0543 から改番した）。本件は **0544**。
 
 ## コンテキストと課題
 

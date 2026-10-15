@@ -1998,7 +1998,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public int? DocumentReadServerPageSize { get; set; }
     public bool DocumentReadFailContinuation { get; set; }
 
-    // FR-06, SC-03, [[IADR-0543]] (#1905): 後段の `GetDocumentContent` の応答（本文の状態・本文・注入する失敗）。
+    // FR-06, SC-03, [[IADR-0544]] (#1905): 後段の `GetDocumentContent` の応答（本文の状態・本文・注入する失敗）。
     public DocPb.DocumentContentState StubContentState { get; set; } = DocPb.DocumentContentState.Available;
     public string StubContentMarkdown { get; set; } = "# 経費規程 2025\n\n第 1 条 本規程は経費の精算について定める。";
     public Exception? StubContentThrows { get; set; }
@@ -2139,7 +2139,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
                     }
                 case DocPb.GetDocumentContentRequest r:
                     {
-                        // FR-06, SC-03, [[IADR-0543]] (#1905): 本文の読み取り。在るかは詳細と同じスタブで決め、本文の状態は器の値で決める。
+                        // FR-06, SC-03, [[IADR-0544]] (#1905): 本文の読み取り。在るかは詳細と同じスタブで決め、本文の状態は器の値で決める。
                         Record(method, r.User);
                         if (owner.StubContentThrows is { } injected) throw injected;
                         var (status, doc) = await SendAsync<DocumentDto>(new HttpRequestMessage(HttpMethod.Get, $"/documents/{r.DocumentId}"), ct);

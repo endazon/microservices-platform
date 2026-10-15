@@ -59,7 +59,7 @@ public class StorageDocumentContentReader(
     // 汎用の `AmazonS3Exception` で返しても拾う）。🔴 **状態コード 404 だけでは判定しない** ——
     // バケットが無い（`NoSuchBucket`）も 404 であり、それは構成の不調（自己修復・再試行の対象）である。
     // メッセージ文字列では判定しない。
-    // ［2026-10-15 / #1905・[[IADR-0543]]］判定の本体は共有の `ObjectStorageErrors` へ移した（文書サービスの本文の読み取りと同じ判定）。
+    // ［2026-10-15 / #1905・[[IADR-0544]]］判定の本体は共有の `ObjectStorageErrors` へ移した（文書サービスの本文の読み取りと同じ判定）。
     internal static bool IsNoSuchKey(AmazonS3Exception ex) => ObjectStorageErrors.IsNoSuchKey(ex);
 
     internal const string NoSuchKeyErrorCode = ObjectStorageErrors.NoSuchKeyErrorCode;
