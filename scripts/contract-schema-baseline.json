@@ -1241,7 +1241,17 @@
             "type": "int",
             "required": false
           },
+          "StatusCounts": {
+            "source": "property",
+            "type": "Dictionary<string,int>",
+            "required": false
+          },
           "Total": {
+            "source": "property",
+            "type": "int",
+            "required": false
+          },
+          "UnfilteredTotal": {
             "source": "property",
             "type": "int",
             "required": false

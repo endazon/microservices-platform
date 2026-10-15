@@ -394,6 +394,7 @@
       "GrpcDocumentContentTests"
     ],
     "docs/tests/SC-05_document-management.md": [
+      "BffDocumentListFilterTests",
       "BffDocumentListPagingTests",
       "BffDocumentWriteEndpointTests",
       "DocumentEndpointVersioningTests",

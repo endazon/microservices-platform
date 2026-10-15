@@ -56,15 +56,19 @@ public class DocumentListPagingTests
     }
 
     // 印を辿って全ページを読む。各ページの件数も返す（境界の検査に使う）。
-    private static async Task<(List<Guid> Ids, List<int> PageSizes)> ReadAllAsync(
+    private static Task<(List<Guid> Ids, List<int> PageSizes)> ReadAllAsync(
         DocumentReadUseCase reads, DocumentReadPrincipal principal, int pageSize)
+        => ReadAllAsync(reads, principal, pageSize, DocumentListSortKey.UpdatedDesc);
+
+    private static async Task<(List<Guid> Ids, List<int> PageSizes)> ReadAllAsync(
+        DocumentReadUseCase reads, DocumentReadPrincipal principal, int pageSize, DocumentListSortKey sort)
     {
         var ids = new List<Guid>();
         var sizes = new List<int>();
         DocumentListCursor? after = null;
         for (var guard = 0; guard < 100; guard++)
         {
-            var (page, next) = await reads.ListPageAsync(principal, pageSize, after, Ct);
+            var (page, next) = await reads.ListPageAsync(principal, sort, pageSize, after, Ct);
             ids.AddRange(page.Select(d => d.Id));
             sizes.Add(page.Count);
             if (next is null) return (ids, sizes);
@@ -210,6 +214,134 @@ public class DocumentListPagingTests
 
         DocumentListCursor.TryDecode(cursor.Encode(), out var decoded).Should().BeTrue();
         decoded.Should().Be(cursor);
+    }
+
+    // ── 並べ替え（[[IADR-0545]] / #1923 段 2） ─────────────────────────────
+
+    // 表題・作成日時・更新日時に同値を混ぜた台帳。キーの同値は ID で並ぶ（キーと同じ向き）。
+    private static async Task<List<Document>> SeedSortableAsync(DocumentDbContext db)
+    {
+        var docs = new List<Document>();
+        (string Title, int Created, int Updated)[] rows =
+        [
+            ("b", 3, 1), ("a", 1, 4), ("b", 2, 2), ("c:コロン", 2, 2), ("a", 4, 3), ("決算", 1, 5), ("b", 5, 1),
+        ];
+        for (var i = 0; i < rows.Length; i++)
+        {
+            var (title, created, updated) = rows[i];
+            var doc = await SeedAsync(db, title, T0.AddMinutes(updated), id: Guid.Parse($"00000000-0000-0000-0000-00000000000{i + 1}"));
+            var tracked = await db.Documents.SingleAsync(d => d.Id == doc.Id, Ct);
+            db.Entry(tracked).Property(d => d.CreatedAt).CurrentValue = T0.AddMinutes(created);
+            await db.SaveChangesAsync(Ct);
+            db.ChangeTracker.Clear();
+            docs.Add(await db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id, Ct));
+        }
+        return docs;
+    }
+
+    private static List<Guid> Expected(IEnumerable<Document> docs, DocumentListSortKey sort) => (sort switch
+    {
+        DocumentListSortKey.UpdatedAsc => docs.OrderBy(d => d.UpdatedAt).ThenBy(d => d.Id),
+        DocumentListSortKey.CreatedDesc => docs.OrderByDescending(d => d.CreatedAt).ThenByDescending(d => d.Id),
+        DocumentListSortKey.CreatedAsc => docs.OrderBy(d => d.CreatedAt).ThenBy(d => d.Id),
+        DocumentListSortKey.TitleAsc => docs.OrderBy(d => d.Title).ThenBy(d => d.Id),
+        DocumentListSortKey.TitleDesc => docs.OrderByDescending(d => d.Title).ThenByDescending(d => d.Id),
+        _ => docs.OrderByDescending(d => d.UpdatedAt).ThenByDescending(d => d.Id),
+    }).Select(d => d.Id).ToList();
+
+    // 6 通りの並べ替えで、印を 2 件ずつ辿った結果がキー（同値は ID）の全順序と一致し、重複も抜けも無い。
+    // 境界は同値の群（表題 b が 3 件・作成日時 2 が 2 件・更新日時 1 が 2 件）の間に落ちる。
+    [Theory]
+    [InlineData(nameof(DocumentListSortKey.UpdatedDesc))]
+    [InlineData(nameof(DocumentListSortKey.UpdatedAsc))]
+    [InlineData(nameof(DocumentListSortKey.CreatedDesc))]
+    [InlineData(nameof(DocumentListSortKey.CreatedAsc))]
+    [InlineData(nameof(DocumentListSortKey.TitleAsc))]
+    [InlineData(nameof(DocumentListSortKey.TitleDesc))]
+    public async Task 並べ替えごとに印を辿るとキーとIDの全順序で1回ずつ返る(string sortName)
+    {
+        var sort = Enum.Parse<DocumentListSortKey>(sortName);
+        await using var db = NewLedger();
+        var docs = await SeedSortableAsync(db);
+
+        var (ids, sizes) = await ReadAllAsync(Reads(db), Machine, pageSize: 2, sort);
+
+        ids.Should().Equal(Expected(docs, sort));
+        sizes.Should().Equal(2, 2, 2, 1);
+    }
+
+    // 並べ替えを変えても、読めない文書はページにも印にも出ない（印は返した最後の文書の表題と ID だけを持つ）。
+    [Fact]
+    public async Task 表題の並べ替えでも読めない文書はページにも印にも出ない()
+    {
+        await using var db = NewLedger();
+        var a = await SeedAsync(db, "a", T0);
+        var hidden = await SeedAsync(db, "b-秘", T0, PrivateNote("alice"));
+        var c = await SeedAsync(db, "c", T0);
+
+        var (page, next) = await Reads(db).ListPageAsync(Machine, DocumentListSortKey.TitleAsc, 1, null, Ct);
+
+        page.Select(d => d.Id).Should().Equal(a.Id);
+        DocumentListCursor.TryDecode(next, out var cursor).Should().BeTrue();
+        (cursor.Sort, cursor.Title, cursor.Id).Should().Be((DocumentListSortKey.TitleAsc, "a", a.Id));
+        var (all, _) = await ReadAllAsync(Reads(db), Machine, pageSize: 1, DocumentListSortKey.TitleAsc);
+        all.Should().Equal(a.Id, c.Id).And.NotContain(hidden.Id);
+    }
+
+    // 🔴 印の並べ替えと要求の並べ替えが違えば読まない（黙って別の位置から読まない）。
+    [Fact]
+    public async Task 印の並べ替えと要求の並べ替えが違えば例外()
+    {
+        await using var db = NewLedger();
+        var cursor = new DocumentListCursor(DocumentListSortKey.TitleAsc, 0, "a", Guid.NewGuid());
+
+        var act = async () => await Reads(db).ListPageAsync(Machine, DocumentListSortKey.UpdatedDesc, 2, cursor, Ct);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    // 並べ替えごとの印は往復で値が変わらない。表題は `:` や日本語を含んでも崩れない。既定の並びは従前の `u1` の札で書く。
+    [Theory]
+    [InlineData(nameof(DocumentListSortKey.UpdatedAsc), null)]
+    [InlineData(nameof(DocumentListSortKey.CreatedDesc), null)]
+    [InlineData(nameof(DocumentListSortKey.CreatedAsc), null)]
+    [InlineData(nameof(DocumentListSortKey.TitleAsc), "決算:短信 a:b")]
+    [InlineData(nameof(DocumentListSortKey.TitleDesc), "")]
+    public void 並べ替えごとの印は往復で値が変わらない(string sortName, string? title)
+    {
+        var sort = Enum.Parse<DocumentListSortKey>(sortName);
+        var isTitle = sort is DocumentListSortKey.TitleAsc or DocumentListSortKey.TitleDesc;
+        var cursor = new DocumentListCursor(sort, isTitle ? 0 : T0.UtcTicks, isTitle ? title : null, Guid.NewGuid());
+
+        DocumentListCursor.TryDecode(cursor.Encode(), out var decoded).Should().BeTrue();
+        decoded.Should().Be(cursor);
+        Encoding.UTF8.GetString(Base64Url.DecodeFromChars(cursor.Encode())).Should().StartWith("s1:");
+        Encoding.UTF8.GetString(Base64Url.DecodeFromChars(new DocumentListCursor(T0.UtcTicks, Guid.NewGuid()).Encode()))
+            .Should().StartWith("u1:", "既定の並びの印は従前の形（配備の途中の新旧が読める）");
+    }
+
+    [Theory]
+    [InlineData("s1:zz:0:00000000000000000000000000000001")]   // キーが不明
+    [InlineData("s1:ud:0:00000000000000000000000000000001")]   // 既定の並びは u1 で書く（s1 には無い）
+    [InlineData("s1:ta:!!:00000000000000000000000000000001")]  // 表題が base64url でない
+    [InlineData("s1:ta:_w:00000000000000000000000000000001")]  // 表題が UTF-8 として壊れている（0xFF）
+    [InlineData("s1:cd:abc:00000000000000000000000000000001")] // 時刻が数でない
+    [InlineData("s1:cd:0:not-a-guid")]                         // ID が壊れた
+    [InlineData("s1:cd:0")]                                    // 項目が足りない
+    public void 壊れた並べ替えの印は読めない(string raw)
+    {
+        DocumentListCursor.TryDecode(Base64Url.EncodeToString(Encoding.UTF8.GetBytes(raw)), out _).Should().BeFalse();
+    }
+
+    // 線上の enum の写像。未定義の値は既定へ畳まず INVALID_ARGUMENT。
+    [Fact]
+    public void 未定義の並べ替えは要求の誤りである()
+    {
+        DocumentReadGrpcService.SortOf(Knowledge.Contracts.Grpc.Document.V1.DocumentListSort.Unspecified)
+            .Should().Be(DocumentListSortKey.UpdatedDesc);
+        var act = () => DocumentReadGrpcService.SortOf((Knowledge.Contracts.Grpc.Document.V1.DocumentListSort)99);
+
+        act.Should().Throw<RpcException>().Which.StatusCode.Should().Be(StatusCode.InvalidArgument);
     }
 
     // ── ページの大きさの丸め ──────────────────────────────────────
