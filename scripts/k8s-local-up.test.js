@@ -478,6 +478,12 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'HEADLAMP_OIDC_CLIENT_ID',
     'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
     'ARGOCD_VERSION', // #1843: Argo CD の版の上書き。漏れていると既定の版の検査が別の値で走る
+    // #1858 / IADR-0547: 版の env は固定と同じ値しか受けない。漏れていると起動前に止まり、全ての試験が別の形で走る
+    'ISTIO_VERSION',
+    'ESO_CHART_VERSION',
+    'RELOADER_CHART_VERSION',
+    'RELOADER_IMAGE_TAG',
+    'CERT_MANAGER_VERSION',
     'RESET_FLOOR', // #1500: 床の経路を外す比較用の口（#1543: 本番の退路ではない）。漏れていると冒頭の検査・警告が既定と違う形で走る
     'BACKUP_AGE_RECIPIENTS_FILE', // #1560: バックアップの受取人。漏れていると既定で ConfigMap を作り直す
     'ISTIO', // #1710: メッシュの門。漏れていると既定のバイト等価が崩れる
@@ -1402,7 +1408,12 @@ ok('#953 第2次: admin の port ずれ・ports.admin の消失も捕まえる',
 // k3d 同梱の版に浮いていた）。未設定でも `--image rancher/k3s:vX.Y.Z-k3sN` が付くこと、空を与えても浮かないことを固定する。
 ok('#1843: k3s の既定のイメージは版で固定されている（rancher/k3s:vX.Y.Z-k3sN。latest や空にしない）', () => {
   assert.ok(K3S_DEFAULT_IMAGE, 'k8s-local-up.sh に K3S_IMAGE="${K3S_IMAGE:-<既定>}" の行が無い（既定で固定していない）');
-  assert.match(K3S_DEFAULT_IMAGE, /^rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+$/, `既定が版で固定されていない: ${K3S_DEFAULT_IMAGE}`);
+  // #1858 / IADR-0547: 版のタグに index の digest を続ける（同じタグの中身の差し替えを入れない。ADR-0107 決定 3）。
+  assert.match(
+    K3S_DEFAULT_IMAGE,
+    /^rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+@sha256:[0-9a-f]{64}$/,
+    `既定が版と digest で固定されていない: ${K3S_DEFAULT_IMAGE}`,
+  );
 });
 
 ok('#1843: K3S_IMAGE 未設定でも cluster create に --image <既定の版> が付く', () => {
@@ -1674,7 +1685,7 @@ ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待
   const { lines } = runUp({ LOCALEDGE: '1' });
   const idx = (needle) => lines.findIndex((l) => l.includes(needle));
 
-  const install = idx('cert-manager/releases/download/');
+  const install = idx('-k deploy/local/edge/cert-manager');
   const waitCrd = idx('condition=Established');
   const applyTls = idx('apply -k deploy/local/edge/tls');
   const waitCert = idx('certificate/edge-tls');
@@ -1692,15 +1703,17 @@ ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待
 
   // 大 CRD の annotation 262144B 上限を避ける（IADR-0088 が ArgoCD で是正した先例）。
   assert.ok(
-    lines.some((l) => l.includes('cert-manager/releases/download/') && l.includes('--server-side')),
+    lines.some((l) => l.includes('-k deploy/local/edge/cert-manager') && l.includes('--server-side')),
     'cert-manager の apply が --server-side でない（大 CRD で 262144B 上限に当たる）',
   );
 
-  // バージョンは固定する（IADR-0088: 浮動タグを使わない）。
+  // バージョンは固定する（IADR-0088: 浮動タグを使わない）。#1858 / IADR-0547: 版の URL と内側のイメージの digest は
+  // kustomization が持つ（版の形・digest・版と tag の一致は scripts.repo.test.js と check-image-digests.js が見る）。
   assert.ok(
-    lines.some((l) => /cert-manager\/releases\/download\/v\d+\.\d+\.\d+\//.test(l)),
-    'cert-manager のバージョンが固定されていない',
+    lines.some((l) => l === 'kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager'),
+    'cert-manager を kustomization（版の URL ＋ digest の固定）から入れていない',
   );
+  assert.ok(!lines.some((l) => l.includes('cert-manager/releases/download/')), 'cert-manager の URL を直接 apply した（digest の固定を経ない）');
 });
 
 // IADR-0206 (#779): apiserver には触らない。IADR-0105 の除去を維持することが本子の受け入れ基準である
@@ -1853,7 +1866,9 @@ ok('ESO=1 (#1477): ai-stock-trading ns を作ってから BFF の RBAC と Reloa
   assert.ok(reloaderAt > nsAt, 'Reloader が入らない、または名前空間の作成より前にある');
   const reloader = res.lines[reloaderAt];
   assert.ok(/--version 2\.2\.17(\s|$)/.test(reloader), `Reloader の chart の版を pin していない: ${reloader}`);
-  assert.ok(/image\.tag=v1\.4\.22(\s|$)/.test(reloader), `Reloader の image を pin していない: ${reloader}`);
+  // #1858 / IADR-0547: image は values（tag@digest）が持つ。tag だけの --set image.tag は固定を外すので使わない。
+  assert.ok(reloader.includes('-f deploy/local/reloader/values.yaml'), `Reloader の image を values（tag@digest）で固定していない: ${reloader}`);
+  assert.ok(!/image\.tag=/.test(reloader), `Reloader の image を tag だけで上書きしている: ${reloader}`);
   assert.ok(reloader.includes('reloader.watchGlobally=false'), `Reloader がクラスタ全体を見る: ${reloader}`);
   assert.ok(
     reloader.includes('reloader.namespaces={microservices-platform,platform-infra,ai-stock-trading}'),
@@ -2227,7 +2242,8 @@ ok('ARGOCD=1: argocd namespace と application manifest を apply', () => {
 // 適用されなければならない。一方、小さい Application/AppProject は変更最小の原則で
 // client-side のまま（--server-side が波及していないことも固定＝回帰ガード）。
 // #1843 / IADR-0519: URL は版のタグ（`stable` ブランチを直接 apply しない。計画 ADR-0135 決定 2）。
-const ARGOCD_INSTALL_RE = /argo-cd\/([^/\s"']+)\/manifests\/install\.yaml/;
+// #1858 / IADR-0547: URL と内側のイメージの digest は kustomization（deploy/argocd/install）が持ち、起動器は -k で当てる。
+const ARGOCD_INSTALL_RE = /-k deploy\/argocd\/install(\s|$)/;
 ok('ARGOCD=1: install は server-side・Application/AppProject は client-side（--server-side 非波及）', () => {
   const res = runUp({ ARGOCD: '1' });
   const installLine = res.lines.find((l) => ARGOCD_INSTALL_RE.test(l) && l.includes('kubectl apply'));
@@ -2240,18 +2256,37 @@ ok('ARGOCD=1: install は server-side・Application/AppProject は client-side�
   assert.ok(!appLine.includes('--server-side'), `Application/AppProject に --server-side が波及した: ${appLine}`);
 });
 
-ok('#1843: ARGOCD=1 の install は版のタグの URL（stable ブランチを apply しない）', () => {
+ok('#1843・#1858: ARGOCD=1 の install は kustomization（版のタグの URL ＋ digest）を -n argocd で当てる（URL を直接 apply しない）', () => {
   const res = runUp({ ARGOCD: '1' });
   const installs = res.lines.filter((l) => ARGOCD_INSTALL_RE.test(l) && l.includes('kubectl apply'));
   assert.strictEqual(installs.length, 1, `install の apply 行が 1 本でない:\n${installs.join('\n')}`);
-  const ref = ARGOCD_INSTALL_RE.exec(installs[0])[1];
-  assert.match(ref, /^v\d+\.\d+\.\d+$/, `Argo CD の URL が版のタグでない（${ref}）: ${installs[0]}`);
+  assert.strictEqual(installs[0], 'kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install');
+  assert.ok(!anyLineHas(res.lines, 'manifests/install.yaml'), 'install.yaml の URL を直接 apply した（digest の固定を経ない）');
 });
 
-ok('#1843: ARGOCD_VERSION の上書きは URL に効く', () => {
-  const res = runUp({ ARGOCD: '1', ARGOCD_VERSION: 'v3.4.9' });
-  assert.ok(anyLineHas(res.lines, 'argo-cd/v3.4.9/manifests/install.yaml'), '上書きした版の URL で apply していない');
+// #1858 / IADR-0547: 版は内側のイメージの digest と対で決まる。固定と同じ値は受け、違う値は何もせずに止まる。
+ok('#1858: ARGOCD_VERSION を固定と同じ値で与えても通常どおり進む', () => {
+  const res = runUp({ ARGOCD: '1', ARGOCD_VERSION: 'v3.5.4' });
+  assert.strictEqual(res.status, 0, `固定と同じ値で止まった: ${res.stderr}`);
+  assert.ok(res.lines.some((l) => ARGOCD_INSTALL_RE.test(l)), 'install を apply していない');
 });
+
+for (const [name, value] of [
+  ['ARGOCD_VERSION', 'v3.4.9'],
+  ['ISTIO_VERSION', '1.31.0'],
+  ['ESO_CHART_VERSION', '2.9.0'],
+  ['RELOADER_CHART_VERSION', '2.2.18'],
+  ['CERT_MANAGER_VERSION', 'v1.21.2'],
+  ['RELOADER_IMAGE_TAG', 'v1.4.23'],
+]) {
+  ok(`#1858: ${name} を固定と違う値（${value}）で与えると、何もせずに非 0 で止まる（版だけ変えると digest と食い違う）`, () => {
+    const res = runUp({ ARGOCD: '1', ISTIO: '1', VAULT: '1', ESO: '1', LOCALEDGE: '1', [name]: value });
+    assert.notStrictEqual(res.status, 0, `${name}=${value} で正常終了した（固定した digest と違う版が入る）`);
+    assert.ok(res.stderr.includes(name), `stderr に ${name} の案内が無い: ${res.stderr}`);
+    assert.ok(/IADR-0547/.test(res.stderr), 'stderr に根拠（IADR-0547）の案内が無い');
+    assert.ok(!anyLineHas(res.lines, 'k3d cluster create'), '拒否の前にクラスタを作った（判定は副作用より前）');
+  });
+}
 
 ok('#1843: ARGOCD_VERSION にブランチ名（stable）を与えると、何もせずに非 0 で止まる', () => {
   const res = runUp({ ARGOCD: '1', ARGOCD_VERSION: 'stable' });
@@ -2361,12 +2396,12 @@ ok('up-script: ESO chart 版が pin されている（helm install に --version
   assert.ok(idx >= 0, 'ESO の helm upgrade --install 行が見つからない');
   const block = text.slice(idx, idx + 240); // 継続行を含む同一コマンドの範囲
   assert.ok(/--version\s/.test(block), 'ESO の helm install に --version（版 pin）が無い＝latest 追従');
-  // 既定 pin（固定版）が存在すること（ESO_CHART_VERSION の既定値 or 直書きの固定版）。
+  // 既定 pin（固定版）が存在すること。#1858 / IADR-0547: 版は冒頭の pin_version が決め、内側のイメージは values が持つ。
   assert.ok(
-    /ESO_CHART_VERSION="\$\{ESO_CHART_VERSION:-\d+\.\d+\.\d+\}"/.test(text) ||
-      /--version\s+"?\d+\.\d+\.\d+/.test(block),
-    'ESO chart の固定版（ESO_CHART_VERSION 既定 or 直書き）が無い',
+    /^pin_version ESO_CHART_VERSION \d+\.\d+\.\d+ /m.test(text) || /--version\s+"?\d+\.\d+\.\d+/.test(block),
+    'ESO chart の固定版（pin_version ESO_CHART_VERSION or 直書き）が無い',
   );
+  assert.ok(block.includes('-f deploy/local/vault/eso/external-secrets-values.yaml'), 'ESO の内側のイメージを values（tag@digest）で固定していない');
 });
 
 // IADR-0103 (#354): ARGOCD=1 は argocd ns へ keycloak の ExternalName エイリアスを apply する。

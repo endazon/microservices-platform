@@ -35,7 +35,11 @@ case "$RESET_FLOOR" in
 esac
 
 MSP_NS="${MSP_NS:-microservices-platform}"
-ISTIO_VERSION="${ISTIO_VERSION:-1.30.4}"
+# NFR, IADR-0547 (#1858): 版は istiod の values の内側のイメージ（proxyv2 の tag@digest。gateway は注入で入る）と対で決まる。
+#   k8s-local-up.sh と同じ版でなければならない（scripts/scripts.repo.test.js が突き合わせる）。違う値の env は受けない。
+# shellcheck source=scripts/lib/pin-version.sh
+. "$(dirname "$0")/lib/pin-version.sh" || exit 3
+pin_version ISTIO_VERSION 1.30.4 deploy/istio/istiod-values-local.yaml
 cd "$(dirname "$0")/.."
 # #1159 / IADR-0377: mTLS モードを書く唯一の口（helm を通す）。
 # shellcheck source=scripts/lib/mesh-mtls-mode.sh

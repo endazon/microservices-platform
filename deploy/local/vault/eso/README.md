@@ -50,7 +50,9 @@ VAULT=1 ESO=1 bash scripts/k8s-local-up.sh --live
 microservices-platform / platform-infra / ai-stock-trading だけを見る）を `reloader` 名前空間へ入れる。
 BFF は書き込み成功後に同期先の ExternalSecret へ `force-sync` を付け、Reloader は注釈 `secret.reloader.stakater.com/reload` を持つ
 消費側（llmgateway-service・wiki-service は `values-local.yaml`、mail-relay は `deploy/mail-relay/mail-relay.yaml`）を作り直す。
-上書きは `RELOADER_CHART_VERSION` / `RELOADER_IMAGE_TAG`。
+［2026-10-15 / #1858］chart の版は起動器が固定し、image は [`deploy/local/reloader/values.yaml`](../../reloader/values.yaml)（ESO は
+[`external-secrets-values.yaml`](external-secrets-values.yaml)）が `tag@sha256:…` で持つ。版の env（`RELOADER_CHART_VERSION`・`ESO_CHART_VERSION`）は
+固定と同じ値しか受けず、`RELOADER_IMAGE_TAG` は廃止した（版だけを変えると固定した digest と食い違うため）。
 
 ［2026-10-03 / #1728 / IADR-0494］`bootstrap.sh` も、**その実行で Vault に書いた KV**（無いときの作成・在る KV へのキーの追加・
 env が空でないときの差し替え・値の違う構成値）を覚え、最後にそれを読む ExternalSecret（ストア `vault-backend`、`data[].remoteRef.key` か

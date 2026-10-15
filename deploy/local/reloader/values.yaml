@@ -1,0 +1,10 @@
+# NFR, 計画 ADR-0135 決定 2 / ADR-0107 決定 3, ADR-0110, IADR-0547 (#1858): Stakater Reloader の chart の values。
+#
+# chart の内側のイメージを digest で固定する（chart 2.2.17 の既定と同じ v1.4.22）。
+#   chart の `image.digest` は `<repository>@<digest>` で描き tag を落とすので使わず、tag に `@sha256:<index digest>` を
+#   続けて `tag@digest` の形で描かせる（本リポジトリの表記。IADR-0514 決定 1）。
+#   見る名前空間（watchGlobally・namespaces）は名前空間の名前を変数で持つ起動器（k8s-local-up.sh）の --set に残す。
+# 🔴 chart の版（k8s-local-up.sh の RELOADER_CHART_VERSION）を上げるときは、tag と digest を対で改める。
+image:
+  repository: ghcr.io/stakater/reloader
+  tag: v1.4.22@sha256:def2480040adc164b3a57340e77674eadfd88fb7f0593df25e93297f29c7fd7c
