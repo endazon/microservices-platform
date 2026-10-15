@@ -121,6 +121,12 @@ issue: "#1923"
 - `src/` で `pnpm run lint` / `typecheck` / `test` / `format:check`、`pnpm run codegen` / `pnpm run i18n` の再生成差分なし
 - `check-proto-contracts`・`check-i18n-catalogs`・`check-openapi-dto-drift`・`check-trace-blocks`・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`
 
+## 監査の指摘への対応（2026-10-15 追記）
+
+- 表題の検索で 0 件にした後、空の表示の「条件を解除」で解除しても、帯が入力中の語を持ったまま 300 ms 後に引き直していた → 確定した検索語が外から変わったら入力欄を合わせる（帯が自分で確定させた値は除く）。画面の試験を追加。
+- 昇順の並べ替えで走査の途中に更新された文書が末尾で再び返り、件数が +1・行が重複していた → BFF の Collector で ID の重複を除く。BFF の試験を追加。IADR-0537 に追記、IADR-0545 を追随。
+- 文書の `updated:` と trace ブロック（IADR-0545・本仕様書）を追随。表題の照合順序を IADR-0545 の残余に記した。
+
 ## 残余
 
 - 1 要求ごとに台帳を 1 周する費用（IADR-0537）は変わらない。表題の検索を打つたびに 1 周する（入力の 300 ms 待ちと 30 秒の `staleTime` で抑える）。

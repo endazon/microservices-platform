@@ -174,6 +174,24 @@ public class BffDocumentListFilterTests : IClassFixture<BffTestFactory>
         withHidden.Items.Should().NotContain(d => d.Attributes["confidentiality"] == "confidential");
     }
 
+    // 🔴 1 周の途中で更新された文書は、後段の次のページで（キーが動いた先で）もう一度返り得る（昇順の更新日時なら末尾。監査の再現）。
+    // 同じ ID は最初に見た位置だけを数え、窓にも 2 度並べない。陽性対照: 後段は実際に同じ文書を 2 度返している。
+    [Fact]
+    public async Task 走査の途中で更新されて後段が同じ文書を再び返しても二重に数えない()
+    {
+        var moved = Doc(1, "Alpha 決算短信", "published");
+        _factory.StubDocumentList = [moved, Doc(3, "beta 開示", "draft"), Doc(5, "ALPHA メモ", "draft"),
+            moved with { UpdatedAt = DateTimeOffset.UnixEpoch.AddDays(1) }];
+        _factory.DocumentReadServerPageSize = 2;
+
+        var page = await PageAsync("?sort=updated-asc&limit=10");
+
+        _factory.ListDocumentsRequests.Should().HaveCount(2, "陽性対照: 後段のページを 2 枚辿り、2 枚目に同じ文書が居る");
+        Numbers(page).Should().Equal(1, 3, 5);
+        (page.Total, page.UnfilteredTotal).Should().Be((3, 3));
+        page.StatusCounts.Should().BeEquivalentTo(new Dictionary<string, int> { ["published"] = 1, ["draft"] = 2 });
+    }
+
     // ── 検証 ─────────────────────────────────────────────────
 
     [Theory]

@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Button, Input, Label, Select } from '@platform/ui';
 import { i18n } from '@foundation/i18n';
@@ -47,11 +47,25 @@ export function DocumentListToolbar({
   const statusId = useId();
   const sortId = useId();
   const [draft, setDraft] = useState(q);
+  // 帯が自分で確定させた検索語（直近に `onQueryChange` へ渡した値）。
+  const emitted = useRef(q);
+
+  // 🔴 確定した検索語が**外から**変わったら（空の表示の「条件を解除」など）、入力欄をそれに合わせる。
+  //   合わせないと入力欄に古い語が残り、300 ms 後にその語で絞り込みが戻ってしまう。
+  //   帯が自分で確定させた値（`emitted`）が戻ってきただけのときは合わせない —— 打鍵の途中の入力を上書きしないため。
+  useEffect(() => {
+    if (q === emitted.current) return;
+    emitted.current = q;
+    setDraft(q);
+  }, [q]);
 
   // 入力が止まってから引く。確定した値と同じなら何もしない（解除で '' に戻したときに二度引かない）。
   useEffect(() => {
     if (draft.trim() === q.trim()) return;
-    const timer = setTimeout(() => onQueryChange(draft), TITLE_QUERY_DEBOUNCE_MS);
+    const timer = setTimeout(() => {
+      emitted.current = draft;
+      onQueryChange(draft);
+    }, TITLE_QUERY_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [draft, q, onQueryChange]);
 

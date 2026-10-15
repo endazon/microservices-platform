@@ -190,6 +190,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | F3 | 状態 | 選択肢に状態別の件数を添え、選ぶと `status` を送る。「条件を解除」で条件を外して先頭から引く | `filters by status with per-status counts and clears the filters` |
 | F4 | 空の区別 | 絞り込みの結果だけが 0 件なら「条件に一致する文書はありません。」（「文書はまだありません。」を出さない） | `distinguishes "no match" from "no documents yet"` |
 | F5 | 列 | 本文の状態（本文あり／本文なし（原本を参照）／本文未設定）と更新日時。長い表題は省略し、全文は `title` とリンクの名前に残す | `shows the body state and the update time, and keeps the full title on hover` |
+| F7 | **解除で入力欄も戻す** | 表題の検索で 0 件にした後、空の表示の「条件を解除」で入力欄が空になり、待ち時間の後も古い語で引き直さない | `clearing from the empty result also clears the title input and does not re-apply the query` |
 | F6 | 本文の状態の導出 | `hasBody=false` は「本文なし」、参照が無ければ「本文未設定」 | `documentBodyState`（3 ケース） |
 
 ### BFF（xUnit）
@@ -202,6 +203,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | G2 | 表題の部分一致 | 大文字小文字を区別しない。窓と `total` は一致した文書だけ、`unfilteredTotal` は絞る前の数。前後の空白は除く | `表題の部分一致は大文字小文字を区別せず窓と総件数を絞る` ／ `表題の検索語は前後の空白を除く` |
 | G3 | 状態・状態別の件数 | `status` で絞る。`statusCounts` は絞り込みに依らない | `状態で絞り状態別の件数は絞り込みに依らない` ／ `絞り込みの窓は絞った後の順番で切る` |
 | G4 | **存在秘匿** | 絞り込み・並べ替えを付けても、権限外の文書を混ぜた台帳と混ぜない台帳で応答が一致する（陽性対照: 区分を広げれば権限外も一致して数える） | `権限外の文書は絞り込みの件数にも状態別の件数にも現れない` |
+| G6 | **重複を数えない** | 走査の途中で更新された文書を後段が次のページで再び返しても（昇順）、件数にも窓にも 1 度だけ | `走査の途中で更新されて後段が同じ文書を再び返しても二重に数えない` |
 | G5 | 検証 | 未知の `sort` / `status`（大文字違いを含む）は 400 で、後段を呼ばない。`q` は 200 文字まで | `未知の並べ替えと状態は400` ／ `表題の検索語は200文字まで` |
 
 ### 後段（DocumentService・xUnit）

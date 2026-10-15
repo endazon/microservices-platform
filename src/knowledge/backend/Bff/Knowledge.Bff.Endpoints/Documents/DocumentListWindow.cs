@@ -10,7 +10,9 @@ namespace Knowledge.Bff.Endpoints.Documents;
 //
 // 🔴 **窓も総件数も「絞った後の並び」で数える。** `visible` が偽の文書は窓の位置を 1 つも進めず、総件数にも入らない ——
 //   権限外の文書の有無で、ページの中身・境界・総件数が 1 ビットも変わらない（IADR-0009 の存在秘匿）。
-// 🔴 **窓の外の文書は保持しない**（数えるだけ）。保持するのは窓の中の `limit` 件だけである。
+// 🔴 **窓の外の文書の中身は保持しない**（数えるだけ）。中身を保持するのは窓の中の `limit` 件だけである。
+//   ［2026-10-15 / [[IADR-0545]]］ただし**見た文書の ID の集合**は 1 周の間だけ持つ（重複を除くため。下の Collector の注記。
+//   約 4.5 万件で数 MB）。
 public readonly record struct DocumentListWindow(int Offset, int Limit)
 {
     /// <summary>画面のページの大きさの既定（画面の既定の選択肢 50 と同じ）。</summary>
@@ -40,6 +42,7 @@ public readonly record struct DocumentListWindow(int Offset, int Limit)
     {
         private readonly List<DocumentDto> _items = new(window.Limit);
         private readonly Dictionary<string, int> _statusCounts = new(StringComparer.Ordinal);
+        private readonly HashSet<Guid> _seen = [];
         private int _total;
         private int _unfilteredTotal;
 
@@ -49,6 +52,11 @@ public readonly record struct DocumentListWindow(int Offset, int Limit)
         {
             foreach (var doc in docs)
             {
+                // FR-06, SC-05, [[IADR-0545]] (#1923): 🔴 **1 周の中で同じ文書を 2 度数えない。** 後段のキーセットは要求ごとに位置から読むので、
+                //   走査の途中で更新された文書は、並びのキーが動いた先でもう一度返り得る（昇順の更新日時なら末尾。監査の再現）。
+                //   数えると件数が +1 になり、窓に同じ行が 2 度並ぶ（画面の key も重複する）。最初に見た位置だけを採る。
+                if (!_seen.Add(doc.Id))
+                    continue;
                 if (!visible(doc))
                     continue;
                 _unfilteredTotal++;

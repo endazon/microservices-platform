@@ -847,6 +847,33 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(await screen.findByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
   });
 
+  // 🔴 表題の検索で 0 件にした後、空の表示の「条件を解除」で解除したら、入力欄も空になり、待ち時間の後も絞り込みが戻らない
+  // （入力中の値を帯が持ったままだと、300 ms 後に古い語で引き直してしまう。監査の指摘）。
+  it('clearing from the empty result also clears the title input and does not re-apply the query', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('q=')
+        ? listPage([], { total: 0, unfilteredTotal: 2 })
+        : listPage([DRAFT_DOC, ARCHIVED_DOC]),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    const input = await screen.findByLabelText('表題で検索');
+    await user.type(input, '存在しない');
+    expect(await screen.findByText('条件に一致する文書はありません。')).toBeInTheDocument();
+
+    // 空の表示の側の「条件を解除」（帯の側ではない。DOM の順で後ろ）。
+    await user.click(screen.getAllByRole('button', { name: '条件を解除' }).at(-1)!);
+
+    expect(await screen.findByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
+    expect(input).toHaveValue('');
+    // 待ち時間（300 ms）を越えても、古い語で引き直さない。
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50');
+    expect(screen.getByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
+    expect(input).toHaveValue('');
+  });
+
   // 列: 本文の状態（色だけでなく文言）と更新日時。長い表題は省略し、全文はホバー（title）とリンクの名前に残す。
   it('shows the body state and the update time, and keeps the full title on hover', async () => {
     const longTitle = '長い表題'.repeat(40);

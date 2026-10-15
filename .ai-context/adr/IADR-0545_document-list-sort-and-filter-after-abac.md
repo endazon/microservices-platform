@@ -97,6 +97,9 @@ related_specs:
 - 1 周の中の順序は **ABAC → 全体・状態別の数 → 絞り込み → 窓** である。🔴 ABAC で落ちた文書はどの数にも入らない
   （試験 `BffDocumentListFilterTests` が、権限外の文書を混ぜた台帳と混ぜない台帳の応答の一致で固定する）。
 - 後段への要求は、1 回の走査の中で同じ並べ替えを渡し続ける（印が並べ替えを持つため）。
+- 🔴 **1 周の中で ID の重複を除く。** キーセットは要求ごとに位置から読むので、昇順の並べ替えでは走査の途中で更新された文書が末尾でもう一度返り得る
+  （監査で `updated-asc` の再現を確認）。数えると件数が +1 になり窓に同じ行が並ぶ。BFF は見た ID の集合を 1 周の間だけ持ち、最初に見た位置だけを採る
+  （約 4.5 万件 × Guid で数 MB。IADR-0537 の「保持は窓だけ」は「中身の保持は窓だけ」に改める）。降順で読み飛ばされ得ることは IADR-0537 のまま受容する。
 
 **決定 3: 画面（SC-05）は一覧の上に操作の帯（表題で検索・状態・並べ替え・条件を解除）を置き、件数の要約と本文・更新日時の列を出す。**
 
@@ -118,7 +121,7 @@ related_specs:
 
 - 試験: 後段 `DocumentListPagingTests`（6 通りの全順序・読めない文書・印の往復と改ざん・不一致・未定義）・`GrpcDocumentReadTests`（別の並べ替えの印は
   `INVALID_ARGUMENT`）・`DocumentListKeysetPostgresTests`（実 PostgreSQL で同じキーの群を辿る・`(Title, Id)` の索引を印の位置から引く）、
-  BFF `BffDocumentListFilterTests`、画面 `DocumentManagementPage.test.tsx`・`documentBody.test.ts`、e2e の SC-05 スモークと a11y。
+  BFF `BffDocumentListFilterTests`（途中の更新で同じ文書が再び返っても二重に数えない、を含む）、画面 `DocumentManagementPage.test.tsx`・`documentBody.test.ts`、e2e の SC-05 スモークと a11y。
 - 配備の順序: 新しい BFF と旧い document-service の組では、`sort` が無視され常に更新日時の降順が返る（並べ替えが効かないだけで、件数は正しい）。
   旧い BFF と新しい document-service の組は従前どおり動く（既定の並びの印は従前の形）。画面と BFF は同じリリースで配備する
   （旧い BFF は `unfilteredTotal` / `statusCounts` を返さない。画面は無い項目を「絞り込みなし」として読むので壊れはしない）。
