@@ -180,8 +180,8 @@ public class GrpcKnowledgeHealthReporterTests
         fake.LastRequest.ThresholdDays.Should().Be(180);
     }
 
-    // 🔴 送出 1 回あたりの期限は `GrpcKnowledgeHealthReporter.SendTimeout`（5 秒。［2026-10-10 / #1255］[[IADR-0533]] で
-    // 撤去した REST 実装の `HttpClient.Timeout` から移した）。呼び出しごとの deadline で付ける。
+    // 🔴 送出 1 回あたりの期限は `GrpcKnowledgeHealthReporter.SendTimeout`（［2026-10-15 / #1907・[[IADR-0542]]］30 秒。
+    // 従前は［2026-10-10 / #1255］[[IADR-0533]] で撤去した REST 実装の `HttpClient.Timeout` から移した 5 秒）。呼び出しごとの deadline で付ける。
     [Fact]
     public async Task 送出の期限は構成の上限である()
     {
@@ -196,6 +196,67 @@ public class GrpcKnowledgeHealthReporterTests
 
         fake.LastOptions.Deadline.Should().Be(
             now.UtcDateTime.Add(GrpcKnowledgeHealthReporter.SendTimeout));
+    }
+
+    // NFR-16, [[IADR-0542]] 決定 1・4 (#1907): 受理されたら、件数・符号化サイズ・所要を Information で 1 行残す
+    // （PoC で受信上限と期限への余裕を読む唯一の実測である）。サイズは送った要求そのものの大きさと一致する。
+    [Fact]
+    public async Task 受理されたら件数とサイズと所要を残す()
+    {
+        var (metrics, probe) = NewProbe();
+        using var _ = probe;
+        var fake = new FakeClient(new Pb.ReportResponse());
+        var logger = new RecordingLogger<GrpcKnowledgeHealthReporter>();
+        var reporter = new GrpcKnowledgeHealthReporter(fake, metrics, TimeProvider.System, logger);
+
+        await reporter.ReportAsync(Indicator, [new("doc-1", null, "not-found"), new("doc-2", null)], ct: Ct);
+
+        var line = logger.OfLevel(LogLevel.Information).Should().ContainSingle().Which.Message;
+        line.Should().Contain($"indicator={Indicator}").And.Contain("count=2")
+            .And.Contain($"bytes={fake.LastRequest!.CalculateSize()}").And.Contain("elapsedMs=");
+        logger.OfLevel(LogLevel.Warning).Should().BeEmpty("小さな報告では警告しない");
+    }
+
+    // 🔴 NFR-16, [[IADR-0542]] 決定 4 (#1907): 受け口の受信上限（既定 16 MiB）の 75% を超えたら、**送る前に**警告する。
+    // 当たってからでは `ResourceExhausted` で毎周期失敗する。陽性（閾値以上）と陰性（閾値未満）を対で置く。
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task 要求が受信上限の75パーセントを超えたら警告する(bool overThreshold)
+    {
+        var (metrics, probe) = NewProbe();
+        using var _ = probe;
+        var logger = new RecordingLogger<GrpcKnowledgeHealthReporter>();
+        var reporter = new GrpcKnowledgeHealthReporter(
+            new FakeClient(new Pb.ReportResponse()), metrics, TimeProvider.System, logger);
+        // 1 件 1 MiB の鍵で、閾値（12 MiB）の上下に置く。
+        var key = new string('k', 1024 * 1024);
+        var count = overThreshold ? 12 : 11;
+
+        await reporter.ReportAsync(
+            Indicator, [.. Enumerable.Range(0, count).Select(_ => new KnowledgeHealthObservation(key, null))], ct: Ct);
+
+        if (overThreshold)
+            logger.OfLevel(LogLevel.Warning).Should().ContainSingle()
+                .Which.Message.Should().Contain($"warnBytes={GrpcKnowledgeHealthReporter.PayloadWarnBytes}");
+        else
+            logger.OfLevel(LogLevel.Warning).Should().BeEmpty();
+        probe.Measurements.Should().ContainSingle("警告は送出を止めない");
+    }
+
+    // 🔴 受け口（dashboard）の受信上限の既定 16 MiB の 75%。**サービスを跨ぐため定数を共有できない**ので、
+    // リテラルで固定する（dashboard 側は `KnowledgeHealthReportReceiveLimitTests.既定の受信上限は16MiBである`）。
+    [Fact]
+    public void 警告の閾値は受け口の既定の受信上限の75パーセントである()
+    {
+        GrpcKnowledgeHealthReporter.PayloadWarnBytes.Should().Be(16 * 1024 * 1024 / 4 * 3);
+    }
+
+    // NFR-16, [[IADR-0542]] 決定 2 (#1907): 期限は 30 秒（15 万件の置換が負荷の高いホストでも収まる幅）。
+    [Fact]
+    public void 送出の期限は30秒である()
+    {
+        GrpcKnowledgeHealthReporter.SendTimeout.Should().Be(TimeSpan.FromSeconds(30));
     }
 
     // 🔴 T-11: **宛先の有無で登録の形が変わる。** `Services:DashboardServiceGrpc` が無ければ

@@ -47,6 +47,7 @@ public class DocumentSyncConsumerTests
             scope.ServiceProvider.GetRequiredService<IWikiContentReader>(),
             scope.ServiceProvider.GetRequiredService<ConsumerCallTimeouts>(),
             scope.ServiceProvider.GetRequiredService<WikiSyncTimeouts>(),
+            TestMeterFactory.NewSkippedMetrics(),
             scope.ServiceProvider.GetRequiredService<ILogger<DocumentSyncConsumer>>());
         await consumer.Handle(ev, TestContext.Current.CancellationToken);
     }

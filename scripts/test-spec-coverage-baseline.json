@@ -209,6 +209,7 @@
       "DocumentSyncConsumerTests",
       "WikiEndpointsAbacTests",
       "WikiJsGraphQlClientTests",
+      "WikiSyncPermanentFailureTests",
       "WikiSyncTimeoutTests"
     ],
     "docs/tests/FR-14_composability.md": [
