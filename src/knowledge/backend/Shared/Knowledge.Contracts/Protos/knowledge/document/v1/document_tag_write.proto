@@ -1,7 +1,7 @@
 // FR-05, FR-18, NFR-09, NFR-16, SC-03, SC-05, SC-09, ADR-0004, ADR-0029, ADR-0030, ADR-0036,
 // ADR-0063, ADR-0065, ADR-0075, ADR-0080, ADR-0086, IADR-0044, IADR-0364, IADR-0371, IADR-0379,
 // IADR-0398, IADR-0401, IADR-0402, IADR-0410 (#1255):
-// AI タグ提案の承認が反映する 1 口（REST `POST /documents/{id}/tags` と同じ意味論）の gRPC 契約。
+// AI タグ提案の承認が反映する 1 口（撤去した REST `POST /documents/{id}/tags` と同じ意味論。［2026-10-15 / #1902］反映口はこの rpc だけ）の gRPC 契約。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）: 所有者は DocumentService。置き場は knowledge ユニットの
 //   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/document/v1/`。
@@ -47,7 +47,7 @@ option csharp_namespace = "Knowledge.Contracts.Grpc.Document.V1";
 // 文書へのタグ反映。ServiceCaller（platform-service）を要求する。
 // **一覧・本文・共有・タグ辞書の口はこの面に存在しない**（呼び出し元が要らないものを面へ出さない）。
 service DocumentTagWrite {
-  // 文書へタグを 1 つ足す。REST `POST /documents/{id}/tags` と同値。**冪等**（既に付いていれば
+  // 文書へタグを 1 つ足す。撤去した REST `POST /documents/{id}/tags` と同値。**冪等**（既に付いていれば
   // 版も進めずイベントも出さずに `APPLIED` を返す）。
   rpc AddTag(AddTagRequest) returns (AddTagResponse);
 }

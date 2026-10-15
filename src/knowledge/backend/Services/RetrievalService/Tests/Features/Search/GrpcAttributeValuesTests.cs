@@ -1,4 +1,3 @@
-using System.Net.Http.Json;
 using AwesomeAssertions;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -19,7 +18,7 @@ namespace RetrievalService.Tests.Features.Search;
 // 計画 ADR-0086 決定 1, [[IADR-0151]], [[IADR-0379]], [[IADR-0401]], [[IADR-0410]],
 // [[IADR-0415]], [[IADR-0416]], [[IADR-0417]] (#1255):
 // 権限内属性値の照会の gRPC 面（`knowledge.retrieval.v1.AttributeValues`）を
-// **実 Kestrel の h2c ポート**で往復し、REST との同値・s2s の要求・面に出さないものを固定する。
+// **実 Kestrel の h2c ポート**で往復し、縮退・s2s の要求・面に出さないものを固定する。
 //
 // 陽性対照（T-01 / T-04）と陰性対照（T-02 / T-03）を同じ器で対にする ——
 // 「拒否された」だけでは器が壊れているのか認可が効いているのか区別できない。
@@ -195,35 +194,47 @@ public class GrpcAttributeValuesTests
             .Should().Be(StatusCode.InvalidArgument);
     }
 
-    // T-04 ＋ T-09: REST と gRPC が**同じ問い合わせ**（`AttributeValuesEndpoint.ListAsync`）を通る。
-    //
-    // 🔴 REST が同じプロセスの HTTP/1.1 ポートで応えること自体が、**h2c を有効にしても
-    // 8080 側が消えていない**ことの証明でもある。
+    // T-04 ＋ T-09: ［2026-10-15 / #1902・[[IADR-0533]]］「REST と gRPC が同じ値を返す」同値の対は外した ——
+    // REST の `/search/attribute-values` を撤去したので対が作れない。問い合わせ本体（`AttributeValuesQuery.ListAsync`）の
+    // 意味は `HybridSearchEndpointTests` の属性値の節が固定し、撤去前に REST の受け口が持っていた 2 つの縮退
+    // （不許可・空のキー）は下の T-11 / T-12 が gRPC 面で固定する。
+
+    // 🔴 T-11: **権限が無ければ空の配列**（[[IADR-0151]] 決定 5。404 にも 403 にもしない）。
+    // 陽性対照: 同じ値を許可された利用者は引ける（空が「器が壊れている」ためではない）。
     [Fact]
-    public async Task Rest_and_grpc_report_the_same_values()
+    public async Task A_user_without_access_gets_an_empty_list_not_a_status()
     {
-        _factory.Authoritative = new AccessScopeResponse("alice", [], Granted: true);
-        var tag = $"same-{Guid.NewGuid():N}"[..12];
+        var tag = $"deny-{Guid.NewGuid():N}"[..12];
         await SeedAsync((tag, tag));
 
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
-        // FR-05, NFR-09, ADR-0084, [[IADR-0418]] (#1318): 🔴 **REST 面も認証を要する。**
-        // 本器は**本物の JwtBearer パイプライン**を通すので、利用者のトークンを実際に発行して載せる
-        // （`ServiceCaller` ではない —— REST 面が要求するのは realm の認証済み主体だけである）。
-        http.DefaultRequestHeaders.TryAddWithoutValidation(
-            "Authorization", $"Bearer {GrpcKestrelFactory.IssueToken("alice", [])}");
-        var restResp = await http.PostAsJsonAsync("/search/attribute-values",
-            new AttributeValuesRequest("dept", new AccessScope([], GrantsAccess: true)),
-            TestContext.Current.CancellationToken);
-        var rest = (await restResp.Content.ReadFromJsonAsync<AttributeValuesResponse>(
-            TestContext.Current.CancellationToken))!;
-
-        var grpc = await PlainClient().ListValuesAsync(
+        _factory.Authoritative = new AccessScopeResponse("alice", [], Granted: false);
+        var denied = await PlainClient().ListValuesAsync(
             new ListValuesRequest { Key = "dept", User = User() },
             headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
 
-        grpc.Values.Should().BeEquivalentTo(rest.Values, "輸送を替えても応答の意味は変わらない");
-        grpc.Values.Should().Contain(tag, "★ 陽性対照 —— 両方が空で一致したのではない");
+        _factory.Authoritative = new AccessScopeResponse("alice", [], Granted: true);
+        var granted = await PlainClient().ListValuesAsync(
+            new ListValuesRequest { Key = "dept", User = User() },
+            headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
+
+        denied.Values.Should().BeEmpty("候補が無いことと権限が無いことを区別させない");
+        granted.Values.Should().Contain(tag, "★ 陽性対照");
+    }
+
+    // T-12: 空のキーは空集合へ縮退する（呼び出し側の分岐を 1 か所に閉じる）。
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task A_blank_key_gets_an_empty_list(string key)
+    {
+        _factory.Authoritative = new AccessScopeResponse("alice", [], Granted: true);
+        await SeedAsync(($"blank-{Guid.NewGuid():N}"[..12], "sales"));
+
+        var resp = await PlainClient().ListValuesAsync(
+            new ListValuesRequest { Key = key, User = User() },
+            headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
+
+        resp.Values.Should().BeEmpty();
     }
 
     // T-10: 構造の門。gRPC サービス型が ServiceCaller ポリシーを宣言していること。

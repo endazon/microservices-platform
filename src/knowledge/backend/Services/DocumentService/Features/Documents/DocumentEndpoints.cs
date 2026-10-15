@@ -75,11 +75,9 @@ public static class DocumentEndpoints
         var bodyIntake = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
 
         // ── FR-18, SC-03, ADR-0063 決定 3, IADR-0364 (#1187): AI タグ提案の承認の反映先 ──
-        //
-        // 🔴 **この群にもロールを積まない。** 認可は「①所有者の動的束縛 **または** ②管理者ロール」の
-        // 選言であり（決定 3）、group にロールを積むと①の側（自分の文書の提案を承認する一般利用者）が
-        // 死ぬ。判定は口の中で行い、拒否は 404 に倒す（`PutBody` と同じ）。**`write` 群へ入れてはならない。**
-        var tagReflection = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
+        // ［2026-10-15 / #1902・[[IADR-0533]] 追記］REST の `POST /documents/{id}/tags`（`tagReflection` 群）は撤去した ——
+        // 呼び出し元（GraphService の D-2）は east-west gRPC（`DocumentTagWrite/AddTag`）だけになっていた。
+        // 認可の選言（①所有者 または ②管理者）と 404 の一本道は `AddDocumentTagUseCase` が持つ。
 
         // FR-06, NFR-08 (#1575): 組織文書の絞り込み・ページング（`GET /documents/page`）も上の `read` 群に居る。
         // ロールは積まない —— 集合は `GET /documents` の部分集合であり、ロールで塞ぐと既存の一覧より狭い主体しか
@@ -94,7 +92,6 @@ public static class DocumentEndpoints
         PublishDocumentEndpoint.Map(write);
         ArchiveDocumentEndpoint.Map(write);
         PutDocumentBodyEndpoint.Map(bodyIntake);
-        AddDocumentTagEndpoint.Map(tagReflection);
         ListDocumentVersionsEndpoint.Map(read);
         GetDocumentVersionEndpoint.Map(read);
         DeleteDocumentEndpoint.Map(write);

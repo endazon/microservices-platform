@@ -1,4 +1,3 @@
-using System.Net.Http.Json;
 using AwesomeAssertions;
 using DashboardService.Domain;
 using DashboardService.Features.KnowledgeHealth.Report;
@@ -28,10 +27,6 @@ namespace DashboardService.Tests.Features.KnowledgeHealth;
 public class GrpcKnowledgeHealthReportTests
 {
     private const string ServiceSubject = "service-account-graph-service";
-
-    // 🔴 送信側 旧 REST の `HttpKnowledgeHealthReporter.ObservationsPath`（［2026-10-10］撤去） の値。
-    // **サービスを跨ぐため定数を共有できない**。リテラルで持ち、一致を両側のテストで固定する。
-    private const string ProducerObservationsPath = "/internal/knowledge-health/observations";
 
     private readonly GrpcKestrelFactory _factory;
 
@@ -218,48 +213,8 @@ public class GrpcKnowledgeHealthReportTests
             .Should().Be(StatusCode.PermissionDenied);
     }
 
-    // T-07 ＋ T-08: REST と gRPC が**同じ本体**（`ReportKnowledgeHealthUseCase`）を通ることの観測。
-    //
-    // 🔴 REST が同じプロセスの HTTP/1.1 ポートで応えること自体が、**h2c を有効にしても
-    // 8080 側が消えていない**ことの証明でもある（`AddPlatformGrpcListener` の 🔴）。
-    //
-    // 🔴 REST の受け口は**無認証**で通り、gRPC は s2s トークンを要る ——
-    // 面ごとに通る資格情報が違うことが、そのまま「利用者トークンを転送していない」ことの現れである。
-    [Fact]
-    public async Task Rest_and_grpc_produce_the_same_snapshot()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var indicator = KnowledgeHealthIndicators.UnresolvedLinks;
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
-
-        // REST で置換する（無認証で通る）。
-        var restResp = await http.PostAsJsonAsync(ProducerObservationsPath, new KnowledgeHealthReportRequest(
-            indicator,
-            [new KnowledgeHealthObservationRequest("link-a", null, "not-found"),
-             new KnowledgeHealthObservationRequest("link-b", null, "ambiguous")]), ct);
-        restResp.EnsureSuccessStatusCode();
-        var (viaRest, _) = await ReadAsync(indicator);
-
-        // gRPC で同じ内容を置換する。
-        var request = new ReportRequest { Indicator = indicator };
-        request.Observations.Add(new Observation { SubjectKey = "link-a", Dimension = "not-found" });
-        request.Observations.Add(new Observation { SubjectKey = "link-b", Dimension = "ambiguous" });
-        await PlainClient().ReportAsync(request, headers: Bearer(ServiceToken()), cancellationToken: ct);
-        var (viaGrpc, _) = await ReadAsync(indicator);
-
-        viaGrpc.Select(o => (o.SubjectKey, o.DocScope, o.Dimension))
-            .Should().BeEquivalentTo(viaRest.Select(o => (o.SubjectKey, o.DocScope, o.Dimension)),
-                "輸送を替えても保存される事実は変わらない");
-
-        // 🔴 HTTP/1.1 のポートが生きていることの直接の観測（**readiness も 8080 のままである** ——
-        // h2c にヘルスの面は足していない。[[IADR-0379]] 決定 3）。
-        //
-        // 🔴 **`/health/ready` ではなく `/health/live` で測る。** readiness は NpgSql の検査を
-        // 含んでおり、器の DB は InMemory へ差し替えてあるので（到達不能な接続文字列が残る）
-        // **ポートの生死とは無関係に赤になる**。ここで測りたいのは「8080 が消えていないこと」だけである。
-        var live = await http.GetAsync("/health/live", ct);
-        live.IsSuccessStatusCode.Should().BeTrue("h2c を有効にしても HTTP/1.1 側は残る");
-    }
+    // T-07 ＋ T-08: ［2026-10-15 / #1902・[[IADR-0533]]］「REST と gRPC が同じ保存結果を作る」同値の対は外した ——
+    // REST の受け口を撤去したので対が作れない。保存される事実は T-01 ほかが gRPC 面で固定する。
 
     // T-09: 構造の門。gRPC サービス型が ServiceCaller ポリシーを宣言していること
     // （属性が外れると T-04 / T-05 が落ちるが、どの層で外れたかを名指しするためにここでも固定する）。

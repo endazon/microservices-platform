@@ -10,7 +10,7 @@ namespace DocumentService.Tests.Features.Documents;
 
 // FR-06, FR-21, FR-20, FR-18, FR-08, UC-03, 計画 ADR-0122 実測 8・フォローアップ 3, ADR-0119 決定 2, ADR-0036 D-07, ADR-0056,
 // [[IADR-0044]] (#1679):
-// **所有者で許す口（本文の投入・共有の付与／一覧／取り消し・タグ反映）の主体は、作成の口が `owner` へ入れる名前と同じ関数から引く。**
+// **所有者で許す口（本文の投入・共有の付与／一覧／取り消し。［2026-10-15 / #1902］タグ反映の REST は撤去）の主体は、作成の口が `owner` へ入れる名前と同じ関数から引く。**
 //
 // 🔴 **腕 B（利用者名が無くクライアント識別だけの機械）が本件の主対象である。** 作成の口は腕 B にも
 // `service-account-<clientId>` を `owner` として入れるが、従前の本文の投入は `Identity.Name`（null）で比べていたので、
@@ -81,15 +81,6 @@ public class MachineClientOwnerSubjectTests(TestWebApplicationFactory factory)
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
         return await db.Documents.FindAsync([id], Ct);
-    }
-
-    private async Task<string> RegisterTagAsync()
-    {
-        var name = $"tag-{Guid.NewGuid():N}";
-        var resp = await ClientAs("tag-admin", "platform-admin")
-            .PostAsJsonAsync("/tags", new CreateTagRequest(name), Ct);
-        resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        return name;
     }
 
     // ── T-73: 本文の投入 ─────────────────────────────────────────────
@@ -170,7 +161,6 @@ public class MachineClientOwnerSubjectTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task 利用者名とazpを持つ人は自分の文書を扱え_別の人の文書には404になる()
     {
-        var tag = await RegisterTagAsync();
         var doc = await CreateAsync(HumanViaBff("alice", "platform-admin"));
         doc.Attributes.Should().Contain("owner", "alice", "人の所有者は利用者名（azp から組み立てない）");
 
@@ -182,8 +172,6 @@ public class MachineClientOwnerSubjectTests(TestWebApplicationFactory factory)
         list.StatusCode.Should().Be(HttpStatusCode.OK);
         (await list.Content.ReadFromJsonAsync<List<DocumentShareDto>>(Ct))!
             .Should().ContainSingle().Which.GrantedBy.Should().Be("alice");
-        (await HumanViaBff("alice").PostAsJsonAsync($"/documents/{doc.Id}/tags", new AddDocumentTagRequest(tag), Ct))
-            .StatusCode.Should().Be(HttpStatusCode.OK);
 
         // 対照: 同じ `azp=bff` を持つ別の人（ロールは運用者＝管理者の分岐に当たらない）。
         var bob = HumanViaBff("bob", "platform-operator");
@@ -192,8 +180,6 @@ public class MachineClientOwnerSubjectTests(TestWebApplicationFactory factory)
             new { subjectType = "user", subjectId = "mallory" }, Ct)).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await bob.GetAsync($"/documents/{doc.Id}/shares", Ct)).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await bob.DeleteAsync($"/documents/{doc.Id}/shares/user/carol", Ct)).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await bob.PostAsJsonAsync($"/documents/{doc.Id}/tags", new AddDocumentTagRequest(await RegisterTagAsync()), Ct))
-            .StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await LoadAsync(doc.Id))!.ContentFingerprint.Should().Be(DocumentBodyIntake.Fingerprint("alice の本文"));
     }
 
@@ -232,17 +218,7 @@ public class MachineClientOwnerSubjectTests(TestWebApplicationFactory factory)
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    [Fact]
-    public async Task 利用者名の無いサービスアカウントは自分の文書にタグを足せ_別のサービスアカウントの文書には足せない()
-    {
-        var tag = await RegisterTagAsync();
-        var own = await CreateAsync(NamelessMachine());
-        var others = await CreateAsync(NamelessMachine(OtherClientId));
-
-        (await NamelessMachine().PostAsJsonAsync($"/documents/{own.Id}/tags", new AddDocumentTagRequest(tag), Ct))
-            .StatusCode.Should().Be(HttpStatusCode.OK);
-        (await NamelessMachine().PostAsJsonAsync($"/documents/{others.Id}/tags", new AddDocumentTagRequest(tag), Ct))
-            .StatusCode.Should().Be(HttpStatusCode.NotFound, "運用者ロールの機械は管理者の分岐に当たらず、所有者でもない");
-        (await LoadAsync(others.Id))!.Tags.Should().BeEmpty();
-    }
+    // ［2026-10-15 / #1902・[[IADR-0533]]］タグ反映の口（REST `POST /documents/{id}/tags`）は撤去した ——
+    // 反映は gRPC `DocumentTagWrite/AddTag` だけになり、承認者の身元は呼び出し元の主体ではなく本文の `user_id` で運ばれる
+    // （信頼する中継者は graph-service だけ。`DocumentTagWriteTrustedRelayTests`）。主体からの所有者の比較は本文の投入・共有に残る。
 }

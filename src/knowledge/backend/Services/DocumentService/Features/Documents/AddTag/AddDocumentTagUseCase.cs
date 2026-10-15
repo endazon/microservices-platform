@@ -9,7 +9,7 @@ namespace DocumentService.Features.Documents.AddTag;
 // ADR-0065 決定 2, ADR-0075, 計画 ADR-0086 決定 1, [[IADR-0044]], [[IADR-0364]], [[IADR-0379]] 決定 5,
 // [[IADR-0410]] (#1255): **文書へタグを 1 つ足す本体。**
 //
-// 🔴 **REST と east-west gRPC の両方がここを通る。判定器を 2 つにしない**
+// 🔴 **east-west gRPC の rpc がここを通る**（［2026-10-15 / #1902］REST の端点は撤去した）。**判定器を輸送の側に持たない**
 // （先行スライスの `DocumentReadUseCase` と同じ形。[[IADR-0402]]）。
 // ハンドラ本体を写して 2 つ目の実装を作ると、**片方だけが直る形**になる ——
 // 認可の選言・辞書照合・冪等・404 の一本道は**応答の意味**であって輸送の都合ではない。
@@ -39,7 +39,7 @@ public sealed class AddDocumentTagUseCase(DocumentDbContext db, IDocumentUpdated
     public const string ChangeNote = "ai-suggestion-approved";
 
     // ［2026-09-27 追記 / #1636］🔴 **管理者かどうかは遅延で受け取る**（`isAdmin`）。①所有者で書ける、または資料が個人資料
-    // （②が及ばない）なら**呼ばない**。REST はトークンのロールを返す関数を、gRPC は認可サービスへ問う関数を渡す
+    // （②が及ばない）なら**呼ばない**。gRPC は認可サービスへ問う関数を渡す（撤去した REST はトークンのロールを返す関数を渡していた）
     // （gRPC は本文の `user_roles` を信じない。[[IADR-0410]] 追記 2）。関数が例外を投げたら（gRPC で名簿を引けない）
     // 副作用の前にそのまま伝わる。
     public async Task<AddDocumentTagOutcome> ExecuteAsync(
@@ -89,7 +89,7 @@ public sealed class AddDocumentTagUseCase(DocumentDbContext db, IDocumentUpdated
 }
 
 // FR-18, SC-05, ADR-0063 決定 2・3, [[IADR-0410]] (#1255): タグ反映の結果。
-// REST の状態コード（200 / 400 / 404）と 1:1 であり、gRPC の `TagWriteResult` とも 1:1 である。
+// gRPC の `TagWriteResult` と 1:1 である（撤去した REST の状態コード 200 / 400 / 404 とも 1:1 だった）。
 public sealed record AddDocumentTagOutcome(
     AddDocumentTagStatus Status,
     DocumentDto? Document = null,

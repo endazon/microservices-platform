@@ -1,8 +1,8 @@
 // FR-10, FR-17, FR-18, FR-19, NFR-09, NFR-16, NFR-21, UC-05, SC-10, ADR-0002, ADR-0006, ADR-0029,
 // ADR-0065, ADR-0075, ADR-0076, IADR-0256, IADR-0265, IADR-0299, IADR-0353, IADR-0379, IADR-0389,
 // IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408 (#1255):
-// ナレッジ健全性の観測値の受け口（REST `POST /internal/knowledge-health/observations` と同じ意味論）の
-// gRPC 契約。
+// ナレッジ健全性の観測値の受け口の gRPC 契約（撤去した REST `POST /internal/knowledge-health/observations` と
+// 同じ意味論。［2026-10-15 / #1902］受け口はこの rpc だけになった）。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）: 所有者は DashboardService。置き場は knowledge ユニットの
 //   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/dashboard/v1/`。
@@ -42,7 +42,7 @@ option csharp_namespace = "Knowledge.Contracts.Grpc.Dashboard.V1";
 // （IADR-0401 決定 2 と同じ作法。閲覧はロール限定の REST `GET /dashboard/knowledge-health` のままである）。
 service KnowledgeHealthReport {
   // 指標 1 つ分の観測値を**全量スナップショットとして**置き換える。
-  // REST `POST /internal/knowledge-health/observations` と同値。
+  // 撤去した REST `POST /internal/knowledge-health/observations`（［2026-10-15 / #1902］）と同値。
   //
   // 🔴 **空でも呼ぶこと。** 受け口は当該指標の既存行を落としてから差し替えるため、
   // 「0 件だから送らない」と最適化すると前回の件数が恒久的に残る（IKnowledgeHealthReporter の 🔴 と同じ）。

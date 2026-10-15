@@ -77,7 +77,7 @@ public class GrpcTagDictionaryTests
         resp.Names.Should().Contain($"{prefix}-a");
     }
 
-    // 🔴 T-11: **名前順は契約である**（`TagNamesEndpoint.ReadNamesAsync` の `OrderBy`）。
+    // 🔴 T-11: **名前順は契約である**（`TagNamesQuery.ReadNamesAsync` の `OrderBy`）。
     // 投入順を昇順の逆にして、**並べ替えが実際に起きている**ことを観測する ——
     // 投入順のまま返す実装だと降順になる。
     [Fact]
@@ -149,29 +149,8 @@ public class GrpcTagDictionaryTests
             .Should().Be(StatusCode.PermissionDenied);
     }
 
-    // T-04 ＋ T-09: REST と gRPC が**同じ問い合わせ**（`TagNamesEndpoint.ReadNamesAsync`）を
-    // 通ることの観測。順序を含めて同値である。
-    //
-    // 🔴 REST が同じプロセスの HTTP/1.1 ポートで応えること自体が、**h2c を有効にしても
-    // 8080 側が消えていない**ことの証明でもある（`AddPlatformGrpcListener` の 🔴）。
-    //
-    // 🔴 REST は**無認可**で通り、gRPC は s2s トークンを要る —— 面ごとに通る資格情報が違うことが、
-    // そのまま「利用者トークンを転送していない」ことの現れである。
-    [Fact]
-    public async Task Rest_and_grpc_report_the_same_names()
-    {
-        var prefix = $"same-{Guid.NewGuid():N}";
-        await SeedAsync($"{prefix}-b", $"{prefix}-a");
-
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
-        var rest = (await http.GetFromJsonAsync<TagNamesResponse>(
-            TagNamesEndpoint.NamesPath, TestContext.Current.CancellationToken))!;
-
-        var grpc = await ListNamesAsync();
-
-        grpc.Should().Equal(rest.Names, "輸送を替えても応答の意味も順序も変わらない");
-        grpc.Should().Contain([$"{prefix}-a", $"{prefix}-b"], "★ 陽性対照 —— 両方が空で一致したのではない");
-    }
+    // T-04 ＋ T-09: ［2026-10-15 / #1902・[[IADR-0533]]］「REST と gRPC が同じ名前を返す」同値の対は外した ——
+    // 無認証の REST `GET /internal/tags/names` を撤去したので対が作れない。順序は T-11 が gRPC 面で固定する。
 
     // T-08: 構造の門。gRPC サービス型が ServiceCaller ポリシーを宣言していること
     // （属性が外れると T-02 / T-03 が落ちるが、どの層で外れたかを名指しするためにここでも固定する）。

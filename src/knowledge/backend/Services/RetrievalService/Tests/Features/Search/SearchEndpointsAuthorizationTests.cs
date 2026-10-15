@@ -51,9 +51,6 @@ public class SearchEndpointsAuthorizationTests
     private static SearchRequest Search() =>
         new(Term, TopK: 10, Scope: new AccessScope([], GrantsAccess: true));
 
-    private static AttributeValuesRequest Values() =>
-        new("dept", new AccessScope([], GrantsAccess: true));
-
     // ── ① 未認証は 401 ────────────────────────────────────────────
 
     // FR-05, NFR-09, ADR-0084: 🔴 **未認証の検索は 401 である。**
@@ -71,21 +68,6 @@ public class SearchEndpointsAuthorizationTests
         var body = await resp.Content.ReadAsStringAsync(Ct);
         body.Should().NotContain(seeded.ChunkId.ToString(), "401 の本文で文書を漏らさない");
         body.Should().NotContain(Term);
-    }
-
-    // FR-04, FR-05, NFR-09, ADR-0084: 🔴 **属性値照会にも同じ門が要る。**
-    // 片面だけ掛けると「検索は塞いだが候補一覧から権限外の値が読める」形が残る。
-    [Fact]
-    public async Task Unauthenticated_attribute_values_is_rejected_and_leaks_no_value()
-    {
-        await using var factory = new TestWebApplicationFactory();
-        await SeedAsync(factory);
-
-        var resp = await factory.CreateAnonymousClient()
-            .PostAsJsonAsync("/search/attribute-values", Values(), Ct);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        (await resp.Content.ReadAsStringAsync(Ct)).Should().NotContain("sales");
     }
 
     // ── ② 認証済み・権限なしは 200 ＋ 空（存在秘匿。陰性対照） ──────
@@ -108,22 +90,6 @@ public class SearchEndpointsAuthorizationTests
             .Results.Should().BeEmpty();
     }
 
-    // FR-04, FR-05, SC-08, [[IADR-0151]] 決定 5: 属性値照会も同じ（200 ＋ 空配列）。
-    [Fact]
-    public async Task Authenticated_but_denied_attribute_values_returns_empty_not_a_rejection()
-    {
-        await using var factory = new TestWebApplicationFactory();
-        factory.Authoritative = new AccessScopeResponse("u1", [], Granted: false);
-        await SeedAsync(factory);
-
-        var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/search/attribute-values", Values(), Ct);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(Ct))!
-            .Values.Should().BeEmpty();
-    }
-
     // ── ③ 認証済み・許可は従来どおり（陽性対照） ────────────────────
 
     // FR-03, UC-01, NFR-09: ★ **陽性対照。** これが無いと「常に空を返す実装」が①②を通す。
@@ -139,21 +105,6 @@ public class SearchEndpointsAuthorizationTests
         (await resp.Content.ReadFromJsonAsync<SearchResponse>(Ct))!
             .Results.Select(r => r.ChunkId).Should().Contain(seeded.ChunkId,
                 "★ 陽性対照 —— 門を掛けても認証済み・許可の経路は変わらない");
-    }
-
-    // FR-04, SC-08, NFR-09: ★ 陽性対照（属性値照会）。
-    [Fact]
-    public async Task Authenticated_and_allowed_attribute_values_still_returns_values()
-    {
-        await using var factory = new TestWebApplicationFactory();
-        await SeedAsync(factory);
-
-        var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/search/attribute-values", Values(), Ct);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(Ct))!
-            .Values.Should().Contain("sales", "★ 陽性対照");
     }
 
     // ── ④ 構造の門（配線そのもの） ──────────────────────────────
@@ -179,9 +130,11 @@ public class SearchEndpointsAuthorizationTests
         var search = routes.Where(r => r.Pattern == "/search"
             || r.Pattern.StartsWith("/search/", StringComparison.Ordinal)).ToList();
 
-        // 陽性対照: 群の終端は 2 つある（検索本体と属性値照会）。0 件の一覧に対して
-        // `OnlyContain` は空虚に真になるため、**先に件数を主張する。**
-        search.Should().HaveCount(2, "`/search` と `/search/attribute-values`");
+        // 陽性対照: 群の終端は 1 つ（検索本体）。0 件の一覧に対して `OnlyContain` は空虚に真になるため、
+        // **先に件数を主張する。**［2026-10-15 / #1902・[[IADR-0533]]］属性値照会（`/search/attribute-values`）の
+        // REST は撤去した —— 門の試験（401・200 ＋ 空・陽性対照）は gRPC 面の `GrpcAttributeValuesTests` が持つ。
+        search.Should().ContainSingle("`/search` だけ（属性値照会の REST は撤去した）")
+            .Which.Pattern.Should().Be("/search");
         search.Should().OnlyContain(r => r.HasAuthz,
             "#1318 欠陥 B —— 群に RequireAuthorization() が掛かっていること");
 

@@ -5,44 +5,20 @@ using RetrievalService.Domain.Ports;
 
 namespace RetrievalService.Features.Search.AttributeValues;
 
-// FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（計画 ADR-0043・裁定 Q2）。
+// FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（計画 ADR-0043・裁定 Q2）の**問い合わせ本体**。
 //
 // **辞書を丸ごと返さない**（決定 1）——返すのは「**到達できる文書に実際に付与された値**」だけ。
-// **件数を返さない**（決定 2）——`AttributeValuesResponse` は値の配列しか持たない。
+// **件数を返さない**（決定 2）——値の配列しか持たない。
 // **検索と同じ ABAC フィルタを使う**（[[IADR-0151]] 決定 1）——別経路で数えると
 // 「検索には出るが候補に無い値」が生まれる。
 //
-// **スコープが解決できない（deny-by-default）ときは空配列**（[[IADR-0151]] 決定 5）。
-// 404 にも 403 にもしない——**候補が無いことと権限が無いことを区別させない**。
-internal static class AttributeValuesEndpoint
+// ［2026-10-15 / #1902・[[IADR-0533]] 追記］REST の受け口（`POST /search/attribute-values`。旧 `AttributeValuesEndpoint`）は
+// 撤去した。呼び出し元は BFF の east-west gRPC（R-2）だけであり、AST も叩いていない。
+// 本体はここに残し、gRPC 面（`AttributeValuesGrpcService`）が呼ぶ。
+internal static class AttributeValuesQuery
 {
-    internal static void Map(RouteGroupBuilder g)
-    {
-        g.MapPost("/attribute-values", async (
-            AttributeValuesRequest req, IVectorStore store, FusedCollections fused,
-            ISearchAccessResolver access, HttpContext http, CancellationToken ct) =>
-        {
-            // deny-by-default: 呼び出し元が解決できなかった（null）／許可なしのスコープでは何も返さない。
-            // 🔴 **これは従来どおりである**（[[IADR-0151]] 決定 5）——
-            // 本 PR が変えるのは「主張を信じるか」だけであり、「主張が要るか」ではない。
-            if (req.Scope is not { GrantsAccess: true } || string.IsNullOrWhiteSpace(req.Key))
-                return Results.Ok(new AttributeValuesResponse([]));
-
-            // 🔴 FR-05, NFR-09, [[IADR-0410]], [[IADR-0416]] (#1339): **権限の根拠は自分で引く。**
-            // 本文の `Scope` は呼び出し元の主張であり、**絞り込みとしてしか効かない**。
-            // deny-by-default: 自分で引いた許可が無ければ何も返さない（存在秘匿は現行のまま）。
-            var narrowed = ScopeNarrowing.Apply(
-                await access.ResolveAsync(http, ct), req.Scope);
-            if (narrowed is not { GrantsAccess: true } scope)
-                return Results.Ok(new AttributeValuesResponse([]));
-
-            return Results.Ok(new AttributeValuesResponse(
-                await ListAsync(store, fused, req.Key, scope, ct)));
-        }).WithName("AttributeValues").Produces<AttributeValuesResponse>();
-    }
-
     // FR-04, FR-05, NFR-16, [[IADR-0151]] 決定 1, [[IADR-0253]] 決定 2, [[IADR-0417]] (#1255):
-    // 🔴 **REST と gRPC が通る唯一の問い合わせ。**
+    // 🔴 **権限内属性値の唯一の問い合わせ**（撤去前は REST と gRPC の両方が通っていた）。
     //
     // 写すと、片方だけ分岐の扱いが変わった状態が作れる —— 本リポジトリが繰り返し踏んでいる形である
     // （直近では [[IADR-0412]] 決定 6 が同じ理由で 1 つに寄せた）。

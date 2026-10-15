@@ -1,6 +1,6 @@
 // FR-18, NFR-09, NFR-16, SC-09, ADR-0029, ADR-0043, ADR-0063, ADR-0075, IADR-0299, IADR-0364,
 // IADR-0379, IADR-0401, IADR-0402, IADR-0410, IADR-0412 (#1255):
-// タグ辞書の**名前集合**を読む 1 口（REST `GET /internal/tags/names` と同じ意味論）の gRPC 契約。
+// タグ辞書の**名前集合**を読む 1 口（撤去した REST `GET /internal/tags/names` と同じ意味論。［2026-10-15 / #1902］名前の面はこの rpc だけ）の gRPC 契約。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）: 所有者は DocumentService。置き場は knowledge ユニットの
 //   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/document/v1/`。
@@ -45,7 +45,7 @@ option csharp_namespace = "Knowledge.Contracts.Grpc.Document.V1";
 // タグ辞書の読み取り。ServiceCaller（platform-service）を要求する。
 // **書き込み・使用件数・文書の口はこの面に存在しない**（呼び出し元が要らないものを面へ出さない）。
 service TagDictionary {
-  // 辞書に定義済みのタグ名を**すべて**返す。REST `GET /internal/tags/names` と同値。
+  // 辞書に定義済みのタグ名を**すべて**返す。撤去した REST `GET /internal/tags/names` と同値。
   // 引数を取らない —— 呼び出し元（提案の生成段）が要るのは「選んでよい値の全体」だけである。
   rpc ListNames(ListNamesRequest) returns (ListNamesResponse);
 }
