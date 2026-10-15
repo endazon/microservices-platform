@@ -79,6 +79,9 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
             .Should().BeGreaterThan(hosted.IndexOf(typeof(QdrantKeywordIndexDiscoveryHostedService)));
         _factory.Services.GetRequiredService<IngestionService.Common.Observability.EmbeddingPendingMetrics>()
             .Should().NotBeNull();
+        // #1931 / [[IADR-0540]]: 本文の欠落の計数も受け口が要求する。
+        _factory.Services.GetRequiredService<IngestionService.Common.Observability.BodyMissingMetrics>()
+            .Should().NotBeNull();
     }
 
     public sealed class Factory : WebApplicationFactory<Program>

@@ -41,7 +41,8 @@ public class DocumentUpdatedConsumerTests
         IDocumentContentReader reader,
         IEmbeddingService? embed = null,
         ILogger<DocumentUpdatedConsumer>? logger = null,
-        IngestionService.Common.Observability.EmbeddingPendingMetrics? metrics = null)
+        IngestionService.Common.Observability.EmbeddingPendingMetrics? metrics = null,
+        IngestionService.Common.Observability.BodyMissingMetrics? bodyMissing = null)
     {
         var completed = new RecordingCompletedPublisher();
         var consumer = new DocumentUpdatedConsumer(
@@ -54,6 +55,7 @@ public class DocumentUpdatedConsumerTests
             ConsumerTimeoutsForTests.Timeouts,
             TimeProvider.System,
             metrics ?? TestMeterFactory.NewEmbeddingPendingMetrics(),
+            bodyMissing ?? TestMeterFactory.NewBodyMissingMetrics(),
             logger ?? NullLogger<DocumentUpdatedConsumer>.Instance);
         return (consumer, completed);
     }

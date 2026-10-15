@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-02 取り込み
 type: test-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-10-14
+updated: 2026-10-15
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-04, FR-05, SC-01, SC-02, SC-08, UC-04, NFR-06]
 adrs: [ADR-0070, ADR-0027, ADR-0127, ADR-0016, ADR-0092]
-iadrs: [IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
-specs: [20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#1908, #536, #1193, #1247, #1640, #1746, #1760]
+iadrs: [IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
+specs: [20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 -->
 
 # テスト仕様書: 取り込み
@@ -75,6 +75,9 @@ issues: [#1908, #536, #1193, #1247, #1640, #1746, #1760]
 | T-46 | **待ちの点の書き込み** | 語彙索引への待ちのチャンク・メタデータ点の書き込み、数える・消すのフィルタ（gRPC を記録） | 語彙索引へ、チャンクの口と同じペイロード ＋ 印と理由（本文なしは `has_body = false`・`chunk_index = -1`）で書く。高機密の口は印を書かない。フィルタは印だけを引き、消すのはその ID で印を持つ点だけ（`LexicalIndexStoreTests`） | 同裁定（決定 1・2） |
 | T-47 | **読み戻し** | 書いたペイロードから待ちの点を復元する | 書いた値（題名・本文・位置・所在・属性・タグ・更新日時・共有先・理由）がそのまま戻る。印の無い点は復元しない | 同上 |
 | T-48 | **配線** | 本番の Program.cs | 埋め直しの器と計器が登録され、器はブートストラップより後に並ぶ（`IntrospectionEndpointTests`） | 同上 |
+| T-49 | **本文の欠落の分類** | 読み手（`StorageDocumentContentReader`）のオブジェクトストレージが NoSuchKey（専用の型・汎用の型にエラーコード）・404 のバケットなし・500・503・時間切れ・接続の失敗を返す。本文がある | NoSuchKey だけを本文の欠落へ写す（所在を運ぶ）。状態コード 404 だけでは写さず、他は元の例外のまま上げる。本文があれば従来どおり返す。判定を 404 だけ・S3 の例外すべて・型だけにする変異で赤になる（`DocumentBodyMissingTests`） | 本文の欠落は恒久的 |
+| T-50 | **本文の欠落の受け口** | 本文が無い（`internal`・`confidential`）。本文がある。一時障害（500） | 欠落は例外を上げずに終える。Warning を 1 行（文書 ID・本文の所在・更新日時）、計数 `ingestion.body_missing` を 1。点は 1 つも書かず（題名だけの点も書かない。扱いは未決）、完了を発行しない。冒頭の全コレクション削除は従来の位置のまま。本文があれば従来どおり書き、計数も Warning も無い。一時障害は例外のまま上げる | 同上 |
+| T-51 | **本文の欠落の実配送** | 本番と同じ共通既定の Wolverine（ローカルキュー）で、本文が無い・1 回目だけ 5xx | 欠落は試行 1 回で成功として終わり、デッドレターへ行かない。5xx は従来どおり再試行され（2 回目で成功）、デッドレターへ行かない | 同上 |
 
 ## 段間結合（取り込み → 索引 → 検索ヒット）
 

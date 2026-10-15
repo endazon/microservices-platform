@@ -26,6 +26,7 @@
     "docs/tests/FR-02_ingestion.md": [
       "ChunkIdTests",
       "ConsumerCallTimeoutsTests",
+      "DocumentBodyMissingTests",
       "DocumentUpdatedConsumerTests",
       "EmbeddingBudgetDeadLetterPipelineTests",
       "EmbeddingPendingReembedderTests",

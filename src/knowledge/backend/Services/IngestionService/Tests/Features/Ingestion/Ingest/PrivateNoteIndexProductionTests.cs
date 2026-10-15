@@ -53,6 +53,7 @@ public class PrivateNoteIndexProductionTests
             ConsumerTimeoutsForTests.Timeouts,
             TimeProvider.System,
             TestMeterFactory.NewEmbeddingPendingMetrics(),
+            TestMeterFactory.NewBodyMissingMetrics(),
             NullLogger<DocumentUpdatedConsumer>.Instance);
         return (consumer, index);
     }

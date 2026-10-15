@@ -50,6 +50,7 @@ public class EmbeddingBudgetDeadLetterPipelineTests
                 // #1908 / [[IADR-0536]]: 受け口は埋め込み待ちの計器を要求する。
                 .AddMetrics()
                 .AddSingleton<IngestionService.Common.Observability.EmbeddingPendingMetrics>()
+                .AddSingleton<IngestionService.Common.Observability.BodyMissingMetrics>()
                 .AddSingleton(timeouts)
                 .AddSingleton<TimeProvider>(clock)
                 .AddSingleton<IDocumentContentReader>(reader)

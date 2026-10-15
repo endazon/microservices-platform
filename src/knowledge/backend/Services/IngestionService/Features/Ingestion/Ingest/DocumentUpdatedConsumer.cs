@@ -33,6 +33,7 @@ public class DocumentUpdatedConsumer(
     IngestionTimeouts timeouts,
     TimeProvider clock,
     EmbeddingPendingMetrics pendingMetrics,
+    BodyMissingMetrics bodyMissingMetrics,
     ILogger<DocumentUpdatedConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -108,8 +109,33 @@ public class DocumentUpdatedConsumer(
 
         // FR-02 parse: 本文（Markdown）を取得する
         string markdownUri = ev.MarkdownUri;
-        var markdownText = await CallAsync(IngestionTimeouts.ContentTarget, timeouts.ContentRead,
-            t => reader.ReadAsync(markdownUri, ev.Title, t), ct);
+        string markdownText;
+        try
+        {
+            markdownText = await CallAsync(IngestionTimeouts.ContentTarget, timeouts.ContentRead,
+                t => reader.ReadAsync(markdownUri, ev.Title, t), ct);
+        }
+        catch (DocumentBodyMissingException missing)
+        {
+            // 🔴 FR-02, UC-04, [[IADR-0540]] 決定 1・3・4 (#1931): **本文のオブジェクトが無い（NoSuchKey）のは恒久的な欠落である。**
+            // 再試行しても現れない（9/26 の SeaweedFS 切り替えより前の文書は、旧ストレージの中身を破棄したため本文が無い）。
+            // 例外を上げると再試行の後 DLQ へ入り、DLQ を汚す。ここで**記録だけして正常に終える**（ack される）。
+            //
+            // ⚠️ **未決（#1931 項目 3）: 本文の無い文書を索引でどう扱うか**（題名だけで索引する・アーカイブする・削除する）は
+            // オーナーの裁定待ちである。本件では**何も書かない**（メタデータ点 `IndexMetadataOnlyAsync` も使わない）。
+            // 既存の点は上の全コレクション削除（FR-05, ADR-0016 の fail-closed。従来どおりの位置）で既に消えている ——
+            // 本件はその削除を足しも外しもしない。点を残す（削除を本文の取得の後へ動かす）か、題名だけの点を書くかも項目 3 で決める。
+            //
+            // 完了イベントは発行しない（取り込みは完了していない。購読者も無い —— #1771）。
+            // ログに出すのは文書 ID・本文の所在（storage://<bucket>/<key>。秘密情報を含まない）・更新日時だけである。
+            // 作成日時はイベントが運ばない（`DocumentUpdated` に項目が無い）ので、更新日時で代える。
+            bodyMissingMetrics.RecordMissing();
+            logger.LogWarning(
+                "Ingestion {DocumentId}: body object missing (NoSuchKey) at {BodyKey} (updated_at={UpdatedAt:O}); "
+                + "skipped without retry or dead-lettering. How to index body-less documents is pending (#1931 item 3)",
+                ev.DocumentId, missing.MarkdownUri, ev.UpdatedAt);
+            return;
+        }
 
         // FR-02 chunk: チャンク化
         var chunks = chunker.Chunk(markdownText);
