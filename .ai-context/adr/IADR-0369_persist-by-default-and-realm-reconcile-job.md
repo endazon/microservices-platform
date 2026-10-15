@@ -23,7 +23,7 @@ related_ids:
   - ADR-0124
 author: claude
 created: 2026-09-04
-updated: 2026-09-28
+updated: 2026-10-15
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md（認証＝Keycloak）
   - planning:projects/microservices-platform/07_adr/ADR-0026_auth-keycloak.md
@@ -154,6 +154,13 @@ CI（`integration-stack.yml`。k3d）も既定＝永続で走る（k3d は local
   > **本番の秘密を realm の宣言から外す・初期投入は無いときだけ作る**と定めたためである。宣言所有のままだと、認証基盤と Vault を対で回しても
   > 本 Job が次の起動で認証基盤側だけ開発用の値へ戻し、片側だけ書いた状態（`invalid_client`）を作る。宣言の値は開発用の形に限る（`check-realm-constraints.js` 検査 8）。
   > 🔴 **帰結**: realm JSON の client の `secret` を直しても既存の client には届かない（本決定の「realm JSON を直したら up を再実行すれば届く」の例外）。
+
+  > **［2026-10-15 追記 / #1894 / IADR-0546］境界表の実行時の行に例外を 1 つ足した（表そのものは上のまま。追記で言い直す）。**
+  >
+  > **既存の人の seed 利用者にも、`account` の `view-profile`・`manage-account` だけは宣言から加える**（`SEED_USER_SELF_SERVICE_ROLES`）。
+  > realm import で作られる利用者は既定ロールを受け取らず、アカウントコンソール（SC-16）が 401 / 403 になっていた。この 2 つは Keycloak が
+  > 実行時に作るすべての利用者へ既定ロールで与える基線である。**加えるだけで外さない**。実効（合成を含む）の割当で比べる。
+  > 宣言の他のロール（realm ロール・他の client ロール）は従来どおり既存の利用者へ当てない。
 
   既存利用者の `requiredActions` を宣言へ戻さないのは、TOTP を登録し終えた利用者へ `CONFIGURE_TOTP` を再要求するためである。
   TOTP 既定は realm の `requiredActions[CONFIGURE_TOTP].defaultAction`（宣言層）で新規利用者へ効く。seed 利用者の宣言を

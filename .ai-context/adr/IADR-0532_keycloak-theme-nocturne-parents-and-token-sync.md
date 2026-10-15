@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-13, SC-14, SC-15, SC-16, ADR-0026, ADR-0031, ADR-0045, NFR-12, IADR-0261, IADR-0435, IADR-0524]
 author: claude
 created: 2026-10-10
-updated: 2026-10-10
+updated: 2026-10-15
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md（§SC-13〜16。「Keycloak のテーマとして実装する」）
   - planning:projects/microservices-platform/05_screens/mockups/hi-fi/sc-13.html〜sc-16.html（Nocturne）
@@ -153,6 +153,8 @@ Keycloak 26.7.4 の配布物を手元で起動し、実 realm と現行テーマ
   - 🔴 **アカウントコンソール（SC-16）は realm の宣言のままでは API が 401 になる**（本 IADR の範囲外の既存の不具合。手元の Keycloak 26.7.4 で実測）。
     realm が独自に定義した `roles` スコープに audience 解決・クライアントロールの写像が無く、`account-console` に `basic` スコープ（`sub`）が付かず、
     利用者に `account` の `manage-account` が無い（`defaultRole` 無し）。見た目の確認は手元でこの 3 点を補って行った。別 issue（#1894）で扱う。
+    ［2026-10-15 追記 / #1894］[IADR-0546](./IADR-0546_account-console-declared-builtin-clients-and-seed-self-service-roles.md) で直した。
+    共有の `roles` スコープは変えず、`account-console` に写像を直付けする形を採った（他のクライアントのトークンを変えないため）。
   - Keycloak を上げるときは `KEYCLOAK_BUILTIN_THEMES` を引き直し、ログイン・OTP・リセット・アカウントのスクリーンショットを撮り直す。
 
 ## 関連
