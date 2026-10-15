@@ -3,15 +3,15 @@ title: FR-22 利用者本人への通知 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-08-16
-updated: 2026-09-27
+updated: 2026-10-16
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, SC-10, UC-11]
 adrs: [ADR-0037, ADR-0045]
-iadrs: [IADR-0009, IADR-0119, IADR-0125, IADR-0132, IADR-0135, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0346, IADR-0419]
-specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20260902_issue-600_bff-notifications-relay, 20260927_issue-1637_grpc-client-caller-cancellation]
-issues: [#451, #600, #1025, #1637]
+iadrs: [IADR-0009, IADR-0119, IADR-0125, IADR-0132, IADR-0135, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0346, IADR-0419, IADR-0533]
+specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20260902_issue-600_bff-notifications-relay, 20260927_issue-1637_grpc-client-caller-cancellation, 20261015_1902_east-west-rest-residue]
+issues: [#451, #600, #1025, #1637, #1902]
 -->
 
 # テスト仕様書: 利用者本人への通知
@@ -111,10 +111,10 @@ issues: [#451, #600, #1025, #1637]
 | **T-18** | 削除予告の通知 1 件 | メール本文を組み立てる | **件数と期限だけが現れる**。資料名は現れようがない（材料が無い） | **AC-2**（メール） | 自動（xUnit・`EmailIndependenceTests`） |
 | **T-19** | 上限に触れた送出 | 監査ログの詳細を見る | **種別と機械的な理由語だけ**で構成される（`kind=... reason=...`）。監査ログは ABAC の外側へ出るため通知本文と同じ規律を課す | **AC-2**（監査） | 自動（xUnit・`EmailSendRateTests`） |
 | **T-20** | 保持期間の前後に 1 件ずつ | 保持期間の掃除を回す | **期間を過ぎたものだけが物理削除される**。**送出の記録（outbox）は消えない** | — | 自動（xUnit・`NotificationRetentionTests`） |
-| **T-21** | 送信側 6 項目のペイロード | 受け口 POST /internal/notifications を呼ぶ | **201 で永続化される**（段 1 ＝「届いた」）。読み出し /notifications は認証必須のまま | — | 自動（xUnit・`NotificationIngressTests`） |
-| **T-22** | 必須欠落・値域外のペイロード | 受け口を呼ぶ | **400 で 1 件も永続化されない**（subject/kind/occurredAt 必須、count ≥ 0、thresholdPercent 0..100） | — | 自動（xUnit・`NotificationIngressTests`） |
-| **T-23** | 完全同一の 6 項目を 2 回 | 受け口を 2 回呼ぶ | **2 回目は 200 ＋既存 id（重複と明示）**。閾値 80/95 のように同時刻でも項目が違えば**畳まれない** | — | 自動（xUnit・`NotificationIngressTests`） |
-| **T-24** | 送出アダプタと応答するスタブ受け口 | 通知を 1 件送出する | **叩くパスが受け口と一致する**。送る JSON は **6 項目ちょうど**で、`title` / `body` / `message` / `text` / `summary` / `detail` / `content` に相当する項目が 1 つも無い | **AC-2**（発火側） | 自動（xUnit・`PrivateNoteNotificationDispatchTests`） |
+| **T-21** | 送信側 6 項目のペイロード | 受け口（gRPC `NotificationIngress/Accept`。［2026-10-16］REST の POST /internal/notifications は撤去）を呼ぶ | **受理されて永続化される**（`duplicate=false`。段 1 ＝「届いた」）。読み出し /notifications は認証必須のまま | — | 自動（xUnit・`NotificationIngressTests`） |
+| **T-22** | 必須欠落・値域外のペイロード | 受け口を呼ぶ | **`INVALID_ARGUMENT` で 1 件も永続化されない**（subject/kind/occurredAt 必須、count ≥ 0、thresholdPercent 0..100。撤去した REST では 400） | — | 自動（xUnit・`NotificationIngressTests`） |
+| **T-23** | 完全同一の 6 項目を 2 回 | 受け口を 2 回呼ぶ | **2 回目は `duplicate=true`（重複と明示）で、通知もメールも 1 件のまま**（gRPC の応答は id を運ばない。撤去した REST では 200 ＋既存 id）。閾値 80/95 のように同時刻でも項目が違えば**畳まれない** | — | 自動（xUnit・`NotificationIngressTests`） |
+| **T-24** | 送出アダプタ（gRPC `NotificationIngress/Accept`） | 通知を 1 件送出する | 送る要求は **6 項目ちょうど**で、`title` / `body` / `message` / `text` / `summary` / `detail` / `content` に相当する項目が 1 つも無い（［2026-10-16 / #1902］旧 REST の「叩くパスが受け口と一致する」は REST の受け口とアダプタの撤去で対象が無くなった。gRPC では呼ぶ面が生成クライアントで固定される） | **AC-2**（発火側） | 自動（xUnit・`GrpcPrivateNoteNotifierTests` の T-08） |
 | **T-25** | 受け口が **任意の例外**（型の列挙から漏れるものを含む）・タイムアウト・500・404 を返す | 通知を送出する | **例外を投げない**（6 形すべて）。**呼び出し元のキャンセルだけは伝播する** | **AC-4**（発火側） | 自動（xUnit・`PrivateNoteNotificationDispatchTests`） |
 | **T-26** | **実アダプタ＋到達できない受け口**を差した器 | 同期 push・論理削除・完全削除・定期処理を実行する | **すべて成功する**（資料は保存され、削除も走る）。通知が届かないことは業務処理の成否に影響しない | **AC-4**（発火側） | 自動（xUnit・`PrivateNoteNotificationDispatchTests`） |
 | **T-27** | 削除予告・週次・トークン期限・容量警告が同時に発火する状態 | 定期処理と同期 push を実行し、**送出の瞬間に別スコープで発火記録を読む** | **4 契機とも、送出時点で発火記録が既に永続化されている**（再起動で重複発火しない）。宛先は所有者本人のみ | **AC-3**／各 1 回 | 自動（xUnit・`PrivateNoteNotificationDispatchTests`） |

@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-09, NFR-16, ADR-0029, ADR-0075, ADR-0086, ADR-0087, ADR-0089, IADR-0379, IADR-0413, IADR-0426, IADR-0462]
 author: claude
 created: 2026-10-10
-updated: 2026-10-10
+updated: 2026-10-16
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0089_east-west-completion-rule-and-authz-service-face.md（決定 1）
   - planning:projects/microservices-platform/07_adr/ADR-0075_east-west-grpc-migration-order.md（決定 2）
@@ -110,6 +110,27 @@ REST 実装が残り、宛先の構成の有無で REST と gRPC が選ばれて
   3. 使われなくなった REST の宛先の env（`Services__AuthorizationService`・`Services__LlmGateway` の一部）の掃除。
   4. `BffScopeResolver.ResolveAsync` の未使用の引数 `IHttpClientFactory` の除去。
   5. `SearchUserContext.ForwardableCredential` の整理（REST 輸送の転送のためだけの値）。
+
+## 追記
+
+［2026-10-16 追記 / #1902］**フォローアップ 1・3・4・5 を済ませた**（決定 5 が予告した「受け口ごとの撤去」を 1 本で行った）。
+作業仕様書: [20261015_1902_east-west-rest-residue](../specs/20261015_1902_east-west-rest-residue.md)（母集合と除外の表）。
+
+- **撤去した受け口（8）**: `POST /authz/scope`・`POST /embed`・`POST /complete/stream`・`POST /search/attribute-values`・
+  `POST /internal/notifications`・`POST /internal/knowledge-health/observations`・`GET /internal/tags/names`・
+  `POST /documents/{id}/tags`。呼び出し元をコード・helm・compose・scripts・perf・frontend・obsidian-plugin・AST（submodule の pin と
+  最新）で走査し、いずれも 0 件だった。REST 専用の入力検証（`ResolveScopeValidator`）と応答型（`TagNamesResponse`。契約の
+  破壊的変更として baseline に承認を記録）も撤去した。問い合わせ本体は `AttributeValuesQuery`・`TagNamesQuery` として残した。
+- **残した受け口（決定 5 の列挙のうち 2）**: グラフの近傍（`GET /graph/{id}/neighbors`）と辺の型の辞書
+  （`GET /graph/edge-types/catalog`）。G-1 の呼び出しは消えたが、**BFF の中継（`/bff/graph/...`。north-south）が叩く**ので撤去しない。
+  決定 5 の列挙はこの 2 つを east-west の受け口として数えていたが、正しくは north-south の口でもあった。
+- **env（フォローアップ 3）**: `Services__AuthorizationService`（datasource・retrieval・aianalysis・wiki・graph）と
+  `Services__LlmGateway`（conversion・ingestion・retrieval）を helm・compose・appsettings から外した。BFF の管理面の代理・
+  AI 分析の readiness・グラフのクラスタ要約が読むキーは残した。`EastWestGrpcDeploymentWiringTests` が両方の向きを固定する。
+- **引数・値（フォローアップ 4・5）**: `BffScopeResolver.ResolveAsync` から `IHttpClientFactory` を外し、
+  `SearchUserContext.ForwardableCredential` を外した。
+- 試験は「同じ性質を gRPC 面の試験が持つものは削除」「REST と gRPC の同値の対は削除」「REST 面にしか書かれていなかった性質は
+  TestServer 上の gRPC 面へ写す」の 3 通りで扱った（作業仕様書 §試験の写し方）。
 
 ## 関連
 

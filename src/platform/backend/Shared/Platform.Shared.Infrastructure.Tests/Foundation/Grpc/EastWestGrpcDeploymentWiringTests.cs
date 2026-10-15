@@ -127,6 +127,45 @@ public class EastWestGrpcDeploymentWiringTests
         found.Should().OnlyContain(f => table.Contains(f), $"{file} の gRPC 宛先はすべて呼び出し元 × キーの表に載せる（表を 1 か所に保つ）");
     }
 
+    // 5. ［2026-10-16 / #1902・[[IADR-0533]] フォローアップ 3］**読まれなくなった REST の宛先の env が戻っていない。**
+    //    宛先が残っていると「REST の経路がまだある」と読み違え、構成も肥大する。読み手が残る組（BFF の管理面の代理・
+    //    AI 分析の readiness・グラフのクラスタ要約）は下の対照で残っていることを確かめる。
+    public static TheoryData<string, string, string> RetiredRestDestinations() => new()
+    {
+        { "datasource", "datasource-service", "Services__AuthorizationService" },
+        { "retrieval", "retrieval-service", "Services__AuthorizationService" },
+        { "aianalysis", "aianalysis-service", "Services__AuthorizationService" },
+        { "wiki", "wiki-service", "Services__AuthorizationService" },
+        { "graph", "graph-service", "Services__AuthorizationService" },
+        { "conversion", "conversion-service", "Services__LlmGateway" },
+        { "ingestion", "ingestion-service", "Services__LlmGateway" },
+        { "retrieval", "retrieval-service", "Services__LlmGateway" },
+    };
+
+    [Theory]
+    [MemberData(nameof(RetiredRestDestinations))]
+    public void Retired_rest_destinations_are_not_deployed(string helmKey, string composeKey, string envKey)
+    {
+        HelmEnv(Block(ReadRepoFile(Helm), $"  {helmKey}:", after: "services:"), envKey)
+            .Should().BeNull($"services.{helmKey} の {envKey} は読み手が無い（REST の経路は撤去した）");
+        System.Text.RegularExpressions.Regex.IsMatch(
+                Block(ReadRepoFile(Compose), $"  {composeKey}:", after: "services:"), $@"(?m)^\s+{envKey}:")
+            .Should().BeFalse($"compose の {composeKey} の {envKey} は読み手が無い（REST の経路は撤去した）");
+    }
+
+    // 5 の対照: 読み手が残る組は配備に残っている（「全部消す」変異を捕まえる。上の陰性が空虚に通らないこと）。
+    [Theory]
+    [InlineData("bff", "bff", "Services__AuthorizationService")]
+    [InlineData("aianalysis", "aianalysis-service", "Services__LlmGateway")]
+    [InlineData("graph", "graph-service", "Services__LlmGateway")]
+    public void Rest_destinations_that_still_have_a_reader_stay_deployed(string helmKey, string composeKey, string envKey)
+    {
+        HelmEnv(Block(ReadRepoFile(Helm), $"  {helmKey}:", after: "services:"), envKey).Should().NotBeNull();
+        System.Text.RegularExpressions.Regex.IsMatch(
+                Block(ReadRepoFile(Compose), $"  {composeKey}:", after: "services:"), $@"(?m)^\s+{envKey}:")
+            .Should().BeTrue();
+    }
+
     private static string? HelmEnv(string block, string envKey)
     {
         var m = System.Text.RegularExpressions.Regex.Match(block,

@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-06, FR-08, UC-03, NFR-09, FR-19]
 adrs: [ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122]
-iadrs: [IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475]
-specs: [20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint]
-issues: [#1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
+iadrs: [IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
+specs: [20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
+issues: [#1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -85,8 +85,8 @@ issues: [#1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#
   取得の直後に見るため、`doc_scope` の不変性（400）や並行制御（409）より先に 404 になる（個人資料の実在を応答から推せない）。
 - 個人資料を書き換える経路は所有者の経路だけである —— 個人資料の口（作成・ごみ箱・完全削除・露出）、Obsidian 同期、
   本文の投入（所有者の束縛）、共有台帳。所有権は台帳と属性の 2 か所にあり、管理の口の属性全置換で食い違わせない。
-- **タグの反映口（`POST /documents/{id}/tags`）**の「管理者なら書ける」分岐も、個人資料には及ばない（所有者だけが足せる。
-  拒否は 404）。組織文書には従前どおり管理者の分岐が効く。east-west gRPC のタグ反映面も同じ判定を通る。
+- **タグの反映口**（east-west gRPC `DocumentTagWrite/AddTag`。［2026-10-16］REST の `POST /documents/{id}/tags` は撤去）の
+  「管理者なら書ける」分岐も、個人資料には及ばない（所有者だけが足せる。拒否は `NOT_WRITABLE`）。組織文書には従前どおり管理者の分岐が効く。
 
 ### 機械クライアントの自分の文書と、所有者の不変性
 

@@ -379,9 +379,8 @@ services:
       # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
       Grpc__Port: "8081"
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp
-      # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段
-      # （AuthorizationService の /authz/users。SC-17 側の `view-users` を持つ経路）。
-      Services__AuthorizationService: http://authorization-service:8080
+      # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段は下の gRPC 宛先だけである
+      # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
       # FR-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0401 (#1255): east-west gRPC。
       # `Services__AuthorizationServiceGrpc` で実在検証が gRPC 経路になる
       # （無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
@@ -417,9 +416,7 @@ services:
       Grpc__Port: "8081"
       # FR-12, UC-06, SC-07, IADR-0043: 変換ジョブ読み取りモデルの永続化（conversion_svc）。
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=conversion_svc;Username=kp;Password=kp
-      # 🔴 **本サービスは compose で `Services__LlmGateway` を持たない**（appsettings の既定
-      # `http://llm-gateway:5007` のままで、compose の llm-gateway は 8080 で待つ）。
-      # 本 PR では REST 側の既定は**触らない**（#1255 の射程外。別 issue）。
+      # ［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無い（appsettings の既定も外した）。
       # FR-12 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0400 (#1255): east-west gRPC。
       # `Services__LlmGatewayGrpc` で図のコード化が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。
       # REST の並走は撤去した。IADR-0533）。
@@ -459,8 +456,8 @@ services:
       # FR-02, ADR-0127 決定 1, IADR-0497 (#1746): 語彙索引（高機密文書を埋め込まずに書く、ベクトルを持たないコレクション）。
       # retrieval-service と同じ値であること（片方だけ変えると「書いたのに検索されない」）。
       Qdrant__LexicalCollection: ${SEARCH_LEXICAL_COLLECTION:-knowledge_chunks_lexical}
-      Services__LlmGateway: http://llm-gateway:8080
       # FR-02 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0397 (#1255): east-west gRPC。
+      # ［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した。
       # `Services__LlmGatewayGrpc` で埋め込みが gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。
       # REST の並走は撤去した。IADR-0533）。
       # 🔴 compose のサービス名は `llm-gateway`（k8s の Service 名 `llmgateway-service` とは違う）。
@@ -509,8 +506,8 @@ services:
       # FR-03, FR-04, SC-02, ADR-0127 決定 3, IADR-0498 (#1746 段 S2): Claude による再順位付けの段（既定は無効）。
       # 有効にするときは .env で SEARCH_RERANK_ENABLED=true を与える（検索のたびに LLM の費用が生じる）。
       Rerank__Enabled: ${SEARCH_RERANK_ENABLED:-false}
-      Services__LlmGateway: http://llm-gateway:8080
       # FR-03 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0397 (#1255): east-west gRPC。
+      # ［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した。
       # `Services__LlmGatewayGrpc` でクエリ埋め込みが gRPC 経路になる
       # （無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       Services__LlmGatewayGrpc: http://llm-gateway:8081
@@ -525,8 +522,8 @@ services:
       Services__GraphServiceGrpc: http://graph-service:8081
       # FR-05 / NFR-09, ADR-0004, ADR-0034 決定 1, IADR-0416 (#1339): ABAC 許可スコープの解決先。
       # 🔴 **本サービスが自分で引くようになった**（従前は呼び出し元の主張を信じていた）。
-      Services__AuthorizationService: http://authorization-service:8080
-      # NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5 (#1339): 同じ解決の gRPC 宛先。
+      # ［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した。
+      # NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5 (#1339): 解決の gRPC 宛先。
       # gRPC 経路で解決する（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       Services__AuthorizationServiceGrpc: http://authorization-service:8081
     depends_on:
@@ -552,7 +549,8 @@ services:
       <<: *common-env
       # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
       Grpc__Port: "8081"
-      Services__AuthorizationService: http://authorization-service:8080
+      # ［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した。
+      # 下の 2 つ（RetrievalService・LlmGateway）は readiness の `/health/live` が読む（残す）。
       Services__RetrievalService: http://retrieval-service:8080
       Services__LlmGateway: http://llm-gateway:8080
       # FR-04 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0400 (#1255): east-west gRPC。
@@ -676,9 +674,8 @@ services:
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp
       # IADR-0021: Wiki.js への同期先（GraphQL push）。API キーはシークレット経由で注入（コミットしない）。
       Services__WikiJs: http://wiki-js:3000
-      # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決（POST /authz/scope）の宛先。
-      # コード既定は :5005 だが authorization-service が開けているのは 8080 だけである。
-      Services__AuthorizationService: http://authorization-service:8080
+      # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決は下の gRPC 宛先だけである
+      # （［2026-10-16 / #1902・IADR-0533］REST `POST /authz/scope` の宛先 `Services__AuthorizationService` は受け口とともに外した）。
       # FR-13 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0401 (#1255): east-west gRPC。
       # `Services__AuthorizationServiceGrpc` で閲覧のスコープ解決が gRPC 経路になる
       # （無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
@@ -854,12 +851,11 @@ services:
       # （読み取り側）。無いと縮退クライアントが解決できず、抽出は毎回スキップされる。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=graph_svc;Username=kp;Password=kp
-      # 🔴 IADR-0089 (#342) / #958: ABAC スコープ解決先。appsettings 既定は :5005（ローカル用）で、
-      # ここで上書きしないと不達 → GraphAccessResolver が Granted=false へ縮退し、
-      # **グラフが常に空になる**（エラーにならないので気付けない）。
-      Services__AuthorizationService: http://authorization-service:8080
-      # FR-18, ADR-0010, IADR-0380 (#1244): AI 提案の生成が LLM ゲートウェイを呼ぶ。コード既定は
+      # 🔴 IADR-0089 (#342) / #958: ABAC スコープ解決先は gRPC 宛先（`Services__AuthorizationServiceGrpc`）だけである
+      # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
+      # FR-18, ADR-0010, IADR-0380 (#1244): クラスタ要約（REST `/complete`。既定 off）が LLM ゲートウェイを呼ぶ。コード既定は
       # `:5010` で compose の llm-gateway（8080）と合わないため上書きする（aianalysis-service と同じ）。
+      # AI 提案の生成は下の gRPC 宛先を使う。
       Services__LlmGateway: http://llm-gateway:8080
       # FR-18 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0400 (#1255): east-west gRPC。
       # `Services__LlmGatewayGrpc` でAI 提案の生成が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。

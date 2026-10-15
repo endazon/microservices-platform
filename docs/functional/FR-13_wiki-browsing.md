@@ -3,15 +3,15 @@ title: Wiki 文書閲覧（Wiki.js 委譲・WikiService ABAC ゲートウェイ�
 type: functional-spec
 status: draft
 created: 2026-07-03
-updated: 2026-10-10
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-13, FR-19, UC-03, UC-07]
 adrs: [ADR-0011, ADR-0046, ADR-0061]
-iadrs: [IADR-0009, IADR-0013, IADR-0020, IADR-0021, IADR-0529]
-specs: [20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment, 20261010_1879_exposure-org-docs-wiki-gate]
-issues: [#66, #1879, planning#784]
+iadrs: [IADR-0009, IADR-0013, IADR-0020, IADR-0021, IADR-0529, IADR-0533]
+specs: [20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment, 20261010_1879_exposure-org-docs-wiki-gate, 20261015_1902_east-west-rest-residue]
+issues: [#66, #1879, #1902, planning#784]
 -->
 
 # 機能仕様書: Wiki 文書閲覧
@@ -48,7 +48,7 @@ issues: [#66, #1879, planning#784]
 | 項目 | 内容 |
 | --- | --- |
 | 入力 | 利用者属性（JWT クレーム: clearance / department 等）, 一覧要求 / slug / documentId |
-| 処理 | `IWikiAccessResolver` が `/authz/scope` で利用者属性 × ポリシーを解決 → `AbacPageFilter` が `WikiPage.Attributes`(jsonb) にメモリ内で ABAC を適用 → 権限内ページのみ返却 |
+| 処理 | `IWikiAccessResolver` が権限スコープ解決（east-west gRPC `AuthzScope/Resolve`）で利用者属性 × ポリシーを解決 → `AbacPageFilter` が `WikiPage.Attributes`(jsonb) にメモリ内で ABAC を適用 → 権限内ページのみ返却 |
 | 出力 | 一覧（権限内ページのサマリ配列）／ 個別ページ本文（権限内のみ 200、権限外・不存在は 404） |
 | 業務ルール | ①フィルタ間は AND、許可値集合内は OR。②スコープ属性キーを持たないページは不一致。③`Granted=false`（マッチ無し）は deny-by-default。④認可サービス障害時も deny-by-default へ縮退し 500 を伝播しない。 |
 | 対象外 | 文書の**編集・作成**（文書管理側の責務）。本 API は読み取り専用。 |
@@ -80,7 +80,7 @@ issues: [#66, #1879, planning#784]
 - `IWikiJsClient` / `WikiJsGraphQlClient`（Services）: Wiki.js 管理 GraphQL への upsert（`singleByPath`→`create`/`update`）
   と、認可プロキシ用の本文取得。API キーは Bearer（環境変数/Secret）。
 - `IWikiContentReader` / `StorageMarkdownReader`（Services）: `MarkdownUri` から本文取得（http(s) 実取得・dev は代替）。
-- `IWikiAccessResolver` / `WikiAccessResolver`（Services）: JWT 属性から `/authz/scope` を解決。障害時は deny-by-default。
+- `IWikiAccessResolver` / `WikiAccessResolver`（Services）: JWT 属性から権限スコープを解決する（east-west gRPC。［2026-10-16］REST の `/authz/scope` は撤去）。障害時は deny-by-default。
 - `AbacPageFilter`（Services）: `AccessScopeResponse` を文書属性に適用する純粋関数。検索側
   `InMemoryVectorStore.MatchesFilters` と同一意味論。Wiki.js 前段ゲートウェイの到達可否判定へ転用する。
 - `WikiPage` / `WikiDbContext`（`wiki_svc`）: ゲートウェイの**同期メタデータ**（属性/タグ/slug/status。属性フィルタ・
