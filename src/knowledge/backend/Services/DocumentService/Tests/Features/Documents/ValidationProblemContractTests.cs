@@ -202,17 +202,9 @@ public class ValidationProblemContractTests(TestWebApplicationFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    // ── D1: AddTag（検証は取得・認可・辞書照合より前） ──
-
-    [Fact]
-    public async Task AddTag_EmptyName_Returns400BeforeLookup()
-    {
-        var resp = await Client().PostAsJsonAsync($"/documents/{Guid.NewGuid()}/tags",
-            new { name = "   " }, TestContext.Current.CancellationToken);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await ErrorsOf(resp)).Should().Equal(["name=タグ名は必須です。"]);
-    }
+    // ── D1: AddTag ──
+    // ［2026-10-15 / #1902・[[IADR-0533]]］REST の `POST /documents/{id}/tags` は撤去した。
+    // 「空のタグ名は取得・認可より前に弾く」は gRPC 面の `GrpcDocumentTagWriteTests` T-08 が固定する。
 
     // ── D24 / D25: タグ辞書（鍵は `name`） ──
 

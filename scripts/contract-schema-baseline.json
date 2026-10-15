@@ -90,6 +90,13 @@
       "approvedBy": "claude (実装エージェント)",
       "issue": "#1771",
       "date": "2026-10-07"
+    },
+    {
+      "key": "typeRemoved:Knowledge.Contracts.Dtos.TagNamesResponse",
+      "reason": "#1902（#1901 / IADR-0533 の残余）: 無認証の REST の受け口 `GET /internal/tags/names` の応答型。受け口を撤去したので生産者 0・消費者 0 になった（読み手の GraphService は #1901 で gRPC `TagDictionary/ListNames` だけになっている）。TagNamesResponse でリポジトリ全体を走査し、契約ファイルの外の参照は撤去した受け口・その試験・本 baseline だけで、いずれも同 PR で外した。名前だけの応答は gRPC の ListNamesResponse が運ぶ。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1902",
+      "date": "2026-10-15"
     }
   ],
   "projects": {
@@ -2884,17 +2891,6 @@
             "type": "int",
             "required": true,
             "position": 2
-          }
-        }
-      },
-      "Knowledge.Contracts.Dtos.TagNamesResponse": {
-        "kind": "record",
-        "members": {
-          "Names": {
-            "source": "positional",
-            "type": "List<string>",
-            "required": true,
-            "position": 0
           }
         }
       },

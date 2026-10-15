@@ -15,18 +15,14 @@ namespace DocumentService.Features.Documents.AddTag;
 // [[IADR-0044]], [[IADR-0364]], [[IADR-0371]], [[IADR-0379]], [[IADR-0398]], [[IADR-0401]],
 // [[IADR-0402]], [[IADR-0410]] (#1255): タグ反映の **east-west gRPC 面**。
 //
-// 🔴 **本体は持たない。** `AddDocumentTagUseCase` を呼ぶだけであり、REST の
-// `POST /documents/{id}/tags` と**同じ関数**を通る（判定器を 2 つにしない）。
-// 入力検証も**同じ `IValidator<AddDocumentTagRequest>`** を引く —— 器（ProblemDetails か
-// gRPC status か）だけが輸送ごとに違う。
+// 🔴 **本体は持たない。** `AddDocumentTagUseCase` を呼ぶだけである（判定器を輸送の側に持たない）。
+// 入力検証は `IValidator<AddDocumentTagRequest>` を引く。
+// ［2026-10-15 / #1902・[[IADR-0533]]］REST の `POST /documents/{id}/tags` は撤去した。反映口はこの面だけである。
 //
 // 🔴 **ServiceCaller を要求する。** 利用者のトークンは（管理者であっても）通らない ——
 //   通すと呼び出し先が「利用者が直接呼んだ」と「サービスが利用者のために呼んだ」を区別できず
 //   confused deputy が成立する（[[IADR-0379]] 決定 4）。これを機械で守るのは
 //   `GrpcDocumentTagWriteTests` の「管理者トークンでも PERMISSION_DENIED」1 本である。
-//   REST 側の `tagReflection` group は `RequireAuthorization()`（認証のみ）なので、
-//   この面は現状より**狭い**（[[IADR-0401]] 決定 1 / [[IADR-0402]] 決定 3 と同じ向き）。
-//   **REST 側は変えない。**
 //
 // 🔴 **判定の位置を動かさない。** 承認者の身元（所有者束縛）と管理者ロールは**本文で運ばれる**が
 //   （計画 `ADR-0086` 決定 1）、**判定するのは本サービスである**（[[IADR-0044]] の最終防衛線）。
