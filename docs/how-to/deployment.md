@@ -65,7 +65,7 @@ Git 状態へ自動復元される）。
 
 ```bash
 kubectl create namespace argocd
-kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.4/manifests/install.yaml
+kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install
 kubectl apply -f deploy/argocd/appproject.yaml
 kubectl apply -f deploy/argocd/application.yaml
 ```

@@ -35,6 +35,11 @@
  *    判定は `lib/product-egress-defaults.js`（描画した chart・overlay に加え、compose・Testcontainers・手順書とスクリプトの
  *    `docker run` も見る）。**これらはツールが無くても見る**（helm / kubectl が要らない）。
  *    走査全体で製品が 1 つも見つからなければ失敗にする（要点 2 と同じ。照合が壊れて 0 件になったときに緑を返さない）。
+ *
+ * 6. **描画結果の外部イメージが digest で固定されていることも見る**（ADR-0107 決定 3 / IADR-0547 / #1858）。
+ *    `check-image-digests.js` はリポジトリの字面（values・kustomization の `images:`）を読むが、上流のマニフェストを
+ *    `resources:` の URL で読む overlay（cert-manager・Argo CD）では、上流が版の更新でイメージを**足した**とき
+ *    `images:` に項目が無いまま tag だけで描かれる。字面では見えないので、描画した結果に同じ判定（自製は対象外）を当てる。
  */
 
 'use strict';
@@ -43,6 +48,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const egress = require('./lib/product-egress-defaults');
+const imageDigests = require('./check-image-digests');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const DEPLOY_DIR = 'deploy';
@@ -162,8 +168,18 @@ function run(bin, args, cwd = REPO_ROOT, input = undefined) {
  * `-strict`（未知フィールドも違反にする）・`-summary`（件数の要約を出す）。
  * `-ignore-missing-schemas` は使わない —— 要点 4（未知の CRD は fail-closed）。
  */
+/**
+ * スキーマを照合しない kind（理由つき。足すときは理由を書く）。
+ * - `CustomResourceDefinition`（#1858 / IADR-0547 決定 4）: CRD という kind **そのもの**のスキーマは、既定のカタログ
+ *   （yannh/kubernetes-json-schema）にも CRD カタログ（datreeio）にも無い（2026-10-15 に両方 404 を実測）。
+ *   上流のマニフェストを丸ごと読む overlay（cert-manager・Argo CD）が CRD を同梱するため、ここを落とすと検査が恒久的に赤になる。
+ *   CRD の定義は上流の字面のままで（kustomize は images 以外を変えない）、apiserver が apply の時点で検証する。
+ *   **CRD で定義された kind のリソース（Certificate・ExternalSecret 等）は従前どおり照合し、無ければ fail-closed のまま**である。
+ */
+const SKIP_SCHEMA_KINDS = ['CustomResourceDefinition'];
+
 function validateSchema(yaml, cwd = REPO_ROOT) {
-  const args = ['-strict', '-summary'];
+  const args = ['-strict', '-summary', '-skip', SKIP_SCHEMA_KINDS.join(',')];
   for (const loc of SCHEMA_LOCATIONS) args.push('-schema-location', loc);
   return run('kubeconform', args, cwd, yaml);
 }
@@ -200,6 +216,21 @@ function checkEgressWithoutTools(repoRoot) {
   return { failures, found, testcontainersBuilders: tc.builders, runCommands: manual.commands };
 }
 
+/**
+ * 要点 6: 描画結果（複数文書の YAML）の `image:` のうち、自製でも digest つきでもないものを返す。
+ * 判定は check-image-digests.js と同じ（`extractRefs` の `image:` の読み方・自製の判定・digest の形）。
+ */
+function undigestedRenderedImages(yaml, label) {
+  return [
+    ...new Set(
+      imageDigests
+        .extractRefs(`${label}.rendered.yaml`, yaml)
+        .map((r) => r.ref)
+        .filter((ref) => !imageDigests.isSelfBuilt(ref) && !/@sha256:[0-9a-f]{64}$/.test(ref)),
+    ),
+  ];
+}
+
 /** 検査本体。結果オブジェクトを返す（プロセスは終了させない — 自己試験から呼べるようにするため）。 */
 function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
   const overlays = discoverOverlays(repoRoot);
@@ -211,6 +242,10 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
     const r = egress.checkRenderedManifests(yaml, label);
     failures.push(...r.problems.map((p) => `既定の外部通信が止まっていない: ${p}`));
     egressFound.push(r.found);
+    // 要点 6（#1858）: 描画結果の外部イメージの digest。
+    for (const ref of undigestedRenderedImages(yaml, label)) {
+      failures.push(`描画結果に digest で固定されていないイメージがある: ${label}: ${ref}（kustomization の images: か values で tag@sha256 に固定する。IADR-0547）`);
+    }
   };
 
   // 要点 2: 0 件走査で緑を返さない。
@@ -318,6 +353,30 @@ function selfTest() {
     mk('deploy/local/vault/kustomization.yaml', 'resources: []\n');
     const found = discoverOverlays(tmp);
     assert.deepStrictEqual(found, ['deploy/local/edge', 'deploy/local/edge/tls', 'deploy/local/vault']);
+  });
+
+  ok('#1858 要点 6: 描画結果の tag だけの外部イメージを拾い、digest つき・自製・テンプレート外の行は拾わない', () => {
+    const D = 'sha256:' + 'a'.repeat(64);
+    const yaml = [
+      'kind: Deployment',
+      'spec:',
+      '  template:',
+      '    spec:',
+      '      containers:',
+      `        - image: quay.io/a/ctl:v1@${D}`,
+      '        - image: quay.io/a/new:v1',
+      '        - image: microservices-platform/bff:latest',
+      '---',
+      'kind: Deployment',
+      'spec:',
+      '  template:',
+      '    spec:',
+      '      initContainers:',
+      '        - image: "quay.io/a/new:v1"',
+      '',
+    ].join('\n');
+    assert.deepStrictEqual(undigestedRenderedImages(yaml, 'deploy/x'), ['quay.io/a/new:v1']);
+    assert.deepStrictEqual(undigestedRenderedImages(`image: quay.io/a/ctl:v1@${D}\n`, 'deploy/x'), []);
   });
 
   ok('走査は Chart.yaml を持つディレクトリを拾い、charts/（依存の展開先）は除外する', () => {

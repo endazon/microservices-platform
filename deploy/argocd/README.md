@@ -23,12 +23,14 @@ Git を単一の真実源とし、ArgoCD が本リポジトリの Helm チャー
 
 ```sh
 kubectl create namespace argocd
-kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.4/manifests/install.yaml
+kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install
 ```
 
-> **版はタグで固定する（#1843 / IADR-0519）**: `stable` ブランチの manifest は取得のたびに中身が変わり得るため apply しない。
-> 版の正は `scripts/k8s-local-up.sh` の `ARGOCD_VERSION` の既定であり、本手順の URL はそれと同じ版に揃える
-> （`scripts/scripts.repo.test.js` がリポジトリ内の Argo CD の install の URL を突き合わせる）。上げるときは全箇所を同じ版へ変える。
+> **版はタグで、内側のイメージは digest で固定する（#1843 / IADR-0519・#1858 / IADR-0547）**: `stable` ブランチの manifest は
+> 取得のたびに中身が変わり得るため apply しない。[`install/kustomization.yaml`](install/kustomization.yaml) が版のタグ（v3.5.4）の
+> `install.yaml` を読み、内側の 3 イメージ（argocd・同梱の dex・redis）を `tag@sha256:…` へ置き換える（URL を直接 apply すると
+> digest の固定を経ない）。版を上げるときは kustomization の URL・`images:` と `scripts/k8s-local-up.sh` の `ARGOCD_VERSION` を
+> 対で改める（`scripts/scripts.repo.test.js` が突き合わせる）。
 
 > **`--server-side` が必須（Issue #348）**: ArgoCD 公式 install manifest は巨大な CRD
 > （`applicationsets.argoproj.io` 等）を含む。client-side `kubectl apply` は manifest 全体を
