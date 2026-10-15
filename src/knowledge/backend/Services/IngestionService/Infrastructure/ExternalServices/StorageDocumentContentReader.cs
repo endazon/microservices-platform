@@ -1,7 +1,7 @@
 using IngestionService.Domain.Ports;
 using IngestionService.Domain;
 using Amazon.S3;
-using Amazon.S3.Model;
+using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Microsoft.Extensions.Logging;
 
@@ -59,8 +59,8 @@ public class StorageDocumentContentReader(
     // 汎用の `AmazonS3Exception` で返しても拾う）。🔴 **状態コード 404 だけでは判定しない** ——
     // バケットが無い（`NoSuchBucket`）も 404 であり、それは構成の不調（自己修復・再試行の対象）である。
     // メッセージ文字列では判定しない。
-    internal static bool IsNoSuchKey(AmazonS3Exception ex) =>
-        ex is NoSuchKeyException || ex.ErrorCode == NoSuchKeyErrorCode;
+    // ［2026-10-15 / #1905・[[IADR-0541]]］判定の本体は共有の `ObjectStorageErrors` へ移した（文書サービスの本文の読み取りと同じ判定）。
+    internal static bool IsNoSuchKey(AmazonS3Exception ex) => ObjectStorageErrors.IsNoSuchKey(ex);
 
-    internal const string NoSuchKeyErrorCode = "NoSuchKey";
+    internal const string NoSuchKeyErrorCode = ObjectStorageErrors.NoSuchKeyErrorCode;
 }

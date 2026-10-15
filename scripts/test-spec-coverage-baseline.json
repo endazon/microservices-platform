@@ -387,7 +387,10 @@
       "QdrantVectorStoreTests"
     ],
     "docs/tests/SC-03_document-detail.md": [
-      "BffDocumentEndpointTests"
+      "BffDocumentContentTests",
+      "BffDocumentEndpointTests",
+      "DocumentContentDeploymentWiringTests",
+      "GrpcDocumentContentTests"
     ],
     "docs/tests/SC-05_document-management.md": [
       "BffDocumentListPagingTests",

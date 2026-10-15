@@ -1997,6 +1997,13 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-06, [[IADR-0537]] (#1923): 後段の `ListDocuments` の 1 ページの件数（null は要求の値どおり）と、受けた要求（件数・印）の記録。
     public int? DocumentReadServerPageSize { get; set; }
     public bool DocumentReadFailContinuation { get; set; }
+
+    // FR-06, SC-03, [[IADR-0541]] (#1905): 後段の `GetDocumentContent` の応答（本文の状態・本文・注入する失敗）。
+    public DocPb.DocumentContentState StubContentState { get; set; } = DocPb.DocumentContentState.Available;
+    public string StubContentMarkdown { get; set; } = "# 経費規程 2025\n\n第 1 条 本規程は経費の精算について定める。";
+    public Exception? StubContentThrows { get; set; }
+    // false なら後段の判定で読めない（found=false。BFF の判定より後段が狭い場合の AND 合成）。
+    public bool StubContentFound { get; set; } = true;
     public System.Collections.Concurrent.ConcurrentQueue<(int PageSize, string PageToken)> ListDocumentsRequests { get; } = new();
 
     // 橋渡しの先の HTTP スタブ（"authz" / "document"）。計測用の器（`MeasuringBffFactory`）が往復を数えるために差し替える。
@@ -2129,6 +2136,25 @@ public class BffTestFactory : WebApplicationFactory<Program>
                         if (status == HttpStatusCode.NotFound) return new DocPb.GetVersionResponse { Found = false };
                         if (snapshot is null) throw ToRpc(status);
                         return new DocPb.GetVersionResponse { Found = true, Snapshot = DocumentReadGrpcMapping.ToProto(snapshot) };
+                    }
+                case DocPb.GetDocumentContentRequest r:
+                    {
+                        // FR-06, SC-03, [[IADR-0541]] (#1905): 本文の読み取り。在るかは詳細と同じスタブで決め、本文の状態は器の値で決める。
+                        Record(method, r.User);
+                        if (owner.StubContentThrows is { } injected) throw injected;
+                        var (status, doc) = await SendAsync<DocumentDto>(new HttpRequestMessage(HttpMethod.Get, $"/documents/{r.DocumentId}"), ct);
+                        if (status == HttpStatusCode.NotFound || !owner.StubContentFound)
+                            return new DocPb.GetDocumentContentResponse { Found = false };
+                        if (doc is null) throw ToRpc(status);
+                        var resp = new DocPb.GetDocumentContentResponse { Found = true, State = owner.StubContentState };
+                        if (owner.StubContentState == DocPb.DocumentContentState.Available)
+                            resp.Markdown = owner.StubContentMarkdown;
+                        if (owner.StubContentState == DocPb.DocumentContentState.TooLarge)
+                        {
+                            resp.SizeBytes = 20L * 1024 * 1024;
+                            resp.LimitBytes = 16L * 1024 * 1024;
+                        }
+                        return resp;
                     }
                 default:
                     throw new NotSupportedException(method);

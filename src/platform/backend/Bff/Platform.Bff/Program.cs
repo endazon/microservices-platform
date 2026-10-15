@@ -213,8 +213,10 @@ builder.Services.AddHttpClient("MarketMonitorService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:MarketMonitorService"]
         ?? "http://market-monitor-service:8080"));
 
-// FR-06, ADR-0014/ADR-0015（Superseded by ADR-0106）: 正規化 Markdown 本文の読み取り用オブジェクトストレージ（storage://）。
-// 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、本文はプレースホルダへフォールバックする。
+// UC-06, SC-07, ADR-0014/ADR-0015（Superseded by ADR-0106）: 変換ジョブの図画像（人手補正）の読み取り用オブジェクトストレージ（storage://）。
+// 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、図画像は 404 になる。
+// ［2026-10-15 / #1905・[[IADR-0541]]］文書の本文（`/bff/documents/{id}/content`）はここを使わない —— 文書サービスから
+// east-west gRPC（`DocumentRead.GetDocumentContent`）で受け取る。BFF へストレージの資格情報を配線しない。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 
 // NFR, ADR-0032 / IADR-0251 / IADR-0273 / #439 第 3 段: BFF セッション（Token Handler）。

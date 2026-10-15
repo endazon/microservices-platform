@@ -65,10 +65,18 @@ public sealed class RecordingObjectStorageClient : IObjectStorageClient
         DeleteThrows = null;
     }
 
-    public Task<string> GetTextAsync(string uri, CancellationToken ct = default) =>
-        Task.FromResult(Texts.TryGetValue(uri, out var text)
+    // FR-06, [[IADR-0541]] (#1905): 読み取りの失敗注入（S3 の NoSuchKey / NoSuchBucket を器で再現する唯一の口）。
+    // null を返した URI は通常どおり読む。**器を共有するので、使った試験は最後に null へ戻す。**
+    public Func<string, Exception?>? GetTextThrows { get; set; }
+
+    public Task<string> GetTextAsync(string uri, CancellationToken ct = default)
+    {
+        if (GetTextThrows?.Invoke(uri) is { } injected)
+            throw injected;
+        return Task.FromResult(Texts.TryGetValue(uri, out var text)
             ? text
             : throw new KeyNotFoundException(uri));
+    }
 
     public Task<byte[]> GetBytesAsync(string uri, CancellationToken ct = default) =>
         Task.FromResult(Array.Empty<byte>());

@@ -651,8 +651,8 @@ export interface DocumentListPageDto {
 }
 
 /**
- * SC-03, FR-06: 文書本文（正規化 Markdown）。BFF が ABAC 判定後にオブジェクトストレージ
- * （`storage://`）から読み取り、閲覧を許可された呼び出し元にのみ払い出す。
+ * SC-03, FR-06: 文書本文（正規化 Markdown）。BFF が ABAC 判定後に文書サービスから受け取り
+ * （本文の実体はオブジェクトストレージ `storage://`）、閲覧を許可された呼び出し元にのみ払い出す。
  */
 export interface DocumentContentDto {
   id: string;

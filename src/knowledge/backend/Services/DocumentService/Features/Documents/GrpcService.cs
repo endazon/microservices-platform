@@ -1,5 +1,6 @@
 using Grpc.Core;
 using Knowledge.Contracts.Grpc;
+using DocumentService.Features.Documents.GetContent;
 using Knowledge.Contracts.Grpc.Document.V1;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
@@ -12,6 +13,7 @@ namespace DocumentService.Features.Documents;
 // FR-05, FR-06, UC-03, SC-03, SC-05, NFR-09, NFR-16, ADR-0002, ADR-0004, ADR-0029, ADR-0056,
 // ADR-0065, ADR-0070, ADR-0075, [[IADR-0012]], [[IADR-0041]], [[IADR-0045]], [[IADR-0379]],
 // [[IADR-0402]] (#1255), ADR-0119 決定 3 (#1614): 文書台帳の読み取り 4 口の **east-west gRPC 面**。
+// ［2026-10-15 / #1905・[[IADR-0541]]］本文の読み取り（`GetDocumentContent`。本体は `DocumentContentUseCase`）を足した。
 //
 // 🔴 **本体は持たない。** 4 つとも `DocumentReadUseCase` を呼ぶだけであり、REST の 4 口と
 // **同じ関数**を通る（判定器を 2 つにしない。[[IADR-0397]] / [[IADR-0400]] と同じ形）。
@@ -43,6 +45,7 @@ namespace DocumentService.Features.Documents;
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
 public sealed class DocumentReadGrpcService(
     DocumentReadUseCase reads,
+    DocumentContentUseCase contents,
     IOptions<DocumentReadRelayOptions> relay,
     ILogger<DocumentReadGrpcService> logger)
     : DocumentRead.DocumentReadBase
@@ -120,6 +123,58 @@ public sealed class DocumentReadGrpcService(
         return snapshot is null
             ? new GetVersionResponse { Found = false }
             : new GetVersionResponse { Found = true, Snapshot = DocumentReadGrpcMapping.ToProto(snapshot) };
+    }
+
+    // FR-06, UC-03, SC-03, ADR-0014, [[IADR-0541]] (#1905): 現行版の本文。判定は `GetDocument` と同じ関数を通る。
+    // 🔴 **「本文が無い」は応答の state、「引けなかった」は status**（IADR-0401 決定 5 と同じ作法）。
+    //   ストレージが構成されていないのは構成の不調なので FAILED_PRECONDITION。一時障害（時間切れ・5xx・バケットが無い）は
+    //   例外のまま上げる（grpc-dotnet が INTERNAL / UNKNOWN へ写す）。呼び出し元（BFF）はどちらも 502 へ写す。
+    public override async Task<GetDocumentContentResponse> GetDocumentContent(
+        GetDocumentContentRequest request, ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.DocumentId, out var id))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "document_id は GUID である必要があります。"));
+
+        DocumentContentResult? result;
+        try
+        {
+            result = await contents.ReadAsync(PrincipalOf(request.User, context), id, context.CancellationToken);
+        }
+        catch (ObjectStorageUnavailableException ex)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+        }
+
+        if (result is null)
+            return new GetDocumentContentResponse { Found = false };
+
+        return result.Status switch
+        {
+            DocumentContentStatus.Available => new GetDocumentContentResponse
+            {
+                Found = true,
+                State = DocumentContentState.Available,
+                Markdown = result.Markdown!,
+            },
+            DocumentContentStatus.NotStored => new GetDocumentContentResponse
+            {
+                Found = true,
+                State = DocumentContentState.NotStored,
+            },
+            DocumentContentStatus.Missing => new GetDocumentContentResponse
+            {
+                Found = true,
+                State = DocumentContentState.Missing,
+            },
+            DocumentContentStatus.TooLarge => new GetDocumentContentResponse
+            {
+                Found = true,
+                State = DocumentContentState.TooLarge,
+                SizeBytes = result.SizeBytes,
+                LimitBytes = result.LimitBytes,
+            },
+            _ => throw new InvalidOperationException($"未知の本文の状態: {result.Status}"),
+        };
     }
 
     // FR-19, 計画 ADR-0119 決定 3, ADR-0086 決定 1 (#1614, #1628): 本文の利用者文脈 → 主体。

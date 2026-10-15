@@ -118,6 +118,18 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
         return resp.Found ? DocumentReadGrpcMapping.ToDto(resp.Snapshot) : null;
     }
 
+    /// <summary>
+    /// FR-06, UC-03, SC-03, ADR-0014, [[IADR-0541]] (#1905): 現行版の本文。**読めない・無ければ <c>null</c>**。
+    /// 本文の状態（在る・参照が無い・実体が無い・大きすぎる）は応答の <c>State</c> で返す。引けなければ例外（呼び出し元が畳む）。
+    /// </summary>
+    public async Task<Pb.GetDocumentContentResponse?> GetContentAsync(ClaimsPrincipal user, Guid id, CancellationToken ct)
+    {
+        var resp = await client.GetDocumentContentAsync(
+            new Pb.GetDocumentContentRequest { DocumentId = id.ToString("D"), User = ToUserContext(user) },
+            cancellationToken: ct);
+        return resp.Found ? resp : null;
+    }
+
     // FR-19, NFR-09, 計画 ADR-0119 決定 3, ADR-0086 決定 1 (#1614): 読み取りの主体を運ぶ利用者文脈。
     // **載せるのは判定の入力であって判定結果ではない。** 属性の抽出はプラットフォーム唯一の点へ委譲する
     // （`AttributeValuesGrpcClient.ToUserContext` と同じ形。キーをここで列挙しない）。

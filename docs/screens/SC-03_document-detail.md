@@ -3,15 +3,15 @@ title: 文書詳細／プレビュー 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-13
+updated: 2026-10-15
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-05, SC-09, SC-18, SC-21, UC-01, UC-02, UC-07]
 adrs: [ADR-0102, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0063, ADR-0070, ADR-0073]
-iadrs: [IADR-0451, IADR-0009, IADR-0038, IADR-0119, IADR-0121, IADR-0124, IADR-0126, IADR-0272, IADR-0276, IADR-0290, IADR-0300, IADR-0323, IADR-0355, IADR-0364, IADR-0365, IADR-0386, IADR-0388]
-specs: [20260913_1455_sc03-private-note-display, 20260804_issue-502_sc01-03-search-flow, 20260828_issue-1011_version-body-contract, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
-issues: [#1455, #1011, #1014, #1104, #1187, #12, #1200, #1240, #1254, #446, #449, #450, #452, #490, #502, #504, #519, #541, #553, #586, #917, #918, planning#197, planning#237, planning#244, planning#473, planning#495]
+iadrs: [IADR-0451, IADR-0009, IADR-0038, IADR-0119, IADR-0121, IADR-0124, IADR-0126, IADR-0272, IADR-0276, IADR-0290, IADR-0300, IADR-0323, IADR-0355, IADR-0364, IADR-0365, IADR-0386, IADR-0388, IADR-0541]
+specs: [20260913_1455_sc03-private-note-display, 20260804_issue-502_sc01-03-search-flow, 20260828_issue-1011_version-body-contract, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261015_1905_bff-document-content]
+issues: [#1455, #1011, #1014, #1104, #1187, #12, #1200, #1240, #1254, #446, #449, #450, #452, #490, #502, #504, #519, #541, #553, #586, #917, #918, #1905, planning#197, planning#237, planning#244, planning#473, planning#495]
 -->
 
 # 画面仕様書: 文書詳細／プレビュー
@@ -184,7 +184,10 @@ hi-fi モックの左レールにも「文書詳細」がある。しかし**本
 
 - `DocumentDto = { id, title, status, markdownUri?, version, attributes{}, tags[], createdAt, updatedAt, hasBody }`
   - `hasBody` は**原本が本文を持っていたか**（既定 `true`）。`false` は上の「本文なし（原本を参照）」の導出元である。
-- `DocumentContentDto = { id, title, markdown, sourceUri? }`（ABAC 判定後にオブジェクトストレージから取得。未配備時はプレースホルダ本文）
+- `DocumentContentDto = { id, title, markdown, sourceUri? }`（ABAC 判定後に BFF が文書サービスから受け取る。本文の実体はオブジェクトストレージ）
+  - ［2026-10-15 / #1905］~~未配備時はプレースホルダ本文~~ —— **本文を返せないときに案内文を 200 で返さない。** 本文が保管されていない（参照が無い・
+    オブジェクトが無い）は 404、上限（16 MiB）超過は 413、受け取れないは 502。画面は本文の位置に「本文は利用できません。」と理由を出し、
+    原本の導線（出典元）はそのまま残す。
 - `DocumentVersionDto = { documentId, version, title, status, attributes{}, tags[], changeNote?, createdAt }`
   - **本文の参照は持たない**（#1011）。版ごとの本文は保持されておらず、「その版の本文」を指せる値が存在しないため、
     版履歴から本文へ導線を張らない。本文は現行版の `…/content` だけが返す。

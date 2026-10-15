@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
-using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using System.Net.Http;
 using System.Net.Http.Json;
 
@@ -18,8 +17,8 @@ namespace Knowledge.Bff.Endpoints;
 // 横断検索（/bff/search）と同じく「ABAC スコープ解決（AuthorizationService）→ 文書取得（DocumentService）」
 // を集約する。利用者スコープに合致しない文書、および不在の文書はいずれも 404 で応答し、存在を秘匿する
 // （deny-by-default・IADR-0009/IADR-0038。「拒否」と「不在」を区別しない）。
-// 本文（正規化 Markdown）は ABAC 判定後にオブジェクトストレージ（storage://）からサーバサイドで取得する
-// （WikiService の読み取り経路と同一。未配備・未設定時はプレースホルダ本文へ縮退）。
+// 本文（正規化 Markdown）は ABAC 判定後に文書サービスから east-west gRPC で受け取る（［2026-10-15 / #1905・[[IADR-0541]]］
+// 以前は BFF がストレージを直接読み、未配備・未設定時は案内文へ縮退していた。縮退は撤去した）。
 //
 // NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0402]] (#1255):
 // 🔴 **後段への読み取り 4 箇所は east-west gRPC で呼ぶ**（［2026-10-10 / [[IADR-0533]]］REST の並走は撤去した。
@@ -148,18 +147,42 @@ public static class DocumentBffEndpoints
             return viaGrpc is null ? Results.NotFound() : Results.Ok(viaGrpc);
         }).WithName("BffDocumentVersion").Produces<DocumentVersionDto>();
 
-        // 本文（正規化 Markdown）: ABAC 判定後にオブジェクトストレージから読み取る。#1010: read。
+        // 本文（正規化 Markdown）。#1010: read。
+        //
+        // FR-06, UC-03, SC-03, ADR-0014, ADR-0029, [[IADR-0541]] (#1905): 🔴 **本文は文書サービスから east-west gRPC で受け取る**
+        // （`DocumentRead.GetDocumentContent`）。BFF はオブジェクトストレージを読まない —— 以前は BFF がストレージを直接読み、
+        // helm・compose で未配線のまま `NullObjectStorageClient` へ縮退して**案内文を 200 で返していた**（利用者も監視も壊れていると
+        // 気付けない）。ABAC の実施点は従来どおり `FetchAuthorizedAsync`（詳細と同じ判定）であり、後段も同じ主体で再判定する（AND 合成）。
+        //
+        // 応答の写し（呼び出し箇所ごとに決める。一般化しない）:
+        //   - スコープ外・不在・後段で読めない … 404（存在秘匿。問題詳細を付けない —— 詳細と同じ応答）
+        //   - 本文の参照が無い・実体が無い（NoSuchKey）… 404 ＋ 問題詳細（`DocumentBodyProblems.Unavailable`。文書は読めるので秘匿の対象ではない）
+        //   - 上限超過 … 413 ＋ 問題詳細（大きさと上限。切り詰めない）
+        //   - 引けなかった（UNAVAILABLE・ストレージ未構成の FAILED_PRECONDITION・一時障害）… 502（案内文へ畳まない）
         g.MapGet("/{id:guid}/content", async (
-            Guid id, IHttpClientFactory httpFactory, IObjectStorageClient storage,
-            HttpContext http, CancellationToken ct) =>
+            Guid id, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
         {
             var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, httpFactory, http, ct);
             if (doc is null)
                 return Results.NotFound();
 
-            var markdown = await ReadMarkdownAsync(storage, doc.MarkdownUri, doc.Title, ct);
-            return Results.Ok(new DocumentContentDto(doc.Id, doc.Title, markdown, doc.MarkdownUri));
-        }).WithName("BffDocumentContent").Produces<DocumentContentDto>();
+            var grpc = http.RequestServices.GetRequiredService<DocumentReadGrpcClient>();
+            Knowledge.Contracts.Grpc.Document.V1.GetDocumentContentResponse? content;
+            try
+            {
+                content = await grpc.GetContentAsync(http.User, id, ct);
+            }
+            catch (Exception ex) when (IsTransportFailure(ex, ct))
+            {
+                DocumentReadFailureLog.Folded(http, "GetDocumentContent", ex, "502");
+                return DocumentBodyProblems.Unreachable();
+            }
+
+            return DocumentBodyProblems.ToResult(content, doc);
+        }).WithName("BffDocumentContent").Produces<DocumentContentDto>()
+          .ProducesProblem(StatusCodes.Status404NotFound)
+          .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
+          .ProducesProblem(StatusCodes.Status502BadGateway);
 
         // ---- SC-05, FR-06, UC-03, IADR-0041: 文書管理（書き込み） ----
         // 既存文書への操作（更新・公開・アーカイブ・削除）は、対象が利用者スコープ内であることを
@@ -475,16 +498,6 @@ public static class DocumentBffEndpoints
     // 経路を選ぶ引数は外した。
     private static bool IsTransportFailure(Exception ex, CancellationToken ct) =>
         !ct.IsCancellationRequested && ex is RpcException or InvalidOperationException;
-
-    // FR-06: 正規化 Markdown をオブジェクトストレージ（storage://）から取得する。ストレージ未配備・
-    // URI 未設定時はプレースホルダ本文へ縮退する（WikiService.StorageMarkdownReader と同じ縮退方針）。
-    private static async Task<string> ReadMarkdownAsync(
-        IObjectStorageClient storage, string? markdownUri, string title, CancellationToken ct)
-    {
-        if (storage.CanResolve(markdownUri))
-            return await storage.GetTextAsync(markdownUri!, ct);
-        return $"# {title}\n\nコンテンツは {markdownUri ?? "(未設定)"} から取得します。";
-    }
 }
 
 // SC-05, FR-06, UC-03: 文書管理の書き込みリクエスト（BFF→DocumentService。JSON 互換）。

@@ -620,10 +620,20 @@ export type bffDocumentContentResponse404 = {
   status: 404
 }
 
+export type bffDocumentContentResponse413 = {
+  data: ProblemDetails
+  status: 413
+}
+
+export type bffDocumentContentResponse502 = {
+  data: ProblemDetails
+  status: 502
+}
+
 export type bffDocumentContentResponseSuccess = (bffDocumentContentResponse200) & {
   headers: Headers;
 };
-export type bffDocumentContentResponseError = (bffDocumentContentResponse401 | bffDocumentContentResponse404) & {
+export type bffDocumentContentResponseError = (bffDocumentContentResponse401 | bffDocumentContentResponse404 | bffDocumentContentResponse413 | bffDocumentContentResponse502) & {
   headers: Headers;
 };
 
@@ -638,8 +648,12 @@ export const getBffDocumentContentUrl = (id: string,) => {
 }
 
 /**
- * ABAC 判定後にオブジェクトストレージ（`storage://`）からサーバサイドで読み取る。
- * ストレージ未配備・URI 未設定時はプレースホルダ本文へ縮退する（500 にしない）。
+ * ABAC 判定（詳細と同じ）の後、本文を文書サービスから受け取って返す。BFF はオブジェクトストレージを読まない。
+ * 本文を返せないときは**案内文を 200 で返さない**（#1905）:
+ * - 本文の参照が無い・本文のオブジェクトが無い … **404**（ProblemDetails。`type` は `urn:microservices-platform:problem:document-body-unavailable`、`reason` は `not_stored` / `missing`）
+ * - 本文が上限（16 MiB・UTF-8）を超える … **413**（ProblemDetails。`sizeBytes` / `limitBytes`。切り詰めない）
+ * - 文書サービスから本文を受け取れない … **502**（ProblemDetails）
+ * 不在・スコープ外の 404 は本文を持たない（存在秘匿。理由を言わない）。
  * @summary FR-06, SC-03: 文書本文（正規化 Markdown）
  */
 export const bffDocumentContent = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentContentResponse> => {
@@ -664,7 +678,7 @@ export const getBffDocumentContentQueryKey = (id: string,) => {
     }
 
 
-export const getBffDocumentContentQueryOptions = <TData = Awaited<ReturnType<typeof bffDocumentContent>>, TError = void>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentContent>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+export const getBffDocumentContentQueryOptions = <TData = Awaited<ReturnType<typeof bffDocumentContent>>, TError = void | ProblemDetails>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentContent>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -683,14 +697,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type BffDocumentContentQueryResult = NonNullable<Awaited<ReturnType<typeof bffDocumentContent>>>
-export type BffDocumentContentQueryError = void
+export type BffDocumentContentQueryError = void | ProblemDetails
 
 
 /**
  * @summary FR-06, SC-03: 文書本文（正規化 Markdown）
  */
 
-export function useBffDocumentContent<TData = Awaited<ReturnType<typeof bffDocumentContent>>, TError = void>(
+export function useBffDocumentContent<TData = Awaited<ReturnType<typeof bffDocumentContent>>, TError = void | ProblemDetails>(
  id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentContent>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {

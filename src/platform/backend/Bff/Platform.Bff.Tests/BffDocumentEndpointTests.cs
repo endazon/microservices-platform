@@ -3,6 +3,7 @@ using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 using System.Net;
 using System.Net.Http.Json;
+using Pb = Knowledge.Contracts.Grpc.Document.V1;
 
 namespace Platform.Bff.Tests;
 
@@ -21,6 +22,8 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         _factory.ScopeFilters = [];
         _factory.ScopeBranches = null;
         _factory.DocumentStatusCode = HttpStatusCode.OK;
+        _factory.StubContentState = Pb.DocumentContentState.Available;
+        _factory.StubContentThrows = null;
     }
 
     // ── #989 段 3（FR-19, IADR-0253 決定 1）: BFF の実 HTTP 経路でも分岐（Branches）が効く ──
@@ -141,8 +144,9 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<DocumentContentDto>(TestContext.Current.CancellationToken);
-        // ストレージ未配備（Null クライアント）のため本文はプレースホルダへ縮退し、タイトルを含む。
-        body!.Markdown.Should().Contain("経費規程 2025");
+        // ［2026-10-15 / #1905・[[IADR-0541]]］本文は文書サービスから gRPC で受け取る（BFF はストレージを読まない）。
+        // 以前はストレージ未配備で案内文へ縮退していた（「タイトルを含む」で緑になっていた）。本文そのものを比べる。
+        body!.Markdown.Should().Be(_factory.StubContentMarkdown);
         body.SourceUri.Should().Be("storage://bucket/expense.md");
     }
 
@@ -242,9 +246,11 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         (await client.GetAsync(DetailPath, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         (await client.GetAsync($"{DetailPath}/versions", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         (await client.GetAsync($"{DetailPath}/versions/3", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        // ［2026-10-15 / #1905・[[IADR-0541]]］本文も同じ面で読む（利用者文脈を運ぶ。運ばないと所有者が自分の個人資料の本文を読めない）。
+        (await client.GetAsync($"{DetailPath}/content", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
 
-        _factory.GrpcUserContexts.Keys.Should().Contain(["ListDocuments", "GetDocument", "ListVersions", "GetVersion"]);
-        foreach (var rpc in new[] { "ListDocuments", "GetDocument", "ListVersions", "GetVersion" })
+        _factory.GrpcUserContexts.Keys.Should().Contain(["ListDocuments", "GetDocument", "ListVersions", "GetVersion", "GetDocumentContent"]);
+        foreach (var rpc in new[] { "ListDocuments", "GetDocument", "ListVersions", "GetVersion", "GetDocumentContent" })
             _factory.GrpcUserContexts[rpc].Should().Be("reader", $"{rpc} は呼び出し元の利用者を運ぶ");
         _factory.DocumentReadForwardedAuthorization.Values.Should().OnlyContain(a => a == null,
             "利用者のトークンは east-west の面を通らない");
