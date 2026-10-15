@@ -6,7 +6,8 @@ using Platform.Shared.Contracts.Dtos;
 namespace LlmGateway.Features.Embeddings.Embed;
 
 // FR-02, FR-03, FR-05, NFR-09, ADR-0013, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）, ADR-0029, ADR-0075, IADR-0379, IADR-0397 (#1255):
-// 埋め込み生成の**判定器本体**。REST（EmbeddingEndpoints）と gRPC（GrpcService）の**両方がここを呼ぶ**。
+// 埋め込み生成の**判定器本体**。gRPC（GrpcService）がここを呼ぶ（［2026-10-15 / #1902］REST の `/embed` は撤去した。
+// 撤去までは REST〔EmbeddingEndpoints〕と gRPC の**両方がここを呼んでいた**）。
 //
 // 🔴 **判定器を 2 つにしない**（IADR-0379 決定 5 と同じ向き。参照実装が REST と gRPC で
 // `AbacEvaluator.ResolveScope` を共有したのと同型）。越境判定・プロバイダ解決・次元照合・上流不調の

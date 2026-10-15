@@ -710,10 +710,11 @@ function selfTest() {
     if (r.requestOnly.has('Res')) throw new Error('応答側を緩めてはならない');
   });
 
-  // ★ 実データ。規則が「たまたま」効いているのではなく、狙った 5 件に当たっていること。
+  // ★ 実データ。規則が「たまたま」効いているのではなく、狙った 4 件に当たっていること。
   check('実データ: 要求側にのみ到達するスキーマを取れる', () => {
     const r = collectReachability(fs.readFileSync(OPENAPI, 'utf8'));
-    for (const n of ['SearchRequest', 'AnalysisTaskRequest', 'AnalysisDataRange', 'CompletionApiRequest', 'EmbedApiRequest']) {
+    // ［2026-10-15 / #1902］`EmbedApiRequest` は REST の `/embed` とともに openapi.yaml から外した。
+    for (const n of ['SearchRequest', 'AnalysisTaskRequest', 'AnalysisDataRange', 'CompletionApiRequest']) {
       if (!r.requestOnly.has(n)) throw new Error(`${n} が要求側として取れていない`);
     }
     if (r.requestOnly.has('ConversionJobDto')) throw new Error('ConversionJobDto は応答側である');

@@ -66,7 +66,7 @@ public class ClaudeProvider(
     }
 
     // IADR-0037: Anthropic SDK の SSE ストリーミングで本文デルタを逐次返す（真のストリーミング・主経路）。
-    // 呼び出し側（LlmGateway /complete/stream）は egress ルーティングで送信可と判定した後にのみ本メソッドを呼ぶ。
+    // 呼び出し側（LlmGateway の逐次生成 CompleteStream）は egress ルーティングで送信可と判定した後にのみ本メソッドを呼ぶ。
     public async IAsyncEnumerable<CompletionChunk> StreamAsync(
         CompletionRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {

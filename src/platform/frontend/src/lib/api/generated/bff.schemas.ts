@@ -1588,41 +1588,6 @@ export interface DriftReportDto {
 }
 
 /**
- * 機密区分（大文字小文字は無視）。confidential/restricted はティアA固定・外部送信しない
- */
-export type EmbedApiRequestConfidentiality = typeof EmbedApiRequestConfidentiality[keyof typeof EmbedApiRequestConfidentiality] | null;
-
-
-export const EmbedApiRequestConfidentiality = {
-  public: 'public',
-  internal: 'internal',
-  confidential: 'confidential',
-  restricted: 'restricted',
-} as const;
-
-/**
- * 用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定
- */
-export type EmbedApiRequestPurpose = typeof EmbedApiRequestPurpose[keyof typeof EmbedApiRequestPurpose];
-
-
-export const EmbedApiRequestPurpose = {
-  index: 'index',
-  query: 'query',
-} as const;
-
-export interface EmbedApiRequest {
-  /** 埋め込み対象テキスト（取り込みは本文全量を送るため機密区分で越境判定） */
-  text: string;
-  /** 機密区分（大文字小文字は無視）。confidential/restricted はティアA固定・外部送信しない */
-  confidentiality?: EmbedApiRequestConfidentiality;
-  /** 用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定 */
-  purpose?: EmbedApiRequestPurpose;
-  /** 検索クエリ（purpose=query）が読むコレクション。越境判定と有効化の篩を通った候補をそのコレクションの送信先へ絞るだけで、許可されていない区分を開くことはない。index では無視する。省略時は従来どおり優先度順に選ぶ */
-  targetCollection?: string | null;
-}
-
-/**
  * embedded=false は機密区分による送信拒否（fail-closed）・次元不整合・呼び出し失敗を示す
  */
 export interface EmbedApiResponse {

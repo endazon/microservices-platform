@@ -5,13 +5,14 @@ using LlmGateway.Domain.Routing;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using System.Net;
-using System.Net.Http.Json;
+using LlmGateway.Tests.Grpc;
 
 namespace LlmGateway.Tests.Features.Embeddings.Embed;
 
-// FR-02, FR-05, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）: /embed が機密区分・用途に応じて送信先を切り替え、
+// FR-02, FR-05, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）: 埋め込みが機密区分・用途に応じて送信先を切り替え、
 // 高機密（confidential/restricted）は外部埋め込み API へ送信しない（fail-closed）ことを検証する。
+// ［2026-10-15 / #1902・[[IADR-0533]]］REST の `/embed` を撤去したので、同じ判定器（EmbedUseCase）を呼ぶ
+// **gRPC 面**（`LlmEmbedding/Embed`）を TestServer 上で叩く。主張（送信先・呼び出し回数）は 1 行も変えていない。
 [Trait("TestKind", "Integration")]
 public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
@@ -49,12 +50,10 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
         var ruri = new SpyEmbeddingProvider(768);
         var client = ClientWith(voyage, ruri);
 
-        var resp = await client.PostAsJsonAsync("/embed",
+        var body = await client.EmbedAsync(
             new EmbedApiRequest("本文", "public", EmbedPurpose.Index), TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
-        body!.Embedded.Should().BeTrue();
+        body.Embedded.Should().BeTrue();
         body.Dimensions.Should().Be(1024);
         body.Collection.Should().Be("knowledge_chunks_voyage_3_5");
         body.Endpoint.Should().Be("voyage-managed");
@@ -72,12 +71,10 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
         var ruri = new SpyEmbeddingProvider(768);
         var client = ClientWith(voyage, ruri); // 既定 appsettings では selfhosted-ruri は Enabled=false
 
-        var resp = await client.PostAsJsonAsync("/embed",
+        var body = await client.EmbedAsync(
             new EmbedApiRequest("極秘の本文", confidentiality, EmbedPurpose.Index), TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
-        body!.Embedded.Should().BeFalse();       // 索引しない
+        body.Embedded.Should().BeFalse();       // 索引しない
         body.Vector.Should().BeEmpty();
         body.RoutingReason.Should().Contain("拒否");
         // 最重要: 外部（ティアB=voyage）は一切呼ばれない（本文が外部へ送信されない）。
@@ -93,11 +90,10 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
         var ruri = new SpyEmbeddingProvider(768);
         var client = ClientWith(voyage, ruri);
 
-        var resp = await client.PostAsJsonAsync("/embed",
+        var body = await client.EmbedAsync(
             new EmbedApiRequest("区分不明の本文"), TestContext.Current.CancellationToken);
 
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
-        body!.Embedded.Should().BeFalse();
+        body.Embedded.Should().BeFalse();
         voyage.Calls.Should().Be(0);
     }
 
@@ -127,11 +123,10 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
             ];
         });
 
-        var resp = await client.PostAsJsonAsync("/embed",
+        var body = await client.EmbedAsync(
             new EmbedApiRequest("極秘の本文", "confidential", EmbedPurpose.Index), TestContext.Current.CancellationToken);
 
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
-        body!.Embedded.Should().BeTrue();
+        body.Embedded.Should().BeTrue();
         body.Dimensions.Should().Be(768);
         body.Collection.Should().Be("knowledge_chunks_ruri_v3");
         body.Endpoint.Should().Be("selfhosted-ruri");
@@ -147,11 +142,10 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
         var ruri = new SpyEmbeddingProvider(768);
         var client = ClientWith(voyage, ruri);
 
-        var resp = await client.PostAsJsonAsync("/embed",
+        var body = await client.EmbedAsync(
             new EmbedApiRequest("検索クエリ", Confidentiality: null, Purpose: EmbedPurpose.Query), TestContext.Current.CancellationToken);
 
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
-        body!.Embedded.Should().BeTrue();
+        body.Embedded.Should().BeTrue();
         body.Dimensions.Should().Be(1024);
         body.Collection.Should().Be("knowledge_chunks_voyage_3_5");
         voyage.Calls.Should().Be(1);
@@ -165,11 +159,10 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
         var ruri = new SpyEmbeddingProvider(768);
         var client = ClientWith(voyage, ruri);
 
-        var resp = await client.PostAsJsonAsync("/embed",
+        var body = await client.EmbedAsync(
             new EmbedApiRequest("本文", "public", EmbedPurpose.Index), TestContext.Current.CancellationToken);
 
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
-        body!.Embedded.Should().BeFalse();
+        body.Embedded.Should().BeFalse();
         body.RoutingReason.Should().Contain("次元");
     }
 }
