@@ -240,6 +240,57 @@
             "names": []
           }
         },
+        "GetDocumentContentRequest": {
+          "fields": {
+            "document_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "user": {
+              "number": 2,
+              "type": "UserContext",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetDocumentContentResponse": {
+          "fields": {
+            "found": {
+              "number": 1,
+              "type": "bool",
+              "label": "singular"
+            },
+            "limit_bytes": {
+              "number": 5,
+              "type": "int64",
+              "label": "singular"
+            },
+            "markdown": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "size_bytes": {
+              "number": 4,
+              "type": "int64",
+              "label": "singular"
+            },
+            "state": {
+              "number": 2,
+              "type": "DocumentContentState",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
         "GetDocumentRequest": {
           "fields": {
             "id": {
@@ -418,13 +469,33 @@
           }
         }
       },
-      "enums": {},
+      "enums": {
+        "DocumentContentState": {
+          "values": {
+            "DOCUMENT_CONTENT_STATE_AVAILABLE": 1,
+            "DOCUMENT_CONTENT_STATE_MISSING": 3,
+            "DOCUMENT_CONTENT_STATE_NOT_STORED": 2,
+            "DOCUMENT_CONTENT_STATE_TOO_LARGE": 4,
+            "DOCUMENT_CONTENT_STATE_UNSPECIFIED": 0
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
       "services": {
         "DocumentRead": {
           "rpcs": {
             "GetDocument": {
               "request": "GetDocumentRequest",
               "response": "GetDocumentResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            },
+            "GetDocumentContent": {
+              "request": "GetDocumentContentRequest",
+              "response": "GetDocumentContentResponse",
               "clientStreaming": false,
               "serverStreaming": false
             },

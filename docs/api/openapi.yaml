@@ -1521,8 +1521,12 @@ paths:
       tags: [Documents]
       summary: "FR-06, SC-03: 文書本文（正規化 Markdown）"
       description: |
-        ABAC 判定後にオブジェクトストレージ（`storage://`）からサーバサイドで読み取る。
-        ストレージ未配備・URI 未設定時はプレースホルダ本文へ縮退する（500 にしない）。
+        ABAC 判定（詳細と同じ）の後、本文を文書サービスから受け取って返す。BFF はオブジェクトストレージを読まない。
+        本文を返せないときは**案内文を 200 で返さない**（#1905）:
+        - 本文の参照が無い・本文のオブジェクトが無い … **404**（ProblemDetails。`type` は `urn:microservices-platform:problem:document-body-unavailable`、`reason` は `not_stored` / `missing`）
+        - 本文が上限（16 MiB・UTF-8）を超える … **413**（ProblemDetails。`sizeBytes` / `limitBytes`。切り詰めない）
+        - 文書サービスから本文を受け取れない … **502**（ProblemDetails）
+        不在・スコープ外の 404 は本文を持たない（存在秘匿。理由を言わない）。
       operationId: bff-document-content
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -1534,7 +1538,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/DocumentContentDto"
         "401": { description: 未認証（#656） }
-        "404": { description: 不在またはスコープ外（存在秘匿） }
+        "404": { description: 不在またはスコープ外（存在秘匿。本文なし）、または本文が保管されていない（ProblemDetails。#1905） }
+        "413":
+          description: 本文が上限を超える（本文は返さない。#1905）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "502":
+          description: 文書サービスから本文を受け取れなかった（案内文へ畳まない。#1905）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
   /bff/documents/{id}/versions:
     get:
       x-roles: []
@@ -4920,8 +4936,8 @@ components:
     DocumentContentDto:
       type: object
       description: |
-        SC-03, FR-06: 文書本文（正規化 Markdown）。BFF が ABAC 判定後にオブジェクトストレージ
-        （`storage://`）から読み取り、閲覧を許可された呼び出し元にのみ払い出す。
+        SC-03, FR-06: 文書本文（正規化 Markdown）。BFF が ABAC 判定後に文書サービスから受け取り
+        （本文の実体はオブジェクトストレージ `storage://`）、閲覧を許可された呼び出し元にのみ払い出す。
       required: [id, title, markdown]
       properties:
         id: { type: string, format: uuid }

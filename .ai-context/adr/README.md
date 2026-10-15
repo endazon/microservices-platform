@@ -621,3 +621,4 @@
 | [IADR-0541](./IADR-0541_wiki-slug-unique-and-permanent-sync-failures.md) | Wiki 同期の slug を文書 ID 由来の接尾辞で一意にし（既存の slug は保つ）、接尾辞でも解けない slug の一意違反と本文の NoSuchKey は再試行・DLQ に回さず Warning と計数 wiki.sync.skipped を残して ack する（#1934） | Accepted |
 | [IADR-0542](./IADR-0542_h1-receive-limit-and-deadline.md) | ナレッジ健全性の報告（H-1）は 1 要求の全量置換のまま、受け口の受信上限を rpc 単位で 16 MiB（構成キー）に明示し、送信側の期限を 30 秒へ延ばす。分割・client streaming は採らない（#1907） | Accepted |
 | [IADR-0543](./IADR-0543_operator-loki-read-path.md) | 運用者が経路 B の Loki を読む正規の経路は「svc/loki への port-forward ＋ 既存の読み取りの身元（Secret observability-gate の reader）」とし、新しい身元は作らない。保全は読み取り専用の scripts/export-loki-logs.js で行い、前段の内側（Pod の 3101）は break-glass のまま残す | Accepted |
+| [IADR-0544](./IADR-0544_document-content-via-document-service-grpc.md) | 文書の本文（/bff/documents/{id}/content）は文書サービスが読み、BFF は east-west gRPC（DocumentRead.GetDocumentContent）で受け取る。BFF にストレージを配線せず、案内文の 200 への縮退を撤去して 404 / 413 / 502 を返す（#1905） | Accepted |
