@@ -228,6 +228,8 @@ PERSIST=0 bash scripts/k8s-local-up.sh --live
 - 🔴 **永続化した Postgres と Vault は日次でバックアップされる**（#1560 / [IADR-0471](../../.ai-context/adr/IADR-0471_platform-infra-encrypted-daily-backup.md)）。
   `infra-persistence` が [`platform-backup/postgres`](platform-backup/postgres/) を、`vault-persistence` が [`platform-backup/vault`](platform-backup/vault/) を取り込み、
   CronJob が JST 12:00 / 12:15 に age の**公開鍵**で暗号化して本機の C: と E:（`/mnt/c`・`/mnt/e/platform-infra-backups`）へ置く。
+  Vault の回は raft の整合したスナップショットを専用の SA の k8s auth で取る（#1868 / [IADR-0548](../../.ai-context/adr/IADR-0548_openbao-raft-snapshot-backup-k8s-auth.md)）。
+  その role とポリシーは起動スクリプトが [`platform-backup/vault/bootstrap.sh`](platform-backup/vault/bootstrap.sh) で毎回入れる。
   **受取人の ConfigMap `platform-backup-age-recipients` と保管先の目印 `.platform-backup-target` を用意するまでは、
   何も書かずに毎日失敗する**（fail-closed）。受取人は `BACKUP_AGE_RECIPIENTS_FILE=<ファイル>` を与えた起動でだけ作り直す。
   準備・確認・リストア試験（`scripts/backup-restore-drill.sh`）は [`docs/operations/platform-infra-backup-runbook.md`](../../docs/operations/platform-infra-backup-runbook.md)。

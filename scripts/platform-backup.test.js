@@ -20,6 +20,9 @@
  *   9. 🔴 ［#1564］age は digest 固定のベースへ版・sha256 で同梱する（deploy/local/platform-backup/image/Dockerfile）。
  *      タグは版から作り、Dockerfile・k8s-local-images.sh の LOCAL_ONLY_IMAGES・2 つの CronJob で揃える。IfNotPresent。
  *      実行時に apk を呼ばない（BACKUP_AGE_INSTALL も撤去）。CI（images.yml）がビルドする。
+ *  11. 🔴 ［#1868 / IADR-0548］Vault の回は raft の整合したスナップショットを k8s auth で取る。専用の SA（RBAC なし・自動マウントなし）の
+ *      projected token、role は default ポリシーなし・1 回きり、ポリシーは sys/storage/raft/snapshot の read だけ。root トークン・
+ *      Secret vault-dev-token を渡さない。作業場所はメモリの emptyDir。HTTP は curl / wget の引数でトークンを渡さない。
  *  10. 🔴 ［#1709 / IADR-0489］ベースの取得元は匿名の取得にチャレンジを返さないミラー（mirror.gcr.io/library）。
  *      docker.io・ghcr.io・public.ecr.aws（と取得元を書かない FROM＝docker.io）は匿名でも 401 の Bearer チャレンジを返し、
  *      その応答でビルダーが資格情報ヘルパーを呼ぶ。稼働 PoC ではヘルパーが落ち、このイメージを作れなかった。
@@ -131,6 +134,13 @@ function cronJobView(doc) {
     hostPath: v.hostPath ? parseMap(v.hostPath) : null,
     configMap: v.configMap ? parseMap(v.configMap) : null,
     pvc: v.persistentVolumeClaim ? parseMap(v.persistentVolumeClaim) : null,
+    emptyDir: v.emptyDir ? parseMap(v.emptyDir) : null,
+    // IADR-0548: projected の serviceAccountToken（k8s auth の名乗り）。
+    saToken: v.projected
+      ? parseList(parseMap(v.projected).sources || [])
+          .map((src) => (src.serviceAccountToken ? parseMap(src.serviceAccountToken) : null))
+          .find(Boolean) || null
+      : null,
   }));
   const securityContext = container.securityContext ? parseMap(container.securityContext) : {};
   const seccomp = securityContext.seccompProfile ? parseMap(securityContext.seccompProfile) : {};
@@ -146,6 +156,7 @@ function cronJobView(doc) {
     backoffLimit: jobSpec.backoffLimit,
     restartPolicy: podSpec.restartPolicy,
     automountServiceAccountToken: podSpec.automountServiceAccountToken,
+    serviceAccountName: podSpec.serviceAccountName,
     image: container.image,
     imagePullPolicy: container.imagePullPolicy,
     env,
@@ -364,7 +375,8 @@ ok('🔴 3. PGPASSWORD は Postgres 本体と同じ Secret / キーの secretKey
 
 ok('🔴 3. PASSWORD / TOKEN / SECRET を思わせる env に平文の value を書かない（2 つの CronJob とも）', () => {
   for (const cj of [PG, VA]) assert.deepStrictEqual(secretLiterals(cj), [], `${cj.name} に平文の秘密: ${secretLiterals(cj)}`);
-  assert.ok(!envOf(VA, 'VAULT_TOKEN'), 'Vault の回が Vault のトークンを受け取っている（ファイルを写すだけで要らない）');
+  // IADR-0548: トークンは k8s auth で Job の中で得る（最小のポリシー・1 回きり）。root トークンを env で渡さない。
+  assert.ok(!envOf(VA, 'VAULT_TOKEN'), 'Vault の回が Vault のトークンを env で受け取っている（k8s auth で得る）');
 });
 
 // ---------------------------------------------------------------- 4. 保管先
@@ -539,6 +551,109 @@ ok('🔴 9. / 10. age は digest 固定のベースへ版・sha256 で同梱し�
   assert.strictEqual(ci(`  # build-local は ${BACKUP_DOCKERFILE} を docker build -f ${BACKUP_DOCKERFILE} でビルドする\n`), false, '注記の言及を数えた');
   assert.strictEqual(ci(`      - run: docker build -f ${BACKUP_DOCKERFILE}.old -t x .\n`), false, '別の Dockerfile のビルドを数えた');
   assert.strictEqual(ci(`      - run: echo ${BACKUP_DOCKERFILE}\n`), false, 'build でない行を数えた');
+});
+
+// ---------------------------------------------------------------- 11. 秘匿管理の整合したスナップショット（#1868 / IADR-0548）
+
+const BACKUP_VAULT_DIR = path.join('deploy', 'local', 'platform-backup', 'vault');
+const SNAPSHOT_POLICY = read(BACKUP_VAULT_DIR, 'policy-raft-snapshot.hcl');
+const SNAPSHOT_BOOTSTRAP = read(BACKUP_VAULT_DIR, 'bootstrap.sh');
+const UP_SH = read('scripts', 'k8s-local-up.sh');
+
+/** HCL のポリシーの path ブロック（コメントを除く）を {path: [capabilities]} にする。 */
+function policyPaths(hcl) {
+  const body = hcl.replace(/#.*$/gm, '');
+  const out = {};
+  const re = /path\s+"([^"]+)"\s*\{([^}]*)\}/g;
+  let m;
+  while ((m = re.exec(body))) {
+    const caps = /capabilities\s*=\s*\[([^\]]*)\]/.exec(m[2]);
+    out[m[1]] = caps ? caps[1].split(',').map((c) => c.trim().replace(/"/g, '')).filter(Boolean).sort() : [];
+  }
+  return out;
+}
+
+/** bootstrap.sh の変数（NAME="value"）を読む。 */
+const shVar = (text, name) => (new RegExp(`^${name}="([^"]*)"`, 'm').exec(text) || [])[1];
+
+function checkVaultSnapshotAuth({ cj, docs, policy, bootstrap, script }) {
+  const errors = [];
+  const sa = 'platform-backup-vault';
+  if (cj.serviceAccountName !== sa) errors.push(`serviceAccountName が ${sa} でない（${cj.serviceAccountName}）`);
+  if (cj.automountServiceAccountToken !== 'false') errors.push('既定の SA トークンを自動マウントしている（projected token だけを渡す）');
+  const saDoc = find(docs, 'ServiceAccount', sa);
+  if (!saDoc) errors.push(`ServiceAccount ${sa} が描かれていない`);
+  else if (saDoc.top.automountServiceAccountToken !== 'false') errors.push(`ServiceAccount ${sa} が automountServiceAccountToken: false でない`);
+  if (docs.some((d) => /Binding$/.test(d.kind) && d.body.includes(`name: ${sa}`))) errors.push(`${sa} に k8s の権限（RoleBinding）を付けている`);
+  // projected token は期限つきで、スクリプトが読むパスにマウントされる。
+  const jwtFile = (envOf(cj, 'BACKUP_VAULT_SA_JWT_FILE') || {}).value || '';
+  const tokVol = cj.volumes.find((v) => v.saToken);
+  if (!tokVol) errors.push('projected の serviceAccountToken が無い');
+  else {
+    const m = mountOf(cj, tokVol.name) || {};
+    if (`${m.mountPath}/${tokVol.saToken.path}` !== jwtFile) errors.push(`SA トークンのパス（${m.mountPath}/${tokVol.saToken.path}）が BACKUP_VAULT_SA_JWT_FILE（${jwtFile}）と違う`);
+    if (!m.readOnly) errors.push('SA トークンが読み取り専用でマウントされていない');
+    if (!(Number(tokVol.saToken.expirationSeconds) > 0 && Number(tokVol.saToken.expirationSeconds) <= 3600)) errors.push('SA トークンの期限が 1 時間以内でない');
+  }
+  // root トークン（Secret vault-dev-token）を渡さない。
+  if (cj.env.some((e) => e.secretKeyRef && e.secretKeyRef.name === 'vault-dev-token')) errors.push('Secret vault-dev-token（root トークン）を渡している');
+  if (!/^http:\/\/vault\.platform-infra(\.svc)?:8200$/.test((envOf(cj, 'BACKUP_VAULT_ADDR') || {}).value || '')) errors.push('BACKUP_VAULT_ADDR がクラスタ内の秘匿管理を指していない');
+  // スナップショットの作業場所はメモリの emptyDir。
+  const scratch = cj.volumes.find((v) => (mountOf(cj, v.name) || {}).mountPath === (envOf(cj, 'BACKUP_VAULT_SCRATCH') || {}).value);
+  if (!scratch || !scratch.emptyDir || scratch.emptyDir.medium !== 'Memory') errors.push('BACKUP_VAULT_SCRATCH がメモリの emptyDir でない（平文をディスクへ書く）');
+  // ポリシー: sys/storage/raft/snapshot の read だけ。
+  const paths = policyPaths(policy);
+  if (JSON.stringify(paths) !== JSON.stringify({ 'sys/storage/raft/snapshot': ['read'] }))
+    errors.push(`ポリシーが sys/storage/raft/snapshot の read だけでない: ${JSON.stringify(paths)}`);
+  // role: この SA・この名前空間にだけ束縛し、default ポリシーを付けず、1 回きり。
+  const role = shVar(bootstrap, 'BACKUP_VAULT_ROLE');
+  const roleLine = (bootstrap.match(/vault write auth\/kubernetes\/role\/\$BACKUP_VAULT_ROLE[^"]*"/) || [''])[0].replace(/\\\n\s*/g, ' ');
+  if (role !== (envOf(cj, 'BACKUP_VAULT_AUTH_ROLE') || {}).value) errors.push(`bootstrap の role（${role}）と CronJob の BACKUP_VAULT_AUTH_ROLE が違う`);
+  if (shVar(bootstrap, 'BACKUP_VAULT_SA') !== sa) errors.push('bootstrap の role が別の SA に束縛される');
+  const want = [
+    'bound_service_account_names=$BACKUP_VAULT_SA',
+    'bound_service_account_namespaces=$INFRA_NS',
+    'token_policies=$BACKUP_VAULT_POLICY',
+    'token_no_default_policy=true',
+    'token_num_uses=1',
+  ];
+  for (const w of want) if (!roleLine.split(/\s+/).includes(w)) errors.push(`role の設定に ${w} が無い`);
+  if (/bound_service_account_(names|namespaces)=\*/.test(roleLine)) errors.push('role をワイルドカードで束縛している');
+  if (!bootstrap.includes('vault policy write $BACKUP_VAULT_POLICY -" < "$ROOT/deploy/local/platform-backup/vault/policy-raft-snapshot.hcl"'))
+    errors.push('bootstrap がこのポリシーのファイルを書いていない');
+  // スクリプト: トークンを引数へ載せる道具（curl / wget）を使わず、root トークンの名前に触れない。
+  const code = script.replace(/^\s*#.*$/gm, '');
+  if (/\b(curl|wget)\b/.test(code)) errors.push('backup.sh が curl / wget を呼ぶ（ヘッダのトークンが argv に出る）');
+  if (/VAULT_DEV_ROOT_TOKEN_ID|vault-dev-token|Initial Root Token/.test(code)) errors.push('backup.sh が root トークンに触れる');
+  if (!code.includes('/v1/sys/storage/raft/snapshot')) errors.push('backup.sh がスナップショットの API を呼ばない');
+  return errors;
+}
+
+ok('🔴 11. 秘匿管理の回は raft の整合したスナップショットを、最小のポリシーと専用の SA（k8s auth）で取る', () => {
+  const facts = { cj: VA, docs: VAULT_DOCS, policy: SNAPSHOT_POLICY, bootstrap: SNAPSHOT_BOOTSTRAP, script: BACKUP_SH };
+  assert.deepStrictEqual(checkVaultSnapshotAuth(facts), [], checkVaultSnapshotAuth(facts).join(' / '));
+  // 起動スクリプトが永続化の overlay を当てた後に bootstrap を呼ぶ（呼ばなければ Job はログインできない）。
+  assert.ok(/platform_backup_vault_bootstrap\(\)/.test(UP_SH), 'k8s-local-up.sh に bootstrap の呼び出しが無い');
+  assert.ok((UP_SH.match(/^\s*platform_backup_vault_bootstrap\s*$/gm) || []).length >= 2, 'VAULT と ESO の両方の当て直しの後で bootstrap を呼んでいない');
+  // 変異: どれでも落ちる。
+  const bad = (patch, label) => {
+    const f = clone({ ...facts, cj: VA });
+    f.docs = facts.docs;
+    patch(f);
+    assert.ok(checkVaultSnapshotAuth(f).length > 0, `${label} を見逃した`);
+  };
+  bad((f) => (f.policy = f.policy.replace('["read"]', '["read", "update"]')), 'ポリシーへの update（restore）');
+  bad((f) => (f.policy += '\npath "secret/data/*" {\n  capabilities = ["read"]\n}\n'), 'ポリシーへの KV の read');
+  bad((f) => (f.bootstrap = f.bootstrap.replace('token_no_default_policy=true', 'token_no_default_policy=false')), 'default ポリシーの付与');
+  bad((f) => (f.bootstrap = f.bootstrap.replace(' token_num_uses=1', '')), '回数の無いトークン');
+  bad((f) => (f.bootstrap = f.bootstrap.replace('bound_service_account_names=$BACKUP_VAULT_SA', 'bound_service_account_names=*')), 'SA のワイルドカード');
+  bad((f) => (f.cj.automountServiceAccountToken = 'true'), '既定の SA トークンの自動マウント');
+  bad((f) => (f.cj.serviceAccountName = 'default'), 'default SA での実行');
+  bad((f) => f.cj.env.push({ name: 'VAULT_TOKEN_REF', secretKeyRef: { name: 'vault-dev-token', key: 'token' } }), 'root トークンの Secret の受け渡し');
+  bad((f) => (f.cj.volumes.find((v) => v.emptyDir && v.emptyDir.medium).emptyDir.medium = ''), 'ディスクの emptyDir');
+  bad((f) => (f.cj.volumes.find((v) => v.saToken).saToken.expirationSeconds = '86400'), '期限の長い SA トークン');
+  bad((f) => (f.script += '\ncurl -H "X-Vault-Token: $t" "$BACKUP_VAULT_ADDR"\n'), 'curl でのトークンの受け渡し');
+  bad((f) => (f.script += '\nVAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"\n'), 'root トークンの使用');
 });
 
 console.log(`[platform-backup.test] OK: ${passed} 件`);

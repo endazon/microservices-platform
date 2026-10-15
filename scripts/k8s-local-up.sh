@@ -904,6 +904,18 @@ vault_openbao_migration_gate() {
   esac
 }
 
+# NFR-21, NFR-18, IADR-0548 (#1868): 秘匿管理の日次バックアップ（CronJob platform-backup-vault）が raft のスナップショットを
+# 取るための k8s auth の role と最小のポリシー（sys/storage/raft/snapshot の read だけ）を入れる。**永続化の overlay を当てて
+# unseal を待った後に毎回呼ぶ**（VAULT ブロックと ESO ブロックの当て直し。冪等）。ESO の有無によらない —— 入れないと
+# バックアップの Job がログインできず、毎日の回が失敗する。root トークンは vault Pod の中でだけ使う（Job へは渡さない）。
+# 失敗しても起動は止めない（秘匿管理そのものは動いている）。WARN を出し、バックアップの Job の失敗として見えるに任せる。
+platform_backup_vault_bootstrap() {
+  if ! bash deploy/local/platform-backup/vault/bootstrap.sh; then
+    echo "WARN: 秘匿管理のバックアップの認証（deploy/local/platform-backup/vault/bootstrap.sh）を入れられませんでした。" >&2
+    echo "WARN:   CronJob platform-backup-vault はログインできずに失敗します。docs/operations/platform-infra-backup-runbook.md §1 の 5 を見て再実行してください。" >&2
+  fi
+}
+
 if [ "${VAULT:-}" = "1" ]; then
   echo "==> [opt-in] Vault dev + ClusterSecretStore (要 External Secrets Operator CRD)"
   # dev root トークン（dev 既定 or env 上書き・平文は Git に載せない）。
@@ -930,8 +942,12 @@ if [ "${VAULT:-}" = "1" ]; then
     echo "    [PERSIST 既定] 秘匿管理（OpenBao）を raft ストレージ＋PVC で永続化（Pod 内ラッパーが init / unseal / 固定トークンを自動化）"
     vault_openbao_migration_gate
   fi
+  VAULT_PERSIST_APPLIED=0
   if kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1; then
     kubectl apply -k "$VAULT_KUSTOMIZE"
+    if [ "$VAULT_KUSTOMIZE" = "deploy/local/vault-persistence" ]; then
+      VAULT_PERSIST_APPLIED=1
+    fi
   else
     echo "    WARN: external-secrets.io CRD 未導入のため ClusterSecretStore/Vault は skip。" >&2
     echo "          先に ESO を導入する（deploy/local/vault/README.md）。Vault dev のみ適用（非永続・再起動で揮発）:" >&2
@@ -940,6 +956,9 @@ if [ "${VAULT:-}" = "1" ]; then
   # 永続化版は readinessProbe（vault status＝unseal 済み）を持つ。ここで待たないと、後段の ESO bootstrap が
   # unseal 前に `kubectl exec` して "Vault is sealed" で落ちる。-dev（PERSIST=0）は probe が無く即座に返る。
   kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
+  if [ "$VAULT_PERSIST_APPLIED" = "1" ]; then
+    platform_backup_vault_bootstrap
+  fi
 fi
 
 # IADR-0096 (#310): Vault＋ESO で secret を Pod へ自動供給する（本番同等・k8s auth）。opt-in（既定オフ・fail-safe）。
@@ -997,6 +1016,7 @@ if [ "${ESO:-}" = "1" ]; then
     vault_openbao_migration_gate
     kubectl apply -k deploy/local/vault-persistence
     kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
+    platform_backup_vault_bootstrap
   fi
   # Vault k8s auth の enable/config＋policy＋role `eso`＋seed（runtime・kubectl exec 経由・平文非コミット・再実行可）。
   bash deploy/local/vault/eso/bootstrap.sh
