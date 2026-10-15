@@ -167,6 +167,7 @@ public sealed class S3ObjectStorageClient(
     // 3. そこで HEAD が 404 のときだけ、**範囲 0-0 の GET** を撃ってエラーコードを得る。オブジェクトが無ければ
     //    本文は返らず（エラーの XML だけ）、判定は取り込み・本文の読み取りと同じ `ObjectStorageErrors.IsNoSuchKey`
     //    （[[IADR-0540]] 決定 2）で行う。HEAD と GET の間に作られていれば GET は成功し、在ると答える（最大 1 バイト）。
+    //    その間に長さ 0 のオブジェクトが作られた場合は GET が範囲の不正（416）になり、下の「それ以外」として投げる（安全側。止まるだけ）。
     // それ以外の失敗（403・5xx・時間切れ・NoSuchBucket・範囲の不正）は例外のまま上げる。
     public async Task<bool> ExistsAsync(string uri, CancellationToken ct = default)
     {
