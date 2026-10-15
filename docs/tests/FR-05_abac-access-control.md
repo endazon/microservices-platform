@@ -10,8 +10,8 @@ author: claude
 ids: [NFR-21, FR-02, FR-03, FR-04, FR-05, SC-01, SC-08, UC-01, UC-05, FR-19, NFR-09]
 adrs: [ADR-0125, ADR-0004, ADR-0043, ADR-0121, ADR-0036, ADR-0062, ADR-0119, ADR-0034, ADR-0056]
 iadrs: [IADR-0502, IADR-0492, IADR-0500, IADR-0483, IADR-0476, IADR-0481, IADR-0004, IADR-0151, IADR-0379, IADR-0401, IADR-0253, IADR-0384, IADR-0480, IADR-0533]
-specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1646_caller-cancellation-remaining, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261010_issue-1255-1517_east-west-rest-retirement]
-issues: [#1760, #1755, #1676, #1615, #1665, #525, #540, #1646, #1664, #1255, #1517]
+specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1646_caller-cancellation-remaining, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261010_issue-1255-1517_east-west-rest-retirement, 20261015_1902_east-west-rest-residue]
+issues: [#1760, #1755, #1676, #1615, #1665, #525, #540, #1646, #1664, #1255, #1517, #1902]
 -->
 
 # テスト仕様書: ABAC 文書アクセス制御（deny-by-default）

@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-08, FR-10, FR-16, FR-17, FR-18, FR-19, UC-05, SC-10, SC-12]
 adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0035, ADR-0083, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071, ADR-0072, ADR-0085, ADR-0120]
-iadrs: [IADR-0011, IADR-0026, IADR-0119, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367, IADR-0389, IADR-0420, IADR-0425, IADR-0430]
-specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention, 20260911_issue-1395_cluster-summary-generator, 20260927_issue-1663_singleton-cluster-summary-exclusion]
-issues: [#443, #452, #504, #1186, #1197, #1198, #1233, #1246, #1363, #1395, #1663, planning#494, planning#514, planning#515, planning#525, planning#526]
+iadrs: [IADR-0011, IADR-0026, IADR-0119, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367, IADR-0389, IADR-0420, IADR-0425, IADR-0430, IADR-0533]
+specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention, 20260911_issue-1395_cluster-summary-generator, 20260927_issue-1663_singleton-cluster-summary-exclusion, 20261015_1902_east-west-rest-residue]
+issues: [#443, #452, #504, #1186, #1197, #1198, #1233, #1246, #1363, #1395, #1663, #1902, planning#494, planning#514, planning#515, planning#525, planning#526]
 -->
 
 # 機能仕様書: 利用状況・検索傾向・回答品質ダッシュボード

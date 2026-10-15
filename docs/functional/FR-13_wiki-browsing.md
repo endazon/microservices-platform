@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-13, FR-19, UC-03, UC-07]
 adrs: [ADR-0011, ADR-0046, ADR-0061]
-iadrs: [IADR-0009, IADR-0013, IADR-0020, IADR-0021, IADR-0529]
-specs: [20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment, 20261010_1879_exposure-org-docs-wiki-gate]
-issues: [#66, #1879, planning#784]
+iadrs: [IADR-0009, IADR-0013, IADR-0020, IADR-0021, IADR-0529, IADR-0533]
+specs: [20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment, 20261010_1879_exposure-org-docs-wiki-gate, 20261015_1902_east-west-rest-residue]
+issues: [#66, #1879, #1902, planning#784]
 -->
 
 # 機能仕様書: Wiki 文書閲覧

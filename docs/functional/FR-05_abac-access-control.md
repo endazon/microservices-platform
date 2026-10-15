@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-19, FR-21, SC-01, SC-06, SC-08, UC-01, UC-04, UC-05]
 adrs: [ADR-0125, ADR-0034, ADR-0036, ADR-0043, ADR-0046, ADR-0074, ADR-0088]
-iadrs: [IADR-0502, IADR-0500, IADR-0151, IADR-0253, IADR-0272, IADR-0359, IADR-0392, IADR-0413]
-specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-752_connector-updated-by, 20260908_issue-1333_authz-resolves-user-attributes]
-issues: [#1760, #1755, #540, #542, #752, #989, #993, #1194, #1333, planning#466, planning#470, planning#518]
+iadrs: [IADR-0502, IADR-0500, IADR-0151, IADR-0253, IADR-0272, IADR-0359, IADR-0392, IADR-0413, IADR-0533]
+specs: [20261006_1760_qdrant-keyword-indexes, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-752_connector-updated-by, 20260908_issue-1333_authz-resolves-user-attributes, 20261015_1902_east-west-rest-residue]
+issues: [#1760, #1755, #540, #542, #752, #989, #993, #1194, #1333, #1902, planning#466, planning#470, planning#518]
 -->
 
 # 機能仕様書: ABAC 文書アクセス制御

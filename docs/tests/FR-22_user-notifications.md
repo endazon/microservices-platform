@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, SC-10, UC-11]
 adrs: [ADR-0037, ADR-0045]
-iadrs: [IADR-0009, IADR-0119, IADR-0125, IADR-0132, IADR-0135, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0346, IADR-0419]
-specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20260902_issue-600_bff-notifications-relay, 20260927_issue-1637_grpc-client-caller-cancellation]
-issues: [#451, #600, #1025, #1637]
+iadrs: [IADR-0009, IADR-0119, IADR-0125, IADR-0132, IADR-0135, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0346, IADR-0419, IADR-0533]
+specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20260902_issue-600_bff-notifications-relay, 20260927_issue-1637_grpc-client-caller-cancellation, 20261015_1902_east-west-rest-residue]
+issues: [#451, #600, #1025, #1637, #1902]
 -->
 
 # テスト仕様書: 利用者本人への通知

@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [NFR-02, NFR-21, FR-10, SC-10]
 adrs: [ADR-0006, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0079]
-iadrs: [IADR-0378, IADR-0343, IADR-0354, IADR-0367, IADR-0370, IADR-0299, IADR-0110]
-specs: [20260905_issue-1203_analysis-ask-absent-companion]
-issues: [#1203, #1202, #1204, #1111, planning#524, planning#538]
+iadrs: [IADR-0378, IADR-0343, IADR-0354, IADR-0367, IADR-0370, IADR-0299, IADR-0110, IADR-0533]
+specs: [20260905_issue-1203_analysis-ask-absent-companion, 20261015_1902_east-west-rest-residue]
+issues: [#1203, #1202, #1204, #1111, #1902, planning#524, planning#538]
 -->
 <!-- 起点 ID・関連 ADR/IADR・仕様書名・修飾付き issue 参照は本文へ書かず、上の trace ブロックへ入れる -->
 
