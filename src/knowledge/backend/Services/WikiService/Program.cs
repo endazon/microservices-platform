@@ -15,6 +15,8 @@ using WikiService.Features.Wiki.SyncDocument;
 using WikiService.Infrastructure.Persistence;
 using WikiService.Domain.Ports;
 using WikiService.Infrastructure.ExternalServices;
+using WikiService.Common.Observability;
+using OpenTelemetry.Metrics;
 
 const string ServiceName = "microservices-platform.wiki-service";
 
@@ -88,6 +90,11 @@ builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
 // FR-13, ADR-0027 (#1640): 同期・撤去の受け口の期限（本文の取得・Wiki.js 1 回）。
 // 既定の実行期限（60 秒）に最悪の所要時間が収まらない構成は、ここで起動を止める。
 builder.Services.AddSingleton(WikiSyncTimeouts.From(builder.Configuration));
+// FR-13, NFR-06, [[IADR-0541]] 決定 5 (#1934): 恒久的な失敗（slug の一意制約・本文の NoSuchKey）で記録だけして終えた同期の計数。
+builder.Services.AddMetrics();
+builder.Services.AddSingleton<WikiSyncSkippedMetrics>();
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddMeter(WikiSyncSkippedMetrics.MeterName));
 builder.Services.AddPlatformConsumerTimeouts();
 
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
