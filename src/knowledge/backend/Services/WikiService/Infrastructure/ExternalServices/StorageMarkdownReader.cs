@@ -1,6 +1,7 @@
 using Amazon.S3;
 using Amazon.S3.Model;
 using WikiService.Domain.Ports;
+using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace WikiService.Infrastructure.ExternalServices;
@@ -56,8 +57,9 @@ public class StorageMarkdownReader(
     // SDK の専用の型（`NoSuchKeyException`）か、S3 のエラーコード `NoSuchKey` で判定する（S3 互換の実装が汎用の型で返しても拾う）。
     // 🔴 **状態コード 404 だけでは判定しない** —— バケットが無い（`NoSuchBucket`）も 404 であり、構成の不調（再試行の対象）である。
     // メッセージ文字列では判定しない。
-    internal static bool IsNoSuchKey(AmazonS3Exception ex) =>
-        ex is NoSuchKeyException || ex.ErrorCode == NoSuchKeyErrorCode;
+    // ［2026-10-15 / #1905・[[IADR-0544]]］判定の本体は共有の `ObjectStorageErrors` に置く（取り込み・文書サービスの本文の読み取りと同じ判定。
+    // 読み手ごとに写さない）。挙動は変えない。
+    internal static bool IsNoSuchKey(AmazonS3Exception ex) => ObjectStorageErrors.IsNoSuchKey(ex);
 
-    internal const string NoSuchKeyErrorCode = "NoSuchKey";
+    internal const string NoSuchKeyErrorCode = ObjectStorageErrors.NoSuchKeyErrorCode;
 }
