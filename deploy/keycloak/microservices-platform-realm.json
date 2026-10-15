@@ -229,8 +229,82 @@
       {
         "name": "Administrators",
         "description": "IADR-0103: Wiki.js の管理者グループ名に文字列一致させる dev ロール。wiki-js の groups claim 経由で Map Groups が Administrators へ対応づける（Wiki.js 側は自前グループ管理のため名前一致が唯一の接点）。"
+      },
+      {
+        "name": "default-roles-platform",
+        "description": "${role_default-roles}",
+        "composite": true,
+        "composites": {
+          "realm": [
+            "offline_access"
+          ],
+          "client": {
+            "account": [
+              "view-profile",
+              "manage-account"
+            ]
+          }
+        }
       }
-    ]
+    ],
+    "client": {
+      "account": [
+        {
+          "name": "view-profile",
+          "description": "${role_view-profile}"
+        },
+        {
+          "name": "manage-account",
+          "description": "${role_manage-account}",
+          "composite": true,
+          "composites": {
+            "client": {
+              "account": [
+                "manage-account-links"
+              ]
+            }
+          }
+        },
+        {
+          "name": "manage-account-links",
+          "description": "${role_manage-account-links}"
+        },
+        {
+          "name": "view-applications",
+          "description": "${role_view-applications}"
+        },
+        {
+          "name": "view-consent",
+          "description": "${role_view-consent}"
+        },
+        {
+          "name": "manage-consent",
+          "description": "${role_manage-consent}",
+          "composite": true,
+          "composites": {
+            "client": {
+              "account": [
+                "view-consent"
+              ]
+            }
+          }
+        },
+        {
+          "name": "view-groups",
+          "description": "${role_view-groups}"
+        },
+        {
+          "name": "delete-account",
+          "description": "${role_delete-account}"
+        }
+      ]
+    }
+  },
+  "defaultRole": {
+    "name": "default-roles-platform",
+    "description": "${role_default-roles}",
+    "composite": true,
+    "clientRole": false
   },
   "groups": [
     {
@@ -1171,8 +1245,103 @@
         "profile",
         "email"
       ]
+    },
+    {
+      "clientId": "account",
+      "name": "${client_account}",
+      "description": "SC-16, #1894, IADR-0546: Keycloak の組み込み account（アカウント API の資源。ロール manage-account 等の持ち主）。account-console を宣言するため本体と同じ形で宣言する（片方だけの宣言は import が重複で落ちる）",
+      "rootUrl": "${authBaseUrl}",
+      "baseUrl": "/realms/platform/account/",
+      "enabled": true,
+      "alwaysDisplayInConsole": false,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "redirectUris": [
+        "/realms/platform/account/*"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "profile"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "account-console",
+      "name": "${client_account-console}",
+      "description": "SC-16, #1894, IADR-0546: アカウントコンソール（SPA・公開クライアント）。basic で sub、profile で利用者名、写像で account のロールだけを resource_access へ載せる。共有の roles スコープは変えない",
+      "rootUrl": "${authBaseUrl}",
+      "baseUrl": "/realms/platform/account/",
+      "enabled": true,
+      "alwaysDisplayInConsole": false,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "redirectUris": [
+        "/realms/platform/account/*"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "post.logout.redirect.uris": "+",
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience resolve",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-resolve-mapper",
+          "consentRequired": false,
+          "config": {}
+        },
+        {
+          "name": "account client roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "account",
+            "claim.name": "resource_access.${client_id}.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "basic",
+        "profile"
+      ],
+      "optionalClientScopes": []
     }
   ],
+  "clientScopeMappings": {
+    "account": [
+      {
+        "client": "account-console",
+        "roles": [
+          "manage-account",
+          "view-groups"
+        ]
+      }
+    ]
+  },
   "users": [
     {
       "username": "admin",
@@ -1199,6 +1368,12 @@
         "wiki-editor",
         "Administrators"
       ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
       "requiredActions": [
         "CONFIGURE_TOTP"
       ],
@@ -1229,6 +1404,12 @@
         "/clearance/internal",
         "/department/engineering"
       ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
       "requiredActions": [
         "CONFIGURE_TOTP"
       ],
@@ -1250,6 +1431,12 @@
       "realmRoles": [
         "platform-operator"
       ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
       "requiredActions": [
         "CONFIGURE_TOTP"
       ],
@@ -1286,6 +1473,12 @@
         "wiki-editor",
         "trading-owner"
       ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
       "requiredActions": [
         "CONFIGURE_TOTP"
       ],

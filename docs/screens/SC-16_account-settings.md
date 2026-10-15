@@ -3,14 +3,14 @@ title: アカウント設定（Keycloak アカウントコンソール） 画面
 type: screen-spec
 status: completed
 created: 2026-08-23
-updated: 2026-10-10
+updated: 2026-10-15
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, SC-17, UC-05]
 adrs: [ADR-0026, ADR-0031]
-iadrs: [IADR-0197, IADR-0261, IADR-0532]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20261010_sc13-keycloak-theme-nocturne]
+iadrs: [IADR-0197, IADR-0261, IADR-0532, IADR-0546]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-439_sc16-account-settings, 20261010_sc13-keycloak-theme-nocturne, 20261015_1894_account-console-401]
 issues: [#438, #1894]
 -->
 
@@ -127,6 +127,11 @@ issues: [#438, #1894]
   ①realm が独自に定義した `roles` スコープに、audience の解決とクライアントロールの写像が無い ②`account-console` クライアントに
   `basic` スコープ（`sub` を出す）が付かない ③利用者に `account` クライアントの `manage-account` が付かない（`defaultRole` 無し）。
   realm の認可に関わる変更なので本件とは分けて扱う（見た目の確認は手元で 3 点を補って行った）。
+  - **［2026-10-15 解消］** realm の宣言で直した。`account` と `account-console` を組み込みと同じ形で対に宣言し、
+    `account-console` に `basic`・`profile` スコープと、`account` のロールだけを `resource_access` へ載せる写像を直付けした
+    （共有の `roles` スコープは変えない＝他のクライアントのトークンは変わらない）。宣言の利用者には `account` の
+    `view-profile`・`manage-account` を付け、既存の realm には起動器が毎回呼ぶ realm の後追い（`deploy/local/keycloak-setup/reconcile-realm.sh`）が
+    同じ 2 つだけを加える。構成の欠落は realm の静的検査が止める。
 
 <!-- trace-table:
 row1: SC-13

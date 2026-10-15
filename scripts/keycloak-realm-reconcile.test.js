@@ -29,6 +29,7 @@ const {
   plan, contains, merge, gateHoldsClosed, collectLive,
   devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, DEV_SECRET_GUARDED_CLIENTS, DEV_SECRETS_ALLOWED_ENV,
   RUNTIME_OWNED_REALM_KEYS, CLIENT_CREATE_ONLY_KEYS, GATE_OWNED_REALM_KEYS, GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
+  SEED_USER_SELF_SERVICE_ROLES,
 } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -57,6 +58,14 @@ function liveFrom(desired) {
   realm.supportedLocales = [...realm.supportedLocales].reverse(); // 揺れ: 集合の順序
   realm.smtpServer = { ...realm.smtpServer, user: 'relay-user', password: '**********' }; // 実行時注入（IADR-0261）
   const realmRoles = desired.roles.realm.map((r) => ({ ...clone(r), id: uuid(), composite: false }));
+  // #1894: Keycloak が import 時に自分で作る realm ロール（宣言しない）。既定ロールの合成先に現れる。
+  for (const name of ['offline_access', 'uma_authorization']) realmRoles.push({ id: uuid(), name });
+  // 宣言が合成を持つ realm ロールは、import が合成先まで作る（既定ロールには Keycloak が uma_authorization も足す）。
+  const roleComposites = {};
+  for (const r of desired.roles.realm) {
+    if (!(r.composite && r.composites && Array.isArray(r.composites.realm))) continue;
+    roleComposites[r.name] = r.composites.realm.map((name) => realmRoles.find((x) => x.name === name));
+  }
   const clientScopes = desired.clientScopes.map((s) => ({
     ...clone(s), id: uuid(), protocolMappers: (s.protocolMappers || []).map((m) => ({ ...clone(m), id: uuid() })),
   }));
@@ -78,6 +87,7 @@ function liveFrom(desired) {
     ...clone(g), id: uuid(), subGroups: (g.subGroups || []).map((s) => ({ ...clone(s), id: uuid() })),
   }));
   const users = {};
+  const userClientRoles = {};
   const serviceAccounts = {};
   for (const u of desired.users) {
     if (u.serviceAccountClientId) {
@@ -88,11 +98,15 @@ function liveFrom(desired) {
       };
     } else {
       users[u.username] = { id: uuid(), username: u.username, attributes: clone(u.attributes || {}), requiredActions: [] };
+      // #1894: import は宣言の clientRoles を当てる（collectLive は SEED_USER_SELF_SERVICE_ROLES の client だけを読む）。
+      const cr = {};
+      for (const cid of Object.keys(SEED_USER_SELF_SERVICE_ROLES)) if ((u.clientRoles || {})[cid]) cr[cid] = [...u.clientRoles[cid]];
+      userClientRoles[u.username] = cr;
     }
   }
   return {
     realm, requiredActions: clone(desired.requiredActions), realmRoles, clientScopes, clients, clientRoles,
-    roleComposites: {}, groups, users, serviceAccounts,
+    roleComposites, groups, users, userClientRoles, serviceAccounts,
   };
 }
 
@@ -414,6 +428,80 @@ ok('既存の人間の利用者は宣言と違っても触らない（資格情�
   live.users.developer.requiredActions = []; // TOTP を登録し終えた
   live.users['poc-user'].enabled = false;
   assert.deepStrictEqual(opsOf(REALM, live), []);
+});
+
+// --- 3-b. アカウントコンソール（SC-16）の構成と、seed 利用者の自己管理のロール（#1894 / IADR-0546）------------
+//
+// realm import で作られる利用者は既定ロールを受け取らない。宣言の seed 利用者は account の view-profile・manage-account を
+// 直に持ち、**既存の realm でも**本 Job がこの 2 つだけを足す（境界の唯一の例外。加えるだけ）。
+
+const HUMAN_SEEDS = REALM.users.filter((u) => !u.serviceAccountClientId).map((u) => u.username);
+
+ok('#1894: 宣言の人の seed 利用者はすべて account の view-profile・manage-account を持つ（陽性対照）', () => {
+  assert.ok(HUMAN_SEEDS.length >= 4, '人の seed 利用者が宣言から消えた');
+  assert.deepStrictEqual(Object.keys(SEED_USER_SELF_SERVICE_ROLES), ['account']);
+  assert.deepStrictEqual([...SEED_USER_SELF_SERVICE_ROLES.account].sort(), ['manage-account', 'view-profile']);
+  for (const u of REALM.users.filter((x) => !x.serviceAccountClientId)) {
+    assert.deepStrictEqual([...((u.clientRoles || {}).account || [])].sort(), ['manage-account', 'view-profile'], `${u.username} の account ロール`);
+  }
+});
+
+ok('#1894: 既存の seed 利用者に自己管理のロールが無ければ user.clientRoles.add を 1 件ずつ（欠けた分だけ・加えるだけ）', () => {
+  const live = liveFrom(REALM);
+  live.userClientRoles['poc-user'] = { account: [] };                  // import で作られ既定ロールを受け取らなかった利用者
+  live.userClientRoles.developer = { account: ['view-profile'] };      // 片方だけ持つ
+  const ops = opsOf(REALM, live);
+  assert.deepStrictEqual(kinds(ops), ['user.clientRoles.add', 'user.clientRoles.add']);
+  const poc = ops.find((o) => o.target === 'poc-user:account');
+  const accountUuid = live.clients.find((c) => c.clientId === 'account').id;
+  assert.strictEqual(poc.path, `/admin/realms/platform/users/${live.users['poc-user'].id}/role-mappings/clients/${accountUuid}`);
+  assert.deepStrictEqual(poc.body.map((r) => r.name).sort(), ['manage-account', 'view-profile']);
+  assert.ok(poc.body.every((r) => r.id), 'ロール参照に id が無い');
+  const dev = ops.find((o) => o.target === 'developer:account');
+  assert.deepStrictEqual(dev.body.map((r) => r.name), ['manage-account']);
+  assert.ok(!ops.some((o) => o.method === 'DELETE'), '外す操作が出た');
+});
+
+ok('#1894: 境界の例外は自己管理の 2 つだけ —— 宣言に他の client ロールや realm ロールがあっても既存の利用者へは足さない', () => {
+  const desired = clone(REALM);
+  const dev = desired.users.find((u) => u.username === 'developer');
+  dev.clientRoles.account = [...dev.clientRoles.account, 'delete-account', 'manage-account-links'];
+  dev.clientRoles['realm-management'] = ['manage-users'];
+  const live = liveFrom(REALM);
+  assert.deepStrictEqual(opsOf(desired, live), [], '自己管理の 2 つ以外を既存の人の利用者へ当てた');
+  live.userClientRoles.developer = { account: [] };
+  const ops = opsOf(desired, live);
+  assert.deepStrictEqual(kinds(ops), ['user.clientRoles.add']);
+  assert.deepStrictEqual(ops[0].body.map((r) => r.name).sort(), ['manage-account', 'view-profile']);
+});
+
+ok('#1894: 既定ロール経由で実効的に持っていれば（collectLive は合成を含む割当を読む）何もしない', () => {
+  const live = liveFrom(REALM);
+  for (const u of HUMAN_SEEDS) live.userClientRoles[u] = { account: ['manage-account', 'manage-account-links', 'view-profile'] };
+  assert.deepStrictEqual(opsOf(REALM, live), []);
+});
+
+ok('#1894: account のロールがまだ無ければ deferred（黙って消えない）', () => {
+  const live = liveFrom(REALM);
+  live.userClientRoles['poc-user'] = { account: [] };
+  live.clientRoles.account = live.clientRoles.account.filter((r) => r.name !== 'manage-account');
+  const ops = opsOf(REALM, live);
+  assert.ok(ops.some((o) => o.op === 'clientRole.create' && o.target === 'account:manage-account'));
+  assert.ok(ops.some((o) => o.op === 'deferred' && o.target === 'user poc-user clientRoles account'));
+  assert.ok(!ops.some((o) => o.op === 'user.clientRoles.add'));
+});
+
+ok('#1894: 旧い import の account-console（スコープ無し・写像は audience resolve だけ）には basic・profile と account のロールの写像を足す', () => {
+  const live = liveFrom(REALM);
+  const ac = live.clients.find((c) => c.clientId === 'account-console');
+  ac.defaultClientScopes = [];
+  ac.protocolMappers = ac.protocolMappers.filter((m) => m.name === 'audience resolve');
+  delete ac.description;
+  const ops = opsOf(REALM, live).filter((o) => /account-console/.test(o.target));
+  assert.deepStrictEqual(kinds(ops).sort(), ['client.scope.add', 'client.scope.add', 'client.update', 'mapper.create']);
+  assert.deepStrictEqual(ops.filter((o) => o.op === 'client.scope.add').map((o) => o.target).sort(), ['account-console:basic', 'account-console:profile']);
+  const m = ops.find((o) => o.op === 'mapper.create');
+  assert.strictEqual(m.body.config['usermodel.clientRoleMapping.clientId'], 'account', '写像が account のロールに絞られていない');
 });
 
 // ［2026-09-06 / #1245 / ADR-0078 決定 2・IADR-0404］**旧: 「smtpServer が宣言と違っても触らない」**

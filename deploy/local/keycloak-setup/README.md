@@ -55,7 +55,8 @@ Job（`node:22-alpine`・`platform-infra`）は **ConfigMap `keycloak-realms`**�
 | --- | --- | --- |
 | 宣言（realm JSON が正） | realm の非コレクション設定 / `requiredActions` / realm・client ロール / グループ / client scopes ＋ mappers / clients（属性・redirect・scope 割当 ＋ mappers）/ **seed 利用者の存在** / サービスアカウント利用者のロールと属性 | 差分があれば当てる。集合欄は宣言が全集合、実体は加算的（余剰は消さない） |
 | 宣言（**作成時だけ**） | client の `secret`（開発用の値） | client が無いとき（と realm が無いとき）にだけ宣言の値で作る。**既存の client では比べず・書かず・読まない** |
-| 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション／**既存の client の `secret`** | **触らない** |
+| 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション／**既存の client の `secret`** | **触らない**（例外は次の行） |
+| 宣言（**加えるだけ**。#1894 / IADR-0546） | 既存の人の seed 利用者の `account` の `view-profile`・`manage-account`（`SEED_USER_SELF_SERVICE_ROLES`） | 実効の割当に無ければ加える。外さない。他のロールは触らない |
 
 > **［2026-09-28 / #1682 / ADR-0124 決定 1・IADR-0485］client の `secret` を「作成時だけ」へ移した。**
 > client シークレットは認証基盤と Vault を同時に変えないと成立しない「対になる秘密」であり、本番の値を realm の宣言（Git）に置かない。
@@ -69,6 +70,51 @@ Job（`node:22-alpine`・`platform-infra`）は **ConfigMap `keycloak-realms`**�
 > は**空集合**である。宣言に無いキー（`user` / `password`）は消さない。
 > 🔴 `resetPasswordAllowed` を無条件の実行時所有にしてはならない —— 「**宣言 false なのに稼働 true**」
 > （閉じたはずの申請が開いている）という**危険な向きの drift** まで見なくなる。
+
+> **［2026-10-15 / #1894 / IADR-0546］アカウントコンソール（SC-16）の構成。** realm import では組み込みの `account-console` に
+> スコープが付かず、import で作る利用者は既定ロールを受け取らないので、SC-16 の API が 401 / 403 になっていた。realm JSON に
+> `account` と `account-console` を対で宣言し（片方だけだと import が落ちる）、seed 利用者へ `account` の 2 つのロールを付けた。
+> 既存の realm には本スクリプトが当てる（`--check` で `account` / `account-console` の差分と seed 利用者 4 人の `user.clientRoles.add` が出る）。
+
+### 既存の realm へ SC-16 の是正を当てる（PoC）
+
+通常は `scripts/k8s-local-up.sh` が毎回本スクリプトを呼ぶので、**最新の develop で up を流せば当たる**。単独で当てるとき:
+
+```sh
+bash deploy/local/keycloak-setup/reconcile-realm.sh --check   # 期待: account / account-console の差分と user.clientRoles.add（seed 利用者 4 人）
+bash deploy/local/keycloak-setup/reconcile-realm.sh           # 当てる（冪等。2 回目は「一致（差分なし）」）
+bash deploy/local/keycloak-setup/reconcile-realm.sh --check   # 期待: realms=<n> drift=0
+```
+
+Job を使えないとき（クラスタ外の Keycloak など）の最小の手当ては kcadm.sh で行える。**Keycloak の pod で exec しない**（上の 🔴）。
+port-forward した先へ、手元の別コンテナの kcadm.sh から当てる。何度流しても同じ状態になる（写像は名前で有無を見てから作る・割当の PUT は冪等）。
+後で本スクリプトを流すと、残りの差分（`account` / `account-console` の説明と `account` の既定スコープ）も宣言へ揃う。
+
+```sh
+kubectl -n platform-infra port-forward svc/keycloak 8080:8080 &
+KCDIR=$(mktemp -d) && chmod 777 "$KCDIR"   # kcadm の資格情報の置き場（リポジトリの外。コンテナの利用者が書ける）
+KCADM="docker run --rm --network host -v $KCDIR:/opt/keycloak/.keycloak --entrypoint /opt/keycloak/bin/kcadm.sh quay.io/keycloak/keycloak:26.7.4"
+$KCADM config credentials --server http://localhost:8080 --realm master --user "$KC_ADMIN_USER" --password "$KC_ADMIN_PASSWORD"
+AC=$($KCADM get clients -r platform -q clientId=account-console --fields id --format csv --noquotes)
+for s in basic profile; do
+  SID=$($KCADM get client-scopes -r platform --fields id,name --format csv --noquotes | awk -F, -v n="$s" '$2==n{print $1}')
+  $KCADM update "clients/$AC/default-client-scopes/$SID" -r platform
+done
+$KCADM get "clients/$AC/protocol-mappers/models" -r platform --fields name --format csv --noquotes | grep -qx 'account client roles' || \
+  $KCADM create "clients/$AC/protocol-mappers/models" -r platform \
+    -s name='account client roles' -s protocol=openid-connect -s protocolMapper=oidc-usermodel-client-role-mapper \
+    -s 'config."usermodel.clientRoleMapping.clientId"=account' -s 'config."claim.name"=resource_access.${client_id}.roles' \
+    -s 'config."jsonType.label"=String' -s 'config.multivalued=true' -s 'config."access.token.claim"=true' \
+    -s 'config."id.token.claim"=false' -s 'config."userinfo.token.claim"=false' -s 'config."introspection.token.claim"=true'
+for u in admin poc-user poc-operator developer; do
+  $KCADM add-roles -r platform --uusername "$u" --cclientid account --rolename view-profile --rolename manage-account
+done
+```
+
+確かめ方: ブラウザで `https://<host>/realms/platform/account/` を開いてログインし、個人情報（メールアドレスが入っている）・
+アカウントセキュリティ → サインイン・デバイスアクティビティが「何らかの問題が発生しました」にならないこと。開発者ツールで
+`/realms/platform/account/?userProfileMetadata=true`・`/supportedLocales`・`/credentials`・`/sessions/devices` が 200 であること
+（是正前は 401）。
 
 seed 利用者の宣言（例: `requiredActions`）を変えて既存クラスタへ届けたいときは、破壊経路を使う:
 `kubectl -n platform-infra delete pvc keycloak-data && kubectl -n platform-infra rollout restart deploy/keycloak`
