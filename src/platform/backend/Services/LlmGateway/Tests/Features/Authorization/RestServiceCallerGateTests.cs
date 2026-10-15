@@ -7,7 +7,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 namespace LlmGateway.Tests.Features.Authorization;
 
 // NFR-09, FR-02, FR-04, FR-11, ADR-0004, ADR-0084 決定 1, [[IADR-0379]] 決定 4, [[IADR-0424]] (#1364):
-// REST 3 口（/complete・/complete/stream・/embed）の**門**を固定する。
+// REST の口（/complete）の**門**を固定する（［2026-10-15 / #1902］/complete/stream・/embed は撤去した）。
 //
 // 🔴 **陰性対照が主題である。** 陽性対照（有資格で 200）だけの試験は、門を外しても緑のままであり
 // **何も守らない** —— この 3 口は #1364 の時点で実際に「陽性しか無い」状態だった
@@ -28,9 +28,6 @@ public class RestServiceCallerGateTests(TestWebApplicationFactory factory)
 {
     private static CompletionApiRequest Completion() =>
         new("質問", MaxTokens: 64, Model: null, Confidentiality: "public", Purpose: "rag-answer");
-
-    private static EmbedApiRequest Embed() =>
-        new("本文", "public", EmbedPurpose.Index);
 
     // ---- /complete ----------------------------------------------------------------
 
@@ -64,73 +61,21 @@ public class RestServiceCallerGateTests(TestWebApplicationFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // ---- /complete/stream ---------------------------------------------------------
+    // ---- /complete/stream・/embed ------------------------------------------------
+    // ［2026-10-15 / #1902・[[IADR-0533]]］REST の 2 口は撤去した（呼び出し元が gRPC だけになった）。
+    // 門の陽性・陰性は gRPC 面が持つ（`GrpcCompleteStreamTests` の無資格・転送トークン、`GrpcEmbedTests` T-S-02 / T-S-03）。
+    // 撤去したことは `Removed_rest_faces_are_not_routed` が固定する。
 
-    // T-A-04: 陽性対照。SSE の枠は 200 ＋ text/event-stream で始まる。
-    [Fact]
-    public async Task CompleteStream_with_service_caller_token_succeeds()
+    // T-A-12: 撤去した 2 口はルート表に無い（受け口が戻ると、門の試験の無い口が増える）。
+    [Theory]
+    [InlineData("/complete/stream")]
+    [InlineData("/embed")]
+    public async Task Removed_rest_faces_are_not_routed(string path)
     {
         var resp = await factory.CreateClient().PostAsJsonAsync(
-            "/complete/stream", Completion(), TestContext.Current.CancellationToken);
+            path, Completion(), TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        resp.Content.Headers.ContentType!.MediaType.Should().Be("text/event-stream");
-    }
-
-    // T-A-05: 🔴 陰性対照。資格情報が無ければ 401。
-    //
-    // 🔴 **SSE は「200 で開いてから中身で断る」形にしない。** 開いてしまうと呼び出し側は
-    // 縮退イベントと拒否の区別が付かず、また上流プロバイダを呼ぶ前に止める保証も消える。
-    [Fact]
-    public async Task CompleteStream_without_credentials_is_unauthorized()
-    {
-        var resp = await factory.CreateAnonymousClient().PostAsJsonAsync(
-            "/complete/stream", Completion(), TestContext.Current.CancellationToken);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        resp.Content.Headers.ContentType?.MediaType.Should().NotBe("text/event-stream");
-    }
-
-    // T-A-06: 🔴 陰性対照。利用者のトークン（管理者）は 403。
-    [Fact]
-    public async Task CompleteStream_with_admin_user_token_is_forbidden()
-    {
-        var resp = await factory.CreateUserClient().PostAsJsonAsync(
-            "/complete/stream", Completion(), TestContext.Current.CancellationToken);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-    }
-
-    // ---- /embed -------------------------------------------------------------------
-
-    // T-A-07: 陽性対照。s2s トークンなら通る。
-    [Fact]
-    public async Task Embed_with_service_caller_token_succeeds()
-    {
-        var resp = await factory.CreateClient().PostAsJsonAsync(
-            "/embed", Embed(), TestContext.Current.CancellationToken);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-    }
-
-    // T-A-08: 🔴 陰性対照。資格情報が無ければ 401。
-    [Fact]
-    public async Task Embed_without_credentials_is_unauthorized()
-    {
-        var resp = await factory.CreateAnonymousClient().PostAsJsonAsync(
-            "/embed", Embed(), TestContext.Current.CancellationToken);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    // T-A-09: 🔴 陰性対照。利用者のトークン（管理者）は 403。
-    [Fact]
-    public async Task Embed_with_admin_user_token_is_forbidden()
-    {
-        var resp = await factory.CreateUserClient().PostAsJsonAsync(
-            "/embed", Embed(), TestContext.Current.CancellationToken);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     // ---- 群の外は触っていないこと ---------------------------------------------------

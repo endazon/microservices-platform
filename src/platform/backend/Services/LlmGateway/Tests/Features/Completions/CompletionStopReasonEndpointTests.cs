@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using AwesomeAssertions;
+using LlmGateway.Tests.Grpc;
 using LlmGateway.Domain.Ports;
 using Platform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -9,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace LlmGateway.Tests.Features.Completions;
 
-// FR-11, ADR-0025, IADR-0104 (#379): /complete・/complete/stream が終了理由（stopReason）を
+// FR-11, ADR-0025, IADR-0104 (#379): /complete・逐次生成（［2026-10-15 / #1902］gRPC 面だけ）が終了理由（stopReason）を
 // 応答契約に載せ、呼び出し側が「モデルが拒否した」と「送信したが空応答」を区別できることを固定する。
 // 拒否は外部送信が成立したうえでの応答であるため sent=true のままとし（越境監査・課金の意味を守る）、
 // 区別は stopReason で行う。
@@ -116,14 +117,14 @@ public class CompletionStopReasonEndpointTests(TestWebApplicationFactory factory
     {
         var client = ClientReturning(new CompletionResult("", 11, 0, CompletionStopReasons.Refusal));
 
-        var req = new { Prompt = "危険な要求", MaxTokens = 100, Confidentiality = "public", Purpose = "rag-answer" };
-        var response = await client.PostAsJsonAsync("/complete/stream", req, TestContext.Current.CancellationToken);
+        // ［2026-10-15 / #1902］逐次の REST（SSE）を撤去したので、同じ本体を呼ぶ gRPC 面を叩く。
+        var req = new CompletionApiRequest("危険な要求", MaxTokens: 100, Confidentiality: "public", Purpose: "rag-answer");
+        var events = await client.CompleteStreamAsync(req, TestContext.Current.CancellationToken);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var text = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        text.Should().Contain("\"done\":true");
-        text.Should().Contain("\"stopReason\":\"refusal\"");
-        text.Should().Contain("\"sent\":true");
+        var done = events.Last();
+        done.Done.Should().BeTrue();
+        done.StopReason.Should().Be(CompletionStopReasons.Refusal);
+        done.Sent.Should().BeTrue();
     }
 
     // 固定の CompletionResult を返すスタブ。ILlmProvider 既定の StreamAsync（1 チャンク縮退）を

@@ -119,7 +119,7 @@ builder.Services.AddKeyedSingleton<IEmbeddingProvider, SelfHostedEmbeddingProvid
 builder.Services.AddKeyedSingleton<IEmbeddingProvider, DeterministicEmbeddingProvider>("deterministic-embedding");
 
 // FR-02, FR-05, ADR-0016, IADR-0379 決定 5, IADR-0397 (#1255): 埋め込みの判定器本体。
-// REST（/embed）と gRPC（LlmEmbedding/Embed）の**両方がこれを呼ぶ** —— 判定器を 2 つにしない。
+// gRPC（LlmEmbedding/Embed）が呼ぶ（［2026-10-15 / #1902］REST の /embed は撤去した）。
 builder.Services.AddSingleton<EmbedUseCase>();
 
 // FR-11, NFR-19 (#1819): 同じ事象のログを「初回は即時・以後 5 分ごとに要約 1 行」に抑える状態。
@@ -127,8 +127,8 @@ builder.Services.AddSingleton<EmbedUseCase>();
 builder.Services.AddSingleton<LogOccurrenceThrottle>();
 
 // FR-04, FR-11, ADR-0010, IADR-0379 決定 5, IADR-0400 (#1255): テキスト生成の判定器本体。
-// REST（/complete・/complete/stream）と gRPC（LlmCompletion/Complete・CompleteStream）の
-// **両方がこれを呼ぶ** —— 越境判定・フォールバック鎖・計器の計上を輸送ごとに分けない。
+// REST（/complete）と gRPC（LlmCompletion/Complete・CompleteStream）の
+// **両方がこれを呼ぶ**（［2026-10-15 / #1902］逐次の REST /complete/stream は撤去した） —— 越境判定・フォールバック鎖・計器の計上を輸送ごとに分けない。
 builder.Services.AddSingleton<CompletionUseCase>();
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段はホストしないが、
@@ -171,7 +171,7 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapCompletionEndpoints();
-app.MapEmbeddingEndpoints();
+// ［2026-10-15 / #1902・[[IADR-0533]] 追記］REST の `/embed`・`/complete/stream` は撤去した（呼び出し元は gRPC だけ）。
 
 // FR-02, NFR-09, ADR-0029, ADR-0075, IADR-0379, IADR-0397 (#1255): 埋め込みの gRPC 面。
 // `[Authorize(Policy = ServiceCaller)]` を型に持ち、s2s トークン（realm ロール platform-service）だけを通す。
@@ -180,7 +180,7 @@ app.MapGrpcService<LlmEmbeddingGrpcService>();
 // FR-04, FR-11, NFR-02, NFR-09, ADR-0029, ADR-0075, ADR-0076, IADR-0379, IADR-0400 (#1255):
 // テキスト生成の gRPC 面（Complete ＝ 一括 ／ CompleteStream ＝ **サーバストリーミング**）。
 // 認可は埋め込みと同じ ServiceCaller。
-// 🔴 **［2026-09-09 是正 / #1364］REST（/complete・/complete/stream・/embed）も同じ `ServiceCaller` を要する。**
+// 🔴 **［2026-09-09 是正 / #1364］REST（/complete。当時は /complete/stream・/embed も）も同じ `ServiceCaller` を要する。**
 // 従前ここには「REST は並走したまま残る」と書いてあり、それは**輸送の並走**を述べたつもりで
 // **認可の不在**まで書いてしまっていた（`ADR-0084` 決定 1 に照らして未達だった）。
 // 並走しているのは輸送だけであり、**門は 2 つの面で同じ 1 つのポリシーである**（[[IADR-0424]]）。
