@@ -14664,6 +14664,78 @@ exit 0
       assert.match(line, /累計 発行 7/);
     });
 
+    // --- #1931: --created-after（SeaweedFS 切り替え前の文書を飛ばす下限）--------------------------------------
+    // 口は createdAfter を持たないので、駆動器が開始カーソル（DocumentPageCursor: v1:<UtcTicks>:<Id の N 形式> の base64url）を合成する。
+    const decode1931 = (c) => Buffer.from(c, 'base64url').toString('utf8');
+
+    ok('#1931: --created-after だけ —— UTC へ寄せ、新規の状態は開始カーソルから始まり、確かめた位置も同じにする', () => {
+      const o = rp.parseArgs(['--live', '--created-after', '2026-09-27T09:00:00+09:00']);
+      assert.strictEqual(o.createdAfter, '2026-09-27T00:00:00.000Z', 'UTC へ寄せる');
+      assert.strictEqual(o.createdBefore, null);
+      const st = rp.newState(o, new Date('2026-10-15T12:00:00Z'));
+      assert.strictEqual(st.filters.createdAfter, '2026-09-27T00:00:00.000Z');
+      assert.strictEqual(st.filters.createdBefore, '2026-10-15T12:00:00.000Z', '上限は従前どおり開始時刻に固定する');
+      // .NET の ticks（0001-01-01 からの 100ns）: 1,790,467,200 秒 × 10^7 ＋ 621,355,968,000,000,000。Id は全零（after ≤ 作成時刻）。
+      assert.strictEqual(decode1931(st.cursor), `v1:639260640000000000:${'0'.repeat(32)}`);
+      assert.strictEqual(st.confirmedCursor, st.cursor, '止まって戻すときに先頭（null）へ戻らない');
+      assert.strictEqual(rp.rollbackToConfirmed(rp.applyPage(st, { nextCursor: 'c1', matched: 10, remaining: 4, published: 1 })).cursor, st.cursor);
+      assert.strictEqual(rp.stateProblem(st), null);
+      assert.ok(!/[=+/]/.test(st.cursor), 'base64url（パディングなし）');
+      assert.strictEqual(rp.startCursor(null), null);
+      assert.strictEqual(rp.newState(rp.parseArgs([]), new Date('2026-10-15T12:00:00Z')).cursor, null, '下限が無ければ従前どおり先頭から');
+    });
+
+    ok('#1931: 区間 —— after と before を両方渡せ、要求の本文に createdBefore と開始カーソルが載る', () => {
+      const o = rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z', '--created-before', '2026-10-01T00:00:00Z']);
+      assert.strictEqual(rp.intervalProblem(o), null);
+      const st = rp.newState(o, new Date('2026-10-15T00:00:00Z'));
+      assert.strictEqual(st.filters.createdBefore, '2026-10-01T00:00:00.000Z');
+      const body = rp.buildRequestBody(st.filters, { dryRun: false, limit: 10, cursor: st.cursor });
+      assert.deepStrictEqual(body, { dryRun: false, limit: 10, cursor: st.cursor, createdBefore: '2026-10-01T00:00:00.000Z' });
+      assert.ok(!('createdAfter' in body), '口は createdAfter を知らない（未知の項目を送らない）');
+    });
+
+    ok('#1931: after ≥ before・不正な日時・--resume との併用は止める。before 無指定は開始時刻と比べる', () => {
+      assert.throws(() => rp.parseArgs(['--created-after', '2026-10-02T00:00:00Z', '--created-before', '2026-10-01T00:00:00Z']), /より前でなければ/);
+      assert.throws(() => rp.parseArgs(['--created-after', '2026-10-01T00:00:00Z', '--created-before', '2026-10-01T00:00:00Z']), /区間が空/);
+      assert.throws(() => rp.parseArgs(['--created-after', 'last-month']), /--created-after は ISO 8601/);
+      assert.throws(() => rp.parseArgs(['--created-after']), /値がありません/);
+      assert.throws(() => rp.parseArgs(['--resume', '--created-after', '2026-09-27T00:00:00Z']), /状態ファイルの絞り込み/);
+      const future = rp.newState(rp.parseArgs(['--created-after', '2030-01-01T00:00:00Z']), new Date('2026-10-15T00:00:00Z'));
+      assert.match(rp.intervalProblem(future.filters), /区間が空/, '開始時刻より後の下限は空の区間');
+    });
+
+    ok('#1931: 状態ファイルの createdAfter が違えば同じ走査とみなさない（無指定と指定も違う）。旧い状態は下限なしと読む', () => {
+      const st = rp.newState(rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z']), new Date('2026-10-15T00:00:00Z'));
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs(['--created-after', '2026-09-27T09:00:00+09:00'])), true, '同じ時刻は同じ走査');
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs(['--created-after', '2026-09-28T00:00:00Z'])), false);
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs([])), false, '下限を外した新規の走査は別の走査');
+      const old = rp.newState(rp.parseArgs([]), new Date('2026-10-15T00:00:00Z'));
+      delete old.filters.createdAfter;
+      assert.strictEqual(rp.stateProblem(old), null, 'createdAfter を持たない旧い状態からも再開できる');
+      assert.strictEqual(rp.sameFilters(old, rp.parseArgs([])), true);
+      assert.strictEqual(rp.sameFilters(old, rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z'])), false);
+      assert.match(rp.stateProblem({ ...st, filters: { ...st.filters, createdAfter: 1 } }), /createdAfter/);
+    });
+
+    ok('#1931: dry-run の件数 —— 区間の件数と、createdAfter より前（対象外）の件数を出す。進捗の分母から対象外を引く', () => {
+      const f = rp.filtersOf(rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z']));
+      const text = rp.summarizeDryRun({ matched: 45571, remaining: 39768, withoutBody: 0, skippedByGate: 0, byConfidentiality: {} }, f).join('\n');
+      assert.match(text, /対象: 39768 件（createdAfter 2026-09-27T00:00:00\.000Z 以降。より前の 5803 件は対象外。下限なしの全件 45571 件）/);
+      // 最初のページ（開始カーソルから）の応答で対象外の件数を決め、以後の進捗は区間の中で数える。
+      let st = rp.newState(rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z']), new Date('2026-10-15T00:00:00Z'));
+      st = rp.applyPage(st, { nextCursor: 'c1', matched: 100, remaining: 60, selected: 10, published: 10 });
+      assert.strictEqual(st.excluded, 40);
+      assert.match(rp.formatProgress(st, { matched: 100, remaining: 60, selected: 10, published: 10, skippedByGate: 0, withoutBody: 0 }, 0),
+        /^\[page 1\] 10\/60（16\.7%）/);
+      st = rp.applyPage(st, { nextCursor: 'c2', matched: 100, remaining: 50, selected: 10, published: 10 });
+      assert.strictEqual(st.excluded, 40, '2 ページ目以降は変えない');
+      // 開始カーソルでない位置から最初に積んだ（excluded を持たない状態を途中から再開した）ときは決めない —— 進捗の分母は口の matched のまま。
+      const mid = { ...rp.newState(rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z']), new Date('2026-10-15T00:00:00Z')), cursor: 'c5' };
+      assert.strictEqual(rp.applyPage(mid, { nextCursor: 'c6', matched: 100, remaining: 30, selected: 10 }).excluded, null, '途中の matched - remaining は対象外の件数ではない');
+      assert.strictEqual(rp.applyPage(rp.newState(rp.parseArgs([]), new Date()), { nextCursor: null, matched: 5, remaining: 5 }).excluded, null);
+    });
+
     // --- #1762 独立監査（R1・Y1・Y2・Y5）: 止まる条件・確かめた位置・再開・終わりの DLQ 確認 ---------------------
 
     ok('#1762 監査 Y2: DLQ の判定 —— カナリアは増加 0 だけを許し、それ以外は --max-dlq-growth まで許す（超えたら止まる）', () => {

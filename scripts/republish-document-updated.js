@@ -25,6 +25,7 @@
  *   node scripts/republish-document-updated.js --live --operator alice --reason "Voyage へ切替後の再索引"   # 全件（カナリア → ページごと）
  *   node scripts/republish-document-updated.js --live --resume --operator alice --reason "DLQ の原因を直した"  # 状態ファイルから続ける
  *   node scripts/republish-document-updated.js --live --reason "internal だけ" --attr confidentiality=internal --page-size 20 --sleep-ms 5000
+ *   node scripts/republish-document-updated.js --live --operator alice --reason "切り替え後だけ" --created-after 2026-09-27T00:00:00Z   # #1931
  *
  * 主な環境変数:
  *   REPUBLISH_DOCUMENT_URL / REPUBLISH_KC_URL（与えれば port-forward を張らない）
@@ -85,6 +86,7 @@ const USAGE = `使い方: node scripts/republish-document-updated.js --live [オ
   --ids <id,id,...>             文書 ID で絞る（500 件まで）
   --attr <key=value>            属性の完全一致で絞る（繰り返し可・AND）
   --created-before <ISO8601>    この時刻より前に作られた文書だけ（既定は新規の走査の開始時刻）
+  --created-after <ISO8601>     この時刻以降に作られた文書だけ（--created-before と併せると after ≤ 作成時刻 < before の区間）
   --operator <name>             操作者（口のログへ認証済みの主体と並べて残す。既定は環境変数 USER。${MAX_OPERATOR_LENGTH} 文字まで）
   --reason <text>               理由（発行する実行では必須。口のログへ残す。${MAX_REASON_LENGTH} 文字まで）`;
 
@@ -109,7 +111,7 @@ function parseArgs(argv) {
     canary: DEFAULTS.canary, drainTimeoutMs: DEFAULTS.drainTimeoutMs,
     maxQueueDepth: DEFAULTS.maxQueueDepth, maxDlqGrowth: DEFAULTS.maxDlqGrowth,
     maxConsecutiveFailures: DEFAULTS.maxConsecutiveFailures,
-    stateFile: DEFAULTS.stateFile, ids: null, attributes: null, createdBefore: null,
+    stateFile: DEFAULTS.stateFile, ids: null, attributes: null, createdBefore: null, createdAfter: null,
     operator: null, reason: null,
   };
   const value = (i, name) => {
@@ -174,13 +176,24 @@ function parseArgs(argv) {
         i++;
         break;
       }
+      case '--created-after': {
+        // FR-02, #1931: 下限。口は createdAfter を持たないので、開始カーソルを合成して渡す（startCursor）。
+        const raw = value(i, a);
+        const t = Date.parse(raw);
+        if (Number.isNaN(t)) throw new Error(`--created-after は ISO 8601 の時刻で指定してください（${raw}）。`);
+        o.createdAfter = new Date(t).toISOString();
+        i++;
+        break;
+      }
       default:
         throw new Error(`知らない引数です: ${a}（--help を参照）`);
     }
   }
   if (o.resume && o.dryRun) throw new Error('--resume と --dry-run は同時に指定できません。');
-  if (o.resume && (o.ids || o.attributes || o.createdBefore))
+  if (o.resume && (o.ids || o.attributes || o.createdBefore || o.createdAfter))
     throw new Error('--resume では絞り込みを指定しません（状態ファイルの絞り込みを使う）。');
+  const interval = intervalProblem(o);
+  if (interval) throw new Error(interval);
   return o;
 }
 
@@ -199,7 +212,35 @@ function filtersOf(o) {
   const attributes = o.attributes
     ? Object.fromEntries(Object.keys(o.attributes).sort().map((k) => [k, o.attributes[k]]))
     : null;
-  return { ids: o.ids ? [...o.ids].sort() : null, attributes, createdBefore: o.createdBefore || null };
+  return {
+    ids: o.ids ? [...o.ids].sort() : null, attributes, createdBefore: o.createdBefore || null, createdAfter: o.createdAfter || null,
+  };
+}
+
+/**
+ * FR-02, #1931: 区間（after ≤ 作成時刻 < before）が空でないか。違反を文字列で返す（null なら続けてよい）。
+ * before が無い（新規の走査の開始時刻に固定される前）なら見ない。
+ */
+function intervalProblem(f) {
+  if (!f.createdAfter || !f.createdBefore) return null;
+  if (Date.parse(f.createdAfter) >= Date.parse(f.createdBefore))
+    return `--created-after（${f.createdAfter}）は --created-before（${f.createdBefore}）より前でなければなりません（区間が空です）。`;
+  return null;
+}
+
+/**
+ * FR-02, #1931: `createdAfter` を口のカーソル（`DocumentPageCursor`。`v1:<UtcTicks>:<Id の N 形式>` の base64url）へ写す。
+ * 口は「(CreatedAt, Id) が厳密に後ろ」を選ぶので、Id を全零にすると CreatedAt = after の文書も選ばれる（after ≤ 作成時刻）。
+ * 口に createdAfter を足さずに（src/ に触らずに）下限を付けるための開始位置である。並びは古い順のまま変わらない。
+ * @param {string|null} createdAfter ISO 8601（UTC）
+ * @returns {string|null}
+ */
+function startCursor(createdAfter) {
+  if (!createdAfter) return null;
+  const ms = Date.parse(createdAfter);
+  // .NET の ticks（0001-01-01 からの 100ns）。ミリ秒 × 10,000 は 2^53 を超えるので BigInt で計算する。
+  const ticks = BigInt(ms) * 10000n + 621355968000000000n;
+  return Buffer.from(`v1:${ticks}:${'0'.repeat(32)}`, 'utf8').toString('base64url');
 }
 
 /** 新規の走査の状態。`createdBefore` を開始時刻に固定する（途中で作られた文書は作成の経路で発行済み）。 */
@@ -209,14 +250,17 @@ function newState(o, now = new Date()) {
     version: STATE_VERSION,
     startedAt: now.toISOString(),
     filters: { ...f, createdBefore: f.createdBefore || now.toISOString() },
-    cursor: null,
-    confirmedCursor: null,
+    // #1931: 下限があれば開始カーソルから始める。確かめた位置も同じにする（止まって戻すときに先頭へ戻らない）。
+    cursor: startCursor(f.createdAfter),
+    confirmedCursor: startCursor(f.createdAfter),
     confirmedDone: false,
     done: false,
     canaryPassed: false,
     dlqBaseline: null,
     totals: { pages: 0, published: 0, skippedByGate: 0, withoutBody: 0 },
     matched: null,
+    // #1931: createdAfter より前（対象外）の件数。最初のページの応答で決まる（進捗の分母から引く）。
+    excluded: null,
   };
 }
 
@@ -229,6 +273,9 @@ function stateProblem(state) {
   if (state.version !== STATE_VERSION) return `状態ファイルの版が違います（${state.version}。期待 ${STATE_VERSION}）。`;
   if (!state.filters || typeof state.filters.createdBefore !== 'string')
     return '状態ファイルに絞り込み（createdBefore）がありません。';
+  // #1931: createdAfter は後から足した。無い（旧い状態）は下限なしと読む。
+  if (state.filters.createdAfter != null && typeof state.filters.createdAfter !== 'string')
+    return '状態ファイルの絞り込み（createdAfter）が不正です。';
   if (state.cursor !== null && typeof state.cursor !== 'string') return '状態ファイルの cursor が不正です。';
   if (state.confirmedCursor !== null && typeof state.confirmedCursor !== 'string') return '状態ファイルの confirmedCursor が不正です。';
   if (typeof state.confirmedDone !== 'boolean') return '状態ファイルの confirmedDone が不正です。';
@@ -245,7 +292,9 @@ function sameFilters(state, o) {
   const s = state.filters || {};
   return JSON.stringify(f.ids) === JSON.stringify(s.ids ?? null)
     && JSON.stringify(f.attributes) === JSON.stringify(s.attributes ?? null)
-    && (f.createdBefore === null || f.createdBefore === s.createdBefore);
+    && (f.createdBefore === null || f.createdBefore === s.createdBefore)
+    // #1931: createdAfter には既定が無いので、無指定と指定は違う走査である（完全一致だけを同じとみなす）。
+    && f.createdAfter === (s.createdAfter ?? null);
 }
 
 function loadState(file, fsImpl = fs) {
@@ -276,8 +325,12 @@ function buildRequestBody(filters, { dryRun, limit, cursor, requestedBy, reason 
 /** 1 ページの応答を状態へ積む（新しい状態を返す。元は変えない）。confirmedCursor は動かさない（確かめるのは confirmChecked）。 */
 function applyPage(state, res) {
   const t = state.totals;
+  // #1931: 開始カーソルから呼んだ応答の matched - remaining が createdAfter より前（対象外）の件数。
+  const after = state.filters?.createdAfter;
+  const excluded = state.excluded ?? (after && state.cursor === startCursor(after) ? res.matched - res.remaining : null);
   return {
     ...state,
+    excluded,
     cursor: res.nextCursor ?? null,
     done: res.nextCursor == null,
     matched: res.matched,
@@ -384,12 +437,16 @@ function dlqGrowth(baseline, current) {
 }
 
 /** dry-run の要約（埋め込みへ進む件数＝ public ＋ internal。費用の見積もりの母数）。 */
-function summarizeDryRun(res) {
+function summarizeDryRun(res, filters = {}) {
   const by = res.byConfidentiality || {};
   const embedding = (by.public || 0) + (by.internal || 0);
   const lexicalOnly = (by.confidential || 0) + (by.restricted || 0);
+  // #1931: createdAfter は開始カーソルで付けるので、口の matched は下限の無い件数である。差が対象外。
+  const head = filters.createdAfter
+    ? `対象: ${res.remaining} 件（createdAfter ${filters.createdAfter} 以降。より前の ${res.matched - res.remaining} 件は対象外。下限なしの全件 ${res.matched} 件）`
+    : `対象: ${res.remaining} 件（絞り込みの全件 ${res.matched} 件）`;
   return [
-    `対象: ${res.remaining} 件（絞り込みの全件 ${res.matched} 件）`,
+    head,
     `  機密区分: public ${by.public || 0} / internal ${by.internal || 0} / confidential ${by.confidential || 0} / restricted（欠落・未知を含む） ${by.restricted || 0}`,
     `  埋め込みへ進む（public + internal）: ${embedding} 件 —— 1 チャンクにつき埋め込み 1 回（本文なしは題名などで 1 回）。費用はこの件数と本文の量から見積もる`,
     `  語彙索引だけ（埋め込まない）: ${lexicalOnly} 件`,
@@ -399,9 +456,12 @@ function summarizeDryRun(res) {
 }
 
 function formatProgress(state, res, elapsedMs) {
-  const done = res.matched - res.remaining + res.selected;
-  const pct = res.matched > 0 ? ((100 * done) / res.matched).toFixed(1) : '100.0';
-  return `[page ${state.totals.pages}] ${done}/${res.matched}（${pct}%） 発行 ${res.published} / 門で止めた ${res.skippedByGate}`
+  // #1931: createdAfter より前（対象外）の件数は分母にも分子にも入れない。
+  const excluded = state.excluded || 0;
+  const total = res.matched - excluded;
+  const done = res.matched - res.remaining + res.selected - excluded;
+  const pct = total > 0 ? ((100 * done) / total).toFixed(1) : '100.0';
+  return `[page ${state.totals.pages}] ${done}/${total}（${pct}%） 発行 ${res.published} / 門で止めた ${res.skippedByGate}`
     + ` / 本文なし ${res.withoutBody} ・累計 発行 ${state.totals.published} ・${Math.round(elapsedMs / 1000)}s`;
 }
 
@@ -554,8 +614,14 @@ async function main(argv) {
 
   if (o.dryRun) {
     const f = filtersOf(o);
-    const res = await call(buildRequestBody(f, { dryRun: true, ...tags }));
-    for (const line of summarizeDryRun(res)) log(line);
+    const interval = intervalProblem({ ...f, createdBefore: f.createdBefore || new Date().toISOString() });
+    if (interval) {
+      warn(`[republish-document-updated] ${interval}`);
+      return 1;
+    }
+    // #1931: createdAfter は開始カーソルで付ける（口は remaining と内訳をカーソルより後ろについて数える）。
+    const res = await call(buildRequestBody(f, { dryRun: true, cursor: startCursor(f.createdAfter), ...tags }));
+    for (const line of summarizeDryRun(res, f)) log(line);
     log('--dry-run のため発行しません。');
     return 0;
   }
@@ -573,7 +639,7 @@ async function main(argv) {
       log(`状態ファイルは完了しています（累計 発行 ${state.totals.published} 件）。やり直すなら状態ファイルを消して新規に走らせてください。`);
       return 0;
     }
-    log(`再開します（開始 ${state.startedAt}・累計 発行 ${state.totals.published} 件・createdBefore ${state.filters.createdBefore}）。`);
+    log(`再開します（開始 ${state.startedAt}・累計 発行 ${state.totals.published} 件・createdBefore ${state.filters.createdBefore}・createdAfter ${state.filters.createdAfter ?? '(なし)'}）。`);
   } else {
     if (existing) {
       warn(`[republish-document-updated] 状態ファイルが既にあります（${o.stateFile}）。`
@@ -582,8 +648,13 @@ async function main(argv) {
       return 1;
     }
     state = newState(o);
+    const interval = intervalProblem(state.filters);
+    if (interval) {
+      warn(`[republish-document-updated] ${interval}`);
+      return 1;
+    }
     saveState(o.stateFile, state);
-    log(`新規の走査を始めます（createdBefore ${state.filters.createdBefore}・状態 ${o.stateFile}）。`);
+    log(`新規の走査を始めます（createdBefore ${state.filters.createdBefore}・createdAfter ${state.filters.createdAfter ?? '(なし)'}・状態 ${o.stateFile}）。`);
   }
 
   // 止まるとき（DLQ・待ちの超過・連続失敗・中断）は、確かめた位置へ戻して保存する（#1762 監査 R1）。
@@ -743,6 +814,8 @@ module.exports = {
   parseArgs,
   missingReason,
   filtersOf,
+  intervalProblem,
+  startCursor,
   newState,
   stateProblem,
   sameFilters,
