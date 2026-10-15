@@ -270,6 +270,74 @@ public class KnowledgeHealthEndpointTests
             .ThresholdDays.Should().BeNull();
     }
 
+    // ── しきい値の併記（planning#494 決定 3 / [[IADR-0353]] 決定 4。#1186） ──
+    // ［2026-10-15 / #1902］投入は gRPC 面（`TestServerReportGrpc`）で行い、閲覧（GET）の応答で固定する。
+
+    // FR-10, SC-10 (T-57): 生産者が添えたしきい値が件数と一緒に返る。
+    // 計画は「SC-10 には**件数と現在のしきい値を併記する**」と定めており、
+    // **件数だけでは同じ数字の意味が配備ごとに違ってしまう**。
+    [Fact]
+    public async Task 報告に添えられたしきい値が件数と併せて返る()
+    {
+        using var factory = new TestWebApplicationFactory();
+        var client = factory.CreateClient();
+
+        await client.ReportAsync(new KnowledgeHealthReportRequest(
+                KnowledgeHealthIndicators.StaleDocuments,
+                [new KnowledgeHealthObservationRequest("doc-1", "organization")],
+                ThresholdDays: 180),
+            TestContext.Current.CancellationToken);
+
+        var health = await client.GetFromJsonAsync<KnowledgeHealthDto>(
+            "/dashboard/knowledge-health", TestContext.Current.CancellationToken);
+
+        var stale = health!.Indicators.Single(i =>
+            i.Indicator == KnowledgeHealthIndicators.StaleDocuments);
+        stale.Count.Should().Be(1);
+        stale.ThresholdDays.Should().Be(180);
+    }
+
+    // 🔴 FR-10, SC-10 (T-58): **件数 0 でもしきい値は返る。**
+    // ここが本設計の要点である —— しきい値を観測値の行へ持たせると、
+    // **0 件のときに 1 行も無く、しきい値も一緒に消える**。0 件こそ表示したい状態である。
+    [Fact]
+    public async Task 件数が0でもしきい値は返る()
+    {
+        using var factory = new TestWebApplicationFactory();
+        var client = factory.CreateClient();
+
+        await client.ReportAsync(new KnowledgeHealthReportRequest(
+                KnowledgeHealthIndicators.StaleDocuments, [], ThresholdDays: 90),
+            TestContext.Current.CancellationToken);
+
+        var health = await client.GetFromJsonAsync<KnowledgeHealthDto>(
+            "/dashboard/knowledge-health", TestContext.Current.CancellationToken);
+
+        var stale = health!.Indicators.Single(i =>
+            i.Indicator == KnowledgeHealthIndicators.StaleDocuments);
+        stale.Count.Should().Be(0);
+        stale.ThresholdDays.Should().Be(90, "🔴 0 件のときこそしきい値が要る");
+    }
+
+    // FR-10, SC-10 (T-59): **陰性対照。** しきい値を持たない指標では null である
+    // （全指標へ一律の既定値を埋めない —— 意味の無いしきい値が画面へ出る）。
+    [Fact]
+    public async Task しきい値を持たない指標のしきい値はnullである()
+    {
+        using var factory = new TestWebApplicationFactory();
+        var client = factory.CreateClient();
+
+        await client.ReportAsync(Report(KnowledgeHealthIndicators.OrphanDocuments,
+                new KnowledgeHealthObservationRequest("doc-1", "organization")),
+            TestContext.Current.CancellationToken);
+
+        var health = await client.GetFromJsonAsync<KnowledgeHealthDto>(
+            "/dashboard/knowledge-health", TestContext.Current.CancellationToken);
+
+        health!.Indicators.Single(i => i.Indicator == KnowledgeHealthIndicators.OrphanDocuments)
+            .ThresholdDays.Should().BeNull();
+    }
+
     // FR-10 (T-61): **0 以下のしきい値は INVALID_ARGUMENT**（REST の 400）。 保存すると画面が「しきい値 0 日」と表示し、
     // 件数の意味が読めなくなる（指標名の値域を閉じているのと同じ姿勢）。
     [Theory]

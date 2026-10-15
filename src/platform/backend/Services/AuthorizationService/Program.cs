@@ -118,7 +118,7 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapAuthzEndpoints();
-// FR-05, ADR-0029, ADR-0075, IADR-0379 (#1201): `/authz/scope` の gRPC 面（参照実装）。REST と同じ評価器を呼ぶ。
+// FR-05, ADR-0029, ADR-0075, IADR-0379 (#1201): 権限スコープ解決の gRPC 面（参照実装。［2026-10-15 / #1902］REST の `/authz/scope` は撤去し、面はこれだけ）。
 // 呼び出し側サービスの資格情報（ServiceCaller ポリシー）を要求する —— 利用者のトークンでは通らない。
 app.MapGrpcService<AuthzScopeGrpcService>();
 // FR-05, FR-16, UC-04, UC-09, SC-06, SC-12, ADR-0029, ADR-0075, IADR-0401 (#1255): 利用者名簿の

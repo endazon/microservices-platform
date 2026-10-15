@@ -291,7 +291,6 @@ public class GraphExpansionTwoStageSearchTests
     // 転送の値（`SearchUserContext.ForwardableCredential`）を、それを使う REST の展開器（#1901 で撤去）とともに外した。
 }
 
-
 // FR-03, FR-04 (#970): 段①（ベクトル側）を**指定した文書だけに絞れる**ストア。
 //
 // 素の `InMemoryVectorStore.SearchAsync` は登録済みの全チャンクを返すため、
