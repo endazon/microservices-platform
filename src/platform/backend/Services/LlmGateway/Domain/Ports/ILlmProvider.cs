@@ -10,7 +10,7 @@ public interface ILlmProvider
 
     // IADR-0037: トークンストリーミング。既定実装は CompleteAsync を 1 チャンクで返す（未対応プロバイダは
     // 単一チャンクへ縮退＝壊れない）。真のストリーミングを行うプロバイダ（ClaudeProvider）が override する。
-    // 呼び出し側（LlmGateway /complete/stream）は egress ルーティング判定を通した後にのみ本メソッドを呼ぶ。
+    // 呼び出し側（LlmGateway の逐次生成 CompleteStream）は egress ルーティング判定を通した後にのみ本メソッドを呼ぶ。
     async IAsyncEnumerable<CompletionChunk> StreamAsync(
         CompletionRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {

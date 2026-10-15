@@ -148,7 +148,7 @@ public sealed class EmailOutboxDispatcher(
     private void Record(EmailOutboxEntry entry, string outcome, string? reason)
     {
         metrics.RecordEmailOutcome(entry.Kind, outcome);
-        // CodeQL(cs/log-forging): Kind・Subject は受け口（POST /internal/notifications）由来の
+        // CodeQL(cs/log-forging): Kind・Subject は受け口（gRPC `NotificationIngress/Accept`）由来の
         // 外部文字列で、Validate は長さしか見ない。監査ログは最終的に行指向の Console へも
         // 落ちるため、:119 と同じ形でここでもサニタイズする（reason もトランスポート由来の
         // 自由文であり同様に落とす。波 2 レビュー指摘の回収）。

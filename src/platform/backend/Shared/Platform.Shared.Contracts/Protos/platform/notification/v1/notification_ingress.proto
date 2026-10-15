@@ -1,7 +1,7 @@
 // FR-19, FR-20, FR-21, FR-22, NFR-09, NFR-16, NFR-19, UC-11, ADR-0004, ADR-0029, ADR-0037 決定 6・17・18,
 // ADR-0045 決定 8, ADR-0075, IADR-0215, IADR-0270 決定 6, IADR-0371, IADR-0379, IADR-0398, IADR-0401,
 // IADR-0408, IADR-0417, IADR-0419 (#1255):
-// 個人資料まわりの通知の受け口（REST `POST /internal/notifications` と同じ意味論）の gRPC 契約。
+// 個人資料まわりの通知の受け口（撤去した REST `POST /internal/notifications` と同じ意味論。［2026-10-15 / #1902］受け口はこの rpc だけ）の gRPC 契約。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）: 所有者は NotificationService。置き場は platform ユニットの
 //   共有契約プロジェクト `Platform.Shared.Contracts` の `Protos/platform/notification/v1/`。
@@ -15,9 +15,9 @@
 //
 // ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
 //   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
-//   REST の受け口は**認証を課していない**（IADR-0017 / IADR-0026 の内部 API 扱い。呼び出し元は
-//   利用者文脈を持たない定期処理である）ので、**この面は現状より狭い**
-//   （IADR-0401 決定 1 / IADR-0402 決定 3 / IADR-0417 決定 4 と同じ向き）。**REST 側は変えない。**
+//   撤去した REST の受け口は**認証を課していなかった**（IADR-0017 / IADR-0026 の内部 API 扱い）。この面は
+//   それより狭い向きであり（IADR-0401 決定 1 / IADR-0402 決定 3 / IADR-0417 決定 4）、［2026-10-15 / #1902］
+//   送信側が gRPC だけになったので無認証の REST の口は撤去した。
 //
 // ■ 🔴 **この面は「一方向の報告」であって問い合わせではない**（IADR-0408 と同じ性質）。
 //   発火の**検知**はデータの在る側（DocumentService）が行い、通知の**実体**はこちらが持つ
@@ -64,7 +64,7 @@ option csharp_namespace = "Platform.Shared.Contracts.Grpc.Notification.V1";
 // **閲覧・既読・削除の口はこの面に存在しない** —— 呼び出し元が要らないものを面へ出さない
 // （IADR-0401 決定 2 と同じ作法）。
 service NotificationIngress {
-  // 通知 1 件を受け付ける。REST `POST /internal/notifications` と同値。
+  // 通知 1 件を受け付ける。撤去した REST `POST /internal/notifications` と同値。
   //
   // 🔴 **同一事象の再送は畳まれる**（ペイロード 6 項目の完全一致）。畳んだことは応答の
   // `duplicate` に出る —— REST が 200 と 201 で区別しているのと同じ事実であり、

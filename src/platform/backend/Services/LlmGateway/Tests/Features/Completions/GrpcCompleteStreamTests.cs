@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Json;
-using System.Text.Json;
 using AwesomeAssertions;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -119,52 +117,48 @@ public class GrpcCompleteStreamTests
         events.Last().Sent.Should().BeTrue();
     }
 
-    // T-P1-01: REST（SSE）と gRPC の `CompletionStreamEvent` 列が一致する ——
-    // delta の列と、done の model / tokens / stop_reason。
-    // 同じ判定器（CompletionUseCase）を通っていることの、契約側からの証明である。
+    // T-P1-01: 逐次（`CompleteStream`）と一括（`Complete`）が同じ判定器（CompletionUseCase）を通る ——
+    // delta を連結した本文と、done の model / tokens / stop_reason / sent が一括の応答と一致する。
+    // ［2026-10-15 / #1902・[[IADR-0533]]］従前の対は「REST（SSE）と gRPC の逐次」だった。REST の `/complete/stream` を
+    // 撤去したので対が作れず、同じ判定器を通るもう 1 つの面（一括の rpc）と突き合わせる形へ改めた。
     [Fact]
-    public async Task Rest_sse_and_grpc_stream_produce_the_same_event_sequence()
+    public async Task Stream_and_unary_produce_the_same_completion()
     {
-        var grpc = await CollectAsync(Request("本文"));
+        var stream = await CollectAsync(Request("本文"));
+        var unary = await PlainClient().CompleteAsync(
+            Request("本文"), headers: Bearer(ServiceToken()),
+            cancellationToken: TestContext.Current.CancellationToken);
 
-        using var http = _factory.CreateRestClient();
-        var restEvents = await ReadSseAsync(http,
-            new CompletionApiRequest("本文", MaxTokens: 100, Model: null,
-                Confidentiality: "public", Purpose: "default"));
+        // 台本（ScriptedLlmProvider）は逐次で "first:" + Echo + "|second"、一括で Echo を返す。
+        // Echo（プロバイダが受け取った max_tokens とモデル）が一致することが、同じ判定器を通った証拠である。
+        string.Concat(stream.Where(e => !e.Done).Select(e => e.Delta))
+            .Should().Be("first:" + unary.Text + "|second");
 
-        // delta の列（本文の増分）が一致する。
-        grpc.Where(e => !e.Done).Select(e => e.Delta)
-            .Should().Equal(restEvents.Where(e => !e.Done).Select(e => e.Delta));
-
-        var grpcDone = grpc.Single(e => e.Done);
-        var restDone = restEvents.Single(e => e.Done);
-        grpcDone.Sent.Should().Be(restDone.Sent);
-        grpcDone.Model.Should().Be(restDone.Model);
-        grpcDone.InputTokens.Should().Be(restDone.InputTokens);
-        grpcDone.OutputTokens.Should().Be(restDone.OutputTokens);
-        grpcDone.StopReason.Should().Be(restDone.StopReason ?? string.Empty);
-        grpcDone.RoutingReason.Should().Be(restDone.RoutingReason ?? string.Empty);
+        var done = stream.Single(e => e.Done);
+        done.Sent.Should().Be(unary.Sent);
+        done.Model.Should().Be(unary.Model);
+        done.InputTokens.Should().Be(unary.InputTokens);
+        done.OutputTokens.Should().Be(unary.OutputTokens);
+        done.StopReason.Should().Be(unary.StopReason);
+        done.RoutingReason.Should().Be(unary.RoutingReason);
     }
 
-    // T-P1-01（続き）: モデルが拒否した場合（stop_reason=refusal）も両経路で一致する。
+    // T-P1-01（続き）: モデルが拒否した場合（stop_reason=refusal）も逐次と一括で一致する。
     // IADR-0104: 拒否でも `Sent=true` を保つ（越境監査・課金集計の意味を壊さない）。
     [Fact]
-    public async Task Refusal_stop_reason_matches_between_rest_and_grpc()
+    public async Task Refusal_stop_reason_matches_between_stream_and_unary()
     {
-        var grpc = await CollectAsync(Request(ScriptedLlmProvider.RefusalMarker + " 本文"));
+        var stream = await CollectAsync(Request(ScriptedLlmProvider.RefusalMarker + " 本文"));
+        var unary = await PlainClient().CompleteAsync(
+            Request(ScriptedLlmProvider.RefusalMarker + " 本文"), headers: Bearer(ServiceToken()),
+            cancellationToken: TestContext.Current.CancellationToken);
 
-        using var http = _factory.CreateRestClient();
-        var rest = await ReadSseAsync(http,
-            new CompletionApiRequest(ScriptedLlmProvider.RefusalMarker + " 本文", MaxTokens: 100,
-                Model: null, Confidentiality: "public", Purpose: "default"));
+        var done = stream.Single(e => e.Done);
 
-        var grpcDone = grpc.Single(e => e.Done);
-        var restDone = rest.Single(e => e.Done);
-
-        grpcDone.StopReason.Should().Be(CompletionStopReasons.Refusal);
-        grpcDone.StopReason.Should().Be(restDone.StopReason);
-        grpcDone.Sent.Should().BeTrue("拒否は送信が成立したうえでの縮退である（IADR-0104）");
-        grpcDone.Sent.Should().Be(restDone.Sent);
+        done.StopReason.Should().Be(CompletionStopReasons.Refusal);
+        done.StopReason.Should().Be(unary.StopReason);
+        done.Sent.Should().BeTrue("拒否は送信が成立したうえでの縮退である（IADR-0104）");
+        done.Sent.Should().Be(unary.Sent);
     }
 
     // 🔴 縮退は RpcException ではなく done=true / sent=false の**メッセージ**で返り、
@@ -219,32 +213,5 @@ public class GrpcCompleteStreamTests
 
         (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode
             .Should().Be(StatusCode.PermissionDenied);
-    }
-
-    // REST の SSE を読む（`data: ` 行の JSON を CompletionStreamEvent へ復元する）。
-    private static async Task<List<CompletionStreamEvent>> ReadSseAsync(
-        HttpClient http, CompletionApiRequest body)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/complete/stream")
-        {
-            Content = JsonContent.Create(body),
-        };
-        using var resp = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
-            TestContext.Current.CancellationToken);
-        resp.EnsureSuccessStatusCode();
-
-        var events = new List<CompletionStreamEvent>();
-        await using var stream = await resp.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-        using var reader = new StreamReader(stream);
-        while (await reader.ReadLineAsync(TestContext.Current.CancellationToken) is { } line)
-        {
-            if (!line.StartsWith("data: ", StringComparison.Ordinal))
-                continue;
-            var ev = JsonSerializer.Deserialize<CompletionStreamEvent>(
-                line["data: ".Length..], new JsonSerializerOptions(JsonSerializerDefaults.Web));
-            if (ev is not null)
-                events.Add(ev);
-        }
-        return events;
     }
 }

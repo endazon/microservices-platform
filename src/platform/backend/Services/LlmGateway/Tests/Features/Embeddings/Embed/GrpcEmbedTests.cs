@@ -1,11 +1,9 @@
 using System.Net;
-using System.Net.Http.Json;
 using AwesomeAssertions;
 using Grpc.Core;
 using Grpc.Net.Client;
 using LlmGateway.Features.Embeddings.Embed;
 using Microsoft.AspNetCore.Authorization;
-using Platform.Shared.Contracts.Dtos;
 using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
@@ -103,31 +101,9 @@ public class GrpcEmbedTests
             .Should().Be(StatusCode.PermissionDenied);
     }
 
-    // T-S-04: REST と gRPC は同じ判定器（EmbedUseCase）を呼ぶ —— 同じ入力に同じ答えを返す。
-    // （REST が同じプロセスの HTTP/1.1 ポートで応えることが、ポート維持の 2 つ目の証明でもある。）
-    [Fact]
-    public async Task Rest_and_grpc_embed_the_same_input_identically()
-    {
-        var grpc = await PlainClient().EmbedAsync(
-            new Pb.EmbedRequest { Text = "本文", Confidentiality = "public", Purpose = Pb.EmbedPurpose.Index },
-            headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
-
-        using var http = _factory.CreateRestClient();
-        var restResp = await http.PostAsJsonAsync("/embed",
-            new EmbedApiRequest("本文", "public", Platform.Shared.Contracts.Dtos.EmbedPurpose.Index),
-            TestContext.Current.CancellationToken);
-        restResp.EnsureSuccessStatusCode();
-        var rest = (await restResp.Content.ReadFromJsonAsync<EmbedApiResponse>(
-            TestContext.Current.CancellationToken))!;
-
-        grpc.Embedded.Should().Be(rest.Embedded);
-        grpc.Dimensions.Should().Be(rest.Dimensions);
-        grpc.Model.Should().Be(rest.Model);
-        grpc.Collection.Should().Be(rest.Collection);
-        grpc.Retryable.Should().Be(rest.Retryable);
-        grpc.Vector.Should().BeEquivalentTo(rest.Vector);
-        grpc.RoutingReason.Should().Be(rest.RoutingReason);
-    }
+    // T-S-04: ［2026-10-15 / #1902・[[IADR-0533]]］「REST と gRPC が同じ入力に同じ答えを返す」同値の対は外した ——
+    // REST の `/embed` を撤去したので対が作れない。判定器（EmbedUseCase）の振る舞いは
+    // `EmbeddingEndpointTests` が同じ gRPC 面の上で固定する。
 
     // T-S-07: 🔴 proto3 に null は無い（IADR-0397 決定 3）。EMBED_PURPOSE_UNSPECIFIED（既定 0）は
     // REST の DTO 既定である **Index** として routing されなければならない。

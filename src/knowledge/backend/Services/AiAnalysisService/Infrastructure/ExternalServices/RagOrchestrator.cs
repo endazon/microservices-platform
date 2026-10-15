@@ -266,7 +266,7 @@ public class RagOrchestrator(
         return selection;
     }
 
-    // IADR-0037: LlmGateway /complete/stream の SSE を消費し、CompletionStreamEvent を逐次返す。
+    // IADR-0037: LlmGateway の逐次生成（gRPC `CompleteStream`。REST の /complete/stream は撤去）を消費し、CompletionStreamEvent を逐次返す。
     // 反復子内で yield を跨ぐ try/catch を避けるため、送信・読み取りの失敗は捕捉後に done(Sent=false) を
     // yield して終了する（呼び出し側は縮退表示に切り替えられる）。egress 判定はゲートウェイ側で保持される。
     // IADR-0037: LlmGateway の逐次生成を消費し、CompletionStreamEvent を逐次返す。

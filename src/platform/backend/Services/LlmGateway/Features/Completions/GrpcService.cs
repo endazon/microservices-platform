@@ -10,8 +10,9 @@ namespace LlmGateway.Features.Completions;
 // FR-04, FR-11, NFR-02, NFR-09, NFR-16, ADR-0010, ADR-0025, ADR-0029, ADR-0044, ADR-0075, ADR-0076,
 // IADR-0104, IADR-0378, IADR-0379, IADR-0397, IADR-0400 (#1255): テキスト生成の **gRPC 面**。
 //
-// REST の `POST /complete` / `POST /complete/stream` と**同じ判定器**（CompletionUseCase）を呼ぶ ——
-// 判定器を 2 つにしない。［2026-10-10 / #1255・[[IADR-0533]]］east-west の呼び出し元は gRPC だけになった（REST の受け口は north-south・AST の呼び出し元のため残す）。
+// REST の `POST /complete` と**同じ判定器**（CompletionUseCase）を呼ぶ ——
+// 判定器を 2 つにしない。［2026-10-10 / #1255・[[IADR-0533]]］east-west の呼び出し元は gRPC だけになった（REST の `/complete` は AST・合成監視の呼び出し元のため残す。
+// ［2026-10-15 / #1902］逐次の REST `/complete/stream` は撤去した）。
 //
 // 🔴 **ServiceCaller を要求する。** **呼び出し側サービス自身の資格情報**
 // （client credentials の JWT・`platform-service` ロール）を要求し、**利用者のトークンでは通さない**
