@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [ADR-0132, ADR-0124, ADR-0107, ADR-0112, ADR-0023, IADR-0457, IADR-0471, IADR-0486, IADR-0514, IADR-0094, IADR-0096, IADR-0433, IADR-0495]
 author: claude
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-16
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0132_secret-management-openbao.md 決定 1〜5（決定 3 の版の選択・決定 4 の受入条件 1〜6 の記録）
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 2
@@ -124,6 +124,8 @@ related_specs:
   2. **稼働中の PoC の移行**（利用者の手）: 手順書に沿って移し、確認の結果を issue に残す。
   3. ESO のコントローラでの確認は、PoC の移行の確認（手順書の「確認」の ESO の行）で兼ねる。
   4. **#1868**: 秘匿管理の日次バックアップを、稼働中の bbolt の tar から整合した raft のスナップショットへ改める（上の悪い影響の 🔴）。
+     ［2026-10-16 追記 / #1868］[IADR-0548](./IADR-0548_openbao-raft-snapshot-backup-k8s-auth.md) で済んだ（スナップショットの API・専用の SA の k8s auth・
+     最小のポリシー・中の SHA256SUMS での検算・戻し方の手順書）。上の悪い影響の 🔴 は閉じた。
   5. ［#1866 監査］移行の門は、`vault-persistence` を apply する起動器の**すべての経路**（`VAULT=1` のブロックと `ESO=1` のブロックの当て直し）で
      同じ関数（`vault_openbao_migration_gate`）を通す。ラッパーは、未初期化なのに鍵ファイルが在るときも init しない（鍵ファイルの上書きを防ぐ）。
 

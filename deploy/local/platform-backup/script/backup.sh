@@ -8,14 +8,14 @@
 #   1. 受取人（公開鍵）を検査する。無い・占位のまま・不正な行があれば**何もせずに失敗する**（fail-closed）
 #   2. 成果物を staging（emptyDir）へ作る。**平文をディスクへ書かない** —— 生成器の出力を age へパイプで渡す
 #        postgres: DB ごとに `pg_dump -Fc` ＋ `pg_dumpall --globals-only`
-#        vault:    /vault/data の tar.gz（稼働中の写しなので前後のファイル一覧を比べ、変わったらやり直す）
+#        vault:    raft の整合したスナップショット（k8s auth・最小ポリシー。中の SHA256SUMS で検算）＋ init のファイル（IADR-0548 / #1868）
 #   3. 各保管先へ `.incoming-<回>` として写し、SHA256SUMS で検証してから `<回>` へ改名する
 #      **目印ファイル（.platform-backup-target）が無い保管先には書かない**（ドライブが外れていると kubelet が
 #      ディストリ内に空のディレクトリを作る。そこはクラスタ外ではない）
 #   4. 保持の規則で古い回を消す（名前の規則に合うディレクトリだけ・再帰削除をしない）
 #   片方の保管先に書けなくてももう片方には書く。**どこかで失敗したら exit 1**（Job を失敗として見せる）。
 #
-# 🔴 秘密の値（DB のパスワード・Vault のトークン・unseal 鍵）をログ・引数へ出さない。
+# 🔴 秘密の値（DB のパスワード・Vault のトークン・ServiceAccount の JWT・unseal 鍵）をログ・引数へ出さない。
 #    パスワードは env PGPASSWORD（secretKeyRef）で libpq に渡し、コマンドラインに載せない。`set -x` を使わない。
 #
 # 試験（backup.test.sh）は BACKUP_LIB=1 で source し、pg_dump / psql / age を PATH 上のスタブへ差し替える。
@@ -29,7 +29,6 @@ BACKUP_RECIPIENTS_FILE="${BACKUP_RECIPIENTS_FILE:-/etc/platform-backup/recipient
 BACKUP_MARKER_NAME=".platform-backup-target"
 BACKUP_DAILY_KEEP="${BACKUP_DAILY_KEEP:-30}"
 BACKUP_LONG_YEARS="${BACKUP_LONG_YEARS:-7}"
-BACKUP_VAULT_TRIES="${BACKUP_VAULT_TRIES:-3}"
 VAULT_DATA_DIR="${VAULT_DATA_DIR:-/vault/data}"
 
 # 回の名前: UTC の時刻 ＋ 任意の接尾辞（-partial = 一部失敗 / -keep = 運用者が長期保持へ改名したもの）。
@@ -138,35 +137,246 @@ stage_postgres() {
 
 # ---------------------------------------------------------------- vault
 
-# ファイル一覧（名前・サイズ・更新時刻）の要約。写す前後で比べ、稼働中の書き込みを検出する。
-tree_state() {
-	find "$1" -exec stat -c '%n|%s|%Y' {} + 2>/dev/null | LC_ALL=C sort | sha256sum
+# NFR-21, NFR-18, IADR-0548 (#1868): 秘匿管理（OpenBao・raft）の回は、raft の**整合したスナップショット**
+# （`GET /v1/sys/storage/raft/snapshot`。`bao operator raft snapshot save` と同じ API）と init のファイル（unseal 鍵）を写す。
+# 従前の「稼働中の /vault/data を tar で写し、前後のファイル一覧を比べる」は、bbolt がページをその場で書き換えるため
+# 同じ秒・同じサイズの書き込みを見分けられず、破れた写しを成功として残し得た（#1868）。
+#
+# - 認証は k8s auth（専用の ServiceAccount platform-backup-vault の projected token → role platform-backup-vault）。
+#   role のポリシーは `sys/storage/raft/snapshot` の read だけ（deploy/local/platform-backup/vault/policy-raft-snapshot.hcl）。
+#   🔴 root トークンを使わない（init のファイルに初期 root トークンが在るが、読むのは暗号化して写すためだけ）。
+#   得たトークンは 1 回きり（token_num_uses=1）・短命（5 分）で、スナップショットの 1 要求で使い切る。
+# - HTTP はイメージに道具を足さずに bash の /dev/tcp で話す（HTTP/1.0・平文。秘匿管理はクラスタ内で tls_disable）。
+#   🔴 トークンと JWT は**引数に載せない**（printf は bash の組み込みで、プロセスの argv に現れない。curl / wget の
+#   ヘッダ引数は /proc/<pid>/cmdline に出る）。ログにも出さない。
+# - 🔴 fail-closed: 応答が 200 でない・空・gzip / tar として壊れている・中の SHA256SUMS と meta.json / state.bin が
+#   一致しない、のどれでも**写しを置かない**（スナップショットの成果物が無ければ回そのものを書かない）。
+# - スナップショットは平文のまま staging へ置かず、メモリの emptyDir（BACKUP_VAULT_SCRATCH）で検査してから age へ渡し、消す。
+#   中身は秘匿管理の鍵（barrier）で暗号化されたままだが、それでも平文をディスクへ書かない約束は守る。
+BACKUP_VAULT_ADDR="${BACKUP_VAULT_ADDR:-http://vault.platform-infra:8200}"
+BACKUP_VAULT_AUTH_ROLE="${BACKUP_VAULT_AUTH_ROLE:-platform-backup-vault}"
+BACKUP_VAULT_SA_JWT_FILE="${BACKUP_VAULT_SA_JWT_FILE:-/var/run/secrets/platform-backup/jwt}"
+BACKUP_VAULT_SCRATCH="${BACKUP_VAULT_SCRATCH:-/scratch}"
+BACKUP_VAULT_HTTP_TIMEOUT="${BACKUP_VAULT_HTTP_TIMEOUT:-300}"
+VAULT_INIT_FILE="${VAULT_INIT_FILE:-$VAULT_DATA_DIR/.local-dev-init}"
+VAULT_HTTP_STATUS=""
+
+# vault_http <method> <api-path> <out-file> [<token>] [<json-body>]
+# 秘匿管理へ 1 要求を送り、応答の本文を <out-file> へ、状態コードを VAULT_HTTP_STATUS へ置く。
+# 0 = 応答を最後まで受け取った（状態コードは問わない）/ 1 = 接続・送受信の失敗（本文は不完全）。
+# HTTP/1.0 で送る —— サーバは chunked を使わず、本文の終わりで接続を閉じる（本文をそのまま写せる）。
+vault_http() {
+	local method="$1" api="$2" out="$3" token="${4:-}" body="${5:-}"
+	local hostport host port fd line len req headers_done=0
+	VAULT_HTTP_STATUS=""
+	case "$BACKUP_VAULT_ADDR" in
+		http://*) ;;
+		*) err "BACKUP_VAULT_ADDR は http://<ホスト>:<ポート> の形にしてください: $BACKUP_VAULT_ADDR"; return 1 ;;
+	esac
+	hostport="${BACKUP_VAULT_ADDR#http://}"
+	hostport="${hostport%%/*}"
+	host="${hostport%:*}"
+	port="${hostport##*:}"
+	if [ "$host" = "$hostport" ] || [ -z "$host" ] || [[ ! "$port" =~ ^[0-9]+$ ]]; then
+		err "BACKUP_VAULT_ADDR にポートがありません: $BACKUP_VAULT_ADDR"
+		return 1
+	fi
+	if ! { exec {fd}<>"/dev/tcp/$host/$port"; } 2>/dev/null; then
+		err "秘匿管理へ接続できません: $hostport"
+		return 1
+	fi
+	len="$(LC_ALL=C; printf '%s' "${#body}")"
+	# 要求は変数に組んでから 1 度で書く（printf -v は組み込み。トークン・JWT は argv に出ない）。
+	printf -v req '%s %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n' "$method" "$api" "$hostport"
+	if [ -n "$token" ]; then printf -v req '%sX-Vault-Token: %s\r\n' "$req" "$token"; fi
+	if [ -n "$body" ]; then
+		printf -v req '%sContent-Type: application/json\r\nContent-Length: %s\r\n\r\n%s' "$req" "$len" "$body"
+	else
+		printf -v req '%s\r\n' "$req"
+	fi
+	if ! { printf '%s' "$req"; } 1>&"$fd" 2>/dev/null; then
+		req=""
+		exec {fd}>&-
+		err "秘匿管理へ要求を送れません: $hostport"
+		return 1
+	fi
+	req=""
+	if ! IFS= read -r -t "$BACKUP_VAULT_HTTP_TIMEOUT" line <&"$fd"; then
+		exec {fd}>&-
+		err "秘匿管理から応答がありません: $hostport"
+		return 1
+	fi
+	line="${line%$'\r'}"
+	if [[ ! "$line" =~ ^HTTP/1\.[01]\ ([0-9]{3}) ]]; then
+		exec {fd}>&-
+		err "秘匿管理の応答が HTTP ではありません"
+		return 1
+	fi
+	VAULT_HTTP_STATUS="${BASH_REMATCH[1]}"
+	# ヘッダを読み捨てる（bash の read はソケットから 1 バイトずつ読むので、本文の頭を食わない）。
+	while IFS= read -r -t "$BACKUP_VAULT_HTTP_TIMEOUT" line <&"$fd"; do
+		line="${line%$'\r'}"
+		if [ -z "$line" ]; then headers_done=1; break; fi
+	done
+	if [ "$headers_done" -ne 1 ]; then
+		exec {fd}>&-
+		err "秘匿管理の応答のヘッダが途中で切れました"
+		return 1
+	fi
+	if ! timeout "$BACKUP_VAULT_HTTP_TIMEOUT" cat <&"$fd" > "$out"; then
+		exec {fd}>&-
+		err "秘匿管理の応答の本文を受け取れません（時間切れか切断）"
+		return 1
+	fi
+	exec {fd}>&-
+	return 0
+}
+
+# 失敗の応答から errors の文言だけを抜き出す（Vault の errors は秘密を含まない。長さを切る）。
+vault_errors() { sed -n 's/.*"errors":\[\([^]]*\)\].*/\1/p' "$1" 2>/dev/null | head -c 200; }
+
+# k8s auth でログインし、トークンを VAULT_SNAPSHOT_TOKEN へ置く（標準出力へ出さない）。<作業ファイル> は応答の置き場で、読んだら消す。
+vault_login_k8s() {
+	local resp="$1" jwt body
+	VAULT_SNAPSHOT_TOKEN=""
+	if [[ ! "$BACKUP_VAULT_AUTH_ROLE" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+		err "BACKUP_VAULT_AUTH_ROLE の形が不正です: $BACKUP_VAULT_AUTH_ROLE"
+		return 1
+	fi
+	if [ ! -r "$BACKUP_VAULT_SA_JWT_FILE" ]; then
+		err "ServiceAccount のトークンがありません: $BACKUP_VAULT_SA_JWT_FILE（CronJob の projected volume を確かめてください）"
+		return 1
+	fi
+	jwt="$(< "$BACKUP_VAULT_SA_JWT_FILE")"
+	jwt="${jwt%$'\n'}"
+	# JWT は base64url の 3 区画。それ以外（空・引用符・改行）は本文へ埋めない。
+	if [[ ! "$jwt" =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]]; then
+		err "ServiceAccount のトークンが JWT の形ではありません: $BACKUP_VAULT_SA_JWT_FILE"
+		return 1
+	fi
+	printf -v body '{"role":"%s","jwt":"%s"}' "$BACKUP_VAULT_AUTH_ROLE" "$jwt"
+	if ! vault_http POST /v1/auth/kubernetes/login "$resp" "" "$body"; then
+		rm -f -- "$resp"
+		return 1
+	fi
+	if [ "$VAULT_HTTP_STATUS" != "200" ]; then
+		err "秘匿管理へログインできません（HTTP $VAULT_HTTP_STATUS: $(vault_errors "$resp")）。role $BACKUP_VAULT_AUTH_ROLE と k8s auth の設定（deploy/local/platform-backup/vault/bootstrap.sh）を確かめてください"
+		rm -f -- "$resp"
+		return 1
+	fi
+	VAULT_SNAPSHOT_TOKEN="$(sed -n 's/.*"client_token":"\([^"]*\)".*/\1/p' "$resp" | head -n 1)"
+	rm -f -- "$resp"
+	if [[ ! "$VAULT_SNAPSHOT_TOKEN" =~ ^[A-Za-z0-9._-]+$ ]]; then
+		VAULT_SNAPSHOT_TOKEN=""
+		err "ログインの応答にトークンがありません"
+		return 1
+	fi
+	return 0
+}
+
+# raft のスナップショット（gzip の tar）が整合しているかを確かめる。🔴 どれかに当たれば非 0（写しを置かない）。
+#   - 空でない・gzip として最後まで読める
+#   - meta.json・state.bin・SHA256SUMS を含み、state.bin が空でない
+#   - SHA256SUMS の meta.json / state.bin の行が、中身から計算した値と一致する（OpenBao が書いた要約で検算する）
+check_raft_snapshot() {
+	local f="$1" list name want got
+	if [ ! -s "$f" ]; then
+		err "スナップショットが空です"
+		return 1
+	fi
+	if ! gzip -t "$f" 2>/dev/null; then
+		err "スナップショットが gzip として壊れています（途中で切れた可能性）"
+		return 1
+	fi
+	if ! list="$(tar -tzf "$f" 2>/dev/null)"; then
+		err "スナップショットが tar として壊れています"
+		return 1
+	fi
+	for name in meta.json state.bin SHA256SUMS; do
+		if ! grep -qxF "$name" <<< "$list"; then
+			err "スナップショットに $name がありません（raft のスナップショットではない）"
+			return 1
+		fi
+	done
+	for name in meta.json state.bin; do
+		want="$(tar -xzOf "$f" SHA256SUMS 2>/dev/null | awk -v n="$name" '$2 == n { print $1; exit }')"
+		got="$(tar -xzOf "$f" "$name" 2>/dev/null | sha256sum | cut -d ' ' -f 1)"
+		if [ -z "$want" ] || [ "$want" != "$got" ]; then
+			err "スナップショットの $name が中の SHA256SUMS と一致しません（破れた写し）"
+			return 1
+		fi
+	done
+	if [ "$(tar -xzOf "$f" state.bin 2>/dev/null | wc -c)" -eq 0 ]; then
+		err "スナップショットの state.bin が空です"
+		return 1
+	fi
+	return 0
+}
+
+# スナップショットを <out> へ取る（ログイン → GET → 状態コードと整合の検査）。失敗なら <out> を残さない。
+fetch_raft_snapshot() {
+	local out="$1" scratch_dir
+	scratch_dir="$(dirname -- "$out")"
+	vault_login_k8s "$scratch_dir/login.json" || return 1
+	if ! vault_http GET /v1/sys/storage/raft/snapshot "$out" "$VAULT_SNAPSHOT_TOKEN"; then
+		VAULT_SNAPSHOT_TOKEN=""
+		rm -f -- "$out"
+		return 1
+	fi
+	VAULT_SNAPSHOT_TOKEN=""
+	if [ "$VAULT_HTTP_STATUS" != "200" ]; then
+		err "スナップショットを取れません（HTTP $VAULT_HTTP_STATUS: $(vault_errors "$out")）。role のポリシー（sys/storage/raft/snapshot の read）を確かめてください"
+		rm -f -- "$out"
+		return 1
+	fi
+	if ! check_raft_snapshot "$out"; then
+		rm -f -- "$out"
+		return 1
+	fi
+	return 0
 }
 
 stage_vault() {
-	local dir="$1" try=1 before after
-	if [ ! -d "$VAULT_DATA_DIR" ] || [ -z "$(ls -A "$VAULT_DATA_DIR" 2>/dev/null)" ]; then
-		err "Vault のデータが見つかりません: $VAULT_DATA_DIR"
+	local dir="$1" scratch snap size
+	scratch="$BACKUP_VAULT_SCRATCH/platform-backup-$$"
+	if ! mkdir -p -- "$scratch"; then
+		err "作業場所を作れません: $scratch"
 		return 2
 	fi
-	while [ "$try" -le "$BACKUP_VAULT_TRIES" ]; do
-		before="$(tree_state "$VAULT_DATA_DIR")"
-		if ! tar -C "$VAULT_DATA_DIR" -czf - . | encrypt_to "$dir/vault-data.tar.gz.age"; then
-			err "Vault のデータを固められません"
-			rm -f -- "$dir/vault-data.tar.gz.age"
-			return 2
-		fi
-		after="$(tree_state "$VAULT_DATA_DIR")"
-		if [ "$before" = "$after" ]; then
-			log "vault data: ok（写している間に変化なし・試行 $try）"
-			return 0
-		fi
-		log "写している間に Vault のデータが変わりました。やり直します（試行 $try）"
-		rm -f -- "$dir/vault-data.tar.gz.age"
-		try=$((try + 1))
-	done
-	err "Vault のデータが変わり続けるため、整合した写しを取れませんでした"
-	return 2
+	snap="$scratch/raft.snap"
+	if ! fetch_raft_snapshot "$snap"; then
+		rm -f -- "$snap" "$scratch/login.json"
+		rmdir -- "$scratch" 2>/dev/null
+		err "整合したスナップショットを取れませんでした。秘匿管理の回は書きません"
+		return 2
+	fi
+	size="$(wc -c < "$snap")"
+	if ! encrypt_to "$dir/vault-raft.snap.age" < "$snap"; then
+		err "スナップショットを暗号化できません"
+		rm -f -- "$snap" "$dir/vault-raft.snap.age"
+		rmdir -- "$scratch" 2>/dev/null
+		return 2
+	fi
+	rm -f -- "$snap"
+	rmdir -- "$scratch" 2>/dev/null
+	log "raft snapshot: ok（${size} バイト・整合を検査済み）"
+	# init のファイル（unseal 鍵）。スナップショットは同じ鍵でしか開けないので、同じ回に並べる。
+	# 欠けたら回は -partial（同じ秘匿管理へ戻すことはできるが、失ったときに開けない）。
+	if [ ! -r "$VAULT_INIT_FILE" ]; then
+		err "init のファイルがありません: $VAULT_INIT_FILE（スナップショットだけを書きます。失ったときにこの回は開けません）"
+		return 1
+	fi
+	if ! grep -q '^Unseal Key 1: ' "$VAULT_INIT_FILE"; then
+		err "init のファイルに unseal 鍵の行がありません: $VAULT_INIT_FILE"
+		return 1
+	fi
+	if ! encrypt_to "$dir/vault-init.age" < "$VAULT_INIT_FILE"; then
+		err "init のファイルを暗号化できません"
+		rm -f -- "$dir/vault-init.age"
+		return 1
+	fi
+	log "init（unseal 鍵）: ok"
+	return 0
 }
 
 # ---------------------------------------------------------------- publish / prune
