@@ -82,6 +82,10 @@ msgstr "{h} (default)"
 msgid "{issuedClientId} の client secret です。表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
 msgstr "This is the client secret of {issuedClientId}. It is shown only this once. After you close it, it cannot be shown again (you can only reissue it)."
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "{label}（{count} 件）"
+msgstr "{label} ({count})"
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "{max} 文字以内で入力してください。"
 msgstr "Enter no more than {max} characters."
@@ -915,6 +919,7 @@ msgstr "Job"
 msgid "スコープ"
 msgstr "Scope"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
@@ -1588,6 +1593,7 @@ msgstr "Keep both (save under a different name)"
 msgid "並び"
 msgstr "Sort"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
@@ -1644,6 +1650,14 @@ msgstr "Created"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "作成する"
 msgstr "Create"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "作成日時が古い順"
+msgstr "Created (oldest first)"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "作成日時が新しい順"
+msgstr "Created (newest first)"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
@@ -3031,6 +3045,10 @@ msgstr "Failed to load the document."
 msgid "文書の登録・編集・公開・アーカイブ・削除は管理者のみ実行できます"
 msgstr "Only administrators can create, edit, publish, archive, or delete documents"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "文書の絞り込み"
+msgstr "Filter documents"
+
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "文書の詳細は表示できません。"
 msgstr "Document details are not available."
@@ -3243,9 +3261,18 @@ msgid "更新日が新しい順"
 msgstr "Recently updated first"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "更新日時"
 msgstr "Updated"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "更新日時が古い順"
+msgstr "Updated (oldest first)"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "更新日時が新しい順"
+msgstr "Updated (newest first)"
 
 #: knowledge/frontend/src/features/sc02-results/types/searchOptions.ts
 msgid "更新日時の新しい順"
@@ -3351,8 +3378,13 @@ msgid "未設定（予約値 {UNRESOLVED_DEPARTMENT} が入ります）"
 msgstr "Not set (the reserved value {UNRESOLVED_DEPARTMENT} is used)"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "本文"
 msgstr "Body"
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentBody.ts
+msgid "本文あり"
+msgstr "Has body"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "本文が上限（1 MB）を超えています。分割してください。"
@@ -3360,6 +3392,7 @@ msgstr "The body exceeds the 1 MB limit. Split the note into smaller ones."
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/types/documentBody.ts
 msgid "本文なし（原本を参照）"
 msgstr "No body text (see the original)"
 
@@ -3392,6 +3425,10 @@ msgstr "Read both texts and resolve"
 msgid "本文を読み込み中…"
 msgstr "Loading the body…"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentBody.ts
+msgid "本文未設定"
+msgstr "No body yet"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "条件"
 msgstr "Conditions"
@@ -3404,6 +3441,10 @@ msgstr "No conditions (matches everything)"
 msgid "条件に一致する個人資料がありません。"
 msgstr "No private note matches the current filter."
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "条件に一致する文書はありません。"
+msgstr "No documents match the conditions."
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "条件の値"
 msgstr "Value"
@@ -3415,6 +3456,11 @@ msgstr "Change the conditions and search again."
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "条件を外す: {conditionKey} = {conditionValue}"
 msgstr "Remove condition: {conditionKey} = {conditionValue}"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "条件を解除"
+msgstr "Clear filters"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "条件を追加"
@@ -3526,6 +3572,10 @@ msgstr "Searches"
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "検索語"
 msgstr "Term"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "検索語や状態を変えるか、条件を解除してください。"
+msgstr "Change the search term or status, or clear the filters."
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "検索語を入力…"
@@ -3731,6 +3781,7 @@ msgstr "Disable"
 msgid "版"
 msgstr "Version"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
@@ -4071,6 +4122,10 @@ msgstr "Result →"
 msgid "結果一覧"
 msgstr "Results"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "絞り込み {total} 件（全 {unfilteredTotal} 件）中 {from}–{to} 件"
+msgstr "{from}–{to} of {total} filtered ({unfilteredTotal} total)"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "絞り込みの語を短くするか、空にしてください。"
 msgstr "Shorten the filter text, or clear it."
@@ -4139,6 +4194,22 @@ msgstr "Display name"
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "表示名は必須です。"
 msgstr "Display name is required."
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "表題で検索"
+msgstr "Search titles"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "表題の一部を入力"
+msgstr "Part of a title"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "表題の昇順"
+msgstr "Title (A to Z)"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "表題の降順"
+msgstr "Title (Z to A)"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx

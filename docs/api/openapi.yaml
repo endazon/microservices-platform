@@ -1389,6 +1389,9 @@ paths:
         - 後段（文書サービス）から一覧を引き切れないとき（途中のページを含む）は **502**（ProblemDetails。運用画面の一覧 `/bff/datasources`・`/bff/conversion/jobs` と同じ向き）を返す。
           空のページ・部分の件数へは畳まない（本当の 0 件と区別できなくなる。#1897）。本文は中立の文言だけで、文書の有無も件数も載せない。
         - 許可ポリシーが無い（見える文書が無い）ときは `items` が空・`total` が 0 のページを返す（deny-by-default。従前どおり）。
+
+        ［2026-10-15 / #1923 段 2］**並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）**。並べ替えは文書サービスが行い、
+        絞り込みは ABAC で絞った後に当てる。`total` は絞り込み後、`unfilteredTotal` と `statusCounts` は絞り込み前（いずれも ABAC 後）の数。
       operationId: bff-document-list
       parameters:
         - name: offset
@@ -1401,6 +1404,26 @@ paths:
           required: false
           description: 1 ページの件数。既定 50。1〜100 に丸める（範囲外もエラーにしない）。数でない値は 400
           schema: { type: integer, format: int32, minimum: 1, maximum: 100, default: 50 }
+        - name: sort
+          in: query
+          required: false
+          description: 並べ替え（キーが同値なら ID）。既定は更新日時の新しい順。未知の値は 400
+          schema:
+            type: string
+            enum: [updated-desc, updated-asc, created-desc, created-asc, title-asc, title-desc]
+            default: updated-desc
+        - name: q
+          in: query
+          required: false
+          description: 表題の部分一致（大文字小文字を区別しない。検索の索引を使わない）。前後の空白は除き、空は無指定。200 文字を超えると 400
+          schema: { type: string, maxLength: 200 }
+        - name: status
+          in: query
+          required: false
+          description: 状態（公開ライフサイクル）で絞る。未知の値は 400
+          schema:
+            type: string
+            enum: [draft, normalized, published, archived]
       responses:
         "200":
           description: 文書一覧の 1 ページ（スコープ内のみ）
@@ -1409,7 +1432,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/DocumentListPageDto"
         "400":
-          description: "`offset` が負、または `offset` / `limit` が数でない"
+          description: "`offset` が負、`offset` / `limit` が数でない、`sort` / `status` が未知、または `q` が 200 文字を超える"
         "401":
           description: 未認証（#656）
         "403":
@@ -4907,8 +4930,8 @@ components:
       type: object
       description: |
         FR-06, SC-05 (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ（`Knowledge.Contracts/Dtos/DocumentDto.cs`）。
-        `offset` / `limit` は BFF が丸めた後の値。🔴 `total` は ABAC スコープで絞った後の件数（権限外の文書を数えない）。
-      required: [items, total, offset, limit]
+        `offset` / `limit` は BFF が丸めた後の値。🔴 件数はどれも ABAC スコープで絞った後の数（権限外の文書を数えない）。
+      required: [items, total, offset, limit, unfilteredTotal, statusCounts]
       properties:
         items:
           type: array
@@ -4916,6 +4939,14 @@ components:
         total: { type: integer, format: int32, description: ABAC で絞った後の総件数 }
         offset: { type: integer, format: int32, description: このページの先頭の位置（丸めた後） }
         limit: { type: integer, format: int32, description: 1 ページの件数（丸めた後） }
+        unfilteredTotal:
+          type: integer
+          format: int32
+          description: 表題・状態の絞り込みを当てる前の件数（ABAC で絞った後）。絞り込みが無ければ `total` と同じ
+        statusCounts:
+          type: object
+          additionalProperties: { type: integer, format: int32 }
+          description: 状態（`DocumentDto.status` の生値）ごとの件数。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）
 
     DocumentContentDto:
       type: object

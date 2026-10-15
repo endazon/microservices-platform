@@ -124,7 +124,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/feedback` | **認証必須**（ロールは問わない。無認証は 401。#521） | —| `useBffSubmitFeedback` |
 | GET | `/bff/feedback/stats` | **`platform-admin` ＋ `platform-operator`**（無認証 401 / 権限外 403。#521） | —| `useBffFeedbackStats` |
 | GET | `/bff/dashboard/summary` | **admin ＋ operator**（**#544**。計画側の運用ダッシュボード「運用者・管理者ロール限定」。従前は admin のみ） | —| `useBffDashboardSummary` |
-| GET | `/bff/documents` | **端点認可なし**（ABAC で絞る）。［2026-10-14 / #1923］**ページで返す**（`offset` / `limit`。既定 50・上限 100）。`total` は ABAC で絞った後の件数だけで、権限外の文書は窓にも数にも入らない | —| `useBffDocumentList` |
+| GET | `/bff/documents` | **端点認可なし**（ABAC で絞る）。［2026-10-14 / #1923］**ページで返す**（`offset` / `limit`。既定 50・上限 100）。`total` は ABAC で絞った後の件数だけで、権限外の文書は窓にも数にも入らない。［2026-10-15 / #1923 段 2］並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）。絞り込みは ABAC の後に当て、`unfilteredTotal` / `statusCounts` は絞り込み前（ABAC 後）の数 | —| `useBffDocumentList` |
 | POST | `/bff/documents` | **admin のみ** | —| `useBffDocumentCreate` |
 | GET | `/bff/documents/{id}` | **端点認可なし**（ABAC ＋ 404 秘匿）。**共有先ベースの分岐は応答の `sharedWith` を `shared_with` の集合値属性として読む**（カンマ連結の像を作り、交差で突き合わせる）。共有が無ければ属性は載らず、属性キーの欠落は不一致（欠落は安全側）。🔴 **共有された個人資料が読めるのはこの読み取り系 3 口だけ**で、下の一覧（管理面）には現れない。**応答の `sharedWith` は所有者（`owner` 分岐で許可された閲覧者）にだけ載せ、共有された相手への応答では項目ごと落とす**（空集合にしない。一覧も同じ 1 点を通る） | —| `useBffDocumentDetail` |
 | PUT | `/bff/documents/{id}` | **admin のみ** | —| `useBffDocumentUpdate` |

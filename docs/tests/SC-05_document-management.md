@@ -174,6 +174,51 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | S6 | REST と同値 | 印を辿った全件が REST の一覧と順序まで一致する |
 | S7 | 実 PostgreSQL | uuid の順・マイクロ秒の丸めをまたいで抜け・重複なし。`(UpdatedAt, Id)` の索引を後ろから、印の位置から引く（`DocumentListKeysetPostgresTests`。Docker が要る） |
 
+## 一覧の並べ替え・絞り込み（#1923 段 2）
+
+> **［2026-10-15 追記 / #1923 段 2］** 並べ替え（更新日時・作成日時・表題）・表題の部分一致・状態の絞り込み・件数の要約・本文と更新日時の列。
+> 並べ替えは後段のキーセット、絞り込みは BFF が ABAC の後に当てる。**件数が権限外の文書の存在を漏らさないこと**は BFF の層で測る。
+
+### 画面（Vitest）
+
+テスト: `DocumentManagementPage.test.tsx` ／ `documentBody.test.ts`（純関数）
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| F1 | 並べ替え | 選ぶと `sort` を載せて `offset=0` から引く。既定（更新日時が新しい順）は載せない | `requests the chosen sort from the first page and omits the default` |
+| F2 | 表題の検索 | 入力が止まってから 1 回だけ、前後の空白を除いて `q` を送る。要約は「絞り込み m 件（全 n 件）中 a–b 件」 | `requests the title query once after typing stops, trimmed` |
+| F3 | 状態 | 選択肢に状態別の件数を添え、選ぶと `status` を送る。「条件を解除」で条件を外して先頭から引く | `filters by status with per-status counts and clears the filters` |
+| F4 | 空の区別 | 絞り込みの結果だけが 0 件なら「条件に一致する文書はありません。」（「文書はまだありません。」を出さない） | `distinguishes "no match" from "no documents yet"` |
+| F5 | 列 | 本文の状態（本文あり／本文なし（原本を参照）／本文未設定）と更新日時。長い表題は省略し、全文は `title` とリンクの名前に残す | `shows the body state and the update time, and keeps the full title on hover` |
+| F6 | 本文の状態の導出 | `hasBody=false` は「本文なし」、参照が無ければ「本文未設定」 | `documentBodyState`（3 ケース） |
+
+### BFF（xUnit）
+
+テスト: [`Platform.Bff.Tests/BffDocumentListFilterTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDocumentListFilterTests.cs)
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| G1 | 並べ替えの受け渡し | `sort` の 6 値（と省略）が後段の enum へ写る。後段のページを辿る間も同じ並べ替えで要求する | `並べ替えは後段の要求へ渡す` ／ `後段のページを辿る間も同じ並べ替えで要求する` |
+| G2 | 表題の部分一致 | 大文字小文字を区別しない。窓と `total` は一致した文書だけ、`unfilteredTotal` は絞る前の数。前後の空白は除く | `表題の部分一致は大文字小文字を区別せず窓と総件数を絞る` ／ `表題の検索語は前後の空白を除く` |
+| G3 | 状態・状態別の件数 | `status` で絞る。`statusCounts` は絞り込みに依らない | `状態で絞り状態別の件数は絞り込みに依らない` ／ `絞り込みの窓は絞った後の順番で切る` |
+| G4 | **存在秘匿** | 絞り込み・並べ替えを付けても、権限外の文書を混ぜた台帳と混ぜない台帳で応答が一致する（陽性対照: 区分を広げれば権限外も一致して数える） | `権限外の文書は絞り込みの件数にも状態別の件数にも現れない` |
+| G5 | 検証 | 未知の `sort` / `status`（大文字違いを含む）は 400 で、後段を呼ばない。`q` は 200 文字まで | `未知の並べ替えと状態は400` ／ `表題の検索語は200文字まで` |
+
+### 後段（DocumentService・xUnit）
+
+テスト: [`DocumentListPagingTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/Features/Documents/DocumentListPagingTests.cs) ／
+[`GrpcDocumentReadTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/Features/Documents/GrpcDocumentReadTests.cs) ／
+[`DocumentListKeysetPostgresTests.cs`](../../src/knowledge/backend/Tests/Knowledge.IntegrationTests/DocumentService/DocumentListKeysetPostgresTests.cs)
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| T1 | 並べ替えごとの全順序 | 6 通りの並べ替えで、印を 2 件ずつ辿った結果がキー（同値は ID・キーと同じ向き）の全順序と一致し、重複も抜けも無い |
+| T2 | 読めない文書 | 表題の並べ替えでも、読めない文書はページにも印にも出ない |
+| T3 | 印と並べ替え | 別の並べ替えの印は読まない（使い方の誤りは例外、rpc では `INVALID_ARGUMENT`。陽性対照: 同じ並べ替えなら続きが読める） |
+| T4 | 印の往復・改ざん | 並べ替えごとの印は往復で値が変わらない（表題の `:`・日本語を含む）。既定の並びは従前の形の印。壊れた印（キー不明・表題が壊れた・時刻が数でない・ID が壊れた）は読めない |
+| T5 | 未定義の並べ替え | enum に無い値は `INVALID_ARGUMENT`（既定へ畳まない） |
+| T6 | 実 PostgreSQL | 同じ表題・同じ作成時刻の群（uuid の順の取り違えで前後が入れ替わる Guid）を表題・作成日時・更新日時の昇降で辿って抜け・重複なし。`(Title, Id)` の索引を印の位置から引く（昇順は前から・降順は後ろから。Docker か外部の PostgreSQL が要る） |
+
 ## ABAC・存在秘匿の担保
 
 - 読み取りは ABAC スコープ内のみ返る。書き込みは BFF が対象文書のスコープを先に確かめ、
@@ -192,6 +237,8 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 - `dotnet test src/knowledge/backend/Services/DocumentService/Tests --filter Publish`
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentListPagingTests`（一覧のページング）
 - `dotnet test src/knowledge/backend/Services/DocumentService/Tests --filter "DocumentListPagingTests|ListDocuments_"`（同・後段）
+- `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentListFilterTests`（一覧の並べ替え・絞り込み）
+- `PLATFORM_TEST_POSTGRES=<接続文字列> dotnet test src/knowledge/backend/Tests/Knowledge.IntegrationTests --filter DocumentListKeysetPostgresTests`（実 PostgreSQL）
 
 <!-- trace-table:
 row1: SC-05, FR-06

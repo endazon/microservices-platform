@@ -1997,7 +1997,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-06, [[IADR-0537]] (#1923): 後段の `ListDocuments` の 1 ページの件数（null は要求の値どおり）と、受けた要求（件数・印）の記録。
     public int? DocumentReadServerPageSize { get; set; }
     public bool DocumentReadFailContinuation { get; set; }
-    public System.Collections.Concurrent.ConcurrentQueue<(int PageSize, string PageToken)> ListDocumentsRequests { get; } = new();
+    public System.Collections.Concurrent.ConcurrentQueue<(int PageSize, string PageToken, DocPb.DocumentListSort Sort)> ListDocumentsRequests { get; } = new();
 
     // 橋渡しの先の HTTP スタブ（"authz" / "document"）。計測用の器（`MeasuringBffFactory`）が往復を数えるために差し替える。
     protected virtual HttpMessageHandler GrpcBridgeHandler(string service) => service switch
@@ -2085,7 +2085,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 case DocPb.ListDocumentsRequest r:
                     {
                         Record(method, r.User);
-                        owner.ListDocumentsRequests.Enqueue((r.PageSize, r.PageToken));
+                        owner.ListDocumentsRequests.Enqueue((r.PageSize, r.PageToken, r.Sort));
                         // 2 ページ目以降（印つき）だけを失敗させる（途中のページの失敗を測るため）。
                         if (owner.DocumentReadFailContinuation && !string.IsNullOrEmpty(r.PageToken))
                             throw new RpcException(new Status(StatusCode.Unavailable, "stub: continuation failed"));

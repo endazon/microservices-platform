@@ -11,6 +11,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using System.Net.Http;
 using System.Net.Http.Json;
+using Pb = Knowledge.Contracts.Grpc.Document.V1;
 
 namespace Knowledge.Bff.Endpoints;
 
@@ -60,14 +61,21 @@ public static class DocumentBffEndpoints
         //   `IsManageable` で絞り、絞った後の順番で窓を切り出す（`DocumentListWindow`）。権限外の文書は窓にも数にも入らない
         //   ——「先に数えてから絞る」と、総件数・ページの境界が権限外の文書の存在を漏らす（IADR-0009）。
         // 🔴 **後段の続きの印は画面へ出さない。** 画面に出るのは `offset` / `limit` / `total` だけである。
+        //
+        // FR-06, SC-05, [[IADR-0009]], [[IADR-0545]] (#1923 段 2): **並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）**。
+        // 並べ替えは後段の rpc が行い（キーごとの続きの印で辿る）、絞り込みは ABAC の**後**に窓の述語で当てる（`DocumentListFilter`）。
+        // 🔴 件数（`total` / `unfilteredTotal` / `statusCounts`）はどれも ABAC で絞った後の数である。権限外の文書はどの数にも入らない。
         g.MapGet("/", async (
-            int? offset, int? limit, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            int? offset, int? limit, string? sort, string? q, string? status,
+            IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
         {
+            var errors = new Dictionary<string, string[]>();
             if (offset is < 0)
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["offset"] = ["offset は 0 以上で指定してください。"],
-                });
+                errors["offset"] = ["offset は 0 以上で指定してください。"];
+            var order = DocumentListSorts.Parse(sort, errors);
+            var filter = DocumentListFilter.Parse(q, status, errors);
+            if (errors.Count > 0)
+                return Results.ValidationProblem(errors);
             var window = new DocumentListWindow(offset ?? 0, DocumentListWindow.ClampLimit(limit));
 
             // #1010: 一覧は読み取り経路 → read を明示する。
@@ -75,7 +83,8 @@ public static class DocumentBffEndpoints
             if (scope is null)
                 return Results.Ok(window.Empty());
 
-            var page = await FetchListPageAsync(http, window, d => IsManageable(d, scope), d => ForViewer(d, scope), ct);
+            var page = await FetchListPageAsync(
+                http, window, order, filter, d => IsManageable(d, scope), d => ForViewer(d, scope), ct);
             // FR-06, NFR-16 (#1897・#1923): 後段から一覧を引き切れなかったら **502**（空の一覧へ畳まない。`/bff/datasources`・`/bff/conversion/jobs` の一覧と同じ向き）。
             // 🔴 空のページへ畳むと、画面は「文書はまだありません。」と出し、本当の 0 件と区別できない（#1897 の本質）。
             //   応答の本文は中立の文言だけで、文書の有無も件数も載せない（存在秘匿は崩れない）。
@@ -441,18 +450,21 @@ public static class DocumentBffEndpoints
     // 後段の 1 応答は `ListPageSize` 件で台帳の件数に比例しない。BFF が保持するのは窓の中の文書だけである。
     // 1 要求で台帳を 1 周する（総件数を ABAC で絞った後に数えるため。費用は IADR-0537 の残余）。
     // **引き切れなかったら null**（呼び出し元が 502 にする。空のページにしない）。
+    // ［2026-10-15 / [[IADR-0545]]］並べ替え（`sort`）は後段へ渡し、1 回の走査の中では同じ並べ替えで辿る（印が並べ替えを持つ）。
+    // 利用者の絞り込み（`filter`）は ABAC の後に窓の述語で当てる（同じ 1 周で全体・絞り込み後・状態別を数える）。
     private static async Task<DocumentListPageDto?> FetchListPageAsync(HttpContext http, DocumentListWindow window,
+        Pb.DocumentListSort sort, DocumentListFilter filter,
         Func<DocumentDto, bool> visible, Func<DocumentDto, DocumentDto> forViewer, CancellationToken ct)
     {
         // NFR-09, ADR-0029, [[IADR-0402]], [[IADR-0533]] (#1255): gRPC で引く（REST の並走は撤去した）。
         var grpc = http.RequestServices.GetRequiredService<DocumentReadGrpcClient>();
-        var collector = window.Collect(visible, forViewer);
+        var collector = window.Collect(visible, forViewer, filter);
         try
         {
             string? token = null;
             do
             {
-                var (docs, next) = await grpc.ListPageAsync(http.User, DocumentReadGrpcClient.ListPageSize, token, ct);
+                var (docs, next) = await grpc.ListPageAsync(http.User, DocumentReadGrpcClient.ListPageSize, token, ct, sort);
                 collector.AddRange(docs);
                 token = next;
             } while (token is not null);

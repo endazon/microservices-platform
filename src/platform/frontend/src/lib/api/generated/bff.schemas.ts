@@ -637,8 +637,13 @@ export interface DocumentPageDto {
 }
 
 /**
+ * 状態（`DocumentDto.status` の生値）ごとの件数。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）
+ */
+export type DocumentListPageDtoStatusCounts = {[key: string]: number};
+
+/**
  * FR-06, SC-05 (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ（`Knowledge.Contracts/Dtos/DocumentDto.cs`）。
- * `offset` / `limit` は BFF が丸めた後の値。🔴 `total` は ABAC スコープで絞った後の件数（権限外の文書を数えない）。
+ * `offset` / `limit` は BFF が丸めた後の値。🔴 件数はどれも ABAC スコープで絞った後の数（権限外の文書を数えない）。
  */
 export interface DocumentListPageDto {
   items: DocumentDto[];
@@ -648,6 +653,10 @@ export interface DocumentListPageDto {
   offset: number;
   /** 1 ページの件数（丸めた後） */
   limit: number;
+  /** 表題・状態の絞り込みを当てる前の件数（ABAC で絞った後）。絞り込みが無ければ `total` と同じ */
+  unfilteredTotal: number;
+  /** 状態（`DocumentDto.status` の生値）ごとの件数。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前） */
+  statusCounts: DocumentListPageDtoStatusCounts;
 }
 
 /**
@@ -2511,7 +2520,42 @@ offset?: number;
  * @maximum 100
  */
 limit?: number;
+/**
+ * 並べ替え（キーが同値なら ID）。既定は更新日時の新しい順。未知の値は 400
+ */
+sort?: BffDocumentListSort;
+/**
+ * 表題の部分一致（大文字小文字を区別しない。検索の索引を使わない）。前後の空白は除き、空は無指定。200 文字を超えると 400
+ * @maxLength 200
+ */
+q?: string;
+/**
+ * 状態（公開ライフサイクル）で絞る。未知の値は 400
+ */
+status?: BffDocumentListStatus;
 };
+
+export type BffDocumentListSort = typeof BffDocumentListSort[keyof typeof BffDocumentListSort];
+
+
+export const BffDocumentListSort = {
+  'updated-desc': 'updated-desc',
+  'updated-asc': 'updated-asc',
+  'created-desc': 'created-desc',
+  'created-asc': 'created-asc',
+  'title-asc': 'title-asc',
+  'title-desc': 'title-desc',
+} as const;
+
+export type BffDocumentListStatus = typeof BffDocumentListStatus[keyof typeof BffDocumentListStatus];
+
+
+export const BffDocumentListStatus = {
+  draft: 'draft',
+  normalized: 'normalized',
+  published: 'published',
+  archived: 'archived',
+} as const;
 
 export type BffConversionJobListParams = {
 /**

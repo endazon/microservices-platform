@@ -329,6 +329,11 @@
               "type": "string",
               "label": "singular"
             },
+            "sort": {
+              "number": 4,
+              "type": "DocumentListSort",
+              "label": "singular"
+            },
             "user": {
               "number": 1,
               "type": "UserContext",
@@ -418,7 +423,23 @@
           }
         }
       },
-      "enums": {},
+      "enums": {
+        "DocumentListSort": {
+          "values": {
+            "DOCUMENT_LIST_SORT_CREATED_ASC": 4,
+            "DOCUMENT_LIST_SORT_CREATED_DESC": 3,
+            "DOCUMENT_LIST_SORT_TITLE_ASC": 5,
+            "DOCUMENT_LIST_SORT_TITLE_DESC": 6,
+            "DOCUMENT_LIST_SORT_UNSPECIFIED": 0,
+            "DOCUMENT_LIST_SORT_UPDATED_ASC": 2,
+            "DOCUMENT_LIST_SORT_UPDATED_DESC": 1
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
       "services": {
         "DocumentRead": {
           "rpcs": {

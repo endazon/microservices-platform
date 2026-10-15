@@ -12,7 +12,13 @@ import { pageNumbers } from './pageNumbers';
 // （使うのは本画面だけで、段 2 の絞り込み・並べ替えと並べて形が決まるまで共有へ出さない）。
 
 interface DocumentPaginationProps {
+  /** 窓の母数（ABAC 後・絞り込み後）。 */
   total: number;
+  /**
+   * ［2026-10-15 / #1923 段 2］絞り込み前の件数（ABAC 後）。表題・状態で絞っているときだけ渡す ——
+   * 要約を「絞り込み m 件（全 n 件）中 a–b 件」にする。
+   */
+  unfilteredTotal?: number;
   offset: number;
   limit: number;
   /** 取得中は操作を止める（連打で要求が積み上がらないように）。 */
@@ -22,6 +28,7 @@ interface DocumentPaginationProps {
 
 export function DocumentPagination({
   total,
+  unfilteredTotal,
   offset,
   limit,
   busy,
@@ -39,9 +46,15 @@ export function DocumentPagination({
     <div className="mt-n3 flex flex-wrap items-center justify-between gap-n2 text-sm">
       {/* 総件数と表示範囲。読み上げにも同じ文で伝える（`role="status"` で更新を知らせる）。 */}
       <p role="status" className="text-fg-muted">
-        <Trans>
-          全 {total} 件中 {from}–{to} 件
-        </Trans>
+        {unfilteredTotal === undefined ? (
+          <Trans>
+            全 {total} 件中 {from}–{to} 件
+          </Trans>
+        ) : (
+          <Trans>
+            絞り込み {total} 件（全 {unfilteredTotal} 件）中 {from}–{to} 件
+          </Trans>
+        )}
       </p>
 
       <div className="flex flex-wrap items-center gap-n2">

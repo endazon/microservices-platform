@@ -74,8 +74,13 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
     /// <paramref name="pageToken"/> は前の応答の続きの印（先頭は null）。戻り値の印が null なら終端。
     /// 引けなければ例外（呼び出し元が畳む）。🔴 **続きの印は後段の内部の値である。BFF の外（画面）へ出さない。**
     /// </summary>
+    /// <remarks>
+    /// ［2026-10-15 / #1923・[[IADR-0545]]］<paramref name="sort"/> は並べ替え（既定は更新日時の降順）。
+    /// 🔴 続きの印は並べ替えを持つ —— 1 回の走査の中では同じ <paramref name="sort"/> で辿ること（違えば後段が `INVALID_ARGUMENT`）。
+    /// </remarks>
     public async Task<(List<DocumentDto> Documents, string? NextPageToken)> ListPageAsync(
-        ClaimsPrincipal user, int pageSize, string? pageToken, CancellationToken ct)
+        ClaimsPrincipal user, int pageSize, string? pageToken, CancellationToken ct,
+        Pb.DocumentListSort sort = Pb.DocumentListSort.Unspecified)
     {
         var resp = await client.ListDocumentsAsync(
             new Pb.ListDocumentsRequest
@@ -83,6 +88,7 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
                 User = ToUserContext(user),
                 PageSize = pageSize,
                 PageToken = pageToken ?? string.Empty,
+                Sort = sort,
             },
             cancellationToken: ct);
         return (resp.Documents.Select(DocumentReadGrpcMapping.ToDto).ToList(),

@@ -117,14 +117,17 @@ public sealed class DocumentListKeysetPostgresTests(PostgresFixture postgres) : 
         return [newer, .. TieIds.OrderByDescending(id => id), older];
     }
 
-    private static async Task<List<Guid>> WalkAsync(string cs, int pageSize)
+    private static Task<List<Guid>> WalkAsync(string cs, int pageSize)
+        => WalkAsync(cs, pageSize, DocumentListSortKey.UpdatedDesc);
+
+    private static async Task<List<Guid>> WalkAsync(string cs, int pageSize, DocumentListSortKey sort)
     {
         var seen = new List<Guid>();
         DocumentListCursor? after = null;
         for (var guard = 0; guard < 100; guard++)
         {
             await using var db = NewContext(cs);
-            var (page, next) = await Reads(db).ListPageAsync(Machine, pageSize, after, Ct);
+            var (page, next) = await Reads(db).ListPageAsync(Machine, sort, pageSize, after, Ct);
             page.Count.Should().BeLessThanOrEqualTo(pageSize);
             seen.AddRange(page.Select(d => d.Id));
             if (next is null) return seen;
@@ -212,6 +215,106 @@ public sealed class DocumentListKeysetPostgresTests(PostgresFixture postgres) : 
             text.Should().Contain("Index Scan Backward using \"IX_Documents_UpdatedAt_Id\"", text);
             // 🔴 印の位置が索引の**開始位置**（Index Cond）に入っている（`DocumentListOrder.Before` の先頭の項）。
             text.Should().MatchRegex(@"Index Cond: \(""UpdatedAt"" <= ", text);
+        }
+    }
+
+    // ── 並べ替え（[[IADR-0545]] / #1923 段 2） ─────────────────────────────
+
+    // 同じ表題・同じ作成時刻の群（12 件。uuid の順の取り違えで前後が入れ替わる Guid）＋ その前後のキー ＋ 同じキーの読めない個人資料。
+    // 表題は ASCII だけにする（照合順序の違いで前後が変わらない値。並べる・比べるのはどちらも SQL である）。
+    private static async Task<(List<Guid> Group, Guid Before, Guid After)> SeedSortTieGroupAsync(string cs)
+    {
+        var before = Guid.Parse("ffffffff-0000-0000-0000-000000000000"); // キーは群より前、ID は群の大半より大きい
+        var after = Guid.Parse("00000000-0000-0000-0000-000000000001");  // キーは群より後、ID は群のどれより小さい
+        await using var db = NewContext(cs);
+        void Add(Guid id, string title, DateTimeOffset createdAt, Dictionary<string, string> attributes)
+        {
+            var doc = Document.CreateNormalized(id, title, $"s3://bucket/{id:N}.md", attributes);
+            db.Documents.Add(doc);
+            db.Entry(doc).Property(d => d.CreatedAt).CurrentValue = createdAt;
+            db.Entry(doc).Property(d => d.UpdatedAt).CurrentValue = T;
+        }
+        foreach (var id in TieIds)
+            Add(id, "same title", T, Org());
+        Add(before, "same tit", T.AddTicks(-10), Org());
+        Add(after, "same titlf", T.AddTicks(10), Org());
+        Add(Guid.Parse("40000000-0000-0000-0000-000000000000"), "same title", T, new Dictionary<string, string>
+        {
+            ["confidentiality"] = "restricted",
+            ["doc_scope"] = "private-note",
+            ["owner"] = "alice",
+        });
+        await db.SaveChangesAsync(Ct);
+        return ([.. TieIds], before, after);
+    }
+
+    // 表題・作成日時の昇順・降順で 1・2・5 件ずつ辿り、同じキーの群の境目でも抜けも重複も無い。読めない個人資料は除かれる。
+    // 期待の並び: キーの順、同じキーは .NET の `Guid.CompareTo` の順（Postgres の uuid の順と一致する。IADR-0509）、向きはキーと同じ。
+    [Theory]
+    [InlineData(nameof(DocumentListSortKey.TitleAsc), 1)]
+    [InlineData(nameof(DocumentListSortKey.TitleAsc), 5)]
+    [InlineData(nameof(DocumentListSortKey.TitleDesc), 2)]
+    [InlineData(nameof(DocumentListSortKey.CreatedAsc), 2)]
+    [InlineData(nameof(DocumentListSortKey.CreatedDesc), 1)]
+    [InlineData(nameof(DocumentListSortKey.UpdatedAsc), 5)]
+    public async Task 並べ替えのページは同じキーの群を抜けも重複もなく辿る(string sortName, int pageSize)
+    {
+        var sort = Enum.Parse<DocumentListSortKey>(sortName);
+        var cs = await DatabaseAsync();
+        var (group, before, after) = await SeedSortTieGroupAsync(cs);
+        List<Guid> ascending = sort == DocumentListSortKey.UpdatedAsc
+            // 更新時刻は全件同じ（群の外の 2 件も）。ID だけの昇順になる。
+            ? [.. group.Append(before).Append(after).OrderBy(id => id)]
+            : [before, .. group.OrderBy(id => id), after];
+        var descending = sort is DocumentListSortKey.TitleDesc or DocumentListSortKey.CreatedDesc;
+
+        var seen = await WalkAsync(cs, pageSize, sort);
+
+        seen.Should().Equal(descending ? Enumerable.Reverse(ascending) : ascending);
+    }
+
+    // 完了の条件: 表題の並べ替えは `(Title, Id)` の索引を**印の位置から**引ける（マイグレーションが張った索引）。昇順は前から、降順は後ろから。
+    [Theory]
+    [InlineData(nameof(DocumentListSortKey.TitleAsc), "Index Scan using \"IX_Documents_Title_Id\"", ">=")]
+    [InlineData(nameof(DocumentListSortKey.TitleDesc), "Index Scan Backward using \"IX_Documents_Title_Id\"", "<=")]
+    public async Task 表題の並べ替えはTitleとIdの索引を印の位置から引ける(string sortName, string scan, string op)
+    {
+        var sort = Enum.Parse<DocumentListSortKey>(sortName);
+        var cs = await DatabaseAsync();
+        await SeedSortTieGroupAsync(cs);
+
+        await using (var conn = new NpgsqlConnection(cs))
+        {
+            await conn.OpenAsync(Ct);
+            await using var cmd = new NpgsqlCommand(
+                "SELECT indexdef FROM pg_indexes WHERE tablename = 'Documents' AND indexname = 'IX_Documents_Title_Id'", conn);
+            ((string?)await cmd.ExecuteScalarAsync(Ct)).Should().Contain("(\"Title\", \"Id\")");
+        }
+
+        var capture = new CommandCapture();
+        await using (var db = NewContext(cs, capture))
+        {
+            var mid = await db.Documents.AsNoTracking().InListOrder(sort).Skip(5).FirstAsync(Ct);
+            capture.Last = null;
+            _ = await db.Documents.AsNoTracking().Before(DocumentListCursor.After(sort, mid)).InListOrder(sort).Take(6).ToListAsync(Ct);
+        }
+        var captured = capture.Last ?? throw new InvalidOperationException("問い合わせを捕まえられなかった");
+
+        await using (var conn = new NpgsqlConnection(cs))
+        {
+            await conn.OpenAsync(Ct);
+            await using (var off = new NpgsqlCommand("SET enable_seqscan = off; SET enable_bitmapscan = off", conn))
+                await off.ExecuteNonQueryAsync(Ct);
+            await using var explain = new NpgsqlCommand("EXPLAIN " + captured.Text, conn);
+            foreach (var p in captured.Parameters) explain.Parameters.Add(p);
+            var plan = new List<string>();
+            await using var reader = await explain.ExecuteReaderAsync(Ct);
+            while (await reader.ReadAsync(Ct)) plan.Add(reader.GetString(0));
+            var text = string.Join("\n", plan);
+            text.Should().Contain(scan, text);
+            // 🔴 印の位置が索引の**開始位置**（Index Cond）に入っている（`DocumentListOrder.Before` の先頭の項）。
+            // 表題は varchar なので計画では `("Title")::text` と出る。
+            text.Should().MatchRegex($@"Index Cond: \(\(""Title""\)::text {op} ", text);
         }
     }
 

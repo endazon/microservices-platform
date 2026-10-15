@@ -618,3 +618,4 @@
 | [IADR-0538](./IADR-0538_review-floor-verdict-check.md) | AI レビューの検証の下限を Check review verdict で機械的に検査する —— AST の検査器を移植し（申告 N/M/K・精読していない自認・差分に応じた helm / scripts.test.js の記載）、本リポのレビューが自認を書く 🔍 の節も読む型に限って数える | Accepted |
 | [IADR-0539](./IADR-0539_dotnet-gc-workstation-conserve-memory-default.md) | MSP の .NET サービスへ GC の設定（Workstation GC・GCConserveMemory=5・GCHeapHardLimitPercent=0x3C＝60%。env の値は 16 進数）をチャートの共通の値として本番の既定で入れる。MALLOC_* は入れない。経路 B の Keycloak のヒープと Tempo・Loki の Go のヒープを絞る | Accepted |
 | [IADR-0540](./IADR-0540_ingestion-body-missing-is-permanent.md) | 取り込みは本文の NoSuchKey を恒久的な欠落として扱い、再試行・DLQ に回さず Warning と計数 ingestion.body_missing を残して ack する。索引への扱いは未決（#1931 項目 3） | Accepted |
+| [IADR-0545](./IADR-0545_document-list-sort-and-filter-after-abac.md) | 文書管理の一覧の並べ替えは後段のキーセットで行い（並べ替えごとの続きの印・表題の複合索引）、表題の部分一致と状態の絞り込みは BFF が ABAC の後に窓の述語で当て、全体・絞り込み後・状態別の件数を同じ 1 周で数える（IADR-0537 の残余 (c) を改める。#1923 段 2） | Accepted |

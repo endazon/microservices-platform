@@ -34,7 +34,15 @@ const tags: TagDictionaryResponse = { tags: [{ id: 'tag-1', name: '経費', usag
 
 // FR-06, IADR-0537（#1923）: 一覧は 1 ページ（`items` / `total` / `offset` / `limit`）で返る。
 // キーはクエリを含まない（`support/bffSession.ts`）。要求の `offset` / `limit` は下の本体で確かめる。
-const firstPage: DocumentListPageDto = { items: [doc], total: 1, offset: 0, limit: 50 };
+// ［2026-10-15 / #1923 段 2］絞り込み前の件数と状態別の件数も返る（IADR-0545）。
+const firstPage: DocumentListPageDto = {
+  items: [doc],
+  total: 1,
+  offset: 0,
+  limit: 50,
+  unfilteredTotal: 1,
+  statusCounts: { published: 1 },
+};
 
 const handlers = { 'GET /documents': firstPage, 'GET /tags': tags };
 
@@ -67,6 +75,13 @@ test('SC-05: an operator reaches the screen and its navigation entry', async ({ 
   // 一覧はページの引数つきで引く（既定 50 件の先頭）。総件数と表示範囲が出る。
   expect(traffic.calls.find((c) => c.key === 'GET /documents')?.search).toBe('?offset=0&limit=50');
   await expect(page.getByText('全 1 件中 1–1 件')).toBeVisible();
+  // #1923 段 2（IADR-0545）: 絞り込みの帯（表題の検索・状態・並べ替え）と本文・更新日時の列が出る。
+  const filters = page.getByRole('search', { name: '文書の絞り込み' });
+  await expect(filters.getByLabel('表題で検索')).toBeVisible();
+  await expect(filters.getByLabel('状態')).toBeVisible();
+  await expect(filters.getByLabel('並べ替え')).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: '本文' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: '更新日時' })).toBeVisible();
 
   expectBffTrafficIsComplete(traffic);
 });

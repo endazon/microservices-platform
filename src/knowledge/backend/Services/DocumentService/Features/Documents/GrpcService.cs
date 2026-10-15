@@ -53,21 +53,39 @@ public sealed class DocumentReadGrpcService(
         // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): ページで返す。1 応答は台帳の件数に比例しない。
         // 🔴 要求の誤り（負の件数・壊れた印）は主体の判定より先に弾く —— どちらも主体に依らず誤りである。
         var pageSize = PageSizeOf(request.PageSize);
+        var sort = SortOf(request.Sort);
         DocumentListCursor? after = null;
         if (!string.IsNullOrEmpty(request.PageToken))
         {
             if (!DocumentListCursor.TryDecode(request.PageToken, out var decoded))
                 throw new RpcException(new Status(StatusCode.InvalidArgument,
                     "page_token が不正です。前の応答の next_page_token をそのまま渡してください。"));
+            // FR-06, SC-05, [[IADR-0545]] (#1923): 🔴 印は並べ替えを持つ。違う並べ替えの印は黙って別の位置から読むことになるので弾く。
+            if (decoded.Sort != sort)
+                throw new RpcException(new Status(StatusCode.InvalidArgument,
+                    "page_token は別の並べ替え（sort）の続きの印です。同じ sort で続きを要求してください。"));
             after = decoded;
         }
 
         var (docs, next) = await reads.ListPageAsync(
-            PrincipalOf(request.User, context), pageSize, after, context.CancellationToken);
+            PrincipalOf(request.User, context), sort, pageSize, after, context.CancellationToken);
         var resp = new ListDocumentsResponse { NextPageToken = next ?? string.Empty };
         resp.Documents.AddRange(docs.Select(DocumentReadGrpcMapping.ToProto));
         return resp;
     }
+
+    // FR-06, SC-05, [[IADR-0545]] (#1923): 線上の並べ替えの写像（1 か所）。UNSPECIFIED は従前の並び（更新日時の降順）。
+    // 🔴 未定義の値（新しい呼び出し元が足した値など）は既定へ畳まず要求の誤りにする —— 畳むと別の並びのページが黙って返る。
+    internal static DocumentListSortKey SortOf(DocumentListSort sort) => sort switch
+    {
+        DocumentListSort.Unspecified or DocumentListSort.UpdatedDesc => DocumentListSortKey.UpdatedDesc,
+        DocumentListSort.UpdatedAsc => DocumentListSortKey.UpdatedAsc,
+        DocumentListSort.CreatedDesc => DocumentListSortKey.CreatedDesc,
+        DocumentListSort.CreatedAsc => DocumentListSortKey.CreatedAsc,
+        DocumentListSort.TitleAsc => DocumentListSortKey.TitleAsc,
+        DocumentListSort.TitleDesc => DocumentListSortKey.TitleDesc,
+        _ => throw new RpcException(new Status(StatusCode.InvalidArgument, $"sort の値 {(int)sort} は定義されていません。")),
+    };
 
     // 0（省略）は既定、上限を超えた値は上限へ丸める。負は要求の誤り（黙って既定へ畳まない）。
     internal static int PageSizeOf(int requested)

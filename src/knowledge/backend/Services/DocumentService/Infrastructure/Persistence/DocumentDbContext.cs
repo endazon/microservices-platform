@@ -45,6 +45,10 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
             // gRPC `ListDocuments` が `WHERE "UpdatedAt" <= c AND (…) ORDER BY "UpdatedAt" DESC, "Id" DESC LIMIT n` をこれで引く
             // （述語の形は `DocumentListOrder.Before`。降順は索引を後ろから辿るので、昇順の索引 1 本で足りる）。
             e.HasIndex(d => new { d.UpdatedAt, d.Id });
+            // FR-06, SC-05, [[IADR-0545]] (#1923): 一覧の表題の並べ替え（昇順・降順。同じ表題は ID）の索引。
+            // `WHERE "Title" >= t AND (…) ORDER BY "Title", "Id" LIMIT n` をこれで引く（述語の形は `DocumentListOrder.Before`）。
+            // 表題は最大 500 文字（UTF-8 で最大 2,000 バイト）で、btree の 1 項目の上限（約 2,700 バイト）に収まる。
+            e.HasIndex(d => new { d.Title, d.Id });
             e.Property(d => d.Title).HasMaxLength(500).IsRequired();
             e.Property(d => d.Status).HasMaxLength(50).IsRequired();
             e.Property(d => d.MarkdownUri).HasMaxLength(2048);

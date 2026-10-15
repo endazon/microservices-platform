@@ -45,6 +45,7 @@ option csharp_namespace = "Knowledge.Contracts.Grpc.Document.V1";
 service DocumentRead {
   // 一覧（更新の新しい順・同時刻は ID の降順）。［2026-10-14 / #1923・#1897］**ページで返す**
   // （REST `GET /documents` は全件のまま。集合と並びは同じで、切り出しだけがこの rpc にある）。
+  // ［2026-10-15 / #1923・[[IADR-0545]]］並べ替え（`sort`）を選べる。既定は従前の並び。
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
 
   // 1 件の取得。REST `GET /documents/{id}` と同値。不在は found=false（NOT_FOUND ではない）。
@@ -123,12 +124,14 @@ message UserContext {
   string action = 3;
 }
 
-// 一覧に絞り込みは無い（REST も無い）。将来の絞り込み・並べ替えは番号を足して非破壊で入れる。
+// 一覧に絞り込みは無い（REST も無い）。［2026-10-15 / #1923・[[IADR-0545]]］**並べ替えは `sort` で選ぶ**（番号の追加）。
+// 絞り込み（表題・状態）は呼び出し元（BFF）が ABAC で絞った後の窓の述語で当てる（全体の件数と同じ 1 周で数えるため。IADR-0545）。
 // （#1575 の REST `GET /documents/page`〔組織文書の絞り込み・ページング。作成日時の昇順〕は別の口であり、
 //  本 rpc の同値の相手ではない。`GET /documents` は従来どおり絞り込みもページングも持たない。）
 //
 // ■ FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): **ページング**。1 応答は台帳の件数に比例しない。
-//   - 並びは更新日時の降順・同時刻は ID の降順（全順序）。続きは**キーセット**（前ページ末尾の更新日時と ID）。
+//   - 並びは `sort` のキー（既定は更新日時の降順）・同値は ID（キーと同じ向き）の全順序。続きは**キーセット**（前ページ末尾のキーと ID）。
+//     🔴 続きの印は並べ替えを持つ。要求の `sort` と印の並べ替えが違えば INVALID_ARGUMENT（黙って別の位置から読まない。IADR-0545）。
 //   - 読めない文書は**切り出す前に**除く。ページが `page_size` 件に満たないのは終端のときだけである。
 //   - 🔴 **総件数は返さない。** この面が数えられるのは「この面が読める件数」であり、呼び出し元（BFF）の
 //     ABAC で絞る前の数である。返すと権限外の文書の存在を数で漏らす経路になる（IADR-0009）。
@@ -141,6 +144,22 @@ message ListDocumentsRequest {
   // 前の応答の `next_page_token`。空（省略）は先頭から。不透明な値で、壊れていれば INVALID_ARGUMENT。
   // 🔴 トークンは返した（読める）文書の末尾からしか作らない —— 読めない文書の ID・時刻を載せない。
   string page_token = 3;
+  // FR-06, SC-05, [[IADR-0545]] (#1923): 並べ替え。省略（UNSPECIFIED）は更新日時の降順（従前の並び）。未定義の値は INVALID_ARGUMENT。
+  DocumentListSort sort = 4;
+}
+
+// FR-06, SC-05, [[IADR-0545]] (#1923): 一覧の並べ替え。キーが同値なら ID で並べる（降順のキーは ID も降順、昇順は ID も昇順）。
+// どのキーも台帳の複合索引（`(UpdatedAt, Id)` / `(CreatedAt, Id)` / `(Title, Id)`）で開始位置を引ける。
+enum DocumentListSort {
+  // 更新日時の降順（従前の並び）。
+  DOCUMENT_LIST_SORT_UNSPECIFIED = 0;
+  DOCUMENT_LIST_SORT_UPDATED_DESC = 1;
+  DOCUMENT_LIST_SORT_UPDATED_ASC = 2;
+  DOCUMENT_LIST_SORT_CREATED_DESC = 3;
+  DOCUMENT_LIST_SORT_CREATED_ASC = 4;
+  // 表題の並びは台帳（PostgreSQL）の照合順序で決まる（.NET で並べ直さない）。
+  DOCUMENT_LIST_SORT_TITLE_ASC = 5;
+  DOCUMENT_LIST_SORT_TITLE_DESC = 6;
 }
 
 message ListDocumentsResponse {

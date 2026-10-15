@@ -46,14 +46,20 @@ public record DocumentPageDto
 }
 
 // FR-06, SC-05, [[IADR-0537]] (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ。
-// 並びは更新日時の降順・同時刻は ID の降順。`Offset` / `Limit` は BFF が丸めた後の値である（要求の値ではない）。
-// 🔴 **`Total` は利用者の ABAC スコープで絞った後の件数だけである**（権限外の文書は数えない。IADR-0009 の存在秘匿）。
+// 並びは要求の並べ替え（既定は更新日時の降順。同値は ID。［2026-10-15 / [[IADR-0545]]］）。
+// `Offset` / `Limit` は BFF が丸めた後の値である（要求の値ではない）。
+// 🔴 **件数はどれも利用者の ABAC スコープで絞った後の数だけである**（権限外の文書は数えない。IADR-0009 の存在秘匿）。
+//   `Total` は窓の母数（ABAC ∧ 利用者の絞り込み〔表題・状態〕）、`UnfilteredTotal` と `StatusCounts` は利用者の絞り込みを当てる前の数。
 public record DocumentListPageDto
 {
     public List<DocumentDto> Items { get; init; } = [];
     public int Total { get; init; }
     public int Offset { get; init; }
     public int Limit { get; init; }
+    // FR-06, SC-05, [[IADR-0545]] (#1923): 絞り込み（表題・状態）を当てる前の件数（ABAC で絞った後）。絞り込みが無ければ `Total` と同じ。
+    public int UnfilteredTotal { get; init; }
+    // FR-06, SC-05, [[IADR-0545]] (#1923): 状態（`DocumentDto.Status` の生値）ごとの件数。集合は `UnfilteredTotal` と同じ（合計が一致する）。
+    public Dictionary<string, int> StatusCounts { get; init; } = [];
 }
 
 // SC-03, FR-06: 文書本文（正規化 Markdown）の取得結果。BFF が ABAC 判定後にオブジェクト

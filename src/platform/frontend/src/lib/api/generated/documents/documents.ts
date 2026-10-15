@@ -125,6 +125,9 @@ export const getBffDocumentListUrl = (params?: BffDocumentListParams,) => {
  * - 後段（文書サービス）から一覧を引き切れないとき（途中のページを含む）は **502**（ProblemDetails。運用画面の一覧 `/bff/datasources`・`/bff/conversion/jobs` と同じ向き）を返す。
  *   空のページ・部分の件数へは畳まない（本当の 0 件と区別できなくなる。#1897）。本文は中立の文言だけで、文書の有無も件数も載せない。
  * - 許可ポリシーが無い（見える文書が無い）ときは `items` が空・`total` が 0 のページを返す（deny-by-default。従前どおり）。
+ *
+ * ［2026-10-15 / #1923 段 2］**並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）**。並べ替えは文書サービスが行い、
+ * 絞り込みは ABAC で絞った後に当てる。`total` は絞り込み後、`unfilteredTotal` と `statusCounts` は絞り込み前（いずれも ABAC 後）の数。
  * @summary FR-06, SC-05: 文書一覧（ABAC スコープ内のみ。管理者・運用者。#656）
  */
 export const bffDocumentList = async (params?: BffDocumentListParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentListResponse> => {

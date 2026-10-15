@@ -12,7 +12,12 @@ import {
   useBffDocumentUpdate,
 } from '@foundation/api/generated/documents/documents';
 import { okData } from '@foundation/api/orvalSelect';
-import type { DocumentListPageDto } from '@foundation/api/generated/bff.schemas';
+import type {
+  BffDocumentListParams,
+  BffDocumentListSort,
+  BffDocumentListStatus,
+  DocumentListPageDto,
+} from '@foundation/api/generated/bff.schemas';
 
 // SC-05, UC-03, FR-06/FR-09: 文書管理の照会・作成・更新・状態遷移・削除
 // （サーバー状態は TanStack Query。ADR-0031）。
@@ -46,30 +51,76 @@ export interface DocumentPageRequest {
   limit: number;
 }
 
+/** SC-05, FR-06, IADR-0545（#1923 段 2）: 並べ替えの選択肢（BFF の `sort` と同じ語彙）。既定は更新日時の新しい順。 */
+export type DocumentSort = BffDocumentListSort;
+export const DEFAULT_DOCUMENT_SORT: DocumentSort = 'updated-desc';
+
+/** 状態の絞り込み（BFF の `status` と同じ語彙）。`''` は「すべて」。 */
+export type DocumentStatusFilter = BffDocumentListStatus | '';
+
+/**
+ * 一覧の 1 回の要求（ページ ＋ 並べ替え ＋ 絞り込み）。
+ *
+ * 表題の検索語（`q`）は前後の空白を除いて送り、空なら送らない（BFF も同じく空を無指定として扱う）。
+ */
+export interface DocumentListRequest extends DocumentPageRequest {
+  sort: DocumentSort;
+  q: string;
+  status: DocumentStatusFilter;
+}
+
+/** 表題の検索語の上限（BFF の `q` の上限 200 文字と同じ）。入力欄の `maxLength` に使う。 */
+export const DOCUMENT_TITLE_QUERY_MAX = 200;
+
+/**
+ * 要求をクエリ引数へ写す。**既定値は載せない**（既定の並べ替え・空の検索語・「すべて」）——
+ * 同じ一覧が別のキャッシュキーに割れないように、また従前の URL（`?offset=&limit=`）を保つため。
+ */
+function toListParams(request: DocumentListRequest): BffDocumentListParams {
+  const params: BffDocumentListParams = { offset: request.offset, limit: request.limit };
+  if (request.sort !== DEFAULT_DOCUMENT_SORT) params.sort = request.sort;
+  const q = request.q.trim();
+  if (q !== '') params.q = q;
+  if (request.status !== '') params.status = request.status;
+  return params;
+}
+
+/** 表題・状態のどちらかで絞り込んでいるか（要約の文と空の表示を出し分ける）。 */
+export function isFiltered(request: Pick<DocumentListRequest, 'q' | 'status'>): boolean {
+  return request.q.trim() !== '' || request.status !== '';
+}
+
 /**
  * 応答封筒から 1 ページを取り出す。**`items` が配列でなければ空へ縮退させる**
  * （`okArray` と同じ理由。`bffFetch` は本文なしで `{}` を返す——IADR-0135 決定 7［2026-08-06 追記］）。
  */
 function okPage(res: Parameters<typeof okData>[0]): DocumentListPageDto {
   const page = okData(res) as Partial<DocumentListPageDto>;
+  const total = page.total ?? 0;
   return {
     items: Array.isArray(page.items) ? page.items : [],
-    total: page.total ?? 0,
+    total,
     offset: page.offset ?? 0,
     limit: page.limit ?? DEFAULT_DOCUMENT_PAGE_SIZE,
+    // ［2026-10-15 / #1923 段 2］項目を持たない応答（旧い BFF）は「絞り込みなし」として読む。
+    unfilteredTotal: page.unfilteredTotal ?? total,
+    statusCounts: page.statusCounts ?? {},
   };
 }
 
 /**
  * 一覧の 1 ページ（ABAC スコープ内のみ返る。`total` も BFF が権限で絞った後の件数）。
+ * ［2026-10-15 / #1923 段 2・IADR-0545］並べ替え・表題の部分一致・状態の絞り込みも同じ要求で送る
+ * （並べ替えは文書サービス、絞り込みは BFF が ABAC の後に当てる。`unfilteredTotal` / `statusCounts` は絞り込み前の数）。
  *
  * ページを替える間は前のページを出したままにする（`keepPreviousData`）——読み込み中の表示へ切り替えると、
  * ページ送りのたびに表が消えて位置を見失う。
  */
-export function useAdminDocuments(page: DocumentPageRequest) {
-  return useBffDocumentList<DocumentListPageDto, unknown>(page, {
+export function useAdminDocuments(request: DocumentListRequest) {
+  const params = toListParams(request);
+  return useBffDocumentList<DocumentListPageDto, unknown>(params, {
     query: {
-      queryKey: getBffDocumentListQueryKey(page),
+      queryKey: getBffDocumentListQueryKey(params),
       select: okPage,
       placeholderData: keepPreviousData,
     },

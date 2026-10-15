@@ -61,13 +61,22 @@ const TAG_DICTIONARY = {
  */
 function listPage(
   items: unknown[],
-  page: { total?: number; offset?: number; limit?: number } = {},
+  page: {
+    total?: number;
+    offset?: number;
+    limit?: number;
+    unfilteredTotal?: number;
+    statusCounts?: Record<string, number>;
+  } = {},
 ) {
+  const total = page.total ?? items.length;
   return jsonResponse({
     items,
-    total: page.total ?? items.length,
+    total,
     offset: page.offset ?? 0,
     limit: page.limit ?? 50,
+    unfilteredTotal: page.unfilteredTotal ?? total,
+    statusCounts: page.statusCounts ?? {},
   });
 }
 
@@ -739,5 +748,131 @@ describe('DocumentManagementPage (SC-05)', () => {
       '/documents?offset=100&limit=50',
       '/documents?offset=0&limit=50',
     ]);
+  });
+
+  // ── #1923 段 2（IADR-0545）: 並べ替え・表題の検索・状態の絞り込み・件数の要約・列 ─────────────
+
+  /** 一覧の要求のパス（`/documents?…`）だけを順に取り出す。 */
+  const listPaths = () =>
+    mocks.apiRequest.mock.calls
+      .map(([path]) => String(path))
+      .filter((path) => path.startsWith('/documents?'));
+
+  // 並べ替えを変えると `sort` を載せて先頭のページから引き直す。既定（更新日時が新しい順）は載せない（従前の URL）。
+  it('requests the chosen sort from the first page and omits the default', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      listPage([DRAFT_DOC], { total: 120, offset: path.includes('offset=50') ? 50 : 0 }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '2 ページ目' }));
+    await waitFor(() => expect(listPaths()).toContain('/documents?offset=50&limit=50'));
+    await user.selectOptions(screen.getByLabelText('並べ替え'), 'title-asc');
+
+    await waitFor(() =>
+      expect(listPaths()).toContain('/documents?offset=0&limit=50&sort=title-asc'),
+    );
+    expect(listPaths()[0]).toBe('/documents?offset=0&limit=50');
+  });
+
+  // 表題の検索は入力が止まってから 1 回だけ引く（1 打鍵ごとに台帳を 1 周させない）。前後の空白は送らない。
+  it('requests the title query once after typing stops, trimmed', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('q=')
+        ? listPage([DRAFT_DOC], { total: 1, unfilteredTotal: 120 })
+        : listPage([DRAFT_DOC, ARCHIVED_DOC], { total: 120 }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.type(await screen.findByLabelText('表題で検索'), ' 経費 ');
+
+    expect(await screen.findByText('絞り込み 1 件（全 120 件）中 1–1 件')).toBeInTheDocument();
+    const queried = listPaths().filter((path) => path.includes('q='));
+    expect(queried).toEqual([`/documents?offset=0&limit=50&q=${encodeURIComponent('経費')}`]);
+  });
+
+  // 状態で絞ると `status` を載せる。選択肢には状態別の件数（絞り込み前）を添える。解除で条件を外して先頭から引く。
+  it('filters by status with per-status counts and clears the filters', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('status=archived')
+        ? listPage([ARCHIVED_DOC], {
+            total: 1,
+            unfilteredTotal: 3,
+            statusCounts: { draft: 2, archived: 1 },
+          })
+        : listPage([DRAFT_DOC, ARCHIVED_DOC], {
+            total: 3,
+            statusCounts: { draft: 2, archived: 1 },
+          }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    const status = await screen.findByLabelText('状態');
+    await waitFor(() =>
+      expect(
+        within(status).getByRole('option', { name: 'アーカイブ済み（1 件）' }),
+      ).toBeInTheDocument(),
+    );
+    expect(within(status).getByRole('option', { name: 'すべて（3 件）' })).toBeInTheDocument();
+    expect(within(status).getByRole('option', { name: '公開中（0 件）' })).toBeInTheDocument();
+    await user.selectOptions(status, 'archived');
+
+    expect(await screen.findByText('絞り込み 1 件（全 3 件）中 1–1 件')).toBeInTheDocument();
+    expect(listPaths()).toContain('/documents?offset=0&limit=50&status=archived');
+
+    await user.click(screen.getAllByRole('button', { name: '条件を解除' })[0]!);
+    expect(await screen.findByText('全 3 件中 1–3 件')).toBeInTheDocument();
+    expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50');
+  });
+
+  // 絞り込みの結果だけが 0 件なら「文書はまだありません。」ではなく条件の側の空を出し、解除の口を置く。
+  it('distinguishes "no match" from "no documents yet"', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('status=published')
+        ? listPage([], { total: 0, unfilteredTotal: 2 })
+        : listPage([DRAFT_DOC, ARCHIVED_DOC]),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.selectOptions(await screen.findByLabelText('状態'), 'published');
+
+    expect(await screen.findByText('条件に一致する文書はありません。')).toBeInTheDocument();
+    expect(screen.queryByText('文書はまだありません。')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: '条件を解除' }).at(-1)!);
+    expect(await screen.findByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
+  });
+
+  // 列: 本文の状態（色だけでなく文言）と更新日時。長い表題は省略し、全文はホバー（title）とリンクの名前に残す。
+  it('shows the body state and the update time, and keeps the full title on hover', async () => {
+    const longTitle = '長い表題'.repeat(40);
+    mocks.apiRequest.mockResolvedValue(
+      listPage([
+        { ...DRAFT_DOC, title: longTitle, markdownUri: 'storage://docs/a.md', hasBody: true },
+        { ...ARCHIVED_DOC, markdownUri: 'storage://docs/b.md', hasBody: false },
+        {
+          ...DRAFT_DOC,
+          id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+          title: '手入力',
+          markdownUri: null,
+        },
+      ]),
+    );
+    await renderPage();
+
+    const link = await screen.findByRole('link', { name: longTitle });
+    expect(link).toHaveAttribute('title', longTitle);
+    expect(link).toHaveAttribute('href', `/docs/${DOC_ID}`);
+    const table = within(screen.getByRole('table'));
+    expect(table.getByRole('columnheader', { name: '本文' })).toBeInTheDocument();
+    expect(table.getByText('本文あり')).toBeInTheDocument();
+    expect(table.getByText('本文なし（原本を参照）')).toBeInTheDocument();
+    expect(table.getByText('本文未設定')).toBeInTheDocument();
+    // 時刻は実行環境のタイムゾーンで出る（`formatDateTime`）。書式（`YYYY/MM/DD HH:mm`）が 3 行に出ることだけを見る。
+    expect(table.getAllByText(/^2026\/0[78]\/\d{2} \d{2}:\d{2}$/)).toHaveLength(3);
   });
 });
