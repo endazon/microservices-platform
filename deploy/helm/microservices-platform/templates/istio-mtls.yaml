@@ -93,6 +93,16 @@ spec:
             notPrincipals: ["*"]
       to:
         - operation:
+            {{- /*
+              NFR, ADR-0005, #1885: 拒否の範囲を「開けた口（portLevelMtls と同じポート）」と字面で揃える。
+              BFF の受信ポートはこれ 1 つだけ（services.bff に grpcPort が無い）なので、拒否の範囲は
+              ports 無しの時と同じである。ports が無いと Istio の検証が「DENY に HTTP 属性しか無い」と
+              警告する（"will deny all traffic to TCP ports ..."。helm upgrade のたびに出ていた）。
+              前提（受信ポートが 1 つでこの値と同じ）は scripts/helm-backchannel-authz.test.js が固定する。
+              描画物へ出さない注記にしている（描画の差分を ports の 2 行だけにするため）。
+            */}}
+            ports:
+              - {{ .Values.mesh.backchannelLogout.port | quote }}
             notPaths:
               - {{ .Values.mesh.backchannelLogout.path | quote }}
 {{- end }}

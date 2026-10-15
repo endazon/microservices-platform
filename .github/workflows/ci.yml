@@ -728,6 +728,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-private-notes-sync-authz.test.js
 
+      # NFR, ADR-0005, IADR-0273, Issue #1885: バックチャネルログアウトだけを平文で通す DENY（bff-service-plaintext-only-backchannel）に
+      # ports を明示したことを**実際に helm template で描いて**固定する —— 既定と values-local は描かない、有効時の形、
+      # BFF の受信ポート＝ports（前提）、ports を外した旧形と受信ポートの全組で拒否の範囲が同じ、Istio の警告条件に当たらない、変異。
+      - name: Test helm backchannel logout authorization ports (render, equivalence, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-backchannel-authz.test.js
+
       # NFR-09, ADR-0125 決定 4, IADR-0513, Issue #1756・#1811: 取引ユニット（AST）の名前空間 → KB の読み手（検索）・書き手（文書の保存）・
       # LLM ゲートウェイへの ingress の NetworkPolicy（既定は閉）を**実際に helm template で描いて**固定する —— 既定と values-local は描かない（陰性対照）、
       # 有効時は行き先・from の AND・REST のポートだけ、k8s の評価規則で呼び出し元の一覧へ当てると読み手・書き手・LLM の呼び出し元だけが通る、描画で止まる条件、変異。
