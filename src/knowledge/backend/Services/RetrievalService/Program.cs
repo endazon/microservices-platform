@@ -269,7 +269,7 @@ app.MapMcpToolEndpoints();
 // [[IADR-0379]], [[IADR-0410]], [[IADR-0416]], [[IADR-0417]] (#1255):
 // 権限内属性値の照会の east-west gRPC 面。
 // 🔴 **REST の口は残す**（［2026-10-10 / #1255・[[IADR-0533]]］east-west の REST 呼び出し元＝BFF の属性値照会は撤去した。受け口の撤去は残余）。
-// 🔴 **本体は REST と同じ関数を通る**（`AttributeValuesEndpoint.ListAsync`）。
+// 🔴 **本体は `AttributeValuesQuery.ListAsync` である**（［2026-10-15 / #1902］REST の受け口は撤去した）。
 app.MapGrpcService<AttributeValuesGrpcService>();
 
 // FR-03, FR-04, FR-05, FR-07, FR-17, NFR-09, NFR-16, ADR-0029, ADR-0034 決定 1, ADR-0035 決定 2,

@@ -362,7 +362,7 @@ public class MultiCollectionFusionTests
         var tierA = new ScriptedStore { Values = ["confidential", "public"] };
         var scope = new AccessScope([new AttributeFilter("department", ["hr"])], true);
 
-        var values = await AttributeValuesEndpoint.ListAsync(
+        var values = await AttributeValuesQuery.ListAsync(
             primary, new FusedCollections([new FusedCollection(Ruri, tierA, new FixedEmbedding([]))]),
             "confidentiality", scope, TestContext.Current.CancellationToken);
 
@@ -377,7 +377,7 @@ public class MultiCollectionFusionTests
     {
         var primary = new ScriptedStore { Values = ["b", "a"] };
 
-        var values = await AttributeValuesEndpoint.ListAsync(
+        var values = await AttributeValuesQuery.ListAsync(
             primary, FusedCollections.None, "confidentiality", new AccessScope([], true),
             TestContext.Current.CancellationToken);
 
