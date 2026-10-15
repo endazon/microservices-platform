@@ -59,12 +59,21 @@ case "${DEPT_SYNC_MODE:-}" in
   *) echo "ERROR: DEPT_SYNC_MODE は Off・Report・Fix・未指定（現行を引き継ぐ。初回は何も足さない）のいずれかです: '${DEPT_SYNC_MODE}'" >&2; exit 1 ;;
 esac
 
-# NFR, 計画 ADR-0135 決定 2, IADR-0519 (#1843): Argo CD は**版のタグの URL**から入れる（`stable` ブランチを直接 apply しない）。
-#   既定は `stable` が 2026-10-09 に指していた版（v3.5.4。両 URL の install.yaml はバイト一致を実測）。上書きは ARGOCD_VERSION。
-#   🔴 **版のタグ（vX.Y.Z）以外は拒否する** —— `stable` / `master` を与えると固定が外れる。RESET_FLOOR と同じく最初に落とす。
-ARGOCD_VERSION="${ARGOCD_VERSION:-v3.5.4}"
-if [ "${ARGOCD:-}" = "1" ] && ! [[ "$ARGOCD_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "ERROR: ARGOCD_VERSION は版のタグ（例 v3.5.4）で与えてください（ブランチ名では版が固定されない。IADR-0519）: '${ARGOCD_VERSION}'" >&2
+# NFR, 計画 ADR-0135 決定 2 / ADR-0107 決定 3, IADR-0519 (#1843)・IADR-0547 (#1858): `scripts/` が入れる製品の版を固定する。
+#   版は内側のイメージの digest の固定（下の各ファイル）と**対**で決まる。上書きの env は固定と同じ値のときだけ受け、
+#   違えば何もする前に止める（lib/pin-version.sh。#1843 の「ARGOCD_VERSION はブランチ名を拒否する」もここで止まる）。
+#   🔴 版を上げるときは、ここの版と置き場のファイルの tag・digest を対で改める（scripts/scripts.repo.test.js が突き合わせる）。
+#   k3s は参照全体を K3S_IMAGE で与える（版と digest を一緒に変える）ので、ここではなく [1/7] の既定が持つ。
+# shellcheck source=scripts/lib/pin-version.sh
+. "$(dirname "$0")/lib/pin-version.sh" || exit 3
+pin_version ISTIO_VERSION 1.30.4 deploy/istio/istiod-values-local.yaml
+pin_version ESO_CHART_VERSION 2.8.0 deploy/local/vault/eso/external-secrets-values.yaml
+pin_version RELOADER_CHART_VERSION 2.2.17 deploy/local/reloader/values.yaml
+pin_version CERT_MANAGER_VERSION v1.21.1 deploy/local/edge/cert-manager/kustomization.yaml
+pin_version ARGOCD_VERSION v3.5.4 deploy/argocd/install/kustomization.yaml
+# Reloader のイメージは values（tag@digest）が持つ。従前の RELOADER_IMAGE_TAG（tag だけで上書き）は固定を外すので受けない。
+if [ -n "${RELOADER_IMAGE_TAG:-}" ]; then
+  echo "ERROR: RELOADER_IMAGE_TAG は廃止した（IADR-0547）。Reloader のイメージは deploy/local/reloader/values.yaml が tag@digest で持つ。" >&2
   exit 1
 fi
 
@@ -135,13 +144,16 @@ if [ "$RUNTIME" = "k3d" ]; then
   # ［2026-10-09 / #1843・計画 ADR-0135 決定 2・IADR-0519］**既定で固定する**（従前は与えたときだけ固定し、既定は k3d 同梱の版
   # だった）。版の情報源はこの既定 1 か所であり、CI のワークフローは値を持たない（同じ値を 2 か所に持つと片側だけ動く）。
   # 上書きは K3S_IMAGE（空でも既定へ戻る＝浮動にはできない）。Rancher Desktop 経路は内蔵 k3s の版を使う（下の else）。
+  # ［2026-10-15 / #1858・IADR-0547］既定は `tag@sha256:<index digest>`（同じタグの中身の差し替えを入れない。ADR-0107 決定 3）。
+  #   k3d v5.8.3 が digest つきの参照を受けて pull・起動することは手元で実測した（作業仕様書 20261015_1858）。
+  #   K3S_IMAGE は参照全体の上書きであり、与えた人が版と digest を一緒に決める（tag だけで与えれば固定は外れる。運用者の明示の選択）。
   # **理由は「バージョンを揃えたいから」ではない。揃っていないことが静かに素通りするからである。**
   # k3d の既定 k3s（5.7.4 では v1.30.4）が同梱する traefik chart は 25.0.3 で、そこでは `expose` が bool
   # であり、deploy/local/edge/traefik-entrypoint.yaml の map 形式（chart 26 以降）は型不一致で reconcile に
   # 失敗する。ところが `kubectl apply` は成功するため **admin(50000) が立たないまま本スクリプトは EXIT=0 で
   # 返る**（実測: GitHub ホストランナー / run 32554867883）。構造そのもの（reconcile 失敗が伝わらない）は
   # #953 で別途扱う。ここは「pin が外れたことに気づける」ための口である。
-  K3S_IMAGE="${K3S_IMAGE:-rancher/k3s:v1.35.4-k3s1}"
+  K3S_IMAGE="${K3S_IMAGE:-rancher/k3s:v1.35.4-k3s1@sha256:475e036b3fd595472c13ec708c148ffd95459d5f9e40e6df76ba4d5b27098570}"
   CREATE_ARGS+=(--image "$K3S_IMAGE")
   if ! k3d cluster list "$CLUSTER" >/dev/null 2>&1; then
     k3d cluster create "$CLUSTER" "${CREATE_ARGS[@]}"
@@ -707,9 +719,9 @@ if [ "${ISTIO:-}" = "1" ]; then
   helm repo update istio >/dev/null
   # base = CRD とクラスタ共通のリソース。istiod = コントロールプレーン。
   helm upgrade --install istio-base istio/base \
-    -n istio-system --create-namespace --version "${ISTIO_VERSION:-1.30.4}" --wait --timeout 5m
+    -n istio-system --create-namespace --version "$ISTIO_VERSION" --wait --timeout 5m
   helm upgrade --install istiod istio/istiod \
-    -n istio-system --version "${ISTIO_VERSION:-1.30.4}" \
+    -n istio-system --version "$ISTIO_VERSION" \
     -f deploy/istio/istiod-values-local.yaml --wait --timeout 10m
   # CRD が Established になるまで待つ（apply の競合を避ける。cert-manager と同じ作法）。
   for crd in peerauthentications.security.istio.io destinationrules.networking.istio.io \
@@ -892,6 +904,18 @@ vault_openbao_migration_gate() {
   esac
 }
 
+# NFR-21, NFR-18, IADR-0548 (#1868): 秘匿管理の日次バックアップ（CronJob platform-backup-vault）が raft のスナップショットを
+# 取るための k8s auth の role と最小のポリシー（sys/storage/raft/snapshot の read だけ）を入れる。**永続化の overlay を当てて
+# unseal を待った後に毎回呼ぶ**（VAULT ブロックと ESO ブロックの当て直し。冪等）。ESO の有無によらない —— 入れないと
+# バックアップの Job がログインできず、毎日の回が失敗する。root トークンは vault Pod の中でだけ使う（Job へは渡さない）。
+# 失敗しても起動は止めない（秘匿管理そのものは動いている）。WARN を出し、バックアップの Job の失敗として見えるに任せる。
+platform_backup_vault_bootstrap() {
+  if ! bash deploy/local/platform-backup/vault/bootstrap.sh; then
+    echo "WARN: 秘匿管理のバックアップの認証（deploy/local/platform-backup/vault/bootstrap.sh）を入れられませんでした。" >&2
+    echo "WARN:   CronJob platform-backup-vault はログインできずに失敗します。docs/operations/platform-infra-backup-runbook.md §1 の 5 を見て再実行してください。" >&2
+  fi
+}
+
 if [ "${VAULT:-}" = "1" ]; then
   echo "==> [opt-in] Vault dev + ClusterSecretStore (要 External Secrets Operator CRD)"
   # dev root トークン（dev 既定 or env 上書き・平文は Git に載せない）。
@@ -918,8 +942,12 @@ if [ "${VAULT:-}" = "1" ]; then
     echo "    [PERSIST 既定] 秘匿管理（OpenBao）を raft ストレージ＋PVC で永続化（Pod 内ラッパーが init / unseal / 固定トークンを自動化）"
     vault_openbao_migration_gate
   fi
+  VAULT_PERSIST_APPLIED=0
   if kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1; then
     kubectl apply -k "$VAULT_KUSTOMIZE"
+    if [ "$VAULT_KUSTOMIZE" = "deploy/local/vault-persistence" ]; then
+      VAULT_PERSIST_APPLIED=1
+    fi
   else
     echo "    WARN: external-secrets.io CRD 未導入のため ClusterSecretStore/Vault は skip。" >&2
     echo "          先に ESO を導入する（deploy/local/vault/README.md）。Vault dev のみ適用（非永続・再起動で揮発）:" >&2
@@ -928,6 +956,9 @@ if [ "${VAULT:-}" = "1" ]; then
   # 永続化版は readinessProbe（vault status＝unseal 済み）を持つ。ここで待たないと、後段の ESO bootstrap が
   # unseal 前に `kubectl exec` して "Vault is sealed" で落ちる。-dev（PERSIST=0）は probe が無く即座に返る。
   kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
+  if [ "$VAULT_PERSIST_APPLIED" = "1" ]; then
+    platform_backup_vault_bootstrap
+  fi
 fi
 
 # IADR-0096 (#310): Vault＋ESO で secret を Pod へ自動供給する（本番同等・k8s auth）。opt-in（既定オフ・fail-safe）。
@@ -945,12 +976,14 @@ if [ "${ESO:-}" = "1" ]; then
   # #310 フォローアップ（本 fix）: chart 版を **pin** する。latest 追従だと、v1beta1 の提供を停止し v1 を GA と
   # する版（例 2.x）を掴んだ瞬間、deploy/local/vault/eso/*.yaml（本 fix で external-secrets.io/v1 へ移行済み）が
   # 参照する API と CRD の served バージョンが乖離し、"no matches for kind ... in version" で apply が失敗する。
-  # 既定は v1 を GA 提供する安定版（動作実証済み）。上書きは ESO_CHART_VERSION で可能（同じく v1 提供版を選ぶこと）。
-  ESO_CHART_VERSION="${ESO_CHART_VERSION:-2.8.0}"
+  # 既定は v1 を GA 提供する安定版（動作実証済み）。
+  # ［2026-10-15 / #1858・IADR-0547］版は冒頭の pin_version が決め（ESO_CHART_VERSION は同じ値しか受けない）、
+  #   内側のイメージは values（tag@digest）が持つ。版を上げるときは両方を対で改める。
   helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
   helm repo update external-secrets >/dev/null 2>&1 || true
   helm upgrade --install external-secrets external-secrets/external-secrets \
     --version "$ESO_CHART_VERSION" \
+    -f deploy/local/vault/eso/external-secrets-values.yaml \
     -n external-secrets --create-namespace --set installCRDs=true --wait
   # Vault の SA に TokenReview 権限（k8s auth の reviewer）。
   kubectl apply -f deploy/local/vault/eso/vault-auth-rbac.yaml
@@ -965,17 +998,16 @@ if [ "${ESO:-}" = "1" ]; then
   # (3) Stakater Reloader: Secret が変わったら、注釈（secret.reloader.stakater.com/reload）を持つ Deployment を作り直す
   #     （env の secretKeyRef は Pod 起動時に 1 度だけ解決される。IADR-0103）。**chart と image を pin する**（ESO と同じ理由）。
   #     🔴 見る名前空間を 3 つに限る（watchGlobally=false ＋ namespaces ＝ 各名前空間の Role。クラスタ全体の Secret を読ませない）。
-  #     上書きは RELOADER_CHART_VERSION / RELOADER_IMAGE_TAG（chart の既定の image と合わせること）。
-  RELOADER_CHART_VERSION="${RELOADER_CHART_VERSION:-2.2.17}"
-  RELOADER_IMAGE_TAG="${RELOADER_IMAGE_TAG:-v1.4.22}"
+  #     ［2026-10-15 / #1858・IADR-0547］chart の版は冒頭の pin_version、image は values（tag@digest）が持つ
+  #     （従前の --set image.tag は tag だけで digest を持てないので外した。RELOADER_IMAGE_TAG は冒頭で拒否する）。
   helm repo add stakater https://stakater.github.io/stakater-charts >/dev/null 2>&1 || true
   helm repo update stakater >/dev/null 2>&1 || true
   helm upgrade --install reloader stakater/reloader \
     --version "$RELOADER_CHART_VERSION" \
+    -f deploy/local/reloader/values.yaml \
     -n reloader --create-namespace \
     --set reloader.watchGlobally=false \
     --set "reloader.namespaces={$MSP_NS,$INFRA_NS,ai-stock-trading}" \
-    --set image.tag="$RELOADER_IMAGE_TAG" \
     --wait
   # IADR-0457 (#1479): 🔴 新規クラスタでは上の VAULT ブロックの時点で ESO の CRD が無く、Vault は -dev（非永続）の
   # フォールバックで立っている。ESO を入れた「後」にここで永続化オーバーレイを当て直し、unseal を待ってから seed する
@@ -984,6 +1016,7 @@ if [ "${ESO:-}" = "1" ]; then
     vault_openbao_migration_gate
     kubectl apply -k deploy/local/vault-persistence
     kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
+    platform_backup_vault_bootstrap
   fi
   # Vault k8s auth の enable/config＋policy＋role `eso`＋seed（runtime・kubectl exec 経由・平文非コミット・再実行可）。
   bash deploy/local/vault/eso/bootstrap.sh
@@ -1190,9 +1223,11 @@ if [ "${ARGOCD:-}" = "1" ]; then
   # ため大 CRD が通る。--force-conflicts は旧 client-side 実行済みクラスタ再実行時の field 所有権競合を
   # server-side manager が奪取して冪等・再実行安全にする（本ブートストラップは install manifest の再適用を
   # 前提とし、ArgoCD 自身が同 CRD を自己管理下に置いた後の再実行は想定しない）。
-  # IADR-0519 (#1843): URL は版のタグ（ARGOCD_VERSION。冒頭で形を検査済み）。従前の `stable` は取得のたびに中身が変わり得た。
-  echo "    -> Argo CD ${ARGOCD_VERSION} (IADR-0519)"
-  kubectl apply --server-side --force-conflicts -n argocd -f "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml"
+  # IADR-0519 (#1843): URL は版のタグ。従前の `stable` は取得のたびに中身が変わり得た。
+  # ［2026-10-15 / #1858・IADR-0547］URL と内側の 3 イメージ（argocd・dex・redis）の digest は kustomization が持つ
+  #   （kustomize の images 置換）。版は冒頭の pin_version が決め、ARGOCD_VERSION は同じ値しか受けない。
+  echo "    -> Argo CD ${ARGOCD_VERSION} (IADR-0519・digest は IADR-0547)"
+  kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install
   kubectl apply -f deploy/argocd/appproject.yaml -f deploy/argocd/application.yaml
   if [ -d src/ai-stock-trading/deploy/argocd ]; then
     kubectl apply -f src/ai-stock-trading/deploy/argocd/appproject.yaml -f src/ai-stock-trading/deploy/argocd/application.yaml
@@ -1395,11 +1430,11 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   # ルート CA（Secret cert-manager/local-edge-root-ca）と葉証明書（Secret edge-tls）を作る。
   # --server-side は大 CRD の annotation 262144B 上限を避けるため（IADR-0088 が ArgoCD で是正した先例）。
   # 順序が要る: CRD が Established になる前に tls/ を apply すると "no matches for kind Certificate" で落ちる。
-  # バージョンは固定する（IADR-0088: 浮動タグは再デプロイのたびに中身が変わり得る）。ESO と同じく
-  # env で上書きできるが、既定は動作を実測した版を置く。上書き時も CRD の apiVersion 差に注意すること。
-  CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.21.1}"
-  echo "    -> cert-manager ${CERT_MANAGER_VERSION} (edge TLS, IADR-0206)"
-  kubectl apply --server-side --force-conflicts -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml"
+  # バージョンは固定する（IADR-0088: 浮動タグは再デプロイのたびに中身が変わり得る）。
+  # ［2026-10-15 / #1858・IADR-0547］release の URL と内側の 3 イメージの digest は kustomization が持つ
+  #   （kustomize の images 置換）。版は冒頭の pin_version が決め、CERT_MANAGER_VERSION は同じ値しか受けない。
+  echo "    -> cert-manager ${CERT_MANAGER_VERSION} (edge TLS, IADR-0206・digest は IADR-0547)"
+  kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager
   kubectl wait --for=condition=Established --timeout=120s \
     crd/certificates.cert-manager.io crd/clusterissuers.cert-manager.io
   kubectl -n cert-manager rollout status deploy/cert-manager --timeout=180s

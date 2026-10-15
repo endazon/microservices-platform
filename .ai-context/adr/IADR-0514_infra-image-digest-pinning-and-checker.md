@@ -2,10 +2,10 @@
 title: IADR-0514 deploy/ のインフラのイメージは `tag@sha256:<index digest>` で固定し、tag だけの参照の再混入は検査器（check-image-digests.js）で止める。自製イメージは対象外、Renovate は採らない
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0107, ADR-0112, ADR-0030, ADR-0007, ADR-0106, IADR-0461, IADR-0088, IADR-0315, IADR-0286]
+related_ids: [NFR, ADR-0107, ADR-0112, ADR-0030, ADR-0007, ADR-0106, IADR-0461, IADR-0088, IADR-0315, IADR-0286, IADR-0547]
 author: claude
 created: 2026-10-08
-updated: 2026-10-09
+updated: 2026-10-15
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0107_infrastructure-product-selection-criteria.md 決定 3（digest 固定・Harbor ミラー）・決定 5・フォローアップ 2
   - planning:projects/microservices-platform/07_adr/ADR-0112_infrastructure-admin-endpoint-criterion.md 決定 3
@@ -118,6 +118,7 @@ related_specs:
 
 1. **`scripts/` が chart / マニフェストで入れる製品**（Istio・External Secrets・Reloader・cert-manager・Argo CD・k3s）は `deploy/` に参照が無く、本 IADR の対象外。Argo CD は `stable` ブランチのマニフェストを直接 apply しており版すら固定されていない。計画への確認を作業仕様書 §環流の記録 5 に置き、planning#750 で起票した。
    ［2026-10-09 追記 / #1843］**計画 ADR-0135 が母集合に含めると裁定し、版の固定と点検の追補を行った。** Argo CD は版のタグの URL（v3.5.4）、k3s は既定で `rancher/k3s:v1.35.4-k3s1` に固定した。6 製品の基準 A〜D は運用仕様書 §点検の記録 の 2026-10-08 回の追補に載せた。chart・上流マニフェストの内側のイメージの digest は固定していない（理由と残余は [IADR-0519](./IADR-0519_scripts-installed-products-version-pinning.md)）。
+   ［2026-10-15 追記 / #1858］**内側のイメージも固定した**（[IADR-0547](./IADR-0547_scripts-installed-inner-image-digest-pinning.md)）。本検査器は kustomization の `images:` と `scripts/*.sh` の `*_IMAGE` の既定も読むようにした（同 決定 3）。
 2. **統合試験の Testcontainers のイメージ**（`postgres:16-alpine`・`rabbitmq:3.13-alpine` 等。Qdrant と SeaweedFS を除く）は `deploy/` の外で、固定していない。
    ［2026-10-09 追記 / #1814］**解消した。** 基底イメージ（`src/` の Dockerfile）とあわせて固定し、検査器の走査に入れた（決定 3 の追記）。
 3. digest は registry API から読んだ値であり、**本作業ではクラスタで pull して確かめていない**（実行機にクラスタが無い）。compose の構文（`docker compose config`）と chart の描画・スキーマ（`check-deploy-manifests.js`）は確かめた。

@@ -11015,7 +11015,7 @@ ${r.stderr}`);
       const up = fs.readFileSync(path.join(REPO_IS, 'scripts/k8s-local-up.sh'), 'utf8');
       assert.match(
         up,
-        /^\s*K3S_IMAGE="\$\{K3S_IMAGE:-rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+\}"\s*$/m,
+        /^\s*K3S_IMAGE="\$\{K3S_IMAGE:-rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+@sha256:[0-9a-f]{64}\}"\s*$/m, // #1858: tag@digest
         'k8s-local-up.sh の K3S_IMAGE の既定が版で固定されていない。**揃っていないことが静かに素通りする**（#953）ため、' +
           'ここは好みではなく検査の前提である',
       );
@@ -15747,6 +15747,8 @@ server.listen(0, '127.0.0.1', async () => {
   // --- #1843 / 計画 ADR-0135 決定 2 / IADR-0519: Argo CD は版のタグの URL、k3s は既定で固定 ---------------
   // 🔴 **`stable` ブランチは取得のたびに中身が変わり得る**（タグですらない）。スクリプト・手順書・ワークフローのどれか 1 つでも
   // `stable` や別の版を書けば、「同じ手順で同じ版が入る」が崩れる。版の正は k8s-local-up.sh の ARGOCD_VERSION の既定。
+  // ［2026-10-15 / #1858・IADR-0547］既定は `pin_version ARGOCD_VERSION <版>`（違う値の env は拒否）。URL は kustomization
+  // （deploy/argocd/install）が持ち、起動器は -k で当てる。URL の版と既定の一致は下の #1858 の節も見る。
   {
     const fs = require('fs');
     const path = require('path');
@@ -15754,7 +15756,7 @@ server.listen(0, '127.0.0.1', async () => {
     const REPO = path.resolve(__dirname, '..');
     const up = fs.readFileSync(path.join(REPO, 'scripts/k8s-local-up.sh'), 'utf8');
     const ARGO_URL_RE = /argoproj\/argo-cd\/([^/\s"'`]+)\/manifests\/[A-Za-z0-9._-]*install\.yaml/g;
-    const argoDefault = (/^ARGOCD_VERSION="\$\{ARGOCD_VERSION:-([^}]*)\}"\s*$/m.exec(up) || [])[1];
+    const argoDefault = (/^pin_version ARGOCD_VERSION (\S+) /m.exec(up) || [])[1];
     /** 凍結記録（作業仕様書・superpowers）は当時の記述のまま残す（書き換えない）ので対象外。submodule は別リポジトリ。 */
     const argoRefs = () => {
       let out = '';
@@ -15776,24 +15778,34 @@ server.listen(0, '127.0.0.1', async () => {
     };
 
     ok('#1843: k8s-local-up.sh の ARGOCD_VERSION の既定は版のタグ（vX.Y.Z）', () => {
-      assert.ok(argoDefault, 'k8s-local-up.sh に ARGOCD_VERSION="${ARGOCD_VERSION:-<版>}" の行が無い');
+      assert.ok(argoDefault, 'k8s-local-up.sh に pin_version ARGOCD_VERSION <版> の行が無い');
       assert.match(argoDefault, /^v\d+\.\d+\.\d+$/, `ARGOCD_VERSION の既定が版のタグでない: ${argoDefault}`);
     });
 
-    ok('#1843: k8s-local-up.sh の install の URL は ARGOCD_VERSION を使う（版を直書きしない・stable を書かない）', () => {
+    ok('#1843・#1858: install の URL は kustomization の 1 か所だけ（起動器は URL を直接 apply しない）', () => {
       const lines = up.split('\n').filter((l) => !/^\s*#/.test(l) && /argo-cd\/[^/]+\/manifests\/install\.yaml/.test(l));
-      assert.strictEqual(lines.length, 1, `install の行が 1 本でない:\n${lines.join('\n')}`);
-      assert.ok(lines[0].includes('argo-cd/${ARGOCD_VERSION}/manifests/install.yaml'), `ARGOCD_VERSION を使っていない: ${lines[0]}`);
+      assert.deepStrictEqual(lines, [], `起動器が install.yaml の URL を直接持っている（digest の固定を経ない）:\n${lines.join('\n')}`);
+      const k = fs.readFileSync(path.join(REPO, 'deploy/argocd/install/kustomization.yaml'), 'utf8');
+      const urls = [...k.matchAll(ARGO_URL_RE)].map((m) => m[1]);
+      assert.deepStrictEqual(urls, [argoDefault], `kustomization の URL の版が既定（${argoDefault}）と違う: ${urls.join(', ')}`);
     });
 
     ok('#1843: リポジトリ内の Argo CD の install の URL はすべて既定と同じ版のタグ（stable・別の版を書かない）', () => {
       const refs = argoRefs();
-      // 陽性対照: 手順書（deploy/argocd・deploy/local/argocd・docs/how-to/deployment.md）の 3 か所は必ず拾う。
-      for (const f of ['deploy/argocd/README.md', 'deploy/local/argocd/README.md', 'docs/how-to/deployment.md']) {
-        assert.ok(refs.some((r) => r.where.startsWith(`${f}:`)), `${f} の Argo CD の URL を拾えていない（走査が壊れている）`);
-      }
+      // 陽性対照: kustomization（#1858 以後の URL の唯一の置き場）は必ず拾う。
+      assert.ok(refs.some((r) => r.where.startsWith('deploy/argocd/install/kustomization.yaml:')), 'kustomization の Argo CD の URL を拾えていない（走査が壊れている）');
       const bad = refs.filter((r) => r.ref !== '${ARGOCD_VERSION}' && r.ref !== argoDefault);
       assert.deepStrictEqual(bad, [], `既定（${argoDefault}）と違う版・ブランチの Argo CD の URL がある:\n${bad.map((r) => `${r.where} → ${r.ref}`).join('\n')}`);
+    });
+
+    // #1858 / IADR-0547: 手順書（deploy/argocd・deploy/local/argocd・docs/how-to/deployment.md）は URL を直接 apply せず、
+    // kustomization を -k で当てる（URL を直接 apply すると内側のイメージの digest の固定を経ない）。
+    ok('#1858: Argo CD の手順書 3 か所は kustomization（deploy/argocd/install）を -k で当てる', () => {
+      for (const f of ['deploy/argocd/README.md', 'deploy/local/argocd/README.md', 'docs/how-to/deployment.md']) {
+        const text = fs.readFileSync(path.join(REPO, f), 'utf8');
+        assert.ok(text.includes('kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install'), `${f} が kustomization を当てていない`);
+        assert.ok(!/manifests\/install\.yaml/.test(text), `${f} が install.yaml の URL を直接持っている（digest の固定を経ない）`);
+      }
     });
 
     ok('#1843: 変異 —— 手順書の URL を stable に戻すと拾う（検査の検出力）', () => {
@@ -15802,6 +15814,100 @@ server.listen(0, '127.0.0.1', async () => {
       const got = [...line.matchAll(ARGO_URL_RE)].map((m) => m[1]);
       assert.deepStrictEqual(got, ['stable']);
       assert.notStrictEqual(got[0], argoDefault);
+    });
+  }
+
+  // --- #1858 / 計画 ADR-0135 決定 2・ADR-0107 決定 3 / IADR-0547: scripts/ が入れる 6 製品の内側のイメージの digest -----------
+  // 🔴 **版（chart の --version・URL）と内側のイメージの tag@digest は対で決まる。** check-image-digests.js は digest の**形**と
+  // 同じ repo:tag の食い違いを見るが、「chart を 1.31 に上げたのに values の pilot は 1.30.4 のまま」は見ない。ここで突き合わせる。
+  // 判定は純関数（テキストを受ける）にし、変異（片側だけの更新）で赤になることも同じ関数で確かめる。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.resolve(__dirname, '..');
+    const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8').replace(/\r\n/g, '\n');
+    const DIGEST = '@sha256:[0-9a-f]{64}';
+    const pinned = (text, name) => (new RegExp(`^pin_version ${name} (\\S+) `, 'm').exec(text) || [])[1];
+    /** 版と固定の対を突き合わせ、食い違いを文で返す（空なら一致）。 */
+    const pairing = (t) => {
+      const bad = [];
+      const want = (cond, msg) => { if (!cond) bad.push(msg); };
+      // Istio: 起動器 2 本の版と values の 3 参照の tag。
+      const istio = pinned(t.up, 'ISTIO_VERSION');
+      want(istio && pinned(t.edge, 'ISTIO_VERSION') === istio, `ISTIO_VERSION が k8s-local-up.sh（${istio}）と istio-edge-up.sh で違う`);
+      const istioRefs = [...t.istiod.matchAll(new RegExp(`^\\s*image: registry\\.istio\\.io/release/(pilot|proxyv2):(\\S+?)(${DIGEST})?$`, 'gm'))];
+      want(istioRefs.length === 3, `istiod の values の pilot・proxy・proxy_init の参照が 3 つでない（${istioRefs.length}）`);
+      for (const m of istioRefs) want(m[2] === istio && m[3], `istiod の values の ${m[1]} が ${istio}@sha256 でない: ${m[2]}${m[3] || ''}`);
+      // ESO: chart と appVersion は同じ版（2.8.0 → v2.8.0。chart の Chart.yaml で実測）。3 参照とも。
+      const eso = pinned(t.up, 'ESO_CHART_VERSION');
+      const esoTags = [...t.eso.matchAll(new RegExp(`^\\s*tag: (\\S+?)(${DIGEST})?$`, 'gm'))];
+      want(esoTags.length === 3, `ESO の values の tag が 3 つでない（${esoTags.length}）`);
+      for (const m of esoTags) want(m[1] === `v${eso}` && m[2], `ESO の values の tag が v${eso}@sha256 でない: ${m[1]}${m[2] || ''}`);
+      // Reloader: chart と image の版は対応が外から引けないので、values が chart の版を名指しすること（版を上げたら values も触る）。
+      const rl = pinned(t.up, 'RELOADER_CHART_VERSION');
+      want(t.reloader.includes(`chart ${rl} `), `Reloader の values が chart の版（${rl}）を名指ししていない（chart だけ上げた）`);
+      want(new RegExp(`^\\s*tag: v\\d+\\.\\d+\\.\\d+${DIGEST}$`, 'm').test(t.reloader), 'Reloader の values の tag が tag@sha256 でない');
+      // cert-manager / Argo CD: kustomization の URL の版・起動器の版・images の newTag と digest。
+      const kust = (text, urlRe, version, mainImages) => {
+        const url = (urlRe.exec(text) || [])[1];
+        want(url === version, `kustomization の URL の版（${url}）が起動器の版（${version}）と違う`);
+        const items = [...text.matchAll(/^\s*- name: (\S+)\n\s*newTag: (\S+)\n\s*digest: (\S+)$/gm)];
+        for (const name of mainImages) {
+          const it = items.find((m) => m[1] === name);
+          want(it && it[2] === version, `${name} の newTag が ${version} でない: ${it ? it[2] : '(項目なし)'}`);
+        }
+        for (const m of items) want(new RegExp(`^${DIGEST.slice(1)}$`).test(m[3]), `${m[1]} の digest の形が違う: ${m[3]}`);
+        return items.length;
+      };
+      const cm = pinned(t.up, 'CERT_MANAGER_VERSION');
+      const cmN = kust(t.cm, /cert-manager\/releases\/download\/([^/\s]+)\/cert-manager\.yaml/, cm,
+        ['controller', 'webhook', 'cainjector'].map((c) => `quay.io/jetstack/cert-manager-${c}`));
+      want(cmN === 3, `cert-manager の images の項目（name・newTag・digest の 3 行）が 3 つでない（${cmN}）`);
+      const argo = pinned(t.up, 'ARGOCD_VERSION');
+      const argoN = kust(t.argo, /argoproj\/argo-cd\/([^/\s]+)\/manifests\/install\.yaml/, argo, ['quay.io/argoproj/argocd']);
+      want(argoN === 3, `Argo CD の images の項目（argocd・dex・redis）が 3 つでない（${argoN}）`);
+      return bad;
+    };
+    const texts = () => ({
+      up: read('scripts/k8s-local-up.sh'),
+      edge: read('scripts/istio-edge-up.sh'),
+      istiod: read('deploy/istio/istiod-values-local.yaml'),
+      eso: read('deploy/local/vault/eso/external-secrets-values.yaml'),
+      reloader: read('deploy/local/reloader/values.yaml'),
+      cm: read('deploy/local/edge/cert-manager/kustomization.yaml'),
+      argo: read('deploy/argocd/install/kustomization.yaml'),
+    });
+
+    ok('#1858: 6 製品の版と内側のイメージの tag@digest が対で揃っている', () => {
+      assert.deepStrictEqual(pairing(texts()), []);
+    });
+
+    ok('#1858: 変異 —— 片側だけの更新（版だけ・tag だけ・digest の欠落・項目の欠落）をすべて拾う', () => {
+      const D = 'sha256:' + 'f'.repeat(64);
+      const mutate = (key, from, to) => {
+        const t = texts();
+        assert.ok(from instanceof RegExp ? from.test(t[key]) : t[key].includes(from), `変異の起点が無い（${key}: ${from}）`);
+        t[key] = t[key].replace(from, to);
+        return pairing(t);
+      };
+      const cases = [
+        ['up', /^pin_version ISTIO_VERSION \S+ /m, 'pin_version ISTIO_VERSION 1.31.0 '], // chart だけ上げた
+        ['edge', /^pin_version ISTIO_VERSION \S+ /m, 'pin_version ISTIO_VERSION 1.30.5 '], // 起動器 1 本だけ
+        ['istiod', /pilot:1\.30\.4@/, 'pilot:1.30.5@'], // values の 1 参照だけ
+        ['istiod', /(proxyv2:1\.30\.4)@sha256:[0-9a-f]{64}/, '$1'], // digest の欠落
+        ['up', /^pin_version ESO_CHART_VERSION \S+ /m, 'pin_version ESO_CHART_VERSION 2.9.0 '],
+        ['eso', /tag: v2\.8\.0@/, 'tag: v2.8.1@'],
+        ['up', /^pin_version RELOADER_CHART_VERSION \S+ /m, 'pin_version RELOADER_CHART_VERSION 2.2.18 '],
+        ['reloader', /(tag: v1\.4\.22)@sha256:[0-9a-f]{64}/, '$1'],
+        ['up', /^pin_version CERT_MANAGER_VERSION \S+ /m, 'pin_version CERT_MANAGER_VERSION v1.21.2 '],
+        ['cm', /newTag: v1\.21\.1\n(\s*)digest: \S+\n(\s*- name: quay\.io\/jetstack\/cert-manager-cainjector)/, `newTag: v1.21.1\n$1digest: ${D}x\n$2`], // digest の形
+        ['cm', /\s*- name: quay\.io\/jetstack\/cert-manager-cainjector\n\s*newTag: \S+\n\s*digest: \S+/, ''], // 項目の欠落
+        ['up', /^pin_version ARGOCD_VERSION \S+ /m, 'pin_version ARGOCD_VERSION v3.5.5 '],
+        ['argo', /argo-cd\/v3\.5\.4\//, 'argo-cd/stable/'],
+        ['argo', /newTag: v3\.5\.4/, 'newTag: v3.5.3'],
+      ];
+      const silent = cases.filter(([key, from, to]) => mutate(key, from, to).length === 0).map(([key, from]) => `${key}: ${from}`);
+      assert.deepStrictEqual(silent, [], `変異を拾えなかった:\n${silent.join('\n')}`);
     });
   }
 

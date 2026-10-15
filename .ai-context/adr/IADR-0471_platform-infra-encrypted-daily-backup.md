@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-21, NFR-05, NFR-18, ADR-0002, ADR-0008, IADR-0066, IADR-0068, IADR-0082, IADR-0210, IADR-0369, IADR-0457]
 author: claude
 created: 2026-09-26
-updated: 2026-10-08
+updated: 2026-10-16
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
 related_specs:
@@ -138,6 +138,11 @@ age の公開鍵で暗号化して秘密鍵はクラスタに置かない、日�
   Job に Deployment を操作する権限と kubectl が要り、安くない。代わりに**写す前後でファイル一覧（名前・サイズ・更新時刻）の
   要約を比べ、変わっていたらやり直す（3 回まで。変わり続けたら失敗）**。ローカルの Vault は書き込みが稀で、実際には
   1 回で通る。残る限界（秒未満で同じサイズに書き換わるファイル）は手順書に書く。
+
+> ［2026-10-16 追記 / #1868］**本決定 4 は [IADR-0548](./IADR-0548_openbao-raft-snapshot-backup-k8s-auth.md) が改めた。** 秘匿管理が OpenBao の raft
+> （bbolt。ページをその場で書き換える）になり、前後の比較では破れた写しを見分けられなくなった。Vault の回は raft の整合したスナップショット
+> （専用の SA の k8s auth・`sys/storage/raft/snapshot` の read だけ）と init のファイルを写し、中の SHA256SUMS で検算する。tar と前後の比較は撤去した。
+> 暗号化・保持・保管先・時刻（本 IADR の他の決定）は変えていない。
 
 ### 5. 保管先: 目印ファイルで「クラスタ外」を確かめ、片方の失敗で止めない
 

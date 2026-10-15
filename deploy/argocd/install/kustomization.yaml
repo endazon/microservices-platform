@@ -1,0 +1,24 @@
+# NFR, 計画 ADR-0135 決定 2 / ADR-0107 決定 3, ADR-0007, IADR-0519・IADR-0547 (#1843, #1858): Argo CD 本体。
+#
+# 版のタグの URL の `install.yaml`（IADR-0519 決定 1。`stable` ブランチを読まない）を読み、内側の 3 イメージ
+#   （argocd・同梱の dex・redis）を digest で固定する（kustomize の images 置換。`newTag` と `digest` を両方書くと
+#   `<name>:<tag>@<digest>` で描かれる＝本リポジトリの表記）。namespace は起動器が `-n argocd` で与える（従前の -f と同じ）。
+# 起動器は `kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install`（IADR-0077）。
+# 🔴 版を上げるときは URL の版と 3 つの newTag・digest を対で改める（同梱の dex・redis の版は新しい install.yaml の
+#   `image:` から引く）。版の一致は scripts/scripts.repo.test.js、digest の形は scripts/check-image-digests.js、
+#   上流が足したイメージの取りこぼしは描画結果を見る scripts/check-deploy-manifests.js が止める。
+#   k8s-local-up.sh の ARGOCD_VERSION と手順書の URL も同じ版にする。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.4/manifests/install.yaml
+images:
+  - name: quay.io/argoproj/argocd
+    newTag: v3.5.4
+    digest: sha256:49dff79439bb38b1b942b19a113fe1fec7e6b6c671ddf9fe6a4a7c46bde0b77b
+  - name: ghcr.io/dexidp/dex
+    newTag: v2.45.1
+    digest: sha256:8499afd690c437f52301efd2b05b2455da5bd2dfc20332cd697dc9937f808462
+  - name: public.ecr.aws/docker/library/redis
+    newTag: 8.2.3-alpine
+    digest: sha256:08ad0b1d280850169a790dba1393ff7a90aef951fc19632cf4d3ce4f78e679ba

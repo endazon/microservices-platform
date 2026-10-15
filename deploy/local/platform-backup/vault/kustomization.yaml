@@ -6,6 +6,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# ［2026-10-16 / #1868］IADR-0548: raft の整合したスナップショットを k8s auth（専用の SA）で取る。role とポリシーは
+# 同じディレクトリの bootstrap.sh（runtime。kustomize の外）が秘匿管理へ入れる。
 resources:
   - ../script
+  - serviceaccount.yaml
   - cronjob.yaml

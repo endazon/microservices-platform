@@ -6,7 +6,13 @@
 # ★★ ここで決めているのは「メッシュを入れても既存のワークロードを壊さない」ことだけである。
 #   mTLS の強制（PeerAuthentication / DestinationRule）は **アプリの Helm チャート側**が持つ
 #   （deploy/helm/microservices-platform/templates/istio-mtls.yaml）。二重に持たない。
+# NFR, 計画 ADR-0135 決定 2 / ADR-0107 決定 3, IADR-0547 (#1858): chart の内側のイメージを digest で固定する。
+#   `/` を含む値は chart がそのまま使う（pilot は templates/deployment.yaml、proxyv2 は注入テンプレートの
+#   sidecar・init・gateway の 3 つ。gateway chart は `image: auto` で注入される）。tag は chart の版（ISTIO_VERSION）と同じにする
+#   —— 版と tag の一致は scripts/scripts.repo.test.js が、digest の形は scripts/check-image-digests.js が見る。
+#   🔴 版を上げるときは chart の版（k8s-local-up.sh・istio-edge-up.sh の ISTIO_VERSION）と 3 つの参照の tag・digest を対で改める。
 pilot:
+  image: registry.istio.io/release/pilot:1.30.4@sha256:c236c1df5cc127fe193e5a17d8ece9cdd0dc17c5d89b4e20baf01d464f029dce
   # 1 ノードの dev。既存 27 Pod と同居するので istiod に大きな枠を与えない。
   resources:
     requests: { cpu: 50m, memory: 128Mi }
@@ -15,7 +21,12 @@ pilot:
   replicaCount: 1
 
 global:
+  # IADR-0547 (#1858): istio-init（proxy_init）も proxyv2 を使う。同じ repo:tag を 2 か所に書くので、片側だけの更新は
+  #   check-image-digests.js の [digest-mismatch] が止める。
+  proxy_init:
+    image: registry.istio.io/release/proxyv2:1.30.4@sha256:43b6aeab7428470d3d0ea6b6f0bc217e5b36df2b279bba337643df48590226d9
   proxy:
+    image: registry.istio.io/release/proxyv2:1.30.4@sha256:43b6aeab7428470d3d0ea6b6f0bc217e5b36df2b279bba337643df48590226d9
     # サイドカーは Pod ごとに 1 つ増える。15 Deployment ぶんが同じノードに載るため、
     # 既定（100m/128Mi requests）のままだと**要求だけでノードの割当を食い潰す**。
     resources:
