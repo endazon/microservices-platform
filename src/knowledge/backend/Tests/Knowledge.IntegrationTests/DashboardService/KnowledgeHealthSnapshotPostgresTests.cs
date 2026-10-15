@@ -1,8 +1,8 @@
 using System.Data.Common;
 using System.Diagnostics;
 using AwesomeAssertions;
-using Google.Protobuf;
 using FluentValidation;
+using Google.Protobuf;
 using Knowledge.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
