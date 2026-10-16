@@ -221,6 +221,62 @@ public class GraphDocumentSyncConsumerTests
         NodeOf(db, DocA).Should().NotBeNull("除外 → 含めるでノードを作り直す");
     }
 
+    // ── FR-06, FR-17, FR-18, 計画 ADR-0141 決定 2・3, [[IADR-0551]] 決定 3 (#1961): アーカイブした文書 ──────
+    //
+    // アーカイブした文書はグラフ（SC-18・MCP のグラフ系ツール・AI 提案・クラスタ要約）に載せない。判定は台帳の状態。
+
+    private static DocumentUpdated Archived(Guid docId, DateTimeOffset at)
+        => Event(docId: docId, updatedAt: at) with { Status = DocumentArchival.ArchivedStatus };
+
+    // 🔴 アーカイブ済みはノードを作らない（一括の対象の表題だけのノードも作らない）。陽性対照: 同じ器の公開済みはノードになる。
+    [Fact]
+    public async Task アーカイブ済みの文書はノードを作らない()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+
+        await Consumer(db).Handle(Archived(DocA, T0), ct);
+        await Consumer(db).Handle(Event(docId: DocB), ct);
+
+        NodeOf(db, DocA).Should().BeNull("アーカイブした文書はグラフに載せない（ADR-0141 決定 2）");
+        db.TermProfiles.Any(p => p.DocumentId == DocA).Should().BeFalse("類似度候補の材料も作らない");
+        NodeOf(db, DocB).Should().NotBeNull("陽性対照: 公開済みの文書はノードになる");
+    }
+
+    // 🔴 公開済み → アーカイブでノードと辺（共有タグの辺）を撤収する。AI 提案の候補・クラスタの母集合（ノード）からも外れる。
+    [Fact]
+    public async Task アーカイブするとノードと辺が撤収され_相手のノードは残る()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+        await EdgeTypeSeed.EnsureSeededAsync(db, ct); // 共有タグの辺は既定の関連型で作る（型が無いと辺ができない）
+
+        await Consumer(db).Handle(Event(docId: DocA), ct);
+        await Consumer(db).Handle(Event(docId: DocB, title: "文書B"), ct);
+        db.Edges.Any(e => e.SourceDocumentId == DocA || e.TargetDocumentId == DocA)
+            .Should().BeTrue("陽性対照: 同じタグ（ops）を持つ 2 文書の間に共有タグの辺がある");
+
+        await Consumer(db).Handle(Archived(DocA, T0.AddMinutes(1)), ct);
+
+        NodeOf(db, DocA).Should().BeNull("アーカイブはノードの撤収まで及ぶ");
+        db.Edges.Any(e => e.SourceDocumentId == DocA || e.TargetDocumentId == DocA)
+            .Should().BeFalse("アーカイブした文書に触れる辺を残さない（近傍・探索に出ない）");
+        NodeOf(db, DocB).Should().NotBeNull("陽性対照: アーカイブしていない相手のノードは残る");
+    }
+
+    // 戻し方 (a)（再正規化で `normalized` に戻る）では、通常の経路でノードを作り直す。
+    [Fact]
+    public async Task アーカイブ済みから正規化済みへ戻るとノードを作り直す()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+
+        await Consumer(db).Handle(Archived(DocA, T0), ct);
+        await Consumer(db).Handle(Event(docId: DocA, updatedAt: T0.AddMinutes(1)) with { Status = "normalized" }, ct);
+
+        NodeOf(db, DocA).Should().NotBeNull();
+    }
+
     // ── デノーマライズ（ADR-0033 決定 2）と AbacNodeFilter の実効 ──────────────
 
     [Fact]

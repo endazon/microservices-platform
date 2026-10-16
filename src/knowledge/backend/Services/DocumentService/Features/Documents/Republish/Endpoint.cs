@@ -54,6 +54,9 @@ internal static class RepublishDocumentUpdatedEndpoint
             }
             if (req.Ids is { Count: > 0 } ids)
                 query = query.Where(d => ids.Contains(d.Id));
+            // FR-06, 計画 ADR-0141 決定 2, [[IADR-0551]] 決定 5 (#1961): 状態の完全一致（主な用途は `archived` の遡及）。
+            if (req.Status is { } status)
+                query = query.Where(d => d.Status == status);
 
             var dryRun = req.DryRun == true;
             var limit = RepublishSelection.ClampLimit(req.Limit);

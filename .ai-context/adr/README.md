@@ -628,3 +628,4 @@
 | [IADR-0548](./IADR-0548_openbao-raft-snapshot-backup-k8s-auth.md) | 秘匿管理の日次バックアップは稼働中の bbolt の tar をやめ、raft の整合したスナップショットを専用 SA の k8s auth（snapshot の read だけ・1 回きりのトークン）で取り、中の SHA256SUMS で検算してから暗号化する（IADR-0471 決定 4 を改める。#1868） | Accepted |
 | [IADR-0549](./IADR-0549_archive-bodyless-pre-cutover-documents.md) | 9/26 の切り替えより前に作られ本文のオブジェクトが無い（NoSuchKey）文書は、管理者だけの一回限りの口と駆動スクリプトで既存の状態「アーカイブ」へ移す。本文の有無は HEAD と範囲 0-0 の GET で確かめ、索引からは単票のアーカイブと同じ発行で外す。アーカイブ解除は足さない（#1931 項目 3） | Accepted |
 | [IADR-0550](./IADR-0550_chart-observability-front-guard.md) | 描画結果に Loki・Tempo が現れたら、前段の認証（Secret を受ける同じ Pod のリバースプロキシ・製品の loopback 待ち）と名指しの NetworkPolicy の両方を check-deploy-manifests.js で要求する（#1867） | Accepted |
+| [IADR-0551](./IADR-0551_archive-excluded-from-discovery-surfaces.md) | アーカイブした文書は台帳の状態で判定し、取り込みは全索引から点を消し、グラフはノードを撤収し、MCP の一覧は外す。lifecycle 属性は同期しない。配備前のアーカイブ済みは状態で絞った再発行で遡及する（計画 ADR-0141。#1961） | Accepted |

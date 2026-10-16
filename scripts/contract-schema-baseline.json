@@ -1106,6 +1106,16 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.DocumentArchival": {
+        "kind": "class",
+        "members": {
+          "ArchivedStatus": {
+            "source": "const",
+            "type": "string",
+            "value": "\"archived\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.DocumentContentDto": {
         "kind": "record",
         "members": {

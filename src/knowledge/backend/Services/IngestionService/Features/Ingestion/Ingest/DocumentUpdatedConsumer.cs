@@ -84,6 +84,25 @@ public class DocumentUpdatedConsumer(
             return;
         }
 
+        // 🔴 FR-06, FR-02, 計画 ADR-0141 決定 2・3, [[IADR-0551]] 決定 2 (#1961): **アーカイブの門。**
+        //
+        // アーカイブした文書は検索・RAG に載せない（閲覧〔SC-03〕と SC-05 の一覧には残る。どちらも索引を引かない）。
+        // 露出の門と同じく**実体を消す** —— 点を残して検索の出口で状態を見て隠す形は採らない（点は状態を運ばず、
+        // 出口の絞り込みの実装ミス 1 つで露出に変わる。上の露出の門と同じ理由）。
+        //
+        // 判定は `DocumentArchival.IsArchived`（台帳の状態。SC-05 が「アーカイブ済み」と出す値）。`lifecycle` 属性は見ない。
+        // 🔴 **本文を読む前・`MarkdownUri` の判定より前に置く。** 撤収は本文の有無に依存しない（本文の無いアーカイブ済み —— #1931 の
+        // 一括の対象 —— も、本文の在るアーカイブ済みも同じに外れる）。本文を読まないので埋め込みの費用もかからない。
+        // アーカイブ済みの文書へのその後の更新（タグの付け替え・再発行）も status=archived のまま届くので、この門で外れたままになる。
+        if (DocumentArchival.IsArchived(ev.Status))
+        {
+            await DeleteFromAllAsync(ev.DocumentId, ct);
+            logger.LogInformation(
+                "DocumentUpdated {Id}: the document is archived; withdrew the document from every index",
+                ev.DocumentId);
+            return;
+        }
+
         // FR-02 例外フロー E1: 本文の所在が無ければ取り込みをスキップ
         if (ev.MarkdownUri is null)
         {
@@ -123,10 +142,9 @@ public class DocumentUpdatedConsumer(
             //
             // ［2026-10-16 / #1931 項目 3・[[IADR-0549]]］**本文の無い文書の扱いはオーナー裁定 B（アーカイブ）で決まった。**
             // 9/26 の切り替えより前の本文の無い文書は、DocumentService の一回限りの管理操作（`POST /documents/archive-bodyless`）で
-            // 既存の状態「アーカイブ」へ移す。その `DocumentUpdated`（status=archived）がここへ届くと、上の全コレクション削除で
-            // 旧い点が消え、本文の取得がこの分岐へ来る —— **点は書かない**（メタデータ点 `IndexMetadataOnlyAsync` も使わない）。
-            // つまり「索引から外す」は、この分岐の挙動（従来どおりの位置の全消し ＋ 何も書かない）で成り立っている。
-            // 削除を本文の取得の後へ動かす・題名だけの点を書く、はどちらも採らない（IADR-0549 決定 4）。
+            // 既存の状態「アーカイブ」へ移す。題名だけの点は書かない（メタデータ点 `IndexMetadataOnlyAsync` も使わない。IADR-0549 決定 4）。
+            // ［2026-10-16 / #1961・[[IADR-0551]]］その `DocumentUpdated`（status=archived）は、上の**アーカイブの門**で全索引から外れて
+            // 終わり、**この分岐へは来ない**（本文を読まない）。ここへ来るのは、アーカイブしていない文書の本文が欠けているときだけである。
             //
             // 完了イベントは発行しない（取り込みは完了していない。購読者も無い —— #1771）。
             // ログに出すのは文書 ID・本文の所在（storage://<bucket>/<key>。秘密情報を含まない）・更新日時だけである。
@@ -134,7 +152,7 @@ public class DocumentUpdatedConsumer(
             bodyMissingMetrics.RecordMissing();
             logger.LogWarning(
                 "Ingestion {DocumentId}: body object missing (NoSuchKey) at {BodyKey} (updated_at={UpdatedAt:O}); "
-                + "skipped without retry or dead-lettering; no point written (body-less documents are archived: #1931 item 3, IADR-0549)",
+                + "skipped without retry or dead-lettering; no point written (archive body-less documents: #1931 item 3, IADR-0549)",
                 ev.DocumentId, missing.MarkdownUri, ev.UpdatedAt);
             return;
         }

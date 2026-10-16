@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-08, UC-03, NFR-09, FR-19]
-adrs: [ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122]
-iadrs: [IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
-specs: [20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
-issues: [#1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
+adrs: [ADR-0141, ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122]
+iadrs: [IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
+specs: [20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
+issues: [#1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -50,7 +50,7 @@ issues: [#1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, pl
 | `PUT /documents/{id}` | タイトル・メタデータ更新（版追記・並行制御） | 200 / 400 / 404 / 409 |
 | `PATCH /documents/{id}/metadata` | 属性・タグのみ更新（版追記） | 200 / 404 / 409 |
 | `POST /documents/{id}/publish` | 公開（`status=published`・版追記） | 200 / 404 |
-| `POST /documents/{id}/archive` | アーカイブ（`status=archived`・版追記。管理者だけ）。下流の Wiki 同期がページを非公開化する | 200 / 404 |
+| `POST /documents/{id}/archive` | アーカイブ（`status=archived`・版追記。管理者だけ）。見つかる面（検索・RAG・グラフ・Wiki・MCP の一覧）から外す（下記「アーカイブの効果」） | 200 / 404 |
 | `POST /documents/archive-bodyless` | 本文のオブジェクトが無い古い文書の一括アーカイブ（一回限りの管理操作。管理者だけ。下記） | 200 / 400 / 403 / 502 / 503 |
 | `GET /documents/{id}/versions` | 版履歴一覧（新しい順）。**認証を要する** | 200 `DocumentVersionDto[]` / 401 / 404 |
 | `GET /documents/{id}/versions/{version}` | 特定版取得。**認証を要する** | 200 / 401 / 404 |
@@ -114,9 +114,25 @@ issues: [#1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, pl
 - 対象は `createdAt < createdBefore`（**必須**）かつ未アーカイブかつ本文の参照が `storage://` で、オブジェクトストレージへの存在確認（HEAD 相当。本文を読まない）が
   **キーの欠落（NoSuchKey）**と答えた組織文書だけである。バケットが無い・時間切れ・5xx では「無い」と言わず、そのページを 1 件もアーカイブしない。
 - 本文が在る・期限以降・本文の参照が無い・個人資料・アーカイブ済みには触らない。2 回流しても 2 回目は何もしない。
-- アーカイブした文書は版を 1 つ進め（版の注記は固定の文字列）、単票のアーカイブと同じ `DocumentUpdated` を出す。取り込みは全コレクションから点を消し、
-  本文が無いので何も書かない。Wiki 同期はページを非公開化する。
+- アーカイブした文書は版を 1 つ進め（版の注記は固定の文字列）、単票のアーカイブと同じ `DocumentUpdated` を出す。下流の扱いは単票と同じ（下記「アーカイブの効果」）。
 - 量の制御・カナリア・中断と再開は駆動スクリプト `scripts/archive-bodyless-documents.js` が持つ（運用仕様書の同名の節）。
+
+### アーカイブの効果
+
+- **アーカイブした文書は、検索（横断検索と MCP の検索ツール）・RAG・知識グラフ（AI 提案・クラスタ要約・MCP のグラフ系ツールを含む）・Wiki・MCP の文書一覧に載らない。**
+- **閲覧（文書詳細画面。`GET /documents/{id}`）と文書管理画面の一覧（状態の絞り込みの「アーカイブ済み」）には ABAC の範囲で残る。**
+  MCP の文書 ID を指定した取得は従前どおり（アーカイブ済みを返すかは未決。内容の ABAC の門が開くまでは経路ごと拒否される）。
+- 判定は**台帳の状態**（`status=archived`）で行う。文書管理画面が「アーカイブ済み」と出す値と同じである。
+  🔴 **ABAC の文書属性 `lifecycle` はアーカイブを表さない**（データソースの既定から入った値のまま残る）。ポリシーの `allowedLifecycles` ではアーカイブした文書を扱えない。
+- 下流の実体:
+  - 取り込みは `status=archived` の `DocumentUpdated` を受けると、本文を読まずに全索引（モデル別のコレクション・語彙索引）から当該文書の点を消す。
+    点を残して検索の出口で隠すことはしない。
+  - 知識グラフはノードを作らず、既存のノード・辺・共有タグの複製を撤収する。AI 提案の候補とクラスタはノードを母集合にするので、そこからも外れる。
+  - Wiki 同期はページを非公開化する（ページの実体は Wiki.js に残る）。
+  - MCP の文書一覧は、ABAC の判定の後・件数を数える前に落とす（件数にも入らない）。
+- アーカイブ済みの文書へのその後の更新（タグの付け替えなど）も `status=archived` のまま届くので、外れたままである。
+- **この効果より前にアーカイブした文書**は、再発行の口を状態で絞って流すと外れる（`POST /documents/republish-updated` の `status=archived`。
+  駆動スクリプトの `--status archived`。受け手は本文を読まないので埋め込みの費用はかからない。運用仕様書の一括アーカイブの節）。
 
 ### 本文指紋（`ContentFingerprint`）
 
@@ -204,8 +220,11 @@ stateDiagram-v2
 ## 未決事項
 
 - 版間の差分（diff）表示・特定版へのロールバック（復元）API は範囲外（後続タスク）。
-- **アーカイブ解除（`archived` から公開・正規化済みへ戻す操作）は持たない。** 計画に無い遷移であり、要否・可否は計画の裁定待ちである。
-  公開の口は `archived` からの公開を拒む（409）。戻り道は再正規化（同じ文書 ID の正規化イベントが届く）だけである。
+- **アーカイブ解除（`archived` から公開・正規化済みへ戻す操作）は製品の操作として持たない**（計画の裁定 2026-10-16）。
+  公開の口は `archived` からの公開を拒む（409）。戻し方は 2 つだけである: (a) データソースの再同期（データソース由来の文書に限る。状態は正規化済みへ戻り、
+  公開は別の操作。取り込み・グラフは通常の経路で載せ直す）、(b) 非常時に版の履歴から台帳の状態だけを SQL で戻す（運用の非常手段。下流は戻らない。
+  手順は運用仕様書の一括アーカイブの節）。文書管理画面で人が作成した文書と機械クライアントが作成した文書は (b) だけである。
+- 本文の投入（`PUT /documents/{id}/body`）はアーカイブ済みの文書の状態を正規化済みへ戻す（拒否しない）。その扱いは計画の判断待ちである。
 - 本文（Markdown 本体）は**オブジェクトストレージへ実保存され、DB は参照 URI だけを持つ**。
   削除は**その実体（過去の版が指していた本文と図表資産を含む）まで及ぶ**。
   🔴 ただし**資産の台帳は遡及付与しない**ため、台帳へ資産欄を足す以前に取り込まれた文書の

@@ -26,6 +26,7 @@
  *   node scripts/republish-document-updated.js --live --resume --operator alice --reason "DLQ の原因を直した"  # 状態ファイルから続ける
  *   node scripts/republish-document-updated.js --live --reason "internal だけ" --attr confidentiality=internal --page-size 20 --sleep-ms 5000
  *   node scripts/republish-document-updated.js --live --operator alice --reason "切り替え後だけ" --created-after 2026-09-27T00:00:00Z   # #1931
+ *   node scripts/republish-document-updated.js --live --operator alice --reason "アーカイブ済みを外す（遡及）" --status archived   # #1961・IADR-0551
  *
  * 主な環境変数:
  *   REPUBLISH_DOCUMENT_URL / REPUBLISH_KC_URL（与えれば port-forward を張らない）
@@ -70,6 +71,9 @@ const log = (s) => process.stdout.write(`${s}\n`);
 const warn = (s) => process.stderr.write(`${s}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// FR-06, 計画 ADR-0141 決定 2, IADR-0551 決定 5 (#1961): `--status` が受ける値（口の `status` の値域と同じ。未知は口も 400）。
+const STATUSES = ['draft', 'normalized', 'published', 'archived'];
+
 const USAGE = `使い方: node scripts/republish-document-updated.js --live [オプション]
   --dry-run                     発行せず、件数・機密区分の内訳・本文なし・門で止まる件数を出す
   --resume                      状態ファイルから続ける（絞り込みは状態ファイルのものを使う）
@@ -87,6 +91,7 @@ const USAGE = `使い方: node scripts/republish-document-updated.js --live [オ
   --attr <key=value>            属性の完全一致で絞る（繰り返し可・AND）
   --created-before <ISO8601>    この時刻より前に作られた文書だけ（既定は新規の走査の開始時刻）
   --created-after <ISO8601>     この時刻以降に作られた文書だけ（--created-before と併せると after ≤ 作成時刻 < before の区間）
+  --status <status>             台帳の状態の完全一致で絞る（${STATUSES.join(' / ')}）。archived で流すと、配備前にアーカイブした文書が検索・グラフから外れる
   --operator <name>             操作者（口のログへ認証済みの主体と並べて残す。既定は環境変数 USER。${MAX_OPERATOR_LENGTH} 文字まで）
   --reason <text>               理由（発行する実行では必須。口のログへ残す。${MAX_REASON_LENGTH} 文字まで）`;
 
@@ -111,7 +116,7 @@ function parseArgs(argv) {
     canary: DEFAULTS.canary, drainTimeoutMs: DEFAULTS.drainTimeoutMs,
     maxQueueDepth: DEFAULTS.maxQueueDepth, maxDlqGrowth: DEFAULTS.maxDlqGrowth,
     maxConsecutiveFailures: DEFAULTS.maxConsecutiveFailures,
-    stateFile: DEFAULTS.stateFile, ids: null, attributes: null, createdBefore: null, createdAfter: null,
+    stateFile: DEFAULTS.stateFile, ids: null, attributes: null, createdBefore: null, createdAfter: null, status: null,
     operator: null, reason: null,
   };
   const value = (i, name) => {
@@ -185,12 +190,20 @@ function parseArgs(argv) {
         i++;
         break;
       }
+      case '--status': {
+        // FR-06, #1961: 台帳の状態の完全一致。口へそのまま渡す（未知の値はここで落とす。口も 400 にする）。
+        const raw = value(i, a);
+        if (!STATUSES.includes(raw)) throw new Error(`--status は ${STATUSES.join(' / ')} のいずれかで指定してください（${raw}）。`);
+        o.status = raw;
+        i++;
+        break;
+      }
       default:
         throw new Error(`知らない引数です: ${a}（--help を参照）`);
     }
   }
   if (o.resume && o.dryRun) throw new Error('--resume と --dry-run は同時に指定できません。');
-  if (o.resume && (o.ids || o.attributes || o.createdBefore || o.createdAfter))
+  if (o.resume && (o.ids || o.attributes || o.createdBefore || o.createdAfter || o.status))
     throw new Error('--resume では絞り込みを指定しません（状態ファイルの絞り込みを使う）。');
   const interval = intervalProblem(o);
   if (interval) throw new Error(interval);
@@ -214,6 +227,7 @@ function filtersOf(o) {
     : null;
   return {
     ids: o.ids ? [...o.ids].sort() : null, attributes, createdBefore: o.createdBefore || null, createdAfter: o.createdAfter || null,
+    status: o.status || null,
   };
 }
 
@@ -276,6 +290,9 @@ function stateProblem(state) {
   // #1931: createdAfter は後から足した。無い（旧い状態）は下限なしと読む。
   if (state.filters.createdAfter != null && typeof state.filters.createdAfter !== 'string')
     return '状態ファイルの絞り込み（createdAfter）が不正です。';
+  // #1961: status も後から足した。無い（旧い状態）は状態を問わないと読む。
+  if (state.filters.status != null && !STATUSES.includes(state.filters.status))
+    return '状態ファイルの絞り込み（status）が不正です。';
   if (state.cursor !== null && typeof state.cursor !== 'string') return '状態ファイルの cursor が不正です。';
   if (state.confirmedCursor !== null && typeof state.confirmedCursor !== 'string') return '状態ファイルの confirmedCursor が不正です。';
   if (typeof state.confirmedDone !== 'boolean') return '状態ファイルの confirmedDone が不正です。';
@@ -294,7 +311,9 @@ function sameFilters(state, o) {
     && JSON.stringify(f.attributes) === JSON.stringify(s.attributes ?? null)
     && (f.createdBefore === null || f.createdBefore === s.createdBefore)
     // #1931: createdAfter には既定が無いので、無指定と指定は違う走査である（完全一致だけを同じとみなす）。
-    && f.createdAfter === (s.createdAfter ?? null);
+    && f.createdAfter === (s.createdAfter ?? null)
+    // #1961: status も既定が無い（無指定は状態を問わない）。完全一致だけを同じ走査とみなす。
+    && f.status === (s.status ?? null);
 }
 
 function loadState(file, fsImpl = fs) {
@@ -319,6 +338,7 @@ function buildRequestBody(filters, { dryRun, limit, cursor, requestedBy, reason 
   if (filters.createdBefore) body.createdBefore = filters.createdBefore;
   if (filters.ids) body.ids = filters.ids;
   if (filters.attributes) body.attributes = filters.attributes;
+  if (filters.status) body.status = filters.status;
   return body;
 }
 
@@ -452,6 +472,10 @@ function summarizeDryRun(res, filters = {}) {
     `  語彙索引だけ（埋め込まない）: ${lexicalOnly} 件`,
     `  本文の所在が無い（取り込みは何もしない。Wiki・グラフの同期だけ動く）: ${res.withoutBody} 件`,
     `  発行の門で止まる（露出の 3 トグルが OFF の個人資料）: ${res.skippedByGate} 件`,
+    // #1961 / IADR-0551: アーカイブ済みは取り込み・グラフが本文を読まずに外す（上の「埋め込みへ進む」は当たらない）。
+    ...(filters.status === 'archived'
+      ? ['  状態 archived だけ: 取り込みは本文を読まずに全索引から外し、グラフはノードを撤収する（埋め込みの費用はかからない）']
+      : filters.status ? [`  状態 ${filters.status} だけ`] : []),
   ];
 }
 
@@ -811,6 +835,7 @@ module.exports = {
   main,
   DEFAULTS,
   STATE_VERSION,
+  STATUSES,
   parseArgs,
   missingReason,
   filtersOf,

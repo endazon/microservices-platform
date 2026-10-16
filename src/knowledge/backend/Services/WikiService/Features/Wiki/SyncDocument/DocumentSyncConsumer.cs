@@ -75,7 +75,7 @@ public class DocumentSyncConsumer(
         // Issue #88: アーカイブ（非公開化）の伝播。Wiki.js ページを unpublish + private にし、
         // メタデータを Archived にする（ゲートウェイの一覧・個別から不可視）。メタデータ未同期でも
         // Wiki.js 側の非公開化は正準パス（DocumentId 由来）で試みる（冪等・deny-closed）。
-        if (ev.Status == "archived")
+        if (DocumentArchival.IsArchived(ev.Status))
         {
             await WikiJsAsync(t => wikiJs.ArchivePageAsync(WikiPage.PathFor(ev.DocumentId), t), ct);
 

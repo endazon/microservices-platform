@@ -352,6 +352,43 @@ public sealed class GrpcMcpToolExecutionTests : IDisposable
             "文書 ID を指定した取得は SC-03 の閲覧と同じ意味であり、ABAC の範囲で題名と属性を返す");
     }
 
+    // 🔴 X-71（FR-06, FR-16, 計画 ADR-0141 決定 2, [[IADR-0551]] 決定 4 / #1961）: アーカイブした文書は MCP の一覧に載らず件数にも入らない。
+    // 文書 ID を指定した個別の取得は ADR-0141 が定めない（従前どおり ABAC の範囲で返る）。
+    // 陽性対照: 同じ器・同じ利用者で、アーカイブしていない文書は一覧に載り、REST（SC-03 の閲覧・一覧）にはアーカイブ済みも載る。
+    // 🔴 文書は**この試験の利用者が所有する restricted** にする（X-70 と同じ理由。X-59 の件数の一致を壊さない）。
+    [Fact]
+    public async Task アーカイブした文書はMCPの一覧に載らず個別の取得とRESTには残る()
+    {
+        var s = await SeedAsync();
+        Dictionary<string, string> Owned() => new()
+        {
+            ["confidentiality"] = "restricted",
+            [DocumentScopes.Key] = DocumentScopes.Organization,
+            ["owner"] = s.User,
+        };
+        var archived = Document.Create("アーカイブした手順書", null, null, Owned());
+        archived.Archive();
+        var active = Document.Create("現行の手順書", null, null, Owned());
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            db.Documents.AddRange(archived, active);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        var (rest, restCount) = await RestViewAsync(s.User, [archived.Id, active.Id]);
+        rest.Should().BeEquivalentTo([Seeded.Id(archived.Id), Seeded.Id(active.Id)],
+            "器の対照: REST（SC-03 の閲覧）ではアーカイブ済みも読める（ADR-0141 決定 2「閲覧は残す」）");
+
+        var list = await ExecuteAsync(List(s.User));
+        Ids(list).Should().NotContain(Seeded.Id(archived.Id), "アーカイブした文書は MCP の一覧に載せない（ADR-0141 決定 2）")
+            .And.Contain(Seeded.Id(active.Id), "陽性対照: アーカイブしていない文書は載る");
+        list.TotalCount.Should().Be(restCount - 1, "件数にも入れない（REST の一覧よりアーカイブ済みの 1 件だけ少ない）");
+
+        Ids(await ExecuteAsync(Get(s.User, archived.Id))).Should().Equal([Seeded.Id(archived.Id)],
+            "ID 指定の取得は ADR-0141 が定めない（フォローアップ 2）。従前どおり ABAC の範囲で返す");
+    }
+
     // 🔴 X-59（［2026-09-28 改訂 / #1611 段 2 案 2］）: 門が開いている間、MCP 経路の個別・一覧の結果は REST の同じ利用者の結果と一致する
     // （［2026-10-10 追記 / #1879］露出の 3 属性を 3 つとも除外にした組織文書だけは一覧から外す —— X-70。器の文書はその形を持たない）
     // （超えない・欠けない。一覧の件数も）。属性の合わない利用者に他人の機密の組織文書は返らない。
