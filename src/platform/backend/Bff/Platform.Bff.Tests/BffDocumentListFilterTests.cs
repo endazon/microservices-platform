@@ -174,6 +174,41 @@ public class BffDocumentListFilterTests : IClassFixture<BffTestFactory>
         withHidden.Items.Should().NotContain(d => d.Attributes["confidentiality"] == "confidential");
     }
 
+    // FR-06, FR-19, SC-05, ADR-0036 D-08, ADR-0043 決定 2, [[IADR-0545]] (#1923 / 計画 §共通シェル「横断の表示規約（一覧の件数）」planning#799):
+    // 🔴 **他人の個人資料も、絞り込みの件数・全体の件数・状態別の件数のどれにも現れない。**
+    //   個人資料は区分（ABAC）では読めるので、上の ABAC の陰性試験（confidential を混ぜる）では捕まらない ——
+    //   落としているのは `IsManageable` の第 2 項（個人資料でない）である。混ぜた台帳と混ぜない台帳で応答が一致することで示す。
+    [Theory]
+    [InlineData("?q=alpha")]
+    [InlineData("?status=draft")]
+    [InlineData("?status=published&q=alpha")]
+    [InlineData("?sort=title-asc&limit=1&offset=1")]
+    [InlineData("")]
+    public async Task 他人の個人資料は絞り込みの件数にも全体の件数にも状態別の件数にも現れない(string query)
+    {
+        // 区分は internal（読める）・表題は「alpha」・状態は draft と published —— どの絞り込みにも一致する。
+        DocumentDto PersonalLike(int n, string status, bool personal) => Doc(n, $"alpha 個人 {n}", status) with
+        {
+            Attributes = personal
+                ? new() { ["confidentiality"] = "internal", ["doc_scope"] = "private-note", ["owner"] = "someone-else" }
+                : new() { ["confidentiality"] = "internal" },
+        };
+
+        // 陽性対照: 個人資料の印を外した同じ 2 件は数えられる（落としているのは区分ではなく個人資料の除外である）。
+        _factory.StubDocumentList = [.. VisibleOnly(), PersonalLike(7, "draft", personal: false), PersonalLike(8, "published", personal: false)];
+        var control = await PageAsync("?q=alpha");
+        (control.Total, control.UnfilteredTotal).Should().Be((4, 6));
+
+        _factory.StubDocumentList = [.. VisibleOnly(), PersonalLike(7, "draft", personal: true), PersonalLike(8, "published", personal: true)];
+        var withPersonal = await PageAsync(query);
+        _factory.StubDocumentList = VisibleOnly();
+        var withoutPersonal = await PageAsync(query);
+
+        withPersonal.Should().BeEquivalentTo(withoutPersonal, o => o.WithStrictOrdering());
+        withPersonal.UnfilteredTotal.Should().Be(4);
+        withPersonal.StatusCounts.Values.Sum().Should().Be(4);
+    }
+
     // 🔴 1 周の途中で更新された文書は、後段の次のページで（キーが動いた先で）もう一度返り得る（昇順の更新日時なら末尾。監査の再現）。
     // 同じ ID は最初に見た位置だけを数え、窓にも 2 度並べない。陽性対照: 後段は実際に同じ文書を 2 度返している。
     [Fact]

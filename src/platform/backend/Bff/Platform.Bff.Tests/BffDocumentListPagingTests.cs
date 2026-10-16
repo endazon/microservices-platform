@@ -213,16 +213,22 @@ public class BffDocumentListPagingTests : IClassFixture<BffTestFactory>
     }
 
     // スコープが解決できない（許可ポリシーが無い）なら空のページ（総件数 0）。権限外の存在を示さない。
-    [Fact]
-    public async Task スコープが無ければ空のページを返す()
+    // ［2026-10-16 / #1923・計画 §共通シェル「横断の表示規約（一覧の件数）」planning#799］段 2（IADR-0545）で足した
+    // 全体の件数・状態別の件数も 0 / 空である（絞り込みを付けても同じ）。
+    [Theory]
+    [InlineData("?limit=10")]
+    [InlineData("?limit=10&status=draft&q=internal")]
+    public async Task スコープが無ければ空のページを返す(string query)
     {
         _factory.StubDocumentList = Mixed();
         _factory.SearchScopeGranted = false;
 
-        var page = await PageAsync("?limit=10");
+        var page = await PageAsync(query);
 
         page.Items.Should().BeEmpty();
         page.Total.Should().Be(0);
+        page.UnfilteredTotal.Should().Be(0);
+        page.StatusCounts.Should().BeEmpty();
         (page.Offset, page.Limit).Should().Be((0, 10));
     }
 
