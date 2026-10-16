@@ -755,8 +755,15 @@ services:
       # 延ばすときは、この environment に `Llm__AnthropicTimeoutSeconds: "180"` の形で足してコンテナを作り直す。
       # 🔴 呼び出し側の期限はこの値より短く保つ（長い呼び出し側がいるなら延ばす。docs/operations/operations.md）。
       # FR-02 / ADR-0016 / IADR-0025: 埋め込み。既定はティアB=Voyage（voyage-3.5/1024次元）。
-      # 契約時にゼロ保持（学習利用オプトアウト）を設定してから本番データを流す（運用仕様書 参照）。
+      # 鍵を入れる前に、アカウントでゼロ保持（学習利用オプトアウト）を設定してから本番データを流す（運用仕様書 参照）。
+      # NFR-17 / ADR-0140 決定 2・3 / IADR-0553 (#1960): 根拠は契約ではなく公開の規約とアカウントの opt-out で、
+      # 認定は opt-out を行ったアカウントの鍵に限る。確かめていない鍵は入れない（鍵が空なら Voyage へ何も出ない）。
       Embedding__Voyage__ApiKey: ${VOYAGE_API_KEY:-}
+      # NFR-17 / ADR-0140 決定 3 / IADR-0553 (#1960): Voyage の経路を止める口（既定 true＝従前どおり有効）。
+      # 🔴 false にするときは SELFHOSTED_EMBEDDING_ENABLED=true（ティアA）も与える。ティアA も無効のままだと
+      # 起動時の検証（EmbeddingRoutingOptionsValidator）が既定経路の不在で LLM ゲートウェイ全体を起動させない。
+      # ⚠️ Issue #98: voyage が index 0 である前提（下の selfhosted と同じ）。
+      Embedding__Routing__Endpoints__0__Enabled: ${VOYAGE_EMBEDDING_ENABLED:-true}
       # ADR-0017（Superseded by ADR-0127・注記は #1746） / IADR-0025: 高機密（confidential/restricted）はティアA=セルフホスト（Ruri v3/768次元）固定。
       # URL 未設定時は fail-closed（高機密は索引せず外部へも送らない）。基盤構築後に設定して有効化する。
       # ［2026-10-05 / #1746］ADR-0127 / IADR-0497: 高機密文書は埋め込まず語彙索引（ベクトルを持たないコレクション）にだけ

@@ -628,3 +628,4 @@
 | [IADR-0548](./IADR-0548_openbao-raft-snapshot-backup-k8s-auth.md) | 秘匿管理の日次バックアップは稼働中の bbolt の tar をやめ、raft の整合したスナップショットを専用 SA の k8s auth（snapshot の read だけ・1 回きりのトークン）で取り、中の SHA256SUMS で検算してから暗号化する（IADR-0471 決定 4 を改める。#1868） | Accepted |
 | [IADR-0549](./IADR-0549_archive-bodyless-pre-cutover-documents.md) | 9/26 の切り替えより前に作られ本文のオブジェクトが無い（NoSuchKey）文書は、管理者だけの一回限りの口と駆動スクリプトで既存の状態「アーカイブ」へ移す。本文の有無は HEAD と範囲 0-0 の GET で確かめ、索引からは単票のアーカイブと同じ発行で外す。アーカイブ解除は足さない（#1931 項目 3） | Accepted |
 | [IADR-0550](./IADR-0550_chart-observability-front-guard.md) | 描画結果に Loki・Tempo が現れたら、前段の認証（Secret を受ける同じ Pod のリバースプロキシ・製品の loopback 待ち）と名指しの NetworkPolicy の両方を check-deploy-manifests.js で要求する（#1867） | Accepted |
+| [IADR-0553](./IADR-0553_adr-0140-zdr-wording-and-unverified-voyage-procedure.md) | 計画 ADR-0140 への追随。実装の「ZDR」はモデル単位の除外と読み分け、組織の ZDR が働いていると読める記述を直す。未認定の Voyage の鍵の環境は「鍵を入れない」か「ティア A を有効にして Voyage を止める」で扱い、compose に Voyage の経路の口を足す（#1960） | Accepted |
