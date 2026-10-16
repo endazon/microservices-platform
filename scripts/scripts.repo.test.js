@@ -16738,12 +16738,41 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(lx.formatNs(lx.parseInstant('2026-10-14T01:02:03.000000123Z', '--from')), '2026-10-14T01:02:03.000000123Z');
       assert.throws(() => lx.parseInstant('2026-10-14T00:00:00', '--from'), /時差つき/);
       const base = ['--from', '2026-10-14T00:00:00+09:00', '--to', '2026-10-15T00:00:00+09:00'];
-      assert.strictEqual(lx.parseArgs([...base, '--out', 'x.jsonl']).limit, lx.MAX_LIMIT);
+      assert.strictEqual(lx.parseArgs([...base, '--out', 'x.jsonl', '--limit', String(lx.MAX_LIMIT)]).limit, lx.MAX_LIMIT); // 上限は受け付ける
       assert.throws(() => lx.parseArgs(base), /--out は必須/);
       assert.ok(lx.parseArgs([...base, '--summary']).summary);
       assert.throws(() => lx.parseArgs([...base, '--out', 'x', '--limit', String(lx.MAX_LIMIT + 1)]), /--limit/);
       assert.throws(() => lx.parseArgs(['--from', base[3], '--to', base[1], '--out', 'x']), /--to は --from より後/);
       assert.throws(() => lx.parseArgs([...base, '--out', 'x', '--token', 'abc']), /知らない引数/); // トークンを引数で受けない
+    });
+
+    // NFR-18, IADR-0553 (#1965): 既定の 1 ページは 1000 行。5000 では AST の長い行で 1 ページが querier → frontend の gRPC の
+    // 上限を超え、Loki の中で捨てられて毎回時間切れになった（PoC 実測）。数字そのものを固定する（MAX_LIMIT と比べない）。
+    ok('#1965 export-loki-logs: --limit を与えなければ 1 ページ 1000 行で要求する（上限 5000 は据え置き）', () => {
+      assert.strictEqual(lx.DEFAULT_LIMIT, 1000);
+      assert.strictEqual(lx.MAX_LIMIT, 5000);
+      const base = ['--from', '2026-10-14T00:00:00+09:00', '--to', '2026-10-15T00:00:00+09:00', '--out', 'x.jsonl'];
+      assert.strictEqual(lx.parseArgs(base).limit, 1000);
+      const r = runLx(`const o = lx.parseArgs(${JSON.stringify(['--from', '1970-01-01T00:00:00.000001Z', '--to', '1970-01-01T00:00:00.000002Z', '--out', 'x', '--url', 'http://x'])});
+        const got = []; await lx.exportRange(globalThis.__fake, o, (e) => got.push(e));
+        console.log(JSON.stringify({ n: got.length, limits: globalThis.__calls.map((c) => c.limit) }));`, ENTRIES_LX);
+      assert.strictEqual(r.n, 30);
+      assert.deepStrictEqual([...new Set(r.limits)], ['1000']);
+      assert.match(fsLx.readFileSync(SCRIPT_LX, 'utf8'), /既定 \$\{DEFAULT_LIMIT\}/, '--help に既定の件数を出す');
+    });
+
+    // NFR-18, ADR-0133, IADR-0553 (#1965): Loki の gRPC の受信・送信の上限（既定 4 MiB）を compose と経路 B の両方で 16 MiB に上げ、
+    // 両者を揃えておく。片方だけ戻すと、その経路でだけ書き出しが時間切れに戻る。
+    ok('#1965 Loki の gRPC の上限: compose と経路 B の inline の両方で recv / send が 16 MiB（16777216）', () => {
+      const MIB16 = '16777216';
+      for (const rel of ['deploy/loki-config.yaml', 'deploy/local/observability/loki.yaml']) {
+        const text = fsLx.readFileSync(pathLx.join(__dirname, '..', rel), 'utf8');
+        for (const key of ['grpc_server_max_recv_msg_size', 'grpc_server_max_send_msg_size']) {
+          const m = new RegExp(`^\\s*${key}:\\s*(\\S+)\\s*$`, 'm').exec(text);
+          assert.ok(m, `${rel} に ${key} が無い（既定 4 MiB に戻る）`);
+          assert.strictEqual(m[1], MIB16, `${rel} の ${key}`);
+        }
+      }
     });
 
     ok('#1935 export-loki-logs: main は書き出したファイルを JSON Lines で残し、既に在る出力先は上書きしない', () => {

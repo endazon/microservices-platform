@@ -3,6 +3,13 @@ auth_enabled: false
 
 server:
   http_listen_port: 3100
+  # NFR-18, ADR-0133, IADR-0553 (#1965): gRPC の受信・送信の上限を既定 4 MiB から 16 MiB へ上げる。
+  # querier が frontend へ返す 1 応答（query_range の 1 ページ）が 4 MiB を超えると ResourceExhausted で捨てられ、
+  # frontend は応答を待ち続ける（AST の長い行・limit 5000 で 4.6 MiB を実測）。querier 側の送信
+  # （frontend_worker.grpc_client_config.max_send_msg_size）は 3.0.0 の既定で 100 MiB あり、詰まるのは受け手のこの上限だけである。
+  # 経路 B の inline（deploy/local/observability/loki.yaml）にも同じ値がある。
+  grpc_server_max_recv_msg_size: 16777216
+  grpc_server_max_send_msg_size: 16777216
 
 common:
   ring:

@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-15
-updated: 2026-10-15
+updated: 2026-10-16
 ---
 <!-- trace:
 ids: [NFR-18]
 adrs: [ADR-0133, ADR-0112, ADR-0006]
-iadrs: [IADR-0543, IADR-0526, IADR-0210, IADR-0369]
-specs: [20261015_1935_loki-log-read-runbook, 20261009_1842_loki-tempo-front-auth]
-issues: [#1935, #1842, #1867]
+iadrs: [IADR-0543, IADR-0553, IADR-0526, IADR-0210, IADR-0369]
+specs: [20261015_1935_loki-log-read-runbook, 20261016_1965_loki-grpc-msg-size, 20261009_1842_loki-tempo-front-auth]
+issues: [#1935, #1965, #1842, #1867]
 -->
 
 # 運用 Runbook: 経路 B の Loki のログを読む・保全する
@@ -141,7 +141,8 @@ curl -s -o /dev/null -w '%{http_code}\n' -H @<(printf 'Authorization: Bearer %s\
 
 - 時刻は**時差つき**の RFC 3339 で与える（`2026-10-14T00:00:00+09:00`）。時差の無い書き方は拒まれる。
 - `--from` を含み、`--to` を含まない。1 回の範囲は 30 日と 1 時間まで（Loki の `max_query_length`）。
-- 1 応答の 5000 件を超える分は、スクリプトが古い順にページを送って全部書く。同じ時刻の行も 1 度ずつ書く。読み切れないときは、黙って打ち切らずに失敗する。
+- 1 応答は既定で 1000 件である（`--limit`。上限 5000）。それを超える分は、スクリプトが古い順にページを送って全部書く。同じ時刻の行も 1 度ずつ書く。読み切れないときは、黙って打ち切らずに失敗する。
+- **`--limit` を既定より上げない。** 1 ページは Loki の中の gRPC の 1 通に載り、その上限（16 MiB）を超えると Loki が応答を捨てて、スクリプトは時間切れになる。AST の行は長く（判断の全文など）、5000 件で上限を超えたことがある。時間切れになったら `--limit 500` に下げて取り直す（下の「困ったとき」）。
 - 既に在るファイルへは書かない（上書きしない）。
 
 ### 4-1. まず範囲に何があるかを見る（`--summary`）
@@ -260,6 +261,23 @@ kubectl -n platform-infra exec deploy/loki -c loki -- wget -qO- http://127.0.0.1
   retention_period: 0s
 ```
 
+書き出しの 1 ページが載る gRPC の上限（`server` の節）も、同じ口から読む。`server:` の節だけを切り出すので、他の節に同じ名前の鍵があっても混ざらない:
+
+```sh
+kubectl -n platform-infra exec deploy/loki -c loki -- wget -qO- http://127.0.0.1:3101/config \
+  | awk '/^server:/{f=1;next} /^[^ #]/{f=0} f && /^  grpc_server_max_(recv|send)_msg_size:/'
+```
+
+期待（2 行だけ）:
+
+```text
+  grpc_server_max_recv_msg_size: 16777216
+  grpc_server_max_send_msg_size: 16777216
+```
+
+- 値が `4194304`（既定の 4 MiB）のときは、設定が戻っている。行の長い job で書き出しが時間切れになる。
+- 何も出ないときは、`/config` を読めていない（経路 B の Pod の中から読んでいるかを確かめる）。
+
 - 2 つ目のコマンドは経路 B（Pod の中の Loki 本体）である。**GET の `/config` だけを読む。** 同じ口に削除・flush 等の運用の口があるので、それ以外を叩かない。
 - Loki に残っている最古の行は、§4-1 の `--summary` を 30 日の範囲で当てて見る（例 `--from 2026-09-16T00:00:00+09:00 --to 2026-10-16T00:00:00+09:00`）。
 
@@ -292,7 +310,8 @@ unset LOKI_TOKEN
 | `HTTP 401: 前段がトークンを受け付けなかった` | `LOKI_TOKEN` が空か違う。§2 をやり直す |
 | `HTTP 403: 前段がこの道を通さなかった` | `writer` のトークンを入れている。`reader` に替える |
 | `HTTP 400: Loki が要求を拒んだ` | LogQL の誤り、または範囲が 30 日と 1 時間を超えている。本文を見て範囲を分ける |
-| `Loki へ要求できなかった（port-forward は動いているか）` | port-forward が落ちている。§3 を立て直す |
+| `Loki へ要求できなかった（port-forward は動いているか）: GET … が 120000 ms 以内に応答しなかった` | 2 つの原因がある。まず 1 ページの大きさを疑う。<br>**(1) 1 ページが Loki の中の gRPC の上限を超えた。** Loki は応答を捨て、スクリプトは時間切れまで待つ。`kubectl -n platform-infra logs deploy/loki -c loki --since 10m \| grep ResourceExhausted` に `received message larger than max` が出る。`--limit 500`（それでも駄目なら `200`）にして、別の出力先へ取り直す。<br>**(2) port-forward が詰まっている。** (1) の行が無ければこちらである。§3 を立て直す |
+| `Loki へ要求できなかった（port-forward は動いているか）`（時間切れでない） | port-forward が落ちている。§3 を立て直す |
 | `--from は RFC 3339 の時差つきの時刻で与える` | `+09:00` か `Z` を付ける |
 | `部分的なファイル <出力先>.partial が残った（… 行。保全は不完全）` | 書き出しが途中で失敗した（直前の行に原因が出る）。`.partial` は完了した写しではない。原因を直し、別の出力先へ範囲全体を取り直す。`.partial` は取り直しが済んだら消す |
 | `出力先が既に在る（上書きしない）` | 別の名前にするか、前の写しを退避してから消す |
