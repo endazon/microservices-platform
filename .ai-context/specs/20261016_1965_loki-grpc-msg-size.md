@@ -44,7 +44,7 @@ issue: "#1965"
 - 既定値: `grpc_server_max_recv_msg_size: 4194304`・`frontend_worker.grpc_client_config.max_send_msg_size: 104857600`。
 - 再現: 1,220 バイトの行 9,023 行。現行の config で `--limit 5000` → 時間切れ・`received message larger than max (6267034 vs. 4194304)`。`--limit 1000` → 成功（10 ページ）。
 - 直した config で `--limit 5000` → 成功（2 ページ・sha256 一致・`ResourceExhausted` 0 件）。RSS 約 160 MiB。
-- `/config` の `grep`（runbook §5 のコマンド）の出力を実測し、期待の欄へそのまま写した（値 0 の 2 行が別の節から出る）。
+- `/config` を素の `grep` で引くと、同じ名前の鍵が別の節から値 0 で 2 行出る（実測）。runbook §5 は `awk` で `server:` の節だけを切り出す形にし、出力（16777216 の 2 行だけ）を実測して期待の欄へ写した（レビューの指摘）。
 
 ## 試験（`scripts.repo.test.js`）と変異
 

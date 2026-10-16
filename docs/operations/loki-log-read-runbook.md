@@ -247,17 +247,13 @@ jq -r '.line | fromjson? | .body // empty' ~/loki-audit/20261014/ast-audit-night
 kubectl -n platform-infra get configmap loki-config -o jsonpath='{.data.config\.yaml}' \
   | grep -nE 'retention|compactor|limits_config' || echo '保持の指定なし（既定＝削除しない）'
 kubectl -n platform-infra exec deploy/loki -c loki -- wget -qO- http://127.0.0.1:3101/config \
-  | grep -E '^\s*(retention_enabled|retention_period|max_query_length|max_entries_limit_per_query|grpc_server_max_(recv|send)_msg_size):'
+  | grep -E '^\s*(retention_enabled|retention_period|max_query_length|max_entries_limit_per_query):'
 ```
 
 期待:
 
 ```text
 保持の指定なし（既定＝削除しない）
-  grpc_server_max_recv_msg_size: 16777216
-  grpc_server_max_send_msg_size: 16777216
-  grpc_server_max_recv_msg_size: 0
-  grpc_server_max_send_msg_size: 0
   retention_enabled: false
   max_query_length: 30d1h
   max_entries_limit_per_query: 5000
@@ -265,8 +261,22 @@ kubectl -n platform-infra exec deploy/loki -c loki -- wget -qO- http://127.0.0.1
   retention_period: 0s
 ```
 
-- `grpc_server_max_*_msg_size` は、書き出しの 1 ページが載る gRPC の上限である（16 MiB）。`4194304`（既定の 4 MiB）のときは、設定が戻っている。行の長い job で書き出しが時間切れになる。
-  値が `0` の 2 行は別の節の既定値で、書き出しには関わらない。見るのは先に出る 2 行（16 MiB）である（Loki 3.0.0 の実測）。
+書き出しの 1 ページが載る gRPC の上限（`server` の節）も、同じ口から読む。`server:` の節だけを切り出すので、他の節に同じ名前の鍵があっても混ざらない:
+
+```sh
+kubectl -n platform-infra exec deploy/loki -c loki -- wget -qO- http://127.0.0.1:3101/config \
+  | awk '/^server:/{f=1;next} /^[^ #]/{f=0} f && /^  grpc_server_max_(recv|send)_msg_size:/'
+```
+
+期待（2 行だけ）:
+
+```text
+  grpc_server_max_recv_msg_size: 16777216
+  grpc_server_max_send_msg_size: 16777216
+```
+
+- 値が `4194304`（既定の 4 MiB）のときは、設定が戻っている。行の長い job で書き出しが時間切れになる。
+- 何も出ないときは、`/config` を読めていない（経路 B の Pod の中から読んでいるかを確かめる）。
 
 - 2 つ目のコマンドは経路 B（Pod の中の Loki 本体）である。**GET の `/config` だけを読む。** 同じ口に削除・flush 等の運用の口があるので、それ以外を叩かない。
 - Loki に残っている最古の行は、§4-1 の `--summary` を 30 日の範囲で当てて見る（例 `--from 2026-09-16T00:00:00+09:00 --to 2026-10-16T00:00:00+09:00`）。
