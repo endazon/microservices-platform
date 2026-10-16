@@ -1134,9 +1134,19 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
          compose は `.env` の `VOYAGE_API_KEY` を空のままにし、k8s は Secret `llm-provider-credentials` に `voyage-api-key` を置かない。
       2. **セルフホスト（ティア A）を有効にしたうえで Voyage の経路を止める。** 下の「セルフホストの有効化」を済ませてから止める。
          compose は `.env` に `VOYAGE_EMBEDDING_ENABLED=false`（`Embedding__Routing__Endpoints__0__Enabled` へ渡る。既定 `true`）と
-         `SELFHOSTED_EMBEDDING_ENABLED=true`・`SELFHOSTED_EMBEDDING_URL` を与える。
+         `SELFHOSTED_EMBEDDING_ENABLED=true`・`SELFHOSTED_EMBEDDING_URL` を与える。この口は `.env.example` に無いので、`.env` へ自分で次の 3 行を書く
+         （`docker compose --profile embedding up` でセルフホストの基盤も起こす）:
+
+         ```dotenv
+         VOYAGE_EMBEDDING_ENABLED=false
+         SELFHOSTED_EMBEDDING_ENABLED=true
+         SELFHOSTED_EMBEDDING_URL=http://embedding:80
+         ```
+
+         書いた値が届いたかは `docker compose config` の `llm-gateway` の environment で `Embedding__Routing__Endpoints__0__Enabled: "false"` を見る。
          Helm は `embedding.enabled: true` に加え、`services.llmgateway.extraEnvAppend` に
          `{name: Embedding__Routing__Endpoints__0__Enabled, value: "false"}` を足す（🔴 `extraEnv` に書くと本番既定の env が丸ごと置き換わるので、足すだけの `extraEnvAppend` を使う）。
+         Helm の形は、この値を与えた描画（`helm template`）ではまだ確かめていない。当てる前に、描画結果の `llmgateway` の env に `false` が載ることを見る。
          このとき `public` / `internal` の取り込みと検索クエリの埋め込みは、残る有効なエンドポイント（ティア A の Ruri）へ回る。
          主コレクション（voyage）を読む検索がどう振る舞うかは、この形では確かめていない（確かめたのは起動の可否だけである）。
       決定的ローカル（検証スタック専用）を有効にして起動だけを通す形は採らない（意味の近さを持たず、本番の検索には使えない）。
