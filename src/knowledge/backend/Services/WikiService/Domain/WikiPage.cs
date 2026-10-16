@@ -94,7 +94,9 @@ public class WikiPage
     {
         // [[IADR-0554]] 決定 3 (#1966): 題名だけ由来の候補も列の長さに収める（従来は接尾辞付きの候補だけを切っており、
         // 500 文字を超える題名は保存の 22001 で DLQ へ入った）。slug は値そのものが URL なので印は付けない。
-        var baseSlug = WikiText.FitColumn(ToSlug(title), SlugMaxLength, mark: false).TrimEnd('-');
+        // `ToSlug` は元から両端の `-` を落とすので、切らない題名の slug は従来と同じ値のまま（試験で固定）。末尾の `-` を落とすのは切ったときだけ。
+        var baseSlug = WikiText.FitColumn(ToSlug(title), SlugMaxLength, out var slugTruncated, mark: false);
+        if (slugTruncated) baseSlug = baseSlug.TrimEnd('-');
         var full = documentId.ToString("N");
         var stem = baseSlug.Length == 0 ? "doc" : baseSlug;
         // 接尾辞（"-" + 32 桁）を足しても列の長さを超えないよう、題名由来の部分を切る。

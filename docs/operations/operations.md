@@ -1412,6 +1412,10 @@ done
 - **DLQ の古い写しの片付け**: DLQ は全サービスで共有しているので、**手順 1 の全件（`jq length`）が手順 2 の件数と一致したときだけ** `purge_queue` してよい
   （`kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl purge_queue wolverine-dead-letter-queue`）。他のサービスの分が混ざっていれば purge せず残す
   （再発行は済んでいるので、残った写しは再投入しない）。
+- 🔴 **Wiki.js（とその中の knex・pg）の版を上げたら、値の長さの判定の文言を確かめ直す。** 「値の長さで拒まれた」の判定は、Wiki.js が返す DB の message に
+  定型句 `value too long for type ` が含まれるかどうかだけで行う（Wiki.js は SQLSTATE を返さない）。文言が変わると、この失敗は再試行の後に DLQ へ戻る
+  （記録して ack しなくなる。取りこぼしではなく安全側の劣化で、DLQ の増加で気付ける）。確かめた版は wiki-service の試験が compose と Helm の digest で固定しており、
+  digest を変えると試験が赤になる。255 文字を超える題名（または長いタグ）の文書を 1 件同期させ、Warning の message に定型句が残ることを確かめてから、試験の digest を更新する。
 - `jq` の `fromjson` で失敗するとき（`payload_encoding` が `base64`）は `.payload | @base64d | fromjson` に替える。
 
 ### 本文の無い切り替え前の文書のアーカイブ（文書管理の要求 / #1931）

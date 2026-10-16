@@ -33,6 +33,6 @@ public record WikiJsPage(
 public static class WikiJsColumns
 {
     public const int TitleMaxLength = 255;
-    public const int DescriptionMaxLength = 255;
+    // 説明（description）も varchar(255) だが、クライアントは常に空文字の定数を送るので定数を置かない（値を入れるときに足して `WikiText.FitColumn` を通す）。
     public const int PathMaxLength = 255;
 }

@@ -384,6 +384,17 @@ public class WikiSyncPermanentFailureTests
         WikiPage.PathFor(DocA).Length.Should().Be(40).And.BeLessThanOrEqualTo(WikiJsColumns.PathMaxLength);
     }
 
+    // 切り詰めの導入で、上限に届かない題名の slug（既存の URL）が変わらない。末尾の `-` を落とすのは切ったときだけ。
+    [Theory]
+    [InlineData("経費精算規程", "経費精算規程")]
+    [InlineData("Hello, World! ", "hello-world")]
+    [InlineData("見出し！", "見出し")]
+    [InlineData("--前後の記号--", "前後の記号")]
+    public void 切らない題名のslugは従来と同じ(string title, string expected)
+    {
+        WikiPage.SlugCandidates(title, DocA)[0].Should().Be(expected);
+    }
+
     [Fact]
     public async Task Wikijsが長さで拒めば記録してackする()
     {

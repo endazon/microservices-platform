@@ -58,7 +58,8 @@ related_specs:
 3. **印と対象の列**: 切ったら末尾に `…`（U+2026。1 文字）を付け、**印を含めて上限に収める**。上限ちょうどは切らない。
    - Wiki.js の表題: 255（`WikiJsColumns.TitleMaxLength`）。受け口が送る直前に切る。台帳の表題は元のまま（500 まで）残す。
    - 台帳の表題: 500（`WikiPage.TitleMaxLength`。`WikiDbContext` の `HasMaxLength` も同じ定数を引く。値は変えないのでマイグレーション不要）。
-   - slug の題名だけの候補: 500（印は付けない —— slug は値そのものが URL の鍵である）。接尾辞付きの候補は従来どおり。
+   - slug の題名だけの候補: 500（印は付けない —— slug は値そのものが URL の鍵である）。切ったときだけ末尾の `-` を落とす（`ToSlug` は元から両端の `-` を落とすので、
+     切らない題名の slug＝既存の URL は従来と同じ値のまま。試験で固定）。接尾辞付きの候補は従来どおり。
    - Wiki.js の説明（`description`）は**常に空文字の定数**、パスは `doc/<GUID>` の **40 文字固定**で、上限に届かない。切り詰めの処理は置かず、試験で前提を固定する
      （説明に値を入れるようになったら同じ `WikiText.FitColumn` を通す）。
 4. **観測（切り詰め）**: 計数 `wiki.sync.truncated`（Prometheus では `wiki_sync_truncated_total`）、タグ `field` = `title` だけ（基数が有限）。同じ Meter
@@ -87,6 +88,7 @@ related_specs:
 ## 残余リスク
 
 - (a) Wiki.js の版の更新で DB の message の定型句が変わると、value too long は一時障害へ戻る（DLQ に入るので気付ける。安全側）。
+  定型句を確かめた版は試験（`WikiJsGraphQlClientTests`）が compose と Helm の digest で固定し、digest を変えると赤になって定型句の再確認を求める。手順は運用仕様書に書いた。
 - (b) Wiki.js の DB が UTF-8 以外（`SQL_ASCII` 等）だと、varchar(n) の数え方がバイトになり 255 符号位置でも溢れ得る。経路B・compose はいずれも UTF-8（PostgreSQL の既定）である。
   溢れれば (5) で記録して ack される（DLQ には入らない）。
 - (c) タグが 255 文字を超える文書は Wiki に載らない（記録して ack）。現状の入力（AST・取り込み）のタグは短い。起きたら計数で分かる。

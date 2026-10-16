@@ -99,6 +99,33 @@ public class WikiJsGraphQlClientTests
             },
         });
 
+    // 🔴 [[IADR-0554]] 残余 (a): 恒久の判定は Wiki.js（knex・pg）が返す DB の message の定型句に依存する。定型句を確かめた Wiki.js の版
+    // （compose と Helm が固定する digest）が変わったらここで赤にし、上げる人に定型句の再確認を求める（変わると value too long は再試行 → DLQ へ戻る＝安全側の劣化）。
+    private const string VerifiedWikiJsDigest = "sha256:fffff288a52f76e5b8c19a4fbcd0f3e538e96edea642c4f2d813d54d59a876de";
+
+    [Fact]
+    public void 値の長さの定型句を確かめたWikijsの版から動いていない()
+    {
+        var compose = File.ReadAllText(RepoFile("deploy/docker-compose.yml"));
+        var values = File.ReadAllText(RepoFile("deploy/helm/microservices-platform/values.yaml"));
+
+        const string why = "Wiki.js の版を上げたら、値の長さで拒んだときの message に定型句 'value too long for type ' が残ることを確かめ、"
+            + "この定数を新しい digest へ更新する（運用仕様書「DLQ に溜まった Wiki 同期の失敗の再発行」）";
+        compose.Should().Contain($"ghcr.io/requarks/wiki:2.5@{VerifiedWikiJsDigest}", why);
+        values.Should().Contain($"digest: \"{VerifiedWikiJsDigest}\"", why);
+    }
+
+    // 解決できなければ止める（fail-closed）。
+    private static string RepoFile(string relative)
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "deploy", "docker-compose.yml")))
+                return Path.Combine(dir.FullName, relative.Replace('/', Path.DirectorySeparatorChar));
+        }
+        throw new InvalidOperationException("リポジトリのルート（deploy/docker-compose.yml を持つ）が見つからない。");
+    }
+
     [Theory]
     [InlineData("connect ECONNREFUSED 10.0.0.7:5432")]
     [InlineData("Knex: Timeout acquiring a connection. The pool is probably full.")]
