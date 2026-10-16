@@ -275,8 +275,18 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
         if (result.GetProperty("succeeded").GetBoolean()) return;
         var code = result.TryGetProperty("errorCode", out var c) ? c.ToString() : "?";
         var message = result.TryGetProperty("message", out var m) ? m.GetString() : "?";
+        // 🔴 FR-13, [[IADR-0554]] 決定 5 (#1966): 入力の長さで拒まれたのは恒久的な失敗（同じ入力の再試行では直らない）。
+        if (IsValueTooLong(message)) throw new WikiJsInputRejectedException(op, path, code, message ?? "");
         throw new WikiJsSyncException($"Wiki.js pages.{op} failed for '{path}' (code={code}): {message}");
     }
+
+    // PostgreSQL の 22001（string_data_right_truncation）の定型句。Wiki.js は SQLSTATE を運ばず、DB の例外の message だけを返す
+    // （実測 2026-10-16: `insert into "pages" (...) - value too long for type character varying(255)`）。
+    // 🔴 これ以外の文言は恒久と見なさない（一時障害を捨てない）。
+    internal const string ValueTooLongPhrase = "value too long for type ";
+
+    internal static bool IsValueTooLong(string? message)
+        => message is not null && message.Contains(ValueTooLongPhrase, StringComparison.Ordinal);
 
     // Wiki.js のパスは先頭スラッシュを持たない相対形（例 doc/<guid>）。
     private static string NormalizePath(string path) => path.TrimStart('/');

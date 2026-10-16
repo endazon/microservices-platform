@@ -29,6 +29,8 @@ namespace WikiService.Features.Wiki.SyncDocument;
 // 再索引の駆動（DLQ の増分で止まる）を止める。次の 2 つだけを Warning と計数 `wiki.sync.skipped{reason}` で記録して ack する:
 //   - slug の一意制約（`IX_Pages_Slug`）に、文書 ID 32 桁の接尾辞へ付け替えてもなお当たったとき（`slug_conflict`）。
 //   - 本文のオブジェクトが無い（NoSuchKey。`WikiBodyMissingException`）とき（`body_missing`。[[IADR-0540]] と同じ判定）。
+//   - ［2026-10-16 / #1966・[[IADR-0554]]］Wiki.js が値の長さ（22001）でページを拒んだとき（`value_too_long`。`WikiJsInputRejectedException`）。
+//     表題は先に Wiki.js の列の長さ（255）へ切り詰める（計数 `wiki.sync.truncated{field=title}`）ので、残るのは表題以外の列だけである。
 //   slug は題名だけでは一意にならない（同名の別文書）ので、文書 ID 由来の接尾辞で一意にする（`WikiPage.SlugCandidates`）。
 //
 // 🔴 ADR-0027 / E3b: **購読は Wolverine へ移した**（IPipelineStep<DocumentUpdated>・IADR-0239）。
@@ -201,8 +203,27 @@ public class DocumentSyncConsumer(
                 ev.DocumentId, missing.MarkdownUri, ev.UpdatedAt);
             return;
         }
-        var wikiPage = new WikiJsPage(page.WikiPath, ev.Title, markdown, ev.Tags, IsPrivate: !isPublic);
-        await WikiJsAsync(t => wikiJs.UpsertPageAsync(wikiPage, t), ct);
+        // 🔴 FR-13, [[IADR-0554]] 決定 1〜4 (#1966): Wiki.js の表題は varchar(255)。超える表題は文字の境界で切り、印（…）を付けて送る。
+        // 本文は書き換えない（元の表題は台帳と文書サービスに残る）。切ったことは計数に残す。
+        var wikiTitle = WikiText.FitColumn(ev.Title, WikiJsColumns.TitleMaxLength, out var titleTruncated);
+        if (titleTruncated) skippedMetrics.RecordTitleTruncated();
+        var wikiPage = new WikiJsPage(page.WikiPath, wikiTitle, markdown, ev.Tags, IsPrivate: !isPublic);
+        try
+        {
+            await WikiJsAsync(t => wikiJs.UpsertPageAsync(wikiPage, t), ct);
+        }
+        catch (WikiJsInputRejectedException rejected)
+        {
+            // 🔴 FR-13, [[IADR-0554]] 決定 5 (#1966): **切り詰めても Wiki.js が値の長さで拒んだ**（表題以外の列〔タグ等〕）。同じ入力の再試行では直らない。
+            // [[IADR-0541]] と同じく Warning と計数を残して ack する。メタデータも書かない（上で追跡に載せた変更は SaveChanges を呼ばないので捨てられる）。
+            // 既存のページがあれば前の版のまま残る。🔴 transport・GraphQL errors・他の失敗は `WikiJsSyncException` のまま上がり、再試行へ委ねる。
+            skippedMetrics.RecordValueTooLong();
+            logger.LogWarning(
+                "Wiki sync {DocumentId}: Wiki.js rejected pages.{Operation} at {Path} because a value is too long "
+                + "(title {TitleChars} chars after fitting, {TagCount} tags): {Reason}; skipped without retry or dead-lettering",
+                ev.DocumentId, rejected.Operation, rejected.Path, WikiText.CountChars(wikiTitle), ev.Tags.Count, rejected.Message);
+            return;
+        }
 
         if (!await SaveWithSlugFallbackAsync(page, slugCandidates[^1], ev.DocumentId, ct)) return;
         // [[IADR-0541]] (#1934): 成功時のログに slug を出さない（slug は題名から作るので、機密文書の題名が毎回ログに入る）。

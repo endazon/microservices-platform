@@ -44,7 +44,7 @@ public class WikiPage
         => new()
         {
             DocumentId = documentId,
-            Title = title,
+            Title = FitTitle(title),
             Slug = slug ?? SlugCandidates(title, documentId)[0],
             MarkdownUri = markdownUri,
             Attributes = attributes,
@@ -54,7 +54,7 @@ public class WikiPage
     public void Sync(string title, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags, string? slug = null)
     {
-        Title = title;
+        Title = FitTitle(title);
         Slug = slug ?? SlugCandidates(title, DocumentId)[0];
         MarkdownUri = markdownUri;
         Attributes = attributes;
@@ -78,6 +78,12 @@ public class WikiPage
     // slug 列の長さ（WikiDbContext の HasMaxLength と同じ値）。
     public const int SlugMaxLength = 500;
 
+    // 🔴 FR-13, [[IADR-0554]] 決定 3 (#1966): 表題の列の長さ（WikiDbContext の HasMaxLength と同じ値）。
+    // これを超える表題は保存の 22001 で再試行を使い切り DLQ へ入っていた。文字の境界で切り、印（…）を付けて収める。
+    public const int TitleMaxLength = 500;
+
+    private static string FitTitle(string title) => WikiText.FitColumn(title, TitleMaxLength);
+
     // 🔴 FR-13, [[IADR-0541]] 決定 1 (#1934): **slug の候補列。題名だけでは一意にならない**（同じ見出しのニュース・
     // 重複して作られた同名の規程が同じ slug へ写り、`IX_Pages_Slug` の 23505 で同期が恒久的に失敗した）。
     // 候補は [題名由来, 題名由来-文書IDの先頭8桁, 題名由来-文書ID 32桁]。**後ろほど一意で、末尾は文書 ID を丸ごと含む**ので、
@@ -86,7 +92,9 @@ public class WikiPage
     // **どれを採るか（他の文書が使っていない最初のもの・既存の slug の保持）は受け口が決める**（DB を引くため）。
     public static IReadOnlyList<string> SlugCandidates(string title, Guid documentId)
     {
-        var baseSlug = ToSlug(title);
+        // [[IADR-0554]] 決定 3 (#1966): 題名だけ由来の候補も列の長さに収める（従来は接尾辞付きの候補だけを切っており、
+        // 500 文字を超える題名は保存の 22001 で DLQ へ入った）。slug は値そのものが URL なので印は付けない。
+        var baseSlug = WikiText.FitColumn(ToSlug(title), SlugMaxLength, mark: false).TrimEnd('-');
         var full = documentId.ToString("N");
         var stem = baseSlug.Length == 0 ? "doc" : baseSlug;
         // 接尾辞（"-" + 32 桁）を足しても列の長さを超えないよう、題名由来の部分を切る。

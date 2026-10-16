@@ -217,7 +217,8 @@
       "WikiEndpointsAbacTests",
       "WikiJsGraphQlClientTests",
       "WikiSyncPermanentFailureTests",
-      "WikiSyncTimeoutTests"
+      "WikiSyncTimeoutTests",
+      "WikiTextTests"
     ],
     "docs/tests/FR-14_composability.md": [
       "PipelineDeclarationEffectivenessTests",

@@ -69,6 +69,50 @@ public class WikiJsGraphQlClientTests
         await act.Should().ThrowAsync<WikiJsSyncException>();
     }
 
+    // FR-13 テスト仕様 T-33・T-34 (#1966・[[IADR-0554]] 決定 5): 値の長さ（22001）で拒まれたのは恒久的な失敗として写し、他は一時障害のまま。
+    [Theory]
+    [InlineData("create")]
+    [InlineData("update")]
+    public async Task UpsertPageAsync_MapsValueTooLongToInputRejected(string op)
+    {
+        var lookup = op == "create" ? PageNotFoundEnvelope : """{"data":{"pages":{"singleByPath":{"id":5}}}}""";
+        var handler = new RecordingHandler(lookup,
+            Failed(op, "insert into \"pages\" (\"title\") values ($1) - value too long for type character varying(255)"));
+
+        var act = () => Build(handler).UpsertPageAsync(Page(), TestContext.Current.CancellationToken);
+
+        var rejected = (await act.Should().ThrowAsync<WikiJsInputRejectedException>()).Which;
+        rejected.Operation.Should().Be(op);
+        rejected.Message.Should().Contain("character varying(255)");
+    }
+
+    // Wiki.js の失敗の応答（responseResult.succeeded=false・errorCode=1）。message は JSON の文字列として埋める。
+    private static string Failed(string op, string message)
+        => JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["data"] = new
+            {
+                pages = new Dictionary<string, object>
+                {
+                    [op] = new { responseResult = new { succeeded = false, errorCode = 1, message } },
+                }
+            },
+        });
+
+    [Theory]
+    [InlineData("connect ECONNREFUSED 10.0.0.7:5432")]
+    [InlineData("Knex: Timeout acquiring a connection. The pool is probably full.")]
+    [InlineData("Page content cannot be empty.")]
+    public async Task UpsertPageAsync_KeepsOtherFailuresTransient(string message)
+    {
+        var handler = new RecordingHandler(PageNotFoundEnvelope,
+            Failed("create", message));
+
+        var act = () => Build(handler).UpsertPageAsync(Page(), TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<WikiJsSyncException>();
+    }
+
     // 実測 2・3: アーカイブは現在の content/title/tags を取得し、全項目シェイプ＋ isPublished:false で update する。
     [Fact]
     public async Task ArchivePageAsync_SendsFullUpdateShape_WithUnpublish()
