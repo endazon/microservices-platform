@@ -14743,6 +14743,32 @@ exit 0
       assert.match(rp.stateProblem({ ...st, filters: { ...st.filters, createdAfter: 1 } }), /createdAfter/);
     });
 
+    ok('#1961: --status は台帳の状態の完全一致で口へ渡り、状態ファイルの絞り込みに入る（無指定と指定は別の走査）', () => {
+      // FR-06, 計画 ADR-0141 決定 2, IADR-0551 決定 5: 配備前にアーカイブした文書を外す遡及の手段。
+      const o = rp.parseArgs(['--status', 'archived']);
+      const st = rp.newState(o, new Date('2026-10-16T00:00:00Z'));
+      assert.strictEqual(st.filters.status, 'archived');
+      assert.strictEqual(rp.stateProblem(st), null);
+      assert.deepStrictEqual(rp.buildRequestBody(st.filters, { dryRun: true }),
+        { dryRun: true, createdBefore: '2026-10-16T00:00:00.000Z', status: 'archived' });
+      assert.ok(!('status' in rp.buildRequestBody(rp.newState(rp.parseArgs([])).filters, { dryRun: true })), '陽性対照: 無指定は送らない');
+      // 状態ファイルとの突き合わせ: 無指定と指定は違う走査。status を持たない旧い状態は「状態を問わない」と読む。
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs(['--status', 'archived'])), true);
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs([])), false);
+      const old = { ...st, filters: { ...st.filters } };
+      delete old.filters.status;
+      assert.strictEqual(rp.stateProblem(old), null);
+      assert.strictEqual(rp.sameFilters(old, rp.parseArgs([])), true);
+      assert.match(rp.stateProblem({ ...st, filters: { ...st.filters, status: 'Archived' } }), /status/);
+      // 未知の状態は丸めず落とす。--resume では絞り込みを受けない。
+      assert.throws(() => rp.parseArgs(['--status', 'Archived']), /--status は/);
+      assert.throws(() => rp.parseArgs(['--status', 'active']), /--status は/);
+      assert.throws(() => rp.parseArgs(['--resume', '--status', 'archived']), /状態ファイルの絞り込み/);
+      assert.deepStrictEqual(rp.STATUSES, ['draft', 'normalized', 'published', 'archived'], '口の値域（RepublishSelection.Statuses）と同じ');
+      const text = rp.summarizeDryRun({ matched: 5803, remaining: 5803, withoutBody: 0, skippedByGate: 0, byConfidentiality: {} }, st.filters).join('\n');
+      assert.match(text, /状態 archived だけ: 取り込みは本文を読まずに全索引から外し/);
+    });
+
     ok('#1931: dry-run の件数 —— 区間の件数と、createdAfter より前（対象外）の件数を出す。進捗の分母から対象外を引く', () => {
       const f = rp.filtersOf(rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z']));
       const text = rp.summarizeDryRun({ matched: 45571, remaining: 39768, withoutBody: 0, skippedByGate: 0, byConfidentiality: {} }, f).join('\n');

@@ -299,8 +299,10 @@ public static class DocumentStatus
     public const string Draft = "draft";
     public const string Normalized = "normalized";
     public const string Published = "published";
-    // Issue #88: アーカイブ（非公開化）。削除と異なり実体は保持し、閲覧経路から不可視にする。
-    public const string Archived = "archived";
+    // Issue #88: アーカイブ（非公開化）。削除と異なり実体は保持する。
+    // ［2026-10-16 / #1961・計画 ADR-0141 決定 2・[[IADR-0551]]］見つかる面（検索・RAG・グラフ・Wiki・MCP の一覧）から外す。
+    // 閲覧（SC-03）と SC-05 の一覧には残る。値は下流が判定に使う契約の定数（`DocumentArchival`）と同じものを指す。
+    public const string Archived = DocumentArchival.ArchivedStatus;
 }
 
 // FR-06, UC-03, SC-05: 不正な状態遷移（例: archived → published）を表すドメイン例外。
