@@ -1,3 +1,4 @@
+using DocumentService.Domain;
 using DocumentService.Features.Documents.ListPage;
 using Knowledge.Contracts.Dtos;
 
@@ -22,6 +23,12 @@ internal static class RepublishSelection
     internal const int MaxIds = 500;
     internal const int MaxRequestedByLength = 100;
     internal const int MaxReasonLength = 500;
+
+    // FR-06, 計画 ADR-0141 決定 2, [[IADR-0551]] 決定 5 (#1961): 状態の絞り込み（`status`）が受ける値。台帳の状態の全体である。
+    // 主な用途は `archived` —— 配備の前にアーカイブした文書へ status=archived の `DocumentUpdated` をもう一度出し、
+    // 取り込み・グラフのアーカイブの門で外す（遡及）。受け手は本文を読まないので、埋め込みの費用はかからない。
+    internal static readonly string[] Statuses =
+        [DocumentStatus.Draft, DocumentStatus.Normalized, DocumentStatus.Published, DocumentStatus.Archived];
 
     // 台帳から絞り込みに要る列だけを投影した行（本体は選んだページの分だけ読み直す）。
     internal sealed record Row(Guid Id, DateTimeOffset CreatedAt,
@@ -108,6 +115,9 @@ internal static class RepublishSelection
                     return ($"attributes.{key}", "属性の値が空です。");
             }
         }
+        // 🔴 未知の状態は 400（丸めない・黙って 0 件にしない）。綴りの誤りを「対象が無かった」と読ませない。
+        if (req.Status is not null && !Statuses.Contains(req.Status, StringComparer.Ordinal))
+            return ("status", $"status は {string.Join(" / ", Statuses)} のいずれかです。");
         if (req.RequestedBy is { Length: > MaxRequestedByLength })
             return ("requestedBy", $"requestedBy は {MaxRequestedByLength} 文字までです。");
         if (req.Reason is { Length: > MaxReasonLength })
@@ -122,6 +132,8 @@ internal static class RepublishSelection
 // `dryRun` は必須（省略は 400）。`limit` は既定 100・1〜500 に丸める。`createdBefore` はこの時刻**より前**に作られた文書だけ。
 // `ids` は空を 400 にする（省略が全件）。`requestedBy` / `reason` は記録のためだけの任意の札（認証済みの主体と一緒にログへ出す。
 // 長さの上限を超えたら 400。ログへは制御文字を潰してから出す）—— 口の主体は駆動スクリプトの機械の client なので、人の名前と理由はここで運ぶ。
+// ［2026-10-16 / #1961・[[IADR-0551]] 決定 5］`status` は台帳の状態の完全一致（SQL で絞る）。未知の値は 400。省略は状態を問わない。
+// **末尾・既定値付きで足す**（既存の呼び出しは従来と同じに読める）。
 public sealed record RepublishDocumentUpdatedRequest(
     bool? DryRun,
     int? Limit = null,
@@ -130,7 +142,8 @@ public sealed record RepublishDocumentUpdatedRequest(
     List<Guid>? Ids = null,
     Dictionary<string, string>? Attributes = null,
     string? RequestedBy = null,
-    string? Reason = null);
+    string? Reason = null,
+    string? Status = null);
 
 // FR-02, FR-06, [[IADR-0503]] 決定 2 (#1762): 応答。
 // `matched` はカーソルに依らない絞り込みの全件、`remaining` はこの呼び出しの前に残っていた件数。

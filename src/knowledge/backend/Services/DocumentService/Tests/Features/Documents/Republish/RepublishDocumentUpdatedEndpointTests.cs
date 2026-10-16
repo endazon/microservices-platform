@@ -198,6 +198,37 @@ public class RepublishDocumentUpdatedEndpointTests
         Published(factory).Select(e => e.DocumentId).Skip(1).Should().BeEquivalentTo([hrLower.Id, hrConfidential.Id]);
     }
 
+    // FR-06, 計画 ADR-0141 決定 2, [[IADR-0551]] 決定 5 (#1961): **状態で絞れる**（遡及の用途: 配備前にアーカイブした文書へ
+    // status=archived をもう一度出し、取り込み・グラフのアーカイブの門で外す）。陽性対照: 絞らなければ全件が出る。
+    [Fact]
+    public async Task 絞り込みは状態の完全一致で効き_アーカイブ済みだけを再発行できる()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        var archived = await SeedAsync(factory, "archived", Attrs("internal"));
+        var bodyless = await SeedAsync(factory, "archived-bodyless", Attrs("internal"), withBody: false);
+        await SeedAsync(factory, "active", Attrs("internal"));
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            foreach (var d in db.Documents.Where(d => d.Id == archived.Id || d.Id == bodyless.Id)) d.Archive();
+            await db.SaveChangesAsync(Ct);
+        }
+        var admin = Admin(factory);
+
+        var dry = await CallAsync(admin, new { dryRun = true, status = DocumentStatus.Archived });
+        dry.Matched.Should().Be(2, "dry-run の母数も状態で絞る");
+        dry.WithoutBody.Should().Be(1);
+        Published(factory).Should().BeEmpty();
+
+        var page = await CallAsync(admin, new { dryRun = false, status = DocumentStatus.Archived });
+        page.Published.Should().Be(2);
+        Published(factory).Should().OnlyContain(e => e.Status == DocumentStatus.Archived,
+            "アーカイブ済みだけが流れる（受け手は本文を読まずに外す）")
+            .And.HaveCount(2);
+
+        (await CallAsync(admin, new { dryRun = true })).Matched.Should().Be(3, "陽性対照: 状態を省略すれば状態を問わない");
+    }
+
     [Fact]
     public async Task 不正な要求は400で何も発行しない_dryRunの省略_空のキー_空の値_ids超過_空のids_札の超過_不正なカーソル()
     {
@@ -216,6 +247,9 @@ public class RepublishDocumentUpdatedEndpointTests
             (new { dryRun = false, requestedBy = new string('a', RepublishSelection.MaxRequestedByLength + 1) }, "requestedBy"),
             (new { dryRun = false, reason = new string('a', RepublishSelection.MaxReasonLength + 1) }, "reason"),
             (new { dryRun = false, cursor = "not-a-cursor" }, "cursor"),
+            // #1961 / IADR-0551 決定 5: 未知の状態は丸めず 400（綴りの誤りを「対象が無かった」と読ませない）。大文字小文字も区別する。
+            (new { dryRun = false, status = "Archived" }, "status"),
+            (new { dryRun = false, status = "active" }, "status"),
         };
         foreach (var (body, key) in cases)
         {

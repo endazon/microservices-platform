@@ -96,7 +96,21 @@ public class GraphDocumentSyncConsumer(
         // 明示した組織文書（#1879 / [[IADR-0529]]）はノードを作らない・既存のノードを撤収する。
         if (!DocumentExposure.IsGraphAllowed(ev.Attributes))
         {
-            await WithdrawAsync(ev.DocumentId, ct);
+            await WithdrawAsync(ev.DocumentId, "the graph exposure toggle is off", ct);
+            return;
+        }
+
+        // 🔴 FR-06, FR-17, FR-18, 計画 ADR-0141 決定 2・3, [[IADR-0551]] 決定 3 (#1961): **アーカイブの門。**
+        //
+        // アーカイブした文書はグラフ（SC-18・MCP のグラフ系ツール・AI 提案・クラスタ要約）に載せない。露出の門と同じく
+        // **ノードを作らない・既存のノードを撤収する**（辺・共有タグの複製も同じ手順で片付く）。AI 提案の候補とクラスタの母集合は
+        // `graph_documents`（ノード）なので、ノードが無くなれば両方から外れる。端点のノードが無い既存の提案は一覧に出ない（deny-closed）。
+        //
+        // 判定は `DocumentArchival.IsArchived`（台帳の状態）。取り込み・Wiki・MCP の一覧と同じ関数である。
+        // 本文を読む前に置く（一括の対象は本文が無い。表題だけのノードを作らない —— ADR-0141 決定 5 のグラフの行の暫定を解く）。
+        if (DocumentArchival.IsArchived(ev.Status))
+        {
+            await WithdrawAsync(ev.DocumentId, "the document is archived", ct);
             return;
         }
 
@@ -234,7 +248,7 @@ public class GraphDocumentSyncConsumer(
     //
     // ［[[IADR-0521]] / #1396］**タグの複製も消す**（`GraphDocumentRemoval`）。残すと撤収した文書がタグの件数に
     // 数えられ続け、上限の判定（ハブ）を狂わせる。同名の文書を指していた他文書のリンクの作り直しも同じ手順で行う。
-    private async Task WithdrawAsync(Guid documentId, CancellationToken ct)
+    private async Task WithdrawAsync(Guid documentId, string reason, CancellationToken ct)
     {
         var node = await db.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId, ct);
         var hasEdges = await db.Edges
@@ -249,9 +263,8 @@ public class GraphDocumentSyncConsumer(
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation(
-            "Withdrew graph document {DocumentId} ({Edges} edge(s), relinked={Relinked}): "
-            + "the graph exposure toggle is off",
-            documentId, removal.EdgesRemoved, removal.Relinked);
+            "Withdrew graph document {DocumentId} ({Edges} edge(s), relinked={Relinked}): {Reason}",
+            documentId, removal.EdgesRemoved, removal.Relinked, reason);
     }
 
     // 当該文書を端点とする却下済み提案について、**現在の**両端指紋で解除判定を行う。

@@ -2149,6 +2149,10 @@ paths:
                   description: 属性の完全一致（AND。キー・値とも大文字小文字を区別）。空のキー・空の値は 400
                 requestedBy: { type: string, maxLength: 100, description: "操作者の札（記録だけに使う。認証済みの主体と一緒にログへ出る。制御文字は潰す）" }
                 reason: { type: string, maxLength: 500, description: "理由の札（記録だけに使う。駆動スクリプトは発行する実行で必須にする）" }
+                status:
+                  type: string
+                  enum: [draft, normalized, published, archived]
+                  description: "台帳の状態の完全一致（#1961）。未知の値は 400。省略は状態を問わない。`archived` で流すと、配備前にアーカイブした文書が検索・RAG・グラフから外れる（受け手は本文を読まない）"
       responses:
         "200":
           description: 発行した 1 ページ（dry-run は残り全件の内訳）
