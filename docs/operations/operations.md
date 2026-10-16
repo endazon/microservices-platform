@@ -1073,7 +1073,7 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
 
 - **Voyage AI（ティアB）のゼロ保持設定（必須・受け入れ基準）**: 本番データを流す前に、Voyage AI の
   組織設定で**学習利用のオプトアウト（ゼロ保持 / zero-day retention）を有効化**する。08_data-egress-policy
-  のティアB要件（ゼロ保持・学習不使用・レジデンシー）を契約で確認し、確認できるまで本番文書を索引しない。
+  のティアB要件（ゼロ保持・学習不使用・レジデンシー）を~~契約で~~確認し、確認できるまで本番文書を索引しない（［2026-10-16］確かめる手段は契約ではなく、公開の規約とアカウントの opt-out である。次の追記）。
   ~~未認定の間は `Embedding__Routing__Endpoints__0__Enabled=false` で Voyage 経路を止められる。~~
   ［2026-10-16］未認定の間の止め方は、下の「未認定の環境へデプロイする場合」の 2 つの形による（Voyage の経路を止めるだけではゲートウェイが起動しない）。
   ［2026-10-16］Voyage について確かめたのは契約ではなく、公開の規約とアカウントの opt-out である（契約書は無い）。
@@ -1146,7 +1146,8 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
          書いた値が届いたかは `docker compose config` の `llm-gateway` の environment で `Embedding__Routing__Endpoints__0__Enabled: "false"` を見る。
          Helm は `embedding.enabled: true` に加え、`services.llmgateway.extraEnvAppend` に
          `{name: Embedding__Routing__Endpoints__0__Enabled, value: "false"}` を足す（🔴 `extraEnv` に書くと本番既定の env が丸ごと置き換わるので、足すだけの `extraEnvAppend` を使う）。
-         Helm の形は、この値を与えた描画（`helm template`）ではまだ確かめていない。当てる前に、描画結果の `llmgateway` の env に `false` が載ることを見る。
+         Helm の形は、この値を `--set` で与えた描画（`helm template`）が通り、描画結果の `llmgateway` の env に `Embedding__Routing__Endpoints__0__Enabled: "false"` が載ることを確かめた
+         （2026-10-16・PR の AI レビューの実走）。当てる環境でも、描画結果で同じことを見てから適用する。
          このとき `public` / `internal` の取り込みと検索クエリの埋め込みは、残る有効なエンドポイント（ティア A の Ruri）へ回る。
          主コレクション（voyage）を読む検索がどう振る舞うかは、この形では確かめていない（確かめたのは起動の可否だけである）。
       決定的ローカル（検証スタック専用）を有効にして起動だけを通す形は採らない（意味の近さを持たず、本番の検索には使えない）。
