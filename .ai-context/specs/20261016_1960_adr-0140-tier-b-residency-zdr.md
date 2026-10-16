@@ -2,7 +2,7 @@
 title: 作業仕様書 — 計画 ADR-0140（Voyage・Claude の所在を受け入れたリスク、Claude の ZDR 未締結）へ実装側の文書・コメント・手順を追随させる（#1960）
 type: spec
 status: done
-related_ids: [NFR-17, FR-02, FR-03, FR-11, ADR-0140, ADR-0016, ADR-0092, ADR-0127, IADR-0553, IADR-0007, IADR-0022, IADR-0025, IADR-0498, IADR-0504, IADR-0085]
+related_ids: [NFR-17, FR-02, FR-03, FR-11, ADR-0140, ADR-0016, ADR-0092, ADR-0127, IADR-0552, IADR-0007, IADR-0022, IADR-0025, IADR-0498, IADR-0504, IADR-0085]
 author: claude
 created: 2026-10-16
 updated: 2026-10-16
@@ -58,15 +58,15 @@ issue: "#1960"
 
 ## 決めたこと
 
-1. **「ZDR」の語の読み分け**（IADR-0553 決定 1）: 実装の「ZDR 必須」「ZDR 対応モデル」「ZDR の外へは出ない」は**モデル単位の除外**（`NonZdrModels`）
+1. **「ZDR」の語の読み分け**（IADR-0552 決定 1）: 実装の「ZDR 必須」「ZDR 対応モデル」「ZDR の外へは出ない」は**モデル単位の除外**（`NonZdrModels`）
    と**ティア C の除外**を指し、**組織の ZDR 契約を見ない**。Claude の組織の ZDR は**未締結**であり、Claude へ送った本文は標準の保持の下にある。
    live な文書・配備物のコメント・コードのコメントのうち、組織の ZDR が働いていると読める箇所（「ティア B・ZDR」「ティア B（ZDR）へ出る」「守りは ZDR」
    「ティア C（ZDR の契約が無い）」）を直す。モデル単位の意味で正しく書かれた箇所（`NonZdrModels` の説明・試験の名前）は残す。
-2. **未認定の環境の手順を直す**（IADR-0553 決定 2）: 手順を 2 つに分ける。
+2. **未認定の環境の手順を直す**（IADR-0552 決定 2）: 手順を 2 つに分ける。
    (a) **鍵を入れない**（最も簡単。外へは何も出ない。`public` / `internal` は全文だけの点）。
    (b) **セルフホスト（ティア A）を有効にしたうえで Voyage の経路を止める**（`Endpoints__0__Enabled=false`。ティア A を有効にしないとゲートウェイが起動しない）。
    決定的ローカル（検証スタック専用）を代わりに有効にして起動を通すことはしない（意味検索の品質を持たない）。
-3. **compose に口を足す**（IADR-0553 決定 3）: `llm-gateway` に `Embedding__Routing__Endpoints__0__Enabled: ${VOYAGE_EMBEDDING_ENABLED:-true}`。
+3. **compose に口を足す**（IADR-0552 決定 3）: `llm-gateway` に `Embedding__Routing__Endpoints__0__Enabled: ${VOYAGE_EMBEDDING_ENABLED:-true}`。
    既定は `true`（従前と同じ字面の挙動）。Helm は既存の `extraEnvAppend` を手順に書く（新しい values は足さない）。
 4. **運用仕様書に Claude の送信先ティアの認定状況の節を新設する**（ADR-0140 決定 5 の表・受容者・期限・`inference_geo` 未指定・workspace 設定値は未確認・「監査可能」未照合）。
    Voyage の「ゼロ保持認定状況の記録」へ 2026-10-16 の追記（計画が例外として記録した・「監査可能」未照合・判定根拠はエンドポイント定義に無く本記録が暫定手段・射程は計画も安全側の推論として認めた）。
@@ -119,7 +119,7 @@ issue: "#1960"
 | `ClaudeProvider.cs:16`（ZDR 有効化の優先） | 追随しない（fable 系を使わない理由＝モデル単位の ZDR の記述） |
 | `CopilotProvider.cs:13`・`CompletionDto.cs:35`・`bff.schemas.ts`（生成物）・`IRerankCompletionClient.cs:10`・`SearchRerankOptions.cs:14` | 追随しない（ZDR の**要件**による拒否・判定の記述で正しい） |
 | 試験（`LlmRouterTests.cs` ほか）のコメント「保護契約済み外部API」 | 追随しない（ティアの名称） |
-| `.ai-context/adr/IADR-0022`・`IADR-0025`・`IADR-0498`・`IADR-0504`・`IADR-0007`・`IADR-0085` | **追随しない**: いずれも ADR-0140 が「前提として扱う」とした記録で、決定は覆らない。ZDR の読み分けと手順の是正は IADR-0553 が持つ（凍結記録の本文へ後付けしない） |
+| `.ai-context/adr/IADR-0022`・`IADR-0025`・`IADR-0498`・`IADR-0504`・`IADR-0007`・`IADR-0085` | **追随しない**: いずれも ADR-0140 が「前提として扱う」とした記録で、決定は覆らない。ZDR の読み分けと手順の是正は IADR-0552 が持つ（凍結記録の本文へ後付けしない） |
 | `docs/operations/voyage-embedding-key-runbook.md:37-38`（確かめるまでは「未認定の環境へデプロイする場合」に従う） | 追随しない（参照先の節を直すので、参照は正しいまま） |
 | `scripts/fixtures/review-floor/pr1921-*.txt` | 対象外（過去のレビューの固定値） |
 

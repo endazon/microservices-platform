@@ -756,10 +756,10 @@ services:
       # 🔴 呼び出し側の期限はこの値より短く保つ（長い呼び出し側がいるなら延ばす。docs/operations/operations.md）。
       # FR-02 / ADR-0016 / IADR-0025: 埋め込み。既定はティアB=Voyage（voyage-3.5/1024次元）。
       # 鍵を入れる前に、アカウントでゼロ保持（学習利用オプトアウト）を設定してから本番データを流す（運用仕様書 参照）。
-      # NFR-17 / ADR-0140 決定 2・3 / IADR-0553 (#1960): 根拠は契約ではなく公開の規約とアカウントの opt-out で、
+      # NFR-17 / ADR-0140 決定 2・3 / IADR-0552 (#1960): 根拠は契約ではなく公開の規約とアカウントの opt-out で、
       # 認定は opt-out を行ったアカウントの鍵に限る。確かめていない鍵は入れない（鍵が空なら Voyage へ何も出ない）。
       Embedding__Voyage__ApiKey: ${VOYAGE_API_KEY:-}
-      # NFR-17 / ADR-0140 決定 3 / IADR-0553 (#1960): Voyage の経路を止める口（既定 true＝従前どおり有効）。
+      # NFR-17 / ADR-0140 決定 3 / IADR-0552 (#1960): Voyage の経路を止める口（既定 true＝従前どおり有効）。
       # 🔴 false にするときは SELFHOSTED_EMBEDDING_ENABLED=true（ティアA）も与える。ティアA も無効のままだと
       # 起動時の検証（EmbeddingRoutingOptionsValidator）が既定経路の不在で LLM ゲートウェイ全体を起動させない。
       # ⚠️ Issue #98: voyage が index 0 である前提（下の selfhosted と同じ）。

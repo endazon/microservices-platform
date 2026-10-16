@@ -13,7 +13,7 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
         var allowedTiers = EgressMatrix.AllowedTiers(request.Sensitivity);
         // FR-11, ADR-0127 決定 3, [[IADR-0498]] 決定 5 (#1746): 用途が ZDR を要件とするなら、区分によらず
         // ティア C（標準外部 API。ZDR の契約が無い）を候補から外し、非 ZDR モデルを除く（強める向きだけ）。
-        // NFR-17, ADR-0140 決定 5, IADR-0553 (#1960): ティア B の Claude も組織の ZDR は未締結である。ここの
+        // NFR-17, ADR-0140 決定 5, IADR-0552 (#1960): ティア B の Claude も組織の ZDR は未締結である。ここの
         // 「ZDR の要件」はモデル単位とティア C の除外であり、ゼロ保持が働いていることを保証しない。
         var zdrRequired = RequiresZeroDataRetention(request);
         if (zdrRequired)

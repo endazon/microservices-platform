@@ -1,5 +1,5 @@
 ---
-title: IADR-0553 計画 ADR-0140 への追随 —— 実装の「ZDR」はモデル単位の除外と読み分け、組織の ZDR が働いていると読める記述を直す。未認定の Voyage の鍵の環境は「鍵を入れない」か「ティア A を有効にして Voyage を止める」で扱い、compose に Voyage の経路の口を足す
+title: IADR-0552 計画 ADR-0140 への追随 —— 実装の「ZDR」はモデル単位の除外と読み分け、組織の ZDR が働いていると読める記述を直す。未認定の Voyage の鍵の環境は「鍵を入れない」か「ティア A を有効にして Voyage を止める」で扱い、compose に Voyage の経路の口を足す
 type: impl-adr
 status: Accepted
 related_ids: [NFR-17, FR-02, FR-03, FR-11, ADR-0140, ADR-0016, ADR-0127, IADR-0007, IADR-0022, IADR-0025, IADR-0085, IADR-0498, IADR-0504]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20261016_1960_adr-0140-tier-b-residency-zdr.md
 ---
 
-# IADR-0553: 計画 ADR-0140 への追随（ZDR の読み分けと、未認定の Voyage の鍵の手順）（#1960）
+# IADR-0552: 計画 ADR-0140 への追随（ZDR の読み分けと、未認定の Voyage の鍵の手順）（#1960）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
