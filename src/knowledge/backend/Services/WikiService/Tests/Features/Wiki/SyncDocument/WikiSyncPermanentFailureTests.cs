@@ -35,6 +35,8 @@ namespace WikiService.Tests.Features.Wiki.SyncDocument;
 // - T-26（保存時の競合）: slug の 23505 は文書 ID 32 桁へ付け替えて保存し直す。それでも当たれば Warning＋計数で ack。
 //   文書 ID の 23505・接続断は例外のまま（再試行へ）。
 // - T-27（本文の欠落の分類）・T-28（受け口）: NoSuchKey だけを欠落とし、Warning＋計数で ack。何も書かない。
+// - T-30〜T-34（#1966・[[IADR-0554]]）: Wiki.js の表題は 255 文字（符号位置）へ文字の境界で切り詰め、印を付けて数える。
+//   Wiki.js が値の長さで拒めば Warning＋計数で ack（実配送で DLQ へ行かない）。他の Wiki.js の失敗は再試行。
 // - T-29（実配送）: 本番と同じ共通既定の Wolverine で、恒久的な失敗は 1 回の試行で終わり DLQ へ行かない。DB の接続断は再試行される。
 //
 // 🔴 InMemory は一意索引を強制しない。**一意性は「slug が互いに異なる」ことで測り**、23505 は保存の割り込み（`ScriptedSaveFailures`）で再現する。
@@ -282,7 +284,7 @@ public class WikiSyncPermanentFailureTests
 
     // ---- T-29: 実配送（Wolverine・本番と同じ共通既定） ----
 
-    public static TheoryData<string> PermanentKinds => ["slug-conflict", "body-missing"];
+    public static TheoryData<string> PermanentKinds => ["slug-conflict", "body-missing", "value-too-long"];
 
     [Theory]
     [MemberData(nameof(PermanentKinds))]
@@ -292,7 +294,7 @@ public class WikiSyncPermanentFailureTests
             ? throw new NoSuchKeyException("The specified key does not exist.")
             : "# 本文");
         var saves = new ScriptedSaveFailures(_ => kind == "slug-conflict" ? SlugViolation() : null);
-        var wiki = new RecordingWiki();
+        var wiki = new RecordingWiki(_ => kind == "value-too-long" ? ValueTooLong() : null);
         using var host = BuildHost(storage, saves, wiki);
         await host.StartAsync(Ct);
 
@@ -306,6 +308,7 @@ public class WikiSyncPermanentFailureTests
         session.MessageSucceeded.SingleMessage<DocumentUpdated>().DocumentId.Should().Be(DocA);
         storage.Calls.Should().Be(1, "再試行しない");
         saves.Calls.Should().Be(kind == "slug-conflict" ? 2 : 0, "受け口の中の付け替えは 1 度だけ");
+        wiki.UpsertCalls.Should().Be(kind == "body-missing" ? 0 : 1, "Wiki.js へも 1 度だけ（再試行しない）");
     }
 
     [Fact]
@@ -330,7 +333,122 @@ public class WikiSyncPermanentFailureTests
         storage.Calls.Should().Be(2);
     }
 
+    // ---- T-30〜T-34: 表題の長さ（#1966・[[IADR-0554]]） ----
+
+    [Fact]
+    public async Task 表題が255文字ちょうどなら切らずに送る()
+    {
+        await using var fx = new Fixture();
+        var title = new string('あ', WikiJsColumns.TitleMaxLength);
+
+        await fx.HandleAsync(Event(DocA, title));
+
+        fx.Wiki.Pushed.Should().ContainSingle().Which.Title.Should().BeSameAs(title);
+        fx.Truncated.Should().BeEmpty("上限ちょうどは切らない");
+        fx.Pages().Single().Title.Should().Be(title);
+    }
+
+    [Fact]
+    public async Task 表題が256文字なら255文字へ切り詰め印を付けて数える()
+    {
+        await using var fx = new Fixture();
+        var title = new string('a', 200) + new string('ニ', 56);
+
+        await fx.HandleAsync(Event(DocA, title));
+
+        var sent = fx.Wiki.Pushed.Should().ContainSingle().Which.Title;
+        WikiText.CountChars(sent).Should().Be(WikiJsColumns.TitleMaxLength);
+        sent.Should().Be(title[..254] + WikiText.Ellipsis);
+        fx.Truncated.Should().Equal((1L, WikiSyncSkippedMetrics.TitleField));
+        fx.Counted.Should().BeEmpty("切り詰めは skipped ではない（同期は成功している）");
+        fx.Pages().Single().Title.Should().Be(title, "台帳の表題（500 まで）は元のまま残す");
+    }
+
+    // 台帳の表題（varchar(500)）と slug（varchar(500)）も、500 を超える表題で保存の 22001 にならない。
+    [Fact]
+    public async Task 台帳の表題とslugの候補は列の長さに収まる()
+    {
+        await using var fx = new Fixture();
+        var title = string.Concat(Enumerable.Repeat("long-headline ", 60)); // 840 文字
+
+        await fx.HandleAsync(Event(DocA, title));
+
+        var page = fx.Pages().Single();
+        WikiText.CountChars(page.Title).Should().Be(WikiPage.TitleMaxLength);
+        page.Title.Should().EndWith(WikiText.Ellipsis);
+        WikiPage.SlugCandidates(title, DocA).Should()
+            .AllSatisfy(c => c.Length.Should().BeLessThanOrEqualTo(WikiPage.SlugMaxLength))
+            .And.AllSatisfy(c => c.Should().NotEndWith("-").And.NotContain(WikiText.Ellipsis));
+        page.Slug.Length.Should().BeLessThanOrEqualTo(WikiPage.SlugMaxLength);
+        // 説明は空の定数、パスは doc/<GUID> の 40 文字固定で、Wiki.js の列の長さ（255）に収まる（切り詰め不要の根拠）。
+        WikiPage.PathFor(DocA).Length.Should().Be(40).And.BeLessThanOrEqualTo(WikiJsColumns.PathMaxLength);
+    }
+
+    // 切り詰めの導入で、上限に届かない題名の slug（既存の URL）が変わらない。末尾の `-` を落とすのは切ったときだけ。
+    [Theory]
+    [InlineData("経費精算規程", "経費精算規程")]
+    [InlineData("Hello, World! ", "hello-world")]
+    [InlineData("見出し！", "見出し")]
+    [InlineData("--前後の記号--", "前後の記号")]
+    public void 切らない題名のslugは従来と同じ(string title, string expected)
+    {
+        WikiPage.SlugCandidates(title, DocA)[0].Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task Wikijsが長さで拒めば記録してackする()
+    {
+        await using var fx = new Fixture(wiki: new RecordingWiki(_ => ValueTooLong()));
+
+        // 例外を上げない（Wolverine はメッセージを ack する）。
+        await fx.HandleAsync(Event(DocA, "長いタグを持つ文書"));
+
+        fx.Counted.Should().Equal((1L, WikiSyncSkippedMetrics.ValueTooLong));
+        fx.Logger.Warnings.Should().ContainSingle().Which.Should()
+            .Contain(DocA.ToString()).And.Contain("value is too long").And.Contain("character varying(255)")
+            .And.NotContain("長いタグを持つ文書", "機密文書の題名をログへ出さない");
+        fx.Pages().Should().BeEmpty("メタデータを書かない");
+        fx.Saves.Calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Wikijsの一時障害は例外のまま上げる()
+    {
+        var thrown = new WikiJsSyncException("Wiki.js pages.create failed for 'doc/x' (code=1): connect ECONNREFUSED 10.0.0.7:5432");
+        await using var fx = new Fixture(wiki: new RecordingWiki(_ => thrown));
+
+        var act = () => fx.HandleAsync(Event(DocA, "見出し"));
+
+        (await act.Should().ThrowAsync<WikiJsSyncException>()).Which.Should().BeSameAs(thrown);
+        fx.Counted.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task 実配送でWikijsの一時障害は再試行される()
+    {
+        var storage = new ScriptedStorage(_ => "# 本文");
+        var saves = new ScriptedSaveFailures(_ => null);
+        var wiki = new RecordingWiki(call => call == 1 ? new WikiJsSyncException("Wiki.js GraphQL error: boom") : null);
+        using var host = BuildHost(storage, saves, wiki);
+        await host.StartAsync(Ct);
+
+        var session = await host.TrackActivity()
+            .DoNotAssertOnExceptionsDetected()
+            .Timeout(TimeSpan.FromSeconds(30))
+            .PublishMessageAndWaitAsync(Event(DocA, "見出し", BodyUri));
+        await host.StopAsync(Ct);
+
+        session.MovedToErrorQueue.Envelopes().Should().BeEmpty();
+        wiki.UpsertCalls.Should().Be(2, "1 回目は一時障害、再試行の 2 回目で反映する");
+        saves.Calls.Should().Be(1);
+    }
+
     // ---- 器 ----
+
+    // 実測（2026-10-16・#1966）の Wiki.js の応答をクライアントが写した形。
+    private static Exception ValueTooLong()
+        => new WikiJsInputRejectedException("create", $"doc/{DocA}", "1",
+            "insert into \"pages\" (\"authorId\", ...) values ($1, ...) returning \"id\" - value too long for type character varying(255)");
 
     private static Exception SlugViolation()
         => new DbUpdateException("An error occurred while saving the entity changes.", PgUniqueViolation("IX_Pages_Slug"));
@@ -376,9 +494,11 @@ public class WikiSyncPermanentFailureTests
         private readonly TestMeterFactory _meters = new();
         private readonly MeterListener _listener;
         private readonly List<(long, string)> _counted = [];
+        private readonly List<(long, string)> _truncated = [];
 
-        public Fixture(Func<int, Exception?>? saveFailure = null, IWikiContentReader? reader = null)
+        public Fixture(Func<int, Exception?>? saveFailure = null, IWikiContentReader? reader = null, RecordingWiki? wiki = null)
         {
+            Wiki = wiki ?? new RecordingWiki();
             Saves = new ScriptedSaveFailures(saveFailure ?? (_ => null));
             var dbName = $"wiki-1934-{Guid.NewGuid()}";
             _provider = new ServiceCollection()
@@ -396,12 +516,21 @@ public class WikiSyncPermanentFailureTests
             {
                 InstrumentPublished = (instrument, l) =>
                 {
-                    if (instrument.Meter.Scope == _meters && instrument.Name == WikiSyncSkippedMetrics.CounterName)
+                    if (instrument.Meter.Scope == _meters
+                        && instrument.Name is WikiSyncSkippedMetrics.CounterName or WikiSyncSkippedMetrics.TruncatedCounterName)
                         l.EnableMeasurementEvents(instrument);
                 },
             };
-            _listener.SetMeasurementEventCallback<long>((_, value, tags, _) =>
+            _listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
             {
+                if (instrument.Name == WikiSyncSkippedMetrics.TruncatedCounterName)
+                {
+                    string field = "";
+                    foreach (var tag in tags)
+                        if (tag.Key == WikiSyncSkippedMetrics.FieldTag) field = tag.Value as string ?? "";
+                    lock (_counted) _truncated.Add((value, field));
+                    return;
+                }
                 string reason = "";
                 foreach (var tag in tags)
                     if (tag.Key == WikiSyncSkippedMetrics.ReasonTag) reason = tag.Value as string ?? "";
@@ -411,10 +540,11 @@ public class WikiSyncPermanentFailureTests
         }
 
         public ScriptedSaveFailures Saves { get; }
-        public RecordingWiki Wiki { get; } = new();
+        public RecordingWiki Wiki { get; }
         public WarningLogger Logger { get; } = new();
         public WikiSyncSkippedMetrics Metrics { get; }
         public IReadOnlyList<(long, string)> Counted { get { lock (_counted) return _counted.ToArray(); } }
+        public IReadOnlyList<(long, string)> Truncated { get { lock (_counted) return _truncated.ToArray(); } }
 
         public async Task HandleAsync(DocumentUpdated ev)
         {
@@ -488,13 +618,18 @@ public class WikiSyncPermanentFailureTests
         public string CreatePresignedGetUrl(string uri, TimeSpan? expiry = null) => throw new NotSupportedException();
     }
 
-    internal sealed class RecordingWiki : IWikiJsClient
+    // onUpsert: N 回目（1 始まり）の Upsert に投げる例外（null は成功）。#1966 の Wiki.js の失敗の再現に使う。
+    internal sealed class RecordingWiki(Func<int, Exception?>? onUpsert = null) : IWikiJsClient
     {
         private readonly List<WikiJsPage> _pushed = [];
+        private int _calls;
         public IReadOnlyList<WikiJsPage> Pushed { get { lock (_pushed) return _pushed.ToArray(); } }
+        public int UpsertCalls => Volatile.Read(ref _calls);
 
         public Task UpsertPageAsync(WikiJsPage page, CancellationToken ct = default)
         {
+            var call = Interlocked.Increment(ref _calls);
+            if (onUpsert?.Invoke(call) is { } ex) throw ex;
             lock (_pushed) _pushed.Add(page);
             return Task.CompletedTask;
         }

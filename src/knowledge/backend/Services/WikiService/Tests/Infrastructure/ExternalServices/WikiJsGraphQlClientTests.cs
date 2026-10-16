@@ -69,6 +69,77 @@ public class WikiJsGraphQlClientTests
         await act.Should().ThrowAsync<WikiJsSyncException>();
     }
 
+    // FR-13 テスト仕様 T-33・T-34 (#1966・[[IADR-0554]] 決定 5): 値の長さ（22001）で拒まれたのは恒久的な失敗として写し、他は一時障害のまま。
+    [Theory]
+    [InlineData("create")]
+    [InlineData("update")]
+    public async Task UpsertPageAsync_MapsValueTooLongToInputRejected(string op)
+    {
+        var lookup = op == "create" ? PageNotFoundEnvelope : """{"data":{"pages":{"singleByPath":{"id":5}}}}""";
+        var handler = new RecordingHandler(lookup,
+            Failed(op, "insert into \"pages\" (\"title\") values ($1) - value too long for type character varying(255)"));
+
+        var act = () => Build(handler).UpsertPageAsync(Page(), TestContext.Current.CancellationToken);
+
+        var rejected = (await act.Should().ThrowAsync<WikiJsInputRejectedException>()).Which;
+        rejected.Operation.Should().Be(op);
+        rejected.Message.Should().Contain("character varying(255)");
+    }
+
+    // Wiki.js の失敗の応答（responseResult.succeeded=false・errorCode=1）。message は JSON の文字列として埋める。
+    private static string Failed(string op, string message)
+        => JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["data"] = new
+            {
+                pages = new Dictionary<string, object>
+                {
+                    [op] = new { responseResult = new { succeeded = false, errorCode = 1, message } },
+                }
+            },
+        });
+
+    // 🔴 [[IADR-0554]] 残余 (a): 恒久の判定は Wiki.js（knex・pg）が返す DB の message の定型句に依存する。定型句を確かめた Wiki.js の版
+    // （compose と Helm が固定する digest）が変わったらここで赤にし、上げる人に定型句の再確認を求める（変わると value too long は再試行 → DLQ へ戻る＝安全側の劣化）。
+    private const string VerifiedWikiJsDigest = "sha256:fffff288a52f76e5b8c19a4fbcd0f3e538e96edea642c4f2d813d54d59a876de";
+
+    [Fact]
+    public void 値の長さの定型句を確かめたWikijsの版から動いていない()
+    {
+        var compose = File.ReadAllText(RepoFile("deploy/docker-compose.yml"));
+        var values = File.ReadAllText(RepoFile("deploy/helm/microservices-platform/values.yaml"));
+
+        const string why = "Wiki.js の版を上げたら、値の長さで拒んだときの message に定型句 'value too long for type ' が残ることを確かめ、"
+            + "この定数を新しい digest へ更新する（運用仕様書「DLQ に溜まった Wiki 同期の失敗の再発行」）";
+        compose.Should().Contain($"ghcr.io/requarks/wiki:2.5@{VerifiedWikiJsDigest}", why);
+        values.Should().Contain($"digest: \"{VerifiedWikiJsDigest}\"", why);
+    }
+
+    // 解決できなければ止める（fail-closed）。
+    private static string RepoFile(string relative)
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "deploy", "docker-compose.yml")))
+                return Path.Combine(dir.FullName, relative.Replace('/', Path.DirectorySeparatorChar));
+        }
+        throw new InvalidOperationException("リポジトリのルート（deploy/docker-compose.yml を持つ）が見つからない。");
+    }
+
+    [Theory]
+    [InlineData("connect ECONNREFUSED 10.0.0.7:5432")]
+    [InlineData("Knex: Timeout acquiring a connection. The pool is probably full.")]
+    [InlineData("Page content cannot be empty.")]
+    public async Task UpsertPageAsync_KeepsOtherFailuresTransient(string message)
+    {
+        var handler = new RecordingHandler(PageNotFoundEnvelope,
+            Failed("create", message));
+
+        var act = () => Build(handler).UpsertPageAsync(Page(), TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<WikiJsSyncException>();
+    }
+
     // 実測 2・3: アーカイブは現在の content/title/tags を取得し、全項目シェイプ＋ isPublished:false で update する。
     [Fact]
     public async Task ArchivePageAsync_SendsFullUpdateShape_WithUnpublish()

@@ -3,15 +3,15 @@ title: FR-13 Wiki 閲覧の ABAC 適用 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-07-03
-updated: 2026-10-15
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-07, FR-13, UC-07, NFR-06]
 adrs: [ADR-0004, ADR-0011, ADR-0027]
-iadrs: [IADR-0541, IADR-0540, IADR-0023, IADR-0478]
-specs: [20261015_1934_wiki-slug-unique, 20260703_FR-13_wiki-browsing-abac, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#1934, #1640]
+iadrs: [IADR-0554, IADR-0541, IADR-0540, IADR-0023, IADR-0478]
+specs: [20261016_1966_wiki-title-column-length, 20261015_1934_wiki-slug-unique, 20260703_FR-13_wiki-browsing-abac, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#1966, #1934, #1640]
 -->
 
 # テスト仕様書: Wiki 閲覧の ABAC 適用
@@ -68,6 +68,11 @@ issues: [#1934, #1640]
 | T-27 | 本文の取得でオブジェクトストレージが NoSuchKey（専用の型・汎用の型にエラーコード）・404 のバケットなし・500・503・時間切れ・接続の失敗を返す | 読み手 | NoSuchKey だけを本文の欠落へ写す（所在を運ぶ）。状態コード 404 だけでは写さず、他は元の例外のまま上げる（取り込みと同じ判定） | 同上 | 自動 |
 | T-28 | 本文が無い。本文の一時障害（500） | 発行→消費 | 欠落は例外を上げずに終え、Warning（文書 ID・本文の所在・更新日時）と計数 `reason=body_missing` を 1。メタデータも Wiki.js も書かない。一時障害は例外のまま | 同上 | 自動 |
 | T-29 | 本番と同じ共通既定の Wolverine（ローカルキュー）で、slug の恒久的な衝突・本文が無い・1 回目だけ DB の接続断 | 発行→消費 | 恒久的な失敗は試行 1 回で成功として終わり、デッドレターへ行かない（受け口の中の付け替えは 1 度だけ）。接続断は従来どおり再試行され（2 回目で保存）、デッドレターへ行かない | 同上 | 自動 |
+| T-30 | 表題がちょうど 255 文字（Wiki.js の列の長さ） | 発行→消費 | 切らずにそのまま送る（同じ値）。切り詰めの計数は増えない | 更新反映（長い表題でも Wiki に載る） | 自動 |
+| T-31 | 表題が 256 文字。表題が 840 文字 | 発行→消費 | Wiki.js へは 254 文字＋印（`…`）の 255 文字で送り、計数 `wiki.sync.truncated{field=title}` を 1（恒久的な失敗の計数は増えない）。台帳の表題は 500 文字まで元のまま、超えれば 499 文字＋印。slug の候補はどれも 500 文字以内で、末尾が `-` にも印にもならない。パスは 40 文字固定（説明は空の定数）で列の長さに収まる | 同上 | 自動 |
+| T-32 | 上限を超える表題がサロゲートペア（BMP 外の漢字）・結合文字（濁点）・異体字セレクタ・ZWJ で連結した絵文字・国旗の対で続く。BMP 外の漢字 255 文字 | 切り詰め | 符号位置で数え（BMP 外の漢字 255 文字は切らない）、書記素クラスタの境界でだけ切る（孤立したサロゲートを作らず、切った位置は要素の先頭）。印を含めて上限に収まる | 同上 | 自動 |
+| T-33 | Wiki.js が `pages.create` / `pages.update` を値の長さ（`value too long for type character varying(255)`）で拒む。本番と同じ共通既定の Wolverine で同じ失敗 | 発行→消費 | 恒久的な失敗へ写し、例外を上げずに終える。Warning（文書 ID・操作・パス・Wiki.js の message。表題そのものは出さない）と計数 `wiki.sync.skipped{reason=value_too_long}` を 1。メタデータを書かない。実配送では試行 1 回で成功として終わりデッドレターへ行かない | 更新反映（恒久的な失敗で DLQ を汚さない） | 自動 |
+| T-34 | Wiki.js の他の失敗（接続断・プールの枯渇・本文が空・GraphQL errors）。実配送で 1 回目だけ失敗 | 発行→消費 | 一時障害のまま例外を上げ（計数は増えない）、実配送では再試行の 2 回目で反映してデッドレターへ行かない | 同上 | 自動 |
 
 ## 実装マッピング
 
@@ -77,5 +82,6 @@ issues: [#1934, #1640]
 - `DocumentDeleteArchiveSyncTests`（T-15〜T-19）
 - `WikiJsGraphQlClientTests`（T-21〜T-22。稼働 Wiki.js 2.5.314 の実測応答を再生）
 - `WikiSyncTimeoutTests`（T-23〜T-24。配線は同じファイルの `WikiSyncTimeoutWiringTests`）
-- `WikiSyncPermanentFailureTests`（T-25〜T-29。23505 は保存の割り込みで再現する —— InMemory は一意索引を強制しない）
+- `WikiSyncPermanentFailureTests`（T-25〜T-29。23505 は保存の割り込みで再現する —— InMemory は一意索引を強制しない。T-30〜T-34 の受け口と実配送）
+- `WikiTextTests`（T-32）・`WikiJsGraphQlClientTests`（T-33・T-34 の失敗の分類）
 - `DocumentLifecycleEventTests`（DocumentService 側: archive/delete のイベント発行）

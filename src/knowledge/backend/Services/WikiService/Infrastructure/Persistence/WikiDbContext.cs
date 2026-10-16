@@ -20,7 +20,7 @@ public class WikiDbContext(DbContextOptions<WikiDbContext> options) : DbContext(
             e.HasKey(p => p.Id);
             // IADR-0021: WikiPath は DocumentId 由来の計算値（列として保持しない）。
             e.Ignore(p => p.WikiPath);
-            e.Property(p => p.Title).HasMaxLength(500).IsRequired();
+            e.Property(p => p.Title).HasMaxLength(WikiPage.TitleMaxLength).IsRequired();
             e.Property(p => p.Slug).HasMaxLength(WikiPage.SlugMaxLength).IsRequired();
             e.HasIndex(p => p.Slug).IsUnique().HasDatabaseName(SlugIndexName);
             e.HasIndex(p => p.DocumentId).IsUnique();

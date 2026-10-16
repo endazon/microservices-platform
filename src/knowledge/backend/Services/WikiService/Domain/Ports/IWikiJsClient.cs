@@ -26,3 +26,13 @@ public interface IWikiJsClient
 // が単一真実源として担う（属性集合は Wiki.js へ持ち込まない）。
 public record WikiJsPage(
     string Path, string Title, string Markdown, IReadOnlyList<string> Tags, bool IsPrivate);
+
+// 🔴 FR-13, [[IADR-0554]] 決定 3 (#1966): **Wiki.js 2.x の列の長さ**（`pages.title` / `pages.description` / `pages.path` と、
+// 同じ値を写す `pageTree`・`pageHistory` の列は Knex の `string()` ＝ varchar(255)）。数え方は文字（符号位置。`WikiText`）。
+// 超えると Wiki.js は `value too long for type character varying(255)`（errorCode=1）を返し、再試行では直らない。
+public static class WikiJsColumns
+{
+    public const int TitleMaxLength = 255;
+    // 説明（description）も varchar(255) だが、クライアントは常に空文字の定数を送るので定数を置かない（値を入れるときに足して `WikiText.FitColumn` を通す）。
+    public const int PathMaxLength = 255;
+}
