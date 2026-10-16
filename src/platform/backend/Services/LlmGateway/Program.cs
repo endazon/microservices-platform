@@ -90,8 +90,10 @@ builder.Services.Configure<LlmRoutingOptions>(
 builder.Services.AddSingleton<ILlmRouter, LlmRouter>();
 
 // FR-11: ルーターの判定に従って呼び出し先を切り替えるため、プロバイダをキー付きで登録する。
-// ティアB=保護契約済み外部API（Claude。組織の ZDR は未締結・推論の所在は受け入れたリスク。ADR-0140 決定 5）、ティアA=セルフホスト（OSS, 既定は無効エンドポイント）、
+// ティアB=保護契約済み外部API（Claude）、ティアA=セルフホスト（OSS, 既定は無効エンドポイント）、
 // GitHub Copilot（最難関用途の別経路, ティア確定まで既定は無効エンドポイント）。ADR-0010 / IADR-0022。
+// NFR-17, ADR-0140 決定 5, IADR-0552 (#1960): ティアB の Claude は組織の ZDR が未締結（期限付きで受け入れたリスク）で、
+// 推論の所在も受け入れたリスクである（運用仕様書「LLM ゲートウェイの送信先ティア（Claude）の認定状況」）。
 // FR-11, IADR-0531 (#1875・planning#783): 用途別 effort（`Llm:PurposeEffort`。既定は rerank=low のみ）。
 // 値域外は起動時に落とす（実行時に送ると全件 400 になり「上流の失敗」としか見えない）。
 builder.Services.AddOptions<ClaudePurposeEffortOptions>()
