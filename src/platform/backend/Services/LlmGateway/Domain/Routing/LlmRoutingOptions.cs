@@ -85,6 +85,8 @@ public sealed class LlmEndpointOptions
     // ZDR（ゼロデータ保持）非対応のモデル一覧（08_data-egress-policy の注意点 / IADR-0022）。
     // 同一ティア内でもモデルによりデータ保持条件が異なるため、ここに列挙したモデルは ZDR を要件とする
     // 機密区分（confidential/restricted）では候補から除外する。既定は空（=全モデル ZDR 対応扱い）。
+    // NFR-17, ADR-0140 決定 5, IADR-0552 (#1960): 「ZDR 対応」はモデルの性質の扱いであり、組織の ZDR 契約ではない
+    // （Claude の組織の ZDR は未締結。送った本文は提供元の標準の保持の下にある）。
     public List<string> NonZdrModels { get; set; } = [];
 
     // 用途別モデルが未指定・非対応のときのフォールバックモデル。

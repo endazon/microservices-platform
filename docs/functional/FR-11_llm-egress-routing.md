@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02, NFR-17, NFR-19, NFR-28]
-adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
-iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531, IADR-0535, IADR-0533]
-specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue]
-issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, #1902, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783]
+adrs: [ADR-0140, ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
+iadrs: [IADR-0552, IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531, IADR-0535, IADR-0533]
+specs: [20261016_1960_adr-0140-tier-b-residency-zdr, 20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue]
+issues: [#1960, #201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, #1902, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783, planning#795]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -54,12 +54,20 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 | `restricted` | 可 | 可（追加統制下） | 不可 |
 | 未知・未指定 | 可（セルフホストのみ） | 不可 | 不可 |
 
+> **［2026-10-16］ティア B の呼び名「保護契約済み外部API」は計画の定義（ZDR・学習不使用・データレジデンシー／越境保証・監査可能）の名称であり、
+> 現在のティア B の送信先がそれをすべて満たすことを意味しない。** 計画は、Claude（`claude-managed`）について**組織の ZDR を未締結**（期限付きで受け入れたリスク）、
+> **推論の所在**を受け入れたリスク、Voyage（埋め込み）について**所在**を受け入れたリスクとし、いずれも「監査可能」は未照合と記録した。
+> エンドポイント定義は `Tier` だけを持ち、判定の根拠を持たない。記録は運用仕様書の「LLM ゲートウェイの送信先ティア（Claude）の認定状況」と「ゼロ保持認定状況の記録」にある。
+
 ### 用途別モデル解決（`ResolveModel`）
 
 - 優先順位: ① 明示 `Model` 要求が**適格モデル**なら採用 → ② `PurposeModels[purpose]` が適格なら採用 → ③ エンドポイントの `DefaultModel`（適格なら）→ ④ 適格モデル先頭。適格モデルが無ければ空文字を返し送信拒否へ縮退。
 - **ZDR（ゼロデータ保持）によるモデル除外（既定モデル改定の実装 ADR と 08_data-egress-policy）**: `EgressMatrix.RequiresZeroDataRetention` が真の機密区分（`confidential`/`restricted`、未知区分も安全側で真）では、エンドポイントの `NonZdrModels` に列挙された ZDR 非対応モデルを候補から除外する。
   **［2026-08-18 更新 / #850・分析用途のモデル割当の計画 ADR］既定の `NonZdrModels` は空である** —— 同 ADR 決定 2 により `claude-fable-5` を `Models`（利用許可集合）から外したため、列挙する対象が無くなった。
   **除外機構そのものは残す**（非 ZDR モデルを将来再び許可集合へ入れるときの唯一の統制点であり、単体カバレッジは `LlmRouterTests` の合成 config が持つ）。
+  🔴 **［2026-10-16］本仕様書の「ZDR の要件」「ZDR 対応モデル」「ZDR の外へは出ない」は、モデル単位の除外（`NonZdrModels`）とティア C の除外を指す。**
+  ゲートウェイは組織の ZDR 契約を見ない。Claude の組織の ZDR は未締結であり、ZDR を要件とする区分・用途でも、送った本文は提供元の標準の保持（最長 30 日・米国）の下にある
+  （運用仕様書「LLM ゲートウェイの送信先ティア（Claude）の認定状況」）。
 - **［2026-10-10］Claude の割当は全用途で 5.5 系である**（利用者裁定。`claude-opus-5` → `claude-opus-5-5`・`claude-sonnet-5` → `claude-sonnet-5-5`・
   `claude-haiku-4-5` → `claude-haiku-5-5`。取引判断の 2 層を含む。fable 系は引き続き用いない）。以下の値は切替後の現行値である。
   旧 3 モデルは**切り戻しのために利用許可集合と単価表へ残す**（割当には使わない）。各用途の割当の根拠（どの層を充てるか）は従前の決定のままで、

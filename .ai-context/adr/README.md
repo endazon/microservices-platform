@@ -629,3 +629,4 @@
 | [IADR-0549](./IADR-0549_archive-bodyless-pre-cutover-documents.md) | 9/26 の切り替えより前に作られ本文のオブジェクトが無い（NoSuchKey）文書は、管理者だけの一回限りの口と駆動スクリプトで既存の状態「アーカイブ」へ移す。本文の有無は HEAD と範囲 0-0 の GET で確かめ、索引からは単票のアーカイブと同じ発行で外す。アーカイブ解除は足さない（#1931 項目 3） | Accepted |
 | [IADR-0550](./IADR-0550_chart-observability-front-guard.md) | 描画結果に Loki・Tempo が現れたら、前段の認証（Secret を受ける同じ Pod のリバースプロキシ・製品の loopback 待ち）と名指しの NetworkPolicy の両方を check-deploy-manifests.js で要求する（#1867） | Accepted |
 | [IADR-0551](./IADR-0551_archive-excluded-from-discovery-surfaces.md) | アーカイブした文書は台帳の状態で判定し、取り込みは全索引から点を消し、グラフはノードを撤収し、MCP の一覧は外す。lifecycle 属性は同期しない。配備前のアーカイブ済みは状態で絞った再発行で遡及する（計画 ADR-0141。#1961） | Accepted |
+| [IADR-0552](./IADR-0552_adr-0140-zdr-wording-and-unverified-voyage-procedure.md) | 計画 ADR-0140 への追随。実装の「ZDR」はモデル単位の除外と読み分け、組織の ZDR が働いていると読める記述を直す。未認定の Voyage の鍵の環境は「鍵を入れない」か「ティア A を有効にして Voyage を止める」で扱い、compose に Voyage の経路の口を足す（#1960） | Accepted |

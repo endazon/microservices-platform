@@ -7,11 +7,11 @@ updated: 2026-10-16
 author: claude
 ---
 <!-- trace:
-ids: [SC-13, SC-14, SC-16, FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06, FR-17]
-adrs: [ADR-0141, ADR-0031, ADR-0010, ADR-0133, ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083, ADR-0132, ADR-0086, ADR-0131]
-iadrs: [IADR-0551, IADR-0549, IADR-0547, IADR-0536, IADR-0532, IADR-0261, IADR-0435, IADR-0528, IADR-0114, IADR-0526, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0525, IADR-0523, IADR-0522, IADR-0524, IADR-0531, IADR-0533]
-specs: [20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20261015_1858_pin-inner-image-digests, 20261015_1931_republish-created-after, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261014_1740_voyage-zero-retention-certification, 20261010_sc13-keycloak-theme-nocturne, 20261010_1881_grafana-alert-uid-length, 20261010_1872_anthropic-timeout-config, 20261009_1842_loki-tempo-front-auth, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1840_secret-store-openbao, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade, 20261010_1875_claude-5-5-models, 20261010_issue-1255-1517_east-west-rest-retirement, 20261015_1902_east-west-rest-residue]
-issues: [#1961, #1931, #1908, #1740, #1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1840, #1846, #1839, #1859, #1875, #1255, #1517, #1902, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750, planning#741, AST#1289, AST#243, planning#783]
+ids: [SC-13, SC-14, SC-16, FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06, FR-17, NFR-17]
+adrs: [ADR-0141, ADR-0031, ADR-0010, ADR-0133, ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083, ADR-0132, ADR-0086, ADR-0131, ADR-0140]
+iadrs: [IADR-0551, IADR-0549, IADR-0547, IADR-0536, IADR-0532, IADR-0261, IADR-0435, IADR-0528, IADR-0114, IADR-0526, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0525, IADR-0523, IADR-0522, IADR-0524, IADR-0531, IADR-0533, IADR-0552]
+specs: [20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20261015_1858_pin-inner-image-digests, 20261015_1931_republish-created-after, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261014_1740_voyage-zero-retention-certification, 20261010_sc13-keycloak-theme-nocturne, 20261010_1881_grafana-alert-uid-length, 20261010_1872_anthropic-timeout-config, 20261009_1842_loki-tempo-front-auth, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1840_secret-store-openbao, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade, 20261010_1875_claude-5-5-models, 20261010_issue-1255-1517_east-west-rest-retirement, 20261015_1902_east-west-rest-residue, 20261016_1960_adr-0140-tier-b-residency-zdr]
+issues: [#1960, #1961, #1931, #1908, #1740, #1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1840, #1846, #1839, #1859, #1875, #1255, #1517, #1902, AST#346, AST#1078, AST#1289, AST#243, planning#196, planning#524, planning#538, planning#672, planning#712, planning#750, planning#741, planning#783, planning#795]
 -->
 
 # 運用仕様書
@@ -45,6 +45,7 @@ issues: [#1961, #1931, #1908, #1740, #1881, #1872, #1842, #1850, #1783, #1829, #
 | データソース定期同期を有効化・監視したい | §データソース定期同期の有効化と監視 |
 | 埋め込みプロバイダのゼロ保持・fail-closed 挙動を確認したい | §埋め込みプロバイダの設定・ゼロ保持・再索引 |
 | 経路B の LLM ゲートウェイへ埋め込み（Voyage）の鍵を入れる・届いたか確かめる | [`voyage-embedding-key-runbook.md`](voyage-embedding-key-runbook.md) |
+| Claude（ティア B）の ZDR・データの所在・学習不使用がどう判定され、何を受け入れているかを知りたい | §LLM ゲートウェイの送信先ティア（Claude）の認定状況 |
 | LLM ゲートウェイの Claude 呼び出しの期限（既定 100 秒）を延ばしたい・呼び出し側の期限との関係を知りたい | §LLM ゲートウェイの Anthropic 呼び出しの期限 |
 | HPA/PDB でスケール・可用性を確保したい | §可用性・水平スケール |
 | アラートが実際にどこへ届くか（未配線の現状）を確認したい | §監視・アラート |
@@ -1057,7 +1058,7 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
 
 | 機密区分 | 送信先ティア | モデル / 次元 | コレクション | 既定状態 |
 | --- | --- | --- | --- | --- |
-| public / internal | ティアB（Voyage・保護契約） | voyage-3.5 / 1024 | `knowledge_chunks_voyage_3_5` | 有効（要 API キー） |
+| public / internal | ティアB（Voyage。~~保護契約~~ ［2026-10-16］根拠は公開の規約と opt-out。所在は受け入れたリスク） | voyage-3.5 / 1024 | `knowledge_chunks_voyage_3_5` | 有効（要 API キー） |
 | confidential / restricted / 未指定・未知 | **埋め込まない**（どの送信先へも本文を送らない） | なし（ベクトルを持たない） | `knowledge_chunks_lexical`（語彙索引） | **常に有効**（全文索引だけ。キーワードとハイブリッドで現れ、意味検索には現れない） |
 | （opt-in）セルフホスト有効時 | ティアA（セルフホスト） | ruri-v3 / 768 | `knowledge_chunks_ruri_v3` | 無効。**有効にしても高機密文書は埋め込まれない**（上の行のまま。検索クエリと測定用） |
 | （検証スタック専用）全区分 | ティアA（決定的ローカル・プロセス内計算） | deterministic-hash-v1 / 1024 | `knowledge_chunks_deterministic_v1` | 無効＝**既定では存在しないのと同じ** |
@@ -1072,8 +1073,10 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
 
 - **Voyage AI（ティアB）のゼロ保持設定（必須・受け入れ基準）**: 本番データを流す前に、Voyage AI の
   組織設定で**学習利用のオプトアウト（ゼロ保持 / zero-day retention）を有効化**する。08_data-egress-policy
-  のティアB要件（ゼロ保持・学習不使用・レジデンシー）を契約で確認し、確認できるまで本番文書を索引しない。
-  未認定の間は `Embedding__Routing__Endpoints__0__Enabled=false` で Voyage 経路を止められる。
+  のティアB要件（ゼロ保持・学習不使用・レジデンシー）を~~契約で~~確認し、確認できるまで本番文書を索引しない（［2026-10-16］確かめる手段は契約ではなく、公開の規約とアカウントの opt-out である。次の追記）。
+  ~~未認定の間は `Embedding__Routing__Endpoints__0__Enabled=false` で Voyage 経路を止められる。~~
+  ［2026-10-16］未認定の間の止め方は、下の「未認定の環境へデプロイする場合」の 2 つの形による（Voyage の経路を止めるだけではゲートウェイが起動しない）。
+  ［2026-10-16］Voyage について確かめたのは契約ではなく、公開の規約とアカウントの opt-out である（契約書は無い）。
   **［2026-10-14］認定した**（下の「ゼロ保持認定状況の記録」。オプトアウトは 2026-10-14 に実施済み）。所在（レジデンシー）だけは
   規約に保証が無く、オーナーが受容した。
   - API キーは Secret 経由で投入する（コミットしない）。compose: `.env` の `VOYAGE_API_KEY`
@@ -1118,9 +1121,47 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
     - ⚠️ **既定構成は Voyage 経路が有効**（`appsettings.json` の `voyage-managed`＝index 0 が `Enabled: true`。
       compose/Helm に既定の無効化上書きは無い）。したがって「未認定＝自動で停止」ではない。**未認定の環境へデプロイ
       する場合は、運用者が本番文書を流す前に明示的に Voyage 経路を無効化すること**（`Embedding__Routing__Endpoints__0__Enabled=false`。
-      compose は `.env`、k8s は values/`--set` で上書き）。本 PR は既定挙動（Voyage 有効）を変更しない（後方互換）。
+      ~~compose は `.env`、k8s は values/`--set` で上書き~~）。本 PR は既定挙動（Voyage 有効）を変更しない（後方互換）。
       ［2026-10-14］認定の後も、上の「認定の射程」の外（opt-out を確かめていないアカウントの鍵）の環境にはこの手順が当たる。
+      **［2026-10-16］手順を直した。** 🔴 **Voyage の経路を止めるだけでは LLM ゲートウェイが起動しない** —— 起動時の検証が、
+      `public` / `internal` と検索クエリを送れる有効なエンドポイント（ティア A か B）が 1 つも無い構成を落とすからである。
+      既定ではティア A（セルフホスト・決定的ローカル）はどちらも無効なので、上の 1 行だけを当てると、埋め込みだけでなく Claude の呼び出しを含むゲートウェイ全体が止まる。
+      また、従前は compose に Voyage の経路を止める口が無く、`.env` に書いても届かなかった。未認定の環境では次のどちらかを当てる。
+      1. **鍵を入れない（最も簡単）。** 鍵が空なら、ゲートウェイは Voyage へ HTTP を行わない。`public` / `internal` の文書は語彙索引へ全文だけの点（埋め込み待ち）として入り、
+         意味検索には現れない。opt-out を確かめた鍵を後で入れれば、取り込みサービスの常駐の器が待ちの点を自動で埋め直す
+         （仕組みと観測は下の「埋め込みが使えない間の全文だけの点」。試験 `EmbeddingPendingReembedderTests` の「埋め込めた点は主へ書いてから語彙索引の待ちの点を消す」「埋め込めなければ点を残し周期を打ち切る」）。
+         この形より前に鍵の無い間に取り込まれ、どこにも書かれなかった文書は、同節のとおり「`DocumentUpdated` の再発行」で埋め直す。
+         compose は `.env` の `VOYAGE_API_KEY` を空のままにし、k8s は Secret `llm-provider-credentials` に `voyage-api-key` を置かない。
+      2. **セルフホスト（ティア A）を有効にしたうえで Voyage の経路を止める。** 下の「セルフホストの有効化」を済ませてから止める。
+         compose は `.env` に `VOYAGE_EMBEDDING_ENABLED=false`（`Embedding__Routing__Endpoints__0__Enabled` へ渡る。既定 `true`）と
+         `SELFHOSTED_EMBEDDING_ENABLED=true`・`SELFHOSTED_EMBEDDING_URL` を与える。この口は `.env.example` に無いので、`.env` へ自分で次の 3 行を書く
+         （`docker compose --profile embedding up` でセルフホストの基盤も起こす）:
+
+         ```dotenv
+         VOYAGE_EMBEDDING_ENABLED=false
+         SELFHOSTED_EMBEDDING_ENABLED=true
+         SELFHOSTED_EMBEDDING_URL=http://embedding:80
+         ```
+
+         書いた値が届いたかは `docker compose config` の `llm-gateway` の environment で `Embedding__Routing__Endpoints__0__Enabled: "false"` を見る。
+         Helm は `embedding.enabled: true` に加え、`services.llmgateway.extraEnvAppend` に
+         `{name: Embedding__Routing__Endpoints__0__Enabled, value: "false"}` を足す（🔴 `extraEnv` に書くと本番既定の env が丸ごと置き換わるので、足すだけの `extraEnvAppend` を使う）。
+         Helm の形は、この値を `--set` で与えた描画（`helm template`）が通り、描画結果の `llmgateway` の env に `Embedding__Routing__Endpoints__0__Enabled: "false"` が載ることを確かめた
+         （2026-10-16・PR の AI レビューの実走）。当てる環境でも、描画結果で同じことを見てから適用する。
+         このとき `public` / `internal` の取り込みと検索クエリの埋め込みは、残る有効なエンドポイント（ティア A の Ruri）へ回る。
+         主コレクション（voyage）を読む検索がどう振る舞うかは、この形では確かめていない（確かめたのは起動の可否だけである）。
+      決定的ローカル（検証スタック専用）を有効にして起動だけを通す形は採らない（意味の近さを持たず、本番の検索には使えない）。
     - ~~実際の契約認定は稼働環境／調達手続き依存＝分離（フォローアップ #336）。~~ ［2026-10-14］認定は上のとおり済んだ。
+    - **［2026-10-16］計画が、この認定をティアB の定義への例外として記録した。** 記録の要点は次のとおりである。
+      - **所在の保証が無い点は、計画のティアB の定義（ZDR・学習不使用・データレジデンシー／越境保証・監査可能）が挙げる条件の 1 つへの例外**として受け入れたリスクとした。
+        計画のティアB の定義そのものは改めていない。例外の射程は Voyage AI（と、下の Claude の節の推論の所在・ZDR の未締結）に限る。
+        **他の送信先をティアB として扱うときは、定義どおりに判定する。**
+      - **根拠は公開の規約とアカウントの opt-out だけである。** ティアB の呼び名は「保護契約済み外部API」だが、Voyage は個別の契約で守られているのではない。
+        規約の改定・アカウントの設定の変更・鍵の切り替えで前提が崩れ得て、これを自動で検知する手段は無い。
+      - 🔴 **「監査可能」の条件は照合していない**（計画に「監査可能」の定義が無い）。Voyage が監査可能の条件を満たすとは主張しない。定義が決まったら照合し直す。
+      - **認定の射程**（opt-out を実施したアカウントの鍵に限る）は、計画も**オーナーの確認が済むまでの安全側の推論**として認めた。確認の結果が違っても射程が広がる向きだけである。
+      - **判定の根拠はエンドポイント定義に無い。** `appsettings.json` の `voyage-managed` が持つのは `Tier: "B"` だけで、根拠（規約の版・保持・学習・所在・監査）を持たない
+        （計画は根拠をエンドポイント定義へ記録すると定めるが、未実装）。**それまでは本記録が暫定の手段である。**
 - **セルフホスト（ティアA / Ruri v3）の有効化**: 基盤（TEI / vLLM 等の OpenAI 互換 `/v1/embeddings`）を
   構築後、`SELFHOSTED_EMBEDDING_URL`（`Embedding__SelfHosted__BaseUrl`）と
   `SELFHOSTED_EMBEDDING_ENABLED=true`（`Embedding__Routing__Endpoints__1__Enabled`）を設定して有効化する。
@@ -1439,8 +1480,10 @@ Wiki のページの非公開化も索引からの撤収も戻らない（戻す
   宛先は埋め込みと同じ LLM ゲートウェイ（`Services__LlmGateway`。`Services__LlmGatewayGrpc` が在れば gRPC）で、追加の配線は要らない。
   有効なとき introspection（構成情報）にポート `search-rerank` が載る。
 - 🔴 **有効化は越境の判断を伴う。** 候補の本文（1 件あたり最大 400 字・最大 20 件）が、`restricted` と機密区分が未指定・未知の文書を含めて
-  ティア B（Claude・ZDR）へ出る（計画が受け入れたリスク。追加統制は未定義）。守りは ZDR（用途 `rerank` は区分によらず ZDR 必須）・ABAC・
+  ~~ティア B（Claude・ZDR）へ出る~~ ［2026-10-16］ティア B（Claude）へ出る（計画が受け入れたリスク。追加統制は未定義）。守りは ZDR（用途 `rerank` は区分によらず ZDR 必須）・ABAC・
   個人資料の「AI の入力に含める」だけである。
+  🔴 **［2026-10-16］ここでの「ZDR 必須」はモデル単位の除外（`NonZdrModels`）とティア C の除外であり、組織の ZDR 契約を見ない。**
+  Claude の組織の ZDR は**未締結**であり、送った候補の本文は標準の保持（最長 30 日・米国）の下に置かれる（下の §LLM ゲートウェイの送信先ティア（Claude）の認定状況）。
 - **費用の目安**（単価表 `claude-haiku-5-5` $0.10 / $0.50 per 1M tokens。入力 100,000 トークン以下の段。再順位付けの入力は最大でも約 9,000 トークンで上段には届かない）:
   1 回 平均 約 $0.0006〜$0.001・最大 約 $0.0014（入力 約 9,000 トークン＋出力の上限 1,024 トークン）。1 日 1,000 検索で 約 $17〜$30／月。
   平均に幅があるのは、`claude-haiku-5-5` が既定で考える（思考のトークンも出力として課金される）ためで、ゲートウェイは用途 `rerank` に effort `low` を付けて絞る（`Llm__PurposeEffort__rerank`）。
@@ -1450,6 +1493,7 @@ Wiki のページの非公開化も索引からの撤収も戻らない（戻す
   合成監視の検索（`/bff/analysis/ask` 等）は内周の標識で見分けて再順位付けを呼ばない（費用に入らない）。
 - **用途のモデルを変えるとき**: `rerank` の割当モデルを ZDR 非対応（`NonZdrModels`）にすると、ゲートウェイは既定モデル
   （`claude-opus-5-5`）へ倒れる。ZDR の外へは出ないが、費用は約 40 倍になる（`claude-haiku-5-5` の下段 $0.10 / $0.50 に対し $4 / $20）。
+  ［2026-10-16］「ZDR の外へは出ない」はモデル単位の意味である（組織の ZDR は未締結。上の 🔴）。
 - 🔴 **有効化は #1746 の段 S5 で扱う**（検索 p95 の目標 1.5 秒と、再順位付けの往復〔期限 8 秒〕の扱いの裁定が前提）。
 - **調整の口**（範囲外は既定へ倒れ、警告ログが出る）: `Rerank__CandidateCount`（既定 20・2〜50）・`Rerank__MaxCharsPerCandidate`（既定 400・50〜2000）・
   `Rerank__TimeoutSeconds`（既定 8・1〜30）・`Rerank__MaxOutputTokens`（既定 1024・64〜2048。2026-10-10 に 512 から引き上げ。
@@ -1460,6 +1504,33 @@ Wiki のページの非公開化も索引からの撤収も戻らない（戻す
   `timeout`（期限・ゲートウェイの遅延）／`transport`（ゲートウェイに届かない）／`not_sent`（越境拒否・上流の不調。ゲートウェイのログに理由）／
   `refusal`（モデルの拒否）／`unparseable`（出力の形）。**どの理由でも検索は従来の並びで成功している**（並べ替えだけが抜ける）。
 - **戻す**: `Rerank__Enabled=false`（段の型が登録されなくなり、並びは従来どおり）。
+
+### LLM ゲートウェイの送信先ティア（Claude）の認定状況（LLM 送信先切替の要求 / データ越境統制）
+
+**［2026-10-16 新設］** 計画は、Claude（Anthropic。エンドポイント `claude-managed`・ティア B）の条件を提供元の公開の文書（2026-10-16 に確認）と照合し、
+次のとおり記録した。**ティア B の定義（ZDR・学習不使用・データレジデンシー／越境保証・監査可能）のうち、所在と ZDR を満たさないまま受け入れている。**
+
+| 条件 | 提供元の公開の文書 | 判定 |
+| --- | --- | --- |
+| 学習不使用 | 明示の許可が無い限り、学習に使わない | 規約上は満たす（機械による検査は無い） |
+| ゼロ保持（ZDR） | 組織ごとの契約（営業を通す）で有効になる。契約が無いと、入出力は受領から 30 日以内に削除される | 🔴 **満たさない（未締結と記録した）。期限付きで受け入れたリスク** |
+| データの所在 | 保存は米国。推論の場所は要求の `inference_geo` で決まり、既定の `"global"` では米国・欧州・アジア・豪州の一部の国のいずれかで動き得る。`"us"` で米国に固定できる（単価 1.1 倍）。日本は指定できない | **満たさない。受け入れたリスク** |
+| 監査可能 | 照合していない（計画に「監査可能」の定義が無い） | 未照合 |
+
+- 🔴 **組織の ZDR は未締結である。** 契約を結ぶまでは、Claude へ送った本文（`restricted` と機密区分が未指定・未知の文書の本文を含む）は
+  **最長 30 日、米国に保存される**。利用ポリシー違反として検知された会話は最長 2 年保持され得る（ZDR の有無によらない）。
+  - **受容者**: 利用者（オーナー）。**期限**: ZDR を締結するか、標準の保持を恒久的に受け入れるかを決めるまで。**その判断は本番運用への移行を判断する前に行う。**
+  - **送信は止めない**（`restricted` の送信を止めると、高機密の文書の再順位付けと回答生成が止まる）。
+- 🔴 **実装の「ZDR」はモデル単位である。** ゲートウェイの ZDR の要件（機密区分 `confidential` / `restricted`・未知区分、用途 `rerank`）は、
+  `NonZdrModels` に載るモデル（現在は空）とティア C を候補から外すだけで、**組織の契約を見ない**。本書・機能仕様書・セキュリティ仕様書の
+  「ZDR 必須」「ZDR 対応モデル」「ZDR の外へは出ない」は、この意味で読む。**ゼロ保持が働いていることを意味しない。**
+- **推論の所在**: ゲートウェイは `inference_geo` を指定しない。推論の場所は Anthropic の組織の workspace 設定（`default_inference_geo`・`allowed_inference_geos`）に従う。
+  **その設定値は確かめていない。** 指定できる値は `"us"` と `"global"` だけなので、どちらであっても受け入れた範囲（`"global"` が選び得る地域での推論と、米国での保存）の内に収まる。
+  - `"us"` への固定（Claude の全用途で単価 1.1 倍）は、ZDR の判断と同時に再検討する。固定する前に、利用許可集合に残る旧モデル（`claude-haiku-4-5` など 4.6 より前）が
+    `inference_geo` を受け付けず 400 を返し得る点を確かめる（失敗するなら、旧モデルを利用許可集合から外すか、実装の変更が要る）。
+- **判定の根拠はエンドポイント定義に無い。** `claude-managed` が持つのは `Tier`・`Models`・`NonZdrModels` などで、判定の根拠（契約・保持・学習・所在・監査）を持たない。
+  **それまでは本節が暫定の手段である。** ZDR の判断のときに、上の表を提供元の文書と照合し直す（確認日 2026-10-16）。
+- ZDR を締結したら、締結の日付をここへ記録し、上の表と 🔴 の項を改める（計画の側の記録も改まる）。
 
 ### LLM ゲートウェイの Anthropic 呼び出しの期限（LLM 送信先切替の要求 / #1872）
 
@@ -2433,6 +2504,12 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
 
 ## 未決事項
 
+- **未認定の鍵の環境の手順 (b) の検索の挙動**（［2026-10-16］）: §埋め込みプロバイダ の「未認定の環境へデプロイする場合」の手順 (b)（Voyage の経路を止め、ティア A を有効にする）で、
+  主コレクション（voyage）を読む検索がどう振る舞うかは実測していない（確かめたのは起動の可否だけ）。**本番で当てる前に PoC で実測する。**
+- **Claude の ZDR（ゼロデータ保持）の締結**（［2026-10-16］）: 組織の ZDR は未締結であり、Claude へ送った本文は標準の保持（最長 30 日・米国。
+  利用ポリシー違反として検知された分は最長 2 年）の下にある。利用者（オーナー）が期限付きで受け入れている。**締結するか、標準の保持を恒久的に受け入れるかを、
+  本番運用への移行を判断する前に決める**（追跡は計画側の未決事項）。あわせて組織の workspace の推論の場所の設定値を確かめて記録する
+  （§LLM ゲートウェイの送信先ティア（Claude）の認定状況）。
 - **Alertmanager の受信先設定**: **［2026-08-30 更新 / #546］Alertmanager 本体は配備済みで、
   `alertmanagers.targets` は compose・k8s の 2 か所とも埋まっている**（発火が Alertmanager へ届くことは
   意図的に閾値を割って実測した）。**残っているのは受信先（メール/チャット）だけ**であり、
