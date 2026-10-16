@@ -14,6 +14,8 @@
  *      その列挙の内側にある（observability-gate.yaml の @reader）。運用の口・削除 API は呼ばない。
  *
  * ページ送り: Loki は 1 回の応答を `limit`（上限 max_entries_limit_per_query＝既定 5000）件で切る。
+ *   既定の limit は 1000（#1965）。1 ページは querier → frontend の gRPC 1 通に載り、その上限（経路 B は 16 MiB。IADR-0553）を
+ *   超えると Loki の中で捨てられて応答が来ない。行の長い job（AST の判断の全文）は 5000 行で 4.6 MiB を超えた（実測）。
  *   forward（古い順）に取り、次のページは「前のページの最後の時刻」から**含めて**取り直す。同じ時刻の行は
  *   前のページで書いたもの（ラベル＋時刻＋本文の組）を落とす。ページ全体が同じ時刻で先へ進めないときは、その時刻
  *   （1 ns の幅）だけを上限の件数で取り直して次の時刻へ進む。それでも上限で切れるなら黙って打ち切らず失敗にする
@@ -37,7 +39,12 @@ const DEFAULT_URL = 'http://localhost:3100';
 const DEFAULT_QUERY = '{job=~".+"}';
 // Loki の limits_config.max_entries_limit_per_query の既定（3.0 の実測。-print-config-stderr）。これを超える limit は 400 になる。
 const MAX_LIMIT = 5000;
-// 1 要求の上限（#1869: 上限の無い fetch は port-forward が切れたまま黙って待ち続ける）。5000 行の 1 ページは数秒で返る（実測）。
+// NFR-18, IADR-0553 (#1965): 既定の 1 ページの件数。5000 では AST の長い行で 1 ページが gRPC の上限（当時 4 MiB）を超え、
+// querier の応答が捨てられて毎回時間切れになった。1000 なら通る（PoC 実測: 10-14 夜間 60,528 行・10-15 夜間 77,531 行）。
+// 件数が 5 倍の要求になるだけで、書き出す行は変わらない（ページ送りは境目の行を 1 度ずつ書く）。
+const DEFAULT_LIMIT = 1000;
+// 1 要求の上限（#1869: 上限の無い fetch は port-forward が切れたまま黙って待ち続ける）。行の短い job の 5000 行の 1 ページは
+// 数秒で返る（実測）。時間切れは遅さではなく、1 ページが gRPC の上限を超えて Loki の中で捨てられたことを指すことが多い（#1965）。
 const REQUEST_TIMEOUT_MS = msFromEnv('LOKI_EXPORT_REQUEST_MS', 120_000);
 
 const USAGE = `使い方:
@@ -49,7 +56,7 @@ const USAGE = `使い方:
   --query        LogQL のログのクエリ（既定 ${DEFAULT_QUERY}）。例 {job="vault-audit"} / {job=~"ai-stock-trading\\\\..+"}
   --url          Loki の口（既定 ${DEFAULT_URL}＝svc/loki の port-forward）。前段の内側（Pod の 3101）なら LOKI_TOKEN は要らない
   --out          書き出し先（JSON Lines。1 行 = {"ts","ns","labels","line"}）。既に在るファイルは上書きしない
-  --limit        1 回の応答の件数（既定・上限 ${MAX_LIMIT}）
+  --limit        1 回の応答の件数（既定 ${DEFAULT_LIMIT}・上限 ${MAX_LIMIT}）。時間切れになるなら下げる（例 500）
   --summary      書き出さずに、範囲内の job ごとの件数と最古・最新の時刻だけを出す（消えていないかの確認）
 `;
 
@@ -74,7 +81,7 @@ function formatNs(ns) {
 }
 
 function parseArgs(argv) {
-  const o = { url: DEFAULT_URL, query: DEFAULT_QUERY, limit: MAX_LIMIT, summary: false, help: false };
+  const o = { url: DEFAULT_URL, query: DEFAULT_QUERY, limit: DEFAULT_LIMIT, summary: false, help: false };
   const takes = new Set(['--url', '--query', '--from', '--to', '--out', '--limit']);
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -297,4 +304,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseInstant, formatNs, parseArgs, flattenStreams, exportRange, summarize, main, MAX_LIMIT, UsageError };
+module.exports = { parseInstant, formatNs, parseArgs, flattenStreams, exportRange, summarize, main, DEFAULT_LIMIT, MAX_LIMIT, UsageError };
