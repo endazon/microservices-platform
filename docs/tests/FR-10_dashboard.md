@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-10 利用状況・検索傾向・回答品質�
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-10-10
+updated: 2026-10-17
 author: claude
 ---
 <!-- trace:
 ids: [FR-10, FR-17, FR-18, FR-19, UC-05, SC-10, NFR-19]
-adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071, ADR-0072, ADR-0025]
+adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0034, ADR-0044, ADR-0050, ADR-0054, ADR-0071, ADR-0072, ADR-0025, ADR-0138]
 iadrs: [IADR-0011, IADR-0122, IADR-0265, IADR-0299, IADR-0343, IADR-0353, IADR-0357, IADR-0367, IADR-0408, IADR-0531]
 specs: [20260703_FR-10_usage-dashboard, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count, 20260904_issue-1198_usage-event-subject-and-retention, 20260926_issue-1598_maintenance-loop-foreign-cancellation, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1637_grpc-client-caller-cancellation, 20261005_1743_out-of-period-tests, 20261010_1875_claude-5-5-models]
-issues: [#443, #1186, #1197, #1198, #1598, #1604, #1622, #1637, #1743, #1875, planning#494, planning#514, planning#515, planning#525, planning#526, planning#783]
+issues: [#443, #1186, #1197, #1198, #1598, #1604, #1622, #1637, #1743, #1875, #1903, planning#494, planning#514, planning#515, planning#525, planning#526, planning#783]
 -->
 
 # テスト仕様書: 利用状況・検索傾向・回答品質ダッシュボード
@@ -134,10 +134,10 @@ T-74 / T-75 の 2 本**）。境界は**上下から**固定する —— 基準
 | T-42 | LlmGateway | 期間の区切りのある単価表で**区間外の時刻**に計上 | 解決漏れのカウンタの状態属性が **`out_of_period`**（`no_entry` ではない）。金額は記録しない（T-38 は未登録の経路しか通っていなかった） |
 | T-43 | LlmGateway | プロンプト長の上段（`LongPrompt`）の境界が 0・負 | **起動時に落とす**（境界が 1 未満だと全要求が上段になり静かに過大計上する）（`ModelPricingOptionsValidatorTests`） |
 | T-44 | LlmGateway | 上段の単価が負 | **起動時に落とす**（下段と同じ規則） |
-| T-45 | LlmGateway | 上段の境界 1（最小。陽性対照） | 通る。配備中の単価表と同じ形（5.5 系の 3 モデルと切り戻し用の旧 3 モデル）も通る |
+| T-45 | LlmGateway | 上段の境界 1（最小。陽性対照） | 通る。配備中の単価表と同じ形（5.5 系の 3 モデル）も通る |
 | T-46 | LlmGateway | 2 段の単価（`claude-haiku-5-5` の形）で、入力トークン数が境界ちょうど（100,000）・境界 +1・1 | 境界ちょうどと 1 は**下段**、境界 +1 は**上段**で、上段は入力・出力の**両方**に効く。どちらの段で換算したかが結果に載る（`ModelPriceTableTests`）。**変異**: 境界の比較を「以上」に変えると赤 |
 | T-47 | LlmGateway | 上段を持たない 1 段の単価に大きな入力 | 従前どおり 1 段で換算する（回帰防止） |
-| T-48 | LlmGateway | **実配備の `appsettings.json`** の 5.5 系と切り戻し用の旧モデル | opus-5-5 は $4 / $20、sonnet-5-5 は $2 / $10、haiku-5-5 は 100,000 トークン以下 $0.10 / $0.50・超 $0.50 / $2.50（入力 / 出力・百万トークンあたり。提供元の公表値、2026-10-10 確認）。旧 3 モデルも単価を持つ（切り戻した瞬間に解決漏れにならない）（`DeployedPriceTableTests`） |
+| T-48 | LlmGateway | **実配備の `appsettings.json`** の 5.5 系と旧世代のモデル | opus-5-5 は $4 / $20、sonnet-5-5 は $2 / $10、haiku-5-5 は 100,000 トークン以下 $0.10 / $0.50・超 $0.50 / $2.50（入力 / 出力・百万トークンあたり。提供元の公表値、2026-10-10 確認）。［2026-10-17］単価表のモデルは 5.5 系の 3 つだけで、旧世代 5 つ（`claude-opus-5` / `claude-sonnet-5` / `claude-haiku-4-5` / `claude-opus-4-8` / `claude-sonnet-4-6`）は単価を持たない（以前は切り戻し用に旧 3 モデルの単価を固定していた）。sonnet の $2 / $10 は 2026-09-01 の前後で変わらない（中止された改定の区間を持たない。sonnet-5-5 で固定）（`DeployedPriceTableTests`）。**変異**: 単価表へ `claude-haiku-4-5` の行を戻すと赤 |
 
 ### ナレッジ健全性の観測値の生産（GraphService 側）
 
@@ -210,7 +210,7 @@ T-74 / T-75 の 2 本**）。境界は**上下から**固定する —— 基準
 - `LlmUsageMetricsTests` — 用途別・モデル別の利用実績
 - `ModelPriceTableTests` — 有効期間つき単価表と金額換算（区間は半開・期間外は無音の 0 円にしない）。プロンプト長の 2 段の単価（境界ちょうどは下段）
 - `ModelPricingOptionsValidatorTests` — 単価表の起動時検証（区間の重なり・空区間・負値・空項目・上段の境界と単価）
-- `DeployedPriceTableTests` — 実配備の単価表の値（5.5 系・切り戻し用の旧モデル・#1741 の訂正）
+- `DeployedPriceTableTests` — 実配備の単価表の値（5.5 系の 3 モデルだけ・旧世代は単価なし・#1741 の訂正）
 - `DashboardEndpointTests` — ダッシュボードの集計端点
 - `UsageRetentionTests` — 利用イベントの主体（持たない）と保持期間（90 日で消す。境界は上下から）
 - `KnowledgeHealthProducerTests` — 観測値の生産（孤立文書の判定・スコープ付与・単一書き手化・送出）

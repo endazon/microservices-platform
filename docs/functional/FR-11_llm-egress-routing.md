@@ -3,15 +3,15 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-16
+updated: 2026-10-17
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02, NFR-17, NFR-19, NFR-28]
-adrs: [ADR-0140, ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
+adrs: [ADR-0138, ADR-0140, ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
 iadrs: [IADR-0552, IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531, IADR-0535, IADR-0533]
-specs: [20261016_1960_adr-0140-tier-b-residency-zdr, 20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue]
-issues: [#1960, #201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, #1902, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783, planning#795]
+specs: [20261017_1903_drop-pre-5-5-claude-models, 20261016_1960_adr-0140-tier-b-residency-zdr, 20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue]
+issues: [#1903, #1960, #201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, #1902, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783, planning#795]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -70,7 +70,8 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   （運用仕様書「LLM ゲートウェイの送信先ティア（Claude）の認定状況」）。
 - **［2026-10-10］Claude の割当は全用途で 5.5 系である**（利用者裁定。`claude-opus-5` → `claude-opus-5-5`・`claude-sonnet-5` → `claude-sonnet-5-5`・
   `claude-haiku-4-5` → `claude-haiku-5-5`。取引判断の 2 層を含む。fable 系は引き続き用いない）。以下の値は切替後の現行値である。
-  旧 3 モデルは**切り戻しのために利用許可集合と単価表へ残す**（割当には使わない）。各用途の割当の根拠（どの層を充てるか）は従前の決定のままで、
+  **［2026-10-17］旧世代のモデルは利用許可集合・単価表・effort の対応集合から外した**（計画の裁定。切替時は切り戻しのために残していた。
+  切り戻しの手段は無く、5.5 系が使えないときは 5.5 系の中のフォールバックだけで受ける）。各用途の割当の根拠（どの層を充てるか）は従前の決定のままで、
   変わったのは各層のモデルの版である。5.5 系は 3 モデルとも thinking（adaptive）が既定で有効で、**無効にできない** ——
   思考の量は用途別の effort（後掲）で絞る。
 - 既定設定（`appsettings.json`。LLM ゲートウェイ・モデル選定の各計画 ADR と、既定モデル改定・既定 `max_tokens` 引き上げ・RAG 回答の追随・報告書の用途分離とモデル改定を定めた各実装 ADR による）:
@@ -125,8 +126,8 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 - **用途別 effort（`Llm:PurposeEffort`。2026-10-10）**: 用途 → effort（`low` / `medium` / `high` / `xhigh` / `max`）の対応を設定で持ち、
   Claude への要求本文の `output_config.effort` に載せる。**既定は `rerank: low` だけ**で、書かない用途は effort を送らない（提供元の既定。
   opus-5-5・haiku-5-5 は `medium`、sonnet-5-5 は `high`）。`rerank` は検索のたびに呼ばれ、呼び出し側の期限が 8 秒と短いため思考を絞る。
-  - 送るのは effort を受け付けるモデル（5.5 系・`claude-opus-5`・`claude-sonnet-5`・`claude-opus-4-8`）だけである。`claude-haiku-4-5` は
-    effort を 400 で拒むので、切り戻しで用途を戻しても送らない。
+  - 送るのは effort を受け付けるモデル（5.5 系の 3 つ。利用許可集合と同じ）だけである。対応集合に無いモデルへは、用途に設定があっても送らない
+    （effort を 400 で拒むモデルへ設定 1 つで全件 400 にしない。［2026-10-17］旧世代は対応集合からも外した）。
   - 値域外の値は**起動時に落とす**（実行時に送ると全件 400 になり、呼び出し側には上流の失敗としか見えない）。
   - SDK（`Anthropic.SDK` 4.0.0）は effort を送る口を持たないので、`AnthropicClient` へ渡す `HttpClient` の最も外側の委譲ハンドラ
     （`AnthropicRequestShapingHandler`）が要求本文へ足す。呼び出し側が明示した effort は上書きしない。
@@ -173,7 +174,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 
 ### エンドポイント定義（`LlmEndpointOptions` / `Llm:Routing:Endpoints`）
 
-- 既定 `claude-managed`（Tier=B, Provider=`claude`, Enabled=true, Priority=10, `DefaultModel` は `claude-opus-5-5`, Models は `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5` / `claude-opus-5` / `claude-opus-4-8` / `claude-sonnet-5` / `claude-sonnet-4-6` / `claude-haiku-4-5` の 8 モデル（**5.5 系の 3 つを 2026-10-10 に追加し、旧モデルは切り戻しと明示要求の呼び出し側のために残す**）。**`claude-fable-5` は分析用途のモデル割当の計画 ADR 決定 2 により除去済み**・#850）、
+- 既定 `claude-managed`（Tier=B, Provider=`claude`, Enabled=true, Priority=10, `DefaultModel` は `claude-opus-5-5`, Models は `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5` の 3 モデルだけ（**［2026-10-17］旧世代 5 つ〔`claude-opus-5` / `claude-opus-4-8` / `claude-sonnet-5` / `claude-sonnet-4-6` / `claude-haiku-4-5`〕を外した**。旧 ID を明示の `Model` で要求しても許可集合の外として扱われ、用途の割当、無ければ `DefaultModel` へ落ちる）。**`claude-fable-5` は分析用途のモデル割当の計画 ADR 決定 2 により除去済み**・#850）、
   `selfhosted-oss`（Tier=A, Provider=`selfhosted`, Enabled=false, Priority=20）、`copilot-managed`（Tier=C, Provider=`copilot`, Enabled=false, Priority=30）。
 - セルフホスト（OpenAI 互換 `/v1/chat/completions`）は LLM ゲートウェイの計画 ADR のとおり**後付け可能**とし、既定は無効エンドポイント（`Llm:SelfHosted:BaseUrl` 未設定時は利用不可）。
 - GitHub Copilot（最難関の別経路。LLM ゲートウェイの計画 ADR と既定モデル改定の実装 ADR）は `CopilotProvider`（OpenAI 互換 `/chat/completions`）で追加。送信先ティア（08_data-egress-policy の契約条件）が未確定のため**安全側でティアC・既定無効**とし、確定後に設定で有効化・ティア再判定する。

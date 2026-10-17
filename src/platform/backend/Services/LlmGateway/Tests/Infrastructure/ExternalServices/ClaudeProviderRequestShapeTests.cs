@@ -4,6 +4,7 @@ using System.Text.Json;
 using Anthropic.SDK;
 using AwesomeAssertions;
 using LlmGateway.Domain.Ports;
+using LlmGateway.Domain.Routing;
 using LlmGateway.Infrastructure.ExternalServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -97,10 +98,12 @@ public class ClaudeProviderRequestShapeTests
         capture.SingleBody().GetProperty("output_config").GetProperty("effort").GetString().Should().Be("medium");
     }
 
-    // T-37: effort を受けないモデル（haiku-4-5 は effort を 400 で拒む）へは、用途に設定があっても送らない。
-    // 切り戻しで rerank を haiku-4-5 へ戻しても、設定 1 つで全件 400 にならないことの固定。
+    // T-37: effort の対応集合（ClaudeEffort.CapableModels）に無いモデルへは、用途に設定があっても送らない
+    // （effort を 400 で拒むモデルへ設定 1 つで全件 400 にしない）。
+    // ［2026-10-17 / #1903］従前は「切り戻しで rerank を haiku-4-5 へ戻したとき」の固定だった。計画 ADR-0138 決定 7 で
+    // 旧世代は許可集合から外れ切り戻しの前提は消えたが、対応集合の外へ送らない仕組みは残るので、集合の外の例として旧 ID を使う。
     [Fact]
-    public async Task CompleteAsync_RerankOnHaiku45_DoesNotSendEffort()
+    public async Task CompleteAsync_ModelOutsideCapableSet_DoesNotSendEffort()
     {
         var capture = new CapturingHandler();
         var provider = Provider(capture, effort: new() { ["rerank"] = "low" });
@@ -192,6 +195,21 @@ public class ClaudeProviderRequestShapeTests
 
         options.Purposes.Should().BeEquivalentTo(new Dictionary<string, string> { ["rerank"] = "low" });
         ClaudeEffort.Resolve(options, "rerank", "claude-haiku-5-5").Should().Be("low");
+    }
+
+    // T-42, FR-11, ADR-0138 決定 7 (#1903): effort の対応集合は実配備の利用許可集合（claude-managed の Models）と一致する。
+    // 許可集合に無いモデルを対応集合に残さない（旧世代を外し忘れない）。許可集合へ足したモデルが effort に対応するのに
+    // 対応集合へ足し忘れると、effort が黙って送られなくなる（壊れはしないが設定が効かない）ので、それも赤にする。
+    [Fact]
+    public void CapableModels_EqualDeployedClaudeEndpointModels()
+    {
+        using var factory = new TestWebApplicationFactory();
+
+        var routing = factory.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value;
+        var claude = routing.Endpoints.Single(e => e.Name == "claude-managed");
+
+        ClaudeEffort.CapableModels.Should().BeEquivalentTo(claude.Models);
+        ClaudeEffort.CapableModels.Should().BeEquivalentTo(["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]);
     }
 
     // FR-11, IADR-0531 (#1875) T-40: 本番の DI 合成（Program.cs の `AddKeyedSingleton<ILlmProvider, ClaudeProvider>("claude")`）で、

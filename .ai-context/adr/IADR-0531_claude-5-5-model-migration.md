@@ -2,10 +2,10 @@
 title: IADR-0531 Claude のモデル割当を 5.5 系（opus-5-5・sonnet-5-5・haiku-5-5）へ切り替える。旧 ID は切り戻し用に残し、haiku-5-5 の単価はプロンプト長の 2 段で持ち、用途別 effort を要求本文へ注入する（既定は rerank=low）。rerank の出力上限は 1024 へ上げる
 type: impl-adr
 status: Accepted
-related_ids: [FR-03, FR-10, FR-11, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0127, IADR-0101, IADR-0102, IADR-0112, IADR-0114, IADR-0225, IADR-0340, IADR-0498, IADR-0511, IADR-0528]
+related_ids: [FR-03, FR-10, FR-11, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0127, ADR-0138, IADR-0101, IADR-0102, IADR-0112, IADR-0114, IADR-0225, IADR-0340, IADR-0498, IADR-0511, IADR-0528]
 author: claude
 created: 2026-10-10
-updated: 2026-10-10
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0025（既定モデル）
   - planning:projects/microservices-platform/07_adr/ADR-0044（LLM 利用実績と単価表。決定 3）
@@ -69,6 +69,21 @@ related_specs:
   実弾解禁は Stage 0 の合格が前提である（従前のピン改定と同じ）。鎖は従前どおり付けない。
 - **配備順序**: AST はゲートウェイが返すモデル名を割当表と完全一致で照合する。AST が旧・新の両 ID を受ける段（別 PR）を先に配備し、その後で本変更を配備する。
 
+> **［2026-10-17 追記 / #1903］決定 1 のうち「旧 ID を利用許可集合と単価表に残す」と「配備順序」を、計画 ADR-0138 決定 7・決定 8 に合わせて改めた。**
+> 計画は 2026-10-10 の追加裁定（planning#783 のコメントの裁定 3・4）で、本決定の 2 点を採らなかった。
+> **`title:` と決定 1 の見出しの「旧 ID は（切り戻し用に）残す」は失効している**（凍結記録なので書き換えず、この追記で改める）。
+>
+> - **旧 ID は残さない。** `claude-managed` の `Models` は `claude-opus-5-5`・`claude-sonnet-5-5`・`claude-haiku-5-5` の 3 つだけとし、
+>   旧世代 5 つ（`claude-opus-5`・`claude-opus-4-8`・`claude-sonnet-5`・`claude-sonnet-4-6`・`claude-haiku-4-5`）を外した。
+>   単価表からも旧 3 行（`claude-opus-5`・`claude-sonnet-5`・`claude-haiku-4-5`）を外した。有効期間つきで残す形も採らない（ADR-0138 決定 7）。
+>   決定 3 の effort の対応集合（`ClaudeEffort.CapableModels`）からも旧 3 ID を外し、許可集合と一致させた（許可集合に無いモデルを対応集合に残さない）。
+> - **切り戻しの手段は無くなる。** 上の「旧 ID を残すのは切り戻しのため」の理由は失効した。5.5 系が使えないときは 5.5 系の中のフォールバックだけで受ける
+>   （ADR-0138 §結果。計画が受容した）。旧 ID を明示の `Model` で要求する呼び出し側は、許可集合の外として用途の割当か `DefaultModel` へ落ちる
+>   （IADR-0102 の経路。現行どおり）。外す前に、MSP の割当（`PurposeModels`・`PurposeFallbackModels`・`DefaultModel`・`Llm:Model`・
+>   `ClaudeProvider` の直書き既定・`deploy/`）と AST の割当表（`LlmAssignments`）のどちらにも旧 ID が無いことを走査で確かめた（作業仕様書 20261017_1903）。
+> - **配備順序は「AST の移行段を先に」ではなく「同時」である**（ADR-0138 決定 8）。AST は移行段を撤去済み（AST#1296 / AST#1310）。
+>   順序がずれた間は AST の取引判断が割当不一致で見送りへ倒れる（発注しない）。これは計画が受容した。
+
 ### 決定 2 — Haiku 5.5 の単価はプロンプト長の 2 段で持つ（上段へ寄せた 1 段にしない）
 
 `ModelPriceEntry` に任意の `LongPrompt { ThresholdInputTokens, InputPerMillionTokens, OutputPerMillionTokens }` を足す。
@@ -129,5 +144,7 @@ messages が user の 1 件だけ（prefill が無い）ことを固定する。
 
 - **Stage 0 未実施のまま取引判断の割当が変わる。** 実弾解禁のゲートは AST 側にあり、本 PR はそれを外さない。合格の記録は AST 側に残る。
 - **AST より先に配備すると**、AST は返ってくる 5.5 の名を割当と違うと判定する。配備順序を PR 本文に書いた。
+  ［2026-10-17 追記 / #1903］配備は計画 ADR-0138 決定 8 により AST と同時である（上の決定 1 の追記）。
 - effort の対応モデル集合はコードに持つ。新しいモデルを許可集合へ足すとき、effort に対応するなら `ClaudeEffort.CapableModels` にも足す（足さなければ送らないだけで、壊れはしない）。
+  ［2026-10-17 追記 / #1903］対応集合が実設定の許可集合と一致することを試験（`CapableModels_EqualDeployedClaudeEndpointModels`）で固定した。足し忘れも外し忘れも赤になる。
 - プロンプトキャッシュを使い始めると、Haiku 5.5 の段の判定量（キャッシュを含む入力の合計）と `usage.input_tokens` がずれる。

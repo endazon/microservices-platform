@@ -207,6 +207,57 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         }
     }
 
+    // T-42, FR-11, ADR-0138 決定 7・決定 1 (#1903): 実設定の利用許可集合（claude-managed の Models）は 5.5 系の 3 モデルだけである。
+    // 旧世代（claude-opus-5・claude-sonnet-5・claude-haiku-4-5・claude-opus-4-8・claude-sonnet-4-6）を切り戻し用に残さない。
+    // 割当・鎖が許可集合に含まれること（上の試験）と合わせて、割当・フォールバックの候補にも 5.5 系以外が現れないことを閉じる。
+    [Fact]
+    public void ClaudeEndpointModels_AreExactlyThe55Series()
+    {
+        var options = factory.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value;
+        var claude = options.Endpoints.Single(e => e.Name == "claude-managed");
+
+        claude.Models.Should().BeEquivalentTo(["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]);
+        claude.DefaultModel.Should().Be("claude-opus-5-5");
+        claude.NonZdrModels.Should().BeEmpty("claude-fable-5・claude-fable-5-1 は許可集合に入れない（ADR-0138 決定 2）");
+    }
+
+    // T-42, FR-11, ADR-0138 決定 7, IADR-0102 (#1903): 旧世代の ID を明示の Model で要求しても、許可集合に無いモデルとして扱われ、
+    // その ID では呼ばない。落ち先は IADR-0102 の現行どおり（用途の割当 → claude-managed の DefaultModel）。
+    // 旧 ID の名前のまま上流へ送られると、提供元の廃止とともに呼び出しが 404 になり、単価も引けない（費用の解決漏れ）。
+    [Theory]
+    [InlineData("claude-opus-5", "rag-answer", "claude-sonnet-5-5")]
+    [InlineData("claude-sonnet-5", "trade-decision", "claude-sonnet-5-5")]
+    [InlineData("claude-haiku-4-5", "rerank", "claude-haiku-5-5")]
+    [InlineData("claude-opus-4-8", "report-daily", "claude-sonnet-5-5")]
+    [InlineData("claude-sonnet-4-6", "unregistered-purpose", "claude-opus-5-5")] // 用途の割当が無ければ DefaultModel
+    public async Task PostComplete_ExplicitPre55Model_IsNotHonoredAndFallsBackToPurposeModel(
+        string requestedModel, string purpose, string expectedModel)
+    {
+        var req = new { Prompt = "要約", MaxTokens = 100, Model = requestedModel, Confidentiality = "internal", Purpose = purpose };
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
+        body!.Sent.Should().BeTrue();
+        body.Endpoint.Should().Be("claude-managed");
+        body.Model.Should().Be(expectedModel);
+        body.Model.Should().NotBe(requestedModel);
+    }
+
+    // T-42 の陽性対照: 5.5 系の ID を明示の Model で要求すれば、用途の割当より明示が優先される（IADR-0102 の現行の挙動）。
+    // これが無いと、上の試験は「明示の Model をそもそも見ていない」実装でも緑になる。
+    [Fact]
+    public async Task PostComplete_Explicit55Model_IsHonoredOverPurposeModel()
+    {
+        var req = new { Prompt = "要約", MaxTokens = 100, Model = "claude-haiku-5-5", Confidentiality = "internal", Purpose = "rag-answer" };
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
+        body!.Sent.Should().BeTrue();
+        body.Model.Should().Be("claude-haiku-5-5");
+    }
+
     // T-25, AST/ADR-0011 / docs/operations/llm-model-pin-runbook.md:
     // **取引判断はフォールバックの対象にしない。** 別モデルで下した判断は再現性・監査可能性を失った
     // 別物であり、Runbook が「別のモデルへ切り替えて取引判断を続けてはならない」と明示している。
