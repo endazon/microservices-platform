@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using IngestionService.Common.Observability;
 using AwesomeAssertions;
+using IngestionService.Common.Observability;
 using IngestionService.Domain;
 using IngestionService.Domain.Ports;
 using IngestionService.Features.Ingestion.Ingest;
@@ -142,7 +142,7 @@ public class IngestionTimeoutTests
         ports.Published.Should().BeTrue();
     }
 
-    // T-52 (#1746・[[IADR-0559]]): **語彙索引への書き込みの輪も総枠で打ち切る。** 書き込み 1 回ごとに偽の時計を 1 秒進める店で測る。
+    // T-52 (#1746・[[IADR-0560]]): **語彙索引への書き込みの輪も総枠で打ち切る。** 書き込み 1 回ごとに偽の時計を 1 秒進める店で測る。
     // 高機密の文書（埋め込みを呼ばない輪）と、1 チャンク目で埋め込みが使えない `internal` の文書（待ちの点の輪）の 2 経路。
     // 総枠 3 秒なら 3 点を書いた後の判定で残りを書かずに `lexical-budget` の時間切れとして投げ、完了を出さない。
     // 判定（`LexicalBudgetExhausted` の 2 か所）を外す変異では 10 点すべてを書いて完了を出し、赤になる。

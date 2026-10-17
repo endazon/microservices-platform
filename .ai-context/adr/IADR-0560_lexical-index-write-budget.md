@@ -1,5 +1,5 @@
 ---
-title: IADR-0559 語彙索引への書き込みの輪（高機密の文書・埋め込み待ちの点）を、埋め込みの総枠と同じ値の時間の総枠で打ち切り、使い切った文書は再試行せずデッドレターへ送る（呼び出し先 lexical-budget）
+title: IADR-0560 語彙索引への書き込みの輪（高機密の文書・埋め込み待ちの点）を、埋め込みの総枠と同じ値の時間の総枠で打ち切り、使い切った文書は再試行せずデッドレターへ送る（呼び出し先 lexical-budget）
 type: impl-adr
 status: Accepted
 related_ids: [FR-02, FR-03, UC-04, NFR-06, ADR-0127, ADR-0027, IADR-0497, IADR-0536, IADR-0478]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20261017_1746_s4-doc-follow-and-lexical-write-budget.md
 ---
 
-# IADR-0559: 語彙索引への書き込みの輪を、埋め込みの総枠と同じ値で打ち切る（#1746）
+# IADR-0560: 語彙索引への書き込みの輪を、埋め込みの総枠と同じ値で打ち切る（#1746）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -29,7 +29,7 @@ related_specs:
 - 改める残余リスク: [IADR-0497](./IADR-0497_high-confidentiality-lexical-index-vectorless-collection.md) §残るもの「巨大な高機密文書の打ち切りが無い」・
   [IADR-0536](./IADR-0536_embedding-pending-lexical-points.md) §残るもの「途中で待ちへ切り替わった巨大な文書は、残りのチャンクの書き込みが埋め込みの総枠を通らない」。
 - 前提: [IADR-0478](./IADR-0478_consumer-outbound-call-timeouts-under-wolverine-execution-timeout.md)（呼び出しごとの期限・埋め込みの総枠・受け口の実行期限・総枠の使い切りはデッドレターへ）。
-- 採番: `origin/develop` の最大は IADR-0558。本件は **0559**。push の直前に、開いている PR #1987 も 0559 を持つことを確かめた。規約（`.claude/rules/traceability.md`「採番衝突時の改番手順」）は**先にマージした側が番号を確保する**ので、#1987 が先に入れば本件が 0560 へ改番する（欠番を作らないため、今は 0559 のままにする）。
+- 採番: 起案時は `origin/develop` の最大 IADR-0558 の次の 0559 を取ったが、開いていた PR #1987 も 0559 を持っていた。規約（`.claude/rules/traceability.md`「採番衝突時の改番手順」。先にマージした側が番号を確保する）に従い、#1987 が先に develop へ入った（`988efd27`）ので、後発の本件を **0560** へ改番した（2026-10-17）。
 
 ## コンテキストと課題
 

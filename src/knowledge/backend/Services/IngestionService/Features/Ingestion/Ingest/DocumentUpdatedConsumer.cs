@@ -22,7 +22,7 @@ namespace IngestionService.Features.Ingestion.Ingest;
 // 受け口の ct で「取り消し」として切られる。自分の期限の時間切れは `ConsumerTimeoutException` として投げ
 // （警告ログ・計器 `messaging.consumer.timeout`）、呼び出し元の取り消しはそのまま外へ出す。
 // 埋め込みはチャンクごとに総枠（`EmbeddingBudget`）を判定し、使い切ったら残りを呼ばずに時間切れとして投げる。
-// ［2026-10-17 / #1746・[[IADR-0559]]］語彙索引への書き込みの輪（高機密の文書・埋め込み待ちの点）も同じ値の総枠で打ち切る
+// ［2026-10-17 / #1746・[[IADR-0560]]］語彙索引への書き込みの輪（高機密の文書・埋め込み待ちの点）も同じ値の総枠で打ち切る
 // （呼び出し先 `lexical-budget`）。
 // ［#1771］この辺の移行は IADR-0234 の単位 E4 として追跡する。購読者は結線しない（planning#741 項目 6 の裁定・2026-10-09）。
 public class DocumentUpdatedConsumer(
@@ -239,7 +239,7 @@ public class DocumentUpdatedConsumer(
         {
             for (var idx = pendingFrom; idx < chunks.Count; idx++)
             {
-                // 🔴 FR-02, NFR-06, [[IADR-0559]] (#1746): 待ちの点の書き込みも総枠で打ち切る。**埋め込みの輪の始めから続けて測る**
+                // 🔴 FR-02, NFR-06, [[IADR-0560]] (#1746): 待ちの点の書き込みも総枠で打ち切る。**埋め込みの輪の始めから続けて測る**
                 // （1 文書のチャンクの輪全体で 1 つの総枠。受け口の最悪の所要時間の式を変えない）。書いた分は計器に数えてから投げる。
                 if (clock.GetElapsedTime(embeddingStarted) >= timeouts.EmbeddingBudget)
                 {
@@ -278,7 +278,7 @@ public class DocumentUpdatedConsumer(
     // 🔴 **埋め込みを 1 回も呼ばない**ので、一時障害の分岐は通らない。
     // Qdrant への書き込みは本文チャンクと同じ期限（`VectorStore`）の下で行い、失敗は例外のまま上げて
     // ブローカの再試行へ委ねる（本文チャンクの書き込みと同じ）。
-    // ［2026-10-17 / #1746・[[IADR-0559]]］**埋め込みの総枠と同じ値の総枠で打ち切る**（呼び出し先 `lexical-budget`）。
+    // ［2026-10-17 / #1746・[[IADR-0560]]］**埋め込みの総枠と同じ値の総枠で打ち切る**（呼び出し先 `lexical-budget`）。
     // 従前は受け口の実行期限（既定 420 秒）だけが上から抑え、見出しの密な 1 MiB の本文（約 26 万点・実測 5 ms／点で約 1,300 秒）は
     // 期限で取り消され、4 試行の間キューを塞いでからデッドレターへ入った。判定は書き込みの**前**（超過は最後の 1 点の期限までに収まる）。
     // チャンク ID は本文チャンクと同じ規則（`ChunkId.Derive`）—— 機密区分が変わって置き場所が移っても、
@@ -308,7 +308,7 @@ public class DocumentUpdatedConsumer(
         await bus.PublishCompletedAsync(ev.DocumentId, chunkCount, DateTimeOffset.UtcNow, ct);
     }
 
-    // FR-02, [[IADR-0559]] (#1746): 語彙索引への書き込みの総枠の使い切り（再試行せずデッドレターへ。`EmbeddingBudgetDeadLetterPolicy`）。
+    // FR-02, [[IADR-0560]] (#1746): 語彙索引への書き込みの総枠の使い切り（再試行せずデッドレターへ。`EmbeddingBudgetDeadLetterPolicy`）。
     private ConsumerTimeoutException LexicalBudgetExhausted(Guid documentId, int indexed, int total)
         => calls.BudgetExhausted(StepName, IngestionTimeouts.LexicalBudgetTarget, timeouts.EmbeddingBudget,
             $"document {documentId}: {indexed} of {total} chunks indexed before the lexical-index writes ran out of budget");

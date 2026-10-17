@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-02, FR-03, FR-04, FR-05, SC-01, SC-02, SC-08, UC-04, NFR-06]
 adrs: [ADR-0070, ADR-0027, ADR-0127, ADR-0016, ADR-0092]
-iadrs: [IADR-0559, IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
+iadrs: [IADR-0560, IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
 specs: [20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
 issues: [#1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 -->

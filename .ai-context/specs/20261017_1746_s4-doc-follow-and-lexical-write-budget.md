@@ -2,7 +2,7 @@
 title: 計画 ADR-0127 に食い違う live 文書を追随させ（段 S4 の文書の追随）、語彙索引への書き込みに埋め込みの総枠と同じ時間の上限を掛ける（#1746）
 type: spec
 status: done
-related_ids: [FR-02, FR-03, FR-05, UC-04, SC-02, SC-11, NFR-06, ADR-0127, ADR-0017, ADR-0016, ADR-0092, ADR-0027, IADR-0559, IADR-0497, IADR-0536, IADR-0478, IADR-0085, IADR-0025, IADR-0467, IADR-0422]
+related_ids: [FR-02, FR-03, FR-05, UC-04, SC-02, SC-11, NFR-06, ADR-0127, ADR-0017, ADR-0016, ADR-0092, ADR-0027, IADR-0560, IADR-0497, IADR-0536, IADR-0478, IADR-0085, IADR-0025, IADR-0467, IADR-0422]
 author: claude
 created: 2026-10-17
 updated: 2026-10-17
@@ -14,7 +14,7 @@ issue: "#1746"
 
 # 仕様書: 段 S4 の文書の追随と、語彙索引への書き込みの総枠（#1746）
 
-> 本仕様書は実装着手前に作成した（着手 2026-10-17）。判断の記録は **IADR-0559** に置く。
+> 本仕様書は実装着手前に作成した（着手 2026-10-17）。判断の記録は **IADR-0560** に置く。
 > 計画は project-planning の `main`（2026-10-17 に pull）の ADR-0127 を読んだ。実装の基点は MSP `origin/develop` `7fce8972`。
 
 ## 起点となる計画書（トレーサビリティ）
@@ -41,7 +41,7 @@ issue: "#1746"
 
 - 対象:
   - (b) 規則 9 で引いた母集合のうち、ADR-0127 と食い違う live 文書（`docs/`・`perf/`・`deploy/` の注記・`scripts/` の注記）。
-  - (c) `DocumentUpdatedConsumer` の語彙索引の 2 つの書き込みの輪（高機密の `IndexLexicallyAsync`・待ちの点の輪）、`EmbeddingBudgetDeadLetterPolicy`、`IngestionTimeouts`、試験、IADR-0559、テスト仕様書、運用仕様書。
+  - (c) `DocumentUpdatedConsumer` の語彙索引の 2 つの書き込みの輪（高機密の `IndexLexicallyAsync`・待ちの点の輪）、`EmbeddingBudgetDeadLetterPolicy`、`IngestionTimeouts`、試験、IADR-0560、テスト仕様書、運用仕様書。
 - 対象外:
   - `.ai-context/` の凍結記録の本文（IADR-0497 / IADR-0536 へは日付つきの追記ブロックで後継を指すだけ。#580 の作法）。
   - 計画のモック（`project-planning` の `05_screens/mockups/*/sc-11.html`）の是正（計画側の引き受け。下の「計画書との差異」）。
@@ -96,7 +96,7 @@ git grep -n -i -E '(高機密|confidential).{0,40}(ruri|ティア ?A|セルフ�
 
 ### 規則 10（この変更で新たに誤りになる自分の記述）
 
-- IADR-0497 §残るもの 186-187 行・IADR-0536 120 行の「打ち切りが無い」は、(c) の実装で誤りになる → 日付つき追記で IADR-0559 を指す。
+- IADR-0497 §残るもの 186-187 行・IADR-0536 120 行の「打ち切りが無い」は、(c) の実装で誤りになる → 日付つき追記で IADR-0560 を指す。
 - `IngestionTimeouts.cs` / `DocumentUpdatedConsumer.cs` / `EmbeddingBudgetDeadLetterPolicy.cs` の注釈「埋め込みの総枠を通らない」「`embedding-budget` だけ」→ 書き直す。
 - テスト仕様書 FR-02 の T-20・T-22 の「呼び出し先 `embedding-budget`」→ 新しい行（T-52・T-53）で語彙索引の総枠を足す（既存行は変えない）。
 - 運用仕様書の「埋め込みの総枠」の説明: 走査では `EmbeddingBudget` を名指す運用文書は無い（`git grep -n -E 'EmbeddingBudget|embedding-budget' -- docs deploy`＝テスト仕様書だけ）。総枠の使い切りの運用の手当て（デッドレター・再発行で同じ結果）を語彙索引の節に 1 項目足す。
@@ -147,7 +147,7 @@ git grep -n -i -E '(高機密|confidential).{0,40}(ruri|ティア ?A|セルフ�
 **起こる経路**: 1 MiB の直接投入（利用者が書ける）・変換やコネクタから来る大きな本文。見出しが密な本文（変換した表・ログ・目次の長い文書）は、地の文よりチャンクが多い。
 高機密の文書と、鍵の無い間の `public` / `internal` の文書（待ちの点）が語彙索引の経路を通る。鍵の無い PoC では全文書がこの経路である。
 
-→ **打ち切りは要る**（IADR-0559 で決める）。
+→ **打ち切りは要る**（IADR-0560 で決める）。
 
 ## 設計（(c)）
 
@@ -164,7 +164,7 @@ git grep -n -i -E '(高機密|confidential).{0,40}(ruri|ティア ?A|セルフ�
 ## 受け入れ基準
 
 - [x] (b) 規則 9 の母集合と除外理由を本書に書いた（上）。是正 8 件を入れた。`.ai-context/` の凍結記録の本文は書き換えていない。`docs/` は trace ブロック規約を守る。
-- [x] (c) 実際に起こる経路を実測・計算で評価し、要否を IADR-0559 に残した。
+- [x] (c) 実際に起こる経路を実測・計算で評価し、要否を IADR-0560 に残した。
 - [x] (c) 高機密の文書の語彙索引への書き込みは、総枠を使い切ったら残りを書かずに `lexical-budget` の時間切れとして投げ、完了を出さない（T-52）。
 - [x] (c) 待ちの点の書き込みも、埋め込みの輪から続けて同じ総枠で打ち切る。書いた待ちの点は計器に数える（T-52）。
 - [x] (c) 総枠に収まる文書は全点を書き、完了を出す（T-52 の対照）。

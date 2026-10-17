@@ -19,7 +19,7 @@ namespace IngestionService.Features.Ingestion.Ingest;
 // 受け口（チェーン）に付けた規則は、全体の既定（`OnAnyException().RetryWithCooldown`）より先に評価される
 // （`EmbeddingBudgetDeadLetterPipelineTests` がローカルキューの実配送で確かめる）。
 //
-// ［2026-10-17 / #1746・[[IADR-0559]]］**語彙索引への書き込みの総枠（`lexical-budget`）の使い切りも同じに扱う。**
+// ［2026-10-17 / #1746・[[IADR-0560]]］**語彙索引への書き込みの総枠（`lexical-budget`）の使い切りも同じに扱う。**
 // 使い切りは文書のチャンク数で決まり、再試行しても同じ結果になる（埋め込みの総枠と同じ理由）。
 public sealed class EmbeddingBudgetDeadLetterPolicy : IHandlerPolicy
 {

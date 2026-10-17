@@ -83,7 +83,7 @@ public class EmbeddingBudgetDeadLetterPipelineTests
         embed.Calls.Should().Be(3, "総枠 3 秒・1 回 1 秒で 3 回呼んだ後の判定で止まる");
     }
 
-    // T-53 (#1746・[[IADR-0559]]): **語彙索引への書き込みの総枠（`lexical-budget`）を使い切った高機密の文書も、1 回目の試行でデッドレターへ。**
+    // T-53 (#1746・[[IADR-0560]]): **語彙索引への書き込みの総枠（`lexical-budget`）を使い切った高機密の文書も、1 回目の試行でデッドレターへ。**
     // 書き込み 1 回 1 秒・総枠 3 秒で、3 点を書いた後の判定で止まる。方針の述語から `lexical-budget` を外す変異では 2 秒後に再試行が回り、
     // 試行が 2 回以上・本文の取得が 2 回以上になって赤になる。
     [Fact]
@@ -193,7 +193,7 @@ public class EmbeddingBudgetDeadLetterPipelineTests
         }
     }
 
-    // #1746・[[IADR-0559]]: `clock` を与えると、語彙索引への書き込み 1 回ごとに偽の時計を 1 秒進める（遅いが止まってはいない Qdrant）。
+    // #1746・[[IADR-0560]]: `clock` を与えると、語彙索引への書き込み 1 回ごとに偽の時計を 1 秒進める（遅いが止まってはいない Qdrant）。
     private sealed class NoopStore(FakeTimeProvider? clock = null) : IIngestionVectorStore, IIngestionCompletedPublisher
     {
         private int _lexicalWrites;

@@ -27,6 +27,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
+// FR-03, NFR-01, NFR-29, ADR-0129 決定 2, [[IADR-0559]] (#1746 段 S5 の前提): サービス固有の Meter（名前はサービス名と一致）を
+// OTLP の収集対象へ入れる。🔴 **これが無かったため、検索の計器（全文の縮退・再順位付けの結果・応答の縮退の印）は
+// Prometheus へ 1 件も届いていなかった**（他のサービスは同じ形で AddMeter している。AiAnalysisService 等）。
+// 警報が閾値の選択に使う再順位付けの構成のゲージ（`RerankStateMetrics`）もこの Meter に載る。
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddMeter(KeywordSearchMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
 var qdrantHealthUri = new Uri(
     $"http://{builder.Configuration["Qdrant:Host"] ?? "qdrant"}:6333/healthz");
@@ -115,6 +121,8 @@ var rerank = (builder.Configuration.GetSection(SearchRerankOptions.SectionName).
     ?? new SearchRerankOptions()).Normalize();
 builder.Services.AddSingleton(rerank);
 builder.Services.AddSingleton<RerankMetrics>();
+// NFR-29, ADR-0129 決定 2, [[IADR-0559]]: 構成（有効・無効）のゲージ。検索 p95 の警報がこれで閾値を選ぶ。無効でも登録する（0 を出す）。
+builder.Services.AddSingleton<RerankStateMetrics>();
 if (rerank.Enabled)
 {
     builder.Services.AddSingleton<IRerankCompletionClient, GrpcRerankCompletionClient>();
@@ -255,6 +263,9 @@ builder.Services.AddPlatformIntrospection("retrieval-service", pipeline,
     });
 
 var app = builder.Build();
+
+// [[IADR-0559]]: 再順位付けの構成のゲージを起動時に作る（最初の検索を待つと、その間は警報が「無効」として読む）。
+app.Services.GetRequiredService<RerankStateMetrics>();
 
 app.UsePlatformMiddleware();
 app.MapPlatformHealthChecks();

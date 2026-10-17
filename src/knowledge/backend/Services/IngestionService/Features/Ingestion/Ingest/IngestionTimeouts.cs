@@ -16,7 +16,7 @@ namespace IngestionService.Features.Ingestion.Ingest;
 //      **再試行せずデッドレターへ送る**（`EmbeddingBudgetDeadLetterPolicy`。大きすぎる文書は何度試しても収まらない）。
 //      判定は呼び出しの**前**なので、超過は最後の 1 チャンク（埋め込み＋登録）の期限までに収まる。
 //      これでチャンク数が上限を持たなくても、受け口の最悪の所要時間は有限の式になる。
-//      ［2026-10-17 / #1746・[[IADR-0559]]］**語彙索引への書き込みの輪（高機密の文書・埋め込み待ちの点）にも同じ値の総枠を掛ける**
+//      ［2026-10-17 / #1746・[[IADR-0560]]］**語彙索引への書き込みの輪（高機密の文書・埋め込み待ちの点）にも同じ値の総枠を掛ける**
 //      （呼び出し先 `lexical-budget`。デッドレターへの直行も同じ）。待ちの点の輪は埋め込みの輪の始めから続けて測るので、
 //      1 文書のチャンクの輪全体が 1 つの総枠に収まり、下の式（`EnsureFits`）は変わらない。
 //   3. **受け口の実行期限**（`Handler`）—— `HandlerExecutionTimeoutPolicy<DocumentUpdated>` が与える。
@@ -56,7 +56,7 @@ public sealed record IngestionTimeouts(
     public const string EmbeddingTarget = "embedding";
     public const string VectorStoreTarget = "vector-store";
     public const string EmbeddingBudgetTarget = "embedding-budget";
-    // FR-02, ADR-0127 決定 1, [[IADR-0559]] (#1746): 語彙索引への書き込みの輪の総枠（値は `EmbeddingBudget` と同じ）。
+    // FR-02, ADR-0127 決定 1, [[IADR-0560]] (#1746): 語彙索引への書き込みの輪の総枠（値は `EmbeddingBudget` と同じ）。
     public const string LexicalBudgetTarget = "lexical-budget";
 
     public static IngestionTimeouts Default { get; } = new(
