@@ -71,6 +71,7 @@ related_specs:
 
 > **［2026-10-17 追記 / #1903］決定 1 のうち「旧 ID を利用許可集合と単価表に残す」と「配備順序」を、計画 ADR-0138 決定 7・決定 8 に合わせて改めた。**
 > 計画は 2026-10-10 の追加裁定（planning#783 のコメントの裁定 3・4）で、本決定の 2 点を採らなかった。
+> **`title:` と決定 1 の見出しの「旧 ID は（切り戻し用に）残す」は失効している**（凍結記録なので書き換えず、この追記で改める）。
 >
 > - **旧 ID は残さない。** `claude-managed` の `Models` は `claude-opus-5-5`・`claude-sonnet-5-5`・`claude-haiku-5-5` の 3 つだけとし、
 >   旧世代 5 つ（`claude-opus-5`・`claude-opus-4-8`・`claude-sonnet-5`・`claude-sonnet-4-6`・`claude-haiku-4-5`）を外した。
