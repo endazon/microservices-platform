@@ -67,6 +67,8 @@ function listPage(
     limit?: number;
     unfilteredTotal?: number;
     statusCounts?: Record<string, number>;
+    sourceCounts?: Record<string, number>;
+    projectCounts?: Record<string, number>;
   } = {},
 ) {
   const total = page.total ?? items.length;
@@ -77,6 +79,8 @@ function listPage(
     limit: page.limit ?? 50,
     unfilteredTotal: page.unfilteredTotal ?? total,
     statusCounts: page.statusCounts ?? {},
+    sourceCounts: page.sourceCounts ?? {},
+    projectCounts: page.projectCounts ?? {},
   });
 }
 
@@ -901,5 +905,74 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(table.getByText('本文未設定')).toBeInTheDocument();
     // 時刻は実行環境のタイムゾーンで出る（`formatDateTime`）。書式（`YYYY/MM/DD HH:mm`）が 3 行に出ることだけを見る。
     expect(table.getAllByText(/^2026\/0[78]\/\d{2} \d{2}:\d{2}$/)).toHaveLength(3);
+  });
+});
+
+// SC-05, FR-06（#1923 の残り・IADR-0561）: データソース・機密区分・タグ・プロジェクト・保存日の絞り込み。
+// 件数は BFF が ABAC で絞った後の数で、画面は描くだけである。
+describe('DocumentManagementPage (SC-05) facets', () => {
+  const listPaths = () =>
+    mocks.apiRequest.mock.calls
+      .map(([path]) => String(path))
+      .filter((path) => path.startsWith('/documents?'));
+
+  const COUNTS = {
+    sourceCounts: { 'col:kabutan': 30, 'ds:共有フォルダ': 2, manual: 5, report: 1 },
+    projectCounts: { 'ai-stock-trading': 31, '(none)': 7 },
+  };
+
+  // 帯の条件はそれぞれのクエリに写る。保存日は利用者の時刻帯の暦日で、「まで」はその日を含む（翌日 0 時を含まない終わりとして送る）。
+  // 「条件を解除」は帯の条件をすべて外す。
+  it('sends each facet, the inclusive date range and clears them', async () => {
+    withTagDictionary(() => listPage([DRAFT_DOC], { total: 1, unfilteredTotal: 38, ...COUNTS }));
+    const user = userEvent.setup();
+    await renderPage();
+
+    const filters = within(await screen.findByRole('search', { name: '文書の絞り込み' }));
+    const source = filters.getByLabelText('データソース');
+    await waitFor(() =>
+      expect(
+        within(source).getByRole('option', { name: '収集: kabutan（30 件）' }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      within(source).getByRole('option', { name: '共有フォルダ（2 件）' }),
+    ).toBeInTheDocument();
+    expect(within(source).getByRole('option', { name: '確定報告書（1 件）' })).toBeInTheDocument();
+    expect(within(source).getByRole('option', { name: '手入力（5 件）' })).toBeInTheDocument();
+    await user.selectOptions(source, 'ds:共有フォルダ');
+    await user.selectOptions(filters.getByLabelText('機密区分で絞り込み'), 'internal');
+    await waitFor(() =>
+      expect(
+        within(filters.getByLabelText('タグで絞り込み')).getByRole('option', { name: '規程' }),
+      ).toBeInTheDocument(),
+    );
+    await user.selectOptions(filters.getByLabelText('タグで絞り込み'), '規程');
+    const project = filters.getByLabelText('プロジェクト');
+    expect(
+      within(project).getByRole('option', { name: 'プロジェクトなし（7 件）' }),
+    ).toBeInTheDocument();
+    await user.selectOptions(project, '(none)');
+    await user.type(filters.getByLabelText('保存日（から）'), '2026-10-01');
+    await user.type(filters.getByLabelText('保存日（まで）'), '2026-10-03');
+
+    const from = new Date(2026, 9, 1).toISOString();
+    const before = new Date(2026, 9, 4).toISOString();
+    await waitFor(() => {
+      const url = new URL(`http://x${listPaths().at(-1)}`);
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        offset: '0',
+        limit: '50',
+        source: 'ds:共有フォルダ',
+        confidentiality: 'internal',
+        tag: '規程',
+        project: '(none)',
+        createdFrom: from,
+        createdBefore: before,
+      });
+    });
+
+    await user.click(filters.getByRole('button', { name: '条件を解除' }));
+    await waitFor(() => expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50'));
   });
 });

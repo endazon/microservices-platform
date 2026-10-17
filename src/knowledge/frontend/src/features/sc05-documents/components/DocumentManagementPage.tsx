@@ -27,16 +27,17 @@ import { formatDateTime } from '@foundation/utils/formatDateTime';
 import {
   DEFAULT_DOCUMENT_PAGE_SIZE,
   DEFAULT_DOCUMENT_SORT,
+  EMPTY_DOCUMENT_CONDITIONS,
   isFiltered,
   useAdminDocuments,
   useDocumentActions,
 } from '../api/useDocumentAdmin';
 import type {
   DocumentCommand,
+  DocumentListConditions,
   DocumentListRequest,
   DocumentPageRequest,
   DocumentSort,
-  DocumentStatusFilter,
 } from '../api/useDocumentAdmin';
 import { DocumentPagination } from './DocumentPagination';
 import { DocumentListToolbar } from './DocumentListToolbar';
@@ -93,21 +94,21 @@ export function DocumentManagementPage() {
   const [notice, setNotice] = useState<string | null>(null);
   // SC-05, FR-06, IADR-0537（#1923 段 1）: 一覧はページで引く（既定 50 件）。総件数は BFF が権限で絞った後の数。
   // ［2026-10-15 / #1923 段 2・IADR-0545］並べ替え・表題の検索・状態の絞り込みも同じ要求に載せる。条件を変えたら先頭へ戻す。
+  // ［2026-10-17 / #1923・IADR-0561］データソース・機密区分・タグ・プロジェクト・保存日も同じ要求に載せる。
   const [request, setRequest] = useState<DocumentListRequest>({
     offset: 0,
     limit: DEFAULT_DOCUMENT_PAGE_SIZE,
     sort: DEFAULT_DOCUMENT_SORT,
-    q: '',
-    status: '',
+    ...EMPTY_DOCUMENT_CONDITIONS,
   });
   const page: DocumentPageRequest = { offset: request.offset, limit: request.limit };
   const setPage = (next: DocumentPageRequest) => setRequest((r) => ({ ...r, ...next }));
   const filtered = isFiltered(request);
   const onQueryChange = useCallback((q: string) => setRequest((r) => ({ ...r, q, offset: 0 })), []);
   const onSortChange = (sort: DocumentSort) => setRequest((r) => ({ ...r, sort, offset: 0 }));
-  const onStatusChange = (status: DocumentStatusFilter) =>
-    setRequest((r) => ({ ...r, status, offset: 0 }));
-  const onClear = () => setRequest((r) => ({ ...r, q: '', status: '', offset: 0 }));
+  const onConditionChange = (change: Partial<Omit<DocumentListConditions, 'q'>>) =>
+    setRequest((r) => ({ ...r, ...change, offset: 0 }));
+  const onClear = () => setRequest((r) => ({ ...r, ...EMPTY_DOCUMENT_CONDITIONS, offset: 0 }));
   const documents = useAdminDocuments(request);
   const total = documents.data?.total;
   // 削除などで総件数が減り、いまのページが末尾を越えたら末尾のページへ戻す（空のページを出したままにしない）。
@@ -236,15 +237,18 @@ export function DocumentManagementPage() {
           </Alert>
         )}
 
-        {/* #1923 段 2: 並べ替え・表題の検索・状態の絞り込み。取得の状態に関わらず出す（0 件でも条件を戻せるように）。 */}
+        {/* #1923 段 2: 並べ替え・表題の検索・状態の絞り込み。取得の状態に関わらず出す（0 件でも条件を戻せるように）。
+            ［2026-10-17 / IADR-0561］データソース・機密区分・タグ・プロジェクト・保存日を足した。 */}
         <DocumentListToolbar
           sort={request.sort}
-          status={request.status}
-          q={request.q}
+          conditions={request}
           statusCounts={documents.data?.statusCounts}
+          sourceCounts={documents.data?.sourceCounts}
+          projectCounts={documents.data?.projectCounts}
           unfilteredTotal={documents.data?.unfilteredTotal}
+          tagOptions={tagOptions.names}
           onSortChange={onSortChange}
-          onStatusChange={onStatusChange}
+          onConditionChange={onConditionChange}
           onQueryChange={onQueryChange}
           onClear={onClear}
         />

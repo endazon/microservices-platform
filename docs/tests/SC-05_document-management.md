@@ -3,14 +3,14 @@ title: SC-05 文書管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-10-15
+updated: 2026-10-17
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-09, SC-03, SC-05, SC-06, SC-07, UC-03]
 adrs: [ADR-0031, ADR-0066]
-iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308, IADR-0537, IADR-0545]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation, 20261014_1923_document-list-pagination, 20261015_1923_document-list-sort-filter]
+iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308, IADR-0537, IADR-0545, IADR-0561]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation, 20261014_1923_document-list-pagination, 20261015_1923_document-list-sort-filter, 20261017_1923_document-list-facets-preview]
 issues: [#501, #1065, #1923, #1897]
 -->
 
@@ -220,6 +220,46 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | T4 | 印の往復・改ざん | 並べ替えごとの印は往復で値が変わらない（表題の `:`・日本語を含む）。既定の並びは従前の形の印。壊れた印（キー不明・表題が壊れた・時刻が数でない・ID が壊れた）は読めない |
 | T5 | 未定義の並べ替え | enum に無い値は `INVALID_ARGUMENT`（既定へ畳まない） |
 | T6 | 実 PostgreSQL | 同じ表題・同じ作成時刻の群（uuid の順の取り違えで前後が入れ替わる Guid）を表題・作成日時・更新日時の昇降で辿って抜け・重複なし。`(Title, Id)` の索引を印の位置から引く（昇順は前から・降順は後ろから。Docker か外部の PostgreSQL が要る） |
+
+## 一覧の追加の絞り込み（#1923 の残り）
+
+> **［2026-10-17 追記 / #1923］** データソース・機密区分・タグ・プロジェクト・保存日の絞り込み、データソース別・プロジェクト別の件数。
+> 絞り込みは段 2 と同じく BFF が ABAC の後に当てる。BFF はタブ（機械の収集か否か）の絞り込みも受ける（画面のタブは続く変更）。
+
+### 画面（Vitest）
+
+テスト: `DocumentManagementPage.test.tsx` ／ `documentSource.test.ts`（純関数）
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| H2 | 帯の条件 | データソース（件数つき・表示名）・機密区分・タグ（辞書）・プロジェクト（「プロジェクトなし」）・保存日がそれぞれのクエリに写る。「まで」は翌日 0 時を含まない終わりとして送る。「条件を解除」は帯の条件を外す | `sends each facet, the inclusive date range and clears them` |
+| H7 | 鍵の表示 | BFF の鍵（データソース・収集・確定報告書・手入力）を表示名へ写す（名前は訳さない）。プロジェクトなしの鍵 `NO_PROJECT` は「プロジェクトなし」と出す（H2 で確かめる） | `sourceLabel` |
+
+### BFF（xUnit）
+
+テスト: [`Platform.Bff.Tests/BffDocumentListFacetTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDocumentListFacetTests.cs)
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| J1 | 鍵の導出 | `ds:` → `col:` → `report`（`kind` と `periodKey` の両方）→ `manual` の順で 1 つに決まる。タブは `col:` だけが収集 | `データソースの鍵はデータソース_収集_報告書_手入力の順で決まる` |
+| J2 | 各絞り込み | タブ・データソース・機密区分・タグ・プロジェクト（`(none)`）・保存日（オフセットを読む・終わりは含まない）が窓と `total` を絞り、`unfilteredTotal` は絞る前の数 | `絞り込みは窓と総件数を絞り全体の件数は絞る前の数` |
+| J3 | 件数 | `sourceCounts` / `projectCounts` は絞り込みに依らず、合計は `unfilteredTotal` | `データソース別とプロジェクト別の件数は絞り込みに依らない` |
+| J4 | 後方互換 | 新しいクエリを付けない要求は従前どおり全件（ABAC 後）。データソースの表示名と原本の所在が gRPC を往復して応答に載る | `新しいクエリを付けない要求は従前どおり全件を返す` ／ `データソースの表示名と原本の所在が一覧の応答に載る` |
+| J5 | **存在秘匿** | 新しい絞り込みを付けても、権限外の文書を混ぜた台帳と混ぜない台帳で応答（全件数・各件数・窓）が一致する（陽性対照つき） | `権限外の文書は新しい絞り込みの件数にもデータソース別の件数にも現れない` |
+| J6 | **存在秘匿（個人資料）** | 他人の個人資料も、新しい絞り込み・データソース別・プロジェクト別の件数のどれにも現れない（陽性対照つき） | `他人の個人資料は新しい絞り込みの件数にもプロジェクト別の件数にも現れない` |
+| J7 | 許可ポリシーなし | 件数はどれも 0 / 空 | `許可ポリシーが無いときデータソース別とプロジェクト別の件数は空` |
+| J9 | **件数の鍵は選べる** | 長い出典名の鍵は受理の上限で切って数え（サロゲートペアは割らない）、切った鍵で絞ると 400 にならずその文書に当たる | `長い出典名の鍵は受理の上限で切って数え選べる` |
+| J10 | **件数の鍵は選べる（プロジェクト）** | 長い `project` の鍵も受理の上限（100）で切って数え（サロゲートペアは割らない）、切った値で絞るとその文書に当たる | `長いプロジェクトの鍵は受理の上限で切って数え選べる` |
+| J8 | 検証 | 未知の `origin` / `confidentiality`、壊れた日時、`createdFrom >= createdBefore` は 400 で後段を呼ばない。`source` / `tag` / `project` は上限ちょうどまで | `未知の値と壊れた日時と逆向きの範囲は400で後段を呼ばない` ／ `長すぎる値は400で上限ちょうどは通る` |
+
+### 契約・後段（xUnit）
+
+テスト: `Knowledge.Contracts.Tests/DocumentReadGrpcMappingTests.cs` ／ `DocumentService.Tests/.../DocumentMapperTests.cs`
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| K1 | gRPC の写像 | データソースの表示名・原本の所在は presence で運び、null と空文字を分ける（全項目の往復の器にも足した） |
+| K2 | REST の写像 | 台帳の `DataSourceName` / `OriginalUri` が同名の列から写り、無ければ null |
 
 ## ABAC・存在秘匿の担保
 

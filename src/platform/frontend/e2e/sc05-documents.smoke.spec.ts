@@ -42,6 +42,9 @@ const firstPage: DocumentListPageDto = {
   limit: 50,
   unfilteredTotal: 1,
   statusCounts: { published: 1 },
+  // ［2026-10-17 / #1923・IADR-0561］データソース別・プロジェクト別の件数（手入力の 1 件）。
+  sourceCounts: { manual: 1 },
+  projectCounts: { '(none)': 1 },
 };
 
 const handlers = { 'GET /documents': firstPage, 'GET /tags': tags };
@@ -80,6 +83,9 @@ test('SC-05: an operator reaches the screen and its navigation entry', async ({ 
   await expect(filters.getByLabel('表題で検索')).toBeVisible();
   await expect(filters.getByLabel('状態')).toBeVisible();
   await expect(filters.getByLabel('並べ替え')).toBeVisible();
+  // ［2026-10-17 / IADR-0561］データソース・機密区分・タグ・プロジェクト・保存日の絞り込みも帯に並ぶ。
+  await expect(filters.getByLabel('データソース')).toBeVisible();
+  await expect(filters.getByLabel('保存日（から）')).toBeVisible();
   await expect(page.getByRole('columnheader', { name: '本文' })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: '更新日時' })).toBeVisible();
 

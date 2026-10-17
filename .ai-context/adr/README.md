@@ -638,3 +638,4 @@
 | [IADR-0558](./IADR-0558_conversion-figure-image-via-conversion-service.md) | 変換ジョブの図画像は変換サービス（図の所有者）が読み、BFF は利用者の資格情報を付けた既存のエッジの REST 中継で受け取る（east-west gRPC は足さない）。BFF からオブジェクトストレージの配線を外し、画像を返せないときは理由つきの 404・503（BFF では 502）に分ける（#1941） | Accepted |
 | [IADR-0559](./IADR-0559_rerank-aware-search-latency-alert.md) | 検索 p95 の警報は検索サービスが出す再順位付けの構成のゲージ（search_rerank_enabled）で閾値を選ぶ。無効（とゲージが無いとき）は 1.5 秒、有効は NFR-29 が pending のため「有効時の目標が未確定」を鳴らす（#1746） | Accepted |
 | [IADR-0560](./IADR-0560_lexical-index-write-budget.md) | 語彙索引への書き込みの輪（高機密の文書・埋め込み待ちの点）を埋め込みの総枠と同じ値の時間の総枠で打ち切り、使い切った文書は再試行せずデッドレターへ送る（呼び出し先 lexical-budget）。待ちの点の輪は埋め込みの輪の始めから続けて測る（#1746） | Accepted |
+| [IADR-0561](./IADR-0561_document-list-origin-tabs-facets-preview.md) | 文書管理の一覧に、機械の収集と人の文書を分けるタブ（既定は人の文書）と、データソース・機密区分・タグ・プロジェクト・保存日の絞り込みを BFF が ABAC の後に当てる形で足し、データソースは BFF が文書ごとに 1 つの鍵に導く（#1923） | Accepted |

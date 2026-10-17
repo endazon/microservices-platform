@@ -1392,6 +1392,9 @@ paths:
 
         ［2026-10-15 / #1923 段 2］**並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）**。並べ替えは文書サービスが行い、
         絞り込みは ABAC で絞った後に当てる。`total` は絞り込み後、`unfilteredTotal` と `statusCounts` は絞り込み前（いずれも ABAC 後）の数。
+
+        ［2026-10-17 / #1923］**タブ（`origin`）・データソース（`source`）・機密区分・タグ・プロジェクト・保存日の範囲**を同じ作法で当てる。
+        どれも省略可で、省略は従前の応答と同じ。`sourceCounts` / `projectCounts` も絞り込み前（ABAC 後）の数。
       operationId: bff-document-list
       parameters:
         - name: offset
@@ -1424,6 +1427,45 @@ paths:
           schema:
             type: string
             enum: [draft, normalized, published, archived]
+        - name: origin
+          in: query
+          required: false
+          description: タブ。`collected` は機械の収集（データソースの鍵が `col:`）、`curated` はそれ以外（人の文書・報告書・データソースの取り込み）。未知の値は 400
+          schema:
+            type: string
+            enum: [curated, collected]
+        - name: source
+          in: query
+          required: false
+          description: データソースの鍵（`sourceCounts` の鍵と同じ語彙）の完全一致。300 文字を超えると 400（`sourceCounts` の鍵も 300 文字で切ってあるので、件数に出た鍵は必ず受理される）
+          schema: { type: string, maxLength: 300 }
+        - name: confidentiality
+          in: query
+          required: false
+          description: 機密区分で絞る。未知の値は 400
+          schema:
+            type: string
+            enum: [public, internal, confidential, restricted]
+        - name: tag
+          in: query
+          required: false
+          description: タグの表示名の完全一致。100 文字を超えると 400
+          schema: { type: string, maxLength: 100 }
+        - name: project
+          in: query
+          required: false
+          description: 属性 `project` の値の完全一致。`(none)` は属性 `project` を持たない文書。100 文字を超えると 400（`projectCounts` の鍵も 100 文字で切ってあるので、件数に出た鍵は必ず受理される）
+          schema: { type: string, maxLength: 100 }
+        - name: createdFrom
+          in: query
+          required: false
+          description: 保存日（作成日時）の範囲の始め（含む）。ISO 8601 の日時。オフセットの無い値は UTC。壊れた値は 400
+          schema: { type: string, format: date-time }
+        - name: createdBefore
+          in: query
+          required: false
+          description: 保存日（作成日時）の範囲の終わり（含まない）。ISO 8601 の日時。`createdFrom` 以下なら 400
+          schema: { type: string, format: date-time }
       responses:
         "200":
           description: 文書一覧の 1 ページ（スコープ内のみ）
@@ -1432,7 +1474,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/DocumentListPageDto"
         "400":
-          description: "`offset` が負、`offset` / `limit` が数でない、`sort` / `status` が未知、または `q` が 200 文字を超える"
+          description: "`offset` が負、`offset` / `limit` が数でない、`sort` / `status` / `origin` / `confidentiality` が未知、`q` / `source` / `tag` / `project` が上限を超える、日時が壊れている、または `createdFrom` が `createdBefore` 以上"
         "401":
           description: 未認証（#656）
         "403":
@@ -5062,6 +5104,18 @@ components:
             本文を投入した呼び出し側は、送った本文から同じ値を計算して「保存済みの本文が最新か」を判定できる。
             本文を読める主体に本文の指紋を見せても新しい情報は漏れない（個人資料の `contentHash` と同じ扱い）。
             **項目を持たない旧応答は「指紋不明」として読む。**
+        dataSourceName:
+          type: string
+          nullable: true
+          description: |
+            FR-06, SC-05 (#1923): 取り込み元のデータソースの表示名（台帳の写し。データソースの改名は次の同期まで遡及しない）。
+            直接投入・画面からの作成では `null`。**項目を持たない旧応答は「データソースなし」として読む。**
+        originalUri:
+          type: string
+          nullable: true
+          description: |
+            FR-06, SC-05 (#1923): 原本の所在（API の書き手が渡した元の URL など。AST の収集ではニュース・開示の出典）。
+            書き手の申告であり検証していない。画面は `http(s)` のときだけリンクにする。
 
     DocumentPageDto:
       type: object
@@ -5083,7 +5137,7 @@ components:
       description: |
         FR-06, SC-05 (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ（`Knowledge.Contracts/Dtos/DocumentDto.cs`）。
         `offset` / `limit` は BFF が丸めた後の値。🔴 件数はどれも ABAC スコープで絞った後の数（権限外の文書を数えない）。
-      required: [items, total, offset, limit, unfilteredTotal, statusCounts]
+      required: [items, total, offset, limit, unfilteredTotal, statusCounts, sourceCounts, projectCounts]
       properties:
         items:
           type: array
@@ -5099,6 +5153,16 @@ components:
           type: object
           additionalProperties: { type: integer, format: int32 }
           description: 状態（`DocumentDto.status` の生値）ごとの件数。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）
+        sourceCounts:
+          type: object
+          additionalProperties: { type: integer, format: int32 }
+          description: |
+            データソースの鍵ごとの件数（#1923 の残り）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）。
+            鍵は `ds:<dataSourceName>`（データソースの取り込み）→ `col:<属性 source>`（機械の収集）→ `report`（`kind` と `periodKey` を持つ確定報告書）→ `manual` の順で 1 つに決まる。
+        projectCounts:
+          type: object
+          additionalProperties: { type: integer, format: int32 }
+          description: 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）
 
     DocumentContentDto:
       type: object

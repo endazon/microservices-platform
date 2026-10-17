@@ -74,6 +74,19 @@ public class DocumentReadGrpcMappingTests
             .ContentFingerprint.Should().BeNull();
     }
 
+    // FR-06, SC-05, [[IADR-0561]] (#1923): データソースの表示名・原本の所在は presence で運ぶ。null は null のまま、空文字は空文字のまま。
+    // 代入を落とすと gRPC 経路の一覧だけがデータソースで絞れず、出典のリンクも出ない。
+    [Fact]
+    public void DataSourceName_and_OriginalUri_value_null_and_empty_survive_the_round_trip()
+    {
+        var none = DocumentReadGrpcMapping.ToDto(DocumentReadGrpcMapping.ToProto(Doc(null, true)));
+        (none.DataSourceName, none.OriginalUri).Should().Be(((string?)null, (string?)null));
+
+        var empty = DocumentReadGrpcMapping.ToDto(DocumentReadGrpcMapping.ToProto(
+            Doc(null, true) with { DataSourceName = "", OriginalUri = "" }));
+        (empty.DataSourceName, empty.OriginalUri).Should().Be(("", ""));
+    }
+
     // 文書の写像は**全項目**が往復する（順序つきのタグ・属性・時刻の tick まで）。
     // FR-06, FR-19 (#1898): 器は**全項目を既定値以外**で埋める（下の `Every_field_fixture_...` が保証する）。
     // 以前の器は `SharedWith` を null のままにしていたため、写し漏れ（#1898 の回帰）でもこの試験は緑だった。
@@ -167,6 +180,8 @@ public class DocumentReadGrpcMappingTests
         // `HasBody` の既定は true なので、既定値以外（false）で埋める。
         SharedWith = ["alice", "g-1"],
         ContentFingerprint = new string('f', 64),
+        DataSourceName = "共有フォルダ",
+        OriginalUri = "https://example.com/news/1",
     };
 
     private static DocumentVersionDto Version(string? changeNote) => new()

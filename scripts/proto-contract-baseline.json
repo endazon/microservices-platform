@@ -141,6 +141,11 @@
               "type": "google.protobuf.Timestamp",
               "label": "singular"
             },
+            "data_source_name": {
+              "number": 13,
+              "type": "string",
+              "label": "optional"
+            },
             "has_body": {
               "number": 10,
               "type": "bool",
@@ -153,6 +158,11 @@
             },
             "markdown_uri": {
               "number": 4,
+              "type": "string",
+              "label": "optional"
+            },
+            "original_uri": {
+              "number": 14,
               "type": "string",
               "label": "optional"
             },

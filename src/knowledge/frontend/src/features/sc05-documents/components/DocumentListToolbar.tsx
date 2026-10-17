@@ -1,12 +1,21 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
+import type { MessageDescriptor } from '@lingui/core';
 import { Button, Input, Label, Select } from '@platform/ui';
 import { i18n } from '@foundation/i18n';
-import { DOCUMENT_TITLE_QUERY_MAX } from '../api/useDocumentAdmin';
-import type { DocumentSort, DocumentStatusFilter } from '../api/useDocumentAdmin';
+import { DOCUMENT_TITLE_QUERY_MAX, hasConditions } from '../api/useDocumentAdmin';
+import type {
+  DocumentConfidentialityFilter,
+  DocumentListConditions,
+  DocumentSort,
+  DocumentStatusFilter,
+} from '../api/useDocumentAdmin';
 import { DOCUMENT_STATUSES, documentStatusView } from '../types/documentStatus';
+import { NO_PROJECT, sourceLabel } from '../types/documentSource';
+import { CONFIDENTIALITY_VALUES } from '../../../lib/abac';
 
 // SC-05, FR-06（#1923 段 2・[[IADR-0545]]）: 文書一覧の**操作の帯**（表題の検索・状態の絞り込み・並べ替え・条件の解除）。
+// ［2026-10-17 / #1923・[[IADR-0561]]］データソース（件数つき）・機密区分・タグ（辞書）・プロジェクト（件数つき）・保存日の範囲を足した。
 //
 // 並べ替えは文書サービス、絞り込みは BFF が ABAC の後に当てる。件数（状態ごとの数）は BFF が権限で絞った後の数であり、
 // ここは受け取った数を描くだけで、権限の有無を推し量る表示を足さない。
@@ -17,35 +26,58 @@ const TITLE_QUERY_DEBOUNCE_MS = 300;
 
 interface DocumentListToolbarProps {
   sort: DocumentSort;
-  status: DocumentStatusFilter;
-  /** 確定した（引いた）検索語。入力中の値は帯の中で持つ。 */
-  q: string;
+  /** 確定した条件。`q` は確定した（引いた）検索語で、入力中の値は帯の中で持つ。 */
+  conditions: DocumentListConditions;
   /** 状態ごとの件数（絞り込み前・ABAC 後）。取得前は undefined。 */
   statusCounts?: Record<string, number>;
+  /** データソースの鍵ごとの件数（絞り込み前・ABAC 後）。取得前は undefined。 */
+  sourceCounts?: Record<string, number>;
+  /** プロジェクトごとの件数（絞り込み前・ABAC 後）。取得前は undefined。 */
+  projectCounts?: Record<string, number>;
   /** 絞り込み前の件数（「すべて」に添える）。取得前は undefined。 */
   unfilteredTotal?: number;
+  /** タグ辞書の名前（タグの選択肢）。 */
+  tagOptions: readonly string[];
   onSortChange: (sort: DocumentSort) => void;
-  onStatusChange: (status: DocumentStatusFilter) => void;
+  /** 検索語以外の条件を 1 つ変える（検索語は入力が止まってから `onQueryChange`）。 */
+  onConditionChange: (change: Partial<Omit<DocumentListConditions, 'q'>>) => void;
   onQueryChange: (q: string) => void;
-  /** 検索語と状態を解除する（並べ替えは残す —— 条件ではなく見せ方である）。 */
+  /** 帯の条件をすべて解除する（並べ替えとタブは残す —— 条件ではなく見せ方である）。 */
   onClear: () => void;
+}
+
+/** 件数の多い順（同数は鍵の順）に並べた鍵。選んでいる値が件数に無くても選択肢に残す（選んだ値が消えて見えないように）。 */
+function countedKeys(counts: Record<string, number> | undefined, selected: string): string[] {
+  const keys = Object.entries(counts ?? {})
+    .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+    .map(([key]) => key);
+  return selected !== '' && !keys.includes(selected) ? [...keys, selected] : keys;
 }
 
 export function DocumentListToolbar({
   sort,
-  status,
-  q,
+  conditions,
   statusCounts,
+  sourceCounts,
+  projectCounts,
   unfilteredTotal,
+  tagOptions,
   onSortChange,
-  onStatusChange,
+  onConditionChange,
   onQueryChange,
   onClear,
 }: DocumentListToolbarProps) {
   const { t } = useLingui();
+  const { q, status } = conditions;
   const searchId = useId();
   const statusId = useId();
   const sortId = useId();
+  const sourceId = useId();
+  const confidentialityId = useId();
+  const tagId = useId();
+  const projectId = useId();
+  const fromId = useId();
+  const toId = useId();
   const [draft, setDraft] = useState(q);
   // 帯が自分で確定させた検索語（直近に `onQueryChange` へ渡した値）。
   const emitted = useRef(q);
@@ -79,7 +111,9 @@ export function DocumentListToolbar({
   ];
   const withCount = (label: string, count: number | undefined) =>
     count === undefined ? label : t`${label}（${count} 件）`;
-  const filtered = q.trim() !== '' || status !== '' || draft.trim() !== '';
+  const filtered = hasConditions(conditions) || draft.trim() !== '';
+  const translate = (descriptor: MessageDescriptor) => i18n._(descriptor);
+  const projectLabel = (key: string) => (key === NO_PROJECT ? t`プロジェクトなし` : key);
 
   return (
     <div
@@ -109,7 +143,7 @@ export function DocumentListToolbar({
           id={statusId}
           selectSize="sm"
           value={status}
-          onChange={(e) => onStatusChange(e.target.value as DocumentStatusFilter)}
+          onChange={(e) => onConditionChange({ status: e.target.value as DocumentStatusFilter })}
         >
           <option value="">{withCount(t`すべて`, unfilteredTotal)}</option>
           {DOCUMENT_STATUSES.map((value) => {
@@ -122,6 +156,129 @@ export function DocumentListToolbar({
             );
           })}
         </Select>
+      </span>
+      <span className="flex flex-col gap-1">
+        <Label htmlFor={sourceId}>
+          <Trans>データソース</Trans>
+        </Label>
+        <Select
+          id={sourceId}
+          selectSize="sm"
+          value={conditions.source}
+          onChange={(e) => onConditionChange({ source: e.target.value })}
+        >
+          <option value="">{withCount(t`すべて`, unfilteredTotal)}</option>
+          {countedKeys(sourceCounts, conditions.source).map((key) => (
+            <option key={key} value={key}>
+              {withCount(sourceLabel(key, translate), sourceCounts?.[key] ?? 0)}
+            </option>
+          ))}
+        </Select>
+      </span>
+      <span className="flex flex-col gap-1">
+        <Label htmlFor={confidentialityId}>
+          <Trans>機密区分で絞り込み</Trans>
+        </Label>
+        {/* 値は訳さない（生値。`lib/abac/confidentiality.ts`）。 */}
+        <Select
+          id={confidentialityId}
+          selectSize="sm"
+          value={conditions.confidentiality}
+          onChange={(e) =>
+            onConditionChange({
+              confidentiality: e.target.value as DocumentConfidentialityFilter,
+            })
+          }
+        >
+          <option value="">{t`すべて`}</option>
+          {CONFIDENTIALITY_VALUES.map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </Select>
+      </span>
+      <span className="flex flex-col gap-1">
+        <Label htmlFor={tagId}>
+          <Trans>タグで絞り込み</Trans>
+        </Label>
+        <Select
+          id={tagId}
+          selectSize="sm"
+          value={conditions.tag}
+          onChange={(e) => onConditionChange({ tag: e.target.value })}
+        >
+          <option value="">{t`すべて`}</option>
+          {(tagOptions.includes(conditions.tag) || conditions.tag === ''
+            ? tagOptions
+            : [...tagOptions, conditions.tag]
+          ).map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </Select>
+      </span>
+      <span className="flex flex-col gap-1">
+        <Label htmlFor={projectId}>
+          <Trans>プロジェクト</Trans>
+        </Label>
+        <Select
+          id={projectId}
+          selectSize="sm"
+          value={conditions.project}
+          onChange={(e) => onConditionChange({ project: e.target.value })}
+        >
+          <option value="">{withCount(t`すべて`, unfilteredTotal)}</option>
+          {countedKeys(projectCounts, conditions.project).map((key) => (
+            <option key={key} value={key}>
+              {withCount(projectLabel(key), projectCounts?.[key] ?? 0)}
+            </option>
+          ))}
+        </Select>
+      </span>
+      <span className="flex flex-col gap-1">
+        <Label htmlFor={fromId}>
+          <Trans>保存日（から）</Trans>
+        </Label>
+        <Input
+          id={fromId}
+          type="date"
+          inputSize="sm"
+          value={conditions.createdFrom}
+          max={conditions.createdTo || undefined}
+          onChange={(e) => {
+            // 範囲を逆向きにしない（BFF は逆向きを 400 にする）。「から」が「まで」を越えたら「まで」も合わせる。
+            const value = e.target.value;
+            const { createdTo } = conditions;
+            onConditionChange(
+              value !== '' && createdTo !== '' && value > createdTo
+                ? { createdFrom: value, createdTo: value }
+                : { createdFrom: value },
+            );
+          }}
+        />
+      </span>
+      <span className="flex flex-col gap-1">
+        <Label htmlFor={toId}>
+          <Trans>保存日（まで）</Trans>
+        </Label>
+        <Input
+          id={toId}
+          type="date"
+          inputSize="sm"
+          value={conditions.createdTo}
+          min={conditions.createdFrom || undefined}
+          onChange={(e) => {
+            const value = e.target.value;
+            const { createdFrom } = conditions;
+            onConditionChange(
+              value !== '' && createdFrom !== '' && value < createdFrom
+                ? { createdFrom: value, createdTo: value }
+                : { createdTo: value },
+            );
+          }}
+        />
       </span>
       <span className="flex flex-col gap-1">
         <Label htmlFor={sortId}>

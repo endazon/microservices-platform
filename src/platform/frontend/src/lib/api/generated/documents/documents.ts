@@ -128,6 +128,9 @@ export const getBffDocumentListUrl = (params?: BffDocumentListParams,) => {
  *
  * ［2026-10-15 / #1923 段 2］**並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）**。並べ替えは文書サービスが行い、
  * 絞り込みは ABAC で絞った後に当てる。`total` は絞り込み後、`unfilteredTotal` と `statusCounts` は絞り込み前（いずれも ABAC 後）の数。
+ *
+ * ［2026-10-17 / #1923］**タブ（`origin`）・データソース（`source`）・機密区分・タグ・プロジェクト・保存日の範囲**を同じ作法で当てる。
+ * どれも省略可で、省略は従前の応答と同じ。`sourceCounts` / `projectCounts` も絞り込み前（ABAC 後）の数。
  * @summary FR-06, SC-05: 文書一覧（ABAC スコープ内のみ。管理者・運用者。#656）
  */
 export const bffDocumentList = async (params?: BffDocumentListParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentListResponse> => {
