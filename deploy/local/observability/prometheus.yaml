@@ -70,14 +70,24 @@ data:
             annotations:
               summary: "{{ $labels.job }} の 5xx 率が 5% 超"
               description: "直近 5 分の 5xx 率が閾値超過（NFR 障害検出 5 分以内）。"
+          # IADR-0559: 閾値は再順位付けの構成（ゲージ search_rerank_enabled）で選ぶ。注記の正本は deploy/prometheus/alerts.yml。
           - alert: SearchLatencyP95High
             expr: |
               histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="microservices-platform.retrieval-service"}[5m]))) > 1.5
+              unless on () (max(search_rerank_enabled{job="microservices-platform.retrieval-service"}) == 1)
             for: 10m
             labels: { severity: warning }
             annotations:
               summary: "検索 p95 が 1.5s 超"
-              description: "RetrievalService の p95 レイテンシが NFR 目標(1.5s)を 10 分継続で超過。"
+              description: "RetrievalService の p95 レイテンシが NFR 目標(1.5s)を 10 分継続で超過（再順位付けが無効な構成）。"
+          - alert: SearchRerankLatencyTargetUndefined
+            expr: |
+              max(search_rerank_enabled{job="microservices-platform.retrieval-service"}) == 1
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "検索の再順位付けが有効だが、有効時の検索 p95 目標（NFR-29）が未確定"
+              description: "再順位付けが有効で動いている。有効時の目標は未確定で、有効化の条件を満たしていない。この間 1.5s の検索 p95 警報は外れている。"
           # NFR-02, ADR-0076 決定 5 (#1204): 初回トークンまでの時間（TTFT）。**NFR-02 の SLO 判定はこれで行う。**
           - alert: RagFirstTokenP95High
             expr: |
