@@ -8560,6 +8560,9 @@ ${r.stderr}`);
           // #1931 項目 3 / IADR-0549: 本文の無い古い文書の一括アーカイブの**駆動器**（稼働クラスタの台帳を書き換える副作用を持ち、
           // 判定を返さない）。再発行の駆動器と同じく検査器ではない。母集合に数えない。
           'archive-bodyless-documents.js',
+          // #1973 / IADR-0555: AST が境界語つきで保存した文書から枠を剥がす一回限りの管理操作の**駆動器**（稼働クラスタの台帳を書き換える
+          // 副作用を持ち、判定を返さない）。一括アーカイブの駆動器と同じく検査器ではない。母集合に数えない。
+          'strip-untrusted-boundary.js',
           // #1617 / 計画 ADR-0118 決定 4: T-25 の p の分布の**月次の集計器**。`measure-*` と同じく数字を出すだけで
           // 合否を返さない。走らせると GitHub の API を読みに行くので、検査器として spawn する母集合に入れない。
           't25-monthly-summary.js',
@@ -15189,6 +15192,169 @@ server.listen(0, '127.0.0.1', async () => {
 
     ok('#1931 項目 3: 状態ファイルが残っているまま新規に流すと拒み、何も送らない', () => {
       const { runs } = runDriver1931({ docs: docs1931, runs: [{ argv: [...apply1931, '--max-pages', '1'] }, { argv: apply1931 }] });
+      assert.strictEqual(runs[0].code, 0);
+      assert.strictEqual(runs[1].code, 1);
+      assert.strictEqual(runs[1].requests.length, 0);
+    });
+  }
+
+  // --- #1973 / IADR-0555: AST が境界語つきで保存した文書から枠を剥がす駆動器（本体は lib/admin-page-driver.js） ---------
+  //
+  // 口（DocumentService）の挙動（対象の選び方・枠の剥がし方・冪等・ページの途中まで書かない）は DocumentService.Tests が持つ。
+  // ここで固定するのは引数（--reason）・状態ファイル（一括アーカイブの状態を拒む）・dry-run が件数と ID を出して何も変えないこと・
+  // 失敗で確かめた位置へ戻して止まること・再開と再実行の冪等である。共有の本体を一括アーカイブと分けたことは #1931 の節が守る。
+  {
+    const fs1973 = require('fs');
+    const os1973 = require('os');
+    const path1973 = require('path');
+    const su = require('./strip-untrusted-boundary.js');
+
+    ok('#1973: 引数 — 書き換える実行（再開を含む）は --reason 必須・dry-run と --resume は同時に指定できない・知らない引数は落とす', () => {
+      assert.match(su.preconditionProblem(su.parseArgs(['--live'])), /--reason/);
+      assert.match(su.preconditionProblem(su.parseArgs(['--live', '--resume'])), /--reason/);
+      assert.strictEqual(su.preconditionProblem(su.parseArgs(['--live', '--dry-run'])), null);
+      assert.strictEqual(su.preconditionProblem(su.parseArgs(['--live', '--reason', 'r'])), null);
+      assert.throws(() => su.parseArgs(['--live', '--resume', '--dry-run']), /--resume/);
+      assert.throws(() => su.parseArgs(['--live', '--created-before', '2026-09-27T00:00:00Z']), /知らない引数/);
+      assert.throws(() => su.parseArgs(['--live', '--reason']), /値がありません/);
+      const o = su.parseArgs(['--live', '--page-size', '900', '--canary', '900']);
+      assert.deepStrictEqual([o.pageSize, o.canary, o.maxDlqGrowth], [200, 200, 0]);
+      assert.strictEqual(su.parseArgs(['--help']).help, true);
+      assert.deepStrictEqual(su.buildRequestBody({ dryRun: false, limit: 20, cursor: 'c', requestedBy: 'alice', reason: 'r' }),
+        { dryRun: false, limit: 20, cursor: 'c', requestedBy: 'alice', reason: 'r' });
+      assert.deepStrictEqual(su.PROFILE.buildRequestBody({ dryRun: true, filters: {}, limit: 5, cursor: null, requestedBy: null, reason: null }),
+        { dryRun: true, limit: 5 }, '絞り込みは口の側で固定なので送らない');
+    });
+
+    ok('#1973: 状態ファイル — 一括アーカイブ・再発行の状態・版違いからは続けない', () => {
+      const s = su.newState({});
+      assert.strictEqual(su.stateProblem(s), null);
+      const ab = require('./archive-bodyless-documents.js');
+      assert.match(su.stateProblem(ab.newState({ createdBefore: '2026-09-27T00:00:00.000Z' })), /種類/);
+      assert.match(ab.stateProblem(s), /種類/, '逆向きも拒む');
+      assert.match(su.stateProblem({ ...s, version: 99 }), /版/);
+      assert.match(su.stateProblem({ ...s, totals: {} }), /累計/);
+    });
+
+    const runDriver1973 = (cfg) => {
+      const dir = fs1973.mkdtempSync(path1973.join(os1973.tmpdir(), 'su1973-drv-'));
+      try {
+        // 口の模型: 文書は並び順の配列。枠のある文書は書き換えると枠が無くなる。カーソルは「最後に見た位置」（母集合は減らない）。
+        // `failAt` に当たる位置を含むページは 502 を返す（`failTimes` 回まで）。
+        const harness = path1973.join(dir, 'harness.js');
+        fs1973.writeFileSync(harness, `
+const http = require('http'); const fs = require('fs');
+const [scriptPath, cfgPath] = process.argv.slice(2);
+const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+const docs = cfg.docs.map((d, i) => ({ ...d, i, strips: 0 }));
+const requests = []; let fail = { at: -1, times: 0 };
+const server = http.createServer((req, res) => {
+  let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+    const send = (o, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+    if (req.url.includes('/token')) return send({ access_token: 't' });
+    if (req.url !== '/documents/strip-untrusted-boundary') return send({});
+    const body = JSON.parse(b); requests.push(body);
+    const after = body.cursor ? Number(body.cursor) : -1;
+    const keyed = docs.filter((d) => d.i > after);
+    const page = keyed.slice(0, body.limit);
+    if (fail.times > 0 && page.some((d) => d.i === fail.at)) { fail.times--; return send({ title: 'boom' }, 502); }
+    const wrapped = page.filter((d) => d.title || d.body);
+    const titleWrapped = wrapped.length;
+    if (!body.dryRun) for (const d of wrapped) { d.strips++; d.title = false; d.body = false; }
+    send({ dryRun: body.dryRun, selected: page.length, wrapped: wrapped.length,
+      titleWrapped, bodyWrapped: 0, bodyMissing: 0, notStored: 0, titleLeftWrapped: 0,
+      stripped: body.dryRun ? 0 : wrapped.length, items: wrapped.map((d) => ({ id: d.id, title: true, body: false })),
+      nextCursor: keyed.length > body.limit ? String(page[page.length - 1].i) : null });
+  });
+});
+server.listen(0, '127.0.0.1', async () => {
+  const url = 'http://127.0.0.1:' + server.address().port;
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1' });
+  const su = require(scriptPath);
+  const out = [];
+  for (const run of cfg.runs) {
+    fail = { at: run.failAt ?? -1, times: run.failTimes ?? 0 };
+    if (run.removeState) fs.rmSync(cfg.stateFile, { force: true });
+    const before = requests.length;
+    const code = await su.main(run.argv);
+    out.push({ code, state: fs.existsSync(cfg.stateFile) ? JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')) : null,
+      strips: Object.fromEntries(docs.map((d) => [d.id, d.strips])),
+      requests: requests.slice(before).map((r) => ({ dryRun: r.dryRun, cursor: r.cursor ?? null, limit: r.limit, reason: r.reason ?? null })) });
+  }
+  server.close();
+  process.stdout.write('\\n@@RESULT@@' + JSON.stringify(out));
+  process.exit(0);
+});
+`);
+        const stateFile = path1973.join(dir, 'state.json');
+        const cfgPath = path1973.join(dir, 'cfg.json');
+        const common = ['--live', '--state', stateFile, '--sleep-ms', '0', '--operator', 'alice', '--no-queue-watch'];
+        fs1973.writeFileSync(cfgPath, JSON.stringify({
+          ...cfg, stateFile, runs: cfg.runs.map((r) => ({ ...r, argv: [...common, ...r.argv] })),
+        }));
+        const env = { ...process.env, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' };
+        for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'LIVE']) delete env[k];
+        const r = require('child_process').spawnSync(process.execPath,
+          [harness, path1973.join(__dirname, 'strip-untrusted-boundary.js'), cfgPath], { encoding: 'utf8', env, timeout: 60000 });
+        const i = (r.stdout || '').indexOf('@@RESULT@@');
+        assert.ok(i >= 0, `駆動器の試験器が結果を出さなかった（exit ${r.status}）:\n${r.stdout}\n${r.stderr}`);
+        return { runs: JSON.parse(r.stdout.slice(i + '@@RESULT@@'.length)), stdout: r.stdout, stderr: r.stderr };
+      } finally {
+        fs1973.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    // 枠あり 4 件（w*）と枠なし 3 件（p*）を混ぜる。
+    const docs1973 = [
+      { id: 'w0', title: true }, { id: 'p0' }, { id: 'w1', title: true }, { id: 'w2', title: true },
+      { id: 'p1' }, { id: 'w3', title: true }, { id: 'p2' },
+    ];
+    const apply1973 = ['--reason', 'test', '--canary', '1', '--page-size', '2'];
+
+    ok('#1973: dry-run は全ページを辿って件数と対象の ID を出し、何も書き換えず状態ファイルも作らない', () => {
+      const { runs, stdout } = runDriver1973({ docs: docs1973, runs: [{ argv: ['--dry-run', '--page-size', '3'] }] });
+      assert.strictEqual(runs[0].code, 0, stdout);
+      assert.ok(Object.values(runs[0].strips).every((n) => n === 0));
+      assert.strictEqual(runs[0].state, null);
+      assert.strictEqual(runs[0].requests.length, 3, '7 件を 3 件ずつ');
+      assert.ok(runs[0].requests.every((q) => q.dryRun === true));
+      assert.match(stdout, /枠を剥がす対象: 4 件/);
+      for (const id of ['w0', 'w1', 'w2', 'w3']) assert.match(stdout, new RegExp(`^    ${id}（表題）$`, 'm'), `${id} の ID が並ぶ`);
+      assert.doesNotMatch(stdout, /^ {4}p\d/m, '枠の無い文書の ID は出さない');
+    });
+
+    ok('#1973: カナリアの後も進み、枠のある文書をちょうど 1 回ずつ剥がして完了し、流し直しても何も変えない', () => {
+      const { runs, stdout } = runDriver1973({ docs: docs1973, runs: [{ argv: apply1973 }, { argv: apply1973, removeState: true }] });
+      const [first, again] = runs;
+      assert.strictEqual(first.code, 0, stdout);
+      assert.deepStrictEqual(first.strips, { w0: 1, p0: 0, w1: 1, w2: 1, p1: 0, w3: 1, p2: 0 });
+      assert.strictEqual(first.requests[0].limit, 1, '最初のページはカナリア');
+      assert.ok(first.requests.every((q) => q.dryRun === false && q.reason === 'test'));
+      assert.deepStrictEqual([first.state.done, first.state.confirmedDone, first.state.totals.stripped], [true, true, 4]);
+      assert.match(stdout, /完了: 剥がした 4 件/);
+      assert.strictEqual(again.code, 0);
+      assert.strictEqual(again.state.totals.stripped, 0, '2 回目は 1 件も書き換えない');
+      assert.deepStrictEqual(again.strips, first.strips);
+    });
+
+    ok('#1973: 口が続けて失敗したら確かめた位置へ戻して止まり、--resume で残りを剥がす（同じ文書を二度剥がさない）', () => {
+      const { runs, stderr } = runDriver1973({
+        docs: docs1973,
+        runs: [
+          { argv: [...apply1973, '--max-consecutive-failures', '1'], failAt: 5, failTimes: 1 },
+          { argv: ['--resume', '--reason', 'test', '--page-size', '2'] },
+        ],
+      });
+      const [first, resumed] = runs;
+      assert.strictEqual(first.code, 1);
+      assert.match(stderr, /連続 1 回失敗したので止めます/);
+      assert.strictEqual(first.state.done, false);
+      assert.strictEqual(first.strips.w3, 0, '失敗したページは書き換えていない');
+      assert.strictEqual(resumed.code, 0);
+      assert.deepStrictEqual(resumed.strips, { w0: 1, p0: 0, w1: 1, w2: 1, p1: 0, w3: 1, p2: 0 });
+    });
+
+    ok('#1973: 状態ファイルが残っているまま新規に流すと拒み、何も送らない', () => {
+      const { runs } = runDriver1973({ docs: docs1973, runs: [{ argv: [...apply1973, '--max-pages', '1'] }, { argv: apply1973 }] });
       assert.strictEqual(runs[0].code, 0);
       assert.strictEqual(runs[1].code, 1);
       assert.strictEqual(runs[1].requests.length, 0);

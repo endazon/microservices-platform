@@ -14,6 +14,7 @@ using DocumentService.Features.Documents.ListVersions;
 using DocumentService.Features.Documents.Publish;
 using DocumentService.Features.Documents.PutBody;
 using DocumentService.Features.Documents.Republish;
+using DocumentService.Features.Documents.StripUntrustedBoundary;
 using DocumentService.Features.Documents.Update;
 using DocumentService.Features.Documents.UpdateMetadata;
 using DocumentService.Infrastructure.Persistence;
@@ -107,6 +108,10 @@ public static class DocumentEndpoints
         // FR-06, UC-03, [[IADR-0549]] (#1931 項目 3): 本文のオブジェクトが無い（NoSuchKey）古い文書の一括アーカイブ（一回限りの管理操作）。
         // `write` 群に置き、口の側で `AdminOnly` を積む（管理者だけ。SC-05 のアーカイブと同じ基準）。
         ArchiveBodylessDocumentsEndpoint.Map(write);
+
+        // FR-06, UC-03, [[IADR-0555]] (#1973): AST が境界語つきで保存した文書の表題・本文から枠を剥がす（一回限りの管理操作）。
+        // `write` 群に置き、口の側で `AdminOnly` を積む（管理者だけ。一括アーカイブと同じ基準）。
+        StripUntrustedBoundaryEndpoint.Map(write);
 
         return app;
     }
