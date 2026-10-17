@@ -46,6 +46,94 @@ public class WikiJsGraphQlClientTests
         handler.Requests[1].Should().Contain("create");
     }
 
+    // FR-13 / #1971・[[IADR-0556]] 決定 1・2: Wiki.js の今のページ（singleByPath の応答）。既定は Page() と同じ内容を持つ。
+    private static string Existing(
+        string title = "テスト", string content = "# 本文", string tagsJson = """[{"tag":"poc"}]""",
+        bool isPublished = true, string render = "<h1>本文</h1>")
+        => JsonSerializer.Serialize(new
+        {
+            data = new
+            {
+                pages = new
+                {
+                    singleByPath = new
+                    {
+                        id = 5,
+                        title,
+                        content,
+                        render,
+                        isPublished,
+                        isPrivate = false,
+                        tags = JsonDocument.Parse(tagsJson).RootElement,
+                    },
+                },
+            },
+        });
+
+    private const string UpdateOk = """{"data":{"pages":{"update":{"responseResult":{"succeeded":true,"errorCode":0,"message":"ok"}}}}}""";
+
+    // 受け入れ基準 A1・A2（#1971）: Wiki.js が同じ内容を既に持つなら update を送らない（往復は singleByPath の 1 回だけ）。
+    // タグは Wiki.js の associateTags と同じ正規化（trim・小文字・重複除去・順不同）で比べる。
+    [Theory]
+    [InlineData(new[] { "poc" }, """[{"tag":"poc"}]""")]
+    [InlineData(new[] { " POC ", "poc" }, """[{"tag":"poc"}]""")]
+    [InlineData(new[] { "b", "A" }, """[{"tag":"a"},{"tag":"b"}]""")]
+    [InlineData(new string[0], "[]")]
+    public async Task UpsertPageAsync_SkipsUpdate_WhenWikiJsAlreadyHoldsTheSameContent(string[] tags, string heldTags)
+    {
+        var handler = new RecordingHandler(Existing(tagsJson: heldTags), UpdateOk);
+        var page = new WikiJsPage("doc/00000000-0000-0000-0000-000000000001", "テスト", "# 本文", tags, IsPrivate: true);
+
+        await Build(handler).UpsertPageAsync(page, TestContext.Current.CancellationToken);
+
+        handler.Requests.Should().ContainSingle("同じ内容の update は Wiki.js の状態を変えず、描画の子プロセスに 2.5〜5 秒を使うだけである")
+            .Which.Should().Contain("singleByPath").And.Contain("content").And.Contain("render").And.Contain("isPublished");
+    }
+
+    // 受け入れ基準 A3（#1971）: 比べる項目のどれかが違えば従来どおり全項目シェイプで update する。
+    [Theory]
+    [InlineData("title")]
+    [InlineData("content")]
+    [InlineData("tags-missing")]
+    [InlineData("tags-extra")]
+    [InlineData("unpublished")]
+    [InlineData("render-empty")]
+    public async Task UpsertPageAsync_Updates_WhenAnyComparedFieldDiffers(string difference)
+    {
+        var existing = difference switch
+        {
+            "title" => Existing(title: "旧い表題"),
+            "content" => Existing(content: "# 旧い本文"),
+            "tags-missing" => Existing(tagsJson: "[]"),
+            "tags-extra" => Existing(tagsJson: """[{"tag":"poc"},{"tag":"old"}]"""),
+            "unpublished" => Existing(isPublished: false),
+            "render-empty" => Existing(render: ""),
+            _ => throw new ArgumentOutOfRangeException(nameof(difference)),
+        };
+        var handler = new RecordingHandler(existing, UpdateOk);
+
+        await Build(handler).UpsertPageAsync(Page(), TestContext.Current.CancellationToken);
+
+        handler.Requests.Should().HaveCount(2);
+        var variables = JsonDocument.Parse(handler.Requests[1]).RootElement.GetProperty("variables");
+        variables.GetProperty("id").GetInt32().Should().Be(5);
+        variables.GetProperty("content").GetString().Should().Be("# 本文");
+        variables.GetProperty("title").GetString().Should().Be("テスト");
+        variables.GetProperty("isPublished").GetBoolean().Should().BeTrue();
+    }
+
+    // 受け入れ基準 A4（#1971）: isPrivate だけの違いでは update を送らない（Wiki.js 2.5 の update は isPrivate を書かないので、送っても直らない）。
+    [Fact]
+    public async Task UpsertPageAsync_SkipsUpdate_WhenOnlyIsPrivateDiffers()
+    {
+        // Existing() は isPrivate=false。Page(isPrivate: true) を送る。
+        var handler = new RecordingHandler(Existing(), UpdateOk);
+
+        await Build(handler).UpsertPageAsync(Page(isPrivate: true), TestContext.Current.CancellationToken);
+
+        handler.Requests.Should().ContainSingle();
+    }
+
     // 実測 1: 認可プロキシの本文取得も、未存在（errors 6003）は null を返す（→ ゲートウェイが 404 化）。
     [Fact]
     public async Task GetRenderedContentAsync_ReturnsNull_WhenPageNotFound()
