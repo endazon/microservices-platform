@@ -631,8 +631,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // 転送する既存クライアントであり、**意味論が逆なので分けてある**。
             // **両方を差し替える** —— 片方だけだと、その経路だけが実ネットワークへ出ようとする。
             // 🔴 **s2s トークンの発行側を固定値へ差し替える**（実 IdP を持たないため。#1333）。
-            // 差し替えるのは**発行だけ**であり、`ServiceTokenHandler` は本物が走る ——
-            // 「スコープ解決の要求に Bearer が実際に載る」ことを試験から観測できる状態を保つ。
+            // 差し替えるのは**発行だけ**である（［2026-10-17 / #1255］従前ここで「本物が走る」とした REST の付与器
+            // `ServiceTokenHandler` は、利用者が 0 になったので撤去した）。
             services.RemoveAll<IServiceTokenProvider>();
             services.AddSingleton<IServiceTokenProvider>(new FixedServiceTokenProvider());
             // ［2026-10-10 / #1255・[[IADR-0533]]］スコープ解決・文書の読み取り 4 口・属性値の照会は east-west gRPC だけになった
