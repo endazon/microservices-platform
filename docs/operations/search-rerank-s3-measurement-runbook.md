@@ -131,6 +131,7 @@ k6 run --summary-trend-stats 'avg,p(50),p(95),p(99),max' --summary-export "$W/k6
 
 - 有効の構成では、k6 の閾値は今の目標（無効時）のままなので非 0 で終わり得る。**値を記録する**（合否ではない）。
 - 計測器の `⚠ 再順位付けが元の順へ戻ったクエリ（rerank-failed）` の件数を記録する。多ければ、再順位付けの順位を測れていない。
+  繰り返し（`NDCG_REPEAT`）のときは、縮退の理由は**全回の和**で数え、順位は 1 回目を採る。したがって件数は多めに出る（1 回目は再順位付けが効いていた場合も数える）。
   理由は計器 `search_rerank_total{search_rerank_result="degraded"}` の `search_rerank_reason` で読む（`timeout` が多ければ期限 `Rerank__TimeoutSeconds` 8 秒に当たっている）。
 
 ## 6. 集計と計器の読み取り
