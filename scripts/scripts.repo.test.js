@@ -4271,6 +4271,199 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(ndcg.mergeDatasets([same, reordered]).runs.length, 2);
   });
 
+  // --- measure-search-ndcg（#1746 段 S3）: クエリごとの所要時間と、再順位付けの有効・無効の 2 構成の比較 ---
+  //
+  // FR-03, NFR-01, NFR-02, NFR-29, ADR-0127 決定 6, ADR-0129 決定 1, IADR-0498 決定 7:
+  // 段 S3 は再順位付けの有効・無効の 2 構成で nDCG@10 と遅延を測り、その値で計画が NFR-29 を定める。
+  // 構成は要求ごとに選べない（`Rerank__Enabled`）ので、収集は 2 回・組は名乗り（`rerank`）で取る。
+
+  // 🔴 後方互換: 所要時間・名乗り・縮退を持たない既存の dump のテキスト出力は、変更前と 1 文字も変わらない
+  // （変更前の develop 01c3dcc2 で同じ入力から採った出力を固定値にした）。
+  ok('nDCG（#1746 段 S3）: 既存の dump のテキスト出力は変更前と同一（後方互換）', () => {
+    const data = {
+      qrels: NDCG_QRELS,
+      runs: [
+        { label: 'a', mode: 'hybrid', results: { q1: ['d3', 'd2', 'd1'], q2: ['x'] } },
+        { label: 'b', mode: 'keyword', results: { q1: ['d1', 'd2', 'd3'] } },
+      ],
+    };
+    const expected = [
+      '検索の関連性 nDCG@10 の実測（issue #336 / FR-02・FR-03・ADR-0016・ADR-0017（Superseded by ADR-0127・注記は #1746））',
+      '----------------------------------------------------------------------',
+      'qrels                 : 2 クエリ（指紋 76de8f566aa9f56f）',
+      '  ⚠ 正解ラベルが 1 件も無いクエリ: 1 件（平均から除外される）',
+      '',
+      '■ a / mode=hybrid',
+      '  nDCG@10 平均      : 1.0000（評価 1 クエリ）',
+      '  除外（正解ラベル無し）: q2',
+      '    1.0000  就業規則 休暇（上位 3 件中 当たり 3 / 正解 3）',
+      '',
+      '■ b / mode=keyword',
+      '  nDCG@10 平均      : 0.7900（評価 1 クエリ）',
+      '  ⚠ 収集されていないクエリ: q2',
+      '    0.7900  就業規則 休暇（上位 3 件中 当たり 3 / 正解 3）',
+      '',
+      '----------------------------------------------------------------------',
+      '比較（先頭の run が基準）',
+      '  1.0000  a / hybrid',
+      '  0.7900  b / keyword  差 -0.2100',
+      '----------------------------------------------------------------------',
+    ].join('\n');
+    const r = ndcg.summarize(data);
+    assert.strictEqual(ndcg.renderText(r), expected);
+    // JSON は項目が増えるだけ（既存の項目の値は変わらない）。
+    assert.strictEqual(r.runs[0].latency, null);
+    assert.strictEqual(r.runs[0].rerank, null);
+    assert.deepStrictEqual(r.runs[0].rerankFailed, []);
+    assert.deepStrictEqual(r.rerankComparison, { byMode: [], lexicalRerankVsHybrid: null });
+    assert.strictEqual('latencyMs' in r.runs[0].perQuery[0], false, '所要時間の無い dump のクエリに latencyMs が付いた');
+  });
+
+  // 百分位は最近順位法（ceil(p/100 × n) 番目）。🔴 補間すると観測していない値を p95 と呼ぶ（変異: Math.ceil → Math.floor で赤）。
+  ok('nDCG（#1746 段 S3）: 所要時間の統計は最近順位法の百分位（既知値）', () => {
+    const xs = Array.from({ length: 20 }, (_, i) => (i + 1) * 10); // 10, 20, …, 200
+    const s = ndcg.latencyStats([...xs].reverse());
+    assert.deepStrictEqual(s, { count: 20, meanMs: 105, p50Ms: 100, p95Ms: 190, maxMs: 200 });
+    // 標本が 20 未満なら p95 は最大と同じ（少ない標本の参考値であることの表れ）。
+    assert.strictEqual(ndcg.latencyStats([5, 1, 3]).p95Ms, 5);
+    assert.strictEqual(ndcg.latencyStats([5, 1, 3]).p50Ms, 3);
+    assert.strictEqual(ndcg.latencyStats([]), null);
+    assert.strictEqual(ndcg.latencyStats([7]).p95Ms, 7);
+  });
+
+  // 所要時間は**収集したすべてのクエリ**で数える（正解ラベルの無いクエリも遅延としては測れている）。
+  ok('nDCG（#1746 段 S3）: 所要時間はラベルの無いクエリも含めて数え、収集していないクエリは数えない', () => {
+    const run = {
+      label: 'rerank-on', mode: 'hybrid', rerank: true,
+      results: { q1: ['d3', 'd2', 'd1'], q2: ['x'] },
+      latencyMs: { q1: [100, 300, 200], q2: [400], q9: [9999] },
+    };
+    const r = ndcg.summarizeRun(NDCG_QRELS, run, 10);
+    assert.strictEqual(r.latency.count, 4, 'q2（ラベル無し）を数えていない、または qrels に無い q9 を数えた');
+    assert.strictEqual(r.latency.maxMs, 400);
+    assert.strictEqual(r.perQuery[0].latencyMs, 200, 'クエリの所要時間は中央値');
+    assert.strictEqual(r.rerank, true);
+    assert.match(ndcg.renderText(ndcg.summarize({ qrels: NDCG_QRELS, runs: [run] })),
+      /■ rerank-on \/ mode=hybrid \/ 再順位付け=有効\n[\s\S]*所要時間（ミリ秒）    : 平均 250\.0 \/ p50 200\.0 \/ p95 400\.0 \/ 最大 400\.0（4 回。参考値。p95 の正は k6）/);
+  });
+
+  // IADR-0498 決定 7: 有効の構成でも、期限切れ等で元の順に戻ったクエリは再順位付けの順位ではない。件数と ID を出す。
+  ok('nDCG（#1746 段 S3）: rerank-failed に戻ったクエリを件数と ID で報告する（平均からは外さない）', () => {
+    const run = {
+      label: 'rerank-on', mode: 'keyword', rerank: true,
+      results: { q1: ['d1', 'd2', 'd3'], q2: [] },
+      degraded: { q1: ['rerank-failed'], q2: ['embed-failed'] },
+    };
+    const r = ndcg.summarizeRun(NDCG_QRELS, run, 10);
+    assert.deepStrictEqual(r.rerankFailed, ['q1']);
+    assert.strictEqual(r.evaluated, 1, 'rerank-failed のクエリを平均から外した');
+    assert.strictEqual(ndcg.RERANK_FAILED, 'rerank-failed');
+    assert.match(ndcg.renderText(ndcg.summarize({ qrels: NDCG_QRELS, runs: [run] })),
+      /⚠ 再順位付けが元の順へ戻ったクエリ（rerank-failed）: 1 件（q1）/);
+  });
+
+  // 組は名乗り（rerank）で取る。名札の文字列からは推さない。差は「有効 − 無効」。
+  // ADR-0127 決定 6 の組（hybrid・無効 → keyword・有効）も出す。
+  ok('nDCG（#1746 段 S3）: 再順位付けの有効・無効をモードごとに組にし、nDCG と p95 の差を出す', () => {
+    const off = {
+      qrels: NDCG_QRELS,
+      runs: [
+        { label: 'x', mode: 'keyword', rerank: false, results: { q1: ['d1', 'd2', 'd3'] }, latencyMs: { q1: [100] } },
+        { label: 'x', mode: 'hybrid', rerank: false, results: { q1: ['d2', 'd3', 'd1'] }, latencyMs: { q1: [150] } },
+        { label: 'x', mode: 'semantic', rerank: false, results: { q1: ['d3'] }, latencyMs: { q1: [120] } },
+      ],
+    };
+    const on = {
+      qrels: NDCG_QRELS,
+      runs: [
+        { label: 'y', mode: 'keyword', rerank: true, results: { q1: ['d3', 'd2', 'd1'] }, latencyMs: { q1: [1100] } },
+        { label: 'y', mode: 'hybrid', rerank: true, results: { q1: ['d3', 'd2', 'd1'] }, latencyMs: { q1: [1250] } },
+        // 名乗りの無い run は組に入らない。
+        { label: 'z', mode: 'hybrid', results: { q1: ['d1'] } },
+      ],
+    };
+    const r = ndcg.summarize(ndcg.mergeDatasets([off, on]));
+    const rc = r.rerankComparison;
+    assert.deepStrictEqual(rc.byMode.map((p) => p.mode), ['keyword', 'hybrid'], 'semantic（有効側が無い）を組にした');
+    const kw = rc.byMode[0];
+    assert.ok(Math.abs(kw.ndcgDelta - (1 - 0.7899980042460358)) < 1e-12, `差の符号・値が違う: ${kw.ndcgDelta}`);
+    assert.strictEqual(kw.p95DeltaMs, 1000);
+    assert.strictEqual(kw.off.label, 'x');
+    assert.strictEqual(kw.on.label, 'y');
+    const d6 = rc.lexicalRerankVsHybrid;
+    assert.strictEqual(d6.off.mode, 'hybrid');
+    assert.strictEqual(d6.on.mode, 'keyword');
+    assert.strictEqual(d6.p95DeltaMs, 950);
+    const hybridOff = r.runs.find((x) => x.mode === 'hybrid' && x.rerank === false).mean;
+    assert.ok(Math.abs(d6.ndcgDelta - (1 - hybridOff)) < 1e-12);
+    const text = ndcg.renderText(r);
+    assert.match(text, /再順位付けの比較（無効 → 有効。差は 有効 − 無効）/);
+    assert.match(text, /mode=keyword: nDCG 0\.7900 → 1\.0000（差 \+0\.2100） \/ p95 100\.0 → 1100\.0 ms（差 \+1000\.0）/);
+    assert.match(text, /hybrid・無効 → keyword・有効（全文のみ＋再順位付け 対 ハイブリッド）/);
+  });
+
+  ok('nDCG（#1746 段 S3）: NDCG_RERANK・NDCG_REPEAT の値域外は落とす', () => {
+    assert.strictEqual(ndcg.parseRerank(undefined), null);
+    assert.strictEqual(ndcg.parseRerank(''), null);
+    assert.strictEqual(ndcg.parseRerank('on'), true);
+    assert.strictEqual(ndcg.parseRerank('OFF'), false);
+    assert.strictEqual(ndcg.parseRerank('true'), true);
+    assert.throws(() => ndcg.parseRerank('yes'), /on \/ off/);
+    assert.strictEqual(ndcg.parseRepeat(undefined), 1);
+    assert.strictEqual(ndcg.parseRepeat('3'), 3);
+    assert.strictEqual(ndcg.parseRepeat(String(ndcg.MAX_REPEAT)), ndcg.MAX_REPEAT);
+    for (const bad of ['0', '-1', '1.5', 'x', String(ndcg.MAX_REPEAT + 1)]) {
+      assert.throws(() => ndcg.parseRepeat(bad), /1〜20 の整数/, `値域外 ${bad} を通した`);
+    }
+  });
+
+  // 収集（I/O）は fetch を差し替えた子プロセスで走らせる（試験の本体は同期）。
+  // 所要時間・縮退の理由・名乗り・繰り返しが dump に載り、順位は 1 回目を採ること。名乗りが無ければ rerank を書かない。
+  ok('nDCG（#1746 段 S3）: 収集は所要時間・縮退の理由・名乗りを dump に残し、繰り返しの順位は 1 回目を採る', () => {
+    const { spawnSync: spawnNdcg } = require('child_process');
+    const code = `
+      const n = require(${JSON.stringify(require.resolve('./measure-search-ndcg.js'))});
+      process.env.NDCG_TOKEN = 't';
+      let calls = 0;
+      globalThis.fetch = async (url, init) => {
+        calls += 1;
+        const body = JSON.parse(init.body);
+        const ids = calls === 1 ? ['d3', 'd2'] : ['d1'];
+        return { ok: true, status: 200, json: async () => ({ results: ids.map((documentId) => ({ documentId })),
+          degradedReasons: calls === 2 ? ['rerank-failed'] : [], mode: body.mode }) };
+      };
+      const qrels = { version: 1, queries: [{ id: 'q1', text: 'a', relevance: { d3: 1 } }] };
+      (async () => {
+        process.env.NDCG_MODES = 'keyword';
+        const withRerank = await n.collect(qrels, { k: 10, rerank: true, repeat: 3 });
+        process.env.NDCG_MODES = 'hybrid';
+        const plain = await n.collect(qrels, { k: 10 });
+        process.stdout.write(JSON.stringify({ calls, withRerank, plain }));
+      })();`;
+    const res = spawnNdcg(process.execPath, ['-e', code], { encoding: 'utf8' });
+    assert.strictEqual(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.strictEqual(out.calls, 4, '繰り返し 3 回 ＋ 1 回の要求になっていない');
+    const run = out.withRerank.runs[0];
+    assert.strictEqual(run.rerank, true);
+    assert.deepStrictEqual(run.results.q1, ['d3', 'd2'], '順位を 1 回目から採っていない');
+    assert.strictEqual(run.latencyMs.q1.length, 3);
+    assert.ok(run.latencyMs.q1.every((v) => typeof v === 'number' && v >= 0));
+    assert.deepStrictEqual(run.degraded, { q1: ['rerank-failed'] });
+    assert.strictEqual('rerank' in out.plain.runs[0], false, '名乗りが無いのに rerank を書いた');
+    assert.strictEqual(out.plain.runs[0].latencyMs.q1.length, 1);
+  });
+
+  // 手順書（docs/operations 配下）が計測器と k6 の 2 本を正しく指していること。
+  ok('nDCG（#1746 段 S3）: 段 S3 の計測手順書が在り、計測器・k6・名乗りの変数を指す', () => {
+    const doc = require('fs').readFileSync(require('path').join(__dirname, '..', 'docs', 'operations', 'search-rerank-s3-measurement-runbook.md'), 'utf8');
+    for (const s of ['scripts/measure-search-ndcg.js', 'perf/k6/search-load.js', 'perf/k6/rag-load.js',
+      'NDCG_RERANK', 'Rerank__Enabled', 'search_rerank_enabled', 'llm_purpose="rerank"']) {
+      assert.ok(doc.includes(s), `手順書に ${s} が無い`);
+    }
+    assert.ok(/<!-- trace:[\s\S]*ADR-0129[\s\S]*-->/.test(doc), 'trace ブロックに ADR-0129 が無い');
+  });
+
   ok('nDCG: 壊れた qrels は黙って受けない', () => {
     assert.ok(ndcg.validateQrels({ queries: [] }).length > 0, '空の queries を通している');
     assert.ok(
