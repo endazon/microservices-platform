@@ -13,11 +13,13 @@ import {
 } from '@foundation/api/generated/documents/documents';
 import { okData } from '@foundation/api/orvalSelect';
 import type {
+  BffDocumentListConfidentiality,
   BffDocumentListParams,
   BffDocumentListSort,
   BffDocumentListStatus,
   DocumentListPageDto,
 } from '@foundation/api/generated/bff.schemas';
+import type { DocumentOrigin } from '../types/documentSource';
 
 // SC-05, UC-03, FR-06/FR-09: 文書管理の照会・作成・更新・状態遷移・削除
 // （サーバー状態は TanStack Query。ADR-0031）。
@@ -63,10 +65,53 @@ export type DocumentStatusFilter = BffDocumentListStatus | '';
  *
  * 表題の検索語（`q`）は前後の空白を除いて送り、空なら送らない（BFF も同じく空を無指定として扱う）。
  */
-export interface DocumentListRequest extends DocumentPageRequest {
+export interface DocumentListRequest extends DocumentPageRequest, DocumentListConditions {
   sort: DocumentSort;
+  /** ［2026-10-17 / #1923・IADR-0560］タブ（`''` はすべて）。条件ではなく見せ方として扱う（「条件を解除」で外さない）。 */
+  origin: DocumentOrigin;
+}
+
+/** 機密区分の絞り込み（BFF の `confidentiality` と同じ語彙）。`''` は「すべて」。 */
+export type DocumentConfidentialityFilter = BffDocumentListConfidentiality | '';
+
+/**
+ * 操作の帯の条件（「条件を解除」で外すもの）。値が `''` なら無指定。
+ * ［2026-10-17 / #1923・IADR-0560］データソース・機密区分・タグ・プロジェクト・保存日（`YYYY-MM-DD`。利用者の時刻帯の暦日）を足した。
+ */
+export interface DocumentListConditions {
   q: string;
   status: DocumentStatusFilter;
+  source: string;
+  confidentiality: DocumentConfidentialityFilter;
+  tag: string;
+  project: string;
+  createdFrom: string;
+  createdTo: string;
+}
+
+export const EMPTY_DOCUMENT_CONDITIONS: DocumentListConditions = {
+  q: '',
+  status: '',
+  source: '',
+  confidentiality: '',
+  tag: '',
+  project: '',
+  createdFrom: '',
+  createdTo: '',
+};
+
+/** 既定のタブ（人の文書・報告書）。機械の収集が大半を占める台帳で、人の文書を埋もれさせない（IADR-0560）。 */
+export const DEFAULT_DOCUMENT_ORIGIN: DocumentOrigin = 'curated';
+
+/**
+ * 暦日（`YYYY-MM-DD`）を利用者の時刻帯のその日の 0 時の瞬間（ISO 8601 の UTC）へ写す。`dayOffset` 日だけずらす。
+ * 「まで」はその日を含めたいので、翌日の 0 時を `createdBefore`（含まない）として送る。
+ */
+function startOfLocalDay(date: string, dayOffset = 0): string | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return undefined;
+  const [, y, m, d] = match;
+  return new Date(Number(y), Number(m) - 1, Number(d) + dayOffset).toISOString();
 }
 
 /** 表題の検索語の上限（BFF の `q` の上限 200 文字と同じ）。入力欄の `maxLength` に使う。 */
@@ -82,12 +127,31 @@ function toListParams(request: DocumentListRequest): BffDocumentListParams {
   const q = request.q.trim();
   if (q !== '') params.q = q;
   if (request.status !== '') params.status = request.status;
+  if (request.origin !== '') params.origin = request.origin;
+  if (request.source !== '') params.source = request.source;
+  if (request.confidentiality !== '') params.confidentiality = request.confidentiality;
+  if (request.tag !== '') params.tag = request.tag;
+  if (request.project !== '') params.project = request.project;
+  const from = startOfLocalDay(request.createdFrom);
+  if (from) params.createdFrom = from;
+  const before = startOfLocalDay(request.createdTo, 1);
+  if (before) params.createdBefore = before;
   return params;
 }
 
-/** 表題・状態のどちらかで絞り込んでいるか（要約の文と空の表示を出し分ける）。 */
-export function isFiltered(request: Pick<DocumentListRequest, 'q' | 'status'>): boolean {
-  return request.q.trim() !== '' || request.status !== '';
+/** 操作の帯の条件で絞り込んでいるか（空の表示と「条件を解除」を出し分ける）。タブは含めない。 */
+export function hasConditions(request: DocumentListConditions): boolean {
+  return (
+    request.q.trim() !== '' ||
+    (Object.keys(EMPTY_DOCUMENT_CONDITIONS) as (keyof DocumentListConditions)[]).some(
+      (key) => key !== 'q' && request[key] !== '',
+    )
+  );
+}
+
+/** 帯の条件かタブのどちらかで絞り込んでいるか（要約の文を「絞り込み m 件（全 n 件）」にする）。 */
+export function isFiltered(request: DocumentListConditions & { origin?: DocumentOrigin }): boolean {
+  return hasConditions(request) || (request.origin ?? '') !== '';
 }
 
 /**
@@ -105,6 +169,9 @@ function okPage(res: Parameters<typeof okData>[0]): DocumentListPageDto {
     // ［2026-10-15 / #1923 段 2］項目を持たない応答（旧い BFF）は「絞り込みなし」として読む。
     unfilteredTotal: page.unfilteredTotal ?? total,
     statusCounts: page.statusCounts ?? {},
+    // ［2026-10-17 / #1923・IADR-0560］同上（旧い BFF は返さない）。
+    sourceCounts: page.sourceCounts ?? {},
+    projectCounts: page.projectCounts ?? {},
   };
 }
 

@@ -46,6 +46,10 @@ msgstr "(stopped)"
 msgid "（必須）"
 msgstr "(required)"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "（本文は空です）"
+msgstr "(The body is empty)"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "（終端）"
 msgstr "(terminal)"
@@ -83,6 +87,7 @@ msgid "{issuedClientId} の client secret です。表示できるのは今回�
 msgstr "This is the client secret of {issuedClientId}. It is shown only this once. After you close it, it cannot be shown again (you can only reissue it)."
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentOriginTabs.tsx
 msgid "{label}（{count} 件）"
 msgstr "{label} ({count})"
 
@@ -146,6 +151,14 @@ msgstr "This deletes \"{softDeleteTitle}\". Deleting does not free up storage (t
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "「{tagValue}」を付与"
 msgstr "Add the tag “{tagValue}”"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "「{title}」の出典を開く"
+msgstr "Open the source of “{title}”"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "「{title}」をプレビュー"
+msgstr "Preview “{title}”"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "「＋ ソース登録」から取り込み元を登録してください。"
@@ -715,6 +728,10 @@ msgstr "This tag is used by {inUseCount} document(s) and cannot be deleted."
 msgid "このタグは辞書に無いため反映できません。却下してください。"
 msgstr "This tag is not in the tag dictionary, so it cannot be applied. Please reject the suggestion."
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "このタブの文書はありません。"
+msgstr "There are no documents in this tab."
+
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "このデータソースの設定には、画面以外から入れた資格情報が残っています。書き込みはできますが、設定が保管先の値を参照するように移されるまで、書いた値は同期に使われません。"
 msgstr "This data source's settings still hold a credential entered outside this screen. You can write a value, but it will not be used for syncing until the settings are moved to reference the value in the secret store."
@@ -920,6 +937,7 @@ msgid "スコープ"
 msgstr "Scope"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentOriginTabs.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
@@ -941,6 +959,10 @@ msgstr "All visibilities"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "すべての同期状態"
 msgstr "All sync states"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "すべての文書を表示"
+msgstr "Show all documents"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "すべての端末を失効しますか？"
@@ -989,6 +1011,7 @@ msgstr "Filter by title"
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
@@ -1003,6 +1026,10 @@ msgstr "Remove tag {tag}"
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "タグ:"
 msgstr "Tags:"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "タグで絞り込み"
+msgstr "Filter by tag"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "タグで絞り込む"
@@ -1066,6 +1093,8 @@ msgstr "Dashboard"
 msgid "ツール"
 msgstr "Tool"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/routes/sc06DataSourcesRoute.tsx
 msgid "データソース"
@@ -1285,9 +1314,23 @@ msgstr "Folder path"
 msgid "フォルダを追加する"
 msgstr "Add folder"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "プレビュー"
+msgstr "Preview"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "プレビューを閉じる"
+msgstr "Close preview"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "プロジェクト"
 msgstr "Project"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "プロジェクトなし"
+msgstr "No project"
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "ページが見つかりませんでした。"
@@ -1349,6 +1392,10 @@ msgstr "Home"
 #: platform/frontend/src/components/ui/ErrorBoundary.tsx
 msgid "ホームへ戻る"
 msgstr "Back to home"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "ほかのタブに文書があります。"
+msgstr "Other tabs have documents."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "ポリシー"
@@ -1615,6 +1662,10 @@ msgstr "Main navigation"
 msgid "予期しないエラーが発生しました。時間をおいて再度お試しください。"
 msgstr "An unexpected error occurred. Please wait a moment and try again."
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentOriginTabs.tsx
+msgid "人の文書・報告書"
+msgstr "Human-authored documents and reports"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "人手補正"
 msgstr "Manual correction"
@@ -1626,6 +1677,10 @@ msgstr "Manual correction (diagram coding)"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "人手補正は管理者のみ実行できます"
 msgstr "Only administrators can apply manual corrections"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "他 {moreTags} 件"
+msgstr "+{moreTags} more"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "他の更新と競合しました（版が変わっています）。最新を再読み込みしてください。"
@@ -1758,6 +1813,14 @@ msgstr "Storage usage has passed 80%. We recommend cleaning up notes you no long
 #: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "保存容量の使用量が 95% を超えました。上限に達すると新しい資料を作成できなくなります。"
 msgstr "Storage usage has passed 95%. Once the limit is reached you can no longer create new notes."
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "保存日（から）"
+msgstr "Saved from"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "保存日（まで）"
+msgstr "Saved until"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
@@ -1899,6 +1962,10 @@ msgstr "Original diagram"
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "元の画像を表示できません。"
 msgstr "The original image cannot be displayed."
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "先頭 {PREVIEW_CHARS} 文字を表示しています。"
+msgstr "Showing the first {PREVIEW_CHARS} characters."
 
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "入力 {inputTokens} ・出力 {outputTokens} トークン"
@@ -2110,6 +2177,10 @@ msgstr "Remove mapping {rowNumber}"
 msgid "凡例（アイコンと形で区別・色は補助）"
 msgstr "Legend (distinguished by icon and shape; color is auxiliary)"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "出典 ↗"
+msgstr "Source ↗"
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "出典:"
 msgstr "Sources:"
@@ -2117,6 +2188,10 @@ msgstr "Sources:"
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "出典（クリックで文書詳細／Wikiへ）"
 msgstr "Sources (open the document detail or the Wiki)"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "出典を開く"
+msgstr "Open source"
 
 #: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
 msgid "分散トレース"
@@ -2302,6 +2377,10 @@ msgstr "Read-only — configuration changes are made through Git (GitOps) only. 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "参照元は特定できませんでした。"
 msgstr "The referencing policies could not be identified."
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentSource.ts
+msgid "収集: {name}"
+msgstr "Collected: {name}"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
@@ -2859,6 +2938,10 @@ msgstr "Owner mapping"
 msgid "所有者の写像（ソース側の利用者 → 基盤の利用者）"
 msgstr "Owner mapping (source-side user -> platform user)"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentSource.ts
+msgid "手入力"
+msgstr "Manual entry"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "手動同期"
 msgstr "Sync now"
@@ -3045,6 +3128,10 @@ msgstr "Failed to load the document."
 msgid "文書の登録・編集・公開・アーカイブ・削除は管理者のみ実行できます"
 msgstr "Only administrators can create, edit, publish, archive, or delete documents"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentOriginTabs.tsx
+msgid "文書の種類"
+msgstr "Document kind"
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 msgid "文書の絞り込み"
 msgstr "Filter documents"
@@ -3120,6 +3207,10 @@ msgstr "Open document detail"
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "文書詳細へ戻る"
 msgstr "Back to the document"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "文書詳細を開く"
+msgstr "Open document details"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "断たれ得る処理"
@@ -3390,6 +3481,14 @@ msgstr "Has body"
 msgid "本文が上限（1 MB）を超えています。分割してください。"
 msgstr "The body exceeds the 1 MB limit. Split the note into smaller ones."
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "本文が保管されていません。"
+msgstr "The body is not stored."
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "本文が大きすぎるためプレビューできません。文書詳細で確かめてください。"
+msgstr "The body is too large to preview. Check it in the document details."
+
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/types/documentBody.ts
@@ -3399,6 +3498,10 @@ msgstr "No body text (see the original)"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "本文なしで完了"
 msgstr "Completed without a body"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "本文のプレビュー"
+msgstr "Body preview"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"
@@ -3413,6 +3516,7 @@ msgid "本文へ移動"
 msgstr "Skip to main content"
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
 msgid "本文を取得できませんでした。"
 msgstr "Could not load the page body."
 
@@ -3422,6 +3526,7 @@ msgstr "Read both texts and resolve"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
 msgid "本文を読み込み中…"
 msgstr "Loading the body…"
 
@@ -3668,6 +3773,10 @@ msgstr "Confidentiality"
 msgid "機密区分（ABAC属性）"
 msgstr "Confidentiality (ABAC attribute)"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "機密区分で絞り込み"
+msgstr "Filter by confidentiality"
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
 msgstr "Highly confidential data is processed by the self-hosted LLM and is never sent to an external API (UC-02 alternative flow, data egress policy). Data you may not access is silently excluded (existence is hidden)."
@@ -3675,6 +3784,10 @@ msgstr "Highly confidential data is processed by the self-hosted LLM and is neve
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "機密区分上限は必須です。"
 msgstr "Clearance ceiling is required."
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentOriginTabs.tsx
+msgid "機械の収集"
+msgstr "Machine-collected"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
 msgid "次へ"
@@ -3940,6 +4053,10 @@ msgstr "No contradictions"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "矛盾はありません。まだ保存していません。"
 msgstr "No contradictions found. Nothing has been saved yet."
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentSource.ts
+msgid "確定報告書"
+msgstr "Finalized report"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "確認"

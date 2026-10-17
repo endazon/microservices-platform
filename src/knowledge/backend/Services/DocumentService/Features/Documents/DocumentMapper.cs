@@ -35,8 +35,9 @@ internal static partial class DocumentMapper
     // FR-06, UC-03, SC-03: 文書 → 応答 DTO。実体は source generator が生成する。
     // 契約（`DocumentDto.Tags`）は `List<string>` のままで、**下流も画面も変わらない**。
     //
-    // **`DocumentDto` は `Document` の部分射影である**（原本 URI・種別・添付・取込元・版履歴・
-    // 公開可否は応答に出さない）。本文指紋は #1575 から応答に出るが、**生成マッパでは写さない**
+    // **`DocumentDto` は `Document` の部分射影である**（種別・添付・取込元の所在〔`OriginalPath`〕・版履歴・
+    // 公開可否は応答に出さない）。［2026-10-17 / #1923・[[IADR-0560]]］原本 URI（`OriginalUri`）とデータソースの表示名
+    // （`DataSourceName`）は応答に出すようにした（文書管理の一覧の出典リンクとデータソースの絞り込み）。同名の列から写る。本文指紋は #1575 から応答に出るが、**生成マッパでは写さない**
     // （下の `[MapperIgnoreTarget]`。値は `DocumentEndpoints.ToDto` が `HasBody` を見て入れる）。これを 8 個の `[MapperIgnoreSource]` で並べると、
     // 🔴 な省略（下の `MarkdownUri` や `SyncDevice.TokenHash` の類）が些事に埋もれる ——
     // **「部分射影である」ことは 1 回だけ宣言し、`[MapperIgnoreSource]` は

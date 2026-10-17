@@ -42,6 +42,9 @@ const firstPage: DocumentListPageDto = {
   limit: 50,
   unfilteredTotal: 1,
   statusCounts: { published: 1 },
+  // ［2026-10-17 / #1923・IADR-0560］データソース別・プロジェクト別の件数（手入力の 1 件）。
+  sourceCounts: { manual: 1 },
+  projectCounts: { '(none)': 1 },
 };
 
 const handlers = { 'GET /documents': firstPage, 'GET /tags': tags };
@@ -73,8 +76,16 @@ test('SC-05: an operator reaches the screen and its navigation entry', async ({ 
   // **［2026-09-12］`EmptyState` への統一で文言が変わった**（空は次の一手を示す）。
   await expect(page.getByText('文書はまだありません。')).toHaveCount(0);
   // 一覧はページの引数つきで引く（既定 50 件の先頭）。総件数と表示範囲が出る。
-  expect(traffic.calls.find((c) => c.key === 'GET /documents')?.search).toBe('?offset=0&limit=50');
-  await expect(page.getByText('全 1 件中 1–1 件')).toBeVisible();
+  // ［2026-10-17 / #1923・IADR-0560］既定のタブは「人の文書・報告書」（`origin=curated`）。
+  expect(traffic.calls.find((c) => c.key === 'GET /documents')?.search).toBe(
+    '?offset=0&limit=50&origin=curated',
+  );
+  await expect(page.getByText('絞り込み 1 件（全 1 件）中 1–1 件')).toBeVisible();
+  await expect(page.getByRole('button', { name: '人の文書・報告書（1 件）' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByRole('columnheader', { name: 'データソース' })).toBeVisible();
   // #1923 段 2（IADR-0545）: 絞り込みの帯（表題の検索・状態・並べ替え）と本文・更新日時の列が出る。
   const filters = page.getByRole('search', { name: '文書の絞り込み' });
   await expect(filters.getByLabel('表題で検索')).toBeVisible();

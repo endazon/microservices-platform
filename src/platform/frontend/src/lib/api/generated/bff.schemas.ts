@@ -615,6 +615,16 @@ export interface DocumentDto {
      * **項目を持たない旧応答は「指紋不明」として読む。**
      */
   contentFingerprint?: string | null;
+  /**
+     * FR-06, SC-05 (#1923): 取り込み元のデータソースの表示名（台帳の写し。データソースの改名は次の同期まで遡及しない）。
+     * 直接投入・画面からの作成では `null`。**項目を持たない旧応答は「データソースなし」として読む。**
+     */
+  dataSourceName?: string | null;
+  /**
+     * FR-06, SC-05 (#1923): 原本の所在（API の書き手が渡した元の URL など。AST の収集ではニュース・開示の出典）。
+     * 書き手の申告であり検証していない。画面は `http(s)` のときだけリンクにする。
+     */
+  originalUri?: string | null;
 }
 
 /**
@@ -633,6 +643,17 @@ export interface DocumentPageDto {
 export type DocumentListPageDtoStatusCounts = {[key: string]: number};
 
 /**
+ * データソースの鍵ごとの件数（#1923 の残り）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）。
+ * 鍵は `ds:<dataSourceName>`（データソースの取り込み）→ `col:<属性 source>`（機械の収集）→ `report`（`kind` と `periodKey` を持つ確定報告書）→ `manual` の順で 1 つに決まる。
+ */
+export type DocumentListPageDtoSourceCounts = {[key: string]: number};
+
+/**
+ * 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）
+ */
+export type DocumentListPageDtoProjectCounts = {[key: string]: number};
+
+/**
  * FR-06, SC-05 (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ（`Knowledge.Contracts/Dtos/DocumentDto.cs`）。
  * `offset` / `limit` は BFF が丸めた後の値。🔴 件数はどれも ABAC スコープで絞った後の数（権限外の文書を数えない）。
  */
@@ -648,6 +669,13 @@ export interface DocumentListPageDto {
   unfilteredTotal: number;
   /** 状態（`DocumentDto.status` の生値）ごとの件数。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前） */
   statusCounts: DocumentListPageDtoStatusCounts;
+  /**
+     * データソースの鍵ごとの件数（#1923 の残り）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）。
+     * 鍵は `ds:<dataSourceName>`（データソースの取り込み）→ `col:<属性 source>`（機械の収集）→ `report`（`kind` と `periodKey` を持つ確定報告書）→ `manual` の順で 1 つに決まる。
+     */
+  sourceCounts: DocumentListPageDtoSourceCounts;
+  /** 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前） */
+  projectCounts: DocumentListPageDtoProjectCounts;
 }
 
 /**
@@ -2489,6 +2517,37 @@ q?: string;
  * 状態（公開ライフサイクル）で絞る。未知の値は 400
  */
 status?: BffDocumentListStatus;
+/**
+ * タブ。`collected` は機械の収集（データソースの鍵が `col:`）、`curated` はそれ以外（人の文書・報告書・データソースの取り込み）。未知の値は 400
+ */
+origin?: BffDocumentListOrigin;
+/**
+ * データソースの鍵（`sourceCounts` の鍵と同じ語彙）の完全一致。300 文字を超えると 400
+ * @maxLength 300
+ */
+source?: string;
+/**
+ * 機密区分で絞る。未知の値は 400
+ */
+confidentiality?: BffDocumentListConfidentiality;
+/**
+ * タグの表示名の完全一致。100 文字を超えると 400
+ * @maxLength 100
+ */
+tag?: string;
+/**
+ * 属性 `project` の値の完全一致。`(none)` は属性 `project` を持たない文書。100 文字を超えると 400
+ * @maxLength 100
+ */
+project?: string;
+/**
+ * 保存日（作成日時）の範囲の始め（含む）。ISO 8601 の日時。オフセットの無い値は UTC。壊れた値は 400
+ */
+createdFrom?: string;
+/**
+ * 保存日（作成日時）の範囲の終わり（含まない）。ISO 8601 の日時。`createdFrom` 以下なら 400
+ */
+createdBefore?: string;
 };
 
 export type BffDocumentListSort = typeof BffDocumentListSort[keyof typeof BffDocumentListSort];
@@ -2511,6 +2570,24 @@ export const BffDocumentListStatus = {
   normalized: 'normalized',
   published: 'published',
   archived: 'archived',
+} as const;
+
+export type BffDocumentListOrigin = typeof BffDocumentListOrigin[keyof typeof BffDocumentListOrigin];
+
+
+export const BffDocumentListOrigin = {
+  curated: 'curated',
+  collected: 'collected',
+} as const;
+
+export type BffDocumentListConfidentiality = typeof BffDocumentListConfidentiality[keyof typeof BffDocumentListConfidentiality];
+
+
+export const BffDocumentListConfidentiality = {
+  public: 'public',
+  internal: 'internal',
+  confidential: 'confidential',
+  restricted: 'restricted',
 } as const;
 
 export type BffConversionJobListParams = {

@@ -64,18 +64,22 @@ public static class DocumentBffEndpoints
         // FR-06, SC-05, [[IADR-0009]], [[IADR-0545]] (#1923 段 2): **並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）**。
         // 並べ替えは後段の rpc が行い（キーごとの続きの印で辿る）、絞り込みは ABAC の**後**に窓の述語で当てる（`DocumentListFilter`）。
         // 🔴 件数（`total` / `unfilteredTotal` / `statusCounts`）はどれも ABAC で絞った後の数である。権限外の文書はどの数にも入らない。
+        //
+        // FR-06, SC-05, [[IADR-0009]], [[IADR-0560]] (#1923): **データソース（`source`）・タブ（`origin`）・機密区分・タグ・プロジェクト・
+        // 保存日の範囲（`createdFrom` / `createdBefore`）** も同じ作法（ABAC の後の窓の述語）で当てる。どれも省略可で、省略は従前の応答と同じ。
+        // 応答の `sourceCounts` / `projectCounts` も ABAC 後・絞り込み前の数である。
         g.MapGet("/", async (
-            int? offset, int? limit, string? sort, string? q, string? status,
+            [AsParameters] DocumentListQuery query,
             HttpContext http, CancellationToken ct) =>
         {
             var errors = new Dictionary<string, string[]>();
-            if (offset is < 0)
+            if (query.Offset is < 0)
                 errors["offset"] = ["offset は 0 以上で指定してください。"];
-            var order = DocumentListSorts.Parse(sort, errors);
-            var filter = DocumentListFilter.Parse(q, status, errors);
+            var order = DocumentListSorts.Parse(query.Sort, errors);
+            var filter = DocumentListFilter.Parse(query, errors);
             if (errors.Count > 0)
                 return Results.ValidationProblem(errors);
-            var window = new DocumentListWindow(offset ?? 0, DocumentListWindow.ClampLimit(limit));
+            var window = new DocumentListWindow(query.Offset ?? 0, DocumentListWindow.ClampLimit(query.Limit));
 
             // #1010: 一覧は読み取り経路 → read を明示する。
             var scope = await BffScopeResolver.ResolveAsync(http, BffScopeAction.Read, ct);

@@ -1163,6 +1163,11 @@
             "type": "DateTimeOffset",
             "required": false
           },
+          "DataSourceName": {
+            "source": "property",
+            "type": "string?",
+            "required": false
+          },
           "HasBody": {
             "source": "property",
             "type": "bool",
@@ -1174,6 +1179,11 @@
             "required": false
           },
           "MarkdownUri": {
+            "source": "property",
+            "type": "string?",
+            "required": false
+          },
+          "OriginalUri": {
             "source": "property",
             "type": "string?",
             "required": false
@@ -1256,6 +1266,16 @@
           "Offset": {
             "source": "property",
             "type": "int",
+            "required": false
+          },
+          "ProjectCounts": {
+            "source": "property",
+            "type": "Dictionary<string,int>",
+            "required": false
+          },
+          "SourceCounts": {
+            "source": "property",
+            "type": "Dictionary<string,int>",
             "required": false
           },
           "StatusCounts": {

@@ -96,6 +96,12 @@ message DocumentSummary {
   // proto3 の repeated は presence を持たない。DTO の「null＝共有なし」は**0 件**で運び、受け手は 0 件を null へ戻す
   // （サーバは空リストを作らない〔`DocumentEndpoints.NullIfEmpty`〕ので、往復で値は変わらない）。
   repeated string shared_with = 12;
+  // FR-06, SC-05, [[IADR-0560]] (#1923): 取り込み元のデータソースの表示名（台帳の `Document.DataSourceName` の写し）。
+  // 直接投入・画面からの作成では null。presence で運ぶ。
+  optional string data_source_name = 13;
+  // FR-06, SC-05, [[IADR-0560]] (#1923): 原本の所在（台帳の `Document.OriginalUri`。API の書き手が渡した元の URL など）。
+  // 🔴 値は書き手の申告であり、検証していない。画面は `http(s)` のときだけリンクにする。presence で運ぶ。
+  optional string original_uri = 14;
 }
 
 // REST の DocumentVersionDto と同じ形。**本文の参照は持たない**（IADR-0290）。

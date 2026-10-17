@@ -44,6 +44,20 @@ public class DocumentMapperTests
         dto.HasBody.Should().BeTrue();
         // FR-19, [[IADR-0447]] (#1447): 共有先は追加引数がそのまま・同じ順で載る。
         dto.SharedWith.Should().Equal("alice", "g-1");
+        // FR-06, SC-05, [[IADR-0560]] (#1923): データソースの表示名は同名の列から写る（文書管理の一覧の絞り込みの材料）。
+        dto.DataSourceName.Should().Be("shared-drive");
+    }
+
+    // FR-06, SC-05, [[IADR-0560]] (#1923): 原本の所在（API の書き手が渡した元の URL）は同名の列から写り、無ければ null。
+    [Fact]
+    public void ToDto_CopiesOriginalUriAndKeepsNullDataSource()
+    {
+        var d = Document.Create("収集記事", originalUri: "https://example.com/news/1", contentType: "text/markdown");
+
+        var dto = DocumentMapper.ToDto(d, [], sharedWith: null);
+
+        dto.OriginalUri.Should().Be("https://example.com/news/1");
+        dto.DataSourceName.Should().BeNull();
     }
 
     // 🔴 **タグは追加引数がそのまま載る**（源の `List<Guid>` は写らない）。
