@@ -481,15 +481,15 @@ data:
     #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、
     #      式の絞り込みの後に残る値で評価器が真になり得る（#1577）、
     #      ルールの `uid` が 40 文字以下・英数字と `-` `_` だけ・一意で、写しの両方で同じ集合（#1881）、まで。
-    #      **配備時に `/api/v1/provisioning/alert-rules` が 24 件返すことを確かめること。**
+    #      **配備時に `/api/v1/provisioning/alert-rules` が 25 件返すことを確かめること。**
     #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
     #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
-    #      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 6
+    #      現在の内訳: platform-availability 2 ／ platform-slo 5 ／ platform-slo-evaluation-target 6
     #      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2
     #      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ department-sync 1 ／ owner-read-policy 2
-    #      ／ mcp-client-idp-reconciliation 2 ＝ **24**（［2026-10-10 / #1881］#1818 の 2 件を取りこぼして 22 のままだったので足した）
+    #      ／ mcp-client-idp-reconciliation 2 ＝ **25**（［2026-10-10 / #1881］#1818 の 2 件を取りこぼして 22 のままだったので足した。［2026-10-17 / #1746］platform-slo に SearchRerankLatencyTargetUndefined を足して 4 → 5）
     #      （［2026-09-26 / #1577］内訳が #1573 の department-sync 1 を取りこぼして 19 のままだったので足した）
-    #      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20、#1665 で 20 → 22、#1818 で 22 → 24 へ数え直した）。
+    #      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20、#1665 で 20 → 22、#1818 で 22 → 24、#1746 で 24 → 25 へ数え直した）。
     #
     # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
     #
@@ -631,8 +631,12 @@ data:
                 model:
                   refId: A
                   instant: true
+                  # IADR-0559 (ADR-0129 決定 2): 再順位付けが有効と報告されている間は外す（注記の正本は deploy/prometheus/alerts.yml）。
+                  # 外れている間 A は空になり、noDataState により NoData になる（無風の時と同じ見え方）。有効なことは下の
+                  # SearchRerankLatencyTargetUndefined が鳴らす。
                   expr: |
                     histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="microservices-platform.retrieval-service"}[5m])))
+                    unless on () (max(search_rerank_enabled{job="microservices-platform.retrieval-service"}) == 1)
               - refId: C
                 datasourceUid: __expr__
                 model:
@@ -642,6 +646,39 @@ data:
                   conditions:
                     # 単位は**秒**（1.5s）。ミリ秒の 1500 ではない。
                     - evaluator: { type: gt, params: [1.5] }
+
+          # NFR-29, ADR-0129 決定 2・3, IADR-0559: 再順位付けが有効な構成の検索 p95 目標（NFR-29）は pending なので、
+          # 閾値つきの警報の代わりに「有効と報告されていること」を鳴らす（注記の正本は deploy/prometheus/alerts.yml）。
+          # 🔴 Prometheus 版は `== 1` で絞るが、ここは生の値を `gt 0` で比べる（#1577。絞ってから比べる形にしない）。
+          #   ゲージが無いときは `or on () vector(0)` で 0（無効）として読み、NoData を立てない。
+          - uid: slo-search-rerank-target-undefined
+            title: SearchRerankLatencyTargetUndefined
+            condition: C
+            for: 5m
+            noDataState: NoData
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "検索の再順位付けが有効だが、有効時の検索 p95 目標（NFR-29）が未確定"
+              description: "retrieval-service が Rerank__Enabled=true で動いている。NFR-29 の値は pending であり、有効化の条件（ADR-0129 決定 3）を満たしていない。この間 SearchLatencyP95High（1.5s）は外れている。戻すなら Rerank__Enabled=false。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: |
+                    max(search_rerank_enabled{job="microservices-platform.retrieval-service"}) or on () vector(0)
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
 
           - uid: slo-rag-first-token-p95-high
             title: RagFirstTokenP95High

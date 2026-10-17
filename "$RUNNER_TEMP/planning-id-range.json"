@@ -1,0 +1,21 @@
+{
+  "status": "unverified",
+  "declaredMax": 141,
+  "planningMax": null,
+  "scanned": 0,
+  "expected": 5,
+  "unverifiedKinds": [
+    "FR",
+    "UC",
+    "SC",
+    "ADR",
+    "NFR"
+  ],
+  "ranges": [],
+  "checkedAt": "2026-10-17T08:48:58.489Z",
+  "source": "endazon/project-planning/tools/doc-checks/kg-ranges.json#microservices-platform",
+  "reason": "計画側を取得できない: PLANNING_REPO_TOKEN が渡されていない（secret 不在。B-3）。計画側の NFR を導けない: PLANNING_REPO_TOKEN が渡されていない（secret 不在）",
+  "lagIssue": {
+    "action": "none"
+  }
+}
