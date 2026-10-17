@@ -1970,9 +1970,11 @@ paths:
       tags: [Conversion]
       summary: "FR-12, UC-06, SC-07: 縮退した図の元画像（2 ペインの右側）。**管理者ロールのみ**"
       description: |
-        **BFF がオブジェクトストレージから解決して返す**（`GET /bff/documents/{id}/content` と同じ形。
-        IADR-0154 決定 2）。コード化済みの図は画像を保持しないため 404 になる——
-        **未知の図と区別しない**（どちらも「その画像は無い」）。
+        **画像は変換サービス（図の所有者）が読み、BFF は利用者の資格情報を付けて中継するだけである**
+        （BFF はオブジェクトストレージを持たない。#1941）。コード化済みの図は画像を保持しないため 404 になる——
+        **未知の図と区別しない**（どちらも「その画像は無い」。問題詳細なし）。
+        - 画像の参照が無い・画像のオブジェクトが無い … **404**（ProblemDetails。`type` は `urn:microservices-platform:problem:figure-image-unavailable`、`reason` は `not_stored` / `missing`）
+        - 変換サービスから画像を受け取れない（ストレージ未構成・一時障害・不達） … **502**
       operationId: bff-conversion-job-figure-image
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -1985,7 +1987,8 @@ paths:
               schema: { type: string, format: binary }
         "401": { description: 未認証 }
         "403": { description: 管理者ロール以外 }
-        "404": { description: 画像が無い（未知の図・コード化済みの図・ストレージ未解決） }
+        "404": { description: 画像が無い（未知の図・コード化済みの図は本文なし。参照・オブジェクトが無いときは ProblemDetails。#1941） }
+        "502": { description: 変換サービスから画像を受け取れなかった（ストレージ未構成・一時障害・不達。「画像が無い」へ畳まない。#1941） }
 
   /bff/conversion/jobs/{id}/figures/{figureId}/correction:
     post:

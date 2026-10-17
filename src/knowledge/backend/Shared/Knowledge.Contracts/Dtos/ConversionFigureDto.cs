@@ -9,6 +9,7 @@ namespace Knowledge.Contracts.Dtos;
 //
 // **画像そのもの（バイト列）はここに載せない。** 一覧の応答が図の枚数だけ膨らむためであり、
 // BFF の GET /bff/conversion/jobs/{id}/figures/{figureId}/image が別途配信する（IADR-0154 決定 2）。
+// ［2026-10-17 / #1941・IADR-0558］画像を読むのは変換サービス（GET /jobs/{id}/figures/{figureId}/image）で、BFF は中継する。
 public record ConversionFigureDto(
     // 原本から抽出したときの図 ID。ジョブ内で一意。
     string FigureId,

@@ -384,6 +384,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
     ];
 
+    // FR-12, UC-06, SC-07, [[IADR-0558]] (#1941): 後段（ConversionService）の図画像の口が返すバイト列と Content-Type。
+    // 非 200 は `ConversionStatusCode`、そのときの本文（ProblemDetails）は `ConversionConflictBody` で与える。
+    public byte[] StubFigureImageBytes { get; set; } = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02];
+    public string StubFigureImageContentType { get; set; } = "image/png";
+
     // FR-12, UC-06, SC-07, IADR-0154: 人手補正 Phase 1 の図。コード化済み 1・画像保持へ縮退 1。
     public List<ConversionFigureDto> StubFigures { get; set; } =
     [
@@ -1436,6 +1441,22 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // 後段不達を再現する（BFF の catch → 502 縮退の検証用）。
             if (owner.ConversionThrows)
                 throw new HttpRequestException("conversion-service unreachable");
+
+            // [[IADR-0558]] (#1941): 図画像。後段（ConversionService）が画像を読んで返す。
+            if (path.EndsWith("/image", StringComparison.Ordinal))
+            {
+                if (owner.ConversionStatusCode != HttpStatusCode.OK)
+                {
+                    var problem = new HttpResponseMessage(owner.ConversionStatusCode);
+                    if (owner.ConversionConflictBody is not null)
+                        problem.Content = new StringContent(owner.ConversionConflictBody,
+                            System.Text.Encoding.UTF8, "application/problem+json");
+                    return Task.FromResult(problem);
+                }
+                var image = new ByteArrayContent(owner.StubFigureImageBytes);
+                image.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(owner.StubFigureImageContentType);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = image });
+            }
 
             // IADR-0154: 人手補正 Phase 1。補正投稿は 200（結果 DTO）を返す。
             if (path.EndsWith("/correction", StringComparison.Ordinal))

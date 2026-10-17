@@ -532,10 +532,15 @@ export type bffConversionJobFigureImageResponse404 = {
   status: 404
 }
 
+export type bffConversionJobFigureImageResponse502 = {
+  data: void
+  status: 502
+}
+
 export type bffConversionJobFigureImageResponseSuccess = (bffConversionJobFigureImageResponse200) & {
   headers: Headers;
 };
-export type bffConversionJobFigureImageResponseError = (bffConversionJobFigureImageResponse401 | bffConversionJobFigureImageResponse403 | bffConversionJobFigureImageResponse404) & {
+export type bffConversionJobFigureImageResponseError = (bffConversionJobFigureImageResponse401 | bffConversionJobFigureImageResponse403 | bffConversionJobFigureImageResponse404 | bffConversionJobFigureImageResponse502) & {
   headers: Headers;
 };
 
@@ -551,9 +556,11 @@ export const getBffConversionJobFigureImageUrl = (id: string,
 }
 
 /**
- * **BFF がオブジェクトストレージから解決して返す**（`GET /bff/documents/{id}/content` と同じ形。
- * IADR-0154 決定 2）。コード化済みの図は画像を保持しないため 404 になる——
- * **未知の図と区別しない**（どちらも「その画像は無い」）。
+ * **画像は変換サービス（図の所有者）が読み、BFF は利用者の資格情報を付けて中継するだけである**
+ * （BFF はオブジェクトストレージを持たない。#1941）。コード化済みの図は画像を保持しないため 404 になる——
+ * **未知の図と区別しない**（どちらも「その画像は無い」。問題詳細なし）。
+ * - 画像の参照が無い・画像のオブジェクトが無い … **404**（ProblemDetails。`type` は `urn:microservices-platform:problem:figure-image-unavailable`、`reason` は `not_stored` / `missing`）
+ * - 変換サービスから画像を受け取れない（ストレージ未構成・一時障害・不達） … **502**
  * @summary FR-12, UC-06, SC-07: 縮退した図の元画像（2 ペインの右側）。**管理者ロールのみ**
  */
 export const bffConversionJobFigureImage = async (id: string,

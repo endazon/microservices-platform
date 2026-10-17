@@ -1,4 +1,6 @@
 using AwesomeAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Knowledge.Contracts.Dtos;
 using System.Net;
 using System.Net.Http.Json;
@@ -23,6 +25,8 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
         _factory.ConversionConflictBody = null;
         _factory.LastConversionPath = null;
         _factory.LastConversionForwardedAuthorization = null;
+        _factory.StubFigureImageBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02];
+        _factory.StubFigureImageContentType = "image/png";
     }
 
     [Fact]
@@ -293,5 +297,93 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
         await client.SendAsync(req, TestContext.Current.CancellationToken);
 
         _factory.LastConversionForwardedAuthorization.Should().Be("Bearer relayed-user-token");
+    }
+
+    // ===== FR-12, UC-06, SC-07, ADR-0014, [[IADR-0558]] (#1941): 図画像は後段（ConversionService）が読み、BFF は中継するだけ =====
+    // 以前の BFF はストレージを直接読み、配備では未配線のまま `NullObjectStorageClient` へ縮退して常に 404 だった。
+
+    private string ImagePath(string figureId = "fig-1") =>
+        $"/bff/conversion/jobs/{BffTestFactory.StubJobId}/figures/{figureId}/image";
+
+    // AC-1: 後段が返したバイト列と Content-Type をそのまま返す（固定値・図の一覧の値で上書きしない）。
+    [Fact]
+    public async Task FigureImage_AsAdmin_RelaysBytesAndContentTypeFromConversionService()
+    {
+        _factory.StubFigureImageBytes = [1, 2, 3, 4, 5];
+        _factory.StubFigureImageContentType = "image/svg+xml";
+
+        var resp = await _factory.CreateClient().GetAsync(ImagePath(), TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        resp.Content.Headers.ContentType!.MediaType.Should().Be("image/svg+xml");
+        (await resp.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken))
+            .Should().Equal(1, 2, 3, 4, 5);
+        _factory.LastConversionPath.Should().Be($"/jobs/{BffTestFactory.StubJobId}/figures/fig-1/image");
+    }
+
+    // 図 ID は後段のパスへ escape して渡す（パスの区切りを差し込めない）。
+    [Fact]
+    public async Task FigureImage_EscapesFigureId_InDownstreamPath()
+    {
+        await _factory.CreateClient().GetAsync(ImagePath("fig%20a"), TestContext.Current.CancellationToken);
+
+        _factory.LastConversionPath.Should().Be($"/jobs/{BffTestFactory.StubJobId}/figures/fig%20a/image");
+    }
+
+    // 後段の 404 は本文ごと透過する（理由つきの 404〔not_stored / missing〕と秘匿の 404 を画面・運用者が分けられる）。
+    [Fact]
+    public async Task FigureImage_Downstream404_IsRelayedWithProblemBody()
+    {
+        _factory.ConversionStatusCode = HttpStatusCode.NotFound;
+        _factory.ConversionConflictBody =
+            """{"type":"urn:microservices-platform:problem:figure-image-unavailable","status":404,"reason":"missing"}""";
+
+        var resp = await _factory.CreateClient().GetAsync(ImagePath(), TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().Contain("\"reason\":\"missing\"");
+    }
+
+    // 秘匿の 404（未知の図・コード化済み）は本文なしのまま。
+    [Fact]
+    public async Task FigureImage_Downstream404WithoutBody_Is404()
+    {
+        _factory.ConversionStatusCode = HttpStatusCode.NotFound;
+
+        var resp = await _factory.CreateClient().GetAsync(ImagePath("unknown"), TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // 後段の 5xx（ストレージ未構成の 503・一時障害の 500）と不達は 502。「画像が無い」（404）に畳まない。
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task FigureImage_Downstream5xx_Is502(HttpStatusCode downstream)
+    {
+        _factory.ConversionStatusCode = downstream;
+
+        var resp = await _factory.CreateClient().GetAsync(ImagePath(), TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+    }
+
+    [Fact]
+    public async Task FigureImage_ConversionServiceUnreachable_Is502()
+    {
+        _factory.ConversionThrows = true;
+
+        var resp = await _factory.CreateClient().GetAsync(ImagePath(), TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+    }
+
+    // AC-2: BFF はオブジェクトストレージを持たない（資格情報を配線する先が無い）。
+    // `AddPlatformObjectStorage` を戻すと `IObjectStorageClient`（未構成なら NullObjectStorageClient）が登録され、ここが落ちる。
+    [Fact]
+    public void Bff_DoesNotRegisterObjectStorageClient()
+    {
+        _factory.Services.GetService<IObjectStorageClient>().Should().BeNull();
     }
 }

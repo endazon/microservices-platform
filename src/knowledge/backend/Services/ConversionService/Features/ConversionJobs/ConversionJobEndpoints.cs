@@ -1,5 +1,6 @@
 using ConversionService.Features.ConversionJobs.CorrectFigure;
 using ConversionService.Features.ConversionJobs.GetById;
+using ConversionService.Features.ConversionJobs.GetFigureImage;
 using ConversionService.Features.ConversionJobs.List;
 using ConversionService.Features.ConversionJobs.ListFigures;
 using ConversionService.Features.ConversionJobs.Retry;
@@ -21,6 +22,7 @@ namespace ConversionService.Features.ConversionJobs;
 // | `GET /jobs`・`GET /jobs/{id}`（照会） | admin ＋ operator | 群（本ファイル） |
 // | `POST /jobs/{id}/retry`（再変換） | **admin のみ** | 群 ∧ `AdminOnly`（`Retry/Endpoint.cs`） |
 // | `GET /jobs/{id}/figures`（人手補正の材料） | **admin のみ** | 群 ∧ `AdminOnly`（`ListFigures/Endpoint.cs`） |
+// | `GET /jobs/{id}/figures/{figureId}/image`（人手補正の元画像。[[IADR-0558]] #1941） | **admin のみ** | 群 ∧ `AdminOnly`（`GetFigureImage/Endpoint.cs`） |
 // | `POST /jobs/{id}/figures/{figureId}/correction`（人手補正） | **admin のみ** | 群 ∧ `AdminOnly`（`CorrectFigure/Endpoint.cs`） |
 //
 // 🔴 **`ServiceCaller` は足さない —— `platform-service` だけを持つサービス間トークンは通らない。** `/jobs` を
@@ -44,6 +46,7 @@ public static class ConversionJobEndpoints
         GetConversionJobEndpoint.Map(g);
         RetryConversionJobEndpoint.Map(g);
         ListConversionFiguresEndpoint.Map(g);
+        GetFigureImageEndpoint.Map(g);
         CorrectFigureEndpoint.Map(g);
 
         return app;
