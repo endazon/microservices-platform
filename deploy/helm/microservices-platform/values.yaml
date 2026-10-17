@@ -789,13 +789,10 @@ services:
     # FR-17, FR-05, IADR-0089 (#342) / #958: ABAC スコープ解決先は gRPC 宛先（`Services__AuthorizationServiceGrpc`）だけである
     # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
     extraEnv:
-      # FR-18, ADR-0010, IADR-0380 (#1244): クラスタ要約（REST `/complete`。既定 off）が LLM ゲートウェイを呼ぶ。コード既定
-      # `http://llm-gateway:5010` は k8s に無い名前で、上書きが無いと LLM の段で
-      # `Name or service not known` になる（#1244 の実測。aianalysis 等と同じ上書き）。AI 提案の生成は gRPC 宛先を使う。
-      - name: Services__LlmGateway
-        value: "http://llmgateway-service:8080"
-      # FR-18 / NFR-16, IADR-0400 (#1255): east-west gRPC（h2c）の宛先。
-      # AI 提案の生成が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
+      # （［2026-10-17 / #1255・IADR-0533 フォローアップ 2］クラスタ要約も gRPC へ移したので、REST の宛先 `Services__LlmGateway` は
+      # 読み手が無くなり外した。）
+      # FR-17 / FR-18 / NFR-16, IADR-0400 (#1255): east-west gRPC（h2c）の宛先。
+      # AI 提案の生成とクラスタ要約（既定 off）が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       - name: Services__LlmGatewayGrpc
         value: "http://llmgateway-service:8081"

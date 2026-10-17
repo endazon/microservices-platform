@@ -200,6 +200,31 @@ public class BffDocumentListFacetTests : IClassFixture<BffTestFactory>
         }
     }
 
+    // 🔴 プロジェクト別の件数の鍵も同じ: 長い `project` は受理の上限で切って数え、切った値で絞ると 400 にならずにその文書に当たる。
+    [Fact]
+    public async Task 長いプロジェクトの鍵は受理の上限で切って数え選べる()
+    {
+        var longProject = new string('p', 250);
+        var surrogate = new string('q', DocumentListFilter.MaxValueLength - 1) + "😀"; // 上限の位置に上位サロゲートが来る
+        _factory.StubDocumentList =
+        [
+            Doc(1, attributes: new() { ["project"] = longProject }),
+            Doc(2, attributes: new() { ["project"] = surrogate }),
+            Doc(5),
+        ];
+
+        var page = await PageAsync("");
+        var keys = page.ProjectCounts.Keys.Where(k => k != "(none)").ToList();
+        keys.Should().HaveCount(2).And.OnlyContain(k => k.Length <= DocumentListFilter.MaxValueLength);
+        keys.Should().OnlyContain(k => !char.IsHighSurrogate(k[k.Length - 1]));
+
+        foreach (var (key, n) in new[] { (keys.Single(k => k.Contains('p')), 1), (keys.Single(k => k.Contains('q')), 2) })
+        {
+            var filtered = await PageAsync($"?project={Uri.EscapeDataString(key)}");
+            Numbers(filtered).Should().Equal(n);
+        }
+    }
+
     // ── 🔴 存在秘匿（IADR-0009） ──────────────────────────────────
 
     [Theory]

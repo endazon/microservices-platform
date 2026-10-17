@@ -22,6 +22,8 @@ namespace IngestionService.Features.Ingestion.Ingest;
 // 受け口の ct で「取り消し」として切られる。自分の期限の時間切れは `ConsumerTimeoutException` として投げ
 // （警告ログ・計器 `messaging.consumer.timeout`）、呼び出し元の取り消しはそのまま外へ出す。
 // 埋め込みはチャンクごとに総枠（`EmbeddingBudget`）を判定し、使い切ったら残りを呼ばずに時間切れとして投げる。
+// ［2026-10-17 / #1746・[[IADR-0560]]］語彙索引への書き込みの輪（高機密の文書・埋め込み待ちの点）も同じ値の総枠で打ち切る
+// （呼び出し先 `lexical-budget`）。
 // ［#1771］この辺の移行は IADR-0234 の単位 E4 として追跡する。購読者は結線しない（planning#741 項目 6 の裁定・2026-10-09）。
 public class DocumentUpdatedConsumer(
     IDocumentContentReader reader,
@@ -237,6 +239,15 @@ public class DocumentUpdatedConsumer(
         {
             for (var idx = pendingFrom; idx < chunks.Count; idx++)
             {
+                // 🔴 FR-02, NFR-06, [[IADR-0560]] (#1746): 待ちの点の書き込みも総枠で打ち切る。**埋め込みの輪の始めから続けて測る**
+                // （1 文書のチャンクの輪全体で 1 つの総枠。受け口の最悪の所要時間の式を変えない）。書いた分は計器に数えてから投げる。
+                if (clock.GetElapsedTime(embeddingStarted) >= timeouts.EmbeddingBudget)
+                {
+                    if (pendingCount > 0)
+                        pendingMetrics.RecordWritten(pendingCount, pendingReason);
+                    throw LexicalBudgetExhausted(ev.DocumentId, idx, chunks.Count);
+                }
+
                 var chunkId = ChunkId.Derive(ev.DocumentId, idx);
                 var text = chunks[idx];
                 var i = idx;
@@ -264,17 +275,24 @@ public class DocumentUpdatedConsumer(
     }
 
     // FR-02, FR-03, ADR-0127 決定 1・2, [[IADR-0497]] 決定 2・3 (#1746): 高機密文書の本文チャンクを語彙索引へ書く。
-    // 🔴 **埋め込みを 1 回も呼ばない**ので、埋め込みの総枠（`EmbeddingBudget`）も一時障害の分岐も通らない。
+    // 🔴 **埋め込みを 1 回も呼ばない**ので、一時障害の分岐は通らない。
     // Qdrant への書き込みは本文チャンクと同じ期限（`VectorStore`）の下で行い、失敗は例外のまま上げて
     // ブローカの再試行へ委ねる（本文チャンクの書き込みと同じ）。
+    // ［2026-10-17 / #1746・[[IADR-0560]]］**埋め込みの総枠と同じ値の総枠で打ち切る**（呼び出し先 `lexical-budget`）。
+    // 従前は受け口の実行期限（既定 420 秒）だけが上から抑え、見出しの密な 1 MiB の本文（約 26 万点・実測 5 ms／点で約 1,300 秒）は
+    // 期限で取り消され、4 試行の間キューを塞いでからデッドレターへ入った。判定は書き込みの**前**（超過は最後の 1 点の期限までに収まる）。
     // チャンク ID は本文チャンクと同じ規則（`ChunkId.Derive`）—— 機密区分が変わって置き場所が移っても、
     // 冒頭の全コレクション削除で古い点は消えている。
     private async Task IndexLexicallyAsync(DocumentUpdated ev, IReadOnlyList<string> chunks,
         string markdownUri, string? confidentiality, CancellationToken ct)
     {
         var chunkCount = 0;
+        var started = clock.GetTimestamp();
         foreach (var (text, idx) in chunks.Select((t, i) => (t, i)))
         {
+            if (clock.GetElapsedTime(started) >= timeouts.EmbeddingBudget)
+                throw LexicalBudgetExhausted(ev.DocumentId, idx, chunks.Count);
+
             var chunkId = ChunkId.Derive(ev.DocumentId, idx);
             await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
                 t => store.UpsertLexicalChunkAsync(chunkId, ev.DocumentId, ev.Title, text, idx,
@@ -289,6 +307,11 @@ public class DocumentUpdatedConsumer(
 
         await bus.PublishCompletedAsync(ev.DocumentId, chunkCount, DateTimeOffset.UtcNow, ct);
     }
+
+    // FR-02, [[IADR-0560]] (#1746): 語彙索引への書き込みの総枠の使い切り（再試行せずデッドレターへ。`EmbeddingBudgetDeadLetterPolicy`）。
+    private ConsumerTimeoutException LexicalBudgetExhausted(Guid documentId, int indexed, int total)
+        => calls.BudgetExhausted(StepName, IngestionTimeouts.LexicalBudgetTarget, timeouts.EmbeddingBudget,
+            $"document {documentId}: {indexed} of {total} chunks indexed before the lexical-index writes ran out of budget");
 
     // FR-02, FR-12, ADR-0070 決定 3, #1254, [[IADR-0388]] 決定 3:
     // **契約が運ぶ「本文の有無」と、ここでの判定（チャンク 0 件）が食い違ったら警告を残す。**

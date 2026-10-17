@@ -151,6 +151,7 @@ issue: "#1923"
 
 - 収集の鍵 `col:<source>` は属性 `source` に上限が無く、300 文字を超える鍵が `sourceCounts` に出て選ぶと 400 になる経路があった → 鍵を受理の上限で切る（`DocumentListSources.KeyOf`。サロゲートペアは割らない）。BFF の試験を追加（変異 2 点で赤を確認）。
 - 本 PR で使わない画面の補助関数（`documentSourceKey` ほか）を外した（knip の床。続く PR で使う形で入れる）。
+- プロジェクト別の件数の鍵も受理の上限（100）を超え得た → 同じく切る。BFF の試験を追加（変異で赤を確認）。呼び出し元が無くなった旧い `DocumentListFilter.Parse(q, status, …)` を外した。テスト仕様書の H7 を現存の `sourceLabel` に合わせた。
 - IADR の番号を 0561 へ改めた（0559 は #1987、0560 は #1989）。
 
 ## 残余

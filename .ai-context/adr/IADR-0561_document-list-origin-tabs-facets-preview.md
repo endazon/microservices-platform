@@ -91,7 +91,8 @@ related_specs:
 - `origin` は `curated` / `collected`、`confidentiality` は 4 値。未知の値は 400。`source` は 300 文字、`tag` / `project` は 100 文字まで（超えたら 400）。
   `project=(none)` は属性 `project` を持たない文書。日時が壊れている・`createdFrom >= createdBefore` は 400。どの 400 も後段を呼ばない。
 - データソースの鍵の導出は BFF の `DocumentListSources` の 1 か所。🔴 鍵は受理の上限（300 文字）で切る（属性 `source` は書き手の申告で長さの上限が無い。
-  サロゲートペアは割らない）。件数の鍵と絞り込みの照合が同じ関数を通るので、件数に出た鍵は必ず選べる（選ぶと 400 になる経路を作らない）。応答に `sourceCounts`（鍵ごと）と `projectCounts`（プロジェクトごと）を足す。
+  サロゲートペアは割らない）。件数の鍵と絞り込みの照合が同じ関数を通るので、件数に出た鍵は必ず選べる（選ぶと 400 になる経路を作らない）。
+  プロジェクトの鍵も同じく受理の上限（100 文字）で切る。応答に `sourceCounts`（鍵ごと）と `projectCounts`（プロジェクトごと）を足す。
   集合は `statusCounts` と同じ（ABAC 後・絞り込み前）。
 - 🔴 1 周の中の順序は IADR-0545 のまま **ABAC → 全体・状態別・データソース別・プロジェクト別の数 → 絞り込み → 窓**。権限外の文書・他人の個人資料は
   どの数にも入らない（`BffDocumentListFacetTests` が、混ぜた台帳と混ぜない台帳の応答の一致で固定する。陽性対照つき）。

@@ -786,7 +786,8 @@ services:
   # 有効化手順: プロファイルを有効化し、llm-gateway へ SELFHOSTED_EMBEDDING_URL=http://embedding:80 と
   #   SELFHOSTED_EMBEDDING_ENABLED=true を .env で与える。
   #   🔴 同時に retrieval-service へ SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3 を与える
-  #   （ADR-0092 / IADR-0467。与えないと高機密の文書は索引されるが検索されない）。
+  #   （ADR-0092 / IADR-0467。与えないとセルフホストへ回った文書は索引されるが検索されない。
+  #   ［2026-10-17 / #1746］高機密の文書はここへ入らない —— 語彙索引へ行く。回るのは Voyage を止めた構成の public / internal）。
   # ⚠️ 実モデル取得・実埋め込み疎通・nDCG@10 実測は稼働環境依存＝分離（IADR-0085 / #303）。
   # 既定 image tag / モデル ID はプレースホルダ。実運用前に固定する。
   embedding:
@@ -860,12 +861,10 @@ services:
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=graph_svc;Username=kp;Password=kp
       # 🔴 IADR-0089 (#342) / #958: ABAC スコープ解決先は gRPC 宛先（`Services__AuthorizationServiceGrpc`）だけである
       # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
-      # FR-18, ADR-0010, IADR-0380 (#1244): クラスタ要約（REST `/complete`。既定 off）が LLM ゲートウェイを呼ぶ。コード既定は
-      # `:5010` で compose の llm-gateway（8080）と合わないため上書きする（aianalysis-service と同じ）。
-      # AI 提案の生成は下の gRPC 宛先を使う。
-      Services__LlmGateway: http://llm-gateway:8080
-      # FR-18 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0400 (#1255): east-west gRPC。
-      # `Services__LlmGatewayGrpc` でAI 提案の生成が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。
+      # ［2026-10-17 / #1255・IADR-0533 フォローアップ 2］クラスタ要約も gRPC へ移したので、REST の宛先 `Services__LlmGateway` は
+      # 読み手が無くなり外した。
+      # FR-17 / FR-18 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0400 (#1255): east-west gRPC。
+      # `Services__LlmGatewayGrpc` で AI 提案の生成とクラスタ要約（既定 off）が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。
       # REST の並走は撤去した。IADR-0533）。
       # 🔴 compose のサービス名は `llm-gateway`（k8s の Service 名 `llmgateway-service` とは違う）。
       Services__LlmGatewayGrpc: http://llm-gateway:8081

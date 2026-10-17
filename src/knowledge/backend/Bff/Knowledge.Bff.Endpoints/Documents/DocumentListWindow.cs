@@ -111,8 +111,10 @@ public sealed record DocumentListFilter(string? TitleContains, string? Status)
     /// </summary>
     public const int MaxSourceLength = DocumentListSources.MaxKeyLength;
 
-    /// <summary>タグ・プロジェクトの値の上限。超えた要求は 400。</summary>
-    public const int MaxValueLength = 100;
+    /// <summary>
+    /// タグ・プロジェクトの値の上限。超えた要求は 400。🔴 プロジェクト別の件数の鍵も同じ上限で切る（`DocumentListSources.ProjectOf`）。
+    /// </summary>
+    public const int MaxValueLength = DocumentListSources.MaxProjectLength;
 
     /// <summary>状態の絞り込みが受ける値（公開ライフサイクル。`DocumentDto.Status` の値域）。</summary>
     public static readonly IReadOnlyList<string> Statuses = ["draft", "normalized", "published", "archived"];
@@ -142,12 +144,6 @@ public sealed record DocumentListFilter(string? TitleContains, string? Status)
             && (Project is null || string.Equals(DocumentListSources.ProjectOf(doc), Project, StringComparison.Ordinal))
             && (CreatedFrom is null || doc.CreatedAt >= CreatedFrom)
             && (CreatedBefore is null || doc.CreatedAt < CreatedBefore);
-
-    /// <summary>
-    /// クエリを検証して絞り込みを作る。表題は前後の空白を除き、空なら無指定。誤りは <paramref name="errors"/> へ積む。
-    /// </summary>
-    public static DocumentListFilter Parse(string? q, string? status, IDictionary<string, string[]> errors)
-        => Parse(new DocumentListQuery { Q = q, Status = status }, errors);
 
     /// <summary>
     /// FR-06, SC-05, [[IADR-0561]] (#1923): 全部のクエリを検証して絞り込みを作る。空の値は無指定。誤りは <paramref name="errors"/> へ積む
@@ -260,22 +256,25 @@ public static class DocumentListSources
     /// </summary>
     public const int MaxKeyLength = 300;
 
+    /// <summary>プロジェクトの鍵の上限（属性 `project` も書き手の申告で上限が無い。切り方は `MaxKeyLength` と同じ）。</summary>
+    public const int MaxProjectLength = 100;
+
     public static string KeyOf(DocumentDto doc)
     {
         if (!string.IsNullOrWhiteSpace(doc.DataSourceName))
-            return Bounded(DataSourcePrefix + doc.DataSourceName);
+            return Bounded(DataSourcePrefix + doc.DataSourceName, MaxKeyLength);
         if (doc.Attributes.TryGetValue("source", out var source) && !string.IsNullOrWhiteSpace(source))
-            return Bounded(CollectedPrefix + source);
+            return Bounded(CollectedPrefix + source, MaxKeyLength);
         if (doc.Attributes.ContainsKey("kind") && doc.Attributes.ContainsKey("periodKey"))
             return Report;
         return Manual;
     }
 
-    private static string Bounded(string key)
+    private static string Bounded(string key, int max)
     {
-        if (key.Length <= MaxKeyLength)
+        if (key.Length <= max)
             return key;
-        var cut = char.IsHighSurrogate(key[MaxKeyLength - 1]) ? MaxKeyLength - 1 : MaxKeyLength;
+        var cut = char.IsHighSurrogate(key[max - 1]) ? max - 1 : max;
         return key[..cut];
     }
 
@@ -283,7 +282,9 @@ public static class DocumentListSources
         => key.StartsWith(CollectedPrefix, StringComparison.Ordinal) ? Collected : Curated;
 
     public static string ProjectOf(DocumentDto doc)
-        => doc.Attributes.TryGetValue("project", out var project) && !string.IsNullOrWhiteSpace(project) ? project : NoProject;
+        => doc.Attributes.TryGetValue("project", out var project) && !string.IsNullOrWhiteSpace(project)
+            ? Bounded(project, MaxProjectLength)
+            : NoProject;
 }
 
 // FR-06, SC-05, [[IADR-0545]] (#1923): 文書管理の一覧の**並べ替え**（BFF の口の語彙 → 後段の rpc の enum）。

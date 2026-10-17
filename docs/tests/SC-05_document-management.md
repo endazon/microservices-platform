@@ -238,7 +238,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | H4 | プレビュー | 本文の先頭 1,000 文字を横のペインに素の文字で出す。文書詳細と出典への導線。運用者にも出す。閉じられる | `previews the head of the body in the side pane, also for an operator` |
 | H5 | プレビューの状態 | 台帳が本文なしと言う文書は本文を引かない。413 は「大きすぎる」と出す | `does not fetch a body the ledger says is absent, and explains a too-large body` |
 | H6 | タブの空 | タブだけで 0 件なら「このタブの文書はありません。」と「すべての文書を表示」（「文書はまだありません。」を出さない） | `tells that the tab is empty and offers all documents` |
-| H7 | 鍵の導出 | データソース → 収集 → 報告書 → 手入力の順（BFF と同じ例）。表示名・タブの件数・リンクにしてよい URL | `documentSourceKey` ／ `sourceLabel / originCounts / linkableOriginalUri` |
+| H7 | 鍵の導出・表示 | データソース → 収集 → 報告書 → 手入力の順（BFF と同じ例）。長い出典名は BFF と同じ上限で切る。表示名・タブの件数・リンクにしてよい URL | `documentSourceKey` ／ `documentSourceKey の上限` ／ `sourceLabel / originCounts / linkableOriginalUri` |
 
 ### BFF（xUnit）
 
@@ -254,6 +254,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | J6 | **存在秘匿（個人資料）** | 他人の個人資料も、新しい絞り込み・データソース別・プロジェクト別の件数のどれにも現れない（陽性対照つき） | `他人の個人資料は新しい絞り込みの件数にもプロジェクト別の件数にも現れない` |
 | J7 | 許可ポリシーなし | 件数はどれも 0 / 空 | `許可ポリシーが無いときデータソース別とプロジェクト別の件数は空` |
 | J9 | **件数の鍵は選べる** | 長い出典名の鍵は受理の上限で切って数え（サロゲートペアは割らない）、切った鍵で絞ると 400 にならずその文書に当たる | `長い出典名の鍵は受理の上限で切って数え選べる` |
+| J10 | **件数の鍵は選べる（プロジェクト）** | 長い `project` の鍵も受理の上限（100）で切って数え（サロゲートペアは割らない）、切った値で絞るとその文書に当たる | `長いプロジェクトの鍵は受理の上限で切って数え選べる` |
 | J8 | 検証 | 未知の `origin` / `confidentiality`、壊れた日時、`createdFrom >= createdBefore` は 400 で後段を呼ばない。`source` / `tag` / `project` は上限ちょうどまで | `未知の値と壊れた日時と逆向きの範囲は400で後段を呼ばない` ／ `長すぎる値は400で上限ちょうどは通る` |
 
 ### 契約・後段（xUnit）

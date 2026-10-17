@@ -1454,7 +1454,7 @@ paths:
         - name: project
           in: query
           required: false
-          description: 属性 `project` の値の完全一致。`(none)` は属性 `project` を持たない文書。100 文字を超えると 400
+          description: 属性 `project` の値の完全一致。`(none)` は属性 `project` を持たない文書。100 文字を超えると 400（`projectCounts` の鍵も 100 文字で切ってあるので、件数に出た鍵は必ず受理される）
           schema: { type: string, maxLength: 100 }
         - name: createdFrom
           in: query
