@@ -2536,7 +2536,7 @@ confidentiality?: BffDocumentListConfidentiality;
  */
 tag?: string;
 /**
- * 属性 `project` の値の完全一致。`(none)` は属性 `project` を持たない文書。100 文字を超えると 400
+ * 属性 `project` の値の完全一致。`(none)` は属性 `project` を持たない文書。100 文字を超えると 400（`projectCounts` の鍵も 100 文字で切ってあるので、件数に出た鍵は必ず受理される）
  * @maxLength 100
  */
 project?: string;
