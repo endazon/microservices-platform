@@ -10,6 +10,7 @@ plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md（SC-05 文書管理。公開・アーカイブ・アーカイブ解除は計画に無い旨）
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（FR-06）
 related_specs:
+  - ../specs/20261017_1983_bulk-op-publish-recovery-without-log-ids.md
   - ../specs/20261017_1974_archive-ast-quote-snapshots.md
   - ../specs/20261016_1931_archive-bodyless-pre-cutover-documents.md
 ---
@@ -169,3 +170,16 @@ WHERE d."Status" = 'archived'
   アーカイブ解除が無い点（決定 6）も同じ。AST が Quote の保存を止める前に配備すれば、その後の Quote は次の実行で拾う（冪等なので流し直してよい）。
 - PoC の手順（実行はオーナーの承認の後）: 0. document-service を配備 → 1. `node scripts/archive-ast-quote-documents.js --live --dry-run --operator <名前>`（件数と ID）→
   2. カナリア `--reason "#1974（カナリア）" --canary 20 --max-pages 1` → 3. 全件 `--resume --reason "#1974"` → 4. dry-run の再実行で対象 0 件・SC-05 の「アーカイブ済み」が件数どおり増える。
+
+## ［2026-10-17 追記 / #1983］発行の取りこぼしの回収は、ログの ID ではなく母集合で行う
+
+- 起点: #1983（MSP#1982 の AI レビュー）。口はページ全体を保存してから 1 件ずつ監査の行を出して発行する（決定 5・§結果）。発行がページの途中で失敗すると、
+  それより後の文書は台帳ではアーカイブ済みなのに監査の行（`Archived body-less document`）も発行も無い。運用仕様書が挙げていた「ログの行から ID を引く」回収では拾えない。
+- **決定: 回収の母集合にログの行を使わない。** 運用仕様書の「口が 500 で止まったとき」は次の 2 つだけを示す（コードは変えない。口の並びを変える案は採らない）。
+  - (a) 既定: `republish-document-updated.js --created-before 2026-09-27T00:00:00Z --status archived`。切り替え前のアーカイブ済み全件に status=archived を出し直す
+    （件数の上限なし・本文を読まず費用なし・冪等。単票でアーカイブした文書も含むが害は無い）。dry-run の「対象」は一括アーカイブの dry-run の「既にアーカイブ済み」と一致する。
+  - (b) この口の分だけ: 決定 5 の版の注記から ID を引き、`--ids` の上限（500 件）ごとに分けて流す。§結果 の「決定 6 の確認の SQL」は戻すための形（直前の版の状態を結ぶ）なので、
+    回収には**文書ごとの最後の版の注記が決定 5 の文字列**の文書だけを引く形を使う（その後に再正規化された文書は別のイベントが出ているので外れる）。
+    SQL と分割のループは運用仕様書（本文の無い切り替え前の文書のアーカイブ）にある。
+- §PoC の手順 2・3 のログの行数の突き合わせは、途中で止まらなかった回の確認としては有効である。ただし止まった回では行が足りないのが正常であり、回収の母集合には使わない。
+- 確かめたこと: 使い捨ての PostgreSQL 16 で、最後の版が本操作の文書だけが引かれ、再正規化・単票のアーカイブが外れること。「どれかの版」で引く変異では再正規化した文書を拾う（作業仕様書 `20261017_1983_bulk-op-publish-recovery-without-log-ids`）。
