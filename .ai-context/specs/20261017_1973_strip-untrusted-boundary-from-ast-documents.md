@@ -2,7 +2,7 @@
 title: 作業仕様書 — AST が境界語（<<<UNTRUSTED_DATA）つきで保存した文書の表題・本文から、一回限りの管理操作で枠を剥がす（#1973）
 type: spec
 status: done
-related_ids: [FR-06, FR-02, FR-13, UC-03, SC-05, IADR-0503, IADR-0509, IADR-0549, IADR-0554, IADR-0555]
+related_ids: [FR-06, FR-02, FR-13, UC-03, SC-05, IADR-0503, IADR-0509, IADR-0549, IADR-0554, IADR-0556]
 author: claude
 created: 2026-10-17
 updated: 2026-10-17

@@ -3,12 +3,12 @@
 /*
  * strip-untrusted-boundary.js
  *
- * FR-06, UC-03 / IADR-0555 (#1973。AST#1359 / AST#1360 の後始末):
+ * FR-06, UC-03 / IADR-0556 (#1973。AST#1359 / AST#1360 の後始末):
  *   AST が 2026-10-16 まで境界語（`<<<UNTRUSTED_DATA` … `UNTRUSTED_DATA>>>`）で囲んだまま KB へ保存した文書（project = ai-stock-trading）の
  *   表題・本文から、**先頭と末尾の枠だけ**を剥がす**一回限りの管理操作**の駆動器。剥がした文書は、単票の更新と同じイベントで
  *   索引（語彙・埋め込み）と Wiki へ同期し直される。
  *
- * 方式（IADR-0555）:
+ * 方式（IADR-0556）:
  *   - 確かめと書き換えは DocumentService の管理者だけの口 `POST /documents/strip-untrusted-boundary` が行う
  *     （本文を読み、枠の形なら剥がした本文を新しいキーへ書いて台帳の参照を付け替える。状態・属性・タグは動かさない）。
  *     本スクリプトは**量の制御・進捗・中断と再開・キューと DLQ の監視**だけを持つ（一括アーカイブの駆動器と同じ本体 lib/admin-page-driver.js）。
@@ -17,7 +17,7 @@
  *
  * 🔴 **稼働クラスタへ当たる。** `--live`（または LIVE=1）が無ければ何もせずに終わる（#1550）。
  *
- * 実行方法（PoC の手順は IADR-0555 §PoC の手順）:
+ * 実行方法（PoC の手順は IADR-0556 §PoC の手順）:
  *   node scripts/strip-untrusted-boundary.js --help
  *   node scripts/strip-untrusted-boundary.js --live --dry-run --operator alice
  *   node scripts/strip-untrusted-boundary.js --live --operator alice --reason "#1973（カナリア）" --canary 20 --max-pages 1

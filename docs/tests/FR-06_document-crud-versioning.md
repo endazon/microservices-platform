@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-02, UC-04, FR-08, FR-03, FR-04, FR-05, FR-06, SC-05, UC-03, NFR-09, FR-19, FR-12]
 adrs: [ADR-0141, ADR-0013, ADR-0121, ADR-0058, ADR-0122, ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056, ADR-0027]
-iadrs: [IADR-0555, IADR-0551, IADR-0549, IADR-0529, IADR-0509, IADR-0503, IADR-0484, IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
+iadrs: [IADR-0556, IADR-0551, IADR-0549, IADR-0529, IADR-0509, IADR-0503, IADR-0484, IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
 specs: [20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20261011_1891_ast-draft-not-duplicate, 20261008_1765_document-keyset-sql, 20261006_1762_republish-document-updated, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1658_relay-options-shared, 20260927_issue-1657_document-normalized-consumer-content-timeout, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
 issues: [#1973, #1961, #1931, #1891, #1765, #1762, #1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
 -->

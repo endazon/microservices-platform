@@ -11,7 +11,7 @@
  *   - 確かめとアーカイブは DocumentService の管理者だけの口 `POST /documents/archive-bodyless` が行う
  *     （本文の有無はオブジェクトストレージへの HEAD 相当で確かめる。本文を読まない。「無い」は NoSuchKey だけ）。
  *     本スクリプトは**量の制御・進捗・中断と再開・キューと DLQ の監視**だけを持つ（再発行の駆動器 republish-document-updated.js と同じ作法）。
- *     ［2026-10-17 / #1973 / IADR-0555］駆動の本体は lib/admin-page-driver.js へ切り出した（境界語を剥がす口と共有する）。
+ *     ［2026-10-17 / #1973 / IADR-0556］駆動の本体は lib/admin-page-driver.js へ切り出した（境界語を剥がす口と共有する）。
  *     ここに残るのは、この口に固有の引数（--created-before）・状態ファイルの絞り込み・集計・文言だけである。挙動は変えていない。
  *   - 認証は Keycloak の client_credentials（client `abac-seeder`。platform-admin を持つ）。I/O は再発行の駆動器の関数を再利用する。
  *   - 🔴 `--created-before` は**必須**（既定を持たない）。切り替え後の文書を巻き込む実行を組み立てられないようにする。

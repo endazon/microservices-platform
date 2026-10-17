@@ -15,7 +15,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace DocumentService.Tests.Features.Documents.StripUntrustedBoundary;
 
-// FR-06, UC-03, [[IADR-0555]] (#1973): **AST が境界語つきで保存した文書から枠を剥がす口（`POST /documents/strip-untrusted-boundary`）。**
+// FR-06, UC-03, [[IADR-0556]] (#1973): **AST が境界語つきで保存した文書から枠を剥がす口（`POST /documents/strip-untrusted-boundary`）。**
 //
 // 🔴 **対象外を絶対に触らない**ことを固定する: 枠の無い AST の文書・他の project・個人資料・アーカイブ済み。
 //   触らないとは「表題・本文の参照・版・更新時刻が動かず、イベントも出ない」ことである。

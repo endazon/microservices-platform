@@ -19,7 +19,7 @@ public sealed class RecordingObjectStorageClient : IObjectStorageClient
     // 格納の呼び出し回数。**「拒否したのに保存していた」を検出する**ために数える。
     public int PutTextCallCount;
 
-    // FR-06, [[IADR-0555]] (#1973): 書き込みの失敗注入（キーを受け取り、例外を返せばそれを投げる）。
+    // FR-06, [[IADR-0556]] (#1973): 書き込みの失敗注入（キーを受け取り、例外を返せばそれを投げる）。
     // **器を共有するので、使った試験は最後に null へ戻す。**
     public Func<string, Exception?>? PutTextThrows { get; set; }
 

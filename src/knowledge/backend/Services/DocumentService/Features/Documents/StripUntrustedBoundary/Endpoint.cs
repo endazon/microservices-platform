@@ -12,7 +12,7 @@ using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace DocumentService.Features.Documents.StripUntrustedBoundary;
 
-// FR-06, UC-03, [[IADR-0555]] (#1973。AST#1359 / AST#1360・AST の IADR-0542 の後始末):
+// FR-06, UC-03, [[IADR-0556]] (#1973。AST#1359 / AST#1360・AST の IADR-0542 の後始末):
 // **AST が境界語（`<<<UNTRUSTED_DATA` … `UNTRUSTED_DATA>>>`）で囲んだまま保存した文書の表題・本文から、枠を剥がす管理者だけの一回限りの口**
 // （`POST /documents/strip-untrusted-boundary`）。
 //
@@ -232,7 +232,7 @@ internal static class StripUntrustedBoundaryEndpoint
     }
 }
 
-// FR-06, [[IADR-0555]] (#1973): 要求。`dryRun` は必須。`limit` は既定 100・1〜200。書き換える呼び出し（`dryRun=false`）は `reason` が必須。
+// FR-06, [[IADR-0556]] (#1973): 要求。`dryRun` は必須。`limit` は既定 100・1〜200。書き換える呼び出し（`dryRun=false`）は `reason` が必須。
 public sealed record StripUntrustedBoundaryRequest(
     bool? DryRun,
     int? Limit = null,
@@ -240,7 +240,7 @@ public sealed record StripUntrustedBoundaryRequest(
     string? RequestedBy = null,
     string? Reason = null);
 
-// FR-06, [[IADR-0555]] (#1973): 応答。件数はすべてこのページについて数える。
+// FR-06, [[IADR-0556]] (#1973): 応答。件数はすべてこのページについて数える。
 // `wrapped` は表題か本文が枠の形をしていた文書の数（`items` の件数と同じ）。`stripped` は書き換えた数（dry-run は 0）。
 // `bodyMissing` は本文のオブジェクトが無かった（NoSuchKey）数、`notStored` は本文の参照が無い・storage:// でない数（どちらも表題だけを見る）。
 // `titleLeftWrapped` は剥がすと空になるので表題を剥がさなかった数（表題は必須）。

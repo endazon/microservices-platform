@@ -109,7 +109,7 @@ public static class DocumentEndpoints
         // `write` 群に置き、口の側で `AdminOnly` を積む（管理者だけ。SC-05 のアーカイブと同じ基準）。
         ArchiveBodylessDocumentsEndpoint.Map(write);
 
-        // FR-06, UC-03, [[IADR-0555]] (#1973): AST が境界語つきで保存した文書の表題・本文から枠を剥がす（一回限りの管理操作）。
+        // FR-06, UC-03, [[IADR-0556]] (#1973): AST が境界語つきで保存した文書の表題・本文から枠を剥がす（一回限りの管理操作）。
         // `write` 群に置き、口の側で `AdminOnly` を積む（管理者だけ。一括アーカイブと同じ基準）。
         StripUntrustedBoundaryEndpoint.Map(write);
 

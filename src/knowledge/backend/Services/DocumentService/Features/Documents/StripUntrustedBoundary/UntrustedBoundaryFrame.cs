@@ -1,6 +1,6 @@
 namespace DocumentService.Features.Documents.StripUntrustedBoundary;
 
-// FR-06, [[IADR-0555]] 決定 2 (#1973): AST が 2026-10-16 まで KB へ保存した表題・本文の**枠**（境界語）を剥がす純関数。
+// FR-06, [[IADR-0556]] 決定 2 (#1973): AST が 2026-10-16 まで KB へ保存した表題・本文の**枠**（境界語）を剥がす純関数。
 //
 // AST の旧い保存（AST#1359 の前の `PromptSafetySanitizer.Sanitize`）は、値を `<<<UNTRUSTED_DATA\n{中身}\nUNTRUSTED_DATA>>>` で囲んでいた。
 // 🔴 **剥がすのは先頭と末尾の枠だけ**である。中身の途中に現れる境界語は消さない（AST の判断側は読むときに不変点まで剥がす。
