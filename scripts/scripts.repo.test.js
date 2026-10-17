@@ -8563,6 +8563,8 @@ ${r.stderr}`);
           // #1973 / IADR-0556: AST が境界語つきで保存した文書から枠を剥がす一回限りの管理操作の**駆動器**（稼働クラスタの台帳を書き換える
           // 副作用を持ち、判定を返さない）。一括アーカイブの駆動器と同じく検査器ではない。母集合に数えない。
           'strip-untrusted-boundary.js',
+          // #1974 / IADR-0549（2026-10-17 追記）: AST の Quote の一括アーカイブの**駆動器**（台帳を書き換える副作用を持ち、判定を返さない）。
+          'archive-ast-quote-documents.js',
           // #1617 / 計画 ADR-0118 決定 4: T-25 の p の分布の**月次の集計器**。`measure-*` と同じく数字を出すだけで
           // 合否を返さない。走らせると GitHub の API を読みに行くので、検査器として spawn する母集合に入れない。
           't25-monthly-summary.js',
@@ -15421,6 +15423,117 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(runs[0].code, 0);
       assert.strictEqual(runs[1].code, 1);
       assert.strictEqual(runs[1].requests.length, 0);
+    });
+  }
+
+  // --- #1974 / IADR-0549（2026-10-17 追記）: AST の Quote の一括アーカイブの駆動器（本体は lib/admin-page-driver.js） ---------
+  //
+  // 口の挙動（対象の選び方・冪等）は DocumentService.Tests が持つ。ここで固定するのは引数・状態ファイルの取り違え・dry-run が件数と ID を出して
+  // 何も変えないこと・カナリアからの本番がちょうど 1 回ずつアーカイブすること・再実行の冪等である（停止と再開は共有の本体で #1931・#1973 の節が守る）。
+  {
+    const fs1974 = require('fs');
+    const os1974 = require('os');
+    const path1974 = require('path');
+    const aq = require('./archive-ast-quote-documents.js');
+
+    ok('#1974: 引数と状態ファイル — アーカイブする実行は --reason 必須・知らない引数は落とす・他の駆動器の状態からは続けない', () => {
+      assert.match(aq.preconditionProblem(aq.parseArgs(['--live'])), /--reason/);
+      assert.match(aq.preconditionProblem(aq.parseArgs(['--live', '--resume'])), /--reason/);
+      assert.strictEqual(aq.preconditionProblem(aq.parseArgs(['--live', '--dry-run'])), null);
+      assert.throws(() => aq.parseArgs(['--live', '--resume', '--dry-run']), /--resume/);
+      assert.throws(() => aq.parseArgs(['--live', '--kind', 'News']), /知らない引数/, '条件は口の側で固定（引数で変えられない）');
+      assert.deepStrictEqual(aq.PROFILE.buildRequestBody({ dryRun: false, filters: {}, limit: 5, cursor: 'c', requestedBy: 'a', reason: 'r' }),
+        { dryRun: false, limit: 5, cursor: 'c', requestedBy: 'a', reason: 'r' });
+      const s = aq.newState({});
+      assert.strictEqual(aq.stateProblem(s), null);
+      assert.match(aq.stateProblem(require('./strip-untrusted-boundary.js').newState({})), /種類/);
+      assert.match(aq.stateProblem(require('./archive-bodyless-documents.js').newState({ createdBefore: '2026-09-27T00:00:00.000Z' })), /種類/);
+    });
+
+    const runDriver1974 = (cfg) => {
+      const dir = fs1974.mkdtempSync(path1974.join(os1974.tmpdir(), 'aq1974-drv-'));
+      try {
+        // 口の模型: 文書は並び順の配列。母集合は未アーカイブの Quote で、位置がカーソルより後ろのもの（アーカイブすると母集合から外れる）。
+        const harness = path1974.join(dir, 'harness.js');
+        fs1974.writeFileSync(harness, `
+const http = require('http'); const fs = require('fs');
+const [scriptPath, cfgPath] = process.argv.slice(2);
+const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+const docs = cfg.docs.map((d, i) => ({ ...d, i, archives: 0 }));
+const requests = [];
+const server = http.createServer((req, res) => {
+  let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+    const send = (o) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+    if (req.url.includes('/token')) return send({ access_token: 't' });
+    if (req.url !== '/documents/archive-ast-quotes') return send({});
+    const body = JSON.parse(b); requests.push(body);
+    const after = body.cursor ? Number(body.cursor) : -1;
+    const keyed = docs.filter((d) => d.quote && !d.archived && d.i > after);
+    const page = keyed.slice(0, body.limit);
+    if (!body.dryRun) for (const d of page) { d.archived = true; d.archives++; }
+    send({ dryRun: body.dryRun, selected: page.length, archived: body.dryRun ? 0 : page.length, ids: page.map((d) => d.id),
+      nextCursor: keyed.length > body.limit ? String(page[page.length - 1].i) : null });
+  });
+});
+server.listen(0, '127.0.0.1', async () => {
+  const url = 'http://127.0.0.1:' + server.address().port;
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1' });
+  const aq = require(scriptPath);
+  const out = [];
+  for (const run of cfg.runs) {
+    if (run.removeState) fs.rmSync(cfg.stateFile, { force: true });
+    const before = requests.length;
+    const code = await aq.main(run.argv);
+    out.push({ code, state: fs.existsSync(cfg.stateFile) ? JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')) : null,
+      archives: Object.fromEntries(docs.map((d) => [d.id, d.archives])),
+      requests: requests.slice(before).map((r) => ({ dryRun: r.dryRun, limit: r.limit, reason: r.reason ?? null })) });
+  }
+  server.close();
+  process.stdout.write('\\n@@RESULT@@' + JSON.stringify(out));
+  process.exit(0);
+});
+`);
+        const stateFile = path1974.join(dir, 'state.json');
+        const cfgPath = path1974.join(dir, 'cfg.json');
+        const common = ['--live', '--state', stateFile, '--sleep-ms', '0', '--operator', 'alice', '--no-queue-watch'];
+        fs1974.writeFileSync(cfgPath, JSON.stringify({ ...cfg, stateFile, runs: cfg.runs.map((r) => ({ ...r, argv: [...common, ...r.argv] })) }));
+        const env = { ...process.env, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' };
+        for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'LIVE']) delete env[k];
+        const r = require('child_process').spawnSync(process.execPath,
+          [harness, path1974.join(__dirname, 'archive-ast-quote-documents.js'), cfgPath], { encoding: 'utf8', env, timeout: 60000 });
+        const i = (r.stdout || '').indexOf('@@RESULT@@');
+        assert.ok(i >= 0, `駆動器の試験器が結果を出さなかった（exit ${r.status}）:\n${r.stdout}\n${r.stderr}`);
+        return { runs: JSON.parse(r.stdout.slice(i + '@@RESULT@@'.length)), stdout: r.stdout };
+      } finally {
+        fs1974.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const docs1974 = [
+      { id: 'q0', quote: true }, { id: 'n0' }, { id: 'q1', quote: true }, { id: 'q2', quote: true }, { id: 'n1' }, { id: 'q3', quote: true },
+    ];
+    const apply1974 = ['--reason', 'test', '--canary', '1', '--page-size', '2'];
+
+    ok('#1974: dry-run は件数と対象の ID を出し、何もアーカイブせず状態ファイルも作らない', () => {
+      const { runs, stdout } = runDriver1974({ docs: docs1974, runs: [{ argv: ['--dry-run', '--page-size', '3'] }] });
+      assert.strictEqual(runs[0].code, 0, stdout);
+      assert.ok(Object.values(runs[0].archives).every((n) => n === 0));
+      assert.strictEqual(runs[0].state, null);
+      assert.ok(runs[0].requests.every((q) => q.dryRun === true));
+      assert.match(stdout, /アーカイブの対象: 4 件/);
+      for (const id of ['q0', 'q1', 'q2', 'q3']) assert.match(stdout, new RegExp(`^    ${id}$`, 'm'));
+      assert.doesNotMatch(stdout, /^ {4}n\d/m);
+    });
+
+    ok('#1974: カナリアから本番を流すと Quote だけをちょうど 1 回ずつアーカイブして完了し、流し直しても何もしない', () => {
+      const { runs, stdout } = runDriver1974({ docs: docs1974, runs: [{ argv: apply1974 }, { argv: apply1974, removeState: true }] });
+      const [first, again] = runs;
+      assert.strictEqual(first.code, 0, stdout);
+      assert.deepStrictEqual(first.archives, { q0: 1, n0: 0, q1: 1, q2: 1, n1: 0, q3: 1 });
+      assert.strictEqual(first.requests[0].limit, 1, '最初のページはカナリア');
+      assert.ok(first.requests.every((q) => q.dryRun === false && q.reason === 'test'));
+      assert.match(stdout, /完了: アーカイブ 4 件/);
+      assert.strictEqual(again.code, 0);
+      assert.strictEqual(again.state.totals.archived, 0, '2 回目は 1 件もアーカイブしない');
     });
   }
 

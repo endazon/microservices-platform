@@ -2247,6 +2247,56 @@ paths:
         "503":
           description: オブジェクトストレージが構成されていない（何もアーカイブしない）
 
+  /documents/archive-ast-quotes:
+    post:
+      tags: [Documents]
+      summary: "FR-06, UC-03, SC-05: 株取引ユニットの相場スナップショット（kind = Quote）の文書をアーカイブする（一回限りの管理操作。管理者だけ。#1974）"
+      description: |
+        `project = ai-stock-trading` かつ `kind = Quote`（大文字小文字を区別する完全一致）の、未アーカイブの組織文書を既存の状態 `archived` へ移す（消さない）。
+        **管理者（`platform-admin`）だけ**が呼べる。メッシュ内部の口であり、BFF には出さない。条件は口の側で固定する。本文は読まない。
+        量の制御・カナリア・中断と再開・キューと DLQ の監視は駆動スクリプト `scripts/archive-ast-quote-documents.js` が持つ。
+
+        - 🔴 **`dryRun` は必須**（省略は 400）。アーカイブする呼び出しは `reason` も必須。dry-run は件数と対象の文書 ID だけを返す。
+        - アーカイブした文書は版を 1 つ進め（注記は固定の文字列）、単票のアーカイブと同じ `DocumentUpdated`（status=archived）を発行する。
+        - 他の kind・他の project・個人資料・アーカイブ済みには触らない。冪等（アーカイブ済みは母集合から外れる）。
+        - 並び: `createdAt` 昇順、同時刻は `id` 昇順（キーセット）。
+      operationId: archive-ast-quotes
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dryRun]
+              properties:
+                dryRun: { type: boolean, description: "true で件数と対象の ID だけを返し、false でアーカイブする（必須）" }
+                limit: { type: integer, default: 100, minimum: 1, maximum: 200, description: 1 ページの件数（範囲外は 400） }
+                cursor: { type: string, description: "前の応答の `nextCursor`（不透明）。不正な値は 400" }
+                requestedBy: { type: string, maxLength: 100, description: "操作者の札（認証済みの主体と一緒にログへ出る）" }
+                reason: { type: string, maxLength: 500, description: "理由の札（アーカイブする呼び出しでは必須）" }
+      responses:
+        "200":
+          description: 選んだ 1 ページ（dry-run も同じ）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dryRun, selected, archived, ids]
+                properties:
+                  dryRun: { type: boolean }
+                  selected: { type: integer, description: このページの対象の件数 }
+                  archived: { type: integer, description: アーカイブした件数（dry-run は 0） }
+                  ids: { type: array, items: { type: string, format: uuid }, description: このページの対象の文書 ID }
+                  nextCursor: { type: [string, "null"], description: 続きのカーソル。尽きたら null }
+        "400":
+          description: dryRun の省略、アーカイブする呼び出しの reason の省略、limit の範囲外、長さの超過、不正なカーソル
+        "401":
+          description: 未認証
+        "403":
+          description: 管理者でない
+
   /documents/strip-untrusted-boundary:
     post:
       tags: [Documents]

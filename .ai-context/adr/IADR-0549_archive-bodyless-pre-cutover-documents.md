@@ -5,11 +5,12 @@ status: Accepted
 related_ids: [FR-06, FR-02, FR-17, UC-03, SC-05, ADR-0106, IADR-0503, IADR-0509, IADR-0540, IADR-0541, IADR-0545]
 author: claude
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md（SC-05 文書管理。公開・アーカイブ・アーカイブ解除は計画に無い旨）
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（FR-06）
 related_specs:
+  - ../specs/20261017_1974_archive-ast-quote-snapshots.md
   - ../specs/20261016_1931_archive-bodyless-pre-cutover-documents.md
 ---
 
@@ -150,3 +151,21 @@ WHERE d."Status" = 'archived'
 4. 確認: もう一度 dry-run を流し「アーカイブの対象」が 0・「既にアーカイブ済み」が約 5,803 増えていること。SC-05 の状態別の件数の合計が「すべて」と一致すること。
    検索（SC-01）で切り替え後の文書が従前どおり当たること（新しいコレクションの `points_count` が変わらないこと）。
 5. 戻し方: 決定 6（計画の裁定の後に限る）。
+
+## ［2026-10-17 追記 / #1974］同じ手段で AST の相場スナップショット（kind = Quote）をアーカイブする
+
+- 起点: #1974（AST#1366 の後始末）。AST は 2026-10-16 まで 5 分ごとに相場のスナップショット（project = ai-stock-trading・属性 `kind = Quote`）を保存していた
+  （10-15 の 1 日だけで約 950 件）。旧い文書は索引に残り、銘柄の検索の関連度の候補（4×TopK）を占め続ける。AST の検索の絞り込みは単値の完全一致だけで、
+  取り出した後に落としても候補に入れなかったニュース・開示は戻らない。
+- **決定: 本 ADR の手段をそのまま使い、母集合だけを変えた口 `POST /documents/archive-ast-quotes` を足す。新しい仕組みは作らない。**
+  - 遷移は `Document.Archive(注記)`、下流は単票のアーカイブと同じ発行の門、ページ送り・`dryRun` 必須・アーカイブは `reason` 必須・監査ログ・`requestedBy` / `reason` の上限は本 ADR の口と同じ。
+  - 母集合は **アーカイブ済みでない ∩ `project = ai-stock-trading` ∩ `kind = Quote`（大文字小文字を区別する完全一致）∩ 組織文書**で、条件は口の側で固定する。
+    属性は jsonb の値変換のため SQL へ訳せないので、一覧の口と同じ `DocumentPageQuery.ReadPageAsync` で塊の中で当てる（本 ADR の口の `CreatedAt < createdBefore` の SQL の絞り込みとはここだけが違う）。
+  - 本文は読まない（存在の確認も要らない）。版の注記は `archived: AST quote snapshot (kind=Quote) — bulk archive of AST market snapshots (#1974)`（決定 6 の SQL はこの文字列でも引ける）。
+  - dry-run は件数と**対象の文書 ID** を返す。駆動スクリプト `scripts/archive-ast-quote-documents.js` は本 ADR の駆動器と同じ本体（`scripts/lib/admin-page-driver.js`。IADR-0556 決定 6）の profile である。
+- 却下: **削除（Delete）**は戻せない（#1974 が残余として求めた）。アーカイブなら台帳と本文が残り、SC-05 で「アーカイブ済み」として見分けられる。
+  **検索の絞り込みに否定（`kind ≠ Quote`）を足す**のは AST 側の要求を基盤の検索の契約へ広げることになり、索引に点が残る（候補の母集合は減らない）。
+- 残余: 本 ADR §結果 の「保存の後の発行が途中で失敗した文書は再実行で拾われない」も同じ。**回収はログの ID ではなく母集合で再発行する**: `republish-document-updated.js --attr project=ai-stock-trading --attr kind=Quote --status archived`（冪等。ページの途中で発行が失敗すると、それより後の文書は監査の行が出ないまま台帳ではアーカイブ済みになるため、ID では拾えない）。
+  アーカイブ解除が無い点（決定 6）も同じ。AST が Quote の保存を止める前に配備すれば、その後の Quote は次の実行で拾う（冪等なので流し直してよい）。
+- PoC の手順（実行はオーナーの承認の後）: 0. document-service を配備 → 1. `node scripts/archive-ast-quote-documents.js --live --dry-run --operator <名前>`（件数と ID）→
+  2. カナリア `--reason "#1974（カナリア）" --canary 20 --max-pages 1` → 3. 全件 `--resume --reason "#1974"` → 4. dry-run の再実行で対象 0 件・SC-05 の「アーカイブ済み」が件数どおり増える。
