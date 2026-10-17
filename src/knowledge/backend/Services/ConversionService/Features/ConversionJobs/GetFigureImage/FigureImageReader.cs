@@ -45,9 +45,10 @@ public sealed class FigureImageReader(
         catch (AmazonS3Exception ex) when (ObjectStorageErrors.IsNoSuchKey(ex))
         {
             // 基数はジョブ × 図で閉じる（利用者識別子・画像は載せない）。
+            // 図 ID と URI は台帳（DB）の値を出す。パスの入力（`figureId`）はログへ載せない（ログの偽装を防ぐ。CodeQL cs/log-forging）。
             logger.LogWarning(
                 "Figure image object missing (NoSuchKey) for job {JobId} figure {FigureId} at {ImageUri}",
-                jobId, figureId, uri);
+                jobId, figure.FigureId, uri);
             return FigureImageResult.Missing();
         }
 
