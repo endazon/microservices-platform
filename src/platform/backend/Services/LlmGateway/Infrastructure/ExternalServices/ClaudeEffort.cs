@@ -22,12 +22,12 @@ public static class ClaudeEffort
     public static readonly IReadOnlySet<string> Levels =
         new HashSet<string>(["low", "medium", "high", "xhigh", "max"], StringComparer.Ordinal);
 
-    // 🔴 **effort を受け付けると確かめたモデルだけ**に送る。`claude-haiku-4-5` は effort を 400 で拒む
-    // （切り戻しで用途を haiku-4-5 へ戻したときに、設定 1 つで全件 400 にしない）。ここに無いモデルへは送らない。
-    // 一覧は利用許可集合（claude-managed の Models）のうち effort に対応するものに限る（sonnet-4-6 は xhigh を
-    // 受けないため、値域が揃わないモデルは載せない）。
+    // 🔴 **effort を受け付けると確かめたモデルだけ**に送る。ここに無いモデルへは送らない（effort を 400 で拒むモデルへ
+    // 設定 1 つで全件 400 にしない）。一覧は利用許可集合（claude-managed の Models）のうち effort に対応するものに限る。
+    // ［2026-10-17 / #1903］計画 ADR-0138 決定 7 により許可集合は 5.5 系の 3 モデルだけになったので、旧世代
+    // （claude-opus-5・claude-sonnet-5・claude-opus-4-8）を外した。許可集合に無いモデルをここに残さない。
     public static readonly IReadOnlySet<string> CapableModels = new HashSet<string>(
-        ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5", "claude-sonnet-5", "claude-opus-4-8"],
+        ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
         StringComparer.OrdinalIgnoreCase);
 
     // 用途とモデルから、送る effort を決める。送らないときは null。
