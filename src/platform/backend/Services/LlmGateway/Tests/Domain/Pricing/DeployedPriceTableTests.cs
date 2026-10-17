@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using LlmGateway.Domain.Pricing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Tests.Domain.Pricing;
 
@@ -23,15 +24,17 @@ public class DeployedPriceTableTests(TestWebApplicationFactory factory)
         new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero),
     ];
 
-    // NFR-19, ADR-0044 (#1741): claude-sonnet-5 は 2026-09-01 の前後を問わず入力 $2 / 出力 $10（百万トークンあたり）。
+    // NFR-19, ADR-0044 (#1741): sonnet の単価は 2026-09-01 の前後を問わず入力 $2 / 出力 $10（百万トークンあたり）。
+    // ［2026-10-17 / #1903］#1741 の対象だった claude-sonnet-5 の行は、計画 ADR-0138 決定 7 により単価表から外した。
+    // 「予定日の後ろに区切りを持たない（中止された改定の区間を持たない）」ことの固定は、後継の claude-sonnet-5-5 で引き継ぐ。
     [Theory]
     [MemberData(nameof(SonnetInstants))]
-    public void 実設定のclaude_sonnet_5は改定予定日の前後とも2ドルと10ドルで換算される(DateTimeOffset at)
+    public void 実設定のclaude_sonnet_5_5は改定予定日の前後とも2ドルと10ドルで換算される(DateTimeOffset at)
     {
         var prices = factory.Services.GetRequiredService<ModelPriceTable>();
 
-        var input = prices.Estimate("claude-sonnet-5", 1_000_000, 0, at);
-        var output = prices.Estimate("claude-sonnet-5", 0, 1_000_000, at);
+        var input = prices.Estimate("claude-sonnet-5-5", 1_000_000, 0, at);
+        var output = prices.Estimate("claude-sonnet-5-5", 0, 1_000_000, at);
 
         prices.Currency.Should().Be("USD");
         input.Status.Should().Be(PricingStatus.Priced);
@@ -62,18 +65,31 @@ public class DeployedPriceTableTests(TestWebApplicationFactory factory)
         result.Cost.Should().Be(inputTokens / 1_000_000m * (decimal)inputPerMillion + (decimal)outputPerMillion);
     }
 
-    // FR-10 T-48, IADR-0531: 切り戻し用に許可集合へ残した旧モデルも単価を持つ（外すと切り戻した瞬間から費用が「解決漏れ」になる）。
+    // FR-10 T-48, FR-11, ADR-0138 決定 7 (#1903): 実設定の単価表は 5.5 系の 3 モデルだけを持つ。
+    // 旧 ID の行を残さない（決定 7「単価表に旧 ID の行を残さない」）。有効期間つきで残す形も採らない（同）。
+    [Fact]
+    public void 実設定の単価表は55系の3モデルだけを持つ()
+    {
+        var options = factory.Services.GetRequiredService<IOptions<ModelPricingOptions>>().Value;
+
+        options.Models.Keys.Should().BeEquivalentTo(["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]);
+    }
+
+    // FR-10 T-48, ADR-0138 決定 7 (#1903): 旧世代のモデルは単価を持たない（NoEntryForModel）。
+    // ［2026-10-17］従前（IADR-0531 決定 1）は切り戻し用に許可集合へ残した旧モデルの単価を固定していた。決定 7 で許可集合からも
+    // 外れたので、ゲートウェイがこれらで呼ぶことは無い（明示の Model で要求しても許可集合の外として扱われる。T-42）。
     [Theory]
-    [InlineData("claude-opus-5", 5.0)]
-    [InlineData("claude-sonnet-5", 2.0)]
-    [InlineData("claude-haiku-4-5", 1.0)]
-    public void 切り戻し用の旧モデルも単価を持つ(string model, double inputPerMillion)
+    [InlineData("claude-opus-5")]
+    [InlineData("claude-sonnet-5")]
+    [InlineData("claude-haiku-4-5")]
+    [InlineData("claude-opus-4-8")]
+    [InlineData("claude-sonnet-4-6")]
+    public void 実設定は旧世代のモデルの単価を持たない(string model)
     {
         var prices = factory.Services.GetRequiredService<ModelPriceTable>();
 
-        var result = prices.Estimate(model, 1_000_000, 0, new DateTimeOffset(2026, 10, 10, 0, 0, 0, TimeSpan.Zero));
+        var result = prices.Estimate(model, 1_000_000, 0, new DateTimeOffset(2026, 10, 17, 0, 0, 0, TimeSpan.Zero));
 
-        result.Status.Should().Be(PricingStatus.Priced);
-        result.Cost.Should().Be((decimal)inputPerMillion);
+        result.Status.Should().Be(PricingStatus.NoEntryForModel);
     }
 }

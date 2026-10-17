@@ -71,13 +71,11 @@ public class ModelPricingOptionsValidatorTests
         {
             Models =
             {
-                // ［2026-10-10 / #1875・IADR-0531］5.5 系の 3 モデル（haiku-5-5 はプロンプト長の 2 段）と、切り戻し用に残す旧モデル。
+                // ［2026-10-10 / #1875・IADR-0531］5.5 系の 3 モデル（haiku-5-5 はプロンプト長の 2 段）。
+                // ［2026-10-17 / #1903］計画 ADR-0138 決定 7 により、切り戻し用に残していた旧モデルの行を外した（配備中の表に合わせる）。
                 ["claude-opus-5-5"] = [Entry(null, null, 4m)],
-                ["claude-sonnet-5-5"] = [Entry(null, null, 2m)],
+                ["claude-sonnet-5-5"] = [Entry(null, null, 2m)], // #1741: 区切りなしの 1 区間
                 ["claude-haiku-5-5"] = [Haiku55()],
-                ["claude-opus-5"] = [Entry(null, null, 5m)],
-                ["claude-sonnet-5"] = [Entry(null, null, 2m)], // #1741: 区切りなしの 1 区間
-                ["claude-haiku-4-5"] = [Entry(null, null, 1m)],
             },
         };
 
