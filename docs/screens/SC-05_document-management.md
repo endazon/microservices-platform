@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-06, FR-09, FR-12, FR-16, SC-02, SC-03, SC-05, SC-07, UC-03]
 adrs: [ADR-0119, AST/ADR-0032]
-iadrs: [IADR-0009, IADR-0039, IADR-0041, IADR-0044, IADR-0075, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0135, IADR-0373, IADR-0405, IADR-0537, IADR-0545, IADR-0560]
+iadrs: [IADR-0009, IADR-0039, IADR-0041, IADR-0044, IADR-0075, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0135, IADR-0373, IADR-0405, IADR-0537, IADR-0545, IADR-0561]
 specs: [20261016_1923_sc05-list-count-common-rule, 20261014_1923_document-list-pagination, 20260927_issue-1616_machine-client-own-document-write, 20260805_issue-503_sc05-08-admin-screens, 20260809_issue-629_document-write-admin-only, 20260906_issue-1233_restricted-project-controls, 20261015_1923_document-list-sort-filter, 20261017_1923_document-list-facets-preview]
 issues: [#1923, #1897, #1616, #7, #446, #490, #502, #506, #519, #553, #629, #634, #640, #1233, planning#197, planning#198, planning#199, planning#299, planning#796, planning#799]
 -->

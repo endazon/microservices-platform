@@ -908,7 +908,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   });
 });
 
-// SC-05, FR-06（#1923 の残り・IADR-0560）: データソース・機密区分・タグ・プロジェクト・保存日の絞り込み。
+// SC-05, FR-06（#1923 の残り・IADR-0561）: データソース・機密区分・タグ・プロジェクト・保存日の絞り込み。
 // 件数は BFF が ABAC で絞った後の数で、画面は描くだけである。
 describe('DocumentManagementPage (SC-05) facets', () => {
   const listPaths = () =>

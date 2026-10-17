@@ -7,7 +7,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace Platform.Bff.Tests;
 
-// FR-06, UC-03, SC-05, NFR-16, [[IADR-0009]], [[IADR-0545]], [[IADR-0560]] (#1923 の残り):
+// FR-06, UC-03, SC-05, NFR-16, [[IADR-0009]], [[IADR-0545]], [[IADR-0561]] (#1923 の残り):
 // 文書管理の一覧（`GET /bff/documents`）の**データソース・タブ（機械の収集か否か）・機密区分・タグ・プロジェクト・保存日の範囲**の絞り込みと、
 // **データソース別・プロジェクト別の件数**。
 //
@@ -177,6 +177,27 @@ public class BffDocumentListFacetTests : IClassFixture<BffTestFactory>
         page.Items[0].OriginalUri.Should().Be("https://example.com/a");
         page.Items[1].DataSourceName.Should().BeNull();
         page.Items[1].OriginalUri.Should().BeNull();
+    }
+
+    // 🔴 件数に出した鍵は必ず選べる: 長い出典名（属性 `source` に上限は無い）の鍵は受理側の上限で切って数え、
+    // 切った鍵で絞ると 400 にならずにその文書に当たる。サロゲートペアは割らない。
+    [Fact]
+    public async Task 長い出典名の鍵は受理の上限で切って数え選べる()
+    {
+        var longSource = new string('s', 500);
+        var surrogate = new string('a', DocumentListFilter.MaxSourceLength - 5) + "😀😀"; // "col:" と合わせて上限の 1 つ手前で上位サロゲートが来る
+        _factory.StubDocumentList = [Doc(1, attributes: Collected(longSource)), Doc(2, attributes: Collected(surrogate)), Doc(5)];
+
+        var page = await PageAsync("");
+        var keys = page.SourceCounts.Keys.Where(k => k.StartsWith("col:", StringComparison.Ordinal)).ToList();
+        keys.Should().HaveCount(2).And.OnlyContain(k => k.Length <= DocumentListFilter.MaxSourceLength);
+        keys.Should().OnlyContain(k => !char.IsHighSurrogate(k[k.Length - 1]));
+
+        foreach (var (key, n) in new[] { (keys.Single(k => k.Contains('s')), 1), (keys.Single(k => k.Contains('a')), 2) })
+        {
+            var filtered = await PageAsync($"?source={Uri.EscapeDataString(key)}");
+            Numbers(filtered).Should().Equal(n);
+        }
     }
 
     // ── 🔴 存在秘匿（IADR-0009） ──────────────────────────────────

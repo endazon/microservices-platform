@@ -35,12 +35,12 @@ public record DocumentDto
     // 本文を投入した呼び出し側は送った本文から同じ値を計算して「保存済みの本文が最新か」を判定できる。
     // **既定は null**（末尾追加・既定値付き。項目を持たない旧応答は「指紋不明」として読める）。
     public string? ContentFingerprint { get; init; }
-    // FR-06, SC-05, [[IADR-0560]] (#1923): **取り込み元のデータソースの表示名**（台帳の `Document.DataSourceName` の写し。
+    // FR-06, SC-05, [[IADR-0561]] (#1923): **取り込み元のデータソースの表示名**（台帳の `Document.DataSourceName` の写し。
     // 表示名の複写であり、データソースの改名は次の同期まで遡及しない）。直接投入・画面からの作成では null。
     // 文書管理の一覧がデータソースで絞り込み・数えるための材料（BFF の `DocumentListSources`）。
     // **既定は null**（末尾追加・既定値付き。項目を持たない旧応答は「データソースなし」として読める）。
     public string? DataSourceName { get; init; }
-    // FR-06, SC-05, [[IADR-0560]] (#1923): **原本の所在**（台帳の `Document.OriginalUri`。API の書き手が渡した元の URL ——
+    // FR-06, SC-05, [[IADR-0561]] (#1923): **原本の所在**（台帳の `Document.OriginalUri`。API の書き手が渡した元の URL ——
     // AST の収集ではニュース・開示の出典）。🔴 書き手の申告であり検証していない。画面は `http(s)` のときだけリンクにする。
     // **既定は null**（末尾追加・既定値付き）。
     public string? OriginalUri { get; init; }
@@ -58,7 +58,7 @@ public record DocumentPageDto
 // 並びは要求の並べ替え（既定は更新日時の降順。同値は ID。［2026-10-15 / [[IADR-0545]]］）。
 // `Offset` / `Limit` は BFF が丸めた後の値である（要求の値ではない）。
 // 🔴 **件数はどれも利用者の ABAC スコープで絞った後の数だけである**（権限外の文書は数えない。IADR-0009 の存在秘匿）。
-//   `Total` は窓の母数（ABAC ∧ 利用者の絞り込み〔表題・状態。［2026-10-17 / [[IADR-0560]]］データソース・機密区分・タグ・プロジェクト・保存日・タブ〕）、
+//   `Total` は窓の母数（ABAC ∧ 利用者の絞り込み〔表題・状態。［2026-10-17 / [[IADR-0561]]］データソース・機密区分・タグ・プロジェクト・保存日・タブ〕）、
 //   `UnfilteredTotal` と `StatusCounts`（［2026-10-17］`SourceCounts` / `ProjectCounts` も）は利用者の絞り込みを当てる前の数。
 public record DocumentListPageDto
 {
@@ -70,9 +70,9 @@ public record DocumentListPageDto
     public int UnfilteredTotal { get; init; }
     // FR-06, SC-05, [[IADR-0545]] (#1923): 状態（`DocumentDto.Status` の生値）ごとの件数。集合は `UnfilteredTotal` と同じ（合計が一致する）。
     public Dictionary<string, int> StatusCounts { get; init; } = [];
-    // FR-06, SC-05, [[IADR-0560]] (#1923): データソースの鍵（`DocumentListSources.KeyOf`）ごとの件数。集合は `UnfilteredTotal` と同じ。
+    // FR-06, SC-05, [[IADR-0561]] (#1923): データソースの鍵（`DocumentListSources.KeyOf`）ごとの件数。集合は `UnfilteredTotal` と同じ。
     public Dictionary<string, int> SourceCounts { get; init; } = [];
-    // FR-06, SC-05, [[IADR-0560]] (#1923): 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `UnfilteredTotal` と同じ。
+    // FR-06, SC-05, [[IADR-0561]] (#1923): 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `UnfilteredTotal` と同じ。
     public Dictionary<string, int> ProjectCounts { get; init; } = [];
 }
 

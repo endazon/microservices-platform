@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-06, FR-09, SC-03, SC-05, SC-06, SC-07, UC-03]
 adrs: [ADR-0031, ADR-0066]
-iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308, IADR-0537, IADR-0545, IADR-0560]
+iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308, IADR-0537, IADR-0545, IADR-0561]
 specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation, 20261014_1923_document-list-pagination, 20261015_1923_document-list-sort-filter, 20261017_1923_document-list-facets-preview]
 issues: [#501, #1065, #1923, #1897]
 -->
@@ -248,6 +248,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | J5 | **存在秘匿** | 新しい絞り込みを付けても、権限外の文書を混ぜた台帳と混ぜない台帳で応答（全件数・各件数・窓）が一致する（陽性対照つき） | `権限外の文書は新しい絞り込みの件数にもデータソース別の件数にも現れない` |
 | J6 | **存在秘匿（個人資料）** | 他人の個人資料も、新しい絞り込み・データソース別・プロジェクト別の件数のどれにも現れない（陽性対照つき） | `他人の個人資料は新しい絞り込みの件数にもプロジェクト別の件数にも現れない` |
 | J7 | 許可ポリシーなし | 件数はどれも 0 / 空 | `許可ポリシーが無いときデータソース別とプロジェクト別の件数は空` |
+| J9 | **件数の鍵は選べる** | 長い出典名の鍵は受理の上限で切って数え（サロゲートペアは割らない）、切った鍵で絞ると 400 にならずその文書に当たる | `長い出典名の鍵は受理の上限で切って数え選べる` |
 | J8 | 検証 | 未知の `origin` / `confidentiality`、壊れた日時、`createdFrom >= createdBefore` は 400 で後段を呼ばない。`source` / `tag` / `project` は上限ちょうどまで | `未知の値と壊れた日時と逆向きの範囲は400で後段を呼ばない` ／ `長すぎる値は400で上限ちょうどは通る` |
 
 ### 契約・後段（xUnit）

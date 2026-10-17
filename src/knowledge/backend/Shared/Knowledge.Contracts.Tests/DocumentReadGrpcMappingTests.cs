@@ -74,7 +74,7 @@ public class DocumentReadGrpcMappingTests
             .ContentFingerprint.Should().BeNull();
     }
 
-    // FR-06, SC-05, [[IADR-0560]] (#1923): データソースの表示名・原本の所在は presence で運ぶ。null は null のまま、空文字は空文字のまま。
+    // FR-06, SC-05, [[IADR-0561]] (#1923): データソースの表示名・原本の所在は presence で運ぶ。null は null のまま、空文字は空文字のまま。
     // 代入を落とすと gRPC 経路の一覧だけがデータソースで絞れず、出典のリンクも出ない。
     [Fact]
     public void DataSourceName_and_OriginalUri_value_null_and_empty_survive_the_round_trip()

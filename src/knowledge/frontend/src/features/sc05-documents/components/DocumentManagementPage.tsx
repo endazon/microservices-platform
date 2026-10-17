@@ -94,7 +94,7 @@ export function DocumentManagementPage() {
   const [notice, setNotice] = useState<string | null>(null);
   // SC-05, FR-06, IADR-0537（#1923 段 1）: 一覧はページで引く（既定 50 件）。総件数は BFF が権限で絞った後の数。
   // ［2026-10-15 / #1923 段 2・IADR-0545］並べ替え・表題の検索・状態の絞り込みも同じ要求に載せる。条件を変えたら先頭へ戻す。
-  // ［2026-10-17 / #1923・IADR-0560］データソース・機密区分・タグ・プロジェクト・保存日も同じ要求に載せる。
+  // ［2026-10-17 / #1923・IADR-0561］データソース・機密区分・タグ・プロジェクト・保存日も同じ要求に載せる。
   const [request, setRequest] = useState<DocumentListRequest>({
     offset: 0,
     limit: DEFAULT_DOCUMENT_PAGE_SIZE,
@@ -238,7 +238,7 @@ export function DocumentManagementPage() {
         )}
 
         {/* #1923 段 2: 並べ替え・表題の検索・状態の絞り込み。取得の状態に関わらず出す（0 件でも条件を戻せるように）。
-            ［2026-10-17 / IADR-0560］データソース・機密区分・タグ・プロジェクト・保存日を足した。 */}
+            ［2026-10-17 / IADR-0561］データソース・機密区分・タグ・プロジェクト・保存日を足した。 */}
         <DocumentListToolbar
           sort={request.sort}
           conditions={request}
