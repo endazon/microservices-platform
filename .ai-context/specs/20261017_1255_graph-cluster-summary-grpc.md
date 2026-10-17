@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — グラフのクラスタ要約を east-west gRPC（LlmCompletion/Complete）へ移し、最後の east-west REST 同期呼び出しを撤去する（#1255 / IADR-0533 フォローアップ 2）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-11, FR-17, NFR-09, NFR-16, ADR-0029, ADR-0035, ADR-0075, ADR-0089, IADR-0379, IADR-0400, IADR-0424, IADR-0430, IADR-0533]
 author: claude
 created: 2026-10-17
@@ -84,15 +84,15 @@ issue: "#1255"
 
 ## 受け入れ基準（Given-When-Then）
 
-- [ ] Given 撤去後の develop 相当 / When `AddHttpClient` を本番コードで全走査する / Then east-west（内部サービス宛）の登録は **0 本**（残りは north-south の BFF エッジ・外部（Vault・Keycloak・Wiki.js・オブジェクトストレージ・LLM プロバイダ・SaaS）・トークン取得だけ。分類を PR に載せる）
-- [ ] Given クラスタ要約 / When gRPC 実装で呼ぶ / Then `purpose=graph-cluster-summary`・`confidentiality` は封の値・`model` は空で送られ、応答本文を要約として返す
-- [ ] Given `sent=false` / `refusal` / 空 / 空白の応答 / When 要約する / Then null
-- [ ] Given `RpcException` 各種・s2s 取得失敗 / When 要約する / Then 例外にせず null。Given 呼び出し元の取り消し / Then 伝播する
-- [ ] Given graph の DI / When `IClusterSummaryLlmClient` を解決する / Then `LlmGatewayGrpcClusterSummaryClient`
-- [ ] Given helm と compose の graph / When 読む / Then `Services__LlmGateway` が無く、`Services__LlmGatewayGrpc` が在る（`EastWestGrpcDeploymentWiringTests`）
-- [ ] Given `node scripts/check-proto-contracts.js` / Then 成功（baseline 不変）
-- [ ] Given knowledge と platform の両 slnx / When build・test・`dotnet format --verify-no-changes` / Then 0 警告 0 エラー・Failed=0
-- [ ] Given `helm template` / Then 描画が通り、graph の env から `Services__LlmGateway` だけが消える
+- [x] Given 撤去後の develop 相当 / When `AddHttpClient` を本番コードで全走査する / Then east-west（内部サービス宛）の登録は **0 本**（残りは north-south の BFF エッジ・外部（Vault・Keycloak・Wiki.js・オブジェクトストレージ・LLM プロバイダ・SaaS）・トークン取得だけ。分類を PR に載せる）
+- [x] Given クラスタ要約 / When gRPC 実装で呼ぶ / Then `purpose=graph-cluster-summary`・`confidentiality` は封の値・`model` は空で送られ、応答本文を要約として返す
+- [x] Given `sent=false` / `refusal` / 空 / 空白の応答 / When 要約する / Then null
+- [x] Given `RpcException` 各種・s2s 取得失敗 / When 要約する / Then 例外にせず null。Given 呼び出し元の取り消し / Then 伝播する
+- [x] Given graph の DI / When `IClusterSummaryLlmClient` を解決する / Then `LlmGatewayGrpcClusterSummaryClient`
+- [x] Given helm と compose の graph / When 読む / Then `Services__LlmGateway` が無く、`Services__LlmGatewayGrpc` が在る（`EastWestGrpcDeploymentWiringTests`）
+- [x] Given `node scripts/check-proto-contracts.js` / Then 成功（baseline 不変）
+- [x] Given knowledge と platform の両 slnx / When build・test・`dotnet format --verify-no-changes` / Then 0 警告 0 エラー・Failed=0
+- [x] Given `helm template` / Then 描画が通り、graph の env から `Services__LlmGateway` だけが消える
 
 ## 未決事項・残課題
 
