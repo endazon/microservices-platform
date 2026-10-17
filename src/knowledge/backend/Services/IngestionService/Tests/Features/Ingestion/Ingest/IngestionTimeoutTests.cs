@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using AwesomeAssertions;
+using IngestionService.Common.Observability;
 using IngestionService.Domain;
 using IngestionService.Domain.Ports;
 using IngestionService.Features.Ingestion.Ingest;
@@ -138,6 +140,89 @@ public class IngestionTimeoutTests
         embed.Calls.Should().Be(10);
         ports.Upserts.Should().Be(10);
         ports.Published.Should().BeTrue();
+    }
+
+    // T-52 (#1746・[[IADR-0560]]): **語彙索引への書き込みの輪も総枠で打ち切る。** 書き込み 1 回ごとに偽の時計を 1 秒進める店で測る。
+    // 高機密の文書（埋め込みを呼ばない輪）と、1 チャンク目で埋め込みが使えない `internal` の文書（待ちの点の輪）の 2 経路。
+    // 総枠 3 秒なら 3 点を書いた後の判定で残りを書かずに `lexical-budget` の時間切れとして投げ、完了を出さない。
+    // 判定（`LexicalBudgetExhausted` の 2 か所）を外す変異では 10 点すべてを書いて完了を出し、赤になる。
+    [Theory]
+    [InlineData("confidential", true)]
+    [InlineData("internal", false)]
+    public async Task 語彙索引への書き込みも総枠を使い切ったら残りを書かずに時間切れとして投げる(
+        string confidentiality, bool lexicalOnly)
+    {
+        var clock = new FakeTimeProvider();
+        var factory = new TestMeterFactory();
+        var pending = new EmbeddingPendingMetrics(factory);
+        using var written = PendingWrittenListener(factory);
+        var ports = new ClockAdvancingLexicalPorts(clock, TimeSpan.FromSeconds(1), ManySections(10));
+        var consumer = BuildLexical(ports, Scaled with { EmbeddingBudget = TimeSpan.FromSeconds(3) }, clock, pending);
+
+        var act = () => consumer.Handle(EventWith(confidentiality), TestContext.Current.CancellationToken);
+
+        var thrown = (await act.Should().ThrowAsync<ConsumerTimeoutException>()).Which;
+        thrown.Target.Should().Be(IngestionTimeouts.LexicalBudgetTarget);
+        thrown.Message.Should().Contain("3 of 10 chunks");
+        EmbeddingBudgetDeadLetterPolicy.IsBudgetExhausted(thrown).Should().BeTrue("再試行せずデッドレターへ直行させる");
+        ports.LexicalWrites.Should().Be(lexicalOnly ? 3 : 0);
+        ports.PendingWrites.Should().Be(lexicalOnly ? 0 : 3, "待ちの点の輪も同じ総枠で止まる");
+        ports.EmbedCalls.Should().Be(lexicalOnly ? 0 : 1, "高機密は埋め込みを呼ばない。待ちの点は 1 チャンク目で埋め込みを諦める");
+        ports.Published.Should().BeFalse("打ち切った文書は取り込み完了にしない");
+        written.Sum.Should().Be(lexicalOnly ? 0 : 3, "書いた待ちの点は投げる前に計器へ数える");
+    }
+
+    // T-52（対照）: 総枠に収まる文書は語彙索引へ全点を書き、完了を出す。
+    [Theory]
+    [InlineData("confidential", true)]
+    [InlineData("internal", false)]
+    public async Task 総枠に収まれば語彙索引へ全点を書く(string confidentiality, bool lexicalOnly)
+    {
+        var clock = new FakeTimeProvider();
+        var ports = new ClockAdvancingLexicalPorts(clock, TimeSpan.FromSeconds(1), ManySections(10));
+        var consumer = BuildLexical(ports, Scaled with { EmbeddingBudget = TimeSpan.FromSeconds(11) }, clock,
+            TestMeterFactory.NewEmbeddingPendingMetrics());
+
+        await consumer.Handle(EventWith(confidentiality), TestContext.Current.CancellationToken);
+
+        (ports.LexicalWrites + ports.PendingWrites).Should().Be(10);
+        ports.LexicalWrites.Should().Be(lexicalOnly ? 10 : 0);
+        ports.Published.Should().BeTrue();
+    }
+
+    private static DocumentUpdated EventWith(string confidentiality) => Event() with
+    {
+        Attributes = new Dictionary<string, string> { ["confidentiality"] = confidentiality },
+    };
+
+    private static DocumentUpdatedConsumer BuildLexical(
+        ClockAdvancingLexicalPorts ports, IngestionTimeouts timeouts, TimeProvider clock, EmbeddingPendingMetrics pending)
+        => new(
+            ports, new MarkdownChunkingService(), ports, ports, ports,
+            ConsumerTimeoutsForTests.Calls(), timeouts, clock, pending,
+            TestMeterFactory.NewBodyMissingMetrics(),
+            NullLogger<DocumentUpdatedConsumer>.Instance);
+
+    // `ingestion.embedding_pending.written` の合計を数える（この試験の器が作った Meter だけを聞く）。
+    private static SumListener PendingWrittenListener(TestMeterFactory factory) => new(factory, EmbeddingPendingMetrics.WrittenCounterName);
+
+    private sealed class SumListener : IDisposable
+    {
+        private readonly MeterListener _listener = new();
+        public long Sum { get; private set; }
+
+        public SumListener(object scope, string instrument)
+        {
+            _listener.InstrumentPublished = (i, l) =>
+            {
+                if (ReferenceEquals(i.Meter.Scope, scope) && i.Name == instrument)
+                    l.EnableMeasurementEvents(i);
+            };
+            _listener.SetMeasurementEventCallback<long>((_, v, _, _) => Sum += v);
+            _listener.Start();
+        }
+
+        public void Dispose() => _listener.Dispose();
     }
 
     private static string ManySections(int count) =>
@@ -279,6 +364,78 @@ public class IngestionTimeoutTests
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
             => HangIf(Hung.Delete, ct);
+
+        public Task PublishCompletedAsync(Guid documentId, int chunkCount, DateTimeOffset completedAt,
+            CancellationToken ct = default)
+        {
+            Published = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    // 語彙索引への書き込み（高機密のチャンク・埋め込み待ちのチャンク）1 回ごとに偽の時計を進める店（遅いが止まってはいない Qdrant）。
+    // 埋め込みは常に「使えない」（一時障害）を返す —— `public` / `internal` の文書は 1 チャンク目から待ちの点の輪へ進む。
+    private sealed class ClockAdvancingLexicalPorts(FakeTimeProvider clock, TimeSpan perWrite, string body)
+        : IDocumentContentReader, IEmbeddingService, IIngestionVectorStore, IIngestionCompletedPublisher
+    {
+        public bool Published { get; private set; }
+        public int LexicalWrites { get; private set; }
+        public int PendingWrites { get; private set; }
+        public int EmbedCalls { get; private set; }
+
+        public Task<string> ReadAsync(string markdownUri, string title, CancellationToken ct = default) =>
+            Task.FromResult(body);
+
+        public Task<EmbeddingResult> EmbedAsync(string text, string? confidentiality, CancellationToken ct = default)
+        {
+            EmbedCalls++;
+            return Task.FromResult(new EmbeddingResult([], "", Embedded: false, Retryable: true));
+        }
+
+        public Task EnsureCollectionsAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
+            string text, int chunkIndex, float[] vector, string? markdownUri,
+            Dictionary<string, string> attributes, List<string> tags,
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            => throw new InvalidOperationException("埋め込みは使えないので主へは書かない");
+
+        public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId,
+            string title, string indexText, float[] vector, string? markdownUri,
+            Dictionary<string, string> attributes, List<string> tags,
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            => throw new InvalidOperationException("本文のある文書はメタデータ点を書かない");
+
+        public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title,
+            string text, int chunkIndex, string? markdownUri,
+            Dictionary<string, string> attributes, List<string> tags,
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+            CancellationToken ct = default)
+        {
+            LexicalWrites++;
+            clock.Advance(perWrite);
+            return Task.CompletedTask;
+        }
+
+        public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
+            string indexText, string? markdownUri,
+            Dictionary<string, string> attributes, List<string> tags,
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+            CancellationToken ct = default)
+            => throw new InvalidOperationException("本文のある文書はメタデータ点を書かない");
+
+        public Task UpsertEmbeddingPendingChunkAsync(Guid chunkId, Guid documentId, string title,
+            string text, int chunkIndex, string? markdownUri,
+            Dictionary<string, string> attributes, List<string> tags,
+            DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
+            CancellationToken ct = default)
+        {
+            PendingWrites++;
+            clock.Advance(perWrite);
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task PublishCompletedAsync(Guid documentId, int chunkCount, DateTimeOffset completedAt,
             CancellationToken ct = default)
