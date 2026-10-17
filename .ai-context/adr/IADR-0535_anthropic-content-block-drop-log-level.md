@@ -2,10 +2,10 @@
 title: IADR-0535 Anthropic 応答の content ブロック除去のログを「想定内は Debug・想定外だけ Warning」に分け、除去件数を計器で数える（IADR-0114 決定 5 を改める）
 type: impl-adr
 status: Accepted
-related_ids: [FR-11, NFR-19, ADR-0006, ADR-0010, IADR-0110, IADR-0114, IADR-0394, IADR-0504, IADR-0531]
+related_ids: [FR-11, NFR-19, ADR-0006, ADR-0010, IADR-0110, IADR-0114, IADR-0394, IADR-0504, IADR-0531, IADR-0562]
 author: claude
 created: 2026-10-13
-updated: 2026-10-13
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0010（LLM ゲートウェイ）
   - planning:projects/microservices-platform/07_adr/ADR-0006（可観測性）
@@ -54,6 +54,11 @@ Warning の水準が毎応答の通常の形で埋まると、決定 5 が拾い
 4. **thinking を許可リストに足し、除去をやめる（棄却）** —— SDK 4.0.0 は thinking で応答全体を落とす（IADR-0114）。
 
 ## 決定
+
+> **［2026-10-17 追記 / #1749］数える場所は [IADR-0562](./IADR-0562_anthropic-official-sdk-migration.md) 決定 5 で `ClaudeProvider` へ移した。本文は書き換えない。**
+> 公式 SDK は未知の型も保持するので、委譲ハンドラによる除去は撤去した。3 条件・計器の名前・属性・3 値は変えない。「既知ブロックが残る」は「本文の `text` ブロックが残る」と読む。
+> 決定 3 の配線（`AnthropicHttpClient.Create` を経てハンドラへ渡す）は「`ClaudeProvider` の必須の引数」へ改めた。T-41 は `ClaudeProviderContentBlockLogTests` へ移した。
+
 
 **決定 1: 段階は次の 3 条件で決める。**
 

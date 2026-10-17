@@ -54,7 +54,10 @@
     <PackageVersion Include="Refit.HttpClientFactory" Version="8.0.0" />
     <PackageVersion Include="Polly.Extensions.Http" Version="3.0.0" />
     <!-- LLM -->
-    <PackageVersion Include="Anthropic.SDK" Version="4.0.0" />
+    <!-- FR-11, ADR-0010, ADR-0128, IADR-0562 (#1749): Claude の呼び出しは公式 SDK（NuGet `Anthropic`。計画 04_ai-rag-stack が指定）。
+         旧 `Anthropic.SDK` 4.0.0（第三者製）は外した。版は公開から 14 日以上経った最新（12.53.0・2026-09-30 公開）に固定する。
+         依存（Microsoft.Extensions.AI.Abstractions・System.Net.ServerSentEvents・System.Text.Json）は推移依存として解決させる。 -->
+    <PackageVersion Include="Anthropic" Version="12.53.0" />
     <!-- FR-16, ADR-0024: MCP（Model Context Protocol）サーバーの公式 C# SDK。
          計画 06_technical/11_mcp-server-integration §前提 が「公式 C# SDK（ModelContextProtocol）を
          利用する」と指定している。Core は AspNetCore が推移的に引くため、直接ピンは置かない。 -->

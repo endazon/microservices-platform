@@ -25,9 +25,11 @@ public static class LlmFallbackPolicy
            && status != RateLimitStatusCode;
 
     // 例外の連鎖から上流 HTTP ステータスを取り出す（無ければ null）。
-    // Anthropic.SDK 4.0.0 は HttpRequestException.StatusCode を設定して投げ（実測。#863 の作業仕様書 §2）、
+    // Claude（ClaudeProvider）は SDK の例外を HttpRequestException.StatusCode 付きへ包み直して投げ
+    // （［2026-10-17 / #1749・IADR-0562 決定 1］公式 SDK は AnthropicApiException を投げるので provider が写す。
+    // 旧 Anthropic.SDK 4.0.0 は自ら HttpRequestException を投げていた。#863 の作業仕様書 §2）、
     // OpenAI 互換プロバイダ（SelfHosted / Copilot）は EnsureSuccessStatusCode() が同プロパティを設定する。
-    // よって全プロバイダを 1 つの判定器で扱える。ラップされている場合に備え InnerException も辿る。
+    // よって全プロバイダを 1 つの判定器で扱え、Domain は SDK の型を知らない。ラップされている場合に備え InnerException も辿る。
     public static int? StatusCodeOf(Exception? exception)
     {
         for (var current = exception; current is not null; current = current.InnerException)

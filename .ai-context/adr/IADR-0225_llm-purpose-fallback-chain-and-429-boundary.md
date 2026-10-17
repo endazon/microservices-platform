@@ -14,9 +14,10 @@ related_ids:
   - IADR-0110
   - IADR-0111
   - IADR-0164
+  - IADR-0562
 author: claude
 created: 2026-08-18
-updated: 2026-08-21
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0038_analysis-purpose-drop-fable-5.md (Accepted・決定 3・4・6 の実装)
   - planning:projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (Accepted・ルーティング機構)
@@ -79,6 +80,10 @@ plan_refs:
 OpenAI 互換プロバイダ（`SelfHostedProvider` / `CopilotProvider`）は `EnsureSuccessStatusCode()` を使い、
 同メソッドが同じプロパティを設定する。**よって全プロバイダを 1 つの判定器で扱える** ——
 決定 4 の「429 と 400 系を区別する」は、プロバイダごとの特別扱いなしに実装できる。
+
+> **［2026-10-17 追記 / #1749］上の前提「`Anthropic.SDK` 4.0.0 は `HttpRequestException.StatusCode` を設定して投げる」は、SDK の移行で成り立たなくなった。本文は書き換えない。**
+> 公式 SDK（`Anthropic` 12.53.0）は非 2xx で `AnthropicApiException` を投げる。[IADR-0562](./IADR-0562_anthropic-official-sdk-migration.md) 決定 1 により
+> `ClaudeProvider` が `HttpRequestException(StatusCode)` へ包み直すので、判定器は変えずに同じ形で読める（T-43 が固定）。
 
 ## 検討した選択肢
 

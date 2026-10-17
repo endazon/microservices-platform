@@ -187,7 +187,8 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     }
 
     // 指定モデル（または全モデル）への呼び出しを HTTP ステータス付きの例外で失敗させるスタブ。
-    // Anthropic.SDK / EnsureSuccessStatusCode と同じ形（HttpRequestException.StatusCode）で投げる。
+    // ClaudeProvider（公式 SDK の例外を包み直す。IADR-0562）/ EnsureSuccessStatusCode と同じ形（HttpRequestException.StatusCode）で投げる。
+    // 本物の ClaudeProvider がこの形で投げることは ClaudeProviderSdkRiskTests（T-43）が固定する。
     private sealed class ModelScriptedProvider(string failingModel, HttpStatusCode status) : ILlmProvider
     {
         public const string AnyModel = "*";

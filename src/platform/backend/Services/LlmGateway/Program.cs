@@ -1,4 +1,3 @@
-using Anthropic.SDK;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
@@ -34,7 +33,8 @@ builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 // AddPlatformObservability を変更せずにサービス固有の Meter を追加できる。
 builder.Services.AddMetrics();
 builder.Services.AddSingleton<LlmCompletionMetrics>();
-// FR-11, IADR-0535 (#1917): Anthropic 応答から除去した content ブロックの件数（同じ Meter）。
+// FR-11, IADR-0535 (#1917), IADR-0562 (#1749): Anthropic 応答の content のうち本文に使わず捨てたブロックの件数（同じ Meter）。
+// ClaudeProvider の必須の引数（省略可能にすると本番の配線で黙って欠ける。IADR-0535 決定 3）。
 builder.Services.AddSingleton<AnthropicContentBlockMetrics>();
 
 // FR-10, NFR, ADR-0006, ADR-0044 決定 1・3 (#443): LLM 利用実績（用途別・モデル別のトークン累計と
@@ -65,23 +65,15 @@ builder.Services.AddPlatformAuth(builder.Configuration);
 builder.Services.AddPlatformHealthChecks();
 builder.Services.AddOpenApi();
 
-// ADR-0010: Claude SDK (Anthropic.SDK 4.0.0)
-// IADR-0114 (AST#290): SDK が解釈できない content ブロック型（thinking 等）で応答全体を失わないよう、
-// 応答サニタイズ用の委譲ハンドラを噛ませた HttpClient を渡す。割当モデル（［2026-10-10 / #1875］5.5 系の
-// Opus / Sonnet / Haiku）はいずれも thinking が既定で有効なため、これが無いと非ストリーミング /complete が全件失敗する。
-// ADR-0038 / #850: 割当から Fable 5 を外した（analysis は Opus へ）。ハンドラは引き続き要る。
-// IADR-0531 (#1875): 要求側には用途別 effort を本文へ足す委譲ハンドラ（AnthropicRequestShapingHandler）を重ねる。
-// 一次ハンドラは既定の HttpClientHandler（システムプロキシ設定は既定で引き継がれる）を使い、
-// 応答圧縮だけは SDK 既定の内部クライアントに依存しないよう明示的に有効化する。
+// ADR-0010, ADR-0128, IADR-0562 (#1749): Claude SDK は公式 `Anthropic`（12.53.0。計画 04_ai-rag-stack の指定）。
+// 生成点は AnthropicClientFactory の 1 か所で、SDK の既定を変える値（再試行 0・期限・送信先・資格情報）をそこで固定する。
+// 旧 `Anthropic.SDK` 4.0.0 向けの委譲ハンドラ（要求本文への effort の注入・未知 content ブロックの除去。IADR-0114 / IADR-0531）は
+// 撤去した（公式 SDK は effort を送れ、未知のブロックを例外にせず保持する）。
 // FR-11, IADR-0528 (#1872): 期限は `Llm:AnthropicTimeoutSeconds`（既定 100 秒＝従前と同じ。不正値は既定へ倒す）。
 // 呼び出し側の期限はこの値より短く保つ（docs/operations/operations.md）。
-builder.Services.AddSingleton(sp => new AnthropicClient(
-    new APIAuthentication(builder.Configuration["Llm:ApiKey"] ?? "placeholder"),
-    AnthropicHttpClient.Create(
-        builder.Configuration,
-        sp.GetRequiredService<ILogger<AnthropicResponseSanitizingHandler>>(),
-        sp.GetRequiredService<AnthropicContentBlockMetrics>(),
-        sp.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AnthropicHttpClient).FullName!))));
+builder.Services.AddSingleton(sp => AnthropicClientFactory.Create(
+    builder.Configuration,
+    sp.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AnthropicClientFactory).FullName!)));
 builder.Services.AddHttpClient();
 
 // FR-11, ADR-0010: 呼び出し先の切り替え（機密区分×ティアの越境マトリクス + 用途別モデル）。

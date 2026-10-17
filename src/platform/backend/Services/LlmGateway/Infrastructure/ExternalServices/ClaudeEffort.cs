@@ -7,6 +7,8 @@ namespace LlmGateway.Infrastructure.ExternalServices;
 // 構成は `Llm:PurposeEffort`（用途 → effort）。例: `{ "rerank": "low" }`。**既定は空**であり、書かない用途は
 // effort を送らない（＝提供元の既定。opus-5-5 / haiku-5-5 は medium、sonnet-5-5 は high）。
 // 5.5 系は thinking を無効にできない（400）ので、思考の量を絞る手段は effort だけである。
+// ［2026-10-17 / #1749・IADR-0562］送り方は公式 SDK の `MessageCreateParams.OutputConfig.Effort` になった
+// （旧 SDK は口が無く、HttpClient の委譲ハンドラが要求本文へ足していた。そのハンドラと呼び出し単位の文脈は撤去した）。
 public sealed class ClaudePurposeEffortOptions
 {
     public const string SectionName = "Llm:PurposeEffort";
@@ -55,29 +57,5 @@ public sealed class ClaudePurposeEffortOptionsValidator : IValidateOptions<Claud
                 + $"（{string.Join(" / ", ClaudeEffort.Levels)}）にありません。")
             .ToList();
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
-    }
-}
-
-// IADR-0531 決定 3: 1 回の Anthropic 呼び出しに付ける effort を、SDK の外（HttpClient の層）へ渡す文脈。
-// Anthropic.SDK 4.0.0 の MessageParameters は `output_config` を持たないため、要求本文への注入は
-// AnthropicRequestShapingHandler が行う。呼び出し単位の値なので AsyncLocal で渡す（シングルトンの HttpClient を
-// 共有したまま、並行する呼び出しの値が混ざらない）。
-public static class AnthropicRequestContext
-{
-    private static readonly AsyncLocal<string?> CurrentEffort = new();
-
-    public static string? Effort => CurrentEffort.Value;
-
-    // 範囲の間だけ effort を設定する。null なら何も付けない。
-    public static IDisposable UseEffort(string? effort)
-    {
-        var previous = CurrentEffort.Value;
-        CurrentEffort.Value = effort;
-        return new Scope(previous);
-    }
-
-    private sealed class Scope(string? previous) : IDisposable
-    {
-        public void Dispose() => CurrentEffort.Value = previous;
     }
 }

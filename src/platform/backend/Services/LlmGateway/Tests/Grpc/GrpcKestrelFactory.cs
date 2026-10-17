@@ -1,6 +1,6 @@
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
-using Anthropic.SDK;
+using Anthropic;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Routing;
 using Microsoft.AspNetCore.Hosting;
