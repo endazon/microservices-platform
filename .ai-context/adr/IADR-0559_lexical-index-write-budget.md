@@ -29,7 +29,7 @@ related_specs:
 - 改める残余リスク: [IADR-0497](./IADR-0497_high-confidentiality-lexical-index-vectorless-collection.md) §残るもの「巨大な高機密文書の打ち切りが無い」・
   [IADR-0536](./IADR-0536_embedding-pending-lexical-points.md) §残るもの「途中で待ちへ切り替わった巨大な文書は、残りのチャンクの書き込みが埋め込みの総枠を通らない」。
 - 前提: [IADR-0478](./IADR-0478_consumer-outbound-call-timeouts-under-wolverine-execution-timeout.md)（呼び出しごとの期限・埋め込みの総枠・受け口の実行期限・総枠の使い切りはデッドレターへ）。
-- 採番: `origin/develop` の最大は IADR-0558。開いている PR に新しい IADR は無い（2026-10-17 に確認）。本件は **0559**。
+- 採番: `origin/develop` の最大は IADR-0558。本件は **0559**。push の直前に、開いている PR #1987 も 0559 を持つことを確かめた。規約（`.claude/rules/traceability.md`「採番衝突時の改番手順」）は**先にマージした側が番号を確保する**ので、#1987 が先に入れば本件が 0560 へ改番する（欠番を作らないため、今は 0559 のままにする）。
 
 ## コンテキストと課題
 
