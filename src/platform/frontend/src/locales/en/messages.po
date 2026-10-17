@@ -1004,6 +1004,10 @@ msgstr "Remove tag {tag}"
 msgid "タグ:"
 msgstr "Tags:"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "タグで絞り込み"
+msgstr "Filter by tag"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "タグで絞り込む"
 msgstr "Filter by tag"
@@ -1066,6 +1070,7 @@ msgstr "Dashboard"
 msgid "ツール"
 msgstr "Tool"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/routes/sc06DataSourcesRoute.tsx
 msgid "データソース"
@@ -1285,9 +1290,14 @@ msgstr "Folder path"
 msgid "フォルダを追加する"
 msgstr "Add folder"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "プロジェクト"
 msgstr "Project"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "プロジェクトなし"
+msgstr "No project"
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "ページが見つかりませんでした。"
@@ -1758,6 +1768,14 @@ msgstr "Storage usage has passed 80%. We recommend cleaning up notes you no long
 #: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "保存容量の使用量が 95% を超えました。上限に達すると新しい資料を作成できなくなります。"
 msgstr "Storage usage has passed 95%. Once the limit is reached you can no longer create new notes."
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "保存日（から）"
+msgstr "Saved from"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "保存日（まで）"
+msgstr "Saved until"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
@@ -2302,6 +2320,10 @@ msgstr "Read-only — configuration changes are made through Git (GitOps) only. 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "参照元は特定できませんでした。"
 msgstr "The referencing policies could not be identified."
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentSource.ts
+msgid "収集: {name}"
+msgstr "Collected: {name}"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
@@ -2858,6 +2880,10 @@ msgstr "Owner mapping"
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "所有者の写像（ソース側の利用者 → 基盤の利用者）"
 msgstr "Owner mapping (source-side user -> platform user)"
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentSource.ts
+msgid "手入力"
+msgstr "Manual entry"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "手動同期"
@@ -3668,6 +3694,10 @@ msgstr "Confidentiality"
 msgid "機密区分（ABAC属性）"
 msgstr "Confidentiality (ABAC attribute)"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "機密区分で絞り込み"
+msgstr "Filter by confidentiality"
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
 msgstr "Highly confidential data is processed by the self-hosted LLM and is never sent to an external API (UC-02 alternative flow, data egress policy). Data you may not access is silently excluded (existence is hidden)."
@@ -3940,6 +3970,10 @@ msgstr "No contradictions"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "矛盾はありません。まだ保存していません。"
 msgstr "No contradictions found. Nothing has been saved yet."
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentSource.ts
+msgid "確定報告書"
+msgstr "Finalized report"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "確認"

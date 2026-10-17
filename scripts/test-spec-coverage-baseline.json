@@ -404,12 +404,15 @@
       "GrpcDocumentContentTests"
     ],
     "docs/tests/SC-05_document-management.md": [
+      "BffDocumentListFacetTests",
       "BffDocumentListFilterTests",
       "BffDocumentListPagingTests",
       "BffDocumentWriteEndpointTests",
       "DocumentEndpointVersioningTests",
       "DocumentListKeysetPostgresTests",
       "DocumentListPagingTests",
+      "DocumentMapperTests",
+      "DocumentReadGrpcMappingTests",
       "DocumentVersioningTests",
       "GrpcDocumentReadTests"
     ],

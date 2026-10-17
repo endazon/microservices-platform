@@ -48,6 +48,9 @@ public static class DocumentReadGrpcMapping
         // 🔴 写し漏れると BFF の共有先ベースの分岐が gRPC 経路でだけ一致しない（共有された相手が 404・
         // 所有者への応答から `sharedWith` が消える）。null（共有なし）は 0 件で運ぶ。
         if (d.SharedWith is not null) m.SharedWith.AddRange(d.SharedWith);
+        // FR-06, SC-05, [[IADR-0560]] (#1923): データソースの表示名・原本の所在も presence で運ぶ（null は「無い」）。
+        if (d.DataSourceName is not null) m.DataSourceName = d.DataSourceName;
+        if (d.OriginalUri is not null) m.OriginalUri = d.OriginalUri;
         return m;
     }
 
@@ -67,6 +70,8 @@ public static class DocumentReadGrpcMapping
         // FR-19 (#1898): 0 件は **null**（`DocumentDto.SharedWith` の契約「null＝共有なし」。
         // サーバは空リストを作らない〔`DocumentEndpoints.NullIfEmpty`〕ので REST と同じ形になる）。
         SharedWith = m.SharedWith.Count > 0 ? [.. m.SharedWith] : null,
+        DataSourceName = m.HasDataSourceName ? m.DataSourceName : null,
+        OriginalUri = m.HasOriginalUri ? m.OriginalUri : null,
     };
 
     public static Pb.DocumentVersionSnapshot ToProto(DocumentVersionDto v)

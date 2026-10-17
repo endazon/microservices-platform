@@ -204,6 +204,8 @@ test('SC-05: 文書管理の画面（表・フィルタ）に WCAG 2.1 A/AA ＋ 
         limit: 50,
         unfilteredTotal: 1,
         statusCounts: { published: 1 },
+        sourceCounts: { manual: 1 },
+        projectCounts: { '(none)': 1 },
       },
       'GET /tags': tags,
     },
