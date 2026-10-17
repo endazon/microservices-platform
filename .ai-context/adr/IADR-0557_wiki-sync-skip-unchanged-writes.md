@@ -1,5 +1,5 @@
 ---
-title: IADR-0556 Wiki 同期は Wiki.js の今のページが送る内容と同じなら pages.update を送らない。Wolverine のリスナーの並列度は上げない（Wiki.js 2.5 の rebuild-tree が並ぶと pageTree の主キーで衝突する）
+title: IADR-0557 Wiki 同期は Wiki.js の今のページが送る内容と同じなら pages.update を送らない。Wolverine のリスナーの並列度は上げない（Wiki.js 2.5 の rebuild-tree が並ぶと pageTree の主キーで衝突する）
 type: impl-adr
 status: Accepted
 related_ids: [FR-13, UC-07, ADR-0011, ADR-0027, IADR-0021, IADR-0541, IADR-0554]
@@ -12,7 +12,7 @@ related_specs:
   - ../specs/20261017_1971_wiki-sync-throughput.md
 ---
 
-# IADR-0556: Wiki 同期は変わっていないページを書かない（#1971）
+# IADR-0557: Wiki 同期は変わっていないページを書かない（#1971）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

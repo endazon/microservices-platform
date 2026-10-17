@@ -46,7 +46,7 @@ public class WikiJsGraphQlClientTests
         handler.Requests[1].Should().Contain("create");
     }
 
-    // FR-13 / #1971・[[IADR-0556]] 決定 1・2: Wiki.js の今のページ（singleByPath の応答）。既定は Page() と同じ内容を持つ。
+    // FR-13 / #1971・[[IADR-0557]] 決定 1・2: Wiki.js の今のページ（singleByPath の応答）。既定は Page() と同じ内容を持つ。
     private static string Existing(
         string title = "テスト", string content = "# 本文", string tagsJson = """[{"tag":"poc"}]""",
         bool isPublished = true, string render = "<h1>本文</h1>")

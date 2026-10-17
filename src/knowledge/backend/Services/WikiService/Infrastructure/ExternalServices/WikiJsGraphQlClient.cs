@@ -7,7 +7,7 @@ namespace WikiService.Infrastructure.ExternalServices;
 // FR-13, UC-07, ADR-0011, IADR-0021: Wiki.js 管理 GraphQL API への同期クライアント（API push）。
 //
 // 冪等 upsert: path をキーに singleByPath で既存を引き、無ければ pages.create、あって内容が違えば pages.update、
-// 同じなら何も書かない（#1971・[[IADR-0556]]。Wiki.js 2.5 の update は 1 件ごとに描画の子プロセスを起こし 2.5〜5 秒かかる）。
+// 同じなら何も書かない（#1971・[[IADR-0557]]。Wiki.js 2.5 の update は 1 件ごとに描画の子プロセスを起こし 2.5〜5 秒かかる）。
 // 認証はサービスアカウントの API キー（Bearer）。秘密は環境変数/シークレット経由で注入しコミットしない。
 //
 // 注（IADR-0021）: Wiki.js 2.x の GraphQL スキーマ（バージョン差異あり）への結合が生じる。実際の
@@ -49,7 +49,7 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
         logger.LogInformation("Wiki.js page updated: path={Path} id={Id}", path, id);
     }
 
-    // 🔴 FR-13, [[IADR-0556]] 決定 1・2 (#1971): **Wiki.js の今のページが、送ろうとしている update と同じ結果を既に持っているか。**
+    // 🔴 FR-13, [[IADR-0557]] 決定 1・2 (#1971): **Wiki.js の今のページが、送ろうとしている update と同じ結果を既に持っているか。**
     // 同じなら update は Wiki.js の状態を変えない（同じ値の上書き）ので送らない。比べる相手は wiki_svc の台帳ではなく **Wiki.js の今の状態**である
     // （Wiki.js の DB が作り直された・Wiki.js の画面で本文が直された、のどちらでも、違いが見えれば従来どおり上書きする）。
     // - 表題・本文: 序数比較（Wiki.js は受け取った値をそのまま保存する。実測で往復一致）。

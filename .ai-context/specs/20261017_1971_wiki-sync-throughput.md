@@ -2,7 +2,7 @@
 title: Wiki 同期のスループット —— Wiki.js 2.5 の書き込みの内訳を実測し、Wiki.js の今の状態と同じ内容の pages.update を送らない（#1971）
 type: spec
 status: done
-related_ids: [FR-13, UC-07, ADR-0011, ADR-0027, IADR-0021, IADR-0541, IADR-0554, IADR-0556]
+related_ids: [FR-13, UC-07, ADR-0011, ADR-0027, IADR-0021, IADR-0541, IADR-0554, IADR-0557]
 author: claude
 created: 2026-10-17
 updated: 2026-10-17
@@ -17,7 +17,7 @@ issue: "#1971"
 
 - FR-13（Wiki 閲覧・同期）・UC-07。
 - ADR-0011（Wiki.js。閲覧・編集の実体）・ADR-0027（Wolverine。fan-out・再試行・DLQ）。
-- 実装判断の記録: [IADR-0556](../adr/IADR-0556_wiki-sync-skip-unchanged-writes.md)。同期の形は [IADR-0021](../adr/IADR-0021_wiki-js-sync-graphql-push.md)（GraphQL push・正準パス `doc/<id>`）。
+- 実装判断の記録: [IADR-0557](../adr/IADR-0557_wiki-sync-skip-unchanged-writes.md)。同期の形は [IADR-0021](../adr/IADR-0021_wiki-js-sync-graphql-push.md)（GraphQL push・正準パス `doc/<id>`）。
 - 起点: #1971（PoC・2026-10-16。`pages.create` が 1 件約 8.4 秒・毎分約 7 件。`wiki-service.DocumentUpdated` に約 4,800 件）。
 
 ## 1 件の内訳（実測。Wiki.js 2.5.316 の固定 digest をローカルの docker で起動）
@@ -63,7 +63,7 @@ GraphQL の形は `WikiJsGraphQlClient` と同じ（`singleByPath` → `create` 
 - 失敗はすべて `Error when running job rebuild-tree: insert into "pageTree" … duplicate key`。**`rebuild-tree` はトランザクションを張らずに truncate → insert するので、
   並んだ 2 本が互いの行と衝突する。** 並列にしても毎分は 1 割ほどしか増えず（CPU が律速）、作成は壊れる。
 
-## 決めたこと（詳細は IADR-0556）
+## 決めたこと（詳細は IADR-0557）
 
 1. **案 2 を採る（変わっていない文書を書かない）。比較の相手は wiki_svc の DB ではなく Wiki.js の今の状態とする。**
    `UpsertPageAsync` の最初の `singleByPath` で `id title content render isPublished tags { tag }` を取り、

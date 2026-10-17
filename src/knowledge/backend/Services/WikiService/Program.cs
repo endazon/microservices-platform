@@ -141,7 +141,7 @@ builder.Host.UseWolverine(opts =>
     // fan-out の保存: DocumentUpdated は ingestion-service と別キューになる（サービス名前置）。
     // ハンドラへの振り分けはメッセージ型で決まる（キュー 2 本 → 同一ホスト内で型別ディスパッチ）。
     opts.ListenToPlatformQueue<DocumentDeleted>("wiki-service", deleteStep);
-    // 🔴 FR-13, [[IADR-0556]] 決定 5 (#1971): **このリスナーの並列度は上げない**（`MaximumParallelMessages` 等を足さない）。
+    // 🔴 FR-13, [[IADR-0557]] 決定 5 (#1971): **このリスナーの並列度は上げない**（`MaximumParallelMessages` 等を足さない）。
     // Wiki.js 2.5 の pages.create は木の再構築（rebuild-tree）をトランザクション無しの truncate → insert で走らせ、並ぶと
     // pageTree の主キーで衝突して作成が失敗する（実測: 並列 2 で 2/8・並列 4 で 6/8）。律速は Wiki.js の CPU で、毎分も 1 割強しか増えない。
     opts.ListenToPlatformQueue<DocumentUpdated>("wiki-service", syncStep);
