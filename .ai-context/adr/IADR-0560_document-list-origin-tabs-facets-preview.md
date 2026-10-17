@@ -80,6 +80,8 @@ related_specs:
 
 ## 決定
 
+**実装は 2 つの PR に分ける**（差分の大きさのため）。1 つ目は決定 1・2 と、決定 3 のうち帯の条件。2 つ目は決定 3 の残り（タブ・列・出典・プレビュー）。
+
 **決定 1: 契約に `DataSourceName` と `OriginalUri` を足す（どちらも末尾追加・既定 null）。**
 `DocumentDto`、gRPC `DocumentSummary`（`optional` の 13・14。presence で null と空文字を分ける）、REST の写像（同名の列）。
 `DocumentDto` の「部分射影」から 2 つを外した（`OriginalPath`・種別・添付・版履歴は引き続き出さない）。
@@ -109,12 +111,12 @@ related_specs:
 ## 結果
 
 - 試験: BFF `BffDocumentListFacetTests`（導出・各絞り込み・件数・後方互換・存在秘匿 2 種・許可ポリシーなし・検証）、契約 `DocumentReadGrpcMappingTests`、
-  後段 `DocumentMapperTests`、画面 `DocumentManagementPage.test.tsx`（タブ・帯・列・プレビュー・タブの空）・`documentSource.test.ts`、e2e の SC-05 スモーク。
+  後段 `DocumentMapperTests`、画面 `DocumentManagementPage.test.tsx`（帯の条件。2 つ目の PR でタブ・列・プレビュー・タブの空）・`documentSource.test.ts`、e2e の SC-05 スモーク。
   変異で確かめた: データソース別の数を ABAC の前に数えると BFF の試験が 16 件赤になる。
 - 配備の順序: 新しい画面と旧い BFF の組では、新しいクエリが無視され件数の項目が無い（画面は無い項目を空として読み、タブの件数は出ない）。
   新しい BFF と旧い document-service の組では、`dataSourceName` / `originalUri` が来ないので、データソースの取り込みが「手入力」に見え、出典が出ない。
   **BFF・document-service・フロントは同じリリースで出す。** 移行（DB）は無い。
-- 既定の要求が `origin=curated` を持つようになった（従前の URL は `?offset=&limit=` だった）。
+- 2 つ目の PR で、既定の要求が `origin=curated` を持つようになる（従前の URL は `?offset=&limit=`）。
 
 ## 残余リスク
 
