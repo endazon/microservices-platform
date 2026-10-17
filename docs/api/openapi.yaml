@@ -2247,6 +2247,79 @@ paths:
         "503":
           description: オブジェクトストレージが構成されていない（何もアーカイブしない）
 
+  /documents/strip-untrusted-boundary:
+    post:
+      tags: [Documents]
+      summary: "FR-06, UC-03: 株取引ユニットが境界語つきで保存した文書の表題・本文から枠を剥がす（一回限りの管理操作。管理者だけ。#1973）"
+      description: |
+        `project = ai-stock-trading` の未アーカイブの組織文書について本文を読み、表題か本文が `<<<UNTRUSTED_DATA` で始まり `UNTRUSTED_DATA>>>` で終わるなら、
+        **先頭と末尾の枠（と隣の改行 1 つ）だけを、枠が無くなるまで**剥がす。**管理者（`platform-admin`）だけ**が呼べる。メッシュ内部の口であり、BFF には出さない。
+        量の制御・カナリア・中断と再開・キューと DLQ の監視は駆動スクリプト `scripts/strip-untrusted-boundary.js` が持つ。
+
+        - 🔴 **`dryRun` は必須**（省略は 400）。書き換える呼び出しは `reason` も必須。dry-run は件数と対象の文書 ID だけを返す。
+        - 剥がした本文は新しいキーへ書いて参照を付け替える（元のオブジェクトは上書きしない）。状態・属性・タグは動かさず、版を 1 つ進め（注記は固定の文字列）、
+          単票の更新と同じ `DocumentUpdated` を発行する。
+        - 本文のキーの欠落（NoSuchKey）は「本文なし」として表題だけを見る。それ以外の読み取りの失敗・書き込みの失敗は、そのページを 1 件も書き換えずに 502。
+          ストレージが構成されていなければ 503。
+        - 他の project・個人資料・アーカイブ済み・枠の無い文書には触らない。剥がすと空になる表題・本文（枠だけ）は剥がさない。冪等（2 回目は何も変えない）。
+        - 並び: `createdAt` 昇順、同時刻は `id` 昇順（キーセット）。
+      operationId: strip-untrusted-boundary
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dryRun]
+              properties:
+                dryRun: { type: boolean, description: "true で確かめて件数と対象の ID だけを返し、false で書き換える（必須）" }
+                limit: { type: integer, default: 100, minimum: 1, maximum: 200, description: 1 ページの件数（範囲外は 400） }
+                cursor: { type: string, description: "前の応答の `nextCursor`（不透明）。不正な値は 400" }
+                requestedBy: { type: string, maxLength: 100, description: "操作者の札（認証済みの主体と一緒にログへ出る）" }
+                reason: { type: string, maxLength: 500, description: "理由の札（書き換える呼び出しでは必須）" }
+      responses:
+        "200":
+          description: 確かめた 1 ページ（dry-run も同じ）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dryRun, selected, wrapped, titleWrapped, bodyWrapped, bodyMissing, notStored, titleLeftWrapped, bodyLeftWrapped, stripped, items]
+                properties:
+                  dryRun: { type: boolean }
+                  selected: { type: integer, description: このページで確かめた件数 }
+                  wrapped: { type: integer, description: 表題か本文が枠の形だった件数（`items` の件数） }
+                  titleWrapped: { type: integer, description: 表題を剥がす（剥がした）件数 }
+                  bodyWrapped: { type: integer, description: 本文を剥がす（剥がした）件数 }
+                  bodyMissing: { type: integer, description: 本文のキーが欠落していた件数（表題だけを見た） }
+                  notStored: { type: integer, description: "本文の参照が無い・storage:// でない件数（表題だけを見た）" }
+                  titleLeftWrapped: { type: integer, description: 剥がすと空になるので表題を残した件数 }
+                  bodyLeftWrapped: { type: integer, description: 剥がすと空になるので本文を残した件数（空の本文を書かない） }
+                  stripped: { type: integer, description: 書き換えた件数（dry-run は 0） }
+                  items:
+                    type: array
+                    description: 対象の文書（表題・本文の中身は返さない）
+                    items:
+                      type: object
+                      required: [id, title, body]
+                      properties:
+                        id: { type: string, format: uuid }
+                        title: { type: boolean, description: 表題が枠の形だった }
+                        body: { type: boolean, description: 本文が枠の形だった }
+                  nextCursor: { type: [string, "null"], description: 続きのカーソル。尽きたら null }
+        "400":
+          description: dryRun の省略、書き換える呼び出しの reason の省略、limit の範囲外、長さの超過、不正なカーソル
+        "401":
+          description: 未認証
+        "403":
+          description: 管理者でない
+        "502":
+          description: 本文の読み取り（キーの欠落以外）または書き込みが失敗した（そのページは何も書き換えない）
+        "503":
+          description: オブジェクトストレージが構成されていない（何も書き換えない）
+
   /documents/{id}:
     get:
       tags: [Documents]

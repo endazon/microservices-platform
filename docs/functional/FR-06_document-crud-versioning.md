@@ -3,15 +3,15 @@ title: 文書CRUD・バージョン管理 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-16
+updated: 2026-10-17
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-08, UC-03, NFR-09, FR-19]
 adrs: [ADR-0141, ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122]
-iadrs: [IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
-specs: [20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
-issues: [#1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
+iadrs: [IADR-0556, IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
+specs: [20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
+issues: [#1973, #1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -52,6 +52,7 @@ issues: [#1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1
 | `POST /documents/{id}/publish` | 公開（`status=published`・版追記） | 200 / 404 |
 | `POST /documents/{id}/archive` | アーカイブ（`status=archived`・版追記。管理者だけ）。見つかる面（検索・RAG・グラフ・Wiki・MCP の一覧）から外す（下記「アーカイブの効果」） | 200 / 404 |
 | `POST /documents/archive-bodyless` | 本文のオブジェクトが無い古い文書の一括アーカイブ（一回限りの管理操作。管理者だけ。下記） | 200 / 400 / 403 / 502 / 503 |
+| `POST /documents/strip-untrusted-boundary` | 株取引ユニットが境界語つきで保存した文書の表題・本文から枠を剥がす（一回限りの管理操作。管理者だけ。下記） | 200 / 400 / 403 / 502 / 503 |
 | `GET /documents/{id}/versions` | 版履歴一覧（新しい順）。**認証を要する** | 200 `DocumentVersionDto[]` / 401 / 404 |
 | `GET /documents/{id}/versions/{version}` | 特定版取得。**認証を要する** | 200 / 401 / 404 |
 | `DELETE /documents/{id}` | 削除（版履歴も連動削除） | 204 / 404 |
@@ -116,6 +117,20 @@ issues: [#1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1
 - 本文が在る・期限以降・本文の参照が無い・個人資料・アーカイブ済みには触らない。2 回流しても 2 回目は何もしない。
 - アーカイブした文書は版を 1 つ進め（版の注記は固定の文字列）、単票のアーカイブと同じ `DocumentUpdated` を出す。下流の扱いは単票と同じ（下記「アーカイブの効果」）。
 - 量の制御・カナリア・中断と再開は駆動スクリプト `scripts/archive-bodyless-documents.js` が持つ（運用仕様書の同名の節）。
+
+### 株取引ユニットの文書から境界語の枠を剥がす（`POST /documents/strip-untrusted-boundary`）
+
+- 株取引ユニットは 2026-10-16 まで、保存するニュースの表題と本文を `<<<UNTRUSTED_DATA` と `UNTRUSTED_DATA>>>` で囲んで保存していた。
+  その枠を台帳から剥がす一回限りの管理操作である（新しい保存は囲まれない）。
+- 対象は `project = ai-stock-trading` の、アーカイブ済みでない組織文書だけである（project は口の側で固定）。その中で表題か本文が枠の形
+  （先頭が開始の境界語・末尾が終了の境界語）の文書だけを書き換える。他の project・個人資料・アーカイブ済み・枠の無い文書には触らない。
+- 剥がすのは**先頭と末尾の枠と、その隣の改行 1 つだけ**で、枠が無くなるまで繰り返す。中身の途中の境界語・前後の空白は変えない。2 回流しても 2 回目は何も変えない。
+  剥がすと空になる表題・本文（枠だけの値）は剥がさない（数えて返す。空の本文を取り込み・Wiki 同期へ流さない）。
+- 本文は新しいキーへ書いて参照を付け替える（元のオブジェクトは上書きせず、前の版が指したまま残る）。状態・属性・タグは動かさず、版を 1 つ進める（版の注記は固定の文字列）。
+- 本文が読めない（キーの欠落以外の失敗）・書けないときは、そのページを 1 件も書き換えずに 502 を返す。キーの欠落は「本文なし」として表題だけを見る。
+- 書き換えた文書は単票の更新と同じ `DocumentUpdated` を出す。取り込みは索引を作り直し、Wiki 同期は表題と本文を書き直す（同じページ）。
+- dry-run は件数と対象の文書 ID（表題・本文のどちらか）だけを返す。量の制御・カナリア・中断と再開は駆動スクリプト `scripts/strip-untrusted-boundary.js` が持つ
+  （一括アーカイブと同じ本体。運用仕様書の同名の節）。
 
 ### アーカイブの効果
 
