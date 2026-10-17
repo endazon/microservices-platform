@@ -456,6 +456,11 @@ services:
       # FR-02, ADR-0127 決定 1, IADR-0497 (#1746): 語彙索引（高機密文書を埋め込まずに書く、ベクトルを持たないコレクション）。
       # retrieval-service と同じ値であること（片方だけ変えると「書いたのに検索されない」）。
       Qdrant__LexicalCollection: ${SEARCH_LEXICAL_COLLECTION:-knowledge_chunks_lexical}
+      # FR-02, ADR-0127 決定 5, IADR-0085 (#1746 段 S4): ティア A（Ruri）のコレクション。既定の appsettings.json は voyage だけで、
+      # opt-in のときだけ作る。retrieval-service の Qdrant__FusedCollections__0 と**同じ変数**を読む（片方だけ与えると
+      # 「索引できない」か「索引されるが検索されない」になる）。既定は空＝取り込みは空の名前を捨て、Ruri のコレクションを作らない。
+      Embedding__Collections__1__Name: ${SEARCH_FUSED_COLLECTION:-}
+      Embedding__Collections__1__VectorSize: "768"
       # FR-02 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0397 (#1255): east-west gRPC。
       # ［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した。
       # `Services__LlmGatewayGrpc` で埋め込みが gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。
@@ -502,6 +507,7 @@ services:
       Qdrant__LexicalCollection: ${SEARCH_LEXICAL_COLLECTION:-knowledge_chunks_lexical}
       # FR-03, ADR-0092 決定 1, IADR-0467 (#336): 束ねて読む追加コレクション（ティア A を有効化するときに
       # SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3 を .env で与える）。既定は空＝検索は主の 1 本だけ。
+      # ［2026-10-17 / #1746 段 S4］同じ変数で ingestion-service が Ruri のコレクションを作る（既定では作らない）。
       Qdrant__FusedCollections__0: ${SEARCH_FUSED_COLLECTION:-}
       # FR-03, FR-04, SC-02, ADR-0127 決定 3, IADR-0498 (#1746 段 S2): Claude による再順位付けの段（既定は無効）。
       # 有効にするときは .env で SEARCH_RERANK_ENABLED=true を与える（検索のたびに LLM の費用が生じる）。
@@ -788,6 +794,7 @@ services:
   #   🔴 同時に retrieval-service へ SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3 を与える
   #   （ADR-0092 / IADR-0467。与えないとセルフホストへ回った文書は索引されるが検索されない。
   #   ［2026-10-17 / #1746］高機密の文書はここへ入らない —— 語彙索引へ行く。回るのは Voyage を止めた構成の public / internal）。
+  #   ［2026-10-17 / #1746 段 S4］同じ値で ingestion-service が Ruri のコレクションを作る（与えないと取り込みは作らない）。
   # ⚠️ 実モデル取得・実埋め込み疎通・nDCG@10 実測は稼働環境依存＝分離（IADR-0085 / #303）。
   # 既定 image tag / モデル ID はプレースホルダ。実運用前に固定する。
   embedding:

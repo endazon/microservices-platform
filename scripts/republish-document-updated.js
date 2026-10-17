@@ -827,7 +827,7 @@ async function main(argv) {
   if (state.totals.published === 0) return 0;
   log('確かめ方: Qdrant の各コレクションの points_count が増えていること（読み取りだけ）:');
   log(`  kubectl -n ${INFRA_NS} run qdrant-check --rm -i --restart=Never --image=curlimages/curl -- sh -c \\`);
-  log('    \'for c in knowledge_chunks_voyage_3_5 knowledge_chunks_lexical knowledge_chunks_ruri_v3; do curl -s http://qdrant:6333/collections/$c; echo; done\'');
+  log('    \'for c in knowledge_chunks_voyage_3_5 knowledge_chunks_lexical; do curl -s http://qdrant:6333/collections/$c; echo; done\'');
   return 0;
 }
 

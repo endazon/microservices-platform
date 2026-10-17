@@ -47,9 +47,11 @@ public sealed record IngestionTimeouts(
     public const int DefaultHandlerSeconds = 420;
 
     // 既定の構成で削除が回るコレクションの数。`Default` だけが使う。
-    // appsettings.json の `Embedding:Collections`（モデル別 2 本）＋ 語彙索引 1 本
+    // appsettings.json の `Embedding:Collections`（モデル別。既定は voyage の 1 本）＋ 語彙索引 1 本
     // （［2026-10-05 / #1746］[[IADR-0497]] 決定 4。語彙索引からも消すので 1 本増えた）。
-    public const int DefaultCollectionCount = 3;
+    // ［2026-10-17 / #1746 段 S4］ADR-0127 決定 5, [[IADR-0085]]: Ruri のコレクションは既定に無くなった（opt-in のときだけ
+    // 足され、そのときは `From` が実際の本数で数える）。3 → 2。
+    public const int DefaultCollectionCount = 2;
 
     // 計器・ログに載せる呼び出し先の名前（閉じた値域）。
     public const string ContentTarget = "content";
