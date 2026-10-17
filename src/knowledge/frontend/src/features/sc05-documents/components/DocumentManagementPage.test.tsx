@@ -1077,6 +1077,46 @@ describe('DocumentManagementPage (SC-05) facets, tabs and preview', () => {
     expect(screen.queryByRole('region', { name: '本文のプレビュー' })).not.toBeInTheDocument();
   });
 
+  // 🔴 ペインは最新の一覧に追随する: 状態遷移の後の再取得で表題・状態が変われば変わった値を出し、削除で一覧から消えればペインも消える
+  // （クリックした時点の写しを持ち続けない）。
+  it('keeps the preview pane in step with the latest list and drops it when the document is deleted', async () => {
+    let items: unknown[] = [NEWS_DOC, DRAFT_DOC];
+    mocks.apiRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.endsWith('/content'))
+        return jsonResponse({
+          id: NEWS_DOC.id,
+          title: NEWS_DOC.title,
+          markdown: '本文',
+          sourceUri: null,
+        });
+      if (init?.method === 'POST' && path.endsWith('/archive')) {
+        items = [{ ...NEWS_DOC, title: '株探のニュース（改題）', status: 'archived' }, DRAFT_DOC];
+        return noContent();
+      }
+      if (init?.method === 'DELETE') {
+        items = [DRAFT_DOC];
+        return noContent();
+      }
+      return listPage(items);
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '「株探のニュース」をプレビュー' }));
+    const pane = within(await screen.findByRole('region', { name: '本文のプレビュー' }));
+    expect(pane.getByText('株探のニュース')).toBeInTheDocument();
+
+    const row = screen.getByRole('link', { name: '株探のニュース' }).closest('tr')!;
+    await user.click(within(row).getByRole('button', { name: 'アーカイブ' }));
+    expect(await pane.findByText('株探のニュース（改題）')).toBeInTheDocument();
+
+    const archivedRow = screen.getByRole('link', { name: '株探のニュース（改題）' }).closest('tr')!;
+    await user.click(within(archivedRow).getByRole('button', { name: '削除' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: '本文のプレビュー' })).not.toBeInTheDocument(),
+    );
+  });
+
   // 台帳が本文なしと言う文書は本文を引かずに状態を出す。大きすぎる本文（413）は理由を出す。
   it('does not fetch a body the ledger says is absent, and explains a too-large body', async () => {
     const tooLarge = {

@@ -109,7 +109,9 @@ export function DocumentManagementPage() {
     ...EMPTY_DOCUMENT_CONDITIONS,
   });
   // #1923: 横のペインでプレビューしている文書（本文の先頭）。
-  const [previewing, setPreviewing] = useState<DocumentDto | null>(null);
+  // 🔴 持つのは ID だけで、描画のたびに**最新の一覧**から文書を引く —— 写しを持つと、編集・状態遷移の後も古い表題・状態のまま残り、
+  //   削除・絞り込みで一覧から消えた文書のペインも出たままになる。いまの一覧に無ければペインを出さない。
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const page: DocumentPageRequest = { offset: request.offset, limit: request.limit };
   const setPage = (next: DocumentPageRequest) => setRequest((r) => ({ ...r, ...next }));
   const filtered = isFiltered(request);
@@ -123,6 +125,7 @@ export function DocumentManagementPage() {
   const onClear = () => setRequest((r) => ({ ...r, ...EMPTY_DOCUMENT_CONDITIONS, offset: 0 }));
   const documents = useAdminDocuments(request);
   const total = documents.data?.total;
+  const previewing = documents.data?.items.find((doc) => doc.id === previewId) ?? null;
   // 削除などで総件数が減り、いまのページが末尾を越えたら末尾のページへ戻す（空のページを出したままにしない）。
   // 前のページを保ったまま読む間（placeholder）は、その前のページの総件数で判断することになるが、誤って戻すことは無い ——
   // 画面が要求する位置は常に「表示中の総件数より手前」（ページ送りの選択肢も、ここで戻す先の末尾のページも）なので、
@@ -368,7 +371,7 @@ export function DocumentManagementPage() {
                           setEditing(doc);
                         }}
                         onCommand={run}
-                        onPreview={() => setPreviewing(doc)}
+                        onPreview={() => setPreviewId(doc.id)}
                       />
                     ))}
                   </TableBody>
@@ -395,7 +398,7 @@ export function DocumentManagementPage() {
             <DocumentPreviewPanel
               key={previewing.id}
               doc={previewing}
-              onClose={() => setPreviewing(null)}
+              onClose={() => setPreviewId(null)}
             />
           )}
           {/* 編集対象が変わったらフォームを作り直す（前の文書の入力値を持ち越さない）。 */}
