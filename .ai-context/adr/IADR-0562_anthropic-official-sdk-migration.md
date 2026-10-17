@@ -40,7 +40,7 @@ related_specs:
 ## コンテキストと課題
 
 計画 `06_technical/04_ai-rag-stack.md`（fixed）は公式 `Anthropic` パッケージを指定する。実装は第三者製の `Anthropic.SDK` 4.0.0（26 か月前の版）を使い、
-その欠落（thinking 等の content ブロックで応答全体を失う・effort を送れない）を HTTP 層の回避策（本番 5 ファイル 470 行）で補っていた。
+その欠落（thinking 等の content ブロックで応答全体を失う・effort を送れない）を HTTP 層の回避策（本番 4 ファイル 422 行。ほかに計器 `AnthropicContentBlockMetrics` 48 行と `AnthropicRequestContext`）で補っていた。
 
 公式 SDK（12.x）は thinking・未知のブロック・effort・`refusal` を型として扱える。一方、**既定の振る舞いが旧 SDK と 3 点で違い**、
 そのまま差し替えると例外もログも出ないまま統制が外れる（作業仕様書の実測表）:
@@ -90,8 +90,15 @@ related_specs:
 - 解決規則（未設定・空白は 100 秒、1〜2,147,483 の整数は採る、不正は 100 秒へ倒して warn 1 行）は IADR-0528 決定 1・2 のまま。上限の根拠は「`HttpClient.Timeout` の上限」から「SDK が 1 試行ごとに作る `CancellationTokenSource` の上限」（同じ `int.MaxValue` ミリ秒）へ読み替える。
 - **常に明示する**ので、SDK の `max_tokens` からの算出（既定 10 分）は使われず、非ストリームで `max_tokens` > 20,000 の例外にも当たらない。
 - `HttpClient.Timeout` は `InfiniteTimeSpan`。SDK の注記どおり、両方に値があると競合する。期限の正は SDK の 1 か所にする。
-- 効く範囲は 1 試行の**応答ヘッダの到着まで**（SDK は `ResponseHeadersRead` で送る）。超過は `TaskCanceledException`（内側 `TimeoutException`）で、旧 SDK の `HttpClient.Timeout` 超過と同じ型である（`CompletionUseCase` の扱いは変わらない）。
-- 固定: T-33（解決規則・生成した `AnthropicClient.Timeout`）・T-34（実ホスト 7 秒・未設定 100 秒）・T-43 ③（期限 1 秒でヘッダを返さない相手へ送ると約 1 秒で `TaskCanceledException`・送信 1 回／`max_tokens` 64,000 の非ストリームが例外にならない）。
+- SDK の `Timeout` が効くのは 1 試行の**応答ヘッダの到着まで**である（SDK は `ResponseHeadersRead` で送る）。
+- **一括は、`ClaudeProvider.CompleteAsync` が呼び出し全体に同じ期限の取り消し（`CancelAfter` した linked token）を掛け、全文の受信までを期限に入れる**
+  （PR #1996 の AI レビューの 🟡 で追加。旧 SDK の `HttpClient.Timeout` も本文の受信完了まで効いていた）。ヘッダの後に本文の受信が止まっても期限で切れる。
+- 超過は `TaskCanceledException`（内側 `TimeoutException`）で、旧 SDK の `HttpClient.Timeout` 超過と同じ型である（`CompletionUseCase` の扱いは変わらない）。
+  呼び出し側の取り消しは包まずに伝える（`TimeoutException` を内側に持たない）ので、期限切れと区別できる。
+- **逐次には呼び出し全体の期限を掛けない。** 期限が効くのは応答ヘッダの到着までで、その後の受信は呼び出し側の取り消し（gRPC の deadline・切断）だけが止める。
+  長い出力が長く流れ続けるのは正常であり、全体に期限を掛けると正当な長い応答を途中で切る。旧 SDK も同じ範囲であり（IADR-0528・運用仕様書）、移行で変わっていない。
+  受信が途中で止まったまま呼び出し側も取り消さない場合に待ち続ける点は、無通信の期限（idle timeout）を決めるまで残る（残余リスク）。
+- 固定: T-33（解決規則・生成した `AnthropicClient.Timeout`）・T-34（実ホスト 7 秒・未設定 100 秒）・T-43 ③（期限 1 秒でヘッダを返さない相手・**ヘッダは返すが本文を返さない相手**へ送ると約 1 秒で `TaskCanceledException`（内側 `TimeoutException`）・送信 1 回／呼び出し側の取り消しは `TimeoutException` を持たない／`max_tokens` 64,000 の非ストリームが例外にならない）。
 
 ### 決定 5 — 本文に使わない content ブロックの型名は `ClaudeProvider` が数え、IADR-0535 の 3 条件でログを出す
 
@@ -114,12 +121,14 @@ related_specs:
 
 ## 結果
 
-- 本番の回避策 4 ファイル（422 行）と `AnthropicRequestContext` が消えた。`ClaudeProvider` は SDK の型を外へ出さない。
-- 試験: T-24・T-33・T-34・T-40・T-41 を作り直し、T-38 は対象ごと撤去、T-43 を新設した。変異（包み直し・再試行 0・期限・本文の条件・effort・Program.cs の登録）はいずれも赤になる（作業仕様書）。
+- 本番の回避策 4 ファイル（422 行）と `AnthropicRequestContext` が消えた（計器 `AnthropicContentBlockMetrics` は残る）。`ClaudeProvider` は SDK の型を外へ出さない。
+- 試験: T-24・T-33・T-34・T-40・T-41 を作り直し、T-38 は対象ごと撤去、T-43 を新設した。変異（包み直し・再試行 0・期限・一括の呼び出し全体の期限・本文の条件・effort・Program.cs の登録）はいずれも赤になる（作業仕様書）。
 - 稼働中環境への操作なし。配備は市場が閉じた後に行い、実呼び出しで確かめる（作業仕様書・PR の PoC 手順）。
 
 ## 残余リスク
 
-- **非ストリームの本文の読み取りは期限の外**である（SDK はヘッダの到着で期限の計測を終える）。Anthropic の非ストリーム応答はヘッダと本文がほぼ同時に届く前提で、旧 SDK（本文まで含めた `HttpClient.Timeout`）と実質同じと見る。PoC で長い出力の所要時間を見て確かめる。
+- 一括の本文の受信は、決定 4 の呼び出し全体の期限で旧 SDK と同じく期限に入る（当初の版では期限の外に出ていた。PR #1996 のレビューで是正）。
+  PoC では長い出力（`max_tokens` 8192 規模）の所要時間を測り、期限 100 秒との関係が従前と同じであることを確認項目として残す。
+- 逐次は、ヘッダの後に受信が止まり呼び出し側も取り消さないと待ち続ける（旧 SDK と同じ。決定 4）。
 - SDK の版を上げると既定や例外の型が変わり得る。T-43 は生成点越しに振る舞いを見るので、上げたときに赤で気付ける。
 - `Translate` が包まない SDK 例外（`AnthropicSseException`・`AnthropicInvalidDataException`）は計器では `other` になる（旧 SDK の `JsonException` と同じ）。

@@ -57,14 +57,30 @@ public class ClaudeProvider(
     public async Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
     {
         var model = request.Model ?? _model;
+
+        // IADR-0562 決定 4（2026-10-17 PR #1996 のレビューで追加）: 一括は**全文の受信まで**を期限に入れる。
+        // SDK の Timeout は 1 試行の応答ヘッダの到着までしか効かない（ResponseHeadersRead）。ヘッダの後に本文の受信が止まると、
+        // 呼び出し側が取り消さない限り待ち続ける（旧 SDK の HttpClient.Timeout は本文の受信完了まで効いていた）。
+        // そこで呼び出し全体に同じ期限の取り消しを掛け、期限切れは従前と同じ TaskCanceledException（内側 TimeoutException）にする。
+        // 呼び出し側の取り消しは包まずにそのまま伝える（ct が立っているかで区別できる）。
+        var timeout = client.Timeout ?? TimeSpan.FromSeconds(AnthropicClientFactory.DefaultTimeoutSeconds);
+        using var deadline = new CancellationTokenSource(timeout);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
         Message msg;
         try
         {
-            msg = await client.Messages.Create(BuildParams(request, model), ct);
+            msg = await client.Messages.Create(BuildParams(request, model), linked.Token);
         }
         catch (AnthropicException ex) when (IsTranslated(ex))
         {
             throw Translate(ex);
+        }
+        catch (OperationCanceledException ex)
+            when (deadline.IsCancellationRequested && !ct.IsCancellationRequested && ex.InnerException is not TimeoutException)
+        {
+            throw new TaskCanceledException(
+                $"Claude の呼び出しが期限 {timeout} を過ぎたため取り消した（{AnthropicClientFactory.ConfigKey}）。",
+                new TimeoutException(ex.Message, ex));
         }
 
         // IADR-0104 (#379), ADR-0025: content を読む前に stop_reason を確認する。refusal は HTTP 200・
@@ -94,6 +110,9 @@ public class ClaudeProvider(
         int inputTokens = 0, outputTokens = 0;
         string? stopReason = null;
 
+        // IADR-0562 決定 4: 逐次には呼び出し全体の期限を掛けない。期限（Timeout）が効くのは応答ヘッダの到着までで、
+        // その後の受信は呼び出し側の取り消し（gRPC の deadline・切断）だけが止める。長い出力が長く流れ続けるのは正常であり、
+        // 全体に期限を掛けると正当な長い応答を途中で切る。旧 SDK も同じ範囲だった（IADR-0528）。
         // SDK の例外は最初の MoveNextAsync（要求の送信）か途中の読み取りで出る。yield を try/catch の中に置けないので、
         // 列挙子を手で回して MoveNextAsync だけを包む（IADR-0562 決定 1。ストリームでも Domain に SDK の型を見せない）。
         await using var events = client.Messages.CreateStreaming(BuildParams(request, model), ct).GetAsyncEnumerator(ct);

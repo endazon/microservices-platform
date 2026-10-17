@@ -58,7 +58,7 @@ issue: "#1749"
 
 - 本番: `Infrastructure/ExternalServices/ClaudeProvider.cs`（116 行）・`Program.cs`（`using` と登録）。
 - 試験: `Tests/Grpc/GrpcKestrelFactory.cs`・`Tests/TestWebApplicationFactory.cs`・`AnthropicClientWiringTests`・`ClaudeProviderRequestShapeTests`・`ClaudeProviderStopReasonTests`・`ClaudeProviderThinkingTests`。
-- 旧 SDK の回避策（本番 5 ファイル。`ClaudeEffort.cs` 内の `AnthropicRequestContext` を含む）:
+- 旧 SDK の回避策（本番 5 ファイル。`ClaudeEffort.cs` 内の `AnthropicRequestContext` を含む。撤去したのはうち 4 ファイル 422 行と `AnthropicRequestContext`、計器 48 行は残す）:
   `AnthropicHttpClient`（68 行）・`AnthropicRequestShapingHandler`（93 行）・`AnthropicResponseSanitizingHandler`（117 行）・`AnthropicContentBlockSanitizer`（144 行）・`AnthropicContentBlockMetrics`（48 行）＝ 470 行。
 
 ## 設計（正は IADR-0562）
@@ -141,6 +141,7 @@ issue: "#1749"
 | M4: 本文を「`text` 欄を持つ最初のブロック」から取る | T-24 の「本文の前の非 text ブロック」の 1 件 |
 | M5: `Program.cs` を SDK 既定の `new AnthropicClient(...)` の登録へ戻す | T-34 の 3 件 |
 | M6: 要求に `OutputConfig` を載せない | T-37 の 2 件・T-40 の 1 件 |
+| M7（［2026-10-17 追記 / PR #1996 のレビュー］）: 一括の呼び出し全体の期限を外す（`Messages.Create` へ呼び出し側の `ct` をそのまま渡す） | T-43 ③ の「ヘッダは返すが本文を返さない相手」の 1 件（xUnit の 15 秒の上限で赤） |
 
 ## PoC（配備後に実呼び出しで確かめる項目。市場が閉じた後）
 

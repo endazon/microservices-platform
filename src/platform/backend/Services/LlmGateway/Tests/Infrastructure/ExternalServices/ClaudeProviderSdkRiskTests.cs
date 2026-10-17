@@ -17,7 +17,8 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 //   3. 期限: SDK 既定は max_tokens からの算出（最大 10 分・ストリームは最大 1 時間）。`Llm:AnthropicTimeoutSeconds` が効くこと。
 //
 // 変異: ①ClaudeProvider の包み直しを外す → 1 の試験が赤、②生成点の MaxRetries を外す → 2 の試験が赤、
-//       ③生成点の Timeout を外す → 3 の試験が赤（作業仕様書・PR に実測を記録）。
+//       ③生成点の Timeout を外す → 3 の試験が赤、④ClaudeProvider の呼び出し全体の期限を外す → 本文が止まる相手の試験が赤
+//       （作業仕様書・PR に実測を記録）。
 [Trait("TestKind", "Unit")]
 public class ClaudeProviderSdkRiskTests
 {
@@ -172,6 +173,41 @@ public class ClaudeProviderSdkRiskTests
         handler.Calls.Should().Be(1);
     }
 
+    // T-43 ③（PR #1996 のレビューで追加）: 一括は**全文の受信まで**が期限に入る。応答ヘッダ（200・application/json）は返すが
+    // 本文を送ってこない相手へ送ると、期限（1 秒）で TaskCanceledException（内側 TimeoutException）になる。
+    // SDK の Timeout はヘッダの到着までしか効かないので、ClaudeProvider が呼び出し全体に掛ける期限を外すと、この試験は
+    // 待ち続けて xUnit の上限（下の Timeout）で赤になる。
+    [Fact(Timeout = 15000)]
+    public async Task CompleteAsync_BodyStallsAfterHeaders_TimesOutWithinConfiguredDeadline()
+    {
+        var handler = new StalledBodyHandler();
+        var provider = TestClaudeProviders.Create(
+            handler, new Dictionary<string, string?> { [AnthropicClientFactory.ConfigKey] = "1" });
+
+        var stopwatch = Stopwatch.StartNew();
+        var ex = await CompleteFailure(provider);
+        stopwatch.Stop();
+
+        ex.Should().BeAssignableTo<TaskCanceledException>().Which.InnerException.Should().BeOfType<TimeoutException>();
+        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
+        handler.Calls.Should().Be(1);
+    }
+
+    // T-43 ③: 呼び出し側の取り消しは期限切れと区別できる（TimeoutException で包まない。CompletionUseCase が
+    // OperationCanceledException を除外する前提も変わらない）。
+    [Fact(Timeout = 15000)]
+    public async Task CompleteAsync_CallerCancellation_IsNotReportedAsTimeout()
+    {
+        var provider = TestClaudeProviders.Create(new StalledBodyHandler());
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        caller.CancelAfter(TimeSpan.FromMilliseconds(300));
+
+        var ex = await Catch(() => provider.CompleteAsync(new CompletionRequest("q", 512, "claude-opus-5-5"), caller.Token));
+
+        ex.Should().BeAssignableTo<OperationCanceledException>();
+        (ex.InnerException is TimeoutException).Should().BeFalse("期限切れではなく呼び出し側の取り消しである");
+    }
+
     // T-43 ③: 期限を明示するので、SDK の「非ストリームで max_tokens からの算出が 10 分を超えたら例外」（max_tokens > 20,000）に当たらない。
     [Fact]
     public async Task CompleteAsync_LargeMaxTokens_DoesNotTripSdkStreamingRequirement()
@@ -210,6 +246,46 @@ public class ClaudeProviderSdkRiskTests
             Interlocked.Increment(ref _calls);
             throw failure();
         }
+    }
+
+    // 応答ヘッダ（200・application/json）は返すが、本文の読み取りが取り消されるまで止まる相手。
+    private sealed class StalledBodyHandler : HttpMessageHandler
+    {
+        private int _calls;
+
+        public int Calls => Volatile.Read(ref _calls);
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Interlocked.Increment(ref _calls);
+            var content = new StreamContent(new StalledStream());
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    private sealed class StalledStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     // 応答ヘッダを返さず、取り消されるまで待つ相手。
