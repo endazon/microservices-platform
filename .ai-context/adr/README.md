@@ -635,3 +635,4 @@
 | [IADR-0555](./IADR-0555_loki-export-split-aligned-windows-and-count-reconcile.md) | Loki のログ書き出しは、範囲を query-frontend の分け目（1h）に揃えた窓（既定 10 分・1 時間の約数）に区切ってページを送り、窓ごとに count_over_time（両端を含まない区間）＋始まりちょうどの行と突き合わせ、1 窓でも合わなければ名指しして非 0。Loki の版上げ・設定変更と自動の取り直しはしない（#1969） | Accepted |
 | [IADR-0556](./IADR-0556_strip-untrusted-boundary-from-ast-documents.md) | AST が境界語つきで保存した文書は、管理者だけの一回限りの口と駆動スクリプトで表題・本文の先頭と末尾の枠だけを剥がす。本文は新しいキーへ書いて参照を付け替え、状態・属性・タグは動かさない。駆動スクリプトの本体は一括アーカイブと共有する（#1973） | Accepted |
 | [IADR-0557](./IADR-0557_wiki-sync-skip-unchanged-writes.md) | Wiki 同期は Wiki.js の今のページが送る内容と同じなら pages.update を送らない。Wolverine のリスナーの並列度は上げない（Wiki.js 2.5 の rebuild-tree が並ぶと pageTree の主キーで衝突する）（#1971） | Accepted |
+| [IADR-0558](./IADR-0558_conversion-figure-image-via-conversion-service.md) | 変換ジョブの図画像は変換サービス（図の所有者）が読み、BFF は利用者の資格情報を付けた既存のエッジの REST 中継で受け取る（east-west gRPC は足さない）。BFF からオブジェクトストレージの配線を外し、画像を返せないときは理由つきの 404・503（BFF では 502）に分ける（#1941） | Accepted |

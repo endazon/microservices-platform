@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
-using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -110,24 +109,36 @@ public static class ConversionBffEndpoints
           .Produces<List<ConversionFigureDto>>()
           .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
-        // UC-06, SC-07, IADR-0154 決定 2: 元の図画像。**BFF がオブジェクトストレージから解決して返す**
-        // （DocumentBffEndpoints の GET /bff/documents/{id}/content と同じ形）。ワーカーへ画像配信を
-        // 足さないのは IADR-0029（ワーカーは最小 HTTP サーフェス）に従うためである。
+        // UC-06, SC-07, IADR-0154 決定 2, [[IADR-0558]] (#1941): 元の図画像。**画像を読むのは図の所有者（ConversionService）であり、
+        // BFF は利用者の資格情報を付けて中継するだけである**（ADR-0014「サービス経由」・ADR-0109 決定 1。他の 5 口と同じエッジの中継）。
+        // 🔴 BFF はオブジェクトストレージの資格情報を持たない。以前は BFF がストレージを直接読み、配備では未配線のまま
+        //   `NullObjectStorageClient` へ縮退して常に 404 だった（文書の本文の #1905 / [[IADR-0544]] と同じ構図）。
+        // 画像はバッファせずストリームで返す（BFF のメモリを画像の大きさに比例させない）。後段の 404 は本文ごと透過し
+        // （理由つきの 404 と秘匿の 404 を画面・運用者が分けられる）、後段の 5xx・不達は 502 にする（「画像が無い」に畳まない）。
         g.MapGet("/{id:guid}/figures/{figureId}/image", async (Guid id, string figureId,
-            IHttpClientFactory httpFactory, IObjectStorageClient storage, HttpContext http,
-            CancellationToken ct) =>
+            IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
         {
             var client = Forwarding(httpFactory, http);
-            var resp = await client.GetAsync($"/jobs/{id}/figures", ct);
+            HttpResponseMessage resp;
+            try
+            {
+                resp = await client.GetAsync(
+                    $"/jobs/{id}/figures/{Uri.EscapeDataString(figureId)}/image",
+                    HttpCompletionOption.ResponseHeadersRead, ct);
+            }
+            catch (Exception ex) when (IsTransient(ex, ct))
+            {
+                return Results.StatusCode(StatusCodes.Status502BadGateway);
+            }
+            http.Response.RegisterForDispose(resp);
+
+            if ((int)resp.StatusCode >= 500)
+                return Results.StatusCode(StatusCodes.Status502BadGateway);
             if (!resp.IsSuccessStatusCode)
-                return Results.StatusCode((int)resp.StatusCode);
-            var figures = await resp.Content.ReadFromJsonAsync<List<ConversionFigureDto>>(ct);
-            var figure = figures?.FirstOrDefault(f => f.FigureId == figureId);
-            // 未知の図と、画像を持たない図（コード化済み）を区別しない——どちらも「その画像は無い」。
-            if (figure?.ImageUri is null || !storage.CanResolve(figure.ImageUri))
-                return Results.NotFound();
-            var bytes = await storage.GetBytesAsync(figure.ImageUri, ct);
-            return Results.File(bytes, figure.ImageContentType ?? "application/octet-stream");
+                return await RelayAsync(resp, ct);
+
+            var contentType = resp.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
+            return Results.Stream(await resp.Content.ReadAsStreamAsync(ct), contentType);
         }).WithName("BffConversionJobFigureImage")
           .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 

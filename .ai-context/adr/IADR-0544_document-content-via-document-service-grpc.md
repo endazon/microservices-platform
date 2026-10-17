@@ -2,7 +2,7 @@
 title: IADR-0544 文書の本文（/bff/documents/{id}/content）は文書サービスが読み、BFF は east-west gRPC（DocumentRead.GetDocumentContent）で受け取る。BFF にストレージを配線せず、案内文の 200 への縮退を撤去して 404 / 413 / 502 を返す
 type: impl-adr
 status: Accepted
-related_ids: [FR-06, UC-03, SC-03, NFR-09, NFR-16, ADR-0014, ADR-0029, ADR-0075, ADR-0089, ADR-0106, ADR-0119, IADR-0009, IADR-0038, IADR-0290, IADR-0379, IADR-0401, IADR-0402, IADR-0533, IADR-0537, IADR-0540, IADR-0541]
+related_ids: [FR-06, UC-03, SC-03, NFR-09, NFR-16, ADR-0014, ADR-0029, ADR-0075, ADR-0089, ADR-0106, ADR-0119, IADR-0009, IADR-0038, IADR-0290, IADR-0379, IADR-0401, IADR-0402, IADR-0533, IADR-0537, IADR-0540, IADR-0541, IADR-0558]
 author: claude
 created: 2026-10-15
 updated: 2026-10-17
@@ -69,6 +69,7 @@ related_specs:
    - 文書サービスの本体は `DocumentContentUseCase`（`Features/Documents/GetContent/`）。**読めるかの判定は `DocumentReadUseCase.GetAsync` を通る**（判定器を 2 つにしない）。
    - BFF の ABAC の位置は動かさない（`FetchAuthorizedAsync` → 本文の rpc。判定を通る前に本文の rpc を呼ばない）。利用者文脈は他の 4 口と同じく本文で運ぶ。
    - BFF の `AddPlatformObjectStorage` は残す（変換ジョブの図画像 `/bff/conversion/jobs/{id}/figures/{figureId}/image` がまだ使う。§残余）。
+     ［2026-10-17 追記 / #1941］撤去した。図画像は変換サービスが読み、BFF は中継する（[IADR-0558](./IADR-0558_conversion-figure-image-via-conversion-service.md)）。BFF で `IObjectStorageClient` を使う口は 0 である。
 2. **本文の状態を応答で分け、どれも案内文の 200 にしない。**
 
    | 後段 | 意味 | BFF の応答 |
@@ -118,6 +119,7 @@ related_specs:
 - 試験: `GrpcDocumentContentTests`（実 h2c・12 件）・`BffDocumentContentTests`（12 件）・`DocumentContentDeploymentWiringTests`（2 件）。変異で赤になることを確かめた（仕様書）。
 - 残余:
   - 変換ジョブの図画像（`/bff/conversion/jobs/{id}/figures/{figureId}/image`）は BFF のストレージを読み続けており、配備では同じく未配線（`CanResolve` 偽 → 404）。本件の射程外。
+    ［2026-10-17 追記 / #1941］解消した（[IADR-0558](./IADR-0558_conversion-figure-image-via-conversion-service.md)。輸送は gRPC ではなく既存のエッジの REST 中継）。
   - 上限の判定は本文を読み込んだ後である。共有のポート（`IObjectStorageClient`）に大きさの問い合わせ（HEAD）を足せば読む前に止められるが、実装が 18 あり射程を越える。
     ［2026-10-17 追記 / #1940］解消した（決定 4 の追記）。非同期の読み手（取り込み・wiki・graph）に上限を入れるかは残る。
   - wiki-service の本文の読み手は IADR-0541 決定 4 で NoSuchKey を恒久的な欠落として扱うようになり、その判定は本件で共有の

@@ -17,9 +17,9 @@ namespace ConversionService.Tests.Features.ConversionJobs;
 // NFR-09, FR-12, UC-06, SC-07, ADR-0109 決定 3, ADR-0084 決定 1, IADR-0465 (#1520):
 // **ConversionService は BFF が中継した利用者の資格情報を自ら検証する。** 従前は認証を持たず、門は BFF の
 // 1 枚だけだった（IADR-0403 決定 4・IADR-0458 決定 1）。本クラスは本番の `Program.cs` を
-// `WebApplicationFactory` で起こし、**本物の JwtBearer**（検証鍵だけテスト用）で `/jobs` の 5 口の門を測る。
+// `WebApplicationFactory` で起こし、**本物の JwtBearer**（検証鍵だけテスト用）で `/jobs` の 6 口の門を測る。
 //
-// ADR-0084 決定 1 は NFR-09 を**端点単位**で判定する —— 5 口を 1 つずつ並べるのはそのためである
+// ADR-0084 決定 1 は NFR-09 を**端点単位**で判定する —— 6 口を 1 つずつ並べるのはそのためである
 // （群に掛けた門を 1 口で確かめても、別の群へ移された口は見えない）。
 //
 // 🔴 **ソケットを開かない**（TestServer はメモリ内。`TestUserTokens` の注記を見よ）。
@@ -29,13 +29,15 @@ public class ConversionJobAuthorizationTests
     private const string AdminRole = "platform-admin";
     private const string OperatorRole = "platform-operator";
 
-    // 5 口の一覧（method, path の雛形）。`{id}` は実行時に既知のジョブ id へ置き換える。
+    // 6 口の一覧（method, path の雛形）。`{id}` は実行時に既知のジョブ id へ置き換える。
     public static TheoryData<string, string> AllRoutes => new()
     {
         { "GET", "/jobs" },
         { "GET", "/jobs/{id}" },
         { "POST", "/jobs/{id}/retry" },
         { "GET", "/jobs/{id}/figures" },
+        // FR-12, UC-06, [[IADR-0558]] (#1941): 図の元画像（人手補正の材料。BFF が中継する）。
+        { "GET", "/jobs/{id}/figures/fig-1/image" },
         { "POST", "/jobs/{id}/figures/fig-1/correction" },
     };
 
@@ -43,6 +45,8 @@ public class ConversionJobAuthorizationTests
     {
         { "POST", "/jobs/{id}/retry" },
         { "GET", "/jobs/{id}/figures" },
+        // FR-12, UC-06, [[IADR-0558]] (#1941): 図の元画像（人手補正の材料。BFF が中継する）。
+        { "GET", "/jobs/{id}/figures/fig-1/image" },
         { "POST", "/jobs/{id}/figures/fig-1/correction" },
     };
 
@@ -80,7 +84,7 @@ public class ConversionJobAuthorizationTests
         return resp.StatusCode;
     }
 
-    // NFR-09, SC-07, ADR-0109 決定 3: 資格情報なしは 5 口すべてで 401。
+    // NFR-09, SC-07, ADR-0109 決定 3: 資格情報なしは 6 口すべてで 401。
     // 従前（認証なし）はここが 200 / 202 / 404 を返していた —— メッシュ内から直に叩けば BFF の門を迂回できた。
     [Theory]
     [MemberData(nameof(AllRoutes))]
@@ -144,7 +148,7 @@ public class ConversionJobAuthorizationTests
         (await SendAsync(factory, "POST", "/jobs/{id}/retry", id, token)).Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    // NFR-09, SC-07, IADR-0042 決定 3（閲覧は管理者・運用者）: 門のロールを持たない利用者は 5 口すべてで 403。
+    // NFR-09, SC-07, IADR-0042 決定 3（閲覧は管理者・運用者）: 門のロールを持たない利用者は 6 口すべてで 403。
     [Theory]
     [MemberData(nameof(AllRoutes))]
     public async Task EveryRoute_UserWithoutGateRole_Returns403(string method, string template)
@@ -195,8 +199,8 @@ public class ConversionJobAuthorizationTests
         (await SendAsync(factory, method, template, id, token)).Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // NFR-09, SC-07, ADR-0109 決定 3: 中継された管理者のトークンは 5 口すべてで門を通り、各口の本来の応答になる。
-    // 人手補正は既知のジョブに存在しない図を指すので 404（門を通った先の判定）である。
+    // NFR-09, SC-07, ADR-0109 決定 3: 中継された管理者のトークンは 6 口すべてで門を通り、各口の本来の応答になる。
+    // 人手補正と図の画像は既知のジョブに存在しない図を指すので 404（門を通った先の判定）である。
     [Fact]
     public async Task EveryRoute_WithRelayedAdminToken_PassesTheGate()
     {
@@ -207,6 +211,8 @@ public class ConversionJobAuthorizationTests
         (await SendAsync(factory, "GET", "/jobs", id, token)).Should().Be(HttpStatusCode.OK);
         (await SendAsync(factory, "GET", "/jobs/{id}", id, token)).Should().Be(HttpStatusCode.OK);
         (await SendAsync(factory, "GET", "/jobs/{id}/figures", id, token)).Should().Be(HttpStatusCode.OK);
+        (await SendAsync(factory, "GET", "/jobs/{id}/figures/fig-1/image", id, token))
+            .Should().Be(HttpStatusCode.NotFound);
         (await SendAsync(factory, "POST", "/jobs/{id}/figures/fig-1/correction", id, token))
             .Should().Be(HttpStatusCode.NotFound);
         (await SendAsync(factory, "POST", "/jobs/{id}/retry", id, token)).Should().Be(HttpStatusCode.Accepted);

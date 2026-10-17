@@ -10,6 +10,7 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using ConversionService.Features.ConversionJobs;
 using ConversionService.Features.ConversionJobs.CorrectFigure;
+using ConversionService.Features.ConversionJobs.GetFigureImage;
 using ConversionService.Features.ConversionJobs.Normalize;
 using ConversionService.Domain.Ports;
 using ConversionService.Infrastructure.Configuration;
@@ -110,6 +111,10 @@ builder.Services.AddScoped<IConversionJobStore, EfConversionJobStore>();
 // FR-12, UC-06, SC-07, IADR-0154: 人手補正 Phase 1（図のコード化のやり直し）。
 // 本文の図ブロックを置換して DocumentNormalized を再発行する（再変換ではない）。
 builder.Services.AddScoped<IFigureCorrectionService, FigureCorrectionService>();
+
+// FR-12, UC-06, SC-07, ADR-0014, [[IADR-0558]] (#1941): 縮退した図の元画像の読み取り。**画像を読むのは図の所有者（本サービス）**で、
+// BFF はストレージの資格情報を持たずに `GET /jobs/{id}/figures/{figureId}/image` を中継する。
+builder.Services.AddScoped<FigureImageReader>();
 
 // UC-06, SC-07, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0393:
 // 人手補正の入力検証。**アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、

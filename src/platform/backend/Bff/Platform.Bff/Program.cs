@@ -2,7 +2,6 @@ using Knowledge.Bff.Endpoints.Documents;
 using Knowledge.Bff.Endpoints.Search;
 using Knowledge.Bff.Endpoints.Secrets;
 using Knowledge.Bff.Endpoints.Usage;
-using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
@@ -213,11 +212,9 @@ builder.Services.AddHttpClient("MarketMonitorService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:MarketMonitorService"]
         ?? "http://market-monitor-service:8080"));
 
-// UC-06, SC-07, ADR-0014/ADR-0015（Superseded by ADR-0106）: 変換ジョブの図画像（人手補正）の読み取り用オブジェクトストレージ（storage://）。
-// 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、図画像は 404 になる。
-// ［2026-10-15 / #1905・[[IADR-0544]]］文書の本文（`/bff/documents/{id}/content`）はここを使わない —— 文書サービスから
-// east-west gRPC（`DocumentRead.GetDocumentContent`）で受け取る。BFF へストレージの資格情報を配線しない。
-builder.Services.AddPlatformObjectStorage(builder.Configuration);
+// ADR-0014, [[IADR-0544]] (#1905), [[IADR-0558]] (#1941): 🔴 **BFF はオブジェクトストレージを持たない**（`AddPlatformObjectStorage` を呼ばない）。
+// 文書の本文は文書サービスから east-west gRPC（`DocumentRead.GetDocumentContent`）で、変換ジョブの図画像は変換サービスの
+// `GET /jobs/{id}/figures/{figureId}/image` の中継で受け取る。BFF へストレージの資格情報を配線しない。
 
 // NFR, ADR-0032 / IADR-0251 / IADR-0273 / #439 第 3 段: BFF セッション（Token Handler）。
 // **既定の認証スキームは振り分け（BffSmart）である**（3b①）—— `Authorization: Bearer` が
