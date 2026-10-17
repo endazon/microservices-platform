@@ -181,8 +181,9 @@ git grep -n -i -E '(高機密|confidential).{0,40}(ruri|ティア ?A|セルフ�
 ## 計画書との差異
 
 - 差異: あり（計画のモックの文言）。`project-planning` の `05_screens/mockups/hi-fi/sc-11.html:429` と `wireframe/sc-11.html:127` の「Voyage AI（既定）／Ruri v3（高機密）」が ADR-0127 と食い違う。
-  実装はモックの文言を再現しない（構成が返すポートを出す）。**モックの是正は計画側の引き受け**であり、環流（planning への issue）が要る。本セッションは planning の issue 検索 API に届かないため、起票はオーケストレーターへ委ねる（報告に書く）。
+  実装はモックの文言を再現しない（構成が返すポートを出す）。**モックの是正は計画側の引き受け**であり、環流（planning への issue）が要る。既存 issue（planning#718・planning#719 ほか）に同件が無いことを確かめ、planning#807 で環流した（2026-10-17）。
 
 ## 未決事項
 
 - なし（Ruri のコレクションの片付けは本 PR の対象外。報告に残す）。
+- ［2026-10-17 追記 / #1991］総枠（`embedding-budget` / `lexical-budget`）の使い切りの警報は未整備。PR #1989 の AI レビューの指摘を受け、本 PR では受容して #1991 へ切り出した。
