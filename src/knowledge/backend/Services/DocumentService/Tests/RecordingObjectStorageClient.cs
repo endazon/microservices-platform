@@ -88,11 +88,11 @@ public sealed class RecordingObjectStorageClient : IObjectStorageClient
             : throw new KeyNotFoundException(uri));
     }
 
-    // FR-06, [[IADR-0544]] 決定 4（2026-10-17 追記 / #1940）: 上限つきの取得。器は本文を文字列で持つので、格納のバイト数＝UTF-8 のバイト数で判定する
-    // （全文を読まないことは実クライアントの試験 `S3ObjectStorageClientBoundedReadTests` が固定する）。失敗注入と回数は `GetTextAsync` と共有する。
-    // 上限つきの取得で受けた URI と上限（本文の口が上限つきで読むことを測る）。
+    // FR-06, [[IADR-0544]] 決定 4（2026-10-17 追記 / #1940）: 上限つきの取得で受けた URI と上限（本文の口が上限つきで読むことを測る）。
     public ConcurrentQueue<(string Uri, long MaxBytes)> BoundedReads { get; } = new();
 
+    // 上限つきの取得。器は本文を文字列で持つので、格納のバイト数＝UTF-8 のバイト数で判定する
+    // （全文を読まないことは実クライアントの試験 `S3ObjectStorageClientBoundedReadTests` が固定する）。失敗注入と回数は `GetTextAsync` と共有する。
     public async Task<BoundedTextRead> GetTextBoundedAsync(string uri, long maxBytes, CancellationToken ct = default)
     {
         BoundedReads.Enqueue((uri, maxBytes));
