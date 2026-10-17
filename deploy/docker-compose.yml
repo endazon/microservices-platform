@@ -786,7 +786,8 @@ services:
   # 有効化手順: プロファイルを有効化し、llm-gateway へ SELFHOSTED_EMBEDDING_URL=http://embedding:80 と
   #   SELFHOSTED_EMBEDDING_ENABLED=true を .env で与える。
   #   🔴 同時に retrieval-service へ SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3 を与える
-  #   （ADR-0092 / IADR-0467。与えないと高機密の文書は索引されるが検索されない）。
+  #   （ADR-0092 / IADR-0467。与えないとセルフホストへ回った文書は索引されるが検索されない。
+  #   ［2026-10-17 / #1746］高機密の文書はここへ入らない —— 語彙索引へ行く。回るのは Voyage を止めた構成の public / internal）。
   # ⚠️ 実モデル取得・実埋め込み疎通・nDCG@10 実測は稼働環境依存＝分離（IADR-0085 / #303）。
   # 既定 image tag / モデル ID はプレースホルダ。実運用前に固定する。
   embedding:

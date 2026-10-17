@@ -15,9 +15,12 @@ namespace IngestionService.Features.Ingestion.Ingest;
 // 使い直す。Wolverine の RabbitMQ の受信は Inline で、再試行は同じ配信の中で回るため、キューも同じ時間だけ塞がる。
 //
 // 🔴 **呼び出しごとの時間切れ（`content` / `embedding` / `vector-store`）は従来どおり再試行する** —— 止まった依存先は
-// 一時的に回復し得る。デッドレターへ直行させるのは呼び出し先が `embedding-budget` の `ConsumerTimeoutException` だけである。
+// 一時的に回復し得る。デッドレターへ直行させるのは呼び出し先が `embedding-budget`（と `lexical-budget`）の `ConsumerTimeoutException` だけである。
 // 受け口（チェーン）に付けた規則は、全体の既定（`OnAnyException().RetryWithCooldown`）より先に評価される
 // （`EmbeddingBudgetDeadLetterPipelineTests` がローカルキューの実配送で確かめる）。
+//
+// ［2026-10-17 / #1746・[[IADR-0559]]］**語彙索引への書き込みの総枠（`lexical-budget`）の使い切りも同じに扱う。**
+// 使い切りは文書のチャンク数で決まり、再試行しても同じ結果になる（埋め込みの総枠と同じ理由）。
 public sealed class EmbeddingBudgetDeadLetterPolicy : IHandlerPolicy
 {
     public void Apply(IReadOnlyList<HandlerChain> chains, GenerationRules rules, IServiceContainer container)
@@ -27,5 +30,5 @@ public sealed class EmbeddingBudgetDeadLetterPolicy : IHandlerPolicy
     }
 
     internal static bool IsBudgetExhausted(ConsumerTimeoutException ex) =>
-        ex.Target == IngestionTimeouts.EmbeddingBudgetTarget;
+        ex.Target is IngestionTimeouts.EmbeddingBudgetTarget or IngestionTimeouts.LexicalBudgetTarget;
 }

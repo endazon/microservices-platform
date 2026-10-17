@@ -3,14 +3,14 @@ title: テスト仕様書 — FR-02 取り込み
 type: test-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-10-15
+updated: 2026-10-17
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-04, FR-05, SC-01, SC-02, SC-08, UC-04, NFR-06]
 adrs: [ADR-0070, ADR-0027, ADR-0127, ADR-0016, ADR-0092]
-iadrs: [IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
-specs: [20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
+iadrs: [IADR-0559, IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
+specs: [20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
 issues: [#1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 -->
 
@@ -78,6 +78,8 @@ issues: [#1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 | T-49 | **本文の欠落の分類** | 読み手（`StorageDocumentContentReader`）のオブジェクトストレージが NoSuchKey（専用の型・汎用の型にエラーコード）・404 のバケットなし・500・503・時間切れ・接続の失敗を返す。本文がある | NoSuchKey だけを本文の欠落へ写す（所在を運ぶ）。状態コード 404 だけでは写さず、他は元の例外のまま上げる。本文があれば従来どおり返す。判定を 404 だけ・S3 の例外すべて・型だけにする変異で赤になる（`DocumentBodyMissingTests`） | 本文の欠落は恒久的 |
 | T-50 | **本文の欠落の受け口** | 本文が無い（`internal`・`confidential`）。本文がある。一時障害（500） | 欠落は例外を上げずに終える。Warning を 1 行（文書 ID・本文の所在・更新日時）、計数 `ingestion.body_missing` を 1。点は 1 つも書かず（題名だけの点も書かない。扱いは未決）、完了を発行しない。冒頭の全コレクション削除は従来の位置のまま。本文があれば従来どおり書き、計数も Warning も無い。一時障害は例外のまま上げる | 同上 |
 | T-51 | **本文の欠落の実配送** | 本番と同じ共通既定の Wolverine（ローカルキュー）で、本文が無い・1 回目だけ 5xx | 欠落は試行 1 回で成功として終わり、デッドレターへ行かない。5xx は従来どおり再試行され（2 回目で成功）、デッドレターへ行かない | 同上 |
+| T-52 | **語彙索引への書き込みの総枠** | 書き込み 1 回ごとに時計が 1 秒進む店で 10 チャンクの文書を取り込む（偽の時計）。`confidential` の文書（埋め込みを呼ばない）と、埋め込みが 1 チャンク目から使えない `internal` の文書（待ちの点）の 2 経路 | 総枠 3 秒なら 3 点を書いた後の判定で残りを書かずに時間切れ（呼び出し先 `lexical-budget`）、完了を出さない。待ちの点は書いた 3 点を計器に数えてから投げる。総枠 11 秒なら全点を書き完了を出す（対照）。判定を外す変異で赤になる（`IngestionTimeoutTests`） | 取り込み: チャンク数に比例する語彙索引への書き込み |
+| T-53 | **語彙索引の総枠の使い切りはデッドレターへ** | Wolverine の実配送（ローカルキュー・本番と同じ再試行の既定）で、語彙索引の総枠を使い切る `confidential` の文書を流す | 1 試行目でデッドレターへ入り再試行しない（本文の取得 1 回・書き込み 3 点）。方針の述語から `lexical-budget` を外す変異で赤になる（`EmbeddingBudgetDeadLetterPipelineTests`） | 取り込み: 失敗は再試行・デッドレター |
 
 ## 段間結合（取り込み → 索引 → 検索ヒット）
 

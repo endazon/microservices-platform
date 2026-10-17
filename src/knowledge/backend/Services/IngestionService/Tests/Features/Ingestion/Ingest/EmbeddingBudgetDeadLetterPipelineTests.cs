@@ -35,7 +35,7 @@ public class EmbeddingBudgetDeadLetterPipelineTests
         string.Join("\n\n", Enumerable.Range(1, count).Select(i => $"# 節 {i}\n\n本文 {i}"));
 
     private static IHost BuildHost(CountingReader reader, IEmbeddingService embed, FakeTimeProvider clock,
-        IngestionTimeouts timeouts)
+        IngestionTimeouts timeouts, NoopStore? store = null)
         => new HostBuilder()
             .UseWolverine(opts =>
             {
@@ -56,7 +56,7 @@ public class EmbeddingBudgetDeadLetterPipelineTests
                 .AddSingleton<IDocumentContentReader>(reader)
                 .AddSingleton<IChunkingService, MarkdownChunkingService>()
                 .AddSingleton(embed)
-                .AddSingleton<IIngestionVectorStore, NoopStore>()
+                .AddSingleton<IIngestionVectorStore>(store ?? new NoopStore())
                 .AddSingleton<IIngestionCompletedPublisher, NoopStore>()
                 .DisableAllExternalWolverineTransports())
             .Build();
@@ -81,6 +81,34 @@ public class EmbeddingBudgetDeadLetterPipelineTests
         dead.Attempts.Should().Be(1, "総枠の使い切りは再試行しない");
         reader.Calls.Should().Be(1);
         embed.Calls.Should().Be(3, "総枠 3 秒・1 回 1 秒で 3 回呼んだ後の判定で止まる");
+    }
+
+    // T-53 (#1746・[[IADR-0559]]): **語彙索引への書き込みの総枠（`lexical-budget`）を使い切った高機密の文書も、1 回目の試行でデッドレターへ。**
+    // 書き込み 1 回 1 秒・総枠 3 秒で、3 点を書いた後の判定で止まる。方針の述語から `lexical-budget` を外す変異では 2 秒後に再試行が回り、
+    // 試行が 2 回以上・本文の取得が 2 回以上になって赤になる。
+    [Fact]
+    public async Task 語彙索引の総枠を使い切った高機密の文書も一回目の試行でデッドレターへ送る()
+    {
+        var clock = new FakeTimeProvider();
+        var reader = new CountingReader(ManySections(10));
+        var store = new NoopStore(clock);
+        using var host = BuildHost(reader, new ClockAdvancingEmbedder(clock, TimeSpan.FromSeconds(1)), clock,
+            IngestionTimeouts.Default with { EmbeddingBudget = TimeSpan.FromSeconds(3) }, store);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+
+        var session = await host.TrackActivity()
+            .DoNotAssertOnExceptionsDetected()
+            .Timeout(TimeSpan.FromSeconds(20))
+            .PublishMessageAndWaitAsync(Event() with
+            {
+                Attributes = new Dictionary<string, string> { ["confidentiality"] = "confidential" },
+            });
+        await host.StopAsync(TestContext.Current.CancellationToken);
+
+        var dead = session.MovedToErrorQueue.SingleEnvelope<DocumentUpdated>();
+        dead.Attempts.Should().Be(1, "語彙索引の総枠の使い切りも再試行しない");
+        reader.Calls.Should().Be(1);
+        store.LexicalWrites.Should().Be(3, "総枠 3 秒・1 回 1 秒で 3 点を書いた後の判定で止まる");
     }
 
     // 対照: 呼び出しごとの時間切れは一時的な障害として再試行される（デッドレターへ直行しない）。
@@ -165,8 +193,12 @@ public class EmbeddingBudgetDeadLetterPipelineTests
         }
     }
 
-    private sealed class NoopStore : IIngestionVectorStore, IIngestionCompletedPublisher
+    // #1746・[[IADR-0559]]: `clock` を与えると、語彙索引への書き込み 1 回ごとに偽の時計を 1 秒進める（遅いが止まってはいない Qdrant）。
+    private sealed class NoopStore(FakeTimeProvider? clock = null) : IIngestionVectorStore, IIngestionCompletedPublisher
     {
+        private int _lexicalWrites;
+        public int LexicalWrites => Volatile.Read(ref _lexicalWrites);
+
         public Task EnsureCollectionsAsync(CancellationToken ct = default) => Task.CompletedTask;
 
         public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
@@ -181,13 +213,17 @@ public class EmbeddingBudgetDeadLetterPipelineTests
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
             => Task.CompletedTask;
 
-        // #1746: 語彙索引の口（本試験は internal の文書なので呼ばれない）。
+        // #1746: 語彙索引の口（internal の文書の試験では呼ばれない。T-53 の confidential の文書が使う）。
         public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title,
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
         CancellationToken ct = default)
-            => Task.CompletedTask;
+        {
+            Interlocked.Increment(ref _lexicalWrites);
+            clock?.Advance(TimeSpan.FromSeconds(1));
+            return Task.CompletedTask;
+        }
 
         public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
         string indexText, string? markdownUri,
