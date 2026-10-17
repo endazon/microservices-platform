@@ -1479,7 +1479,7 @@ split -l 500 -d archive-bodyless-recovery-ids.txt archive-bodyless-recovery-ids.
 for f in archive-bodyless-recovery-ids.part.*; do
   node scripts/republish-document-updated.js --live --dry-run --operator <名前> --ids "$(paste -sd, "$f")" || break
 done
-# 3. 塊ごとに状態ファイルを分けて流す。止まったら同じループを流し直す（状態ファイルの在る塊は --resume で続き、完了済みの塊は何もしない）
+# 3. 塊ごとに状態ファイルを分けて流す（bash の配列を使う）。止まったら同じループを流し直す（状態ファイルの在る塊は --resume で続き、完了済みの塊は何もしない）
 for f in archive-bodyless-recovery-ids.part.*; do
   st="./republish-$f.state.json"
   if [ -f "$st" ]; then sel=(--resume); else sel=(--ids "$(paste -sd, "$f")"); fi
@@ -1599,7 +1599,7 @@ split -l 500 -d strip-recovery-ids.txt strip-recovery-ids.part.
 for f in strip-recovery-ids.part.*; do
   node scripts/republish-document-updated.js --live --dry-run --operator <名前> --ids "$(paste -sd, "$f")" || break
 done
-# 3. 塊ごとに状態ファイルを分けて流す。止まったら同じループを流し直す（状態ファイルの在る塊は --resume で続き、完了済みの塊は何もしない）
+# 3. 塊ごとに状態ファイルを分けて流す（bash の配列を使う）。止まったら同じループを流し直す（状態ファイルの在る塊は --resume で続き、完了済みの塊は何もしない）
 for f in strip-recovery-ids.part.*; do
   st="./republish-$f.state.json"
   if [ -f "$st" ]; then sel=(--resume); else sel=(--ids "$(paste -sd, "$f")"); fi
