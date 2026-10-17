@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-02, FR-03, FR-04, FR-05, SC-01, SC-02, SC-08, UC-04, NFR-06]
 adrs: [ADR-0070, ADR-0027, ADR-0127, ADR-0016, ADR-0092]
-iadrs: [IADR-0560, IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
-specs: [20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
+iadrs: [IADR-0560, IADR-0085, IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
+specs: [20261017_1746_s4-stop-creating-empty-ruri-collection, 20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
 issues: [#1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 -->
 
@@ -80,6 +80,7 @@ issues: [#1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 | T-51 | **本文の欠落の実配送** | 本番と同じ共通既定の Wolverine（ローカルキュー）で、本文が無い・1 回目だけ 5xx | 欠落は試行 1 回で成功として終わり、デッドレターへ行かない。5xx は従来どおり再試行され（2 回目で成功）、デッドレターへ行かない | 同上 |
 | T-52 | **語彙索引への書き込みの総枠** | 書き込み 1 回ごとに時計が 1 秒進む店で 10 チャンクの文書を取り込む（偽の時計）。`confidential` の文書（埋め込みを呼ばない）と、埋め込みが 1 チャンク目から使えない `internal` の文書（待ちの点）の 2 経路 | 総枠 3 秒なら 3 点を書いた後の判定で残りを書かずに時間切れ（呼び出し先 `lexical-budget`）、完了を出さない。待ちの点は書いた 3 点を計器に数えてから投げる。総枠 11 秒なら全点を書き完了を出す（対照）。判定を外す変異で赤になる（`IngestionTimeoutTests`） | 取り込み: チャンク数に比例する語彙索引への書き込み |
 | T-53 | **語彙索引の総枠の使い切りはデッドレターへ** | Wolverine の実配送（ローカルキュー・本番と同じ再試行の既定）で、語彙索引の総枠を使い切る `confidential` の文書を流す | 1 試行目でデッドレターへ入り再試行しない（本文の取得 1 回・書き込み 3 点）。方針の述語から `lexical-budget` を外す変異で赤になる（`EmbeddingBudgetDeadLetterPipelineTests`） | 取り込み: 失敗は再試行・デッドレター |
+| T-54 | **Ruri のコレクションは opt-in のときだけ** | 実際の `appsettings.json`・添字が欠けた構成（0 と 2）・名前が空の定義（compose の既定空）を束ねる（`EmbeddingCollectionsOptionsBindingTests`）。Helm・compose の配線（`k8s-local-up.test.js`） | 既定は voyage の 1 本だけ。欠けた添字でも全件を束ね、空の名前は捨てる。Helm は `embedding.enabled` のときだけ取り込みへ `Embedding__Collections__1__*` を描き、compose は検索と同じ `SEARCH_FUSED_COLLECTION` を読む。既定のコレクション数は 2（voyage ＋ 語彙索引。T-21 の削除の期限は 20 秒） | 無効の配備に空のコレクションを作らない（セルフホストは opt-in のまま残す） | 自動 |
 
 ## 段間結合（取り込み → 索引 → 検索ヒット）
 

@@ -332,6 +332,17 @@ spec:
             - name: Qdrant__FusedCollections__0
               value: {{ $.Values.embedding.collection | quote }}
           {{- end }}
+          {{- if and (eq $name "ingestion") $.Values.embedding.enabled }}
+            # FR-02, ADR-0127 決定 5, IADR-0085 (#1746 段 S4): ティア A を有効化したときだけ、取り込みに Ruri のコレクションを
+            # 作らせる（起動時のブートストラップ・残存防止削除の対象）。既定の appsettings.json は voyage の 1 本だけで、
+            # 無効の配備に空の Ruri のコレクションを作らない。🔴 llmgateway・retrieval と**同じ条件**で描画する ——
+            # 取り込みだけ欠けると、セルフホストへ回った文書の登録がコレクション不在で失敗する。
+            # index 1 は opt-in の Ruri の位置（決定的ローカル埋め込みは index 2。添字は欠けてよい）。
+            - name: Embedding__Collections__1__Name
+              value: {{ $.Values.embedding.collection | quote }}
+            - name: Embedding__Collections__1__VectorSize
+              value: {{ required "embedding.dimensions は必須（IADR-0085）" $.Values.embedding.dimensions | quote }}
+          {{- end }}
           {{- if has $name (list "ingestion" "retrieval") }}
             # FR-02, FR-03, ADR-0127 決定 1・2, IADR-0497 (#1746): 語彙索引（ベクトルを持たない専用のコレクション）。
             # 高機密文書（confidential・restricted・未指定・未知）は埋め込まずここへ書き、検索は全文の系統だけで束ねる。
@@ -379,7 +390,8 @@ spec:
           {{- if eq $name "ingestion" }}
             # 取り込みは起動時に Embedding:Collections の全コレクションを作る。ここに無いと
             # コレクションが存在せず、Upsert も残存防止削除（DeleteByDocumentFromAllAsync）も届かない。
-            # index 2 は appsettings.json の 2 件（voyage=0 / ruri=1）の後ろへ足す位置である。
+            # index 2 は appsettings.json の voyage（index 0）と opt-in の Ruri（index 1。embedding.enabled のときだけ描く）の
+            # 後ろへ足す位置である（［2026-10-17 / #1746 段 S4］Ruri は既定から外した。添字が欠けても束ねられる）。
             - name: Embedding__Collections__2__Name
               value: {{ $det.collection | quote }}
             - name: Embedding__Collections__2__VectorSize

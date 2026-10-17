@@ -48,13 +48,16 @@ var qdrantHost = builder.Configuration["Qdrant:Host"] ?? "qdrant";
 var qdrantPort = int.Parse(builder.Configuration["Qdrant:Port"] ?? "6334");
 builder.Services.AddSingleton(new QdrantClient(qdrantHost, qdrantPort));
 
-// FR-02, ADR-0016: モデル別コレクション（voyage/1024・ruri/768）の定義（起動時作成・残存防止削除に使用）。
+// FR-02, ADR-0016: モデル別コレクション（既定は voyage/1024 だけ）の定義（起動時作成・残存防止削除に使用）。
+// ［2026-10-17 / #1746 段 S4］ADR-0127 決定 5, [[IADR-0085]]: セルフホスト（ruri/768）は opt-in のときだけ足される。
+// 名前が空の定義（compose の `${…:-}` の既定）は捨てる（`DropUnnamed`）。
 builder.Services.Configure<EmbeddingCollectionsOptions>(
     builder.Configuration.GetSection(EmbeddingCollectionsOptions.SectionName));
+builder.Services.PostConfigure<EmbeddingCollectionsOptions>(o => o.DropUnnamed());
 // FR-02, FR-03, ADR-0127 決定 1, [[IADR-0497]] 決定 1 (#1746): 語彙索引（ベクトルを持たない専用のコレクション）。
 // 名前は検索サービスと同じキー（`Qdrant:LexicalCollection`）から引く。ベクトルのコレクションと同名なら起動を止める。
 var embeddingCollections = builder.Configuration.GetSection(EmbeddingCollectionsOptions.SectionName)
-    .Get<EmbeddingCollectionsOptions>()?.Collections ?? [];
+    .Get<EmbeddingCollectionsOptions>()?.DropUnnamed().Collections ?? [];
 var lexicalCollection = LexicalCollection.Resolve(builder.Configuration);
 LexicalCollection.EnsureDistinct(lexicalCollection, embeddingCollections.Select(c => c.Name));
 builder.Services.AddSingleton<IIngestionVectorStore>(sp => new QdrantIngestionVectorStore(

@@ -233,7 +233,7 @@ public class IngestionTimeoutTests
     private static IConfiguration Config(Dictionary<string, string?> values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
-    // T-21: 既定の上限と、それが既定のコレクション数（3 = モデル別 2 ＋ 語彙索引 1。#1746）で受け口の実行期限に収まること。
+    // T-21: 既定の上限と、それが既定のコレクション数（2 = モデル別 1〔voyage〕＋ 語彙索引 1。#1746 段 S4 で Ruri を既定から外した）で受け口の実行期限に収まること。
     [Fact]
     public void 構成が無ければ既定の上限になる()
     {
@@ -245,11 +245,11 @@ public class IngestionTimeoutTests
         timeouts.VectorStore.Should().Be(TimeSpan.FromSeconds(10));
         timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(300));
         timeouts.Handler.Should().Be(TimeSpan.FromSeconds(420));
-        timeouts.DeleteFromAll.Should().Be(TimeSpan.FromSeconds(30), "コレクション 3 本（モデル別 2 ＋ 語彙索引 1）× Qdrant 10 秒");
+        timeouts.DeleteFromAll.Should().Be(TimeSpan.FromSeconds(20), "コレクション 2 本（モデル別 1 ＋ 語彙索引 1）× Qdrant 10 秒");
     }
 
     // T-21: 受け口の実行期限が「削除（本数 × Qdrant）＋本文＋総枠＋最後の 1 チャンク」以下なら起動を止める。
-    // 既定値では 20＋20＋300＋30＋10＝380 秒。コレクションが 6 本なら 60＋20＋300＋30＋10＝420 秒で、既定の 420 秒と等しく止まる。
+    // 既定値（2 本）では 20＋20＋300＋30＋10＝380 秒。コレクションが 6 本なら 60＋20＋300＋30＋10＝420 秒で、既定の 420 秒と等しく止まる。
     [Theory]
     [InlineData(6, null)]
     [InlineData(2, "380")]
@@ -473,7 +473,7 @@ public class IngestionTimeoutWiringTests(IntrospectionEndpointTests.Factory fact
             .Should().ContainSingle(c => c.MessageType == typeof(DocumentUpdated))
             .Which.ExecutionTimeoutInSeconds.Should().Be(IngestionTimeouts.DefaultHandlerSeconds);
 
-        // appsettings.json の `Embedding:Collections` は 2 本 → 既定と一致する。
+        // appsettings.json の `Embedding:Collections` は 1 本（voyage）＋ 語彙索引 1 本 → 既定と一致する（#1746 段 S4）。
         services.GetRequiredService<IngestionTimeouts>().Should().Be(IngestionTimeouts.Default);
         services.GetRequiredService<ConsumerCallTimeouts>().Should().NotBeNull();
     }

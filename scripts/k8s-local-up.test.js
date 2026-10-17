@@ -3507,14 +3507,44 @@ function chartEmbeddingCollection() {
   return (/^ {2}collection:\s*(\S+)\s*$/m.exec(CHART_VALUES.slice(at)) || [])[1];
 }
 
-ok('IADR-0467: embedding.collection がゲートウェイ・取り込みの Ruri コレクション名と一致する', () => {
+ok('IADR-0467: embedding.collection・dimensions がゲートウェイの Ruri のエンドポイントと一致する', () => {
   assert.ok(RURI_ENDPOINT, 'appsettings.json に selfhosted-embedding のエンドポイントが無い');
   const collection = chartEmbeddingCollection();
   assert.strictEqual(collection, RURI_ENDPOINT.Collection,
     'values.yaml の embedding.collection がゲートウェイの Ruri コレクションと食い違う（検索が空のコレクションを読む）');
-  assert.ok(
-    INGESTION_APPSETTINGS.Embedding.Collections.some((c) => c.Name === collection),
-    '取り込みが作るコレクション（Embedding:Collections）に embedding.collection が無い');
+  const e = CHART_VALUES.search(/^embedding:\s*$/m);
+  const dims = (/^ {2}dimensions:\s*(\d+)\s*$/m.exec(CHART_VALUES.slice(e)) || [])[1];
+  assert.strictEqual(Number(dims), RURI_ENDPOINT.Dimensions,
+    'values.yaml の embedding.dimensions がゲートウェイの Ruri の次元と食い違う（取り込みが別の次元でコレクションを作る）');
+});
+
+// FR-02, ADR-0127 決定 5, IADR-0085 (#1746 段 S4): 既定の取り込みは Ruri のコレクションを作らない。
+// opt-in（Helm embedding.enabled・compose SEARCH_FUSED_COLLECTION）のときだけ、ゲートウェイ・検索と同じ条件で作らせる。
+ok('IADR-0085 (#1746 段 S4): 既定の取り込み（appsettings.json）は Ruri のコレクションを宣言しない', () => {
+  const names = INGESTION_APPSETTINGS.Embedding.Collections.map((c) => c.Name);
+  assert.deepStrictEqual(names, ['knowledge_chunks_voyage_3_5'],
+    '取り込みの既定に voyage 以外がある（無効の配備に空のコレクションが作られる）');
+  assert.ok(!names.includes(chartEmbeddingCollection()), '既定に Ruri のコレクションが残っている');
+});
+
+ok('IADR-0085 (#1746 段 S4): Helm は embedding.enabled のときだけ取り込みへ Ruri のコレクションを描く', () => {
+  const at = CHART_DEPLOYMENT.indexOf('if and (eq $name "ingestion") $.Values.embedding.enabled');
+  assert.ok(at !== -1, 'ingestion に embedding.enabled 条件の分岐が無い（既定で作るか、opt-in でも作らない）');
+  const block = CHART_DEPLOYMENT.slice(at, CHART_DEPLOYMENT.indexOf('{{- end }}', at));
+  assert.ok(block.includes('- name: Embedding__Collections__1__Name'), 'Embedding__Collections__1__Name が無い');
+  assert.ok(block.includes('$.Values.embedding.collection'), '名前が embedding.collection から来ていない');
+  assert.ok(block.includes('- name: Embedding__Collections__1__VectorSize'), 'Embedding__Collections__1__VectorSize が無い');
+  assert.ok(block.includes('$.Values.embedding.dimensions'), '次元が embedding.dimensions から来ていない');
+  // 添字 1 を描くのはこの分岐だけ（決定的ローカル埋め込みは添字 2）。
+  assert.strictEqual(CHART_DEPLOYMENT.split('Embedding__Collections__1__Name').length - 1, 1,
+    '添字 1 が別の分岐でも描かれている');
+});
+
+ok('IADR-0085 (#1746 段 S4): compose の取り込みは検索と同じ SEARCH_FUSED_COLLECTION で Ruri のコレクションを作る（既定空）', () => {
+  assert.match(COMPOSE_YAML, /^\s+Embedding__Collections__1__Name: \$\{SEARCH_FUSED_COLLECTION:-\}\s*$/m,
+    'docker-compose.yml の取り込みに Embedding__Collections__1__Name（既定空・検索と同じ変数）が無い');
+  const vs = (/^\s+Embedding__Collections__1__VectorSize: "(\d+)"\s*$/m.exec(COMPOSE_YAML) || [])[1];
+  assert.strictEqual(Number(vs), RURI_ENDPOINT.Dimensions, 'compose の次元がゲートウェイの Ruri の次元と食い違う');
 });
 
 ok('IADR-0467: retrieval の束ねる配線は embedding.enabled と同じ条件でだけ描画される', () => {
