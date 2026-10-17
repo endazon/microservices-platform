@@ -8,7 +8,7 @@ import {
   sourceLabel,
 } from './documentSource';
 
-// SC-05, FR-06（#1923・IADR-0560）: BFF の `DocumentListSources.KeyOf` と同じ例（`BffDocumentListFacetTests`）で固定する。
+// SC-05, FR-06（#1923・IADR-0561）: BFF の `DocumentListSources.KeyOf` と同じ例（`BffDocumentListFacetTests`）で固定する。
 describe('documentSourceKey', () => {
   const collected = { kind: 'News', source: 'kabutan', project: 'ai-stock-trading' };
 
@@ -23,6 +23,15 @@ describe('documentSourceKey', () => {
     expect(documentSourceKey({ attributes: { kind: 'Daily' } })).toBe('manual');
     expect(documentSourceKey({ attributes: {} })).toBe('manual');
     expect(documentSourceKey({ dataSourceName: '  ', attributes: { source: ' ' } })).toBe('manual');
+  });
+});
+
+describe('documentSourceKey の上限', () => {
+  it('長い出典名は BFF と同じ上限（300）で切り、サロゲートペアは割らない', () => {
+    expect(documentSourceKey({ attributes: { source: 's'.repeat(500) } })).toHaveLength(300);
+    const key = documentSourceKey({ attributes: { source: 'a'.repeat(295) + '😀😀' } });
+    expect(key).toHaveLength(299);
+    expect(key.endsWith('a')).toBe(true);
   });
 });
 

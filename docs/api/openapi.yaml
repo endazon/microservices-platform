@@ -1437,7 +1437,7 @@ paths:
         - name: source
           in: query
           required: false
-          description: データソースの鍵（`sourceCounts` の鍵と同じ語彙）の完全一致。300 文字を超えると 400
+          description: データソースの鍵（`sourceCounts` の鍵と同じ語彙）の完全一致。300 文字を超えると 400（`sourceCounts` の鍵も 300 文字で切ってあるので、件数に出た鍵は必ず受理される）
           schema: { type: string, maxLength: 300 }
         - name: confidentiality
           in: query

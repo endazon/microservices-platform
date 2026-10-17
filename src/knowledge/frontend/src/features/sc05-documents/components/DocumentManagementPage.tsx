@@ -100,7 +100,7 @@ export function DocumentManagementPage() {
   const [notice, setNotice] = useState<string | null>(null);
   // SC-05, FR-06, IADR-0537（#1923 段 1）: 一覧はページで引く（既定 50 件）。総件数は BFF が権限で絞った後の数。
   // ［2026-10-15 / #1923 段 2・IADR-0545］並べ替え・表題の検索・状態の絞り込みも同じ要求に載せる。条件を変えたら先頭へ戻す。
-  // ［2026-10-17 / #1923・IADR-0560］タブ（既定は人の文書・報告書）とデータソース・機密区分・タグ・プロジェクト・保存日も同じ要求に載せる。
+  // ［2026-10-17 / #1923・IADR-0561］タブ（既定は人の文書・報告書）とデータソース・機密区分・タグ・プロジェクト・保存日も同じ要求に載せる。
   const [request, setRequest] = useState<DocumentListRequest>({
     offset: 0,
     limit: DEFAULT_DOCUMENT_PAGE_SIZE,
@@ -249,7 +249,7 @@ export function DocumentManagementPage() {
           </Alert>
         )}
 
-        {/* #1923・IADR-0560: 機械の収集と人の文書・報告書を分けるタブ（件数はデータソース別の件数から導く）。 */}
+        {/* #1923・IADR-0561: 機械の収集と人の文書・報告書を分けるタブ（件数はデータソース別の件数から導く）。 */}
         <DocumentOriginTabs
           origin={request.origin}
           sourceCounts={documents.data?.sourceCounts}
@@ -257,7 +257,7 @@ export function DocumentManagementPage() {
         />
 
         {/* #1923 段 2: 並べ替え・表題の検索・状態の絞り込み。取得の状態に関わらず出す（0 件でも条件を戻せるように）。
-            ［2026-10-17 / IADR-0560］データソース・機密区分・タグ・プロジェクト・保存日を足した。 */}
+            ［2026-10-17 / IADR-0561］データソース・機密区分・タグ・プロジェクト・保存日を足した。 */}
         <DocumentListToolbar
           sort={request.sort}
           conditions={request}
@@ -293,7 +293,7 @@ export function DocumentManagementPage() {
         >
           {(data) =>
             data.total === 0 && !conditioned ? (
-              // #1923・IADR-0560: 帯の条件は無く、タブだけで 0 件（台帳には文書がある）。
+              // #1923・IADR-0561: 帯の条件は無く、タブだけで 0 件（台帳には文書がある）。
               <EmptyState
                 title={t`このタブの文書はありません。`}
                 description={t`ほかのタブに文書があります。`}
@@ -324,7 +324,7 @@ export function DocumentManagementPage() {
                       <TableHeaderCell>
                         <Trans>タイトル</Trans>
                       </TableHeaderCell>
-                      {/* #1923・IADR-0560: データソース（取り込み元・収集の出典・確定報告書・手入力）。 */}
+                      {/* #1923・IADR-0561: データソース（取り込み元・収集の出典・確定報告書・手入力）。 */}
                       <TableHeaderCell>
                         <Trans>データソース</Trans>
                       </TableHeaderCell>
@@ -434,7 +434,7 @@ function DocumentRow({
   const confidentiality = doc.attributes?.[CONFIDENTIALITY_KEY];
   const statusView = documentStatusView(doc.status);
   const bodyView = documentBodyView(doc);
-  // #1923・IADR-0560: 元の URL（ニュースの出典など）。`http(s)` だけをリンクにする。
+  // #1923・IADR-0561: 元の URL（ニュースの出典など）。`http(s)` だけをリンクにする。
   const original = linkableOriginalUri(doc.originalUri);
   const tags = doc.tags ?? [];
   const moreTags = tags.length - 3;
@@ -454,7 +454,7 @@ function DocumentRow({
         >
           {doc.title}
         </Link>
-        {/* #1923・IADR-0560: 本文の先頭のプレビュー（横のペイン）と出典。どちらも閲覧なので運用者にも出す。 */}
+        {/* #1923・IADR-0561: 本文の先頭のプレビュー（横のペイン）と出典。どちらも閲覧なので運用者にも出す。 */}
         <span className="mt-1 flex flex-nowrap items-center gap-2 text-xs">
           <button
             type="button"
@@ -498,7 +498,7 @@ function DocumentRow({
           {i18n._(bodyView.label)}
         </StatusBadge>
       </TableCell>
-      {/* #1923・IADR-0560: タグは 3 個まで出し、残りは件数で示す（行が縦に伸びないように）。 */}
+      {/* #1923・IADR-0561: タグは 3 個まで出し、残りは件数で示す（行が縦に伸びないように）。 */}
       <TableCell>
         {tags.length === 0 ? (
           <span aria-hidden>—</span>

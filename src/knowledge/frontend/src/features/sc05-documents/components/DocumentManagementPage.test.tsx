@@ -912,7 +912,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   });
 });
 
-// SC-05, FR-06（#1923 の残り・IADR-0560）: タブ（機械の収集と人の文書）・データソース・機密区分・タグ・プロジェクト・保存日の絞り込み、
+// SC-05, FR-06（#1923 の残り・IADR-0561）: タブ（機械の収集と人の文書）・データソース・機密区分・タグ・プロジェクト・保存日の絞り込み、
 // データソースとタグの列・出典のリンク・本文の先頭のプレビュー。件数は BFF が ABAC で絞った後の数で、画面は描くだけである。
 describe('DocumentManagementPage (SC-05) facets, tabs and preview', () => {
   const listPaths = () =>

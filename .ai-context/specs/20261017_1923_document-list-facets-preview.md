@@ -2,7 +2,7 @@
 title: 作業仕様書 — 文書管理の一覧にデータソース・機密区分・保存日・タグ・プロジェクトの絞り込み、収集と人の文書のタブ、データソース・タグの列、元の URL、本文のプレビューを足す（#1923 の残り）
 type: spec
 status: done
-related_ids: [FR-06, FR-09, SC-05, SC-03, UC-03, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0009, IADR-0041, IADR-0045, IADR-0388, IADR-0537, IADR-0545, IADR-0560]
+related_ids: [FR-06, FR-09, SC-05, SC-03, UC-03, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0009, IADR-0041, IADR-0045, IADR-0388, IADR-0537, IADR-0545, IADR-0561]
 author: claude
 created: 2026-10-17
 updated: 2026-10-17
@@ -14,7 +14,7 @@ issue: "#1923"
 
 # 作業仕様書 — 文書管理の一覧の残り（#1923）
 
-> 本仕様書は実装着手前に作成した（着手 2026-10-17）。判断の記録は **IADR-0560** に置く。
+> 本仕様書は実装着手前に作成した（着手 2026-10-17）。判断の記録は **IADR-0561** に置く。
 > 基点は MSP `origin/develop` `f0c76c05`（段 1 = #1925 / IADR-0537、段 2 の前半 = #1942 / IADR-0545、試験の追随 = #1962 のマージ後）。
 
 ## 起点
@@ -66,7 +66,7 @@ issue: "#1923"
   プロジェクト・保存日）・BFF / 契約 / 後段 / 画面の帯の試験・文書。
 - **PR 2（列・見分け）**: タブ（既定は人の文書・報告書）・データソースとタグの列・出典のリンク・本文のプレビュー・タブの空の表示とその試験・文書。PR 1 の上に積む。
 
-## 設計（正は IADR-0560）
+## 設計（正は IADR-0561）
 
 ### 契約（後段 → BFF）
 
@@ -122,7 +122,7 @@ issue: "#1923"
 | `docs/tests/SC-05_document-management.md` | 試験の行 |
 | 画面 `useDocumentAdmin.ts` / `DocumentListToolbar.tsx` / `DocumentManagementPage.tsx` / 新規のタブ・プレビュー | 条件・列・ペイン |
 | e2e `sc05-documents.smoke.spec.ts` | 既定のタブで要求が `origin=curated` を持つ |
-| IADR-0545 | 凍結記録。本文は変えない（残りを入れた旨は IADR-0560 に書く） |
+| IADR-0545 | 凍結記録。本文は変えない（残りを入れた旨は IADR-0561 に書く） |
 
 ## 試験
 
@@ -146,6 +146,12 @@ issue: "#1923"
 - `dotnet build` / `dotnet test`（DocumentService.Tests・Knowledge.Contracts.Tests・Platform.Bff.Tests）/ `dotnet format --verify-no-changes`
 - `src/` で `pnpm run lint` / `typecheck` / `test:coverage` / `format:check`、`pnpm run codegen` / `pnpm run i18n` の再生成
 - `check-proto-contracts`・`check-trace-blocks`・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` ほか文書系
+
+## レビューの指摘への対応（2026-10-17 追記）
+
+- 収集の鍵 `col:<source>` は属性 `source` に上限が無く、300 文字を超える鍵が `sourceCounts` に出て選ぶと 400 になる経路があった → 鍵を受理の上限で切る（`DocumentListSources.KeyOf`。サロゲートペアは割らない）。BFF の試験を追加（変異 2 点で赤を確認）。
+- 本 PR で使わない画面の補助関数（`documentSourceKey` ほか）を外した（knip の床。続く PR で使う形で入れる）。
+- IADR の番号を 0561 へ改めた（0559 は #1987、0560 は #1989）。
 
 ## 残余
 

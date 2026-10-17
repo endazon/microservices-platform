@@ -63,7 +63,7 @@ public readonly record struct DocumentListWindow(int Offset, int Limit)
                     continue;
                 _unfilteredTotal++;
                 _statusCounts[doc.Status] = _statusCounts.GetValueOrDefault(doc.Status) + 1;
-                // ［2026-10-17 / [[IADR-0560]]］データソース別・プロジェクト別も同じ集合（ABAC 後・絞り込み前）で数える。
+                // ［2026-10-17 / [[IADR-0561]]］データソース別・プロジェクト別も同じ集合（ABAC 後・絞り込み前）で数える。
                 var source = DocumentListSources.KeyOf(doc);
                 _sourceCounts[source] = _sourceCounts.GetValueOrDefault(source) + 1;
                 var project = DocumentListSources.ProjectOf(doc);
@@ -91,7 +91,7 @@ public readonly record struct DocumentListWindow(int Offset, int Limit)
 }
 
 // FR-06, SC-05, [[IADR-0545]] (#1923): 文書管理の一覧の**利用者の絞り込み**（表題の部分一致・状態）。
-// ［2026-10-17 / [[IADR-0560]]］データソース・機密区分・タグ・プロジェクト・保存日（作成日時）の範囲・タブ（機械の収集か否か）を足した。
+// ［2026-10-17 / [[IADR-0561]]］データソース・機密区分・タグ・プロジェクト・保存日（作成日時）の範囲・タブ（機械の収集か否か）を足した。
 //
 // 🔴 **BFF の窓の述語として ABAC の後に当てる**（後段の rpc へは渡さない）。全体の件数（`UnfilteredTotal`）を出すには、どのみち
 //   1 要求で台帳を 1 周する（IADR-0537 決定 2）。同じ 1 周で全体・絞り込み後・状態別を数えられる。rpc へ渡すと全体の数のために
@@ -105,8 +105,11 @@ public sealed record DocumentListFilter(string? TitleContains, string? Status)
     /// <summary>表題の検索語の上限（文字数）。超えた要求は 400（黙って切り詰めない）。</summary>
     public const int MaxTitleQueryLength = 200;
 
-    /// <summary>データソースの鍵の上限（`ds:` ＋ 台帳の表示名 200 文字に余裕を持たせた値）。超えた要求は 400。</summary>
-    public const int MaxSourceLength = 300;
+    /// <summary>
+    /// データソースの鍵の上限。超えた要求は 400。🔴 件数の側の鍵も同じ上限で切る（`DocumentListSources.KeyOf`）——
+    /// 件数に出した鍵を選ぶと 400 になる経路を作らない。
+    /// </summary>
+    public const int MaxSourceLength = DocumentListSources.MaxKeyLength;
 
     /// <summary>タグ・プロジェクトの値の上限。超えた要求は 400。</summary>
     public const int MaxValueLength = 100;
@@ -117,7 +120,7 @@ public sealed record DocumentListFilter(string? TitleContains, string? Status)
     /// <summary>機密区分の絞り込みが受ける値（`DocumentAttributes.AllowedConfidentiality` と同じ 4 値）。</summary>
     public static readonly IReadOnlyList<string> Confidentialities = ["public", "internal", "confidential", "restricted"];
 
-    // FR-06, SC-05, [[IADR-0560]] (#1923): 追加の絞り込み。どれも null は無指定（従前の応答と同じ）。
+    // FR-06, SC-05, [[IADR-0561]] (#1923): 追加の絞り込み。どれも null は無指定（従前の応答と同じ）。
     public string? Origin { get; init; }
     public string? Source { get; init; }
     public string? Confidentiality { get; init; }
@@ -147,7 +150,7 @@ public sealed record DocumentListFilter(string? TitleContains, string? Status)
         => Parse(new DocumentListQuery { Q = q, Status = status }, errors);
 
     /// <summary>
-    /// FR-06, SC-05, [[IADR-0560]] (#1923): 全部のクエリを検証して絞り込みを作る。空の値は無指定。誤りは <paramref name="errors"/> へ積む
+    /// FR-06, SC-05, [[IADR-0561]] (#1923): 全部のクエリを検証して絞り込みを作る。空の値は無指定。誤りは <paramref name="errors"/> へ積む
     /// （1 つでも誤りがあれば呼び出し元が 400 にし、後段を呼ばない）。
     /// </summary>
     public static DocumentListFilter Parse(DocumentListQuery query, IDictionary<string, string[]> errors)
@@ -210,7 +213,7 @@ public sealed record DocumentListFilter(string? TitleContains, string? Status)
     }
 }
 
-// FR-06, SC-05, [[IADR-0560]] (#1923): `GET /bff/documents` のクエリ（`[AsParameters]`）。どれも省略可で、省略は従前の応答と同じ（後方互換）。
+// FR-06, SC-05, [[IADR-0561]] (#1923): `GET /bff/documents` のクエリ（`[AsParameters]`）。どれも省略可で、省略は従前の応答と同じ（後方互換）。
 public sealed record DocumentListQuery
 {
     public int? Offset { get; init; }
@@ -227,7 +230,7 @@ public sealed record DocumentListQuery
     public string? CreatedBefore { get; init; }
 }
 
-// FR-06, SC-05, [[IADR-0560]] (#1923): 文書の**データソースの鍵**とタブ（機械の収集か否か）・プロジェクトの導出。**導出はここ 1 か所**
+// FR-06, SC-05, [[IADR-0561]] (#1923): 文書の**データソースの鍵**とタブ（機械の収集か否か）・プロジェクトの導出。**導出はここ 1 か所**
 // （絞り込みの述語と件数の鍵が同じ関数を通る。画面の列の表示は `sc05-documents/types/documentSource.ts` が同じ規則で写す）。
 //
 // 鍵は次の順で最初に当てはまったもの:
@@ -250,15 +253,30 @@ public static class DocumentListSources
     /// <summary>属性 `project` を持たない文書の鍵（件数と絞り込みの両方で同じ値）。</summary>
     public const string NoProject = "(none)";
 
+    /// <summary>
+    /// 鍵の上限（文字数＝UTF-16 の符号単位）。🔴 属性 `source` は書き手の申告で長さの上限が無いので、鍵は**この長さで切る**
+    /// （サロゲートペアは割らない）。件数の鍵も絞り込みの照合も同じ `KeyOf` を通るので、切った鍵を選べばその文書に当たる。
+    /// 受理側の上限（`DocumentListFilter.MaxSourceLength`）はこの値そのもの。
+    /// </summary>
+    public const int MaxKeyLength = 300;
+
     public static string KeyOf(DocumentDto doc)
     {
         if (!string.IsNullOrWhiteSpace(doc.DataSourceName))
-            return DataSourcePrefix + doc.DataSourceName;
+            return Bounded(DataSourcePrefix + doc.DataSourceName);
         if (doc.Attributes.TryGetValue("source", out var source) && !string.IsNullOrWhiteSpace(source))
-            return CollectedPrefix + source;
+            return Bounded(CollectedPrefix + source);
         if (doc.Attributes.ContainsKey("kind") && doc.Attributes.ContainsKey("periodKey"))
             return Report;
         return Manual;
+    }
+
+    private static string Bounded(string key)
+    {
+        if (key.Length <= MaxKeyLength)
+            return key;
+        var cut = char.IsHighSurrogate(key[MaxKeyLength - 1]) ? MaxKeyLength - 1 : MaxKeyLength;
+        return key[..cut];
     }
 
     public static string OriginOf(string key)

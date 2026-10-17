@@ -13,7 +13,7 @@ import { documentBodyState, documentBodyView } from '../types/documentBody';
 import { linkableOriginalUri } from '../types/documentSource';
 import { PREVIEW_CHARS, previewText } from '../types/documentPreview';
 
-// SC-05, SC-03, FR-06（#1923・[[IADR-0560]]）: 一覧の横のペインに出す**本文の先頭のプレビュー**。
+// SC-05, SC-03, FR-06（#1923・[[IADR-0561]]）: 一覧の横のペインに出す**本文の先頭のプレビュー**。
 //
 // 本文は文書詳細と同じ口（`GET /bff/documents/{id}/content`。ABAC の判定は BFF）で引き、先頭だけを**素の文字**で出す
 // （Markdown を描画しない —— 一覧の横で読むための抜き書きであり、全文と書式は SC-03 が持つ）。

@@ -1,5 +1,5 @@
 ---
-title: IADR-0560 文書管理の一覧に、機械の収集と人の文書を分けるタブ（既定は人の文書）と、データソース・機密区分・タグ・プロジェクト・保存日の絞り込みを BFF が ABAC の後に当てる形で足し、データソースは BFF が文書ごとに 1 つの鍵に導き、データソースの表示名と原本の所在を契約へ足す
+title: IADR-0561 文書管理の一覧に、機械の収集と人の文書を分けるタブ（既定は人の文書）と、データソース・機密区分・タグ・プロジェクト・保存日の絞り込みを BFF が ABAC の後に当てる形で足し、データソースは BFF が文書ごとに 1 つの鍵に導き、データソースの表示名と原本の所在を契約へ足す
 type: impl-adr
 status: Accepted
 related_ids: [FR-06, FR-09, SC-05, SC-03, UC-03, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0009, IADR-0041, IADR-0045, IADR-0388, IADR-0537, IADR-0545, IADR-0544]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20261017_1923_document-list-facets-preview.md
 ---
 
-# IADR-0560: 文書管理の一覧のタブ（機械の収集と人の文書）と追加の絞り込みは BFF が ABAC の後に当て、データソースは BFF が文書ごとに 1 つの鍵に導く
+# IADR-0561: 文書管理の一覧のタブ（機械の収集と人の文書）と追加の絞り込みは BFF が ABAC の後に当て、データソースは BFF が文書ごとに 1 つの鍵に導く
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 > 計画リポジトリの ADR（`ADR-XXXX`）とは別系統（`IADR-XXXX`）とし、実装に閉じた決定を記録する。
@@ -90,7 +90,8 @@ related_specs:
 
 - `origin` は `curated` / `collected`、`confidentiality` は 4 値。未知の値は 400。`source` は 300 文字、`tag` / `project` は 100 文字まで（超えたら 400）。
   `project=(none)` は属性 `project` を持たない文書。日時が壊れている・`createdFrom >= createdBefore` は 400。どの 400 も後段を呼ばない。
-- データソースの鍵の導出は BFF の `DocumentListSources` の 1 か所。応答に `sourceCounts`（鍵ごと）と `projectCounts`（プロジェクトごと）を足す。
+- データソースの鍵の導出は BFF の `DocumentListSources` の 1 か所。🔴 鍵は受理の上限（300 文字）で切る（属性 `source` は書き手の申告で長さの上限が無い。
+  サロゲートペアは割らない）。件数の鍵と絞り込みの照合が同じ関数を通るので、件数に出た鍵は必ず選べる（選ぶと 400 になる経路を作らない）。応答に `sourceCounts`（鍵ごと）と `projectCounts`（プロジェクトごと）を足す。
   集合は `statusCounts` と同じ（ABAC 後・絞り込み前）。
 - 🔴 1 周の中の順序は IADR-0545 のまま **ABAC → 全体・状態別・データソース別・プロジェクト別の数 → 絞り込み → 窓**。権限外の文書・他人の個人資料は
   どの数にも入らない（`BffDocumentListFacetTests` が、混ぜた台帳と混ぜない台帳の応答の一致で固定する。陽性対照つき）。

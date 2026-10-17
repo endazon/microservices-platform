@@ -74,14 +74,35 @@ groups:
 
       # 検索 p95 レイテンシ（NFR: 検索 p95 1.5s）。retrieval-service。
       # 🔴 しきい値の単位は**秒**である（メトリクスが秒。1500 と書くと 25 分の意味になり永久に真にならない）。
+      # NFR-01, NFR-29, ADR-0129 決定 2, IADR-0559 (#1746 段 S5 の前提): **閾値は配備の構成で選ぶ。**
+      #   1.5 秒（NFR-01）は再順位付けが**無効**な構成の目標である。retrieval-service が自分の構成を
+      #   ゲージ `search_rerank_enabled`（1 = 有効・0 = 無効。`Rerank__Enabled`）で報告し、有効と報告されている間は
+      #   このルールを外す（`unless`）。**ゲージが無い（旧版・収集断）ときは既定の無効として扱い、1.5 秒で鳴る側へ倒す。**
+      #   有効な構成の目標は下の SearchRerankLatencyTargetUndefined の注記を見ること。
       - alert: SearchLatencyP95High
         expr: |
           histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="microservices-platform.retrieval-service"}[5m]))) > 1.5
+          unless on () (max(search_rerank_enabled{job="microservices-platform.retrieval-service"}) == 1)
         for: 10m
         labels: { severity: warning }
         annotations:
           summary: "検索 p95 が 1.5s 超"
-          description: "RetrievalService の p95 レイテンシが NFR 目標(1.5s)を 10 分継続で超過。"
+          description: "RetrievalService の p95 レイテンシが NFR 目標(1.5s)を 10 分継続で超過（再順位付けが無効な構成。NFR-01）。"
+
+      # NFR-29, ADR-0129 決定 2・3, IADR-0559 (#1746 段 S5 の前提): **再順位付けが有効な構成の検索 p95 の目標は NFR-29 だが、値が pending である。**
+      #   🔴 **値を実装で決めない**（計画が段 S3 の実測を見て利用者裁定で定める）。有効にする条件は「S3 の計測済み」かつ
+      #   「NFR-29 の値が定まっている」であり（決定 3）、**今、有効と報告されていること自体が条件の外である。**
+      #   だから閾値つきの警報の代わりに、**有効と報告されていることを鳴らす**（上の 1.5 秒は外れるので、黙って無監視にしない）。
+      #   NFR-29 が定まったら、このルールを `SearchLatencyP95HighRerankEnabled`（`<上の p95 の式> > <NFR-29 の秒数>
+      #   and on () (max(search_rerank_enabled{…}) == 1)`）へ置き換える。写し 4 か所（本ファイル・経路 B の inline・Grafana の 2 つ）を同時に直す。
+      - alert: SearchRerankLatencyTargetUndefined
+        expr: |
+          max(search_rerank_enabled{job="microservices-platform.retrieval-service"}) == 1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "検索の再順位付けが有効だが、有効時の検索 p95 目標（NFR-29）が未確定"
+          description: "retrieval-service が Rerank__Enabled=true で動いている。NFR-29 の値は pending であり、有効化の条件（ADR-0129 決定 3: 段 S3 の計測と NFR-29 の裁定）を満たしていない。この間 SearchLatencyP95High（1.5s）は外れている。戻すなら Rerank__Enabled=false。"
 
       # NFR-02, ADR-0076 決定 5 (#1204): RAG 回答の**初回応答** p95 ＝ 初回トークンまでの時間（TTFT）。
       # 🔴 **NFR-02 の SLO 判定はこのルールで行う。** 下の RagLatencyP95High（応答完了 p95）ではない。

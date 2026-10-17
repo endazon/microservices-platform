@@ -3,7 +3,7 @@ import { cn } from '@platform/ui';
 import { originCounts } from '../types/documentSource';
 import type { DocumentOrigin } from '../types/documentSource';
 
-// SC-05, FR-06（#1923・[[IADR-0560]]）: **機械の収集**（AST の情報収集のニュース・開示など）と**人の文書・報告書**を分けるタブ。
+// SC-05, FR-06（#1923・[[IADR-0561]]）: **機械の収集**（AST の情報収集のニュース・開示など）と**人の文書・報告書**を分けるタブ。
 //
 // 既定は「人の文書・報告書」（台帳の大半を占める機械の収集に、人が作った文書と確定報告書を埋もれさせない）。
 // 件数はデータソース別の件数（ABAC 後・絞り込み前）から導くので、権限外の文書は数に入らない。

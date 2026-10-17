@@ -42,7 +42,7 @@ const firstPage: DocumentListPageDto = {
   limit: 50,
   unfilteredTotal: 1,
   statusCounts: { published: 1 },
-  // ［2026-10-17 / #1923・IADR-0560］データソース別・プロジェクト別の件数（手入力の 1 件）。
+  // ［2026-10-17 / #1923・IADR-0561］データソース別・プロジェクト別の件数（手入力の 1 件）。
   sourceCounts: { manual: 1 },
   projectCounts: { '(none)': 1 },
 };
@@ -76,7 +76,7 @@ test('SC-05: an operator reaches the screen and its navigation entry', async ({ 
   // **［2026-09-12］`EmptyState` への統一で文言が変わった**（空は次の一手を示す）。
   await expect(page.getByText('文書はまだありません。')).toHaveCount(0);
   // 一覧はページの引数つきで引く（既定 50 件の先頭）。総件数と表示範囲が出る。
-  // ［2026-10-17 / #1923・IADR-0560］既定のタブは「人の文書・報告書」（`origin=curated`）。
+  // ［2026-10-17 / #1923・IADR-0561］既定のタブは「人の文書・報告書」（`origin=curated`）。
   expect(traffic.calls.find((c) => c.key === 'GET /documents')?.search).toBe(
     '?offset=0&limit=50&origin=curated',
   );
@@ -91,7 +91,7 @@ test('SC-05: an operator reaches the screen and its navigation entry', async ({ 
   await expect(filters.getByLabel('表題で検索')).toBeVisible();
   await expect(filters.getByLabel('状態')).toBeVisible();
   await expect(filters.getByLabel('並べ替え')).toBeVisible();
-  // ［2026-10-17 / IADR-0560］データソース・機密区分・タグ・プロジェクト・保存日の絞り込みも帯に並ぶ。
+  // ［2026-10-17 / IADR-0561］データソース・機密区分・タグ・プロジェクト・保存日の絞り込みも帯に並ぶ。
   await expect(filters.getByLabel('データソース')).toBeVisible();
   await expect(filters.getByLabel('保存日（から）')).toBeVisible();
   await expect(page.getByRole('columnheader', { name: '本文' })).toBeVisible();

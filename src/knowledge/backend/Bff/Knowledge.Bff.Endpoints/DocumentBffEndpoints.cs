@@ -65,7 +65,7 @@ public static class DocumentBffEndpoints
         // 並べ替えは後段の rpc が行い（キーごとの続きの印で辿る）、絞り込みは ABAC の**後**に窓の述語で当てる（`DocumentListFilter`）。
         // 🔴 件数（`total` / `unfilteredTotal` / `statusCounts`）はどれも ABAC で絞った後の数である。権限外の文書はどの数にも入らない。
         //
-        // FR-06, SC-05, [[IADR-0009]], [[IADR-0560]] (#1923): **データソース（`source`）・タブ（`origin`）・機密区分・タグ・プロジェクト・
+        // FR-06, SC-05, [[IADR-0009]], [[IADR-0561]] (#1923): **データソース（`source`）・タブ（`origin`）・機密区分・タグ・プロジェクト・
         // 保存日の範囲（`createdFrom` / `createdBefore`）** も同じ作法（ABAC の後の窓の述語）で当てる。どれも省略可で、省略は従前の応答と同じ。
         // 応答の `sourceCounts` / `projectCounts` も ABAC 後・絞り込み前の数である。
         g.MapGet("/", async (

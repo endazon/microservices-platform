@@ -67,7 +67,7 @@ export type DocumentStatusFilter = BffDocumentListStatus | '';
  */
 export interface DocumentListRequest extends DocumentPageRequest, DocumentListConditions {
   sort: DocumentSort;
-  /** ［2026-10-17 / #1923・IADR-0560］タブ（`''` はすべて）。条件ではなく見せ方として扱う（「条件を解除」で外さない）。 */
+  /** ［2026-10-17 / #1923・IADR-0561］タブ（`''` はすべて）。条件ではなく見せ方として扱う（「条件を解除」で外さない）。 */
   origin: DocumentOrigin;
 }
 
@@ -76,7 +76,7 @@ export type DocumentConfidentialityFilter = BffDocumentListConfidentiality | '';
 
 /**
  * 操作の帯の条件（「条件を解除」で外すもの）。値が `''` なら無指定。
- * ［2026-10-17 / #1923・IADR-0560］データソース・機密区分・タグ・プロジェクト・保存日（`YYYY-MM-DD`。利用者の時刻帯の暦日）を足した。
+ * ［2026-10-17 / #1923・IADR-0561］データソース・機密区分・タグ・プロジェクト・保存日（`YYYY-MM-DD`。利用者の時刻帯の暦日）を足した。
  */
 export interface DocumentListConditions {
   q: string;
@@ -100,7 +100,7 @@ export const EMPTY_DOCUMENT_CONDITIONS: DocumentListConditions = {
   createdTo: '',
 };
 
-/** 既定のタブ（人の文書・報告書）。機械の収集が大半を占める台帳で、人の文書を埋もれさせない（IADR-0560）。 */
+/** 既定のタブ（人の文書・報告書）。機械の収集が大半を占める台帳で、人の文書を埋もれさせない（IADR-0561）。 */
 export const DEFAULT_DOCUMENT_ORIGIN: DocumentOrigin = 'curated';
 
 /**
@@ -169,7 +169,7 @@ function okPage(res: Parameters<typeof okData>[0]): DocumentListPageDto {
     // ［2026-10-15 / #1923 段 2］項目を持たない応答（旧い BFF）は「絞り込みなし」として読む。
     unfilteredTotal: page.unfilteredTotal ?? total,
     statusCounts: page.statusCounts ?? {},
-    // ［2026-10-17 / #1923・IADR-0560］同上（旧い BFF は返さない）。
+    // ［2026-10-17 / #1923・IADR-0561］同上（旧い BFF は返さない）。
     sourceCounts: page.sourceCounts ?? {},
     projectCounts: page.projectCounts ?? {},
   };
