@@ -1278,6 +1278,7 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
   - **［2026-10-05］語彙索引の導入後は、既に取り込まれた高機密文書（confidential・restricted・機密区分なし）に対して手順 2 を行う。**
     これらは従来どこにも索引されておらず、再発行するまで語彙索引にも入らない。語彙索引のコレクションは取り込みサービスが起動時に自動で作る。
     高機密文書だけを流すなら `--attr confidentiality=confidential` / `--attr confidentiality=restricted` で絞る（機密区分の無い文書は属性の一致では選べないので、全件か `--ids` で流す）。
+
 #### 空の Ruri のコレクションの後始末（2026-10-17）
 
 従前の取り込みは、セルフホストを有効にしていない配備でも起動のたびに Ruri のコレクション（`knowledge_chunks_ruri_v3`・768 次元）を作り、
