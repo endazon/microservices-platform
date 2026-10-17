@@ -49,6 +49,11 @@ public sealed class NullObjectStorageClient(
         throw new NotSupportedException(
             "Object storage is not configured; cannot fetch " + uri);
 
+    // FR-06, [[IADR-0544]] 決定 4（2026-10-17 追記 / #1940）: `GetTextAsync` と同じく投げる（本文を持たない）。
+    public Task<BoundedTextRead> GetTextBoundedAsync(string uri, long maxBytes, CancellationToken ct = default) =>
+        throw new NotSupportedException(
+            "Object storage is not configured; cannot fetch " + uri);
+
     public Task<byte[]> GetBytesAsync(string uri, CancellationToken ct = default) =>
         throw new NotSupportedException(
             "Object storage is not configured; cannot fetch " + uri);
