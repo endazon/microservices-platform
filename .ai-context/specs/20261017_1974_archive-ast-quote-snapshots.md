@@ -74,5 +74,5 @@ plan_refs:
 
 ## 残余
 
-- 保存の後の発行が途中で失敗した文書は再実行で拾われない（IADR-0549 と同じ受容。回収は `Archived AST quote snapshot` の行の ID で再発行）。
+- 保存の後の発行が途中で失敗した文書は再実行で拾われない（IADR-0549 と同じ受容）。回収はログの ID ではなく**母集合で再発行する**: `republish-document-updated.js --attr project=ai-stock-trading --attr kind=Quote --status archived`（冪等。発行がページの途中で失敗すると、それより後の文書は台帳ではアーカイブ済みだが監査の行が出ないので、ID では拾えない。`--ids` の上限 500 件にも当たらない。#1982 のレビュー）。
 - アーカイブ解除は無い（IADR-0549 決定 6）。

@@ -165,7 +165,7 @@ WHERE d."Status" = 'archived'
   - dry-run は件数と**対象の文書 ID** を返す。駆動スクリプト `scripts/archive-ast-quote-documents.js` は本 ADR の駆動器と同じ本体（`scripts/lib/admin-page-driver.js`。IADR-0556 決定 6）の profile である。
 - 却下: **削除（Delete）**は戻せない（#1974 が残余として求めた）。アーカイブなら台帳と本文が残り、SC-05 で「アーカイブ済み」として見分けられる。
   **検索の絞り込みに否定（`kind ≠ Quote`）を足す**のは AST 側の要求を基盤の検索の契約へ広げることになり、索引に点が残る（候補の母集合は減らない）。
-- 残余: 本 ADR §結果 の「保存の後の発行が途中で失敗した文書は再実行で拾われない」も同じ（回収は `Archived AST quote snapshot` の行の ID で `republish-document-updated.js --ids`）。
+- 残余: 本 ADR §結果 の「保存の後の発行が途中で失敗した文書は再実行で拾われない」も同じ。**回収はログの ID ではなく母集合で再発行する**: `republish-document-updated.js --attr project=ai-stock-trading --attr kind=Quote --status archived`（冪等。ページの途中で発行が失敗すると、それより後の文書は監査の行が出ないまま台帳ではアーカイブ済みになるため、ID では拾えない）。
   アーカイブ解除が無い点（決定 6）も同じ。AST が Quote の保存を止める前に配備すれば、その後の Quote は次の実行で拾う（冪等なので流し直してよい）。
 - PoC の手順（実行はオーナーの承認の後）: 0. document-service を配備 → 1. `node scripts/archive-ast-quote-documents.js --live --dry-run --operator <名前>`（件数と ID）→
   2. カナリア `--reason "#1974（カナリア）" --canary 20 --max-pages 1` → 3. 全件 `--resume --reason "#1974"` → 4. dry-run の再実行で対象 0 件・SC-05 の「アーカイブ済み」が件数どおり増える。
