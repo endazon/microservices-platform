@@ -636,4 +636,5 @@
 | [IADR-0556](./IADR-0556_strip-untrusted-boundary-from-ast-documents.md) | AST が境界語つきで保存した文書は、管理者だけの一回限りの口と駆動スクリプトで表題・本文の先頭と末尾の枠だけを剥がす。本文は新しいキーへ書いて参照を付け替え、状態・属性・タグは動かさない。駆動スクリプトの本体は一括アーカイブと共有する（#1973） | Accepted |
 | [IADR-0557](./IADR-0557_wiki-sync-skip-unchanged-writes.md) | Wiki 同期は Wiki.js の今のページが送る内容と同じなら pages.update を送らない。Wolverine のリスナーの並列度は上げない（Wiki.js 2.5 の rebuild-tree が並ぶと pageTree の主キーで衝突する）（#1971） | Accepted |
 | [IADR-0558](./IADR-0558_conversion-figure-image-via-conversion-service.md) | 変換ジョブの図画像は変換サービス（図の所有者）が読み、BFF は利用者の資格情報を付けた既存のエッジの REST 中継で受け取る（east-west gRPC は足さない）。BFF からオブジェクトストレージの配線を外し、画像を返せないときは理由つきの 404・503（BFF では 502）に分ける（#1941） | Accepted |
+| [IADR-0559](./IADR-0559_rerank-aware-search-latency-alert.md) | 検索 p95 の警報は検索サービスが出す再順位付けの構成のゲージ（search_rerank_enabled）で閾値を選ぶ。無効（とゲージが無いとき）は 1.5 秒、有効は NFR-29 が pending のため「有効時の目標が未確定」を鳴らす（#1746） | Accepted |
 | [IADR-0561](./IADR-0561_document-list-origin-tabs-facets-preview.md) | 文書管理の一覧に、機械の収集と人の文書を分けるタブ（既定は人の文書）と、データソース・機密区分・タグ・プロジェクト・保存日の絞り込みを BFF が ABAC の後に当てる形で足し、データソースは BFF が文書ごとに 1 つの鍵に導く（#1923） | Accepted |
