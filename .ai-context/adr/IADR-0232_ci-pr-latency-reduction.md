@@ -8,7 +8,7 @@ related_ids:
   - IADR-0123
 author: claude
 created: 2026-08-21
-updated: 2026-10-12
+updated: 2026-10-17
 plan_refs:
   - planning:docs/ai-implementation-workflow-guide.md
   - planning:projects/microservices-platform/07_adr/ADR-0048_impl-docs-restructure.md (決定 6・kit との乖離は受容する)
@@ -637,3 +637,18 @@ PR 時点で SAST の指摘が一切出なくなる。**`paths:` を持つため
 > - 本 IADR への追記にした理由（IADR-0490 を新設しない）: #1686 の一連の判断（シャード化・組み替え・setup-node・本件）は同じ監視（決定 8）の逆転への手当てであり、
 >   2026-09-28 追記 1 の設計の一部を置き換えるものである。別 IADR に割ると「脚が何を建てるか」の正が 2 か所に分かれる。
 >   作業仕様書: `.ai-context/specs/20261001_1686_ci-build-artifact-reuse.md`
+
+> **［2026-10-17 追記 / #1929］後段の門の自己試験（`--self-test`）を PR の `static-checks` でも走らせる。後段の自己試験は残す。**
+>
+> - 事実: `integration-stack.yml` の門 4 本（`check-stack-ready.js` / `check-password-reset-mail.js` / `check-login-existence-disclosure.js` /
+>   `check-mcp-client-provisioning.js`）と `integration.yml` の `check-integration-executed.js` の自己試験は、後段でしか走っていなかった。
+>   決定 1 の表に載っていない「落としたもの」であり、意図して外したものではない（#1551 と同じ形）。
+> - 実害: 自己試験は実データ（realm の宣言など）をラチェットとして読む。#1944 が realm に組み込みの public client を足すと、
+>   `check-password-reset-mail.js` の #1413 ラチェットが develop の integration-stack でだけ落ちた（`d3addc82` から `1721e667` まで 5 本連続の赤。
+>   PR の CI は緑）。手元で `d3addc82` の自己試験は exit 1、親 `28342843` は exit 0 であり、クラスタ無しで再現する。
+> - 決定 1 の判断基準との関係: 自己試験はクラスタ・helm・kubectl・submodule を使わず、5 本で計 1 秒ほどである。
+>   **精度を戻しても待ち時間はほぼ増えない**ので採る（static-checks は既に起動済みのジョブであり、ジョブは増やさない）。
+> - 歯止め: `scripts.repo.test.js`（#1929 節）が、後段のワークフローが `--self-test` で呼ぶ検査器を走査し、`ci.yml` の `static-checks` に
+>   `!cancelled()` つきの同じ呼び出しが在ることを求める。列挙は持たない。`check-coverage-floor.js` は集約 `build-and-test` が呼ぶので対象から外す。
+> - 回収先は変わらない: 門の本走査（稼働スタックへの測定）は引き続き integration-stack が回す。後段の自己試験も、高価な起動の前に門自身を確かめる役として残す。
+>   作業仕様書: `.ai-context/specs/20261017_1929_integration-stack-selftests-in-pr.md`

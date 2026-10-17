@@ -250,6 +250,30 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-integration-config-timing.js
 
+      # NFR, #1929 / IADR-0232（2026-10-17 追記）: 後段（integration-stack.yml / integration.yml）の門の自己試験を PR でも走らせる。
+      # 🔴 **自己試験は実データ（realm の宣言・helm の描画・実装の定数）をラチェットとして読む。** だから門の器を
+      #    触らない PR でも、宣言を変えれば自己試験が赤になる。後段でしか走らないと、PR は緑のまま develop が赤になる。
+      #    実測: #1944 が realm に組み込みの public client を足し、check-password-reset-mail.js の #1413 ラチェットが
+      #    develop の integration-stack でだけ落ちた（d3addc82 から 1721e667 まで 5 本連続の赤。PR の CI は緑）。
+      # 自己試験はクラスタ・helm・kubectl・submodule を使わない（手元の素の環境で全件緑・計 1 秒ほど）。
+      # 後段の自己試験も残す（高価な起動の前に門自身を確かめる役は後段にしか無い）。
+      # 後段で `--self-test` を呼ぶ検査器がここに無いと scripts.repo.test.js（#1929 節）が赤になる。
+      - name: Self-test readiness gate (integration-stack 前倒し)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-stack-ready.js --self-test
+      - name: Self-test password-reset mail gate (integration-stack 前倒し)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-password-reset-mail.js --self-test
+      - name: Self-test login existence-disclosure probe (integration-stack 前倒し)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-login-existence-disclosure.js --self-test
+      - name: Self-test SC-12 provisioning probe (integration-stack 前倒し)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-mcp-client-provisioning.js --self-test
+      - name: Self-test integration executed checker (integration 前倒し)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-integration-executed.js --self-test
+
       - name: Self-test knowledge graph generator
         if: ${{ !cancelled() }}
         run: node scripts/gen-knowledge-graph.js --self-test
