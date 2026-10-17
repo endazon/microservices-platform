@@ -112,3 +112,9 @@ plan_refs:
   CI の `node scripts/*.js` 71 本を手元で流し、赤は kubectl / helm / 稼働クラスタ / ビルド成果物 / GitHub の環境変数が無いものだけ（本変更と無関係）。
 - `dotnet format Tests/RetrievalService.Tests.csproj --verify-no-changes` → 0。
 - helm は触っていない（`deploy/helm` にルールは無い）。
+- ［2026-10-17 追記 / PR #1987 の AI レビュー 🟡］有効側の試験が並列実行で不安定だった（レビューの 1 回目で `found 0L`）。原因: OTel の MeterProvider は
+  同じ名前の Meter をプロセス内のすべてから拾うので、並列の他のホスト（既定＝無効）の 0 が読み手に混ざり、最後の値で上書きしていた。
+  是正: このホストの `IMeterFactory` だけが Meter に一意の属性 `test.host` を付け、読み手は `Metric.MeterTags` がその値の点だけを集める。
+  判定は「このホストの点がちょうど 1 つで値が 0 / 1」（`Contains` に緩めない）。Meter の名前は変えない（`AddMeter` の照合が試験の対象）。
+  - `dotnet test`（RetrievalService.Tests 全 573 件・並列のまま）を 10 回連続 → 10 回とも全件合格。
+  - 変異（`AddMeter` を外す／起動時の解決を外す）→ どちらも新規 2 件が赤。`dotnet format --verify-no-changes` → 0。
