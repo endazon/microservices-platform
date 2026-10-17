@@ -11334,6 +11334,69 @@ ${r.stderr}`);
   }
 
   //
+  // NFR / #1929 / IADR-0232（2026-10-17 追記）: 後段でしか走らない門の自己試験を PR でも走らせる。
+  //
+  // 🔴 自己試験は実データ（realm の宣言など）をラチェットとして読むので、門を触らない PR でも赤になり得る。
+  // 後段（integration-stack.yml / integration.yml。どちらも pull_request で起動しない）でしか走らないと、
+  // PR は緑のまま develop が赤になる（#1944 → develop の integration-stack が 5 本連続の赤）。
+  // 列挙は持たない。後段のワークフローが `--self-test` で呼ぶ検査器を走査し、ci.yml の static-checks に
+  // 同じ呼び出しが在ることを求める（後段に門を足したら、PR 側への配線を忘れた時点で赤になる）。
+  //
+  {
+    const REPO_PS = path.join(__dirname, '..');
+    const read = (p) => fs.readFileSync(path.join(REPO_PS, p), 'utf8').replace(/\r\n/g, '\n');
+    const POST_MERGE = ['.github/workflows/integration-stack.yml', '.github/workflows/integration.yml'];
+    const selfTestsOf = (text) =>
+      [...text.matchAll(/^\s+run: (node scripts\/[\w.-]+\.js --self-test)\s*$/gm)].map((m) => m[1]);
+    const staticChecksOf = (ciText) => {
+      const m = /\n {2}static-checks:\n([\s\S]*?)(?=\n {2}[a-z][a-z0-9-]*:\n)/.exec(`${ciText}\n  zzz:\n`);
+      assert.ok(m, 'ci.yml の static-checks ジョブを切り出せない');
+      return m[1];
+    };
+    const missingIn = (job, wanted) => wanted.filter((cmd) => {
+      const at = job.indexOf(`run: ${cmd}\n`);
+      if (at < 0) return true;
+      // `if: ${{ !cancelled() }}` が無いと、前段の失敗で黙って飛ばされる（static-checks の約束）。
+      const stepHead = job.lastIndexOf('      - name:', at);
+      return !/^ {8}if: \$\{\{ !cancelled\(\) \}\}$/m.test(job.slice(stepHead, at));
+    });
+
+    ok('#1929: 後段のワークフローは pull_request で起動しない（前倒しが要る前提が崩れていない）', () => {
+      for (const p of POST_MERGE) {
+        const on = /\non:\n([\s\S]*?)\n(?=[a-z])/.exec(read(p));
+        assert.ok(on, `${p} の on: を読めない`);
+        assert.doesNotMatch(on[1], /^\s+pull_request(_target)?:/m, `${p} が PR で起動するなら本節は不要（前提を見直す）`);
+      }
+    });
+
+    ok('#1929: 後段で --self-test を呼ぶ検査器は、すべて ci.yml の static-checks でも !cancelled() つきで呼ばれる', () => {
+      const wanted = [...new Set(POST_MERGE.flatMap((p) => selfTestsOf(read(p))))];
+      // 0 件走査を緑にしない（正規表現が壊れたら空振りする）。
+      assert.ok(wanted.length >= 5, `後段の自己試験を ${wanted.length} 件しか拾えていない（走査が壊れている）`);
+      const ci = read('.github/workflows/ci.yml');
+      const job = staticChecksOf(ci);
+      // check-coverage-floor.js は集約 build-and-test が呼ぶ（IADR-0232 2026-09 の追記 ③）。PR で走っていればよい。
+      const elsewhere = wanted.filter((c) => c.includes('check-coverage-floor.js') && ci.includes(`run: ${c}\n`));
+      const missing = missingIn(job, wanted.filter((c) => !elsewhere.includes(c)));
+      assert.deepStrictEqual(missing, [], `PR で走らない後段の自己試験がある: ${missing.join(' / ')}`);
+    });
+
+    ok('#1929 陰性対照: static-checks から 1 本外す・!cancelled() を外すと検出する', () => {
+      const wanted = ['node scripts/check-password-reset-mail.js --self-test'];
+      const job = staticChecksOf(read('.github/workflows/ci.yml'));
+      assert.deepStrictEqual(missingIn(job, wanted), [], '陽性対照が通らない');
+      const removed = job.replace(/run: node scripts\/check-password-reset-mail\.js --self-test\n/, 'run: true\n');
+      assert.deepStrictEqual(missingIn(removed, wanted), wanted, '呼び出しを外しても検出しない');
+      const noGuard = job.replace(
+        /( {8}if: \$\{\{ !cancelled\(\) \}\}\n)( {8}run: node scripts\/check-password-reset-mail\.js --self-test\n)/,
+        '$2',
+      );
+      assert.notStrictEqual(noGuard, job, '変異が当たっていない');
+      assert.deepStrictEqual(missingIn(noGuard, wanted), wanted, '!cancelled() を外しても検出しない');
+    });
+  }
+
+  //
   // NFR / #882 / IADR-0238: xUnit1051（TestContext.Current.CancellationToken）段階採用の ratchet。
   //
   // **ここが check-xunit1051-ratchet.js の CI 呼び出し口である。** 新しい検査器を足しても
