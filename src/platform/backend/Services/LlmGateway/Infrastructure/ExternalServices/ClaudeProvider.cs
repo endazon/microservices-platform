@@ -1,9 +1,12 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
+using Anthropic;
+using Anthropic.Exceptions;
+using Anthropic.Models.Messages;
+using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Ports;
-using Platform.Shared.Contracts.Dtos;
-using Anthropic.SDK;
-using Anthropic.SDK.Messaging;
 using Microsoft.Extensions.Options;
+using Platform.Shared.Contracts.Dtos;
 
 namespace LlmGateway.Infrastructure.ExternalServices;
 
@@ -21,10 +24,14 @@ namespace LlmGateway.Infrastructure.ExternalServices;
 // 🔴 本実装は thinking / temperature / top_p / top_k / tool_choice / assistant prefill を送らない
 // （5.5 系で 400 になる。要求本文に無いことを ClaudeProviderRequestShapeTests が固定する。IADR-0531 決定 4）。
 // 思考の量を絞る手段は effort だけであり、用途別に `Llm:PurposeEffort` で与える（IADR-0531 決定 3）。
-// SDK（Anthropic.SDK 4.0.0）は effort を送れないので、AnthropicRequestShapingHandler が要求本文へ足す。
+// ［2026-10-17 / #1749・IADR-0562］SDK を公式 `Anthropic`（12.53.0）へ移した。effort は `OutputConfig.Effort` で送り、
+// 未知の content ブロックは SDK が例外にせず保持する（旧 SDK 向けの要求整形・応答サニタイズの委譲ハンドラは撤去した）。
+// 🔴 SDK の例外（AnthropicApiException 等）はこのクラスの外へ出さない（ThrowTranslated。IADR-0562 決定 1）。
 public class ClaudeProvider(
     AnthropicClient client,
     IConfiguration config,
+    AnthropicContentBlockMetrics contentBlockMetrics,
+    ILogger<ClaudeProvider> logger,
     IOptionsMonitor<ClaudePurposeEffortOptions>? effortOptions = null) : ILlmProvider
 {
     private readonly string _model = config["Llm:Model"] ?? "claude-opus-5-5";
@@ -33,36 +40,49 @@ public class ClaudeProvider(
     private string? EffortFor(CompletionRequest request, string model)
         => ClaudeEffort.Resolve(effortOptions?.CurrentValue, request.Purpose, model);
 
-    public async Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
+    // 要求の組み立て（非ストリーム・ストリーム共通。stream=true は SDK の CreateStreaming が足す）。
+    // messages は user の 1 件だけ（assistant prefill を送らない）。effort が無ければ output_config を送らない。
+    private MessageCreateParams BuildParams(CompletionRequest request, string model)
     {
-        var model = request.Model ?? _model;
-        using var effortScope = AnthropicRequestContext.UseEffort(EffortFor(request, model));
-        var msg = await client.Messages.GetClaudeMessageAsync(new MessageParameters
+        var effort = EffortFor(request, model);
+        return new MessageCreateParams
         {
             Model = model,
             MaxTokens = request.MaxTokens,
-            Messages =
-            [
-                new Message
-                {
-                    Role = RoleType.User,
-                    Content = [new TextContent { Text = request.Prompt }]
-                }
-            ]
-        }, ct);
+            Messages = [new MessageParam { Role = Role.User, Content = request.Prompt }],
+            OutputConfig = effort is null ? null : new OutputConfig { Effort = effort },
+        };
+    }
+
+    public async Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
+    {
+        var model = request.Model ?? _model;
+        Message msg;
+        try
+        {
+            msg = await client.Messages.Create(BuildParams(request, model), ct);
+        }
+        catch (AnthropicException ex) when (IsTranslated(ex))
+        {
+            throw Translate(ex);
+        }
 
         // IADR-0104 (#379), ADR-0025: content を読む前に stop_reason を確認する。refusal は HTTP 200・
         // 例外なしで到着するため、判別しないと空文字へ静かに縮退し「送信したが空応答」と区別できない。
-        var stopReason = msg.StopReason;
+        // 未知の値は enum へ丸めず文字列のまま透過する（Raw）。
+        var stopReason = msg.StopReason?.Raw();
+
+        // IADR-0114 決定 5・IADR-0535・IADR-0562 決定 5: 本文に使わないブロック（thinking 等）の型名を数え、段階を分けてログに残す。
+        var text = ExtractText(msg.Content);
 
         // 拒否時は本文を返さない。安全性分類器は本文の途中で停止し得るため、断片が非空のまま
         // 下流へ流れると（AST 取引判断は Text の非空を根拠に売買判断へ進む）fail-safe が破れる。
         // max_tokens の途中結果は正当な観測対象であり破棄しない（IADR-0101 / IADR-0104 §決定）。
-        var text = CompletionStopReasons.IsRefusal(stopReason)
-            ? string.Empty
-            : msg.Content.OfType<TextContent>().FirstOrDefault()?.Text ?? "";
+        if (CompletionStopReasons.IsRefusal(stopReason))
+            text = string.Empty;
 
-        return new CompletionResult(text, msg.Usage.InputTokens, msg.Usage.OutputTokens, stopReason);
+        return new CompletionResult(
+            text ?? string.Empty, (int)msg.Usage.InputTokens, (int)msg.Usage.OutputTokens, stopReason);
     }
 
     // IADR-0037: Anthropic SDK の SSE ストリーミングで本文デルタを逐次返す（真のストリーミング・主経路）。
@@ -71,46 +91,135 @@ public class ClaudeProvider(
         CompletionRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var model = request.Model ?? _model;
-        var parameters = new MessageParameters
-        {
-            Model = model,
-            MaxTokens = request.MaxTokens,
-            Stream = true,
-            Messages =
-            [
-                new Message
-                {
-                    Role = RoleType.User,
-                    Content = [new TextContent { Text = request.Prompt }]
-                }
-            ]
-        };
-
         int inputTokens = 0, outputTokens = 0;
         string? stopReason = null;
-        // IADR-0531: 要求の送信は最初の MoveNextAsync（この反復子の同じ段）で起きるので、ここで張った文脈が届く。
-        using var effortScope = AnthropicRequestContext.UseEffort(EffortFor(request, model));
-        await foreach (var res in client.Messages.StreamClaudeMessageAsync(parameters, ct))
+
+        // SDK の例外は最初の MoveNextAsync（要求の送信）か途中の読み取りで出る。yield を try/catch の中に置けないので、
+        // 列挙子を手で回して MoveNextAsync だけを包む（IADR-0562 決定 1。ストリームでも Domain に SDK の型を見せない）。
+        await using var events = client.Messages.CreateStreaming(BuildParams(request, model), ct).GetAsyncEnumerator(ct);
+        while (true)
         {
+            RawMessageStreamEvent ev;
+            try
+            {
+                if (!await events.MoveNextAsync())
+                    break;
+                ev = events.Current;
+            }
+            catch (AnthropicException ex) when (IsTranslated(ex))
+            {
+                throw Translate(ex);
+            }
+
             // message_start で入力トークン、message_delta で出力トークンが逐次確定する。
-            if (res.StreamStartMessage?.Usage is { } startUsage)
-                inputTokens = startUsage.InputTokens;
-            if (res.Usage is { } usage && usage.OutputTokens > 0)
-                outputTokens = usage.OutputTokens;
+            if (ev.TryPickStart(out var start))
+                inputTokens = (int)start.Message.Usage.InputTokens;
 
             // IADR-0104: 終了理由は message_delta（末尾）で確定する。既に送出したデルタは撤回できないため、
             // 最終チャンクへ載せて呼び出し側が破棄判断できるようにする（トレードオフは IADR-0104 §結果）。
-            if (res.Delta?.StopReason is { Length: > 0 } deltaStop)
-                stopReason = deltaStop;
-            else if (res.StopReason is { Length: > 0 } msgStop)
-                stopReason = msgStop;
+            if (ev.TryPickDelta(out var delta))
+            {
+                if (delta.Usage.OutputTokens > 0)
+                    outputTokens = (int)delta.Usage.OutputTokens;
+                if (delta.Delta.StopReason?.Raw() is { Length: > 0 } deltaStop)
+                    stopReason = deltaStop;
+            }
 
-            var delta = res.Delta?.Text;
-            if (!string.IsNullOrEmpty(delta))
-                yield return new CompletionChunk(delta);
+            // 本文デルタ（text_delta）だけを流す。thinking_delta / signature_delta は流さない（T-35）。
+            if (ev.TryPickContentBlockDelta(out var blockDelta)
+                && blockDelta.Delta.TryPickText(out var textDelta)
+                && !string.IsNullOrEmpty(textDelta.Text))
+                yield return new CompletionChunk(textDelta.Text);
         }
 
         // 最終チャンク: 本文増分なし・トークン数と終了理由を伴う（呼び出し側が集計と縮退判断を確定できる）。
         yield return new CompletionChunk(string.Empty, Done: true, inputTokens, outputTokens, stopReason);
     }
+
+    // 本文は先頭の text ブロック（旧 SDK の実装と同じ取り方）。それ以外のブロックは本文に使わずに捨て、その型名を記録する。
+    // 公式 SDK は未知の型（判別子に無い型・type の無い要素）も例外にせず ContentBlock(element) として保持する。
+    private string? ExtractText(IReadOnlyList<ContentBlock> content)
+    {
+        string? text = null;
+        var textBlocks = 0;
+        List<string>? dropped = null;
+        foreach (var block in content)
+        {
+            if (block.TryPickText(out var textBlock))
+            {
+                textBlocks++;
+                text ??= textBlock.Text;
+                continue;
+            }
+
+            (dropped ??= []).Add(TypeNameOf(block));
+        }
+
+        if (dropped is not null)
+        {
+            contentBlockMetrics.RecordDropped(dropped);
+            LogDropped(dropped, textBlocks);
+        }
+
+        return text;
+    }
+
+    // 型名が取れない要素も記録用の表示名を持たせる（IADR-0114 の表示名をそのまま使う）。
+    private static string TypeNameOf(ContentBlock block)
+    {
+        var json = block.Json;
+        return json.ValueKind == JsonValueKind.Object
+               && json.TryGetProperty("type", out var type)
+               && type.ValueKind == JsonValueKind.String
+            ? type.GetString()!
+            : "(型不明)";
+    }
+
+    // IADR-0535 決定 1 の 3 条件（ログは型名のみ。本文は載せない。IADR-0114 決定 5）。
+    // 「既知ブロックが残る」は、本文に使う text ブロックが 1 個以上あること（IADR-0562 決定 5）。
+    private void LogDropped(IReadOnlyList<string> droppedTypes, int textBlocks)
+    {
+        var types = string.Join(", ", droppedTypes);
+        if (textBlocks == 0)
+        {
+            logger.LogWarning(
+                "Anthropic 応答の content に本文（text ブロック）がありませんでした（本文に使わず捨てた型: {DroppedTypes}）。"
+                + "本文が無い応答として扱います。",
+                types);
+            return;
+        }
+
+        var unexpected = droppedTypes
+            .Where(t => !AnthropicContentBlockMetrics.ExpectedDroppedTypes.Contains(t))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (unexpected.Count > 0)
+        {
+            logger.LogWarning(
+                "Anthropic 応答に想定外の content ブロック型がありました（想定外の型: {UnexpectedTypes}／本文に使わず捨てた型: {DroppedTypes}）。"
+                + "本文は保持しています。",
+                string.Join(", ", unexpected), types);
+            return;
+        }
+
+        logger.LogDebug(
+            "Anthropic 応答の thinking 系の content ブロックを本文に使わず捨てました（型: {DroppedTypes}）。本文は保持しています。",
+            types);
+    }
+
+    // FR-11, ADR-0038 決定 4, IADR-0225, IADR-0374, IADR-0562 決定 1: SDK の例外を、判定器（LlmFallbackPolicy）と
+    // 計器（LlmCompletionMetrics）が読む形＝旧 SDK と同じ HttpRequestException へ包み直す。
+    //   - AnthropicApiException（非 2xx）→ HttpRequestException(StatusCode 付き)。400 系のフォールバックと 429 の区別がこれに懸かる。
+    //   - AnthropicIOException（送信の失敗）→ HttpRequestException(状態なし)＝ transport。
+    //   - それ以外（応答の形の異常など）は包まずにそのまま伝える（catch の when で外す。状態の取れない失敗＝フォールバックしない。
+    //     旧 SDK の JsonException と同じ扱い）。
+    // 元の例外は InnerException に残す（ログで原因を追える）。
+    internal static bool IsTranslated(AnthropicException exception)
+        => exception is AnthropicApiException or AnthropicIOException;
+
+    internal static HttpRequestException Translate(AnthropicException exception) => exception switch
+    {
+        AnthropicApiException api => new HttpRequestException(api.Message, api, api.StatusCode),
+        _ => new HttpRequestException(exception.Message, exception),
+    };
 }

@@ -3,15 +3,15 @@ title: 固定/可変 区分表（実装版）— コンポーザビリティ対�
 type: tech
 status: completed
 created: 2026-07-08
-updated: 2026-10-09
+updated: 2026-10-17
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15]
 adrs: [ADR-0015, ADR-0018, ADR-0106]
-iadrs: [IADR-0002, IADR-0007, IADR-0014, IADR-0021, IADR-0022, IADR-0023, IADR-0024, IADR-0025, IADR-0027, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0059, IADR-0461]
-specs: [20260708_issue-102_composability-fixed-variable-separation, 20260925_1499_object-storage-seaweedfs, 20261007_1771_ingestion-event-wiring-docs, 20261008_1799_composability-docs-wolverine-wiring, 20261009_1771_ingestion-completed-no-wiring]
-issues: [#102, #195, #217, #218, #219, #229, #1499, #1771, #1799, planning#741]
+iadrs: [IADR-0002, IADR-0007, IADR-0014, IADR-0021, IADR-0022, IADR-0023, IADR-0024, IADR-0025, IADR-0027, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0059, IADR-0461, IADR-0562]
+specs: [20260708_issue-102_composability-fixed-variable-separation, 20260925_1499_object-storage-seaweedfs, 20261007_1771_ingestion-event-wiring-docs, 20261008_1799_composability-docs-wolverine-wiring, 20261009_1771_ingestion-completed-no-wiring, 20261017_1749_anthropic-official-sdk]
+issues: [#102, #195, #217, #218, #219, #229, #1499, #1771, #1799, #1749, planning#741]
 -->
 
 # 固定/可変 区分表（実装版）
@@ -77,8 +77,11 @@ Issue #102の作業項目 1「棚卸し」の成果物である。
 | `IChunkingService` | Ingestion | MarkdownChunkingService | —（内部戦略） | DI 登録 |
 | `IDataSourceConnector` | DataSource | FileSystemConnector / WikiConnector / SaaSConnector / DatabaseConnector（`ConnectorRegistry` が SourceType で解決） | ファイルサーバー / Wiki / SaaS / 業務DB | DI 登録（#195/#217/#218/#219。コネクタのポート分離と各コネクタの実装判断による。未登録型は縮退） |
 
-- ポートを迂回した外部コンポーネント直接依存: **なし**（Qdrant SDK・S3 SDK・Wiki.js GraphQL・Anthropic SDK・pandoc の
+- ポートを迂回した外部コンポーネント直接依存: **なし**（Qdrant SDK・S3 SDK・Wiki.js GraphQL・Claude SDK（公式 `Anthropic`）・pandoc の
   使用箇所は全て上記ポート実装内に閉じている。棚卸しで確認）。
+  ［2026-10-17］Claude SDK は第三者製の `Anthropic.SDK` から公式 `Anthropic` へ移した。SDK の型（例外を含む）は `ClaudeProvider`
+  と生成点 `AnthropicClientFactory`（いずれも LlmGateway の `Infrastructure/`）の外へ出ない。フォールバックの判定器（`Domain/`）は
+  プロバイダが包み直した `HttpRequestException` だけを読む。
 
 ## 4. サービス別区分（フォルダ配置）
 

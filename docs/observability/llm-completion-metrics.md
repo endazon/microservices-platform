@@ -3,15 +3,15 @@ title: LLM 補完メトリクス（終了理由・拒否率）ログ・可観測
 type: observability-spec
 status: in-progress
 created: 2026-07-28
-updated: 2026-10-16
+updated: 2026-10-17
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, NFR-19]
 adrs: [ADR-0006, ADR-0010, ADR-0025, ADR-0038, ADR-0044]
-iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374, IADR-0114, IADR-0535, IADR-0533]
-specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue]
-issues: [#380, #786, #787, #863, #1091, #1819, #1917, #1902]
+iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374, IADR-0114, IADR-0535, IADR-0533, IADR-0562]
+specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261017_1749_anthropic-official-sdk]
+issues: [#380, #786, #787, #863, #1091, #1819, #1917, #1902, #1749]
 -->
 
 # 可観測性仕様書: LLM 補完の終了理由（拒否率）
@@ -216,13 +216,15 @@ sum(increase(llm_completion_total{llm_upstream_status="none"}[7d]))
 
 ## 応答 content ブロックの除去件数（`llm.anthropic.content_blocks_dropped`・#1917）
 
-Claude の非ストリーミング応答から、SDK が解釈できない content ブロックを解析前に除去した件数である
-（除去そのものの規定は LLM 送信先切替の機能仕様書 §応答 content ブロック）。
+Claude の非ストリーミング応答の content のうち、本文（`text` ブロック）に使わずに捨てたブロックの件数である
+（規定は LLM 送信先切替の機能仕様書 §Claude の呼び出し（公式 SDK）と応答 content ブロックの扱い）。
+［2026-10-17］SDK を公式 `Anthropic` へ移すまでは「旧 SDK が解釈できないブロックを解析前に除去した件数」だった。
+数える場所はプロバイダへ移ったが、計器の名前・属性・値域は変えていない（系列は連続する）。
 
 | 項目 | 値 |
 | --- | --- |
 | Meter 名 | `microservices-platform.llm-gateway`（上と同じ） |
-| 計器 | `llm.anthropic.content_blocks_dropped`（`Counter<long>`・単位 `{block}`）。**除去したブロック 1 個につき 1** |
+| 計器 | `llm.anthropic.content_blocks_dropped`（`Counter<long>`・単位 `{block}`）。**捨てたブロック 1 個につき 1** |
 | Prometheus 側の名前 | `llm_anthropic_content_blocks_dropped_total` |
 | 属性 | `llm.content_block_type` = `thinking` / `redacted_thinking` / `other`（**3 値に閉じる**。型名は上流が決める非有界な値なので、想定内の 2 型以外は `other` へ集約する） |
 

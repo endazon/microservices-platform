@@ -1,20 +1,18 @@
-using System.Net;
-using System.Reflection;
-using Anthropic.SDK;
+using Anthropic;
 using AwesomeAssertions;
 using LlmGateway.Infrastructure.ExternalServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 
-// FR-11, ADR-0010, IADR-0114, IADR-0528 (#1872): Program.cs の配線を固定する。
-// AnthropicHttpClient 単体の試験（T-33）だけでは、Program.cs が Create を呼ばずに素の HttpClient を渡しても、
-// Create のハンドラ鎖から応答圧縮を外しても気付けない（PR #1873 の監査が変異で実測）。
-// ここでは ① 実ホストから AnthropicClient を解決して期限が設定値になること、② Create のハンドラ鎖を直接見る。
+// T-34, FR-11, ADR-0010, IADR-0528 (#1872), IADR-0562 (#1749): Program.cs の配線を固定する。
+// 生成点（AnthropicClientFactory）の単体試験（T-33 / T-43）だけでは、Program.cs が生成点を通らずに
+// 素の `new AnthropicClient()`（SDK の既定＝再試行 2 回・期限 10 分・環境変数の送信先）を登録しても気付けない。
+// ここでは実ホストから AnthropicClient を解決し、SDK の既定を変えた値が載っていることを見る。
+// ［2026-10-17 / #1749］旧 SDK の時代はハンドラ鎖（要求整形 → サニタイズ → 応答圧縮）を見ていた。鎖は撤去した。
 [Trait("TestKind", "Unit")]
 public class AnthropicClientWiringTests
 {
@@ -30,24 +28,12 @@ public class AnthropicClientWiringTests
                     ["Llm:ApiKey"] = "test-key",
                     ["Otlp:Endpoint"] = "http://localhost:4317",
                     ["Auth:Authority"] = TestServiceTokens.Issuer,
-                    [AnthropicHttpClient.ConfigKey] = timeoutSeconds,
+                    [AnthropicClientFactory.ConfigKey] = timeoutSeconds,
                 }));
         }
     }
 
-    // AnthropicClient は渡された HttpClient を非公開のプロパティ（HttpClient）に持つ。試験だけの読み取り。
-    private static HttpClient HttpClientOf(AnthropicClient client) =>
-        (HttpClient)typeof(AnthropicClient)
-            .GetProperty("HttpClient", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
-            .GetValue(client)!;
-
-    // HttpClient はハンドラを公開しないため、基底 HttpMessageInvoker の非公開フィールドを読む（試験だけの読み取り）。
-    private static HttpMessageHandler HandlerOf(HttpClient client) =>
-        (HttpMessageHandler)typeof(HttpMessageInvoker)
-            .GetField("_handler", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(client)!;
-
-    // T-34: ホストが解決する AnthropicClient の HttpClient に、設定 `Llm:AnthropicTimeoutSeconds` の値が載る。
+    // T-34: ホストが解決する AnthropicClient の期限（SDK の Timeout）に、設定 `Llm:AnthropicTimeoutSeconds` の値が載る。
     [Fact]
     public void HostResolvedAnthropicClient_UsesConfiguredTimeout()
     {
@@ -55,10 +41,10 @@ public class AnthropicClientWiringTests
 
         var client = host.Services.GetRequiredService<AnthropicClient>();
 
-        HttpClientOf(client).Timeout.Should().Be(TimeSpan.FromSeconds(7));
+        client.Timeout.Should().Be(TimeSpan.FromSeconds(7));
     }
 
-    // T-34: 未設定ならホストでも 100 秒（既定の挙動不変）。
+    // T-34: 未設定ならホストでも 100 秒（既定の挙動不変。SDK 既定の null＝max_tokens からの算出にしない）。
     [Fact]
     public void HostResolvedAnthropicClient_WhenUnset_UsesHundredSeconds()
     {
@@ -66,40 +52,21 @@ public class AnthropicClientWiringTests
 
         var client = host.Services.GetRequiredService<AnthropicClient>();
 
-        HttpClientOf(client).Timeout.Should().Be(TimeSpan.FromSeconds(100));
+        client.Timeout.Should().Be(TimeSpan.FromSeconds(100));
     }
 
-    // T-34: ホストが解決する AnthropicClient のハンドラ鎖が Create と同じ形である
-    // （要求の整形 → サニタイズの委譲ハンドラ → 応答圧縮を有効にした HttpClientHandler。整形は IADR-0531 で追加）。
+    // T-34: 再試行 0・送信先は本番 URL の明示・API キーは設定値・HttpClient 側の期限は無限（期限の正は SDK の Timeout 1 か所）。
     [Fact]
-    public void HostResolvedAnthropicClient_HasSanitizingHandlerChain()
+    public void HostResolvedAnthropicClient_DisablesRetriesAndPinsDestination()
     {
         using var host = new RealAnthropicClientHost(null);
 
         var client = host.Services.GetRequiredService<AnthropicClient>();
 
-        AssertSanitizingChain(HandlerOf(HttpClientOf(client)));
-    }
-
-    // T-34: Create のハンドラ鎖（IADR-0114）。一次ハンドラは AutomaticDecompression = All。
-    [Fact]
-    public void Create_BuildsSanitizingHandlerOverDecompressingHttpClientHandler()
-    {
-        using var client = AnthropicHttpClient.Create(
-            new ConfigurationBuilder().Build(), NullLogger<AnthropicResponseSanitizingHandler>.Instance,
-            TestContentBlockMetrics.Create());
-
-        AssertSanitizingChain(HandlerOf(client));
-    }
-
-    // ［2026-10-10 / #1875・IADR-0531］最も外側に要求本文の整形（用途別 effort の注入）が入った。
-    // 鎖: AnthropicRequestShapingHandler → AnthropicResponseSanitizingHandler → HttpClientHandler。
-    // 整形を外すと effort が送られず（rerank の思考が絞られない）、サニタイズを外すと thinking 応答で全件失敗する。
-    private static void AssertSanitizingChain(HttpMessageHandler handler)
-    {
-        var shaping = handler.Should().BeOfType<AnthropicRequestShapingHandler>().Subject;
-        var sanitizer = shaping.InnerHandler.Should().BeOfType<AnthropicResponseSanitizingHandler>().Subject;
-        var inner = sanitizer.InnerHandler.Should().BeOfType<HttpClientHandler>().Subject;
-        inner.AutomaticDecompression.Should().Be(DecompressionMethods.All);
+        client.MaxRetries.Should().Be(0);
+        client.BaseUrl.Should().Be("https://api.anthropic.com");
+        client.ApiKey.Should().Be("test-key");
+        client.AuthToken.Should().BeNull();
+        client.HttpClient.Timeout.Should().Be(Timeout.InfiniteTimeSpan);
     }
 }

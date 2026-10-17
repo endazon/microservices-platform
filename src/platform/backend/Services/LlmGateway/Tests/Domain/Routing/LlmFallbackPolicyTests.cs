@@ -62,8 +62,10 @@ public class LlmFallbackPolicyTests
         LlmFallbackPolicy.ShouldFallBack(wrapped).Should().BeTrue();
     }
 
-    // 実測（#863 の作業仕様書 §2）: Anthropic.SDK 4.0.0 も EnsureSuccessStatusCode() も
+    // 実測（#863 の作業仕様書 §2）: 旧 Anthropic.SDK 4.0.0 も EnsureSuccessStatusCode() も
     // HttpRequestException.StatusCode を設定して投げる。判定器はその形だけを見る。
+    // ［2026-10-17 / #1749・IADR-0562］公式 SDK は AnthropicApiException を投げるので、ClaudeProvider がこの形へ包み直す
+    // （本物の provider がこの形で届くことは ClaudeProviderSdkRiskTests（T-43）が固定する）。
     private static HttpRequestException Upstream(HttpStatusCode status)
         => new("upstream rejected the request", null, status);
 }

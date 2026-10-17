@@ -1,27 +1,27 @@
 using System.Diagnostics.Metrics;
-using System.Net;
-using System.Text;
 using AwesomeAssertions;
 using LlmGateway.Common.Observability;
+using LlmGateway.Domain.Ports;
 using LlmGateway.Infrastructure.ExternalServices;
 using Microsoft.Extensions.Logging;
 
 namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 
-// T-41, FR-11, NFR-19, ADR-0006, IADR-0535 (#1917): content ブロック除去のログ段階と除去件数の計器を固定する。
+// T-41, FR-11, NFR-19, ADR-0006, IADR-0114 決定 5, IADR-0535, IADR-0562 決定 5 (#1749): 本文に使わず捨てた content ブロックの
+// ログ段階と件数の計器を固定する。
 //
-// 5.5 系は thinking を無効にできず（IADR-0531）、thinking の除去は毎応答の通常の形である。
-// 1 応答 1 行の Warning（IADR-0114 決定 5 の当初の形）では PoC の 7 時間で 685 行になり、本物の警告が埋もれた。
-//   - thinking / redacted_thinking だけを除去し既知ブロックが残る → Debug
-//   - 想定外の型を除去した／除去で content が空になった       → Warning
+// 5.5 系は thinking を無効にできず（IADR-0531）、thinking を捨てるのは毎応答の通常の形である。
+//   - thinking / redacted_thinking だけを捨て、本文（text ブロック）が残る → Debug
+//   - 想定外の型を捨てた／本文が 1 個も無い                                → Warning
 //   - 件数は型を問わず llm.anthropic.content_blocks_dropped で数える
-// ログ段階は RecordingLoggerFactory で Level を表明する（AnthropicHttpClientTests と同じ流儀）。
+// ［2026-10-17 / #1749］旧 SDK のときは委譲ハンドラ（AnthropicResponseSanitizingHandler）が SDK の解釈前に除去して数えていた。
+// 公式 SDK は未知の型も保持するので、数えてログを出す場所は ClaudeProvider へ移った（条件・計器・値域は不変）。
 // 計器は Meter の**インスタンス**で購読する（[[IADR-0394]] 決定 1）。共有 Meter 名へ発行するので加入もする。
 [Collection(SharedMeterCollection.Name)]
 [Trait("TestKind", "Unit")]
-public class AnthropicResponseSanitizingHandlerLogLevelTests
+public class ClaudeProviderContentBlockLogTests
 {
-    private const string Category = "LlmGateway.Infrastructure.ExternalServices.AnthropicResponseSanitizingHandler";
+    private const string Category = "LlmGateway.Infrastructure.ExternalServices.ClaudeProvider";
 
     // 本文の文字列はログに載ってはならない（型名のみ。IADR-0114 決定 5）ので、ログの文言と紛れない値にする。
     private const string BodyText = "回答の実体XYZ";
@@ -29,6 +29,7 @@ public class AnthropicResponseSanitizingHandlerLogLevelTests
     private const string ThinkingBlock = """{"type":"thinking","thinking":"","signature":"s"}""";
     private const string RedactedThinkingBlock = """{"type":"redacted_thinking","data":"opaque"}""";
     private const string ServerToolUseBlock = """{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{}}""";
+    private const string FutureBlock = """{"type":"some_future_block","payload":1}""";
 
     private static string Envelope(string blocks) =>
         "{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-haiku-5-5\","
@@ -77,32 +78,27 @@ public class AnthropicResponseSanitizingHandlerLogLevelTests
         public void Dispose() => _listener.Dispose();
     }
 
-    private static async Task<(IReadOnlyList<RecordingLoggerFactory.Entry> Logs, IReadOnlyDictionary<string, long> Counts, string Body)>
-        SendAsync(string body)
+    private static async Task<(IReadOnlyList<RecordingLoggerFactory.Entry> Logs, IReadOnlyDictionary<string, long> Counts, string Text)>
+        CompleteAsync(string body)
     {
         using var loggers = new RecordingLoggerFactory();
         var metrics = TestContentBlockMetrics.Create(out var meterFactory);
         using var probe = new Probe(meterFactory.Create(AnthropicContentBlockMetrics.MeterName));
 
-        var handler = new AnthropicResponseSanitizingHandler(
-            new Logger<AnthropicResponseSanitizingHandler>(loggers), metrics)
-        {
-            InnerHandler = new StubHandler(body),
-        };
-        using var client = new HttpClient(handler);
-        using var response = await client.GetAsync("https://api.anthropic.test/v1/messages", TestContext.Current.CancellationToken);
-        var sanitized = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var provider = TestClaudeProviders.Create(new StubAnthropicHandler(body), metrics: metrics, loggers: loggers);
+        var result = await provider.CompleteAsync(
+            new CompletionRequest("q", 1024, "claude-haiku-5-5"), TestContext.Current.CancellationToken);
 
-        return (loggers.Entries.Where(e => e.Category == Category).ToList(), probe.CountsByType(), sanitized);
+        return (loggers.Entries.Where(e => e.Category == Category).ToList(), probe.CountsByType(), result.Text);
     }
 
-    // T-41: thinking だけの除去は想定内（5.5 系の毎応答）。Debug 1 行・Warning 0 行、件数は計器へ。
+    // T-41: thinking だけを捨てるのは想定内（5.5 系の毎応答）。Debug 1 行・Warning 0 行、件数は計器へ。
     [Fact]
-    public async Task Thinking除去で本文が残るときはDebugで出しWarningを出さない()
+    public async Task Thinkingを捨てて本文が残るときはDebugで出しWarningを出さない()
     {
-        var (logs, counts, body) = await SendAsync(Envelope($"{ThinkingBlock},{TextBlock}"));
+        var (logs, counts, text) = await CompleteAsync(Envelope($"{ThinkingBlock},{TextBlock}"));
 
-        body.Should().Contain(BodyText).And.NotContain("\"thinking\"");
+        text.Should().Be(BodyText);
         logs.Should().ContainSingle().Which.Level.Should().Be(LogLevel.Debug);
         logs.Single().Message.Should().Contain("thinking");
         counts.Should().Equal(new Dictionary<string, long> { [AnthropicContentBlockMetrics.TypeThinking] = 1 });
@@ -112,7 +108,7 @@ public class AnthropicResponseSanitizingHandlerLogLevelTests
     [Fact]
     public async Task RedactedThinkingも想定内として扱い型ごとに数える()
     {
-        var (logs, counts, _) = await SendAsync(Envelope($"{RedactedThinkingBlock},{ThinkingBlock},{TextBlock}"));
+        var (logs, counts, _) = await CompleteAsync(Envelope($"{RedactedThinkingBlock},{ThinkingBlock},{TextBlock}"));
 
         logs.Should().NotContain(e => e.Level >= LogLevel.Warning);
         logs.Should().ContainSingle(e => e.Level == LogLevel.Debug);
@@ -123,40 +119,40 @@ public class AnthropicResponseSanitizingHandlerLogLevelTests
         });
     }
 
-    // T-41: 想定外の型（server_tool_use）は Warning。型名を構造化値に載せ、計器は other へ集約する。
+    // T-41: 想定外の型（server_tool_use・SDK の判別子に無い将来型）は Warning。型名を構造化値に載せ、計器は other へ集約する。
     [Fact]
-    public async Task 想定外の型を除去したときはWarningで型名を出す()
+    public async Task 想定外の型を捨てたときはWarningで型名を出す()
     {
-        var (logs, counts, body) = await SendAsync(Envelope($"{ThinkingBlock},{ServerToolUseBlock},{TextBlock}"));
+        var (logs, counts, text) = await CompleteAsync(Envelope($"{ThinkingBlock},{ServerToolUseBlock},{FutureBlock},{TextBlock}"));
 
-        body.Should().Contain(BodyText);
+        text.Should().Be(BodyText);
         var warning = logs.Should().ContainSingle().Which;
         warning.Level.Should().Be(LogLevel.Warning);
-        warning.Values["UnexpectedTypes"].Should().Be("server_tool_use");
+        warning.Values["UnexpectedTypes"].Should().Be("server_tool_use, some_future_block");
         warning.Message.Should().NotContain(BodyText);
         counts.Should().Equal(new Dictionary<string, long>
         {
             [AnthropicContentBlockMetrics.TypeThinking] = 1,
-            [AnthropicContentBlockMetrics.TypeOther] = 1,
+            [AnthropicContentBlockMetrics.TypeOther] = 2,
         });
     }
 
-    // T-41: thinking だけでも、除去で content が空になったら Warning（本文が失われたことに気づけるように）。
+    // T-41: thinking だけでも、本文が 1 個も無ければ Warning（本文が失われたことに気づけるように）。
     [Fact]
-    public async Task 除去でcontentが空になったときは想定内の型でもWarningを出す()
+    public async Task 本文が無いときは想定内の型でもWarningを出す()
     {
-        var (logs, counts, body) = await SendAsync(Envelope(ThinkingBlock));
+        var (logs, counts, text) = await CompleteAsync(Envelope(ThinkingBlock));
 
-        body.Should().Contain("\"content\":[]");
+        text.Should().BeEmpty();
         logs.Should().ContainSingle().Which.Level.Should().Be(LogLevel.Warning);
         counts.Should().Equal(new Dictionary<string, long> { [AnthropicContentBlockMetrics.TypeThinking] = 1 });
     }
 
-    // T-41: 既知型だけの応答はログも計器も出さない（素通し。IADR-0114 決定 4）。
+    // T-41: 本文だけの応答はログも計器も出さない。
     [Fact]
-    public async Task 既知型だけの応答はログも計器も出さない()
+    public async Task 本文だけの応答はログも計器も出さない()
     {
-        var (logs, counts, _) = await SendAsync(Envelope(TextBlock));
+        var (logs, counts, _) = await CompleteAsync(Envelope(TextBlock));
 
         logs.Should().BeEmpty();
         counts.Should().BeEmpty();
@@ -172,14 +168,5 @@ public class AnthropicResponseSanitizingHandlerLogLevelTests
     public void 計器の型属性は3値に閉じる(string type, string expected)
     {
         AnthropicContentBlockMetrics.Normalize(type).Should().Be(expected);
-    }
-
-    private sealed class StubHandler(string body) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(body, Encoding.UTF8, "application/json"),
-            });
     }
 }

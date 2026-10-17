@@ -2,10 +2,10 @@
 title: IADR-0528 LLM ゲートウェイの Anthropic 呼び出しの期限（HttpClient.Timeout）を設定 Llm:AnthropicTimeoutSeconds で変えられるようにする。既定は従前と同じ 100 秒、不正値は既定へ倒す
 type: impl-adr
 status: Accepted
-related_ids: [FR-11, ADR-0010, IADR-0114]
+related_ids: [FR-11, ADR-0010, IADR-0114, IADR-0562]
 author: claude
 created: 2026-10-10
-updated: 2026-10-10
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0010（LLM ゲートウェイ。呼び出し先の集中管理）
 related_specs:
@@ -35,6 +35,12 @@ related_specs:
 100 秒で切れると呼び出し側には `TaskCanceledException` の系統で見え、利用実績は計上されない（プロバイダ側の課金は発生し得る）。
 
 ## 決定
+
+> **［2026-10-17 追記 / #1749］決定 3（生成点と写す先）は [IADR-0562](./IADR-0562_anthropic-official-sdk-migration.md) 決定 4 が改めた。本文は書き換えない。**
+> 公式 SDK へ移し、期限は `HttpClient.Timeout` ではなく SDK の `ClientOptions.Timeout` へ写す（`HttpClient.Timeout` は無限）。生成点は `AnthropicClientFactory`。
+> 設定キー・既定 100 秒・不正値の規則（決定 1・2）と呼び出し側との内外関係（決定 4）は変えない。SDK の再試行は 0 にした（内外関係を崩さないため。IADR-0562 決定 3）。
+> T-34 の「ハンドラ鎖」とリフレクションによる読み取りは撤去した（SDK が `Timeout` を公開する）。
+
 
 ### 決定 1 — 設定キーは `Llm:AnthropicTimeoutSeconds`、既定は 100 秒
 

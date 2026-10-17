@@ -172,11 +172,11 @@
       "UsageRetentionTests"
     ],
     "docs/tests/FR-11_llm-egress-routing.md": [
+      "AnthropicClientFactoryTests",
       "AnthropicClientWiringTests",
-      "AnthropicContentBlockSanitizerTests",
-      "AnthropicHttpClientTests",
-      "AnthropicResponseSanitizingHandlerLogLevelTests",
+      "ClaudeProviderContentBlockLogTests",
       "ClaudeProviderRequestShapeTests",
+      "ClaudeProviderSdkRiskTests",
       "ClaudeProviderStopReasonTests",
       "ClaudeProviderThinkingTests",
       "CompletionFallbackEndpointTests",

@@ -2,7 +2,7 @@
 title: IADR-0531 Claude のモデル割当を 5.5 系（opus-5-5・sonnet-5-5・haiku-5-5）へ切り替える。旧 ID は切り戻し用に残し、haiku-5-5 の単価はプロンプト長の 2 段で持ち、用途別 effort を要求本文へ注入する（既定は rerank=low）。rerank の出力上限は 1024 へ上げる
 type: impl-adr
 status: Accepted
-related_ids: [FR-03, FR-10, FR-11, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0127, ADR-0138, IADR-0101, IADR-0102, IADR-0112, IADR-0114, IADR-0225, IADR-0340, IADR-0498, IADR-0511, IADR-0528]
+related_ids: [FR-03, FR-10, FR-11, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0127, ADR-0138, IADR-0101, IADR-0102, IADR-0112, IADR-0114, IADR-0225, IADR-0340, IADR-0498, IADR-0511, IADR-0528, IADR-0562]
 author: claude
 created: 2026-10-10
 updated: 2026-10-17
@@ -83,6 +83,9 @@ related_specs:
 >   `ClaudeProvider` の直書き既定・`deploy/`）と AST の割当表（`LlmAssignments`）のどちらにも旧 ID が無いことを走査で確かめた（作業仕様書 20261017_1903）。
 > - **配備順序は「AST の移行段を先に」ではなく「同時」である**（ADR-0138 決定 8）。AST は移行段を撤去済み（AST#1296 / AST#1310）。
 >   順序がずれた間は AST の取引判断が割当不一致で見送りへ倒れる（発注しない）。これは計画が受容した。
+
+> **［2026-10-17 追記 / #1749］決定 3 の effort の送り方（`AnthropicRequestShapingHandler` が要求本文へ足す・`AnthropicRequestContext` で渡す）は、[IADR-0562](./IADR-0562_anthropic-official-sdk-migration.md) で公式 SDK の `OutputConfig.Effort` へ改めた。**
+> 整形ハンドラと文脈は撤去した。用途別の設定（`Llm:PurposeEffort`）・値域・対応集合（`ClaudeEffort.CapableModels`）・起動時の検証は変えない。T-38（整形の純関数）は対象ごと撤去した。
 
 ### 決定 2 — Haiku 5.5 の単価はプロンプト長の 2 段で持つ（上段へ寄せた 1 段にしない）
 

@@ -2,7 +2,10 @@ using System.Diagnostics.Metrics;
 
 namespace LlmGateway.Common.Observability;
 
-// FR-11, NFR-19, ADR-0006, IADR-0114, IADR-0535 (#1917): Anthropic 応答から除去した content ブロックの件数。
+// FR-11, NFR-19, ADR-0006, IADR-0114, IADR-0535 (#1917), IADR-0562 (#1749): Anthropic 応答の content のうち、
+// 本文（text ブロック）に使わず捨てたブロックの件数。
+// ［2026-10-17 / #1749］旧 SDK では「SDK の解釈前に委譲ハンドラが除去した件数」だった。公式 SDK は未知の型も保持するので、
+// 数える場所は ClaudeProvider（本文を取り出すところ）へ移した。計器の名前・属性・値域は変えていない（ダッシュボードの継続のため）。
 //
 // 5.5 系は 3 モデルとも thinking を無効にできず（IADR-0531）、thinking の除去は通常の応答の形である。
 // 1 応答 1 行の Warning では本物の警告が埋もれる（PoC の 7 時間で 685 行）ため、ログは Debug へ下げ、
@@ -21,7 +24,7 @@ public sealed class AnthropicContentBlockMetrics
     public const string TypeRedactedThinking = "redacted_thinking";
     public const string TypeOther = LlmMetricValues.Other;
 
-    // 除去が想定内の型（5.5 系の拡張思考が常に返す）。これ以外の除去は想定外として Warning にする。
+    // 捨てるのが想定内の型（5.5 系の拡張思考が常に返す）。これ以外は想定外として Warning にする。
     public static readonly IReadOnlySet<string> ExpectedDroppedTypes =
         new HashSet<string>(StringComparer.Ordinal) { TypeThinking, TypeRedactedThinking };
 
@@ -32,11 +35,11 @@ public sealed class AnthropicContentBlockMetrics
         var meter = meterFactory.Create(MeterName);
         _dropped = meter.CreateCounter<long>(
             DroppedCounterName, unit: "{block}",
-            description: "Anthropic 応答から SDK 解釈前に除去した content ブロックの件数（型別。想定内は thinking / "
+            description: "Anthropic 応答の content のうち本文に使わず捨てたブロックの件数（型別。想定内は thinking / "
                        + "redacted_thinking、それ以外は other）。other の増加は応答形状の変化を表す。");
     }
 
-    // 除去した型名を 1 件ずつ数える。
+    // 捨てた型名を 1 件ずつ数える。
     public void RecordDropped(IEnumerable<string> droppedTypes)
     {
         foreach (var type in droppedTypes)
