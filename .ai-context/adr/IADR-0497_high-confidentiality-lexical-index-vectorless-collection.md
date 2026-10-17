@@ -188,6 +188,7 @@ S1 は再順位付けを実装しない。S2 が要るものを次のとおり�
     > **［2026-10-17 追記 / #1746］** 実測・計算で要ると判断し、[IADR-0560](./IADR-0560_lexical-index-write-budget.md) が埋め込みの総枠と同じ値の総枠（呼び出し先 `lexical-budget`）を掛けた。使い切った文書は再試行せずデッドレターへ入る。
   - 検索の readiness（`qdrant-fulltext-index` / `qdrant-cjk-ngram-index`）は主コレクションの索引しか見ない（Ruri のコレクションと同じ）。語彙索引の索引の欠落は取り込みの起動時ログ（Error）だけに出る。
   - 取り込みは Ruri のコレクション（`knowledge_chunks_ruri_v3`）を今も作る（空）。片付けは段 S4。
+    > **［2026-10-17 追記 / #1746］** 片付けた。取り込みは opt-in（Helm `embedding.enabled`・compose `SEARCH_FUSED_COLLECTION`）のときだけ Ruri のコレクションを作る。配備物は残す。[IADR-0085](./IADR-0085_selfhosted-embedding-optin-deploy.md) の 2026-10-17 追記。
   - 権限内属性値（facet）は実 Qdrant ではキーワード索引が無く例外になる（既存の欠陥。§実測「参考」）。
   - 「横断検索に含める」OFF・「AI の入力に含める」ON の個人資料は RAG の文脈に入らない（`Finish` が横断検索の露出で先に落とす。既存の挙動で fail-closed の向き。
     語彙索引で到達するようになった）。#1752 で扱う。

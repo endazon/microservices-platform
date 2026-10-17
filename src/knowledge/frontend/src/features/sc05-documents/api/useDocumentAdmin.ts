@@ -19,6 +19,7 @@ import type {
   BffDocumentListStatus,
   DocumentListPageDto,
 } from '@foundation/api/generated/bff.schemas';
+import type { DocumentOrigin } from '../types/documentSource';
 
 // SC-05, UC-03, FR-06/FR-09: 文書管理の照会・作成・更新・状態遷移・削除
 // （サーバー状態は TanStack Query。ADR-0031）。
@@ -66,6 +67,8 @@ export type DocumentStatusFilter = BffDocumentListStatus | '';
  */
 export interface DocumentListRequest extends DocumentPageRequest, DocumentListConditions {
   sort: DocumentSort;
+  /** ［2026-10-17 / #1923・IADR-0561］タブ（`''` はすべて）。条件ではなく見せ方として扱う（「条件を解除」で外さない）。 */
+  origin: DocumentOrigin;
 }
 
 /** 機密区分の絞り込み（BFF の `confidentiality` と同じ語彙）。`''` は「すべて」。 */
@@ -97,6 +100,9 @@ export const EMPTY_DOCUMENT_CONDITIONS: DocumentListConditions = {
   createdTo: '',
 };
 
+/** 既定のタブ（人の文書・報告書）。機械の収集が大半を占める台帳で、人の文書を埋もれさせない（IADR-0561）。 */
+export const DEFAULT_DOCUMENT_ORIGIN: DocumentOrigin = 'curated';
+
 /**
  * 暦日（`YYYY-MM-DD`）を利用者の時刻帯のその日の 0 時の瞬間（ISO 8601 の UTC）へ写す。`dayOffset` 日だけずらす。
  * 「まで」はその日を含めたいので、翌日の 0 時を `createdBefore`（含まない）として送る。
@@ -121,6 +127,7 @@ function toListParams(request: DocumentListRequest): BffDocumentListParams {
   const q = request.q.trim();
   if (q !== '') params.q = q;
   if (request.status !== '') params.status = request.status;
+  if (request.origin !== '') params.origin = request.origin;
   if (request.source !== '') params.source = request.source;
   if (request.confidentiality !== '') params.confidentiality = request.confidentiality;
   if (request.tag !== '') params.tag = request.tag;
@@ -132,7 +139,7 @@ function toListParams(request: DocumentListRequest): BffDocumentListParams {
   return params;
 }
 
-/** 操作の帯の条件で絞り込んでいるか（要約の文・空の表示・「条件を解除」を出し分ける）。 */
+/** 操作の帯の条件で絞り込んでいるか（空の表示と「条件を解除」を出し分ける）。タブは含めない。 */
 export function hasConditions(request: DocumentListConditions): boolean {
   return (
     request.q.trim() !== '' ||
@@ -142,9 +149,9 @@ export function hasConditions(request: DocumentListConditions): boolean {
   );
 }
 
-/** 絞り込んでいるか（要約の文を「絞り込み m 件（全 n 件）」にする）。 */
-export function isFiltered(request: DocumentListConditions): boolean {
-  return hasConditions(request);
+/** 帯の条件かタブのどちらかで絞り込んでいるか（要約の文を「絞り込み m 件（全 n 件）」にする）。 */
+export function isFiltered(request: DocumentListConditions & { origin?: DocumentOrigin }): boolean {
+  return hasConditions(request) || (request.origin ?? '') !== '';
 }
 
 /**

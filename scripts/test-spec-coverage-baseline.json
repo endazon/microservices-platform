@@ -29,6 +29,7 @@
       "DocumentBodyMissingTests",
       "DocumentUpdatedConsumerTests",
       "EmbeddingBudgetDeadLetterPipelineTests",
+      "EmbeddingCollectionsOptionsBindingTests",
       "EmbeddingPendingReembedderTests",
       "IngestToSearchInProcessTests",
       "IngestionTimeoutTests",

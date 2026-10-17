@@ -1240,8 +1240,13 @@ embedding:
   # deployment.yaml が retrieval へ Qdrant__FusedCollections__0 として描画し、検索が主コレクション（voyage）と
   # **1 回の検索で束ねて**読む（順位で合成）。🔴 **有効化の前提**である —— 束ねないまま有効化すると
   # 「索引されるが検索されない」になる。値は LlmGateway の appsettings.json（selfhosted-ruri の Collection）と
-  # IngestionService の Embedding:Collections と一致していなければならない（scripts/k8s-local-up.test.js が固定する）。
+  # 一致していなければならない（scripts/k8s-local-up.test.js が固定する）。
+  # ［2026-10-17 / #1746 段 S4］ADR-0127 決定 5, IADR-0085: 取り込み（IngestionService）の Embedding:Collections は既定で
+  # voyage だけになった。enabled=true のとき deployment.yaml が取り込みへ Embedding__Collections__1__* として
+  # 本値と dimensions を描画する（無効の配備に空の Ruri のコレクションを作らない）。
   collection: knowledge_chunks_ruri_v3
+  # Ruri v3 の次元（LlmGateway の appsettings.json の selfhosted-ruri と同じ）。取り込みがコレクションを作る次元である。
+  dimensions: 768
   replicas: 1
   registry: ghcr.io
   image: huggingface/text-embeddings-inference
