@@ -16658,11 +16658,19 @@ server.listen(0, '127.0.0.1', async () => {
       globalThis.__fake = async (url, init) => {
         const u = new URL(url);
         calls.push({ path: u.pathname, method: init.method, auth: (init.headers || {}).Authorization || null,
-          start: u.searchParams.get('start'), limit: u.searchParams.get('limit'), direction: u.searchParams.get('direction') });
+          start: u.searchParams.get('start'), end: u.searchParams.get('end'), query: u.searchParams.get('query'),
+          limit: u.searchParams.get('limit'), direction: u.searchParams.get('direction') });
         const json = (o, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(o) });
         if (process.env.LX_STATUS) return { ok: false, status: Number(process.env.LX_STATUS), text: async () => 'no' };
         const start = BigInt(u.searchParams.get('start') || 0), end = BigInt(u.searchParams.get('end') || u.searchParams.get('time'));
         if (u.pathname === '/loki/api/v1/query') {
+          // #1969: 検算の件数（sum(count_over_time(q [Nms]))）は、実物の Loki 3.0.0 と同じく両端を含まない (T − r, T) を数える。
+          const m = /^sum\\(count_over_time\\(.*\\[(\\d+)ms\\]\\)\\)$/.exec(u.searchParams.get('query'));
+          if (m) {
+            const lo = end - BigInt(m[1]) * 1000000n - BigInt(process.env.LX_COUNT_SKEW || 0);
+            const n = entries.filter(([ns]) => BigInt(ns) > lo && BigInt(ns) < end).length;
+            return json({ status: 'success', data: { resultType: 'vector', result: n ? [{ metric: {}, value: [0, String(n)] }] : [] } });
+          }
           const by = {}; for (const [, job] of entries) by[job] = (by[job] || 0) + 1;
           return json({ status: 'success', data: { resultType: 'vector', result: Object.entries(by).map(([job, n]) => ({ metric: { job }, value: [0, String(n)] })) } });
         }
@@ -16670,6 +16678,15 @@ server.listen(0, '127.0.0.1', async () => {
         const dir = u.searchParams.get('direction');
         let hit = entries.filter(([ns]) => BigInt(ns) >= start && BigInt(ns) < end)
           .sort((a, b) => (BigInt(a[0]) === BigInt(b[0]) ? (a[1] < b[1] ? 1 : -1) : (BigInt(a[0]) < BigInt(b[0]) ? -1 : 1)));
+        // #1969: Loki 3.0.0 の query-frontend の誤りを模す。要求が分け目（LX_SPLIT ns の倍数）を跨ぐと、job b の分け目の直後
+        // （分け目の 1/4 の幅）の行が抜け、他の job のもっと後の行が limit 件に入る（実測の形）。跨がない要求は正しく返す。
+        if (process.env.LX_SPLIT) {
+          const split = BigInt(process.env.LX_SPLIT);
+          const boundary = (start / split + 1n) * split;
+          if (boundary < end) hit = hit.filter(([ns, job]) => !(job === 'b' && BigInt(ns) >= boundary && BigInt(ns) < boundary + split / 4n));
+        }
+        // #1969: 特定の行を常に返さない Loki（検算が取りこぼしを捕まえるかを試す）。
+        if (process.env.LX_DROP) hit = hit.filter(([ns, job]) => \`\${job}@\${ns}\` !== process.env.LX_DROP);
         if (dir === 'backward') hit = hit.reverse();
         hit = hit.slice(0, limit);
         const streams = {};
@@ -16753,7 +16770,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(lx.MAX_LIMIT, 5000);
       const base = ['--from', '2026-10-14T00:00:00+09:00', '--to', '2026-10-15T00:00:00+09:00', '--out', 'x.jsonl'];
       assert.strictEqual(lx.parseArgs(base).limit, 1000);
-      const r = runLx(`const o = lx.parseArgs(${JSON.stringify(['--from', '1970-01-01T00:00:00.000001Z', '--to', '1970-01-01T00:00:00.000002Z', '--out', 'x', '--url', 'http://x'])});
+      const r = runLx(`const o = lx.parseArgs(${JSON.stringify(['--from', '1970-01-01T00:00:00Z', '--to', '1970-01-01T00:00:00.001Z', '--out', 'x', '--url', 'http://x'])});
         const got = []; await lx.exportRange(globalThis.__fake, o, (e) => got.push(e));
         console.log(JSON.stringify({ n: got.length, limits: globalThis.__calls.map((c) => c.limit) }));`, ENTRIES_LX);
       assert.strictEqual(r.n, 30);
@@ -16779,7 +16796,7 @@ server.listen(0, '127.0.0.1', async () => {
       const dir = fsLx.mkdtempSync(pathLx.join(osLx.tmpdir(), 'lx-'));
       try {
         const out = pathLx.join(dir, 'o.jsonl');
-        const argv = JSON.stringify(['--from', '1970-01-01T00:00:00.000001Z', '--to', '1970-01-01T00:00:00.000002Z', '--out', out, '--limit', '4', '--url', 'http://x']);
+        const argv = JSON.stringify(['--from', '1970-01-01T00:00:00Z', '--to', '1970-01-01T00:00:00.001Z', '--out', out, '--limit', '4', '--url', 'http://x']);
         const body = `const c1 = await lx.main(${argv}, { LOKI_TOKEN: 'abc' }, globalThis.__fake);
           const c2 = await lx.main(${argv}, { LOKI_TOKEN: 'abc' }, globalThis.__fake);
           console.log(JSON.stringify({ c1, c2 }));`;
@@ -16788,7 +16805,7 @@ server.listen(0, '127.0.0.1', async () => {
         const lines = fsLx.readFileSync(out, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
         assert.strictEqual(lines.length, 30);
         assert.deepStrictEqual(Object.keys(lines[0]), ['ts', 'ns', 'labels', 'line']);
-        assert.strictEqual(lines[0].ts, '1970-01-01T00:00:00.000001000Z');
+        assert.strictEqual(lines[0].ts, '1970-01-01T00:00:00.000001000Z'); // 行の時刻（1000 ns）はナノ秒のまま書く
       } finally {
         fsLx.rmSync(dir, { recursive: true, force: true });
       }
@@ -16798,7 +16815,7 @@ server.listen(0, '127.0.0.1', async () => {
       const dir = fsLx.mkdtempSync(pathLx.join(osLx.tmpdir(), 'lx-'));
       try {
         const out = pathLx.join(dir, 'o.jsonl');
-        const argv = JSON.stringify(['--from', '1970-01-01T00:00:00.000001Z', '--to', '1970-01-01T00:00:00.000002Z', '--out', out, '--limit', '4', '--url', 'http://x']);
+        const argv = JSON.stringify(['--from', '1970-01-01T00:00:00Z', '--to', '1970-01-01T00:00:00.001Z', '--out', out, '--limit', '4', '--url', 'http://x']);
         // 2 ページ目で前段が 401 を返す（トークンを回した・port-forward の先が替わった等を模す）。
         const body = `let n = 0; const inner = globalThis.__fake;
           const flaky = async (u, i) => (++n >= 2 ? { ok: false, status: 401, text: async () => 'no' } : inner(u, i));
@@ -16816,6 +16833,99 @@ server.listen(0, '127.0.0.1', async () => {
       } finally {
         fsLx.rmSync(dir, { recursive: true, force: true });
       }
+    });
+
+    // NFR-18 (#1969): Loki 3.0.0 は 1 要求が query-frontend の分け目（1h）を跨ぐと行を落とす（実測）。窓を UTC の 0 時からの
+    // 倍数に揃えて跨がせず、窓ごとに Loki の件数と突き合わせ、合わなければ非 0 で終わる。
+    const MIN_LX = 60n * 1000000000n;
+    // 3 つの job が 3 時間にわたり 5 分ごとに 1 行ずつ。a は 5 分の倍数ちょうど（正時・窓の始まりちょうどの行を含む）、b は 1 分後、c は 2 分後。
+    const SPREAD_LX = [];
+    for (let t = 0n; t < 180n; t += 5n) ['a', 'b', 'c'].forEach((job, i) => SPREAD_LX.push([String((t + BigInt(i)) * MIN_LX), job, `${job}-${t}`]));
+    const WINDOWS_LX = (windowMin, limit = 4, startMin = 0n) => `
+      const got = [];
+      const o = { url: 'http://x', query: '{job=~".+"}', startNs: ${startMin * MIN_LX}n, endNs: ${180n * MIN_LX}n, limit: ${limit}, token: 't', windowNs: ${BigInt(windowMin) * MIN_LX}n };
+      try {
+        const r = await lx.exportWindows(globalThis.__fake, o, (e) => got.push(e.labels.job + '@' + e.ns));
+        console.log(JSON.stringify({ n: got.length, uniq: new Set(got).size, windows: r.windows, calls: globalThis.__calls }));
+      } catch (e) { console.log(JSON.stringify({ error: e.message, n: got.length })); }`;
+
+    ok('#1969 export-loki-logs: 陽性対照 —— 分け目を跨ぐ要求で行を落とす Loki では、範囲を 1 本でページ送りすると黙って行が欠ける', () => {
+      const r = runLx(`const got = [];
+        await lx.exportRange(globalThis.__fake, { url: 'http://x', query: '{job=~".+"}', startNs: 0n, endNs: ${180n * MIN_LX}n, limit: 8, token: 't' }, (e) => got.push(e));
+        console.log(JSON.stringify({ n: got.length }));`, SPREAD_LX, { LX_SPLIT: String(60n * MIN_LX) });
+      assert.ok(r.n < SPREAD_LX.length, `模した誤りが効いていない（${r.n} 行）`);
+      // 同じ Loki で、同じ範囲を分け目に揃えた窓で取れば欠けない（次の試験）。誤りを外せば 1 本のページ送りでも欠けない（固定の確認）。
+      const clean = runLx(`const got = [];
+        await lx.exportRange(globalThis.__fake, { url: 'http://x', query: '{job=~".+"}', startNs: 0n, endNs: ${180n * MIN_LX}n, limit: 8, token: 't' }, (e) => got.push(e));
+        console.log(JSON.stringify({ n: got.length }));`, SPREAD_LX);
+      assert.strictEqual(clean.n, SPREAD_LX.length);
+    });
+
+    ok('#1969 export-loki-logs: 窓を分け目に揃えて跨がせず、全行を 1 度ずつ書き、検算が合う（窓 10・60・1 分。要求は窓を跨がない）', () => {
+      // [窓の分, limit, 範囲の始まり（分）, 窓の数]。始まりが窓の倍数でないときも、2 つ目からの窓は倍数に揃う。
+      for (const [windowMin, limit, startMin, windows] of [[10, 4, 0n, 18], [10, 8, 0n, 18], [60, 8, 0n, 3], [1, 4, 0n, 180], [60, 8, 30n, 3], [10, 8, 25n, 16]]) {
+        const r = runLx(WINDOWS_LX(windowMin, limit, startMin), SPREAD_LX, { LX_SPLIT: String(60n * MIN_LX) });
+        const want = SPREAD_LX.filter(([ns]) => BigInt(ns) >= startMin * MIN_LX).length;
+        assert.strictEqual(r.error, undefined, `窓 ${windowMin} 分: ${r.error}`);
+        assert.strictEqual(r.n, want, `窓 ${windowMin} 分・始まり ${startMin} 分: ${r.n} 行`);
+        assert.strictEqual(r.uniq, want, `窓 ${windowMin} 分: 重複がある`);
+        assert.strictEqual(r.windows, windows, `窓 ${windowMin} 分・始まり ${startMin} 分: 窓の数`);
+        const w = BigInt(windowMin) * MIN_LX;
+        for (const c of r.calls.filter((x) => x.path.endsWith('query_range'))) {
+          const s = BigInt(c.start);
+          assert.ok(BigInt(c.end) <= (s / w + 1n) * w, `窓を跨ぐ要求がある: ${c.start}〜${c.end}`);
+        }
+        const counts = r.calls.filter((x) => x.path.endsWith('/query'));
+        assert.strictEqual(counts.length, windows, `窓ごとに 1 回数えていない: ${counts.length}`);
+        assert.ok(counts.slice(1).every((c) => c.query === `sum(count_over_time({job=~".+"} [${windowMin * 60000}ms]))`), counts[1] && counts[1].query);
+      }
+    });
+
+    ok('#1969 export-loki-logs: Loki が行を返さないと検算が合わず、合わない窓を名指しして失敗する（件数が多すぎる側も失敗）', () => {
+      // 36 分の行（job b）を返さない（30〜40 分の窓の途中）。
+      const drop = runLx(WINDOWS_LX(10), SPREAD_LX, { LX_DROP: `b@${36n * MIN_LX}` });
+      assert.match(drop.error || '', /検算が合わない（18 窓のうち 1 窓。書き出し 107 行 \/ Loki の件数 108 行）/);
+      assert.match(drop.error, /1970-01-01T00:30:00\.000000000Z 〜 1970-01-01T00:40:00\.000000000Z: 書き出し 5 行 \/ Loki の件数 6 行（差 -1）/);
+      assert.strictEqual(drop.n, 107, '合わない窓の後も書き続けていない');
+      // Loki の件数の側が多い（範囲の始まりより 1 分前まで数えた）—— 書き出しが少ないと読める形でも、多いと読める形でも成功にしない。
+      const skew = runLx(WINDOWS_LX(10), SPREAD_LX, { LX_COUNT_SKEW: String(MIN_LX + 1n) });
+      assert.match(skew.error || '', /検算が合わない/);
+    });
+
+    ok('#1969 export-loki-logs: main は検算が合わなければ書きかけを <out>.partial へ改名して非 0、合えば検算の一致を出す', () => {
+      const dir = fsLx.mkdtempSync(pathLx.join(osLx.tmpdir(), 'lx-'));
+      try {
+        const out = pathLx.join(dir, 'o.jsonl');
+        const argv = (o) => JSON.stringify(['--from', '1970-01-01T00:00:00Z', '--to', '1970-01-01T03:00:00Z', '--out', o, '--limit', '8', '--url', 'http://x']);
+        const body = (o) => `const errs = []; const outs = []; const w = process.stderr.write.bind(process.stderr); const w2 = process.stdout.write.bind(process.stdout);
+          process.stderr.write = (x) => { errs.push(String(x)); return true; }; process.stdout.write = (x) => { outs.push(String(x)); return true; };
+          const code = await lx.main(${argv(o)}, { LOKI_TOKEN: 'abc' }, globalThis.__fake);
+          process.stderr.write = w; process.stdout.write = w2;
+          console.log(JSON.stringify({ code, errs: errs.join(''), outs: outs.join('') }));`;
+        const bad = runLx(body(out), SPREAD_LX, { LX_DROP: `b@${36n * MIN_LX}` });
+        assert.strictEqual(bad.code, 1);
+        assert.ok(!fsLx.existsSync(out), '検算が合わないのに完了した写しの名前で残っている');
+        assert.strictEqual(fsLx.readFileSync(`${out}.partial`, 'utf8').trim().split('\n').length, 107);
+        assert.match(bad.errs, /保全は不完全/);
+        assert.match(bad.errs, /検算が合わない/);
+        const good = runLx(body(pathLx.join(dir, 'g.jsonl')), SPREAD_LX, { LX_SPLIT: String(60n * MIN_LX) });
+        assert.strictEqual(good.code, 0, good.errs);
+        assert.match(good.outs, /108 行・\d+ ページ・18 窓/);
+        assert.match(good.outs, /検算: 18 窓すべてで書き出しの行数と Loki の件数（count_over_time）が一致（10 分の窓）/);
+      } finally {
+        fsLx.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('#1969 export-loki-logs: --window は既定 10 分・1 時間の約数だけ。書き出しの --from / --to はミリ秒の単位まで（--summary は問わない）', () => {
+      const base = ['--from', '2026-10-14T00:00:00+09:00', '--to', '2026-10-15T00:00:00+09:00', '--out', 'x.jsonl'];
+      assert.strictEqual(lx.DEFAULT_WINDOW_MIN, 10);
+      assert.strictEqual(lx.parseArgs(base).windowNs, 10n * MIN_LX);
+      assert.strictEqual(lx.parseArgs([...base, '--window', '60']).windowNs, 60n * MIN_LX);
+      for (const bad of ['7', '0', '90', '2.5', 'x']) assert.throws(() => lx.parseArgs([...base, '--window', bad]), /--window は 1 時間の約数/, bad);
+      assert.throws(() => lx.parseArgs(['--from', '2026-10-14T00:00:00.0000001+09:00', '--to', base[3], '--out', 'x']), /--from はミリ秒の単位まで/);
+      assert.throws(() => lx.parseArgs(['--from', base[1], '--to', '2026-10-15T00:00:00.000001+09:00', '--out', 'x']), /--to はミリ秒の単位まで/);
+      assert.ok(lx.parseArgs(['--from', '2026-10-14T00:00:00.000001+09:00', '--to', base[3], '--summary']).summary);
     });
 
     ok('#1935 export-loki-logs: 呼ぶ道は前段（gate）の読み取りの列挙の内側だけ（運用の口・削除 API を呼ばない）', () => {
