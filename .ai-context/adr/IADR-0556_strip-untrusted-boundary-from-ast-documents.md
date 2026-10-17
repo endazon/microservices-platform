@@ -9,6 +9,7 @@ updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（FR-06）
 related_specs:
+  - ../specs/20261017_1983_bulk-op-publish-recovery-without-log-ids.md
   - ../specs/20261017_1973_strip-untrusted-boundary-from-ast-documents.md
 ---
 
@@ -97,3 +98,16 @@ related_specs:
 4. 確認: もう一度 dry-run を流し「枠を剥がす対象」が 0 件であること。台帳を直接引いて確かめる（読み取りだけ）:
    `SELECT count(*) FROM "Documents" WHERE "Status" <> 'archived' AND "Attributes"->>'project' = 'ai-stock-trading' AND "Title" LIKE '<<<UNTRUSTED_DATA%';` が 0。
 5. 戻し方: 版の履歴に前の表題と本文の参照が残る（注記が決定 4 の文字列の版の、1 つ前の版）。戻す口は足さない（戻す理由が無い。必要になったら別の issue で扱う）。
+
+## ［2026-10-17 追記 / #1983］発行の取りこぼしの回収は、ログの ID ではなく母集合で行う
+
+- 起点: #1983（MSP#1982 の AI レビュー）。§結果 の回収（`Stripped untrusted boundary from document` の行で ID を引く）は、発行がページの途中で失敗したときに、
+  それより後の文書（台帳では剥がし済み・監査の行も発行も無い）を拾えない。口はページ全体を保存してから 1 件ずつ監査の行を出して発行するためである。
+- **決定: §結果 の回収手順を次の 2 つで置き換える。回収の母集合にログの行を使わない**（コードは変えない。口の並びを変える案は採らない）。
+  - (a) 既定: 決定 4 の版の注記から ID を引く。**文書ごとの最後の版の注記が決定 4 の文字列**の文書だけを引き（その後に更新・アーカイブされた文書は別のイベントが出ているので外れる）、
+    `republish-document-updated.js --ids` の上限（500 件）ごとに分けて流す。発行できていた文書も含むので、剥がした件数分の埋め込みの費用がもう一度かかる（冪等）。
+  - (b) SQL を使えないとき: `republish-document-updated.js --attr project=ai-stock-trading`。株取引ユニットの全件を再発行する（剥がしていない文書も埋め込み直すので費用が大きい。dry-run の件数をオーナーへ示してから流す）。
+  - SQL と分割のループは運用仕様書（株取引ユニットの文書から境界語の枠を剥がす）にある。
+- §PoC の手順 2 のログの行は、カナリアの確認として有効である。止まった回の回収の母集合には使わない。
+- 確かめたこと: 使い捨ての PostgreSQL 16 で、最後の版が本操作の文書だけが引かれ、剥がしの後に Quote のアーカイブ（IADR-0549 追記 / #1974）を受けた文書が外れること。
+  1,203 件が 500 / 500 / 203 の塊に分かれること（作業仕様書 `20261017_1983_bulk-op-publish-recovery-without-log-ids`）。
