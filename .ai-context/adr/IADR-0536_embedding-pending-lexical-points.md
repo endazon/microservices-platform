@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-02, FR-03, FR-05, UC-04, NFR-06, ADR-0016, ADR-0027, ADR-0070, ADR-0127, IADR-0497, IADR-0503, IADR-0504, IADR-0534, IADR-0025, IADR-0358]
 author: claude
 created: 2026-10-14
-updated: 2026-10-14
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0127_high-confidentiality-lexical-only-and-claude-rerank.md (決定 1・2・4)
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md
@@ -118,6 +118,7 @@ related_specs:
   - **周期が例外（Qdrant の不達・時間切れ）で抜けると、ゲージは前回の値のまま残る**（#1924 の再レビュー）。そのときは常駐の器の Warning
     （`Embedding-pending re-embed cycle failed`）が周期ごとに 1 行出るので、ゲージだけでなくこの Warning も合わせて読む。不達が続く間に系列を消す（`absent()` で読ませる）形は採っていない。
   - 途中で待ちへ切り替わった巨大な文書は、残りのチャンクの書き込みが埋め込みの総枠を通らない（高機密の経路と同じ。IADR-0497 §残るもの）。受け口の実行期限が上から抑える。
+    > **［2026-10-17 追記 / #1746］** [IADR-0560](./IADR-0560_lexical-index-write-budget.md) が、待ちの点の輪も埋め込みの輪の始めから続けて同じ総枠で打ち切るようにした（呼び出し先 `lexical-budget`。再試行せずデッドレターへ）。
   - **機械検査**: 取り込みと埋め直しの振る舞いは単体試験（`DocumentUpdatedConsumerTests`・`EmbeddingPendingReembedderTests`・`LexicalIndexStoreTests`）が固定する。実 Qdrant での往復（印の索引・条件つき削除）は統合試験を足していない（純関数と gRPC の記録で形を固定）。
 
 ## 試験
