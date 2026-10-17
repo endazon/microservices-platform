@@ -283,6 +283,24 @@ public class Document
         Snapshot(changeNote ?? "archived");
     }
 
+    // FR-06, UC-03, [[IADR-0556]] (#1973): AST が境界語つきで保存した表題・本文を、境界語を剥がした値へ置き換える（一回限りの移行）。
+    //
+    // 🔴 **状態・属性・タグを変えない。** `Update` は属性とタグを全置換し、`SetMarkdownUri` は状態を `normalized` へ戻す
+    //   （公開済みの文書が下書き相当へ落ちる）。どちらも移行には使えないので、表題と本文の参照だけを動かす点をここに置く。
+    // 本文を置き換えないとき（本文は境界語つきでなかった・本文が無い）は `markdownUri` に null を渡す（参照と指紋はそのまま）。
+    // 版は 1 つだけ進める（表題と本文を同じ版で変える）。
+    public void ReplaceUntrustedBoundaryWrapped(string title, string? markdownUri, string? contentFingerprint, string changeNote)
+    {
+        Title = title;
+        if (markdownUri is not null)
+        {
+            MarkdownUri = markdownUri;
+            ContentFingerprint = contentFingerprint;
+        }
+        Touch();
+        Snapshot(changeNote);
+    }
+
     private void Touch()
     {
         UpdatedAt = DateTimeOffset.UtcNow;

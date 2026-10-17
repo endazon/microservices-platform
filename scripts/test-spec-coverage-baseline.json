@@ -132,7 +132,8 @@
       "ObjectStorageRoundTripTests",
       "PrivateNoteExposurePublishTests",
       "RepublishDocumentUpdatedEndpointTests",
-      "S3ObjectStorageClientExistsTests"
+      "S3ObjectStorageClientExistsTests",
+      "StripUntrustedBoundaryEndpointTests"
     ],
     "docs/tests/FR-07_data-range-analysis.md": [
       "AnalysisEndpointTests",
