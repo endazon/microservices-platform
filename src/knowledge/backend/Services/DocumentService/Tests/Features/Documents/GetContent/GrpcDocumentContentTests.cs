@@ -164,7 +164,7 @@ public class GrpcDocumentContentTests : IDisposable
     [Fact]
     public async Task 上限を超える本文は返さず大きさと上限を返す()
     {
-        var (over, _) = await SeedAsync(new string('a', (int)DocumentContentUseCase.MaxBodyBytes + 1));
+        var (over, overUri) = await SeedAsync(new string('a', (int)DocumentContentUseCase.MaxBodyBytes + 1));
         var (atLimit, _) = await SeedAsync(new string('a', (int)DocumentContentUseCase.MaxBodyBytes));
 
         var tooLarge = await ReadAsync(over.Id);
@@ -176,6 +176,8 @@ public class GrpcDocumentContentTests : IDisposable
         tooLarge.LimitBytes.Should().Be(DocumentContentUseCase.MaxBodyBytes);
         fits.State.Should().Be(DocumentContentState.Available, "陽性対照: ちょうど上限は返す");
         fits.Markdown.Length.Should().Be((int)DocumentContentUseCase.MaxBodyBytes);
+        // #1940: 本文の口は上限つきで読む（全文を読まずに止めるのは実クライアントの `S3ObjectStorageClientBoundedReadTests` が固定する）。
+        Storage.BoundedReads.Should().Contain((overUri!, DocumentContentUseCase.MaxBodyBytes));
     }
 
     // 上限はバイトで数える（文字数ではない）。日本語は 1 文字 3 バイトなので、文字数が上限の 1/3 を超えれば超過になる。

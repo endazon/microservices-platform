@@ -1,4 +1,5 @@
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
+using System.Buffers;
 using System.Net;
 using System.Text;
 using Amazon.S3;
@@ -76,6 +77,74 @@ public sealed class S3ObjectStorageClient(
         logger.LogInformation("Fetched text object from {Uri} ({Length} chars)", uri, content.Length);
         return content;
     }
+
+    // FR-06, NFR-16, [[IADR-0544]] 決定 4（2026-10-17 追記 / #1940）: 上限つきの本文の取得。
+    //
+    // 1. **応答の大きさ（ContentLength）が上限を超えれば、本文を 1 バイトも読まずに返す。** 応答を破棄すると接続ごと閉じる
+    //    （本文は流れてこない）。従来は全文を文字列にしてから大きさを測っていたため、数百 MB の本文でヒープが溢れ得た。
+    // 2. 🔴 **大きさを信じ切らない。** ContentLength が無い（0）・偽っている場合に備え、読むのは上限＋1 バイトまでで打ち切る。
+    //    上限＋1 バイト目が読めた時点で超過と判断する（`SizeBytes` は下限＝上限＋1）。
+    // 3. 上限以内なら UTF-8 で復号する。BOM は従来の `StreamReader` と同じく落とす（不正なバイト列は置換文字になる。これも同じ）。
+    //    大きさは**格納されたバイト数**で測る（BOM を含む。読む量の上限だからである）。
+    public async Task<BoundedTextRead> GetTextBoundedAsync(string uri, long maxBytes, CancellationToken ct = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxBytes);
+        // 上限＋1 バイトをメモリへ置くため、配列の上限を超える上限は受けない。
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(maxBytes, (long)Array.MaxLength);
+
+        var (bucket, key) = Resolve(uri);
+        using var response = await s3.GetObjectAsync(new GetObjectRequest { BucketName = bucket, Key = key }, ct);
+
+        var declared = response.ContentLength;
+        if (declared > maxBytes)
+        {
+            logger.LogInformation(
+                "Text object at {Uri} is {Bytes} bytes (Content-Length), over the limit {LimitBytes}; not read",
+                uri, declared, maxBytes);
+            return BoundedTextRead.Over(declared);
+        }
+
+        var limit = maxBytes + 1;
+        using var body = new MemoryStream(declared > 0 ? (int)declared : 0);
+        var exceeded = false;
+        var chunk = ArrayPool<byte>.Shared.Rent(81920);
+        try
+        {
+            while (true)
+            {
+                var want = (int)Math.Min(chunk.Length, limit - body.Length);
+                var read = await response.ResponseStream.ReadAsync(chunk.AsMemory(0, want), ct);
+                if (read == 0) break;
+                // 上限を超える分は溜めない（超過と分かれば足りる。溜めるとバッファが上限の 2 倍へ伸びる）。
+                if (body.Length + read > maxBytes)
+                {
+                    exceeded = true;
+                    break;
+                }
+                body.Write(chunk, 0, read);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(chunk);
+        }
+
+        if (exceeded)
+        {
+            logger.LogInformation(
+                "Text object at {Uri} exceeded the limit {LimitBytes} while reading (Content-Length {Declared}); read stopped",
+                uri, maxBytes, declared);
+            return BoundedTextRead.Over(limit);
+        }
+
+        var bytes = body.GetBuffer().AsSpan(0, (int)body.Length);
+        var size = bytes.Length;
+        var text = Encoding.UTF8.GetString(bytes.StartsWith(Utf8Bom) ? bytes[Utf8Bom.Length..] : bytes);
+        logger.LogInformation("Fetched text object from {Uri} ({Bytes} bytes, bounded by {LimitBytes})", uri, size, maxBytes);
+        return BoundedTextRead.Within(text, size);
+    }
+
+    private static ReadOnlySpan<byte> Utf8Bom => [0xEF, 0xBB, 0xBF];
 
     public async Task<byte[]> GetBytesAsync(string uri, CancellationToken ct = default)
     {

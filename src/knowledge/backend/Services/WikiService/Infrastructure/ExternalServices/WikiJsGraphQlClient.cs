@@ -6,7 +6,8 @@ namespace WikiService.Infrastructure.ExternalServices;
 
 // FR-13, UC-07, ADR-0011, IADR-0021: Wiki.js 管理 GraphQL API への同期クライアント（API push）。
 //
-// 冪等 upsert: path をキーに singleByPath で既存を引き、あれば pages.update、無ければ pages.create。
+// 冪等 upsert: path をキーに singleByPath で既存を引き、無ければ pages.create、あって内容が違えば pages.update、
+// 同じなら何も書かない（#1971・[[IADR-0557]]。Wiki.js 2.5 の update は 1 件ごとに描画の子プロセスを起こし 2.5〜5 秒かかる）。
 // 認証はサービスアカウントの API キー（Bearer）。秘密は環境変数/シークレット経由で注入しコミットしない。
 //
 // 注（IADR-0021）: Wiki.js 2.x の GraphQL スキーマ（バージョン差異あり）への結合が生じる。実際の
@@ -23,19 +24,60 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
     public async Task UpsertPageAsync(WikiJsPage page, CancellationToken ct = default)
     {
         var path = NormalizePath(page.Path);
-        var existingId = await GetPageIdByPathAsync(path, ct);
+        const string query = """
+            query ($path: String!, $locale: String!) {
+              pages { singleByPath(path: $path, locale: $locale) { id title content render isPublished tags { tag } } }
+            }
+            """;
+        var single = await QuerySingleByPathAsync(query, path, ct);
 
-        if (existingId is int id)
-        {
-            await UpdateAsync(id, path, page, isPublished: true, ct);
-            logger.LogInformation("Wiki.js page updated: path={Path} id={Id}", path, id);
-        }
-        else
+        if (single is not JsonElement current)
         {
             await CreateAsync(path, page, ct);
             logger.LogInformation("Wiki.js page created: path={Path}", path);
+            return;
         }
+
+        var id = current.GetProperty("id").GetInt32();
+        if (HoldsSameContent(current, page))
+        {
+            logger.LogInformation("Wiki.js page unchanged; update skipped: path={Path} id={Id}", path, id);
+            return;
+        }
+
+        await UpdateAsync(id, path, page, isPublished: true, ct);
+        logger.LogInformation("Wiki.js page updated: path={Path} id={Id}", path, id);
     }
+
+    // 🔴 FR-13, [[IADR-0557]] 決定 1・2 (#1971): **Wiki.js の今のページが、送ろうとしている update と同じ結果を既に持っているか。**
+    // 同じなら update は Wiki.js の状態を変えない（同じ値の上書き）ので送らない。比べる相手は wiki_svc の台帳ではなく **Wiki.js の今の状態**である
+    // （Wiki.js の DB が作り直された・Wiki.js の画面で本文が直された、のどちらでも、違いが見えれば従来どおり上書きする）。
+    // - 表題・本文: 序数比較（Wiki.js は受け取った値をそのまま保存する。実測で往復一致）。
+    // - タグ: Wiki.js の `associateTags` と同じ正規化（trim・小文字・重複除去）の集合で比べる。正規化の差（文化依存の小文字化など）は
+    //   「違う」に倒れ、update を送る（安全側）。
+    // - 公開状態: update は常に isPublished=true を送る。アーカイブ済み（false）なら違う。
+    // - 描画: render が空なら違う扱い（前回の描画の子プロセスが落ちていた場合に、update で描き直させる）。
+    // - **isPrivate は比べない。** Wiki.js 2.5 の updatePage は isPrivate を書かない（patch の列に無い）ので、違っていても update では直らない。
+    internal static bool HoldsSameContent(JsonElement current, WikiJsPage page)
+    {
+        if (!current.TryGetProperty("isPublished", out var published) || published.ValueKind != JsonValueKind.True) return false;
+        if (!current.TryGetProperty("render", out var render) || render.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(render.GetString())) return false;
+        if (!string.Equals(StringOrNull(current, "title"), page.Title, StringComparison.Ordinal)) return false;
+        if (!string.Equals(StringOrNull(current, "content"), page.Markdown, StringComparison.Ordinal)) return false;
+        if (!current.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Array) return false;
+
+        var held = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var t in tags.EnumerateArray())
+        {
+            if (!t.TryGetProperty("tag", out var tag) || tag.ValueKind != JsonValueKind.String) return false;
+            held.Add(tag.GetString()!);
+        }
+        return held.SetEquals(page.Tags.Select(t => t.Trim().ToLowerInvariant()));
+    }
+
+    private static string? StringOrNull(JsonElement e, string name)
+        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     public async Task<string?> GetRenderedContentAsync(string path, CancellationToken ct = default)
     {
