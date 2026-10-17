@@ -129,7 +129,7 @@ public class EastWestGrpcDeploymentWiringTests
 
     // 5. ［2026-10-16 / #1902・[[IADR-0533]] フォローアップ 3］**読まれなくなった REST の宛先の env が戻っていない。**
     //    宛先が残っていると「REST の経路がまだある」と読み違え、構成も肥大する。読み手が残る組（BFF の管理面の代理・
-    //    AI 分析の readiness・グラフのクラスタ要約）は下の対照で残っていることを確かめる。
+    //    AI 分析の readiness。［2026-10-17 / #1255］グラフのクラスタ要約は gRPC へ移り外れた）は下の対照で残っていることを確かめる。
     public static TheoryData<string, string, string> RetiredRestDestinations() => new()
     {
         { "datasource", "datasource-service", "Services__AuthorizationService" },
@@ -140,6 +140,8 @@ public class EastWestGrpcDeploymentWiringTests
         { "conversion", "conversion-service", "Services__LlmGateway" },
         { "ingestion", "ingestion-service", "Services__LlmGateway" },
         { "retrieval", "retrieval-service", "Services__LlmGateway" },
+        // ［2026-10-17 / #1255・[[IADR-0533]] フォローアップ 2］クラスタ要約も gRPC へ移し、graph の REST 宛先の読み手が 0 になった。
+        { "graph", "graph-service", "Services__LlmGateway" },
     };
 
     [Theory]
@@ -157,7 +159,6 @@ public class EastWestGrpcDeploymentWiringTests
     [Theory]
     [InlineData("bff", "bff", "Services__AuthorizationService")]
     [InlineData("aianalysis", "aianalysis-service", "Services__LlmGateway")]
-    [InlineData("graph", "graph-service", "Services__LlmGateway")]
     public void Rest_destinations_that_still_have_a_reader_stay_deployed(string helmKey, string composeKey, string envKey)
     {
         HelmEnv(Block(ReadRepoFile(Helm), $"  {helmKey}:", after: "services:"), envKey).Should().NotBeNull();

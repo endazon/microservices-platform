@@ -210,6 +210,7 @@ s2s トークンの失敗 / 上限（5 秒）の時間切れは、いずれも�
 
 - 概要: AI 分析・グラフ・変換の 3 サービスが `Services:LlmGatewayGrpc` の宛先へ gRPC で
   生成を得る（［2026-10-10 / #1255］REST の枝は撤去した。宛先が無ければ `UNAVAILABLE` として縮退する。§REST 実装の退役）。
+  グラフの呼び出しは AI 提案とクラスタ要約の 2 用途である（［2026-10-17 / #1255］後者も gRPC へ移した）。
 - 認証・認可: `ServiceCaller`。REST の `/complete` も同じ 1 つのポリシーを端点ごとに要求する
   （［2026-10-16 更新 / #1902］`/complete/stream`・`/embed` の REST は撤去した。`/complete` は AST・合成監視が叩くので残す）。
 - 判定器: REST と**同じ**越境判定・ルーティング・フォールバック鎖・計器を通る（判定器を 2 つにしない）。
@@ -262,6 +263,7 @@ REST 実装がそれぞれ「出典のみ返す」「提案 0 件」「画像と
 | AI 分析（逐次） | `done(sent=false, "LLM が現在利用できません。")`。**受信途中**の失敗だけ `"LLM 応答の受信に失敗しました。"` |
 | AI 分析（一括） | 出典のみ返す（REST の非 2xx と同じ枝） |
 | グラフ（提案） | 提案 0 件 |
+| グラフ（クラスタ要約。［2026-10-17 / #1255］追加） | 要約を付けない（そのクラスタは未要約のまま残る） |
 | 変換（図のコード化） | 画像として保持（理由コードも REST と同じ） |
 
 ## 4 つ目の面: 利用者名簿の狭い読み口（`platform.authz.v1.UserDirectory`）
@@ -887,8 +889,11 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
   `/documents/{id}/tags`。読み手の無くなった REST の宛先の env（`Services__AuthorizationService` の 5 サービス・
   `Services__LlmGateway` の 3 サービス）も配備から外した。
   **残したもの**: グラフの近傍（`/graph/{id}/neighbors`）と辺の型の辞書（`/graph/edge-types/catalog`）は、近傍展開の呼び出しは
-  消えたが BFF の中継（`/bff/graph/...`。north-south）が叩くので残す。グラフ → LLM ゲートウェイのクラスタ要約（既定 off）は
-  gRPC 実装を持たないので REST のまま残る。
+  消えたが BFF の中継（`/bff/graph/...`。north-south）が叩くので残す。~~グラフ → LLM ゲートウェイのクラスタ要約（既定 off）は
+  gRPC 実装を持たないので REST のまま残る。~~ ［2026-10-17 / #1255］**クラスタ要約も `LlmCompletion/Complete` へ移した**
+  （REST の `LlmGatewayClusterSummaryClient` とグラフの `Services__LlmGateway` を撤去した。用途名 `graph-cluster-summary` と
+  「モデルを指定しない」は変えていない）。**east-west の REST 同期呼び出しは 0 本である。** LLM ゲートウェイの REST `/complete` は
+  取引ユニットと合成監視が叩くので残す。
 - **north-south と外部は対象外**: BFF のエッジの中継（15 本）・AST からの呼び出し・外部サービスは変えていない。readiness の
   `/health/*` は HTTP のまま。
 
