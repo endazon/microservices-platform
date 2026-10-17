@@ -16,6 +16,18 @@ public interface IObjectStorageClient
     // storage:// URI からテキスト本文を取得する。
     Task<string> GetTextAsync(string uri, CancellationToken ct = default);
 
+    // FR-06, NFR-16, [[IADR-0544]] 決定 4（2026-10-17 追記 / #1940）: storage:// URI からテキスト本文を**上限つきで**取得する。
+    //
+    // 🔴 **上限（`maxBytes`。格納されたバイト数）を超える本文は全文を読まない。** 実クライアントは応答の大きさ（ContentLength）を
+    // 先に見て、超えれば本文を 1 バイトも読まずに `Exceeded` を返す。大きさが分からない・偽っている場合も、読むのは上限＋1 バイトまでで打ち切る
+    // （このとき `SizeBytes` は下限＝上限＋1）。切り詰めた本文は返さない。
+    // NoSuchKey・構成の不調などの失敗は `GetTextAsync` と同じく例外のまま上げる。
+    //
+    // 既定の実装は「対応していない」を投げる（`ExistsAsync` と同じ理由。実クライアントと縮退クライアントは自分で実装する）。
+    Task<BoundedTextRead> GetTextBoundedAsync(string uri, long maxBytes, CancellationToken ct = default) =>
+        throw new NotSupportedException(
+            $"{GetType().Name} は上限つきの本文の取得（GetTextBoundedAsync）に対応していません: {uri}");
+
     // storage:// URI からバイナリを取得する。
     Task<byte[]> GetBytesAsync(string uri, CancellationToken ct = default);
 

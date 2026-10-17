@@ -1,4 +1,3 @@
-using System.Text;
 using Amazon.S3;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
@@ -19,7 +18,7 @@ namespace DocumentService.Features.Documents.GetContent;
 //   - 在る … 本文を返す
 //   - 参照が storage:// でない（未設定を含む）… NotStored。外部 URL は取りに行かない（任意の宛先への取得口を作らない）
 //   - オブジェクトが無い（NoSuchKey。[[IADR-0540]] 決定 1 と同じ判定）… Missing
-//   - 上限を超える … TooLarge（切り詰めない。本文の受け入れの 413 と同じ向き）
+//   - 上限を超える … TooLarge（切り詰めない。本文の受け入れの 413 と同じ向き。全文を読む前に止める。#1940）
 //   ストレージが構成されていない（`CanResolve` が偽）は `ObjectStorageUnavailableException`、一時障害（時間切れ・5xx・
 //   バケットが無い）は例外のまま上げる —— 「本文が無い」と「引けなかった」を分ける。
 public sealed class DocumentContentUseCase(
@@ -28,7 +27,7 @@ public sealed class DocumentContentUseCase(
     ILogger<DocumentContentUseCase> logger)
 {
     /// <summary>
-    /// 本文の上限（UTF-8 のバイト数）。16 MiB。BFF の D-1 チャネルの受信上限（既定 64 MiB）より十分に小さく、
+    /// 本文の上限（格納された UTF-8 のバイト数）。16 MiB。BFF の D-1 チャネルの受信上限（既定 64 MiB）より十分に小さく、
     /// 本文の直接投入の上限（1 MB）より十分に大きい。根拠は [[IADR-0544]] 決定 4。
     /// </summary>
     public const long MaxBodyBytes = 16L * 1024 * 1024;
@@ -48,10 +47,12 @@ public sealed class DocumentContentUseCase(
             throw new ObjectStorageUnavailableException(
                 "オブジェクトストレージが構成されていないため、本文を読めません（ObjectStorage:Endpoint）。");
 
-        string markdown;
+        // 🔴 ［2026-10-17 / #1940・[[IADR-0544]] 決定 4 追記］**上限つきで読む。** 上限を超える本文は全文を読まない
+        // （ContentLength で先に止め、無ければ上限＋1 バイトで打ち切る）。従来は全文を文字列にしてから測っていた。
+        BoundedTextRead read;
         try
         {
-            markdown = await storage.GetTextAsync(uri!, ct);
+            read = await storage.GetTextBoundedAsync(uri!, MaxBodyBytes, ct);
         }
         catch (AmazonS3Exception ex) when (ObjectStorageErrors.IsNoSuchKey(ex))
         {
@@ -61,16 +62,16 @@ public sealed class DocumentContentUseCase(
             return DocumentContentResult.Missing();
         }
 
-        var size = Encoding.UTF8.GetByteCount(markdown);
-        if (size > MaxBodyBytes)
+        if (read.Exceeded)
         {
+            // 大きさは格納されたバイト数（ContentLength）。分からずに打ち切ったときは下限（上限＋1）。
             logger.LogWarning(
                 "Document body of {DocumentId} is {SizeBytes} bytes, over the limit {LimitBytes}; not returned",
-                id, size, MaxBodyBytes);
-            return DocumentContentResult.TooLarge(size, MaxBodyBytes);
+                id, read.SizeBytes, MaxBodyBytes);
+            return DocumentContentResult.TooLarge(read.SizeBytes, MaxBodyBytes);
         }
 
-        return DocumentContentResult.Available(markdown);
+        return DocumentContentResult.Available(read.Text!);
     }
 }
 

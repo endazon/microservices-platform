@@ -5,12 +5,13 @@ status: Accepted
 related_ids: [FR-06, UC-03, SC-03, NFR-09, NFR-16, ADR-0014, ADR-0029, ADR-0075, ADR-0089, ADR-0106, ADR-0119, IADR-0009, IADR-0038, IADR-0290, IADR-0379, IADR-0401, IADR-0402, IADR-0533, IADR-0537, IADR-0540, IADR-0541]
 author: claude
 created: 2026-10-15
-updated: 2026-10-15
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0014_object-storage.md（ABAC 判定を通したサービス経由のアクセス）
   - planning:projects/microservices-platform/07_adr/ADR-0029_grpc-rest-usage-criteria.md（east-west は gRPC）
 related_specs:
   - ../specs/20261015_1905_bff-document-content.md
+  - ../specs/20261017_1940_bounded-document-content-read.md
 ---
 
 # IADR-0544: 文書の本文は文書サービスが読み、BFF は east-west gRPC で受け取る（#1905）
@@ -92,6 +93,12 @@ related_specs:
      本文の直接投入の上限（1 MB）や変換の出力より十分に大きい。画面は本文を等幅の `pre` で出すので、これを超える本文はブラウザで扱いにくい。
    - 切り詰めないのは、本文の一部を全体と読み違えさせないため（本文の受け入れの 413 と同じ向き）。
    - 測るのは読み込んだ後である（共有のポートに大きさの問い合わせが無い。§残余）。
+   - ［2026-10-17 追記 / #1940］**測るのは読む前に改めた。** 共有のポートに上限つきの取得 `IObjectStorageClient.GetTextBoundedAsync`
+     （結果は `BoundedTextRead`）を足し、本文の口はそれで読む。実クライアントは `GetObject` の `ContentLength` が上限を超えれば本文を 1 バイトも読まずに
+     超過を返し、`ContentLength` が無い・偽っている場合も上限＋1 バイトで打ち切る（このとき `size_bytes` は下限＝上限＋1）。上限は**格納された
+     バイト数**で測る（正しい UTF-8 では従来の「復号した文字列の UTF-8 バイト数」と一致する）。既定の実装は `ExistsAsync`（IADR-0549）と同じく
+     「対応していない」を投げ、試験の偽物を書き換えない。上限・切り詰めない・413 の写しは変えない。取り込み・wiki・graph の読み手は上限の契約を
+     持たない（超過時の扱いは新しい決定が要る）ため変えない（作業仕様書 `20261017_1940_bounded-document-content-read.md` の母集合）。
 5. **配線の試験**: `DocumentContentDeploymentWiringTests` が helm（`services.document.objectStorage: true`）と compose（`document-service` が `*objectstorage-env` を合成し、
    アンカーが 4 キーを持つ）を固定する。BFF → 文書サービスの gRPC 宛先（D-1）は既存の `EastWestGrpcDeploymentWiringTests` が固定している。
    **helm・compose の構成値は変えない**（文書サービスは配線済み。BFF は配線しない）。
@@ -112,6 +119,7 @@ related_specs:
 - 残余:
   - 変換ジョブの図画像（`/bff/conversion/jobs/{id}/figures/{figureId}/image`）は BFF のストレージを読み続けており、配備では同じく未配線（`CanResolve` 偽 → 404）。本件の射程外。
   - 上限の判定は本文を読み込んだ後である。共有のポート（`IObjectStorageClient`）に大きさの問い合わせ（HEAD）を足せば読む前に止められるが、実装が 18 あり射程を越える。
+    ［2026-10-17 追記 / #1940］解消した（決定 4 の追記）。非同期の読み手（取り込み・wiki・graph）に上限を入れるかは残る。
   - wiki-service の本文の読み手は IADR-0541 決定 4 で NoSuchKey を恒久的な欠落として扱うようになり、その判定は本件で共有の
     `ObjectStorageErrors.IsNoSuchKey` へ寄せた（挙動は同じ）。graph-service の本文の読み手は NoSuchKey を扱っていない（IADR-0540 の残余のまま）。
 

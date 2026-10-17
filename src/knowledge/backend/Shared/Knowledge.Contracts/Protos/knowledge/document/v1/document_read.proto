@@ -243,7 +243,8 @@ message GetDocumentContentResponse {
   DocumentContentState state = 2;
   // AVAILABLE のときだけ入る。
   string markdown = 3;
-  // TOO_LARGE のとき: 本文の UTF-8 バイト数と上限。
+  // TOO_LARGE のとき: 本文の UTF-8 バイト数（格納された大きさ）と上限。文書サービスは全文を読まずに判定するため、
+  // 大きさが分からず上限＋1 バイトで打ち切ったときは下限（limit_bytes + 1）が入る（#1940）。
   int64 size_bytes = 4;
   int64 limit_bytes = 5;
 }
