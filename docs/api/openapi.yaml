@@ -2261,7 +2261,7 @@ paths:
           単票の更新と同じ `DocumentUpdated` を発行する。
         - 本文のキーの欠落（NoSuchKey）は「本文なし」として表題だけを見る。それ以外の読み取りの失敗・書き込みの失敗は、そのページを 1 件も書き換えずに 502。
           ストレージが構成されていなければ 503。
-        - 他の project・個人資料・アーカイブ済み・枠の無い文書には触らない。剥がすと空になる表題は剥がさない。冪等（2 回目は何も変えない）。
+        - 他の project・個人資料・アーカイブ済み・枠の無い文書には触らない。剥がすと空になる表題・本文（枠だけ）は剥がさない。冪等（2 回目は何も変えない）。
         - 並び: `createdAt` 昇順、同時刻は `id` 昇順（キーセット）。
       operationId: strip-untrusted-boundary
       security:
@@ -2286,7 +2286,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [dryRun, selected, wrapped, titleWrapped, bodyWrapped, bodyMissing, notStored, titleLeftWrapped, stripped, items]
+                required: [dryRun, selected, wrapped, titleWrapped, bodyWrapped, bodyMissing, notStored, titleLeftWrapped, bodyLeftWrapped, stripped, items]
                 properties:
                   dryRun: { type: boolean }
                   selected: { type: integer, description: このページで確かめた件数 }
@@ -2296,6 +2296,7 @@ paths:
                   bodyMissing: { type: integer, description: 本文のキーが欠落していた件数（表題だけを見た） }
                   notStored: { type: integer, description: "本文の参照が無い・storage:// でない件数（表題だけを見た）" }
                   titleLeftWrapped: { type: integer, description: 剥がすと空になるので表題を残した件数 }
+                  bodyLeftWrapped: { type: integer, description: 剥がすと空になるので本文を残した件数（空の本文を書かない） }
                   stripped: { type: integer, description: 書き換えた件数（dry-run は 0） }
                   items:
                     type: array

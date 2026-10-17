@@ -311,6 +311,45 @@ public class StripUntrustedBoundaryEndpointTests
         factory.Storage.Texts[s.MarkdownUri!].Should().Be("本文");
     }
 
+    [Theory]
+    [InlineData("<<<UNTRUSTED_DATA\n\nUNTRUSTED_DATA>>>")]
+    [InlineData("<<<UNTRUSTED_DATA\nUNTRUSTED_DATA>>>")]
+    [InlineData("<<<UNTRUSTED_DATA\n  \nUNTRUSTED_DATA>>>")]
+    public async Task 剥がすと空になる本文は剥がさず数え_本文の参照も指紋も動かさず_表題だけを剥がす(string frameOnly)
+    {
+        await using var factory = new TestWebApplicationFactory();
+        var doc = await SeedAsync(factory, Wrap("見出し"), frameOnly);
+        var before = await ReadAsync(factory, doc.Id);
+        var puts = factory.Storage.PutTextCallCount;
+
+        var dry = await CallAsync(Admin(factory), Body_(dryRun: true));
+        dry.BodyLeftWrapped.Should().Be(1);
+        dry.BodyWrapped.Should().Be(0);
+        dry.Items.Should().ContainSingle().Which.Should().Be(new StripUntrustedBoundaryItem(doc.Id, true, false));
+
+        var r = await CallAsync(Admin(factory), Body_(dryRun: false));
+
+        r.BodyLeftWrapped.Should().Be(1);
+        r.Stripped.Should().Be(1, "表題は剥がす");
+        var s = await ReadAsync(factory, doc.Id);
+        s.Title.Should().Be("見出し");
+        s.MarkdownUri.Should().Be(before.MarkdownUri, "空の本文を書かない");
+        s.Fingerprint.Should().Be(before.Fingerprint);
+        factory.Storage.Texts[s.MarkdownUri!].Should().Be(frameOnly);
+        factory.Storage.PutTextCallCount.Should().Be(puts);
+
+        // 表題も本文も剥がせない文書は対象に入れない（何も書き換えず、イベントも出さない）。
+        var both = await SeedAsync(factory, $"{Open}\n\n{Close}", frameOnly);
+        var bothBefore = await ReadAsync(factory, both.Id);
+        var published = Published(factory).Count;
+        var again = await CallAsync(Admin(factory), Body_(dryRun: false));
+        again.Stripped.Should().Be(0);
+        again.TitleLeftWrapped.Should().Be(1);
+        again.BodyLeftWrapped.Should().Be(2);
+        (await ReadAsync(factory, both.Id)).Should().BeEquivalentTo(bothBefore);
+        Published(factory).Count.Should().Be(published);
+    }
+
     // ── 読めない・書けないときは何もしない ────────────────────────────────────
 
     [Fact]

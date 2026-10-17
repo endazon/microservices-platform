@@ -26,7 +26,7 @@
  *   filtersOf(o)            新規の走査の絞り込み（状態ファイルの filters）
  *   describeFilters(f)      絞り込みの 1 行の説明
  *   buildRequestBody({ dryRun, filters, limit, cursor, requestedBy, reason })
- *   emptyTotals() / addTotals(t, res) / changedOf(res)（このページで書き換えた件数）
+ *   emptyTotals() / addTotals(t, res) / changedOf(res)（このページで書き換えた件数）/ changedTotal(t)（累計で書き換えた件数）
  *   dryRunPageLine(totals, res) / summarizeDryRun(first, totals, filters)
  *   formatProgress(state, res, elapsedMs) / doneLines(totals)
  *   canaryLine(n)           カナリアが通ったときの 1 行

@@ -75,6 +75,7 @@ internal static class StripUntrustedBoundaryEndpoint
             var bodyMissing = 0;
             var notStored = 0;
             var titleLeftWrapped = 0;
+            var bodyLeftWrapped = 0;
             foreach (var doc in page)
             {
                 string? body = null;
@@ -117,6 +118,13 @@ internal static class StripUntrustedBoundaryEndpoint
                     titleLeftWrapped++;
                 }
                 var bodyWrapped = UntrustedBoundaryFrame.IsWrapped(body);
+                // 剥がすと空になる本文（枠だけの文書）も剥がさない。空の本文を取り込み・Wiki 同期へ流すと扱いが決まっていないため、
+                // 数えて残す（表題と同じ側へ倒す。#1978 のレビュー）。
+                if (bodyWrapped && string.IsNullOrWhiteSpace(UntrustedBoundaryFrame.Strip(body)))
+                {
+                    bodyWrapped = false;
+                    bodyLeftWrapped++;
+                }
                 if (titleWrapped || bodyWrapped)
                     plans.Add(new Plan(doc,
                         titleWrapped ? UntrustedBoundaryFrame.Strip(doc.Title)! : doc.Title,
@@ -168,11 +176,12 @@ internal static class StripUntrustedBoundaryEndpoint
                 var names = await TagResolver.NamesAsync(db);
                 foreach (var plan in plans)
                 {
-                    // 🔴 監査: どの文書の何を、誰が、何のために剥がしたか（1 件 1 行。表題・本文の中身は出さない）。
+                    // 🔴 監査: どの文書を、誰が、何のために書き換えたか（1 件 1 行）。
+                    // 表題・本文に由来する値（中身も、枠の有無の判定も）はこの行に出さない。表題と本文の内訳は応答とページの要約（件数）が持つ。
                     logger.LogInformation(
-                        "Stripped untrusted boundary from document {DocumentId} (title {TitleStripped}; body {BodyStripped}) "
+                        "Stripped untrusted boundary from document {DocumentId} "
                         + "by {Principal} (requestedBy {RequestedBy}; reason {Reason})",
-                        plan.Doc.Id, plan.TitleWrapped, plan.BodyWrapped, principal, requestedBy, reason);
+                        plan.Doc.Id, principal, requestedBy, reason);
                     await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, plan.Doc, names, ct);
                     stripped++;
                 }
@@ -181,10 +190,11 @@ internal static class StripUntrustedBoundaryEndpoint
             logger.LogInformation(
                 "Strip untrusted boundary ({Mode}): page of {Selected} — wrapped {Wrapped} (title {TitleWrapped}; body {BodyWrapped}), "
                 + "body missing {BodyMissing}, not stored {NotStored}, title left wrapped (would be empty) {TitleLeftWrapped}, "
+                + "body left wrapped (would be empty) {BodyLeftWrapped}, "
                 + "stripped {Stripped}; more={More} "
                 + "by {Principal} (requestedBy {RequestedBy}; reason {Reason})",
                 dryRun ? "dry-run" : "apply", page.Count, plans.Count, plans.Count(x => x.TitleWrapped), plans.Count(x => x.BodyWrapped),
-                bodyMissing, notStored, titleLeftWrapped, stripped, next is not null, principal, requestedBy, reason);
+                bodyMissing, notStored, titleLeftWrapped, bodyLeftWrapped, stripped, next is not null, principal, requestedBy, reason);
 
             return Results.Ok(new StripUntrustedBoundaryResponse(
                 DryRun: dryRun,
@@ -195,6 +205,7 @@ internal static class StripUntrustedBoundaryEndpoint
                 BodyMissing: bodyMissing,
                 NotStored: notStored,
                 TitleLeftWrapped: titleLeftWrapped,
+                BodyLeftWrapped: bodyLeftWrapped,
                 Stripped: stripped,
                 Items: [.. plans.Select(x => new StripUntrustedBoundaryItem(x.Doc.Id, x.TitleWrapped, x.BodyWrapped))],
                 NextCursor: next));
@@ -243,7 +254,8 @@ public sealed record StripUntrustedBoundaryRequest(
 // FR-06, [[IADR-0556]] (#1973): 応答。件数はすべてこのページについて数える。
 // `wrapped` は表題か本文が枠の形をしていた文書の数（`items` の件数と同じ）。`stripped` は書き換えた数（dry-run は 0）。
 // `bodyMissing` は本文のオブジェクトが無かった（NoSuchKey）数、`notStored` は本文の参照が無い・storage:// でない数（どちらも表題だけを見る）。
-// `titleLeftWrapped` は剥がすと空になるので表題を剥がさなかった数（表題は必須）。
+// `titleLeftWrapped` は剥がすと空になるので表題を剥がさなかった数（表題は必須）。`bodyLeftWrapped` は同じく本文を剥がさなかった数
+// （空の本文を下流へ流さない）。
 public sealed record StripUntrustedBoundaryResponse(
     bool DryRun,
     int Selected,
@@ -253,6 +265,7 @@ public sealed record StripUntrustedBoundaryResponse(
     int BodyMissing,
     int NotStored,
     int TitleLeftWrapped,
+    int BodyLeftWrapped,
     int Stripped,
     IReadOnlyList<StripUntrustedBoundaryItem> Items,
     string? NextCursor);

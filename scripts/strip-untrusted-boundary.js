@@ -80,7 +80,7 @@ function buildRequestBody({ dryRun, limit, cursor, requestedBy, reason }) {
 }
 
 const emptyTotals = () => ({
-  pages: 0, selected: 0, wrapped: 0, titleWrapped: 0, bodyWrapped: 0, bodyMissing: 0, notStored: 0, titleLeftWrapped: 0, stripped: 0,
+  pages: 0, selected: 0, wrapped: 0, titleWrapped: 0, bodyWrapped: 0, bodyMissing: 0, notStored: 0, titleLeftWrapped: 0, bodyLeftWrapped: 0, stripped: 0,
 });
 
 /** ページの応答を累計へ積む（新しい累計を返す）。 */
@@ -95,6 +95,7 @@ function addTotals(t, res) {
     bodyMissing: n('bodyMissing'),
     notStored: n('notStored'),
     titleLeftWrapped: n('titleLeftWrapped'),
+    bodyLeftWrapped: n('bodyLeftWrapped'),
     stripped: n('stripped'),
   };
 }
@@ -114,6 +115,7 @@ function summarizeDryRun(totals) {
     `    本文のオブジェクトが無い（表題だけを見た）: ${totals.bodyMissing} 件`,
     `    本文の参照が無い・storage:// でない（表題だけを見た）: ${totals.notStored} 件`,
     `    剥がすと空になるので表題を残す: ${totals.titleLeftWrapped} 件`,
+    `    剥がすと空になるので本文を残す: ${totals.bodyLeftWrapped} 件`,
   ];
 }
 

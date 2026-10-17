@@ -54,11 +54,11 @@ plan_refs:
    - 母集合: アーカイブ済みでない ∩ `project = ai-stock-trading` ∩ 組織文書。ページ送りは一覧の口と同じ `DocumentPageQuery.ReadPageAsync`
      （属性の一致は jsonb の値変換で SQL へ訳せないので、SQL の並びで塊ごとに読み、塊の中で当てる。IADR-0509）。project は口の側で固定する（引数にしない）。
    - 1 ページの文書ごとに: 本文の参照が `storage://` なら本文を読む（NoSuchKey は「本文なし」として表題だけを見る。他の失敗はそのページを何もせず 502。未構成は 503）。
-     表題・本文が枠の形なら剥がす計画を立てる。剥がすと空になる表題は剥がさずに数える（表題は必須）。
+     表題・本文が枠の形なら剥がす計画を立てる。剥がすと空になる表題は剥がさずに数える（表題は必須）。剥がすと空になる本文も剥がさずに数える（空の本文を下流へ流さない。#1978 のレビュー）。
    - 書き換え: 剥がした本文を**新しいキー** `documents/{id}/body-boundary-stripped.md` へ書く（1 件でも書けなければ台帳を保存せず 502）→
      `Document.ReplaceUntrustedBoundaryWrapped`（表題と本文の参照・指紋だけ。版を 1 つ進め、注記は固定）→ 保存 → 単票と同じ発行の門 `PublishUpdatedIfIndexableAsync`。
-   - 応答: ページの `selected`・`wrapped`・`titleWrapped`・`bodyWrapped`・`bodyMissing`・`notStored`・`titleLeftWrapped`・`stripped`・`items`（文書 ID と、表題・本文のどちらか）・`nextCursor`。
-   - 監査: 書き換えた文書ごとに 1 行（ID・表題／本文・主体・`requestedBy`・`reason`。中身は出さない）とページごとに 1 行。
+   - 応答: ページの `selected`・`wrapped`・`titleWrapped`・`bodyWrapped`・`bodyMissing`・`notStored`・`titleLeftWrapped`・`bodyLeftWrapped`・`stripped`・`items`（文書 ID と、表題・本文のどちらか）・`nextCursor`。
+   - 監査: 書き換えた文書ごとに 1 行（ID・主体・`requestedBy`・`reason`。表題・本文に由来する値は中身も枠の有無も出さない。#1978 の CodeQL の指摘）とページごとに 1 行（件数だけ）。
 2. **枠の剥がし方（純関数 `UntrustedBoundaryFrame`）**: 先頭が開始の境界語・末尾が終了の境界語（重ならない）のときだけ、両端の境界語と隣の改行 1 つ（`\n` か `\r\n`）を剥がす。
    **枠が無くなるまで繰り返す**（入れ子）。中身の途中の境界語・前後の空白には触らない。出力は枠の形をしない → 2 回目は何もしない（冪等）。
 3. **駆動スクリプト `scripts/strip-untrusted-boundary.js`**: #1951 の駆動器（`archive-bodyless-documents.js`）の main を `scripts/lib/admin-page-driver.js` へ切り出し、
