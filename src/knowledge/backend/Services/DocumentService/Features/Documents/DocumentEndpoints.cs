@@ -2,6 +2,7 @@ using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents.AddTag;
 using DocumentService.Features.Documents.Archive;
+using DocumentService.Features.Documents.ArchiveAstQuotes;
 using DocumentService.Features.Documents.ArchiveBodyless;
 using DocumentService.Features.Documents.AstStaleCopies;
 using DocumentService.Features.Documents.Create;
@@ -112,6 +113,10 @@ public static class DocumentEndpoints
         // FR-06, UC-03, [[IADR-0556]] (#1973): AST が境界語つきで保存した文書の表題・本文から枠を剥がす（一回限りの管理操作）。
         // `write` 群に置き、口の側で `AdminOnly` を積む（管理者だけ。一括アーカイブと同じ基準）。
         StripUntrustedBoundaryEndpoint.Map(write);
+
+        // FR-06, UC-03, [[IADR-0549]]（2026-10-17 追記 / #1974）: AST の相場スナップショット（kind = Quote）の一括アーカイブ（一回限りの管理操作）。
+        // `write` 群に置き、口の側で `AdminOnly` を積む（本文の無い文書の一括アーカイブと同じ基準・同じ手段）。
+        ArchiveAstQuotesEndpoint.Map(write);
 
         return app;
     }
