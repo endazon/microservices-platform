@@ -76,7 +76,7 @@ public class ArchiveAstQuotesEndpointTests
     private static IReadOnlyList<DocumentUpdated> Published(TestWebApplicationFactory factory)
         => factory.Services.GetRequiredService<RecordingMessageBus>().PublishedOf<DocumentUpdated>();
 
-    private static object Body_(bool dryRun, int? limit = null, string? cursor = null, string? reason = "AST の Quote をアーカイブ")
+    private static object RequestBody(bool dryRun, int? limit = null, string? cursor = null, string? reason = "AST の Quote をアーカイブ")
         => new { dryRun, limit, cursor, requestedBy = "alice", reason };
 
     private static async Task<ArchiveAstQuotesResponse> CallAsync(HttpClient client, object body)
@@ -92,7 +92,7 @@ public class ArchiveAstQuotesEndpointTests
         string? cursor = null;
         do
         {
-            var r = await CallAsync(client, Body_(dryRun, limit, cursor));
+            var r = await CallAsync(client, RequestBody(dryRun, limit, cursor));
             pages.Add(r);
             cursor = r.NextCursor;
         } while (cursor is not null && pages.Count < 50);
@@ -104,7 +104,7 @@ public class ArchiveAstQuotesEndpointTests
     {
         await using var factory = new TestWebApplicationFactory();
         var doc = await SeedAsync(factory);
-        var body = Body_(dryRun: false);
+        var body = RequestBody(dryRun: false);
 
         (await ClientAs(factory, "operator-1", "platform-operator").PostAsJsonAsync(Path, body, Ct))
             .StatusCode.Should().Be(HttpStatusCode.Forbidden);

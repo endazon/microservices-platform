@@ -1509,6 +1509,9 @@ kubectl -n platform-infra exec deploy/postgres -- psql -U postgres -d document_s
 
 **口が 500 で止まったとき**: 保存の後の発行が途中で失敗していると、アーカイブ済みでイベントの出ていない文書が残り、再実行では拾われない。
 文書サービスのログの `Archived AST quote snapshot` の行で ID を引き、`republish-document-updated.js --ids` で再発行する。
+回収の手順（ID は止まった時刻の前後のログから引く。再発行は status=archived のイベントを出すだけで、冪等）:
+`kubectl -n microservices-platform logs deploy/document-service --since=1h | grep -o 'Archived AST quote snapshot [0-9a-f-]*' | awk '{print $NF}' | paste -sd, -` で ID を並べ、
+`node scripts/republish-document-updated.js --live --operator <名前> --reason "Quote のアーカイブの発行の回収" --ids <ID,...>`（500 件まで）で流す。
 
 ### 株取引ユニットの文書から境界語の枠を剥がす（文書管理の要求 / #1973）
 
