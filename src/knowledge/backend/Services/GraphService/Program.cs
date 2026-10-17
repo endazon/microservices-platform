@@ -267,15 +267,13 @@ builder.Services.AddHostedService<ClusterDetectionHostedService>();
 // 購読ごと止まる。`KnowledgeHealthOptions` と同じ向き）。
 builder.Services.Configure<ClusterSummaryOptions>(
     builder.Configuration.GetSection(ClusterSummaryOptions.SectionName));
-// 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]]: **REST 面は `ServiceCaller` を要する。**
+// 🔴 NFR-09, ADR-0084 決定 1: **受け手の gRPC 面は `ServiceCaller` を要する**（s2s は `AddLlmGatewayGrpcClient` のチャネルが付ける）。
 // 用途名は `graph-cluster-summary`（AI 提案の `graph-suggestion` と**別の値**にして、
 // 用途別の費用集計で 2 経路を区別できるようにする）。
-// ［2026-10-10 / [[IADR-0533]]］🔴 **この経路は gRPC へ移っていない**（gRPC 実装が無い）ので、REST の並走の退役の
-// 対象外である。east-west の REST の同期呼び出しとして残る最後の 1 本であり、gRPC への移行は別 issue で扱う。
-builder.Services.AddHttpClient<IClusterSummaryLlmClient, LlmGatewayClusterSummaryClient>(c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
-        ?? "http://llm-gateway:5010"))
-    .AddLlmGatewayServiceToken(builder.Configuration);
+// ［2026-10-17 / #1255・[[IADR-0533]] フォローアップ 2］輸送は east-west gRPC（`LlmCompletion/Complete`）だけである
+// （REST の `LlmGatewayClusterSummaryClient` と `Services:LlmGateway` の読みは撤去した）。生成クライアントは上の提案生成と
+// **同じ登録**（`AddLlmGatewayGrpcClient`。宛先 `Services:LlmGatewayGrpc`）を共有する。未構成なら `UNAVAILABLE` → 未要約のまま。
+builder.Services.AddSingleton<IClusterSummaryLlmClient, LlmGatewayGrpcClusterSummaryClient>();
 builder.Services.AddScoped<ClusterSummaryJob>();
 // 🔴 単一書き手化。検出（"GCLD"）とも健全性（"GKHP"）とも**別の口**である ——
 // LLM の応答を待つ長い処理が、他の定期処理を塞がないようにする（[[IADR-0430]] 決定 5）。

@@ -249,7 +249,7 @@ public class TestUserAuthHandler(
 }
 
 // #1333: 実 IdP を持たないテストで s2s トークンの**発行だけ**を固定する。
-// 🔴 `ServiceTokenHandler` は本物が走る —— スコープ解決の要求に Bearer が載ることは変えない。
+// （［2026-10-17 / #1255］従前ここで「本物が走る」とした REST の付与器 `ServiceTokenHandler` は、利用者が 0 になったので撤去した）。
 internal sealed class FixedServiceTokenProvider : IServiceTokenProvider
 {
     public ValueTask<string> GetTokenAsync(CancellationToken ct) => ValueTask.FromResult("test-service-token");
