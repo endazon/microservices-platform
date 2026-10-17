@@ -294,7 +294,11 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 631315,
+  "initialTotalBytes": 632918,
+  "$comment_initialTotalBytes_20261017_1923_document-list-tabs-columns-preview": [
+    "［2026-10-17 / #1923 の残り 文書管理の一覧のタブ・データソースとタグの列・出典・本文のプレビュー］631,315 → 632,918（+1,603 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "A/B で帰属を確かめた: 本件のコードのまま ja / en のカタログ（messages.ts）だけを絞り込み群の PR の版へ戻すと 631,315（その床ちょうど）になる。増分は初期ロードに載るカタログに文言 19 件が加わった分で、画面のコード（DocumentOriginTabs・DocumentPreviewPanel ほか）は SC-05 の遅延チャンクに入る。"
+  ],
   "$comment_initialTotalBytes_20261017_1923_document-list-facets-preview": [
     "［2026-10-17 / #1923 の残り 文書管理の一覧のデータソース・機密区分・タグ・プロジェクト・保存日の絞り込み］630,819 → 631,315（+496 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
     "A/B で帰属を確かめた: 本件のコードのまま ja / en のカタログ（messages.ts）だけを develop の版へ戻すと 630,819（旧い床ちょうど）になる。増分は初期ロードに載るカタログに文言 8 件が加わった分で、画面のコード（DocumentListToolbar ほか）は SC-05 の遅延チャンクに入る。"

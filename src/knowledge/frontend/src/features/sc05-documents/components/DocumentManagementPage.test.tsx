@@ -136,7 +136,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(table.getByText('internal')).toBeInTheDocument();
     expect(table.getByText('v3')).toBeInTheDocument();
     expect(mocks.apiRequest).toHaveBeenCalledWith(
-      '/documents?offset=0&limit=50',
+      '/documents?offset=0&limit=50&origin=curated',
       expect.objectContaining({ method: 'GET' }),
     );
   });
@@ -627,7 +627,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     const user = userEvent.setup();
     await renderPage();
 
-    expect(await screen.findByText('全 120 件中 1–50 件')).toBeInTheDocument();
+    expect(await screen.findByText('絞り込み 120 件（全 120 件）中 1–50 件')).toBeInTheDocument();
     const nav = within(screen.getByRole('navigation', { name: 'ページ送り' }));
     expect(nav.getByRole('button', { name: '前へ' })).toBeDisabled();
     expect(nav.getByRole('button', { name: '1 ページ目' })).toHaveAttribute('aria-current', 'page');
@@ -637,10 +637,10 @@ describe('DocumentManagementPage (SC-05)', () => {
 
     expect(await screen.findByRole('link', { name: '製品ロードマップ 2027' })).toBeInTheDocument();
     expect(mocks.apiRequest).toHaveBeenCalledWith(
-      '/documents?offset=50&limit=50',
+      '/documents?offset=50&limit=50&origin=curated',
       expect.objectContaining({ method: 'GET' }),
     );
-    expect(screen.getByText('全 120 件中 51–100 件')).toBeInTheDocument();
+    expect(screen.getByText('絞り込み 120 件（全 120 件）中 51–100 件')).toBeInTheDocument();
   });
 
   // 件数を選ぶと、その件数で先頭のページから引き直す（25 / 50 / 100。既定 50）。
@@ -661,7 +661,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
     await waitFor(() =>
       expect(mocks.apiRequest).toHaveBeenCalledWith(
-        '/documents?offset=0&limit=25',
+        '/documents?offset=0&limit=25&origin=curated',
         expect.objectContaining({ method: 'GET' }),
       ),
     );
@@ -721,7 +721,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     await user.click(await screen.findByRole('button', { name: '3 ページ目' }));
 
     expect(await screen.findByRole('link', { name: '製品ロードマップ 2027' })).toBeInTheDocument();
-    expect(screen.getByText('全 120 件中 101–120 件')).toBeInTheDocument();
+    expect(screen.getByText('絞り込み 120 件（全 120 件）中 101–120 件')).toBeInTheDocument();
     const nav = within(screen.getByRole('navigation', { name: 'ページ送り' }));
     expect(nav.getByRole('button', { name: '次へ' })).toBeDisabled();
     expect(nav.getByRole('button', { name: '前へ' })).toBeEnabled();
@@ -743,14 +743,14 @@ describe('DocumentManagementPage (SC-05)', () => {
 
     await user.click(await screen.findByRole('button', { name: '3 ページ目' }));
 
-    expect(await screen.findByText('全 40 件中 1–40 件')).toBeInTheDocument();
+    expect(await screen.findByText('絞り込み 40 件（全 40 件）中 1–40 件')).toBeInTheDocument();
     const offsets = mocks.apiRequest.mock.calls
       .map(([path]) => String(path))
       .filter((path) => path.startsWith('/documents?'));
     expect(offsets).toEqual([
-      '/documents?offset=0&limit=50',
-      '/documents?offset=100&limit=50',
-      '/documents?offset=0&limit=50',
+      '/documents?offset=0&limit=50&origin=curated',
+      '/documents?offset=100&limit=50&origin=curated',
+      '/documents?offset=0&limit=50&origin=curated',
     ]);
   });
 
@@ -771,13 +771,15 @@ describe('DocumentManagementPage (SC-05)', () => {
     await renderPage();
 
     await user.click(await screen.findByRole('button', { name: '2 ページ目' }));
-    await waitFor(() => expect(listPaths()).toContain('/documents?offset=50&limit=50'));
+    await waitFor(() =>
+      expect(listPaths()).toContain('/documents?offset=50&limit=50&origin=curated'),
+    );
     await user.selectOptions(screen.getByLabelText('並べ替え'), 'title-asc');
 
     await waitFor(() =>
-      expect(listPaths()).toContain('/documents?offset=0&limit=50&sort=title-asc'),
+      expect(listPaths()).toContain('/documents?offset=0&limit=50&sort=title-asc&origin=curated'),
     );
-    expect(listPaths()[0]).toBe('/documents?offset=0&limit=50');
+    expect(listPaths()[0]).toBe('/documents?offset=0&limit=50&origin=curated');
   });
 
   // 表題の検索は入力が止まってから 1 回だけ引く（1 打鍵ごとに台帳を 1 周させない）。前後の空白は送らない。
@@ -794,7 +796,9 @@ describe('DocumentManagementPage (SC-05)', () => {
 
     expect(await screen.findByText('絞り込み 1 件（全 120 件）中 1–1 件')).toBeInTheDocument();
     const queried = listPaths().filter((path) => path.includes('q='));
-    expect(queried).toEqual([`/documents?offset=0&limit=50&q=${encodeURIComponent('経費')}`]);
+    expect(queried).toEqual([
+      `/documents?offset=0&limit=50&q=${encodeURIComponent('経費')}&origin=curated`,
+    ]);
   });
 
   // 状態で絞ると `status` を載せる。選択肢には状態別の件数（絞り込み前）を添える。解除で条件を外して先頭から引く。
@@ -825,11 +829,11 @@ describe('DocumentManagementPage (SC-05)', () => {
     await user.selectOptions(status, 'archived');
 
     expect(await screen.findByText('絞り込み 1 件（全 3 件）中 1–1 件')).toBeInTheDocument();
-    expect(listPaths()).toContain('/documents?offset=0&limit=50&status=archived');
+    expect(listPaths()).toContain('/documents?offset=0&limit=50&status=archived&origin=curated');
 
     await user.click(screen.getAllByRole('button', { name: '条件を解除' })[0]!);
-    expect(await screen.findByText('全 3 件中 1–3 件')).toBeInTheDocument();
-    expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50');
+    expect(await screen.findByText('絞り込み 3 件（全 3 件）中 1–3 件')).toBeInTheDocument();
+    expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50&origin=curated');
   });
 
   // 絞り込みの結果だけが 0 件なら「文書はまだありません。」ではなく条件の側の空を出し、解除の口を置く。
@@ -873,7 +877,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(input).toHaveValue('');
     // 待ち時間（300 ms）を越えても、古い語で引き直さない。
     await new Promise((resolve) => setTimeout(resolve, 600));
-    expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50');
+    expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50&origin=curated');
     expect(screen.getByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
     expect(input).toHaveValue('');
   });
@@ -908,22 +912,63 @@ describe('DocumentManagementPage (SC-05)', () => {
   });
 });
 
-// SC-05, FR-06（#1923 の残り・IADR-0561）: データソース・機密区分・タグ・プロジェクト・保存日の絞り込み。
-// 件数は BFF が ABAC で絞った後の数で、画面は描くだけである。
-describe('DocumentManagementPage (SC-05) facets', () => {
+// SC-05, FR-06（#1923 の残り・IADR-0561）: タブ（機械の収集と人の文書）・データソース・機密区分・タグ・プロジェクト・保存日の絞り込み、
+// データソースとタグの列・出典のリンク・本文の先頭のプレビュー。件数は BFF が ABAC で絞った後の数で、画面は描くだけである。
+describe('DocumentManagementPage (SC-05) facets, tabs and preview', () => {
   const listPaths = () =>
     mocks.apiRequest.mock.calls
       .map(([path]) => String(path))
       .filter((path) => path.startsWith('/documents?'));
 
+  const NEWS_DOC = {
+    ...DRAFT_DOC,
+    id: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+    title: '株探のニュース',
+    status: 'published',
+    markdownUri: 'storage://docs/news.md',
+    hasBody: true,
+    attributes: {
+      confidentiality: 'internal',
+      kind: 'News',
+      source: 'kabutan',
+      project: 'ai-stock-trading',
+    },
+    tags: ['News', 'kabutan', '決算', '開示'],
+    originalUri: 'https://kabutan.example/news/1',
+  };
   const COUNTS = {
     sourceCounts: { 'col:kabutan': 30, 'ds:共有フォルダ': 2, manual: 5, report: 1 },
     projectCounts: { 'ai-stock-trading': 31, '(none)': 7 },
   };
 
+  // 既定のタブは「人の文書・報告書」（`origin=curated`）。件数はデータソース別の件数から導く。タブを替えると先頭から引き直す。
+  it('opens on the curated tab with counts and switches tabs from the first page', async () => {
+    mocks.apiRequest.mockImplementation(async () =>
+      listPage([DRAFT_DOC], { total: 8, unfilteredTotal: 38, ...COUNTS }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    const tabs = within(await screen.findByRole('group', { name: '文書の種類' }));
+    const curated = await tabs.findByRole('button', { name: '人の文書・報告書（8 件）' });
+    expect(curated).toHaveAttribute('aria-pressed', 'true');
+    expect(tabs.getByRole('button', { name: '機械の収集（30 件）' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(listPaths()[0]).toBe('/documents?offset=0&limit=50&origin=curated');
+
+    await user.click(tabs.getByRole('button', { name: '機械の収集（30 件）' }));
+    await waitFor(() =>
+      expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50&origin=collected'),
+    );
+    await user.click(tabs.getByRole('button', { name: 'すべて（38 件）' }));
+    await waitFor(() => expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50'));
+  });
+
   // 帯の条件はそれぞれのクエリに写る。保存日は利用者の時刻帯の暦日で、「まで」はその日を含む（翌日 0 時を含まない終わりとして送る）。
-  // 「条件を解除」は帯の条件をすべて外す。
-  it('sends each facet, the inclusive date range and clears them', async () => {
+  // 「条件を解除」は帯の条件をすべて外し、タブは残す。
+  it('sends each facet, the inclusive date range and clears them but keeps the tab', async () => {
     withTagDictionary(() => listPage([DRAFT_DOC], { total: 1, unfilteredTotal: 38, ...COUNTS }));
     const user = userEvent.setup();
     await renderPage();
@@ -963,6 +1008,7 @@ describe('DocumentManagementPage (SC-05) facets', () => {
       expect(Object.fromEntries(url.searchParams)).toEqual({
         offset: '0',
         limit: '50',
+        origin: 'curated',
         source: 'ds:共有フォルダ',
         confidentiality: 'internal',
         tag: '規程',
@@ -973,6 +1019,155 @@ describe('DocumentManagementPage (SC-05) facets', () => {
     });
 
     await user.click(filters.getByRole('button', { name: '条件を解除' }));
-    await waitFor(() => expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50'));
+    await waitFor(() =>
+      expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50&origin=curated'),
+    );
+  });
+
+  // 列: データソース（収集は出典名）・タグ（3 個まで＋残数）・出典のリンク（`http(s)` だけ）。
+  it('shows the data source and tags, and links only http(s) originals', async () => {
+    mocks.apiRequest.mockResolvedValue(
+      listPage([
+        NEWS_DOC,
+        { ...DRAFT_DOC, dataSourceName: '共有フォルダ', originalUri: 'storage://raw/a.pdf' },
+      ]),
+    );
+    await renderPage();
+
+    const table = within(await screen.findByRole('table'));
+    expect(table.getByRole('columnheader', { name: 'データソース' })).toBeInTheDocument();
+    expect(table.getByRole('columnheader', { name: 'タグ' })).toBeInTheDocument();
+    expect(table.getByText('収集: kabutan')).toBeInTheDocument();
+    expect(table.getByText('共有フォルダ')).toBeInTheDocument();
+    expect(table.getByText('他 1 件')).toBeInTheDocument();
+    const original = table.getByRole('link', { name: '「株探のニュース」の出典を開く' });
+    expect(original).toHaveAttribute('href', 'https://kabutan.example/news/1');
+    expect(original).toHaveAttribute('rel', 'noopener noreferrer');
+    // `storage://` はリンクにしない。
+    expect(
+      table.queryByRole('link', { name: '「経費精算規程」の出典を開く' }),
+    ).not.toBeInTheDocument();
+  });
+
+  // プレビュー: 本文の先頭（1,000 文字）を横のペインに素の文字で出す。運用者にも出す（閲覧である）。
+  it('previews the head of the body in the side pane, also for an operator', async () => {
+    const markdown = '# 見出し\n' + 'あ'.repeat(1200);
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.endsWith('/content')
+        ? jsonResponse({ id: NEWS_DOC.id, title: NEWS_DOC.title, markdown, sourceUri: null })
+        : listPage([NEWS_DOC]),
+    );
+    const user = userEvent.setup();
+    await renderPage(['platform-operator']);
+
+    await user.click(await screen.findByRole('button', { name: '「株探のニュース」をプレビュー' }));
+
+    const pane = within(await screen.findByRole('region', { name: '本文のプレビュー' }));
+    expect(await pane.findByText(/^# 見出し/)).toHaveTextContent('# 見出し ' + 'あ'.repeat(994));
+    expect(pane.getByText('先頭 1000 文字を表示しています。')).toBeInTheDocument();
+    expect(pane.getByRole('link', { name: '文書詳細を開く' })).toHaveAttribute(
+      'href',
+      `/docs/${NEWS_DOC.id}`,
+    );
+    expect(pane.getByRole('link', { name: '出典を開く' })).toHaveAttribute(
+      'href',
+      'https://kabutan.example/news/1',
+    );
+    await user.click(pane.getByRole('button', { name: 'プレビューを閉じる' }));
+    expect(screen.queryByRole('region', { name: '本文のプレビュー' })).not.toBeInTheDocument();
+  });
+
+  // 🔴 ペインは最新の一覧に追随する: 状態遷移の後の再取得で表題・状態が変われば変わった値を出し、削除で一覧から消えればペインも消える
+  // （クリックした時点の写しを持ち続けない）。
+  it('keeps the preview pane in step with the latest list and drops it when the document is deleted', async () => {
+    let items: unknown[] = [NEWS_DOC, DRAFT_DOC];
+    mocks.apiRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.endsWith('/content'))
+        return jsonResponse({
+          id: NEWS_DOC.id,
+          title: NEWS_DOC.title,
+          markdown: '本文',
+          sourceUri: null,
+        });
+      if (init?.method === 'POST' && path.endsWith('/archive')) {
+        items = [{ ...NEWS_DOC, title: '株探のニュース（改題）', status: 'archived' }, DRAFT_DOC];
+        return noContent();
+      }
+      if (init?.method === 'DELETE') {
+        items = [DRAFT_DOC];
+        return noContent();
+      }
+      return listPage(items);
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '「株探のニュース」をプレビュー' }));
+    const pane = within(await screen.findByRole('region', { name: '本文のプレビュー' }));
+    expect(pane.getByText('株探のニュース')).toBeInTheDocument();
+
+    const row = screen.getByRole('link', { name: '株探のニュース' }).closest('tr')!;
+    await user.click(within(row).getByRole('button', { name: 'アーカイブ' }));
+    expect(await pane.findByText('株探のニュース（改題）')).toBeInTheDocument();
+
+    const archivedRow = screen.getByRole('link', { name: '株探のニュース（改題）' }).closest('tr')!;
+    await user.click(within(archivedRow).getByRole('button', { name: '削除' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: '本文のプレビュー' })).not.toBeInTheDocument(),
+    );
+  });
+
+  // 台帳が本文なしと言う文書は本文を引かずに状態を出す。大きすぎる本文（413）は理由を出す。
+  it('does not fetch a body the ledger says is absent, and explains a too-large body', async () => {
+    const tooLarge = {
+      ...NEWS_DOC,
+      id: '12121212-1212-1212-1212-121212121212',
+      title: '大きい文書',
+    };
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.endsWith('/content')) throw new ApiError('server', '大きすぎます', 413);
+      return listPage([
+        { ...DRAFT_DOC, hasBody: false, markdownUri: 'storage://docs/x.md' },
+        tooLarge,
+      ]);
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '「経費精算規程」をプレビュー' }));
+    let pane = within(await screen.findByRole('region', { name: '本文のプレビュー' }));
+    expect(pane.getByText('本文なし（原本を参照）')).toBeInTheDocument();
+    expect(mocks.apiRequest.mock.calls.some(([path]) => String(path).endsWith('/content'))).toBe(
+      false,
+    );
+
+    await user.click(screen.getByRole('button', { name: '「大きい文書」をプレビュー' }));
+    pane = within(await screen.findByRole('region', { name: '本文のプレビュー' }));
+    expect(
+      await pane.findByText(
+        '本文が大きすぎるためプレビューできません。文書詳細で確かめてください。',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // タブだけで 0 件（台帳には文書がある）なら「文書はまだありません。」にせず、すべての文書へ戻す口を出す。
+  it('tells that the tab is empty and offers all documents', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('origin=curated')
+        ? listPage([], { total: 0, unfilteredTotal: 30, sourceCounts: { 'col:kabutan': 30 } })
+        : listPage([NEWS_DOC], {
+            total: 30,
+            unfilteredTotal: 30,
+            sourceCounts: { 'col:kabutan': 30 },
+          }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    expect(await screen.findByText('このタブの文書はありません。')).toBeInTheDocument();
+    expect(screen.queryByText('文書はまだありません。')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'すべての文書を表示' }));
+    expect(await screen.findByRole('link', { name: '株探のニュース' })).toBeInTheDocument();
+    expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50');
   });
 });

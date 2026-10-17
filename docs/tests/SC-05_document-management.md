@@ -221,10 +221,10 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | T5 | 未定義の並べ替え | enum に無い値は `INVALID_ARGUMENT`（既定へ畳まない） |
 | T6 | 実 PostgreSQL | 同じ表題・同じ作成時刻の群（uuid の順の取り違えで前後が入れ替わる Guid）を表題・作成日時・更新日時の昇降で辿って抜け・重複なし。`(Title, Id)` の索引を印の位置から引く（昇順は前から・降順は後ろから。Docker か外部の PostgreSQL が要る） |
 
-## 一覧の追加の絞り込み（#1923 の残り）
+## 一覧のタブ・データソースほかの絞り込み・列・プレビュー（#1923 の残り）
 
-> **［2026-10-17 追記 / #1923］** データソース・機密区分・タグ・プロジェクト・保存日の絞り込み、データソース別・プロジェクト別の件数。
-> 絞り込みは段 2 と同じく BFF が ABAC の後に当てる。BFF はタブ（機械の収集か否か）の絞り込みも受ける（画面のタブは続く変更）。
+> **［2026-10-17 追記 / #1923］** タブ（人の文書・報告書／機械の収集／すべて）・データソース・機密区分・タグ・プロジェクト・保存日の絞り込み、
+> データソース別・プロジェクト別の件数、データソースとタグの列、出典のリンク、本文の先頭のプレビュー。絞り込みは段 2 と同じく BFF が ABAC の後に当てる。
 
 ### 画面（Vitest）
 
@@ -232,8 +232,13 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 | # | 観点 | 検証内容 | ケース |
 | --- | --- | --- | --- |
-| H2 | 帯の条件 | データソース（件数つき・表示名）・機密区分・タグ（辞書）・プロジェクト（「プロジェクトなし」）・保存日がそれぞれのクエリに写る。「まで」は翌日 0 時を含まない終わりとして送る。「条件を解除」は帯の条件を外す | `sends each facet, the inclusive date range and clears them` |
-| H7 | 鍵の表示 | BFF の鍵（データソース・収集・確定報告書・手入力）を表示名へ写す（名前は訳さない）。プロジェクトなしの鍵 `NO_PROJECT` は「プロジェクトなし」と出す（H2 で確かめる） | `sourceLabel` |
+| H1 | タブ | 既定は「人の文書・報告書」（`origin=curated`）。件数はデータソース別の件数から導き、押下状態は `aria-pressed`。替えると先頭から引き、「すべて」は `origin` を載せない | `opens on the curated tab with counts and switches tabs from the first page` |
+| H2 | 帯の条件 | データソース（件数つき・表示名）・機密区分・タグ（辞書）・プロジェクト（「プロジェクトなし」）・保存日がそれぞれのクエリに写る。「まで」は翌日 0 時を含まない終わりとして送る。「条件を解除」は帯の条件を外しタブを残す | `sends each facet, the inclusive date range and clears them but keeps the tab` |
+| H3 | 列 | データソース（収集は「収集: 出典名」）・タグ（3 個まで＋残数）。出典は `http(s)` だけリンクにする（`storage://` はしない） | `shows the data source and tags, and links only http(s) originals` |
+| H4 | プレビュー | 本文の先頭 1,000 文字を横のペインに素の文字で出す。文書詳細と出典への導線。運用者にも出す。閉じられる | `previews the head of the body in the side pane, also for an operator` |
+| H5 | プレビューの状態 | 台帳が本文なしと言う文書は本文を引かない。413 は「大きすぎる」と出す | `does not fetch a body the ledger says is absent, and explains a too-large body` |
+| H6 | タブの空 | タブだけで 0 件なら「このタブの文書はありません。」と「すべての文書を表示」（「文書はまだありません。」を出さない） | `tells that the tab is empty and offers all documents` |
+| H7 | 鍵の導出・表示 | データソース → 収集 → 報告書 → 手入力の順（BFF と同じ例）。長い出典名は BFF と同じ上限で切る。表示名・タブの件数・リンクにしてよい URL | `documentSourceKey` ／ `documentSourceKey の上限` ／ `sourceLabel / originCounts / linkableOriginalUri` |
 
 ### BFF（xUnit）
 
