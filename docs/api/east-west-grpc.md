@@ -10,7 +10,7 @@ author: Claude
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
 adrs: [ADR-0121, ADR-0119, ADR-0063, ADR-0089, ADR-0050, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0127, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114, ADR-0117, ADR-0014]
 iadrs: [IADR-0483, IADR-0481, IADR-0479, IADR-0476, IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431, IADR-0512, IADR-0533, IADR-0534, IADR-0537, IADR-0542, IADR-0545, IADR-0540, IADR-0544, IADR-0561]
-specs: [20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1658_relay-options-shared, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261008_1819_gateway-sentfalse-observability, 20261010_issue-1255-1517_east-west-rest-retirement, 20261011_1871_search-degraded-signal, 20261015_1907_h1-grpc-receive-limit, 20261015_1923_document-list-sort-filter, 20261015_1905_bff-document-content, 20261015_1902_east-west-rest-residue, 20261017_1940_bounded-document-content-read]
+specs: [20261017_1255_graph-cluster-summary-grpc, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1658_relay-options-shared, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261008_1819_gateway-sentfalse-observability, 20261010_issue-1255-1517_east-west-rest-retirement, 20261011_1871_search-degraded-signal, 20261015_1907_h1-grpc-receive-limit, 20261015_1923_document-list-sort-filter, 20261015_1905_bff-document-content, 20261015_1902_east-west-rest-residue, 20261017_1940_bounded-document-content-read]
 issues: [#1665, #1611, #1658, #1636, #1516, #1635, #1628, #1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532, #1752, #1819, #1517, #1871, #1923, #1897, #1907, #1905, #1902, #1940]
 -->
 
@@ -210,6 +210,7 @@ s2s トークンの失敗 / 上限（5 秒）の時間切れは、いずれも�
 
 - 概要: AI 分析・グラフ・変換の 3 サービスが `Services:LlmGatewayGrpc` の宛先へ gRPC で
   生成を得る（［2026-10-10 / #1255］REST の枝は撤去した。宛先が無ければ `UNAVAILABLE` として縮退する。§REST 実装の退役）。
+  グラフの呼び出しは AI 提案とクラスタ要約の 2 用途である（［2026-10-17 / #1255］後者も gRPC へ移した）。
 - 認証・認可: `ServiceCaller`。REST の `/complete` も同じ 1 つのポリシーを端点ごとに要求する
   （［2026-10-16 更新 / #1902］`/complete/stream`・`/embed` の REST は撤去した。`/complete` は AST・合成監視が叩くので残す）。
 - 判定器: REST と**同じ**越境判定・ルーティング・フォールバック鎖・計器を通る（判定器を 2 つにしない）。
@@ -262,6 +263,7 @@ REST 実装がそれぞれ「出典のみ返す」「提案 0 件」「画像と
 | AI 分析（逐次） | `done(sent=false, "LLM が現在利用できません。")`。**受信途中**の失敗だけ `"LLM 応答の受信に失敗しました。"` |
 | AI 分析（一括） | 出典のみ返す（REST の非 2xx と同じ枝） |
 | グラフ（提案） | 提案 0 件 |
+| グラフ（クラスタ要約。［2026-10-17 / #1255］追加） | 要約を付けない（そのクラスタは未要約のまま残る） |
 | 変換（図のコード化） | 画像として保持（理由コードも REST と同じ） |
 
 ## 4 つ目の面: 利用者名簿の狭い読み口（`platform.authz.v1.UserDirectory`）
@@ -889,8 +891,11 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
   `/documents/{id}/tags`。読み手の無くなった REST の宛先の env（`Services__AuthorizationService` の 5 サービス・
   `Services__LlmGateway` の 3 サービス）も配備から外した。
   **残したもの**: グラフの近傍（`/graph/{id}/neighbors`）と辺の型の辞書（`/graph/edge-types/catalog`）は、近傍展開の呼び出しは
-  消えたが BFF の中継（`/bff/graph/...`。north-south）が叩くので残す。グラフ → LLM ゲートウェイのクラスタ要約（既定 off）は
-  gRPC 実装を持たないので REST のまま残る。
+  消えたが BFF の中継（`/bff/graph/...`。north-south）が叩くので残す。~~グラフ → LLM ゲートウェイのクラスタ要約（既定 off）は
+  gRPC 実装を持たないので REST のまま残る。~~ ［2026-10-17 / #1255］**クラスタ要約も `LlmCompletion/Complete` へ移した**
+  （REST の `LlmGatewayClusterSummaryClient` とグラフの `Services__LlmGateway` を撤去した。用途名 `graph-cluster-summary` と
+  「モデルを指定しない」は変えていない）。**east-west の REST 同期呼び出しは 0 本である。** LLM ゲートウェイの REST `/complete` は
+  取引ユニットと合成監視が叩くので残す。
 - **north-south と外部は対象外**: BFF のエッジの中継（15 本）・AST からの呼び出し・外部サービスは変えていない。readiness の
   `/health/*` は HTTP のまま。
 

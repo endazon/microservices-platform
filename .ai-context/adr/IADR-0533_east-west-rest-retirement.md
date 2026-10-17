@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-09, NFR-16, ADR-0029, ADR-0075, ADR-0086, ADR-0087, ADR-0089, IADR-0379, IADR-0413, IADR-0426, IADR-0462]
 author: claude
 created: 2026-10-10
-updated: 2026-10-16
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0089_east-west-completion-rule-and-authz-service-face.md（決定 1）
   - planning:projects/microservices-platform/07_adr/ADR-0075_east-west-grpc-migration-order.md（決定 2）
@@ -131,6 +131,24 @@ REST 実装が残り、宛先の構成の有無で REST と gRPC が選ばれて
   `SearchUserContext.ForwardableCredential` を外した。
 - 試験は「同じ性質を gRPC 面の試験が持つものは削除」「REST と gRPC の同値の対は削除」「REST 面にしか書かれていなかった性質は
   TestServer 上の gRPC 面へ写す」の 3 通りで扱った（作業仕様書 §試験の写し方）。
+
+［2026-10-17 追記 / #1255］**フォローアップ 2 を済ませた。east-west の REST 同期呼び出しは 0 本である。**
+作業仕様書: [20261017_1255_graph-cluster-summary-grpc](../specs/20261017_1255_graph-cluster-summary-grpc.md)（母集合・処置・試験の写し方）。
+
+- **移したもの**: グラフのクラスタ要約を `LlmGatewayClusterSummaryClient`（REST `POST /complete`）から
+  `LlmGatewayGrpcClusterSummaryClient`（`platform.llmgateway.v1.LlmCompletion/Complete`）へ移した。形は `LlmGatewayGrpcSuggestionClient`
+  と同じ（共通写像 `LlmGrpcMapping`・`RpcException` と s2s 取得失敗は null・呼び出し元の取り消しは伝播）。用途名
+  `graph-cluster-summary` とモデル未指定は変えていない。生成クライアントは AI 提案と同じ `AddLlmGatewayGrpcClient` の登録を共有する。
+- **新しい判断は無い**: IADR-0379 の 4 決定（proto の置き場・versioning・h2c・s2s）は graph → llmgateway について既に満たされていた
+  （proto・baseline・`grpcPort`・`Services__LlmGatewayGrpc`・realm の `graph-service`・受け手の `ServiceCaller`。稼働の実測 L-4 は両モード合格）。
+  宛先未構成の扱いは決定 2（`UNAVAILABLE` → 未要約のまま）に従う。
+- **撤去したもの**: REST 実装とその試験、グラフの `Services__LlmGateway`（helm・compose。appsettings は元から持たない）、
+  呼び出し元が 0 になった `LlmGatewayHttpClient.AddLlmGatewayServiceToken` と、その唯一の利用者だった `ServiceTokenHandler`（試験とも）。
+  取引ユニットの submodule の pin（`bc2ab989`）は MSP の `Platform.*` 名前空間を 1 件も参照しない（同名の `ServiceTokenHandler` は自前の型）。
+- **残したもの**: LlmGateway の REST `POST /complete` の受け口（取引ユニットと合成監視の呼び出し元がある。撤去は取引ユニットの移行の確認後）。
+  AI 分析の `Services__LlmGateway`（readiness の `/health/live` が読む）。
+- **挙動の差**: REST では `HttpClient` の既定 100 秒が呼び出し側の期限だった。gRPC 経路は AI 提案と同じく deadline を付けない
+  （ゲートウェイの期限が上限になる）。どちらが切っても結果は「未要約のまま」で変わらない。
 
 ## 関連
 

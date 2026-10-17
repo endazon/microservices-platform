@@ -2522,7 +2522,7 @@ status?: BffDocumentListStatus;
  */
 origin?: BffDocumentListOrigin;
 /**
- * データソースの鍵（`sourceCounts` の鍵と同じ語彙）の完全一致。300 文字を超えると 400
+ * データソースの鍵（`sourceCounts` の鍵と同じ語彙）の完全一致。300 文字を超えると 400（`sourceCounts` の鍵も 300 文字で切ってあるので、件数に出た鍵は必ず受理される）
  * @maxLength 300
  */
 source?: string;
