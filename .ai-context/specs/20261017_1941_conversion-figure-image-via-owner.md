@@ -41,7 +41,7 @@ issue: "#1941"
 ## 決めたこと（IADR-0558）
 
 1. **図画像は変換サービスが読む。** 変換サービスに `GET /jobs/{id}/figures/{figureId}/image`（**群 ∧ `AdminOnly`**。他の人手補正 2 口と同じ門）を足す。
-   本体は `FigureImageReader`（`Features/ConversionJobs/GetFigureImage/`）。図の特定は `IConversionJobStore.ListFiguresAsync` を通る（図の一覧と同じ）。
+   本体は `FigureImageReader`（`Features/ConversionJobs/GetFigureImage/`）。図の特定は `IConversionJobStore.GetFigureAsync` を通る（人手補正の投稿と同じ）。
 2. **BFF は中継するだけにする。** 利用者の資格情報を付けて後段の画像の口を呼び、本文をストリームで返す（バッファしない）。
    **BFF からストレージの配線（`AddPlatformObjectStorage`）を外す** —— BFF で `IObjectStorageClient` を使う口は本件で 0 になる（下の母集合）。
 3. **輸送は gRPC ではなく、既存のエッジの REST 中継に揃える。** issue の提案（east-west gRPC）を採らない理由:
