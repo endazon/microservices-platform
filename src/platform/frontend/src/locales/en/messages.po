@@ -1616,6 +1616,10 @@ msgstr "Use “Add an attribute” below to register the first user or document 
 msgid "下書き"
 msgstr "Draft"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "不明"
+msgstr "Unknown"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 msgid "不明（realm を読めないため最後に確かめた値）"
 msgstr "Unknown (the realm cannot be read; showing the last confirmed values)"
@@ -2600,6 +2604,10 @@ msgstr "Type name"
 msgid "型名（必須）"
 msgstr "Type name (required)"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "埋め込み待ち"
+msgstr "Awaiting embedding"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "基盤の利用者 {rowNumber}"
 msgstr "Platform user {rowNumber}"
@@ -3454,6 +3462,10 @@ msgstr "The default value {DEFAULT_LIFECYCLE} is used when left unspecified."
 msgid "未登録（写像に無い利用者は予約値 {UNRESOLVED_OWNER} になります）"
 msgstr "Not registered (users missing from the mapping fall back to the reserved value {UNRESOLVED_OWNER})"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "未索引"
+msgstr "Not indexed"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "未解決の同期競合"
 msgstr "Unresolved sync conflicts"
@@ -4215,6 +4227,14 @@ msgstr "Request an AI analysis over a scope →"
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "範囲指定の分析依頼・結果・出典"
 msgstr "Scoped analysis requests, results and sources"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "索引"
+msgstr "Index"
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "索引済み"
+msgstr "Indexed"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx

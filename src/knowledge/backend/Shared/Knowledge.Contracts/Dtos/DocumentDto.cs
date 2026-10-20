@@ -74,6 +74,21 @@ public record DocumentListPageDto
     public Dictionary<string, int> SourceCounts { get; init; } = [];
     // FR-06, SC-05, [[IADR-0561]] (#1923): 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `UnfilteredTotal` と同じ。
     public Dictionary<string, int> ProjectCounts { get; init; } = [];
+    // FR-06, SC-05, [[IADR-0565]] (#1993): **窓の中の文書（`Items`）の索引の状態**（文書 ID の文字列 → `DocumentIndexStatuses` の値）。
+    // 🔴 鍵は `Items` の ID だけである（ABAC を通った文書だけを取り込み側へ問い合わせる。権限外の文書の状態は引かない）。
+    // 取り込み側から引けなければ全件 `unknown`（一覧そのものは失敗させない）。
+    // **既定は空**（末尾追加・既定値付き。項目を持たない旧応答は全件「不明」として読める）。
+    public Dictionary<string, string> IndexStatuses { get; init; } = [];
+}
+
+// FR-06, SC-05, [[IADR-0565]] 決定 1・4 (#1993): 文書管理の一覧の索引の状態の値（`DocumentListPageDto.IndexStatuses` の値の語彙）。
+// 3 値は取り込み側（`knowledge.ingestion.v1.IndexStatus`）の写し、`unknown` は BFF が「引けなかった」を表す 4 つ目の値である。
+public static class DocumentIndexStatuses
+{
+    public const string Indexed = "indexed";
+    public const string EmbeddingPending = "embedding_pending";
+    public const string NotIndexed = "not_indexed";
+    public const string Unknown = "unknown";
 }
 
 // SC-03, FR-06: 文書本文（正規化 Markdown）の取得結果。BFF が ABAC 判定後にオブジェクト

@@ -45,6 +45,8 @@ const firstPage: DocumentListPageDto = {
   // ［2026-10-17 / #1923・IADR-0561］データソース別・プロジェクト別の件数（手入力の 1 件）。
   sourceCounts: { manual: 1 },
   projectCounts: { '(none)': 1 },
+  // ［2026-10-20 / #1993・IADR-0565］ページの文書の索引の状態。
+  indexStatuses: { 'doc-1': 'indexed' },
 };
 
 const handlers = { 'GET /documents': firstPage, 'GET /tags': tags };
@@ -86,6 +88,9 @@ test('SC-05: an operator reaches the screen and its navigation entry', async ({ 
     'true',
   );
   await expect(page.getByRole('columnheader', { name: 'データソース' })).toBeVisible();
+  // #1993（IADR-0565）: 索引の状態の列（BFF がページ分を取り込み側に引いた値）。
+  await expect(page.getByRole('columnheader', { name: '索引' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '索引済み' })).toBeVisible();
   // #1923 段 2（IADR-0545）: 絞り込みの帯（表題の検索・状態・並べ替え）と本文・更新日時の列が出る。
   const filters = page.getByRole('search', { name: '文書の絞り込み' });
   await expect(filters.getByLabel('表題で検索')).toBeVisible();

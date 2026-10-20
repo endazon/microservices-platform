@@ -46,6 +46,7 @@ import { DocumentListToolbar } from './DocumentListToolbar';
 import { DocumentOriginTabs } from './DocumentOriginTabs';
 import { DocumentPreviewPanel } from './DocumentPreviewPanel';
 import { documentBodyView } from '../types/documentBody';
+import { documentIndexStatusView } from '../types/documentIndexStatus';
 import { documentSourceKey, linkableOriginalUri, sourceLabel } from '../types/documentSource';
 import type { DocumentOrigin } from '../types/documentSource';
 import { useTagOptions } from '../api/useTagOptions';
@@ -341,6 +342,10 @@ export function DocumentManagementPage() {
                       <TableHeaderCell>
                         <Trans>本文</Trans>
                       </TableHeaderCell>
+                      {/* #1993: 検索の索引の状態（索引済み・埋め込み待ち・未索引・不明）。BFF がページ分をまとめて取り込み側に引く。 */}
+                      <TableHeaderCell>
+                        <Trans>索引</Trans>
+                      </TableHeaderCell>
                       <TableHeaderCell>
                         <Trans>タグ</Trans>
                       </TableHeaderCell>
@@ -364,6 +369,7 @@ export function DocumentManagementPage() {
                       <DocumentRow
                         key={doc.id}
                         doc={doc}
+                        indexStatuses={data.indexStatuses}
                         busy={commandPending}
                         canWrite={canWrite}
                         onEdit={() => {
@@ -420,6 +426,7 @@ export function DocumentManagementPage() {
 
 function DocumentRow({
   doc,
+  indexStatuses,
   busy,
   canWrite,
   onEdit,
@@ -427,6 +434,8 @@ function DocumentRow({
   onPreview,
 }: {
   doc: DocumentDto;
+  /** #1993: ページの文書の索引の状態（旧い応答では無い → 「不明」）。 */
+  indexStatuses: Readonly<Record<string, string>> | undefined;
   busy: boolean;
   canWrite: boolean;
   onEdit: () => void;
@@ -437,6 +446,7 @@ function DocumentRow({
   const confidentiality = doc.attributes?.[CONFIDENTIALITY_KEY];
   const statusView = documentStatusView(doc.status);
   const bodyView = documentBodyView(doc);
+  const indexView = documentIndexStatusView(indexStatuses, doc.id);
   // #1923・IADR-0561: 元の URL（ニュースの出典など）。`http(s)` だけをリンクにする。
   const original = linkableOriginalUri(doc.originalUri);
   const tags = doc.tags ?? [];
@@ -499,6 +509,11 @@ function DocumentRow({
       <TableCell>
         <StatusBadge tone={bodyView.tone} className="whitespace-nowrap">
           {i18n._(bodyView.label)}
+        </StatusBadge>
+      </TableCell>
+      <TableCell>
+        <StatusBadge tone={indexView.tone} className="whitespace-nowrap">
+          {typeof indexView.label === 'string' ? indexView.label : i18n._(indexView.label)}
         </StatusBadge>
       </TableCell>
       {/* #1923・IADR-0561: タグは 3 個まで出し、残りは件数で示す（行が縦に伸びないように）。 */}

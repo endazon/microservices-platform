@@ -1395,6 +1395,9 @@ paths:
 
         ［2026-10-17 / #1923］**タブ（`origin`）・データソース（`source`）・機密区分・タグ・プロジェクト・保存日の範囲**を同じ作法で当てる。
         どれも省略可で、省略は従前の応答と同じ。`sourceCounts` / `projectCounts` も絞り込み前（ABAC 後）の数。
+
+        ［2026-10-20 / #1993］**このページの文書の索引の状態（`indexStatuses`）**を添える。ページを切り出した後に、ページの文書の ID だけを
+        取り込み側へ 1 回で問い合わせる（権限外の文書の状態は引かない）。取り込み側から引けなければ全件 `unknown` で、一覧は失敗しない。
       operationId: bff-document-list
       parameters:
         - name: offset
@@ -5137,7 +5140,7 @@ components:
       description: |
         FR-06, SC-05 (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ（`Knowledge.Contracts/Dtos/DocumentDto.cs`）。
         `offset` / `limit` は BFF が丸めた後の値。🔴 件数はどれも ABAC スコープで絞った後の数（権限外の文書を数えない）。
-      required: [items, total, offset, limit, unfilteredTotal, statusCounts, sourceCounts, projectCounts]
+      required: [items, total, offset, limit, unfilteredTotal, statusCounts, sourceCounts, projectCounts, indexStatuses]
       properties:
         items:
           type: array
@@ -5163,6 +5166,15 @@ components:
           type: object
           additionalProperties: { type: integer, format: int32 }
           description: 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）
+        indexStatuses:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [indexed, embedding_pending, not_indexed, unknown]
+          description: |
+            FR-06, SC-05 (#1993): **このページの文書（`items`）の索引の状態**（文書 ID → 値）。鍵は `items` の ID だけ（ABAC を通った文書だけを取り込み側へ問い合わせる）。
+            `indexed`（ベクトルか語彙索引に点がある）・`embedding_pending`（埋め込み待ちの点がある）・`not_indexed`（点が無い）・`unknown`（取り込み側から引けなかった）。
+            引けなくても一覧は 200 で返り、全件 `unknown` になる。**項目を持たない旧応答は全件「不明」として読む。**
 
     DocumentContentDto:
       type: object

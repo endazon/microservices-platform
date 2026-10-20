@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-06, FR-09, SC-05, SC-03, UC-03, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0009, IADR-0041, IADR-0045, IADR-0388, IADR-0537, IADR-0545, IADR-0544]
 author: claude
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-20
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md（文書管理画面「一覧の送り方と件数」）
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（FR-06）
@@ -124,6 +124,7 @@ related_specs:
 
 - **索引の状態の列は出していない。** 索引の状態は取り込み側（IngestionService）が検索の索引の点として持ち、文書ごとに引く口が無い。
   出すには「文書 ID の集合 → 索引の状態」を返す口と BFF の結合が要る（別 issue で扱う。IADR-0545 は #1908 の側としたが、#1908 は閉じている）。
+  ［2026-10-20 追記 / #1993］解消した（[IADR-0565](./IADR-0565_document-list-index-status-via-ingestion-grpc.md)。列「索引」）。
 - **データソースでの並べ替えは入れていない。** 並べ替えは後段のキーセット（台帳の索引）で行う（IADR-0545 決定 1）が、データソースは BFF の導出値である。
 - 確定報告書の見分けは属性の形（`kind` と `periodKey`）に依る。AST が写像を変えたら追随が要る（`AstStaleCopyRules` と同じ前提）。
 - 機械の収集の見分けは属性 `source` の有無に依る。人が画面から `source` 属性を付けた文書は機械の収集に数えられる（画面の作成フォームは `source` を出さない）。

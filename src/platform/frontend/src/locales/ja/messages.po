@@ -1616,6 +1616,10 @@ msgstr "下の「属性を追加」から、利用者属性・文書属性の最
 msgid "下書き"
 msgstr "下書き"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "不明"
+msgstr "不明"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 msgid "不明（realm を読めないため最後に確かめた値）"
 msgstr "不明（realm を読めないため最後に確かめた値）"
@@ -2600,6 +2604,10 @@ msgstr "型名"
 msgid "型名（必須）"
 msgstr "型名（必須）"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "埋め込み待ち"
+msgstr "埋め込み待ち"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "基盤の利用者 {rowNumber}"
 msgstr "基盤の利用者 {rowNumber}"
@@ -3454,6 +3462,10 @@ msgstr "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
 msgid "未登録（写像に無い利用者は予約値 {UNRESOLVED_OWNER} になります）"
 msgstr "未登録（写像に無い利用者は予約値 {UNRESOLVED_OWNER} になります）"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "未索引"
+msgstr "未索引"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "未解決の同期競合"
 msgstr "未解決の同期競合"
@@ -4215,6 +4227,14 @@ msgstr "範囲を指定してAI分析を依頼 →"
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "範囲指定の分析依頼・結果・出典"
 msgstr "範囲指定の分析依頼・結果・出典"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "索引"
+msgstr "索引"
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "索引済み"
+msgstr "索引済み"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
