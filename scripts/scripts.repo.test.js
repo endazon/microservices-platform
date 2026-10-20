@@ -13186,14 +13186,18 @@ exit $RC
         const text = readB(rel);
         const rule = ruleBodyB(text, 'IngestionBudgetExhausted');
         assert.ok(rule, `${rel} に IngestionBudgetExhausted のルール定義が無い`);
-        assert.ok(rule.includes(`increase(${promName}{`), `${rel} の IngestionBudgetExhausted が increase(${promName}) を見ていない`);
-        assert.ok(!rule.includes('absent('), `${rel} の IngestionBudgetExhausted が absent() になっている（平常時は系列が無い）`);
-        const sel = new RegExp(`${targetTag}=~"([^"]+)"`).exec(rule);
+        // 式だけを見る（ルールの後ろに続く次の群の注記に引きずられない）。
+        const exprM = /expr:\s*'([^']+)'/.exec(rule);
+        assert.ok(exprM, `${rel} の IngestionBudgetExhausted の expr を 1 行の引用符つきで読めない（走査が壊れている）`);
+        const expr = exprM[1];
+        assert.ok(expr.includes(`increase(${promName}{`), `${rel} の IngestionBudgetExhausted が increase(${promName}) を見ていない`);
+        assert.ok(!expr.includes('absent('), `${rel} の IngestionBudgetExhausted が absent() になっている（平常時は系列が無い）`);
+        const sel = new RegExp(`${targetTag}=~"([^"]+)"`).exec(expr);
         assert.ok(sel, `${rel} の IngestionBudgetExhausted が ${targetTag} で絞っていない`);
         assert.deepStrictEqual(sel[1].split('|').sort(), targets,
           `${rel} の IngestionBudgetExhausted が見る呼び出し先が、デッドレターへ直行させる集合と違う`);
         // 「1 件以上で鳴る」: Prometheus 版は式の `> 0`、Grafana 版は評価器の `gt 0`（式の `> 0` の後に残る値は前進量）。
-        assert.ok(/\)\s*>\s*0'/.test(rule), `${rel} の IngestionBudgetExhausted が「前進が 0 を超えたら」で鳴らない`);
+        assert.ok(/\)\s*>\s*0$/.test(expr), `${rel} の IngestionBudgetExhausted が「前進が 0 を超えたら」で鳴らない`);
         assert.ok(/for:\s*5m/.test(rule) && /severity:\s*warning/.test(rule), `${rel} の IngestionBudgetExhausted の for / severity が流儀（5m・warning）と違う`);
         if (rel.includes('grafana')) {
           assert.ok(/type:\s*gt,\s*params:\s*\[0\]/.test(rule), `${rel} の IngestionBudgetExhausted の評価器が gt 0 でない`);
