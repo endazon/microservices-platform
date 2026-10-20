@@ -178,6 +178,7 @@
       "ClaudeProviderRequestShapeTests",
       "ClaudeProviderSdkRiskTests",
       "ClaudeProviderStopReasonTests",
+      "ClaudeProviderStreamIdleTimeoutTests",
       "ClaudeProviderThinkingTests",
       "CompletionFallbackEndpointTests",
       "CompletionMetricsTests",
