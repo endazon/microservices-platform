@@ -40,7 +40,7 @@
  *   node scripts/t25-monthly-summary.js --self-test                # 読み取りの器と集計の自己試験（GitHub へ出ない）
  */
 const { execFileSync } = require('child_process');
-const { TIMING_ALPHA, TIMING_VERDICT } = require('./check-password-reset-mail.js');
+const { TIMING_ALPHA, TIMING_VERDICT, T25_ANNOTATION_TITLE } = require('./check-password-reset-mail.js');
 
 const DEFAULT_REPO = 'endazon/microservices-platform';
 const WORKFLOW_FILE = 'integration-stack.yml';
@@ -97,6 +97,59 @@ function parseT25FromJobLog(text) {
   }
   out.reached = out.verdict !== null;
   return out;
+}
+
+/**
+ * ［#1998］ジョブの注釈（check-runs の annotations）から T-25 の結果を取り出す。**純関数**。
+ * 検査器（check-password-reset-mail.js `--live`）が `title=t25-rank-sum` で出す 1 行を読む。無ければ null。
+ * 戻り値の形は parseT25FromJobLog と同じ（注釈は順位和検定まで届いたときだけ出るので reached は true）。
+ */
+function parseT25FromAnnotations(annotations) {
+  const list = Array.isArray(annotations) ? annotations : [];
+  const hit = list.find((a) => a && a.title === T25_ANNOTATION_TITLE);
+  if (!hit) return null;
+  const m = /verdict=(\S+) p=([0-9.eE+-]+) W=([\d.]+) expectedW=([\d.]+) slower=(\S+) istio=(\S+)/.exec(String(hit.message || ''));
+  if (!m) return null;
+  const istio = m[6] === '(未設定)' ? null : (m[6] === '(空)' ? '' : m[6]);
+  return {
+    stepRan: true,
+    reached: true,
+    verdict: m[1],
+    istio,
+    p: Number(m[2]),
+    w: Number(m[3]),
+    expectedW: Number(m[4]),
+    slower: m[5] === '—' ? null : m[5],
+  };
+}
+
+const firstLine = (e) => String((e && (e.stderr || e.message)) || e).split('\n').find((l) => l.trim() !== '') || String(e);
+
+/**
+ * ［#1998］ジョブ 1 本の T-25 の結果を読む。**注釈を先に、無ければログを**読む。
+ *
+ * 🔴 **読めなかった理由を捨てない。** 以前の読み取り（ログだけ・例外は握りつぶして null）は、ワークフローの中で
+ * 2 回とも値を返さず（#1929・#1998 の記録の p / W がすべて「—」）、その理由がどこにも残らなかった。
+ *
+ * @returns {{t25:(object|null), source:('annotations'|'log'|null), error:(string|null)}}
+ *   t25 は parseT25FromJobLog と同じ形。ログは読めたが門の区間が無いときも t25 を返す（reached:false）。
+ */
+function readT25ForJob({ repo, jobId, execFn }) {
+  const errors = [];
+  try {
+    const anns = ghGetJson(execFn, `repos/${repo}/check-runs/${jobId}/annotations`, { per_page: 100 });
+    const t = parseT25FromAnnotations(anns);
+    if (t) return { t25: t, source: 'annotations', error: null };
+  } catch (e) {
+    errors.push(`注釈: ${firstLine(e)}`);
+  }
+  try {
+    const t = parseT25FromJobLog(ghGet(execFn, `repos/${repo}/actions/jobs/${jobId}/logs`));
+    return { t25: t, source: 'log', error: errors.length ? errors.join(' / ') : null };
+  } catch (e) {
+    errors.push(`ログ: ${firstLine(e)}`);
+  }
+  return { t25: null, source: null, error: errors.join(' / ') };
 }
 
 // ---------------------------------------------------------------- 集計（純関数）
@@ -289,13 +342,8 @@ function observeAttempt({ repo, run, attempt, execFn, since }) {
   const step = (job.steps || []).find((s) => String(s.name).startsWith(RESET_GATE_PREFIX));
   const withJob = { ...base, startedAt: job.started_at, jobConclusion: job.conclusion };
   if (!step || (step.conclusion !== 'success' && step.conclusion !== 'failure')) return { ...withJob, reached: false };
-  let log;
-  try {
-    log = ghGet(execFn, `repos/${repo}/actions/jobs/${job.id}/logs`);
-  } catch (e) {
-    return { ...withJob, logUnavailable: true, reached: false, error: String(e.message || e).split('\n')[0] };
-  }
-  const t = parseT25FromJobLog(log);
+  const { t25: t, error } = readT25ForJob({ repo, jobId: job.id, execFn });
+  if (!t) return { ...withJob, logUnavailable: true, reached: false, error };
   return { ...withJob, reached: t.reached, verdict: t.verdict, istio: t.istio, p: t.p, w: t.w, slower: t.slower };
 }
 
@@ -488,6 +536,55 @@ function selfTest() {
     assert.strictEqual(s.n, 0);
     assert.strictEqual(s.ks, null);
   });
+  // ---- #1998: 注釈から読む ----------------------------------------------------------------
+  const { timingAnnotation } = require('./check-password-reset-mail.js');
+  const annOf = (line) => ({ title: /title=([^:]+)::/.exec(line)[1], message: line.replace(/^::notice title=[^:]+::/, ''), annotation_level: 'notice' });
+  const fakeTiming = (verdict, p, w, slower = '実在') => ({ timing: { verdict, slower, rankSum: { p, w, expectedW: 588 } } });
+  ok('#1998 注釈: 検査器の出す 1 行を往復で読む（判定・p・W・期待値・遅い側・ISTIO の空と未設定）', () => {
+    const red = parseT25FromAnnotations([{ title: 'other', message: 'x' }, annOf(timingAnnotation(fakeTiming('不合格', 0.0094, 713), { istio: '1' }))]);
+    assert.deepStrictEqual(red, { stepRan: true, reached: true, verdict: '不合格', istio: '1', p: 0.0094, w: 713, expectedW: 588, slower: '実在' });
+    const tiny = parseT25FromAnnotations([annOf(timingAnnotation(fakeTiming('不合格', 1e-10, 900.5), { istio: '' }))]);
+    assert.strictEqual(tiny.p, 1e-10);
+    assert.strictEqual(tiny.w, 900.5);
+    assert.strictEqual(tiny.istio, '', '空（床なし）を空文字で読む（noFloor の振り分け）');
+    assert.strictEqual(parseT25FromAnnotations([annOf(timingAnnotation(fakeTiming('合格', 0.5, 600), {}))]).istio, null);
+    assert.strictEqual(parseT25FromAnnotations([{ title: 'other', message: 'verdict=合格 p=0.5' }]), null);
+    assert.strictEqual(parseT25FromAnnotations(null), null);
+  });
+  ok('🔴 #1998 読み取り: 注釈を先に読み、無ければログ・両方だめなら理由を返す（握りつぶさない）', () => {
+    const line = timingAnnotation(fakeTiming('不合格', 0.0094, 713), { istio: '1' });
+    const make = ({ anns, annThrows = false, logThrows = false }) => {
+      const calls = [];
+      const fn = (cmd, args) => {
+        calls.push(args[3]);
+        if (/check-runs\/5\/annotations$/.test(args[3])) {
+          if (annThrows) { const e = new Error('Command failed'); e.stderr = 'HTTP 403: Resource not accessible by integration\n'; throw e; }
+          return JSON.stringify(anns);
+        }
+        if (/actions\/jobs\/5\/logs$/.test(args[3])) {
+          if (logThrows) { const e = new Error('Command failed'); e.stderr = '\nHTTP 404: Not Found\n'; throw e; }
+          return logOf({ verdict: '合格', p: '0.6165', w: '563' });
+        }
+        throw new Error(`想定外の呼び出し: ${args[3]}`);
+      };
+      return { fn, calls };
+    };
+    const a = make({ anns: [annOf(line)] });
+    const ra = readT25ForJob({ repo: 'o/r', jobId: 5, execFn: a.fn });
+    assert.strictEqual(ra.source, 'annotations');
+    assert.strictEqual(ra.t25.p, 0.0094);
+    assert.ok(!a.calls.some((c) => /logs$/.test(c)), '注釈で読めたのにログも読んだ');
+    const b = make({ anns: [] });
+    const rb = readT25ForJob({ repo: 'o/r', jobId: 5, execFn: b.fn });
+    assert.strictEqual(rb.source, 'log', '注釈が無い（この変更より前の run）ならログへ落ちる');
+    assert.strictEqual(rb.t25.p, 0.6165);
+    assert.strictEqual(rb.error, null);
+    const c = make({ anns: [], annThrows: true, logThrows: true });
+    const rc = readT25ForJob({ repo: 'o/r', jobId: 5, execFn: c.fn });
+    assert.strictEqual(rc.t25, null);
+    assert.strictEqual(rc.source, null);
+    assert.strictEqual(rc.error, '注釈: HTTP 403: Resource not accessible by integration / ログ: HTTP 404: Not Found');
+  });
   ok('月の範囲: 閏年の 2 月・12 月・書式違いは落ちる', () => {
     assert.deepStrictEqual(monthRange('2028-02'), { from: '2028-02-01', to: '2028-02-29' });
     assert.deepStrictEqual(monthRange('2026-12'), { from: '2026-12-01', to: '2026-12-31' });
@@ -549,6 +646,8 @@ if (require.main === module) main();
 
 module.exports = {
   parseT25FromJobLog,
+  parseT25FromAnnotations,
+  readT25ForJob,
   categorize,
   ksDistanceUniform,
   rerunOutcomes,
