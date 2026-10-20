@@ -1250,9 +1250,39 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.DocumentIndexStatuses": {
+        "kind": "class",
+        "members": {
+          "EmbeddingPending": {
+            "source": "const",
+            "type": "string",
+            "value": "\"embedding_pending\""
+          },
+          "Indexed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"indexed\""
+          },
+          "NotIndexed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"not_indexed\""
+          },
+          "Unknown": {
+            "source": "const",
+            "type": "string",
+            "value": "\"unknown\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.DocumentListPageDto": {
         "kind": "record",
         "members": {
+          "IndexStatuses": {
+            "source": "property",
+            "type": "Dictionary<string,string>",
+            "required": false
+          },
           "Items": {
             "source": "property",
             "type": "List<DocumentDto>",

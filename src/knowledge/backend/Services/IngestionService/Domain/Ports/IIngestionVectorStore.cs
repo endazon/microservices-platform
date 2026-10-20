@@ -35,6 +35,18 @@ public interface IIngestionVectorStore
     // 起動後にバックグラウンドで走る（`QdrantKeywordIndexDiscoveryHostedService`）。既定実装（0 件）の位置づけは上と同じ。
     Task<int> EnsureKeywordIndexesForExistingPointsAsync(CancellationToken ct = default) => Task.FromResult(0);
 
+    // FR-06, SC-05, [[IADR-0565]] 決定 2 (#1993): `document_id` のキーワード索引を全コレクション（モデル別 ＋ 語彙索引）へ張る
+    // （冪等）。索引の状態の照会（`GetIndexPresenceAsync`）の facet が要る（索引の無いキーは facet できない）。
+    // 起動時のブートストラップが `EnsureKeywordIndexesAsync` の直後に呼ぶ。既定実装の位置づけは上の 3 つと同じ。
+    Task EnsureDocumentIdIndexAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+    // FR-06, SC-05, [[IADR-0565]] 決定 2 (#1993): 渡した文書のうち、どれが点を持つか（索引の状態の材料）。
+    // 🔴 **問い合わせの回数は文書の数に依らない**（コレクションごとに facet を 1 回。語彙索引は印あり・なしの 2 回）。
+    // 引けなければ例外（呼び出し元が「引けなかった」として扱う。空の集合＝未索引へ畳まない）。
+    // 既定実装は投げる（索引を持たない偽物で「点が無い」が静かに通らないように）。
+    Task<DocumentIndexPresence> GetIndexPresenceAsync(IReadOnlyCollection<Guid> documentIds, CancellationToken ct = default)
+        => throw new NotSupportedException("This vector store does not answer index presence");
+
     // FR-02: 指定コレクションへチャンクを索引する（コレクションはゲートウェイの機密区分ルーティングが決める）。
     // FR-03, SC-02, #536: `updatedAt` は文書の更新日時（DocumentUpdated.UpdatedAt）である。
     // **取り込み時刻を渡さないこと**（IADR-0149 決定 5）——渡すと再索引のたびに全文書の

@@ -68,6 +68,8 @@ public static class DocumentBffEndpoints
         // FR-06, SC-05, [[IADR-0009]], [[IADR-0561]] (#1923): **データソース（`source`）・タブ（`origin`）・機密区分・タグ・プロジェクト・
         // 保存日の範囲（`createdFrom` / `createdBefore`）** も同じ作法（ABAC の後の窓の述語）で当てる。どれも省略可で、省略は従前の応答と同じ。
         // 応答の `sourceCounts` / `projectCounts` も ABAC 後・絞り込み前の数である。
+        //
+        // FR-06, SC-05, [[IADR-0565]] (#1993): 応答の `indexStatuses` は**窓の中の文書の索引の状態**（取り込み側の gRPC 面から 1 回で引く）。
         g.MapGet("/", async (
             [AsParameters] DocumentListQuery query,
             HttpContext http, CancellationToken ct) =>
@@ -91,6 +93,17 @@ public static class DocumentBffEndpoints
             // FR-06, NFR-16 (#1897・#1923): 後段から一覧を引き切れなかったら **502**（空の一覧へ畳まない。`/bff/datasources`・`/bff/conversion/jobs` の一覧と同じ向き）。
             // 🔴 空のページへ畳むと、画面は「文書はまだありません。」と出し、本当の 0 件と区別できない（#1897 の本質）。
             //   応答の本文は中立の文言だけで、文書の有無も件数も載せない（存在秘匿は崩れない）。
+            // FR-06, SC-05, [[IADR-0009]], [[IADR-0565]] (#1993): **窓の中の文書の索引の状態**を取り込み側から 1 回で引く。
+            // 🔴 窓を切り出した後（＝ABAC の後）に、窓の ID だけを渡す。権限外の文書の状態は問い合わせない。
+            // 🔴 引けなければ全件 `unknown`（一覧そのものは失敗させない）。
+            if (page is not null)
+            {
+                var indexStatus = http.RequestServices.GetRequiredService<DocumentIndexStatusGrpcClient>();
+                page = page with
+                {
+                    IndexStatuses = await indexStatus.GetStatusesAsync(http, [.. page.Items.Select(d => d.Id)], ct),
+                };
+            }
             return page is null
                 ? Results.Problem(
                     statusCode: StatusCodes.Status502BadGateway,

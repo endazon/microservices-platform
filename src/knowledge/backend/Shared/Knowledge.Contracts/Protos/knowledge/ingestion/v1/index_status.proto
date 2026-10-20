@@ -1,0 +1,59 @@
+// FR-06, FR-02, SC-05, NFR-09, NFR-16, ADR-0029, ADR-0075, ADR-0127, IADR-0009, IADR-0379, IADR-0401, IADR-0536, IADR-0565 (#1993):
+// 文書の**索引の状態**（索引済み・埋め込み待ち・未索引）を、文書 ID の集合から引く 1 口の gRPC 契約。
+//
+// ■ 置き場と所有（IADR-0379 決定 1）: 所有者は IngestionService（検索の索引の点を書く側）。置き場は knowledge ユニットの
+//   共有契約プロジェクト `Knowledge.Contracts` の `Protos/knowledge/ingestion/v1/`。
+//
+// ■ versioning（IADR-0379 決定 2）: フィールド番号は不変。削除は reserved に残す。破壊的変更は v2 の並走。
+//
+// ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
+//   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
+//
+// ■ 🔴 **この面は利用者の権限で動かない。ABAC は呼び出し側（BFF）で済んでいる。**
+//   呼び出し元は文書管理の一覧（SC-05）の 1 ページ分の、**ABAC を通った文書の ID だけ**を渡す（IADR-0009 の存在秘匿）。
+//   面が返すのは渡された ID の状態だけであり、文書の表題・属性・件数・本文は返さない（呼び出し元が要らないものを面へ出さない。IADR-0401 決定 2）。
+//
+// ■ 🔴 **1 回でまとめて引く（N+1 にしない）。上限は 100 件**（BFF の 1 ページの上限と同じ）。超えたら INVALID_ARGUMENT。
+//
+// ■ 🔴 **「引けなかった」と「状態」を分ける**（IADR-0401 決定 5）。索引（Qdrant）が引けなかったのは gRPC status（UNAVAILABLE）であり、
+//   NOT_INDEXED（どこにも点が無い）へ畳まない。畳むと、索引の障害が「全部未索引」に見える。
+syntax = "proto3";
+
+package knowledge.ingestion.v1;
+
+option csharp_namespace = "Knowledge.Contracts.Grpc.Ingestion.V1";
+
+// 文書の索引の状態の照会。ServiceCaller（platform-service）を要求する。
+// **書き込み・削除・点の中身の口はこの面に存在しない**。
+service DocumentIndexStatus {
+  // 渡された文書 ID ごとの索引の状態を返す（要求の順。重複は 1 つに畳む）。
+  // 0 件は空の応答。100 件を超える・UUID でない ID は INVALID_ARGUMENT。
+  rpc GetStatuses(GetIndexStatusesRequest) returns (GetIndexStatusesResponse);
+}
+
+message GetIndexStatusesRequest {
+  // 文書 ID（UUID の文字列）。呼び出し元が ABAC で絞った後の ID だけを渡す。
+  repeated string document_ids = 1;
+}
+
+message GetIndexStatusesResponse {
+  // 要求の ID ごとに 1 つ（要求の順。重複は最初の位置に 1 つ）。
+  repeated DocumentIndexState states = 1;
+}
+
+message DocumentIndexState {
+  // 正規化した文書 ID（小文字の UUID）。
+  string document_id = 1;
+  IndexStatus status = 2;
+}
+
+// 索引の状態。UNSPECIFIED は送らない（受け手は「分からない」として扱う）。
+enum IndexStatus {
+  INDEX_STATUS_UNSPECIFIED = 0;
+  // ベクトルのコレクションか語彙索引（埋め込み待ちの印なし）に点がある。高機密の語彙索引だけの文書（ADR-0127）もここ。
+  INDEX_STATUS_INDEXED = 1;
+  // 語彙索引に埋め込み待ちの印（`embedding_pending`）の点が 1 つでもある（IADR-0536）。一部のチャンクだけが埋め込めた文書もここ。
+  INDEX_STATUS_EMBEDDING_PENDING = 2;
+  // どのコレクションにも点が無い。
+  INDEX_STATUS_NOT_INDEXED = 3;
+}

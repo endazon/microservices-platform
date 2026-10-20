@@ -408,15 +408,20 @@
     "docs/tests/SC-05_document-management.md": [
       "BffDocumentListFacetTests",
       "BffDocumentListFilterTests",
+      "BffDocumentListIndexStatusTests",
       "BffDocumentListPagingTests",
       "BffDocumentWriteEndpointTests",
       "DocumentEndpointVersioningTests",
+      "DocumentIndexStatusGrpcServiceTests",
       "DocumentListKeysetPostgresTests",
       "DocumentListPagingTests",
       "DocumentMapperTests",
       "DocumentReadGrpcMappingTests",
       "DocumentVersioningTests",
-      "GrpcDocumentReadTests"
+      "EastWestGrpcDeploymentWiringTests",
+      "GrpcDocumentReadTests",
+      "IndexStatusQdrantTests",
+      "QdrantIndexPresenceTests"
     ],
     "docs/tests/SC-06_datasource-management.md": [
       "BffDataSourceEndpointTests",

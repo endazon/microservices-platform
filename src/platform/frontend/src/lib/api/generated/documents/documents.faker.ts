@@ -28,6 +28,8 @@ export const getBffDocumentListResponseMock = (overrideResponse: Partial<Extract
         [faker.string.alphanumeric(5)]: faker.number.int()
       }, projectCounts: {
         [faker.string.alphanumeric(5)]: faker.number.int()
+      }, indexStatuses: {
+        [faker.string.alphanumeric(5)]: faker.helpers.arrayElement(['indexed','embedding_pending','not_indexed','unknown'] as const)
       }, ...overrideResponse})
 
 export const getBffDocumentCreateResponseMock = (overrideResponse: Partial<Extract<DocumentDto, object>> = {}): DocumentDto => ({id: faker.string.uuid(), title: faker.string.alpha({length: {min: 10, max: 20}}), status: faker.string.alpha({length: {min: 10, max: 20}}), markdownUri: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), version: faker.number.int(), attributes: {
