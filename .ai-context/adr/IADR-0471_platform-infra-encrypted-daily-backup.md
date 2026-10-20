@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-21, NFR-05, NFR-18, ADR-0002, ADR-0008, IADR-0066, IADR-0068, IADR-0082, IADR-0210, IADR-0369, IADR-0457]
 author: claude
 created: 2026-09-26
-updated: 2026-10-16
+updated: 2026-10-20
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
 related_specs:
@@ -208,3 +208,10 @@ age の公開鍵で暗号化して秘密鍵はクラスタに置かない、日�
 - **事象**: Alpine v3.24 community の `age` が `1.3.2-r0` へ上がり、`age-1.3.1-r6.apk` がオリジンから消えた。Images の `build-local (platform-backup)` が `wget: server returned error: HTTP/1.1 404 Not Found` で落ち、`deploy/` に触れない PR まで赤になった。決定 3 の追記に書いた「上流が `-rN` を上げると取得が失敗してビルドが止まる」がそのまま起きたものであり、**止まったこと自体は意図どおり**（黙って別の版を入れていない）。
 - **対応**: 運用 Runbook §6 の手順どおり、`AGE_VERSION=1.3.2-r0` と両アーキテクチャの sha256（x86_64 `1e304c3b…5fd72` / aarch64 `2206f3c1…ea401e`。新しい空ディレクトリへ CDN から取得して `sha256sum` で実測）へ上げ、タグを `k3d-local/platform-backup:pg16.15-age1.3.2-r0` へ揃えた（`LOCAL_ONLY_IMAGES`・2 つの CronJob）。ベース（`postgres:16.15-alpine3.24` の digest）・取り方（直接取得・sha256 照合・`apk add <ファイル>` の署名検証）は替えていない。上の本文の `age-1.3.1-r6.apk`・タグ・CI の実測値（`v1.3.1`）は 2026-09-26 時点の記録として残す。
 - **脆さ**: `-rN` は依存の再ビルドでも上がるため、同じ赤は予告なく再発する。リポジトリの中で安価に和らげる手は無い（Alpine の安定版ブランチは古いリビジョンを置かない。最新を探しに行くフォールバックや `--allow-untrusted` は固定の強さを下げる）。上流リリース（`github.com/FiloSottile/age/releases`）からの sha256 固定の取得や、定期実行での早期検知は、決定 3 の「版・チェックサム・署名」を変えるため #1825 に提案として残し、本追記では採らない。
+
+## ［2026-10-20 追記 / #2003・#2005］2 回目: Alpine が 1.3.2-r0 を消した（1.3.2-r1 へ上げた）。検知を日次の監視へ置いた
+
+- **事象**: Alpine v3.24 community の `age` が 2026-10-14 に `1.3.2-r1` へ作り直され、`age-1.3.2-r0.apk` がオリジンから消えた。2026-10-20 に Images の `build-local (platform-backup)` が 404 で落ちて発覚した（作り直しから 6 日）。#2003 が運用 Runbook §6 の手順で `AGE_VERSION=1.3.2-r1` と両アーキテクチャの sha256 へ上げた。
+- **同型の 2 回目**（1 回目は上の 2026-10-08 追記 / #1825）。運用規約の「検査器の追加は同型事故 2 回から」に当たるので、
+  [IADR-0568](./IADR-0568_age-apkindex-daily-watch.md) が Dockerfile の `AGE_VERSION` と APKINDEX の版を日次で突き合わせ、ずれたら専用 issue（ラベル `age-apkindex-drift`）を起票するようにした。
+  **版は自動で上げない**（sha256 は人が確かめる。本 IADR の固定の意味を保つ）。作り直しそのものは防げないので、上の「脆さ」は残る。
