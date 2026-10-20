@@ -641,4 +641,4 @@
 | [IADR-0561](./IADR-0561_document-list-origin-tabs-facets-preview.md) | 文書管理の一覧に、機械の収集と人の文書を分けるタブ（既定は人の文書）と、データソース・機密区分・タグ・プロジェクト・保存日の絞り込みを BFF が ABAC の後に当てる形で足し、データソースは BFF が文書ごとに 1 つの鍵に導く（#1923） | Accepted |
 | [IADR-0562](./IADR-0562_anthropic-official-sdk-migration.md) | LLM ゲートウェイの Claude 呼び出しを Anthropic.SDK 4.0.0 から公式 Anthropic パッケージ（12.53.0）へ移し、SDK の例外は provider で HttpRequestException へ包み直し、再試行は 0、期限は Llm:AnthropicTimeoutSeconds を SDK の Timeout へ写す（#1749） | Accepted |
 | [IADR-0563](./IADR-0563_wiki-js-write-gate.md) | Wiki.js へ同時に書き込む数を設定値 Wiki:MaxParallelWrites（既定 1・1〜4）にし、同期と撤去の両方の受け口がプロセスに 1 つの門を通り、両リスナーの数も同じ値へ明示する。既に非公開のページへアーカイブの update を送らない（#1971） | Accepted |
-| [IADR-0566](./IADR-0566_ingestion-budget-exhausted-alert.md) | 取り込みの総枠（embedding-budget / lexical-budget）の使い切りに警報 IngestionBudgetExhausted（直近 1 時間の前進 > 0・for 5m・warning）を張る（#1991） | Accepted |
+| [IADR-0567](./IADR-0567_ingestion-budget-exhausted-alert.md) | 取り込みの総枠（embedding-budget / lexical-budget）の使い切りに警報 IngestionBudgetExhausted（直近 1 時間の前進 > 0・for 5m・warning）を張る（#1991） | Accepted |

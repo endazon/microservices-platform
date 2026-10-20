@@ -314,7 +314,7 @@ groups:
           summary: "ユニットの主体が project を付けずに文書を保存した（0 が正常）"
           description: "DocumentService の documents_unit_project_missing_total が直近 1 時間で前進した。ユニット（サービスアカウント）の保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みが起きたことを意味する。documents_client_id / documents_operation で書き手と操作を特定する。保存は止まっていない（計器であって統制ではない。ADR-0085 決定 4）。"
 
-  # FR-02, FR-03, ADR-0127 決定 1, ADR-0027, IADR-0566 (#1991): 取り込みの総枠の使い切り（**0 が正常**）。
+  # FR-02, FR-03, ADR-0127 決定 1, ADR-0027, IADR-0567 (#1991): 取り込みの総枠の使い切り（**0 が正常**）。
   # 埋め込みの総枠（embedding-budget）・語彙索引への書き込みの総枠（lexical-budget。IADR-0560）を使い切った文書は、
   # 残りのチャンクを書かずに再試行せずデッドレターへ送られ、**一部の点だけが検索に現れる**（黙って一部だけが索引される）。
   # 🔴 **デッドレターの警報は無い**（下の follow-up の RabbitMqDeadLetter は未配線）ので、計器の前進をここで鳴らす。

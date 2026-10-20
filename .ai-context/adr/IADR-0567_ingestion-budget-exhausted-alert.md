@@ -1,5 +1,5 @@
 ---
-title: IADR-0566 取り込みの総枠（embedding-budget / lexical-budget）の使い切りに警報 IngestionBudgetExhausted（直近 1 時間の前進 > 0・for 5m・warning）を張る。デッドレターの滞留の警報は無く、一部だけ索引された文書に気付く手段がログと計器だけだったため
+title: IADR-0567 取り込みの総枠（embedding-budget / lexical-budget）の使い切りに警報 IngestionBudgetExhausted（直近 1 時間の前進 > 0・for 5m・warning）を張る。デッドレターの滞留の警報は無く、一部だけ索引された文書に気付く手段がログと計器だけだったため
 type: impl-adr
 status: Accepted
 related_ids: [FR-02, FR-03, UC-04, NFR-21, ADR-0127, ADR-0027, ADR-0006, IADR-0560, IADR-0420, IADR-0559]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20261020_1991_ingestion-budget-alert.md
 ---
 
-# IADR-0566: 取り込みの総枠の使い切りに警報を張る（#1991）
+# IADR-0567: 取り込みの総枠の使い切りに警報を張る（#1991）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

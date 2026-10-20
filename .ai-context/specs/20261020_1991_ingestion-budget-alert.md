@@ -2,7 +2,7 @@
 title: 取り込みの総枠（embedding-budget / lexical-budget）の使い切りに警報 IngestionBudgetExhausted（直近 1 時間の前進 > 0・5 分・warning）を張り、Prometheus・Grafana の経路 A/B の 4 か所に揃える（#1991）
 type: spec
 status: done
-related_ids: [FR-02, FR-03, UC-04, NFR-21, ADR-0127, ADR-0027, ADR-0006, IADR-0566, IADR-0560, IADR-0536, IADR-0420]
+related_ids: [FR-02, FR-03, UC-04, NFR-21, ADR-0127, ADR-0027, ADR-0006, IADR-0567, IADR-0560, IADR-0536, IADR-0420]
 author: claude
 created: 2026-10-20
 updated: 2026-10-20
@@ -14,7 +14,7 @@ issue: "#1991"
 
 # 仕様書: 取り込みの総枠の使い切りに警報を張る（#1991）
 
-> 本仕様書は実装着手前に作成した（着手 2026-10-20）。実装の基点は MSP `origin/develop` `b75bfebf`。判断は IADR-0566。
+> 本仕様書は実装着手前に作成した（着手 2026-10-20）。実装の基点は MSP `origin/develop` `b75bfebf`。判断は IADR-0567。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -65,7 +65,7 @@ issue の案「デッドレターの滞留の既存の警報で足りる」は�
 
 | 変異 | 結果 |
 | --- | --- |
-| `alerts.yml` の `lexical-budget` を外す | #1991 の試験が赤（呼び出し先の集合が違う） |
+| 4 か所の写しから `lexical-budget` を外す | #1991 の試験が赤（呼び出し先の集合が違う）。`alerts.yml` だけから外すと、先に `check-prometheus-alerts-parity` が赤 |
 | `IsBudgetExhausted` に `ContentTarget` を足す | #1991 の試験が赤（集合が `['content', 'embedding-budget', 'lexical-budget']`） |
 | `TimeoutCounterName` を変える | #1991 の試験が赤（名前の固定） |
 

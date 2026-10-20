@@ -20,7 +20,7 @@
  *    #1665 で所有者の読み取りのポリシーの `OwnerReadPolicyMissing` と `OwnerReadPolicyCheckSeriesAbsent` を足して 20 → 22。
  *    #1818 で SC-12 の登録簿と IdP の照合の `McpClientIdpDrift` と `McpClientIdpReconciliationSeriesAbsent` を足して 22 → 24。
  *    #1746（IADR-0559）で再順位付けの有効時の目標の未確定を鳴らす `SearchRerankLatencyTargetUndefined` を足して 24 → 25。
- *    #1991（IADR-0566）で取り込みの総枠の使い切りを鳴らす `IngestionBudgetExhausted` を足して 25 → 26。
+ *    #1991（IADR-0567）で取り込みの総枠の使い切りを鳴らす `IngestionBudgetExhausted` を足して 25 → 26。
  *    🔴 **件数は導出値なので数え直すこと** —— この行は #1246 の 2 件を取りこぼして
  *    「9 件」のまま 2 世代残っていた。**走査ではなく計算し直す。**）
  *   ここで見るのは下の 7 点だけである（7 は「受理されるか」の一部＝uid の制約だけを先回りして見る）。

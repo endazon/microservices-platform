@@ -1041,7 +1041,7 @@ data:
                   conditions:
                     - evaluator: { type: gt, params: [0] }
 
-      # FR-02, FR-03, ADR-0127 決定 1, IADR-0566 (#1991): 取り込みの総枠の使い切り（**0 が正常**）。注記の正本は deploy/prometheus/alerts.yml。
+      # FR-02, FR-03, ADR-0127 決定 1, IADR-0567 (#1991): 取り込みの総枠の使い切り（**0 が正常**）。注記の正本は deploy/prometheus/alerts.yml。
       # 🔴 **`noDataState: OK`**（平常時は系列が無い）。評価器は `gt 0`（expr の `> 0` の後に残る値は前進量＝正の数。#1577 の形ではない）。
       - orgId: 1
         name: ingestion-budget
