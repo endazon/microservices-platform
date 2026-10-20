@@ -11,7 +11,7 @@ ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02, NFR-17, NF
 adrs: [ADR-0138, ADR-0140, ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
 iadrs: [IADR-0552, IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531, IADR-0535, IADR-0533, IADR-0528, IADR-0562, IADR-0565]
 specs: [20261017_1749_anthropic-official-sdk, 20261017_1903_drop-pre-5-5-claude-models, 20261016_1960_adr-0140-tier-b-residency-zdr, 20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261020_1997_stream-idle-timeout]
-issues: [#1749, #1903, #1960, #201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, #1902, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783, planning#795, #1997]
+issues: [#1749, #1903, #1960, #201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, #1902, #1997, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783, planning#795]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
