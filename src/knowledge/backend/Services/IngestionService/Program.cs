@@ -6,6 +6,7 @@ using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using IngestionService.Domain.Ports;
 using IngestionService.Features.Ingestion.Ingest;
 using IngestionService.Features.Ingestion.ReembedPending;
+using IngestionService.Features.Indexing.GetIndexStatuses;
 using IngestionService.Common.Observability;
 using Knowledge.Contracts.Events;
 using IngestionService.Domain;
@@ -184,6 +185,10 @@ var app = builder.Build();
 // FR-15, IADR-0029: 自己申告（gRPC 面 `ServiceIntrospection/Get`。［2026-10-10 / #1517］REST の GET /internal/introspection は撤去した）。
 // メッシュ内部限定（ingress へ公開しない。IADR-0017 ネットワーク分離 / IADR-0026 mTLS が防御）。
 app.MapPlatformIntrospection();
+// FR-06, SC-05, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0565]] (#1993): 文書の索引の状態の gRPC 面
+// （`knowledge.ingestion.v1.DocumentIndexStatus`）。呼び出し元は BFF の文書管理の一覧（ABAC を通った 1 ページ分の ID だけを渡す）。
+// ServiceCaller を要求する（利用者のトークンでは通らない）。h2c リスナは自己申告の面と同じ（`Grpc:Port`）。
+app.MapGrpcService<DocumentIndexStatusGrpcService>();
 
 app.Run();
 

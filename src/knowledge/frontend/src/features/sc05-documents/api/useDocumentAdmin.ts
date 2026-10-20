@@ -172,6 +172,8 @@ function okPage(res: Parameters<typeof okData>[0]): DocumentListPageDto {
     // ［2026-10-17 / #1923・IADR-0561］同上（旧い BFF は返さない）。
     sourceCounts: page.sourceCounts ?? {},
     projectCounts: page.projectCounts ?? {},
+    // ［2026-10-20 / #1993］旧い BFF は返さない → 空（列は全件「不明」。未索引へ倒さない）。
+    indexStatuses: page.indexStatuses ?? {},
   };
 }
 

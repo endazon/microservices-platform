@@ -688,6 +688,75 @@ public class QdrantIngestionVectorStore(
         return payload;
     }
 
+    // FR-06, SC-05, [[IADR-0565]] 決定 2 (#1993): 文書 ID のペイロードキー（書き込み〔`BuildChunkPayload`〕・削除・索引の状態の照会が同じ値を使う）。
+    internal const string DocumentIdKey = "document_id";
+
+    // [[IADR-0565]] 決定 2: `document_id` のキーワード索引を全コレクションへ張る（`EnsureKeywordIndexesAsync` と同じ作法。失敗は上げる）。
+    public async Task EnsureDocumentIdIndexAsync(CancellationToken ct = default)
+    {
+        foreach (var name in AllCollectionNames)
+            await client.CreatePayloadIndexAsync(name, DocumentIdKey, PayloadSchemaType.Keyword,
+                BuildKeywordIndexParams(), cancellationToken: ct);
+    }
+
+    // [[IADR-0565]] 決定 2: 渡した文書 ID のどれかを持つ点だけを選ぶフィルタ（純関数）。
+    internal static Filter BuildDocumentIdsFilter(IEnumerable<Guid> documentIds)
+    {
+        var keywords = new RepeatedStrings();
+        keywords.Strings.AddRange(documentIds.Select(id => id.ToString()));
+        return new Filter
+        {
+            Must =
+            {
+                new Condition { Field = new FieldCondition { Key = DocumentIdKey, Match = new Match { Keywords = keywords } } }
+            }
+        };
+    }
+
+    // FR-06, SC-05, [[IADR-0565]] 決定 2 (#1993): 渡した文書のうち、どれが点を持つか。
+    // 🔴 **コレクションごとに facet（`document_id`）を 1 回**（語彙索引は印あり・印なしの 2 回）。文書ごとに数えない（N+1 にしない）。
+    // facet の上限は渡した ID の数（フィルタが渡した ID に絞るので、それより多くの値は返らない）。数は捨てる（有無だけを使う）。
+    public async Task<DocumentIndexPresence> GetIndexPresenceAsync(
+        IReadOnlyCollection<Guid> documentIds, CancellationToken ct = default)
+    {
+        var indexed = new HashSet<Guid>();
+        var pending = new HashSet<Guid>();
+        if (documentIds.Count == 0)
+            return new DocumentIndexPresence(indexed, pending);
+
+        foreach (var c in _collections)
+            await CollectDocumentIdsAsync(c.Name, BuildDocumentIdsFilter(documentIds), documentIds.Count, indexed, ct);
+
+        // 語彙索引: 印ありの点は埋め込み待ち、印なしの点（高機密の語彙索引だけの文書）は索引済み。
+        var pendingFilter = BuildDocumentIdsFilter(documentIds);
+        pendingFilter.Must.Add(BuildEmbeddingPendingFilter().Must[0]);
+        var lexicalOnlyFilter = BuildDocumentIdsFilter(documentIds);
+        lexicalOnlyFilter.MustNot.Add(BuildEmbeddingPendingFilter().Must[0]);
+        try
+        {
+            await CollectDocumentIdsAsync(_lexical, pendingFilter, documentIds.Count, pending, ct);
+            await CollectDocumentIdsAsync(_lexical, lexicalOnlyFilter, documentIds.Count, indexed, ct);
+        }
+        // 語彙索引がまだ無い（ブートストラップの失敗）なら、そこに点も無い（`DeleteByDocumentFromAllAsync` と同じ扱い）。
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound && !ct.IsCancellationRequested)
+        {
+        }
+
+        return new DocumentIndexPresence(indexed, pending);
+    }
+
+    private async Task CollectDocumentIdsAsync(string collection, Filter filter, int limit, HashSet<Guid> into,
+        CancellationToken ct)
+    {
+        var facets = await client.FacetAsync(collection, DocumentIdKey, filter: filter, limit: (ulong)limit, exact: true,
+            cancellationToken: ct);
+        foreach (var hit in facets.Hits)
+        {
+            if (hit.Count > 0 && hit.Value.HasStringValue && Guid.TryParse(hit.Value.StringValue, out var id))
+                into.Add(id);
+        }
+    }
+
     // FR-02, FR-05: 全モデル別コレクションから当該文書のチャンクを削除する（機密区分変更時の残存防止）。
     public async Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
     {

@@ -294,7 +294,11 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 632918,
+  "initialTotalBytes": 633157,
+  "$comment_initialTotalBytes_20261020_1993_document-list-index-status": [
+    "［2026-10-20 / #1993 文書管理の一覧の索引の状態の列］632,918 → 633,157（+239 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "増分は初期ロードに載る ja / en のカタログ（messages.ts）に文言 5 件（索引・索引済み・埋め込み待ち・未索引・不明）が加わった分である。画面のコード（documentIndexStatus.ts・列）は SC-05 の遅延チャンクに入る。"
+  ],
   "$comment_initialTotalBytes_20261017_1923_document-list-tabs-columns-preview": [
     "［2026-10-17 / #1923 の残り 文書管理の一覧のタブ・データソースとタグの列・出典・本文のプレビュー］631,315 → 632,918（+1,603 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
     "A/B で帰属を確かめた: 本件のコードのまま ja / en のカタログ（messages.ts）だけを絞り込み群の PR の版へ戻すと 631,315（その床ちょうど）になる。増分は初期ロードに載るカタログに文言 19 件が加わった分で、画面のコード（DocumentOriginTabs・DocumentPreviewPanel ほか）は SC-05 の遅延チャンクに入る。"

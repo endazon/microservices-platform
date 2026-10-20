@@ -30,6 +30,8 @@ public class ClaudeProviderContentBlockLogTests
     private const string RedactedThinkingBlock = """{"type":"redacted_thinking","data":"opaque"}""";
     private const string ServerToolUseBlock = """{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{}}""";
     private const string FutureBlock = """{"type":"some_future_block","payload":1}""";
+    private const string SecondBodyText = "後続の本文{\"action\":\"Hold\"}";
+    private const string SecondTextBlock = """{"type":"text","text":"後続の本文{\"action\":\"Hold\"}"}""";
 
     private static string Envelope(string blocks) =>
         "{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-haiku-5-5\","
@@ -158,14 +160,45 @@ public class ClaudeProviderContentBlockLogTests
         counts.Should().BeEmpty();
     }
 
-    // T-41: 計器の属性値は 3 値に閉じる（型名は上流が決める非有界な値）。
+    // T-44 (#2000, IADR-0564): 2 個目以降の text ブロックは本文に使わない（連結しない）が、黙って捨てない。
+    // 件数を計器（型 text）へ、件数と文字数を Warning へ残す。本文の文字列はどちらのブロックもログに載せない。
+    [Fact]
+    public async Task 二個目以降のtextブロックを捨てたときは件数を計器とWarningに残す()
+    {
+        var (logs, counts, text) = await CompleteAsync(Envelope($"{ThinkingBlock},{TextBlock},{SecondTextBlock},{SecondTextBlock}"));
+
+        text.Should().Be(BodyText);
+        var warning = logs.Should().ContainSingle(e => e.Level == LogLevel.Warning).Which;
+        warning.Values["DroppedTextBlocks"].Should().Be(2);
+        warning.Values["UsedTextLength"].Should().Be(BodyText.Length);
+        warning.Values["DroppedTextLengths"].Should().Be($"{SecondBodyText.Length}, {SecondBodyText.Length}");
+        warning.Message.Should().NotContain(BodyText).And.NotContain("後続の本文");
+        counts.Should().Equal(new Dictionary<string, long>
+        {
+            [AnthropicContentBlockMetrics.TypeThinking] = 1,
+            [AnthropicContentBlockMetrics.TypeText] = 2,
+        });
+    }
+
+    // T-44: text ブロックが 1 個だけなら text は数えない（陰性対照）。
+    [Fact]
+    public async Task textブロックが1個だけならtextを数えない()
+    {
+        var (_, counts, _) = await CompleteAsync(Envelope($"{ThinkingBlock},{TextBlock}"));
+
+        counts.Should().NotContainKey(AnthropicContentBlockMetrics.TypeText);
+    }
+
+    // T-41: 計器の属性値は 4 値に閉じる（型名は上流が決める非有界な値。text は #2000 で追加）。
     [Theory]
     [InlineData("thinking", "thinking")]
     [InlineData("redacted_thinking", "redacted_thinking")]
+    [InlineData("text", "text")]
+    [InlineData("Text", "other")]
     [InlineData("server_tool_use", "other")]
     [InlineData("(型不明)", "other")]
     [InlineData("Thinking", "other")]
-    public void 計器の型属性は3値に閉じる(string type, string expected)
+    public void 計器の型属性は4値に閉じる(string type, string expected)
     {
         AnthropicContentBlockMetrics.Normalize(type).Should().Be(expected);
     }

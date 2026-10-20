@@ -3,15 +3,15 @@ title: SC-05 文書管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-10-17
+updated: 2026-10-20
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-09, SC-03, SC-05, SC-06, SC-07, UC-03]
 adrs: [ADR-0031, ADR-0066]
-iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308, IADR-0537, IADR-0545, IADR-0561]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation, 20261014_1923_document-list-pagination, 20261015_1923_document-list-sort-filter, 20261017_1923_document-list-facets-preview]
-issues: [#501, #1065, #1923, #1897]
+iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308, IADR-0537, IADR-0545, IADR-0561, IADR-0565]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation, 20261014_1923_document-list-pagination, 20261015_1923_document-list-sort-filter, 20261017_1923_document-list-facets-preview, 20261020_1993_document-list-index-status]
+issues: [#501, #1065, #1923, #1897, #1993]
 -->
 
 # テスト仕様書: 文書管理
@@ -266,6 +266,52 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | K1 | gRPC の写像 | データソースの表示名・原本の所在は presence で運び、null と空文字を分ける（全項目の往復の器にも足した） |
 | K2 | REST の写像 | 台帳の `DataSourceName` / `OriginalUri` が同名の列から写り、無ければ null |
 
+## 一覧の索引の状態の列（索引済み・埋め込み待ち・未索引・不明）
+
+> **［2026-10-20 追記］** 列の見直しの最後の残り。取り込み側が文書 ID の集合から索引の状態を返す gRPC 面を持ち、BFF がページを切り出した後に
+> そのページの ID だけを 1 回で問い合わせる。引けなければ全件「不明」で、一覧は失敗させない。
+
+### 画面（Vitest）
+
+テスト: `DocumentManagementPage.test.tsx` ／ `documentIndexStatus.test.ts`（純関数）
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| L1 | 列 | 列「索引」に 4 値（索引済み・埋め込み待ち・未索引・不明）を文言つきのバッジで出す。応答に鍵の無い文書は「不明」 | `shows the index state of each document and unknown when the key is missing` |
+| L2 | 旧い応答 | 項目そのものが無い応答でも一覧は出て、全件「不明」 | `reads a response without index statuses as unknown for every row` |
+| L3 | 写像 | 4 値の文言と色（埋め込み待ちだけ警告色）。鍵が無ければ「不明」で未索引へ倒さない。未知の値は生値 | `documentIndexStatusView` |
+
+### BFF（xUnit）
+
+テスト: `Platform.Bff.Tests/BffDocumentListIndexStatusTests.cs`
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| M1 | 結合 | ページの文書の状態が 3 値で載り、照会はページの ID だけを 1 回（N+1 にしない） | `窓の文書の状態が3値で出て_照会は窓のIDを1回だけ` |
+| M2 | 照会しない | ページが空・許可ポリシーが無いときは照会しない | `窓が空なら照会しない` ／ `許可ポリシーが無いときは照会しない` |
+| M3 | **存在秘匿** | 権限外の文書・他人の個人資料の ID を問い合わせない。混ぜた台帳と混ぜない台帳で応答と照会した ID が一致（陽性対照: 区分を広げれば権限外も照会に出る） | `権限外の文書と他人の個人資料の状態は問い合わせない` |
+| M4 | 縮退 | UNAVAILABLE・INTERNAL・期限切れ・INVALID_ARGUMENT・s2s トークン取得失敗で全件「不明」、一覧は 200 | `取り込み側が応答しないときは全件不明で一覧は失敗しない` |
+| M5 | 値 | 未指定・未知の値は「不明」（未索引へ倒さない） | `未指定の値は不明として読む` ／ `値の写しは3値と不明` |
+| M6 | 登録 | 宛先が無くても登録し、呼ぶと全件「不明」。宛先が在ればキー付きのチャネルを 1 本だけ（二重登録でも 1 本） | `宛先が無ければ登録はされ_呼ぶと全件不明` ／ `宛先が在ればキー付きのチャネルを1本だけ張る` |
+
+配線（helm・compose の BFF の宛先 `Services__IngestionServiceGrpc`）は `EastWestGrpcDeploymentWiringTests` の経路 I-1 が固定する。
+
+### 取り込み側（IngestionService・xUnit）
+
+テスト: `IngestionService.Tests/Features/Indexing/GetIndexStatuses/DocumentIndexStatusGrpcServiceTests.cs` ／
+`IngestionService.Tests/Infrastructure/ExternalServices/QdrantIndexPresenceTests.cs` ／
+実 Qdrant: `Knowledge.IntegrationTests/Search/IndexStatusQdrantTests.cs`（CI の integration）
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| N1 | 分類 | 埋め込み待ちの印の点が 1 つでもあれば埋め込み待ち（一部だけ埋め込めた文書も）、印なしの点だけなら索引済み、無ければ未索引 |
+| N2 | 面の検証 | 上限 100 ちょうどは通り、超過・UUID でない ID は INVALID_ARGUMENT で索引を呼ばない。重複は 1 つ、要求の順で返す。空は空 |
+| N3 | 「引けなかった」 | 索引の失敗は UNAVAILABLE（詳細を載せない）。未索引へ畳まない |
+| N4 | 面の権限 | 本番の面は ServiceCaller の後ろにある（s2s の無い要求は認可で止まる） |
+| N5 | 問い合わせの回数 | コレクションごとに facet 1 回（語彙索引は印あり・なしの 2 回）。ID が 1 件でも 100 件でも同じ回数で、どれも渡した ID に絞る |
+| N6 | 索引 | ブートストラップが `document_id` のキーワード索引を全コレクションへ張る（既存の索引の後） |
+| N7 | 実 Qdrant | 本番の書き込みの口で書いた文書が 3 値に分かれ、ページの外の文書は数えない。索引が無ければ facet は失敗する（陰性対照） |
+
 ## ABAC・存在秘匿の担保
 
 - 読み取りは ABAC スコープ内のみ返る。書き込みは BFF が対象文書のスコープを先に確かめ、
@@ -286,6 +332,8 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 - `dotnet test src/knowledge/backend/Services/DocumentService/Tests --filter "DocumentListPagingTests|ListDocuments_"`（同・後段）
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentListFilterTests`（一覧の並べ替え・絞り込み）
 - `PLATFORM_TEST_POSTGRES=<接続文字列> dotnet test src/knowledge/backend/Tests/Knowledge.IntegrationTests --filter DocumentListKeysetPostgresTests`（実 PostgreSQL）
+- `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentListIndexStatusTests`（索引の状態の結合）
+- `dotnet test src/knowledge/backend/Services/IngestionService/Tests --filter "DocumentIndexStatusGrpcServiceTests|QdrantIndexPresenceTests"`（同・取り込み側）
 
 <!-- trace-table:
 row1: SC-05, FR-06

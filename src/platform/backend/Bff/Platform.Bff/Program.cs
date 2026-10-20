@@ -181,6 +181,12 @@ builder.Services.AddDocumentReadGrpcClient(builder.Configuration);
 // s2s へ替えると**展開が黙って空になる**。属性値の照会には近傍展開が無い。
 builder.Services.AddAttributeValuesGrpcClient(builder.Configuration);
 
+// FR-06, SC-05, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379, IADR-0565 (#1993):
+// 文書管理の一覧の索引の状態（取り込み側の `knowledge.ingestion.v1.DocumentIndexStatus`）を east-west gRPC で引く。
+// `Services:IngestionServiceGrpc`（h2c アドレス）が無ければ常に `UNAVAILABLE` を受け取り、状態は「不明」へ縮退する（一覧は失敗させない）。
+// 資格情報は BFF 自身の s2s トークン。渡すのは ABAC を通った窓の中の文書の ID だけである。
+builder.Services.AddDocumentIndexStatusGrpcClient(builder.Configuration);
+
 // FR-12, UC-06, SC-07: 変換ジョブ管理の集約用（管理者・運用者限定）。ワーカーの HTTP サーフェスは 8080。
 builder.Services.AddHttpClient("ConversionService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:ConversionService"]

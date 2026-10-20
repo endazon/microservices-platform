@@ -69,6 +69,8 @@ function listPage(
     statusCounts?: Record<string, number>;
     sourceCounts?: Record<string, number>;
     projectCounts?: Record<string, number>;
+    /** #1993: 省略すると項目ごと出さない（旧い BFF の応答。全件「不明」になる）。 */
+    indexStatuses?: Record<string, string>;
   } = {},
 ) {
   const total = page.total ?? items.length;
@@ -81,6 +83,7 @@ function listPage(
     statusCounts: page.statusCounts ?? {},
     sourceCounts: page.sourceCounts ?? {},
     projectCounts: page.projectCounts ?? {},
+    ...(page.indexStatuses ? { indexStatuses: page.indexStatuses } : {}),
   });
 }
 
@@ -909,6 +912,41 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(table.getByText('本文未設定')).toBeInTheDocument();
     // 時刻は実行環境のタイムゾーンで出る（`formatDateTime`）。書式（`YYYY/MM/DD HH:mm`）が 3 行に出ることだけを見る。
     expect(table.getAllByText(/^2026\/0[78]\/\d{2} \d{2}:\d{2}$/)).toHaveLength(3);
+  });
+
+  // #1993: 索引の状態の列。BFF がページ分を引いた値を文言つきのバッジで出す（色だけにしない）。鍵の無い文書は「不明」。
+  it('shows the index state of each document and unknown when the key is missing', async () => {
+    const third = { ...DRAFT_DOC, id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', title: '手入力' };
+    const fourth = { ...DRAFT_DOC, id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', title: '鍵なし' };
+    mocks.apiRequest.mockResolvedValue(
+      listPage([DRAFT_DOC, ARCHIVED_DOC, third, fourth], {
+        indexStatuses: {
+          [DRAFT_DOC.id]: 'indexed',
+          [ARCHIVED_DOC.id]: 'embedding_pending',
+          [third.id]: 'not_indexed',
+        },
+      }),
+    );
+    await renderPage();
+
+    await screen.findByRole('link', { name: '鍵なし' });
+    const table = within(screen.getByRole('table'));
+    expect(table.getByRole('columnheader', { name: '索引' })).toBeInTheDocument();
+    const rowOf = (title: string) =>
+      within(table.getByRole('link', { name: title }).closest('tr') as HTMLElement);
+    expect(rowOf('経費精算規程').getByText('索引済み')).toBeInTheDocument();
+    expect(rowOf('製品ロードマップ 2027').getByText('埋め込み待ち')).toBeInTheDocument();
+    expect(rowOf('手入力').getByText('未索引')).toBeInTheDocument();
+    expect(rowOf('鍵なし').getByText('不明')).toBeInTheDocument();
+  });
+
+  // #1993: 旧い BFF（項目そのものが無い）でも一覧は出て、索引の列は全件「不明」。
+  it('reads a response without index statuses as unknown for every row', async () => {
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC, ARCHIVED_DOC]));
+    await renderPage();
+
+    await screen.findByRole('link', { name: '経費精算規程' });
+    expect(within(screen.getByRole('table')).getAllByText('不明')).toHaveLength(2);
   });
 });
 

@@ -458,6 +458,8 @@ services:
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
     # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
     # 構成情報 API（BFF の Introspection__Services__*）。readiness は 8080 のまま。
+    # ［2026-10-20 / #1993・IADR-0565］文書の索引の状態の面（knowledge.ingestion.v1.DocumentIndexStatus）も受ける
+    # （呼び出し元は BFF の文書管理の一覧の Services__IngestionServiceGrpc）。
     grpcPort: 8081
     worker: true
     # FR-02 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0397 (#1255): east-west gRPC の
@@ -1160,6 +1162,12 @@ services:
       # 🔴 利用者の JWT は面を通らず、利用者文脈は要求本文で運ぶ（判定の位置は動かない）。
       - name: Services__RetrievalServiceGrpc
         value: "http://retrieval-service:8081"
+      # FR-06 / SC-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0565 (#1993): east-west gRPC（h2c）の宛先。
+      # 文書管理の一覧の索引の状態（knowledge.ingestion.v1.DocumentIndexStatus）。無ければ常に UNAVAILABLE で
+      # 状態は「不明」へ縮退する（一覧は失敗しない）。ポートは ingestion.grpcPort と一致させること。
+      # 渡すのは ABAC を通った窓の中の文書の ID だけ（利用者の JWT は面を通らない）。
+      - name: Services__IngestionServiceGrpc
+        value: "http://ingestion-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
