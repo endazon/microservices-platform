@@ -398,9 +398,12 @@ function summarizeBreakdown(parts) {
 /**
  * 床の窓から現在の窓への伸びが、主にどちらにあるか。'queue' | 'exec' | null（決められない）。
  * キューの伸びが正で、実行の経路の伸び（負なら 0）より大きければ 'queue'（増えた分の大半がキュー側）。
+ * 🔴 分解できた本数が `minSamples`（既定 FLOOR_MIN_SAMPLES＝床の候補と同じ N の半分）に満たない窓では決めない（null＝従来の文言）。
+ *    1〜2 本の中央値で主因を断定すると、「次の手」を誤って切り替える（PR #2011 の AI レビュー 🟡）。
  */
-function dominantCause(current, floorWindow) {
+function dominantCause(current, floorWindow, { minSamples = FLOOR_MIN_SAMPLES } = {}) {
   if (!current || !floorWindow) return null;
+  if (!(current.n >= minSamples) || !(floorWindow.n >= minSamples)) return null;
   if ([current.exec, current.queue, floorWindow.exec, floorWindow.queue].some((x) => x === null || x === undefined)) return null;
   const dq = current.queue - floorWindow.queue;
   const de = current.exec - floorWindow.exec;
@@ -447,12 +450,25 @@ function breakdownLine({ graphLoaded, current, past, currentTotal, pastTotals })
 /** 主因の行。 */
 function causeLine(cause, current, floorWindow) {
   if (!floorWindow || cause === null) {
-    return '伸びの内訳: 実行の経路とキュー待ちのどちらが伸びたかを決められなかった（分解できた本数が足りない、またはどちらも伸びていない）。';
+    const ns = floorWindow && current ? `（分解できた本数: 現在 ${current.n} 本・床 ${floorWindow.n} 本。要 ${FLOOR_MIN_SAMPLES} 本）` : '';
+    return `伸びの内訳: 実行の経路とキュー待ちのどちらが伸びたかを決められなかった（分解できた本数が足りない、またはどちらも伸びていない）${ns}。従来の「次の手」を出す。`;
   }
   const dq = current.queue - floorWindow.queue;
   const de = current.exec - floorWindow.exec;
   const sign = (x) => `${x >= 0 ? '+' : ''}${Math.round(x)}`;
-  return `伸びの内訳（床の窓と比べて）: 実行の経路 ${sign(de)} 秒・キュー待ち ${sign(dq)} 秒 → 主因は${cause === 'queue' ? '**キュー待ち**' : '**実行の経路**'}。`;
+  return `伸びの内訳（床の窓と比べて。分解できた本数: 現在 ${current.n} 本・床 ${floorWindow.n} 本）: 実行の経路 ${sign(de)} 秒・キュー待ち ${sign(dq)} 秒 → 主因は${cause === 'queue' ? '**キュー待ち**' : '**実行の経路**'}。`;
+}
+
+/**
+ * 赤のときの説明（主因の行と「次の手」）。main と同じ配線を 1 か所に置き、自己試験で固定する。
+ * 🔴 床の窓は待ち時間（pastWindows）で選び、同じ添字の分解（pastBreakdowns）と比べる。両者は collect が同じ順に積む。
+ */
+function explainRed({ pastWindows, currentBreakdown, pastBreakdowns, minSamples = FLOOR_MIN_SAMPLES }) {
+  const curB = summarizeBreakdown(currentBreakdown);
+  const floorIdx = floorWindowIndex(pastWindows, { minSamples });
+  const floorB = floorIdx === null ? null : summarizeBreakdown(pastBreakdowns[floorIdx]);
+  const cause = dominantCause(curB, floorB, { minSamples });
+  return { cause, floorIdx, causeLine: causeLine(cause, curB, floorB), nextStep: nextStepText(cause) };
 }
 
 /** 構成ファイルを読んで needs の木を返す。読めなければ null（分解をしないだけ。判定には影響しない）。 */
@@ -1336,17 +1352,17 @@ async function selfTest() {
     eq(decompose(realHead(), Date.parse(atS(0)), null), null);
   });
   ok('#2006 dominantCause: #1999 の数字（実行 130 → 130・キュー 6 → 38）はキューが主因', () =>
-    eq(dominantCause({ exec: 130, queue: 38 }, { exec: 130, queue: 6 }), 'queue'));
+    eq(dominantCause({ n: 20, exec: 130, queue: 38 }, { n: 20, exec: 130, queue: 6 }), 'queue'));
   ok('#2006 dominantCause: 実行の経路が伸びれば実行が主因（構成の退行の形）', () =>
-    eq(dominantCause({ exec: 190, queue: 8 }, { exec: 130, queue: 6 }), 'exec'));
+    eq(dominantCause({ n: 20, exec: 190, queue: 8 }, { n: 20, exec: 130, queue: 6 }), 'exec'));
   ok('#2006 dominantCause: 両方伸びたら大きいほう（同じならキューと言わない）', () => {
-    eq(dominantCause({ exec: 150, queue: 40 }, { exec: 130, queue: 6 }), 'queue');
-    eq(dominantCause({ exec: 170, queue: 20 }, { exec: 130, queue: 6 }), 'exec');
-    eq(dominantCause({ exec: 150, queue: 26 }, { exec: 130, queue: 6 }), 'exec');
+    eq(dominantCause({ n: 20, exec: 150, queue: 40 }, { n: 20, exec: 130, queue: 6 }), 'queue');
+    eq(dominantCause({ n: 20, exec: 170, queue: 20 }, { n: 20, exec: 130, queue: 6 }), 'exec');
+    eq(dominantCause({ n: 20, exec: 150, queue: 26 }, { n: 20, exec: 130, queue: 6 }), 'exec');
   });
   ok('#2006 dominantCause: 値が欠ければ null（決められない）', () => {
-    eq(dominantCause({ exec: null, queue: 38 }, { exec: 130, queue: 6 }), null);
-    eq(dominantCause({ exec: 130, queue: 38 }, null), null);
+    eq(dominantCause({ n: 20, exec: null, queue: 38 }, { n: 20, exec: 130, queue: 6 }), null);
+    eq(dominantCause({ n: 20, exec: 130, queue: 38 }, null), null);
   });
   ok('#2006 nextStepText: キューが主因ならランナーの混雑を確認させ、そうでなければ従来の文言（ci.yml を探す）', () => {
     const q = nextStepText('queue');
@@ -1370,6 +1386,42 @@ async function selfTest() {
     }
     eq(jobIdOf('backend-build (platform 1/2)', g), 'backend-build');
     eq(jobIdOf('discover-units', g), 'discover-units');
+  });
+  ok('#2006 summarizeBreakdown: 分解できなかった PR（null）を除いて中央値と本数を出す', () => {
+    eq(summarizeBreakdown([{ exec: 120, queue: 5 }, null, { exec: 130, queue: 40 }, { exec: 125, queue: 10 }]), { n: 3, exec: 125, queue: 10 });
+    eq(summarizeBreakdown([]), { n: 0, exec: null, queue: null });
+  });
+  ok('🔴 #2006 dominantCause: 分解できた本数が下限に満たない窓では決めない（1〜2 本の中央値で次の手を切り替えない）', () => {
+    eq(dominantCause({ n: 2, exec: 130, queue: 38 }, { n: 20, exec: 130, queue: 6 }, { minSamples: 10 }), null);
+    eq(dominantCause({ n: 20, exec: 130, queue: 38 }, { n: 9, exec: 130, queue: 6 }, { minSamples: 10 }), null);
+    eq(dominantCause({ n: 10, exec: 130, queue: 38 }, { n: 10, exec: 130, queue: 6 }, { minSamples: 10 }), 'queue');
+  });
+  ok('#2006 breakdownLine / causeLine: 中央値・本数・内訳・主因を出す。needs を読めなければその旨を出す', () => {
+    const line = breakdownLine({ graphLoaded: true, current: { n: 20, exec: 126, queue: 52 }, past: [{ n: 20, exec: 127, queue: 9 }], currentTotal: 20, pastTotals: [20] });
+    for (const w of ['現在の窓 実行 126 / キュー 52（20/20 本）', '過去の窓 [実行 127 / キュー 9（20/20 本）]']) if (!line.includes(w)) throw new Error(line);
+    if (!breakdownLine({ graphLoaded: false }).includes('分解していない')) throw new Error('needs を読めないときの行が無い');
+    const c = causeLine('queue', { n: 20, exec: 126, queue: 52 }, { n: 18, exec: 127, queue: 9 });
+    for (const w of ['実行の経路 -1 秒', 'キュー待ち +43 秒', '主因は**キュー待ち**', '現在 20 本・床 18 本']) if (!c.includes(w)) throw new Error(c);
+    const u = causeLine(null, { n: 2, exec: 1, queue: 1 }, { n: 20, exec: 1, queue: 1 });
+    if (!u.includes('決められなかった') || !u.includes('現在 2 本・床 20 本')) throw new Error(u);
+  });
+  ok('🔴 #2006 explainRed: 床の窓（待ち時間の中央値が最小）と同じ添字の分解と比べる（添字の取り違えを固定する）', () => {
+    const W = (v, k) => Array.from({ length: k }, () => v);
+    const P = (exec, queue, k) => Array.from({ length: k }, () => ({ exec, queue }));
+    // 過去の窓 2 番目（添字 1）が床。そこはキューが少ない。添字 0 はキューが多く、取り違えると「主因はキュー」と言えなくなる。
+    const r = explainRed({
+      pastWindows: [W(200, 10), W(145, 10), W(170, 10)],
+      currentBreakdown: P(126, 52, 10),
+      pastBreakdowns: [P(127, 60, 10), P(127, 9, 10), P(127, 30, 10)],
+      minSamples: 5,
+    });
+    eq(r.floorIdx, 1);
+    eq(r.cause, 'queue');
+    if (!r.nextStep.includes('ランナーの混雑')) throw new Error(r.nextStep);
+    // 分解できた本数が足りなければ従来の文言。
+    const r2 = explainRed({ pastWindows: [W(145, 10)], currentBreakdown: [...P(126, 52, 2), ...Array(8).fill(null)], pastBreakdowns: [P(127, 9, 10)], minSamples: 5 });
+    eq(r2.cause, null);
+    if (!r2.nextStep.includes('特に ci.yml')) throw new Error(r2.nextStep);
   });
   await Promise.all(pending);
   console.log(t.join('\n'));
@@ -1475,10 +1527,9 @@ async function main() {
   console.log(`::error::[check-ci-latency] ${TARGET}（中央値 ${fmt(r.target)} 秒）が自身の過去の床（${fmt(r.floor)} 秒）の ` +
     `${FLOOR_RATIO} 倍（${fmt(limit)} 秒）を超えた（${r.ratio.toFixed(2)} 倍）。直近の窓で待ち時間が段差で伸びている。`);
   // #2006: 床の窓（中央値が最小の過去の窓）と比べ、伸びの主因で「次の手」を切り替える。判定（R 倍）は変えない。
-  const floorIdx = floorWindowIndex(pastWindows);
-  const cause = dominantCause(curB, floorIdx === null ? null : pastB[floorIdx]);
-  console.log(`[check-ci-latency] ${causeLine(cause, curB, floorIdx === null ? null : pastB[floorIdx])}`);
-  console.log(`[check-ci-latency] ${nextStepText(cause)}`);
+  const explained = explainRed({ pastWindows, currentBreakdown, pastBreakdowns });
+  console.log(`[check-ci-latency] ${explained.causeLine}`);
+  console.log(`[check-ci-latency] ${explained.nextStep}`);
   if (!reportOnly) process.exitCode = 1;
 }
 
@@ -1501,4 +1552,4 @@ if (require.main === module) main().catch((e) => {
   console.log(`[check-ci-latency] 実行できなかったため skip した（fail-open）: ${e.message}`);
 });
 
-module.exports = { parseNeedsGraph, jobIdOf, decompose, summarizeBreakdown, dominantCause, nextStepText, floorWindowIndex, checkSetStart, waitSec, median, sortByMergedAtDesc, splitWindows };
+module.exports = { explainRed, breakdownLine, causeLine, parseNeedsGraph, jobIdOf, decompose, summarizeBreakdown, dominantCause, nextStepText, floorWindowIndex, checkSetStart, waitSec, median, sortByMergedAtDesc, splitWindows };
