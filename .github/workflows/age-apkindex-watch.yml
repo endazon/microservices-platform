@@ -1,0 +1,71 @@
+# platform-backup の age の版の監視 —— Dockerfile の AGE_VERSION と Alpine の APKINDEX を毎日突き合わせる（NFR / #2005 / IADR-0568）。
+#
+# ■ なぜ要るか（同型の事故が 2 回。運用規約の「検査器の追加は同型事故 2 回から」に当たる）
+# Alpine の安定版ブランチは最新のリリースしか置かない。上流が age の `-rN` を作り直すと固定した apk が消え、
+# Images の `build-local (platform-backup)` が全 PR で 404 になる（#1825 で 1.3.1-r6、#2003 で 1.3.2-r0）。
+# 2 回目は r1 の作り直しから 6 日間誰も気づかなかった。週次では同じ幅の見逃しが残るので、日次で見る。
+#
+# ■ 何をするか（scripts/check-age-apkindex.js が正本）
+# - 食い違えば専用 issue（ラベル age-apkindex-drift・マーカー <!-- age-apkindex-drift -->）を 1 件だけ起票し、以後は本文を上書きする。
+#   **自動ではクローズしない・版を自動で上げない**（上げるのは Runbook §6。人が sha256 を確かめてから）。
+# - 一致していれば何もしない。APKINDEX に届かなければ warning だけ出し、**起票しない**（誤った起票をしない）。
+# - 落ちる（exit 1）のは APKINDEX が 404 / 410（取得元が恒久的に無い。ブランチの EOL 等）のとき、Dockerfile の ARG を読めないとき、
+#   ずれを検知したのに issue へ書けなかったときだけ。5xx・ネットワーク断は warning だけで緑のまま。
+#   そのときは ci-failure-issue.yml が別スレッドの issue を立てる（監視が黙って止まらない）。
+#
+# ■ 必須チェックにしない・PR では走らせない（外部の CDN の状態で PR を赤くしない）。自己試験は scripts.repo.test.js も走らせる。
+name: Age APKINDEX Watch
+
+on:
+  schedule:
+    # 毎日 22:23 UTC（JST 07:23）。backlog-audit（月曜 21:00 UTC）・ci-latency-watch（月曜 00:10 UTC）と時刻をずらしてある。
+    - cron: '23 22 * * *'
+  workflow_dispatch:
+
+# NFR, IADR-0232 (#1581): ワークフロー単位は読むだけにし、書き込みは要るジョブにだけ置く。
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    # 専用 issue の起票・本文の上書き・ラベルの作成（issues: write）。
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      # 判定ロジックの回帰試験（監視が黙って壊れるのは、監視が無いより悪い）。
+      - name: Self-test
+        run: node scripts/check-age-apkindex.js --self-test
+      - name: Check age version against Alpine APKINDEX
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/check-age-apkindex.js --upsert-issue --out "$RUNNER_TEMP/age-apkindex.json"
+      - name: Publish the result to the step summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -s "$RUNNER_TEMP/age-apkindex.json" ]; then
+            { echo '```json'; cat "$RUNNER_TEMP/age-apkindex.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::結果ファイルが空である。産出が無いまま success にしない。"
+            exit 1
+          fi
+
+  report-failure:
+    needs: [watch]
+    if: always() && github.event_name != 'pull_request' && contains(needs.*.result, 'failure')
+    uses: ./.github/workflows/ci-failure-issue.yml
+    permissions:
+      contents: read
+      issues: write
+      # 失敗ジョブ名の取得（listJobsForWorkflowRun）に要る。呼ばれる側の report ジョブと同じ範囲を与える（#1588）。
+      actions: read
+    with:
+      marker_key: age-apkindex

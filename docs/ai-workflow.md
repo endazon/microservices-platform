@@ -1,8 +1,8 @@
 <!-- trace:
 adrs: [ADR-0048, ADR-0118]
-iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507, IADR-0508]
-specs: [20261012_1910_static-checks-off-critical-path, 20261008_1796_integration-gate-hardening, 20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
-issues: [#1910, #1796, #1775, #1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
+iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507, IADR-0508, IADR-0568]
+specs: [20261012_1910_static-checks-off-critical-path, 20261008_1796_integration-gate-hardening, 20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups, 20261020_2005_age-apkindex-watch]
+issues: [#1910, #1796, #1775, #1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, #2005, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -284,10 +284,11 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 | `codeql.yml` の `analyze` | `security-events` | `actions` | 解析結果のアップロード |
 | `backlog-audit.yml` の `audit` | `issues` | `pull-requests` | 棚卸し issue と計画 ID レンジのずれの専用 issue の更新・PR の列挙 |
 | `ci-latency-watch.yml` の `watch` | — | `pull-requests` / `checks` | PR 一覧と check-runs を読む（足りないと 403） |
+| `age-apkindex-watch.yml` の `watch` | `issues` | — | platform-backup の age の版と Alpine の APKINDEX のずれの専用 issue の起票・上書き |
 | 各ワークフローの `report-failure` と `ci-failure-issue.yml` の `report` | `issues` | `actions` | 後段の失敗の起票と、失敗したジョブ名の取得 |
 | `integration-stack-rerun.yml` の `rerun` | `actions` / `issues` | — | 統合スタックの所要時間の判定だけが赤の実行を 1 回だけ再実行し（失敗したジョブの再実行）、結果を起票済みの issue へ書く。実行・ジョブ・ログの読み取りも同じトークンで行う |
 
-🔴 **再利用ワークフロー `ci-failure-issue.yml` の `report` が要求する範囲は、呼び出し側の `report-failure` 6 本すべてが与える。**
+🔴 **再利用ワークフロー `ci-failure-issue.yml` の `report` が要求する範囲は、呼び出し側の `report-failure` すべてが与える。**（本数は導出値なので書かない）
 要求が呼び出し側の上限を超えると、呼び出し側の実行が起動時に失敗する。この一致も同じ検査が突き合わせる。
 
 🔴 **`changelog` / `openapi` / `release` / `report-failure` は develop・main・タグへの push、日次・週次、手動実行でしか走らない。**

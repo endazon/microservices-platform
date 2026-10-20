@@ -8313,6 +8313,9 @@ ${r.stderr}`);
      * 外しても落ちる。ジョブ単位で `contents` を書かない（＝ none）形は `contents: 'none'` として比べる。
      */
     const JOB_SCOPES = {
+      // #2005: age の版のずれの専用 issue の起票・上書き（issues: write）。APKINDEX は認証なしの HTTP で読む
+      'age-apkindex-watch.yml:watch': { issues: 'write' },
+      'age-apkindex-watch.yml:report-failure': { actions: 'read', issues: 'write' },
       'backlog-audit.yml:audit': { issues: 'write', 'pull-requests': 'read' },
       'backlog-audit.yml:report-failure': { actions: 'read', issues: 'write' },
       'changelog.yml:changelog': { contents: 'write', 'pull-requests': 'write' },
@@ -8507,7 +8510,7 @@ ${r.stderr}`);
       return { issues, callers, need };
     };
 
-    ok('#1588: ci-failure-issue.yml の呼び出し側 6 本すべてが report ジョブの要求（actions: read を含む）を与える', () => {
+    ok('#1588: ci-failure-issue.yml の呼び出し側すべてが report ジョブの要求（actions: read を含む）を与える', () => {
       const files = realFiles();
       const { issues, callers, need } = reusableCallerIssues(files);
       assert.ok(callers >= 6, `呼び出し側を ${callers} 本しか読めない（走査が壊れている）`);
@@ -8939,7 +8942,11 @@ ${r.stderr}`);
         //    （ラチェットが設計どおり発火した）。🔴 **「同型の事故が 2 回」ではなく issue の受け入れ基準 4（稼働の Keycloak での実測）と
         //    計画 ADR-0123 フォローアップ 3 の名指しに基づく新設である。** git を一切呼ばず kubectl を外部コマンドとして叩くため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-login-existence-disclosure.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 62, `検査器の母集合が 62 本から変わった（${scripts.length} 件）`);
+        // ★ #2005 / IADR-0568 で `check-age-apkindex.js`（platform-backup の Dockerfile が固定する age の版と、取得元の Alpine の
+        //    APKINDEX の版を突き合わせ、ずれたら専用 issue を起票する。日次の age-apkindex-watch.yml が走らせる）を新設したため 62 → 63。
+        //    **「同型の事故が 2 回」**（#1825・#2003）に基づく新設である。git を一切呼ばず、引数なしでは使い方を出して exit 2 する
+        //    （ネットワークにも触れない）ため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 63, `検査器の母集合が 63 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -13204,6 +13211,34 @@ exit $RC
           assert.ok(/noDataState:\s*OK/.test(rule), `${rel} の IngestionBudgetExhausted の noDataState が OK でない（平常時は系列が無い）`);
         }
       }
+    });
+  }
+
+  // --- #2005: platform-backup の age の版と Alpine の APKINDEX の突合（IADR-0568） ---------------------------------------
+  //
+  // 監視は日次のワークフローでしか走らないので、自己試験（陽性対照・届かないときに起票しない・一致なら何もしない）を
+  // PR でも走らせる。ネットワークには触れない（自己試験は fetch と GitHub API を差し替える）。
+  {
+    const { spawnSync: spawnA } = require('child_process');
+    const fsA = require('fs');
+    const pathA = require('path');
+    const ROOT_A = pathA.resolve(__dirname, '..');
+
+    ok('#2005: check-age-apkindex.js の自己試験が通る（ずれで起票・一致で何もしない・届かなければ起票しない）', () => {
+      const r = spawnA(process.execPath, [pathA.join(__dirname, 'check-age-apkindex.js'), '--self-test'], { cwd: ROOT_A, encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      assert.match(r.stdout, /自己試験 \d+ 件すべて合格/);
+      for (const name of ['陽性対照（#2003 の形）', 'ネットワークに届かなければ unverified', 'ok / unverified / error では API を一度も呼ばない']) {
+        assert.ok(r.stdout.includes(name), `自己試験から「${name}」が消えた`);
+      }
+    });
+
+    ok('#2005: 日次のワークフローが --upsert-issue で走り、PR では走らない', () => {
+      const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/age-apkindex-watch.yml'), 'utf8');
+      assert.match(wf, /^\s+- cron: '\d+ \d+ \* \* \*'$/m, '日次の cron が無い');
+      assert.doesNotMatch(wf, /^\s+pull_request(_target)?:/m, 'PR で走らせない（外部の CDN の状態で PR を赤くしない）');
+      assert.match(wf, /run: node scripts\/check-age-apkindex\.js --self-test\n/);
+      assert.match(wf, /run: node scripts\/check-age-apkindex\.js --upsert-issue --out "\$RUNNER_TEMP\/age-apkindex\.json"\n/);
     });
   }
 

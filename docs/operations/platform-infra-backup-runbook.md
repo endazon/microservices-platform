@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-10-16
+updated: 2026-10-20
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0132, ADR-0002, ADR-0008]
-iadrs: [IADR-0548, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489]
-specs: [20261016_1868_openbao-raft-snapshot-backup, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper]
-issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
+iadrs: [IADR-0548, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
+specs: [20261016_1868_openbao-raft-snapshot-backup, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
+issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
 -->
 
 # 運用 Runbook: platform-infra の暗号化バックアップ
@@ -351,6 +351,7 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
 3 つで固定している。Alpine の安定版ブランチは各パッケージの最新のリリースしか置かないため、上流が age の `-rN` を上げると
 取得が失敗し、CI の `build-local (platform-backup)` が赤くなる。**赤くなるのが正しい**（黙って別の版を入れない）。
 次の手順で上げる。稼働クラスタへは、リポジトリに入ってから §1 の 5 で当てる。
+上流の作り直しは日次の監視（`age-apkindex-watch.yml`）が検知し、ラベル `age-apkindex-drift` の issue を立てる（本文に固定の版と APKINDEX の版が並ぶ）。**版は自動では上がらない**ので、その issue から次の手順へ進む。
 起動スクリプトの WARN から来たときは、その「原因:」の行が**版の解決の失敗**であることを先に確かめる（資格情報ヘルパーや到達の失敗は版を上げても直らない。「失敗したときの分岐」を見る）。
 
 1. **ベースの digest を引く**（稼働クラスタへ pull しない。レジストリの API を読むだけ）。`postgres:<PG の版>-alpine<Alpine の版>`
