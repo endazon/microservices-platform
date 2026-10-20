@@ -64,6 +64,8 @@
  *   CI_LATENCY_FLOOR_MIN_SAMPLES  過去の窓が床の候補になる最小本数（既定 ceil(N / 2)＝N の半分以上。1 以上の整数）
  */
 
+const fs = require('fs');
+
 const TARGET = process.env.CI_LATENCY_TARGET || 'build-and-test';
 const BASELINE = process.env.CI_LATENCY_BASELINE || 'claude-review';
 // 🔴 既定 20（#1910 で 10 から上げた）。10 本の窓の中央値はランナー差だけで ±15〜18% 揺れ、R（1.25）の余裕を食う。
@@ -291,6 +293,177 @@ function splitWindows(prs, { samples = SAMPLES, floorWindows = FLOOR_WINDOWS } =
   return { current, past };
 }
 
+/*
+ * 待ち時間の分解（#2006）: **実行の経路**と**キュー待ち**に分ける。判定（judge）には使わない。
+ *
+ * #1999 の赤は、コードや構成の退行ではなくランナーのキュー待ちが伸びたことが原因だった
+ * （実行の経路の中央値は床の窓も現在の窓も 130 秒、キューの中央値は 6 秒 → 38 秒）。従来の出力は待ち時間しか出さず、
+ * 「次の手」が ci.yml のマージを探させていたので、切り分けを run と job の時刻から手で行った。
+ *
+ * 方法: 監視対象の check-run から `needs:` を遡って律速の鎖を作る。各段で、`needs:` に載るジョブの check-run のうち
+ * **最後に完了したもの**を前段とする（それが揃うまで始まれない）。
+ *   キュー = Σ（その段の開始 − 前段の完了）＋（鎖の先頭の開始 − 群の開始）
+ *   実行   = Σ（その段の完了 − その段の開始）
+ * 両者の和は待ち時間（群の開始から監視対象の完了まで）にちょうど等しい。
+ * 🔴 **`needs:` を使わず「直前に完了した任意の run」を前段にしてはならない。** 1 PR に約 48 本の check-run が並走するので、
+ *    ほぼ常に何かが走っており、キューが 0 に見える。
+ * `needs:` は構成ファイル（CONFIG_PATH）から読む。check-run の名前はジョブの `name:`（`${{ … }}` を含めば前方一致）か、
+ * `name:` が無ければジョブ ID である。鎖のどこかでジョブを引けなければ、その PR は分解しない（数えて出す）。
+ */
+
+/** 構成ファイルの `jobs:` から、ジョブ ID → { match（check-run 名の判定）, needs } を読む。読めなければ null。 */
+function parseNeedsGraph(text) {
+  if (!text) return null;
+  const lines = String(text).replace(/\r\n/g, '\n').split('\n');
+  const start = lines.findIndex((l) => /^jobs:\s*$/.test(l));
+  if (start < 0) return null;
+  const jobs = new Map();
+  let cur = null;
+  let inNeedsList = false;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^\S/.test(line)) break; // jobs: の外
+    const id = /^ {2}([A-Za-z0-9_-]+):\s*(?:#.*)?$/.exec(line);
+    if (id) {
+      cur = { id: id[1], name: null, needs: [] };
+      jobs.set(cur.id, cur);
+      inNeedsList = false;
+      continue;
+    }
+    if (!cur) continue;
+    if (inNeedsList) {
+      const item = /^ {6}- ([A-Za-z0-9_-]+)\s*(?:#.*)?$/.exec(line);
+      if (item) { cur.needs.push(item[1]); continue; }
+      if (/^ {6,}\S/.test(line) || /^\s*(#.*)?$/.test(line)) continue;
+      inNeedsList = false;
+    }
+    const name = /^ {4}name:\s*(.+?)\s*$/.exec(line);
+    if (name) { cur.name = name[1].replace(/^(['"])(.*)\1$/, '$2'); continue; }
+    const needs = /^ {4}needs:\s*(.*?)\s*(?:#.*)?$/.exec(line);
+    if (needs) {
+      const v = needs[1];
+      if (!v) inNeedsList = true;
+      else if (v.startsWith('[')) cur.needs = v.replace(/[[\]]/g, '').split(',').map((x) => x.trim()).filter(Boolean);
+      else cur.needs = [v];
+    }
+  }
+  if (!jobs.size) return null;
+  for (const j of jobs.values()) {
+    const label = j.name || j.id;
+    const at = label.indexOf('${{');
+    j.match = at < 0 ? (n) => n === label : (n) => n.startsWith(label.slice(0, at));
+  }
+  return jobs;
+}
+
+/** check-run の名前からジョブ ID を引く（一致が 1 つでなければ null）。 */
+function jobIdOf(runName, graph) {
+  const hits = [...graph.values()].filter((j) => j.match(runName));
+  return hits.length === 1 ? hits[0].id : null;
+}
+
+/** 1 PR の待ち時間を { exec, queue }（秒）へ分ける。分けられなければ null。 */
+function decompose(runs, t0, graph, target = TARGET) {
+  if (!graph || t0 === null) return null;
+  const done = (runs || []).filter((r) => r && r.started_at && r.completed_at && r.status === 'completed');
+  let node = done.find((r) => r.name === target && durationSec(r) !== null);
+  if (!node) return null;
+  let exec = 0;
+  let queue = 0;
+  for (let guard = 0; guard < 50; guard += 1) {
+    const id = jobIdOf(node.name, graph);
+    if (!id) return null;
+    const startMs = Date.parse(node.started_at);
+    exec += Math.max(0, Date.parse(node.completed_at) - startMs) / 1000;
+    const needs = graph.get(id).needs;
+    const preds = done.filter((r) => r !== node && needs.includes(jobIdOf(r.name, graph)) && Date.parse(r.completed_at) <= startMs);
+    if (!needs.length) {
+      queue += Math.max(0, startMs - t0) / 1000;
+      return { exec, queue };
+    }
+    if (!preds.length) return null; // needs はあるのに check-run を引けない（構成が違う head）
+    const pred = preds.reduce((a, b) => (Date.parse(b.completed_at) > Date.parse(a.completed_at) ? b : a));
+    queue += Math.max(0, startMs - Date.parse(pred.completed_at)) / 1000;
+    node = pred;
+  }
+  return null;
+}
+
+/** 窓の分解の要約（中央値。値が無ければ null）。 */
+function summarizeBreakdown(parts) {
+  const list = (parts || []).filter(Boolean);
+  return { n: list.length, exec: median(list.map((p) => p.exec)), queue: median(list.map((p) => p.queue)) };
+}
+
+/**
+ * 床の窓から現在の窓への伸びが、主にどちらにあるか。'queue' | 'exec' | null（決められない）。
+ * キューの伸びが正で、実行の経路の伸び（負なら 0）より大きければ 'queue'（増えた分の大半がキュー側）。
+ */
+function dominantCause(current, floorWindow) {
+  if (!current || !floorWindow) return null;
+  if ([current.exec, current.queue, floorWindow.exec, floorWindow.queue].some((x) => x === null || x === undefined)) return null;
+  const dq = current.queue - floorWindow.queue;
+  const de = current.exec - floorWindow.exec;
+  if (dq > 0 && dq > Math.max(de, 0)) return 'queue';
+  if (de > 0) return 'exec';
+  return null;
+}
+
+/** 赤のときの「次の手」。キューが主因なら混雑の確認へ、そうでなければ従来の文言（構成の退行を探す）。 */
+function nextStepText(cause, { samples = SAMPLES, floorWindows = FLOOR_WINDOWS } = {}) {
+  const tail = `意図した増加なら、過去の窓が入れ替わる（約 ${samples * (floorWindows + 1)} 本のマージ）まで赤が続く。`;
+  if (cause === 'queue') {
+    return '次の手: 伸びた分の大半はキュー待ち（ジョブが始まるまでの時間）であり、実行の経路は伸びていない。' +
+      'ci.yml やテストの退行を探す前に、ランナーの混雑（同時間帯の run 数。`actions/runs?created=<期間>` の total_count）を確認する。' +
+      `混雑が平常に戻れば、窓の入れ替わり（約 ${samples * (floorWindows + 1)} 本のマージ）で緑に戻る。閾値は緩めない（#1999 で再検証済み）。`;
+  }
+  return '次の手: 伸びた窓のマージ（特に ci.yml・テストの追加）を探し、律速の脚を割る ' +
+    '（IADR-0232 の 2026-09-28 / 10-02 追記: テストのシャーディング・閉包だけのビルド）。' + tail;
+}
+
+/** 床になった過去の窓の添字（floorOf と同じ規則: FLOOR_MIN_SAMPLES 本以上の窓のうち中央値が最小）。無ければ null。 */
+function floorWindowIndex(pastWindows, { minSamples = FLOOR_MIN_SAMPLES } = {}) {
+  let best = null;
+  (pastWindows || []).forEach((w, i) => {
+    if (!Array.isArray(w) || w.length < minSamples) return;
+    const m = median(w);
+    if (best === null || m < best.m) best = { i, m };
+  });
+  return best ? best.i : null;
+}
+
+const fmtSec = (x) => (x === null || x === undefined ? '—' : `${Math.round(x)}`);
+
+/** 窓ごとの分解を 1 行にする。 */
+function breakdownLine({ graphLoaded, current, past, currentTotal, pastTotals }) {
+  if (!graphLoaded) {
+    return `[check-ci-latency] 待ち時間の分解: ${CONFIG_PATH} の needs を読めなかったので分解していない（判定には影響しない）。`;
+  }
+  const cell = (b, total) => `実行 ${fmtSec(b.exec)} / キュー ${fmtSec(b.queue)}（${b.n}/${total} 本）`;
+  return `[check-ci-latency] 待ち時間の分解（中央値・秒。実行＝ needs を遡った律速の鎖の実行時間の合計、キュー＝その鎖で始まるまで待った時間の合計）: ` +
+    `現在の窓 ${cell(current, currentTotal)} ／ 過去の窓 [${past.map((b, i) => cell(b, pastTotals[i])).join(', ')}]`;
+}
+
+/** 主因の行。 */
+function causeLine(cause, current, floorWindow) {
+  if (!floorWindow || cause === null) {
+    return '伸びの内訳: 実行の経路とキュー待ちのどちらが伸びたかを決められなかった（分解できた本数が足りない、またはどちらも伸びていない）。';
+  }
+  const dq = current.queue - floorWindow.queue;
+  const de = current.exec - floorWindow.exec;
+  const sign = (x) => `${x >= 0 ? '+' : ''}${Math.round(x)}`;
+  return `伸びの内訳（床の窓と比べて）: 実行の経路 ${sign(de)} 秒・キュー待ち ${sign(dq)} 秒 → 主因は${cause === 'queue' ? '**キュー待ち**' : '**実行の経路**'}。`;
+}
+
+/** 構成ファイルを読んで needs の木を返す。読めなければ null（分解をしないだけ。判定には影響しない）。 */
+function loadNeedsGraph(path = CONFIG_PATH) {
+  try {
+    return parseNeedsGraph(fs.readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 async function fetchJson(url, token) {
   const res = await fetch(url, {
     headers: {
@@ -513,6 +686,9 @@ async function collect({ repo, token, samples, floorWindows = FLOOR_WINDOWS }) {
 
   const targetDurations = [];
   const baselineDurations = [];
+  // #2006: 待ち時間の分解（判定には使わない）。needs の木は構成ファイルから 1 回だけ読む。
+  const graph = loadNeedsGraph();
+  const currentBreakdown = [];
   let fetchFailures = 0;
   let missingHeads = 0;
   for (const pr of merged) {
@@ -579,14 +755,17 @@ async function collect({ repo, token, samples, floorWindows = FLOOR_WINDOWS }) {
       if (r.name === TARGET) targetDurations.push(d);
       else if (r.name === BASELINE) baselineDurations.push(d);
     }
+    currentBreakdown.push(decompose(all, t0, graph));
   }
 
   // 🔴 **過去の窓は epoch で絞らない**（#1910。IADR-0241 の 2026-10-12 追記）。
   // `ci.yml` はほぼ毎日変わるので、絞ると床を作れる日が無くなる。床は構成をまたいだ「出せていた速さ」の記録である。
   // 変更ファイル一覧も引かない（epoch の判定に使うだけなので要らない）。
   const pastWindows = [];
+  const pastBreakdowns = [];
   for (const w of past) {
     const values = [];
+    const parts = [];
     for (const pr of w) {
       const sha = pr.head && pr.head.sha;
       if (!sha) continue;
@@ -610,8 +789,10 @@ async function collect({ repo, token, samples, floorWindows = FLOOR_WINDOWS }) {
         const d = waitSec(r, t0);
         if (d !== null) values.push(d);
       }
+      parts.push(decompose(all, t0, graph));
     }
     pastWindows.push(values);
+    pastBreakdowns.push(parts);
   }
 
   return {
@@ -620,6 +801,9 @@ async function collect({ repo, token, samples, floorWindows = FLOOR_WINDOWS }) {
     targetDurations,
     baselineDurations,
     pastWindows,
+    currentBreakdown,
+    pastBreakdowns,
+    graphLoaded: Boolean(graph),
     fetchFailures,
     missingHeads,
     skippedPreEpoch,
@@ -1079,6 +1263,114 @@ async function selfTest() {
       else process.env.CI_LATENCY_EPOCH = orig;
     }
   });
+  // --- #2006: 待ち時間の分解（実行の経路とキュー待ち）と「次の手」の切り替え ---------------------------------------
+  const MINI_CI = [
+    'name: CI',
+    'jobs:',
+    '  discover-units:',
+    '    runs-on: x',
+    '  backend-build:',
+    '    name: backend-build (${{ matrix.label }})',
+    '    needs: discover-units',
+    '  static-checks:',
+    '    runs-on: x',
+    '  build-and-test:',
+    '    needs: [discover-units, backend-build, static-checks]',
+    '  lint:',
+    '    needs:',
+    '      - discover-units',
+    '      - backend-build',
+    '',
+  ].join('\n');
+  const atS = (sec) => new Date(Date.parse('2026-10-20T13:06:43Z') + sec * 1000).toISOString();
+  const runAt = (name, a, b, conclusion = 'success') => ({ name, started_at: atS(a), completed_at: atS(b), status: 'completed', conclusion });
+  // 実データ（MSP の head cf07fed0。群の開始 13:06:43）を秒へ直したもの。
+  //   discover-units 2→12 ／ backend-build (knowledge 3/3) 19→129 ／ (platform 1/2) 14→118 ／ static-checks 2→77 ／ build-and-test 134→146
+  //   lint は build-and-test に無関係（needs に無い）で、build-and-test の開始の直前に完了する。
+  const realHead = (bt = [134, 146], extra = []) => [
+    runAt('discover-units', 2, 12),
+    runAt('backend-build (knowledge 3/3)', 19, 129),
+    runAt('backend-build (platform 1/2)', 14, 118),
+    runAt('static-checks', 2, 77),
+    runAt('lint', 120, 133),
+    runAt('pr-size', 0, 9),
+    runAt('build-and-test', bt[0], bt[1]),
+    ...extra,
+  ];
+  const t0Of = (runs) => checkSetStart(runs);
+  ok('#2006 parseNeedsGraph: needs の 3 つの書き方（スカラー・[…]・行の列）と name の ${{ }} を読む', () => {
+    const g = parseNeedsGraph(MINI_CI);
+    eq(g.get('backend-build').needs, ['discover-units']);
+    eq(g.get('build-and-test').needs, ['discover-units', 'backend-build', 'static-checks']);
+    eq(g.get('lint').needs, ['discover-units', 'backend-build']);
+    eq(jobIdOf('backend-build (platform 1/2)', g), 'backend-build');
+    eq(jobIdOf('build-and-test', g), 'build-and-test');
+    eq(jobIdOf('no-such-job', g), null);
+  });
+  ok('#2006 decompose: 実データの head で、実行 132 秒・キュー 14 秒（和は待ち時間 146 秒にちょうど等しい）', () => {
+    const runs = realHead();
+    const d = decompose(runs, t0Of(runs), parseNeedsGraph(MINI_CI));
+    eq(d, { exec: 132, queue: 14 });
+    eq(d.exec + d.queue, waitSec(runs.find((r) => r.name === 'build-and-test'), t0Of(runs)));
+  });
+  ok('🔴 #2006 decompose: needs に無い run（lint）を前段にしない（並走する run でキューが 0 に見える罠）', () => {
+    // lint は 133 秒に完了し build-and-test は 134 秒に始まる。lint を前段にするとキューは 1 秒に縮む。
+    const runs = realHead();
+    eq(decompose(runs, t0Of(runs), parseNeedsGraph(MINI_CI)).queue, 14);
+  });
+  ok('#2006 decompose: 脚の開始が遅れたぶんはキューに入る（#1987 の形: 律速の脚が群の開始から遅れて始まった）', () => {
+    const runs = [
+      runAt('discover-units', 2, 12),
+      runAt('backend-build (platform 2/2)', 218, 313),
+      runAt('static-checks', 2, 77),
+      runAt('build-and-test', 318, 330),
+    ];
+    const d = decompose(runs, t0Of(runs), parseNeedsGraph(MINI_CI));
+    // 群の開始は 2 秒（最初の run の開始）。キュー = (12 → 218) + (313 → 318)。和は待ち時間 330 − 2 = 328 秒。
+    eq(d, { exec: 10 + 95 + 12, queue: 206 + 5 });
+  });
+  ok('#2006 decompose: ジョブを引けない／needs の run が無い／構成が無いときは null（分解しない）', () => {
+    const g = parseNeedsGraph(MINI_CI);
+    eq(decompose([runAt('unknown', 0, 10), runAt('build-and-test', 12, 20)], 0, parseNeedsGraph('jobs:\n  x:\n    runs-on: y\n')), null);
+    eq(decompose([runAt('build-and-test', 12, 20)], Date.parse(atS(0)), g), null);
+    eq(decompose(realHead(), Date.parse(atS(0)), null), null);
+  });
+  ok('#2006 dominantCause: #1999 の数字（実行 130 → 130・キュー 6 → 38）はキューが主因', () =>
+    eq(dominantCause({ exec: 130, queue: 38 }, { exec: 130, queue: 6 }), 'queue'));
+  ok('#2006 dominantCause: 実行の経路が伸びれば実行が主因（構成の退行の形）', () =>
+    eq(dominantCause({ exec: 190, queue: 8 }, { exec: 130, queue: 6 }), 'exec'));
+  ok('#2006 dominantCause: 両方伸びたら大きいほう（同じならキューと言わない）', () => {
+    eq(dominantCause({ exec: 150, queue: 40 }, { exec: 130, queue: 6 }), 'queue');
+    eq(dominantCause({ exec: 170, queue: 20 }, { exec: 130, queue: 6 }), 'exec');
+    eq(dominantCause({ exec: 150, queue: 26 }, { exec: 130, queue: 6 }), 'exec');
+  });
+  ok('#2006 dominantCause: 値が欠ければ null（決められない）', () => {
+    eq(dominantCause({ exec: null, queue: 38 }, { exec: 130, queue: 6 }), null);
+    eq(dominantCause({ exec: 130, queue: 38 }, null), null);
+  });
+  ok('#2006 nextStepText: キューが主因ならランナーの混雑を確認させ、そうでなければ従来の文言（ci.yml を探す）', () => {
+    const q = nextStepText('queue');
+    if (!q.includes('ランナーの混雑') || !q.includes('actions/runs?created=')) throw new Error(q);
+    if (q.includes('特に ci.yml')) throw new Error(`キューが主因なのに ci.yml を探させている: ${q}`);
+    for (const c of ['exec', null]) {
+      const e = nextStepText(c);
+      if (!e.includes('特に ci.yml・テストの追加')) throw new Error(e);
+      if (e.includes('ランナーの混雑')) throw new Error(e);
+    }
+  });
+  ok('#2006 floorWindowIndex: 床になる窓（本数を満たす窓のうち中央値が最小）の添字', () => {
+    eq(floorWindowIndex([[150, 160, 170], [140, 145, 146], [100]], { minSamples: 2 }), 1);
+    eq(floorWindowIndex([[1]], { minSamples: 2 }), null);
+  });
+  ok('#2006 実物の ci.yml: build-and-test の needs を読め、脚の check-run 名からジョブを引ける（配線）', () => {
+    const g = parseNeedsGraph(fs.readFileSync(require('path').join(__dirname, '..', '.github/workflows/ci.yml'), 'utf8'));
+    if (!g || !g.has(TARGET)) throw new Error('ci.yml から build-and-test を読めない');
+    for (const n of ['discover-units', 'backend-build']) {
+      if (!g.get(TARGET).needs.includes(n)) throw new Error(`build-and-test の needs に ${n} が無い`);
+    }
+    eq(jobIdOf('backend-build (platform 1/2)', g), 'backend-build');
+    eq(jobIdOf('discover-units', g), 'discover-units');
+  });
   await Promise.all(pending);
   console.log(t.join('\n'));
   console.log(`[check-ci-latency] 自己試験 ${t.length} 件${process.exitCode ? ' に失敗あり' : ' OK。'}`);
@@ -1110,6 +1402,9 @@ async function main() {
     targetDurations,
     baselineDurations,
     pastWindows,
+    currentBreakdown,
+    pastBreakdowns,
+    graphLoaded,
     fetchFailures,
     missingHeads,
     skippedPreEpoch,
@@ -1140,6 +1435,10 @@ async function main() {
         .map((w) => (w.length >= FLOOR_MIN_SAMPLES ? fmt(median(w)) : '—'))
         .join(', ')}] 秒`,
   );
+  // #2006: 窓ごとの分解（実行の経路・キュー待ちの中央値）。判定には使わない。
+  const curB = summarizeBreakdown(currentBreakdown);
+  const pastB = pastBreakdowns.map((w) => summarizeBreakdown(w));
+  console.log(breakdownLine({ graphLoaded, current: curB, past: pastB, currentTotal: currentBreakdown.length, pastTotals: pastBreakdowns.map((w) => w.length) }));
   // 🔴 該当 run が 0 件なら、まず **check 名の設定ミス**を疑わせる。
   // 既定値のまま配備すると 0 件になり、fail-open で**緑のまま永久に skip する**。
   // 🔴 **ただし epoch で外したことが原因なら、この警告を出してはならない。**
@@ -1175,13 +1474,16 @@ async function main() {
 
   console.log(`::error::[check-ci-latency] ${TARGET}（中央値 ${fmt(r.target)} 秒）が自身の過去の床（${fmt(r.floor)} 秒）の ` +
     `${FLOOR_RATIO} 倍（${fmt(limit)} 秒）を超えた（${r.ratio.toFixed(2)} 倍）。直近の窓で待ち時間が段差で伸びている。`);
-  console.log('[check-ci-latency] 次の手: 伸びた窓のマージ（特に ci.yml・テストの追加）を探し、律速の脚を割る ' +
-    '（IADR-0232 の 2026-09-28 / 10-02 追記: テストのシャーディング・閉包だけのビルド）。' +
-    `意図した増加なら、過去の窓が入れ替わる（約 ${SAMPLES * (FLOOR_WINDOWS + 1)} 本のマージ）まで赤が続く。`);
+  // #2006: 床の窓（中央値が最小の過去の窓）と比べ、伸びの主因で「次の手」を切り替える。判定（R 倍）は変えない。
+  const floorIdx = floorWindowIndex(pastWindows);
+  const cause = dominantCause(curB, floorIdx === null ? null : pastB[floorIdx]);
+  console.log(`[check-ci-latency] ${causeLine(cause, curB, floorIdx === null ? null : pastB[floorIdx])}`);
+  console.log(`[check-ci-latency] ${nextStepText(cause)}`);
   if (!reportOnly) process.exitCode = 1;
 }
 
-main().catch((e) => {
+// #2006: 分解の関数を手元の再計算（作業仕様書の実測）から読めるよう、直接実行のときだけ main を走らせる。
+if (require.main === module) main().catch((e) => {
   // 🔴 **権限・認証の誤りは赤くする。** これは「CI が遅い」ではなく「**監視が壊れている**」であり、
   // fail-open で緑を返せば、監視は一度も働かないまま緑を返し続ける
   // （＝「監視が黙って壊れるのは監視が無いより悪い」そのもの）。
@@ -1198,3 +1500,5 @@ main().catch((e) => {
   // 一過性のネットワーク・API 失敗では赤くしない（fail-open）。ただし黙らない。
   console.log(`[check-ci-latency] 実行できなかったため skip した（fail-open）: ${e.message}`);
 });
+
+module.exports = { parseNeedsGraph, jobIdOf, decompose, summarizeBreakdown, dominantCause, nextStepText, floorWindowIndex, checkSetStart, waitSec, median, sortByMergedAtDesc, splitWindows };
