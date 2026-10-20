@@ -8328,7 +8328,8 @@ ${r.stderr}`);
       'codeql.yml:report-failure': { actions: 'read', issues: 'write' },
       'integration-stack.yml:report-failure': { actions: 'read', issues: 'write' },
       // #1617 / 計画 ADR-0118 決定 2: T-25 だけの赤の run を 1 回だけ再実行（actions: write）し、結果を issue へ書く（issues: write）
-      'integration-stack-rerun.yml:rerun': { actions: 'write', issues: 'write' },
+      // #1998: T-25 の p / W を検査器の注釈から読む（GET /check-runs/{id}/annotations → checks: read）
+      'integration-stack-rerun.yml:rerun': { actions: 'write', checks: 'read', issues: 'write' },
       'integration.yml:report-failure': { actions: 'read', issues: 'write' },
       'obsidian-plugin-release.yml:release': { contents: 'write' },
       'openapi.yml:openapi': { contents: 'write', 'pull-requests': 'write' },

@@ -33,6 +33,7 @@ public class DocumentDeleteArchiveSyncTests
             // #1640: 受け口の期限（本番と同じ登録・既定値）。
             .AddPlatformConsumerTimeouts()
             .AddSingleton(WikiSyncTimeouts.Default)
+            .AddSingleton(new WikiJsWriteGate(WikiJsWriteGate.DefaultMaxParallelWrites))
             .AddDbContext<WikiDbContext>(o => o.UseInMemoryDatabase(dbName))
             .AddSingleton<RecordingWikiJsClient>()
             .AddSingleton<IWikiJsClient>(sp => sp.GetRequiredService<RecordingWikiJsClient>())
@@ -53,6 +54,7 @@ public class DocumentDeleteArchiveSyncTests
             scope.ServiceProvider.GetRequiredService<IWikiContentReader>(),
             scope.ServiceProvider.GetRequiredService<ConsumerCallTimeouts>(),
             scope.ServiceProvider.GetRequiredService<WikiSyncTimeouts>(),
+            scope.ServiceProvider.GetRequiredService<WikiJsWriteGate>(),
             TestMeterFactory.NewSkippedMetrics(),
             scope.ServiceProvider.GetRequiredService<ILogger<DocumentSyncConsumer>>());
         await consumer.Handle(ev, TestContext.Current.CancellationToken);
@@ -66,6 +68,7 @@ public class DocumentDeleteArchiveSyncTests
             scope.ServiceProvider.GetRequiredService<RecordingWikiJsClient>(),
             scope.ServiceProvider.GetRequiredService<ConsumerCallTimeouts>(),
             scope.ServiceProvider.GetRequiredService<WikiSyncTimeouts>(),
+            scope.ServiceProvider.GetRequiredService<WikiJsWriteGate>(),
             scope.ServiceProvider.GetRequiredService<ILogger<DocumentDeletedConsumer>>());
         await consumer.Handle(new DocumentDeleted(DocId, DateTimeOffset.UtcNow),
             TestContext.Current.CancellationToken);

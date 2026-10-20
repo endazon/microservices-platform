@@ -259,6 +259,40 @@ public class WikiJsGraphQlClientTests
         handler.Requests.Should().HaveCount(1);
     }
 
+    // FR-13, IADR-0563 決定 3 (#1971): 既に非公開（isPublished=false）のページへは update を送らない（往復は singleByPath の 1 回だけ）。
+    // 一括アーカイブの後の再発行は、ほぼこの形である（update は内容が同じでも描画の子プロセスを起こす）。
+    [Fact]
+    public async Task ArchivePageAsync_Skips_WhenAlreadyUnpublished()
+    {
+        var handler = new RecordingHandler(
+            """{"data":{"pages":{"singleByPath":{"id":3,"content":"# 本文","title":"規程","isPublished":false,"tags":[{"tag":"poc"}]}}}}""",
+            """{"data":{"pages":{"update":{"responseResult":{"succeeded":true,"errorCode":0,"message":"ok"}}}}}""");
+
+        await Build(handler).ArchivePageAsync("doc/x", TestContext.Current.CancellationToken);
+
+        handler.Requests.Should().ContainSingle();
+        handler.Requests[0].Should().Contain("isPublished", "公開状態を同じ 1 往復で取る");
+    }
+
+    // 対照: 公開中（true）・公開状態が読めない（欠落・null）なら、従来どおり unpublish の update を送る（安全側）。
+    [Theory]
+    [InlineData(",\"isPublished\":true")]
+    [InlineData(",\"isPublished\":null")]
+    [InlineData("")]
+    public async Task ArchivePageAsync_Updates_UnlessKnownUnpublished(string publishedJson)
+    {
+        var handler = new RecordingHandler(
+            "{\"data\":{\"pages\":{\"singleByPath\":{\"id\":3,\"content\":\"# 本文\",\"title\":\"規程\""
+                + publishedJson + ",\"tags\":[{\"tag\":\"poc\"}]}}}}",
+            """{"data":{"pages":{"update":{"responseResult":{"succeeded":true,"errorCode":0,"message":"ok"}}}}}""");
+
+        await Build(handler).ArchivePageAsync("doc/x", TestContext.Current.CancellationToken);
+
+        handler.Requests.Should().HaveCount(2);
+        JsonDocument.Parse(handler.Requests[1]).RootElement.GetProperty("variables")
+            .GetProperty("isPublished").GetBoolean().Should().BeFalse();
+    }
+
     // 削除: 存在すれば pages.delete、未存在は冪等にスキップ。
     [Fact]
     public async Task DeletePageAsync_DeletesById_WhenPageExists()

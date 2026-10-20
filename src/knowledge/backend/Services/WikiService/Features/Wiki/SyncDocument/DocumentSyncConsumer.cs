@@ -45,14 +45,16 @@ public class DocumentSyncConsumer(
     IWikiContentReader contentReader,
     ConsumerCallTimeouts calls,
     WikiSyncTimeouts timeouts,
+    WikiJsWriteGate writeGate,
     WikiSyncSkippedMetrics skippedMetrics,
     ILogger<DocumentSyncConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "wiki-sync";
 
+    // 🔴 #1971・[[IADR-0563]]: Wiki.js への書き込みは撤去の受け口と共有の門（既定 1 本）を通す。
     private Task WikiJsAsync(Func<CancellationToken, Task> call, CancellationToken ct)
-        => calls.RunAsync(StepName, WikiSyncTimeouts.WikiJsTarget, timeouts.WikiJs, call, ct);
+        => writeGate.RunAsync(calls, StepName, timeouts.WikiJs, call, ct);
 
     // FR-19, ADR-0046 D-01, ADR-0054 決定 1・2: 個人資料かどうかを判定する軸。
     // 属性キー・値の綴りは計画 ADR-0054 が確定させたものをそのまま用いる（実装で言い換えない）。
