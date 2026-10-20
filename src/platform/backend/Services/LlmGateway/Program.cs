@@ -71,7 +71,7 @@ builder.Services.AddOpenApi();
 // 撤去した（公式 SDK は effort を送れ、未知のブロックを例外にせず保持する）。
 // FR-11, IADR-0528 (#1872): 期限は `Llm:AnthropicTimeoutSeconds`（既定 100 秒＝従前と同じ。不正値は既定へ倒す）。
 // 呼び出し側の期限はこの値より短く保つ（docs/operations/operations.md）。
-// FR-11, IADR-0565 (#1997): 逐次の無通信の期限 `Llm:AnthropicStreamIdleTimeoutSeconds` は ClaudeProvider が読む（未設定は上の期限と同じ値）。
+// FR-11, IADR-0566 (#1997): 逐次の無通信の期限 `Llm:AnthropicStreamIdleTimeoutSeconds` は ClaudeProvider が読む（未設定は上の期限と同じ値）。
 builder.Services.AddSingleton(sp => AnthropicClientFactory.Create(
     builder.Configuration,
     sp.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(AnthropicClientFactory).FullName!)));

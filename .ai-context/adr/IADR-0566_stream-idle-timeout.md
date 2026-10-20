@@ -1,5 +1,5 @@
 ---
-title: IADR-0565 LLM ゲートウェイの逐次呼び出し（Claude 経路）にイベントの間の無通信の期限 Llm:AnthropicStreamIdleTimeoutSeconds（未設定は Llm:AnthropicTimeoutSeconds の解決値）を持たせ、期限切れは TimeoutException として upstream_error（上流状態 transport）へ縮退させる
+title: IADR-0566 LLM ゲートウェイの逐次呼び出し（Claude 経路）にイベントの間の無通信の期限 Llm:AnthropicStreamIdleTimeoutSeconds（未設定は Llm:AnthropicTimeoutSeconds の解決値）を持たせ、期限切れは TimeoutException として upstream_error（上流状態 transport）へ縮退させる
 type: impl-adr
 status: Accepted
 related_ids: [FR-11, FR-04, NFR-02, ADR-0010, IADR-0562, IADR-0528, IADR-0374, IADR-0037, IADR-0101]
@@ -12,7 +12,7 @@ related_specs:
   - ../specs/20261020_1997_stream-idle-timeout.md
 ---
 
-# IADR-0565: 逐次呼び出しにイベントの間の無通信の期限を持たせる（#1997）
+# IADR-0566: 逐次呼び出しにイベントの間の無通信の期限を持たせる（#1997）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

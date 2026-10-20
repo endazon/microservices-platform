@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 
-// T-45, FR-11, IADR-0565 (#1997): 逐次（StreamAsync）の無通信の期限を、本番の生成点（AnthropicClientFactory）越しに固定する。
+// T-45, FR-11, IADR-0566 (#1997): 逐次（StreamAsync）の無通信の期限を、本番の生成点（AnthropicClientFactory）越しに固定する。
 //   ①チャンクの途中で止まる相手 → 期限（1 秒）で TimeoutException。止まる前に届いた本文は流れている
 //   ②呼び出し側の取り消し → OperationCanceledException（TimeoutException にしない）
 //   ③期限より短い間隔でイベントが届き続ける相手 → 全体が期限を超えても打ち切らない（時計はイベントごとに戻る）

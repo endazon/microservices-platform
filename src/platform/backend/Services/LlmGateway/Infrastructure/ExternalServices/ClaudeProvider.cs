@@ -36,7 +36,7 @@ public class ClaudeProvider(
 {
     private readonly string _model = config["Llm:Model"] ?? "claude-opus-5-5";
 
-    // FR-11, #1997, IADR-0565: 逐次の無通信の期限（`Llm:AnthropicStreamIdleTimeoutSeconds`。未設定は一括の期限と同じ値）。
+    // FR-11, #1997, IADR-0566: 逐次の無通信の期限（`Llm:AnthropicStreamIdleTimeoutSeconds`。未設定は一括の期限と同じ値）。
     private readonly TimeSpan _streamIdleTimeout = AnthropicClientFactory.ResolveStreamIdleTimeout(config, logger);
 
     // 用途とモデルから送る effort を決める（未設定・非対応モデルは null＝送らない）。
@@ -115,7 +115,7 @@ public class ClaudeProvider(
 
         // IADR-0562 決定 4: 逐次には呼び出し全体の期限を掛けない。期限（Timeout）が効くのは応答ヘッダの到着までで、
         // 長い出力が長く流れ続けるのは正常であり、全体に期限を掛けると正当な長い応答を途中で切る。旧 SDK も同じ範囲だった（IADR-0528）。
-        // ［2026-10-20 / #1997・IADR-0565］代わりに**イベントの間の無通信**に期限を掛ける。ヘッダの後に上流が止まると、
+        // ［2026-10-20 / #1997・IADR-0566］代わりに**イベントの間の無通信**に期限を掛ける。ヘッダの後に上流が止まると、
         // 呼び出し側（RAG の回答）はどれも全体の期限を持たないので、利用者が停止を押すまで待ち続けていた。
         // 次のイベントを待つ間だけ時計を回し、受け取ったら止める（yield の先＝gRPC への書き込みが遅い呼び出し側の時間は数えない）。
         // 期限切れは TimeoutException で上げる（OperationCanceledException ではない）。CompletionUseCase は upstream_error へ縮退し、

@@ -51,7 +51,7 @@ public static class AnthropicClientFactory
         return TimeSpan.FromSeconds(DefaultTimeoutSeconds);
     }
 
-    // FR-11, #1997, IADR-0565: 逐次（CompleteStream）の無通信の期限。上流から次のイベントが届かないまま、この時間が過ぎたら打ち切る。
+    // FR-11, #1997, IADR-0566: 逐次（CompleteStream）の無通信の期限。上流から次のイベントが届かないまま、この時間が過ぎたら打ち切る。
     // 未設定・空白は `Llm:AnthropicTimeoutSeconds` の解決値に従う（一括は生成の全体をこの値の内に終える。同じ用途・同じモデルの
     // 逐次で、イベントの間の無通信が一括の全体の期限より長いのは正常な生成ではない）。不正値は同じ解決値へ倒して warn 1 行。
     public const string StreamIdleConfigKey = "Llm:AnthropicStreamIdleTimeoutSeconds";

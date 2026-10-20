@@ -2,7 +2,7 @@
 title: LLM ゲートウェイの逐次呼び出し（CompleteStream）の Claude 経路に、イベントの間の無通信の期限（Llm:AnthropicStreamIdleTimeoutSeconds。未設定は一括の期限と同じ値）を持たせる（#1997）
 type: spec
 status: done
-related_ids: [FR-11, FR-04, NFR-02, ADR-0010, IADR-0565, IADR-0562, IADR-0528, IADR-0374, IADR-0037]
+related_ids: [FR-11, FR-04, NFR-02, ADR-0010, IADR-0566, IADR-0562, IADR-0528, IADR-0374, IADR-0037]
 author: claude
 created: 2026-10-20
 updated: 2026-10-20
@@ -14,7 +14,7 @@ issue: "#1997"
 # 仕様書: 逐次呼び出しに無通信の期限を持たせる（#1997）
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-20）。実装の基点は MSP `origin/develop` `fe06bdee`。
-> AST は `origin/develop` と、submodule の pin `bc2ab98` を走査した。判断は IADR-0565。
+> AST は `origin/develop` と、submodule の pin `bc2ab98` を走査した。判断は IADR-0566。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -54,7 +54,7 @@ issue: "#1997"
 - 誤りの側の文字列 `応答ヘッダの到着まで` / `ヘッダの到着後は期限で切れない` / `期限なし` を全文書で走査した。追随先:
   `docs/functional/FR-11_llm-egress-routing.md`（期限の表）・`docs/operations/operations.md`（§Anthropic 呼び出しの期限）・
   `docs/tests/FR-11_llm-egress-routing.md`（T-45 を新設）・`deploy/helm/microservices-platform/values.yaml`（設定のコメント）・`ClaudeProvider.cs` のコメント。
-- 除外: `.ai-context/` の凍結記録（IADR-0528・0562・作業仕様書）。決定の変更は IADR-0565 が持つ。
+- 除外: `.ai-context/` の凍結記録（IADR-0528・0562・作業仕様書）。決定の変更は IADR-0566 が持つ。
 
 ## 受け入れ基準
 
