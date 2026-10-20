@@ -8,6 +8,7 @@ namespace WikiService.Infrastructure.ExternalServices;
 //
 // 冪等 upsert: path をキーに singleByPath で既存を引き、無ければ pages.create、あって内容が違えば pages.update、
 // 同じなら何も書かない（#1971・[[IADR-0557]]。Wiki.js 2.5 の update は 1 件ごとに描画の子プロセスを起こし 2.5〜5 秒かかる）。
+// アーカイブも、既に非公開なら何も書かない（#1971・[[IADR-0563]] 決定 3）。
 // 認証はサービスアカウントの API キー（Bearer）。秘密は環境変数/シークレット経由で注入しコミットしない。
 //
 // 注（IADR-0021）: Wiki.js 2.x の GraphQL スキーマ（バージョン差異あり）への結合が生じる。実際の
@@ -138,12 +139,18 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
     //   → 現在の content/title/tags を取得してから、UpdateAsync と同じ全項目シェイプで送る。
     //   - update は isPrivate の変更を無視する（create 時のみ有効）。非公開化の実効手段は
     //     isPublished=false（unpublish）であり、isPrivate は将来バージョンでの適用を期待して送るのみ。
+    //
+    // 🔴 FR-13, [[IADR-0563]] 決定 3 (#1971): **既に非公開（isPublished=false）なら update を送らない。** この update は
+    //   今の表題・本文・タグをそのまま送り返し、変えるのは isPublished だけである（isPrivate は上のとおり書かれない）。
+    //   既に false なら Wiki.js の状態は変わらないのに、描画の子プロセスと `pageHistory` の版が 1 件ずつ増える
+    //   （[[IADR-0557]] の実測: update は内容が同じでも CPU 0.5 で約 5 秒）。一括アーカイブの後の再発行は、ほぼこの形である。
+    //   isPublished が読めない（欠落・true 以外の値）ときは従来どおり送る（安全側）。
     public async Task ArchivePageAsync(string path, CancellationToken ct = default)
     {
         var normalized = NormalizePath(path);
         const string query = """
             query ($path: String!, $locale: String!) {
-              pages { singleByPath(path: $path, locale: $locale) { id content title tags { tag } } }
+              pages { singleByPath(path: $path, locale: $locale) { id content title isPublished tags { tag } } }
             }
             """;
         var single = await QuerySingleByPathAsync(query, normalized, ct);
@@ -154,6 +161,12 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
         }
 
         var id = page.GetProperty("id").GetInt32();
+        if (page.TryGetProperty("isPublished", out var published) && published.ValueKind == JsonValueKind.False)
+        {
+            logger.LogInformation("Wiki.js page already unpublished; archive update skipped: path={Path} id={Id}", normalized, id);
+            return;
+        }
+
         var tags = page.GetProperty("tags").EnumerateArray()
             .Select(t => t.GetProperty("tag").GetString() ?? "")
             .ToArray();

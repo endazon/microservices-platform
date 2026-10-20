@@ -28,6 +28,7 @@ public class DocumentDeletedConsumer(
     IWikiJsClient wikiJs,
     ConsumerCallTimeouts calls,
     WikiSyncTimeouts timeouts,
+    WikiJsWriteGate writeGate,
     ILogger<DocumentDeletedConsumer> logger) : IPipelineStep<DocumentDeleted>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -36,7 +37,9 @@ public class DocumentDeletedConsumer(
     // ADR-0027 / E3a: Wolverine のハンドラ。
     public async Task Handle(DocumentDeleted ev, CancellationToken ct)
     {
-        await calls.RunAsync(StepName, WikiSyncTimeouts.WikiJsTarget, timeouts.WikiJs,
+        // 🔴 #1971・[[IADR-0563]]: 同期の受け口と共有の書き込みの門（既定 1 本）を通す。pages.delete も木の再構築を走らせ、
+        // 同期の pages.create と並ぶと pageTree の主キーで衝突する。
+        await writeGate.RunAsync(calls, StepName, timeouts.WikiJs,
             t => wikiJs.DeletePageAsync(WikiPage.PathFor(ev.DocumentId), t), ct);
 
         var page = await db.Pages
