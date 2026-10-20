@@ -288,7 +288,7 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 | 各ワークフローの `report-failure` と `ci-failure-issue.yml` の `report` | `issues` | `actions` | 後段の失敗の起票と、失敗したジョブ名の取得 |
 | `integration-stack-rerun.yml` の `rerun` | `actions` / `issues` | — | 統合スタックの所要時間の判定だけが赤の実行を 1 回だけ再実行し（失敗したジョブの再実行）、結果を起票済みの issue へ書く。実行・ジョブ・ログの読み取りも同じトークンで行う |
 
-🔴 **再利用ワークフロー `ci-failure-issue.yml` の `report` が要求する範囲は、呼び出し側の `report-failure` すべてが与える。**（本数は導出値なので書かない。2026-10-20 時点で 8 本）
+🔴 **再利用ワークフロー `ci-failure-issue.yml` の `report` が要求する範囲は、呼び出し側の `report-failure` すべてが与える。**（本数は導出値なので書かない）
 要求が呼び出し側の上限を超えると、呼び出し側の実行が起動時に失敗する。この一致も同じ検査が突き合わせる。
 
 🔴 **`changelog` / `openapi` / `release` / `report-failure` は develop・main・タグへの push、日次・週次、手動実行でしか走らない。**

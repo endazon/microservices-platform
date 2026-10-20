@@ -20,9 +20,12 @@
  *   - ok        : 全アーキテクチャの APKINDEX の版が AGE_VERSION と一致した。exit 0・起票しない。
  *   - drift     : どれかのアーキテクチャで版が違う（または age が APKINDEX に無い）。exit 0・`--upsert-issue` なら起票／上書き。
  *   - unverified: APKINDEX に届かない・読めない（ネットワーク断・5xx・壊れた圧縮）。exit 0・**起票しない**（誤った起票をしない）。
+ *                 🔴 **404 / 410 はここへ入れない**（下の error）。取得元が恒久的に無い（ブランチの EOL でミラーから消えた等）のに
+ *                 unverified にすると、毎日緑のまま検知が止まる（#2010 の AI レビュー 🟡）。
  *                 warning を出し、`scanned`（突き合わせられたアーキテクチャの数）で「一致」と「動いていない」を区別する。
  *                 一部のアーキテクチャだけ読めて、そこで食い違ったら drift（読めた分の食い違いは本物である）。
- *   - error     : Dockerfile から ARG を読めない（本リポジトリの欠陥）。exit 1。
+ *   - error     : Dockerfile から ARG を読めない（本リポジトリの欠陥）、または APKINDEX が 404 / 410（取得元が恒久的に無い）。
+ *                 exit 1（ワークフローの ci-failure-issue が起票する）。
  *   起票が要るのに書けない（token 不在・API 失敗）ときも exit 1（検知を黙って捨てない）。自動ではクローズしない。
  *
  * 使い方:
@@ -92,6 +95,9 @@ function versionOf(apkindex, pkg = PACKAGE) {
   return null;
 }
 
+/** 取得元が恒久的に無いことを表す HTTP 状態（一過性の 5xx・ネットワーク断とは分ける）。 */
+const PERMANENT_STATUSES = new Set([404, 410]);
+
 /** APKINDEX.tar.gz（バイト列）から版を読む。圧縮・tar が壊れていれば例外。 */
 function versionFromIndexArchive(gz, pkg = PACKAGE) {
   const tar = zlib.gunzipSync(gz);
@@ -106,7 +112,11 @@ function indexUrl(pinned, arch) {
 
 async function fetchIndex(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  if (!res.ok) {
+    const e = new Error(`HTTP ${res.status} for ${url}`);
+    e.status = res.status;
+    throw e;
+  }
   return Buffer.from(await res.arrayBuffer());
 }
 
@@ -130,12 +140,22 @@ async function resolve({ dockerfileText, fetchFn = fetchIndex } = {}) {
       const latest = versionFromIndexArchive(await fetchFn(url));
       arches.push({ arch, url, latest, status: latest === pinned.version ? 'ok' : 'drift' });
     } catch (e) {
-      arches.push({ arch, url, latest: null, status: 'unverified', reason: String(e && e.message ? e.message : e) });
+      const permanent = Boolean(e && PERMANENT_STATUSES.has(e.status));
+      arches.push({ arch, url, latest: null, status: permanent ? 'missing' : 'unverified', reason: String(e && e.message ? e.message : e) });
     }
   }
-  const scanned = arches.filter((a) => a.status !== 'unverified').length;
+  const scanned = arches.filter((a) => a.status === 'ok' || a.status === 'drift').length;
   const drifted = arches.filter((a) => a.status === 'drift');
+  const missing = arches.filter((a) => a.status === 'missing');
   const base = { checkedAt, pinned, scanned, expected: ARCHES.length, arches };
+  // 🔴 取得元が恒久的に無い（404 / 410）は unverified に混ぜない。黙って緑を続けると検知が止まる。
+  if (missing.length) {
+    const why = missing.map((a) => `${a.arch}: ${a.reason}`).join(' / ');
+    return {
+      status: 'error', ...base,
+      reason: `APKINDEX が恒久的に無い（${why}）。ALPINE_BRANCH（${pinned.branch}）が EOL でミラーから消えた、または ALPINE_MIRROR の誤りを疑う。Runbook §6 でベースと一緒に上げる`,
+    };
+  }
   if (drifted.length) {
     const what = drifted.map((a) => `${a.arch}: ${a.latest === null ? 'APKINDEX に age が無い' : a.latest}`).join(' / ');
     return { status: 'drift', ...base, reason: `固定 ${pinned.version} に対し APKINDEX の版が違う（${what}）` };
@@ -292,6 +312,31 @@ async function selfTest() {
       name: 'ネットワークに届かなければ unverified・scanned=0（起票しない・exit 0）',
       run: async () => resolve({ dockerfileText: FIXTURE_DOCKERFILE, fetchFn: async () => { throw new Error('fetch failed'); } }),
       expect: (r) => r.status === 'unverified' && r.scanned === 0 && /fetch failed/.test(r.reason) && exitCodeFor(r) === 0,
+    },
+    {
+      // 🔴 #2010 の AI レビュー 🟡: 404 を unverified にすると、ブランチの EOL で毎日緑のまま検知が止まる。
+      name: '🔴 APKINDEX が 404（取得元が恒久的に無い）なら error・exit 1（unverified にしない）',
+      run: async () => resolve({
+        dockerfileText: FIXTURE_DOCKERFILE,
+        fetchFn: async (url) => { const e = new Error(`HTTP 404 for ${url}`); e.status = 404; throw e; },
+      }),
+      expect: (r) => r.status === 'error' && exitCodeFor(r) === 1 && /恒久的に無い/.test(r.reason) && /EOL/.test(r.reason),
+    },
+    {
+      name: '片方だけ 404 でも error（もう片方の一致で緑にしない）',
+      run: async () => resolve({
+        dockerfileText: FIXTURE_DOCKERFILE,
+        fetchFn: async (url) => { if (/aarch64/.test(url)) { const e = new Error('HTTP 410'); e.status = 410; throw e; } return indexWith('1.3.2-r1'); },
+      }),
+      expect: (r) => r.status === 'error' && r.scanned === 1,
+    },
+    {
+      name: '5xx は一過性なので unverified のまま（exit 0・起票しない）',
+      run: async () => resolve({
+        dockerfileText: FIXTURE_DOCKERFILE,
+        fetchFn: async () => { const e = new Error('HTTP 503'); e.status = 503; throw e; },
+      }),
+      expect: (r) => r.status === 'unverified' && exitCodeFor(r) === 0,
     },
     {
       name: '壊れた圧縮（プロキシの HTML 等）は unverified（drift にしない）',

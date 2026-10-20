@@ -9,7 +9,8 @@
 # - 食い違えば専用 issue（ラベル age-apkindex-drift・マーカー <!-- age-apkindex-drift -->）を 1 件だけ起票し、以後は本文を上書きする。
 #   **自動ではクローズしない・版を自動で上げない**（上げるのは Runbook §6。人が sha256 を確かめてから）。
 # - 一致していれば何もしない。APKINDEX に届かなければ warning だけ出し、**起票しない**（誤った起票をしない）。
-# - 落ちる（exit 1）のは Dockerfile の ARG を読めないときと、ずれを検知したのに issue へ書けなかったときだけ。
+# - 落ちる（exit 1）のは APKINDEX が 404 / 410（取得元が恒久的に無い。ブランチの EOL 等）のとき、Dockerfile の ARG を読めないとき、
+#   ずれを検知したのに issue へ書けなかったときだけ。5xx・ネットワーク断は warning だけで緑のまま。
 #   そのときは ci-failure-issue.yml が別スレッドの issue を立てる（監視が黙って止まらない）。
 #
 # ■ 必須チェックにしない・PR では走らせない（外部の CDN の状態で PR を赤くしない）。自己試験は scripts.repo.test.js も走らせる。

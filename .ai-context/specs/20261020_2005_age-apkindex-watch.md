@@ -45,19 +45,21 @@ issue: "#2005"
 - `ok`（全部一致）: 何もしない。
 - `drift`（どれかが違う・age が無い）: 専用 issue（ラベル `age-apkindex-drift`）を起票し、以後は本文を上書きする。自動クローズしない。版は自動で上げない。
 - `unverified`（届かない・読めない）: warning だけ出し、起票しない。片方だけ読めて一致なら `unverified`、片方だけ読めて食い違えば `drift`。
-- `error`（Dockerfile の ARG を読めない）: exit 1。起票が要るのに書けないときも exit 1（ci-failure-issue が拾う）。
-- 実測（2026-10-20）: 実ネットワークで `ok`（両アーキテクチャ `1.3.2-r1`）。固定を `1.3.2-r0` にした Dockerfile では `drift`。プロキシを塞ぐと `unverified`・起票不要。
+- `error`（Dockerfile の ARG を読めない、または APKINDEX が 404 / 410＝取得元が恒久的に無い）: exit 1。起票が要るのに書けないときも exit 1（ci-failure-issue が拾う）。
+  ［2026-10-20 / PR #2010 の AI レビュー 🟡］初稿は 404 も `unverified` にしていた。ブランチが EOL でミラーから消えると毎日緑のまま検知が止まるので、`error` へ分けた。5xx・ネットワーク断は `unverified` のまま。
+- 実測（2026-10-20）: 実ネットワークで `ok`（両アーキテクチャ `1.3.2-r1`）。固定を `1.3.2-r0` にした Dockerfile では `drift`。`ALPINE_BRANCH=v3.99` では 404 で `error`・exit 1。プロキシを塞ぐと `unverified`・起票不要。
+- 人が drift の issue を閉じても、ずれが残っていれば翌日にまた立つ（意図どおり。閉じてよいのは版を上げた PR がマージされたときだけ）。
 
 ## 母集合（規則 9・10）
 
 - ワークフローの権限の表: `scripts/scripts.repo.test.js` の `JOB_SCOPES` と `docs/ai-workflow.md` の表。
 - 検査器の母集合の本数（62 → 63）: `scripts/scripts.repo.test.js`。
-- `ci-failure-issue.yml` の呼び出し側の本数: 「6 本」と書いた 3 か所（`ci-failure-issue.yml`・`docs/ai-workflow.md`・試験名）は、本 PR の前から既に 7 本で腐っていた。本数は導出値なので書かない形へ改めた（本 PR の後は 8 本）。
+- `ci-failure-issue.yml` の呼び出し側の本数: 「6 本」と書いた 3 か所（`ci-failure-issue.yml`・`docs/ai-workflow.md`・試験名）は、本 PR の前から既に 7 本で腐っていた。本数は導出値なので書かない形へ改めた。
 - `scripts/README.md`・運用 Runbook §6・IADR-0471（2 回目の追記）。
 
 ## 受け入れ基準
 
-- [x] 食い違いがあると起票され、一致していれば何もしないことを試験で固定する（自己試験 16 件。`scripts.repo.test.js` が PR で走らせる）。
+- [x] 食い違いがあると起票され、一致していれば何もしないことを試験で固定する（自己試験 19 件。`scripts.repo.test.js` が PR で走らせる）。
 - [x] ネットワークに届かないときは、起票せずに警告だけ出す（自己試験・実測）。
 - [x] IADR-0471 に 2 回目の記録を日付つきで追記する。
 
@@ -68,3 +70,4 @@ issue: "#2005"
 | `resolve` の判定を常に ok にする | 陽性対照・age が無い・片方だけ食い違いの 3 件と、drift を前提にする upsert の 3 件、計 6 件が赤 |
 | 届かない分を drift として数える | 届かない・壊れた圧縮・片方だけ一致・片方だけ食い違いの 4 件が赤 |
 | `upsertDriftIssue` の status 判定を外す | 「ok / unverified / error では API を呼ばない」が赤 |
+| 404 / 410 の判別を外す（すべて unverified） | 404 と片方だけ 410 の 2 件が赤 |
