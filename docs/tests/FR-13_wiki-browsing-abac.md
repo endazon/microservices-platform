@@ -3,15 +3,15 @@ title: FR-13 Wiki 閲覧の ABAC 適用 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-07-03
-updated: 2026-10-16
+updated: 2026-10-20
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-07, FR-13, UC-07, NFR-06]
 adrs: [ADR-0004, ADR-0011, ADR-0027]
-iadrs: [IADR-0554, IADR-0541, IADR-0540, IADR-0023, IADR-0478]
-specs: [20261016_1966_wiki-title-column-length, 20261015_1934_wiki-slug-unique, 20260703_FR-13_wiki-browsing-abac, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#1966, #1934, #1640]
+iadrs: [IADR-0563, IADR-0554, IADR-0541, IADR-0540, IADR-0023, IADR-0478]
+specs: [20261020_1971_wiki-sync-write-gate, 20261016_1966_wiki-title-column-length, 20261015_1934_wiki-slug-unique, 20260703_FR-13_wiki-browsing-abac, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#1971, #1966, #1934, #1640]
 -->
 
 # テスト仕様書: Wiki 閲覧の ABAC 適用
@@ -73,6 +73,10 @@ issues: [#1966, #1934, #1640]
 | T-32 | 上限を超える表題がサロゲートペア（BMP 外の漢字）・結合文字（濁点）・異体字セレクタ・ZWJ で連結した絵文字・国旗の対で続く。BMP 外の漢字 255 文字 | 切り詰め | 符号位置で数え（BMP 外の漢字 255 文字は切らない）、書記素クラスタの境界でだけ切る（孤立したサロゲートを作らず、切った位置は要素の先頭）。印を含めて上限に収まる | 同上 | 自動 |
 | T-33 | Wiki.js が `pages.create` / `pages.update` を値の長さ（`value too long for type character varying(255)`）で拒む。本番と同じ共通既定の Wolverine で同じ失敗 | 発行→消費 | 恒久的な失敗へ写し、例外を上げずに終える。Warning（文書 ID・操作・パス・Wiki.js の message。表題そのものは出さない）と計数 `wiki.sync.skipped{reason=value_too_long}` を 1。メタデータを書かない。実配送では試行 1 回で成功として終わりデッドレターへ行かない | 更新反映（恒久的な失敗で DLQ を汚さない） | 自動 |
 | T-34 | Wiki.js の他の失敗（接続断・プールの枯渇・本文が空・GraphQL errors）。実配送で 1 回目だけ失敗 | 発行→消費 | 一時障害のまま例外を上げ（計数は増えない）、実配送では再試行の 2 回目で反映してデッドレターへ行かない | 同上 | 自動 |
+| T-35 | Wiki.js のページが既に非公開（`isPublished=false`）のアーカイブ。公開中・公開状態が読めない（欠落・null）ページのアーカイブ | `ArchivePageAsync` | 既に非公開なら update を送らない（往復は `singleByPath` の 1 回）。それ以外は従来どおり全項目＋unpublish の update | 削除/アーカイブ伝播（一括アーカイブの後の再発行で Wiki.js を書き直さない） | 自動 |
+| T-36 | 同期（upsert・アーカイブ）と撤去を同時に流す。書き込みの上限 1・2 | 発行→消費 | Wiki.js への呼び出しの重なりは上限を超えない（上限 1 なら 1 本ずつ。上限 2 では 2 まで重なる対照） | 更新反映・削除伝播（Wiki.js の木の再構築を並べない） | 自動 |
+| T-37 | 書き込みの門の待ちが期限を超える。Wiki.js の呼び出しが失敗・時間切れ | 門 | 門の時間切れ（呼び出し先 `wiki-js-gate`）として投げて再試行へ委ねる。どの終わり方でも枠は返り、次の書き込みは通る | 同上 | 自動 |
+| T-38 | 書き込みの上限の構成（未設定・1〜4・範囲の外・整数でない）と本番の配線。最悪の所要時間の検査 | 起動 | 既定 1。範囲の外・整数でない値は起動を止める。両リスナーは Inline で、リスナーの数は上限と同じ。門の待ちも最悪の所要時間に数える | 同上 | 自動 |
 
 ## 実装マッピング
 
