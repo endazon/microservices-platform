@@ -714,6 +714,8 @@ services:
     # FR-11, ADR-0010, IADR-0528 (#1872): Anthropic 呼び出しの期限は env Llm__AnthropicTimeoutSeconds（秒）で変えられる。
     #   chart は値を置かない（未設定＝既定 100 秒。数値でない・0 以下は既定へ倒れ warn を 1 行出す）。
     #   🔴 呼び出し側の期限はこの値より短く保つこと。延ばすなら下の extraEnv に足す（docs/operations/operations.md）。
+    # FR-11, IADR-0566 (#1997): 逐次（CompleteStream）のイベントの間の無通信の期限は env Llm__AnthropicStreamIdleTimeoutSeconds（秒）。
+    #   chart は値を置かない（未設定＝ Llm__AnthropicTimeoutSeconds と同じ値）。
     extraEnv:
       - name: Llm__ApiKey
         secretKeyRef:
