@@ -645,3 +645,4 @@
 | [IADR-0565](./IADR-0565_document-list-index-status-via-ingestion-grpc.md) | 文書管理の一覧に索引の状態（索引済み・埋め込み待ち・未索引、引けなければ不明）を出す。取り込み側に文書 ID の集合から状態を返す east-west gRPC 面（DocumentIndexStatus。上限 100・コレクションごとの facet 1 回）を置き、BFF は ABAC で切り出した窓の ID だけを 1 回で問い合わせ、失敗は全件「不明」で一覧を失敗させない（#1993） | Accepted |
 | [IADR-0566](./IADR-0566_stream-idle-timeout.md) | LLM ゲートウェイの逐次呼び出し（Claude 経路）にイベントの間の無通信の期限 Llm:AnthropicStreamIdleTimeoutSeconds（未設定は Llm:AnthropicTimeoutSeconds の解決値）を持たせ、期限切れは upstream_error（上流状態 transport）へ縮退させる（#1997） | Accepted |
 | [IADR-0567](./IADR-0567_ingestion-budget-exhausted-alert.md) | 取り込みの総枠（embedding-budget / lexical-budget）の使い切りに警報 IngestionBudgetExhausted（直近 1 時間の前進 > 0・for 5m・warning）を張る（#1991） | Accepted |
+| [IADR-0568](./IADR-0568_age-apkindex-daily-watch.md) | platform-backup の age の版と Alpine の APKINDEX を日次で突き合わせ、ずれたら専用 issue を起票する（届かなければ起票しない・版を自動で上げない）（#2005） | Accepted |
