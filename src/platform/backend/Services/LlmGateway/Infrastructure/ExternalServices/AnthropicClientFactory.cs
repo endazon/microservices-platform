@@ -51,6 +51,32 @@ public static class AnthropicClientFactory
         return TimeSpan.FromSeconds(DefaultTimeoutSeconds);
     }
 
+    // FR-11, #1997, IADR-0565: 逐次（CompleteStream）の無通信の期限。上流から次のイベントが届かないまま、この時間が過ぎたら打ち切る。
+    // 未設定・空白は `Llm:AnthropicTimeoutSeconds` の解決値に従う（一括は生成の全体をこの値の内に終える。同じ用途・同じモデルの
+    // 逐次で、イベントの間の無通信が一括の全体の期限より長いのは正常な生成ではない）。不正値は同じ解決値へ倒して warn 1 行。
+    public const string StreamIdleConfigKey = "Llm:AnthropicStreamIdleTimeoutSeconds";
+
+    public static TimeSpan ResolveStreamIdleTimeout(IConfiguration configuration, ILogger? logger = null)
+    {
+        var fallback = ResolveTimeout(configuration);
+        var raw = configuration[StreamIdleConfigKey];
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return fallback;
+        }
+
+        if (int.TryParse(raw.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds)
+            && seconds is >= 1 and <= MaxTimeoutSeconds)
+        {
+            return TimeSpan.FromSeconds(seconds);
+        }
+
+        logger?.LogWarning(
+            "{ConfigKey} の値 '{Value}' は不正なため {FallbackKey} と同じ {FallbackSeconds} 秒を使う（1〜{MaxSeconds} の整数で指定する）。",
+            StreamIdleConfigKey, raw, ConfigKey, (int)fallback.TotalSeconds, MaxTimeoutSeconds);
+        return fallback;
+    }
+
     // 一次ハンドラは既定の HttpClientHandler（システムプロキシ設定は既定で引き継がれる）で、応答圧縮を明示的に有効にする
     // （IADR-0114 決定 2 の後半を引き継ぐ）。試験は primaryHandler で送信先だけを差し替える（期限・再試行・送信先の設定は本番と同じ）。
     public static AnthropicClient Create(

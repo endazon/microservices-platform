@@ -36,6 +36,9 @@ public class ClaudeProvider(
 {
     private readonly string _model = config["Llm:Model"] ?? "claude-opus-5-5";
 
+    // FR-11, #1997, IADR-0565: 逐次の無通信の期限（`Llm:AnthropicStreamIdleTimeoutSeconds`。未設定は一括の期限と同じ値）。
+    private readonly TimeSpan _streamIdleTimeout = AnthropicClientFactory.ResolveStreamIdleTimeout(config, logger);
+
     // 用途とモデルから送る effort を決める（未設定・非対応モデルは null＝送らない）。
     private string? EffortFor(CompletionRequest request, string model)
         => ClaudeEffort.Resolve(effortOptions?.CurrentValue, request.Purpose, model);
@@ -111,24 +114,38 @@ public class ClaudeProvider(
         string? stopReason = null;
 
         // IADR-0562 決定 4: 逐次には呼び出し全体の期限を掛けない。期限（Timeout）が効くのは応答ヘッダの到着までで、
-        // その後の受信は呼び出し側の取り消し（gRPC の deadline・切断）だけが止める。長い出力が長く流れ続けるのは正常であり、
-        // 全体に期限を掛けると正当な長い応答を途中で切る。旧 SDK も同じ範囲だった（IADR-0528）。
+        // 長い出力が長く流れ続けるのは正常であり、全体に期限を掛けると正当な長い応答を途中で切る。旧 SDK も同じ範囲だった（IADR-0528）。
+        // ［2026-10-20 / #1997・IADR-0565］代わりに**イベントの間の無通信**に期限を掛ける。ヘッダの後に上流が止まると、
+        // 呼び出し側（RAG の回答）はどれも全体の期限を持たないので、利用者が停止を押すまで待ち続けていた。
+        // 次のイベントを待つ間だけ時計を回し、受け取ったら止める（yield の先＝gRPC への書き込みが遅い呼び出し側の時間は数えない）。
+        // 期限切れは TimeoutException で上げる（OperationCanceledException ではない）。CompletionUseCase は upstream_error へ縮退し、
+        // 計器の上流状態は transport になる。呼び出し側の取り消しはそのまま OperationCanceledException で伝える。
         // SDK の例外は最初の MoveNextAsync（要求の送信）か途中の読み取りで出る。yield を try/catch の中に置けないので、
         // 列挙子を手で回して MoveNextAsync だけを包む（IADR-0562 決定 1。ストリームでも Domain に SDK の型を見せない）。
-        await using var events = client.Messages.CreateStreaming(BuildParams(request, model), ct).GetAsyncEnumerator(ct);
+        using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        await using var events = client.Messages.CreateStreaming(BuildParams(request, model), idle.Token).GetAsyncEnumerator(idle.Token);
         while (true)
         {
             RawMessageStreamEvent ev;
+            idle.CancelAfter(_streamIdleTimeout);
             try
             {
                 if (!await events.MoveNextAsync())
                     break;
                 ev = events.Current;
             }
+            catch (Exception ex) when (idle.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                throw new TimeoutException(
+                    $"Claude の逐次応答が無通信の期限 {_streamIdleTimeout} を過ぎたため打ち切った（{AnthropicClientFactory.StreamIdleConfigKey}）。",
+                    ex);
+            }
             catch (AnthropicException ex) when (IsTranslated(ex))
             {
                 throw Translate(ex);
             }
+
+            idle.CancelAfter(System.Threading.Timeout.InfiniteTimeSpan);
 
             // message_start で入力トークン、message_delta で出力トークンが逐次確定する。
             if (ev.TryPickStart(out var start))

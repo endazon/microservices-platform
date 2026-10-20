@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-11 用途別・機密度別 LLM ルーティン
 type: test-spec
 status: completed
 created: 2026-07-04
-updated: 2026-10-17
+updated: 2026-10-20
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-12, FR-17, FR-18, NFR-21, UC-02, NFR-17, NFR-19, NFR-28]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0138]
-iadrs: [IADR-0007, IADR-0014, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0374, IADR-0497, IADR-0498, IADR-0340, IADR-0511, IADR-0504, IADR-0528, IADR-0531, IADR-0533, IADR-0535, IADR-0562]
-specs: [20260702_FR-11_llm-egress-routing, 20260704_FR-11_llm-routing-runtime-fixes, 20260905_issue-1091_llm-upstream-status-axis, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1872_anthropic-timeout-config, 20261010_1875_claude-5-5-models, 20261010_issue-1255-1517_east-west-rest-retirement, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261017_1903_drop-pre-5-5-claude-models, 20261017_1749_anthropic-official-sdk]
-issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #440, #850, #859, #863, #1091, #1746, #1785, #1819, #1872, #1875, #1255, #1517, #1917, #1902, #1903, #1749, AST#290, AST#309, planning#426, planning#783]
+iadrs: [IADR-0007, IADR-0014, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0374, IADR-0497, IADR-0498, IADR-0340, IADR-0511, IADR-0504, IADR-0528, IADR-0531, IADR-0533, IADR-0535, IADR-0562, IADR-0565]
+specs: [20260702_FR-11_llm-egress-routing, 20260704_FR-11_llm-routing-runtime-fixes, 20260905_issue-1091_llm-upstream-status-axis, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1872_anthropic-timeout-config, 20261010_1875_claude-5-5-models, 20261010_issue-1255-1517_east-west-rest-retirement, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261017_1903_drop-pre-5-5-claude-models, 20261017_1749_anthropic-official-sdk, 20261020_1997_stream-idle-timeout]
+issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #440, #850, #859, #863, #1091, #1746, #1785, #1819, #1872, #1875, #1255, #1517, #1917, #1902, #1903, #1749, AST#290, AST#309, planning#426, planning#783, #1997]
 -->
 
 # テスト仕様書: 用途別・機密度別 LLM ルーティング
@@ -69,6 +69,7 @@ issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #440, #850, 
 | T-41 | **除去のログ段階と除去件数の計器（#1917）** | 5.5 系は thinking を無効にできず、thinking の除去は毎応答の通常の形である。①`thinking`＋本文 ②`redacted_thinking`＋`thinking`＋本文 ③`thinking`＋`server_tool_use`＋将来型＋本文 ④`thinking` だけ（本文なし） ⑤本文だけ、を `ClaudeProvider` に与える（［2026-10-17］公式 SDK への移行で、数える場所はサニタイズの委譲ハンドラからプロバイダへ移った。条件と計器は不変）。計器の型属性の正規化も見る | ①② debug 1 行・warn 0 行 ③ warn 1 行（構造化値 `UnexpectedTypes`＝`server_tool_use, some_future_block`・本文の文字列を載せない） ④ warn 1 行 ⑤ ログ 0 行・計器 0。計器 `llm.anthropic.content_blocks_dropped` は型ごとに加算し（①`thinking`=1 ②`thinking`=1・`redacted_thinking`=1 ③`thinking`=1・`other`=2 ④`thinking`=1）、型属性は `thinking` / `redacted_thinking` / `other` の 3 値に閉じる | LLM 送信先切替 / `ClaudeProviderContentBlockLogTests` |
 | T-42 | **利用許可集合と effort の対応集合は 5.5 系の 3 モデルだけ（#1903）** | ①実設定の `claude-managed` の `Models` は `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5` だけで、`NonZdrModels` は空。②旧世代 5 つ（`claude-opus-5` / `claude-sonnet-5` / `claude-haiku-4-5` / `claude-opus-4-8` / `claude-sonnet-4-6`）を明示の `Model` で要求すると、その ID では呼ばず、用途の割当（用途の割当が無ければ `DefaultModel`）へ落ちる。陽性対照: 5.5 系を明示すれば用途の割当より明示が優先される。③`ClaudeEffort.CapableModels` は実設定の `Models` と一致する | ①〜③が成り立つ。割当と鎖が許可集合に含まれる既存の試験と合わせ、割当・フォールバックの候補にも 5.5 系以外が現れない。**変異**: `Models` に `claude-opus-5` を戻すと①②③が赤、`CapableModels` に `claude-opus-4-8` を戻すと③が赤 | LLM 送信先切替 / `CompletionRoutingEndpointTests`・`ClaudeProviderRequestShapeTests` |
 | T-43 | **公式 SDK へ移したことで黙って変わり得る 3 点（2026-10-17）** | 本番の生成点越しに、①上流の 400 / 404 / 413 / 422 / 429 / 500 / 529 と接続断（非ストリーム・ストリーム）②429 / 500 / 529 / 接続断 / 期限切れでの送信回数 ③期限を 1 秒にして応答ヘッダを返さない相手・ヘッダは返すが本文を返さない相手（一括）・呼び出し側の取り消し・`max_tokens` 64,000 の非ストリーム、を与える | ① `HttpRequestException`（状態コード付き。接続断は状態なし）で届き、フォールバックの判定器は 400 系だけ真（429・5xx は偽）、上流状態の計器の軸は旧 SDK と同値（`rate_limited` / `client_error` / `server_error` / `transport`）② 送信は 1 回（再試行しない）③ どちらの相手でも約 1 秒で `TaskCanceledException`（内側 `TimeoutException`）・送信 1 回（一括は全文の受信までが期限に入る）／呼び出し側の取り消しは `TimeoutException` を持たない／`max_tokens` 64,000 でも例外にならない。**変異**: 包み直しを外すと①の 18 件、再試行 0 を外すと②の 5 件と T-33 の生成 4 件・T-34 の 1 件、期限の写像を外すと③の 1 件と T-33 の生成 4 件・T-34 の 2 件、一括の呼び出し全体の期限を外すと③の本文が止まる相手の 1 件が赤 | LLM 送信先切替 / `ClaudeProviderSdkRiskTests` |
+| T-45 | **逐次の無通信の期限（#1997）** | 本番の生成点越しに、無通信の期限を 1 秒にして、①ヘッダと本文の一部を返した後に止まる相手 ②呼び出し側の取り消し（期限 60 秒） ③0.4 秒おきにイベントが届き、全体は約 2 秒かかる相手 ④受け取り側が 1 本につき 1.5 秒かけて受け取る（上流は止まらない）、を与える。⑤設定 `Llm:AnthropicStreamIdleTimeoutSeconds` の解決（未設定・空白・有効値・不正値） | ① `TimeoutException`（メッセージに設定キー）・止まる前の本文は流れている・`OperationCanceledException` ではない・上流状態の分類は `transport`・送信 1 回 ② `OperationCanceledException`（`TimeoutException` ではない） ③④ 打ち切らず、最終チャンクに `end_turn` ⑤ 未設定・空白は `Llm:AnthropicTimeoutSeconds` の解決値（両方未設定で 100 秒、180 なら 180 秒）、1〜2,147,483 の整数は採る、不正値は同じ解決値と warn 1 行。**変異**: 待つ前の期限を消すと①、時計を戻さないと③、受け取った後に時計を止めないと④が赤 | LLM 送信先切替 / `ClaudeProviderStreamIdleTimeoutTests` |
 
 ## 未確認・フォローアップ
 
