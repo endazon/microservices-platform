@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-13, UC-07, ADR-0011, ADR-0027, IADR-0021, IADR-0541, IADR-0554]
 author: claude
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-20
 plan_refs:
   - planning:projects/microservices-platform/02_requirements（FR-13 Wiki 閲覧・同期）
 related_specs:
@@ -87,6 +87,8 @@ related_specs:
 - (c) 作成の多い一括操作（Wiki.js の DB が空になった後の全件の再発行など）は従来の速さ（CPU 0.5 で毎分約 7 件）のままである。案 3・案 4 の判断が要る。
 - (d) `DocumentDeleted` のリスナーは `DocumentUpdated` と並んで動くので、作成と削除が重なると `rebuild-tree` が並び得る（従来から。本件で変えていない）。
   失敗した側は一時障害として再試行される。並んだ後の `pageTree` の整合は確かめていない（木は Wiki.js の画面のナビゲーションに使われ、本システムは使わない）。
+  ［2026-10-20 追記 / #1971］[IADR-0563](./IADR-0563_wiki-js-write-gate.md) で、同期と撤去の両方の受け口がプロセスに 1 つの書き込みの門（既定 1）を通るようにした。
+  プロセスの中では並ばない（レプリカを増やしたとき・期限で切った後の Wiki.js の中の処理は同 IADR の残余リスク）。
 
 ## 試験
 

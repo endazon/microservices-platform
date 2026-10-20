@@ -63,6 +63,9 @@ jobs:
     permissions:
       contents: read
       actions: write
+      # #1998: T-25 の p / W は検査器が出す注釈（GET /check-runs/{job id}/annotations）から読む。ログの取得は
+      # 2 回とも記録へ値を返さなかった（#1929・#1998）。注釈が読めなければログへ落ち、どちらも駄目なら理由を記録へ書く。
+      checks: read
       issues: write
     steps:
       # 既定ブランチの定義と script を使う（workflow_run の既定。赤の run のコミットは checkout しない）。

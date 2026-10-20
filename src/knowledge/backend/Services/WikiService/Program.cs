@@ -90,6 +90,10 @@ builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
 // FR-13, ADR-0027 (#1640): 同期・撤去の受け口の期限（本文の取得・Wiki.js 1 回）。
 // 既定の実行期限（60 秒）に最悪の所要時間が収まらない構成は、ここで起動を止める。
 builder.Services.AddSingleton(WikiSyncTimeouts.From(builder.Configuration));
+// 🔴 FR-13, [[IADR-0563]] 決定 1・2 (#1971): Wiki.js へ同時に書き込む数の上限（`Wiki:MaxParallelWrites`・既定 1・1〜4）。
+// 同期と撤去の両方の受け口がこの 1 つの門を通る。下の 2 つのリスナーの並列度も同じ値にそろえる。
+var wikiJsWriteGate = WikiJsWriteGate.From(builder.Configuration);
+builder.Services.AddSingleton(wikiJsWriteGate);
 // FR-13, NFR-06, [[IADR-0541]] 決定 5 (#1934): 恒久的な失敗（slug の一意制約・本文の NoSuchKey）で記録だけして終えた同期の計数。
 builder.Services.AddMetrics();
 builder.Services.AddSingleton<WikiSyncSkippedMetrics>();
@@ -140,11 +144,16 @@ builder.Host.UseWolverine(opts =>
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う。
     // fan-out の保存: DocumentUpdated は ingestion-service と別キューになる（サービス名前置）。
     // ハンドラへの振り分けはメッセージ型で決まる（キュー 2 本 → 同一ホスト内で型別ディスパッチ）。
-    opts.ListenToPlatformQueue<DocumentDeleted>("wiki-service", deleteStep);
-    // 🔴 FR-13, [[IADR-0557]] 決定 5 (#1971): **このリスナーの並列度は上げない**（`MaximumParallelMessages` 等を足さない）。
-    // Wiki.js 2.5 の pages.create は木の再構築（rebuild-tree）をトランザクション無しの truncate → insert で走らせ、並ぶと
-    // pageTree の主キーで衝突して作成が失敗する（実測: 並列 2 で 2/8・並列 4 で 6/8）。律速は Wiki.js の CPU で、毎分も 1 割強しか増えない。
-    opts.ListenToPlatformQueue<DocumentUpdated>("wiki-service", syncStep);
+    // 🔴 FR-13, [[IADR-0557]] 決定 5, [[IADR-0563]] 決定 1・2 (#1971): **リスナーの数は書き込みの門の上限（既定 1）に明示する。**
+    // Wiki.js 2.5 の pages.create / pages.delete は木の再構築（rebuild-tree）をトランザクション無しの truncate → insert で走らせ、並ぶと
+    // pageTree の主キーで衝突して書き込みが失敗する（実測: 並列 2 で 2/8・並列 4 で 6/8）。律速は Wiki.js の CPU で、毎分も 1 割強しか増えない。
+    // RabbitMQ のリスナーは Wolverine の既定で Inline（1 通の処理を待ってから次を受け取る）・リスナーの数 1 である（6.24.4 で
+    // WikiJsWriteGateWiringTests が固定する）。Inline で並びを決めるのはリスナーの数なので、既定に頼らず門と同じ値を明示する
+    // （門より多く受け取って門で待つ形にもしない）。
+    opts.ListenToPlatformQueue<DocumentDeleted>("wiki-service", deleteStep)
+        ?.ListenerCount(wikiJsWriteGate.MaxParallelWrites);
+    opts.ListenToPlatformQueue<DocumentUpdated>("wiki-service", syncStep)
+        ?.ListenerCount(wikiJsWriteGate.MaxParallelWrites);
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();

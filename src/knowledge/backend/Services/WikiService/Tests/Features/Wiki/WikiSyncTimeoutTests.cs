@@ -40,11 +40,11 @@ public class WikiSyncTimeoutTests
         var ports = new HangingPorts(hung);
         if (hung == Hung.Delete)
             return new DocumentDeletedConsumer(db, ports, ConsumerTimeoutsForTests.Calls(), timeouts,
-                    NullLogger<DocumentDeletedConsumer>.Instance)
+                    new WikiJsWriteGate(1), NullLogger<DocumentDeletedConsumer>.Instance)
                 .Handle(new DocumentDeleted(Guid.NewGuid(), DateTimeOffset.UtcNow), ct);
 
         return new DocumentSyncConsumer(db, ports, ports, ConsumerTimeoutsForTests.Calls(), timeouts,
-                TestMeterFactory.NewSkippedMetrics(), NullLogger<DocumentSyncConsumer>.Instance)
+                new WikiJsWriteGate(1), TestMeterFactory.NewSkippedMetrics(), NullLogger<DocumentSyncConsumer>.Instance)
             .Handle(Updated(hung == Hung.Archive ? "archived" : "published"), ct);
     }
 
@@ -113,6 +113,26 @@ public class WikiSyncTimeoutTests
         var act = () => WikiSyncTimeouts.From(Config(content, wikiJs));
 
         act.Should().Throw<InvalidOperationException>().WithMessage($"*{step}*");
+    }
+
+    // FR-13, IADR-0563 決定 4 (#1971): 最悪の所要時間には書き込みの門の待ち（Wiki.js 1 回と同じ長さ）が入る。
+    // 門を数えなければ収まる構成（同期 20＋21＝41 秒）も、数えれば 62 秒になるので起動を止める。
+    // （撤去は「門 ＋ Wiki.js」で同期より本文の分だけ短いので、撤去だけが収まらない構成は作れない。）
+    [Fact]
+    public void 書き込みの門の待ちも最悪の所要時間に数える()
+    {
+        var act = () => WikiSyncTimeouts.From(Config("20", "21"));
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*wiki-sync*62 秒*門の待ち*");
+    }
+
+    // 対照: 門を数えても収まる構成は通る（同期 18＋20＋20＝58 秒・撤去 40 秒）。
+    [Fact]
+    public void 門の待ちを数えても収まる構成は通る()
+    {
+        var act = () => WikiSyncTimeouts.From(Config("18", "20"));
+
+        act.Should().NotThrow();
     }
 
     // 指定した 1 つの依存先だけが止まる（ct が立つまで返らない）ポート群。
