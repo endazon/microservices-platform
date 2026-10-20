@@ -13134,6 +13134,79 @@ exit $RC
     });
   }
 
+  // --- #1991: 取り込みの総枠の使い切りの警報は、C# の計器名・属性名・総枠の呼び出し先から導いた式を 4 か所で見る -------
+  //
+  // 名前がずれると式は構文として正当なまま**永久に空ベクタ**になり、総枠を使い切っても鳴らない（#1110・#1111 と同型）。
+  // 警報が見る呼び出し先の集合は、デッドレターへ直行させる集合（EmbeddingBudgetDeadLetterPolicy.IsBudgetExhausted）と同じであること
+  // ——総枠を足してデッドレターへ送るようにしたのに警報へ足し忘れると、その総枠の使い切りだけが黙って残る（IADR-0567）。
+  {
+    const fsB = require('fs');
+    const pathB = require('path');
+    const ROOT_B = pathB.resolve(__dirname, '..');
+    const METRICS_CS_B = 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Messaging/ConsumerTimeoutMetrics.cs';
+    const TIMEOUTS_CS_B = 'src/knowledge/backend/Services/IngestionService/Features/Ingestion/Ingest/IngestionTimeouts.cs';
+    const POLICY_CS_B = 'src/knowledge/backend/Services/IngestionService/Features/Ingestion/Ingest/EmbeddingBudgetDeadLetterPolicy.cs';
+    const RULE_FILES_B = [
+      'deploy/prometheus/alerts.yml',
+      'deploy/local/observability/prometheus.yaml',
+      'deploy/grafana/provisioning/alerting/slo-alerts.yaml',
+      'deploy/local/observability/grafana.yaml',
+    ];
+    const readB = (rel) => fsB.readFileSync(pathB.join(ROOT_B, rel), 'utf8');
+    const ruleBodyB = (text, name) => {
+      const def = new RegExp(`(?:alert|title):\\s*${name}\\s*$`, 'm').exec(text);
+      if (!def) return null;
+      const rest = text.slice(def.index + def[0].length);
+      const next = /(?:- alert|title):\s*\w+\s*$/m.exec(rest);
+      return next ? rest.slice(0, next.index) : rest;
+    };
+    const constOfB = (rel, cs, name) => {
+      const m = new RegExp(`const string ${name}\\s*=\\s*"([^"]+)"`).exec(cs);
+      assert.ok(m, `${rel} に ${name} が見つからない（走査が壊れている）`);
+      return m[1];
+    };
+
+    ok('#1991: 取り込みの総枠の使い切りの警報が、C# の計器名と、デッドレターへ直行させる総枠の呼び出し先を 4 か所で見る（実データ）', () => {
+      const metrics = readB(METRICS_CS_B);
+      // OTel → prometheusremotewrite: `.` は `_` へ。単位 `{timeout}` は注記で接尾辞にならず、カウンタには `_total` が付く。
+      const promName = `${constOfB(METRICS_CS_B, metrics, 'TimeoutCounterName').replace(/\./g, '_')}_total`;
+      assert.strictEqual(promName, 'messaging_consumer_timeout_total');
+      const targetTag = constOfB(METRICS_CS_B, metrics, 'TargetTag').replace(/\./g, '_');
+      assert.strictEqual(targetTag, 'messaging_timeout_target');
+
+      // デッドレターへ直行させる呼び出し先（IsBudgetExhausted が引く IngestionTimeouts の定数）を値へ解決する。
+      const policy = readB(POLICY_CS_B);
+      const body = /IsBudgetExhausted\([^)]*\)\s*=>([^;]+);/.exec(policy);
+      assert.ok(body, `${POLICY_CS_B} に IsBudgetExhausted の式が見つからない（走査が壊れている）`);
+      const timeouts = readB(TIMEOUTS_CS_B);
+      const targets = [...body[1].matchAll(/IngestionTimeouts\.(\w+)/g)].map((m) => constOfB(TIMEOUTS_CS_B, timeouts, m[1])).sort();
+      assert.deepStrictEqual(targets, ['embedding-budget', 'lexical-budget']);
+
+      for (const rel of RULE_FILES_B) {
+        const text = readB(rel);
+        const rule = ruleBodyB(text, 'IngestionBudgetExhausted');
+        assert.ok(rule, `${rel} に IngestionBudgetExhausted のルール定義が無い`);
+        // 式だけを見る（ルールの後ろに続く次の群の注記に引きずられない）。
+        const exprM = /expr:\s*'([^']+)'/.exec(rule);
+        assert.ok(exprM, `${rel} の IngestionBudgetExhausted の expr を 1 行の引用符つきで読めない（走査が壊れている）`);
+        const expr = exprM[1];
+        assert.ok(expr.includes(`increase(${promName}{`), `${rel} の IngestionBudgetExhausted が increase(${promName}) を見ていない`);
+        assert.ok(!expr.includes('absent('), `${rel} の IngestionBudgetExhausted が absent() になっている（平常時は系列が無い）`);
+        const sel = new RegExp(`${targetTag}=~"([^"]+)"`).exec(expr);
+        assert.ok(sel, `${rel} の IngestionBudgetExhausted が ${targetTag} で絞っていない`);
+        assert.deepStrictEqual(sel[1].split('|').sort(), targets,
+          `${rel} の IngestionBudgetExhausted が見る呼び出し先が、デッドレターへ直行させる集合と違う`);
+        // 「1 件以上で鳴る」: Prometheus 版は式の `> 0`、Grafana 版は評価器の `gt 0`（式の `> 0` の後に残る値は前進量）。
+        assert.ok(/\)\s*>\s*0$/.test(expr), `${rel} の IngestionBudgetExhausted が「前進が 0 を超えたら」で鳴らない`);
+        assert.ok(/for:\s*5m/.test(rule) && /severity:\s*warning/.test(rule), `${rel} の IngestionBudgetExhausted の for / severity が流儀（5m・warning）と違う`);
+        if (rel.includes('grafana')) {
+          assert.ok(/type:\s*gt,\s*params:\s*\[0\]/.test(rule), `${rel} の IngestionBudgetExhausted の評価器が gt 0 でない`);
+          assert.ok(/noDataState:\s*OK/.test(rule), `${rel} の IngestionBudgetExhausted の noDataState が OK でない（平常時は系列が無い）`);
+        }
+      }
+    });
+  }
+
   // --- #1550: 稼働クラスタへ当たる scripts は、明示の指定（--live か LIVE=1）が無ければ何もせずに終わる ------------
   //
   // 事故（2026-09-26）: ワークフローの `node scripts/...` の行をまとめて実行した作業エージェントが、稼働中の Keycloak へ

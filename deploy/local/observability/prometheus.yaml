@@ -196,6 +196,22 @@ data:
             annotations:
               summary: "ユニットの主体が project を付けずに文書を保存した（0 が正常）"
               description: "DocumentService の該当カウンタが直近 1 時間で前進した。ユニットの保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みの検出である。保存は止まっていない（計器であって統制ではない）。"
+      # FR-02, FR-03, ADR-0127 決定 1, ADR-0027, IADR-0567 (#1991): 取り込みの総枠の使い切り（**0 が正常**）。
+      # 埋め込みの総枠（embedding-budget）・語彙索引への書き込みの総枠（lexical-budget。IADR-0560）を使い切った文書は、
+      # 残りのチャンクを書かずに再試行せずデッドレターへ送られ、**一部の点だけが検索に現れる**（黙って一部だけが索引される）。
+      # 🔴 **デッドレターの警報は無い**（下の follow-up の RabbitMqDeadLetter は未配線）ので、計器の前進をここで鳴らす。
+      # 🔴 **`absent()` 系ではなく `increase(...[1h]) > 0` である**（knowledge-health-violations と同じ理由。平常時は系列が立たない）。
+      #   呼び出し先ごとの時間切れ（content / embedding / vector-store）は再試行で回復し得るので含めない。総枠の 2 値だけを見る。
+      - name: ingestion-budget
+        rules:
+          - alert: IngestionBudgetExhausted
+            expr: 'sum by (messaging_timeout_target) (increase(messaging_consumer_timeout_total{messaging_timeout_target=~"embedding-budget|lexical-budget"}[1h])) > 0'
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "取り込みの総枠を使い切り、文書の一部だけが索引された（0 が正常）"
+              description: "取り込みの総枠（埋め込み・語彙索引）を使い切った文書が直近 1 時間にあった。残りのチャンクは書かれず、デッドレターへ送られている（一部の点だけが検索に現れる）。取り込みのログで文書を特定する。"
+
       # FR-05, FR-09, SC-17, ADR-0115 決定 3, IADR-0473 (#1573): 部門の同期が直せていないこと（**0 が正常**）。
       # 🔴 **`absent()` 系ではなく `increase(...) > 0` である**（上の knowledge-health-violations と同じ理由。平常時は
       #   失敗の系列が立たない）。片側の系列が無くても式が空にならないよう、各項を `or vector(0)` で 0 に倒してから足す。
