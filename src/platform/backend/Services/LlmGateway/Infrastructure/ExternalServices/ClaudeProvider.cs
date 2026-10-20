@@ -157,17 +157,27 @@ public class ClaudeProvider(
 
     // 本文は先頭の text ブロック（旧 SDK の実装と同じ取り方）。それ以外のブロックは本文に使わずに捨て、その型名を記録する。
     // 公式 SDK は未知の型（判別子に無い型・type の無い要素）も例外にせず ContentBlock(element) として保持する。
+    // FR-11, #2000, IADR-0564: 2 個目以降の text ブロックも本文に使わない（連結しない。呼び出し側の解析は本文 1 個を前提にする）。
+    // 黙って捨てないよう、件数を計器（型 text）へ、各ブロックの文字数を Warning へ残す（本文は載せない）。
     private string? ExtractText(IReadOnlyList<ContentBlock> content)
     {
         string? text = null;
+        var usedTextLength = 0;
         var textBlocks = 0;
         List<string>? dropped = null;
+        List<int>? droppedTextLengths = null;
         foreach (var block in content)
         {
             if (block.TryPickText(out var textBlock))
             {
                 textBlocks++;
-                text ??= textBlock.Text;
+                if (text is null)
+                {
+                    text = textBlock.Text;
+                    usedTextLength = text.Length;
+                }
+                else
+                    (droppedTextLengths ??= []).Add(textBlock.Text.Length);
                 continue;
             }
 
@@ -180,7 +190,24 @@ public class ClaudeProvider(
             LogDropped(dropped, textBlocks);
         }
 
+        if (droppedTextLengths is not null)
+        {
+            contentBlockMetrics.RecordDropped(
+                Enumerable.Repeat(AnthropicContentBlockMetrics.TypeText, droppedTextLengths.Count));
+            LogDroppedText(usedTextLength, droppedTextLengths);
+        }
+
         return text;
+    }
+
+    // FR-11, #2000, IADR-0564: 本文に使わなかった 2 個目以降の text ブロック。本文を捨てているので常に Warning。
+    // 載せるのは件数と文字数だけ（本文は載せない。IADR-0114 決定 5 の機微の線）。
+    private void LogDroppedText(int usedLength, IReadOnlyList<int> droppedLengths)
+    {
+        logger.LogWarning(
+            "Anthropic 応答に text ブロックが複数ありました。本文には先頭の 1 個（{UsedTextLength} 文字）だけを使い、"
+            + "残り {DroppedTextBlocks} 個（文字数: {DroppedTextLengths}）を捨てました。",
+            usedLength, droppedLengths.Count, string.Join(", ", droppedLengths));
     }
 
     // 型名が取れない要素も記録用の表示名を持たせる（IADR-0114 の表示名をそのまま使う）。
