@@ -12,7 +12,7 @@ namespace IngestionService.Tests.Infrastructure.ExternalServices;
 [Trait("TestKind", "Unit")]
 public class QdrantKeywordIndexHostedServiceTests
 {
-    // T-39: ブートストラップは全文索引に続けてキーワード索引を張る。
+    // T-39: ブートストラップは全文索引に続けてキーワード索引を張る（［2026-10-20 / #1993］続けて `document_id` の索引も）。
     [Fact]
     public async Task Bootstrap_EnsuresKeywordIndexesAfterFullTextIndexes()
     {
@@ -22,7 +22,7 @@ public class QdrantKeywordIndexHostedServiceTests
 
         await bootstrap.StartAsync(TestContext.Current.CancellationToken);
 
-        store.Calls.Should().Equal(["collections", "cjk", "keyword"]);
+        store.Calls.Should().Equal(["collections", "cjk", "keyword", "document-id"]);
     }
 
     // T-39: 発見の器は既存の点からの発見を呼ぶ。失敗はここで捕まえる（ホストを止めない）。
@@ -65,6 +65,13 @@ public class QdrantKeywordIndexHostedServiceTests
         public Task EnsureKeywordIndexesAsync(CancellationToken ct = default)
         {
             Calls.Add("keyword");
+            return Task.CompletedTask;
+        }
+
+        // FR-06, SC-05, [[IADR-0565]] 決定 2 (#1993): 索引の状態の照会が引く `document_id` の索引。
+        public Task EnsureDocumentIdIndexAsync(CancellationToken ct = default)
+        {
+            Calls.Add("document-id");
             return Task.CompletedTask;
         }
 

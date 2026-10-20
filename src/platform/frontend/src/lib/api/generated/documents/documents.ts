@@ -131,6 +131,9 @@ export const getBffDocumentListUrl = (params?: BffDocumentListParams,) => {
  *
  * ［2026-10-17 / #1923］**タブ（`origin`）・データソース（`source`）・機密区分・タグ・プロジェクト・保存日の範囲**を同じ作法で当てる。
  * どれも省略可で、省略は従前の応答と同じ。`sourceCounts` / `projectCounts` も絞り込み前（ABAC 後）の数。
+ *
+ * ［2026-10-20 / #1993］**このページの文書の索引の状態（`indexStatuses`）**を添える。ページを切り出した後に、ページの文書の ID だけを
+ * 取り込み側へ 1 回で問い合わせる（権限外の文書の状態は引かない）。取り込み側から引けなければ全件 `unknown` で、一覧は失敗しない。
  * @summary FR-06, SC-05: 文書一覧（ABAC スコープ内のみ。管理者・運用者。#656）
  */
 export const bffDocumentList = async (params?: BffDocumentListParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentListResponse> => {

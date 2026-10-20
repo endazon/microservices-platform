@@ -30,6 +30,7 @@ public class EastWestGrpcDeploymentWiringTests
         ["Services__GraphServiceGrpc"] = ("graph-service", "graph-service"),
         ["Services__NotificationServiceGrpc"] = ("notification-service", "notification-service"),
         ["Services__DashboardServiceGrpc"] = ("dashboard-service", "dashboard-service"),
+        ["Services__IngestionServiceGrpc"] = ("ingestion-service", "ingestion-service"),
     };
 
     // 🔴 **呼び出し元 × キーの表（唯一の置き場）。** 経路の記号は作業仕様書 20261010_issue-1255-1517 の母集合表と同じ。
@@ -39,6 +40,8 @@ public class EastWestGrpcDeploymentWiringTests
         { "B-1 BFF → 認可", "bff", "bff", "Services__AuthorizationServiceGrpc" },
         { "D-1 BFF → 文書（読み取り）", "bff", "bff", "Services__DocumentServiceGrpc" },
         { "R-2 BFF → 検索（属性値）", "bff", "bff", "Services__RetrievalServiceGrpc" },
+        // ［2026-10-20 / #1993・[[IADR-0565]]］文書管理の一覧の索引の状態。
+        { "I-1 BFF → 取り込み（索引の状態）", "bff", "bff", "Services__IngestionServiceGrpc" },
         { "A-1 AI 分析 → 認可", "aianalysis", "aianalysis-service", "Services__AuthorizationServiceGrpc" },
         { "L-3 AI 分析 → LLM（生成）", "aianalysis", "aianalysis-service", "Services__LlmGatewayGrpc" },
         { "R-1 AI 分析 → 検索", "aianalysis", "aianalysis-service", "Services__RetrievalServiceGrpc" },

@@ -834,6 +834,84 @@
         }
       }
     },
+    "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/ingestion/v1/index_status.proto": {
+      "syntax": "proto3",
+      "package": "knowledge.ingestion.v1",
+      "csharpNamespace": "Knowledge.Contracts.Grpc.Ingestion.V1",
+      "imports": [],
+      "messages": {
+        "DocumentIndexState": {
+          "fields": {
+            "document_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "status": {
+              "number": 2,
+              "type": "IndexStatus",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetIndexStatusesRequest": {
+          "fields": {
+            "document_ids": {
+              "number": 1,
+              "type": "string",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetIndexStatusesResponse": {
+          "fields": {
+            "states": {
+              "number": 1,
+              "type": "DocumentIndexState",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {
+        "IndexStatus": {
+          "values": {
+            "INDEX_STATUS_EMBEDDING_PENDING": 2,
+            "INDEX_STATUS_INDEXED": 1,
+            "INDEX_STATUS_NOT_INDEXED": 3,
+            "INDEX_STATUS_UNSPECIFIED": 0
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "services": {
+        "DocumentIndexStatus": {
+          "rpcs": {
+            "GetStatuses": {
+              "request": "GetIndexStatusesRequest",
+              "response": "GetIndexStatusesResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
     "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/retrieval/v1/attribute_values.proto": {
       "syntax": "proto3",
       "package": "knowledge.retrieval.v1",

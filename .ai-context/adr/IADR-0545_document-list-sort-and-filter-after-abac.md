@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-06, SC-05, SC-03, UC-03, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0009, IADR-0041, IADR-0045, IADR-0388, IADR-0509, IADR-0537]
 author: claude
 created: 2026-10-15
-updated: 2026-10-15
+updated: 2026-10-20
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md（文書管理画面）
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（FR-06）
@@ -136,5 +136,6 @@ related_specs:
 - 表題の並びは台帳のデータベースの照合順序に従う（日本語の読みの順ではない）。画面は「表題の昇順・降順」とだけ示す。
 - **表題の照合順序の差（ICU と libc）は、並びの見た目を変えるが境界の一貫性は変えない。** 並べる（ORDER BY）・比べる（キーセットの `>` / `<`）・索引 `(Title, Id)` はどれも同じ列の同じ照合順序を使うので、どの照合順序でも抜け・重複は出ない（試験は手元の PostgreSQL 16〔libc〕で実測。ASCII の表題に限る）。危ういのは、索引を作った後に OS の glibc / ICU の版が上がって照合順序の定義が変わる場合（索引の破損として現れる。PostgreSQL 一般の注意で、`REINDEX` で直す）と、非決定的な ICU 照合順序（等価な別の文字列を「同じ」とみなす）を列に付けた場合である。運用 DB の照合順序は PoC で確かめる（`SHOW lc_collate;` と `SELECT collation_name FROM information_schema.columns WHERE table_name='Documents' AND column_name='Title';`）。
 - 「索引の状態」（索引済み・埋め込み待ち・未索引）は出せていない。取り込み側から文書ごとの状態を引く口が要る（#1908 の側の作業）。
+  ［2026-10-20 追記 / #1993］解消した。取り込み側の gRPC 面から窓の ID だけを 1 回で引く（[IADR-0565](./IADR-0565_document-list-index-status-via-ingestion-grpc.md)）。
 - データソース・機密区分・保存日・タグ・プロジェクトの絞り込み、本文のプレビュー、元の URL へのリンク、機械取り込みの見分けは次の段（#1923）。
 - 計画は絞り込み・並べ替えを定めていない。画面要素として計画へ載せるかは planning#796 の提案 4 と同じく計画側の判断に委ねる。

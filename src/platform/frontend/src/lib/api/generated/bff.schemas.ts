@@ -654,6 +654,13 @@ export type DocumentListPageDtoSourceCounts = {[key: string]: number};
 export type DocumentListPageDtoProjectCounts = {[key: string]: number};
 
 /**
+ * FR-06, SC-05 (#1993): **このページの文書（`items`）の索引の状態**（文書 ID → 値）。鍵は `items` の ID だけ（ABAC を通った文書だけを取り込み側へ問い合わせる）。
+ * `indexed`（ベクトルか語彙索引に点がある）・`embedding_pending`（埋め込み待ちの点がある）・`not_indexed`（点が無い）・`unknown`（取り込み側から引けなかった）。
+ * 引けなくても一覧は 200 で返り、全件 `unknown` になる。**項目を持たない旧応答は全件「不明」として読む。**
+ */
+export type DocumentListPageDtoIndexStatuses = {[key: string]: 'indexed' | 'embedding_pending' | 'not_indexed' | 'unknown'};
+
+/**
  * FR-06, SC-05 (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ（`Knowledge.Contracts/Dtos/DocumentDto.cs`）。
  * `offset` / `limit` は BFF が丸めた後の値。🔴 件数はどれも ABAC スコープで絞った後の数（権限外の文書を数えない）。
  */
@@ -676,6 +683,12 @@ export interface DocumentListPageDto {
   sourceCounts: DocumentListPageDtoSourceCounts;
   /** 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前） */
   projectCounts: DocumentListPageDtoProjectCounts;
+  /**
+     * FR-06, SC-05 (#1993): **このページの文書（`items`）の索引の状態**（文書 ID → 値）。鍵は `items` の ID だけ（ABAC を通った文書だけを取り込み側へ問い合わせる）。
+     * `indexed`（ベクトルか語彙索引に点がある）・`embedding_pending`（埋め込み待ちの点がある）・`not_indexed`（点が無い）・`unknown`（取り込み側から引けなかった）。
+     * 引けなくても一覧は 200 で返り、全件 `unknown` になる。**項目を持たない旧応答は全件「不明」として読む。**
+     */
+  indexStatuses: DocumentListPageDtoIndexStatuses;
 }
 
 /**

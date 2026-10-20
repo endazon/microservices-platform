@@ -442,7 +442,7 @@ services:
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 / IADR-0462 (#1514, #1255 経路 ⑤): 8081 は
     # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用。面は自己申告の読み取り 1 口だけ）。helm の grpcPort と
-    # 同じ値。host へは公開しない。
+    # 同じ値。host へは公開しない。［2026-10-20 / #1993・IADR-0565］文書の索引の状態の面も受ける（呼び出し元は BFF）。
     expose:
       - "8080"
       - "8081"
@@ -1039,6 +1039,10 @@ services:
       # 🔴 利用者の JWT は面を通らない —— 利用者文脈（user_id / 属性 / action）を要求本文で運び、
       # RetrievalService が受け取った文脈で**自分で** ABAC を解決する（判定の位置は動かない）。
       Services__RetrievalServiceGrpc: http://retrieval-service:8081
+      # FR-06 / SC-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0565 (#1993): east-west gRPC。
+      # 文書管理の一覧の索引の状態（knowledge.ingestion.v1.DocumentIndexStatus）。無ければ常に UNAVAILABLE で
+      # 状態は「不明」へ縮退する（一覧は失敗しない）。渡すのは ABAC を通った窓の中の文書の ID だけ。
+      Services__IngestionServiceGrpc: http://ingestion-service:8081
       Services__AiAnalysisService: http://aianalysis-service:8080
       Services__FeedbackService: http://feedback-service:8080
       Services__DashboardService: http://dashboard-service:8080

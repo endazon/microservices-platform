@@ -3,15 +3,15 @@ title: east-west gRPC 通信仕様書（proto の置き場・versioning・h2c・
 type: api-spec
 status: completed
 created: 2026-09-05
-updated: 2026-10-17
+updated: 2026-10-20
 author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11, FR-12, FR-13, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, NFR-02, NFR-09, NFR-16, NFR-19, NFR-21, SC-03, SC-05, SC-06, SC-10, SC-12, SC-17, SC-18, UC-01, UC-02, UC-03, UC-04, UC-05, UC-07, UC-09, UC-10, UC-11]
 adrs: [ADR-0121, ADR-0119, ADR-0063, ADR-0089, ADR-0050, ADR-0002, ADR-0004, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0016, ADR-0017, ADR-0127, ADR-0025, ADR-0029, ADR-0032, ADR-0034, ADR-0036, ADR-0037, ADR-0038, ADR-0044, ADR-0045, ADR-0054, ADR-0056, ADR-0062, ADR-0064, ADR-0065, ADR-0070, ADR-0074, ADR-0075, ADR-0076, ADR-0080, ADR-0086, ADR-0087, ADR-0088, ADR-0018, ADR-0024, ADR-0109, ADR-0092, ADR-0115, ADR-0096, ADR-0114, ADR-0117, ADR-0014]
-iadrs: [IADR-0483, IADR-0481, IADR-0479, IADR-0476, IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431, IADR-0512, IADR-0533, IADR-0534, IADR-0537, IADR-0542, IADR-0545, IADR-0540, IADR-0544, IADR-0561]
-specs: [20261017_1255_graph-cluster-summary-grpc, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1658_relay-options-shared, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261008_1819_gateway-sentfalse-observability, 20261010_issue-1255-1517_east-west-rest-retirement, 20261011_1871_search-degraded-signal, 20261015_1907_h1-grpc-receive-limit, 20261015_1923_document-list-sort-filter, 20261015_1905_bff-document-content, 20261015_1902_east-west-rest-residue, 20261017_1940_bounded-document-content-read]
-issues: [#1665, #1611, #1658, #1636, #1516, #1635, #1628, #1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532, #1752, #1819, #1517, #1871, #1923, #1897, #1907, #1905, #1902, #1940]
+iadrs: [IADR-0483, IADR-0481, IADR-0479, IADR-0476, IADR-0475, IADR-0465, IADR-0029, IADR-0462, IADR-0269, IADR-0292, IADR-0458, IADR-0403, IADR-0426, IADR-0424, IADR-0009, IADR-0012, IADR-0017, IADR-0026, IADR-0037, IADR-0041, IADR-0044, IADR-0045, IADR-0101, IADR-0104, IADR-0110, IADR-0117, IADR-0122, IADR-0225, IADR-0242, IADR-0253, IADR-0256, IADR-0265, IADR-0272, IADR-0290, IADR-0299, IADR-0316, IADR-0329, IADR-0335, IADR-0353, IADR-0354, IADR-0364, IADR-0378, IADR-0379, IADR-0384, IADR-0385, IADR-0388, IADR-0389, IADR-0395, IADR-0397, IADR-0400, IADR-0401, IADR-0402, IADR-0408, IADR-0410, IADR-0412, IADR-0413, IADR-0415, IADR-0416, IADR-0417, IADR-0418, IADR-0419, IADR-0467, IADR-0472, IADR-0474, IADR-0431, IADR-0512, IADR-0533, IADR-0534, IADR-0537, IADR-0542, IADR-0545, IADR-0540, IADR-0544, IADR-0561, IADR-0565]
+specs: [20261017_1255_graph-cluster-summary-grpc, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1658_relay-options-shared, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1515_mcp-tool-declarations-grpc, 20260926_1537_conversion-introspection-grpc-wiring, 20260926_1520_conversion-service-auth, 20260926_1514_introspection-grpc-fanout, 20260925_1397_bff-user-credential-relay-is-edge, 20260911_issue-1255_aianalysis-to-retrieval-search-grpc, 20260909_issue-1364_llmgateway-rest-service-caller, 20260908_issue-1333_authz-resolves-user-attributes, 20260909_issue-1255_document-to-notification-grpc, 20260906_issue-1255_east-west-grpc-authz, 20260906_issue-1255_east-west-grpc-bff, 20260905_issue-1255_east-west-grpc-llm-completion, 20260905_issue-1255_east-west-grpc-llm-embedding, 20260905_issue-1201_east-west-grpc-preconditions, 20260906_issue-1255_knowledge-health-grpc, 20260909_issue-1255_retrieval-grpc-attribute-values, 20260909_issue-1318_retrieval-rest-face-authorization, 20260908_issue-1255_tag-dictionary-grpc, 20260907_issue-1255_user-context-in-body, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1557_department-domain-validation, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261008_1819_gateway-sentfalse-observability, 20261010_issue-1255-1517_east-west-rest-retirement, 20261011_1871_search-degraded-signal, 20261015_1907_h1-grpc-receive-limit, 20261015_1923_document-list-sort-filter, 20261015_1905_bff-document-content, 20261015_1902_east-west-rest-residue, 20261017_1940_bounded-document-content-read, 20261020_1993_document-list-index-status]
+issues: [#1665, #1611, #1658, #1636, #1516, #1635, #1628, #1614, #1575, #1515, #1537, #1520, #1514, #1397, #1201, #1255, #1333, #1318, #1364, #336, #1557, #1532, #1752, #1819, #1517, #1871, #1923, #1897, #1907, #1905, #1902, #1940, #1993]
 -->
 
 # 通信仕様書: east-west gRPC（サービス間の同期呼び出し）
@@ -42,6 +42,7 @@ issues: [#1665, #1611, #1658, #1636, #1516, #1635, #1628, #1614, #1575, #1515, #
   そして［2026-09-11 追記］**RAG の文脈収集の検索**（AI 分析 → 検索）、
   そして［2026-09-26 追記］**実効構成の収集**（構成情報 API → 自己申告を持つ全サービス。**扇形**）、
   そして［2026-09-26 追記］**MCP のツール申告の収集**（MCP サーバー → 申告を持つ 3 サービス。**扇形**）である。
+  ［2026-10-20 追記 / #1993］これに**文書の索引の状態の照会**（BFF → 取り込み。§15 つ目の面）が加わった。
   ~~**並走中の正は REST** であり、gRPC は構成で opt-in する。~~ ［2026-10-10 / #1255・#1517］🔴 **移行済みの全経路で REST 実装を退役させた**（§REST 実装の退役）。
   east-west の輸送は gRPC だけであり、構成で REST へ戻す道は無い。
   ［2026-09-06 追記］🔴 **BFF の s2s 資格情報の未配線は閉じた。** realm に BFF の service account が
@@ -856,6 +857,27 @@ JwtBearer と認可の登録を足した —— 無いと面への要求は**毎
   番号ごと予約へ移した。旧い呼び出し元が番号 3 に載せても受け口は読み飛ばし、利用者文脈が無いので拒否する。**解決済みの scope を信じて認可する受け口は作らない。**
 - 配備: 新しい構成は要らない（`Mcp__Services__*`〔［2026-10-10］旧 `Mcp__GrpcServices__*`〕とサービス間トークンは 13 つ目の面のために既に在る）。宛先の Istio の認可（文書サービスの DENY のみのポリシー）は
   MCP サーバーから h2c ポートへの呼び出しを通す（試験の呼び出し元の一覧を実行の面へ差し替えた）。
+
+## 15 つ目の面: 文書の索引の状態の照会（`knowledge.ingestion.v1.DocumentIndexStatus/GetStatuses`）
+
+> **［2026-10-20 追記 / #1993］** 文書管理の一覧の列「索引」（索引済み・埋め込み待ち・未索引・不明）のために新設した。
+
+- 呼び出し元と呼び出し先: **BFF → 取り込み**（文書管理の一覧 `GET /bff/documents` が、ページを切り出した後に 1 回呼ぶ）。
+- 切替の構成キー: `Services:IngestionServiceGrpc`（例: `http://ingestion-service:8081`）。未設定なら常に `UNAVAILABLE` → 状態は全件「不明」（一覧は失敗しない）。
+- 置き場: `Knowledge.Contracts` の `Protos/knowledge/ingestion/v1/index_status.proto`（所有は取り込み。検索の索引の点を書く側）。
+- 認証・認可: `ServiceCaller`。資格情報は BFF 自身の s2s トークン（`bff`。取り込みの自己申告の面を既に同じトークンで呼んでいる）。利用者のトークンは運ばない。
+  取り込み側の h2c リスナ・`grpcPort`・認証は自己申告の面のために既に在るので、宛先の側に足した配線は面だけである。
+- 🔴 **面は利用者の文脈を持たない。ABAC は呼び出し側で済んでいる。** BFF は ABAC と個人資料の除外で切り出した**ページの文書の ID だけ**を渡す
+  （権限外の文書の ID は取り込み側へ出ない。存在秘匿）。面が返すのは渡された ID の状態だけで、表題・属性・件数・点の中身は返さない。
+- 🔴 **1 回でまとめて引く（上限 100）。** 要求は `document_ids`（UUID。上限は BFF のページの上限と同じ 100）。超過・UUID でない ID は `INVALID_ARGUMENT`
+  （切り詰めない）。応答は要求の順に `document_id` と `status`（`INDEXED` / `EMBEDDING_PENDING` / `NOT_INDEXED`）。
+- 取り込み側の問い合わせは**コレクションごとに `document_id` の facet を 1 回**（語彙索引は埋め込み待ちの印あり・印なしの 2 回）で、回数は ID の数に依らない。
+  facet が要る `document_id` のキーワード索引は、起動時のブートストラップが全コレクションに張る。
+- 分類: 埋め込み待ちの印の点が 1 つでもあれば `EMBEDDING_PENDING`（一部だけ埋め込めた文書も）、それ以外で点があれば `INDEXED`（高機密の語彙索引だけの文書も）、
+  無ければ `NOT_INDEXED`。
+- 🔴 **「引けなかった」と「未索引」を分ける。** 索引が引けなければ `UNAVAILABLE`（詳細は載せない）。BFF は rpc の全 status・期限切れ（3 秒）・
+  s2s トークン取得失敗を全件「不明」（`unknown`）へ縮退する。`UNSPECIFIED`・未知の値も「不明」であり、「未索引」へ倒さない。
+- 配備: helm `services.bff.extraEnv` と compose `bff` に `Services__IngestionServiceGrpc`（:8081）。経路の表（配線の試験）は「I-1 BFF → 取り込み（索引の状態）」。
 
 ## REST 実装の退役（2026-10-10）
 

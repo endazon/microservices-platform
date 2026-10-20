@@ -22,6 +22,7 @@ using Microsoft.Extensions.Logging;
 using AuthzPb = Platform.Shared.Contracts.Grpc.Authz.V1;
 using DocPb = Knowledge.Contracts.Grpc.Document.V1;
 using RetrievalPb = Knowledge.Contracts.Grpc.Retrieval.V1;
+using IngestionPb = Knowledge.Contracts.Grpc.Ingestion.V1;
 
 namespace Platform.Bff.Tests;
 
@@ -648,6 +649,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
             services.RemoveAll<AttributeValuesGrpcClient>();
             services.AddSingleton(_ => new AttributeValuesGrpcClient(
                 new RetrievalPb.AttributeValues.AttributeValuesClient(new AttributeValuesBridge(this))));
+            // FR-06, SC-05, [[IADR-0565]] (#1993): 索引の状態（取り込み側の gRPC 面）。器の状態（`StubIndexStatuses` 等）で答える。
+            services.RemoveAll<DocumentIndexStatusGrpcClient>();
+            services.AddSingleton(_ => new DocumentIndexStatusGrpcClient(
+                new IngestionPb.DocumentIndexStatus.DocumentIndexStatusClient(new IndexStatusBridge(this))));
             services.AddHttpClient("AuthorizationService")
                 .ConfigurePrimaryHttpMessageHandler(() => new AuthzStubHandler(this));
             services.AddHttpClient("RetrievalService")
@@ -2183,6 +2188,32 @@ public class BffTestFactory : WebApplicationFactory<Program>
         }
 
         private void Record(string method, DocPb.UserContext? user) => owner.GrpcUserContexts[method] = user?.UserId;
+    }
+
+    // FR-06, SC-05, [[IADR-0565]] (#1993): 取り込み側の索引の状態の器。受けた ID の集合を記録し、文書ごとの状態（既定は索引済み）で答える。
+    public System.Collections.Concurrent.ConcurrentDictionary<Guid, IngestionPb.IndexStatus> StubIndexStatuses { get; } = new();
+    public Exception? StubIndexStatusThrows { get; set; }
+    public System.Collections.Concurrent.ConcurrentQueue<List<string>> IndexStatusRequests { get; } = new();
+
+    private sealed class IndexStatusBridge(BffTestFactory owner) : HttpBridge(new RetrievalStubHandler(owner))
+    {
+        protected override Task<object> RespondAsync(string method, object request, CancellationToken ct)
+        {
+            var req = (IngestionPb.GetIndexStatusesRequest)request;
+            owner.IndexStatusRequests.Enqueue([.. req.DocumentIds]);
+            if (owner.StubIndexStatusThrows is { } injected) throw injected;
+            var resp = new IngestionPb.GetIndexStatusesResponse();
+            foreach (var raw in req.DocumentIds)
+            {
+                var id = Guid.Parse(raw);
+                resp.States.Add(new IngestionPb.DocumentIndexState
+                {
+                    DocumentId = id.ToString(),
+                    Status = owner.StubIndexStatuses.TryGetValue(id, out var s) ? s : IngestionPb.IndexStatus.Indexed,
+                });
+            }
+            return Task.FromResult<object>(resp);
+        }
     }
 
     private sealed class AttributeValuesBridge(BffTestFactory owner) : HttpBridge(new RetrievalStubHandler(owner))
