@@ -476,6 +476,7 @@ public class WikiSyncPermanentFailureTests
                 .AddLogging()
                 .AddPlatformConsumerTimeouts()
                 .AddSingleton(WikiSyncTimeouts.Default)
+                .AddSingleton(new WikiJsWriteGate(WikiJsWriteGate.DefaultMaxParallelWrites))
                 .AddMetrics()
                 .AddSingleton<WikiSyncSkippedMetrics>()
                 .AddSingleton(saves)
@@ -505,6 +506,7 @@ public class WikiSyncPermanentFailureTests
                 .AddLogging()
                 .AddPlatformConsumerTimeouts()
                 .AddSingleton(WikiSyncTimeouts.Default)
+                .AddSingleton(new WikiJsWriteGate(WikiJsWriteGate.DefaultMaxParallelWrites))
                 .AddSingleton(Saves)
                 .AddDbContext<WikiDbContext>((sp, o) => o.UseInMemoryDatabase(dbName)
                     .AddInterceptors(sp.GetRequiredService<ScriptedSaveFailures>()))
@@ -555,6 +557,7 @@ public class WikiSyncPermanentFailureTests
                 scope.ServiceProvider.GetRequiredService<IWikiContentReader>(),
                 scope.ServiceProvider.GetRequiredService<ConsumerCallTimeouts>(),
                 scope.ServiceProvider.GetRequiredService<WikiSyncTimeouts>(),
+                scope.ServiceProvider.GetRequiredService<WikiJsWriteGate>(),
                 Metrics,
                 Logger);
             await consumer.Handle(ev, Ct);
