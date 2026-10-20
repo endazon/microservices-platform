@@ -13,7 +13,7 @@ namespace LlmGateway.Common.Observability;
 //
 // 属性 llm.content_block_type は 4 値に閉じる。型名は上流（API）が決める非有界な値なので、
 // 想定内の 2 型と text 以外は other へ集約する（原文は Warning のログ側に載る）。
-// ［2026-10-20 / #2000・IADR-0563］値 text を足した。本文には先頭の text ブロックだけを使うので、2 個目以降の text ブロックは
+// ［2026-10-20 / #2000・IADR-0564］値 text を足した。本文には先頭の text ブロックだけを使うので、2 個目以降の text ブロックは
 // 本文に使わず捨てている。それを数える（従前は数えずに捨てていた）。text は常に想定外（Warning）である。
 public sealed class AnthropicContentBlockMetrics
 {

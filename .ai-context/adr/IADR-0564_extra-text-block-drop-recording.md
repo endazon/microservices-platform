@@ -1,5 +1,5 @@
 ---
-title: IADR-0563 LLM ゲートウェイは 2 個目以降の text ブロックを本文へ連結せず、捨てた件数を計器 content_blocks_dropped の型 text と Warning に残す
+title: IADR-0564 LLM ゲートウェイは 2 個目以降の text ブロックを本文へ連結せず、捨てた件数を計器 content_blocks_dropped の型 text と Warning に残す
 type: impl-adr
 status: Accepted
 related_ids: [FR-11, NFR-19, ADR-0010, IADR-0562, IADR-0535, IADR-0114]
@@ -12,7 +12,7 @@ related_specs:
   - ../specs/20261020_2000_extra-text-block-drop-count.md
 ---
 
-# IADR-0563: 2 個目以降の text ブロックは連結せず、件数を計器と Warning に残す（#2000）
+# IADR-0564: 2 個目以降の text ブロックは連結せず、件数を計器と Warning に残す（#2000）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

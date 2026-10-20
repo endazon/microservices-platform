@@ -640,4 +640,4 @@
 | [IADR-0560](./IADR-0560_lexical-index-write-budget.md) | 語彙索引への書き込みの輪（高機密の文書・埋め込み待ちの点）を埋め込みの総枠と同じ値の時間の総枠で打ち切り、使い切った文書は再試行せずデッドレターへ送る（呼び出し先 lexical-budget）。待ちの点の輪は埋め込みの輪の始めから続けて測る（#1746） | Accepted |
 | [IADR-0561](./IADR-0561_document-list-origin-tabs-facets-preview.md) | 文書管理の一覧に、機械の収集と人の文書を分けるタブ（既定は人の文書）と、データソース・機密区分・タグ・プロジェクト・保存日の絞り込みを BFF が ABAC の後に当てる形で足し、データソースは BFF が文書ごとに 1 つの鍵に導く（#1923） | Accepted |
 | [IADR-0562](./IADR-0562_anthropic-official-sdk-migration.md) | LLM ゲートウェイの Claude 呼び出しを Anthropic.SDK 4.0.0 から公式 Anthropic パッケージ（12.53.0）へ移し、SDK の例外は provider で HttpRequestException へ包み直し、再試行は 0、期限は Llm:AnthropicTimeoutSeconds を SDK の Timeout へ写す（#1749） | Accepted |
-| [IADR-0563](./IADR-0563_extra-text-block-drop-recording.md) | LLM ゲートウェイは 2 個目以降の text ブロックを本文へ連結せず、捨てた件数を計器 content_blocks_dropped の型 text と Warning に残す（#2000） | Accepted |
+| [IADR-0564](./IADR-0564_extra-text-block-drop-recording.md) | LLM ゲートウェイは 2 個目以降の text ブロックを本文へ連結せず、捨てた件数を計器 content_blocks_dropped の型 text と Warning に残す（#2000） | Accepted |

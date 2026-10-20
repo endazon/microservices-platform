@@ -157,7 +157,7 @@ public class ClaudeProvider(
 
     // 本文は先頭の text ブロック（旧 SDK の実装と同じ取り方）。それ以外のブロックは本文に使わずに捨て、その型名を記録する。
     // 公式 SDK は未知の型（判別子に無い型・type の無い要素）も例外にせず ContentBlock(element) として保持する。
-    // FR-11, #2000, IADR-0563: 2 個目以降の text ブロックも本文に使わない（連結しない。呼び出し側の解析は本文 1 個を前提にする）。
+    // FR-11, #2000, IADR-0564: 2 個目以降の text ブロックも本文に使わない（連結しない。呼び出し側の解析は本文 1 個を前提にする）。
     // 黙って捨てないよう、件数を計器（型 text）へ、各ブロックの文字数を Warning へ残す（本文は載せない）。
     private string? ExtractText(IReadOnlyList<ContentBlock> content)
     {
@@ -196,7 +196,7 @@ public class ClaudeProvider(
         return text;
     }
 
-    // FR-11, #2000, IADR-0563: 本文に使わなかった 2 個目以降の text ブロック。本文を捨てているので常に Warning。
+    // FR-11, #2000, IADR-0564: 本文に使わなかった 2 個目以降の text ブロック。本文を捨てているので常に Warning。
     // 載せるのは件数と文字数だけ（本文は載せない。IADR-0114 決定 5 の機微の線）。
     private void LogDroppedText(int usedLength, IReadOnlyList<int> droppedLengths)
     {

@@ -2,7 +2,7 @@
 title: LLM ゲートウェイが本文に使わなかった 2 個目以降の text ブロックを、計器（型 text）と Warning に残す（#2000）
 type: spec
 status: done
-related_ids: [FR-11, NFR-19, ADR-0010, IADR-0563, IADR-0562, IADR-0535, IADR-0114]
+related_ids: [FR-11, NFR-19, ADR-0010, IADR-0564, IADR-0562, IADR-0535, IADR-0114]
 author: claude
 created: 2026-10-20
 updated: 2026-10-20
@@ -14,7 +14,7 @@ issue: "#2000"
 # 仕様書: 2 個目以降の text ブロックを黙って捨てない（#2000）
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-20）。実装の基点は MSP `origin/develop` `fe06bdee`。
-> 呼び出し側の前提は AST `origin/develop`（submodule の pin `bc2ab98`）の `TradeDecisionParser` で確かめた。判断は IADR-0563。
+> 呼び出し側の前提は AST `origin/develop`（submodule の pin `bc2ab98`）の `TradeDecisionParser` で確かめた。判断は IADR-0564。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -33,7 +33,7 @@ AST#1332（一次判断の出力が `NoJsonObject`）の原因の候補「JSON �
 - 誤りの側の文字列 `content_blocks_dropped` / `content_block_type` / `3 値` で全文書を走査した（`git grep`）。追随先:
   `AnthropicContentBlockMetrics.cs`・`ClaudeProvider.cs`・`ClaudeProviderContentBlockLogTests.cs`・
   `docs/observability/llm-completion-metrics.md`・`docs/functional/FR-11_llm-egress-routing.md`・`docs/tests/FR-11_llm-egress-routing.md`。
-- 除外: `.ai-context/specs/` の既存 2 本（#1917・#1749）と IADR-0114 / 0535 / 0562（凍結記録。値域が 4 値になったことは IADR-0563 が持つ）。
+- 除外: `.ai-context/specs/` の既存 2 本（#1917・#1749）と IADR-0114 / 0535 / 0562（凍結記録。値域が 4 値になったことは IADR-0564 が持つ）。
 - 計器・型属性を引くダッシュボード・警報・Grafana の規則は無い（`deploy/` を走査して 0 件）。値の追加で既存の系列は変わらない。
 
 ## 呼び出し側の前提（連結の可否）
@@ -44,7 +44,7 @@ AST#1332（一次判断の出力が `NoJsonObject`）の原因の候補「JSON �
 | MSP 再順位付け（`ClaudeSearchReranker`） | 一括 | 本文を JSON として読む |
 | MSP 図の符号化・関係の提案・クラスタ要約 | 一括 | 本文を 1 個の応答として読む |
 
-連結すると、先頭のブロックの散文に `{` があれば JSON の抽出位置が変わる（解析の前提が変わる）。どれが原因かを確かめる計器が先に要る。**連結しない**（IADR-0563）。
+連結すると、先頭のブロックの散文に `{` があれば JSON の抽出位置が変わる（解析の前提が変わる）。どれが原因かを確かめる計器が先に要る。**連結しない**（IADR-0564）。
 
 ## 受け入れ基準
 
@@ -63,4 +63,4 @@ AST#1332（一次判断の出力が `NoJsonObject`）の原因の候補「JSON �
 
 ## 範囲外
 
-- ストリーム（`StreamAsync`）は従前どおり数えない。ストリームは全ブロックの `text_delta` を区切りなしで流す（実質は連結）。一括との非対称は IADR-0563 §残るもの。
+- ストリーム（`StreamAsync`）は従前どおり数えない。ストリームは全ブロックの `text_delta` を区切りなしで流す（実質は連結）。一括との非対称は IADR-0564 §残るもの。

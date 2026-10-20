@@ -160,7 +160,7 @@ public class ClaudeProviderContentBlockLogTests
         counts.Should().BeEmpty();
     }
 
-    // T-44 (#2000, IADR-0563): 2 個目以降の text ブロックは本文に使わない（連結しない）が、黙って捨てない。
+    // T-44 (#2000, IADR-0564): 2 個目以降の text ブロックは本文に使わない（連結しない）が、黙って捨てない。
     // 件数を計器（型 text）へ、件数と文字数を Warning へ残す。本文の文字列はどちらのブロックもログに載せない。
     [Fact]
     public async Task 二個目以降のtextブロックを捨てたときは件数を計器とWarningに残す()
