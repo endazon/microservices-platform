@@ -140,6 +140,8 @@ function readT25ForJob({ repo, jobId, execFn }) {
     const anns = ghGetJson(execFn, `repos/${repo}/check-runs/${jobId}/annotations`, { per_page: 100 });
     const t = parseT25FromAnnotations(anns);
     if (t) return { t25: t, source: 'annotations', error: null };
+    // 注釈は引けたが T-25 の行が無い（この変更より前の run・書式のずれ）。ログでも読めなかったときの理由に残す。
+    errors.push(`注釈: title=${T25_ANNOTATION_TITLE} の行が無い（${Array.isArray(anns) ? anns.length : 0} 件を走査）`);
   } catch (e) {
     errors.push(`注釈: ${firstLine(e)}`);
   }
@@ -578,7 +580,11 @@ function selfTest() {
     const rb = readT25ForJob({ repo: 'o/r', jobId: 5, execFn: b.fn });
     assert.strictEqual(rb.source, 'log', '注釈が無い（この変更より前の run）ならログへ落ちる');
     assert.strictEqual(rb.t25.p, 0.6165);
-    assert.strictEqual(rb.error, null);
+    assert.strictEqual(rb.error, `注釈: title=${T25_ANNOTATION_TITLE} の行が無い（0 件を走査）`, 'ログで読めても、注釈で読めなかった理由は残す');
+    const d = make({ anns: [{ title: 'other', message: 'x' }], logThrows: true });
+    const rd = readT25ForJob({ repo: 'o/r', jobId: 5, execFn: d.fn });
+    assert.strictEqual(rd.t25, null);
+    assert.strictEqual(rd.error, `注釈: title=${T25_ANNOTATION_TITLE} の行が無い（1 件を走査） / ログ: HTTP 404: Not Found`);
     const c = make({ anns: [], annThrows: true, logThrows: true });
     const rc = readT25ForJob({ repo: 'o/r', jobId: 5, execFn: c.fn });
     assert.strictEqual(rc.t25, null);
