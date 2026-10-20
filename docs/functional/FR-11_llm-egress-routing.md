@@ -3,13 +3,13 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-17
+updated: 2026-10-20
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02, NFR-17, NFR-19, NFR-28]
 adrs: [ADR-0138, ADR-0140, ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
-iadrs: [IADR-0552, IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531, IADR-0535, IADR-0533, IADR-0528, IADR-0562]
+iadrs: [IADR-0552, IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531, IADR-0535, IADR-0533, IADR-0528, IADR-0562, IADR-0563]
 specs: [20261017_1749_anthropic-official-sdk, 20261017_1903_drop-pre-5-5-claude-models, 20261016_1960_adr-0140-tier-b-residency-zdr, 20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue]
 issues: [#1749, #1903, #1960, #201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, #1902, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783, planning#795]
 -->
@@ -334,8 +334,11 @@ effort を送れない）を `HttpClient` の委譲ハンドラ（既知型の�
 - それ以外の型を捨てた → **warn**（想定外の型名を載せる）。
 - 本文が 1 個も無い → **warn**（型を問わない。本文が失われたことに気づけるように）。例外にはせず空の本文として返し、
   既存の空応答分岐（呼び出し側の安全既定）へ合流する。
-- 捨てた件数は計器 `llm.anthropic.content_blocks_dropped`（型 `thinking` / `redacted_thinking` / `other`）で数える
-  （LLM 補完メトリクスの可観測性仕様書）。ストリームは数えない（本文デルタ `text_delta` だけを流し、思考のデルタは流さない）。
+- 2 個目以降の `text` ブロックも本文に使わない（**連結しない**。呼び出し側の解析は本文 1 個を前提にする）。黙って捨てず、
+  **warn** を 1 行出す（先頭の文字数・捨てた個数・捨てた各ブロックの文字数。本文は載せない）。
+- 捨てた件数は計器 `llm.anthropic.content_blocks_dropped`（型 `thinking` / `redacted_thinking` / `text` / `other`）で数える
+  （LLM 補完メトリクスの可観測性仕様書）。ストリームは数えない（本文デルタ `text_delta` だけを流し、思考のデルタは流さない。
+  ストリームは全ブロックの本文デルタを区切りなしで流すので、一括と違い実質は連結になる）。
 
 本節は content の解釈に関する規定であり、送信可否（`Sent`）・終了理由（`StopReason`）の
 軸（前節）とは独立である。`refusal` の本文破棄は thinking の有無に関わらず維持される。

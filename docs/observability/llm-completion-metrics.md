@@ -3,13 +3,13 @@ title: LLM 補完メトリクス（終了理由・拒否率）ログ・可観測
 type: observability-spec
 status: in-progress
 created: 2026-07-28
-updated: 2026-10-17
+updated: 2026-10-20
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, NFR-19]
 adrs: [ADR-0006, ADR-0010, ADR-0025, ADR-0038, ADR-0044]
-iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374, IADR-0114, IADR-0535, IADR-0533, IADR-0562]
+iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374, IADR-0114, IADR-0535, IADR-0533, IADR-0562, IADR-0563]
 specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261017_1749_anthropic-official-sdk]
 issues: [#380, #786, #787, #863, #1091, #1819, #1917, #1902, #1749]
 -->
@@ -226,7 +226,7 @@ Claude の非ストリーミング応答の content のうち、本文（`text` 
 | Meter 名 | `microservices-platform.llm-gateway`（上と同じ） |
 | 計器 | `llm.anthropic.content_blocks_dropped`（`Counter<long>`・単位 `{block}`）。**捨てたブロック 1 個につき 1** |
 | Prometheus 側の名前 | `llm_anthropic_content_blocks_dropped_total` |
-| 属性 | `llm.content_block_type` = `thinking` / `redacted_thinking` / `other`（**3 値に閉じる**。型名は上流が決める非有界な値なので、想定内の 2 型以外は `other` へ集約する） |
+| 属性 | `llm.content_block_type` = `thinking` / `redacted_thinking` / `text` / `other`（**4 値に閉じる**。型名は上流が決める非有界な値なので、想定内の 2 型と `text` 以外は `other` へ集約する。`text` は 2026-10-20 に追加） |
 
 - 5.5 系は 3 モデルとも thinking を無効にできないため、**`thinking` が増え続けるのは通常の形**である。
   ログは debug へ下げ、件数はこの計器で読む（1 応答 1 行の warn は、PoC の 7 時間で 685 行になり本物の警告を埋めた）。
@@ -235,7 +235,13 @@ Claude の非ストリーミング応答の content のうち、本文（`text` 
 - 除去の結果 `content` が空になった応答も warn が出る（型を問わない）。計器は除去したブロックを数えるだけで、
   空になったかどうかは属性に持たない。
 
+- **`text` は本文に使わなかった 2 個目以降の `text` ブロック**である（本文には先頭の 1 個だけを使い、連結しない）。
+  0 であるのが通常で、出たら同時にゲートウェイの warn（構造化値 `UsedTextLength` / `DroppedTextBlocks` / `DroppedTextLengths`。
+  文字数だけで本文は載せない）が出る。先頭が短く 2 個目が長ければ、本文（構造化出力の JSON 等）が 2 個目に入っていた疑いがある。
+
 ```promql
+# 2 個目以降の text ブロックの除去（0 であるのが通常）
+sum(increase(llm_anthropic_content_blocks_dropped_total{llm_content_block_type="text"}[1d]))
 # 想定外の型の除去（0 であるのが通常）
 sum(increase(llm_anthropic_content_blocks_dropped_total{llm_content_block_type="other"}[1d]))
 # 型別の除去件数の推移
