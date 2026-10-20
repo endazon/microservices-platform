@@ -10,8 +10,8 @@ author: claude
 ids: [FR-11, NFR-21, UC-01, UC-02, NFR-19]
 adrs: [ADR-0006, ADR-0010, ADR-0025, ADR-0038, ADR-0044]
 iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374, IADR-0114, IADR-0535, IADR-0533, IADR-0562, IADR-0564]
-specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261017_1749_anthropic-official-sdk]
-issues: [#380, #786, #787, #863, #1091, #1819, #1917, #1902, #1749]
+specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261017_1749_anthropic-official-sdk, 20261020_2000_extra-text-block-drop-count]
+issues: [#380, #786, #787, #863, #1091, #1819, #1917, #1902, #1749, #2000]
 -->
 
 # 可観測性仕様書: LLM 補完の終了理由（拒否率）

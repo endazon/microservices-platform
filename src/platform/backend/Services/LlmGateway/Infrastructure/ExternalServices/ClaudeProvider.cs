@@ -162,6 +162,7 @@ public class ClaudeProvider(
     private string? ExtractText(IReadOnlyList<ContentBlock> content)
     {
         string? text = null;
+        var usedTextLength = 0;
         var textBlocks = 0;
         List<string>? dropped = null;
         List<int>? droppedTextLengths = null;
@@ -171,7 +172,10 @@ public class ClaudeProvider(
             {
                 textBlocks++;
                 if (text is null)
+                {
                     text = textBlock.Text;
+                    usedTextLength = text.Length;
+                }
                 else
                     (droppedTextLengths ??= []).Add(textBlock.Text.Length);
                 continue;
@@ -190,7 +194,7 @@ public class ClaudeProvider(
         {
             contentBlockMetrics.RecordDropped(
                 Enumerable.Repeat(AnthropicContentBlockMetrics.TypeText, droppedTextLengths.Count));
-            LogDroppedText(text!.Length, droppedTextLengths);
+            LogDroppedText(usedTextLength, droppedTextLengths);
         }
 
         return text;
