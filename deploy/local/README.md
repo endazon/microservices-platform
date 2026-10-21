@@ -44,9 +44,10 @@ winget install Helm.Helm
 
 > どちらも実体は k3s（ADR-0008）。A は内蔵 k3s をそのまま、B は k3d が k3s-in-docker を作る。
 
-**どちらでも Node.js（`node`。リポジトリの CI と同じ 22 系）が要る。** 起動器（`scripts/k8s-local-up.sh`）と Vault の種
-（`deploy/local/vault/eso/bootstrap.sh`）は、dev の値の守りの対象を realm の宣言から `node scripts/lib/dev-client-secret-targets.js` で
-導出する。node が無いと、守れないまま進まないよう起動の最初で止まる（IADR-0572）。
+**どちらでも Node.js 22 が要る**（`winget install OpenJS.NodeJS.LTS`）。`k8s-local-up.sh` は [3/7] で realm の取り込み元を作るときに
+`node` で試験アカウントのプレースホルダを処理する（無いと止まる。下の「試験アカウント（e2e-*）」）。
+また起動器（`scripts/k8s-local-up.sh`）と Vault の種（`deploy/local/vault/eso/bootstrap.sh`）は、dev の値の守りの対象を realm の宣言から
+`node scripts/lib/dev-client-secret-targets.js` で導出する。node が無いと、守れないまま進まないよう起動の最初で止まる（IADR-0572）。
 
 ## 稼働ホストの前提（メモリ・電源。Issue #1919）
 
@@ -292,6 +293,8 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
   **seed 利用者の存在**／サービスアカウント利用者のロールと属性。client の `secret` は**client を作るときにだけ**宣言（開発用の値）で入れ、
   既存の client では比べず・書かない（#1682。認証基盤と Vault を対で回した値を戻さないため。回し方は
   [対になる秘密のローテーション](../../docs/operations/paired-secret-rotation-runbook.md)）。
+- **試験アカウント（`e2e-*`）**: 資格情報は宣言のプレースホルダへ Secret `e2e-accounts` の値を差し込んで作る。差し込めなければ作らない
+  （drift にも数えない）。作った後は下の「既存の人間の利用者」と同じく触らない（回し方は「試験アカウント（e2e-*）」の節）。
 - **触らない層**（実行時が正）: **既存の人間の利用者**の資格情報・属性・ロール・グループ・`requiredActions`・セッション、
   `smtpServer`（[運用 Runbook](../../docs/operations/keycloak-smtp-relay-setup-runbook.md) が入れる実行時状態）。
   宣言に無い余剰の実体（client / role / group / 利用者）も消さない。
@@ -359,6 +362,87 @@ realm import（`deploy/keycloak/microservices-platform-realm.json`）に含ま�
 > **PVC が空の状態から `--import-realm` すると import 自体が失敗する**潜在バグだった
 > （PVC 永続化で再 import が常にスキップされていたため無自覚に隠れていた。#780 第2段の
 > realm 作り直しで顕在化・実測）。
+
+## 試験アカウント（e2e-*。E2E 専用・人は使わない）
+
+稼働中の PoC へ Playwright の E2E を流すための専用アカウントである。**人のアカウント（`admin` / `developer` / `poc-*`）を E2E から使わない**
+（役割ごとに 1 アカウント。権限の否定系は「隣の役割」で見る）。宣言は realm JSON にあり、後追い Job が既存の realm にも足す。
+
+| ユーザー名 | realm ロール | グループ（＝属性） | 用途 |
+| --- | --- | --- | --- |
+| `e2e-user` | なし | `/clearance/internal`, `/department/engineering` | 一般利用者。管理画面の陰性・AST の閲覧者の陰性 |
+| `e2e-operator` | `platform-operator` | `/clearance/internal`, `/department/engineering` | 運用者画面の陽性。管理者画面の陰性 |
+| `e2e-admin` | `platform-admin`, `platform-operator` | `/clearance/restricted`, `/department/engineering` | 管理者画面の陽性 |
+| `e2e-noaccess` | なし | `/clearance/public` のみ | ABAC の拒否の対照（検索・文書で何も見えない） |
+| `e2e-revocable` | なし | `/clearance/internal` のみ | セッション失効・無効化の被験者（`e2e-admin` が有効へ戻す） |
+| `e2e-trading-owner` | `trading-owner` | `/clearance/internal`, `/department/engineering` | AST の所有者（取引の画面の陽性） |
+
+- `trading-owner` は realm `platform` のロールである（連結配備の認証は `platform` に一本化済み）。`e2e-user` は持たない。
+- **MFA は外さない。** `CONFIGURE_TOTP` の代わりに TOTP の OTP 資格情報を宣言で持つ（初回の登録画面が挟まらない）。
+- 🔴 **資格情報の値はリポジトリに無い。** realm JSON はプレースホルダ `${E2E_<ROLE>_PASSWORD}` / `${E2E_<ROLE>_TOTP_SECRET}` だけを持つ。
+
+### 値の置き場
+
+| 置き場 | 名前 |
+| --- | --- |
+| OpenBao の KV `secret/msp/e2e-accounts` | `e2e-<role>-password` / `e2e-<role>-totp-secret`（12 個。`<role>` は `user` / `operator` / `admin` / `noaccess` / `revocable` / `trading-owner`） |
+| ESO の ExternalSecret `platform-infra/e2e-accounts`（[`vault/eso/externalsecret-e2e-accounts.yaml`](vault/eso/externalsecret-e2e-accounts.yaml)）→ Secret `platform-infra/e2e-accounts` | `E2E_<ROLE>_PASSWORD` / `E2E_<ROLE>_TOTP_SECRET`（`<ROLE>` は大文字・`-` は `_`） |
+
+- 読み手は realm の後追い Job（`envFrom`。無くても起動する）と、Keycloak の取り込み元を作る `k8s-local-up.sh` の [3/7]。E2E の runner も同じ Secret を読む。
+- **Secret が無い・欠ける・値が検査に落ちる利用者は作らない**（後追いの出力に `skipped   user e2e-… — e2e-accounts から差し込めない: <キー>: <理由>` が出る。
+  値は出ない）。検査はパスワードが realm の `passwordPolicy`（12 文字以上・3 種類以上の文字）を満たすこと、TOTP の秘密が英数 20〜64 文字であること。
+- TOTP の秘密は Keycloak がそのまま持つ**生の文字列**である。認証アプリ・E2E が使う base32 はその UTF-8 バイト列の base32
+  （`scripts/lib/totp.js` の `base32Encode` を通してから `totp` に渡す）。
+- Vault の種（`vault/eso/bootstrap.sh`）は入れない。**`VAULT=1 ESO=1` でも、KV を入れるまで試験アカウントは作られない**（他の機能には影響しない）。
+
+### 入れる（初回）
+
+`VAULT=1 ESO=1` で起動済みのクラスタで、値を生成して KV へ流す（**端末に値を出さない**。生成器は標準出力が端末だと止まる）。
+
+```bash
+node scripts/gen-e2e-accounts.js | kubectl -n platform-infra exec -i deploy/vault -- sh -c \
+  'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"; vault kv put -cas=0 secret/msp/e2e-accounts -'
+```
+
+`-cas=0` は「無いときだけ作る」。既に在れば失敗する（上書きは下の回転の手順）。
+
+### 反映する
+
+`VAULT=1 ESO=1 bash scripts/k8s-local-up.sh --live` を再実行すれば、ESO の同期の後に後追いが試験アカウントを足す。up を回さずに当てるときは:
+
+```bash
+kubectl -n platform-infra annotate externalsecret e2e-accounts force-sync="$(date +%s)" --overwrite
+kubectl -n platform-infra wait --for=condition=Ready externalsecret/e2e-accounts --timeout=60s
+bash deploy/local/keycloak-setup/reconcile-realm.sh   # 期待: applied   user.create  e2e-user …（6 名）
+```
+
+### 確かめる
+
+```bash
+kubectl -n platform-infra get externalsecret,secret e2e-accounts   # 期待: READY=True・STATUS=SecretSynced・DATA=12
+bash deploy/local/keycloak-setup/reconcile-realm.sh --check        # 期待: skipped の行が無い・最終行が drift=0
+# 6 桁を出す（値は表示しない。出るのは 6 桁だけ）
+kubectl -n platform-infra get secret e2e-accounts -o 'jsonpath={.data.E2E_USER_TOTP_SECRET}' | base64 -d \
+  | node -e 'const t=require("./scripts/lib/totp.js");let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(t.totp(t.base32Encode(d))))'
+```
+
+ブラウザで `https://localhost/` から `e2e-user` でログインし、パスワード（Secret の `E2E_USER_PASSWORD`）と上の 6 桁で入れること、
+`e2e-trading-owner` だけが `/trading/` の所有者の画面を開けることを見る。
+
+### 回転（四半期ごと。漏えいの疑いがあれば即時）
+
+後追いは**作った後の利用者の資格情報を書き換えない**（人の seed 利用者と同じく実行時が所有する）。回すときは KV を変え、利用者を消して作り直す。
+
+1. 新しい値で KV を上書きする（`-cas=0` を付けない）:
+   ```bash
+   node scripts/gen-e2e-accounts.js | kubectl -n platform-infra exec -i deploy/vault -- sh -c \
+     'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"; vault kv put secret/msp/e2e-accounts -'
+   ```
+2. ESO を同期させる（上の「反映する」の `annotate` と `wait`）。
+3. Keycloak の管理コンソール（`https://keycloak.localhost/admin/master/console/#/platform/users`）で **`e2e-` で始まる 6 名だけ**を削除する。
+   人のアカウントは消さない。`kcadm.sh` を Keycloak の Pod で exec しない（本体が OOMKilled になる）。
+4. `bash deploy/local/keycloak-setup/reconcile-realm.sh` で作り直す（期待: `user.create` が 6 件）。上の「確かめる」を通す。
+5. 値を写した先（GitHub Actions の secrets・runner の `.env.e2e`・保存済みの storageState）を捨てて取り直す。
 
 ## AST 統合スタック疎通（エッジ /bff・ブラウザ OIDC・Issue #284）
 

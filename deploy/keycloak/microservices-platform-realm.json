@@ -1491,6 +1491,242 @@
       ]
     },
     {
+      "username": "e2e-user",
+      "email": "e2e-user@example.com",
+      "firstName": "E2E",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "clearance": [
+          "internal"
+        ],
+        "department": [
+          "engineering"
+        ]
+      },
+      "groups": [
+        "/clearance/internal",
+        "/department/engineering"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_USER_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_USER_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "e2e-operator",
+      "email": "e2e-operator@example.com",
+      "firstName": "E2E",
+      "lastName": "Operator",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "clearance": [
+          "internal"
+        ],
+        "department": [
+          "engineering"
+        ]
+      },
+      "groups": [
+        "/clearance/internal",
+        "/department/engineering"
+      ],
+      "realmRoles": [
+        "platform-operator"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_OPERATOR_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_OPERATOR_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "e2e-admin",
+      "email": "e2e-admin@example.com",
+      "firstName": "E2E",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "clearance": [
+          "restricted"
+        ],
+        "department": [
+          "engineering"
+        ]
+      },
+      "groups": [
+        "/clearance/restricted",
+        "/department/engineering"
+      ],
+      "realmRoles": [
+        "platform-admin",
+        "platform-operator"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_ADMIN_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_ADMIN_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "e2e-noaccess",
+      "email": "e2e-noaccess@example.com",
+      "firstName": "E2E",
+      "lastName": "NoAccess",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "clearance": [
+          "public"
+        ]
+      },
+      "groups": [
+        "/clearance/public"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_NOACCESS_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_NOACCESS_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "e2e-revocable",
+      "email": "e2e-revocable@example.com",
+      "firstName": "E2E",
+      "lastName": "Revocable",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "clearance": [
+          "internal"
+        ]
+      },
+      "groups": [
+        "/clearance/internal"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_REVOCABLE_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_REVOCABLE_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "e2e-trading-owner",
+      "email": "e2e-trading-owner@example.com",
+      "firstName": "E2E",
+      "lastName": "TradingOwner",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": {
+        "clearance": [
+          "internal"
+        ],
+        "department": [
+          "engineering"
+        ]
+      },
+      "groups": [
+        "/clearance/internal",
+        "/department/engineering"
+      ],
+      "realmRoles": [
+        "trading-owner"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_TRADING_OWNER_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_TRADING_OWNER_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
       "username": "service-account-bff",
       "enabled": true,
       "serviceAccountClientId": "bff",

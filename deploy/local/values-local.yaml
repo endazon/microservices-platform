@@ -113,11 +113,22 @@ services:
   # 🔴 #1389: ここは extraEnv ではなく **extraEnvAppend**。extraEnv だと Helm のリスト置換で本番既定の
   # Services__* 23 件が消え、BFF の readiness（下流 4 サービスの URL 検査）が落ちる（integration-stack で実測）。
   bff:
+    # NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: 共有シークレットを回したら Reloader が BFF を作り直す（env は起動時に 1 度だけ解決される）。
+    deploymentAnnotations:
+      secret.reloader.stakater.com/reload: "opend-auth-caller-secret"
     extraEnvAppend:
       - name: OpendAuth__BaseUrl
         value: "http://opend:8080"
       - name: OpendAuth__DeviceTrustPersisted
         value: "true"
+      # NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: AST の OpenD 認証サイドカーへ名乗る共有シークレット（呼び出し元の検証）。
+      # Secret は ESO=1 で deploy/local/vault/eso/externalsecret-opend-auth-caller-secret.yaml が同期する（AST の chart と同じ Vault のキー）。
+      # optional: Secret が無くても BFF は起動する（上流を呼ばず、SC-04 に「接続資格が構成されていません」と示す）。
+      - name: OpendAuth__CallerSecret
+        secretKeyRef:
+          name: opend-auth-caller-secret
+          key: caller-secret
+          optional: true
     # SC-22, IADR-0433, IADR-0453 決定 5 (#1411): 秘密情報の投入先はローカルの dev Vault（VAULT=1）。
     # **VAULT=1 ESO=1 でなければ Vault も policy も無く、/admin/secrets は 503（接続できない）を出す** —— 静かに成功しない。
     # policy と role は deploy/local/vault/eso/bootstrap.sh が入れる（ESO=1 のとき）。

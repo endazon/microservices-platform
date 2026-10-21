@@ -47,6 +47,7 @@
   "offline": [
     { "path": "compose-up.sh", "reason": "引数をそのまま docker compose へ渡す dev の compose 起動ヘルパ。k8s の稼働クラスタにも稼働サービスにも当たらない（対象は手元の compose スタックで、副作用はサブコマンドが明示する）。どのワークフローも呼ばない" },
     { "path": "check-collector-self-telemetry.js", "reason": "collector の待受が loopback でないことを見る静的検査。localhost は正規表現に現れるだけ" },
+    { "path": "gen-e2e-accounts.js", "reason": "試験アカウントの資格情報を乱数で作り標準出力へ書く生成器（#2024）。kubectl は使い方の注記に現れるだけで、自分ではクラスタへ当たらない（KV へ流すのは人が組むパイプ）" },
     { "path": "check-default-credentials.js", "reason": "既定資格情報の静的検査。localhost はダミーの接続文字列の例" },
     { "path": "check-deploy-manifests.js", "reason": "kubectl kustomize と helm template と kubeconform はクラスタへ当たらない" },
     { "path": "check-image-digests.js", "reason": "deploy/ のイメージ参照の digest の静的検査（#1787）。k3d は自製イメージの接頭辞 k3d-local の判定に、localhost は自己試験のレジストリ名に現れるだけで、クラスタにもレジストリにも当たらない" },

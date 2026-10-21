@@ -7066,6 +7066,154 @@ ${r.stderr}`);
     });
   }
 
+  // --- #2044: 警報の宛先（Alertmanager → 近接 MTA のメール受信先）--------------------------------
+  //
+  // NFR-21, ADR-0006, ADR-0045, ADR-0078 決定 2, IADR-0571: 経路B の Alertmanager の既定の route が
+  // **`default-null` ではなく近接 MTA 経由のメール受信先を向く**ことを固定する。宛先は Secret から起動時に描画され
+  // （空なら警告して default-null・不正なら起動しない。IADR-0571 決定 3）、**実値はリポジトリに無い**。
+  // 🔴 smarthost・差出人ドメイン・port は deploy/mail-relay/mail-relay.yaml から**導く**（書き写さない）。
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+    const os = require('os');
+    const REPO = path.join(__dirname, '..');
+    const rd = (...p) => fs.readFileSync(path.join(REPO, ...p), 'utf8');
+    const AM_K8S = rd('deploy', 'local', 'observability', 'alertmanager.yaml');
+    const RELAY = rd('deploy', 'mail-relay', 'mail-relay.yaml');
+    const AM_COMPOSE = rd('deploy', 'alertmanager', 'alertmanager.yml');
+    const ES = rd('deploy', 'local', 'vault', 'eso', 'externalsecret-alertmanager-mail.yaml');
+    const docs = (text) => text.split(/^---\s*$/m);
+    const docOf = (text, kind, name) =>
+      docs(text).find((d) => new RegExp(`^kind: ${kind}\\s*$`, 'm').test(d) && new RegExp(`^  name: ${name}\\s*$`, 'm').test(d));
+    // ConfigMap の `<key>: |` ブロックを字下げ 4 を外して取り出す。
+    const cmKey = (key) => {
+      const m = new RegExp(`\\n  ${key.replace(/[.]/g, '\\.')}: \\|\\n((?:    .*\\n|\\s*\\n)*)`).exec(AM_K8S);
+      assert.ok(m, `ConfigMap alertmanager-config に ${key} が無い`);
+      return m[1].split('\n').map((l) => l.slice(4)).join('\n');
+    };
+    // 比較用: コメント行と空行を落とし、末尾の空白を落とす。
+    const norm = (t) => t.split('\n').filter((l) => l.trim() && !/^\s*#/.test(l)).map((l) => l.replace(/\s+$/, ''));
+    const routeReceiver = (t) => (/^route:\n(?:[ ].*\n)*?  receiver: (\S+)/m.exec(t) || [])[1];
+
+    const relaySvc = docOf(RELAY, 'Service', 'mail-relay');
+    const relayNs = (/^  namespace: (\S+)/m.exec(relaySvc) || [])[1];
+    const relayPort = (/name: smtp, port: (\d+)/.exec(relaySvc) || [])[1];
+    const senderDomain = (/ALLOWED_SENDER_DOMAINS, value: "([^"]+)"/.exec(RELAY) || [])[1];
+
+    ok('#2044: 前提 —— mail-relay の Service（名前・namespace・smtp の port）と差出人ドメインを読める', () => {
+      assert.ok(relaySvc && relayNs && relayPort && senderDomain, `読めない: ns=${relayNs} port=${relayPort} domain=${senderDomain}`);
+    });
+
+    ok('#2044: 宛先ありの設定は既定の route がメール受信先を向き（default-null ではない）、smarthost は mail-relay の Service から導かれる', () => {
+      const t = cmKey('alertmanager-mail.yml.tmpl');
+      const recv = routeReceiver(t);
+      assert.ok(recv && recv !== 'default-null', `既定の route の受信先が ${recv} である`);
+      const block = new RegExp(`- name: ${recv}\\n((?:[ ]{4,}.*\\n)+)`).exec(t);
+      assert.ok(block, `受信先 ${recv} の定義が無い`);
+      assert.match(block[1], /email_configs:/, '受信先にメールの設定が無い（null 受信先と同じ）');
+      assert.match(block[1], new RegExp(`smarthost: 'mail-relay\\.${relayNs}\\.svc\\.cluster\\.local:${relayPort}'`), 'smarthost が mail-relay の Service と一致しない');
+      assert.match(block[1], new RegExp(`from: '[^@']+@${senderDomain.replace(/[.]/g, '\\.')}'`), '差出人が近接 MTA の差出人の門を通らない');
+      assert.match(block[1], /require_tls: false/, 'require_tls を明示していない（既定 true では relay への投函が失敗する）');
+      // 宛先の実値をリポジトリに置かない —— `to` はプレースホルダだけ。
+      const tos = [...t.matchAll(/^\s*- to: '([^']*)'/gm)].map((x) => x[1]);
+      assert.deepStrictEqual(tos, ['__ALERT_MAIL_TO__'], `to にプレースホルダ以外が書かれている: ${tos}`);
+    });
+
+    ok('#2044: 宛先ありと宛先なしの設定は受信先以外が同じで、宛先なしは compose（default-null）と同内容', () => {
+      const off = norm(cmKey('alertmanager.yml'));
+      const on = norm(cmKey('alertmanager-mail.yml.tmpl'));
+      const strip = (ls) => {
+        const out = [];
+        let inRecv = false;
+        for (const l of ls) {
+          if (/^receivers:/.test(l)) { inRecv = true; continue; }
+          if (inRecv && /^\S/.test(l)) inRecv = false;
+          if (!inRecv && !/^  receiver: /.test(l)) out.push(l);
+        }
+        return out;
+      };
+      assert.deepStrictEqual(strip(on), strip(off), 'route の束ね・inhibit_rules が宛先の有無で食い違う');
+      assert.strictEqual(routeReceiver(cmKey('alertmanager.yml')), 'default-null');
+      assert.deepStrictEqual(off, norm(AM_COMPOSE), '経路B の宛先なしの設定が compose の alertmanager.yml と食い違う');
+    });
+
+    ok('#2044: Deployment は initContainer で Secret alertmanager-mail の to（optional）から描画し、本体は描画済みの設定を読む', () => {
+      const dep = docOf(AM_K8S, 'Deployment', 'alertmanager');
+      assert.ok(dep, 'Deployment alertmanager が無い');
+      assert.match(dep, /initContainers:\n\s+# [^\n]*\n(?:\s+#[^\n]*\n)*\s+- name: render-config/, 'initContainer render-config が無い');
+      assert.match(dep, /name: ALERT_MAIL_TO\n\s+valueFrom: \{ secretKeyRef: \{ name: alertmanager-mail, key: to, optional: true \} \}/,
+        '宛先を Secret alertmanager-mail の to（optional）から読んでいない');
+      assert.match(dep, /- name: config\n\s+emptyDir: \{\}/, '本体の設定（config）が描画済みの emptyDir でない（ConfigMap を直接読むと宛先が入らない）');
+      assert.match(dep, /secret\.reloader\.stakater\.com\/reload: "alertmanager-mail"/, 'Reloader の注釈が無い');
+      assert.match(ES, /target:\n\s+name: alertmanager-mail\n[\s\S]*- secretKey: to\n\s+remoteRef:\n\s+key: msp\/alertmanager-mail\n\s+property: to/, 'ExternalSecret が Secret alertmanager-mail の to を供給しない');
+    });
+
+    ok('#2044: Alertmanager → mail-relay の ingress を別宣言で開く（port は Service から導く）', () => {
+      const np = docOf(AM_K8S, 'NetworkPolicy', 'mail-relay-ingress-alertmanager');
+      assert.ok(np, 'NetworkPolicy mail-relay-ingress-alertmanager が無い');
+      assert.match(np, /^  podSelector: \{ matchLabels: \{ app: mail-relay \} \}/m);
+      assert.match(np, /podSelector: \{ matchLabels: \{ app: alertmanager \} \}/);
+      assert.match(np, new RegExp(`\\{ protocol: TCP, port: ${relayPort} \\}`));
+    });
+
+    // 描画スクリプトを実際に走らせる（amtool は CI に無いので true で代える。amtool の検査は配備時に効く）。
+    const render = (script, to) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am2044-'));
+      try {
+        const src = path.join(dir, 'src');
+        const out = path.join(dir, 'out');
+        fs.mkdirSync(src);
+        fs.mkdirSync(out);
+        for (const k of ['alertmanager.yml', 'alertmanager-mail.yml.tmpl']) fs.writeFileSync(path.join(src, k), cmKey(k));
+        fs.writeFileSync(path.join(src, 'render.sh'), script);
+        const env = { PATH: process.env.PATH, RENDER_SRC: src, RENDER_OUT: out, AMTOOL: 'true' };
+        if (to !== undefined) env.ALERT_MAIL_TO = to;
+        const r = spawnSync('sh', [path.join(src, 'render.sh')], { encoding: 'utf8', env });
+        const f = path.join(out, 'alertmanager.yml');
+        return { code: r.status, err: r.stderr || '', conf: fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null };
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const SCRIPT = cmKey('render.sh');
+    const INJECT = ["ops@example.com'\n    receiver: x", "a@x.example'}", 'a@x.example|b'];
+
+    ok('#2044: 描画 —— 宛先が無い・空なら警告して default-null（起動は止めない）', () => {
+      for (const to of [undefined, '', '  ']) {
+        const r = render(SCRIPT, to);
+        assert.strictEqual(r.code, 0, r.err);
+        assert.match(r.err, /WARNING/, `警告を出していない（to=${JSON.stringify(to)}）`);
+        assert.strictEqual(routeReceiver(r.conf), 'default-null');
+      }
+    });
+
+    ok('#2044: 描画 —— 宛先があれば受信先を有効にし、値をそのまま差し込む（カンマ区切り可・空白は落とす）', () => {
+      const r = render(SCRIPT, 'ops@example.com, oncall@example.org');
+      assert.strictEqual(r.code, 0, r.err);
+      assert.notStrictEqual(routeReceiver(r.conf), 'default-null');
+      assert.match(r.conf, /- to: 'ops@example\.com,oncall@example\.org'/);
+      assert.ok(!r.conf.includes('__ALERT_MAIL_TO__'), 'プレースホルダが残っている');
+    });
+
+    ok('#2044: 描画 —— 形の不正な宛先（YAML・sed への注入）は起動しない（exit 1・設定を書かない）', () => {
+      for (const to of INJECT) {
+        const r = render(SCRIPT, to);
+        assert.strictEqual(r.code, 1, `不正な宛先で起動した: ${JSON.stringify(to)}\n${r.err}`);
+        assert.strictEqual(r.conf, null, '不正な宛先で設定を書いた');
+      }
+    });
+
+    ok('#2044: 変異 —— 形の検査を外すと注入が設定に入る（上の試験が検出力を持つ）', () => {
+      const mutated = SCRIPT.replace(/if ! printf[^\n]*\n[\s\S]*?\n\s*fi\n/, '');
+      assert.notStrictEqual(mutated, SCRIPT, '変異を当てられない（検査の形が変わった）');
+      // 引用符を閉じる注入（改行・空白は描画が落とすので、引用符で YAML の構造を壊す形を使う）。
+      const r = render(mutated, INJECT[1]);
+      assert.strictEqual(r.code, 0, r.err);
+      assert.ok(r.conf.includes("'a@x.example'}'"), '検査を外しても注入が入らない —— 変異が効いていない');
+    });
+  }
+
   // --- #1246 の取りこぼし: Prometheus のアラートルールの経路 A/B パリティ ----------
   //
   // 経路 B の inline は compose の原本から**静かに遅れた**（#1246 の 2 件が 2 世代残った）。
@@ -8731,6 +8879,9 @@ ${r.stderr}`);
           // SC-13〜16 / IADR-0532: Keycloak テーマの tokens.css を @platform/ui のトークンから**生成**する。引数なしで走らせると
           // ファイルを書くので、検査器として spawn される母集合に入れてはならない（`--check` は CI の専用ステップが走らせる）。
           'gen-keycloak-theme-tokens.js',
+          // #2024 / IADR-0570: 試験アカウントの資格情報の**生成器**（乱数の KV の JSON を標準出力へ書く。判定を返さない）。
+          // 標準出力が端末だと exit 2 で止まる。検査器として spawn される母集合に入れてはならない（試験は keycloak-realm-reconcile.test.js）。
+          'gen-e2e-accounts.js',
           'measure-abac-combinations.js',
           // #336 / IADR-0422: 検索の関連性（nDCG@10）の**測定器**。`measure-abac-combinations.js` と
           // 同じ扱いで、判定を返さない（数字を出す）。走らせると検索 API を叩きに行くので、

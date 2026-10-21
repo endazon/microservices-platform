@@ -66,6 +66,15 @@
  *   🔴 実行時所有へ入れてはならない —— それだと「**宣言 false なのに稼働 true**」という
  *   **危険な向きの drift**（閉じたはずの申請が開いている）まで見なくなる。
  *
+ * ［2026-10-21 追記 / #2024 / IADR-0570］**試験アカウント `e2e-*` の資格情報は宣言にプレースホルダだけを置き、env から差し込む。**
+ *   宣言は `users[].credentials[]` の `value`（パスワード）と `secretData`（OTP の生の秘密）に `${E2E_<ROLE>_PASSWORD}` /
+ *   `${E2E_<ROLE>_TOTP_SECRET}` を持つ。値は Secret `e2e-accounts`（OpenBao → ESO）を Job が `envFrom`（optional）で読む。
+ *   差し込みの口は `resolveE2eCredentials` の 1 つで、取り込み元を作る `--render-import`（k8s-local-up.sh の [3/7]）と共有する。
+ *   🔴 **差し込めない利用者は作らない（宣言から外す。drift にも数えない）。** プレースホルダを残したまま作ると、公知の文字列が
+ *   パスワードになる。置き換えるのは `E2E_` で始まる名前だけ（宣言で Job の env〔管理者のパスワード等〕を利用者へ写させない）。
+ *   作った後の e2e 利用者は他の人の seed 利用者と同じく実行時が所有する（資格情報を比べない・戻さない）。回すときは消して作り直す
+ *   （deploy/local/README.md の e2e 節）。
+ *
  * 集合欄（redirectUris / webOrigins / scope 割当 / enabledEventTypes …）は**宣言が全集合**（置換）。
  * 実体（client / role / group / mapper / user）は**加算的**（宣言に無い余剰は消さない）。
  *
@@ -82,6 +91,9 @@
  *   REALM_DIR           realm JSON の置き場（既定 /import ＝ ConfigMap keycloak-realms のマウント先）
  *   RECONCILE_MODE      apply（既定）| check | check-dev-secrets（引数 `--check-dev-secrets` でも同じ）
  *   DEV_CLIENT_SECRETS_ALLOWED  allow のときだけ、無い対象のクライアントを宣言の dev の値で作る（既定は拒否。#1830 / IADR-0572）
+ *   E2E_<ROLE>_PASSWORD / E2E_<ROLE>_TOTP_SECRET  試験アカウントの資格情報（Secret e2e-accounts。無ければ e2e 利用者を作らない。#2024）
+ *
+ * 引数 `--render-import`: 標準入力の realm JSON へ同じ差し込みを当てて標準出力へ書く（Keycloak へは接続しない。#2024）。
  */
 
 const fs = require('fs');
@@ -542,6 +554,100 @@ function devSecretFindings(desired, liveSecrets) {
   return out.sort((a, b) => a.clientId.localeCompare(b.clientId));
 }
 
+// ---------------------------------------------------------------- 試験アカウントの資格情報（#2024 / IADR-0570）
+
+// 置き換える名前の形。🔴 `E2E_` で始まる名前だけ —— 宣言に `${KC_ADMIN_PASSWORD}` と書けば Job の env を利用者へ写せてしまう。
+const E2E_PLACEHOLDER_RE = /\$\{(E2E_[A-Z0-9_]+)\}/g;
+const E2E_PLACEHOLDER_MARK = '${E2E_';
+// OTP の生の秘密（Keycloak が `secretData.value` に持つ文字列）の形。Keycloak が自分で作る秘密と同じ英数に限る
+// （JSON の文字列へそのまま置ける・認証アプリへ見せる base32 はこの UTF-8 バイト列の base32）。
+const E2E_TOTP_SECRET_RE = /^[A-Za-z0-9]{20,64}$/;
+
+/**
+ * realm の `passwordPolicy` のうち `length(N)` と `regexPattern(…)` だけで値を確かめる。**純関数**。
+ * Keycloak はポリシーに反するパスワードで `--import-realm` 全体を失敗させ、`POST /users` を 400 にする（後追いは fail-closed なので
+ * up が止まる）。他の項（passwordHistory 等）は作成時に効かないので見ない。
+ * @returns {boolean}
+ */
+function passwordMeetsPolicy(policy, value) {
+  for (const term of String(policy || '').split(' and ')) {
+    const m = /^\s*([A-Za-z]+)\((.*)\)\s*$/.exec(term);
+    if (!m) continue;
+    if (m[1] === 'length' && value.length < Number(m[2])) return false;
+    if (m[1] === 'regexPattern' && !new RegExp(`^(?:${m[2]})$`).test(value)) return false;
+  }
+  return true;
+}
+
+/** 差し込む値の検査。通らなければ理由（値は含めない）を返す。 */
+function e2eValueProblem(kind, value, policy) {
+  if (typeof value !== 'string' || value === '') return '無い';
+  if (/[\u0000-\u001f\u007f]/.test(value)) return '制御文字を含む';
+  if (value.includes('${')) return '${ を含む（Keycloak の取り込みが置き換える）';
+  if (kind === 'otp' && !E2E_TOTP_SECRET_RE.test(value)) return '英数 20〜64 文字でない';
+  if (kind === 'password' && !passwordMeetsPolicy(policy, value)) return 'realm の passwordPolicy を満たさない';
+  return null;
+}
+
+/**
+ * 宣言の `users[].credentials[]` のプレースホルダ `${E2E_…}` を env の値で置き換える。**純関数**（入力を変えない）。
+ *
+ * - 置き換える場所は資格情報の `value` と `secretData` だけ。それ以外の場所に `${E2E_` があれば宣言の誤りとして例外。
+ * - 利用者ごとに、必要な名前が全部 env に在り検査を通るときだけ置き換えて残す。1 つでも欠ける・落ちる利用者は**外す**
+ *   （作らない。外した利用者は plan に現れないので drift にも数えない）。
+ * - プレースホルダを持たない利用者・realm はそのまま。
+ *
+ * @param {object} desired realm の宣言
+ * @param {Record<string, string|undefined>} env
+ * @returns {{desired: object, resolved: string[], skipped: Array<{username: string, problems: string[]}>}}
+ *   problems は「名前: 理由」の列（値は含めない）
+ */
+function resolveE2eCredentials(desired, env) {
+  const out = JSON.parse(JSON.stringify(desired));
+  const resolved = [];
+  const skipped = [];
+  const outside = JSON.parse(JSON.stringify(desired));
+  for (const u of outside.users || []) delete u.credentials;
+  if (JSON.stringify(outside).includes(E2E_PLACEHOLDER_MARK)) {
+    throw new Error(`realm '${desired.realm}' の資格情報の外に ${E2E_PLACEHOLDER_MARK}…} がある（差し込めるのは users[].credentials[] の value / secretData だけ）`);
+  }
+  const users = [];
+  for (const u of out.users || []) {
+    const creds = u.credentials || [];
+    if (!JSON.stringify(creds).includes('${')) { users.push(u); continue; }
+    const problems = [];
+    for (const c of creds) {
+      const kind = c.type === 'password' ? 'password' : 'otp';
+      for (const field of ['value', 'secretData']) {
+        if (typeof c[field] !== 'string') continue;
+        c[field] = c[field].replace(E2E_PLACEHOLDER_RE, (whole, name) => {
+          const problem = e2eValueProblem(kind, env[name], desired.passwordPolicy);
+          if (problem) { problems.push(`${name}: ${problem}`); return whole; }
+          return env[name];
+        });
+        // 置き換えない形（`E2E_` 以外の名前）が残れば、その文字列のまま作らない（公知の文字列がパスワードになる）。
+        const rest = c[field].replace(E2E_PLACEHOLDER_RE, '');
+        if (rest.includes('${')) problems.push(`${field}: E2E_ で始まらないプレースホルダ（置き換えない）`);
+      }
+      for (const field of Object.keys(c)) {
+        if (!['value', 'secretData'].includes(field) && JSON.stringify(c[field]).includes(E2E_PLACEHOLDER_MARK)) {
+          throw new Error(`users[${u.username}].credentials の ${field} に ${E2E_PLACEHOLDER_MARK}…} がある（差し込めるのは value / secretData だけ）`);
+        }
+      }
+    }
+    if (problems.length > 0) { skipped.push({ username: u.username, problems }); continue; }
+    resolved.push(u.username);
+    users.push(u);
+  }
+  if (out.users) out.users = users;
+  return { desired: out, resolved, skipped };
+}
+
+/** 外した利用者の 1 行（値は含めない）。 */
+function describeSkipped(s) {
+  return `skipped   user ${s.username} — e2e-accounts から差し込めない: ${s.problems.join(', ')}`;
+}
+
 /** protocol mappers を name で突合する（client scope と client で同型）。 */
 function planMappers(add, base, label, desiredMappers, liveMappers) {
   const have = byKey(liveMappers, 'name');
@@ -751,7 +857,22 @@ function readRealmFiles(dir) {
   return files.map((f) => ({ file: f, desired: JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) }));
 }
 
+/**
+ * `--render-import`（#2024 / IADR-0570）: 標準入力の realm JSON に試験アカウントの差し込みを当て、Keycloak の取り込み元を標準出力へ書く。
+ * 外した利用者は標準エラーへ名前と理由だけを出す（値は出さない）。
+ */
+function renderImport(text, env, err = (s) => process.stderr.write(`${s}\n`)) {
+  const r = resolveE2eCredentials(JSON.parse(text), env);
+  if (r.resolved.length > 0) err(`    realm の取り込み元: 試験アカウントを e2e-accounts から差し込む: ${r.resolved.join(', ')}（値は表示しない）`);
+  for (const s of r.skipped) err(`    realm の取り込み元: ${describeSkipped(s)}（取り込まない）`);
+  return `${JSON.stringify(r.desired, null, 2)}\n`;
+}
+
 async function main() {
+  if (process.argv.includes('--render-import')) {
+    process.stdout.write(renderImport(fs.readFileSync(0, 'utf8'), process.env));
+    return;
+  }
   const baseUrl = (process.env.KC_URL || 'http://keycloak:8080').replace(/\/+$/, '');
   const mode = process.argv.includes('--check-dev-secrets') ? 'check-dev-secrets' : (process.env.RECONCILE_MODE || 'apply');
   const dir = process.env.REALM_DIR || '/import';
@@ -782,8 +903,11 @@ async function main() {
   let drift = 0;
   let guardBlocked = 0;
   let applied = 0;
-  for (const { file, desired } of realms) {
-    console.log(`==> realm '${desired.realm}' (${file}) mode=${mode}`);
+  for (const { file, desired: declared } of realms) {
+    console.log(`==> realm '${declared.realm}' (${file}) mode=${mode}`);
+    // #2024 / IADR-0570: 試験アカウントの資格情報を差し込む。差し込めない利用者は作らない（drift にも数えない）。
+    const { desired, skipped } = resolveE2eCredentials(declared, process.env);
+    for (const s of skipped) console.log(`    ${describeSkipped(s)}`);
     let ops = plan(desired, await collectLive(kc, desired));
     if (mode === 'apply') {
       for (let pass = 1; pass <= MAX_PASSES && ops.length > 0; pass += 1) {
@@ -826,4 +950,5 @@ module.exports = {
   DEV_SECRETS_ALLOWED_ENV,
   REALM_COLLECTION_KEYS, RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, CLIENT_SKIP_KEYS, CLIENT_CREATE_ONLY_KEYS, MAX_PASSES,
   GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED, SEED_USER_SELF_SERVICE_ROLES,
+  resolveE2eCredentials, passwordMeetsPolicy, describeSkipped, renderImport, E2E_TOTP_SECRET_RE,
 };
