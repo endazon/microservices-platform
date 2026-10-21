@@ -137,6 +137,31 @@ mkcert を使う手もあるが、**CA が開発者マシン固有でリポジ�
   - hosts（`C:\Windows\System32\drivers\etc\hosts` / `/etc/hosts`）: `127.0.0.1 grafana.localhost argocd.localhost vault.localhost headlamp.localhost qdrant.localhost`
   - もしくは `grafana.127.0.0.1.nip.io:50000` 等の `*.nip.io` / `*.sslip.io`（hosts 編集不要・ワイルドカード解決）。
 
+## Keycloak の管理コンソール（エッジに出さない。IADR-0575）
+
+エッジ（Traefik の `keycloak-edge-admin-deny`・Istio の `msp-keycloak-edge` の先頭の route・chart の `keycloak-master-realm-deny`）は、
+`keycloak.localhost` の **`/admin` と `/realms/master` を 403 で拒む**。利用者が使う realm の経路（`/realms/platform/...` のログイン・
+トークン・アカウントコンソール、`/resources/...`）はこれまでどおり通る（`scripts/k8s-local-up.test.js` の模型と
+`node scripts/check-stack-ready.js --live` の G4b が固定する）。
+
+管理者はエッジを通らず、**port-forward 越しの Admin REST** か **Pod の中の `kcadm.sh`** で操作する:
+
+```bash
+kubectl -n platform-infra port-forward svc/keycloak 8080:8080
+# → master realm の管理者のトークンを http://localhost:8080/realms/master/protocol/openid-connect/token で取り、
+#   http://localhost:8080/admin/realms/<realm>/... を呼ぶ（資格情報は Secret platform-infra/keycloak-admin。端末に出さない）。
+#   形は docs/operations/paired-secret-rotation-runbook.md の手順 1（port-forward と curl）と同じ。
+```
+
+- 🔴 **管理コンソール（ブラウザの画面）はエッジからは開けない。** 画面は `KC_HOSTNAME`（エッジ）の URL へ誘導されるため、
+  port-forward で `http://localhost:8080/admin/` を開いても、ログインの途中でエッジ（拒否）へ飛ぶ。`KC_HOSTNAME_ADMIN` で
+  画面だけを別の URL に出す形は、Admin REST のトークンの発行者を変えて in-cluster の Admin REST（realm の後追い・各サービス）を
+  拒ませ得るので採らない（IADR-0575）。画面が要る作業は、Admin REST か kcadm.sh の手順に置き換える。
+- CLI は Pod の中の `kcadm.sh` を使う（`kubectl -n platform-infra exec deploy/keycloak -- /opt/keycloak/bin/kcadm.sh …`。Pod の中から `http://localhost:8080` へ繋ぐ。
+  資格情報は Pod の env から読み、端末に出さない。`docs/operations/paired-secret-rotation-runbook.md` の手順と同じ形）。
+- realm の後追い（`deploy/local/keycloak-setup/reconcile-realm.sh`）と各サービスの Admin REST は in-cluster の
+  `http://keycloak:8080` を使うので、エッジの拒否の影響を受けない。
+
 ## OIDC（集約後 URL）
 
 issuer は **`https://keycloak.localhost/realms/platform`（エッジ host）**である（[IADR-0243](../../../.ai-context/adr/IADR-0243_keycloak-edge-issuer-migration.md)・#780。[IADR-0091](../../../.ai-context/adr/IADR-0091_local-edge-aggregation-traefik.md) 決定 5 の最小案「`keycloak:8080` 維持」は Supersede された）。ツール UI は従来どおり 50000 に集約する。

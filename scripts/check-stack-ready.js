@@ -41,6 +41,11 @@
  *   **デプロイ済みの `KC_HOSTNAME` ＋ `/realms/<realm>` と文字列として完全一致**すること
  *   （[IADR-0243] の受け入れ基準を CI で固定する）。realm 名は `deploy/keycloak/*-realm.json` から
  *   **走査して**得る（列挙を書かない）。
+ * - **G4b エッジは管理面を出さない**（[IADR-0575] / GHSA-rh44-px44-p48q）: エッジ host の `/admin/`・`/admin/master/console/`・
+ *   `/realms/master/.well-known/openid-configuration` が **403 か 404**（拒否）で、利用者の realm の経路
+ *   （`/realms/<realm>/account/`・ログイン画面）は **2xx か 3xx**（届く）であること。経路は G4 と同じく走査した realm から組む。
+ *   🔴 **拒否の宣言（Traefik の中間処理・Istio の先頭の route）は、読めないと黙って無効になり得る**ので、宣言の静的検査では足りず、
+ *   エッジ越しに実測する。測れない（curl の失敗）は緑にしない。
  * - **G5 admin entrypoint**: **どちらかのエッジ**の Service に `50000` の port が在ること
  *   （既定は `kube-system/traefik` の `admin=50000`。`ISTIO=1` では `istio-system/istio-ingressgateway`
  *   の `https-admin=50000`。#782 / [IADR-0317] で Traefik は Service ごと降りるため、
@@ -1468,6 +1473,62 @@ function evaluateIssuer({ hostnameUrl, realm, discoveryIssuer }) {
   return failures;
 }
 
+/** G4b（IADR-0575）で測る経路。blocked は 403 / 404、open は 2xx / 3xx を期待する。realm は走査した宣言から。 */
+function edgeAdminSurfaceProbes(realms) {
+  const probes = [
+    { path: '/admin/', expect: 'blocked' },
+    { path: '/admin/master/console/', expect: 'blocked' },
+    { path: '/realms/master/.well-known/openid-configuration', expect: 'blocked' },
+    { path: '/realms/master/protocol/openid-connect/auth?client_id=security-admin-console&response_type=code&scope=openid', expect: 'blocked' },
+  ];
+  for (const realm of realms) {
+    probes.push({ path: `/realms/${realm}/account/`, expect: 'open' });
+    // ログイン・トークンの検証の経路。auth の端点は redirect_uri が無いと 400 を返すので、ここでは鍵（certs）を測る。
+    probes.push({ path: `/realms/${realm}/protocol/openid-connect/certs`, expect: 'open' });
+  }
+  return probes;
+}
+
+/**
+ * G4b（IADR-0575）: エッジは管理面を拒み、利用者の realm の経路は通す。**純関数**。
+ * @param {Array<{path: string, expect: 'blocked'|'open', status: number}>} results status は HTTP の状態（測れなければ 0）
+ */
+function evaluateEdgeAdminSurface(results) {
+  const failures = [];
+  if (!results.some((r) => r.expect === 'blocked') || !results.some((r) => r.expect === 'open')) {
+    failures.push('[G4b] 拒否と通過の両方の経路を測っていない（片側だけでは「全部拒否」「全部通過」と区別できない）。');
+  }
+  for (const r of results) {
+    if (!r.status) {
+      failures.push(`[G4b] ${r.path} を測れなかった（curl の失敗）。測れないを緑にしない。`);
+    } else if (r.expect === 'blocked' && r.status !== 403 && r.status !== 404) {
+      failures.push(`[G4b] エッジ越しに ${r.path} が ${r.status} を返した。管理面（/admin・/realms/master）はエッジで 403 / 404 に拒むこと（[IADR-0575]）。`);
+    } else if (r.expect === 'open' && !(r.status >= 200 && r.status < 400)) {
+      failures.push(`[G4b] エッジ越しに利用者の realm の経路 ${r.path} が ${r.status} を返した。拒否が利用者の経路まで広がっている（[IADR-0575]）。`);
+    }
+  }
+  return failures;
+}
+
+/**
+ * G4b（IADR-0575）の実行部: KC_HOSTNAME が無ければ測れないので名指して失敗にする（G4 も落ちるが、黙って飛ばさない）。
+ * @param {string|undefined} hostnameUrl デプロイ済みの KC_HOSTNAME
+ * @param {string[]} realms 走査した realm
+ * @param {(url: string) => number} statusOf エッジ越しの HTTP の状態（測れなければ 0）
+ */
+function edgeAdminSurfaceFailures(hostnameUrl, realms, statusOf) {
+  if (!hostnameUrl) return ['[G4b] KC_HOSTNAME が無く、エッジ越しに管理面の拒否を測れなかった。測れないを緑にしない（[IADR-0575]）。'];
+  const base = String(hostnameUrl).replace(/\/+$/, '');
+  return evaluateEdgeAdminSurface(edgeAdminSurfaceProbes(realms).map((p) => ({ ...p, status: statusOf(`${base}${p.path}`) })));
+}
+
+/** エッジ越しの HTTP の状態だけを測る（本文は読まない。TLS はローカル CA なので検証しない＝fetchDiscovery と同じ）。測れなければ 0。 */
+function fetchStatus(url) {
+  const r = spawnSync('curl', ['-sk', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '30', url], { encoding: 'utf8' });
+  const code = Number(String(r.stdout || '').trim());
+  return r.status === 0 && Number.isInteger(code) ? code : 0;
+}
+
 // ---------------------------------------------------------------- 検査本体
 
 function check({ repoRoot = REPO_ROOT } = {}) {
@@ -1558,6 +1619,9 @@ function check({ repoRoot = REPO_ROOT } = {}) {
         }),
       );
     }
+
+    // G4b（IADR-0575）: エッジは管理面を拒み、利用者の realm の経路は通す。
+    failures.push(...edgeAdminSurfaceFailures(hostnameUrl, realms, fetchStatus));
 
     // G6: pod 側の名前解決。**G4 が通っても、ここが割れていることがある。**
     const edgeHost = String(hostnameUrl || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
@@ -1869,6 +1933,37 @@ function selfTest() {
       1,
       'どちらのエッジも無いのに通っている（#953 の門が死ぬ）',
     );
+  });
+
+  ok('G4b（IADR-0575）: 管理面が 403 / 404・利用者の経路が 2xx / 3xx なら通り、どちらかが崩れれば名指す', () => {
+    const probes = edgeAdminSurfaceProbes(['platform']);
+    assert.ok(probes.some((p) => p.expect === 'blocked' && p.path.startsWith('/admin')), '/admin を測っていない');
+    assert.ok(probes.some((p) => p.expect === 'blocked' && p.path.startsWith('/realms/master/')), '/realms/master を測っていない');
+    assert.ok(probes.some((p) => p.expect === 'open' && p.path === '/realms/platform/account/'), 'アカウントコンソールを測っていない');
+    const good = probes.map((p) => ({ ...p, status: p.expect === 'blocked' ? 403 : 200 }));
+    assert.deepStrictEqual(evaluateEdgeAdminSurface(good), []);
+    assert.deepStrictEqual(evaluateEdgeAdminSurface(probes.map((p) => ({ ...p, status: p.expect === 'blocked' ? 404 : 302 }))), []);
+    // 変異: 管理面が届く（200）／利用者の経路まで拒む（403）／測れない（0）
+    const leak = good.map((p) => (p.path === '/admin/' ? { ...p, status: 200 } : p));
+    assert.ok(evaluateEdgeAdminSurface(leak).some((f) => f.includes('/admin/ が 200')), '管理面の到達を落とさない');
+    const over = good.map((p) => (p.path === '/realms/platform/account/' ? { ...p, status: 403 } : p));
+    assert.ok(evaluateEdgeAdminSurface(over).some((f) => f.includes('利用者の realm の経路')), '利用者の経路の拒否を落とさない');
+    const unmeasured = good.map((p, i) => (i === 0 ? { ...p, status: 0 } : p));
+    assert.ok(evaluateEdgeAdminSurface(unmeasured).some((f) => f.includes('測れなかった')), '測れないを緑にした');
+    assert.ok(evaluateEdgeAdminSurface(good.filter((p) => p.expect === 'blocked')).length > 0, '片側だけの測定を緑にした');
+  });
+
+  ok('G4b（IADR-0575）: KC_HOSTNAME が無ければ黙って飛ばさず名指して失敗にし、在ればエッジの URL を組んで測る', () => {
+    const seen = [];
+    for (const h of [undefined, '']) {
+      const f = edgeAdminSurfaceFailures(h, ['platform'], (u) => { seen.push(u); return 403; });
+      assert.strictEqual(f.length, 1, `KC_HOSTNAME=${JSON.stringify(h)} で黙って飛ばした`);
+      assert.ok(/測れなかった/.test(f[0]), f[0]);
+    }
+    assert.deepStrictEqual(seen, [], 'KC_HOSTNAME が無いのに測りに行った');
+    const ok0 = edgeAdminSurfaceFailures('https://keycloak.localhost/', ['platform'], (u) => { seen.push(u); return /\/(admin|realms\/master)/.test(new URL(u).pathname) ? 403 : 200; });
+    assert.deepStrictEqual(ok0, []);
+    assert.ok(seen.includes('https://keycloak.localhost/admin/') && seen.includes('https://keycloak.localhost/realms/platform/account/'), `組んだ URL が違う: ${seen.join(', ')}`);
   });
 
   ok('G4: issuer の不一致は失敗になる（部分一致では通さない）', () => {
@@ -2454,6 +2549,9 @@ module.exports = {
   waitForJobsToSettle,
   evaluateAdminEntrypoint,
   evaluateIssuer,
+  evaluateEdgeAdminSurface,
+  edgeAdminSurfaceProbes,
+  edgeAdminSurfaceFailures,
   evaluatePodDnsOutput,
   evaluateWikiJs,
   wikiJsGraphql, // #1793: 引数に API キーを載せないことを試験が実走で確かめる
