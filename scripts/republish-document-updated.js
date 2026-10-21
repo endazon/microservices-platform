@@ -10,8 +10,11 @@
  * 方式（IADR-0503）:
  *   - 発行は DocumentService の管理者だけの口 `POST /documents/republish-updated` が行う（通常の発行の門とアダプタを通る）。
  *     本スクリプトは**量の制御・進捗・中断と再開・DLQ の監視**だけを持つ。イベントを自分で組み立てない。
- *   - 認証は Keycloak の client_credentials（client `abac-seeder`。platform-admin を持つ）。資格情報の解決は
- *     `seed-abac-policies.js` の関数を再利用する（realm ファイルから引く作法を 2 か所へ写さない）。
+ *   - 認証は Keycloak の client_credentials（client `abac-seeder`。platform-admin を持つ）。
+ *     ［2026-10-22 / IADR-0576］資格情報は実行時に **明示（REPUBLISH_CLIENT_SECRET）＞ 稼働の Secret `platform-infra/abac-seeder-oidc`**
+ *     （OpenBao → ESO。ESO が無ければ起動器が作る）から読む（realm の宣言の値へは落ちない＝secret を回した後も動く）。
+ *     `abac-seeder` は既定で無効なので、**実行の間だけ有効にし、終わったら（中断を含む）無効へ戻す**（scripts/lib/abac-seeder-session.js。
+ *     切り替えは master realm の管理者＝KC_ADMIN_USER / KC_ADMIN_PASSWORD か Secret platform-infra/keycloak-admin）。
  *
  * 🔴 **稼働クラスタへ当たる。** `--live`（または LIVE=1）が無ければ何もせずに終わる（#1550）。
  * 🔴 **再発行の前に埋め込み先を確かめる。** public / internal の文書は埋め込み（既定は Voyage）へ進む。
@@ -31,7 +34,8 @@
  * 主な環境変数:
  *   REPUBLISH_DOCUMENT_URL / REPUBLISH_KC_URL（与えれば port-forward を張らない）
  *   REPUBLISH_NS（既定 microservices-platform）/ REPUBLISH_INFRA_NS（既定 platform-infra）
- *   REPUBLISH_REALM（既定 platform）/ REPUBLISH_CLIENT_ID（既定 abac-seeder）/ REPUBLISH_CLIENT_SECRET
+ *   REPUBLISH_REALM（既定 platform）/ REPUBLISH_CLIENT_ID（既定 abac-seeder）/ REPUBLISH_CLIENT_SECRET（無ければ Secret abac-seeder-oidc）
+ *   KC_ADMIN_USER / KC_ADMIN_PASSWORD（投入器の主体の一時の有効化。無ければ Secret keycloak-admin）
  *   REPUBLISH_INGEST_QUEUE（既定 ingestion-service.DocumentUpdated）/ REPUBLISH_DLQ（既定 wolverine-dead-letter-queue）
  *   REPUBLISH_POLL_MS（キューの待ちで読み直す間隔。既定 5000。試験が短くするためのもの）
  *
@@ -48,6 +52,8 @@
 const fs = require('fs');
 const { spawn, spawnSync } = require('child_process');
 const { requireLiveOptIn } = require('./lib/live-opt-in.js');
+// NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体は既定で無効。実行の間だけ有効にし、資格情報は稼働の Secret から読む。
+const seeder = require('./lib/abac-seeder-session.js');
 
 const env = (k, d) => process.env[k] || d;
 const ROUTE = '/documents/republish-updated';
@@ -541,7 +547,16 @@ function readQueueDepths(infraNs) {
   return parseQueueDepths(r.stdout);
 }
 
+// NFR-18, IADR-0576: どの終わり方でも（正常・失敗・例外。入口からでも試験器からでも）、この実行が有効にした投入器の主体を無効へ戻す。
 async function main(argv) {
+  try {
+    return await mainInner(argv);
+  } finally {
+    await seeder.restore({ log, warn });
+  }
+}
+
+async function mainInner(argv) {
   let o;
   try {
     o = parseArgs(argv);
@@ -569,7 +584,8 @@ async function main(argv) {
   const POLL_MS = positiveInt('REPUBLISH_POLL_MS', env('REPUBLISH_POLL_MS', '5000'));
   const abacSeed = require('./seed-abac-policies.js');
   const CLIENT_ID = env('REPUBLISH_CLIENT_ID', abacSeed.CLIENT_ID);
-  const CLIENT_SECRET = process.env.REPUBLISH_CLIENT_SECRET || abacSeed.clientSecretFromRealm(CLIENT_ID) || '';
+  // IADR-0576: 明示（REPUBLISH_CLIENT_SECRET）＞ 稼働の Secret（platform-infra/abac-seeder-oidc）。realm の宣言の値へは落ちない。
+  let CLIENT_SECRET = '';
 
   const io = makeIo();
   process.on('exit', () => io.cleanup());
@@ -577,10 +593,10 @@ async function main(argv) {
   // 中断: 確かめていないページがあれば確かめた位置へ戻してから終わる（状態を読んだ後で onInterrupt を差し込む）。
   let onInterrupt = () => {};
   process.on('SIGINT', () => {
-    io.cleanup();
     try { onInterrupt(); } catch (e) { warn(`[republish-document-updated] 状態を戻せませんでした: ${e.message}`); }
     if (state) warn(`\n中断しました。状態は ${o.stateFile} に残っています。続けるには --resume。`);
-    process.exit(130);
+    // IADR-0576: 投入器の主体を無効へ戻してから（port-forward を残したまま）終わる。
+    seeder.restoreThenExit(130, { warn, before: () => io.cleanup() });
   });
 
   let documentUrl = env('REPUBLISH_DOCUMENT_URL', '');
@@ -605,6 +621,13 @@ async function main(argv) {
     return 2;
   }
   log(`接続先: document=${documentUrl} / keycloak=${kcUrl}`);
+  try {
+    CLIENT_SECRET = seeder.resolveSeederSecret({ envName: 'REPUBLISH_CLIENT_SECRET' });
+    await seeder.ensureEnabled({ kcUrl, realm: REALM, clientId: CLIENT_ID, log });
+  } catch (e) {
+    warn(`[republish-document-updated] ${e.message}`);
+    return 2;
+  }
 
   let token = null;
   let tokenAt = 0;
@@ -867,6 +890,7 @@ module.exports = {
 };
 
 if (require.main === module) {
+  // IADR-0576: 投入器の主体を無効へ戻すのは main の finally（中断は SIGINT の handler）。
   main(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((e) => {

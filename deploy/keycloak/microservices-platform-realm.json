@@ -740,8 +740,8 @@
     {
       "clientId": "abac-seeder",
       "name": "ABAC dev seeder (client_credentials)",
-      "description": "IADR-0294/#438: ABAC 初期投入器（scripts/seed-abac-policies.js・ABACSEED=1）の機密クライアント。MFA 必須化で人の password grant は成立しないため、機械の主体として client_credentials で発行する。service-account に platform-admin（投入先が AdminOnly のため）。本番シークレットは config から供給する。",
-      "enabled": true,
+      "description": "IADR-0294/#438: ABAC 初期投入器（scripts/seed-abac-policies.js・ABACSEED=1）の機密クライアント。MFA 必須化で人の password grant は成立しないため、機械の主体として client_credentials で発行する。service-account に platform-admin（投入先が AdminOnly のため）。IADR-0576: 既定で無効。投入器・運用スクリプトが実行の間だけ有効にする。",
+      "enabled": false,
       "protocol": "openid-connect",
       "publicClient": false,
       "standardFlowEnabled": false,

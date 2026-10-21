@@ -39,7 +39,7 @@
  *      登録簿の行も無効。再有効化（200）で enabled が true・トークンが再び出て、テンプレートの項目（入口の印・人の流れの閉）が残る。
  *      🔴 無効化の後・再有効化の後のそれぞれで、**トークンを要求する前に**サービスアカウントの利用者が同じ ID で 1 人だけ残り属性が
  *      変わらないことを見る（PR #1832 監査 🔴1: SA の項目を欠いたクライアントの PUT は Keycloak 24 で SA を消し、トークンの要求が空の SA を作り直す）。否定形: 入口ができる前の登録簿の行（M5 が置く abac-seeder）を
- *      無効化しても abac-seeder の enabled は true のまま、再有効化は 400 で enabled は true のまま。
+ *      無効化しても abac-seeder の enabled は既定の false のまま、再有効化は 400 で enabled は false のまま（IADR-0576 で既定が無効になった）。
  *   M9 有人の登録（#1844 / 計画 ADR-0134 決定 1・フォローアップ 1〜3 / IADR-0516 の #1844 追記）: 有人の登録が 201 で、Keycloak のクライアントが
  *      公開・認可コードだけ・PKCE S256・リダイレクト URI が入力どおり・Web オリジン空・入口の印・audience の写像（mcp-server）。
  *      ワイルドカードの URI は 400 で何も作らない。認可の要求（`/auth`。ブラウザを使わず状態コードと Location を読む）で、
@@ -1220,13 +1220,16 @@ async function live() {
     }
     // 否定形: 入口ができる前の登録簿の行（M5 が置いた abac-seeder）。プラットフォームのクライアントを無効化の経路から変えない。
     if (legacyInserted) {
-      step(`M8 否定形の前提: ${PLATFORM_CLIENT} は Keycloak で有効`, evaluateClientEnabled(await clientsOf(PLATFORM_CLIENT), PLATFORM_CLIENT, true));
+      // ［2026-10-22 / IADR-0576］投入器の主体は既定で無効（realm の宣言 enabled: false。投入器が実行の間だけ有効にして戻す）。
+      //   否定形は「SC-12 の経路は Keycloak の enabled を変えない」なので、既定の false のまま変わらないことを見る
+      //   （再有効化の 400 が、無効な主体を開かないことまで確かめる形になった）。
+      step(`M8 否定形の前提: ${PLATFORM_CLIENT} は Keycloak で無効（既定。IADR-0576）`, evaluateClientEnabled(await clientsOf(PLATFORM_CLIENT), PLATFORM_CLIENT, false));
       step(`M8 否定形: ${PLATFORM_CLIENT} の行の無効化は 200（登録簿だけ）`, status(await toggle(PLATFORM_CLIENT, 'disable'), 200));
-      step(`M8 否定形: 無効化しても ${PLATFORM_CLIENT} の enabled は true のまま`,
-        evaluateClientEnabled(await clientsOf(PLATFORM_CLIENT), PLATFORM_CLIENT, true));
+      step(`M8 否定形: 無効化しても ${PLATFORM_CLIENT} の enabled は false のまま（Keycloak へ書かない）`,
+        evaluateClientEnabled(await clientsOf(PLATFORM_CLIENT), PLATFORM_CLIENT, false));
       step(`M8 否定形: ${PLATFORM_CLIENT} の行の再有効化は 400（入口を通らない主体へ接続を開かない）`, status(await toggle(PLATFORM_CLIENT, 'enable'), 400));
-      step(`M8 否定形: 再有効化の後も ${PLATFORM_CLIENT} の enabled は true のまま`,
-        evaluateClientEnabled(await clientsOf(PLATFORM_CLIENT), PLATFORM_CLIENT, true));
+      step(`M8 否定形: 再有効化の後も ${PLATFORM_CLIENT} の enabled は false のまま`,
+        evaluateClientEnabled(await clientsOf(PLATFORM_CLIENT), PLATFORM_CLIENT, false));
     } else {
       failures.push(`M8 の否定形の前提: M5 が入口ができる前の行（${PLATFORM_CLIENT}）を置けていない`);
     }

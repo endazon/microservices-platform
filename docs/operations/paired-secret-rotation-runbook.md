@@ -9,8 +9,8 @@ updated: 2026-10-22
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]
 adrs: [ADR-0132, ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
-iadrs: [IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524]
-specs: [20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade]
+iadrs: [IADR-0576, IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524]
+specs: [20261022_abac-seeder-disabled-by-default, 20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade]
 issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, planning#700, AST#1078]
 -->
 
@@ -36,10 +36,10 @@ issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1
 
 | 群 | 何か | 件数 | 本書の節 |
 | --- | --- | ---: | --- |
-| 群 1 | 認証基盤のクライアントシークレット —— OIDC クライアント 8（境界層・利用者管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視）とサービス間 9（`deferred[]`）、取引ユニットの `*-auth-client-*` の 5 組（`ai-stock-trading/app-secrets` の `notWritable`） | 17 ＋ 5 | [手順 1](#手順-1-群-1認証基盤のクライアントシークレット) |
+| 群 1 | 認証基盤のクライアントシークレット —— OIDC クライアント 8（境界層・利用者管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視）とサービス間 9、投入器の主体 1（`deferred[]`）、取引ユニットの `*-auth-client-*` の 5 組（`ai-stock-trading/app-secrets` の `notWritable`） | 18 ＋ 5 | [手順 1](#手順-1-群-1認証基盤のクライアントシークレット) |
 | 群 2 | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db`（`excluded[]`） | 7 | [手順 2](#手順-2-群-2データストアの資格情報) |
 
-> **同じ性質だが保管先に無いもの**: 認証基盤の `abac-seeder`（開発用の投入器だけが使う）と `argocd`（`argocd-secret` を起動器が直接書く）。
+> **同じ性質だが保管先に無いもの**: `argocd`（`argocd-secret` を起動器が直接書く）。［2026-10-22］`abac-seeder` は保管先（`msp/abac-seeder-oidc`）へ移した（下の 1-0 の表）。
 > 保管先に置き場が無いので本書の対象外だが、回すときは同じ順序（相手を変えてから消費側を作り直す）で行う。
 
 ### 回した値が戻らないこと（前提）
@@ -199,6 +199,7 @@ unset NEW_VALUE; rm -rf -- /tmp/rot.*; trap - EXIT
 | `retrieval-service` / `ingestion-service` / `aianalysis-service` / `graph-service` / `conversion-service` / `wiki-service` / `datasource-service` / `mcp-server` / `document-service` | `msp/<client>-token` の `client-secret` | `microservices-platform/<client>-token` | 0-e で引く |
 | `synthetic-monitor` | `msp/synthetic-monitor-oidc` の `client-secret` | `microservices-platform/synthetic-monitor-oidc` | 0-e で引く（`SYNTHETIC=1` のときだけ在る） |
 | `reset-gate` | `msp/reset-gate-oidc` の `client-secret` | `platform-infra/reset-gate-oidc` | 0-e で引く |
+| `abac-seeder` | `msp/abac-seeder-oidc` の `client-secret` | `platform-infra/abac-seeder-oidc` | 作り直す Pod は無い。投入器・運用スクリプト（`seed-*.js`・`republish-document-updated.js`・アーカイブの駆動器）が**実行のたびに**この Secret を読む。同期が `Ready` になれば次の実行から新しい値で名乗る。クライアントは**既定で無効**（スクリプトが実行の間だけ有効にして戻す）なので、回す間に有効へ変えない |
 | `grafana` / `headlamp` | `msp/<client>-oidc` の `client-secret` | `platform-infra/<client>-oidc` | 0-e で引く（`OBSERVABILITY=1` / `HEADLAMP=1` のときだけ在る） |
 | `vault` | `msp/vault-oidc` の `client-secret` | `platform-infra/vault-oidc` | **Pod ではなく** `deploy/local/vault/oidc/bootstrap.sh` が Vault の OIDC 認証設定へ書く。同期の後に同スクリプトを再実行する |
 | `wiki-js` | `msp/wikijs-oidc` の `client-secret` | `microservices-platform/wikijs-oidc` | **Pod ではなく** `deploy/local/wikijs-setup/bootstrap.sh` が Wiki.js の DB へ書く。同期の後に同スクリプトを再実行する |

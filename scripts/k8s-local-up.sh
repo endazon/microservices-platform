@@ -442,6 +442,12 @@ apply_secret "$INFRA_NS" keycloak-smtp \
 # **同じ既定**にする。ズレると Keycloak の token 端点が invalid_client を返す（wikijs-oidc と同じ罠）。
 apply_secret "$INFRA_NS" reset-gate-oidc \
   "client-secret=${RESET_GATE_CLIENT_SECRET:-reset-gate-dev-secret-change-me}"
+# NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder。既定で無効・実行の間だけ有効）の client secret。
+#   読み手はホストの投入器（seed-*.js）と運用スクリプト（republish・archive）で、実行時にこの Secret を読む（realm の宣言の値へは落ちない）。
+#   ESO の有無によらず作る（ESO=1 では externalsecret-abac-seeder-oidc.yaml が Merge で Vault の値を重ねる。reset-gate-oidc と同じ形）。
+#   値は env（ABAC_SEED_CLIENT_SECRET）か宣言の値。dev ではない context で env が無ければ [1/7] の直後の判定が止める（IADR-0572）。
+apply_secret "$INFRA_NS" abac-seeder-oidc \
+  "client-secret=${ABAC_SEED_CLIENT_SECRET:-$(dev_client_secret_dev_value abac-seeder)}"
 
 # 門のスクリプト本体（deploy/mail-relay/reset-gate.js）。テーマ・realm reconcile と同型で
 # **--from-file の ConfigMap** にする（kustomize は root 外ファイルを参照できないため）。
@@ -1156,6 +1162,8 @@ if [ "${ESO:-}" = "1" ]; then
   # **手動 apply は step [3/7] で保持済み**（ESO の有無によらず作る。無いと門が起動しない）。
   # ここでは creationPolicy: Merge の ExternalSecret を適用し、既存 Secret へ Vault の値をマージするのみ。
   kubectl apply -f deploy/local/vault/eso/externalsecret-reset-gate-oidc.yaml
+  # NFR-18, IADR-0576: 投入器の主体の client secret（手動 apply は [3/7] で保持済み。Merge で Vault の値を重ねる）。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-abac-seeder-oidc.yaml
   # NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1 (#1287): 合成監視のプローブが client_credentials で
   # 名乗るための client secret。**SYNTHETIC=1 のときだけ apply する**（wikijs-oidc と同じ形。
   # 立てていないゲートの ExternalSecret を作ると `get secret` が NotFound を返して運用者を惑わす）。
@@ -1168,15 +1176,15 @@ if [ "${ESO:-}" = "1" ]; then
   #   KV が無い間は同期に失敗して Secret が出来ず、e2e 利用者は作られない（他の機能には影響しない）。常時 apply。
   kubectl apply -f deploy/local/vault/eso/externalsecret-e2e-accounts.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ、#1817 で mcp-client-admin-oidc を追加し 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6、#2024 で e2e-accounts を追加し 6 → 7 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ、#1817 で mcp-client-admin-oidc を追加し 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6、#2024 で e2e-accounts を追加し 6 → 7、IADR-0573 で rabbitmq-users を追加し 7 → 8、IADR-0576 で abac-seeder-oidc を追加し 8 → 9 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
   msp_es="llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
   [ "${SYNTHETIC:-}" = "1" ] && msp_es="$msp_es synthetic-monitor-oidc"
-  infra_es="postgres rabbitmq rabbitmq-users keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc e2e-accounts"
+  infra_es="postgres rabbitmq rabbitmq-users keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc e2e-accounts abac-seeder-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc alertmanager-mail"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
   echo "    ESO: llm/object-storage-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
-  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp/reset-gate-oidc/e2e-accounts、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
+  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp/reset-gate-oidc/e2e-accounts/abac-seeder-oidc、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret $msp_es"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
@@ -1223,7 +1231,8 @@ if [ "${ESO:-}" = "1" ]; then
   # 他と同じく best-effort（warn を出して継続。実値が空でも同期自体は成立する）。
   # #1245 PR-C: reset-gate-oidc も **rollout のために待つ**（門が env で読む。同期前に restart すると
   # 新しい門も供給前の値をつかみ、401 を打ち続ける＝**窓が開いたまま**になる。IADR-0103）。
-  infra_sync="keycloak-smtp reset-gate-oidc"
+  # IADR-0576: abac-seeder-oidc も待つ（この後の投入器が Secret から読む。同期前に読むと [3/7] の値で名乗る）。
+  infra_sync="keycloak-smtp reset-gate-oidc abac-seeder-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_sync="$infra_sync grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_sync="$infra_sync headlamp-oidc"
   # shellcheck disable=SC2086

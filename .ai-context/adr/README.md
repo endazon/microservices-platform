@@ -653,3 +653,4 @@
 | [IADR-0573](./IADR-0573_rabbitmq-per-service-users-and-ingress-policy.md) | 共有ブローカ（RabbitMQ）にサービスごとのユーザーを持たせ（値は Vault の乱数・ESO で供給・起動器が冪等に合わせる）、ブローカへの到達をブローカを使うサービスの Pod だけに絞る。既定のユーザーの撤去は後の段 | Accepted |
 | [IADR-0574](./IADR-0574_infra-credentials-fail-closed.md) | 起動器と Vault の種は、Keycloak の管理者・RabbitMQ のブローカのパスワードを公知の既定値で作らない。明示 ＞ 既存の値 ＞ 止める、開発用の値は明示の opt-in ALLOW_DEV_INFRA_CREDENTIALS=1（使い捨ての環境だけ）でだけ許す（GHSA-rh44-px44-p48q） | Accepted |
 | [IADR-0575](./IADR-0575_edge-block-keycloak-admin-surface.md) | エッジで Keycloak の管理面（/admin・/realms/master）を 403 で拒む。Traefik は長いパスの拒否の Ingress、Istio と chart は先頭の directResponse、管理者は port-forward 越しの Admin REST と kcadm（KC_HOSTNAME_ADMIN は置かない）（GHSA-rh44-px44-p48q） | Accepted |
+| [IADR-0576](./IADR-0576_abac-seeder-disabled-by-default.md) | 投入器の主体 abac-seeder は realm の宣言で既定無効とし、投入器・運用スクリプトは実行の間だけ master の管理者で有効にして必ず戻す。資格情報は明示か稼働の Secret（OpenBao → ESO）から読み、宣言の値へ落ちない（GHSA-rh44-px44-p48q） | Accepted |
