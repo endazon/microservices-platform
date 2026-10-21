@@ -14083,6 +14083,11 @@ exit 0
       const src = fs1728.readFileSync(BOOTSTRAP, 'utf8');
       const set = new Set(['msp/llm-provider-credentials', 'msp/wikijs-sync', 'msp/keycloak-smtp', 'ai-stock-trading/app-secrets']);
       for (const m of src.matchAll(/^vkv_create_if_absent\s+(\S+)/gm)) set.add(m[1]);
+      // IADR-0573: ブローカのユーザーの KV は users.txt の 4 列目から作る（bootstrap.sh はループで作るので上の行の形に出ない）。
+      for (const l of fs1728.readFileSync(path1728.join(__dirname, '..', 'deploy', 'local', 'rabbitmq-setup', 'users.txt'), 'utf8').split('\n')) {
+        const c = l.trim().split(/\s+/);
+        if (l.trim() && !l.trim().startsWith('#') && c[3]) set.add(c[3]);
+      }
       return [...set];
     };
     const ES_LIST = [
@@ -14114,13 +14119,23 @@ exit 0
         kv('msp/llm-provider-credentials', { 'voyage-api-key': '' });
         kv('ai-stock-trading/app-secrets', AUTH);
         kv('msp/keycloak-smtp', { host: 'mailpit.platform-infra.svc.cluster.local', port: '1025', starttls: 'false' });
+        // IADR-0573: ブローカのユーザーの KV は、移行後の世界では宣言の全ユーザーを持つ（値は試験の目印）。
+        {
+          const byKv = {};
+          for (const l of fs1728.readFileSync(path1728.join(__dirname, '..', 'deploy', 'local', 'rabbitmq-setup', 'users.txt'), 'utf8').split('\n')) {
+            const c = l.trim().split(/\s+/);
+            if (!l.trim() || l.trim().startsWith('#') || !c[3]) continue;
+            (byKv[c[3]] = byKv[c[3]] || {})[c[0]] = 'marker-0573';
+          }
+          for (const [p, props] of Object.entries(byKv)) kv(p, props);
+        }
         fs1728.writeFileSync(path1728.join(state, 'es-list'), ES_LIST);
         fs1728.writeFileSync(path1728.join(state, 'secret', 'ai-stock-trading_ast-secrets'), secretData([...Object.keys(AUTH), ...READER]));
         setup({ state, kv });
         const log = path1728.join(dir, 'calls.log');
         fs1728.writeFileSync(log, '');
         const baseEnv = { ...process.env };
-        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_|ALLOW_DEV_CLIENT_SECRETS$)|_CLIENT_SECRET$/.test(k)) delete baseEnv[k];
+        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_|ALLOW_DEV_CLIENT_SECRETS$|ALLOW_DEV_INFRA_CREDENTIALS$|KEYCLOAK_ADMIN_PASSWORD$|RABBITMQ_PASSWORD$)|_CLIENT_SECRET$/.test(k)) delete baseEnv[k];
         const r = spawn1728('bash', [...bashArgs, script.split(path1728.sep).join('/')], {
           encoding: 'utf8',
           timeout: 60000,
@@ -14179,6 +14194,38 @@ exit 0
       assert.strictEqual(r.status, 0, r.stderr + r.stdout);
       assert.ok(r.calls.includes('VAULT PUT msp/llm-provider-credentials'));
       assert.deepStrictEqual(annotated(r.calls).sort(), ['ai-stock-trading/ast-secrets', 'microservices-platform/llm-provider-credentials']);
+    });
+
+    // NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのユーザーの種は乱数で、無いときだけ入れる。値は標準入力で渡す。
+    ok('IADR-0573: ブローカのユーザーの KV が無ければ、宣言の全ユーザーに互いに違う乱数を標準入力で入れる', () => {
+      const r = run1728({ setup: ({ state }) => {
+        fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq-users'));
+        fs1728.rmSync(path1728.join(state, 'kv', 'ai-stock-trading__rabbitmq-users'));
+      } });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      const values = [];
+      for (const kvPath of ['msp/rabbitmq-users', 'ai-stock-trading/rabbitmq-users']) {
+        assert.ok(r.calls.includes(`VAULT PUT ${kvPath}`), `${kvPath} を作っていない`);
+        const body = JSON.parse(r.putStdin[kvPath]);
+        const prefix = kvPath.startsWith('msp/') ? 'msp-' : 'ast-';
+        assert.ok(Object.keys(body).length >= 7 && Object.keys(body).every((k) => k.startsWith(prefix)), `${kvPath} のキーが違う: ${Object.keys(body)}`);
+        for (const v of Object.values(body)) { assert.ok(/^[0-9a-f]{48}$/.test(v), `乱数でない値がある（${kvPath}）`); values.push(v); }
+      }
+      assert.strictEqual(new Set(values).size, values.length, '同じ値を使い回している');
+      assert.strictEqual(values.length, 18, `ユーザーの数が宣言と違う: ${values.length}`);
+      for (const v of values) {
+        assert.ok(!r.execArgv.some((a) => a.includes(v)), '値が vault のコマンドの引数に載った');
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
+      }
+    });
+
+    ok('IADR-0573: ブローカのユーザーの KV が在れば、無いユーザーだけを足し、在る値は触らない', () => {
+      const r = run1728({ setup: ({ kv }) => kv('msp/rabbitmq-users', { 'msp-document': 'marker-0573' }) });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      const patched = r.calls.filter((c) => c.startsWith('VAULT PATCH msp/rabbitmq-users ')).map((c) => c.split(' ')[3]).sort();
+      assert.ok(patched.length === 6 && !patched.includes('msp-document'), `足したユーザーが違う: ${patched}`);
+      assert.ok(!r.calls.includes('VAULT PUT msp/rabbitmq-users'), '在る KV を put で置き換えた');
+      assert.ok(!r.calls.some((c) => c.startsWith('VAULT PATCH ai-stock-trading/rabbitmq-users')), '揃っている KV を書いた');
     });
 
     ok('#1764: 在る llm-provider-credentials に voyage-api-key が無ければ空で足し（ESO の同期を壊さない）、それを読む ExternalSecret に付ける', () => {
@@ -14308,8 +14355,9 @@ exit 0
       }
     });
 
-    ok('#1793: env が無いときは、従来どおり既定値を同じ形（stdin の JSON）で入れる', () => {
-      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq')) });
+    // ［IADR-0574］基盤の資格情報（rabbitmq・keycloak-admin）の既定値は、使い捨ての開発環境の opt-in のときだけ入れる。
+    ok('#1793/IADR-0574: env が無く opt-in（ALLOW_DEV_INFRA_CREDENTIALS=1）のときは、既定値を同じ形（stdin の JSON）で入れる', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq')), env: { ALLOW_DEV_INFRA_CREDENTIALS: '1' } });
       assert.strictEqual(r.status, 0, r.stderr + r.stdout);
       assert.deepStrictEqual(JSON.parse(r.putStdin['msp/rabbitmq']), { username: 'guest', password: 'guest' });
     });
@@ -14543,12 +14591,45 @@ exit 0
       assert.ok(/!!! WARNING: bootstrap\.sh: ALLOW_DEV_CLIENT_SECRETS=1/.test(over.stderr), '上書きで警告しない');
     });
 
+    // --- NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): 基盤の資格情報の KV を公知の既定値で作らない ---
+    // 判定器は scripts/lib/infra-credentials.sh（真理値表は k8s-local-up.test.js の IADR-0574 節）。ここは bootstrap.sh の実走で
+    // (1) 無い KV だけを判定へ渡す (2) 止まるときは Vault へ何も書かない (3) 明示・opt-in・在る KV では進む、を固定する。
+    const probe0573 = (c) => ['probe', '0573', c].join('-');
+    ok('IADR-0574: 無い基盤の資格情報の KV を、明示の値なし（既定値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
+      const r = run1728({ setup: dropKv1830('msp/keycloak-admin', 'msp/rabbitmq-app') });
+      assert.notStrictEqual(r.status, 0, '止まらなかった');
+      assert.deepStrictEqual(vaultWrites1830(r), [], `止まる前に Vault へ書いた: ${vaultWrites1830(r).join(', ')}`);
+      assert.ok(!r.execArgv.some((c) => /vault (policy|write|auth)/.test(c)), '止まる前に Vault の設定を書いた');
+      assert.ok(/止める（何も作らない）: KEYCLOAK_ADMIN_PASSWORD, RABBITMQ_PASSWORD$/m.test(r.stderr), `名指していない:\n${r.stderr}`);
+      // 開発用の値と同じ明示も止める
+      const dev = run1728({ setup: dropKv1830('msp/keycloak-admin'), env: { KEYCLOAK_ADMIN_PASSWORD: 'admin' } });
+      assert.notStrictEqual(dev.status, 0, '開発用の値の明示を通した');
+      assert.deepStrictEqual(vaultWrites1830(dev), []);
+    });
+
+    ok('IADR-0574: 在る KV は判定へ渡さない（触らないので既定値は入らない）。明示の値・opt-in では進み、無い KV を作る', () => {
+      const present = run1728({});
+      assert.strictEqual(present.status, 0, `KV が在るのに止まった:\n${present.stderr}`);
+      const drop = dropKv1830('msp/keycloak-admin', 'msp/rabbitmq', 'msp/rabbitmq-app');
+      const given = run1728({ setup: drop, env: { KEYCLOAK_ADMIN_PASSWORD: probe0573('kc'), RABBITMQ_PASSWORD: probe0573('mq') } });
+      assert.strictEqual(given.status, 0, given.stderr);
+      assert.ok(given.putStdin['msp/keycloak-admin'].includes(probe0573('kc')), 'keycloak-admin が与えた値で作られていない');
+      assert.ok(given.putStdin['msp/rabbitmq'].includes(probe0573('mq')) && given.putStdin['msp/rabbitmq-app'].includes(probe0573('mq')), 'rabbitmq の 2 つが与えた値で作られていない');
+      assert.ok(!`${given.stdout}${given.stderr}`.includes(probe0573('kc')), '値が出力に出た');
+      const over = run1728({ setup: drop, env: { ALLOW_DEV_INFRA_CREDENTIALS: '1' } });
+      assert.strictEqual(over.status, 0, over.stderr);
+      assert.ok(/!!! WARNING: bootstrap\.sh: ALLOW_DEV_INFRA_CREDENTIALS=1/.test(over.stderr), 'opt-in で警告しない');
+      assert.ok(over.calls.includes('VAULT PUT msp/keycloak-admin'), 'opt-in で作っていない');
+      const notOne = run1728({ setup: drop, env: { ALLOW_DEV_INFRA_CREDENTIALS: 'true' } });
+      assert.notStrictEqual(notOne.status, 0, 'ALLOW_DEV_INFRA_CREDENTIALS=true で通した');
+    });
+
     ok('IADR-0572 変異: 宣言に Vault の置き場の決まっていない SA クライアントが現れたら、dev の context でも Vault へ何も書かずに止まる（入れ漏れを通さない）', () => {
       // 判定器・導出・述語・宣言を一時の木へ写し、宣言にだけクライアントを足す（本物のファイルは変えない）。
       const tree = fs1728.mkdtempSync(path1728.join(os1728.tmpdir(), 'bootstrap-0570-'));
       try {
         for (const rel of ['deploy/local/vault/eso/bootstrap.sh', 'scripts/lib/dev-client-secret-guard.sh', 'scripts/lib/dev-client-secret-targets.js',
-          'deploy/local/keycloak-setup/reconcile-realm.js']) {
+          'deploy/local/keycloak-setup/reconcile-realm.js', 'scripts/lib/infra-credentials.sh']) {
           fs1728.mkdirSync(path1728.dirname(path1728.join(tree, rel)), { recursive: true });
           fs1728.copyFileSync(path1728.join(REPO1728, rel), path1728.join(tree, rel));
         }
@@ -17933,4 +18014,99 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+
+  // --- NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーと到達の制限の一致 ---------------
+  //   単一情報源 deploy/local/rabbitmq-setup/users.txt を、(1) MSP の chart の messaging: true のサービス、(2) AST の chart の
+  //   Worker 全件（submodule が無ければ check-unit-service-ownership.js の既知の一覧）、(3) rabbitmq.yaml の NetworkPolicy の列挙、
+  //   (4) bootstrap.sh・reconcile-users.sh・ExternalSecret が読む KV と突き合わせる。
+  {
+    const fsR = require('fs');
+    const pathR = require('path');
+    const ROOT_R = pathR.join(__dirname, '..');
+    const readR = (rel) => fsR.readFileSync(pathR.join(ROOT_R, rel), 'utf8');
+    const rows = readR('deploy/local/rabbitmq-setup/users.txt').split('\n')
+      .map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => l.split(/\s+/));
+    const of = (ns) => rows.filter((r) => r[1] === ns);
+    const sorted = (a) => [...a].sort();
+
+    // MSP の chart: services 直下のブロックのうち messaging: true を持つもの。
+    const mspMessaging = () => {
+      const lines = readR('deploy/helm/microservices-platform/values.yaml').split('\n');
+      const out = [];
+      let inServices = false;
+      let cur = null;
+      for (const l of lines) {
+        if (/^services:\s*$/.test(l)) { inServices = true; continue; }
+        if (inServices && /^\S/.test(l)) { inServices = false; cur = null; }
+        if (!inServices) continue;
+        const m = /^  ([a-z0-9-]+):\s*$/.exec(l);
+        if (m) { cur = m[1]; continue; }
+        if (cur && /^    messaging:\s*true\b/.test(l)) out.push(cur);
+      }
+      return out;
+    };
+
+    // rabbitmq.yaml の NetworkPolicy: namespaceSelector ごとの values 列挙。
+    const policyApps = () => {
+      const y = readR('deploy/local/infra/rabbitmq.yaml');
+      const np = y.split(/^---$/m).find((d) => /kind: NetworkPolicy/.test(d) && /name: rabbitmq-ingress-clients/.test(d));
+      assert.ok(np, 'rabbitmq.yaml に NetworkPolicy rabbitmq-ingress-clients が無い');
+      const res = {};
+      const re = /kubernetes\.io\/metadata\.name: ([a-z0-9-]+) \}\s*\n\s*podSelector:\s*\n\s*matchExpressions:\s*\n\s*- key: app\s*\n\s*operator: In\s*\n\s*values:\s*\n((?:\s*- [a-z0-9-]+\s*\n)+)/g;
+      for (const m of np.matchAll(re)) res[m[1]] = m[2].split('\n').map((x) => x.trim().replace(/^- /, '')).filter(Boolean);
+      return { np, res };
+    };
+
+    ok('IADR-0573: users.txt の MSP 側は chart の messaging: true のサービスと 1 対 1（msp-<name> / <name>-service）', () => {
+      const want = mspMessaging();
+      assert.ok(want.length >= 7, `messaging: true を読めない（空振り）: ${want}`);
+      assert.deepStrictEqual(sorted(of('microservices-platform').map((r) => r[0])), sorted(want.map((n) => `msp-${n}`)));
+      for (const r of of('microservices-platform')) {
+        assert.strictEqual(r[2], `${r[0].replace(/^msp-/, '')}-service`, `${r[0]} の app ラベルが違う`);
+        assert.strictEqual(r[3], 'msp/rabbitmq-users', `${r[0]} の KV が違う`);
+      }
+    });
+
+    ok('IADR-0573: users.txt の AST 側は AST の chart の Worker 全件と 1 対 1（ast-<name> / <name>-service）', () => {
+      const { astOwnedServices } = require('./check-unit-service-ownership.js');
+      const owned = astOwnedServices();
+      assert.ok(owned.services.length >= 11, `AST の Worker を読めない（空振り）: ${owned.services}`);
+      assert.deepStrictEqual(sorted(of('ai-stock-trading').map((r) => r[0])), sorted(owned.services.map((n) => `ast-${n}`)),
+        `AST の Worker（${owned.source}）と users.txt が食い違う`);
+      for (const r of of('ai-stock-trading')) {
+        assert.strictEqual(r[2], `${r[0].replace(/^ast-/, '')}-service`, `${r[0]} の app ラベルが違う`);
+        assert.strictEqual(r[3], 'ai-stock-trading/rabbitmq-users', `${r[0]} の KV が違う`);
+      }
+      assert.strictEqual(rows.length, of('microservices-platform').length + of('ai-stock-trading').length, '名前空間が 2 つの外の行がある');
+    });
+
+    ok('IADR-0573: rabbitmq.yaml の NetworkPolicy は users.txt の Pod だけを 5672 で許し、管理の口と egress を描かない', () => {
+      const { np, res } = policyApps();
+      for (const ns of ['microservices-platform', 'ai-stock-trading']) {
+        assert.ok(res[ns], `${ns} の列挙を読めない`);
+        assert.deepStrictEqual(sorted(res[ns]), sorted(of(ns).map((r) => r[2])), `${ns} の列挙が users.txt と違う`);
+      }
+      assert.deepStrictEqual(Object.keys(res).sort(), ['ai-stock-trading', 'microservices-platform'], '名前空間の列挙が 2 つでない');
+      assert.ok(/policyTypes: \[Ingress\]/.test(np), 'policyTypes が Ingress だけでない');
+      assert.ok(/port: 5672 \}/.test(np) && !/15672/.test(np.replace(/^#.*$/gm, '')), '5672 だけを許す形でない');
+      assert.ok(!/ipBlock|- \{\}|from: \[\]/.test(np), 'ipBlock・空の from（全許可）を描いている');
+    });
+
+    ok('IADR-0573: 種（bootstrap.sh）・写し（ExternalSecret）・合わせ（reconcile-users.sh）が同じ表と KV を読む', () => {
+      const boot = readR('deploy/local/vault/eso/bootstrap.sh');
+      assert.ok(boot.includes('deploy/local/rabbitmq-setup/users.txt'), 'bootstrap.sh が users.txt を読まない');
+      assert.ok(/rmq_random\(\) \{ od -An -N24 -tx1 \/dev\/urandom/.test(boot), '種が乱数でない');
+      const es = readR('deploy/local/vault/eso/externalsecret-rabbitmq-users.yaml');
+      const kvs = [...new Set(rows.map((r) => r[3]))].sort();
+      assert.deepStrictEqual([...es.matchAll(/key: ([a-z0-9/-]+)/g)].map((m) => m[1]).sort(), kvs, 'ExternalSecret の KV が users.txt と違う');
+      assert.ok(/namespace: platform-infra/.test(es) && /creationPolicy: Owner/.test(es), 'ExternalSecret の置き場・所有が違う');
+      const rec = readR('deploy/local/rabbitmq-setup/reconcile-users.sh');
+      assert.ok(rec.includes('rabbitmq-setup/users.txt'), 'reconcile-users.sh が users.txt を読まない');
+      // パスワードは標準入力だけ（add_user / change_password / authenticate_user の引数はユーザー名で終わる）。
+      for (const m of rec.matchAll(/rmqctl (add_user|change_password|authenticate_user) ([^\n]+)/g)) {
+        assert.ok(/^"\$u"( >\/dev\/null.*)?$/.test(m[2].trim()), `パスワードを引数に載せている疑い: ${m[0]}`);
+      }
+      assert.ok(!/\bguest\b/.test(rec.replace(/^#.*$/gm, '')), 'reconcile-users.sh が既定のユーザーに触れている');
+    });
+  }
 };

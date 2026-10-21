@@ -150,11 +150,16 @@ powercfg /change hibernate-timeout-ac 0   # 電源接続時の休止: なし
 ## 起動（Git Bash 推奨。1 コマンド）
 
 ```bash
-bash scripts/k8s-local-up.sh --live          # クラスタ作成→build/import→secret→infra→MSP chart→alias
+ALLOW_DEV_INFRA_CREDENTIALS=1 bash scripts/k8s-local-up.sh --live   # 使い捨ての手元の環境（下の注）。クラスタ作成→build/import→secret→infra→MSP chart→alias
 kubectl get pods -A
 kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 #   → http://localhost:5080/health
 ```
+
+> **Keycloak の管理者・RabbitMQ のブローカのパスワードは公知の既定値で作らない**（IADR-0574。fail-closed）。起動器は
+> `KEYCLOAK_ADMIN_PASSWORD` / `RABBITMQ_PASSWORD` の明示 ＞ 既存の Secret（`platform-infra` の `keycloak-admin` / `rabbitmq`）の値の順に使い、
+> どちらも無い（または開発用の値と同じ）なら何も作らずに止まる。**使い捨ての開発環境だけ** `ALLOW_DEV_INFRA_CREDENTIALS=1` で開発用の値を許す
+> （警告を出す）。残すクラスタでは開発用ではない値を env で与える（一度作れば、次からは既存の Secret の値を使う）。
 
 破棄（**既定は `--dry-run`**。消す予定のものを順に表示するだけで何も変えない。実行は `--apply`）:
 
@@ -313,6 +318,14 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
 🔴 **`VAULT=1 ESO=1` のとき、Vault の種（`deploy/local/vault/eso/bootstrap.sh`）は KV が無いときだけ作る**（#1682）。
 既に在る KV は env を渡しても書き換わらない —— 認証基盤・データストアと対になる秘密を回すのは
 [対になる秘密のローテーション](../../docs/operations/paired-secret-rotation-runbook.md) の手順である。
+
+🔴 **ブローカ（RabbitMQ）のサービスごとのユーザー**（IADR-0573・移行の段 1）: `VAULT=1 ESO=1` のとき、bootstrap が KV
+`msp/rabbitmq-users`・`ai-stock-trading/rabbitmq-users` を無いときだけ乱数で作り、起動器が
+`deploy/local/rabbitmq-setup/reconcile-users.sh` でブローカへユーザーと権限を合わせる（表は同じディレクトリの `users.txt`。値は表示しない）。
+確認は `bash deploy/local/rabbitmq-setup/reconcile-users.sh --check`。値を回すときは KV を書き換えてから同じスクリプトを回す。
+既定のユーザー（下表の `RABBITMQ_USER`）はこの段では変えない（消費側の切り替えの後に無効化する）。
+ブローカへの到達は NetworkPolicy `rabbitmq-ingress-clients`（`deploy/local/infra/rabbitmq.yaml`）が `users.txt` の Pod だけに絞る。
+ブローカを使うサービスを足すときは、`users.txt`・NetworkPolicy・消費側の chart を同じ変更でそろえる。
 
 | 環境変数 | 生成 Secret / キー | 既定 | 用途 |
 | --- | --- | --- | --- |

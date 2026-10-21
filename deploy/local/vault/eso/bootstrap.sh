@@ -70,6 +70,23 @@ if [ "${#dev_secret_args[@]}" -gt 0 ]; then
 fi
 unset dev_secret_args dev_secret_client dev_secret_env dev_secret_loc
 
+# NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）の KV を
+#   公知の開発用の値で作らない。** 判定は scripts/lib/infra-credentials.sh の 1 本（k8s-local-up.sh と共有）。
+#   対象は **KV がまだ無いもの**だけ（在る KV は下の vkv_create_if_absent が触らない。IADR-0485）。k8s-local-up.sh から呼ぶときは、
+#   起動器が [1/7] の直後で決めた値（明示か既存の Secret の値）を env で受け取る。🔴 Vault へ何か書く前に判定する。
+# shellcheck source=scripts/lib/infra-credentials.sh
+. "$ROOT/scripts/lib/infra-credentials.sh"
+infra_cred_needed=()
+vexec "vault kv metadata get secret/msp/keycloak-admin >/dev/null 2>&1" || infra_cred_needed+=(KEYCLOAK_ADMIN_PASSWORD)
+if ! vexec "vault kv metadata get secret/msp/rabbitmq >/dev/null 2>&1" \
+  || ! vexec "vault kv metadata get secret/msp/rabbitmq-app >/dev/null 2>&1"; then
+  infra_cred_needed+=(RABBITMQ_PASSWORD)
+fi
+if [ "${#infra_cred_needed[@]}" -gt 0 ]; then
+  infra_cred_guard "bootstrap.sh" "${infra_cred_needed[@]}" || exit 1
+fi
+unset infra_cred_needed
+
 echo "==> kubernetes 認証を有効化（未有効時のみ・冪等）"
 vexec 'vault auth list -format=json 2>/dev/null | grep -q "\"kubernetes/\"" || vault auth enable kubernetes'
 
@@ -352,6 +369,28 @@ else
   vkv_patch_nonempty msp/keycloak-smtp password "${SMTP_PASSWORD:-}"
 fi
 
+# NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーのパスワード。**乱数で、無いときだけ**入れる
+#   （開発用の既定値を持たない。在る値は触らない＝回すのは同じ KV を書き換えてから reconcile-users.sh）。
+#   ユーザーの集合と KV の割り当ては deploy/local/rabbitmq-setup/users.txt（単一情報源）から読む。
+#   値は標準入力で渡す（vault のコマンドの引数に載せない）。表示しない。
+rmq_random() { od -An -N24 -tx1 /dev/urandom | tr -d ' \n'; }
+echo "==> seed: ブローカのサービスごとのユーザー（msp/rabbitmq-users・ai-stock-trading/rabbitmq-users。乱数・無いときだけ）"
+rmq_users_file="$ROOT/deploy/local/rabbitmq-setup/users.txt"
+for rmq_kv in $(grep -v '^[[:space:]]*#' "$rmq_users_file" | awk 'NF >= 4 { print $4 }' | sort -u); do
+  if ! vkv_exists "$rmq_kv"; then
+    rmq_args=()
+    for rmq_user in $(grep -v '^[[:space:]]*#' "$rmq_users_file" | awk -v kv="$rmq_kv" '$4 == kv { print $1 }'); do
+      rmq_args+=("$rmq_user" "$(rmq_random)")
+    done
+    vkv_create_if_absent "$rmq_kv" "${rmq_args[@]}"
+  else
+    for rmq_user in $(grep -v '^[[:space:]]*#' "$rmq_users_file" | awk -v kv="$rmq_kv" '$4 == kv { print $1 }'); do
+      vkv_patch_if_missing "$rmq_kv" "$rmq_user" "$(rmq_random)"
+    done
+  fi
+done
+unset rmq_kv rmq_args rmq_user rmq_users_file
+
 # SC-22, ADR-0095 決定 1, IADR-0456 決定 6 (#1477): AST が ESO で受ける ai-stock-trading/app-secrets（契約 #1477 の表）。
 # **無いときだけ作る。在れば触らない**（画面で入れた外部 API キー・Discord ID を消さない。env での上書きも持たない —— 投入面は画面）。
 # *-auth-client-* 10 件（5 組）は realm（deploy/keycloak/microservices-platform-realm.json の機密クライアント）と**同値**の dev 既定
@@ -522,6 +561,7 @@ echo "  #1817: mcp-client-admin-oidc (MSP ns。SC-12 の無人の登録・差し
 echo "  #1245: reset-gate-oidc (platform-infra ns。SC-15 の申請を閉じる門。空だと門が起動しない＝窓が開いたままになる)"
 echo "  #1255: retrieval-service-token, ingestion-service-token, aianalysis-service-token, graph-service-token, conversion-service-token, wiki-service-token, datasource-service-token, mcp-server-token, document-service-token (MSP ns。east-west gRPC の s2s 資格情報。空だと当該 Pod が起動しない)"
 echo "  PR-4: postgres, rabbitmq, keycloak-admin (platform-infra ns・creationPolicy: Merge・手動 apply は保持)"
+echo "  IADR-0573: rabbitmq-users (platform-infra ns。ブローカのサービスごとのユーザーの写し。KV は msp/rabbitmq-users・ai-stock-trading/rabbitmq-users で、無いときだけ乱数で作った)"
 echo "  #438/#1102/#1144: keycloak-smtp (platform-infra ns。from/user/password は空＝実値未供給。宛先の既定はクラスタ内の捕捉用 MTA。k8s-local-up.sh の ESO=1 が常時 apply する。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"
 echo "  #1127: wikijs-oidc (MSP ns。Wiki.js の OIDC ストラテジ seed が読む。WIKIJS_OIDC=1 のときだけ apply される)"
 echo "  #1287: synthetic-monitor-oidc (MSP ns。合成監視のプローブが env で読む。SYNTHETIC=1 のときだけ apply される)"
