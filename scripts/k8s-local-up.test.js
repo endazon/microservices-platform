@@ -360,6 +360,9 @@ const KUBECTL_STUB = [
   '  else printf "%s %s=%s\\n" "$4" "$k" "$(cat "$src")" >> "$STUB_LOG.secrets"; fi;; esac; done; fi',
   'prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && { printf "%s\\n" "$(cat "$a")" >> "$STUB_LOG.patches"; }; prev="$a"; done',
   // #1839 / IADR-0522: 既存のセッションストアの Secret（値は使い回す）。STUB_SESSION_STORE_EXISTING を与えたときだけ在るものとして返す。
+  // #2024 / IADR-0570: 試験アカウントの Secret e2e-accounts（platform-infra）。STUB_E2E_ACCOUNTS（「キー=base64」の改行区切り）を
+  //   与えたときだけ在るものとして返す（go-template の問い合わせにはその行を返す）。既定は無い ＝ 取り込み元から e2e 利用者を外す。
+  'case "$*" in *"get secret e2e-accounts"*) [ -n "${STUB_E2E_ACCOUNTS:-}" ] || exit 1; case "$*" in *go-template*) printf "%s\\n" "$STUB_E2E_ACCOUNTS";; esac; exit 0;; esac',
   'case "$*" in *"get secret session-store-credentials"*) [ -n "${STUB_SESSION_STORE_EXISTING:-}" ] && printf "%s" "$STUB_SESSION_STORE_EXISTING" | base64; exit 0;; esac',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
@@ -447,7 +450,15 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   // node も差し替える。ABACSEED=1 は `node scripts/seed-abac-policies.js` を呼ぶため、素の node のままだと
   // smoke test が実際に投入スクリプトを走らせて（到達しない port-forward を待って）遅くなる。
   // k8s-local-up.sh が node を使うのはこの 1 か所だけなので、記録スタブで足りる。
-  write('node', PLAIN_STUB('node'));
+  // #2024 / IADR-0570: [3/7] の取り込み元の差し込み（`reconcile-realm.js --render-import`）だけは本物の node で走らせる
+  //   （取り込み元の中身を試験が見る。Keycloak へは接続しない純粋な変換である）。
+  write('node', [
+    '#!/usr/bin/env bash',
+    'echo "node $*" >> "$STUB_LOG"',
+    `case " $* " in *" --render-import "*) exec ${JSON.stringify(process.execPath)} "$@";; esac`,
+    'exit 0',
+    '',
+  ].join('\n'));
   write('helm', HELM_STUB); // #1710: 既定は PLAIN_STUB と同じ振る舞い（リリース無し）
   write('docker', DOCKER_STUB);
   // helm-controller の模型（awk）。PATH には置かない —— これはコマンドの差し替えではなく、
@@ -5477,6 +5488,13 @@ const importedRealm = (r) => {
   assert.ok(raw, `取り込み元の Secret に ${IMPORT_KEY_1859} が無い（キー: ${Object.keys(r.realmImport).join(', ')}）`);
   return { raw, json: JSON.parse(raw) };
 };
+// #2024 / IADR-0570: 試験アカウント e2e-*（資格情報がプレースホルダ `${E2E_…}` の利用者）。Secret e2e-accounts が無ければ取り込み元から外れる。
+const isE2ePlaceholderUser2024 = (u) => JSON.stringify(u.credentials || []).includes('${E2E_');
+const PLATFORM_REALM_WITHOUT_E2E = (() => {
+  const r = JSON.parse(PLATFORM_REALM_SRC);
+  r.users = r.users.filter((u) => !isE2ePlaceholderUser2024(u));
+  return r;
+})();
 const clientSecretOf = (realm, clientId) => (realm.clients.find((c) => c.clientId === clientId) || {}).secret;
 /** 3 クライアントの secret を宣言の値へ戻した realm（差し替え以外が何も変わっていないことを比べる用） */
 const withDeclaredSecrets = (realm) => {
@@ -5485,13 +5503,15 @@ const withDeclaredSecrets = (realm) => {
   return copy;
 };
 
-ok('#1834: 既定（k3d・env 未設定）— 取り込み元は Secret keycloak-realm-import で、中身は宣言とバイト等価（陽性対照・CI の 2 本と同じ形）', () => {
+ok('#1834: 既定（k3d・env 未設定）— 取り込み元は Secret keycloak-realm-import で、中身は宣言から試験アカウントを外しただけ（陽性対照・CI の 2 本と同じ形。#2024）', () => {
   assert.strictEqual(DEFAULT.status, 0);
   const creates = DEFAULT.lines.filter((l) => /^kubectl create (secret generic|configmap) keycloak-realm-import /.test(l));
   assert.deepStrictEqual(creates.map((l) => l.split(' ').slice(0, 5).join(' ')), ['kubectl create secret generic keycloak-realm-import'],
     `取り込み元が Secret として 1 回だけ作られていない:\n${creates.join('\n')}`);
   assert.ok(/ -n platform-infra /.test(creates[0]) && /--dry-run=client -o yaml/.test(creates[0]), '名前空間・冪等の形が違う');
-  assert.strictEqual(importedRealm(DEFAULT).raw.trimEnd(), PLATFORM_REALM_SRC.trimEnd(), '既定で取り込み元の中身が宣言と違う');
+  // ［2026-10-21 / #2024 / IADR-0570］Secret e2e-accounts が無い既定では、プレースホルダの利用者だけが外れる（他はバイト等価）。
+  assert.strictEqual(importedRealm(DEFAULT).raw.trimEnd(), JSON.stringify(PLATFORM_REALM_WITHOUT_E2E, null, 2), '既定で取り込み元の中身が宣言（試験アカウントを除く）と違う');
+  assert.ok(!importedRealm(DEFAULT).raw.includes('${E2E_'), '取り込み元にプレースホルダが残った（公知の文字列がパスワードになる）');
   assert.ok(!/env の値で secret を渡す/.test(DEFAULT.stderr), '既定で差し替えの告知が出た');
   // 宣言の ConfigMap は残る（後追い Job・申請の門の読み手）。取り込み元は infra の apply（[4/7]）より前に作る。
   const cmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-realms '));
@@ -5508,7 +5528,7 @@ ok('#1834: dev 以外の context で 3 つの env を与える → 取り込み�
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   const { json } = importedRealm(r);
   for (const c of DEV_GUARDED) assert.strictEqual(clientSecretOf(json, c), customOf(c), `${c} の secret が env の値でない`);
-  assert.deepStrictEqual(withDeclaredSecrets(json), JSON.parse(PLATFORM_REALM_SRC), '3 つの secret 以外も変わっている');
+  assert.deepStrictEqual(withDeclaredSecrets(json), PLATFORM_REALM_WITHOUT_E2E, '3 つの secret 以外も変わっている');
   assert.ok(/env の値で secret を渡す: identity-admin, reset-gate, mcp-client-admin（値は表示しない）/.test(r.stderr), `差し替えの告知が無い:\n${r.stderr.slice(-800)}`);
   for (const c of DEV_GUARDED) {
     assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf(c)), `${c} の値が出力に出た`);
@@ -5547,6 +5567,79 @@ ok('#1834: keycloak.yaml は取り込み元を Secret keycloak-realm-import か�
   assert.ok(!/configMap/.test(vol[1]), 'realms ボリュームが ConfigMap を参照している');
   assert.ok(/- name: realms\n\s+mountPath: \/opt\/keycloak\/data\/import\n\s+readOnly: true/.test(KEYCLOAK_INFRA_YAML), '取り込みの置き場へ読み取り専用でマウントしていない');
   assert.ok(!/name: keycloak-realms\b/.test(KEYCLOAK_INFRA_YAML), 'keycloak.yaml が宣言の ConfigMap を参照している');
+});
+
+// --- NFR-10, NFR-18, IADR-0570 (#2024): 試験アカウント e2e-* の資格情報を Secret e2e-accounts から取り込み元へ差し込む ----------------
+const E2E_NAMES_2024 = (() => {
+  const names = [];
+  for (const u of JSON.parse(PLATFORM_REALM_SRC).users) {
+    for (const m of JSON.stringify(u.credentials || []).matchAll(/\$\{(E2E_[A-Z0-9_]+)\}/g)) if (!names.includes(m[1])) names.push(m[1]);
+  }
+  return names;
+})();
+// 試験用の値（実値ではない。鍵の形を避けて実行時に組み立てる）。パスワードは realm の passwordPolicy を満たす形。
+const e2eValueOf2024 = (name) => (name.endsWith('_TOTP_SECRET')
+  ? `Probe${name.replace(/[^A-Z]/g, '').slice(0, 10)}2024abcdefghij`
+  : ['Probe', name.replace(/[^A-Z]/g, '').toLowerCase(), '2024'].join('-'));
+const e2eStub2024 = (names) => names.map((n) => `${n}=${Buffer.from(e2eValueOf2024(n)).toString('base64')}`).join('\n');
+
+ok('#2024: 前提 — 宣言の試験アカウントは 6 名・12 個のプレースホルダ', () => {
+  assert.strictEqual(E2E_NAMES_2024.length, 12, E2E_NAMES_2024.join(', '));
+  assert.strictEqual(JSON.parse(PLATFORM_REALM_SRC).users.filter(isE2ePlaceholderUser2024).length, 6);
+});
+
+ok('#2024: Secret e2e-accounts が揃えば、取り込み元の 6 名は値を差し込まれ、プレースホルダが残らない（値は出力・引数に出ない）', () => {
+  const r = runUp({ STUB_E2E_ACCOUNTS: e2eStub2024(E2E_NAMES_2024) });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  const { raw, json } = importedRealm(r);
+  assert.ok(!raw.includes('${E2E_'), 'プレースホルダが残った');
+  const users = json.users.filter((u) => u.username.startsWith('e2e-'));
+  assert.deepStrictEqual(users.map((u) => u.username),
+    ['e2e-user', 'e2e-operator', 'e2e-admin', 'e2e-noaccess', 'e2e-revocable', 'e2e-trading-owner']);
+  const pw = users.find((u) => u.username === 'e2e-trading-owner').credentials.find((c) => c.type === 'password');
+  assert.strictEqual(pw.value, e2eValueOf2024('E2E_TRADING_OWNER_PASSWORD'));
+  const otp = users.find((u) => u.username === 'e2e-user').credentials.find((c) => c.type === 'otp');
+  assert.deepStrictEqual(JSON.parse(otp.secretData), { value: e2eValueOf2024('E2E_USER_TOTP_SECRET') });
+  assert.ok(/試験アカウントを e2e-accounts から差し込む: e2e-user, /.test(r.stderr), `告知が無い:\n${r.stderr.slice(-600)}`);
+  for (const n of E2E_NAMES_2024) {
+    assert.ok(!`${r.stdout}${r.stderr}`.includes(e2eValueOf2024(n)), `${n} の値が出力に出た`);
+    assert.ok(!r.lines.some((l) => l.includes(e2eValueOf2024(n))), `${n} の値がコマンドの引数に出た`);
+  }
+});
+
+ok('#2024: 一部しか無ければ、揃った利用者だけを差し込み、欠けた利用者は名前と欠けたキーだけを告げて外す', () => {
+  const r = runUp({ STUB_E2E_ACCOUNTS: e2eStub2024(['E2E_USER_PASSWORD', 'E2E_USER_TOTP_SECRET', 'E2E_ADMIN_PASSWORD']) });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  const { raw, json } = importedRealm(r);
+  assert.ok(!raw.includes('${E2E_'), 'プレースホルダが残った');
+  assert.deepStrictEqual(json.users.filter((u) => u.username.startsWith('e2e-')).map((u) => u.username), ['e2e-user']);
+  assert.ok(/skipped {3}user e2e-admin — e2e-accounts から差し込めない: E2E_ADMIN_TOTP_SECRET: 無い/.test(r.stderr), r.stderr.slice(-800));
+  assert.ok(!r.stderr.includes(e2eValueOf2024('E2E_ADMIN_PASSWORD')), '値を出力した');
+});
+
+ok('#2024: ESO=1 は ExternalSecret e2e-accounts を当て、同期したら realm の後追いをもう一度走らせる', () => {
+  const r = runUp({ VAULT: '1', ESO: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  const applyIdx = r.lines.indexOf('kubectl apply -f deploy/local/vault/eso/externalsecret-e2e-accounts.yaml');
+  assert.ok(applyIdx >= 0, 'ExternalSecret e2e-accounts を apply していない');
+  const waitIdx = r.lines.findIndex((l) => /wait --for=condition=Ready externalsecret\/e2e-accounts/.test(l) && / -n platform-infra /.test(` ${l} `));
+  assert.ok(waitIdx > applyIdx, '同期を待っていない（apply の後）');
+  const reconciles = r.lines.map((l, i) => [l, i]).filter(([l]) => /delete job keycloak-realm-reconcile /.test(l)).map(([, i]) => i);
+  assert.ok(reconciles.length >= 2 && reconciles[reconciles.length - 1] > waitIdx, `同期の後に後追いを走らせていない: ${reconciles} / wait=${waitIdx}`);
+  // ESO なしでは当てない（ExternalSecret の CRD が無い）
+  assert.ok(!DEFAULT.lines.some((l) => l.includes('externalsecret-e2e-accounts.yaml')), 'ESO なしで ExternalSecret を当てた');
+});
+
+ok('#2024: ExternalSecret e2e-accounts は platform-infra・Owner・msp/e2e-accounts で、キーは宣言のプレースホルダ・プロパティはその小文字（3 つの集合が一致）', () => {
+  const es = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/vault/eso/externalsecret-e2e-accounts.yaml'), 'utf8');
+  assert.match(es, /^ {2}name: e2e-accounts\n {2}namespace: platform-infra$/m);
+  assert.match(es, /^ {4}name: e2e-accounts\n {4}creationPolicy: Owner$/m);
+  const pairs = [...es.matchAll(/- secretKey: (\S+)\n\s+remoteRef:\n\s+key: (\S+)\n\s+property: (\S+)/g)].map((m) => [m[1], m[2], m[3]]);
+  assert.deepStrictEqual(pairs.map((p) => p[0]).sort(), [...E2E_NAMES_2024].sort(), 'Secret のキーが宣言のプレースホルダと一致しない');
+  for (const [k, key, prop] of pairs) {
+    assert.strictEqual(key, 'msp/e2e-accounts', k);
+    assert.strictEqual(prop, k.toLowerCase().replace(/_/g, '-'), k);
+  }
 });
 
 /** 差し替えの関数を bash で直接呼ぶ（env を与えて）。 */

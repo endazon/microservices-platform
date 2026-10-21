@@ -30,7 +30,9 @@ const {
   devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, DEV_SECRET_GUARDED_CLIENTS, DEV_SECRETS_ALLOWED_ENV,
   RUNTIME_OWNED_REALM_KEYS, CLIENT_CREATE_ONLY_KEYS, GATE_OWNED_REALM_KEYS, GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
   SEED_USER_SELF_SERVICE_ROLES,
+  resolveE2eCredentials, passwordMeetsPolicy, describeSkipped, renderImport, describe,
 } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
+const { generate: generateE2eAccounts, placeholderNames, propertyName } = require('./gen-e2e-accounts.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const REALM = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
@@ -576,6 +578,181 @@ function fakeKc({ saEnabled, saUser, seen = [] }) {
     },
   };
 }
+// --- 6. 試験アカウント e2e-*（#2024 / IADR-0570）------------------------------------------------
+//
+// 宣言は資格情報にプレースホルダ `${E2E_…}` だけを持つ。値は Secret e2e-accounts（OpenBao → ESO）を env で受けて差し込む。
+// 差し込めない利用者は作らない（drift にも数えない）。作った後は他の人の seed 利用者と同じく実行時が所有する。
+
+const E2E_USERS = ['e2e-user', 'e2e-operator', 'e2e-admin', 'e2e-noaccess', 'e2e-revocable', 'e2e-trading-owner'];
+const E2E_EXPECTED = {
+  'e2e-user': { roles: [], groups: ['/clearance/internal', '/department/engineering'] },
+  'e2e-operator': { roles: ['platform-operator'], groups: ['/clearance/internal', '/department/engineering'] },
+  'e2e-admin': { roles: ['platform-admin', 'platform-operator'], groups: ['/clearance/restricted', '/department/engineering'] },
+  'e2e-noaccess': { roles: [], groups: ['/clearance/public'] },
+  'e2e-revocable': { roles: [], groups: ['/clearance/internal'] },
+  'e2e-trading-owner': { roles: ['trading-owner'], groups: ['/clearance/internal', '/department/engineering'] },
+};
+const envNameOf = (username, kind) => `E2E_${username.slice('e2e-'.length).toUpperCase().replace(/-/g, '_')}_${kind}`;
+// 試験用の値（実値ではない）。生成器の出力を env の名前へ写して使う（生成器と差し込みの口が噛み合うことを同時に見る）。
+const e2eEnv = () => {
+  let n = 0;
+  const kv = generateE2eAccounts(REALM, (max) => (n++ * 7 + 3) % max);
+  return Object.fromEntries(placeholderNames(REALM).map((name) => [name, kv[propertyName(name)]]));
+};
+const withoutE2e = (realm) => { const r = clone(realm); r.users = r.users.filter((u) => !E2E_USERS.includes(u.username)); return r; };
+
+ok('#2024: 宣言は 6 名を設計の表どおりのロール・グループ（＝属性）で持ち、資格情報はプレースホルダだけ・CONFIGURE_TOTP を持たない', () => {
+  assert.ok(REALM.roles.realm.some((r) => r.name === 'trading-owner'), 'AST のロール trading-owner が realm platform に無い');
+  for (const name of E2E_USERS) {
+    const u = REALM.users.find((x) => x.username === name);
+    assert.ok(u, `${name} が宣言に無い`);
+    assert.deepStrictEqual([...(u.realmRoles || [])].sort(), [...E2E_EXPECTED[name].roles].sort(), `${name} の realm ロール`);
+    assert.deepStrictEqual(u.groups, E2E_EXPECTED[name].groups, `${name} のグループ`);
+    const attrGroups = [...(u.attributes.clearance || []).map((c) => `/clearance/${c}`), ...(u.attributes.department || []).map((d) => `/department/${d}`)];
+    assert.deepStrictEqual(attrGroups, u.groups, `${name} の属性がグループと食い違う`);
+    assert.ok(!(u.requiredActions || []).includes('CONFIGURE_TOTP'), `${name} に CONFIGURE_TOTP（2 つ目の OTP の登録画面が挟まる）`);
+    assert.ok(u.email && u.firstName && u.lastName && u.emailVerified === true, `${name} のプロフィール（VERIFY_PROFILE が挟まる）`);
+    const pw = u.credentials.find((c) => c.type === 'password');
+    assert.strictEqual(pw.value, `\${${envNameOf(name, 'PASSWORD')}}`, `${name} のパスワードがプレースホルダでない`);
+    const otp = u.credentials.find((c) => c.type === 'otp');
+    assert.ok(!('value' in otp), `${name}: OTP に value があると Keycloak はパスワードとして作る`);
+    assert.deepStrictEqual(JSON.parse(otp.secretData), { value: `\${${envNameOf(name, 'TOTP_SECRET')}}` });
+    const data = JSON.parse(otp.credentialData);
+    assert.deepStrictEqual(data, { subType: 'totp', digits: REALM.otpPolicyDigits, counter: 0, period: REALM.otpPolicyPeriod, algorithm: REALM.otpPolicyAlgorithm },
+      `${name}: OTP の形が realm の otpPolicy と違う`);
+  }
+  const owner = REALM.users.find((x) => x.username === 'e2e-trading-owner');
+  const user = REALM.users.find((x) => x.username === 'e2e-user');
+  assert.ok(owner.realmRoles.includes('trading-owner') && !(user.realmRoles || []).includes('trading-owner'));
+});
+
+ok('#2024: dry-run — env が揃えば、e2e の居ない既存 realm へ user.create がちょうど 6 件（資格情報は差し込み済み・ロールは postSteps）', () => {
+  const env = e2eEnv();
+  const { desired, resolved, skipped } = resolveE2eCredentials(REALM, env);
+  assert.deepStrictEqual(resolved, E2E_USERS);
+  assert.deepStrictEqual(skipped, []);
+  const live = liveFrom(withoutE2e(REALM));
+  const ops = plan(desired, live);
+  assert.deepStrictEqual(ops.map(describe), E2E_USERS.map((n) => `${'user.create'.padEnd(24)} ${n} — seed 利用者が無い`));
+  for (const op of ops) {
+    assert.ok(!JSON.stringify(op.body).includes('${'), `${op.target}: プレースホルダが本文に残った`);
+    const pw = op.body.credentials.find((c) => c.type === 'password');
+    assert.strictEqual(pw.value, env[envNameOf(op.target, 'PASSWORD')]);
+    assert.ok(passwordMeetsPolicy(REALM.passwordPolicy, pw.value), `${op.target}: ポリシー違反のパスワード`);
+    const otp = op.body.credentials.find((c) => c.type === 'otp');
+    assert.deepStrictEqual(JSON.parse(otp.secretData), { value: env[envNameOf(op.target, 'TOTP_SECRET')] });
+    const realmStep = op.postSteps.find((st) => st.pathSuffix === '/role-mappings/realm');
+    assert.deepStrictEqual(realmStep ? realmStep.body.map((r) => r.name).sort() : [], [...E2E_EXPECTED[op.target].roles].sort(), `${op.target} の realm ロール`);
+    assert.ok(op.postSteps.some((st) => /role-mappings\/clients\//.test(st.pathSuffix)), `${op.target}: 自己管理のロールが無い`);
+    assert.ok(!describe(op).includes(pw.value), '出力の行に値が出る');
+  }
+  // 作った後（e2e が居る realm）は何もしない（資格情報は実行時が所有する。比べない・戻さない）
+  const after = liveFrom(REALM);
+  assert.deepStrictEqual(plan(desired, after), []);
+});
+
+ok('#2024: env が無ければ 6 名とも外し（名前と欠けたキーだけを告げる）、既存 realm の計画は 0 件（drift にしない）', () => {
+  const { desired, resolved, skipped } = resolveE2eCredentials(REALM, {});
+  assert.deepStrictEqual(resolved, []);
+  assert.deepStrictEqual(skipped.map((x) => x.username), E2E_USERS);
+  assert.deepStrictEqual(skipped[0].problems, ['E2E_USER_PASSWORD: 無い', 'E2E_USER_TOTP_SECRET: 無い']);
+  assert.strictEqual(describeSkipped(skipped[0]), 'skipped   user e2e-user — e2e-accounts から差し込めない: E2E_USER_PASSWORD: 無い, E2E_USER_TOTP_SECRET: 無い');
+  assert.deepStrictEqual(desired, withoutE2e(REALM));
+  assert.deepStrictEqual(plan(desired, liveFrom(withoutE2e(REALM))), []);
+  assert.ok(REALM.users.some((u) => u.username === 'e2e-user'), '入力の宣言を書き換えた');
+});
+
+ok('#2024: 差し込めない値（ポリシー違反・短い/英数でない TOTP・制御文字・${）の利用者は作らず、理由だけを告げる（値は出さない）', () => {
+  const base = e2eEnv();
+  const cases = {
+    E2E_ADMIN_PASSWORD: ['short1A', 'realm の passwordPolicy を満たさない'],
+    E2E_OPERATOR_PASSWORD: ['alllowercaseletters', 'realm の passwordPolicy を満たさない'],
+    E2E_USER_TOTP_SECRET: ['ABCDEFGHIJKLMNOPQRS', '英数 20〜64 文字でない'],
+    E2E_NOACCESS_TOTP_SECRET: ['ABCDEFGHIJKLMNOPQRSTU+', '英数 20〜64 文字でない'],
+    E2E_REVOCABLE_PASSWORD: ['Probe-2024-\nnewline', '制御文字を含む'],
+    E2E_TRADING_OWNER_PASSWORD: ['Probe-2024-${X}', '${ を含む（Keycloak の取り込みが置き換える）'],
+  };
+  const env = { ...base };
+  for (const [k, [v]] of Object.entries(cases)) env[k] = v;
+  const { resolved, skipped } = resolveE2eCredentials(REALM, env);
+  assert.deepStrictEqual(resolved, []);
+  for (const [k, [v, why]] of Object.entries(cases)) {
+    const hit = skipped.find((x) => x.problems.includes(`${k}: ${why}`));
+    assert.ok(hit, `${k} を ${why} で外していない: ${JSON.stringify(skipped)}`);
+    assert.ok(!describeSkipped(hit).includes(v), '値を出力の行に出した');
+  }
+  // 陽性対照: 1 つだけ壊せば、その利用者だけが外れる
+  const one = resolveE2eCredentials(REALM, { ...base, E2E_ADMIN_PASSWORD: 'short1A' });
+  assert.deepStrictEqual(one.skipped.map((x) => x.username), ['e2e-admin']);
+  assert.strictEqual(one.resolved.length, 5);
+});
+
+ok('#2024: 置き換えるのは E2E_ で始まる名前だけ —— 他の名前のプレースホルダは env に在っても写さず、その利用者を作らない', () => {
+  const desired = clone(REALM);
+  const u = desired.users.find((x) => x.username === 'e2e-user');
+  u.credentials[0].value = '${KC_ADMIN_PASSWORD}';
+  const env = { ...e2eEnv(), KC_ADMIN_PASSWORD: 'Admin-Probe-2024x' };
+  const { desired: out, skipped } = resolveE2eCredentials(desired, env);
+  assert.ok(!JSON.stringify(out).includes('Admin-Probe-2024x'), '管理者のパスワードを利用者へ写した');
+  assert.deepStrictEqual(skipped.map((x) => x.username), ['e2e-user']);
+  assert.ok(skipped[0].problems.some((p) => /E2E_ で始まらないプレースホルダ/.test(p)), skipped[0].problems.join(' / '));
+});
+
+ok('#2024: プレースホルダが資格情報の value / secretData の外にあれば例外（宣言の誤り）', () => {
+  const inAttr = clone(REALM);
+  inAttr.users.find((x) => x.username === 'e2e-user').attributes.note = ['${E2E_USER_PASSWORD}'];
+  assert.throws(() => resolveE2eCredentials(inAttr, e2eEnv()), /資格情報の外/);
+  const inCredData = clone(REALM);
+  inCredData.users.find((x) => x.username === 'e2e-user').credentials[1].credentialData = '{"x":"${E2E_USER_TOTP_SECRET}"}';
+  assert.throws(() => resolveE2eCredentials(inCredData, e2eEnv()), /credentialData/);
+  const inClient = clone(REALM);
+  inClient.clients[0].description = '${E2E_X}';
+  assert.throws(() => resolveE2eCredentials(inClient, e2eEnv()), /資格情報の外/);
+});
+
+ok('#2024: passwordMeetsPolicy は length と regexPattern（全体一致）だけを見る（陽性・陰性）', () => {
+  const policy = REALM.passwordPolicy;
+  assert.ok(passwordMeetsPolicy(policy, 'Developer-2026'), '宣言の dev のパスワードが通らない（判定が厳しすぎる）');
+  assert.ok(!passwordMeetsPolicy(policy, 'Dev-2026'), '12 文字未満を通した');
+  assert.ok(!passwordMeetsPolicy(policy, 'developerdeveloper'), '1 種類の文字だけを通した');
+  assert.ok(passwordMeetsPolicy('passwordHistory(5)', 'x'), '見ない項で落とした');
+});
+
+ok('#2024: --render-import は取り込み元からプレースホルダを消す（揃えば差し込み・無ければ外す）。告知に値を出さない', () => {
+  const text = JSON.stringify(REALM, null, 2);
+  const msgs = [];
+  const none = renderImport(text, {}, (m) => msgs.push(m));
+  assert.ok(!none.includes('${E2E_'), 'Secret が無いのにプレースホルダが残った');
+  assert.deepStrictEqual(JSON.parse(none), withoutE2e(REALM));
+  assert.strictEqual(msgs.filter((m) => /取り込まない/.test(m)).length, 6);
+  const env = e2eEnv();
+  const out = [];
+  const full = renderImport(text, env, (m) => out.push(m));
+  assert.ok(!full.includes('${E2E_'));
+  assert.strictEqual(JSON.parse(full).users.filter((u) => E2E_USERS.includes(u.username)).length, 6);
+  for (const v of Object.values(env)) assert.ok(!out.join('\n').includes(v), '告知に値が出た');
+  // 試験アカウント以外は触らない（宣言の他の部分とバイト等価）
+  assert.deepStrictEqual(withoutE2e(JSON.parse(full)), withoutE2e(REALM));
+});
+
+ok('#2024: 生成器のプロパティは宣言のプレースホルダの小文字（12 個）で、値は差し込みの検査を通る（パスワードは乱数・TOTP は英数 32 文字）', () => {
+  const kv = generateE2eAccounts(REALM);
+  assert.deepStrictEqual(Object.keys(kv), placeholderNames(REALM).map(propertyName));
+  assert.strictEqual(Object.keys(kv).length, 12);
+  for (const [k, v] of Object.entries(kv)) {
+    if (k.endsWith('-totp-secret')) assert.match(v, /^[A-Za-z0-9]{32}$/, k);
+    else assert.ok(passwordMeetsPolicy(REALM.passwordPolicy, v), k);
+  }
+  assert.notDeepStrictEqual(generateE2eAccounts(REALM), kv, '2 回の生成で同じ値（乱数でない）');
+  const { resolved } = resolveE2eCredentials(REALM, Object.fromEntries(placeholderNames(REALM).map((n) => [n, kv[propertyName(n)]])));
+  assert.deepStrictEqual(resolved, E2E_USERS);
+});
+
+ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読む（無くても Job は起動する）', () => {
+  const job = fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'local', 'keycloak-setup', 'realm-reconcile-job.yaml'), 'utf8');
+  assert.match(job, /\n {10}envFrom:\n {12}- secretRef:\n {16}name: e2e-accounts\n {16}optional: true\n/);
+});
+
 (async () => {
   {
     const live = await collectLive(fakeKc({ saEnabled: false, saUser: { id: 'u-bff' } }), REALM);
@@ -653,12 +830,14 @@ function fakeKc({ saEnabled, saUser, seen = [] }) {
   const ROTATED = ['rotated', 'value', '1830'].join('-');
   const runMain = async ({ realmExists = true, secrets = {}, env = {}, args = [] }) => {
     const seen = [];
+    const bodies = []; // #2024: 書き込みの本文（main まで通したときに差し込みが効いているかを見る）
     const R = `/admin/realms/${encodeURIComponent(REALM.realm)}`;
     const server = http.createServer((req, res) => {
       let body = '';
       req.on('data', (d) => { body += d; });
       req.on('end', () => {
         seen.push(`${req.method} ${req.url}`);
+        if (req.method !== 'GET') bodies.push({ line: `${req.method} ${req.url}`, body });
         const json = (code, v) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(v === undefined ? '' : JSON.stringify(v)); };
         if (req.url === '/realms/master/protocol/openid-connect/token') return json(200, { access_token: 't' });
         if (req.method !== 'GET') return json(201);
@@ -687,7 +866,7 @@ function fakeKc({ saEnabled, saUser, seen = [] }) {
       child.stdout.on('data', (d) => { out += d; });
       child.stderr.on('data', (d) => { out += d; });
       const code = await new Promise((r) => child.on('close', r));
-      return { code, out, seen, writes: seen.filter((l) => !l.startsWith('GET ') && !l.includes('/openid-connect/token')) };
+      return { code, out, seen, bodies, writes: seen.filter((l) => !l.startsWith('GET ') && !l.includes('/openid-connect/token')) };
     } finally {
       server.close();
       fs.rmSync(dir, { recursive: true, force: true });
@@ -736,6 +915,22 @@ function fakeKc({ saEnabled, saUser, seen = [] }) {
     assert.ok(allowed.writes.includes('POST /admin/realms'), `陽性対照: allow で realm を作っていない: ${allowed.writes.join(', ')}`);
     assert.ok(/WARN/.test(allowed.out), '許可して作るときに警告しない');
     done1830('#1830: 後追いは DEV_CLIENT_SECRETS_ALLOWED=allow でなければ、管理用クライアントを dev の値で作る realm に何も書かず非 0');
+  }
+  {
+    // #2024 / IADR-0570: main まで通す。realm が無い（realm.create）とき、本文に `${E2E_` を残さない。
+    const none = await runMain({ realmExists: false, env: { [DEV_SECRETS_ALLOWED_ENV]: 'allow' } });
+    const create = none.bodies.find((b) => b.line === 'POST /admin/realms');
+    assert.ok(create, `realm を作っていない: ${none.writes.join(', ')}`);
+    assert.ok(!create.body.includes('${E2E_'), 'realm.create の本文にプレースホルダが残った（公知の文字列がパスワードになる）');
+    assert.ok(!JSON.parse(create.body).users.some((u) => E2E_USERS.includes(u.username)), 'e2e-accounts が無いのに試験アカウントを作った');
+    assert.strictEqual((none.out.match(/skipped {3}user e2e-/g) || []).length, 6, none.out);
+    const env = e2eEnv();
+    const full = await runMain({ realmExists: false, env: { [DEV_SECRETS_ALLOWED_ENV]: 'allow', ...env } });
+    const body = JSON.parse(full.bodies.find((b) => b.line === 'POST /admin/realms').body);
+    assert.deepStrictEqual(body.users.filter((u) => E2E_USERS.includes(u.username)).map((u) => u.username), E2E_USERS);
+    for (const v of Object.values(env)) assert.ok(!full.out.includes(v), '値が出力に出た');
+    passed++;
+    process.stdout.write('  ok  #2024: main は宣言ごとに差し込みを当ててから計画する（無ければ外す・揃えば差し込む・値を出さない）\n');
   }
   console.log(`\n${passed} tests passed.`);
 })().catch((e) => { console.error(e); process.exit(1); });
