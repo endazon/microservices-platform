@@ -3,6 +3,9 @@
 # 冪等（再実行可）。fail-safe: 機密は未設定なら dev 既定/空（no-op）で作成する。
 #   ただし dev 以外の kube context では、サービスアカウントを持つ機密クライアント（realm の宣言から導出する）の
 #   secret を dev の値で作らずに止まる（IADR-0517 / #1830・IADR-0572。上書きは ALLOW_DEV_CLIENT_SECRETS=1）。
+#   ただし Keycloak の管理者・RabbitMQ のブローカのパスワードは公知の既定値で作らない（IADR-0574。fail-closed）——
+#   KEYCLOAK_ADMIN_PASSWORD / RABBITMQ_PASSWORD を与えるか、既存の Secret の値を使う。使い捨ての開発環境だけ
+#   ALLOW_DEV_INFRA_CREDENTIALS=1 で開発用の値を許す（警告を出す）。
 #
 #   bash scripts/k8s-local-up.sh --live [cluster-name]   # --live か LIVE=1 が無ければ何もしない（#1550）
 #
@@ -195,6 +198,19 @@ done
 dev_client_secret_guard "k8s-local-up.sh" "${dev_secret_args[@]}" || exit 1
 unset dev_secret_args dev_secret_client dev_secret_env
 
+# NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）を
+#   公知の開発用の値で作らない（fail-closed）。** 判定は scripts/lib/infra-credentials.sh の 1 本（bootstrap.sh と共有）。
+#   選び方: 明示（KEYCLOAK_ADMIN_PASSWORD / RABBITMQ_PASSWORD）＞ 既存の Secret（platform-infra の keycloak-admin / rabbitmq）の値
+#   ＞ 止める。開発用の値と同じものは指定が無いのと同じ扱い。使い捨ての開発環境だけ ALLOW_DEV_INFRA_CREDENTIALS=1 で開発用の値を許す。
+#   置き場所は context が確定した直後・Secret を 1 つも書く前（既存の Secret を読むのでクラスタが要る）・[2/7] の長いビルドより前。
+#   選んだ値は export する（[3/7] の Secret・[5/7] の rabbitmq-app・ESO の段の bootstrap.sh が同じ値を使う）。
+# shellcheck source=scripts/lib/infra-credentials.sh
+. "$ROOT/scripts/lib/infra-credentials.sh"
+infra_cred_existing() { # <Secret 名> <キー> → 既存の値（無ければ空）。値は出力しない（呼び出し側が変数へ受ける）
+  kubectl -n "$INFRA_NS" get secret "$1" -o "jsonpath={.data.$2}" 2>/dev/null | base64 -d 2>/dev/null || true
+}
+infra_cred_resolve "k8s-local-up.sh" infra_cred_existing || exit 1
+
 # NFR, ADR-0021, IADR-0317 (#1691): **入口がすでに Istio Ingress Gateway へ移っているかを、クラスタの状態で読む。**
 #   前回の istio-edge-up.sh が HelmChartConfig kube-system/traefik を `service.enabled: false`
 #   （deploy/local/edge-istio/traefik-service-off.yaml）にしていれば移行済みである。**フラグ（ISTIO）では判定しない** ——
@@ -356,11 +372,11 @@ apply_secret "$INFRA_NS" postgres        "password=${PG_PASSWORD:-postgres}"
 # deploy/local/infra/rabbitmq.yaml が RABBITMQ_DEFAULT_USER/PASS を**非 optional** に参照する。
 # ⚠️ RABBITMQ_USER を変えるときは helm の global.messaging.user も併せて上書きすること
 #    （app 側の接続文字列は chart が組む）。AST chart は自前の guest:guest を持つ（#1022 §申し送り）。
-apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "password=${RABBITMQ_PASSWORD:-guest}"
+apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "password=${RABBITMQ_PASSWORD:?}"  # IADR-0574: 値は [1/7] の直後で決めた
 # IADR-0369 (#1088): 管理者名も Secret に持つ。deploy/local/infra/keycloak.yaml（KEYCLOAK_ADMIN）と
 # realm 後追い Job（deploy/local/keycloak-setup/realm-reconcile-job.yaml の KC_ADMIN_USER）が同じキーを読む
 # ＝管理者名の単一情報源。ESO の externalsecret-keycloak-admin.yaml は Merge なので password だけ供給しても壊れない。
-apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}" "password=${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}" "password=${KEYCLOAK_ADMIN_PASSWORD:?}"  # IADR-0574
 # NFR-18, ADR-0131 決定 4 の 2, IADR-0522 (#1839): キャッシュ・セッションストア（Valkey）の認証パスワード。
 # deploy/local/infra/valkey.yaml が**非 optional** に読み、空なら起動しない（fail-closed）。BFF も同じ値を読む
 # （[5/7] で MSP ns へ同じ値を置く。helm の services.bff.session.storeExistingSecret）。ESO=1 でも手で置く
@@ -714,8 +730,8 @@ if [ "${ESO:-}" != "1" ]; then
   # NFR, ADR-0027, #1022: ブローカのパスワード（app 側）。**appsettings.json から接続文字列を撤去した**ため、
   # これが無いと RabbitMQ を使う 7 サービスは起動時に落ちる（helm の deployment.yaml が
   # global.messaging.existingSecret を **非 optional** な secretKeyRef で参照する）。
-  # dev 既定は step 3 のブローカ側と同値（env RABBITMQ_PASSWORD で両方を上書きする）。
-  apply_secret "$MSP_NS" rabbitmq-app "password=${RABBITMQ_PASSWORD:-guest}"
+  # 値は step 3 のブローカ側と同値（[1/7] の直後で決めた RABBITMQ_PASSWORD。IADR-0574）。
+  apply_secret "$MSP_NS" rabbitmq-app "password=${RABBITMQ_PASSWORD:?}"
   apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
   # FR-13, IADR-0327 (#1108): 🔴 **発行済みの API キーを空で潰さない。**
   # Wiki.js のセットアップ後、`deploy/local/wikijs-setup/bootstrap.sh` がここへ実キーを書き戻す。

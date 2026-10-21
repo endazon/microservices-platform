@@ -364,6 +364,9 @@ const KUBECTL_STUB = [
   //   与えたときだけ在るものとして返す（go-template の問い合わせにはその行を返す）。既定は無い ＝ 取り込み元から e2e 利用者を外す。
   'case "$*" in *"get secret e2e-accounts"*) [ -n "${STUB_E2E_ACCOUNTS:-}" ] || exit 1; case "$*" in *go-template*) printf "%s\\n" "$STUB_E2E_ACCOUNTS";; esac; exit 0;; esac',
   'case "$*" in *"get secret session-store-credentials"*) [ -n "${STUB_SESSION_STORE_EXISTING:-}" ] && printf "%s" "$STUB_SESSION_STORE_EXISTING" | base64; exit 0;; esac',
+  // IADR-0574: 既存の基盤の資格情報の Secret（keycloak-admin / rabbitmq の password）。STUB_*_EXISTING を与えたときだけ在るものとして返す。
+  'case "$*" in *"get secret keycloak-admin "*"{.data.password}"*) [ -n "${STUB_KEYCLOAK_ADMIN_EXISTING:-}" ] && printf "%s" "$STUB_KEYCLOAK_ADMIN_EXISTING" | base64; exit 0;; esac',
+  'case "$*" in *"get secret rabbitmq "*"{.data.password}"*) [ -n "${STUB_RABBITMQ_EXISTING:-}" ] && printf "%s" "$STUB_RABBITMQ_EXISTING" | base64; exit 0;; esac',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
@@ -515,6 +518,10 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'IDENTITY_ADMIN_CLIENT_SECRET',
     'MCP_CLIENT_ADMIN_CLIENT_SECRET',
     'SESSION_STORE_PASSWORD', // #1839: セッションストアのパスワード。漏れていると「乱数で作る」の既定が別の形で走る
+    // IADR-0574: 基盤の資格情報の明示・opt-in。漏れていると fail-closed の判定が既定と違う形で走る
+    'ALLOW_DEV_INFRA_CREDENTIALS',
+    'KEYCLOAK_ADMIN_PASSWORD',
+    'RABBITMQ_PASSWORD',
   ]) {
     delete base[k];
   }
@@ -527,6 +534,10 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     // NFR, #1550: 起動器は明示の指定（--live か LIVE=1）が無ければ何もせずに終わる。ここは PATH のスタブの下で
     // 走らせる試験器なので指定を与える（拒否の経路は scripts.repo.test.js の #1550 節が固定する）。
     LIVE: '1',
+    // NFR-18, IADR-0574: 基盤の資格情報（Keycloak の管理者・RabbitMQ）は公知の既定値で作らない（指定が無ければ止まる）。
+    // この試験器は使い捨ての開発環境（CI の integration-stack / cutover-rehearsal と同じ）として opt-in を既定にする。
+    // 止まる経路は「IADR-0574」の節が ALLOW_DEV_INFRA_CREDENTIALS: '' で固定する。
+    ALLOW_DEV_INFRA_CREDENTIALS: '1',
     ...extraEnv,
   };
 
@@ -5914,6 +5925,121 @@ ok('#1839: 旧 Redis（認証なし）を消し、Valkey の起動を待つ（ES
   const applyAt = lines.findIndex((l) => /^kubectl apply -k deploy\/local\/infra/.test(l));
   const deleteAt = lines.indexOf('kubectl -n platform-infra delete deployment/redis service/redis --ignore-not-found');
   assert.ok(applyAt >= 0 && deleteAt > applyAt, `順序が違う: apply=${applyAt} delete=${deleteAt}`);
+});
+
+// --- NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): 基盤の資格情報を公知の既定値で作らない（fail-closed） ----------
+// 判定は scripts/lib/infra-credentials.sh（k8s-local-up.sh・bootstrap.sh が共有）。値は実行時に組む（gitleaks）。
+const credOf0573 = (r, secret, key) => r.secrets.filter((l) => l.startsWith(`${secret} ${key}=`)).map((l) => l.slice(`${secret} ${key}=`.length));
+const custom0573 = (what) => ['probe', '0573', what].join('-');
+const NO_OPT_IN_0573 = { ALLOW_DEV_INFRA_CREDENTIALS: '' };
+const INFRA_LIB_0573 = path.join(REPO_ROOT, 'scripts', 'lib', 'infra-credentials.sh');
+
+ok('IADR-0574: 判定の真理値表 — 明示（無し / 開発用の値 / 別の値）× 既存（無し / 開発用の値 / 別の値）× opt-in（無し / 1 / true）', () => {
+  const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  const cases = [];
+  for (const name of ['KEYCLOAK_ADMIN_PASSWORD', 'RABBITMQ_PASSWORD']) {
+    const dev = name === 'KEYCLOAK_ADMIN_PASSWORD' ? 'admin' : 'guest';
+    for (const [ek, ev] of [['none', ''], ['dev', dev], ['custom', custom0573('e')]]) {
+      for (const [xk, xv] of [['none', ''], ['dev', dev], ['custom', custom0573('x')]]) {
+        for (const opt of ['', '1', 'true']) cases.push({ name, ek, ev, xk, xv, opt });
+      }
+    }
+  }
+  const body = cases.map((c, i) => `ALLOW_DEV_INFRA_CREDENTIALS=${q(c.opt)}; out="$(infra_cred_decide ${q(c.name)} ${q(c.ev)} ${q(c.xv)})" && rc=0 || rc=$?; printf '%s %s %s\\n' ${i} "$rc" "$out"`).join('\n');
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(INFRA_LIB_0573)}\n${body}`], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const got = r.stdout.trim().split('\n').map((l) => l.split(' '));
+  assert.strictEqual(got.length, cases.length);
+  const tally = {};
+  for (const [i, rc, verdict] of got) {
+    const c = cases[Number(i)];
+    let want;
+    if (c.ek === 'custom') want = 'explicit';
+    else if (c.ek === 'none' && c.xk === 'custom') want = 'existing';
+    else want = c.opt === '1' ? 'dev' : 'deny';
+    assert.strictEqual(verdict, want, `${JSON.stringify(c)}: 判定が違う（${verdict}）`);
+    assert.strictEqual(Number(rc), want === 'deny' ? 1 : 0, `${JSON.stringify(c)}: 終了コードが違う`);
+    tally[want] = (tally[want] || 0) + 1;
+  }
+  for (const k of ['explicit', 'existing', 'dev', 'deny']) assert.ok(tally[k] > 0, `判定 ${k} が 1 度も現れない`);
+});
+
+ok('IADR-0574: 指定も既存の Secret も無く opt-in も無ければ、[1/7] の直後・何も書かずに 2 つを名指して止まる（値を出さない）', () => {
+  for (const ctx of ['k3d-testcluster', 'prod-shared']) {
+    const r = runUp({ ...NO_OPT_IN_0573, STUB_KUBE_CONTEXT: ctx, ALLOW_DEV_CLIENT_SECRETS: '1' });
+    assert.notStrictEqual(r.status, 0, `${ctx}: 止まらなかった`);
+    assert.ok(!wroteAnything(r), `${ctx}: 書いてから止まった`);
+    assert.ok(!r.lines.some((l) => /k8s-local-images|docker build/.test(l)), `${ctx}: [2/7] のビルドへ進んでから止まった`);
+    assert.ok(/止める（何も作らない）: KEYCLOAK_ADMIN_PASSWORD（Secret keycloak-admin\/password）, RABBITMQ_PASSWORD（Secret rabbitmq\/password）/.test(r.stderr),
+      `${ctx}: 名指していない:\n${r.stderr.slice(-800)}`);
+    assert.ok(/ALLOW_DEV_INFRA_CREDENTIALS=1/.test(r.stderr), '対処（opt-in）を告げていない');
+  }
+});
+
+ok('IADR-0574: 明示の値（開発用でない）で作り、rabbitmq-app も同じ値。opt-in も警告も要らない（値は出力しない）', () => {
+  const env = { ...NO_OPT_IN_0573, KEYCLOAK_ADMIN_PASSWORD: custom0573('kc'), RABBITMQ_PASSWORD: custom0573('mq') };
+  const r = runUp(env);
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  assert.deepStrictEqual(credOf0573(r, 'keycloak-admin', 'password'), [custom0573('kc')]);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq', 'password'), [custom0573('mq')]);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), [custom0573('mq')], 'アプリ側がブローカと食い違う');
+  assert.ok(!/ALLOW_DEV_INFRA_CREDENTIALS/.test(r.stderr), '明示なのに opt-in の警告が出た');
+  for (const v of [custom0573('kc'), custom0573('mq')]) {
+    assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
+    assert.ok(!r.lines.some((l) => l.includes(v)), '値がコマンドの引数に出た');
+  }
+});
+
+ok('IADR-0574: 指定が無くても、既存の Secret が開発用でない値を持てばそれを使う（再実行で稼働中の値を戻さない）', () => {
+  const r = runUp({ ...NO_OPT_IN_0573, STUB_KEYCLOAK_ADMIN_EXISTING: custom0573('kc-old'), STUB_RABBITMQ_EXISTING: custom0573('mq-old') });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  assert.deepStrictEqual(credOf0573(r, 'keycloak-admin', 'password'), [custom0573('kc-old')]);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq', 'password'), [custom0573('mq-old')]);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), [custom0573('mq-old')]);
+  assert.ok(r.lines.some((l) => l.includes('get secret keycloak-admin')), '陽性対照: 既存の Secret を読んでいる');
+  // 明示は既存に勝つ
+  const both = runUp({ ...NO_OPT_IN_0573, STUB_KEYCLOAK_ADMIN_EXISTING: custom0573('kc-old'), KEYCLOAK_ADMIN_PASSWORD: custom0573('kc-new'),
+    STUB_RABBITMQ_EXISTING: custom0573('mq-old') });
+  assert.strictEqual(both.status, 0, both.stderr.slice(-800));
+  assert.deepStrictEqual(credOf0573(both, 'keycloak-admin', 'password'), [custom0573('kc-new')]);
+});
+
+ok('IADR-0574: 既存の Secret・明示の値が開発用の値と同じなら止める（opt-in が無ければ）', () => {
+  const existingDev = runUp({ ...NO_OPT_IN_0573, STUB_KEYCLOAK_ADMIN_EXISTING: 'admin', STUB_RABBITMQ_EXISTING: custom0573('mq-old') });
+  assert.notStrictEqual(existingDev.status, 0, '既存の開発用の値を黙って使い続けた');
+  assert.ok(!wroteAnything(existingDev), '書いてから止まった');
+  assert.ok(/止める（何も作らない）: KEYCLOAK_ADMIN_PASSWORD（Secret keycloak-admin\/password）$/m.test(existingDev.stderr), existingDev.stderr.slice(-600));
+  const explicitDev = runUp({ ...NO_OPT_IN_0573, KEYCLOAK_ADMIN_PASSWORD: custom0573('kc'), RABBITMQ_PASSWORD: 'guest' });
+  assert.notStrictEqual(explicitDev.status, 0, '開発用の値の明示を通した');
+  assert.ok(/止める（何も作らない）: RABBITMQ_PASSWORD（Secret rabbitmq\/password）$/m.test(explicitDev.stderr), explicitDev.stderr.slice(-600));
+});
+
+ok('IADR-0574: opt-in（ALLOW_DEV_INFRA_CREDENTIALS=1）だけが開発用の値を許し、大きく警告する。1 以外（true）は opt-in にならない', () => {
+  const r = runUp({ ALLOW_DEV_INFRA_CREDENTIALS: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  assert.deepStrictEqual(credOf0573(r, 'keycloak-admin', 'password'), ['admin']);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq', 'password'), ['guest']);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), ['guest']);
+  assert.ok(/!!! WARNING: k8s-local-up\.sh: ALLOW_DEV_INFRA_CREDENTIALS=1 により、基盤の資格情報を公知の開発用の値で作る: KEYCLOAK_ADMIN_PASSWORD, RABBITMQ_PASSWORD/.test(r.stderr),
+    `警告が無い:\n${r.stderr.slice(0, 800)}`);
+  const t = runUp({ ALLOW_DEV_INFRA_CREDENTIALS: 'true' });
+  assert.notStrictEqual(t.status, 0, 'ALLOW_DEV_INFRA_CREDENTIALS=true で通した');
+});
+
+ok('IADR-0574: 起動器の Secret の作成に公知の既定値の代わりが残っていない（${…:-admin} / ${…:-guest} の形が無い）', () => {
+  const src = fs.readFileSync(UP_SCRIPT, 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.ok(!/\$\{KEYCLOAK_ADMIN_PASSWORD:-/.test(src), 'KEYCLOAK_ADMIN_PASSWORD の既定値が残っている');
+  assert.ok(!/\$\{RABBITMQ_PASSWORD:-/.test(src), 'RABBITMQ_PASSWORD の既定値が残っている');
+  assert.ok(/^\. "\$ROOT\/scripts\/lib\/infra-credentials\.sh"$/m.test(src), '判定器を読んでいない');
+});
+
+ok('IADR-0574 陽性対照: CI の integration-stack / cutover-rehearsal は使い捨てのスタックとして起動器の呼び出しすべてに opt-in を付ける', () => {
+  for (const wf of ['integration-stack.yml', 'cutover-rehearsal.yml']) {
+    const src = fs.readFileSync(path.join(REPO_ROOT, '.github', 'workflows', wf), 'utf8').split('\n');
+    const ups = src.map((l, i) => [l, i]).filter(([l]) => l.includes('bash scripts/k8s-local-up.sh --live'));
+    assert.ok(ups.length > 0, `${wf}: 起動器の呼び出しが無い`);
+    for (const [, i] of ups) assert.ok(/^\s*ALLOW_DEV_INFRA_CREDENTIALS=1 /.test(src[i - 1]), `${wf}:${i + 1}: 起動器の呼び出しに opt-in が無い（CI が止まる）`);
+  }
 });
 
 ok('#1860 監査指摘 2: パスワードを変えたら Valkey → BFF の順に作り直し、変えなければ作り直さない', () => {
