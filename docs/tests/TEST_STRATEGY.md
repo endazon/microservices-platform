@@ -3,15 +3,15 @@ title: テスト戦略（退行防止テスト基盤）
 type: test-spec
 status: in-progress
 created: 2026-08-03
-updated: 2026-10-09
+updated: 2026-10-21
 author: Claude
 ---
 <!-- trace:
 ids: [NFR-18, SC-05, SC-06, SC-07, SC-08]
 adrs: [ADR-0131, ADR-0027, ADR-0030, ADR-0065, ADR-0068]
-iadrs: [IADR-0522, IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0161, IADR-0195, IADR-0231, IADR-0232, IADR-0236, IADR-0282, IADR-0334, IADR-0368, IADR-0507]
-specs: [20261009_1839_session-store-valkey, 20261008_1788_integration-all-skip-gate, 20260926_issue-1551_submodule-backend-pr-ci, 20260803_issue-453_regression-test-foundation, 20260831_issue-1063_tests-mirror-body-structure, 20260903_issue-1146_template-tests-mirror, 20260904_issue-1145_unit-integration-trait, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
-issues: [#1839, #1788, #1551, #454, #503, #1063, #510, #568, #571, #580, #882, #899, #900, #901, #1145, #1146, planning#146, planning#160, planning#161, planning#162, planning#180, planning#750]
+iadrs: [IADR-0569, IADR-0522, IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0161, IADR-0195, IADR-0231, IADR-0232, IADR-0236, IADR-0282, IADR-0334, IADR-0368, IADR-0507]
+specs: [20261021_2014_e2e-standards-and-layers, 20261009_1839_session-store-valkey, 20261008_1788_integration-all-skip-gate, 20260926_issue-1551_submodule-backend-pr-ci, 20260803_issue-453_regression-test-foundation, 20260831_issue-1063_tests-mirror-body-structure, 20260903_issue-1146_template-tests-mirror, 20260904_issue-1145_unit-integration-trait, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
+issues: [#2014, #1839, #1788, #1551, #454, #503, #1063, #510, #568, #571, #580, #882, #899, #900, #901, #1145, #1146, planning#146, planning#160, planning#161, planning#162, planning#180, planning#750]
 -->
 
 # テスト戦略 — 再実装の退行防止基盤
@@ -287,7 +287,7 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 | 単体（バックエンド） | `Services/<Name>/Tests/` の**本体を鏡写しにした位置**（**テストは 1 プロジェクト**。下記） | **xUnit v3**（バックエンド標準ライブラリの決定どおり。[`src/Directory.Packages.props`](../../src/Directory.Packages.props) の `xunit.runner.visualstudio` は v3 用の 3.1.5）＋ AwesomeAssertions ＋ NSubstitute | ドメイン規則・ハンドラの分岐 |
 | 統合（バックエンド） | 同上（**種別で置き場所を分けない**。ユニット横断の統合は `src/<unit>/backend/Tests/<Unit>.IntegrationTests`） | Testcontainers（PostgreSQL / RabbitMQ / Valkey / Qdrant）＋ Respawn ＋ `Mvc.Testing` | 実依存を伴う往復・イベント連鎖 |
 | 単体（フロント） | 実装と同居（`*.test.tsx`） | Vitest（jsdom）＋ Testing Library | 画面要素・状態遷移 |
-| E2E | `src/*/frontend/e2e` | Playwright | 主要導線（**統合スタックでの拡充は後続 issue**） |
+| E2E | `src/*/frontend/e2e` | Playwright | 主要導線（**統合スタックでの拡充は後続 issue**）。実行層（CI スタブ・live 読み取り・live 書き込み・取引影響・LLM 費用）・命名・ロケータ・認証・品質ゲートの基準は [`E2E_STANDARDS.md`](E2E_STANDARDS.md) |
 | 契約 | `scripts/contract-schema-baseline.json`（スナップショット） | [`check-contract-schema.js`](../../scripts/check-contract-schema.js)（C# ソース構文解析。外部依存ゼロ Node） | `Shared.Contracts` のイベント/API スキーマの後方互換（[#465](https://github.com/endazon/microservices-platform/issues/465) / 契約スキーマの抽出方式（C# ソース構文解析）と後方互換ゲート） |
 | 性能（NFR） | [`NFR-01_performance-load-test.md`](NFR-01_performance-load-test.md) | — | 検索 p95 1.5s / RAG 初回 5s / 取り込み 1 万件・時（[#196](https://github.com/endazon/microservices-platform/issues/196)） |
 
