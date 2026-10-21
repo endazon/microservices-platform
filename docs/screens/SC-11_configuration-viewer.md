@@ -10,7 +10,7 @@ author: claude
 ids: [FR-15, SC-05, SC-10, SC-11]
 adrs: [ADR-0018, ADR-0031, ADR-0127, ADR-0017, ADR-0027]
 iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0036, IADR-0046, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0135]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20261021_planning-807_sc11-mock-note-resolved]
 issues: [#14, #19, #446, #504, #506, #519, #544, #552, #1746, planning#190, planning#198, planning#807]
 -->
 

@@ -23,7 +23,7 @@ issue: "planning#807"
 #1746（IADR-0560）で `docs/screens/SC-11_configuration-viewer.md` の対応表 #11 に「［2026-10-17］モックの文言『Ruri v3（高機密）』は古い。モックの是正は計画側が引き受ける」と注記した。
 planning#807 の裁定（2026-10-21）で計画のモック（hi-fi・wireframe）の 2 行が改まった。
 
-- 「ポート: 埋め込み」: 「Voyage AI（既定）／Ruri v3（高機密）」→「Voyage AI（public / internal）／語彙索引のみ（高機密・埋め込みなし）」（ADR-0127）
+- 「ポート: 埋め込み」: 「Voyage AI（既定）／Ruri v3（高機密）」→「Voyage AI（public / internal）／語彙索引のみ（高機密・埋め込みなし）」（ADR-0127。ADR-0017（Superseded by ADR-0127）を置き換えた）
 - 「イベント接続」: 「MassTransit / RabbitMQ」→「Wolverine / RabbitMQ」（ADR-0027）
 
 行番号（428・429）は変わらない。注記は根拠を失ったので外し、日付つきで「是正済み」とする。
