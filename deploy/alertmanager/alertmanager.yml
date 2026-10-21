@@ -12,6 +12,12 @@
 #
 #   したがって **現時点で自動的に届くのは Alertmanager の画面（/#/alerts）までである。**
 #   人が見に行くまでの時間は、見に行く間隔に等しい。
+#
+#   ［2026-10-22 / #2044］**経路B（k8s）だけはメールの受信先を 1 本持てる**（IADR-0571）。
+#   deploy/local/observability/alertmanager.yaml が、Secret `alertmanager-mail` の `to` を与えられたときに限り
+#   近接 MTA（mail-relay:587）宛の受信先 `ops-mail` を描画して既定の route をそこへ向ける（空なら本ファイルと同じ
+#   default-null へ落ちる）。**compose には近接 MTA が無いので、本ファイルは default-null のままである。**
+#   経路間で違うのは受信先だけで、route の束ね・inhibit_rules は同じに保つ。
 route:
   # 同じ原因の再通知で埋もれさせない。SLO アラートは分単位で判定するため待ちは短く取る。
   #

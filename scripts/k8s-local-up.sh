@@ -1098,6 +1098,11 @@ if [ "${ESO:-}" = "1" ]; then
   fi
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-grafana-oidc.yaml
+    # NFR-21, IADR-0571 (#2044): 警報メールの宛先。**bootstrap は seed しない**（宛先に dev の既定は無い）。
+    # KV（secret/msp/alertmanager-mail の to）が無いあいだは SecretSyncedError のまま Secret を作らず、
+    # Alertmanager は default-null へ落ちて起動する（＝「宛先が未供給」が ExternalSecret の状態に見える）。
+    # 同期を待たない（KV が無い既定で待ちが毎回タイムアウトするため）。下の rollout が前回までに同期した値を読む。
+    kubectl apply -f deploy/local/vault/eso/externalsecret-alertmanager-mail.yaml
   fi
   if [ "${HEADLAMP:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-headlamp-oidc.yaml
@@ -1138,7 +1143,7 @@ if [ "${ESO:-}" = "1" ]; then
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
   [ "${SYNTHETIC:-}" = "1" ] && msp_es="$msp_es synthetic-monitor-oidc"
   infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc e2e-accounts"
-  [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
+  [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc alertmanager-mail"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
   echo "    ESO: llm/object-storage-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
   echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp/reset-gate-oidc/e2e-accounts、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
@@ -1243,6 +1248,9 @@ if [ "${ESO:-}" = "1" ]; then
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl -n "$INFRA_NS" rollout restart deploy/grafana >/dev/null 2>&1 \
       && echo "      restarted $INFRA_NS/grafana" || echo "      skip $INFRA_NS/grafana（未デプロイ）"
+    # IADR-0571 (#2044): 警報メールの宛先は initContainer が Pod 起動時に描画する。供給後の値で作り直す。
+    kubectl -n "$INFRA_NS" rollout restart deploy/alertmanager >/dev/null 2>&1 \
+      && echo "      restarted $INFRA_NS/alertmanager" || echo "      skip $INFRA_NS/alertmanager（未デプロイ）"
   fi
   if [ "${HEADLAMP:-}" = "1" ]; then
     kubectl -n "$INFRA_NS" rollout restart deploy/headlamp >/dev/null 2>&1 \
