@@ -131,8 +131,16 @@ ok('🔴 3. Istio エッジの overlay は器と経路の**両方**を足す（�
 ok('🔴 4. 経路は POST だけを床へ向け、catch-all より前に入る（Istio の route は先勝ち）', () => {
   assert.ok(/method:\s*\n\s*exact:\s*POST/.test(OVERLAY_KUST),
     '経路が POST に限定されていない（差の出ない GET まで遅くなる）');
-  assert.ok(/path:\s*\/spec\/http\/0\b/.test(OVERLAY_KUST),
-    '経路を先頭へ入れていない（catch-all に吸われて床を通らない）');
+  // ［2026-10-22 / IADR-0574］素の VirtualService の先頭（http[0]）は管理面の拒否である。床はその直後（/spec/http/1）へ入れる
+  //   （床の正規表現は realm 名を問わないので、拒否より前だと /realms/master の申請の POST が床を通って届く）。
+  //   拒否の route は 1 つだけなので、/spec/http/1 は catch-all より前である。
+  assert.ok(/path:\s*\/spec\/http\/1\b/.test(OVERLAY_KUST),
+    '経路を拒否の直後（/spec/http/1）へ入れていない（先頭なら master へ届き、後ろなら catch-all に吸われる）');
+  const kcVs = EDGE_VS.slice(EDGE_VS.indexOf('name: msp-keycloak-edge'));
+  const httpAt = kcVs.indexOf('  http:\n');
+  const firstRoute = kcVs.slice(httpAt).split(/\n {4}- /)[1] || '';
+  assert.ok(/^name: keycloak-admin-surface-deny\b/.test(firstRoute) && /directResponse:/.test(firstRoute),
+    'msp-keycloak-edge の先頭が管理面の拒否でない（床を /spec/http/1 へ入れる前提が崩れた）');
   // 前提: 素の VirtualService の catch-all が今も prefix: / であること（前提が変わったら気付く）。
   assert.ok(/uri:\s*\{\s*prefix:\s*\/\s*\}/.test(EDGE_VS), 'edge-istio の Keycloak 経路に catch-all が無い');
 });

@@ -12,3 +12,5 @@ resources:
   - admin-ingress-wiki.yaml
   # IADR-0227 (#780): Keycloak を websecure(443) の keycloak.localhost へ出す（platform-infra ns）。
   - keycloak-ingress.yaml
+  # NFR-18, IADR-0574 (GHSA-rh44-px44-p48q): Keycloak の管理面（/admin・/realms/master）だけはエッジで拒む（403）。
+  - keycloak-admin-deny.yaml

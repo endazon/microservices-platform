@@ -64,6 +64,12 @@ spec:
             # 揺れる。実測）。v2 の KC_HOSTNAME に完全な URL を与える。KC_HOSTNAME_URL を戻さない（k8s-local-up.test.js が止める）。
             - name: KC_HOSTNAME
               value: https://keycloak.localhost
+            # NFR-18, IADR-0574 (GHSA-rh44-px44-p48q): 管理コンソールの URL はエッジではなく port-forward の先
+            #   （`kubectl -n platform-infra port-forward svc/keycloak 8080:8080` → http://localhost:8080/admin/）。エッジは /admin と
+            #   /realms/master を拒む（deploy/local/edge/keycloak-admin-deny.yaml・edge-istio の先頭の route）。これが無いと、
+            #   port-forward で開いた管理コンソールが KC_HOSTNAME（エッジ）の URL へ誘導され、拒否に当たって使えない。
+            - name: KC_HOSTNAME_ADMIN
+              value: http://localhost:8080
             # IADR-0524: バックチャネル（token・jwks・userinfo・introspection）の URL は要求の host で描く（24 の v1 の既定と同じ）。
             # .NET は in-cluster の well-known から jwks_uri を引くので、これが無いとエッジの URL（ローカル CA）を引きに行く。
             - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC

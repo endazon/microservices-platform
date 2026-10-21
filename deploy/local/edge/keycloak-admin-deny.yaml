@@ -1,0 +1,60 @@
+# NFR-11, NFR-18, IADR-0574 (GHSA-rh44-px44-p48q): **Keycloak の管理面（`/admin`・`/realms/master`）をエッジ（Traefik）に出さない。**
+#
+# keycloak-ingress.yaml は利用者が使う realm の経路（ログイン・トークン・アカウントコンソール・テーマの資源）を
+# 通すため、パスを絞らずに `/` で出している（Traefik の Ingress は「除外」を書けない）。ここでは同じ host の
+# **より長いパス**（`/admin`・`/realms/master`）だけを別の Ingress で受け、どの送信元も許さない ipAllowList で 403 を返す。
+#   - Traefik は router をルールの長さで優先づける（`Host && PathPrefix(/realms/master)` は `Host && PathPrefix(/)` より長い）。
+#     よって ここに当たる要求は keycloak-ingress.yaml の `/` へ落ちない。
+#   - pathType Prefix は要素単位で一致する: `/realms/master` と `/realms/master/...` に当たり、`/realms/platform` には当たらない。
+#   - ipAllowList の sourceRange は誰の送信元にもならない 1 アドレスだけ（= 全拒否）。Traefik v3（k3s 1.32 以降の同梱。
+#     起動器は k3s を v1.35 に固定する）の名前である。
+#   🔴 後段（backend）は Keycloak のままにしてある —— Ingress は backend を要するため。中間処理が全拒否するので後段へは届かない。
+#      中間処理が読めない（CRD が無い・名前が違う）と router ごと無効になり得るので、到達しないことは
+#      `scripts/check-stack-ready.js` の G4b がエッジ越しに実測する（CI の integration-stack）。
+# 管理者の経路はエッジではなく port-forward である（deploy/local/edge/README.md「Keycloak の管理コンソール」）。
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: keycloak-admin-deny
+  namespace: platform-infra
+  labels:
+    app.kubernetes.io/part-of: platform-edge
+spec:
+  ipAllowList:
+    sourceRange:
+      - 255.255.255.255/32
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak-edge-admin-deny
+  namespace: platform-infra
+  labels:
+    app.kubernetes.io/part-of: platform-edge
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.middlewares: platform-infra-keycloak-admin-deny@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - keycloak.localhost
+      secretName: edge-tls
+  rules:
+    - host: keycloak.localhost
+      http:
+        paths:
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8080
+          - path: /realms/master
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8080

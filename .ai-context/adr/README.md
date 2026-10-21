@@ -649,3 +649,4 @@
 | [IADR-0569](./IADR-0569_e2e-layers-and-live-opt-in.md) | E2E の実行層を L1/L2/L3/L3-T/L3-L に分け、タグ・Playwright project 名と live の opt-in（E2E_LIVE / E2E_LAYER）を確定する（#2014） | Accepted |
 | [IADR-0570](./IADR-0570_e2e-accounts-placeholder-credentials.md) | 試験アカウント e2e-* は realm の宣言にプレースホルダだけを置き、Secret e2e-accounts（OpenBao → ESO）の値を後追い Job と取り込み元の 1 つの口で差し込む。差し込めない利用者は作らない（#2024） | Accepted |
 | [IADR-0571](./IADR-0571_alertmanager-mail-receiver-via-nearby-mta.md) | Alertmanager の受信先を近接 MTA 経由のメール 1 本とし、宛先は Secret から起動時に描画する（空なら警告して default-null・不正なら起動しない。Grafana の contact point は揃えない）（#2044） | Accepted |
+| [IADR-0574](./IADR-0574_edge-block-keycloak-admin-surface.md) | エッジで Keycloak の管理面（/admin・/realms/master）を 403 で拒む。Traefik は長いパスの拒否の Ingress、Istio と chart は先頭の directResponse、管理者は port-forward（KC_HOSTNAME_ADMIN）（GHSA-rh44-px44-p48q） | Accepted |

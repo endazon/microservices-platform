@@ -137,6 +137,28 @@ mkcert を使う手もあるが、**CA が開発者マシン固有でリポジ�
   - hosts（`C:\Windows\System32\drivers\etc\hosts` / `/etc/hosts`）: `127.0.0.1 grafana.localhost argocd.localhost vault.localhost headlamp.localhost qdrant.localhost`
   - もしくは `grafana.127.0.0.1.nip.io:50000` 等の `*.nip.io` / `*.sslip.io`（hosts 編集不要・ワイルドカード解決）。
 
+## Keycloak の管理コンソール（エッジに出さない。IADR-0574）
+
+エッジ（Traefik の `keycloak-edge-admin-deny`・Istio の `msp-keycloak-edge` の先頭の route・chart の `keycloak-master-realm-deny`）は、
+`keycloak.localhost` の **`/admin` と `/realms/master` を 403 で拒む**。利用者が使う realm の経路（`/realms/platform/...` のログイン・
+トークン・アカウントコンソール、`/resources/...`）はこれまでどおり通る（`scripts/k8s-local-up.test.js` の模型と
+`node scripts/check-stack-ready.js --live` の G4b が固定する）。
+
+管理者はエッジを通らず、**port-forward** で管理コンソールを開く:
+
+```bash
+kubectl -n platform-infra port-forward svc/keycloak 8080:8080
+# → ブラウザで http://localhost:8080/admin/ （master realm の管理者。資格情報は Secret platform-infra/keycloak-admin）
+```
+
+- Keycloak は管理コンソールの URL を `KC_HOSTNAME_ADMIN=http://localhost:8080`（`deploy/local/infra/keycloak.yaml`）で描くので、
+  port-forward で開いた画面がエッジの URL へ誘導されない。ローカルの 8080 が使えないときは、別のポートに転送したうえで
+  この値を合わせる（ずれると管理コンソールのログインが別の URL へ飛ぶ）。
+- CLI は Pod の中の `kcadm.sh` を使う（`kubectl -n platform-infra exec deploy/keycloak -- /opt/keycloak/bin/kcadm.sh …`。
+  資格情報は Pod の env から読み、端末に出さない。`docs/operations/paired-secret-rotation-runbook.md` の手順と同じ形）。
+- realm の後追い（`deploy/local/keycloak-setup/reconcile-realm.sh`）と各サービスの Admin REST は in-cluster の
+  `http://keycloak:8080` を使うので、エッジの拒否の影響を受けない。
+
 ## OIDC（集約後 URL）
 
 issuer は **`https://keycloak.localhost/realms/platform`（エッジ host）**である（[IADR-0243](../../../.ai-context/adr/IADR-0243_keycloak-edge-issuer-migration.md)・#780。[IADR-0091](../../../.ai-context/adr/IADR-0091_local-edge-aggregation-traefik.md) 決定 5 の最小案「`keycloak:8080` 維持」は Supersede された）。ツール UI は従来どおり 50000 に集約する。

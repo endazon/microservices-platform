@@ -44,6 +44,15 @@ spec:
     - microservices-platform-edge
   http:
     {{- if .Values.edge.oidc.enabled }}
+    # NFR-18, IADR-0574 (GHSA-rh44-px44-p48q): Keycloak の管理用の realm（master）はエッジに出さない（403 を直に返す）。
+    # 下の /realms/ の転送より前に置く（Istio は先勝ち）。prefix は文字列の前方一致なので exact と「/realms/master/」に分ける。
+    # /admin は Keycloak へ転送していない（下の catch-all の SPA へ落ちる）ので、ここでは扱わない。
+    - name: keycloak-master-realm-deny
+      match:
+        - uri: { exact: /realms/master }
+        - uri: { prefix: /realms/master/ }
+      directResponse:
+        status: 403
     # ブラウザ OIDC issuer 統一（任意）: SPA と同一エッジ host から Keycloak の OIDC パスへ到達させ、
     # ブラウザが受け取る iss とサービス間検証（Auth__Authority）を同一 URL にそろえる（IADR-0076 決定3）。
     # /bff より先に評価させる（プレフィックスの取り違えを避ける）。
