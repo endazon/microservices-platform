@@ -412,6 +412,11 @@ const KUBECTL_STUB = [
   // #1864 監査: STUB_REALM_RECONCILE_FAIL=1 で後追い Job を Failed にする（追随の失敗で helm の前に止まることの変異試験）。
   'if [ "${STUB_REALM_RECONCILE_FAIL:-}" = "1" ]; then case "$*" in *"get job keycloak-realm-reconcile"*conditions*) echo "Failed "; exit 0;; esac; fi',
   'case "$*" in *"get job"*conditions*) echo "Complete "; exit 0;; esac',
+  // IADR-0573: ブローカのユーザーの写し（Secret rabbitmq-users）。既定は全キーに値がある世界（base64 のダミー）。
+  //   STUB_RMQ_USERS_MISSING=1 で値が揃わない世界（同期の失敗）を作る（起動器が止まることの陽性対照）。
+  'case "$*" in *"get secret rabbitmq-users"*) [ "${STUB_RMQ_USERS_MISSING:-}" = "1" ] || printf "ZHVtbXk="; exit 0;; esac',
+  //   ブローカへの exec -i は本物と同じく標準入力（パスワード）を読み切る（読まずに閉じると送り手が SIGPIPE で落ちる）。
+  'case "$*" in *"exec -i deploy/rabbitmq -- rabbitmqctl"*) cat >/dev/null; exit 0;; esac',
   // #1699: バックアップの CronJob の門の入力。CronJob のイメージは実物のマニフェストと同じ形の参照を返す。
   //   受取人の ConfigMap は STUB_BACKUP_RECIPIENTS（中身そのもの）を返す。既定（未設定）は空 ＝ 受取人なし。
   'case "$*" in *"get cronjob platform-backup-"*"containers[0].image"*) echo "k3d-local/platform-backup:pg16.15-age1.3.2-r1"; exit 0;; esac',
@@ -1897,6 +1902,37 @@ ok('ESO=1 (AST/IADR-0566): opend-auth-caller-secret の ExternalSecret を apply
     'ESO 未設定なのに opend-auth-caller-secret の ExternalSecret を apply している');
   assert.ok(!anyLineHas(res.lines, 'create secret generic opend-auth-caller-secret'),
     'opend-auth-caller-secret を手動 apply している（二重所有）');
+});
+
+// NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ESO=1 でブローカのユーザーの写しを同期し、宣言の全ユーザーを合わせる。
+//   既定（ESO 未設定）では何もしない。値が揃わなければ止まる。パスワードはコマンドの引数に載せない（標準入力）。
+ok('ESO=1 (IADR-0573): rabbitmq-users を apply し、宣言の全ユーザーを標準入力のパスワードで合わせる', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  const esAt = res.lines.findIndex((l) => l.includes('deploy/local/vault/eso/externalsecret-rabbitmq-users.yaml'));
+  assert.ok(esAt >= 0, 'externalsecret-rabbitmq-users.yaml が apply されない');
+  assert.ok(!anyLineHas(DEFAULT.lines, 'externalsecret-rabbitmq-users.yaml'), 'ESO 未設定なのに rabbitmq-users を apply している');
+  const users = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/users.txt'), 'utf8')
+    .split('\n').filter((l) => l.trim() && !l.trim().startsWith('#')).map((l) => l.trim().split(/\s+/)[0]);
+  assert.ok(users.length >= 18, `宣言のユーザーが少ない（読めていない）: ${users.length}`);
+  for (const u of users) {
+    const add = res.lines.findIndex((l) => l.includes('rabbitmqctl -q add_user ' + u) || l.includes('rabbitmqctl -q change_password ' + u));
+    assert.ok(add > esAt, `${u} を合わせていない、または ExternalSecret の apply より前にある`);
+    assert.ok(anyLineHas(res.lines, `rabbitmqctl -q set_permissions -p / ${u} .* .* .*`), `${u} の権限を設定していない`);
+    assert.ok(anyLineHas(res.lines, `rabbitmqctl -q authenticate_user ${u}`), `${u} の認証を確かめていない`);
+    // 引数はユーザー名で終わる（パスワードを引数に載せない）。
+    for (const l of res.lines.filter((x) => / (add_user|change_password|authenticate_user) /.test(x) && x.includes(` ${u}`))) {
+      assert.ok(l.trimEnd().endsWith(` ${u}`), `パスワードを引数に載せている疑い: ${l}`);
+    }
+  }
+  assert.ok(!res.lines.some((l) => /rabbitmqctl .*(delete_user|change_password|set_permissions|add_user) guest\b/.test(l)),
+    '既定のユーザー guest に触れている（移行の段 1 では触れない）');
+  assert.strictEqual(res.status, 0, res.stderr);
+});
+
+ok('ESO=1 (IADR-0573): ブローカのユーザーの値が揃わなければ止まる', () => {
+  const res = runUp({ VAULT: '1', ESO: '1', STUB_RMQ_USERS_MISSING: '1', RABBITMQ_USERS_TIMEOUT: '1' });
+  assert.notStrictEqual(res.status, 0, '値が揃わないのに起動器が進んだ');
+  assert.ok(/rabbitmq-users に次のユーザーの値が/.test(res.stderr), `理由を告げていない:\n${res.stderr.slice(-800)}`);
 });
 
 // IADR-0097 (#310) PR-2: ESO=1 で object-storage-credentials（IADR-0461。旧 minio-credentials）/wikijs-db/wikijs-sync も

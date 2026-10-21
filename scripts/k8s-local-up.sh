@@ -1107,6 +1107,9 @@ if [ "${ESO:-}" = "1" ]; then
   # （所有・再作成しない）。値は seed=step3 と完全一致のため Pod 再起動や PVC 初期化済み DB の不整合は起きない。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-postgres.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
+  # NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーのパスワード（ブローカ側の写し）。
+  #   読み手は下の reconcile-users.sh だけ（同期を待ってからユーザーと権限を合わせる）。種は bootstrap.sh が乱数で入れる。常時 apply。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq-users.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
   # SC-15, FR-22, ADR-0026/ADR-0045 決定 6 ＋ ADR-0078 決定 2, IADR-0332 / IADR-0404 (#1102 / #1245):
   # 近接 MTA が読む上流の接続条件。**手動 apply は step [3/7] で保持済み**（dev 既定。ESO の有無によらず作る）。
@@ -1137,7 +1140,7 @@ if [ "${ESO:-}" = "1" ]; then
   msp_es="llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
   [ "${SYNTHETIC:-}" = "1" ] && msp_es="$msp_es synthetic-monitor-oidc"
-  infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc e2e-accounts"
+  infra_es="postgres rabbitmq rabbitmq-users keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc e2e-accounts"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
   echo "    ESO: llm/object-storage-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
@@ -1224,6 +1227,15 @@ if [ "${ESO:-}" = "1" ]; then
   #    対象外: postgres / rabbitmq / keycloak-admin は creationPolicy: Merge で seed（step 3）と**同一値**のため
   #    env は変化せず、再起動は DB/broker を無用に落とすだけ（IADR-0099）。vault-oidc は env 参照が無く
   #    bootstrap が CLI で読むため rollout 不要。
+  # NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカにサービスごとのユーザーと権限を作る・合わせる（冪等。移行の段 1）。
+  #   既定のユーザーと、それを使う既存の接続には触れない（各サービスの切り替えは消費側の段。既定のユーザーの無効化はその後）。
+  #   🔴 合わせられなければ止める（後の段で消費側が切り替えた瞬間に接続できなくなるのを、ここで先に見せる）。
+  echo "    ブローカのサービスごとのユーザーを合わせる（deploy/local/rabbitmq-setup/users.txt・IADR-0573）"
+  if ! bash "$ROOT/deploy/local/rabbitmq-setup/reconcile-users.sh"; then
+    echo "ERROR: ブローカのサービスごとのユーザーを合わせられない。bash deploy/local/rabbitmq-setup/reconcile-users.sh で再実行できる" >&2
+    exit 1
+  fi
+
   for d in seaweedfs llmgateway-service wiki-service wiki-js retrieval-service ingestion-service \
            aianalysis-service graph-service conversion-service datasource-service mcp-service \
            document-service; do

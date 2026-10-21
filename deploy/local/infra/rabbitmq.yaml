@@ -56,3 +56,57 @@ spec:
   ports:
     - { name: amqp, port: 5672, targetPort: 5672 }
     - { name: management, port: 15672, targetPort: 15672 }
+---
+# NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: 到達の制限（ingress だけ）。届いてよいのは、ブローカを使うサービスの Pod だけ:
+#   - microservices-platform の 7 サービス（helm の messaging: true。app: <name>-service）
+#   - ai-stock-trading の 11 サービス（AST の chart の Worker 全件。全 Worker が RabbitMq__ConnectionString を持つ）
+# 列挙の単一情報源は deploy/local/rabbitmq-setup/users.txt（ユーザーと同じ表）。一致は scripts/scripts.repo.test.js が突き合わせる。
+# 管理の口（15672）はどこからも許さない（kubectl port-forward は Pod 網を通らないので、運用者の到達はそちらで行う）。
+# readiness は exec なので通信を要らない。egress は絞らない。
+# 🔴 NetworkPolicy を強制しないクラスタでは無害な宣言として残るだけで、そのとき防御はサービスごとの資格情報の 1 段である。
+# 🔴 ブローカを使うサービスを足すときは、users.txt と同じ変更でここへ足す（足さないと接続が時間切れになる）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rabbitmq-ingress-clients
+  namespace: platform-infra
+  labels: { app: rabbitmq }
+spec:
+  podSelector: { matchLabels: { app: rabbitmq } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: microservices-platform }
+          podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - document-service
+                  - datasource-service
+                  - conversion-service
+                  - ingestion-service
+                  - retrieval-service
+                  - wiki-service
+                  - graph-service
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ai-stock-trading }
+          podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - audit-service
+                  - backtest-service
+                  - configuration-service
+                  - cost-control-service
+                  - information-collection-service
+                  - market-monitor-service
+                  - notification-service
+                  - order-execution-service
+                  - report-service
+                  - risk-management-service
+                  - trade-decision-service
+      ports:
+        - { protocol: TCP, port: 5672 }
