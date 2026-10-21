@@ -18,6 +18,7 @@
     { "path": "check-login-existence-disclosure.js", "offline": ["--self-test"] },
     { "path": "check-password-reset-mail.js", "offline": ["--self-test"] },
     { "path": "check-stack-ready.js", "offline": ["--self-test"] },
+    { "path": "lib/abac-seeder-session.js", "offline": ["--help", "--self-test"] },
     { "path": "check-bff-multi-replica-session.js", "offline": ["--plan"] },
     { "path": "check-mcp-client-provisioning.js", "offline": ["--self-test"] },
     { "path": "seed-abac-policies.js", "offline": ["--dry-run"] },

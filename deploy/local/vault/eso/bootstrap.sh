@@ -40,7 +40,7 @@ client_secret_kv_of() {
     ai-stock-trading-kb-reader) printf 'ai-stock-trading/app-secrets kb-reader-auth-client-secret' ;;
     ai-stock-trading-llm-caller) printf 'ai-stock-trading/app-secrets llm-auth-client-secret' ;;
     ai-stock-trading-owner) printf 'ai-stock-trading/app-secrets discord-owner-auth-client-secret' ;;
-    abac-seeder) ;; # Vault に種を置かない（投入器が実行時に名乗る。IADR-0133）
+    abac-seeder) printf 'msp/abac-seeder-oidc client-secret' ;; # IADR-0576: 投入器・運用スクリプトが実行時に Secret から読む
     *) return 1 ;;
   esac
 }
@@ -309,6 +309,11 @@ vkv_create_if_absent msp/reset-gate-oidc client-secret "${RESET_GATE_CLIENT_SECR
 # `RagLatencySeriesAbsent` を鳴らす（原因が「評価対象が本当に無い」と区別できない。wikijs-oidc と同じ罠）。
 # 種は無条件に入れる。ExternalSecret を apply するのは SYNTHETIC=1 のときだけである（k8s-local-up.sh）。
 vkv_create_if_absent msp/synthetic-monitor-oidc client-secret "${SYNTHETIC_MONITOR_CLIENT_SECRET:-synthetic-monitor-dev-secret-change-me}"
+# NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder。既定で無効・実行の間だけ有効）の client secret。
+# 投入器（seed-*.js）と運用スクリプト（republish・archive）は、実行時に ESO の同期先 Secret platform-infra/abac-seeder-oidc から読む
+# （realm の宣言の値へは落ちない）。**既定は realm の宣言の値**（dev のクラスタの初回。dev ではない context で env を与えなければ、
+# 冒頭の判定が止める）。env は作るときだけ効く（#1682）。
+vkv_create_if_absent msp/abac-seeder-oidc client-secret "${ABAC_SEED_CLIENT_SECRET:-$(dev_client_secret_dev_value abac-seeder)}"
 # IADR-0099 (#310) PR-4: 基盤 secret（postgres/rabbitmq/keycloak-admin）。★値は k8s-local-up.sh step 3 の手動 apply と
 # **完全一致**させること（env 由来 or 同じ既定 postgres/guest/admin）。DB/broker/keycloak は既存パスワードで初期化済みのため、
 # 値がズレると認証破壊。ExternalSecret は creationPolicy: Merge で同一値を上書きするのみ（値不変＝無害）。

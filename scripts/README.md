@@ -118,6 +118,7 @@ NFR・#1550。ワークフローの `node scripts/...` の行をまとめて実�
 | `archive-bodyless-documents.js` | `--help`（`--dry-run` も文書サービスとオブジェクトストレージへ当たるので指定が要る） |
 | `strip-untrusted-boundary.js` | `--help`（`--dry-run` も文書サービスとオブジェクトストレージへ当たるので指定が要る） |
 | `archive-ast-quote-documents.js` | `--help`（`--dry-run` も文書サービスへ当たるので指定が要る） |
+| `lib/abac-seeder-session.js` | `--help` / `--self-test`（投入器の主体 abac-seeder の一時の有効化。稼働の経路は `--disable` / `--status`。IADR-0576） |
 | `export-loki-logs.js` | `--help` |
 | `measure-abac-combinations.js` | `--input`（収集済みの集計） |
 | `measure-cutover-inventory.js` | `--input`（収集済みの集計）/ `--print-recreate-sql` |
