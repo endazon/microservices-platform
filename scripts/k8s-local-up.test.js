@@ -3333,21 +3333,21 @@ ok('#780: Keycloak の Ingress は同 namespace の edge-tls を使い、後段�
 // 宣言を読んで経路の選ばれ方を模型で再現し、(1) 管理面はエッジで拒む (2) 利用者が使う realm の経路（ログイン・トークン・
 // アカウントコンソール・テーマの資源・discovery）は従来どおり Keycloak へ届く、を Traefik / Istio の両エッジで固定する。
 // 実測は scripts/check-stack-ready.js の G4b（エッジ越しの curl。CI の integration-stack）。
-const { parseDocuments: parseYaml0574 } = require(path.join(REPO_ROOT, 'scripts', 'lib', 'yaml-subset.js'));
-const REALM_NAME_0574 = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8')).realm;
-const ADMIN_PATHS_0574 = ['/admin', '/admin/', '/admin/master/console/', '/admin/realms/platform/users',
+const { parseDocuments: parseYaml0575 } = require(path.join(REPO_ROOT, 'scripts', 'lib', 'yaml-subset.js'));
+const REALM_NAME_0575 = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8')).realm;
+const ADMIN_PATHS_0575 = ['/admin', '/admin/', '/admin/master/console/', '/admin/realms/platform/users',
   '/realms/master', '/realms/master/', '/realms/master/.well-known/openid-configuration', '/realms/master/protocol/openid-connect/token',
   '/realms/master/login-actions/reset-credentials', '/realms/master/account/'];
-const USER_PATHS_0574 = [`/realms/${REALM_NAME_0574}`, `/realms/${REALM_NAME_0574}/.well-known/openid-configuration`,
-  `/realms/${REALM_NAME_0574}/protocol/openid-connect/auth`, `/realms/${REALM_NAME_0574}/protocol/openid-connect/token`,
-  `/realms/${REALM_NAME_0574}/protocol/openid-connect/certs`, `/realms/${REALM_NAME_0574}/login-actions/authenticate`,
-  `/realms/${REALM_NAME_0574}/login-actions/reset-credentials`, `/realms/${REALM_NAME_0574}/account/`,
-  `/realms/${REALM_NAME_0574}/account/linked-accounts`, '/resources/abc12/login/platform/css/login.css', '/realms/ai-stock-trading/protocol/openid-connect/auth',
+const USER_PATHS_0575 = [`/realms/${REALM_NAME_0575}`, `/realms/${REALM_NAME_0575}/.well-known/openid-configuration`,
+  `/realms/${REALM_NAME_0575}/protocol/openid-connect/auth`, `/realms/${REALM_NAME_0575}/protocol/openid-connect/token`,
+  `/realms/${REALM_NAME_0575}/protocol/openid-connect/certs`, `/realms/${REALM_NAME_0575}/login-actions/authenticate`,
+  `/realms/${REALM_NAME_0575}/login-actions/reset-credentials`, `/realms/${REALM_NAME_0575}/account/`,
+  `/realms/${REALM_NAME_0575}/account/linked-accounts`, '/resources/abc12/login/platform/css/login.css', '/realms/ai-stock-trading/protocol/openid-connect/auth',
   '/realms/masterpiece/account/'];
-const deny0574 = readAt(EDGE_DIR, 'keycloak-admin-deny.yaml');
+const deny0575 = readAt(EDGE_DIR, 'keycloak-admin-deny.yaml');
 
 /** k8s の Ingress（pathType Prefix は要素単位）× Traefik の優先（ルールの長いものが勝つ）の模型。勝った Ingress の名前を返す。 */
-function traefikRoute0574(ingresses, host, reqPath) {
+function traefikRoute0575(ingresses, host, reqPath) {
   const prefixMatch = (p, req) => p === '/' || req === p || req.startsWith(`${p.replace(/\/$/, '')}/`);
   let best = null;
   for (const ing of ingresses) {
@@ -3364,7 +3364,7 @@ function traefikRoute0574(ingresses, host, reqPath) {
 
 ok('IADR-0575: Traefik のエッジ — 管理面は拒否の Ingress（全拒否の中間処理）が受け、利用者の realm の経路は keycloak-edge が受ける', () => {
   assert.ok(/^\s*-\s*keycloak-admin-deny\.yaml\s*$/m.test(EDGE_KUST), 'edge の kustomization に keycloak-admin-deny.yaml が無い（適用されない）');
-  const docs = parseYaml0574(deny0574);
+  const docs = parseYaml0575(deny0575);
   const mw = docs.find((d) => d.kind === 'Middleware');
   const ing = docs.find((d) => d.kind === 'Ingress');
   assert.ok(mw && ing, 'Middleware と Ingress の両方が無い');
@@ -3375,15 +3375,15 @@ ok('IADR-0575: Traefik のエッジ — 管理面は拒否の Ingress（全拒�
   assert.strictEqual(ing.metadata.annotations['traefik.ingress.kubernetes.io/router.middlewares'],
     `${mw.metadata.namespace}-${mw.metadata.name}@kubernetescrd`, '拒否の Ingress が中間処理を参照していない');
   assert.strictEqual(ing.metadata.annotations['traefik.ingress.kubernetes.io/router.entrypoints'], 'websecure', '利用者の入口（websecure）と違う');
-  const all = [parseYaml0574(KEYCLOAK_INGRESS).find((d) => d.kind === 'Ingress'), ing];
-  for (const p of ADMIN_PATHS_0574) assert.strictEqual(traefikRoute0574(all, 'keycloak.localhost', p), 'keycloak-edge-admin-deny', `${p} が拒否に当たらない`);
-  for (const p of USER_PATHS_0574) assert.strictEqual(traefikRoute0574(all, 'keycloak.localhost', p), 'keycloak-edge', `利用者の経路 ${p} が Keycloak へ届かない`);
+  const all = [parseYaml0575(KEYCLOAK_INGRESS).find((d) => d.kind === 'Ingress'), ing];
+  for (const p of ADMIN_PATHS_0575) assert.strictEqual(traefikRoute0575(all, 'keycloak.localhost', p), 'keycloak-edge-admin-deny', `${p} が拒否に当たらない`);
+  for (const p of USER_PATHS_0575) assert.strictEqual(traefikRoute0575(all, 'keycloak.localhost', p), 'keycloak-edge', `利用者の経路 ${p} が Keycloak へ届かない`);
   // 陰性対照: 拒否の Ingress を外すと管理面は Keycloak へ届く（模型が拒否を見ている）
-  assert.strictEqual(traefikRoute0574([all[0]], 'keycloak.localhost', '/admin/'), 'keycloak-edge');
+  assert.strictEqual(traefikRoute0575([all[0]], 'keycloak.localhost', '/admin/'), 'keycloak-edge');
 });
 
 /** Istio の HTTP route（先勝ち。uri の prefix は文字列の前方一致、exact は完全一致）の模型。勝った route を返す。 */
-function istioRoute0574(http, reqPath, method = 'GET') {
+function istioRoute0575(http, reqPath, method = 'GET') {
   return http.find((r) => (r.match || [{}]).some((m) => {
     if (m.method && m.method.exact !== method) return false;
     const u = m.uri || {};
@@ -3395,7 +3395,7 @@ function istioRoute0574(http, reqPath, method = 'GET') {
 }
 
 ok('IADR-0575: Istio のエッジ — 先頭の route が管理面を 403 で拒み、利用者の realm の経路は Keycloak へ届く（リセット申請の床を入れても）', () => {
-  const vs = parseYaml0574(readAt(REPO_ROOT, 'deploy', 'local', 'edge-istio', 'virtualservice-app.yaml')).find((d) => d.kind === 'VirtualService' && d.metadata.name === 'msp-keycloak-edge');
+  const vs = parseYaml0575(readAt(REPO_ROOT, 'deploy', 'local', 'edge-istio', 'virtualservice-app.yaml')).find((d) => d.kind === 'VirtualService' && d.metadata.name === 'msp-keycloak-edge');
   assert.ok(vs, 'msp-keycloak-edge が無い');
   assert.strictEqual(vs.spec.http[0].name, 'keycloak-admin-surface-deny', '先頭の route が拒否でない（Istio は先勝ち）');
   assert.strictEqual(vs.spec.http[0].directResponse.status, '403');
@@ -3406,19 +3406,19 @@ ok('IADR-0575: Istio のエッジ — 先頭の route が管理面を 403 で拒
   assert.ok(floorRegex, '床の正規表現を読めない');
   const floor = { name: 'reset-credentials-floor', match: [{ method: { exact: 'POST' }, uri: { regex: floorRegex.replace(/^\^/, '') } }], route: [{ destination: { host: 'reset-floor' } }] };
   for (const http of [vs.spec.http, [vs.spec.http[0], floor, ...vs.spec.http.slice(1)]]) {
-    for (const p of ADMIN_PATHS_0574) {
-      for (const m of ['GET', 'POST']) assert.strictEqual((istioRoute0574(http, p, m) || {}).name, 'keycloak-admin-surface-deny', `${m} ${p} が拒否に当たらない`);
+    for (const p of ADMIN_PATHS_0575) {
+      for (const m of ['GET', 'POST']) assert.strictEqual((istioRoute0575(http, p, m) || {}).name, 'keycloak-admin-surface-deny', `${m} ${p} が拒否に当たらない`);
     }
-    for (const p of USER_PATHS_0574) {
-      const r = istioRoute0574(http, p);
+    for (const p of USER_PATHS_0575) {
+      const r = istioRoute0575(http, p);
       assert.ok(r && r.route && /keycloak\.platform-infra/.test(r.route[0].destination.host), `利用者の経路 ${p} が Keycloak へ届かない`);
     }
   }
   // 床は利用者の realm の申請の POST にだけ当たる（拒否の後ろでも効く）
   const withFloor = [vs.spec.http[0], floor, ...vs.spec.http.slice(1)];
-  assert.strictEqual(istioRoute0574(withFloor, `/realms/${REALM_NAME_0574}/login-actions/reset-credentials`, 'POST').name, 'reset-credentials-floor');
+  assert.strictEqual(istioRoute0575(withFloor, `/realms/${REALM_NAME_0575}/login-actions/reset-credentials`, 'POST').name, 'reset-credentials-floor');
   // 陰性対照: 床を先頭へ入れる（従来の /spec/http/0）と master の申請の POST が床を通って Keycloak へ届く
-  assert.strictEqual(istioRoute0574([floor, ...vs.spec.http], '/realms/master/login-actions/reset-credentials', 'POST').name, 'reset-credentials-floor');
+  assert.strictEqual(istioRoute0575([floor, ...vs.spec.http], '/realms/master/login-actions/reset-credentials', 'POST').name, 'reset-credentials-floor');
 });
 
 ok('IADR-0575: chart のエッジ（edge.oidc.enabled）は /realms/ の転送より前に master を 403 で拒む', () => {
