@@ -1,5 +1,5 @@
 ---
-title: IADR-0573 起動器と Vault の種は、Keycloak の管理者・RabbitMQ のブローカのパスワードを公知の既定値で作らない。明示 ＞ 既存の値 ＞ 止める、開発用の値は明示の opt-in（使い捨ての環境だけ）でだけ許す
+title: IADR-0574 起動器と Vault の種は、Keycloak の管理者・RabbitMQ のブローカのパスワードを公知の既定値で作らない。明示 ＞ 既存の値 ＞ 止める、開発用の値は明示の opt-in（使い捨ての環境だけ）でだけ許す
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, ADR-0124, IADR-0572, IADR-0485, IADR-0286, IADR-0517]
@@ -12,7 +12,7 @@ related_specs:
   - ../specs/20261022_infra-credentials-fail-closed.md
 ---
 
-# IADR-0573: 基盤の資格情報を公知の既定値で作らない（fail-closed。GHSA-rh44-px44-p48q）
+# IADR-0574: 基盤の資格情報を公知の既定値で作らない（fail-closed。GHSA-rh44-px44-p48q）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

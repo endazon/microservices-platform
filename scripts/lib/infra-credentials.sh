@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# NFR-18, ADR-0124 決定 1, IADR-0573 (GHSA-rh44-px44-p48q):
+# NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q):
 # **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）を公知の開発用の値で作らない**判定の唯一の口（fail-closed）。
 # `source` して使う。呼び出し元は scripts/k8s-local-up.sh（[1/7] の直後・Secret を 1 つも書く前）と
 # deploy/local/vault/eso/bootstrap.sh（Vault の種。まだ無い KV だけ）の 2 本。**判定をここ以外へ複写しない。**
@@ -103,7 +103,7 @@ infra_cred_report() {
       echo "ERROR: ${caller}: 基盤の資格情報が指定されていないか、公知の開発用の値と同じなので止める（何も作らない）: ${denied}"
       echo "       対処: 環境変数に開発用ではない値を与える（既に稼働中なら稼働中の値と同じ値。値は表示しない）。"
       echo "             既存の Secret・Vault の KV が開発用ではない値を持っていれば、指定しなくてもその値を使う（KV は触らない）。"
-      echo "       使い捨ての開発環境（手元の検証・CI の使い捨てスタック）だけ ALLOW_DEV_INFRA_CREDENTIALS=1 で開発用の値を許す（警告を出す。IADR-0573）。"
+      echo "       使い捨ての開発環境（手元の検証・CI の使い捨てスタック）だけ ALLOW_DEV_INFRA_CREDENTIALS=1 で開発用の値を許す（警告を出す。IADR-0574）。"
     } >&2
     return 1
   fi

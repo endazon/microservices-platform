@@ -46,6 +46,8 @@ winget install Helm.Helm
 
 **どちらでも Node.js 22 が要る**（`winget install OpenJS.NodeJS.LTS`）。`k8s-local-up.sh` は [3/7] で realm の取り込み元を作るときに
 `node` で試験アカウントのプレースホルダを処理する（無いと止まる。下の「試験アカウント（e2e-*）」）。
+また起動器（`scripts/k8s-local-up.sh`）と Vault の種（`deploy/local/vault/eso/bootstrap.sh`）は、dev の値の守りの対象を realm の宣言から
+`node scripts/lib/dev-client-secret-targets.js` で導出する。node が無いと、守れないまま進まないよう起動の最初で止まる（IADR-0572）。
 
 ## 稼働ホストの前提（メモリ・電源。Issue #1919）
 
@@ -154,7 +156,7 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 #   → http://localhost:5080/health
 ```
 
-> **Keycloak の管理者・RabbitMQ のブローカのパスワードは公知の既定値で作らない**（IADR-0573。fail-closed）。起動器は
+> **Keycloak の管理者・RabbitMQ のブローカのパスワードは公知の既定値で作らない**（IADR-0574。fail-closed）。起動器は
 > `KEYCLOAK_ADMIN_PASSWORD` / `RABBITMQ_PASSWORD` の明示 ＞ 既存の Secret（`platform-infra` の `keycloak-admin` / `rabbitmq`）の値の順に使い、
 > どちらも無い（または開発用の値と同じ）なら何も作らずに止まる。**使い捨ての開発環境だけ** `ALLOW_DEV_INFRA_CREDENTIALS=1` で開発用の値を許す
 > （警告を出す）。残すクラスタでは開発用ではない値を env で与える（一度作れば、次からは既存の Secret の値を使う）。
@@ -870,7 +872,7 @@ kubectl create configmap keycloak-realms -n platform-infra \
   --from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json
 # IADR-0518 (#1834): Keycloak の取り込み元（keycloak.yaml がマウントする。無いと Pod が起動しない）。
 # 手で作るときは宣言のまま（dev の値）になる。dev 以外のクラスタでは手で作らず k8s-local-up.sh を使う
-# （identity-admin / reset-gate / mcp-client-admin の secret を env の値へ差し替えて作る）。
+# （サービスアカウントを持つ機密クライアントの secret を env の値へ差し替えて作る。対象は宣言から導出する。IADR-0572）。
 kubectl create secret generic keycloak-realm-import -n platform-infra \
   --from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json
 

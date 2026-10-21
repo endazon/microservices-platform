@@ -14100,7 +14100,7 @@ exit 0
       'microservices-platform|bff-oidc|vault-backend|bff-oidc|msp/bff-oidc |',
     ].join('\n') + '\n';
 
-    const run1728 = ({ setup = () => {}, env = {}, bashArgs = [] } = {}) => {
+    const run1728 = ({ setup = () => {}, env = {}, bashArgs = [], script = BOOTSTRAP } = {}) => {
       const dir = fs1728.mkdtempSync(path1728.join(os1728.tmpdir(), 'iadr0494-'));
       try {
         const bin = path1728.join(dir, 'bin');
@@ -14121,7 +14121,7 @@ exit 0
         fs1728.writeFileSync(log, '');
         const baseEnv = { ...process.env };
         for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_|ALLOW_DEV_CLIENT_SECRETS$|ALLOW_DEV_INFRA_CREDENTIALS$|KEYCLOAK_ADMIN_PASSWORD$|RABBITMQ_PASSWORD$)|_CLIENT_SECRET$/.test(k)) delete baseEnv[k];
-        const r = spawn1728('bash', [...bashArgs, BOOTSTRAP.split(path1728.sep).join('/')], {
+        const r = spawn1728('bash', [...bashArgs, script.split(path1728.sep).join('/')], {
           encoding: 'utf8',
           timeout: 60000,
           env: { ...baseEnv, PATH: `${bin}${path1728.delimiter}${process.env.PATH}`, STUB_STATE: state, STUB_LOG: log,
@@ -14136,7 +14136,11 @@ exit 0
         const stdinLog = `${log}.stdin`;
         const putStdin = Object.fromEntries((fs1728.existsSync(stdinLog) ? fs1728.readFileSync(stdinLog, 'utf8').split('\n').filter(Boolean) : [])
           .map((l) => [l.slice(0, l.indexOf(' ')), l.slice(l.indexOf(' ') + 1)]));
-        return { ...r, calls: fs1728.readFileSync(log, 'utf8').split('\n').filter(Boolean), execArgv, putStdin };
+        // IADR-0572: 実行後の KV（パス → 「名前=値」の行）。patch の値（stdin）の行き先を試験が確かめる。
+        const kvDir = path1728.join(state, 'kv');
+        const kvAfter = Object.fromEntries(fs1728.readdirSync(kvDir).filter((f) => !f.includes('.'))
+          .map((f) => [f.split('__').join('/'), fs1728.readFileSync(path1728.join(kvDir, f), 'utf8')]));
+        return { ...r, calls: fs1728.readFileSync(log, 'utf8').split('\n').filter(Boolean), execArgv, putStdin, kvAfter };
       } finally {
         fs1728.rmSync(dir, { recursive: true, force: true });
       }
@@ -14304,8 +14308,8 @@ exit 0
       }
     });
 
-    // ［IADR-0573］基盤の資格情報（rabbitmq・keycloak-admin）の既定値は、使い捨ての開発環境の opt-in のときだけ入れる。
-    ok('#1793/IADR-0573: env が無く opt-in（ALLOW_DEV_INFRA_CREDENTIALS=1）のときは、既定値を同じ形（stdin の JSON）で入れる', () => {
+    // ［IADR-0574］基盤の資格情報（rabbitmq・keycloak-admin）の既定値は、使い捨ての開発環境の opt-in のときだけ入れる。
+    ok('#1793/IADR-0574: env が無く opt-in（ALLOW_DEV_INFRA_CREDENTIALS=1）のときは、既定値を同じ形（stdin の JSON）で入れる', () => {
       const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq')), env: { ALLOW_DEV_INFRA_CREDENTIALS: '1' } });
       assert.strictEqual(r.status, 0, r.stderr + r.stdout);
       assert.deepStrictEqual(JSON.parse(r.putStdin['msp/rabbitmq']), { username: 'guest', password: 'guest' });
@@ -14460,21 +14464,64 @@ exit 0
     const vaultWrites1830 = (r) => r.calls.filter((c) => c.startsWith('VAULT '));
     const probe1830 = (c) => ['probe', '1830', c].join('-');
 
-    ok('#1830: dev ではない context で、無い管理用クライアントの KV を env 未設定（dev の値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
+    // ［IADR-0572 / GHSA-rh44-px44-p48q］対象は realm の宣言から導出する（サービスアカウントを持つ機密クライアント全部）。既定の世界の
+    // app-secrets は kb-reader-auth-client-* を欠く（PoC の状態）ので、dev ではない context ではそのクライアントも名指される。
+    const { envNameOf: envNameOf0570 } = require('./lib/dev-client-secret-targets.js');
+    const READER_FILLED0570 = ({ kv }) => kv('ai-stock-trading/app-secrets', { ...AUTH, 'kb-reader-auth-client-id': 'ai-stock-trading-kb-reader',
+      'kb-reader-auth-client-secret': 'ai-stock-trading-kb-reader-dev-secret-change-me' });
+    const both0570 = (...fns) => (ctx) => { for (const f of fns) f(ctx); };
+
+    ok('#1830/IADR-0572: dev ではない context で、無い KV（app-secrets はキー）を env 未設定（dev の値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
       const r = run1728({ setup: dropKv1830(...Object.values(GUARDED1830), 'msp/llm-provider-credentials'), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
       assert.notStrictEqual(r.status, 0, '止まらなかった');
       assert.deepStrictEqual(vaultWrites1830(r), [], `止まる前に Vault へ書いた: ${vaultWrites1830(r).join(', ')}`);
-      assert.ok(/止める: identity-admin, reset-gate, mcp-client-admin$/m.test(r.stderr), `名指していない:\n${r.stderr}`);
+      assert.ok(/止める: ai-stock-trading-kb-reader, identity-admin, mcp-client-admin, reset-gate$/m.test(r.stderr), `名指していない:\n${r.stderr}`);
+      assert.ok(/AI_STOCK_TRADING_KB_READER_CLIENT_SECRET/.test(r.stderr), 'AST のクライアントの env の名前を告げていない');
       assert.ok(!r.execArgv.some((c) => /vault (policy|write|auth)/.test(c)), '止まる前に Vault の設定を書いた');
       assert.ok(!`${r.stdout}${r.stderr}`.includes('-dev-secret-change-me'), '値を出力した');
     });
 
     ok('#1830: 名指すのは無い KV だけ（在る KV は触らないので dev の値は入らない）', () => {
-      const r = run1728({ setup: dropKv1830(GUARDED1830['mcp-client-admin']), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
+      const r = run1728({ setup: both0570(dropKv1830(GUARDED1830['mcp-client-admin']), READER_FILLED0570), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
       assert.notStrictEqual(r.status, 0);
       assert.ok(/止める: mcp-client-admin$/m.test(r.stderr), `mcp-client-admin だけを名指していない:\n${r.stderr}`);
-      const present = run1728({ env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
+      const present = run1728({ setup: READER_FILLED0570, env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
       assert.strictEqual(present.status, 0, `KV が在るのに止まった:\n${present.stderr}`);
+    });
+
+    ok('IADR-0572: 当初の 3 つ以外（bff・east-west の *-service・synthetic-monitor）の無い KV も名指す', () => {
+      const extra = { bff: 'msp/bff-oidc', 'document-service': 'msp/document-service-token', 'synthetic-monitor': 'msp/synthetic-monitor-oidc' };
+      const r = run1728({ setup: both0570(dropKv1830(...Object.values(extra)), READER_FILLED0570), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
+      assert.notStrictEqual(r.status, 0, '止まらなかった（対象が広がっていない）');
+      assert.deepStrictEqual(vaultWrites1830(r), [], '止まる前に Vault へ書いた');
+      assert.ok(/止める: bff, document-service, synthetic-monitor$/m.test(r.stderr), `名指していない:\n${r.stderr}`);
+      assert.ok(/BFF_OIDC_CLIENT_SECRET/.test(r.stderr), 'bff の env の名前（例外）を告げていない');
+      const env = { STUB_KUBE_CONTEXT: 'prod-shared' };
+      for (const c of Object.keys(extra)) env[envNameOf0570(c)] = probe1830(c);
+      const given = run1728({ setup: both0570(dropKv1830(...Object.values(extra)), READER_FILLED0570), env });
+      assert.strictEqual(given.status, 0, given.stderr);
+      for (const [c, p] of Object.entries(extra)) assert.ok(given.putStdin[p].includes(probe1830(c)), `${p} が与えた値で作られていない`);
+    });
+
+    ok('IADR-0572: AST の機密クライアントは env を与えれば app-secrets の無いキーへその値で入れる（在るキーは触らない・値は stdin）', () => {
+      const env = { STUB_KUBE_CONTEXT: 'prod-shared', AI_STOCK_TRADING_KB_READER_CLIENT_SECRET: probe1830('kb-reader'),
+        AI_STOCK_TRADING_SVC_CLIENT_SECRET: probe1830('svc') };
+      const r = run1728({ env });
+      assert.strictEqual(r.status, 0, r.stderr);
+      const kv = r.kvAfter['ai-stock-trading/app-secrets'];
+      assert.ok(kv.includes(`kb-reader-auth-client-secret=${probe1830('kb-reader')}\n`), `無いキーへ env の値を入れていない:\n${kv}`);
+      assert.ok(kv.includes('service-auth-client-secret=dev-only-service-secret\n') && !kv.includes(probe1830('svc')), '在るキーを env で書き換えた（IADR-0485）');
+      assert.ok(!r.execArgv.some((c) => c.includes(probe1830('kb-reader'))), '値が sh -c の引数に載った');
+      assert.ok(!`${r.stdout}${r.stderr}`.includes(probe1830('kb-reader')), '値が出力に出た');
+      // KV が無い（この実行で作る）ときは、seed の dev の値を env の値で上書きする
+      const created = run1728({ setup: dropKv1830('ai-stock-trading/app-secrets'), env: { ...env, AI_STOCK_TRADING_KB_WRITER_CLIENT_SECRET: probe1830('kb-writer'),
+        AI_STOCK_TRADING_LLM_CALLER_CLIENT_SECRET: probe1830('llm'), AI_STOCK_TRADING_OWNER_CLIENT_SECRET: probe1830('owner') } });
+      assert.strictEqual(created.status, 0, created.stderr);
+      const kv2 = created.kvAfter['ai-stock-trading/app-secrets'];
+      for (const [key, v] of [['service-auth-client-secret', 'svc'], ['kb-auth-client-secret', 'kb-writer'], ['kb-reader-auth-client-secret', 'kb-reader'],
+        ['llm-auth-client-secret', 'llm'], ['discord-owner-auth-client-secret', 'owner']]) {
+        assert.ok(kv2.includes(`${key}=${probe1830(v)}\n`), `作った KV の ${key} が env の値でない:\n${kv2}`);
+      }
     });
 
     ok('#1830 陽性対照: dev の context・dev 以外の値・上書きでは進み、無い KV を作る', () => {
@@ -14484,7 +14531,8 @@ exit 0
       for (const p of Object.values(GUARDED1830)) assert.ok(dev.calls.includes(`VAULT PUT ${p}`), `dev の context で ${p} を作っていない`);
       assert.ok(dev.putStdin['msp/reset-gate-oidc'].includes('reset-gate-dev-secret-change-me'), 'dev の context で dev の値を入れていない');
       const env = { STUB_KUBE_CONTEXT: 'prod-shared', IDENTITY_ADMIN_CLIENT_SECRET: probe1830('identity-admin'),
-        RESET_GATE_CLIENT_SECRET: probe1830('reset-gate'), MCP_CLIENT_ADMIN_CLIENT_SECRET: probe1830('mcp-client-admin') };
+        RESET_GATE_CLIENT_SECRET: probe1830('reset-gate'), MCP_CLIENT_ADMIN_CLIENT_SECRET: probe1830('mcp-client-admin'),
+        AI_STOCK_TRADING_KB_READER_CLIENT_SECRET: probe1830('kb-reader') };
       const given = run1728({ setup: drop, env });
       assert.strictEqual(given.status, 0, given.stderr);
       for (const [c, p] of Object.entries(GUARDED1830)) {
@@ -14496,11 +14544,11 @@ exit 0
       assert.ok(/!!! WARNING: bootstrap\.sh: ALLOW_DEV_CLIENT_SECRETS=1/.test(over.stderr), '上書きで警告しない');
     });
 
-    // --- NFR-18, ADR-0124 決定 1, IADR-0573 (GHSA-rh44-px44-p48q): 基盤の資格情報の KV を公知の既定値で作らない ---
-    // 判定器は scripts/lib/infra-credentials.sh（真理値表は k8s-local-up.test.js の IADR-0573 節）。ここは bootstrap.sh の実走で
+    // --- NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): 基盤の資格情報の KV を公知の既定値で作らない ---
+    // 判定器は scripts/lib/infra-credentials.sh（真理値表は k8s-local-up.test.js の IADR-0574 節）。ここは bootstrap.sh の実走で
     // (1) 無い KV だけを判定へ渡す (2) 止まるときは Vault へ何も書かない (3) 明示・opt-in・在る KV では進む、を固定する。
     const probe0573 = (c) => ['probe', '0573', c].join('-');
-    ok('IADR-0573: 無い基盤の資格情報の KV を、明示の値なし（既定値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
+    ok('IADR-0574: 無い基盤の資格情報の KV を、明示の値なし（既定値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
       const r = run1728({ setup: dropKv1830('msp/keycloak-admin', 'msp/rabbitmq-app') });
       assert.notStrictEqual(r.status, 0, '止まらなかった');
       assert.deepStrictEqual(vaultWrites1830(r), [], `止まる前に Vault へ書いた: ${vaultWrites1830(r).join(', ')}`);
@@ -14512,7 +14560,7 @@ exit 0
       assert.deepStrictEqual(vaultWrites1830(dev), []);
     });
 
-    ok('IADR-0573: 在る KV は判定へ渡さない（触らないので既定値は入らない）。明示の値・opt-in では進み、無い KV を作る', () => {
+    ok('IADR-0574: 在る KV は判定へ渡さない（触らないので既定値は入らない）。明示の値・opt-in では進み、無い KV を作る', () => {
       const present = run1728({});
       assert.strictEqual(present.status, 0, `KV が在るのに止まった:\n${present.stderr}`);
       const drop = dropKv1830('msp/keycloak-admin', 'msp/rabbitmq', 'msp/rabbitmq-app');
@@ -14527,6 +14575,53 @@ exit 0
       assert.ok(over.calls.includes('VAULT PUT msp/keycloak-admin'), 'opt-in で作っていない');
       const notOne = run1728({ setup: drop, env: { ALLOW_DEV_INFRA_CREDENTIALS: 'true' } });
       assert.notStrictEqual(notOne.status, 0, 'ALLOW_DEV_INFRA_CREDENTIALS=true で通した');
+    });
+
+    ok('IADR-0572 変異: 宣言に Vault の置き場の決まっていない SA クライアントが現れたら、dev の context でも Vault へ何も書かずに止まる（入れ漏れを通さない）', () => {
+      // 判定器・導出・述語・宣言を一時の木へ写し、宣言にだけクライアントを足す（本物のファイルは変えない）。
+      const tree = fs1728.mkdtempSync(path1728.join(os1728.tmpdir(), 'bootstrap-0570-'));
+      try {
+        for (const rel of ['deploy/local/vault/eso/bootstrap.sh', 'scripts/lib/dev-client-secret-guard.sh', 'scripts/lib/dev-client-secret-targets.js',
+          'deploy/local/keycloak-setup/reconcile-realm.js', 'scripts/lib/infra-credentials.sh']) {
+          fs1728.mkdirSync(path1728.dirname(path1728.join(tree, rel)), { recursive: true });
+          fs1728.copyFileSync(path1728.join(REPO1728, rel), path1728.join(tree, rel));
+        }
+        const realm = JSON.parse(fs1728.readFileSync(path1728.join(REPO1728, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
+        realm.clients.push({ clientId: 'probe-new-sa', publicClient: false, serviceAccountsEnabled: true, secret: ['probe', 'new', 'sa', 'declared'].join('-') });
+        fs1728.mkdirSync(path1728.join(tree, 'deploy', 'keycloak'), { recursive: true });
+        fs1728.writeFileSync(path1728.join(tree, 'deploy', 'keycloak', 'microservices-platform-realm.json'), JSON.stringify(realm, null, 2));
+        const r = run1728({ script: path1728.join(tree, 'deploy', 'local', 'vault', 'eso', 'bootstrap.sh') });
+        assert.notStrictEqual(r.status, 0, '置き場の無いクライアントを黙って通した');
+        assert.ok(/probe-new-sa の Vault の置き場が決まっていない/.test(r.stderr), `名指していない:\n${r.stderr}`);
+        assert.deepStrictEqual(vaultWrites1830(r), [], '止まる前に Vault へ書いた');
+        assert.ok(!r.execArgv.some((c) => /vault (policy|write|auth)/.test(c)), '止まる前に Vault の設定へ進んだ（置き場の無いクライアントを飛ばして続けた）');
+        // 陽性対照: 写した木そのもの（足さない宣言）なら進む
+        fs1728.copyFileSync(path1728.join(REPO1728, 'deploy', 'keycloak', 'microservices-platform-realm.json'),
+          path1728.join(tree, 'deploy', 'keycloak', 'microservices-platform-realm.json'));
+        const ok0 = run1728({ script: path1728.join(tree, 'deploy', 'local', 'vault', 'eso', 'bootstrap.sh') });
+        assert.ok(!/の Vault の置き場が決まっていない/.test(ok0.stderr), `陽性対照で置き場の誤りが出た:\n${ok0.stderr}`);
+        assert.ok(ok0.calls.some((c) => c.startsWith('VAULT ')) || ok0.execArgv.some((c) => /vault auth/.test(c)), '陽性対照: 判定の後へ進んでいない');
+      } finally {
+        fs1728.rmSync(tree, { recursive: true, force: true });
+      }
+    });
+
+    ok('IADR-0572: bootstrap.sh が seed する client-secret の KV は、どれも宣言から導出した対象の置き場と一致する（置き場の表と seed が食い違わない）', () => {
+      const src = fs1728.readFileSync(BOOTSTRAP, 'utf8');
+      const fn = src.match(/^client_secret_kv_of\(\) \{\n[\s\S]*?\n\}\n/m);
+      assert.ok(fn, 'client_secret_kv_of の定義を読めない');
+      const { targetsOf } = require('./lib/dev-client-secret-targets.js');
+      const realm = JSON.parse(fs1728.readFileSync(path1728.join(REPO1728, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
+      const clients = targetsOf(realm).map((t) => t.clientId);
+      const out = spawn1728('bash', ['-c', `${fn[0]}\nfor c in ${clients.join(' ')}; do printf '%s\\t' "$c"; client_secret_kv_of "$c" || printf 'UNKNOWN'; printf '\\n'; done`], { encoding: 'utf8' });
+      assert.strictEqual(out.status, 0, out.stderr);
+      const locs = Object.fromEntries(out.stdout.trim().split('\n').map((l) => l.split('\t')));
+      assert.deepStrictEqual(Object.keys(locs).sort(), clients.sort());
+      assert.ok(!Object.values(locs).includes('UNKNOWN'), `置き場の決まっていない対象がある: ${JSON.stringify(locs)}`);
+      const seeded = [...src.matchAll(/^vkv_create_if_absent\s+(msp\/\S+)\s+client-secret\s/gm)].map((m) => `${m[1]} client-secret`);
+      const tools = ['msp/wikijs-oidc', 'msp/grafana-oidc', 'msp/vault-oidc', 'msp/headlamp-oidc'].map((p) => `${p} client-secret`); // SA を持たない道具の OIDC
+      assert.deepStrictEqual(seeded.filter((x) => !tools.includes(x)).sort(), Object.values(locs).filter((v) => v.startsWith('msp/')).sort(),
+        'seed する client-secret の KV と置き場の表が食い違う');
     });
   }
 

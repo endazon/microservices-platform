@@ -2,7 +2,7 @@
 title: 作業仕様書 — 起動器が Keycloak の管理者・RabbitMQ のブローカの Secret を公知の既定値で作らない（fail-closed。GHSA-rh44-px44-p48q）
 type: spec
 status: done
-related_ids: [NFR-18, ADR-0124, IADR-0573, IADR-0572, IADR-0485, IADR-0286]
+related_ids: [NFR-18, ADR-0124, IADR-0574, IADR-0572, IADR-0485, IADR-0286]
 author: claude
 created: 2026-10-22
 updated: 2026-10-22
@@ -13,14 +13,14 @@ issue: "GHSA-rh44-px44-p48q"
 
 # 作業仕様書 — 基盤の資格情報を公知の既定値で作らない（GHSA-rh44-px44-p48q）
 
-> 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0573**（新規）に置く。
+> 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0574**（新規）に置く。
 > 多層防御の強化（既定を fail-closed にする）の 2 本目。参照は GHSA の ID だけとする。
 > 🔴 稼働中のクラスタには何も実行しない。試験はすべて PATH のスタブの下で行う。
 
 ## 起点となる計画書（トレーサビリティ）
 
 - 非機能要求: **NFR-18**。計画 ADR: **ADR-0124 決定 1**（矛盾しない。データストアの資格情報は対で書く・初期投入は無いときだけ作る形を変えない）。
-- 実装 ADR: **IADR-0573**（新設）。前提 **IADR-0485**（無いときだけ作る）・**IADR-0286**（既定の資格情報を埋め込まない）・**IADR-0572**（同じ一連の 1 本目）。
+- 実装 ADR: **IADR-0574**（新設）。前提 **IADR-0485**（無いときだけ作る）・**IADR-0286**（既定の資格情報を埋め込まない）・**IADR-0572**（同じ一連の 1 本目）。
 
 ## 要件（オーナー指示 2026-10-22）
 
@@ -30,7 +30,7 @@ issue: "GHSA-rh44-px44-p48q"
 
 | # | 基準 | 試験 |
 | --- | --- | --- |
-| AC1 | 判定（明示 × 既存 × opt-in）の真理値表。開発用の値と同じ明示・既存は「指定なし」と同じ | `k8s-local-up.test.js`「IADR-0573: 判定の真理値表」 |
+| AC1 | 判定（明示 × 既存 × opt-in）の真理値表。開発用の値と同じ明示・既存は「指定なし」と同じ | `k8s-local-up.test.js`「IADR-0574: 判定の真理値表」 |
 | AC2 | 指定も既存の Secret も無く opt-in も無ければ、[1/7] の直後・何も書かず・[2/7] のビルドの前に、2 つを名指して止まる（dev の context でも） | 同「指定も既存の Secret も無く…」 |
 | AC3 | 明示の値で作り、rabbitmq-app も同じ値。値は出力・引数に出ない | 同「明示の値（開発用でない）で作り…」 |
 | AC4 | 指定が無くても既存の Secret が開発用でない値なら使う（再実行で稼働中の値を戻さない）。明示は既存に勝つ | 同「既存の Secret が開発用でない値を持てば…」 |
@@ -38,7 +38,7 @@ issue: "GHSA-rh44-px44-p48q"
 | AC6 | opt-in は `1` だけ。通すときは警告する | 同「opt-in（ALLOW_DEV_INFRA_CREDENTIALS=1）だけが…」 |
 | AC7 | 起動器の Secret の作成に既定値の代わり（`${…:-admin}` 等）が残らない | 同「起動器の Secret の作成に公知の既定値の代わりが残っていない」 |
 | AC8 | CI の使い捨てスタック（integration-stack / cutover-rehearsal）は opt-in を付ける（止まらない） | 同「陽性対照: CI の…」 |
-| AC9 | Vault の種（`bootstrap.sh`）は無い KV だけを判定し、止めるときは Vault へ何も書かない。明示・opt-in・在る KV で進む | `scripts.repo.test.js` の IADR-0573 節・#1793 の既定値の試験（opt-in つきへ改めた） |
+| AC9 | Vault の種（`bootstrap.sh`）は無い KV だけを判定し、止めるときは Vault へ何も書かない。明示・opt-in・在る KV で進む | `scripts.repo.test.js` の IADR-0574 節・#1793 の既定値の試験（opt-in つきへ改めた） |
 
 ## 方式
 

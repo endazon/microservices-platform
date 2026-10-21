@@ -162,7 +162,7 @@ jobs:
         timeout-minutes: 30
         run: |
           set -euo pipefail
-          # IADR-0573: 使い捨てのスタックなので、基盤の資格情報の開発用の値を明示の opt-in で許す（無ければ起動器は止まる）。
+          # IADR-0574: 使い捨てのスタックなので、基盤の資格情報の開発用の値を明示の opt-in で許す（無ければ起動器は止まる）。
           ALLOW_DEV_INFRA_CREDENTIALS=1 LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1 K8S_LOCAL_RUNTIME=k3d \
             bash scripts/k8s-local-up.sh --live "${CLUSTER}"
 

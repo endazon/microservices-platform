@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # IADR-0066: MSP+AST 連結ローカル k8s(k3d) dev 環境の起動オーケストレーション。
 # 冪等（再実行可）。fail-safe: 機密は未設定なら dev 既定/空（no-op）で作成する。
-#   ただし Keycloak の管理者・RabbitMQ のブローカのパスワードは公知の既定値で作らない（IADR-0573。fail-closed）——
+#   ただし dev 以外の kube context では、サービスアカウントを持つ機密クライアント（realm の宣言から導出する）の
+#   secret を dev の値で作らずに止まる（IADR-0517 / #1830・IADR-0572。上書きは ALLOW_DEV_CLIENT_SECRETS=1）。
+#   ただし Keycloak の管理者・RabbitMQ のブローカのパスワードは公知の既定値で作らない（IADR-0574。fail-closed）——
 #   KEYCLOAK_ADMIN_PASSWORD / RABBITMQ_PASSWORD を与えるか、既存の Secret の値を使う。使い捨ての開発環境だけ
 #   ALLOW_DEV_INFRA_CREDENTIALS=1 で開発用の値を許す（警告を出す）。
-#   ただし dev 以外の kube context では、レルム管理のロールを持つ 3 クライアント（identity-admin / reset-gate / mcp-client-admin）の
-#   secret を dev の値で作らずに止まる（IADR-0517 / #1830。上書きは ALLOW_DEV_CLIENT_SECRETS=1）。
 #
 #   bash scripts/k8s-local-up.sh --live [cluster-name]   # --live か LIVE=1 が無ければ何もしない（#1550）
 #
-# 前提ツール: docker / k3d / kubectl / helm（scripts/README や docs/operations 参照）。
+# 前提ツール: docker / k3d / kubectl / helm / node（scripts/README や docs/operations 参照）。
+#   node は dev の値の守りの対象を realm の宣言から導出するのに使う（IADR-0572。無ければ [1/7] の直後で止まる）。
 # 機密の上書きは環境変数で: PG_PASSWORD / RABBITMQ_PASSWORD / KEYCLOAK_ADMIN_PASSWORD /
 #   OBJECT_STORAGE_ACCESS_KEY / OBJECT_STORAGE_SECRET_KEY（IADR-0461。旧 MINIO_*）/ WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY（#1764。埋め込み） /
 #   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）/
@@ -17,6 +18,9 @@
 #   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）/
 #   SYNTHETIC_MONITOR_CLIENT_SECRET（#1287。SYNTHETIC=1 のときだけ使う。realm の synthetic-monitor client と揃えること）
 #   RESET_GATE_CLIENT_SECRET / IDENTITY_ADMIN_CLIENT_SECRET / MCP_CLIENT_ADMIN_CLIENT_SECRET（#1830。dev 以外の kube context では必須）
+#   ［IADR-0572］dev 以外の kube context では、サービスアカウントを持つ機密クライアント全部の secret の env が必須（名前の一覧は
+#   `node scripts/lib/dev-client-secret-targets.js deploy/keycloak/microservices-platform-realm.json | cut -f1,2`。既定の規則は
+#   `<CLIENT_ID の大文字・- を _>_CLIENT_SECRET`、例外は bff＝BFF_OIDC_CLIENT_SECRET・abac-seeder＝ABAC_SEED_CLIENT_SECRET）
 #   SESSION_STORE_PASSWORD（#1839。セッションストア Valkey の認証。未指定なら既存の Secret の値、無ければ初回だけ乱数で作る）
 # 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
 #   使い捨てスタックでだけ PERSIST=0 で外す。
@@ -182,12 +186,19 @@ fi
 #   止まる前に Keycloak が dev の値で 2 つを作っていた。
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$ROOT/scripts/lib/dev-client-secret-guard.sh"
-dev_secret_args=("identity-admin=${IDENTITY_ADMIN_CLIENT_SECRET:-}" "reset-gate=${RESET_GATE_CLIENT_SECRET:-}"
-  "mcp-client-admin=${MCP_CLIENT_ADMIN_CLIENT_SECRET:-}")
+# ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げた。
+#   手で並べず宣言から導出する（dev_client_secret_load_targets）。env の名前は判定器が持つ（dev_client_secret_env_name）。
+#   [3/7] の取り込み元は同じ集合を env の値へ差し替えるので、dev ではない context では全部に env が要る。
+dev_client_secret_load_targets || exit 1
+dev_secret_args=()
+for dev_secret_client in $DEV_CLIENT_SECRET_GUARDED; do
+  dev_secret_env="$(dev_client_secret_env_name "$dev_secret_client")"
+  dev_secret_args+=("${dev_secret_client}=${!dev_secret_env:-}")
+done
 dev_client_secret_guard "k8s-local-up.sh" "${dev_secret_args[@]}" || exit 1
-unset dev_secret_args
+unset dev_secret_args dev_secret_client dev_secret_env
 
-# NFR-18, ADR-0124 決定 1, IADR-0573 (GHSA-rh44-px44-p48q): **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）を
+# NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）を
 #   公知の開発用の値で作らない（fail-closed）。** 判定は scripts/lib/infra-credentials.sh の 1 本（bootstrap.sh と共有）。
 #   選び方: 明示（KEYCLOAK_ADMIN_PASSWORD / RABBITMQ_PASSWORD）＞ 既存の Secret（platform-infra の keycloak-admin / rabbitmq）の値
 #   ＞ 止める。開発用の値と同じものは指定が無いのと同じ扱い。使い捨ての開発環境だけ ALLOW_DEV_INFRA_CREDENTIALS=1 で開発用の値を許す。
@@ -361,11 +372,11 @@ apply_secret "$INFRA_NS" postgres        "password=${PG_PASSWORD:-postgres}"
 # deploy/local/infra/rabbitmq.yaml が RABBITMQ_DEFAULT_USER/PASS を**非 optional** に参照する。
 # ⚠️ RABBITMQ_USER を変えるときは helm の global.messaging.user も併せて上書きすること
 #    （app 側の接続文字列は chart が組む）。AST chart は自前の guest:guest を持つ（#1022 §申し送り）。
-apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "password=${RABBITMQ_PASSWORD:?}"  # IADR-0573: 値は [1/7] の直後で決めた
+apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "password=${RABBITMQ_PASSWORD:?}"  # IADR-0574: 値は [1/7] の直後で決めた
 # IADR-0369 (#1088): 管理者名も Secret に持つ。deploy/local/infra/keycloak.yaml（KEYCLOAK_ADMIN）と
 # realm 後追い Job（deploy/local/keycloak-setup/realm-reconcile-job.yaml の KC_ADMIN_USER）が同じキーを読む
 # ＝管理者名の単一情報源。ESO の externalsecret-keycloak-admin.yaml は Merge なので password だけ供給しても壊れない。
-apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}" "password=${KEYCLOAK_ADMIN_PASSWORD:?}"  # IADR-0573
+apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}" "password=${KEYCLOAK_ADMIN_PASSWORD:?}"  # IADR-0574
 # NFR-18, ADR-0131 決定 4 の 2, IADR-0522 (#1839): キャッシュ・セッションストア（Valkey）の認証パスワード。
 # deploy/local/infra/valkey.yaml が**非 optional** に読み、空なら起動しない（fail-closed）。BFF も同じ値を読む
 # （[5/7] で MSP ns へ同じ値を置く。helm の services.bff.session.storeExistingSecret）。ESO=1 でも手で置く
@@ -469,8 +480,8 @@ kubectl create configmap keycloak-realms -n "$INFRA_NS" "${realm_args[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # NFR-18, ADR-0124 決定 1, IADR-0518 (#1834): Keycloak の `--import-realm`（空の PVC の初回・realm を消した後の再起動）の**取り込み元**。
-#   deploy/local/infra/keycloak.yaml が /opt/keycloak/data/import へマウントする。中身は上と同じ realm ファイルだが、レルム管理のロールを
-#   持つ 3 クライアント（identity-admin / reset-gate / mcp-client-admin）は、env（*_CLIENT_SECRET）を与えたものだけ宣言の dev の値を
+#   deploy/local/infra/keycloak.yaml が /opt/keycloak/data/import へマウントする。中身は上と同じ realm ファイルだが、サービスアカウントを
+#   持つ機密クライアント（宣言から導出する。IADR-0572。当初は 3 つ）は、env（*_CLIENT_SECRET 等）を与えたものだけ宣言の dev の値を
 #   env の値へ差し替える（判定器 dev_client_secret_realm_for_import。対象・env の名前・宣言の値の単一情報源）。env が無ければ宣言のまま
 #   （dev の context の既定は従来と同じ中身）。🔴 実の secret を含み得るので **ConfigMap ではなく Secret** にする。値は apply_secret が
 #   0700 の一時ディレクトリの 0600 のファイル経由で渡し、必ず消す（#1793。どのプロセスの引数にも載らない）。
@@ -719,7 +730,7 @@ if [ "${ESO:-}" != "1" ]; then
   # NFR, ADR-0027, #1022: ブローカのパスワード（app 側）。**appsettings.json から接続文字列を撤去した**ため、
   # これが無いと RabbitMQ を使う 7 サービスは起動時に落ちる（helm の deployment.yaml が
   # global.messaging.existingSecret を **非 optional** な secretKeyRef で参照する）。
-  # 値は step 3 のブローカ側と同値（[1/7] の直後で決めた RABBITMQ_PASSWORD。IADR-0573）。
+  # 値は step 3 のブローカ側と同値（[1/7] の直後で決めた RABBITMQ_PASSWORD。IADR-0574）。
   apply_secret "$MSP_NS" rabbitmq-app "password=${RABBITMQ_PASSWORD:?}"
   apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
   # FR-13, IADR-0327 (#1108): 🔴 **発行済みの API キーを空で潰さない。**
