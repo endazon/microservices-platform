@@ -1887,6 +1887,18 @@ ok('ESO=1 (#1477): ai-stock-trading ns を作ってから BFF の RBAC と Reloa
   );
 });
 
+// NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: ESO=1 で BFF の共有シークレット（AST の OpenD 認証サイドカー宛て）を同期する。
+// 既定（ESO 未設定）では apply しない（ESO の CRD が無い）。手動の Secret も作らない（optional で、無ければ BFF は上流を呼ばない）。
+ok('ESO=1 (AST/IADR-0566): opend-auth-caller-secret の ExternalSecret を apply する・既定では apply しない', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-opend-auth-caller-secret.yaml'),
+    'externalsecret-opend-auth-caller-secret.yaml が apply されない');
+  assert.ok(!anyLineHas(DEFAULT.lines, 'externalsecret-opend-auth-caller-secret.yaml'),
+    'ESO 未設定なのに opend-auth-caller-secret の ExternalSecret を apply している');
+  assert.ok(!anyLineHas(res.lines, 'create secret generic opend-auth-caller-secret'),
+    'opend-auth-caller-secret を手動 apply している（二重所有）');
+});
+
 // IADR-0097 (#310) PR-2: ESO=1 で object-storage-credentials（IADR-0461。旧 minio-credentials）/wikijs-db/wikijs-sync も
 // ExternalSecret 供給し、手動 apply はスキップ。
 ok('ESO=1 (PR-2): object-storage/wikijs 系 3 ExternalSecret apply・手動 apply はスキップ', () => {
