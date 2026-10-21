@@ -2,15 +2,15 @@
 title: 運用 Runbook — Alertmanager のメール受信先（近接 MTA 経由）の配備と試験警報
 type: runbook
 status: draft
-created: 2026-10-21
-updated: 2026-10-21
+created: 2026-10-22
+updated: 2026-10-22
 author: claude
 ---
 <!-- trace:
 ids: [NFR-21, SC-10]
 adrs: [ADR-0006, ADR-0045, ADR-0078]
 iadrs: [IADR-0571, IADR-0304, IADR-0165, IADR-0404]
-specs: [20261021_2044_alertmanager-mail-receiver]
+specs: [20261022_2044_alertmanager-mail-receiver]
 issues: [#2044, #546]
 -->
 

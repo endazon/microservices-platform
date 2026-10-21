@@ -4,8 +4,8 @@ type: spec
 status: done
 related_ids: [NFR-21, ADR-0006, ADR-0045, ADR-0078, IADR-0571, IADR-0304, IADR-0165, IADR-0404]
 author: claude
-created: 2026-10-21
-updated: 2026-10-21
+created: 2026-10-22
+updated: 2026-10-22
 plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md（§アラートの通知経路）
   - planning:projects/microservices-platform/07_adr/ADR-0006（アラートは Alertmanager を用いる）
@@ -16,7 +16,7 @@ issue: "#2044"
 
 # 仕様書: 警報の宛先を 1 本置く（#2044）
 
-> 本仕様書は実装着手前に作成した（着手 2026-10-21）。実装の基点は MSP `origin/develop` `147e66fb`。判断は IADR-0571。
+> 本仕様書は実装着手前に作成した（着手 2026-10-22）。実装の基点は MSP `origin/develop` `147e66fb`。判断は IADR-0571。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -63,7 +63,7 @@ PoC には近接 MTA（`mail-relay`）が配備済みである。
 
 ## 母集合（規則 9・10。誤りの側の文字列で走査した）
 
-走査語: `default-null` / `画面まで` / `宛先は依然` / `その先の宛先は未配線` / `push 配信の宛先`（`git grep`、2026-10-21）。
+走査語: `default-null` / `画面まで` / `宛先は依然` / `その先の宛先は未配線` / `push 配信の宛先`（`git grep`、2026-10-22）。
 
 | 箇所 | 扱い |
 | --- | --- |
@@ -83,7 +83,7 @@ PoC には近接 MTA（`mail-relay`）が配備済みである。
 - 文書系: `node scripts/check-trace-blocks.js` / `node scripts/gen-knowledge-graph.js --check` / `node scripts/check-doc-links.js` ほか CI と同じもの
 - 変異: route を `default-null` へ戻す・smarthost のポートを変える・検証の正規表現を外す → 試験が赤
 
-## 検証の結果（2026-10-21）
+## 検証の結果（2026-10-22）
 
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` → 1134 件通過（#2044 節 9 件を含む）。`node scripts/k8s-local-up.test.js` → 325 件通過。
 - 変異: 既定 route を `default-null`・smarthost の port を 25・NetworkPolicy の名前を変える・`optional: true` を外す → いずれも赤（各 1 件）。

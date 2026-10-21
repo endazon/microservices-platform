@@ -4,15 +4,15 @@ type: impl-adr
 status: Accepted
 related_ids: [NFR-21, ADR-0006, ADR-0045, ADR-0078, IADR-0304, IADR-0165, IADR-0404, IADR-0421]
 author: claude
-created: 2026-10-21
-updated: 2026-10-21
+created: 2026-10-22
+updated: 2026-10-22
 plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md（§アラートの通知経路）
   - planning:projects/microservices-platform/07_adr/ADR-0006（アラートは Alertmanager を用いる）
   - planning:projects/microservices-platform/07_adr/ADR-0045（メール送信経路）
   - planning:projects/microservices-platform/07_adr/ADR-0078（近接 MTA）
 related_specs:
-  - ../specs/20261021_2044_alertmanager-mail-receiver.md
+  - ../specs/20261022_2044_alertmanager-mail-receiver.md
 ---
 
 # IADR-0571: 警報の宛先を近接 MTA 経由のメール 1 本にする（#2044）
@@ -20,7 +20,7 @@ related_specs:
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
 - 状態: Accepted
-- 日付: 2026-10-21
+- 日付: 2026-10-22
 - 決定者: claude（#2044。PoC セッションの監査指摘）
 
 ## 起点・関連
@@ -31,7 +31,7 @@ related_specs:
 - 先行: [IADR-0304](./IADR-0304_alertmanager-deployment-and-null-receiver.md) 決定 2（既定 `default-null`。本 ADR が経路B について後継する）・
   [IADR-0165](./IADR-0165_grafana-interim-alerting.md)（Grafana の暫定経路）・
   [IADR-0404](./IADR-0404_nearby-mta-relay-and-realm-ownership.md) 決定 3（クラスタ内の 1 ホップは平文を受容）。
-- 作業仕様書: [20261021_2044_alertmanager-mail-receiver](../specs/20261021_2044_alertmanager-mail-receiver.md)。
+- 作業仕様書: [20261022_2044_alertmanager-mail-receiver](../specs/20261022_2044_alertmanager-mail-receiver.md)。
 
 ## コンテキストと課題
 

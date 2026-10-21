@@ -11,7 +11,7 @@ related_ids:
   - IADR-0571
 author: claude
 created: 2026-08-30
-updated: 2026-10-21
+updated: 2026-10-22
 plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md
 ---
@@ -59,7 +59,7 @@ plan_refs:
 
 `default-null` は名前で「送り先を持たない」ことを宣言する。**設定漏れではなく既定である**と読める形にする。
 
-> ［2026-10-21 追記 / #2044］**経路B について `IADR-0571` が本決定を後継した。** 経路B の Alertmanager は
+> ［2026-10-22 追記 / #2044］**経路B について `IADR-0571` が本決定を後継した。** 経路B の Alertmanager は
 > Secret `alertmanager-mail` の `to` を与えられたときに限り、近接 MTA 経由のメール受信先 `ops-mail` を描画して既定の route を
 > そこへ向ける（空なら本決定の `default-null` へ落ちる）。**宛先の実値は引き続きリポジトリに置かない。** compose は本決定のまま。
 
