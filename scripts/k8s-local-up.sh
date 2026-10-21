@@ -1043,6 +1043,9 @@ if [ "${ESO:-}" = "1" ]; then
   # #1107: BFF セッションの client secret。手動 apply は上の `ESO != 1` ブロックでスキップされるので、
   # **これが唯一の供給元**である（欠けると bff-service Pod が起動しない）。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-bff-oidc.yaml
+  # NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: BFF が AST の OpenD 認証サイドカーへ名乗る共有シークレット。
+  # 値は Vault ai-stock-trading/opend-auth（AST の chart と同じキー）。無ければ Secret が作られず、BFF は起動したまま上流を呼ばない。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-opend-auth-caller-secret.yaml
   # #1101: SC-17 の Keycloak Admin REST 反映に使う client secret。手動 apply は上の `ESO != 1`
   # ブロックでスキップされるので、**これが唯一の供給元**である（欠けると authorization-service Pod が
   # 起動しない）。常時供給。
