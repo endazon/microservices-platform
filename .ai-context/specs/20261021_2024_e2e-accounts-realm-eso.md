@@ -1,11 +1,11 @@
 ---
 title: 試験アカウント e2e-* を realm の宣言と後追い Job に足し、資格情報を OpenBao → ESO の Secret e2e-accounts から差し込む（値はリポジトリに置かない。#2024 / E-30）
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR-10, NFR-18, ADR-0026, ADR-0124, IADR-0294, IADR-0369, IADR-0518, IADR-0546, IADR-0570]
 author: claude
 created: 2026-10-21
-updated: 2026-10-21
+updated: 2026-10-22
 issue: "#2024"
 ---
 
@@ -70,13 +70,13 @@ issue: "#2024"
 
 ## 受け入れ基準
 
-- [ ] realm JSON に実値が無い（`guard-secrets.js` と `check-static-egress` が緑。プレースホルダだけ）。
-- [ ] `ESO=1` で Secret `e2e-accounts`（platform-infra）が出来る（ExternalSecret を apply し同期を待つ。KV が在ること）。
-- [ ] `reconcile-realm.js` が既存 realm に 6 ユーザーを足す（env が揃えば `user.create` が 6 件、揃わなければ `skipped` 6 件で drift 0）。dry-run（`plan` を fixture へ当てた出力）を PR の証跡に載せる。
-- [ ] 未解決・`E2E_` 以外・ポリシー違反・検査に落ちる値では利用者を作らない（変異で確かめる）。
-- [ ] 取り込み元に `${E2E_` が残らない（Secret が無ければ 6 名を外す）。
-- [ ] `e2e-trading-owner` だけが `trading-owner` を持ち、`e2e-user` は持たない。
-- [ ] 検査 5 が宣言の OTP を MFA として数え、OTP も `CONFIGURE_TOTP` も無い利用者は従来どおり落とす。
+- [x] realm JSON に実値が無い（`guard-secrets.js` と `check-static-egress` が緑。プレースホルダだけ）。
+- [x] `ESO=1` で Secret `e2e-accounts`（platform-infra）が出来る（ExternalSecret を apply し同期を待つ。KV が在ること）。
+- [x] `reconcile-realm.js` が既存 realm に 6 ユーザーを足す（env が揃えば `user.create` が 6 件、揃わなければ `skipped` 6 件で drift 0）。dry-run（`plan` を fixture へ当てた出力）を PR の証跡に載せる。
+- [x] 未解決・`E2E_` 以外・ポリシー違反・検査に落ちる値では利用者を作らない（変異で確かめる）。
+- [x] 取り込み元に `${E2E_` が残らない（Secret が無ければ 6 名を外す）。
+- [x] `e2e-trading-owner` だけが `trading-owner` を持ち、`e2e-user` は持たない。
+- [x] 検査 5 が宣言の OTP を MFA として数え、OTP も `CONFIGURE_TOTP` も無い利用者は従来どおり落とす。
 
 ## 母集合（規則 9）
 
@@ -88,3 +88,14 @@ issue: "#2024"
 
 - `node scripts/keycloak-realm-reconcile.test.js` / `node scripts/k8s-local-up.test.js` / `node scripts/check-realm-constraints.js`（自己試験込み）/ `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` / 文書系の検査。
 - `node .claude/hooks/guard-secrets.js` 相当（変更ファイル）と `node scripts/check-static-egress.js`。
+
+## 結果（2026-10-22）
+
+- `ESO=1` の Secret は ExternalSecret の apply と同期待ちまでを試験で固定した（KV が在れば出来る。稼働のクラスタでの実測はしていない）。
+- 母集合（規則 9）を引いた結果、赤になって直したもの: `k8s-local-up.test.js` の取り込み元のバイト等価 2 件（期待を「宣言から e2e を外したもの」へ）、
+  `check-realm-constraints.js` の検査 5（宣言の TOTP を数える）、`scripts.repo.test.js` の検査器の母集合（生成器を NOT_CHECKERS へ）と
+  `live-scripts.json` の閉包（生成器を offline へ）。`measure-cutover-inventory.js` の「seed 利用者がそろっている」（作り直し後に e2e が無いと fail になる。
+  Secret が無ければ作られないのが正しいので母集合から外した）。`check-realm-copy-drift.js` はサービスアカウントだけを見るので影響なし。
+- 変異: 外す処理を消す・`E2E_` の制限を外す・ポリシー検査を消す・main で差し込みを当てない・[3/7] の差し込みを外す・ESO 後の後追いを消す、の 6 つとも試験が赤になった。
+- #2013 の設計からの変更点（IADR-0570 決定 3）: KV のパスは `msp/e2e-accounts`、Secret の namespace は `platform-infra`。
+- 後続（E-31）への申し送り: `E2E_<ROLE>_TOTP_SECRET` は Keycloak が持つ**生の文字列**で、6 桁は `totp(base32Encode(値))` で出す（設計 §1.3 の「base32」とは違う）。

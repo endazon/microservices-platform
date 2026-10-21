@@ -125,8 +125,11 @@ function recreateSql(mspDatabases) {
 }
 
 // realm.json から宣言を読む。人間の利用者は service-account- で始まらないもの。
+// ［2026-10-22 / #2024 / IADR-0570］試験アカウント（資格情報がプレースホルダ `${E2E_…}` の利用者）は Secret e2e-accounts が
+// 在るときだけ作られる（無ければ後追いが外す）。作り直し直後に居ないのは正しい状態なので「そろっている」の母集合に入れない。
+const isConditionalE2eUser = (u) => JSON.stringify((u && u.credentials) || []).includes('${E2E_');
 function declaredRealm(realmJson) {
-  const users = (realmJson.users || []).map((u) => String(u.username).toLowerCase());
+  const users = (realmJson.users || []).filter((u) => !isConditionalE2eUser(u)).map((u) => String(u.username).toLowerCase());
   return {
     realm: realmJson.realm,
     humanUsers: users.filter((u) => !u.startsWith(SERVICE_ACCOUNT_PREFIX)).sort(),

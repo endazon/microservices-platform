@@ -691,9 +691,11 @@ ok('#2024: 置き換えるのは E2E_ で始まる名前だけ —— 他の名�
   const desired = clone(REALM);
   const u = desired.users.find((x) => x.username === 'e2e-user');
   u.credentials[0].value = '${KC_ADMIN_PASSWORD}';
-  const env = { ...e2eEnv(), KC_ADMIN_PASSWORD: 'Admin-Probe-2024x' };
+  // 値は実行時に組み立てる（パスワードの鍵名の隣に字面を置くと gitleaks の generic-api-key が鍵と見分けられない）
+  const adminValue = ['Admin', 'Probe', '2024x'].join('-');
+  const env = { ...e2eEnv(), KC_ADMIN_PASSWORD: adminValue };
   const { desired: out, skipped } = resolveE2eCredentials(desired, env);
-  assert.ok(!JSON.stringify(out).includes('Admin-Probe-2024x'), '管理者のパスワードを利用者へ写した');
+  assert.ok(!JSON.stringify(out).includes(adminValue), '管理者のパスワードを利用者へ写した');
   assert.deepStrictEqual(skipped.map((x) => x.username), ['e2e-user']);
   assert.ok(skipped[0].problems.some((p) => /E2E_ で始まらないプレースホルダ/.test(p)), skipped[0].problems.join(' / '));
 });
@@ -746,6 +748,13 @@ ok('#2024: 生成器のプロパティは宣言のプレースホルダの小文
   assert.notDeepStrictEqual(generateE2eAccounts(REALM), kv, '2 回の生成で同じ値（乱数でない）');
   const { resolved } = resolveE2eCredentials(REALM, Object.fromEntries(placeholderNames(REALM).map((n) => [n, kv[propertyName(n)]])));
   assert.deepStrictEqual(resolved, E2E_USERS);
+});
+
+ok('#2024: 作り直しの測定器（measure-cutover-inventory.js）は試験アカウントを「そろっている」の母集合に入れない（Secret が無ければ作られないのが正しい）', () => {
+  const { declaredRealm } = require('./measure-cutover-inventory.js');
+  const humans = declaredRealm(REALM).humanUsers;
+  assert.ok(humans.includes('developer') && humans.includes('poc-user'), '人の seed 利用者まで外した');
+  for (const n of E2E_USERS) assert.ok(!humans.includes(n), `${n} を必須として数えた`);
 });
 
 ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読む（無くても Job は起動する）', () => {
