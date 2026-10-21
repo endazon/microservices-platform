@@ -25,6 +25,8 @@ vexec() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -c \
 #   ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ
 #   広げた（手で並べず宣言から導出する）。置き場は client_secret_kv_of が持つ。**置き場の決まっていないクライアントが宣言に
 #   現れたら止める**（新しいクライアントの入れ漏れを黙って通さない。置き場を足すか、Vault に種を置かないなら空を返す）。
+#   🔴 **非対称に注意**: 判定器・取り込み元・後追い・検知は宣言へクライアントを足せば触らずに対象へ入るが、この表だけは
+#      足したクライアントごとに置き場の追記が要る（追記するまで bootstrap.sh は止まる。意図した fail-closed）。
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$ROOT/scripts/lib/dev-client-secret-guard.sh"
 # client_secret_kv_of <client> → 「<KV のパス> <キー>」。Vault に種を置かないクライアントは空。知らないクライアントは 1。
@@ -58,6 +60,7 @@ for dev_secret_client in $DEV_CLIENT_SECRET_GUARDED; do
     exit 1
   fi
   [ -n "$dev_secret_loc" ] || continue
+  # shellcheck disable=SC2086  # 意図的な単語分割:「<KV のパス> <キー>」の 2 語。値は上の client_secret_kv_of の case が返す固定の字面だけ
   client_secret_kv_present ${dev_secret_loc} && continue
   dev_secret_env="$(dev_client_secret_env_name "$dev_secret_client")"
   dev_secret_args+=("${dev_secret_client}=${!dev_secret_env:-}")

@@ -6,7 +6,8 @@
 #
 #   bash scripts/k8s-local-up.sh --live [cluster-name]   # --live か LIVE=1 が無ければ何もしない（#1550）
 #
-# 前提ツール: docker / k3d / kubectl / helm（scripts/README や docs/operations 参照）。
+# 前提ツール: docker / k3d / kubectl / helm / node（scripts/README や docs/operations 参照）。
+#   node は dev の値の守りの対象を realm の宣言から導出するのに使う（IADR-0572。無ければ [1/7] の直後で止まる）。
 # 機密の上書きは環境変数で: PG_PASSWORD / RABBITMQ_PASSWORD / KEYCLOAK_ADMIN_PASSWORD /
 #   OBJECT_STORAGE_ACCESS_KEY / OBJECT_STORAGE_SECRET_KEY（IADR-0461。旧 MINIO_*）/ WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY（#1764。埋め込み） /
 #   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）/

@@ -44,6 +44,10 @@ winget install Helm.Helm
 
 > どちらも実体は k3s（ADR-0008）。A は内蔵 k3s をそのまま、B は k3d が k3s-in-docker を作る。
 
+**どちらでも Node.js（`node`。リポジトリの CI と同じ 22 系）が要る。** 起動器（`scripts/k8s-local-up.sh`）と Vault の種
+（`deploy/local/vault/eso/bootstrap.sh`）は、dev の値の守りの対象を realm の宣言から `node scripts/lib/dev-client-secret-targets.js` で
+導出する。node が無いと、守れないまま進まないよう起動の最初で止まる（IADR-0572）。
+
 ## 稼働ホストの前提（メモリ・電源。Issue #1919）
 
 MSP と AST を 1 台に載せて**常用する**ホスト（PoC の稼働ホスト）の前提である。使い捨ての検証スタックにも同じ値でよい。
