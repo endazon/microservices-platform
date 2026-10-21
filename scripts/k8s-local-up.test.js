@@ -3432,6 +3432,14 @@ ok('IADR-0575: chart のエッジ（edge.oidc.enabled）は /realms/ の転送�
   assert.ok(/- uri: \{ exact: \/realms\/master \}/.test(block) && /- uri: \{ prefix: \/realms\/master\/ \}/.test(block) && /status: 403/.test(block), '拒否の match・応答が違う');
 });
 
+ok('IADR-0575: 手順書・スクリプトは管理面（/admin・/realms/master）をエッジ host（keycloak.localhost）越しに引かない', () => {
+  // 拒否の後は、エッジ越しの管理面の URL を案内する手順は壊れる（403）。port-forward か in-cluster の URL を使う。
+  const r = spawnSync('git', ['grep', '-n', '-E', 'keycloak\\.localhost(:[0-9]+)?/(admin|realms/master)', '--', 'docs', 'deploy', 'scripts', '.github',
+    ':!scripts/*.test.js', ':!scripts/check-stack-ready.js'], { cwd: REPO_ROOT, encoding: 'utf8' });
+  assert.ok(r.status === 1 || r.status === 0, r.stderr);
+  assert.strictEqual((r.stdout || '').trim(), '', `エッジ越しに管理面を引く箇所がある:\n${r.stdout}`);
+});
+
 ok('IADR-0575: 管理コンソールの URL は port-forward の先（KC_HOSTNAME_ADMIN）で、エッジ（KC_HOSTNAME）ではない', () => {
   assert.ok(/- name: KC_HOSTNAME_ADMIN\s*\n\s*value:\s*http:\/\/localhost:8080\s*$/m.test(readAt(REPO_ROOT, 'deploy', 'local', 'infra', 'keycloak.yaml')), 'KC_HOSTNAME_ADMIN が port-forward の先でない');
   const readme = readAt(EDGE_DIR, 'README.md');
