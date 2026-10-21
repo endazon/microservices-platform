@@ -131,7 +131,7 @@ ok('🔴 3. Istio エッジの overlay は器と経路の**両方**を足す（�
 ok('🔴 4. 経路は POST だけを床へ向け、catch-all より前に入る（Istio の route は先勝ち）', () => {
   assert.ok(/method:\s*\n\s*exact:\s*POST/.test(OVERLAY_KUST),
     '経路が POST に限定されていない（差の出ない GET まで遅くなる）');
-  // ［2026-10-22 / IADR-0574］素の VirtualService の先頭（http[0]）は管理面の拒否である。床はその直後（/spec/http/1）へ入れる
+  // ［2026-10-22 / IADR-0575］素の VirtualService の先頭（http[0]）は管理面の拒否である。床はその直後（/spec/http/1）へ入れる
   //   （床の正規表現は realm 名を問わないので、拒否より前だと /realms/master の申請の POST が床を通って届く）。
   //   拒否の route は 1 つだけなので、/spec/http/1 は catch-all より前である。
   assert.ok(/path:\s*\/spec\/http\/1\b/.test(OVERLAY_KUST),

@@ -1,5 +1,5 @@
 ---
-title: IADR-0574 エッジで Keycloak の管理面（/admin・/realms/master）を 403 で拒む。Traefik は長いパスの拒否の Ingress、Istio と chart は先頭の directResponse、管理者は port-forward（KC_HOSTNAME_ADMIN）
+title: IADR-0575 エッジで Keycloak の管理面（/admin・/realms/master）を 403 で拒む。Traefik は長いパスの拒否の Ingress、Istio と chart は先頭の directResponse、管理者は port-forward（KC_HOSTNAME_ADMIN）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-11, NFR-18, ADR-0021, ADR-0097, IADR-0227, IADR-0432, IADR-0524, IADR-0076]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20261022_edge-block-keycloak-admin.md
 ---
 
-# IADR-0574: エッジで Keycloak の管理面を拒む（GHSA-rh44-px44-p48q）
+# IADR-0575: エッジで Keycloak の管理面を拒む（GHSA-rh44-px44-p48q）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

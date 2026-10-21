@@ -41,7 +41,7 @@
  *   **デプロイ済みの `KC_HOSTNAME` ＋ `/realms/<realm>` と文字列として完全一致**すること
  *   （[IADR-0243] の受け入れ基準を CI で固定する）。realm 名は `deploy/keycloak/*-realm.json` から
  *   **走査して**得る（列挙を書かない）。
- * - **G4b エッジは管理面を出さない**（[IADR-0574] / GHSA-rh44-px44-p48q）: エッジ host の `/admin/`・`/admin/master/console/`・
+ * - **G4b エッジは管理面を出さない**（[IADR-0575] / GHSA-rh44-px44-p48q）: エッジ host の `/admin/`・`/admin/master/console/`・
  *   `/realms/master/.well-known/openid-configuration` が **403 か 404**（拒否）で、利用者の realm の経路
  *   （`/realms/<realm>/account/`・ログイン画面）は **2xx か 3xx**（届く）であること。経路は G4 と同じく走査した realm から組む。
  *   🔴 **拒否の宣言（Traefik の中間処理・Istio の先頭の route）は、読めないと黙って無効になり得る**ので、宣言の静的検査では足りず、
@@ -1473,7 +1473,7 @@ function evaluateIssuer({ hostnameUrl, realm, discoveryIssuer }) {
   return failures;
 }
 
-/** G4b（IADR-0574）で測る経路。blocked は 403 / 404、open は 2xx / 3xx を期待する。realm は走査した宣言から。 */
+/** G4b（IADR-0575）で測る経路。blocked は 403 / 404、open は 2xx / 3xx を期待する。realm は走査した宣言から。 */
 function edgeAdminSurfaceProbes(realms) {
   const probes = [
     { path: '/admin/', expect: 'blocked' },
@@ -1489,7 +1489,7 @@ function edgeAdminSurfaceProbes(realms) {
 }
 
 /**
- * G4b（IADR-0574）: エッジは管理面を拒み、利用者の realm の経路は通す。**純関数**。
+ * G4b（IADR-0575）: エッジは管理面を拒み、利用者の realm の経路は通す。**純関数**。
  * @param {Array<{path: string, expect: 'blocked'|'open', status: number}>} results status は HTTP の状態（測れなければ 0）
  */
 function evaluateEdgeAdminSurface(results) {
@@ -1501,9 +1501,9 @@ function evaluateEdgeAdminSurface(results) {
     if (!r.status) {
       failures.push(`[G4b] ${r.path} を測れなかった（curl の失敗）。測れないを緑にしない。`);
     } else if (r.expect === 'blocked' && r.status !== 403 && r.status !== 404) {
-      failures.push(`[G4b] エッジ越しに ${r.path} が ${r.status} を返した。管理面（/admin・/realms/master）はエッジで 403 / 404 に拒むこと（[IADR-0574]）。`);
+      failures.push(`[G4b] エッジ越しに ${r.path} が ${r.status} を返した。管理面（/admin・/realms/master）はエッジで 403 / 404 に拒むこと（[IADR-0575]）。`);
     } else if (r.expect === 'open' && !(r.status >= 200 && r.status < 400)) {
-      failures.push(`[G4b] エッジ越しに利用者の realm の経路 ${r.path} が ${r.status} を返した。拒否が利用者の経路まで広がっている（[IADR-0574]）。`);
+      failures.push(`[G4b] エッジ越しに利用者の realm の経路 ${r.path} が ${r.status} を返した。拒否が利用者の経路まで広がっている（[IADR-0575]）。`);
     }
   }
   return failures;
@@ -1607,7 +1607,7 @@ function check({ repoRoot = REPO_ROOT } = {}) {
       );
     }
 
-    // G4b（IADR-0574）: エッジは管理面を拒み、利用者の realm の経路は通す。
+    // G4b（IADR-0575）: エッジは管理面を拒み、利用者の realm の経路は通す。
     if (hostnameUrl) {
       const base = String(hostnameUrl).replace(/\/+$/, '');
       failures.push(...evaluateEdgeAdminSurface(edgeAdminSurfaceProbes(realms).map((p) => ({ ...p, status: fetchStatus(`${base}${p.path}`) }))));
@@ -1925,7 +1925,7 @@ function selfTest() {
     );
   });
 
-  ok('G4b（IADR-0574）: 管理面が 403 / 404・利用者の経路が 2xx / 3xx なら通り、どちらかが崩れれば名指す', () => {
+  ok('G4b（IADR-0575）: 管理面が 403 / 404・利用者の経路が 2xx / 3xx なら通り、どちらかが崩れれば名指す', () => {
     const probes = edgeAdminSurfaceProbes(['platform']);
     assert.ok(probes.some((p) => p.expect === 'blocked' && p.path.startsWith('/admin')), '/admin を測っていない');
     assert.ok(probes.some((p) => p.expect === 'blocked' && p.path.startsWith('/realms/master/')), '/realms/master を測っていない');

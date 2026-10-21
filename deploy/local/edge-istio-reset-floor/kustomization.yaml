@@ -14,7 +14,7 @@
 #      既定で取り込む（infra の描画に出る）。同じ描画なので、ここからも apply して冪等である ——
 #      overlay 単独でも「器と経路の 2 つで 1 組」を崩さないために残す。
 #   2. `msp-keycloak-edge` の**先頭の拒否の直後**（catch-all より前）へ、**リセット申請の POST だけ**を床へ向ける route
-#      （［2026-10-22 / IADR-0574］先頭は管理面の拒否になった。下の patch の注記）
+#      （［2026-10-22 / IADR-0575］先頭は管理面の拒否になった。下の patch の注記）
 #
 # 🔴 **片方だけでは効かない。** 器だけなら誰も通らず、route だけなら 404 になる。
 #
@@ -53,7 +53,7 @@ patches:
       name: msp-keycloak-edge
       namespace: istio-system
     patch: |-
-      # 🔴 IADR-0574: 先頭（/spec/http/0）は管理面の拒否（keycloak-admin-surface-deny）である。床はその直後に入れる ——
+      # 🔴 IADR-0575: 先頭（/spec/http/0）は管理面の拒否（keycloak-admin-surface-deny）である。床はその直後に入れる ——
       #   床の正規表現は realm 名を問わないので、拒否より前に置くと /realms/master の申請の POST が床を通って Keycloak へ届く。
       #   catch-all（prefix: /）より前であることは変わらない。
       - op: add

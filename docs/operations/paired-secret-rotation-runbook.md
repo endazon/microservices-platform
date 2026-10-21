@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-28
-updated: 2026-10-10
+updated: 2026-10-22
 ---
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]
 adrs: [ADR-0132, ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
-iadrs: [IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524]
-specs: [20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade]
+iadrs: [IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524]
+specs: [20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade]
 issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, planning#700, AST#1078]
 -->
 
@@ -50,7 +50,7 @@ issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1
 | --- | --- |
 | 認証基盤の realm の宣言（`deploy/keycloak/microservices-platform-realm.json`） | 宣言の client の `secret` は**開発用の値**だけであり、**client を新しく作るときにだけ**使う。宣言の追随（`deploy/local/keycloak-setup/reconcile-realm.sh`）は既存の client の `secret` を比べず・書かない。起動時の import は realm が在れば飛ばす。空の状態からの import では、管理用の 3 クライアント（`identity-admin`・`reset-gate`・`mcp-client-admin`）だけは起動器に与えた env の値で作る（与えなければ開発用の値） |
 | 保管先の種（`deploy/local/vault/eso/bootstrap.sh`） | 対になる秘密の KV は**無いときだけ作る**。在れば env を渡しても触らない |
-| 🔴 手動の Secret 作成（`scripts/k8s-local-up.sh` の `apply_secret`） | **塞いでいない。** `postgres` / `rabbitmq` / `keycloak-admin` / `reset-gate-oidc` は `ESO=1` でも env か開発用既定値で Secret を作る。保管先の値は戻らないが、**次の同期までの間 Secret が既定値になる。** 起動の後に同期を促す（[起動の後](#起動の後に同期を促す)） |
+| 🔴 手動の Secret 作成（`scripts/k8s-local-up.sh` の `apply_secret`） | **一部だけ塞いだ。** ［2026-10-22］`rabbitmq` / `keycloak-admin` は env か既存の Secret の値で作り、開発用既定値では作らない（無ければ止まる。使い捨ての環境だけ明示の opt-in で許す）。`postgres` / `reset-gate-oidc` は `ESO=1` でも env か開発用既定値で Secret を作る。保管先の値は戻らないが、**次の同期までの間 Secret が既定値になる。** 起動の後に同期を促す（[起動の後](#起動の後に同期を促す)） |
 
 ## この手順を実行する条件（いつ走らせるか）
 
@@ -300,6 +300,9 @@ MCP クライアント登録管理の後段が、無人のクライアントと�
   `RESET_GATE_CLIENT_SECRET`・`MCP_CLIENT_ADMIN_CLIENT_SECRET` に dev 以外の値（0-a の作り方）を与えて再実行する。認証基盤の側が dev の値のままなら、
   その後に下の確かめ方で名指されるので、1-3 の手順で対に回す。dev のクラスタだと分かっているときだけ `ALLOW_DEV_CLIENT_SECRETS=1` で通せる（警告を出す）。
   止まったときのメッセージにも、下の確かめ方が出る。
+  ［2026-10-22］**対象はこの 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広がった。** dev 以外のクラスタでは、
+  対象全部の env を与える（一覧と env の名前は `node scripts/lib/dev-client-secret-targets.js deploy/keycloak/microservices-platform-realm.json | cut -f1,2`）。
+  保管先（`ESO=1`）に既に在る値は書き換えないので、そのときは保管先に在る値と同じ値を与える（下の項と同じ）。
 - Keycloak 本体の realm の初回 import（空の状態からの起動・realm を消した後の再起動）は、起動器が作る取り込み元（Secret `keycloak-realm-import`）を読む。
   起動器はこの取り込み元を作るとき、env を与えたクライアントの secret を宣言の dev の値から env の値へ差し替える（値は出力しない）。
   よって env を与えて新しいクラスタを起動すれば、認証基盤の側も最初からその値になり、消費側の Secret と食い違わない。
@@ -316,7 +319,7 @@ bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets
 ```
 
 稼働の secret が dev の値のままのクライアントを `dev-secret <client>` と名指して非 0 で終える。名指されたものを 1-3 の手順で回し、もう一度実行して
-0 で終わる（3 つとも `ok`）ことを確かめる。稼働に無いクライアントは `absent` と出る（作られるときは上の守りが掛かる）。
+0 で終わる（対象がすべて `ok` か `absent`）ことを確かめる。稼働に無いクライアントは `absent` と出る（作られるときは上の守りが掛かる）。
 
 **手順**（通常の 1-3 に次を足す）:
 
@@ -343,7 +346,8 @@ bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets
 ## 起動の後に同期を促す
 
 `scripts/k8s-local-up.sh` を再実行すると、手動の Secret 作成が `postgres` / `rabbitmq` / `keycloak-admin` / `reset-gate-oidc` の Secret を
-**env か開発用既定値で**書き直す（保管先の値は戻らない）。env に新しい値を渡さなかったときは、起動の後に 4 つの同期を促す:
+**env か開発用既定値で**書き直す（保管先の値は戻らない）。［2026-10-22］`rabbitmq` / `keycloak-admin` だけは、env が無ければ既存の Secret の値で
+書き直し、既存の値も開発用の値なら止まる（開発用既定値では書かない）。env に新しい値を渡さなかったときは、起動の後に 4 つの同期を促す:
 
 ```sh
 for es in postgres rabbitmq keycloak-admin reset-gate-oidc; do

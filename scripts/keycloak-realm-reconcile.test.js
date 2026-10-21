@@ -27,7 +27,8 @@ const fs = require('fs');
 const path = require('path');
 const {
   plan, contains, merge, gateHoldsClosed, collectLive,
-  devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, DEV_SECRET_GUARDED_CLIENTS, DEV_SECRETS_ALLOWED_ENV,
+  devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, isDevSecretGuardedClient, devSecretGuardedClients,
+  DEV_SECRETS_ALLOWED_ENV,
   RUNTIME_OWNED_REALM_KEYS, CLIENT_CREATE_ONLY_KEYS, GATE_OWNED_REALM_KEYS, GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
   SEED_USER_SELF_SERVICE_ROLES,
   resolveE2eCredentials, passwordMeetsPolicy, describeSkipped, renderImport, describe,
@@ -790,21 +791,39 @@ ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読
   }
   // ---------------------------------------------------------------- #1830 / IADR-0517: dev の値の管理用クライアント
   const done1830 = (name) => { passed++; process.stdout.write(`  ok  ${name}\n`); };
+  // ［IADR-0572 / GHSA-rh44-px44-p48q］対象は宣言から導出する（サービスアカウントを持つ機密クライアントで宣言が secret を持つもの）。
+  const DEV_SECRET_GUARDED_CLIENTS = devSecretGuardedClients(REALM);
+  const devOf = (id) => REALM.clients.find((c) => c.clientId === id).secret;
   {
-    // 宣言との結び目: 対象の 3 クライアントは宣言に在り、secret は判定器（scripts/lib/dev-client-secret-guard.sh）の dev の値と同じ形。
-    const lib = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh'), 'utf8');
-    const shellSet = (lib.match(/^DEV_CLIENT_SECRET_GUARDED="([^"]+)"$/m) || [])[1];
-    assert.ok(shellSet, '判定器の DEV_CLIENT_SECRET_GUARDED が読めない');
-    assert.deepStrictEqual(shellSet.split(/\s+/).sort(), [...DEV_SECRET_GUARDED_CLIENTS].sort(), 'shell と JS の対象集合が食い違う');
-    for (const id of DEV_SECRET_GUARDED_CLIENTS) {
-      const c = REALM.clients.find((x) => x.clientId === id);
-      assert.ok(c, `宣言に ${id} が無い`);
-      assert.strictEqual(c.secret, `${id}-dev-secret-change-me`, `${id} の宣言の secret が判定器の dev の値と違う形`);
-    }
+    // 導出の結果を、試験が宣言から独立に数えた集合と突き合わせる（当初の 3 つを含み、SA を持たない・公開のクライアントは含まない）。
+    const independent = REALM.clients
+      .filter((c) => c.serviceAccountsEnabled === true && c.publicClient !== true && typeof c.secret === 'string' && c.secret !== '')
+      .map((c) => c.clientId).sort();
+    assert.deepStrictEqual(DEV_SECRET_GUARDED_CLIENTS, independent);
+    for (const id of ['identity-admin', 'reset-gate', 'mcp-client-admin', 'bff', 'abac-seeder']) assert.ok(DEV_SECRET_GUARDED_CLIENTS.includes(id), `${id} が対象に無い`);
+    for (const id of ['wiki-js', 'grafana', 'account-console']) assert.ok(!DEV_SECRET_GUARDED_CLIENTS.includes(id), `${id} が対象に入った`);
+    // 述語の変異: SA を外す・公開にする・secret を消すと外れる。clientId は見ない（知らない名前でも SA を持てば入る）。
+    const base = { clientId: 'probe-0570', serviceAccountsEnabled: true, publicClient: false, secret: ['probe', '0570', 'declared'].join('-') };
+    assert.strictEqual(isDevSecretGuardedClient(base), true);
+    assert.strictEqual(isDevSecretGuardedClient({ ...base, serviceAccountsEnabled: false }), false);
+    assert.strictEqual(isDevSecretGuardedClient({ ...base, publicClient: true }), false);
+    assert.strictEqual(isDevSecretGuardedClient({ ...base, secret: '' }), false);
+    assert.deepStrictEqual(devSecretGuardedClients({ clients: [...REALM.clients, base] }), [...DEV_SECRET_GUARDED_CLIENTS, 'probe-0570'].sort());
+    done1830('IADR-0572: 対象は宣言から導出する（SA を持つ機密クライアント全部。足したクライアントは手を入れずに入る）');
+  }
+  {
+    // 宣言との結び目: ホスト側の判定器（scripts/lib/dev-client-secret-guard.sh）が読む表（dev-client-secret-targets.js）は、
+    // Job と同じ述語で導出した集合で、dev の値は宣言の secret そのもの。
+    const { execFileSync } = require('child_process');
+    const table = execFileSync(process.execPath, [path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-targets.js'),
+      path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json')], { encoding: 'utf8' })
+      .trim().split('\n').map((l) => l.split('\t'));
+    assert.deepStrictEqual(table.map((r) => r[0]), DEV_SECRET_GUARDED_CLIENTS, 'shell と JS の対象集合が食い違う');
+    for (const [id, , dev] of table) assert.strictEqual(dev, devOf(id), `${id} の表の dev の値が宣言と違う`);
     assert.strictEqual(DEV_SECRETS_ALLOWED_ENV, 'DEV_CLIENT_SECRETS_ALLOWED');
     const job = fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'local', 'keycloak-setup', 'realm-reconcile-job.yaml'), 'utf8');
     assert.ok(/- name: DEV_CLIENT_SECRETS_ALLOWED\n\s+value: "deny"\n/.test(job), 'Job マニフェストの既定が deny でない（直接 apply で安全側に倒れない）');
-    done1830('#1830: 対象の 3 クライアントは shell の判定器と同じ集合で、宣言の secret は dev の値の形・Job の既定は deny');
+    done1830('#1830/IADR-0572: 対象は shell の判定器と同じ集合で、dev の値は宣言の secret・Job の既定は deny');
   }
   {
     const live = liveFrom(REALM);
@@ -814,20 +833,19 @@ ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読
       l.clients = l.clients.filter((c) => c.clientId !== id);
       assert.deepStrictEqual(devSecretCreations(plan(REALM, l)), [id], `${id} が無いときに名指さない`);
     }
-    const noBff = clone(live);
-    noBff.clients = noBff.clients.filter((c) => c.clientId !== 'bff');
-    assert.deepStrictEqual(devSecretCreations(plan(REALM, noBff)), [], '対象外（bff）の作成まで名指した');
+    const noGrafana = clone(live);
+    noGrafana.clients = noGrafana.clients.filter((c) => c.clientId !== 'grafana');
+    assert.ok(plan(REALM, noGrafana).some((o) => o.op === 'client.create' && o.target === 'grafana'), '前提: grafana の client.create が出る');
+    assert.deepStrictEqual(devSecretCreations(plan(REALM, noGrafana)), [], '対象外（SA を持たない grafana）の作成まで名指した');
     assert.deepStrictEqual(devSecretCreations(plan(REALM, { realm: null })), [...DEV_SECRET_GUARDED_CLIENTS].sort(),
-      'realm が無い（realm.create）ときに 3 つを名指さない');
+      'realm が無い（realm.create）ときに対象全部を名指さない');
     done1830('#1830: devSecretCreations は対象のクライアントを作る操作（client.create・realm.create）だけを名指す');
   }
   {
-    const live = { 'identity-admin': 'identity-admin-dev-secret-change-me', 'reset-gate': ['rotated', '1830'].join('-'), 'mcp-client-admin': null };
-    assert.deepStrictEqual(devSecretFindings(REALM, live), [
-      { clientId: 'identity-admin', state: 'dev' },
-      { clientId: 'mcp-client-admin', state: 'absent' },
-      { clientId: 'reset-gate', state: 'rotated' },
-    ]);
+    const live = { 'identity-admin': devOf('identity-admin'), 'reset-gate': ['rotated', '1830'].join('-'), 'mcp-client-admin': null, bff: devOf('bff') };
+    const expected = { 'identity-admin': 'dev', 'reset-gate': 'rotated', bff: 'dev' }; // 他は稼働の値を与えていない＝absent
+    assert.deepStrictEqual(devSecretFindings(REALM, live),
+      DEV_SECRET_GUARDED_CLIENTS.map((clientId) => ({ clientId, state: expected[clientId] || 'absent' })).sort((x, y) => x.clientId.localeCompare(y.clientId)));
     assert.ok(devSecretFindings(REALM, live).every((f) => !('value' in f) && !('secret' in f)), '判定の結果に値を持たせた');
     done1830('#1830: devSecretFindings は dev / rotated / absent を分け、値を結果に含めない');
   }
@@ -881,15 +899,18 @@ ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読
       fs.rmSync(dir, { recursive: true, force: true });
     }
   };
-  const devOf = (id) => `${id}-dev-secret-change-me`;
   {
     const r = await runMain({ args: ['--check-dev-secrets'],
-      secrets: { 'identity-admin': devOf('identity-admin'), 'reset-gate': ROTATED, 'mcp-client-admin': devOf('mcp-client-admin') } });
+      secrets: { 'identity-admin': devOf('identity-admin'), 'reset-gate': ROTATED, 'mcp-client-admin': devOf('mcp-client-admin'),
+        // IADR-0572: 当初の 3 つ以外（SA を持つ bff・abac-seeder）も見る
+        bff: devOf('bff'), 'abac-seeder': ROTATED } });
     assert.strictEqual(r.code, 1, r.out);
     assert.ok(/dev-secret\s+identity-admin/.test(r.out) && /dev-secret\s+mcp-client-admin/.test(r.out), `名指していない:\n${r.out}`);
+    assert.ok(/dev-secret\s+bff\b/.test(r.out), `当初の 3 つ以外（bff）を名指していない（対象が広がっていない）:\n${r.out}`);
     assert.ok(/ok\s+reset-gate/.test(r.out) && !/dev-secret\s+reset-gate/.test(r.out), `回した reset-gate を dev と言った:\n${r.out}`);
-    assert.ok(/dev-secrets=2$/m.test(r.out), r.out);
-    for (const v of [devOf('identity-admin'), devOf('mcp-client-admin'), ROTATED]) assert.ok(!r.out.includes(v), `値が出力に出た: ${v}`);
+    assert.ok(/ok\s+abac-seeder/.test(r.out), `回した abac-seeder を ok と言わない:\n${r.out}`);
+    assert.ok(/dev-secrets=3$/m.test(r.out), r.out);
+    for (const v of [devOf('identity-admin'), devOf('mcp-client-admin'), devOf('bff'), ROTATED]) assert.ok(!r.out.includes(v), `値が出力に出た: ${v}`);
     assert.deepStrictEqual(r.writes, [], `読むだけのはずが書いた: ${r.writes.join(', ')}`);
     assert.ok(r.seen.some((l) => /\/clients\/c-identity-admin\/client-secret$/.test(l)), '陽性対照: 稼働の secret を読んでいる');
     done1830('#1830: --check-dev-secrets は dev の値のクライアントを名指して非 0（値を出さない・書かない）');
@@ -898,7 +919,8 @@ ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読
     const r = await runMain({ env: { RECONCILE_MODE: 'check-dev-secrets' },
       secrets: { 'identity-admin': ROTATED, 'reset-gate': ROTATED, 'mcp-client-admin': ROTATED } });
     assert.strictEqual(r.code, 0, r.out);
-    assert.ok(/checked=3 dev-secrets=0$/m.test(r.out), r.out);
+    assert.ok(new RegExp(`checked=${DEV_SECRET_GUARDED_CLIENTS.length} dev-secrets=0$`, 'm').test(r.out), r.out);
+    assert.ok(DEV_SECRET_GUARDED_CLIENTS.length > 3, '前提: 対象が 3 つより多い（広げた）');
     assert.ok(!r.out.includes(ROTATED), '値が出力に出た');
     const absent = await runMain({ args: ['--check-dev-secrets'], secrets: { 'identity-admin': ROTATED, 'reset-gate': ROTATED, 'mcp-client-admin': null } });
     assert.strictEqual(absent.code, 0, absent.out);
@@ -915,7 +937,7 @@ ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読
     const denied = await runMain({ realmExists: false });
     assert.strictEqual(denied.code, 1, denied.out);
     assert.deepStrictEqual(denied.writes, [], `拒否のはずが書いた: ${denied.writes.join(', ')}`);
-    assert.ok(/identity-admin, mcp-client-admin, reset-gate/.test(denied.out), `名指していない:\n${denied.out}`);
+    assert.ok(denied.out.includes(DEV_SECRET_GUARDED_CLIENTS.join(', ')), `名指していない:\n${denied.out}`);
     const deniedExplicit = await runMain({ realmExists: false, env: { [DEV_SECRETS_ALLOWED_ENV]: 'deny' } });
     assert.deepStrictEqual(deniedExplicit.writes, [], 'deny で書いた');
     const notOne = await runMain({ realmExists: false, env: { [DEV_SECRETS_ALLOWED_ENV]: '1' } });
@@ -923,7 +945,7 @@ ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読
     const allowed = await runMain({ realmExists: false, env: { [DEV_SECRETS_ALLOWED_ENV]: 'allow' } });
     assert.ok(allowed.writes.includes('POST /admin/realms'), `陽性対照: allow で realm を作っていない: ${allowed.writes.join(', ')}`);
     assert.ok(/WARN/.test(allowed.out), '許可して作るときに警告しない');
-    done1830('#1830: 後追いは DEV_CLIENT_SECRETS_ALLOWED=allow でなければ、管理用クライアントを dev の値で作る realm に何も書かず非 0');
+    done1830('#1830: 後追いは DEV_CLIENT_SECRETS_ALLOWED=allow でなければ、対象のクライアントを dev の値で作る realm に何も書かず非 0');
   }
   {
     // #2024 / IADR-0570: main まで通す。realm が無い（realm.create）とき、本文に `${E2E_` を残さない。

@@ -137,7 +137,7 @@ mkcert を使う手もあるが、**CA が開発者マシン固有でリポジ�
   - hosts（`C:\Windows\System32\drivers\etc\hosts` / `/etc/hosts`）: `127.0.0.1 grafana.localhost argocd.localhost vault.localhost headlamp.localhost qdrant.localhost`
   - もしくは `grafana.127.0.0.1.nip.io:50000` 等の `*.nip.io` / `*.sslip.io`（hosts 編集不要・ワイルドカード解決）。
 
-## Keycloak の管理コンソール（エッジに出さない。IADR-0574）
+## Keycloak の管理コンソール（エッジに出さない。IADR-0575）
 
 エッジ（Traefik の `keycloak-edge-admin-deny`・Istio の `msp-keycloak-edge` の先頭の route・chart の `keycloak-master-realm-deny`）は、
 `keycloak.localhost` の **`/admin` と `/realms/master` を 403 で拒む**。利用者が使う realm の経路（`/realms/platform/...` のログイン・
