@@ -474,7 +474,10 @@ realm_import_mp="$(
     exit 1
   fi
   if kubectl -n "$INFRA_NS" get secret e2e-accounts >/dev/null 2>&1; then
-    while IFS='=' read -r e2e_key e2e_b64; do
+    # 1 行は「キー=base64」。🔴 `IFS='=' read k v` で割らない —— base64 の末尾の単独の `=` が落ちる（PR #2048 の AI レビュー）。
+    while IFS= read -r e2e_line; do
+      e2e_key="${e2e_line%%=*}"
+      e2e_b64="${e2e_line#*=}"
       case "$e2e_key" in E2E_[A-Z0-9_]*) ;; *) continue ;; esac
       e2e_val="$(printf '%s' "$e2e_b64" | base64 -d)"
       export "$e2e_key=$e2e_val"

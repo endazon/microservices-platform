@@ -5601,6 +5601,9 @@ ok('#2024: Secret e2e-accounts が揃えば、取り込み元の 6 名は値を�
   const otp = users.find((u) => u.username === 'e2e-user').credentials.find((c) => c.type === 'otp');
   assert.deepStrictEqual(JSON.parse(otp.secretData), { value: e2eValueOf2024('E2E_USER_TOTP_SECRET') });
   assert.ok(/試験アカウントを e2e-accounts から差し込む: e2e-user, /.test(r.stderr), `告知が無い:\n${r.stderr.slice(-600)}`);
+  // PR #2048 の AI レビュー: base64 の末尾の単独の `=` を落とさない（落とすと base64 -d が invalid input を出す）。
+  assert.ok(E2E_NAMES_2024.some((n) => /[^=]=$/.test(Buffer.from(e2eValueOf2024(n)).toString('base64'))), '前提: 末尾が単独の = の値が無い');
+  assert.ok(!/invalid input/.test(r.stderr), `base64 の復号に失敗した:\n${r.stderr.slice(-600)}`);
   for (const n of E2E_NAMES_2024) {
     assert.ok(!`${r.stdout}${r.stderr}`.includes(e2eValueOf2024(n)), `${n} の値が出力に出た`);
     assert.ok(!r.lines.some((l) => l.includes(e2eValueOf2024(n))), `${n} の値がコマンドの引数に出た`);
