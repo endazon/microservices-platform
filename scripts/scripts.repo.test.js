@@ -13985,7 +13985,7 @@ exit 0
         const stdinLog = `${log}.stdin`;
         const putStdin = Object.fromEntries((fs1728.existsSync(stdinLog) ? fs1728.readFileSync(stdinLog, 'utf8').split('\n').filter(Boolean) : [])
           .map((l) => [l.slice(0, l.indexOf(' ')), l.slice(l.indexOf(' ') + 1)]));
-        // IADR-0570: 実行後の KV（パス → 「名前=値」の行）。patch の値（stdin）の行き先を試験が確かめる。
+        // IADR-0572: 実行後の KV（パス → 「名前=値」の行）。patch の値（stdin）の行き先を試験が確かめる。
         const kvDir = path1728.join(state, 'kv');
         const kvAfter = Object.fromEntries(fs1728.readdirSync(kvDir).filter((f) => !f.includes('.'))
           .map((f) => [f.split('__').join('/'), fs1728.readFileSync(path1728.join(kvDir, f), 'utf8')]));
@@ -14312,14 +14312,14 @@ exit 0
     const vaultWrites1830 = (r) => r.calls.filter((c) => c.startsWith('VAULT '));
     const probe1830 = (c) => ['probe', '1830', c].join('-');
 
-    // ［IADR-0570 / GHSA-rh44-px44-p48q］対象は realm の宣言から導出する（サービスアカウントを持つ機密クライアント全部）。既定の世界の
+    // ［IADR-0572 / GHSA-rh44-px44-p48q］対象は realm の宣言から導出する（サービスアカウントを持つ機密クライアント全部）。既定の世界の
     // app-secrets は kb-reader-auth-client-* を欠く（PoC の状態）ので、dev ではない context ではそのクライアントも名指される。
     const { envNameOf: envNameOf0570 } = require('./lib/dev-client-secret-targets.js');
     const READER_FILLED0570 = ({ kv }) => kv('ai-stock-trading/app-secrets', { ...AUTH, 'kb-reader-auth-client-id': 'ai-stock-trading-kb-reader',
       'kb-reader-auth-client-secret': 'ai-stock-trading-kb-reader-dev-secret-change-me' });
     const both0570 = (...fns) => (ctx) => { for (const f of fns) f(ctx); };
 
-    ok('#1830/IADR-0570: dev ではない context で、無い KV（app-secrets はキー）を env 未設定（dev の値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
+    ok('#1830/IADR-0572: dev ではない context で、無い KV（app-secrets はキー）を env 未設定（dev の値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
       const r = run1728({ setup: dropKv1830(...Object.values(GUARDED1830), 'msp/llm-provider-credentials'), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
       assert.notStrictEqual(r.status, 0, '止まらなかった');
       assert.deepStrictEqual(vaultWrites1830(r), [], `止まる前に Vault へ書いた: ${vaultWrites1830(r).join(', ')}`);
@@ -14337,7 +14337,7 @@ exit 0
       assert.strictEqual(present.status, 0, `KV が在るのに止まった:\n${present.stderr}`);
     });
 
-    ok('IADR-0570: 当初の 3 つ以外（bff・east-west の *-service・synthetic-monitor）の無い KV も名指す', () => {
+    ok('IADR-0572: 当初の 3 つ以外（bff・east-west の *-service・synthetic-monitor）の無い KV も名指す', () => {
       const extra = { bff: 'msp/bff-oidc', 'document-service': 'msp/document-service-token', 'synthetic-monitor': 'msp/synthetic-monitor-oidc' };
       const r = run1728({ setup: both0570(dropKv1830(...Object.values(extra)), READER_FILLED0570), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
       assert.notStrictEqual(r.status, 0, '止まらなかった（対象が広がっていない）');
@@ -14351,7 +14351,7 @@ exit 0
       for (const [c, p] of Object.entries(extra)) assert.ok(given.putStdin[p].includes(probe1830(c)), `${p} が与えた値で作られていない`);
     });
 
-    ok('IADR-0570: AST の機密クライアントは env を与えれば app-secrets の無いキーへその値で入れる（在るキーは触らない・値は stdin）', () => {
+    ok('IADR-0572: AST の機密クライアントは env を与えれば app-secrets の無いキーへその値で入れる（在るキーは触らない・値は stdin）', () => {
       const env = { STUB_KUBE_CONTEXT: 'prod-shared', AI_STOCK_TRADING_KB_READER_CLIENT_SECRET: probe1830('kb-reader'),
         AI_STOCK_TRADING_SVC_CLIENT_SECRET: probe1830('svc') };
       const r = run1728({ env });
@@ -14392,7 +14392,7 @@ exit 0
       assert.ok(/!!! WARNING: bootstrap\.sh: ALLOW_DEV_CLIENT_SECRETS=1/.test(over.stderr), '上書きで警告しない');
     });
 
-    ok('IADR-0570 変異: 宣言に Vault の置き場の決まっていない SA クライアントが現れたら、dev の context でも Vault へ何も書かずに止まる（入れ漏れを通さない）', () => {
+    ok('IADR-0572 変異: 宣言に Vault の置き場の決まっていない SA クライアントが現れたら、dev の context でも Vault へ何も書かずに止まる（入れ漏れを通さない）', () => {
       // 判定器・導出・述語・宣言を一時の木へ写し、宣言にだけクライアントを足す（本物のファイルは変えない）。
       const tree = fs1728.mkdtempSync(path1728.join(os1728.tmpdir(), 'bootstrap-0570-'));
       try {
@@ -14421,7 +14421,7 @@ exit 0
       }
     });
 
-    ok('IADR-0570: bootstrap.sh が seed する client-secret の KV は、どれも宣言から導出した対象の置き場と一致する（置き場の表と seed が食い違わない）', () => {
+    ok('IADR-0572: bootstrap.sh が seed する client-secret の KV は、どれも宣言から導出した対象の置き場と一致する（置き場の表と seed が食い違わない）', () => {
       const src = fs1728.readFileSync(BOOTSTRAP, 'utf8');
       const fn = src.match(/^client_secret_kv_of\(\) \{\n[\s\S]*?\n\}\n/m);
       assert.ok(fn, 'client_secret_kv_of の定義を読めない');

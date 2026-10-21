@@ -10,13 +10,13 @@
 ```sh
 bash deploy/local/keycloak-setup/reconcile-realm.sh           # 差分を当てる（apply）。単独でも何度でも実行できる
 bash deploy/local/keycloak-setup/reconcile-realm.sh --check   # 差分を数えるだけ（書き換えない）。1 件でも在れば exit 1
-bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets  # サービスアカウントを持つ機密クライアントの secret が dev の値のままなら名指して exit 1（#1830・IADR-0570）
+bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets  # サービスアカウントを持つ機密クライアントの secret が dev の値のままなら名指して exit 1（#1830・IADR-0572）
 ```
 
 ## dev 以外のクラスタでの守り（NFR-18 / ADR-0124 決定 1 / [IADR-0517](../../../.ai-context/adr/IADR-0517_dev-client-secret-guard-kube-context-allowlist.md) / #1830）
 
 - **対象**: realm の宣言でサービスアカウントを持つ機密クライアント全部（宣言が `secret` を持つもの。手で並べず宣言から導出する。
-  当初の 3 つ `identity-admin`・`reset-gate`・`mcp-client-admin` から広げた。[IADR-0570](../../../.ai-context/adr/IADR-0570_dev-secret-guard-all-service-account-clients.md)）。
+  当初の 3 つ `identity-admin`・`reset-gate`・`mcp-client-admin` から広げた。[IADR-0572](../../../.ai-context/adr/IADR-0572_dev-secret-guard-all-service-account-clients.md)）。
 - **作らせない**: 無い client は宣言の secret（公知の dev の値）で作られる。対象のクライアントについて、本スクリプトは kube context を `scripts/lib/dev-client-secret-guard.sh`（`k8s-local-up.sh`・
   Vault の種の `bootstrap.sh` と同じ判定器）で判定し、Job の env `DEV_CLIENT_SECRETS_ALLOWED` へ `allow` / `deny` を渡す
   （許可集合 `k3d-*`・`kind-*`・`rancher-desktop`・`docker-desktop`、または `ALLOW_DEV_CLIENT_SECRETS=1`。マニフェストの既定は `deny`）。

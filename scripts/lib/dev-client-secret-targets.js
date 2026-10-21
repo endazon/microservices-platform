@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// NFR-18, ADR-0124 決定 1, IADR-0517 / IADR-0570 (GHSA-rh44-px44-p48q):
+// NFR-18, ADR-0124 決定 1, IADR-0517 / IADR-0572 (GHSA-rh44-px44-p48q):
 // **dev の値の守りの対象を realm の宣言から導出する**口（ホスト側）。scripts/lib/dev-client-secret-guard.sh が呼ぶ。
 //
 //   node scripts/lib/dev-client-secret-targets.js <realm ファイル>

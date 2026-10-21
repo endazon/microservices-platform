@@ -2,7 +2,7 @@
 title: 作業仕様書 — dev の値の守りの対象を、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げ、対象を宣言から導出する（GHSA-rh44-px44-p48q）
 type: spec
 status: done
-related_ids: [NFR-18, ADR-0124, IADR-0570, IADR-0517, IADR-0518, IADR-0485]
+related_ids: [NFR-18, ADR-0124, IADR-0572, IADR-0517, IADR-0518, IADR-0485]
 author: claude
 created: 2026-10-22
 updated: 2026-10-22
@@ -13,7 +13,7 @@ issue: "GHSA-rh44-px44-p48q"
 
 # 作業仕様書 — dev の値の守りを、サービスアカウントを持つ機密クライアント全部へ広げる（GHSA-rh44-px44-p48q）
 
-> 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0570**（新規）に置く。
+> 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0572**（新規）に置く。
 > 多層防御の強化として、既定を fail-closed へ寄せる一連の変更（4 本の PR）の 1 本目である。参照は GHSA の ID だけとする。
 > 🔴 **稼働中のクラスタ・Keycloak には何も実行しない。** 試験はすべて PATH のスタブ・偽の Keycloak の下で行う。
 
@@ -21,7 +21,7 @@ issue: "GHSA-rh44-px44-p48q"
 
 - 非機能要求: **NFR-18**（シークレット管理）。
 - 計画 ADR: **ADR-0124 決定 1**（対になる秘密は相手と対で書く。初期投入は無いときだけ作る）。矛盾しない（守りの対象を広げるだけで、対で書く運用・無いときだけ作る形は変えない）。
-- 実装 ADR: **IADR-0570**（本作業で新設）。前提 **IADR-0517**（kube context の許可集合・`--check-dev-secrets`。その残余 2「対象外のクライアント」を閉じる）・**IADR-0518**（取り込み元への env の差し替え）・**IADR-0485**（宣言の `secret` は作成時にだけ運ぶ）。
+- 実装 ADR: **IADR-0572**（本作業で新設）。前提 **IADR-0517**（kube context の許可集合・`--check-dev-secrets`。その残余 2「対象外のクライアント」を閉じる）・**IADR-0518**（取り込み元への env の差し替え）・**IADR-0485**（宣言の `secret` は作成時にだけ運ぶ）。
 
 ## 要件（オーナー指示 2026-10-22）
 
@@ -33,11 +33,11 @@ issue: "GHSA-rh44-px44-p48q"
 
 | # | 基準 | 試験 |
 | --- | --- | --- |
-| AC1 | 対象は宣言の「`serviceAccountsEnabled: true`・`publicClient` でない・宣言が `secret` を持つ」クライアント全部で、当初の 3 つを含み、SA を持たない道具の OIDC・公開クライアントを含まない | `k8s-local-up.test.js`「IADR-0570: 判定器の対象は…」・`keycloak-realm-reconcile.test.js`「IADR-0570: 対象は宣言から導出する」 |
-| AC2 | 宣言へ SA を持つクライアントを足すと、守りの側を触らずに対象へ入る（判定・取り込み元の差し替え・後追い・検知）。SA を外す・公開にする・secret を消すと外れる | `k8s-local-up.test.js`「IADR-0570 変異: 宣言へ…」・`keycloak-realm-reconcile.test.js` 同 |
-| AC3 | 起動器（`k8s-local-up.sh`）は dev ではない context で、対象全部について env が未設定か宣言の値と同じなら、何も書かずに名指して止まる。当初の 3 つだけを与えても止まる | `k8s-local-up.test.js`「#1830/IADR-0570: …対象のクライアント全部を名指して止まる」「当初の 3 つだけに値を与えても…」 |
+| AC1 | 対象は宣言の「`serviceAccountsEnabled: true`・`publicClient` でない・宣言が `secret` を持つ」クライアント全部で、当初の 3 つを含み、SA を持たない道具の OIDC・公開クライアントを含まない | `k8s-local-up.test.js`「IADR-0572: 判定器の対象は…」・`keycloak-realm-reconcile.test.js`「IADR-0572: 対象は宣言から導出する」 |
+| AC2 | 宣言へ SA を持つクライアントを足すと、守りの側を触らずに対象へ入る（判定・取り込み元の差し替え・後追い・検知）。SA を外す・公開にする・secret を消すと外れる | `k8s-local-up.test.js`「IADR-0572 変異: 宣言へ…」・`keycloak-realm-reconcile.test.js` 同 |
+| AC3 | 起動器（`k8s-local-up.sh`）は dev ではない context で、対象全部について env が未設定か宣言の値と同じなら、何も書かずに名指して止まる。当初の 3 つだけを与えても止まる | `k8s-local-up.test.js`「#1830/IADR-0572: …対象のクライアント全部を名指して止まる」「当初の 3 つだけに値を与えても…」 |
 | AC4 | 対象を導出できない（node・宣言）ときは、dev の context でも何も書かずに止まる。表に無いクライアント・表を読んでいない判定は止める側に倒れる | `k8s-local-up.test.js`「対象を導出できない…」「表に無いクライアント…」 |
-| AC5 | Vault の種（`bootstrap.sh`）は無い KV（AST の app-secrets はキー）だけを判定へ渡し、当初の 3 つ以外も名指す。置き場の決まっていないクライアントが宣言に現れたら止める。AST のクライアントは env を与えればその値で入れる（在るキーは触らない） | `scripts.repo.test.js` の #1830 / IADR-0570 節 |
+| AC5 | Vault の種（`bootstrap.sh`）は無い KV（AST の app-secrets はキー）だけを判定へ渡し、当初の 3 つ以外も名指す。置き場の決まっていないクライアントが宣言に現れたら止める。AST のクライアントは env を与えればその値で入れる（在るキーは触らない） | `scripts.repo.test.js` の #1830 / IADR-0572 節 |
 | AC6 | 後追い（Job）は対象を宣言の dev の値で作る計画を `allow` でなければ書かずに止め、`--check-dev-secrets` は当初の 3 つ以外（例 `bff`）も名指す | `keycloak-realm-reconcile.test.js` #1830 節 |
 | AC7 | 値は出力・引数に出さない（従来どおり） | 上の各試験の表明 |
 
@@ -57,10 +57,10 @@ issue: "GHSA-rh44-px44-p48q"
 | --- | --- |
 | `scripts/lib/dev-client-secret-guard.sh`・`scripts/k8s-local-up.sh`・`deploy/local/vault/eso/bootstrap.sh`・`deploy/local/keycloak-setup/reconcile-realm.{js,sh}` | 直す（本体） |
 | `deploy/local/keycloak-setup/README.md`・`deploy/local/README.md`・`deploy/local/infra/keycloak.yaml`・`deploy/local/keycloak-setup/realm-reconcile-job.yaml`（コメント） | 直す |
-| `docs/security/security.md`・`docs/operations/paired-secret-rotation-runbook.md` | 追記で直す（trace ブロックに本仕様書と IADR-0570） |
+| `docs/security/security.md`・`docs/operations/paired-secret-rotation-runbook.md` | 追記で直す（trace ブロックに本仕様書と IADR-0572） |
 | `scripts/k8s-local-up.sh` の #1834 の経緯のコメント（「3 つの env から作られ」） | 残す（当時の経緯の記述。直前に本作業の追記を置いた） |
 | `reconcile-realm.js` 冒頭の #1830 の段落 | 残し、直後に読み替えの追記を置く |
-| `.ai-context/adr/IADR-0517*`・`IADR-0518*`・確定済みの仕様書 | 書き換えない（凍結記録。IADR-0570 が後継を名指す） |
+| `.ai-context/adr/IADR-0517*`・`IADR-0518*`・確定済みの仕様書 | 書き換えない（凍結記録。IADR-0572 が後継を名指す） |
 | 試験（`k8s-local-up.test.js`・`keycloak-realm-reconcile.test.js`・`scripts.repo.test.js`） | 直す（対象を宣言から数える） |
 
 ## 変異（赤になることを確かめる）

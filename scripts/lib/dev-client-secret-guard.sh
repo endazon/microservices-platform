@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, ADR-0124 決定 1, IADR-0517 (#1830), IADR-0570 (GHSA-rh44-px44-p48q):
+# NFR-18, ADR-0124 決定 1, IADR-0517 (#1830), IADR-0572 (GHSA-rh44-px44-p48q):
 # **dev 以外のクラスタで、サービスアカウントを持つ機密クライアントの secret を公知の dev の値で作らせない**判定の唯一の口。
 # `source` して使う。呼び出し元は scripts/k8s-local-up.sh（手動の Secret）・deploy/local/vault/eso/bootstrap.sh（Vault の種）・
 # deploy/local/keycloak-setup/reconcile-realm.sh（realm の後追い Job へ判定を env で渡す）の 3 本。**判定をここ以外へ複写しない。**
@@ -11,7 +11,7 @@
 # 3 本は env（`*_CLIENT_SECRET`）が無ければ realm の宣言と同じ dev の値（`<client>-dev-secret-change-me`）を入れる。
 # リポジトリは公開なので、dev 以外のクラスタ（共有 PoC など）でこれを使うと、Keycloak のトークン端点に届く誰でも
 # そのクライアントのトークンを得られる。当初の対象はレルム管理のロールを持つ 3 クライアントだった（IADR-0517）。
-# ［2026-10-22 / IADR-0570］サービスアカウントを持つ機密クライアントはどれもロールを持つ主体なので、多層防御として
+# ［2026-10-22 / IADR-0572］サービスアカウントを持つ機密クライアントはどれもロールを持つ主体なので、多層防御として
 # 対象を全部へ広げた。対象は realm の宣言から導出する（下の dev_client_secret_load_targets）。
 #
 # ## 判定（IADR-0517 決定 1・2・3）
@@ -23,7 +23,7 @@
 #
 # 🔴 値はこの関数の引数（bash の関数呼び出し＝exec しない）と比較にしか使わない。**どこにも出力しない。**
 
-# 判定の対象。［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0570］**手で並べず realm の宣言から導出する** —— サービスアカウントを持つ
+# 判定の対象。［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］**手で並べず realm の宣言から導出する** —— サービスアカウントを持つ
 # 機密クライアントのうち、宣言が secret を持つもの全部（述語の正は reconcile-realm.js の isDevSecretGuardedClient。
 # scripts/lib/dev-client-secret-targets.js が読んで「clientId・env の名前・宣言の値」の表にする）。新しいクライアントを宣言に
 # 足せば、ここを触らずに対象へ入る。呼び出し元は dev_client_secret_load_targets を 1 度呼んでから下の関数を使う。
@@ -115,7 +115,7 @@ dev_client_secret_create_allowed() {
 
 # NFR-18, ADR-0124 決定 1, IADR-0518 (#1834):
 # dev_client_secret_realm_for_import <realm ファイル>
-#   Keycloak の `--import-realm` へ渡す realm JSON を標準出力へ書く。対象のクライアント（このファイルの宣言から導出する。IADR-0570）のうち
+#   Keycloak の `--import-realm` へ渡す realm JSON を標準出力へ書く。対象のクライアント（このファイルの宣言から導出する。IADR-0572）のうち
 #   **env（*_CLIENT_SECRET 等。名前は dev_client_secret_env_name）が空でない
 #   もの**だけ、宣言の `"secret": "<dev の値>"` を `"secret": "<env の値>"` へ置き換える（どの context でも env が勝つ。env が無ければ宣言のまま）。
 #   これが無いと、dev 以外のクラスタの初回の取り込みで Keycloak 側だけ公知の dev の値になり、env の値を持つ消費側と食い違う（invalid_client）。
@@ -133,7 +133,7 @@ dev_client_secret_realm_for_import() (
     echo "ERROR: realm の取り込み元を作れない: ${file} を読めない" >&2
     return 1
   fi
-  # 対象はこのファイルの宣言から導出する（IADR-0570）。導出できなければ止める（差し替えずに進むと食い違いが戻る）。
+  # 対象はこのファイルの宣言から導出する（IADR-0572）。導出できなければ止める（差し替えずに進むと食い違いが戻る）。
   dev_client_secret_load_targets "$file" || return 1
   content="$(< "$file")"
   done_names=""
@@ -200,7 +200,7 @@ dev_client_secret_guard() {
   {
     echo "ERROR: ${caller}: kube context '${ctx:-（読めない）}' は dev の許可集合（k3d-* / kind-* / rancher-desktop / docker-desktop）に無い。"
     echo "       次の機密クライアントの secret が公知の dev の値（リポジトリに公開されている）で作られるため止める: ${names}"
-    echo "       理由: サービスアカウントを持つ機密クライアントである（IADR-0570）。環境変数（${envs}）が未設定か、dev の値と同じ。"
+    echo "       理由: サービスアカウントを持つ機密クライアントである（IADR-0572）。環境変数（${envs}）が未設定か、dev の値と同じ。"
     echo "       対処: それぞれに dev 以外の値を与えて再実行する（認証基盤の側と対で書く。docs/operations/paired-secret-rotation-runbook.md）。"
     echo "       dev のクラスタだと分かっているときだけ ALLOW_DEV_CLIENT_SECRETS=1 で通せる（警告を出す。#1830）。"
     echo "       確認: 稼働中の Keycloak に dev の値が残っていないかは bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets で確かめる"

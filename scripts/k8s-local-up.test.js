@@ -447,7 +447,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   // node も差し替える。ABACSEED=1 は `node scripts/seed-abac-policies.js` を呼ぶため、素の node のままだと
   // smoke test が実際に投入スクリプトを走らせて（到達しない port-forward を待って）遅くなる。
   // 投入器の呼び出しは記録スタブで足りる。
-  // ［IADR-0570 / GHSA-rh44-px44-p48q］ただし dev の値の守りの対象を realm の宣言から導出する口
+  // ［IADR-0572 / GHSA-rh44-px44-p48q］ただし dev の値の守りの対象を realm の宣言から導出する口
   // （scripts/lib/dev-client-secret-targets.js）だけは本物の node へ渡す（導出の結果で起動器の振る舞いが決まるため）。
   write('node', [
     '#!/usr/bin/env bash',
@@ -5249,7 +5249,7 @@ for (const major of ['4', '3']) {
 // reconcile-realm.sh が共有）。ここでは (1) 真理値表を関数そのもので (2) 起動器の実走で「書き込みの前に止まる」を
 // (3) CI の 2 本（integration-stack / cutover-rehearsal）の context が許可集合に入る（陽性対照）を (4) 後追い Job へ判定が渡る、を固定する。
 const DEV_GUARD_LIB = path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh');
-// ［IADR-0570 / GHSA-rh44-px44-p48q］対象は realm の宣言から導出する。試験は判定器とは別に、宣言から独立に数える
+// ［IADR-0572 / GHSA-rh44-px44-p48q］対象は realm の宣言から導出する。試験は判定器とは別に、宣言から独立に数える
 // （サービスアカウントを持つ・機密・宣言が secret を持つ）。当初の 3 つは必ず含む（陽性対照）。
 const REALM_1830 = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
 const deriveGuarded1830 = (realm) => realm.clients
@@ -5331,7 +5331,7 @@ ok('#1830: 複数のクライアントでは dev の値になるものだけを�
 const secretOf = (r, name) => r.secrets.filter((l) => l.startsWith(`${name} client-secret=`)).map((l) => l.slice(`${name} client-secret=`.length));
 const wroteAnything = (r) => r.secrets.length > 0 || r.lines.some((l) => / apply -f|helm upgrade|kubectl create /.test(l));
 
-ok('#1830/IADR-0570: dev ではない context・env 未設定 → [1/7] の直後、何も書かないうちに対象のクライアント全部を名指して止まる', () => {
+ok('#1830/IADR-0572: dev ではない context・env 未設定 → [1/7] の直後、何も書かないうちに対象のクライアント全部を名指して止まる', () => {
   for (const env of [{ STUB_KUBE_CONTEXT: 'prod-shared' }, { STUB_KUBE_CONTEXT: '' }, { STUB_KUBE_CONTEXT_FAIL: '1' }]) {
     const r = runUp(env);
     assert.notStrictEqual(r.status, 0, `${JSON.stringify(env)}: 止まらなかった`);
@@ -5344,7 +5344,7 @@ ok('#1830/IADR-0570: dev ではない context・env 未設定 → [1/7] の直�
   }
 });
 
-ok('#1830/IADR-0570: dev ではない context でも、対象全部に dev 以外の値を与えれば進み、その値で作る（陽性対照・値は出力しない）', () => {
+ok('#1830/IADR-0572: dev ではない context でも、対象全部に dev 以外の値を与えれば進み、その値で作る（陽性対照・値は出力しない）', () => {
   const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ...allCustomEnv1830() });
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   for (const [c, name] of [['identity-admin', 'identity-admin-oidc'], ['reset-gate', 'reset-gate-oidc'], ['mcp-client-admin', 'mcp-client-admin-oidc'],
@@ -5354,7 +5354,7 @@ ok('#1830/IADR-0570: dev ではない context でも、対象全部に dev 以�
   for (const c of DEV_GUARDED) assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf(c)), `${c} の値が出力に出た`);
 });
 
-ok('#1830/IADR-0570: 当初の 3 つだけに値を与えても、dev ではない context では残りを名指して止まる（対象を広げた変異の検出）', () => {
+ok('#1830/IADR-0572: 当初の 3 つだけに値を与えても、dev ではない context では残りを名指して止まる（対象を広げた変異の検出）', () => {
   const env = { STUB_KUBE_CONTEXT: 'prod-shared' };
   for (const c of ['identity-admin', 'reset-gate', 'mcp-client-admin']) env[envNameOf1830(c)] = customOf(c);
   const r = runUp(env);
@@ -5366,7 +5366,7 @@ ok('#1830/IADR-0570: 当初の 3 つだけに値を与えても、dev ではな�
   assert.ok(/BFF_OIDC_CLIENT_SECRET/.test(r.stderr) && /ABAC_SEED_CLIENT_SECRET/.test(r.stderr), `env の名前（例外の 2 つ）を告げていない:\n${r.stderr}`);
 });
 
-ok('#1830/IADR-0570: 対象を導出できない（node が失敗する）ときは、dev の context でも何も書かずに止まる（守れないまま進まない）', () => {
+ok('#1830/IADR-0572: 対象を導出できない（node が失敗する）ときは、dev の context でも何も書かずに止まる（守れないまま進まない）', () => {
   for (const ctx of ['k3d-testcluster', 'prod-shared']) {
     const r = runUp({ STUB_KUBE_CONTEXT: ctx, STUB_DEV_TARGETS_FAIL: '1' });
     assert.notStrictEqual(r.status, 0, `${ctx}: 導出できないのに進んだ`);
@@ -5440,7 +5440,7 @@ ok('#1830: 3 本の呼び出し元は同じ判定器を source し、自前の�
   }
 });
 
-// --- NFR-18, ADR-0124 決定 1, IADR-0570 (GHSA-rh44-px44-p48q): 対象を realm の宣言から導出する ---------------------------------------
+// --- NFR-18, ADR-0124 決定 1, IADR-0572 (GHSA-rh44-px44-p48q): 対象を realm の宣言から導出する ---------------------------------------
 /** 判定器を source し、与えた realm（省略時は既定の宣言）から対象を読んで、続く bash を走らせる。 */
 function guardWith(realmFile, script, env = {}) {
   const r = spawnSync('bash', ['-c', `set -euo pipefail\n. "$1"\ndev_client_secret_load_targets \${2:+"$2"}\n${script}`, 'guard-0570', DEV_GUARD_LIB, realmFile || ''], {
@@ -5449,7 +5449,7 @@ function guardWith(realmFile, script, env = {}) {
   return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
 
-ok('IADR-0570: 判定器の対象は realm の宣言から導出した集合（SA を持つ機密クライアント全部）と一致し、判定器は clientId を並べない', () => {
+ok('IADR-0572: 判定器の対象は realm の宣言から導出した集合（SA を持つ機密クライアント全部）と一致し、判定器は clientId を並べない', () => {
   const r = guardWith('', 'printf "%s" "$DEV_CLIENT_SECRET_GUARDED"');
   assert.strictEqual(r.status, 0, r.stderr);
   assert.deepStrictEqual(r.stdout.split(' '), DEV_GUARDED, '判定器の対象が宣言から独立に数えた集合と違う');
@@ -5469,7 +5469,7 @@ ok('IADR-0570: 判定器の対象は realm の宣言から導出した集合（S
   assert.ok(!/identity-admin|mcp-client-admin|reset-gate/.test(code), '判定器のコードに clientId が並んでいる（手で並べた集合）');
 });
 
-ok('IADR-0570 変異: 宣言へ SA を持つ機密クライアントを足すと判定器を触らずに対象へ入り、SA を外す・公開にする・secret を消すと外れる', () => {
+ok('IADR-0572 変異: 宣言へ SA を持つ機密クライアントを足すと判定器を触らずに対象へ入り、SA を外す・公開にする・secret を消すと外れる', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'realm-0570-'));
   try {
     const probe = { clientId: 'probe-new-sa', enabled: true, publicClient: false, serviceAccountsEnabled: true, secret: ['probe', 'new', 'sa', 'declared'].join('-') };
@@ -5506,7 +5506,7 @@ ok('IADR-0570 変異: 宣言へ SA を持つ機密クライアントを足すと
   }
 });
 
-ok('IADR-0570: 表に無いクライアント・表を読んでいないときの判定は止める側に倒れる（値を比べられない）', () => {
+ok('IADR-0572: 表に無いクライアント・表を読んでいないときの判定は止める側に倒れる（値を比べられない）', () => {
   const unknown = guardWith('', 'dev_client_secret_decide prod "" "not-in-realm=probe-value-0570" || true');
   assert.deepStrictEqual(unknown.stdout.trim().split('\n'), ['deny', 'not-in-realm']);
   const r = spawnSync('bash', ['-c', `. "$1"; dev_client_secret_decide prod "" "reset-gate=probe-value-0570" || true`, 'x', DEV_GUARD_LIB], { encoding: 'utf8' });
@@ -5610,7 +5610,7 @@ ok('#1834: 既定（k3d・env 未設定）— 取り込み元は Secret keycloak
   assert.ok(secIdx < infraIdx, '取り込み元が infra の apply（Keycloak の起動）より後に作られている');
 });
 
-ok('#1834/IADR-0570: dev 以外の context で対象全部の env を与える → 取り込み元の対象の secret は env の値、ほかは宣言のまま（値は出力・引数に出ない）', () => {
+ok('#1834/IADR-0572: dev 以外の context で対象全部の env を与える → 取り込み元の対象の secret は env の値、ほかは宣言のまま（値は出力・引数に出ない）', () => {
   const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ...allCustomEnv1830() });
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   const { json } = importedRealm(r);

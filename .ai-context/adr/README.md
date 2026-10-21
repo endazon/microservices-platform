@@ -647,4 +647,4 @@
 | [IADR-0567](./IADR-0567_ingestion-budget-exhausted-alert.md) | 取り込みの総枠（embedding-budget / lexical-budget）の使い切りに警報 IngestionBudgetExhausted（直近 1 時間の前進 > 0・for 5m・warning）を張る（#1991） | Accepted |
 | [IADR-0568](./IADR-0568_age-apkindex-daily-watch.md) | platform-backup の age の版と Alpine の APKINDEX を日次で突き合わせ、ずれたら専用 issue を起票する（届かなければ起票しない・版を自動で上げない）（#2005） | Accepted |
 | [IADR-0569](./IADR-0569_e2e-layers-and-live-opt-in.md) | E2E の実行層を L1/L2/L3/L3-T/L3-L に分け、タグ・Playwright project 名と live の opt-in（E2E_LIVE / E2E_LAYER）を確定する（#2014） | Accepted |
-| [IADR-0570](./IADR-0570_dev-secret-guard-all-service-account-clients.md) | dev の値の守りの対象を、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げる。対象は手で並べず宣言から導出し（述語の正は reconcile-realm.js の isDevSecretGuardedClient）、導出できなければ止まる（GHSA-rh44-px44-p48q） | Accepted |
+| [IADR-0572](./IADR-0572_dev-secret-guard-all-service-account-clients.md) | dev の値の守りの対象を、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げる。対象は手で並べず宣言から導出し（述語の正は reconcile-realm.js の isDevSecretGuardedClient）、導出できなければ止まる（GHSA-rh44-px44-p48q） | Accepted |

@@ -1,5 +1,5 @@
 ---
-title: IADR-0570 dev の値の守りの対象を、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げる。対象は手で並べず宣言から導出し、述語の正は後追い Job のスクリプトに置く
+title: IADR-0572 dev の値の守りの対象を、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げる。対象は手で並べず宣言から導出し、述語の正は後追い Job のスクリプトに置く
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, ADR-0124, IADR-0517, IADR-0518, IADR-0485, IADR-0133]
@@ -12,7 +12,7 @@ related_specs:
   - ../specs/20261022_dev-secret-guard-all-sa-clients.md
 ---
 
-# IADR-0570: dev の値の守りを、サービスアカウントを持つ機密クライアント全部へ広げ、対象を宣言から導出する（GHSA-rh44-px44-p48q）
+# IADR-0572: dev の値の守りを、サービスアカウントを持つ機密クライアント全部へ広げ、対象を宣言から導出する（GHSA-rh44-px44-p48q）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

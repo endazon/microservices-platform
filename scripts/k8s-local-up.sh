@@ -2,7 +2,7 @@
 # IADR-0066: MSP+AST 連結ローカル k8s(k3d) dev 環境の起動オーケストレーション。
 # 冪等（再実行可）。fail-safe: 機密は未設定なら dev 既定/空（no-op）で作成する。
 #   ただし dev 以外の kube context では、サービスアカウントを持つ機密クライアント（realm の宣言から導出する）の
-#   secret を dev の値で作らずに止まる（IADR-0517 / #1830・IADR-0570。上書きは ALLOW_DEV_CLIENT_SECRETS=1）。
+#   secret を dev の値で作らずに止まる（IADR-0517 / #1830・IADR-0572。上書きは ALLOW_DEV_CLIENT_SECRETS=1）。
 #
 #   bash scripts/k8s-local-up.sh --live [cluster-name]   # --live か LIVE=1 が無ければ何もしない（#1550）
 #
@@ -14,7 +14,7 @@
 #   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）/
 #   SYNTHETIC_MONITOR_CLIENT_SECRET（#1287。SYNTHETIC=1 のときだけ使う。realm の synthetic-monitor client と揃えること）
 #   RESET_GATE_CLIENT_SECRET / IDENTITY_ADMIN_CLIENT_SECRET / MCP_CLIENT_ADMIN_CLIENT_SECRET（#1830。dev 以外の kube context では必須）
-#   ［IADR-0570］dev 以外の kube context では、サービスアカウントを持つ機密クライアント全部の secret の env が必須（名前の一覧は
+#   ［IADR-0572］dev 以外の kube context では、サービスアカウントを持つ機密クライアント全部の secret の env が必須（名前の一覧は
 #   `node scripts/lib/dev-client-secret-targets.js deploy/keycloak/microservices-platform-realm.json | cut -f1,2`。既定の規則は
 #   `<CLIENT_ID の大文字・- を _>_CLIENT_SECRET`、例外は bff＝BFF_OIDC_CLIENT_SECRET・abac-seeder＝ABAC_SEED_CLIENT_SECRET）
 #   SESSION_STORE_PASSWORD（#1839。セッションストア Valkey の認証。未指定なら既存の Secret の値、無ければ初回だけ乱数で作る）
@@ -182,7 +182,7 @@ fi
 #   止まる前に Keycloak が dev の値で 2 つを作っていた。
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$ROOT/scripts/lib/dev-client-secret-guard.sh"
-# ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0570］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げた。
+# ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げた。
 #   手で並べず宣言から導出する（dev_client_secret_load_targets）。env の名前は判定器が持つ（dev_client_secret_env_name）。
 #   [3/7] の取り込み元は同じ集合を env の値へ差し替えるので、dev ではない context では全部に env が要る。
 dev_client_secret_load_targets || exit 1
@@ -464,7 +464,7 @@ kubectl create configmap keycloak-realms -n "$INFRA_NS" "${realm_args[@]}" \
 
 # NFR-18, ADR-0124 決定 1, IADR-0518 (#1834): Keycloak の `--import-realm`（空の PVC の初回・realm を消した後の再起動）の**取り込み元**。
 #   deploy/local/infra/keycloak.yaml が /opt/keycloak/data/import へマウントする。中身は上と同じ realm ファイルだが、サービスアカウントを
-#   持つ機密クライアント（宣言から導出する。IADR-0570。当初は 3 つ）は、env（*_CLIENT_SECRET 等）を与えたものだけ宣言の dev の値を
+#   持つ機密クライアント（宣言から導出する。IADR-0572。当初は 3 つ）は、env（*_CLIENT_SECRET 等）を与えたものだけ宣言の dev の値を
 #   env の値へ差し替える（判定器 dev_client_secret_realm_for_import。対象・env の名前・宣言の値の単一情報源）。env が無ければ宣言のまま
 #   （dev の context の既定は従来と同じ中身）。🔴 実の secret を含み得るので **ConfigMap ではなく Secret** にする。値は apply_secret が
 #   0700 の一時ディレクトリの 0600 のファイル経由で渡し、必ず消す（#1793。どのプロセスの引数にも載らない）。

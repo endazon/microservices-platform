@@ -605,7 +605,7 @@ function fakeKc({ saEnabled, saUser, seen = [] }) {
   }
   // ---------------------------------------------------------------- #1830 / IADR-0517: dev の値の管理用クライアント
   const done1830 = (name) => { passed++; process.stdout.write(`  ok  ${name}\n`); };
-  // ［IADR-0570 / GHSA-rh44-px44-p48q］対象は宣言から導出する（サービスアカウントを持つ機密クライアントで宣言が secret を持つもの）。
+  // ［IADR-0572 / GHSA-rh44-px44-p48q］対象は宣言から導出する（サービスアカウントを持つ機密クライアントで宣言が secret を持つもの）。
   const DEV_SECRET_GUARDED_CLIENTS = devSecretGuardedClients(REALM);
   const devOf = (id) => REALM.clients.find((c) => c.clientId === id).secret;
   {
@@ -623,7 +623,7 @@ function fakeKc({ saEnabled, saUser, seen = [] }) {
     assert.strictEqual(isDevSecretGuardedClient({ ...base, publicClient: true }), false);
     assert.strictEqual(isDevSecretGuardedClient({ ...base, secret: '' }), false);
     assert.deepStrictEqual(devSecretGuardedClients({ clients: [...REALM.clients, base] }), [...DEV_SECRET_GUARDED_CLIENTS, 'probe-0570'].sort());
-    done1830('IADR-0570: 対象は宣言から導出する（SA を持つ機密クライアント全部。足したクライアントは手を入れずに入る）');
+    done1830('IADR-0572: 対象は宣言から導出する（SA を持つ機密クライアント全部。足したクライアントは手を入れずに入る）');
   }
   {
     // 宣言との結び目: ホスト側の判定器（scripts/lib/dev-client-secret-guard.sh）が読む表（dev-client-secret-targets.js）は、
@@ -637,7 +637,7 @@ function fakeKc({ saEnabled, saUser, seen = [] }) {
     assert.strictEqual(DEV_SECRETS_ALLOWED_ENV, 'DEV_CLIENT_SECRETS_ALLOWED');
     const job = fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'local', 'keycloak-setup', 'realm-reconcile-job.yaml'), 'utf8');
     assert.ok(/- name: DEV_CLIENT_SECRETS_ALLOWED\n\s+value: "deny"\n/.test(job), 'Job マニフェストの既定が deny でない（直接 apply で安全側に倒れない）');
-    done1830('#1830/IADR-0570: 対象は shell の判定器と同じ集合で、dev の値は宣言の secret・Job の既定は deny');
+    done1830('#1830/IADR-0572: 対象は shell の判定器と同じ集合で、dev の値は宣言の secret・Job の既定は deny');
   }
   {
     const live = liveFrom(REALM);
@@ -714,7 +714,7 @@ function fakeKc({ saEnabled, saUser, seen = [] }) {
   {
     const r = await runMain({ args: ['--check-dev-secrets'],
       secrets: { 'identity-admin': devOf('identity-admin'), 'reset-gate': ROTATED, 'mcp-client-admin': devOf('mcp-client-admin'),
-        // IADR-0570: 当初の 3 つ以外（SA を持つ bff・abac-seeder）も見る
+        // IADR-0572: 当初の 3 つ以外（SA を持つ bff・abac-seeder）も見る
         bff: devOf('bff'), 'abac-seeder': ROTATED } });
     assert.strictEqual(r.code, 1, r.out);
     assert.ok(/dev-secret\s+identity-admin/.test(r.out) && /dev-secret\s+mcp-client-admin/.test(r.out), `名指していない:\n${r.out}`);

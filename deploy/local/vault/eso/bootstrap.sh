@@ -22,7 +22,7 @@ vexec() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -c \
 #   対象は **KV（AST の app-secrets はそのキー）がまだ無いもの**だけ —— 在るものは下の vkv_create_if_absent / vkv_patch_if_missing が
 #   触らない（IADR-0485）ので、env が未設定でも dev の値は入らない。
 #   🔴 Vault へ何か書く前に判定する（止まるときは何も書かない）。
-#   ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0570］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ
+#   ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ
 #   広げた（手で並べず宣言から導出する）。置き場は client_secret_kv_of が持つ。**置き場の決まっていないクライアントが宣言に
 #   現れたら止める**（新しいクライアントの入れ漏れを黙って通さない。置き場を足すか、Vault に種を置かないなら空を返す）。
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
@@ -351,7 +351,7 @@ fi
 # （ズレると client_credentials が invalid_client になる）。画面から書ける 12 件は空文字（未設定＝各連携が no-op）。
 # 🔴 ai-stock-trading/moomoo / moomoo-rsa は seed しない（未設定のあいだ OpenD は Secret 不在で待機する＝fail-closed）。
 # 値の一致（キー集合＝items[] の書ける 12 ＋ notWritable 10、auth は realm と同値）は SecretItemBootstrapSeedTests が固定する。
-# NFR-18, IADR-0570 (GHSA-rh44-px44-p48q): AST の機密クライアントの secret も、env（名前は判定器の dev_client_secret_env_name。
+# NFR-18, IADR-0572 (GHSA-rh44-px44-p48q): AST の機密クライアントの secret も、env（名前は判定器の dev_client_secret_env_name。
 # 例 AI_STOCK_TRADING_SVC_CLIENT_SECRET）を与えたときはその値で入れる。冒頭の判定は「無いキーを env 未設定（dev の値）で作る」を
 # dev ではない context で止めるので、env を与えて通したときに dev の値が残らないよう、ここで env の値へ揃える。
 # <mode>: created ＝この実行で KV を作った（seed の値を env で上書きする）/ present ＝在る KV（無いキーにだけ足す。在る値は触らない）。

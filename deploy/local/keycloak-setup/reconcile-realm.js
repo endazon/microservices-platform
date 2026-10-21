@@ -41,7 +41,7 @@
  *   `GET …/client-secret` で読み、宣言の値と一致するものを名指して非 0 で終える。**読むだけで書かない。値は出力しない。**
  *   🔴 稼働の secret を読むのはこのモードの `collectGuardedSecrets` だけである（apply / check の `collectLive` は今も読まない）。
  *
- * ［2026-10-22 追記 / GHSA-rh44-px44-p48q / IADR-0570］**対象を 3 クライアントから、サービスアカウントを持つ機密クライアント全部へ
+ * ［2026-10-22 追記 / GHSA-rh44-px44-p48q / IADR-0572］**対象を 3 クライアントから、サービスアカウントを持つ機密クライアント全部へ
  *   広げた。** 対象は手で並べず宣言から導出する（`isDevSecretGuardedClient`。`DEV_SECRET_GUARDED_CLIENTS` は撤去した）。
  *   上の 2 段落の「3 クライアント」は、この導出した集合と読み替える。
  *
@@ -81,7 +81,7 @@
  *   KC_ADMIN_PASSWORD   同パスワード（Secret keycloak-admin/password）。**値は出力しない**
  *   REALM_DIR           realm JSON の置き場（既定 /import ＝ ConfigMap keycloak-realms のマウント先）
  *   RECONCILE_MODE      apply（既定）| check | check-dev-secrets（引数 `--check-dev-secrets` でも同じ）
- *   DEV_CLIENT_SECRETS_ALLOWED  allow のときだけ、無い対象のクライアントを宣言の dev の値で作る（既定は拒否。#1830 / IADR-0570）
+ *   DEV_CLIENT_SECRETS_ALLOWED  allow のときだけ、無い対象のクライアントを宣言の dev の値で作る（既定は拒否。#1830 / IADR-0572）
  */
 
 const fs = require('fs');
@@ -130,7 +130,7 @@ const CLIENT_CREATE_ONLY_KEYS = new Set(['secret']);
 const MAPPER_SKIP_KEYS = new Set(['id']);
 // ［2026-10-09 / #1830 / IADR-0517］dev ではないクラスタで宣言の（公知の dev の）secret のまま作らない・稼働の値が宣言の値の
 // ままかを `--check-dev-secrets` で見るクライアント。
-// ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0570］対象は**手で並べず realm の宣言から導出する** —— サービスアカウントを持つ
+// ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は**手で並べず realm の宣言から導出する** —— サービスアカウントを持つ
 // 機密クライアントのうち、宣言が secret を持つもの全部（isDevSecretGuardedClient）。新しいクライアントを宣言に足せば対象に入る。
 // 🔴 ホスト側の判定器（scripts/lib/dev-client-secret-guard.sh）も同じ述語を scripts/lib/dev-client-secret-targets.js 経由で使う
 //    （単一情報源。Job へはこのファイル 1 本だけがマウントされるので、述語はここに置く）。
@@ -493,7 +493,7 @@ function plan(desired, live) {
 }
 
 /**
- * ［GHSA-rh44-px44-p48q / IADR-0570］dev の値の守りの対象か。**純関数**。サービスアカウントを持つ機密クライアント
+ * ［GHSA-rh44-px44-p48q / IADR-0572］dev の値の守りの対象か。**純関数**。サービスアカウントを持つ機密クライアント
  * （`serviceAccountsEnabled: true`・`publicClient` でない）で、宣言が `secret` を持つもの。clientId では選ばない（入れ漏れを作らない）。
  * @param {object} c client の表現（宣言・作成の本文）
  */
@@ -501,7 +501,7 @@ function isDevSecretGuardedClient(c) {
   return isObj(c) && c.serviceAccountsEnabled === true && c.publicClient !== true && asStr(c.secret) !== '';
 }
 
-/** ［GHSA-rh44-px44-p48q / IADR-0570］realm の宣言から導出した対象の clientId（昇順・重複なし）。**純関数**。 */
+/** ［GHSA-rh44-px44-p48q / IADR-0572］realm の宣言から導出した対象の clientId（昇順・重複なし）。**純関数**。 */
 function devSecretGuardedClients(desired) {
   return [...new Set(((desired && desired.clients) || []).filter(isDevSecretGuardedClient).map((c) => c.clientId))].sort();
 }
