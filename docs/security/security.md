@@ -523,8 +523,8 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
   （大きく警告する。CI の使い捨てスタックはこれを付ける）。値は出力しない。
 - **認証基盤の管理面はエッジに出さない**（2026-10-22）: エッジ（経路B の Traefik・Istio のエッジ・chart のエッジ）は、認証基盤の
   `/admin` と管理用の realm（`/realms/master`）を 403 で拒む。利用者が使う realm の経路（ログイン・トークン・アカウントコンソール・
-  テーマの資源）はそのまま通す。管理者は port-forward で管理コンソールを開く（手順は
-  `deploy/local/edge/README.md`「Keycloak の管理コンソール」）。稼働のエッジでの拒否は起動の門（`check-stack-ready.js` の G4b）が実測する。
+  テーマの資源）はそのまま通す。管理者は port-forward 越しの Admin REST か Pod の中の kcadm.sh で操作する
+  （管理コンソールの画面は開けない。手順は `deploy/local/edge/README.md`「Keycloak の管理コンソール」）。稼働のエッジでの拒否は起動の門（`check-stack-ready.js` の G4b）が実測する。
 - **本番流用の禁止**: 共有／ステージング／本番の realm には **PoC ユーザーを含めない**。運用ユーザーは
   Keycloak 管理画面／IaC で個別に作成し、パスワードは realm import にコミットしない。クライアント
   シークレット（`wiki-js` / `ai-stock-trading-kb-writer` / `ai-stock-trading-kb-reader` / `mcp-client-admin`）は環境ごとに必ず変更し、環境変数／Secret 経由で注入する
