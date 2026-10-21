@@ -5524,6 +5524,23 @@ ok('IADR-0572 変異: 宣言へ SA を持つ機密クライアントを足すと
   }
 });
 
+// --- NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder）の client secret を稼働の Secret に置く ---------------------------
+ok('IADR-0576: 起動器は ESO の有無によらず Secret platform-infra/abac-seeder-oidc を作る（既定は宣言の値・env を与えればその値）', () => {
+  assert.strictEqual(DEFAULT.status, 0);
+  assert.deepStrictEqual(secretOf(DEFAULT, 'abac-seeder-oidc'), [devValueOf('abac-seeder')], '既定（dev の context）で宣言の値の Secret が無い');
+  assert.ok(DEFAULT.lines.some((l) => / -n platform-infra /.test(l) && /kubectl create secret generic abac-seeder-oidc /.test(l)), '置き場が platform-infra でない');
+  const given = runUp({ ABAC_SEED_CLIENT_SECRET: customOf('abac-seeder') });
+  assert.strictEqual(given.status, 0, given.stderr.slice(-600));
+  assert.deepStrictEqual(secretOf(given, 'abac-seeder-oidc'), [customOf('abac-seeder')]);
+  assert.ok(!`${given.stdout}${given.stderr}`.includes(customOf('abac-seeder')), '値を出力した');
+  const eso = runUp({ VAULT: '1', ESO: '1' });
+  assert.strictEqual(eso.status, 0, eso.stderr.slice(-600));
+  assert.deepStrictEqual(secretOf(eso, 'abac-seeder-oidc'), [devValueOf('abac-seeder')], 'ESO=1 で手動の Secret を作っていない（Merge の土台）');
+  assert.ok(eso.lines.includes('kubectl apply -f deploy/local/vault/eso/externalsecret-abac-seeder-oidc.yaml'), 'ESO=1 で ExternalSecret を当てていない');
+  const es = fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'local', 'vault', 'eso', 'externalsecret-abac-seeder-oidc.yaml'), 'utf8');
+  assert.ok(/creationPolicy: Merge/.test(es) && /key: msp\/abac-seeder-oidc/.test(es) && /namespace: platform-infra/.test(es), 'ExternalSecret の形が違う');
+});
+
 ok('IADR-0572: 表に無いクライアント・表を読んでいないときの判定は止める側に倒れる（値を比べられない）', () => {
   const unknown = guardWith('', 'dev_client_secret_decide prod "" "not-in-realm=probe-value-0570" || true');
   assert.deepStrictEqual(unknown.stdout.trim().split('\n'), ['deny', 'not-in-realm']);

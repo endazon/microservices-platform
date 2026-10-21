@@ -185,7 +185,19 @@ function watchedDepth(depths, queues) {
 
 // --- 実行（I/O） --------------------------------------------------------------
 
+// NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder）は既定で無効。実行の間だけ有効にし、どの終わり方でも
+// （正常・失敗・例外）この実行が有効にしたものを無効へ戻す。中断（SIGINT）は下の handler が戻してから終わる。
 async function run(profile, argv) {
+  const seeder = require('./abac-seeder-session.js');
+  try {
+    return await runInner(profile, argv);
+  } finally {
+    await seeder.restore({ log, warn });
+  }
+}
+
+async function runInner(profile, argv) {
+  const seeder = require('./abac-seeder-session.js');
   const p = profile;
   const rp = require('../republish-document-updated.js');
   let o;
@@ -216,17 +228,18 @@ async function run(profile, argv) {
   const POLL_MS = positiveInt('REPUBLISH_POLL_MS', env('REPUBLISH_POLL_MS', '5000'));
   const abacSeed = require('../seed-abac-policies.js');
   const CLIENT_ID = env('REPUBLISH_CLIENT_ID', abacSeed.CLIENT_ID);
-  const CLIENT_SECRET = process.env.REPUBLISH_CLIENT_SECRET || abacSeed.clientSecretFromRealm(CLIENT_ID) || '';
+  // IADR-0576: 明示（REPUBLISH_CLIENT_SECRET）＞ 稼働の Secret（platform-infra/abac-seeder-oidc）。realm の宣言の値へは落ちない。
+  let CLIENT_SECRET = '';
 
   const io = rp.makeIo();
   process.on('exit', () => io.cleanup());
   let state = null;
   let onInterrupt = () => {};
   process.on('SIGINT', () => {
-    io.cleanup();
     try { onInterrupt(); } catch (e) { warn(`[${p.name}] 状態を戻せませんでした: ${e.message}`); }
     if (state) warn(`\n中断しました。状態は ${o.stateFile} に残っています。続けるには --resume。`);
-    process.exit(130);
+    // IADR-0576: 投入器の主体を無効へ戻してから（port-forward を残したまま）終わる。
+    seeder.restoreThenExit(130, { warn, before: () => io.cleanup() });
   });
 
   let documentUrl = env('REPUBLISH_DOCUMENT_URL', '');
@@ -250,6 +263,13 @@ async function run(profile, argv) {
     return 2;
   }
   log(`接続先: document=${documentUrl} / keycloak=${kcUrl}`);
+  try {
+    CLIENT_SECRET = seeder.resolveSeederSecret({ envName: 'REPUBLISH_CLIENT_SECRET' });
+    await seeder.ensureEnabled({ kcUrl, realm: REALM, clientId: CLIENT_ID, log });
+  } catch (e) {
+    warn(`[${p.name}] ${e.message}`);
+    return 2;
+  }
 
   let token = null;
   let tokenAt = 0;

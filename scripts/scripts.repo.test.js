@@ -15491,6 +15491,8 @@ exit 0
         fs1762.writeFileSync(path1762.join(bin, 'kubectl'), `#!${process.execPath}
 const fs = require('fs'); const f = process.env.SIM_FILE; const a = process.argv.slice(2);
 if (a[0] === 'cluster-info') process.exit(0);
+// IADR-0576: 投入器の client secret を稼働の Secret から読む（SIM_SEEDER_SECRET を与えたときだけ在る）
+if (a.includes('abac-seeder-oidc')) { if (!process.env.SIM_SEEDER_SECRET) process.exit(1); process.stdout.write(Buffer.from(process.env.SIM_SEEDER_SECRET).toString('base64')); process.exit(0); }
 if (!a.includes('list_queues')) process.exit(1);
 const s = JSON.parse(fs.readFileSync(f, 'utf8'));
 process.stdout.write('ingestion-service.DocumentUpdated\\t' + s.ingest + '\\nwolverine-dead-letter-queue\\t' + s.dlq + '\\n');
@@ -15504,10 +15506,16 @@ const [scriptPath, cfgPath, simFile] = process.argv.slice(2);
 const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
 fs.writeFileSync(simFile, JSON.stringify({ ingest: cfg.ingest || 0, dlq: 0, pendingFail: 0 }));
 const requests = []; let poison = new Set();
+const kcState = { enabled: false, calls: [], tokens: [] };
 const server = http.createServer((req, res) => {
   let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
     const send = (o) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
-    if (req.url.includes('/token')) return send({ access_token: 't' });
+    // IADR-0576: 投入器の主体の一時の有効化（Admin REST）。enabled を覚え、PUT を控える（kcCalls）。
+    if (req.url.startsWith('/admin/realms/')) {
+      if (req.method === 'PUT') { kcState.enabled = JSON.parse(b).enabled; kcState.calls.push('PUT enabled=' + kcState.enabled); res.writeHead(204); return res.end(); }
+      return send([{ id: 'c-seeder', clientId: 'abac-seeder', enabled: kcState.enabled, serviceAccountsEnabled: true }]);
+    }
+    if (req.url.includes('/token')) { const f = new URLSearchParams(b); kcState.tokens.push(f.get('client_id') + ':' + (f.get('client_secret') || '')); return send({ access_token: 't' }); }
     if (req.url !== '/documents/republish-updated') return send({});
     const body = JSON.parse(b); requests.push(body);
     const docs = cfg.docs; const start = body.cursor ? Number(body.cursor) : 0;
@@ -15521,16 +15529,20 @@ const server = http.createServer((req, res) => {
 });
 server.listen(0, '127.0.0.1', async () => {
   const url = 'http://127.0.0.1:' + server.address().port;
-  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1' });
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1', KC_ADMIN_USER: 'a', KC_ADMIN_PASSWORD: 'p' });
+  if (cfg.noExplicitSecret) delete process.env.REPUBLISH_CLIENT_SECRET;
+  if (cfg.seederEnabled) kcState.enabled = true;
   const rp = require(scriptPath);
   const out = [];
   for (const run of cfg.runs) {
     poison = new Set(run.poison || []);
     if (run.purgeDlq) { const s = JSON.parse(fs.readFileSync(simFile, 'utf8')); s.dlq = 0; fs.writeFileSync(simFile, JSON.stringify(s)); }
     const before = requests.length;
+    kcState.calls.length = 0; kcState.tokens.length = 0;
     const code = await rp.main(run.argv);
-    out.push({ code, state: JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')),
-      requests: requests.slice(before).map((r) => ({ cursor: r.cursor ?? null, limit: r.limit, reason: r.reason, requestedBy: r.requestedBy })) });
+    out.push({ code, state: fs.existsSync(cfg.stateFile) ? JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')) : null,
+      requests: requests.slice(before).map((r) => ({ cursor: r.cursor ?? null, limit: r.limit, reason: r.reason, requestedBy: r.requestedBy })),
+      kc: { calls: [...kcState.calls], tokens: [...kcState.tokens], enabledAfter: kcState.enabled } });
   }
   server.close();
   process.stdout.write('\\n@@RESULT@@' + JSON.stringify(out));
@@ -15546,7 +15558,8 @@ server.listen(0, '127.0.0.1', async () => {
         }));
         const env = { ...process.env, PATH: `${bin}${path1762.delimiter}${process.env.PATH}`, SIM_FILE: path1762.join(dir, 'sim.json'),
           NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' };
-        for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'LIVE']) delete env[k];
+        for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'LIVE', 'ABAC_SEED_CLIENT_SECRET', 'SIM_SEEDER_SECRET']) delete env[k];
+        if (cfg.seederSecret) env.SIM_SEEDER_SECRET = cfg.seederSecret;
         const r = require('child_process').spawnSync(process.execPath,
           [harness, path1762.join(__dirname, 'republish-document-updated.js'), cfgPath, env.SIM_FILE],
           { encoding: 'utf8', env, timeout: 60000 });
@@ -15559,6 +15572,77 @@ server.listen(0, '127.0.0.1', async () => {
     };
     const docs1762 = ['d0', 'd1', 'd2', 'd3', 'd4'];
     const paging1762 = ['--canary', '1', '--page-size', '2', '--max-dlq-growth', '0'];
+
+    // --- NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder）は既定で無効。運用スクリプトは実行の間だけ有効にし、
+    //     資格情報は稼働の Secret（OpenBao → ESO）から読む（realm の宣言の値へは落ちない＝secret を回した後も動く） ----------
+    ok('IADR-0576: 投入器の資格情報は 明示 ＞ 稼働の Secret の順で、どちらも無ければ realm の宣言の値へ落ちずに例外', () => {
+      const sess = require('./lib/abac-seeder-session.js');
+      const reads = [];
+      const read = (v) => (ns, name, key) => { reads.push(`${ns}/${name}/${key}`); return v; };
+      const val = (x) => ['probe', '0575', x].join('-');
+      assert.strictEqual(sess.resolveSeederSecret({ envName: 'REPUBLISH_CLIENT_SECRET', env: { REPUBLISH_CLIENT_SECRET: val('e') }, read: read(val('s')) }), val('e'));
+      assert.strictEqual(sess.resolveSeederSecret({ envName: 'REPUBLISH_CLIENT_SECRET', env: {}, read: read(val('s')) }), val('s'));
+      assert.deepStrictEqual(reads.slice(-1), ['platform-infra/abac-seeder-oidc/client-secret']);
+      assert.strictEqual(sess.resolveSeederSecret({ envName: 'SEARCH_SEED_CLIENT_SECRET', env: { ABAC_SEED_CLIENT_SECRET: val('a') }, read: read('') }), val('a'),
+        '投入器の共通の env（ABAC_SEED_CLIENT_SECRET）を受けない');
+      assert.throws(() => sess.resolveSeederSecret({ envName: 'REPUBLISH_CLIENT_SECRET', env: {}, read: read('') }), /realm の宣言の値へは落ちない/);
+      // 管理者の資格情報も 明示 ＞ Secret keycloak-admin
+      assert.deepStrictEqual(sess.resolveAdminCredentials({ env: {}, read: (ns, n, k) => `${n}:${k}` }), { user: 'keycloak-admin:username', password: 'keycloak-admin:password' });
+      assert.throws(() => sess.resolveAdminCredentials({ env: {}, read: () => '' }), /管理者の資格情報が無い/);
+    });
+
+    ok('IADR-0576: 一時の有効化は GET した表現を丸ごと PUT して enabled だけを変え、この実行が有効にしたものだけを戻す（--self-test）', () => {
+      const r = require('child_process').spawnSync(process.execPath, [path1762.join(__dirname, 'lib', 'abac-seeder-session.js'), '--self-test'],
+        { encoding: 'utf8', timeout: 30000, env: { ...process.env, LIVE: '' } });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      assert.ok(/self-test OK/.test(r.stdout), r.stdout);
+    });
+
+    ok('IADR-0576: 投入器の主体は realm の宣言で既定無効。投入器・運用スクリプトは realm の宣言の secret を読まず、どれも一時の有効化と戻しを持つ', () => {
+      const realm = JSON.parse(fs1762.readFileSync(path1762.join(__dirname, '..', 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
+      assert.strictEqual(realm.clients.find((c) => c.clientId === 'abac-seeder').enabled, false, 'abac-seeder が既定で有効');
+      for (const f of ['republish-document-updated.js', 'lib/admin-page-driver.js', 'seed-abac-policies.js', 'seed-search-documents.js', 'seed-tag-dictionary.js']) {
+        const code = fs1762.readFileSync(path1762.join(__dirname, f), 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+        assert.ok(!/clientSecretFromRealm\(/.test(code.replace(/function clientSecretFromRealm\(/, '')), `${f} が realm の宣言の secret を読む`);
+        assert.ok(/resolveSeederSecret\(/.test(code) && /ensureEnabled\(/.test(code) && /\.restore\(|restoreThenExit\(/.test(code), `${f} に一時の有効化・戻しが無い`);
+      }
+    });
+
+    ok('IADR-0576: 再発行の駆動器は、無効な投入器の主体を実行の間だけ有効にし、終わったら（成功でも失敗でも）無効へ戻す', () => {
+      // 1 回目は DLQ の増加で止まる（失敗）、2 回目は DLQ を空けて --resume で完了する（成功）。
+      const { runs } = runDriver1762({ docs: docs1762, runs: [{ argv: paging1762, poison: ['d1'] }, { argv: [...paging1762, '--resume'], purgeDlq: true }] });
+      for (const r of runs) {
+        assert.deepStrictEqual(r.kc.calls, ['PUT enabled=true', 'PUT enabled=false'], `有効化と戻しが対でない: ${JSON.stringify(r.kc.calls)}（exit ${r.code}）`);
+        assert.strictEqual(r.kc.enabledAfter, false, '終わった後も有効のまま');
+      }
+      assert.notStrictEqual(runs[0].code, 0, '前提: 1 回目は DLQ の増加で失敗して終わる');
+      assert.strictEqual(runs[1].code, 0, '前提: 2 回目は完了する');
+    });
+
+    ok('IADR-0576: 元から有効なら触らない（戻しもしない）', () => {
+      const { runs } = runDriver1762({ docs: docs1762, seederEnabled: true, runs: [{ argv: paging1762 }] });
+      assert.deepStrictEqual(runs[0].kc.calls, [], `元から有効なのに書いた: ${JSON.stringify(runs[0].kc.calls)}`);
+      assert.strictEqual(runs[0].kc.enabledAfter, true);
+    });
+
+    ok('IADR-0576: REPUBLISH_CLIENT_SECRET が無ければ稼働の Secret（abac-seeder-oidc）の値で名乗る（回した後の値。realm の宣言の値は使わない）', () => {
+      const rotated = ['rotated', '0575', 'seeder'].join('-');
+      const { runs, stdout, stderr } = runDriver1762({ docs: docs1762, noExplicitSecret: true, seederSecret: rotated, runs: [{ argv: paging1762 }] });
+      assert.strictEqual(runs[0].code, 0, stderr);
+      const seederTokens = runs[0].kc.tokens.filter((t) => t.startsWith('abac-seeder:')); // admin-cli（一時の有効化の管理者）を除く
+      assert.ok(seederTokens.length > 0 && seederTokens.every((t) => t === `abac-seeder:${rotated}`), `Secret の値で名乗っていない: ${seederTokens.length} 件`);
+      const declared = JSON.parse(fs1762.readFileSync(path1762.join(__dirname, '..', 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'))
+        .clients.find((c) => c.clientId === 'abac-seeder').secret;
+      assert.ok(!runs[0].kc.tokens.some((t) => t.endsWith(`:${declared}`)), 'realm の宣言の値で名乗った');
+      assert.ok(!`${stdout.split('@@RESULT@@')[0]}${stderr}`.includes(rotated), '値を出力した'); // 試験器の結果の JSON（tokens を含む）は除く
+    });
+
+    ok('IADR-0576: 明示も Secret も無ければ、realm の宣言の値へ落ちずに止まり（非 0）、主体を有効にしない', () => {
+      const { runs } = runDriver1762({ docs: docs1762, noExplicitSecret: true, runs: [{ argv: paging1762 }] });
+      assert.strictEqual(runs[0].code, 2, '止まらなかった');
+      assert.deepStrictEqual(runs[0].kc.calls, [], '資格情報が無いのに主体を有効にした');
+      assert.deepStrictEqual(runs[0].kc.tokens.filter((t) => t.startsWith('abac-seeder:')), [], '投入器としてトークンを要求した');
+    });
 
     ok('#1762 監査 R1: DLQ で止まると確かめた位置へ戻して保存し、DLQ を purge してから再開しても取りこぼさない', () => {
       const { runs, stderr } = runDriver1762({
@@ -15693,10 +15777,16 @@ const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
 fs.writeFileSync(simFile, JSON.stringify({ ingest: 0, dlq: 0, pendingFail: 0 }));
 const docs = cfg.docs.map((d, i) => ({ ...d, i, archived: false }));
 const requests = []; let poison = new Set();
+const kcState = { enabled: false, calls: [], tokens: [] };
 const server = http.createServer((req, res) => {
   let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
     const send = (o) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
-    if (req.url.includes('/token')) return send({ access_token: 't' });
+    // IADR-0576: 投入器の主体の一時の有効化（Admin REST）。enabled を覚え、PUT を控える（kcCalls）。
+    if (req.url.startsWith('/admin/realms/')) {
+      if (req.method === 'PUT') { kcState.enabled = JSON.parse(b).enabled; kcState.calls.push('PUT enabled=' + kcState.enabled); res.writeHead(204); return res.end(); }
+      return send([{ id: 'c-seeder', clientId: 'abac-seeder', enabled: kcState.enabled, serviceAccountsEnabled: true }]);
+    }
+    if (req.url.includes('/token')) { kcState.tokens.push(new URLSearchParams(b).get('client_id')); return send({ access_token: 't' }); }
     if (req.url !== '/documents/archive-bodyless') return send({});
     const body = JSON.parse(b); requests.push(body);
     const after = body.cursor ? Number(body.cursor) : -1;
@@ -15718,7 +15808,7 @@ const server = http.createServer((req, res) => {
 });
 server.listen(0, '127.0.0.1', async () => {
   const url = 'http://127.0.0.1:' + server.address().port;
-  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1' });
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1', KC_ADMIN_USER: 'a', KC_ADMIN_PASSWORD: 'p' });
   const ab = require(scriptPath);
   const out = [];
   for (const run of cfg.runs) {
@@ -15861,10 +15951,16 @@ const [scriptPath, cfgPath] = process.argv.slice(2);
 const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
 const docs = cfg.docs.map((d, i) => ({ ...d, i, strips: 0 }));
 const requests = []; let fail = { at: -1, times: 0 };
+const kcState = { enabled: false, calls: [], tokens: [] };
 const server = http.createServer((req, res) => {
   let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
     const send = (o, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
-    if (req.url.includes('/token')) return send({ access_token: 't' });
+    // IADR-0576: 投入器の主体の一時の有効化（Admin REST）。enabled を覚え、PUT を控える（kcCalls）。
+    if (req.url.startsWith('/admin/realms/')) {
+      if (req.method === 'PUT') { kcState.enabled = JSON.parse(b).enabled; kcState.calls.push('PUT enabled=' + kcState.enabled); res.writeHead(204); return res.end(); }
+      return send([{ id: 'c-seeder', clientId: 'abac-seeder', enabled: kcState.enabled, serviceAccountsEnabled: true }]);
+    }
+    if (req.url.includes('/token')) { kcState.tokens.push(new URLSearchParams(b).get('client_id')); return send({ access_token: 't' }); }
     if (req.url !== '/documents/strip-untrusted-boundary') return send({});
     const body = JSON.parse(b); requests.push(body);
     const after = body.cursor ? Number(body.cursor) : -1;
@@ -15882,7 +15978,7 @@ const server = http.createServer((req, res) => {
 });
 server.listen(0, '127.0.0.1', async () => {
   const url = 'http://127.0.0.1:' + server.address().port;
-  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1' });
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1', KC_ADMIN_USER: 'a', KC_ADMIN_PASSWORD: 'p' });
   const su = require(scriptPath);
   const out = [];
   for (const run of cfg.runs) {
@@ -16009,10 +16105,16 @@ const [scriptPath, cfgPath] = process.argv.slice(2);
 const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
 const docs = cfg.docs.map((d, i) => ({ ...d, i, archives: 0 }));
 const requests = [];
+const kcState = { enabled: false, calls: [], tokens: [] };
 const server = http.createServer((req, res) => {
   let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
     const send = (o) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
-    if (req.url.includes('/token')) return send({ access_token: 't' });
+    // IADR-0576: 投入器の主体の一時の有効化（Admin REST）。enabled を覚え、PUT を控える（kcCalls）。
+    if (req.url.startsWith('/admin/realms/')) {
+      if (req.method === 'PUT') { kcState.enabled = JSON.parse(b).enabled; kcState.calls.push('PUT enabled=' + kcState.enabled); res.writeHead(204); return res.end(); }
+      return send([{ id: 'c-seeder', clientId: 'abac-seeder', enabled: kcState.enabled, serviceAccountsEnabled: true }]);
+    }
+    if (req.url.includes('/token')) { kcState.tokens.push(new URLSearchParams(b).get('client_id')); return send({ access_token: 't' }); }
     if (req.url !== '/documents/archive-ast-quotes') return send({});
     const body = JSON.parse(b); requests.push(body);
     const after = body.cursor ? Number(body.cursor) : -1;
@@ -16025,7 +16127,7 @@ const server = http.createServer((req, res) => {
 });
 server.listen(0, '127.0.0.1', async () => {
   const url = 'http://127.0.0.1:' + server.address().port;
-  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1' });
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1', KC_ADMIN_USER: 'a', KC_ADMIN_PASSWORD: 'p' });
   const aq = require(scriptPath);
   const out = [];
   for (const run of cfg.runs) {
