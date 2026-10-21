@@ -319,6 +319,14 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
 既に在る KV は env を渡しても書き換わらない —— 認証基盤・データストアと対になる秘密を回すのは
 [対になる秘密のローテーション](../../docs/operations/paired-secret-rotation-runbook.md) の手順である。
 
+🔴 **ブローカ（RabbitMQ）のサービスごとのユーザー**（IADR-0573・移行の段 1）: `VAULT=1 ESO=1` のとき、bootstrap が KV
+`msp/rabbitmq-users`・`ai-stock-trading/rabbitmq-users` を無いときだけ乱数で作り、起動器が
+`deploy/local/rabbitmq-setup/reconcile-users.sh` でブローカへユーザーと権限を合わせる（表は同じディレクトリの `users.txt`。値は表示しない）。
+確認は `bash deploy/local/rabbitmq-setup/reconcile-users.sh --check`。値を回すときは KV を書き換えてから同じスクリプトを回す。
+既定のユーザー（下表の `RABBITMQ_USER`）はこの段では変えない（消費側の切り替えの後に無効化する）。
+ブローカへの到達は NetworkPolicy `rabbitmq-ingress-clients`（`deploy/local/infra/rabbitmq.yaml`）が `users.txt` の Pod だけに絞る。
+ブローカを使うサービスを足すときは、`users.txt`・NetworkPolicy・消費側の chart を同じ変更でそろえる。
+
 | 環境変数 | 生成 Secret / キー | 既定 | 用途 |
 | --- | --- | --- | --- |
 | `PG_PASSWORD` | `platform-infra/postgres.password` | `postgres` | Postgres 管理 |
