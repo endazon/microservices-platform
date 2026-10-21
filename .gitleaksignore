@@ -35,3 +35,8 @@ a154bc7e337e168417d81ca9380bafbc78780202:scripts/scripts.test.js:generic-api-key
 # 上の注記と作業仕様書の結果の節が、そのキー名を「鍵名: 値」の形で引用していた（同じ誤検知）。後続のコミットで引用の形を改めた。履歴の 1 コミットぶんずつ。
 c9b1b237e6e3b9c1ba435e37175e5860b4d11f50:.gitleaksignore:generic-api-key:32
 db7c148ec4268631fecd54456d11d0f69dc19c0b:.ai-context/specs/20261021_2024_e2e-accounts-realm-eso.md:generic-api-key:104
+
+# 宣言から導出する守りの試験（IADR-0572）で、述語の変異を試す架空のクライアントの宣言の secret（`probe-0570-…`）を
+# 鍵名 secret の隣に直書きしていた。値は秘密ではないが、generic-api-key は鍵と見分けられない。
+# 後続のコミットで実行時に組み立てる形へ改めた。ここに残すのは履歴の 1 コミットぶんだけである。
+320cc30ad9b8ebeb6bbec123d377c90a51c9d087:scripts/keycloak-realm-reconcile.test.js:generic-api-key:620
