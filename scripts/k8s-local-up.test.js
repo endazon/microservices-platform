@@ -2081,8 +2081,8 @@ const KUBECTL_MODEL_0577 = [
   '  *"get secret rabbitmq -o"*) [ -s "$H/default" ] && base64 -w0 < "$H/default"; exit 0;;',
   '  *"get secret rabbitmq-users"*) k="$(printf "%s" "$*" | sed -n \'s/.*index \\.data "\\([^"]*\\)".*/\\1/p\')";',
   '    v="$(grep "^$k=" "$H/rmq-users" | cut -d= -f2-)"; [ -n "$v" ] && printf "%s" "$v" | base64 -w0; exit 0;;',
-  '  *"rabbitmqctl -q list_users"*) json "$H/users"; exit 0;;',
-  '  *"rabbitmqctl -q list_connections"*) json "$H/conns"; exit 0;;',
+  '  *"rabbitmqctl -q list_users"*) [ -e "$H/fail-list_users" ] && exit 1; json "$H/users"; exit 0;;',
+  '  *"rabbitmqctl -q list_connections"*) [ -e "$H/fail-list_connections" ] && exit 1; json "$H/conns"; exit 0;;',
   '  *"rabbitmqctl -q authenticate_user "*) cat >/dev/null; grep -Fxq -- "${*: -1}" "$H/users"; exit $?;;',
   '  *"rabbitmqctl -q delete_user "*) grep -Fxv -- "${*: -1}" "$H/users" > "$H/users.new" || true; mv "$H/users.new" "$H/users"; exit 0;;',
   '  *"create configmap"*) exit 0;;',
@@ -2091,7 +2091,7 @@ const KUBECTL_MODEL_0577 = [
   'exit 0',
   '',
 ].join('\n');
-function disable0577({ users, conns = [], defaultUser = 'brokeradmin', args = [] }) {
+function disable0577({ users, conns = [], defaultUser = 'brokeradmin', args = [], failing = [] }) {
   const H = fs.mkdtempSync(path.join(os.tmpdir(), 'disable-0577-'));
   const bin = path.join(H, 'bin');
   fs.mkdirSync(bin);
@@ -2101,6 +2101,7 @@ function disable0577({ users, conns = [], defaultUser = 'brokeradmin', args = []
   fs.writeFileSync(path.join(H, 'default'), defaultUser);
   fs.writeFileSync(path.join(H, 'rmq-users'), USERS_0577.map((r) => `${r[0]}=v-${r[0]}\n`).join(''));
   fs.writeFileSync(path.join(H, 'log'), '');
+  for (const f of failing) fs.writeFileSync(path.join(H, `fail-${f}`), '');
   const r = spawnSync('bash', [DISABLE_0577, ...args], {
     encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, STUB_H: H, RABBITMQ_USERS_TIMEOUT: '1' },
   });
@@ -2130,6 +2131,23 @@ ok('IADR-0577: 既定のユーザーの接続が 1 本でも残れば消さな�
   assert.ok(r.users.includes('brokeradmin'), '接続が残るのに消した');
   assert.strictEqual(flagAt0577(r), -1, '消していないのに印を置いた（次の再起動で消える）');
   assert.ok(/既定のユーザーの接続が 1 本ある/.test(r.stderr), r.stderr);
+});
+
+ok('IADR-0577: 接続・ユーザーの列挙が失敗したら「無い」と読まずに止める（消さない・印も置かない。fail-closed）', () => {
+  // 接続の列挙の失敗を「0 本」と読むと、切り替わっていないサービスが残るまま既定のユーザーを消す。
+  const conns = disable0577({ users: [...ALL_0577, 'brokeradmin'], conns: ['brokeradmin'], failing: ['list_connections'] });
+  assert.strictEqual(conns.status, 1, conns.stderr);
+  assert.ok(conns.users.includes('brokeradmin'), '接続を列挙できないのに消した');
+  assert.strictEqual(flagAt0577(conns), -1, '接続を列挙できないのに印を置いた');
+  assert.strictEqual(delAt0577(conns), -1);
+  assert.ok(/接続を列挙できない/.test(conns.stderr), conns.stderr);
+  // ユーザーの列挙の失敗を「既に無い」と読むと、既定のユーザーが残ったまま印だけを置く。
+  for (const args of [[], ['--check']]) {
+    const users = disable0577({ users: [...ALL_0577, 'brokeradmin'], failing: ['list_users'], args });
+    assert.strictEqual(users.status, 1, `${args}: ${users.stderr}`);
+    assert.strictEqual(flagAt0577(users), -1, 'ユーザーを列挙できないのに印を置いた');
+    assert.ok(/ユーザーを列挙できない/.test(users.stderr), users.stderr);
+  }
 });
 
 ok('IADR-0577: 宣言のユーザーが 1 人でも欠ければ消さない（exit 1・印も置かない）', () => {

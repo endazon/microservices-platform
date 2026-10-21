@@ -1,5 +1,10 @@
 # Generic Deployment template — rendered once per enabled service
 # ADR-0007: k8s Deployment skeleton for microservices-platform services
+{{- /* NFR-18, IADR-0577: 旧キーは、ブローカへ繋ぐサービスの有無によらず描画で止める（ループの中だと messaging: true が 0 件の構成で黙って無視される）。 */}}
+{{- $mqTop := .Values.global.messaging | default dict }}
+{{- if or (hasKey $mqTop "user") (hasKey $mqTop "existingSecret") (hasKey $mqTop "passwordKey") }}
+{{- fail "global.messaging.user / existingSecret / passwordKey は廃止しました。ブローカへはサービスごとのユーザーで接続します（global.messaging.credentialsSecretName / usernamePrefix。IADR-0577）。" }}
+{{- end }}
 {{- range $name, $svc := .Values.services }}
 {{- if $svc.enabled }}
 {{- /* FR-14/FR-15 (#146): pipeline.json をマウントする条件。段ホスト（pipelineSteps）に加え、
@@ -259,10 +264,8 @@ spec:
             # 組む（env の値に平文パスワードを描画しない。同一 container 内で先に定義した env のみ
             # 参照できるので順序を崩さないこと）。#1012 の global.db ブロックと同型である。
             # NFR-18, IADR-0577: ユーザーはサービスごと（<usernamePrefix><サービス名>）。パスワードは同名のキー。
+            {{- /* 旧キーの拒否はファイルの先頭（サービスのループの外）で行う。 */}}
             {{- $mq := $.Values.global.messaging | default dict }}
-            {{- if or (hasKey $mq "user") (hasKey $mq "existingSecret") (hasKey $mq "passwordKey") }}
-            {{- fail "global.messaging.user / existingSecret / passwordKey は廃止しました。ブローカへはサービスごとのユーザーで接続します（global.messaging.credentialsSecretName / usernamePrefix。IADR-0577）。" }}
-            {{- end }}
             {{- if or (not $mq.host) (not $mq.port) (not $mq.credentialsSecretName) (not $mq.usernamePrefix) }}
             {{- fail "global.messaging.host / port / credentialsSecretName / usernamePrefix が要ります（ブローカのサービスごとの資格情報。IADR-0577）。" }}
             {{- end }}

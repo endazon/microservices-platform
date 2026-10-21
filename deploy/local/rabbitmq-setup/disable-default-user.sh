@@ -35,10 +35,18 @@ if [ -z "$default_user" ]; then
   exit 1
 fi
 
-present=0
-if rmqctl list_users --formatter json | tr ',' '\n' | sed -n 's/.*"user":"\([^"]*\)".*/\1/p' | grep -Fxq -- "$default_user"; then
-  present=1
+# 列挙の結果は先に変数へ受ける。列挙そのものの失敗（exec の失敗・ノードの無応答）は「無い」と読まずに止める（fail-closed）。
+# 数えるときに許すのは grep の「一致 0 件」（exit 1）だけ。
+users_of() { tr ',' '\n' | sed -n 's/.*"user":"\([^"]*\)".*/\1/p'; }
+count_default() { local n; n="$(users_of | grep -Fxc -- "$default_user")" || [ "$?" = "1" ] || return 1; printf '%s' "${n:-0}"; }
+
+if ! listed_users="$(rmqctl list_users --formatter json)"; then
+  echo "ERROR: ブローカのユーザーを列挙できない（何もしない）" >&2
+  exit 1
 fi
+present=0
+n_default="$(printf '%s\n' "$listed_users" | count_default)"
+if [ "$n_default" -gt 0 ]; then present=1; fi
 
 if [ "$MODE" = "check" ]; then
   if [ "$present" = "1" ]; then
@@ -56,8 +64,12 @@ if ! RABBITMQ_USERS_TIMEOUT="${RABBITMQ_USERS_TIMEOUT:-60}" bash "$ROOT/deploy/l
 fi
 
 # 2. 既定のユーザーで張られている接続（切り替わっていないサービス）。
-conns="$(rmqctl list_connections user --formatter json | tr ',' '\n' | sed -n 's/.*"user":"\([^"]*\)".*/\1/p' | grep -Fxc -- "$default_user" || true)"
-if [ "${conns:-0}" -gt 0 ]; then
+if ! listed_conns="$(rmqctl list_connections user --formatter json)"; then
+  echo "ERROR: ブローカの接続を列挙できない。切り替わったと確かめられないので、既定のユーザーを消さない" >&2
+  exit 1
+fi
+conns="$(printf '%s\n' "$listed_conns" | count_default)"
+if [ "$conns" -gt 0 ]; then
   echo "WARN: 既定のユーザーの接続が ${conns} 本ある。切り替わっていないサービスがあるので消さない" >&2
   echo "      調べる: kubectl -n ${INFRA_NS} exec deploy/rabbitmq -- rabbitmqctl list_connections user peer_host" >&2
   exit 3
