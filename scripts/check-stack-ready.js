@@ -1483,7 +1483,8 @@ function edgeAdminSurfaceProbes(realms) {
   ];
   for (const realm of realms) {
     probes.push({ path: `/realms/${realm}/account/`, expect: 'open' });
-    probes.push({ path: `/realms/${realm}/protocol/openid-connect/auth?client_id=account-console&response_type=code&scope=openid`, expect: 'open' });
+    // ログイン・トークンの検証の経路。auth の端点は redirect_uri が無いと 400 を返すので、ここでは鍵（certs）を測る。
+    probes.push({ path: `/realms/${realm}/protocol/openid-connect/certs`, expect: 'open' });
   }
   return probes;
 }

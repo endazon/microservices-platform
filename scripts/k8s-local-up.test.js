@@ -3440,10 +3440,11 @@ ok('IADR-0575: 手順書・スクリプトは管理面（/admin・/realms/master
   assert.strictEqual((r.stdout || '').trim(), '', `エッジ越しに管理面を引く箇所がある:\n${r.stdout}`);
 });
 
-ok('IADR-0575: 管理コンソールの URL は port-forward の先（KC_HOSTNAME_ADMIN）で、エッジ（KC_HOSTNAME）ではない', () => {
-  assert.ok(/- name: KC_HOSTNAME_ADMIN\s*\n\s*value:\s*http:\/\/localhost:8080\s*$/m.test(readAt(REPO_ROOT, 'deploy', 'local', 'infra', 'keycloak.yaml')), 'KC_HOSTNAME_ADMIN が port-forward の先でない');
+ok('IADR-0575: KC_HOSTNAME_ADMIN を置かない（Admin REST のトークンの発行者を変えない）。管理者の経路（port-forward 越しの Admin REST）は README にある', () => {
+  const kc = readAt(REPO_ROOT, 'deploy', 'local', 'infra', 'keycloak.yaml').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.ok(!/KC_HOSTNAME_ADMIN/.test(kc), 'KC_HOSTNAME_ADMIN がある（in-cluster の Admin REST が拒まれ得る）');
   const readme = readAt(EDGE_DIR, 'README.md');
-  assert.ok(/kubectl -n platform-infra port-forward svc\/keycloak 8080:8080/.test(readme) && /http:\/\/localhost:8080\/admin\//.test(readme), 'README に管理者の経路が無い');
+  assert.ok(/kubectl -n platform-infra port-forward svc\/keycloak 8080:8080/.test(readme) && /http:\/\/localhost:8080\/admin\/realms\//.test(readme), 'README に管理者の経路が無い');
 });
 
 ok('#780: coredns-custom は k3s の import 先へ置き、coredns ConfigMap 自体は触らない', () => {

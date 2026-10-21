@@ -144,17 +144,20 @@ mkcert を使う手もあるが、**CA が開発者マシン固有でリポジ�
 トークン・アカウントコンソール、`/resources/...`）はこれまでどおり通る（`scripts/k8s-local-up.test.js` の模型と
 `node scripts/check-stack-ready.js --live` の G4b が固定する）。
 
-管理者はエッジを通らず、**port-forward** で管理コンソールを開く:
+管理者はエッジを通らず、**port-forward 越しの Admin REST** か **Pod の中の `kcadm.sh`** で操作する:
 
 ```bash
 kubectl -n platform-infra port-forward svc/keycloak 8080:8080
-# → ブラウザで http://localhost:8080/admin/ （master realm の管理者。資格情報は Secret platform-infra/keycloak-admin）
+# → master realm の管理者のトークンを http://localhost:8080/realms/master/protocol/openid-connect/token で取り、
+#   http://localhost:8080/admin/realms/<realm>/... を呼ぶ（資格情報は Secret platform-infra/keycloak-admin。端末に出さない）。
+#   形は docs/operations/paired-secret-rotation-runbook.md の手順 1（port-forward と curl）と同じ。
 ```
 
-- Keycloak は管理コンソールの URL を `KC_HOSTNAME_ADMIN=http://localhost:8080`（`deploy/local/infra/keycloak.yaml`）で描くので、
-  port-forward で開いた画面がエッジの URL へ誘導されない。ローカルの 8080 が使えないときは、別のポートに転送したうえで
-  この値を合わせる（ずれると管理コンソールのログインが別の URL へ飛ぶ）。
-- CLI は Pod の中の `kcadm.sh` を使う（`kubectl -n platform-infra exec deploy/keycloak -- /opt/keycloak/bin/kcadm.sh …`。
+- 🔴 **管理コンソール（ブラウザの画面）はエッジからは開けない。** 画面は `KC_HOSTNAME`（エッジ）の URL へ誘導されるため、
+  port-forward で `http://localhost:8080/admin/` を開いても、ログインの途中でエッジ（拒否）へ飛ぶ。`KC_HOSTNAME_ADMIN` で
+  画面だけを別の URL に出す形は、Admin REST のトークンの発行者を変えて in-cluster の Admin REST（realm の後追い・各サービス）を
+  拒ませ得るので採らない（IADR-0575）。画面が要る作業は、Admin REST か kcadm.sh の手順に置き換える。
+- CLI は Pod の中の `kcadm.sh` を使う（`kubectl -n platform-infra exec deploy/keycloak -- /opt/keycloak/bin/kcadm.sh …`。Pod の中から `http://localhost:8080` へ繋ぐ。
   資格情報は Pod の env から読み、端末に出さない。`docs/operations/paired-secret-rotation-runbook.md` の手順と同じ形）。
 - realm の後追い（`deploy/local/keycloak-setup/reconcile-realm.sh`）と各サービスの Admin REST は in-cluster の
   `http://keycloak:8080` を使うので、エッジの拒否の影響を受けない。
