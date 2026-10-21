@@ -17,23 +17,58 @@ INFRA_NS="platform-infra"
 vexec() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -c \
   'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"; '"$1"; }
 
-# NFR-18, ADR-0124 決定 1, IADR-0517 (#1830): **dev 以外の kube context で、レルム管理のロールを持つ機密クライアントの secret を
+# NFR-18, ADR-0124 決定 1, IADR-0517 (#1830): **dev 以外の kube context で、機密クライアントの secret を
 #   公知の dev の値で Vault へ入れない。** 判定は scripts/lib/dev-client-secret-guard.sh の 1 本（k8s-local-up.sh と共有）。
-#   対象は **KV がまだ無いもの**だけ —— 在る KV は下の vkv_create_if_absent が触らない（IADR-0485）ので、env が未設定でも dev の値は入らない。
+#   対象は **KV（AST の app-secrets はそのキー）がまだ無いもの**だけ —— 在るものは下の vkv_create_if_absent / vkv_patch_if_missing が
+#   触らない（IADR-0485）ので、env が未設定でも dev の値は入らない。
 #   🔴 Vault へ何か書く前に判定する（止まるときは何も書かない）。
+#   ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ
+#   広げた（手で並べず宣言から導出する）。置き場は client_secret_kv_of が持つ。**置き場の決まっていないクライアントが宣言に
+#   現れたら止める**（新しいクライアントの入れ漏れを黙って通さない。置き場を足すか、Vault に種を置かないなら空を返す）。
+#   🔴 **非対称に注意**: 判定器・取り込み元・後追い・検知は宣言へクライアントを足せば触らずに対象へ入るが、この表だけは
+#      足したクライアントごとに置き場の追記が要る（追記するまで bootstrap.sh は止まる。意図した fail-closed）。
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$ROOT/scripts/lib/dev-client-secret-guard.sh"
-#   KV のパスは 3 つとも `msp/<client>-oidc`（下の vkv_create_if_absent）。env の名前は判定器が持つ（dev_client_secret_env_name）。
+# client_secret_kv_of <client> → 「<KV のパス> <キー>」。Vault に種を置かないクライアントは空。知らないクライアントは 1。
+client_secret_kv_of() {
+  case "$1" in
+    bff | identity-admin | mcp-client-admin | reset-gate | synthetic-monitor) printf 'msp/%s-oidc client-secret' "$1" ;;
+    retrieval-service | ingestion-service | aianalysis-service | graph-service | conversion-service | wiki-service | \
+      datasource-service | mcp-server | document-service) printf 'msp/%s-token client-secret' "$1" ;;
+    ai-stock-trading-svc) printf 'ai-stock-trading/app-secrets service-auth-client-secret' ;;
+    ai-stock-trading-kb-writer) printf 'ai-stock-trading/app-secrets kb-auth-client-secret' ;;
+    ai-stock-trading-kb-reader) printf 'ai-stock-trading/app-secrets kb-reader-auth-client-secret' ;;
+    ai-stock-trading-llm-caller) printf 'ai-stock-trading/app-secrets llm-auth-client-secret' ;;
+    ai-stock-trading-owner) printf 'ai-stock-trading/app-secrets discord-owner-auth-client-secret' ;;
+    abac-seeder) ;; # Vault に種を置かない（投入器が実行時に名乗る。IADR-0133）
+    *) return 1 ;;
+  esac
+}
+# client_secret_kv_present <path> <key> → 0＝在る。AST の app-secrets はキー単位（vkv_patch_if_missing と同じ）、他は KV 単位
+# （vkv_create_if_absent と同じ）で見る。
+client_secret_kv_present() {
+  case "$1" in
+    ai-stock-trading/app-secrets) vexec "vault kv get -field=$2 secret/$1 >/dev/null 2>&1" ;;
+    *) vexec "vault kv metadata get secret/$1 >/dev/null 2>&1" ;;
+  esac
+}
+dev_client_secret_load_targets || exit 1
 dev_secret_args=()
 for dev_secret_client in $DEV_CLIENT_SECRET_GUARDED; do
-  vexec "vault kv metadata get secret/msp/${dev_secret_client}-oidc >/dev/null 2>&1" && continue
+  if ! dev_secret_loc="$(client_secret_kv_of "$dev_secret_client")"; then
+    echo "ERROR: bootstrap.sh: realm の機密クライアント ${dev_secret_client} の Vault の置き場が決まっていない（client_secret_kv_of に足す）。守れないまま進まない" >&2
+    exit 1
+  fi
+  [ -n "$dev_secret_loc" ] || continue
+  # shellcheck disable=SC2086  # 意図的な単語分割:「<KV のパス> <キー>」の 2 語。値は上の client_secret_kv_of の case が返す固定の字面だけ
+  client_secret_kv_present ${dev_secret_loc} && continue
   dev_secret_env="$(dev_client_secret_env_name "$dev_secret_client")"
   dev_secret_args+=("${dev_secret_client}=${!dev_secret_env:-}")
 done
 if [ "${#dev_secret_args[@]}" -gt 0 ]; then
   dev_client_secret_guard "bootstrap.sh" "${dev_secret_args[@]}" || exit 1
 fi
-unset dev_secret_args dev_secret_client dev_secret_env
+unset dev_secret_args dev_secret_client dev_secret_env dev_secret_loc
 
 echo "==> kubernetes 認証を有効化（未有効時のみ・冪等）"
 vexec 'vault auth list -format=json 2>/dev/null | grep -q "\"kubernetes/\"" || vault auth enable kubernetes'
@@ -341,6 +376,26 @@ unset rmq_kv rmq_args rmq_user rmq_users_file
 # （ズレると client_credentials が invalid_client になる）。画面から書ける 12 件は空文字（未設定＝各連携が no-op）。
 # 🔴 ai-stock-trading/moomoo / moomoo-rsa は seed しない（未設定のあいだ OpenD は Secret 不在で待機する＝fail-closed）。
 # 値の一致（キー集合＝items[] の書ける 12 ＋ notWritable 10、auth は realm と同値）は SecretItemBootstrapSeedTests が固定する。
+# NFR-18, IADR-0572 (GHSA-rh44-px44-p48q): AST の機密クライアントの secret も、env（名前は判定器の dev_client_secret_env_name。
+# 例 AI_STOCK_TRADING_SVC_CLIENT_SECRET）を与えたときはその値で入れる。冒頭の判定は「無いキーを env 未設定（dev の値）で作る」を
+# dev ではない context で止めるので、env を与えて通したときに dev の値が残らないよう、ここで env の値へ揃える。
+# <mode>: created ＝この実行で KV を作った（seed の値を env で上書きする）/ present ＝在る KV（無いキーにだけ足す。在る値は触らない）。
+# 値は stdin で渡す（vkv_patch_nonempty / vkv_patch_if_missing）。対象は宣言から導出した集合のうち置き場が app-secrets のもの。
+ast_auth_secrets_from_env() { # <created|present>
+  local c loc env val
+  for c in $DEV_CLIENT_SECRET_GUARDED; do
+    loc="$(client_secret_kv_of "$c")" || continue
+    case "$loc" in ai-stock-trading/app-secrets\ *) ;; *) continue ;; esac
+    env="$(dev_client_secret_env_name "$c")"
+    val="${!env:-}"
+    [ -n "$val" ] || continue
+    if [ "$1" = "created" ]; then
+      vkv_patch_nonempty ai-stock-trading/app-secrets "${loc#* }" "$val"
+    else
+      vkv_patch_if_missing ai-stock-trading/app-secrets "${loc#* }" "$val"
+    fi
+  done
+}
 if ! vkv_exists ai-stock-trading/app-secrets; then
   vexec "vault kv put -cas=0 secret/ai-stock-trading/app-secrets \
     finnhub-api-key='' marketdata-finnhub-api-key='' fred-api-key='' edinet-subscription-key='' \
@@ -353,7 +408,9 @@ if ! vkv_exists ai-stock-trading/app-secrets; then
     llm-auth-client-id='ai-stock-trading-llm-caller' llm-auth-client-secret='ai-stock-trading-llm-caller-dev-secret-change-me' \
     discord-owner-auth-client-id='ai-stock-trading-owner' discord-owner-auth-client-secret='dev-only-owner-secret'"
   mark_changed ai-stock-trading/app-secrets
+  ast_auth_secrets_from_env created
 else
+  ast_auth_secrets_from_env present
   # 在る KV にも *-auth-client-* 10 件を**無いものだけ**足す（画面が先に書いて作った KV には auth キーが無く、
   # そのままでは ast-secrets に auth キーが載らず AST のサービス間トークン取得が止まる。PR #1478 監査 D4）。値は上の seed と同値。
   vkv_patch_if_missing ai-stock-trading/app-secrets service-auth-client-id 'ai-stock-trading-svc'

@@ -1,8 +1,8 @@
 # IADR-0066 / ADR-0004: 認証（Keycloak, dev）。realm `platform` を import。
 # 取り込み元の realm JSON は kustomize の外で `scripts/k8s-local-up.sh` の [3/7] が実ファイル（deploy/keycloak/…）から
 # **Secret `keycloak-realm-import`** として作り、/opt/keycloak/data/import へマウントする（単一情報源＝既存 realm ファイル）。
-# NFR-18, ADR-0124 決定 1, IADR-0518 (#1834): ConfigMap ではなく Secret なのは、レルム管理のロールを持つ 3 クライアント
-# （identity-admin / reset-gate / mcp-client-admin）の secret を、env を与えたときは宣言の dev の値ではなく env の値で渡すため
+# NFR-18, ADR-0124 決定 1, IADR-0518 (#1834) / IADR-0572: ConfigMap ではなく Secret なのは、サービスアカウントを持つ機密クライアント
+# （宣言から導出する。当初は identity-admin / reset-gate / mcp-client-admin の 3 つ）の secret を、env を与えたときは宣言の dev の値ではなく env の値で渡すため
 # （dev 以外のクラスタの初回の取り込みで公知の値のクライアントを作らない・消費側の Secret と食い違わない）。
 # 宣言のままの ConfigMap `keycloak-realms` は realm の後追い Job と申請の門が読む（こちらは変えない）。
 #

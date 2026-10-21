@@ -649,4 +649,5 @@
 | [IADR-0569](./IADR-0569_e2e-layers-and-live-opt-in.md) | E2E の実行層を L1/L2/L3/L3-T/L3-L に分け、タグ・Playwright project 名と live の opt-in（E2E_LIVE / E2E_LAYER）を確定する（#2014） | Accepted |
 | [IADR-0570](./IADR-0570_e2e-accounts-placeholder-credentials.md) | 試験アカウント e2e-* は realm の宣言にプレースホルダだけを置き、Secret e2e-accounts（OpenBao → ESO）の値を後追い Job と取り込み元の 1 つの口で差し込む。差し込めない利用者は作らない（#2024） | Accepted |
 | [IADR-0571](./IADR-0571_alertmanager-mail-receiver-via-nearby-mta.md) | Alertmanager の受信先を近接 MTA 経由のメール 1 本とし、宛先は Secret から起動時に描画する（空なら警告して default-null・不正なら起動しない。Grafana の contact point は揃えない）（#2044） | Accepted |
+| [IADR-0572](./IADR-0572_dev-secret-guard-all-service-account-clients.md) | dev の値の守りの対象を、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げる。対象は手で並べず宣言から導出し（述語の正は reconcile-realm.js の isDevSecretGuardedClient）、導出できなければ止まる（GHSA-rh44-px44-p48q） | Accepted |
 | [IADR-0573](./IADR-0573_rabbitmq-per-service-users-and-ingress-policy.md) | 共有ブローカ（RabbitMQ）にサービスごとのユーザーを持たせ（値は Vault の乱数・ESO で供給・起動器が冪等に合わせる）、ブローカへの到達をブローカを使うサービスの Pod だけに絞る。既定のユーザーの撤去は後の段 | Accepted |
