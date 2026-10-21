@@ -85,7 +85,7 @@ PoC には近接 MTA（`mail-relay`）が配備済みである。
 
 ## 検証の結果（2026-10-22）
 
-- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` → 1134 件通過（#2044 節 9 件を含む。IADR を 0570 から 0571 へ改番する前の実走。改番後は #2048 のマージまで採番検査の欠番で止まる）。`node scripts/k8s-local-up.test.js` → 325 件通過。
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` → **1134 件すべて通過**（#2044 節 9 件を含む。IADR-0571 へ改番し、#2048〔IADR-0570〕を含む develop `af01abc5` を merge した後に再実走）。`node scripts/k8s-local-up.test.js` → 330 件通過（同じ merge 後）。
 - 変異: 既定 route を `default-null`・smarthost の port を 25・NetworkPolicy の名前を変える・`optional: true` を外す → いずれも赤（各 1 件）。
   描画の形の検査を外す変異は試験の中に置いた。
 - 手元で Alertmanager v0.27.0（公式リリースのバイナリ）と SMTP の受け口を立て、描画した設定（smarthost だけ 127.0.0.1 へ差し替え）で
