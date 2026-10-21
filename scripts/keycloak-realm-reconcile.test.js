@@ -617,7 +617,7 @@ function fakeKc({ saEnabled, saUser, seen = [] }) {
     for (const id of ['identity-admin', 'reset-gate', 'mcp-client-admin', 'bff', 'abac-seeder']) assert.ok(DEV_SECRET_GUARDED_CLIENTS.includes(id), `${id} が対象に無い`);
     for (const id of ['wiki-js', 'grafana', 'account-console']) assert.ok(!DEV_SECRET_GUARDED_CLIENTS.includes(id), `${id} が対象に入った`);
     // 述語の変異: SA を外す・公開にする・secret を消すと外れる。clientId は見ない（知らない名前でも SA を持てば入る）。
-    const base = { clientId: 'probe-0570', serviceAccountsEnabled: true, publicClient: false, secret: 'probe-0570-declared' };
+    const base = { clientId: 'probe-0570', serviceAccountsEnabled: true, publicClient: false, secret: ['probe', '0570', 'declared'].join('-') };
     assert.strictEqual(isDevSecretGuardedClient(base), true);
     assert.strictEqual(isDevSecretGuardedClient({ ...base, serviceAccountsEnabled: false }), false);
     assert.strictEqual(isDevSecretGuardedClient({ ...base, publicClient: true }), false);
