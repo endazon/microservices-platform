@@ -37,7 +37,7 @@ spec:
               value: /import
             - name: RECONCILE_MODE
               value: "apply"
-            # NFR-18, IADR-0517 (#1830): 無い管理用クライアント（identity-admin / reset-gate / mcp-client-admin）を宣言の dev の値で
+            # NFR-18, IADR-0517 (#1830) / IADR-0570: 無い機密クライアント（サービスアカウントを持つもの。宣言から導出する）を宣言の dev の値で
             # 作ってよいか。起動器が kube context から決めて allow へ書き換える。**既定は deny**（直接 apply しても安全側）。
             - name: DEV_CLIENT_SECRETS_ALLOWED
               value: "deny"

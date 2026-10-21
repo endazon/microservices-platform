@@ -779,7 +779,7 @@ kubectl create configmap keycloak-realms -n platform-infra \
   --from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json
 # IADR-0518 (#1834): Keycloak の取り込み元（keycloak.yaml がマウントする。無いと Pod が起動しない）。
 # 手で作るときは宣言のまま（dev の値）になる。dev 以外のクラスタでは手で作らず k8s-local-up.sh を使う
-# （identity-admin / reset-gate / mcp-client-admin の secret を env の値へ差し替えて作る）。
+# （サービスアカウントを持つ機密クライアントの secret を env の値へ差し替えて作る。対象は宣言から導出する。IADR-0570）。
 kubectl create secret generic keycloak-realm-import -n platform-infra \
   --from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json
 

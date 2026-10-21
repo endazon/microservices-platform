@@ -446,8 +446,17 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   write('kubectl', KUBECTL_STUB);
   // node も差し替える。ABACSEED=1 は `node scripts/seed-abac-policies.js` を呼ぶため、素の node のままだと
   // smoke test が実際に投入スクリプトを走らせて（到達しない port-forward を待って）遅くなる。
-  // k8s-local-up.sh が node を使うのはこの 1 か所だけなので、記録スタブで足りる。
-  write('node', PLAIN_STUB('node'));
+  // 投入器の呼び出しは記録スタブで足りる。
+  // ［IADR-0570 / GHSA-rh44-px44-p48q］ただし dev の値の守りの対象を realm の宣言から導出する口
+  // （scripts/lib/dev-client-secret-targets.js）だけは本物の node へ渡す（導出の結果で起動器の振る舞いが決まるため）。
+  write('node', [
+    '#!/usr/bin/env bash',
+    // STUB_DEV_TARGETS_FAIL=1 … 導出が失敗する世界（node が無い・宣言が壊れている）。
+    `case "\${1:-}" in */scripts/lib/dev-client-secret-targets.js) [ "\${STUB_DEV_TARGETS_FAIL:-}" = "1" ] && exit 1; exec ${JSON.stringify(process.execPath)} "$@";; esac`,
+    'echo "node $*" >> "$STUB_LOG"',
+    'exit 0',
+    '',
+  ].join('\n'));
   write('helm', HELM_STUB); // #1710: 既定は PLAIN_STUB と同じ振る舞い（リリース無し）
   write('docker', DOCKER_STUB);
   // helm-controller の模型（awk）。PATH には置かない —— これはコマンドの差し替えではなく、
@@ -5240,8 +5249,18 @@ for (const major of ['4', '3']) {
 // reconcile-realm.sh が共有）。ここでは (1) 真理値表を関数そのもので (2) 起動器の実走で「書き込みの前に止まる」を
 // (3) CI の 2 本（integration-stack / cutover-rehearsal）の context が許可集合に入る（陽性対照）を (4) 後追い Job へ判定が渡る、を固定する。
 const DEV_GUARD_LIB = path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh');
-const DEV_GUARDED = ['identity-admin', 'reset-gate', 'mcp-client-admin'];
-const devValueOf = (client) => `${client}-dev-secret-change-me`;
+// ［IADR-0570 / GHSA-rh44-px44-p48q］対象は realm の宣言から導出する。試験は判定器とは別に、宣言から独立に数える
+// （サービスアカウントを持つ・機密・宣言が secret を持つ）。当初の 3 つは必ず含む（陽性対照）。
+const REALM_1830 = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
+const deriveGuarded1830 = (realm) => realm.clients
+  .filter((c) => c.serviceAccountsEnabled === true && c.publicClient !== true && typeof c.secret === 'string' && c.secret !== '')
+  .map((c) => c.clientId).sort();
+const DEV_GUARDED = deriveGuarded1830(REALM_1830);
+const devValueOf = (client) => REALM_1830.clients.find((c) => c.clientId === client).secret;
+const clientSecretOf1830 = (realm, clientId) => (realm.clients.find((c) => c.clientId === clientId) || {}).secret;
+const { envNameOf: envNameOf1830 } = require(path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-targets.js'));
+/** 対象全部に dev 以外の値を与える env（excepts に挙げたクライアントは与えない） */
+const allCustomEnv1830 = (excepts = []) => Object.fromEntries(DEV_GUARDED.filter((c) => !excepts.includes(c)).map((c) => [envNameOf1830(c), customOf(c)]));
 // 試験用の「dev ではない値」。鍵の形を避け（gitleaks）、実行時に組む。
 const customOf = (client) => ['probe', '1830', client].join('-');
 const isDevContext1830 = (ctx) => /^(k3d-.+|kind-.+|rancher-desktop|docker-desktop)$/.test(ctx);
@@ -5253,7 +5272,7 @@ function decideAll(cases) {
     `out="$(dev_client_secret_decide ${q(c.ctx)} ${q(c.override)} ${c.args.map(q).join(' ')})" && rc=0 || rc=$?`,
     `printf '%s\\t%s\\t%s\\n' ${i} "$rc" "$(printf '%s' "$out" | tr '\\n' ' ')"`,
   ].join('\n')).join('\n');
-  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(DEV_GUARD_LIB)}\n${body}`], { encoding: 'utf8' });
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(DEV_GUARD_LIB)}\ndev_client_secret_load_targets\n${body}`], { encoding: 'utf8' });
   assert.strictEqual(r.status, 0, `判定器が実行できない: ${r.stderr}`);
   return r.stdout.split('\n').filter(Boolean).map((l) => {
     const [i, rc, out] = l.split('\t');
@@ -5312,33 +5331,52 @@ ok('#1830: 複数のクライアントでは dev の値になるものだけを�
 const secretOf = (r, name) => r.secrets.filter((l) => l.startsWith(`${name} client-secret=`)).map((l) => l.slice(`${name} client-secret=`.length));
 const wroteAnything = (r) => r.secrets.length > 0 || r.lines.some((l) => / apply -f|helm upgrade|kubectl create /.test(l));
 
-ok('#1830: dev ではない context・env 未設定 → [1/7] の直後、何も書かないうちに 3 クライアントを名指して止まる', () => {
+ok('#1830/IADR-0570: dev ではない context・env 未設定 → [1/7] の直後、何も書かないうちに対象のクライアント全部を名指して止まる', () => {
   for (const env of [{ STUB_KUBE_CONTEXT: 'prod-shared' }, { STUB_KUBE_CONTEXT: '' }, { STUB_KUBE_CONTEXT_FAIL: '1' }]) {
     const r = runUp(env);
     assert.notStrictEqual(r.status, 0, `${JSON.stringify(env)}: 止まらなかった`);
     assert.ok(!wroteAnything(r), `${JSON.stringify(env)}: 書いてから止まった:\n${r.lines.filter((l) => / apply -f|create /.test(l)).join('\n')}`);
-    assert.ok(/identity-admin, reset-gate, mcp-client-admin/.test(r.stderr), `${JSON.stringify(env)}: 名指していない:\n${r.stderr}`);
+    assert.ok(r.stderr.includes(`止める: ${DEV_GUARDED.join(', ')}\n`), `${JSON.stringify(env)}: 名指していない:\n${r.stderr}`);
     assert.ok(/ALLOW_DEV_CLIENT_SECRETS=1/.test(r.stderr) && /RESET_GATE_CLIENT_SECRET/.test(r.stderr), '対処（env・上書き）を告げていない');
     // #1834（issue AC3）: 止めたときに、稼働中の dev の値の確かめ方（--check-dev-secrets）も告げる。
     assert.ok(/bash deploy\/local\/keycloak-setup\/reconcile-realm\.sh --check-dev-secrets/.test(r.stderr), `確認の手順（--check-dev-secrets）を告げていない:\n${r.stderr}`);
-    assert.ok(!r.stderr.includes('-dev-secret-change-me'), '値を出力した');
+    for (const c of DEV_GUARDED) assert.ok(!r.stderr.includes(devValueOf(c)), `${c} の値を出力した`);
   }
 });
 
-ok('#1830: dev ではない context でも、3 つに dev 以外の値を与えれば進み、その値で作る（陽性対照・値は出力しない）', () => {
-  const env = { STUB_KUBE_CONTEXT: 'prod-shared' };
-  for (const c of DEV_GUARDED) env[`${c.toUpperCase().replace(/-/g, '_')}_CLIENT_SECRET`] = customOf(c);
-  const r = runUp(env);
+ok('#1830/IADR-0570: dev ではない context でも、対象全部に dev 以外の値を与えれば進み、その値で作る（陽性対照・値は出力しない）', () => {
+  const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ...allCustomEnv1830() });
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
-  for (const c of DEV_GUARDED) {
-    assert.deepStrictEqual(secretOf(r, `${c}-oidc`), [customOf(c)], `${c}-oidc が与えた値で作られていない`);
-    assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf(c)), `${c} の値が出力に出た`);
+  for (const [c, name] of [['identity-admin', 'identity-admin-oidc'], ['reset-gate', 'reset-gate-oidc'], ['mcp-client-admin', 'mcp-client-admin-oidc'],
+    ['bff', 'bff-oidc'], ['retrieval-service', 'retrieval-service-token']]) {
+    assert.deepStrictEqual(secretOf(r, name), [customOf(c)], `${name} が与えた値で作られていない`);
+  }
+  for (const c of DEV_GUARDED) assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf(c)), `${c} の値が出力に出た`);
+});
+
+ok('#1830/IADR-0570: 当初の 3 つだけに値を与えても、dev ではない context では残りを名指して止まる（対象を広げた変異の検出）', () => {
+  const env = { STUB_KUBE_CONTEXT: 'prod-shared' };
+  for (const c of ['identity-admin', 'reset-gate', 'mcp-client-admin']) env[envNameOf1830(c)] = customOf(c);
+  const r = runUp(env);
+  assert.notStrictEqual(r.status, 0, '3 つだけで通った（対象が広がっていない）');
+  assert.ok(!wroteAnything(r), '書いてから止まった');
+  const rest = DEV_GUARDED.filter((c) => !['identity-admin', 'reset-gate', 'mcp-client-admin'].includes(c));
+  assert.ok(rest.length > 0 && rest.includes('bff') && rest.includes('abac-seeder'), `前提: 3 つ以外の対象が導出されている: ${rest.join(', ')}`);
+  assert.ok(r.stderr.includes(`止める: ${rest.join(', ')}\n`), `残りを名指していない:\n${r.stderr}`);
+  assert.ok(/BFF_OIDC_CLIENT_SECRET/.test(r.stderr) && /ABAC_SEED_CLIENT_SECRET/.test(r.stderr), `env の名前（例外の 2 つ）を告げていない:\n${r.stderr}`);
+});
+
+ok('#1830/IADR-0570: 対象を導出できない（node が失敗する）ときは、dev の context でも何も書かずに止まる（守れないまま進まない）', () => {
+  for (const ctx of ['k3d-testcluster', 'prod-shared']) {
+    const r = runUp({ STUB_KUBE_CONTEXT: ctx, STUB_DEV_TARGETS_FAIL: '1' });
+    assert.notStrictEqual(r.status, 0, `${ctx}: 導出できないのに進んだ`);
+    assert.ok(!wroteAnything(r), `${ctx}: 書いてから止まった`);
+    assert.ok(/dev の値の守りの対象を realm の宣言/.test(r.stderr), `${ctx}: 理由を告げていない:\n${r.stderr.slice(-600)}`);
   }
 });
 
 ok('#1830: 1 つだけ dev の値と同じ値を与えても止まり、そのクライアントだけを名指す', () => {
-  const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', IDENTITY_ADMIN_CLIENT_SECRET: devValueOf('identity-admin'),
-    RESET_GATE_CLIENT_SECRET: customOf('reset-gate'), MCP_CLIENT_ADMIN_CLIENT_SECRET: customOf('mcp-client-admin') });
+  const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ...allCustomEnv1830(), IDENTITY_ADMIN_CLIENT_SECRET: devValueOf('identity-admin') });
   assert.notStrictEqual(r.status, 0, '止まらなかった');
   assert.ok(!wroteAnything(r), '書いてから止まった');
   assert.ok(/止める: identity-admin$/m.test(r.stderr), `identity-admin だけを名指していない:\n${r.stderr}`);
@@ -5357,20 +5395,18 @@ ok('#1830: ALLOW_DEV_CLIENT_SECRETS=1 は大きく警告して通す。1 以外�
 // ［2026-10-09 / #1834 / IADR-0518］ESO=1 でも 3 つとも見る。取り込み元の Secret が ESO の有無によらず 3 つの env から作られ、
 //   bootstrap.sh（Vault の種の判定）は Keycloak の初回の取り込み（[4/7]）より後に走るため、従来の「reset-gate だけ」では
 //   止まる前に Keycloak が dev の値で identity-admin / mcp-client-admin を作っていた。
-ok('#1830/#1834: ESO=1 でも 3 クライアントを見る（取り込み元の Secret が env から作られ、bootstrap より前に Keycloak が取り込むため）', () => {
-  const ng = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1', RESET_GATE_CLIENT_SECRET: customOf('reset-gate') });
-  assert.notStrictEqual(ng.status, 0, 'reset-gate だけ与えて止まらなかった');
+ok('#1830/#1834: ESO=1 でも対象全部を見る（取り込み元の Secret が env から作られ、bootstrap より前に Keycloak が取り込むため）', () => {
+  const ng = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1', ...allCustomEnv1830(['identity-admin', 'mcp-client-admin']) });
+  assert.notStrictEqual(ng.status, 0, '2 つを与えずに止まらなかった');
   assert.ok(!wroteAnything(ng), '書いてから止まった');
   assert.ok(/止める: identity-admin, mcp-client-admin$/m.test(ng.stderr), `identity-admin と mcp-client-admin を名指していない:\n${ng.stderr}`);
-  const env = { STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1' };
-  for (const c of DEV_GUARDED) env[`${c.toUpperCase().replace(/-/g, '_')}_CLIENT_SECRET`] = customOf(c);
-  const ok1 = runUp(env);
-  assert.strictEqual(ok1.status, 0, `陽性対照: 3 つ与えて止まった（スタブの Vault では KV が在る＝bootstrap も通る）:\n${ok1.stderr.slice(-800)}`);
+  const ok1 = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1', ...allCustomEnv1830() });
+  assert.strictEqual(ok1.status, 0, `陽性対照: 全部与えて止まった（スタブの Vault では KV が在る＝bootstrap も通る）:\n${ok1.stderr.slice(-800)}`);
 });
 
 ok('#1830 陽性対照: 既定（k3d の context）は従来どおり dev の値で 3 つを作り、警告も出さない', () => {
   assert.strictEqual(DEFAULT.status, 0);
-  for (const c of DEV_GUARDED) assert.deepStrictEqual(secretOf(DEFAULT, `${c}-oidc`), [devValueOf(c)], `${c}-oidc が dev の値でない`);
+  for (const c of ['identity-admin', 'reset-gate', 'mcp-client-admin', 'bff']) assert.deepStrictEqual(secretOf(DEFAULT, `${c}-oidc`), [devValueOf(c)], `${c}-oidc が dev の値でない`);
   assert.ok(!/ALLOW_DEV_CLIENT_SECRETS|dev の許可集合/.test(DEFAULT.stderr), '既定で守りの文言が出た');
   assert.ok(DEFAULT.lines.includes('kubectl config current-context'), '陽性対照: context を読んでいる');
   for (const ctx of ['rancher-desktop', 'docker-desktop', 'kind-poc']) {
@@ -5402,6 +5438,79 @@ ok('#1830: 3 本の呼び出し元は同じ判定器を source し、自前の�
     const code = src.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
     assert.ok(!/k3d-\*|rancher-desktop\)|docker-desktop\)/.test(code), `${f} が許可集合を自前で持っている`);
   }
+});
+
+// --- NFR-18, ADR-0124 決定 1, IADR-0570 (GHSA-rh44-px44-p48q): 対象を realm の宣言から導出する ---------------------------------------
+/** 判定器を source し、与えた realm（省略時は既定の宣言）から対象を読んで、続く bash を走らせる。 */
+function guardWith(realmFile, script, env = {}) {
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. "$1"\ndev_client_secret_load_targets \${2:+"$2"}\n${script}`, 'guard-0570', DEV_GUARD_LIB, realmFile || ''], {
+    encoding: 'utf8', env: { PATH: process.env.PATH || '', ...env },
+  });
+  return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+
+ok('IADR-0570: 判定器の対象は realm の宣言から導出した集合（SA を持つ機密クライアント全部）と一致し、判定器は clientId を並べない', () => {
+  const r = guardWith('', 'printf "%s" "$DEV_CLIENT_SECRET_GUARDED"');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.deepStrictEqual(r.stdout.split(' '), DEV_GUARDED, '判定器の対象が宣言から独立に数えた集合と違う');
+  for (const c of ['identity-admin', 'reset-gate', 'mcp-client-admin', 'bff', 'abac-seeder', 'synthetic-monitor', 'ai-stock-trading-owner']) {
+    assert.ok(DEV_GUARDED.includes(c), `陽性対照: ${c} が対象に無い`);
+  }
+  // 陰性対照: SA を持たない機密クライアント（道具の OIDC）と公開クライアントは入らない
+  for (const c of ['wiki-js', 'grafana', 'argocd', 'account-console']) assert.ok(!DEV_GUARDED.includes(c), `${c} が対象に入った`);
+  // 宣言の値・env の名前は表から引く（宣言と一致する）
+  const t = guardWith('', DEV_GUARDED.map((c) => `printf '%s\\t%s\\n' "$(dev_client_secret_env_name ${c})" "$(dev_client_secret_dev_value ${c})"`).join('\n'));
+  assert.strictEqual(t.status, 0, t.stderr);
+  assert.deepStrictEqual(t.stdout.trim().split('\n'), DEV_GUARDED.map((c) => `${envNameOf1830(c)}\t${devValueOf(c)}`));
+  assert.deepStrictEqual(['bff', 'abac-seeder', 'reset-gate', 'ai-stock-trading-svc'].map(envNameOf1830),
+    ['BFF_OIDC_CLIENT_SECRET', 'ABAC_SEED_CLIENT_SECRET', 'RESET_GATE_CLIENT_SECRET', 'AI_STOCK_TRADING_SVC_CLIENT_SECRET'], 'env の名前の規則・例外が違う');
+  // 判定器に clientId の手書きの集合が無い（コメントを除くコード）
+  const code = fs.readFileSync(DEV_GUARD_LIB, 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.ok(!/identity-admin|mcp-client-admin|reset-gate/.test(code), '判定器のコードに clientId が並んでいる（手で並べた集合）');
+});
+
+ok('IADR-0570 変異: 宣言へ SA を持つ機密クライアントを足すと判定器を触らずに対象へ入り、SA を外す・公開にする・secret を消すと外れる', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'realm-0570-'));
+  try {
+    const probe = { clientId: 'probe-new-sa', enabled: true, publicClient: false, serviceAccountsEnabled: true, secret: ['probe', 'new', 'sa', 'declared'].join('-') };
+    const write = (name, mutate) => {
+      const realm = JSON.parse(JSON.stringify(REALM_1830));
+      realm.clients.push(mutate({ ...probe }));
+      const file = path.join(dir, `${name}.json`);
+      fs.writeFileSync(file, `${JSON.stringify(realm, null, 2)}\n`);
+      return file;
+    };
+    const added = write('added', (c) => c);
+    const names = (file) => guardWith(file, 'printf "%s" "$DEV_CLIENT_SECRET_GUARDED"').stdout.split(' ');
+    assert.ok(names(added).includes('probe-new-sa'), '足したクライアントが対象に入らない（入れ漏れ）');
+    // 判定: dev ではない context で env 未設定なら名指して止まる。与えれば通る。
+    const deny = guardWith(added, 'dev_client_secret_decide prod "" "probe-new-sa=" || true');
+    assert.deepStrictEqual(deny.stdout.trim().split('\n'), ['deny', 'probe-new-sa']);
+    const clean = guardWith(added, 'dev_client_secret_decide prod "" "probe-new-sa=probe-value-0570"');
+    assert.strictEqual(clean.stdout.trim(), 'clean');
+    const same = guardWith(added, `dev_client_secret_decide prod "" "probe-new-sa=${probe.secret}" || true`);
+    assert.deepStrictEqual(same.stdout.trim().split('\n'), ['deny', 'probe-new-sa'], '宣言の値と同じ値を通した');
+    // 取り込み元: env（既定の規則の名前）を与えれば差し替わる
+    const imp = guardWith(added, `dev_client_secret_realm_for_import "${added}"`, { PROBE_NEW_SA_CLIENT_SECRET: 'probe-value-0570' });
+    assert.strictEqual(imp.status, 0, imp.stderr);
+    assert.strictEqual(clientSecretOf1830(JSON.parse(imp.stdout), 'probe-new-sa'), 'probe-value-0570', '足したクライアントを取り込み元で差し替えない');
+    for (const [name, mutate] of [
+      ['no-sa', (c) => ({ ...c, serviceAccountsEnabled: false })],
+      ['public', (c) => ({ ...c, publicClient: true })],
+      ['no-secret', (c) => { const { secret, ...rest } = c; return rest; }],
+    ]) {
+      assert.ok(!names(write(name, mutate)).includes('probe-new-sa'), `${name}: 対象に入った`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+ok('IADR-0570: 表に無いクライアント・表を読んでいないときの判定は止める側に倒れる（値を比べられない）', () => {
+  const unknown = guardWith('', 'dev_client_secret_decide prod "" "not-in-realm=probe-value-0570" || true');
+  assert.deepStrictEqual(unknown.stdout.trim().split('\n'), ['deny', 'not-in-realm']);
+  const r = spawnSync('bash', ['-c', `. "$1"; dev_client_secret_decide prod "" "reset-gate=probe-value-0570" || true`, 'x', DEV_GUARD_LIB], { encoding: 'utf8' });
+  assert.deepStrictEqual(r.stdout.trim().split('\n'), ['deny', 'reset-gate'], '表を読まずに通した');
 });
 
 // 後追い Job の起動器（reconcile-realm.sh）だけを kubectl のスタブの下で走らせ、Job へ渡したマニフェスト（apply -f - の標準入力）を読む。
@@ -5469,7 +5578,7 @@ ok('#1830: reconcile-realm.sh --check-dev-secrets は別名の Job を RECONCILE
 // (5) 壊れた宣言・JSON を壊す値で止まる、を固定する。
 const PLATFORM_REALM_PATH = path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json');
 const PLATFORM_REALM_SRC = fs.readFileSync(PLATFORM_REALM_PATH, 'utf8');
-const envNameOf1834 = (client) => `${client.toUpperCase().replace(/-/g, '_')}_CLIENT_SECRET`;
+const envNameOf1834 = envNameOf1830;
 // IADR-0524 (#1859): 取り込み元のキー（＝取り込み先のファイル名）は `<realm 名>-realm.json`（Keycloak 26 の起動条件）。
 const IMPORT_KEY_1859 = 'platform-realm.json';
 const importedRealm = (r) => {
@@ -5501,21 +5610,22 @@ ok('#1834: 既定（k3d・env 未設定）— 取り込み元は Secret keycloak
   assert.ok(secIdx < infraIdx, '取り込み元が infra の apply（Keycloak の起動）より後に作られている');
 });
 
-ok('#1834: dev 以外の context で 3 つの env を与える → 取り込み元の 3 クライアントの secret は env の値、ほかは宣言のまま（値は出力・引数に出ない）', () => {
-  const env = { STUB_KUBE_CONTEXT: 'prod-shared' };
-  for (const c of DEV_GUARDED) env[envNameOf1834(c)] = customOf(c);
-  const r = runUp(env);
+ok('#1834/IADR-0570: dev 以外の context で対象全部の env を与える → 取り込み元の対象の secret は env の値、ほかは宣言のまま（値は出力・引数に出ない）', () => {
+  const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ...allCustomEnv1830() });
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   const { json } = importedRealm(r);
   for (const c of DEV_GUARDED) assert.strictEqual(clientSecretOf(json, c), customOf(c), `${c} の secret が env の値でない`);
-  assert.deepStrictEqual(withDeclaredSecrets(json), JSON.parse(PLATFORM_REALM_SRC), '3 つの secret 以外も変わっている');
-  assert.ok(/env の値で secret を渡す: identity-admin, reset-gate, mcp-client-admin（値は表示しない）/.test(r.stderr), `差し替えの告知が無い:\n${r.stderr.slice(-800)}`);
+  assert.deepStrictEqual(withDeclaredSecrets(json), JSON.parse(PLATFORM_REALM_SRC), '対象の secret 以外も変わっている');
+  assert.ok(r.stderr.includes(`env の値で secret を渡す: ${DEV_GUARDED.join(', ')}（値は表示しない）`), `差し替えの告知が無い:\n${r.stderr.slice(-800)}`);
   for (const c of DEV_GUARDED) {
     assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf(c)), `${c} の値が出力に出た`);
     assert.ok(!r.lines.some((l) => l.includes(customOf(c))), `${c} の値がコマンドの引数に出た`);
   }
-  // 消費側（*-oidc）と取り込み元が同じ値（invalid_client の食い違いが無い）
-  for (const c of DEV_GUARDED) assert.deepStrictEqual(secretOf(r, `${c}-oidc`), [clientSecretOf(json, c)], `${c}: 消費側と取り込み元が食い違う`);
+  // 消費側（起動器が作る Secret）と取り込み元が同じ値（invalid_client の食い違いが無い）
+  for (const [c, name] of [['identity-admin', 'identity-admin-oidc'], ['reset-gate', 'reset-gate-oidc'], ['mcp-client-admin', 'mcp-client-admin-oidc'],
+    ['bff', 'bff-oidc'], ['document-service', 'document-service-token']]) {
+    assert.deepStrictEqual(secretOf(r, name), [clientSecretOf(json, c)], `${c}: 消費側と取り込み元が食い違う`);
+  }
 });
 
 ok('#1834: dev の context でも env を与えたクライアントだけ差し替える（どの context でも env が勝つ）', () => {
@@ -5523,7 +5633,7 @@ ok('#1834: dev の context でも env を与えたクライアントだけ差し
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   const { json } = importedRealm(r);
   assert.strictEqual(clientSecretOf(json, 'reset-gate'), customOf('reset-gate'));
-  for (const c of ['identity-admin', 'mcp-client-admin']) assert.strictEqual(clientSecretOf(json, c), devValueOf(c), `${c} を差し替えた（env は無い）`);
+  for (const c of DEV_GUARDED.filter((x) => x !== 'reset-gate')) assert.strictEqual(clientSecretOf(json, c), devValueOf(c), `${c} を差し替えた（env は無い）`);
   assert.ok(/env の値で secret を渡す: reset-gate（値は表示しない）/.test(r.stderr), '告知が reset-gate だけを名指していない');
 });
 
