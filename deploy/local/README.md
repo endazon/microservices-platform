@@ -452,7 +452,7 @@ kubectl -n platform-infra get secret e2e-accounts -o 'jsonpath={.data.E2E_USER_T
      'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"; vault kv put secret/msp/e2e-accounts -'
    ```
 2. ESO を同期させる（上の「反映する」の `annotate` と `wait`）。
-3. Keycloak の管理コンソール（`https://keycloak.localhost/admin/master/console/#/platform/users`）で **`e2e-` で始まる 6 名だけ**を削除する。
+3. Keycloak の Admin REST（管理面はエッジに出ない。`kubectl -n platform-infra port-forward svc/keycloak 8080:8080` のうえで master realm の管理者のトークンを取り、`GET http://localhost:8080/admin/realms/platform/users?search=e2e-` で引いて `DELETE …/users/<id>`。IADR-0575・`deploy/local/edge/README.md`「Keycloak の管理コンソール」）で **`e2e-` で始まる 6 名だけ**を削除する。
    人のアカウントは消さない。`kcadm.sh` を Keycloak の Pod で exec しない（本体が OOMKilled になる）。
 4. `bash deploy/local/keycloak-setup/reconcile-realm.sh` で作り直す（期待: `user.create` が 6 件）。上の「確かめる」を通す。
 5. 値を写した先（GitHub Actions の secrets・runner の `.env.e2e`・保存済みの storageState）を捨てて取り直す。
