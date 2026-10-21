@@ -14596,7 +14596,7 @@ exit 0
     // (1) 無い KV だけを判定へ渡す (2) 止まるときは Vault へ何も書かない (3) 明示・opt-in・在る KV では進む、を固定する。
     const probe0573 = (c) => ['probe', '0573', c].join('-');
     ok('IADR-0574: 無い基盤の資格情報の KV を、明示の値なし（既定値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
-      const r = run1728({ setup: dropKv1830('msp/keycloak-admin', 'msp/rabbitmq-app') });
+      const r = run1728({ setup: dropKv1830('msp/keycloak-admin', 'msp/rabbitmq') });
       assert.notStrictEqual(r.status, 0, '止まらなかった');
       assert.deepStrictEqual(vaultWrites1830(r), [], `止まる前に Vault へ書いた: ${vaultWrites1830(r).join(', ')}`);
       assert.ok(!r.execArgv.some((c) => /vault (policy|write|auth)/.test(c)), '止まる前に Vault の設定を書いた');
@@ -14610,11 +14610,13 @@ exit 0
     ok('IADR-0574: 在る KV は判定へ渡さない（触らないので既定値は入らない）。明示の値・opt-in では進み、無い KV を作る', () => {
       const present = run1728({});
       assert.strictEqual(present.status, 0, `KV が在るのに止まった:\n${present.stderr}`);
-      const drop = dropKv1830('msp/keycloak-admin', 'msp/rabbitmq', 'msp/rabbitmq-app');
+      const drop = dropKv1830('msp/keycloak-admin', 'msp/rabbitmq');
       const given = run1728({ setup: drop, env: { KEYCLOAK_ADMIN_PASSWORD: probe0573('kc'), RABBITMQ_PASSWORD: probe0573('mq') } });
       assert.strictEqual(given.status, 0, given.stderr);
       assert.ok(given.putStdin['msp/keycloak-admin'].includes(probe0573('kc')), 'keycloak-admin が与えた値で作られていない');
-      assert.ok(given.putStdin['msp/rabbitmq'].includes(probe0573('mq')) && given.putStdin['msp/rabbitmq-app'].includes(probe0573('mq')), 'rabbitmq の 2 つが与えた値で作られていない');
+      assert.ok(given.putStdin['msp/rabbitmq'].includes(probe0573('mq')), 'rabbitmq が与えた値で作られていない');
+      // IADR-0577: 全サービス共通の 1 組（msp/rabbitmq-app）は作らない（サービスは msp/rabbitmq-users の各自のユーザーで名乗る）。
+      assert.ok(!('msp/rabbitmq-app' in given.putStdin) && !given.calls.some((c) => c.includes('msp/rabbitmq-app')), '旧 msp/rabbitmq-app を作った');
       assert.ok(!`${given.stdout}${given.stderr}`.includes(probe0573('kc')), '値が出力に出た');
       const over = run1728({ setup: drop, env: { ALLOW_DEV_INFRA_CREDENTIALS: '1' } });
       assert.strictEqual(over.status, 0, over.stderr);

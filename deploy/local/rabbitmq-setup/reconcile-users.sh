@@ -5,15 +5,17 @@
 #   bash deploy/local/rabbitmq-setup/reconcile-users.sh            # 作る・合わせる
 #   bash deploy/local/rabbitmq-setup/reconcile-users.sh --check    # 読むだけ（宣言のユーザーが在り、値で認証できるか）
 #
-# 前提: ESO=1。Secret `rabbitmq-users`（platform-infra。externalsecret-rabbitmq-users.yaml が Vault の 2 つの KV から同期）が在る。
-# 値の出どころは Vault（bootstrap.sh が無いときだけ乱数で種を入れる）。本スクリプトは値を作らない。
+# 前提: Secret `rabbitmq-users`（platform-infra）が在る。ESO=1 は externalsecret-rabbitmq-users.yaml が Vault の 2 つの KV から同期し
+# （bootstrap.sh が無いときだけ乱数で種を入れる）、ESO を使わない経路は k8s-local-up.sh が既存の値＞乱数で作る（IADR-0577）。
+# 本スクリプトは値を作らない。
 #
 # 手順（ユーザーごと）:
 #   1. 在れば change_password、無ければ add_user（パスワードは**標準入力**で渡す。コマンドの引数に載せない）
 #   2. set_permissions -p <vhost> <user> '.*' '.*' '.*'（vhost は 1 つのまま。IADR-0573 決定 2）
 #   3. set_user_tags <user>（タグなし＝管理 UI・管理 API へ入れない）
 #   4. authenticate_user で、その値で認証できることを確かめる（できなければ止める）
-# 🔴 既定のユーザー（Secret `rabbitmq` の username）と宣言の外のユーザーには触れない（移行の段 1。無効化は後の段）。
+# 🔴 既定のユーザー（Secret `rabbitmq` の username）と宣言の外のユーザーには触れない（無効化は disable-default-user.sh が
+#    切り替えを確かめてから行う。IADR-0577）。
 # 🔴 値はどこにも出さない（復号した値は kubectl exec -i の標準入力へ流すだけで、変数にも置かない）。
 set -euo pipefail
 # 途中で失敗したら、どこで止まったかだけを出す（値は出さない）。

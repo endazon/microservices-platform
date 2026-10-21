@@ -9,7 +9,7 @@ updated: 2026-10-22
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]
 adrs: [ADR-0132, ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
-iadrs: [IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524]
+iadrs: [IADR-0577, IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524]
 specs: [20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade]
 issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, planning#700, AST#1078]
 -->
@@ -37,7 +37,7 @@ issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1
 | 群 | 何か | 件数 | 本書の節 |
 | --- | --- | ---: | --- |
 | 群 1 | 認証基盤のクライアントシークレット —— OIDC クライアント 8（境界層・利用者管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視）とサービス間 9（`deferred[]`）、取引ユニットの `*-auth-client-*` の 5 組（`ai-stock-trading/app-secrets` の `notWritable`） | 17 ＋ 5 | [手順 1](#手順-1-群-1認証基盤のクライアントシークレット) |
-| 群 2 | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db`（`excluded[]`） | 7 | [手順 2](#手順-2-群-2データストアの資格情報) |
+| 群 2 | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db`（`excluded[]`） | 6 | [手順 2](#手順-2-群-2データストアの資格情報) |
 
 > **同じ性質だが保管先に無いもの**: 認証基盤の `abac-seeder`（開発用の投入器だけが使う）と `argocd`（`argocd-secret` を起動器が直接書く）。
 > 保管先に置き場が無いので本書の対象外だが、回すときは同じ順序（相手を変えてから消費側を作り直す）で行う。
@@ -64,7 +64,7 @@ issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1
 
 - 環境を新しく立ち上げるとき。それは初期投入であり、`scripts/k8s-local-up.sh` の通常経路が担う。
 - **片側だけを書くとき。** 保管先だけ・相手だけの書き込みは、本書の手順の途中で止まった状態と同じである（[途中で止まったとき](#途中で止まったとき)）。
-- 取引ユニットのブローカの接続文字列を Secret から組み立てていない間の `rabbitmq` / `rabbitmq-app`（[`secret-rotation-runbook.md`](secret-rotation-runbook.md) 手順 B の注意）。
+- 取引ユニットがサービスごとのユーザーへ切り替える前の版で稼働している間の `rabbitmq`（[`secret-rotation-runbook.md`](secret-rotation-runbook.md) 手順 B の注意）。
 
 ## 前提
 
@@ -337,7 +337,7 @@ bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets
 本書が持つのは順序と、途中で止まったときの戻し方である。
 
 1. **0-0** で準備し、**0-a** で新しい値を作る（ストア側の対話入力で決める場合は、その値を `read -rs NEW_VALUE` で読む）。
-2. **0-b** で保管先の直前の版を控える。**同値にすべき 2 つの KV**（`postgres-app` と `wikijs-db`、`rabbitmq` と `rabbitmq-app`）は**両方**控える。
+2. **0-b** で保管先の直前の版を控える。**同値にすべき 2 つの KV**（`postgres-app` と `wikijs-db`）は**両方**控える。
 3. **0-c** で保管先へ書く（同値の組は両方）。まだ何も壊れない。
 4. **ストア側の値を同じ値にする**（B-1 の「ストア側で先に行うこと」）。🔴 **ここから、旧の値で新しく接続する処理が失敗する。**
 5. **0-d** で同期を促し、B-1 の順で消費側を作り直す。

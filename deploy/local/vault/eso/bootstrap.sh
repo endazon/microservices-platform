@@ -78,10 +78,8 @@ unset dev_secret_args dev_secret_client dev_secret_env dev_secret_loc
 . "$ROOT/scripts/lib/infra-credentials.sh"
 infra_cred_needed=()
 vexec "vault kv metadata get secret/msp/keycloak-admin >/dev/null 2>&1" || infra_cred_needed+=(KEYCLOAK_ADMIN_PASSWORD)
-if ! vexec "vault kv metadata get secret/msp/rabbitmq >/dev/null 2>&1" \
-  || ! vexec "vault kv metadata get secret/msp/rabbitmq-app >/dev/null 2>&1"; then
-  infra_cred_needed+=(RABBITMQ_PASSWORD)
-fi
+# NFR-18, IADR-0577: 旧 msp/rabbitmq-app（全サービス共通の 1 組）は作らない。サービスは msp/rabbitmq-users の各自のユーザーで名乗る。
+vexec "vault kv metadata get secret/msp/rabbitmq >/dev/null 2>&1" || infra_cred_needed+=(RABBITMQ_PASSWORD)
 if [ "${#infra_cred_needed[@]}" -gt 0 ]; then
   infra_cred_guard "bootstrap.sh" "${infra_cred_needed[@]}" || exit 1
 fi
@@ -238,10 +236,8 @@ vkv_create_if_absent msp/object-storage-credentials accessKey "${OBJECT_STORAGE_
 # NFR, ADR-0002 (#1012): サービス DB のパスワード。appsettings.json から接続文字列を撤去したため、
 # これが無いと ESO=1 では DB を持つ全サービスが起動できない。dev 既定は init スクリプトが作る `kp`。
 vkv_create_if_absent msp/postgres-app password "${APP_DB_PASSWORD:-kp}"
-# NFR, ADR-0027 (#1022): ブローカのパスワード（app 側）。appsettings.json から接続文字列を撤去したため、
-# これが無いと ESO=1 では RabbitMQ を使う 7 サービスが起動できない。★値は step 3 の基盤 secret
-# `rabbitmq` と**同値**にすること（同じ env RABBITMQ_PASSWORD から作る。ズレると認証破壊）。
-vkv_create_if_absent msp/rabbitmq-app password "${RABBITMQ_PASSWORD:-guest}"
+# NFR-18, IADR-0577（旧 #1022 の msp/rabbitmq-app）: ブローカへの app 側の資格情報は、下の msp/rabbitmq-users
+# （サービスごとのユーザー・乱数。IADR-0573）へ移した。全サービス共通の 1 組は作らない（既に在る KV は触らない・読み手は無い）。
 vkv_create_if_absent msp/wikijs-db password "${WIKIJS_DB_PASSWORD:-kp}"
 # SC-22 の項目（IADR-0456 決定 6）。Wiki.js が発行した鍵の書き戻し（deploy/local/wikijs-setup/bootstrap.sh）は別の経路である。
 if vkv_exists msp/wikijs-sync; then
@@ -564,6 +560,6 @@ echo "  #1287: synthetic-monitor-oidc (MSP ns。合成監視のプローブが e
 #    打った人が必ず NotFound を踏む）。grafana-oidc / headlamp-oidc は OBSERVABILITY=1 / HEADLAMP=1 の、
 #    wikijs-oidc は WIKIJS_OIDC=1 の、synthetic-monitor-oidc は SYNTHETIC=1 のときだけ apply されるため、
 #    無条件の並びからは外して注記に回す。
-echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
+echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials object-storage-credentials postgres-app msp-rabbitmq-users wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
 echo "  確認(infra): kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
 echo "             （grafana-oidc は OBSERVABILITY=1、headlamp-oidc は HEADLAMP=1 のときだけ apply される）"

@@ -51,7 +51,7 @@ infra_cred_decide() {
 
 # infra_cred_resolve <呼び出し元> <既存の値を読む関数>
 #   INFRA_CRED_TARGETS のそれぞれについて判定し、進むなら env の変数へ選んだ値を入れて export する（子の bootstrap.sh・
-#   [5/7] の rabbitmq-app が同じ値を使う）。<既存の値を読む関数> は「<Secret 名> <キー>」を受けて値を標準出力へ書く（無ければ空）。
+#   ブローカの既定のユーザーの Secret が同じ値を使う）。<既存の値を読む関数> は「<Secret 名> <キー>」を受けて値を標準出力へ書く（無ければ空）。
 #   止めるものが 1 つでもあれば、全部を名指して 1 を返す（呼び出し側が exit する）。値は出さない。
 infra_cred_resolve() {
   local caller="$1" reader="$2" name explicit existing verdict loc denied="" warned=""

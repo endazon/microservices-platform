@@ -24,7 +24,8 @@ end-to-end 疎通**する。認証は **kubernetes auth**（静的 root トー�
 | `externalsecret-object-storage.yaml` | ExternalSecret（`secret/msp/object-storage-credentials` → `object-storage-credentials` accessKey/secretKey・PR-2/IADR-0097。オブジェクトストレージ（SeaweedFS）の S3 資格情報。旧名 `minio-credentials`・IADR-0461） |
 | `externalsecret-wikijs-db.yaml` | ExternalSecret（`secret/msp/wikijs-db` → `wikijs-db` password・PR-2/IADR-0097） |
 | `externalsecret-wikijs-sync.yaml` | ExternalSecret（`secret/msp/wikijs-sync` → `wikijs-sync` apiKey・PR-2/IADR-0097） |
-| `externalsecret-rabbitmq-app.yaml` | ExternalSecret（`secret/msp/rabbitmq-app` → `rabbitmq-app` password・**MSP ns**・**Owner**・#1022。**手動 apply をスキップするので唯一の供給元**） |
+| `externalsecret-msp-rabbitmq-users.yaml` | ExternalSecret（`secret/msp/rabbitmq-users` → `msp-rabbitmq-users`・キー＝ユーザー名 `msp-<name>`・**MSP ns**・**Owner**。基盤の 7 サービスがサービスごとのユーザーで名乗る資格情報。旧 `externalsecret-rabbitmq-app.yaml`（全サービス共通の 1 組）の後継。**手動の作成をスキップするので唯一の供給元**） |
+| `externalsecret-rabbitmq-users.yaml` | ExternalSecret（`secret/msp/rabbitmq-users` と `secret/ai-stock-trading/rabbitmq-users` → `rabbitmq-users`・**platform-infra ns**・**Owner**。ブローカ側の写し。読み手は `deploy/local/rabbitmq-setup/` の合わせのスクリプトとブローカの起動時の復元だけ） |
 | `externalsecret-grafana-oidc.yaml` | ExternalSecret（`secret/msp/grafana-oidc` → `grafana-oidc` client-secret・**platform-infra ns**・PR-3/IADR-0098） |
 | `externalsecret-vault-oidc.yaml` | ExternalSecret（`secret/msp/vault-oidc` → `vault-oidc` client-secret・**platform-infra ns**・PR-3/IADR-0098） |
 | `externalsecret-headlamp-oidc.yaml` | ExternalSecret（`secret/msp/headlamp-oidc` → `headlamp-oidc` client-secret・**platform-infra ns**・PR-3/IADR-0098） |

@@ -258,13 +258,21 @@ spec:
             # パスワードは Secret から RABBITMQ_PASSWORD として入れ、接続文字列は k8s の $(VAR) 補間で
             # 組む（env の値に平文パスワードを描画しない。同一 container 内で先に定義した env のみ
             # 参照できるので順序を崩さないこと）。#1012 の global.db ブロックと同型である。
+            # NFR-18, IADR-0577: ユーザーはサービスごと（<usernamePrefix><サービス名>）。パスワードは同名のキー。
+            {{- $mq := $.Values.global.messaging | default dict }}
+            {{- if or (hasKey $mq "user") (hasKey $mq "existingSecret") (hasKey $mq "passwordKey") }}
+            {{- fail "global.messaging.user / existingSecret / passwordKey は廃止しました。ブローカへはサービスごとのユーザーで接続します（global.messaging.credentialsSecretName / usernamePrefix。IADR-0577）。" }}
+            {{- end }}
+            {{- if or (not $mq.host) (not $mq.port) (not $mq.credentialsSecretName) (not $mq.usernamePrefix) }}
+            {{- fail "global.messaging.host / port / credentialsSecretName / usernamePrefix が要ります（ブローカのサービスごとの資格情報。IADR-0577）。" }}
+            {{- end }}
             - name: RABBITMQ_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.global.messaging.existingSecret }}
-                  key: {{ $.Values.global.messaging.passwordKey }}
+                  name: {{ $mq.credentialsSecretName }}
+                  key: {{ printf "%s%s" $mq.usernamePrefix $name }}
             - name: RabbitMq__ConnectionString
-              value: "amqp://{{ $.Values.global.messaging.user }}:$(RABBITMQ_PASSWORD)@{{ $.Values.global.messaging.host }}:{{ $.Values.global.messaging.port }}"
+              value: {{ printf "amqp://%s%s:$(RABBITMQ_PASSWORD)@%s:%v" $mq.usernamePrefix $name $mq.host $mq.port | quote }}
           {{- end }}
           {{- range $svc.extraEnv }}
             - name: {{ .name }}

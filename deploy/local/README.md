@@ -319,19 +319,26 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
 既に在る KV は env を渡しても書き換わらない —— 認証基盤・データストアと対になる秘密を回すのは
 [対になる秘密のローテーション](../../docs/operations/paired-secret-rotation-runbook.md) の手順である。
 
-🔴 **ブローカ（RabbitMQ）のサービスごとのユーザー**（IADR-0573・移行の段 1）: `VAULT=1 ESO=1` のとき、bootstrap が KV
+🔴 **ブローカ（RabbitMQ）のサービスごとのユーザー**（IADR-0573・IADR-0577）: `VAULT=1 ESO=1` のとき、bootstrap が KV
 `msp/rabbitmq-users`・`ai-stock-trading/rabbitmq-users` を無いときだけ乱数で作り、起動器が
 `deploy/local/rabbitmq-setup/reconcile-users.sh` でブローカへユーザーと権限を合わせる（表は同じディレクトリの `users.txt`。値は表示しない）。
+ESO を使わないときは、起動器が Secret `platform-infra/rabbitmq-users`（全ユーザー）と `microservices-platform/msp-rabbitmq-users`
+（基盤の 7 ユーザー）を既存の値＞乱数で作り、helm の前に同じスクリプトで合わせる。基盤の 7 サービスは
+`msp-<サービス名>` で名乗る（helm の `global.messaging.credentialsSecretName` / `usernamePrefix`）。
 確認は `bash deploy/local/rabbitmq-setup/reconcile-users.sh --check`。値を回すときは KV を書き換えてから同じスクリプトを回す。
-既定のユーザー（下表の `RABBITMQ_USER`）はこの段では変えない（消費側の切り替えの後に無効化する）。
+ブローカは永続化していないので、再起動の直後に Secret `rabbitmq-users` からユーザーを作り直す（`rabbitmq.yaml` の postStart）。
+既定のユーザー（下表の `RABBITMQ_USER`）は起動器の最後に `deploy/local/rabbitmq-setup/disable-default-user.sh` が消す ——
+宣言の全ユーザーが認証でき、既定のユーザーの接続が 1 本も無いときだけ消し、消せなければ WARN で通す（`--check` で状態を読む）。
+消した後は印（ConfigMap `platform-infra/rabbitmq-default-user`）に従い、再起動のたびに消し直す。管理 UI へ既定のユーザーで入れなくなるので、
+ブローカの操作は `kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl …` で行う。戻すときはスクリプト冒頭の手順。
 ブローカへの到達は NetworkPolicy `rabbitmq-ingress-clients`（`deploy/local/infra/rabbitmq.yaml`）が `users.txt` の Pod だけに絞る。
 ブローカを使うサービスを足すときは、`users.txt`・NetworkPolicy・消費側の chart を同じ変更でそろえる。
 
 | 環境変数 | 生成 Secret / キー | 既定 | 用途 |
 | --- | --- | --- | --- |
 | `PG_PASSWORD` | `platform-infra/postgres.password` | `postgres` | Postgres 管理 |
-| `RABBITMQ_USER` | `platform-infra/rabbitmq.username` | `guest` | RabbitMQ 利用者名（#1022。**helm の `global.messaging.user` と揃えること**） |
-| `RABBITMQ_PASSWORD` | `platform-infra/rabbitmq.password` ＋ `microservices-platform/rabbitmq-app.password` | `guest` | RabbitMQ（#1022 でアプリ側 Secret を追加。ブローカと同値） |
+| `RABBITMQ_USER` | `platform-infra/rabbitmq.username` | `guest` | RabbitMQ の既定のユーザー名（#1022。ブローカの初期化だけに使う。サービスは名乗らない＝IADR-0577） |
+| `RABBITMQ_PASSWORD` | `platform-infra/rabbitmq.password` | `guest` | RabbitMQ の既定のユーザーのパスワード（アプリ側の共通の Secret `rabbitmq-app` は IADR-0577 で撤去） |
 | `KEYCLOAK_ADMIN_PASSWORD` | `platform-infra/keycloak-admin.password` | `admin` | Keycloak 管理 |
 | `OBJECT_STORAGE_ACCESS_KEY`/`OBJECT_STORAGE_SECRET_KEY` | `microservices-platform/object-storage-credentials` | `objectstorage-dev` / `objectstorage-dev-secret` | オブジェクトストレージ（SeaweedFS。chart 参照。旧名 `MINIO_*` / `minio-credentials`・IADR-0461） |
 | `WIKIJS_DB_PASSWORD` | `microservices-platform/wikijs-db.password` | `kp` | Wiki.js DB |
