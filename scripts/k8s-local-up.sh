@@ -478,6 +478,30 @@ kubectl create configmap keycloak-realms -n "$INFRA_NS" "${realm_args[@]}" \
 #   realm 名が食い違うと起動しない（`File name / realm name mismatch`。実測）。宣言のファイル名（microservices-platform-realm.json）と
 #   ConfigMap `keycloak-realms` のキーは変えない（読み手は後追いの Job と門で、ファイル名を realm 名と突き合わせない）。
 realm_import_mp="$(dev_client_secret_realm_for_import deploy/keycloak/microservices-platform-realm.json)" || exit 1
+# NFR-10, NFR-18, IADR-0570 (#2024): 試験アカウント e2e-* の資格情報（宣言はプレースホルダ `${E2E_…}` だけ）を差し込む（envsubst の役）。
+#   値の出どころは Secret platform-infra/e2e-accounts（OpenBao → ESO）。在ればキー（E2E_*）を**このサブシェルの変数**へ読み、env として
+#   `reconcile-realm.js --render-import`（後追い Job と同じ差し込みの口）へ渡す。値はどのプロセスの引数にも載らない（#1793）。
+#   🔴 無い・欠ける・検査に落ちる利用者は取り込み元から**外す**（Keycloak の取り込みは未解決の `${…}` をそのまま残すので、
+#   外さないと公知の文字列がパスワードになる）。新規クラスタでは ESO がまだ無いので外れる。ESO ブロックが同期の後に後追いを当て直す。
+realm_import_mp="$(
+  set -e
+  if ! command -v node >/dev/null 2>&1; then
+    echo "ERROR: node が無い。realm の取り込み元から試験アカウントのプレースホルダを外せないので止める（Node 22 を入れる。#2024）" >&2
+    exit 1
+  fi
+  if kubectl -n "$INFRA_NS" get secret e2e-accounts >/dev/null 2>&1; then
+    # 1 行は「キー=base64」。🔴 `IFS='=' read k v` で割らない —— base64 の末尾の単独の `=` が落ちる（PR #2048 の AI レビュー）。
+    while IFS= read -r e2e_line; do
+      e2e_key="${e2e_line%%=*}"
+      e2e_b64="${e2e_line#*=}"
+      case "$e2e_key" in E2E_[A-Z0-9_]*) ;; *) continue ;; esac
+      e2e_val="$(printf '%s' "$e2e_b64" | base64 -d)"
+      export "$e2e_key=$e2e_val"
+    done < <(kubectl -n "$INFRA_NS" get secret e2e-accounts \
+      -o go-template='{{range $k, $v := .data}}{{$k}}={{$v}}{{"\n"}}{{end}}')
+  fi
+  printf '%s' "$realm_import_mp" | node "$ROOT/deploy/local/keycloak-setup/reconcile-realm.js" --render-import
+)" || exit 1
 realm_import_args=("platform-realm.json=${realm_import_mp}")
 if [ -f "$ast_realm" ]; then
   realm_import_args+=("ai-stock-trading-realm.json=$(< "$ast_realm")")
@@ -1059,6 +1083,9 @@ if [ "${ESO:-}" = "1" ]; then
   # #1107: BFF セッションの client secret。手動 apply は上の `ESO != 1` ブロックでスキップされるので、
   # **これが唯一の供給元**である（欠けると bff-service Pod が起動しない）。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-bff-oidc.yaml
+  # NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: BFF が AST の OpenD 認証サイドカーへ名乗る共有シークレット。
+  # 値は Vault ai-stock-trading/opend-auth（AST の chart と同じキー）。無ければ Secret が作られず、BFF は起動したまま上流を呼ばない。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-opend-auth-caller-secret.yaml
   # #1101: SC-17 の Keycloak Admin REST 反映に使う client secret。手動 apply は上の `ESO != 1`
   # ブロックでスキップされるので、**これが唯一の供給元**である（欠けると authorization-service Pod が
   # 起動しない）。常時供給。
@@ -1087,6 +1114,11 @@ if [ "${ESO:-}" = "1" ]; then
   fi
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-grafana-oidc.yaml
+    # NFR-21, IADR-0571 (#2044): 警報メールの宛先。**bootstrap は seed しない**（宛先に dev の既定は無い）。
+    # KV（secret/msp/alertmanager-mail の to）が無いあいだは SecretSyncedError のまま Secret を作らず、
+    # Alertmanager は default-null へ落ちて起動する（＝「宛先が未供給」が ExternalSecret の状態に見える）。
+    # 同期を待たない（KV が無い既定で待ちが毎回タイムアウトするため）。下の rollout が前回までに同期した値を読む。
+    kubectl apply -f deploy/local/vault/eso/externalsecret-alertmanager-mail.yaml
   fi
   if [ "${HEADLAMP:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-headlamp-oidc.yaml
@@ -1117,16 +1149,20 @@ if [ "${ESO:-}" = "1" ]; then
   if [ "${SYNTHETIC:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml
   fi
+  # NFR-10, NFR-18, IADR-0570 (#2024): 試験アカウント e2e-* の資格情報。読み手は realm の後追い Job（envFrom・optional）と
+  #   [3/7] の取り込み元。**Vault の種は入れない**（KV `secret/msp/e2e-accounts` は運用者が deploy/local/README.md の手順で入れる）。
+  #   KV が無い間は同期に失敗して Secret が出来ず、e2e 利用者は作られない（他の機能には影響しない）。常時 apply。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-e2e-accounts.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ、#1817 で mcp-client-admin-oidc を追加し 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ、#1817 で mcp-client-admin-oidc を追加し 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6、#2024 で e2e-accounts を追加し 6 → 7 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
   msp_es="llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
   [ "${SYNTHETIC:-}" = "1" ] && msp_es="$msp_es synthetic-monitor-oidc"
-  infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc"
-  [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
+  infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc e2e-accounts"
+  [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc alertmanager-mail"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
   echo "    ESO: llm/object-storage-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
-  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp/reset-gate-oidc、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
+  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp/reset-gate-oidc/e2e-accounts、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret $msp_es"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
@@ -1178,6 +1214,18 @@ if [ "${ESO:-}" = "1" ]; then
   [ "${HEADLAMP:-}" = "1" ] && infra_sync="$infra_sync headlamp-oidc"
   # shellcheck disable=SC2086
   [ -n "$infra_sync" ] && eso_wait "$INFRA_NS" $infra_sync
+  # NFR-10, IADR-0570 (#2024): e2e-accounts が同期したら realm の後追いを**もう一度**当てる —— 上の（helm の前の）後追いは
+  #   ESO より前に走るので、新規クラスタの初回では Secret がまだ無く e2e 利用者を外している。冪等（在れば何もしない）。
+  #   KV を入れていなければ同期しないので待ちは短くし、案内だけ出す。失敗は WARN（届いたかは check-stack-ready.js の G9 が見る）。
+  if kubectl -n "$INFRA_NS" wait --for=condition=Ready externalsecret/e2e-accounts \
+    --timeout="${E2E_ACCOUNTS_SYNC_TIMEOUT:-30s}" >/dev/null 2>&1; then
+    echo "      synced $INFRA_NS/e2e-accounts → 試験アカウントを realm へ当てる"
+    bash "$ROOT/deploy/local/keycloak-setup/reconcile-realm.sh" \
+      || echo "    WARN: 試験アカウントの後追いに失敗（bash deploy/local/keycloak-setup/reconcile-realm.sh で再実行できる）" >&2
+  else
+    echo "      note: $INFRA_NS/e2e-accounts が同期しない（KV secret/msp/e2e-accounts が無い）。試験アカウントは作らない" \
+      "（使うときは deploy/local/README.md の「試験アカウント（e2e-*）」）"
+  fi
 
   # 2) 供給後の値で env を作り直す。対象＝**ESO 管理 Secret を env(secretKeyRef) で参照する Deployment**。
   #      seaweedfs         : object-storage-credentials（S3 の管理者資格情報。IADR-0461）
@@ -1216,6 +1264,9 @@ if [ "${ESO:-}" = "1" ]; then
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl -n "$INFRA_NS" rollout restart deploy/grafana >/dev/null 2>&1 \
       && echo "      restarted $INFRA_NS/grafana" || echo "      skip $INFRA_NS/grafana（未デプロイ）"
+    # IADR-0571 (#2044): 警報メールの宛先は initContainer が Pod 起動時に描画する。供給後の値で作り直す。
+    kubectl -n "$INFRA_NS" rollout restart deploy/alertmanager >/dev/null 2>&1 \
+      && echo "      restarted $INFRA_NS/alertmanager" || echo "      skip $INFRA_NS/alertmanager（未デプロイ）"
   fi
   if [ "${HEADLAMP:-}" = "1" ]; then
     kubectl -n "$INFRA_NS" rollout restart deploy/headlamp >/dev/null 2>&1 \

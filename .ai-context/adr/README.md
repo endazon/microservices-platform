@@ -647,4 +647,6 @@
 | [IADR-0567](./IADR-0567_ingestion-budget-exhausted-alert.md) | 取り込みの総枠（embedding-budget / lexical-budget）の使い切りに警報 IngestionBudgetExhausted（直近 1 時間の前進 > 0・for 5m・warning）を張る（#1991） | Accepted |
 | [IADR-0568](./IADR-0568_age-apkindex-daily-watch.md) | platform-backup の age の版と Alpine の APKINDEX を日次で突き合わせ、ずれたら専用 issue を起票する（届かなければ起票しない・版を自動で上げない）（#2005） | Accepted |
 | [IADR-0569](./IADR-0569_e2e-layers-and-live-opt-in.md) | E2E の実行層を L1/L2/L3/L3-T/L3-L に分け、タグ・Playwright project 名と live の opt-in（E2E_LIVE / E2E_LAYER）を確定する（#2014） | Accepted |
+| [IADR-0570](./IADR-0570_e2e-accounts-placeholder-credentials.md) | 試験アカウント e2e-* は realm の宣言にプレースホルダだけを置き、Secret e2e-accounts（OpenBao → ESO）の値を後追い Job と取り込み元の 1 つの口で差し込む。差し込めない利用者は作らない（#2024） | Accepted |
+| [IADR-0571](./IADR-0571_alertmanager-mail-receiver-via-nearby-mta.md) | Alertmanager の受信先を近接 MTA 経由のメール 1 本とし、宛先は Secret から起動時に描画する（空なら警告して default-null・不正なら起動しない。Grafana の contact point は揃えない）（#2044） | Accepted |
 | [IADR-0573](./IADR-0573_infra-credentials-fail-closed.md) | 起動器と Vault の種は、Keycloak の管理者・RabbitMQ のブローカのパスワードを公知の既定値で作らない。明示 ＞ 既存の値 ＞ 止める、開発用の値は明示の opt-in ALLOW_DEV_INFRA_CREDENTIALS=1（使い捨ての環境だけ）でだけ許す（GHSA-rh44-px44-p48q） | Accepted |
