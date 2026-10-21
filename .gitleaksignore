@@ -29,6 +29,9 @@ a154bc7e337e168417d81ca9380bafbc78780202:scripts/scripts.test.js:generic-api-key
 # #1868 の試験用の偽 JWT（backup.test.sh の FAKE_JWT）。head では実行時に組み立てる形に改めた。ここに残すのは履歴の 1 コミットぶんだけである。
 9573cc3969d1b302690d3a7a5e2faffb84fba049:deploy/local/platform-backup/script/backup.test.sh:jwt:233
 
-# #2024 / IADR-0570: ExternalSecret e2e-accounts の `secretKey: E2E_TRADING_OWNER_TOTP_SECRET`（Secret の**キー名**であって値ではない）。
+# #2024 / IADR-0570: ExternalSecret e2e-accounts の secretKey 欄（Secret の**キー名** E2E_TRADING_OWNER_TOTP_SECRET であって値ではない）。
 # generic-api-key は鍵名 `secretKey` の隣の長い英大文字列を鍵と見分けられない。値はリポジトリに無い（OpenBao → ESO）。
 6dad64a08089509aa492f0a16770d137568f1805:deploy/local/vault/eso/externalsecret-e2e-accounts.yaml:generic-api-key:75
+# 上の注記と作業仕様書の結果の節が、そのキー名を「鍵名: 値」の形で引用していた（同じ誤検知）。後続のコミットで引用の形を改めた。履歴の 1 コミットぶんずつ。
+c9b1b237e6e3b9c1ba435e37175e5860b4d11f50:.gitleaksignore:generic-api-key:32
+db7c148ec4268631fecd54456d11d0f69dc19c0b:.ai-context/specs/20261021_2024_e2e-accounts-realm-eso.md:generic-api-key:104

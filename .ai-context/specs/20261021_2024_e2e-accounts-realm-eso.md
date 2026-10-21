@@ -101,9 +101,9 @@ issue: "#2024"
 - 後続（E-31）への申し送り: `E2E_<ROLE>_TOTP_SECRET` は Keycloak が持つ**生の文字列**で、6 桁は `totp(base32Encode(値))` で出す（設計 §1.3 の「base32」とは違う）。
 - ［2026-10-22 / PR #2048 の CI］`Secret scan (gitleaks)` が `deploy/local/vault/eso/externalsecret-e2e-accounts.yaml:75`（コミット `6dad64a0`）を
   `generic-api-key` で検出した。手元の gitleaks v8.24.3（リポジトリの `.gitleaksignore` を読む既定の設定。`.gitleaks.toml` は無い）で
-  `git --log-opts=origin/develop..HEAD` を走らせて特定した。該当は `secretKey: E2E_TRADING_OWNER_TOTP_SECRET` で、Secret の**キー名**であって値ではない
+  `git --log-opts=origin/develop..HEAD` を走らせて特定した。該当は ExternalSecret の secretKey 欄に書いた E2E_TRADING_OWNER_TOTP_SECRET で、Secret の**キー名**であって値ではない
   （**実値の混入は無い。回転は不要**）。単発の誤検知なので、`.gitleaksignore` の既存の流儀（fingerprint を 1 行・理由のコメントつき）で
   そのコミット・パス・行だけを無効化した（パスや規則ごとの広い除外にはしていない）。同ファイルを後で編集して行が動けば再び検出されるが、
-  そのときは同じ形で足す（同型が 2 回続けば `.gitleaks.toml` の allowlist を `secretKey: E2E_[A-Z_]+` の正規表現に絞って置く）。
+  そのときは同じ形で足す（同型が 2 回続けば `.gitleaks.toml` の allowlist を「secretKey 欄の E2E_ で始まる大文字の名前」だけに当たる正規表現に絞って置く。なお、この節と .gitleaksignore の注記もキー名を「鍵名: 値」の形で引用して同じ誤検知を起こしたので、引用の形を改め、その 2 コミットぶんも fingerprint で無効化した）。
 - ［2026-10-22 / PR #2048 の AI レビュー 🟡］[3/7] の `IFS='=' read` が base64 の末尾の単独の `=` を落としていた。行をキーと残りへ分ける形に直し、
   試験で stderr に `invalid input` が出ないことを固定した（旧の形で赤になることを確認）。
