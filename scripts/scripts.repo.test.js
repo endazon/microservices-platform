@@ -8731,6 +8731,9 @@ ${r.stderr}`);
           // SC-13〜16 / IADR-0532: Keycloak テーマの tokens.css を @platform/ui のトークンから**生成**する。引数なしで走らせると
           // ファイルを書くので、検査器として spawn される母集合に入れてはならない（`--check` は CI の専用ステップが走らせる）。
           'gen-keycloak-theme-tokens.js',
+          // #2024 / IADR-0570: 試験アカウントの資格情報の**生成器**（乱数の KV の JSON を標準出力へ書く。判定を返さない）。
+          // 標準出力が端末だと exit 2 で止まる。検査器として spawn される母集合に入れてはならない（試験は keycloak-realm-reconcile.test.js）。
+          'gen-e2e-accounts.js',
           'measure-abac-combinations.js',
           // #336 / IADR-0422: 検索の関連性（nDCG@10）の**測定器**。`measure-abac-combinations.js` と
           // 同じ扱いで、判定を返さない（数字を出す）。走らせると検索 API を叩きに行くので、

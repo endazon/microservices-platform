@@ -57,6 +57,7 @@ Job（`node:22-alpine`・`platform-infra`）は **ConfigMap `keycloak-realms`**�
 | 宣言（**作成時だけ**） | client の `secret`（開発用の値） | client が無いとき（と realm が無いとき）にだけ宣言の値で作る。**既存の client では比べず・書かず・読まない** |
 | 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション／**既存の client の `secret`** | **触らない**（例外は次の行） |
 | 宣言（**加えるだけ**。#1894 / IADR-0546） | 既存の人の seed 利用者の `account` の `view-profile`・`manage-account`（`SEED_USER_SELF_SERVICE_ROLES`） | 実効の割当に無ければ加える。外さない。他のロールは触らない |
+| 宣言（**作るときだけ・差し込めたときだけ**。#2024 / IADR-0570） | 試験アカウント `e2e-*` の資格情報（宣言はプレースホルダ `${E2E_…}`。値は Secret `e2e-accounts` を Job が `envFrom` で読む） | 差し込めない利用者は作らない（`skipped` の行。drift にしない）。作った後は実行時が所有する |
 
 > **［2026-09-28 / #1682 / ADR-0124 決定 1・IADR-0485］client の `secret` を「作成時だけ」へ移した。**
 > client シークレットは認証基盤と Vault を同時に変えないと成立しない「対になる秘密」であり、本番の値を realm の宣言（Git）に置かない。

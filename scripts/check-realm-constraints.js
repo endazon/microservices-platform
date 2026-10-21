@@ -503,6 +503,21 @@ function isServiceAccountUser(user) {
   return typeof (user && user.serviceAccountClientId) === 'string' && user.serviceAccountClientId !== '';
 }
 
+// ［2026-10-21 / #2024 / IADR-0570］利用者が**宣言で TOTP の OTP 資格情報を持つ**か（試験アカウント e2e-*）。
+// 既定 browser フローの OTP サブフローは Conditional（`Condition - user configured`）で、OTP を持つ利用者には必ず OTP を問う。
+// だから `CONFIGURE_TOTP` が無くても MFA は効いている（付けると 2 つ目の OTP の登録画面が挟まり、自動の試験が通れない）。
+// 判定は Keycloak が作る形そのもの: type `otp`・credentialData の subType `totp`・secretData の value が空でない（値は見ない。
+// プレースホルダ `${E2E_…}` のままでよい —— 差し込めない利用者は reconcile-realm.js が作らない）。
+function declaresTotpCredential(user) {
+  const parse = (v) => { try { return typeof v === 'string' ? JSON.parse(v) : null; } catch { return null; } };
+  return ((user && user.credentials) || []).some((c) => {
+    if (!c || c.type !== 'otp') return false;
+    const data = parse(c.credentialData);
+    const secret = parse(c.secretData);
+    return !!data && data.subType === 'totp' && !!secret && typeof secret.value === 'string' && secret.value !== '';
+  });
+}
+
 // realm から「MFA が実効的に強制されていない／監査イベントが残らない」箇所を { path, detail } で列挙する。
 // 純粋関数。対象 realm（既定 `platform`）以外は検査しない —— 別プロジェクトの realm は ADR-0026 の射程外。
 function collectMfaAuditGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
@@ -526,7 +541,7 @@ function collectMfaAuditGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
       continue;
     }
     if (user && user.enabled === false) continue; // 無効な利用者はログインできないので対象外
-    if (!hasTotp) {
+    if (!hasTotp && !declaresTotpCredential(user)) {
       gaps.push({
         path: `realm.users[${name}].requiredActions`,
         detail: `${MFA_REQUIRED_ACTION} が含まれていません。requiredActions プロバイダ側の defaultAction は`
@@ -2197,6 +2212,33 @@ function selfTest() {
   cases.push({
     name: 'MFA: 変異 1 — 対話利用者から CONFIGURE_TOTP を外すと 1 件',
     pass: collectMfaAuditGaps(mutate((c) => { c.users[0].requiredActions = []; })).length === 1,
+  });
+  // #2024 / IADR-0570: 宣言で TOTP の OTP 資格情報を持つ利用者（試験アカウント）は CONFIGURE_TOTP が無くても落とさない。
+  const declaredOtp = (credentialData, secretData) => ({
+    username: 'e2e-x', enabled: true,
+    credentials: [
+      { type: 'password', value: '${E2E_X_PASSWORD}', temporary: false },
+      { type: 'otp', secretData, credentialData },
+    ],
+  });
+  const totpData = JSON.stringify({ subType: 'totp', digits: 6, counter: 0, period: 30, algorithm: 'HmacSHA1' });
+  cases.push({
+    name: 'MFA: 陽性対照（#2024）— 宣言で TOTP の OTP 資格情報を持つ利用者は CONFIGURE_TOTP が無くても落とさない',
+    pass: collectMfaAuditGaps(mutate((c) => { c.users.push(declaredOtp(totpData, JSON.stringify({ value: '${E2E_X_TOTP_SECRET}' }))); })).length === 0,
+  });
+  cases.push({
+    name: 'MFA: 変異（#2024）— OTP がパスワードだけ・subType が totp でない・secretData の value が空・JSON でない、はそれぞれ 1 件',
+    pass: [
+      (u) => { u.credentials = [u.credentials[0]]; },
+      (u) => { u.credentials[1].credentialData = JSON.stringify({ subType: 'hotp' }); },
+      (u) => { u.credentials[1].secretData = JSON.stringify({ value: '' }); },
+      (u) => { u.credentials[1].secretData = '{'; },
+      (u) => { u.credentials[1].type = 'password'; },
+    ].every((breakIt) => collectMfaAuditGaps(mutate((c) => {
+      const u = declaredOtp(totpData, JSON.stringify({ value: '${E2E_X_TOTP_SECRET}' }));
+      breakIt(u);
+      c.users.push(u);
+    })).length === 1),
   });
   cases.push({
     name: 'MFA: 変異 2 — requiredActions キーごと消しても 1 件（未設定と空配列を同じに扱う）',
