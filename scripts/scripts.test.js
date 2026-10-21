@@ -594,6 +594,8 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
       '索引行は出力が切り詰められたため、先頭部分しか目視していない。', // AST#1318
       '追記した 2 行の全文は読めていない。', // AST#1318
       'テスト 3 本は流し読みした。',
+      'テストは名前だけ確認した。', // #2048 の是正で「名前だけ」を読み方の文脈に限った（陽性は残る）
+      'テスト 4 本は名前だけを見た。',
     ]) {
       assert.strictEqual(notRead(findFloorViolations(review(`${head}${line}`), [])).length, 1, line);
     }
@@ -610,6 +612,8 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
       '`全行は読んでいない` を検出する正規表現を足した。',
       '計画書（FR-02）は読んでいない（計画リポ参照不可）。',
       '他リポジトリの issue 本文は読めていない。', // 本リポの拡張（読む対象のファイルではない）
+      '- 置き換えるのは `E2E_` で始まる名前だけ。', // #2048 の head c5f4678e のレビュー: コードの挙動の説明（読み方の自認ではない）
+      '`ThemeConcentrationLoader` が市場の名前だけを受け付けることを確かめた。', // AST#1400 の同型
     ]) {
       assert.deepStrictEqual(notRead(findFloorViolations(review(`${head}${line}`), [])), [], line);
     }
