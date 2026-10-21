@@ -39,7 +39,7 @@ related_specs:
 ## 決定
 
 1. **realm の宣言で `abac-seeder` を `enabled: false` にする。** 取り込み・後追いは無効で作り、稼働で有効のまま残っていれば後追いが宣言へ戻す（＝戻し損ねの安全網）。
-2. **一時の有効化の口は `scripts/lib/abac-seeder-session.js` 1 本。** `ensureEnabled` は無効なら有効にして「この実行が有効にした」と控え、元から有効なら触らない。`restore` は控えたものだけを無効へ戻す。切り替えは master realm の管理者（明示 `KC_ADMIN_USER` / `KC_ADMIN_PASSWORD` ＞ Secret `platform-infra/keycloak-admin`）が Admin REST で行う。client は GET した表現を丸ごと PUT し、`enabled` だけを変える（項目を欠いた PUT は SA を消し得る）。
+2. **一時の有効化の口は `scripts/lib/abac-seeder-session.js` 1 本。** `ensureEnabled` は無効なら有効にして「この実行が有効にした」と控え（控えるのは PUT を送る**前**。サーバが PUT を拒んだときだけ外し、通信の失敗では残す。戻しは冪等）、元から有効なら触らない。`restore` は控えたものだけを無効へ戻す。切り替えは master realm の管理者（明示 `KC_ADMIN_USER` / `KC_ADMIN_PASSWORD` ＞ Secret `platform-infra/keycloak-admin`）が Admin REST で行う。client は GET した表現を丸ごと PUT し、`enabled` だけを変える（項目を欠いた PUT は SA を消し得る）。
 3. **戻しの確実さ**: 入口の `finally`（再発行の main・駆動器の run）・投入器の入口の `.then/.catch`・SIGINT と全体の上限（port-forward を残したまま戻してから片付ける）。戻しの失敗は名指して手で閉じる入口（`node scripts/lib/abac-seeder-session.js --live --disable`）を告げる。
 4. **資格情報は 明示（`REPUBLISH_CLIENT_SECRET` / `ABAC_SEED_CLIENT_SECRET` 等）＞ 稼働の Secret `platform-infra/abac-seeder-oidc`。** realm の宣言の値へは落ちない。Secret は Vault `msp/abac-seeder-oidc` から ESO（Merge）が同期し、起動器は ESO の有無によらず土台を作る。入れ替えは保管先と認証基盤を対で書けば、次の実行から新しい値で名乗る。
 5. 許可リストの `deferred[]` に `msp/abac-seeder-oidc` を足す（対になる秘密。SC-22 の画面では扱わない）。
@@ -53,3 +53,4 @@ related_specs:
 
 1. 強制終了で戻し損ねた場合、次の起動の後追いか手で閉じるまで有効のまま残る。
 2. 同時実行の排他は持たない（運用で 1 本ずつ）。
+3. Secret の読み先は kubectl の現在の context に依存する。ずれていれば認証に失敗して止まる（安全側）。実行前に context を確かめる。

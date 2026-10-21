@@ -78,17 +78,24 @@ async function findClient(fetchImpl, kcUrl, realm, clientId, token) {
   return { R, client: found };
 }
 
-/** client の enabled を変える（GET した表現を丸ごと PUT し、enabled だけを変える）。前の値を返す。 */
-async function setEnabled(fetchImpl, kcUrl, realm, clientId, token, enabled) {
+/**
+ * client の enabled を変える（GET した表現を丸ごと PUT し、enabled だけを変える）。前の値を返す。
+ * hooks.beforePut は PUT を送る直前に、hooks.onRejected はサーバが PUT を拒んだ（応答が ok でない）ときに呼ぶ。
+ */
+async function setEnabled(fetchImpl, kcUrl, realm, clientId, token, enabled, hooks = {}) {
   const { R, client } = await findClient(fetchImpl, kcUrl, realm, clientId, token);
   const before = client.enabled !== false;
   if (before === enabled) return before;
+  if (hooks.beforePut) hooks.beforePut();
   const res = await fetchWithin(fetchImpl, `${R}/clients/${client.id}`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...client, enabled }),
   });
-  if (!res.ok) throw new Error(`client ${clientId} の enabled を ${enabled} にできない（HTTP ${res.status}）`);
+  if (!res.ok) {
+    if (hooks.onRejected) hooks.onRejected();
+    throw new Error(`client ${clientId} の enabled を ${enabled} にできない（HTTP ${res.status}）`);
+  }
   return before;
 }
 
@@ -99,11 +106,14 @@ const opened = [];
 async function ensureEnabled({ kcUrl, realm, clientId, fetchImpl = fetch, env = process.env, read = readSecretKey, log = () => {} }) {
   const creds = resolveAdminCredentials({ env, read });
   const token = await adminToken(fetchImpl, kcUrl, creds);
-  const before = await setEnabled(fetchImpl, kcUrl, realm, clientId, token, true);
-  if (!before) {
-    opened.push({ kcUrl, realm, clientId, creds, fetchImpl });
-    log(`投入器の主体 ${clientId} を実行の間だけ有効にした（終わったら無効へ戻す。IADR-0576）`);
-  }
+  // 戻す候補は PUT を送る**前**に控える（PUT の最中に中断されても戻しが漏れない）。外すのはサーバが PUT を拒んだときだけ
+  // （通信の失敗・時間切れは当たったか分からないので残す。戻しは冪等＝既に無効なら書かない）。
+  const entry = { kcUrl, realm, clientId, creds, fetchImpl };
+  const before = await setEnabled(fetchImpl, kcUrl, realm, clientId, token, true, {
+    beforePut: () => opened.push(entry),
+    onRejected: () => { const i = opened.indexOf(entry); if (i >= 0) opened.splice(i, 1); },
+  });
+  if (!before) log(`投入器の主体 ${clientId} を実行の間だけ有効にした（終わったら無効へ戻す。IADR-0576）`);
   return { wasEnabled: before };
 }
 
@@ -169,6 +179,22 @@ async function selfTest() {
       const warns = [];
       assert.deepStrictEqual(await sess.restore({ warn: (m) => warns.push(m) }), ['abac-seeder']);
       assert.ok(warns.some((w) => /--disable/.test(w)), '閉じ方を告げていない');
+      // 戻す候補は PUT を送る前に控える（PUT の最中の中断でも戻しが漏れない）。拒まれたら外し、通信の失敗なら残す
+      const mid = mk(false);
+      let seenAtPut = null;
+      const midFetch = async (url, init = {}) => { if (init.method === 'PUT' && seenAtPut === null) seenAtPut = sess._opened.length; return mid.fetchImpl(url, init); };
+      await sess.ensureEnabled({ kcUrl: 'http://kc', realm: 'platform', clientId: 'abac-seeder', fetchImpl: midFetch, env });
+      assert.strictEqual(seenAtPut, 1, 'PUT を送る前に戻す候補を控えていない（PUT の最中の中断で戻しが漏れる）');
+      await sess.restore();
+      const rejecting = mk(false);
+      const rejFetch = async (url, init = {}) => (init.method === 'PUT' ? { ok: false, status: 403, json: async () => ({}), text: async () => '' } : rejecting.fetchImpl(url, init));
+      await assert.rejects(sess.ensureEnabled({ kcUrl: 'http://kc', realm: 'platform', clientId: 'abac-seeder', fetchImpl: rejFetch, env }), /HTTP 403/);
+      assert.strictEqual(sess._opened.length, 0, 'PUT が拒まれたのに戻す候補に残した');
+      const dropping = mk(false);
+      const dropFetch = async (url, init = {}) => { if (init.method === 'PUT') throw new Error('reset'); return dropping.fetchImpl(url, init); };
+      await assert.rejects(sess.ensureEnabled({ kcUrl: 'http://kc', realm: 'platform', clientId: 'abac-seeder', fetchImpl: dropFetch, env }), /reset/);
+      assert.strictEqual(sess._opened.length, 1, '当たったか分からない PUT の後に戻す候補を外した');
+      sess._opened.length = 0;
     }
 
 // 手で閉じる・状態を見る入口（稼働クラスタへ当たる）。--self-test だけは指定なしで動く。

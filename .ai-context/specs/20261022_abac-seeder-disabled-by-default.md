@@ -36,7 +36,7 @@ issue: "GHSA-rh44-px44-p48q"
 | AC1 | realm の宣言で `abac-seeder` は `enabled: false`（取り込み・後追いが無効で作り、無効へ戻す） | `scripts.repo.test.js`「投入器の主体は realm の宣言で既定無効…」 |
 | AC2 | 資格情報は 明示 ＞ 稼働の Secret `platform-infra/abac-seeder-oidc`。どちらも無ければ realm の宣言の値へ落ちずに止まる | 同「投入器の資格情報は 明示 ＞ 稼働の Secret の順で…」・「明示も Secret も無ければ…止まり」 |
 | AC3 | 入れ替えた後の値（Secret の値）で名乗り、宣言の値は使わない。値を出力しない | 同「REPUBLISH_CLIENT_SECRET が無ければ稼働の Secret の値で名乗る」 |
-| AC4 | 一時の有効化は GET した表現を丸ごと PUT して enabled だけを変え、この実行が有効にしたものだけを、成功・失敗のどちらでも戻す。元から有効なら触らない | `abac-seeder-session.js --self-test`・駆動器の試験 2 件（成功と DLQ での失敗の両方で対、元から有効なら書かない） |
+| AC4 | 一時の有効化は GET した表現を丸ごと PUT して enabled だけを変え、この実行が有効にしたものだけを、成功・失敗のどちらでも戻す。元から有効なら触らない。戻す候補は PUT の前に控え、拒まれたときだけ外す | `abac-seeder-session.js --self-test`・駆動器の試験 2 件（成功と DLQ での失敗の両方で対、元から有効なら書かない） |
 | AC5 | 投入器（seed-abac-policies / seed-search-documents / seed-tag-dictionary）・アーカイブの駆動器（admin-page-driver）も同じ口を使う | 同「…どれも一時の有効化と戻しを持つ」（静的）・駆動器の既存の試験（偽の Admin REST を足した） |
 | AC6 | 起動器は ESO の有無によらず Secret `abac-seeder-oidc` を作り、ESO=1 では ExternalSecret（Merge）を当てて同期を待つ。Vault の種は `msp/abac-seeder-oidc` を無いときだけ作る | `k8s-local-up.test.js`「IADR-0576: 起動器は…」・`scripts.repo.test.js` の置き場の表と seed の突合（IADR-0572） |
 | AC7 | SC-12 の否定形（M8）は、既定の無効のまま変わらないことを見る | `check-mcp-client-provisioning.js`（integration-stack） |
@@ -81,3 +81,4 @@ PR 本文に順序つきで書く。要点: 配備の前に Vault の KV `msp/ab
 
 - 同時に 2 本のスクリプトが動くと、先に終わった方が無効へ戻し、後の方のトークンの取り直しが失敗し得る（運用で 1 本ずつ走らせる。後の方は失敗として止まる＝安全側）。
 - 戻し損ね（強制終了）の窓は、次の起動の realm の後追いまで、または手で閉じるまで。
+- Secret の読み先は kubectl の現在の context に依存する（ずれれば認証失敗で止まる＝安全側）。
