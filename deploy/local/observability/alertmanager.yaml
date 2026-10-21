@@ -3,12 +3,22 @@
 #    理由は compose 側（deploy/alertmanager/alertmanager.yml）のコメントが正本。
 # ⚠️ config は compose（deploy/alertmanager/alertmanager.yml）と同内容を inline する
 #    （kustomize の root 外参照制約に従う。prometheus.yaml / grafana.yaml と同じ方針＝二重管理を許容）。
+#
+# NFR-21, ADR-0045, ADR-0078 決定 2, IADR-0571 (#2044): **経路B だけはメールの受信先を 1 本持つ。**
+#   近接 MTA（deploy/mail-relay/ の Service `mail-relay:587`）へ投函し、上流（Secret keycloak-smtp）へ後送される。
+#   - 宛先は **Secret `alertmanager-mail` のキー `to`** が与える（OpenBao → ESO:
+#     deploy/local/vault/eso/externalsecret-alertmanager-mail.yaml）。**実値はリポジトリに置かない。**
+#   - 🔴 **宛先が空なら警告を出して `default-null` へ落とす**（Alertmanager は起動し、画面までは届く）。
+#     **不正な値なら起動しない**（initContainer が失敗する）。理由は IADR-0571 決定 3。
+#   - compose には近接 MTA が無いので、compose 側は `default-null` のままである（下の `alertmanager.yml` キーと同内容）。
+#   - 手順（Secret の投入・反映・試験警報）は docs/operations/alertmanager-mail-receiver-runbook.md。
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: alertmanager-config
   namespace: platform-infra
 data:
+  # 宛先が未供給のときの落ち先（＝ compose と同内容。IADR-0304 決定 2 の `default-null`）。
   alertmanager.yml: |
     route:
       group_by: ['alertname', 'job']
@@ -22,6 +32,58 @@ data:
       - source_matchers: [severity = "critical"]
         target_matchers: [severity = "warning"]
         equal: ['alertname', 'job']
+  # IADR-0571 (#2044): 宛先が供給されたときの設定。`__ALERT_MAIL_TO__` を render.sh が置き換える。
+  # 🔴 route / inhibit_rules は上の `alertmanager.yml` と同じにする（違うのは受信先だけ。試験が突き合わせる）。
+  # 🔴 smarthost は deploy/mail-relay/mail-relay.yaml の Service（名前 `mail-relay`・port `smtp`）から導く値である。
+  # 🔴 from は近接 MTA の差出人の門（ALLOWED_SENDER_DOMAINS=platform.localhost）を通る合成値。上流が実在の
+  #    送信元を要るときは relay の smtp_generic_maps（noreply@platform.localhost → Secret keycloak-smtp の from）が写す。
+  # 🔴 require_tls: false —— Alertmanager → relay の 1 ホップはクラスタ内の平文である（Keycloak → relay と同じ。
+  #    IADR-0404 決定 3 の受容）。relay → 上流の STARTTLS は relay 側が強制する（ADR-0045 決定 5）。
+  alertmanager-mail.yml.tmpl: |
+    route:
+      group_by: ['alertname', 'job']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: ops-mail
+    receivers:
+      - name: ops-mail
+        email_configs:
+          - to: '__ALERT_MAIL_TO__'
+            from: 'noreply@platform.localhost'
+            smarthost: 'mail-relay.platform-infra.svc.cluster.local:587'
+            hello: 'alertmanager.platform-infra.svc.cluster.local'
+            require_tls: false
+            send_resolved: true
+    inhibit_rules:
+      - source_matchers: [severity = "critical"]
+        target_matchers: [severity = "warning"]
+        equal: ['alertname', 'job']
+  # IADR-0571 決定 3 (#2044): 宛先の描画。initContainer が実行する。
+  #   空      → 警告を出して alertmanager.yml（default-null）をそのまま使う（起動は止めない）
+  #   不正な値 → 起動しない（exit 1）。YAML / sed への注入をここで止める
+  #   正しい値 → テンプレートへ差し込み、amtool check-config を通す
+  render.sh: |
+    #!/bin/sh
+    set -eu
+    src="${RENDER_SRC:?}"
+    out="${RENDER_OUT:?}"
+    amtool="${AMTOOL:?}"
+    # 前後・区切りの空白は落とす（"a@x.example, b@y.example" を許す）。
+    to="$(printf '%s' "${ALERT_MAIL_TO:-}" | tr -d ' \t\r\n')"
+    if [ -z "${to}" ]; then
+      echo "alertmanager-render: WARNING: 宛先（Secret alertmanager-mail の to）が空である。受信先は default-null（どこへも送らない）へ落ちる。届くのは Alertmanager の画面までである。" >&2
+      cp "${src}/alertmanager.yml" "${out}/alertmanager.yml"
+    else
+      addr='[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+'
+      if ! printf '%s' "${to}" | grep -Eq "^${addr}(,${addr})*\$"; then
+        echo "alertmanager-render: ERROR: 宛先（Secret alertmanager-mail の to）がメールアドレス（カンマ区切り可）の形でない。起動しない。" >&2
+        exit 1
+      fi
+      sed "s|__ALERT_MAIL_TO__|${to}|" "${src}/alertmanager-mail.yml.tmpl" > "${out}/alertmanager.yml"
+      echo "alertmanager-render: 受信先 ops-mail（mail-relay 経由）を有効にした。" >&2
+    fi
+    "${amtool}" check-config "${out}/alertmanager.yml"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -29,6 +91,10 @@ metadata:
   name: alertmanager
   namespace: platform-infra
   labels: { app: alertmanager }
+  # IADR-0571 (#2044): 宛先は Pod 起動時に 1 度だけ描画される。Secret を差し替えたら作り直す
+  # （Reloader の無い環境では `kubectl -n platform-infra rollout restart deploy/alertmanager`）。
+  annotations:
+    secret.reloader.stakater.com/reload: "alertmanager-mail"
 spec:
   replicas: 1
   selector:
@@ -37,6 +103,25 @@ spec:
     metadata:
       labels: { app: alertmanager }
     spec:
+      initContainers:
+        # IADR-0571 (#2044): 宛先を Secret から設定へ描画する（Alertmanager の設定は env を展開しない）。
+        # 同じイメージを使う（busybox の sh / grep / sed と amtool を持つ。供給網へイメージを増やさない）。
+        - name: render-config
+          image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
+          command: ["/bin/sh", "/config-src/render.sh"]
+          env:
+            - { name: RENDER_SRC, value: /config-src }
+            - { name: RENDER_OUT, value: /etc/alertmanager }
+            - { name: AMTOOL, value: /bin/amtool }
+            # 🔴 optional: true —— Secret が無い／キーが無いときは空として扱い、default-null へ落とす（決定 3）。
+            - name: ALERT_MAIL_TO
+              valueFrom: { secretKeyRef: { name: alertmanager-mail, key: to, optional: true } }
+          volumeMounts:
+            - { name: config-src, mountPath: /config-src, readOnly: true }
+            - { name: config, mountPath: /etc/alertmanager }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
       containers:
         - name: alertmanager
           image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
@@ -59,9 +144,12 @@ spec:
             requests: { cpu: 25m, memory: 64Mi }
             limits: { cpu: 200m, memory: 256Mi }
       volumes:
-        - name: config
+        - name: config-src
           configMap:
             name: alertmanager-config
+        # 描画済みの設定（initContainer が書き、本体が読む）。
+        - name: config
+          emptyDir: {}
         # 通知の抑止状態（silences・notification log）。dev では永続化しない
         # ——再起動で silence が消えるのは受け入れる（observability-persistence の射程外）。
         - name: data
@@ -77,3 +165,22 @@ spec:
   selector: { app: alertmanager }
   ports:
     - { name: http, port: 9093, targetPort: 9093 }
+---
+# NFR-21, ADR-0078 決定 2, IADR-0571 (#2044): Alertmanager から近接 MTA（:587）への投函を許す**別宣言**。
+# 🔴 deploy/mail-relay/mail-relay.yaml の `mail-relay-ingress` を書き換えていない —— NetworkPolicy は加算的で、
+#    同じ Pod を選ぶ宣言の ingress は和になる（reset-gate / otel-collector と同じ形）。
+# 🔴 可観測性オーバーレイ（opt-in）に置く。Alertmanager が居ないクラスタに穴を開けないためである。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mail-relay-ingress-alertmanager
+  namespace: platform-infra
+  labels: { app: mail-relay }
+spec:
+  podSelector: { matchLabels: { app: mail-relay } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: alertmanager } }
+      ports:
+        - { protocol: TCP, port: 587 }

@@ -10,6 +10,7 @@ rule_files:
 # NFR (#198), #546: 通知経路。Alertmanager 本体は deploy/alertmanager/alertmanager.yml が設定を持つ。
 # ★ 到達先は在るが、**既定の受信先はどこへも送らない**（同ファイル冒頭の限界の記述）。
 #   実環境でメール / チャットの受信先を足すまで、自動で届くのは Alertmanager の画面までである。
+#   （経路B は宛先の Secret を与えるとメールが届く。compose は画面まで。IADR-0571 / #2044）
 alerting:
   alertmanagers:
     - static_configs:
