@@ -69,7 +69,7 @@ issues: [#2013, #2014]
 
 ### 2.1 層の分け方（project ＋ タグ ＋ opt-in）
 
-層は **Playwright の project とタグの両方**で分ける。
+層は **Playwright の project とタグの両方**で分ける。project はファイル名の接尾辞で、タグは spec の中の宣言で選ぶため、**層タグと接尾辞を一致させる**（`*.ro.spec.ts` ⇔ `@live-ro` など）。
 
 | config ファイル | project | testMatch | storageState | workers | retries | trace |
 | --- | --- | --- | --- | --- | --- | --- |

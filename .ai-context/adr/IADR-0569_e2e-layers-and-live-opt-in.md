@@ -41,7 +41,7 @@ Playwright の E2E は L1（ビルド済み SPA ＋ `page.route('**/bff/**')`）
 
 基準書（#2013 コメント 1）とその運用設計（同コメント 3）には次の食い違いがあった。
 
-1. 基準書 §3 は live 系 project を `playwright.config.ts` に同居させるが、コメント 3 §2.3 と E-31 の触るファイル領域は
+1. 基準書（#2013 コメント 1。以下の節番号は原文のもの。docs では §3 → §2.1、§8 → §7、§12 → §11）§3 は live 系 project を `playwright.config.ts` に同居させるが、コメント 3 §2.3 と E-31 の触るファイル領域は
    別ファイル `playwright.live.config.ts` を前提にしている。
 2. `E2E_LAYER` が外す対象は `trading` と `llm` だけと書かれているが、基準書 §12 は `rw` も dispatch 入力に置き、
    nightly は setup ＋ ro だけとしている。`rw` の既定が決まっていない。
@@ -84,6 +84,8 @@ Playwright の E2E は L1（ビルド済み SPA ＋ `page.route('**/bff/**')`）
 | 層 | `@live-ro`（L2）・`@live-rw`（L3）・`@trading`（L3-T）・`@llm`（L3-L） | live の spec は自分の層のタグをちょうど 1 つ持つ。**L1 は層タグを持たない**（層タグが無いこと＝L1） |
 | 優先度 | `@p0` `@p1` `@p2` | 全 spec が 1 つ持つ（網羅表の優先度と一致させる） |
 | 観点 | `@a11y`・`@visual` | 任意。`@visual` は project `visual` でだけ流す |
+
+- **層タグとファイル名の接尾辞は一致させる**（`*.ro.spec.ts` ⇔ `@live-ro`、`*.rw.spec.ts` ⇔ `@live-rw`、`*.trading.spec.ts` ⇔ `@trading`、`*.llm.spec.ts` ⇔ `@llm`）。project の選択は接尾辞で、`--grep` はタグで効くため、食い違うと spec が別の層で走る。一致の検査は live 用 config を置く変更（E-31）の受け入れ基準に入れる（PR #2041 の AI レビュー 🟡）。
 
 ### 決定 3 — Playwright の config と project 名
 
