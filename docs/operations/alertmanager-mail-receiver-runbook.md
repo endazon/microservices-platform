@@ -11,13 +11,15 @@ ids: [NFR-21, SC-10]
 adrs: [ADR-0006, ADR-0045, ADR-0078]
 iadrs: [IADR-0571, IADR-0304, IADR-0165, IADR-0404]
 specs: [20261022_2044_alertmanager-mail-receiver]
-issues: [#2044, #546]
+issues: [#2044, #2050, #546]
 -->
 
 # 運用 Runbook: Alertmanager のメール受信先
 
 > **運用仕様書（[`operations.md`](operations.md)）の「監視・アラート」の下位にあたる手順書である。**
 > 対象はローカル k8s（経路B）の可観測性オーバーレイの Alertmanager。compose 経路は受信先を持たない（近接 MTA が無い）。
+>
+> **状態を `draft` に留めている理由**: 稼働クラスタ（PoC）で §3 の試験警報の到達をまだ記録していない。到達を記録した変更で `in-progress` 以上へ進める（同じ変更で Grafana の暫定経路を削除する。#2050）。
 
 ## 何が起きるか
 
