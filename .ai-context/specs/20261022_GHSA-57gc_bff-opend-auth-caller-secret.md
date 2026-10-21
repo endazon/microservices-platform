@@ -56,3 +56,7 @@ created: 2026-10-22
 2. 本 PR を配備する（`ESO=1` の `k8s-local-up.sh`）。基盤の名前空間に Secret `opend-auth-caller-secret` が同期され、BFF が作り直される。
    この時点では旧サイドカーは検証を持たないので、BFF がヘッダーを載せても影響しない。
 3. AST を配備する（AST#1426 の手順。OpenD の Pod は 1 回作り直される）。
+
+- 🔴 手順 1 を後回しにした場合: Reloader は既定で Secret の**更新**だけを見て**作成**を見ない（`reload-on-create` を設定していない）。
+  後から ESO が Secret を作っても BFF は古い env のままなので、`kubectl -n microservices-platform rollout restart deploy/bff-service` を手で打つ。
+  以後の値の回し（Secret の更新）は Reloader が作り直す。
