@@ -145,11 +145,16 @@ powercfg /change hibernate-timeout-ac 0   # 電源接続時の休止: なし
 ## 起動（Git Bash 推奨。1 コマンド）
 
 ```bash
-bash scripts/k8s-local-up.sh --live          # クラスタ作成→build/import→secret→infra→MSP chart→alias
+ALLOW_DEV_INFRA_CREDENTIALS=1 bash scripts/k8s-local-up.sh --live   # 使い捨ての手元の環境（下の注）。クラスタ作成→build/import→secret→infra→MSP chart→alias
 kubectl get pods -A
 kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 #   → http://localhost:5080/health
 ```
+
+> **Keycloak の管理者・RabbitMQ のブローカのパスワードは公知の既定値で作らない**（IADR-0573。fail-closed）。起動器は
+> `KEYCLOAK_ADMIN_PASSWORD` / `RABBITMQ_PASSWORD` の明示 ＞ 既存の Secret（`platform-infra` の `keycloak-admin` / `rabbitmq`）の値の順に使い、
+> どちらも無い（または開発用の値と同じ）なら何も作らずに止まる。**使い捨ての開発環境だけ** `ALLOW_DEV_INFRA_CREDENTIALS=1` で開発用の値を許す
+> （警告を出す）。残すクラスタでは開発用ではない値を env で与える（一度作れば、次からは既存の Secret の値を使う）。
 
 破棄（**既定は `--dry-run`**。消す予定のものを順に表示するだけで何も変えない。実行は `--apply`）:
 

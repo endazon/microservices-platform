@@ -35,6 +35,23 @@ if [ "${#dev_secret_args[@]}" -gt 0 ]; then
 fi
 unset dev_secret_args dev_secret_client dev_secret_env
 
+# NFR-18, ADR-0124 決定 1, IADR-0573 (GHSA-rh44-px44-p48q): **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）の KV を
+#   公知の開発用の値で作らない。** 判定は scripts/lib/infra-credentials.sh の 1 本（k8s-local-up.sh と共有）。
+#   対象は **KV がまだ無いもの**だけ（在る KV は下の vkv_create_if_absent が触らない。IADR-0485）。k8s-local-up.sh から呼ぶときは、
+#   起動器が [1/7] の直後で決めた値（明示か既存の Secret の値）を env で受け取る。🔴 Vault へ何か書く前に判定する。
+# shellcheck source=scripts/lib/infra-credentials.sh
+. "$ROOT/scripts/lib/infra-credentials.sh"
+infra_cred_needed=()
+vexec "vault kv metadata get secret/msp/keycloak-admin >/dev/null 2>&1" || infra_cred_needed+=(KEYCLOAK_ADMIN_PASSWORD)
+if ! vexec "vault kv metadata get secret/msp/rabbitmq >/dev/null 2>&1" \
+  || ! vexec "vault kv metadata get secret/msp/rabbitmq-app >/dev/null 2>&1"; then
+  infra_cred_needed+=(RABBITMQ_PASSWORD)
+fi
+if [ "${#infra_cred_needed[@]}" -gt 0 ]; then
+  infra_cred_guard "bootstrap.sh" "${infra_cred_needed[@]}" || exit 1
+fi
+unset infra_cred_needed
+
 echo "==> kubernetes 認証を有効化（未有効時のみ・冪等）"
 vexec 'vault auth list -format=json 2>/dev/null | grep -q "\"kubernetes/\"" || vault auth enable kubernetes'
 

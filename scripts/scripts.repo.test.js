@@ -13969,7 +13969,7 @@ exit 0
         const log = path1728.join(dir, 'calls.log');
         fs1728.writeFileSync(log, '');
         const baseEnv = { ...process.env };
-        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_|ALLOW_DEV_CLIENT_SECRETS$)|_CLIENT_SECRET$/.test(k)) delete baseEnv[k];
+        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_|ALLOW_DEV_CLIENT_SECRETS$|ALLOW_DEV_INFRA_CREDENTIALS$|KEYCLOAK_ADMIN_PASSWORD$|RABBITMQ_PASSWORD$)|_CLIENT_SECRET$/.test(k)) delete baseEnv[k];
         const r = spawn1728('bash', [...bashArgs, BOOTSTRAP.split(path1728.sep).join('/')], {
           encoding: 'utf8',
           timeout: 60000,
@@ -14153,8 +14153,9 @@ exit 0
       }
     });
 
-    ok('#1793: env が無いときは、従来どおり既定値を同じ形（stdin の JSON）で入れる', () => {
-      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq')) });
+    // ［IADR-0573］基盤の資格情報（rabbitmq・keycloak-admin）の既定値は、使い捨ての開発環境の opt-in のときだけ入れる。
+    ok('#1793/IADR-0573: env が無く opt-in（ALLOW_DEV_INFRA_CREDENTIALS=1）のときは、既定値を同じ形（stdin の JSON）で入れる', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq')), env: { ALLOW_DEV_INFRA_CREDENTIALS: '1' } });
       assert.strictEqual(r.status, 0, r.stderr + r.stdout);
       assert.deepStrictEqual(JSON.parse(r.putStdin['msp/rabbitmq']), { username: 'guest', password: 'guest' });
     });
@@ -14342,6 +14343,39 @@ exit 0
       const over = run1728({ setup: drop, env: { STUB_KUBE_CONTEXT: 'prod-shared', ALLOW_DEV_CLIENT_SECRETS: '1' } });
       assert.strictEqual(over.status, 0, over.stderr);
       assert.ok(/!!! WARNING: bootstrap\.sh: ALLOW_DEV_CLIENT_SECRETS=1/.test(over.stderr), '上書きで警告しない');
+    });
+
+    // --- NFR-18, ADR-0124 決定 1, IADR-0573 (GHSA-rh44-px44-p48q): 基盤の資格情報の KV を公知の既定値で作らない ---
+    // 判定器は scripts/lib/infra-credentials.sh（真理値表は k8s-local-up.test.js の IADR-0573 節）。ここは bootstrap.sh の実走で
+    // (1) 無い KV だけを判定へ渡す (2) 止まるときは Vault へ何も書かない (3) 明示・opt-in・在る KV では進む、を固定する。
+    const probe0573 = (c) => ['probe', '0573', c].join('-');
+    ok('IADR-0573: 無い基盤の資格情報の KV を、明示の値なし（既定値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
+      const r = run1728({ setup: dropKv1830('msp/keycloak-admin', 'msp/rabbitmq-app') });
+      assert.notStrictEqual(r.status, 0, '止まらなかった');
+      assert.deepStrictEqual(vaultWrites1830(r), [], `止まる前に Vault へ書いた: ${vaultWrites1830(r).join(', ')}`);
+      assert.ok(!r.execArgv.some((c) => /vault (policy|write|auth)/.test(c)), '止まる前に Vault の設定を書いた');
+      assert.ok(/止める（何も作らない）: KEYCLOAK_ADMIN_PASSWORD, RABBITMQ_PASSWORD$/m.test(r.stderr), `名指していない:\n${r.stderr}`);
+      // 開発用の値と同じ明示も止める
+      const dev = run1728({ setup: dropKv1830('msp/keycloak-admin'), env: { KEYCLOAK_ADMIN_PASSWORD: 'admin' } });
+      assert.notStrictEqual(dev.status, 0, '開発用の値の明示を通した');
+      assert.deepStrictEqual(vaultWrites1830(dev), []);
+    });
+
+    ok('IADR-0573: 在る KV は判定へ渡さない（触らないので既定値は入らない）。明示の値・opt-in では進み、無い KV を作る', () => {
+      const present = run1728({});
+      assert.strictEqual(present.status, 0, `KV が在るのに止まった:\n${present.stderr}`);
+      const drop = dropKv1830('msp/keycloak-admin', 'msp/rabbitmq', 'msp/rabbitmq-app');
+      const given = run1728({ setup: drop, env: { KEYCLOAK_ADMIN_PASSWORD: probe0573('kc'), RABBITMQ_PASSWORD: probe0573('mq') } });
+      assert.strictEqual(given.status, 0, given.stderr);
+      assert.ok(given.putStdin['msp/keycloak-admin'].includes(probe0573('kc')), 'keycloak-admin が与えた値で作られていない');
+      assert.ok(given.putStdin['msp/rabbitmq'].includes(probe0573('mq')) && given.putStdin['msp/rabbitmq-app'].includes(probe0573('mq')), 'rabbitmq の 2 つが与えた値で作られていない');
+      assert.ok(!`${given.stdout}${given.stderr}`.includes(probe0573('kc')), '値が出力に出た');
+      const over = run1728({ setup: drop, env: { ALLOW_DEV_INFRA_CREDENTIALS: '1' } });
+      assert.strictEqual(over.status, 0, over.stderr);
+      assert.ok(/!!! WARNING: bootstrap\.sh: ALLOW_DEV_INFRA_CREDENTIALS=1/.test(over.stderr), 'opt-in で警告しない');
+      assert.ok(over.calls.includes('VAULT PUT msp/keycloak-admin'), 'opt-in で作っていない');
+      const notOne = run1728({ setup: drop, env: { ALLOW_DEV_INFRA_CREDENTIALS: 'true' } });
+      assert.notStrictEqual(notOne.status, 0, 'ALLOW_DEV_INFRA_CREDENTIALS=true で通した');
     });
   }
 
