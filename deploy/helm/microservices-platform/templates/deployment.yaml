@@ -10,6 +10,9 @@
 {{- /* FR-14/FR-15 (#146): pipeline.json をマウントする条件。段ホスト（pipelineSteps）に加え、
        宣言突合のため宣言を必要とする BFF（pipelineDeclaration）も同じ ConfigMap をマウントする。 */}}
 {{- $pipelineMount := and (or $svc.pipelineSteps $svc.pipelineDeclaration) $.Values.pipeline.enabled }}
+{{- /* NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: Vault（k8s auth）へ名乗るサービスには、対象者（audience）を秘匿管理に限った
+       projected token を専用のパスへ置く。k8s API 用の既定のトークン（audience＝API サーバ）では名乗らない。 */}}
+{{- $vaultToken := and $svc.vault $svc.vault.address }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -211,6 +214,12 @@ spec:
               value: {{ $svc.vault.role | default "bff-secret-writer" | quote }}
             - name: Vault__AuthMount
               value: {{ $svc.vault.authMount | default "kubernetes" | quote }}
+          {{- end }}
+          {{- if $vaultToken }}
+            # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: k8s auth に渡すトークンは下の projected token（audience: vault）。
+            # role は audience=vault を要求する（deploy/local/vault/eso/bootstrap.sh）。コードの既定も同じパス。
+            - name: Vault__ServiceAccountTokenPath
+              value: /var/run/secrets/vault/token
           {{- end }}
           {{- if $svc.externalSecretSync }}
             # SC-22, IADR-0456 決定 4 (#1477): 書き込み後に ExternalSecret へ即時同期（force-sync 注釈）を依頼するか。
@@ -471,17 +480,36 @@ spec:
           {{- end }}
           resources:
             {{- toYaml $svc.resources | nindent 12 }}
-          {{- if $pipelineMount }}
+          {{- if or $pipelineMount $vaultToken }}
           volumeMounts:
+            {{- if $pipelineMount }}
             - name: pipeline-config
               mountPath: /etc/microservices-platform/pipeline
               readOnly: true
+            {{- end }}
+            {{- if $vaultToken }}
+            - name: vault-token
+              mountPath: /var/run/secrets/vault
+              readOnly: true
+            {{- end }}
           {{- end }}
-      {{- if $pipelineMount }}
+      {{- if or $pipelineMount $vaultToken }}
       volumes:
+        {{- if $pipelineMount }}
         - name: pipeline-config
           configMap:
             name: pipeline-config
+        {{- end }}
+        {{- if $vaultToken }}
+        # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: Vault 専用のトークン（対象者 vault・期限 10 分。kubelet が期限前に更新する）。
+        - name: vault-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: vault
+                  expirationSeconds: 600
+        {{- end }}
       {{- end }}
 {{- end }}
 {{- end }}

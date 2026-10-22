@@ -662,3 +662,4 @@
 | [IADR-0582](./IADR-0582_graph-prompt-boundary-and-bff-response-headers.md) | プロンプトの信頼境界の部品を knowledge ユニットの共有契約へ移して GraphService の提案・クラスタ要約にも適用し、BFF の全応答に nosniff・最小の CSP（sandbox）・フレーム禁止・同一オリジンの資源ポリシーを付ける（GHSA-5h4q-4m2j-rjhm） | Accepted |
 | [IADR-0583](./IADR-0583_pod-security-context-and-admission.md) | チャートの Pod は restricted の形（非 root・権限昇格なし・ケーパビリティなし・seccomp RuntimeDefault）で描き、外部のイメージは利用者 ID を変えずに付けられる分だけ付け、専用の SA を持たない Pod はトークンを置かず、Namespace に Pod Security Admission の水準を貼る（GHSA-j4qv-2w99-xg5p） | Accepted |
 | [IADR-0584](./IADR-0584_image-scan-and-codeql-js.md) | 建てたサービスイメージを Trivy で走査して実行サマリに載せ（当面は報告だけ）、CodeQL に JavaScript / TypeScript を足す（GHSA-552h-47r7-6v6p） | Accepted |
+| [IADR-0585](./IADR-0585_vault-k8s-auth-audience.md) | 秘匿管理の kubernetes 認証の role は対象者（audience）を vault に限り、名乗る側（ESO・BFF・datasource・バックアップ）は対象者 vault のトークンを渡し、配備は名乗る側を先に出す（GHSA-j4qv-2w99-xg5p） | Accepted |

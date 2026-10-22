@@ -124,12 +124,14 @@ spec:
               emptyDir:
                 medium: Memory
                 sizeLimit: 256Mi
-            # IADR-0548: k8s auth に渡す ServiceAccount のトークン（期限 10 分・既定の audience）。
+            # IADR-0548: k8s auth に渡す ServiceAccount のトークン（期限 10 分）。
+            # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 対象者（audience）は秘匿管理（vault）。role も同じ値を要求する。
             - name: vault-auth
               projected:
                 sources:
                   - serviceAccountToken:
                       path: jwt
+                      audience: vault
                       expirationSeconds: 600
             - name: target-c
               hostPath:
