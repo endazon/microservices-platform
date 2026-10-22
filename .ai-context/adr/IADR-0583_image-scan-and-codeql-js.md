@@ -1,5 +1,5 @@
 ---
-title: IADR-0582 建てたサービスイメージを Trivy で走査して実行サマリに載せ（当面は報告だけ）、CodeQL に JavaScript / TypeScript を足す
+title: IADR-0583 建てたサービスイメージを Trivy で走査して実行サマリに載せ（当面は報告だけ）、CodeQL に JavaScript / TypeScript を足す
 type: impl-adr
 status: Accepted
 related_ids: [NFR, IADR-0581, IADR-0578, IADR-0067, IADR-0232]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261022_image-scan-and-codeql-js.md
 ---
 
-# IADR-0582: イメージの走査と CodeQL の JS/TS（GHSA-552h-47r7-6v6p）
+# IADR-0583: イメージの走査と CodeQL の JS/TS（GHSA-552h-47r7-6v6p）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
