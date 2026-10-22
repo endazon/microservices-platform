@@ -2,7 +2,7 @@
 title: 作業仕様書 — 建てたサービスイメージを Trivy で走査し（当面は報告だけ）、CodeQL に JavaScript / TypeScript を足す
 type: spec
 status: done
-related_ids: [NFR, IADR-0580, IADR-0579, IADR-0067, IADR-0232]
+related_ids: [NFR, IADR-0581, IADR-0580, IADR-0067, IADR-0232]
 author: claude
 created: 2026-10-22
 updated: 2026-10-22
@@ -11,7 +11,7 @@ issue: "GHSA-552h-47r7-6v6p"
 
 # 作業仕様書 — イメージの走査と CodeQL の JS/TS（GHSA-552h-47r7-6v6p の 3 本目）
 
-> 本仕様書は実装着手前に作成した（2026-10-22）。1 本目は IADR-0578、2 本目は IADR-0579。
+> 本仕様書は実装着手前に作成した（2026-10-22）。1 本目は IADR-0578、2 本目は IADR-0580。
 
 ## 起点
 

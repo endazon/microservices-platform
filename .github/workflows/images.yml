@@ -117,9 +117,9 @@ jobs:
         env:
           SERVICE: ${{ matrix.service }}
         run: docker compose -f deploy/docker-compose.yml build --progress plain "$SERVICE"
-      # NFR, GHSA-552h-47r7-6v6p / IADR-0580: 建てたイメージを Trivy で走査する（既知の脆弱性。CRITICAL / HIGH・修正版あり）。
+      # NFR, GHSA-552h-47r7-6v6p / IADR-0581: 建てたイメージを Trivy で走査する（既知の脆弱性。CRITICAL / HIGH・修正版あり）。
       # 🔴 **当面は報告だけで落とさない**（exit-code 0 ＋ continue-on-error）。この job は必須チェック image-build の
-      # 集約に入るため、落とす形にすると走査が実質の必須になる。必須にするかはオーナーの裁定で決める（IADR-0580 残余）。
+      # 集約に入るため、落とす形にすると走査が実質の必須になる。必須にするかはオーナーの裁定で決める（IADR-0581 残余）。
       # 結果は実行サマリに表で載せる。イメージ名は compose の解釈（image の指定、無ければ <project>-<service>）から引く。
       - name: Resolve image name
         id: img

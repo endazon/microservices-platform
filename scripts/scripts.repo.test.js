@@ -18159,7 +18159,7 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
-  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0580: イメージの走査と CodeQL の JavaScript / TypeScript ----------
+  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0581: イメージの走査と CodeQL の JavaScript / TypeScript ----------
   {
     const fs = require('fs');
     const path = require('path');
