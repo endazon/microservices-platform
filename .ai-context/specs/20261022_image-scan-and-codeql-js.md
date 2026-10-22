@@ -2,7 +2,7 @@
 title: 作業仕様書 — 建てたサービスイメージを Trivy で走査し（当面は報告だけ）、CodeQL に JavaScript / TypeScript を足す
 type: spec
 status: done
-related_ids: [NFR, IADR-0583, IADR-0581, IADR-0067, IADR-0232]
+related_ids: [NFR, IADR-0584, IADR-0581, IADR-0067, IADR-0232]
 author: claude
 created: 2026-10-22
 updated: 2026-10-22
@@ -21,7 +21,7 @@ issue: "GHSA-552h-47r7-6v6p"
 ## 方式
 
 1. `images.yml` の `build (<service>)` で、建てたイメージを Trivy（`aquasecurity/trivy-action`、SHA 固定）で走査する。対象は CRITICAL / HIGH・修正版あり・脆弱性のみ。**当面は報告だけ**（`exit-code: "0"` ＋ `continue-on-error: true`）で、結果は実行サマリに表で載せる。イメージ名は compose の解釈から引き、見つからなければ warning を出して走査しない。
-   固定する SHA は、公開の事案（GHSA-69fq-xp46-6x23）の後の正規のリリースであることを、リリース（Immutable）・タグ・コミットの署名で確かめ、根拠を IADR-0583 に書く。
+   固定する SHA は、公開の事案（GHSA-69fq-xp46-6x23）の後の正規のリリースであることを、リリース（Immutable）・タグ・コミットの署名で確かめ、根拠を IADR-0584 に書く。
 2. `codeql.yml` の行列に `javascript-typescript` を足す（`build-mode: none`）。dotnet を使う step は csharp の脚に限る。PR の起動条件（`paths`）に JS/TS の拡張子と `src/pnpm-lock.yaml` を足す。
 3. `scripts.repo.test.js` で 1 と 2 の形を固定する（変異試験つき）。`action-versions.repo.json` に trivy-action の下限を足す。
 

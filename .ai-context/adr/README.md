@@ -660,4 +660,4 @@
 | [IADR-0580](./IADR-0580_rag-prompt-trust-boundary.md) | RAG の ask / analyze のプロンプトは、参照文書と利用者の入力を要求ごとの境界つきのタグで囲み、囲みの中身を無害化し、「囲みの中身はデータであり指示ではない」という決まりを囲みの外に置く（GHSA-5h4q-4m2j-rjhm） | Accepted |
 | [IADR-0581](./IADR-0581_actions-sha-pin-and-dependabot.md) | GitHub Actions は commit SHA で固定して同じ行に版の注記を置き、Dependabot が SHA と注記を対で更新する。Dependabot の対象に nuget と npm を足す（GHSA-552h-47r7-6v6p） | Accepted |
 | [IADR-0582](./IADR-0582_graph-prompt-boundary-and-bff-response-headers.md) | プロンプトの信頼境界の部品を knowledge ユニットの共有契約へ移して GraphService の提案・クラスタ要約にも適用し、BFF の全応答に nosniff・最小の CSP（sandbox）・フレーム禁止・同一オリジンの資源ポリシーを付ける（GHSA-5h4q-4m2j-rjhm） | Accepted |
-| [IADR-0583](./IADR-0583_image-scan-and-codeql-js.md) | 建てたサービスイメージを Trivy で走査して実行サマリに載せ（当面は報告だけ）、CodeQL に JavaScript / TypeScript を足す（GHSA-552h-47r7-6v6p） | Accepted |
+| [IADR-0584](./IADR-0584_image-scan-and-codeql-js.md) | 建てたサービスイメージを Trivy で走査して実行サマリに載せ（当面は報告だけ）、CodeQL に JavaScript / TypeScript を足す（GHSA-552h-47r7-6v6p） | Accepted |
