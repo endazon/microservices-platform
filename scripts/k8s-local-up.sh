@@ -13,7 +13,7 @@
 #   node は dev の値の守りの対象を realm の宣言から導出するのに使う（IADR-0572。無ければ [1/7] の直後で止まる）。
 # 機密の上書きは環境変数で: PG_PASSWORD / RABBITMQ_PASSWORD / KEYCLOAK_ADMIN_PASSWORD /
 #   OBJECT_STORAGE_ACCESS_KEY / OBJECT_STORAGE_SECRET_KEY（IADR-0461。旧 MINIO_*）/ WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY（#1764。埋め込み） /
-#   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）/
+#   RABBITMQ_USER（#1022。ブローカの既定のユーザー名。サービスは名乗らない＝IADR-0577 でサービスごとのユーザーへ移した）/
 #   WIKIJS_OIDC_CLIENT_SECRET（#1127。WIKIJS_OIDC=1 のときだけ使う。realm の wiki-js client と揃えること）/
 #   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）/
 #   SYNTHETIC_MONITOR_CLIENT_SECRET（#1287。SYNTHETIC=1 のときだけ使う。realm の synthetic-monitor client と揃えること）
@@ -118,6 +118,34 @@ apply_secret() ( # ns name key=val [key=val...]
     --dry-run=client -o yaml | kubectl apply -f -
 )
 
+# NFR-18, IADR-0577: ESO を使わない経路のブローカのサービスごとの資格情報（[5/7] から呼ぶ）。
+#   platform-infra/rabbitmq-users ＝ users.txt の全ユーザー（ブローカ側の写し。reconcile-users.sh と起動の直後の復元が読む）
+#   microservices-platform/msp-rabbitmq-users ＝ そのうち microservices-platform のユーザー（helm の各サービスが自分のキーを読む）
+#   値は「既存の写しの値 ＞ 乱数（48 桁の 16 進。bootstrap.sh の種と同じ形）」。値は端末にも引数にも出さない（ファイル経由）。
+rabbitmq_users_secrets_without_eso() (
+  umask 077
+  d="$(mktemp -d)"
+  trap 'rm -rf "$d"' EXIT
+  mkdir -p "$d/infra" "$d/msp"
+  grep -v '^[[:space:]]*#' "$ROOT/deploy/local/rabbitmq-setup/users.txt" | awk 'NF >= 2 { print $1, $2 }' > "$d/users"
+  infra_args=(); msp_args=()
+  while read -r u ns; do
+    kubectl -n "$INFRA_NS" get secret rabbitmq-users -o "go-template={{with index .data \"$u\"}}{{.}}{{end}}" 2>/dev/null \
+      | base64 -d > "$d/infra/$u" 2>/dev/null || true
+    if [ ! -s "$d/infra/$u" ]; then
+      od -An -tx1 -N24 /dev/urandom | tr -d ' \n' > "$d/infra/$u"
+    fi
+    infra_args+=(--from-file="$u=$d/infra/$u")
+    if [ "$ns" = "$MSP_NS" ]; then
+      cp "$d/infra/$u" "$d/msp/$u"
+      msp_args+=(--from-file="$u=$d/msp/$u")
+    fi
+  done < "$d/users"
+  kubectl create secret generic rabbitmq-users -n "$INFRA_NS" "${infra_args[@]}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl create secret generic msp-rabbitmq-users -n "$MSP_NS" "${msp_args[@]}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  echo "    rabbitmq-users（${#infra_args[@]} 件）・msp-rabbitmq-users（${#msp_args[@]} 件）を用意した（既存の値＞乱数。値は表示しない）"
+)
+
 echo "==> [1/7] cluster"
 # ランタイム自動判定: Rancher Desktop（内蔵 k3s・nerdctl）か、docker+k3d か。
 RUNTIME="${K8S_LOCAL_RUNTIME:-auto}"
@@ -203,7 +231,7 @@ unset dev_secret_args dev_secret_client dev_secret_env
 #   選び方: 明示（KEYCLOAK_ADMIN_PASSWORD / RABBITMQ_PASSWORD）＞ 既存の Secret（platform-infra の keycloak-admin / rabbitmq）の値
 #   ＞ 止める。開発用の値と同じものは指定が無いのと同じ扱い。使い捨ての開発環境だけ ALLOW_DEV_INFRA_CREDENTIALS=1 で開発用の値を許す。
 #   置き場所は context が確定した直後・Secret を 1 つも書く前（既存の Secret を読むのでクラスタが要る）・[2/7] の長いビルドより前。
-#   選んだ値は export する（[3/7] の Secret・[5/7] の rabbitmq-app・ESO の段の bootstrap.sh が同じ値を使う）。
+#   選んだ値は export する（[3/7] の Secret・ESO の段の bootstrap.sh が同じ値を使う）。
 # shellcheck source=scripts/lib/infra-credentials.sh
 . "$ROOT/scripts/lib/infra-credentials.sh"
 infra_cred_existing() { # <Secret 名> <キー> → 既存の値（無ければ空）。値は出力しない（呼び出し側が変数へ受ける）
@@ -370,8 +398,8 @@ kubectl create namespace "$INFRA_NS" --dry-run=client -o yaml | kubectl apply -f
 apply_secret "$INFRA_NS" postgres        "password=${PG_PASSWORD:-postgres}"
 # NFR, #1022: ブローカ自身の資格情報（利用者名・パスワード）を Secret 由来にする。
 # deploy/local/infra/rabbitmq.yaml が RABBITMQ_DEFAULT_USER/PASS を**非 optional** に参照する。
-# ⚠️ RABBITMQ_USER を変えるときは helm の global.messaging.user も併せて上書きすること
-#    （app 側の接続文字列は chart が組む）。AST chart は自前の guest:guest を持つ（#1022 §申し送り）。
+# NFR-18, IADR-0577: サービスはこのユーザーで名乗らない（サービスごとのユーザー。users.txt）。既定のユーザーはブローカの
+#    初期化にだけ使い、最後の段（disable-default-user.sh）で全サービスの切り替えを確かめてから消す。
 apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "password=${RABBITMQ_PASSWORD:?}"  # IADR-0574: 値は [1/7] の直後で決めた
 # IADR-0369 (#1088): 管理者名も Secret に持つ。deploy/local/infra/keycloak.yaml（KEYCLOAK_ADMIN）と
 # realm 後追い Job（deploy/local/keycloak-setup/realm-reconcile-job.yaml の KC_ADMIN_USER）が同じキーを読む
@@ -733,11 +761,16 @@ if [ "${ESO:-}" != "1" ]; then
   # これが無いと各サービスは起動時に落ちる（注入漏れが既定資格情報で成功へ倒れない）。
   # dev 既定は init スクリプトが作る `kp`（deploy/local/infra/postgres.yaml）。env で上書きする。
   apply_secret "$MSP_NS" postgres-app "password=${APP_DB_PASSWORD:-kp}"
-  # NFR, ADR-0027, #1022: ブローカのパスワード（app 側）。**appsettings.json から接続文字列を撤去した**ため、
-  # これが無いと RabbitMQ を使う 7 サービスは起動時に落ちる（helm の deployment.yaml が
-  # global.messaging.existingSecret を **非 optional** な secretKeyRef で参照する）。
-  # 値は step 3 のブローカ側と同値（[1/7] の直後で決めた RABBITMQ_PASSWORD。IADR-0574）。
-  apply_secret "$MSP_NS" rabbitmq-app "password=${RABBITMQ_PASSWORD:?}"
+  # NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q。旧 #1022 の rabbitmq-app）: ブローカのサービスごとのユーザー。
+  #   ESO を使わない経路でも共通の 1 組へ戻さない —— ブローカ側の写し（platform-infra/rabbitmq-users）と消費側
+  #   （microservices-platform/msp-rabbitmq-users）を、既存の値＞乱数で作り、ブローカへ合わせてから helm へ進む
+  #   （helm の deployment.yaml が各サービスのキーを **非 optional** な secretKeyRef で読む。無ければ起動しない）。
+  rabbitmq_users_secrets_without_eso
+  echo "    ブローカのサービスごとのユーザーを合わせる（ESO なし・deploy/local/rabbitmq-setup/users.txt・IADR-0577）"
+  if ! bash "$ROOT/deploy/local/rabbitmq-setup/reconcile-users.sh"; then
+    echo "ERROR: ブローカのサービスごとのユーザーを合わせられない。bash deploy/local/rabbitmq-setup/reconcile-users.sh で再実行できる" >&2
+    exit 1
+  fi
   apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
   # FR-13, IADR-0327 (#1108): 🔴 **発行済みの API キーを空で潰さない。**
   # Wiki.js のセットアップ後、`deploy/local/wikijs-setup/bootstrap.sh` がここへ実キーを書き戻す。
@@ -861,6 +894,10 @@ fi
 helm upgrade --install msp deploy/helm/microservices-platform \
   -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}"
 if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; trap - EXIT; fi
+# NFR-18, IADR-0577: 旧 rabbitmq-app（全サービス共通の 1 組・#1022）は読み手が無くなった。helm がサービスを切り替えた後に片付ける
+#   （ExternalSecret を先に消す。残すと ESO が Secret を作り直す。ESO の CRD が無いクラスタでは何もしない）。
+kubectl -n "$MSP_NS" delete externalsecret rabbitmq-app --ignore-not-found >/dev/null 2>&1 || true
+kubectl -n "$MSP_NS" delete secret rabbitmq-app --ignore-not-found >/dev/null
 # NFR-18, IADR-0522（#1860 監査指摘 2）: セッションストアのパスワードを変えたときだけ、Valkey（[4/7]）の**後に**
 #   BFF を作り直す（env は Pod の起動時にしか読まれない。helm upgrade は BFF のテンプレートを変えない）。
 if [ -n "$session_store_rotated" ]; then
@@ -886,7 +923,7 @@ if [ "${ISTIO:-}" = "1" ]; then
   echo "==> [opt-in] Istio sidecar injection (rollout restart)"
   kubectl -n "$MSP_NS" rollout restart deployment
   # #1088 実測（空の namespace から ISTIO=1 ＋ ESO=1 で立てたとき）: ESO が供給する Secret（postgres-app /
-  # rabbitmq-app / bff-oidc / identity-admin-oidc …）は**この後**の ESO ブロックで初めて作られるため、ここで
+  # msp-rabbitmq-users / bff-oidc / identity-admin-oidc …）は**この後**の ESO ブロックで初めて作られるため、ここで
   # Pod の Ready を待つと CreateContainerConfigError のまま 10 分待って up 全体が落ちる。既存クラスタへの
   # 再実行（Secret が残っている）では表面化しなかった。待ちは best-effort にし、**fail-closed の門は
   # check-stack-ready.js の G1**（Deployment の available と Pod の Ready）に置く。
@@ -1087,9 +1124,9 @@ if [ "${ESO:-}" = "1" ]; then
   # NFR, ADR-0002 (#1012): サービス DB のパスワード。手動 apply は上の `ESO != 1` ブロックで
   # スキップされるので、**これが唯一の供給元**である（欠けると DB を持つ全サービスが起動しない）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-postgres-app.yaml
-  # NFR, ADR-0027 (#1022): ブローカのパスワード（app 側）。手動 apply は上の `ESO != 1` ブロックで
-  # スキップされるので、**これが唯一の供給元**である（欠けると RabbitMQ を使う 7 サービスが起動しない）。
-  kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq-app.yaml
+  # NFR-18, IADR-0577（旧 #1022 の rabbitmq-app）: 基盤の 7 サービスのサービスごとの資格情報（消費側の写し）。手動の作成は
+  # 上の `ESO != 1` ブロックでスキップされるので、**これが唯一の供給元**である（欠けると RabbitMQ を使う 7 サービスが起動しない）。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-msp-rabbitmq-users.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-db.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-sync.yaml
   # IADR-0098 (#310) PR-3: OIDC client secret 群。grafana/vault/headlamp-oidc は platform-infra ns（MSP ns の minio-oidc は IADR-0461 で撤去）。
@@ -1176,14 +1213,14 @@ if [ "${ESO:-}" = "1" ]; then
   #   KV が無い間は同期に失敗して Secret が出来ず、e2e 利用者は作られない（他の機能には影響しない）。常時 apply。
   kubectl apply -f deploy/local/vault/eso/externalsecret-e2e-accounts.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ、#1817 で mcp-client-admin-oidc を追加し 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6、#2024 で e2e-accounts を追加し 6 → 7、IADR-0573 で rabbitmq-users を追加し 7 → 8、IADR-0576 で abac-seeder-oidc を追加し 8 → 9 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
-  msp_es="llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
+  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app（IADR-0577 で msp-rabbitmq-users へ置き換え・本数は不変）、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ、#1817 で mcp-client-admin-oidc を追加し 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6、#2024 で e2e-accounts を追加し 6 → 7、IADR-0573 で rabbitmq-users を追加し 7 → 8、IADR-0576 で abac-seeder-oidc を追加し 8 → 9 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  msp_es="llm-provider-credentials object-storage-credentials postgres-app msp-rabbitmq-users wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
   [ "${SYNTHETIC:-}" = "1" ] && msp_es="$msp_es synthetic-monitor-oidc"
   infra_es="postgres rabbitmq rabbitmq-users keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc e2e-accounts abac-seeder-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc alertmanager-mail"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
-  echo "    ESO: llm/object-storage-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
+  echo "    ESO: llm/object-storage-credentials/postgres-app/msp-rabbitmq-users/wikijs-db/wikijs-sync（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
   echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp/reset-gate-oidc/e2e-accounts/abac-seeder-oidc、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret $msp_es"
@@ -1768,6 +1805,16 @@ if [ "${PERSIST:-1}" != "0" ]; then
   if [ "$backup_missing_image" = "1" ] || [ "$backup_missing_recipients" = "1" ] || [ "$backup_patch_failed" = "1" ]; then
     echo "WARN:   前提を揃えて再実行すると有効に戻ります（docs/operations/platform-infra-backup-runbook.md）。" >&2
   fi
+fi
+
+# NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q）: 移行の段 3 の最後 —— ブローカの既定のユーザーを無効化する。
+#   消すのは、宣言の全ユーザーが認証でき、かつ既定のユーザーの接続が 1 本も無いときだけ（disable-default-user.sh が確かめる）。
+#   🔴 確かめられないときは消さずに WARN で通す（切り替わっていないサービスの接続を、起動器が切らない）。
+echo "==> ブローカの既定のユーザーを無効化する（全サービスの切り替えを確かめてから / IADR-0577）"
+if bash "$ROOT/deploy/local/rabbitmq-setup/disable-default-user.sh"; then
+  :
+else
+  echo "WARN: ブローカの既定のユーザーを無効化していない。切り替えを確かめてから bash deploy/local/rabbitmq-setup/disable-default-user.sh を再実行する" >&2
 fi
 
 echo ""

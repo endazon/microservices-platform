@@ -417,8 +417,14 @@ const KUBECTL_STUB = [
   'case "$*" in *"get job"*conditions*) echo "Complete "; exit 0;; esac',
   // IADR-0573: ブローカのユーザーの写し（Secret rabbitmq-users）。既定は全キーに値がある世界（base64 のダミー）。
   //   STUB_RMQ_USERS_MISSING=1 で値が揃わない世界（同期の失敗）を作る（起動器が止まることの陽性対照）。
-  'case "$*" in *"get secret rabbitmq-users"*) [ "${STUB_RMQ_USERS_MISSING:-}" = "1" ] || printf "ZHVtbXk="; exit 0;; esac',
+  //   IADR-0577: この実行で起動器が作った Secret（ESO なしの経路）の値は、その後の問い合わせにそのまま返す（作った後に読む本物と同じ）。
+  'case "$*" in *"get secret rabbitmq-users"*) k="$(printf "%s" "$*" | sed -n \'s/.*index \\.data "\\([^"]*\\)".*/\\1/p\')";',
+  '  v="$(grep "^rabbitmq-users $k=" "$STUB_LOG.secrets" 2>/dev/null | tail -n 1 | cut -d= -f2-)";',
+  '  if [ -n "$v" ]; then printf "%s" "$v" | base64 -w0; elif [ "${STUB_RMQ_USERS_MISSING:-}" != "1" ]; then printf "ZHVtbXk="; fi; exit 0;; esac',
   //   ブローカへの exec -i は本物と同じく標準入力（パスワード）を読み切る（読まずに閉じると送り手が SIGPIPE で落ちる）。
+  //   IADR-0577: 実機の rabbitmqctl（3.13）はパスワードを受けるコマンドで引数がちょうど 2 つのときだけ標準入力を開き、それ以外は
+  //   読み込みが返らずに止まる（統合スタックの実測）。模型は止まる代わりに 124（timeout と同じ）で返す。
+  'case "$*" in *"rabbitmqctl -q add_user "*|*"rabbitmqctl -q change_password "*|*"rabbitmqctl -q authenticate_user "*) echo "rabbitmqctl: 標準入力を開かない形（実機では止まる）" >&2; exit 124;; esac',
   'case "$*" in *"exec -i deploy/rabbitmq -- rabbitmqctl"*) cat >/dev/null; exit 0;; esac',
   // #1699: バックアップの CronJob の門の入力。CronJob のイメージは実物のマニフェストと同じ形の参照を返す。
   //   受取人の ConfigMap は STUB_BACKUP_RECIPIENTS（中身そのもの）を返す。既定（未設定）は空 ＝ 受取人なし。
@@ -1930,10 +1936,10 @@ ok('ESO=1 (IADR-0573): rabbitmq-users を apply し、宣言の全ユーザー�
     .split('\n').filter((l) => l.trim() && !l.trim().startsWith('#')).map((l) => l.trim().split(/\s+/)[0]);
   assert.ok(users.length >= 18, `宣言のユーザーが少ない（読めていない）: ${users.length}`);
   for (const u of users) {
-    const add = res.lines.findIndex((l) => l.includes('rabbitmqctl -q add_user ' + u) || l.includes('rabbitmqctl -q change_password ' + u));
+    const add = res.lines.findIndex((l) => l.includes('rabbitmqctl add_user ' + u) || l.includes('rabbitmqctl change_password ' + u));
     assert.ok(add > esAt, `${u} を合わせていない、または ExternalSecret の apply より前にある`);
     assert.ok(anyLineHas(res.lines, `rabbitmqctl -q set_permissions -p / ${u} .* .* .*`), `${u} の権限を設定していない`);
-    assert.ok(anyLineHas(res.lines, `rabbitmqctl -q authenticate_user ${u}`), `${u} の認証を確かめていない`);
+    assert.ok(anyLineHas(res.lines, `rabbitmqctl authenticate_user ${u}`), `${u} の認証を確かめていない`);
     // 引数はユーザー名で終わる（パスワードを引数に載せない）。
     for (const l of res.lines.filter((x) => / (add_user|change_password|authenticate_user) /.test(x) && x.includes(` ${u}`))) {
       assert.ok(l.trimEnd().endsWith(` ${u}`), `パスワードを引数に載せている疑い: ${l}`);
@@ -2005,36 +2011,306 @@ ok('既定 (#1012): postgres-app を手動 apply する（ESO 未設定）', () 
   );
 });
 
-// NFR, ADR-0027 (#1022): rabbitmq-app（ブローカのパスワード・app 側）も postgres-app と同じ対にする。
-//
-// 🔴 **これは #1012 が事後に踏んだ欠陥の再発防止である**（IADR-0286 の 2026-08-28 追記）。
-// #1022 は appsettings.json から RabbitMq:ConnectionString を撤去し、helm の deployment.yaml が
-// rabbitmq-app を **非 optional** で参照するようにした。手動 apply を `ESO != 1` ブロックへ入れた以上、
-// **対応する ExternalSecret を必ず置く** —— 置き忘れると ESO=1 で供給元が 1 つも無くなり、
-// RabbitMQ を使う 7 サービス（document / datasource / conversion / ingestion / retrieval / wiki / graph）が
-// `CreateContainerConfigError` で起動しない。
-//
-// **横断の機械検査は依然として無い**（上の #1012 のコメントが 1 回目の記録）。同型が**もう一度**起きたら、
-// `ESO != 1` ブロック内の apply_secret を走査して `externalsecret-<name>.yaml` の実在と apply を突合する
-// 検査へ一般化すること。本件は「先例に倣って対を置いた」ケースであって、事故の 2 回目ではない。
-ok('ESO=1 (#1022): rabbitmq-app の ExternalSecret を apply・手動 apply はスキップ', () => {
+// NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q。旧 #1022 の rabbitmq-app）: 基盤の 7 サービスのブローカの資格情報は
+// サービスごと（Secret msp-rabbitmq-users・キー = ユーザー名）。postgres-app と同じく「ESO=1 は ExternalSecret だけ・
+// それ以外は起動器だけ」の対にする（#1012 / #1022 が踏んだ「手動を止めたのに供給元を置かない」の再発防止。IADR-0286 追記）。
+// 全サービス共通の 1 組（rabbitmq-app）は、どちらの経路でも作らない。
+const USERS_0577 = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/users.txt'), 'utf8')
+  .split('\n').filter((l) => l.trim() && !l.trim().startsWith('#')).map((l) => l.trim().split(/\s+/));
+const MSP_USERS_0577 = USERS_0577.filter((r) => r[1] === 'microservices-platform').map((r) => r[0]).sort();
+const keysOf0577 = (r, secret) => r.secrets.filter((l) => l.startsWith(`${secret} `)).map((l) => l.slice(secret.length + 1).split('=')[0]).sort();
+const valOf0577 = (r, secret, key) => r.secrets.filter((l) => l.startsWith(`${secret} ${key}=`)).map((l) => l.slice(`${secret} ${key}=`.length));
+
+ok('ESO=1 (IADR-0577): msp-rabbitmq-users の ExternalSecret を apply し、手動では作らない（rabbitmq-app はどこにも無い）', () => {
   const res = runUp({ VAULT: '1', ESO: '1' });
-  assert.ok(
-    anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-rabbitmq-app.yaml'),
-    'externalsecret-rabbitmq-app.yaml が apply されない（ESO=1 で rabbitmq-app の供給元が無くなる）',
-  );
-  assert.ok(
-    !anyLineHas(res.lines, 'create secret generic rabbitmq-app'),
-    'ESO=1 なのに rabbitmq-app を手動 apply している（二重所有）',
-  );
+  assert.strictEqual(res.status, 0, res.stderr.slice(-800));
+  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-msp-rabbitmq-users.yaml'),
+    'externalsecret-msp-rabbitmq-users.yaml が apply されない（ESO=1 で 7 サービスの供給元が無くなる）');
+  assert.deepStrictEqual(keysOf0577(res, 'msp-rabbitmq-users'), [], 'ESO=1 なのに msp-rabbitmq-users を手動で作った（二重所有）');
+  assert.deepStrictEqual(keysOf0577(res, 'rabbitmq-users'), [], 'ESO=1 なのに rabbitmq-users を手動で作った（二重所有）');
+  for (const r of [res, DEFAULT]) {
+    assert.ok(!anyLineHas(r.lines, 'externalsecret-rabbitmq-app.yaml'), '旧 rabbitmq-app の ExternalSecret を apply している');
+    assert.deepStrictEqual(keysOf0577(r, 'rabbitmq-app'), [], '旧 rabbitmq-app を作っている');
+  }
+  assert.ok(!fs.existsSync(path.join(REPO_ROOT, 'deploy/local/vault/eso/externalsecret-rabbitmq-app.yaml')), '旧 ExternalSecret のマニフェストが残っている');
 });
 
-// 回帰: 既定（ESO 未設定）は rabbitmq-app を手動 apply する。
-ok('既定 (#1022): rabbitmq-app を手動 apply する（ESO 未設定）', () => {
-  assert.ok(
-    anyLineHas(DEFAULT.lines, 'create secret generic rabbitmq-app'),
-    'rabbitmq-app の手動 apply が無い（ESO 未設定では唯一の供給元）',
-  );
+ok('既定 (IADR-0577): ESO なしでも、ブローカ側（全ユーザー）と消費側（基盤のユーザーだけ）を同じ値で作り、helm の前に合わせる', () => {
+  assert.strictEqual(DEFAULT.status, 0, DEFAULT.stderr.slice(-800));
+  assert.ok(MSP_USERS_0577.length === 7, `基盤のユーザーが 7 件ではない（users.txt を読めていない）: ${MSP_USERS_0577}`);
+  assert.deepStrictEqual(keysOf0577(DEFAULT, 'rabbitmq-users'), USERS_0577.map((r) => r[0]).sort(), 'ブローカ側の写しが users.txt の全ユーザーではない');
+  assert.deepStrictEqual(keysOf0577(DEFAULT, 'msp-rabbitmq-users'), MSP_USERS_0577, '消費側が基盤のユーザーと 1 対 1 でない（AST のユーザーを渡していないか）');
+  for (const u of MSP_USERS_0577) {
+    assert.deepStrictEqual(valOf0577(DEFAULT, 'msp-rabbitmq-users', u), valOf0577(DEFAULT, 'rabbitmq-users', u), `${u} の値がブローカ側と食い違う`);
+  }
+  const helmAt = DEFAULT.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  assert.ok(helmAt > 0, 'helm upgrade が無い');
+  for (const u of USERS_0577.map((r) => r[0])) {
+    const at = DEFAULT.lines.findIndex((l) => l.includes(`rabbitmqctl add_user ${u}`) || l.includes(`rabbitmqctl change_password ${u}`));
+    assert.ok(at >= 0 && at < helmAt, `${u} を helm の前にブローカへ合わせていない`);
+  }
+  // 旧 rabbitmq-app は helm の後に片付ける（ExternalSecret を先に消す）。
+  const esDel = DEFAULT.lines.findIndex((l) => l.includes('delete externalsecret rabbitmq-app'));
+  const secDel = DEFAULT.lines.findIndex((l) => l.includes('delete secret rabbitmq-app'));
+  assert.ok(esDel > helmAt && secDel > esDel, '旧 rabbitmq-app を helm の後に ExternalSecret → Secret の順で片付けていない');
+});
+
+ok('既定 (IADR-0577): 既存の値は保ち、無いユーザーにだけ乱数（48 桁の 16 進・ユーザーごとに別）を作る。値は出力にも引数にも出さない', () => {
+  // 既存（stub は全キーに同じダミーを返す）＝ 値を保つ。
+  for (const u of USERS_0577.map((r) => r[0])) assert.deepStrictEqual(valOf0577(DEFAULT, 'rabbitmq-users', u), ['dummy'], `${u} の既存の値を保っていない`);
+  // 無い ＝ 乱数。
+  const r = runUp({ STUB_RMQ_USERS_MISSING: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  const vals = USERS_0577.map((x) => valOf0577(r, 'rabbitmq-users', x[0])[0]);
+  for (const v of vals) assert.match(v || '', /^[0-9a-f]{48}$/, '乱数の形が違う');
+  assert.strictEqual(new Set(vals).size, vals.length, 'ユーザー間で値が重なった');
+  for (const v of vals) {
+    assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
+    assert.ok(!r.lines.some((l) => l.includes(v)), '値がコマンドの引数に出た');
+  }
+});
+
+// NFR-18, IADR-0577: 合わせ（reconcile-users.sh）は rabbitmqctl へパスワードを「改行で終わる 1 行」で渡す。
+//   rabbitmqctl は 1 行（改行か EOF まで）を読む。改行が無いと EOF を待ち、kubectl exec -i 越しでは読み終わらずに止まり得る
+//   （統合スタックで起動器が [5/7] で止まった実測）。模型は改行で終わらない入力を「止まった」として 124 で返す。
+ok('IADR-0577: reconcile-users.sh はパスワードを改行で終わる 1 行で渡し（値そのものは変えない）、1 回の呼び出しに上限を持つ', () => {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'reconcile-0577-'));
+  const bin = path.join(H, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'kubectl'), [
+    '#!/usr/bin/env bash',
+    'echo "kubectl $*" >> "$STUB_H/log"',
+    'case "$*" in',
+    '  *"get secret rabbitmq-users"*) k="$(printf "%s" "$*" | sed -n \'s/.*index \\.data "\\([^"]*\\)".*/\\1/p\')"; printf "v-%s" "$k" | base64 -w0; exit 0;;',
+    '  *"rabbitmqctl -q list_users"*) printf "[]"; exit 0;;',
+    '  *"rabbitmqctl -q add_user "*|*"rabbitmqctl -q change_password "*|*"rabbitmqctl -q authenticate_user "*)',
+    '    echo "noinput ${*: -1}" >> "$STUB_H/log"; exit 124;;',
+    '  *"rabbitmqctl add_user "*|*"rabbitmqctl change_password "*|*"rabbitmqctl authenticate_user "*)',
+    '    a="$*"; set -- ${a#*rabbitmqctl }; [ "$#" -eq 2 ] || { echo "noinput $*" >> "$STUB_H/log"; exit 124; }',
+    '    in="$(cat; printf x)"; in="${in%x}"',
+    '    case "$in" in *$\'\\n\') ;; *) echo "stdin-not-line ${*: -1}" >> "$STUB_H/log"; exit 124;; esac',
+    '    [ "${in%$\'\\n\'}" = "v-${*: -1}" ] || { echo "stdin-value-changed ${*: -1}" >> "$STUB_H/log"; exit 1; }',
+    '    exit 0;;',
+    'esac',
+    'exit 0',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  fs.writeFileSync(path.join(H, 'users.txt'), '# 宣言\nmsp-document x y msp/rabbitmq-users\nast-audit x y ai-stock-trading/rabbitmq-users\n');
+  fs.writeFileSync(path.join(H, 'log'), '');
+  const script = path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/reconcile-users.sh');
+  const r = spawnSync('bash', [script], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, STUB_H: H,
+    RABBITMQ_USERS_FILE: path.join(H, 'users.txt'), RABBITMQ_USERS_TIMEOUT: '1' } });
+  const log = fs.readFileSync(path.join(H, 'log'), 'utf8');
+  fs.rmSync(H, { recursive: true, force: true });
+  assert.ok(!/noinput/.test(log), `パスワードを渡すコマンドの引数が 2 つでない（rabbitmqctl が標準入力を開かず止まる）:\n${log}`);
+  assert.ok(!/stdin-not-line/.test(log), `パスワードを改行で終わらせずに渡した（kubectl exec -i 越しで止まり得る）:\n${log}`);
+  assert.ok(!/stdin-value-changed/.test(log), `渡した値が Secret の値と違う:\n${log}`);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(/ブローカのサービスごとのユーザー: 2 件（apply/.test(r.stdout), r.stdout);
+  assert.ok(!/v-msp-document|v-ast-audit/.test(`${r.stdout}${r.stderr}`), '値が出力に出た');
+  const src = fs.readFileSync(script, 'utf8');
+  assert.ok(/timeout "\$CTL_TIMEOUT" kubectl -n "\$INFRA_NS" exec -i deploy\/rabbitmq/.test(src), '1 回の呼び出しに上限が無い（止まると起動器ごと止まる）');
+});
+
+// NFR-18, IADR-0577: 既定のユーザーの無効化（deploy/local/rabbitmq-setup/disable-default-user.sh）。
+//   ブローカの状態（ユーザー・接続・Secret）を持つ模型の kubectl で、「確かめてからだけ消す」と「印を先に置く」を試す。
+//   模型: $H/users（在るユーザー）・$H/conns（接続のユーザー）・$H/default（Secret rabbitmq の username）・
+//         $H/rmq-users（Secret rabbitmq-users の「キー=値」）・$H/log（呼び出しの順）。
+const DISABLE_0577 = path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/disable-default-user.sh');
+const KUBECTL_MODEL_0577 = [
+  '#!/usr/bin/env bash',
+  'H="$STUB_H"',
+  'echo "kubectl $*" >> "$H/log"',
+  'json() { printf "["; sed \'s/.*/{"user":"&","tags":[]}/\' "$1" | paste -sd, - | tr -d "\\n"; printf "]"; }',
+  'case "$*" in',
+  '  *"get secret rabbitmq -o"*) [ -s "$H/default" ] && base64 -w0 < "$H/default"; exit 0;;',
+  '  *"get secret rabbitmq-users"*) k="$(printf "%s" "$*" | sed -n \'s/.*index \\.data "\\([^"]*\\)".*/\\1/p\')";',
+  '    v="$(grep "^$k=" "$H/rmq-users" | cut -d= -f2-)"; [ -n "$v" ] && printf "%s" "$v" | base64 -w0; exit 0;;',
+  '  *"rabbitmqctl -q list_users"*) [ -e "$H/fail-list_users" ] && exit 1; json "$H/users"; exit 0;;',
+  '  *"rabbitmqctl -q list_connections"*) [ -e "$H/fail-list_connections" ] && exit 1; json "$H/conns"; exit 0;;',
+  '  *"rabbitmqctl -q authenticate_user "*) exit 124;;',
+  '  *"rabbitmqctl authenticate_user "*) cat >/dev/null; grep -Fxq -- "${*: -1}" "$H/users"; exit $?;;',
+  '  *"rabbitmqctl -q delete_user "*) grep -Fxv -- "${*: -1}" "$H/users" > "$H/users.new" || true; mv "$H/users.new" "$H/users"; exit 0;;',
+  '  *"create configmap"*) exit 0;;',
+  '  *"apply -f -"*) cat >/dev/null; exit 0;;',
+  'esac',
+  'exit 0',
+  '',
+].join('\n');
+function disable0577({ users, conns = [], defaultUser = 'brokeradmin', args = [], failing = [] }) {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'disable-0577-'));
+  const bin = path.join(H, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'kubectl'), KUBECTL_MODEL_0577, { mode: 0o755 });
+  fs.writeFileSync(path.join(H, 'users'), users.map((u) => `${u}\n`).join(''));
+  fs.writeFileSync(path.join(H, 'conns'), conns.map((u) => `${u}\n`).join(''));
+  fs.writeFileSync(path.join(H, 'default'), defaultUser);
+  fs.writeFileSync(path.join(H, 'rmq-users'), USERS_0577.map((r) => `${r[0]}=v-${r[0]}\n`).join(''));
+  fs.writeFileSync(path.join(H, 'log'), '');
+  for (const f of failing) fs.writeFileSync(path.join(H, `fail-${f}`), '');
+  const r = spawnSync('bash', [DISABLE_0577, ...args], {
+    encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, STUB_H: H, RABBITMQ_USERS_TIMEOUT: '1' },
+  });
+  const out = { status: r.status, stdout: r.stdout, stderr: r.stderr,
+    log: fs.readFileSync(path.join(H, 'log'), 'utf8').split('\n').filter(Boolean),
+    users: fs.readFileSync(path.join(H, 'users'), 'utf8').split('\n').filter(Boolean) };
+  fs.rmSync(H, { recursive: true, force: true });
+  return out;
+}
+const ALL_0577 = USERS_0577.map((r) => r[0]);
+const flagAt0577 = (r) => r.log.findIndex((l) => /create configmap rabbitmq-default-user --from-literal=disabled=true/.test(l));
+const delAt0577 = (r) => r.log.findIndex((l) => / delete_user /.test(l));
+
+ok('IADR-0577: 全ユーザーが認証でき、既定のユーザーの接続が無ければ、印を先に置いてから既定のユーザーを消す', () => {
+  const r = disable0577({ users: [...ALL_0577, 'brokeradmin'], conns: ['msp-document', 'ast-audit'] });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!r.users.includes('brokeradmin'), '既定のユーザーが残った');
+  assert.deepStrictEqual(r.users.sort(), [...ALL_0577].sort(), 'サービスのユーザーまで消した');
+  assert.ok(flagAt0577(r) >= 0 && flagAt0577(r) < delAt0577(r), '印（ConfigMap）を消す前に置いていない（消した直後の再起動で既定のユーザーが戻る）');
+  assert.ok(r.log.some((l) => /delete_user brokeradmin$/.test(l)), '名前を Secret から読んで消していない');
+  assert.ok(!/v-msp-|v-ast-/.test(`${r.stdout}${r.stderr}${r.log.join('\n')}`), '値が出力か引数に出た');
+});
+
+ok('IADR-0577: 既定のユーザーの接続が 1 本でも残れば消さない（exit 3・印も置かない）', () => {
+  const r = disable0577({ users: [...ALL_0577, 'brokeradmin'], conns: ['msp-document', 'brokeradmin'] });
+  assert.strictEqual(r.status, 3, r.stderr);
+  assert.ok(r.users.includes('brokeradmin'), '接続が残るのに消した');
+  assert.strictEqual(flagAt0577(r), -1, '消していないのに印を置いた（次の再起動で消える）');
+  assert.ok(/既定のユーザーの接続が 1 本ある/.test(r.stderr), r.stderr);
+});
+
+ok('IADR-0577: 接続・ユーザーの列挙が失敗したら「無い」と読まずに止める（消さない・印も置かない。fail-closed）', () => {
+  // 接続の列挙の失敗を「0 本」と読むと、切り替わっていないサービスが残るまま既定のユーザーを消す。
+  const conns = disable0577({ users: [...ALL_0577, 'brokeradmin'], conns: ['brokeradmin'], failing: ['list_connections'] });
+  assert.strictEqual(conns.status, 1, conns.stderr);
+  assert.ok(conns.users.includes('brokeradmin'), '接続を列挙できないのに消した');
+  assert.strictEqual(flagAt0577(conns), -1, '接続を列挙できないのに印を置いた');
+  assert.strictEqual(delAt0577(conns), -1);
+  assert.ok(/接続を列挙できない/.test(conns.stderr), conns.stderr);
+  // ユーザーの列挙の失敗を「既に無い」と読むと、既定のユーザーが残ったまま印だけを置く。
+  for (const args of [[], ['--check']]) {
+    const users = disable0577({ users: [...ALL_0577, 'brokeradmin'], failing: ['list_users'], args });
+    assert.strictEqual(users.status, 1, `${args}: ${users.stderr}`);
+    assert.strictEqual(flagAt0577(users), -1, 'ユーザーを列挙できないのに印を置いた');
+    assert.ok(/ユーザーを列挙できない/.test(users.stderr), users.stderr);
+  }
+});
+
+ok('IADR-0577: 宣言のユーザーが 1 人でも欠ければ消さない（exit 1・印も置かない）', () => {
+  const r = disable0577({ users: [...ALL_0577.filter((u) => u !== 'msp-graph'), 'brokeradmin'] });
+  assert.strictEqual(r.status, 1, r.stderr);
+  assert.ok(r.users.includes('brokeradmin'));
+  assert.strictEqual(flagAt0577(r), -1);
+  assert.ok(/msp-graph\(無い\)/.test(r.stderr), `欠けたユーザーを名指していない:\n${r.stderr}`);
+});
+
+ok('IADR-0577: 既定のユーザーの名前が読めなければ何もしない。既に無ければ印だけ置く。--check は残っていれば 1', () => {
+  const noName = disable0577({ users: [...ALL_0577, 'brokeradmin'], defaultUser: '' });
+  assert.strictEqual(noName.status, 1);
+  assert.ok(noName.users.includes('brokeradmin') && flagAt0577(noName) === -1 && delAt0577(noName) === -1);
+  const gone = disable0577({ users: ALL_0577 });
+  assert.strictEqual(gone.status, 0, gone.stderr);
+  assert.ok(flagAt0577(gone) >= 0 && delAt0577(gone) === -1, '既に無いのに消しに行った、または印を置かない');
+  const chkPresent = disable0577({ users: [...ALL_0577, 'brokeradmin'], args: ['--check'] });
+  assert.strictEqual(chkPresent.status, 1);
+  assert.ok(chkPresent.users.includes('brokeradmin') && flagAt0577(chkPresent) === -1, '--check が書いた');
+  assert.strictEqual(disable0577({ users: ALL_0577, args: ['--check'] }).status, 0);
+});
+
+ok('IADR-0577: 起動器は最後に無効化を試み、できなければ WARN で通す（切り替わっていない接続を起動器が切らない）', () => {
+  const at = DEFAULT.lines.findIndex((l) => l.includes('get secret rabbitmq -o go-template'));
+  const helmAt = DEFAULT.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  assert.ok(at > helmAt && helmAt > 0, '無効化を helm の後に試していない');
+  assert.strictEqual(DEFAULT.status, 0);
+  assert.ok(/ブローカの既定のユーザーを無効化していない/.test(DEFAULT.stderr), 'できなかったことを告げていない');
+});
+
+// NFR-18, IADR-0577: ブローカの起動の直後の復元（deploy/local/infra/rabbitmq.yaml の postStart。ブローカは永続化していない）。
+const BROKER_0577 = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/rabbitmq.yaml'), 'utf8');
+const BOOT_0577 = (() => {
+  const m = BROKER_0577.match(/\n  restore-users\.sh: \|\n((?:    .*\n|\n)+)/);
+  assert.ok(m, 'rabbitmq.yaml に restore-users.sh が無い');
+  return m[1].split('\n').map((l) => l.replace(/^    /, '')).join('\n');
+})();
+function boot0577({ files = {}, flag = null, addFails = [], changeFails = [], startupFails = false, cookie = true }) {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'boot-0577-'));
+  const bin = path.join(H, 'bin');
+  const dir = path.join(H, 'users');
+  fs.mkdirSync(bin); fs.mkdirSync(dir);
+  for (const [k, v] of Object.entries(files)) fs.writeFileSync(path.join(dir, k), v);
+  if (flag !== null) fs.writeFileSync(path.join(H, 'flag'), flag);
+  if (cookie) fs.writeFileSync(path.join(H, 'cookie'), 'c');
+  fs.writeFileSync(path.join(H, 'boot.sh'), BOOT_0577);
+  fs.writeFileSync(path.join(bin, 'rabbitmqctl'), [
+    '#!/bin/sh',
+    // 実機の rabbitmqctl（3.13）の起動スクリプトを写す: パスワードを受けるコマンドは、引数がちょうど 2 つのときだけ標準入力を開く。
+    'cmd="$1"; [ "$cmd" = "-q" ] && cmd="$2"',
+    'in=""; case "$cmd" in add_user|change_password|authenticate_user)',
+    '  if [ "$#" -ne 2 ]; then echo "$* <noinput>" >> "$STUB_H/calls"; exit 124; fi; in="$(cat)";; esac',
+    'echo "$* <$in>" >> "$STUB_H/calls"',
+    'u="$3"; [ "$1" = "-q" ] || u="$2"',
+    'case "$cmd" in',
+    `  await_startup) [ "${startupFails ? 1 : 0}" = 1 ] && exit 1; exit 0;;`,
+    `  add_user) case " ${addFails.join(' ')} " in *" $u "*) exit 1;; esac;;`,
+    `  change_password) case " ${changeFails.join(' ')} " in *" $u "*) exit 1;; esac;;`,
+    'esac',
+    'exit 0',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  fs.writeFileSync(path.join(H, 'calls'), '');
+  const r = spawnSync('sh', [path.join(H, 'boot.sh')], { encoding: 'utf8', env: { ...process.env,
+    PATH: `${bin}:${process.env.PATH}`, STUB_H: H, RABBITMQ_BOOT_USERS_DIR: dir, RABBITMQ_BOOT_FLAG: path.join(H, 'flag'),
+    RABBITMQ_BOOT_TRIES: '2', RABBITMQ_BOOT_COOKIE: path.join(H, 'cookie'), RABBITMQ_BOOT_LOG: path.join(H, 'boot.log'), RABBITMQ_DEFAULT_USER: 'brokeradmin' } });
+  const out = { status: r.status, calls: fs.readFileSync(path.join(H, 'calls'), 'utf8').split('\n').filter(Boolean),
+    log: fs.existsSync(path.join(H, 'boot.log')) ? fs.readFileSync(path.join(H, 'boot.log'), 'utf8') : '' };
+  fs.rmSync(H, { recursive: true, force: true });
+  return out;
+}
+
+ok('IADR-0577: 起動の直後に Secret の全ユーザーを作り直す（値は標準入力・権限と空のタグ）。印が無ければ既定のユーザーは残す', () => {
+  const r = boot0577({ files: { 'msp-document': 'pw-d', 'ast-audit': 'pw-a' } });
+  assert.strictEqual(r.status, 0);
+  for (const [u, pw] of [['msp-document', 'pw-d'], ['ast-audit', 'pw-a']]) {
+    assert.ok(r.calls.includes(`add_user ${u} <${pw}>`), `${u} を標準入力の値で作っていない:\n${r.calls.join('\n')}`);
+    assert.ok(r.calls.includes(`-q set_permissions -p / ${u} .* .* .* <>`), `${u} の権限`);
+    assert.ok(r.calls.includes(`-q set_user_tags ${u} <>`), `${u} のタグ`);
+  }
+  assert.ok(!r.calls.some((c) => / delete_user /.test(c)), '印が無いのに既定のユーザーを消した');
+  assert.ok(!/pw-d|pw-a/.test(r.log), '値を記録に出した');
+  assert.ok(!r.calls.some((c) => /<noinput>/.test(c)), `パスワードを渡すコマンドの引数が 2 つでない（実機では止まる）:\n${r.calls.join('\n')}`);
+});
+
+ok('IADR-0577: 印があり全ユーザーが揃えば既定のユーザーを消す。1 人でも揃わない・Secret が空なら消さない。常に 0 で終わる', () => {
+  const ok1 = boot0577({ files: { 'msp-document': 'a', 'msp-wiki': 'b' }, flag: 'true', addFails: ['msp-wiki'] });
+  assert.ok(ok1.calls.includes('change_password msp-wiki <b>'), '在るユーザーを change_password で合わせていない');
+  assert.ok(ok1.calls.includes('-q delete_user brokeradmin <>'), '印に従って消していない');
+  const partial = boot0577({ files: { 'msp-document': 'a', 'msp-wiki': 'b' }, flag: 'true', addFails: ['msp-wiki'], changeFails: ['msp-wiki'] });
+  assert.strictEqual(partial.status, 0);
+  assert.ok(!partial.calls.some((c) => / delete_user /.test(c)), '揃っていないのに消した（サービスが繋がらなくなる）');
+  const empty = boot0577({ flag: 'true' });
+  assert.ok(!empty.calls.some((c) => / delete_user /.test(c)), 'Secret が空なのに消した');
+  const offFlag = boot0577({ files: { 'msp-document': 'a' }, flag: 'false' });
+  assert.ok(!offFlag.calls.some((c) => / delete_user /.test(c)), '印が true でないのに消した');
+  const down = boot0577({ files: { 'msp-document': 'a' }, flag: 'true', startupFails: true });
+  assert.strictEqual(down.status, 0, '起動を待てないときにコンテナを落とす');
+  assert.ok(!down.calls.some((c) => / (add_user|delete_user) /.test(c)), '起動を待てないのに書いた');
+});
+
+ok('IADR-0577: 復元はサーバが cookie を作るまで rabbitmqctl を呼ばない（先に呼ぶと root の所有で cookie を作り、サーバが読めずに落ちる）', () => {
+  const r = boot0577({ files: { 'msp-document': 'a' }, flag: 'true', cookie: false });
+  assert.strictEqual(r.status, 0, '復元の失敗でコンテナを止めた');
+  assert.deepStrictEqual(r.calls, [], `cookie が無いのに rabbitmqctl を呼んだ:\n${r.calls.join('\n')}`);
+  assert.ok(/cookie が現れない/.test(r.log), r.log);
+  assert.ok(/su-exec "\$owner" rabbitmqctl/.test(BOOT_0577), 'root のまま cookie の所有者以外で rabbitmqctl を呼ぶ経路を閉じていない');
+});
+
+ok('IADR-0577: ブローカの manifest は復元を postStart で呼び、Secret と印の ConfigMap を optional でマウントする', () => {
+  assert.ok(/postStart:\s*\n\s*exec:\s*\n\s*command: \["\/bin\/sh", "\/opt\/rabbitmq-boot\/restore-users\.sh"\]/.test(BROKER_0577), 'postStart が復元を呼ばない');
+  assert.ok(/name: users\n\s*secret: \{ secretName: rabbitmq-users, optional: true/.test(BROKER_0577), 'rabbitmq-users を optional でマウントしていない');
+  assert.ok(/configMap: \{ name: rabbitmq-default-user, optional: true \}/.test(BROKER_0577), '印の ConfigMap を optional でマウントしていない');
+  assert.ok(/mountPath: \/etc\/rabbitmq-default-user/.test(BROKER_0577) && /\/etc\/rabbitmq-default-user\/disabled/.test(BOOT_0577), '印のパスが食い違う');
+  const dis = fs.readFileSync(DISABLE_0577, 'utf8');
+  assert.ok(/FLAG_CM="\$\{RABBITMQ_DEFAULT_USER_FLAG:-rabbitmq-default-user\}"/.test(dis) && /--from-literal=disabled=true/.test(dis), '印の名前・キーが食い違う');
 });
 
 // FR-05, FR-09, SC-17, IADR-0301/IADR-0329 (#1101): identity-admin-oidc（SC-17 の変更を Keycloak
@@ -6111,13 +6387,15 @@ ok('IADR-0574: 指定も既存の Secret も無く opt-in も無ければ、[1/7
   }
 });
 
-ok('IADR-0574: 明示の値（開発用でない）で作り、rabbitmq-app も同じ値。opt-in も警告も要らない（値は出力しない）', () => {
+ok('IADR-0574: 明示の値（開発用でない）で作る。opt-in も警告も要らない（値は出力しない）', () => {
   const env = { ...NO_OPT_IN_0573, KEYCLOAK_ADMIN_PASSWORD: custom0573('kc'), RABBITMQ_PASSWORD: custom0573('mq') };
   const r = runUp(env);
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   assert.deepStrictEqual(credOf0573(r, 'keycloak-admin', 'password'), [custom0573('kc')]);
   assert.deepStrictEqual(credOf0573(r, 'rabbitmq', 'password'), [custom0573('mq')]);
-  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), [custom0573('mq')], 'アプリ側がブローカと食い違う');
+  // IADR-0577: サービスは既定のユーザーで名乗らない（全サービス共通の rabbitmq-app は作らず、ブローカの値を消費側へ配らない）。
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), [], '旧 rabbitmq-app を作った');
+  assert.ok(!r.secrets.some((l) => l.startsWith('msp-rabbitmq-users ') && l.endsWith(`=${custom0573('mq')}`)), 'ブローカの既定のユーザーの値を消費側へ配った');
   assert.ok(!/ALLOW_DEV_INFRA_CREDENTIALS/.test(r.stderr), '明示なのに opt-in の警告が出た');
   for (const v of [custom0573('kc'), custom0573('mq')]) {
     assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
@@ -6130,7 +6408,7 @@ ok('IADR-0574: 指定が無くても、既存の Secret が開発用でない値
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   assert.deepStrictEqual(credOf0573(r, 'keycloak-admin', 'password'), [custom0573('kc-old')]);
   assert.deepStrictEqual(credOf0573(r, 'rabbitmq', 'password'), [custom0573('mq-old')]);
-  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), [custom0573('mq-old')]);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), [], '旧 rabbitmq-app を作った（IADR-0577）');
   assert.ok(r.lines.some((l) => l.includes('get secret keycloak-admin')), '陽性対照: 既存の Secret を読んでいる');
   // 明示は既存に勝つ
   const both = runUp({ ...NO_OPT_IN_0573, STUB_KEYCLOAK_ADMIN_EXISTING: custom0573('kc-old'), KEYCLOAK_ADMIN_PASSWORD: custom0573('kc-new'),
@@ -6154,7 +6432,7 @@ ok('IADR-0574: opt-in（ALLOW_DEV_INFRA_CREDENTIALS=1）だけが開発用の値
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   assert.deepStrictEqual(credOf0573(r, 'keycloak-admin', 'password'), ['admin']);
   assert.deepStrictEqual(credOf0573(r, 'rabbitmq', 'password'), ['guest']);
-  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), ['guest']);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), [], '旧 rabbitmq-app を作った（IADR-0577。サービスは開発用の値でも名乗らない）');
   assert.ok(/!!! WARNING: k8s-local-up\.sh: ALLOW_DEV_INFRA_CREDENTIALS=1 により、基盤の資格情報を公知の開発用の値で作る: KEYCLOAK_ADMIN_PASSWORD, RABBITMQ_PASSWORD/.test(r.stderr),
     `警告が無い:\n${r.stderr.slice(0, 800)}`);
   const t = runUp({ ALLOW_DEV_INFRA_CREDENTIALS: 'true' });

@@ -3,7 +3,9 @@
 # NFR, #1022: ブローカ自身の資格情報は **Secret `rabbitmq`（key=username / password）由来**である。
 # dev 既定は `k8s-local-up.sh` が env（RABBITMQ_USER / RABBITMQ_PASSWORD）から作る。
 # MSP サービスは **helm が注入する `RabbitMq__ConnectionString`** で接続する（コード既定は撤去済み。
-# 未注入は起動失敗）。AST サービスは AST chart が自前の値を注入する（submodule 所有）。
+# 未注入は起動失敗）。AST サービスは AST chart が注入する（submodule 所有）。
+# NFR-18, IADR-0573 / IADR-0577: どちらも**サービスごとのユーザー**（users.txt）で名乗る。既定のユーザー（Secret `rabbitmq`）は
+# ブローカの初期化にだけ使い、全サービスの切り替えを確かめた後は deploy/local/rabbitmq-setup/disable-default-user.sh が消す。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -35,6 +37,18 @@ spec:
           ports:
             - { containerPort: 5672, name: amqp }
             - { containerPort: 15672, name: management }
+          # NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q）: ブローカは永続化していない（再起動のたびに空から立つ）。
+          #   起動の直後にサービスごとのユーザーを Secret `rabbitmq-users` から作り直し、無効化の印があれば既定のユーザーを消す。
+          #   postStart が終わるまで readiness は測られないので、サービスはユーザーが揃ってから届く。スクリプトは失敗しても 0 で終わる
+          #   （ブローカ自体は止めない。揃わなかったことは起動器の reconcile-users.sh と --check が見せる）。
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "/opt/rabbitmq-boot/restore-users.sh"]
+          volumeMounts:
+            - { name: boot, mountPath: /opt/rabbitmq-boot, readOnly: true }
+            - { name: users, mountPath: /etc/rabbitmq-users, readOnly: true }
+            - { name: default-user-flag, mountPath: /etc/rabbitmq-default-user, readOnly: true }
           readinessProbe:
             exec:
               command: ["rabbitmq-diagnostics", "-q", "ping"]
@@ -44,6 +58,77 @@ spec:
           resources:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { cpu: "1", memory: 1Gi }
+      volumes:
+        - name: boot
+          configMap: { name: rabbitmq-boot, defaultMode: 0555 }
+        # キー = ユーザー名・値 = パスワード。ESO=1 は ExternalSecret、それ以外は起動器が作る。無い間は何も復元しない。
+        - name: users
+          secret: { secretName: rabbitmq-users, optional: true, defaultMode: 0400 }
+        # 既定のユーザーの無効化の印（deploy/local/rabbitmq-setup/disable-default-user.sh が、全サービスの切り替えを確かめてから作る）。
+        - name: default-user-flag
+          configMap: { name: rabbitmq-default-user, optional: true }
+---
+# NFR-18, IADR-0577: 起動の直後の復元（上の postStart）。値は標準入力で rabbitmqctl へ渡し、どこにも出さない。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-boot
+  namespace: platform-infra
+  labels: { app: rabbitmq }
+data:
+  restore-users.sh: |
+    #!/bin/sh
+    # 失敗してもコンテナを止めない（常に 0 で終わる）。記録は PID 1 の標準出力（kubectl logs で読める）へ出す。値は出さない。
+    log() { echo "rabbitmq-boot: $*" > "${RABBITMQ_BOOT_LOG:-/proc/1/fd/1}" 2>/dev/null || true; }
+    USERS_DIR="${RABBITMQ_BOOT_USERS_DIR:-/etc/rabbitmq-users}"
+    FLAG="${RABBITMQ_BOOT_FLAG:-/etc/rabbitmq-default-user/disabled}"
+    VHOST="${RABBITMQ_BOOT_VHOST:-/}"
+    tries="${RABBITMQ_BOOT_TRIES:-90}"
+    # 🔴 postStart はサーバの起動と並んで root で走る。サーバが cookie を作る前に rabbitmqctl を呼ぶと、rabbitmqctl が
+    #   root の所有で cookie を作り、権限を落としたサーバが読めずに起動に失敗する。サーバが作った cookie が在るまで
+    #   rabbitmqctl を呼ばず、呼ぶときは cookie の所有者として呼ぶ（su-exec が無ければそのまま）。
+    COOKIE="${RABBITMQ_BOOT_COOKIE:-/var/lib/rabbitmq/.erlang.cookie}"
+    until [ -s "$COOKIE" ]; do
+      tries=$((tries - 1))
+      if [ "$tries" -le 0 ]; then log "サーバの cookie が現れない。ユーザーを復元しない"; exit 0; fi
+      sleep 2
+    done
+    owner="$(stat -c %U "$COOKIE" 2>/dev/null || true)"
+    if [ "$(id -u)" = "0" ] && [ -n "$owner" ] && [ "$owner" != "root" ] && command -v su-exec >/dev/null 2>&1; then
+      rabbitmqctl() { su-exec "$owner" rabbitmqctl "$@"; }
+    fi
+    until rabbitmqctl -q await_startup --timeout 5 >/dev/null 2>&1; do
+      tries=$((tries - 1))
+      if [ "$tries" -le 0 ]; then log "ノードの起動を待てない。ユーザーを復元しない"; exit 0; fi
+      sleep 2
+    done
+    n=0
+    failed=0
+    for f in "$USERS_DIR"/*; do
+      [ -f "$f" ] || continue
+      u="$(basename "$f")"
+      # 🔴 パスワードを標準入力で渡すコマンドは引数を「コマンドとユーザー名」の 2 つだけにする（-q も付けない）。
+      #   rabbitmqctl は引数がちょうど 2 つのときだけ標準入力を開き、それ以外は読み込みが返らずに止まる。
+      if ! rabbitmqctl add_user "$u" < "$f" >/dev/null 2>&1; then
+        rabbitmqctl change_password "$u" < "$f" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
+      fi
+      rabbitmqctl -q set_permissions -p "$VHOST" "$u" '.*' '.*' '.*' >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
+      rabbitmqctl -q set_user_tags "$u" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
+      n=$((n + 1))
+    done
+    log "サービスごとのユーザーを復元した: ${n} 件（失敗 ${failed} 件）"
+    if [ "$(cat "$FLAG" 2>/dev/null)" = "true" ]; then
+      if [ "$n" -gt 0 ] && [ "$failed" -eq 0 ] && [ -n "${RABBITMQ_DEFAULT_USER:-}" ]; then
+        if rabbitmqctl -q delete_user "$RABBITMQ_DEFAULT_USER" >/dev/null 2>&1; then
+          log "既定のユーザーを消した（無効化の印に従う）"
+        else
+          log "既定のユーザーを消せない（既に無いか、ノードが応答しない）"
+        fi
+      else
+        log "既定のユーザーを残した（サービスごとのユーザーが揃っていない）"
+      fi
+    fi
+    exit 0
 ---
 apiVersion: v1
 kind: Service
