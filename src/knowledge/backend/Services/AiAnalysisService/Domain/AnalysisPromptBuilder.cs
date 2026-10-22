@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Knowledge.Contracts.Dtos;
+using Knowledge.Contracts.Llm;
 
 namespace AiAnalysisService.Domain;
 
@@ -38,7 +39,8 @@ public static partial class AnalysisPromptBuilder
         return $"""
             {task}
             参照文書に根拠が無い情報は決して含めず、推測が必要な場合はその旨を明示してください。
-            {PromptTrustBoundary.Rules(boundary)}
+            {PromptTrustBoundary.Rules(boundary, includesUserInput: true)}
+            - 回答は Markdown の本文で書き、HTML のタグ・スクリプト・画像の埋め込みは出力しないでください。
 
             ## 参照文書
             {PromptTrustBoundary.Wrap(PromptTrustBoundary.DocumentsTag, context, boundary)}
