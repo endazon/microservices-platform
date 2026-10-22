@@ -805,6 +805,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-pod-security.test.js
 
+      # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 秘匿管理の kubernetes 認証で、role（deploy/ の bootstrap が書く全て）と名乗る側
+      # （ESO の store・helm が描く Vault を使う Deployment・バックアップの CronJob）の audience が揃うことを**実際に helm template で描いて**固定する
+      # —— コードの既定のトークンの置き場との一致、変異。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。
+      - name: Test Vault k8s auth audience (roles, store, render, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/vault-k8s-auth-audience.test.js
+
       # NFR, IADR-0539, Issue #1927: 常駐メモリを下げた設定を**実際に描いて**固定する —— .NET の全 Deployment（既定・values-local）に
       # GC の 3 つ（.NET でないものには無い・サービス単位の上書き・extraEnv の同名は描画で落ちる）、H-1 / AST#690 の系列の経路
       # （collector の metrics パイプラインに値で落とす段が無い・remote write の受け口・保持 30d 以上）、Keycloak のヒープと limits の整合、変異。

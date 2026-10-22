@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-10-20
+updated: 2026-10-22
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0132, ADR-0002, ADR-0008]
-iadrs: [IADR-0548, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
-specs: [20261016_1868_openbao-raft-snapshot-backup, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
+iadrs: [IADR-0548, IADR-0585, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
+specs: [20261016_1868_openbao-raft-snapshot-backup, 20261022_ghsa-j4qv_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
 issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
 -->
 
@@ -129,12 +129,13 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
    Vault の回の認証は、起動スクリプトが永続化した秘匿管理を当てた後に毎回入れる（`==> platform-backup(vault): …` の 4 行が出る）。
    単独で当てたときは上の `bootstrap.sh` を走らせる（冪等。秘匿管理が unseal 済みであること）。入るもの: Vault の SA への TokenReview の権限、
    kubernetes 認証、ポリシー `platform-backup-raft-snapshot`（`sys/storage/raft/snapshot` の read だけ）、role `platform-backup-vault`
-   （SA `platform-infra/platform-backup-vault` にだけ束縛）。確かめるには:
+   （SA `platform-infra/platform-backup-vault` にだけ束縛し、対象者〔audience〕が `vault` のトークンだけを受ける。CronJob の projected token が
+   同じ対象者を持つ）。確かめるには:
 
    ```bash
    kubectl -n platform-infra exec deploy/vault -- sh -c 'VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault policy read platform-backup-raft-snapshot'
    kubectl -n platform-infra exec deploy/vault -- sh -c 'VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault read auth/kubernetes/role/platform-backup-vault' \
-     | grep -E 'bound_service_account_(names|namespaces)|token_(policies|no_default_policy|num_uses|ttl)'
+     | grep -E 'audience|bound_service_account_(names|namespaces)|token_(policies|no_default_policy|num_uses|ttl)'
    ```
 
    CronJob のイメージは `k3d-local/platform-backup:pg<PG の版>-age<age の版>` で、`imagePullPolicy: IfNotPresent`
