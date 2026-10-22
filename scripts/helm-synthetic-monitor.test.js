@@ -307,7 +307,9 @@ ok('有効 ＋ networkPolicy: プローブ → Keycloak の egress が 1 本だ�
   const kcUrl = envMap(envSection(probeDoc.text)).get('KC_URL');
   assert.ok(kcUrl.includes(`keycloak.${ns}.svc`), `KC_URL（${kcUrl}）と egress の namespace（${ns}）が食い違う`);
   // values-local は networkPolicy.enabled=false。穴は開けない。
-  assert.ok(!docs(ON_LOCAL).some((d) => d.kind === 'NetworkPolicy'), 'networkPolicy 無効なのに NetworkPolicy を描いた');
+  // IADR-0589: values-local は egress の既定拒否（段 1 の Pod）を描くが、プローブ → Keycloak の穴は networkPolicy.enabled のときだけ。
+  assert.ok(!docs(ON_LOCAL).some((d) => d.kind === 'NetworkPolicy' && d.name === 'allow-synthetic-monitor-egress-to-keycloak'), 'networkPolicy 無効なのにプローブ → Keycloak の穴を描いた');
+  assert.ok(!/synthetic-monitor/.test(docs(ON_LOCAL).filter((d) => d.kind === 'NetworkPolicy').map((d) => d.text).join('\n')), 'values-local の NetworkPolicy がプローブの Pod を選んだ（段 2 の Pod）');
 });
 
 ok('🔴 描画時の fail-closed: 除外の 3 サービスのどれかが無効なら helm template が失敗する（ADR-0076 決定 4）', () => {
