@@ -323,7 +323,8 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
 `msp/rabbitmq-users`・`ai-stock-trading/rabbitmq-users` を無いときだけ乱数で作り、起動器が
 `deploy/local/rabbitmq-setup/reconcile-users.sh` でブローカへユーザーと権限を合わせる（表は同じディレクトリの `users.txt`。値は表示しない）。
 ESO を使わないときは、起動器が Secret `platform-infra/rabbitmq-users`（全ユーザー）と `microservices-platform/msp-rabbitmq-users`
-（基盤の 7 ユーザー）を既存の値＞乱数で作り、helm の前に同じスクリプトで合わせる。基盤の 7 サービスは
+（基盤の 7 ユーザー）と `ai-stock-trading/ast-rabbitmq-users`（取引ユニットの 11 ユーザー。同ユニットの chart の各 Worker が読む）を
+既存の値＞乱数で作り、helm の前に同じスクリプトで合わせる（取引ユニットの起動器は ESO の無い経路ではこの Secret を作らず、無ければ止まる）。基盤の 7 サービスは
 `msp-<サービス名>` で名乗る（helm の `global.messaging.credentialsSecretName` / `usernamePrefix`）。
 確認は `bash deploy/local/rabbitmq-setup/reconcile-users.sh --check`。値を回すときは KV を書き換えてから同じスクリプトを回す。
 ブローカは永続化していないので、再起動の直後に Secret `rabbitmq-users` からユーザーを作り直す（`rabbitmq.yaml` の postStart）。

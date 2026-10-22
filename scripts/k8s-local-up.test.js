@@ -2028,6 +2028,7 @@ ok('ESO=1 (IADR-0577): msp-rabbitmq-users の ExternalSecret を apply し、手
     'externalsecret-msp-rabbitmq-users.yaml が apply されない（ESO=1 で 7 サービスの供給元が無くなる）');
   assert.deepStrictEqual(keysOf0577(res, 'msp-rabbitmq-users'), [], 'ESO=1 なのに msp-rabbitmq-users を手動で作った（二重所有）');
   assert.deepStrictEqual(keysOf0577(res, 'rabbitmq-users'), [], 'ESO=1 なのに rabbitmq-users を手動で作った（二重所有）');
+  assert.deepStrictEqual(keysOf0577(res, 'ast-rabbitmq-users'), [], 'ESO=1 なのに ast-rabbitmq-users を手動で作った（取引ユニットの chart の ExternalSecret と二重所有）');
   for (const r of [res, DEFAULT]) {
     assert.ok(!anyLineHas(r.lines, 'externalsecret-rabbitmq-app.yaml'), '旧 rabbitmq-app の ExternalSecret を apply している');
     assert.deepStrictEqual(keysOf0577(r, 'rabbitmq-app'), [], '旧 rabbitmq-app を作っている');
@@ -2053,6 +2054,24 @@ ok('既定 (IADR-0577): ESO なしでも、ブローカ側（全ユーザー）�
   const esDel = DEFAULT.lines.findIndex((l) => l.includes('delete externalsecret rabbitmq-app'));
   const secDel = DEFAULT.lines.findIndex((l) => l.includes('delete secret rabbitmq-app'));
   assert.ok(esDel > helmAt && secDel > esDel, '旧 rabbitmq-app を helm の後に ExternalSecret → Secret の順で片付けていない');
+});
+
+// NFR-18, IADR-0577（2026-10-22 追記）: ESO の無い経路では、取引ユニットの消費側（ai-stock-trading/ast-rabbitmq-users）も
+//   基盤の起動器が同じ値で作る。取引ユニットの chart の全 Worker が非 optional に読み、同ユニットの起動器は ESO の無い経路では
+//   作らずに止まる（値を持つのは基盤の写しだけ）。名前・接頭辞と取引ユニットの chart の既定の一致は scripts.repo.test.js が見る
+//   （本試験は submodule を取得しない CI の既定チェックアウトで走る）。
+const AST_USERS_0577 = USERS_0577.filter((r) => r[1] === 'ai-stock-trading').map((r) => r[0]).sort();
+ok('既定 (IADR-0577 2026-10-22 追記): ESO なしでは取引ユニットの消費側 ast-rabbitmq-users を ai-stock-trading に、ブローカ側と同じ値で helm の前に作る', () => {
+  assert.strictEqual(DEFAULT.status, 0, DEFAULT.stderr.slice(-800));
+  assert.ok(AST_USERS_0577.length === 11, `取引ユニットのユーザーが 11 件ではない（users.txt を読めていない）: ${AST_USERS_0577}`);
+  assert.deepStrictEqual(keysOf0577(DEFAULT, 'ast-rabbitmq-users'), AST_USERS_0577, '消費側が取引ユニットのユーザーと 1 対 1 でない');
+  for (const u of AST_USERS_0577) {
+    assert.deepStrictEqual(valOf0577(DEFAULT, 'ast-rabbitmq-users', u), valOf0577(DEFAULT, 'rabbitmq-users', u), `${u} の値がブローカ側と食い違う`);
+  }
+  const nsAt = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create namespace ai-stock-trading '));
+  const secAt = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create secret generic ast-rabbitmq-users -n ai-stock-trading '));
+  const helmAt = DEFAULT.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  assert.ok(nsAt >= 0 && secAt > nsAt && secAt < helmAt, `名前空間 → Secret → helm の順でない（ns=${nsAt} secret=${secAt} helm=${helmAt}）`);
 });
 
 ok('既定 (IADR-0577): 既存の値は保ち、無いユーザーにだけ乱数（48 桁の 16 進・ユーザーごとに別）を作る。値は出力にも引数にも出さない', () => {
