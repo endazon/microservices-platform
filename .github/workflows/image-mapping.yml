@@ -29,7 +29,7 @@ jobs:
   image-mapping:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Issue #1182, IADR-0372: 可変ユニット（src/*）の submodule を取得する。SERVICE_PROJECT /
@@ -41,7 +41,7 @@ jobs:
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
       # --self-test で検査器自体を毎回試験する（check-unit-dependencies.js / validate-pipeline-config.js と同型）。

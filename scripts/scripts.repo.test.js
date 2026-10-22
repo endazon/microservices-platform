@@ -18113,4 +18113,49 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(!/\bguest\b/.test(rec.replace(/^#.*$/gm, '')), 'reconcile-users.sh が既定のユーザーに触れている');
     });
   }
+
+  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0579: Actions の SHA 固定と依存の自動更新 ----------------
+  //   1. 全ワークフローの外部の `uses:` は 40 桁の commit SHA で固定し、同じ行に版の注記（`# vX…`）を置く。
+  //   2. dependabot.yml は github-actions / nuget / npm を更新の対象にする。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const WF = path.join(__dirname, '..', '.github/workflows');
+    const USES = /^\s*(?:-\s*)?uses:\s*['"]?([^'"\s]+)['"]?(.*)$/;
+    /** 外部の uses: で、SHA 固定＋版の注記の形でないもの。 */
+    const unpinned = (yml) => yml.split('\n').flatMap((l, i) => {
+      const m = USES.exec(l);
+      if (!m || m[1].startsWith('./') || m[1].startsWith('docker://')) return [];
+      if (/@[0-9a-f]{40}$/.test(m[1]) && /^\s+#\s*v\d/.test(m[2])) return [];
+      return [`${i + 1}: ${l.trim()}`];
+    });
+
+    ok('GHSA-552h: 外部の uses: は全ワークフローで commit SHA に固定し、版の注記を同じ行に置く', () => {
+      let n = 0;
+      const bad = [];
+      for (const f of fs.readdirSync(WF).filter((x) => x.endsWith('.yml'))) {
+        const yml = fs.readFileSync(path.join(WF, f), 'utf8');
+        n += yml.split('\n').filter((l) => USES.test(l)).length;
+        for (const b of unpinned(yml)) bad.push(`${f}:${b}`);
+      }
+      assert.ok(n > 50, `uses: を読めていない: ${n}`);
+      assert.deepStrictEqual(bad, [], `SHA 固定＋版の注記にすること:\n${bad.join('\n')}`);
+    });
+
+    ok('GHSA-552h: 変異試験 —— タグ指定・注記なし・短い SHA を検出し、ローカル参照は対象外', () => {
+      const sha = '3d3c42e5aac5ba805825da76410c181273ba90b1';
+      assert.strictEqual(unpinned('      - uses: actions/checkout@v7\n').length, 1, 'タグ指定を検出しない');
+      assert.strictEqual(unpinned(`      - uses: actions/checkout@${sha}\n`).length, 1, '注記なしを検出しない');
+      assert.strictEqual(unpinned('      - uses: actions/checkout@3d3c42e # v7.0.1\n').length, 1, '短い SHA を検出しない');
+      assert.strictEqual(unpinned(`      - uses: actions/checkout@${sha} # v7.0.1\n        uses: ./.github/workflows/x.yml\n`).length, 0, '正しい形・ローカル参照を誤検出する');
+    });
+
+    ok('GHSA-552h: dependabot.yml は github-actions / nuget / npm を更新の対象にする', () => {
+      const y = fs.readFileSync(path.join(__dirname, '..', '.github/dependabot.yml'), 'utf8');
+      const eco = [...y.matchAll(/^\s*- package-ecosystem:\s*"([^"]+)"\s*\n\s*directory:\s*"([^"]+)"/gm)].map((m) => `${m[1]}:${m[2]}`);
+      for (const e of ['github-actions:/', 'nuget:/src', 'npm:/src']) assert.ok(eco.includes(e), `${e} が無い: ${eco.join(', ')}`);
+      assert.ok(fs.existsSync(path.join(__dirname, '..', 'src/Directory.Packages.props')), 'nuget の単一情報源が /src に無い');
+      assert.ok(fs.existsSync(path.join(__dirname, '..', 'src/pnpm-lock.yaml')), 'npm のロックファイルが /src に無い');
+    });
+  }
 };
