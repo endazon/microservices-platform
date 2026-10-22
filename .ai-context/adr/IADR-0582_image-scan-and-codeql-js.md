@@ -1,8 +1,8 @@
 ---
-title: IADR-0581 建てたサービスイメージを Trivy で走査して実行サマリに載せ（当面は報告だけ）、CodeQL に JavaScript / TypeScript を足す
+title: IADR-0582 建てたサービスイメージを Trivy で走査して実行サマリに載せ（当面は報告だけ）、CodeQL に JavaScript / TypeScript を足す
 type: impl-adr
 status: Accepted
-related_ids: [NFR, IADR-0580, IADR-0578, IADR-0067, IADR-0232]
+related_ids: [NFR, IADR-0581, IADR-0578, IADR-0067, IADR-0232]
 author: claude
 created: 2026-10-22
 updated: 2026-10-22
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261022_image-scan-and-codeql-js.md
 ---
 
-# IADR-0581: イメージの走査と CodeQL の JS/TS（GHSA-552h-47r7-6v6p）
+# IADR-0582: イメージの走査と CodeQL の JS/TS（GHSA-552h-47r7-6v6p）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -21,7 +21,7 @@ related_specs:
 ## 起点・関連
 
 - 起点: GHSA-552h-47r7-6v6p の 3 本目（多層防御の強化）。
-- 前提: [IADR-0067](./IADR-0067_service-image-build-ci-gate.md)（イメージのビルド検証と集約 `image-build`）・[IADR-0232](./IADR-0232_ci-pr-latency-reduction.md)（CodeQL の PR は build-mode: none）・[IADR-0580](./IADR-0580_actions-sha-pin-and-dependabot.md)（SHA 固定）。
+- 前提: [IADR-0067](./IADR-0067_service-image-build-ci-gate.md)（イメージのビルド検証と集約 `image-build`）・[IADR-0232](./IADR-0232_ci-pr-latency-reduction.md)（CodeQL の PR は build-mode: none）・[IADR-0581](./IADR-0581_actions-sha-pin-and-dependabot.md)（SHA 固定）。
 
 ## コンテキストと課題
 
@@ -35,7 +35,7 @@ related_specs:
 
 ## 決定
 
-1. **`build (<service>)` で建てたイメージを Trivy で走査する**（脆弱性・CRITICAL / HIGH・修正版あり）。`exit-code: "0"` ＋ `continue-on-error: true` で落とさず、表を実行サマリへ載せる。アクションは SHA 固定（IADR-0580）。
+1. **`build (<service>)` で建てたイメージを Trivy で走査する**（脆弱性・CRITICAL / HIGH・修正版あり）。`exit-code: "0"` ＋ `continue-on-error: true` で落とさず、表を実行サマリへ載せる。アクションは SHA 固定（IADR-0581）。
 2. **CodeQL の行列に `javascript-typescript` を足す。** build-mode は常に none。dotnet の step は csharp の脚に限る。PR の `paths` に JS/TS の拡張子と `src/pnpm-lock.yaml` を足す（必須チェックではない）。
 3. 形は `scripts.repo.test.js` が固定する。落とす形へ変えるときは、試験と本 IADR を同時に改定する。
 

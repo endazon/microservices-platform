@@ -20,7 +20,7 @@ on:
       - "**/*.props"
       - "**/*.targets"
       - "**/packages.lock.json"
-      # NFR, GHSA-552h-47r7-6v6p / IADR-0581: JavaScript / TypeScript の解析を足したので、その変更でも起動する。
+      # NFR, GHSA-552h-47r7-6v6p / IADR-0582: JavaScript / TypeScript の解析を足したので、その変更でも起動する。
       - "**/*.ts"
       - "**/*.tsx"
       - "**/*.js"
@@ -54,7 +54,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # NFR, GHSA-552h-47r7-6v6p / IADR-0581: javascript-typescript を足す（ビルド不要の build-mode: none）。
+        # NFR, GHSA-552h-47r7-6v6p / IADR-0582: javascript-typescript を足す（ビルド不要の build-mode: none）。
         language: ["csharp", "javascript-typescript"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
