@@ -76,11 +76,14 @@ const CODING_ONLY_BASH = [
   'git switch',
   'git checkout',
   'git branch',
-  'find',
   'mkdir',
 ];
-// レビュー用にだけあるのが正しいコマンド（PR / CI の読解系。実装用は GitHub MCP で代替する）:
-const REVIEW_ONLY_BASH = ['gh issue view', 'gh pr view', 'gh run list'];
+// レビュー用にだけあるのが正しいコマンド（PR / CI の読解系。実装用は GitHub MCP で代替する）。
+// NFR, GHSA-552h-47r7-6v6p / IADR-0578: `awk` は実装用から外した（多層防御。許可するツールの最小化）。
+const REVIEW_ONLY_BASH = ['gh issue view', 'gh pr view', 'gh run list', 'awk'];
+// NFR, GHSA-552h-47r7-6v6p / IADR-0578: 実装用でだけ**狭めた形**で許可するスタック別の指定
+// （レビュー用の広い指定 → 実装用の狭い指定）。この対で揃っていればドリフトとしない。
+const CODING_NARROWED_TOOLCHAIN = [['Bash(node:*)', 'Bash(node scripts/:*)']];
 
 /** `claude_args: |` のブロックスカラー本文を配列で返す（複数あれば複数要素）。 */
 function extractClaudeArgsBlocks(text) {
@@ -268,6 +271,9 @@ function toolchainDrift(files) {
   const opts = { requireUses: false };
   const a = toolchainCommandsOf(coding.text, coding.tools, opts);
   const b = toolchainCommandsOf(review.text, review.tools, opts);
+  for (const [wide, narrow] of CODING_NARROWED_TOOLCHAIN) {
+    if (b.has(wide) && a.has(narrow)) { b.delete(wide); a.delete(narrow); }
+  }
   const missingInReview = [...a].filter((c) => !b.has(c));
   const missingInCoding = [...b].filter((c) => !a.has(c));
 
@@ -534,6 +540,10 @@ function selfTest() {
     ],
     // 逆向き（レビュー側にだけある）も同じく検出すること。
     ['レビュー側にだけあるツールも検出する', pair(FULL, `${FULL},Bash(node:*)`), true],
+    // GHSA-552h-47r7-6v6p / IADR-0578: 宣言した狭めた対は誤検知しない。対の片方だけ・逆向きは検出する。
+    ['宣言した狭めた対（実装 node scripts/ ⇔ レビュー node）は検出しない', pair(`${FULL},Bash(node scripts/:*)`, `${FULL},Bash(node:*)`), false],
+    ['狭めた形が実装側にだけあれば検出する', pair(`${FULL},Bash(node scripts/:*)`, FULL), true],
+    ['逆向き（実装 node ⇔ レビュー node scripts/）は検出する', pair(`${FULL},Bash(node:*)`, `${FULL},Bash(node scripts/:*)`), true],
   ];
 
   // issue planning#163: スタック別以外の Bash 指定のドリフト（genericBashDrift）。
@@ -544,10 +554,14 @@ function selfTest() {
     ['陽性対照の対: 両者が揃っていれば検出しない', pair(RO, RO), false],
     ['git -C のパス片落ちも検出する', pair(`${RO},Bash(git -C src/x log:*)`, RO), true],
     [
-      '意図的な非対称（実装専用の書き込み系 git / find / mkdir）は誤検知しない',
-      pair(`${RO},Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(find:*),Bash(mkdir:*)`, RO),
+      '意図的な非対称（実装専用の書き込み系 git / mkdir）は誤検知しない',
+      pair(`${RO},Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(mkdir:*)`, RO),
       false,
     ],
+    // GHSA-552h-47r7-6v6p / IADR-0578: find は実装用から外した。戻すと検出する。
+    ['実装用へ find を戻すと検出する', pair(`${RO},Bash(find:*)`, RO), true],
+    ['レビュー専用の awk は誤検知しない', pair(RO, `${RO},Bash(awk:*)`), false],
+    ['実装用へ awk を戻すと検出する', pair(`${RO},Bash(awk:*)`, `${RO},Bash(awk:*)`), true],
     [
       '意図的な非対称（レビュー専用の gh 読解系）は誤検知しない',
       pair(RO, `${RO},Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*)`),
