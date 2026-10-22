@@ -76,6 +76,17 @@ related_specs:
 ## 結果
 
 - AI 回答と Wiki 本文の描画は、Markdown・Wiki の表示に要る要素だけを描く。
+- AI 回答の**相対パスのリンク**（`docs/1`・`./x`・`../x` のように `/` で始まらないもの）は `href` を落とし、リンクの文字だけを残す
+  （決定 1 の URI の許可の帰結。`/` で始まる同一オリジンのパス・`#…`・`http(s)` / `mailto` は従前どおりリンクになる）。
+  回答の文脈では相対パスの基点が画面ごとに変わり、行き先が定まらないため、意図した挙動である。
+- `form-action 'self'` の影響（2026-10-22 に確かめた）: ログイン・ログアウトは SPA のトップレベル遷移（`location.assign`）で
+  `/bff/auth/login`・`/bff/auth/logout` の **GET** を開き（BFF は `MapGet`）、BFF の OIDC は `ResponseMode=Query`（GET の往復）である。
+  SPA と AST ユニットの画面にネイティブなフォーム送信（`action` / `method` を持つ `<form>`・`submit()`）は無い
+  （`git grep` で 0 件。全フォームは `onSubmit` で処理する）。よってフォーム送信後の別オリジンへのリダイレクトという経路は無く、
+  `form-action` が Keycloak への往復を止めることは無い。Keycloak のログイン画面は Keycloak の文書であり、本 CSP の対象外である。
+- 外向きの経路が CSP を足す・上書きすることは無い（2026-10-22 に確かめた）: Istio のエッジ（`templates/edge.yaml`・
+  `deploy/local/edge-istio/`）は応答ヘッダを操作せず EnvoyFilter も無い。Traefik のエッジ（`deploy/local/edge/`）の SPA の Ingress は
+  中間処理（Middleware）を持たない（Middleware は Keycloak の管理面の拒否だけ）。
 - 既存の E2E 78 本（全画面）が CSP の下で違反 0 件で通る（手元で実測）。CSP を変えたときは E2E がそのまま裏付けになる。
 
 ## 残る制約
