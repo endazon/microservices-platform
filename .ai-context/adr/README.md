@@ -656,3 +656,4 @@
 | [IADR-0576](./IADR-0576_abac-seeder-disabled-by-default.md) | 投入器の主体 abac-seeder は realm の宣言で既定無効とし、投入器・運用スクリプトは実行の間だけ master の管理者で有効にして必ず戻す。資格情報は明示か稼働の Secret（OpenBao → ESO）から読み、宣言の値へ落ちない（GHSA-rh44-px44-p48q） | Accepted |
 | [IADR-0577](./IADR-0577_rabbitmq-msp-per-service-users-and-default-user-disable.md) | 基盤の 7 サービスはブローカ（RabbitMQ）へサービスごとのユーザー（msp-<名前>）で名乗り、共通の 1 組（rabbitmq-app）を撤去する。ESO を使わない経路も同じ形で作り、ブローカの再起動の直後にユーザーを作り直し、全サービスの切り替えを確かめてから既定のユーザーを無効化する（GHSA-pvmh-cvmf-pvcp / GHSA-rh44-px44-p48q） | Accepted |
 | [IADR-0579](./IADR-0579_actions-sha-pin-and-dependabot.md) | GitHub Actions は commit SHA で固定して同じ行に版の注記を置き、Dependabot が SHA と注記を対で更新する。Dependabot の対象に nuget と npm を足す（GHSA-552h-47r7-6v6p） | Accepted |
+| [IADR-0580](./IADR-0580_image-scan-and-codeql-js.md) | 建てたサービスイメージを Trivy で走査して実行サマリに載せ（当面は報告だけ）、CodeQL に JavaScript / TypeScript を足す（GHSA-552h-47r7-6v6p） | Accepted |

@@ -20,6 +20,13 @@ on:
       - "**/*.props"
       - "**/*.targets"
       - "**/packages.lock.json"
+      # NFR, GHSA-552h-47r7-6v6p / IADR-0580: JavaScript / TypeScript の解析を足したので、その変更でも起動する。
+      - "**/*.ts"
+      - "**/*.tsx"
+      - "**/*.js"
+      - "**/*.mjs"
+      - "**/*.cjs"
+      - "src/pnpm-lock.yaml"
       - ".github/workflows/codeql.yml"
   schedule:
     - cron: "0 3 * * 1"
@@ -47,7 +54,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ["csharp"]
+        # NFR, GHSA-552h-47r7-6v6p / IADR-0580: javascript-typescript を足す（ビルド不要の build-mode: none）。
+        language: ["csharp", "javascript-typescript"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -59,13 +67,13 @@ jobs:
       # ユニット追加時も編集不要。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         # build-mode: none の PR ではトレースビルドを行わないため不要（IADR-0232 改定 3）。
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && matrix.language == 'csharp'
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && matrix.language == 'csharp'
         with:
           dotnet-version: "10.0.x"
       - name: Initialize CodeQL
@@ -86,10 +94,10 @@ jobs:
           #                        **PR で落とした精度はここで回収する。** 失敗は report-failure が自動起票する。
           #
           # 本ワークフローは**必須チェックではない**ため、PR で軽くしてもマージ判定は変わらない。
-          build-mode: ${{ github.event_name == 'pull_request' && 'none' || 'manual' }}
+          build-mode: ${{ (github.event_name == 'pull_request' || matrix.language != 'csharp') && 'none' || 'manual' }}
       # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする（ci.yml と同じキー）。
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && matrix.language == 'csharp'
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
@@ -103,7 +111,7 @@ jobs:
       - name: Build backend units (traced)
         # 🔴 build-mode: manual のときだけ走らせる。PR（none）で走らせると時間だけ食う。
         # 逆にここを push で落とすと、manual なのにトレース対象が無く analyze が失敗する。
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && matrix.language == 'csharp'
         run: |
           for slnx in src/*/backend/backend.slnx; do
             echo "::group::$slnx"
