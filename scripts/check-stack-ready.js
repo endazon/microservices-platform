@@ -2039,11 +2039,11 @@ function selfTest() {
     const seen = [];
     const closed = adminEdgeClosedCheck(hosts, undefined, (u) => { seen.push(u); return 403; });
     assert.deepStrictEqual(closed.failures, []);
-    assert.ok(seen.includes('https://grafana.localhost:50000/'), `組んだ URL が違う: ${seen.join(', ')}`);
+    assert.ok(seen.some((u) => u === 'https://grafana.localhost:50000/'), `組んだ URL が違う: ${seen.join(', ')}`);
     assert.deepStrictEqual(adminEdgeClosedCheck(hosts, '', () => 404).failures, []);
     // 陰性対照: 経路が置かれている（後段なしの 503・ログイン画面の 302・200）／測れない（0）／0 件
     for (const st of [503, 302, 200]) {
-      const f = adminEdgeClosedCheck(hosts, '0', (u) => (u.includes('qdrant') ? st : 403)).failures;
+      const f = adminEdgeClosedCheck(hosts, '0', (u) => (new URL(u).hostname === 'qdrant.localhost' ? st : 403)).failures;
       assert.strictEqual(f.length, 1, `${st} を落とさない`);
       assert.ok(f[0].includes('qdrant.localhost が ' + st), f[0]);
     }

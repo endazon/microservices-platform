@@ -4297,7 +4297,7 @@ function envoyHost0586(vsList, host) {
 
 ok('IADR-0586: 管理ツールの経路は kustomization に含めず、Istio の 50000 には既定の拒否（*.localhost の 403）だけが居る', () => {
   for (const f of ['admin-ingress-infra.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml']) {
-    assert.ok(!new RegExp(`^\\s*-\\s*${f.replace(/\./g, '\\.')}\\s*$`, 'm').test(EDGE_KUST), `edge の kustomization が ${f} を含む（既定で置かれる）`);
+    assert.ok(!new RegExp(`^\\s*-\\s*${f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm').test(EDGE_KUST), `edge の kustomization が ${f} を含む（既定で置かれる）`);
   }
   assert.ok(!/^\s*-\s*virtualservice-admin\.yaml\s*$/m.test(EDGE_ISTIO_KUST), 'edge-istio の kustomization が virtualservice-admin.yaml を含む（既定で置かれる）');
   assert.ok(/^\s*-\s*virtualservice-admin-deny\.yaml\s*$/m.test(EDGE_ISTIO_KUST), 'edge-istio の kustomization に既定の拒否が無い');
