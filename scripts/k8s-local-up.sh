@@ -121,14 +121,19 @@ apply_secret() ( # ns name key=val [key=val...]
 # NFR-18, IADR-0577: ESO を使わない経路のブローカのサービスごとの資格情報（[5/7] から呼ぶ）。
 #   platform-infra/rabbitmq-users ＝ users.txt の全ユーザー（ブローカ側の写し。reconcile-users.sh と起動の直後の復元が読む）
 #   microservices-platform/msp-rabbitmq-users ＝ そのうち microservices-platform のユーザー（helm の各サービスが自分のキーを読む）
+#   ai-stock-trading/ast-rabbitmq-users ＝ そのうち ai-stock-trading のユーザー（取引ユニットの chart の各 Worker が自分のキーを読む。
+#     名前は同 chart の global.rabbitmq.credentialsSecretName の既定。ESO の無い経路では取引ユニットの起動器は作らず、
+#     無ければ helm の前で止まる＝値を持つ基盤の起動器が用意する。名前空間は冪等に作る。IADR-0577 の 2026-10-22 追記）
 #   値は「既存の写しの値 ＞ 乱数（48 桁の 16 進。bootstrap.sh の種と同じ形）」。値は端末にも引数にも出さない（ファイル経由）。
+AST_NS="ai-stock-trading"
+AST_RABBITMQ_USERS_SECRET="ast-rabbitmq-users"
 rabbitmq_users_secrets_without_eso() (
   umask 077
   d="$(mktemp -d)"
   trap 'rm -rf "$d"' EXIT
-  mkdir -p "$d/infra" "$d/msp"
+  mkdir -p "$d/infra" "$d/msp" "$d/ast"
   grep -v '^[[:space:]]*#' "$ROOT/deploy/local/rabbitmq-setup/users.txt" | awk 'NF >= 2 { print $1, $2 }' > "$d/users"
-  infra_args=(); msp_args=()
+  infra_args=(); msp_args=(); ast_args=()
   while read -r u ns; do
     kubectl -n "$INFRA_NS" get secret rabbitmq-users -o "go-template={{with index .data \"$u\"}}{{.}}{{end}}" 2>/dev/null \
       | base64 -d > "$d/infra/$u" 2>/dev/null || true
@@ -139,11 +144,18 @@ rabbitmq_users_secrets_without_eso() (
     if [ "$ns" = "$MSP_NS" ]; then
       cp "$d/infra/$u" "$d/msp/$u"
       msp_args+=(--from-file="$u=$d/msp/$u")
+    elif [ "$ns" = "$AST_NS" ]; then
+      cp "$d/infra/$u" "$d/ast/$u"
+      ast_args+=(--from-file="$u=$d/ast/$u")
     fi
   done < "$d/users"
   kubectl create secret generic rabbitmq-users -n "$INFRA_NS" "${infra_args[@]}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   kubectl create secret generic msp-rabbitmq-users -n "$MSP_NS" "${msp_args[@]}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  echo "    rabbitmq-users（${#infra_args[@]} 件）・msp-rabbitmq-users（${#msp_args[@]} 件）を用意した（既存の値＞乱数。値は表示しない）"
+  if [ "${#ast_args[@]}" -gt 0 ]; then
+    kubectl create namespace "$AST_NS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    kubectl create secret generic "$AST_RABBITMQ_USERS_SECRET" -n "$AST_NS" "${ast_args[@]}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  fi
+  echo "    rabbitmq-users（${#infra_args[@]} 件）・msp-rabbitmq-users（${#msp_args[@]} 件）・${AST_RABBITMQ_USERS_SECRET}（${#ast_args[@]} 件）を用意した（既存の値＞乱数。値は表示しない）"
 )
 
 echo "==> [1/7] cluster"
