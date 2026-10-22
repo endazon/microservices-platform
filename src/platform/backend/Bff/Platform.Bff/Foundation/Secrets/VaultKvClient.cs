@@ -21,6 +21,9 @@ public sealed class VaultOptions
 {
     public const string SectionName = "Vault";
 
+    /// <summary>Vault 専用の projected token（audience: vault）の既定位置。helm の deployment テンプレートと同じパス。</summary>
+    public const string DefaultServiceAccountTokenPath = "/var/run/secrets/vault/token";
+
     /// <summary>
     /// Vault の URL（例 `http://vault.platform-infra.svc.cluster.local:8200`）。
     /// **空なら Vault を配備していない構成**として扱い、SC-22 の端点は 503 を返す（IADR-0453 決定 5）。
@@ -33,8 +36,12 @@ public sealed class VaultOptions
     /// <summary>k8s auth のマウント名。</summary>
     public string AuthMount { get; set; } = "kubernetes";
 
-    /// <summary>Pod の ServiceAccount トークンの置き場（projected token の既定位置）。</summary>
-    public string ServiceAccountTokenPath { get; set; } = "/var/run/secrets/kubernetes.io/serviceaccount/token";
+    /// <summary>
+    /// k8s auth に渡す ServiceAccount トークンの置き場。
+    /// NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 対象者（audience）を秘匿管理（`vault`）に限った projected token の位置
+    /// （helm の deployment テンプレートが同じパスへ置く）。k8s API 用の既定のトークンは使わない —— role が audience を要求する。
+    /// </summary>
+    public string ServiceAccountTokenPath { get; set; } = DefaultServiceAccountTokenPath;
 
     /// <summary>1 回の HTTP 呼び出しの上限秒数。</summary>
     public int TimeoutSeconds { get; set; } = 10;

@@ -594,6 +594,8 @@ function checkVaultSnapshotAuth({ cj, docs, policy, bootstrap, script }) {
     if (`${m.mountPath}/${tokVol.saToken.path}` !== jwtFile) errors.push(`SA トークンのパス（${m.mountPath}/${tokVol.saToken.path}）が BACKUP_VAULT_SA_JWT_FILE（${jwtFile}）と違う`);
     if (!m.readOnly) errors.push('SA トークンが読み取り専用でマウントされていない');
     if (!(Number(tokVol.saToken.expirationSeconds) > 0 && Number(tokVol.saToken.expirationSeconds) <= 3600)) errors.push('SA トークンの期限が 1 時間以内でない');
+    // NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 対象者（audience）は秘匿管理（vault）。role も同じ値を要求する（下の want）。
+    if (tokVol.saToken.audience !== 'vault') errors.push(`SA トークンの audience が vault でない（${tokVol.saToken.audience}）`);
   }
   // root トークン（Secret vault-dev-token）を渡さない。
   if (cj.env.some((e) => e.secretKeyRef && e.secretKeyRef.name === 'vault-dev-token')) errors.push('Secret vault-dev-token（root トークン）を渡している');
@@ -607,12 +609,14 @@ function checkVaultSnapshotAuth({ cj, docs, policy, bootstrap, script }) {
     errors.push(`ポリシーが sys/storage/raft/snapshot の read だけでない: ${JSON.stringify(paths)}`);
   // role: この SA・この名前空間にだけ束縛し、default ポリシーを付けず、1 回きり。
   const role = shVar(bootstrap, 'BACKUP_VAULT_ROLE');
-  const roleLine = (bootstrap.match(/vault write auth\/kubernetes\/role\/\$BACKUP_VAULT_ROLE[^"]*"/) || [''])[0].replace(/\\\n\s*/g, ' ');
+  const roleLine = (bootstrap.match(/vault write auth\/kubernetes\/role\/\$BACKUP_VAULT_ROLE[^"]*"/) || [''])[0].replace(/\\\n\s*/g, ' ').replace(/"$/, '');
+  // （IADR-0585: role の書き込みは配備の 2 段の口 vault_role_write_cmd の内側の文字列。閉じ引用符はその内側の終わり。）
   if (role !== (envOf(cj, 'BACKUP_VAULT_AUTH_ROLE') || {}).value) errors.push(`bootstrap の role（${role}）と CronJob の BACKUP_VAULT_AUTH_ROLE が違う`);
   if (shVar(bootstrap, 'BACKUP_VAULT_SA') !== sa) errors.push('bootstrap の role が別の SA に束縛される');
   const want = [
     'bound_service_account_names=$BACKUP_VAULT_SA',
     'bound_service_account_namespaces=$INFRA_NS',
+    'audience=vault',
     'token_policies=$BACKUP_VAULT_POLICY',
     'token_no_default_policy=true',
     'token_num_uses=1',
@@ -652,6 +656,8 @@ ok('🔴 11. 秘匿管理の回は raft の整合したスナップショット�
   bad((f) => f.cj.env.push({ name: 'VAULT_TOKEN_REF', secretKeyRef: { name: 'vault-dev-token', key: 'token' } }), 'root トークンの Secret の受け渡し');
   bad((f) => (f.cj.volumes.find((v) => v.emptyDir && v.emptyDir.medium).emptyDir.medium = ''), 'ディスクの emptyDir');
   bad((f) => (f.cj.volumes.find((v) => v.saToken).saToken.expirationSeconds = '86400'), '期限の長い SA トークン');
+  bad((f) => delete f.cj.volumes.find((v) => v.saToken).saToken.audience, '対象者（audience）の無い SA トークン');
+  bad((f) => (f.bootstrap = f.bootstrap.replace('  audience=vault token_policies', '  token_policies')), 'audience を要求しない role');
   bad((f) => (f.script += '\ncurl -H "X-Vault-Token: $t" "$BACKUP_VAULT_ADDR"\n'), 'curl でのトークンの受け渡し');
   bad((f) => (f.script += '\nVAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"\n'), 'root トークンの使用');
 });

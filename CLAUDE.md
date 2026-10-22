@@ -110,7 +110,7 @@ knowledge ユニット（ナレッジ機能）は付随する可変機能セッ�
 
 ### C# / .NET（バックエンド `src/<unit>/backend/`）
 
-- **ターゲット**: `.NET 10` / `C# 13`（`LangVersion 13`）。設定の単一情報源は [`src/Directory.Build.props`](src/Directory.Build.props)。個別 `.csproj` で `TargetFramework` を上書きしない。`global.json` は SDK `8.0.0` + `rollForward: latestMajor`（新しい SDK でビルド可）。
+- **ターゲット**: `.NET 10` / `C# 13`（`LangVersion 13`）。設定の単一情報源は [`src/Directory.Build.props`](src/Directory.Build.props)。個別 `.csproj` で `TargetFramework` を上書きしない。`global.json` は SDK `8.0.100` + `rollForward: latestMajor`（新しい SDK でビルド可）。
 - **言語設定**: `Nullable` / `ImplicitUsings` は有効（props で既定 ON）。null 許容警告を握り潰さない。
 - **パッケージ**: Central Package Management。バージョンは [`src/Directory.Packages.props`](src/Directory.Packages.props) に集約し、`.csproj` の `PackageReference` にはバージョンを書かない。
 - **ソリューション**: 新形式 `.slnx` をユニット毎に持つ（[`src/platform/backend/backend.slnx`](src/platform/backend/backend.slnx) / [`src/knowledge/backend/backend.slnx`](src/knowledge/backend/backend.slnx)。ルート集約ソリューションは置かない）。プロジェクト追加時は所属ユニットの slnx に登録する。

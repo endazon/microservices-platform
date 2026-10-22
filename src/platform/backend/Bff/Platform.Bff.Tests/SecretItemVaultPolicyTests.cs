@@ -108,6 +108,20 @@ public class SecretItemVaultPolicyTests
         var esoLine = bootstrap.Split('\n').Single(l => l.Contains("auth/kubernetes/role/eso ", StringComparison.Ordinal));
         esoLine.Should().Contain("policies=eso-read ").And.NotContain("bff-secret-write");
     }
+
+    // NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: role は対象者（audience）を秘匿管理（vault）に限ったトークンだけを受け、
+    // BFF は既定でその専用の projected token（helm が置くパス）で名乗る。k8s API 用の既定のトークンのパスへ戻すと落ちる。
+    [Fact]
+    public void Writer_role_requires_the_vault_audience_and_the_client_reads_the_dedicated_token_by_default()
+    {
+        var bootstrap = File.ReadAllText(BootstrapPath);
+        var roleLine = bootstrap.Split('\n').Single(l => l.Contains("auth/kubernetes/role/bff-secret-writer", StringComparison.Ordinal));
+        roleLine.Should().Contain(" audience=vault ");
+
+        new VaultOptions().ServiceAccountTokenPath.Should().Be("/var/run/secrets/vault/token")
+            .And.Be(VaultOptions.DefaultServiceAccountTokenPath)
+            .And.NotContain("kubernetes.io/serviceaccount");
+    }
 }
 
 // リポジトリの実ファイルをテストから引く（出力ディレクトリから上へ辿る）。

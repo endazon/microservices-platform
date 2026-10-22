@@ -11,6 +11,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1（対になる秘密）
 related_specs:
   - ../specs/20261022_rabbitmq-msp-per-service-users.md
+  - ../specs/20261022_ast-pin-29a4d9dd.md
 ---
 
 # IADR-0577: 基盤のサービスをブローカのサービスごとのユーザーへ切り替え、既定のユーザーを無効化する（GHSA-pvmh-cvmf-pvcp / GHSA-rh44-px44-p48q）
@@ -116,3 +117,17 @@ related_specs:
 8. 復元（postStart）はサーバと並んで root で走るので、サーバが Erlang の cookie を作るまで rabbitmqctl を呼ばず、呼ぶときは cookie の所有者として呼ぶ（先に呼ぶと root の所有で cookie を作り、権限を落としたサーバが読めずに起動に失敗する。統合スタックの実測で判明）。
 9. 合わせ（reconcile-users.sh）は、rabbitmqctl へパスワードを改行で終わる 1 行で渡し、1 回の呼び出しに上限（`RABBITMQ_CTL_TIMEOUT`、既定 60 秒）を持つ。rabbitmqctl はパスワードを 1 行（改行か EOF まで）読むので、改行が無いと kubectl exec -i 越しでは EOF を待って止まり得る（ESO を使わない経路で初めて稼働のブローカに当てた統合スタックで、起動器が [5/7] で止まった実測）。
 10. 🔴 パスワードを標準入力で受けるコマンド（add_user / change_password / authenticate_user）は、rabbitmqctl へ「コマンドとユーザー名」の 2 引数だけで呼ぶ（`-q` も付けない）。rabbitmqctl（3.13）の起動スクリプトは、これらのコマンドで引数がちょうど 2 つのときだけ標準入力を開き、それ以外は Erlang を `-noinput` で起こすので、読み込みが返らない（統合スタックの 3 回目で、ブローカに add_user が届かず 60 秒の上限で切れたことと、上流の起動スクリプトで確かめた）。合わせ（reconcile-users.sh）と起動の直後の復元（postStart）の両方に当てる。段 1 の合わせ（ESO の経路）も同じ呼び方だったので、本 PR で同時に直る。
+
+## ［2026-10-22 追記 / AST の pin 29a4d9dd（AST#1430）への追随］決定 2 の ESO を使わない経路に、取引ユニットの消費側を足す
+
+- 取引ユニットの段 2（AST#1430・AST の IADR-0568）で、同ユニットの chart の全 Worker は Secret `ai-stock-trading/ast-rabbitmq-users`
+  （キー = `ast-<サービス名>`）を非 optional に読むようになった。ESO の経路では同 chart の ExternalSecret が Vault `ai-stock-trading/rabbitmq-users` を同期する。
+  一方 ESO を使わない経路では、同ユニットの起動器は**この Secret を作らず、無ければ helm の前で止まる**（開発用の既定値を持たない）。
+- 値を持つのはブローカ側の写し（`platform-infra/rabbitmq-users`）を作る基盤の起動器だけである。よって決定 2 の案 a を広げ、
+  **ESO を使わない経路では基盤の起動器が `ai-stock-trading/ast-rabbitmq-users`（users.txt の `ai-stock-trading` の行だけ）も同じ値で作る**
+  （名前空間は冪等に作る。`msp-rabbitmq-users` と同じ「既存の値 ＞ 乱数」・ファイル経由）。ESO の経路では作らない（同 chart の ExternalSecret と二重所有になる）。
+- 不採用: 取引ユニットの運用者が手で同じ値の Secret を作る（同ユニットの起動器の案内のまま）—— 値を一度端末へ取り出す手順が要り、写しとずれ得る。
+- 残る制約: ESO を使わない経路で作った `ast-rabbitmq-users` は ExternalSecret の管理外なので、同じクラスタを後から ESO の経路へ切り替えると、
+  取引ユニットの起動器の「管理外の同名 Secret」の検査が名指して止まる（`ast-secrets` と同じ扱い。消して ESO に作り直させる）。
+- 固定: `scripts/k8s-local-up.test.js`（ESO なしで作る・値がブローカ側と一致・helm の前・ESO=1 では作らない）と
+  `scripts/scripts.repo.test.js`（名前・接頭辞・KV が取引ユニットの chart の既定と一致。submodule を取得した checkout で突き合わせる）。

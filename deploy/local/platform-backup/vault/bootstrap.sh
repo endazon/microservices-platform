@@ -22,6 +22,9 @@ INFRA_NS="${INFRA_NS:-platform-infra}"
 BACKUP_VAULT_POLICY="platform-backup-raft-snapshot"
 BACKUP_VAULT_ROLE="platform-backup-vault"
 BACKUP_VAULT_SA="platform-backup-vault"
+# 配備を 2 段に分ける口（VAULT_ROLE_AUDIENCE_DEFER=1 のときだけ role の audience を書き換えない。IADR-0585）。
+# shellcheck source=scripts/lib/vault-role-audience.sh
+. "$ROOT/scripts/lib/vault-role-audience.sh"
 
 # vault Pod 内で root として vault コマンドを実行する（stdin を透過＝policy write に使う）。
 vexec() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -c \
@@ -37,8 +40,9 @@ vexec 'vault write auth/kubernetes/config kubernetes_host=https://kubernetes.def
 echo "==> platform-backup(vault): policy $BACKUP_VAULT_POLICY（sys/storage/raft/snapshot の read だけ）"
 vexec "vault policy write $BACKUP_VAULT_POLICY -" < "$ROOT/deploy/local/platform-backup/vault/policy-raft-snapshot.hcl"
 
+# NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: role は audience=vault のトークンだけを受ける（CronJob の projected token が同じ値を持つ）。
 echo "==> platform-backup(vault): role $BACKUP_VAULT_ROLE（SA $INFRA_NS/$BACKUP_VAULT_SA にだけ束縛・1 回きり・5 分）"
-vexec "vault write auth/kubernetes/role/$BACKUP_VAULT_ROLE \
+vexec "$(vault_role_write_cmd "vault write auth/kubernetes/role/$BACKUP_VAULT_ROLE \
   bound_service_account_names=$BACKUP_VAULT_SA bound_service_account_namespaces=$INFRA_NS \
-  token_policies=$BACKUP_VAULT_POLICY token_no_default_policy=true \
-  token_ttl=5m token_max_ttl=10m token_num_uses=1 >/dev/null"
+  audience=vault token_policies=$BACKUP_VAULT_POLICY token_no_default_policy=true \
+  token_ttl=5m token_max_ttl=10m token_num_uses=1") >/dev/null"

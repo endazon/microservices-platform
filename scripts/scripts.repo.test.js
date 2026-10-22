@@ -18082,6 +18082,23 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(rows.length, of('microservices-platform').length + of('ai-stock-trading').length, '名前空間が 2 つの外の行がある');
     });
 
+    // IADR-0577（2026-10-22 追記）: ESO の無い経路で基盤の起動器が作る取引ユニットの消費側の Secret（名前）と、取引ユニットの
+    //   chart の既定（Secret 名・ユーザー名の接頭辞・Vault の KV）が一致すること。submodule が無い checkout では chart を読めないので、
+    //   起動器の宣言だけを見る（取得した checkout・手元では chart とも突き合わせる）。
+    ok('IADR-0577 追記: 起動器の ast-rabbitmq-users は取引ユニットの chart の credentialsSecretName / usernamePrefix / KV と一致する', () => {
+      const up = readR('scripts/k8s-local-up.sh');
+      const m = /^AST_RABBITMQ_USERS_SECRET="([a-z0-9-]+)"$/m.exec(up);
+      assert.ok(m, 'k8s-local-up.sh に AST_RABBITMQ_USERS_SECRET が無い');
+      assert.strictEqual(m[1], 'ast-rabbitmq-users');
+      assert.match(up, /^AST_NS="ai-stock-trading"$/m, 'k8s-local-up.sh の AST_NS が ai-stock-trading ではない');
+      const valuesRel = 'src/ai-stock-trading/deploy/helm/ai-stock-trading/values.yaml';
+      if (!fsR.existsSync(pathR.join(ROOT_R, valuesRel))) return; // submodule 未取得（CI の既定チェックアウト）
+      const v = readR(valuesRel);
+      assert.match(v, new RegExp(`^ {4}credentialsSecretName: ${m[1]}$`, 'm'), '取引ユニットの chart の Secret 名と起動器が食い違う');
+      assert.match(v, /^ {4}usernamePrefix: "ast-"$/m, '取引ユニットの chart のユーザー名の接頭辞が users.txt の ast- と違う');
+      assert.match(v, /^ {2}rabbitmqUsers:\s*\n {4}remoteKey: ai-stock-trading\/rabbitmq-users$/m, '取引ユニットの chart の KV が users.txt の 4 列目と違う');
+    });
+
     ok('IADR-0573: rabbitmq.yaml の NetworkPolicy は users.txt の Pod だけを 5672 で許し、管理の口と egress を描かない', () => {
       const { np, res } = policyApps();
       for (const ns of ['microservices-platform', 'ai-stock-trading']) {
@@ -18343,6 +18360,60 @@ server.listen(0, '127.0.0.1', async () => {
       for (const e of ['github-actions:/', 'nuget:/src', 'npm:/src']) assert.ok(eco.includes(e), `${e} が無い: ${eco.join(', ')}`);
       assert.ok(fs.existsSync(path.join(__dirname, '..', 'src/Directory.Packages.props')), 'nuget の単一情報源が /src に無い');
       assert.ok(fs.existsSync(path.join(__dirname, '..', 'src/pnpm-lock.yaml')), 'npm のロックファイルが /src に無い');
+    });
+  }
+
+  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0584: イメージの走査と CodeQL の JavaScript / TypeScript ----------
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const WF = path.join(__dirname, '..', '.github/workflows');
+    const read = (f) => fs.readFileSync(path.join(WF, f), 'utf8');
+
+    /** images.yml の build ジョブの Trivy の step（name から次の `- ` まで）。 */
+    const trivyStep = (yml) => {
+      const i = yml.indexOf('- name: Scan image (Trivy, report only)');
+      if (i < 0) return null;
+      const rest = yml.slice(i + 1);
+      const j = rest.search(/\n {6}- /);
+      return yml.slice(i, j < 0 ? undefined : i + 1 + j);
+    };
+    /** 報告だけの形（落とさない）であること。必須にするかはオーナーの裁定で決める。 */
+    const trivyViolations = (yml) => {
+      const s = trivyStep(yml);
+      if (!s) return ['Trivy の step が無い'];
+      const out = [];
+      if (!/uses: aquasecurity\/trivy-action@[0-9a-f]{40} # v/.test(s)) out.push('SHA 固定でない');
+      if (!/exit-code: "0"/.test(s)) out.push('exit-code が 0 でない（落とす形）');
+      if (!/continue-on-error: true/.test(s)) out.push('continue-on-error が無い');
+      if (!/severity: CRITICAL,HIGH/.test(s)) out.push('対象の深刻度が違う');
+      return out;
+    };
+
+    ok('GHSA-552h: images.yml は建てたイメージを Trivy で走査し、当面は報告だけで落とさない', () => {
+      const yml = read('images.yml');
+      assert.deepStrictEqual(trivyViolations(yml), []);
+      const build = yml.slice(yml.indexOf('\n  build:\n'), yml.indexOf('\n  build-local:\n'));
+      assert.ok(build.includes('Scan image (Trivy, report only)'), 'Trivy の step が build ジョブに無い');
+      assert.ok(build.indexOf('Build image') < build.indexOf('Scan image'), '建てる前に走査している');
+    });
+
+    ok('GHSA-552h: 変異試験 —— Trivy を落とす形にする・continue-on-error を外すと検出する', () => {
+      const yml = read('images.yml');
+      assert.deepStrictEqual(trivyViolations(yml.replace('exit-code: "0"', 'exit-code: "1"')), ['exit-code が 0 でない（落とす形）']);
+      assert.deepStrictEqual(trivyViolations(yml.replace(/\n\s*continue-on-error: true(?=\n\s*uses: aquasecurity)/, '')), ['continue-on-error が無い']);
+    });
+
+    ok('GHSA-552h: codeql.yml は csharp と javascript-typescript を解析し、JS/TS はビルドしない', () => {
+      const yml = read('codeql.yml');
+      assert.match(yml, /language: \["csharp", "javascript-typescript"\]/);
+      assert.match(yml, /build-mode: \$\{\{ \(github\.event_name == 'pull_request' \|\| matrix\.language != 'csharp'\) && 'none' \|\| 'manual' \}\}/);
+      // dotnet を使う step はすべて csharp の脚に限る。
+      const ifs = [...yml.matchAll(/if: github\.event_name != 'pull_request'(.*)$/gm)];
+      assert.ok(ifs.length >= 4, `step の条件を読めていない: ${ifs.length}`);
+      for (const m of ifs) assert.strictEqual(m[1], " && matrix.language == 'csharp'", `csharp に限らない step がある: ${m[0]}`);
+      const on = yml.slice(yml.indexOf('\non:'), yml.indexOf('\nconcurrency:'));
+      for (const g of ['"**/*.ts"', '"**/*.tsx"', '"**/*.js"']) assert.ok(on.includes(g), `PR の起動条件に ${g} が無い`);
     });
   }
 };
