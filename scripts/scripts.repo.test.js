@@ -16311,6 +16311,10 @@ server.listen(0, '127.0.0.1', async () => {
       const testCmd = yml.split('\n').filter((l) => l.includes('--collect:"XPlat Code Coverage"'));
       assert.strictEqual(testCmd.length, 1, 'テスト実行の行がちょうど 1 本ではない');
       assert.ok(!/--filter/.test(testCmd[0]), 'テスト実行に --filter が付いた');
+      // 🔴 NFR / #2060: ハングを timeout-minutes まで無出力で待たせない（ジョブごと cancelled になり、どの試験かも残らない）。
+      // testhost を止めて試験名とダンプを残し、残りのユニット・床・実走検査を走り切らせる。
+      assert.match(yml, /--logger trx --verbosity normal \\\n\s+--blame-hang-timeout \d+m --blame-hang-dump-type mini; then/, 'テスト実行に --blame-hang-timeout が無い（ハングでジョブが cancelled になる）');
+      assert.match(yml, /src\/\*\*\/TestResults\/\*\*\/\*\.dmp/, 'ハングのダンプを成果物に残していない');
       // テストが赤くても評価する（skip と失敗は独立した観測）。床の 3 step ＋ 本検査の 2 step。
       const guards = yml.split('\n').filter((l) => l.includes("if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}"));
       assert.ok(guards.length >= 5, `!cancelled() の条件つき step が ${guards.length} 本（setup-node・床 2・実走検査 2 の 5 本が要る）`);
