@@ -45,6 +45,7 @@ issue: "GHSA-j4qv-2w99-xg5p"
 | A5 | バックアップの CronJob の projected token の audience は `vault` | `vault-k8s-auth-audience.test.js` 4・`platform-backup.test.js` 11 |
 | A6 | 起動器は chart（名乗る側）を当ててから role に audience を付ける | `vault-k8s-auth-audience.test.js` 5 |
 | A7 | 判定が空振りしない（各判定に変異） | 同上の各試験の変異 |
+| A8 | 稼働中の環境を 2 段で配備できる: role の書き込みは全て口（`vault_role_write_cmd`）を通り、既定は `audience=vault` を書き、`VAULT_ROLE_AUDIENCE_DEFER=1` のときだけ書かない（1 以外の値は既定。他の語は触らない） | `vault-k8s-auth-audience.test.js` 5b |
 
 ## 母集合（規則 9・10）
 
@@ -82,25 +83,25 @@ issue: "GHSA-j4qv-2w99-xg5p"
 - `deploy/helm/microservices-platform/templates/deployment.yaml`: `vault.address` が空でないサービスに projected token（audience `vault`・600 秒）を
   `/var/run/secrets/vault/token` へ置き、`Vault__ServiceAccountTokenPath` で渡す。
 - BFF `VaultOptions`・datasource `VaultConnectorSecretOptions`: 既定の置き場を同じパスにする（定数 `DefaultServiceAccountTokenPath`）。
+- 配備の 2 段の口: `scripts/lib/vault-role-audience.sh`（`VAULT_ROLE_AUDIENCE_DEFER=1` のときだけ role の書き込みから `audience=vault` を除く）。2 つの bootstrap の role の書き込みはこれを通す。
 - 試験: `scripts/vault-k8s-auth-audience.test.js`（新規・CI の static-checks-units）・`scripts/platform-backup.test.js`・.NET の 2 本。
 - 文書: `docs/operations/platform-infra-backup-runbook.md`（確かめ方）・`deploy/local/vault/eso/README.md`。
 
 ## 配備前の手順（PoC）
 
 - 配備は閉場後。値・Secret の変更は無い。
-- 順序（IADR-0585 決定 4）: **名乗る側を先、role の audience を後**。
-  1. chart を当てる（BFF・datasource が projected token で名乗る Pod へ入れ替わる）。
-  2. 永続化の overlay（バックアップの CronJob）と ESO の store の k8s 認証版を当てる。
-  3. 2 つの bootstrap を走らせる（role に audience が付く）。
-  起動器（`scripts/k8s-local-up.sh`）をこのコミットで再実行すれば、この順で当たる（[6/7] の chart → VAULT ブロックの overlay とバックアップの bootstrap →
-  ESO ブロックの bootstrap → store）。ESO ブロックの bootstrap の間、store は VAULT ブロックが当て直した token 認証版である。
-- 配備後の確認: `kubectl -n platform-infra exec deploy/vault -- sh -c 'VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault read -field=audience auth/kubernetes/role/<role>'`
-  が 4 つの role で `vault`。`kubectl get clustersecretstore vault-backend` が Ready。ExternalSecret が SecretSynced。
-  画面（/admin/secrets）で 1 項目を書けること。バックアップの CronJob を手で 1 回起こして Complete になること。
+- 順序（IADR-0585 決定 4）: **名乗る側を先、role の audience を後**。起動器は 1 回で role まで当てるので、
+  稼働中の環境では **2 段に分ける**（AI レビュー 🟡 の対応。2026-10-22 追記）。手順の正は IADR-0585「結果・残る制約」と PR 本文。
+  1. 1 段目: `VAULT_ROLE_AUDIENCE_DEFER=1` を付けて起動器を通常の引数で再実行する（名乗る側だけが入れ替わり、role は audience の無いまま）。
+  2. 確かめる: BFF の書き込み（`/admin/secrets` で 1 項目）・`kubectl get externalsecret -A` が SecretSynced（force-sync で再同期させたもの）・
+     datasource の読み取り・バックアップの CronJob を手で起こして Complete。失敗したら 2 段目へ進まず、前の版で起動器を再実行して名乗る側を戻す。
+  3. 2 段目: 変数なしで起動器を再実行する（role に audience が付く）。同じ確かめと、4 つの role の `audience` が `vault` であること。
+- 切り戻し（2 段目の後）: `audience=""` で外せることは読解であり実機未検証。2 段目の直後に 1 つの role で 1 回試して戻す。
+  外れなければ代替（role を消して `VAULT_ROLE_AUDIENCE_DEFER=1` で作り直す）による。
 
 ## 検証
 
-- `node scripts/vault-k8s-auth-audience.test.js`（6 本）・`node scripts/platform-backup.test.js`（13 件）・`node scripts/helm-pod-security.test.js`・
+- `node scripts/vault-k8s-auth-audience.test.js`（7 本。5b は 2 段の口）・`node scripts/platform-backup.test.js`（13 件）・`node scripts/helm-pod-security.test.js`・
   `node scripts/k8s-local-up.test.js`（367 本）・`node scripts/check-deploy-manifests.js`。
 - .NET: `Platform.Bff.Tests`（Vault・SC-22 の 187 本。全体は Docker の要る Valkey の 5 本を除き緑）・`DataSourceService.Tests`（463 本）。
   `dotnet format --verify-no-changes`（変更したファイル）。

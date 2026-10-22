@@ -95,12 +95,15 @@ echo "==> auth/kubernetes/config（in-cluster local mode: Vault 自身の SA を
 #      role に audience が無い間は、OpenBao が TokenReview にトークン自身の audience を渡すので、新しいトークンでもログインできる。
 #   一致は scripts/vault-k8s-auth-audience.test.js が固定する。issuer は設定しない（同 IADR 決定 3）。
 vexec 'vault write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc'
+# 配備を 2 段に分ける口（VAULT_ROLE_AUDIENCE_DEFER=1 のときだけ role の audience を書き換えない）。既定は字面どおり audience=vault。
+# shellcheck source=scripts/lib/vault-role-audience.sh
+. "$ROOT/scripts/lib/vault-role-audience.sh"
 
 echo "==> policy: eso-read（MSP＋AST の read・store は両者共有のため両 path を許可）"
 vexec 'vault policy write eso-read -' < "$ROOT/deploy/local/vault/eso/policy-eso-read.hcl"
 
 echo "==> role: eso（ESO の SA external-secrets/external-secrets に束縛）"
-vexec 'vault write auth/kubernetes/role/eso bound_service_account_names=external-secrets bound_service_account_namespaces=external-secrets policies=eso-read audience=vault ttl=1h'
+vexec "$(vault_role_write_cmd 'vault write auth/kubernetes/role/eso bound_service_account_names=external-secrets bound_service_account_namespaces=external-secrets policies=eso-read audience=vault ttl=1h')"
 
 # SC-22, ADR-0095 決定 3, IADR-0433 決定 1・4, IADR-0453 決定 9 (#1411): 画面（/admin/secrets）から秘密情報を
 # 投入する BFF の書き込み権限。**画面と同じ PR で配備する**（先に権限だけを作らない。ADR-0095 §統制の表）。
@@ -119,7 +122,7 @@ echo "==> policy: bff-secret-group-write（SC-22 の群だけ・専用接頭辞�
 vexec 'vault policy write bff-secret-group-write -' < "$ROOT/deploy/local/vault/eso/policy-bff-secret-group-write.hcl"
 
 echo "==> role: bff-secret-writer（BFF 専用 SA microservices-platform/bff に束縛）"
-vexec 'vault write auth/kubernetes/role/bff-secret-writer bound_service_account_names=bff bound_service_account_namespaces=microservices-platform policies=bff-secret-write,bff-secret-group-write audience=vault ttl=1h'
+vexec "$(vault_role_write_cmd 'vault write auth/kubernetes/role/bff-secret-writer bound_service_account_names=bff bound_service_account_namespaces=microservices-platform policies=bff-secret-write,bff-secret-group-write audience=vault ttl=1h')"
 
 # FR-01, UC-04, NFR-18, IADR-0495 決定 1 (#458 段 S1): datasource-service がコネクタの資格情報（`vault:datasource/…#<key>`）を
 # 実行時に読む権限。🔴 policy は専用接頭辞 `secret/data/datasource/*` の read だけ（ESO の `msp/*` の外。書き込み・削除なし）。
@@ -130,7 +133,7 @@ echo "==> policy: datasource-connector-read（secret/data/datasource/* の read 
 vexec 'vault policy write datasource-connector-read -' < "$ROOT/deploy/local/vault/eso/policy-datasource-connector-read.hcl"
 
 echo "==> role: datasource-connector-reader（datasource-service 専用 SA microservices-platform/datasource-service に束縛）"
-vexec 'vault write auth/kubernetes/role/datasource-connector-reader bound_service_account_names=datasource-service bound_service_account_namespaces=microservices-platform policies=datasource-connector-read audience=vault ttl=1h'
+vexec "$(vault_role_write_cmd 'vault write auth/kubernetes/role/datasource-connector-reader bound_service_account_names=datasource-service bound_service_account_namespaces=microservices-platform policies=datasource-connector-read audience=vault ttl=1h')"
 
 # SC-22, ADR-0095 決定 4, IADR-0456 決定 6 (#1477): **画面（/admin/secrets）が書く KV は無いときだけ作る。**
 # 従前は毎回 `vault kv put`（全置換）していたため、`k8s-local-up.sh` を再実行するたびに**画面で入れた値が env の既定（空）で消えた**。

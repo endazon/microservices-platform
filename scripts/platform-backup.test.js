@@ -609,7 +609,8 @@ function checkVaultSnapshotAuth({ cj, docs, policy, bootstrap, script }) {
     errors.push(`ポリシーが sys/storage/raft/snapshot の read だけでない: ${JSON.stringify(paths)}`);
   // role: この SA・この名前空間にだけ束縛し、default ポリシーを付けず、1 回きり。
   const role = shVar(bootstrap, 'BACKUP_VAULT_ROLE');
-  const roleLine = (bootstrap.match(/vault write auth\/kubernetes\/role\/\$BACKUP_VAULT_ROLE[^"]*"/) || [''])[0].replace(/\\\n\s*/g, ' ');
+  const roleLine = (bootstrap.match(/vault write auth\/kubernetes\/role\/\$BACKUP_VAULT_ROLE[^"]*"/) || [''])[0].replace(/\\\n\s*/g, ' ').replace(/"$/, '');
+  // （IADR-0585: role の書き込みは配備の 2 段の口 vault_role_write_cmd の内側の文字列。閉じ引用符はその内側の終わり。）
   if (role !== (envOf(cj, 'BACKUP_VAULT_AUTH_ROLE') || {}).value) errors.push(`bootstrap の role（${role}）と CronJob の BACKUP_VAULT_AUTH_ROLE が違う`);
   if (shVar(bootstrap, 'BACKUP_VAULT_SA') !== sa) errors.push('bootstrap の role が別の SA に束縛される');
   const want = [

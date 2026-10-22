@@ -60,19 +60,40 @@ related_specs:
    逆順（role を先）だと、名乗る側が入れ替わるまで対象者＝API サーバのトークンが拒まれる。
    起動器（`scripts/k8s-local-up.sh`）は [6/7] の chart → VAULT ブロック（overlay・バックアップの bootstrap）→ ESO ブロック（bootstrap → store）の順で、
    この条件を満たす（ESO の bootstrap の間、store は VAULT ブロックが当て直した token 認証版である）。順序は同試験 5 が固定する。
+   **稼働中の環境では、起動器を 2 回に分けて当てる**（下の「配備の 2 段」）。起動器は 1 回で role まで当てるため、
+   名乗る側だけを入れ替えた状態で止めて確かめる口として、環境変数 `VAULT_ROLE_AUDIENCE_DEFER=1` を設ける
+   （`scripts/lib/vault-role-audience.sh`。2 つの bootstrap の role の書き込みはこの口を通り、`1` のときだけ引数 `audience=vault` を除く。
+   role の書き込みは与えないフィールドを保つので、role の audience は書き換わらない）。既定（未設定・`1` 以外）は字面どおり
+   `audience=vault` を書く。口の挙動・全 role が口を通ることは同試験 5b が変異つきで固定する。
 5. **後方互換の期間は設けない**（ローカル・PoC 専用の構成で、起動器 1 回の再実行で全てが入れ替わるため）。
 
 ## 結果・残る制約
 
-- `vault write auth/kubernetes/role/<r>` は与えないフィールドを保つ。**古い版の bootstrap を再実行しても audience は外れない**。
-  切り戻すときは `audience=""` を明示して書き直してから、名乗る側を戻す（順序は決定 4 の逆）。
-  （role の更新は与えたフィールドだけを `GetOk` で書き換え、空文字も「与えた」として audience を空にする。`path_role.go` の v2.7.1 で確認。）
 - 決定 4 の根拠（audience の無い role はトークン自身の対象者で TokenReview する）はソースの読解であり、実機では未確認である。
-  PoC の配備では、chart を当てた直後・role に audience を付ける前に、名乗る側がログインできることを確かめる段を置く（PR 本文の手順）。
+  したがって稼働中の環境の配備は次の 2 段に分け、段の間で確かめる（PR 本文の PoC 手順と同じ）。
+- **配備の 2 段**:
+  1. **1 段目（名乗る側だけ）**: `VAULT_ROLE_AUDIENCE_DEFER=1` を付けて起動器を通常の引数のまま再実行する。chart（BFF・datasource の
+     projected token）・ESO の store（`audiences: [vault]`）・バックアップの CronJob が入れ替わり、role は audience の無いまま残る。
+  2. **確かめる（role を変える前）**: BFF の書き込み（`/admin/secrets` で 1 項目）、`kubectl get externalsecret -A` が全て SecretSynced
+     （store を当てた後に force-sync して再同期させたもの）、datasource がコネクタの資格情報を読めること、バックアップの CronJob を手で 1 回
+     起こして Complete になること。**1 つでも失敗したら 2 段目へ進まない。** role は変わっていないので、前の版の作業ツリーで起動器を
+     再実行して名乗る側を戻せば元に戻る（切り戻し A）。
+  3. **2 段目（role）**: 変数なしで起動器を再実行する（2 つの bootstrap が role に `audience=vault` を付ける）。同じ確かめをもう一度行い、
+     4 つの role の `audience` が `vault` であることを読む。
+- `vault write auth/kubernetes/role/<r>` は与えないフィールドを保つ。**古い版の bootstrap を再実行しても・`VAULT_ROLE_AUDIENCE_DEFER=1` で
+  再実行しても、付いた audience は外れない。**
+- **2 段目の後の切り戻し（切り戻し B）**は、role の audience を外してから名乗る側を戻す（順序は決定 4 の逆）。外し方は 2 通り:
+  - B1: `audience=""` を明示して role を書き直す。空文字が「与えた」として audience を空にすることは `path_role.go`（v2.7.1）の読解であり、
+    **実機では未検証である**。2 段目の直後（確かめが通った後）に、1 つの role で `audience=""` を書いて `vault read -field=audience` が空になる
+    ことを 1 回試し、すぐ `audience=vault` へ戻しておく（戻すには変数なしで起動器を再実行するか、同じ role を `audience=vault` で書き直す）。
+    空にならなければ B1 は使わず B2 による。
+  - B2（代替）: role を消して audience 無しで作り直す。`vault delete auth/kubernetes/role/<r>` の後、`VAULT_ROLE_AUDIENCE_DEFER=1` で
+    起動器（または 2 つの bootstrap）を再実行すると、role は audience の無い形で作られる（消してから作り直すまでの間は、その role での
+    新しいログインが通らない）。
 - 統合スタック（`integration-stack`）は VAULT / ESO を有効にしない。ESO=1 の経路は CI では描画・字面の試験だけで、実機の確かめは PoC の配備後の確認に委ねる。
 - ESO の版（chart 2.8.0）の `serviceAccountRef.audiences` は v1 の API の項目である。
 
 ## 検証
 
-- `node scripts/vault-k8s-auth-audience.test.js`（6 本・変異つき）・`node scripts/platform-backup.test.js`・.NET の 2 本
+- `node scripts/vault-k8s-auth-audience.test.js`（7 本・変異つき。5b は配備の 2 段の口）・`node scripts/platform-backup.test.js`・.NET の 2 本
   （`SecretItemVaultPolicyTests`・`ConnectorSecretVaultPolicyTests`）。新しい試験は deploy/ と src/ の変更を外すと赤になる。

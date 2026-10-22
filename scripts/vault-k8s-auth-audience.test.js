@@ -16,6 +16,8 @@
  *   4. 名乗る側（バックアップの CronJob）: projected token の audience が vault（platform-backup.test.js も同じ点を見る）。
  *   5. 起動器（scripts/k8s-local-up.sh）は chart（名乗る側）を当ててから、role に audience を付ける bootstrap を呼ぶ
  *      （role に audience が無い間も新しいトークンでログインできるので、この順なら途中で失敗しない。IADR-0585 決定 4）。
+ *   5b. 配備の 2 段の口（scripts/lib/vault-role-audience.sh）: role の書き込みは全てこの口を通り、既定は字面どおり audience=vault、
+ *      VAULT_ROLE_AUDIENCE_DEFER=1 のときだけ audience=vault を除く（role の audience を書き換えない＝1 段目の確かめ用）。
  *   6. 変異: 上のどれか 1 つを崩すと判定が赤になる（判定が空振りしない）。
  *
  * 🔴 **helm が無ければ落ちる（fail-closed）。** CI は static-checks-units で走らせる。
@@ -283,6 +285,63 @@ ok('5. 起動器の順序: chart（名乗る側）を当ててから role に au
   const moved = up.replace(/^(\s*)bash deploy\/local\/vault\/eso\/bootstrap\.sh\s*$/m, '$1:')
     .replace(/^helm upgrade --install msp /m, 'bash deploy/local/vault/eso/bootstrap.sh\nhelm upgrade --install msp ');
   assert.ok(checkOrder(moved).length > 0, '順序の逆転を見逃した');
+});
+
+/** 2 段の口（VAULT_ROLE_AUDIENCE_DEFER）: lib を source して関数を通した結果を返す。 */
+const ROLE_LIB = 'scripts/lib/vault-role-audience.sh';
+function viaLib(libText, cmd, env) {
+  const r = spawnSync('bash', ['-c', `${libText}\nvault_role_write_cmd "$1"`, 'x', cmd], {
+    encoding: 'utf8', env: { PATH: process.env.PATH, ...env },
+  });
+  assert.strictEqual(r.status, 0, `lib の実行が失敗した: ${r.stderr}`);
+  return r.stdout;
+}
+function checkDeferLib(libText) {
+  const errors = [];
+  const cmd = 'vault write auth/kubernetes/role/eso bound_service_account_names=a policies=p audience=vault ttl=1h';
+  const want = 'vault write auth/kubernetes/role/eso bound_service_account_names=a policies=p ttl=1h';
+  // 既定（未設定・1 以外の値）は字面のまま＝audience=vault を書く（打ち間違いで黙って緩めない）。
+  for (const v of [undefined, '', '0', 'true', 'yes', ' 1']) {
+    const out = viaLib(libText, cmd, v === undefined ? {} : { VAULT_ROLE_AUDIENCE_DEFER: v });
+    if (out !== cmd) errors.push(`DEFER=${JSON.stringify(v)} で字面が変わった（${out}）`);
+  }
+  // 1 のときだけ audience=vault の 1 語を除く（他の引数・語の一部は触らない）。
+  const out = viaLib(libText, cmd, { VAULT_ROLE_AUDIENCE_DEFER: '1' });
+  if (out !== want) errors.push(`DEFER=1 で audience=vault を除いていない（${out}）`);
+  const tricky = 'vault write auth/kubernetes/role/x policies=audience=vault-ish ttl=1h';
+  if (viaLib(libText, tricky, { VAULT_ROLE_AUDIENCE_DEFER: '1' }) !== tricky) errors.push('DEFER=1 で audience=vault 以外の語を書き換えた');
+  return errors;
+}
+/** deploy/ の role の書き込みは全て口（vault_role_write_cmd）を通り、そのファイルは lib を source する。 */
+function checkRolesUseLib(files) {
+  const errors = [];
+  for (const w of roleWrites(files)) {
+    if (!/vault_role_write_cmd ['"]vault write auth\/kubernetes\/role\//.test(w.line)) errors.push(`${w.file}: role ${w.role} の書き込みが vault_role_write_cmd を通らない`);
+    const text = files.find((f) => f.file === w.file).text;
+    if (!/^\. "\$ROOT\/scripts\/lib\/vault-role-audience\.sh"$/m.test(text)) errors.push(`${w.file}: ${ROLE_LIB} を source していない`);
+  }
+  return errors;
+}
+
+ok('5b. 配備の 2 段の口: 既定は audience=vault のまま、VAULT_ROLE_AUDIENCE_DEFER=1 のときだけ role の audience を書き換えない', () => {
+  const lib = read(ROLE_LIB);
+  assert.deepStrictEqual(checkDeferLib(lib), []);
+  assert.deepStrictEqual(checkRolesUseLib(shFiles), []);
+  // 変異: 既定でも除く・1 以外の値でも除く・除かない、のどれも落ちる。
+  const mutants = {
+    '既定でも除く': lib.replace(/if \[ "\$\{VAULT_ROLE_AUDIENCE_DEFER:-\}" = "1" \]; then\n {4}local s/, 'if true; then\n    local s'),
+    '1 以外でも除く': lib.replace(/if \[ "\$\{VAULT_ROLE_AUDIENCE_DEFER:-\}" = "1" \]; then\n {4}local s/, 'if [ -n "${VAULT_ROLE_AUDIENCE_DEFER:-}" ]; then\n    local s'),
+    '除かない': lib.replace('s="${s/ audience=vault / }"', ':'),
+  };
+  for (const [label, text] of Object.entries(mutants)) {
+    assert.notStrictEqual(text, lib, `変異（${label}）が lib に当たっていない`);
+    assert.ok(checkDeferLib(text).length > 0, `${label} を見逃した`);
+  }
+  // 変異: 口を通らない role の書き込みを足すと落ちる。
+  const eso = shFiles.find((f) => f.file === 'deploy/local/vault/eso/bootstrap.sh');
+  const bypass = shFiles.map((f) => (f === eso ? { ...f, text: f.text.replace(/vexec "\$\(vault_role_write_cmd ('vault write auth\/kubernetes\/role\/eso [^\n]*')\)"/, 'vexec $1') } : f));
+  assert.notStrictEqual(bypass.find((f) => f.file === eso.file).text, eso.text, '変異（口の迂回）が当たっていない');
+  assert.ok(checkRolesUseLib(bypass).some((e) => e.includes('role eso ')), '口を通らない role の書き込みを見逃した');
 });
 
 console.log(`vault-k8s-auth-audience: ${passed} tests passed`);
