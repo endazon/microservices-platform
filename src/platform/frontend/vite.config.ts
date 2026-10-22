@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 
 /**
- * NFR / IADR-0578（Refs GHSA-5h4q-4m2j-rjhm）: 本番の配信（Caddyfile）が返す CSP を読む。
+ * NFR / IADR-0579（Refs GHSA-5h4q-4m2j-rjhm）: 本番の配信（Caddyfile）が返す CSP を読む。
  * **単一情報源は Caddyfile の 1 行**であり、ここへ値を複写しない。preview（＝E2E の配信）が同じヘッダを
  * 返すので、全画面の E2E がこの CSP の下で走る。行が見つからなければ設定の読み込みで落とす
  * （黙って CSP なしの preview で E2E を緑にしない）。

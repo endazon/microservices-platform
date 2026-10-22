@@ -25,7 +25,7 @@
 
 	# SPA を壊さない範囲のセキュリティヘッダに限る。
 	#
-	# NFR / IADR-0578（Refs GHSA-5h4q-4m2j-rjhm）: CSP を置く（多層防御。本文の sanitize が 1 枚目、これが 2 枚目）。
+	# NFR / IADR-0579（Refs GHSA-5h4q-4m2j-rjhm）: CSP を置く（多層防御。本文の sanitize が 1 枚目、これが 2 枚目）。
 	# 🔴 **この行が CSP の単一情報源である。** vite.config.ts の preview がこの行を読んで同じヘッダを返すため、
 	# E2E（vite preview）の全画面がこの CSP の下で走り、違反は e2e/support/cspGuard.ts が落とす。
 	# 値を変えるときは 1 行のまま・二重引用符で囲んだまま変える（vite.config.ts の読み取りがこの形を前提にする）。

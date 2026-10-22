@@ -14,7 +14,7 @@ import DOMPurify from 'dompurify';
 //     到達できず（資産のプロキシは無い）、壊れた画像を並べるより落とす。**外部 URL の資産をブラウザに
 //     取りに行かせない**（08_data-egress-policy の趣旨）ことも兼ねる。
 //   - **フォーム部品（`form` / `input` / `button` / `select` / `option` / `optgroup` / `textarea` /
-//     `fieldset`）と `style` 要素・`style` 属性**（NFR / IADR-0578。Refs GHSA-5h4q-4m2j-rjhm）: 本文は
+//     `fieldset`）と `style` 要素・`style` 属性**（NFR / IADR-0579。Refs GHSA-5h4q-4m2j-rjhm）: 本文は
 //     読むためのものであり、入力欄も本文からの見た目の上書きも要らない。
 //   - `target` 属性: 新規タブを開かない（Wiki.js 本体 UI への外部遷移を画面から無くした ADR-0073 決定 1 と同じ向き）。
 // ■ 書き換えるもの

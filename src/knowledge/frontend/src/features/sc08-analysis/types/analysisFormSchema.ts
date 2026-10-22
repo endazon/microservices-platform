@@ -1,4 +1,4 @@
-// eslint-disable-next-line no-restricted-imports -- Zod を import してよいのはこのファイルだけ（下の jitless を持つ。IADR-0578）。
+// eslint-disable-next-line no-restricted-imports -- Zod を import してよいのはこのファイルだけ（下の jitless を持つ。IADR-0579）。
 import { z } from 'zod';
 import { MAX_INSTRUCTION_LENGTH, MAX_RANGE_QUERY_LENGTH, TASK_TYPES } from './analysisRange';
 
@@ -14,7 +14,7 @@ import { MAX_INSTRUCTION_LENGTH, MAX_RANGE_QUERY_LENGTH, TASK_TYPES } from './an
 //   バックエンド（`AnalysisPromptBuilder.MaxInstructionLength`）と揃える値であり、
 //   ここへ数値を書き写すと片方が古くなる。参照して使う。
 
-// ■ `jitless`（NFR / IADR-0578。Refs GHSA-5h4q-4m2j-rjhm）
+// ■ `jitless`（NFR / IADR-0579。Refs GHSA-5h4q-4m2j-rjhm）
 //   配信の CSP は `script-src 'self'`（eval を許さない）である。Zod は既定で `new Function` が使えるかを
 //   試す（失敗は握り潰すが、CSP の違反としては報告される）。`jitless` でその試行と eval 経路を止める。
 //   本リポで Zod を使うのはこのファイルだけなので、ここで設定する（初期ロードへ Zod を載せない）。

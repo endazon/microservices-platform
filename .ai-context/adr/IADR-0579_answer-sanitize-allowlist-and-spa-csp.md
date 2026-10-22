@@ -1,5 +1,5 @@
 ---
-title: IADR-0578 AI 回答の描画の sanitize はタグ・属性・URI を allowlist で閉じ、Wiki 本文もフォーム部品と style を落とす。SPA の配信（Caddy）に CSP を置き、その 1 行を単一情報源として E2E の配信にも同じ値を返す
+title: IADR-0579 AI 回答の描画の sanitize はタグ・属性・URI を allowlist で閉じ、Wiki 本文もフォーム部品と style を落とす。SPA の配信（Caddy）に CSP を置き、その 1 行を単一情報源として E2E の配信にも同じ値を返す
 type: impl-adr
 status: Accepted
 related_ids: [NFR, ADR-0021, ADR-0031, IADR-0362, IADR-0365, IADR-0134]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20261022_ghsa-5h4q_answer-sanitize-allowlist-and-csp.md
 ---
 
-# IADR-0578: AI 回答・Wiki 本文の sanitize を絞り、SPA の配信に CSP を置く（GHSA-5h4q-4m2j-rjhm）
+# IADR-0579: AI 回答・Wiki 本文の sanitize を絞り、SPA の配信に CSP を置く（GHSA-5h4q-4m2j-rjhm）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

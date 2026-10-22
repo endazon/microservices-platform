@@ -2,7 +2,7 @@
 title: 作業仕様書 — AI 回答・Wiki 本文の sanitize を allowlist へ絞り、SPA の配信に CSP を置く（GHSA-5h4q-4m2j-rjhm の 1 本目）
 type: spec
 status: done
-related_ids: [NFR, ADR-0021, ADR-0031, IADR-0578, IADR-0362, IADR-0365, IADR-0134]
+related_ids: [NFR, ADR-0021, ADR-0031, IADR-0579, IADR-0362, IADR-0365, IADR-0134]
 author: claude
 created: 2026-10-22
 updated: 2026-10-22
@@ -14,7 +14,7 @@ issue: "GHSA-5h4q-4m2j-rjhm"
 
 # 作業仕様書 — AI 回答・Wiki 本文の sanitize の allowlist 化と、SPA 配信の CSP
 
-> 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0578**（新規）に置く。
+> 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0579**（新規）に置く。
 > 多層防御の強化（許可を allowlist で閉じる・既定を最小権限にする）。参照は GHSA の ID だけとする。
 > GHSA-5h4q-4m2j-rjhm の対応は 2 本に分ける（コーディネーター指示 2026-10-22）。本書は **1 本目**（描画の sanitize ＋ CSP）。
 > 2 本目（RAG のプロンプトの信頼境界）は別の作業仕様書・別の PR で扱う。
@@ -24,7 +24,7 @@ issue: "GHSA-5h4q-4m2j-rjhm"
 - 非機能要求: **NFR**（セキュリティの多層防御。該当する採番は無い）。計画 ADR: **ADR-0021**（SPA の静的配信は Caddy）・
   **ADR-0031**（フロントエンドの技術スタック）。いずれとも矛盾しない（配信サーバ・ライブラリの選定は変えない。
   計画書に CSP を定める記述・禁じる記述は無い——`grep -rni "csp\|content-security-policy" projects/microservices-platform` が 0 件）。
-- 実装 ADR: **IADR-0578**（新設）。関連 **IADR-0362**（Caddy の配信。「CSP は入れない——別 issue の仕事」をここで引き取る）・
+- 実装 ADR: **IADR-0579**（新設）。関連 **IADR-0362**（Caddy の配信。「CSP は入れない——別 issue の仕事」をここで引き取る）・
   **IADR-0365**（Wiki 本文の sanitize）・**IADR-0134**（初期ロードの ratchet。Zod を初期ロードへ載せない）。
 
 ## 要件（コーディネーター指示 2026-10-22）
@@ -57,7 +57,7 @@ issue: "GHSA-5h4q-4m2j-rjhm"
   `MarkdownAnswer.tsx`（AI 回答）と `WikiBrowsePage.tsx`（Wiki 本文）の 2 か所だけ。両方を絞る。
 - CSP の影響を受ける構成: `git grep -n "<iframe\|new Worker\|WebSocket\|EventSource\|<img\|new Function\|eval("`（AST ユニットを含む）。
   `<img>` は `/bff/...`（同一オリジン）と `blob:`（図）だけ。iframe・Worker・WebSocket は無い。eval は Zod の試行だけ（ビルド成果物で確認）。
-- 「CSP は入れない」の記述: `git grep -n "CSP は"` → `Caddyfile`（本変更で書き換え）・IADR-0362・作業仕様書（凍結記録のため書き換えない。IADR-0578 から引き取る旨を書く）。
+- 「CSP は入れない」の記述: `git grep -n "CSP は"` → `Caddyfile`（本変更で書き換え）・IADR-0362・作業仕様書（凍結記録のため書き換えない。IADR-0579 から引き取る旨を書く）。
 
 ## 実装
 

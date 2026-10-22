@@ -1,6 +1,6 @@
 import { test as base, expect } from '@playwright/test';
 
-// NFR / IADR-0578（Refs GHSA-5h4q-4m2j-rjhm）: **全 E2E を CSP の違反なしで走らせる**ための `test`。
+// NFR / IADR-0579（Refs GHSA-5h4q-4m2j-rjhm）: **全 E2E を CSP の違反なしで走らせる**ための `test`。
 //
 // preview（`vite.config.ts`）は本番の配信（`Caddyfile`）と同じ CSP を返す。CSP の違反は画面を
 // 静かに欠けさせる（スクリプト・スタイル・画像・通信が黙って拒まれる）だけで、テストの他の

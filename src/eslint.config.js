@@ -24,14 +24,14 @@ import ts from 'typescript';
 // **雛形へ別立ての禁止リストを書かない**——2 本になった時点で必ず片方が古くなる。
 export const BANNED_IMPORT_PATTERNS = [
   {
-    // NFR / IADR-0578（Refs GHSA-5h4q-4m2j-rjhm）: 配信の CSP は eval を許さない。Zod は `jitless` を
+    // NFR / IADR-0579（Refs GHSA-5h4q-4m2j-rjhm）: 配信の CSP は eval を許さない。Zod は `jitless` を
     // 設定してから使う必要があり、その設定は `analysisFormSchema.ts` が持つ（本リポで Zod を import する
     // ただ 1 つの場所。そこだけが理由つきの eslint-disable で外す）。別の場所で import すると、設定より前に
     // Zod が使われ得て、CSP の違反（eval の試行）が出る。
     // `group: ['zod']` は gitignore 流の一致で `@hookform/resolvers/zod` の末尾の要素にも当たるため、正規表現で書く。
     regex: '^zod(?:/.*)?$',
     message:
-      'Zod は analysisFormSchema.ts（jitless の設定を持つ）でだけ import する（IADR-0578）。' +
+      'Zod は analysisFormSchema.ts（jitless の設定を持つ）でだけ import する（IADR-0579）。' +
       '別の場所で使うなら、z.config({ jitless: true }) を先に効かせる置き場所を決めてから広げる。',
   },
   {

@@ -17,7 +17,7 @@ import { citationAnchorId } from './citations';
 //   （script / style / iframe / イベント属性 / `javascript:`）に加え、メディア（img / picture / source /
 //   video / audio）を落とす——**外部 URL の資産をブラウザに取りに行かせない**（08_data-egress-policy）。
 //
-// ■ 許可は allowlist で持つ（NFR / IADR-0578。Refs GHSA-5h4q-4m2j-rjhm）
+// ■ 許可は allowlist で持つ（NFR / IADR-0579。Refs GHSA-5h4q-4m2j-rjhm）
 //   回答の描画に要るのは marked が出す要素（見出し・段落・強調・リスト・表・コード・引用・リンク・脚注の印）だけなので、
 //   **タグ・属性・URI のスキームを allowlist で閉じる**（足りないものは描けないだけで、余計なものは通らない）。
 //   - タグ: `MARKDOWN_TAGS`（フォーム部品・`style`・メディア・埋め込みは含めない）
@@ -50,7 +50,7 @@ export interface RenderMarkdownOptions {
   citationCount?: number;
 }
 
-/** 描画に使ってよいタグ（marked の出力に要るものだけ。NFR / IADR-0578）。 */
+/** 描画に使ってよいタグ（marked の出力に要るものだけ。NFR / IADR-0579）。 */
 const MARKDOWN_TAGS: readonly string[] = [
   'p',
   'br',
@@ -85,7 +85,7 @@ const MARKDOWN_TAGS: readonly string[] = [
   'a',
 ];
 
-/** 描画に使ってよい属性（NFR / IADR-0578）。`class` は下のフックが脚注の印だけに絞る。 */
+/** 描画に使ってよい属性（NFR / IADR-0579）。`class` は下のフックが脚注の印だけに絞る。 */
 const MARKDOWN_ATTRS: readonly string[] = ['href', 'title', 'align', 'start', 'class'];
 
 /** 許可する URI（`http(s)` / `mailto` の絶対 URL・断片・同一オリジンのパス）。 */

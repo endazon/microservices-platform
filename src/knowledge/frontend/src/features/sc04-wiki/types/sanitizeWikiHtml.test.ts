@@ -28,7 +28,7 @@ describe('sanitizeWikiHtml (SC-04)', () => {
     expect(out).toContain('<p>t</p>');
   });
 
-  // NFR / IADR-0578（Refs GHSA-5h4q-4m2j-rjhm）: フォーム部品と style（要素・属性）は落とす。
+  // NFR / IADR-0579（Refs GHSA-5h4q-4m2j-rjhm）: フォーム部品と style（要素・属性）は落とす。
   it('drops form controls and style', () => {
     const out = sanitizeWikiHtml(
       '<form action="/x"><input name="q"><button>b</button><select><option>o</option></select><textarea>t</textarea><fieldset></fieldset></form><style>p{}</style><p style="position:fixed">本文</p>',

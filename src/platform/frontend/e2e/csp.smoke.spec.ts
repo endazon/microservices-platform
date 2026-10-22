@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 import { test, expect } from './support/cspGuard';
 
-// NFR / IADR-0578（Refs GHSA-5h4q-4m2j-rjhm）: 配信の CSP。
+// NFR / IADR-0579（Refs GHSA-5h4q-4m2j-rjhm）: 配信の CSP。
 //
 // 他の spec は `support/cspGuard` の下で「違反が 0 件」を確かめる。それが空振りでないことを、
 // ここで対にして固定する —— ①ヘッダが本番（Caddyfile）と同じ値で付いている、②その下では

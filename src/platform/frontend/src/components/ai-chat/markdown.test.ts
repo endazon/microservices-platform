@@ -52,7 +52,7 @@ describe('renderMarkdown', () => {
     expect(html).not.toContain('onclick');
   });
 
-  // NFR / IADR-0578（Refs GHSA-5h4q-4m2j-rjhm）: 許可は allowlist。フォーム部品・style・
+  // NFR / IADR-0579（Refs GHSA-5h4q-4m2j-rjhm）: 許可は allowlist。フォーム部品・style・
   // 埋め込み・画面のクラスは通らない。
   it('drops form controls, style, embeds and presentational attributes', async () => {
     const html = await renderMarkdown(
