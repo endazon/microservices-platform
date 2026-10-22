@@ -1,5 +1,5 @@
 ---
-title: IADR-0580 GitHub Actions は commit SHA で固定して同じ行に版の注記を置き、Dependabot が SHA と注記を対で更新する。Dependabot の対象に nuget と npm を足す
+title: IADR-0581 GitHub Actions は commit SHA で固定して同じ行に版の注記を置き、Dependabot が SHA と注記を対で更新する。Dependabot の対象に nuget と npm を足す
 type: impl-adr
 status: Accepted
 related_ids: [NFR, IADR-0578]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261022_actions-sha-pin-and-dependabot.md
 ---
 
-# IADR-0580: Actions の SHA 固定と Dependabot（GHSA-552h-47r7-6v6p）
+# IADR-0581: Actions の SHA 固定と Dependabot（GHSA-552h-47r7-6v6p）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

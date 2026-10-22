@@ -18301,7 +18301,7 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
-  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0580: Actions の SHA 固定と依存の自動更新 ----------------
+  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0581: Actions の SHA 固定と依存の自動更新 ----------------
   //   1. 全ワークフローの外部の `uses:` は 40 桁の commit SHA で固定し、同じ行に版の注記（`# vX…`）を置く。
   //   2. dependabot.yml は github-actions / nuget / npm を更新の対象にする。
   {
