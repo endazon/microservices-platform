@@ -50,7 +50,13 @@ spec:
       # （コネクタの資格情報の読み取りだけ。IADR-0495 決定 1。#458 段 S1）。
       # 宣言が無いサービスは従来どおり名前空間の `default` で動く（`default` を Vault に束縛しないこと）。
       serviceAccountName: {{ .name }}
+      {{- else }}
+      # NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: 専用の SA を持たないサービスは k8s API を呼ばない。
+      # 名前空間の `default` のトークンを Pod に置かない（最小権限）。メッシュのサイドカーは自前の projected token を使う。
+      automountServiceAccountToken: false
       {{- end }}
+      # NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: 非 root（aspnet イメージの APP_UID）・seccomp RuntimeDefault。
+      {{- include "msp.podSecurityContext.restricted" $.Values.podSecurity.dotnetRunAsUser | nindent 6 }}
       {{- with $.Values.imagePullSecrets }}
       # ADR-0007: Harbor レジストリからの Pull 認証（Secret は deploy/secrets で事前作成）。
       imagePullSecrets:
@@ -60,6 +66,7 @@ spec:
         - name: {{ $name }}-service
           image: "{{ $.Values.global.image.registry }}/{{ $svc.image }}:{{ $svc.tag | default "latest" }}"
           imagePullPolicy: {{ $.Values.global.image.pullPolicy }}
+          {{- include "msp.containerSecurityContext.restricted" . | nindent 10 }}
           {{- if $svc.port }}
           ports:
             - containerPort: {{ $svc.port }}

@@ -798,6 +798,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-broker-per-service-users.test.js
 
+      # NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: Pod とコンテナのセキュリティ設定を**実際に helm template で描いて**固定する —— 既定・values-local・
+      # 任意部品の全てで seccomp RuntimeDefault・権限昇格なし・（外部 3 つ以外は）非 root とケーパビリティなし・SA を持たない Pod はトークンを置かない、
+      # Namespace の Pod Security Admission の水準、描画で止まる条件、Dockerfile / overlay / 起動器との一致、変異。helm が要るのでこのジョブ（段の追加のみ）。
+      - name: Test helm pod security settings (render, supply, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-pod-security.test.js
+
       # NFR, IADR-0539, Issue #1927: 常駐メモリを下げた設定を**実際に描いて**固定する —— .NET の全 Deployment（既定・values-local）に
       # GC の 3 つ（.NET でないものには無い・サービス単位の上書き・extraEnv の同名は描画で落ちる）、H-1 / AST#690 の系列の経路
       # （collector の metrics パイプラインに値で落とす段が無い・remote write の受け口・保持 30d 以上）、Keycloak のヒープと limits の整合、変異。

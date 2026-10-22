@@ -55,6 +55,18 @@ COPY src/platform/frontend/config.js.template /etc/microservices-platform/config
 COPY src/platform/frontend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 COPY --from=build /app/platform/frontend/dist /usr/share/caddy
+# NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: 非特権ユーザー（uid 10001）で動かす（最小権限）。
+# 🔴 chart の frontend.runAsUser と同じ uid にすること（deploy/helm/microservices-platform/values.yaml）。
+#   1. caddy のファイルケーパビリティ（cap_net_bind_service）を外す。待受は 8080 なので要らない。付いたままだと、
+#      ケーパビリティを全て落としたコンテナでは exec 自体が拒まれる。cp はファイルケーパビリティ（拡張属性）を写さない。
+#   2. 書けるのは entrypoint が描く config.js と、Caddy の /config・/data だけにする（配信物の他のファイルは root のまま）。
+RUN cp /usr/bin/caddy /tmp/caddy \
+    && mv /tmp/caddy /usr/bin/caddy \
+    && touch /usr/share/caddy/config.js \
+    && chown 10001:10001 /usr/share/caddy/config.js \
+    && mkdir -p /config /data \
+    && chown -R 10001:10001 /config /data
+USER 10001:10001
 # 既定の BFF 上流（compose）。k8s は env で上書きする。Caddyfile の {$BFF_UPSTREAM} が読み込み時に展開する。
 ENV BFF_UPSTREAM=http://bff:8080
 EXPOSE 8080
