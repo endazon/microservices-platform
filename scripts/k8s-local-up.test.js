@@ -422,6 +422,9 @@ const KUBECTL_STUB = [
   '  v="$(grep "^rabbitmq-users $k=" "$STUB_LOG.secrets" 2>/dev/null | tail -n 1 | cut -d= -f2-)";',
   '  if [ -n "$v" ]; then printf "%s" "$v" | base64 -w0; elif [ "${STUB_RMQ_USERS_MISSING:-}" != "1" ]; then printf "ZHVtbXk="; fi; exit 0;; esac',
   //   ブローカへの exec -i は本物と同じく標準入力（パスワード）を読み切る（読まずに閉じると送り手が SIGPIPE で落ちる）。
+  //   IADR-0577: 実機の rabbitmqctl（3.13）はパスワードを受けるコマンドで引数がちょうど 2 つのときだけ標準入力を開き、それ以外は
+  //   読み込みが返らずに止まる（統合スタックの実測）。模型は止まる代わりに 124（timeout と同じ）で返す。
+  'case "$*" in *"rabbitmqctl -q add_user "*|*"rabbitmqctl -q change_password "*|*"rabbitmqctl -q authenticate_user "*) echo "rabbitmqctl: 標準入力を開かない形（実機では止まる）" >&2; exit 124;; esac',
   'case "$*" in *"exec -i deploy/rabbitmq -- rabbitmqctl"*) cat >/dev/null; exit 0;; esac',
   // #1699: バックアップの CronJob の門の入力。CronJob のイメージは実物のマニフェストと同じ形の参照を返す。
   //   受取人の ConfigMap は STUB_BACKUP_RECIPIENTS（中身そのもの）を返す。既定（未設定）は空 ＝ 受取人なし。
@@ -1933,10 +1936,10 @@ ok('ESO=1 (IADR-0573): rabbitmq-users を apply し、宣言の全ユーザー�
     .split('\n').filter((l) => l.trim() && !l.trim().startsWith('#')).map((l) => l.trim().split(/\s+/)[0]);
   assert.ok(users.length >= 18, `宣言のユーザーが少ない（読めていない）: ${users.length}`);
   for (const u of users) {
-    const add = res.lines.findIndex((l) => l.includes('rabbitmqctl -q add_user ' + u) || l.includes('rabbitmqctl -q change_password ' + u));
+    const add = res.lines.findIndex((l) => l.includes('rabbitmqctl add_user ' + u) || l.includes('rabbitmqctl change_password ' + u));
     assert.ok(add > esAt, `${u} を合わせていない、または ExternalSecret の apply より前にある`);
     assert.ok(anyLineHas(res.lines, `rabbitmqctl -q set_permissions -p / ${u} .* .* .*`), `${u} の権限を設定していない`);
-    assert.ok(anyLineHas(res.lines, `rabbitmqctl -q authenticate_user ${u}`), `${u} の認証を確かめていない`);
+    assert.ok(anyLineHas(res.lines, `rabbitmqctl authenticate_user ${u}`), `${u} の認証を確かめていない`);
     // 引数はユーザー名で終わる（パスワードを引数に載せない）。
     for (const l of res.lines.filter((x) => / (add_user|change_password|authenticate_user) /.test(x) && x.includes(` ${u}`))) {
       assert.ok(l.trimEnd().endsWith(` ${u}`), `パスワードを引数に載せている疑い: ${l}`);
@@ -2043,7 +2046,7 @@ ok('既定 (IADR-0577): ESO なしでも、ブローカ側（全ユーザー）�
   const helmAt = DEFAULT.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
   assert.ok(helmAt > 0, 'helm upgrade が無い');
   for (const u of USERS_0577.map((r) => r[0])) {
-    const at = DEFAULT.lines.findIndex((l) => l.includes(`rabbitmqctl -q add_user ${u}`) || l.includes(`rabbitmqctl -q change_password ${u}`));
+    const at = DEFAULT.lines.findIndex((l) => l.includes(`rabbitmqctl add_user ${u}`) || l.includes(`rabbitmqctl change_password ${u}`));
     assert.ok(at >= 0 && at < helmAt, `${u} を helm の前にブローカへ合わせていない`);
   }
   // 旧 rabbitmq-app は helm の後に片付ける（ExternalSecret を先に消す）。
@@ -2081,6 +2084,9 @@ ok('IADR-0577: reconcile-users.sh はパスワードを改行で終わる 1 行�
     '  *"get secret rabbitmq-users"*) k="$(printf "%s" "$*" | sed -n \'s/.*index \\.data "\\([^"]*\\)".*/\\1/p\')"; printf "v-%s" "$k" | base64 -w0; exit 0;;',
     '  *"rabbitmqctl -q list_users"*) printf "[]"; exit 0;;',
     '  *"rabbitmqctl -q add_user "*|*"rabbitmqctl -q change_password "*|*"rabbitmqctl -q authenticate_user "*)',
+    '    echo "noinput ${*: -1}" >> "$STUB_H/log"; exit 124;;',
+    '  *"rabbitmqctl add_user "*|*"rabbitmqctl change_password "*|*"rabbitmqctl authenticate_user "*)',
+    '    a="$*"; set -- ${a#*rabbitmqctl }; [ "$#" -eq 2 ] || { echo "noinput $*" >> "$STUB_H/log"; exit 124; }',
     '    in="$(cat; printf x)"; in="${in%x}"',
     '    case "$in" in *$\'\\n\') ;; *) echo "stdin-not-line ${*: -1}" >> "$STUB_H/log"; exit 124;; esac',
     '    [ "${in%$\'\\n\'}" = "v-${*: -1}" ] || { echo "stdin-value-changed ${*: -1}" >> "$STUB_H/log"; exit 1; }',
@@ -2096,6 +2102,7 @@ ok('IADR-0577: reconcile-users.sh はパスワードを改行で終わる 1 行�
     RABBITMQ_USERS_FILE: path.join(H, 'users.txt'), RABBITMQ_USERS_TIMEOUT: '1' } });
   const log = fs.readFileSync(path.join(H, 'log'), 'utf8');
   fs.rmSync(H, { recursive: true, force: true });
+  assert.ok(!/noinput/.test(log), `パスワードを渡すコマンドの引数が 2 つでない（rabbitmqctl が標準入力を開かず止まる）:\n${log}`);
   assert.ok(!/stdin-not-line/.test(log), `パスワードを改行で終わらせずに渡した（kubectl exec -i 越しで止まり得る）:\n${log}`);
   assert.ok(!/stdin-value-changed/.test(log), `渡した値が Secret の値と違う:\n${log}`);
   assert.strictEqual(r.status, 0, r.stderr);
@@ -2121,7 +2128,8 @@ const KUBECTL_MODEL_0577 = [
   '    v="$(grep "^$k=" "$H/rmq-users" | cut -d= -f2-)"; [ -n "$v" ] && printf "%s" "$v" | base64 -w0; exit 0;;',
   '  *"rabbitmqctl -q list_users"*) [ -e "$H/fail-list_users" ] && exit 1; json "$H/users"; exit 0;;',
   '  *"rabbitmqctl -q list_connections"*) [ -e "$H/fail-list_connections" ] && exit 1; json "$H/conns"; exit 0;;',
-  '  *"rabbitmqctl -q authenticate_user "*) cat >/dev/null; grep -Fxq -- "${*: -1}" "$H/users"; exit $?;;',
+  '  *"rabbitmqctl -q authenticate_user "*) exit 124;;',
+  '  *"rabbitmqctl authenticate_user "*) cat >/dev/null; grep -Fxq -- "${*: -1}" "$H/users"; exit $?;;',
   '  *"rabbitmqctl -q delete_user "*) grep -Fxv -- "${*: -1}" "$H/users" > "$H/users.new" || true; mv "$H/users.new" "$H/users"; exit 0;;',
   '  *"create configmap"*) exit 0;;',
   '  *"apply -f -"*) cat >/dev/null; exit 0;;',
@@ -2235,12 +2243,16 @@ function boot0577({ files = {}, flag = null, addFails = [], changeFails = [], st
   fs.writeFileSync(path.join(H, 'boot.sh'), BOOT_0577);
   fs.writeFileSync(path.join(bin, 'rabbitmqctl'), [
     '#!/bin/sh',
-    'in=""; case "$2" in add_user|change_password) in="$(cat)";; esac',
+    // 実機の rabbitmqctl（3.13）の起動スクリプトを写す: パスワードを受けるコマンドは、引数がちょうど 2 つのときだけ標準入力を開く。
+    'cmd="$1"; [ "$cmd" = "-q" ] && cmd="$2"',
+    'in=""; case "$cmd" in add_user|change_password|authenticate_user)',
+    '  if [ "$#" -ne 2 ]; then echo "$* <noinput>" >> "$STUB_H/calls"; exit 124; fi; in="$(cat)";; esac',
     'echo "$* <$in>" >> "$STUB_H/calls"',
-    'case "$2" in',
+    'u="$3"; [ "$1" = "-q" ] || u="$2"',
+    'case "$cmd" in',
     `  await_startup) [ "${startupFails ? 1 : 0}" = 1 ] && exit 1; exit 0;;`,
-    `  add_user) case " ${addFails.join(' ')} " in *" $3 "*) exit 1;; esac;;`,
-    `  change_password) case " ${changeFails.join(' ')} " in *" $3 "*) exit 1;; esac;;`,
+    `  add_user) case " ${addFails.join(' ')} " in *" $u "*) exit 1;; esac;;`,
+    `  change_password) case " ${changeFails.join(' ')} " in *" $u "*) exit 1;; esac;;`,
     'esac',
     'exit 0',
     '',
@@ -2259,17 +2271,18 @@ ok('IADR-0577: 起動の直後に Secret の全ユーザーを作り直す（値
   const r = boot0577({ files: { 'msp-document': 'pw-d', 'ast-audit': 'pw-a' } });
   assert.strictEqual(r.status, 0);
   for (const [u, pw] of [['msp-document', 'pw-d'], ['ast-audit', 'pw-a']]) {
-    assert.ok(r.calls.includes(`-q add_user ${u} <${pw}>`), `${u} を標準入力の値で作っていない:\n${r.calls.join('\n')}`);
+    assert.ok(r.calls.includes(`add_user ${u} <${pw}>`), `${u} を標準入力の値で作っていない:\n${r.calls.join('\n')}`);
     assert.ok(r.calls.includes(`-q set_permissions -p / ${u} .* .* .* <>`), `${u} の権限`);
     assert.ok(r.calls.includes(`-q set_user_tags ${u} <>`), `${u} のタグ`);
   }
   assert.ok(!r.calls.some((c) => / delete_user /.test(c)), '印が無いのに既定のユーザーを消した');
   assert.ok(!/pw-d|pw-a/.test(r.log), '値を記録に出した');
+  assert.ok(!r.calls.some((c) => /<noinput>/.test(c)), `パスワードを渡すコマンドの引数が 2 つでない（実機では止まる）:\n${r.calls.join('\n')}`);
 });
 
 ok('IADR-0577: 印があり全ユーザーが揃えば既定のユーザーを消す。1 人でも揃わない・Secret が空なら消さない。常に 0 で終わる', () => {
   const ok1 = boot0577({ files: { 'msp-document': 'a', 'msp-wiki': 'b' }, flag: 'true', addFails: ['msp-wiki'] });
-  assert.ok(ok1.calls.includes('-q change_password msp-wiki <b>'), '在るユーザーを change_password で合わせていない');
+  assert.ok(ok1.calls.includes('change_password msp-wiki <b>'), '在るユーザーを change_password で合わせていない');
   assert.ok(ok1.calls.includes('-q delete_user brokeradmin <>'), '印に従って消していない');
   const partial = boot0577({ files: { 'msp-document': 'a', 'msp-wiki': 'b' }, flag: 'true', addFails: ['msp-wiki'], changeFails: ['msp-wiki'] });
   assert.strictEqual(partial.status, 0);

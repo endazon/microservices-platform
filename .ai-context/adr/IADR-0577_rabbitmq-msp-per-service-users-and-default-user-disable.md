@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20261022_rabbitmq-msp-per-service-users.md
 ---
 
-# IADR-0577: 基盤のサービスをブローカのサービスごとのユーザーへ切り替え、既定のユーザーを無効化する（GHSA-rh44-px44-p48q）
+# IADR-0577: 基盤のサービスをブローカのサービスごとのユーザーへ切り替え、既定のユーザーを無効化する（GHSA-pvmh-cvmf-pvcp / GHSA-rh44-px44-p48q）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -23,7 +23,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-rh44-px44-p48q（多層防御の強化。全サービスで共有する資格情報を残さない・最小権限）。
+- 起点: GHSA-pvmh-cvmf-pvcp（ブローカのサービスごとの資格情報）/ GHSA-rh44-px44-p48q（既定のユーザーの無効化）（多層防御の強化。全サービスで共有する資格情報を残さない・最小権限）。
 - 計画: **ADR-0027**（メッセージング）・**ADR-0124 決定 1**（対になる秘密）。要求 **NFR-18**。いずれとも矛盾しない
   （ブローカの製品・トポロジは変えない。KV `msp/rabbitmq-users` は IADR-0573 のまま SC-22 の画面の対象外）。
 - 前提: [IADR-0573](./IADR-0573_rabbitmq-per-service-users-and-ingress-policy.md)（サービスごとのユーザー・決定 4 の移行の段。本 IADR は段 3）・
@@ -115,3 +115,4 @@ related_specs:
 7. 無効化の手順は、接続・ユーザーの列挙そのものが失敗したら「無い」と読まずに止める（消さない・印も置かない）。
 8. 復元（postStart）はサーバと並んで root で走るので、サーバが Erlang の cookie を作るまで rabbitmqctl を呼ばず、呼ぶときは cookie の所有者として呼ぶ（先に呼ぶと root の所有で cookie を作り、権限を落としたサーバが読めずに起動に失敗する。統合スタックの実測で判明）。
 9. 合わせ（reconcile-users.sh）は、rabbitmqctl へパスワードを改行で終わる 1 行で渡し、1 回の呼び出しに上限（`RABBITMQ_CTL_TIMEOUT`、既定 60 秒）を持つ。rabbitmqctl はパスワードを 1 行（改行か EOF まで）読むので、改行が無いと kubectl exec -i 越しでは EOF を待って止まり得る（ESO を使わない経路で初めて稼働のブローカに当てた統合スタックで、起動器が [5/7] で止まった実測）。
+10. 🔴 パスワードを標準入力で受けるコマンド（add_user / change_password / authenticate_user）は、rabbitmqctl へ「コマンドとユーザー名」の 2 引数だけで呼ぶ（`-q` も付けない）。rabbitmqctl（3.13）の起動スクリプトは、これらのコマンドで引数がちょうど 2 つのときだけ標準入力を開き、それ以外は Erlang を `-noinput` で起こすので、読み込みが返らない（統合スタックの 3 回目で、ブローカに add_user が届かず 60 秒の上限で切れたことと、上流の起動スクリプトで確かめた）。合わせ（reconcile-users.sh）と起動の直後の復元（postStart）の両方に当てる。段 1 の合わせ（ESO の経路）も同じ呼び方だったので、本 PR で同時に直る。

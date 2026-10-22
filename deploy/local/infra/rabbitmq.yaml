@@ -107,8 +107,10 @@ data:
     for f in "$USERS_DIR"/*; do
       [ -f "$f" ] || continue
       u="$(basename "$f")"
-      if ! rabbitmqctl -q add_user "$u" < "$f" >/dev/null 2>&1; then
-        rabbitmqctl -q change_password "$u" < "$f" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
+      # 🔴 パスワードを標準入力で渡すコマンドは引数を「コマンドとユーザー名」の 2 つだけにする（-q も付けない）。
+      #   rabbitmqctl は引数がちょうど 2 つのときだけ標準入力を開き、それ以外は読み込みが返らずに止まる。
+      if ! rabbitmqctl add_user "$u" < "$f" >/dev/null 2>&1; then
+        rabbitmqctl change_password "$u" < "$f" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
       fi
       rabbitmqctl -q set_permissions -p "$VHOST" "$u" '.*' '.*' '.*' >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
       rabbitmqctl -q set_user_tags "$u" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }

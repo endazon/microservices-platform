@@ -18105,7 +18105,9 @@ server.listen(0, '127.0.0.1', async () => {
       const rec = readR('deploy/local/rabbitmq-setup/reconcile-users.sh');
       assert.ok(rec.includes('rabbitmq-setup/users.txt'), 'reconcile-users.sh が users.txt を読まない');
       // パスワードは標準入力だけ（add_user / change_password / authenticate_user の引数はユーザー名で終わる）。
-      for (const m of rec.matchAll(/rmqctl (add_user|change_password|authenticate_user) ([^\n]+)/g)) {
+      const pwCalls = [...rec.matchAll(/rmqctl(?:_stdin)? (add_user|change_password|authenticate_user) ([^\n]+)/g)];
+      assert.ok(pwCalls.length >= 3, `パスワードを渡す呼び出しを見つけられない（検査が空振りする）: ${pwCalls.length}`);
+      for (const m of pwCalls) {
         assert.ok(/^"\$u"( >\/dev\/null.*)?$/.test(m[2].trim()), `パスワードを引数に載せている疑い: ${m[0]}`);
       }
       assert.ok(!/\bguest\b/.test(rec.replace(/^#.*$/gm, '')), 'reconcile-users.sh が既定のユーザーに触れている');

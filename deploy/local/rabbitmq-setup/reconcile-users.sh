@@ -39,13 +39,18 @@ users() { grep -v '^[[:space:]]*#' "$USERS_FILE" | awk 'NF >= 1 { print $1 }'; }
 
 # 1 回の呼び出しの上限（秒）。届かない・応答しないノードで起動器ごと止まらないよう、上限で切って名指して止める。
 CTL_TIMEOUT="${RABBITMQ_CTL_TIMEOUT:-60}"
-rmqctl() {
+ctl() {
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$CTL_TIMEOUT" kubectl -n "$INFRA_NS" exec -i deploy/rabbitmq -- rabbitmqctl -q "$@"
+    timeout "$CTL_TIMEOUT" kubectl -n "$INFRA_NS" exec -i deploy/rabbitmq -- rabbitmqctl "$@"
   else
-    kubectl -n "$INFRA_NS" exec -i deploy/rabbitmq -- rabbitmqctl -q "$@"
+    kubectl -n "$INFRA_NS" exec -i deploy/rabbitmq -- rabbitmqctl "$@"
   fi
 }
+rmqctl() { ctl -q "$@"; }
+# パスワードを標準入力で受けるコマンド（add_user / change_password / authenticate_user）。🔴 **引数は「コマンドとユーザー名」の
+#   2 つだけにする（-q も付けない）。** rabbitmqctl（3.13）の起動スクリプトは、引数がちょうど 2 つのときだけ標準入力を開き、
+#   それ以外は Erlang を -noinput で起こす。そのとき読み込みは返らず、rabbitmqctl は止まる（統合スタックの実測）。
+rmqctl_stdin() { ctl "$1" "$2"; }
 
 # Secret のキーの値（base64 のまま。キーが無ければ空）。
 secret_b64() {
@@ -81,9 +86,9 @@ fail=""
 for u in $(users); do
   if [ "$MODE" = "apply" ]; then
     if printf '%s\n' "$existing" | grep -Fxq -- "$u"; then
-      password_line "$u" | rmqctl change_password "$u" >/dev/null
+      password_line "$u" | rmqctl_stdin change_password "$u" >/dev/null
     else
-      password_line "$u" | rmqctl add_user "$u" >/dev/null
+      password_line "$u" | rmqctl_stdin add_user "$u" >/dev/null
     fi
     rmqctl set_permissions -p "$VHOST" "$u" '.*' '.*' '.*' >/dev/null
     rmqctl set_user_tags "$u" >/dev/null
@@ -91,7 +96,7 @@ for u in $(users); do
     fail="${fail} ${u}(無い)"
     continue
   fi
-  if ! password_line "$u" | rmqctl authenticate_user "$u" >/dev/null 2>&1; then
+  if ! password_line "$u" | rmqctl_stdin authenticate_user "$u" >/dev/null 2>&1; then
     fail="${fail} ${u}(認証できない)"
     continue
   fi

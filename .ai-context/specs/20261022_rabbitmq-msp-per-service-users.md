@@ -1,5 +1,5 @@
 ---
-title: 作業仕様書 — 基盤の 7 サービスをブローカのサービスごとのユーザーへ切り替え、既定のユーザーを無効化する（IADR-0573 の段 3・GHSA-rh44-px44-p48q）
+title: 作業仕様書 — 基盤の 7 サービスをブローカのサービスごとのユーザーへ切り替え、既定のユーザーを無効化する（IADR-0573 の段 3・GHSA-pvmh-cvmf-pvcp / GHSA-rh44-px44-p48q）
 type: spec
 status: done
 related_ids: [NFR-18, ADR-0027, ADR-0124, IADR-0577, IADR-0573, IADR-0574, IADR-0291, IADR-0286, IADR-0485]
@@ -9,7 +9,7 @@ updated: 2026-10-22
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0027 （メッセージングは Wolverine ＋ RabbitMQ）
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1
-issue: "GHSA-rh44-px44-p48q"
+issue: "GHSA-pvmh-cvmf-pvcp / GHSA-rh44-px44-p48q"
 ---
 
 # 作業仕様書 — 基盤のサービスをブローカのサービスごとのユーザーへ切り替える（段 3）
