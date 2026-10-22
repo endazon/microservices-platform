@@ -16,7 +16,7 @@ related_ids:
   - IADR-0369
 author: claude
 created: 2026-09-04
-updated: 2026-10-01
+updated: 2026-10-23
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md
@@ -165,6 +165,10 @@ IADR-0307 決定 4 が書いた段取り「注入 → 全 Pod Ready → PERMISSI
 > ［2026-10-01 追記 / #1710］ **「未設定なら PERMISSIVE」は初回（`msp` リリースが無い・メッシュ未宣言）の既定に限る。**
 > 未設定の**再実行**は helm の宣言（`helm get values msp`）から現行の `mesh.mtlsMode` を引き継ぎ、読めなければ `[2/7]` の前に止まる。
 > 従前は再実行でも PERMISSIVE を渡し、STRICT のクラスタを黙って降格していた。判断は [[IADR-0487]]。
+
+> ［2026-10-23 追記 / [[IADR-0590]]（Refs GHSA-j4qv-2w99-xg5p）］ **初回の既定は STRICT へ改めた**（本決定の据え置きを覆す）。
+> AST の扱いは決定 4 のまま（MSP 側で平文を許さない。恒久像は AST をメッシュへ入れる）で、STRICT のとき AST の名前空間に
+> Pod が居て注入ラベルが無ければ起動器が WARN を出す。引き継いだ PERMISSIVE は上げずに告げる。
 
 **理由は §実測 2 である** —— 経路B の `ai-stock-trading` はメッシュ外のテナントであり、
 STRICT の間 AST→MSP の平文（ナレッジ保存・日報の LLM 生成・**取引判断の LLM 呼び出し**）が全断する。
