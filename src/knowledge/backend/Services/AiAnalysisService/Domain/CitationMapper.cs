@@ -37,7 +37,8 @@ public static class CitationMapper
     {
         var sb = new StringBuilder();
         foreach (var c in citations)
-            sb.AppendLine($"[{c.Number}] {c.DocumentTitle}\n{c.Snippet}\n");
+            // NFR / IADR-0580: 表題も 1 行に畳む（抜粋と同じく、文書の側から行を起こして別の出典を名乗れない）。
+            sb.AppendLine($"[{c.Number}] {OneLine(c.DocumentTitle)}\n{c.Snippet}\n");
         return sb.ToString();
     }
 
@@ -46,6 +47,9 @@ public static class CitationMapper
         => !string.IsNullOrWhiteSpace(r.MarkdownUri)
             ? r.MarkdownUri!
             : $"/documents/{r.DocumentId}";
+
+    private static string OneLine(string text)
+        => text.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ').Trim();
 
     private static string BuildSnippet(string text)
     {
