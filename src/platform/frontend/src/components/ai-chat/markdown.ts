@@ -108,7 +108,8 @@ function loadRenderer(): Promise<Renderer> {
   if (rendererPromise) return rendererPromise;
   rendererPromise = Promise.all([import('marked'), import('dompurify')]).then(
     ([{ Marked }, { default: DOMPurify }]) => {
-      const cite = { prefix: '', count: 0 };
+      // `mark` は描画ごとに作る推測できない印（脚注の印を本文に直書きしたものと区別する）。
+      const cite = { prefix: '', count: 0, mark: '' };
       const marked = new Marked({
         gfm: true,
         breaks: true,
@@ -127,7 +128,7 @@ function loadRenderer(): Promise<Renderer> {
               // markup（脚注の印）であり文言ではない。
               /* eslint-disable lingui/no-unlocalized-strings */
               if (n < 1 || n > cite.count) return `[${n}]`;
-              return `<sup class="cite"><a href="#${citationAnchorId(cite.prefix, n)}">[${n}]</a></sup>`;
+              return `<sup class="${cite.mark}"><a href="#${citationAnchorId(cite.prefix, n)}">[${n}]</a></sup>`;
               /* eslint-enable lingui/no-unlocalized-strings */
             },
           },
@@ -138,7 +139,12 @@ function loadRenderer(): Promise<Renderer> {
       // `class` は脚注の印（`<sup class="cite">`）にだけ残す。
       purifier.addHook('uponSanitizeAttribute', (node, data) => {
         if (data.attrName !== 'class') return;
-        if (node.nodeName !== 'SUP' || data.attrValue !== 'cite') data.keepAttr = false;
+        // 生成側（上の cite 拡張）が付けた印だけを `cite` へ戻す。本文に直書きした `class="cite"` は落ちる。
+        if (node.nodeName === 'SUP' && cite.mark !== '' && data.attrValue === cite.mark) {
+          data.attrValue = 'cite';
+          return;
+        }
+        data.keepAttr = false;
       });
       purifier.addHook('afterSanitizeAttributes', (node) => {
         if (node.tagName !== 'A') return;
@@ -152,6 +158,8 @@ function loadRenderer(): Promise<Renderer> {
         render(markdown, options) {
           cite.prefix = options.citePrefix;
           cite.count = options.citationCount ?? 0;
+          // `crypto.randomUUID` は安全なコンテキストでしか使えないため、`getRandomValues` で作る。
+          cite.mark = `cite-${Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')}`;
           const html = marked.parse(markdown, { async: false });
           return String(
             purifier.sanitize(html, {

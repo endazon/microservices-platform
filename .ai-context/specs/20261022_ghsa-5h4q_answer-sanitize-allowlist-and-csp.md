@@ -40,7 +40,7 @@ issue: "GHSA-5h4q-4m2j-rjhm"
 | A1 | AI 回答の描画は、フォーム部品・`style`（要素・属性）・埋め込み（`iframe`/`object`/`embed`/`svg`/`math`）・`id`/`name`/`data-*`/`aria-*` を通さない | `markdown.test.ts`「drops form controls, style, embeds and presentational attributes」 |
 | A2 | 表の揃え・番号付きリストの開始・脚注の印は残る（陽性対照） | 同「keeps the markup that markdown needs」 |
 | A3 | リンクの URI は `http(s)` / `mailto`・断片・同一オリジンのパスだけ（スキーム相対・`data:` 等は落ちる） | 同「allows only http(s), mailto, fragment and same-origin path urls」 |
-| A4 | `class` は脚注の印 `<sup class="cite">` にだけ残る | 同「keeps class only on the footnote marker」 |
+| A4 | `class` は生成側が付けた脚注の印にだけ残り、本文に直書きした `<sup class="cite">` は class を失う | 同「keeps class only on the footnote marker that the renderer produced」（直書きを許す形へ戻すと赤。手元で実測） |
 | A5 | Wiki 本文の sanitize もフォーム部品と `style` を落とし、本文は残す | `sanitizeWikiHtml.test.ts`「drops form controls and style」 |
 | A6 | 配信（Caddyfile）が CSP を返し、E2E の配信（vite preview）が同じ値を返す | `csp.smoke.spec.ts` 1 本目 |
 | A7 | CSP の下でインラインのスクリプト・外部の画像・外部への通信が拒まれ、ガードがそれを観測できる（陰性対照） | `csp.smoke.spec.ts` 2 本目 |

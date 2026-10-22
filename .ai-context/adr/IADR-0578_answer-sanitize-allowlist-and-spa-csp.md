@@ -52,7 +52,9 @@ related_specs:
 
 1. **AI 回答の sanitize は allowlist**（`markdown.ts`）:
    - タグ: 段落・改行・区切り・見出し・強調（strong/em/b/i/del/s）・code/pre/blockquote/kbd/sub/sup・リスト・表・`a`。
-   - 属性: `href` / `title` / `align` / `start` / `class`。`class` は**脚注の印 `<sup class="cite">` だけ**に残す（フック）。
+   - 属性: `href` / `title` / `align` / `start` / `class`。`class` は**生成側（marked の拡張）が付けた脚注の印だけ**に残す。
+     生成側は描画ごとの乱数の印（`cite-<乱数>`）を付け、sanitize のフックがその印の `sup` だけを `class="cite"` へ戻す。
+     本文に直書きした `class="cite"`（`sup` を含む）は落ちる（脚注の印に見せかけられない）。
      `style` / `id` / `name` / `data-*` / `aria-*` は通さない。
    - URI: `http(s)` / `mailto` の絶対 URL・`#…`・`/` で始まる同一オリジンのパス（`//` で始まるスキーム相対は通さない）。
    - DOMPurify は URI を持たない属性の値にも URI の正規表現を当てるため、`align` / `start` / `title` / `class` は `ADD_URI_SAFE_ATTR` で外す。

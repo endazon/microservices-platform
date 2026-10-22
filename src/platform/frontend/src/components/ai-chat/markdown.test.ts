@@ -114,13 +114,19 @@ describe('renderMarkdown', () => {
     expect(html).not.toContain('ftp:');
   });
 
-  // 利用者が書いた class="cite" の sup 以外の要素へ cite を移せない。
-  it('keeps class only on the footnote marker', async () => {
+  // class は生成側が付けた脚注の印にだけ残る。本文に直書きした class="cite"（sup を含む）は落ちる。
+  it('keeps class only on the footnote marker that the renderer produced', async () => {
     const html = await renderMarkdown(
-      '<span class="cite">x</span><a class="cite" href="/a">y</a>',
-      opts,
+      '<span class="cite">x</span><a class="cite" href="/a">y</a><sup class="cite"><a href="#ask-current-cite-1">*</a></sup> [1]',
+      { citePrefix: 'ask-current', citationCount: 1 },
     );
-    expect(html).not.toContain('class=');
+    // 直書きの sup は class を失い、ただの sup とリンクになる。
+    expect(html).toContain('<sup><a href="#ask-current-cite-1">*</a></sup>');
+    // 生成側の印はちょうど 1 つ。
+    expect(html.match(/class="cite"/g)).toEqual(['class="cite"']);
+    expect(html).toContain('<sup class="cite"><a href="#ask-current-cite-1">[1]</a></sup>');
+    // 内部の印（cite-<乱数>）は出力に残らない。
+    expect(html).not.toMatch(/cite-[0-9a-f]{32}/);
   });
 
   // 外部リンクは新しいタブで開き、opener を渡さない。断片リンク（脚注）と相対パスは触らない。
