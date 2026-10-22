@@ -860,15 +860,22 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
 - **永続化は既定オン**: Keycloak/Postgres/Qdrant を、`OBSERVABILITY=1` なら Prometheus/Loki/Tempo/Grafana も PVC 永続化する
   （上記「永続化」節・IADR-0082 / IADR-0210 / IADR-0369）。`PERSIST=0` で emptyDir（使い捨てスタック専用）。
   `VAULT=1` の Vault も PVC 永続化する（`deploy/local/vault-persistence`・IADR-0457）。rabbitmq / valkey / otel は揮発のまま。
-- **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
-  エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
-  `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときも **mTLS の既定は PERMISSIVE** である（IADR-0307 決定 4）。
+- **Istio/mTLS/ingress の NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
+  エッジ `/bff/*` ルーティング等）は不変。
+  **egress（外向き通信）の既定拒否は当てる**（NFR-18 / IADR-0589。`networkPolicy.egress`）—— 段 1 は外へ出ない Pod（`networkPolicy.egress.workloads`）だけで、
+  名前解決（kube-dns）・同じ名前空間・platform-infra の宣言した宛先（postgres・rabbitmq・keycloak・otel-collector・qdrant）にだけ届く。
+  BFF・LLM ゲートウェイ・データソース・Wiki.js などは段 2 で当てる（それまでは従前のまま）。サービスを足す・宛先を変えるときは
+  `deploy/local/values-local.yaml` の `networkPolicy.egress` をそろえる（`scripts/helm-egress-network-policy.test.js` が突き合わせる）。
+  効いているかは `kubectl -n microservices-platform run egress-probe-$RANDOM --rm -i --restart=Never --image="$(grep -m1 -oE 'busybox:[^ ]+@sha256:[0-9a-f]{64}' deploy/local/infra/inotify-sysctl.yaml)" --labels=app=egress-probe --annotations=sidecar.istio.io/inject=false -- sh -c 'sleep 20; nc -z -w 5 keycloak.platform-infra.svc.cluster.local 8080 && echo open || echo closed'`
+  で確かめる（`closed` が期待値。ラベルを `app=egress-probe-control` に替えると `open`）。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
+  `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときの **mTLS の既定は STRICT** である（IADR-0590。従前の既定 PERMISSIVE〔IADR-0307 決定 4〕を改めた）。
+  `LOCALEDGE=1` の初回は入口を Istio Ingress Gateway へ移した後で STRICT へ上がる。緩めるのは `ISTIO_MTLS_MODE=PERMISSIVE` の明示だけである。
   **`ISTIO` は 3 値**（`1`＝入れる／`0`＝外す／未指定＝現行の helm の宣言を引き継ぐ。#1713 / IADR-0488）——
-  メッシュで動いているクラスタを `ISTIO` 無しで再実行してもメッシュ宣言は外れず、mTLS モードも引き継ぐ（初回だけがメッシュ無し・PERMISSIVE）。
+  メッシュで動いているクラスタを `ISTIO` 無しで再実行してもメッシュ宣言は外れず、mTLS モードも引き継ぐ（初回だけがメッシュ無し。メッシュを入れた初回は STRICT）。
   外すのは `ISTIO=0` の明示だけで、未指定のまま現行を読めなければ起動の前に止まる（詳細は `deploy/istio/README.md`）。
-  🔴 **STRICT へ上げると `ai-stock-trading`（サイドカー無し）から MSP への平文が全断する** ——
+  🔴 **STRICT の間、`ai-stock-trading`（サイドカー無し）から MSP への平文は届かない** ——
   ナレッジ保存・日報の LLM 生成・取引判断の LLM 呼び出しが RST で落ちる（#1159 実測。逆向きは落ちない）。
-  AST を mesh へ入れるまで（AST#627）既定は PERMISSIVE のままにする。
+  AST を mesh へ入れてから STRICT にする（手順は `deploy/istio/README.md`「STRICT の前提」。起動器は AST の Pod が居て注入ラベルが無いと WARN を出す）。
   **モードは `scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`（helm 経由）でしか書かない** ——
   `kubectl patch` で書くと以後の `helm upgrade` が恒久的に失敗する（IADR-0377。乖離は
   `node scripts/check-stack-ready.js --live` の G12 が落とす）。

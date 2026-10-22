@@ -145,7 +145,7 @@ spec:
 {{- /* IADR-0461 決定 10 (#1499): SeaweedFS の Pod へ入ってよいのは同 Namespace からの TCP <port>（S3 HTTP）だけ。
        gRPC（18333）など他の口へは届かせない。networkpolicy.yaml の allow-intra-namespace は本 Pod を除外している
        （NetworkPolicy は許可の和なので、除外しないと同 Namespace の全ポートが開いたままになる）。
-       Egress は allow-intra-namespace と同じ（同 Namespace ＋ DNS）に揃える。 */}}
+       Egress は networkpolicy-egress.yaml（同 Namespace ＋ DNS）と同じに揃える。DNS の宛先は kube-dns の Pod だけ（NFR-18, IADR-0589）。 */}}
 {{- if .Values.networkPolicy.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -171,12 +171,6 @@ spec:
   egress:
     - to:
         - podSelector: {}
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
+    {{- include "msp.netpol.dnsEgressRule" . | nindent 4 }}
 {{- end }}
 {{- end }}

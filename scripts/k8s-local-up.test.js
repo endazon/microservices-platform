@@ -369,6 +369,9 @@ const KUBECTL_STUB = [
   'case "$*" in *"get secret rabbitmq "*"{.data.password}"*) [ -n "${STUB_RABBITMQ_EXISTING:-}" ] && printf "%s" "$STUB_RABBITMQ_EXISTING" | base64; exit 0;; esac',
   // NFR, IADR-0583: Namespace microservices-platform の注入ラベル。STUB_MSP_INJECTION を与えたときだけその値を返す（既定は無い）。
   //   STUB_MSP_INJECTION_FAIL=1 のときは API の失敗（非 0 と stderr）を返す。
+  // NFR-18, IADR-0590: AST の名前空間の注入ラベルと Pod の数。STUB_AST_INJECTION / STUB_AST_PODS（個数）を与えたときだけ返す（既定は無い）。
+  'case "$*" in *"get namespace ai-stock-trading"*"istio-injection"*) printf "%s" "${STUB_AST_INJECTION:-}"; exit 0;; esac',
+  'case "$*" in *"-n ai-stock-trading get pods --no-headers"*) for _ in $(seq 1 "${STUB_AST_PODS:-0}"); do echo "ast-pod 1/1 Running 0 1m"; done; exit 0;; esac',
   'case "$*" in *"get namespace microservices-platform"*"istio-injection"*) [ "${STUB_MSP_INJECTION_FAIL:-}" = "1" ] && { echo "stub: the server is currently unable to handle the request" >&2; exit 1; }; printf "%s" "${STUB_MSP_INJECTION:-}"; exit 0;; esac',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
@@ -4745,17 +4748,54 @@ ok('#1710: 明示が勝つ（現行 STRICT でも ISTIO_MTLS_MODE=PERMISSIVE な
   assert.strictEqual(mtlsOf(failOk), 'STRICT');
 });
 
-ok('#1710: 初回（リリースが無い）＋ 未指定 → 従来どおり PERMISSIVE。メッシュ未宣言のリリースもチャート既定の STRICT を拾わない', () => {
+// NFR-18, IADR-0590（Refs GHSA-j4qv-2w99-xg5p）: 初回の既定は STRICT（従前は PERMISSIVE）。LOCALEDGE=1 の初回は入口を移すまで
+//   [6/7] で PERMISSIVE を宣言し、istio-edge-up.sh [5/5] が STRICT へ上げる（IADR-0377 決定 2 の段取りはそのまま）。
+const DEFAULT_STRICT_INFO = /INFO: mesh\.mtlsMode は既定の STRICT を宣言します/;
+ok('#1710 / IADR-0590: 初回（リリースが無い）＋ 未指定 → 既定の STRICT（LOCALEDGE=1 は入口を移した後で上げる）。メッシュ未宣言のリリースも同じ', () => {
   const fresh = runUp({ ISTIO: '1', LOCALEDGE: '1' });
   assert.strictEqual(fresh.status, 0, `起動器が止まった:\n${fresh.stderr.slice(-600)}`);
-  assert.strictEqual(mtlsOf(fresh), 'PERMISSIVE');
+  assert.strictEqual(mtlsOf(fresh), 'PERMISSIVE', '入口がまだ Traefik の段で STRICT を宣言した（502。IADR-0377 決定 2）');
+  assert.strictEqual(promotedOf(fresh), 'STRICT', 'IADR-0590 の後退: 初回の既定が STRICT へ上がらない（PERMISSIVE のまま残る）');
+  assert.match(fresh.stdout, DEFAULT_STRICT_INFO, '既定の STRICT を宣言したことを告げていない');
   assert.ok(fresh.lines.some((l) => l.startsWith('helm list ')), 'リリースの有無を確かめていない');
   assert.ok(!fresh.lines.some((l) => l.startsWith('helm get values')), 'リリースが無いのに values を読んだ');
   assert.doesNotMatch(fresh.stdout, INHERIT_INFO, '初回なのに引き継ぎを告げた');
-  // ISTIO 無しで立てた既存リリース（values-local.yaml の mesh.enabled: false のまま）。メッシュ未宣言は初回と同じく PERMISSIVE。
+  // ISTIO=1 単独（入口は port-forward。昇格の口が無い）の初回は [6/7] がそのまま STRICT を宣言する。
+  const alone = runUp({ ISTIO: '1' });
+  assert.strictEqual(alone.status, 0, `起動器が止まった:\n${alone.stderr.slice(-600)}`);
+  assert.strictEqual(mtlsOf(alone), 'STRICT', 'IADR-0590 の後退: ISTIO=1 単独の初回が STRICT でない');
+  // ISTIO 無しで立てた既存リリース（values-local.yaml の mesh.enabled: false のまま）。メッシュ未宣言は初回と同じく既定の STRICT。
   const noMesh = runUp({ ISTIO: '1', STUB_HELM_VALUES: 'mesh:\n  enabled: false\nnamespace:\n  create: false\n' });
   assert.strictEqual(noMesh.status, 0, `メッシュ未宣言のリリースで止まった:\n${noMesh.stderr.slice(-600)}`);
-  assert.strictEqual(mtlsOf(noMesh), 'PERMISSIVE', 'メッシュを宣言していないリリースからモードを引き継いだ');
+  assert.strictEqual(mtlsOf(noMesh), 'STRICT', 'メッシュ未宣言のリリースが既定の STRICT にならない');
+  assert.doesNotMatch(noMesh.stdout, INHERIT_INFO, 'メッシュを宣言していないリリースからモードを引き継いだ');
+});
+
+ok('IADR-0590: 引き継いだ PERMISSIVE は上げも下げもしないが、緩めた状態が続いていることを毎回告げる（STRICT なら告げない）', () => {
+  const perm = runUp({ ISTIO: '1', STUB_HELM_VALUES: helmValues('PERMISSIVE') });
+  assert.strictEqual(perm.status, 0, `起動器が止まった:\n${perm.stderr.slice(-600)}`);
+  assert.strictEqual(mtlsOf(perm), 'PERMISSIVE', '引き継ぎが黙って STRICT へ上げた（#1710 の逆向き）');
+  assert.match(perm.stderr, /WARN: mTLS は PERMISSIVE のままです（既定は STRICT/, '緩めた状態の継続を告げていない');
+  assert.match(perm.stderr, /ISTIO_MTLS_MODE=STRICT を付けて再実行/, '上げ方を示していない');
+  const strict = runUp({ ISTIO: '1', STUB_HELM_VALUES: helmValues('STRICT') });
+  assert.doesNotMatch(strict.stderr, /WARN: mTLS は \S+ のままです/, 'STRICT なのに緩めた状態を告げた');
+});
+
+ok('IADR-0590: STRICT で AST の名前空間に Pod が居て注入ラベルが無ければ告げる（止めない）。注入済み・Pod 無し・PERMISSIVE は告げない', () => {
+  const WARN_AST = /WARN: mTLS は STRICT ですが、名前空間 ai-stock-trading に注入ラベル（istio-injection=enabled）がありません（Pod 2 個）/;
+  const outside = runUp({ ISTIO: '1', STUB_AST_PODS: '2' });
+  assert.strictEqual(outside.status, 0, `告げるだけのはずが止まった:\n${outside.stderr.slice(-600)}`);
+  assert.match(outside.stderr, WARN_AST, 'メッシュ外の AST から届かなくなることを告げていない');
+  assert.ok(outside.lines.includes("kubectl get namespace ai-stock-trading -o jsonpath={.metadata.labels.istio-injection}"),
+    `注入ラベルの読み先が違う: ${outside.lines.filter((l) => l.includes('ai-stock-trading')).join(' | ')}`);
+  const injected = runUp({ ISTIO: '1', STUB_AST_PODS: '2', STUB_AST_INJECTION: 'enabled' });
+  assert.doesNotMatch(injected.stderr, /WARN: mTLS は STRICT ですが/, '注入済みなのに告げた');
+  const none = runUp({ ISTIO: '1' });
+  assert.doesNotMatch(none.stderr, /WARN: mTLS は STRICT ですが/, 'AST の Pod が無いのに告げた');
+  const perm = runUp({ ISTIO: '1', ISTIO_MTLS_MODE: 'PERMISSIVE', STUB_AST_PODS: '2' });
+  assert.doesNotMatch(perm.stderr, /WARN: mTLS は STRICT ですが/, 'PERMISSIVE なのに告げた');
+  const noMesh = runUp({ STUB_AST_PODS: '2' });
+  assert.ok(!noMesh.lines.some((l) => l.startsWith('kubectl get namespace ai-stock-trading -o jsonpath')), 'メッシュ無しで AST の注入ラベルを読んだ');
 });
 
 ok('#1710: 読めない（helm list / get values の失敗・mtlsMode 欠落・値域外）＋ 未指定 → [2/7] の前に止まり、明示を告げる', () => {
@@ -5840,6 +5880,8 @@ for (const major of ['4', '3']) {
     const ci = runUp({ ...v, ISTIO: '1', LOCALEDGE: '1', ABACSEED: '1', SEARCHSEED: '1', LOCALEMBED: '1' });
     assert.strictEqual(ci.status, 0, `#1714 の再発: ISTIO=1 の初回が止まった:\n${ci.stderr.slice(-600)}`);
     assert.strictEqual(mtlsOf(ci), 'PERMISSIVE');
+    // NFR-18, IADR-0590: 入口を移した後で既定の STRICT へ上がる（統合スタックは STRICT で門を測る）。
+    assert.strictEqual(promotedOf(ci), 'STRICT', 'IADR-0590 の後退: CI の形が STRICT へ上がらない');
   });
   ok(`#1722: helm v${major} 相当 — 宣言あり（STRICT）は引き継ぎ、宣言なしは外したまま`, () => {
     const declared = runUp({ ...v, STUB_HELM_VALUES: helmValues('STRICT') });

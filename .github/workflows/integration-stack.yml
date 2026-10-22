@@ -365,6 +365,144 @@ jobs:
         if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}
         run: node scripts/check-mcp-client-provisioning.js --live
 
+      # NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信の既定拒否が**稼働のクラスタで効いている**ことを測る。
+      # 静的な検査（scripts/helm-egress-network-policy.test.js）は描画の形と評価規則までしか言えない。CNI が NetworkPolicy を
+      # 強制しないクラスタでは、宣言だけが残って何も止まらない（k3s の内蔵のコントローラが強制することはここで確かめる）。
+      # 使い捨ての busybox を 2 つ立てる（作れなければ赤。後始末は trap）（サイドカーは入れない。L4 の到達だけを見る）:
+      #   - 対象（app=egress-probe。values-local の workloads に在り、宛先の許可は持たない）: 名前解決と同じ名前空間は通り、
+      #     基盤（Keycloak・Postgres）・API サーバ・クラスタの外は落ちる。
+      #   - 対照（app=egress-probe-control。workloads に無い）: 基盤へ届く。届かなければ「落ちた」が方針のせいか判別できないので赤にする。
+      # 許可の側（基盤への宛先）は、段 1 の全サービスが Ready であること（スタックの門の G1）が陽性対照になる。
+      # 前提はスタックの門だけ。パスワードリセットの門の赤では飛ばさない（#1597 と同じ）。
+      # 🔴 **ログイン経路の門より前に置く**（あちらを最後に置く順序の統制を変えない）。
+      - name: 🔴 Gate — 外向き通信の既定拒否（NetworkPolicy の強制）
+        id: egress-policy
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          ns=microservices-platform
+          # イメージは基盤の inotify-sysctl（DaemonSet）と同じ digest 固定の busybox を使う（ノードに既に在り、新たに取りに行かない）。
+          img="$(grep -m1 -oE 'busybox:[^ ]+@sha256:[0-9a-f]{64}' deploy/local/infra/inotify-sysctl.yaml)"
+          [ -n "$img" ] || { echo "::error::deploy/local/infra/inotify-sysctl.yaml から busybox のイメージ参照を読めない"; exit 1; }
+          # 名前は親で決める（probe は $(…) の子で走るので、子で足した配列は trap から見えない）。
+          n_control="egress-probe-control-$(date +%s)-$RANDOM"
+          n_subject="egress-probe-$(date +%s)-$RANDOM"
+          created=("$n_control" "$n_subject")
+          # shellcheck disable=SC2329  # trap から呼ぶ。
+          cleanup() { for n in "${created[@]+"${created[@]}"}"; do kubectl -n "$ns" delete pod "$n" --ignore-not-found --wait=false >/dev/null 2>&1 || true; done; }
+          trap cleanup EXIT
+          # 🔴 先頭で待つ。k3s の NetworkPolicy のコントローラは**新しい Pod の IP へ規則を後から当てる**（非同期）ため、
+          #   起動の直後に測ると規則が入る前の窓に当たり、既定拒否が効いていないように見える（手元の k3s v1.35.4 で実測）。
+          # shellcheck disable=SC2016  # Pod の中の sh が展開する。
+          script='sleep 20;
+            c(){ if nc -z -w 5 "$2" "$3" >/dev/null 2>&1; then echo "$1=open"; else echo "$1=closed"; fi; };
+            if nslookup postgres.platform-infra.svc.cluster.local >/dev/null 2>&1; then echo dns=ok; else echo dns=ng; fi;
+            c intra bff-service 8080;
+            c keycloak keycloak.platform-infra.svc.cluster.local 8080;
+            c postgres postgres.platform-infra.svc.cluster.local 5432;
+            c apiserver kubernetes.default.svc.cluster.local 443;
+            c external 1.1.1.1 443'
+          probe() {
+            local label="$1" name="$2" phase
+            kubectl -n "$ns" delete pod "$name" --ignore-not-found --timeout=60s >/dev/null
+            kubectl -n "$ns" run "$name" --image="$img" --image-pull-policy=IfNotPresent --restart=Never \
+              --labels="app=${label}" --annotations=sidecar.istio.io/inject=false \
+              --command -- sh -c "$script" >/dev/null \
+              || { echo "::error::${label} の Pod を作れなかった" >&2; return 1; }
+            phase=""
+            for _ in $(seq 1 60); do
+              phase="$(kubectl -n "$ns" get pod "$name" -o jsonpath='{.status.phase}')"
+              case "$phase" in Succeeded|Failed) break ;; esac
+              sleep 2
+            done
+            kubectl -n "$ns" logs "$name" | sed "s/^/${label} /"
+            kubectl -n "$ns" delete pod "$name" --ignore-not-found --timeout=60s >/dev/null
+            [ "$phase" = "Succeeded" ] || { echo "::error::${label} の Pod が ${phase:-終端に達しない} で終わった" >&2; return 1; }
+          }
+          fail=0
+          control="$(probe egress-probe-control "$n_control")" || fail=1
+          subject="$(probe egress-probe "$n_subject")" || fail=1
+          out="${control}"$'\n'"${subject}"
+          echo "$out"
+          want() { grep -qx "$1" <<<"$out" || { echo "::error::期待した「$1」が無い"; fail=1; }; }
+          want "egress-probe-control keycloak=open"
+          want "egress-probe-control postgres=open"
+          want "egress-probe dns=ok"
+          want "egress-probe intra=open"
+          want "egress-probe keycloak=closed"
+          want "egress-probe postgres=closed"
+          want "egress-probe apiserver=closed"
+          want "egress-probe external=closed"
+          exit "$fail"
+
+      # NFR-18 / ADR-0005 / IADR-0590（Refs GHSA-j4qv-2w99-xg5p）: メッシュの mTLS が STRICT で**効いている**ことを稼働で測る。
+      # G12（check-stack-ready.js）は宣言と稼働の一致を見るが、宣言そのものが PERMISSIVE でも緑になる。ここは宣言ではなく受け手の挙動を見る:
+      #   - 名前空間全体の PeerAuthentication が STRICT であること
+      #   - サイドカーの無い Pod（同じ名前空間・別の名前空間）から平文の HTTP が届か**ない**こと
+      #   - 対照: サイドカー付きの Pod からは同じ URL が届くこと（宛先が落ちている・Pod が走らないで「届かない」になるのを分ける）
+      # 宛先は document-service の /health/live（受信の例外〔バックチャネルの 1 本〕を持たないサービス）。
+      # 平文の TCP 接続そのものは受け手のサイドカーが受けてから切るので、`nc -z` では開いて見える（上の門の intra=open はそのため変わらない）。
+      # 手元の k3s v1.35.4 ＋ Istio 1.30.4 で、STRICT では reached / refused / refused、PERMISSIVE では 3 つとも reached（＝この門が赤）を実測した。
+      # 🔴 サイドカー付きの Pod が Succeeded で終わるのは、istio-proxy がネイティブサイドカー（initContainers・restartPolicy: Always）で
+      #   入るからである（k8s 1.29+ ＋ 起動器の Istio 1.30.4 の既定）。従来型のサイドカーへ戻る版にすると本体の終了後も Running のままで、
+      #   この門は「終端に達しない」で赤になる（黙って緑にはならない）。
+      # 🔴 ISTIO が 1 でない比較実行（workflow_dispatch の istio=false）では**飛ばさずに notice で緑にする**。
+      #   `if:` で skipped にすると、T-25 の偶然の赤の判定（scripts/t25-rerun-on-chance-red.js は「🔴 Gate」で始まる手順が
+      #   すべて success であることを要求する）が「ほかの門が緑でない」になり、再実行の確かめが走らなくなる。
+      - name: 🔴 Gate — メッシュの mTLS が STRICT で効いている（平文を受けない）
+        id: mesh-strict
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          if [ "${ISTIO:-}" != "1" ]; then
+            echo "::notice::ISTIO が 1 でない実行（メッシュ無しの比較）なので、mTLS の門は測らない"
+            exit 0
+          fi
+          ns=microservices-platform
+          img="$(grep -m1 -oE 'busybox:[^ ]+@sha256:[0-9a-f]{64}' deploy/local/infra/inotify-sysctl.yaml)"
+          [ -n "$img" ] || { echo "::error::deploy/local/infra/inotify-sysctl.yaml から busybox のイメージ参照を読めない"; exit 1; }
+          fail=0
+          mode="$(kubectl -n "$ns" get peerauthentication microservices-platform-mtls -o jsonpath='{.spec.mtls.mode}')"
+          echo "namespace-wide mode=${mode:-（無し）}"
+          [ "$mode" = "STRICT" ] || { echo "::error::名前空間全体の mTLS モードが STRICT でない（${mode:-無し}）"; fail=1; }
+          target="http://document-service.${ns}.svc.cluster.local:8080/health/live"
+          created=()
+          # shellcheck disable=SC2329  # trap から呼ぶ。
+          cleanup() { for e in "${created[@]+"${created[@]}"}"; do kubectl -n "${e%%/*}" delete pod "${e#*/}" --ignore-not-found --wait=false >/dev/null 2>&1 || true; done; }
+          trap cleanup EXIT
+          # 名前は親で決める（probe は $(…) の子で走るので、子で足した配列は trap から見えない）。
+          n_mesh="mtls-probe-mesh-$(date +%s)-$RANDOM"
+          n_plain="mtls-probe-plain-$(date +%s)-$RANDOM"
+          n_other="mtls-probe-plain-other-$(date +%s)-$RANDOM"
+          created=("$ns/$n_mesh" "$ns/$n_plain" "default/$n_other")
+          probe() {
+            local label="$1" pns="$2" name="$3" inject="$4" phase
+            kubectl -n "$pns" delete pod "$name" --ignore-not-found --timeout=60s >/dev/null
+            kubectl -n "$pns" run "$name" --image="$img" --image-pull-policy=IfNotPresent --restart=Never \
+              --labels="app=${label}" --annotations="sidecar.istio.io/inject=${inject}" \
+              --command -- sh -c "if wget -q -T 10 -O /dev/null '$target'; then echo ${label}=reached; else echo ${label}=refused; fi" >/dev/null \
+              || { echo "::error::${label} の Pod を作れなかった" >&2; return 1; }
+            phase=""
+            for _ in $(seq 1 90); do
+              phase="$(kubectl -n "$pns" get pod "$name" -o jsonpath='{.status.phase}')"
+              case "$phase" in Succeeded|Failed) break ;; esac
+              sleep 2
+            done
+            kubectl -n "$pns" logs "$name" -c "$name" | grep -E "^${label}=" || true
+            kubectl -n "$pns" delete pod "$name" --ignore-not-found --timeout=60s >/dev/null
+            [ "$phase" = "Succeeded" ] || { echo "::error::${label} の Pod が ${phase:-終端に達しない} で終わった" >&2; return 1; }
+          }
+          mesh="$(probe mtls-probe-mesh "$ns" "$n_mesh" true)" || fail=1
+          plain="$(probe mtls-probe-plain "$ns" "$n_plain" false)" || fail=1
+          other="$(probe mtls-probe-plain-other default "$n_other" false)" || fail=1
+          out="${mesh}"$'\n'"${plain}"$'\n'"${other}"
+          echo "$out"
+          want() { grep -qx "$1" <<<"$out" || { echo "::error::期待した「$1」が無い"; fail=1; }; }
+          want "mtls-probe-mesh=reached"
+          want "mtls-probe-plain=refused"
+          want "mtls-probe-plain-other=refused"
+          exit "$fail"
+
       # 🔴 ここが 4 つめの門である（#1245 PR-0 / SC-13・ADR-0078 決定 1）。
       # 計画 ADR は存在秘匿の統制を「**応答の区別不能性**（ステータス・本文・所要時間）」と定め、
       # **射程に認証系の経路（ログイン）を含める**と明文化したが、**ログイン側は実測されていなかった**
@@ -386,13 +524,13 @@ jobs:
       # ［2026-09-27 / 計画 ADR-0118 決定 2 / #1617］🔴 **T-25 だけの赤（偶然の赤の候補）の印。** 判定はしない（ジョブの合否は変えない）。
       # この手順が success になるのは、パスワードリセットの門が赤で、その失敗が T-25 の順位和検定の赤ただ 1 件
       # （検査器の出力 t25_only_red。T-10 / T-16 / T-17 / 前提の失敗・評価不能が混ざれば false）であり、
-      # かつスタックの門・2 つの投入・ABAC と検索の門・SC-12 の書き込みの門（#1817）・ログイン経路の門がすべて success のときだけである。
+      # かつスタックの門・2 つの投入・ABAC と検索の門・SC-12 の書き込みの門（#1817）・外向き通信の門（IADR-0589）・メッシュの mTLS の門（IADR-0590）・ログイン経路の門がすべて success のときだけである。
       # integration-stack-rerun.yml がこの手順の結論を API で読み、success のときだけ同じコミットで 1 回だけ再実行する
       # （あちらでも手順の結論を数え直す。ほかの門が 1 つでも赤なら偶然の赤として扱わない）。
       # 🔴 **手順名を変えない**（scripts/t25-rerun-on-chance-red.js の CANDIDATE_STEP と一致させる。API は長い名前を切るので短い ASCII）。
       - name: T-25 only red (chance-red candidate)
         id: t25-chance-red-candidate
-        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' && steps.reset-mail.outcome == 'failure' && steps.reset-mail.outputs.t25_only_red == 'true' && steps.seed-abac.outcome == 'success' && steps.seed-search.outcome == 'success' && steps.abac-search-gate.outcome == 'success' && steps.mcp-provisioning.outcome == 'success' && steps.login-disclosure.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' && steps.reset-mail.outcome == 'failure' && steps.reset-mail.outputs.t25_only_red == 'true' && steps.seed-abac.outcome == 'success' && steps.seed-search.outcome == 'success' && steps.abac-search-gate.outcome == 'success' && steps.mcp-provisioning.outcome == 'success' && steps.egress-policy.outcome == 'success' && steps.mesh-strict.outcome == 'success' && steps.login-disclosure.outcome == 'success' }}
         env:
           T25_P: ${{ steps.reset-mail.outputs.t25_p }}
           T25_W: ${{ steps.reset-mail.outputs.t25_w }}

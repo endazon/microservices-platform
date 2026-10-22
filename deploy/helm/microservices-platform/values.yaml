@@ -182,6 +182,34 @@ edge:
 # mesh(mTLS) 配下でも多層防御（defense-in-depth）として維持する（IADR-0026）。
 networkPolicy:
   enabled: true
+  # NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信（egress）の既定拒否（templates/networkpolicy-egress.yaml）。
+  # 描く条件は `enabled`（上）か `egress.enabled` のどちらか。上が true なら必ず描き、ここを false にすると描画で止める。
+  # 上が false の配備（経路B）は ingress を絞らないまま egress だけを当てられる（deploy/local/values-local.yaml）。
+  # 許すのは: DNS（dns の Pod の 53 番だけ）・同じ名前空間の Pod・mesh.enabled のとき istiod・destinations の宛先・
+  # サービス固有の 1 本（Vault・API サーバ・合成監視 → Keycloak。templates/networkpolicy.yaml ほか）。クラスタ外への許可は描かない。
+  egress:
+    enabled: true
+    # 既定拒否を当てる Pod の app ラベル。**空＝名前空間の全 Pod**（上の enabled=true ではこの形だけを受ける）。
+    # 経路B はここで段ごとに広げる（段 1 は外へ出ない Pod。IADR-0589）。
+    # 🔴 上の enabled=false でここが空のままなら描画で止まる（全 Pod へ黙って既定拒否を描かない）。egress も当てない配備は
+    #    `egress.enabled: false` を明示する。
+    workloads: []
+    # 名前解決の宛先（UDP / TCP 53）。CoreDNS は多くの配布で kube-system の `k8s-app: kube-dns`（k3s も同じ）。
+    # NodeLocal DNSCache 等で宛先が違う配備は上書きする。空は描画で止まる（全 Pod の 53 番へ倒さない）。
+    dns:
+      namespace: kube-system
+      podLabels:
+        k8s-app: kube-dns
+    # mesh.enabled のとき、サイドカー → istiod（構成と証明書）。istiod の chart の既定のラベルとポート。
+    istiod:
+      namespace: istio-system
+      podLabels:
+        app: istiod
+      port: 15012
+    # 別の名前空間の宛先。1 件 = { name, namespace, podLabels, ports, from（送り元の Pod の app ラベル） }。
+    # 本番像は基盤（DB・ブローカ・認可サーバ・collector）を同じ名前空間の名前で引くので空。基盤が別の名前空間に居る配備は
+    # ここに宣言する（宣言しなければ届かない＝fail-closed）。
+    destinations: []
   # NFR-09, ADR-0125 決定 4, IADR-0513 (#1756・#1811): 取引ユニット（AST）の名前空間からの ingress。**用途ごとに既定は閉じる。**
   # 有効にすると templates/networkpolicy.yaml が 1 用途 1 枚の NetworkPolicy を描く —— 行き先は services.<target> の Pod、
   # 送り元は「namespace（kubernetes.io/metadata.name）の Namespace かつ clients の Pod」（AND）、ポートは services.<target>.port（REST）だけ。
