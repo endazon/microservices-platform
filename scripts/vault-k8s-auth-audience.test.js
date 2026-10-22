@@ -158,6 +158,7 @@ function checkDeployments(deps) {
       continue;
     }
     withVault++;
+    // 意図した固定: Vault で名乗る Deployment の projected token は Vault 用の 1 つだけ。別の projected token を足すときはこの判定も見直す。
     if (d.tokens.length !== 1) { errors.push(`${d.name}: projected の serviceAccountToken がちょうど 1 つでない（${d.tokens.length}）`); continue; }
     const t = d.tokens[0];
     if (t.audience !== AUDIENCE) errors.push(`${d.name}: projected token の audience が ${AUDIENCE} でない（${t.audience}）`);

@@ -66,6 +66,9 @@ related_specs:
 
 - `vault write auth/kubernetes/role/<r>` は与えないフィールドを保つ。**古い版の bootstrap を再実行しても audience は外れない**。
   切り戻すときは `audience=""` を明示して書き直してから、名乗る側を戻す（順序は決定 4 の逆）。
+  （role の更新は与えたフィールドだけを `GetOk` で書き換え、空文字も「与えた」として audience を空にする。`path_role.go` の v2.7.1 で確認。）
+- 決定 4 の根拠（audience の無い role はトークン自身の対象者で TokenReview する）はソースの読解であり、実機では未確認である。
+  PoC の配備では、chart を当てた直後・role に audience を付ける前に、名乗る側がログインできることを確かめる段を置く（PR 本文の手順）。
 - 統合スタック（`integration-stack`）は VAULT / ESO を有効にしない。ESO=1 の経路は CI では描画・字面の試験だけで、実機の確かめは PoC の配備後の確認に委ねる。
 - ESO の版（chart 2.8.0）の `serviceAccountRef.audiences` は v1 の API の項目である。
 
