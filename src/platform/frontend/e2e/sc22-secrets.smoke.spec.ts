@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/cspGuard';
 import type { SecretItemGroupDto, SecretItemStatusDto } from '../src/lib/api/generated/bff.schemas';
 import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
 

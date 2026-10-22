@@ -28,6 +28,27 @@ describe('sanitizeWikiHtml (SC-04)', () => {
     expect(out).toContain('<p>t</p>');
   });
 
+  // NFR / IADR-0578（Refs GHSA-5h4q-4m2j-rjhm）: フォーム部品と style（要素・属性）は落とす。
+  it('drops form controls and style', () => {
+    const out = sanitizeWikiHtml(
+      '<form action="/x"><input name="q"><button>b</button><select><option>o</option></select><textarea>t</textarea><fieldset></fieldset></form><style>p{}</style><p style="position:fixed">本文</p>',
+    );
+    for (const tag of [
+      '<form',
+      '<input',
+      '<button',
+      '<select',
+      '<option',
+      '<textarea',
+      '<fieldset',
+      '<style',
+    ]) {
+      expect(out).not.toContain(tag);
+    }
+    expect(out).not.toContain('style=');
+    expect(out).toContain('<p>本文</p>');
+  });
+
   // 決定 3: メディアは落とす（Wiki.js の資産は SPA から到達できず、外部資産を取りに行かせない）。
   it('drops media elements (assets are not proxied and must not be fetched from elsewhere)', () => {
     const out = sanitizeWikiHtml(
