@@ -1,5 +1,6 @@
 using System.Text;
 using Knowledge.Contracts.Dtos;
+using Knowledge.Contracts.Llm;
 using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Domain;
@@ -49,6 +50,10 @@ public sealed class SuggestionPrompt
     // 語彙と順位は Knowledge.Contracts の ConfidentialityLevels が単一情報源であり、ここで再定義しない。
     public string Confidentiality { get; }
 
+    // NFR / IADR-0581（Refs GHSA-5h4q-4m2j-rjhm）: 表題（取り込み文書由来＝信頼しない入力）を囲む境界。
+    // 封ごとに 1 つ作る（同じ封の Render は同じ本文を返す）。
+    private readonly string _boundary;
+
     // 🔴 **private である。** ここを緩めると型ゲートが無効になる
     // （SuggestionPromptGateTests が公開コンストラクタの不在を assert する）。
     private SuggestionPrompt(
@@ -64,6 +69,7 @@ public sealed class SuggestionPrompt
         EdgeTypeNames = edgeTypeNames;
         TagNames = tagNames;
         Confidentiality = confidentiality;
+        _boundary = PromptTrustBoundary.NewBoundary();
     }
 
     // FR-18, ADR-0034 決定 5: **唯一の構築経路。** スコープを渡さずに封は作れない。
@@ -111,14 +117,21 @@ public sealed class SuggestionPrompt
         sb.AppendLine("あなたはナレッジベースの文書間の関連（リンク候補）とタグ候補を提案する。");
         sb.AppendLine("提案は人間の承認を経て確定する。**確実でないものは提案しないこと。**");
         sb.AppendLine();
+        // NFR / IADR-0581: 表題は文書の側の文字列なので、境界つきの囲みに入れ、1 行に畳んで無害化する。
+        sb.AppendLine(PromptTrustBoundary.Rules(_boundary, includesUserInput: false));
+        sb.AppendLine();
         sb.AppendLine("## 起点文書");
-        sb.AppendLine($"- id: {OriginDocumentId}");
-        sb.AppendLine($"- 表題: {OriginTitle}");
+        sb.AppendLine(PromptTrustBoundary.Wrap(
+            PromptTrustBoundary.DocumentsTag,
+            $"- id: {OriginDocumentId}\n- 表題: {PromptTrustBoundary.OneLine(OriginTitle)}",
+            _boundary));
         sb.AppendLine();
         sb.AppendLine("## 候補文書");
         sb.AppendLine("**この一覧に無い文書を提案してはならない。** 一覧が空ならリンク候補を提案しない。");
-        foreach (var c in Candidates)
-            sb.AppendLine($"- id: {c.DocumentId} / 表題: {c.Title}");
+        sb.AppendLine(PromptTrustBoundary.Wrap(
+            PromptTrustBoundary.DocumentsTag,
+            string.Join('\n', Candidates.Select(c => $"- id: {c.DocumentId} / 表題: {PromptTrustBoundary.OneLine(c.Title)}")),
+            _boundary));
         sb.AppendLine();
         sb.AppendLine("## 辺の型");
         sb.AppendLine("次の値集合から選ぶ。該当が無ければ related を使う。");
