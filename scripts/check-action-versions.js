@@ -87,7 +87,7 @@ function listWorkflowFiles(dir) {
  */
 function collectUses(text) {
   const found = [];
-  // NFR, GHSA-552h-47r7-6v6p / IADR-0579: 40 桁の SHA で固定した行は、同じ行の版の注記
+  // NFR, GHSA-552h-47r7-6v6p / IADR-0580: 40 桁の SHA で固定した行は、同じ行の版の注記
   // （`uses: x/y@<sha> # v7.0.1`）を版として読む（Dependabot が SHA と注記を対で更新する形）。
   const re = /^\s*(?:-\s*)?uses:\s*['"]?([^'"\s]+)['"]?[ \t]*(?:#[ \t]*(v?\d[^\s]*))?/gm;
   let m;
@@ -339,7 +339,7 @@ function selfTest() {
   });
   add('SHA pin はメジャーを取れない（比較対象外）', () => majorOf('a81bbbf8298c0fa03ea29cdc473d45769f953675') === null);
   add('v7.0.1 のようなパッチ付きも読める', () => majorOf('v7.0.1') === 7);
-  // GHSA-552h-47r7-6v6p / IADR-0579: SHA 固定の行は同じ行の版の注記を読む（注記が無ければ従来どおり比較対象外）。
+  // GHSA-552h-47r7-6v6p / IADR-0580: SHA 固定の行は同じ行の版の注記を読む（注記が無ければ従来どおり比較対象外）。
   add('SHA 固定＋版の注記はその版で読む', () => {
     const u = collectUses('  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n');
     return u.length === 1 && majorOf(u[0].ref) === 7 && u[0].action === 'actions/checkout';
