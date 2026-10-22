@@ -462,8 +462,8 @@ ok('1 用途だけの有効化: 読み手だけ・書き手だけ・LLM ゲー�
 });
 
 ok('networkPolicy.enabled=false: 有効の values でも ingress の NetworkPolicy は 1 枚も描かれない', () => {
-  const t = mustRender(['-f', CI_VALUES, '--set', 'networkPolicy.enabled=false']);
-  // IADR-0589: egress の既定拒否（networkPolicy.egress.enabled）は ingress と別の knob で描かれる。ここで見るのは ingress の穴だけ。
+  // IADR-0589: egress の既定拒否（networkPolicy.egress）は ingress と別の knob で描かれる。ここで見るのは ingress の穴だけ。
+  const t = mustRender(['-f', CI_VALUES, '--set', 'networkPolicy.enabled=false', '--set', 'networkPolicy.egress.workloads[0]=document-service']);
   assert.deepStrictEqual(networkPolicies(t).filter((p) => (p.spec.policyTypes || ['Ingress']).includes('Ingress')), []);
   const none = mustRender(['-f', CI_VALUES, '--set', 'networkPolicy.enabled=false', '--set', 'networkPolicy.egress.enabled=false']);
   assert.deepStrictEqual(networkPolicies(none), []);

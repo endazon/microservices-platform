@@ -46,6 +46,7 @@ related_specs:
 2. **名前解決は kube-dns の Pod の 53 番（UDP / TCP）だけへ許す**（`networkPolicy.egress.dns`。既定 kube-system の `k8s-app: kube-dns`）。部品 `msp.netpol.dnsEgressRule` を SeaweedFS の policy と共有する。空の namespace / podLabels は描画で止める。
 3. **別の名前空間の宛先は「名前空間 × Pod ラベル × ポート」を同じ to の要素（AND）に置き、送り元（from）を app ラベルで限る。** 欠けた値（namespace・podLabels・ports・from）・重複・不正な name は描画で止める。クラスタの外の宛先は本 IADR の段 1 では描かない（既存の `apiServerEgress.cidrs` と同じ「宣言したときだけ ipBlock を描く」形で段 2 に足す）。
 4. **本番像は名前空間の全 Pod に当てる。** `networkPolicy.enabled: true` のまま `egress.enabled: false` や workloads の絞り込みを与えると描画で止める（egress の制限を外す・狭める変更を黙って通さない）。両方 false のときだけ描かない（明示の退路）。サービス固有の 1 本（Vault・API サーバ・合成監視 → Keycloak）は従前の置き場・条件のまま。
+   ingress を絞らない配備（`networkPolicy.enabled: false`）で egress だけを当てるときは workloads を必須にし、空なら描画で止める（全 Pod へ既定拒否を黙って描くと、宛先を宣言していない Pod がまとめて止まる）。
 5. **経路 B は段ごとに Pod を広げる。** 段 1 はクラスタの外へ出ない 14 の Pod（.NET の 12 サービス・frontend・SeaweedFS）と確かめ用の `egress-probe`。宛先は platform-infra の postgres・rabbitmq・keycloak・otel-collector・qdrant の 5 件。段 2・段 3 の範囲は作業仕様書。
 6. **試験は描画を k8s の評価規則で通信の一覧へ当てる**（`scripts/helm-egress-network-policy.test.js`）。描画される全 Pod が段 1 / 段 2 のどちらかに分類されていること（新しい Pod が黙って制限の外に残らない）と、宛先の送り元が env の宣言（DB・ブローカ・OTLP・Qdrant の appsettings）と一致することを見る。稼働のクラスタでの強制は統合スタックの門が対照つきで測る（対照の Pod が基盤へ届かなければ判定できないとして赤）。
 

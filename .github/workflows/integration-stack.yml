@@ -368,7 +368,7 @@ jobs:
       # NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信の既定拒否が**稼働のクラスタで効いている**ことを測る。
       # 静的な検査（scripts/helm-egress-network-policy.test.js）は描画の形と評価規則までしか言えない。CNI が NetworkPolicy を
       # 強制しないクラスタでは、宣言だけが残って何も止まらない（k3s の内蔵のコントローラが強制することはここで確かめる）。
-      # 使い捨ての busybox を 2 つ立てる（サイドカーは入れない。L4 の到達だけを見る）:
+      # 使い捨ての busybox を 2 つ立てる（作れなければ赤。後始末は trap）（サイドカーは入れない。L4 の到達だけを見る）:
       #   - 対象（app=egress-probe。values-local の workloads に在り、宛先の許可は持たない）: 名前解決と同じ名前空間は通り、
       #     基盤（Keycloak・Postgres）・API サーバ・クラスタの外は落ちる。
       #   - 対照（app=egress-probe-control。workloads に無い）: 基盤へ届く。届かなければ「落ちた」が方針のせいか判別できないので赤にする。
@@ -381,6 +381,16 @@ jobs:
         run: |
           set -euo pipefail
           ns=microservices-platform
+          # イメージは基盤の inotify-sysctl（DaemonSet）と同じ digest 固定の busybox を使う（ノードに既に在り、新たに取りに行かない）。
+          img="$(grep -m1 -oE 'busybox:[^ ]+@sha256:[0-9a-f]{64}' deploy/local/infra/inotify-sysctl.yaml)"
+          [ -n "$img" ] || { echo "::error::deploy/local/infra/inotify-sysctl.yaml から busybox のイメージ参照を読めない"; exit 1; }
+          # 名前は親で決める（probe は $(…) の子で走るので、子で足した配列は trap から見えない）。
+          n_control="egress-probe-control-$(date +%s)-$RANDOM"
+          n_subject="egress-probe-$(date +%s)-$RANDOM"
+          created=("$n_control" "$n_subject")
+          # shellcheck disable=SC2329  # trap から呼ぶ。
+          cleanup() { for n in "${created[@]+"${created[@]}"}"; do kubectl -n "$ns" delete pod "$n" --ignore-not-found --wait=false >/dev/null 2>&1 || true; done; }
+          trap cleanup EXIT
           # 🔴 先頭で待つ。k3s の NetworkPolicy のコントローラは**新しい Pod の IP へ規則を後から当てる**（非同期）ため、
           #   起動の直後に測ると規則が入る前の窓に当たり、既定拒否が効いていないように見える（手元の k3s v1.35.4 で実測）。
           # shellcheck disable=SC2016  # Pod の中の sh が展開する。
@@ -393,11 +403,12 @@ jobs:
             c apiserver kubernetes.default.svc.cluster.local 443;
             c external 1.1.1.1 443'
           probe() {
-            local label="$1" name phase
-            name="${label}-$(date +%s)-$RANDOM"
-            kubectl -n "$ns" run "$name" --image=busybox:1.36 --restart=Never \
+            local label="$1" name="$2" phase
+            kubectl -n "$ns" delete pod "$name" --ignore-not-found --timeout=60s >/dev/null
+            kubectl -n "$ns" run "$name" --image="$img" --image-pull-policy=IfNotPresent --restart=Never \
               --labels="app=${label}" --annotations=sidecar.istio.io/inject=false \
-              --command -- sh -c "$script" >/dev/null
+              --command -- sh -c "$script" >/dev/null \
+              || { echo "::error::${label} の Pod を作れなかった" >&2; return 1; }
             phase=""
             for _ in $(seq 1 60); do
               phase="$(kubectl -n "$ns" get pod "$name" -o jsonpath='{.status.phase}')"
@@ -409,8 +420,8 @@ jobs:
             [ "$phase" = "Succeeded" ] || { echo "::error::${label} の Pod が ${phase:-終端に達しない} で終わった" >&2; return 1; }
           }
           fail=0
-          control="$(probe egress-probe-control)" || fail=1
-          subject="$(probe egress-probe)" || fail=1
+          control="$(probe egress-probe-control "$n_control")" || fail=1
+          subject="$(probe egress-probe "$n_subject")" || fail=1
           out="${control}"$'\n'"${subject}"
           echo "$out"
           want() { grep -qx "$1" <<<"$out" || { echo "::error::期待した「$1」が無い"; fail=1; }; }

@@ -398,7 +398,7 @@ ok('評価器の自己試験: 隔離・許可の和・AND・ipBlock・ポート�
 
 ok('確かめ用の Pod のラベルは values-local と統合スタックの門で同じ（egress-probe・対照は workloads に無い）', () => {
   const wf = read('.github/workflows/integration-stack.yml');
-  assert.ok(wf.includes('probe egress-probe-control') && wf.includes('probe egress-probe)'), '統合スタックの門が 2 つの Pod を立てていない');
+  assert.ok(wf.includes('probe egress-probe-control "$n_control"') && wf.includes('probe egress-probe "$n_subject"'), '統合スタックの門が 2 つの Pod を立てていない');
   const vl = read(VALUES_LOCAL);
   assert.ok(/\n {6}- egress-probe\n/.test(vl), 'values-local の workloads に egress-probe が無い');
   assert.ok(!/- egress-probe-control/.test(vl), '対照のラベルが workloads に在る（対照にならない）');
@@ -528,12 +528,14 @@ ok('両方 false なら egress のポリシーを 1 枚も描かない（明示�
   assert.deepStrictEqual(egressPolicies(off).map((p) => p.metadata.name), []);
 });
 
-ok('描画で止まる条件（egress を外す・本番像で絞る・欠けた宛先・workloads に無い送り元・重複・空の DNS・istiod）', () => {
+ok('描画で止まる条件（egress を外す・本番像で絞る・ingress 無効で workloads が空・欠けた宛先・workloads に無い送り元・重複・空の DNS・istiod）', () => {
   const dest = (i, k, v) => ['--set', `networkPolicy.egress.destinations[${i}].${k}=${v}`];
   const goodDest = (i = 0) => [...dest(i, 'name', 'x'), ...dest(i, 'namespace', 'ns'), ...dest(i, 'podLabels.app', 'x'), ...dest(i, 'ports[0]', '1'), ...dest(i, 'from[0]', 'document-service')];
   const cases = [
     [['--set', 'networkPolicy.egress.enabled=false'], /egress\.enabled=false は受けない/],
     [['--set', 'networkPolicy.egress.workloads[0]=document-service'], /workloads を絞れない/],
+    [['--set', 'networkPolicy.enabled=false'], /networkPolicy\.egress\.workloads に当てる Pod を与える/],
+    [['-f', VALUES_LOCAL, '--set', 'networkPolicy.egress.workloads=null'], /networkPolicy\.egress\.workloads に当てる Pod を与える/],
     [['-f', VALUES_LOCAL, '--set', 'networkPolicy.egress.workloads[0]='], /workloads に空の要素/],
     [['--set', 'networkPolicy.egress.dns.podLabels=null'], /dns\.podLabels が空/],
     [['--set', 'networkPolicy.egress.dns.namespace='], /dns\.namespace が空/],

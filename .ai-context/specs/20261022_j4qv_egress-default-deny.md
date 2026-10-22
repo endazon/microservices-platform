@@ -100,7 +100,7 @@ issue: "GHSA-j4qv-2w99-xg5p"
 ## 実装
 
 - `templates/_networkpolicy.tpl`（新規）: DNS の規則（kube-dns の Pod の 53 番）と app ラベルの podSelector の部品。
-- `templates/networkpolicy-egress.yaml`（新規）: `default-deny-egress`・`allow-egress-dns`・`allow-egress-intra-namespace`・`allow-egress-istiod`（`mesh.enabled`）・`allow-egress-to-<name>`（destinations）。描く条件は `networkPolicy.enabled || networkPolicy.egress.enabled`。描画で止める: `enabled` のまま `egress.enabled=false`・`enabled` のまま workloads を絞る・空の workloads の要素・destinations の欠けた値 / 重複 / 不正な name・workloads に無い from・空の DNS / istiod の値。
+- `templates/networkpolicy-egress.yaml`（新規）: `default-deny-egress`・`allow-egress-dns`・`allow-egress-intra-namespace`・`allow-egress-istiod`（`mesh.enabled`）・`allow-egress-to-<name>`（destinations）。描く条件は `networkPolicy.enabled || networkPolicy.egress.enabled`。描画で止める: `enabled` のまま `egress.enabled=false`・`enabled` のまま workloads を絞る・`enabled=false` で workloads が空（全 Pod へ黙って描かない。レビューの指摘で追加）・空の workloads の要素・destinations の欠けた値 / 重複 / 不正な name・workloads に無い from・空の DNS / istiod の値。
 - `templates/networkpolicy.yaml`: allow-intra-namespace を Ingress だけにする。コメントの追随。
 - `templates/seaweedfs.yaml`: egress の DNS を部品に替える。
 - `values.yaml`: `networkPolicy.egress`（enabled・workloads・dns・istiod・destinations）。

@@ -8,7 +8,7 @@
        クラスタ外への許可はここでは描かない（宛先ごとの許可は段 2。IADR-0589）。サービス固有の 1 本（Vault・API サーバ・合成監視 → Keycloak）は
        networkpolicy.yaml / synthetic-monitor.yaml に従前のまま置く。
        🔴 描画で止める: networkPolicy.enabled のまま egress.enabled=false（egress の制限を外すことになる）・
-          networkPolicy.enabled のまま workloads を絞る（本番像は名前空間の全 Pod）・destinations の欠けた値・workloads に無い from。 */}}
+          networkPolicy.enabled のまま workloads を絞る（本番像は名前空間の全 Pod）・networkPolicy.enabled=false で workloads が空・destinations の欠けた値・workloads に無い from。 */}}
 {{- $np := .Values.networkPolicy | default dict }}
 {{- $eg := $np.egress | default dict }}
 {{- if and $np.enabled (hasKey $eg "enabled") (not $eg.enabled) }}
@@ -18,6 +18,11 @@
 {{- $workloads := $eg.workloads | default list }}
 {{- if and $np.enabled $workloads }}
 {{- fail "networkPolicy.enabled=true では networkPolicy.egress.workloads を絞れない（名前空間の全 Pod に当てる。IADR-0589）" }}
+{{- end }}
+{{- /* ingress を絞らない配備（networkPolicy.enabled=false）で egress だけを当てるときは、当てる Pod を明示させる。
+       空のまま全 Pod へ既定拒否を黙って描くと、宛先の宣言が無い Pod がまとめて止まる（見えにくい壊れ方）。 */}}
+{{- if and (not $np.enabled) (not $workloads) }}
+{{- fail "networkPolicy.enabled=false で egress の既定拒否を当てるときは networkPolicy.egress.workloads に当てる Pod を与える（空のまま全 Pod へは描かない。当てないなら networkPolicy.egress.enabled=false。IADR-0589）" }}
 {{- end }}
 {{- range $workloads }}{{- if not . }}{{ fail "networkPolicy.egress.workloads に空の要素がある" }}{{ end }}{{- end }}
 {{- $selector := include "msp.netpol.podSelector" $workloads }}

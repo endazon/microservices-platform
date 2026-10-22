@@ -866,7 +866,7 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
   名前解決（kube-dns）・同じ名前空間・platform-infra の宣言した宛先（postgres・rabbitmq・keycloak・otel-collector・qdrant）にだけ届く。
   BFF・LLM ゲートウェイ・データソース・Wiki.js などは段 2 で当てる（それまでは従前のまま）。サービスを足す・宛先を変えるときは
   `deploy/local/values-local.yaml` の `networkPolicy.egress` をそろえる（`scripts/helm-egress-network-policy.test.js` が突き合わせる）。
-  効いているかは `kubectl -n microservices-platform run egress-probe-$RANDOM --rm -it --restart=Never --image=busybox:1.36 --labels=app=egress-probe --annotations=sidecar.istio.io/inject=false -- sh -c 'sleep 20; nc -z -w 5 keycloak.platform-infra.svc.cluster.local 8080 && echo open || echo closed'`
+  効いているかは `kubectl -n microservices-platform run egress-probe-$RANDOM --rm -i --restart=Never --image="$(grep -m1 -oE 'busybox:[^ ]+@sha256:[0-9a-f]{64}' deploy/local/infra/inotify-sysctl.yaml)" --labels=app=egress-probe --annotations=sidecar.istio.io/inject=false -- sh -c 'sleep 20; nc -z -w 5 keycloak.platform-infra.svc.cluster.local 8080 && echo open || echo closed'`
   で確かめる（`closed` が期待値。ラベルを `app=egress-probe-control` に替えると `open`）。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
   `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときも **mTLS の既定は PERMISSIVE** である（IADR-0307 決定 4）。
   **`ISTIO` は 3 値**（`1`＝入れる／`0`＝外す／未指定＝現行の helm の宣言を引き継ぐ。#1713 / IADR-0488）——
