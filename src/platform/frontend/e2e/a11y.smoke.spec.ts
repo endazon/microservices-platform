@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/cspGuard';
 import type { Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import type {
