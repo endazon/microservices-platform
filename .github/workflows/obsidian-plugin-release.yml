@@ -66,8 +66,12 @@ jobs:
 
       # 🔴 **資産を作る前に版を突き合わせる。** Obsidian は manifest.json の version しか見ないので、
       # タグだけ上げると利用者の画面では版が変わらない（静かに壊れる。ビルドもテストも通る）。
+      # NFR, GHSA-552h-47r7-6v6p / IADR-0578: 入力（タグ名）は env で渡し、run の本文へ式を展開しない。
+      # 版の突合が形の合わないタグを落とすので、後段（インストール・ビルド・Release）へは進まない。
       - name: Plugin version matches the tag
-        run: node scripts/check-plugin-release-version.js --tag "${{ inputs.tag || github.ref }}"
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref }}
+        run: node scripts/check-plugin-release-version.js --tag "$RELEASE_TAG"
 
       - name: Install
         working-directory: src
