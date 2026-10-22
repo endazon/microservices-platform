@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports -- Zod を import してよいのはこのファイルだけ（下の jitless を持つ。IADR-0578）。
 import { z } from 'zod';
 import { MAX_INSTRUCTION_LENGTH, MAX_RANGE_QUERY_LENGTH, TASK_TYPES } from './analysisRange';
 

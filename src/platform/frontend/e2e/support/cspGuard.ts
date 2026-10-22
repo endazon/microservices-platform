@@ -8,35 +8,42 @@ import { test as base, expect } from '@playwright/test';
 //
 // - 拾い方は 2 つ: ページ内の `securitypolicyviolation` イベント（文書に届くもの）と、ブラウザが
 //   出す「Content Security Policy」を含むコンソールのエラー（イベントにならない拒否も拾う）。
+// - 🔴 **違反はその場でノード側へ送る**（`page.exposeBinding`）。ページ内の変数に溜めると、文書をまたぐ
+//   遷移（ログインの往復・`page.goto`）で遷移前の違反が消える。
 // - spec は `@playwright/test` の代わりにここから `test` / `expect` を import する。
-// - 違反を**わざと**起こす spec（`csp.smoke.spec.ts` の陰性対照）は `allowCspViolations` で外す。
+// - 違反を**わざと**起こす spec（`csp.smoke.spec.ts` の陰性対照）は `allowCspViolations` で外し、
+//   観測した違反は `cspViolations` で読む。
 
-const VIOLATIONS_KEY = '__cspViolations';
+const BINDING = '__reportCspViolation';
 
-export const test = base.extend<{ allowCspViolations: boolean; cspGuard: void }>({
+export const test = base.extend<{
+  allowCspViolations: boolean;
+  cspViolations: string[];
+  cspGuard: void;
+}>({
   allowCspViolations: [false, { option: true }],
+  // 第 2 引数は Playwright の慣用では `use` だが、react-hooks の規則が React の `use` と取り違えるため名前を変える。
+  cspViolations: async ({ page }, provide) => {
+    const violations: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error' && /Content Security Policy/i.test(message.text())) {
+        violations.push(`console ${message.text()}`);
+      }
+    });
+    await page.exposeBinding(BINDING, (_source, violation: string) => {
+      violations.push(violation);
+    });
+    // e2e の tsconfig は DOM の型を持たないため、ページ側のコードは文字列で渡す。
+    await page.addInitScript(
+      `document.addEventListener('securitypolicyviolation', (e) => { void window.${BINDING}(e.effectiveDirective + ' ' + e.blockedURI); });`,
+    );
+    await provide(violations);
+  },
   cspGuard: [
-    async ({ page, allowCspViolations }, use) => {
-      const fromConsole: string[] = [];
-      page.on('console', (message) => {
-        if (message.type() === 'error' && /Content Security Policy/i.test(message.text())) {
-          fromConsole.push(message.text());
-        }
-      });
-      // e2e の tsconfig は DOM の型を持たないため、ページ側のコードは文字列で渡す。
-      await page.addInitScript(
-        `(() => { const b = []; window.${VIOLATIONS_KEY} = b; document.addEventListener('securitypolicyviolation', (e) => b.push(e.effectiveDirective + ' ' + e.blockedURI)); })();`,
-      );
-
-      await use();
-
+    async ({ cspViolations, allowCspViolations }, provide) => {
+      await provide();
       if (allowCspViolations) return;
-      const fromPage = page.isClosed()
-        ? []
-        : await page
-            .evaluate<string[]>(`window.${VIOLATIONS_KEY} ?? []`)
-            .catch(() => [] as string[]);
-      expect([...fromPage, ...fromConsole], 'CSP の違反を観測しました').toEqual([]);
+      expect(cspViolations, 'CSP の違反を観測しました').toEqual([]);
     },
     { auto: true },
   ],

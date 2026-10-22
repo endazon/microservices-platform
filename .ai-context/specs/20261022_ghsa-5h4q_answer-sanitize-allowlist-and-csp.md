@@ -45,8 +45,10 @@ issue: "GHSA-5h4q-4m2j-rjhm"
 | A6 | 配信（Caddyfile）が CSP を返し、E2E の配信（vite preview）が同じ値を返す | `csp.smoke.spec.ts` 1 本目 |
 | A7 | CSP の下でインラインのスクリプト・外部の画像・外部への通信が拒まれ、ガードがそれを観測できる（陰性対照） | `csp.smoke.spec.ts` 2 本目 |
 | A8 | 既存の全 E2E（全画面）が CSP の違反 0 件で通る | `e2e/support/cspGuard.ts`（auto fixture。全 spec が import） |
+| A9 | ガードは文書をまたぐ遷移の前に起きた違反を失わない（違反はその場でノード側へ送る） | `csp.smoke.spec.ts` 3 本目 |
+| A10 | Zod の import は `analysisFormSchema.ts`（`jitless` を持つ）だけに縛られる | ESLint の `no-restricted-imports`（別の場所の import は error。手元で実測） |
 
-変異の確認: A1・A3 は sanitize を従前の設定（html プロファイル）へ戻すと赤になる（手元で実測）。A8 のガードは、
+変異の確認: A9 はガードの送り先をページ内の変数へ戻すと赤になる（手元で実測）。A1・A3 は sanitize を従前の設定（html プロファイル）へ戻すと赤になる（手元で実測）。A8 のガードは、
 着手時点で SC-08 の Zod の eval 試行を違反として実際に捕まえた（`jitless` で解消）。
 
 ## 母集合（規則 9・10）

@@ -30,7 +30,10 @@ test('serves the same Content-Security-Policy as the production Caddyfile', asyn
 test.describe('negative control', () => {
   test.use({ allowCspViolations: true });
 
-  test('blocks inline script and external fetches under the policy', async ({ page }) => {
+  test('blocks inline script and external fetches under the policy', async ({
+    page,
+    cspViolations,
+  }) => {
     await page.goto('/');
     await expect(page.getByRole('button', { name: /Keycloak/ })).toBeVisible();
 
@@ -38,10 +41,7 @@ test.describe('negative control', () => {
     const result = await page.evaluate<{
       inlineRan: boolean;
       fetchBlocked: boolean;
-      directives: string[];
     }>(`(async () => {
-      const violations = window.__cspViolations ?? [];
-      const before = violations.length;
       const s = document.createElement('script');
       s.textContent = 'window.__inlineRan = true;';
       document.body.appendChild(s);
@@ -50,19 +50,36 @@ test.describe('negative control', () => {
       document.body.appendChild(img);
       let fetchBlocked = false;
       try { await fetch('https://example.invalid/x'); } catch { fetchBlocked = true; }
-      await new Promise((r) => setTimeout(r, 300));
-      return {
-        inlineRan: window.__inlineRan === true,
-        fetchBlocked,
-        directives: violations.slice(before).map((v) => v.split(' ')[0]),
-      };
+      return { inlineRan: window.__inlineRan === true, fetchBlocked };
     })()`);
 
     expect(result.inlineRan).toBe(false);
     expect(result.fetchBlocked).toBe(true);
-    // ガードの観測点（securitypolicyviolation）が実際に違反を拾う。
-    expect(result.directives).toEqual(
-      expect.arrayContaining(['script-src-elem', 'img-src', 'connect-src']),
-    );
+    // ガードの観測点が実際に違反を拾う。
+    await expect
+      .poll(() => cspViolations.map((v) => v.split(' ')[0]))
+      .toEqual(expect.arrayContaining(['script-src-elem', 'img-src', 'connect-src']));
+  });
+
+  // ガードは文書をまたぐ遷移の前に起きた違反を失わない（ページ内に溜めない）。
+  test('keeps violations that happened before a cross-document navigation', async ({
+    page,
+    cspViolations,
+  }) => {
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: /Keycloak/ })).toBeVisible();
+    await page.evaluate(`(() => {
+      const s = document.createElement('script');
+      s.textContent = 'void 0;';
+      document.body.appendChild(s);
+    })()`);
+    // ページ内のイベント（securitypolicyviolation）の経路で届いたことを待つ（コンソールの経路は元から遷移に強い）。
+    await expect.poll(() => cspViolations.some((v) => v.startsWith('script-src-elem'))).toBe(true);
+    const before = [...cspViolations];
+
+    // 文書をまたぐ遷移（全読み込み）。遷移の後も、遷移の前の違反が残っている。
+    await page.goto('/login');
+    await expect(page.getByRole('button', { name: /Keycloak/ })).toBeVisible();
+    expect(cspViolations).toEqual(expect.arrayContaining(before));
   });
 });

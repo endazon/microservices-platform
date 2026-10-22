@@ -69,9 +69,12 @@ related_specs:
    - dev サーバ（`vite` の server）には付けない（HMR がインラインのスクリプトと WebSocket を使う）。
 4. **E2E のガード**（`e2e/support/cspGuard.ts`）: 全 spec が `@playwright/test` の代わりにここから `test` を import する。
    ページの `securitypolicyviolation` と CSP のコンソールエラーを 1 件でも観測したら落とす（auto fixture）。
+   違反は `page.exposeBinding` でその場でノード側へ送る（ページ内に溜めると、文書をまたぐ遷移で遷移前の違反が消える）。
    陰性対照（`csp.smoke.spec.ts`）はインラインのスクリプト・外部の画像・外部への通信が拒まれ、ガードが観測することを確かめる。
 5. **Zod は `jitless`**（`analysisFormSchema.ts`）: Zod は既定で `new Function` の可否を試す（例外は握り潰すが CSP の違反として報告される）。
    本リポで Zod を使うのはこのファイルだけなので、ここで設定する（初期ロードへ Zod を載せない。IADR-0134）。
+   この前提は ESLint が守る: `zod` / `zod/*` の import を `BANNED_IMPORT_PATTERNS`（`src/eslint.config.js`）で禁じ、
+   `analysisFormSchema.ts` の 1 か所だけを理由つきの `eslint-disable-next-line` で外す（設定より前に Zod が使われる置き場所を作らせない）。
 
 ## 結果
 
