@@ -367,6 +367,9 @@ const KUBECTL_STUB = [
   // IADR-0574: 既存の基盤の資格情報の Secret（keycloak-admin / rabbitmq の password）。STUB_*_EXISTING を与えたときだけ在るものとして返す。
   'case "$*" in *"get secret keycloak-admin "*"{.data.password}"*) [ -n "${STUB_KEYCLOAK_ADMIN_EXISTING:-}" ] && printf "%s" "$STUB_KEYCLOAK_ADMIN_EXISTING" | base64; exit 0;; esac',
   'case "$*" in *"get secret rabbitmq "*"{.data.password}"*) [ -n "${STUB_RABBITMQ_EXISTING:-}" ] && printf "%s" "$STUB_RABBITMQ_EXISTING" | base64; exit 0;; esac',
+  // NFR, IADR-0583: Namespace microservices-platform の注入ラベル。STUB_MSP_INJECTION を与えたときだけその値を返す（既定は無い）。
+  //   STUB_MSP_INJECTION_FAIL=1 のときは API の失敗（非 0 と stderr）を返す。
+  'case "$*" in *"get namespace microservices-platform"*"istio-injection"*) [ "${STUB_MSP_INJECTION_FAIL:-}" = "1" ] && { echo "stub: the server is currently unable to handle the request" >&2; exit 1; }; printf "%s" "${STUB_MSP_INJECTION:-}"; exit 0;; esac',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
@@ -4717,6 +4720,37 @@ const readsHelm = (r) => r.lines.some((l) => l.startsWith('helm list ') || l.sta
 const touchedCluster = (r) => r.lines.some((l) => l.startsWith('docker build ') || HELM_UPGRADE_RE.test(l)
   || l.startsWith('kubectl label namespace') || l.startsWith('helm upgrade --install istio'));
 const NO_MESH_VALUES = 'mesh:\n  enabled: false\nnamespace:\n  create: false\n';
+
+// NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod Security Admission のラベル（チャートの namespace.yaml と同じ規則）。
+const PSA_LABEL_RE = /^kubectl label namespace microservices-platform pod-security\.kubernetes\.io\//;
+ok('IADR-0583: 既定（注入なし）は enforce=baseline・warn / audit=restricted を [5/7] の Namespace 作成の後・helm の前に貼る', () => {
+  const lines = DEFAULT.lines.filter((l) => PSA_LABEL_RE.test(l));
+  assert.deepStrictEqual(lines, ['kubectl label namespace microservices-platform pod-security.kubernetes.io/enforce=baseline pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted --overwrite']);
+  const at = DEFAULT.lines.findIndex((l) => PSA_LABEL_RE.test(l));
+  const ns = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create namespace microservices-platform '));
+  const helmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  assert.ok(ns >= 0 && ns < at && at < helmIdx, `順序が違う: ns=${ns} label=${at} helm=${helmIdx}`);
+});
+
+ok('IADR-0583: ISTIO=1・注入ラベルが残る Namespace では enforce を外す（istio-init が baseline を満たさない）', () => {
+  for (const env of [{ ISTIO: '1' }, { ISTIO: '0', STUB_MSP_INJECTION: 'enabled' }]) {
+    const r = runUp(env);
+    assert.strictEqual(r.status, 0, `起動器が止まった（${JSON.stringify(env)}）:\n${r.stderr.slice(-600)}`);
+    const lines = r.lines.filter((l) => PSA_LABEL_RE.test(l));
+    assert.deepStrictEqual(lines, ['kubectl label namespace microservices-platform pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/enforce- --overwrite'], JSON.stringify(env));
+  }
+});
+
+ok('IADR-0583: 注入ラベルを読めない（API の失敗）ときは「ラベルなし」と見なさず enforce を貼らない・失敗をログに出す', () => {
+  const r = runUp({ ISTIO: '0', STUB_MSP_INJECTION_FAIL: '1' });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  const lines = r.lines.filter((l) => PSA_LABEL_RE.test(l));
+  assert.deepStrictEqual(lines, ['kubectl label namespace microservices-platform pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/enforce- --overwrite']);
+  assert.match(r.stderr, /注入ラベルを読めなかった（kubectl の終了コード 1）.*enforce は貼らない/, '失敗をログに出していない');
+  // 陰性対照: 同じ条件で失敗が無ければ（ラベルなし）enforce=baseline を貼る（判定が失敗の有無で分かれている）。
+  const plain = runUp({ ISTIO: '0' }).lines.filter((l) => PSA_LABEL_RE.test(l));
+  assert.match(plain[0], /enforce=baseline/);
+});
 
 ok('#1713: 未指定 ＋ 現行 mesh true（STRICT）→ [6/7] は mesh.enabled=true・STRICT を保ち、Istio の段も通る', () => {
   const r = runUp({ STUB_HELM_VALUES: helmValues('STRICT') });

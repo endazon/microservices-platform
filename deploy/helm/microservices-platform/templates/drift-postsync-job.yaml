@@ -37,6 +37,10 @@ spec:
         {{- end }}
     spec:
       restartPolicy: Never
+      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: k8s API を呼ばないのでトークンを置かない。
+      # 非 root（curl イメージの curl_user:curl_group＝100:101）・seccomp RuntimeDefault。
+      automountServiceAccountToken: false
+      {{- include "msp.podSecurityContext.restricted" (dict "uid" .Values.drift.postSyncHook.runAsUser "gid" .Values.drift.postSyncHook.runAsGroup) | nindent 6 }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -44,6 +48,7 @@ spec:
       containers:
         - name: drift-trigger
           image: {{ .Values.drift.postSyncHook.image | quote }}
+          {{- include "msp.containerSecurityContext.restricted" . | nindent 10 }}
           # BFF の起動待ち。応答は 202（本文なし）。
           #
           # 🔴 **待ち予算を決めているのは `--retry` × `--retry-delay` だけである**（#1219 / IADR-0376）。
