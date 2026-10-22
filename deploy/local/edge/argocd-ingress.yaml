@@ -1,3 +1,5 @@
+# 🔴 NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 本ファイルは edge の kustomization に含めない。scripts/lib/admin-edge.sh が
+#   ADMIN_EDGE=1（明示の opt-in）のときだけ当て、それ以外では消す。既定の管理者の入り方は kubectl port-forward（edge/README.md）。
 # IADR-0091 (#356): ArgoCD UI を 50000（Traefik entrypoint admin）へホスト名ベースで集約する。
 # argocd namespace は ARGOCD=1 の別 opt-in でのみ作成されるため、本ファイルは kustomization.yaml に含めず、
 # k8s-local-up.sh の LOCALEDGE ブロックが「argocd ns 存在時のみ」条件付きで apply する（ns 不在で失敗させない）。

@@ -1,3 +1,5 @@
+# 🔴 NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 本ファイルは edge の kustomization に含めない。scripts/lib/admin-edge.sh が
+#   ADMIN_EDGE=1（明示の opt-in）のときだけ当て、それ以外では消す。既定の管理者の入り方は kubectl port-forward（edge/README.md）。
 # IADR-0095 (#353): Wiki.js を 50000（Traefik 追加 entrypoint admin）へホスト名ベースで集約する。
 # Wiki.js は microservices-platform namespace（他管理ツールの platform-infra とは別）にあるため、
 # admin-ingress-infra.yaml（platform-infra）とは別ファイルにする。既存 grafana/argocd 等の route は無改変。

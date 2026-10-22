@@ -1,3 +1,5 @@
+# 🔴 NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 本ファイルは edge-istio の kustomization に含めない。scripts/lib/admin-edge.sh が
+#   ADMIN_EDGE=1（明示の opt-in）のときだけ当て、それ以外では消す。既定は virtualservice-admin-deny.yaml の 403 だけが 50000 に居る。
 # IADR-0091 決定 4 / #782: 管理面（admin entrypoint 50000）のルーティング。
 # Traefik の deploy/local/edge/admin-ingress-infra.yaml /
 # admin-ingress-wiki.yaml / argocd-ingress.yaml を写したもの（admin-ingress-minio.yaml は IADR-0461 で撤去）。
@@ -91,7 +93,7 @@ spec:
 ---
 # argocd namespace は ARGOCD=1 の別 opt-in でしか作られないが、VirtualService は
 # istio-system に置くので**条件付き apply が要らない**（Traefik 経路では argocd-ingress.yaml
-# だけスクリプト側で条件分岐していた）。ns 不在なら 503 になるだけである。
+# だけスクリプト側で条件分岐していた）。ns 不在なら 503 になるだけである（ADMIN_EDGE=1 のとき）。
 apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
