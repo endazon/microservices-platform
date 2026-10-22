@@ -557,6 +557,7 @@ module.exports = {
   MAILPIT_MIN_VERSION,
   checkRenderedManifests,
   checkCompose,
+  splitComposeServices,
   checkTestcontainers,
   collectCsFiles,
   checkRunCommands,

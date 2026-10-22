@@ -59,6 +59,7 @@
     { "path": "lib/live-opt-in.js", "reason": "判定器そのもの。注記に kubectl が現れるだけ" },
     { "path": "lib/admin-page-driver.js", "reason": "駆動器の本体の関数定義だけ（require は何もしない。#1973）。呼ぶのは live の archive-bodyless-documents.js / strip-untrusted-boundary.js / archive-ast-quote-documents.js で、--live の確認（#1550）は本体の run が稼働クラスタへ当たる前に行う" },
     { "path": "lib/product-egress-defaults.js", "reason": "静的な判定器（#1841）。手順書の起動コマンドを読む正規表現にコンテナの実行器の名前が現れるだけで、何も起動しない" },
+    { "path": "lib/compose-host-ports.js", "reason": "静的な判定器（IADR-0587）。compose の ports: の字面を読み、許す bind アドレスとして 127.0.0.1 が現れるだけで、何も起動せず稼働クラスタへも当たらない" },
     { "path": "lib/observability-front-guard.js", "reason": "静的な判定器（#1867）。製品の待ち受けが loopback かを見る値の集合に localhost が現れるだけで、何も起動せず稼働クラスタへも当たらない" },
     { "path": "lib/mesh-mtls-mode.sh", "reason": "source される関数定義だけ（sourcing は何もしない）。呼ぶのは live の istio-edge-up.sh / istio-edge-down.sh" },
     { "path": "lib/backup-cronjob-gate.sh", "reason": "source される関数定義だけ（sourcing は何もしない）。呼ぶのは live の k8s-local-up.sh（#1699）" },

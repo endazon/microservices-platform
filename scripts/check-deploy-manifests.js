@@ -46,6 +46,10 @@
  *    入るのを止めるための検査である。判定は `lib/observability-front-guard.js`（名前では通さない。前段のイメージ・Secret・
  *    製品の loopback 待ち・Service の宛先・NetworkPolicy の名指しと許可の和）。経路 B（deploy/local/observability）が陽性対照で、
  *    **走査全体で Loki・Tempo が 1 度も判定されなければ失敗にする**（要点 2 と同じ。識別が壊れて 0 件になったときに緑を返さない）。
+ *
+ * 8. **compose がホストへ出す口（`ports:`）が、すべてループバック（127.0.0.1）に限られていることも見る**（IADR-0587 /
+ *    GHSA-j4qv-2w99-xg5p）。判定は `lib/compose-host-ports.js`（短い形式・流れ形式・長い形式の `host_ip`・`network_mode: host`）。
+ *    **ツールが無くても見る。** 走査全体で口が 1 件も数えられなければ失敗にする（要点 2 と同じ）。
  */
 
 'use strict';
@@ -56,6 +60,7 @@ const { spawnSync } = require('child_process');
 const egress = require('./lib/product-egress-defaults');
 const imageDigests = require('./check-image-digests');
 const obsFront = require('./lib/observability-front-guard');
+const hostPorts = require('./lib/compose-host-ports');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const DEPLOY_DIR = 'deploy';
@@ -224,6 +229,22 @@ function checkEgressWithoutTools(repoRoot) {
 }
 
 /**
+ * 要点 8（IADR-0587）: compose のホストへ出す口がループバックに限られていること。ツールは要らない。
+ * 走査全体で口が 1 件も数えられなければ失敗にする（空の母集合を緑にしない）。
+ */
+function checkComposeHostPortsAll(repoRoot) {
+  const failures = [];
+  let count = 0;
+  for (const rel of discoverComposeFiles(repoRoot)) {
+    const r = hostPorts.checkComposeHostPorts(fs.readFileSync(path.join(repoRoot, rel), 'utf8'), rel, egress.splitComposeServices);
+    count += r.count;
+    failures.push(...r.problems.map((p) => `ホストへ出す口がループバックに限られていない: ${p}`));
+  }
+  if (count === 0) failures.push(`compose（${DEPLOY_DIR}/docker-compose*.yml）のホストへ出す口（ports:）が 0 件だった。走査が壊れている可能性がある。`);
+  return { failures, count };
+}
+
+/**
  * 要点 6: 描画結果（複数文書の YAML）の `image:` のうち、自製でも digest つきでもないものを返す。
  * 判定は check-image-digests.js と同じ（`extractRefs` の `image:` の読み方・自製の判定・digest の形）。
  */
@@ -273,6 +294,8 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
   const offline = checkEgressWithoutTools(repoRoot);
   failures.push(...offline.failures);
   egressFound.push(...offline.found);
+  // 要点 8（IADR-0587）: compose のホストへ出す口はループバックに限る（ツール無しで見る）。
+  failures.push(...checkComposeHostPortsAll(repoRoot).failures);
 
   // 要点 3: ツール不在は fail-closed。
   const missing = REQUIRED_TOOLS.filter((b) => !hasTool(b));
@@ -592,6 +615,61 @@ function selfTest() {
     });
   }
 
+  ok('IADR-0587 要点 8: 実物の compose はホストへ出す口が全件ループバック（陽性対照）／1 件から 127.0.0.1 を外すと赤（変異）', () => {
+    const r = checkComposeHostPortsAll(REPO_ROOT);
+    assert.deepStrictEqual(r.failures, []);
+    assert.ok(r.count >= 2, `口を数えられていない（${r.count} 件）`);
+    const rel = discoverComposeFiles(REPO_ROOT)[0];
+    const text = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+    const mutated = text.replace('"127.0.0.1:5000:8080"', '"5000:8080"');
+    assert.notStrictEqual(mutated, text, '前提: BFF の口が "127.0.0.1:5000:8080" で書かれている');
+    const m = hostPorts.checkComposeHostPorts(mutated, rel, egress.splitComposeServices);
+    assert.strictEqual(m.count, r.count);
+    assert.strictEqual(m.problems.length, 1, m.problems.join('\n'));
+    assert.match(m.problems[0], /サービス bff: "5000:8080" がループバックに限られていない/);
+  });
+
+  ok('IADR-0587 要点 8: 短い形式・流れ形式・長い形式・network_mode を形ごとに判定する（読めない形は赤）', () => {
+    const judge = (svcLines) => hostPorts.checkComposeHostPorts(['services:', '  s:', ...svcLines, ''].join('\n'), 'c.yml', egress.splitComposeServices);
+    const green = (lines, count) => {
+      const r = judge(lines);
+      assert.deepStrictEqual(r.problems, [], lines.join('\n'));
+      assert.strictEqual(r.count, count, lines.join('\n'));
+    };
+    const red = (lines, re) => {
+      const r = judge(lines);
+      assert.ok(r.problems.some((p) => re.test(p)), `${lines.join('\n')}\n→ ${r.problems.join(' / ') || '(問題なし)'}`);
+    };
+    green(['    ports:', '      - "127.0.0.1:5432:5432"  # コメント', "      - '127.0.0.1:1:2'", '      - 127.0.0.1::8080'], 3);
+    green(['    ports: ["127.0.0.1:1:1", "127.0.0.1:2:2"]'], 2);
+    green(['    ports:', '      - target: 8080', '        published: "5000"', '        host_ip: 127.0.0.1'], 1);
+    green(['    ports:', '      - { target: 80, published: 8080, host_ip: "127.0.0.1" }'], 1);
+    green(['    expose:', '      - "8080"'], 0);
+    red(['    ports:', '      - "5432:5432"'], /"5432:5432" がループバックに限られていない/);
+    red(['    ports:', '      - 5432:5432'], /ループバックに限られていない/);
+    red(['    ports:', '      - "8080"'], /"8080" がループバックに限られていない/);
+    red(['    ports:', '      - "0.0.0.0:1:1"'], /ループバックに限られていない/);
+    red(['    ports:', '      - "${BIND_IP:-127.0.0.1}:1:1"'], /ループバックに限られていない/);
+    red(['    ports:', '      - "127.0.0.1:8080"'], /形を読めない/);
+    red(['    ports: ["1:1"]'], /"1:1" がループバックに限られていない/);
+    red(['    ports: "1:1"'], /ports: の形を読めない/);
+    red(['    ports:', '      - target: 8080', '        published: "5000"'], /host_ip が 無い/);
+    red(['    ports:', '      - target: 8080', '        host_ip: 0.0.0.0'], /host_ip が 0\.0\.0\.0/);
+    red(['    ports:', '      - { target: 80, published: 8080 }'], /host_ip が 無い/);
+    red(['    ports:', '      - published: 8080', '        host_ip: 127.0.0.1'], /target が無い/);
+    red(['    ports:', '    image: x'], /ports: に項目が無い/);
+    red(['    network_mode: host'], /network_mode: host/);
+  });
+
+  ok('IADR-0587 要点 8: 口を 1 件も数えられない compose（空の母集合）は赤', () => {
+    mk('deploy/docker-compose.yml', 'services:\n  s:\n    image: x\n    expose:\n      - "8080"\n');
+    const r = checkComposeHostPortsAll(tmp);
+    assert.strictEqual(r.count, 0);
+    assert.ok(r.failures.some((f) => /ports:）が 0 件だった/.test(f)), r.failures.join('\n'));
+    fs.rmSync(path.join(tmp, 'deploy', 'docker-compose.yml'));
+    assert.ok(checkComposeHostPortsAll(tmp).failures.some((f) => /0 件だった/.test(f)), 'compose が無い走査でも赤');
+  });
+
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(`[check-deploy-manifests] self-test OK: ${n} 件`);
 }
@@ -628,6 +706,7 @@ function main() {
       `レンダリングでき、スキーマにも適合する。描画結果・compose・Testcontainers で` +
       ` ${egress.PRODUCTS.map((p) => p.name).join(' / ')} の既定の外部通信が止まっている（#1841）。` +
       ` Loki・Tempo は現れた描画で前段と NetworkPolicy の両方が揃っている（#1867）。` +
+      ` compose のホストへ出す口はループバックに限られている（IADR-0587）。` +
       `\n  chart:   ${r.charts.join(', ')}\n  overlay: ${r.overlays.join(', ')}`,
   );
 }
@@ -637,6 +716,7 @@ if (require.main === module) main();
 module.exports = {
   check,
   checkEgressWithoutTools,
+  checkComposeHostPortsAll,
   discoverComposeFiles,
   discoverOverlays,
   discoverCharts,
