@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.9.1",
+    "@hookform/resolvers": "^5.9.2",
     "@lingui/core": "^6.6.0",
     "@lingui/react": "^6.6.0",
     "@platform/ui": "workspace:*",
