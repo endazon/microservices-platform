@@ -92,7 +92,7 @@ related_specs:
 - 外向きの経路が CSP を足す・上書きすることは無い（2026-10-22 に確かめた）: Istio のエッジ（`templates/edge.yaml`・
   `deploy/local/edge-istio/`）は応答ヘッダを操作せず EnvoyFilter も無い。Traefik のエッジ（`deploy/local/edge/`）の SPA の Ingress は
   中間処理（Middleware）を持たない（Middleware は Keycloak の管理面の拒否だけ）。
-- 既存の E2E 78 本（全画面）が CSP の下で違反 0 件で通る（手元で実測）。CSP を変えたときは E2E がそのまま裏付けになる。
+- 全画面の E2E が CSP の下で違反 0 件で通る（手元で実測）。CSP を変えたときは E2E がそのまま裏付けになる。
 
 ## 残る制約
 
@@ -100,3 +100,4 @@ related_specs:
 - AST ユニットの画面は MSP の E2E に含まれない。AST の画面に外部の資産・インラインのスクリプトは無いことを `git grep` で確かめた
   （画像は `/bff/...` の同一オリジンだけ）。
 - BFF の応答（`/bff/*`）は Caddy を通らない経路（エッジから直接）がある。BFF の応答ヘッダは本 IADR の射程外。
+- E2E のガード（決定 4）は spec の `page` だけを見る。`context.newPage()` やポップアップで開いた別ページの違反は観測しない（2026-10-22 時点で e2e の spec に `newPage(` / `context.pages` / ポップアップ待ちは 0 件。使う spec を足すときはガードを context 単位へ広げる）。
