@@ -435,6 +435,64 @@ jobs:
           want "egress-probe external=closed"
           exit "$fail"
 
+      # NFR-18 / ADR-0005 / IADR-0590（Refs GHSA-j4qv-2w99-xg5p）: メッシュの mTLS が STRICT で**効いている**ことを稼働で測る。
+      # G12（check-stack-ready.js）は宣言と稼働の一致を見るが、宣言そのものが PERMISSIVE でも緑になる。ここは宣言ではなく受け手の挙動を見る:
+      #   - 名前空間全体の PeerAuthentication が STRICT であること
+      #   - サイドカーの無い Pod（同じ名前空間・別の名前空間）から平文の HTTP が届か**ない**こと
+      #   - 対照: サイドカー付きの Pod からは同じ URL が届くこと（宛先が落ちている・Pod が走らないで「届かない」になるのを分ける）
+      # 宛先は document-service の /health/live（受信の例外〔バックチャネルの 1 本〕を持たないサービス）。
+      # 平文の TCP 接続そのものは受け手のサイドカーが受けてから切るので、`nc -z` では開いて見える（上の門の intra=open はそのため変わらない）。
+      # 手元の k3s v1.35.4 ＋ Istio 1.30.4 で、STRICT では reached / refused / refused、PERMISSIVE では 3 つとも reached（＝この門が赤）を実測した。
+      - name: 🔴 Gate — メッシュの mTLS が STRICT で効いている（平文を受けない）
+        id: mesh-strict
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' && env.ISTIO == '1' }}
+        run: |
+          set -euo pipefail
+          ns=microservices-platform
+          img="$(grep -m1 -oE 'busybox:[^ ]+@sha256:[0-9a-f]{64}' deploy/local/infra/inotify-sysctl.yaml)"
+          [ -n "$img" ] || { echo "::error::deploy/local/infra/inotify-sysctl.yaml から busybox のイメージ参照を読めない"; exit 1; }
+          fail=0
+          mode="$(kubectl -n "$ns" get peerauthentication microservices-platform-mtls -o jsonpath='{.spec.mtls.mode}')"
+          echo "namespace-wide mode=${mode:-（無し）}"
+          [ "$mode" = "STRICT" ] || { echo "::error::名前空間全体の mTLS モードが STRICT でない（${mode:-無し}）"; fail=1; }
+          target="http://document-service.${ns}.svc.cluster.local:8080/health/live"
+          created=()
+          # shellcheck disable=SC2329  # trap から呼ぶ。
+          cleanup() { for e in "${created[@]+"${created[@]}"}"; do kubectl -n "${e%%/*}" delete pod "${e#*/}" --ignore-not-found --wait=false >/dev/null 2>&1 || true; done; }
+          trap cleanup EXIT
+          # 名前は親で決める（probe は $(…) の子で走るので、子で足した配列は trap から見えない）。
+          n_mesh="mtls-probe-mesh-$(date +%s)-$RANDOM"
+          n_plain="mtls-probe-plain-$(date +%s)-$RANDOM"
+          n_other="mtls-probe-plain-other-$(date +%s)-$RANDOM"
+          created=("$ns/$n_mesh" "$ns/$n_plain" "default/$n_other")
+          probe() {
+            local label="$1" pns="$2" name="$3" inject="$4" phase
+            kubectl -n "$pns" delete pod "$name" --ignore-not-found --timeout=60s >/dev/null
+            kubectl -n "$pns" run "$name" --image="$img" --image-pull-policy=IfNotPresent --restart=Never \
+              --labels="app=${label}" --annotations="sidecar.istio.io/inject=${inject}" \
+              --command -- sh -c "if wget -q -T 10 -O /dev/null '$target'; then echo ${label}=reached; else echo ${label}=refused; fi" >/dev/null \
+              || { echo "::error::${label} の Pod を作れなかった" >&2; return 1; }
+            phase=""
+            for _ in $(seq 1 90); do
+              phase="$(kubectl -n "$pns" get pod "$name" -o jsonpath='{.status.phase}')"
+              case "$phase" in Succeeded|Failed) break ;; esac
+              sleep 2
+            done
+            kubectl -n "$pns" logs "$name" -c "$name" | grep -E "^${label}=" || true
+            kubectl -n "$pns" delete pod "$name" --ignore-not-found --timeout=60s >/dev/null
+            [ "$phase" = "Succeeded" ] || { echo "::error::${label} の Pod が ${phase:-終端に達しない} で終わった" >&2; return 1; }
+          }
+          mesh="$(probe mtls-probe-mesh "$ns" "$n_mesh" true)" || fail=1
+          plain="$(probe mtls-probe-plain "$ns" "$n_plain" false)" || fail=1
+          other="$(probe mtls-probe-plain-other default "$n_other" false)" || fail=1
+          out="${mesh}"$'\n'"${plain}"$'\n'"${other}"
+          echo "$out"
+          want() { grep -qx "$1" <<<"$out" || { echo "::error::期待した「$1」が無い"; fail=1; }; }
+          want "mtls-probe-mesh=reached"
+          want "mtls-probe-plain=refused"
+          want "mtls-probe-plain-other=refused"
+          exit "$fail"
+
       # 🔴 ここが 4 つめの門である（#1245 PR-0 / SC-13・ADR-0078 決定 1）。
       # 計画 ADR は存在秘匿の統制を「**応答の区別不能性**（ステータス・本文・所要時間）」と定め、
       # **射程に認証系の経路（ログイン）を含める**と明文化したが、**ログイン側は実測されていなかった**

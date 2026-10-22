@@ -31,8 +31,9 @@ istiod / ingressgateway の values は [`../../istio/`](../../istio/README.md)�
 
 ```sh
 # クラスタ作成から通す（推奨）
-ISTIO=1 LOCALEDGE=1 ./scripts/k8s-local-up.sh --live                        # 初回は PERMISSIVE。再実行は現行のモードを引き継ぐ
-ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live # STRICT
+ISTIO=1 LOCALEDGE=1 ./scripts/k8s-local-up.sh --live                            # 初回は既定の STRICT（入口を移した後で上げる）。再実行は現行のモードを引き継ぐ
+ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live     # PERMISSIVE を引き継いだクラスタを STRICT へ上げる
+ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=PERMISSIVE ./scripts/k8s-local-up.sh --live # 緩める（明示のときだけ）
 
 # 既に立っているクラスタのエッジだけを移す
 bash scripts/istio-edge-up.sh --live

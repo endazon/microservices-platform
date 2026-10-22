@@ -13,7 +13,7 @@ related_ids:
   - IADR-0488
 author: claude
 created: 2026-08-30
-updated: 2026-10-02
+updated: 2026-10-23
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md
@@ -84,6 +84,10 @@ CRD が `Established` になるまで `kubectl wait` してから先へ進む（
 **なお本番像（`values.yaml`）の既定は STRICT のままである** —— `MeshMtlsTests` が
 「平文許容へ後退していないこと」を回帰として固定しており、そこは変えない。
 変えたのは**経路B の導入手順の既定**だけである。
+
+> ［2026-10-23 追記 / [[IADR-0590]]（Refs GHSA-j4qv-2w99-xg5p）］ **経路B の初回の既定は STRICT へ改めた。**
+> 段取り「注入 → 全 Pod Ready → STRICT」は残す（`LOCALEDGE=1` の初回は入口を移した後で上げる。`ISTIO=1` 単独の初回は注入ラベルを helm より前に貼る）。
+> 上の表の `platform-infra` 宛は**出る側**であり、STRICT（受信の規則）の影響を受けない（auto-mTLS が平文で出す）。引き継いだ PERMISSIVE は上げずに告げる。
 
 ### 決定 5 — 経路B では注入ラベルを**スクリプトが貼る**
 

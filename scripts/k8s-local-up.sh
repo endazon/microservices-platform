@@ -293,7 +293,8 @@ fi
 #   [6/7] は --reuse-values 無しで helm upgrade する。以前は ISTIO 未指定を「メッシュ無し」と読み、values-local.yaml の
 #   mesh.enabled: false が当たって、メッシュで動いているクラスタの宣言（PeerAuthentication・AuthorizationPolicy・注入）を
 #   再実行のたびに**黙って**外していた（#1713）。ISTIO_MTLS_MODE を付けない再実行が STRICT を PERMISSIVE へ戻したのと同じ型（#1710）。
-#   選び方はどちらも 明示（env）＞ 現行（helm get values msp の mesh.*）＞ 初回の既定（ISTIO はメッシュ無し・mTLS は PERMISSIVE）。
+#   選び方はどちらも 明示（env）＞ 現行（helm get values msp の mesh.*）＞ 初回の既定（ISTIO はメッシュ無し・mTLS は STRICT）。
+#   ［2026-10-23 / IADR-0590（Refs GHSA-j4qv-2w99-xg5p）］mTLS の初回の既定は PERMISSIVE から STRICT へ変えた（下の [6/7] の注記）。
 #   - ISTIO 未指定 × メッシュ宣言あり → ISTIO=1 として以降を進める（明示と同じ段: コントロールプレーン・注入・LOCALEDGE なら Istio の入口）。
 #     ISTIO_MTLS_MODE も未指定なら同じ読みからモードを引き継ぐ。外すのは ISTIO=0 の明示だけである。
 #   - ISTIO=0 はメッシュの判定のためには読まない（従来の「ISTIO 無し」と同じ経路。既定のバイト等価はこちらへ移した）。
@@ -341,10 +342,15 @@ if [ -z "${ISTIO:-}" ] || { [ "$ISTIO" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ];
     ISTIO=1
     echo "    INFO: メッシュ（mesh.enabled: true）は現行を引き継ぎます（ISTIO 未指定。外すなら ISTIO=0）"
   fi
-  # mesh_rc=1（リリースが無い・メッシュ未宣言＝初回）は何もしない: ISTIO 未指定はメッシュ無し、ISTIO=1 は PERMISSIVE で入る（下の [6/7]）。
+  # mesh_rc=1（リリースが無い・メッシュ未宣言＝初回）は何もしない: ISTIO 未指定はメッシュ無し、ISTIO=1 は既定の STRICT で入る（下の [6/7]）。
   if [ "${ISTIO:-}" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ] && [ "$mesh_rc" = "0" ]; then
     ISTIO_MTLS_MODE="$mesh_current"
     echo "    INFO: mesh.mtlsMode は現行の ${mesh_current} を引き継ぎます（ISTIO_MTLS_MODE 未指定）"
+    # NFR-18, IADR-0590: 引き継ぎは黙って上げも下げもしない（#1710）。ただし緩めた状態が続いていることは毎回告げる。
+    if [ "$mesh_current" != "STRICT" ]; then
+      echo "WARN: mTLS は ${mesh_current} のままです（既定は STRICT。サイドカーの無い呼び出し元からの平文も受け付けます）。" >&2
+      echo "      STRICT へ上げるには ISTIO_MTLS_MODE=STRICT を付けて再実行してください（前提は deploy/istio/README.md「STRICT の前提」）。" >&2
+    fi
   fi
 fi
 
@@ -832,12 +838,16 @@ fi
 # 🔴 **[6/7] より前に置く。** アプリチャートは PeerAuthentication / DestinationRule を
 #   レンダリングするので、CRD が無いまま helm upgrade すると apply がその時点で失敗する。
 #
-# 🔴 **初回は PERMISSIVE で入る。** STRICT へは ISTIO_MTLS_MODE=STRICT で明示的に移す。
+# 🔴 **初回の既定は STRICT である**（NFR-18, ADR-0005, IADR-0590。Refs GHSA-j4qv-2w99-xg5p）。緩めるのは ISTIO_MTLS_MODE=PERMISSIVE の明示だけ。
+#   ［2026-10-23］従前（IADR-0307 決定 4 / IADR-0377 決定 3）は初回を PERMISSIVE で入り、STRICT は明示の opt-in だった。
 #   ［2026-10-01 / #1710］ISTIO_MTLS_MODE を付けない**再実行**は現行の mesh.mtlsMode を引き継ぐ（[2/7] の前の判定。IADR-0487）。
-#   PERMISSIVE へ戻すのも ISTIO_MTLS_MODE=PERMISSIVE の明示だけである。
-#   いきなり STRICT にすると、サイドカーの入っていない platform-infra（postgres / keycloak /
-#   rabbitmq / qdrant / valkey …）との通信と、注入前の Pod からの通信が**同時に**壊れる。
-#   段取りは「注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT」である。
+#   STRICT が効くのは**メッシュの Pod が受ける側**だけである（PeerAuthentication は受信の規則）。platform-infra（postgres /
+#   keycloak / rabbitmq / qdrant / valkey …）**へ出る**通信は auto-mTLS が平文へ落とすので STRICT の影響を受けない。
+#   受ける側の例外はメッシュ外の認可サーバからのバックチャネルログアウト 1 本だけ（下の 2 枚組）。
+#   段取り「注入 → 全 Pod Ready → STRICT」は、LOCALEDGE=1 の初回なら下の降格（入口を移した後に STRICT）が、
+#   ISTIO=1 単独の初回なら「注入ラベルを helm より前に貼る」（Pod は最初からサイドカー付きで生まれる）が満たす。
+#   メッシュ無しで立てたクラスタへ ISTIO=1 を足した再実行だけは、下の rollout restart の間に限り、注入前の Pod から注入後の
+#   Pod への平文が落ちる（作り直しが終われば消える。IADR-0590 §結果）。
 ISTIO_MESH_ARGS=""
 if [ "${ISTIO:-}" = "1" ]; then
   echo "==> [opt-in] Istio service mesh (control plane)"
@@ -874,8 +884,13 @@ if [ "${ISTIO:-}" = "1" ]; then
   #   入口は既に Envoy であり、降格の理由（入口がメッシュ外の Traefik）が無い。再実行のたびに STRICT → PERMISSIVE → STRICT と緩めない。
   #   #1710: ↑ が成り立つのは ISTIO_MTLS_MODE が決まっているときである。未指定の再実行は [2/7] の前の判定が
   #   現行の mesh.mtlsMode を ISTIO_MTLS_MODE へ引き継ぐので、ここで空が残るのはリリースが無い・メッシュ未宣言（初回）だけ
-  #   ＝ 下の既定 PERMISSIVE は**初回の値**であって、再実行の降格ではない（IADR-0487）。
-  ISTIO_MTLS_MODE_AT_INSTALL="${ISTIO_MTLS_MODE:-PERMISSIVE}"
+  #   ＝ 下の既定は**初回の値**であって、再実行の昇格・降格ではない（IADR-0487）。
+  #   NFR-18, IADR-0590: 初回の値は STRICT（従前は PERMISSIVE）。決めた値は istio-edge-up.sh [5/5] へも同じ変数で渡る。
+  if [ -z "${ISTIO_MTLS_MODE:-}" ]; then
+    ISTIO_MTLS_MODE="STRICT"
+    echo "    INFO: mesh.mtlsMode は既定の STRICT を宣言します（初回・メッシュ未宣言。緩めるのは ISTIO_MTLS_MODE=PERMISSIVE の明示だけ）"
+  fi
+  ISTIO_MTLS_MODE_AT_INSTALL="$ISTIO_MTLS_MODE"
   if [ "${LOCALEDGE:-}" = "1" ] && [ "${ISTIO_MTLS_MODE:-}" = "STRICT" ] && [ "$EDGE_ON_ISTIO" != "1" ]; then
     ISTIO_MTLS_MODE_AT_INSTALL="PERMISSIVE"
   fi
@@ -884,8 +899,8 @@ if [ "${ISTIO:-}" = "1" ]; then
   #   ＝ istioInjection=true にしても注入ラベルが誰にも適用されない。ここで明示的に貼る。
   #   （本番像は namespace.create=true なのでチャートが貼る。同じ結果を 2 経路で担保する。）
   kubectl label namespace "$MSP_NS" istio-injection=enabled --overwrite
-  echo "    mTLS モード: ${ISTIO_MTLS_MODE:-PERMISSIVE}（STRICT へ移すには ISTIO_MTLS_MODE=STRICT で再実行）"
-  if [ "$ISTIO_MTLS_MODE_AT_INSTALL" != "${ISTIO_MTLS_MODE:-PERMISSIVE}" ]; then
+  echo "    mTLS モード: ${ISTIO_MTLS_MODE}（緩めるのは ISTIO_MTLS_MODE=PERMISSIVE の明示だけ）"
+  if [ "$ISTIO_MTLS_MODE_AT_INSTALL" != "$ISTIO_MTLS_MODE" ]; then
     echo "    （この段では ${ISTIO_MTLS_MODE_AT_INSTALL}。STRICT への昇格は入口を移した後 = istio-edge-up.sh の [5/5]）"
   fi
 fi
@@ -1657,10 +1672,25 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
 fi
 
 # 🔴 ISTIO=1 だけで LOCALEDGE=1 が無いと、エッジは port-forward のままである。
-#   その状態で ISTIO_MTLS_MODE=STRICT にすると mesh 内へ入る経路が無くなる（気付きにくい）。
+#   ［2026-10-23 / IADR-0590］port-forward は STRICT でも届く（Pod の loopback へ入り、受信のサイドカーを通らない。手元の
+#   k3s v1.35.4 ＋ Istio 1.30.4 で実測 200）。ブラウザのエッジ経路（*.localhost の 80/443）は無いままなので告げる。
 if [ "${ISTIO:-}" = "1" ] && [ "${LOCALEDGE:-}" != "1" ]; then
-  echo "WARN: ISTIO=1 ですが LOCALEDGE=1 がありません。エッジは Istio Ingress Gateway へ移りません。" >&2
-  echo "      STRICT へ上げる前に LOCALEDGE=1 を併用してください（ADR-0021 / #782）。" >&2
+  echo "WARN: ISTIO=1 ですが LOCALEDGE=1 がありません。エッジは Istio Ingress Gateway へ移りません（入口は port-forward のまま）。" >&2
+  echo "      ブラウザのエッジ経路が要るなら LOCALEDGE=1 を併用してください（ADR-0021 / #782）。" >&2
+fi
+
+# NFR-18, ADR-0005, IADR-0590（Refs GHSA-j4qv-2w99-xg5p）: STRICT の間、サイドカーの無い呼び出し元からメッシュの Pod への
+#   平文は受け手のサイドカーが切る。経路B で MSP を呼ぶメッシュ外の名前空間は AST（別リポジトリの chart が配備する）である。
+#   AST の Pod が居て、その名前空間に注入ラベルが無いなら告げる（止めない —— 緩める判断は ISTIO_MTLS_MODE=PERMISSIVE の明示で行う）。
+#   AST をメッシュへ入れる手順は deploy/istio/README.md「STRICT の前提」。
+if [ "${ISTIO:-}" = "1" ] && [ "${ISTIO_MTLS_MODE:-}" = "STRICT" ]; then
+  ast_injection="$(kubectl get namespace "$AST_NS" -o jsonpath='{.metadata.labels.istio-injection}' 2>/dev/null || true)"
+  ast_pods="$(kubectl -n "$AST_NS" get pods --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "${ast_pods:-0}" != "0" ] && [ "$ast_injection" != "enabled" ]; then
+    echo "WARN: mTLS は STRICT ですが、名前空間 ${AST_NS} に注入ラベル（istio-injection=enabled）がありません（Pod ${ast_pods} 個）。" >&2
+    echo "      ${AST_NS} から ${MSP_NS} への呼び出しは届きません。AST をメッシュへ入れる（deploy/istio/README.md「STRICT の前提」）か、" >&2
+    echo "      入れるまでの間だけ ISTIO_MTLS_MODE=PERMISSIVE を明示して再実行してください。" >&2
+  fi
 fi
 
 # IADR-0133 (#517): ABAC の属性辞書とポリシーを dev 既定値で投入する。ポリシーが 0 件だと
