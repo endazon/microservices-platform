@@ -805,6 +805,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-pod-security.test.js
 
+      # SC-22, NFR-18, IADR-0588（Refs GHSA-j4qv-2w99-xg5p）: BFF の SA の ExternalSecret の更新を force-sync の注釈だけに限る ValidatingAdmissionPolicy を
+      # **実際に helm template で描いて**固定する —— Role と同じ描画条件・Fail / Deny の形・CEL の判定の行列（陽性・陰性・主体）・BFF の要求と
+      # RBAC の動詞との一致、変異。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。
+      - name: Test BFF ExternalSecret admission policy (render, CEL matrix, supply, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-bff-externalsecret-admission.test.js
+
       # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 秘匿管理の kubernetes 認証で、role（deploy/ の bootstrap が書く全て）と名乗る側
       # （ESO の store・helm が描く Vault を使う Deployment・バックアップの CronJob）の audience が揃うことを**実際に helm template で描いて**固定する
       # —— コードの既定のトークンの置き場との一致、変異。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。

@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-04
-updated: 2026-10-09
+updated: 2026-10-22
 ---
 <!-- trace:
 ids: [SC-22, FR-05, NFR-18]
 adrs: [ADR-0131, ADR-0095, ADR-0104, ADR-0110]
-iadrs: [IADR-0522, IADR-0103, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0494]
-specs: [20261009_1839_session-store-valkey, 20261004_issue-1472_sc22-t40-live-procedure, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_1728_eso-force-sync-after-bootstrap]
+iadrs: [IADR-0522, IADR-0103, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0494, IADR-0588]
+specs: [20261009_1839_session-store-valkey, 20261004_issue-1472_sc22-t40-live-procedure, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_1728_eso-force-sync-after-bootstrap, 20261022_j4qv_bff-externalsecret-admission-policy]
 issues: [#1839, #1472, #1467, #1477, #1502, #1682, #1728, planning#750]
 -->
 
@@ -103,8 +103,9 @@ kubectl -n "$NS" get externalsecret "$ES" \
 # 0-3 Reloader が居る（名前を控える。手順 6 で使う）
 kubectl -n reloader get deploy -o name
 
-# 0-4 境界層の同期依頼の Role がある
+# 0-4 境界層の同期依頼の Role と、その更新を force-sync の注釈だけに限る検査（クラスタ全体の資源）がある
 kubectl -n "$NS" get role bff-externalsecret-sync
+kubectl get validatingadmissionpolicy,validatingadmissionpolicybinding bff-externalsecret-force-sync-only
 
 # 0-5 試験対象に読み手が無い。Secret を参照するワークロードを全名前空間で引き、参照しているキー名だけを並べる
 #     （ワークロードの定義は Secret の参照だけで値を含まない。全体を YAML で落とさず、参照の欄だけを jsonpath で引く）
@@ -112,7 +113,7 @@ kubectl get deploy,sts,ds,cronjob -A -o jsonpath='{range .items[*]}{.kind}/{.met
   | grep -- "$SECRET"
 ```
 
-期待: 0-1 は `Sealed false`、0-2 は 2 行とも `True`、0-3 は 1 行以上、0-4 は見つかる。
+期待: 0-1 は `Sealed false`、0-2 は 2 行とも `True`、0-3 は 1 行以上、0-4 は 3 つとも見つかる。
 0-5 は `Deployment/microservices-platform/llmgateway-service` の 1 行だけで、その行に `openai-api-key` が出ないこと
 （行には、そのワークロードが参照する Secret の名前の列とキーの列が `:` の前後に並ぶ。対応は崩れるが、キー名 `openai-api-key` の有無は読める）。
 `openai-api-key` が出る、2 行目のワークロードがある、`:` の後ろ〔`secretRef`＝Secret 全体を env に読む形〕に `llm-provider-credentials` が出る、

@@ -665,3 +665,4 @@
 | [IADR-0585](./IADR-0585_vault-k8s-auth-audience.md) | 秘匿管理の kubernetes 認証の role は対象者（audience）を vault に限り、名乗る側（ESO・BFF・datasource・バックアップ）は対象者 vault のトークンを渡し、配備は名乗る側を先に出す（GHSA-j4qv-2w99-xg5p） | Accepted |
 | [IADR-0586](./IADR-0586_admin-edge-routes-default-closed.md) | 管理ツールの集約入口（admin 50000）の経路は既定で置かず、ADMIN_EDGE=1 の明示の opt-in でだけ置く。Istio は *.localhost の directResponse 403、Traefik は router なしの 404、既定の入り方は各ツールへの port-forward（GHSA-j4qv-2w99-xg5p） | Accepted |
 | [IADR-0587](./IADR-0587_compose-host-ports-loopback-only.md) | compose がホストへ出す口（ports:）はすべてループバック（127.0.0.1）に限り、check-deploy-manifests.js の要点 8 で全件を検査する（GHSA-j4qv-2w99-xg5p） | Accepted |
+| [IADR-0588](./IADR-0588_bff-externalsecret-force-sync-only-admission.md) | BFF の SA が ExternalSecret に対して通せる更新を、ValidatingAdmissionPolicy（Fail・Deny）で force-sync の注釈（数字）の変更だけに限る。spec・status・labels・他の注釈・finalizers 等の変更と作成・削除・サブリソースは拒否し、BFF 以外の主体には当てない（GHSA-j4qv-2w99-xg5p） | Accepted |
