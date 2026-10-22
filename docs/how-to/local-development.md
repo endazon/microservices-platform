@@ -3,7 +3,7 @@ title: how-to — ローカル開発フロー
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-10-09
+updated: 2026-10-22
 author: claude
 ---
 <!-- trace:
@@ -24,7 +24,7 @@ issues: [#1859, #1839, #1092, #1393, #1499, planning#750]
 
 | ツール | バージョン | 備考 |
 | --- | --- | --- |
-| .NET SDK | 10.0.x | [`global.json`](../../global.json) は `8.0.0` + `rollForward: latestMajor`（10.x でビルド可）。ターゲットは [`src/Directory.Build.props`](../../src/Directory.Build.props) で `net10.0` |
+| .NET SDK | 10.0.x | [`global.json`](../../global.json) は `8.0.100` + `rollForward: latestMajor`（10.x でビルド可）。ターゲットは [`src/Directory.Build.props`](../../src/Directory.Build.props) で `net10.0` |
 | Node.js | 22 | フロントエンド CI（[`frontend.yml`](../../.github/workflows/frontend.yml)）と揃える |
 | Docker / Docker Compose | v2 相当 | インフラ・全サービスのローカル起動 |
 | git | — | ユニット submodule（`src/ai-stock-trading`）の取得を含む |

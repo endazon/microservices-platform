@@ -39,6 +39,8 @@ related_specs:
 2. **`check-action-versions.js` は SHA 固定の行の注記を版として読む。** 注記が無い SHA は従来どおり比較対象外。
 3. **Dependabot は github-actions / gitsubmodule / nuget（`/src`）/ npm（`/src`）を週次で更新する。** 自動マージはしない。
 
+4. **`global.json` の `sdk.version` を完全な版 `8.0.100` にする（`rollForward: latestMajor` は維持）。** nuget を Dependabot の対象に足した push で、GitHub の自動の依存の提出（NuGet）が初めて起動し、`setup-dotnet` が「rollForward を指定するなら完全な版が要る」として `8.0.0` を拒んだため。`8.0.100` は 8.0 系の最初の正規の SDK で、`latestMajor` により選ばれる SDK（CI の setup-dotnet 10.0.x・手元の 10.x）は変わらない。
+
 ## 結果
 
 - 良い影響: ワークフローの実行する中身が定義で一意に決まる。依存の更新とセキュリティ修正の取り込みが PR として届く。
