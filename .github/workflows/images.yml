@@ -117,6 +117,45 @@ jobs:
         env:
           SERVICE: ${{ matrix.service }}
         run: docker compose -f deploy/docker-compose.yml build --progress plain "$SERVICE"
+      # NFR, GHSA-552h-47r7-6v6p / IADR-0584: 建てたイメージを Trivy で走査する（既知の脆弱性。CRITICAL / HIGH・修正版あり）。
+      # 🔴 **当面は報告だけで落とさない**（exit-code 0 ＋ continue-on-error）。この job は必須チェック image-build の
+      # 集約に入るため、落とす形にすると走査が実質の必須になる。必須にするかはオーナーの裁定で決める（IADR-0584 残余）。
+      # 結果は実行サマリに表で載せる。イメージ名は compose の解釈（image の指定、無ければ <project>-<service>）から引く。
+      - name: Resolve image name
+        id: img
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          image="$(docker compose -f deploy/docker-compose.yml config --format json \
+            | jq -r --arg s "$SERVICE" '.services[$s].image // (.name + "-" + $s)')"
+          if docker image inspect "$image" >/dev/null 2>&1; then
+            echo "ref=$image" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::建てたイメージ $image を見つけられないため走査しない（走査 0 件。合格ではない）。"
+          fi
+      - name: Scan image (Trivy, report only)
+        if: steps.img.outputs.ref != ''
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.img.outputs.ref }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          output: trivy-report.txt
+          exit-code: "0"
+      - name: Publish scan summary
+        if: steps.img.outputs.ref != ''
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          {
+            echo "### Trivy（${SERVICE}・CRITICAL / HIGH・修正版あり）"
+            echo
+            if [ -s trivy-report.txt ]; then echo '```'; cat trivy-report.txt; echo '```'; else echo "走査の結果が無い（走査が失敗した可能性。ステップのログを見ること）。"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f trivy-report.txt
 
   # ブランチ保護の必須チェックに指定する安定名のジョブ。マトリクスのジョブ名は対象が増減すると
   # 変わるため必須チェックに使えない。スキップ時も含めて常に結果を報告する。
