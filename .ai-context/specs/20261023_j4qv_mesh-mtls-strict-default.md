@@ -60,7 +60,8 @@ issue: "GHSA-j4qv-2w99-xg5p"
 - [x] 既定を PERMISSIVE へ戻す変異で上の試験が赤になる（変異 1。3 件が赤）。
 - [x] 統合スタックの門は STRICT で緑、PERMISSIVE で赤（手元の k3s で実測。IADR-0590 §実測）。
 - [x] チャートの描画は不変（テンプレート・values を触らない）。
-- [ ] 統合スタックを PR のブランチで `ISTIO=1` で流し、新しい門と既存の門が緑（PR 作成後）。
+- [x] 統合スタックを PR のブランチで `ISTIO=1` で流し、新しい門と既存の門が緑（run 39817815353: `namespace-wide mode=STRICT`・`mtls-probe-mesh=reached`・`mtls-probe-plain=refused`・`mtls-probe-plain-other=refused`。7 つの門すべて success）。
+- [x] `ISTIO` が 1 でない比較実行では門を飛ばさず notice で緑にする（T-25 の偶然の赤の判定が「🔴 Gate」の手順すべての success を要求するため。レビュー指摘で是正）。T-25 の印の条件に本門を足した。
 
 ## 影響範囲
 
