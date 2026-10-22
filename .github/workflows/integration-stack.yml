@@ -96,7 +96,7 @@ jobs:
       #   ［2026-09-26 / #1525］所要時間の項目はテスト仕様書で T-25 である（従前ここは T-10 と書いていた。
       #   計画 ADR-0097 の解除条件の本文も T-25 へ再訂正された。planning#650）。
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -109,10 +109,10 @@ jobs:
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
-      - uses: azure/setup-helm@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
       # 🔴 門そのものが壊れていないことを、**高価な起動の前に**確かめる。
       # 検査器が壊れていれば以降は何を測っても意味がないので、ここで落とす。
