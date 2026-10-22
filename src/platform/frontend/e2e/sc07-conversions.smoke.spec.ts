@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/cspGuard';
 import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
 
 // SC-07 (#503 / #1139): 変換ジョブ（`/admin/conversions`）のスクリーンレベル・スモーク。

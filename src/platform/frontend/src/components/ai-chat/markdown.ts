@@ -17,6 +17,16 @@ import { citationAnchorId } from './citations';
 //   （script / style / iframe / イベント属性 / `javascript:`）に加え、メディア（img / picture / source /
 //   video / audio）を落とす——**外部 URL の資産をブラウザに取りに行かせない**（08_data-egress-policy）。
 //
+// ■ 許可は allowlist で持つ（NFR / IADR-0579。Refs GHSA-5h4q-4m2j-rjhm）
+//   回答の描画に要るのは marked が出す要素（見出し・段落・強調・リスト・表・コード・引用・リンク・脚注の印）だけなので、
+//   **タグ・属性・URI のスキームを allowlist で閉じる**（足りないものは描けないだけで、余計なものは通らない）。
+//   - タグ: `MARKDOWN_TAGS`（フォーム部品・`style`・メディア・埋め込みは含めない）
+//   - 属性: `href` / `title` / `align`（表の揃え）/ `start`（番号付きリストの開始）/ `class`
+//     ただし `class` は**脚注の印 `<sup class="cite">` だけ**に残す（それ以外の要素の `class` は落とす。
+//     画面のユーティリティクラスを本文から使わせない）。`style` / `id` / `name` は通さない。
+//   - URI: `http(s)` / `mailto` の絶対 URL・`#…` の断片・`/` で始まる同一オリジンのパスだけ
+//     （`//host` のスキーム相対は外部なので通さない）
+//
 // ■ 外部リンク
 //   `http(s)` の絶対 URL は `target="_blank" rel="noopener noreferrer"` で開く（利用者の入力途中の
 //   画面を捨てない。`noopener` は開いた側からの `window.opener` 操作を塞ぐ）。DOMPurify は `target` を
@@ -40,8 +50,46 @@ export interface RenderMarkdownOptions {
   citationCount?: number;
 }
 
-/** 落とすタグ（`sanitizeWikiHtml` と同じ集合）。 */
-const FORBID_TAGS = ['img', 'picture', 'source', 'video', 'audio'];
+/** 描画に使ってよいタグ（marked の出力に要るものだけ。NFR / IADR-0579）。 */
+const MARKDOWN_TAGS: readonly string[] = [
+  'p',
+  'br',
+  'hr',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'strong',
+  'em',
+  'b',
+  'i',
+  'del',
+  's',
+  'code',
+  'pre',
+  'blockquote',
+  'kbd',
+  'sub',
+  'sup',
+  'ul',
+  'ol',
+  'li',
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'th',
+  'td',
+  'a',
+];
+
+/** 描画に使ってよい属性（NFR / IADR-0579）。`class` は下のフックが脚注の印だけに絞る。 */
+const MARKDOWN_ATTRS: readonly string[] = ['href', 'title', 'align', 'start', 'class'];
+
+/** 許可する URI（`http(s)` / `mailto` の絶対 URL・断片・同一オリジンのパス）。 */
+const MARKDOWN_URI_RE = /^(?:(?:https?|mailto):|#|\/(?![/\\]))/i;
 
 const CITE_RE = /^\[(\d{1,3})\](?![([:])/;
 
@@ -60,7 +108,8 @@ function loadRenderer(): Promise<Renderer> {
   if (rendererPromise) return rendererPromise;
   rendererPromise = Promise.all([import('marked'), import('dompurify')]).then(
     ([{ Marked }, { default: DOMPurify }]) => {
-      const cite = { prefix: '', count: 0 };
+      // `mark` は描画ごとに作る推測できない印（脚注の印を本文に直書きしたものと区別する）。
+      const cite = { prefix: '', count: 0, mark: '' };
       const marked = new Marked({
         gfm: true,
         breaks: true,
@@ -79,7 +128,7 @@ function loadRenderer(): Promise<Renderer> {
               // markup（脚注の印）であり文言ではない。
               /* eslint-disable lingui/no-unlocalized-strings */
               if (n < 1 || n > cite.count) return `[${n}]`;
-              return `<sup class="cite"><a href="#${citationAnchorId(cite.prefix, n)}">[${n}]</a></sup>`;
+              return `<sup class="${cite.mark}"><a href="#${citationAnchorId(cite.prefix, n)}">[${n}]</a></sup>`;
               /* eslint-enable lingui/no-unlocalized-strings */
             },
           },
@@ -87,6 +136,16 @@ function loadRenderer(): Promise<Renderer> {
       });
 
       const purifier = DOMPurify();
+      // `class` は脚注の印（`<sup class="cite">`）にだけ残す。
+      purifier.addHook('uponSanitizeAttribute', (node, data) => {
+        if (data.attrName !== 'class') return;
+        // 生成側（上の cite 拡張）が付けた印だけを `cite` へ戻す。本文に直書きした `class="cite"` は落ちる。
+        if (node.nodeName === 'SUP' && cite.mark !== '' && data.attrValue === cite.mark) {
+          data.attrValue = 'cite';
+          return;
+        }
+        data.keepAttr = false;
+      });
       purifier.addHook('afterSanitizeAttributes', (node) => {
         if (node.tagName !== 'A') return;
         const href = node.getAttribute('href');
@@ -99,11 +158,19 @@ function loadRenderer(): Promise<Renderer> {
         render(markdown, options) {
           cite.prefix = options.citePrefix;
           cite.count = options.citationCount ?? 0;
+          // `crypto.randomUUID` は安全なコンテキストでしか使えないため、`getRandomValues` で作る。
+          cite.mark = `cite-${Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')}`;
           const html = marked.parse(markdown, { async: false });
           return String(
             purifier.sanitize(html, {
-              USE_PROFILES: { html: true },
-              FORBID_TAGS,
+              ALLOWED_TAGS: [...MARKDOWN_TAGS],
+              ALLOWED_ATTR: [...MARKDOWN_ATTRS],
+              ALLOWED_URI_REGEXP: MARKDOWN_URI_RE,
+              // DOMPurify は URI 以外の属性の値にも上の正規表現を当てる。URI を持たない属性はここで外す
+              // （外さないと表の揃え・リストの開始番号・表題が落ちる）。
+              ADD_URI_SAFE_ATTR: ['align', 'start', 'title', 'class'],
+              ALLOW_DATA_ATTR: false,
+              ALLOW_ARIA_ATTR: false,
               // `target` は既定で落ちる。上のフックが sanitize 後に付け直すため、ここでは許可しない
               //（許可すると LLM の出力に書かれた `target` がそのまま通る）。
             }),
