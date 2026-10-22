@@ -2186,13 +2186,14 @@ const BOOT_0577 = (() => {
   assert.ok(m, 'rabbitmq.yaml に restore-users.sh が無い');
   return m[1].split('\n').map((l) => l.replace(/^    /, '')).join('\n');
 })();
-function boot0577({ files = {}, flag = null, addFails = [], changeFails = [], startupFails = false }) {
+function boot0577({ files = {}, flag = null, addFails = [], changeFails = [], startupFails = false, cookie = true }) {
   const H = fs.mkdtempSync(path.join(os.tmpdir(), 'boot-0577-'));
   const bin = path.join(H, 'bin');
   const dir = path.join(H, 'users');
   fs.mkdirSync(bin); fs.mkdirSync(dir);
   for (const [k, v] of Object.entries(files)) fs.writeFileSync(path.join(dir, k), v);
   if (flag !== null) fs.writeFileSync(path.join(H, 'flag'), flag);
+  if (cookie) fs.writeFileSync(path.join(H, 'cookie'), 'c');
   fs.writeFileSync(path.join(H, 'boot.sh'), BOOT_0577);
   fs.writeFileSync(path.join(bin, 'rabbitmqctl'), [
     '#!/bin/sh',
@@ -2209,7 +2210,7 @@ function boot0577({ files = {}, flag = null, addFails = [], changeFails = [], st
   fs.writeFileSync(path.join(H, 'calls'), '');
   const r = spawnSync('sh', [path.join(H, 'boot.sh')], { encoding: 'utf8', env: { ...process.env,
     PATH: `${bin}:${process.env.PATH}`, STUB_H: H, RABBITMQ_BOOT_USERS_DIR: dir, RABBITMQ_BOOT_FLAG: path.join(H, 'flag'),
-    RABBITMQ_BOOT_TRIES: '2', RABBITMQ_BOOT_LOG: path.join(H, 'boot.log'), RABBITMQ_DEFAULT_USER: 'brokeradmin' } });
+    RABBITMQ_BOOT_TRIES: '2', RABBITMQ_BOOT_COOKIE: path.join(H, 'cookie'), RABBITMQ_BOOT_LOG: path.join(H, 'boot.log'), RABBITMQ_DEFAULT_USER: 'brokeradmin' } });
   const out = { status: r.status, calls: fs.readFileSync(path.join(H, 'calls'), 'utf8').split('\n').filter(Boolean),
     log: fs.existsSync(path.join(H, 'boot.log')) ? fs.readFileSync(path.join(H, 'boot.log'), 'utf8') : '' };
   fs.rmSync(H, { recursive: true, force: true });
@@ -2242,6 +2243,14 @@ ok('IADR-0577: 印があり全ユーザーが揃えば既定のユーザーを�
   const down = boot0577({ files: { 'msp-document': 'a' }, flag: 'true', startupFails: true });
   assert.strictEqual(down.status, 0, '起動を待てないときにコンテナを落とす');
   assert.ok(!down.calls.some((c) => / (add_user|delete_user) /.test(c)), '起動を待てないのに書いた');
+});
+
+ok('IADR-0577: 復元はサーバが cookie を作るまで rabbitmqctl を呼ばない（先に呼ぶと root の所有で cookie を作り、サーバが読めずに落ちる）', () => {
+  const r = boot0577({ files: { 'msp-document': 'a' }, flag: 'true', cookie: false });
+  assert.strictEqual(r.status, 0, '復元の失敗でコンテナを止めた');
+  assert.deepStrictEqual(r.calls, [], `cookie が無いのに rabbitmqctl を呼んだ:\n${r.calls.join('\n')}`);
+  assert.ok(/cookie が現れない/.test(r.log), r.log);
+  assert.ok(/su-exec "\$owner" rabbitmqctl/.test(BOOT_0577), 'root のまま cookie の所有者以外で rabbitmqctl を呼ぶ経路を閉じていない');
 });
 
 ok('IADR-0577: ブローカの manifest は復元を postStart で呼び、Secret と印の ConfigMap を optional でマウントする', () => {

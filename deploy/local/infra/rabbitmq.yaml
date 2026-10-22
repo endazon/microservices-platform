@@ -84,6 +84,19 @@ data:
     FLAG="${RABBITMQ_BOOT_FLAG:-/etc/rabbitmq-default-user/disabled}"
     VHOST="${RABBITMQ_BOOT_VHOST:-/}"
     tries="${RABBITMQ_BOOT_TRIES:-90}"
+    # 🔴 postStart はサーバの起動と並んで root で走る。サーバが cookie を作る前に rabbitmqctl を呼ぶと、rabbitmqctl が
+    #   root の所有で cookie を作り、権限を落としたサーバが読めずに起動に失敗する。サーバが作った cookie が在るまで
+    #   rabbitmqctl を呼ばず、呼ぶときは cookie の所有者として呼ぶ（su-exec が無ければそのまま）。
+    COOKIE="${RABBITMQ_BOOT_COOKIE:-/var/lib/rabbitmq/.erlang.cookie}"
+    until [ -s "$COOKIE" ]; do
+      tries=$((tries - 1))
+      if [ "$tries" -le 0 ]; then log "サーバの cookie が現れない。ユーザーを復元しない"; exit 0; fi
+      sleep 2
+    done
+    owner="$(stat -c %U "$COOKIE" 2>/dev/null || true)"
+    if [ "$(id -u)" = "0" ] && [ -n "$owner" ] && [ "$owner" != "root" ] && command -v su-exec >/dev/null 2>&1; then
+      rabbitmqctl() { su-exec "$owner" rabbitmqctl "$@"; }
+    fi
     until rabbitmqctl -q await_startup --timeout 5 >/dev/null 2>&1; do
       tries=$((tries - 1))
       if [ "$tries" -le 0 ]; then log "ノードの起動を待てない。ユーザーを復元しない"; exit 0; fi
