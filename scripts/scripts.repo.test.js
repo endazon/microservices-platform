@@ -18113,4 +18113,191 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(!/\bguest\b/.test(rec.replace(/^#.*$/gm, '')), 'reconcile-users.sh が既定のユーザーに触れている');
     });
   }
+
+  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0578: ワークフローの多層防御（入力の展開と AI 実装の起動者） ---------
+  //
+  //   1. 全ワークフローの run の本文に、外から与えられる値（github.event.* / inputs.* / github.head_ref /
+  //      github.ref / github.ref_name）の式を直接展開しない。値は env で渡す。
+  //   2. claude-coding.yml の job の if は、句ごとに「本文の書き手」の author_association を
+  //      OWNER / MEMBER / COLLABORATOR に絞る。
+  // YAML パーサは CI の scripts-tests に無いので行で読み、変異試験で読み取りの穴を塞ぐ。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const WF = path.join(__dirname, '..', '.github/workflows');
+    const UNTRUSTED = /\$\{\{[^}]*\b(github\.event\.|inputs\.|github\.head_ref\b|github\.ref\b|github\.ref_name\b)/;
+
+    /** run の本文（1 行形とブロック形）の行を返す。[{ line, text }] */
+    const runLines = (yml) => {
+      const out = [];
+      const lines = yml.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const m = /^(\s*)(?:- )?run:\s*(.*)$/.exec(lines[i]);
+        if (!m) continue;
+        const keyIndent = m[1].length + (lines[i].trimStart().startsWith('- ') ? 2 : 0);
+        const rest = m[2];
+        if (!/^[|>][-+]?\s*$/.test(rest)) { out.push({ line: i + 1, text: rest }); continue; }
+        for (let j = i + 1; j < lines.length; j++) {
+          const l = lines[j];
+          if (l.trim() === '') continue;
+          if (l.length - l.trimStart().length <= keyIndent) break;
+          out.push({ line: j + 1, text: l });
+        }
+      }
+      return out;
+    };
+    const untrustedInRun = (yml) => runLines(yml).filter((r) => UNTRUSTED.test(r.text));
+
+    ok('GHSA-552h: run の本文に外から与えられる値の式を直接展開しない（全ワークフロー）', () => {
+      const files = fs.readdirSync(WF).filter((f) => f.endsWith('.yml'));
+      assert.ok(files.length >= 10, `ワークフローを読めていない: ${files.length}`);
+      let scanned = 0;
+      const bad = [];
+      for (const f of files) {
+        const yml = fs.readFileSync(path.join(WF, f), 'utf8');
+        scanned += runLines(yml).length;
+        for (const r of untrustedInRun(yml)) bad.push(`${f}:${r.line}: ${r.text.trim()}`);
+      }
+      assert.ok(scanned > 100, `run の行を読めていない（0 件走査の疑い）: ${scanned}`);
+      assert.deepStrictEqual(bad, [], `env で渡すこと:\n${bad.join('\n')}`);
+    });
+
+    ok('GHSA-552h: 変異試験 —— 1 行形・ブロック形の run へ式を戻すと検出し、env と with は対象外', () => {
+      const one = 'jobs:\n  a:\n    steps:\n      - name: x\n        run: node a.js --tag "${{ inputs.tag || github.ref }}"\n';
+      assert.strictEqual(untrustedInRun(one).length, 1, '1 行形を検出しない');
+      const blk = 'jobs:\n  a:\n    steps:\n      - run: |\n          echo ok\n          echo "${{ github.event.pull_request.title }}"\n      - name: y\n        with:\n          tag_name: ${{ inputs.tag }}\n';
+      assert.strictEqual(untrustedInRun(blk).length, 1, 'ブロック形を検出しない／with を誤検出する');
+      const safe = 'jobs:\n  a:\n    steps:\n      - name: x\n        env:\n          RELEASE_TAG: ${{ inputs.tag || github.ref }}\n        run: node a.js --tag "$RELEASE_TAG"\n      - run: echo "${{ matrix.unit }} ${{ github.sha }}"\n';
+      assert.strictEqual(untrustedInRun(safe).length, 0, 'env 経由・信頼できる文脈を誤検出する');
+      // 現物を戻した形でも落ちる（陽性対照）。
+      const rel = fs.readFileSync(path.join(WF, 'obsidian-plugin-release.yml'), 'utf8');
+      assert.ok(rel.includes('--tag "$RELEASE_TAG"'), 'リリースワークフローが env 経由でタグを渡していない');
+      const reverted = rel.replace('--tag "$RELEASE_TAG"', '--tag "${{ inputs.tag || github.ref }}"');
+      assert.strictEqual(untrustedInRun(reverted).length, 1, '現物へ戻した式を検出しない');
+    });
+
+    /** claude-coding.yml の claude ジョブの if の句（`(github.event_name == ...` で始まる行）。 */
+    const codingClauses = (yml) => {
+      const i = yml.indexOf('\n  claude:\n');
+      assert.ok(i >= 0, 'claude ジョブが見つからない');
+      const m = /\n    if: \|\n((?:      .*\n)+)/.exec(yml.slice(i));
+      assert.ok(m, 'claude ジョブの if（ブロック形）が見つからない');
+      return m[1].split('\n').map((l) => l.trim()).filter((l) => l.startsWith('(github.event_name =='));
+    };
+    const EXPECT_AUTHOR = {
+      issue_comment: 'github.event.comment.author_association',
+      pull_request_review_comment: 'github.event.comment.author_association',
+      pull_request_review: 'github.event.review.author_association',
+      issues: 'github.event.issue.author_association',
+    };
+    const TRUSTED = `contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), `;
+    const codingViolations = (yml) => {
+      const clauses = codingClauses(yml);
+      const out = [];
+      const seen = new Set();
+      for (const c of clauses) {
+        const ev = /github\.event_name == '([a-z_]+)'/.exec(c)?.[1];
+        seen.add(ev);
+        if (!EXPECT_AUTHOR[ev]) { out.push(`想定外のイベント: ${ev}`); continue; }
+        if (!c.includes(`${TRUSTED}${EXPECT_AUTHOR[ev]})`)) out.push(`${ev}: 本文の書き手の判定が無い`);
+      }
+      for (const ev of Object.keys(EXPECT_AUTHOR)) if (!seen.has(ev)) out.push(`${ev} の句が無い`);
+      return out;
+    };
+
+    ok('GHSA-552h: claude-coding.yml は句ごとに本文の書き手を OWNER / MEMBER / COLLABORATOR に絞る', () => {
+      const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
+      assert.strictEqual(codingClauses(yml).length, 4, '句の数が 4 でない（読み取りの穴の疑い）');
+      assert.deepStrictEqual(codingViolations(yml), []);
+    });
+
+    ok('GHSA-552h: 変異試験 —— 1 句から書き手の判定を外す・判定の対象を取り違えると落ちる', () => {
+      const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
+      const drop = yml.replace(` && ${TRUSTED}github.event.review.author_association)`, '');
+      assert.notStrictEqual(drop, yml, '変異させる箇所が見つからない');
+      assert.deepStrictEqual(codingViolations(drop), ['pull_request_review: 本文の書き手の判定が無い']);
+      const swap = yml.replace(`${TRUSTED}github.event.issue.author_association)`, `${TRUSTED}github.event.sender.author_association)`);
+      assert.notStrictEqual(swap, yml, '変異させる箇所が見つからない');
+      assert.deepStrictEqual(codingViolations(swap), ['issues: 本文の書き手の判定が無い']);
+    });
+
+    ok('GHSA-552h: claude-coding.yml の許可ツールは最小化した形を保つ（find / awk / 広い node を持たない）', () => {
+      const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
+      const m = /--allowedTools "([^"]+)"/.exec(yml);
+      assert.ok(m, '許可ツール一覧を読めない');
+      const tools = m[1].split(',');
+      assert.ok(tools.length > 30, `許可ツール一覧を読めていない: ${tools.length}`);
+      for (const t of ['Bash(find:*)', 'Bash(awk:*)', 'Bash(node:*)']) assert.ok(!tools.includes(t), `${t} が戻っている`);
+      assert.ok(tools.includes('Bash(node scripts/:*)'), 'node の狭めた形が無い');
+      assert.ok(!tools.some((t) => /^Bash\((?:bash|sh|python3?|npx|curl|wget)(?::\*)?\)$/.test(t)), '汎用の実行系が許可されている');
+    });
+
+    ok('GHSA-552h: settings.json との突き合わせ —— 狭めた形は広い形があれば覆われ、無ければ警告する', () => {
+      const os = require('os');
+      const { parityWarnings } = require('./check-ai-workflow-config.js');
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-552h-parity-'));
+      try {
+        const sp = path.join(work, 'settings.json');
+        const perFile = [{ file: 'claude-coding.yml', tools: ['Read', 'Bash(node scripts/:*)'] }];
+        fs.writeFileSync(sp, JSON.stringify({ permissions: { allow: ['Read', 'Bash(node:*)'] } }));
+        assert.deepStrictEqual(parityWarnings(perFile, sp), [], '広い形で覆われているのに警告する');
+        fs.writeFileSync(sp, JSON.stringify({ permissions: { allow: ['Read'] } }));
+        assert.strictEqual(parityWarnings(perFile, sp).length, 1, '覆われていないのに警告しない');
+        // 宣言外の狭めた形は覆われたと見なさない。
+        fs.writeFileSync(sp, JSON.stringify({ permissions: { allow: ['Read', 'Bash(dotnet:*)'] } }));
+        assert.strictEqual(parityWarnings([{ file: 'x.yml', tools: ['Bash(dotnet test:*)'] }], sp).length, 1, '宣言外を覆われたと見なしている');
+      } finally {
+        fs.rmSync(work, { recursive: true, force: true });
+      }
+    });
+
+    // --- gen-changelog.js: git は引数の配列で呼び、参照名の形を確かめる ---
+    const { isSafeRef, filterSafeTags } = require('./gen-changelog.js');
+
+    ok('GHSA-552h: gen-changelog の参照名の判定（陽性 / 陰性の対）', () => {
+      for (const r of ['v1.2.3', 'obsidian-plugin-v0.2.0', 'release/2026-10', 'HEAD']) assert.ok(isSafeRef(r), `受け付けるはず: ${r}`);
+      for (const r of ['', '-x', 'v1 2', 'a..b', 'v1;x', 'v1$x', 'v1`x', 'v1|x', 'v1"x', 'v1(x)', '.v1', 'x'.repeat(201), undefined]) {
+        assert.ok(!isSafeRef(r), `外すはず: ${JSON.stringify(r)}`);
+      }
+      const origWrite = process.stderr.write;
+      let warned = '';
+      process.stderr.write = (s) => { warned += s; return true; };
+      try {
+        assert.deepStrictEqual(filterSafeTags(['v2', 'v1;x', 'v1']), ['v2', 'v1']);
+      } finally { process.stderr.write = origWrite; }
+      assert.match(warned, /受け付けない形のタグ/);
+    });
+
+    ok('GHSA-552h: gen-changelog は child_process をシェル経由で呼ばない（静的）', () => {
+      const src = fs.readFileSync(path.join(__dirname, 'gen-changelog.js'), 'utf8').replace(/^\s*(\/\/|\*).*$/gm, '');
+      assert.ok(!/\bexecSync\b|\bexec\(|shell:\s*true/.test(src), 'シェルを介す呼び出しが在る');
+      assert.ok(/execFileSync\('git', \[/.test(src), 'git を引数の配列で呼んでいない');
+    });
+
+    ok('GHSA-552h: gen-changelog の実走 —— 受け付けない形のタグを外し、他のタグの節は出す（一時リポジトリ）', () => {
+      const os = require('os');
+      const { spawnSync } = require('child_process');
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-552h-'));
+      const g = (...a) => {
+        const r = spawnSync('git', a, { cwd: work, encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, `git ${a.join(' ')}: ${r.stderr}`);
+      };
+      try {
+        g('init', '-q');
+        g('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'feat(NFR): 一つ目');
+        g('tag', 'v1.0.0');
+        g('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'fix(NFR): 二つ目');
+        g('tag', 'v1.1.0;x');
+        g('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'docs(NFR): 三つ目');
+        const r = spawnSync(process.execPath, [path.join(__dirname, 'gen-changelog.js')], { cwd: work, encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.match(r.stdout, /## v1\.0\.0/, '安全なタグの節が無い');
+        assert.ok(!r.stdout.includes('v1.1.0;x'), '受け付けない形のタグが節になっている');
+        assert.match(r.stdout, /## Unreleased[\s\S]*二つ目[\s\S]*三つ目|## Unreleased[\s\S]*三つ目[\s\S]*二つ目/, 'Unreleased が最新の安全なタグ以降を持たない');
+        assert.match(r.stderr, /受け付けない形のタグ/);
+      } finally {
+        fs.rmSync(work, { recursive: true, force: true });
+      }
+    });
+  }
 };

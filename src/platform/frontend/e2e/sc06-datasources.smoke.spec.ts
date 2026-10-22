@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/cspGuard';
 import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
 
 // SC-06 (#503 / #1139): データソース管理（`/admin/sources`）のスクリーンレベル・スモーク。

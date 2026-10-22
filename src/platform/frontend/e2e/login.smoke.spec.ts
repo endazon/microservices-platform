@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/cspGuard';
 
 // Issue #126: スケルトンのスクリーンレベル・スモーク。
 // 未認証で "/" を開くと認証ガードにより /login へ誘導され、Keycloak サインインボタンが表示される。
