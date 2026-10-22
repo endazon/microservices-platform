@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/cspGuard';
 
 // NFR, ADR-0031 / IADR-0134: ルート単位の分割後も、**実ブラウザで**アプリが起動すること。
 //

@@ -656,4 +656,5 @@
 | [IADR-0576](./IADR-0576_abac-seeder-disabled-by-default.md) | 投入器の主体 abac-seeder は realm の宣言で既定無効とし、投入器・運用スクリプトは実行の間だけ master の管理者で有効にして必ず戻す。資格情報は明示か稼働の Secret（OpenBao → ESO）から読み、宣言の値へ落ちない（GHSA-rh44-px44-p48q） | Accepted |
 | [IADR-0577](./IADR-0577_rabbitmq-msp-per-service-users-and-default-user-disable.md) | 基盤の 7 サービスはブローカ（RabbitMQ）へサービスごとのユーザー（msp-<名前>）で名乗り、共通の 1 組（rabbitmq-app）を撤去する。ESO を使わない経路も同じ形で作り、ブローカの再起動の直後にユーザーを作り直し、全サービスの切り替えを確かめてから既定のユーザーを無効化する（GHSA-pvmh-cvmf-pvcp / GHSA-rh44-px44-p48q） | Accepted |
 | [IADR-0578](./IADR-0578_ci-workflow-trust-and-injection-hardening.md) | CI の AI 実装ワークフローは本文の書き手が OWNER / MEMBER / COLLABORATOR のときだけ起動し、許可ツールを最小化する。外から与えられる値はシェルへ展開せず、git は引数の配列で呼ぶ（GHSA-552h-47r7-6v6p） | Accepted |
+| [IADR-0579](./IADR-0579_answer-sanitize-allowlist-and-spa-csp.md) | AI 回答の描画の sanitize はタグ・属性・URI を allowlist で閉じ、Wiki 本文もフォーム部品と style を落とす。SPA の配信（Caddy）に CSP を置き、その 1 行を単一情報源として E2E の配信にも同じ値を返す（GHSA-5h4q-4m2j-rjhm） | Accepted |
 | [IADR-0580](./IADR-0580_actions-sha-pin-and-dependabot.md) | GitHub Actions は commit SHA で固定して同じ行に版の注記を置き、Dependabot が SHA と注記を対で更新する。Dependabot の対象に nuget と npm を足す（GHSA-552h-47r7-6v6p） | Accepted |

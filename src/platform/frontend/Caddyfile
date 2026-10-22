@@ -23,9 +23,20 @@
 	# brotli は Caddy v2 の標準配布バイナリに含まれない（gzip / zstd のみ）。
 	encode zstd gzip
 
-	# SPA を壊さない範囲のセキュリティヘッダに限る。**CSP はここに入れない** ——
-	# 実測の裏付けなしに入れると画面が静かに欠ける（別 issue の仕事）。
+	# SPA を壊さない範囲のセキュリティヘッダに限る。
+	#
+	# NFR / IADR-0579（Refs GHSA-5h4q-4m2j-rjhm）: CSP を置く（多層防御。本文の sanitize が 1 枚目、これが 2 枚目）。
+	# 🔴 **この行が CSP の単一情報源である。** vite.config.ts の preview がこの行を読んで同じヘッダを返すため、
+	# E2E（vite preview）の全画面がこの CSP の下で走り、違反は e2e/support/cspGuard.ts が落とす。
+	# 値を変えるときは 1 行のまま・二重引用符で囲んだまま変える（vite.config.ts の読み取りがこの形を前提にする）。
+	#   - script-src 'self': スクリプトは同一オリジンのファイル（/config.js とビルド成果物）だけ。インラインは無い
+	#   - style-src に 'unsafe-inline' を残す: 部品（トースト等）が実行時に <style> を差し込むため。
+	#     外部の資産は img-src / font-src / connect-src が 'self' に閉じるので、CSS から外へは取りに行けない
+	#   - img-src の data: / blob:: 変換ジョブの図（BFF から読んだバイト列を blob: で表示）とアイコン
+	#   - connect-src 'self': BFF は同一オリジンの /bff だけ（bffBaseUrl の絶対 URL は SPA が禁じている）
+	#   - frame-ancestors 'none' は X-Frame-Options DENY と同じ意味（古いブラウザ向けに両方残す）
 	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 		X-Content-Type-Options nosniff
 		Referrer-Policy same-origin
 		X-Frame-Options DENY
