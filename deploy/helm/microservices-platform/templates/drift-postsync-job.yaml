@@ -38,9 +38,9 @@ spec:
     spec:
       restartPolicy: Never
       # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: k8s API を呼ばないのでトークンを置かない。
-      # 非 root（curl イメージの curl_user）・seccomp RuntimeDefault。
+      # 非 root（curl イメージの curl_user:curl_group＝100:101）・seccomp RuntimeDefault。
       automountServiceAccountToken: false
-      {{- include "msp.podSecurityContext.restricted" .Values.drift.postSyncHook.runAsUser | nindent 6 }}
+      {{- include "msp.podSecurityContext.restricted" (dict "uid" .Values.drift.postSyncHook.runAsUser "gid" .Values.drift.postSyncHook.runAsGroup) | nindent 6 }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

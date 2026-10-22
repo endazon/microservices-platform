@@ -12,7 +12,7 @@
  *      runAsNonRoot: true・runAsUser / runAsGroup が 1 以上・全コンテナが capabilities.drop: ["ALL"]。
  *   3. 専用の ServiceAccount を持たない Pod は automountServiceAccountToken: false。持つ Pod（BFF・datasource）は付けない。
  *   4. Namespace のラベル: warn / audit は restricted。enforce はメッシュの注入が無いときだけ baseline。
- *   5. 描画で止まる: uid が 0、水準が値域の外。
+ *   5. 描画で止まる: uid / gid が 0、水準が値域の外。ドリフト検出の Job は curl イメージの uid:gid（100:101）。
  *   6. 供給側と一致する: frontend の Dockerfile の USER ＝ frontend.runAsUser、合成監視の overlay ＝ チャート、
  *      k8s-local-up.sh が Namespace へ貼る水準 ＝ チャートの既定。
  *   7. 変異: 描画物から設定を 1 つ抜くと本試験の判定が赤になる（判定が空振りしない）。
@@ -190,6 +190,17 @@ function main() {
     for (const o of dotnet) assert.match(o.text, new RegExp(`runAsUser: ${uid}\\n`), `${o.app} の runAsUser が ${uid} でない`);
   });
 
+  ok('ドリフト検出の Job は curl イメージの curl_user:curl_group（100:101。gid は uid と違う番号）で動く', () => {
+    const job = podOwners(rendered.default).find((o) => o.app === 'config-drift-postsync');
+    assert.ok(job, 'config-drift-postsync が描かれていない');
+    const v = (k) => valuesText.match(new RegExp(`^drift:\\n(?:.*\\n)*? {4}${k}: (\\d+)`, 'm'))[1];
+    assert.deepStrictEqual([v('runAsUser'), v('runAsGroup')], ['100', '101'], 'values の drift.postSyncHook の uid / gid がイメージと食い違う');
+    assert.match(job.text, /runAsUser: 100\n\s+runAsGroup: 101\n/, 'Job の runAsGroup が curl_group（101）でない');
+    // gid を与えない部品の呼び出しは従前どおり uid と同じ番号になる（.NET の 1654:1654）。
+    const bff = podOwners(rendered.default).find((o) => o.app === 'bff-service');
+    assert.match(bff.text, /runAsUser: 1654\n\s+runAsGroup: 1654\n/);
+  });
+
   ok('Namespace: 注入あり（既定）は enforce を描かず warn / audit = restricted、注入なしは enforce = baseline', () => {
     assert.deepStrictEqual(namespaceLabels(rendered.default), {
       'pod-security.kubernetes.io/warn': 'restricted',
@@ -204,10 +215,11 @@ function main() {
     assert.strictEqual(namespaceLabels(rendered.local), null);
   });
 
-  ok('描画で止まる: uid が 0・文字列・水準が値域の外', () => {
+  ok('描画で止まる: uid / gid が 0・文字列・水準が値域の外', () => {
     for (const args of [
       ['--set', 'podSecurity.dotnetRunAsUser=0'],
       ['--set', 'frontend.runAsUser=0'],
+      ['--set', 'drift.postSyncHook.runAsGroup=0'],
       ['--set-string', 'podSecurity.dotnetRunAsUser=root'],
       ['--set', 'mesh.enabled=false', '--set', 'podSecurity.admission.enforce=strict'],
       ['--set', 'podSecurity.admission.warn=none'],

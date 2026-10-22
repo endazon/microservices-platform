@@ -45,12 +45,16 @@ related_specs:
 
 ## 決定
 
-1. **restricted の形**（部品は `templates/_pod-security.tpl`）: Pod に `runAsNonRoot: true`・`runAsUser` / `runAsGroup`（1 以上。0 や数でない値は描画で止める）・
+1. **restricted の形**（部品は `templates/_pod-security.tpl`）: Pod に `runAsNonRoot: true`・`runAsUser` / `runAsGroup`（1 以上。0 や数でない値は描画で止める。
+   `runAsGroup` は既定で uid と同じ番号で、イメージの主グループが違う番号のときだけ部品へ gid を渡す）・
    `seccompProfile: RuntimeDefault`。コンテナに `allowPrivilegeEscalation: false`・`capabilities.drop: ["ALL"]`。対象と uid:
    - `services` の全 Deployment（.NET）: aspnet イメージの `APP_UID`＝**1654**（`podSecurity.dotnetRunAsUser`）。
    - frontend（Caddy）: **10001**（`frontend.runAsUser`）。Dockerfile に同じ `USER` を置き、`caddy` のファイルケーパビリティを外し
      （待受は 8080。付いたままだとケーパビリティを落としたコンテナで exec できない）、書けるのは `config.js`・`/config`・`/data` だけにする。
-   - 合成監視（node イメージの node＝**1000**。overlay も同じ値）・ドリフト検出の PostSync Job（curl イメージの curl_user＝**100**）。
+   - 合成監視（node イメージの node＝**1000:1000**。overlay も同じ値）・ドリフト検出の PostSync Job（curl イメージの
+     curl_user:curl_group＝**100:101**。`drift.postSyncHook.runAsUser` / `runAsGroup`）。gid は pin した digest のイメージの
+     `/etc/passwd`（`curl_user:x:100:101`）・`/etc/group`（`curl_group:x:101`）で確かめた（2026-10-22 のレビュー指摘への対処）。
+     .NET の aspnet（`app`＝1654:1654）・frontend（Dockerfile の `USER 10001:10001`）は uid と同じ番号である。
 2. **外部のイメージ**（SeaweedFS・Wiki.js・TEI）: `seccompProfile: RuntimeDefault` と `allowPrivilegeEscalation: false` まで。利用者 ID は変えない。
 3. **トークン**: 専用の ServiceAccount を持たない Pod は `automountServiceAccountToken: false`。持つ Pod（BFF・datasource。Vault の k8s auth と
    ExternalSecret の同期に使う）は従前どおり。メッシュのサイドカーは自前の projected token を使うので影響しない。
@@ -59,6 +63,15 @@ related_specs:
    経路B の起動器（`k8s-local-up.sh` [5/7]。ISTIO=1 または注入ラベルが残る Namespace では enforce を外す）が同じ規則で貼る。
 5. 試験 `scripts/helm-pod-security.test.js`（CI の static-checks-units）が、既定・values-local・任意部品の描画、描画で止まる条件、
    Dockerfile・overlay・起動器との一致、変異を固定する。
+
+## 検証（統合スタック）
+
+- 経路B の統合スタック（`integration-stack` を本ブランチで dispatch。ISTIO=1）で、[5/7] のラベル付け・
+  `[opt-in] Istio sidecar injection (rollout restart)` の後に、`microservices-platform` の Deployment 18/18 が available になり、
+  起動判定（`check-stack-ready.js --live`）が合格した。Pod の `runAsNonRoot: true` と注入される istio-init（コンテナの側で
+  root を明示する）の組み合わせは、この経路で起動を妨げなかった。ただし同 run のログは注入されたコンテナの一覧を出していないため、
+  **注入の有無は Pod 単位では確かめていない**（配備後確認に「istio 注入ありの Pod が Running になる」を置く）。
+- 同 run はドリフト検出の Job の gid を 100 のまま走らせた（101 への是正の前）。Job が Complete になることは配備後確認で見る。
 
 ## 結果
 
@@ -69,5 +82,9 @@ related_specs:
 
 - メッシュの注入がある Namespace（本番像・ISTIO=1 の経路B）では enforce を貼れない。enforce を効かせるには Istio CNI の導入が要る（別の判断）。
 - 外部のイメージ（SeaweedFS・Wiki.js・TEI）は root のまま動き得る。非 root 化は PVC のデータの所有者の移行と組で行う（別の判断）。
+- TEI は 80 番で待ち受ける（`embedding.containerPort`）。非 root 化と `capabilities.drop: ["ALL"]` を足すときは、待受を 1024 以上へ移すか
+  `NET_BIND_SERVICE` を足す判断が要る（Service の port とは `targetPort` で分かれているので、移しても呼び出し側は変わらない）。
+- ドリフト検出の Job の uid / gid（100:101）は pin した curl イメージの値である。`drift.postSyncHook.image` を変えるときは両方を確かめ直す
+  （試験は values と描画の一致までで、イメージの中身は見ない）。
 - `readOnlyRootFilesystem` は付けていない（.NET の一時ファイル・Caddy の `/config` `/data` の置き場を emptyDir へ移す設計が要る）。
 - 基盤（platform-infra）・観測（observability）の名前空間の Pod は本 IADR の射程外。

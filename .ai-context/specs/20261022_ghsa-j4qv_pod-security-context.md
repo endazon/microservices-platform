@@ -39,9 +39,10 @@ issue: "GHSA-j4qv-2w99-xg5p"
 | B2 | 外部 3 つ（SeaweedFS・Wiki.js・TEI）以外は非 root（runAsNonRoot・uid / gid 1 以上）・全コンテナがケーパビリティなし | 同上・`.NET の全 Deployment は aspnet の APP_UID…` |
 | B3 | 専用の SA を持たない Pod はトークンを置かない。持つ Pod（BFF・datasource）は置く | 同上・`all: 想定した資源が実際に描かれている` |
 | B4 | Namespace: warn / audit = restricted。enforce = baseline は注入が無いときだけ | `Namespace: …` ＋ `k8s-local-up.test.js` の IADR-0583 の 2 本 |
-| B5 | uid が 0・数でない値、水準が値域の外なら描画で止まる | `描画で止まる…` |
+| B5 | uid / gid が 0・数でない値、水準が値域の外なら描画で止まる | `描画で止まる…` |
 | B6 | frontend の Dockerfile の USER ＝ chart の uid・ファイルケーパビリティを外す。合成監視の overlay ＝ chart。起動器の水準 ＝ chart の既定 | `供給側: …` の 3 本 |
 | B7 | 判定が空振りしない（描画物から 1 つ抜くと赤） | `変異: …` |
+| B8 | ドリフト検出の Job は curl イメージの uid:gid（100:101）で動き、gid を渡さない呼び出しは uid と同じ番号のまま | `ドリフト検出の Job は curl イメージの curl_user:curl_group…` |
 
 ## 母集合（規則 9・10）
 
@@ -60,7 +61,7 @@ issue: "GHSA-j4qv-2w99-xg5p"
 
 - `templates/_pod-security.tpl`（新規）: restricted / 外部のイメージ用の Pod・コンテナの `securityContext`。
 - 上の 7 つの template に付ける。`values.yaml` に `podSecurity`（水準・.NET の uid）・`frontend.runAsUser`・`syntheticMonitor.runAsUser`・
-  `drift.postSyncHook.runAsUser` を足す。`namespace.yaml` に Pod Security Admission のラベル。
+  `drift.postSyncHook.runAsUser` / `runAsGroup` を足す。`namespace.yaml` に Pod Security Admission のラベル。
 - `src/platform/frontend/Dockerfile`: 非 root（uid 10001）・ファイルケーパビリティを外す・`config.js` `/config` `/data` だけ書ける。
 - `scripts/k8s-local-up.sh` [5/7]: Namespace のラベル。`deploy/local/synthetic-monitor/synthetic-monitor.yaml`: 同じ設定。
 - 試験: `scripts/helm-pod-security.test.js`（新規・CI の static-checks-units）・`scripts/k8s-local-up.test.js`（2 本）。
@@ -72,4 +73,8 @@ issue: "GHSA-j4qv-2w99-xg5p"
   [5/7] で Namespace のラベル、[6/7] で chart を当てる。🔴 chart だけを先に当てない（古い frontend のイメージは非 root では config.js を書けずに起動しない）。
   値・Secret の変更は無い。
 - 配備後の確認: `kubectl get ns microservices-platform --show-labels` に warn / audit = restricted があること。
-  全 Deployment が Ready であること。SPA の `/config.js` が 200 を返すこと。
+  全 Deployment が Ready であること。SPA の `/config.js` が 200 を返すこと。istio 注入ありの Pod が Running になること。
+  ドリフト検出の Job（`config-drift-postsync`）が Complete になること。
+
+［2026-10-22 追記 / レビュー指摘］ドリフト検出の Job の `runAsGroup` を curl イメージの主グループ（101）に合わせた（B8）。
+ISTIO=1 の経路は統合スタックの run で通過を確かめた（IADR-0583 §検証）。TEI の待受（80 番）は IADR-0583 §残る制約へ。

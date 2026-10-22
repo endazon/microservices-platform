@@ -253,8 +253,10 @@ drift:
     # 起動待ちは --retry × --retry-delay だけが決める（180 秒。--max-time は 1 試行の上限であって
     # 総時間の上限ではない）。**この数字は実測から決めている** —— 根拠は同 template の注記（#1219）。
     image: curlimages/curl:8.11.1@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69
-    # NFR, IADR-0583: curl イメージの curl_user（非 root）。
+    # NFR, IADR-0583: curl イメージの curl_user（非 root）と主グループ curl_group。gid は uid と違う番号である
+    # （上の digest のイメージの /etc/passwd が `curl_user:x:100:101`。image を変えたら両方を確かめ直す）。
     runAsUser: 100
+    runAsGroup: 101
 
 # NFR (#197): 水平スケール（HPA）と可用性（PDB）。計画 NFR「HPA で水平スケール」「可用性 99.9%」の実現手段。
 # metrics-server が必要（k3s は既定同梱）。対象はステートレスな要求処理サービス（下記 services リスト）。
