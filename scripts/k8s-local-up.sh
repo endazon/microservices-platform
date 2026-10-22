@@ -668,8 +668,14 @@ kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
 #   warn / audit は restricted。enforce は baseline —— ただし ISTIO=1 では外す（注入される istio-init が NET_ADMIN / NET_RAW を
 #   要し、baseline を満たさない）。注入ラベルが残っている Namespace も同じ扱いにする（ISTIO=0 の再実行は注入ラベルを
 #   外さないので、istiod が残っていれば注入は続く）。ISTIO の有無を切り替えた再実行でも食い違わないよう、外す側も明示する。
-msp_injection="$(kubectl get namespace "$MSP_NS" -o jsonpath='{.metadata.labels.istio-injection}' 2>/dev/null || true)"
-if [ "${ISTIO:-}" = "1" ] || [ "$msp_injection" = "enabled" ]; then
+#   🔴 注入ラベルが読めない（API の失敗）ときは「ラベルなし」と見なさず、enforce を貼らない側に倒す（失敗はログに出す）。
+#   ラベルが無いだけなら jsonpath は空文字で 0 を返すので、両者は終了コードで区別できる。
+msp_injection_rc=0
+msp_injection="$(kubectl get namespace "$MSP_NS" -o jsonpath='{.metadata.labels.istio-injection}')" || msp_injection_rc=$?
+if [ "$msp_injection_rc" != "0" ]; then
+  echo "WARN: Namespace $MSP_NS の注入ラベルを読めなかった（kubectl の終了コード $msp_injection_rc）。注入の有無が分からないため enforce は貼らない（warn / audit だけ貼る。IADR-0583）。" >&2
+fi
+if [ "${ISTIO:-}" = "1" ] || [ "$msp_injection" = "enabled" ] || [ "$msp_injection_rc" != "0" ]; then
   kubectl label namespace "$MSP_NS" pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/enforce- --overwrite
 else
   kubectl label namespace "$MSP_NS" pod-security.kubernetes.io/enforce=baseline pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted --overwrite

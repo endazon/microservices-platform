@@ -43,6 +43,7 @@ issue: "GHSA-j4qv-2w99-xg5p"
 | B6 | frontend の Dockerfile の USER ＝ chart の uid・ファイルケーパビリティを外す。合成監視の overlay ＝ chart。起動器の水準 ＝ chart の既定 | `供給側: …` の 3 本 |
 | B7 | 判定が空振りしない（描画物から 1 つ抜くと赤） | `変異: …` |
 | B8 | ドリフト検出の Job は curl イメージの uid:gid（100:101）で動き、gid を渡さない呼び出しは uid と同じ番号のまま | `ドリフト検出の Job は curl イメージの curl_user:curl_group…` |
+| B9 | 起動器が注入ラベルを読めない（API の失敗）ときは enforce を貼らず（warn / audit だけ）、失敗をログに出す | `k8s-local-up.test.js` の `注入ラベルを読めない…` |
 
 ## 母集合（規則 9・10）
 
@@ -78,3 +79,4 @@ issue: "GHSA-j4qv-2w99-xg5p"
 
 ［2026-10-22 追記 / レビュー指摘］ドリフト検出の Job の `runAsGroup` を curl イメージの主グループ（101）に合わせた（B8）。
 ISTIO=1 の経路は統合スタックの run で通過を確かめた（IADR-0583 §検証）。TEI の待受（80 番）は IADR-0583 §残る制約へ。
+起動器の注入ラベルの読み取りの失敗を「ラベルなし」と区別し、enforce を貼らない側に倒した（B9）。

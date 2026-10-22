@@ -368,7 +368,8 @@ const KUBECTL_STUB = [
   'case "$*" in *"get secret keycloak-admin "*"{.data.password}"*) [ -n "${STUB_KEYCLOAK_ADMIN_EXISTING:-}" ] && printf "%s" "$STUB_KEYCLOAK_ADMIN_EXISTING" | base64; exit 0;; esac',
   'case "$*" in *"get secret rabbitmq "*"{.data.password}"*) [ -n "${STUB_RABBITMQ_EXISTING:-}" ] && printf "%s" "$STUB_RABBITMQ_EXISTING" | base64; exit 0;; esac',
   // NFR, IADR-0583: Namespace microservices-platform の注入ラベル。STUB_MSP_INJECTION を与えたときだけその値を返す（既定は無い）。
-  'case "$*" in *"get namespace microservices-platform"*"istio-injection"*) printf "%s" "${STUB_MSP_INJECTION:-}"; exit 0;; esac',
+  //   STUB_MSP_INJECTION_FAIL=1 のときは API の失敗（非 0 と stderr）を返す。
+  'case "$*" in *"get namespace microservices-platform"*"istio-injection"*) [ "${STUB_MSP_INJECTION_FAIL:-}" = "1" ] && { echo "stub: the server is currently unable to handle the request" >&2; exit 1; }; printf "%s" "${STUB_MSP_INJECTION:-}"; exit 0;; esac',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
@@ -4719,6 +4720,17 @@ ok('IADR-0583: ISTIO=1・注入ラベルが残る Namespace では enforce を�
     const lines = r.lines.filter((l) => PSA_LABEL_RE.test(l));
     assert.deepStrictEqual(lines, ['kubectl label namespace microservices-platform pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/enforce- --overwrite'], JSON.stringify(env));
   }
+});
+
+ok('IADR-0583: 注入ラベルを読めない（API の失敗）ときは「ラベルなし」と見なさず enforce を貼らない・失敗をログに出す', () => {
+  const r = runUp({ ISTIO: '0', STUB_MSP_INJECTION_FAIL: '1' });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  const lines = r.lines.filter((l) => PSA_LABEL_RE.test(l));
+  assert.deepStrictEqual(lines, ['kubectl label namespace microservices-platform pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/enforce- --overwrite']);
+  assert.match(r.stderr, /注入ラベルを読めなかった（kubectl の終了コード 1）.*enforce は貼らない/, '失敗をログに出していない');
+  // 陰性対照: 同じ条件で失敗が無ければ（ラベルなし）enforce=baseline を貼る（判定が失敗の有無で分かれている）。
+  const plain = runUp({ ISTIO: '0' }).lines.filter((l) => PSA_LABEL_RE.test(l));
+  assert.match(plain[0], /enforce=baseline/);
 });
 
 ok('#1713: 未指定 ＋ 現行 mesh true（STRICT）→ [6/7] は mesh.enabled=true・STRICT を保ち、Istio の段も通る', () => {

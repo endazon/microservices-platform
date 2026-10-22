@@ -61,6 +61,8 @@ related_specs:
 4. **Pod Security Admission**: Namespace に `warn` / `audit` = restricted を常に貼る。`enforce` = baseline は**メッシュの注入が無いときだけ**貼る
    （注入される istio-init が baseline を満たさないため。Istio CNI を入れない限り）。チャート（`namespace.create` のとき）と
    経路B の起動器（`k8s-local-up.sh` [5/7]。ISTIO=1 または注入ラベルが残る Namespace では enforce を外す）が同じ規則で貼る。
+   起動器は注入ラベルを**読めなかった**（API の失敗）ときを「ラベルなし」と区別し、enforce を貼らない側に倒して失敗をログに出す
+   （注入があるのに enforce を貼ると、注入された Pod が作れなくなるため。2026-10-22 のレビュー指摘への対処）。
 5. 試験 `scripts/helm-pod-security.test.js`（CI の static-checks-units）が、既定・values-local・任意部品の描画、描画で止まる条件、
    Dockerfile・overlay・起動器との一致、変異を固定する。
 
