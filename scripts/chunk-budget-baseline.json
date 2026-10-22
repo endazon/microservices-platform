@@ -294,7 +294,13 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 633157,
+  "initialTotalBytes": 635032,
+  "$comment_initialTotalBytes_20261022_2077_radix-tabs-bump": [
+    "［2026-10-22 / #2077 の追随］633,157 → 635,032（+1,875 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "増分は dependabot の @radix-ui/react-tabs 1.1.21 → 1.2.1（#2077。依存の primitive・react-primitive・react-roving-focus・react-slot ほか一式も上がった）で ui チャンクが 76,575 → 78,450 B になった分だけである。",
+    "A/B で帰属を確かめた: 同一環境で package.json 2 本と pnpm-lock.yaml だけを #2077 の直前（a29bf9da）へ戻してビルドすると初期ロード合計は 633,157（旧床ちょうど）。JS 55 本のうちサイズが動いたのは ui の 1 本だけで、他の 54 本は同サイズ（ハッシュだけ替わる）。smallLazyChunks は 10 のまま。",
+    "#2077 は自身の CI で build-test が赤のままマージされ、develop の push の Frontend CI は同時実行の打ち切り（cancelled）で赤が表に出なかった。"
+  ],
   "$comment_initialTotalBytes_20261020_1993_document-list-index-status": [
     "［2026-10-20 / #1993 文書管理の一覧の索引の状態の列］632,918 → 633,157（+239 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
     "増分は初期ロードに載る ja / en のカタログ（messages.ts）に文言 5 件（索引・索引済み・埋め込み待ち・未索引・不明）が加わった分である。画面のコード（documentIndexStatus.ts・列）は SC-05 の遅延チャンクに入る。"
