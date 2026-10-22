@@ -50,3 +50,4 @@ related_specs:
 
 1. 注記と SHA の食い違い（注記だけ書き換える等）は検査していない。Dependabot は対で更新する。
 2. nuget の更新が `Directory.Packages.props` の版を基盤の単一情報源として動かすため、AST（submodule）側との版の整合は従来どおり人が見る。
+3. **`submit-nuget` は赤のまま残る。** これは GitHub の Automatic dependency submission（リポジトリの設定による機能。リポジトリにワークフローとしては無く、必須チェックでもない）が出す check である。`global.json` を直した後は SDK の解決は通るが、リポジトリ内のすべての csproj を restore しようとし、TargetFramework が空の雛形（`templates/unit-template/backend/Services/SampleService/SampleService.csproj`）で NETSDK1013 になって落ちる。本 IADR の変更が壊したものではない。止めるか直すか（設定で無効にするか、雛形を除く手段を後続で検討するか）は所有者が判断する。
