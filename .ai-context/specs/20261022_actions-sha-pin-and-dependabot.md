@@ -2,7 +2,7 @@
 title: 作業仕様書 — GitHub Actions を commit SHA で固定し、Dependabot の対象に nuget と npm を足す
 type: spec
 status: done
-related_ids: [NFR, IADR-0580, IADR-0578]
+related_ids: [NFR, IADR-0581, IADR-0578]
 author: claude
 created: 2026-10-22
 updated: 2026-10-22

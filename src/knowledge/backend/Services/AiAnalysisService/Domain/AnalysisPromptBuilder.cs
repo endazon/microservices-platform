@@ -13,6 +13,11 @@ public static partial class AnalysisPromptBuilder
     public const int MaxInstructionLength = 2000;
 
     public static string Build(AnalysisTaskRequest request, string context)
+        => Build(request, context, PromptTrustBoundary.NewBoundary());
+
+    // NFR / IADR-0580（Refs GHSA-5h4q-4m2j-rjhm）: 参照文書と指示は PromptTrustBoundary の囲みに入れ、
+    // こちらの指示（タスク・決まり）は囲みの外に置く。境界は要求ごと（試験だけが固定値を渡す）。
+    internal static string Build(AnalysisTaskRequest request, string context, string boundary)
     {
         // FR-07: タスク種別は明示的に分岐し、未対応の値は黙って「分析」へ落とさず失敗させる。
         var task = request.TaskType switch
@@ -33,12 +38,13 @@ public static partial class AnalysisPromptBuilder
         return $"""
             {task}
             参照文書に根拠が無い情報は決して含めず、推測が必要な場合はその旨を明示してください。
+            {PromptTrustBoundary.Rules(boundary)}
 
             ## 参照文書
-            {context}
+            {PromptTrustBoundary.Wrap(PromptTrustBoundary.DocumentsTag, context, boundary)}
 
             ## 指示
-            {instruction}
+            {PromptTrustBoundary.Wrap(PromptTrustBoundary.UserInputTag, instruction, boundary)}
 
             ## 出力（日本語で、根拠とした箇所に出典番号 [1][2] を付けてください）
             """;

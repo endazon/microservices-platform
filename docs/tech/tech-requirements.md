@@ -3,7 +3,7 @@ title: 技術要件書
 type: tech-requirements
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-10
+updated: 2026-10-22
 author: claude
 ---
 <!-- trace:
@@ -40,7 +40,7 @@ issues: [#1799, #1499, #1397, #1062, #1064, #1393, #1093, #1094, #1179, #1196, #
 | 区分 | 採用 | バージョン | 備考 |
 | --- | --- | --- | --- |
 | 言語（バックエンド） | C# | 13（`LangVersion 13`） | 単一情報源 [`src/Directory.Build.props`](../../src/Directory.Build.props)。Nullable/ImplicitUsings 有効 |
-| ランタイム（バックエンド） | .NET | 10（`net10.0`） | .NET 10 アップグレードの計画 ADR（計画側も .NET 10 で確定）／実装側の先行採用の判断。`global.json` は SDK 8.0.0 + `rollForward: latestMajor` |
+| ランタイム（バックエンド） | .NET | 10（`net10.0`） | .NET 10 アップグレードの計画 ADR（計画側も .NET 10 で確定）／実装側の先行採用の判断。`global.json` は SDK 8.0.100 + `rollForward: latestMajor` |
 | フレームワーク（バックエンド） | ASP.NET Core（Minimal API） | .NET 10 同梱 | アプリケーション層の標準はバックエンド標準ライブラリの計画 ADR（後述「バックエンドアプリケーション層標準」）。ORM は EF Core |
 | パッケージ管理 | Central Package Management | — | バージョンは [`src/Directory.Packages.props`](../../src/Directory.Packages.props) に集約。ソリューションは `.slnx` |
 | 言語（フロントエンド） | TypeScript | 5.6 | **pnpm workspace** ルート = `src/`（メンバの正本は [`src/pnpm-workspace.yaml`](../../src/pnpm-workspace.yaml) 自身。ユニット・共有パッケージのほか `src/` の外の**雛形**を含む。SPA 新スタック移行の決定 2）。Node は CI と揃え 22 |
