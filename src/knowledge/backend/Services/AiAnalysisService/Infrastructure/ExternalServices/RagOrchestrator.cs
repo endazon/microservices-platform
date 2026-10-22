@@ -91,7 +91,7 @@ public class RagOrchestrator(
         // FR-11, UC-01: 用途は rag-answer。呼び出し先は LlmGateway が機密区分に応じて切り替える。
         return await GenerateAsync(question, scope, DefaultAskTopK,
             new SearchPrincipal(userId, userAttributes, attributeFilters),
-            context => BuildAskPrompt(question, context), RagAnswerPurpose, ct);
+            context => AskPromptBuilder.Build(question, context), RagAnswerPurpose, ct);
     }
 
     // FR-07, UC-02: 指定データ範囲での分析・比較・抽出。
@@ -162,7 +162,7 @@ public class RagOrchestrator(
         // **送っていない資料のせいで回答が縮退する**。
         var confidentiality = HighestConfidentiality(selection.ContextChunks);
         var contextText = CitationMapper.BuildContext(citations);
-        var prompt = BuildAskPrompt(question, contextText);
+        var prompt = AskPromptBuilder.Build(question, contextText);
 
         // IADR-0111: done が来ないまま終端した場合（ストリーム断）も「使用モデルなし」を保つ。
         var model = NoModel;
@@ -441,17 +441,4 @@ public class RagOrchestrator(
     // IADR-0111 (#403): ゲートウェイを一度も呼んでいないため使用モデルは無い（NoModel）。
     private static AiAnswerDto EmptyAnswer()
         => NoAccessAnswer.Answer();
-
-    private static string BuildAskPrompt(string question, string context)
-        => $"""
-            以下の参照文書を根拠に、質問に答えてください。根拠のない情報は含めないでください。
-
-            ## 参照文書
-            {context}
-
-            ## 質問
-            {question}
-
-            ## 回答（日本語で、出典番号 [1][2] を付けてください）
-            """;
 }
