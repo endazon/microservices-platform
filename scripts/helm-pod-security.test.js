@@ -2,7 +2,7 @@
 'use strict';
 /*
  * helm-pod-security.test.js
- * NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）:
+ * NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）:
  * **チャートの Pod とコンテナのセキュリティ設定を、実際に `helm template` で描いて固定する。**
  *
  * 固定するもの:
@@ -32,7 +32,7 @@ const VALUES_LOCAL = 'deploy/local/values-local.yaml';
 const FRONTEND_DOCKERFILE = 'src/platform/frontend/Dockerfile';
 const OVERLAY_SYNTHETIC = 'deploy/local/synthetic-monitor/synthetic-monitor.yaml';
 const LOCAL_UP = 'scripts/k8s-local-up.sh';
-// 外部のイメージ（利用者 ID とデータの所有者を変えない。IADR-0582 決定 2）。
+// 外部のイメージ（利用者 ID とデータの所有者を変えない。IADR-0583 決定 2）。
 const THIRD_PARTY = new Set(['seaweedfs', 'wiki-js', 'embedding-service']);
 // 専用の ServiceAccount で k8s API（Vault の k8s auth・ExternalSecret の同期）を使う Pod。
 const WITH_SA = new Set(['bff-service', 'datasource-service']);
@@ -214,7 +214,7 @@ function main() {
     ]) {
       const r = render(args);
       assert.notStrictEqual(r.status, 0, `${args.join(' ')} で描画が通った`);
-      assert.match(r.stderr, /IADR-0582/, `${args.join(' ')} の止まる理由が違う: ${r.stderr.slice(-300)}`);
+      assert.match(r.stderr, /IADR-0583/, `${args.join(' ')} の止まる理由が違う: ${r.stderr.slice(-300)}`);
     }
   });
 

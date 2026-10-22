@@ -27,7 +27,7 @@ spec:
       labels:
         app: embedding-service
     spec:
-      # NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: k8s API を呼ばないのでトークンを置かない。
+      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: k8s API を呼ばないのでトークンを置かない。
       # 外部のイメージなので利用者 ID とモデルの置き場の所有者は変えない（seccomp・権限昇格なしまで）。
       automountServiceAccountToken: false
       {{- include "msp.podSecurityContext.thirdParty" . | nindent 6 }}

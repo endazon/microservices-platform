@@ -28,7 +28,7 @@ spec:
       labels:
         app: {{ $svcName }}
     spec:
-      # NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: k8s API を呼ばないのでトークンを置かない。
+      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: k8s API を呼ばないのでトークンを置かない。
       # 非 root（イメージの USER と同じ uid。src/platform/frontend/Dockerfile）・seccomp RuntimeDefault。
       automountServiceAccountToken: false
       {{- include "msp.podSecurityContext.restricted" $f.runAsUser | nindent 6 }}

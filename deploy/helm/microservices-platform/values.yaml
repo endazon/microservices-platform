@@ -86,7 +86,7 @@ namespace:
   # Istio サイドカー自動注入ラベル。mesh.enabled=true のとき有効化する。
   istioInjection: true
 
-# NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: Pod のセキュリティ設定（多層防御・最小権限）。
+# NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod のセキュリティ設定（多層防御・最小権限）。
 # 部品は templates/_pod-security.tpl。チャートが作る Pod は restricted の形（非 root・権限昇格なし・ケーパビリティなし・
 # seccomp RuntimeDefault）で描き、外部のイメージ（SeaweedFS・Wiki.js・TEI）は利用者 ID を変えずに付けられる分だけ付ける。
 podSecurity:
@@ -253,7 +253,7 @@ drift:
     # 起動待ちは --retry × --retry-delay だけが決める（180 秒。--max-time は 1 試行の上限であって
     # 総時間の上限ではない）。**この数字は実測から決めている** —— 根拠は同 template の注記（#1219）。
     image: curlimages/curl:8.11.1@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69
-    # NFR, IADR-0582: curl イメージの curl_user（非 root）。
+    # NFR, IADR-0583: curl イメージの curl_user（非 root）。
     runAsUser: 100
 
 # NFR (#197): 水平スケール（HPA）と可用性（PDB）。計画 NFR「HPA で水平スケール」「可用性 99.9%」の実現手段。
@@ -1370,7 +1370,7 @@ frontend:
   replicas: 1
   image: microservices-platform/frontend
   tag: latest
-  # NFR, IADR-0582: src/platform/frontend/Dockerfile の USER と同じ uid（非 root）。
+  # NFR, IADR-0583: src/platform/frontend/Dockerfile の USER と同じ uid（非 root）。
   runAsUser: 10001
   # Caddy 待受ポート（src/platform/frontend/Dockerfile の EXPOSE 8080 / Caddyfile の :8080）。
   # #1135 の nginx → Caddy 移送でも**ポートは変えていない**（compose の 3100:8080 と probe が依存する）。
@@ -1433,7 +1433,7 @@ syntheticMonitor:
   clientId: synthetic-monitor
   # overlay（deploy/local/synthetic-monitor/synthetic-monitor.yaml）と同じ。外部依存ゼロ（Node 標準の fetch のみ）。
   image: node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
-  # NFR, IADR-0582: node イメージの node ユーザー（非 root）。overlay と同じ値。
+  # NFR, IADR-0583: node イメージの node ユーザー（非 root）。overlay と同じ値。
   runAsUser: 1000
   # ADR-0079 決定 1 の確定値（秒）。**変えるなら deploy/prometheus/alerts.yml の RagLatencySeriesAbsent の lookback も見直すこと。**
   intervalSeconds: 60

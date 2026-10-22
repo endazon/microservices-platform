@@ -3365,6 +3365,21 @@
             "value": "\"has_body\""
           }
         }
+      },
+      "Knowledge.Contracts.Llm.PromptTrustBoundary": {
+        "kind": "class",
+        "members": {
+          "DocumentsTag": {
+            "source": "const",
+            "type": "string",
+            "value": "\"documents\""
+          },
+          "UserInputTag": {
+            "source": "const",
+            "type": "string",
+            "value": "\"user-input\""
+          }
+        }
       }
     },
     "src/platform/backend/Shared/Platform.Shared.Contracts": {

@@ -1,5 +1,5 @@
 ---
-title: IADR-0582 チャートの Pod は restricted の形（非 root・権限昇格なし・ケーパビリティなし・seccomp RuntimeDefault）で描き、外部のイメージは利用者 ID を変えずに付けられる分だけ付け、専用の SA を持たない Pod はトークンを置かず、Namespace に Pod Security Admission の水準を貼る
+title: IADR-0583 チャートの Pod は restricted の形（非 root・権限昇格なし・ケーパビリティなし・seccomp RuntimeDefault）で描き、外部のイメージは利用者 ID を変えずに付けられる分だけ付け、専用の SA を持たない Pod はトークンを置かず、Namespace に Pod Security Admission の水準を貼る
 type: impl-adr
 status: Accepted
 related_ids: [NFR, ADR-0005, ADR-0007, ADR-0008, ADR-0021]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20261022_ghsa-j4qv_pod-security-context.md
 ---
 
-# IADR-0582: Pod のセキュリティ設定と Pod Security Admission（GHSA-j4qv-2w99-xg5p）
+# IADR-0583: Pod のセキュリティ設定と Pod Security Admission（GHSA-j4qv-2w99-xg5p）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

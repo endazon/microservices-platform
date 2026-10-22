@@ -663,7 +663,7 @@ fi
 
 echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
-# NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: Pod Security Admission の水準（チャートの namespace.yaml と同じ規則）。
+# NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod Security Admission の水準（チャートの namespace.yaml と同じ規則）。
 #   経路B は values-local.yaml が namespace.create=false のため、チャートは Namespace のラベルを貼らない。ここで貼る。
 #   warn / audit は restricted。enforce は baseline —— ただし ISTIO=1 では外す（注入される istio-init が NET_ADMIN / NET_RAW を
 #   要し、baseline を満たさない）。注入ラベルが残っている Namespace も同じ扱いにする（ISTIO=0 の再実行は注入ラベルを

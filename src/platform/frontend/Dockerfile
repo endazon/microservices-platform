@@ -55,7 +55,7 @@ COPY src/platform/frontend/config.js.template /etc/microservices-platform/config
 COPY src/platform/frontend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 COPY --from=build /app/platform/frontend/dist /usr/share/caddy
-# NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: 非特権ユーザー（uid 10001）で動かす（最小権限）。
+# NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: 非特権ユーザー（uid 10001）で動かす（最小権限）。
 # 🔴 chart の frontend.runAsUser と同じ uid にすること（deploy/helm/microservices-platform/values.yaml）。
 #   1. caddy のファイルケーパビリティ（cap_net_bind_service）を外す。待受は 8080 なので要らない。付いたままだと、
 #      ケーパビリティを全て落としたコンテナでは exec 自体が拒まれる。cp はファイルケーパビリティ（拡張属性）を写さない。

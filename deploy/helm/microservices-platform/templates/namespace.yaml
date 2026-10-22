@@ -11,11 +11,11 @@ metadata:
     # Istio: この Namespace の Pod へ Envoy サイドカーを自動注入する。
     istio-injection: enabled
     {{- end }}
-    {{- /* NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: Pod Security Admission。enforce は注入が有効なら描かない（values.yaml の podSecurity）。 */}}
+    {{- /* NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod Security Admission。enforce は注入が有効なら描かない（values.yaml の podSecurity）。 */}}
     {{- $psa := .Values.podSecurity.admission }}
     {{- range $lv := list $psa.enforce $psa.warn $psa.audit }}
     {{- if not (has $lv (list "privileged" "baseline" "restricted")) }}
-    {{- fail (printf "podSecurity.admission の水準は privileged / baseline / restricted のどれかです（受け取った値: %v。IADR-0582）" $lv) }}
+    {{- fail (printf "podSecurity.admission の水準は privileged / baseline / restricted のどれかです（受け取った値: %v。IADR-0583）" $lv) }}
     {{- end }}
     {{- end }}
     {{- if not (and .Values.mesh.enabled .Values.namespace.istioInjection) }}

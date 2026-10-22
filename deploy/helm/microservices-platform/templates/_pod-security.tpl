@@ -1,5 +1,5 @@
 {{- /*
-NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: Pod とコンテナのセキュリティ設定（多層防御・最小権限）の単一情報源。
+NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod とコンテナのセキュリティ設定（多層防御・最小権限）の単一情報源。
 
 - msp.podSecurityContext.restricted <uid>   : チャートが作るイメージ（.NET・SPA）と、利用者 ID が分かっている
                                               汎用イメージ（合成監視・ドリフト検出）。Pod Security Standards の
@@ -14,7 +14,7 @@ NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: Pod とコンテナのセキュリ
 {{- define "msp.podSecurityContext.restricted" -}}
 {{- $uid := int (default 0 .) -}}
 {{- if le $uid 0 -}}
-{{- fail (printf "Pod の runAsUser は 1 以上の整数で与えてください（受け取った値: %v。IADR-0582）" .) -}}
+{{- fail (printf "Pod の runAsUser は 1 以上の整数で与えてください（受け取った値: %v。IADR-0583）" .) -}}
 {{- end -}}
 securityContext:
   runAsNonRoot: true

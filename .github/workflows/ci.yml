@@ -798,7 +798,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-broker-per-service-users.test.js
 
-      # NFR, IADR-0582（Refs GHSA-j4qv-2w99-xg5p）: Pod とコンテナのセキュリティ設定を**実際に helm template で描いて**固定する —— 既定・values-local・
+      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod とコンテナのセキュリティ設定を**実際に helm template で描いて**固定する —— 既定・values-local・
       # 任意部品の全てで seccomp RuntimeDefault・権限昇格なし・（外部 3 つ以外は）非 root とケーパビリティなし・SA を持たない Pod はトークンを置かない、
       # Namespace の Pod Security Admission の水準、描画で止まる条件、Dockerfile / overlay / 起動器との一致、変異。helm が要るのでこのジョブ（段の追加のみ）。
       - name: Test helm pod security settings (render, supply, mutation)
