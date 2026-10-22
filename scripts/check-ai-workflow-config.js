@@ -419,7 +419,9 @@ function parityWarnings(perFile, settingsPath = SETTINGS_PATH) {
     return warnings; // settings.json が無い/壊れている場合は黙って skip
   }
   for (const { file, tools } of perFile) {
-    const missing = tools.filter((t) => !allow.has(t));
+    // GHSA-552h-47r7-6v6p / IADR-0578: 宣言した狭めた形は、広い形が allow にあれば覆われている（ローカルの方が広い）。
+    const covered = (t) => allow.has(t) || CODING_NARROWED_TOOLCHAIN.some(([wide, narrow]) => t === narrow && allow.has(wide));
+    const missing = tools.filter((t) => !covered(t));
     if (missing.length) {
       warnings.push(
         `${file}: settings.json の allow に無いツールを CI で許可している: ${missing.join(', ')}` +
@@ -867,6 +869,7 @@ module.exports = {
   toolchainDrift,
   genericBashDrift,
   driftScopeWarnings,
+  parityWarnings,
   checkWorkflow,
   selfTest,
 };

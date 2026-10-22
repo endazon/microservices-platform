@@ -18232,6 +18232,25 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(!tools.some((t) => /^Bash\((?:bash|sh|python3?|npx|curl|wget)(?::\*)?\)$/.test(t)), '汎用の実行系が許可されている');
     });
 
+    ok('GHSA-552h: settings.json との突き合わせ —— 狭めた形は広い形があれば覆われ、無ければ警告する', () => {
+      const os = require('os');
+      const { parityWarnings } = require('./check-ai-workflow-config.js');
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-552h-parity-'));
+      try {
+        const sp = path.join(work, 'settings.json');
+        const perFile = [{ file: 'claude-coding.yml', tools: ['Read', 'Bash(node scripts/:*)'] }];
+        fs.writeFileSync(sp, JSON.stringify({ permissions: { allow: ['Read', 'Bash(node:*)'] } }));
+        assert.deepStrictEqual(parityWarnings(perFile, sp), [], '広い形で覆われているのに警告する');
+        fs.writeFileSync(sp, JSON.stringify({ permissions: { allow: ['Read'] } }));
+        assert.strictEqual(parityWarnings(perFile, sp).length, 1, '覆われていないのに警告しない');
+        // 宣言外の狭めた形は覆われたと見なさない。
+        fs.writeFileSync(sp, JSON.stringify({ permissions: { allow: ['Read', 'Bash(dotnet:*)'] } }));
+        assert.strictEqual(parityWarnings([{ file: 'x.yml', tools: ['Bash(dotnet test:*)'] }], sp).length, 1, '宣言外を覆われたと見なしている');
+      } finally {
+        fs.rmSync(work, { recursive: true, force: true });
+      }
+    });
+
     // --- gen-changelog.js: git は引数の配列で呼び、参照名の形を確かめる ---
     const { isSafeRef, filterSafeTags } = require('./gen-changelog.js');
 
