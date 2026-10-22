@@ -40,8 +40,67 @@ edge:
   enabled: false
 
 # metrics-server 依存の HPA と NetworkPolicy を dev では無効化（本番像は不変）。
+# NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: ただし egress の既定拒否は当てる（ingress の NetworkPolicy は無効のまま）。
+#   段 1（本変更）は**クラスタの外へ出ない Pod** だけ。基盤（platform-infra）への宛先は下の destinations で 1 件ずつ開ける。
+#   段 2 で足す（それまで egress は従前どおり制限なし）: bff-service（AST の名前空間・Valkey・Vault・API サーバ・opend）、
+#   llmgateway-service（LLM・埋め込みの提供元）、datasource-service（SaaS コネクタ・Vault）、wiki-js（エッジの issuer）、
+#   config-drift-postsync・embedding・synthetic-monitor。段の一覧の正は作業仕様書 20261022_j4qv_egress-default-deny。
+#   🔴 送り元（from）を足すときは、サービスの宣言（database / messaging / Qdrant の利用）と一緒にそろえる
+#      （scripts/helm-egress-network-policy.test.js が values の宣言と突き合わせる）。
 networkPolicy:
   enabled: false
+  egress:
+    enabled: true
+    workloads:
+      - aianalysis-service
+      - authorization-service
+      - conversion-service
+      - dashboard-service
+      - document-service
+      - feedback-service
+      - graph-service
+      - ingestion-service
+      - mcp-service
+      - notification-service
+      - retrieval-service
+      - wiki-service
+      - frontend-service
+      - seaweedfs
+      # 確かめ用の使い捨ての Pod（Service を持たない。統合スタックの門と運用の確認手順が `kubectl run --labels=app=egress-probe` で立てる）。
+      # 宛先の許可を 1 つも持たないので、名前解決と同じ名前空間だけに届くことを稼働のクラスタで測れる。
+      - egress-probe
+    # 基盤は platform-infra に居る（deploy/local/infra。名前は aliases の ExternalName で引く）。
+    destinations:
+      # サービス DB（services.<名>.database を持つもの）。
+      - name: postgres
+        namespace: platform-infra
+        podLabels: { app: postgres }
+        ports: [5432]
+        from: [authorization-service, conversion-service, dashboard-service, document-service, feedback-service, graph-service, mcp-service, notification-service, wiki-service]
+      # ブローカ（services.<名>.messaging: true のもの。rabbitmq-ingress-clients と同じ集合）。
+      - name: rabbitmq
+        namespace: platform-infra
+        podLabels: { app: rabbitmq }
+        ports: [5672]
+        from: [conversion-service, document-service, graph-service, ingestion-service, retrieval-service, wiki-service]
+      # 認可サーバ（OIDC の metadata・JWKS・サービスの token・管理 API）。.NET のサービスすべて。
+      - name: keycloak
+        namespace: platform-infra
+        podLabels: { app: keycloak }
+        ports: [8080]
+        from: [aianalysis-service, authorization-service, conversion-service, dashboard-service, document-service, feedback-service, graph-service, ingestion-service, mcp-service, notification-service, retrieval-service, wiki-service]
+      # テレメトリ（global.otel.endpoint の OTLP gRPC）。.NET のサービスすべて。
+      - name: otel-collector
+        namespace: platform-infra
+        podLabels: { app: otel-collector }
+        ports: [4317]
+        from: [aianalysis-service, authorization-service, conversion-service, dashboard-service, document-service, feedback-service, graph-service, ingestion-service, mcp-service, notification-service, retrieval-service, wiki-service]
+      # ベクトル索引（gRPC 6334・検索の health は REST 6333 の /healthz）。
+      - name: qdrant
+        namespace: platform-infra
+        podLabels: { app: qdrant }
+        ports: [6333, 6334]
+        from: [ingestion-service, retrieval-service]
 scaling:
   enabled: false
 

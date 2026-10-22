@@ -365,6 +365,65 @@ jobs:
         if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}
         run: node scripts/check-mcp-client-provisioning.js --live
 
+      # NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信の既定拒否が**稼働のクラスタで効いている**ことを測る。
+      # 静的な検査（scripts/helm-egress-network-policy.test.js）は描画の形と評価規則までしか言えない。CNI が NetworkPolicy を
+      # 強制しないクラスタでは、宣言だけが残って何も止まらない（k3s の内蔵のコントローラが強制することはここで確かめる）。
+      # 使い捨ての busybox を 2 つ立てる（サイドカーは入れない。L4 の到達だけを見る）:
+      #   - 対象（app=egress-probe。values-local の workloads に在り、宛先の許可は持たない）: 名前解決と同じ名前空間は通り、
+      #     基盤（Keycloak・Postgres）・API サーバ・クラスタの外は落ちる。
+      #   - 対照（app=egress-probe-control。workloads に無い）: 基盤へ届く。届かなければ「落ちた」が方針のせいか判別できないので赤にする。
+      # 許可の側（基盤への宛先）は、段 1 の全サービスが Ready であること（スタックの門の G1）が陽性対照になる。
+      # 前提はスタックの門だけ。パスワードリセットの門の赤では飛ばさない（#1597 と同じ）。
+      # 🔴 **ログイン経路の門より前に置く**（あちらを最後に置く順序の統制を変えない）。
+      - name: 🔴 Gate — 外向き通信の既定拒否（NetworkPolicy の強制）
+        id: egress-policy
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          ns=microservices-platform
+          # 🔴 先頭で待つ。k3s の NetworkPolicy のコントローラは**新しい Pod の IP へ規則を後から当てる**（非同期）ため、
+          #   起動の直後に測ると規則が入る前の窓に当たり、既定拒否が効いていないように見える（手元の k3s v1.35.4 で実測）。
+          # shellcheck disable=SC2016  # Pod の中の sh が展開する。
+          script='sleep 20;
+            c(){ if nc -z -w 5 "$2" "$3" >/dev/null 2>&1; then echo "$1=open"; else echo "$1=closed"; fi; };
+            if nslookup postgres.platform-infra.svc.cluster.local >/dev/null 2>&1; then echo dns=ok; else echo dns=ng; fi;
+            c intra bff-service 8080;
+            c keycloak keycloak.platform-infra.svc.cluster.local 8080;
+            c postgres postgres.platform-infra.svc.cluster.local 5432;
+            c apiserver kubernetes.default.svc.cluster.local 443;
+            c external 1.1.1.1 443'
+          probe() {
+            local label="$1" name phase
+            name="${label}-$(date +%s)-$RANDOM"
+            kubectl -n "$ns" run "$name" --image=busybox:1.36 --restart=Never \
+              --labels="app=${label}" --annotations=sidecar.istio.io/inject=false \
+              --command -- sh -c "$script" >/dev/null
+            phase=""
+            for _ in $(seq 1 60); do
+              phase="$(kubectl -n "$ns" get pod "$name" -o jsonpath='{.status.phase}')"
+              case "$phase" in Succeeded|Failed) break ;; esac
+              sleep 2
+            done
+            kubectl -n "$ns" logs "$name" | sed "s/^/${label} /"
+            kubectl -n "$ns" delete pod "$name" --ignore-not-found --timeout=60s >/dev/null
+            [ "$phase" = "Succeeded" ] || { echo "::error::${label} の Pod が ${phase:-終端に達しない} で終わった" >&2; return 1; }
+          }
+          fail=0
+          control="$(probe egress-probe-control)" || fail=1
+          subject="$(probe egress-probe)" || fail=1
+          out="${control}"$'\n'"${subject}"
+          echo "$out"
+          want() { grep -qx "$1" <<<"$out" || { echo "::error::期待した「$1」が無い"; fail=1; }; }
+          want "egress-probe-control keycloak=open"
+          want "egress-probe-control postgres=open"
+          want "egress-probe dns=ok"
+          want "egress-probe intra=open"
+          want "egress-probe keycloak=closed"
+          want "egress-probe postgres=closed"
+          want "egress-probe apiserver=closed"
+          want "egress-probe external=closed"
+          exit "$fail"
+
       # 🔴 ここが 4 つめの門である（#1245 PR-0 / SC-13・ADR-0078 決定 1）。
       # 計画 ADR は存在秘匿の統制を「**応答の区別不能性**（ステータス・本文・所要時間）」と定め、
       # **射程に認証系の経路（ログイン）を含める**と明文化したが、**ログイン側は実測されていなかった**
@@ -386,13 +445,13 @@ jobs:
       # ［2026-09-27 / 計画 ADR-0118 決定 2 / #1617］🔴 **T-25 だけの赤（偶然の赤の候補）の印。** 判定はしない（ジョブの合否は変えない）。
       # この手順が success になるのは、パスワードリセットの門が赤で、その失敗が T-25 の順位和検定の赤ただ 1 件
       # （検査器の出力 t25_only_red。T-10 / T-16 / T-17 / 前提の失敗・評価不能が混ざれば false）であり、
-      # かつスタックの門・2 つの投入・ABAC と検索の門・SC-12 の書き込みの門（#1817）・ログイン経路の門がすべて success のときだけである。
+      # かつスタックの門・2 つの投入・ABAC と検索の門・SC-12 の書き込みの門（#1817）・外向き通信の門（IADR-0589）・ログイン経路の門がすべて success のときだけである。
       # integration-stack-rerun.yml がこの手順の結論を API で読み、success のときだけ同じコミットで 1 回だけ再実行する
       # （あちらでも手順の結論を数え直す。ほかの門が 1 つでも赤なら偶然の赤として扱わない）。
       # 🔴 **手順名を変えない**（scripts/t25-rerun-on-chance-red.js の CANDIDATE_STEP と一致させる。API は長い名前を切るので短い ASCII）。
       - name: T-25 only red (chance-red candidate)
         id: t25-chance-red-candidate
-        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' && steps.reset-mail.outcome == 'failure' && steps.reset-mail.outputs.t25_only_red == 'true' && steps.seed-abac.outcome == 'success' && steps.seed-search.outcome == 'success' && steps.abac-search-gate.outcome == 'success' && steps.mcp-provisioning.outcome == 'success' && steps.login-disclosure.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' && steps.reset-mail.outcome == 'failure' && steps.reset-mail.outputs.t25_only_red == 'true' && steps.seed-abac.outcome == 'success' && steps.seed-search.outcome == 'success' && steps.abac-search-gate.outcome == 'success' && steps.mcp-provisioning.outcome == 'success' && steps.egress-policy.outcome == 'success' && steps.login-disclosure.outcome == 'success' }}
         env:
           T25_P: ${{ steps.reset-mail.outputs.t25_p }}
           T25_W: ${{ steps.reset-mail.outputs.t25_w }}

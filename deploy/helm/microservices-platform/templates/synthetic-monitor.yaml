@@ -132,7 +132,7 @@ spec:
             name: synthetic-monitor-probe
 {{- if .Values.networkPolicy.enabled }}
 ---
-# allow-intra-namespace（networkpolicy.yaml）は egress を「同 Namespace ＋ DNS」に絞るため、
+# egress の既定拒否（networkpolicy-egress.yaml）は egress を「同 Namespace ＋ DNS」に絞るため、
 # 別 Namespace の Keycloak（token 端点）へは L3/L4 で届かない（届かなければ 1 度も BFF へ到達せず、
 # RagLatencySeriesAbsent が「評価対象が無い」の顔で鳴る）。プローブの Pod から Keycloak の Pod・ポートへ 1 本だけ開ける。
 # BFF → Vault（allow-bff-egress-to-vault）と同じ型。プローブ → BFF は同 Namespace なので既存の許可で足りる。

@@ -13691,6 +13691,8 @@ exit $RC
       const LOGIN_GATE = stepOf('🔴 Gate — ログイン経路の存在秘匿');
       // #1817: SC-12 の IdP への書き込みの門も「ほかの門」に入る（赤なら偶然の赤として再実行しない）。
       const MCP_GATE = stepOf('🔴 Gate — SC-12 の IdP への書き込み');
+      // IADR-0589: 外向き通信の既定拒否の門も「ほかの門」に入る。
+      const EGRESS_GATE = stepOf('🔴 Gate — 外向き通信の既定拒否');
       const CAND = stepOf(rerunScript.CANDIDATE_STEP);
       const DUMP = stepOf('Dump cluster state');
 
@@ -13698,8 +13700,9 @@ exit $RC
       assert.strictEqual(CAND.name, rerunScript.CANDIDATE_STEP, '手順名が CANDIDATE_STEP と違う（再実行の script が候補を見つけられない）');
       assert.strictEqual(RESET.id, 'reset-mail', 'パスワードリセットの門の id が reset-mail でない（出力を読めない）');
       assert.strictEqual(RESET.cond, null, `パスワードリセットの門に if: が付いた: ${RESET.cond}`);
-      for (const s of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, LOGIN_GATE]) assert.ok(s.id, `${s.name} に id が無い`);
+      for (const s of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, EGRESS_GATE, LOGIN_GATE]) assert.ok(s.id, `${s.name} に id が無い`);
       assert.ok(MCP_GATE.at < LOGIN_GATE.at, 'SC-12 の書き込みの門がログイン経路の門の後にある（ログイン経路の門を最後に置く統制）');
+      assert.ok(EGRESS_GATE.at < LOGIN_GATE.at, '外向き通信の門がログイン経路の門の後にある（ログイン経路の門を最後に置く統制）');
       assert.ok(CAND.at > LOGIN_GATE.at && CAND.at < DUMP.at, '「T-25 only red」がログイン経路の門の後・診断の前に無い（後段の結果を見られない）');
       assert.ok(CAND.cond, '「T-25 only red」に if: が無い（既定 success() では赤の run で走らない）');
       assert.ok(!/always\(\)/.test(CAND.cond), 'always() は取り消しでも走らせてしまう');
@@ -13716,7 +13719,7 @@ exit $RC
       };
       const allGreen = {
         [STACK.id]: 'success', [RESET.id]: 'failure', [SEED_ABAC.id]: 'success', [SEED_SEARCH.id]: 'success',
-        [ABAC_GATE.id]: 'success', [MCP_GATE.id]: 'success', [LOGIN_GATE.id]: 'success',
+        [ABAC_GATE.id]: 'success', [MCP_GATE.id]: 'success', [EGRESS_GATE.id]: 'success', [LOGIN_GATE.id]: 'success',
       };
       const onlyRed = { [RESET.id]: { t25_only_red: 'true', t25_p: '0.0094', t25_w: '713' } };
 
@@ -13727,7 +13730,7 @@ exit $RC
       // 場面 3: 出力が無い（検査器が古い・前提で落ちた）→ 走らない（fail-closed）
       assert.strictEqual(run({ outcomes: allGreen, outputs: {} }), false, '出力が無くても候補になる');
       // 場面 4: 🔴 ほかの門・投入のどれか 1 つが赤または飛ばされた → 走らない
-      for (const other of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, LOGIN_GATE]) {
+      for (const other of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, EGRESS_GATE, LOGIN_GATE]) {
         for (const outcome of ['failure', 'skipped', 'cancelled']) {
           assert.strictEqual(run({ outcomes: { ...allGreen, [other.id]: outcome }, outputs: onlyRed }), false,
             `${other.name} が ${outcome} なのに候補になる（ほかの門の赤を偶然の赤として再実行する）`);

@@ -860,8 +860,14 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
 - **永続化は既定オン**: Keycloak/Postgres/Qdrant を、`OBSERVABILITY=1` なら Prometheus/Loki/Tempo/Grafana も PVC 永続化する
   （上記「永続化」節・IADR-0082 / IADR-0210 / IADR-0369）。`PERSIST=0` で emptyDir（使い捨てスタック専用）。
   `VAULT=1` の Vault も PVC 永続化する（`deploy/local/vault-persistence`・IADR-0457）。rabbitmq / valkey / otel は揮発のまま。
-- **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
-  エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
+- **Istio/mTLS/ingress の NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
+  エッジ `/bff/*` ルーティング等）は不変。
+  **egress（外向き通信）の既定拒否は当てる**（NFR-18 / IADR-0589。`networkPolicy.egress`）—— 段 1 は外へ出ない Pod（`networkPolicy.egress.workloads`）だけで、
+  名前解決（kube-dns）・同じ名前空間・platform-infra の宣言した宛先（postgres・rabbitmq・keycloak・otel-collector・qdrant）にだけ届く。
+  BFF・LLM ゲートウェイ・データソース・Wiki.js などは段 2 で当てる（それまでは従前のまま）。サービスを足す・宛先を変えるときは
+  `deploy/local/values-local.yaml` の `networkPolicy.egress` をそろえる（`scripts/helm-egress-network-policy.test.js` が突き合わせる）。
+  効いているかは `kubectl -n microservices-platform run egress-probe-$RANDOM --rm -it --restart=Never --image=busybox:1.36 --labels=app=egress-probe --annotations=sidecar.istio.io/inject=false -- sh -c 'sleep 20; nc -z -w 5 keycloak.platform-infra.svc.cluster.local 8080 && echo open || echo closed'`
+  で確かめる（`closed` が期待値。ラベルを `app=egress-probe-control` に替えると `open`）。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
   `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときも **mTLS の既定は PERMISSIVE** である（IADR-0307 決定 4）。
   **`ISTIO` は 3 値**（`1`＝入れる／`0`＝外す／未指定＝現行の helm の宣言を引き継ぐ。#1713 / IADR-0488）——
   メッシュで動いているクラスタを `ISTIO` 無しで再実行してもメッシュ宣言は外れず、mTLS モードも引き継ぐ（初回だけがメッシュ無し・PERMISSIVE）。

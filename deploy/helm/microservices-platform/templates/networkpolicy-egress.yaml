@@ -1,0 +1,135 @@
+{{- /* NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信（egress）は既定で拒否し、要る宛先だけを許す（多層防御・最小権限）。
+       描くのは networkPolicy.enabled（本番像）か networkPolicy.egress.enabled（経路B。ingress の NetworkPolicy を持たない配備）のとき。
+       - default-deny-egress            : workloads の Pod（空＝名前空間の全 Pod）の egress を既定で拒否する。
+       - allow-egress-dns               : 名前解決は dns の名前空間 × Pod ラベル（既定 kube-system の kube-dns）の 53 番だけ。
+       - allow-egress-intra-namespace   : 同じ名前空間の Pod へ（サービス間の呼び出し・SeaweedFS 等）。
+       - allow-egress-istiod            : mesh.enabled のとき、サイドカーから istiod（xDS・証明書。既定 15012）へ。
+       - allow-egress-to-<name>         : destinations の 1 件ごと。from の Pod から「名前空間 × Pod ラベル」の ports へだけ。
+       クラスタ外への許可はここでは描かない（宛先ごとの許可は段 2。IADR-0589）。サービス固有の 1 本（Vault・API サーバ・合成監視 → Keycloak）は
+       networkpolicy.yaml / synthetic-monitor.yaml に従前のまま置く。
+       🔴 描画で止める: networkPolicy.enabled のまま egress.enabled=false（egress の制限を外すことになる）・
+          networkPolicy.enabled のまま workloads を絞る（本番像は名前空間の全 Pod）・destinations の欠けた値・workloads に無い from。 */}}
+{{- $np := .Values.networkPolicy | default dict }}
+{{- $eg := $np.egress | default dict }}
+{{- if and $np.enabled (hasKey $eg "enabled") (not $eg.enabled) }}
+{{- fail "networkPolicy.enabled=true のまま networkPolicy.egress.enabled=false は受けない（egress の既定拒否を外すことになる。IADR-0589）" }}
+{{- end }}
+{{- if or $np.enabled $eg.enabled }}
+{{- $workloads := $eg.workloads | default list }}
+{{- if and $np.enabled $workloads }}
+{{- fail "networkPolicy.enabled=true では networkPolicy.egress.workloads を絞れない（名前空間の全 Pod に当てる。IADR-0589）" }}
+{{- end }}
+{{- range $workloads }}{{- if not . }}{{ fail "networkPolicy.egress.workloads に空の要素がある" }}{{ end }}{{- end }}
+{{- $selector := include "msp.netpol.podSelector" $workloads }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  {{- $selector | nindent 2 }}
+  policyTypes:
+    - Egress
+  # egress の規則無し = すべての egress を拒否（許可は下記のポリシーで加える。NetworkPolicy は許可の和）。
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  {{- $selector | nindent 2 }}
+  policyTypes:
+    - Egress
+  egress:
+    {{- include "msp.netpol.dnsEgressRule" . | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-intra-namespace
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  {{- $selector | nindent 2 }}
+  policyTypes:
+    - Egress
+  egress:
+    # k8s の仕様上、namespaceSelector の無い `podSelector: {}` は「この NetworkPolicy と同じ Namespace の全 Pod」である。
+    - to:
+        - podSelector: {}
+{{- if .Values.mesh.enabled }}
+{{- $istiod := $eg.istiod | default dict }}
+{{- if not (and $istiod.namespace $istiod.podLabels $istiod.port) }}{{ fail "mesh.enabled のとき networkPolicy.egress.istiod の namespace・podLabels・port は空にできない" }}{{ end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-istiod
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  {{- $selector | nindent 2 }}
+  policyTypes:
+    - Egress
+  egress:
+    # ADR-0005: サイドカーが構成（xDS）と証明書を受け取る口。届かなければサイドカーが起動せず、アプリも起動しない。
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $istiod.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $istiod.podLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ $istiod.port }}
+{{- end }}
+{{- $seen := dict }}
+{{- range $d := $eg.destinations | default list }}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" ($d.name | default "")) }}{{ fail (printf "networkPolicy.egress.destinations の name %q は小文字英数とハイフンだけ" ($d.name | default "")) }}{{ end }}
+{{- if hasKey $seen $d.name }}{{ fail (printf "networkPolicy.egress.destinations の name %q が重複している" $d.name) }}{{ end }}
+{{- $_ := set $seen $d.name true }}
+{{- if not $d.namespace }}{{ fail (printf "networkPolicy.egress.destinations[%s].namespace が空である" $d.name) }}{{ end }}
+{{- if not $d.podLabels }}{{ fail (printf "networkPolicy.egress.destinations[%s].podLabels が空である（空のままでは名前空間の全 Pod へ開く）" $d.name) }}{{ end }}
+{{- if not $d.ports }}{{ fail (printf "networkPolicy.egress.destinations[%s].ports が空である（空のままでは全ポートへ開く）" $d.name) }}{{ end }}
+{{- if not $d.from }}{{ fail (printf "networkPolicy.egress.destinations[%s].from が空である（送り元の Pod の app ラベルを与える）" $d.name) }}{{ end }}
+{{- range $d.from }}
+{{- if not . }}{{ fail (printf "networkPolicy.egress.destinations[%s].from に空の要素がある" $d.name) }}{{ end }}
+{{- if and $workloads (not (has . $workloads)) }}{{ fail (printf "networkPolicy.egress.destinations[%s].from の %q は workloads に無い（既定拒否を当てていない Pod を許可だけで隔離しない）" $d.name .) }}{{ end }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-{{ $d.name }}
+  namespace: {{ $.Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  {{- include "msp.netpol.podSelector" $d.from | nindent 2 }}
+  policyTypes:
+    - Egress
+  egress:
+    # namespaceSelector と podSelector を同じ to の要素に置く（AND）。別の要素に割ると OR になり、名前空間全体へ開く。
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $d.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $d.podLabels | nindent 14 }}
+      ports:
+        {{- range $d.ports }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- end }}

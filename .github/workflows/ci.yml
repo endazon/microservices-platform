@@ -812,6 +812,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-bff-externalsecret-admission.test.js
 
+      # NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信（egress）の既定拒否と許可の一覧を**実際に helm template で描いて**固定する
+      # —— 本番像は名前空間の全 Pod・DNS は kube-dns だけ、values-local は段 1 の Pod だけ（全 Pod が段 1 / 段 2 に分類済み）・宛先の送り元が
+      # DB / ブローカ / OTLP / Qdrant の宣言と一致・宛先が基盤の manifest の実体と一致、k8s の評価規則で通信の一覧へ当てた結果、描画で止まる条件、変異。
+      # helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。稼働のクラスタでの強制は integration-stack.yml の門が測る。
+      - name: Test helm egress network policy (render, evaluation, supply, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-egress-network-policy.test.js
+
       # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 秘匿管理の kubernetes 認証で、role（deploy/ の bootstrap が書く全て）と名乗る側
       # （ESO の store・helm が描く Vault を使う Deployment・バックアップの CronJob）の audience が揃うことを**実際に helm template で描いて**固定する
       # —— コードの既定のトークンの置き場との一致、変異。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。
