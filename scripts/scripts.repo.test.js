@@ -18082,6 +18082,23 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(rows.length, of('microservices-platform').length + of('ai-stock-trading').length, '名前空間が 2 つの外の行がある');
     });
 
+    // IADR-0577（2026-10-22 追記）: ESO の無い経路で基盤の起動器が作る取引ユニットの消費側の Secret（名前）と、取引ユニットの
+    //   chart の既定（Secret 名・ユーザー名の接頭辞・Vault の KV）が一致すること。submodule が無い checkout では chart を読めないので、
+    //   起動器の宣言だけを見る（取得した checkout・手元では chart とも突き合わせる）。
+    ok('IADR-0577 追記: 起動器の ast-rabbitmq-users は取引ユニットの chart の credentialsSecretName / usernamePrefix / KV と一致する', () => {
+      const up = readR('scripts/k8s-local-up.sh');
+      const m = /^AST_RABBITMQ_USERS_SECRET="([a-z0-9-]+)"$/m.exec(up);
+      assert.ok(m, 'k8s-local-up.sh に AST_RABBITMQ_USERS_SECRET が無い');
+      assert.strictEqual(m[1], 'ast-rabbitmq-users');
+      assert.match(up, /^AST_NS="ai-stock-trading"$/m, 'k8s-local-up.sh の AST_NS が ai-stock-trading ではない');
+      const valuesRel = 'src/ai-stock-trading/deploy/helm/ai-stock-trading/values.yaml';
+      if (!fsR.existsSync(pathR.join(ROOT_R, valuesRel))) return; // submodule 未取得（CI の既定チェックアウト）
+      const v = readR(valuesRel);
+      assert.match(v, new RegExp(`^ {4}credentialsSecretName: ${m[1]}$`, 'm'), '取引ユニットの chart の Secret 名と起動器が食い違う');
+      assert.match(v, /^ {4}usernamePrefix: "ast-"$/m, '取引ユニットの chart のユーザー名の接頭辞が users.txt の ast- と違う');
+      assert.match(v, /^ {2}rabbitmqUsers:\s*\n {4}remoteKey: ai-stock-trading\/rabbitmq-users$/m, '取引ユニットの chart の KV が users.txt の 4 列目と違う');
+    });
+
     ok('IADR-0573: rabbitmq.yaml の NetworkPolicy は users.txt の Pod だけを 5672 で許し、管理の口と egress を描かない', () => {
       const { np, res } = policyApps();
       for (const ns of ['microservices-platform', 'ai-stock-trading']) {

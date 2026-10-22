@@ -3,15 +3,15 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-10-09
+updated: 2026-10-22
 author: claude
 ---
 <!-- trace:
 ids: [NFR-09]
 adrs: [ADR-0132, ADR-0106]
-iadrs: [IADR-0525, IADR-0494, IADR-0492, IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
-specs: [20261009_1840_secret-store-openbao, 20261003_1728_eso-force-sync-after-bootstrap, 20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
-issues: [#1840, #1728, #1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AST#1078]
+iadrs: [IADR-0577, IADR-0525, IADR-0494, IADR-0492, IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
+specs: [20261022_ast-pin-29a4d9dd, 20261009_1840_secret-store-openbao, 20261003_1728_eso-force-sync-after-bootstrap, 20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
+issues: [#1840, #1728, #1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AST#1078, AST#1428, AST#1430]
 -->
 
 # 経路B SSO 復旧 Runbook
@@ -77,6 +77,12 @@ done                                                                          # 
 
 > ⚠️ `k8s-local-deploy.sh` は `ast-secrets` を env から作り直して `apply` する。**export せずに実行すると
 > 既存の実鍵が空で上書きされ ①時価/③KB が no-op 化する。**
+>
+> ⚠️ AST の起動器は、イメージを作る前（`[0/5]`）に機密クライアント 5 件の secret が**開発用の値なら止まる**（下の
+> `*-dev-secret-change-me` もその値である）。開発用でない値を認証基盤（Keycloak）と同じ値で与えるのが本筋で、
+> **使い捨ての dev のクラスタだと分かっているときだけ** `--allow-dev-client-secrets`（または `ALLOW_DEV_CLIENT_SECRETS=1`）を付けて通す（警告が出る）。
+> また ESO の無い経路では、ブローカの資格情報の Secret `ai-stock-trading/ast-rabbitmq-users` が無いと helm の前で止まる。
+> この Secret は基盤の起動器（`scripts/k8s-local-up.sh`。ESO なし）が用意する —— 止まったら STEP 0 を先に回す。
 
 ```sh
 read -rs FINNHUB; export FINNHUB_API_KEY="$FINNHUB"; export MARKETDATA_FINNHUB_API_KEY="$FINNHUB"; unset FINNHUB
