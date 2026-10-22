@@ -666,3 +666,4 @@
 | [IADR-0586](./IADR-0586_admin-edge-routes-default-closed.md) | 管理ツールの集約入口（admin 50000）の経路は既定で置かず、ADMIN_EDGE=1 の明示の opt-in でだけ置く。Istio は *.localhost の directResponse 403、Traefik は router なしの 404、既定の入り方は各ツールへの port-forward（GHSA-j4qv-2w99-xg5p） | Accepted |
 | [IADR-0587](./IADR-0587_compose-host-ports-loopback-only.md) | compose がホストへ出す口（ports:）はすべてループバック（127.0.0.1）に限り、check-deploy-manifests.js の要点 8 で全件を検査する（GHSA-j4qv-2w99-xg5p） | Accepted |
 | [IADR-0588](./IADR-0588_bff-externalsecret-force-sync-only-admission.md) | BFF の SA が ExternalSecret に対して通せる更新を、ValidatingAdmissionPolicy（Fail・Deny）で force-sync の注釈（数字）の変更だけに限る。spec・status・labels・他の注釈・finalizers 等の変更と作成・削除・サブリソースは拒否し、BFF 以外の主体には当てない（GHSA-j4qv-2w99-xg5p） | Accepted |
+| [IADR-0589](./IADR-0589_egress-default-deny-network-policy.md) | 外向き通信（egress）は NetworkPolicy で既定拒否し、DNS は kube-dns の Pod だけ・別の名前空間の宛先は名前空間 × Pod ラベル × ポートで 1 件ずつ許す。本番像は名前空間の全 Pod、経路 B は外へ出ない Pod から段階的に当てる（GHSA-j4qv-2w99-xg5p） | Accepted |

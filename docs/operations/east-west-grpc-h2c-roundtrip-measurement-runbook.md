@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-04
-updated: 2026-10-10
+updated: 2026-10-22
 ---
 <!-- trace:
-ids: [NFR-09, NFR-16, FR-15, FR-16, FR-18, FR-19, FR-22, SC-03, SC-09, SC-19, SC-21]
+ids: [NFR-09, NFR-16, NFR-18, FR-15, FR-16, FR-18, FR-19, FR-22, SC-03, SC-09, SC-19, SC-21]
 adrs: [ADR-0005, ADR-0029, ADR-0075, ADR-0089, ADR-0117, ADR-0051, ADR-0037]
-iadrs: [IADR-0379, IADR-0462, IADR-0426, IADR-0307, IADR-0377, IADR-0487, IADR-0488, IADR-0530, IADR-0380, IADR-0431, IADR-0533]
-specs: [20261004_issue-1255_h2c-roundtrip-measurement-runbook, 20261010_1882_h2c-runbook-false-alarms, 20261010_1887_h2c-measurement-triggers, 20261010_1887_h2c-runbook-order-and-windows, 20261010_issue-1255-1517_east-west-rest-retirement]
+iadrs: [IADR-0589, IADR-0379, IADR-0462, IADR-0426, IADR-0307, IADR-0377, IADR-0487, IADR-0488, IADR-0530, IADR-0380, IADR-0431, IADR-0533]
+specs: [20261022_j4qv_egress-default-deny, 20261004_issue-1255_h2c-roundtrip-measurement-runbook, 20261010_1882_h2c-runbook-false-alarms, 20261010_1887_h2c-measurement-triggers, 20261010_1887_h2c-runbook-order-and-windows, 20261010_issue-1255-1517_east-west-rest-retirement]
 issues: [#1887, #1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 -->
 
@@ -594,7 +594,8 @@ kubectl -n "$NS" run "h2c-probe-$(date +%s)" --rm -i --restart=Never \
   アプリには平文 h2c が届く（アプリは 8081 で HTTP/2 だけを受ける。平文の HTTP/1.1 は 400）。
 - **起動順**: `istiod-values-local.yaml` が `holdApplicationUntilProxyStarts: true` なので、起動時の収集（M）がサイドカーより先に走ることは無い。
 - **readiness は 8080 の `/health/ready` のまま**。8081 にプローブは無い（1 プロセスが両ポートを起動時に開くので、8080 が Ready なら 8081 も開いている）。
-- **NetworkPolicy**: ローカルは `networkPolicy.enabled: false`（`values-local.yaml`）なので何も無い。本番像のチャートは
+- **NetworkPolicy**: ローカルは `networkPolicy.enabled: false`（`values-local.yaml`）なので ingress の NetworkPolicy は無い。
+  egress の既定拒否（`networkPolicy.egress`）は当たるが、同じ名前空間の Pod への通信は**ポートを限定せず**許す。本番像のチャートは
   `allow-intra-namespace` が同じ名前空間の Pod からの流入を**ポートを限定せず**許すので、8081 のために足すものは無い。
 - **AuthorizationPolicy**: チャートが描くのは BFF のバックチャネルログアウト（平文の 1 経路）と、エッジの同期経路（ゲートウェイの名前空間から
   文書サービスへの DENY。ローカルはエッジ無効で描画されない）だけで、名前空間の中から 8081 への呼び出しには当たらない。
