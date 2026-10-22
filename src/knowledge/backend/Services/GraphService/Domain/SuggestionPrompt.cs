@@ -50,7 +50,7 @@ public sealed class SuggestionPrompt
     // 語彙と順位は Knowledge.Contracts の ConfidentialityLevels が単一情報源であり、ここで再定義しない。
     public string Confidentiality { get; }
 
-    // NFR / IADR-0581（Refs GHSA-5h4q-4m2j-rjhm）: 表題（取り込み文書由来＝信頼しない入力）を囲む境界。
+    // NFR / IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: 表題（取り込み文書由来＝信頼しない入力）を囲む境界。
     // 封ごとに 1 つ作る（同じ封の Render は同じ本文を返す）。
     private readonly string _boundary;
 
@@ -117,7 +117,7 @@ public sealed class SuggestionPrompt
         sb.AppendLine("あなたはナレッジベースの文書間の関連（リンク候補）とタグ候補を提案する。");
         sb.AppendLine("提案は人間の承認を経て確定する。**確実でないものは提案しないこと。**");
         sb.AppendLine();
-        // NFR / IADR-0581: 表題は文書の側の文字列なので、境界つきの囲みに入れ、1 行に畳んで無害化する。
+        // NFR / IADR-0582: 表題は文書の側の文字列なので、境界つきの囲みに入れ、1 行に畳んで無害化する。
         sb.AppendLine(PromptTrustBoundary.Rules(_boundary, includesUserInput: false));
         sb.AppendLine();
         sb.AppendLine("## 起点文書");

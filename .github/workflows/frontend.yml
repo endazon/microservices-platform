@@ -133,7 +133,7 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得する。SPA は @ai-stock-trading を
@@ -150,10 +150,10 @@ jobs:
       # 本リポジトリの workspace ルートは src/ のため既定では版を解決できず
       # 「Error: No pnpm version is specified.」で落ちるからである（PR #489 の CI で実測）。
       # version: を直書きしないのは、版の単一情報源を src/package.json の packageManager に保つため。
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           package_json_file: src/package.json
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: pnpm
@@ -252,7 +252,7 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得する（@ai-stock-trading 合成のため）。
@@ -268,10 +268,10 @@ jobs:
       # 本リポジトリの workspace ルートは src/ のため既定では版を解決できず
       # 「Error: No pnpm version is specified.」で落ちるからである（PR #489 の CI で実測）。
       # version: を直書きしないのは、版の単一情報源を src/package.json の packageManager に保つため。
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           package_json_file: src/package.json
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: pnpm
@@ -290,7 +290,7 @@ jobs:
       # NFR / IADR-0232: Playwright のブラウザをキャッシュする。--with-deps は apt-get も叩くため、
       # 未キャッシュ時は 1〜2 分掛かる（AST 側の同じステップは実測 31 秒）。
       # キーは pnpm-lock.yaml のハッシュ（= @playwright/test の版が変われば取り直す）。
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright

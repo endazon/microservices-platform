@@ -3,14 +3,14 @@ title: 技術要件書
 type: tech-requirements
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-10
+updated: 2026-10-22
 author: claude
 ---
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065, ADR-0068, ADR-0075, ADR-0077, ADR-0106]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0195, IADR-0196, IADR-0216, IADR-0219, IADR-0229, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334, IADR-0349, IADR-0350, IADR-0371, IADR-0379, IADR-0383, IADR-0429, IADR-0458, IADR-0461, IADR-0533]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_xunit-v3-migration, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260822_issue-455_wolverine-shared-helper, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs, 20260904_issue-1064_backend-stack-reference-impl, 20260905_issue-1249-1250-1251_rotten-derived-values, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1397_bff-user-credential-relay-is-edge, 20260925_1499_object-storage-seaweedfs, 20261008_1799_composability-docs-wolverine-wiring, 20261010_issue-1255-1517_east-west-rest-retirement]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0195, IADR-0196, IADR-0216, IADR-0219, IADR-0229, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334, IADR-0349, IADR-0350, IADR-0371, IADR-0379, IADR-0383, IADR-0429, IADR-0458, IADR-0461, IADR-0533, IADR-0581]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_xunit-v3-migration, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260822_issue-455_wolverine-shared-helper, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs, 20260904_issue-1064_backend-stack-reference-impl, 20260905_issue-1249-1250-1251_rotten-derived-values, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1397_bff-user-credential-relay-is-edge, 20260925_1499_object-storage-seaweedfs, 20261008_1799_composability-docs-wolverine-wiring, 20261010_issue-1255-1517_east-west-rest-retirement, 20261022_actions-sha-pin-and-dependabot]
 issues: [#1799, #1499, #1397, #1062, #1064, #1393, #1093, #1094, #1179, #1196, #1249, #1251, #184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, #1255, #1517, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390, planning#490, planning#527, planning#532]
 -->
 
@@ -40,7 +40,7 @@ issues: [#1799, #1499, #1397, #1062, #1064, #1393, #1093, #1094, #1179, #1196, #
 | 区分 | 採用 | バージョン | 備考 |
 | --- | --- | --- | --- |
 | 言語（バックエンド） | C# | 13（`LangVersion 13`） | 単一情報源 [`src/Directory.Build.props`](../../src/Directory.Build.props)。Nullable/ImplicitUsings 有効 |
-| ランタイム（バックエンド） | .NET | 10（`net10.0`） | .NET 10 アップグレードの計画 ADR（計画側も .NET 10 で確定）／実装側の先行採用の判断。`global.json` は SDK 8.0.0 + `rollForward: latestMajor` |
+| ランタイム（バックエンド） | .NET | 10（`net10.0`） | .NET 10 アップグレードの計画 ADR（計画側も .NET 10 で確定）／実装側の先行採用の判断。`global.json` は SDK 8.0.100 + `rollForward: latestMajor` |
 | フレームワーク（バックエンド） | ASP.NET Core（Minimal API） | .NET 10 同梱 | アプリケーション層の標準はバックエンド標準ライブラリの計画 ADR（後述「バックエンドアプリケーション層標準」）。ORM は EF Core |
 | パッケージ管理 | Central Package Management | — | バージョンは [`src/Directory.Packages.props`](../../src/Directory.Packages.props) に集約。ソリューションは `.slnx` |
 | 言語（フロントエンド） | TypeScript | 5.6 | **pnpm workspace** ルート = `src/`（メンバの正本は [`src/pnpm-workspace.yaml`](../../src/pnpm-workspace.yaml) 自身。ユニット・共有パッケージのほか `src/` の外の**雛形**を含む。SPA 新スタック移行の決定 2）。Node は CI と揃え 22 |

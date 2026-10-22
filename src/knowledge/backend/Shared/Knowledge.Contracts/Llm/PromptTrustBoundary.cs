@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace Knowledge.Contracts.Llm;
 
-// NFR, FR-04, FR-07, FR-17, FR-18 / IADR-0580・IADR-0581（Refs GHSA-5h4q-4m2j-rjhm）: LLM へ渡すプロンプトの信頼境界。
+// NFR, FR-04, FR-07, FR-17, FR-18 / IADR-0580・IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: LLM へ渡すプロンプトの信頼境界。
 //
 // knowledge ユニットで LLM へプロンプトを送るサービス（AiAnalysisService の ask / analyze、GraphService の
 // 提案・クラスタ要約）が共有する。置き場はユニットの共有プロジェクト（本プロジェクト）であり、サービス間の

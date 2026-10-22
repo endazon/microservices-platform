@@ -110,14 +110,14 @@ public class ClusterSummaryPromptTests
         var reversed = ClusterSummaryPrompt.Seal(
             id, ConfidentialityLevels.Internal, [.. docs.Reverse()])!.Render();
 
-        // NFR / IADR-0581: 境界（表題の囲み）は封ごとの乱数なので、比べる前に伏せる。並び順の性質だけを見る。
+        // NFR / IADR-0582: 境界（表題の囲み）は封ごとの乱数なので、比べる前に伏せる。並び順の性質だけを見る。
         MaskBoundary(reversed).Should().Be(MaskBoundary(forward));
     }
 
     private static string MaskBoundary(string rendered)
         => Regex.Replace(rendered, "documents-[0-9a-f]{16}", "documents-B");
 
-    // NFR / IADR-0581（Refs GHSA-5h4q-4m2j-rjhm）: 表題は信頼しない入力として境界つきの囲みに入り、
+    // NFR / IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: 表題は信頼しない入力として境界つきの囲みに入り、
     // 囲みを閉じられず、改行で行を起こせない。決まり（データであり指示ではない）は囲みの外にある。
     [Fact]
     public void 表題は境界つきの囲みに入り囲みを閉じられない()

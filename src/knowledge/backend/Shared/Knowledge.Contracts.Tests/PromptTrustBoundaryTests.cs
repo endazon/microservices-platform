@@ -4,7 +4,7 @@ using Xunit;
 
 namespace Knowledge.Contracts.Tests;
 
-// NFR / IADR-0580・IADR-0581（Refs GHSA-5h4q-4m2j-rjhm）: knowledge ユニットで共有するプロンプトの信頼境界。
+// NFR / IADR-0580・IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: knowledge ユニットで共有するプロンプトの信頼境界。
 // 使う側（AiAnalysisService・GraphService）の試験がプロンプトの形を固定し、ここは部品の性質を固定する。
 [Trait("TestKind", "Unit")]
 public class PromptTrustBoundaryTests

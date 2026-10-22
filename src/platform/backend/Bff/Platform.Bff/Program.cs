@@ -241,7 +241,7 @@ var app = builder.Build();
 // 🔴 IADR-0433 決定 3: allowlist を読めなければここで例外になり、BFF は起動しない（fail-closed）。
 app.EnsureSecretItemCatalogLoaded();
 
-// NFR / IADR-0581（Refs GHSA-5h4q-4m2j-rjhm）: 全応答のセキュリティヘッダ。**最初に置く** —— 認証・CSRF の
+// NFR / IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: 全応答のセキュリティヘッダ。**最初に置く** —— 認証・CSRF の
 // 短絡（401 / 403）の応答にも付ける。
 app.UseMiddleware<BffResponseSecurityHeadersMiddleware>();
 

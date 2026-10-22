@@ -39,7 +39,7 @@ public sealed class ClusterSummaryPrompt
     // 🔴 **区分内の構成員だけが入る。** 件数も区分外については何も表さない。
     public IReadOnlyList<ClusterMemberDocument> Members { get; }
 
-    // NFR / IADR-0581（Refs GHSA-5h4q-4m2j-rjhm）: 表題（取り込み文書由来＝信頼しない入力）を囲む境界。
+    // NFR / IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: 表題（取り込み文書由来＝信頼しない入力）を囲む境界。
     // 封ごとに 1 つ作る（同じ封の Render は同じ本文を返す）。
     private readonly string _boundary;
 
@@ -103,7 +103,7 @@ public sealed class ClusterSummaryPrompt
         sb.AppendLine($"- 機密区分: {Confidentiality}");
         sb.AppendLine("- 与えられるのは**表題のみ**である（本文は渡さない）。");
         sb.AppendLine();
-        // NFR / IADR-0581: 表題は文書の側の文字列なので、境界つきの囲みに入れ、1 行に畳んで無害化する。
+        // NFR / IADR-0582: 表題は文書の側の文字列なので、境界つきの囲みに入れ、1 行に畳んで無害化する。
         sb.AppendLine(PromptTrustBoundary.Rules(_boundary, includesUserInput: false));
         sb.AppendLine();
         sb.AppendLine("## 文書一覧");

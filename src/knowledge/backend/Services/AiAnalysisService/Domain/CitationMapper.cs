@@ -1,5 +1,5 @@
-using Knowledge.Contracts.Dtos;
 using System.Text;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Llm;
 
 namespace AiAnalysisService.Domain;

@@ -80,7 +80,7 @@ jobs:
       actions: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # NFR, IADR-0232 (#1581, #1588): checkout 自身の資格情報（extraheader）を .git/config へ残さない。
           # レビューは push せず（contents: read）、`git fetch` は public リポジトリなので認証なしで通る。
@@ -102,7 +102,7 @@ jobs:
       # 検証(build/test)を @claude セッション内で実走するための SDK 準備。
       # 技術スタックに合わせて書き換える（既定は C#/.NET 10。ci.example.yml と揃える。
       # 他スタックは actions/setup-node / actions/setup-python 等に置き換える）。
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.x"
 

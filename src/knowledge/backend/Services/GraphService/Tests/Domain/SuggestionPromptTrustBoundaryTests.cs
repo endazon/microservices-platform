@@ -5,7 +5,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Tests.Domain;
 
-// NFR, FR-18 / IADR-0581（Refs GHSA-5h4q-4m2j-rjhm）: AI 提案の送信本文で、文書の表題（信頼しない入力）は
+// NFR, FR-18 / IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: AI 提案の送信本文で、文書の表題（信頼しない入力）は
 // 境界つきの囲みに入り、囲みを閉じられず、改行で行を起こせない。決まりは囲みの外（前）にある。
 [Trait("TestKind", "Unit")]
 public class SuggestionPromptTrustBoundaryTests

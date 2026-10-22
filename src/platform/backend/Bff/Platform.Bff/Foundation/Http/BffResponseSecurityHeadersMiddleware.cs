@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace Platform.Bff.Foundation.Http;
 
-// NFR / IADR-0581（Refs GHSA-5h4q-4m2j-rjhm）: BFF の全応答に付ける応答ヘッダ（多層防御）。
+// NFR / IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: BFF の全応答に付ける応答ヘッダ（多層防御）。
 //
 // BFF の応答は SPA が fetch で読む API・画像（図・CAPTCHA）・リダイレクト（ログイン・ログアウトの往復）だけであり、
 // **文書として描かれることを前提にした応答は無い**（HTML を返す口は 0 件）。よって、応答がブラウザに文書として

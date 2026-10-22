@@ -4,7 +4,7 @@ using Platform.Bff.Foundation.Http;
 
 namespace Platform.Bff.Tests;
 
-// NFR / IADR-0581（Refs GHSA-5h4q-4m2j-rjhm）: BFF の全応答にセキュリティヘッダが付く。
+// NFR / IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: BFF の全応答にセキュリティヘッダが付く。
 // 成功・認証の短絡（401）・図画像（後段が返した Content-Type をそのまま中継する口）・未知のパス（404）の
 // どれにも付くことを固定する（どこかの口だけに付ける実装を緑にしない）。
 public class BffResponseSecurityHeadersTests : IClassFixture<BffTestFactory>

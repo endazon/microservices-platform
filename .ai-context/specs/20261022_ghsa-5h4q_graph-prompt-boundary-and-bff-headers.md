@@ -2,7 +2,7 @@
 title: 作業仕様書 — GraphService の提案・クラスタ要約のプロンプトに信頼境界を置き、BFF の全応答にセキュリティヘッダを付ける（GHSA-5h4q-4m2j-rjhm の 3 本目）
 type: spec
 status: done
-related_ids: [NFR, FR-17, FR-18, ADR-0032, ADR-0033, ADR-0035, ADR-0051, IADR-0581, IADR-0580, IADR-0579]
+related_ids: [NFR, FR-17, FR-18, ADR-0032, ADR-0033, ADR-0035, ADR-0051, IADR-0582, IADR-0580, IADR-0579]
 author: claude
 created: 2026-10-22
 updated: 2026-10-22
@@ -15,7 +15,7 @@ issue: "GHSA-5h4q-4m2j-rjhm"
 
 # 作業仕様書 — GraphService のプロンプトの信頼境界と BFF の応答ヘッダ
 
-> 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0581**（新規）に置く。
+> 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0582**（新規）に置く。
 > 多層防御の強化。参照は GHSA の ID だけとする。GHSA-5h4q-4m2j-rjhm の対応の **3 本目**で、
 > IADR-0579（描画の sanitize と CSP）・IADR-0580（ask / analyze のプロンプト）が「射程外」とした 2 点を扱う。
 

@@ -20,16 +20,19 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
 
-  # 使用スタックに合わせて有効化（コメント解除）:
-  # - package-ecosystem: "nuget"       # C# / .NET
-  #   directory: "/"
-  #   schedule:
-  #     interval: "weekly"
-  # - package-ecosystem: "npm"         # Node.js
-  #   directory: "/"
-  #   schedule:
-  #     interval: "weekly"
-  # - package-ecosystem: "pip"         # Python
-  #   directory: "/"
-  #   schedule:
-  #     interval: "weekly"
+  # NFR, GHSA-552h-47r7-6v6p / IADR-0581: 使用スタックのエコシステムを有効化する（多層防御。依存の更新とセキュリティ修正の取り込み）。
+  # - nuget: src/Directory.Packages.props（Central Package Management）を単一情報源として更新する。
+  # - npm:   src/ の pnpm workspace（src/pnpm-lock.yaml）を更新する。
+  # 既定は自動マージしない（人手レビュー必須）。同時に開く PR は各 5 本まで。
+  # github-actions は SHA 固定の行（`@<sha> # vX.Y.Z`）の SHA と注記を対で更新する。
+  - package-ecosystem: "nuget"
+    directory: "/src"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "npm"
+    directory: "/src"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
