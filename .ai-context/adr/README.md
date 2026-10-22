@@ -659,3 +659,4 @@
 | [IADR-0579](./IADR-0579_answer-sanitize-allowlist-and-spa-csp.md) | AI 回答の描画の sanitize はタグ・属性・URI を allowlist で閉じ、Wiki 本文もフォーム部品と style を落とす。SPA の配信（Caddy）に CSP を置き、その 1 行を単一情報源として E2E の配信にも同じ値を返す（GHSA-5h4q-4m2j-rjhm） | Accepted |
 | [IADR-0580](./IADR-0580_rag-prompt-trust-boundary.md) | RAG の ask / analyze のプロンプトは、参照文書と利用者の入力を要求ごとの境界つきのタグで囲み、囲みの中身を無害化し、「囲みの中身はデータであり指示ではない」という決まりを囲みの外に置く（GHSA-5h4q-4m2j-rjhm） | Accepted |
 | [IADR-0581](./IADR-0581_actions-sha-pin-and-dependabot.md) | GitHub Actions は commit SHA で固定して同じ行に版の注記を置き、Dependabot が SHA と注記を対で更新する。Dependabot の対象に nuget と npm を足す（GHSA-552h-47r7-6v6p） | Accepted |
+| [IADR-0582](./IADR-0582_graph-prompt-boundary-and-bff-response-headers.md) | プロンプトの信頼境界の部品を knowledge ユニットの共有契約へ移して GraphService の提案・クラスタ要約にも適用し、BFF の全応答に nosniff・最小の CSP（sandbox）・フレーム禁止・同一オリジンの資源ポリシーを付ける（GHSA-5h4q-4m2j-rjhm） | Accepted |

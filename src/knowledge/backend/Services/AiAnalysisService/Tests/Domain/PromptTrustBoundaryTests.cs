@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using AiAnalysisService.Domain;
+using Knowledge.Contracts.Llm;
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 
