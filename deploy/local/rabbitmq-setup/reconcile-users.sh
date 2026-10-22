@@ -37,12 +37,25 @@ esac
 # 宣言のユーザー名（コメント・空行を除く 1 列目）。
 users() { grep -v '^[[:space:]]*#' "$USERS_FILE" | awk 'NF >= 1 { print $1 }'; }
 
-rmqctl() { kubectl -n "$INFRA_NS" exec -i deploy/rabbitmq -- rabbitmqctl -q "$@"; }
+# 1 回の呼び出しの上限（秒）。届かない・応答しないノードで起動器ごと止まらないよう、上限で切って名指して止める。
+CTL_TIMEOUT="${RABBITMQ_CTL_TIMEOUT:-60}"
+rmqctl() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$CTL_TIMEOUT" kubectl -n "$INFRA_NS" exec -i deploy/rabbitmq -- rabbitmqctl -q "$@"
+  else
+    kubectl -n "$INFRA_NS" exec -i deploy/rabbitmq -- rabbitmqctl -q "$@"
+  fi
+}
 
 # Secret のキーの値（base64 のまま。キーが無ければ空）。
 secret_b64() {
   kubectl -n "$INFRA_NS" get secret "$SECRET" -o "go-template={{with index .data \"$1\"}}{{.}}{{end}}" 2>/dev/null
 }
+
+# rabbitmqctl へ渡すパスワード（標準入力の 1 行）。🔴 **末尾の改行を必ず付ける。** rabbitmqctl はパスワードを
+#   「1 行」（改行か EOF まで）読み、前後の空白を落とす。改行が無いと EOF を待つが、kubectl exec -i は手元の EOF を
+#   コンテナの標準入力の終わりとして届けないことがあり、そのとき rabbitmqctl は読み終わらずに止まる（統合スタックの実測）。
+password_line() { secret_b64 "$1" | base64 -d; printf '\n'; }
 
 # ESO の同期を待つ（宣言の全ユーザーのキーが揃うまで）。
 deadline=$((SECONDS + TIMEOUT))
@@ -68,9 +81,9 @@ fail=""
 for u in $(users); do
   if [ "$MODE" = "apply" ]; then
     if printf '%s\n' "$existing" | grep -Fxq -- "$u"; then
-      secret_b64 "$u" | base64 -d | rmqctl change_password "$u" >/dev/null
+      password_line "$u" | rmqctl change_password "$u" >/dev/null
     else
-      secret_b64 "$u" | base64 -d | rmqctl add_user "$u" >/dev/null
+      password_line "$u" | rmqctl add_user "$u" >/dev/null
     fi
     rmqctl set_permissions -p "$VHOST" "$u" '.*' '.*' '.*' >/dev/null
     rmqctl set_user_tags "$u" >/dev/null
@@ -78,7 +91,7 @@ for u in $(users); do
     fail="${fail} ${u}(無い)"
     continue
   fi
-  if ! secret_b64 "$u" | base64 -d | rmqctl authenticate_user "$u" >/dev/null 2>&1; then
+  if ! password_line "$u" | rmqctl authenticate_user "$u" >/dev/null 2>&1; then
     fail="${fail} ${u}(認証できない)"
     continue
   fi

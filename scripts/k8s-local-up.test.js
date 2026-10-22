@@ -2067,6 +2067,44 @@ ok('既定 (IADR-0577): 既存の値は保ち、無いユーザーにだけ乱�
   }
 });
 
+// NFR-18, IADR-0577: 合わせ（reconcile-users.sh）は rabbitmqctl へパスワードを「改行で終わる 1 行」で渡す。
+//   rabbitmqctl は 1 行（改行か EOF まで）を読む。改行が無いと EOF を待ち、kubectl exec -i 越しでは読み終わらずに止まり得る
+//   （統合スタックで起動器が [5/7] で止まった実測）。模型は改行で終わらない入力を「止まった」として 124 で返す。
+ok('IADR-0577: reconcile-users.sh はパスワードを改行で終わる 1 行で渡し（値そのものは変えない）、1 回の呼び出しに上限を持つ', () => {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'reconcile-0577-'));
+  const bin = path.join(H, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'kubectl'), [
+    '#!/usr/bin/env bash',
+    'echo "kubectl $*" >> "$STUB_H/log"',
+    'case "$*" in',
+    '  *"get secret rabbitmq-users"*) k="$(printf "%s" "$*" | sed -n \'s/.*index \\.data "\\([^"]*\\)".*/\\1/p\')"; printf "v-%s" "$k" | base64 -w0; exit 0;;',
+    '  *"rabbitmqctl -q list_users"*) printf "[]"; exit 0;;',
+    '  *"rabbitmqctl -q add_user "*|*"rabbitmqctl -q change_password "*|*"rabbitmqctl -q authenticate_user "*)',
+    '    in="$(cat; printf x)"; in="${in%x}"',
+    '    case "$in" in *$\'\\n\') ;; *) echo "stdin-not-line ${*: -1}" >> "$STUB_H/log"; exit 124;; esac',
+    '    [ "${in%$\'\\n\'}" = "v-${*: -1}" ] || { echo "stdin-value-changed ${*: -1}" >> "$STUB_H/log"; exit 1; }',
+    '    exit 0;;',
+    'esac',
+    'exit 0',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  fs.writeFileSync(path.join(H, 'users.txt'), '# 宣言\nmsp-document x y msp/rabbitmq-users\nast-audit x y ai-stock-trading/rabbitmq-users\n');
+  fs.writeFileSync(path.join(H, 'log'), '');
+  const script = path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/reconcile-users.sh');
+  const r = spawnSync('bash', [script], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, STUB_H: H,
+    RABBITMQ_USERS_FILE: path.join(H, 'users.txt'), RABBITMQ_USERS_TIMEOUT: '1' } });
+  const log = fs.readFileSync(path.join(H, 'log'), 'utf8');
+  fs.rmSync(H, { recursive: true, force: true });
+  assert.ok(!/stdin-not-line/.test(log), `パスワードを改行で終わらせずに渡した（kubectl exec -i 越しで止まり得る）:\n${log}`);
+  assert.ok(!/stdin-value-changed/.test(log), `渡した値が Secret の値と違う:\n${log}`);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(/ブローカのサービスごとのユーザー: 2 件（apply/.test(r.stdout), r.stdout);
+  assert.ok(!/v-msp-document|v-ast-audit/.test(`${r.stdout}${r.stderr}`), '値が出力に出た');
+  const src = fs.readFileSync(script, 'utf8');
+  assert.ok(/timeout "\$CTL_TIMEOUT" kubectl -n "\$INFRA_NS" exec -i deploy\/rabbitmq/.test(src), '1 回の呼び出しに上限が無い（止まると起動器ごと止まる）');
+});
+
 // NFR-18, IADR-0577: 既定のユーザーの無効化（deploy/local/rabbitmq-setup/disable-default-user.sh）。
 //   ブローカの状態（ユーザー・接続・Secret）を持つ模型の kubectl で、「確かめてからだけ消す」と「印を先に置く」を試す。
 //   模型: $H/users（在るユーザー）・$H/conns（接続のユーザー）・$H/default（Secret rabbitmq の username）・
