@@ -65,11 +65,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
       - name: Check commit messages
@@ -90,11 +90,11 @@ jobs:
   scripts-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
       - name: Run scripts unit tests
@@ -152,13 +152,13 @@ jobs:
     env:
       PIPELINE_CONFIG: "deploy/helm/microservices-platform/files/pipeline.json"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # check-action-versions の --compare-with-ref が統合ブランチ時点のワークフローを
           # 読むため、履歴が要る（shallow だと当該検査が warn で skip される）。
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
 
@@ -662,7 +662,7 @@ jobs:
   static-checks-units:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
@@ -675,11 +675,11 @@ jobs:
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
-      - uses: azure/setup-helm@v5
-      - uses: azure/setup-kubectl@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
       # NFR, IADR-0240, Issue #783（#442 子 5）: kubeconform を導入する（chart / overlay の
       # スキーマ突合に要る）。latest には追従しない —— 版を pin し、公式リリースの CHECKSUMS と
       # 突合してから導入する（本リポジトリは latest 追従を問題として扱っている。
@@ -892,7 +892,7 @@ jobs:
       units: ${{ steps.discover.outputs.units }}
       legs: ${{ steps.discover.outputs.legs }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Discover backend units from src/*/backend/backend.slnx
@@ -930,7 +930,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.discover-units.outputs.legs) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
@@ -958,13 +958,13 @@ jobs:
       # 🔴 NFR, #1686（2026-10-02 再裁定）: シャードの脚は**復元だけ**する（actions/cache/restore）。脚は閉包の
       # パッケージしか restore しないので、同じキーで保存すると「キーは当たるのに中身が足りない」キャッシュを
       # 後続の run へ残す。保存は backend.slnx 全体を restore する backend-verify-build / backend-format が持つ。
-      - uses: actions/cache/restore@v6
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
       # --- スタック別に書き換え（例: C#/.NET） ---
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.x"
       # 🔴 Testcontainers（実 RabbitMQ / Postgres / SeaweedFS）を起動するテストは PR から外す
@@ -1033,7 +1033,7 @@ jobs:
       # NFR, #1686: artifact 名は脚ごとに一意（key）。シャードは試験プロジェクトが重ならないので、集約ジョブの
       # merge-multiple で展開しても Cobertura のパス（<試験プロジェクト>/TestResults/<guid>/）は衝突しない。
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-${{ matrix.key }}
           path: "**/coverage.cobertura.xml"
@@ -1056,7 +1056,7 @@ jobs:
       matrix:
         unit: ${{ fromJSON(needs.discover-units.outputs.units) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # backend-build と同じ取得（platform の Platform.Bff が AST の Bff.Endpoints を ProjectReference する合成点のため）。
@@ -1066,12 +1066,12 @@ jobs:
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
       # 全体を restore するので、キャッシュの保存はこのジョブ（と backend-format）が持つ（脚は復元だけ）。
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.x"
       - name: Restore and build the whole backend.slnx (${{ matrix.unit }})
@@ -1115,7 +1115,7 @@ jobs:
       units: ${{ steps.filter.outputs.units }}
     steps:
       # fetch-depth: 0 は origin/<base>...HEAD の差分解決に要る（images.yml の changes と同じ）。
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -1184,7 +1184,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # integration.yml と同じ取得（src/* の submodule のみ・非再帰。public ユニットはトークン不要。IADR-0065）。
@@ -1196,12 +1196,12 @@ jobs:
       # 取得の後に置く（hashFiles('**/*.csproj') に submodule の csproj が入る）。submodule は CPM を自前の
       # Directory.Packages.props で宣言するので、それもキーへ入れる（入れないと版を上げても同じキーに当たり、
       # 新しいパッケージを毎回取り直す）。
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', 'src/*/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.x"
       # 🔴 リポジトリ直下から呼ぶ（integration.yml と同じ）。SDK は作業ディレクトリから global.json を探すので、
@@ -1281,11 +1281,11 @@ jobs:
               ;;
           esac
           echo "✓ 全ユニットの restore / build / 単体テストが成立した（統合テストは integration.yml が回す）。"
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Download coverage reports from all units
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: coverage-*
           merge-multiple: true
@@ -1338,7 +1338,7 @@ jobs:
       matrix:
         unit: ${{ fromJSON(needs.discover-units.outputs.units) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
@@ -1353,13 +1353,13 @@ jobs:
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
       # dotnet format は内部で MSBuild ワークスペースをロードするため、NuGet キャッシュが効く。
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
       # --- スタック別に書き換え（例: C#/.NET） ---
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.x"
       - name: Format check (${{ matrix.unit }})
@@ -1444,16 +1444,16 @@ jobs:
   template-backend-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする（backend-build と同じキー）。
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.x"
       - name: Stage, build and test unit templates (as placed under src/)

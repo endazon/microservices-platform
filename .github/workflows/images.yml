@@ -37,7 +37,7 @@ jobs:
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
       # fetch-depth: 0 は origin/<base>...HEAD の差分解決に必須（ci.yml の commit-messages と同方針）。
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -101,7 +101,7 @@ jobs:
       matrix:
         service: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得してからビルドする。frontend は
@@ -131,7 +131,7 @@ jobs:
     runs-on: ubuntu-latest
     name: build-local (platform-backup)
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build image

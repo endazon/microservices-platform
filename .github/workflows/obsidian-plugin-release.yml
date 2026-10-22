@@ -46,7 +46,7 @@ jobs:
       # 🔴 タグの push と手動実行でしか走らないので、PR の CI では確かめられない（従前と同じ権限をジョブへ移しただけ）。
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # workflow_dispatch では入力のタグを、タグ push では push されたタグそのものを取る。
@@ -54,11 +54,11 @@ jobs:
       # 🔴 **submodule は取らない。** プラグインは src/ai-stock-trading を 1 行も参照しない
       # （frontend.yml が取るのは SPA が @ai-stock-trading を合成するからで、ここには当たらない）。
       # 取らないことで、可変ユニットの取得失敗が配布を止めない。
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           # 版の単一情報源は src/package.json の packageManager（frontend.yml と同じ理由）。
           package_json_file: src/package.json
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: pnpm
@@ -90,7 +90,7 @@ jobs:
       # 資産は Obsidian が読む 2 つだけである（styles.css は持たない。IADR-0338 決定 3）。
       # cli.mjs は実測・検証用のハーネスであって配布物ではないので**出さない**。
       - name: Create / update GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           name: Obsidian プラグイン ${{ inputs.tag || github.ref_name }}

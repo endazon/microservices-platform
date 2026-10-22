@@ -3,14 +3,14 @@ title: how-to — ローカル開発フロー
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-10-09
+updated: 2026-10-22
 author: claude
 ---
 <!-- trace:
 ids: [NFR-18, FR-13, FR-14, UC-07]
 adrs: [ADR-0131, ADR-0032, ADR-0048, ADR-0106]
-iadrs: [IADR-0524, IADR-0522, IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0273, IADR-0331, IADR-0429, IADR-0461]
-specs: [20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20260831_issue-1092_planning-submodule-residual-refs, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1499_object-storage-seaweedfs]
+iadrs: [IADR-0524, IADR-0522, IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0273, IADR-0331, IADR-0429, IADR-0461, IADR-0581]
+specs: [20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20260831_issue-1092_planning-submodule-residual-refs, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1499_object-storage-seaweedfs, 20261022_actions-sha-pin-and-dependabot]
 issues: [#1859, #1839, #1092, #1393, #1499, planning#750]
 -->
 
@@ -24,7 +24,7 @@ issues: [#1859, #1839, #1092, #1393, #1499, planning#750]
 
 | ツール | バージョン | 備考 |
 | --- | --- | --- |
-| .NET SDK | 10.0.x | [`global.json`](../../global.json) は `8.0.0` + `rollForward: latestMajor`（10.x でビルド可）。ターゲットは [`src/Directory.Build.props`](../../src/Directory.Build.props) で `net10.0` |
+| .NET SDK | 10.0.x | [`global.json`](../../global.json) は `8.0.100` + `rollForward: latestMajor`（10.x でビルド可）。ターゲットは [`src/Directory.Build.props`](../../src/Directory.Build.props) で `net10.0` |
 | Node.js | 22 | フロントエンド CI（[`frontend.yml`](../../.github/workflows/frontend.yml)）と揃える |
 | Docker / Docker Compose | v2 相当 | インフラ・全サービスのローカル起動 |
 | git | — | ユニット submodule（`src/ai-stock-trading`）の取得を含む |
