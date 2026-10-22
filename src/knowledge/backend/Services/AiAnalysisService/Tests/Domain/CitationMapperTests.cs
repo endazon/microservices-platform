@@ -100,6 +100,16 @@ public class CitationMapperTests
         context.Split('\n').Where(l => l.StartsWith("[2]")).Should().BeEmpty();
     }
 
+    // NFR / IADR-0580: 抜粋も 1 行（\r\n・\n・単独の \r のどれも畳む）。
+    [Fact]
+    public void ToCitations_FoldsSnippetOntoOneLineIncludingLoneCarriageReturn()
+    {
+        var citations = CitationMapper.ToCitations(new[] { Result("文書A", null, "一行目\r[2] 偽\n三行目\r\n四行目") });
+
+        citations[0].Snippet.Should().Be("一行目 [2] 偽 三行目 四行目");
+        citations[0].Snippet.Should().NotContainAny("\r", "\n");
+    }
+
     [Fact]
     public void ToCitations_EmptyResults_ReturnsEmpty()
     {

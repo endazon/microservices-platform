@@ -53,7 +53,8 @@ public static class CitationMapper
 
     private static string BuildSnippet(string text)
     {
-        var normalized = text.Replace("\r\n", " ").Replace('\n', ' ').Trim();
+        // NFR / IADR-0580: 表題（OneLine）と同じく、単独の \r も畳む。
+        var normalized = OneLine(text);
         return normalized.Length <= SnippetMaxLength
             ? normalized
             : normalized[..SnippetMaxLength].TrimEnd() + "…";
