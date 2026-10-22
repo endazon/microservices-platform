@@ -1,3 +1,5 @@
+# 🔴 NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 本ファイルは edge の kustomization に含めない。scripts/lib/admin-edge.sh が
+#   ADMIN_EDGE=1（明示の opt-in）のときだけ当て、それ以外では消す。既定の管理者の入り方は kubectl port-forward（edge/README.md）。
 # IADR-0091 (#356): platform-infra の管理ツールを 50000（Traefik 追加 entrypoint admin）へ
 # ホスト名ベースで集約する。各ツールはサブドメインのルートで配信する（パスベースは Vault UI / Qdrant
 # dashboard がサブパス非対応のため採らない）。これらのツールは各 opt-in（OBSERVABILITY / VAULT / HEADLAMP）

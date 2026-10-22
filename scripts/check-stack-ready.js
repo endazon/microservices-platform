@@ -46,6 +46,10 @@
  *   （`/realms/<realm>/account/`・ログイン画面）は **2xx か 3xx**（届く）であること。経路は G4 と同じく走査した realm から組む。
  *   🔴 **拒否の宣言（Traefik の中間処理・Istio の先頭の route）は、読めないと黙って無効になり得る**ので、宣言の静的検査では足りず、
  *   エッジ越しに実測する。測れない（curl の失敗）は緑にしない。
+ * - **G4c 管理ツールの集約入口は既定で閉じている**（[IADR-0586] / GHSA-j4qv-2w99-xg5p）: admin(50000) へ管理ツールの host で
+ *   届けた要求が **403 か 404**（拒否・経路なし）であること。host は宣言（`deploy/local/edge-istio/virtualservice-admin.yaml`）から
+ *   走査する。503（経路は在るが後段が居ない）・2xx / 3xx は「経路が置かれている」として落とす。測れない（curl の失敗）は緑にしない。
+ *   `ADMIN_EDGE=1`（明示の opt-in で経路を置いたクラスタ）を宣言したときだけ notice で飛ばす。
  * - **G5 admin entrypoint**: **どちらかのエッジ**の Service に `50000` の port が在ること
  *   （既定は `kube-system/traefik` の `admin=50000`。`ISTIO=1` では `istio-system/istio-ingressgateway`
  *   の `https-admin=50000`。#782 / [IADR-0317] で Traefik は Service ごと降りるため、
@@ -1522,6 +1526,62 @@ function edgeAdminSurfaceFailures(hostnameUrl, realms, statusOf) {
   return evaluateEdgeAdminSurface(edgeAdminSurfaceProbes(realms).map((p) => ({ ...p, status: statusOf(`${base}${p.path}`) })));
 }
 
+/** G4c（IADR-0586）: 管理ツールの host を宣言から走査する（列挙を書かない。Traefik の Ingress と同じ 6 host であることは k8s-local-up.test.js が固定する）。 */
+const ADMIN_VS_FILE = path.join('deploy', 'local', 'edge-istio', 'virtualservice-admin.yaml');
+function discoverAdminHosts(repoRoot = REPO_ROOT) {
+  let src = '';
+  try {
+    src = fs.readFileSync(path.join(repoRoot, ADMIN_VS_FILE), 'utf8');
+  } catch {
+    return [];
+  }
+  const hosts = [];
+  for (const m of src.matchAll(/^\s*hosts:\s*\[([^\]]*)\]/gm)) {
+    for (const h of m[1].split(',').map((x) => x.trim().replace(/^["']|["']$/g, '')).filter(Boolean)) {
+      if (!hosts.includes(h)) hosts.push(h);
+    }
+  }
+  return hosts;
+}
+
+/**
+ * G4c（IADR-0586）: 管理ツールの集約入口は既定で閉じている。**純関数**。
+ * @param {Array<{host: string, status: number}>} results status は HTTP の状態（測れなければ 0）
+ */
+function evaluateAdminEdgeClosed(results) {
+  const failures = [];
+  if (results.length === 0) {
+    failures.push(`[G4c] 管理ツールの host を 1 件も測っていない（${ADMIN_VS_FILE} の走査が壊れている）。0 件を緑にしない。`);
+  }
+  for (const r of results) {
+    if (!r.status) {
+      failures.push(`[G4c] https://${r.host}:${ADMIN_PORT}/ を測れなかった（curl の失敗）。測れないを緑にしない。`);
+    } else if (r.status !== 403 && r.status !== 404) {
+      failures.push(
+        `[G4c] admin(${ADMIN_PORT}) 越しに ${r.host} が ${r.status} を返した。管理ツールの経路は既定で置かない（403 / 404）。` +
+          ` 置くのは ADMIN_EDGE=1 の明示の opt-in だけである（[IADR-0586]）。`,
+      );
+    }
+  }
+  return failures;
+}
+
+/**
+ * G4c（IADR-0586）の実行部。ADMIN_EDGE=1 を宣言したときだけ飛ばす（notice）。
+ * @param {string[]} hosts 走査した管理ツールの host
+ * @param {string|undefined} adminEdge 環境変数 ADMIN_EDGE の値
+ * @param {(url: string) => number} statusOf HTTP の状態（測れなければ 0）
+ */
+function adminEdgeClosedCheck(hosts, adminEdge, statusOf) {
+  if (adminEdge === '1') {
+    return { failures: [], notices: ['[check-stack-ready] ADMIN_EDGE=1 なので G4c（管理ツールの集約入口が閉じていること）は飛ばす。'] };
+  }
+  return {
+    failures: evaluateAdminEdgeClosed(hosts.map((host) => ({ host, status: statusOf(`https://${host}:${ADMIN_PORT}/`) }))),
+    notices: [],
+  };
+}
+
 /** エッジ越しの HTTP の状態だけを測る（本文は読まない。TLS はローカル CA なので検証しない＝fetchDiscovery と同じ）。測れなければ 0。 */
 function fetchStatus(url) {
   const r = spawnSync('curl', ['-sk', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '30', url], { encoding: 'utf8' });
@@ -1588,6 +1648,13 @@ function check({ repoRoot = REPO_ROOT } = {}) {
       istioSvc.ok ? istioSvc.value : null,
     ),
   );
+
+  // G4c（IADR-0586）: 管理ツールの集約入口（admin(50000)）は既定で閉じている。
+  {
+    const g4c = adminEdgeClosedCheck(discoverAdminHosts(repoRoot), process.env.ADMIN_EDGE, fetchStatus);
+    failures.push(...g4c.failures);
+    notices.push(...g4c.notices);
+  }
 
   // G4
   const realms = discoverRealms(repoRoot);
@@ -1964,6 +2031,30 @@ function selfTest() {
     const ok0 = edgeAdminSurfaceFailures('https://keycloak.localhost/', ['platform'], (u) => { seen.push(u); return /\/(admin|realms\/master)/.test(new URL(u).pathname) ? 403 : 200; });
     assert.deepStrictEqual(ok0, []);
     assert.ok(seen.includes('https://keycloak.localhost/admin/') && seen.includes('https://keycloak.localhost/realms/platform/account/'), `組んだ URL が違う: ${seen.join(', ')}`);
+  });
+
+  ok('G4c（IADR-0586）: 管理ツールの host を宣言から走査し、403 / 404 なら通り、経路が置かれている・測れないなら名指す', () => {
+    const hosts = discoverAdminHosts();
+    assert.deepStrictEqual([...hosts].sort(), ['argocd.localhost', 'grafana.localhost', 'headlamp.localhost', 'qdrant.localhost', 'vault.localhost', 'wiki.localhost']);
+    const seen = [];
+    const closed = adminEdgeClosedCheck(hosts, undefined, (u) => { seen.push(u); return 403; });
+    assert.deepStrictEqual(closed.failures, []);
+    assert.ok(seen.some((u) => u === 'https://grafana.localhost:50000/'), `組んだ URL が違う: ${seen.join(', ')}`);
+    assert.deepStrictEqual(adminEdgeClosedCheck(hosts, '', () => 404).failures, []);
+    // 陰性対照: 経路が置かれている（後段なしの 503・ログイン画面の 302・200）／測れない（0）／0 件
+    for (const st of [503, 302, 200]) {
+      const f = adminEdgeClosedCheck(hosts, '0', (u) => (new URL(u).hostname === 'qdrant.localhost' ? st : 403)).failures;
+      assert.strictEqual(f.length, 1, `${st} を落とさない`);
+      assert.ok(f[0].includes('qdrant.localhost が ' + st), f[0]);
+    }
+    assert.ok(adminEdgeClosedCheck(hosts, undefined, () => 0).failures.every((f) => f.includes('測れなかった')));
+    assert.strictEqual(evaluateAdminEdgeClosed([]).length, 1, '0 件を緑にした');
+    // opt-in を宣言したときだけ飛ばし、測りに行かない
+    const skipped = adminEdgeClosedCheck(hosts, '1', () => { throw new Error('測りに行った'); });
+    assert.deepStrictEqual(skipped.failures, []);
+    assert.strictEqual(skipped.notices.length, 1);
+    // 走査が壊れたら 0 件（＝失敗）になる
+    assert.deepStrictEqual(discoverAdminHosts(path.join(REPO_ROOT, 'no-such-dir')), []);
   });
 
   ok('G4: issuer の不一致は失敗になる（部分一致では通さない）', () => {
@@ -2552,6 +2643,9 @@ module.exports = {
   evaluateEdgeAdminSurface,
   edgeAdminSurfaceProbes,
   edgeAdminSurfaceFailures,
+  discoverAdminHosts,
+  evaluateAdminEdgeClosed,
+  adminEdgeClosedCheck,
   evaluatePodDnsOutput,
   evaluateWikiJs,
   wikiJsGraphql, // #1793: 引数に API キーを載せないことを試験が実走で確かめる

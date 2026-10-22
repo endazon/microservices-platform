@@ -4,6 +4,7 @@
 #   bash scripts/istio-edge-up.sh --live              # PERMISSIVE のまま入口だけ移す
 #   ISTIO_MTLS_MODE=STRICT bash scripts/istio-edge-up.sh --live   # 併せて mTLS を STRICT へ
 #   RESET_FLOOR=0 bash scripts/istio-edge-up.sh --live            # リセット申請の床を外す（既定は 1＝入れる。#1500）
+#   ADMIN_EDGE=1 bash scripts/istio-edge-up.sh --live             # 管理ツールの経路を 50000 に置く（既定は置かない。IADR-0586）
 #                                                          # 🔴 検証で床の有無を比べる用途に限る。本番の退路に使わない（#1543）
 #
 # 前提（満たしていなければ非 0 で落ちる）:
@@ -33,6 +34,12 @@ case "$RESET_FLOOR" in
   0|1) ;;
   *) echo "ERROR: RESET_FLOOR は 0（床を外す）か 1（床を入れる。既定）のどちらかです: '${RESET_FLOOR}'" >&2; exit 1 ;;
 esac
+
+# NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの経路（msp-admin-edge・50000）は ADMIN_EDGE=1 のときだけ置く。
+#   0 / 1 / 未指定 以外は入口に触る前に落とす（RESET_FLOOR と同じ理由）。
+# shellcheck source=scripts/lib/admin-edge.sh
+. "$(dirname "$0")/lib/admin-edge.sh" || exit 3
+admin_edge_validate || exit 1
 
 MSP_NS="${MSP_NS:-microservices-platform}"
 # NFR, IADR-0547 (#1858): 版は istiod の values の内側のイメージ（proxyv2 の tag@digest。gateway は注入で入る）と対で決まる。
@@ -104,6 +111,8 @@ else
   echo "    🔴 検証で床の有無を比べる用途に限る。本番の退路に使わない（器が落ちたときは 503 のまま器を戻し、利用者は管理者の一時パスワード発行で復旧する）" >&2
   kubectl apply -k deploy/local/edge-istio
 fi
+# NFR-18, IADR-0586: 管理ツール 6 host の経路は overlay に含めない（既定は msp-admin-deny の 403 だけ）。ADMIN_EDGE=1 なら置き、それ以外は消す。
+admin_edge_istio
 # import 先の追加は Corefile 自体の変更ではないため reload プラグインが拾わない（IADR-0227 と同じ）。
 kubectl -n kube-system rollout restart deploy/coredns
 kubectl -n kube-system rollout status deploy/coredns --timeout=120s

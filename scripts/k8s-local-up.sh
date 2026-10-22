@@ -24,6 +24,7 @@
 #   SESSION_STORE_PASSWORD（#1839。セッションストア Valkey の認証。未指定なら既存の Secret の値、無ければ初回だけ乱数で作る）
 # 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
 #   使い捨てスタックでだけ PERSIST=0 で外す。
+# 管理ツールの集約入口（LOCALEDGE=1 の admin(50000)）の経路は **既定で置かない**（IADR-0586）。置くときだけ ADMIN_EDGE=1。
 # 永続化と一緒に、Postgres / Vault の日次バックアップ CronJob（age 暗号化・クラスタ外 2 か所。IADR-0471 / #1560）も入る。
 #   受取人（age の公開鍵）は BACKUP_AGE_RECIPIENTS_FILE=<ファイル> を与えたときだけ ConfigMap にする（既定の再実行で上書きしない）。
 # リセット申請の床（SC-15）は **既定オン**（ADR-0097 決定 2 / #1500）。器は infra と一緒に必ず立ち、
@@ -65,6 +66,12 @@ case "${DEPT_SYNC_MODE:-}" in
   ''|Off|Report|Fix) ;;
   *) echo "ERROR: DEPT_SYNC_MODE は Off・Report・Fix・未指定（現行を引き継ぐ。初回は何も足さない）のいずれかです: '${DEPT_SYNC_MODE}'" >&2; exit 1 ;;
 esac
+# NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): ADMIN_EDGE は管理ツールの集約入口（admin(50000)）に経路を置くかの明示の opt-in。
+#   1＝置く / 0・未指定＝置かない（既定。以前の実行で置いた経路も消す）。読むのは LOCALEDGE=1 の段と istio-edge-up.sh。
+#   0 / 1 以外は RESET_FLOOR と同じく最初に落とす。
+# shellcheck source=scripts/lib/admin-edge.sh
+. "$(dirname "$0")/lib/admin-edge.sh" || exit 3
+admin_edge_validate || exit 1
 
 # NFR, 計画 ADR-0135 決定 2 / ADR-0107 決定 3, IADR-0519 (#1843)・IADR-0547 (#1858): `scripts/` が入れる製品の版を固定する。
 #   版は内側のイメージの digest の固定（下の各ファイル）と**対**で決まる。上書きの env は固定と同じ値のときだけ受け、
@@ -1584,11 +1591,9 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
     kubectl apply -f deploy/local/aliases/coredns-edge-hosts.yaml
     kubectl -n kube-system rollout restart deploy/coredns
     kubectl -n kube-system rollout status deploy/coredns --timeout=120s
-    # argocd namespace が存在するときのみ、argocd 用の管理ツール Ingress を追加適用する
-    # （ns 不在時に失敗させない fail-safe。ArgoCD は ARGOCD=1 の別 opt-in で作成される）。
-    if kubectl get namespace argocd >/dev/null 2>&1; then
-      kubectl apply -f deploy/local/edge/argocd-ingress.yaml
-    fi
+    # NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの経路（admin(50000)）は ADMIN_EDGE=1 のときだけ置き、それ以外では消す。
+    #   argocd 用の Ingress は従来どおり argocd namespace が在るときだけ扱う（ns 不在時に失敗させない fail-safe）。
+    admin_edge_traefik
   fi
 
   # IADR-0206 (#779): エッジ TLS 終端。cert-manager を導入し、selfsigned→CA の 2 段で
@@ -1625,7 +1630,11 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
 
   echo "    platform フロント: https://localhost/ (443・cert-manager 発行 edge-tls。80 は https へ恒久リダイレクト)"
   echo "    ルート CA の取り出し: kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d"
-  echo "    管理ツール(50000・https): https://grafana.localhost:50000 / headlamp.localhost / vault.localhost / qdrant.localhost"
+  if [ "${ADMIN_EDGE:-}" = "1" ]; then
+    echo "    管理ツール(50000・https・ADMIN_EDGE=1): https://grafana.localhost:50000 / headlamp.localhost / vault.localhost / qdrant.localhost"
+  else
+    echo "    管理ツール: 50000 には経路を置いていない（既定。IADR-0586）。入り方は kubectl port-forward（deploy/local/edge/README.md「管理ツールへの入り方」）"
+  fi
   echo "    ホスト名解決・TLS・k3d 再作成手順は deploy/local/edge/README.md 参照。"
 
   # ADR-0021, #782: エッジを Istio Ingress Gateway へ移す（ISTIO=1 と併用したときだけ）。
@@ -1642,7 +1651,7 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   #   [2/5] は Service が既に無いので即座に通り、Gateway・経路・CoreDNS・mTLS を当て直して現状を確かめる。
   if [ "${ISTIO:-}" = "1" ]; then
     echo "==> [opt-in] エッジを Istio Ingress Gateway へ移す (ADR-0021 / #782)"
-    ISTIO_MTLS_MODE="${ISTIO_MTLS_MODE:-}" bash "$ROOT/scripts/istio-edge-up.sh"
+    ADMIN_EDGE="${ADMIN_EDGE:-}" ISTIO_MTLS_MODE="${ISTIO_MTLS_MODE:-}" bash "$ROOT/scripts/istio-edge-up.sh"
     echo "    切り戻し（1 コマンド）: bash scripts/istio-edge-down.sh --live"
   fi
 fi

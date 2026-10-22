@@ -516,6 +516,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'RELOADER_CHART_VERSION',
     'RELOADER_IMAGE_TAG',
     'CERT_MANAGER_VERSION',
+    'ADMIN_EDGE', // IADR-0586: 管理ツールの集約入口の opt-in。漏れていると既定（経路を置かない）の試験が別の形で走る
     'RESET_FLOOR', // #1500: 床の経路を外す比較用の口（#1543: 本番の退路ではない）。漏れていると冒頭の検査・警告が既定と違う形で走る
     'BACKUP_AGE_RECIPIENTS_FILE', // #1560: バックアップの受取人。漏れていると既定で ConfigMap を作り直す
     'ISTIO', // #1710: メッシュの門。漏れていると既定のバイト等価が崩れる
@@ -1486,9 +1487,61 @@ ok('K3S_IMAGE は LOCALEDGE=1 とも併用できる（ポートの切替を壊�
 
 // LOCALEDGE の argocd-ingress は「argocd namespace 存在時のみ」条件付き apply（fail-safe・ns 不在で失敗させない）。
 // 両分岐を固定する（肯定側=apply / 否定側=skip）。
-ok('LOCALEDGE=1 (argocd ns 有): argocd-ingress.yaml を apply', () => {
-  const res = runUp({ LOCALEDGE: '1' }); // 既定 stub: get namespace argocd → exit 0（存在扱い）
+// ［2026-10-22 / IADR-0586］管理ツールの経路は ADMIN_EDGE=1 のときだけ置く。apply の肯定側は ADMIN_EDGE=1 で見る。
+ok('LOCALEDGE=1 ADMIN_EDGE=1 (argocd ns 有): argocd-ingress.yaml を apply', () => {
+  const res = runUp({ LOCALEDGE: '1', ADMIN_EDGE: '1' }); // 既定 stub: get namespace argocd → exit 0（存在扱い）
   assert.ok(anyLineHas(res.lines, 'apply -f deploy/local/edge/argocd-ingress.yaml'), 'ns 有なのに argocd-ingress が apply されない');
+});
+
+// --- NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの集約入口（admin(50000)）は既定で経路を置かない ----------------
+// 6 host（grafana / headlamp / vault / qdrant / wiki / argocd）の経路は ADMIN_EDGE=1（明示の opt-in）のときだけ置き、
+// それ以外では消す（以前の実行で置いた経路も再実行で閉じる）。入口（50000 の listener）は残る。実測は check-stack-ready.js の G4c。
+const ADMIN_TRAEFIK_FILES_0586 = ['admin-ingress-infra.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml'];
+const isAdminApply0586 = (l) => /^kubectl apply -f deploy\/local\/(edge\/(admin-ingress-|argocd-ingress)|edge-istio\/virtualservice-admin\.yaml)/.test(l);
+const isAdminDelete0586 = (f) => (l) => l === `kubectl delete -f ${f} --ignore-not-found=true`;
+
+ok('IADR-0586: LOCALEDGE=1 の既定は管理ツールの経路を置かず、置かれていれば消す（Traefik）', () => {
+  const r = runUp({ LOCALEDGE: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-600));
+  assert.ok(!r.lines.some(isAdminApply0586), `既定で管理ツールの経路を置いた: ${r.lines.filter(isAdminApply0586).join(' / ')}`);
+  for (const f of ADMIN_TRAEFIK_FILES_0586) {
+    assert.ok(r.lines.some(isAdminDelete0586(`deploy/local/edge/${f}`)), `${f} を消していない（以前の実行の経路が残る）`);
+  }
+  assert.match(r.stdout, /50000 には経路を置いていない/, '既定で閉じていることを告げていない');
+});
+
+ok('IADR-0586: ADMIN_EDGE=1 のときだけ管理ツールの経路を置き、消さない（Traefik）', () => {
+  const r = runUp({ LOCALEDGE: '1', ADMIN_EDGE: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-600));
+  for (const f of ADMIN_TRAEFIK_FILES_0586) {
+    assert.ok(anyLineHas(r.lines, `kubectl apply -f deploy/local/edge/${f}`), `${f} を置いていない`);
+    assert.ok(!r.lines.some(isAdminDelete0586(`deploy/local/edge/${f}`)), `${f} を消した`);
+  }
+  // 陰性対照: ADMIN_EDGE=0 は既定と同じ（置かない）
+  const r0 = runUp({ LOCALEDGE: '1', ADMIN_EDGE: '0' });
+  assert.ok(!r0.lines.some(isAdminApply0586), 'ADMIN_EDGE=0 で経路を置いた');
+});
+
+ok('IADR-0586: ADMIN_EDGE が 0 / 1 / 未指定 以外なら、クラスタに触る前に止まる', () => {
+  for (const v of ['yes', 'true', '2']) {
+    const r = runUp({ LOCALEDGE: '1', ADMIN_EDGE: v });
+    assert.notStrictEqual(r.status, 0, `ADMIN_EDGE=${v} で止まらなかった`);
+    assert.match(r.stderr, /ADMIN_EDGE は 1/, r.stderr.slice(-300));
+    assert.ok(!r.lines.some((l) => l.startsWith('k3d ') || l.startsWith('kubectl ') || l.startsWith('helm ')), `止まる前にクラスタへ触った: ${r.lines.slice(0, 3).join(' / ')}`);
+  }
+});
+
+ok('IADR-0586: Istio のエッジでも既定は管理ツールの経路を置かず消し、ADMIN_EDGE=1 のときだけ置く（istio-edge-up.sh へ値を渡す）', () => {
+  const VS = 'deploy/local/edge-istio/virtualservice-admin.yaml';
+  const closed = runUp({ ISTIO: '1', LOCALEDGE: '1' });
+  assert.strictEqual(closed.status, 0, closed.stderr.slice(-600));
+  assert.ok(closed.lines.some(isAdminDelete0586(VS)), '既定で Istio の管理ツールの経路を消していない');
+  assert.ok(!closed.lines.some(isAdminApply0586), '既定で管理ツールの経路を置いた');
+  const open = runUp({ ISTIO: '1', LOCALEDGE: '1', ADMIN_EDGE: '1' });
+  assert.ok(open.lines.includes(`kubectl apply -f ${VS}`), 'ADMIN_EDGE=1 で Istio の管理ツールの経路を置いていない（値が istio-edge-up.sh へ渡っていない）');
+  // 経路は overlay の後に当てる（overlay の拒否 msp-admin-deny と同時に居ても host の具体的な経路が勝つ）
+  const ov = open.lines.findIndex((l) => /^kubectl apply -k deploy\/local\/edge-istio(-reset-floor)?$/.test(l));
+  assert.ok(ov >= 0 && ov < open.lines.indexOf(`kubectl apply -f ${VS}`), 'overlay より前に経路を当てた');
 });
 
 // ABACSEED=1: ABAC の属性辞書・ポリシーを dev 既定値で投入する（IADR-0133 / #517）。
@@ -4226,6 +4279,71 @@ ok('#782: up は「Traefik を明け渡す → Gateway を立てる」の順で�
   assert.ok(uninstallAt < restoreAt, '切り戻しで Traefik の復旧が Gateway の撤去より先にある（同上）');
 });
 
+// --- NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの集約入口の宣言（静的）-----------------------------------------
+// 宣言を読み、Envoy の host の選び方（完全一致 ＞ 接尾辞のワイルドカード）の模型で、既定（拒否だけ）と opt-in（拒否 ＋ 6 host）の
+// 両方で各 host がどこへ行くかを固定する。
+/** Envoy の virtual host の選び方の模型（完全一致が先、次に最長の `*.` 接尾辞）。勝った VirtualService の名前を返す。 */
+function envoyHost0586(vsList, host) {
+  const exact = vsList.find((v) => v.spec.hosts.includes(host));
+  if (exact) return exact.metadata.name;
+  let best = null;
+  for (const v of vsList) {
+    for (const h of v.spec.hosts) {
+      if (h.startsWith('*.') && host.endsWith(h.slice(1)) && (!best || h.length > best.len)) best = { name: v.metadata.name, len: h.length };
+    }
+  }
+  return best && best.name;
+}
+
+ok('IADR-0586: 管理ツールの経路は kustomization に含めず、Istio の 50000 には既定の拒否（*.localhost の 403）だけが居る', () => {
+  for (const f of ['admin-ingress-infra.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml']) {
+    assert.ok(!new RegExp(`^\\s*-\\s*${f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm').test(EDGE_KUST), `edge の kustomization が ${f} を含む（既定で置かれる）`);
+  }
+  assert.ok(!/^\s*-\s*virtualservice-admin\.yaml\s*$/m.test(EDGE_ISTIO_KUST), 'edge-istio の kustomization が virtualservice-admin.yaml を含む（既定で置かれる）');
+  assert.ok(/^\s*-\s*virtualservice-admin-deny\.yaml\s*$/m.test(EDGE_ISTIO_KUST), 'edge-istio の kustomization に既定の拒否が無い');
+  const deny = parseYaml0575(readAt(EDGE_ISTIO_DIR, 'virtualservice-admin-deny.yaml'));
+  assert.strictEqual(deny.length, 1);
+  const d = deny[0];
+  assert.strictEqual(d.kind, 'VirtualService');
+  assert.deepStrictEqual(d.spec.gateways, ['istio-system/msp-admin-edge'], '拒否が 50000 の Gateway に載っていない');
+  const gw = parseYaml0575(EDGE_ISTIO_GW).find((x) => x.metadata && x.metadata.name === 'msp-admin-edge');
+  assert.deepStrictEqual(d.spec.hosts, gw.spec.servers[0].hosts, '拒否の host が Gateway の host と違う（覆わない host が残る）');
+  assert.strictEqual(d.spec.http.length, 1);
+  assert.strictEqual(String(d.spec.http[0].directResponse.status), '403');
+  assert.ok(!d.spec.http[0].route && !d.spec.http[0].match, '拒否が後段へ転送するか、条件つきになっている');
+});
+
+ok('IADR-0586: 既定はどの管理ツールの host も拒否に当たり、opt-in では各 host が自分の経路に当たる（Traefik と Istio の host は一致）', () => {
+  const admin = parseYaml0575(EDGE_ISTIO_VS_ADMIN).filter((x) => x.kind === 'VirtualService');
+  const deny = parseYaml0575(readAt(EDGE_ISTIO_DIR, 'virtualservice-admin-deny.yaml'));
+  const istioHosts = admin.flatMap((v) => v.spec.hosts).sort();
+  const traefikHosts = ['admin-ingress-infra.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml']
+    .flatMap((f) => parseYaml0575(readAt(EDGE_DIR, f)).filter((x) => x.kind === 'Ingress'))
+    .flatMap((i) => i.spec.rules.map((r) => r.host)).sort();
+  assert.deepStrictEqual(istioHosts, traefikHosts, 'Traefik と Istio で管理ツールの host がずれている（G4c は Istio の宣言から走査する）');
+  assert.strictEqual(istioHosts.length, 6);
+  for (const h of istioHosts) {
+    assert.strictEqual(envoyHost0586(deny, h), 'msp-admin-deny', `既定で ${h} が拒否に当たらない`);
+    const owner = admin.find((v) => v.spec.hosts.includes(h)).metadata.name;
+    assert.strictEqual(envoyHost0586([...deny, ...admin], h), owner, `opt-in で ${h} が自分の経路に当たらない（拒否が勝っている）`);
+  }
+  assert.strictEqual(envoyHost0586([...deny, ...admin], 'other.localhost'), 'msp-admin-deny', '知らない host が拒否に当たらない');
+  // 陰性対照: 拒否が無ければ既定で host は何にも当たらない（模型が拒否を見ている）
+  assert.strictEqual(envoyHost0586([], 'grafana.localhost'), null);
+});
+
+ok('IADR-0586: 切り戻し（istio-edge-down.sh）も Istio の管理ツールの経路を消し、Traefik の経路は ADMIN_EDGE に従う', () => {
+  assert.ok(ISTIO_EDGE_DOWN.includes('kubectl delete -f deploy/local/edge-istio/virtualservice-admin.yaml --ignore-not-found=true'),
+    'overlay の外に置いた Istio の管理ツールの経路を消していない（切り戻し後も残る）');
+  assert.ok(/^admin_edge_traefik$/m.test(ISTIO_EDGE_DOWN), 'Traefik へ戻すときに ADMIN_EDGE を見ていない');
+  assert.ok(!/kubectl apply -f deploy\/local\/edge\/argocd-ingress\.yaml/.test(ISTIO_EDGE_DOWN), '切り戻しが argocd の経路を無条件に置く');
+  for (const src of [ISTIO_EDGE_UP, ISTIO_EDGE_DOWN]) {
+    const v = src.indexOf('admin_edge_validate');
+    const firstKubectl = src.search(/^\s*kubectl /m);
+    assert.ok(v > 0 && v < firstKubectl, 'ADMIN_EDGE の検めがクラスタに触る前に無い');
+  }
+});
+
 // ---------------------------------------------------------------------------
 // FR-20 / #1154 / IADR-0348: Obsidian プラグインの同期プロトコルをエッジから外へ出す 1 本。
 //
@@ -4451,6 +4569,8 @@ const isEdgeApply = (l) => l === EDGE_APPLY;
 const isTraefikWait = (l) => l.startsWith('kubectl ') && l.includes('--for=jsonpath') && l.includes('svc/traefik');
 const isTraefikCoreDns = (l) => l.includes('apply -f deploy/local/aliases/coredns-edge-hosts.yaml');
 const isArgocdIngress = (l) => l.includes('apply -f deploy/local/edge/argocd-ingress.yaml');
+// IADR-0586: argocd の経路は ADMIN_EDGE に従って置く（apply）か消す（delete）。Traefik の段で扱ったかを見るときはどちらでもよい。
+const isArgocdIngressHandled = (l) => /^kubectl (apply|delete) -f deploy\/local\/edge\/argocd-ingress\.yaml/.test(l);
 const isServiceOff = (l) => l.includes('apply -f deploy/local/edge-istio/traefik-service-off.yaml');
 const isGatewayInstall = (l) => l.startsWith('helm upgrade --install istio-ingressgateway ');
 const isHelmChartConfigProbe = (l) =>
@@ -4466,7 +4586,7 @@ ok('#1691: 移行済み（HelmChartConfig traefik が service.enabled: false）�
   assert.ok(!r.lines.some(isEdgeApply), `HelmChartConfig を Service ありへ戻した: ${EDGE_APPLY}`);
   assert.ok(!r.lines.some(isTraefikWait), 'Traefik の反映待ち（wait svc/traefik）を走らせた');
   assert.ok(!r.lines.some(isTraefikCoreDns), 'pod 側の *.localhost を Traefik へ向ける CoreDNS を当てた');
-  assert.ok(!r.lines.some(isArgocdIngress), 'Traefik しか読まない argocd-ingress を当てた');
+  assert.ok(!r.lines.some(isArgocdIngressHandled), 'Traefik しか読まない argocd-ingress を扱った');
   // Istio の入口も使うエッジ TLS は飛ばさない（ClusterIssuer local-edge-ca は istio-edge-up.sh の前提）。
   assert.ok(r.lines.some((l) => l.endsWith('apply -k deploy/local/edge/tls')), 'エッジ TLS（cert-manager）まで飛ばした');
   assert.match(r.stdout, /Istio Ingress Gateway へ移し済み/, '飛ばしたことを告げていない');
@@ -4495,7 +4615,7 @@ ok('#1691: 未移行なら従来どおり（Traefik を当て、反映を待ち�
   const apply = at(isEdgeApply, EDGE_APPLY);
   const wait = at(isTraefikWait, 'wait svc/traefik');
   const dns = at(isTraefikCoreDns, 'Traefik 向け CoreDNS');
-  const argo = at(isArgocdIngress, 'argocd-ingress');
+  const argo = at(isArgocdIngressHandled, 'argocd-ingress（ADMIN_EDGE に従う apply / delete。IADR-0586）');
   const off = at(isServiceOff, 'istio-edge-up.sh の traefik-service-off');
   assert.ok(probe < apply && apply < wait && wait < dns && dns < argo && argo < off, '従来の順序が崩れている');
   assert.ok(!r.stdout.includes('移し済み'), '未移行なのに「移し済み」と告げた');

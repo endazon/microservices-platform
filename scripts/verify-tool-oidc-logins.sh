@@ -56,6 +56,8 @@ LIB="$SCRIPT_DIR/lib/tool-oidc-login.js"
 KC_URL="${KC_URL:-https://keycloak.localhost}"
 REALM="${OIDC_REALM:-platform}"
 EDGE_URL="${EDGE_URL:-https://localhost}"
+# 🔴 IADR-0586: 50000 の管理ツールの経路は既定で置かない。本検証器は ADMIN_EDGE=1 で起動したクラスタでだけ測れる
+#   （既定のクラスタでは各ツールが 404 / 403 で、測定は失敗する。それが既定の正しい姿である）。
 # 管理 entrypoint（IADR-0091 / IADR-0220。50000 は TLS 終端）。**1 箇所だけで持つ** ——
 # ツールごとに URL を並べると、ポート topology が変わったとき片方だけ取り残される。
 ADMIN_ORIGIN_FMT="${TOOLS_ADMIN_ORIGIN_FMT:-https://%s.localhost:50000}"

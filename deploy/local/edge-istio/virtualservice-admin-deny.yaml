@@ -1,0 +1,21 @@
+# NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの集約入口（msp-admin-edge・50000）は**既定で 403 を返す**。
+#
+# 管理ツール 6 host の経路（virtualservice-admin.yaml）は kustomization に含めない。scripts/lib/admin-edge.sh が
+# ADMIN_EDGE=1（明示の opt-in）のときだけ当て、それ以外では消す。ここに置くのは「どの host にも当たる拒否」1 本である。
+#   - host は Gateway（msp-admin-edge）の `*.localhost` と同じ。Envoy は host の完全一致を接尾辞のワイルドカードより
+#     優先するので、opt-in で 6 host の経路を足すとそちらが選ばれ、ここは残りの host だけを受ける（opt-in の邪魔をしない）。
+#   - IADR-0575（Keycloak の管理面）と同じく directResponse で返す。後段へは何も届かない。
+# 管理者の既定の入り方は各ツールへの kubectl port-forward（deploy/local/edge/README.md「管理ツールへの入り方」）。
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: msp-admin-deny
+  namespace: istio-system
+  labels: { tier: local-edge }
+spec:
+  hosts: ["*.localhost"]
+  gateways: [istio-system/msp-admin-edge]
+  http:
+    - name: admin-edge-default-deny
+      directResponse:
+        status: 403
