@@ -1,7 +1,7 @@
 <!-- trace:
 adrs: [ADR-0048, ADR-0118]
-iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507, IADR-0508, IADR-0568]
-specs: [20261012_1910_static-checks-off-critical-path, 20261008_1796_integration-gate-hardening, 20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups, 20261020_2005_age-apkindex-watch]
+iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507, IADR-0508, IADR-0568, IADR-0578]
+specs: [20261022_ci-workflow-trust-and-injection-hardening, 20261012_1910_static-checks-off-critical-path, 20261008_1796_integration-gate-hardening, 20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups, 20261020_2005_age-apkindex-watch]
 issues: [#1910, #1796, #1775, #1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, #2005, planning#286]
 -->
 
@@ -310,7 +310,7 @@ PR の CI ではこれらの権限が足りているかを確かめられない�
 | スラッシュコマンド（`/new-spec` 等）が出ない | repo-template の `.claude/` をリポ直下にコピーしたか確認し、Claude Code を再起動して読み直す。 |
 | 計画書（`projects/<name>`）を参照できない | 本リポは planning に依存しない。隣接クローン（既定 `../project-planning`）を用意するか、GitHub 上の URL で該当ページを開いて確認する。 |
 | CI / AI ワークフローが起動しない | `.example` を外して有効化したか（`scripts/apply-profile.sh`）、必要な Secrets を登録したか確認する。Actions のログでトリガ条件を確認する。 |
-| `@claude` が反応しない | `claude-coding.yml` が有効化済みか、`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY` のいずれかが登録済みかを確認する。 |
+| `@claude` が反応しない | `claude-coding.yml` が有効化済みか、`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY` のいずれかが登録済みかを確認する。加えて、`@claude` を書いた本文（コメント・レビュー・issue）の書き手が OWNER / MEMBER / COLLABORATOR であることを確かめる（それ以外の書き手の本文では起動しない。issue を割り当てても、issue 本文の書き手が該当しなければ起動しない）。 |
 | ビルド・テストが C#/.NET 前提で合わない | 技術スタック別の差し替え対象（`ci.yml` / `setup.sh` / `.devcontainer/` / `settings.json` の permissions）を使用言語へ直す。一覧は計画リポの `tools/impl-handoff-kit/README.md`「技術スタック別の差し替え対象」。 |
 
 ## 安全に任せるための原則

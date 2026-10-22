@@ -9,7 +9,7 @@
  *   node scripts/gen-changelog.js [--out CHANGELOG.md]
  *   --out 省略時は標準出力。
  */
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -72,12 +72,23 @@ const TYPE_LABEL = {
 };
 const TYPE_ORDER = ['feat', 'fix', 'perf', 'refactor', 'docs', 'test', 'build', 'ci', 'style', 'chore'];
 
+// NFR, GHSA-552h-47r7-6v6p / IADR-0578: git は引数の配列で呼び、シェルを介さない。
+// 参照（タグ名・範囲）は下の isSafeRef を通ったものだけを渡す（多層防御）。
 function git(args) {
-  return execSync(`git ${args}`, { encoding: 'utf8' }).trim();
+  return execFileSync('git', args, { encoding: 'utf8' }).trim();
+}
+
+/**
+ * 参照名として受け付ける形（英数字と `.` `_` `/` `-`、先頭は英数字、`..` を含まない）。
+ * 外れたタグは CHANGELOG の生成から外し、警告だけを出す（git のオプションとして読まれる形も外れる）。
+ */
+const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+function isSafeRef(ref) {
+  return typeof ref === 'string' && SAFE_REF.test(ref) && !ref.includes('..') && ref.length <= 200;
 }
 
 function isGitRepo() {
-  try { git('rev-parse --is-inside-work-tree'); return true; } catch (e) { return false; }
+  try { git(['rev-parse', '--is-inside-work-tree']); return true; } catch (e) { return false; }
 }
 
 function parseArgs(argv) {
@@ -92,16 +103,27 @@ function parseArgs(argv) {
 /** タグを作成日時の降順で返す */
 function tags() {
   try {
-    const out = git('tag --sort=-creatordate');
-    return out ? out.split('\n').filter(Boolean) : [];
+    const out = git(['tag', '--sort=-creatordate']);
+    return filterSafeTags(out ? out.split('\n').filter(Boolean) : []);
   } catch (e) { return []; }
 }
 
-/** 範囲のコミットを {type, scope, desc, hash} で返す */
-function commits(range) {
+/** 参照名として受け付けないタグを外し、外したものを警告する。 */
+function filterSafeTags(list) {
+  return list.filter((tag) => {
+    if (isSafeRef(tag)) return true;
+    process.stderr.write(`警告: 参照名として受け付けない形のタグを CHANGELOG の生成から外した（${JSON.stringify(tag.slice(0, 80))}）。\n`);
+    return false;
+  });
+}
+
+/** 範囲（[from, to] または [to]。to のみなら to までの全履歴）のコミットを {type, scope, desc, hash} で返す */
+function commits(to, from) {
   let raw = '';
+  if (!isSafeRef(to) || (from !== undefined && !isSafeRef(from))) return [];
+  const range = from === undefined ? to : `${from}..${to}`;
   try {
-    raw = execSync(`git log ${range} --no-merges --pretty=format:%h%x1f%s`, { encoding: 'utf8' });
+    raw = execFileSync('git', ['log', range, '--no-merges', '--pretty=format:%h%x1f%s', '--'], { encoding: 'utf8' });
   } catch (e) { return []; }
   if (!raw.trim()) return [];
   return raw.split('\n').map((line) => {
@@ -150,18 +172,17 @@ function main() {
   const tagList = tags();
 
   // Unreleased（最新タグ以降）
-  const unreleasedRange = tagList.length ? `${tagList[0]}..HEAD` : 'HEAD';
-  const unreleased = commits(unreleasedRange);
+  const unreleased = tagList.length ? commits('HEAD', tagList[0]) : commits('HEAD');
   if (unreleased.length || !tagList.length) {
     out.push(renderSection('Unreleased', unreleased));
   }
 
   // 各タグ
   for (let i = 0; i < tagList.length; i++) {
-    const range = i + 1 < tagList.length ? `${tagList[i + 1]}..${tagList[i]}` : tagList[i];
+    const list = i + 1 < tagList.length ? commits(tagList[i], tagList[i + 1]) : commits(tagList[i]);
     let date = '';
-    try { date = git(`log -1 --pretty=format:%ad --date=short ${tagList[i]}`); } catch (e) { /* noop */ }
-    out.push(renderSection(`${tagList[i]}${date ? ` - ${date}` : ''}`, commits(range)));
+    try { date = git(['log', '-1', '--pretty=format:%ad', '--date=short', tagList[i], '--']); } catch (e) { /* noop */ }
+    out.push(renderSection(`${tagList[i]}${date ? ` - ${date}` : ''}`, list));
   }
 
   const content = out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n';
@@ -178,4 +199,4 @@ if (require.main === module) {
 }
 
 // テスト用途に一部関数を公開する（本体実行時の副作用は上記ガードで抑止）。
-module.exports = { applyOverride, hashMatches, VALID_ACTIONS, TYPE_LABEL, TYPE_ORDER };
+module.exports = { applyOverride, hashMatches, VALID_ACTIONS, TYPE_LABEL, TYPE_ORDER, isSafeRef, filterSafeTags };
