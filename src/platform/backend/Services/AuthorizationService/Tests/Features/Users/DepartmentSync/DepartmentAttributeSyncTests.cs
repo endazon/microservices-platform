@@ -42,7 +42,8 @@ public class DepartmentAttributeSyncTests
         realm.User("u-plain", null);                            // 部門グループなし・属性なし → 計画に現れない（書かない）
         realm.User("svc-ast", null);                            // サービスアカウント（所属なし）→ 現れない
         // #1609: 部門グループなしで属性を持つサービスアカウント（開発用 realm の service-account-abac-seeder と同じ形）→ 消さない
-        realm.NamedUser("svc-seeder", "engineering", "service-account-abac-seeder");
+        // ［2026-10-23 / [[IADR-0607]]］サービスアカウントかどうかは IdP が返す `serviceAccountClientId` で決まる（名前の形ではない）。
+        realm.ServiceAccount("svc-seeder", "engineering", "abac-seeder");
         return realm;
     }
 
@@ -96,6 +97,26 @@ public class DepartmentAttributeSyncTests
             "部門グループに属さないサービスアカウントの属性は所属から何も言えない（機械の主体は消さない）");
         realm.Writes.Select(w => w.UserId).Should().NotContain(["u-two", "u-none", "svc-ast", "u-ok", "u-nested-same"]);
         realm.Clears.Should().Equal(["u-none"], "消すのは部門グループ 0 個で属性を持つ人間の利用者だけ");
+    }
+
+    // ［2026-10-23 / [[IADR-0607]]・GHSA-94cm-55g9-2967］🔴 サービスアカウントの名前の形（`service-account-` の接頭辞）を持つ
+    // **人の利用者**は同期の対象に残る —— 部門グループに属さず属性を持てば消える。正規のサービスアカウント
+    // （IdP が `serviceAccountClientId` を返す利用者）は従前どおり消さない（陽性対照）。
+    [Theory]
+    [InlineData("service-account-lookalike")]
+    [InlineData("Service-Account-Lookalike")]
+    [InlineData("service-account-abac-seeder")] // 正規の SA と同じ名前でも、IdP が SA と返さなければ人として扱う
+    public async Task A_human_with_a_service_account_shaped_name_stays_in_the_sync(string username)
+    {
+        var realm = Realm();
+        realm.NamedUser("u-lookalike", "sales", username);
+
+        var outcome = await Sync(realm).RunAsync(DepartmentAttributeSyncMode.Fix, Ct);
+
+        realm.Department("u-lookalike").Should().BeNull("名前の形ではサービスアカウントと読まない（同期する側に倒す）");
+        realm.Department("svc-seeder").Should().Be("engineering", "IdP がサービスアカウントと返す利用者は消さない");
+        realm.Clears.Should().BeEquivalentTo(["u-lookalike", "u-none"]);
+        outcome.Findings.Select(f => f.UserId).Should().Contain("u-lookalike").And.NotContain("svc-seeder");
     }
 
     // T-56（#1609・計画 ADR-0116 決定 2）: 🔴 部門グループに 1 つも属さない人の属性は、同期の後に消える。
@@ -509,6 +530,7 @@ public class DepartmentAttributeSyncTests
         // #1609: 全利用者の列挙・部門の消去の偽物の状態。
         private readonly List<string> _userOrder = [];
         private readonly Dictionary<string, string> _usernames = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _serviceAccountClients = new(StringComparer.Ordinal);
 
         /// <summary>消した利用者（`ClearDepartmentAttributeAsync` が実際に書いた順）。</summary>
         public List<string> Clears { get; } = [];
@@ -526,8 +548,15 @@ public class DepartmentAttributeSyncTests
 
         public void User(string id, string? department, params string[] groupIds) => AddUser(id, department, null, groupIds);
 
-        // 利用者名が内部 ID と違う利用者（サービスアカウントの形など）。部門グループには入れない。
+        // 利用者名が内部 ID と違う**人の**利用者。部門グループには入れない。
         public void NamedUser(string id, string? department, string username) => AddUser(id, department, username, []);
+
+        // ［[[IADR-0607]]］IdP がクライアントのサービスアカウントとして返す利用者（Keycloak の命名 `service-account-<clientId>`）。
+        public void ServiceAccount(string id, string? department, string clientId)
+        {
+            AddUser(id, department, "service-account-" + clientId, []);
+            _serviceAccountClients[id] = clientId;
+        }
 
         private void AddUser(string id, string? department, string? username, string[] groupIds)
         {
@@ -552,9 +581,10 @@ public class DepartmentAttributeSyncTests
 
         private IdentityUser Snapshot(string id)
             => new(id, _usernames[id], id, _enabled[id], [],
-                new Dictionary<string, string>(_attributes[id], StringComparer.Ordinal));
+                new Dictionary<string, string>(_attributes[id], StringComparer.Ordinal),
+                _serviceAccountClients.GetValueOrDefault(id));
 
-        // #1609: 全利用者（本物と同じく属性つき・ロールなし）。偽物は利用者名の接頭辞でサービスアカウントを除かない ——
+        // #1609: 全利用者（本物と同じく属性つき・ロールなし）。偽物はサービスアカウントを除かない ——
         // 除くのは同期の側でも確かめる（本物の実装が除き損ねても消さない）。
         public Task<UserEnumeration> ListAllUsersAsync(CancellationToken ct)
         {

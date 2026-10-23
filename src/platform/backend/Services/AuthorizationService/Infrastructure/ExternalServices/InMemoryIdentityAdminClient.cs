@@ -234,14 +234,14 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
     }
 
     // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 全利用者（偽物は全員を持つので常に読み切れる）。
-    // 本物と同じくサービスアカウントの形の利用者名は返さない。
+    // 本物と同じくサービスアカウント（`ServiceAccountClientId` を持つ利用者）は返さない（利用者名の形では除かない。[[IADR-0607]]）。
     public Task<UserEnumeration> ListAllUsersAsync(CancellationToken ct)
         => Task.FromResult(new UserEnumeration(
         [
             .. _users.Values
-                .Where(u => !DepartmentAttributeReconciliation.IsServiceAccount(u.Username))
                 .OrderBy(u => u.Id, StringComparer.Ordinal)
                 .Select(u => u.ToIdentityUser())
+                .Where(u => !DepartmentAttributeReconciliation.IsServiceAccount(u))
         ], Complete: true));
 
     // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): `department` 1 キーだけを消す（本物と同じ見送りの規則）。
@@ -336,8 +336,10 @@ public sealed class InMemoryIdentityAdminClient : IIdentityAdminClient
         public bool Enabled { get; set; }
         public List<string> Roles { get; set; } = [];
         public Dictionary<string, string> Attributes { get; set; } = [];
+        public string? ServiceAccountClientId { get; init; }
 
         public IdentityUser ToIdentityUser()
-            => new(Id, Username, DisplayName, Enabled, [.. Roles], new Dictionary<string, string>(Attributes));
+            => new(Id, Username, DisplayName, Enabled, [.. Roles], new Dictionary<string, string>(Attributes),
+                ServiceAccountClientId);
     }
 }

@@ -391,7 +391,8 @@ public sealed class KeycloakIdentityAdminClient(
     // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 全利用者を属性つき・ロールなしで最後のページまで読む。
     // 🔴 **ページの失敗は例外で上げる**（`GetFromJsonAsync` の非成功は例外。本文が JSON の null のときも例外にする ——
     // 「空のページ」と読むと、そこで列挙が終わったことになり、残りの人が「居ない」に見える）。
-    // 🔴 **サービスアカウントは返さない**（表現の `serviceAccountClientId`、または利用者名の `service-account-` 接頭辞）。
+    // 🔴 **サービスアカウントは返さない**（表現の `serviceAccountClientId` を持つ利用者。［2026-10-23 / [[IADR-0607]]］
+    // 利用者名の `service-account-` 接頭辞では除かない —— 接頭辞の形の名前を持つ人は同期の対象に残す）。
     public async Task<UserEnumeration> ListAllUsersAsync(CancellationToken ct)
     {
         var client = await AuthorizedClientAsync(ct);
@@ -404,10 +405,9 @@ public sealed class KeycloakIdentityAdminClient(
                 ?? throw new InvalidOperationException(
                     $"Keycloak の利用者一覧（first={first}）が本文を返さなかった。列挙を読み切れない（空のページとは読まない）。");
             result.AddRange(page
-                .Where(u => !string.IsNullOrEmpty(u.Id)
-                            && string.IsNullOrEmpty(u.ServiceAccountClientId)
-                            && !DepartmentAttributeReconciliation.IsServiceAccount(u.Username))
-                .Select(u => ToIdentityUser(u, [])));
+                .Where(u => !string.IsNullOrEmpty(u.Id))
+                .Select(u => ToIdentityUser(u, []))
+                .Where(u => !DepartmentAttributeReconciliation.IsServiceAccount(u)));
             if (page.Count < PageSize) return new UserEnumeration(result, Complete: true);
         }
 
@@ -855,7 +855,8 @@ public sealed class KeycloakIdentityAdminClient(
             string.IsNullOrWhiteSpace(displayName) ? user.Username ?? string.Empty : displayName,
             user.Enabled,
             roles,
-            attributes);
+            attributes,
+            string.IsNullOrEmpty(user.ServiceAccountClientId) ? null : user.ServiceAccountClientId);
     }
 
     private async Task<HttpClient> AuthorizedClientAsync(CancellationToken ct)
@@ -910,7 +911,7 @@ public sealed class KeycloakIdentityAdminClient(
         string? LastName,
         bool Enabled,
         Dictionary<string, List<string>?>? Attributes,
-        // #1609: サービスアカウントの利用者表現だけが持つ（全利用者の列挙から機械の主体を除く手掛かり）。
+        // #1609: サービスアカウントの利用者表現だけが持つ（全利用者の列挙から機械の主体を除く唯一の手掛かり。[[IADR-0607]]）。
         string? ServiceAccountClientId = null);
 
     private sealed record KeycloakRole(string? Id, string? Name);

@@ -684,3 +684,4 @@
 | [IADR-0604](./IADR-0604_transactional-outbox-document-deleted.md) | 削除イベント（DocumentDeleted）は Transactional Outbox 経由で発行する。共通ヘルパ UsePlatformTransactionalOutbox（PostgreSQL 永続化・EF 連携・全送出先の耐久化）を置き、DocumentService の削除 3 経路を削除の確定と同じトランザクションに載せる。失敗時は積んだ発行を捨てて巻き戻す（段 1。#2042） | Accepted |
 | [IADR-0605](./IADR-0605_pin-self-built-image-tags.md) | 自製イメージは不変のタグ（git の sha）を global.image.tag で必ず渡し、無ければ chart の描画を落とす。経路B は作業ツリーの sha でビルドして同じ値を渡す | Accepted |
 | [IADR-0606](./IADR-0606_machine-principal-issuing-client-match.md) | 無人主体の判定は、IdP が書く発行元のクライアント識別（azp）を前提にし、利用者名はそのクライアントのサービスアカウント名と一致するときだけ無人と読む（許可集合・ロール・セッションの有無は使わない。GHSA-94cm-55g9-2967） | Accepted |
+| [IADR-0607](./IADR-0607_department-sync-service-account-by-idp-attribute.md) | 部門の同期はサービスアカウントを IdP が返す属性（serviceAccountClientId）だけで見分け（利用者名の接頭辞では除かない）、無人主体の腕 B の前提は既存の realm 検査と SC-12 の作成後の読み戻しで守る（新しい検査は足さない。GHSA-94cm-55g9-2967 の追補） | Accepted |

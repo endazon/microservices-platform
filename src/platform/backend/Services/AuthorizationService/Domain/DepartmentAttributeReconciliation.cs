@@ -1,3 +1,5 @@
+using AuthorizationService.Domain.Ports;
+
 namespace AuthorizationService.Domain;
 
 // FR-05, FR-09, UC-05, SC-17, 計画 ADR-0115 決定 3, ADR-0116 決定 2, [[IADR-0473]] (#1573, #1609):
@@ -16,9 +18,11 @@ namespace AuthorizationService.Domain;
 //   グループから外した人が、前の部門の資料を見続けていた。
 //   **ただし「0 個」は全利用者の列挙を最後まで読めたときにしか言えない**（原則 A: 読めなかった人は「0 個」ではなく「不明」）。
 //   その判断は呼び出し元（`DepartmentAttributeSync`）が持つ —— 本関数は渡された人を渡されたとおりに判定する。
-//   **サービスアカウント（利用者名が `service-account-` で始まる）は呼び出し元が渡さない**（`IsServiceAccount`）。
-//   部門グループに属さない機械の主体の属性は所属から何も言えない（開発用 realm の `service-account-abac-seeder` は
-//   部門グループなしで `department` を持つ）。
+//   **サービスアカウントは呼び出し元が渡さない**（`IsServiceAccount`）。部門グループに属さない機械の主体の属性は
+//   所属から何も言えない（開発用 realm の `service-account-abac-seeder` は部門グループなしで `department` を持つ）。
+//   ［2026-10-23 / [[IADR-0607]]］🔴 **サービスアカウントかどうかは IdP が返す属性（`serviceAccountClientId`）だけで決める。**
+//   利用者名の形（`service-account-` の接頭辞）では決めない —— 利用者名は realm の利用者管理で付ける値であり、
+//   接頭辞の形の名前を持つ人も同期の対象に残す（迷ったら同期する側に倒す）。
 //
 // ■ 入れ子は上位のコードに畳む（`/department/engineering/backend` の所属者は `engineering`）。同じ部門の入れ子だけで
 //   「2 つ」に見えて直せなくなるのを避ける。**照合は序数**（大小文字を区別。Keycloak のグループ名と同じ）。
@@ -26,10 +30,6 @@ public static class DepartmentAttributeReconciliation
 {
     public const string AttributeKey = "department";
     public const string DepartmentGroupRoot = "/department/";
-
-    // Keycloak が client credentials の主体へ付ける利用者名の接頭辞（`MachinePrincipal.ServiceAccountUsernamePrefix` と同じ値。
-    // Domain から共通基盤の観測の型を引かないため、ここにも置く）。
-    public const string ServiceAccountUsernamePrefix = "service-account-";
 
     /// <summary>
     /// 部門グループのフルパスから部門コードを取り出す（`/department/a/b` → `a`）。部門の木の外・直下が空なら null。
@@ -43,9 +43,12 @@ public static class DepartmentAttributeReconciliation
         return code.Length == 0 ? null : code;
     }
 
-    /// <summary>利用者名が Keycloak のサービスアカウントの形か（大小文字無視）。</summary>
-    public static bool IsServiceAccount(string? username)
-        => username is not null && username.StartsWith(ServiceAccountUsernamePrefix, StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// IdP がこの利用者をクライアントのサービスアカウントとして返したか（<see cref="IdentityUser.ServiceAccountClientId"/> を持つか）。
+    /// 🔴 利用者名の形では判定しない（[[IADR-0607]]）。
+    /// </summary>
+    public static bool IsServiceAccount(IdentityUser user)
+        => !string.IsNullOrEmpty(user.ServiceAccountClientId);
 
     /// <summary>
     /// 利用者ごとの判定を返す。<paramref name="codesByUser"/> は利用者（IdP の内部 ID）→ 所属する部門コードの集合
