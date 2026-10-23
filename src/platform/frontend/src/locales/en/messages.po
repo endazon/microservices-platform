@@ -31,6 +31,8 @@ msgid "(3) 構成バージョン履歴（新しい順）"
 msgstr "(3) Configuration version history (newest first)"
 
 #: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "（不明な利用者）"
 msgstr "(unknown user)"
@@ -95,9 +97,17 @@ msgstr "{label} ({count})"
 msgid "{max} 文字以内で入力してください。"
 msgstr "Enter no more than {max} characters."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "{nomineeName} に閲覧を許して発動する"
+msgstr "Activate and allow {nomineeName} to view"
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
 msgid "{p} ページ目"
 msgstr "Page {p}"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "{reasonLength} / {maxLength} 文字"
+msgstr "{reasonLength} / {maxLength} characters"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "{reissueTargetId} の client secret を再発行します。いまの secret はただちに使えなくなります。エージェントの設定を新しい secret に差し替えてください。"
@@ -212,6 +222,7 @@ msgstr "👍 {up} / 👎 {down}"
 msgid "👤 個人資料（自分のみ）"
 msgstr "👤 Private note (only you)"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "2 文字以上入力すると候補が出ます。"
 msgstr "Enter at least 2 characters to see suggestions."
@@ -563,6 +574,8 @@ msgstr "Right now every one of your private notes is synchronised. To synchronis
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
@@ -620,6 +633,7 @@ msgstr "Keyword search only →"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 msgid "キャンセル"
 msgstr "Cancel"
 
@@ -778,6 +792,10 @@ msgstr "This suggestion was rejected once, but a document has since been updated
 msgid "この操作は元に戻せません。削除後はいかなる方法でも復元できません。（削除の反映には時間がかかる場合があります。）"
 msgstr "This action cannot be undone. After deletion the note cannot be restored by any means. (Deletion may take some time to propagate.)"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "この操作は監査ログに記録されます。アクセスは発動から 15 分で自動失効し、延長できません。指名した管理者の閲覧も 1 件ずつ記録されます。"
+msgstr "This action is recorded in the audit log. Access expires automatically 15 minutes after activation and cannot be extended. Each view by the nominated administrator is also recorded."
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "この文書には表示できる関係がありません。辺の型の絞り込みを緩めるか、探索深さを深くしてください。"
 msgstr "This document has no relationships to show. Loosen the edge type filter, or increase the exploration depth."
@@ -821,6 +839,18 @@ msgstr "Revoke this device?"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "この端末を失効する"
 msgstr "Revoke this device"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "この資料には有効な緊急アクセスが既にあるか、削除済みのため発動できません。"
+msgstr "Cannot activate: this note already has active emergency access, or it has been deleted."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "この資料に書き込む権限がないため発動できません。"
+msgstr "Cannot activate: you do not have write permission for this note."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "この資料に緊急アクセスを発動する…"
+msgstr "Activate emergency access for this note…"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "この辺の型は {inUseCount} 本の辺で使われているため削除できません。"
@@ -927,6 +957,10 @@ msgstr "System"
 #: platform/frontend/src/app/Layout.tsx
 msgid "システム管理"
 msgstr "System administration"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "システム管理者には、すべての利用者の緊急アクセスの記録が表示されます（新しい順に最大 50 件）。資料の題名と本文は記録されません。"
+msgstr "System administrators see emergency access records for all users (newest first, up to 50). Note titles and bodies are not recorded."
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "ジョブ"
@@ -1445,6 +1479,10 @@ msgstr "Policies"
 msgid "ポリシー登録"
 msgstr "Policy registration"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "まもなく失効します（状態を確認しています）"
+msgstr "Expiring now (checking status)"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "まもなく完全削除（残り {days} 日）"
 msgstr "Permanent deletion soon ({days} days left)"
@@ -1624,6 +1662,10 @@ msgstr "Unknown"
 msgid "不明（realm を読めないため最後に確かめた値）"
 msgstr "Unknown (the realm cannot be read; showing the last confirmed values)"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "不明な操作"
+msgstr "Unknown operation"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "両方を残しました。別名の資料を作成しています。"
 msgstr "Both have been kept. A note under a different name is being created."
@@ -1681,6 +1723,10 @@ msgstr "Manual correction (diagram coding)"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "人手補正は管理者のみ実行できます"
 msgstr "Only administrators can apply manual corrections"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "今すぐ終了する"
+msgstr "End now"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "他 {moreTags} 件"
@@ -2279,10 +2325,12 @@ msgstr "Resolved from the user's attributes"
 msgid "利用者はまだ登録されていません。"
 msgstr "No users are registered yet."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "利用者を検索できませんでした。"
 msgstr "Could not search for users."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "利用者を検索中…"
 msgstr "Searching users…"
@@ -2669,6 +2717,10 @@ msgstr "Thick outline, larger size = root"
 msgid "失効する"
 msgstr "Revoke"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "失効を確認できません。端末の時計がずれている可能性があります。終えるには「今すぐ終了する」を押してください。"
+msgstr "Cannot confirm the expiry. Your device clock may be out of sync. To end it, press \"End now\"."
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "失効済み"
 msgstr "Revoked"
@@ -2694,6 +2746,7 @@ msgstr "Isolated document (no displayed edges)"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
@@ -2723,6 +2776,10 @@ msgstr "Time"
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "実行時に取得・次の同期から効く"
 msgstr "Fetched at run time; takes effect from the next sync"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "実行者"
+msgstr "Performed by"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "実装"
@@ -2767,6 +2824,15 @@ msgstr "Action"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "対象から外す"
 msgstr "Remove from scope"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "対象の資料"
+msgstr "Target note"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "対象の資料「{noteTitle}」を、指名した管理者 1 人が発動から 15 分間だけ閲覧できるようにします。閲覧だけで、編集・削除・共有の変更・ダウンロードはできません。"
+msgstr "Allows one nominated administrator to view the note \"{noteTitle}\" for 15 minutes from activation. Viewing only: editing, deleting, changing sharing and downloading are not allowed."
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "対象フォルダから外す"
@@ -2907,6 +2973,8 @@ msgid "復元する"
 msgstr "Restore"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "必須"
 msgstr "Required"
@@ -2935,6 +3003,7 @@ msgstr "Success"
 
 #: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
 msgid "所有者"
 msgstr "Owner"
 
@@ -2969,6 +3038,22 @@ msgstr "Approved"
 #: knowledge/frontend/src/features/sc08-analysis/types/analysisRange.ts
 msgid "抽出"
 msgstr "Extract"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "指名された管理者"
+msgstr "Nominated administrator"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "指名された資料を閲覧する"
+msgstr "View the note you were nominated for"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "指名できるのはシステム管理者（platform-admin）1 人だけです。管理者でない人を選ぶと発動できません。"
+msgstr "You can nominate exactly one system administrator (platform-admin). Activation fails if you choose someone who is not an administrator."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "指名先がシステム管理者かを確認できませんでした。発動していません。時間をおいて再度お試しください。"
+msgstr "Could not confirm that the nominee is a system administrator. Emergency access was not activated. Please try again later."
 
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "指定されたデータソースは、この画面で資格情報を設定する対象ではありません（無効化されているか、資格情報を使わない種別です）。"
@@ -3075,6 +3160,7 @@ msgstr "Loading the list of suggestions…"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
@@ -3309,6 +3395,10 @@ msgstr "Could not mark as read"
 msgid "日付"
 msgstr "Date"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "日時"
+msgstr "Date and time"
+
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "更新"
@@ -3411,6 +3501,10 @@ msgstr "Enabled"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "有効（残り {daysLeft} 日）"
 msgstr "Valid ({daysLeft} days left)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "有効な緊急アクセスはありません"
+msgstr "No active emergency access"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "有効化"
@@ -3829,6 +3923,10 @@ msgstr "Normalized"
 msgid "残り {days} 日"
 msgstr "{days} days left"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "残り {minutes} 分 {seconds} 秒（{endsAt} に自動失効）"
+msgstr "{minutes} min {seconds} s left (expires automatically at {endsAt})"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "段は登録されていません。"
 msgstr "No pipeline stages have been registered."
@@ -3930,9 +4028,25 @@ msgstr "Filter by status"
 msgid "状態や種類の絞り込みを変えると、ほかの提案が見つかることがあります。"
 msgstr "Changing the state or kind filter may reveal other suggestions."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "状態を再確認する"
+msgstr "Check the status again"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "現在の指定先"
 msgstr "Current share targets"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "理由"
+msgstr "Reason"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "理由は {maxLength} 文字以内で入力してください。"
+msgstr "Enter a reason of {maxLength} characters or fewer."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "理由は必須です。空欄では発動できません。"
+msgstr "A reason is required. You cannot activate with an empty reason."
 
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
@@ -3968,6 +4082,19 @@ msgstr "Screen"
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "画面以外"
 msgstr "Outside the screen"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "発動"
+msgstr "Activated"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "発動する"
+msgstr "Activate"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "発動理由"
+msgstr "Reason for activation"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
@@ -4037,6 +4164,22 @@ msgstr "The audit log destination is not configured. Every tool invocation and e
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "監査ログの参照先が未設定です。権限変更とアカウント無効化は認可基盤の管理イベントとして 記録されています。"
 msgstr "No audit log destination is configured. Permission changes and account disablements are recorded as admin events in the identity provider."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "監査ログを取得できませんでした。"
+msgstr "Could not load the audit log."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "監査ログを表示する"
+msgstr "Show audit log"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "監査ログを読み込み中…"
+msgstr "Loading audit log…"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "監査ログを閉じる"
+msgstr "Hide audit log"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "直近 {d} 日"
@@ -4216,6 +4359,14 @@ msgstr "A conflict was recorded. Resolve it under “Sync conflicts” above."
 msgid "管理"
 msgstr "Administration"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "管理者の候補"
+msgstr "Administrator candidates"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "管理者を含む他の人がこの資料に緊急アクセスを発動することはできません。発動できるのは資料の所有者本人だけです。"
+msgstr "No one else, including administrators, can activate emergency access for your notes. Only the owner can activate it."
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 msgid "管理者設定（ABAC）"
 msgstr "Administrator settings (ABAC)"
@@ -4235,6 +4386,14 @@ msgstr "Index"
 #: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
 msgid "索引済み"
 msgstr "Indexed"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "終了"
+msgstr "Ended"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "終了（予定）"
+msgstr "Ends (scheduled)"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
@@ -4275,6 +4434,71 @@ msgstr "Set the filter back to “All” to see the other jobs."
 msgid "絞り込める候補はありません。"
 msgstr "No options available to narrow by."
 
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "緊急アクセス"
+msgstr "Emergency access"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "緊急アクセス（Break-glass）"
+msgstr "Emergency access (break-glass)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "緊急アクセス（Break-glass）を発動しますか？"
+msgstr "Activate emergency access (break-glass)?"
+
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "緊急アクセスが失効したか、所有者が終了したか、あなたが指名されていない可能性があります。開けるのは、有効な間に指名された管理者だけです。"
+msgstr "The emergency access may have expired, been ended by the owner, or you may not be the nominee. Only the nominated administrator can open it while it is active."
+
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "緊急アクセスでこの資料を開けませんでした。"
+msgstr "Could not open this note with emergency access."
+
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "緊急アクセスで閲覧しています。この閲覧は 1 件ずつ監査ログに記録されます。閲覧だけができ、編集・削除・共有の変更はできません。所有者が終了するか、発動から 15 分を過ぎると開けなくなります。"
+msgstr "You are viewing this note with emergency access. Each view is recorded in the audit log. You can only view it; editing, deleting and changing sharing are not allowed. It can no longer be opened once the owner ends it or 15 minutes have passed since activation."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセスの状態を取得できませんでした。"
+msgstr "Could not load the emergency access status."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセスの状態を読み込み中…"
+msgstr "Loading emergency access status…"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "緊急アクセスの監査ログ"
+msgstr "Emergency access audit log"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "緊急アクセスの監査ログ（新しい順）"
+msgstr "Emergency access audit log (newest first)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "緊急アクセスの記録はありません。"
+msgstr "There are no emergency access records."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセスを発動しました。"
+msgstr "Emergency access activated."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "緊急アクセスを発動できませんでした。時間をおいて再度お試しください。"
+msgstr "Could not activate emergency access. Please try again later."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセスを終了しました。"
+msgstr "Emergency access ended."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセスを終了できませんでした。既に失効しているか、時間をおいて再度お試しください。"
+msgstr "Could not end emergency access. It may have already expired; otherwise please try again later."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセス有効中"
+msgstr "Emergency access active"
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "編集"
@@ -4287,6 +4511,14 @@ msgstr "Edit form"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "編集中の文書: v{version}"
 msgstr "Editing document: v{version}"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "自分の資料 1 件について、理由を書き、システム管理者（platform-admin）を 1 人指名して発動します。指名した管理者だけが、発動から 15 分間その資料を閲覧できます（閲覧だけです）。15 分より前に終えることもできます。発動・終了・管理者の閲覧はすべて監査ログに記録されます。"
+msgstr "Activate for one of your notes by giving a reason and nominating one system administrator (platform-admin). Only the nominated administrator can view that note, for 15 minutes from activation (view only). You can end it earlier. Activation, ending and every view by the administrator are recorded in the audit log."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "自分の資料に対する緊急アクセスの記録が表示されます（新しい順に最大 50 件）。資料の題名と本文は記録されません。"
+msgstr "Shows emergency access records for your notes (newest first, up to 50). Note titles and bodies are not recorded."
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "自動再起動を配備していない環境では、この値を読むアプリケーションを再起動するまで反映されません。"
@@ -4439,6 +4671,7 @@ msgstr "No pages matched."
 msgid "該当するものはありません。"
 msgstr "Nothing to show."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "該当する利用者がいません。"
 msgstr "No matching users."
@@ -4488,6 +4721,8 @@ msgid "説明"
 msgstr "Detail"
 
 #: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
 #: platform/frontend/src/app/routing/routeStates.tsx
 #: platform/frontend/src/components/ui/QueryState.tsx
 #: platform/frontend/src/lib/auth/RequireAuth.tsx
@@ -4503,6 +4738,14 @@ msgstr "Warning"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "資料が見つかりません。Obsidian 側で再同期してください。"
 msgstr "The note was not found. Re-sync from Obsidian."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "資料が見つかりませんでした。"
+msgstr "The note was not found."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "資料を選んでください"
+msgstr "Select a note"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "資格情報の更新 — {name}"
@@ -4707,6 +4950,10 @@ msgstr "Applied by"
 msgid "適用者 {appliedBy}"
 msgstr "Applied by {appliedBy}"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "選び直す"
+msgstr "Choose again"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "選択"
 msgstr "Select"
@@ -4825,9 +5072,33 @@ msgstr "Relevance"
 msgid "閲覧"
 msgstr "Read"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "閲覧（属性）"
+msgstr "Viewed (attributes)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "閲覧（本文）"
+msgstr "Viewed (body)"
+
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "閲覧できる Wiki ページはありません。"
 msgstr "There are no wiki pages you can read."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "閲覧を許した管理者"
+msgstr "Administrator allowed to view"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "閲覧を許す管理者"
+msgstr "Administrator to allow viewing"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "閲覧を許す管理者:"
+msgstr "Administrator to allow viewing:"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "閲覧を許す管理者を名前で検索する"
+msgstr "Search for the administrator to allow viewing by name"
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "閲覧権限のある Wiki ページだけが並びます。ページを選ぶと本文を表示します。"

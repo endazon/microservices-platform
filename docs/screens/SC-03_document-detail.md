@@ -3,15 +3,15 @@ title: 文書詳細／プレビュー 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-10-15
+updated: 2026-10-24
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-05, SC-09, SC-18, SC-21, UC-01, UC-02, UC-07]
-adrs: [ADR-0102, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0063, ADR-0070, ADR-0073]
-iadrs: [IADR-0451, IADR-0009, IADR-0038, IADR-0119, IADR-0121, IADR-0124, IADR-0126, IADR-0272, IADR-0276, IADR-0290, IADR-0300, IADR-0323, IADR-0355, IADR-0364, IADR-0365, IADR-0386, IADR-0388, IADR-0544]
-specs: [20260913_1455_sc03-private-note-display, 20260804_issue-502_sc01-03-search-flow, 20260828_issue-1011_version-body-contract, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261015_1905_bff-document-content]
-issues: [#1455, #1011, #1014, #1104, #1187, #12, #1200, #1240, #1254, #446, #449, #450, #452, #490, #502, #504, #519, #541, #553, #586, #917, #918, #1905, planning#197, planning#237, planning#244, planning#473, planning#495]
+adrs: [ADR-0036, ADR-0102, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0063, ADR-0070, ADR-0073]
+iadrs: [IADR-0451, IADR-0009, IADR-0038, IADR-0119, IADR-0121, IADR-0124, IADR-0126, IADR-0272, IADR-0276, IADR-0290, IADR-0300, IADR-0323, IADR-0355, IADR-0364, IADR-0365, IADR-0386, IADR-0388, IADR-0544, IADR-0610, IADR-0611, IADR-0612]
+specs: [20260913_1455_sc03-private-note-display, 20260804_issue-502_sc01-03-search-flow, 20260828_issue-1011_version-body-contract, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261015_1905_bff-document-content, 20261024_2046_break-glass-screens]
+issues: [#1455, #1011, #1014, #1104, #1187, #12, #1200, #1240, #1254, #446, #449, #450, #452, #490, #502, #504, #519, #541, #553, #586, #917, #918, #1905, #2046, planning#197, planning#237, planning#244, planning#473, planning#495, planning#841]
 -->
 
 # 画面仕様書: 文書詳細／プレビュー
@@ -241,6 +241,8 @@ hi-fi モックの左レールにも「文書詳細」がある。しかし**本
 🔴 **［2026-09-13 新設］対象が個人資料のときだけ出る欄である。** 所有者以外がこの画面を開く経路は 2 つある ——
 **共有された相手**と、**退職・無効化から 30 日の窓で閲覧する管理者**（平時の管理者は読めない）。
 したがって「自分の資料しか開かれない」前提を置かない。
+［2026-10-24 追記］経路は 3 つになった —— **所有者が緊急アクセスで指名した管理者**（有効な間・その 1 件・閲覧だけ）。
+下の §緊急アクセスの閲覧 を見よ。
 
 | 要素 | 所有者 | 所有者以外 |
 | --- | --- | --- |
@@ -256,6 +258,21 @@ hi-fi モックの左レールにも「文書詳細」がある。しかし**本
 - **表示名を引けないときは「（不明な利用者）」と描く。** 🔴 **利用者名へフォールバックしない** ——
   フォールバックを許すと「識別子を出さない」統制が失敗時にだけ破れる。**無効化済み（退職者）でも表示名は出る。**
 - **所有者かどうかの突き合わせは表示の分岐にだけ使う。** 可視性を決めるのは後段であり、画面は 2 本目の判定軸を持たない。
+
+### 緊急アクセスの閲覧
+
+［2026-10-24 追記］所有者が緊急アクセスで指名した管理者は、**本画面で**その 1 件を開く（新しい画面は作らない。
+管理者が全利用者の個人資料を一覧する画面も作らない）。入口は個人資料管理の画面の監査ログの
+「指名された資料を閲覧する」で、`/docs/<id>?via=break-glass` へ送られる。
+
+- 🔴 **`via=break-glass` は表示の文脈だけを運ぶ。** 開けるかどうかは後段が**要求ごとにサーバ側の発動記録で**決める
+  （付けても開けない資料は開けず、付けなくても開ける資料は開ける）。知らない値は落とす（文脈なしと同じ）。
+- 開けたとき: 本文より前に「緊急アクセスで閲覧しています。この閲覧は 1 件ずつ監査ログに記録されます。閲覧だけができ、
+  編集・削除・共有の変更はできません。…」を出す（警告の枠 ＋ ラベル「緊急アクセス」。色だけに頼らない）。
+  **AI 提案の承認欄は出さず、提案も引かない**（閲覧だけ）。
+- 開けなかった（404）とき: 「緊急アクセスでこの資料を開けませんでした。」＋ 失効・所有者の終了・指名の対象外の
+  **いずれかである可能性**を告げる。🔴 **どれに当たるかは区別しない**（後段が区別せず 404 を返す。存在秘匿）。
+  警告（`role="alert"`）も再試行も付けない（同じ要求は同じ 404 を返す）。
 
 ### 属性の表示
 
@@ -419,6 +436,7 @@ flowchart LR
 | loading | 詳細を取得中 | 「読み込み中…」（`role="status"`） |
 | ok | 200 | メタ ＋ 本文 ＋ 属性 ＋ 版履歴 |
 | notFound | 404（不在／秘匿） | 中立「文書が見つかりませんでした。」 |
+| notFound（緊急アクセスの文脈） | 404 かつ `via=break-glass` | 「緊急アクセスでこの資料を開けませんでした。」＋ 有効でなくなった可能性（理由は区別しない） |
 | error | 5xx / network | `Alert tone="danger"` `role="alert"` |
 | 本文 unavailable | 本文だけ失敗（詳細は成功） | 「本文は利用できません。」（本文領域のみ縮退） |
 | 本文なし | `hasBody === false`（原本が本文を持たない） | 「本文なし（原本を参照）」。**取得失敗とは別の状態である** —— 原本を参照する導線（§出典元）へ委ねる |

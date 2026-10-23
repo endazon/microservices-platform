@@ -45,6 +45,7 @@ import { SYNC_TONES, syncKeyOf } from '../types/noteBadges';
 // [[IADR-0451]] (#1455): 公開範囲の語彙は SC-03 と共有するためユニットの `lib/` にある。
 import { VISIBILITY_TONES, visibilityKeyOf } from '../../../lib/private-notes';
 import type { SyncFilter, TabOption, VisibilityFilter } from '../routes/sc19PrivateNotesRoute';
+import { BreakGlassPanel } from './BreakGlassPanel';
 import { QuotaPanel } from './QuotaPanel';
 import { ShareTargetsDialog } from './ShareTargetsDialog';
 
@@ -156,6 +157,8 @@ export function PrivateNotesPage() {
   const [confirming, setConfirming] = useState<Confirmation>(null);
   const [sharing, setSharing] = useState<Sharing>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // SC-19 主要素 8 / [[IADR-0612]] (#2046): 緊急アクセスの欄は**開いたときだけ描く**（状態・監査ログもそのときだけ引く）。
+  const [showBreakGlass, setShowBreakGlass] = useState(false);
 
   const all = useMemo(() => notes.data?.notes ?? [], [notes.data]);
   const usage = notes.data?.usage;
@@ -335,6 +338,29 @@ export function PrivateNotesPage() {
           )}
         </Alert>
       )}
+      {/*
+        SC-19 主要素 8, FR-19, 計画 ADR-0036 D-08, planning#841 / [[IADR-0612]] (#2046): 緊急アクセス（Break-glass）の導線。
+        モックアップ（hi-fi sc-19）は一覧の右上に置く。🔴 **一覧の `QueryState` の外に置く** —— 資料が 0 件でも
+        監査ログ（管理者は全件）は読めるべきであり、一覧の取得に失敗しても導線を消さない。
+        🔴 **本人が自分の資料に対して発動する導線だけである**（第三者が発動する導線・管理者が全利用者の資料を見る画面は描かない）。
+      */}
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          variant="secondary"
+          aria-expanded={showBreakGlass}
+          aria-controls="break-glass-panel"
+          onClick={() => setShowBreakGlass((v) => !v)}
+        >
+          <Trans>緊急アクセス（Break-glass）</Trans>
+        </Button>
+      </div>
+      {showBreakGlass && (
+        <div id="break-glass-panel">
+          <BreakGlassPanel notes={all} />
+        </div>
+      )}
+
       {/*
         待ち・失敗・空・本体の描き分けは `QueryState` に一本化した（判定順は失敗 → 待ち → 空 → 本体）。
         🔴 **タブと絞り込みの器は取得前に描かない** —— 中身のない「利用中（0）／削除済み（0）」は、

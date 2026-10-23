@@ -454,3 +454,83 @@ test('SC-19/UC-11 (#1447): group targets are searched, added and revoked by disp
 
   expectBffTrafficIsComplete(traffic);
 });
+
+// SC-19 主要素 8, UC-11, FR-19, 計画 ADR-0036 D-08, planning#841 / IADR-0612 (#2046): 緊急アクセス（Break-glass）。
+// 本人が資料 1 件を選び、理由（必須）と指名する管理者（名簿の候補）を入れ、「この操作は監査ログに記録されます」の
+// 確認ダイアログから発動し、残り時間を見て、15 分より前に終える —— の一続きを実ブラウザで踏む。
+test('SC-19: owner activates break-glass for one note and ends it early (#2046)', async ({
+  page,
+}) => {
+  type Grant = Record<string, unknown>;
+  let active: Grant | null = null;
+  const activations: unknown[] = [];
+  const directory: UserSummaryDto[] = [
+    { username: 'hanako', displayName: '花子 ハナコ', enabled: true },
+  ];
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes': listOf([note()]),
+      'GET /private-notes/note-1/break-glass': () => ({ active }),
+      'POST /private-notes/note-1/break-glass': (call) => {
+        activations.push(call.body);
+        const now = Date.now();
+        active = {
+          id: 'grant-1',
+          documentId: 'note-1',
+          nomineeUserId: 'hanako',
+          reason: (call.body as { reason: string }).reason,
+          activatedAt: new Date(now).toISOString(),
+          expiresAt: new Date(now + 15 * 60_000).toISOString(),
+          endedAt: null,
+          endsAt: new Date(now + 15 * 60_000).toISOString(),
+          active: true,
+        };
+        return reply(201, active);
+      },
+      'POST /private-notes/note-1/break-glass/end': () => {
+        const ended = { ...active, active: false, endedAt: new Date().toISOString() };
+        active = null;
+        return ended;
+      },
+      'GET /users/lookup': () => directory,
+      'POST /users/resolve': (call) => {
+        const body = call.body as { usernames: string[] };
+        return directory.filter((u) => body.usernames.includes(u.username));
+      },
+    },
+  });
+
+  await page.goto('/my/notes');
+  await expect(page.getByRole('cell', { name: '設計メモ' })).toBeVisible();
+  // ★ 陰性対照: 欄を開くまで緊急アクセスの口を 1 度も引かない。
+  expect(traffic.calls.some((c) => c.key.includes('break-glass'))).toBe(false);
+
+  await page.getByRole('button', { name: '緊急アクセス（Break-glass）' }).click();
+  await page.getByLabel('対象の資料').selectOption('note-1');
+  await page.getByRole('button', { name: 'この資料に緊急アクセスを発動する…' }).click();
+
+  const dialog = page.getByRole('dialog');
+  // 計画 §SC-19 の固定文言（確認ダイアログ）。
+  await expect(dialog.getByText(/この操作は監査ログに記録されます。/)).toBeVisible();
+  // 理由が空・指名先が未選択では発動できない。
+  await expect(dialog.getByRole('button', { name: '発動する' })).toBeDisabled();
+  await dialog.getByLabel('発動理由').fill('端末紛失のため');
+  await dialog.getByLabel('閲覧を許す管理者を名前で検索する').fill('ha');
+  await dialog.getByRole('button', { name: '花子 ハナコ' }).click();
+  // 🔴 利用者名（識別子）は画面に出ない。
+  await expect(dialog.getByText('hanako')).toHaveCount(0);
+  await dialog.getByRole('button', { name: '花子 ハナコ に閲覧を許して発動する' }).click();
+
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(activations).toEqual([{ reason: '端末紛失のため', nomineeUserId: 'hanako' }]);
+  // 有効中は文言（バッジと残り時間）で示す（色だけに頼らない）。
+  await expect(page.getByText('緊急アクセス有効中')).toBeVisible();
+  await expect(page.getByText(/残り \d+ 分 \d+ 秒/)).toBeVisible();
+
+  await page.getByRole('button', { name: '今すぐ終了する' }).click();
+  await expect(page.getByText('有効な緊急アクセスはありません')).toBeVisible();
+  expect(traffic.calls.map((c) => c.key)).toContain('POST /private-notes/note-1/break-glass/end');
+
+  expectBffTrafficIsComplete(traffic);
+});
