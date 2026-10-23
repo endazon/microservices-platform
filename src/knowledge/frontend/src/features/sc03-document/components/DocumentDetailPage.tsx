@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { i18n } from '@lingui/core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Link, useParams } from '@tanstack/react-router';
+import { Link, useParams, useSearch } from '@tanstack/react-router';
 import {
+  Alert,
   EmptyState,
   Kv,
   KvItem,
@@ -75,6 +76,8 @@ export function DocumentDetailPage() {
   const { t } = useLingui();
   // SC-03, IADR-0124 決定 3: パスパラメータはルート ID のリテラルを渡す形だけが厳密に型付く。
   const { id } = useParams({ from: '/_shell/docs/$id' });
+  // FR-19, planning#841 裁定 2 / [[IADR-0612]] (#2046): 緊急アクセスの導線から来たか（表示の文脈だけ。許可ではない）。
+  const viaBreakGlass = useSearch({ from: '/_shell/docs/$id' }).via === 'break-glass';
   const { detail, content, versions } = useDocumentQueries(id);
   // 05_screens §共通シェル / #446: パンくずの葉は文書タイトルである（モックの crumb
   // `ホーム / 検索結果 / 経費精算規程 v3.2`）。**フックは早期 return より前で呼ぶ。**
@@ -86,6 +89,17 @@ export function DocumentDetailPage() {
   // `role="alert"` も再試行も付けない（同じ要求は必ず同じ 404 を返す）。
   // SC-18 の「起点未指定 → 404 → 三部品」と同じ描き分けである。
   if (isNotFound(detail.error)) {
+    // FR-19, 計画 ADR-0036 D-08 / [[IADR-0612]] (#2046): 緊急アクセスの導線から来て 404 なら、**有効でなくなった**
+    // （失効・本人の終了・指名の対象外・資料が無い）ことを告げる。🔴 **どれに当たるかは区別しない**
+    // （後段は区別せず 404 を返す。存在秘匿）。`role="alert"` も再試行も付けない（同じ要求は同じ 404 を返す）。
+    if (viaBreakGlass) {
+      return (
+        <EmptyState
+          title={t`緊急アクセスでこの資料を開けませんでした。`}
+          description={t`緊急アクセスが失効したか、所有者が終了したか、あなたが指名されていない可能性があります。開けるのは、有効な間に指名された管理者だけです。`}
+        />
+      );
+    }
     return (
       <EmptyState
         title={t`文書が見つかりませんでした。`}
@@ -96,7 +110,14 @@ export function DocumentDetailPage() {
 
   return (
     <QueryState query={detail} errorTitle={t`文書の取得に失敗しました。`}>
-      {(doc) => <DocumentDetail doc={doc} content={content} versions={versions} />}
+      {(doc) => (
+        <DocumentDetail
+          doc={doc}
+          content={content}
+          versions={versions}
+          viaBreakGlass={viaBreakGlass}
+        />
+      )}
     </QueryState>
   );
 }
@@ -105,11 +126,14 @@ function DocumentDetail({
   doc,
   content,
   versions,
+  viaBreakGlass,
 }: {
   doc: DocumentDto;
   content: UseQueryResult<DocumentContentDto, unknown>;
   versions: UseQueryResult<DocumentVersionDto[], unknown>;
+  viaBreakGlass: boolean;
 }) {
+  const { t } = useLingui();
   // `lingui/no-expression-in-message`: 翻訳単位へ渡せるのは単一の変数だけである
   // （プロパティ参照・関数呼び出しはカタログの ID を壊す）。
   const status = doc.status;
@@ -119,6 +143,20 @@ function DocumentDetail({
   return (
     <section className="flex flex-col gap-n4 lg:flex-row">
       <div className="min-w-0 lg:flex-[1.7]">
+        {/*
+          FR-19, 計画 ADR-0036 D-08, planning#841 裁定 1・2・5 / [[IADR-0612]] (#2046): 緊急アクセスで開いたことを
+          **本文より前に**告げる（閲覧が 1 件ずつ記録されること・閲覧だけであること・有効な間だけであること）。
+          色だけに頼らず、ラベルと文言が意味を担う。
+        */}
+        {viaBreakGlass && (
+          <Alert tone="warning" label={t`緊急アクセス`} className="mb-n3">
+            <Trans>
+              緊急アクセスで閲覧しています。この閲覧は 1
+              件ずつ監査ログに記録されます。閲覧だけができ、編集・削除・共有の変更はできません。所有者が終了するか、発動から
+              15 分を過ぎると開けなくなります。
+            </Trans>
+          </Alert>
+        )}
         {/* hi-fi `.ttl` / `.sub`。 */}
         <h1 className="text-[17px] font-medium text-fg">{doc.title}</h1>
         <p className="text-xs text-fg-muted">
@@ -134,7 +172,8 @@ function DocumentDetail({
         {/* hi-fi の順: 本文 → 導線の行 → AI 提案。 */}
         <SourceLinks doc={doc} content={content.data} />
         {/* 05_screens §SC-03:「本文の下部に表示し、その場で承認／却下できる」。0 件なら欄ごと出ない。 */}
-        <AiSuggestionPanel documentId={doc.id} />
+        {/* 緊急アクセスは**閲覧だけ**（planning#841 裁定 1）。承認の欄（書き込みの導線）は出さない。 */}
+        {!viaBreakGlass && <AiSuggestionPanel documentId={doc.id} />}
       </div>
 
       <div className="min-w-0 lg:flex-1">

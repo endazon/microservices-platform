@@ -9,8 +9,8 @@ author: Claude
 <!-- trace:
 ids: [FR-19, FR-13, FR-16, FR-20, FR-21, FR-22, UC-11, SC-10, SC-17, SC-19, SC-20]
 adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0057, ADR-0058, ADR-0061, ADR-0082, ADR-0096, ADR-0105, ADR-0110, ADR-0114]
-iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512, IADR-0529, IADR-0533, IADR-0598, IADR-0610, IADR-0611]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1879_exposure-org-docs-wiki-gate, 20261010_issue-1255-1517_east-west-rest-retirement, 20261023_2112_sc05-doc-scope-default, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay]
+iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512, IADR-0529, IADR-0533, IADR-0598, IADR-0610, IADR-0611, IADR-0612]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1879_exposure-org-docs-wiki-gate, 20261010_issue-1255-1517_east-west-rest-retirement, 20261023_2112_sc05-doc-scope-default, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens]
 issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752, #1879, #1255, #1517, #2112, #2046, planning#472, planning#475, planning#492, planning#652, planning#784, planning#841]
 -->
 
@@ -31,7 +31,9 @@ issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752
 > （②通知は受け口・発火の結線とも 2026-08-28 に実装済み — 通知サービスの配備が残る）
 > 線引きは同名の作業仕様書と実装 ADR（trace 参照）にある。
 > **⑥緊急アクセスの後段（発動記録・閲覧の判定・監査ログ）を 2026-10-23 に、BFF の中継を 2026-10-24 に実装した**
-> （後述 §緊急アクセス）。画面の導線はまだ無く、利用者が画面から操作する経路は無い。
+> （後述 §緊急アクセス）。~~画面の導線はまだ無く、利用者が画面から操作する経路は無い。~~
+> ［2026-10-24 追記］**画面の導線も同日に実装した**（個人資料管理の画面で発動・残り時間・本人の終了・監査ログ、
+> 指名された管理者は監査ログから文書詳細画面で開く）。**冒頭の①の「緊急アクセスは画面に無い」は本追記が置き換える。**
 
 ## 概要
 
@@ -160,6 +162,7 @@ Wiki.js へは従来どおり同期しない（露出の設定によらない）
 | 監査ログ | 発動・終了・有効中の閲覧（1 件ずつ）を記録する。項目は発動日時・発動者・対象資料の識別子・理由・操作種別・終了日時（ほかに操作した人・指名先・閲覧の対象）。本文と題名は記録しない。保持 3 年（日次の定期処理が削除する） |
 | 監査ログを読める者 | システム管理者（全件）と本人（自分の資料の分だけ） |
 | 公開 API（BFF） | 発動・終了・状態は所有者本人のセッションだけが呼べる。BFF でも本人の個人資料かを確かめてから中継し、文書サービスも本人かを判定する（二重）。他人の・無い資料、指名されただけの管理者、機械の主体はいずれも 404。発動だけ書き込みの許可ポリシーを要する（無ければ 403。終了と状態は要しない）。監査ログは人の主体だけ（機械は 403）で、誰の行まで読めるかは文書サービスが決める |
+| 画面 | ［2026-10-24］本人: 個人資料管理の画面で資料 1 件を選び、確認ダイアログ（理由・閲覧を許す管理者・「この操作は監査ログに記録されます」）から発動し、残り時間を見て早く終えられる。監査ログもそこで読む。指名先は利用者の検索の候補から選ぶ（自由入力にしない。候補を管理者に絞る公開の口は無く、管理者でない人はサーバが拒む）。指名された管理者: 監査ログの該当行から文書詳細画面で開く（新しい画面は作らない） |
 | 指名された管理者の閲覧の経路 | 文書の詳細と本文の既存の口（文書詳細画面の口）。可否は文書サービスが要求ごとに発動記録で判定し、BFF は許可も拒否も足さない。版の一覧・特定版・書き込みの前段・本人の確認は緊急アクセスを含めずに文書を引く（閲覧の記録を増やさない） |
 
 同じ資料に同時に有効な発動は 1 つである（重ねて発動すると 409。終えれば再び発動できる）。論理削除中の資料には発動できない。

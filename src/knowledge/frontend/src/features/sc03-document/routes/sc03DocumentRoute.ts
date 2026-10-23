@@ -20,10 +20,26 @@ const DocumentDetailPage = lazyRouteComponent(
   'DocumentDetailPage',
 );
 
+/**
+ * SC-03 の検索パラメータ。
+ *
+ * FR-19, 計画 ADR-0036 D-08, planning#841 裁定 2 / [[IADR-0612]] (#2046): `?via=break-glass` は
+ * **緊急アクセスの導線（SC-19 の監査ログ）から来た**ことを示す。🔴 **表示の文脈だけを運び、許可には使わない**
+ * —— 開けるかどうかは文書サービスが要求ごとに発動記録で決める（付けても開けない資料は開けず、付けなくても
+ * 開ける資料は開ける）。**未指定（`undefined`）が既定**であり、既存の `/docs/$id` への導線は何も渡さなくてよい。
+ */
+export interface DocumentSearch {
+  via?: 'break-glass';
+}
+
 export const createSc03DocumentRoute = (shell: ShellRoute) =>
   createRoute({
     getParentRoute: () => shell,
     path: '/docs/$id',
+    // URL は外部由来なので正規化する。**知らない値は落とす**（文脈なしと同じ）。
+    validateSearch: (raw: Record<string, unknown>): DocumentSearch => ({
+      via: raw.via === 'break-glass' ? 'break-glass' : undefined,
+    }),
     component: DocumentDetailPage,
   });
 

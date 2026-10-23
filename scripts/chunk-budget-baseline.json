@@ -294,7 +294,11 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 635032,
+  "initialTotalBytes": 644208,
+  "$comment_initialTotalBytes_20261024_2046_break-glass-screens": [
+    "［2026-10-24 / #2046 の 3 本目（緊急アクセスの画面）］635,032 → 644,208（+9,176 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "増分は翻訳カタログ（ja / en の messages.ts。初期チャンクに載る）に緊急アクセスの文言 61 キーを足した分である。カタログの生成物は ja +5,213 B・en +4,440 B（計 9,653 B。最小化前）。画面の部品は個人資料管理と文書詳細の遅延チャンクに載り、初期ロードには入らない。"
+  ],
   "$comment_initialTotalBytes_20261022_2077_radix-tabs-bump": [
     "［2026-10-22 / #2077 の追随］633,157 → 635,032（+1,875 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
     "増分は dependabot の @radix-ui/react-tabs 1.1.21 → 1.2.1（#2077。依存の primitive・react-primitive・react-roving-focus・react-slot ほか一式も上がった）で ui チャンクが 76,575 → 78,450 B になった分だけである。",
