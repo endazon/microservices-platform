@@ -244,6 +244,9 @@ public class DiagramCodingLimitsTests
                 services.RemoveAll<MassTransit.IBusControl>();
                 services.AddMassTransitTestHarness();
                 services.DisableAllExternalWolverineTransports();
+                // FR-12, ADR-0027 §決定, IADR-0609 (#2169): Program.cs は Wolverine の永続化（Transactional Outbox）を
+                // PostgreSQL へ向ける。器の DB は InMemory で接続先も到達不能なので、永続化の起動（表の作成・耐久エージェント）を切る。
+                services.DisableAllWolverineMessagePersistence();
             });
         }
     }

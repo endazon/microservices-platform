@@ -127,6 +127,10 @@ builder.Services.AddScoped<IValidator<FigureCorrectionRequest>, FigureCorrection
 // トポロジ検査の発行側 union に wolverine が混ざり、E2 で違反が報告されなくなる。
 builder.Services.AddScoped<IDocumentNormalizedPublisher, MassTransitDocumentNormalizedPublisher>();
 
+// FR-12 例外フロー, UC-06, ADR-0027 §決定, IADR-0609 (#2169): 再変換の RawDocumentFetched の発行口（Transactional Outbox）。
+// queued への遷移と再発行を 1 つの確定に載せる。Wolverine の発行なので MassTransit の発行口とは別ファイルに置く。
+builder.Services.AddScoped<IConversionRetryPublisher, WolverineConversionRetryPublisher>();
+
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddPlatformPipelineConfig();
@@ -190,6 +194,11 @@ builder.Host.UseWolverine(opts =>
     // UC-06, IADR-0008（2026-09-27 追記 / #1621）: 受け口の実行期限を明示する（Wolverine の既定 60 秒のままにしない）。
     // 図のコード化の総枠と 1 回の期限が収まる長さである（`DiagramCodingLimits`）。
     opts.Policies.Add(new RawDocumentFetchedTimeoutPolicy(diagramCodingLimits.HandlerTimeout));
+
+    // FR-12 例外フロー, ADR-0027 §決定, IADR-0604 決定 1, IADR-0609 (#2169): Transactional Outbox。
+    // 再変換の `RawDocumentFetched` は queued への遷移と同じトランザクションで Outbox の表（`wolverine` スキーマ）へ書かれ、確定の後に送られる。
+    // 🔴 **接続文字列は DbContext（`ConversionJobDbContext`）と同じもの**（envelope の INSERT は DbContext の接続で走る）。表は起動時に Wolverine が作る。
+    opts.UsePlatformTransactionalOutbox(connStr);
 });
 
 var app = builder.Build();
