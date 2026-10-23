@@ -96,6 +96,7 @@ issue: "#2103"
 
 - **トークンを外しても 1〜3 が緑**なのは、版を進める 2 つの保存は版テーブルの一意索引で必ずぶつかるからである。トークンが要るのは版の行を足さない保存（4）。
 - **一意索引違反の分岐は必須**（実 PostgreSQL では文書行の 0 行より先に 23505 が出る。EF のバッチの並べ方による）。
+> ［2026-10-23 追記 / #2103］T-113〜T-119／新規 7 件／基準 6・7 の変異は末尾追記参照。
 
 ## 限界（残余）
 
@@ -111,12 +112,14 @@ issue: "#2103"
 - コード: `DocumentService`（`DocumentDbContext`・モデルスナップショット・`DocumentVersionConflict`・`Update`・`UpdateMetadata`）。BFF・画面は変えない。
 - 試験: `Knowledge.IntegrationTests/DocumentService/DocumentConcurrentUpdateTests.cs`（新規）。
 - 文書: 機能仕様書 FR-06（処理・異常系・受け入れ基準・制約）、テスト仕様書 FR-06（T-113〜T-117）、`docs/api/openapi.yaml`（`PUT /bff/documents/{id}` の説明）。
+  > ［2026-10-23 追記 / #2103］T-113〜T-119／新規 7 件／基準 6・7 の変異は末尾追記参照。
 - 配備: **マイグレーションは無い**（スキーマは変わらない）。DocumentService のイメージを差し替えるだけでよい。
 
 ## 検証
 
 - `dotnet test …/DocumentService/Tests/DocumentService.Tests.csproj`（1124 件緑）。
 - `dotnet test Knowledge.IntegrationTests --filter FullyQualifiedName~Knowledge.IntegrationTests.DocumentService`（43 件緑。新規 5 件を含む）、`McpTools`・`Messaging.DocumentUpdated`（5 件緑）。
+  > ［2026-10-23 追記 / #2103］T-113〜T-119／新規 7 件／基準 6・7 の変異は末尾追記参照。
 - `dotnet format backend.slnx --verify-no-changes --include <変更ファイル>`（差分なし）。
 - 上の変異表（実測）。
 
