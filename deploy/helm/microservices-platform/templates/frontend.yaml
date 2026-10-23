@@ -39,7 +39,8 @@ spec:
       containers:
         - name: {{ $svcName }}
           # 生成イメージのため global.image.registry を接頭辞に使う（本番=harbor、経路B=k3d-local）。
-          image: "{{ .Values.global.image.registry }}/{{ $f.image }}:{{ $f.tag | default "latest" }}"
+          # NFR-20, IADR-0605 (#2132): タグは frontend.tag か global.image.tag（無ければ描画が落ちる。templates/_image.tpl）。
+          image: "{{ .Values.global.image.registry }}/{{ $f.image }}:{{ include "msp.selfBuiltImageTag" (dict "root" $ "tag" $f.tag "what" "frontend") }}"
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
           {{- include "msp.containerSecurityContext.restricted" . | nindent 10 }}
           ports:

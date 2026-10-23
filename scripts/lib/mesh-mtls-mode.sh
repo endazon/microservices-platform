@@ -47,6 +47,8 @@ set_mesh_mtls_mode() {
   fi
 
   echo "    helm 経由で mesh.mtlsMode=$mode を宣言する（kubectl patch では書かない / #1159）"
+  # NFR-20, IADR-0605 (#2132): --reuse-values は稼働リリースの global.image.tag を引き継ぐ。宣言が無いリリース（初回の切り替え前）は
+  #   chart の描画で止まる —— 先に bash scripts/k8s-local-up.sh --live を流してタグを入れる（エラー文も同じことを告げる）。
   helm upgrade "$release" "$chart" -n "$ns" --reuse-values --set "mesh.mtlsMode=$mode" >/dev/null
 }
 

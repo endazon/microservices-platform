@@ -42,8 +42,9 @@ kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install
 
 イメージは Harbor（`harbor.internal`）で管理する（`values.yaml` の `global.image.registry`）。
 Pull 認証は Namespace の docker-registry Secret（`harbor-pull`）で行う
-（作成手順は [`../bootstrap/README.md`](../bootstrap/README.md)）。CI がイメージを Harbor へ push し、
-Git 上の `services.<name>.tag` を更新することで ArgoCD が新イメージを同期する。
+（作成手順は [`../bootstrap/README.md`](../bootstrap/README.md)）。CI（または配備する人）がイメージを Harbor へ
+**不変のタグ（git の sha）** で push し、Git 上の `application.yaml` の `helm.parameters` の `global.image.tag` を
+その sha へ更新することで ArgoCD が新イメージを同期する（NFR-20 / IADR-0605 / #2132）。
 
 ## 3. Application 適用（ブートストラップのみ kubectl）
 
@@ -56,16 +57,19 @@ kubectl apply -f deploy/argocd/application.yaml
 
 ## 4. 独立デプロイ・ロールバック（NFR）
 
-- **デプロイ（サービス単位）**: `deploy/helm/microservices-platform/values.yaml` の
-  `services.<name>.tag` を Git で更新 → ArgoCD が自動同期（`automated.selfHeal`）。
-- **ロールバック**:
-  ```sh
-  argocd app rollback microservices-platform <revision>
-  # もしくは Git 上で当該コミットを revert（GitOps の原則）
-  ```
+- 🔴 **chart は自製イメージのタグを持たない**（既定の `latest` は撤去した。NFR-20 / IADR-0605 / #2132）。
+  `application.yaml` の `helm.parameters` の `global.image.tag`（`forceString: true`）が空のままだと、同期は描画の失敗
+  （ComparisonError）で止まる。
+- **デプロイ**: `global.image.tag` をビルドした sha へ改める PR をマージし、`kubectl apply -f deploy/argocd/application.yaml` で
+  適用する（Application はこの README の 3. で一度だけ kubectl で入れたもので、ArgoCD 自身は管理していない）。
+  サービス単位で別の版にするときは同じ parameters へ `services.<name>.tag`（`forceString: true`）を足す。
+- **ロールバック**: 前の sha へ値を戻す PR（`git revert`）をマージして適用する。急ぐときは
+  `argocd app set microservices-platform --helm-set-string global.image.tag=<前の sha>` で先に戻し、同じ値を Git へも入れる
+  （入れないと、Application を適用し直したときに Git の値へ戻る）。`argocd app rollback` は自動同期を有効にしたままでは使えない。
+- 手順の詳細と版の確認は [`docs/operations/operations.md`](../../docs/operations/operations.md) §イメージのタグの固定とロールバック。
 - **同期状態の確認**:
   ```sh
-  argocd app get microservices-platform      # Sync/Health ステータス
+  argocd app get microservices-platform --show-params   # Sync/Health ステータスと global.image.tag（動いている版）
   argocd app diff microservices-platform     # Git と実クラスタの差分（0 であること）
   ```
 

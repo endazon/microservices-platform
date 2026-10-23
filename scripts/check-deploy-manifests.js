@@ -61,6 +61,8 @@ const egress = require('./lib/product-egress-defaults');
 const imageDigests = require('./check-image-digests');
 const obsFront = require('./lib/observability-front-guard');
 const hostPorts = require('./lib/compose-host-ports');
+// NFR-20, IADR-0605 (#2132): chart は自製イメージのタグが無いと描画を落とす。描くだけの検査は固定の値を渡す。
+const { RENDER_IMAGE_TAG_ARGS } = require('./lib/helm-render-tag');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const DEPLOY_DIR = 'deploy';
@@ -320,7 +322,7 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
   for (const c of charts) {
     // 既定の values（引数なし）に加え、ci/*.yaml の各 values でも同じ 3 段を回す（#1287）。
     for (const valuesFile of [null, ...discoverChartCiValues(c, repoRoot)]) {
-      const extra = valuesFile ? ['-f', valuesFile] : [];
+      const extra = [...(valuesFile ? ['-f', valuesFile] : []), ...RENDER_IMAGE_TAG_ARGS];
       const label = valuesFile ? `${c}（-f ${valuesFile}）` : c;
       const lint = run('helm', ['lint', c, ...extra], repoRoot);
       if (!lint.ok) failures.push(`helm lint が失敗した: ${label}\n${lint.out}`);
@@ -582,12 +584,12 @@ function selfTest() {
     ok('#1867 実物の chart: 既定と ci/*.yaml の全派生で「対象なし」（陰性対照）、Loki・Tempo を足すと前段・NetworkPolicy・両方の 4 通りで期待どおり', () => {
       const chart = discoverCharts()[0];
       for (const valuesFile of [null, ...discoverChartCiValues(chart)]) {
-        const r = run('helm', ['template', 'ci-check', chart, ...(valuesFile ? ['-f', valuesFile] : [])]);
+        const r = run('helm', ['template', 'ci-check', chart, ...RENDER_IMAGE_TAG_ARGS, ...(valuesFile ? ['-f', valuesFile] : [])]);
         assert.ok(r.ok, r.out);
         const base = front(r.out);
         assert.deepStrictEqual([base.problems, [...base.found]], [[], []], `${valuesFile || '既定'} に Loki・Tempo が既に居る`);
       }
-      const rendered = run('helm', ['template', 'ci-check', chart]).out;
+      const rendered = run('helm', ['template', 'ci-check', chart, ...RENDER_IMAGE_TAG_ARGS]).out;
       assert.ok(/values: \[seaweedfs\]/.test(rendered), '前提: chart の allow-intra-namespace が NotIn [seaweedfs] で描かれる');
       for (const prod of ['loki', 'tempo']) {
         const add = (opts) => `${rendered}\n---\n${obsFixture(prod, opts)}`;

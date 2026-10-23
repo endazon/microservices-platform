@@ -3,7 +3,9 @@
 # ランタイム自動判定（Docker Desktop も Rancher Desktop も可）:
 #   - Rancher Desktop / containerd（nerdctl 有）: k8s.io namespace へ直接ビルド（import 不要）。
 #   - Docker Desktop 等 / docker + k3d: docker build → k3d image import。
-# タグ規則は values-local.yaml と一致: k3d-local/<chart-image>:latest（IfNotPresent で pull しない）。
+# タグ規則: k3d-local/<chart-image>:<不変のタグ>（IfNotPresent で pull しない）。接頭辞は values-local.yaml の registry と一致。
+#   タグは IMAGE_TAG（k8s-local-up.sh が決めて渡す）か、無ければ作業ツリーの git の sha（scripts/lib/local-image-tag.sh）。
+#   🔴 latest は使わない（NFR-20 / IADR-0605 / #2132）。同じタグを helm へ --set-string global.image.tag=<タグ> で渡す。
 # compose に載らない deploy/local 専用のイメージ（LOCAL_ONLY_IMAGES）は、版から作ったタグで同じ経路へ置く（#1564）。
 #
 #   bash scripts/k8s-local-images.sh --live [cluster-name]   # cluster-name は k3d 経路でのみ使用（--live か LIVE=1 が無ければ何もしない。#1550）
@@ -17,9 +19,12 @@ live_opt_in_require "k8s-local-images.sh"
 
 CLUSTER="${1:-msp-ast-dev}"
 PREFIX="k3d-local"   # 実レジストリではないローカル接頭辞（Rancher/k3d 共通）
-TAG="latest"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# NFR-20, IADR-0605 (#2132): 自製イメージの不変のタグ。ビルドの前に決め、形が違えば何も作らずに止める。
+. "$ROOT/scripts/lib/local-image-tag.sh" || exit 3
+TAG="$(resolve_local_image_tag "$ROOT")" || exit 1
+echo "==> image tag: ${TAG}"
 
 RUNTIME="${K8S_LOCAL_RUNTIME:-auto}"
 if [ "$RUNTIME" = "auto" ]; then
@@ -182,4 +187,6 @@ if [ "$RUNTIME" = "k3d" ]; then
 fi
 # 長いビルド出力に埋もれないよう、最後にもう一度出す。
 [ "${#local_only_failed[@]}" -eq 0 ] || warn_local_only_failed
+# IADR-0605: 取り込んだだけでは Pod は替わらない。helm に同じタグを渡したときに入れ替わる（k8s-local-up.sh は [6/7] で渡す）。
+echo "    image tag: ${TAG}（反映は helm upgrade … --set-string global.image.tag=${TAG}。docs/operations/operations.md §イメージのタグの固定とロールバック）"
 echo "done."

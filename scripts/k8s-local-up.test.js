@@ -459,6 +459,8 @@ const KUBECTL_STUB = [
  * @param {Record<string,string>} extraEnv opt-in などの追加環境変数
  * @returns {{ status: number|null, lines: string[], stdout: string, stderr: string }}
  */
+// NFR-20, IADR-0605 (#2132): runUp が既定で与える自製イメージのタグ（[2/7] のビルドと [6/7] の helm が同じ値を使うことを試験が見る）。
+const TEST_IMAGE_TAG = 'test0123456789ab';
 function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-up-smoke-'));
   const binDir = path.join(workdir, 'bin');
@@ -543,6 +545,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'ALLOW_DEV_INFRA_CREDENTIALS',
     'KEYCLOAK_ADMIN_PASSWORD',
     'RABBITMQ_PASSWORD',
+    'IMAGE_TAG', // NFR-20, IADR-0605 (#2132): 自製イメージのタグの上書き。下で固定の値を与える（作業ツリーの状態に試験を依らせない）
   ]) {
     delete base[k];
   }
@@ -559,6 +562,9 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     // この試験器は使い捨ての開発環境（CI の integration-stack / cutover-rehearsal と同じ）として opt-in を既定にする。
     // 止まる経路は「IADR-0574」の節が ALLOW_DEV_INFRA_CREDENTIALS: '' で固定する。
     ALLOW_DEV_INFRA_CREDENTIALS: '1',
+    // NFR-20, IADR-0605 (#2132): 自製イメージの不変のタグ。既定は git の sha（作業ツリーの状態で変わる）なので、試験は固定の値を与える。
+    //   git から作る経路は「#2132」の節が IMAGE_TAG: '' で走らせて固定する。
+    IMAGE_TAG: TEST_IMAGE_TAG,
     ...extraEnv,
   };
 
@@ -4059,8 +4065,9 @@ const HELM_UPGRADE_RE = /helm upgrade --install msp deploy\/helm\/microservices-
 ok('LOCALEMBED 未設定: helm upgrade の引数に --set が 1 つも足されない', () => {
   const line = DEFAULT.lines.find((l) => HELM_UPGRADE_RE.test(l));
   assert.ok(line, 'helm upgrade --install msp の行が無い');
+  // #2132 / IADR-0605: 自製イメージのタグ（--set-string global.image.tag）は opt-in ではなく常に 1 つ付く。それを除いて数える。
   assert.ok(
-    !line.includes('--set'),
+    !line.replace(`--set-string global.image.tag=${TEST_IMAGE_TAG}`, '').includes('--set'),
     `既定なのに --set が付いている（バイト等価が崩れている）: ${line}`,
   );
 });
@@ -6887,7 +6894,8 @@ const DEPT_INFO_CARRY = /INFO: 部門属性の同期（DepartmentAttributeSync__
 const DEPT_INFO_EXPLICIT = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は (\S+)（明示: DEPT_SYNC_MODE）/;
 const DEPT_INFO_DEFAULT = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は既定（DEPT_SYNC_MODE 未指定・現行に値なし。何も足さない/;
 const DEPT_INFO_OFF = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は Off（明示: DEPT_SYNC_MODE=Off/;
-const LEGACY_UPGRADE = 'helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform -f deploy/local/values-local.yaml';
+// #2132 / IADR-0605: 既定の [6/7] は自製イメージのタグ（runUp が与える TEST_IMAGE_TAG）を 1 つだけ渡す。
+const LEGACY_UPGRADE = `helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform -f deploy/local/values-local.yaml --set-string global.image.tag=${TEST_IMAGE_TAG}`;
 
 ok('#1850 P1: 未指定 ＋ 現行 Fix → [6/7] は Fix を宣言し直す（黙って Off へ戻さない）・引き継ぎを告げる・一時ファイルは消す', () => {
   const r = runUp({ STUB_HELM_VALUES: deptValues(modeEntry('Fix')) });
@@ -7052,6 +7060,54 @@ ok('#1850: 前提 —— リポジトリの values（チャート既定・values
   const probe = chart.replace(/^  authorization:\n/m, '  authorization:\n    extraEnvAppend:\n      - name: Probe\n        value: x\n');
   assert.notStrictEqual(probe, chart, '対照を作れない（チャート既定に authorization の行が無い）');
   assert.strictEqual(look(probe), 'rc=1\n- name: Probe\n  value: x\n', '実物の values の authorization の extraEnvAppend を判定器が読めていない');
+});
+
+// ---- NFR-20, ADR-0007, IADR-0605 (#2132): 自製イメージの不変のタグ ----------------------------------------
+// chart はタグ（global.image.tag）が無いと描画を落とす。起動器は冒頭でタグを決めて export し、[2/7] のビルド・取り込みと
+// [6/7] の helm が同じ値を使う。latest は使わない。
+const IMAGE_TAG_SET = (tag) => `--set-string global.image.tag=${tag}`;
+const selfBuiltBuilds = (lines) => lines.filter((l) => l.startsWith('docker build ') && / -t k3d-local\/microservices-platform\//.test(l));
+const tagOfUpgrade = (lines) => {
+  const line = lines.find((l) => HELM_UPGRADE_RE.test(l));
+  return line ? (line.match(/--set-string global\.image\.tag=(\S+)/) || [])[1] : undefined;
+};
+
+ok('#2132: [6/7] の helm へ自製イメージのタグを --set-string で 1 つ渡し、[2/7] のビルド・取り込みは同じタグ（latest は 0 件）', () => {
+  const line = DEFAULT.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.strictEqual((line.match(/global\.image\.tag=/g) || []).length, 1, `タグの指定が 1 つでない: ${line}`);
+  assert.ok(line.includes(IMAGE_TAG_SET(TEST_IMAGE_TAG)), `helm にタグを渡していない: ${line}`);
+  const builds = selfBuiltBuilds(DEFAULT.lines);
+  assert.ok(builds.length >= 19, `自製イメージのビルドが ${builds.length} 件しかない`);
+  for (const b of builds) assert.ok(b.includes(`:${TEST_IMAGE_TAG} `), `helm と違うタグでビルドした: ${b}`);
+  const imp = DEFAULT.lines.find((l) => l.startsWith('k3d image import '));
+  assert.ok(imp, 'k3d image import が無い');
+  const imported = imp.split(/\s+/).filter((t) => t.startsWith('k3d-local/microservices-platform/'));
+  assert.strictEqual(imported.length, builds.length, '作ったイメージを全部取り込んでいない');
+  assert.ok(imported.every((t) => t.endsWith(`:${TEST_IMAGE_TAG}`)), `取り込みのタグが違う: ${imported.join(' ')}`);
+  assert.ok(!DEFAULT.lines.some((l) => /k3d-local\/microservices-platform\/\S+:latest\b/.test(l)), 'latest のイメージを作った／取り込んだ');
+});
+
+ok('#2132: IMAGE_TAG 未指定は作業ツリーの git の sha（変更があれば -dirty-<8 桁>）で、ビルドと helm が同じ値', () => {
+  const r = runUp({ IMAGE_TAG: '' });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  const tag = tagOfUpgrade(r.lines);
+  assert.match(tag || '', /^[0-9a-f]{12,40}(-dirty-[0-9a-f]{8})?$/, `git の sha の形でない: ${tag}`);
+  const env = { ...process.env };
+  delete env.IMAGE_TAG;
+  const expected = spawnSync('bash', ['scripts/lib/local-image-tag.sh'], { cwd: REPO_ROOT, env, encoding: 'utf8' }).stdout.trim();
+  assert.strictEqual(tag, expected, 'local-image-tag.sh の値と違う');
+  for (const b of selfBuiltBuilds(r.lines)) assert.ok(b.includes(`:${tag} `), `helm と違うタグでビルドした: ${b}`);
+});
+
+ok('#2132: IMAGE_TAG=latest・タグの形でない値は、クラスタにもイメージにも触れる前に止まる', () => {
+  for (const [bad, reason] of [['latest', /latest は使えません/], ['a/b', /Docker のタグの形ではありません/]]) {
+    const r = runUp({ IMAGE_TAG: bad });
+    assert.notStrictEqual(r.status, 0, `IMAGE_TAG=${bad} で止まらなかった`);
+    assert.match(r.stderr, reason);
+    const wrote = r.lines.filter((l) => /^(k3d cluster create|k3d image import|docker build|helm upgrade|kubectl (apply|create|label|patch|delete))/.test(l));
+    assert.deepStrictEqual(wrote, [], `IMAGE_TAG=${bad} で副作用へ進んだ`);
+  }
 });
 
 if (SHARD === null) {

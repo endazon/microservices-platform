@@ -7,11 +7,11 @@ updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
-ids: [NFR-06, FR-22, SC-13, SC-14, SC-16, FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06, FR-17, NFR-17, NFR-29]
+ids: [NFR-20, NFR-06, FR-22, SC-13, SC-14, SC-16, FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06, FR-17, NFR-17, NFR-29]
 adrs: [ADR-0052, ADR-0045, ADR-0012, ADR-0053, ADR-0141, ADR-0031, ADR-0010, ADR-0133, ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083, ADR-0132, ADR-0086, ADR-0131, ADR-0140, ADR-0129]
-iadrs: [IADR-0602, IADR-0600, IADR-0599, IADR-0595, IADR-0593, IADR-0592, IADR-0571, IADR-0563, IADR-0562, IADR-0560, IADR-0559, IADR-0556, IADR-0554, IADR-0551, IADR-0549, IADR-0547, IADR-0536, IADR-0532, IADR-0261, IADR-0435, IADR-0528, IADR-0114, IADR-0526, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0525, IADR-0523, IADR-0522, IADR-0524, IADR-0531, IADR-0533, IADR-0552, IADR-0566, IADR-0567]
-specs: [20261023_2140_ingestion-health-and-worker-probes, 20261023_2105_readiness-downstream-isolation, 20261023_2113_email-transient-retry, 20261023_2100_cross-replica-exclusion, 20261023_2101_ingestion-ordering-and-atomicity, 20261023_2097_first-series-zero-normal-alerts, 20261023_2043_dlq-instruments, 20261022_2044_alertmanager-mail-receiver, 20261020_1971_wiki-sync-write-gate, 20261017_1749_anthropic-official-sdk, 20261017_1746_s3-ndcg-latency-and-rerank-comparison, 20261017_1746_s4-stop-creating-empty-ruri-collection, 20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261017_1255_graph-cluster-summary-grpc, 20261017_1903_drop-pre-5-5-claude-models, 20261017_1983_bulk-op-publish-recovery-without-log-ids, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1966_wiki-title-column-length, 20261016_1968_archive-counts-and-reindex-by-status, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20261015_1858_pin-inner-image-digests, 20261015_1931_republish-created-after, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261014_1740_voyage-zero-retention-certification, 20261010_sc13-keycloak-theme-nocturne, 20261010_1881_grafana-alert-uid-length, 20261010_1872_anthropic-timeout-config, 20261009_1842_loki-tempo-front-auth, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1840_secret-store-openbao, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade, 20261010_1875_claude-5-5-models, 20261010_issue-1255-1517_east-west-rest-retirement, 20261015_1902_east-west-rest-residue, 20261016_1960_adr-0140-tier-b-residency-zdr, 20261020_1997_stream-idle-timeout, 20261020_1991_ingestion-budget-alert]
-issues: [#2105, #2113, #2100, #2101, #2097, #2043, #2044, #1971, #1749, #1903, #1983, #1974, #1973, #1966, #1968, #1960, #1961, #1931, #1908, #1740, #1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1840, #1846, #1839, #1859, #1875, #1255, #1517, #1902, #1997, #1991, AST#346, AST#1078, AST#1289, AST#243, planning#196, planning#524, planning#538, planning#672, planning#712, planning#750, planning#741, planning#783, planning#795]
+iadrs: [IADR-0605, IADR-0602, IADR-0600, IADR-0599, IADR-0595, IADR-0593, IADR-0592, IADR-0571, IADR-0563, IADR-0562, IADR-0560, IADR-0559, IADR-0556, IADR-0554, IADR-0551, IADR-0549, IADR-0547, IADR-0536, IADR-0532, IADR-0261, IADR-0435, IADR-0528, IADR-0114, IADR-0526, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0525, IADR-0523, IADR-0522, IADR-0524, IADR-0531, IADR-0533, IADR-0552, IADR-0566, IADR-0567]
+specs: [20261023_2132_pin-image-tags, 20261023_2140_ingestion-health-and-worker-probes, 20261023_2105_readiness-downstream-isolation, 20261023_2113_email-transient-retry, 20261023_2100_cross-replica-exclusion, 20261023_2101_ingestion-ordering-and-atomicity, 20261023_2097_first-series-zero-normal-alerts, 20261023_2043_dlq-instruments, 20261022_2044_alertmanager-mail-receiver, 20261020_1971_wiki-sync-write-gate, 20261017_1749_anthropic-official-sdk, 20261017_1746_s3-ndcg-latency-and-rerank-comparison, 20261017_1746_s4-stop-creating-empty-ruri-collection, 20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261017_1255_graph-cluster-summary-grpc, 20261017_1903_drop-pre-5-5-claude-models, 20261017_1983_bulk-op-publish-recovery-without-log-ids, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1966_wiki-title-column-length, 20261016_1968_archive-counts-and-reindex-by-status, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20261015_1858_pin-inner-image-digests, 20261015_1931_republish-created-after, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261014_1740_voyage-zero-retention-certification, 20261010_sc13-keycloak-theme-nocturne, 20261010_1881_grafana-alert-uid-length, 20261010_1872_anthropic-timeout-config, 20261009_1842_loki-tempo-front-auth, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1840_secret-store-openbao, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade, 20261010_1875_claude-5-5-models, 20261010_issue-1255-1517_east-west-rest-retirement, 20261015_1902_east-west-rest-residue, 20261016_1960_adr-0140-tier-b-residency-zdr, 20261020_1997_stream-idle-timeout, 20261020_1991_ingestion-budget-alert]
+issues: [#2132, #2105, #2113, #2100, #2101, #2097, #2043, #2044, #1971, #1749, #1903, #1983, #1974, #1973, #1966, #1968, #1960, #1961, #1931, #1908, #1740, #1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1840, #1846, #1839, #1859, #1875, #1255, #1517, #1902, #1997, #1991, AST#346, AST#1078, AST#1289, AST#243, planning#196, planning#524, planning#538, planning#672, planning#712, planning#750, planning#741, planning#783, planning#795]
 -->
 
 # 運用仕様書
@@ -38,6 +38,7 @@ issues: [#2105, #2113, #2100, #2101, #2097, #2043, #2044, #1971, #1749, #1903, #
 | --- | --- |
 | 初回デプロイ・サービス単位のロールバック手順を知りたい | §デプロイ |
 | 同じタグで再デプロイしても新イメージが反映されない | §イメージ参照と再デプロイ安全性 |
+| イメージの版を固定する・前の版へ戻す・動いている版を確かめる | §イメージのタグの固定とロールバック |
 | Keycloak realm を編集したのに反映されない | §Keycloak realm（`microservices-platform-realm.json`）を更新したときの反映手順 |
 | ログイン画面・アカウント設定・リセットメールの見た目を変える・戻したい | §Keycloak テーマ（ログイン・アカウント設定・メール）の配備と切り戻し |
 | ローカル k8s（経路B）でデータを永続化したい | §経路B（ローカル k8s dev）の永続化 |
@@ -78,8 +79,8 @@ issues: [#2105, #2113, #2100, #2101, #2097, #2043, #2044, #1971, #1749, #1903, #
 | 配備方式 | GitOps。ArgoCD が Git を単一の真実源として同期（`deploy/argocd/`）。レジストリは Harbor（`harbor.internal`） |
 | サービス間通信 | Istio STRICT mTLS。手順 `deploy/istio/README.md` |
 | 手順 | ① Secret 投入（`deploy/bootstrap/README.md`）② Istio 導入（`deploy/istio/README.md`）③ ArgoCD 登録（`deploy/argocd/README.md`）。以降は Git 更新で自動同期 |
-| デプロイ（サービス単位） | `values.yaml` の `services.<name>.tag` を Git 更新 → ArgoCD 自動同期（NFR: 独立デプロイ） |
-| ロールバック | `argocd app rollback microservices-platform <revision>` もしくは Git revert（GitOps 原則） |
+| デプロイ（サービス単位） | 自製イメージのタグ（ビルドした git の sha）を Git の `deploy/argocd/application.yaml` の `helm.parameters`（全体は `global.image.tag`、サービス単位は `services.<name>.tag`）で更新 → Application を適用（下の §イメージのタグの固定とロールバック） |
+| ロールバック | 前の sha へタグを戻す（Git で値を戻して適用・経路B は `helm upgrade` に前の sha を渡す）。下の §イメージのタグの固定とロールバック |
 
 ### イメージ参照と再デプロイ安全性（非機能要件: 運用性/信頼性/再現性 / #320）
 
@@ -87,37 +88,90 @@ issues: [#2105, #2113, #2100, #2101, #2097, #2043, #2044, #1971, #1749, #1903, #
 の組合せだと、同名タグで再ビルド・再 push しても既存 Pod/Node のキャッシュにより再 pull されず
 **古いイメージが配信され続ける**。区分ごとに次の方針で再デプロイの確実性を担保する。
 
-#### 自製イメージ（`services.*`・`frontend`）— CD が一意タグ/digest を渡す
+#### 自製イメージ（`services.*`・`frontend`）— 不変のタグ（git の sha）を必ず渡す
 
-- chart 既定の `services.<name>.tag: latest` は **CD 上書き用のプレースホルダ**である。本番デプロイでは
-  **一意タグ（git SHA 等）または digest（`@sha256:...`）** を渡すこと。一意タグ/digest なら pod template が
-  毎回変わって自動 rollout され、`IfNotPresent` でも新イメージが pull される（stale を掴まない）。
+- 🔴 **chart は自製イメージのタグを持たない。** `global.image.tag`（全サービス共通）の既定は空で、**空なら `helm template` /
+  `helm upgrade` が描画で止まる**（「タグが無い」と告げる）。`latest` を明示しても、Docker のタグの形でない値でも止まる。
+  `latest` へ黙って倒すことはない（#2132）。サービスごとの上書きは `services.<name>.tag` / `frontend.tag`（既定は書かない）。
+- タグは**ビルドした版の不変のタグ**（git の sha）だけを渡す。同じタグの中身を差し替えない。タグが変われば Pod の template が
+  変わって入れ替わり、新しいタグはノードに無いので `IfNotPresent` でも取りに行く。
+- 🔴 **`--set` ではなく `--set-string` で渡す**（ArgoCD の parameters は `forceString: true`）。数字だけの sha は `--set` だと数として
+  読まれ、chart は文字列でない値を拒む。
+- `imagePullPolicy` は `global.image.pullPolicy`（既定 `IfNotPresent`）のまま変えない。タグが不変なら `Always` は要らない。
+  経路B（ローカル k3d）は `registry: k3d-local` の**擬似レジストリ**で、`Always` にすると存在しないレジストリへ pull しにいき
+  **Pod が起動不能**になる（取り込んだイメージ ＋ `IfNotPresent` が前提）。
+- 宣言（`pipeline.json`）の変更は pod template の `checksum/pipeline-config` アノテーションが変わって入れ替わるが、
+  これはイメージの更新を捕らえない。イメージの更新はタグを変えて行う。
+
+#### イメージのタグの固定とロールバック（デプロイの非機能要件 / #2132）
+
+**経路B（ローカル k8s。稼働 PoC）**
+
+- `scripts/k8s-local-up.sh` が作業ツリーの git の sha からタグを決め（変更のある作業ツリーは `<sha>-dirty-<差分の hash 8 桁>`）、
+  [2/7] で同じタグでビルド・取り込みし、[6/7] で `--set-string global.image.tag=<タグ>` を helm へ渡す。決まるタグは配備の前に
+  確かめられる（クラスタには触れない）:
 
   ```bash
-  # 例: BFF を現在の HEAD の短縮 SHA で独立デプロイする（他サービスは据え置き）
-  argocd app set microservices-platform \
-    --helm-set services.bff.tag=$(git rev-parse --short HEAD)
-  # values-<env>.yaml の services.bff.tag を更新して Git commit でも可（GitOps 原則）
+  bash scripts/lib/local-image-tag.sh            # 例: 3beebb65d0c1（変更があれば 3beebb65d0c1-dirty-1a2b3c4d）
   ```
 
-- `imagePullPolicy` は `global.image.pullPolicy` で **per-env に `Always` へ上書き可能**。ただし
-  **既定は `IfNotPresent` のまま**にする（既定を `Always` にしない）:
-  - 経路B（ローカル k3d）は `registry: k3d-local` の**擬似レジストリ**で、`Always` にすると存在しない
-    レジストリへ pull しにいき **Pod が起動不能**になる（local import ＋ `IfNotPresent` が前提。
-    `scripts/k8s-local-images.sh`）。
-  - 本番も毎回 registry へ問い合わせる pull 負荷が増える。**一意タグ運用なら `Always` は不要**。
-
-- **同名タグを再利用せざるを得ない場合**（ローカル再ビルド・緊急ホットフィックス等）は、キャッシュ済み
-  Pod を明示的に入れ替える:
+- 起動器を通さずにイメージだけを作り直して当てるとき（タグは同じ値を両方へ渡す）:
 
   ```bash
-  # ローカル: イメージ再ビルド/import 後に Pod を作り直して新イメージを反映
-  bash scripts/k8s-local-images.sh --live && kubectl -n microservices-platform rollout restart deployment/frontend-service
+  IMAGE_TAG="$(bash scripts/lib/local-image-tag.sh)"
+  IMAGE_TAG="$IMAGE_TAG" bash scripts/k8s-local-images.sh --live
+  helm upgrade msp deploy/helm/microservices-platform -n microservices-platform --reuse-values \
+    --set-string "global.image.tag=$IMAGE_TAG"
   ```
 
-  宣言（`pipeline.json`）変更時は pod template の `checksum/pipeline-config` アノテーション
-  （`templates/deployment.yaml`）が変わり自動 rollout されるが、これは**イメージ更新は捕捉しない**。
-  イメージ更新は上記の一意タグ運用（推奨）か `rollout restart` で行う。
+- **ロールバック**: 前の版のタグを渡し直す。前のタグのイメージはノードに残っているので作り直さない。
+
+  ```bash
+  helm history msp -n microservices-platform                       # 版の履歴（REVISION と日時）
+  helm get values msp -n microservices-platform --revision <REV> -o json | jq -r '.global.image.tag'   # その版のタグ
+  helm upgrade msp deploy/helm/microservices-platform -n microservices-platform --reuse-values \
+    --set-string "global.image.tag=<前のタグ>"
+  # helm rollback msp <REV> -n microservices-platform でも同じタグへ戻る（ただし chart も値もその版へ戻る）
+  ```
+
+  ノードからイメージを消していた（`crictl rmi --prune` 等）ときは、その sha を checkout して `IMAGE_TAG=<前のタグ>` でビルドし直す。
+- 🔴 **初回の切り替え**（この変更より前の起動器で立てた稼働クラスタ）: 稼働リリースには `global.image.tag` が無い。新しい chart で
+  `--reuse-values` だけの `helm upgrade`（メッシュの mTLS の方式の切り替えなど）を先に流すと、描画で止まる（何も変わらない）。
+  **最初に `bash scripts/k8s-local-up.sh --live` を流してタグを入れる。** 以後は `--reuse-values` がタグを引き継ぐ。
+- ノードのイメージは版ごとに残る（`latest` の上書きと違い、古い版が消えない）。容量が逼迫したら、使われていないイメージを消す
+  （`docker exec k3d-<cluster>-server-0 crictl rmi --prune`。Rancher Desktop は `nerdctl --namespace k8s.io image prune -a`）。
+  直前の版はロールバック用に残す。
+
+**stg / prod（ArgoCD）**
+
+- タグの正は Git の `deploy/argocd/application.yaml` の `spec.source.helm.parameters` の `global.image.tag`（`forceString: true`）である。
+  既定の値は空で、空のままでは同期が描画の失敗（ComparisonError）で止まる（`latest` で配らない）。
+- **デプロイ**: ビルドした sha へ値を改める PR をマージし、Application を適用する（Application は ArgoCD の外から一度だけ
+  kubectl で入れたものなので、ファイルを改めただけでは ArgoCD に届かない）:
+
+  ```bash
+  kubectl apply -f deploy/argocd/application.yaml
+  argocd app get microservices-platform --show-params    # global.image.tag が新しい sha であること
+  ```
+
+  サービス単位で別の版にするときは、同じ parameters へ `services.<name>.tag`（`forceString: true`）を足す。
+  `argocd app set microservices-platform --helm-set-string global.image.tag=<sha>` でも変えられるが、🔴 **Git の値と食い違ったままに
+  しない** —— Application を kubectl で適用し直すと Git の値（空なら描画の失敗）へ戻る。使ったら同じ値を Git へも入れる。
+- **ロールバック**: 前の sha へ値を戻す PR（`git revert`）をマージして適用する。急ぐときは `argocd app set … --helm-set-string
+  global.image.tag=<前の sha>` で先に戻し、同じ値を Git へ入れる。`argocd app rollback microservices-platform <ID>` は自動同期
+  （`automated`）を有効にしたままでは使えない（ArgoCD が拒む）。
+
+**版の確認**（どの版が動いているか）
+
+```bash
+helm get values msp -n microservices-platform -o json | jq -r '.global.image.tag'      # 経路B: 宣言したタグ
+kubectl -n microservices-platform get deploy \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[0].image}{"\n"}{end}'   # 稼働のイメージ参照
+argocd app get microservices-platform --show-params                                   # ArgoCD: 宣言したタグ
+```
+
+宣言と稼働のずれは `node scripts/check-stack-ready.js --live` の G11 が検査する（稼働リリースの `global.image.tag` で chart を描き、
+稼働の Deployment のイメージ参照と突き合わせる。タグの宣言が無いリリースは失敗にする）。
 
 #### Third-party イメージ — 具体版タグ ＋ digest で固定（インフラ製品の選定基準の計画 ADR / #1787）
 
