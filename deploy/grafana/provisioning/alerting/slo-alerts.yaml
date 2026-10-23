@@ -620,7 +620,7 @@ groups:
               conditions:
                 - evaluator: { type: gt, params: [0] }
 
-  # NFR-21, ADR-0053 決定 1〜3, IADR-0592 (#2043): デッドレター到達（**0 が正常**）。注記の正本は deploy/prometheus/alerts.yml。
+  # NFR-21, ADR-0053 決定 1〜3, IADR-0592 (#2043): デッドレター到達（**0 が正常**）。注記の正本は deploy/prometheus/alerts.yml。初回の腕（`unless ... offset 1h`）を外さない。
   # 🔴 **`noDataState: OK`**（平常時は系列が無い）。評価器は `gt 0`（expr の `> 0` の後に残る値は前進量＝正の数。#1577 の形ではない）。
   - orgId: 1
     name: messaging-dead-letter
@@ -637,7 +637,7 @@ groups:
           severity: warning
         annotations:
           summary: "メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）"
-          description: "{{ $labels.job }} の messaging_dead_letter_total（messaging_message_type={{ $labels.messaging_message_type }}）が直近 1 時間で前進した。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。ラベル error_type と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。"
+          description: "{{ $labels.job }} の messaging_dead_letter_total（messaging_message_type={{ $labels.messaging_message_type }}・error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。通知のラベル error_type（例外の型）と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。"
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -645,7 +645,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'sum by (job, messaging_message_type) (increase(messaging_dead_letter_total[1h])) > 0'
+              expr: 'sum by (job, messaging_message_type, error_type) (increase(messaging_dead_letter_total[1h])) > 0 or (sum by (job, messaging_message_type, error_type) (messaging_dead_letter_total) unless sum by (job, messaging_message_type, error_type) (messaging_dead_letter_total offset 1h))'
           - refId: C
             datasourceUid: __expr__
             model:

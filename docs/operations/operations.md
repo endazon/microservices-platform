@@ -1415,8 +1415,9 @@ DLQ へ行った文書を含む確かめていないページがもう一度発�
 
 **デッドレター到達の警報**（［2026-10-23 / #2043］）: 受け口が自動再試行を使い切って DLQ へ送ったメッセージは、全サービス共通の計器
 `messaging.dead_letter`（Prometheus では `messaging_dead_letter_total`。ラベル `job`＝サービス・`messaging_message_type`＝メッセージ型・`error_type`＝例外の型）が 1 つ数え、
-警報 `DeadLetterReached`（warning）が直近 1 時間の前進 > 0 を 5 分で鳴らす（式は `sum by (job, messaging_message_type) (increase(messaging_dead_letter_total[1h])) > 0`）。
-**キュー名を見ない**ので、DLQ が共有 1 本（`wolverine-dead-letter-queue`）でも数え漏れない。鳴ったら、ラベルのサービスのエラーログで原因（`error_type`）を特定して直し、
+警報 `DeadLetterReached`（warning）が直近 1 時間の前進 > 0 を 5 分で鳴らす。**通知のラベルにも `job`・`messaging_message_type`・`error_type` の 3 つが付く**（その組ごとに 1 通）。
+最初の 1 通（計器の系列が初めて現れる）は `increase` に現れないので、「1 時間前に無かった組が今ある」も同じ警報で鳴らす（式は `sum by (job, messaging_message_type, error_type) (increase(messaging_dead_letter_total[1h])) > 0 or (sum by (job, messaging_message_type, error_type) (messaging_dead_letter_total) unless sum by (job, messaging_message_type, error_type) (messaging_dead_letter_total offset 1h))`）。
+**キュー名を見ない**ので、DLQ が共有 1 本（`wolverine-dead-letter-queue`）でも数え漏れない。鳴ったら、通知のラベル `job` のサービスのエラーログで、ラベル `error_type` の例外を手がかりに原因を特定して直し、
 `DocumentUpdated` / `DocumentDeleted` なら上の手順で文書を再発行する（DLQ の写しは再投入しない）。数えないものは 3 つある:
 取り込みの総枠の使い切り（再試行せずに入る。`IngestionBudgetExhausted` が鳴らす）・MassTransit に残る辺（`DocumentNormalized` の購読。既定の名前では `DocumentNormalized_error` へ入る。
 画面「変換ジョブ」のデッドレター標識が見える範囲ではないので、移行が済むまでは `rabbitmqctl list_queues name messages | grep _error` で人が見る）・
@@ -2024,7 +2025,7 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
 | **RAG 初回応答（SLO 判定）** | aianalysis `/analysis/ask/stream` の**初回トークンまでの時間**（`rag_answer_first_token_duration_seconds_bucket`）p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | **RAG 初回応答 p95 5s** |
 | RAG 応答完了（**傾向の観察に留める**） | aianalysis `/analysis/ask`（一括経路）の応答完了 p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | — （**判定に用いない**） |
 | **LLM 費用（用途別の月次予算）** — ［2026-09-26 / #1111］ | 直近 30 日の `llm_cost_total` ＞ ゲージ `llm_budget_monthly_limit`（用途・通貨ごと） | 超過が 5 分（**金額は未設定＝不活性**） | Alertmanager（warning） | — （費用の統制。金額が設定されるまでは Runbook の月次確認） |
-| **デッドレター到達** — ［2026-10-23 / #2043］ | `messaging_dead_letter_total` の直近 1 時間の前進（サービス・メッセージ型ごと） | > 0 が 5 分（**0 が正常**。自動再試行を使い切ったメッセージが DLQ へ入った） | Alertmanager（warning） | — （回復の取りこぼしの検出。§DLQ の扱い） |
+| **デッドレター到達** — ［2026-10-23 / #2043］ | `messaging_dead_letter_total` の直近 1 時間の前進、または 1 時間前に無かった系列の出現（サービス・メッセージ型・例外の型ごと） | > 0 が 5 分（**0 が正常**。自動再試行を使い切ったメッセージが DLQ へ入った） | Alertmanager（warning） | — （回復の取りこぼしの検出。§DLQ の扱い） |
 | **取り込みの総枠の使い切り** — ［2026-10-20 / #1991］ | `messaging_consumer_timeout_total{messaging_timeout_target=~"embedding-budget\|lexical-budget"}` の直近 1 時間の前進 | > 0 が 5 分（**0 が正常**。使い切った文書は一部の点だけが検索に現れ、デッドレターへ入る） | Alertmanager（warning） | — （索引の欠けの検出。§埋め込みプロバイダ） |
 | **パスワードリセット申請の床の器（全滅）** — ［2026-09-26 / #1544］ | `up{job="reset-floor"}`（収集器が器の **Service** の `/metrics` を 30 秒ごとに取る。準備のできた器が 0 なら届かず 0） | ==0 が 2 分（**器が 1 つでも準備完了なら鳴らない**） | Alertmanager（critical） | 検出 5 分以内・可用性 99.9% |
 | **評価対象の不在** — 収集経路 | `absent(up{job="otel-collector"})` | 系列が無い状態が 5 分 | Alertmanager（warning） | 検出（**統制**） |

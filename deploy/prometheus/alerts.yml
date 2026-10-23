@@ -336,17 +336,22 @@ groups:
   # 継続で 1 つ上げる（全サービス共通・個別サービスでは上げない）。**キュー名を見ない** —— Wolverine の宛先は共有 1 本の
   # `wolverine-dead-letter-queue` で（IADR-0245 決定 9）、旧案 RabbitMqDeadLetter の `queue=~".*_error|.*_dlq"` は 0 件に一致していた。
   # 🔴 **`absent()` 系ではなく `increase(...[1h]) > 0` である**（knowledge-health-violations と同じ理由。平常時は系列が立たない）。
+  # 🔴 **初回の腕（`or (... unless ... offset 1h)`）を外さない。** 計器は最初のデッドレターで初めて系列が立ち、最初の標本が 1 になる。
+  #   `increase()` は窓に前の標本が無い系列を 0 とみなすので、`increase` だけでは**最初の 1 通で鳴らない**（守りたいのはまさにそれ）。
+  #   「1 時間前に無かった組が今ある」を足して塞ぐ。場面は deploy/prometheus/tests/messaging-dead-letter.test.yml が promtool で固定する
+  #   （既知のタグの組を起動時に 0 で立てる案は、メッセージ型・例外の型が増えるたびに漏れるので採らない。IADR-0592 決定 3）。
+  #   集計は job・messaging_message_type・error_type ごと（通知のラベルに例外の型を残す）。同じ性質の既存の警報は #2097。
   # 🔴 **数えないもの**: 取り込みの総枠の使い切り（再試行せずに入る。IngestionBudgetExhausted が鳴らす）／MassTransit に残る辺
   #   （DocumentNormalized の購読。`<queue>_error` へ入る）／試行番号が上限を超えて届いたもの・逆シリアル化の失敗（IADR-0592 §残余）。
   - name: messaging-dead-letter
     rules:
       - alert: DeadLetterReached
-        expr: 'sum by (job, messaging_message_type) (increase(messaging_dead_letter_total[1h])) > 0'
+        expr: 'sum by (job, messaging_message_type, error_type) (increase(messaging_dead_letter_total[1h])) > 0 or (sum by (job, messaging_message_type, error_type) (messaging_dead_letter_total) unless sum by (job, messaging_message_type, error_type) (messaging_dead_letter_total offset 1h))'
         for: 5m
         labels: { severity: warning }
         annotations:
           summary: "メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）"
-          description: "{{ $labels.job }} の messaging_dead_letter_total（messaging_message_type={{ $labels.messaging_message_type }}）が直近 1 時間で前進した。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。ラベル error_type と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。"
+          description: "{{ $labels.job }} の messaging_dead_letter_total（messaging_message_type={{ $labels.messaging_message_type }}・error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。通知のラベル error_type（例外の型）と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。"
 
   # FR-05, FR-09, SC-17, ADR-0115 決定 3, IADR-0473 (#1573): 部門の同期が直せていないこと（**0 が正常**）。
   # 🔴 **`absent()` 系ではなく `increase(...) > 0` である**（上の knowledge-health-violations と同じ理由。平常時は

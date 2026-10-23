@@ -59,8 +59,25 @@ ADR-0053 はデッドレター到達の検知を「アプリが出す計器（�
 再試行される試行では上がらない。計器は `options.Services` へ `TryAddSingleton` で入れ、継続は `runtime.Services` から引く。
 **継続は例外を投げない**（引けなければ何もしない）—— 検知のための計器が回復の経路（移送）を壊さない。登録が消えたことは試験が捕まえる。
 
-**決定 3（警報）**: 群 `messaging-dead-letter` に `DeadLetterReached` を置く。
-`sum by (job, messaging_message_type) (increase(messaging_dead_letter_total[1h])) > 0`・`for: 5m`・`severity: warning`。
+**決定 3（警報）**: 群 `messaging-dead-letter` に `DeadLetterReached` を置く。`for: 5m`・`severity: warning`。式は次のとおり（L＝`job, messaging_message_type, error_type`）。
+
+```promql
+sum by (L) (increase(messaging_dead_letter_total[1h])) > 0
+  or (sum by (L) (messaging_dead_letter_total) unless sum by (L) (messaging_dead_letter_total offset 1h))
+```
+
+- **後半の腕（「1 時間前に無かった組が今ある」）が要る理由**: 計器は最初のデッドレターで初めて系列が立ち、OTel の累積値なので最初の標本が 1 になる。
+  `increase()` は窓に前の標本が無い系列を 0 とみなすので、前半だけでは**最初の 1 通で鳴らない**（PR の AI レビュー 🟡。promtool v2.52.0 で実測し、
+  前半だけの式は「系列が初めて 1 で現れる」場面と「前の系列が 1 時間より前に途絶えた後の 1 通目」の場面で発火しなかった）。0 が正常で稀に起きる計器では、
+  守りたいのはまさにその初回である。後半の腕は、系列が現れてから 1 時間だけ立ち、その後は前半（前進の有無）に引き継ぐので恒常発火しない。
+- **退けた案: 起動時に既知のタグの組へ `Add(0)` して系列を先に立てる。** タグの組（メッセージ型 × 例外の型）は閉じてはいるがコードの変更で増え、
+  列挙を足し忘れた組の初回だけが黙って鳴らなくなる。例外の型は事前に列挙できない。式の側で塞ぐ方が漏れない。
+- **集計に `error_type` を残す**（通知のラベルに例外の型が付く）。運用仕様書と注記は「通知のラベル `error_type`」で原因を引くよう案内しており、集計で落とすと案内が偽になる。
+  基数は（サービス × メッセージ型 × 例外の型）で閉じる。
+- **試験**: `deploy/prometheus/tests/messaging-dead-letter.test.yml`（`promtool test rules`。初回・前進・再起動のリセット・途絶後の初回・平常の 5 場面）を
+  CI（`static-checks-units`）が配備と同じ版の promtool で回す。前半だけの式へ戻す変異で場面 1・5 が赤になることを確かめた。
+- **同じ性質の既存の警報**（`IngestionBudgetExhausted`・`UnitDocumentsMissingProjectAttribute`・`DepartmentSyncNotCorrecting`。promtool で同じ場面を与えて発火しないことを実測）は
+  本変更へ広げず #2097 で扱う。
 **キュー名で絞らない**（ADR-0053 決定 1）。Prometheus（compose・k8s）と Grafana（compose・k8s）の 4 か所に同じ式で置き、コメントアウトの `RabbitMqDeadLetter` は消す
 （次に読む人が有効な選択肢と受け取るため）。届け先は既定の route（#2044）。
 
@@ -87,7 +104,8 @@ ADR-0053 はデッドレター到達の検知を「アプリが出す計器（�
 - **悪い影響 / トレードオフ**: ADR-0053 §結果 のとおり、アプリが計上し損なえば検知も漏れる（キューを外から見る性質は失う）。
 - **試験**: `DeadLetterMetricsTests`（判定関数で上限到達の段に計器があること・手前に無いこと・例外の種類によらないこと・本物のホストの runtime で継続を実行して
   1 回だけ数えタグが載ること・DI への登録・残余の固定）、`WolverineExtensionsTests`（回復の挙動の等価性は計器の継続を除いて従来どおり）、
-  `scripts.repo.test.js` の #2043（4 か所の式と C# の定数の突合・キュー名に依存しないこと・旧案が残らないこと・全サービスが共通既定と計装を通すこと）。
+  `scripts.repo.test.js` の #2043（4 か所の式と C# の定数の突合・初回の腕と `error_type` の集計・キュー名に依存しないこと・旧案が残らないこと・
+  promtool の単体試験と CI の導入・全サービスが共通既定と計装を通すこと）、`deploy/prometheus/tests/messaging-dead-letter.test.yml`（promtool）。
 
 ### 残余（閉じていないもの。黙って広げない）
 

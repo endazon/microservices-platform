@@ -253,6 +253,7 @@ public static class WolverineExtensions
         envelope?.Message?.GetType().Name
         ?? envelope?.MessageType
         ?? "unknown";
+
     // readiness タグ。MapPlatformHealthChecks の /health/ready は
     // `Predicate = hc => hc.Tags.Contains("ready")` だけを条件にするため、この 1 語が
     // 「ready に載るか」を決める唯一の接点である。

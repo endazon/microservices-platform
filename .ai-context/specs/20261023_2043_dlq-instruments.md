@@ -31,7 +31,7 @@ issue: "#2043"
    上限の手前の試行（再試行される失敗）では上がらない。例外の種類によらない。
 2. **AC2（決定 3・補完）**: 計器は共通既定 `UsePlatformMessagingDefaults` の 1 箇所でだけ上がり、Wolverine を載せる**全サービス**（WikiService を含む）が
    その既定と OTLP への計装（`AddPlatformObservability`）を通す。
-3. **AC3（決定 1・ADR-0012）**: 計器の前進で警報が鳴る。式は `increase(...[1h]) > 0`、キュー名で絞らない。Prometheus・Grafana の経路 A/B の 4 か所が同じ。
+3. **AC3（決定 1・ADR-0012）**: 計器の前進で警報が鳴る。**最初の 1 通（系列が初めて 1 で現れる）でも鳴る**（PR の AI レビュー 🟡 で追加。promtool で固定）。式は `increase(...[1h]) > 0` ＋「1 時間前に無かった組」の腕、キュー名で絞らない。Prometheus・Grafana の経路 A/B の 4 か所が同じ。
    キュー名に依存した旧案（コメントアウトの `RabbitMqDeadLetter`）は消す。
 4. **AC4（試験で固定）**: 計器の継続を外す・計器の登録を外す・計器を上げない・計器名を変える・サービスが共通既定を呼ばない、のいずれでも試験が赤。
 5. **AC5（決定 4）**: 宛先トポロジの記録は IADR-0245 決定 9 にある（共有 1 本）。本変更はトポロジを変えない（`MoveToErrorQueue()` の宛先を上書きしない）。
@@ -79,7 +79,7 @@ issue: "#2043"
   タグ `messaging.message.type`（メッセージ本体の型の短い名前）・`error.type`（例外の型名）。基数はコードの型で閉じる。サービスは `job` が持つ。
 - **上げる場所**: `UsePlatformMessagingDefaults` の規則の最後の段に `.And(RecordDeadLetterAsync, ...)` を束ねる（移送と同じ継続）。計器は `options.Services` へ `TryAddSingleton` で入れ、
   継続は `runtime.Services` から引く。**継続は例外を投げない**（検知のための計器が回復の経路を壊さない）。
-- **警報**: 群 `messaging-dead-letter`・`DeadLetterReached`・`sum by (job, messaging_message_type) (increase(messaging_dead_letter_total[1h])) > 0`・`for: 5m`・`warning`。
+- **警報**: 群 `messaging-dead-letter`・`DeadLetterReached`・`sum by (job, messaging_message_type, error_type) (increase(messaging_dead_letter_total[1h])) > 0 or (sum by (…) (messaging_dead_letter_total) unless sum by (…) (messaging_dead_letter_total offset 1h))`・`for: 5m`・`warning`（初回の腕の理由は IADR-0592 決定 3）。
   Grafana は評価器 `gt 0`・`noDataState: OK`・uid `messaging-dead-letter-reached`（30 文字）。
 
 ## 範囲外（IADR-0592 §残余へ）
@@ -97,6 +97,7 @@ issue: "#2043"
 | 継続の中で計器を上げない | 実行の試験 |
 | `DeadLetterCounterName` を変える | `scripts.repo.test.js` の #2043（名前の固定）・`計器の名前を固定する` |
 | `WikiService/Program.cs` から `UsePlatformMessagingDefaults()` を外す | `scripts.repo.test.js` の #2043（全サービスが共通既定を通す） |
+| 式を `increase` だけ（初回の腕なし）へ戻す | promtool の場面 1（初回）・場面 5（途絶後の初回）が赤、`scripts.repo.test.js` の #2043 が赤 |
 
 ## PoC での確認（配備は閉場後）
 

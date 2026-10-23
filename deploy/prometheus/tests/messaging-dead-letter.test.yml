@@ -1,0 +1,115 @@
+# NFR-21, ADR-0053 決定 1, IADR-0592 (#2043): 警報 DeadLetterReached の式を `promtool test rules` で固定する。
+#
+# 🔴 守る対象は**初回**である。計器 `messaging_dead_letter_total` は最初のデッドレターで初めて系列が立ち、
+#   OTel の累積値なので最初の標本が 1 になる。`increase(...[1h])` は窓の中に前の標本が無い系列を 0 とみなすため、
+#   `increase` だけの式では**最初の 1 通（0 が正常の計器で、守りたいのはまさにこれ）では鳴らない**。
+#   式は「1 時間前に無かった組が今ある」を `unless ... offset 1h` で足している。下の場面 1 がその固定である。
+#
+# 実行: promtool test rules deploy/prometheus/tests/*.test.yml（CI の static-checks-units。版は deploy の Prometheus と同じ v2.52.0）
+rule_files:
+  - ../alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 場面 1: 系列が**初めて 1 で現れる**（初回のデッドレター）。10 分目に現れ、以後 1 のまま。
+  #   → 現れてから for 5m の後（15 分目以降）に鳴る。現れる前は鳴らない。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_dead_letter_total{job="microservices-platform.wiki-service", messaging_message_type="DocumentUpdated", error_type="HttpRequestException", instance="a"}'
+        values: '_x10 1x80'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: DeadLetterReached
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: DeadLetterReached
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.wiki-service
+              messaging_message_type: DocumentUpdated
+              error_type: HttpRequestException
+            exp_annotations:
+              summary: 'メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）'
+              description: 'microservices-platform.wiki-service の messaging_dead_letter_total（messaging_message_type=DocumentUpdated・error_type=HttpRequestException）が直近 1 時間で前進した（初めて現れた場合を含む）。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。通知のラベル error_type（例外の型）と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。'
+      # 現れてから 1 時間を過ぎると前進が無いので収まる（恒常発火しない）。
+      - eval_time: 80m
+        alertname: DeadLetterReached
+        exp_alerts: []
+
+  # 場面 2: 既にある系列が前進する（2 通目以降）。1 のまま 90 分続いた後に 2 になる。
+  #   → 前進してから 5 分後に鳴る。前進の前（系列は在るが動いていない）は鳴らない。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_dead_letter_total{job="microservices-platform.ingestion-service", messaging_message_type="DocumentUpdated", error_type="TimeoutException", instance="a"}'
+        values: '1x90 2x40'
+    alert_rule_test:
+      - eval_time: 85m
+        alertname: DeadLetterReached
+        exp_alerts: []
+      - eval_time: 97m
+        alertname: DeadLetterReached
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.ingestion-service
+              messaging_message_type: DocumentUpdated
+              error_type: TimeoutException
+            exp_annotations:
+              summary: 'メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）'
+              description: 'microservices-platform.ingestion-service の messaging_dead_letter_total（messaging_message_type=DocumentUpdated・error_type=TimeoutException）が直近 1 時間で前進した（初めて現れた場合を含む）。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。通知のラベル error_type（例外の型）と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。'
+
+  # 場面 3: 再起動でカウンタが 0 へ戻り、新しいプロセスが 1 通目を数える（同じラベルの組。1 時間以内に前の値がある）。
+  #   → `increase` がリセットとして扱い、前進として鳴る。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_dead_letter_total{job="microservices-platform.graph-service", messaging_message_type="DocumentDeleted", error_type="InvalidOperationException", instance="a"}'
+        values: '3x90 _x5 1x40'
+    alert_rule_test:
+      - eval_time: 85m
+        alertname: DeadLetterReached
+        exp_alerts: []
+      - eval_time: 103m
+        alertname: DeadLetterReached
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.graph-service
+              messaging_message_type: DocumentDeleted
+              error_type: InvalidOperationException
+            exp_annotations:
+              summary: 'メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）'
+              description: 'microservices-platform.graph-service の messaging_dead_letter_total（messaging_message_type=DocumentDeleted・error_type=InvalidOperationException）が直近 1 時間で前進した（初めて現れた場合を含む）。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。通知のラベル error_type（例外の型）と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。'
+
+  # 場面 5: 前の系列が 1 時間より前に途絶え（再起動後にデッドレターが無かった）、新しいプロセスが 1 通目を数える。
+  #   → 窓に前の標本が無いので `increase` は 0。場面 1 と同じく「1 時間前に無かった組」として鳴る。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_dead_letter_total{job="microservices-platform.retrieval-service", messaging_message_type="DocumentDeleted", error_type="HttpRequestException", instance="a"}'
+        values: '3x30 _x90 1x40'
+    alert_rule_test:
+      - eval_time: 115m
+        alertname: DeadLetterReached
+        exp_alerts: []
+      - eval_time: 128m
+        alertname: DeadLetterReached
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.retrieval-service
+              messaging_message_type: DocumentDeleted
+              error_type: HttpRequestException
+            exp_annotations:
+              summary: 'メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）'
+              description: 'microservices-platform.retrieval-service の messaging_dead_letter_total（messaging_message_type=DocumentDeleted・error_type=HttpRequestException）が直近 1 時間で前進した（初めて現れた場合を含む）。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。通知のラベル error_type（例外の型）と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。'
+
+  # 場面 4: 平常（系列が無い）。何も鳴らない。
+  - interval: 1m
+    input_series:
+      - series: 'up{job="otel-collector"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: DeadLetterReached
+        exp_alerts: []

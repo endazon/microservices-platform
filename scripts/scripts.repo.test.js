@@ -13404,6 +13404,10 @@ exit $RC
       assert.strictEqual(promName, 'messaging_dead_letter_total');
       const typeTag = constOfD(METRICS_CS_D, metrics, 'MessageTypeTag').replace(/\./g, '_');
       assert.strictEqual(typeTag, 'messaging_message_type');
+      const errorTag = constOfD(METRICS_CS_D, metrics, 'ErrorTypeTag').replace(/\./g, '_');
+      assert.strictEqual(errorTag, 'error_type');
+      // 通知のラベルに例外の型を残す（運用仕様書と注記が「通知のラベル error_type」を案内する）。集計で落とすと案内が嘘になる。
+      const by = `by (job, ${typeTag}, ${errorTag})`;
       // Meter は受け口の時間切れと共有し、`AddPlatformObservability` がその名前で収集対象へ入れている。
       assert.match(metrics, /MeterName\s*=\s*ConsumerTimeoutMetrics\.MeterName;/, 'DeadLetterMetrics の Meter が共通の Meter から外れた');
       assert.ok(readD(TIMEOUT_CS_D).includes('MeterName = "microservices-platform.messaging"'));
@@ -13420,8 +13424,13 @@ exit $RC
         assert.ok(!expr.includes('absent('), `${rel} の DeadLetterReached が absent() になっている（平常時は系列が無い）`);
         // 🔴 キュー名で絞らない（ADR-0053 決定 1）。queue ラベル・_error / _dlq の照合を持ち込んだら赤にする。
         assert.ok(!/queue|_error|_dlq/.test(expr), `${rel} の DeadLetterReached がキュー名に依存している（ADR-0053 決定 1）`);
-        assert.ok(expr.includes(`by (job, ${typeTag})`), `${rel} の DeadLetterReached がサービスとメッセージ型ごとに鳴らない`);
-        assert.ok(/\)\s*>\s*0$/.test(expr), `${rel} の DeadLetterReached が「前進が 0 を超えたら」で鳴らない`);
+        assert.ok(expr.includes(`sum ${by} (increase(`), `${rel} の DeadLetterReached がサービス・メッセージ型・例外の型ごとに鳴らない`);
+        assert.ok(/\)\s*>\s*0\s+or\s+\(/.test(expr), `${rel} の DeadLetterReached が「前進が 0 を超えたら」で鳴らない`);
+        // 🔴 初回（系列が 1 で初めて現れる）は increase に現れない。「1 時間前に無かった組が今ある」の腕を外したら赤にする
+        //   （場面は deploy/prometheus/tests/messaging-dead-letter.test.yml が promtool で固定する）。
+        assert.ok(expr.includes(`or (sum ${by} (${promName}) unless sum ${by} (${promName} offset 1h))`),
+          `${rel} の DeadLetterReached に初回の腕（unless ... offset 1h）が無い（最初の 1 通で鳴らない）`);
+        assert.ok(/description:[^\n]*error_type/.test(rule), `${rel} の DeadLetterReached の description が例外の型を案内していない`);
         assert.ok(/for:\s*5m/.test(rule) && /severity:\s*warning/.test(rule), `${rel} の DeadLetterReached の for / severity が流儀（5m・warning）と違う`);
         if (rel.includes('grafana')) {
           assert.ok(/type:\s*gt,\s*params:\s*\[0\]/.test(rule), `${rel} の DeadLetterReached の評価器が gt 0 でない`);
@@ -13429,6 +13438,24 @@ exit $RC
         }
         // キュー名に依存した旧案（コメントアウトの RabbitMqDeadLetter）を残さない —— 次に読む人が有効な選択肢と受け取る。
         assert.ok(!/alert:\s*RabbitMqDeadLetter/.test(text), `${rel} にキュー名に依存した旧案 RabbitMqDeadLetter が（コメントアウトでも）残っている`);
+      }
+    });
+
+    ok('#2043: DeadLetterReached の初回の場面を promtool の単体試験が固定し、CI がそれを回す（実データ）', () => {
+      const test = readD('deploy/prometheus/tests/messaging-dead-letter.test.yml');
+      assert.match(test, /^\s+- \.\.\/alerts\.yml$/m, '試験が compose の alerts.yml を読んでいない');
+      assert.match(test, /values: '_x\d+ 1x\d+'/, '「系列が初めて 1 で現れる」場面が無い');
+      assert.match(test, /alertname: DeadLetterReached/);
+      const ci = readD('.github/workflows/ci.yml');
+      assert.match(ci, /promtool test rules deploy\/prometheus\/tests\/\*\.test\.yml/, 'CI が promtool の単体試験を回していない');
+      assert.match(ci, /PROMETHEUS_SHA256=[0-9a-f]{64}/, 'promtool の導入が checksum で突合されていない');
+      // 版は配備の Prometheus と同じ（解析器の版がずれると、通る式と配備で読まれる式が食い違い得る）。
+      const ver = /PROMETHEUS_VERSION=(\S+)/.exec(ci);
+      assert.ok(ver, 'CI に PROMETHEUS_VERSION が無い');
+      for (const rel of ['deploy/docker-compose.yml', 'deploy/local/observability/prometheus.yaml']) {
+        const img = /prom\/prometheus:v([0-9.]+)/.exec(readD(rel));
+        assert.ok(img, `${rel} に Prometheus のイメージが見つからない（走査が壊れている）`);
+        assert.strictEqual(img[1], ver[1], `${rel} の Prometheus の版と CI の promtool の版が違う`);
       }
     });
 
