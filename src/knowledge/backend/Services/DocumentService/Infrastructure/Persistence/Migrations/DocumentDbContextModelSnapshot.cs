@@ -28,6 +28,9 @@ namespace DocumentService.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("AssetUris")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -55,6 +58,9 @@ namespace DocumentService.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(true);
+
+                    b.Property<DateTimeOffset?>("LastNormalizedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("MarkdownUri")
                         .HasMaxLength(2048)
@@ -97,6 +103,19 @@ namespace DocumentService.Infrastructure.Migrations
                     b.HasIndex("UpdatedAt", "Id");
 
                     b.ToTable("Documents");
+                });
+
+            modelBuilder.Entity("DocumentService.Domain.DocumentDeletionMark", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("DocumentId");
+
+                    b.ToTable("DocumentDeletionMarks");
                 });
 
             modelBuilder.Entity("DocumentService.Domain.DocumentShare", b =>

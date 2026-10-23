@@ -36,6 +36,11 @@ namespace WikiService.Features.Wiki.SyncDocument;
 // 🔴 ADR-0027 / E3b: **購読は Wolverine へ移した**（IPipelineStep<DocumentUpdated>・IADR-0239）。
 // wiki-delete 段（E3a）と併せて、本サービスから MassTransit は撤去済みである。
 //
+// 🔴 FR-13, FR-06, ADR-0027, [[IADR-0596]] (#2102): **反映済みの版より古い更新は反映しない。** 版の印（`DocumentSyncMark`）を最初に読み、
+// 厳密に古い更新は Wiki.js にもメタデータにも書かずに ack する（等しい版は反映する）。印は撤去・削除で行を消しても残るので、
+// その後の古い版でページを書き戻さない。書き込みの 3 分岐（アーカイブ・撤去・同期）はメタデータと同じ保存で印を進め、保存が改訂番号の
+// 突き合わせで負けたら、保存済みの最新の状態へ Wiki.js を合わせ直す（`WikiSyncOrdering`）。`UpdatedAt` を進めない変更の順序は #2150。
+//
 // 🔴 #1640: 本文の取得と Wiki.js への反映は、それぞれ期限（`WikiSyncTimeouts`・既定 20 秒 / 15 秒）の下で行う。
 // 止まった依存先は、受け口の ct（Wolverine の実行期限）で「取り消し」として切られる前に時間切れ
 // （`ConsumerTimeoutException`・計器 `messaging.consumer.timeout`）として投げる。呼び出し元の取り消しはそのまま外へ出す。
@@ -76,6 +81,16 @@ public class DocumentSyncConsumer(
     // ADR-0027 / E3b: Wolverine のハンドラ。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
     {
+        // 🔴 [[IADR-0596]] 決定 1・2 (#2102): 順序の門。どの分岐より前に置く（古いアーカイブ・古い撤去も新しい状態を崩す）。
+        var mark = await db.SyncMarks.FirstOrDefaultAsync(m => m.DocumentId == ev.DocumentId, ct);
+        if (DocumentSyncOrdering.IsStaleUpdate(mark, ev.UpdatedAt))
+        {
+            logger.LogInformation(
+                "Wiki sync {DocumentId}: skipped an update older than the applied version (updated_at={UpdatedAt:O}, applied_at={AppliedAt:O}, deleted={Deleted})",
+                ev.DocumentId, ev.UpdatedAt, mark!.AppliedAt, mark.Deleted);
+            return;
+        }
+
         // Issue #88: アーカイブ（非公開化）の伝播。Wiki.js ページを unpublish + private にし、
         // メタデータを Archived にする（ゲートウェイの一覧・個別から不可視）。メタデータ未同期でも
         // Wiki.js 側の非公開化は正準パス（DocumentId 由来）で試みる（冪等・deny-closed）。
@@ -85,11 +100,10 @@ public class DocumentSyncConsumer(
 
             var archivedPage = await db.Pages
                 .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ct);
-            if (archivedPage is not null)
-            {
-                archivedPage.Archive();
-                await db.SaveChangesAsync(ct);
-            }
+            archivedPage?.Archive();
+            // [[IADR-0596]]: メタデータの行が無くても印は進める（アーカイブより古い版で後からページを作らない）。
+            RecordApplied(mark, ev);
+            if (!await SaveOrReconcileAsync(async () => { await db.SaveChangesAsync(ct); return true; }, ev, ct)) return;
             logger.LogInformation("Archived document {DocumentId} on Wiki.js", ev.DocumentId);
             return;
         }
@@ -147,11 +161,10 @@ public class DocumentSyncConsumer(
 
             var withheld = await db.Pages
                 .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ct);
-            if (withheld is not null)
-            {
-                db.Pages.Remove(withheld);
-                await db.SaveChangesAsync(ct);
-            }
+            if (withheld is not null) db.Pages.Remove(withheld);
+            // [[IADR-0596]]: 行を消しても印は残す（撤去より古い版で書き戻さない）。
+            RecordApplied(mark, ev);
+            if (!await SaveOrReconcileAsync(async () => { await db.SaveChangesAsync(ct); return true; }, ev, ct)) return;
 
             logger.LogInformation(
                 "Withheld document {DocumentId} from Wiki.js: all exposure attributes are excluded", ev.DocumentId);
@@ -179,12 +192,7 @@ public class DocumentSyncConsumer(
         }
 
         // 2) 正規化 Markdown 本文を取得し、Wiki.js へ冪等 push（閲覧・編集の実体を Wiki.js に委譲）。
-        //    認可属性（Attributes）は push しない（IADR-0021: 認可は本システムが単一真実源）。
-        //    多層防御（ADR-0011/IADR-0021）: 機密区分由来の粗粒度な非公開設定のみを Wiki.js へ伝える。
-        //    ネットワーク分離（IADR-0017）が退行しても public 以外が無条件公開にならないよう、public
-        //    以外（欠落含む）は Wiki.js 上でも非公開にする（deny-closed）。ABAC の代替ではない。
-        var isPublic = ev.Attributes.TryGetValue("confidentiality", out var confidentiality)
-            && string.Equals(confidentiality, "public", StringComparison.OrdinalIgnoreCase);
+        //    送るページの形（認可属性を送らない・public 以外は非公開・表題の切り詰め）は `ToWikiJsPage` の 1 か所で組み立てる。
         string markdown;
         try
         {
@@ -207,9 +215,9 @@ public class DocumentSyncConsumer(
         }
         // 🔴 FR-13, [[IADR-0554]] 決定 1〜4 (#1966): Wiki.js の表題は varchar(255)。超える表題は文字の境界で切り、印（…）を付けて送る。
         // 本文は書き換えない（元の表題は台帳と文書サービスに残る）。切ったことは計数に残す。
-        var wikiTitle = WikiText.FitColumn(ev.Title, WikiJsColumns.TitleMaxLength, out var titleTruncated);
+        var wikiPage = ToWikiJsPage(page.WikiPath, ev.Title, markdown, ev.Tags, ev.Attributes, out var titleTruncated);
         if (titleTruncated) skippedMetrics.RecordTitleTruncated();
-        var wikiPage = new WikiJsPage(page.WikiPath, wikiTitle, markdown, ev.Tags, IsPrivate: !isPublic);
+        var wikiTitle = wikiPage.Title;
         try
         {
             await WikiJsAsync(t => wikiJs.UpsertPageAsync(wikiPage, t), ct);
@@ -227,10 +235,56 @@ public class DocumentSyncConsumer(
             return;
         }
 
-        if (!await SaveWithSlugFallbackAsync(page, slugCandidates[^1], ev.DocumentId, ct)) return;
+        RecordApplied(mark, ev);
+        if (!await SaveOrReconcileAsync(
+                () => SaveWithSlugFallbackAsync(page, slugCandidates[^1], ev.DocumentId, ct), ev, ct)) return;
         // [[IADR-0541]] (#1934): 成功時のログに slug を出さない（slug は題名から作るので、機密文書の題名が毎回ログに入る）。
         // slug を出すのは異常時（競合の付け替え・恒久的な衝突）の行だけにする。
         logger.LogInformation("Synced document {DocumentId} to Wiki.js at {Path}", ev.DocumentId, page.WikiPath);
+    }
+
+    // FR-13, ADR-0011, IADR-0021: Wiki.js へ送るページの形（同期と合わせ直しの単一の組み立て点）。
+    //    認可属性（Attributes）は push しない（IADR-0021: 認可は本システムが単一真実源）。
+    //    多層防御（ADR-0011/IADR-0021）: 機密区分由来の粗粒度な非公開設定のみを Wiki.js へ伝える。
+    //    ネットワーク分離（IADR-0017）が退行しても public 以外が無条件公開にならないよう、public
+    //    以外（欠落含む）は Wiki.js 上でも非公開にする（deny-closed）。ABAC の代替ではない。
+    // 🔴 FR-13, [[IADR-0554]] 決定 1〜4 (#1966): Wiki.js の表題は varchar(255)。超える表題は文字の境界で切り、印（…）を付けて送る。
+    internal static WikiJsPage ToWikiJsPage(string path, string title, string markdown,
+        List<string> tags, IReadOnlyDictionary<string, string> attributes, out bool titleTruncated)
+    {
+        var isPublic = attributes.TryGetValue("confidentiality", out var confidentiality)
+            && string.Equals(confidentiality, "public", StringComparison.OrdinalIgnoreCase);
+        var wikiTitle = WikiText.FitColumn(title, WikiJsColumns.TitleMaxLength, out titleTruncated);
+        return new WikiJsPage(path, wikiTitle, markdown, tags, IsPrivate: !isPublic);
+    }
+
+    // [[IADR-0596]] 決定 1: 印を進める（無ければ作る）。保存はメタデータと同じ 1 回で行う。
+    private void RecordApplied(DocumentSyncMark? mark, DocumentUpdated ev)
+    {
+        if (mark is null)
+        {
+            mark = DocumentSyncMark.For(ev.DocumentId);
+            db.SyncMarks.Add(mark);
+        }
+        mark.RecordUpdated(ev.UpdatedAt);
+    }
+
+    // `save` の戻り値は「保存した」か（slug の恒久的な衝突で保存しなかったら false。`SaveWithSlugFallbackAsync`）。
+    // 🔴 [[IADR-0596]] 決定 3 (#2102): 保存の突き合わせで負けたら、より新しい版が保存済みなら Wiki.js をその状態へ合わせ直して ack する（false）。
+    // そうでなければ（相手が古い・同じ版の並行）投げて再試行へ委ねる —— 次の試行は保存済みの印を読んで判定し直す。
+    private async Task<bool> SaveOrReconcileAsync(Func<Task<bool>> save, DocumentUpdated ev, CancellationToken ct)
+    {
+        try
+        {
+            return await save();
+        }
+        catch (DbUpdateException ex) when (WikiSyncOrdering.IsMarkConflict(ex))
+        {
+            if (await WikiSyncOrdering.ReconcileIfOvertakenAsync(db, wikiJs, contentReader, calls, timeouts, writeGate,
+                    StepName, ev.DocumentId, m => DocumentSyncOrdering.IsStaleUpdate(m, ev.UpdatedAt), logger, ct))
+                return false;
+            throw;
+        }
     }
 
     // FR-13, [[IADR-0541]] 決定 1・2 (#1934): slug の選び方。
@@ -254,7 +308,9 @@ public class DocumentSyncConsumer(
     // FR-13, [[IADR-0541]] 決定 3 (#1934): 保存。slug の一意制約（`IX_Pages_Slug`）に当たったら —— 空きを確かめた後に
     // 同名の別文書が並行して同じ slug を取った競合である —— 1 度だけ文書 ID 32 桁の接尾辞へ付け替えて保存し直す。
     // それでも当たる（または既に 32 桁だった）なら**恒久的な失敗**として記録し false を返す（呼び出し元は ack する）。
-    // 🔴 **`IX_Pages_DocumentId` の 23505（同じ文書の並行作成）・接続断などは捕まえない** —— 次の試行で更新の経路に入って直る。
+    // 🔴 **`IX_Pages_DocumentId` の 23505（同じ文書の並行作成）・接続断などはここでは捕まえない。** 接続断は次の試行で直る。
+    // 並行作成は［2026-10-23 / #2102・[[IADR-0596]] 決定 3］保存の突き合わせの負けとして `SaveOrReconcileAsync` が受ける
+    // （次の試行に任せると、古い側は「古い」と判定して ack し、Wiki.js に自分の push を残す）。
     private async Task<bool> SaveWithSlugFallbackAsync(WikiPage page, string fallbackSlug, Guid documentId, CancellationToken ct)
     {
         try

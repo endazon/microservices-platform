@@ -3,15 +3,15 @@ title: 文書CRUD・バージョン管理 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-17
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, UC-04, FR-08, FR-03, FR-04, FR-05, FR-06, SC-05, UC-03, NFR-09, FR-19, FR-12]
 adrs: [ADR-0141, ADR-0013, ADR-0121, ADR-0058, ADR-0122, ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056, ADR-0027]
-iadrs: [IADR-0556, IADR-0551, IADR-0549, IADR-0529, IADR-0509, IADR-0503, IADR-0484, IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
-specs: [20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20261011_1891_ast-draft-not-duplicate, 20261008_1765_document-keyset-sql, 20261006_1762_republish-document-updated, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1658_relay-options-shared, 20260927_issue-1657_document-normalized-consumer-content-timeout, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#1974, #1973, #1961, #1931, #1891, #1765, #1762, #1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
+iadrs: [IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0529, IADR-0509, IADR-0503, IADR-0484, IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
+specs: [20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20261011_1891_ast-draft-not-duplicate, 20261008_1765_document-keyset-sql, 20261006_1762_republish-document-updated, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1658_relay-options-shared, 20260927_issue-1657_document-normalized-consumer-content-timeout, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#2102, #2047, #1974, #1973, #1961, #1931, #1891, #1765, #1762, #1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
 -->
 
 # テスト仕様書: 文書CRUD・バージョン管理
@@ -143,6 +143,11 @@ issues: [#1974, #1973, #1961, #1931, #1891, #1765, #1762, #1667, #1679, #1658, #
 | T-105 | 株取引ユニットの Quote 3 件と、他の kind（News・Disclosure・Daily）・kind の大文字小文字違い・kind なし・他の project・project なし・個人資料の Quote・アーカイブ済みの Quote | dry-run で全ページを辿る。続けて本番で全ページを辿る | dry-run は件数と 3 件の ID だけを返し何も動かさない。本番は 3 件だけを状態「アーカイブ」へ移し、版を 1 つ進め注記を固定の文字列にし、アーカイブのイベントを 3 件だけ出す。対象外は状態・版・更新時刻が動かない。本文は 1 度も読まない | 他の kind・他の project を絶対に触らない | 自動（エンドポイント） |
 | T-106 | Quote 7 件と News 3 件（同じ作成時刻を含む） | 本番を 3 件ずつ辿り、もう一度全ページを辿る | 1 回目は Quote をちょうど 1 回ずつ 7 件アーカイブする。2 回目は何もアーカイブせず、版もイベントも増えない | 冪等・取りこぼしと重複が無い | 自動（エンドポイント） |
 | T-107 | 口の模型（Quote 4 件・他 2 件） | 駆動スクリプトで dry-run、カナリアからの本番、状態を消しての再実行を流す。引数と状態ファイルを解析する | dry-run は件数と対象の ID を出し、何も変えず状態ファイルも作らない。本番は Quote をちょうど 1 回ずつアーカイブして完了し、再実行は何もしない。条件を変える引数は受けない。他の駆動器の状態ファイルからは続けない | 駆動スクリプトの安全装置 | 自動（スクリプト） |
+| T-108 | 取り込み経路の文書を作り、新しい再正規化（`confidential`）を反映した後に、それより古い再正規化（`public`）が届く | 消費 | 台帳の表題・機密区分・反映した正規化の時刻は新しいまま。古い版は本文を読まず、更新イベントも出さない（`CatalogNormalizationOrderingTests`） | 再正規化の順序（古い再正規化で緩まない） | 自動（単体） |
+| T-109 | 同じ正規化の時刻（保存の精度の内）を 2 度流す | 消費 | 2 度とも反映し、更新イベントを 2 度出す | 同上（再配送） | 自動（単体） |
+| T-110 | アーカイブした文書に、アーカイブより前に作られた再正規化・アーカイブより後の再正規化が届く。アーカイブの時刻を持たない（追加以前の）文書 | 消費・判定 | 前者は内容を反映し状態はアーカイブのまま（下流へもアーカイブ）。後者は `normalized` へ戻しアーカイブの時刻を消す。時刻を持たない文書は更新時刻で読む | 再正規化の順序（アーカイブの後に戻らない／再同期では戻す） | 自動（単体） |
+| T-111 | 削除した文書に、削除より前・削除と同じ時刻の正規化が届く。削除より後の正規化が届く（陽性対照） | 消費 | 前者は台帳へ作り直さず更新イベントも出さない。後者は作り直す | 再正規化の順序（削除の後に復活しない） | 自動（単体） |
+| T-112 | 取り込み経路の文書を削除の口で消す | `DELETE /documents/{id}` | 削除の事実（文書 ID と時刻）が残り、それより前の正規化を「削除より前」と判定し、後の正規化は判定しない（`DocumentDeletionMarkEndpointTests`） | 同上 | 自動（エンドポイント） |
 
 対応テスト実装:
 

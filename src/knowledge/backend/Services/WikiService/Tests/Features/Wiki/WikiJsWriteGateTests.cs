@@ -141,7 +141,7 @@ public class WikiJsWriteGateTests
     private static async Task Delete(OverlapProbe wiki, WikiJsWriteGate gate, WikiSyncTimeouts timeouts, CancellationToken ct)
     {
         await using var db = NewDb();
-        await new DocumentDeletedConsumer(db, wiki, ConsumerTimeoutsForTests.Calls(), timeouts, gate,
+        await new DocumentDeletedConsumer(db, wiki, wiki, ConsumerTimeoutsForTests.Calls(), timeouts, gate,
                 NullLogger<DocumentDeletedConsumer>.Instance)
             .Handle(new DocumentDeleted(Guid.NewGuid(), DateTimeOffset.UtcNow), ct);
     }

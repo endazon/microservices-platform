@@ -1,3 +1,4 @@
+using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -35,9 +36,14 @@ internal static class DeleteDocumentEndpoint
                 return deleteDenied;
             await purger.PurgeAsync([id], ct);
             db.Documents.Remove(doc);
+            // FR-01, ADR-0057 決定 2, [[IADR-0596]] 決定 7 (#2102): 削除の事実（文書 ID と時刻だけ）を残す。変換は文書 ID を決定的に採番するので、
+            // 削除より前に作られた `DocumentNormalized` が遅れて届いても台帳へ作り直さない。下流へ伝える削除の時刻も同じ値にする。
+            var deletedAt = DateTimeOffset.UtcNow;
+            if (await db.DocumentDeletionMarks.FindAsync([id], ct) is { } mark) mark.Advance(deletedAt);
+            else db.DocumentDeletionMarks.Add(DocumentDeletionMark.For(id, deletedAt));
             await db.SaveChangesAsync(ct);
             // Issue #88: 削除を下流（Wiki.js 同期・索引・グラフ）へ伝播し、外部システムの実体を撤去する。
-            await deletedBus.PublishDeletedAsync(id, DateTimeOffset.UtcNow, ct);
+            await deletedBus.PublishDeletedAsync(id, deletedAt, ct);
             return Results.NoContent();
         });
     }

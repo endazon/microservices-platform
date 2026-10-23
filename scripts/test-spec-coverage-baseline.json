@@ -113,6 +113,7 @@
       "ArchivedDocumentIndexExclusionTests",
       "AstStaleCopiesEndpointTests",
       "AstStaleCopyRulesTests",
+      "CatalogNormalizationOrderingTests",
       "CatalogTimeoutTests",
       "DocumentArchivalTests",
       "DocumentAttributesTests",
@@ -223,6 +224,8 @@
       "DocumentSyncConsumerTests",
       "WikiEndpointsAbacTests",
       "WikiJsGraphQlClientTests",
+      "WikiSyncMarkPostgresTests",
+      "WikiSyncOrderingTests",
       "WikiSyncPermanentFailureTests",
       "WikiSyncTimeoutTests",
       "WikiTextTests"
