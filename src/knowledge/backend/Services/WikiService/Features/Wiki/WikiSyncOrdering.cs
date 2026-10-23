@@ -50,7 +50,7 @@ public static class WikiSyncOrdering
         var path = WikiPage.PathFor(documentId);
 
         Task WikiJsAsync(Func<CancellationToken, Task> call)
-            => writeGate.RunAsync(calls, stepName, timeouts.WikiJs, call, ct);
+            => writeGate.RunAsync(calls, stepName, timeouts.WriteGateWait, timeouts.WikiJs, call, ct);
 
         if (page is null)
         {

@@ -53,9 +53,9 @@ public class DocumentDeletedConsumer(
             return;
         }
 
-        // 🔴 #1971・[[IADR-0563]]: 同期の受け口と共有の書き込みの門（既定 1 本）を通す。pages.delete も木の再構築を走らせ、
+        // 🔴 #1971・[[IADR-0563]], #2100・[[IADR-0599]]: 同期の受け口と共有の書き込みの門（既定 1 本。全レプリカで合わせて）を通す。pages.delete も木の再構築を走らせ、
         // 同期の pages.create と並ぶと pageTree の主キーで衝突する。
-        await writeGate.RunAsync(calls, StepName, timeouts.WikiJs,
+        await writeGate.RunAsync(calls, StepName, timeouts.WriteGateWait, timeouts.WikiJs,
             t => wikiJs.DeletePageAsync(WikiPage.PathFor(ev.DocumentId), t), ct);
 
         var page = await db.Pages

@@ -379,6 +379,7 @@ public sealed class PrivateNoteMaintenanceService(
 // 計測者は「前倒しが効いた」と思ったまま 24 時間待つことになる）。
 public sealed class PrivateNoteMaintenanceHostedService(
     IServiceScopeFactory scopeFactory,
+    IPrivateNoteMaintenanceLeaseCoordinator leaseCoordinator,
     ILogger<PrivateNoteMaintenanceHostedService> logger) : BackgroundService
 {
     public static readonly TimeSpan Interval = TimeSpan.FromHours(24);
@@ -440,14 +441,18 @@ public sealed class PrivateNoteMaintenanceHostedService(
         }
     }
 
+    // #2100: 周期の本体。**試験だけが差し替える**（リースで単一実行になることを、本体の長さに依らず決定的に測るため）。
+    // 本番は既定のまま（スコープの `PrivateNoteMaintenanceService` を回す）。
+    internal Func<IServiceProvider, CancellationToken, Task> CycleBody { get; init; } = RunMaintenanceAsync;
+
+    private static Task RunMaintenanceAsync(IServiceProvider services, CancellationToken ct) =>
+        services.GetRequiredService<PrivateNoteMaintenanceService>().RunAsync(DateTimeOffset.UtcNow, ct);
+
     private async Task RunCycleAsync(CancellationToken stoppingToken)
     {
         try
         {
-            using var scope = scopeFactory.CreateScope();
-            var maintenance = scope.ServiceProvider
-                .GetRequiredService<PrivateNoteMaintenanceService>();
-            await maintenance.RunAsync(DateTimeOffset.UtcNow, stoppingToken);
+            await TryRunCycleAsync(stoppingToken);
         }
         // ［2026-09-26 / #1598・[[IADR-0431]] 追記］🔴 **素通しするのは停止要求（stoppingToken）の取り消しだけである。**
         // 下流の時間切れ（HttpClient の TaskCanceledException 等）は停止要求ではなく周期の失敗であり、ここで記録して
@@ -458,5 +463,24 @@ public sealed class PrivateNoteMaintenanceHostedService(
             // 定期処理の失敗でホストを落とさない。次周期で再試行する。
             logger.LogError(ex, "個人資料の定期処理に失敗した。次周期で再試行する。");
         }
+    }
+
+    // 🔴 FR-19, [[IADR-0599]] 決定 5 (#2100): 単一実行のゲート。**リースを取得できたレプリカだけが処理する。**
+    // 取得できない周期は何もしない（スキップ＝fail-safe）。戻り値は実行したか。形は GraphService の
+    // `KnowledgeHealthHostedService.TryRunCycleAsync`（[[IADR-0299]] 決定 3）と同じである。
+    // リースは周期の本体の間ずっと持つ（本体の途中で他のレプリカが入らない）。
+    internal async Task<bool> TryRunCycleAsync(CancellationToken ct)
+    {
+        await using var lease = await leaseCoordinator.TryAcquireAsync(ct);
+        if (lease is null)
+        {
+            logger.LogInformation(
+                "個人資料の定期処理のリースを取得できなかった（他レプリカが実行中）。本周期をスキップする。");
+            return false;
+        }
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        await CycleBody(scope.ServiceProvider, ct);
+        return true;
     }
 }

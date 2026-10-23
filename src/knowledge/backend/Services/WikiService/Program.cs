@@ -89,11 +89,27 @@ builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
 
 // FR-13, ADR-0027 (#1640): 同期・撤去の受け口の期限（本文の取得・Wiki.js 1 回）。
 // 既定の実行期限（60 秒）に最悪の所要時間が収まらない構成は、ここで起動を止める。
-builder.Services.AddSingleton(WikiSyncTimeouts.From(builder.Configuration));
+// ［2026-10-23 / #2100・[[IADR-0599]] 決定 3・4］門の待ち（`Wiki:WriteGateWaitSeconds`）と両受け口の実行期限（`Wiki:HandlerTimeoutSeconds`・既定 90 秒）も
+// ここで読み、最悪の所要時間と再試行の連鎖が収まらない構成は起動を止める。実行期限は下の UseWolverine で方針として与える。
+var wikiSyncTimeouts = WikiSyncTimeouts.From(builder.Configuration);
+builder.Services.AddSingleton(wikiSyncTimeouts);
 // 🔴 FR-13, [[IADR-0563]] 決定 1・2 (#1971): Wiki.js へ同時に書き込む数の上限（`Wiki:MaxParallelWrites`・既定 1・1〜4）。
 // 同期と撤去の両方の受け口がこの 1 つの門を通る。下の 2 つのリスナーの並列度も同じ値にそろえる。
-var wikiJsWriteGate = WikiJsWriteGate.From(builder.Configuration);
-builder.Services.AddSingleton(wikiJsWriteGate);
+// 🔴 FR-13, NFR-05, [[IADR-0599]] 決定 1・2 (#2100): **門はレプリカをまたいで効く。** helm の既定は HPA（minReplicas 2）であり、
+// プロセスの中の枠だけではレプリカの数だけ Wiki.js への書き込みが並ぶ（#1971 の pageTree の主キーの衝突が戻る）。
+// 本番（リレーショナルな DB）は wiki-service の PostgreSQL の advisory lock でレプリカをまたぐ枠を取る。InMemory（単体試験）だけが
+// プロセスの中の枠に縮退する（GraphService のリースの選び方〔[[IADR-0299]] 決定 3〕と同じ）。
+var maxParallelWrites = WikiJsWriteGate.ReadMaxParallelWrites(builder.Configuration);
+builder.Services.AddSingleton<IWikiJsReplicaWriteLock>(sp =>
+{
+    using var scope = sp.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
+    if (!db.Database.IsRelational())
+        return ProcessLocalWikiJsReplicaWriteLock.Instance;
+    return new PostgresWikiJsReplicaWriteLock(
+        connStr, sp.GetRequiredService<ILogger<PostgresWikiJsReplicaWriteLock>>());
+});
+builder.Services.AddSingleton(sp => new WikiJsWriteGate(maxParallelWrites, sp.GetRequiredService<IWikiJsReplicaWriteLock>()));
 // FR-13, NFR-06, [[IADR-0541]] 決定 5 (#1934): 恒久的な失敗（slug の一意制約・本文の NoSuchKey）で記録だけして終えた同期の計数。
 builder.Services.AddMetrics();
 builder.Services.AddSingleton<WikiSyncSkippedMetrics>();
@@ -151,12 +167,17 @@ builder.Host.UseWolverine(opts =>
     // WikiJsWriteGateWiringTests が固定する）。Inline で並びを決めるのはリスナーの数なので、既定に頼らず門と同じ値を明示する
     // （門より多く受け取って門で待つ形にもしない）。
     opts.ListenToPlatformQueue<DocumentDeleted>("wiki-service", deleteStep)
-        ?.ListenerCount(wikiJsWriteGate.MaxParallelWrites);
+        ?.ListenerCount(maxParallelWrites);
     opts.ListenToPlatformQueue<DocumentUpdated>("wiki-service", syncStep)
-        ?.ListenerCount(wikiJsWriteGate.MaxParallelWrites);
+        ?.ListenerCount(maxParallelWrites);
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
+
+    // FR-13, ADR-0027, [[IADR-0599]] 決定 4 (#2100): 両受け口の実行期限（既定 90 秒）。門の待ちがレプリカをまたいで延びる分
+    // （既定 30 秒）を、Wolverine の既定 60 秒では収められない。他のメッセージ型の既定は変えない。
+    opts.Policies.Add(new HandlerExecutionTimeoutPolicy<DocumentUpdated>(wikiSyncTimeouts.Handler));
+    opts.Policies.Add(new HandlerExecutionTimeoutPolicy<DocumentDeleted>(wikiSyncTimeouts.Handler));
 });
 
 var app = builder.Build();

@@ -6,6 +6,7 @@ using AwesomeAssertions;
 using DocumentService.Common.Observability;
 using DocumentService.Domain.Ports;
 using DocumentService.Features.PrivateNotes.Maintenance;
+using DocumentService.Infrastructure.Persistence;
 using DocumentService.Infrastructure.ExternalServices;
 using DocumentService.Tests.Grpc;
 using DocumentService.Tests.Infrastructure.ExternalServices;
@@ -94,6 +95,7 @@ public class PrivateNoteMaintenanceInitialRunTests(TestWebApplicationFactory fac
         var delay = TimeSpan.FromMinutes(2);
         var worker = new PrivateNoteMaintenanceHostedService(
             factory.Services.GetRequiredService<IServiceScopeFactory>(),
+            NoOpPrivateNoteMaintenanceLeaseCoordinator.Instance,
             new RecordingLogger<PrivateNoteMaintenanceHostedService>())
         { CycleInterval = PrivateNoteMaintenanceHostedService.Interval, CycleClock = clock, InitialRunDelay = delay };
 
@@ -164,7 +166,7 @@ public class PrivateNoteMaintenanceInitialRunTests(TestWebApplicationFactory fac
         var clock = new TimerCountingClock();
         var scopes = new CountingScopeFactory(factory.Services.GetRequiredService<IServiceScopeFactory>());
         var delay = TimeSpan.FromMinutes(2);
-        var worker = new PrivateNoteMaintenanceHostedService(scopes, new RecordingLogger<PrivateNoteMaintenanceHostedService>())
+        var worker = new PrivateNoteMaintenanceHostedService(scopes, NoOpPrivateNoteMaintenanceLeaseCoordinator.Instance, new RecordingLogger<PrivateNoteMaintenanceHostedService>())
         { CycleInterval = PrivateNoteMaintenanceHostedService.Interval, CycleClock = clock, InitialRunDelay = delay };
 
         await worker.StartAsync(Ct);
@@ -197,7 +199,7 @@ public class PrivateNoteMaintenanceInitialRunTests(TestWebApplicationFactory fac
     {
         var clock = new TimerCountingClock();
         var scopes = new CountingScopeFactory(factory.Services.GetRequiredService<IServiceScopeFactory>());
-        var worker = new PrivateNoteMaintenanceHostedService(scopes, new RecordingLogger<PrivateNoteMaintenanceHostedService>())
+        var worker = new PrivateNoteMaintenanceHostedService(scopes, NoOpPrivateNoteMaintenanceLeaseCoordinator.Instance, new RecordingLogger<PrivateNoteMaintenanceHostedService>())
         { CycleInterval = PrivateNoteMaintenanceHostedService.Interval, CycleClock = clock, InitialRunDelay = TimeSpan.FromHours(1) };
 
         await worker.StartAsync(Ct);

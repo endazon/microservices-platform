@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-07, FR-13, UC-07, NFR-06, FR-06]
 adrs: [ADR-0004, ADR-0011, ADR-0027, ADR-0057]
-iadrs: [IADR-0596, IADR-0563, IADR-0554, IADR-0541, IADR-0540, IADR-0023, IADR-0478]
-specs: [20261023_2102_wiki-catalog-ordering, 20261020_1971_wiki-sync-write-gate, 20261016_1966_wiki-title-column-length, 20261015_1934_wiki-slug-unique, 20260703_FR-13_wiki-browsing-abac, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#2102, #2047, #1971, #1966, #1934, #1640]
+iadrs: [IADR-0599, IADR-0596, IADR-0563, IADR-0554, IADR-0541, IADR-0540, IADR-0023, IADR-0478]
+specs: [20261023_2100_cross-replica-exclusion, 20261023_2102_wiki-catalog-ordering, 20261020_1971_wiki-sync-write-gate, 20261016_1966_wiki-title-column-length, 20261015_1934_wiki-slug-unique, 20260703_FR-13_wiki-browsing-abac, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#2100, #2102, #2047, #1971, #1966, #1934, #1640]
 -->
 
 # テスト仕様書: Wiki 閲覧の ABAC 適用
@@ -85,6 +85,7 @@ issues: [#2102, #2047, #1971, #1966, #1934, #1640]
 | T-44 | 古い版の Wiki.js への書き込みの最中に、新しい版の同期・削除が書き込みと保存を終える（古い版の書き込みが後に着く）。対照: 新しい版の書き込みの最中に古い版が保存を終える | 発行→消費 | 古い版は保存の突き合わせで負け、保存済みの最新の状態へ Wiki.js を合わせ直す（新しい版の内容を push し直す・削除済みならページを消し直す）。対照では新しい版が負けて投げ、再試行で新しい版が載る | 更新反映・削除伝播（並行の処理で古い版を残さない） | 自動 |
 | T-45 | 版の比較（保存の精度・削除と同じ時刻） | 判定 | マイクロ秒で比べ（精度の内は同じ版）、1 マイクロ秒でも古ければ弾く。削除済みなら削除と同じ時刻の更新も弾き、削除の再配送は適用する。印が無ければ反映する | 同上 | 自動 |
 | T-46 | 実 PostgreSQL（本番と同じマイグレーション）。印がまだ無い文書を、古い版の Wiki.js への書き込みの最中に新しい版の同期・削除が書き込みと保存を終える | 発行→消費 | 後から保存する古い版は一意違反（同期メタデータの文書 ID の索引か印の主キー）で負け、突き合わせの負けとして新しい版の状態へ Wiki.js を合わせ直す・ページを消し直す。印の同時作成そのものも突き合わせの負けと読む（`WikiSyncMarkPostgresTests`） | 更新反映・削除伝播（初回の同期の並行） | 自動（結合・develop への push と日次） |
+| T-47 | 実 PostgreSQL。2 つのレプリカの書き込みの門（別々の接続）から同期と撤去を同時に Wiki.js へ書く。待ちを切る・枠を 2 にする場合も見る | 門の排他 | 後から来た側はデータベースのロック待ちに入り、先の書き込みが終わるまで Wiki.js へ書かない（重なりは 1）。対照: プロセスの中の枠だけの門では 2 本が重なる。待ちは門の待ちの期限で時間切れになり、ロックも接続も残らない。枠の数はレプリカをまたいで合わせた数で、どちらの枠が空いても次が取れる。単体では、枠を取れなければ Wiki.js を呼ばずプロセスの中の枠を返すこと・門の待ちの既定が Wiki.js 1 回の期限の 2 倍で受け口の実行期限が 90 秒であることを見る | 同期の書き込みが木の再構築で衝突しない（複数レプリカ） | 自動（結合・develop への push と日次） |
 
 ## 実装マッピング
 
@@ -93,7 +94,8 @@ issues: [#2102, #2047, #1971, #1966, #1934, #1640]
 - `DocumentSyncConsumerTests`（T-12〜T-14）
 - `DocumentDeleteArchiveSyncTests`（T-15〜T-19）
 - `WikiJsGraphQlClientTests`（T-21〜T-22。稼働 Wiki.js 2.5.314 の実測応答を再生）
-- `WikiSyncTimeoutTests`（T-23〜T-24。配線は同じファイルの `WikiSyncTimeoutWiringTests`）
+- `WikiSyncTimeoutTests`（T-23〜T-24・T-47 の期限。配線は同じファイルの `WikiSyncTimeoutWiringTests`）
+- `WikiJsReplicaWriteLockTests`（T-47。結合・実 PostgreSQL）・`WikiJsWriteGateTests`（T-47 の単体の側）・`HpaPdbScalingTests`（T-47 の前提: HPA の対象であることと本番の配線がレプリカをまたぐ排他を選ぶこと）
 - `WikiSyncPermanentFailureTests`（T-25〜T-29。23505 は保存の割り込みで再現する —— InMemory は一意索引を強制しない。T-30〜T-34 の受け口と実配送）
 - `WikiTextTests`（T-32）・`WikiJsGraphQlClientTests`（T-33・T-34 の失敗の分類）
 - `DocumentLifecycleEventTests`（DocumentService 側: archive/delete のイベント発行）

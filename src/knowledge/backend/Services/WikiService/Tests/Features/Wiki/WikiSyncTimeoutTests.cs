@@ -104,7 +104,8 @@ public class WikiSyncTimeoutTests
         WikiSyncTimeouts.Default.WikiJs.Should().Be(TimeSpan.FromSeconds(15));
     }
 
-    // 同期（本文 ＋ Wiki.js）か撤去（Wiki.js）の最悪の所要時間が既定の 60 秒以上なら起動を止める（等しいときも止める）。
+    // 同期（本文 ＋ 門 ＋ Wiki.js）か撤去（門 ＋ Wiki.js）の最悪の所要時間が実行期限（既定 90 秒。［2026-10-23 / #2100］従前は Wolverine の既定 60 秒）以上なら
+    // 起動を止める（等しいときも止める）。45 は 45＋30＋15＝90 秒。
     [Theory]
     [InlineData("45", null, "wiki-sync")]
     [InlineData("1", "60", "wiki-")]
@@ -115,24 +116,56 @@ public class WikiSyncTimeoutTests
         act.Should().Throw<InvalidOperationException>().WithMessage($"*{step}*");
     }
 
-    // FR-13, IADR-0563 決定 4 (#1971): 最悪の所要時間には書き込みの門の待ち（Wiki.js 1 回と同じ長さ）が入る。
-    // 門を数えなければ収まる構成（同期 20＋21＝41 秒）も、数えれば 62 秒になるので起動を止める。
-    // （撤去は「門 ＋ Wiki.js」で同期より本文の分だけ短いので、撤去だけが収まらない構成は作れない。）
+    // FR-13, IADR-0563 決定 4 (#1971), IADR-0599 決定 3・4 (#2100): 最悪の所要時間には書き込みの門の待ち（未設定なら Wiki.js 1 回の 2 倍）が入り、
+    // 両受け口の実行期限（既定 90 秒）と比べる。門を数えなければ収まる構成（同期 20＋24＝44 秒）も、数えれば 20＋48＋24＝92 秒になるので起動を止める。
     [Fact]
     public void 書き込みの門の待ちも最悪の所要時間に数える()
     {
-        var act = () => WikiSyncTimeouts.From(Config("20", "21"));
+        var act = () => WikiSyncTimeouts.From(Config("20", "24"));
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*wiki-sync*62 秒*門の待ち*");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*wiki-sync*92 秒*門の待ち*");
     }
 
-    // 対照: 門を数えても収まる構成は通る（同期 18＋20＋20＝58 秒・撤去 40 秒）。
+    // 対照: 門を数えても収まる構成は通る（同期 18＋40＋20＝78 秒・撤去 60 秒）。
     [Fact]
     public void 門の待ちを数えても収まる構成は通る()
     {
         var act = () => WikiSyncTimeouts.From(Config("18", "20"));
 
         act.Should().NotThrow();
+    }
+
+    // IADR-0599 決定 3: 門の待ちは既定で Wiki.js 1 回の 2 倍（2 レプリカの最悪）。明示すればその値。実行期限の既定は 90 秒。
+    [Fact]
+    public void 門の待ちの既定はWikiJs一回の二倍で実行期限の既定は90秒()
+    {
+        WikiSyncTimeouts.Default.WriteGateWait.Should().Be(TimeSpan.FromSeconds(30));
+        WikiSyncTimeouts.Default.Handler.Should().Be(TimeSpan.FromSeconds(90));
+        WikiSyncTimeouts.From(Config(null, "10")).WriteGateWait.Should().Be(TimeSpan.FromSeconds(20));
+
+        var configured = WikiSyncTimeouts.From(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [WikiSyncTimeouts.WriteGateWaitKey] = "45",
+            [WikiSyncTimeouts.HandlerKey] = "120",
+        }).Build());
+        configured.WriteGateWait.Should().Be(TimeSpan.FromSeconds(45));
+        configured.Handler.Should().Be(TimeSpan.FromSeconds(120));
+    }
+
+    // 実行期限を縮めて最悪の所要時間（既定 65 秒）が収まらなければ止める。再試行の連鎖がブローカの consumer_timeout を超える実行期限も止める。
+    [Theory]
+    [InlineData("65", null, "wiki-sync")]
+    [InlineData("440", null, "consumer_timeout")]
+    [InlineData("200", "800", "consumer_timeout")]
+    public void 実行期限が最悪の所要時間か再試行の連鎖に合わなければ起動を止める(string handler, string? broker, string message)
+    {
+        var act = () => WikiSyncTimeouts.From(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [WikiSyncTimeouts.HandlerKey] = handler,
+            [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = broker,
+        }).Build());
+
+        act.Should().Throw<InvalidOperationException>().WithMessage($"*{message}*");
     }
 
     // 指定した 1 つの依存先だけが止まる（ct が立つまで返らない）ポート群。
@@ -161,13 +194,14 @@ public class WikiSyncTimeoutTests
     }
 }
 
-// 本番の Program.cs の配線: 上限を DI に置き、両受け口の実行期限は Wolverine の既定のまま（方針を入れない）。
+// 本番の Program.cs の配線: 上限を DI に置き、両受け口の実行期限は `Wiki:HandlerTimeoutSeconds`（既定 90 秒）を方針で与える
+// （［2026-10-23 / #2100・IADR-0599 決定 4］従前は Wolverine の既定のまま＝方針なし）。
 [Trait("TestKind", "Integration")]
 public class WikiSyncTimeoutWiringTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {
     [Fact]
-    public void 本番の配線は期限を既定値で張り実行期限は既定のまま()
+    public void 本番の配線は期限を既定値で張り両受け口の実行期限は90秒()
     {
         var services = factory.Services;
 
@@ -177,6 +211,6 @@ public class WikiSyncTimeoutWiringTests(TestWebApplicationFactory factory)
             .Where(c => c.MessageType == typeof(DocumentUpdated) || c.MessageType == typeof(DocumentDeleted))
             .ToList();
         chains.Should().HaveCount(2);
-        chains.Should().OnlyContain(c => c.ExecutionTimeoutInSeconds == null);
+        chains.Should().OnlyContain(c => c.ExecutionTimeoutInSeconds == WikiSyncTimeouts.DefaultHandlerSeconds);
     }
 }
