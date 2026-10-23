@@ -203,6 +203,7 @@ public class DocumentUpdatedConsumer(
             bodyMissingMetrics.RecordMissing();
             // [[IADR-0595]] 決定 2: 新版は点を持たない（題名だけの点も書かない）ので、旧版の点を消す（従前の「先に全消し」と同じ結果）。
             // 本文の欠落は恒久的であり、再試行で旧版を残す意味が無い。
+            // 戻り値（追い越されたか）は見ない —— どちらでもこの後は記録して終えるだけで、完了イベントは出さない。
             await FinishAsync(ev, written, ct);
             logger.LogWarning(
                 "Ingestion {DocumentId}: body object missing (NoSuchKey) at {BodyKey} (updated_at={UpdatedAt:O}); "

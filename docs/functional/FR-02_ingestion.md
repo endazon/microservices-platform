@@ -11,7 +11,7 @@ ids: [FR-02, FR-03, FR-05, UC-04, NFR-06]
 adrs: [ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0070, ADR-0127, ADR-0016, ADR-0092]
 iadrs: [IADR-0595, IADR-0536, IADR-0002, IADR-0149, IADR-0358, IADR-0388, IADR-0497, IADR-0025, IADR-0314]
 specs: [20261023_2101_ingestion-ordering-and-atomicity, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261005_1746_high-confidentiality-lexical-index, 20261007_1771_ingestion-event-wiring-docs, 20261009_1771_ingestion-completed-no-wiring]
-issues: [#2101, #2047, #2042, #1908, #532, #536, #580, #1193, #1253, #1254, #1746, #1771, planning#741]
+issues: [#2101, #2150, #2047, #2042, #1908, #532, #536, #580, #1193, #1253, #1254, #1746, #1771, planning#741]
 -->
 
 # 機能仕様書: 取り込み
@@ -168,13 +168,17 @@ Qdrant コレクション（語彙索引。既定 `knowledge_chunks_lexical`）*
 **限界**: 順序の判定に使うのは `UpdatedAt` だけである。**`UpdatedAt` を進めない変更**（露出トグル・共有の付与と取り消し・タグの改名・再発行）は
 同じ版として届くため、その間の到着順の逆転は判定できない（従前と同じ「後着が勝つ」）。全順序の版番号を契約に足す変更は別件で扱う。
 発行の原子性（DB の確定とイベントの発行）も本節の対象外である。
+**並行**: 印の読み書きは比較交換ではない。同じ文書の 2 版を並行に取り込むと、新しい版のチャンクが次の更新まで欠け得る（緩む側ではなく欠ける側）。
+既定の配備（1 レプリカ・Inline 受信）では起きない。複数レプリカ・並行受信にする前に解消する（運用仕様書 §可用性・水平スケール）。
 
+## 索引（Qdrant コレクション）
 
 - コレクション名: `Qdrant:CollectionName`（既定 `knowledge_chunks`）。後方互換で `Qdrant:Collection` もフォールバックで解決する。
 - ベクトル: 次元 = `Qdrant:VectorSize`（既定 1536）、距離 = Cosine。
 - 起動時に `QdrantBootstrapHostedService` が存在保証（無ければ作成）する。
   **［2026-10-05］語彙索引（`Qdrant:LexicalCollection`。既定 `knowledge_chunks_lexical`）も、ベクトルの設定が空のコレクションとして作る。**
   全文索引（`text` / `text_ngram`）・`text_ngram` の後付け・文書単位の削除は、語彙索引を含む全コレクションに効く。
+  **［2026-10-23］版の印のコレクション（`knowledge_document_index_versions`）は検索のコレクションではない**（ブートストラップでは作らず、最初の書き込みで作る。§順序と原子性）。
 - ペイロード: `document_id` / `document_title` / `text` / `markdown_uri` / `chunk_index` / `tags` / `attributes.<key>` / **`updated_at`** / **`has_body`**。
 - **`updated_at` は Unix epoch ミリ秒の整数**である（同実装判断の決定 1）。ISO-8601 文字列にすると同じ時刻を `+09:00` とも `Z` とも書けるため、辞書順が実時刻順と一致しない（並び順は #532 が使う）。
   **本項目より前に索引されたチャンクはキーを持たない** —— 検索側は `null` で返す（縮退。再索引で解消する）。
