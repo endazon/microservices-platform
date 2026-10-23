@@ -13,7 +13,7 @@
  *   - 管理用の主体 `mcp-client-admin` のロール（manage-clients / manage-users）で、作成・SA の照会・属性の書き込み・補償の削除が
  *     本当に通るかも、稼働の Keycloak でしか分からない（足りなければ 403 → 502）。
  *
- * 測ること（受け入れ基準 4。番号は作業仕様書 20261009_1817 の M1〜M6。M7 は 20261009_1818。M8 は 20261009_1829。M9・M10 は 20261009_1844。M11 は 20261009_1845。M12 は 20261009_1846）:
+ * 測ること（受け入れ基準 4。番号は作業仕様書 20261009_1817 の M1〜M6。M7 は 20261009_1818。M8 は 20261009_1829。M9・M10 は 20261009_1844。M11 は 20261009_1845。M12 は 20261009_1846。M13 は 20261023_2045）:
  *   M1 無人の登録が 201（503 にならない）。Keycloak のクライアントに入口の印（msp.mcp-client.managed-by=mcp-server）があり、
  *      機密・SA つき・人の流れ（標準・暗黙・直接付与）は閉・fullScopeAllowed=false。
  *   M2 `users?username=service-account-<client>&exact=true` がちょうど 1 件で、割り当てた属性が入っている（集合値は多値）。
@@ -69,6 +69,11 @@
  *      利用者のトークン（`bff`・利用者 SAMPLE_USER）と呼び出し元のサービスアカウント（document-service・AST の kb-reader）・使い捨ての登録者に
  *      platform-api が在り mcp-server は無い。運用ツール（grafana）の利用者のトークン・MCP クライアント（M9 の有人・無人）のトークンに
  *      platform-api は無い。MCP クライアントの実トークンで McpServer の既定のスキームの口（GET /mcp-clients）を呼ぶと 401（ロール不足の 403 ではない）。
+ *   M13 エッジの /mcp（#2045 / 計画 ADR-0024・ADR-0021 / IADR-0594）: 外部 AI エージェントの入口が**稼働のエッジで**効いている。
+ *      エッジ（EDGE_URL。既定 https://localhost。証明書は cert-manager/local-edge-root-ca で検証する）経由の POST /mcp（initialize）が、
+ *      トークン無し・platform の audience のトークン（使い捨ての登録者）で 401（SPA の HTML へ落ちない）、M9 の無人の MCP クライアントの
+ *      実トークンで JSON-RPC の結果（protocolVersion・serverInfo）を返す。エッジ経由の GET /mcp-clients（登録者のトークン）は管理 REST に
+ *      届かない（2xx の JSON が返らない。同じトークンで MCP サーバーへ直に当てると 200 であることを陽性対照に置く）。
  *
  * 主体は 3 つに分ける（測る側と測られる側を同じにしない）:
  *   - 登録者: 実行のたびに master の管理者が作る**使い捨ての機密クライアント**（SA に platform-admin・既定スコープ profile / roles /
@@ -86,7 +91,7 @@
  *   node scripts/check-mcp-client-provisioning.js --self-test   # 純関数の自己試験（稼働クラスタに触れない）
  *   node scripts/check-mcp-client-provisioning.js --live        # 稼働スタックで実測する（port-forward を自分で張る）
  *
- * 主な環境変数: MCP_PROV_NS（既定 microservices-platform）/ MCP_PROV_INFRA_NS（既定 platform-infra）/ MCP_PROV_REALM（既定 platform）/
+ * 主な環境変数: EDGE_URL（M13。既定 https://localhost）/ MCP_PROV_NS（既定 microservices-platform）/ MCP_PROV_INFRA_NS（既定 platform-infra）/ MCP_PROV_REALM（既定 platform）/
  *   MCP_PROV_MCP_URL・MCP_PROV_KC_URL（与えれば port-forward を張らない）。
  *
  * 終了コード: 0=すべて期待どおり / 1=期待と違う（門の赤） / 2=前提未整備（k8s へ到達できない等） / 3=明示の指定が無い（#1550）
@@ -522,6 +527,71 @@ function countEventsContaining(events, value) {
   return events.filter((e) => typeof (e || {}).representation === 'string' && e.representation.includes(value)).length;
 }
 
+// ---------------------------------------------------------------- M13（#2045 / IADR-0594: エッジの /mcp）
+
+/** M13: MCP の initialize の要求本文（Streamable HTTP の最初の 1 通）。 */
+const MCP_INITIALIZE = {
+  jsonrpc: '2.0', id: 1, method: 'initialize',
+  params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'check-mcp-client-provisioning', version: '0' } },
+};
+
+const contentTypeOf = (res) => String(((res || {}).headers || {})['content-type'] || '').toLowerCase();
+
+/**
+ * M13: 応答の本文から JSON-RPC の文書を取り出す（application/json はそのまま、text/event-stream は `data:` 行を連結して読む）。
+ * 読めなければ null。
+ */
+function parseJsonRpcBody(res) {
+  const text = String((res || {}).body || '');
+  const ct = contentTypeOf(res);
+  try {
+    if (ct.includes('text/event-stream')) {
+      for (const ev of text.split(/\r?\n\r?\n/)) {
+        const data = ev.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trimStart()).join('\n');
+        if (data) return JSON.parse(data);
+      }
+      return null;
+    }
+    if (ct.includes('application/json')) return JSON.parse(text);
+  } catch { /* 読めない */ }
+  return null;
+}
+
+/**
+ * M13: エッジ経由の /mcp が「MCP サーバーの認証で拒まれた」こと。401 で、SPA の HTML（catch-all へ落ちた形）ではない。
+ * 🔴 200 の HTML（経路が無く SPA へ落ちた）も、到達できない（status なし）も赤にする —— どちらも「拒まれた」とは言えない。
+ */
+function evaluateEdgeMcpRejected(res) {
+  if (!res || res.status === undefined) return [`エッジへ届かない（${(res || {}).error || '応答なし'}）`];
+  const errors = [];
+  if (res.status !== 401) errors.push(`状態が ${res.status}（期待 401）`);
+  if (contentTypeOf(res).includes('text/html')) errors.push('本文が HTML（/mcp が MCP サーバーへ振られず SPA へ落ちている）');
+  return errors;
+}
+
+/** M13: エッジ経由の /mcp の initialize が MCP サーバーの JSON-RPC の結果を返したこと（経路の陽性対照）。 */
+function evaluateEdgeMcpInitialized(res) {
+  if (!res || res.status === undefined) return [`エッジへ届かない（${(res || {}).error || '応答なし'}）`];
+  if (res.status !== 200) return [`状態が ${res.status}（期待 200）`];
+  const doc = parseJsonRpcBody(res);
+  if (!doc) return [`本文が JSON-RPC として読めない（content-type ${contentTypeOf(res) || 'なし'}）`];
+  if (doc.error) return [`JSON-RPC のエラー: ${JSON.stringify(doc.error).slice(0, 200)}`];
+  const r = doc.result || {};
+  return r.protocolVersion && r.serverInfo ? [] : ['initialize の結果に protocolVersion / serverInfo が無い'];
+}
+
+/**
+ * M13: エッジ経由の /mcp-clients（管理 REST）が MCP サーバーへ届いていないこと。
+ * 管理 API が答えた形（2xx の JSON）だけを赤にする（SPA の HTML・403 の拒否・404 は届いていない）。到達できない場合も赤（空振り）。
+ */
+function evaluateEdgeManagementNotExposed(res) {
+  if (!res || res.status === undefined) return [`エッジへ届かない（${(res || {}).error || '応答なし'}）`];
+  if (res.status >= 200 && res.status < 300 && contentTypeOf(res).includes('application/json')) {
+    return [`エッジから管理 REST が答えた（${res.status} の JSON。/mcp-clients が外へ出ている）`];
+  }
+  return [];
+}
+
 function selfTest() {
   const assert = require('assert');
   let n = 0;
@@ -791,6 +861,41 @@ function selfTest() {
     assert.deepStrictEqual(evaluateReconciliationLog('client=p-off kind=enabled_differs。', [{ clientId: 'p-off', kind: 'enabled_differs' }]), []);
     assert.strictEqual(evaluateReconciliationLog('client=p-off kind=attributes_differ', [{ clientId: 'p-off', kind: 'enabled_differs' }]).length, 1);
   });
+  t('M13 (#2045): エッジの /mcp の拒否は 401 で HTML でないものだけ（SPA へ落ちた 200 の HTML・届かないは赤）', () => {
+    const r = (status, ct, body = '') => ({ status, headers: { 'content-type': ct }, body });
+    assert.deepStrictEqual(evaluateEdgeMcpRejected(r(401, '')), []);
+    assert.deepStrictEqual(evaluateEdgeMcpRejected(r(401, 'application/problem+json')), []);
+    assert.strictEqual(evaluateEdgeMcpRejected(r(200, 'text/html; charset=utf-8', '<!doctype html>')).length, 2, 'SPA の HTML を拒否と取り違えた');
+    assert.strictEqual(evaluateEdgeMcpRejected(r(200, 'text/event-stream')).length, 1, '認証なしで通ったのを拒否と取り違えた');
+    assert.strictEqual(evaluateEdgeMcpRejected(r(403, '')).length, 1);
+    assert.strictEqual(evaluateEdgeMcpRejected({ status: undefined, error: 'ECONNREFUSED' }).length, 1);
+  });
+  t('M13 (#2045): initialize の結果を JSON と SSE の両方で読み、エラー・HTML・401 を赤にする', () => {
+    const result = { jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-06-18', serverInfo: { name: 'x', version: '1' }, capabilities: {} } };
+    const r = (status, ct, body) => ({ status, headers: { 'content-type': ct }, body });
+    assert.deepStrictEqual(evaluateEdgeMcpInitialized(r(200, 'application/json', JSON.stringify(result))), []);
+    assert.deepStrictEqual(evaluateEdgeMcpInitialized(r(200, 'text/event-stream', `event: message\ndata: ${JSON.stringify(result)}\n\n`)), []);
+    assert.strictEqual(evaluateEdgeMcpInitialized(r(200, 'text/html', '<!doctype html>')).length, 1, 'SPA の HTML を MCP の応答と取り違えた');
+    assert.strictEqual(evaluateEdgeMcpInitialized(r(401, '', '')).length, 1);
+    assert.strictEqual(evaluateEdgeMcpInitialized(r(200, 'application/json', JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32600 } }))).length, 1);
+    assert.strictEqual(evaluateEdgeMcpInitialized(r(200, 'application/json', JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }))).length, 1);
+    assert.strictEqual(evaluateEdgeMcpInitialized({ status: undefined }).length, 1);
+  });
+  t('M13 (#2045): エッジ経由の /mcp-clients は 2xx の JSON（管理 API が答えた形）だけを赤にする', () => {
+    const r = (status, ct) => ({ status, headers: { 'content-type': ct }, body: '' });
+    assert.deepStrictEqual(evaluateEdgeManagementNotExposed(r(200, 'text/html; charset=utf-8')), [], 'SPA へ落ちた形');
+    assert.deepStrictEqual(evaluateEdgeManagementNotExposed(r(403, 'text/plain')), [], 'L7 の門が落とした形');
+    assert.deepStrictEqual(evaluateEdgeManagementNotExposed(r(404, '')), []);
+    assert.strictEqual(evaluateEdgeManagementNotExposed(r(200, 'application/json; charset=utf-8')).length, 1);
+    assert.strictEqual(evaluateEdgeManagementNotExposed({ status: undefined }).length, 1, '届かないのを「出ていない」と取り違えた');
+  });
+  t('M13 (#2045): live は無人の MCP クライアントの実トークン・登録者のトークン・トークン無しの 3 つでエッジの /mcp を測る', () => {
+    const src = require('fs').readFileSync(__filename, 'utf8');
+    assert.match(src, /evaluateEdgeMcpRejected\(await edgeMcp\(null\)\)/, 'トークン無しを測っていない');
+    assert.match(src, /evaluateEdgeMcpRejected\(await edgeMcp\(await registrar\(\)\)\)/, 'platform の audience のトークンを測っていない');
+    assert.match(src, /evaluateEdgeMcpInitialized\(await edgeMcp\(mcpToken\)\)/, 'MCP クライアントの実トークンの陽性対照を測っていない');
+    assert.match(src, /evaluateEdgeManagementNotExposed\(await edgeRequest\('GET', `\$\{edgeUrl\}\/mcp-clients`/, '管理 REST がエッジに出ていないことを測っていない');
+  });
   t('M6: 補償の表示名は登録簿の上限を超え、Keycloak の上限に収まる', () => {
     const name = overlongDisplayName();
     assert.ok(name.length > REGISTRY_DISPLAY_NAME_MAX && name.length <= KEYCLOAK_NAME_MAX);
@@ -914,6 +1019,32 @@ async function send(method, url, bearer, body) {
   let json = null;
   try { json = text ? JSON.parse(text) : null; } catch { /* 本文が JSON でない（5xx 等） */ }
   return { status: res.status, json, text };
+}
+
+/**
+ * M13（#2045）: エッジ（https）への要求。エッジの証明書はローカルの CA（cert-manager/local-edge-root-ca）で検証する（`-k` 相当にしない）。
+ * 投げずに { status, headers, body } を返す（届かなければ status なし）。トークンはヘッダで送り、ログに出さない。
+ */
+function edgeRequest(method, url, { bearer = null, body, headers = {}, ca = null } = {}) {
+  const u = new URL(url);
+  const mod = u.protocol === 'https:' ? require('https') : require('http');
+  const payload = body === undefined ? null : JSON.stringify(body);
+  const h = {
+    ...headers,
+    ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
+    ...(payload === null ? {} : { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) }),
+  };
+  return new Promise((resolve) => {
+    const req = mod.request(u, { method, headers: h, timeout: 20000, ...(ca ? { ca } : {}) }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString('utf8') }));
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', (e) => resolve({ status: undefined, headers: {}, body: '', error: e.message }));
+    if (payload !== null) req.write(payload);
+    req.end();
+  });
 }
 
 /**
@@ -1490,6 +1621,35 @@ async function live() {
         step('M12 否定形: MCP クライアントの実トークンで McpServer の既定のスキームの口（GET /mcp-clients）は 401',
           status(await send('GET', `${mcpUrl}/mcp-clients`, mcpToken), 401));
       }
+
+      // --- M13（#2045 / IADR-0594: 外部 AI エージェントの入口＝エッジの /mcp）--------------------------------
+      // 稼働のエッジ（経路 B の Istio の overlay、istio=false の比較実行では Traefik の Ingress）で、/mcp が MCP サーバーへ届き、
+      // MCP サーバーの認証（audience=mcp-server だけ）を通ることを対で測る。管理 REST（/mcp-clients）はエッジから届かない。
+      const edgeUrl = env('EDGE_URL', 'https://localhost').replace(/\/+$/, '');
+      const edgeCaResult = require('./check-password-reset-mail').edgeCa();
+      if (!edgeCaResult.ok) {
+        failures.push(`M13 の前提: エッジの CA を読めない（${edgeCaResult.error}）`);
+      } else {
+        const ca = edgeCaResult.value;
+        const edgeMcp = (bearer) => edgeRequest('POST', `${edgeUrl}/mcp`, {
+          bearer, body: MCP_INITIALIZE, ca, headers: { accept: 'application/json, text/event-stream' },
+        });
+        log(`  M13 エッジ: ${edgeUrl}`);
+        step('M13 否定形: エッジ経由の /mcp はトークン無しで 401（MCP サーバーの認証で拒まれる。SPA へ落ちない）',
+          evaluateEdgeMcpRejected(await edgeMcp(null)));
+        step('M13 否定形: エッジ経由の /mcp は platform の audience のトークン（使い捨ての登録者）で 401',
+          evaluateEdgeMcpRejected(await edgeMcp(await registrar())));
+        if (mcpToken) {
+          step('M13 エッジ経由の /mcp は無人の MCP クライアントの実トークンで initialize の結果を返す（経路の陽性対照）',
+            evaluateEdgeMcpInitialized(await edgeMcp(mcpToken)));
+        } else {
+          failures.push('M13 の前提: 無人の MCP クライアントの実トークンが無い（陽性対照を測れない）');
+        }
+        // 陽性対照: 同じ登録者のトークンで、MCP サーバーへ直に当てた管理 REST は答える（否定が空振りしていないこと）。
+        step('M13 前提: 登録者のトークンで MCP サーバーへ直に当てた GET /mcp-clients は 200', status(await call('GET', `${mcpUrl}/mcp-clients`, registrar), 200));
+        step('M13 否定形: エッジ経由の GET /mcp-clients（同じ登録者のトークン）は管理 REST に届かない',
+          evaluateEdgeManagementNotExposed(await edgeRequest('GET', `${edgeUrl}/mcp-clients`, { bearer: await registrar(), ca })));
+      }
     } else {
       failures.push('M12 の前提: M9 の無人の MCP クライアントが無い（MCP クライアントの実トークンを測れない）');
     }
@@ -1510,7 +1670,7 @@ async function live() {
     for (const f of failures) warn(`  - ${f}`);
     return 1;
   }
-  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M12）');
+  log('\n✓ SC-12 の IdP への書き込みの実測: すべて期待どおり（M1〜M13）');
   return 0;
 }
 
@@ -1524,6 +1684,7 @@ module.exports = {
   evaluateCreatedClient, evaluateServiceAccountLookup, evaluateNothingCreated, overlongDisplayName,
   evaluateReconciliationLog, evaluateTokenIssued, evaluateTokenRefused, evaluateClientEnabled, evaluateServiceAccountIntact,
   bearerSource, sendWithRefresh,
+  parseJsonRpcBody, evaluateEdgeMcpRejected, evaluateEdgeMcpInitialized, evaluateEdgeManagementNotExposed,
 };
 
 if (require.main === module) {

@@ -4535,6 +4535,55 @@ ok('#1154: 本番像の既定は opt-in（false）で、NetworkPolicy の穴も�
   );
 });
 
+// ---------------------------------------------------------------------------
+// FR-16 / #2045 / IADR-0594: 外部 AI エージェントの入口（/mcp）。3 つのエッジ（本番チャート・経路 B の Istio・経路 B の Traefik）が
+// 同じ契約（exact /mcp ＋ prefix /mcp/ → mcp-service:8080・rewrite 無し・catch-all より前）を持つこと。
+// 🔴 `prefix: /mcp`（文字列の前方一致）は同じポートの管理 REST /mcp-clients まで外へ出すので、その形が現れた瞬間に落とす。
+// 稼働のエッジで 401 / 200 / 「管理 REST に届かない」を測るのは統合スタックの門（check-mcp-client-provisioning.js の M13）である。
+// 本番チャートの L7 の門・評価は helm-edge-mcp-entry.test.js が持つ。
+// ---------------------------------------------------------------------------
+const FRONTEND_ING_CODE = stripYamlComments(FRONTEND_ING_YAML);
+
+ok('#2045: /mcp の経路が 3 つのエッジにあり、exact /mcp ＋ /mcp/ 配下で mcp-service へ振る', () => {
+  assert.match(EDGE_ISTIO_VS_APP_CODE,
+    /- uri: \{ exact: \/mcp \}\n\s*- uri: \{ prefix: \/mcp\/ \}\n\s*route:\n\s*- destination:\n\s*host: mcp-service\.microservices-platform\.svc\.cluster\.local\n\s*port:\n\s*number: 8080/,
+    'Istio の overlay に exact /mcp ＋ prefix /mcp/ → mcp-service:8080 の route が無い（外部 AI エージェントが届かない。#2045）');
+  assert.match(CHART_EDGE_CODE,
+    /- uri: \{ exact: \/mcp \}\n\s*- uri: \{ prefix: \/mcp\/ \}\n\s*route:\n\s*- destination:\n\s*host: \{\{ \.Values\.edge\.mcp\.service \| quote \}\}/,
+    '本番チャートに exact /mcp ＋ prefix /mcp/ → edge.mcp.service の route が無い');
+  assert.match(FRONTEND_ING_CODE,
+    /- path: \/mcp\n\s*pathType: Exact\n\s*backend:\n\s*service:\n\s*name: mcp-service\n\s*port:\n\s*number: 8080\n\s*- path: \/mcp\/\n\s*pathType: Prefix\n\s*backend:\n\s*service:\n\s*name: mcp-service/,
+    'Traefik の Ingress に Exact /mcp ＋ Prefix /mcp/ → mcp-service:8080 が無い');
+});
+
+ok('#2045: /mcp の文字列前置（/mcp-clients まで飲む形）を、どのエッジも使っていない', () => {
+  for (const [name, src] of [['istio overlay', EDGE_ISTIO_VS_APP_CODE], ['chart', CHART_EDGE_CODE]]) {
+    assert.ok(!/prefix:\s*\/mcp\s*(\}|$)/m.test(src), `${name} が prefix: /mcp を使っている（/mcp-clients まで外へ出る）`);
+    assert.ok(!src.includes('/mcp-clients'), `${name} が /mcp-clients をエッジへ出している`);
+  }
+  assert.ok(!/- path: \/mcp\n\s*pathType: Prefix/.test(FRONTEND_ING_CODE), 'Traefik の Ingress が /mcp を Prefix で出している');
+  assert.ok(!FRONTEND_ING_CODE.includes('/mcp-clients'), 'Traefik の Ingress が /mcp-clients を出している');
+});
+
+ok('#2045: /mcp の route は catch-all より前にあり、rewrite を張らない', () => {
+  for (const [name, src] of [['istio overlay', EDGE_ISTIO_VS_APP_CODE], ['chart', CHART_EDGE_CODE]]) {
+    const at = src.indexOf('exact: /mcp }');
+    const catchAllAt = src.search(/prefix:\s*\/\s*(\}|$)/m);
+    assert.ok(at > 0 && catchAllAt > 0 && at < catchAllAt, `${name} の /mcp の route が catch-all より後ろにある（SPA に吸われる）`);
+    assert.ok(!/\brewrite:/.test(src), `${name} が rewrite を張っている`);
+  }
+  const ingAt = FRONTEND_ING_CODE.indexOf('- path: /mcp\n');
+  const ingCatchAll = FRONTEND_ING_CODE.search(/- path: \/\n/);
+  assert.ok(ingAt > 0 && ingCatchAll > ingAt, 'Traefik の Ingress の /mcp が catch-all より後ろにある');
+});
+
+ok('#2045: 本番像の既定は opt-in（false）で、NetworkPolicy の穴も同じ条件でしか開かない', () => {
+  assert.match(CHART_VALUES, /^ {2}mcp:\n {4}enabled: false\n {4}service: mcp-service\n {4}port: 8080/m, 'values.yaml の edge.mcp の既定が false でない');
+  assert.match(stripYamlComments(CHART_NETPOL),
+    /if\s+\.Values\.edge\.mcp\.enabled[\s\S]{0,900}name:\s*allow-edge-ingress-to-mcp/,
+    'NetworkPolicy の穴が edge.mcp.enabled で条件付けられていない');
+});
+
 ok('#782: 切り戻しは mTLS を先に緩める（入口だけ戻して 502 のままにしない）', () => {
   const permissiveAt = ISTIO_EDGE_DOWN.indexOf('"PERMISSIVE"');
   const restoreAt = ISTIO_EDGE_DOWN.indexOf('kubectl apply -k deploy/local/edge');
