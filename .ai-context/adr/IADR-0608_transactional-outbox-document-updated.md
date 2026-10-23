@@ -68,7 +68,10 @@ related_specs:
 
 `PublishUpdatedAsync` を `CommitAsync` の外で呼ぶと `InvalidOperationException` にする（入れ子の `CommitAsync` も同じ）。
 外で積んだ発行は DB の確定と同じトランザクションに載らず、確定されないまま捨てられる —— 例外にしなければ
-「更新は保存されたがイベントが出ない」が黙って起きる。器の代役（`RecordingDocumentUpdatedPublisher`）も同じ例外を投げるので、
+「更新は保存されたがイベントが出ない」が黙って起きる。
+**`CommitAsync` は DbContext のトランザクションが開いていない状態でだけ呼べる**（開いていれば `InvalidOperationException`）。
+外側のトランザクションを持つ呼び出し側から呼ぶと、ここでのコミットが外側を勝手に確定し、巻き戻しは外側の変更まで捨てるためである
+（AI レビューの指摘で追加。呼び出し側は外側を持たない約束なので、自分で開いた場合だけ確定する形より例外のほうが単純）。器の代役（`RecordingDocumentUpdatedPublisher`）も同じ例外を投げるので、
 経路が確定の外で発行すれば DocumentService.Tests の既存の「更新で DocumentUpdated が出る」試験が赤になる。
 
 失敗の扱いは段 1（IADR-0604 決定 2）と同じである: 確定（保存・コミット）が失敗したら積んだ発行を捨ててトランザクションを巻き戻し、
@@ -85,6 +88,8 @@ related_specs:
   版の競合（IADR-0597）の 409 への写像は入口の呼び出しを囲む（保存で負ければ発行も巻き戻り 1 通も出ない）。
 - 一括の経路（`ArchiveAstQuotes`・`ArchiveBodyless`・`StripUntrustedBoundary`）: ページ全件の保存と発行を 1 回の確定に載せる。
 - `Republish`（DB を変えない）と `Tags/Rename`（改名の保存の後に対象を絞って読む）: `CommitAsync` を直接使う。
+  `Tags/Rename` の 409（同名の競合）へ写すのは**改名の保存の失敗だけ**である（従前と同じ範囲）。読み出し・発行の積み・コミットの
+  失敗は写さずにそのまま出す（AI レビューの指摘で追加。`RenameTagConflictScopeTests` が固定する）。
 - **保存の後・発行の前にあった副作用は確定の後ろへ移す**: 計器（`RecordIfUnitSubjectSavedWithoutProject`）、1 件 1 行の監査ログ、
   競合解決の監査、使用量の再計算。確定しなかった変更を数えない・記録しないためである。
 

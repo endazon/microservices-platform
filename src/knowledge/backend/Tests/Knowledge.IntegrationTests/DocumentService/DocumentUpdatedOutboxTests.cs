@@ -285,6 +285,34 @@ public sealed class DocumentUpdatedOutboxTests(PostgresFixture postgres, RabbitM
         await WaitOutboxDrainedAsync(cs, Delivery);
     }
 
+    // IADR-0608 決定 2: 外側のトランザクションが開いているときは確定しない（例外）。外側を勝手にコミットしない。
+    // 🔴 「開いていれば新しく開かず、そのまま確定する」形へ戻す変異で、外側の変更がコミットされて赤になる。
+    [Fact]
+    public async Task 外側のトランザクションの中では確定せず例外にする()
+    {
+        var cs = await CreateDatabaseAsync();
+        using var publisher = await StartPublisherAsync(cs);
+        var id = Guid.NewGuid();
+
+        await using (var scope = publisher.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            var updated = scope.ServiceProvider.GetRequiredService<IDocumentUpdatedPublisher>();
+            await using var outer = await db.Database.BeginTransactionAsync(Ct);
+            var doc = NewDocument(id, "外側のトランザクションの文書");
+            db.Documents.Add(doc);
+
+            var act = () => DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(updated, db, doc, Ct);
+
+            await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*トランザクション*");
+            db.Database.CurrentTransaction.Should().BeSameAs(outer, "外側のトランザクションは開いたまま（確定も破棄もしていない）");
+            await outer.RollbackAsync(Ct);
+        }
+
+        (await TitleAsync(cs, id)).Should().BeNull("外側を巻き戻したので、文書は確定していない");
+        (await OutboxRowsAsync(cs)).Should().Be(0);
+    }
+
     public sealed class UpdatedProbe
     {
         private readonly ConcurrentDictionary<Guid, int> _counts = new();

@@ -61,11 +61,22 @@ internal static class RenameTagEndpoint
             // FR-06, ADR-0027 §決定, IADR-0608 決定 1 (#2168): **改名の保存と再発行を 1 トランザクションで確定する**
             // （Transactional Outbox）。🔴 表示名辞書は**保存の後に**読む（新しい名前がイベントに載る）。保存の前に積む形にしない。
             List<Document> affected = [];
+            // 409 へ写すのは**改名の保存**の失敗だけである（従前と同じ範囲）。読み出し・発行の積み・コミット（Outbox の INSERT を含む）の
+            // 失敗は同名の競合ではないので、写さずにそのまま出す（原因を「既に辞書にあります」で隠さない）。
+            var renameSaveFailed = false;
             try
             {
                 await bus.CommitAsync(async c =>
                 {
-                    await db.SaveChangesAsync(c);
+                    try
+                    {
+                        await db.SaveChangesAsync(c);
+                    }
+                    catch (DbUpdateException)
+                    {
+                        renameSaveFailed = true;
+                        throw;
+                    }
                     var names = await TagResolver.NamesAsync(db, c);
                     var affectedIds = (await db.Documents
                             .Select(d => new { d.Id, d.Tags })
@@ -81,7 +92,7 @@ internal static class RenameTagEndpoint
                         await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, c);
                 }, ct);
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException) when (renameSaveFailed)
             {
                 // 追加と同じ race（検査と保存の間に別の要求が同名を入れる）。契約どおり 409 にする（発行も巻き戻る）。
                 return Results.Conflict(new { message = $"タグ「{name}」は既に辞書にあります。" });

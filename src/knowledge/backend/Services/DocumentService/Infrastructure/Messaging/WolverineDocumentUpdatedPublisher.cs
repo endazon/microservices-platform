@@ -59,17 +59,23 @@ public sealed class WolverineDocumentUpdatedPublisher(
         if (_inCommit)
             throw new InvalidOperationException("IDocumentUpdatedPublisher.CommitAsync は入れ子にできない（IADR-0608 決定 2）。");
 
+        // 🔴 外側のトランザクションの中では呼べない（IADR-0608 決定 2）。外側を持つ呼び出し側から呼ぶと、ここでのコミットが
+        // 外側のトランザクションを勝手に確定し、巻き戻しは外側の変更まで捨てる。呼び出し側は外側を持たない約束なので、例外にする。
+        var db = outbox.DbContext;
+        if (db.Database.CurrentTransaction is not null)
+            throw new InvalidOperationException(
+                "IDocumentUpdatedPublisher.CommitAsync は DbContext のトランザクションが開いていない状態で呼ぶ（IADR-0608 決定 2）。"
+                + " 開いた外側のトランザクションを、この確定が勝手にコミットしないためである。");
+
         // 🔴 `AllowMultiples`: 既定（OnlyOnce）は 2 回目以降の送出を**警告 1 行で黙って捨てる**（IADR-0604 決定 2）。
         if (outbox is MessageContext messaging)
             messaging.MultiFlushMode = MultiFlushMode.AllowMultiples;
 
         // ① 確定。トランザクションを**保存より前に**開く —— 保存（`SaveChangesAsync`）がその中で流れ、
         // 関数の続き（共有先・タグの表示名の読み出し）が自分の書き込みを読める。envelope の INSERT も同じトランザクションに載る。
-        var db = outbox.DbContext;
         try
         {
-            if (db.Database.CurrentTransaction is null)
-                await db.Database.BeginTransactionAsync(ct);
+            await db.Database.BeginTransactionAsync(ct);
             _inCommit = true;
             try
             {

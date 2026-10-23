@@ -38,6 +38,8 @@ plan_refs:
 | B4 | イベントの中身は保存の**後**の DB から組み立てる（共有の付与・取り消しの直後の `sharedWith` に今回の変更が載る） | 既存 `DocumentShareEndpointTests` 系（器の発行口）＋ `DocumentUpdatedOutboxTests.保存の後のDBを読んで発行する`（実 PostgreSQL） |
 | B5 | 確定の後の送出の失敗は呼び出し側へ出さず Warning で残し、確定済みの更新を成功として返す | `WolverineDocumentUpdatedPublisherTests.確定の後の送出の失敗は例外にせずWarningで残し更新は確定している` |
 | B6 | `CommitAsync` の外で発行を積むと例外になる（確定されないまま黙って捨てられる発行を作らない） | `WolverineDocumentUpdatedPublisherTests.確定の外で発行を積むと例外になる` ／ 器の発行口も同じ例外を投げる |
+| B8 | 外側のトランザクションが開いていれば `CommitAsync` は確定せず例外にする（外側を勝手にコミットしない） | `DocumentUpdatedOutboxTests.外側のトランザクションの中では確定せず例外にする` |
+| B9 | `Tags/Rename` の 409 は改名の保存の失敗だけに写す（コミット等の失敗は 409 にしない） | `RenameTagConflictScopeTests.確定の保存の後の失敗は409にしない` |
 | B7 | 19 ファイルの全経路が確定を `CommitAsync` で行う（器の発行口は `CommitAsync` の中でだけ記録するので、確定の外で発行すれば既存の「更新で DocumentUpdated が出る」試験が赤になる） | 既存の DocumentService.Tests 全件 |
 
 変異（実測）: B2 は「失敗時の巻き戻しを外す」、B4 は「入口の中で保存を発行の後ろへ動かす」（結合 1 件＋ DocumentService.Tests の共有先の 2 件）、

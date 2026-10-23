@@ -333,8 +333,8 @@ public static class DocumentEndpoints
     // イベントを組み立てて門へ通し、両方を 1 トランザクションで確定してから送る（Transactional Outbox）。
     // 返すのはタグの表示名辞書である（応答の写像に同じ辞書を使う。トランザクションの中で読んだ値）。
     //
-    // 🔴 **保存を `DocumentDbContext.SaveChangesAsync` の直呼びで済ませ、その後に門を呼ぶ形へ戻さない。**
-    // 門は `CommitAsync` の外では例外になる（確定されない発行を作らないため。IADR-0608 決定 2）。
+    // 保存を `DocumentDbContext.SaveChangesAsync` の直呼びで済ませてから門を呼ぶと、門は例外になる
+    // （`CommitAsync` の外では発行を積めない。確定されない発行を作らないため。IADR-0608 決定 2）。
     // 保存が失敗すれば例外がそのまま出る（版の競合の 409 への写像は呼び出し側が持つ）。発行は巻き戻り 1 通も出ない。
     internal static Task<Dictionary<Guid, string>> SaveChangesAndPublishUpdatedIfIndexableAsync(
         IDocumentUpdatedPublisher bus, DocumentDbContext db, Document d, CancellationToken ct = default)
