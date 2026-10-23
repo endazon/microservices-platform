@@ -104,6 +104,21 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
     }
 
     /// <summary>
+    /// FR-19, UC-11, SC-03, 計画 ADR-0036 D-08, [[IADR-0611]] (#2046): **SC-03 の閲覧の 1 件**（緊急アクセスの判定を含める）。
+    /// 文書サービスが通常の判定で読めなかったものを緊急アクセスで許したときは <c>ViaBreakGlass</c> が真
+    /// （後段は要求ごとにサーバ側の発動記録で判定し、閲覧の監査ログを保存した後でだけ立てる）。読めない・無ければ <c>null</c>。
+    /// 🔴 呼ぶのは BFF の詳細・本文の前段だけ。書き込み・版・本人の確認の前段は <see cref="GetAsync"/>（含めない）を使う。
+    /// </summary>
+    public async Task<(DocumentDto Document, bool ViaBreakGlass)?> GetForViewAsync(
+        ClaimsPrincipal user, Guid id, CancellationToken ct)
+    {
+        var resp = await client.GetDocumentAsync(
+            new Pb.GetDocumentRequest { Id = id.ToString("D"), User = ToUserContext(user), AllowBreakGlass = true },
+            cancellationToken: ct);
+        return resp.Found ? (DocumentReadGrpcMapping.ToDto(resp.Document), resp.GrantedByBreakGlass) : null;
+    }
+
+    /// <summary>
     /// FR-06, UC-03: 版履歴。**文書そのものが無ければ <c>null</c>**（REST の 404 と同値）、
     /// 版が 1 件も無いだけなら**空リスト**（REST の 200 `[]` と同値）。この 2 つは別の事実である。
     /// </summary>
@@ -128,10 +143,20 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
     /// FR-06, UC-03, SC-03, ADR-0014, [[IADR-0544]] (#1905): 現行版の本文。**読めない・無ければ <c>null</c>**。
     /// 本文の状態（在る・参照が無い・実体が無い・大きすぎる）は応答の <c>State</c> で返す。引けなければ例外（呼び出し元が畳む）。
     /// </summary>
-    public async Task<Pb.GetDocumentContentResponse?> GetContentAsync(ClaimsPrincipal user, Guid id, CancellationToken ct)
+    /// <remarks>
+    /// FR-19, ADR-0036 D-08, [[IADR-0611]] (#2046): <paramref name="allowBreakGlass"/> は、前段の詳細（<see cref="GetForViewAsync"/>）が
+    /// 緊急アクセスで読めたときだけ真にする（後段の判定に委ねる。真でも後段が要求ごとに発動記録で判定し直す）。
+    /// </remarks>
+    public async Task<Pb.GetDocumentContentResponse?> GetContentAsync(ClaimsPrincipal user, Guid id, CancellationToken ct,
+        bool allowBreakGlass = false)
     {
         var resp = await client.GetDocumentContentAsync(
-            new Pb.GetDocumentContentRequest { DocumentId = id.ToString("D"), User = ToUserContext(user) },
+            new Pb.GetDocumentContentRequest
+            {
+                DocumentId = id.ToString("D"),
+                User = ToUserContext(user),
+                AllowBreakGlass = allowBreakGlass,
+            },
             cancellationToken: ct);
         return resp.Found ? resp : null;
     }

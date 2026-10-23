@@ -116,11 +116,12 @@ public static class DocumentBffEndpoints
                 PlatformAuthPolicies.OperatorRole));
 
         // 詳細: スコープ外・不在ともに 404（存在秘匿）。#1010: 読み取り経路 → read。
+        // FR-19, SC-03, ADR-0036 D-08, [[IADR-0611]] (#2046): 緊急アクセスで指名された管理者の閲覧も通す（`FetchForViewAsync`）。
         g.MapGet("/{id:guid}", async (
             Guid id, HttpContext http, CancellationToken ct) =>
         {
-            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, http, ct);
-            return doc is null ? Results.NotFound() : Results.Ok(doc);
+            var view = await FetchForViewAsync(id, http, ct);
+            return view is { } v ? Results.Ok(v.Document) : Results.NotFound();
         }).WithName("BffDocumentDetail").Produces<DocumentDto>();
 
         // 版履歴: スコープ外・不在は 404。#1010: 読み取り経路 → read。
@@ -185,18 +186,21 @@ public static class DocumentBffEndpoints
         //   - 本文の参照が無い・実体が無い（NoSuchKey）… 404 ＋ 問題詳細（`DocumentBodyProblems.Unavailable`。文書は読めるので秘匿の対象ではない）
         //   - 上限超過 … 413 ＋ 問題詳細（大きさと上限。切り詰めない）
         //   - 引けなかった（UNAVAILABLE・ストレージ未構成の FAILED_PRECONDITION・一時障害）… 502（案内文へ畳まない）
+        //
+        // FR-19, SC-03, ADR-0036 D-08, [[IADR-0611]] (#2046): 前段の詳細が緊急アクセスで読めたときだけ、本文の rpc にも
+        // 緊急アクセスの判定を含めるよう頼む（後段が要求ごとに発動記録で判定し直し、本文の閲覧として 1 行記録する）。
         g.MapGet("/{id:guid}/content", async (
             Guid id, HttpContext http, CancellationToken ct) =>
         {
-            var doc = await FetchAuthorizedAsync(id, BffScopeAction.Read, http, ct);
-            if (doc is null)
+            if (await FetchForViewAsync(id, http, ct) is not { } view)
                 return Results.NotFound();
+            var doc = view.Document;
 
             var grpc = http.RequestServices.GetRequiredService<DocumentReadGrpcClient>();
             Knowledge.Contracts.Grpc.Document.V1.GetDocumentContentResponse? content;
             try
             {
-                content = await grpc.GetContentAsync(http.User, id, ct);
+                content = await grpc.GetContentAsync(http.User, id, ct, allowBreakGlass: view.ViaBreakGlass);
             }
             catch (Exception ex) when (IsTransportFailure(ex, ct))
             {
@@ -446,8 +450,49 @@ public static class DocumentBffEndpoints
         => doc.Attributes.TryGetValue("doc_scope", out var scope)
             && string.Equals(scope, "private-note", StringComparison.OrdinalIgnoreCase);
 
-    // #1010: action は呼び出し元の経路の意味で選ぶ —— 読み取り GET（詳細・版履歴・本文）は
+    // FR-19, UC-11, SC-03, 計画 ADR-0036 D-08, [[IADR-0610]], [[IADR-0611]] (#2046 の 2 本目): **SC-03 の閲覧（詳細・本文）の前段。**
+    //
+    // 後段に「緊急アクセスの判定を含めて」1 件を頼み（`GetForViewAsync`）、
+    //   - 後段が**緊急アクセスとして許した**（`ViaBreakGlass`）なら、そのまま通す。
+    //   - 通常の判定で読めたものは、従来どおり BFF の ABAC（`IsReadable`）を AND で重ねる（`FetchAuthorizedAsync` の読み取りと同じ）。
+    //
+    // 🔴 **緊急アクセスの可否を BFF は決めない（許可も拒否も足さない）。** 指名・有効期間・本人の終了・所有者・論理削除・
+    //   いま platform-admin か、のすべては文書サービスが要求ごとにサーバ側の発動記録で判定する（D-08「有効性はサーバ側の
+    //   発動記録で判定」）。BFF の ABAC は静的属性の分岐しか持たない管理者を個人資料で通さない（`IsReadable` の注記）ので、
+    //   ここで重ねると後段が許した閲覧を BFF が必ず 404 にする —— 裁定（planning#841）の受益者が 1 人も読めなくなる。
+    // 🔴 **緊急アクセスを含めて頼むのはこの関数だけ**（詳細・本文）。版の一覧・特定版・書き込みの前段・本人の確認は
+    //   `FetchAuthorizedAsync` / `GetAsync`（含めない）を通る —— 含めて頼むと後段が閲覧の監査ログを作るため、閲覧でない操作で
+    //   記録が増える。応答の共有先の写しは後段が既に落としている（[[IADR-0610]] 決定 2）。
+    private static async Task<(DocumentDto Document, bool ViaBreakGlass)?> FetchForViewAsync(
+        Guid id, HttpContext http, CancellationToken ct)
+    {
+        var scope = await BffScopeResolver.ResolveAsync(http, BffScopeAction.Read, ct);
+
+        var grpc = http.RequestServices.GetRequiredService<DocumentReadGrpcClient>();
+        (DocumentDto Document, bool ViaBreakGlass)? view;
+        try
+        {
+            view = await grpc.GetForViewAsync(http.User, id, ct);
+        }
+        catch (Exception ex) when (IsTransportFailure(ex, ct))
+        {
+            // FR-06, NFR-16 (#1897): 畳む前に WARN（状態・rpc・例外の型）。404 秘匿は変えない。
+            DocumentReadFailureLog.Folded(http, "GetDocument", ex, "404");
+            return null;
+        }
+
+        if (view is not { } v)
+            return null; // 不在・読めないは秘匿し区別しない
+        if (v.ViaBreakGlass)
+            return v;    // 後段が緊急アクセスとして許した（BFF は判定を足さない）
+        if (scope is null || !IsReadable(v.Document, scope))
+            return null; // スコープ外は不在と同じ 404
+        return (ForViewer(v.Document, scope), false);
+    }
+
+    // #1010: action は呼び出し元の経路の意味で選ぶ —— 読み取り GET（版履歴・特定版）は
     // BffScopeAction.Read、書き込みプリフライト（ForwardIfInScope）は BffScopeAction.Write。
+    // ［2026-10-24 / [[IADR-0611]]］詳細・本文は `FetchForViewAsync` へ移した。🔴 ここは緊急アクセスを含めずに引く（`GetAsync`）。
     private static async Task<DocumentDto?> FetchAuthorizedAsync(
         Guid id, string action, HttpContext http, CancellationToken ct)
     {

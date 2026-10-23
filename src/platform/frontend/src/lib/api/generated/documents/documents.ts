@@ -335,6 +335,9 @@ export const getBffDocumentDetailUrl = (id: string,) => {
 }
 
 /**
+ * FR-19, ADR-0036 D-08（#2046）: 緊急アクセスで指名された platform-admin は、有効な間だけ対象の個人資料 1 件を
+ * この口で開ける。可否は文書サービスが要求ごとに発動記録で判定し（閲覧を 1 件ずつ監査ログへ記録する）、
+ * BFF は許可も拒否も足さない。応答に共有先の写し（`sharedWith`）は載らない。
  * @summary FR-06, SC-03: 文書詳細（スコープ外・不在は同じ 404）
  */
 export const bffDocumentDetail = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentDetailResponse> => {
@@ -669,6 +672,7 @@ export const getBffDocumentContentUrl = (id: string,) => {
  * - 本文が上限（16 MiB・UTF-8）を超える … **413**（ProblemDetails。`sizeBytes` / `limitBytes`。切り詰めない）
  * - 文書サービスから本文を受け取れない … **502**（ProblemDetails）
  * 不在・スコープ外の 404 は本文を持たない（存在秘匿。理由を言わない）。
+ * 緊急アクセス（#2046）で詳細が開けた指名された platform-admin は本文も開ける（文書サービスが判定し、本文の閲覧として記録する）。
  * @summary FR-06, SC-03: 文書本文（正規化 Markdown）
  */
 export const bffDocumentContent = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentContentResponse> => {

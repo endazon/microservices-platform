@@ -113,6 +113,9 @@ public class BffEndpointCompositionTests
             // #451, FR-19, FR-20, SC-19, SC-20: 個人資料と同期端末（後段は DocumentService の
             // /private-notes*）。**端末の群（/bff/private-notes/devices）もこの接頭辞に含まれる。**
             "/bff/private-notes",
+            // #2046, FR-19, UC-11, SC-19, ADR-0036 D-08: 緊急アクセスの監査ログ（後段は DocumentService の
+            // /break-glass/audit）。発動・終了・状態は上の /bff/private-notes の接頭辞に含まれる。
+            "/bff/break-glass",
             "/bff/admin/authz",
             "/bff/admin/config",
             // #452, FR-16, UC-09, SC-12: MCP クライアント登録管理（AdminOnly の透過中継）。

@@ -353,6 +353,7 @@
       "DocumentSyncConsumerTests"
     ],
     "docs/tests/FR-19_private-notes-lifecycle.md": [
+      "BffBreakGlassEndpointTests",
       "BffPrivateNoteEndpointTests",
       "BreakGlassEndpointTests",
       "BreakGlassGrantTests",
@@ -360,6 +361,7 @@
       "DeletionPropagationTests",
       "DocScopeCreateDefaultTests",
       "DocScopeValidationTests",
+      "GrpcBreakGlassViewTests",
       "GrpcOwnerRetentionDirectoryTests",
       "ObsidianSyncProtocolTests",
       "PrivateNoteDepartedOwnerPurgeTests",

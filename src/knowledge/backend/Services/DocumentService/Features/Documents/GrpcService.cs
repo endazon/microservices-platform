@@ -110,11 +110,18 @@ public sealed class DocumentReadGrpcService(
             throw new RpcException(new Status(StatusCode.InvalidArgument, "id は GUID である必要があります。"));
 
         // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): SC-03 の閲覧の口（BFF の詳細）なので、緊急アクセスの判定を含む形を通す。
-        var doc = await reads.GetForViewAsync(PrincipalOf(request.User, context), id,
-            Knowledge.Contracts.Dtos.BreakGlassViewTargets.Document, context.CancellationToken);
-        return doc is null
+        // ［2026-10-24 / [[IADR-0611]]］含めるのは呼び出し元が `allow_break_glass` を立てたときだけ（既定は含めない）。
+        //   緊急アクセスで読めたときは `granted_by_break_glass` を立てる（BFF は独自の判定を足さずにこれで通す）。
+        var view = await reads.FindForViewAsync(PrincipalOf(request.User, context), id,
+            Knowledge.Contracts.Dtos.BreakGlassViewTargets.Document, request.AllowBreakGlass, context.CancellationToken);
+        return view is null
             ? new GetDocumentResponse { Found = false }
-            : new GetDocumentResponse { Found = true, Document = DocumentReadGrpcMapping.ToProto(doc) };
+            : new GetDocumentResponse
+            {
+                Found = true,
+                Document = DocumentReadGrpcMapping.ToProto(view.Document),
+                GrantedByBreakGlass = view.ViaBreakGlass,
+            };
     }
 
     public override async Task<ListVersionsResponse> ListVersions(
@@ -158,7 +165,8 @@ public sealed class DocumentReadGrpcService(
         DocumentContentResult? result;
         try
         {
-            result = await contents.ReadAsync(PrincipalOf(request.User, context), id, context.CancellationToken);
+            result = await contents.ReadAsync(PrincipalOf(request.User, context), id, request.AllowBreakGlass,
+                context.CancellationToken);
         }
         catch (ObjectStorageUnavailableException ex)
         {

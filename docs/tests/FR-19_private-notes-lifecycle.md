@@ -3,14 +3,14 @@ title: FR-19 個人資料のライフサイクル・容量・版保持 テスト
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-10-23
+updated: 2026-10-24
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-21, FR-22, UC-11, SC-17, SC-19, SC-20, NFR-16]
 adrs: [ADR-0036, ADR-0037, ADR-0054, ADR-0057, ADR-0058, ADR-0096, ADR-0117]
-iadrs: [IADR-0270, IADR-0283, IADR-0296, IADR-0428, IADR-0431, IADR-0474, IADR-0530, IADR-0598, IADR-0599, IADR-0610]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-447_fr21-criteria-9-10, 20260911_issue-1409_private-note-disposal-after-window, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1583_purge-reread-before-delete, 20260926_issue-1598_maintenance-loop-foreign-cancellation, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20261010_1887_h2c-measurement-triggers, 20261015_1890_measurement-wiring-tests-and-rerank-race, 20261023_2112_sc05-doc-scope-default, 20261023_2100_cross-replica-exclusion, 20261023_2046_break-glass-document-service]
+iadrs: [IADR-0270, IADR-0283, IADR-0296, IADR-0428, IADR-0431, IADR-0474, IADR-0530, IADR-0598, IADR-0599, IADR-0610, IADR-0611]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-447_fr21-criteria-9-10, 20260911_issue-1409_private-note-disposal-after-window, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1583_purge-reread-before-delete, 20260926_issue-1598_maintenance-loop-foreign-cancellation, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20261010_1887_h2c-measurement-triggers, 20261015_1890_measurement-wiring-tests-and-rerank-race, 20261023_2112_sc05-doc-scope-default, 20261023_2100_cross-replica-exclusion, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay]
 issues: [#451, #447, #1409, #1532, #1583, #1598, #1604, #1608, #1622, #1887, #1890, #2112, #2100, #2046]
 -->
 
@@ -66,6 +66,7 @@ issues: [#451, #447, #1409, #1532, #1583, #1598, #1604, #1608, #1622, #1887, #18
 | 23 | 一般の登録口でスコープ属性を送らない文書は、組織文書（`organization`）として作成時に確定する（応答と保存の両方・本文あり／なし）。補完後も文書管理画面の通常の保存（同値の同送）で保たれる。明示の `organization` は通り、未知値・空文字・大小違い・個人資料の指定は補わずに 400。個人資料の作成経路は個人資料のまま。補完は値を持つキーを上書きしない（［2026-10-23 追加］） | `DocScopeCreateDefaultTests` 全件・`WithOrganizationScopeIfAbsentTests` 全件 |
 | 24 | 🔴 定期処理は複数のレプリカで動いても、周期の本体を回すのはリースを取れた 1 つだけである。実 PostgreSQL で、ホスト A がリースを持って本体を回している周期にホスト B を回すと、B は本体を回さずに戻る。A が終われば次の周期では B が回せる。本体が失敗してもリースは返る。対照: リースを外す（常に取れる）と 2 つとも同じ周期に本体へ入る。単体では、取れない周期は本体を回さず、取れた周期は本体の間リースを持ち本体の後に返すこと、本番の配線がコーディネータを受けること（［2026-10-23 追加］） | `PrivateNoteMaintenanceSingleRunTests`（結合・3 件）/ `PrivateNoteMaintenanceLeaseTests`（3 件） |
 | 25 | 🔴 緊急アクセス: 発動は所有者本人だけ（管理者・他人・機械の主体は 404）・理由は必須（500 文字以内）・指名先は名簿で管理者と確かめた 1 人（空・本人・サービスアカウント・管理者でないは 400、確かめられなければ 503）。有効時間は発動から 15 分固定で閲覧を続けても延びず、ちょうど 15 分で失効。本人は早期に終えられ終了日時は早いほう。指名された管理者だけが有効な間に対象の 1 件を閲覧でき（属性と本文。閲覧ごとに監査ログ 1 行）、指名外の管理者・失効後・終了後・別の資料・論理削除中・いま管理者でない（確かめられない）・機械の主体・一覧・版・MCP の取得の形では開かない。閲覧以外の 12 の操作は有効中の指名された管理者にも許さず資料は変わらない。監査ログは管理者が全件・本人は自分の資料の行だけ（機械は 403）で題名と本文を含まず、3 年を超えた記録は定期処理が消す。時刻は偽の時計で進める（［2026-10-23 追加］） | `BreakGlassViewAuthorizationTests` 全件・`BreakGlassEndpointTests` 全件・`BreakGlassGrantTests` 全件 |
+| 26 | 🔴 緊急アクセスの公開 API: 発動・終了・状態は所有者本人だけが中継され本人の資格情報が後段へ届く。第三者・指名外の管理者・指名された管理者・機械の主体・組織文書はいずれも 404 で後段へ送らず、後段が誤って誰にでも許す状態でも止まる（二重の守りの片側）。後段の拒否（404・409・400・503）は本文ごと届く（もう片側）。本人の確認で後段に届かなければ 502。発動だけ書き込みの許可ポリシーを要し、終了・状態は要しない。監査ログは管理者に全件・本人に自分の行だけが届き（絞るのは後段）、機械は 403、未知のクエリは渡さない。文書詳細と本文は、指名された管理者には後段が許せば開け（ABAC の許可が無くても）、後段が許さなければ（指名外・第三者・発動なし）開けない。版・特定版・書き込みの前段と本人の確認は緊急アクセスを含めずに引き、閲覧の記録を作らない。文書サービスの読み取りの口は呼び出し元が頼んだときだけ緊急アクセスを含め、読めたことを応答で知らせる（［2026-10-24 追加］） | `BffBreakGlassEndpointTests` 全件・`GrpcBreakGlassViewTests` 全件 |
 
 > **15 は登録経路が 2 本あるため 2 か所で測る。** もう 1 本（同期経由の新規作成）は
 > `ObsidianSyncProtocolTests` の `同期経由の新規作成はフェイルセーフ既定で作られる` が持つ。

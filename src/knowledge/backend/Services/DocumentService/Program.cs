@@ -148,7 +148,7 @@ builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurg
 // **REST の 4 端点と east-west gRPC の面（DocumentReadGrpcService）が同じ実体を通る**
 // （判定器を 2 つにしない）。DbContext と同じ scoped にする。
 builder.Services.AddScoped<DocumentReadUseCase>();
-// FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの閲覧の判定点（`DocumentReadUseCase.GetForViewAsync` だけが呼ぶ）。
+// FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの閲覧の判定点（`DocumentReadUseCase.FindForViewAsync` ＝ `GetForViewAsync` だけが呼ぶ。gRPC は要求の旗が立つときだけ。[[IADR-0611]]）。
 // 有効性は発動記録と注入した時計で判定する（試験は偽の時計へ差し替える）。
 builder.Services.AddScoped<DocumentService.Features.BreakGlass.BreakGlassViewGate>();
 builder.Services.TryAddSingleton(TimeProvider.System);

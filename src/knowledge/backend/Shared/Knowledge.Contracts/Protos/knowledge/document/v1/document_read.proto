@@ -189,12 +189,20 @@ message GetDocumentRequest {
   string id = 1;
   // 読み取りの主体（#1614）。省略時は呼び出し元サービス自身。
   UserContext user = 2;
+  // FR-19, SC-03, ADR-0036 D-08, [[IADR-0611]] (#2046): 緊急アクセス（指名された管理者の閲覧）の判定を含めるか。
+  // 🔴 既定（false）は含めない —— 呼び出し元が SC-03 の閲覧（BFF の詳細・本文）のときだけ true にする。
+  // 前提の確認（書き込みの前・版の前・本人の確認）は false のまま呼ぶ（閲覧の監査ログを作らない）。
+  bool allow_break_glass = 3;
 }
 
 message GetDocumentResponse {
   // false は「台帳に無い」（エラーではない）。
   bool found = 1;
   DocumentSummary document = 2;
+  // FR-19, SC-03, ADR-0036 D-08, [[IADR-0611]] (#2046): 緊急アクセスで読めた（通常の判定では読めない）とき true。
+  // 文書サービスが要求ごとにサーバ側の発動記録で判定し、閲覧の監査ログを保存した後でだけ true にする。
+  // 呼び出し元（BFF）はこれを「後段が緊急アクセスとして許した」事実として扱い、独自の許可・拒否を足さない。
+  bool granted_by_break_glass = 3;
 }
 
 message ListVersionsRequest {
@@ -228,6 +236,8 @@ message GetDocumentContentRequest {
   string document_id = 1;
   // 読み取りの主体（#1614）。省略時は呼び出し元サービス自身。
   UserContext user = 2;
+  // FR-19, SC-03, ADR-0036 D-08, [[IADR-0611]] (#2046): 緊急アクセスの判定を含めるか（`GetDocumentRequest` と同じ。既定は含めない）。
+  bool allow_break_glass = 3;
 }
 
 // 本文の状態。🔴 0（UNSPECIFIED）は送らない —— 受け手は 0 を「分からない応答」として扱う（成功へ畳まない）。

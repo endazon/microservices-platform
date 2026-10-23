@@ -2088,6 +2088,61 @@ export interface CreateShareRequest {
 }
 
 /**
+ * FR-19, UC-11, SC-19, ADR-0036 D-08: 緊急アクセスの発動。所有者本人だけが送れる。
+ * `reason` は必須（空白だけは不可・500 文字以内）。`nomineeUserId` は閲覧を許す platform-admin 1 人の利用者名。
+ */
+export interface ActivateBreakGlassRequest {
+  /** @nullable */
+  reason?: string | null;
+  /** @nullable */
+  nomineeUserId?: string | null;
+}
+
+/**
+ * FR-19, SC-19: 発動記録 1 件（所有者本人へ返す形）。`active` / `endsAt` は応答の時点の写しであり、
+ * **閲覧の許可の根拠にしない**（残り時間の表示にだけ使う）。`endsAt` は本人の終了か発動＋15 分の早いほう。
+ */
+export interface BreakGlassGrantDto {
+  id: string;
+  documentId: string;
+  nomineeUserId: string;
+  reason: string;
+  activatedAt: string;
+  expiresAt: string;
+  /** @nullable */
+  endedAt?: string | null;
+  endsAt: string;
+  active: boolean;
+}
+
+/**
+ * FR-19, SC-19: 資料 1 件の緊急アクセスの状態。有効な発動が無ければ `active` は null。
+ */
+export interface BreakGlassStatusResponse {
+  active?: BreakGlassGrantDto | null;
+}
+
+/**
+ * FR-19, SC-19, ADR-0036 D-08: 監査ログ 1 行（`operation` は `activate` / `end` / `view`）。
+ * `viewTarget` は閲覧の行だけ（`document` / `content`）。**資料の本文・題名は運ばない**。
+ */
+export interface BreakGlassAuditEntryDto {
+  id: string;
+  grantId: string;
+  occurredAt: string;
+  operation: string;
+  actorUserId: string;
+  documentId: string;
+  ownerUserId: string;
+  nomineeUserId: string;
+  reason: string;
+  activatedAt: string;
+  endsAt: string;
+  /** @nullable */
+  viewTarget?: string | null;
+}
+
+/**
  * FR-20, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099 決定 5: 同期履歴 1 行（本人の同期監査ログの投影）。
  * `direction` は `push`（端末→サーバ。作成・更新・削除・改名）/ `pull`（サーバ→端末）。
  * 内訳は 1 回の同期操作で動いた件数（現行プロトコルは 1 操作 1 資料なので合計は 0 か 1）。
@@ -2695,6 +2750,15 @@ export const BffGraphSuggestionsKind = {
   link: 'link',
   tag: 'tag',
 } as const;
+
+export type BffBreakGlassAuditParams = {
+documentId?: string;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
 
 export type BffUserLookupParams = {
 /**

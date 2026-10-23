@@ -1525,6 +1525,10 @@ paths:
       x-roles: []
       tags: [Documents]
       summary: "FR-06, SC-03: 文書詳細（スコープ外・不在は同じ 404）"
+      description: |
+        FR-19, ADR-0036 D-08（#2046）: 緊急アクセスで指名された platform-admin は、有効な間だけ対象の個人資料 1 件を
+        この口で開ける。可否は文書サービスが要求ごとに発動記録で判定し（閲覧を 1 件ずつ監査ログへ記録する）、
+        BFF は許可も拒否も足さない。応答に共有先の写し（`sharedWith`）は載らない。
       operationId: bff-document-detail
       responses:
         "200":
@@ -1597,6 +1601,7 @@ paths:
         - 本文が上限（16 MiB・UTF-8）を超える … **413**（ProblemDetails。`sizeBytes` / `limitBytes`。切り詰めない）
         - 文書サービスから本文を受け取れない … **502**（ProblemDetails）
         不在・スコープ外の 404 は本文を持たない（存在秘匿。理由を言わない）。
+        緊急アクセス（#2046）で詳細が開けた指名された platform-admin は本文も開ける（文書サービスが判定し、本文の閲覧として記録する）。
       operationId: bff-document-content
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -3578,6 +3583,112 @@ paths:
         "401": { description: 未認証 }
         "403": { description: write 許可ポリシーが無い }
         "404": { description: 不在・他人の資料・該当する共有が無い（区別しない） }
+
+  # ── SC-19 / SC-03, FR-19, UC-11, ADR-0036 D-08: 緊急アクセス（Break-glass。#2046）─────────────
+  # 本人同意型の管理者の閲覧（planning#841 の裁定）。所有者本人が資料 1 件について理由を書き、platform-admin を
+  # 1 人指名して発動する。有効な間（発動から 15 分・延長なし・本人は早く終えられる）だけ、指名された 1 人が
+  # SC-03 の既存の口（`/bff/documents/{id}`・`/content`）でその 1 件を**閲覧だけ**できる。
+  #
+  # 認可:
+  #   - 発動・終了・状態は**所有者本人のセッションだけ**。BFF でも本人の個人資料かを確かめ（緊急アクセスを含めない
+  #     文書の読み取りで `owner` を見る）、後段（文書サービス）も台帳と `owner` で判定する（二重）。
+  #     他人の・無い・個人資料でない・指名されただけの管理者・機械の主体は、いずれも **404**（存在秘匿）。
+  #   - 発動だけ ABAC の `write` スコープで前段を絞る（403）。終了・状態には置かない（終了は露出を縮める向き）。
+  #   - 監査ログは platform-admin（全件）と本人（自分の資料の行だけ）。絞るのは後段。機械の主体は 403。
+  #   - 閲覧の可否（指名・有効期間・本人の終了・所有者・論理削除・いま platform-admin か）は**後段が要求ごとに
+  #     サーバ側の発動記録で判定する**。BFF は SC-03 の詳細・本文で許可も拒否も足さない。
+  /bff/private-notes/{id}/break-glass:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 緊急アクセスの状態（所有者本人のみ。残り時間の表示用）"
+      description: |
+        有効な発動があればその写し、無ければ `active: null`。**この値を閲覧の許可の根拠にしない**
+        （許可は文書サービスが要求ごとに発動記録で決める）。
+      operationId: bff-break-glass-status
+      responses:
+        "200":
+          description: 状態
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BreakGlassStatusResponse" }
+        "401": { description: 未認証 }
+        "404": { description: 不在・他人の資料・個人資料でない・機械の主体（区別しない） }
+        "502": { description: 文書サービスに届かない }
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 緊急アクセスを発動する（所有者本人のみ。資料 1 件・理由必須・platform-admin を 1 人指名）"
+      description: |
+        有効時間は発動から 15 分固定（延長なし）。指名先は利用者名簿で platform-admin かを確かめる。
+        **後段の本文は詰め替えず透過する**（400 の検証・409 の重ね発動／論理削除中・503 の名簿不達）。
+      operationId: bff-break-glass-activate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActivateBreakGlassRequest" }
+      responses:
+        "201":
+          description: 発動した（発動記録の写し）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BreakGlassGrantDto" }
+        "400": { description: 理由が空・長すぎる／指名先が空・本人・サービスアカウント・platform-admin でない（RFC7807 ValidationProblem） }
+        "401": { description: 未認証 }
+        "403": { description: write 許可ポリシーが無い（deny-by-default） }
+        "404": { description: 不在・他人の資料・個人資料でない・機械の主体（区別しない） }
+        "409": { description: 論理削除中の資料、または同じ資料に有効な発動が既にある }
+        "502": { description: 文書サービスに届かない }
+        "503": { description: 指名先が platform-admin かを確かめられない（発動しない） }
+
+  /bff/private-notes/{id}/break-glass/end:
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 緊急アクセスを 15 分より前に終える（所有者本人のみ）"
+      description: |
+        終了日時は本人の終了か発動＋15 分の早いほう。指名された管理者を含む第三者は終えられない（404）。
+        **write スコープの前段を置かない**（終了は露出を縮める向きであり、ポリシーの有無で止めない）。
+      operationId: bff-break-glass-end
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: 終えた（発動記録の写し。`active=false`）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BreakGlassGrantDto" }
+        "401": { description: 未認証 }
+        "404": { description: 不在・他人の資料・有効な発動が無い・機械の主体（区別しない） }
+        "502": { description: 文書サービスに届かない }
+
+  /bff/break-glass/audit:
+    get:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 緊急アクセスの監査ログ（platform-admin は全件・本人は自分の資料の行だけ）"
+      description: |
+        発動・終了・有効中の閲覧を 1 件ずつ、新しい順に返す。**資料の本文・題名は載らない**。
+        誰の行まで読めるかは文書サービスが判定する（BFF は人の主体であることだけを確かめる）。
+      operationId: bff-break-glass-audit
+      parameters:
+        - { name: documentId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200":
+          description: 監査ログ
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BreakGlassAuditEntryDto" }
+        "400": { description: "`limit` が範囲外・`documentId` が UUID でない（RFC7807 ValidationProblem）" }
+        "401": { description: 未認証 }
+        "403": { description: 機械の主体 }
+        "502": { description: 文書サービスに届かない }
 
   /bff/private-notes/purge:
     post:
@@ -6631,6 +6742,62 @@ components:
       properties:
         subjectType: { type: string }
         subjectId: { type: string }
+
+    # ── #2046（planning#841）: 緊急アクセス ──
+    ActivateBreakGlassRequest:
+      type: object
+      description: |
+        FR-19, UC-11, SC-19, ADR-0036 D-08: 緊急アクセスの発動。所有者本人だけが送れる。
+        `reason` は必須（空白だけは不可・500 文字以内）。`nomineeUserId` は閲覧を許す platform-admin 1 人の利用者名。
+      properties:
+        reason: { type: [string, "null"] }
+        nomineeUserId: { type: [string, "null"] }
+
+    BreakGlassGrantDto:
+      type: object
+      description: |
+        FR-19, SC-19: 発動記録 1 件（所有者本人へ返す形）。`active` / `endsAt` は応答の時点の写しであり、
+        **閲覧の許可の根拠にしない**（残り時間の表示にだけ使う）。`endsAt` は本人の終了か発動＋15 分の早いほう。
+      required: [id, documentId, nomineeUserId, reason, activatedAt, expiresAt, endsAt, active]
+      properties:
+        id: { type: string, format: uuid }
+        documentId: { type: string, format: uuid }
+        nomineeUserId: { type: string }
+        reason: { type: string }
+        activatedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        endedAt: { type: [string, "null"], format: date-time }
+        endsAt: { type: string, format: date-time }
+        active: { type: boolean }
+
+    BreakGlassStatusResponse:
+      type: object
+      description: "FR-19, SC-19: 資料 1 件の緊急アクセスの状態。有効な発動が無ければ `active` は null。"
+      properties:
+        active:
+          oneOf:
+            - { $ref: "#/components/schemas/BreakGlassGrantDto" }
+            - { type: "null" }
+
+    BreakGlassAuditEntryDto:
+      type: object
+      description: |
+        FR-19, SC-19, ADR-0036 D-08: 監査ログ 1 行（`operation` は `activate` / `end` / `view`）。
+        `viewTarget` は閲覧の行だけ（`document` / `content`）。**資料の本文・題名は運ばない**。
+      required: [id, grantId, occurredAt, operation, actorUserId, documentId, ownerUserId, nomineeUserId, reason, activatedAt, endsAt]
+      properties:
+        id: { type: string, format: uuid }
+        grantId: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+        operation: { type: string }
+        actorUserId: { type: string }
+        documentId: { type: string, format: uuid }
+        ownerUserId: { type: string }
+        nomineeUserId: { type: string }
+        reason: { type: string }
+        activatedAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        viewTarget: { type: [string, "null"] }
 
     # ── ADR-0099（planning#618）: 同期履歴 ──
     SyncHistoryEntryDto:
