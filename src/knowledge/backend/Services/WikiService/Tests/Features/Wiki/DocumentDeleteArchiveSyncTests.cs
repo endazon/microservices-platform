@@ -66,6 +66,7 @@ public class DocumentDeleteArchiveSyncTests
         var consumer = new DocumentDeletedConsumer(
             scope.ServiceProvider.GetRequiredService<WikiDbContext>(),
             scope.ServiceProvider.GetRequiredService<RecordingWikiJsClient>(),
+            scope.ServiceProvider.GetRequiredService<IWikiContentReader>(),
             scope.ServiceProvider.GetRequiredService<ConsumerCallTimeouts>(),
             scope.ServiceProvider.GetRequiredService<WikiSyncTimeouts>(),
             scope.ServiceProvider.GetRequiredService<WikiJsWriteGate>(),

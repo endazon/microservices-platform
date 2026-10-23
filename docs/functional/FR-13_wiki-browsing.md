@@ -3,15 +3,15 @@ title: Wiki 文書閲覧（Wiki.js 委譲・WikiService ABAC ゲートウェイ�
 type: functional-spec
 status: draft
 created: 2026-07-03
-updated: 2026-10-16
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, FR-13, FR-19, UC-03, UC-07]
-adrs: [ADR-0011, ADR-0046, ADR-0061]
-iadrs: [IADR-0009, IADR-0013, IADR-0020, IADR-0021, IADR-0529, IADR-0533]
-specs: [20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment, 20261010_1879_exposure-org-docs-wiki-gate, 20261015_1902_east-west-rest-residue]
-issues: [#66, #1879, #1902, planning#784]
+ids: [FR-05, FR-13, FR-19, UC-03, UC-07, FR-06]
+adrs: [ADR-0011, ADR-0046, ADR-0061, ADR-0027, ADR-0057]
+iadrs: [IADR-0596, IADR-0009, IADR-0013, IADR-0020, IADR-0021, IADR-0529, IADR-0533]
+specs: [20261023_2102_wiki-catalog-ordering, 20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment, 20261010_1879_exposure-org-docs-wiki-gate, 20261015_1902_east-west-rest-residue]
+issues: [#2102, #2047, #66, #1879, #1902, planning#784]
 -->
 
 # 機能仕様書: Wiki 文書閲覧
@@ -77,6 +77,11 @@ issues: [#66, #1879, #1902, planning#784]
   Wiki.js へ載せない（個人資料は露出によらず載せない）。判定は共有契約の `DocumentExposure.IsWikiPublishable` に置く。
   含める → 除外へ切り替わったら、文書削除の伝播と同じ 2 手（Wiki.js の実体の削除と同期メタデータの削除）でページを撤去し、
   除外 → 含めるへ戻せば作り直す。一部だけ除外した組織文書は従来どおり載る。閲覧は文書詳細画面が ABAC に従って受け持つ。
+  **順序（［2026-10-23 追加］）**: 更新・削除のイベントは少なくとも 1 回届き、順序は保証されない（再配送・2 レプリカ・更新と削除の 2 本のリスナー）。
+  文書ごとの**版の印**（表 `SyncMarks`。反映した版の時刻・削除したか・改訂番号）を同期メタデータと別に持ち、撤去・削除で行を消しても残す。
+  反映済みの版より厳密に古い更新（削除済みなら削除と同じ時刻の更新も）は Wiki.js にもメタデータにも書かずに捨て、削除より新しい版（同じ文書 ID で作り直された文書）は従来どおり載せる。
+  反映済みの版より古い削除は適用しない。保存は改訂番号で突き合わせ、並行して処理された古い版が保存で負けたら、保存済みの最新の状態（active なら push・archived ならアーカイブ・行が無ければ削除）へ Wiki.js を合わせ直す。
+  更新時刻を進めない変更（露出トグル・共有・タグの改名・再発行）は同じ版として届くので順序を判定できない（後着が勝つ）。3 者以上の並行で合わせ直しが後に着く窓は、Wiki.js への書き込みをレプリカ間で直列にする変更で閉じる。
 - `IWikiJsClient` / `WikiJsGraphQlClient`（Services）: Wiki.js 管理 GraphQL への upsert（`singleByPath`→`create`/`update`）
   と、認可プロキシ用の本文取得。API キーは Bearer（環境変数/Secret）。
 - `IWikiContentReader` / `StorageMarkdownReader`（Services）: `MarkdownUri` から本文取得（http(s) 実取得・dev は代替）。

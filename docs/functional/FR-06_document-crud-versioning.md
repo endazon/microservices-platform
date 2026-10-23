@@ -3,15 +3,15 @@ title: 文書CRUD・バージョン管理 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-17
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
-ids: [FR-06, FR-08, UC-03, NFR-09, FR-19]
-adrs: [ADR-0141, ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122]
-iadrs: [IADR-0556, IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
-specs: [20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
-issues: [#1974, #1973, #1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
+ids: [FR-06, FR-08, UC-03, NFR-09, FR-19, FR-01]
+adrs: [ADR-0141, ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122, ADR-0027]
+iadrs: [IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
+specs: [20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
+issues: [#2102, #2047, #1974, #1973, #1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -181,6 +181,20 @@ issues: [#1974, #1973, #1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1
 - 絞り込みは台帳を読んだ後に行う（DB の負荷は `GET /documents` と同じ）。
 - **認証を要する**（ロールは問わない）。
 
+### 再正規化の順序（遅れて届いた・再配送された正規化イベント）
+
+正規化イベントは少なくとも 1 回届き、順序は保証されない（再配送・デッドレターからの再投入・変換の再実行）。カタログの受け口は次の 3 つの門で、古いイベントが台帳の新しい状態を崩さないようにする。
+
+| 門 | 台帳が持つ値 | 振る舞い |
+| --- | --- | --- |
+| 古い再正規化 | 最後に反映した正規化の時刻（`LastNormalizedAt`） | それより厳密に古い正規化は、本文を読まず・台帳を書かず・更新イベントも出さずに捨てる（正常終了）。同じ時刻の再配送は反映する。値を持たない文書（本欄の追加以前・取り込み経路以外）は判定しない |
+| アーカイブより前の再正規化 | アーカイブした時刻（`ArchivedAt`。戻したら消す。追加以前のアーカイブは更新時刻で読む） | 内容は反映し、状態はアーカイブのまま（下流へもアーカイブとして伝わる）。アーカイブより後の再正規化（データソースの再同期）は従来どおり `normalized` へ戻す |
+| 削除より前の再正規化 | 削除の事実（表 `DocumentDeletionMarks`。文書 ID と時刻だけ） | 台帳に行が無く、削除の時刻以前に作られた正規化は台帳へ作り直さずに捨てる。削除より後の再正規化（同じ原本は同じ文書 ID）は従来どおり作る |
+
+- 古さの判定は本文を読む前に行う。本文の URI は文書 ID 固定で再変換のたびに上書きされるため、古いイベントのまま本文を読むと新しい本文の指紋を古い題名・属性に付けてしまう。
+- 比較は保存の精度（マイクロ秒）に丸めて行う。削除の事実は題名・本文・属性の値を持たず、本文の復元には使えない。削除の口は下流へ伝える削除の時刻にも同じ値を使う。
+- 残る限界: 2 つの再正規化が同時に台帳を書く窓（楽観ロックの導入で閉じる）。正規化が作られた後・届く前に利用者が属性を編集すると、届いた正規化がその編集を上書きする（取り込みが属性の正本である前提。従前と同じ）。時刻は変換側と文書管理側の時計を比べる箇所がある（時計の差が再同期の間隔より大きいと誤る）。
+
 ## 処理フロー / 状態遷移
 
 ```mermaid
@@ -196,7 +210,8 @@ stateDiagram-v2
   draft --> archived: POST /archive（版++）
   normalized --> archived: POST /archive・一括アーカイブ（版++）
   published --> archived: POST /archive（版++）
-  archived --> normalized: 再正規化（版++）
+  archived --> normalized: アーカイブより後の再正規化（版++）
+  archived --> archived: アーカイブより前の再正規化（内容だけ。版++）
   draft --> [*]: DELETE
   normalized --> [*]: DELETE
   published --> [*]: DELETE
@@ -214,6 +229,7 @@ stateDiagram-v2
 | `expectedVersion` が現在版と不一致 | 更新を拒否し lost update を防止 | 409 Conflict（`version_conflict`, `expectedVersion`, `currentVersion`） |
 | 存在しない版番号の取得 | — | 404 NotFound |
 | `DocumentNormalized` 再配信（同一 `DocumentId`） | 冪等 upsert（重複登録しない） | 既存文書を更新し版追記 |
+| `DocumentNormalized` が反映済みより古い・削除より前（遅着・再配送） | 反映しない（本文を読まず、更新イベントも出さない） | 正常終了（§再正規化の順序） |
 
 ## 受け入れ基準
 

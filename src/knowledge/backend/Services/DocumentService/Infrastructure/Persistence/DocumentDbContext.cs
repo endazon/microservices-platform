@@ -10,6 +10,9 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
 {
     public DbSet<Document> Documents => Set<Document>();
 
+    // FR-01, FR-06, ADR-0057 決定 2, [[IADR-0596]] 決定 7 (#2102): 組織文書を削除した事実（文書 ID と時刻だけ）。
+    public DbSet<DocumentDeletionMark> DocumentDeletionMarks => Set<DocumentDeletionMark>();
+
     // FR-06, UC-03: 版履歴
     public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
 
@@ -87,6 +90,12 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
                 .OnDelete(DeleteBehavior.Cascade);
             e.Metadata.FindNavigation(nameof(Document.Versions))!
                 .SetPropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        mb.Entity<DocumentDeletionMark>(e =>
+        {
+            e.HasKey(m => m.DocumentId);
+            e.Property(m => m.DocumentId).ValueGeneratedNever();
         });
 
         mb.Entity<DocumentVersion>(e =>

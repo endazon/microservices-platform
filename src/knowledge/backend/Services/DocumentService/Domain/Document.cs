@@ -57,6 +57,13 @@ public class Document
     public string? DataSourceName { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
+    // FR-01, FR-06, ADR-0027, [[IADR-0596]] 決定 5 (#2102): **台帳へ最後に反映した再正規化の版**（`DocumentNormalized.NormalizedAt`）。
+    // これより厳密に古い再正規化は反映しない（`IsNormalizationStale`）。取り込み経路を通っていない文書・本欄の追加以前の文書は null（判定しない）。
+    public DateTimeOffset? LastNormalizedAt { get; private set; }
+    // FR-06, ADR-0141 決定 1 (a), [[IADR-0596]] 決定 6 (#2102): **アーカイブした時刻。** 再正規化はアーカイブを戻すが（ADR-0141 決定 1 (a)）、
+    // アーカイブより前に作られた再正規化（遅れて届いた・再配送）では戻さない。戻したら消す。本欄の追加以前のアーカイブは null で、
+    // そのときは `UpdatedAt`（アーカイブ以後に動いた時刻であり、アーカイブの時刻以上）で読む —— 戻しにくい側に倒れる。
+    public DateTimeOffset? ArchivedAt { get; private set; }
 
     // FR-06, UC-03: 版履歴（append-only）。作成・各更新で確定版のスナップショットを追記する。
     public IReadOnlyList<DocumentVersion> Versions => _versions;
@@ -84,7 +91,8 @@ public class Document
     public static Document CreateNormalized(Guid id, string title, string markdownUri,
         Dictionary<string, string>? attributes = null, List<Guid>? tags = null,
         string? contentFingerprint = null, List<string>? assetUris = null,
-        bool hasBody = true, string? originalPath = null, string? dataSourceName = null)
+        bool hasBody = true, string? originalPath = null, string? dataSourceName = null,
+        DateTimeOffset? normalizedAt = null)
     {
         var doc = new Document
         {
@@ -92,6 +100,7 @@ public class Document
             Title = title,
             MarkdownUri = markdownUri,
             Status = DocumentStatus.Normalized,
+            LastNormalizedAt = normalizedAt is { } at ? ToStoredPrecision(at) : null,
             Attributes = attributes ?? [],
             Tags = tags ?? [],
             ContentFingerprint = contentFingerprint,
@@ -194,11 +203,21 @@ public class Document
     public void ApplyNormalized(string title, string markdownUri,
         Dictionary<string, string> attributes, string? contentFingerprint = null,
         List<string>? assetUris = null,
-        bool hasBody = true, string? originalPath = null, string? dataSourceName = null)
+        bool hasBody = true, string? originalPath = null, string? dataSourceName = null,
+        DateTimeOffset? normalizedAt = null)
     {
         Title = title;
         MarkdownUri = markdownUri;
-        Status = DocumentStatus.Normalized;
+        // 🔴 FR-06, ADR-0141 決定 1 (a), [[IADR-0596]] 決定 6 (#2102): アーカイブより前に作られた再正規化は状態を戻さない（内容は反映する ——
+        // 正しい順に届いていれば「再正規化 → アーカイブ」で、内容は再正規化の値・状態はアーカイブになる）。アーカイブより後なら従来どおり戻す。
+        if (normalizedAt is not { } version || !KeepsArchiveAgainst(version))
+        {
+            Status = DocumentStatus.Normalized;
+            ArchivedAt = null;
+        }
+        if (normalizedAt is { } applied
+            && (LastNormalizedAt is null || ToStoredPrecision(applied) > LastNormalizedAt))
+            LastNormalizedAt = ToStoredPrecision(applied);
         Attributes = attributes;
         if (assetUris is not null) AssetUris = assetUris;
         // [[IADR-0388]] 決定 2・4 (#1254 / #1253): 本文の有無と所在は**再正規化の結果が正本**である
@@ -280,6 +299,8 @@ public class Document
     {
         Status = DocumentStatus.Archived;
         Touch();
+        // [[IADR-0596]] 決定 6 (#2102): アーカイブした時刻（これより前に作られた再正規化では戻さない）。
+        ArchivedAt = ToStoredPrecision(UpdatedAt);
         Snapshot(changeNote ?? "archived");
     }
 
@@ -300,6 +321,19 @@ public class Document
         Touch();
         Snapshot(changeNote);
     }
+
+    // 🔴 FR-01, FR-06, [[IADR-0596]] 決定 5 (#2102): **反映済みの再正規化より厳密に古い再正規化は反映しない**（本文を読まず、台帳を書かず、
+    // `DocumentUpdated` も出さずに ack する）。等しい版（再配送）は反映する。版を持たない文書は判定しない（従前どおり反映する）。
+    public bool IsNormalizationStale(DateTimeOffset normalizedAt)
+        => LastNormalizedAt is { } last && ToStoredPrecision(normalizedAt) < last;
+
+    // [[IADR-0596]] 決定 6 (#2102): この再正規化でアーカイブを戻さないか（アーカイブ以前に作られた再正規化）。
+    public bool KeepsArchiveAgainst(DateTimeOffset normalizedAt)
+        => Status == DocumentStatus.Archived && ToStoredPrecision(normalizedAt) <= ToStoredPrecision(ArchivedAt ?? UpdatedAt);
+
+    // Postgres の timestamptz はマイクロ秒で保存する。ティックのまま比べると、同じ版の再配送が保存値より「新しい」と読める。
+    internal static DateTimeOffset ToStoredPrecision(DateTimeOffset at)
+        => new(at.UtcTicks - at.UtcTicks % 10, TimeSpan.Zero);
 
     private void Touch()
     {

@@ -39,7 +39,7 @@ public class WikiSyncTimeoutTests
     {
         var ports = new HangingPorts(hung);
         if (hung == Hung.Delete)
-            return new DocumentDeletedConsumer(db, ports, ConsumerTimeoutsForTests.Calls(), timeouts,
+            return new DocumentDeletedConsumer(db, ports, ports, ConsumerTimeoutsForTests.Calls(), timeouts,
                     new WikiJsWriteGate(1), NullLogger<DocumentDeletedConsumer>.Instance)
                 .Handle(new DocumentDeleted(Guid.NewGuid(), DateTimeOffset.UtcNow), ct);
 
