@@ -34,8 +34,8 @@ ADR-0027 は Outbox を標準と定めているが、knowledge ユニットに�
 | 段 | 内容 | 扱い |
 | --- | --- | --- |
 | **段 1（本 PR）** | 共通ヘルパ `UsePlatformTransactionalOutbox` を置き、DocumentService の `DocumentDeleted`（文書の削除・個人資料の完全削除・定期処理の 2 経路）を Outbox 経由にする | 本 PR |
-| 段 2 | DocumentService の `DocumentUpdated`（19 ファイル・`IDocumentUpdatedPublisher`）を Outbox 経由にする | 後続 issue |
-| 段 3 | 他サービスの Wolverine 発行（DataSourceService の `RawDocumentFetched`、ConversionService の再試行口）を棚卸しし、DB 更新と対になるものを Outbox 経由にする | 後続 issue |
+| 段 2 | DocumentService の `DocumentUpdated`（19 ファイル・`IDocumentUpdatedPublisher`）を Outbox 経由にする | #2168 |
+| 段 3 | 他サービスの Wolverine 発行（DataSourceService の `RawDocumentFetched`、ConversionService の再試行口）を棚卸しし、DB 更新と対になるものを Outbox 経由にする | #2169 |
 
 段 2 を分けた理由: 呼び出し点が 19 ファイルにあり、各端点の `SaveChangesAsync` を 1 つずつ置き換える同型の変更になる。
 段 1 の形（ポートの 2 メソッド）が確定してから一括で写すほうが差分を読みやすい。

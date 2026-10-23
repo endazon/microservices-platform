@@ -106,7 +106,7 @@ ADR-0027 は Outbox を標準と定めるが、knowledge ユニットにも `Pla
     共通ヘルパへ封じるための費用として受ける（IADR-0233 と同じ判断）。
   - DocumentService の全発行（`DocumentUpdated` を含む）が送出前に 1 回 DB へ書く。
   - 到着は少なくとも 1 回（at-least-once）である。再送で同じ `DocumentDeleted` が 2 度届き得る。受け手の撤去は冪等（既に無ければ何もしない）なので受ける。
-- フォローアップ: 段 2（`DocumentUpdated`）・段 3（他サービス）を issue で追う。
+- フォローアップ: 段 2（`DocumentUpdated`）は #2168、段 3（他サービス）は #2169 で追う。
 
 ## 検証
 
