@@ -249,6 +249,10 @@ public static class PrivateNoteBffEndpoints
                 httpFactory, http, ct))
             .WithName("BffSyncConflictResolve").Produces<ResolveSyncConflictResponse>();
 
+        // FR-19, UC-11, SC-19, ADR-0036 D-08, [[IADR-0611]] (#2046): 緊急アクセスの発動・終了・状態・監査ログ。
+        // 認可の姿が上の 1〜5 と違う（BFF でも本人の資料かを確かめる二重の守り）ので別ファイルに置く。
+        app.MapBreakGlassBffEndpoints();
+
         return app;
     }
 

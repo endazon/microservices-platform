@@ -140,16 +140,28 @@ public sealed class DocumentReadUseCase(
     // 🔴 緊急アクセスで返す応答には**共有先の写しを載せない**（閲覧に要らない。ADR-0101 の「写しは所有者へ」と同じ向き）。
     public async Task<DocumentDto?> GetForViewAsync(DocumentReadPrincipal principal, Guid id, string viewTarget,
         CancellationToken ct = default)
+        => (await FindForViewAsync(principal, id, viewTarget, allowBreakGlass: true, ct))?.Document;
+
+    // FR-19, SC-03, 計画 ADR-0036 D-08, [[IADR-0611]] (#2046 の 2 本目): 上の形に**緊急アクセスで読めたか**を添えて返す。
+    //
+    // gRPC の `GetDocument`（BFF の詳細）は応答の `granted_by_break_glass` にこれを載せ、BFF は独自の判定を足さずに通す。
+    // 🔴 `allowBreakGlass` が偽なら `GetAsync` と同じ（緊急アクセスの判定を問わない ＝ 閲覧の監査ログも作らない）。
+    //   gRPC の既定は偽であり、呼び出し元が SC-03 の閲覧のときだけ真で呼ぶ（書き込み・版・本人の確認の前段は偽のまま）。
+    public async Task<DocumentView?> FindForViewAsync(DocumentReadPrincipal principal, Guid id, string viewTarget,
+        bool allowBreakGlass, CancellationToken ct = default)
     {
         var doc = await db.Documents.FindAsync([id], ct);
         if (doc is null) return null;
 
         var sharedWith = await DocumentEndpoints.ResolveSharedWithAsync(db, doc.Id, ct);
         if (await access.CanReadAsync(principal, doc, sharedWith, ct))
-            return DocumentEndpoints.ToDto(doc, await TagResolver.NamesAsync(db), sharedWith);
+            return new(DocumentEndpoints.ToDto(doc, await TagResolver.NamesAsync(db), sharedWith), ViaBreakGlass: false);
+
+        if (!allowBreakGlass)
+            return null;
 
         return await breakGlass.TryAuthorizeViewAsync(principal, doc, viewTarget, ct)
-            ? DocumentEndpoints.ToDto(doc, await TagResolver.NamesAsync(db), sharedWith: null)
+            ? new(DocumentEndpoints.ToDto(doc, await TagResolver.NamesAsync(db), sharedWith: null), ViaBreakGlass: true)
             : null;
     }
 
@@ -244,3 +256,6 @@ internal static class DocumentListOrder
             _ => ledger.OrderByDescending(d => d.UpdatedAt).ThenByDescending(d => d.Id),
         };
 }
+
+// FR-19, SC-03, [[IADR-0611]] (#2046): 閲覧の 1 件と、それが緊急アクセスで読めたものか（通常の判定では読めない）。
+public sealed record DocumentView(DocumentDto Document, bool ViaBreakGlass);

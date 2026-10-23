@@ -252,6 +252,11 @@
         },
         "GetDocumentContentRequest": {
           "fields": {
+            "allow_break_glass": {
+              "number": 3,
+              "type": "bool",
+              "label": "singular"
+            },
             "document_id": {
               "number": 1,
               "type": "string",
@@ -303,6 +308,11 @@
         },
         "GetDocumentRequest": {
           "fields": {
+            "allow_break_glass": {
+              "number": 3,
+              "type": "bool",
+              "label": "singular"
+            },
             "id": {
               "number": 1,
               "type": "string",
@@ -328,6 +338,11 @@
             },
             "found": {
               "number": 1,
+              "type": "bool",
+              "label": "singular"
+            },
+            "granted_by_break_glass": {
+              "number": 3,
               "type": "bool",
               "label": "singular"
             }

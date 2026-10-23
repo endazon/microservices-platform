@@ -214,7 +214,7 @@ public class BreakGlassViewAuthorizationTests(BreakGlassWebApplicationFactory fa
         using (var scope = factory.Services.CreateScope())
         {
             var contents = scope.ServiceProvider.GetRequiredService<DocumentContentUseCase>();
-            (await contents.ReadAsync(DocumentReadPrincipal.RelayedUser(s.Nominee), s.DocumentId, Ct))
+            (await contents.ReadAsync(DocumentReadPrincipal.RelayedUser(s.Nominee), s.DocumentId, allowBreakGlass: true, Ct))
                 .Should().NotBeNull();
         }
 
@@ -224,7 +224,7 @@ public class BreakGlassViewAuthorizationTests(BreakGlassWebApplicationFactory fa
         using (var scope = factory.Services.CreateScope())
         {
             var contents = scope.ServiceProvider.GetRequiredService<DocumentContentUseCase>();
-            (await contents.ReadAsync(DocumentReadPrincipal.RelayedUser(s.Nominee), s.DocumentId, Ct))
+            (await contents.ReadAsync(DocumentReadPrincipal.RelayedUser(s.Nominee), s.DocumentId, allowBreakGlass: true, Ct))
                 .Should().BeNull("失効後は本文も読めない");
         }
     }

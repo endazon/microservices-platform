@@ -3,14 +3,14 @@ title: FR-19 個人資料（private-note） 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-10-23
+updated: 2026-10-24
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-13, FR-16, FR-20, FR-21, FR-22, UC-11, SC-10, SC-17, SC-19, SC-20]
 adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0057, ADR-0058, ADR-0061, ADR-0082, ADR-0096, ADR-0105, ADR-0110, ADR-0114]
-iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512, IADR-0529, IADR-0533, IADR-0598, IADR-0610]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1879_exposure-org-docs-wiki-gate, 20261010_issue-1255-1517_east-west-rest-retirement, 20261023_2112_sc05-doc-scope-default, 20261023_2046_break-glass-document-service]
+iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512, IADR-0529, IADR-0533, IADR-0598, IADR-0610, IADR-0611]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1879_exposure-org-docs-wiki-gate, 20261010_issue-1255-1517_east-west-rest-retirement, 20261023_2112_sc05-doc-scope-default, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay]
 issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752, #1879, #1255, #1517, #2112, #2046, planning#472, planning#475, planning#492, planning#652, planning#784, planning#841]
 -->
 
@@ -30,8 +30,8 @@ issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752
 > 同期要求ごとに所有者のアカウントが有効かを確かめ、無効化・判定不能なら拒否する（[連携の機能仕様書](FR-20_obsidian-sync.md) §同期トークン）。
 > （②通知は受け口・発火の結線とも 2026-08-28 に実装済み — 通知サービスの配備が残る）
 > 線引きは同名の作業仕様書と実装 ADR（trace 参照）にある。
-> **⑥緊急アクセスの後段（発動記録・閲覧の判定・監査ログ）を 2026-10-23 に実装した**（後述 §緊急アクセス）。
-> BFF の中継と画面の導線はまだ無く、利用者が操作する経路は無い。
+> **⑥緊急アクセスの後段（発動記録・閲覧の判定・監査ログ）を 2026-10-23 に、BFF の中継を 2026-10-24 に実装した**
+> （後述 §緊急アクセス）。画面の導線はまだ無く、利用者が画面から操作する経路は無い。
 
 ## 概要
 
@@ -159,6 +159,8 @@ Wiki.js へは従来どおり同期しない（露出の設定によらない）
 | 開かない場合 | 指名外の管理者・失効後・終了後・別の資料・論理削除中・指名された人がいま管理者でない（確かめられない）—— いずれも「無い」と同じ 404 |
 | 監査ログ | 発動・終了・有効中の閲覧（1 件ずつ）を記録する。項目は発動日時・発動者・対象資料の識別子・理由・操作種別・終了日時（ほかに操作した人・指名先・閲覧の対象）。本文と題名は記録しない。保持 3 年（日次の定期処理が削除する） |
 | 監査ログを読める者 | システム管理者（全件）と本人（自分の資料の分だけ） |
+| 公開 API（BFF） | 発動・終了・状態は所有者本人のセッションだけが呼べる。BFF でも本人の個人資料かを確かめてから中継し、文書サービスも本人かを判定する（二重）。他人の・無い資料、指名されただけの管理者、機械の主体はいずれも 404。発動だけ書き込みの許可ポリシーを要する（無ければ 403。終了と状態は要しない）。監査ログは人の主体だけ（機械は 403）で、誰の行まで読めるかは文書サービスが決める |
+| 指名された管理者の閲覧の経路 | 文書の詳細と本文の既存の口（文書詳細画面の口）。可否は文書サービスが要求ごとに発動記録で判定し、BFF は許可も拒否も足さない。版の一覧・特定版・書き込みの前段・本人の確認は緊急アクセスを含めずに文書を引く（閲覧の記録を増やさない） |
 
 同じ資料に同時に有効な発動は 1 つである（重ねて発動すると 409。終えれば再び発動できる）。論理削除中の資料には発動できない。
 

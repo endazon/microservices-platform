@@ -13,6 +13,9 @@ import {
 } from '@faker-js/faker';
 
 import type {
+  BreakGlassAuditEntryDto,
+  BreakGlassGrantDto,
+  BreakGlassStatusResponse,
   DocumentShareDto,
   PrivateNoteDeletedResponse,
   PrivateNoteDto,
@@ -42,6 +45,16 @@ export const getBffPrivateNoteExposureResponseMock = (overrideResponse: Partial<
 export const getBffPrivateNoteShareListResponseMock = (): DocumentShareDto[] => (Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({subjectType: faker.string.alpha({length: {min: 10, max: 20}}), subjectId: faker.string.alpha({length: {min: 10, max: 20}}), grantedBy: faker.string.alpha({length: {min: 10, max: 20}}), createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z'})))
 
 export const getBffPrivateNoteShareGrantResponseMock = (overrideResponse: Partial<Extract<DocumentShareDto, object>> = {}): DocumentShareDto => ({subjectType: faker.string.alpha({length: {min: 10, max: 20}}), subjectId: faker.string.alpha({length: {min: 10, max: 20}}), grantedBy: faker.string.alpha({length: {min: 10, max: 20}}), createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z', ...overrideResponse})
+
+export const getBffBreakGlassStatusResponseBreakGlassGrantDtoMock = (overrideResponse: Partial<BreakGlassGrantDto> = {}): BreakGlassGrantDto => ({...{id: faker.string.uuid(), documentId: faker.string.uuid(), nomineeUserId: faker.string.alpha({length: {min: 10, max: 20}}), reason: faker.string.alpha({length: {min: 10, max: 20}}), activatedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', expiresAt: faker.date.past().toISOString().slice(0, 19) + 'Z', endedAt: faker.helpers.arrayElement([faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), undefined]), endsAt: faker.date.past().toISOString().slice(0, 19) + 'Z', active: faker.datatype.boolean()}, ...overrideResponse});
+
+export const getBffBreakGlassStatusResponseMock = (overrideResponse: Partial<Extract<BreakGlassStatusResponse, object>> = {}): BreakGlassStatusResponse => ({active: faker.helpers.arrayElement([faker.helpers.arrayElement([{...getBffBreakGlassStatusResponseBreakGlassGrantDtoMock()},null,]), undefined]), ...overrideResponse})
+
+export const getBffBreakGlassActivateResponseMock = (overrideResponse: Partial<Extract<BreakGlassGrantDto, object>> = {}): BreakGlassGrantDto => ({id: faker.string.uuid(), documentId: faker.string.uuid(), nomineeUserId: faker.string.alpha({length: {min: 10, max: 20}}), reason: faker.string.alpha({length: {min: 10, max: 20}}), activatedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', expiresAt: faker.date.past().toISOString().slice(0, 19) + 'Z', endedAt: faker.helpers.arrayElement([faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), undefined]), endsAt: faker.date.past().toISOString().slice(0, 19) + 'Z', active: faker.datatype.boolean(), ...overrideResponse})
+
+export const getBffBreakGlassEndResponseMock = (overrideResponse: Partial<Extract<BreakGlassGrantDto, object>> = {}): BreakGlassGrantDto => ({id: faker.string.uuid(), documentId: faker.string.uuid(), nomineeUserId: faker.string.alpha({length: {min: 10, max: 20}}), reason: faker.string.alpha({length: {min: 10, max: 20}}), activatedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', expiresAt: faker.date.past().toISOString().slice(0, 19) + 'Z', endedAt: faker.helpers.arrayElement([faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), undefined]), endsAt: faker.date.past().toISOString().slice(0, 19) + 'Z', active: faker.datatype.boolean(), ...overrideResponse})
+
+export const getBffBreakGlassAuditResponseMock = (): BreakGlassAuditEntryDto[] => (Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({id: faker.string.uuid(), grantId: faker.string.uuid(), occurredAt: faker.date.past().toISOString().slice(0, 19) + 'Z', operation: faker.string.alpha({length: {min: 10, max: 20}}), actorUserId: faker.string.alpha({length: {min: 10, max: 20}}), documentId: faker.string.uuid(), ownerUserId: faker.string.alpha({length: {min: 10, max: 20}}), nomineeUserId: faker.string.alpha({length: {min: 10, max: 20}}), reason: faker.string.alpha({length: {min: 10, max: 20}}), activatedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', endsAt: faker.date.past().toISOString().slice(0, 19) + 'Z', viewTarget: faker.helpers.arrayElement([faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), undefined])})))
 
 export const getBffPrivateNotePurgeResponseMock = (overrideResponse: Partial<Extract<PurgePrivateNotesResponse, object>> = {}): PurgePrivateNotesResponse => ({purgedCount: faker.number.int(), freedBytes: faker.number.int(), ...overrideResponse})
 

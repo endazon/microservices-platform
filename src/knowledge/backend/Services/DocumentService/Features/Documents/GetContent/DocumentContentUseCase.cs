@@ -33,11 +33,13 @@ public sealed class DocumentContentUseCase(
     public const long MaxBodyBytes = 16L * 1024 * 1024;
 
     public async Task<DocumentContentResult?> ReadAsync(
-        DocumentReadPrincipal principal, Guid id, CancellationToken ct = default)
+        DocumentReadPrincipal principal, Guid id, bool allowBreakGlass, CancellationToken ct = default)
     {
         // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): SC-03 の本文の閲覧なので、緊急アクセスの判定を含む形を通す
         // （許すときの監査ログは「本文」の閲覧として 1 行）。
-        var doc = await reads.GetForViewAsync(principal, id, Knowledge.Contracts.Dtos.BreakGlassViewTargets.Content, ct);
+        // ［2026-10-24 / [[IADR-0611]]］緊急アクセスを含めるかは呼び出し元が明示する（gRPC の `allow_break_glass`。既定は含めない）。
+        var doc = (await reads.FindForViewAsync(principal, id, Knowledge.Contracts.Dtos.BreakGlassViewTargets.Content,
+            allowBreakGlass, ct))?.Document;
         if (doc is null)
             return null;
 
