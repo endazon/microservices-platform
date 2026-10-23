@@ -481,15 +481,15 @@ data:
     #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、
     #      式の絞り込みの後に残る値で評価器が真になり得る（#1577）、
     #      ルールの `uid` が 40 文字以下・英数字と `-` `_` だけ・一意で、写しの両方で同じ集合（#1881）、まで。
-    #      **配備時に `/api/v1/provisioning/alert-rules` が 26 件返すことを確かめること。**
+    #      **配備時に `/api/v1/provisioning/alert-rules` が 27 件返すことを確かめること。**
     #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
     #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
     #      現在の内訳: platform-availability 2 ／ platform-slo 5 ／ platform-slo-evaluation-target 6
     #      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2
-    #      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ ingestion-budget 1 ／ department-sync 1 ／ owner-read-policy 2
-    #      ／ mcp-client-idp-reconciliation 2 ＝ **26**（［2026-10-10 / #1881］#1818 の 2 件を取りこぼして 22 のままだったので足した。［2026-10-17 / #1746］platform-slo に SearchRerankLatencyTargetUndefined を足して 4 → 5。［2026-10-20 / #1991］ingestion-budget 1 を足して 25 → 26）
+    #      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ ingestion-budget 1 ／ messaging-dead-letter 1 ／ department-sync 1 ／ owner-read-policy 2
+    #      ／ mcp-client-idp-reconciliation 2 ＝ **27**（［2026-10-10 / #1881］#1818 の 2 件を取りこぼして 22 のままだったので足した。［2026-10-17 / #1746］platform-slo に SearchRerankLatencyTargetUndefined を足して 4 → 5。［2026-10-20 / #1991］ingestion-budget 1 を足して 25 → 26。［2026-10-23 / #2043］messaging-dead-letter 1 を足して 26 → 27）
     #      （［2026-09-26 / #1577］内訳が #1573 の department-sync 1 を取りこぼして 19 のままだったので足した）
-    #      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20、#1665 で 20 → 22、#1818 で 22 → 24、#1746 で 24 → 25、#1991 で 25 → 26 へ数え直した）。
+    #      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20、#1665 で 20 → 22、#1818 で 22 → 24、#1746 で 24 → 25、#1991 で 25 → 26、#2043 で 26 → 27 へ数え直した）。
     #
     # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
     #
@@ -1067,6 +1067,41 @@ data:
                   refId: A
                   instant: true
                   expr: 'sum by (messaging_timeout_target) (increase(messaging_consumer_timeout_total{messaging_timeout_target=~"embedding-budget|lexical-budget"}[1h])) > 0'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
+      # NFR-21, ADR-0053 決定 1〜3, IADR-0592 (#2043): デッドレター到達（**0 が正常**）。注記の正本は deploy/prometheus/alerts.yml。初回の腕（`unless ... offset 1h`）を外さない。
+      # 🔴 **`noDataState: OK`**（平常時は系列が無い）。評価器は `gt 0`（expr の `> 0` の後に残る値は前進量＝正の数。#1577 の形ではない）。
+      - orgId: 1
+        name: messaging-dead-letter
+        folder: SLO
+        interval: 1m
+        rules:
+          - uid: messaging-dead-letter-reached
+            title: DeadLetterReached
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）"
+              description: "{{ $labels.job }} の messaging_dead_letter_total（messaging_message_type={{ $labels.messaging_message_type }}・error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。通知のラベル error_type（例外の型）と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'sum by (job, messaging_message_type, error_type) (increase(messaging_dead_letter_total[1h])) > 0 or (sum by (job, messaging_message_type, error_type) (messaging_dead_letter_total) unless sum by (job, messaging_message_type, error_type) (messaging_dead_letter_total offset 1h))'
               - refId: C
                 datasourceUid: __expr__
                 model:

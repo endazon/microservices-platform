@@ -669,3 +669,4 @@
 | [IADR-0589](./IADR-0589_egress-default-deny-network-policy.md) | 外向き通信（egress）は NetworkPolicy で既定拒否し、DNS は kube-dns の Pod だけ・別の名前空間の宛先は名前空間 × Pod ラベル × ポートで 1 件ずつ許す。本番像は名前空間の全 Pod、経路 B は外へ出ない Pod から段階的に当てる（GHSA-j4qv-2w99-xg5p） | Accepted |
 | [IADR-0590](./IADR-0590_mesh-mtls-strict-by-default.md) | 経路B でメッシュを入れたときの mTLS の既定を STRICT にする。引き継いだ PERMISSIVE は上げずに毎回告げ、受信の例外はバックチャネルログアウトの 1 本に限り、AST の名前空間が注入されていなければ告げ、稼働の効きは統合スタックの門で測る（GHSA-j4qv-2w99-xg5p） | Accepted |
 | [IADR-0591](./IADR-0591_platform-infra-tls-stage1.md) | 基盤（platform-infra）との通信を TLS にする段 1。postgres・rabbitmq は基盤専用 CA の証明書で TLS を受けて平文と併存し、基盤のサービスは CA と名前を検証して繋ぐ。取引ユニットの切り替えと平文の閉鎖は後の段（GHSA-j4qv-2w99-xg5p） | Accepted |
+| [IADR-0592](./IADR-0592_dead-letter-counter-and-alert.md) | デッドレター到達は共通既定（UsePlatformMessagingDefaults）の再試行の最後の段に束ねた継続で計器 messaging.dead_letter を 1 つ上げて数え、警報 DeadLetterReached（直近 1 時間の前進 > 0・for 5m・warning）で鳴らす。キュー名は見ない（#2043） | Accepted |

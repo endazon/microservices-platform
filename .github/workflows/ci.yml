@@ -696,6 +696,29 @@ jobs:
           sudo install -m 0755 kubeconform /usr/local/bin/kubeconform
           rm -f kubeconform.tar.gz kubeconform
           kubeconform -v
+      # NFR-21, ADR-0053 決定 1, IADR-0592, #2043: promtool を導入する（警報ルールの構文検査と単体試験に要る）。
+      # 版は deploy の Prometheus（prom/prometheus:v2.52.0）と同じにし、公式リリースの sha256sums と突合してから導入する。
+      - name: Install promtool (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          PROMETHEUS_VERSION=2.52.0
+          PROMETHEUS_SHA256=7f31c5d6474bbff3e514e627e0b7a7fbbd4e5cea3f315fd0b76cad50be4c1ba3
+          curl -fsSL -o prometheus.tar.gz \
+            "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
+          echo "${PROMETHEUS_SHA256}  prometheus.tar.gz" | sha256sum -c -
+          tar -xzf prometheus.tar.gz --strip-components=1 "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool"
+          sudo install -m 0755 promtool /usr/local/bin/promtool
+          rm -f prometheus.tar.gz promtool
+          promtool --version
+
+      # NFR-21, ADR-0053 決定 1, IADR-0592, #2043: 警報ルールを Prometheus 自身の解析器で読み、単体試験を回す。
+      # 🔴 試験が固定するのは「系列が初めて 1 で現れる」場面（初回のデッドレター）である —— `increase` だけの式では鳴らない。
+      #   経路 B（k8s の inline）は check-prometheus-alerts-parity.js が compose と式の一致を見るので、compose 側だけを試験する。
+      - name: Check Prometheus alert rules (promtool)
+        if: ${{ !cancelled() }}
+        run: |
+          promtool check rules deploy/prometheus/alerts.yml
+          promtool test rules deploy/prometheus/tests/*.test.yml
 
       # FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231: ユニット依存方向の機械検査。
       # csproj の ProjectReference（ユニット外参照）と Foundation→Composable の using を静的走査する。

@@ -13365,6 +13365,118 @@ exit $RC
     });
   }
 
+  // --- #2043: デッドレター到達の警報は C# の計器名から導いた式を 4 か所で見て、Wolverine を載せる全サービスが共通既定を通す ----
+  //
+  // 名前がずれると式は構文として正当なまま**永久に空ベクタ**になり、デッドレターへ入っても鳴らない（#1110・#1991 と同型）。
+  // 計器は共通既定（UsePlatformMessagingDefaults）の 1 箇所でしか上がらない（ADR-0053 決定 3）ので、それを呼ばない
+  // サービスや OTLP へ出さないサービスのデッドレターだけが**黙って見えなくなる**（IADR-0592）。
+  {
+    const fsD = require('fs');
+    const pathD = require('path');
+    const ROOT_D = pathD.resolve(__dirname, '..');
+    const METRICS_CS_D = 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Messaging/DeadLetterMetrics.cs';
+    const TIMEOUT_CS_D = 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Messaging/ConsumerTimeoutMetrics.cs';
+    const OBS_CS_D = 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Extensions/ObservabilityExtensions.cs';
+    const RULE_FILES_D = [
+      'deploy/prometheus/alerts.yml',
+      'deploy/local/observability/prometheus.yaml',
+      'deploy/grafana/provisioning/alerting/slo-alerts.yaml',
+      'deploy/local/observability/grafana.yaml',
+    ];
+    const readD = (rel) => fsD.readFileSync(pathD.join(ROOT_D, rel), 'utf8');
+    const ruleBodyD = (text, name) => {
+      const def = new RegExp(`(?:alert|title):\\s*${name}\\s*$`, 'm').exec(text);
+      if (!def) return null;
+      const rest = text.slice(def.index + def[0].length);
+      const next = /(?:- alert|title):\s*\w+\s*$/m.exec(rest);
+      return next ? rest.slice(0, next.index) : rest;
+    };
+    const constOfD = (rel, cs, name) => {
+      const m = new RegExp(`const string ${name}\\s*=\\s*"([^"]+)"`).exec(cs);
+      assert.ok(m, `${rel} に ${name} が見つからない（走査が壊れている）`);
+      return m[1];
+    };
+
+    ok('#2043: デッドレター到達の警報 DeadLetterReached が、C# の計器名とタグ名から導いた式を 4 か所で見る（実データ）', () => {
+      const metrics = readD(METRICS_CS_D);
+      // OTel → prometheusremotewrite: `.` は `_` へ。単位 `{message}` は注記で接尾辞にならず、カウンタには `_total` が付く。
+      const promName = `${constOfD(METRICS_CS_D, metrics, 'DeadLetterCounterName').replace(/\./g, '_')}_total`;
+      assert.strictEqual(promName, 'messaging_dead_letter_total');
+      const typeTag = constOfD(METRICS_CS_D, metrics, 'MessageTypeTag').replace(/\./g, '_');
+      assert.strictEqual(typeTag, 'messaging_message_type');
+      const errorTag = constOfD(METRICS_CS_D, metrics, 'ErrorTypeTag').replace(/\./g, '_');
+      assert.strictEqual(errorTag, 'error_type');
+      // 通知のラベルに例外の型を残す（運用仕様書と注記が「通知のラベル error_type」を案内する）。集計で落とすと案内が嘘になる。
+      const by = `by (job, ${typeTag}, ${errorTag})`;
+      // Meter は受け口の時間切れと共有し、`AddPlatformObservability` がその名前で収集対象へ入れている。
+      assert.match(metrics, /MeterName\s*=\s*ConsumerTimeoutMetrics\.MeterName;/, 'DeadLetterMetrics の Meter が共通の Meter から外れた');
+      assert.ok(readD(TIMEOUT_CS_D).includes('MeterName = "microservices-platform.messaging"'));
+      assert.match(readD(OBS_CS_D), /\.AddMeter\(ConsumerTimeoutMetrics\.MeterName\)/, 'AddPlatformObservability が共通の Meter を収集していない');
+
+      for (const rel of RULE_FILES_D) {
+        const text = readD(rel);
+        const rule = ruleBodyD(text, 'DeadLetterReached');
+        assert.ok(rule, `${rel} に DeadLetterReached のルール定義が無い`);
+        const exprM = /expr:\s*'([^']+)'/.exec(rule);
+        assert.ok(exprM, `${rel} の DeadLetterReached の expr を 1 行の引用符つきで読めない（走査が壊れている）`);
+        const expr = exprM[1];
+        assert.ok(expr.includes(`increase(${promName}[1h])`), `${rel} の DeadLetterReached が increase(${promName}[1h]) を見ていない`);
+        assert.ok(!expr.includes('absent('), `${rel} の DeadLetterReached が absent() になっている（平常時は系列が無い）`);
+        // 🔴 キュー名で絞らない（ADR-0053 決定 1）。queue ラベル・_error / _dlq の照合を持ち込んだら赤にする。
+        assert.ok(!/queue|_error|_dlq/.test(expr), `${rel} の DeadLetterReached がキュー名に依存している（ADR-0053 決定 1）`);
+        assert.ok(expr.includes(`sum ${by} (increase(`), `${rel} の DeadLetterReached がサービス・メッセージ型・例外の型ごとに鳴らない`);
+        assert.ok(/\)\s*>\s*0\s+or\s+\(/.test(expr), `${rel} の DeadLetterReached が「前進が 0 を超えたら」で鳴らない`);
+        // 🔴 初回（系列が 1 で初めて現れる）は increase に現れない。「1 時間前に無かった組が今ある」の腕を外したら赤にする
+        //   （場面は deploy/prometheus/tests/messaging-dead-letter.test.yml が promtool で固定する）。
+        assert.ok(expr.includes(`or (sum ${by} (${promName}) unless sum ${by} (${promName} offset 1h))`),
+          `${rel} の DeadLetterReached に初回の腕（unless ... offset 1h）が無い（最初の 1 通で鳴らない）`);
+        assert.ok(/description:[^\n]*error_type/.test(rule), `${rel} の DeadLetterReached の description が例外の型を案内していない`);
+        assert.ok(/for:\s*5m/.test(rule) && /severity:\s*warning/.test(rule), `${rel} の DeadLetterReached の for / severity が流儀（5m・warning）と違う`);
+        if (rel.includes('grafana')) {
+          assert.ok(/type:\s*gt,\s*params:\s*\[0\]/.test(rule), `${rel} の DeadLetterReached の評価器が gt 0 でない`);
+          assert.ok(/noDataState:\s*OK/.test(rule), `${rel} の DeadLetterReached の noDataState が OK でない（平常時は系列が無い）`);
+        }
+        // キュー名に依存した旧案（コメントアウトの RabbitMqDeadLetter）を残さない —— 次に読む人が有効な選択肢と受け取る。
+        assert.ok(!/alert:\s*RabbitMqDeadLetter/.test(text), `${rel} にキュー名に依存した旧案 RabbitMqDeadLetter が（コメントアウトでも）残っている`);
+      }
+    });
+
+    ok('#2043: DeadLetterReached の初回の場面を promtool の単体試験が固定し、CI がそれを回す（実データ）', () => {
+      const test = readD('deploy/prometheus/tests/messaging-dead-letter.test.yml');
+      assert.match(test, /^\s+- \.\.\/alerts\.yml$/m, '試験が compose の alerts.yml を読んでいない');
+      assert.match(test, /values: '_x\d+ 1x\d+'/, '「系列が初めて 1 で現れる」場面が無い');
+      assert.match(test, /alertname: DeadLetterReached/);
+      const ci = readD('.github/workflows/ci.yml');
+      assert.match(ci, /promtool test rules deploy\/prometheus\/tests\/\*\.test\.yml/, 'CI が promtool の単体試験を回していない');
+      assert.match(ci, /PROMETHEUS_SHA256=[0-9a-f]{64}/, 'promtool の導入が checksum で突合されていない');
+      // 版は配備の Prometheus と同じ（解析器の版がずれると、通る式と配備で読まれる式が食い違い得る）。
+      const ver = /PROMETHEUS_VERSION=(\S+)/.exec(ci);
+      assert.ok(ver, 'CI に PROMETHEUS_VERSION が無い');
+      for (const rel of ['deploy/docker-compose.yml', 'deploy/local/observability/prometheus.yaml']) {
+        const img = /prom\/prometheus:v([0-9.]+)/.exec(readD(rel));
+        assert.ok(img, `${rel} に Prometheus のイメージが見つからない（走査が壊れている）`);
+        assert.strictEqual(img[1], ver[1], `${rel} の Prometheus の版と CI の promtool の版が違う`);
+      }
+    });
+
+    ok('#2043: Wolverine を載せる全サービスが共通既定（計器を含む）と OTLP への計装を通す（実データ）', () => {
+      const services = [];
+      for (const unit of ['src/platform/backend/Services', 'src/knowledge/backend/Services']) {
+        for (const name of fsD.readdirSync(pathD.join(ROOT_D, unit))) {
+          const rel = `${unit}/${name}/Program.cs`;
+          if (!fsD.existsSync(pathD.join(ROOT_D, rel))) continue;
+          const program = readD(rel);
+          if (!/\.UseWolverine\(/.test(program)) continue;
+          services.push(name);
+          assert.match(program, /\.UsePlatformMessagingDefaults\(\)/, `${rel} が UsePlatformMessagingDefaults を呼ばない（再試行・デッドレターの計器が載らない）`);
+          assert.match(program, /\.AddPlatformObservability\(/, `${rel} が AddPlatformObservability を呼ばない（計器が OTLP へ出ない）`);
+        }
+      }
+      // fail-closed: 走査が 0 件なら何も見ていない。
+      assert.ok(services.length >= 7, `Wolverine を載せるサービスが ${services.length} 件しか見つからない（走査が壊れている）: ${services.join(', ')}`);
+    });
+  }
+
   // --- #2005: platform-backup の age の版と Alpine の APKINDEX の突合（IADR-0568） ---------------------------------------
   //
   // 監視は日次のワークフローでしか走らないので、自己試験（陽性対照・届かないときに起票しない・一致なら何もしない）を

@@ -2,7 +2,9 @@ using System.Net.Security;
 using System.Reflection;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Wolverine;
 using Wolverine.ErrorHandling;
@@ -218,12 +220,40 @@ public static class WolverineExtensions
         // ⚠️ **.Then.MoveToErrorQueue() は挙動としては冗長である**（既定でも試行を使い切れば
         // デッドレターへ行くことを実測済み）。**意図の明示と、変異試験のための面**として残す ——
         // これが無いと「デッドレター送りを無効化する」変異を注入する場所が存在しない。
+        //
+        // NFR-21, ADR-0053 決定 1〜3, IADR-0592 (#2043): **デッドレターへ送るのと同じ継続で計器を上げる。**
+        // 契機は「再試行を使い切ったこと」であり（決定 2）、キュー名を見ない（共有 1 本の `wolverine-dead-letter-queue`
+        // にはキュー名の照合が効かない）。上げる場所はここ 1 箇所で、個別サービスでは上げない（決定 3）。
+        // 計器は DI から引く（Meter は host の IMeterFactory が持ち、`AddPlatformObservability` が収集対象へ入れる）。
+        options.Services.AddMetrics();
+        options.Services.TryAddSingleton<DeadLetterMetrics>();
         options.Policies.OnAnyException()
             .RetryWithCooldown(RetryIntervals)
-            .Then.MoveToErrorQueue();
+            .Then.MoveToErrorQueue()
+            .And(RecordDeadLetterAsync, DeadLetterCounterDescription);
 
         return options;
     }
+
+    // 継続の説明（Wolverine の診断表示に出る）。
+    private const string DeadLetterCounterDescription = "計器: messaging.dead_letter（再試行を使い切った）";
+
+    // ADR-0053 決定 2: 再試行を使い切った 1 通を数える。**例外を投げない** —— ここで投げると
+    // デッドレターへの移送と同じ継続の中で失敗し、検知のための計器が回復の経路を壊す。
+    internal static ValueTask RecordDeadLetterAsync(
+        IWolverineRuntime runtime, IEnvelopeLifecycle lifecycle, Exception exception)
+    {
+        runtime.Services.GetService<DeadLetterMetrics>()?.RecordRetryExhausted(
+            MessageTypeOf(lifecycle.Envelope), exception.GetType().Name);
+        return ValueTask.CompletedTask;
+    }
+
+    // タグの値。メッセージ本体の型の短い名前（`DocumentUpdated`）を優先し、本体が無ければエンベロープの型名で代える。
+    internal static string MessageTypeOf(Envelope? envelope) =>
+        envelope?.Message?.GetType().Name
+        ?? envelope?.MessageType
+        ?? "unknown";
+
     // readiness タグ。MapPlatformHealthChecks の /health/ready は
     // `Predicate = hc => hc.Tags.Contains("ready")` だけを条件にするため、この 1 語が
     // 「ready に載るか」を決める唯一の接点である。
