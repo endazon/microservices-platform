@@ -108,6 +108,12 @@ ADR-0027 は Outbox を標準と定めるが、knowledge ユニットにも `Pla
   - `Platform.Shared.Infrastructure` が EF Core 連携と PostgreSQL 永続化のパッケージを参照する（全サービスへ推移する）。Outbox の構成を
     共通ヘルパへ封じるための費用として受ける（IADR-0233 と同じ判断）。
   - DocumentService の全発行（`DocumentUpdated` を含む）が送出前に 1 回 DB へ書く。
+  - **ブローカの不達が長引く間、削除イベントは遅れる。上限は「ブローカが戻るまで（＋約 1 秒）」で、ホストの再起動もノード回収も要らない。**
+    WolverineFx 6.24.4 の `SendingAgent` / `DurableSendingAgent`（逆コンパイルで確認）: 送出失敗が 3 回（`FailuresBeforeCircuitBreaks`）続くと
+    送出先を閉じ（latch）、失敗した envelope を同じノードのメモリに保持したまま 1 秒ごと（`PingIntervalForCircuitResume`）にブローカを試し、
+    通れば保持分を送り直す。保持は送出先ごと 100 件（`MaximumEnvelopeRetryStorage`）までで、溢れた分と閉じている間の新しい発行は
+    表の所有者を AnyNode に移し、耐久エージェント（既定 5 秒ごと）が回収する。いずれの間も行は Outbox の表に残る。
+    この間にプロセスが止まった場合だけ、上の「正常停止なら次に起きたノードが即座に・異常終了なら死活判定の後に」へ移る。
   - 到着は少なくとも 1 回（at-least-once）である。再送で同じ `DocumentDeleted` が 2 度届き得る。受け手の撤去は冪等（既に無ければ何もしない）なので受ける。
 - フォローアップ: 段 2（`DocumentUpdated`）は #2168、段 3（他サービス）は #2169 で追う。
 
