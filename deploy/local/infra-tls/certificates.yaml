@@ -6,7 +6,8 @@
 # ⚠ dnsNames の中にコメント行を入れないこと（scripts/scripts.repo.test.js が `- ` の行を読む）。
 #
 # 証明書の更新: cert-manager は期限の 30 日前に Secret を更新するが、postgres / rabbitmq は起動時に読む。
-#   期限（1 年）までに一度は Pod を作り直す（k8s-local-up.sh の再実行の rollout で足りる）。
+#   k8s-local-up.sh は Pod の雛形へ証明書の指紋を刻み、変わっていれば作り直す（stamp_infra_tls_restart）。
+#   更新の後、期限（1 年）までに一度は起動器を再実行すること。
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

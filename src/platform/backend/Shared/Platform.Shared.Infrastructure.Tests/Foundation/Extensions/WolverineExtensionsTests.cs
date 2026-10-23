@@ -496,6 +496,29 @@ public class WolverineExtensionsTests
     }
 
     [Theory]
+    [InlineData("amqps://msp-document:x@rabbitmq:5671/vh")]
+    [InlineData("amqp://msp-document:x@rabbitmq:5672")]
+    public void ブローカTLS_共通ヘルパは受け入れてよい誤り以外を素のUseRabbitMqと同じに設定する(string connectionString)
+    {
+        // 置き換えで接続先・資格情報・仮想ホスト・TLS の有効と名前が変わっていないこと（変えるのは受け入れてよい誤りだけ）。
+        var plain = new WolverineOptions();
+        plain.UseRabbitMq(new Uri(connectionString));
+        var helper = new WolverineOptions();
+        helper.UsePlatformRabbitMq(connectionString);
+
+        var a = FactoryOf(plain);
+        var b = FactoryOf(helper);
+        b.HostName.Should().Be(a.HostName);
+        b.Port.Should().Be(a.Port);
+        b.VirtualHost.Should().Be(a.VirtualHost);
+        b.UserName.Should().Be(a.UserName);
+        b.Password.Should().Be(a.Password);
+        b.Ssl.Enabled.Should().Be(a.Ssl.Enabled);
+        b.Ssl.ServerName.Should().Be(a.Ssl.ServerName);
+        b.Ssl.Version.Should().Be(a.Ssl.Version);
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData(" ")]
     public void ブローカTLS_共通ヘルパは空の接続文字列を受けない(string connectionString)
