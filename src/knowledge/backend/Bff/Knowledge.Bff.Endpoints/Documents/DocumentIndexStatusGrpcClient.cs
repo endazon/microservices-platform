@@ -58,7 +58,7 @@ public sealed class DocumentIndexStatusGrpcClient(Pb.DocumentIndexStatus.Documen
         }
         catch (Exception ex) when (!ct.IsCancellationRequested && ex is RpcException or InvalidOperationException)
         {
-            DocumentReadFailureLog.Folded(http, "GetIndexStatuses", ex, "unknown");
+            DocumentReadFailureLog.Folded(http, DocumentReadFailureLog.GetIndexStatusesRpc, ex, "unknown");
             return statuses;
         }
 

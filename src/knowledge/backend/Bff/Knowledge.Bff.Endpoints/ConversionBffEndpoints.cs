@@ -6,6 +6,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace Knowledge.Bff.Endpoints;
 
@@ -55,6 +56,8 @@ public static class ConversionBffEndpoints
             }
             catch (Exception ex) when (IsTransient(ex, ct))
             {
+                // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+                BffDownstreamFailure.Report(http, "ConversionService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
                 return Results.StatusCode(StatusCodes.Status502BadGateway);
             }
         }).WithName("BffConversionJobList").Produces<List<ConversionJobDto>>();
@@ -128,6 +131,8 @@ public static class ConversionBffEndpoints
             }
             catch (Exception ex) when (IsTransient(ex, ct))
             {
+                // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+                BffDownstreamFailure.Report(http, "ConversionService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
                 return Results.StatusCode(StatusCodes.Status502BadGateway);
             }
             http.Response.RegisterForDispose(resp);

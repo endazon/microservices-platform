@@ -1,3 +1,4 @@
+using Platform.Shared.Infrastructure.Foundation.Observability;
 namespace Platform.Bff.Foundation.Endpoints;
 
 // FR-22, UC-11, ADR-0037 決定 6・17・18, ADR-0045, IADR-0215 / IADR-0267 / IADR-0346, #600:
@@ -100,6 +101,8 @@ public static class NotificationBffEndpoints
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
+            // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+            BffDownstreamFailure.Report(http, "NotificationService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
             // 上の 4: 不達は 502。空の 200 で隠さない。
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }

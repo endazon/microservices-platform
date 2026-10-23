@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using System.Net.Http;
 using System.Net.Http.Json;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace Knowledge.Bff.Endpoints;
 
@@ -43,6 +44,8 @@ public static class DataSourceBffEndpoints
             }
             catch (Exception ex) when (IsTransient(ex, ct))
             {
+                // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+                BffDownstreamFailure.Report(http, "DataSourceService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
                 return Results.StatusCode(StatusCodes.Status502BadGateway);
             }
         }).WithName("BffDataSourceList").Produces<List<DataSourceDto>>();
