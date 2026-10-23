@@ -168,6 +168,23 @@ public sealed class StreamUsageOnAbortTests : IDisposable
         incomplete.Tags[LlmCompletionMetrics.ModelTag].Should().Be("test-model");
     }
 
+    // 上流の失敗の後でプロバイダの DisposeAsync が投げても、外側の finally が cancelled を重ねて数えない。
+    [Fact]
+    public async Task 上流の失敗の後に後始末が投げてもcancelledを重ねて数えない()
+    {
+        var useCase = UseCase(_ => new FailThenThrowOnDispose());
+
+        var act = async () =>
+        {
+            await foreach (var _ in useCase.StreamAsync(Request(), isSynthetic: false, TestContext.Current.CancellationToken))
+            {
+            }
+        };
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        Results().Should().Equal(LlmCompletionMetrics.ResultUpstreamError);
+    }
+
     // 過大計上の反対側: 送信が成立する前の失敗（1 チャンクも来ていない。429 等）は一括経路と同じく何も積まない。
     [Fact]
     public async Task 送信前に上流が失敗したときはトークンも不完全も積まない()
@@ -369,6 +386,29 @@ public sealed class StreamUsageOnAbortTests : IDisposable
         yield return new CompletionChunk("途中");
         await Task.Delay(Timeout.Infinite, ct);
         yield return new CompletionChunk("届かない");
+    }
+
+    // 本文を 1 つ返した後の MoveNextAsync で上流の失敗を投げ、DisposeAsync でも投げる列挙。
+    private sealed class FailThenThrowOnDispose : IAsyncEnumerable<CompletionChunk>, IAsyncEnumerator<CompletionChunk>
+    {
+        private int _step;
+
+        public CompletionChunk Current { get; private set; } = new(string.Empty);
+
+        public IAsyncEnumerator<CompletionChunk> GetAsyncEnumerator(CancellationToken cancellationToken = default) => this;
+
+        public ValueTask<bool> MoveNextAsync()
+        {
+            if (_step++ == 0)
+            {
+                Current = new CompletionChunk("途中");
+                return ValueTask.FromResult(true);
+            }
+
+            throw new HttpRequestException("connection reset mid-stream", new IOException("reset"));
+        }
+
+        public ValueTask DisposeAsync() => throw new InvalidOperationException("dispose failed");
     }
 
     // 取り消されると接続の切断として IOException を投げる（OperationCanceledException に包まない）プロバイダ。

@@ -264,6 +264,9 @@ public sealed class CompletionUseCase(
                             LlmCompletionMetrics.ResultUpstreamError, null, decision, purpose, sensitivity,
                             failure: ex);
                         faulted = true;
+                        // IADR-0601 決定 4: 計器を書いた直後に決着させる。下の DisposeAsync が投げても、
+                        // 外側の finally が cancelled を重ねて数えないようにする（二重計上の防止）。
+                        settled = true;
                         upstreamStatus = LlmFallbackPolicy.StatusCodeOf(ex);
                         break;
                     }
