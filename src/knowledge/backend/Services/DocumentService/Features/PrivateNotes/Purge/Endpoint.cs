@@ -50,7 +50,12 @@ internal static class PurgePrivateNotesEndpoint
             await purger.PurgeAsync(ids, ct);
             db.Documents.RemoveRange(docs);           // 版・共有・台帳はカスケード削除
             db.PrivateNotes.RemoveRange(notes);       // InMemory はカスケードしないため明示にも消す
-            await db.SaveChangesAsync(ct);
+            // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine（IDocumentDeletedPublisher 経由）。
+            // FR-19, ADR-0027 §決定, ADR-0057 決定 1・3, IADR-0604 (#2042): **行の削除と同じトランザクションに積んで確定する**
+            // （Transactional Outbox）。確定が失敗すれば発行も巻き戻る。確定の後に送出が落ちても Outbox の表に残り再送される。
+            foreach (var id in ids)
+                await deletedBus.PublishDeletedAsync(id, now, ct);
+            await deletedBus.SaveChangesAndFlushAsync(ct);
             // 削除を確定させてから使用量を再計算する（先に計算すると purge 分が残って見える）。
             // 使用量が下がって閾値を割れば、警告の発火記録がここで再武装される（FR-22 ②）。
             await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
@@ -58,9 +63,6 @@ internal static class PurgePrivateNotesEndpoint
 
             // ADR-0037 決定 9・11-①: 監査は「誰が・いつ・何件」。タイトルは記録しない。
             audit.Record("private-note.purge", owner, "granted", $"count={notes.Count}");
-            // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine（IDocumentDeletedPublisher 経由）。
-            foreach (var id in ids)
-                await deletedBus.PublishDeletedAsync(id, now, ct);
 
             return Results.Ok(new PurgePrivateNotesResponse(notes.Count, freedBytes));
         });
