@@ -29,6 +29,7 @@ issue: "#2103"
 
 - 本 PR: DocumentService の `Document.Version` を並行トークンにする（モデルのみ。列は既存でスキーマは変わらない）。
   `PUT /documents/{id}`（`Update`）と `PATCH /documents/{id}/metadata`（`UpdateMetadata`）で、保存の負けを 409 `version_conflict` へ写す。
+  > ［2026-10-23 追記 / #2103］で覆した（削除・露出トグルも 409 へ写す）。末尾参照。
 - 範囲外（境界）:
   - **Obsidian 同期の `baseVersion`（`POST /sync/push`・`move`）**: 同型の照合だが、本文をオブジェクトストレージへ**保存より前に**書き、競合台帳（`SyncConflict`）と同期履歴の失敗を残す契約を持つ。
     保存で負けたときに 409 へ写すには「先に書いた本文の扱い」と「競合台帳へ記録するか」の判断が要るので本 PR では写さない（トークンにより黙った上書きは起きなくなり、負けは例外になる）。§限界。
@@ -65,6 +66,7 @@ issue: "#2103"
 - `DocumentDbContext`: `e.Property(d => d.Version).IsConcurrencyToken()`。マイグレーションは足さない（並行トークンはスキーマに出ない）。モデルスナップショットだけ `IsConcurrencyToken()` を持たせる。
 - `Features/Documents/DocumentVersionConflict.cs`: 競合の判定（`DbUpdateConcurrencyException` または `IX_DocumentVersions_DocumentId_Version` の 23505）と 409 の本文、保存で負けた後の読み直しを 1 か所に置く。
 - `Update` / `UpdateMetadata`: 既存の照合はそのまま（同じ本文を `DocumentVersionConflict.Problem` で返す）。`SaveChangesAsync` を `catch (DbUpdateException) when (Is)` で囲み、負けたら発行せずに 409。
+> ［2026-10-23 追記 / #2103］で覆した（削除・露出トグルも 409 へ写す）。末尾参照。
 
 ## 受け入れ基準
 
@@ -75,6 +77,8 @@ issue: "#2103"
 | 3 | 期待版なしでも 409（`expectedVersion` は null）・黙って上書きしない | `Update_WithoutExpectedVersion_Overtaken_Gets409_NotSilentOverwrite` |
 | 4 | 版を進めない保存も負ける | `SaveWithoutVersionBump_AfterVersionAdvanced_LosesWithConcurrencyException` |
 | 5 | 実際の同時送信で 500 が出ない（補助・非決定的） | `Update_TrulyConcurrent_OnlyOkOrConflict_AndVersionsMatchSuccesses` |
+| 6 | 削除が追い越されたら 409・文書は勝った側で残り、やり直しは 204（［追記］で追加） | `Delete_OvertakenByUpdate_Gets409_AndDocumentIsKept_ThenRetrySucceeds` |
+| 7 | 露出トグルが追い越されたら 409・勝った側の属性が残り、台帳の露出も巻き戻る（［追記］で追加） | `SetExposure_OvertakenByVersionBump_Gets409_AndWinnerAttributesKept` |
 
 窓は `SaveChangesInterceptor` で決定的に開く（先の要求が照合を通った後、保存の直前に、同じ版を前提にした別の要求を確定させる）。
 `Task.WhenAll` で送るだけでは、片方が読む前に他方が保存を終えることが多く、既存の照合が 409 を返して修正を外しても緑になる（基準 5 が全変異で緑なのはこのため）。
@@ -96,8 +100,9 @@ issue: "#2103"
 ## 限界（残余）
 
 - **Obsidian 同期 `Push`**: 追い越されると 409 ではなく例外（500）。本文は保存より前にオブジェクトストレージへ書かれる（既存の順。負けた側の本文が正準キーに残る）。修正前も同じ並行は版テーブルの一意索引で 500 だったので悪化はしない。写像には本文の書き戻しと競合台帳の扱いの判断が要る。
-- **その他の書き込み口**（公開・アーカイブ・一括アーカイブ・本文投入・境界語の剥がし・タグの追加・競合の解決・露出トグル・削除）: 追い越されると例外（500）。版を進める経路は修正前も一意索引で 500 だった。
+- **その他の書き込み口**（公開・アーカイブ・一括アーカイブ・本文投入・境界語の剥がし・タグの追加・競合の解決・露出トグル・削除）: 追い越されると例外（500）。（露出トグル・削除は下の注記のとおり覆した）版を進める経路は修正前も一意索引で 500 だった。
   **露出トグル・削除は修正前は黙って通っていた**（露出トグルは古い属性で上書き、削除は追い越した更新ごと消す）ので、並行時にだけ 500 が新たに出得る。いずれも同じ文書への同時操作が要る。
+  > ［2026-10-23 追記 / #2103］で覆した（削除・露出トグルも 409 へ写す）。末尾参照。
   個人資料の物理削除（完全削除の口・90 日経過後の定期処理）は、その瞬間に同じ資料が同期で書かれていると負けて例外になる（定期処理は次の回で拾い直す）。
 - **カタログの受け手**（`DocumentNormalizedConsumer`）: 負けると例外で、メッセージングの再試行が読み直して IADR-0596 の順序判定からやり直す（ADR-0027）。
 
@@ -119,7 +124,7 @@ issue: "#2103"
 
 - **削除と露出トグルも 409 へ写した**（AI レビュー 🟡・orchestrator の方針）。本文 §範囲・§限界の「露出トグル・削除は並行時にだけ 500 が新たに出得る」は受容をやめた。
   この 2 口は、版を並行トークンにしたことで初めて負け得るようになった口（修正前は黙って通っていた）であり、新しい失敗の形を 500 で出さない。`Update` と同じ本文の形（`expectedVersion` は null）で返す（IADR-0597 決定 4）。
-  - `DELETE /documents/{id}`: 負けたら 409。文書は勝った側の内容で残る。本文の実体は保存より前に消す既存の順（IADR-0296 決定 3）なので、削除をやり直すまで本文の無い状態で残る（やり直しは通る）。
+  - `DELETE /documents/{id}`: 負けたら 409。文書は勝った側の内容で残る。本文の実体は保存より前に消す既存の順（IADR-0296 決定 3）なので、削除をやり直すまで本文の無い状態で残る（やり直しは通る）。409 から削除のやり直しまでの間は、本文の無い文書として読める（既存の順による挙動。IADR-0597 決定 4 で受容）。
   - `PUT /private-notes/{id}/exposure`: 負けたら 409。台帳の露出も同じトランザクションで巻き戻る。
   - 個人資料の物理削除（完全削除・90 日の定期処理）は写さない。対象は削除済みの資料だけで、同期の push は削除済みを拒む（`deleted` の 409）。ただし露出トグルは削除済みを拒まないので、両者が同じ資料で並ぶと完全削除が負けて 500 になり得る（残余。複数件の口で返す版の形が決まらない）。
 - 受け入れ基準の追加:
