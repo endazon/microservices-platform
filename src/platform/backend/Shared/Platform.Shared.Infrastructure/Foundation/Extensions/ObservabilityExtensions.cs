@@ -53,6 +53,7 @@ public static class ObservabilityExtensions
                 .AddHttpClientInstrumentation()
                 .AddRuntimeInstrumentation()
                 // #1640: 受け口の外への呼び出しの時間切れ（`ConsumerTimeoutMetrics`）。全サービス共通の Meter。
+                // #2043 / IADR-0592: 自動再試行を使い切ったデッドレター到達（`DeadLetterMetrics`）も同じ Meter に載る。
                 .AddMeter(ConsumerTimeoutMetrics.MeterName)
                 .AddOtlpExporter(o => o.Endpoint = otlpEndpoint));
 

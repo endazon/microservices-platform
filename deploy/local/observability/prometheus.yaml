@@ -199,7 +199,7 @@ data:
       # FR-02, FR-03, ADR-0127 決定 1, ADR-0027, IADR-0567 (#1991): 取り込みの総枠の使い切り（**0 が正常**）。
       # 埋め込みの総枠（embedding-budget）・語彙索引への書き込みの総枠（lexical-budget。IADR-0560）を使い切った文書は、
       # 残りのチャンクを書かずに再試行せずデッドレターへ送られ、**一部の点だけが検索に現れる**（黙って一部だけが索引される）。
-      # 🔴 **デッドレターの警報は無い**（下の follow-up の RabbitMqDeadLetter は未配線）ので、計器の前進をここで鳴らす。
+      # 🔴 **再試行せずにデッドレターへ入るので、DeadLetterReached（再試行を使い切った分だけを数える）には現れない。** 計器の前進をここで鳴らす。
       # 🔴 **`absent()` 系ではなく `increase(...[1h]) > 0` である**（knowledge-health-violations と同じ理由。平常時は系列が立たない）。
       #   呼び出し先ごとの時間切れ（content / embedding / vector-store）は再試行で回復し得るので含めない。総枠の 2 値だけを見る。
       - name: ingestion-budget
@@ -211,6 +211,17 @@ data:
             annotations:
               summary: "取り込みの総枠を使い切り、文書の一部だけが索引された（0 が正常）"
               description: "取り込みの総枠（埋め込み・語彙索引）を使い切った文書が直近 1 時間にあった。残りのチャンクは書かれず、デッドレターへ送られている（一部の点だけが検索に現れる）。取り込みのログで文書を特定する。"
+
+      # NFR-21, ADR-0053 決定 1〜3, IADR-0592 (#2043): デッドレター到達（**0 が正常**）。注記の正本は compose 側の同名グループ。
+      - name: messaging-dead-letter
+        rules:
+          - alert: DeadLetterReached
+            expr: 'sum by (job, messaging_message_type) (increase(messaging_dead_letter_total[1h])) > 0'
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）"
+              description: "自動再試行を使い切ったメッセージが直近 1 時間にデッドレターへ入った（サービスとメッセージ型はラベル）。文書の取り込み・Wiki 同期・グラフ同期・削除のどれかが反映されていない。エラーログで原因を直し、文書を再発行する（デッドレターの写しは再投入しない）。"
 
       # FR-05, FR-09, SC-17, ADR-0115 決定 3, IADR-0473 (#1573): 部門の同期が直せていないこと（**0 が正常**）。
       # 🔴 **`absent()` 系ではなく `increase(...) > 0` である**（上の knowledge-health-violations と同じ理由。平常時は

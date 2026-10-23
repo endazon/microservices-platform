@@ -154,8 +154,18 @@ public class WolverineExtensionsTests
             + " Wolverine の版更新で再試行判定の観測点が変わった可能性があります（ADR-0027 §決定）。");
 
     // 試行 attempts 回目に Wolverine が選ぶ継続の型名を返す。
+    //
+    // NFR-21, IADR-0592 (#2043): 上限到達の試行には計器の継続（`.And(...)` の LambdaContinuation）が束ねられ、
+    // Wolverine はそれを CompositeContinuation で返す。ここで見るのは**回復の挙動**（再試行かデッドレターか）なので、
+    // 計器の継続を除いた残り 1 つの名前を返す。計器そのものは DeadLetterMetricsTests が測る。
     private static string ContinuationNameAt(WolverineOptions options, Exception exception, int attempts)
-        => ContinuationAt(options, exception, attempts).GetType().Name;
+    {
+        var behaviours = Messaging.DeadLetterMetricsTests
+            .Flatten((Wolverine.Runtime.IContinuation)ContinuationAt(options, exception, attempts))
+            .Where(c => !Messaging.DeadLetterMetricsTests.IsDeadLetterCounter(c)).ToArray();
+        behaviours.Should().ContainSingle($"試行 {attempts} 回目の回復の挙動は 1 つである");
+        return behaviours[0].GetType().Name;
+    }
 
     private static object ContinuationAt(WolverineOptions options, Exception exception, int attempts)
         => DetermineContinuationMethod.Invoke(
