@@ -3,15 +3,15 @@ title: FR-22 利用者本人への通知 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-08-16
-updated: 2026-10-16
+updated: 2026-10-23
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, SC-10, UC-11]
 adrs: [ADR-0037, ADR-0045]
-iadrs: [IADR-0009, IADR-0119, IADR-0125, IADR-0132, IADR-0135, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0346, IADR-0419, IADR-0533]
-specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20260902_issue-600_bff-notifications-relay, 20260927_issue-1637_grpc-client-caller-cancellation, 20261015_1902_east-west-rest-residue]
-issues: [#451, #600, #1025, #1637, #1902]
+iadrs: [IADR-0009, IADR-0119, IADR-0125, IADR-0132, IADR-0135, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0346, IADR-0419, IADR-0533, IADR-0600]
+specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20260902_issue-600_bff-notifications-relay, 20260927_issue-1637_grpc-client-caller-cancellation, 20261015_1902_east-west-rest-residue, 20261023_2113_email-transient-retry]
+issues: [#451, #600, #1025, #1637, #1902, #2113]
 -->
 
 # テスト仕様書: 利用者本人への通知
@@ -106,6 +106,7 @@ issues: [#451, #600, #1025, #1637, #1902]
 | T-16 | 契約に無い種別の通知 | 文言と tone を組み立てる | **文言が成立し tone は neutral**（`kind` は閉じた `enum` ではない。後段が種別を増やしても壊れない） | — | 自動（Vitest） |
 | **T-09** | alice / bob の通知が各 1 件 | **bob として**一覧・未読件数・既読化を呼ぶ | **alice の通知が 1 件も現れない**／**未読件数に混ざらない**／**alice の通知 ID の既読化は 404**／**alice の通知は未読のまま残る**／**管理者ロールでも読めない**／未認証は 401 | **AC-3** | 自動（xUnit・`NotificationOwnerScopingTests`） |
 | **T-10** | 送信が失敗する・例外を投げる・未設定・宛先未解決の 4 通り | 通知を作り、送出を回す | **どの場合もアプリ内通知は残り未読のまま読める**。outbox は `failed` として記録され、監査ログにも残る。**1 件目の例外で後続が打ち切られない** | **AC-4** | 自動（xUnit・`EmailIndependenceTests`） |
+| **T-40** | 送信が一過性の失敗（結果で返す・接続断／時間切れの例外）／恒久的な失敗（未構成・宛先不正の結果・判別できない例外・宛先未解決） | 送出を周期ごとに回す | **一過性は `deferred` に戻り、次回時刻（倍々の待ち・上限で頭打ち）を過ぎた周期で再送される。次回時刻より前の周期では送信を試みない**。**試行の上限に達したものだけが `failed`（理由 `retry-exhausted:…`）になり、計器 `notification.email.retry_exhausted` が 1 増える**。**恒久的な失敗は即 `failed` で、以後の周期で 1 度も送り直さない**（計器 `retry_exhausted` は動かない）。期限を過ぎた再試行待ちは `dropped` | **AC-4**／**AC-5** | 自動（xUnit・`EmailRetryTests`） |
 | **T-11** | 日次上限を小さくした送出 | 上限を超える件数を積んで送出を回す | **超過分は `deferred`（繰り越し）で残り、翌日に送られる**。**期限を過ぎた繰り越しは理由つきで `dropped`**。**4 結末すべてが監査ログに載る**。**上限到達そのものも 1 事象として残る** | **AC-5** | 自動（xUnit・`EmailSendRateTests`） |
 | **T-17** | — | 送出側が書き出す通知の JSON を見る | **項目は 7 つちょうど**で、`title` / `body` / `message` / `subject` / `text` / `summary` / `detail` / `content` / `caption` が無い。封筒（一覧・既読化の結果）も完全一致で閉じている | **AC-2**（送出側） | 自動（xUnit・`NotificationContractTests`） |
 | **T-18** | 削除予告の通知 1 件 | メール本文を組み立てる | **件数と期限だけが現れる**。資料名は現れようがない（材料が無い） | **AC-2**（メール） | 自動（xUnit・`EmailIndependenceTests`） |

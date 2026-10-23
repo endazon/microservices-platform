@@ -6,6 +6,10 @@ namespace NotificationService.Features.Notifications;
 // 未設定を成功として扱うと、送れていない事実がどこにも残らない —— それが
 // 計画 FR-22 の受け入れ基準「送信上限を超える通知が静かに落ちない」が禁じている形である。
 // 本実装が返す failure は outbox の `failed` になり、監査ログとメトリクスに載る。
+//
+// IADR-0600 決定 1: **未構成は恒久的な失敗である**（一過性ではない）。構成は周期の間に変わらないので、
+// 再試行しても結果は同じであり、毎周期の再送は負荷と監査ログの雑音にしかならない。
+// だから `TransientFailure` ではなく `Failure` を返す。
 public sealed class UnconfiguredSmtpEmailTransport : IEmailTransport
 {
     public const string Reason = "smtp-not-configured";

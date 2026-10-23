@@ -3,15 +3,15 @@ title: FR-22 利用者本人への通知 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-16
-updated: 2026-09-02
+updated: 2026-10-23
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, SC-10, UC-11]
 adrs: [ADR-0037, ADR-0045, ADR-0046]
-iadrs: [IADR-0009, IADR-0056, IADR-0119, IADR-0121, IADR-0125, IADR-0132, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0346]
-specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20260902_issue-600_bff-notifications-relay]
-issues: [#451, #600, #1025]
+iadrs: [IADR-0009, IADR-0056, IADR-0119, IADR-0121, IADR-0125, IADR-0132, IADR-0142, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0346, IADR-0600]
+specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend, 20260828_issue-451b_notification-ingress, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20260902_issue-600_bff-notifications-relay, 20261023_2113_email-transient-retry]
+issues: [#451, #600, #1025, #2113]
 -->
 
 # 機能仕様書: 利用者本人への通知
@@ -146,7 +146,10 @@ flowchart TD
   R -- 上限到達 --> D[繰り越し deferred]
   D --> R
   D -- 期限を過ぎた --> X[破棄 dropped・記録する]
-  S -- 失敗 --> F[failed・記録する]
+  S -- 一過性の失敗<br/>接続断・時間切れ --> RT[deferred に戻す<br/>次回時刻まで待つ]
+  RT -- 試行の上限まで --> R
+  RT -- 上限を超えた --> F
+  S -- 恒久的な失敗<br/>未構成・宛先不正 --> F[failed・記録する]
   N --> P[SPA がポーリング<br/>GET /bff/notifications]
 ```
 
@@ -160,7 +163,8 @@ flowchart TD
 | 通知一覧の取得に失敗した | **共通シェルは壊れない**。ベルは未読件数を出さず、開いた一覧に取得失敗を示す | `Alert`（色 ＋ アイコン ＋ テキスト） |
 | 通知が 0 件 | 「通知はありません」を出す（**空であることを明示する**。無言で何も描かない形にしない） | 通常表示 |
 | 既読化に失敗した | 一覧はそのまま。失敗を伝えて再試行できる | `Alert` |
-| メール送信が失敗した | **アプリ内通知には影響しない**。`failed` として記録し、監査ログと運用ダッシュボードへ出す | 利用者には出さない（補助経路の失敗である） |
+| メール送信が失敗した（恒久的: SMTP 未構成・宛先未解決・判別できない失敗） | **アプリ内通知には影響しない**。即 `failed` として記録し、監査ログと運用ダッシュボードへ出す。**再試行しない** | 利用者には出さない（補助経路の失敗である） |
+| メール送信が一過性の失敗をした（接続断・時間切れ・一時的な SMTP 応答） | **`deferred` へ戻し、次回時刻（既定 5・10・20・40 分の倍々の待ち）を過ぎてから再送する**。試行の上限（既定 5 回）を超えたものだけを `failed` にし、計器 `notification.email.retry_exhausted` でも数える | 利用者には出さない |
 | 日次の送信上限に達した | **繰り越す**（`deferred`）。期限を過ぎるものは `dropped` として**記録して**破棄する | 利用者には出さない。**運用者は運用ダッシュボードで観測できる** |
 | 未認証 | `401`。SPA は既存の 401 導線（再認証）へ倒す | 既存の共通処理 |
 
