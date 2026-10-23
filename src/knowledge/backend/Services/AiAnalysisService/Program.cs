@@ -4,6 +4,7 @@ using AiAnalysisService.Features.Analysis.Analyze;
 using AiAnalysisService.Domain.Ports;
 using AiAnalysisService.Infrastructure.ExternalServices;
 using FluentValidation;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Platform.Shared.Infrastructure.Foundation.Llm;
 using Knowledge.Contracts.Dtos;
 using OpenTelemetry.Metrics;
@@ -40,13 +41,17 @@ builder.AddPlatformGrpcListener();
 // NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の標識。
 // 本サービスは内周なので判定はヘッダで行うが、**LLM を呼ぶ可否**（AllowLlmEgress）をここで受け取る。
 builder.Services.AddSyntheticMonitoring(builder.Configuration);
+// NFR-06, ADR-0052 決定 4, [[IADR-0602]] (#2105): 🔴 **下流（検索・LLM ゲートウェイ）の疎通は readiness に入れない**
+// （`dependencies` タグ・`/health/dependencies` で報告だけする）。本サービスは自前のデータストアを持たないので
+// readiness に載せる依存は無い。従前は `ready` タグで、検索か LLM ゲートウェイの停止で本サービスが NotReady になり、
+// それを BFF の readiness が拾って全画面が 503 へ連鎖していた。後段の不調は RAG の縮退（gRPC の UNAVAILABLE）で返す。
 builder.Services.AddPlatformHealthChecks()
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:RetrievalService"] ?? "http://retrieval-service:5003") + "/health/live"),
-        "retrieval-service", tags: ["ready"])
+        "retrieval-service", failureStatus: HealthStatus.Degraded, tags: [HealthCheckExtensions.DependenciesTag])
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007") + "/health/live"),
-        "llm-gateway", tags: ["ready"]);
+        "llm-gateway", failureStatus: HealthStatus.Degraded, tags: [HealthCheckExtensions.DependenciesTag]);
 builder.Services.AddOpenApi();
 
 // FR-03, FR-04, FR-05, FR-11, NFR-02, NFR-09, NFR-16, ADR-0029, ADR-0034 決定 1, ADR-0075, 計画 ADR-0086 決定 1,
@@ -84,6 +89,8 @@ var app = builder.Build();
 
 app.UsePlatformMiddleware();
 app.MapPlatformHealthChecks();
+// NFR-06, [[IADR-0602]] (#2105): 下流の疎通の報告口（probe ではない）。
+app.MapPlatformDependencyHealthChecks();
 app.MapPlatformIntrospection();
 app.MapOpenApi();
 

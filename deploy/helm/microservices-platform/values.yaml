@@ -635,13 +635,14 @@ services:
       clientId: aianalysis-service
       existingSecret: aianalysis-service-token
       clientSecretKey: client-secret
-    # FR-04, UC-01: 下流サービスの接続先（HTTP クライアント・readiness の UriHealthCheck）。
+    # FR-04, UC-01: 下流サービスの接続先（HTTP クライアント・依存の報告口 /health/dependencies の UriHealthCheck）。
+    # NFR-06 / IADR-0602 (#2105): 下流の疎通は readiness に入れない（下流の停止で本サービスを NotReady にしない）。
     # appsettings 既定はローカル用ポート（5003/5007）のため、k8s Service の実 DNS（:8080）へ上書きする。
     # llm-gateway の Service 名は llmgateway-service（chart のキー llmgateway 由来）である点に注意。
     extraEnv:
       # FR-13 / IADR-0089 / #958: ABAC の許可スコープ解決は gRPC 宛先（下の `Services__AuthorizationServiceGrpc`）だけである
       # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
-      # 下の 2 つ（RetrievalService・LlmGateway）は readiness の `/health/live` が読む（残す）。
+      # 下の 2 つ（RetrievalService・LlmGateway）は依存の報告口 `/health/dependencies` が `/health/live` を読む（残す）。
       - name: Services__RetrievalService
         value: "http://retrieval-service:8080"
       - name: Services__LlmGateway
@@ -1201,7 +1202,8 @@ services:
         value: "http://llmgateway-service:8081"
       - name: Introspection__Services__notification-service
         value: "http://notification-service:8081"
-      # FR-04/FR-08/FR-10, UC-01: BFF の下流集約先（Refit クライアント・readiness の UriHealthCheck）。
+      # FR-04/FR-08/FR-10, UC-01: BFF の下流集約先（Refit クライアント・依存の報告口 /health/dependencies の UriHealthCheck）。
+      # NFR-06 / IADR-0602 (#2105): 下流 4 サービスの疎通は readiness に入れない（1 つの停止で全画面を 503 にしない）。
       # appsettings 既定はローカル用ポート（5001-5009）のため、k8s Service の実 DNS（:8080）へ上書きする。
       - name: Services__RetrievalService
         value: "http://retrieval-service:8080"
