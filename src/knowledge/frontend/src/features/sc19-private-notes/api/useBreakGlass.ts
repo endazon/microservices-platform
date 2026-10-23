@@ -28,7 +28,7 @@ const AUDIT_LIMIT = 50;
 const auditParams = { limit: AUDIT_LIMIT };
 
 /** 残り 0 の後、サーバが失効を返すまで状態を引き直す間隔。 */
-export const EXPIRY_POLL_INTERVAL_MS = 5_000;
+const EXPIRY_POLL_INTERVAL_MS = 5_000;
 /** その上限（端末の時計がサーバより進んでいると、サーバはしばらく有効を返し続ける。無限には引かない）。 */
 export const EXPIRY_POLL_LIMIT_MS = 120_000;
 

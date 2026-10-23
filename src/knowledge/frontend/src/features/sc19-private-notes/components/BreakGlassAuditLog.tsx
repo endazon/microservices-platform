@@ -28,6 +28,7 @@ import {
   auditUsernamesOf,
   canOfferView,
   endedGrantIdsOf,
+  sameUser,
 } from '../types/breakGlass';
 
 // SC-19, SC-03, UC-11, FR-19, 計画 ADR-0036 D-08, planning#841 裁定 5・6, [[IADR-0612]] (#2046 の 3 本目):
@@ -87,8 +88,8 @@ function AuditTable({ notes, isAdmin }: { notes: PrivateNoteDto[]; isAdmin: bool
 
   function nameOf(username: string): string {
     return (
-      resolved.data?.find((u) => u.username.toLowerCase() === username.toLowerCase())
-        ?.displayName ?? (resolved.isPending ? t`読み込み中…` : t`（不明な利用者）`)
+      resolved.data?.find((u) => sameUser(u.username, username))?.displayName ??
+      (resolved.isPending ? t`読み込み中…` : t`（不明な利用者）`)
     );
   }
 

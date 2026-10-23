@@ -8,7 +8,7 @@ import type { BreakGlassAuditEntryDto } from '@foundation/api/generated/bff.sche
 export const REASON_MAX_LENGTH = 500;
 
 /** 理由の入力の状態。**空白だけは空と同じ**（後段も空白だけを 400 にする）。 */
-export type ReasonState = 'empty' | 'tooLong' | 'ok';
+type ReasonState = 'empty' | 'tooLong' | 'ok';
 
 export function reasonStateOf(reason: string): ReasonState {
   if (reason.trim() === '') return 'empty';
@@ -35,7 +35,7 @@ export function splitMinutesSeconds(seconds: number): { minutes: number; seconds
 }
 
 /** 監査ログの操作種別（契約の値集合 `activate` / `end` / `view`）。知らない値は `unknown`。 */
-export type AuditOperationKey = 'activate' | 'end' | 'view' | 'unknown';
+type AuditOperationKey = 'activate' | 'end' | 'view' | 'unknown';
 
 export function auditOperationKeyOf(operation: string): AuditOperationKey {
   return operation === 'activate' || operation === 'end' || operation === 'view'

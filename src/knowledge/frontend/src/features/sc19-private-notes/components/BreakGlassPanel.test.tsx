@@ -446,6 +446,17 @@ describe('SC-19 緊急アクセス: 有効中の表示と本人の早期終了',
     expect(screen.getByText(/残り 10 分 \d+ 秒/)).toBeInTheDocument();
   });
 
+  it('指名先の表示名は大小・前後の空白を無視して引き当てる（後段は小文字で保存する）', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    respond({ status: { active: grant({ nomineeUserId: ' Admin-Hanako ' }) } });
+    await renderPage();
+    await openPanel(user);
+    await selectTarget(user);
+
+    expect(await screen.findByText('花子 ハナコ')).toBeInTheDocument();
+    expect(screen.queryByText('（不明な利用者）')).not.toBeInTheDocument();
+  });
+
   it('本人は 15 分より前に終えられる（終了の口へ送り、完了を告げる）', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     respond({ status: { active: grant() } });

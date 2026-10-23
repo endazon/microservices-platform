@@ -15,7 +15,7 @@ import {
   useBreakGlassStatus,
 } from '../api/useBreakGlass';
 import { useNow } from '../hooks/useNow';
-import { remainingSeconds, splitMinutesSeconds } from '../types/breakGlass';
+import { remainingSeconds, sameUser, splitMinutesSeconds } from '../types/breakGlass';
 import { BreakGlassAuditLog } from './BreakGlassAuditLog';
 import { BreakGlassDialog } from './BreakGlassDialog';
 
@@ -57,7 +57,7 @@ function ActiveGrant({
   const expired = left === 0;
   const resolved = useResolvedUsers([grant.nomineeUserId]);
   const nomineeName =
-    resolved.data?.find((u) => u.username === grant.nomineeUserId)?.displayName ??
+    resolved.data?.find((u) => sameUser(u.username, grant.nomineeUserId))?.displayName ??
     (resolved.isPending ? t`読み込み中…` : t`（不明な利用者）`);
 
   // 残り 0 になったら状態を引き直し始める（失効を決めるのはサーバ側の記録である）。
