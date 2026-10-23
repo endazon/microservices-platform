@@ -13,6 +13,20 @@
 {{- /* NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: Vault（k8s auth）へ名乗るサービスには、対象者（audience）を秘匿管理に限った
        projected token を専用のパスへ置く。k8s API 用の既定のトークン（audience＝API サーバ）では名乗らない。 */}}
 {{- $vaultToken := and $svc.vault $svc.vault.address }}
+{{- /* NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（DB・ブローカ）への TLS。検証に使う CA（global.infraCa）を
+       /etc/platform-infra-ca へマウントする。検証を緩める形（Require 等の SSL Mode・名前の照合を外す等）は描かない。 */}}
+{{- $dbTls := and $svc.database $.Values.global.db.tls $.Values.global.db.tls.enabled }}
+{{- $mqTls := and $svc.messaging $.Values.global.messaging.tls $.Values.global.messaging.tls.enabled }}
+{{- $infraCaMount := or $dbTls $mqTls }}
+{{- if $infraCaMount }}
+{{- $ca := $.Values.global.infraCa | default dict }}
+{{- if or (not $ca.configMap) (not $ca.caKey) }}
+{{- fail "global.infraCa.configMap / caKey が要ります（global.db.tls / global.messaging.tls が有効なサービスはサーバ証明書を検証する。IADR-0591）。" }}
+{{- end }}
+{{- end }}
+{{- if and $mqTls (not $.Values.global.messaging.tls.port) }}
+{{- fail "global.messaging.tls.port が要ります（IADR-0591）。" }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -269,8 +283,9 @@ spec:
                 secretKeyRef:
                   name: {{ $.Values.global.db.existingSecret }}
                   key: {{ $.Values.global.db.passwordKey }}
+            # NFR-16, IADR-0591: TLS は VerifyFull（CA の検証と host の名前の照合）。CA は global.infraCa だけを信頼する。
             - name: ConnectionStrings__DefaultConnection
-              value: "Host={{ $.Values.global.db.host }};Port={{ $.Values.global.db.port }};Database={{ $svc.database }};Username={{ $.Values.global.db.user }};Password=$(DB_PASSWORD)"
+              value: "Host={{ $.Values.global.db.host }};Port={{ $.Values.global.db.port }};Database={{ $svc.database }};Username={{ $.Values.global.db.user }};Password=$(DB_PASSWORD){{ if $dbTls }};SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/{{ $.Values.global.infraCa.caKey }}{{ end }}"
           {{- end }}
           {{- if $svc.messaging }}
             # NFR, ADR-0027, #1022: ブローカ接続。**資格情報をイメージへ焼かない** —— appsettings.json は
@@ -290,8 +305,18 @@ spec:
                 secretKeyRef:
                   name: {{ $mq.credentialsSecretName }}
                   key: {{ printf "%s%s" $mq.usernamePrefix $name }}
+            {{- if $mqTls }}
+            # NFR-16, IADR-0591: amqps（TLS）。サーバ証明書の CA は信頼ストアへ足す（.NET は SSL_CERT_DIR の各ディレクトリの
+            # 証明書を読む。既定の /etc/ssl/certs を先に残すので、外部の公開 CA の検証は変わらない）。host の名前の照合は
+            # UsePlatformRabbitMq（共通ヘルパ）が外さない。
+            - name: RabbitMq__ConnectionString
+              value: {{ printf "amqps://%s%s:$(RABBITMQ_PASSWORD)@%s:%v" $mq.usernamePrefix $name $mq.host $mq.tls.port | quote }}
+            - name: SSL_CERT_DIR
+              value: "/etc/ssl/certs:/etc/platform-infra-ca"
+            {{- else }}
             - name: RabbitMq__ConnectionString
               value: {{ printf "amqp://%s%s:$(RABBITMQ_PASSWORD)@%s:%v" $mq.usernamePrefix $name $mq.host $mq.port | quote }}
+            {{- end }}
           {{- end }}
           {{- range $svc.extraEnv }}
             - name: {{ .name }}
@@ -480,7 +505,7 @@ spec:
           {{- end }}
           resources:
             {{- toYaml $svc.resources | nindent 12 }}
-          {{- if or $pipelineMount $vaultToken }}
+          {{- if or $pipelineMount $vaultToken $infraCaMount }}
           volumeMounts:
             {{- if $pipelineMount }}
             - name: pipeline-config
@@ -492,8 +517,13 @@ spec:
               mountPath: /var/run/secrets/vault
               readOnly: true
             {{- end }}
+            {{- if $infraCaMount }}
+            - name: platform-infra-ca
+              mountPath: /etc/platform-infra-ca
+              readOnly: true
+            {{- end }}
           {{- end }}
-      {{- if or $pipelineMount $vaultToken }}
+      {{- if or $pipelineMount $vaultToken $infraCaMount }}
       volumes:
         {{- if $pipelineMount }}
         - name: pipeline-config
@@ -509,6 +539,15 @@ spec:
                   path: token
                   audience: vault
                   expirationSeconds: 600
+        {{- end }}
+        {{- if $infraCaMount }}
+        # NFR-16, IADR-0591: 基盤の CA（公開の証明書だけ。非 optional）。キーは 1 つだけ写す（ディレクトリに他の物を置かない）。
+        - name: platform-infra-ca
+          configMap:
+            name: {{ $.Values.global.infraCa.configMap }}
+            items:
+              - key: {{ $.Values.global.infraCa.caKey }}
+                path: {{ $.Values.global.infraCa.caKey }}
         {{- end }}
       {{- end }}
 {{- end }}

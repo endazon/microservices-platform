@@ -1,3 +1,4 @@
+using System.Net.Security;
 using System.Reflection;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.Extensions.DependencyInjection;
@@ -166,6 +167,31 @@ public static class WolverineExtensions
     // exchange 名の単一情報源。**メッセージ型名そのもの**であり、前置も接尾も付けない。
     // 発行側と購読側が同じ値を導くことが要点であり、値そのものに意味は無い。
     public static string PlatformExchangeName<TEvent>() => typeof(TEvent).Name;
+
+    // NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: ブローカへの接続（RabbitMq:ConnectionString）。各サービスは
+    // `UseRabbitMq(new Uri(...))` ではなくこれを使う。
+    //
+    // 🔴 **RabbitMQ.Client は amqps の URI を受けると、サーバ証明書の名前の不一致を既定で受け入れる**
+    // （`ConnectionFactory.Uri` の setter が `Ssl.AcceptablePolicyErrors = RemoteCertificateNameMismatch` を入れる。
+    // RabbitMQ.Client 7.1.2 ＋ WolverineFx.RabbitMQ 6.24.4 で実測）。CA の検証は効くが、同じ CA が発行した別の名前の
+    // 証明書で受けた相手を拒めない。ここで「受け入れてよい誤り」を空に戻し、CA の検証と名前の照合の両方を求める。
+    // 平文（amqp）のときは TLS を使わないので何も変えない。
+    public static RabbitMqTransportExpression UsePlatformRabbitMq(this WolverineOptions options, string connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+
+        var uri = new Uri(connectionString);
+        return options.UseRabbitMq(factory =>
+        {
+            factory.Uri = uri;
+            if (factory.Ssl.Enabled)
+            {
+                factory.Ssl.AcceptablePolicyErrors = SslPolicyErrors.None;
+                factory.Ssl.ServerName = uri.Host;
+            }
+        });
+    }
 
     // 手順 4・5: 全サービス共通のメッセージング既定値。各サービスの UseWolverine 内で 1 回呼ぶ。
     public static WolverineOptions UsePlatformMessagingDefaults(this WolverineOptions options)

@@ -78,10 +78,12 @@ networkPolicy:
         ports: [5432]
         from: [authorization-service, conversion-service, dashboard-service, document-service, feedback-service, graph-service, mcp-service, notification-service, wiki-service]
       # ブローカ（services.<名>.messaging: true のもの。rabbitmq-ingress-clients と同じ集合）。
+      # NFR-16, IADR-0591: MSP のサービスは TLS の口（5671・global.messaging.tls.port）だけで繋ぐ。平文の 5672 は開けない
+      #   （global.messaging.tls.enabled=false へ切り戻すときは、ここも 5672 へ戻す）。
       - name: rabbitmq
         namespace: platform-infra
         podLabels: { app: rabbitmq }
-        ports: [5672]
+        ports: [5671]
         from: [conversion-service, document-service, graph-service, ingestion-service, retrieval-service, wiki-service]
       # 認可サーバ（OIDC の metadata・JWKS・サービスの token・管理 API）。.NET のサービスすべて。
       - name: keycloak

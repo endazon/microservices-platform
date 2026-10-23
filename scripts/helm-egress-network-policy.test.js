@@ -338,7 +338,9 @@ function localCases(text, { mesh = false } = {}) {
     cases.push({ who: `${a} → 同じ名前空間`, srcApp: a, ...SAME_NS('bff-service', 8080), want: 'allow' });
     cases.push({ who: `${a} → istiod`, srcApp: a, ...ISTIOD, want: mesh ? 'allow' : 'deny' });
     cases.push({ who: `${a} → postgres 5432`, srcApp: a, ...INFRA('postgres', 5432), want: env.has(DB_ENV) ? 'allow' : 'deny' });
-    cases.push({ who: `${a} → rabbitmq 5672`, srcApp: a, ...INFRA('rabbitmq', 5672), want: env.has(MQ_ENV) ? 'allow' : 'deny' });
+    // NFR-16, IADR-0591: ブローカへは TLS の口（5671）だけ。平文の 5672 はどの送り元にも開けない。
+    cases.push({ who: `${a} → rabbitmq 5671（TLS）`, srcApp: a, ...INFRA('rabbitmq', 5671), want: env.has(MQ_ENV) ? 'allow' : 'deny' });
+    cases.push({ who: `🔴 ${a} → rabbitmq 5672（平文）`, srcApp: a, ...INFRA('rabbitmq', 5672), want: 'deny' });
     cases.push({ who: `${a} → keycloak 8080`, srcApp: a, ...INFRA('keycloak', 8080), want: env.has(OTLP_ENV) ? 'allow' : 'deny' });
     cases.push({ who: `${a} → otel-collector 4317`, srcApp: a, ...INFRA('otel-collector', 4317), want: env.has(OTLP_ENV) ? 'allow' : 'deny' });
     const q = qdrantUsers().includes(a) ? 'allow' : 'deny';

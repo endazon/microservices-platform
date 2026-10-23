@@ -13696,6 +13696,8 @@ exit $RC
       // IADR-0590: メッシュの mTLS の門も「ほかの門」に入る。ISTIO が 1 でない比較実行でも skipped にしない
       //   （t25-rerun-on-chance-red.js は「🔴 Gate」の手順すべての success を要求する）ので、if: は stack-ready だけに依る。
       const MESH_GATE = stepOf('🔴 Gate — メッシュの mTLS が STRICT で効いている');
+      // IADR-0591: 基盤への接続の TLS の門も「ほかの門」に入る（ISTIO の有無によらず測る）。
+      const INFRA_TLS_GATE = stepOf('🔴 Gate — 基盤への接続が TLS で効いている');
       const CAND = stepOf(rerunScript.CANDIDATE_STEP);
       const DUMP = stepOf('Dump cluster state');
 
@@ -13703,10 +13705,12 @@ exit $RC
       assert.strictEqual(CAND.name, rerunScript.CANDIDATE_STEP, '手順名が CANDIDATE_STEP と違う（再実行の script が候補を見つけられない）');
       assert.strictEqual(RESET.id, 'reset-mail', 'パスワードリセットの門の id が reset-mail でない（出力を読めない）');
       assert.strictEqual(RESET.cond, null, `パスワードリセットの門に if: が付いた: ${RESET.cond}`);
-      for (const s of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, EGRESS_GATE, MESH_GATE, LOGIN_GATE]) assert.ok(s.id, `${s.name} に id が無い`);
+      for (const s of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, EGRESS_GATE, MESH_GATE, INFRA_TLS_GATE, LOGIN_GATE]) assert.ok(s.id, `${s.name} に id が無い`);
       assert.ok(MCP_GATE.at < LOGIN_GATE.at, 'SC-12 の書き込みの門がログイン経路の門の後にある（ログイン経路の門を最後に置く統制）');
       assert.ok(EGRESS_GATE.at < LOGIN_GATE.at, '外向き通信の門がログイン経路の門の後にある（ログイン経路の門を最後に置く統制）');
       assert.ok(MESH_GATE.at < LOGIN_GATE.at, 'メッシュの mTLS の門がログイン経路の門の後にある（ログイン経路の門を最後に置く統制）');
+      assert.ok(INFRA_TLS_GATE.at < LOGIN_GATE.at, '基盤の TLS の門がログイン経路の門の後にある（ログイン経路の門を最後に置く統制）');
+      assert.ok(!/ISTIO/.test(INFRA_TLS_GATE.cond || ''), `基盤の TLS の門の if: が ISTIO に依る: ${INFRA_TLS_GATE.cond}`);
       assert.ok(!/ISTIO/.test(MESH_GATE.cond || ''), `メッシュの mTLS の門の if: が ISTIO に依る（比較実行で skipped になり、偶然の赤の確かめが走らない）: ${MESH_GATE.cond}`);
       assert.ok(CAND.at > LOGIN_GATE.at && CAND.at < DUMP.at, '「T-25 only red」がログイン経路の門の後・診断の前に無い（後段の結果を見られない）');
       assert.ok(CAND.cond, '「T-25 only red」に if: が無い（既定 success() では赤の run で走らない）');
@@ -13724,7 +13728,8 @@ exit $RC
       };
       const allGreen = {
         [STACK.id]: 'success', [RESET.id]: 'failure', [SEED_ABAC.id]: 'success', [SEED_SEARCH.id]: 'success',
-        [ABAC_GATE.id]: 'success', [MCP_GATE.id]: 'success', [EGRESS_GATE.id]: 'success', [MESH_GATE.id]: 'success', [LOGIN_GATE.id]: 'success',
+        [ABAC_GATE.id]: 'success', [MCP_GATE.id]: 'success', [EGRESS_GATE.id]: 'success', [MESH_GATE.id]: 'success', [INFRA_TLS_GATE.id]: 'success',
+        [LOGIN_GATE.id]: 'success',
       };
       const onlyRed = { [RESET.id]: { t25_only_red: 'true', t25_p: '0.0094', t25_w: '713' } };
 
@@ -13735,7 +13740,7 @@ exit $RC
       // 場面 3: 出力が無い（検査器が古い・前提で落ちた）→ 走らない（fail-closed）
       assert.strictEqual(run({ outcomes: allGreen, outputs: {} }), false, '出力が無くても候補になる');
       // 場面 4: 🔴 ほかの門・投入のどれか 1 つが赤または飛ばされた → 走らない
-      for (const other of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, EGRESS_GATE, MESH_GATE, LOGIN_GATE]) {
+      for (const other of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, EGRESS_GATE, MESH_GATE, INFRA_TLS_GATE, LOGIN_GATE]) {
         for (const outcome of ['failure', 'skipped', 'cancelled']) {
           assert.strictEqual(run({ outcomes: { ...allGreen, [other.id]: outcome }, outputs: onlyRed }), false,
             `${other.name} が ${outcome} なのに候補になる（ほかの門の赤を偶然の赤として再実行する）`);
@@ -18092,6 +18097,73 @@ server.listen(0, '127.0.0.1', async () => {
         assert.strictEqual(r[3], 'ai-stock-trading/rabbitmq-users', `${r[0]} の KV が違う`);
       }
       assert.strictEqual(rows.length, of('microservices-platform').length + of('ai-stock-trading').length, '名前空間が 2 つの外の行がある');
+    });
+
+    // NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（DB・ブローカ）への TLS の 3 経路（経路B・helm・compose）の整合。
+    ok('IADR-0591: compose のブローカの TLS 設定（deploy/rabbitmq/20-tls.conf）は経路B の ConfigMap rabbitmq-tls と同じ内容', () => {
+      const y = readR('deploy/local/infra/rabbitmq.yaml');
+      const m = /\n {2}20-tls\.conf: \|\n((?: {4}.*\n)+)/.exec(y);
+      assert.ok(m, 'rabbitmq.yaml の ConfigMap rabbitmq-tls に 20-tls.conf が無い');
+      const k8s = m[1].split('\n').map((l) => l.slice(4)).filter((l) => l.trim());
+      const compose = readR('deploy/rabbitmq/20-tls.conf').split('\n').filter((l) => l.trim() && !l.startsWith('#'));
+      assert.deepStrictEqual(compose, k8s);
+      assert.ok(k8s.includes('listeners.ssl.default = 5671'), 'TLS の受け口が無い（読めていない）');
+    });
+
+    ok('IADR-0591: compose の基盤のクライアントは検証つきの TLS で繋ぎ、CA をマウントする（AST のサービスは段 1 の平文）', () => {
+      const y = readR('deploy/docker-compose.yml');
+      const blocks = {};
+      let cur = null;
+      for (const l of y.split('\n')) {
+        const h = /^ {2}([a-z0-9-]+):\s*$/.exec(l);
+        if (h) { cur = h[1]; blocks[cur] = []; continue; }
+        if (/^\S/.test(l)) cur = null;
+        if (cur) blocks[cur].push(l);
+      }
+      const ast = ['configuration-service', 'risk-management-service', 'market-monitor-service'];
+      const tlsDb = ';SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt';
+      let dbClients = 0;
+      let mqClients = 0;
+      for (const [svc, lines] of Object.entries(blocks)) {
+        const text = lines.join('\n');
+        const db = /ConnectionStrings__DefaultConnection: (.*)$/m.exec(text);
+        const usesMq = /^\s+<<: \[.*\*rabbit-env(?![\w-])/m.test(text);
+        if (!db && !usesMq) continue;
+        if (ast.includes(svc)) {
+          assert.ok(!db || !db[1].includes('VerifyFull'), `${svc}: AST のサービスを段 1 で切り替えた（AST の移行は別の段）`);
+          assert.ok(!usesMq, `${svc}: AST のサービスが TLS のブローカ接続（*rabbit-env）を使う（*rabbit-env-ast-plain のはず）`);
+          continue;
+        }
+        if (db) { dbClients++; assert.ok(db[1].endsWith(tlsDb), `${svc}: DB の接続が VerifyFull ＋ 基盤の CA でない: ${db[1]}`); }
+        if (usesMq) mqClients++;
+        assert.match(text, /^ {4}volumes: \*infra-ca-volumes$/m, `${svc}: 基盤の CA をマウントしない`);
+      }
+      assert.ok(dbClients >= 10 && mqClients >= 7, `読めていない（DB ${dbClients} / MQ ${mqClients}）`);
+      assert.match(y, /^x-rabbit-env: &rabbit-env\n {2}RabbitMq__ConnectionString: amqps:\/\/\S+@rabbitmq:5671\n {2}SSL_CERT_DIR: \/etc\/ssl\/certs:\/etc\/platform-infra-ca$/m);
+    });
+
+    ok('IADR-0591: 配備の宣言に検証を緩める接続の形が無い（Trust Server Certificate・SSL Mode=Require/Prefer/Allow・sslmode=require 等）', () => {
+      const files = ['deploy/docker-compose.yml', 'deploy/local/values-local.yaml', 'deploy/helm/microservices-platform/values.yaml',
+        'deploy/helm/microservices-platform/templates/deployment.yaml'];
+      const weak = /Trust\s*Server\s*Certificate\s*=\s*true|SSL\s*Mode\s*=\s*(Require|Prefer|Allow)\b|sslmode=(require|prefer|allow)\b|verify_none/i;
+      for (const f of files) {
+        readR(f).split('\n').forEach((l, i) => {
+          if (/^\s*#/.test(l)) return;
+          assert.ok(!weak.test(l), `${f}:${i + 1}: 検証を緩める形: ${l.trim()}`);
+        });
+      }
+    });
+
+    ok('IADR-0591: 基盤のサービスはブローカへ UsePlatformRabbitMq で繋ぐ（素の UseRabbitMq(Uri) は amqps で名前の不一致を受け入れる）', () => {
+      const dir = 'src/knowledge/backend/Services';
+      const programs = fsR.readdirSync(pathR.join(ROOT_R, dir)).map((s) => `${dir}/${s}/Program.cs`).filter((p) => fsR.existsSync(pathR.join(ROOT_R, p)));
+      let users = 0;
+      for (const p of programs) {
+        const src = readR(p);
+        assert.ok(!/\.UseRabbitMq\s*\(/.test(src), `${p}: 素の UseRabbitMq を呼んでいる（UsePlatformRabbitMq を使う）`);
+        if (/\.UsePlatformRabbitMq\s*\(/.test(src)) users++;
+      }
+      assert.ok(users >= 7, `UsePlatformRabbitMq の呼び出しを読めない（${users} 件）`);
     });
 
     // IADR-0577（2026-10-22 追記）: ESO の無い経路で基盤の起動器が作る取引ユニットの消費側の Secret（名前）と、取引ユニットの

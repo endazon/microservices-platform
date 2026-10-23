@@ -73,9 +73,44 @@ spec:
     metadata:
       labels: { app: postgres }
     spec:
+      # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: サーバ証明書（cert-manager の Secret postgres-tls。deploy/local/infra-tls）を
+      #   postgres の利用者（uid 70）だけが読める形へ写す。postgres は鍵が自分の所有で 0600（または root の所有で 0640 以下）で
+      #   なければ起動しない。Secret のボリュームは root の所有になるので、そのままでは渡せない（fsGroup はデータの
+      #   ボリュームの権限まで変えるので使わない）。
+      initContainers:
+        - name: tls-files
+          image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              cp /tls-src/tls.crt /tls/tls.crt
+              cp /tls-src/tls.key /tls/tls.key
+              chown 70:70 /tls/tls.crt /tls/tls.key
+              chmod 0644 /tls/tls.crt
+              chmod 0600 /tls/tls.key
+          volumeMounts:
+            - { name: tls-src, mountPath: /tls-src, readOnly: true }
+            - { name: tls, mountPath: /tls }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
       containers:
         - name: postgres
           image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+          # NFR-16, IADR-0591: TLS を受ける（TLS 1.2 以上）。段 1 は平文の接続も受ける（pg_hba は既定の host のまま）——
+          #   取引ユニット（AST）と基盤の他のクライアント（Keycloak・Wiki.js・バックアップ）が TLS へ切り替えるまでの併存である。
+          #   平文を閉じる（hostssl だけにする）のは全クライアントの切り替えを確かめた後の段（IADR-0591 の段の表）。
+          args:
+            - -c
+            - ssl=on
+            - -c
+            - ssl_cert_file=/etc/postgres-tls/tls.crt
+            - -c
+            - ssl_key_file=/etc/postgres-tls/tls.key
+            - -c
+            - ssl_min_protocol_version=TLSv1.2
           env:
             - name: POSTGRES_USER
               value: postgres
@@ -93,6 +128,9 @@ spec:
               mountPath: /var/lib/postgresql/data
             - name: init
               mountPath: /docker-entrypoint-initdb.d
+            - name: tls
+              mountPath: /etc/postgres-tls
+              readOnly: true
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "postgres"]
@@ -108,6 +146,16 @@ spec:
           configMap:
             name: postgres-init
             defaultMode: 0755
+        # IADR-0591: 証明書の Secret（非 optional。無ければ Pod は立たない＝平文だけで黙って立たない）と、その写し。
+        #   🔴 data（volumes[0]）と init（volumes[1]）の位置を変えない（deploy/local/infra-persistence が添字で差し替える）。
+        - name: tls-src
+          secret:
+            secretName: postgres-tls
+            defaultMode: 0400
+        - name: tls
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
 ---
 apiVersion: v1
 kind: Service

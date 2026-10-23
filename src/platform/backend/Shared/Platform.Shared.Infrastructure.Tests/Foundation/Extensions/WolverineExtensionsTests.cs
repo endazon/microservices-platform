@@ -1,3 +1,4 @@
+using System.Net.Security;
 using System.Reflection;
 using AwesomeAssertions;
 using JasperFx.CodeGeneration.Model;
@@ -6,6 +7,7 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
+using Wolverine.RabbitMQ.Internal;
 
 namespace Platform.Shared.Infrastructure.Tests.Foundation.Extensions;
 
@@ -451,5 +453,55 @@ public class WolverineExtensionsTests
     {
         WolverineExtensions.PlatformStepQueueName<ProbeEvent>(ProbeStep(enabled: true, queue)).Should().Be(expected);
         WolverineExtensions.PlatformStepQueueName<ProbeEvent>(null).Should().Be(nameof(ProbeEvent));
+    }
+
+    // NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: ブローカへの TLS は CA の検証と名前の照合の両方を求める。
+    private static RabbitMQ.Client.ConnectionFactory FactoryOf(WolverineOptions options) =>
+        options.Transports.OfType<RabbitMqTransport>().Single().ConnectionFactory
+        ?? throw new InvalidOperationException("RabbitMqTransport.ConnectionFactory が null です（Wolverine の版更新で観測点が変わった可能性があります）。");
+
+    [Fact]
+    public void ブローカTLS_前提_素のUseRabbitMqはamqpsで名前の不一致を受け入れる()
+    {
+        // 変異が当たることの前提条件。既定が既に None なら下の試験は何も証明しない（共通ヘルパを使う理由そのもの）。
+        var options = new WolverineOptions();
+        options.UseRabbitMq(new Uri("amqps://msp-document:x@rabbitmq:5671"));
+
+        FactoryOf(options).Ssl.AcceptablePolicyErrors.Should().Be(SslPolicyErrors.RemoteCertificateNameMismatch);
+    }
+
+    [Fact]
+    public void ブローカTLS_共通ヘルパはamqpsで受け入れてよい誤りを空にし名前を照合する()
+    {
+        var options = new WolverineOptions();
+        options.UsePlatformRabbitMq("amqps://msp-document:x@rabbitmq:5671");
+
+        var factory = FactoryOf(options);
+        factory.Ssl.Enabled.Should().BeTrue();
+        factory.Ssl.AcceptablePolicyErrors.Should().Be(SslPolicyErrors.None);
+        factory.Ssl.ServerName.Should().Be("rabbitmq");
+        factory.Port.Should().Be(5671);
+        factory.UserName.Should().Be("msp-document");
+    }
+
+    [Fact]
+    public void ブローカTLS_共通ヘルパは平文のamqpではTLSを使わない()
+    {
+        var options = new WolverineOptions();
+        options.UsePlatformRabbitMq("amqp://msp-document:x@rabbitmq:5672");
+
+        var factory = FactoryOf(options);
+        factory.Ssl.Enabled.Should().BeFalse();
+        factory.Port.Should().Be(5672);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void ブローカTLS_共通ヘルパは空の接続文字列を受けない(string connectionString)
+    {
+        var act = () => new WolverineOptions().UsePlatformRabbitMq(connectionString);
+
+        act.Should().Throw<ArgumentException>();
     }
 }
