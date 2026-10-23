@@ -668,3 +668,4 @@
 | [IADR-0588](./IADR-0588_bff-externalsecret-force-sync-only-admission.md) | BFF の SA が ExternalSecret に対して通せる更新を、ValidatingAdmissionPolicy（Fail・Deny）で force-sync の注釈（数字）の変更だけに限る。spec・status・labels・他の注釈・finalizers 等の変更と作成・削除・サブリソースは拒否し、BFF 以外の主体には当てない（GHSA-j4qv-2w99-xg5p） | Accepted |
 | [IADR-0589](./IADR-0589_egress-default-deny-network-policy.md) | 外向き通信（egress）は NetworkPolicy で既定拒否し、DNS は kube-dns の Pod だけ・別の名前空間の宛先は名前空間 × Pod ラベル × ポートで 1 件ずつ許す。本番像は名前空間の全 Pod、経路 B は外へ出ない Pod から段階的に当てる（GHSA-j4qv-2w99-xg5p） | Accepted |
 | [IADR-0590](./IADR-0590_mesh-mtls-strict-by-default.md) | 経路B でメッシュを入れたときの mTLS の既定を STRICT にする。引き継いだ PERMISSIVE は上げずに毎回告げ、受信の例外はバックチャネルログアウトの 1 本に限り、AST の名前空間が注入されていなければ告げ、稼働の効きは統合スタックの門で測る（GHSA-j4qv-2w99-xg5p） | Accepted |
+| [IADR-0591](./IADR-0591_platform-infra-tls-stage1.md) | 基盤（platform-infra）との通信を TLS にする段 1。postgres・rabbitmq は基盤専用 CA の証明書で TLS を受けて平文と併存し、基盤のサービスは CA と名前を検証して繋ぐ。取引ユニットの切り替えと平文の閉鎖は後の段（GHSA-j4qv-2w99-xg5p） | Accepted |

@@ -608,6 +608,70 @@ if [ -n "${BACKUP_AGE_RECIPIENTS_FILE:-}" ]; then
     --dry-run=client -o yaml | kubectl apply -f -
 fi
 
+# IADR-0206 (#779) → IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: cert-manager の導入。従来は LOCALEDGE=1 の段だけが呼んだが、
+#   基盤（platform-infra）のサーバ証明書が既定で要るようになったので [4/7] の先頭でも呼ぶ（2 回目以降は何もしない）。
+# --server-side は大 CRD の annotation 262144B 上限を避けるため（IADR-0088 が ArgoCD で是正した先例）。
+# 順序が要る: CRD が Established になる前に Certificate を apply すると "no matches for kind Certificate" で落ちる。
+# バージョンは固定する（IADR-0088: 浮動タグは再デプロイのたびに中身が変わり得る）。
+# ［2026-10-15 / #1858・IADR-0547］release の URL と内側の 3 イメージの digest は kustomization が持つ
+#   （kustomize の images 置換）。版は冒頭の pin_version が決め、CERT_MANAGER_VERSION は同じ値しか受けない。
+CERT_MANAGER_READY=""
+install_cert_manager() {
+  [ -n "$CERT_MANAGER_READY" ] && return 0
+  echo "    -> cert-manager ${CERT_MANAGER_VERSION} (基盤 TLS・エッジ TLS。IADR-0591 / IADR-0206・digest は IADR-0547)"
+  kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager
+  kubectl wait --for=condition=Established --timeout=120s \
+    crd/certificates.cert-manager.io crd/clusterissuers.cert-manager.io
+  kubectl -n cert-manager rollout status deploy/cert-manager --timeout=180s
+  kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
+  CERT_MANAGER_READY=1
+}
+
+# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤のサーバ証明書（postgres-tls / rabbitmq-tls）を発行する。
+#   postgres / rabbitmq の Pod は証明書の Secret を非 optional でマウントするので、基盤の apply より**前**に Ready を待つ。
+#   失敗したら止める（平文だけの基盤を黙って立てない）。
+INFRA_CA_CONFIGMAP="platform-infra-ca"
+apply_infra_tls() {
+  install_cert_manager
+  echo "    -> 基盤のサーバ証明書（deploy/local/infra-tls。IADR-0591）"
+  local attempt applied=""
+  # webhook が Ready でも数秒は TLS ハンドシェイクを拒むことがあるため、apply は数回試す（冪等）。
+  for attempt in 1 2 3 4 5; do
+    if kubectl apply -k deploy/local/infra-tls; then applied=1; break; fi
+    echo "    WARN: infra-tls overlay の apply に失敗（cert-manager webhook 待ち・試行 ${attempt}/5）" >&2
+    sleep 5
+  done
+  if [ -z "$applied" ]; then
+    echo "ERROR: 基盤のサーバ証明書（deploy/local/infra-tls）を当てられない。平文だけの基盤は立てない（IADR-0591）。" >&2
+    exit 1
+  fi
+  kubectl -n cert-manager wait --for=condition=Ready --timeout=120s certificate/platform-infra-root-ca
+  kubectl -n "$INFRA_NS" wait --for=condition=Ready --timeout=120s certificate/postgres-tls certificate/rabbitmq-tls
+}
+
+# IADR-0591: 基盤の CA（cert-manager/platform-infra-root-ca の ca.crt。公開してよい証明書だけで、鍵は写さない）を、
+#   クライアントが居る名前空間へ ConfigMap platform-infra-ca として写す。helm の各サービスが /etc/platform-infra-ca へマウントし、
+#   接続の検証（DB は Root Certificate、ブローカは信頼ストアへの追加）に使う。毎回上書きする（CA を作り直したら追随する）。
+#   読めなければ止める —— 無いまま進むと、検証つきの接続が全サービスで失敗する。
+publish_infra_ca() { # <namespace>
+  local ns="$1" pem
+  pem="$(kubectl -n cert-manager get secret platform-infra-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d)" || pem=""
+  case "$pem" in
+    *"BEGIN CERTIFICATE"*) ;;
+    *)
+      echo "ERROR: cert-manager/platform-infra-root-ca の ca.crt を読めない。$ns/$INFRA_CA_CONFIGMAP を作れない（IADR-0591）。" >&2
+      exit 1
+      ;;
+  esac
+  kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  local f
+  f="$(mktemp)"
+  printf '%s\n' "$pem" > "$f"
+  kubectl create configmap "$INFRA_CA_CONFIGMAP" -n "$ns" --from-file=ca.crt="$f" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  rm -f "$f"
+}
+
 echo "==> [4/7] apply in-cluster infra"
 # IADR-0082 (#324) / IADR-0210 (#787) → IADR-0369 (#1088): 永続化オーバーレイ（Keycloak/Postgres/Qdrant を
 # local-path PVC 化）は **既定オン**である。opt-out は `PERSIST=0`（使い捨てスタック専用）。
@@ -630,6 +694,7 @@ else
   fi
   echo "    [PERSIST 既定] Keycloak(realm+runtime state)/Postgres/Qdrant(embeddings) を PVC 永続化（local-path）"
 fi
+apply_infra_tls
 kubectl apply -k "$INFRA_KUSTOMIZE"
 # NFR-18, ADR-0131, IADR-0522 (#1839): 旧 Redis（認証なし）を消す。kustomize の apply は宣言から消えたリソースを
 # 刈らないので、ここで消さないと既存クラスタに**認証なしのストアが残り続ける**（基準 D の穴が塞がらない）。
@@ -705,6 +770,10 @@ if [ "${ISTIO:-}" = "1" ] || [ "$msp_injection" = "enabled" ] || [ "$msp_injecti
 else
   kubectl label namespace "$MSP_NS" pod-security.kubernetes.io/enforce=baseline pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted --overwrite
 fi
+# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤の CA を、基盤へ繋ぐクライアントの名前空間へ写す（helm の [6/7] より前）。
+#   AST の名前空間にも置く（取引ユニットの chart が TLS へ切り替える段で読む。置くだけで、AST の接続は変えない）。
+publish_infra_ca "$MSP_NS"
+publish_infra_ca "$AST_NS"
 # ［IADR-0461 決定 5 / #1499］MinIO Console の OIDC client secret（minio-oidc。IADR-0093）の作成はここにあったが
 # 撤去した。オブジェクトストレージは SeaweedFS へ差し替え、管理 Console を持たない（ADR-0106 決定 6）。
 # NFR, SC-13, ADR-0026/ADR-0032, IADR-0251/IADR-0273/IADR-0316 (#1107): BFF セッション（Token Handler）の
@@ -1611,19 +1680,10 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
     admin_edge_traefik
   fi
 
-  # IADR-0206 (#779): エッジ TLS 終端。cert-manager を導入し、selfsigned→CA の 2 段で
+  # IADR-0206 (#779): エッジ TLS 終端。selfsigned→CA の 2 段で
   # ルート CA（Secret cert-manager/local-edge-root-ca）と葉証明書（Secret edge-tls）を作る。
-  # --server-side は大 CRD の annotation 262144B 上限を避けるため（IADR-0088 が ArgoCD で是正した先例）。
-  # 順序が要る: CRD が Established になる前に tls/ を apply すると "no matches for kind Certificate" で落ちる。
-  # バージョンは固定する（IADR-0088: 浮動タグは再デプロイのたびに中身が変わり得る）。
-  # ［2026-10-15 / #1858・IADR-0547］release の URL と内側の 3 イメージの digest は kustomization が持つ
-  #   （kustomize の images 置換）。版は冒頭の pin_version が決め、CERT_MANAGER_VERSION は同じ値しか受けない。
-  echo "    -> cert-manager ${CERT_MANAGER_VERSION} (edge TLS, IADR-0206・digest は IADR-0547)"
-  kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager
-  kubectl wait --for=condition=Established --timeout=120s \
-    crd/certificates.cert-manager.io crd/clusterissuers.cert-manager.io
-  kubectl -n cert-manager rollout status deploy/cert-manager --timeout=180s
-  kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
+  # cert-manager 自体は [4/7] の基盤の証明書（IADR-0591）のために導入済み（install_cert_manager は 2 回目以降は何もしない）。
+  install_cert_manager
   # webhook が Ready でも数秒は TLS ハンドシェイクを拒むことがあるため、apply は数回試す（冪等）。
   for attempt in 1 2 3 4 5; do
     kubectl apply -k deploy/local/edge/tls && break

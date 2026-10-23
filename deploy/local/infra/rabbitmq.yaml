@@ -20,6 +20,28 @@ spec:
     metadata:
       labels: { app: rabbitmq }
     spec:
+      # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: サーバ証明書（cert-manager の Secret rabbitmq-tls。deploy/local/infra-tls）を
+      #   ブローカの利用者（uid 100 / gid 101）だけが読める形へ写す（Secret のボリュームは root の所有になる）。
+      initContainers:
+        - name: tls-files
+          image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              cp /tls-src/ca.crt /tls/ca.crt
+              cp /tls-src/tls.crt /tls/tls.crt
+              cp /tls-src/tls.key /tls/tls.key
+              chown 100:101 /tls/ca.crt /tls/tls.crt /tls/tls.key
+              chmod 0644 /tls/ca.crt /tls/tls.crt
+              chmod 0400 /tls/tls.key
+          volumeMounts:
+            - { name: tls-src, mountPath: /tls-src, readOnly: true }
+            - { name: tls, mountPath: /tls }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
       containers:
         - name: rabbitmq
           image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
@@ -34,8 +56,12 @@ spec:
                 secretKeyRef:
                   name: rabbitmq
                   key: password
+          # NFR-16, IADR-0591: 5671 で TLS を受ける（設定は ConfigMap rabbitmq-tls の 20-tls.conf）。段 1 は 5672（平文）も残す ——
+          #   取引ユニット（AST）の Worker が 5671 へ切り替えるまでの併存である。5672 を閉じるのは全クライアントの切り替えを
+          #   確かめた後の段（IADR-0591 の段の表）。
           ports:
             - { containerPort: 5672, name: amqp }
+            - { containerPort: 5671, name: amqps }
             - { containerPort: 15672, name: management }
           # NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q）: ブローカは永続化していない（再起動のたびに空から立つ）。
           #   起動の直後にサービスごとのユーザーを Secret `rabbitmq-users` から作り直し、無効化の印があれば既定のユーザーを消す。
@@ -49,6 +75,9 @@ spec:
             - { name: boot, mountPath: /opt/rabbitmq-boot, readOnly: true }
             - { name: users, mountPath: /etc/rabbitmq-users, readOnly: true }
             - { name: default-user-flag, mountPath: /etc/rabbitmq-default-user, readOnly: true }
+            # IADR-0591: conf.d へ 1 ファイルだけ足す（subPath。イメージの 10-defaults.conf を隠さない）。
+            - { name: tls-conf, mountPath: /etc/rabbitmq/conf.d/20-tls.conf, subPath: 20-tls.conf, readOnly: true }
+            - { name: tls, mountPath: /etc/rabbitmq-tls, readOnly: true }
           readinessProbe:
             exec:
               command: ["rabbitmq-diagnostics", "-q", "ping"]
@@ -67,6 +96,36 @@ spec:
         # 既定のユーザーの無効化の印（deploy/local/rabbitmq-setup/disable-default-user.sh が、全サービスの切り替えを確かめてから作る）。
         - name: default-user-flag
           configMap: { name: rabbitmq-default-user, optional: true }
+        # IADR-0591: TLS の設定と証明書（Secret は非 optional。無ければ Pod は立たない＝平文だけで黙って立たない）。
+        - name: tls-conf
+          configMap: { name: rabbitmq-tls, defaultMode: 0444 }
+        - name: tls-src
+          secret: { secretName: rabbitmq-tls, defaultMode: 0400 }
+        - name: tls
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }
+---
+# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: TLS の受け口（5671）。
+#   - 版は TLS 1.3 / 1.2 だけ。
+#   - クライアント証明書は求めない（fail_if_no_peer_cert = false）。名乗りはサービスごとのユーザー（IADR-0577）で行う。
+#     verify_peer は「クライアントが証明書を出したときはこの CA で検証する」の意で、クライアントからサーバへの検証とは別である。
+#   - 平文の 5672 は段 1 の併存のために明示して残す（閉じる段で listeners.tcp = none にする）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-tls
+  namespace: platform-infra
+  labels: { app: rabbitmq }
+data:
+  20-tls.conf: |
+    listeners.tcp.default = 5672
+    listeners.ssl.default = 5671
+    ssl_options.cacertfile = /etc/rabbitmq-tls/ca.crt
+    ssl_options.certfile = /etc/rabbitmq-tls/tls.crt
+    ssl_options.keyfile = /etc/rabbitmq-tls/tls.key
+    ssl_options.verify = verify_peer
+    ssl_options.fail_if_no_peer_cert = false
+    ssl_options.versions.1 = tlsv1.3
+    ssl_options.versions.2 = tlsv1.2
 ---
 # NFR-18, IADR-0577: 起動の直後の復元（上の postStart）。値は標準入力で rabbitmqctl へ渡し、どこにも出さない。
 apiVersion: v1
@@ -140,6 +199,8 @@ spec:
   selector: { app: rabbitmq }
   ports:
     - { name: amqp, port: 5672, targetPort: 5672 }
+    # NFR-16, IADR-0591: TLS の受け口。
+    - { name: amqps, port: 5671, targetPort: 5671 }
     - { name: management, port: 15672, targetPort: 15672 }
 ---
 # NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: 到達の制限（ingress だけ）。届いてよいのは、ブローカを使うサービスの Pod だけ:
@@ -193,5 +254,7 @@ spec:
                   - report-service
                   - risk-management-service
                   - trade-decision-service
+      # NFR-16, IADR-0591: 5671（TLS）は段 1 で足した。5672（平文）は AST の切り替えまで残す。
       ports:
         - { protocol: TCP, port: 5672 }
+        - { protocol: TCP, port: 5671 }

@@ -229,7 +229,7 @@ builder.Host.UseWolverine(opts =>
     // **キュー名を分けるだけでは何も届かない** —— 束ねて初めて発行が届く。
     // FR-14 / #1801: 段宣言（step）を渡す。queue 宣言があればそれ、無ければイベント型名で束ね・購読し、
     // `enabled: false` の段ではキューを束ねずリスナーも立てない（WolverineExtensions の段宣言版）。
-    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision()
+    opts.UsePlatformRabbitMq(rabbitConnection).AutoProvision()
         .BindPlatformQueue<DocumentDeleted>("retrieval-service", step);
 
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う

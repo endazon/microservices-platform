@@ -87,8 +87,9 @@ function facts(rendered) {
     const pw = envEntry(d.text, 'RABBITMQ_PASSWORD') || '';
     return {
       app: d.app,
-      user: (conn.match(/amqp:\/\/([^:"]+):/) || [])[1] || '',
-      interpolated: /amqp:\/\/[^:"]+:\$\(RABBITMQ_PASSWORD\)@/.test(conn),
+      // NFR-16, IADR-0591: 既定は amqps（TLS）。切り戻しの amqp も同じ規則で読む。
+      user: (conn.match(/amqps?:\/\/([^:"]+):/) || [])[1] || '',
+      interpolated: /amqps?:\/\/[^:"]+:\$\(RABBITMQ_PASSWORD\)@/.test(conn),
       secret: (pw.match(/secretKeyRef:\n\s*name:\s*(\S+)/) || [])[1] || '',
       key: (pw.match(/\n\s*key:\s*(\S+)/) || [])[1] || '',
       optional: /optional:/.test(pw),
@@ -119,7 +120,7 @@ function violations(rendered) {
     if (f.literal) out.push(`${f.app}: RABBITMQ_PASSWORD がリテラルの値を持つ`);
   }
   if (/\brabbitmq-app\b/.test(rendered)) out.push('全サービス共通の Secret rabbitmq-app が描画物に残る');
-  if (/amqp:\/\/guest\b/.test(rendered)) out.push('既定のユーザー guest で名乗る接続文字列が残る');
+  if (/amqps?:\/\/guest\b/.test(rendered)) out.push('既定のユーザー guest で名乗る接続文字列が残る');
   return out;
 }
 

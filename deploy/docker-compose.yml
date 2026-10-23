@@ -16,8 +16,11 @@ x-common-env: &common-env
   OTLP__ENDPOINT: http://otel-collector:4317
   Auth__Authority: http://keycloak:8080/realms/platform
 
+# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: DB への接続は TLS で、サーバ証明書を検証する（VerifyFull ＋ 基盤の CA）。
+# CA は下の infra-tls-init が作り、ボリューム infra-tls-ca を /etc/platform-infra-ca へ読み取り専用でマウントする（*infra-ca-volumes）。
+# 🔴 取引ユニット（AST）のサービス（configuration / risk-management / market-monitor）は段 1 では平文のまま（個別の接続文字列が上書きする）。
 x-db-env: &db-env
-  ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Username=kp;Password=kp
+  ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
 
 # NFR, #1022: ブローカ接続。**資格情報をイメージへ焼かない。** 各サービスの `appsettings.json` は
 # `RabbitMq:ConnectionString` を持たず（#1022 で撤去）、未注入なら起動時に落ちる。
@@ -26,8 +29,19 @@ x-db-env: &db-env
 #    ［2026-10-22 追記］AST の chart はサービスごとのユーザー（ast-<サービス名>・Secret ast-rabbitmq-users）で接続し、
 #    guest:guest を持たなくなった（AST#1430）。AST の appsettings.Development.json の guest:guest は AST 単体起動の専用ブローカ向けで、
 #    ローカル k8s では使われない（#1022 §申し送りは解消）。
+# NFR-16, IADR-0591: 基盤のサービスは TLS の口（amqps・5671）で繋ぐ。CA は SSL_CERT_DIR で信頼ストアへ足す
+#   （既定の /etc/ssl/certs を先に残す。名前の照合は共通ヘルパ UsePlatformRabbitMq が外さない）。
 x-rabbit-env: &rabbit-env
+  RabbitMq__ConnectionString: amqps://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5671
+  SSL_CERT_DIR: /etc/ssl/certs:/etc/platform-infra-ca
+
+# NFR-16, IADR-0591: 取引ユニット（AST）のサービスの平文の接続（段 1 の併存。AST が TLS へ切り替える段で消す）。
+x-rabbit-env-ast-plain: &rabbit-env-ast-plain
   RabbitMq__ConnectionString: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672
+
+# NFR-16, IADR-0591: 基盤の CA（公開の証明書だけ）をクライアントへ読み取り専用で渡す。
+x-infra-ca-volumes: &infra-ca-volumes
+  - infra-tls-ca:/etc/platform-infra-ca:ro
 
 # FR-06, FR-12, ADR-0014/ADR-0015（Superseded by ADR-0106）, IADR-0024, IADR-0461: 本文・資産の S3 互換
 # オブジェクトストレージ（SeaweedFS）接続。資格情報は .env（OBJECT_STORAGE_ACCESS_KEY / OBJECT_STORAGE_SECRET_KEY）で
@@ -42,8 +56,60 @@ services:
   # ─────────────────────────────────────────────
   # Infrastructure
   # ─────────────────────────────────────────────
+  # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（postgres・rabbitmq）のサーバ証明書を作る 1 回きりのコンテナ。
+  #   compose には cert-manager が無いので、経路B（deploy/local/infra-tls）と同じ形（ECDSA P-256 の自己署名 CA → 葉証明書・
+  #   名前は素の名前と FQDN）を openssl で作る。openssl はブローカのイメージに入っているもの（同じ digest）を使う。
+  #   - 揃っていれば何もしない。1 つでも欠けていれば全部を作り直す（CA の鍵は署名の後に捨て、どこにも残さない）。
+  #   - 作り直すときは `docker compose down` の後に infra-tls-* の 3 つのボリュームを消す（CA が変わるのでクライアントも作り直す）。
+  #   - 鍵はそれぞれのサーバの利用者だけが読める（postgres は uid 70・0600、rabbitmq は uid 100・0400）。
+  infra-tls-init:
+    image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        if [ -s /tls/ca/ca.crt ] && [ -s /tls/postgres/tls.key ] && [ -s /tls/postgres/tls.crt ] \
+          && [ -s /tls/rabbitmq/tls.key ] && [ -s /tls/rabbitmq/tls.crt ] && [ -s /tls/rabbitmq/ca.crt ]; then
+          echo 'infra-tls-init: 証明書は揃っている（何もしない）'; exit 0
+        fi
+        work="$$(mktemp -d)"; trap 'rm -rf "$$work"' EXIT
+        openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 \
+          -subj '/CN=microservices-platform compose platform-infra root CA' \
+          -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign' \
+          -keyout "$$work/ca.key" -out "$$work/ca.crt" 2>/dev/null
+        for svc in postgres rabbitmq; do
+          openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=$$svc" \
+            -keyout "$$work/$$svc.key" -out "$$work/$$svc.csr" 2>/dev/null
+          printf 'subjectAltName=DNS:%s\nextendedKeyUsage=serverAuth\nkeyUsage=critical,digitalSignature,keyEncipherment\n' "$$svc" > "$$work/$$svc.ext"
+          openssl x509 -req -in "$$work/$$svc.csr" -CA "$$work/ca.crt" -CAkey "$$work/ca.key" -CAcreateserial \
+            -days 365 -extfile "$$work/$$svc.ext" -out "$$work/$$svc.crt" 2>/dev/null
+        done
+        cp "$$work/ca.crt" /tls/ca/ca.crt && chmod 0644 /tls/ca/ca.crt
+        cp "$$work/postgres.crt" /tls/postgres/tls.crt && cp "$$work/postgres.key" /tls/postgres/tls.key
+        chown 70:70 /tls/postgres/tls.crt /tls/postgres/tls.key && chmod 0644 /tls/postgres/tls.crt && chmod 0600 /tls/postgres/tls.key
+        cp "$$work/ca.crt" /tls/rabbitmq/ca.crt && cp "$$work/rabbitmq.crt" /tls/rabbitmq/tls.crt && cp "$$work/rabbitmq.key" /tls/rabbitmq/tls.key
+        chown 100:101 /tls/rabbitmq/ca.crt /tls/rabbitmq/tls.crt /tls/rabbitmq/tls.key
+        chmod 0644 /tls/rabbitmq/ca.crt /tls/rabbitmq/tls.crt && chmod 0400 /tls/rabbitmq/tls.key
+        echo 'infra-tls-init: 基盤の CA と postgres / rabbitmq のサーバ証明書を作った（CA の鍵は残さない）'
+    volumes:
+      - infra-tls-ca:/tls/ca
+      - infra-tls-postgres:/tls/postgres
+      - infra-tls-rabbitmq:/tls/rabbitmq
+
   postgres:
     image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    # NFR-16, IADR-0591: TLS を受ける（TLS 1.2 以上）。段 1 は平文も受ける（AST のサービスが切り替えるまでの併存）。
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/postgres-tls/tls.crt
+      - -c
+      - ssl_key_file=/etc/postgres-tls/tls.key
+      - -c
+      - ssl_min_protocol_version=TLSv1.2
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -51,6 +117,10 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./create-multiple-dbs.sh:/docker-entrypoint-initdb.d/create-multiple-dbs.sh:ro
+      - infra-tls-postgres:/etc/postgres-tls:ro
+    depends_on:
+      infra-tls-init:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
@@ -67,11 +137,19 @@ services:
       #    （RabbitMQ は初回起動時にだけ既定利用者を作る）。値を変えたら volume を作り直すこと。
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    # NFR-16, IADR-0591: 5671 で TLS を受ける（設定は経路B の ConfigMap rabbitmq-tls と同じ内容の deploy/rabbitmq/20-tls.conf）。
+    #   5672（平文）は AST のサービスが切り替えるまでの併存。
     ports:
       - "127.0.0.1:5672:5672"
+      - "127.0.0.1:5671:5671"
       - "127.0.0.1:15672:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+      - ./rabbitmq/20-tls.conf:/etc/rabbitmq/conf.d/20-tls.conf:ro
+      - infra-tls-rabbitmq:/etc/rabbitmq-tls:ro
+    depends_on:
+      infra-tls-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -331,13 +409,15 @@ services:
     expose:
       - "8080"
       - "8081"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       # FR-06, FR-19, FR-21, ADR-0014/ADR-0057, IADR-0296: 本文の格納・取得と、完全削除時の
       # 実体削除にオブジェクトストレージ接続が要る（helm は services.document.objectStorage: true を持っており、
       # compose 側だけが欠落していた）。未設定なら縮退クライアントが「警告して成功」へ倒すため、
       # 欠落は 500 にならず**静かに実体を残す**——だから配備側で塞ぐ。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
       # FR-06 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0402 (#1255):
       # east-west gRPC の h2c リスナ。**面は読み取り 4 口だけ**（knowledge.document.v1.DocumentRead）で、
       # 書き込み・本文・共有は出していない。REST（8080）と /health/* はそのまま残る。
@@ -378,12 +458,14 @@ services:
     expose:
       - "8080"
       - "8081"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       # FR-01, IADR-0051: 実コネクタが取得した原本をオブジェクトストレージへ格納する（書き込み側）。未設定時は縮退。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
       Grpc__Port: "8081"
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
       # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段は下の gRPC 宛先だけである
       # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
       # FR-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0401 (#1255): east-west gRPC。
@@ -414,13 +496,15 @@ services:
     expose:
       - "8080"
       - "8081"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       # FR-12, ADR-0015（Superseded by ADR-0106）: 正規化本文・資産をオブジェクトストレージへ保管する（書き込み側）。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       # NFR-16, IADR-0379 決定 3, IADR-0462 フォローアップ 3 (#1537): h2c リスナ。未設定ならリスナを立てない。
       Grpc__Port: "8081"
       # FR-12, UC-06, SC-07, IADR-0043: 変換ジョブ読み取りモデルの永続化（conversion_svc）。
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=conversion_svc;Username=kp;Password=kp
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=conversion_svc;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
       # ［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無い（appsettings の既定も外した）。
       # FR-12 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0400 (#1255): east-west gRPC。
       # `Services__LlmGatewayGrpc` で図のコード化が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。
@@ -451,6 +535,8 @@ services:
     expose:
       - "8080"
       - "8081"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       # FR-06: storage:// 本文をオブジェクトストレージから実取得する（読み取り側）。
       <<: [*common-env, *rabbit-env, *objectstorage-env]
@@ -496,6 +582,8 @@ services:
     expose:
       - "8080"
       - "8081"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       # ADR-0027 / #1016: DocumentDeleted 購読（retrieval-delete 段）のため RabbitMQ 接続が要る
       # （無いと Wolverine ホストが起動時に BrokerInitializationException）。
@@ -602,11 +690,13 @@ services:
     expose:
       - "8080"
       - "8081"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       <<: [*common-env, *db-env]
       # NFR-16, IADR-0379 決定 3 (#1201): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
       Grpc__Port: "8081"
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=authz_svc;Username=kp;Password=kp
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=authz_svc;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
       # SC-17, IADR-0301 決定 3 (#452) / IADR-0329 (#1101): 利用者アカウント管理の反映先。
       # **既定は無く、宣言が必須**（未設定なら起動時に落ちる）。
       # （旧コメントは決定記録の番号を `IADR-0298` と誤記していた。正は `IADR-0301` である。）
@@ -648,11 +738,13 @@ services:
     expose:
       - "8080"
       - "8081"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       <<: [*common-env, *db-env]
       # ADR-0002 / #1012: 専用 DB。deploy/create-multiple-dbs.sh が `notification_svc` を作る。
       # 起動時に MigrateAsync が走るため、DB が無いとクラッシュループする（graph_svc の先例と同型）。
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=notification_svc;Username=kp;Password=kp
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=notification_svc;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
       # NFR-16, IADR-0379 決定 3, IADR-0419 (#1255): h2c リスナ。未設定ならリスナを立てない。
       # 面は受け付け 1 口だけで、REST（8080）の受け口・/notifications・/health/* はそのまま残る。
       Grpc__Port: "8081"
@@ -677,12 +769,14 @@ services:
     expose:
       - "8080"
       - "8081"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       # FR-06: storage:// 本文をオブジェクトストレージから実取得し Wiki.js へ push する（読み取り側）。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
       Grpc__Port: "8081"
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
       # IADR-0021: Wiki.js への同期先（GraphQL push）。API キーはシークレット経由で注入（コミットしない）。
       Services__WikiJs: http://wiki-js:3000
       # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決は下の gRPC 宛先だけである
@@ -823,11 +917,13 @@ services:
     expose:
       - "8080"
       - "8081"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       <<: [*common-env, *db-env]
       # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
       Grpc__Port: "8081"
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=feedback_svc;Username=kp;Password=kp
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=feedback_svc;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
     depends_on:
       postgres:
         condition: service_healthy
@@ -843,11 +939,13 @@ services:
     expose:
       - "8080"
       - "8081"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       <<: [*common-env, *db-env]
       # NFR-16, IADR-0379 決定 3 (#1201): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
       Grpc__Port: "8081"
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=dashboard_svc;Username=kp;Password=kp
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=dashboard_svc;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
     depends_on:
       postgres:
         condition: service_healthy
@@ -864,13 +962,15 @@ services:
     expose:
       - "8080"
       - "8081"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       # ADR-0027 / #1016: DocumentDeleted 購読（graph-delete 段）のため RabbitMQ 接続が要る
       # （無いと Wolverine ホストが起動時に BrokerInitializationException）。
       # FR-17, ADR-0033 決定 8 / #912: リンク抽出のため storage:// 本文をオブジェクトストレージから実取得する
       # （読み取り側）。無いと縮退クライアントが解決できず、抽出は毎回スキップされる。
       <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=graph_svc;Username=kp;Password=kp
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=graph_svc;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
       # 🔴 IADR-0089 (#342) / #958: ABAC スコープ解決先は gRPC 宛先（`Services__AuthorizationServiceGrpc`）だけである
       # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
       # ［2026-10-17 / #1255・IADR-0533 フォローアップ 2］クラスタ要約も gRPC へ移したので、REST の宛先 `Services__LlmGateway` は
@@ -959,7 +1059,7 @@ services:
       - "8080"
     environment:
       # Auth__Authority は共通（MSP realm）。trading-owner ロールは MSP realm 側で定義済み（#283 2e）。
-      <<: [*common-env, *db-env, *rabbit-env]
+      <<: [*common-env, *db-env, *rabbit-env-ast-plain]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=risk_management_svc;Username=kp;Password=kp
     depends_on:
       postgres:
@@ -984,7 +1084,7 @@ services:
       - "8080"
     environment:
       # Auth__Authority は共通（MSP realm）。trading-owner ロールは MSP realm 側で定義済み（#283 2e）。
-      <<: [*common-env, *db-env, *rabbit-env]
+      <<: [*common-env, *db-env, *rabbit-env-ast-plain]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=market_monitor_svc;Username=kp;Password=kp
     depends_on:
       postgres:
@@ -1144,11 +1244,13 @@ services:
       dockerfile: src/platform/backend/Services/McpServer/Dockerfile
     expose:
       - "8080"
+    # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    volumes: *infra-ca-volumes
     environment:
       <<: [*common-env, *db-env]
       # ADR-0002 / #1012: 専用 DB。deploy/create-multiple-dbs.sh が `mcp_svc` を作る。
       # 起動時に MigrateAsync が走るため、DB が無いとクラッシュループする（graph_svc の先例と同型）。
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=mcp_svc;Username=kp;Password=kp
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=mcp_svc;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
       # FR-16, ADR-0024 §5: 自己申告の収集先。appsettings の既定と同値だが、
       # **収集先が構成で決まることを manifest 側でも見えるようにする**（既定へ黙って寄りかからない）。
       # FR-16 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0462（#1515, #1255 経路 ④-a）, IADR-0533 決定 3 (#1517):
@@ -1195,6 +1297,10 @@ services:
 volumes:
   postgres-data:
   rabbitmq-data:
+  # NFR-16, IADR-0591: 基盤の CA（クライアントへ渡す）と、サーバごとの証明書・鍵（infra-tls-init が作る）。
+  infra-tls-ca:
+  infra-tls-postgres:
+  infra-tls-rabbitmq:
   valkey-data:
   qdrant-data:
   seaweedfs-data:

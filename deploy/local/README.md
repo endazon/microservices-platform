@@ -25,6 +25,26 @@
 MSP chart はインフラを**デプロイせず**素のサービス名（`postgres` 等）で参照するため、infra を
 `platform-infra` に置き、各アプリ namespace に ExternalName エイリアスを張って名前解決させる。
 
+### 基盤との通信の TLS（段 1・IADR-0591。Refs GHSA-j4qv-2w99-xg5p）
+
+- **cert-manager は既定で入る**（`[4/7]` の先頭。従来は `LOCALEDGE=1` のときだけ）。基盤専用の CA（`cert-manager/platform-infra-root-ca`。
+  エッジの CA とは別）が `platform-infra/postgres-tls`・`rabbitmq-tls` を発行し（`deploy/local/infra-tls`）、Ready を待ってから基盤を当てる。
+- postgres は TLS（1.2 以上）を受け、rabbitmq は 5671 に TLS の受け口を足す。**段 1 では平文（5432 の非 TLS・5672）も残す** ——
+  取引ユニット（AST）と基盤の他のクライアント（Keycloak の DB・Wiki.js・バックアップ）が切り替えるまでの併存である。
+- 基盤（MSP）のサービスは DB へ `SSL Mode=VerifyFull`＋基盤の CA、ブローカへ `amqps`（5671）で繋ぐ。CA は `[5/7]` が ConfigMap
+  `platform-infra-ca`（`ca.crt` だけ）として **MSP と AST の名前空間**へ写す（AST の接続は変えない）。
+- 確かめ方:
+  ```bash
+  kubectl -n platform-infra exec deploy/postgres -c postgres -- psql -U postgres -Atc \
+    "select a.usename, s.ssl, count(*) from pg_stat_activity a join pg_stat_ssl s using (pid) where a.backend_type='client backend' group by 1,2"
+  kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl -q list_connections user ssl
+  # 期待値: kp（MSP の *_svc）と msp-* は TLS（t / true）。ai・ast-*・sa は段 1 では平文（f / false）のまま
+  ```
+- 再実行の影響: 初めて段 1 を当てる再実行では postgres と rabbitmq が作り直される（ブローカは永続化していないので未配送のメッセージは失われる）。
+  **取引の閉場後に行う。**
+- 切り戻し（基盤のサービスだけを平文へ戻す）: `global.db.tls.enabled=false`・`global.messaging.tls.enabled=false` を helm へ与え、
+  `values-local.yaml` の egress の宛先 `rabbitmq` の `ports` を `[5672]` へ戻す。
+
 ## 必要ツール（Windows）
 
 k8s ランタイムは **2 択**。スクリプトは `nerdctl`/`k3d` の有無で自動判定する（`K8S_LOCAL_RUNTIME=rancher|k3d` で明示指定可）。
@@ -66,10 +86,10 @@ requests / limits の合計（`helm template` と `kubectl kustomize` の描画�
 
 | 束 | 中身 | requests | limits | limits の無いコンテナ |
 | --- | --- | --- | --- | --- |
-| 必須 | MSP チャート（values-local）18・infra（`PERSIST` 既定）13・AST チャート（values-local・OpenD 込み）13 | 6,056 Mi | 24,096 Mi | 0 |
+| 必須 | MSP チャート（values-local）18・infra（`PERSIST` 既定）13・AST チャート（values-local・OpenD 込み）13・cert-manager 3（IADR-0591 で既定へ移った） | 6,056 Mi | 24,096 Mi | 3（上流 manifest の既定） |
 | ESO 所有の経路（AST の既定） | `VAULT=1`（OpenBao 1）・`ESO=1`（ESO 3・Reloader 1） | +128 Mi | +512 Mi | 4（上流チャートの既定） |
-| **必須＋ESO 所有の経路（計）** | 上の 2 行の和（常用の構成） | **6,184 Mi** | **24,608 Mi** | 4 |
-| opt-in の全部 | `OBSERVABILITY=1` 7・`ISTIO=1`（istiod・ingress gateway・サイドカー 18）・`HEADLAMP=1` 1・Argo CD 7・cert-manager 3 | +2,112 Mi | +8,448 Mi | 10（上流 manifest の既定） |
+| **必須＋ESO 所有の経路（計）** | 上の 2 行の和（常用の構成） | **6,184 Mi** | **24,608 Mi** | 7 |
+| opt-in の全部 | `OBSERVABILITY=1` 7・`ISTIO=1`（istiod・ingress gateway・サイドカー 18）・`HEADLAMP=1` 1・Argo CD 7 | +2,112 Mi | +8,448 Mi | 7（上流 manifest の既定） |
 
 CPU の合計（同じ描画から。上の `processors` の根拠）:
 
@@ -912,7 +932,18 @@ done < <(find deploy/keycloak/themes/platform -type f | LC_ALL=C sort)
 kubectl create configmap keycloak-theme-platform -n platform-infra "${theme_args[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# IADR-0591: 基盤のサーバ証明書（cert-manager を先に入れ、CRD の Established を待つ。k8s-local-up.sh の install_cert_manager と同じ）
+kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager
+kubectl wait --for=condition=Established --timeout=120s crd/certificates.cert-manager.io crd/clusterissuers.cert-manager.io
+kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
+kubectl apply -k deploy/local/infra-tls
+kubectl -n platform-infra wait --for=condition=Ready --timeout=120s certificate/postgres-tls certificate/rabbitmq-tls
 kubectl apply -k deploy/local/infra                                  # infra
+# 基盤の CA を MSP の名前空間へ写す（helm の各サービスが非 optional でマウントする）
+kubectl create namespace microservices-platform --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n cert-manager get secret platform-infra-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/platform-infra-ca.crt
+kubectl create configmap platform-infra-ca -n microservices-platform --from-file=ca.crt=/tmp/platform-infra-ca.crt \
+  --dry-run=client -o yaml | kubectl apply -f -
 helm upgrade --install msp deploy/helm/microservices-platform \
   -n microservices-platform --create-namespace -f deploy/local/values-local.yaml
 kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml

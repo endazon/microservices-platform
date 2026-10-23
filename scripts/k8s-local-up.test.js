@@ -150,7 +150,8 @@ const OPTIN_TOKENS = [
   'seed-search-documents.js', //       SEARCHSEED (検索検証用文書の初期投入, IADR-0284)
   'seed-tag-dictionary.js', //         TAGSEED (タグ辞書の初期投入, #1359)
   'embedding.deterministicLocal.enabled', // LOCALEMBED (決定的ローカル埋め込み, IADR-0313)
-  'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0206)
+  // 'cert-manager' は外した（IADR-0591）: 基盤（platform-infra）のサーバ証明書のために既定の [4/7] で導入する。
+  //   既定で入ることは下の「IADR-0591」の試験が固定する。エッジ側の opt-in は次の 2 つ（edge/tls・edge-tls）が見る。
   'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0206)
   'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0206)
   'coredns-edge-hosts.yaml', //        LOCALEDGE (エッジ host の pod 側名前解決, IADR-0227)
@@ -366,6 +367,9 @@ const KUBECTL_STUB = [
   'case "$*" in *"get secret session-store-credentials"*) [ -n "${STUB_SESSION_STORE_EXISTING:-}" ] && printf "%s" "$STUB_SESSION_STORE_EXISTING" | base64; exit 0;; esac',
   // IADR-0574: 既存の基盤の資格情報の Secret（keycloak-admin / rabbitmq の password）。STUB_*_EXISTING を与えたときだけ在るものとして返す。
   'case "$*" in *"get secret keycloak-admin "*"{.data.password}"*) [ -n "${STUB_KEYCLOAK_ADMIN_EXISTING:-}" ] && printf "%s" "$STUB_KEYCLOAK_ADMIN_EXISTING" | base64; exit 0;; esac',
+  // NFR-16, IADR-0591: 基盤のルート CA（cert-manager/platform-infra-root-ca の ca.crt）。既定は在る（PEM の形のダミー）。
+  //   STUB_INFRA_CA_ABSENT=1 で読めない世界（空を返す）を作る（起動器が ConfigMap を作らずに止まることの陽性対照）。
+  'case "$*" in *"get secret platform-infra-root-ca"*) [ "${STUB_INFRA_CA_ABSENT:-}" = "1" ] || printf "%s\\n" "-----BEGIN CERTIFICATE-----" "c3R1Yg==" "-----END CERTIFICATE-----" | base64 -w0; exit 0;; esac',
   'case "$*" in *"get secret rabbitmq "*"{.data.password}"*) [ -n "${STUB_RABBITMQ_EXISTING:-}" ] && printf "%s" "$STUB_RABBITMQ_EXISTING" | base64; exit 0;; esac',
   // NFR, IADR-0583: Namespace microservices-platform の注入ラベル。STUB_MSP_INJECTION を与えたときだけその値を返す（既定は無い）。
   //   STUB_MSP_INJECTION_FAIL=1 のときは API の失敗（非 0 と stderr）を返す。
@@ -642,7 +646,7 @@ ok('前提: traefik の宣言（実物）は現行 chart で反映が成立す�
     `${TRAEFIK_MANIFEST_REL} の宣言では反映が成立しない（#953 の門が落ちる）。` +
       ` ports.admin の port / expose の型を確認すること:\n${healthy.stdout}\n${healthy.stderr}`,
   );
-  assert.ok(anyLineHas(healthy.lines, 'cert-manager'), '反映は成立したのに後続段へ進んでいない');
+  assert.ok(anyLineHas(healthy.lines, 'deploy/local/edge/tls'), '反映は成立したのに後続段（エッジ TLS）へ進んでいない');
 });
 
 // 既定（全 OFF）の cluster create 引数は現行とバイト等価（#331 の bash シミュレーションを CI 常設化）。
@@ -1352,15 +1356,15 @@ ok('#953: 反映（traefik svc の admin=50000）が来なければ up は非 0 
     broken.lines.some((l) => l.includes(' wait ') && l.includes('--for=jsonpath') && l.includes('svc/traefik') && l.includes('50000')),
     `反映の待ち合わせ（kubectl wait --for=jsonpath ... svc/traefik）が発行されていない`,
   );
-  // **落ちる位置が原因の位置に近いこと。** 後続段（cert-manager）まで進んでから落ちるのでは、
+  // **落ちる位置が原因の位置に近いこと。** 後続段（エッジ TLS の tls overlay）まで進んでから落ちるのでは、
   // 何が壊れたのか読み取れない（従来は最後まで走り切って緑だった）。
-  assert.ok(!anyLineHas(broken.lines, 'cert-manager'), '反映に失敗したのに後続の cert-manager 段まで進んでいる');
+  assert.ok(!anyLineHas(broken.lines, 'deploy/local/edge/tls'), '反映に失敗したのに後続のエッジ TLS 段まで進んでいる');
 });
 
 ok('#953: 対照 —— 反映が来れば LOCALEDGE=1 は従来どおり完走する（門が常に落ちる実装ではない）', () => {
   const healthy = runUp({ LOCALEDGE: '1' });
   assert.strictEqual(healthy.status, 0, `反映が来ているのに up が落ちた: ${healthy.stderr}`);
-  assert.ok(anyLineHas(healthy.lines, 'cert-manager'), '正常系なのに後続段へ進んでいない（門を置く位置が誤っている）');
+  assert.ok(anyLineHas(healthy.lines, 'deploy/local/edge/tls'), '正常系なのに後続段へ進んでいない（門を置く位置が誤っている）');
 });
 
 // --- #953 第 2 次: **宣言そのもの**を変異させる（門と宣言を結ぶ） ---------------
@@ -1413,7 +1417,7 @@ ok('#953 第2次: 変異 —— expose を chart が受け付けない bool 形�
     '反映の待ち合わせが発行されていない（別の理由で落ちている）',
   );
   // 落ちる位置が原因の位置に近いこと。
-  assert.ok(!anyLineHas(broken.lines, 'cert-manager'), '反映に失敗したのに後続の cert-manager 段まで進んでいる');
+  assert.ok(!anyLineHas(broken.lines, 'deploy/local/edge/tls'), '反映に失敗したのに後続のエッジ TLS 段まで進んでいる');
 });
 
 ok('#953 第2次: 実測の再現 —— 実物の宣言（map 形）＋ chart 25 は反映に失敗し up が落ちる', () => {
@@ -1421,7 +1425,7 @@ ok('#953 第2次: 実測の再現 —— 実物の宣言（map 形）＋ chart 2
   // **宣言は正しいのに版が古い**という向きも、同じ門が捕まえることを固定する。
   const broken = runUp({ LOCALEDGE: '1', STUB_TRAEFIK_CHART_MAJOR: '25' });
   assert.notStrictEqual(broken.status, 0, 'chart 25 で map 形の宣言が通ってしまった（実測と食い違う）');
-  assert.ok(!anyLineHas(broken.lines, 'cert-manager'), '反映に失敗したのに後続段まで進んでいる');
+  assert.ok(!anyLineHas(broken.lines, 'deploy/local/edge/tls'), '反映に失敗したのに後続段まで進んでいる');
 });
 
 ok('#953 第2次: 陰性対照 —— bool 形 ＋ chart 25 は通る（「変異なら落ちる」模型ではない）', () => {
@@ -1776,7 +1780,7 @@ ok('ABACSEED=1: 投入が失敗しても up 全体は止めない（best-effort�
 });
 
 // IADR-0206 (#779): エッジ TLS 終端。cert-manager を導入し selfsigned→CA の 2 段で edge-tls を発行する。
-// 既定オフは上の OPTIN_TOKENS（'cert-manager' / 'deploy/local/edge/tls' / 'certificate/edge-tls'）で固定済み。
+// 既定オフは上の OPTIN_TOKENS（'deploy/local/edge/tls' / 'certificate/edge-tls'）で固定済み（cert-manager 自体は IADR-0591 で既定に入る）。
 ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待ってから tls overlay を当てる', () => {
   const { lines } = runUp({ LOCALEDGE: '1' });
   const idx = (needle) => lines.findIndex((l) => l.includes(needle));
@@ -1810,6 +1814,82 @@ ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待
     'cert-manager を kustomization（版の URL ＋ digest の固定）から入れていない',
   );
   assert.ok(!lines.some((l) => l.includes('cert-manager/releases/download/')), 'cert-manager の URL を直接 apply した（digest の固定を経ない）');
+});
+
+// NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（platform-infra）のサーバ証明書は**既定で**発行し、
+// 基盤の apply より前に Ready を待ち、CA を MSP・AST の名前空間へ helm より前に写す。
+ok('IADR-0591: 既定で cert-manager → infra-tls → 証明書 Ready → 基盤の apply → CA の写し（MSP・AST）→ helm の順に進む', () => {
+  const r = runUp({});
+  assert.strictEqual(r.status, 0, `既定の起動が落ちた: ${r.stderr}`);
+  const { lines } = r;
+  const idx = (pred) => lines.findIndex(pred);
+  const install = idx((l) => l === 'kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager');
+  const crd = idx((l) => l.includes('condition=Established') && l.includes('crd/certificates.cert-manager.io'));
+  const tls = idx((l) => l === 'kubectl apply -k deploy/local/infra-tls');
+  const rootReady = idx((l) => l.includes('wait --for=condition=Ready') && l.includes('certificate/platform-infra-root-ca'));
+  const leafReady = idx((l) => l.includes('-n platform-infra wait --for=condition=Ready')
+    && l.includes('certificate/postgres-tls') && l.includes('certificate/rabbitmq-tls'));
+  const infra = idx((l) => /^kubectl apply -k deploy\/local\/infra(-persistence)?$/.test(l));
+  const caMsp = idx((l) => l.startsWith('kubectl create configmap platform-infra-ca -n microservices-platform --from-file=ca.crt='));
+  const caAst = idx((l) => l.startsWith('kubectl create configmap platform-infra-ca -n ai-stock-trading --from-file=ca.crt='));
+  const helm = idx((l) => l.startsWith('helm upgrade --install msp '));
+  for (const [name, at] of Object.entries({ install, crd, tls, rootReady, leafReady, infra, caMsp, caAst, helm })) {
+    assert.notStrictEqual(at, -1, `${name} が発行されていない`);
+  }
+  assert.ok(install < crd && crd < tls, 'CRD の Established を待つ前に infra-tls を当てている');
+  assert.ok(tls < rootReady && rootReady < leafReady, '証明書の Ready を apply の前に待っている');
+  assert.ok(leafReady < infra, '基盤（postgres / rabbitmq）を証明書の Ready より前に当てている（Secret が無いまま Pod が立つ）');
+  assert.ok(infra < caMsp && caMsp < helm && caAst < helm, 'CA の写しが helm の後になっている（検証つきの接続が CA 無しで起動する）');
+  assert.strictEqual(lines.filter((l) => l.includes('-k deploy/local/edge/cert-manager')).length, 1, 'cert-manager を 2 回以上当てた');
+  // 写すのは公開してよい ca.crt だけ（鍵は読まない）。
+  assert.ok(!lines.some((l) => l.includes('platform-infra-root-ca') && l.includes('tls\\.key')), 'ルート CA の鍵を読んでいる');
+});
+
+ok('IADR-0591: LOCALEDGE=1 でも cert-manager は 1 回だけ当て、エッジの tls overlay は基盤の後に従来どおり当てる', () => {
+  const r = runUp({ LOCALEDGE: '1' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(r.lines.filter((l) => l.includes('-k deploy/local/edge/cert-manager')).length, 1, 'cert-manager を 2 回当てた');
+  const tls = r.lines.findIndex((l) => l === 'kubectl apply -k deploy/local/infra-tls');
+  const edgeTls = r.lines.findIndex((l) => l.endsWith('apply -k deploy/local/edge/tls'));
+  assert.ok(tls !== -1 && edgeTls !== -1 && tls < edgeTls, '基盤の証明書とエッジの証明書の順が崩れた');
+});
+
+ok('IADR-0591: 基盤のルート CA を読めなければ、CA の写しも helm も行わずに止まる（検証の無い接続へ倒れない）', () => {
+  const r = runUp({ STUB_INFRA_CA_ABSENT: '1' });
+  assert.notStrictEqual(r.status, 0, 'CA を読めないのに起動が成功で返った');
+  assert.match(r.stderr, /platform-infra-root-ca の ca\.crt を読めない/);
+  assert.ok(!r.lines.some((l) => l.startsWith('kubectl create configmap platform-infra-ca')), 'CA を読めないのに ConfigMap を作った');
+  assert.ok(!r.lines.some((l) => l.startsWith('helm upgrade --install msp ')), 'CA を読めないのに helm へ進んだ');
+});
+
+ok('IADR-0591: 基盤のサーバ証明書の宣言 —— 名前は素の名前と FQDN、CA は基盤専用、Pod は Secret を非 optional でマウントする', () => {
+  const certs = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra-tls/certificates.yaml'), 'utf8');
+  const issuers = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra-tls/issuers.yaml'), 'utf8');
+  for (const svc of ['postgres', 'rabbitmq']) {
+    const doc = certs.split(/^---\s*$/m).find((d) => new RegExp(`^  name: ${svc}-tls$`, 'm').test(d));
+    assert.ok(doc, `${svc}-tls の Certificate が無い`);
+    const names = [...doc.matchAll(/^ {4}- (\S+)$/gm)].map((m) => m[1]).filter((n) => n.startsWith(svc));
+    assert.deepStrictEqual(names, [svc, `${svc}.platform-infra`, `${svc}.platform-infra.svc`, `${svc}.platform-infra.svc.cluster.local`],
+      `${svc} の dnsNames が素の名前と FQDN の 4 形でない`);
+    assert.match(doc, /^ {4}name: platform-infra-ca$/m, `${svc} の発行元が基盤の CA でない（エッジの CA を混ぜない）`);
+    assert.match(doc, /^  secretName: [a-z]+-tls$/m);
+    const manifest = fs.readFileSync(path.join(REPO_ROOT, `deploy/local/infra/${svc}.yaml`), 'utf8');
+    assert.match(manifest, new RegExp(`secretName: ${svc}-tls`), `${svc} の Pod が証明書の Secret をマウントしない`);
+    const vol = manifest.slice(manifest.indexOf(`secretName: ${svc}-tls`), manifest.indexOf(`secretName: ${svc}-tls`) + 80);
+    assert.doesNotMatch(vol.split('\n')[0] + vol.split('\n')[1], /optional:\s*true/, `${svc} の証明書の Secret が optional（平文だけで黙って立つ）`);
+  }
+  assert.match(issuers, /^  name: platform-infra-root-ca$/m);
+  assert.doesNotMatch(issuers, /local-edge/, '基盤の CA がエッジの issuer に依存している');
+  const pg = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/postgres.yaml'), 'utf8');
+  for (const a of ['ssl=on', 'ssl_cert_file=/etc/postgres-tls/tls.crt', 'ssl_key_file=/etc/postgres-tls/tls.key', 'ssl_min_protocol_version=TLSv1.2']) {
+    assert.ok(pg.includes(`- ${a}`), `postgres の引数に ${a} が無い`);
+  }
+  const mq = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/rabbitmq.yaml'), 'utf8');
+  for (const a of ['listeners.ssl.default = 5671', 'ssl_options.versions.1 = tlsv1.3', 'ssl_options.versions.2 = tlsv1.2']) {
+    assert.ok(mq.includes(a), `rabbitmq の TLS 設定に ${a} が無い`);
+  }
+  assert.match(mq, /- \{ name: amqps, port: 5671, targetPort: 5671 \}/, 'rabbitmq の Service に 5671 が無い');
+  assert.match(mq, /- \{ protocol: TCP, port: 5671 \}/, 'rabbitmq-ingress-clients に 5671 が無い（TLS の接続が時間切れになる）');
 });
 
 // IADR-0206 (#779): apiserver には触らない。IADR-0105 の除去を維持することが本子の受け入れ基準である

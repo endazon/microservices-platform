@@ -31,6 +31,11 @@ global:
     # DB パスワードを保持する Secret（key=password）。scripts/k8s-local-up.sh が dev 既定で作成する。
     existingSecret: postgres-app
     passwordKey: password
+    # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: DB への接続は TLS で、**サーバ証明書を検証する**
+    #   （`SSL Mode=VerifyFull` ＋ `Root Certificate` ＝ global.infraCa の CA だけを信頼し、host の名前も照合する）。
+    #   検証を緩める値（Require / Prefer / Trust Server Certificate）を与える口は持たない。false は平文（切り戻し専用）。
+    tls:
+      enabled: true
 
   # NFR, ADR-0003（Superseded by ADR-0027・注記は #580）, ADR-0027, #1022: メッセージブローカ
   # （RabbitMQ）の接続。**資格情報をイメージへ焼かない**（DB と同型・#1012 の global.db に倣う）。
@@ -44,9 +49,23 @@ global:
   #   🔴 旧キー（user / existingSecret / passwordKey ＝全サービス共通の 1 組）は廃止。与えられたら描画で止める。
   messaging:
     host: rabbitmq
+    # 平文の口（tls.enabled=false の切り戻しのときだけ使う）。
     port: 5672
     credentialsSecretName: msp-rabbitmq-users
     usernamePrefix: msp-
+    # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: ブローカへの接続は TLS（amqps・tls.port）で、サーバ証明書を検証する
+    #   （CA は global.infraCa を信頼ストアへ足す。host の名前の照合は共通ヘルパ UsePlatformRabbitMq が必ず行う）。
+    tls:
+      enabled: true
+      port: 5671
+
+  # NFR-16, IADR-0591: 基盤（DB・ブローカ）のサーバ証明書を発行した CA。ConfigMap（キー caKey）として各サービスの
+  #   名前空間に置く（公開してよい証明書だけ。経路B は scripts/k8s-local-up.sh が cert-manager の基盤の CA から写す）。
+  #   db.tls / messaging.tls のどちらかが有効なサービスは /etc/platform-infra-ca へ読み取り専用でマウントする（非 optional。
+  #   無ければ Pod は立たない＝検証の無い接続へ倒れない）。本番像は配備の側がこの ConfigMap を用意する。
+  infraCa:
+    configMap: platform-infra-ca
+    caKey: ca.crt
 
   # FR-06, FR-12, ADR-0014, ADR-0015（Superseded by ADR-0106）, IADR-0024, IADR-0461: S3 互換オブジェクト
   # ストレージ（SeaweedFS）接続。資格情報は Secret（existingSecret）経由で注入する（コミットしない。docs/security）。

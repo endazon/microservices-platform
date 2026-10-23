@@ -71,7 +71,7 @@ builder.Host.UseWolverine(opts =>
     // 段をホストしないので探索は要らない。規約探索を切って明示配線に寄せる。
     opts.Discovery.DisableConventionalDiscovery();
 
-    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
+    opts.UsePlatformRabbitMq(rabbitConnection).AutoProvision();
 
     // ADR-0027 手順 3（発行側）/ #992 / [[IADR-0314]]: **外向きの経路を宣言する。**
     // これが無いと `No routes can be determined for Envelope ...` を info ログへ 1 行出して

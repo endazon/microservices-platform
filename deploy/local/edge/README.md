@@ -141,8 +141,10 @@ redirectUris は https へ揃えてある**（realm・`values-local.yaml`・`gra
 
 ### エッジ TLS（cert-manager・IADR-0206・#779）
 
-`LOCALEDGE=1` が cert-manager を導入し、`ClusterIssuer(selfSigned)` → ルート CA → `ClusterIssuer(ca)` の
+`LOCALEDGE=1` が `ClusterIssuer(selfSigned)` → ルート CA → `ClusterIssuer(ca)` の
 **2 段**で葉証明書 `edge-tls`（`dnsNames: localhost, *.localhost`）を発行する。
+（［2026-10-23 / IADR-0591］cert-manager 自体は基盤のサーバ証明書のために**既定で** `[4/7]` が入れる。LOCALEDGE の段は同じ導入を
+呼び直さない。基盤の CA は `platform-infra-root-ca` でエッジの CA とは別である —— `deploy/local/README.md`「基盤との通信の TLS」。）
 **2 段にするのは、ルート CA を Secret として安定させるため**である —— これを apiserver の `--oidc-ca-file`（#781）と
 backend の信頼ストア（#780）へ渡す。Traefik 既定の自己署名は Secret 化されず再起動ごとに変わるので使えない。
 
@@ -237,7 +239,7 @@ kubectl -n microservices-platform delete secret edge-tls
 kubectl delete -k deploy/local/edge
 kubectl -n kube-system delete helmchartconfig traefik   # admin:50000 を撤去（Traefik が既定 values で再適用される）
 
-# cert-manager 本体まで戻すなら（CRD・webhook・Deployment を撤去する。他の用途で使っていないことを確認してから）
+# cert-manager 本体まで戻すなら（CRD・webhook・Deployment を撤去する。🔴 IADR-0591 以後は基盤のサーバ証明書が使うので、既定の構成では消さない）
 kubectl delete -k deploy/local/edge/cert-manager   # 版の URL ＋ 内側のイメージの digest（入れたときと同じ定義）
 ```
 
