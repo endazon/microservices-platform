@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using AwesomeAssertions;
 using IngestionService.Infrastructure.ExternalServices;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -96,5 +97,35 @@ public class HealthEndpointTests(IntrospectionEndpointTests.Factory factory)
         var result = await check.CheckHealthAsync(context, TestContext.Current.CancellationToken);
 
         result.Status.Should().Be(HealthStatus.Unhealthy);
+    }
+
+    // 期限切れの経路: 接続は受けるが応答しない宛先（gRPC が待ち続ける）でも、登録の期限で Unhealthy に倒れる（待ち続けない）。
+    // 期限の取り消しは HealthCheckService が渡すトークン由来なので、チェックは例外を握らず上げ、サービス側が failureStatus で報告する。
+    [Fact]
+    public async Task Qdrantが応答しなければ登録の期限でUnhealthy()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddSingleton(new QdrantClient("127.0.0.1", port));
+            services.AddHealthChecks().AddCheck<QdrantHealthCheck>(
+                QdrantHealthCheck.Name, failureStatus: HealthStatus.Unhealthy, timeout: TimeSpan.FromMilliseconds(300));
+            await using var sp = services.BuildServiceProvider();
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var report = await sp.GetRequiredService<HealthCheckService>()
+                .CheckHealthAsync(TestContext.Current.CancellationToken);
+
+            report.Entries[QdrantHealthCheck.Name].Status.Should().Be(HealthStatus.Unhealthy);
+            sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10), "期限で打ち切られる（応答を待ち続けない）");
+        }
+        finally
+        {
+            listener.Stop();
+        }
     }
 }
