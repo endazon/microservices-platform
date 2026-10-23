@@ -351,9 +351,42 @@ function runRealmDriftCheck(repoRoot) {
   return { status: r.status, stdout: String(r.stdout || ''), stderr: String(r.stderr || '') };
 }
 
-/** G11: chart を values-local で描画する（`helm template`）。 */
-function renderChart(repoRoot) {
-  const r = spawnSync('helm', ['template', 'msp', CHART_DIR, '-f', CHART_VALUES_LOCAL], {
+/**
+ * G11（NFR-20 / IADR-0605 / #2132）: 自製イメージのタグの宣言。chart はタグが無いと描画を落とすので、描画に渡す値を決める。
+ * 環境変数 IMAGE_TAG を与えればそれ（「この版が動いているはず」を名指しする）、無ければ稼働リリースの利用者の値
+ * （`helm get values` の `global.image.tag`。scripts/k8s-local-up.sh が --set-string で渡したもの）。
+ * サービスごとの上書き（`services.<名>.tag`）は宣言に含めない —— values-local と共通のタグから外れたイメージは乖離として出す
+ * （PR 検証用のタグを残したまま、の検知は #1088 と同じ）。
+ */
+function declaredImageTag(repoRoot, { env = process.env, ns = MSP_NS, release = MSP_HELM_RELEASE } = {}) {
+  if (env.IMAGE_TAG) return { ok: true, tag: env.IMAGE_TAG, source: 'IMAGE_TAG' };
+  const r = spawnSync('helm', ['get', 'values', release, '-n', ns, '-o', 'json'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (r.status !== 0) return { ok: false, error: `helm get values ${release} を読めない: ${(r.stderr || '').trim()}` };
+  return imageTagFromUserValues(r.stdout);
+}
+
+/** G11: `helm get values -o json` の出力から global.image.tag を取る。**純関数**。 */
+function imageTagFromUserValues(json) {
+  let v;
+  try {
+    v = JSON.parse(json || '{}') || {};
+  } catch {
+    return { ok: false, error: 'helm get values の出力を JSON として読めない' };
+  }
+  const tag = ((v.global || {}).image || {}).tag;
+  if (typeof tag !== 'string' || tag === '') {
+    return {
+      ok: false,
+      error: '稼働リリースに global.image.tag（自製イメージの不変のタグ）の宣言が無い。#2132 より前の起動器で立てたままである' +
+        '（イメージは latest のまま）。scripts/k8s-local-up.sh を流し直す（IADR-0605）。',
+    };
+  }
+  return { ok: true, tag, source: 'release' };
+}
+
+/** G11: chart を values-local と宣言のタグで描画する（`helm template`）。 */
+function renderChart(repoRoot, imageTag) {
+  const r = spawnSync('helm', ['template', 'msp', CHART_DIR, '-f', CHART_VALUES_LOCAL, '--set-string', `global.image.tag=${imageTag}`], {
     cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
   });
   return r.status === 0 ? { ok: true, text: r.stdout } : { ok: false, error: (r.stderr || '').trim() };
@@ -1798,9 +1831,14 @@ function check({ repoRoot = REPO_ROOT } = {}) {
 
   // G11 (#1088 / IADR-0369): 宣言（描画結果）と稼働のイメージ参照が一致すること。
   {
-    const chart = renderChart(repoRoot);
-    if (!chart.ok) failures.push(`[G11] chart を描画できなかった（helm template）: ${chart.error}`);
-    else failures.push(...evaluateImageDrift(MSP_NS, imagesFromRendered(chart.text), imagesFromLive(liveDeployments[MSP_NS] || [])));
+    const tag = declaredImageTag(repoRoot);
+    const chart = tag.ok ? renderChart(repoRoot, tag.tag) : null;
+    if (!tag.ok) failures.push(`[G11] 自製イメージのタグの宣言を得られなかった: ${tag.error}`);
+    else if (!chart.ok) failures.push(`[G11] chart を描画できなかった（helm template）: ${chart.error}`);
+    else {
+      failures.push(...evaluateImageDrift(MSP_NS, imagesFromRendered(chart.text), imagesFromLive(liveDeployments[MSP_NS] || [])));
+      notices.push(`[check-stack-ready] G11: 自製イメージのタグ ${tag.tag}（${tag.source === 'IMAGE_TAG' ? '環境変数 IMAGE_TAG' : '稼働リリースの global.image.tag'}）で描画した。`);
+    }
     const infra = renderInfra(repoRoot);
     if (!infra.ok) failures.push(`[G11] infra を描画できなかった（kubectl kustomize）: ${infra.error}`);
     else failures.push(...evaluateImageDrift(PERSISTENCE_NS, imagesFromRendered(infra.text), imagesFromLive(liveDeployments[PERSISTENCE_NS] || [])));
@@ -2311,6 +2349,18 @@ function selfTest() {
     assert.strictEqual(evaluateImageDrift('ns', imagesFromRendered(rendered), imagesFromLive([liveDep('qdrant', ['qdrant/qdrant:v1.18.1'])])).length, 1);
     assert.strictEqual(evaluateImageDrift('ns', {}, {}).length, 1);
   });
+  // NFR-20 / IADR-0605 (#2132): 描画に渡すタグは稼働リリースの global.image.tag（無ければ失敗。latest へ倒して描かない）
+  ok('G11 (#2132): 稼働リリースの global.image.tag を宣言として読む。無い・空・文字列でない・壊れた JSON は失敗（latest へ倒さない）', () => {
+    assert.deepStrictEqual(imageTagFromUserValues('{"global":{"image":{"tag":"0a1b2c3d4e5f"}}}'), { ok: true, tag: '0a1b2c3d4e5f', source: 'release' });
+    for (const json of ['{}', '{"global":{"image":{"registry":"k3d-local"}}}', '{"global":{"image":{"tag":""}}}', '{"global":{"image":{"tag":123}}}', 'null', '{']) {
+      const r = imageTagFromUserValues(json);
+      assert.strictEqual(r.ok, false, `${json} を宣言として受けた`);
+    }
+    assert.ok(/k8s-local-up\.sh を流し直す/.test(imageTagFromUserValues('{}').error), '直し方を告げていない');
+  });
+  ok('G11 (#2132): IMAGE_TAG を与えれば稼働リリースを読まずにそれを宣言にする', () => {
+    assert.deepStrictEqual(declaredImageTag('.', { env: { IMAGE_TAG: 'abc123' } }), { ok: true, tag: 'abc123', source: 'IMAGE_TAG' });
+  });
 
   // ---- G12 (#1159 / IADR-0377)
   const meshManifest = [
@@ -2656,6 +2706,8 @@ module.exports = {
   imagesFromRendered,
   imagesFromLive,
   evaluateImageDrift,
+  imageTagFromUserValues,
+  declaredImageTag,
   meshObjectsFromManifest,
   specWriters,
   evaluateMeshDrift,

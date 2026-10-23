@@ -681,3 +681,4 @@
 | [IADR-0601](./IADR-0601_llm-stream-usage-on-abort-and-cancel.md) | LLM の逐次応答が Done に届かずに終わっても判明分のトークンを 1 回計上し、不完全として数える（llm.usage.incomplete.total）。呼び出し側の取り消しは llm.result=cancelled として数える（#2116） | Accepted |
 | [IADR-0602](./IADR-0602_readiness-own-dependencies-only.md) | readiness は自プロセス必須の依存だけを見る。BFF と AI 分析の readiness から下流サービスの疎通を外して /health/dependencies で報告し（Degraded・常に 200）、BFF のセッションストアは readiness に残す（#2105） | Accepted |
 | [IADR-0603](./IADR-0603_bff-downstream-failure-observability.md) | BFF が後段の不達・時間切れを畳むときは WARN と計器 bff.downstream.failure.total を 1 件ずつ出し（利用者の取り消しは数えない）、検索の不達は 200・0 件ではなく 502 で返す（#2104） | Accepted |
+| [IADR-0605](./IADR-0605_pin-self-built-image-tags.md) | 自製イメージは不変のタグ（git の sha）を global.image.tag で必ず渡し、無ければ chart の描画を落とす。経路B は作業ツリーの sha でビルドして同じ値を渡す | Accepted |

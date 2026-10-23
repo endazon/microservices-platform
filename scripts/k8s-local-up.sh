@@ -94,6 +94,12 @@ fi
 CLUSTER="${1:-msp-ast-dev}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# NFR-20, ADR-0007, IADR-0605 (#2132): 自製イメージの不変のタグ（git の sha。変更のある作業ツリーは差分の hash つき）。
+#   [2/7] のビルド（k8s-local-images.sh は export した IMAGE_TAG を使う）と [6/7] の helm（--set-string global.image.tag）が同じ値を使う。
+#   chart はタグが無いと描画を落とす（latest へ倒さない）。決められなければ何もする前に止める。上書きは IMAGE_TAG=<不変のタグ>。
+. "$ROOT/scripts/lib/local-image-tag.sh" || exit 3
+IMAGE_TAG="$(resolve_local_image_tag "$ROOT")" || exit 1
+export IMAGE_TAG
 INFRA_NS="platform-infra"
 MSP_NS="microservices-platform"
 
@@ -1014,6 +1020,7 @@ if [ "${LOCALEMBED:-}" = "1" ]; then
   LOCALEMBED_ARGS="--set embedding.deterministicLocal.enabled=true"
 fi
 echo "==> [6/7] helm upgrade --install (values-local)"
+echo "    image tag: ${IMAGE_TAG}（ロールバックは前のタグで helm upgrade。docs/operations/operations.md §イメージのタグの固定とロールバック）"
 # NFR, IADR-0210 決定 7, #1688: **後から Recreate へ変えた Deployment は、既存リリースに RollingUpdate の既定値
 #   （spec.strategy.rollingUpdate）が残っている。** Helm 4 の SSA はそれを消さず（チャートの `rollingUpdate: null` でも
 #   消えないことを実測）、`type: Recreate` と同居して upgrade 全体が落ちる。helm の前に冪等な patch で寄せる。
@@ -1035,7 +1042,7 @@ if [ -n "$DEPT_SYNC_DECLARE" ]; then
 fi
 # shellcheck disable=SC2086  # ISTIO_MESH_ARGS / LOCALEMBED_ARGS は空か複数フラグ。意図的に分割する。
 helm upgrade --install msp deploy/helm/microservices-platform \
-  -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}"
+  -n "$MSP_NS" -f deploy/local/values-local.yaml --set-string "global.image.tag=${IMAGE_TAG}" $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}"
 if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; trap - EXIT; fi
 # NFR-18, IADR-0577: 旧 rabbitmq-app（全サービス共通の 1 組・#1022）は読み手が無くなった。helm がサービスを切り替えた後に片付ける
 #   （ExternalSecret を先に消す。残すと ESO が Secret を作り直す。ESO の CRD が無いクラスタでは何もしない）。

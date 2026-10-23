@@ -4,6 +4,15 @@
 global:
   image:
     registry: harbor.internal
+    # NFR-20, ADR-0007, IADR-0605 (#2132): 自製イメージ（下の services の全 Deployment と frontend）のタグ。**既定は空で、空なら描画が落ちる**
+    #   （`helm template` / `helm upgrade` が required で止まる。`latest` へ黙って倒さない）。配備する側（CD・人・scripts/k8s-local-up.sh）が
+    #   ビルドした版の不変のタグ（git の sha。ローカルは scripts/lib/local-image-tag.sh が作る）を `--set-string global.image.tag=<sha>` で渡す。
+    #   サービスごとの上書きは `services.<名>.tag` / `frontend.tag`（既定は書かない＝この値を使う）。
+    #   🔴 `--set` ではなく `--set-string` で渡す（数字だけの sha は数として読まれる。描画は文字列でない値を拒む）。`latest` も拒む。
+    #   ロールバックは前の sha を渡し直す（docs/operations/operations.md §イメージのタグの固定とロールバック）。
+    tag: ""
+    # IADR-0605: タグが不変（sha）なので IfNotPresent のままでよい —— タグが変われば Pod の template が変わり、新しいタグは
+    #   ノードに無いので取りに行く。経路B（k3d-local の擬似レジストリ）は取り込んだイメージを使うため Always にできない（IADR-0088）。
     pullPolicy: IfNotPresent
   otel:
     endpoint: http://otel-collector:4317
@@ -355,7 +364,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/document-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     # FR-14, IADR-0028: パイプライン段（catalog 段）をホストする — pipeline-config をマウントする。
@@ -419,7 +427,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/datasource-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     port: 8080
@@ -482,7 +489,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/conversion-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     # FR-14, IADR-0028: パイプライン段（convert 段）をホストする — pipeline-config をマウントする。
@@ -523,7 +529,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/ingestion-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     # FR-14, IADR-0028: パイプライン段（ingest 段）をホストする — pipeline-config をマウントする。
@@ -565,7 +570,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/retrieval-service
-    tag: latest
     # FR-14, IADR-0028 / #1016: パイプライン段（retrieval-delete 段）をホストする — pipeline-config をマウントする。
     pipelineSteps: true
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
@@ -619,7 +623,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/aianalysis-service
-    tag: latest
     port: 8080
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
@@ -676,7 +679,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/authorization-service
-    tag: latest
     port: 8080
     # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 (#1201): east-west gRPC 用の h2c ポート
     # （TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。設定したサービスにだけ containerPort（名前 grpc）・
@@ -728,7 +730,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/wiki-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     # FR-14, IADR-0028: パイプライン段（wiki-sync / wiki-delete 段）をホストする — pipeline-config をマウントする。
@@ -772,7 +773,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/llm-gateway
-    tag: latest
     port: 8080
     # FR-02 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0397 (#1255):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
@@ -823,7 +823,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/dashboard-service
-    tag: latest
     port: 8080
     # FR-10 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0408 (#1255):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
@@ -845,7 +844,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/graph-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     # FR-14, IADR-0028 / #1016: パイプライン段（graph-delete 段）をホストする — pipeline-config をマウントする。
@@ -924,7 +922,6 @@ services:
     # 同じ理由で scaling.services にも入れない（conversion / ingestion / graph と同じ扱い）。
     replicas: 1
     image: microservices-platform/notification-service
-    tag: latest
     port: 8080
     # FR-22 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0419 (#1255):
     # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用）。Service に name: grpc /
@@ -952,7 +949,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/mcp-service
-    tag: latest
     port: 8080
     # FR-16, FR-05, SC-12, ADR-0062 決定 3 (#1185): 無人アカウントへ渡す機密区分・タグが
     # 登録者の集合の部分集合かを判定するため、登録者の ABAC 属性と認可スコープをここから解決する。
@@ -1028,7 +1024,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/feedback-service
-    tag: latest
     port: 8080
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
@@ -1048,7 +1043,6 @@ services:
     enabled: false
     replicas: 1
     image: microservices-platform/configuration-service
-    tag: latest
     port: 8080
     resources:
       requests: { cpu: 100m, memory: 128Mi }
@@ -1065,7 +1059,6 @@ services:
     enabled: false
     replicas: 1
     image: microservices-platform/risk-management-service
-    tag: latest
     port: 8080
     resources:
       requests: { cpu: 100m, memory: 128Mi }
@@ -1082,7 +1075,6 @@ services:
     enabled: false
     replicas: 1
     image: microservices-platform/market-monitor-service
-    tag: latest
     port: 8080
     resources:
       requests: { cpu: 100m, memory: 128Mi }
@@ -1092,7 +1084,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/bff
-    tag: latest
     port: 8080
     # FR-15, IADR-0029, #146: BFF は段をホストしないが、ドリフト検出の突合基準として宣言（pipeline.json）を
     # 必要とする。pipelineDeclaration=true で pipeline-config ConfigMap をマウントし Pipeline__ConfigPath を注入する。
@@ -1433,7 +1424,6 @@ frontend:
   enabled: true
   replicas: 1
   image: microservices-platform/frontend
-  tag: latest
   # NFR, IADR-0583: src/platform/frontend/Dockerfile の USER と同じ uid（非 root）。
   runAsUser: 10001
   # Caddy 待受ポート（src/platform/frontend/Dockerfile の EXPOSE 8080 / Caddyfile の :8080）。

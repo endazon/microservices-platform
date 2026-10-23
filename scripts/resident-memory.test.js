@@ -27,6 +27,7 @@
 const assert = require('assert');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { RENDER_IMAGE_TAG_ARGS } = require('./lib/helm-render-tag'); // NFR-20, IADR-0605: chart はタグが無いと描画を落とす
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const CHART = 'deploy/helm/microservices-platform';
@@ -67,7 +68,7 @@ function run(cmd, args) {
 }
 
 function helmTemplate(args) {
-  const r = run('helm', ['template', 'msp', CHART, ...args]);
+  const r = run('helm', ['template', 'msp', CHART, ...RENDER_IMAGE_TAG_ARGS, ...args]);
   assert.strictEqual(r.status, 0, `helm template ${args.join(' ')} が失敗した: ${r.stderr}`);
   return r.stdout;
 }
@@ -244,7 +245,7 @@ ok('変異: 0x の無い "60"（16 進数で 96%）へ戻すと赤', () => {
 
 ok('extraEnv / extraEnvAppend に同じ名前を書くと描画で落ちる（同名の env を 2 つ並べない）', () => {
   for (const key of ['extraEnvAppend', 'extraEnv']) {
-    const r = run('helm', ['template', 'msp', CHART, '--set', `services.wiki.${key}[0].name=DOTNET_GCHeapHardLimitPercent`, '--set', `services.wiki.${key}[0].value=90`]);
+    const r = run('helm', ['template', 'msp', CHART, ...RENDER_IMAGE_TAG_ARGS, '--set', `services.wiki.${key}[0].name=DOTNET_GCHeapHardLimitPercent`, '--set', `services.wiki.${key}[0].value=90`]);
     assert.notStrictEqual(r.status, 0, `${key} の同名が描けてしまった`);
     assert.match(r.stderr, /IADR-0539/);
   }

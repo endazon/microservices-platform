@@ -948,7 +948,11 @@ kubectl -n cert-manager get secret platform-infra-root-ca -o jsonpath='{.data.ca
 kubectl create configmap platform-infra-ca -n microservices-platform --from-file=ca.crt="$ca" \
   --dry-run=client -o yaml | kubectl apply -f -
 rm -f "$ca"
+# NFR-20 / #2132: 自製イメージは不変のタグ（git の sha）で作り、同じタグを helm へ渡す（chart はタグが無いと描画で止まる。latest は拒む）
+IMAGE_TAG="$(bash scripts/lib/local-image-tag.sh)"
+IMAGE_TAG="$IMAGE_TAG" bash scripts/k8s-local-images.sh --live
 helm upgrade --install msp deploy/helm/microservices-platform \
-  -n microservices-platform --create-namespace -f deploy/local/values-local.yaml
+  -n microservices-platform --create-namespace -f deploy/local/values-local.yaml \
+  --set-string "global.image.tag=$IMAGE_TAG"
 kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
 ```

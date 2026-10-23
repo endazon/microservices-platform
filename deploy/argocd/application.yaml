@@ -3,17 +3,15 @@
 # microservices-platform Namespace へ宣言的に同期する。Git の状態が単一の真実源であり、
 # 手動 kubectl 適用に依存しない（受け入れ基準: ArgoCD 経由のデプロイが Git と同期）。
 #
-# 独立デプロイ・ロールバック（NFR）:
-#   - サービス単位のデプロイは values の services.<name>.tag（イメージタグ）を Git で更新して行う。
-#   - ロールバックは `argocd app rollback microservices-platform <revision>` もしくは Git revert で行う。
+# 独立デプロイ・ロールバック（NFR-20）:
+#   - 版の固定は下の helm.parameters の global.image.tag（自製イメージの不変のタグ＝ビルドした git の sha）で行う。
+#     chart はタグが無いと描画を落とす（latest へ倒さない。IADR-0605 / #2132）。
+#   - サービス単位のデプロイは services.<name>.tag を同じ parameters へ足して行う（そのサービスだけ別の sha）。
+#   - ロールバックは前の sha へ値を戻す（Git で値を戻して適用）。手順は docs/operations/operations.md
+#     §イメージのタグの固定とロールバック。
 #
-# IADR-0088 (#320): 再デプロイ安全性 — services.<name>.tag には **一意タグ（git SHA 等）または
-#   digest（`@sha256:...`）** を渡すこと。chart 既定の `latest` は placeholder であり、同名タグの
-#   再ビルドは `global.image.pullPolicy: IfNotPresent` と併せて既存 Pod/Node のキャッシュで stale image を
-#   掴む。一意タグ/digest なら pod template が毎回変わり自動 rollout され、`IfNotPresent` でも新イメージが
-#   pull される（`Always` は不要・local k3d では擬似レジストリを壊すため既定にしない）。
-#   例: `argocd app set microservices-platform --helm-set services.bff.tag=$(git rev-parse --short HEAD)`。
-#   詳細・rollout 強制手順は docs/operations/operations.md「イメージ参照と再デプロイ安全性」を参照。
+# IADR-0088 (#320) → IADR-0605 (#2132): タグは不変（git の sha）だけを渡す。同じタグの中身を差し替えない。
+#   不変のタグなら pod template が毎回変わり、`IfNotPresent` でも新しいタグは取りに行く（`Always` は不要）。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -44,6 +42,14 @@ spec:
       parameters:
         - name: config.appliedBy
           value: argocd
+        # NFR-20, ADR-0007, IADR-0605 (#2132): 自製イメージの不変のタグ（ビルドした git の sha）。**配備する人／CD が Git で更新する。**
+        #   空のままでは chart の描画が落ち、同期は ComparisonError で止まる（latest で配らない）。forceString は数字だけの sha を
+        #   数として読ませないため（chart は文字列でない値を拒む）。更新・ロールバックの手順は docs/operations/operations.md
+        #   §イメージのタグの固定とロールバック。🔴 `argocd app set` だけで変えると、この Application を kubectl apply し直したときに
+        #   値が空へ戻る —— 値の正はこのファイルである。
+        - name: global.image.tag
+          value: ""
+          forceString: true
       # 環境別の上書きは values-<env>.yaml を valueFiles に追加する。
       # valueFiles:
       #   - values-production.yaml

@@ -33,6 +33,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { RENDER_IMAGE_TAG_ARGS } = require('./lib/helm-render-tag'); // NFR-20, IADR-0605: chart はタグが無いと描画を落とす
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const CHART = 'deploy/helm/microservices-platform';
@@ -300,7 +301,7 @@ function hasHelm() {
   return probe.status === 0;
 }
 function render(args) {
-  const r = spawnSync('helm', ['template', 'msp', CHART, ...args], { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync('helm', ['template', 'msp', CHART, ...RENDER_IMAGE_TAG_ARGS, ...args], { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   assert.strictEqual(r.status, 0, `helm template ${args.join(' ')} が失敗した: ${r.stderr}`);
   return r.stdout;
 }

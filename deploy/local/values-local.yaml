@@ -1,13 +1,17 @@
 # IADR-0066: ローカル k8s(k3d) dev 用 Helm values 上書き。
 # 適用: helm upgrade --install msp deploy/helm/microservices-platform \
-#         -n microservices-platform --create-namespace -f deploy/local/values-local.yaml
+#         -n microservices-platform --create-namespace -f deploy/local/values-local.yaml \
+#         --set-string global.image.tag=<不変のタグ>
+#   （NFR-20 / IADR-0605 / #2132: 自製イメージのタグはここに書かない。scripts/k8s-local-up.sh が作業ツリーの git の sha で
+#    ビルドし、同じ値を渡す。タグが無いと chart の描画が落ちる。値は bash scripts/lib/local-image-tag.sh で確かめられる）
 #
 # 本番像（deploy/helm/microservices-platform/values.yaml）は不変。ここでは dev 差分のみ上書きする。
 
 global:
   image:
     # k3d へ import するローカルイメージの接頭辞（実レジストリではない。IfNotPresent で pull しない）。
-    # ビルド/インポートは scripts/k8s-local-images.sh が同じ接頭辞・タグで行う。
+    # ビルド/インポートは scripts/k8s-local-images.sh が同じ接頭辞で行う。タグ（global.image.tag）は起動器が --set-string で渡す
+    #   （IADR-0605。不変のタグが変われば Pod の template が変わるので、IfNotPresent のままで新しいイメージへ入れ替わる）。
     registry: k3d-local
     pullPolicy: IfNotPresent
   # #780 第2段 / IADR-0086 / IADR-0243: Keycloak の issuer をエッジ host（https://keycloak.localhost）へ
@@ -209,7 +213,7 @@ services:
       secret.reloader.stakater.com/reload: "wikijs-sync"
 
 # Issue #313, IADR-0078: SPA(frontend) を経路B(ローカル k8s / k3d) で配信する。image は
-# global.image.registry=k3d-local を接頭辞に使う（k8s-local-images.sh が同接頭辞・タグで build/import）。
+# global.image.registry=k3d-local を接頭辞に使う（k8s-local-images.sh が同接頭辞・同じ不変のタグで build/import。IADR-0605）。
 # 経路B は edge.enabled=false（Istio 未導入）のため SPA へのブラウザ到達は frontend-service の port-forward
 # で行う（deploy/local/README.md「SPA(/settings) 到達」）。OIDC issuer は base 既定 http://keycloak:8080/... の
 # ままにする（#284 手順A: hosts+port-forward で browser にも in-cluster 名 keycloak:8080 を解決させ、backend の

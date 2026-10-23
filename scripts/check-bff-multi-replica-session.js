@@ -58,6 +58,7 @@ const path = require('path');
 const http = require('http');
 const { spawn, spawnSync } = require('child_process');
 const { requireLiveOptIn, withoutLiveFlag } = require('./lib/live-opt-in.js');
+const { RENDER_IMAGE_TAG_ARGS } = require('./lib/helm-render-tag');
 
 const TAG = '[check-bff-multi-replica-session]';
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -435,6 +436,9 @@ function run(bin, args, opts = {}) {
 
 function helmTemplate(valuesFiles) {
   const args = ['template', RELEASE, CHART, '-n', NAMESPACE];
+  // NFR-20, IADR-0605 (#2132): chart は自製イメージのタグが無いと描画を落とす。--plan は 2 つの描画の差分（replicas の 1 行）だけを
+  //   見るので、両方に同じ描画専用のタグを渡す（--set-string は -f より強いので、values がタグを持っても両方で同じ値になる）。
+  args.push(...RENDER_IMAGE_TAG_ARGS);
   for (const f of valuesFiles) args.push('-f', f);
   const r = run(helmBin(), args);
   if (r.error || r.status !== 0) return { ok: false, error: (r.error && r.error.message) || String(r.stderr || '').trim() || `helm template が exit ${r.status}` };
