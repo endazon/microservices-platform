@@ -34,6 +34,9 @@ public class ClaudeProviderStreamIdleTimeoutTests
         + Event("message_delta", """{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":4}}""")
         + Event("message_stop", """{"type":"message_stop"}""");
 
+    // IADR-0601 決定 1 (#2116): 経過報告のチャンク（本文なし・Done=false）。
+    private static bool IsProgress(CompletionChunk chunk) => !chunk.Done && chunk.TextDelta.Length == 0;
+
     private static string Event(string name, string data) => $"event: {name}\ndata: {data}\n\n";
 
     private static Dictionary<string, string?> IdleOneSecond() =>
@@ -54,8 +57,10 @@ public class ClaudeProviderStreamIdleTimeoutTests
         Exception? caught = null;
         try
         {
+            // IADR-0601 (#2116): 本文なしの経過報告（Done=false でトークン数だけを持つ）は本文の並びから外して読む。
             await foreach (var chunk in provider.StreamAsync(Request(), TestContext.Current.CancellationToken))
-                received.Add(chunk.TextDelta);
+                if (!IsProgress(chunk))
+                    received.Add(chunk.TextDelta);
         }
         catch (Exception ex)
         {
@@ -141,7 +146,8 @@ public class ClaudeProviderStreamIdleTimeoutTests
         var received = new List<string>();
         await foreach (var chunk in provider.StreamAsync(Request(), TestContext.Current.CancellationToken))
         {
-            received.Add(chunk.TextDelta);
+            if (!IsProgress(chunk))
+                received.Add(chunk.TextDelta);
             await Task.Delay(TimeSpan.FromMilliseconds(1500), TestContext.Current.CancellationToken);
         }
 

@@ -39,7 +39,21 @@ public sealed class LlmUsageMetrics
     // 費用ダッシュボードが平常に見え、**指標を守るための除外が、指標を読めなくする**。
     public const string SyntheticExcludedCounterName = "llm.usage.synthetic_excluded.total";
 
+    // FR-10, ADR-0044 決定 3, IADR-0601 決定 2 (#2116): 逐次応答が **最終チャンク（Done）の実数を受け取らずに終わった**
+    // 送信の件数。🔴 **無音で 0 円にしない。** 判明分（入力トークン等）は llm.tokens.total / llm.cost.total へ積むが、
+    // それは**下限**である。この系列が伸びている間、費用（と月次予算の判定）は過小である。
+    public const string IncompleteCounterName = "llm.usage.incomplete.total";
+
     public const string TokenTypeTag = "llm.token_type";
+    // IADR-0601 決定 2: 終わり方（3 値で閉じる）と、判明分を計上できたか（2 値で閉じる）。
+    public const string IncompleteReasonTag = "llm.incomplete_reason";
+    public const string UsageCoverageTag = "llm.usage_coverage";
+
+    public const string IncompleteUpstreamError = LlmCompletionMetrics.ResultUpstreamError; // 上流が途中で切れた
+    public const string IncompleteCancelled = LlmCompletionMetrics.ResultCancelled;       // 呼び出し側が取り消した
+    public const string IncompleteNoFinalChunk = "no_final_chunk";                         // 例外なく終わったが Done が無い
+    public const string CoveragePartial = "partial"; // 判明分を llm.tokens.total / llm.cost.total へ計上した（下限）
+    public const string CoverageNone = "none";       // 判明分が無く、何も計上していない
     public const string CurrencyTag = "llm.currency";
     public const string PricingStatusTag = "llm.pricing_status";
 
@@ -54,6 +68,7 @@ public sealed class LlmUsageMetrics
     private readonly Counter<double> _cost;
     private readonly Counter<long> _unpriced;
     private readonly Counter<long> _syntheticExcluded;
+    private readonly Counter<long> _incomplete;
     private readonly IOptionsMonitor<LlmRoutingOptions> _routing;
     private readonly ModelPriceTable _prices;
     private readonly TimeProvider _clock;
@@ -80,6 +95,11 @@ public sealed class LlmUsageMetrics
             UnpricedCounterName, unit: "{completion}",
             description: "単価を解決できず金額を計上できなかった呼び出しの件数。**0 でない値は単価表の "
                        + "期限切れ・登録漏れの検出である**（無音で 0 円にしないための警報）。");
+        _incomplete = meter.CreateCounter<long>(
+            IncompleteCounterName, unit: "{completion}",
+            description: "逐次応答が最終チャンク（実数）を受け取らずに終わった送信の件数（上流の途中切断・呼び出し側の取り消し・"
+                       + "最終チャンクの欠落）。判明分は llm.tokens.total / llm.cost.total に積むが下限であり、"
+                       + "**この系列が伸びている間、費用と月次予算の判定は過小である**（ADR-0044 決定 3）。");
         _syntheticExcluded = meter.CreateCounter<long>(
             SyntheticExcludedCounterName, unit: "{completion}",
             description: "合成監視（synthetic）のため llm.tokens.total / llm.cost.total へ計上しなかった "
@@ -92,6 +112,8 @@ public sealed class LlmUsageMetrics
     //
     // **未送信の経路では呼ばない。** 越境拒否・プロバイダ未登録・上流エラーにトークンは存在せず、
     // 0 を積むと「安く済んだ」と読める（IADR-0212 決定 3 と同じ判断）。
+    // ［IADR-0601 (#2116)］ただし逐次応答が**送信の後で**途中切断・取り消しで終わったときは、判明分（経過報告の
+    // 最新値）でここを 1 回だけ呼び、あわせて RecordIncomplete で「下限である」ことを数える。
     //
     // at: 単価の有効期間を判定する時刻。既定は現在時刻。**呼び出し時刻で判定する**——
     //     集計期間が単価改定をまたいでも、各呼び出しはその時点の単価で換算されるため、
@@ -153,6 +175,26 @@ public sealed class LlmUsageMetrics
             { LlmCompletionMetrics.ModelTag, LlmMetricValues.Or(decision.Model, LlmMetricValues.None) },
             { LlmCompletionMetrics.ProviderTag, LlmMetricValues.Or(decision.Provider, LlmMetricValues.None) },
             { LlmCompletionMetrics.ConfidentialityTag, sensitivity.ToString().ToLowerInvariant() },
+        });
+    }
+
+    // FR-10, ADR-0044 決定 3, IADR-0601 決定 2 (#2116): 逐次応答が Done の実数を受け取らずに終わったことを 1 件数える。
+    //
+    // 🔴 **判明分の計上（RecordUsage）とは別に呼ぶ。** こちらはトークン数を持たない（件数だけ）ので、
+    // 両方を呼んでも同じトークンを 2 回数えることはない。coveragePartial は「判明分を RecordUsage へ渡したか」。
+    // 属性は RecordUsage と同じ軸（用途・モデル・プロバイダ・機密区分）に、値域を閉じた 2 軸を足す。
+    public void RecordIncomplete(
+        RoutingDecision decision, string purpose, SensitivityClass sensitivity, string reason, bool coveragePartial)
+    {
+        var routing = _routing.CurrentValue;
+        _incomplete.Add(1, new TagList
+        {
+            { LlmCompletionMetrics.PurposeTag, LlmMetricValues.NormalizePurpose(routing, purpose) },
+            { LlmCompletionMetrics.ModelTag, LlmMetricValues.Or(decision.Model, LlmMetricValues.None) },
+            { LlmCompletionMetrics.ProviderTag, LlmMetricValues.Or(decision.Provider, LlmMetricValues.None) },
+            { LlmCompletionMetrics.ConfidentialityTag, sensitivity.ToString().ToLowerInvariant() },
+            { IncompleteReasonTag, reason },
+            { UsageCoverageTag, coveragePartial ? CoveragePartial : CoverageNone },
         });
     }
 
