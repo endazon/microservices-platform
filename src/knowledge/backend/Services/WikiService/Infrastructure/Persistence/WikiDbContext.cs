@@ -16,6 +16,10 @@ public class WikiDbContext(DbContextOptions<WikiDbContext> options) : DbContext(
     // 保存の突き合わせの負けとして扱うために、受け口が制約名と突き合わせる（EF の既定の名前と同じ値）。
     public const string SyncMarkKeyName = "PK_SyncMarks";
 
+    // [[IADR-0596]] 決定 3 (#2102): 同期メタデータの文書 ID の一意索引の名前（初期マイグレーションの値）。初回の同期で 2 者が同じ文書の行を
+    // 同時に作ると、印より先にこの索引で 23505 になる（実 PostgreSQL の結合試験で実測）。これも保存の突き合わせの負けとして扱う。
+    public const string DocumentIdIndexName = "IX_Pages_DocumentId";
+
     // FR-13, [[IADR-0541]] 決定 3 (#1934): slug の一意索引の名前。同期の受け口が 23505 の制約名と突き合わせる
     // （EF の既定の名前と同じ値。既存のマイグレーションの索引名を変えない）。
     public const string SlugIndexName = "IX_Pages_Slug";

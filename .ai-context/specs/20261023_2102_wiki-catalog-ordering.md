@@ -140,3 +140,12 @@ issue: "#2102"
 ## 検証
 
 - `dotnet build` / `dotnet test`（WikiService.Tests・DocumentService.Tests）・`dotnet format --verify-no-changes`・`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`・文書系の検査器。結果は PR 本文に記録する。
+
+## ［2026-10-23 追記 / #2102］レビュー対応で直した点
+
+- **表名の誤り**: §設計の「Wiki の版の印: 新しい表 `DocumentSyncMarks`」は誤りで、実装の表名は **`SyncMarks`**（主キー `PK_SyncMarks`）である（受け入れ基準 13 と同じ）。`DocumentSyncMarks` という表は無い（カタログの削除の事実の表は `DocumentDeletionMarks`）。
+- **移行で `ArchivedAt` を埋めない**: §設計の「移行: 既存のアーカイブ済みの行の `ArchivedAt` は `UpdatedAt` で埋める」は採らなかった。マイグレーションは列を null 可で足すだけで値を埋めず、`ArchivedAt` が無いアーカイブは実行時に `UpdatedAt` で読む（IADR-0596 決定 6・試験「アーカイブの時刻が無ければ更新時刻で読む」）。戻しにくい側に倒れる性質は同じである。
+- **初回の同期の並行（実 PostgreSQL で判明）**: 印がまだ無い文書を 2 者が同時に同期すると、後から保存する側は印の主キー `PK_SyncMarks` より先に同期メタデータの一意索引 **`IX_Pages_DocumentId`** で 23505 になる（挿入の順で決まる）。当初の実装はこれを突き合わせの負けと読まず、再試行で古い側が「古い」と判定して ack し、Wiki.js に古い版の push を残した。**両方の制約名を突き合わせの負けとして扱う**ように直した（IADR-0596 決定 3）。
+  - 試験: `Knowledge.IntegrationTests` の `WikiSyncMarkPostgresTests`（実 PostgreSQL・本番と同じマイグレーション。3 件）。CI では `integration.yml`（develop への push と日次）で走り、PR の `ci.yml` は `Category!=Integration` で外す。手元では PostgreSQL 16 を立てて `PLATFORM_TEST_POSTGRES` で与えて実走した（3 件合格）。
+  - 変異: `IX_Pages_DocumentId` を突き合わせの負けとしない → 「初回の同期で印の作成に負けた古い版は…」が赤。`PK_SyncMarks` を突き合わせの負けとしない → 「印の同時作成は…」「初回の同期で削除に…」の 2 件が赤。
+

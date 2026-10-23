@@ -15,16 +15,17 @@ namespace WikiService.Features.Wiki;
 // 先に保存した側の後から保存する側は必ず負ける。負けた側が**古くなっていたら**（先に保存された版のほうが新しい）、自分の書き込みが
 // Wiki.js に残っている恐れがあるので、保存済みの最新の状態（メタデータの行が active なら push・archived ならアーカイブ・行が無ければ削除）へ
 // Wiki.js を合わせ直してから ack する。古くなっていなければ（相手が古い・同じ版の並行）false を返し、呼び出し元は投げて再試行へ委ねる。
-internal static class WikiSyncOrdering
+public static class WikiSyncOrdering
 {
     // 突き合わせの負け: 既存の印の改訂番号が読んだ後に動いた（DbUpdateConcurrencyException）か、
-    // 同じ文書の印を 2 者が同時に作った（主キー `PK_SyncMarks` の 23505）。
-    internal static bool IsMarkConflict(DbUpdateException ex)
+    // 同じ文書の印・同期メタデータの行を 2 者が同時に作った（主キー `PK_SyncMarks`・一意索引 `IX_Pages_DocumentId` の 23505。
+    // どちらが先に違反するかは挿入の順で決まる）。実 PostgreSQL の結合試験（`WikiSyncMarkPostgresTests`）が引くので公開する。
+    public static bool IsMarkConflict(DbUpdateException ex)
         => ex is DbUpdateConcurrencyException
             || ex.InnerException is PostgresException
             {
                 SqlState: PostgresErrorCodes.UniqueViolation,
-                ConstraintName: WikiDbContext.SyncMarkKeyName,
+                ConstraintName: WikiDbContext.SyncMarkKeyName or WikiDbContext.DocumentIdIndexName,
             };
 
     // 突き合わせで負けたら呼ぶ。追跡中の変更（負けた保存の分）は捨てる。合わせ直したら true（呼び出し元は ack する）。

@@ -103,7 +103,7 @@ public class DocumentSyncConsumer(
             archivedPage?.Archive();
             // [[IADR-0596]]: メタデータの行が無くても印は進める（アーカイブより古い版で後からページを作らない）。
             RecordApplied(mark, ev);
-            if (!await SaveOrReconcileAsync(() => SaveAsync(ct), ev, ct)) return;
+            if (!await SaveOrReconcileAsync(async () => { await db.SaveChangesAsync(ct); return true; }, ev, ct)) return;
             logger.LogInformation("Archived document {DocumentId} on Wiki.js", ev.DocumentId);
             return;
         }
@@ -164,7 +164,7 @@ public class DocumentSyncConsumer(
             if (withheld is not null) db.Pages.Remove(withheld);
             // [[IADR-0596]]: 行を消しても印は残す（撤去より古い版で書き戻さない）。
             RecordApplied(mark, ev);
-            if (!await SaveOrReconcileAsync(() => SaveAsync(ct), ev, ct)) return;
+            if (!await SaveOrReconcileAsync(async () => { await db.SaveChangesAsync(ct); return true; }, ev, ct)) return;
 
             logger.LogInformation(
                 "Withheld document {DocumentId} from Wiki.js: all exposure attributes are excluded", ev.DocumentId);
@@ -269,12 +269,7 @@ public class DocumentSyncConsumer(
         mark.RecordUpdated(ev.UpdatedAt);
     }
 
-    private async Task<bool> SaveAsync(CancellationToken ct)
-    {
-        await db.SaveChangesAsync(ct);
-        return true;
-    }
-
+    // `save` の戻り値は「保存した」か（slug の恒久的な衝突で保存しなかったら false。`SaveWithSlugFallbackAsync`）。
     // 🔴 [[IADR-0596]] 決定 3 (#2102): 保存の突き合わせで負けたら、より新しい版が保存済みなら Wiki.js をその状態へ合わせ直して ack する（false）。
     // そうでなければ（相手が古い・同じ版の並行）投げて再試行へ委ねる —— 次の試行は保存済みの印を読んで判定し直す。
     private async Task<bool> SaveOrReconcileAsync(Func<Task<bool>> save, DocumentUpdated ev, CancellationToken ct)
@@ -313,7 +308,9 @@ public class DocumentSyncConsumer(
     // FR-13, [[IADR-0541]] 決定 3 (#1934): 保存。slug の一意制約（`IX_Pages_Slug`）に当たったら —— 空きを確かめた後に
     // 同名の別文書が並行して同じ slug を取った競合である —— 1 度だけ文書 ID 32 桁の接尾辞へ付け替えて保存し直す。
     // それでも当たる（または既に 32 桁だった）なら**恒久的な失敗**として記録し false を返す（呼び出し元は ack する）。
-    // 🔴 **`IX_Pages_DocumentId` の 23505（同じ文書の並行作成）・接続断などは捕まえない** —— 次の試行で更新の経路に入って直る。
+    // 🔴 **`IX_Pages_DocumentId` の 23505（同じ文書の並行作成）・接続断などはここでは捕まえない。** 接続断は次の試行で直る。
+    // 並行作成は［2026-10-23 / #2102・[[IADR-0596]] 決定 3］保存の突き合わせの負けとして `SaveOrReconcileAsync` が受ける
+    // （次の試行に任せると、古い側は「古い」と判定して ack し、Wiki.js に自分の push を残す）。
     private async Task<bool> SaveWithSlugFallbackAsync(WikiPage page, string fallbackSlug, Guid documentId, CancellationToken ct)
     {
         try

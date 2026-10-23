@@ -224,6 +224,7 @@
       "DocumentSyncConsumerTests",
       "WikiEndpointsAbacTests",
       "WikiJsGraphQlClientTests",
+      "WikiSyncMarkPostgresTests",
       "WikiSyncOrderingTests",
       "WikiSyncPermanentFailureTests",
       "WikiSyncTimeoutTests",
