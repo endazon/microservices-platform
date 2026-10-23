@@ -102,8 +102,9 @@ function tagViolations(rendered, tag, expectedCount) {
 function failClosedViolations(chart) {
   const v = [];
   const cases = [
-    ['既定（タグなし）', [], /global\.image\.tag/],
-    ['values-local（タグなし）', ['-f', VALUES_LOCAL], /global\.image\.tag/],
+    // 初回の切り替え前のリリースへ --reuse-values を流した人が、エラー文から起動器の再実行へ辿れること（レビュー 🟡）
+    ['既定（タグなし）', [], /global\.image\.tag[\s\S]*k8s-local-up\.sh/],
+    ['values-local（タグなし）', ['-f', VALUES_LOCAL], /global\.image\.tag[\s\S]*k8s-local-up\.sh/],
     ['latest を明示', ['--set-string', 'global.image.tag=latest'], /latest は使えない/],
     ['サービスの上書きに latest', ['--set-string', `global.image.tag=${TAG}`, '--set-string', 'services.bff.tag=latest'], /latest は使えない/],
     ['--set で数字だけの sha（数として読まれる）', ['--set', 'global.image.tag=123456789012'], /--set-string/],

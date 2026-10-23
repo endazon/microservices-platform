@@ -13,7 +13,7 @@ NFR-20, ADR-0007, IADR-0605 (#2132): 自製イメージ（services の全 Deploy
 {{- if and $tag (not (kindIs "string" $tag)) -}}
 {{- fail (printf "%s のイメージのタグが文字列でない（%v）。--set ではなく --set-string で渡す（数字だけの sha は数として読まれる。IADR-0605）" .what $tag) -}}
 {{- end -}}
-{{- $tag = required (printf "%s のイメージのタグが無い。ビルドした版の不変のタグ（git の sha）を --set-string global.image.tag=<sha> で渡す（latest へは倒さない。NFR-20 / IADR-0605）" .what) $tag -}}
+{{- $tag = required (printf "%s のイメージのタグが無い。ビルドした版の不変のタグ（git の sha）を --set-string global.image.tag=<sha> で渡す（latest へは倒さない。NFR-20 / IADR-0605）。経路B は bash scripts/k8s-local-up.sh --live が渡す。タグの宣言が無いリリースへの --reuse-values（初回の切り替え前）は、先に k8s-local-up.sh を流してタグを入れる（docs/operations/operations.md §イメージのタグの固定とロールバック）" .what) $tag -}}
 {{- if eq $tag "latest" -}}
 {{- fail (printf "%s のイメージのタグに latest は使えない。不変のタグ（git の sha）を渡す（NFR-20 / IADR-0605）" .what) -}}
 {{- end -}}

@@ -27,6 +27,12 @@ image_tag_validate() {
   fi
 }
 
+# sha256 を出す（GNU の sha256sum、無ければ macOS の shasum -a 256。出力の形は同じ「<hash>  <path>」）。
+#   経路B は macOS（Rancher Desktop / Docker Desktop）でも走るので、GNU だけの道具（sha256sum・xargs -r）に依らない。
+_local_image_tag_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi
+}
+
 # <repo-root> の作業ツリーから不変のタグを作る（IMAGE_TAG を見ない）。
 local_image_tag() {
   local root="${1:-.}" sha status hash
@@ -44,8 +50,8 @@ local_image_tag() {
   hash="$(
     {
       git -C "$root" diff HEAD --binary --submodule=diff
-      (cd "$root" && git ls-files -z --others --exclude-standard | xargs -0 -r sha256sum)
-    } | sha256sum | cut -c1-8
+      (cd "$root" && git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do _local_image_tag_sha256 "$f"; done)
+    } | _local_image_tag_sha256 | cut -c1-8
   )"
   printf '%s-dirty-%s\n' "$sha" "$hash"
 }
