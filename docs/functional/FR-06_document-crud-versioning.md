@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-08, UC-03, NFR-09, FR-19, FR-01]
-adrs: [ADR-0141, ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122, ADR-0027]
-iadrs: [IADR-0597, IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
-specs: [20261023_2103_document-optimistic-concurrency, 20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
-issues: [#2103, #2102, #2047, #1974, #1973, #1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
+adrs: [ADR-0141, ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0054, ADR-0050, ADR-0057, ADR-0122, ADR-0027]
+iadrs: [IADR-0598, IADR-0597, IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
+specs: [20261023_2112_sc05-doc-scope-default, 20261023_2103_document-optimistic-concurrency, 20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
+issues: [#2112, #2103, #2102, #2047, #1974, #1973, #1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -108,6 +108,11 @@ issues: [#2103, #2102, #2047, #1974, #1973, #1961, #1931, #1679, #1616, #1575, #
   （人の管理者でも所有者を移管できない。所有者の移管は決まっていない）。`owner` を**送らなければ現在の値が残り**、
   異なる値（空文字を含む）を送ると 400。所有者の無い文書へ所有者を付けることもできない。文書管理画面の編集は応答の属性を
   そのまま送り返すので、この規則に当たらない。
+- **一般の登録口（`POST /documents`）で `doc_scope` を送らなければ、サーバが `organization` を補う。** 作成後は付けられないため、
+  ここで付かなければ恒久的に欠落する。文書管理画面の登録フォームは機密区分しか送らないが、補完で組織文書として確定する。
+  明示の `organization` はそのまま通り、未知値・空文字・`private-note` は従前どおり 400（補完で上書きしない）。
+  補完の前に作られた `doc_scope` を持たない文書へは遡及しない。属性は全置換なので、その後の更新では
+  補われた `doc_scope` を同送する（文書管理画面の編集は応答の属性を送り返すので同送になる）。
 
 ### 本文の無い古い文書の一括アーカイブ（`POST /documents/archive-bodyless`）
 

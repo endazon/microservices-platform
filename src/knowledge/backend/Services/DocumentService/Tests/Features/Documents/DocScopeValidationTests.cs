@@ -56,10 +56,11 @@ public class DocScopeValidationTests(TestWebApplicationFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
-    // 陽性対照（集合帰属の向き）: doc_scope を持たない文書は従来どおり作成・更新できる
-    // （欠落は拒否しない —— 既存 2,368 件へ遡及付与しない方針）。
+    // 陽性対照（集合帰属の向き）: doc_scope 未指定の作成は拒否しない（欠落は拒否しない）。
+    // ［#2112 / [[IADR-0598]]］作成口が `organization` を補うようになったため、更新は SC-05 と同じく
+    // 現在値を同送する。**持たない既存文書の更新**は `DocScopeImmutabilityTests` が DB 上で再現して固定する。
     [Fact]
-    public async Task doc_scopeを持たない文書は従来どおり作成更新できる()
+    public async Task doc_scope未指定でも作成でき補完された値の同送で更新できる()
     {
         var client = factory.CreateClient();
         var create = await client.PostAsJsonAsync("/documents",
@@ -70,7 +71,7 @@ public class DocScopeValidationTests(TestWebApplicationFactory factory)
         var update = await client.PutAsJsonAsync($"/documents/{doc!.Id}", new
         {
             title = "更新後",
-            attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
+            attributes = new Dictionary<string, string> { ["confidentiality"] = "internal", ["doc_scope"] = "organization" },
             tags = new List<string>(),
         }, TestContext.Current.CancellationToken);
         update.StatusCode.Should().Be(HttpStatusCode.OK);
