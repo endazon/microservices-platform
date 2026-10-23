@@ -48,9 +48,9 @@ internal static class GrantDocumentShareEndpoint
             // 付与者も同じ主体名で記録する（`CanWrite` が真なので非 null。腕 B の機械で `Identity.Name` の null を入れない）。
             var share = DocumentShare.Create(id, req.SubjectType, req.SubjectId, subject!);
             db.DocumentShares.Add(share);
-            await db.SaveChangesAsync(ct);
-            await DocumentEndpoints.PublishUpdatedIfIndexableAsync(
-                bus, db, doc, await TagResolver.NamesAsync(db, ct), ct);
+            // FR-06, ADR-0027 §決定, IADR-0608 決定 1 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            // 🔴 共有先（`sharedWith`）は**保存の後の**共有台帳から解決する（今回の付与・取り消しが載る）。保存の前に積む形にしない。
+            await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
             return Results.Created($"/documents/{id}/shares",
                 new DocumentShareDto(share.SubjectType, share.SubjectId, share.GrantedBy,
                     share.CreatedAt));

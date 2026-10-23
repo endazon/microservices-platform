@@ -329,6 +329,46 @@ public static class DocumentEndpoints
             ? PublishUpdatedAsync(bus, db, d, names, ct)
             : Task.CompletedTask;
 
+    // FR-06, ADR-0027 §決定, IADR-0608 決定 3 (#2168): **確定込みの門の入口。** DB の変更を保存し、保存の後の DB から
+    // イベントを組み立てて門へ通し、両方を 1 トランザクションで確定してから送る（Transactional Outbox）。
+    // 返すのはタグの表示名辞書である（応答の写像に同じ辞書を使う。トランザクションの中で読んだ値）。
+    //
+    // 🔴 **保存を `DocumentDbContext.SaveChangesAsync` の直呼びで済ませ、その後に門を呼ぶ形へ戻さない。**
+    // 門は `CommitAsync` の外では例外になる（確定されない発行を作らないため。IADR-0608 決定 2）。
+    // 保存が失敗すれば例外がそのまま出る（版の競合の 409 への写像は呼び出し側が持つ）。発行は巻き戻り 1 通も出ない。
+    internal static Task<Dictionary<Guid, string>> SaveChangesAndPublishUpdatedIfIndexableAsync(
+        IDocumentUpdatedPublisher bus, DocumentDbContext db, Document d, CancellationToken ct = default)
+        => SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, [d], ct);
+
+    // 複数文書の版（一括アーカイブ・再発行・タグ改名）。全件の保存と全件の発行を 1 回の確定に載せる。
+    internal static async Task<Dictionary<Guid, string>> SaveChangesAndPublishUpdatedIfIndexableAsync(
+        IDocumentUpdatedPublisher bus, DocumentDbContext db, IReadOnlyCollection<Document> docs, CancellationToken ct = default)
+    {
+        Dictionary<Guid, string> names = [];
+        await bus.CommitAsync(async c =>
+        {
+            await db.SaveChangesAsync(c);
+            names = await TagResolver.NamesAsync(db, c);
+            foreach (var d in docs)
+                await PublishUpdatedIfIndexableAsync(bus, db, d, names, c);
+        }, ct);
+        return names;
+    }
+
+    // 撤収の形（`PublishUpdatedIfIndexableOrWithdrawingAsync`）の確定込みの入口。`wasPublishable` は書き換える「前」に取った値。
+    internal static async Task<Dictionary<Guid, string>> SaveChangesAndPublishUpdatedIfIndexableOrWithdrawingAsync(
+        IDocumentUpdatedPublisher bus, DocumentDbContext db, Document d, bool wasPublishable, CancellationToken ct = default)
+    {
+        Dictionary<Guid, string> names = [];
+        await bus.CommitAsync(async c =>
+        {
+            await db.SaveChangesAsync(c);
+            names = await TagResolver.NamesAsync(db, c);
+            await PublishUpdatedIfIndexableOrWithdrawingAsync(bus, db, d, wasPublishable, names, c);
+        }, ct);
+        return names;
+    }
+
     // FR-21 受け入れ基準 ⑥: 本文が上限を超えたときの応答。**413 であって 400 ではない**
     // （計画が status を名指ししている）。本文へ上限を書き、切り詰めた成功と取り違えられないようにする。
     internal static IResult BodyTooLargeProblem() => Results.Problem(

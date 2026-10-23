@@ -45,15 +45,6 @@ internal static class RenameTagEndpoint
                 return Results.Conflict(new { message = $"タグ「{name}」は既に辞書にあります。" });
 
             tag.Rename(name);
-            try
-            {
-                await db.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateException)
-            {
-                // 追加と同じ race（検査と保存の間に別の要求が同名を入れる）。契約どおり 409 にする。
-                return Results.Conflict(new { message = $"タグ「{name}」は既に辞書にあります。" });
-            }
 
             // **改名したタグを使っている文書だけ再発行する。** 全文書を流すと辞書の 1 語の変更で
             // 索引全体が再構築され、規模に比例して費用が出る。
@@ -66,19 +57,35 @@ internal static class RenameTagEndpoint
             // **`Tags` の走査自体は全件のままである** —— jsonb へ変換した `List<Guid>` は SQL 側で
             // 展開できないためで、消したければ jsonb 包含（`@>`）＋ GIN 索引が要る。
             // ただし `FromSql` は EF InMemory で動かず、端点テストが全滅するため本 issue では採らない。
-            var names = await TagResolver.NamesAsync(db, ct);
-            var affectedIds = (await db.Documents
-                    .Select(d => new { d.Id, d.Tags })
-                    .ToListAsync(ct))
-                .Where(d => d.Tags.Contains(id))
-                .Select(d => d.Id)
-                .ToList();
+            //
+            // FR-06, ADR-0027 §決定, IADR-0608 決定 1 (#2168): **改名の保存と再発行を 1 トランザクションで確定する**
+            // （Transactional Outbox）。🔴 表示名辞書は**保存の後に**読む（新しい名前がイベントに載る）。保存の前に積む形にしない。
+            List<Document> affected = [];
+            try
+            {
+                await bus.CommitAsync(async c =>
+                {
+                    await db.SaveChangesAsync(c);
+                    var names = await TagResolver.NamesAsync(db, c);
+                    var affectedIds = (await db.Documents
+                            .Select(d => new { d.Id, d.Tags })
+                            .ToListAsync(c))
+                        .Where(d => d.Tags.Contains(id))
+                        .Select(d => d.Id)
+                        .ToList();
 
-            var affected = affectedIds.Count == 0
-                ? []
-                : await db.Documents.Where(d => affectedIds.Contains(d.Id)).ToListAsync(ct);
-            foreach (var doc in affected)
-                await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, ct);
+                    affected = affectedIds.Count == 0
+                        ? []
+                        : await db.Documents.Where(d => affectedIds.Contains(d.Id)).ToListAsync(c);
+                    foreach (var doc in affected)
+                        await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, c);
+                }, ct);
+            }
+            catch (DbUpdateException)
+            {
+                // 追加と同じ race（検査と保存の間に別の要求が同名を入れる）。契約どおり 409 にする（発行も巻き戻る）。
+                return Results.Conflict(new { message = $"タグ「{name}」は既に辞書にあります。" });
+            }
 
             // **再発行件数 ＝ 使用件数である**（どちらも「現行版でこのタグを持つ文書の数」。
             // `LoadWithUsageAsync` と同じ母集合を使っており、2 通りの数え方を持たない）。

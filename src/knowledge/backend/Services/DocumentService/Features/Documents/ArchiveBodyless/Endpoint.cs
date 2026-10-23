@@ -125,17 +125,17 @@ internal static class ArchiveBodylessDocumentsEndpoint
             if (!dryRun && missing.Count > 0)
             {
                 foreach (var doc in missing) doc.Archive(ChangeNote);
-                await db.SaveChangesAsync(ct);
+                // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 対象全件の保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+                await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, missing, ct);
 
-                var names = await TagResolver.NamesAsync(db);
                 foreach (var doc in missing)
                 {
                     // 🔴 監査: どの文書を、誰が、何のためにアーカイブしたか（1 件 1 行。基数は文書数で閉じる）。
+                    // 確定の後に書く（確定しなかったアーカイブを記録しない）。
                     logger.LogInformation(
                         "Archived body-less document {DocumentId} (createdAt={CreatedAt:O}; body {MarkdownUri} is NoSuchKey) "
                         + "by {Principal} (requestedBy {RequestedBy}; reason {Reason})",
                         doc.Id, doc.CreatedAt, doc.MarkdownUri, principal, requestedBy, reason);
-                    await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, ct);
                     archived++;
                 }
             }

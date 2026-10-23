@@ -82,8 +82,8 @@ public sealed class AddDocumentTagUseCase(DocumentDbContext db, IDocumentUpdated
         if (!doc.AddTag(ids[0], ChangeNote))
             return AddDocumentTagOutcome.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, names, ct));
 
-        await db.SaveChangesAsync(ct);
-        await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, ct);
+        // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+        names = await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
         return AddDocumentTagOutcome.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, names, ct));
     }
 }

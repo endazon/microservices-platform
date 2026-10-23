@@ -34,6 +34,13 @@ public sealed class NormalizedExposureWithdrawalTests
 
     private sealed class RecordingUpdatedPublisher : IDocumentUpdatedPublisher
     {
+
+        // IADR-0608 (#2168): 確定の口。この器は関数（保存 → 発行を積む）を呼ぶだけでよい（DB は InMemory でトランザクションが無い）。
+
+        public Task CommitAsync(Func<CancellationToken, Task> saveAndPublish, CancellationToken ct = default) =>
+
+            saveAndPublish(ct);
+
         public List<Dictionary<string, string>> Attributes { get; } = [];
 
         public Task PublishUpdatedAsync(Guid documentId, string title, string status, string? markdownUri,

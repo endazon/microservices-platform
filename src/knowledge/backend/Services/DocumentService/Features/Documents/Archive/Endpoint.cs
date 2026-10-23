@@ -20,9 +20,8 @@ internal static class ArchiveDocumentEndpoint
             var doc = await DocumentManageScope.FindManageableAsync(db, id, ct);
             if (doc is null) return Results.NotFound();
             doc.Archive();
-            await db.SaveChangesAsync();
-            var names = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, ct);
+            // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            var names = await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
             return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, names, ct));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }

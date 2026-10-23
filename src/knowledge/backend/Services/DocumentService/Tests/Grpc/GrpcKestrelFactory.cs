@@ -120,6 +120,10 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             services.DisableAllWolverineMessagePersistence();
             services.RemoveAll<DocumentService.Domain.Ports.IDocumentDeletedPublisher>();
             services.AddScoped<DocumentService.Domain.Ports.IDocumentDeletedPublisher, RecordingDocumentDeletedPublisher>();
+            // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 更新イベントの発行口も Outbox の代役へ差し替える
+            // （本番のアダプタは `IDbContextOutbox` を要る。代役は `CommitAsync` の関数が成功した後でだけ RecordingMessageBus へ出す）。
+            services.RemoveAll<DocumentService.Domain.Ports.IDocumentUpdatedPublisher>();
+            services.AddScoped<DocumentService.Domain.Ports.IDocumentUpdatedPublisher, RecordingDocumentUpdatedPublisher>();
 
             services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, o =>
             {

@@ -10,8 +10,25 @@ namespace DocumentService.Domain.Ports;
 // ⚠️ 引数は素の値で渡す（契約型を渡すと `findPublishers` から発行が見えなくなる）。
 // 識別子 → 表示名の変換（タグ）は呼び出し側の責務のまま（変換点は
 // `DocumentEndpoints.PublishUpdatedAsync` の 1 つ。IADR-0153 決定 2）。
+//
+// FR-06, ADR-0027 §決定, IADR-0608 (#2168): **発行は DB の確定と同じトランザクションに載る（Transactional Outbox）。**
+// 従前は `SaveChangesAsync` の後に素の発行を呼んでおり、コミットの後・発行の前にプロセスが止まると更新が下流へ伝わらなかった。
+//
+// 使い方は 1 つである（呼び出し側の約束）:
+//   `CommitAsync(async c => { await db.SaveChangesAsync(c); ...発行を積む... }, ct)`
+//   関数の中で DB を保存し（トランザクションの中なので、まだ確定しない）、保存の後の DB を読んでイベントを積む。
+//   関数が終わると、DB の変更と積んだ発行を 1 つのトランザクションで確定し、確定の後に送る。
+// 🔴 **`PublishUpdatedAsync` は `CommitAsync` の関数の中でだけ呼べる**（外では例外。確定されない発行を作らない）。
+// 🔴 **段 1（`IDocumentDeletedPublisher`）の「積む → 確定」の順にしないのは、イベントの中身が保存の後の DB に依るからである**
+// （共有先・タグの表示名。保存の前に積むと、共有の付与・取り消し・タグ改名の直後のイベントが古い値を運ぶ。IADR-0608 決定 1）。
+// 確定が失敗したときは積んだ発行も巻き戻り、1 通も送られない（例外はそのまま呼び出し側へ出る）。
+// 確定の後に送出が失敗した発行は Outbox の表に残り、Wolverine の耐久エージェントが再送する（再起動を跨いでも）。
 public interface IDocumentUpdatedPublisher
 {
+    // DB の変更と、`saveAndPublish` の中で積んだ発行を 1 トランザクションで確定し、確定の後に送る。
+    // `saveAndPublish` は DB を保存してから発行を積む（保存しなければ DB の変更は確定しない）。1 スコープで何度呼んでもよい。
+    Task CommitAsync(Func<CancellationToken, Task> saveAndPublish, CancellationToken ct = default);
+
     // ⚠️ Wolverine の `IMessageBus.PublishAsync` は CancellationToken を取らない（E1 仕様書
     // 「受け入れた挙動差」）。ct は契約として受けるが、現行実装では伝播されない。
     // contentFingerprint: ADR-0050 決定 1 (#911)。本文の内容のみに依存する不透明な値（null = 不明）。

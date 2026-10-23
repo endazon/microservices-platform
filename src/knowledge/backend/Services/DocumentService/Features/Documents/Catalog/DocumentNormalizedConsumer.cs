@@ -115,19 +115,21 @@ public class DocumentNormalizedConsumer(
                 ev.DocumentId);
         }
 
-        await db.SaveChangesAsync(ct);
-
         // FR-01: カタログ登録を後続フロー（取り込み・Wiki 同期）へ通知する。
         // **［#635］イベントは表示名を運ぶ**（正本は識別子。[[IADR-0153]] 決定 2）——
         // 射影（Qdrant / Wiki.js）は人が読む面であり、下流は変わらない。
         // ADR-0027 / E3b: 発行は Wolverine（IDocumentUpdatedPublisher 経由）。本段の**購読**
         // （DocumentNormalized・MassTransit）は辺 E2 の射程であり、本 PR では動かさない。
-        var names = await TagResolver.NamesAsync(db, ct);
         // **［#1184］共有先（`shared_with`）の解決も含めて `DocumentEndpoints` の 1 か所へ寄せる**
         // （ADR-0061 決定 5 / [[IADR-0396]] 決定 3）—— ここで独自に組み立てると、
         // 取り込み経路の文書だけ判定軸が 1 本足りない索引になる。
-        await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
-            bus, db, doc, wasPublishable, names, ct);
+        //
+        // FR-06, ADR-0027 §決定, IADR-0608 決定 4 (#2168): **台帳の保存と発行を 1 トランザクションで確定する**（Transactional Outbox）。
+        // 購読は MassTransit だが、本サービスの MassTransit には Outbox もトランザクションも無い（`UsePlatformRetry` だけ）ので、
+        // DB のトランザクションは Wolverine の 1 つだけで混ざらない。確定が失敗すれば例外のまま MassTransit の再試行へ出る
+        // （従前の保存の失敗と同じ。発行は巻き戻り 1 通も出ない）。
+        await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableOrWithdrawingAsync(
+            bus, db, doc, wasPublishable, ct);
     }
 
     // SC-05, SC-09, SC-10, #637: 辞書に在るタグだけを返し、**無いものは件数として記録して捨てる**。

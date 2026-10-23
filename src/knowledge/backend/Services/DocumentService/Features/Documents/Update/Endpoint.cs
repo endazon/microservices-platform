@@ -68,9 +68,13 @@ internal static class UpdateDocumentEndpoint
                 updateTagIds, req.ChangeNote);
             // FR-06, UC-03, [[IADR-0597]] (#2103): 版は並行トークンである。読んだ後に別の更新が版を進めていれば保存は負け、
             // 黙った上書きも版テーブルの一意索引違反の 500 も起こさず 409 を返す（発行も行わない）。
+            // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            // 版の競合で保存が負ければ、発行も巻き戻って 1 通も出ない。
+            Dictionary<Guid, string> updateNames;
             try
             {
-                await db.SaveChangesAsync();
+                updateNames = await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableOrWithdrawingAsync(
+                    bus, db, doc, wasPublishable, ct);
             }
             catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
             {
@@ -81,9 +85,6 @@ internal static class UpdateDocumentEndpoint
             // （落とせないのは**制限**プロジェクトの値だけ。上の統制と母集合が違う）。
             unitProject.RecordIfUnitSubjectSavedWithoutProject(
                 http.User, doc.Attributes, UnitProjectMetrics.OperationUpdate);
-            var updateNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
-                bus, db, doc, wasPublishable, updateNames, ct);
             return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, updateNames, ct));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }
