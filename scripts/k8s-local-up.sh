@@ -672,6 +672,28 @@ publish_infra_ca() { # <namespace>
   rm -f "$f"
 }
 
+# IADR-0591: postgres / rabbitmq はサーバ証明書を起動時にしか読まない（init コンテナが写す）。cert-manager が証明書を更新したら
+#   （期限の 30 日前）、次の起動器の実行で作り直されるように、Pod の雛形へ証明書の指紋を注釈として刻む。指紋が同じなら何もしない。
+#   値（証明書）は表示しない。読めなければ刻まずに告げる（証明書の Ready は apply_infra_tls が待った後なので、通常は起きない）。
+INFRA_TLS_STAMP_KEY="platform-infra.tls/cert-sha256"
+stamp_infra_tls_restart() {
+  local d data sha cur
+  for d in postgres rabbitmq; do
+    data="$(kubectl -n "$INFRA_NS" get secret "$d-tls" -o jsonpath='{.data.tls\.crt}' 2>/dev/null)" || data=""
+    if [ -z "$data" ]; then
+      echo "WARN: $INFRA_NS/$d-tls の tls.crt を読めない。証明書の指紋を刻まない（更新しても $d は作り直されない。IADR-0591）" >&2
+      continue
+    fi
+    sha="$(printf '%s' "$data" | sha256sum | cut -c1-64)"
+    cur="$(kubectl -n "$INFRA_NS" get deploy "$d" -o "jsonpath={.spec.template.metadata.annotations.platform-infra\.tls/cert-sha256}" 2>/dev/null)" || cur=""
+    if [ "$cur" != "$sha" ]; then
+      echo "    -> $d: サーバ証明書の指紋が変わった（または未記録）。作り直す（IADR-0591）"
+      kubectl -n "$INFRA_NS" patch deploy "$d" --type merge \
+        -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"$INFRA_TLS_STAMP_KEY\":\"$sha\"}}}}}"
+    fi
+  done
+}
+
 echo "==> [4/7] apply in-cluster infra"
 # IADR-0082 (#324) / IADR-0210 (#787) → IADR-0369 (#1088): 永続化オーバーレイ（Keycloak/Postgres/Qdrant を
 # local-path PVC 化）は **既定オン**である。opt-out は `PERSIST=0`（使い捨てスタック専用）。
@@ -696,6 +718,7 @@ else
 fi
 apply_infra_tls
 kubectl apply -k "$INFRA_KUSTOMIZE"
+stamp_infra_tls_restart
 # NFR-18, ADR-0131, IADR-0522 (#1839): 旧 Redis（認証なし）を消す。kustomize の apply は宣言から消えたリソースを
 # 刈らないので、ここで消さないと既存クラスタに**認証なしのストアが残り続ける**（基準 D の穴が塞がらない）。
 kubectl -n "$INFRA_NS" delete deployment/redis service/redis --ignore-not-found

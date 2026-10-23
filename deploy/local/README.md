@@ -40,6 +40,8 @@ MSP chart はインフラを**デプロイせず**素のサービス名（`postg
   kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl -q list_connections user ssl
   # 期待値: kp（MSP の *_svc）と msp-* は TLS（t / true）。ai・ast-*・sa は段 1 では平文（f / false）のまま
   ```
+- 証明書の更新: cert-manager は期限（1 年）の 30 日前に更新する。postgres / rabbitmq は起動時にしか読まないので、起動器は Pod の雛形へ
+  証明書の指紋（注釈 `platform-infra.tls/cert-sha256`）を刻み、変わっていれば作り直す。**更新の後、期限までに一度は起動器を再実行する。**
 - 再実行の影響: 初めて段 1 を当てる再実行では postgres と rabbitmq が作り直される（ブローカは永続化していないので未配送のメッセージは失われる）。
   **取引の閉場後に行う。**
 - 切り戻し（基盤のサービスだけを平文へ戻す）: `global.db.tls.enabled=false`・`global.messaging.tls.enabled=false` を helm へ与え、
@@ -941,9 +943,11 @@ kubectl -n platform-infra wait --for=condition=Ready --timeout=120s certificate/
 kubectl apply -k deploy/local/infra                                  # infra
 # 基盤の CA を MSP の名前空間へ写す（helm の各サービスが非 optional でマウントする）
 kubectl create namespace microservices-platform --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n cert-manager get secret platform-infra-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/platform-infra-ca.crt
-kubectl create configmap platform-infra-ca -n microservices-platform --from-file=ca.crt=/tmp/platform-infra-ca.crt \
+ca="$(mktemp)"
+kubectl -n cert-manager get secret platform-infra-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > "$ca"
+kubectl create configmap platform-infra-ca -n microservices-platform --from-file=ca.crt="$ca" \
   --dry-run=client -o yaml | kubectl apply -f -
+rm -f "$ca"
 helm upgrade --install msp deploy/helm/microservices-platform \
   -n microservices-platform --create-namespace -f deploy/local/values-local.yaml
 kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml

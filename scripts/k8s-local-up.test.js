@@ -369,6 +369,10 @@ const KUBECTL_STUB = [
   'case "$*" in *"get secret keycloak-admin "*"{.data.password}"*) [ -n "${STUB_KEYCLOAK_ADMIN_EXISTING:-}" ] && printf "%s" "$STUB_KEYCLOAK_ADMIN_EXISTING" | base64; exit 0;; esac',
   // NFR-16, IADR-0591: 基盤のルート CA（cert-manager/platform-infra-root-ca の ca.crt）。既定は在る（PEM の形のダミー）。
   //   STUB_INFRA_CA_ABSENT=1 で読めない世界（空を返す）を作る（起動器が ConfigMap を作らずに止まることの陽性対照）。
+  // IADR-0591: 基盤のサーバ証明書（tls.crt）と、Deployment の雛形に刻んだ指紋。既定は証明書が在り、指紋は未記録（＝刻む）。
+  //   STUB_INFRA_TLS_STAMPED=1 で、今の証明書の指紋が既に刻まれている世界（＝何もしない）を作る。
+  'case "$*" in *"get secret postgres-tls "*|*"get secret rabbitmq-tls "*) printf "ZHVtbXk="; exit 0;; esac',
+  'case "$*" in *"get deploy postgres "*cert-sha256*|*"get deploy rabbitmq "*cert-sha256*) [ "${STUB_INFRA_TLS_STAMPED:-}" = "1" ] && printf "%s" "$(printf "%s" "ZHVtbXk=" | sha256sum | cut -c1-64)"; exit 0;; esac',
   'case "$*" in *"get secret platform-infra-root-ca"*) [ "${STUB_INFRA_CA_ABSENT:-}" = "1" ] || printf "%s\\n" "-----BEGIN CERTIFICATE-----" "c3R1Yg==" "-----END CERTIFICATE-----" | base64 -w0; exit 0;; esac',
   'case "$*" in *"get secret rabbitmq "*"{.data.password}"*) [ -n "${STUB_RABBITMQ_EXISTING:-}" ] && printf "%s" "$STUB_RABBITMQ_EXISTING" | base64; exit 0;; esac',
   // NFR, IADR-0583: Namespace microservices-platform の注入ラベル。STUB_MSP_INJECTION を与えたときだけその値を返す（既定は無い）。
@@ -1843,6 +1847,23 @@ ok('IADR-0591: 既定で cert-manager → infra-tls → 証明書 Ready → 基�
   assert.strictEqual(lines.filter((l) => l.includes('-k deploy/local/edge/cert-manager')).length, 1, 'cert-manager を 2 回以上当てた');
   // 写すのは公開してよい ca.crt だけ（鍵は読まない）。
   assert.ok(!lines.some((l) => l.includes('platform-infra-root-ca') && l.includes('tls\\.key')), 'ルート CA の鍵を読んでいる');
+});
+
+ok('IADR-0591: 基盤の apply の後、サーバ証明書の指紋が変わった（未記録の）Deployment だけを刻んで作り直し、同じなら何もしない', () => {
+  const fresh = runUp({});
+  assert.strictEqual(fresh.status, 0, fresh.stderr);
+  const infra = fresh.lines.findIndex((l) => /^kubectl apply -k deploy\/local\/infra(-persistence)?$/.test(l));
+  const rollout = fresh.lines.findIndex((l) => l.includes('-n platform-infra rollout status deploy/postgres'));
+  for (const d of ['postgres', 'rabbitmq']) {
+    const at = fresh.lines.findIndex((l) => l.startsWith(`kubectl -n platform-infra patch deploy ${d} --type merge -p `)
+      && l.includes('"platform-infra.tls/cert-sha256":"'));
+    assert.notStrictEqual(at, -1, `${d}: 指紋が未記録なのに刻んでいない（証明書を更新しても作り直されない）`);
+    assert.ok(infra < at && at < rollout, `${d}: 指紋を刻む位置が基盤の apply の後・rollout の待ちの前でない`);
+  }
+  assert.ok(!fresh.lines.some((l) => l.includes('patch deploy') && l.includes('ZHVtbXk=')), '証明書の中身を引数に載せた');
+  const same = runUp({ STUB_INFRA_TLS_STAMPED: '1' });
+  assert.strictEqual(same.status, 0, same.stderr);
+  assert.ok(!same.lines.some((l) => /patch deploy (postgres|rabbitmq) /.test(l)), '指紋が同じなのに作り直した（再実行のたびに基盤が落ちる）');
 });
 
 ok('IADR-0591: LOCALEDGE=1 でも cert-manager は 1 回だけ当て、エッジの tls overlay は基盤の後に従来どおり当てる', () => {
