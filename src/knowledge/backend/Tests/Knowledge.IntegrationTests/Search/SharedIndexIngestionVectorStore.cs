@@ -1,3 +1,4 @@
+using IngestionService.Domain;
 using IngestionService.Domain.Ports;
 using RetrievalService.Domain.Ports;
 using RetrievalService.Infrastructure.ExternalServices;
@@ -103,6 +104,16 @@ internal sealed class SharedIndexIngestionVectorStore(
 
     // 取り込みは「全コレクションから消す」。索引が 1 つしか無いのでそのまま 1 回消す。
     // #1746: 語彙索引を別に持つときはそちらからも消す（本番の「全コレクションから消す」と同じ）。
+    // #2101 / IADR-0595: この橋は版を持たない（印は常に無い ＝ 毎回先に全消しする。従前の形。版の順序は単体試験と実 Qdrant の試験が測る）。
+    public Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
+        => Task.FromResult<DocumentIndexVersion?>(null);
+
+    public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+        IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
+
     public async Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
     {
         await index.DeleteByDocumentAsync(documentId, ct);

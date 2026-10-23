@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-02 取り込み
 type: test-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-10-17
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-04, FR-05, SC-01, SC-02, SC-08, UC-04, NFR-06]
 adrs: [ADR-0070, ADR-0027, ADR-0127, ADR-0016, ADR-0092]
-iadrs: [IADR-0560, IADR-0085, IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
-specs: [20261017_1746_s4-stop-creating-empty-ruri-collection, 20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
+iadrs: [IADR-0595, IADR-0560, IADR-0085, IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
+specs: [20261023_2101_ingestion-ordering-and-atomicity, 20261017_1746_s4-stop-creating-empty-ruri-collection, 20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#2101, #2047, #1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 -->
 
 # テスト仕様書: 取り込み
@@ -47,7 +47,7 @@ issues: [#1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 | T-18 | **呼び出しごとの期限** | 縮めた受け口の期限（30 秒）の下で、本文・埋め込み・既存チャンクの削除・チャンクの登録・メタデータ点の登録のどれか 1 つが止まる（呼び出しごとの期限 1 秒） | 受け口の期限が立つより前に、その呼び出し先の**時間切れ**（`ConsumerTimeoutException`）として投げる。完了イベントは出さない（`IngestionTimeoutTests`） | 取り込み: 失敗は再試行・デッドレター |
 | T-19 | **取り消しは取り消しのまま**（対照） | 呼び出しごとの期限より先に呼び出し元が取り消す | 時間切れに化けず `OperationCanceledException` のまま外へ出る（`IngestionTimeoutTests`）。判定の境界そのもの（両方が立ったら呼び出し元を優先・`RpcException(Cancelled)` の扱い・計器）は共通部品の試験が持つ（`src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Foundation/Messaging/ConsumerCallTimeoutsTests.cs`） | 同上 |
 | T-20 | **埋め込みの総枠** | 1 回ごとに時計が 1 秒進む埋め込みで 10 チャンクの文書を取り込む（偽の時計） | 総枠 3 秒なら 3 回呼んだ後の判定で残りを呼ばずに時間切れ（呼び出し先 `embedding-budget`）。総枠 11 秒なら全チャンクを埋め込み完了を出す（対照）（`IngestionTimeoutTests`） | 取り込み: チャンク数に比例する埋め込み |
-| T-21 | **上限の構成と配線** | 既定値・受け口の実行期限に最悪の所要時間が収まらない構成・本番の Program.cs | 既定は本文 20 秒・埋め込み 30 秒・Qdrant 10 秒・総枠 300 秒・受け口 420 秒。「削除（コレクション数 × Qdrant）＋本文＋総枠＋最後の 1 チャンク」以上の受け口の期限は起動を止める（等しいときも）。1 回の配信の再試行の連鎖（4 × 受け口の期限 ＋ 42 秒）がブローカの consumer_timeout（既定 1800 秒）以上でも起動を止める（等しいときも）。受け口の実行期限の方針が `DocumentUpdated` の受け口に 420 秒を与える（`IngestionTimeoutTests`・`IngestionTimeoutWiringTests`。Wolverine の既定 60 秒との突き合わせは `ConsumerHandlerTimeoutsTests`） | 同上 |
+| T-21 | **上限の構成と配線** | 既定値・受け口の実行期限に最悪の所要時間が収まらない構成・本番の Program.cs | 既定は本文 20 秒・埋め込み 30 秒・Qdrant 10 秒・総枠 300 秒・受け口 435 秒（［2026-10-23］420 → 435）。「削除（コレクション数 × Qdrant）＋版の印（Qdrant 3 回）＋旧版の削除（コレクション数 × Qdrant）＋本文＋総枠＋最後の 1 チャンク」以上の受け口の期限は起動を止める（等しいときも）。1 回の配信の再試行の連鎖（4 × 受け口の期限 ＋ 42 秒）がブローカの consumer_timeout（既定 1800 秒）以上でも起動を止める（等しいときも）。受け口の実行期限の方針が `DocumentUpdated` の受け口に 435 秒を与える（`IngestionTimeoutTests`・`IngestionTimeoutWiringTests`。Wolverine の既定 60 秒との突き合わせは `ConsumerHandlerTimeoutsTests`） | 同上 |
 | T-22 | **総枠の使い切りはデッドレターへ** | Wolverine の実配送（ローカルキュー・本番と同じ再試行の既定）で、総枠を使い切る文書と、1 回目だけ埋め込みが時間切れになる文書を流す | 総枠の使い切りは 1 試行目でデッドレターへ入り再試行しない。呼び出しごとの時間切れは再試行され 2 試行目で成功する（対照）。本番の Program.cs が受け口に規則を入れている（`EmbeddingBudgetDeadLetterPipelineTests`） | 取り込み: 失敗は再試行・デッドレター |
 | T-23 | **高機密は埋め込まない** | `confidential`・`restricted`・大小文字違い・空・未知の値・前後空白つきの `public`・機密区分の属性なし、の文書を消費させる | **埋め込みを 1 回も呼ばず**（呼ばれたら失敗する埋め込みで測る）、全チャンクを語彙索引へ書く。ベクトルのコレクションへは 1 件も書かない。チャンク ID は本文チャンクと同じ規則。完了イベントのチャンク数は語彙索引へ書いた数（`DocumentUpdatedConsumerTests`） | 高機密は埋め込まず全文索引だけに載せる裁定（決定 1・4） |
 | T-24 | **語彙索引の点も ABAC の判定軸を運ぶ** | `restricted` で部門・共有先・タグ・更新日時・原本の所在を持つ文書 | 語彙索引の点に属性・共有先・タグ・更新日時・原本の所在・文書 ID がそのまま載る | 同裁定・ABAC は全系統に掛ける |
@@ -81,6 +81,15 @@ issues: [#1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 | T-52 | **語彙索引への書き込みの総枠** | 書き込み 1 回ごとに時計が 1 秒進む店で 10 チャンクの文書を取り込む（偽の時計）。`confidential` の文書（埋め込みを呼ばない）と、埋め込みが 1 チャンク目から使えない `internal` の文書（待ちの点）の 2 経路 | 総枠 3 秒なら 3 点を書いた後の判定で残りを書かずに時間切れ（呼び出し先 `lexical-budget`）、完了を出さない。待ちの点は書いた 3 点を計器に数えてから投げる。総枠 11 秒なら全点を書き完了を出す（対照）。判定を外す変異で赤になる（`IngestionTimeoutTests`） | 取り込み: チャンク数に比例する語彙索引への書き込み |
 | T-53 | **語彙索引の総枠の使い切りはデッドレターへ** | Wolverine の実配送（ローカルキュー・本番と同じ再試行の既定）で、語彙索引の総枠を使い切る `confidential` の文書を流す | 1 試行目でデッドレターへ入り再試行しない（本文の取得 1 回・書き込み 3 点）。方針の述語から `lexical-budget` を外す変異で赤になる（`EmbeddingBudgetDeadLetterPipelineTests`） | 取り込み: 失敗は再試行・デッドレター |
 | T-54 | **Ruri のコレクションは opt-in のときだけ** | 実際の `appsettings.json`・添字が欠けた構成（0 と 2）・名前が空の定義（compose の既定空）を束ねる（`EmbeddingCollectionsOptionsBindingTests`）。Helm・compose の配線（`k8s-local-up.test.js`） | 既定は voyage の 1 本だけ。欠けた添字でも全件を束ね、空の名前は捨てる。Helm は `embedding.enabled` のときだけ取り込みへ `Embedding__Collections__1__*` を描き、compose は検索と同じ `SEARCH_FUSED_COLLECTION` を読む。既定のコレクション数は 2（voyage ＋ 語彙索引。T-21 の削除の期限は 20 秒） | 無効の配備に空のコレクションを作らない（セルフホストは opt-in のまま残す） | 自動 |
+| T-55 | **到着順の逆転** | 新しい版（`confidential` へ厳格化・共有先を外した版）の後に古い版を流す（状態を持つ偽の索引） | 古い版は本文を読む前に弾かれ、索引は新しい版のまま（機密区分・置き場所・共有先とも緩まない）。版の印も新しい版のまま（`IngestionOrderingAndAtomicityTests`） | 取り込み: 順序と原子性 |
+| T-56 | **再配送** | 同じ版を 2 度流す | 等しい版は弾かず、点は増えず同じ内容に収束する | 同上 |
+| T-57 | **撤収・削除の後の古い版** | アーカイブで撤収した後・検索側の削除で点が全部消えた後に、それより古い版を流す | 点は書き戻されない（版の印は点と別の場所にあり、撤収・削除の後も残る）。陽性対照: 撤収・削除の前は索引されている | 同上 |
+| T-58 | **失敗しても消えない** | 判定軸が同じ更新で、本文の取得が失敗する・書き込みが途中で失敗する | 旧版の点が残る（文書が索引から消えたままにならない） | 同上 |
+| T-59 | **失敗しても緩まない** | 判定軸が変わる更新（`internal` → `confidential`）・版の印が無い文書で本文の取得が失敗する | 旧版の点は先に消えている（緩い判定軸の点を残さない）。再試行が成功すれば新しい判定軸で載る | 同上 |
+| T-60 | **書き終えた後の後始末** | チャンク数が減る版（3 → 1）。埋め込み待ちだった版を、埋め込めるようになってから同じ版で再発行する | 旧版の余りの点・元の置き場所（語彙索引の待ちの点）の点は残らない | 同上 |
+| T-61 | **追い越し** | 古い版の取り込みの最中（本文の取得の中）に新しい版を丸ごと取り込む | 古い版の点は残らず、新しい版の点だけが残る（書き終えた後の印の読み直し） | 同上 |
+| T-62 | **判定と指紋の純関数** | 版の比較・判定軸の指紋 | 比較はミリ秒（等しい版と印の無い文書は反映、1 ミリ秒でも古ければ弾く）。指紋は鍵・共有先の順と重複に依らず、値が変われば変わる | 同上 |
+| T-63 | **版の印と旧版の削除の写像** | gRPC を記録 | 旧版のフィルタは「文書の点 ∧ ¬(`updated_at` > 版) ∧ ¬(書いた点)」。全コレクションを巡り、残す点はコレクションごとに分ける。語彙索引が無ければ飛ばし、ベクトルのコレクションが無ければ投げる。版の印は 3 項目だけでベクトルを持たず、コレクションが無ければ「印は無い」と読み、最初の書き込みで作る（`QdrantIndexVersionStoreTests`） | 同上 |
 
 ## 段間結合（取り込み → 索引 → 検索ヒット）
 
@@ -102,6 +111,7 @@ issues: [#1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 | I-11 | 層 2（実 Qdrant v1.18.1） | 本番の取り込みアダプタで主・束ねる追加コレクション・語彙索引へ属性・タグ・共有先つきで書き、本番の検索アダプタで候補を照会する | 3 種のコレクションの全部で、タグ・共有先・属性の候補が例外なく返る（生の facet でも通る）。索引を張っても ABAC フィルタは完全一致・大小文字の区別のまま、タグは「いずれか一致」のまま、個人資料を除く否定条件は文書範囲を持たない点を残す（`KeywordIndexQdrantTests`） | 日次／develop への push のみ |
 | I-12 | 層 2（陰性対照） | キーワード索引を張らないコレクションで facet する | 生の facet は「不正な引数・facet に使える索引が無い」で失敗する。検索アダプタはその失敗だけを空の候補にする | 同上 |
 | I-13 | 層 2 | 索引を張る前の版が書いた点（取り込みアダプタを通らない）を置き、再起動を模して発見を走らせる。JSON パスにならない属性キーの文書を書く | 発見の後、そのキーの候補が返る。不正なキーには索引が付かないが、走査も書き込みも止まらない | 同上 |
+| I-14 | 層 2（実 Qdrant v1.18.1） | 旧版の削除を、古い点・版を持たない点・書いていない同じ版の点・別のコレクションの同じ ID の点・新しい版の点・別の文書の点を並べて通す。版の印の作成と読み戻し | 新しい版の点・書いた点・別の文書の点だけが残る。印は最初の書き込みで作られ 1 文書 1 点で上書きされる（`IngestionIndexVersionQdrantTests`） | `integration.yml` |
 
 🔴 **層 1 だけでは足りない。** 層 1 の索引は書き手と読み手をテスト側の橋で繋いだものであり、
 **2 つの Qdrant アダプタのペイロード表現がずれている**型の欠陥は、原理的に検知できない。

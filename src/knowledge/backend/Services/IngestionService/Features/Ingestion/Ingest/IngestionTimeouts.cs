@@ -22,10 +22,13 @@ namespace IngestionService.Features.Ingestion.Ingest;
 //   3. **受け口の実行期限**（`Handler`）—— `HandlerExecutionTimeoutPolicy<DocumentUpdated>` が与える。
 //      「既存チャンクの削除（コレクション数 × Qdrant 1 回）＋ 本文の取得 ＋ 総枠 ＋ 最後の 1 チャンク」を
 //      超えていなければ起動を止める（`ConsumerHandlerTimeouts.EnsureFits`）。
+//      ［2026-10-23 / #2101・[[IADR-0595]] 決定 5］版の印の照会・記録・読み直し（Qdrant 3 回）と、書き終えた後の
+//      旧版の点の削除（コレクション数 × Qdrant 1 回）を足した。既定（2 本）で 20＋30＋20＋20＋300＋30＋10＝430 秒になるので、
+//      受け口の実行期限の既定を 420 → 435 秒へ上げた（連鎖は 4 × 435 ＋ 42 ＝ 1782 秒 ＜ 1800 秒）。
 //   4. 🔴 **1 回の配信の再試行の連鎖**（試行上限 4 × 受け口の実行期限 ＋ 試行間の待ち 42 秒）が、ブローカの `consumer_timeout`
 //      （`Messaging:BrokerConsumerTimeoutSeconds`・既定 1800 秒）より短いこと（`ConsumerHandlerTimeouts.EnsureRetryChainFits`）。
 //      Wolverine の RabbitMQ の受信は Inline で、再試行は同じ配信の中で回り ack は最後の試行の後である。超えると
-//      ブローカが配信を取り上げて再配信し、試行回数が戻る —— 失敗し続ける 1 通が永久に回る。既定では 4 × 420 ＋ 42 ＝ 1722 秒。
+//      ブローカが配信を取り上げて再配信し、試行回数が戻る —— 失敗し続ける 1 通が永久に回る。既定では 4 × 435 ＋ 42 ＝ 1782 秒。
 public sealed record IngestionTimeouts(
     TimeSpan ContentRead,
     TimeSpan Embedding,
@@ -44,7 +47,7 @@ public sealed record IngestionTimeouts(
     public const int DefaultEmbeddingSeconds = 30;
     public const int DefaultVectorStoreSeconds = 10;
     public const int DefaultEmbeddingBudgetSeconds = 300;
-    public const int DefaultHandlerSeconds = 420;
+    public const int DefaultHandlerSeconds = 435;
 
     // 既定の構成で削除が回るコレクションの数。`Default` だけが使う。
     // appsettings.json の `Embedding:Collections`（モデル別。既定は voyage の 1 本）＋ 語彙索引 1 本
@@ -73,6 +76,9 @@ public sealed record IngestionTimeouts(
     // ポートの 1 回の呼び出しに与える期限は、その回数分の Qdrant の期限である。
     public TimeSpan DeleteFromAll => VectorStore * Math.Max(1, CollectionCount);
 
+    // FR-02, [[IADR-0595]] 決定 1・5 (#2101): 1 通の取り込みが版の印に触る回数（照会・記録・書き終えた後の読み直し）。
+    public const int IndexVersionCalls = 3;
+
     // 構成から読み、受け口の実行期限に最悪の所要時間が収まることを検査する（収まらなければ InvalidOperationException＝起動失敗）。
     // `collectionCount` は既存チャンクを消すモデル別コレクションの数（`Embedding:Collections`。削除は 1 本ごとに 1 回）。
     public static IngestionTimeouts From(IConfiguration configuration, int collectionCount)
@@ -87,6 +93,8 @@ public sealed record IngestionTimeouts(
 
         ConsumerHandlerTimeouts.EnsureFits(DocumentUpdatedConsumer.StepName, timeouts.Handler, HandlerKey,
             ($"既存チャンクの削除（{collectionCount} コレクション × {VectorStoreKey}）", timeouts.DeleteFromAll),
+            ($"版の印の照会・記録・読み直し（3 × {VectorStoreKey}）", timeouts.VectorStore * IndexVersionCalls),
+            ($"旧版の点の削除（{collectionCount} コレクション × {VectorStoreKey}）", timeouts.DeleteFromAll),
             ($"本文の取得（{ContentReadKey}）", timeouts.ContentRead),
             ($"埋め込みの総枠（{EmbeddingBudgetKey}）", timeouts.EmbeddingBudget),
             ($"最後の 1 チャンクの埋め込み（{EmbeddingKey}）", timeouts.Embedding),

@@ -32,6 +32,8 @@
       "EmbeddingCollectionsOptionsBindingTests",
       "EmbeddingPendingReembedderTests",
       "IngestToSearchInProcessTests",
+      "IngestionIndexVersionQdrantTests",
+      "IngestionOrderingAndAtomicityTests",
       "IngestionTimeoutTests",
       "IntrospectionEndpointTests",
       "KeywordIndexQdrantTests",
@@ -40,6 +42,7 @@
       "MetadataIndexTextTests",
       "QdrantCjkNgramIndexTests",
       "QdrantFullTextIndexBootstrapTests",
+      "QdrantIndexVersionStoreTests",
       "QdrantIngestionVectorStoreTests",
       "QdrantKeywordIndexHostedServiceTests",
       "QdrantKeywordIndexTests"
