@@ -53,12 +53,23 @@ public class RestrictedProjectRetentionTests(TestWebApplicationFactory factory)
         return (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
     }
 
+    // #2112 / [[IADR-0598]]: 作成口が `doc_scope=organization` を補うようになったため、更新の要求には
+    // **現在の `doc_scope` を同送する**（SC-05 の編集フォームが既存属性をスプレッドするのと同じ形）。
+    // 同送しないと `doc_scope` の不変性違反（先に宣言されている）が先に出て、`project` の判定を見られない。
+    private static Dictionary<string, string> WithCurrentScope(
+        DocumentDto doc, Dictionary<string, string> attributes)
+    {
+        var result = new Dictionary<string, string>(attributes);
+        if (doc.Attributes.TryGetValue("doc_scope", out var scope)) result.TryAdd("doc_scope", scope);
+        return result;
+    }
+
     private Task<HttpResponseMessage> UpdateAsync(
         DocumentDto doc, Dictionary<string, string> attributes) =>
         Client().PutAsJsonAsync($"/documents/{doc.Id}", new
         {
             title = doc.Title,
-            attributes,
+            attributes = WithCurrentScope(doc, attributes),
             tags = new List<string>(),
         });
 
@@ -66,7 +77,7 @@ public class RestrictedProjectRetentionTests(TestWebApplicationFactory factory)
         DocumentDto doc, Dictionary<string, string> attributes) =>
         Client().PatchAsJsonAsync($"/documents/{doc.Id}/metadata", new
         {
-            attributes,
+            attributes = WithCurrentScope(doc, attributes),
             tags = new List<string>(),
         });
 
@@ -222,11 +233,13 @@ public class RestrictedProjectRetentionTests(TestWebApplicationFactory factory)
         var doc = (await resp0.Content.ReadFromJsonAsync<DocumentDto>(
             TestContext.Current.CancellationToken))!;
 
-        // doc_scope も project も同時に落とす。
-        var resp = await UpdateAsync(doc, new Dictionary<string, string>
+        // doc_scope も project も同時に落とす（現在の doc_scope を同送する helper を通さない）。
+        var resp = await Client().PutAsJsonAsync($"/documents/{doc.Id}", new
         {
-            ["confidentiality"] = "internal",
-        });
+            title = doc.Title,
+            attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
+            tags = new List<string>(),
+        }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var errors = await ErrorsOf(resp);

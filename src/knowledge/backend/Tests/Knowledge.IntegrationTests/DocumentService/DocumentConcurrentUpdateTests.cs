@@ -21,6 +21,7 @@ namespace Knowledge.IntegrationTests.DocumentService;
 // その場合は期待版の比較（修正前から在る）が 409 を返して**修正を外しても緑**になる。そこで、先の要求が
 // 保存する直前（`SavingChangesAsync`）に、同じ版を前提にしたもう 1 つの要求を走らせて確定させる ——
 // 先の要求は比較を通った後で版を追い越される。修正前はここで版テーブルの一意索引違反の 500 になる（変異で確かめた）。
+// #2112 / [[IADR-0598]]: 作成口が `doc_scope=organization` を補うため、更新でも同値を同送する（SC-05 の形。属性は全置換）。
 [Trait("Category", "Integration")]
 public sealed class DocumentConcurrentUpdateTests(PostgresFixture postgres, RabbitMqFixture rabbit)
     : IClassFixture<PostgresFixture>, IClassFixture<RabbitMqFixture>, IAsyncLifetime
@@ -64,14 +65,14 @@ public sealed class DocumentConcurrentUpdateTests(PostgresFixture postgres, Rabb
         _interleave.Arm(async () =>
         {
             using (var first = await _client.PutAsJsonAsync($"/documents/{id}",
-                       new { title = "勝った側（途中）", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>(), expectedVersion = 1 }))
+                       new { title = "勝った側（途中）", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = Array.Empty<string>(), expectedVersion = 1 }))
                 first.StatusCode.Should().Be(HttpStatusCode.OK);
             winner = await _client.PutAsJsonAsync($"/documents/{id}",
-                new { title = "勝った側", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>(), expectedVersion = 2 });
+                new { title = "勝った側", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = Array.Empty<string>(), expectedVersion = 2 });
         });
 
         using var loser = await _client.PutAsJsonAsync($"/documents/{id}",
-            new { title = "負けた側", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>(), expectedVersion = 1 }, Ct);
+            new { title = "負けた側", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = Array.Empty<string>(), expectedVersion = 1 }, Ct);
 
         _interleave.Fired.Should().BeTrue("先の要求の保存の直前に、もう 1 つの要求を確定させた");
         using (winner)
@@ -91,10 +92,10 @@ public sealed class DocumentConcurrentUpdateTests(PostgresFixture postgres, Rabb
 
         HttpResponseMessage? winner = null;
         _interleave.Arm(async () => winner = await _client.PatchAsJsonAsync($"/documents/{id}/metadata",
-            new { attributes = new { confidentiality = "internal", dept = "winner" }, tags = Array.Empty<string>(), expectedVersion = 1 }));
+            new { attributes = new { confidentiality = "internal", doc_scope = "organization", dept = "winner" }, tags = Array.Empty<string>(), expectedVersion = 1 }));
 
         using var loser = await _client.PatchAsJsonAsync($"/documents/{id}/metadata",
-            new { attributes = new { confidentiality = "internal", dept = "loser" }, tags = Array.Empty<string>(), expectedVersion = 1 }, Ct);
+            new { attributes = new { confidentiality = "internal", doc_scope = "organization", dept = "loser" }, tags = Array.Empty<string>(), expectedVersion = 1 }, Ct);
 
         _interleave.Fired.Should().BeTrue();
         using (winner)
@@ -115,10 +116,10 @@ public sealed class DocumentConcurrentUpdateTests(PostgresFixture postgres, Rabb
 
         HttpResponseMessage? winner = null;
         _interleave.Arm(async () => winner = await _client.PutAsJsonAsync($"/documents/{id}",
-            new { title = "勝った側", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>() }));
+            new { title = "勝った側", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = Array.Empty<string>() }));
 
         using var loser = await _client.PutAsJsonAsync($"/documents/{id}",
-            new { title = "負けた側", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>() }, Ct);
+            new { title = "負けた側", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = Array.Empty<string>() }, Ct);
 
         _interleave.Fired.Should().BeTrue();
         using (winner)
@@ -140,7 +141,7 @@ public sealed class DocumentConcurrentUpdateTests(PostgresFixture postgres, Rabb
 
         var responses = await Task.WhenAll(Enumerable.Range(0, 6).Select(i =>
             _client.PutAsJsonAsync($"/documents/{id}",
-                new { title = $"同時-{i}", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>(), expectedVersion = 1 })));
+                new { title = $"同時-{i}", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = Array.Empty<string>(), expectedVersion = 1 })));
         try
         {
             responses.Should().OnlyContain(
@@ -170,7 +171,7 @@ public sealed class DocumentConcurrentUpdateTests(PostgresFixture postgres, Rabb
         var staleDoc = await stale.Documents.SingleAsync(d => d.Id == id, Ct); // 版 1 を読む
 
         using (var advanced = await _client.PutAsJsonAsync($"/documents/{id}",
-                   new { title = "後から確定した編集", attributes = new { confidentiality = "internal", dept = "kept" }, tags = Array.Empty<string>(), expectedVersion = 1 }, Ct))
+                   new { title = "後から確定した編集", attributes = new { confidentiality = "internal", doc_scope = "organization", dept = "kept" }, tags = Array.Empty<string>(), expectedVersion = 1 }, Ct))
             advanced.StatusCode.Should().Be(HttpStatusCode.OK);
 
         staleDoc.SetExposureAttributes(includeInSearch: true, includeInGraph: true, includeInAi: true);
@@ -192,7 +193,7 @@ public sealed class DocumentConcurrentUpdateTests(PostgresFixture postgres, Rabb
 
         HttpResponseMessage? winner = null;
         _interleave.Arm(async () => winner = await _client.PutAsJsonAsync($"/documents/{id}",
-            new { title = "勝った側", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>(), expectedVersion = 1 }));
+            new { title = "勝った側", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = Array.Empty<string>(), expectedVersion = 1 }));
 
         using var loser = await _client.DeleteAsync($"/documents/{id}", Ct);
 
@@ -246,7 +247,7 @@ public sealed class DocumentConcurrentUpdateTests(PostgresFixture postgres, Rabb
     private async Task<Guid> CreateAsync(string title)
     {
         using var create = await _client.PostAsJsonAsync("/documents",
-            new { title, attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>() }, Ct);
+            new { title, attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = Array.Empty<string>() }, Ct);
         create.StatusCode.Should().Be(HttpStatusCode.Created);
         var doc = await create.Content.ReadFromJsonAsync<DocResponse>(Ct);
         doc!.Version.Should().Be(1);

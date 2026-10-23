@@ -125,7 +125,8 @@ public class DocumentFingerprintResponseTests(TestWebApplicationFactory factory)
 
         var patch = await Client().PatchAsJsonAsync($"/documents/{created.Id}/metadata", new
         {
-            attributes = new Dictionary<string, string> { ["confidentiality"] = "restricted" },
+            // #2112 / [[IADR-0598]]: 作成時に補われた doc_scope を同送する（SC-05 の形）。
+            attributes = new Dictionary<string, string> { ["confidentiality"] = "restricted", ["doc_scope"] = "organization" },
             tags = new List<string>(),
         }, TestContext.Current.CancellationToken);
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
