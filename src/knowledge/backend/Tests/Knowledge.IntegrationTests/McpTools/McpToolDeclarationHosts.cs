@@ -122,6 +122,10 @@ internal sealed class DocumentServiceDeclarationHost
         // 繋がないようテストハーネスへ差し替える（DocumentService.Tests と同じ作法）。
         services.RemoveAll<IBusControl>();
         services.AddMassTransitTestHarness();
+        // FR-06, ADR-0027 §決定, IADR-0604 (#2042): 本サービスは Wolverine の永続化（Transactional Outbox）を PostgreSQL へ向け、
+        // 起動時に表を作りに行く。この器の DbContext は InMemory で、申告を読むだけで発行しないので、永続化の起動を切る
+        // （DocumentService.Tests の器と同じ作法）。切らないと起動が `Failed to connect to 127.0.0.1:5432` で落ちる。
+        services.DisableAllWolverineMessagePersistence();
     }
 }
 

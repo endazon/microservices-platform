@@ -340,6 +340,11 @@ builder.Host.UseWolverine(opts =>
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
+
+    // FR-06, FR-19, ADR-0027 §決定, ADR-0057 決定 1・3, IADR-0604 (#2042): Transactional Outbox。
+    // `DocumentDeleted` は削除の確定と同じトランザクションで Outbox の表（`wolverine` スキーマ）へ書かれ、確定の後に送られる。
+    // 🔴 **接続文字列は DbContext と同じもの**（envelope の INSERT は DbContext の接続で走る）。表は起動時に Wolverine が作る。
+    opts.UsePlatformTransactionalOutbox(connStr);
 });
 
 var app = builder.Build();

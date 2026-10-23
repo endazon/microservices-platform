@@ -107,6 +107,11 @@
     <PackageVersion Include="WolverineFx" Version="6.24.4" />
     <PackageVersion Include="WolverineFx.RabbitMQ" Version="6.24.4" />
     <PackageVersion Include="WolverineFx.Kafka" Version="6.24.4" />
+    <!-- FR-06, ADR-0027 §決定「イベント発行の原子性は Wolverine の EF Core + PostgreSQL Transactional Outbox を標準とする」,
+         IADR-0604 (#2042): Outbox の 2 パッケージ。参照元は共通ヘルパ（Platform.Shared.Infrastructure の
+         WolverineExtensions.UsePlatformTransactionalOutbox）だけである。版は上の WolverineFx 系と必ず同値に保つ。 -->
+    <PackageVersion Include="WolverineFx.EntityFrameworkCore" Version="6.24.4" />
+    <PackageVersion Include="WolverineFx.Postgresql" Version="6.24.4" />
     <!-- IADR-0217: Wolverine のコード生成は実行時コンパイルを標準とする（事前 codegen ＋
          TypeLoadMode.Static は採らない）。Wolverine 6 系はコア本体から Roslyn コンパイラを分離しており、
          本パッケージが無いと既定の TypeLoadMode.Dynamic でホストが起動しない（計画 ADR-0027 §決定 の

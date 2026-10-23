@@ -31,6 +31,11 @@
          手順 2 の WolverineFx.RuntimeCompilation はホストを起こす各サービスの射程であり、ここには入れない。 -->
     <PackageReference Include="WolverineFx" />
     <PackageReference Include="WolverineFx.RabbitMQ" />
+    <!-- FR-06, ADR-0027 §決定（Transactional Outbox は EF Core + PostgreSQL が標準）, IADR-0604 (#2042):
+         Outbox の構成は共通ヘルパ（WolverineExtensions.UsePlatformTransactionalOutbox）へ封じる。
+         手順 3〜5 と同じく「各サービスが別々に組むと片方だけ欠ける」種類の構成であるため、ここに置く。 -->
+    <PackageReference Include="WolverineFx.EntityFrameworkCore" />
+    <PackageReference Include="WolverineFx.Postgresql" />
     <!-- FR-06/FR-12, ADR-0015（Superseded by ADR-0106）: S3 互換オブジェクトストレージのクライアント（Storage/*） -->
     <PackageReference Include="AWSSDK.S3" />
     <!-- NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 (#1201): east-west gRPC の共通部品（Foundation/Grpc）。
