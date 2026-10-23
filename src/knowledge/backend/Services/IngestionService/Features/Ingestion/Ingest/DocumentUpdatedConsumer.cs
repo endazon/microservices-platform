@@ -54,6 +54,21 @@ public class DocumentUpdatedConsumer(
         => CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.DeleteFromAll,
             t => store.DeleteByDocumentFromAllAsync(documentId, t), ct);
 
+    // FR-02, FR-05, [[IADR-0595]] 決定 1 (#2101): 版の印の読み書き（Qdrant 1 回ずつ。期限は Qdrant の 1 回と同じ）。
+    private Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct)
+        => CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
+            t => store.GetIndexVersionAsync(documentId, t), ct);
+
+    private Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct)
+        => CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
+            t => store.SetIndexVersionAsync(documentId, version, t), ct);
+
+    // FR-02, [[IADR-0595]] 決定 2 (#2101): 旧版の点の削除（全コレクションを巡る。期限は全削除と同じ）。
+    private Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+        IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct)
+        => CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.DeleteFromAll,
+            t => store.DeleteSupersededAsync(documentId, version, keep, t), ct);
+
     private Task<EmbeddingResult> EmbedAsync(string text, string? confidentiality, CancellationToken ct)
         => CallAsync(IngestionTimeouts.EmbeddingTarget, timeouts.Embedding,
             t => embed.EmbedAsync(text, confidentiality, t), ct);
@@ -61,6 +76,21 @@ public class DocumentUpdatedConsumer(
     // ADR-0027 / E3b: Wolverine のハンドラ。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
     {
+        // 🔴 FR-02, FR-05, [[IADR-0595]] 決定 1 (#2101): **順序の門。** 索引へ反映済みの版（版の印）より厳密に古い更新は
+        // 反映しない（skip して ack する）。到着順の逆転・デッドレターからの再投入・撤収や削除の後に遅れて届いた古い更新が、
+        // 新しい版（判定軸を厳しくした版を含む）を上書きしないためである。等しい版（再配送・再発行）は反映する。
+        // 判定は GraphService の `GraphDocument.Apply` と同じ「保持中より古いものは適用しない」。
+        // 🔴 **撤収の門より前に置く。** 古い撤収が新しい版を消すこともしない（新しい版が正である）。
+        var indexed = await GetIndexVersionAsync(ev.DocumentId, ct);
+        if (DocumentIndexOrdering.IsStale(indexed, ev.UpdatedAt))
+        {
+            logger.LogInformation(
+                "DocumentUpdated {Id}: updated_at={Incoming:O} is older than the indexed version {Indexed:O}; "
+                + "skipped (out-of-order or replayed delivery; IADR-0595)",
+                ev.DocumentId, ev.UpdatedAt, indexed!.UpdatedAt);
+            return;
+        }
+
         // 🔴 FR-19, ADR-0061 決定 1・2・4 / [[IADR-0396]] 決定 4・5 (#1184): **索引の門。**
         //
         // 露出 3 トグルのうち 1 つでも ON なら載せる。**3 つとも OFF なら載せないだけでなく、
@@ -80,6 +110,8 @@ public class DocumentUpdatedConsumer(
         if (!DocumentExposure.IsIndexable(ev.Attributes))
         {
             await DeleteFromAllAsync(ev.DocumentId, ct);
+            // [[IADR-0595]] 決定 1: 撤収した版も印に残す（消した後に届いた古い更新が、撤収前の点を書き戻さないように）。
+            await SetIndexVersionAsync(ev.DocumentId, new DocumentIndexVersion(ev.UpdatedAt, ""), ct);
             logger.LogInformation(
                 "DocumentUpdated {Id}: exposure toggles are all off; withdrew the document from every index",
                 ev.DocumentId);
@@ -99,6 +131,7 @@ public class DocumentUpdatedConsumer(
         if (DocumentArchival.IsArchived(ev.Status))
         {
             await DeleteFromAllAsync(ev.DocumentId, ct);
+            await SetIndexVersionAsync(ev.DocumentId, new DocumentIndexVersion(ev.UpdatedAt, ""), ct);
             logger.LogInformation(
                 "DocumentUpdated {Id}: the document is archived; withdrew the document from every index",
                 ev.DocumentId);
@@ -108,16 +141,32 @@ public class DocumentUpdatedConsumer(
         // FR-02 例外フロー E1: 本文の所在が無ければ取り込みをスキップ
         if (ev.MarkdownUri is null)
         {
+            // [[IADR-0595]] 決定 1: 版は進める（これより古い更新を後から反映しない）。点は書き換えていないので、
+            // 判定軸の指紋は**索引に残っている点のもの**（直前の印）を引き継ぐ —— 次の版の分岐（先に消すか）を誤らせない。
+            await SetIndexVersionAsync(ev.DocumentId,
+                new DocumentIndexVersion(ev.UpdatedAt, indexed?.AccessFingerprint ?? ""), ct);
             logger.LogWarning("DocumentUpdated {Id}: MarkdownUri is null, skipping ingestion", ev.DocumentId);
             return;
         }
 
         logger.LogInformation("Ingesting document {Id} title={Title}", ev.DocumentId, ev.Title);
 
-        // FR-02, FR-05, ADR-0016: 既存チャンクを全モデル別コレクションから削除する。
-        // 再インデックスの冪等性に加え、機密区分変更（例 public→confidential）でモデル/コレクションが
-        // 変わった場合の旧コレクション残存（ABAC バイパス）を防ぐ（fail-closed で全消し）。
-        await DeleteFromAllAsync(ev.DocumentId, ct);
+        // 🔴 FR-02, FR-05, ADR-0016, [[IADR-0595]] 決定 2・3 (#2101): **旧版の点をいつ消すか。**
+        //
+        // - **判定軸（属性辞書 ＋ 共有先）が変わった、または不明（版の印が無い）なら、先に全コレクションから消す**
+        //   （fail-closed。従前どおり）。機密区分の変更（例 public→confidential）でコレクションが移っても旧コレクションに
+        //   残さず、この後の本文取得・書き込みが失敗しても、**旧版の判定軸で読める点が残らない**。
+        // - **判定軸が変わっていなければ、新版の点を書き終えてから旧版の点を消す**（`FinishAsync`）。
+        //   本文の取得・埋め込み・書き込みが失敗して再試行を使い切っても、**文書は旧版のまま索引に残る**（消えたままにならない）。
+        //
+        // 消してから印を書く（印を先に書いて削除が落ちると、再試行は「判定軸は同じ」と読んで先の削除を飛ばす）。
+        var access = IndexAccessFingerprint.Of(ev.Attributes, ev.SharedWith);
+        if (indexed is null || !string.Equals(indexed.AccessFingerprint, access, StringComparison.Ordinal))
+            await DeleteFromAllAsync(ev.DocumentId, ct);
+        await SetIndexVersionAsync(ev.DocumentId, new DocumentIndexVersion(ev.UpdatedAt, access), ct);
+
+        // [[IADR-0595]] 決定 2: この取り込みで書いた点（旧版の点の削除で残す）。
+        var written = new List<IndexedPointRef>();
 
         // FR-05, ADR-0016: 文書の機密区分（ABAC confidentiality）を埋め込み越境判定へ渡す。
         var confidentiality = ev.Attributes.GetValueOrDefault("confidentiality");
@@ -152,6 +201,10 @@ public class DocumentUpdatedConsumer(
             // ログに出すのは文書 ID・本文の所在（storage://<bucket>/<key>。秘密情報を含まない）・更新日時だけである。
             // 作成日時はイベントが運ばない（`DocumentUpdated` に項目が無い）ので、更新日時で代える。
             bodyMissingMetrics.RecordMissing();
+            // [[IADR-0595]] 決定 2: 新版は点を持たない（題名だけの点も書かない）ので、旧版の点を消す（従前の「先に全消し」と同じ結果）。
+            // 本文の欠落は恒久的であり、再試行で旧版を残す意味が無い。
+            // 戻り値（追い越されたか）は見ない —— どちらでもこの後は記録して終えるだけで、完了イベントは出さない。
+            await FinishAsync(ev, written, ct);
             logger.LogWarning(
                 "Ingestion {DocumentId}: body object missing (NoSuchKey) at {BodyKey} (updated_at={UpdatedAt:O}); "
                 + "skipped without retry or dead-lettering; no point written (archive body-less documents: #1931 item 3, IADR-0549)",
@@ -173,13 +226,13 @@ public class DocumentUpdatedConsumer(
 
         if (chunks.Count == 0)
         {
-            await IndexMetadataOnlyAsync(ev, confidentiality, lexicalOnly, ct);
+            await IndexMetadataOnlyAsync(ev, confidentiality, lexicalOnly, written, ct);
             return;
         }
 
         if (lexicalOnly)
         {
-            await IndexLexicallyAsync(ev, chunks, markdownUri, confidentiality, ct);
+            await IndexLexicallyAsync(ev, chunks, markdownUri, confidentiality, written, ct);
             return;
         }
 
@@ -231,6 +284,7 @@ public class DocumentUpdatedConsumer(
                 t => store.UpsertChunkAsync(embedding.Collection, chunkId, ev.DocumentId, ev.Title, text, idx,
                     embedding.Vector, markdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt,
                     ev.SharedWith, t), ct);
+            written.Add(new IndexedPointRef(embedding.Collection, chunkId));
             chunkCount++;
         }
 
@@ -254,6 +308,7 @@ public class DocumentUpdatedConsumer(
                 await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
                     t => store.UpsertEmbeddingPendingChunkAsync(chunkId, ev.DocumentId, ev.Title, text, i,
                         markdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ev.SharedWith, pendingReason, t), ct);
+                written.Add(IndexedPointRef.Lexical(chunkId));
                 pendingCount++;
             }
 
@@ -264,6 +319,9 @@ public class DocumentUpdatedConsumer(
                 + "finds them, semantic search does not). They are re-embedded once embedding works again (IADR-0536)",
                 ev.DocumentId, pendingReason, confidentiality ?? "(unset)", pendingCount, chunks.Count);
         }
+
+        if (!await FinishAsync(ev, written, ct))
+            return;
 
         // FR-02: 取り込み完了イベントを発行する（発行は MassTransit のまま。ポート越し）。
         // 購読者は無く、結線もしない（#1771 / planning#741 項目 6）。検索への反映は上の Qdrant 登録で成立している。
@@ -281,10 +339,11 @@ public class DocumentUpdatedConsumer(
     // ［2026-10-17 / #1746・[[IADR-0560]]］**埋め込みの総枠と同じ値の総枠で打ち切る**（呼び出し先 `lexical-budget`）。
     // 従前は受け口の実行期限（既定 420 秒）だけが上から抑え、見出しの密な 1 MiB の本文（約 26 万点・実測 5 ms／点で約 1,300 秒）は
     // 期限で取り消され、4 試行の間キューを塞いでからデッドレターへ入った。判定は書き込みの**前**（超過は最後の 1 点の期限までに収まる）。
-    // チャンク ID は本文チャンクと同じ規則（`ChunkId.Derive`）—— 機密区分が変わって置き場所が移っても、
-    // 冒頭の全コレクション削除で古い点は消えている。
+    // チャンク ID は本文チャンクと同じ規則（`ChunkId.Derive`）—— 機密区分が変わって置き場所が移ったときは、
+    // 判定軸が変わっているので冒頭の全コレクション削除で古い点は消えている（[[IADR-0595]] 決定 3）。
+    // 変わっていなければ、書き終えた後の旧版の削除（`FinishAsync`）が別のコレクションに残った同じ ID の点を消す。
     private async Task IndexLexicallyAsync(DocumentUpdated ev, IReadOnlyList<string> chunks,
-        string markdownUri, string? confidentiality, CancellationToken ct)
+        string markdownUri, string? confidentiality, List<IndexedPointRef> written, CancellationToken ct)
     {
         var chunkCount = 0;
         var started = clock.GetTimestamp();
@@ -297,6 +356,7 @@ public class DocumentUpdatedConsumer(
             await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
                 t => store.UpsertLexicalChunkAsync(chunkId, ev.DocumentId, ev.Title, text, idx,
                     markdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ev.SharedWith, t), ct);
+            written.Add(IndexedPointRef.Lexical(chunkId));
             chunkCount++;
         }
 
@@ -305,7 +365,33 @@ public class DocumentUpdatedConsumer(
             + "(confidentiality={Confidentiality}; ADR-0127)", ev.DocumentId, chunkCount,
             confidentiality ?? "(unset)");
 
+        if (!await FinishAsync(ev, written, ct))
+            return;
         await bus.PublishCompletedAsync(ev.DocumentId, chunkCount, DateTimeOffset.UtcNow, ct);
+    }
+
+    // 🔴 FR-02, FR-05, [[IADR-0595]] 決定 2・4 (#2101): **新版を書き終えた後の後始末。** 旧版の点（この取り込みで書いていない、
+    // 版がこの更新以下の点）を全コレクションから消す。チャンク数が減った・置き場所が移った（埋め込み待ち → 主）旧版の点が残らない。
+    //
+    // 書き終えた後に版の印を**読み直す**。並行してより新しい版が印を書いていたら（並行の取り込み・レプリカ）、
+    // この更新は追い越されている —— 自分が書いた点ごとこの版以下の点を消し、新しい版の点（版がより新しい）だけを残す。
+    // 古い版の点が新しい版の後ろに書き込まれて残る（判定軸を緩めた版が復活する）形を、取り込みの終わりで塞ぐ。
+    // 追い越されたら false（完了イベントは出さない —— この版の取り込みは完了として数えない）。
+    private async Task<bool> FinishAsync(DocumentUpdated ev, List<IndexedPointRef> written, CancellationToken ct)
+    {
+        var latest = await GetIndexVersionAsync(ev.DocumentId, ct);
+        if (latest is not null && latest.UpdatedAtMs > ev.UpdatedAt.ToUnixTimeMilliseconds())
+        {
+            await DeleteSupersededAsync(ev.DocumentId, ev.UpdatedAt, [], ct);
+            logger.LogWarning(
+                "DocumentUpdated {Id}: superseded while ingesting (updated_at={Incoming:O} < indexed {Indexed:O}); "
+                + "removed the points written for the older version (IADR-0595)",
+                ev.DocumentId, ev.UpdatedAt, latest.UpdatedAt);
+            return false;
+        }
+
+        await DeleteSupersededAsync(ev.DocumentId, ev.UpdatedAt, written, ct);
+        return true;
     }
 
     // FR-02, [[IADR-0560]] (#1746): 語彙索引への書き込みの総枠の使い切り（再試行せずデッドレターへ。`EmbeddingBudgetDeadLetterPolicy`）。
@@ -351,7 +437,7 @@ public class DocumentUpdatedConsumer(
     // 🔴 **埋め込みの機密区分ルーティング（ADR-0016）は本文チャンクと同一に扱う。**
     // 本文が無いことを理由に送信制御を緩めない —— 題名も文書の内容である。
     private async Task IndexMetadataOnlyAsync(
-        DocumentUpdated ev, string? confidentiality, bool lexicalOnly, CancellationToken ct)
+        DocumentUpdated ev, string? confidentiality, bool lexicalOnly, List<IndexedPointRef> written, CancellationToken ct)
     {
         // #1253 / [[IADR-0388]] 決定 4: 題名・タグに加えて**原本の所在とデータソース名**も材料にする
         // （ADR-0070 決定 4 が名指しする「パス」「データソース」。従前は届いていなかった）。
@@ -363,6 +449,8 @@ public class DocumentUpdatedConsumer(
             logger.LogWarning(
                 "Ingestion {Id}: no body and no metadata to index (empty title and tags); nothing indexed",
                 ev.DocumentId);
+            if (!await FinishAsync(ev, written, ct))
+                return;
             await bus.PublishCompletedAsync(ev.DocumentId, 0, DateTimeOffset.UtcNow, ct);
             return;
         }
@@ -375,9 +463,12 @@ public class DocumentUpdatedConsumer(
                 t => store.UpsertLexicalMetadataPointAsync(ChunkId.DeriveMetadata(ev.DocumentId),
                     ev.DocumentId, ev.Title, indexText, ev.MarkdownUri, ev.Attributes, ev.Tags,
                     ev.UpdatedAt, ev.SharedWith, t), ct);
+            written.Add(IndexedPointRef.Lexical(ChunkId.DeriveMetadata(ev.DocumentId)));
             logger.LogInformation(
                 "Ingestion {Id}: no body; indexed metadata only into the lexical index without embedding "
                 + "(confidentiality={Confidentiality})", ev.DocumentId, confidentiality ?? "(unset)");
+            if (!await FinishAsync(ev, written, ct))
+                return;
             await bus.PublishCompletedAsync(ev.DocumentId, 0, DateTimeOffset.UtcNow, ct);
             return;
         }
@@ -391,6 +482,7 @@ public class DocumentUpdatedConsumer(
                     ChunkId.DeriveMetadata(ev.DocumentId), ev.DocumentId, ev.Title, indexText,
                     embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt,
                     ev.SharedWith, t), ct);
+            written.Add(new IndexedPointRef(embedding.Collection, ChunkId.DeriveMetadata(ev.DocumentId)));
 
             logger.LogInformation(
                 "Ingestion {Id}: no body; indexed metadata only (title/tags/path/source). 0 body chunks",
@@ -405,12 +497,16 @@ public class DocumentUpdatedConsumer(
                 t => store.UpsertEmbeddingPendingMetadataPointAsync(ChunkId.DeriveMetadata(ev.DocumentId),
                     ev.DocumentId, ev.Title, indexText, ev.MarkdownUri, ev.Attributes, ev.Tags,
                     ev.UpdatedAt, ev.SharedWith, reason, t), ct);
+            written.Add(IndexedPointRef.Lexical(ChunkId.DeriveMetadata(ev.DocumentId)));
             pendingMetrics.RecordWritten(1, reason);
             logger.LogWarning(
                 "Ingestion {Id}: no body; embedding unavailable ({Reason}; confidentiality={Confidentiality}); metadata "
                 + "point written to the lexical index as a full-text-only point awaiting embedding (IADR-0536)",
                 ev.DocumentId, reason, confidentiality ?? "(unset)");
         }
+
+        if (!await FinishAsync(ev, written, ct))
+            return;
 
         // FR-02: **本文なしでも取り込みは完了である**（ADR-0070 決定 3。失敗として溜めない）。
         // チャンク数は 0 —— 本文由来のチャンクは 1 件も作っていない。

@@ -18,7 +18,7 @@ namespace IngestionService.Tests.Features.Ingestion.Ingest;
 // FR-02 テスト仕様 T-18〜T-21 (#1640) —— UC-04, ADR-0013, ADR-0016, ADR-0027:
 // 取り込みの受け口の時間の上限（呼び出しごとの期限・埋め込みの総枠・受け口の実行期限）。
 //
-// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限を含む（本番の既定 420 秒・方針なしなら 60 秒）。
+// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限を含む（本番の既定 435 秒・方針なしなら 60 秒）。
 // ここではそれを 30 秒の CTS で模し（呼び出しごとの 1 秒と十分に離し、負荷下の揺らぎで比が崩れないようにする）、呼び出しごとの期限（1 秒）が**先に**立って時間切れ（`ConsumerTimeoutException`）に
 // なること —— 受け口の ct は立っていないこと —— を見る。呼び出しごとの期限を外す変異では、止まった依存先は
 // 受け口の ct で取り消し（`OperationCanceledException`）として落ち、これらの試験が赤になる。
@@ -244,15 +244,17 @@ public class IngestionTimeoutTests
         timeouts.Embedding.Should().Be(TimeSpan.FromSeconds(30));
         timeouts.VectorStore.Should().Be(TimeSpan.FromSeconds(10));
         timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(300));
-        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(420));
+        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(435));
         timeouts.DeleteFromAll.Should().Be(TimeSpan.FromSeconds(20), "コレクション 2 本（モデル別 1 ＋ 語彙索引 1）× Qdrant 10 秒");
     }
 
     // T-21: 受け口の実行期限が「削除（本数 × Qdrant）＋本文＋総枠＋最後の 1 チャンク」以下なら起動を止める。
-    // 既定値（2 本）では 20＋20＋300＋30＋10＝380 秒。コレクションが 6 本なら 60＋20＋300＋30＋10＝420 秒で、既定の 420 秒と等しく止まる。
+    // ［2026-10-23 / #2101・IADR-0595 決定 5］版の印（Qdrant 3 回）と書き終えた後の旧版の削除（本数 × Qdrant）を足した。
+    // 既定値（2 本）では 20＋30＋20＋20＋300＋30＋10＝430 秒（既定の 435 秒に収まる）。3 本なら 450 秒で止まり、
+    // 2 本で受け口を 430 秒に置くと等しく止まる。
     [Theory]
-    [InlineData(6, null)]
-    [InlineData(2, "380")]
+    [InlineData(3, null)]
+    [InlineData(2, "430")]
     [InlineData(2, "60")]
     public void 受け口の実行期限に最悪の所要時間が収まらなければ起動を止める(int collections, string? handler)
     {
@@ -263,11 +265,11 @@ public class IngestionTimeoutTests
     }
 
     // T-21: 1 回の配信の再試行の連鎖（4 × 受け口の実行期限 ＋ 試行間の待ち 42 秒）がブローカの consumer_timeout 以上なら起動を止める。
-    // 既定では 4 × 420 ＋ 42 ＝ 1722 秒 ＜ 1800 秒。総枠 600・実行期限 720 は連鎖 2922 秒で既定の 1800 秒を超える。
-    // 境界: consumer_timeout を 1722 秒に置くと等しく止まり、1723 秒なら通る。
+    // 既定では 4 × 435 ＋ 42 ＝ 1782 秒 ＜ 1800 秒。総枠 600・実行期限 740 は連鎖 3002 秒で既定の 1800 秒を超える（#2101 で最悪の所要時間が 730 秒になったため 720 → 740）。
+    // 境界: consumer_timeout を 1782 秒に置くと等しく止まり、1783 秒なら通る。
     [Theory]
-    [InlineData("600", "720", null)]
-    [InlineData(null, null, "1722")]
+    [InlineData("600", "740", null)]
+    [InlineData(null, null, "1782")]
     public void 再試行の連鎖がブローカの_consumer_timeout_に収まらなければ起動を止める(
         string? budget, string? handler, string? broker)
     {
@@ -285,19 +287,19 @@ public class IngestionTimeoutTests
     [Fact]
     public void 総枠を上げるなら受け口の実行期限とブローカの_consumer_timeout_も上げれば通る()
     {
-        IngestionTimeouts.From(Config(new() { [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "1723" }),
+        IngestionTimeouts.From(Config(new() { [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "1783" }),
                 IngestionTimeouts.DefaultCollectionCount)
             .Should().Be(IngestionTimeouts.Default);
 
         var timeouts = IngestionTimeouts.From(Config(new()
         {
             [IngestionTimeouts.EmbeddingBudgetKey] = "600",
-            [IngestionTimeouts.HandlerKey] = "720",
-            [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "3000",
+            [IngestionTimeouts.HandlerKey] = "740",
+            [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "3100",
         }), 2);
 
         timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(600));
-        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(720));
+        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(740));
     }
 
     // ── 部品 ──
@@ -361,6 +363,16 @@ public class IngestionTimeoutTests
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
         CancellationToken ct = default)
             => HangIf(Hung.MetadataUpsert, ct);
+
+        // #2101 / IADR-0595: 版を持たない偽物（印は常に無い ＝ 毎回「判定軸は不明」として先に全消しする。従前の形）。
+        public Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
+            => Task.FromResult<DocumentIndexVersion?>(null);
+
+        public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+            IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
             => HangIf(Hung.Delete, ct);
@@ -435,6 +447,16 @@ public class IngestionTimeoutTests
             return Task.CompletedTask;
         }
 
+        // #2101 / IADR-0595: 版を持たない偽物（印は常に無い ＝ 毎回「判定軸は不明」として先に全消しする。従前の形）。
+        public Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
+            => Task.FromResult<DocumentIndexVersion?>(null);
+
+        public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+            IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
+
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task PublishCompletedAsync(Guid documentId, int chunkCount, DateTimeOffset completedAt,
@@ -459,7 +481,7 @@ public class IngestionTimeoutTests
     }
 }
 
-// T-21: 本番の Program.cs の配線 —— 取り込みの受け口の実行期限（420 秒）と上限の値が DI から引けること。
+// T-21: 本番の Program.cs の配線 —— 取り込みの受け口の実行期限（435 秒）と上限の値が DI から引けること。
 [Trait("TestKind", "Integration")]
 public class IngestionTimeoutWiringTests(IntrospectionEndpointTests.Factory factory)
     : IClassFixture<IntrospectionEndpointTests.Factory>

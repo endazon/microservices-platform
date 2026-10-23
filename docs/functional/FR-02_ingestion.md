@@ -3,15 +3,15 @@ title: 機能仕様書 — FR-02 取り込み（パース・チャンク化・�
 type: functional-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-10-14
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, UC-04, NFR-06]
 adrs: [ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0070, ADR-0127, ADR-0016, ADR-0092]
-iadrs: [IADR-0536, IADR-0002, IADR-0149, IADR-0358, IADR-0388, IADR-0497, IADR-0025, IADR-0314]
-specs: [20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261005_1746_high-confidentiality-lexical-index, 20261007_1771_ingestion-event-wiring-docs, 20261009_1771_ingestion-completed-no-wiring]
-issues: [#1908, #532, #536, #580, #1193, #1253, #1254, #1746, #1771, planning#741]
+iadrs: [IADR-0595, IADR-0536, IADR-0002, IADR-0149, IADR-0358, IADR-0388, IADR-0497, IADR-0025, IADR-0314]
+specs: [20261023_2101_ingestion-ordering-and-atomicity, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261005_1746_high-confidentiality-lexical-index, 20261007_1771_ingestion-event-wiring-docs, 20261009_1771_ingestion-completed-no-wiring]
+issues: [#2101, #2150, #2047, #2042, #1908, #532, #536, #580, #1193, #1253, #1254, #1746, #1771, planning#741]
 -->
 
 # 機能仕様書: 取り込み
@@ -47,27 +47,31 @@ issues: [#1908, #532, #536, #580, #1193, #1253, #1254, #1746, #1771, planning#74
 ## 処理フロー（データソース登録・同期の基本フロー）
 
 1. `DocumentUpdated` を受信する。
-2. `MarkdownUri` が null なら警告ログを残しスキップする（例外フロー E1）。
-3. 既存チャンクを `DeleteByDocumentAsync(DocumentId)` で削除する（再取り込みの冪等性）。
-4. **parse**: `IDocumentContentReader.ReadAsync(MarkdownUri)` で本文 Markdown を取得する。
-5. **chunk**: `IChunkingService.Chunk(text, maxTokens, overlap)` で見出し単位 + オーバーラップで分割する。
-6. **チャンクが 0 件なら**（本文が空＝テキスト層の無い原本など）、本文由来のチャンク・埋め込みは作らず、
-   **メタデータ点を 1 つだけ**登録して 8 へ進む（§本文なしの文書）。高機密文書のメタデータ点は語彙索引へ書く（§高機密文書）。
+2. **［2026-10-23］順序の門**: 文書の版の印（索引へ最後に反映した `UpdatedAt`）より厳密に古い更新は、何もせず正常終了する（§順序と原子性）。
+3. `MarkdownUri` が null なら警告ログを残しスキップする（例外フロー E1）。版の印は進める。
+4. **［2026-10-23］判定軸（属性辞書 ＋ 共有先）が前の版から変わった、または不明（版の印が無い）なら**、既存の点を全コレクションから先に削除する（fail-closed）。
+   変わっていなければ削除せずに進み、**新版を書き終えてから旧版の点を消す**（手順 9。§順序と原子性）。続けて版の印を書く。
+5. **parse**: `IDocumentContentReader.ReadAsync(MarkdownUri)` で本文 Markdown を取得する。
+6. **chunk**: `IChunkingService.Chunk(text, maxTokens, overlap)` で見出し単位 + オーバーラップで分割する。
+7. **チャンクが 0 件なら**（本文が空＝テキスト層の無い原本など）、本文由来のチャンク・埋め込みは作らず、
+   **メタデータ点を 1 つだけ**登録して 9 へ進む（§本文なしの文書）。高機密文書のメタデータ点は語彙索引へ書く（§高機密文書）。
    **［2026-10-05］文書の機密区分が `public` / `internal` でなければ**（`confidential`・`restricted`・未指定・未知）、
-   **埋め込みを呼ばずに**各チャンクを語彙索引へ登録して 8 へ進む（§高機密文書）。
-7. 各チャンクについて:
+   **埋め込みを呼ばずに**各チャンクを語彙索引へ登録して 9 へ進む（§高機密文書）。
+8. 各チャンクについて:
    1. `chunkIndex`（0始まり）を採番する。
    2. `chunkId` を `DocumentId` + `chunkIndex` から決定的に生成する。
    3. **embed**: `IEmbeddingService.EmbedAsync(text)` で埋め込みベクトルを得る。
       **［2026-10-14］埋め込めなかったら**（一時障害・恒久的な拒否とも）、このチャンクから後ろを埋め込みを呼ばずに語彙索引へ
-      全文だけの点（埋め込み待ち）として登録して 8 へ進む（§埋め込みが使えない間）。
+      全文だけの点（埋め込み待ち）として登録して 9 へ進む（§埋め込みが使えない間）。
    4. **index**: `IIngestionVectorStore.UpsertChunkAsync(...)` で Qdrant に登録する（`chunk_index`/`tags`/`attributes` を含む）。
-8. `IngestionCompleted(DocumentId, chunkCount, now)` を発行する。
+9. **［2026-10-23］後始末**: 版の印を読み直す。より新しい版が反映されていれば、この取り込みで書いた点ごと、この版以下の点を消して終える
+   （完了イベントは出さない）。そうでなければ、この取り込みで書いていない旧版の点（版がこの更新以下・`updated_at` を持たない点）を全コレクションから消す。
+10. `IngestionCompleted(DocumentId, chunkCount, now)` を発行する。
 
 ### 例外フロー
 
 - **E1（本文所在なし）**: `MarkdownUri` が null。警告ログを残し、何も登録せず正常終了する（メッセージは ack）。
-- **E2（本文取得失敗）**: HTTP 取得が失敗した場合、`IDocumentContentReader` は例外を送出し、**Wolverine の再試行（2 秒・10 秒・30 秒の 3 回。全サービス共通の既定）を使い切ったらデッドレターへ送る**。`DocumentUpdated` の購読は Wolverine のハンドラであり、MassTransit に残っているのは `IngestionCompleted` の発行だけである（この例外の扱いには関わらない）。
+- **E2（本文取得失敗）**: HTTP 取得が失敗した場合、`IDocumentContentReader` は例外を送出し、**Wolverine の再試行（2 秒・10 秒・30 秒の 3 回。全サービス共通の既定）を使い切ったらデッドレターへ送る**。**［2026-10-23］判定軸が変わらない更新では、旧版の点が索引に残る**（文書は消えたままにならない）。判定軸が変わる更新では旧版は先に消えている（緩い判定軸の点を残さない）。`DocumentUpdated` の購読は Wolverine のハンドラであり、MassTransit に残っているのは `IngestionCompleted` の発行だけである（この例外の扱いには関わらない）。
 
 ## チャンク化規則（`MarkdownChunkingService`）
 
@@ -148,6 +152,25 @@ Qdrant コレクション（語彙索引。既定 `knowledge_chunks_lexical`）*
   （手順は [運用仕様書](../operations/operations.md) §埋め込みプロバイダの設定・ゼロ保持・再索引）。
 - 🔴 **高機密文書（§高機密文書）は変えない。** 印を付けず、埋め直しの対象にもならない。
 
+## 順序と原子性
+
+`DocumentUpdated` は少なくとも 1 回届き、到着の順序は保証されない（並行の発行・再配送・デッドレターからの再投入）。取り込みは次の 3 点で、
+**索引から文書が消えたままにならないこと**と、**判定軸を厳しくした版の後に古い版が届いても緩い判定軸の索引が復活しないこと**を両立させる。
+
+- **版の印**: 文書ごとに、索引へ最後に反映した版（`UpdatedAt`。epoch ミリ秒）と判定軸の指紋（属性辞書 ＋ 共有先の SHA-256）を、
+  検索のコレクションとは別の、ベクトルを持たないコレクション（`knowledge_document_index_versions`）に 1 文書 1 点で持つ。
+  題名・本文・タグ・属性の値は持たない。点を全部消した文書（撤収・削除）でも残る。最初の書き込みでコレクションを作る。
+- **順序の門**: 印より厳密に古い更新は反映しない（撤収・アーカイブの更新も含む）。等しい版（再配送・再発行）は反映する。
+  印の無い文書（移行前に索引された文書・新規）は反映する。
+- **書いてから消す**: 判定軸が同じ更新は、新版の点を書き終えてから旧版の点を消す。判定軸が変わる・不明な更新は、従前どおり先に消す。
+  書き終えた後に印を読み直し、より新しい版に追い越されていたら自分の点を消す。
+
+**限界**: 順序の判定に使うのは `UpdatedAt` だけである。**`UpdatedAt` を進めない変更**（露出トグル・共有の付与と取り消し・タグの改名・再発行）は
+同じ版として届くため、その間の到着順の逆転は判定できない（従前と同じ「後着が勝つ」）。全順序の版番号を契約に足す変更は別件で扱う。
+発行の原子性（DB の確定とイベントの発行）も本節の対象外である。
+**並行**: 印の読み書きは比較交換ではない。同じ文書の 2 版を並行に取り込むと、新しい版のチャンクが次の更新まで欠け得る（緩む側ではなく欠ける側）。
+既定の配備（1 レプリカ・Inline 受信）では起きない。複数レプリカ・並行受信にする前に解消する（運用仕様書 §可用性・水平スケール）。
+
 ## 索引（Qdrant コレクション）
 
 - コレクション名: `Qdrant:CollectionName`（既定 `knowledge_chunks`）。後方互換で `Qdrant:Collection` もフォールバックで解決する。
@@ -155,6 +178,7 @@ Qdrant コレクション（語彙索引。既定 `knowledge_chunks_lexical`）*
 - 起動時に `QdrantBootstrapHostedService` が存在保証（無ければ作成）する。
   **［2026-10-05］語彙索引（`Qdrant:LexicalCollection`。既定 `knowledge_chunks_lexical`）も、ベクトルの設定が空のコレクションとして作る。**
   全文索引（`text` / `text_ngram`）・`text_ngram` の後付け・文書単位の削除は、語彙索引を含む全コレクションに効く。
+  **［2026-10-23］版の印のコレクション（`knowledge_document_index_versions`）は検索のコレクションではない**（ブートストラップでは作らず、最初の書き込みで作る。§順序と原子性）。
 - ペイロード: `document_id` / `document_title` / `text` / `markdown_uri` / `chunk_index` / `tags` / `attributes.<key>` / **`updated_at`** / **`has_body`**。
 - **`updated_at` は Unix epoch ミリ秒の整数**である（同実装判断の決定 1）。ISO-8601 文字列にすると同じ時刻を `+09:00` とも `Z` とも書けるため、辞書順が実時刻順と一致しない（並び順は #532 が使う）。
   **本項目より前に索引されたチャンクはキーを持たない** —— 検索側は `null` で返す（縮退。再索引で解消する）。
@@ -163,5 +187,5 @@ Qdrant コレクション（語彙索引。既定 `knowledge_chunks_lexical`）*
 
 ## トレーサビリティ
 
-- コード: `IngestionService`（`DocumentUpdatedConsumer`, `MarkdownChunkingService`, `MetadataIndexText`, `QdrantIngestionVectorStore`, `IDocumentContentReader`, `QdrantBootstrapHostedService`）。各所に `// FR-02, UC-04` を付す。
+- コード: `IngestionService`（`DocumentUpdatedConsumer`, `DocumentIndexOrdering`, `IndexAccessFingerprint`, `MarkdownChunkingService`, `MetadataIndexText`, `QdrantIngestionVectorStore`, `IDocumentContentReader`, `QdrantBootstrapHostedService`）。各所に `// FR-02, UC-04` を付す。
 - テスト: `IngestionService.Tests`。

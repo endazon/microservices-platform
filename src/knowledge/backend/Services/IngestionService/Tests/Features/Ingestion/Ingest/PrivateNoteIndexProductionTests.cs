@@ -278,6 +278,16 @@ public class PrivateNoteIndexProductionTests
             return Task.CompletedTask;
         }
 
+        // #2101 / IADR-0595: 版を持たない偽物（印は常に無い ＝ 毎回「判定軸は不明」として先に全消しする。従前の形）。
+        public Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
+            => Task.FromResult<DocumentIndexVersion?>(null);
+
+        public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+            IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
+
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
         {
             Deleted.Add(documentId);

@@ -159,4 +159,23 @@ public interface IIngestionVectorStore
     // #1193: **メタデータ点（本文なし）も同じ `document_id` を持つ**ので、この 1 本で一緒に消える。
     // 本文が生えた／消えた文書は、次の取り込みでチャンクとメタデータ点が入れ替わる（両方は残らない）。
     Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default);
+
+    // FR-02, FR-05, [[IADR-0595]] 決定 1 (#2101): 文書の**版の印**（索引へ最後に反映した版）を読む。無ければ null。
+    // 🔴 版の印は検索のコレクションとは別の場所に置く（検索側は読まない）。点を全部消した文書（撤収・削除）でも残る ——
+    // 消した後に古い更新が届いても、印より古ければ反映しないためである。
+    // 既定実装は投げる（版を持たない偽物で「古い更新を弾く」が静かに素通りしないように）。
+    Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
+        => throw new NotSupportedException("This vector store does not hold document index versions");
+
+    // FR-02, FR-05, [[IADR-0595]] 決定 1 (#2101): 版の印を書く（文書 ID ・版・判定軸の指紋だけ。題名・本文・属性の値は書かない）。
+    Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+        => throw new NotSupportedException("This vector store does not hold document index versions");
+
+    // FR-02, FR-05, [[IADR-0595]] 決定 2 (#2101): **旧版の点を消す。** 全コレクション（モデル別 ＋ 語彙索引）から、
+    // 文書の点のうち `updated_at` が `version` 以下（または `updated_at` を持たない）で、かつ `keep` に無い点を消す。
+    // `version` より**厳密に新しい**点は残す（並行して反映した新しい版を古い版の後始末で消さない）。
+    // 既定実装は投げる（後始末の漏れを静かに通さない）。
+    Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, IReadOnlyCollection<IndexedPointRef> keep,
+        CancellationToken ct = default)
+        => throw new NotSupportedException("This vector store does not delete superseded points");
 }

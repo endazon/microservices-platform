@@ -792,4 +792,121 @@ public class QdrantIngestionVectorStore(
         {
         }
     }
+
+    // FR-02, FR-05, [[IADR-0595]] 決定 1 (#2101): **版の印のコレクション**（ベクトルを持たない。1 文書 1 点・点 ID ＝ 文書 ID）。
+    // 🔴 **検索のコレクションとは別に置く。** 検索側（RetrievalService）はこの名前を読まないので、印が検索に混ざることは無い。
+    // 載せるのは文書 ID・版（epoch ミリ秒）・判定軸の指紋だけで、題名・本文・タグ・属性の値は載せない（[[IADR-0595]] 決定 3）。
+    // 作成は最初の書き込みで行う（起動時のブートストラップの呼び出し順を変えない。無ければ「印が無い」と読む）。
+    internal const string IndexVersionCollectionName = "knowledge_document_index_versions";
+    internal const string IndexVersionUpdatedAtKey = "updated_at";
+    internal const string IndexVersionAccessKey = "access_fingerprint";
+
+    public async Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
+    {
+        try
+        {
+            var points = await client.RetrieveAsync(IndexVersionCollectionName, documentId, withPayload: true,
+                withVectors: false, cancellationToken: ct);
+            return points.Count == 0 ? null : ReadIndexVersion(points[0].Payload);
+        }
+        // まだ 1 度も書いていない（コレクションが無い）なら、印も無い。
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound
+                                                && !ct.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    public async Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+    {
+        var point = BuildIndexVersionPoint(documentId, version);
+        try
+        {
+            await client.UpsertAsync(IndexVersionCollectionName, [point], cancellationToken: ct);
+        }
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound
+                                                && !ct.IsCancellationRequested)
+        {
+            if (!await client.CollectionExistsAsync(IndexVersionCollectionName, ct))
+                await client.CreateCollectionAsync(IndexVersionCollectionName, new VectorParamsMap(), cancellationToken: ct);
+            await client.UpsertAsync(IndexVersionCollectionName, [point], cancellationToken: ct);
+        }
+    }
+
+    // [[IADR-0595]] 決定 1: 版の印の点（純関数。試験が形を固定する）。ベクトルは空（語彙索引の点と同じ作法）。
+    internal static PointStruct BuildIndexVersionPoint(Guid documentId, DocumentIndexVersion version) =>
+        BuildLexicalPoint(documentId, new Dictionary<string, Value>
+        {
+            [DocumentIdKey] = new Value { StringValue = documentId.ToString() },
+            [IndexVersionUpdatedAtKey] = new Value { IntegerValue = version.UpdatedAtMs },
+            [IndexVersionAccessKey] = new Value { StringValue = version.AccessFingerprint },
+        });
+
+    // [[IADR-0595]] 決定 1: 版の印を読み戻す（純関数）。版の読めない点は null（印が無いのと同じに扱う —— 判定軸は「不明」になり、
+    // 取り込みは旧版の点を先に消す側〔fail-closed〕へ倒れる）。
+    internal static DocumentIndexVersion? ReadIndexVersion(IDictionary<string, Value> payload)
+    {
+        if (!payload.TryGetValue(IndexVersionUpdatedAtKey, out var at) || at.KindCase != Value.KindOneofCase.IntegerValue)
+            return null;
+        var access = payload.TryGetValue(IndexVersionAccessKey, out var a) ? a.StringValue : "";
+        return new DocumentIndexVersion(DateTimeOffset.FromUnixTimeMilliseconds(at.IntegerValue), access);
+    }
+
+    // FR-02, FR-05, [[IADR-0595]] 決定 2 (#2101): 旧版の点を全コレクションから消す（`DeleteByDocumentFromAllAsync` と同じ巡り方）。
+    public async Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+        IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default)
+    {
+        foreach (var c in _collections)
+            await client.DeleteAsync(c.Name, BuildSupersededFilter(documentId, version, KeepIn(keep, c.Name)),
+                cancellationToken: ct);
+
+        // 語彙索引が無い（ブートストラップの失敗）なら消す点も無い（`DeleteByDocumentFromAllAsync` と同じ扱い）。
+        try
+        {
+            await client.DeleteAsync(_lexical, BuildSupersededFilter(documentId, version, KeepIn(keep, _lexical)),
+                cancellationToken: ct);
+        }
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound
+                                                && !ct.IsCancellationRequested)
+        {
+        }
+    }
+
+    private IEnumerable<Guid> KeepIn(IReadOnlyCollection<IndexedPointRef> keep, string collection) =>
+        keep.Where(k => string.Equals(k.Collection ?? _lexical, collection, StringComparison.Ordinal))
+            .Select(k => k.PointId);
+
+    // [[IADR-0595]] 決定 2: 旧版の点を選ぶフィルタ（純関数）。
+    //   - 文書の点であること（`document_id`）
+    //   - `updated_at` が `version` より**厳密に新しくない**こと（新しい版の点は残す。`updated_at` を持たない古い点は消す）
+    //   - この取り込みで書いた点（`keep`）でないこと
+    internal static Filter BuildSupersededFilter(Guid documentId, DateTimeOffset version, IEnumerable<Guid> keep)
+    {
+        var filter = new Filter
+        {
+            Must =
+            {
+                new Condition
+                {
+                    Field = new FieldCondition { Key = DocumentIdKey, Match = new Match { Keyword = documentId.ToString() } }
+                }
+            },
+            MustNot =
+            {
+                new Condition
+                {
+                    Field = new FieldCondition
+                    {
+                        Key = "updated_at",
+                        Range = new Qdrant.Client.Grpc.Range { Gt = version.ToUnixTimeMilliseconds() }
+                    }
+                }
+            }
+        };
+
+        var ids = keep.Select(id => new PointId { Uuid = id.ToString() }).ToList();
+        if (ids.Count > 0)
+            filter.MustNot.Add(new Condition { HasId = new HasIdCondition { HasId = { ids } } });
+        return filter;
+    }
 }
