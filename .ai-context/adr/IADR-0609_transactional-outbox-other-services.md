@@ -88,7 +88,11 @@ DataSourceService は `Program.cs` で `UsePlatformTransactionalOutbox(connStr)`
     その原本は欠落し得る。同じ DB への書き込みが「発行だけ失敗し、直後の保存は成功する」窓に限られる。運用で気づく手段は、
     Wolverine のエラーログ（`Error while trying to retry`）である。
   - 到着は少なくとも 1 回（at-least-once）。再変換の再送で同じ `RawDocumentFetched` が 2 度届き得る（受け手の冪等性は #2101 / #2102 が扱う）。
-- フォローアップ: なし（#2042 の Wolverine の発行はこれで全件）。MassTransit の残りの辺は Wolverine 移行の射程。
+- フォローアップ: 決定 2 の残余リスク（表への書き込みの一時失敗）の運用でのアラート化は #2178 で扱う（AI レビューの指摘）。
+  #2042 の Wolverine の発行はこれで全件である。MassTransit の残りの辺は Wolverine 移行の射程。
+- 注意（AI レビューの指摘で追記）: 発行口の `CommitAsync` はトランザクションを `BeginTransactionAsync` で直接開く。いま `ConversionJobDbContext`
+  （と DocumentService の同形）は実行戦略（`EnableRetryOnFailure` 等）を有効にしていない（`git grep -nE "EnableRetryOnFailure|ExecutionStrategy" -- src` が 0 件）。
+  実行戦略を有効化する場合は、確定の全体を `CreateExecutionStrategy().ExecuteAsync` で包む必要がある（包まないとユーザー開始のトランザクションが例外になる）。
 
 ## 検証
 

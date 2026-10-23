@@ -51,6 +51,7 @@ public sealed class WolverineConversionRetryPublisher(
         if (outbox is MessageContext messaging)
             messaging.MultiFlushMode = MultiFlushMode.AllowMultiples;
 
+        // ⚠️ DbContext に実行戦略（`EnableRetryOnFailure` 等）を有効化する場合は、確定の全体を `CreateExecutionStrategy().ExecuteAsync` で包む必要がある（IADR-0609。いまは無効）。
         // ① 確定。トランザクションを**保存より前に**開く —— ストアの保存（`PrepareRetryAsync` の `SaveChangesAsync`）が
         // その中で流れ、envelope の INSERT も同じトランザクションに載る。
         try
