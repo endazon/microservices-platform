@@ -62,12 +62,11 @@ internal static class PutDocumentBodyEndpoint
                 DocumentBodyIntake.ContentType, ct);
             // ADR-0050 (#911): 本文指紋。イベントが運び、却下解除・再取り込み判定に使う。
             doc.SetMarkdownUri(bodyUri, DocumentBodyIntake.Fingerprint(body));
-            await db.SaveChangesAsync(ct);
 
             // FR-21 受け入れ基準 ①②: DocumentUpdated が取り込み（parse→chunk→embed→index）を起動し、
             // 索引反映を経て RAG 検索の結果として返るようになる。
-            var bodyNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, bodyNames, ct);
+            // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            var bodyNames = await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
             return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, bodyNames, ct));
         }).WithName("DocumentBodyPut");
     }

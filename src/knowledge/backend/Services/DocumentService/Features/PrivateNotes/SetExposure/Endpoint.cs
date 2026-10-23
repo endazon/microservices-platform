@@ -48,22 +48,21 @@ internal static class SetPrivateNoteExposureEndpoint
             doc?.SetExposureAttributes(req.IncludeInSearch, req.IncludeInGraph, req.IncludeInAi);
             // FR-19, [[IADR-0597]] 決定 4 (#2103): 版は進めないが、版は並行トークンである。読んだ後に別の保存（同期の push 等）が
             // 版を進めていれば負け、古い属性で黙って上書きせずに `Update` と同じ 409 `version_conflict` を返す（台帳の露出も巻き戻る）。
+            // ［#1471］上の条件 1・2 は撤収の形の門がそのまま持つ（[[IADR-0455]] 決定 1）。
+            // 条件をここへ書き下さない —— 門と経路で 2 か所になると、片方だけが直る。
+            // FR-19, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            // 版の競合で保存が負ければ、発行も巻き戻って 1 通も出ない。
             try
             {
-                await db.SaveChangesAsync(ct);
+                if (doc is not null)
+                    await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableOrWithdrawingAsync(
+                        bus, db, doc, wasPublishable, ct);
+                else
+                    await db.SaveChangesAsync(ct);
             }
             catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
             {
                 return await DocumentVersionConflict.AfterLostSaveAsync(db, id, expectedVersion: null, ct);
-            }
-
-            // ［#1471］上の条件 1・2 は撤収の形の門がそのまま持つ（[[IADR-0455]] 決定 1）。
-            // 条件をここへ書き下さない —— 門と経路で 2 か所になると、片方だけが直る。
-            if (doc is not null)
-            {
-                var names = await TagResolver.NamesAsync(db, ct);
-                await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
-                    bus, db, doc, wasPublishable, names, ct);
             }
 
             // #1441: 露出更新の応答も一覧と同じ導出で埋める（露出 3 トグルと公開範囲は別物である）。

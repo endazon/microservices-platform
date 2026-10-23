@@ -132,17 +132,22 @@ internal static class RepublishDocumentUpdatedEndpoint
 
             var published = 0;
             var skippedByGate = 0;
-            foreach (var row in page)
+            // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 再発行は DB を変えないが、発行は同じ確定の口を通す
+            // （Outbox の表へ 1 トランザクションで書いてから送る。門は `CommitAsync` の外では例外になる）。
+            await bus.CommitAsync(async c =>
             {
-                if (!documents.TryGetValue(row.Id, out var doc)) continue;
-                if (!DocumentEndpoints.PassesPublishGate(doc))
+                foreach (var row in page)
                 {
-                    skippedByGate++;
-                    continue;
+                    if (!documents.TryGetValue(row.Id, out var doc)) continue;
+                    if (!DocumentEndpoints.PassesPublishGate(doc))
+                    {
+                        skippedByGate++;
+                        continue;
+                    }
+                    await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, c);
+                    published++;
                 }
-                await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, ct);
-                published++;
-            }
+            }, ct);
 
             logger.LogInformation(
                 "Republished DocumentUpdated for {Published} document(s) (skipped by the publish gate {Skipped}; "

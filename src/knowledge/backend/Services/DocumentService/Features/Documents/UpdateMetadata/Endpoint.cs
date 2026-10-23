@@ -77,9 +77,13 @@ internal static class UpdateDocumentMetadataEndpoint
             doc.UpdateMetadata(DocumentBodyIntake.WithCurrentOwner(req.Attributes, doc.Attributes),
                 metaTagIds, req.ChangeNote);
             // FR-06, UC-03, [[IADR-0597]] (#2103): 保存で負けたら 409（`Update` と同じ理由・同じ写像）。
+            // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            // 版の競合で保存が負ければ、発行も巻き戻って 1 通も出ない。
+            Dictionary<Guid, string> metaNames;
             try
             {
-                await db.SaveChangesAsync();
+                metaNames = await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableOrWithdrawingAsync(
+                    bus, db, doc, wasPublishable, ct);
             }
             catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
             {
@@ -89,9 +93,6 @@ internal static class UpdateDocumentMetadataEndpoint
             // メタデータ更新も属性を全置換する（`Update` と同じ理由・同じ位置）。
             unitProject.RecordIfUnitSubjectSavedWithoutProject(
                 http.User, doc.Attributes, UnitProjectMetrics.OperationUpdateMetadata);
-            var metaNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
-                bus, db, doc, wasPublishable, metaNames, ct);
             return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, metaNames, ct));
         });
     }

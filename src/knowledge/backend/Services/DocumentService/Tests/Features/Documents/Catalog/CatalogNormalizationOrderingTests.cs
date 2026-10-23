@@ -218,6 +218,10 @@ public sealed class CatalogNormalizationOrderingTests
 
     internal sealed class RecordingUpdatedPublisher : IDocumentUpdatedPublisher
     {
+        // IADR-0608 (#2168): 確定の口。この器は関数（保存 → 発行を積む）を呼ぶだけでよい（DB は InMemory でトランザクションが無い）。
+        public Task CommitAsync(Func<CancellationToken, Task> saveAndPublish, CancellationToken ct = default) =>
+            saveAndPublish(ct);
+
         private readonly ConcurrentQueue<PublishedUpdate> _events = new();
         public IReadOnlyList<PublishedUpdate> Events => [.. _events];
 

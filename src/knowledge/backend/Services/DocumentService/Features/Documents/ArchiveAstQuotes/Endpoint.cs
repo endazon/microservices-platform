@@ -68,17 +68,17 @@ internal static class ArchiveAstQuotesEndpoint
             if (!dryRun && page.Count > 0)
             {
                 foreach (var doc in page) doc.Archive(ChangeNote);
-                await db.SaveChangesAsync(ct);
+                // FR-06, ADR-0027 §決定, IADR-0608 (#2168): ページ全件の保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+                await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, page, ct);
 
-                var names = await TagResolver.NamesAsync(db);
                 foreach (var doc in page)
                 {
                     // 🔴 監査: どの文書を、誰が、何のためにアーカイブしたか（1 件 1 行。表題・本文は出さない）。
+                    // 確定の後に書く（確定しなかったアーカイブを記録しない）。
                     logger.LogInformation(
                         "Archived AST quote snapshot {DocumentId} (createdAt={CreatedAt:O}) "
                         + "by {Principal} (requestedBy {RequestedBy}; reason {Reason})",
                         doc.Id, doc.CreatedAt, principal, requestedBy, reason);
-                    await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, ct);
                     archived++;
                 }
             }

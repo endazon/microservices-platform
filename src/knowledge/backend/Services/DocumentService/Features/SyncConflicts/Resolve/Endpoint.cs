@@ -29,7 +29,7 @@ namespace DocumentService.Features.SyncConflicts.Resolve;
 // 🔴 **本文を書き換える／本文を持つ資料を作る分岐は、発行の門を通して `DocumentUpdated` を出す。**
 // 出さないと、露出 ON の個人資料は本文だけ新しくなり、索引（検索・グラフ）は古い本文のまま残る。
 // どちらの分岐も属性を書き換えない（`local` は現在の属性をそのまま渡す／`both` は新規作成）ので、
-// 単純な門（`PublishUpdatedIfIndexableAsync`）を使う。発行は保存の後（push と同じ順）。
+// 単純な門（`PublishUpdatedIfIndexableAsync`）を使う。発行は保存の後で、保存と同じ確定に載る（push と同じ。IADR-0608）。
 internal static class ResolveSyncConflictEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
@@ -96,23 +96,22 @@ internal static class ResolveSyncConflictEndpoint
             if (!string.IsNullOrEmpty(conflict.LocalContentUri))
                 await storage.DeleteAsync(conflict.LocalContentUri, ct);
             conflict.Resolve(req.Resolution, now);
-            await db.SaveChangesAsync(ct);
+            // #1474: 確定した後に門を通す（`local` は元の資料・`both` は別名資料）。
+            // FR-20, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            // 確定が失敗すれば例外がそのまま出て、下の使用量・監査へ進まない（解決していない競合を記録しない）。
+            if (written is not null)
+                await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, written, ct);
+            else
+                await db.SaveChangesAsync(ct);
 
             // FR-22 ②: `both` で使用量が増えるため、警告の跨ぎを再評価する。
             await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
 
             // ADR-0037 決定 9: 監査は「誰が・いつ・何件」。**タイトル・本文は記録しない。**
-            // 🔴 発行より**前**に置く（PR #1476 のフェーズ末監査 D2）—— 保存は確定しているので、
-            // 発行が例外になっても解決の監査行は残す。
+            // 🔴 （PR #1476 のフェーズ末監査 D2）保存が確定していれば、解決の監査行は必ず残す。
+            // ［IADR-0608］発行は保存と同じ確定に載ったので、確定の後の送出の失敗は例外にならない（Outbox から再送される）。
             audit.Record("private-note.sync.conflict-resolve", owner, "granted",
                 $"conflict={conflict.Id} resolution={req.Resolution} count=1");
-
-            // #1474: 確定した後に門を通す（`local` は元の資料・`both` は別名資料）。
-            if (written is not null)
-            {
-                var names = await TagResolver.NamesAsync(db, ct);
-                await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, written, names, ct);
-            }
 
             var createdNoteId = req.Resolution == SyncConflictResolutions.Both ? written?.Id : null;
             return Results.Ok(new ResolveSyncConflictResponse(conflict.Id, conflict.DocumentId,

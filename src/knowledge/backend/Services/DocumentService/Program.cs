@@ -321,6 +321,7 @@ builder.Services.AddMassTransit(x =>
 builder.Services.AddScoped<IDocumentDeletedPublisher, WolverineDocumentDeletedPublisher>();
 // ADR-0027 / E3b: DocumentUpdated の発行も Wolverine へ（IDocumentUpdatedPublisher）。
 // MassTransit に残るのは DocumentNormalized の購読（辺 E2）だけになった。
+// FR-06, ADR-0027 §決定, IADR-0608 (#2168): 発行は `CommitAsync` の中で、更新の確定と同じトランザクション（Transactional Outbox）に載る。
 builder.Services.AddScoped<IDocumentUpdatedPublisher, WolverineDocumentUpdatedPublisher>();
 builder.Host.UseWolverine(opts =>
 {

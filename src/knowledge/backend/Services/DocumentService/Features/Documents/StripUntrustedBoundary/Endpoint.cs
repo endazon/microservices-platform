@@ -171,18 +171,19 @@ internal static class StripUntrustedBoundaryEndpoint
                     plan.Doc.ReplaceUntrustedBoundaryWrapped(plan.StrippedTitle, uri,
                         uri is null ? null : DocumentBodyIntake.Fingerprint(plan.StrippedBody!), ChangeNote);
                 }
-                await db.SaveChangesAsync(ct);
+                // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 対象全件の保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+                await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(
+                    bus, db, plans.Select(x => x.Doc).ToList(), ct);
 
-                var names = await TagResolver.NamesAsync(db);
                 foreach (var plan in plans)
                 {
                     // 🔴 監査: どの文書を、誰が、何のために書き換えたか（1 件 1 行）。
                     // 表題・本文に由来する値（中身も、枠の有無の判定も）はこの行に出さない。表題と本文の内訳は応答とページの要約（件数）が持つ。
+                    // 確定の後に書く（確定しなかった書き換えを記録しない）。
                     logger.LogInformation(
                         "Stripped untrusted boundary from document {DocumentId} "
                         + "by {Principal} (requestedBy {RequestedBy}; reason {Reason})",
                         plan.Doc.Id, principal, requestedBy, reason);
-                    await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, plan.Doc, names, ct);
                     stripped++;
                 }
             }

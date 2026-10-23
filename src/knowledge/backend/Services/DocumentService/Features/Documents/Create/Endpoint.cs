@@ -101,15 +101,14 @@ internal static class CreateDocumentEndpoint
                     DocumentBodyIntake.Fingerprint(req.Body));
             }
             db.Documents.Add(doc);
-            await db.SaveChangesAsync();
+            // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            var createNames = await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
             // FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
             // **保存が成立した後にだけ数える**（0 が正常の違反検出。計器であって統制ではない）。
             // 🔴 **この位置より前へ動かさない** —— 400 / 413 / 409 で戻った要求は
             // 「保存されていない文書」であり、母集合（保存した文書）に入らない。
             unitProject.RecordIfUnitSubjectSavedWithoutProject(
                 http.User, doc.Attributes, UnitProjectMetrics.OperationCreate);
-            var createNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, createNames, ct);
             return Results.Created($"/documents/{doc.Id}",
                 await DocumentEndpoints.ToDtoAsync(db, doc, createNames, ct));
         });
