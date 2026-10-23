@@ -47,9 +47,11 @@ public sealed class BreakGlassViewGate(
         if (!DocumentScopes.IsPrivateNote(doc.Attributes))
             return false;
 
+        // 指名先は正規形（小文字）で保存してある。トークンの利用者名も同じ関数で畳んで比べる（大小を無視した照合）。
+        var nominee = Activate.BreakGlassNames.Normalize(user);
         var now = clock.GetUtcNow();
         var candidates = await db.BreakGlassGrants
-            .Where(g => g.DocumentId == doc.Id && g.NomineeId == user
+            .Where(g => g.DocumentId == doc.Id && g.NomineeId == nominee
                 && g.ActivatedAt <= now && g.ExpiresAt > now)
             .ToListAsync(ct);
         // 本人の早期終了（EndedAt）を含む判定はドメインの 1 関数で行う（述語を 2 つに分けない）。
@@ -64,13 +66,13 @@ public sealed class BreakGlassViewGate(
         if (note is null || note.IsDeleted || !string.Equals(note.OwnerId, grant.OwnerId, StringComparison.Ordinal))
             return false;
 
-        if (await roles.GetAdminStateAsync(user, ct) != ApproverAdminState.Admin)
+        if (await roles.GetAdminStateAsync(nominee, ct) != ApproverAdminState.Admin)
             return false;
 
         db.BreakGlassAuditEntries.Add(BreakGlassAuditEntry.Viewed(grant, viewTarget, now));
         await db.SaveChangesAsync(ct);
         // 構造化ログへも同じ記録の 2 つ目の出口を出す（`SyncAuditRecorder` と同じ作法）。理由・本文は載せない。
-        audit.Record("break-glass.view", user, "granted", $"documentId={doc.Id} grantId={grant.Id} target={viewTarget}");
+        audit.Record("break-glass.view", nominee, "granted", $"documentId={doc.Id} grantId={grant.Id} target={viewTarget}");
         return true;
     }
 }

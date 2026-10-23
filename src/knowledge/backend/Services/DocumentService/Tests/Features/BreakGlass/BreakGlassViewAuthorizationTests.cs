@@ -240,6 +240,82 @@ public class BreakGlassViewAuthorizationTests(BreakGlassWebApplicationFactory fa
             BreakGlassViewTargets.Document, Ct)).Should().BeNull();
     }
 
+    // ── 指名先の利用者名は大小を無視して照合する（保存は正規形） ──
+
+    [Fact]
+    public async Task 大小の揺れた指名でも指名された本人は閲覧でき_別人は閲覧できない()
+    {
+        var owner = BreakGlassSeed.Unique("owner");
+        var nominee = BreakGlassSeed.Unique("admin");
+        var other = BreakGlassSeed.Unique("admin");
+        factory.AdminDirectory.States[nominee] = ApproverAdminState.Admin;
+        factory.AdminDirectory.States[other] = ApproverAdminState.Admin;
+        var doc = await BreakGlassSeed.PrivateNoteAsync(factory, owner, Ct);
+
+        var res = await ClientAs(owner).PostAsJsonAsync($"/private-notes/{doc.Id}/break-glass",
+            new ActivateBreakGlassRequest("理由", "  " + nominee.ToUpperInvariant() + " "), Ct);
+        res.StatusCode.Should().Be(HttpStatusCode.Created, await res.Content.ReadAsStringAsync(Ct));
+        (await res.Content.ReadFromJsonAsync<BreakGlassGrantDto>(Ct))!.NomineeUserId
+            .Should().Be(nominee, "正規形（小文字）で保存する");
+
+        (await ViewAsync(nominee, doc.Id)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ViewAsync(nominee.ToUpperInvariant(), doc.Id)).StatusCode.Should().Be(HttpStatusCode.OK,
+            "照合は大小を無視する");
+        (await ViewAsync(other, doc.Id)).StatusCode.Should().Be(HttpStatusCode.NotFound, "別人は拒否する");
+    }
+
+    // ── 所有者が変わった後は古い発動で開かない ──
+
+    private async Task ChangeOwnerAsync(Guid id, string newOwner, bool document, bool ledger)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+        if (document)
+        {
+            var doc = await db.Documents.SingleAsync(d => d.Id == id, Ct);
+            db.Entry(doc).Property(d => d.Attributes).CurrentValue =
+                new Dictionary<string, string>(doc.Attributes) { ["owner"] = newOwner };
+        }
+        if (ledger)
+        {
+            var note = await db.PrivateNotes.SingleAsync(n => n.DocumentId == id, Ct);
+            db.Entry(note).Property(n => n.OwnerId).CurrentValue = newOwner;
+        }
+        await db.SaveChangesAsync(Ct);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task 所有者が変わった後は古い発動で閲覧できない(bool document, bool ledger)
+    {
+        var s = await ActivateAsync();
+        (await ViewAsync(s.Nominee, s.DocumentId)).StatusCode.Should().Be(HttpStatusCode.OK, "陽性対照");
+
+        await ChangeOwnerAsync(s.DocumentId, BreakGlassSeed.Unique("newowner"), document, ledger);
+
+        (await ViewAsync(s.Nominee, s.DocumentId)).StatusCode.Should().Be(HttpStatusCode.NotFound,
+            "同意したのは発動時の所有者である");
+    }
+
+    [Fact]
+    public async Task 所有者が変わった後は新しい所有者も古い発動を終えられない()
+    {
+        var s = await ActivateAsync();
+        var newOwner = BreakGlassSeed.Unique("newowner");
+        await ChangeOwnerAsync(s.DocumentId, newOwner, document: true, ledger: true);
+
+        (await ClientAs(newOwner).PostAsync($"/private-notes/{s.DocumentId}/break-glass/end", null, Ct))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound, "発動者でない本人の操作として終えない");
+        (await ClientAs(newOwner).GetFromJsonAsync<BreakGlassStatusResponse>(
+            $"/private-notes/{s.DocumentId}/break-glass", Ct))!.Active.Should().BeNull("他人の発動を状態に出さない");
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+        (await db.BreakGlassGrants.SingleAsync(g => g.Id == s.Grant.Id, Ct)).EndedAt.Should().BeNull();
+    }
+
     // ── 論理削除中は開かない ──
 
     [Fact]

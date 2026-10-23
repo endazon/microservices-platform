@@ -78,8 +78,8 @@ public sealed class DocumentListKeysetPostgresTests(PostgresFixture postgres) : 
     // 内容の ABAC の門は閉じたまま（本番の既定）。門が閉じていれば組織文書の判定で認可サービスを問わない。
     private static DocumentReadUseCase Reads(DocumentDbContext db)
         => new(db, new DocumentReadAccess(new NoScopes(), new ClosedGate()),
-            new DocumentService.Features.BreakGlass.BreakGlassViewGate(
-                db, new DocumentService.Infrastructure.ExternalServices.UnavailableApproverRoleDirectory(), TimeProvider.System,
+            new global::DocumentService.Features.BreakGlass.BreakGlassViewGate(
+                db, new global::DocumentService.Infrastructure.ExternalServices.UnavailableApproverRoleDirectory(), TimeProvider.System,
                 new Platform.Shared.Infrastructure.Foundation.Audit.AuditLogger(
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<Platform.Shared.Infrastructure.Foundation.Audit.AuditLogger>.Instance)));
 

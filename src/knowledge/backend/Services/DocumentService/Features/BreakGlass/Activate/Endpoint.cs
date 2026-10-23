@@ -31,7 +31,9 @@ internal static class ActivateBreakGlassEndpoint
             var errors = Validate(req, ownerId);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             var reason = req.Reason!.Trim();
-            var nominee = req.NomineeUserId!.Trim();
+            // 🔴 指名先は正規の利用者名（小文字）で保存する。IdP（Keycloak）は利用者名を小文字へ正規化して持つので、
+            // 大小が揺れた入力でも名簿の照会・閲覧の照合が同じ値になる（照合は `BreakGlassNames.Normalize` の 1 関数）。
+            var nominee = BreakGlassNames.Normalize(req.NomineeUserId!);
 
             if (owned.Note.IsDeleted)
                 return Results.Problem(title: "論理削除中の資料には緊急アクセスを発動できません。",
@@ -84,11 +86,18 @@ internal static class ActivateBreakGlassEndpoint
             errors["nomineeUserId"] = ["閲覧を許すシステム管理者を 1 人指名してください。"];
         else if (nominee.Length > NomineeMaxLength)
             errors["nomineeUserId"] = [$"指名先は {NomineeMaxLength} 文字以内で指定してください。"];
-        else if (string.Equals(nominee, ownerId, StringComparison.Ordinal))
+        else if (BreakGlassNames.Normalize(nominee) == BreakGlassNames.Normalize(ownerId))
             errors["nomineeUserId"] = ["本人は指名できません。"];
         else if (nominee.StartsWith(MachinePrincipal.ServiceAccountUsernamePrefix, StringComparison.OrdinalIgnoreCase))
             errors["nomineeUserId"] = ["サービスアカウントは指名できません。"];
 
         return errors;
     }
+}
+
+// FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 指名先の利用者名の正規形（前後の空白を落として小文字）。
+// 保存（発動）と照合（閲覧の判定）は必ずこの関数を通す —— 片方だけ大小を畳むと、指名したのに読めない（または逆）が起きる。
+internal static class BreakGlassNames
+{
+    internal static string Normalize(string userName) => userName.Trim().ToLowerInvariant();
 }

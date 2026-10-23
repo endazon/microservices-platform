@@ -45,7 +45,7 @@ public class BreakGlassGrant
     {
         if (string.IsNullOrWhiteSpace(ownerId)) throw new ArgumentException("所有者が空です。", nameof(ownerId));
         if (string.IsNullOrWhiteSpace(nomineeId)) throw new ArgumentException("指名先が空です。", nameof(nomineeId));
-        if (string.Equals(ownerId, nomineeId, StringComparison.Ordinal))
+        if (string.Equals(ownerId.Trim(), nomineeId.Trim(), StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("所有者本人を指名できません。", nameof(nomineeId));
         if (string.IsNullOrWhiteSpace(reason)) throw new ArgumentException("理由が空です。", nameof(reason));
 
