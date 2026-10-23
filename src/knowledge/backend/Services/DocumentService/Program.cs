@@ -6,6 +6,7 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Messaging;
 using DocumentService.Infrastructure.ExternalServices;
 using DocumentService.Infrastructure.Messaging;
+using DocumentService.Features.BreakGlass;
 using DocumentService.Features.Documents;
 using DocumentService.Features.Documents.AddTag;
 using DocumentService.Features.Documents.Create;
@@ -38,6 +39,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Wolverine;
 using Wolverine.RabbitMQ;
 using Knowledge.Contracts.Dtos;
@@ -146,6 +148,10 @@ builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurg
 // **REST の 4 端点と east-west gRPC の面（DocumentReadGrpcService）が同じ実体を通る**
 // （判定器を 2 つにしない）。DbContext と同じ scoped にする。
 builder.Services.AddScoped<DocumentReadUseCase>();
+// FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの閲覧の判定点（`DocumentReadUseCase.GetForViewAsync` だけが呼ぶ）。
+// 有効性は発動記録と注入した時計で判定する（試験は偽の時計へ差し替える）。
+builder.Services.AddScoped<DocumentService.Features.BreakGlass.BreakGlassViewGate>();
+builder.Services.TryAddSingleton(TimeProvider.System);
 // FR-06, UC-03, SC-03, ADR-0014, [[IADR-0544]] (#1905): 現行版の本文の読み取り（gRPC `GetDocumentContent` の本体）。
 // 読めるかの判定は上の `DocumentReadUseCase` を通る。
 builder.Services.AddScoped<DocumentService.Features.Documents.GetContent.DocumentContentUseCase>();
@@ -387,6 +393,8 @@ app.MapTagDictionaryEndpoints();
 app.MapDocumentShareEndpoints();
 // FR-19, SC-19: 個人資料のライフサイクル（一覧・作成・削除・復元・完全削除・露出・容量）。
 app.MapPrivateNoteEndpoints();
+// FR-19, UC-11, SC-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの発動・終了・状態・監査ログの読み取り。
+app.MapBreakGlassEndpoints();
 // FR-20, SC-20: 同期端末とトークン（発行・再発行・失効）。
 app.MapSyncDeviceEndpoints();
 // FR-20, SC-20 主要素 3, ADR-0037 決定 3・4, #1442: 同期対象範囲（同期設定）。

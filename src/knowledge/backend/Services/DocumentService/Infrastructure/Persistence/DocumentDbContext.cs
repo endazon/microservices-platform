@@ -35,6 +35,11 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
     // 🔴 **資料を指す列を持たない表である**（決定 5。理由は `SyncAuditEntry` の注記）。
     public DbSet<SyncAuditEntry> SyncAuditEntries => Set<SyncAuditEntry>();
 
+    // FR-19, UC-11, SC-19, 計画 ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの発動記録と監査ログ（保持 3 年）。
+    // 🔴 **閲覧の可否は発動記録の行で要求ごとに判定する**（トークンに乗せない）。どちらの表も資料の本文を持たない。
+    public DbSet<BreakGlassGrant> BreakGlassGrants => Set<BreakGlassGrant>();
+    public DbSet<BreakGlassAuditEntry> BreakGlassAuditEntries => Set<BreakGlassAuditEntry>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.Entity<Document>(e =>
@@ -215,6 +220,33 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
             e.Property(a => a.Outcome).HasMaxLength(20).IsRequired();
             e.Property(a => a.FailureReason).HasMaxLength(40);
             e.HasIndex(a => new { a.OwnerId, a.OccurredAt });
+        });
+
+        // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの発動記録。FK は張らない（`BreakGlassGrant` の注記）。
+        // 閲覧の判定は `(DocumentId, NomineeId)` で引き、保持期限の削除は `ExpiresAt` で引く。
+        mb.Entity<BreakGlassGrant>(e =>
+        {
+            e.HasKey(g => g.Id);
+            e.Property(g => g.OwnerId).HasMaxLength(200).IsRequired();
+            e.Property(g => g.NomineeId).HasMaxLength(200).IsRequired();
+            e.Property(g => g.Reason).HasMaxLength(Knowledge.Contracts.Dtos.BreakGlassPolicy.ReasonMaxLength).IsRequired();
+            e.Ignore(g => g.EndsAt);
+            e.HasIndex(g => new { g.DocumentId, g.NomineeId });
+            e.HasIndex(g => g.ExpiresAt);
+        });
+
+        // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの監査ログ。本文・題名の列を持たない。
+        mb.Entity<BreakGlassAuditEntry>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.Operation).HasMaxLength(20).IsRequired();
+            e.Property(a => a.ActorId).HasMaxLength(200).IsRequired();
+            e.Property(a => a.OwnerId).HasMaxLength(200).IsRequired();
+            e.Property(a => a.NomineeId).HasMaxLength(200).IsRequired();
+            e.Property(a => a.Reason).HasMaxLength(Knowledge.Contracts.Dtos.BreakGlassPolicy.ReasonMaxLength).IsRequired();
+            e.Property(a => a.ViewTarget).HasMaxLength(20);
+            e.HasIndex(a => new { a.OwnerId, a.OccurredAt });
+            e.HasIndex(a => a.OccurredAt);
         });
 
         // FR-09, SC-09, #634: タグ辞書。表示名は**一意**である

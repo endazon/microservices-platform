@@ -109,7 +109,9 @@ public sealed class DocumentReadGrpcService(
         if (!Guid.TryParse(request.Id, out var id))
             throw new RpcException(new Status(StatusCode.InvalidArgument, "id は GUID である必要があります。"));
 
-        var doc = await reads.GetAsync(PrincipalOf(request.User, context), id, context.CancellationToken);
+        // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): SC-03 の閲覧の口（BFF の詳細）なので、緊急アクセスの判定を含む形を通す。
+        var doc = await reads.GetForViewAsync(PrincipalOf(request.User, context), id,
+            Knowledge.Contracts.Dtos.BreakGlassViewTargets.Document, context.CancellationToken);
         return doc is null
             ? new GetDocumentResponse { Found = false }
             : new GetDocumentResponse { Found = true, Document = DocumentReadGrpcMapping.ToProto(doc) };

@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [FR-19, FR-13, FR-16, FR-20, FR-21, FR-22, UC-11, SC-10, SC-17, SC-19, SC-20]
 adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0057, ADR-0058, ADR-0061, ADR-0082, ADR-0096, ADR-0105, ADR-0110, ADR-0114]
-iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512, IADR-0529, IADR-0533, IADR-0598]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1879_exposure-org-docs-wiki-gate, 20261010_issue-1255-1517_east-west-rest-retirement, 20261023_2112_sc05-doc-scope-default]
-issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752, #1879, #1255, #1517, #2112, planning#472, planning#475, planning#492, planning#652, planning#784]
+iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512, IADR-0529, IADR-0533, IADR-0598, IADR-0610]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1879_exposure-org-docs-wiki-gate, 20261010_issue-1255-1517_east-west-rest-retirement, 20261023_2112_sc05-doc-scope-default, 20261023_2046_break-glass-document-service]
+issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752, #1879, #1255, #1517, #2112, #2046, planning#472, planning#475, planning#492, planning#652, planning#784, planning#841]
 -->
 
 # 機能仕様書: 個人資料（private-note）
@@ -30,6 +30,8 @@ issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752
 > 同期要求ごとに所有者のアカウントが有効かを確かめ、無効化・判定不能なら拒否する（[連携の機能仕様書](FR-20_obsidian-sync.md) §同期トークン）。
 > （②通知は受け口・発火の結線とも 2026-08-28 に実装済み — 通知サービスの配備が残る）
 > 線引きは同名の作業仕様書と実装 ADR（trace 参照）にある。
+> **⑥緊急アクセスの後段（発動記録・閲覧の判定・監査ログ）を 2026-10-23 に実装した**（後述 §緊急アクセス）。
+> BFF の中継と画面の導線はまだ無く、利用者が操作する経路は無い。
 
 ## 概要
 
@@ -141,6 +143,25 @@ Wiki.js へは従来どおり同期しない（露出の設定によらない）
   この組み合わせの扱いは計画がまだ述べていない。
 - 作成時の検証は、組織文書の露出キーを拒否しない。発行（文書更新イベント）も止めない —— 止めると撤収とページの撤去が下流へ届かない。
 
+### 緊急アクセス（本人同意型の管理者の閲覧）
+
+所有者本人が、自分の個人資料 **1 件**について、**理由**を書き、システム管理者（`platform-admin`）の **1 人を指名**して発動する。
+有効な間だけ、**指名された 1 人がその 1 件を閲覧できる**（利用者の裁定 2026-10-23）。本人は平時から自分の資料をすべて読めるので、
+本人のための発動は無い。
+
+| 項目 | 内容 |
+| --- | --- |
+| 発動できる者 | 所有者本人だけ。管理者を含む第三者・機械の主体は発動できない（他人の資料は 404） |
+| 入力 | 理由（必須・空白だけは不可・500 文字以内）、指名するシステム管理者 1 人（本人・サービスアカウントは不可。利用者名簿で管理者であることを確かめ、確かめられなければ発動しない） |
+| 有効時間 | 発動から 15 分で失効し、延長しない（閲覧を続けても延びない）。本人は 15 分より前に終えられる。終了日時は本人の終了か発動＋15 分の早いほう |
+| 有効性の判定 | 閲覧の要求ごとにサーバ側の発動記録で判定する（トークンに乗せない） |
+| 開くもの | 文書の閲覧（属性と現行版の本文）だけ。一覧・版の履歴・MCP には出ない。編集・削除・共有の変更・露出・復元・完全削除はできない |
+| 開かない場合 | 指名外の管理者・失効後・終了後・別の資料・論理削除中・指名された人がいま管理者でない（確かめられない）—— いずれも「無い」と同じ 404 |
+| 監査ログ | 発動・終了・有効中の閲覧（1 件ずつ）を記録する。項目は発動日時・発動者・対象資料の識別子・理由・操作種別・終了日時（ほかに操作した人・指名先・閲覧の対象）。本文と題名は記録しない。保持 3 年（日次の定期処理が削除する） |
+| 監査ログを読める者 | システム管理者（全件）と本人（自分の資料の分だけ） |
+
+同じ資料に同時に有効な発動は 1 つである（重ねて発動すると 409。終えれば再び発動できる）。論理削除中の資料には発動できない。
+
 ## 処理フロー / 状態遷移
 
 ```mermaid
@@ -168,6 +189,8 @@ stateDiagram-v2
 | 本文 1 MB 超 | 413（切り詰めない） |
 | `doc_scope` の未知値 | 400。一般文書経路での `private-note` 作成も 400（台帳の無い個人資料を作らせない） |
 | 一般文書経路で `doc_scope` 未指定 | 作成は通り、サーバが `organization` を補う（作成後は付与できないため、作成時に確定させる） |
+| 緊急アクセスの理由が空・指名先が不正 | 400（指名先が管理者か確かめられないときは 503 で発動しない） |
+| 緊急アクセスの重ねての発動・論理削除中の発動 | 409 |
 | `doc_scope` を作成後に変える更新 | **400**。文書スコープは作成時に確定し、以後変更できない。**属性は全置換であるため、既存値の削除も後からの新規付与も「変更」に当たる**（同じ値の同送は通る）。内容を移したい場合は移し先のスコープで新しい文書を作る |
 
 ## 関連
