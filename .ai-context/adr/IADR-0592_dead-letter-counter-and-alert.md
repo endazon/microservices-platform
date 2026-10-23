@@ -2,7 +2,7 @@
 title: IADR-0592 デッドレター到達は共通既定（UsePlatformMessagingDefaults）の再試行の最後の段に束ねた継続で計器 messaging.dead_letter を 1 つ上げて数え、警報 DeadLetterReached（直近 1 時間の前進 > 0・for 5m・warning）で鳴らす。キュー名は見ない
 type: impl-adr
 status: Accepted
-related_ids: [NFR-21, ADR-0053, ADR-0012, ADR-0027, ADR-0052, ADR-0006, IADR-0245, IADR-0234, IADR-0567, IADR-0420, IADR-0233]
+related_ids: [NFR-21, IADR-0593, ADR-0053, ADR-0012, ADR-0027, ADR-0052, ADR-0006, IADR-0245, IADR-0234, IADR-0567, IADR-0420, IADR-0233]
 author: claude
 created: 2026-10-23
 updated: 2026-10-23
@@ -120,3 +120,11 @@ sum by (L) (increase(messaging_dead_letter_total[1h])) > 0
 
 - 配備後（PoC で `messaging_dead_letter_total` の系列と `DeadLetterReached` の評価対象が立つことを確かめた後）に、計画 ADR-0053 §結果 フォローアップ 1
   （05_observability-ops の暫定手段の記述を閉じ、決定 5 を解消する）とフォローアップ 2（決定 4 の記録＝IADR-0245 決定 9 を §関連 へ）を計画へ環流する。
+
+## ［2026-10-23 追記 / #2097］決定 3 の式の形は IADR-0593 が改めた
+
+- **決定 3（IADR-0592）→ 後継 [IADR-0593](./IADR-0593_first-series-arm-for-zero-normal-alerts.md)**（式の形だけ。警報の名前・`for`・`severity`・集計のラベル・キュー名で絞らないことは変えない）。
+- 組ごとの腕（`sum by (L) (m) unless sum by (L) (m offset 1h)`）は、再起動で `instance`（`service.instance.id`。プロセスごとに替わる）が替わった新しい系列の 1 通目を、
+  古いプロセスの系列が 1 時間前に在ったために落としていた（promtool v2.52.0 で実測）。腕を集計の前（系列ごと）へ移し、比較を外側の `> 0` 1 つにした:
+  `sum by (L) ((messaging_dead_letter_total unless messaging_dead_letter_total offset 1h) or increase(messaging_dead_letter_total[1h])) > 0`。
+- 決定 3 の「後半の腕が要る理由」と「退けた案（起動時に `Add(0)`）」は引き続き有効である。試験は `messaging-dead-letter.test.yml` の場面 6 を足した。
