@@ -168,21 +168,44 @@ public sealed class StreamUsageOnAbortTests : IDisposable
         incomplete.Tags[LlmCompletionMetrics.ModelTag].Should().Be("test-model");
     }
 
-    // 上流の失敗の後でプロバイダの DisposeAsync が投げても、外側の finally が cancelled を重ねて数えない。
+    // 上流の失敗の後でプロバイダの DisposeAsync が投げても、cancelled を重ねて数えず、不完全の利用実績も積む。
+    // 後始末の例外は伝播させない（縮退イベントで終わる）。
     [Fact]
-    public async Task 上流の失敗の後に後始末が投げてもcancelledを重ねて数えない()
+    public async Task 上流の失敗の後に後始末が投げてもcancelledを重ねず不完全の利用実績を積む()
     {
-        var useCase = UseCase(_ => new FailThenThrowOnDispose());
+        var useCase = UseCase(_ => new ThrowOnDispose(
+            [Progress(Input), new CompletionChunk("途中")],
+            new HttpRequestException("connection reset mid-stream", new IOException("reset"))));
 
-        var act = async () =>
-        {
-            await foreach (var _ in useCase.StreamAsync(Request(), isSynthetic: false, TestContext.Current.CancellationToken))
-            {
-            }
-        };
+        var events = new List<CompletionStreamEvent>();
+        await foreach (var ev in useCase.StreamAsync(Request(), isSynthetic: false, TestContext.Current.CancellationToken))
+            events.Add(ev);
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
-        Results().Should().Equal(LlmCompletionMetrics.ResultUpstreamError);
+        events.Last().FailureKind.Should().Be(CompletionFailureKinds.UpstreamError);
+        Results().Should().Equal(LlmCompletionMetrics.ResultUpstreamError); // cancelled は 0 件
+        Tokens(LlmUsageMetrics.TokenTypeInput).Should().Be(Input);
+        Incomplete().Should().ContainSingle()
+            .Which.Tags[LlmUsageMetrics.IncompleteReasonTag].Should().Be(LlmUsageMetrics.IncompleteUpstreamError);
+    }
+
+    // 正常完了の後でプロバイダの DisposeAsync が投げても、sent と実数の計上は 1 回ずつで、cancelled・不完全は 0 件。
+    [Fact]
+    public async Task 正常完了の後に後始末が投げても実数を1回計上しcancelledも不完全も数えない()
+    {
+        var useCase = UseCase(_ => new ThrowOnDispose(
+            [Progress(Input), new CompletionChunk("回答"),
+             new CompletionChunk(string.Empty, Done: true, Input, 45, CompletionStopReasons.EndTurn)],
+            failure: null));
+
+        var events = new List<CompletionStreamEvent>();
+        await foreach (var ev in useCase.StreamAsync(Request(), isSynthetic: false, TestContext.Current.CancellationToken))
+            events.Add(ev);
+
+        events.Last().Sent.Should().BeTrue();
+        Results().Should().Equal(LlmCompletionMetrics.ResultSent);
+        Tokens(LlmUsageMetrics.TokenTypeInput).Should().Be(Input);
+        Tokens(LlmUsageMetrics.TokenTypeOutput).Should().Be(45);
+        Incomplete().Should().BeEmpty();
     }
 
     // 過大計上の反対側: 送信が成立する前の失敗（1 チャンクも来ていない。429 等）は一括経路と同じく何も積まない。
@@ -388,10 +411,11 @@ public sealed class StreamUsageOnAbortTests : IDisposable
         yield return new CompletionChunk("届かない");
     }
 
-    // 本文を 1 つ返した後の MoveNextAsync で上流の失敗を投げ、DisposeAsync でも投げる列挙。
-    private sealed class FailThenThrowOnDispose : IAsyncEnumerable<CompletionChunk>, IAsyncEnumerator<CompletionChunk>
+    // 与えたチャンクを返し終えたら、failure があれば投げ、無ければ終わる。DisposeAsync は必ず投げる列挙。
+    private sealed class ThrowOnDispose(IReadOnlyList<CompletionChunk> chunks, Exception? failure)
+        : IAsyncEnumerable<CompletionChunk>, IAsyncEnumerator<CompletionChunk>
     {
-        private int _step;
+        private int _next;
 
         public CompletionChunk Current { get; private set; } = new(string.Empty);
 
@@ -399,13 +423,15 @@ public sealed class StreamUsageOnAbortTests : IDisposable
 
         public ValueTask<bool> MoveNextAsync()
         {
-            if (_step++ == 0)
+            if (_next < chunks.Count)
             {
-                Current = new CompletionChunk("途中");
+                Current = chunks[_next++];
                 return ValueTask.FromResult(true);
             }
 
-            throw new HttpRequestException("connection reset mid-stream", new IOException("reset"));
+            if (failure is not null)
+                throw failure;
+            return ValueTask.FromResult(false);
         }
 
         public ValueTask DisposeAsync() => throw new InvalidOperationException("dispose failed");

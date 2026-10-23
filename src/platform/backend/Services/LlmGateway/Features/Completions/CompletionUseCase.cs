@@ -290,7 +290,17 @@ public sealed class CompletionUseCase(
             }
             finally
             {
-                await enumerator.DisposeAsync();
+                // IADR-0601 決定 4 (#2116): 後始末の失敗で計上の流れを変えない。ここで投げると、決着（settled）と
+                // 利用実績の計上が食い違う（上流失敗の判明分が積まれない・正常完了の実数が積まれない）。ログに残して握る。
+                try
+                {
+                    await enumerator.DisposeAsync();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "LLM stream enumerator failed to dispose at endpoint {Endpoint} ({Model})",
+                        decision.EndpointName, decision.Model);
+                }
             }
 
             if (faulted)
