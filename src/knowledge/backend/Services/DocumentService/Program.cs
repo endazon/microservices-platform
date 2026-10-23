@@ -253,9 +253,22 @@ builder.Services.AddHostedService<DocumentService.Features.Documents.ContentAbac
 builder.Services.AddScoped<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceService>();
 // NFR-16, ADR-0117, [[IADR-0530]] 決定 3 (#1887): 計測専用の前倒し（`PrivateNotes:Maintenance:InitialRunDelaySeconds`）は
 // **解決時に**構成から読む（テストホストが差し込む構成は Build 時に載る）。未設定なら従前どおり（初回は 1 周期後）。
+// 🔴 FR-19, FR-22, [[IADR-0599]] 決定 5 (#2100): 定期処理の単一実行（リース）。document-service は HPA（minReplicas 2）で、
+// ローリング更新の maxSurge でも新旧 2 pod が同時に生きる。リースを取れたレプリカだけが周期を回す。
+// IsRelational はプロバイダ判定のみで DB 接続しないため、起動時にスコープを張って安全に評価できる（GraphService の [[IADR-0299]] 決定 3 と同じ）。
+builder.Services.AddSingleton<DocumentService.Domain.Ports.IPrivateNoteMaintenanceLeaseCoordinator>(sp =>
+{
+    using var scope = sp.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+    if (!db.Database.IsRelational())
+        return DocumentService.Infrastructure.Persistence.NoOpPrivateNoteMaintenanceLeaseCoordinator.Instance;
+    return new DocumentService.Infrastructure.Persistence.PostgresPrivateNoteMaintenanceLeaseCoordinator(
+        connStr, sp.GetRequiredService<ILogger<DocumentService.Infrastructure.Persistence.PostgresPrivateNoteMaintenanceLeaseCoordinator>>());
+});
 builder.Services.AddHostedService(sp =>
     new DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService(
         sp.GetRequiredService<IServiceScopeFactory>(),
+        sp.GetRequiredService<DocumentService.Domain.Ports.IPrivateNoteMaintenanceLeaseCoordinator>(),
         sp.GetRequiredService<ILogger<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService>>())
     {
         InitialRunDelay = DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService

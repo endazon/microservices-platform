@@ -46,7 +46,7 @@ public class PrivateNoteMaintenanceHostedServiceTests(TestWebApplicationFactory 
             StubOwnerRetentionDirectory.Departed);
         var logger = new RecordingLogger<PrivateNoteMaintenanceHostedService>();
         var worker = new PrivateNoteMaintenanceHostedService(
-            factory.Services.GetRequiredService<IServiceScopeFactory>(), logger)
+            factory.Services.GetRequiredService<IServiceScopeFactory>(), NoOpPrivateNoteMaintenanceLeaseCoordinator.Instance, logger)
         { CycleInterval = ShortCycle };
 
         await worker.StartAsync(TestContext.Current.CancellationToken);
@@ -101,6 +101,7 @@ public class PrivateNoteMaintenanceHostedServiceTests(TestWebApplicationFactory 
             StubOwnerRetentionDirectory.Departed);
         var worker = new PrivateNoteMaintenanceHostedService(
             factory.Services.GetRequiredService<IServiceScopeFactory>(),
+            NoOpPrivateNoteMaintenanceLeaseCoordinator.Instance,
             new RecordingLogger<PrivateNoteMaintenanceHostedService>())
         { CycleInterval = cycle, CycleClock = clock };
 

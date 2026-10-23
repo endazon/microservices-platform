@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-13, UC-07, ADR-0011, ADR-0027, IADR-0021, IADR-0478, IADR-0557]
 author: claude
 created: 2026-10-20
-updated: 2026-10-20
+updated: 2026-10-23
 plan_refs:
   - planning:projects/microservices-platform/02_requirements（FR-13 Wiki 閲覧・同期）
 related_specs:
@@ -68,6 +68,8 @@ related_specs:
 4. **門の待ちには Wiki.js 1 回と同じ期限（`Wiki:WikiJsTimeoutSeconds`・既定 15 秒）を付ける。** 超えたら呼び出し先 `wiki-js-gate` の時間切れ
    （`ConsumerTimeoutException`・ログ `call to wiki-js-gate did not complete`）として投げ、再試行へ委ねる（IADR-0478 と同じ作法）。
    起動時の最悪の所要時間の検査に門の待ちを足す: 同期は本文 ＋ 門 ＋ Wiki.js（既定 20＋15＋15＝50 秒）、撤去は門 ＋ Wiki.js（30 秒）。どちらも既定の実行期限 60 秒に収まる。
+   - ［2026-10-23 追記 / #2100］門の待ちの期限は [IADR-0599](./IADR-0599_cross-replica-wiki-write-gate-and-maintenance-lease.md) 決定 3・4 で `Wiki:WriteGateWaitSeconds`（未設定なら Wiki.js 1 回の 2 倍）へ切り離し、
+     両受け口の実行期限を `Wiki:HandlerTimeoutSeconds`（既定 90 秒）にした（最悪の所要時間は既定で同期 65 秒・撤去 45 秒）。
 5. 枠は呼び出しの成否・時間切れに関わらず必ず返す（`finally`）。
 
 ## 理由
@@ -85,6 +87,8 @@ related_specs:
 ## 残余リスク
 
 - (a) **門はプロセスの中だけで効く。** wiki-service のレプリカを 2 以上にすると、レプリカの数だけ並ぶ（helm の `services.wiki.replicas` は 1）。上げるときは本 IADR を改める。
+  - ［2026-10-23 追記 / #2100］**前提が誤っていた** —— helm の既定は `scaling.services` に wiki を含み、HPA（minReplicas 2）が `services.wiki.replicas: 1` を上書きしていた。
+    [IADR-0599](./IADR-0599_cross-replica-wiki-write-gate-and-maintenance-lease.md) 決定 1・2 で、門はレプリカをまたいで効く（wiki-service の PostgreSQL の advisory lock）ようにした。本リスクは同 IADR で閉じた。
 - (b) Wiki.js 1 回の期限で呼び出しを切っても、Wiki.js の中の処理（木の再構築）は続く。切った直後に門を通った次の書き込みとは、Wiki.js の中で並び得る。
   失敗した側は一時障害として再試行される（従来どおり）。
 - (c) アーカイブを省いたページは、Wiki.js の画面で本文・表題を直されていても、アーカイブのたびには描き直されない（状態は非公開のまま。IADR-0557 の残余リスク (a) と同じ型）。

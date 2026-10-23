@@ -37,8 +37,10 @@ public class WikiJsWriteGateTests
     [InlineData("4", 4)]
     public void 上限は既定1で構成から1から4を読む(string? configured, int expected)
     {
-        using var gate = WikiJsWriteGate.From(Config(configured));
+        var max = WikiJsWriteGate.ReadMaxParallelWrites(Config(configured));
+        using var gate = new WikiJsWriteGate(max);
 
+        max.Should().Be(expected);
         gate.MaxParallelWrites.Should().Be(expected);
     }
 
@@ -50,7 +52,7 @@ public class WikiJsWriteGateTests
     [InlineData("two")]
     public void 範囲の外か整数でない上限は起動を止める(string configured)
     {
-        var act = () => WikiJsWriteGate.From(Config(configured));
+        var act = () => WikiJsWriteGate.ReadMaxParallelWrites(Config(configured));
 
         act.Should().Throw<InvalidOperationException>().WithMessage($"*{WikiJsWriteGate.MaxParallelWritesKey}*");
     }
@@ -90,8 +92,8 @@ public class WikiJsWriteGateTests
         var ct = TestContext.Current.CancellationToken;
         var release = new TaskCompletionSource();
 
-        var holder = gate.RunAsync(calls, "wiki-sync", TimeSpan.FromSeconds(30), _ => release.Task, ct);
-        var waiter = () => gate.RunAsync(calls, "wiki-delete", TimeSpan.FromMilliseconds(200), _ => Task.CompletedTask, ct);
+        var holder = gate.RunAsync(calls, "wiki-sync", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30), _ => release.Task, ct);
+        var waiter = () => gate.RunAsync(calls, "wiki-delete", TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(30), _ => Task.CompletedTask, ct);
 
         var thrown = (await waiter.Should().ThrowAsync<ConsumerTimeoutException>()).Which;
         thrown.Target.Should().Be(WikiSyncTimeouts.WikiJsGateTarget);
@@ -100,7 +102,7 @@ public class WikiJsWriteGateTests
         release.SetResult();
         await holder;
         var ran = false;
-        await gate.RunAsync(calls, "wiki-delete", TimeSpan.FromSeconds(5), _ => { ran = true; return Task.CompletedTask; }, ct);
+        await gate.RunAsync(calls, "wiki-delete", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), _ => { ran = true; return Task.CompletedTask; }, ct);
         ran.Should().BeTrue();
     }
 
@@ -112,17 +114,98 @@ public class WikiJsWriteGateTests
         var calls = ConsumerTimeoutsForTests.Calls();
         var ct = TestContext.Current.CancellationToken;
 
-        var failing = () => gate.RunAsync(calls, "wiki-sync", TimeSpan.FromSeconds(5),
+        var failing = () => gate.RunAsync(calls, "wiki-sync", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5),
             _ => throw new WikiService.Infrastructure.ExternalServices.WikiJsSyncException("boom"), ct);
         await failing.Should().ThrowAsync<WikiService.Infrastructure.ExternalServices.WikiJsSyncException>();
 
-        var hung = () => gate.RunAsync(calls, "wiki-sync", TimeSpan.FromMilliseconds(100),
+        var hung = () => gate.RunAsync(calls, "wiki-sync", TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(100),
             t => Task.Delay(Timeout.Infinite, t), ct);
         (await hung.Should().ThrowAsync<ConsumerTimeoutException>()).Which.Target.Should().Be(WikiSyncTimeouts.WikiJsTarget);
 
         var ran = false;
-        await gate.RunAsync(calls, "wiki-sync", TimeSpan.FromMilliseconds(500), _ => { ran = true; return Task.CompletedTask; }, ct);
+        await gate.RunAsync(calls, "wiki-sync", TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500), _ => { ran = true; return Task.CompletedTask; }, ct);
         ran.Should().BeTrue();
+    }
+
+    // FR-13, NFR-05, IADR-0599 決定 1・2 (#2100): 門はプロセスの中の枠を取った後にレプリカをまたぐ枠（上限の数を渡す）を取り、
+    // Wiki.js の呼び出しの後に返す。呼び出しが失敗しても返す。
+    [Fact]
+    public async Task 門はレプリカをまたぐ枠を取ってからWikiJsを呼び呼び出しの後に返す()
+    {
+        var replica = new RecordingReplicaLock();
+        using var gate = new WikiJsWriteGate(2, replica);
+        var calls = ConsumerTimeoutsForTests.Calls();
+        var ct = TestContext.Current.CancellationToken;
+
+        var heldDuringCall = false;
+        await gate.RunAsync(calls, "wiki-sync", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5),
+            _ => { heldDuringCall = replica.Held == 1; return Task.CompletedTask; }, ct);
+        var failing = () => gate.RunAsync(calls, "wiki-sync", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5),
+            _ => throw new WikiService.Infrastructure.ExternalServices.WikiJsSyncException("boom"), ct);
+        await failing.Should().ThrowAsync<WikiService.Infrastructure.ExternalServices.WikiJsSyncException>();
+
+        heldDuringCall.Should().BeTrue("Wiki.js を呼ぶ間はレプリカをまたぐ枠を持っている");
+        replica.RequestedSlots.Should().Equal(2, 2);
+        replica.Held.Should().Be(0, "呼び出しの成否に関わらず枠は返る");
+    }
+
+    // レプリカをまたぐ枠を取れない（DB へ届かない）ときは Wiki.js を呼ばない（枠なしで強行しない＝fail-closed）。
+    // プロセスの中の枠は返す（返さなければ以後の同期が全部門で止まる）。
+    [Fact]
+    public async Task レプリカをまたぐ枠を取れなければWikiJsを呼ばずプロセスの中の枠は返す()
+    {
+        var replica = new RecordingReplicaLock { FailNext = true };
+        using var gate = new WikiJsWriteGate(1, replica);
+        var calls = ConsumerTimeoutsForTests.Calls();
+        var ct = TestContext.Current.CancellationToken;
+
+        var called = false;
+        var act = () => gate.RunAsync(calls, "wiki-sync", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5),
+            _ => { called = true; return Task.CompletedTask; }, ct);
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*DB*");
+        called.Should().BeFalse();
+
+        await gate.RunAsync(calls, "wiki-sync", TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1),
+            _ => { called = true; return Task.CompletedTask; }, ct);
+        called.Should().BeTrue("プロセスの中の枠は返っている（上限 1 でも次が通る）");
+    }
+
+    // レプリカをまたぐ枠の待ちも門の待ちの期限に入る。超えたら `wiki-js-gate` の時間切れ（再試行へ委ねる）。
+    [Fact]
+    public async Task レプリカをまたぐ枠の待ちが期限を超えたら門の時間切れとして投げる()
+    {
+        var replica = new RecordingReplicaLock { HangNext = true };
+        using var gate = new WikiJsWriteGate(1, replica);
+        var calls = ConsumerTimeoutsForTests.Calls();
+
+        var act = () => gate.RunAsync(calls, "wiki-delete", TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(30),
+            _ => Task.CompletedTask, TestContext.Current.CancellationToken);
+
+        (await act.Should().ThrowAsync<ConsumerTimeoutException>()).Which.Target.Should().Be(WikiSyncTimeouts.WikiJsGateTarget);
+        replica.Held.Should().Be(0);
+    }
+
+    private sealed class RecordingReplicaLock : IWikiJsReplicaWriteLock
+    {
+        private int _held;
+        public List<int> RequestedSlots { get; } = [];
+        public int Held => Volatile.Read(ref _held);
+        public bool FailNext { get; set; }
+        public bool HangNext { get; set; }
+
+        public async Task<IAsyncDisposable> AcquireAsync(int slots, CancellationToken ct)
+        {
+            RequestedSlots.Add(slots);
+            if (FailNext) { FailNext = false; throw new InvalidOperationException("DB へ届かない"); }
+            if (HangNext) { HangNext = false; await Task.Delay(Timeout.Infinite, ct); }
+            Interlocked.Increment(ref _held);
+            return new Lease(this);
+        }
+
+        private sealed class Lease(RecordingReplicaLock owner) : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync() { Interlocked.Decrement(ref owner._held); return ValueTask.CompletedTask; }
+        }
     }
 
     private static WikiDbContext NewDb() => new(
@@ -204,6 +287,10 @@ public class WikiJsWriteGateWiringTests(TestWebApplicationFactory factory)
     public void 既定では門の上限は1で両リスナーはInlineの1本()
     {
         factory.Services.GetRequiredService<WikiJsWriteGate>().MaxParallelWrites.Should().Be(1);
+        // IADR-0599 決定 2: 試験の器は DB を InMemory へ差し替えるので、レプリカをまたぐ枠はプロセスの中の枠へ縮退する
+        // （リレーショナルなら PostgreSQL の advisory lock。実 PostgreSQL での振る舞いは Knowledge.IntegrationTests の WikiJsReplicaWriteLockTests）。
+        factory.Services.GetRequiredService<IWikiJsReplicaWriteLock>().Should().BeSameAs(
+            WikiService.Infrastructure.Persistence.ProcessLocalWikiJsReplicaWriteLock.Instance);
 
         WikiListeners(factory.Services).Should().BeEquivalentTo(new Dictionary<string, (EndpointMode, int)>
         {

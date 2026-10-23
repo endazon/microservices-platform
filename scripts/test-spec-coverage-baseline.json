@@ -223,8 +223,11 @@
       "DocumentDeleteArchiveSyncTests",
       "DocumentLifecycleEventTests",
       "DocumentSyncConsumerTests",
+      "HpaPdbScalingTests",
       "WikiEndpointsAbacTests",
       "WikiJsGraphQlClientTests",
+      "WikiJsReplicaWriteLockTests",
+      "WikiJsWriteGateTests",
       "WikiSyncMarkPostgresTests",
       "WikiSyncOrderingTests",
       "WikiSyncPermanentFailureTests",
@@ -359,6 +362,8 @@
       "PrivateNoteDepartedOwnerPurgeTests",
       "PrivateNoteLifecycleTests",
       "PrivateNoteMaintenanceHostedServiceTests",
+      "PrivateNoteMaintenanceLeaseTests",
+      "PrivateNoteMaintenanceSingleRunTests",
       "PrivateNoteQuotaTests"
     ],
     "docs/tests/FR-20_document-sharing.md": [

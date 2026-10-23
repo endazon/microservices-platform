@@ -12,6 +12,9 @@ namespace Knowledge.IntegrationTests.Deployment;
 public sealed class HpaPdbScalingTests
 {
     // IADR-0050: HPA/PDB 適用対象＝ステートレス要求処理系 10 サービス（ワーカーは対象外）。
+    // ［2026-10-23 / #2100・IADR-0599］wiki・document は要求処理系であると同時に、**全レプリカで 1 本ずつでなければならない仕事**
+    // （wiki: Wiki.js への書き込み〔IADR-0563〕・document: 個人資料の定期処理）を持つ。HPA の対象に置く前提は、その仕事が
+    // **レプリカをまたいで排他されていること**である（下の `SingleFlightWork_InScalingServices_IsExcludedAcrossReplicas` が固定する）。
     private static readonly string[] ExpectedScalingServices =
     [
         "bff", "retrieval", "authorization", "aianalysis", "document",
@@ -79,6 +82,43 @@ public sealed class HpaPdbScalingTests
         deployment.Should().MatchRegex(
             @"if\s+not\s+\(and\s+\$\.Values\.scaling\.enabled\s+\(has\s+\$name\s+\$\.Values\.scaling\.services\)\)",
             "#197/IADR-0050: HPA 対象サービスは Deployment の静的 replicas を出力しない");
+    }
+
+    // 🔴 NFR-05, IADR-0563 残余リスク (a), IADR-0599 (#2100): HPA の対象（minReplicas 2）にあるサービスのうち、
+    // 全レプリカで 1 本ずつでなければならない仕事を持つものは、その排他を**レプリカをまたぐ仕組み**（PostgreSQL の advisory lock）で張る。
+    // 従前は wiki を HPA の対象に固定しながら、門はプロセスの中だけで効く（IADR-0563 の残余リスク (a)「上げるときは本 IADR を改める」）
+    // と矛盾したまま緑だった。ここでは「HPA の対象である」ことと「本番の配線がレプリカをまたぐ排他を選ぶ」ことを同じ試験で固定する
+    // （振る舞いそのものは実 PostgreSQL の WikiJsReplicaWriteLockTests / PrivateNoteMaintenanceSingleRunTests が測る）。
+    public static TheoryData<string, string, string[]> SingleFlightWork => new()
+    {
+        {
+            "wiki", "src/knowledge/backend/Services/WikiService/Program.cs",
+            [
+                "new PostgresWikiJsReplicaWriteLock(",
+                "new WikiJsWriteGate(maxParallelWrites, sp.GetRequiredService<IWikiJsReplicaWriteLock>())",
+            ]
+        },
+        {
+            "document", "src/knowledge/backend/Services/DocumentService/Program.cs",
+            [
+                "new DocumentService.Infrastructure.Persistence.PostgresPrivateNoteMaintenanceLeaseCoordinator(",
+                "sp.GetRequiredService<DocumentService.Domain.Ports.IPrivateNoteMaintenanceLeaseCoordinator>()",
+            ]
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(SingleFlightWork))]
+    public void SingleFlightWork_InScalingServices_IsExcludedAcrossReplicas(string service, string program, string[] wiring)
+    {
+        var scaling = ScalingBlock(ReadChartFile("values.yaml"));
+        scaling.Should().MatchRegex($@"(?m)^\s*-\s*{Regex.Escape(service)}\s*$",
+            $"{service} は HPA の対象（minReplicas 2）である —— だから 1 本ずつの仕事はレプリカをまたいで排他しなければならない");
+
+        var source = RepoFile.Read(program);
+        foreach (var marker in wiring)
+            source.Should().Contain(marker,
+                $"IADR-0599: HPA の対象の {service} は、1 本ずつの仕事をレプリカをまたぐ排他（PostgreSQL の advisory lock）で張る");
     }
 
     // --- helpers ---------------------------------------------------------
