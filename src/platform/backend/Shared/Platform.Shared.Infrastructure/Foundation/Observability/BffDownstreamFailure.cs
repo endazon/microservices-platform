@@ -71,13 +71,39 @@ public static class BffDownstreamFailure
         public const string Unknown = "unknown";
     }
 
-    /// <summary>WARN を 1 行出し、計器へ 1 件載せる。利用者の取り消し中なら何もしない。</summary>
-    public static void Report(HttpContext http, string downstream, Exception ex, string fallback)
+    /// <summary>失敗の種別の語彙（計器の `bff.downstream.failure.kind`）。</summary>
+    public static class Kinds
+    {
+        public const string Unreachable = "unreachable";
+        public const string Timeout = "timeout";
+
+        /// <summary>
+        /// s2s トークンの取得失敗（`ClientCredentialsServiceTokenProvider` の `InvalidOperationException`）。後段へ 1 バイトも届いていない。
+        /// 🔴 **例外の型からは推さない**（`InvalidOperationException` は無関係な箇所からも投げられる）。
+        /// catch の述語でトークン取得の失敗だと分かっている呼び出し側だけが、引数 `kind` で明示する（<see cref="CredentialIf"/>）。
+        /// </summary>
+        public const string Credential = "credential";
+
+        public const string Error = "error";
+
+        /// <summary>
+        /// 述語が「不達」として `InvalidOperationException` を通す箇所（`IsRetrievalUnreachable` / `IsTransportFailure`）用。
+        /// その述語の下では同型の例外は s2s トークン取得の失敗である —— **その前提を持つ呼び出し側だけが使う**。
+        /// </summary>
+        public static string? CredentialIf(Exception ex) => ex is InvalidOperationException ? Credential : null;
+    }
+
+    /// <summary>
+    /// WARN を 1 行出し、計器へ 1 件載せる。利用者の取り消し中なら何もしない。
+    /// `kind` を省くと例外の型から推す（時間切れ・不達だけ。それ以外は `error`）。
+    /// </summary>
+    public static void Report(HttpContext http, string downstream, Exception ex, string fallback, string? kind = null)
     {
         if (IsCallerAborted(http))
             return;
 
-        var (method, endpoint, kind) = Describe(http, ex);
+        var (method, endpoint, inferred) = Describe(http, ex);
+        kind ??= inferred;
         // 🔴 NFR-28: 例外本体・メッセージは載せない（s2s トークン取得の失敗は IdP の応答を含み得る）。
         //   載せるのはすべて有界の定数・型名である。
         LoggerOf(http).LogWarning(
@@ -87,12 +113,12 @@ public static class BffDownstreamFailure
     }
 
     /// <summary>計器だけ載せる（ログを別の口が既に出している箇所。`DocumentReadFailureLog`）。</summary>
-    public static void Count(HttpContext http, string downstream, Exception ex, string fallback)
+    public static void Count(HttpContext http, string downstream, Exception ex, string fallback, string? kind = null)
     {
         if (IsCallerAborted(http))
             return;
-        var (_, endpoint, kind) = Describe(http, ex);
-        MetricsOf(http)?.Record(downstream, endpoint, kind, fallback);
+        var (_, endpoint, inferred) = Describe(http, ex);
+        MetricsOf(http)?.Record(downstream, endpoint, kind ?? inferred, fallback);
     }
 
     /// <summary>BFF のホストへ計器を登録する（Meter の収集宣言 `AddMeter(MeterName)` はホスト側に要る）。</summary>
@@ -108,13 +134,12 @@ public static class BffDownstreamFailure
     private static string KindOf(Exception ex) => ex switch
     {
         // 呼び出し元の取り消しは上で除いているので、ここに来る取り消しは HttpClient の時間切れである。
-        OperationCanceledException => "timeout",
-        RpcException { StatusCode: StatusCode.DeadlineExceeded } => "timeout",
-        RpcException { StatusCode: StatusCode.Unavailable } => "unreachable",
-        HttpRequestException => "unreachable",
-        // s2s トークンの取得失敗（`ClientCredentialsServiceTokenProvider`）。後段へ 1 バイトも届いていない。
-        InvalidOperationException => "credential",
-        _ => "error",
+        OperationCanceledException => Kinds.Timeout,
+        RpcException { StatusCode: StatusCode.DeadlineExceeded } => Kinds.Timeout,
+        RpcException { StatusCode: StatusCode.Unavailable } => Kinds.Unreachable,
+        HttpRequestException => Kinds.Unreachable,
+        // 🔴 `InvalidOperationException` を `credential` と推さない（呼び出し側が `kind` で明示する。Kinds.Credential）。
+        _ => Kinds.Error,
     };
 
     private static (string Method, string Endpoint, string Kind) Describe(HttpContext http, Exception ex)
@@ -122,8 +147,19 @@ public static class BffDownstreamFailure
         var endpoint = http.GetEndpoint() is RouteEndpoint route
             ? route.RoutePattern.RawText ?? "-"
             : "-";
-        return (http.Request.Method, endpoint, KindOf(ex));
+        return (MethodOf(http.Request.Method), endpoint, KindOf(ex));
     }
+
+    // 🔴 NFR-28（CWE-117・CodeQL `cs/log-forging`）: 要求の HTTP メソッドは**利用者が送った文字列**である。
+    //   ログへ載せる前に既知の定数へ写す（未知の値は `OTHER`）。経路はルートの型（`RoutePattern`）であり要求由来ではない。
+    private static string MethodOf(string method) =>
+        HttpMethods.IsGet(method) ? HttpMethods.Get
+        : HttpMethods.IsPost(method) ? HttpMethods.Post
+        : HttpMethods.IsPut(method) ? HttpMethods.Put
+        : HttpMethods.IsPatch(method) ? HttpMethods.Patch
+        : HttpMethods.IsDelete(method) ? HttpMethods.Delete
+        : HttpMethods.IsHead(method) ? HttpMethods.Head
+        : "OTHER";
 
     private static ILogger LoggerOf(HttpContext http) =>
         http.RequestServices?.GetService<ILoggerFactory>()?.CreateLogger(LogCategory)

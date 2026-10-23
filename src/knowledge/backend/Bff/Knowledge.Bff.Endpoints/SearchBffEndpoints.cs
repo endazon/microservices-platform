@@ -194,7 +194,9 @@ public static class SearchBffEndpoints
             catch (Exception ex) when (IsRetrievalUnreachable(ex, ct))
             {
                 // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
-                BffDownstreamFailure.Report(http, "RetrievalService", ex, BffDownstreamFailure.Fallbacks.Empty);
+                // `IsRetrievalUnreachable` が通す `InvalidOperationException` は s2s トークンの取得失敗である（種別を明示する）。
+                BffDownstreamFailure.Report(http, "RetrievalService", ex, BffDownstreamFailure.Fallbacks.Empty,
+                    BffDownstreamFailure.Kinds.CredentialIf(ex));
                 // 不達（`UNAVAILABLE` / `DEADLINE_EXCEEDED`）と s2s トークンの取得失敗。
                 return Results.Ok(new AttributeValuesResponse([], dictionary));
             }

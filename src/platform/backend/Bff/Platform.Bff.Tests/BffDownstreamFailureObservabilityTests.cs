@@ -6,6 +6,8 @@ using System.Net.Http.Json;
 using AwesomeAssertions;
 using Grpc.Core;
 using Knowledge.Bff.Endpoints.Documents;
+using Knowledge.Bff.Endpoints.Search;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Bff.Endpoints.Usage;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -14,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 using Pb = Knowledge.Contracts.Grpc.Document.V1;
+using PbSearch = Knowledge.Contracts.Grpc.Retrieval.V1;
 
 namespace Platform.Bff.Tests;
 
@@ -59,7 +62,8 @@ public class BffDownstreamFailureObservabilityTests : IClassFixture<BffTestFacto
         m.Tags[BffDownstreamFailureMetrics.FallbackTag].Should().Be("502");
         ((string)m.Tags[BffDownstreamFailureMetrics.EndpointTag]!).Should().StartWith("/bff/search");
         var warning = host.SingleWarning();
-        warning.Should().Contain("RetrievalService").And.Contain(nameof(HttpRequestException)).And.Contain("502");
+        warning.Should().Contain("RetrievalService").And.Contain(nameof(HttpRequestException)).And.Contain("502")
+            .And.Contain("POST /bff/search");
         warning.Should().NotContain("retrieval unreachable", "例外のメッセージは載せない（NFR-28）").And.NotContain("経費", "検索語は載せない");
     }
 
@@ -123,7 +127,7 @@ public class BffDownstreamFailureObservabilityTests : IClassFixture<BffTestFacto
     [Fact]
     public async Task 文書一覧のgRPC不達は従前のWARNのまま計器へも1件載る()
     {
-        var invoker = new UnavailableInvoker();
+        var invoker = new FailingInvoker(new RpcException(new Status(StatusCode.Unavailable, "document down")));
         using var host = Host(services => services.AddSingleton(
             new DocumentReadGrpcClient(new Pb.DocumentRead.DocumentReadClient(invoker))));
 
@@ -135,6 +139,58 @@ public class BffDownstreamFailureObservabilityTests : IClassFixture<BffTestFacto
         m.Tags[BffDownstreamFailureMetrics.KindTag].Should().Be("unreachable");
         host.Logs.Where(e => e.Category == "Knowledge.Bff.Endpoints.DocumentBffEndpoints" && e.Level == LogLevel.Warning)
             .Should().ContainSingle();
+    }
+
+    // 属性値候補（gRPC 不達）は IADR-0417 決定 9 の縮退（200・空候補）を保ったまま、WARN と計器を出す。
+    [Fact]
+    public async Task 属性値候補のgRPC不達は200空のままWARNと計器が1件ずつ出る()
+    {
+        using var host = Host(services => services.AddSingleton(new AttributeValuesGrpcClient(
+            new PbSearch.AttributeValues.AttributeValuesClient(
+                new FailingInvoker(new RpcException(new Status(StatusCode.Unavailable, "retrieval down")))))));
+
+        var resp = await host.Client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" }, TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, "縮退は維持する（IADR-0417 決定 9）");
+        (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken))!
+            .Values.Should().BeEmpty();
+        var m = host.SingleMeasurement();
+        m.Tags[BffDownstreamFailureMetrics.DownstreamTag].Should().Be("RetrievalService");
+        m.Tags[BffDownstreamFailureMetrics.KindTag].Should().Be("unreachable");
+        m.Tags[BffDownstreamFailureMetrics.FallbackTag].Should().Be("empty");
+        ((string)m.Tags[BffDownstreamFailureMetrics.EndpointTag]!).Should().StartWith("/bff/attribute-values");
+        host.SingleWarning().Should().Contain("RetrievalService").And.NotContain("retrieval down");
+    }
+
+    // 述語（`IsRetrievalUnreachable`）が通す `InvalidOperationException` は s2s トークンの取得失敗であり、呼び出し側が種別を明示する。
+    [Fact]
+    public async Task 属性値候補のトークン取得失敗は種別credentialで数える()
+    {
+        using var host = Host(services => services.AddSingleton(new AttributeValuesGrpcClient(
+            new PbSearch.AttributeValues.AttributeValuesClient(
+                new FailingInvoker(new InvalidOperationException("ServiceToken 未設定"))))));
+
+        var resp = await host.Client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" }, TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        host.SingleMeasurement().Tags[BffDownstreamFailureMetrics.KindTag].Should().Be("credential");
+    }
+
+    // 🔴 報告口は `InvalidOperationException` を型だけで `credential` と推さない（無関係な呼び出し元の誤分類を防ぐ）。
+    // 要求の HTTP メソッドは既知の定数へ写してからログへ載せる（CWE-117）。
+    [Fact]
+    public void 種別を明示しないInvalidOperationExceptionはerrorでありメソッドは定数へ写す()
+    {
+        var (provider, sink) = Services();
+        using var listener = Listen(provider.GetRequiredService<IMeterFactory>(), out var measurements);
+        var http = new DefaultHttpContext { RequestServices = provider };
+        http.Request.Method = "GET\r\nforged";
+
+        BffDownstreamFailure.Report(http, "X", new InvalidOperationException(), BffDownstreamFailure.Fallbacks.BadGateway);
+
+        measurements.Should().ContainSingle().Which.Tags[BffDownstreamFailureMetrics.KindTag].Should().Be("error");
+        var line = sink.Should().ContainSingle().Which.Message;
+        line.Should().Contain("OTHER").And.NotContain("forged");
     }
 
     // ── 3: 利用者の取り消し ─────────────────────────────────────────
@@ -261,14 +317,12 @@ public class BffDownstreamFailureObservabilityTests : IClassFixture<BffTestFacto
             => Task.FromException<HttpResponseMessage>(failure);
     }
 
-    private sealed class UnavailableInvoker : CallInvoker
+    private sealed class FailingInvoker(Exception failure) : CallInvoker
     {
-        private static readonly RpcException Failure = new(new Status(StatusCode.Unavailable, "document down"));
-
         public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(
             Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request)
-            => new(Task.FromException<TResponse>(Failure), Task.FromResult(new Metadata()),
-                () => Failure.Status, () => new Metadata(), () => { });
+            => new(Task.FromException<TResponse>(failure), Task.FromResult(new Metadata()),
+                () => failure is RpcException rpc ? rpc.Status : Status.DefaultSuccess, () => new Metadata(), () => { });
 
         public override TResponse BlockingUnaryCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request)
             => throw new NotSupportedException();

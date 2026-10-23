@@ -45,6 +45,10 @@ gRPC の `RpcException(Unavailable)` で拾い、502・「200・0 件」・SSE �
   （`unreachable` / `timeout` / `credential` / `error`）・`bff.fallback`（`502` / `404` / `empty` / `sse_error` / `omitted` / `unknown`）。
   **すべて有界**であり、生のパス・検索語・利用者 ID は載せない。
 - WARN のカテゴリは `Platform.Bff.DownstreamFailure`。載せるのは上の属性と例外の**型名**だけで、例外本体・メッセージは載せない（NFR-28）。
+  要求の HTTP メソッドは利用者が送った文字列なので、既知の定数（GET / POST / PUT / PATCH / DELETE / HEAD、他は `OTHER`）へ写してから載せる（CWE-117）。
+- 種別は例外の型から推すのは時間切れ・不達だけで、それ以外は `error` とする。**`InvalidOperationException` を型だけで `credential` と推さない**
+  （無関係な箇所からも投げられる）。述語（`IsRetrievalUnreachable` / `IsTransportFailure`）の下でそれが s2s トークン取得の失敗だと分かっている
+  呼び出し側だけが、引数 `kind` で明示する（`Kinds.CredentialIf`）。
 - 既に WARN を出している `DocumentReadFailureLog` はカテゴリと文言を保ち（運用者の grep を壊さない）、計器だけ同じ 1 本へ足す。
 
 ### 決定 2: 検索の不達は 502 を返す（200・0 件へ畳まない）
@@ -81,8 +85,9 @@ gRPC の `RpcException(Unavailable)` で拾い、502・「200・0 件」・SSE �
 
 | # | 内容 | 結果 | 根拠 |
 | --- | --- | --- | --- |
-| 1 | 検索（不達・時間切れ）・Wiki・通知・文書一覧（gRPC 不達）で WARN と計器が 1 件ずつ | 通った | `BffDownstreamFailureObservabilityTests` |
+| 1 | 検索（不達・時間切れ）・Wiki・通知・属性値候補（gRPC 不達・トークン取得失敗）・文書一覧（gRPC 不達）で WARN と計器が 1 件ずつ | 通った | `BffDownstreamFailureObservabilityTests` |
 | 2 | 検索の不達は 502、正常応答は 200 で計器・WARN なし | 通った | 同上 |
 | 3 | `RequestAborted` 済みの文脈で報告しても 0 件（陽性対照つき） | 通った | 同上 |
 | 4 | 変異: 検索の報告呼び出しを外す → 2 件赤／計器の記録を外す → 5 件赤／WARN を外す → 5 件赤／取り消しの判定を外す → 1 件赤／`DocumentReadFailureLog` の計器を外す → 1 件赤 | 赤を確認 | 手元実行（2026-10-23） |
+| 4b | 変異（レビュー対応）: 属性値の報告を外す → 2 件赤／`CredentialIf` を外す → 1 件赤／メソッドの写像を外す → 1 件赤 | 赤を確認 | 手元実行（2026-10-23） |
 | 5 | `Platform.Bff.Tests` 全件 | 1071 通過・1 skip | 手元実行（2026-10-23） |

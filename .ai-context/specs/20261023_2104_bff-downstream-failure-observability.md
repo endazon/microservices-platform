@@ -66,6 +66,8 @@ issue 本文の「15 件」は検証せず転記しない。上の走査で、**
 ## 方式
 
 - 共有の報告口 `BffDownstreamFailure`（`Platform.Shared.Infrastructure/Foundation/Observability`）を新設し、全件から呼ぶ。
+  - 種別は例外の型から推すのは時間切れ・不達だけ。`InvalidOperationException`（s2s トークン取得失敗）は述語で分かっている呼び出し側が `kind` で明示する。
+  - HTTP メソッドは既知の定数へ写してからログへ載せる（CWE-117）。
   - WARN 1 行。載せるのは**後段名・経路（ルートの型＝有界）・HTTP メソッド・失敗の種別・例外の型・縮退先**だけ。例外本文・メッセージ・検索語は載せない（NFR-28）。
   - 計器は 1 本 `bff.downstream.failure.total`（Meter `microservices-platform.bff`）。属性 `bff.downstream` / `bff.endpoint` / `bff.downstream.failure.kind` / `bff.fallback`。
   - **利用者の取り消し（`HttpContext.RequestAborted`）は数えない・ログしない。**
@@ -76,7 +78,7 @@ issue 本文の「15 件」は検証せず転記しない。上の走査で、**
 
 | 基準 | 試験 |
 | --- | --- |
-| 1. 不達・時間切れでログと計器が 1 件ずつ出る（代表複数） | `BffDownstreamFailureObservabilityTests`: 検索（不達）・検索（時間切れ）・Wiki・通知・属性値・文書一覧 |
+| 1. 不達・時間切れでログと計器が 1 件ずつ出る（代表複数） | `BffDownstreamFailureObservabilityTests`: 検索（不達）・検索（時間切れ）・Wiki・通知・属性値候補（gRPC 不達・トークン取得失敗＝種別 credential）・文書一覧 |
 | 2. 検索の不達が「該当なし」と区別できる | 同上: 不達で 502（200・0 件ではない）。0 件の正常応答は既存 `BffSearchEndpointTests` |
 | 3. 利用者の取り消しは数えない | 同上: `RequestAborted` 済みの文脈で `Report` しても計器・ログが 0 件 |
 | 4. 変異で赤 | ログ／計器の呼び出しを外すと 1 が赤（手元で確認。PR 本文に記録） |

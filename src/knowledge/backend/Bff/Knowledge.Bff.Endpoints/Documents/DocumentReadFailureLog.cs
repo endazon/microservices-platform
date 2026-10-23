@@ -24,6 +24,9 @@ internal static class DocumentReadFailureLog
     // 運用者が grep する語を固定する（カテゴリ名もここで 1 つに決める）。
     internal const string Category = "Knowledge.Bff.Endpoints.DocumentBffEndpoints";
 
+    // 索引の状態の rpc 名（`DocumentIndexStatusGrpcClient` が渡す）。後段名の振り分けに使うので文字列を 1 か所に置く。
+    internal const string GetIndexStatusesRpc = "GetIndexStatuses";
+
     // ［2026-10-10 / #1255・[[IADR-0533]]］REST の並走を撤去したので輸送は gRPC だけである。輸送の欄は運用者が grep する語として
     // 文言に残す（固定で `grpc`）。従前の引数 `grpc`（REST 経路が残っている前提の真偽値）は外した。
     internal static void Folded(HttpContext http, string rpc, Exception ex, string fallback)
@@ -39,7 +42,9 @@ internal static class DocumentReadFailureLog
             fallback);
         // NFR-19, [[IADR-0603]] (#2104): BFF の下流失敗の計器（1 本に集約）へも載せる。WARN は上の 1 行（カテゴリは従前どおり）。
         // 索引の状態だけは取り込み側（IngestionService）から引く。
-        BffDownstreamFailure.Count(http, rpc == "GetIndexStatuses" ? "IngestionService" : "DocumentService", ex, fallback);
+        // 呼び出し側の述語（`IsTransportFailure` 等）が通す `InvalidOperationException` は s2s トークンの取得失敗である。
+        BffDownstreamFailure.Count(http, rpc == GetIndexStatusesRpc ? "IngestionService" : "DocumentService", ex, fallback,
+            BffDownstreamFailure.Kinds.CredentialIf(ex));
     }
 
     private static string StatusOf(Exception ex) => ex switch
