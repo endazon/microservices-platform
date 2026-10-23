@@ -10,6 +10,7 @@ using Platform.Bff.Composition;
 using Platform.Bff.Foundation.Http;
 using Platform.Bff.Foundation.Secrets;
 using Platform.Bff.Foundation.Session;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 const string ServiceName = "microservices-platform.bff";
 
@@ -29,21 +30,29 @@ builder.Services.AddPlatformHealthChecks()
     // 認証を足したときに片方だけ通る状態を作れる）。
     // 構成はオブジェクトのまま渡す（文字列へ戻すとパスワードの `,` `=` が区切りとして誤読される。#1860 監査指摘 5）。
     // 接続は失敗を記憶しない遅延（PublicationOnly）にする —— 初回の疎通失敗を以後ずっと返し続けないため。
+    //
+    // NFR-06, ADR-0032, ADR-0052 決定 4, [[IADR-0602]] (#2105): **readiness に残すのはセッションストアだけである。**
+    // セッションの実体・DataProtection の鍵リング・SC-22 の書き込み記録を持つ BFF 自身の状態の置き場であり、
+    // 届かなければこのレプリカはどの利用者の要求も捌けない（ログインもできない）。
     .AddRedis(
         _ => sessionStoreHealthConnection.Value,
-        tags: ["ready"])
+        tags: [HealthCheckExtensions.ReadyTag])
+    // NFR-06, [[IADR-0602]] (#2105): 🔴 **下流 4 サービスの疎通は readiness に入れない**（`dependencies` タグ・
+    // `/health/dependencies` で報告だけする）。従前は `ready` タグで、下流 1 つの停止で BFF の全レプリカが
+    // NotReady になり、エッジから**全画面が 503** になっていた —— NFR-06（検索は継続し AI 回答のみ一時停止）と逆向き。
+    // 下流の不調は各エンドポイントが 502 / 縮退表示で返す。失敗は Degraded として報告する（Unhealthy にしない）。
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:RetrievalService"] ?? "http://retrieval-service:5003") + "/health/live"),
-        "retrieval-service", tags: ["ready"])
+        "retrieval-service", failureStatus: HealthStatus.Degraded, tags: [HealthCheckExtensions.DependenciesTag])
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:AiAnalysisService"] ?? "http://aianalysis-service:5004") + "/health/live"),
-        "aianalysis-service", tags: ["ready"])
+        "aianalysis-service", failureStatus: HealthStatus.Degraded, tags: [HealthCheckExtensions.DependenciesTag])
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:FeedbackService"] ?? "http://feedback-service:5008") + "/health/live"),
-        "feedback-service", tags: ["ready"])
+        "feedback-service", failureStatus: HealthStatus.Degraded, tags: [HealthCheckExtensions.DependenciesTag])
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:DashboardService"] ?? "http://dashboard-service:5009") + "/health/live"),
-        "dashboard-service", tags: ["ready"]);
+        "dashboard-service", failureStatus: HealthStatus.Degraded, tags: [HealthCheckExtensions.DependenciesTag]);
 builder.Services.AddOpenApi();
 builder.Services.AddHttpClient();
 
@@ -256,6 +265,8 @@ app.UseMiddleware<CsrfHeaderMiddleware>();
 // CSRF 検査の**後**に置く —— 拒否されたリクエストにトークンを付けない）。
 app.UseMiddleware<SessionTokenPropagationMiddleware>();
 app.MapPlatformHealthChecks();
+// NFR-06, [[IADR-0602]] (#2105): 下流の疎通の報告口（probe ではない。常に 200 で本文に状態）。
+app.MapPlatformDependencyHealthChecks();
 app.MapOpenApi();
 
 // FR-14, IADR-0063: BFF エンドポイントは合成点（BffEndpointComposition）経由で一括登録する。

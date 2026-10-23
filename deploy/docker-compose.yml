@@ -649,7 +649,8 @@ services:
       # NFR-16, IADR-0379 決定 3, IADR-0462 (#1514): h2c リスナ。未設定ならリスナを立てない。readiness は 8080 のまま。
       Grpc__Port: "8081"
       # ［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した。
-      # 下の 2 つ（RetrievalService・LlmGateway）は readiness の `/health/live` が読む（残す）。
+      # 下の 2 つ（RetrievalService・LlmGateway）は依存の報告口 `/health/dependencies` が `/health/live` を読む（残す）。
+      # readiness には入れない（NFR-06 / IADR-0602 / #2105。下流の停止で本サービスを NotReady にしない）。
       Services__RetrievalService: http://retrieval-service:8080
       Services__LlmGateway: http://llm-gateway:8080
       # FR-04 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0400 (#1255): east-west gRPC。
