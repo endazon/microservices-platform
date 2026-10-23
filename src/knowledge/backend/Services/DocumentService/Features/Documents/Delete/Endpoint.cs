@@ -45,16 +45,19 @@ internal static class DeleteDocumentEndpoint
             // FR-06, UC-03, [[IADR-0597]] 決定 4 (#2103): 版は並行トークンであり、文書行の DELETE は読んだ版を条件に持つ。
             // 読んだ後に別の更新が版を進めていれば削除は負け、`Update` と同じ 409 `version_conflict` を返す（`expectedVersion` は null）。
             // 🔴 本文の実体は上で既に消している（IADR-0296 決定 3 の順）。行は勝った側の内容で残るので、削除をやり直せば完了する。
+            // Issue #88: 削除を下流（Wiki.js 同期・索引・グラフ）へ伝播し、外部システムの実体を撤去する。
+            // FR-06, ADR-0027 §決定, ADR-0057 決定 1・3, IADR-0604 (#2042): **発行は DB の確定と同じトランザクションに積む**
+            // （Transactional Outbox）。従前は確定の後に素の発行を呼んでおり、その間に落ちると再発行の起点が消えた。
+            // 確定（`SaveChangesAndFlushAsync`）が版の競合で負ければ、積んだ発行も巻き戻って 1 通も出ない。
+            await deletedBus.PublishDeletedAsync(id, deletedAt, ct);
             try
             {
-                await db.SaveChangesAsync(ct);
+                await deletedBus.SaveChangesAndFlushAsync(ct);
             }
             catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
             {
                 return await DocumentVersionConflict.AfterLostSaveAsync(db, id, expectedVersion: null, ct);
             }
-            // Issue #88: 削除を下流（Wiki.js 同期・索引・グラフ）へ伝播し、外部システムの実体を撤去する。
-            await deletedBus.PublishDeletedAsync(id, deletedAt, ct);
             return Results.NoContent();
         });
     }

@@ -9,7 +9,7 @@ related_ids:
   - IADR-0081
 author: claude
 created: 2026-07-20
-updated: 2026-07-20
+updated: 2026-10-23
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/ (NFR 運用性・信頼性・再現性)
   - planning:projects/microservices-platform/07_adr/ADR-0007 (CI/CD・GitOps)
@@ -60,6 +60,11 @@ Helm values の全サービス（自製 `services.*`＋`frontend`）と一部 th
 - 同名タグを再利用せざるを得ない場合（ローカル再ビルド・緊急）の**rollout 強制**手段
   （`kubectl rollout restart deployment/<name>` / pod template の checksum アノテーション。既存の
   `checksum/pipeline-config` と同型）を運用指針に明文化する。
+
+> **［2026-10-23 追記 / #2132］本決定 1 の「既定 `tag: latest` を placeholder として維持」は [IADR-0605](./IADR-0605_pin-self-built-image-tags.md) が改めた。**
+> chart は自製イメージのタグを持たず、`global.image.tag`（サービスごとは `services.<名>.tag` / `frontend.tag`）が無ければ描画で止まる。
+> 経路B も作業ツリーの git の sha でビルドして同じ値を渡すので、同名タグの再利用と `rollout restart` による強制は要らなくなった。
+> 「`IfNotPresent` を既定に保ち `Always` にしない」は維持する。決定 2・3 は有効なため `Accepted` のまま。
 
 ### 2. Third-party イメージ — 具体版タグへ固定（evidence があるもの）
 

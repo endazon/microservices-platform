@@ -3,15 +3,15 @@ title: 可変部品（Composable コンポーネント）共通実装ガイド �
 type: tech
 status: completed
 created: 2026-07-09
-updated: 2026-10-08
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, FR-14, FR-15]
 adrs: [ADR-0002, ADR-0018, ADR-0032]
-iadrs: [IADR-0007, IADR-0022, IADR-0024, IADR-0025, IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056, IADR-0121, IADR-0131, IADR-0135, IADR-0232, IADR-0273, IADR-0429]
-specs: [20260709_composable-component-implementation-guide, 20260911_issue-1393_remove-platform-spa-public-client, 20260928_issue-1686_knowledge-test-sharding, 20261008_1799_composability-docs-wolverine-wiring, 20261008_1801_disabled-wolverine-step-no-queue]
-issues: [#195, #206, #217, #218, #219, #519, #1393, #1686, #1799, #1801]
+iadrs: [IADR-0007, IADR-0022, IADR-0024, IADR-0025, IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056, IADR-0121, IADR-0131, IADR-0135, IADR-0232, IADR-0273, IADR-0429, IADR-0604]
+specs: [20260709_composable-component-implementation-guide, 20260911_issue-1393_remove-platform-spa-public-client, 20260928_issue-1686_knowledge-test-sharding, 20261008_1799_composability-docs-wolverine-wiring, 20261008_1801_disabled-wolverine-step-no-queue, 20261023_2042_transactional-outbox-stage1]
+issues: [#195, #206, #217, #218, #219, #519, #1393, #1686, #1799, #1801, #2042]
 -->
 
 # 可変部品（Composable コンポーネント）共通実装ガイド
@@ -51,7 +51,7 @@ issues: [#195, #206, #217, #218, #219, #519, #1393, #1686, #1799, #1801]
 
 | 提供物 | 内容 | 可変部品からの使い方 |
 | --- | --- | --- |
-| メッセージ基盤 | RabbitMQ 配線（Wolverine。`Foundation/Extensions/WolverineExtensions` の `UsePlatformMessagingDefaults`・`ListenToPlatformQueue`・`BindPlatformQueue`・`RoutePlatformEvent`・`AddPlatformWolverineBroker`。移行の済んでいない辺〔`DocumentNormalized` の発行・購読、`IngestionCompleted` の発行〕だけ各サービスの `AddMassTransit` ＋ `UsePlatformRetry` が残る） | 中身は変えない。段の登録と受信キューの設定は §2.1 の手順でこれらの拡張メソッドを呼ぶ |
+| メッセージ基盤 | RabbitMQ 配線（Wolverine。`Foundation/Extensions/WolverineExtensions` の `UsePlatformMessagingDefaults`・`UsePlatformTransactionalOutbox`（DB 更新と対になる発行の Transactional Outbox）・`ListenToPlatformQueue`・`BindPlatformQueue`・`RoutePlatformEvent`・`AddPlatformWolverineBroker`。移行の済んでいない辺〔`DocumentNormalized` の発行・購読、`IngestionCompleted` の発行〕だけ各サービスの `AddMassTransit` ＋ `UsePlatformRetry` が残る） | 中身は変えない。段の登録と受信キューの設定は §2.1 の手順でこれらの拡張メソッドを呼ぶ |
 | 宣言的パイプライン構成 | `Foundation/Pipeline/`（`IPipelineStep<TIn>`・`AddPlatformPipelineConfig`・`GetPlatformPipeline`・`AddPlatformWolverineStep<T>`。移行の済んでいない MassTransit の段は `AddPlatformPipelineStep<T>`） | 段が実装・利用する（§2.1） |
 | 認証 | JWT/Keycloak・ロール変換 | 自動適用（サービス側 Program.cs の基盤登録で有効） |
 | 可観測性 | OTel・相関 ID・ヘルスチェック | 自動適用。独自計装を追加する場合も OTel API に統一 |

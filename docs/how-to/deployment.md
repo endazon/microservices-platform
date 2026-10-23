@@ -3,15 +3,15 @@ title: how-to — デプロイ手順（環境ごと）と GitOps 運用
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-10-16
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
-ids: [FR-15, NFR-02, NFR-21]
-adrs: [ADR-0076, ADR-0079, ADR-0135]
-iadrs: [IADR-0017, IADR-0026, IADR-0029, IADR-0034, IADR-0046, IADR-0069, IADR-0378, IADR-0469, IADR-0519, IADR-0547]
-specs: [20260926_issue-1287_helm-synthetic-monitor-optin, 20261009_1843_pin-argocd-k3s-inspection-population, 20261015_1858_pin-inner-image-digests]
-issues: [#192, #1287, #1843, #1858]
+ids: [FR-15, NFR-02, NFR-20, NFR-21]
+adrs: [ADR-0007, ADR-0076, ADR-0079, ADR-0135]
+iadrs: [IADR-0017, IADR-0026, IADR-0029, IADR-0034, IADR-0046, IADR-0069, IADR-0378, IADR-0469, IADR-0519, IADR-0547, IADR-0605]
+specs: [20260926_issue-1287_helm-synthetic-monitor-optin, 20261009_1843_pin-argocd-k3s-inspection-population, 20261015_1858_pin-inner-image-digests, 20261023_2132_pin-image-tags]
+issues: [#192, #1287, #1843, #1858, #2132]
 -->
 
 # how-to: デプロイ手順（環境ごと）と GitOps 運用
@@ -76,16 +76,14 @@ kubectl apply -f deploy/argocd/application.yaml
 
 ## サービス単位のデプロイとロールバック
 
-- **デプロイ**: `deploy/helm/microservices-platform/values.yaml` の `services.<name>.tag` を Git 上で更新し
-  push する → ArgoCD が自動同期する（NFR: サービス単位の独立デプロイ）。
-- **ロールバック**:
-  ```bash
-  argocd app rollback microservices-platform <revision>
-  # もしくは Git 上で当該コミットを revert（GitOps の原則）
-  ```
+- 🔴 **chart は自製イメージのタグを持たない。** タグ（ビルドした git の sha）が無ければ描画で止まる（`latest` へ倒さない）。
+- **デプロイ**: `deploy/argocd/application.yaml` の `helm.parameters` の `global.image.tag` を新しい sha へ改めて Git へ入れ、
+  `kubectl apply -f deploy/argocd/application.yaml` で適用する（サービス単位は `services.<name>.tag` を足す。NFR: サービス単位の独立デプロイ）。
+- **ロールバック**: 前の sha へ値を戻して（`git revert`）適用する。経路B（ローカル k8s）は `helm upgrade` に前の sha を
+  `--set-string global.image.tag=<前の sha>` で渡す。手順の正は [運用仕様書](../operations/operations.md) §イメージのタグの固定とロールバック。
 - **同期状態の確認**:
   ```bash
-  argocd app get microservices-platform      # Sync/Health ステータス
+  argocd app get microservices-platform --show-params   # Sync/Health ステータスと動いている版（global.image.tag）
   argocd app diff microservices-platform     # Git と実クラスタの差分（0 であること）
   ```
 

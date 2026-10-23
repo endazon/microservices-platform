@@ -332,6 +332,8 @@ jobs:
               `node scripts/check-commit-messages.js` / `node scripts/check-plan-id-qualification.js`。
             - **`deploy/helm/**` の差分があれば**、変更した chart に `helm lint <chart>` と
               `helm template ci-check <chart>` を走らせる（`ci/*.yaml` があれば `-f` でも回す）。
+              `deploy/helm/microservices-platform` は自製イメージのタグが無いと描画で止まる（#2132。仕様）ので、
+              両方に `--set-string global.image.tag=render-only-0000000` を付ける。
             - **理由に使えない語**: 「時間」「時間配分」「時間の都合」「時間優先」「差分が大きい」
               「ファイル数が多い」「静的な読み取りに絞った」は、下限を省く理由として**認めない**。
               ジョブの上限は 20 分で、ターン数の上限は無い。下限の検証を走らせても上限には遠く届かない。

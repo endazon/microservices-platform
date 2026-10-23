@@ -1,5 +1,6 @@
 using System.Net.Security;
 using System.Reflection;
+using JasperFx;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -7,7 +8,9 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Wolverine;
+using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
+using Wolverine.Postgresql;
 using Wolverine.RabbitMQ;
 using Wolverine.RabbitMQ.Internal;
 using Wolverine.Runtime;
@@ -231,6 +234,45 @@ public static class WolverineExtensions
             .RetryWithCooldown(RetryIntervals)
             .Then.MoveToErrorQueue()
             .And(RecordDeadLetterAsync, DeadLetterCounterDescription);
+
+        return options;
+    }
+
+    // FR-06, ADR-0027 §決定, IADR-0604 (#2042): Wolverine の表（envelope・ノード・デッドレター等）を置くスキーマ。
+    // サービスの業務表（EF の既定スキーマ）と分ける。値は全サービス共通である（DB はサービスごとに別なので衝突しない）。
+    public const string OutboxSchemaName = "wolverine";
+
+    // FR-06, ADR-0027 §決定「イベント発行の原子性は Wolverine の EF Core + PostgreSQL Transactional Outbox を標準とする」,
+    // IADR-0604 (#2042): **Transactional Outbox の共通構成。`UsePlatformMessagingDefaults` と対で、DB 更新と対になる
+    // イベントを出すサービスの `UseWolverine` 内で 1 回呼ぶ。**
+    //
+    // 🔴 **`connectionString` は発行と対になる DbContext と同じ DB を指さなければならない。**
+    // EF 連携の発行口（`IDbContextOutbox<T>`）は、envelope の INSERT を **DbContext の接続とトランザクションで**
+    // 実行する（DbContext のモデルに Wolverine の表を写していないとき。本構成はそれである）。表の在り処は
+    // ここで渡した接続文字列が決めるので、別の DB を渡すと INSERT が表を見つけられず落ちる
+    // （同じサーバの別 DB でも同じ。原子性は「同じ DB の同じトランザクション」でしか成り立たない）。
+    //
+    // 3 つの設定はいずれも「欠けても起動し、ビルドもテストも通り、障害時にだけ壊れる」種類である:
+    // - 永続化（PersistMessagesWithPostgresql）が無いと、`IDbContextOutbox` は最初の発行で
+    //   `This Wolverine application is not using Database backed message persistence` を投げる。
+    // - EF 連携（UseEntityFrameworkCoreTransactions）が無いと、`IDbContextOutbox<T>` が DI に無い。
+    // - 🔴 **耐久送出（UseDurableOutboxOnAllSendingEndpoints）が無いと、発行は Outbox の表へ書かれない。**
+    //   Wolverine は送出先が耐久（Durable）のときだけ envelope を永続化する（`Envelope.PersistAsync` が
+    //   `Sender.IsDurable` を見る）。既定の送出先は耐久でないため、**発行は DB のトランザクションと無関係に
+    //   メモリ上で保持され、コミットの後・送出の前にプロセスが落ちると消える** —— Outbox を入れる前と同じ壊れ方である。
+    //   これは全送出先へ効く（DB と対にならない発行も、送出前に自分の表へ書かれるので、ブローカ不達では消えなくなる）。
+    //
+    // 表は起動時に Wolverine 自身が作る（`AutoBuildMessageStorageOnStartup`。EF の Migration には入れない）。
+    // 既定値は JasperFx のプロファイルに依存するため、明示する。DB ロールにスキーマ作成の権限が要る。
+    public static WolverineOptions UsePlatformTransactionalOutbox(this WolverineOptions options, string connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+
+        options.PersistMessagesWithPostgresql(connectionString, OutboxSchemaName);
+        options.UseEntityFrameworkCoreTransactions();
+        options.Policies.UseDurableOutboxOnAllSendingEndpoints();
+        options.AutoBuildMessageStorageOnStartup = AutoCreate.CreateOrUpdate;
 
         return options;
     }

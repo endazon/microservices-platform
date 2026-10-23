@@ -32,8 +32,9 @@
  *      Testcontainers に言及しないファイルの定数、許可リストに無いモジュールのビルダ（IADR-0514 の 2026-10-09 追記）。
  *
  * 対象外（理由つき）:
- *   - **自製イメージ**（`microservices-platform/*`・`k3d-local/*`）: CD が一意タグ/digest を渡す
- *     （運用仕様書 §自製イメージ）。chart 既定の `tag: latest` は CD 上書き用のプレースホルダである。
+ *   - **自製イメージ**（`microservices-platform/*`・`k3d-local/*`）: 配備する側が不変のタグ（git の sha）を渡す
+ *     （運用仕様書 §自製イメージ）。chart は既定のタグを持たず、無ければ描画で止まる（NFR-20 / IADR-0605 / #2132。
+ *     描画の側の固定は scripts/helm-image-tag.test.js）。
  *   - テンプレートの `{{ … }}` を含む行: 値は values 側で検査する（直書きの `default "<ref>"` は 4 で拾う）。
  *   - コメント行。`src/` の YAML（配備物の `image:` は `deploy/` にしか無い。lock ファイル等を誤読しない）。
  *

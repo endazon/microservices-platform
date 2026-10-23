@@ -114,6 +114,13 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             services.AddSingleton<RecordingMessageBus>();
             services.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<RecordingMessageBus>());
 
+            // FR-06, FR-19, ADR-0027 §決定, IADR-0604 (#2042): Program.cs は Wolverine の永続化（Transactional Outbox）を
+            // PostgreSQL へ向ける。器の DB は InMemory で接続先も到達不能なので、永続化の起動（表の作成・耐久エージェント）を切る。
+            // 発行口は Outbox の代役へ差し替える（確定に成功した後でだけ RecordingMessageBus へ出す）。
+            services.DisableAllWolverineMessagePersistence();
+            services.RemoveAll<DocumentService.Domain.Ports.IDocumentDeletedPublisher>();
+            services.AddScoped<DocumentService.Domain.Ports.IDocumentDeletedPublisher, RecordingDocumentDeletedPublisher>();
+
             services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, o =>
             {
                 o.ConfigurationManager = new StaticConfigurationManager<OpenIdConnectConfiguration>(
