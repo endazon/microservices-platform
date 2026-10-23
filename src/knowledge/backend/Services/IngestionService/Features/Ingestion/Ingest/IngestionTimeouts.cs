@@ -25,6 +25,11 @@ namespace IngestionService.Features.Ingestion.Ingest;
 //      ［2026-10-23 / #2101・[[IADR-0595]] 決定 5］版の印の照会・記録・読み直し（Qdrant 3 回）と、書き終えた後の
 //      旧版の点の削除（コレクション数 × Qdrant 1 回）を足した。既定（2 本）で 20＋30＋20＋20＋300＋30＋10＝430 秒になるので、
 //      受け口の実行期限の既定を 420 → 435 秒へ上げた（連鎖は 4 × 435 ＋ 42 ＝ 1782 秒 ＜ 1800 秒）。
+//      ［2026-10-24 / #2066・[[IADR-0613]]］🔴 **コレクションを足す opt-in（Ruri・決定的ローカル埋め込み）で既定が起動を止めていた。**
+//      削除は 2 回 × コレクション数 × Qdrant なので、3 本で 450 秒・4 本で 470 秒になり、受け口の期限は連鎖（決定 4）から
+//      439 秒より上げられない —— 既定のままでは**どの値を与えても起動できない**組み合わせだった。そこで**総枠を構成で
+//      与えていなければ**、総枠の既定を「受け口の期限 − 他の項目 − 余白 5 秒」へ縮める（上限は 300 秒。既定の 2 本では
+//      300 秒のまま）。3 本で 280 秒・4 本で 260 秒。総枠を構成で与えたときは縮めず、収まらなければ従前どおり起動を止める。
 //   4. 🔴 **1 回の配信の再試行の連鎖**（試行上限 4 × 受け口の実行期限 ＋ 試行間の待ち 42 秒）が、ブローカの `consumer_timeout`
 //      （`Messaging:BrokerConsumerTimeoutSeconds`・既定 1800 秒）より短いこと（`ConsumerHandlerTimeouts.EnsureRetryChainFits`）。
 //      Wolverine の RabbitMQ の受信は Inline で、再試行は同じ配信の中で回り ack は最後の試行の後である。超えると
@@ -48,6 +53,10 @@ public sealed record IngestionTimeouts(
     public const int DefaultVectorStoreSeconds = 10;
     public const int DefaultEmbeddingBudgetSeconds = 300;
     public const int DefaultHandlerSeconds = 435;
+
+    // FR-02, [[IADR-0613]] (#2066): 総枠を構成で与えていないときに、受け口の期限の内側に残す余白（完了イベントの発行など、
+    // 期限の式の外の処理のため）。既定の構成（2 本）での余り 435 − 430 ＝ 5 秒と同じ値で、既定の 2 本では総枠は 300 秒のまま。
+    public const int DefaultBudgetHeadroomSeconds = 5;
 
     // 既定の構成で削除が回るコレクションの数。`Default` だけが使う。
     // appsettings.json の `Embedding:Collections`（モデル別。既定は voyage の 1 本）＋ 語彙索引 1 本
@@ -83,13 +92,20 @@ public sealed record IngestionTimeouts(
     // `collectionCount` は既存チャンクを消すモデル別コレクションの数（`Embedding:Collections`。削除は 1 本ごとに 1 回）。
     public static IngestionTimeouts From(IConfiguration configuration, int collectionCount)
     {
-        var timeouts = new IngestionTimeouts(
-            ConsumerHandlerTimeouts.Seconds(configuration, ContentReadKey, DefaultContentReadSeconds),
-            ConsumerHandlerTimeouts.Seconds(configuration, EmbeddingKey, DefaultEmbeddingSeconds),
-            ConsumerHandlerTimeouts.Seconds(configuration, VectorStoreKey, DefaultVectorStoreSeconds),
-            ConsumerHandlerTimeouts.Seconds(configuration, EmbeddingBudgetKey, DefaultEmbeddingBudgetSeconds),
-            ConsumerHandlerTimeouts.Seconds(configuration, HandlerKey, DefaultHandlerSeconds),
-            collectionCount);
+        ArgumentNullException.ThrowIfNull(configuration);
+        var contentRead = ConsumerHandlerTimeouts.Seconds(configuration, ContentReadKey, DefaultContentReadSeconds);
+        var embedding = ConsumerHandlerTimeouts.Seconds(configuration, EmbeddingKey, DefaultEmbeddingSeconds);
+        var vectorStore = ConsumerHandlerTimeouts.Seconds(configuration, VectorStoreKey, DefaultVectorStoreSeconds);
+        var handler = ConsumerHandlerTimeouts.Seconds(configuration, HandlerKey, DefaultHandlerSeconds);
+
+        // 🔴 FR-02, [[IADR-0613]] (#2066): 総枠を構成で与えていなければ、既定（300 秒）を上限に、受け口の期限から
+        // 総枠以外の項目と余白を引いた値へ縮める。コレクションを足す opt-in（3〜4 本）でも既定のまま起動できるようにする。
+        // 構成で与えた総枠は縮めない（運用者の値を黙って変えない。収まらなければ下の検査が起動を止める）。
+        var embeddingBudget = configuration.GetValue<int?>(EmbeddingBudgetKey) is null
+            ? DefaultBudgetFor(handler, contentRead, embedding, vectorStore, collectionCount)
+            : ConsumerHandlerTimeouts.Seconds(configuration, EmbeddingBudgetKey, DefaultEmbeddingBudgetSeconds);
+
+        var timeouts = new IngestionTimeouts(contentRead, embedding, vectorStore, embeddingBudget, handler, collectionCount);
 
         ConsumerHandlerTimeouts.EnsureFits(DocumentUpdatedConsumer.StepName, timeouts.Handler, HandlerKey,
             ($"既存チャンクの削除（{collectionCount} コレクション × {VectorStoreKey}）", timeouts.DeleteFromAll),
@@ -105,5 +121,18 @@ public sealed record IngestionTimeouts(
             ConsumerHandlerTimeouts.BrokerConsumerTimeout(configuration));
 
         return timeouts;
+    }
+
+    // FR-02, [[IADR-0613]] (#2066): 総枠を構成で与えていないときの総枠。下の `EnsureFits` の式の総枠以外の項目
+    // （削除 2 回・版の印 3 回・本文・最後の 1 チャンク）と余白を受け口の期限から引き、既定の 300 秒で頭を打つ。
+    // 1 秒を下回るほど期限が短いなら 1 秒にし、判定は `EnsureFits` に委ねる（起動を止める）。
+    private static TimeSpan DefaultBudgetFor(
+        TimeSpan handler, TimeSpan contentRead, TimeSpan embedding, TimeSpan vectorStore, int collectionCount)
+    {
+        var deleteFromAll = vectorStore * Math.Max(1, collectionCount);
+        var others = deleteFromAll * 2 + vectorStore * IndexVersionCalls + contentRead + embedding + vectorStore;
+        var fitted = handler - others - TimeSpan.FromSeconds(DefaultBudgetHeadroomSeconds);
+        var cap = TimeSpan.FromSeconds(DefaultEmbeddingBudgetSeconds);
+        return fitted > cap ? cap : fitted < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : fitted;
     }
 }
