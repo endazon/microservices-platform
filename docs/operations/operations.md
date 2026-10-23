@@ -1902,7 +1902,8 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
 - **レプリカ所有権**: HPA 対象サービスは Deployment に静的 `replicas` を持たず HPA が所有する
   （`deployment.yaml` は `scaling.services` に含まれるサービスの `replicas` を出力しない。値の綱引きを避ける）。
 - **ヘルスプローブ / ロールアウト**: 各 HTTP サービスは `readinessProbe`（`/health/ready`）・`livenessProbe`
-  （`/health/live`）を持ち、Deployment 既定の RollingUpdate（maxUnavailable による無停止更新）と PDB で
+  （`/health/live`）を持ち（**キュー駆動ワーカーの conversion / ingestion も同じ**。HPA の対象外であることとは別で、
+  probe の抑止はしない）、Deployment 既定の RollingUpdate（maxUnavailable による無停止更新）と PDB で
   更新時の可用性を担保する。
   - **`/health/ready` が見るのは自プロセスが要求を捌くのに必須な依存だけである**（自分のデータストア・ブローカ等。
     BFF ではセッションストア）。**下流サービスの疎通は入れない** —— 入れると下流 1 つの停止で呼び出し側の全レプリカが
@@ -1917,7 +1918,7 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
 | 区分 | サービス | HPA/PDB |
 | --- | --- | --- |
 | 要求処理（ステートレス） | bff / retrieval / authorization / aianalysis / document / datasource / dashboard / feedback / wiki / llmgateway | **有効**（min 2 / max 4 / PDB minAvailable 1） |
-| キュー駆動ワーカー | conversion / ingestion（`worker: true`） | 対象外（replicas 1 のまま） |
+| キュー駆動ワーカー | conversion / ingestion | 対象外（replicas 1 のまま） |
 | ステートフル | seaweedfs / wikijs / postgres / qdrant | 対象外（各自の可用性方針） |
 
 - **チャートの外にも PDB を持つ部品が 1 つある**: パスワードリセット申請の床の器（`platform-infra` の `reset-floor`。

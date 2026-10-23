@@ -486,10 +486,12 @@ spec:
             {{- end }}
             {{- end }}
           {{- end }}
-          {{- if and $svc.port (not $svc.worker) }}
-          # FR-15, IADR-0029 (#142): worker（conversion/ingestion）は /health/* を持たない最小 HTTP サーフェスのため、
-          # HTTP ヘルスプローブを付与しない（［2026-10-10 / #1517］従前その面にあった REST の /internal/introspection は撤去し、
-          # 自己申告は h2c の gRPC 面で行う）。
+          {{- /* NFR-21, NFR-06, IADR-0602 (#2140): HTTP のポートを持つサービスには**すべて** liveness / readiness を描く。
+                 キュー駆動のワーカー（conversion/ingestion）も 8080 に /health/live・/health/ready を持つ。
+                 ［2026-10-23 / #2140］従前の `worker: true` による抑止は外した —— conversion は health を持つのに probe が無く、
+                 ingestion は health を持たなかった（どちらも落ちても k8s が気づかない）。readiness は自プロセスの必須依存だけを見る。
+                 描画物へは出さない（全サービスに同じ注記が並ぶだけになるため）。 */}}
+          {{- if $svc.port }}
           livenessProbe:
             httpGet:
               path: /health/live
