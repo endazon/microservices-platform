@@ -1,6 +1,7 @@
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Events;
+using Microsoft.Extensions.Logging;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.Runtime;
 
@@ -24,25 +25,34 @@ namespace DocumentService.Infrastructure.Messaging;
 // `IDbContextOutbox<DocumentDbContext>` はスコープ内の `DocumentDbContext` と同じインスタンスを持つ
 // （DI のスコープで解決されるため）。発行は envelope として DbContext のトランザクションへ INSERT され、
 // `SaveChangesAndFlushAsync` が DB の変更と一緒にコミットしてから送る。
-public sealed class WolverineDocumentDeletedPublisher(IDbContextOutbox<DocumentDbContext> outbox)
+public sealed class WolverineDocumentDeletedPublisher(
+    IDbContextOutbox<DocumentDbContext> outbox, ILogger<WolverineDocumentDeletedPublisher> logger)
     : IDocumentDeletedPublisher
 {
     public async Task PublishDeletedAsync(
-        Guid documentId, DateTimeOffset deletedAt, CancellationToken ct = default) =>
+        Guid documentId, DateTimeOffset deletedAt, CancellationToken ct = default)
+    {
         // 🔴 イベントの構築をここに置くのは、`findPublishers` が `Publish(new <Event>(` にしか
         // 一致しないためである（組み立て済みの変数を渡すと発行が検査器から見えなくなる）。
-        // ⚠️ Wolverine の PublishAsync は CancellationToken を取らない（発行のキャンセル伝播は
-        // 失われる。E1 仕様書「受け入れた挙動差」で受容済みの API 差）。
-        // ⚠️ ここで初めて DB のトランザクションが開く（envelope の INSERT のため。開いていなければ開く）。
+        // ⚠️ Wolverine の PublishAsync は CancellationToken を取らない（E1 仕様書「受け入れた挙動差」で受容済みの API 差）。
+        // IADR-0604: ここで DB のトランザクションが開き（開いていなければ）、envelope が INSERT される。送出はまだしない。
         await outbox.PublishAsync(new DocumentDeleted(documentId, deletedAt));
+    }
 
     public async Task SaveChangesAndFlushAsync(CancellationToken ct = default)
     {
+        // 🔴 `AllowMultiples`: 既定（OnlyOnce）は 2 回目以降の送出を**警告 1 行で黙って捨てる**（envelope は表に残るが、
+        // 送出側の所有のまま再送の対象にならない）。定期処理は 1 スコープで所有者ごと・段ごとに確定する。
+        if (outbox is MessageContext messaging)
+            messaging.MultiFlushMode = MultiFlushMode.AllowMultiples;
+
+        // ① 確定（DB の変更と積んだ envelope を 1 トランザクションでコミットする）。
+        var db = outbox.DbContext;
         try
         {
-            // 🔴 `AllowMultiples`: 既定（OnlyOnce）は 2 回目以降の送出を**警告 1 行で黙って捨てる**（envelope は表に残るが、
-            // 送出側の所有のまま再送の対象にならない）。定期処理は 1 スコープで所有者ごと・段ごとに確定する。
-            await outbox.SaveChangesAndFlushMessagesAsync(MultiFlushMode.AllowMultiples, ct);
+            await db.SaveChangesAsync(ct);
+            if (db.Database.CurrentTransaction is not null)
+                await db.Database.CommitTransactionAsync(ct);
         }
         catch
         {
@@ -52,9 +62,22 @@ public sealed class WolverineDocumentDeletedPublisher(IDbContextOutbox<DocumentD
             // 失敗してもそこまでしか戻さないので、セーブポイントより前の envelope の INSERT は生き残る）。
             if (outbox is MessageContext context)
                 await context.ClearAllAsync();
-            if (outbox.DbContext.Database.CurrentTransaction is { } open)
+            if (db.Database.CurrentTransaction is { } open)
                 await open.RollbackAsync(CancellationToken.None);
             throw;
+        }
+
+        // ② 送出。🔴 **確定の後の送出の失敗は呼び出し側へ出さない**（IADR-0604 決定 2）。削除は確定済みであり、
+        // 送れなかったイベントは Outbox の表に残って耐久エージェントが再送する。例外を出すと、確定済みの削除に 500 を返し、
+        // 利用者がやり直すと 404 になる（結果が紛らわしい）。失敗は Warning で残す。
+        try
+        {
+            await outbox.FlushOutgoingMessagesAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "削除イベントの送出に失敗した。削除は確定済みで、イベントは Outbox の表に残り再送される");
         }
     }
 }

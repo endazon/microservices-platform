@@ -69,11 +69,13 @@ DB の確定との原子性は段 2 まで無い。
    🔴 接続文字列は **DbContext と同じもの**を渡す（envelope の INSERT は DbContext の接続・トランザクションで走るため、別 DB だと原子性が無い）。
 2. **ポート** `IDocumentDeletedPublisher` を 2 メソッドにする: `PublishDeletedAsync`（DB のトランザクションへ積む。送出しない）と
    `SaveChangesAndFlushAsync`（DB の変更と積んだイベントを 1 トランザクションで確定し、確定の後に送出する）。
-   失敗時は Outbox を破棄してトランザクションを巻き戻し、例外をそのまま出す（積んだイベントは送られない）。
+   確定（コミット）の失敗時は Outbox を破棄してトランザクションを巻き戻し、例外をそのまま出す（積んだイベントは送られない）。
+   確定の**後**の送出の失敗は例外にせず Warning ログにする（削除は確定済みで、イベントは Outbox の表から再送される。AI レビュー指摘で追加）。
 3. **実装** `WolverineDocumentDeletedPublisher` は `IDbContextOutbox<DocumentDbContext>` を持つ（スコープ内の `DocumentDbContext` と同一インスタンス）。
    1 スコープで複数回確定する定期処理のため `MultiFlushMode.AllowMultiples` で確定する。
 4. **削除 3 経路**: 発行を `SaveChangesAsync` の**前**へ移し、`SaveChangesAsync` を `SaveChangesAndFlushAsync` に置き換える。
    「オブジェクトが先・DB 行が後」（IADR-0296 決定 3）は変えない。
+   退職経路（`PurgeAllOwnedAsync`）の監査記録は確定の後ろへ移した（記録は削除が確定した後にだけ残す。確定が失敗すれば監査も出ない）。
 5. **Migration**: EF の Migration は足さない。Wolverine の表（`wolverine` スキーマ）は起動時に Wolverine 自身が作る（`AutoBuildMessageStorageOnStartup`）。
    既存の方式（起動時に `MigrateAsync`）と同じく「起動時に適用」で揃う。DB ロールにスキーマ作成の権限が要る（ローカル・PoC は DB の owner なので満たす）。
 
@@ -84,8 +86,9 @@ DB の確定との原子性は段 2 まで無い。
 | A1 | DB の確定とイベントが同じトランザクションで確定する（確定すれば台帳の行とイベントの両方が出る。送出後は Outbox の行が残らない） | `DocumentDeletedOutboxTests.確定すると台帳の行と削除イベントの両方が出る`（実 PostgreSQL ＋ 実 RabbitMQ） |
 | A2 | DB の確定が失敗すれば、イベントも Outbox の行も残らない | `DocumentDeletedOutboxTests.DBの確定が失敗すれば削除イベントは出ない` |
 | A3 | コミットの後・送出の前に止まっても台帳（Outbox の表）に残り、再起動後に再送される | `DocumentDeletedOutboxTests.確定の後に送出が失われても再起動後に再送される` |
-| A4 | 共通ヘルパが Outbox の構成（永続化・EF 連携・耐久送出）を入れる | `WolverineExtensionsTests`（Outbox 節） |
+| A4 | 共通ヘルパが Outbox の構成（永続化・EF 連携・耐久送出）を入れる | `WolverineTransactionalOutboxTests`（Platform.Shared.Infrastructure.Tests） |
 | A5 | 削除 3 経路は確定の後にだけイベントを出す（確定しない経路では出さない） | 既存 `DocumentLifecycleEventTests` / `DeletionPropagationTests` / `PrivateNoteDepartedOwnerPurgeTests`（器の発行口が確定時にだけ記録する） |
+| A6 | 確定の後の送出の失敗は呼び出し側へ出さず（Warning ログ）、確定済みの削除を成功として返す | `WolverineDocumentDeletedPublisherTests`（DocumentService.Tests） |
 
 変異: A2 は「失敗時の巻き戻しを外す」、A1・A3 は「`UseDurableOutboxOnAllSendingEndpoints` を外す」で赤になることを確かめる。
 

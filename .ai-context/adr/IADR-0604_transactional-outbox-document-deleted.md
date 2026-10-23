@@ -74,6 +74,9 @@ ADR-0027 は Outbox を標準と定めるが、knowledge ユニットにも `Pla
 - 🔴 **確定が失敗したら、積んだ発行を捨ててトランザクションを巻き戻してから例外を出す。** 巻き戻さないと、確定しなかった削除の
   イベントが同じスコープの後続の確定と一緒に送られる（**実測**。EF はユーザーのトランザクション内の `SaveChanges` の前に
   セーブポイントを置き、失敗してもそこまでしか戻さない。envelope の INSERT はセーブポイントより前なので生き残る）。
+- 🔴 **確定の後の送出の失敗は呼び出し側へ出さず、Warning ログにして成功として返す。** 削除は確定済みで、送れなかったイベントは
+  Outbox の表に残り再送される。例外にすると確定済みの削除に 500 を返し、やり直すと 404 になる（AI レビューの指摘で追記。
+  `WolverineDocumentDeletedPublisherTests` が固定し、例外を素通しにする変異で赤になる）。確定（コミット）までの失敗は例外のままである。
 - ポート名は変えない（呼び出し点・試験・トポロジ検査の参照を動かさない）。発行（`Publish(new DocumentDeleted(`）は引き続き
   アダプタのファイルにあり、`check-event-topology.js` の検出は変わらない。
 
@@ -114,4 +117,4 @@ ADR-0027 は Outbox を標準と定めるが、knowledge ユニットにも `Pla
   確定すると台帳の行とイベントの両方が出る / DB の確定が失敗すればイベントは出ない / 確定の後に送出が失われても再起動後に再送される。
 - 変異: `UseDurableOutboxOnAllSendingEndpoints` を外す → 3 件目が赤（Outbox の行が 0）。失敗時の巻き戻しを外す → 2 件目が赤
   （確定しなかった削除のイベントが 1 通届く）。
-- `WolverineTransactionalOutboxTests`（共通ヘルパの構成）、DocumentService.Tests（器の発行口は確定に成功した後でだけ記録する）。
+- `WolverineTransactionalOutboxTests`（共通ヘルパの構成）、`WolverineDocumentDeletedPublisherTests`（確定の後の送出の失敗は例外にしない）、DocumentService.Tests（器の発行口は確定に成功した後でだけ記録する）。
