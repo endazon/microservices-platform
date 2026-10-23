@@ -506,10 +506,15 @@ export type bffPrivateNoteExposureResponse404 = {
   status: 404
 }
 
+export type bffPrivateNoteExposureResponse409 = {
+  data: void
+  status: 409
+}
+
 export type bffPrivateNoteExposureResponseSuccess = (bffPrivateNoteExposureResponse200) & {
   headers: Headers;
 };
-export type bffPrivateNoteExposureResponseError = (bffPrivateNoteExposureResponse401 | bffPrivateNoteExposureResponse403 | bffPrivateNoteExposureResponse404) & {
+export type bffPrivateNoteExposureResponseError = (bffPrivateNoteExposureResponse401 | bffPrivateNoteExposureResponse403 | bffPrivateNoteExposureResponse404 | bffPrivateNoteExposureResponse409) & {
   headers: Headers;
 };
 

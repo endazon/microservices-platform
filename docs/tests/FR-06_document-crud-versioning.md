@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-02, UC-04, FR-08, FR-03, FR-04, FR-05, FR-06, SC-05, UC-03, NFR-09, FR-19, FR-12]
 adrs: [ADR-0141, ADR-0013, ADR-0121, ADR-0058, ADR-0122, ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056, ADR-0027]
-iadrs: [IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0529, IADR-0509, IADR-0503, IADR-0484, IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
-specs: [20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20261011_1891_ast-draft-not-duplicate, 20261008_1765_document-keyset-sql, 20261006_1762_republish-document-updated, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1658_relay-options-shared, 20260927_issue-1657_document-normalized-consumer-content-timeout, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#2102, #2047, #1974, #1973, #1961, #1931, #1891, #1765, #1762, #1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
+iadrs: [IADR-0597, IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0529, IADR-0509, IADR-0503, IADR-0484, IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
+specs: [20261023_2103_document-optimistic-concurrency, 20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20261011_1891_ast-draft-not-duplicate, 20261008_1765_document-keyset-sql, 20261006_1762_republish-document-updated, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1658_relay-options-shared, 20260927_issue-1657_document-normalized-consumer-content-timeout, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#2103, #2102, #2047, #1974, #1973, #1961, #1931, #1891, #1765, #1762, #1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
 -->
 
 # テスト仕様書: 文書CRUD・バージョン管理
@@ -32,7 +32,7 @@ issues: [#2102, #2047, #1974, #1973, #1961, #1931, #1891, #1765, #1762, #1667, #
 ## テスト観点
 
 - 正常系: 作成・取得・一覧・更新、版履歴の増加と新しい順、特定版スナップショットの保持、公開状態遷移、メタデータのみ更新。
-- 境界/異常系: タイトル空白（400）、存在しない版（404）、古い期待版による並行制御（409）。
+- 境界/異常系: タイトル空白（400）、存在しない版（404）、古い期待版による並行制御（409）、照合の後に追い越された保存（409。500 にも黙った上書きにもならない）。
 - 不変性: 過去版スナップショットが後続更新で書き換わらない（append-only・防御的コピー）。
 - 契約: **版応答は「その版の本文」を約束しない**（本文の参照を返さない）。版ごとの本文は保持されない（#1011）。
 - 連携（冪等性）: `DocumentNormalized` 受信でカタログ登録され、同一 `DocumentId` 再配信でも重複しない。
@@ -148,6 +148,13 @@ issues: [#2102, #2047, #1974, #1973, #1961, #1931, #1891, #1765, #1762, #1667, #
 | T-110 | アーカイブした文書に、アーカイブより前に作られた再正規化・アーカイブより後の再正規化が届く。アーカイブの時刻を持たない（追加以前の）文書 | 消費・判定 | 前者は内容を反映し状態はアーカイブのまま（下流へもアーカイブ）。後者は `normalized` へ戻しアーカイブの時刻を消す。時刻を持たない文書は更新時刻で読む | 再正規化の順序（アーカイブの後に戻らない／再同期では戻す） | 自動（単体） |
 | T-111 | 削除した文書に、削除より前・削除と同じ時刻の正規化が届く。削除より後の正規化が届く（陽性対照） | 消費 | 前者は台帳へ作り直さず更新イベントも出さない。後者は作り直す | 再正規化の順序（削除の後に復活しない） | 自動（単体） |
 | T-112 | 取り込み経路の文書を削除の口で消す | `DELETE /documents/{id}` | 削除の事実（文書 ID と時刻）が残り、それより前の正規化を「削除より前」と判定し、後の正規化は判定しない（`DocumentDeletionMarkEndpointTests`） | 同上 | 自動（エンドポイント） |
+| T-113 | 実 PostgreSQL・版 1 の文書 | 版 1 を前提にした `PUT` が照合を通った後、保存の直前に別の `PUT` が 2 回確定する（版 3） | 後の要求は 200。先の要求は 409（`version_conflict`・`expectedVersion=1`・`currentVersion=3`＝読み直した版）。文書は勝った側の題名・版 3、版の行は 1〜3 だけ（`DocumentConcurrentUpdateTests`） | 並行制御（照合と保存の間の窓） | 自動（統合） |
+| T-114 | 同上 | `PATCH …/metadata` で同じ形 | 一方だけ 200、他方は 409。属性は勝った側のまま | 同上（メタデータ更新） | 自動（統合） |
+| T-115 | 同上 | `expectedVersion` を送らない `PUT` が追い越される | 409（`expectedVersion` は null）。黙って上書きしない | 同上（期待版なし） | 自動（統合） |
+| T-116 | 同上 | 版 1 を読んだ別の保存が、版を進めない変更（露出トグル）を、版 2 へ進んだ後に保存する | 並行トークンで負ける（`DbUpdateConcurrencyException`）。勝った側の属性が残る | 並行トークン（版の行を足さない保存） | 自動（統合） |
+| T-117 | 同上 | 版 1 を前提にした `PUT` を 6 件同時に送る | 200 か 409 だけ（500 は無い）。200 は 1 件、版の行は 2 件（補助。窓に入るかは実行ごとに変わる） | 並行制御（実際の同時送信） | 自動（統合） |
+| T-118 | 同上 | 版 1 を読んだ `DELETE` の保存の直前に、`PUT` が確定する（版 2） | 409（`expectedVersion` は null・`currentVersion=2`）。文書は勝った側の題名・版 2 で残り、やり直した `DELETE` は 204 | 並行制御（削除） | 自動（統合） |
+| T-119 | 実 PostgreSQL・個人資料 | 露出トグル（`PUT /private-notes/{id}/exposure`）の保存の直前に、別の保存が版を進める | 409。勝った側の属性が残り、台帳の露出も巻き戻る | 並行制御（露出トグル） | 自動（統合） |
 
 対応テスト実装:
 

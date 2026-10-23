@@ -1541,7 +1541,8 @@ paths:
       summary: "FR-06, UC-03, SC-05: 文書更新（楽観ロック。管理者のみ。#629）"
       description: |
         `expectedVersion` が現在版と異なれば lost update を防ぐため **409** で拒否する。
-        409 の本文は RFC7807 ではなく `{ error: "version_conflict", expectedVersion, currentVersion }`。
+        照合の後に別の更新が版を進めた場合も（`expectedVersion` の有無を問わず）保存が負けて **409** になる（黙って上書きしない）。
+        409 の本文は RFC7807 ではなく `{ error: "version_conflict", expectedVersion, currentVersion }`（`expectedVersion` は要求に無ければ null）。
       operationId: bff-document-update
       requestBody:
         required: true
@@ -1582,6 +1583,7 @@ paths:
         "401": { description: 未認証 }
         "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
         "404": { description: 不在またはスコープ外（存在秘匿） }
+        "409": { description: "読んだ後に別の更新が版を進めた（`{ error: \"version_conflict\", expectedVersion: null, currentVersion }`）。文書は残るので削除をやり直す" }
 
   /bff/documents/{id}/content:
     get:
@@ -3507,6 +3509,7 @@ paths:
         "401": { description: 未認証 }
         "403": { description: write 許可ポリシーが無い }
         "404": { description: 不在または他人の資料（区別しない） }
+        "409": { description: "読んだ後に別の保存（同期等）が版を進めた（`{ error: \"version_conflict\", expectedVersion: null, currentVersion }`）。設定は保存されていない" }
 
   # ── ADR-0098 決定 1・2（planning#618 の裁定。SC-19 主要素 3）: 公開範囲の指定先（共有台帳） ──
   # 後段 DocumentService の `/documents/{id}/shares*`（共有台帳の管理 API）へ透過中継する。
