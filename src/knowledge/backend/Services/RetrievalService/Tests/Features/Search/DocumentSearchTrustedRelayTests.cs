@@ -92,16 +92,15 @@ public class DocumentSearchTrustedRelayTests
         _factory.ResolvedFor.Should().Contain(r => r.UserId == user, "名乗った利用者で自分でスコープを解決する");
     }
 
-    // AC-5（陽性対照）: `service-account-aianalysis-service` の利用者名の形（`azp` なし・あり）でも同じ。
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task AI分析のサービスアカウントの利用者名の形でも利用者として検索できる(bool withAzp)
+    // AC-5（陽性対照）: `service-account-aianalysis-service` の利用者名の形（`azp` を伴う実トークンの形）でも同じ。
+    // NFR-09, [[IADR-0606]]: 利用者名だけで `azp` を持たない形は無人と読まない（実 Keycloak は必ず `azp` を載せる）ので、旧 `azp` なしの事例は落とした。
+    [Fact]
+    public async Task AI分析のサービスアカウントの利用者名の形でも利用者として検索できる()
     {
         var (_, documentId) = await SeedPrivateNoteChunkAsync();
         var user = $"owner-{Guid.NewGuid():N}";
         var token = GrpcKestrelFactory.IssueToken($"service-account-{Trusted}", [PlatformAuthPolicies.ServiceRole],
-            azp: withAzp ? Trusted : null);
+            azp: Trusted);
 
         var resp = await Grpc().SearchAsync(As(user), Bearer(token), cancellationToken: Ct);
 

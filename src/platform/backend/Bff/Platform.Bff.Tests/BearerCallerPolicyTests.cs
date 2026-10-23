@@ -84,6 +84,18 @@ public class BearerCallerPolicyTests
             .Should().BeFalse();
     }
 
+    // 🔴 ★ NFR-09, [[IADR-0606]]（GHSA-94cm-55g9-2967）: 利用者名の接頭辞だけでは無人の主体と読まない。
+    // 利用者名が発行元のクライアント（`azp`）のサービスアカウント名と一致しない利用者トークンは通らない。
+    [Theory]
+    [InlineData(BffClientId, "service-account-retrieval-service")]
+    [InlineData("wiki-js", "service-account-bff")]
+    [InlineData(BffClientId, "service-account-")]
+    public void User_token_whose_username_does_not_match_the_issuing_client_is_refused(string azp, string username)
+    {
+        BearerCallerPolicy.IsAcceptedCaller(Token(("azp", azp), ("preferred_username", username)))
+            .Should().BeFalse("無人の判定は IdP が書く azp と利用者名の一致で行う");
+    }
+
     // ── 陽性対照（T-25。拒否が「何でも false」ではないこと） ──────────────────────────
 
     // ★ サービスアカウント（client credentials）は通る。サービス間 Bearer を壊さない。

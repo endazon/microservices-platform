@@ -43,6 +43,7 @@ public class GroupLookupEndpointTests(TestWebApplicationFactory factory)
     {
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.UsernameHeader, "service-account-platform");
+        client.DefaultRequestHeaders.Add(TestAuthHandler.ClientIdHeader, "platform");
         client.DefaultRequestHeaders.Add(
             TestAuthHandler.RolesHeader,
             string.Join(',', roles.Length == 0 ? [PlatformAuthPolicies.ServiceRole] : roles));

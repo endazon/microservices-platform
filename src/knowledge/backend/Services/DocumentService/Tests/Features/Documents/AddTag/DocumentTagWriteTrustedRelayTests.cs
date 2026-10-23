@@ -109,15 +109,15 @@ public class DocumentTagWriteTrustedRelayTests
         (await VersionOfAsync(documentId)).Should().Be(2, "対照: 書けたときは版が進む（下の陰性の『版が 1 のまま』が意味を持つ）");
     }
 
-    // AC-5（陽性対照）: `service-account-graph-service` の利用者名の形（`azp` なし・あり）でも同じ。
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task graph_serviceのサービスアカウントの利用者名の形でも反映される(bool withAzp)
+    // AC-5（陽性対照）: `service-account-graph-service` の利用者名の形（`azp=graph-service` を伴う実トークンの形）でも同じ。
+    // NFR-09, [[IADR-0606]]: 利用者名だけで `azp` を持たない形は無人と読まない（実 Keycloak は必ず `azp` を載せる）ので、
+    // 旧 `azp` なしの事例は落とした。利用者名と一致しない `azp` の陰性は下の試験が測る。
+    [Fact]
+    public async Task graph_serviceのサービスアカウントの利用者名の形でも反映される()
     {
         var (documentId, tag) = await SeedAsync();
         var token = GrpcKestrelFactory.IssueToken($"service-account-{Trusted}", [PlatformAuthPolicies.ServiceRole],
-            azp: withAzp ? Trusted : null);
+            azp: Trusted);
 
         var resp = await Grpc().AddTagAsync(
             As(documentId, tag, "operator", PlatformAuthPolicies.AdminRole), Bearer(token), cancellationToken: Ct);

@@ -35,7 +35,10 @@ public class TrustedUserContextRelayTests
     {
         TrustedUserContextRelay.Trusts(Principal("service-account-relay-a", "relay-a"), Defaults).Should().BeTrue();
         TrustedUserContextRelay.Trusts(Principal(null, "relay-a"), Defaults).Should().BeTrue("azp だけの機械クライアント");
-        TrustedUserContextRelay.Trusts(Principal("service-account-relay-a", null), Defaults).Should().BeTrue("利用者名から復元");
+        TrustedUserContextRelay.Trusts(Principal("service-account-relay-a", null), Defaults)
+            .Should().BeFalse("クライアント識別のクレームが無ければ機械と読まない（IADR-0606。利用者名から復元して信じない）");
+        TrustedUserContextRelay.Trusts(Principal("service-account-relay-a", "bff"), ["bff"])
+            .Should().BeFalse("利用者名が発行元のクライアントのサービスアカウント名と一致しなければ機械と読まない（IADR-0606）");
 
         TrustedUserContextRelay.Trusts(Principal(null, "RELAY-A"), Defaults).Should().BeFalse("大小文字を畳まない");
         TrustedUserContextRelay.Trusts(Principal(null, "relay-a-x"), Defaults).Should().BeFalse("接頭辞一致にしない");

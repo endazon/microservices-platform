@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-06, FR-08, UC-03, NFR-09, FR-19, FR-01]
 adrs: [ADR-0141, ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0054, ADR-0050, ADR-0057, ADR-0122, ADR-0027]
-iadrs: [IADR-0598, IADR-0597, IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
-specs: [20261023_2112_sc05-doc-scope-default, 20261023_2103_document-optimistic-concurrency, 20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
+iadrs: [IADR-0606, IADR-0598, IADR-0597, IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
+specs: [20261023_ghsa-94cm_machine-principal-issuing-client, 20261023_2112_sc05-doc-scope-default, 20261023_2103_document-optimistic-concurrency, 20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
 issues: [#2112, #2103, #2102, #2047, #1974, #1973, #1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
 -->
 
@@ -63,7 +63,7 @@ issues: [#2112, #2103, #2102, #2047, #1974, #1973, #1961, #1931, #1679, #1616, #
 - **読み取りの 5 口（一覧・ページ・単一取得・版履歴一覧・特定版取得）はすべて認証を要する**（ロールは問わない）。
   トークンが無い・検証できない要求は 401。健全性の口（`/health/*`）は匿名のまま。east-west gRPC の読み取り面も同じ判定を通る。
 - **主体**は呼び出し元の資格情報である —— 文書閲覧の経路（BFF）が中継した利用者、または機械クライアント自身
-  （`service-account-` で始まる利用者名、または利用者名を持たずクライアント識別だけを持つトークン）。
+  （利用者名が発行元のクライアント識別〔`azp`〕のサービスアカウント名 `service-account-<クライアント>` と一致するトークン、または利用者名を持たずクライアント識別だけを持つトークン）。
   gRPC の面では要求の利用者文脈が主体になり、無ければ呼び出し元サービス自身になる。
 - **個人資料**（`doc_scope=private-note`。値の大文字小文字は問わない）は次の利用者にだけ返る。
   1. 所有者（`owner` 属性が利用者名と一致。本文の投入の所有者判定と同じ比較）

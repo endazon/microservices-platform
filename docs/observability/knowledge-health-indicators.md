@@ -9,8 +9,8 @@ updated: 2026-10-23
 <!-- trace:
 ids: [FR-05, FR-09, FR-10, FR-16, FR-17, FR-18, FR-19, NFR, UC-05, SC-05, SC-09, SC-10, SC-12]
 adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0035, ADR-0083, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0062, ADR-0085, ADR-0120]
-iadrs: [IADR-0593, IADR-0011, IADR-0119, IADR-0153, IADR-0265, IADR-0281, IADR-0299, IADR-0353, IADR-0373, IADR-0389, IADR-0405, IADR-0420, IADR-0425, IADR-0430]
-specs: [20261023_2097_first-series-zero-normal-alerts, 20260829_issue-443_knowledge-health-producer, 20260809_issue-637_ingest-no-tag-generation, 20260903_issue-1186_stale-documents-indicator, 20260909_issue-1233_unit-project-missing-indicator, 20260911_issue-1395_cluster-summary-generator, 20260927_issue-1663_singleton-cluster-summary-exclusion]
+iadrs: [IADR-0606, IADR-0593, IADR-0011, IADR-0119, IADR-0153, IADR-0265, IADR-0281, IADR-0299, IADR-0353, IADR-0373, IADR-0389, IADR-0405, IADR-0420, IADR-0425, IADR-0430]
+specs: [20261023_ghsa-94cm_machine-principal-issuing-client, 20261023_2097_first-series-zero-normal-alerts, 20260829_issue-443_knowledge-health-producer, 20260809_issue-637_ingest-no-tag-generation, 20260903_issue-1186_stale-documents-indicator, 20260909_issue-1233_unit-project-missing-indicator, 20260911_issue-1395_cluster-summary-generator, 20260927_issue-1663_singleton-cluster-summary-exclusion]
 issues: [#2097, #443, #637, #912, #1186, #1233, #1246, #1363, #1395, #1663, planning#70, planning#304, planning#494, planning#557]
 -->
 
@@ -111,7 +111,7 @@ issues: [#2097, #443, #637, #912, #1186, #1233, #1246, #1363, #1395, #1663, plan
 | --- | --- |
 | 母集合 | 🔴 **書き手の側で採る** —— 「ユニットの主体（サービスアカウント）が保存した文書」であり、**「`project` を持たない文書の総数」ではない** |
 | 数える契機 | **保存が成立した後**（登録・編集・メタデータ更新の 3 経路）。400 / 404 / 409 / 413 で戻った要求は数えない |
-| 主体の識別 | **トークンが名乗る形だけで決める** —— 利用者名が `service-account-` で始まる、または利用者名を持たずクライアント識別のクレームを持つ。🔴 **サービスアカウントの一覧を構成に持たない**（一覧から外すだけで計上を免れられ、抜け道になる） |
+| 主体の識別 | **トークンが名乗る形だけで決める** —— クライアント識別のクレーム（`azp`）を持ち、利用者名がそのクライアントのサービスアカウント名（`service-account-<クライアント>`）と一致する、または利用者名を持たない。🔴 **サービスアカウントの一覧を構成に持たない**（一覧から外すだけで計上を免れられ、抜け道になる） |
 | `project` の判定 | キーが無い、または値が空白だけなら「持たない」と読む |
 | 止まるか | 🔴 **止まらない。これは統制ではなく計器である。** 計上されても保存は成功する |
 

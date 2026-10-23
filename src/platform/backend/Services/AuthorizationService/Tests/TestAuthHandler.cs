@@ -26,6 +26,10 @@ public class TestAuthHandler(
     // **サービスアカウントが 403 になることを測れない**（陰性対照が書けない）。
     public const string UsernameHeader = "X-Test-Username";
 
+    // NFR-09, [[IADR-0606]]: 発行元のクライアント（`azp`）を載せる。`MachinePrincipal.IsMachine` の腕 A は
+    // 利用者名が `service-account-<azp>` と一致するときだけ無人と読むので、サービスアカウントを模すには両方が要る。
+    public const string ClientIdHeader = "X-Test-Client-Id";
+
     // FR-19, #1447: JWT を一切持たない匿名リクエストを再現する（このハンドラは既定で常に認証成功
     // するため、401 を測るには明示的に認証をスキップする必要がある。BFF 側の同名ヘッダと揃える）。
     public const string AnonymousHeader = "X-Test-Anonymous";
@@ -48,6 +52,9 @@ public class TestAuthHandler(
 
         var claims = new List<Claim> { new(ClaimTypes.Name, username) };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
+        if (Request.Headers.TryGetValue(ClientIdHeader, out var clientId)
+            && !string.IsNullOrWhiteSpace(clientId.ToString()))
+            claims.Add(new Claim("azp", clientId.ToString().Trim()));
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);

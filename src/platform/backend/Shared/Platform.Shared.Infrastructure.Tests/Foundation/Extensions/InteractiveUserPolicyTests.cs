@@ -34,6 +34,15 @@ public class InteractiveUserPolicyTests
         return new ClaimsPrincipal(new ClaimsIdentity(claims, "test"));
     }
 
+    // Keycloak のサービスアカウント（`preferred_username = service-account-<clientId>`・`azp=<clientId>`）。
+    // NFR-09, [[IADR-0606]]: 無人の判定は利用者名と `azp` の一致で行うので、両方を載せる。
+    private static ClaimsPrincipal ServiceAccount(string clientId, params string[] roles)
+    {
+        var principal = Subject($"service-account-{clientId}", roles);
+        ((ClaimsIdentity)principal.Identity!).AddClaim(new Claim("azp", clientId));
+        return principal;
+    }
+
     private static ClaimsPrincipal MachineClient(string clientId) =>
         // 腕 B: 利用者名が**無く** `azp` がある（`profile` を持たない機械クライアント）。
         new(new ClaimsIdentity([new Claim("azp", clientId)], "test"));
@@ -49,7 +58,7 @@ public class InteractiveUserPolicyTests
     [Fact]
     public async Task A_service_account_does_not_satisfy_the_policy()
         => (await Build().AuthorizeAsync(
-                Subject("service-account-platform", PlatformAuthPolicies.ServiceRole),
+                ServiceAccount("platform", PlatformAuthPolicies.ServiceRole),
                 null, PlatformAuthPolicies.InteractiveUser))
             .Succeeded.Should().BeFalse("名簿の列挙を s2s の面へ出さない（IADR-0401 決定 2）");
 
@@ -61,7 +70,7 @@ public class InteractiveUserPolicyTests
     [InlineData(PlatformAuthPolicies.OperatorRole)]
     public async Task A_service_account_holding_a_user_role_still_does_not_satisfy_the_policy(string role)
         => (await Build().AuthorizeAsync(
-                Subject("service-account-seeder", role), null, PlatformAuthPolicies.InteractiveUser))
+                ServiceAccount("seeder", role), null, PlatformAuthPolicies.InteractiveUser))
             .Succeeded.Should().BeFalse("絞る軸はロールではなく主体の種別である");
 
     // 陰性: 利用者名を持たない機械クライアント（`MachinePrincipal` の腕 B）。

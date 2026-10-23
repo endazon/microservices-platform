@@ -99,7 +99,8 @@ internal sealed class PassThroughPolicyEvaluator : IPolicyEvaluator
     public Task<AuthenticateResult> AuthenticateAsync(AuthorizationPolicy policy, HttpContext context)
     {
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(ClaimTypes.Name, "service-account-mcp-server")], "McpDeclarationHost"));
+            // NFR-09, IADR-0606: 実トークンと同じく `azp` を伴わせる（無人の判定は利用者名と `azp` の一致）。
+            [new Claim(ClaimTypes.Name, "service-account-mcp-server"), new Claim("azp", "mcp-server")], "McpDeclarationHost"));
         context.User = principal;
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, "McpDeclarationHost")));
     }
