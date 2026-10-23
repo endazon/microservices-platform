@@ -2,6 +2,7 @@ using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents;
 using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Features.PrivateNotes.SetExposure;
 
@@ -45,7 +46,16 @@ internal static class SetPrivateNoteExposureEndpoint
 
             // **版は進めない**（[[IADR-0283]] 決定 4）——露出トグルは本文の編集ではない。
             doc?.SetExposureAttributes(req.IncludeInSearch, req.IncludeInGraph, req.IncludeInAi);
-            await db.SaveChangesAsync(ct);
+            // FR-19, [[IADR-0597]] 決定 4 (#2103): 版は進めないが、版は並行トークンである。読んだ後に別の保存（同期の push 等）が
+            // 版を進めていれば負け、古い属性で黙って上書きせずに `Update` と同じ 409 `version_conflict` を返す（台帳の露出も巻き戻る）。
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+            {
+                return await DocumentVersionConflict.AfterLostSaveAsync(db, id, expectedVersion: null, ct);
+            }
 
             // ［#1471］上の条件 1・2 は撤収の形の門がそのまま持つ（[[IADR-0455]] 決定 1）。
             // 条件をここへ書き下さない —— 門と経路で 2 か所になると、片方だけが直る。

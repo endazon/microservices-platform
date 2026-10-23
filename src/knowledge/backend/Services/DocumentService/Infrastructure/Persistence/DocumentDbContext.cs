@@ -58,7 +58,7 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
             // 文書行の UPDATE / DELETE は `WHERE "Version" = @読んだ版` を伴い、読んだ後に別の保存が版を進めていれば
             // 0 行で `DbUpdateConcurrencyException` になる。期待版の比較（読んだ時点）と保存の間の窓をここで塞ぐ。
             // 版を進めない変更（露出トグル等）も、読んだ後に版が進んでいれば負ける（黙って上書きしない）。
-            // 409 への写像は `DocumentVersionConflict`（`Update` / `UpdateMetadata` の口）。
+            // 409 への写像は `DocumentVersionConflict`（`Update` / `UpdateMetadata` / `Delete` / 露出トグルの口）。
             e.Property(d => d.Version).IsConcurrencyToken();
             e.Property(d => d.MarkdownUri).HasMaxLength(2048);
             e.Property(d => d.OriginalUri).HasMaxLength(2048);

@@ -11,7 +11,7 @@ ids: [FR-06, FR-08, UC-03, NFR-09, FR-19, FR-01]
 adrs: [ADR-0141, ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122, ADR-0027]
 iadrs: [IADR-0597, IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
 specs: [20261023_2103_document-optimistic-concurrency, 20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
-issues: [#2102, #2047, #1974, #1973, #1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
+issues: [#2103, #2102, #2047, #1974, #1973, #1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -227,7 +227,7 @@ stateDiagram-v2
 | 作成・更新でタイトル空白 | 保存しない | 400 ValidationProblem（`title`: 「タイトルは必須です。」） |
 | 対象文書が存在しない | 更新・取得・削除を中断 | 404 NotFound |
 | `expectedVersion` が現在版と不一致 | 更新を拒否し lost update を防止 | 409 Conflict（`version_conflict`, `expectedVersion`, `currentVersion`） |
-| 照合の後・保存の前に別の更新が版を進めた（`expectedVersion` の有無を問わない） | 保存を巻き戻し、黙って上書きしない（版の行も残さない・更新イベントも出さない） | 409 Conflict（同じ本文。`currentVersion` は読み直した現在版、`expectedVersion` は要求に無ければ null。その間に文書が消えていれば 404） |
+| 照合の後・保存の前に別の更新が版を進めた（`expectedVersion` の有無を問わない。削除も同じ） | 保存を巻き戻し、黙って上書きしない（版の行も残さない・更新イベントも出さない） | 409 Conflict（同じ本文。`currentVersion` は読み直した現在版、`expectedVersion` は要求に無ければ null。その間に文書が消えていれば 404） |
 | 存在しない版番号の取得 | — | 404 NotFound |
 | `DocumentNormalized` 再配信（同一 `DocumentId`） | 冪等 upsert（重複登録しない） | 既存文書を更新し版追記 |
 | `DocumentNormalized` が反映済みより古い・削除より前（遅着・再配送） | 反映しない（本文を読まず、更新イベントも出さない） | 正常終了（§再正規化の順序） |
@@ -274,8 +274,9 @@ stateDiagram-v2
   図表資産は実体が残る。**「全部消える」とは読まないこと。**
 - 楽観的並行制御は API 層の `expectedVersion` 照合と、保存時の版の突き合わせ（版を並行トークンにし、`UPDATE … WHERE` 版 = 読んだ版）の 2 段である。DB 行ロックは導入しない。
   照合を通った後に追い越された保存は 409 を返す。版テーブルの一意索引違反（同じ番号の版の行）も同じ競合として 409 へ写す。
-  🔴 写像は `PUT` と `PATCH …/metadata` の 2 口だけである。他の書き込み（公開・アーカイブ・取り込みの反映・タグの追加・Obsidian 同期・露出トグル等）は、
-  追い越されると黙って上書きせずに失敗する（取り込みの反映は再試行で読み直す）が、409 へは写さない。
+  🔴 409 へ写すのは `PUT`・`PATCH …/metadata`・`DELETE`・個人資料の露出トグル（`PUT /private-notes/{id}/exposure`）の 4 口である。
+  削除が追い越されたときは本文の実体を先に消しているので、文書は勝った側の内容で本文の無いまま残り、削除をやり直せば完了する。
+  他の書き込み（公開・アーカイブ・取り込みの反映・タグの追加・Obsidian 同期等）は、追い越されると黙って上書きせずに失敗する（取り込みの反映は再試行で読み直す）が、409 へは写さない。
 - **呼び出し側の自然キー（外部 ID）での引き当て・upsert は持たない。** 文書の同一性は文書 ID ただ 1 つであり、当面は外部 ID を
   持たないと決まった（呼び出し側は `GET /documents/page` の属性の絞り込みで既存の写しを探す。重複の実害が観測されたら改めて起こす）。
 - 機械クライアントの自分の文書の更新・削除は上の「機械クライアントの自分の文書と、所有者の不変性」のとおり。

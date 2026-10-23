@@ -114,3 +114,20 @@ issue: "#2103"
 - `dotnet test Knowledge.IntegrationTests --filter FullyQualifiedName~Knowledge.IntegrationTests.DocumentService`（43 件緑。新規 5 件を含む）、`McpTools`・`Messaging.DocumentUpdated`（5 件緑）。
 - `dotnet format backend.slnx --verify-no-changes --include <変更ファイル>`（差分なし）。
 - 上の変異表（実測）。
+
+## ［2026-10-23 追記 / #2103］レビュー対応で直した点
+
+- **削除と露出トグルも 409 へ写した**（AI レビュー 🟡・orchestrator の方針）。本文 §範囲・§限界の「露出トグル・削除は並行時にだけ 500 が新たに出得る」は受容をやめた。
+  この 2 口は、版を並行トークンにしたことで初めて負け得るようになった口（修正前は黙って通っていた）であり、新しい失敗の形を 500 で出さない。`Update` と同じ本文の形（`expectedVersion` は null）で返す（IADR-0597 決定 4）。
+  - `DELETE /documents/{id}`: 負けたら 409。文書は勝った側の内容で残る。本文の実体は保存より前に消す既存の順（IADR-0296 決定 3）なので、削除をやり直すまで本文の無い状態で残る（やり直しは通る）。
+  - `PUT /private-notes/{id}/exposure`: 負けたら 409。台帳の露出も同じトランザクションで巻き戻る。
+  - 個人資料の物理削除（完全削除・90 日の定期処理）は写さない。対象は削除済みの資料だけで、同期の push は削除済みを拒む（`deleted` の 409）。ただし露出トグルは削除済みを拒まないので、両者が同じ資料で並ぶと完全削除が負けて 500 になり得る（残余。複数件の口で返す版の形が決まらない）。
+- 受け入れ基準の追加:
+
+| # | 基準 | 試験 |
+| --- | --- | --- |
+| 6 | 削除が追い越されたら 409（`currentVersion` は勝った側の版）、文書は勝った側の内容で残り、やり直した削除は 204 | `Delete_OvertakenByUpdate_Gets409_AndDocumentIsKept_ThenRetrySucceeds` |
+| 7 | 露出トグルが追い越されたら 409、勝った側の属性が残り、台帳の露出も巻き戻る | `SetExposure_OvertakenByVersionBump_Gets409_AndWinnerAttributesKept` |
+
+- 変異（実測）: `Delete` の写像を外す → 6 だけ赤／`SetExposure` の写像を外す → 7 だけ赤／修正前（トークンと 4 口の写像を全部外す）→ 1〜4・6・7 が赤、5 だけ緑。
+- 実走: `PLATFORM_TEST_POSTGRES` で手元の PostgreSQL 16（`postgres:16-alpine`）を与え、RabbitMQ は fixture のコンテナで `DocumentConcurrentUpdateTests` 7 件を実走し、7 件緑・skip 0。

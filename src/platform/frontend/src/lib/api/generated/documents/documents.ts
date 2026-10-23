@@ -535,10 +535,15 @@ export type bffDocumentDeleteResponse404 = {
   status: 404
 }
 
+export type bffDocumentDeleteResponse409 = {
+  data: void
+  status: 409
+}
+
 export type bffDocumentDeleteResponseSuccess = (bffDocumentDeleteResponse204) & {
   headers: Headers;
 };
-export type bffDocumentDeleteResponseError = (bffDocumentDeleteResponse401 | bffDocumentDeleteResponse403 | bffDocumentDeleteResponse404) & {
+export type bffDocumentDeleteResponseError = (bffDocumentDeleteResponse401 | bffDocumentDeleteResponse403 | bffDocumentDeleteResponse404 | bffDocumentDeleteResponse409) & {
   headers: Headers;
 };
 

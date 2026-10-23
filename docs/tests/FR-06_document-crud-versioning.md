@@ -11,7 +11,7 @@ ids: [FR-02, UC-04, FR-08, FR-03, FR-04, FR-05, FR-06, SC-05, UC-03, NFR-09, FR-
 adrs: [ADR-0141, ADR-0013, ADR-0121, ADR-0058, ADR-0122, ADR-0119, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0056, ADR-0027]
 iadrs: [IADR-0597, IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0529, IADR-0509, IADR-0503, IADR-0484, IADR-0075, IADR-0476, IADR-0290, IADR-0475, IADR-0044, IADR-0364, IADR-0455, IADR-0478]
 specs: [20261023_2103_document-optimistic-concurrency, 20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20261011_1891_ast-draft-not-duplicate, 20261008_1765_document-keyset-sql, 20261006_1762_republish-document-updated, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1658_relay-options-shared, 20260927_issue-1657_document-normalized-consumer-content-timeout, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260926_issue-1575_document-page-and-fingerprint, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#2102, #2047, #1974, #1973, #1961, #1931, #1891, #1765, #1762, #1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
+issues: [#2103, #2102, #2047, #1974, #1973, #1961, #1931, #1891, #1765, #1762, #1667, #1679, #1658, #1657, #1616, #1628, #1629, #1614, #199, #1011, #1575, #1640, planning#473]
 -->
 
 # テスト仕様書: 文書CRUD・バージョン管理
@@ -153,6 +153,8 @@ issues: [#2102, #2047, #1974, #1973, #1961, #1931, #1891, #1765, #1762, #1667, #
 | T-115 | 同上 | `expectedVersion` を送らない `PUT` が追い越される | 409（`expectedVersion` は null）。黙って上書きしない | 同上（期待版なし） | 自動（統合） |
 | T-116 | 同上 | 版 1 を読んだ別の保存が、版を進めない変更（露出トグル）を、版 2 へ進んだ後に保存する | 並行トークンで負ける（`DbUpdateConcurrencyException`）。勝った側の属性が残る | 並行トークン（版の行を足さない保存） | 自動（統合） |
 | T-117 | 同上 | 版 1 を前提にした `PUT` を 6 件同時に送る | 200 か 409 だけ（500 は無い）。200 は 1 件、版の行は 2 件（補助。窓に入るかは実行ごとに変わる） | 並行制御（実際の同時送信） | 自動（統合） |
+| T-118 | 同上 | 版 1 を読んだ `DELETE` の保存の直前に、`PUT` が確定する（版 2） | 409（`expectedVersion` は null・`currentVersion=2`）。文書は勝った側の題名・版 2 で残り、やり直した `DELETE` は 204 | 並行制御（削除） | 自動（統合） |
+| T-119 | 実 PostgreSQL・個人資料 | 露出トグル（`PUT /private-notes/{id}/exposure`）の保存の直前に、別の保存が版を進める | 409。勝った側の属性が残り、台帳の露出も巻き戻る | 並行制御（露出トグル） | 自動（統合） |
 
 対応テスト実装:
 

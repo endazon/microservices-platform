@@ -5,6 +5,7 @@ using Npgsql;
 namespace DocumentService.Features.Documents;
 
 // FR-06, UC-03, SC-05, [[IADR-0597]] (#2103): 版の競合（lost update）を 409 `version_conflict` へ写す唯一の点。
+// 写す口は `Update`・`UpdateMetadata`・`Delete`・個人資料の露出トグル（`SetExposure`）の 4 つ（決定 3・4）。
 //
 // 期待版の比較（`ExpectedVersion != doc.Version`）は**読んだ時点の**比較であり、比較と保存の間に別の更新が入る窓を
 // 塞がない。窓は保存の側で塞ぐ —— `Document.Version` は並行トークンであり（`DocumentDbContext`）、

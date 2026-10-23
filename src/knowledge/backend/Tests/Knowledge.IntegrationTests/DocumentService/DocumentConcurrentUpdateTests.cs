@@ -182,6 +182,67 @@ public sealed class DocumentConcurrentUpdateTests(PostgresFixture postgres, Rabb
         stored.Attributes["dept"].Should().Be("kept", "古い版から作った属性で黙って上書きしない");
     }
 
+    // IADR-0597 決定 4（#2103 のレビュー対応）: 削除が読んだ後に版を追い越されたら、黙って追い越した更新ごと消さず 409。
+    // 文書は勝った側の内容で残り、削除をやり直せば完了する（本文の実体は先に消す順のまま）。
+    [Fact]
+    public async Task Delete_OvertakenByUpdate_Gets409_AndDocumentIsKept_ThenRetrySucceeds()
+    {
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
+        var id = await CreateAsync("並行削除");
+
+        HttpResponseMessage? winner = null;
+        _interleave.Arm(async () => winner = await _client.PutAsJsonAsync($"/documents/{id}",
+            new { title = "勝った側", attributes = new { confidentiality = "internal" }, tags = Array.Empty<string>(), expectedVersion = 1 }));
+
+        using var loser = await _client.DeleteAsync($"/documents/{id}", Ct);
+
+        _interleave.Fired.Should().BeTrue();
+        using (winner)
+        {
+            winner!.StatusCode.Should().Be(HttpStatusCode.OK);
+            await AssertConflictAsync(loser, expectedVersion: null, currentVersion: 2);
+        }
+        await AssertKeptAsync(id, "勝った側", version: 2);
+
+        using var retry = await _client.DeleteAsync($"/documents/{id}", Ct);
+        retry.StatusCode.Should().Be(HttpStatusCode.NoContent, "やり直した削除は追い越されていないので通る");
+    }
+
+    // IADR-0597 決定 4（#2103 のレビュー対応）: 露出トグル（版を進めない）が、読んだ後に別の保存に版を進められたら 409。
+    // 古い属性で黙って上書きせず、台帳の露出も巻き戻る。
+    [Fact]
+    public async Task SetExposure_OvertakenByVersionBump_Gets409_AndWinnerAttributesKept()
+    {
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
+        using var create = await _client.PostAsJsonAsync("/private-notes", new { title = $"露出-{Guid.NewGuid():N}" }, Ct);
+        create.StatusCode.Should().Be(HttpStatusCode.Created);
+        var id = (await create.Content.ReadFromJsonAsync<NoteResponse>(Ct))!.Id;
+
+        // 勝つ側: 版を進める別の保存（同期の push と同じ `Document.Update`）。属性に印を足して、上書きされないことを見る。
+        _interleave.Arm(async () =>
+        {
+            await using var scope = _factory.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            var doc = await db.Documents.SingleAsync(d => d.Id == id);
+            doc.Update(doc.Title, new Dictionary<string, string>(doc.Attributes) { ["marker"] = "kept" }, doc.Tags.ToList(), "sync-edit");
+            await db.SaveChangesAsync();
+        });
+
+        using var loser = await _client.PutAsJsonAsync($"/private-notes/{id}/exposure",
+            new { includeInSearch = true, includeInGraph = true, includeInAi = true }, Ct);
+
+        _interleave.Fired.Should().BeTrue();
+        await AssertConflictAsync(loser, expectedVersion: null, currentVersion: 2);
+
+        await using var verify = _factory.Services.CreateAsyncScope();
+        var vdb = verify.ServiceProvider.GetRequiredService<DocumentDbContext>();
+        var stored = await vdb.Documents.AsNoTracking().SingleAsync(d => d.Id == id, Ct);
+        stored.Version.Should().Be(2);
+        stored.Attributes["marker"].Should().Be("kept", "古い属性から作った露出の属性で黙って上書きしない");
+        var note = await vdb.PrivateNotes.AsNoTracking().SingleAsync(n => n.DocumentId == id, Ct);
+        note.IncludeInSearch.Should().BeFalse("負けた保存は台帳の露出も巻き戻す");
+    }
+
     private async Task<Guid> CreateAsync(string title)
     {
         using var create = await _client.PostAsJsonAsync("/documents",
@@ -230,7 +291,7 @@ public sealed class DocumentConcurrentUpdateTests(PostgresFixture postgres, Rabb
             InterceptionResult<int> result, CancellationToken cancellationToken = default)
         {
             var modifiesDocument = eventData.Context?.ChangeTracker.Entries<Document>()
-                .Any(e => e.State == EntityState.Modified) == true;
+                .Any(e => e.State is EntityState.Modified or EntityState.Deleted) == true;
             if (modifiesDocument && Interlocked.Exchange(ref _competitor, null) is { } competitor)
             {
                 await competitor();
@@ -244,6 +305,8 @@ public sealed class DocumentConcurrentUpdateTests(PostgresFixture postgres, Rabb
         Dictionary<string, string> Attributes);
 
     private sealed record VersionResponse(Guid DocumentId, int Version, string Title);
+
+    private sealed record NoteResponse(Guid Id);
 
     private sealed record ConflictResponse(string Error, int? ExpectedVersion, int CurrentVersion);
 }
