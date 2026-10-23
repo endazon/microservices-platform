@@ -250,18 +250,56 @@ public class IngestionTimeoutTests
 
     // T-21: 受け口の実行期限が「削除（本数 × Qdrant）＋本文＋総枠＋最後の 1 チャンク」以下なら起動を止める。
     // ［2026-10-23 / #2101・IADR-0595 決定 5］版の印（Qdrant 3 回）と書き終えた後の旧版の削除（本数 × Qdrant）を足した。
-    // 既定値（2 本）では 20＋30＋20＋20＋300＋30＋10＝430 秒（既定の 435 秒に収まる）。3 本なら 450 秒で止まり、
-    // 2 本で受け口を 430 秒に置くと等しく止まる。
+    // 既定値（2 本）では 20＋30＋20＋20＋300＋30＋10＝430 秒（既定の 435 秒に収まる）。2 本で総枠 300 秒・受け口 430 秒なら等しく止まる。
+    // ［2026-10-24 / #2066・IADR-0613］総枠を構成で**与えた**ときは縮めないので、3 本で総枠 300 秒なら 450 秒で止まる。
+    // 総枠を与えていなければ受け口の期限に合わせて縮める（下の T-21b）ので、境界の行は総枠を明示する。
+    // 受け口 60 秒は総枠を 1 秒まで縮めても他の項目（131 秒）が収まらず止まる。
     [Theory]
-    [InlineData(3, null)]
-    [InlineData(2, "430")]
-    [InlineData(2, "60")]
-    public void 受け口の実行期限に最悪の所要時間が収まらなければ起動を止める(int collections, string? handler)
+    [InlineData(3, null, "300")]
+    [InlineData(2, "430", "300")]
+    [InlineData(2, "60", null)]
+    public void 受け口の実行期限に最悪の所要時間が収まらなければ起動を止める(int collections, string? handler, string? budget)
     {
         var act = () => IngestionTimeouts.From(
-            Config(new() { [IngestionTimeouts.HandlerKey] = handler }), collections);
+            Config(new()
+            {
+                [IngestionTimeouts.HandlerKey] = handler,
+                [IngestionTimeouts.EmbeddingBudgetKey] = budget,
+            }), collections);
 
         act.Should().Throw<InvalidOperationException>().WithMessage($"*{IngestionTimeouts.HandlerKey}*");
+    }
+
+    // T-21b（#2066・IADR-0613）: コレクションを足す opt-in（Ruri〔embedding.enabled〕・決定的ローカル埋め込み
+    // 〔embedding.deterministicLocal.enabled〕。chart が描く最大は voyage ＋ Ruri ＋ 決定的 ＋ 語彙索引 の 4 本）でも、
+    // 既定の構成のまま起動できる。総枠を構成で与えていなければ「受け口の期限 − 他の項目 − 余白 5 秒」（上限 300 秒）へ縮める。
+    // 2 本: 435 − 130 − 5 ＝ 300（既定のまま）／ 3 本: 435 − 150 − 5 ＝ 280 ／ 4 本: 435 − 170 − 5 ＝ 260。
+    // 🔴 #2149 の後、integration-stack（決定的ローカル埋め込みで 3 本）で取り込みが起動時に落ち続けた回帰の固定である。
+    [Theory]
+    [InlineData(2, 300)]
+    [InlineData(3, 280)]
+    [InlineData(4, 260)]
+    public void 総枠を与えていなければコレクションを足しても既定のまま起動できる(int collections, int expectedBudgetSeconds)
+    {
+        var timeouts = IngestionTimeouts.From(Config([]), collections);
+
+        timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(expectedBudgetSeconds));
+        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(IngestionTimeouts.DefaultHandlerSeconds));
+        var worst = timeouts.DeleteFromAll * 2 + timeouts.VectorStore * IngestionTimeouts.IndexVersionCalls
+            + timeouts.ContentRead + timeouts.EmbeddingBudget + timeouts.Embedding + timeouts.VectorStore;
+        (timeouts.Handler - worst).Should().Be(TimeSpan.FromSeconds(IngestionTimeouts.DefaultBudgetHeadroomSeconds));
+    }
+
+    // T-21b: 受け口の期限を構成で上げても、総枠の既定（300 秒）より大きくはしない（頭打ち）。
+    [Fact]
+    public void 総枠の既定は受け口の期限を上げても300秒を超えない()
+    {
+        var timeouts = IngestionTimeouts.From(Config(new()
+        {
+            [IngestionTimeouts.HandlerKey] = "439",
+        }), 2);
+
+        timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(IngestionTimeouts.DefaultEmbeddingBudgetSeconds));
     }
 
     // T-21: 1 回の配信の再試行の連鎖（4 × 受け口の実行期限 ＋ 試行間の待ち 42 秒）がブローカの consumer_timeout 以上なら起動を止める。

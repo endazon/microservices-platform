@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-02 取り込み
 type: test-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-10-23
+updated: 2026-10-24
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-04, FR-05, SC-01, SC-02, SC-08, UC-04, NFR-06]
 adrs: [ADR-0070, ADR-0027, ADR-0127, ADR-0016, ADR-0092]
-iadrs: [IADR-0595, IADR-0560, IADR-0085, IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
-specs: [20261023_2101_ingestion-ordering-and-atomicity, 20261017_1746_s4-stop-creating-empty-ruri-collection, 20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#2101, #2047, #1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
+iadrs: [IADR-0613, IADR-0595, IADR-0560, IADR-0085, IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
+specs: [20261024_2066_ingestion-budget-opt-in-collections, 20261023_2101_ingestion-ordering-and-atomicity, 20261017_1746_s4-stop-creating-empty-ruri-collection, 20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#2066, #2101, #2047, #1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 -->
 
 # テスト仕様書: 取り込み
@@ -47,7 +47,7 @@ issues: [#2101, #2047, #1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 | T-18 | **呼び出しごとの期限** | 縮めた受け口の期限（30 秒）の下で、本文・埋め込み・既存チャンクの削除・チャンクの登録・メタデータ点の登録のどれか 1 つが止まる（呼び出しごとの期限 1 秒） | 受け口の期限が立つより前に、その呼び出し先の**時間切れ**（`ConsumerTimeoutException`）として投げる。完了イベントは出さない（`IngestionTimeoutTests`） | 取り込み: 失敗は再試行・デッドレター |
 | T-19 | **取り消しは取り消しのまま**（対照） | 呼び出しごとの期限より先に呼び出し元が取り消す | 時間切れに化けず `OperationCanceledException` のまま外へ出る（`IngestionTimeoutTests`）。判定の境界そのもの（両方が立ったら呼び出し元を優先・`RpcException(Cancelled)` の扱い・計器）は共通部品の試験が持つ（`src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Foundation/Messaging/ConsumerCallTimeoutsTests.cs`） | 同上 |
 | T-20 | **埋め込みの総枠** | 1 回ごとに時計が 1 秒進む埋め込みで 10 チャンクの文書を取り込む（偽の時計） | 総枠 3 秒なら 3 回呼んだ後の判定で残りを呼ばずに時間切れ（呼び出し先 `embedding-budget`）。総枠 11 秒なら全チャンクを埋め込み完了を出す（対照）（`IngestionTimeoutTests`） | 取り込み: チャンク数に比例する埋め込み |
-| T-21 | **上限の構成と配線** | 既定値・受け口の実行期限に最悪の所要時間が収まらない構成・本番の Program.cs | 既定は本文 20 秒・埋め込み 30 秒・Qdrant 10 秒・総枠 300 秒・受け口 435 秒（［2026-10-23］420 → 435）。「削除（コレクション数 × Qdrant）＋版の印（Qdrant 3 回）＋旧版の削除（コレクション数 × Qdrant）＋本文＋総枠＋最後の 1 チャンク」以上の受け口の期限は起動を止める（等しいときも）。1 回の配信の再試行の連鎖（4 × 受け口の期限 ＋ 42 秒）がブローカの consumer_timeout（既定 1800 秒）以上でも起動を止める（等しいときも）。受け口の実行期限の方針が `DocumentUpdated` の受け口に 435 秒を与える（`IngestionTimeoutTests`・`IngestionTimeoutWiringTests`。Wolverine の既定 60 秒との突き合わせは `ConsumerHandlerTimeoutsTests`） | 同上 |
+| T-21 | **上限の構成と配線** | 既定値・受け口の実行期限に最悪の所要時間が収まらない構成・本番の Program.cs | 既定は本文 20 秒・埋め込み 30 秒・Qdrant 10 秒・総枠 300 秒・受け口 435 秒（［2026-10-23］420 → 435）。「削除（コレクション数 × Qdrant）＋版の印（Qdrant 3 回）＋旧版の削除（コレクション数 × Qdrant）＋本文＋総枠＋最後の 1 チャンク」以上の受け口の期限は起動を止める（等しいときも）。1 回の配信の再試行の連鎖（4 × 受け口の期限 ＋ 42 秒）がブローカの consumer_timeout（既定 1800 秒）以上でも起動を止める（等しいときも）。［2026-10-24 / #2066］総枠を構成で与えていなければ、総枠の既定を「受け口の期限 − 総枠以外の項目 − 余白 5 秒」（上限 300 秒）へ縮める —— コレクションを足す opt-in（決定的ローカル埋め込み・Ruri）の 3 本で 280 秒・4 本で 260 秒となり、既定のまま起動できる（既定の 2 本は 300 秒のまま）。総枠を構成で与えたときは縮めず、3 本・総枠 300 秒は止まる。受け口の実行期限の方針が `DocumentUpdated` の受け口に 435 秒を与える（`IngestionTimeoutTests`・`IngestionTimeoutWiringTests`。Wolverine の既定 60 秒との突き合わせは `ConsumerHandlerTimeoutsTests`） | 同上 |
 | T-22 | **総枠の使い切りはデッドレターへ** | Wolverine の実配送（ローカルキュー・本番と同じ再試行の既定）で、総枠を使い切る文書と、1 回目だけ埋め込みが時間切れになる文書を流す | 総枠の使い切りは 1 試行目でデッドレターへ入り再試行しない。呼び出しごとの時間切れは再試行され 2 試行目で成功する（対照）。本番の Program.cs が受け口に規則を入れている（`EmbeddingBudgetDeadLetterPipelineTests`） | 取り込み: 失敗は再試行・デッドレター |
 | T-23 | **高機密は埋め込まない** | `confidential`・`restricted`・大小文字違い・空・未知の値・前後空白つきの `public`・機密区分の属性なし、の文書を消費させる | **埋め込みを 1 回も呼ばず**（呼ばれたら失敗する埋め込みで測る）、全チャンクを語彙索引へ書く。ベクトルのコレクションへは 1 件も書かない。チャンク ID は本文チャンクと同じ規則。完了イベントのチャンク数は語彙索引へ書いた数（`DocumentUpdatedConsumerTests`） | 高機密は埋め込まず全文索引だけに載せる裁定（決定 1・4） |
 | T-24 | **語彙索引の点も ABAC の判定軸を運ぶ** | `restricted` で部門・共有先・タグ・更新日時・原本の所在を持つ文書 | 語彙索引の点に属性・共有先・タグ・更新日時・原本の所在・文書 ID がそのまま載る | 同裁定・ABAC は全系統に掛ける |
