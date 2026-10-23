@@ -249,9 +249,10 @@ public sealed class CompletionUseCase(
                             break;
                         chunk = enumerator.Current;
                     }
-                    // IADR-0601 決定 3 (#2116): 呼び出し側の取り消し（ct）だけを取り消しとして素通りさせる（下の finally が数える）。
-                    // ct が立っていない OperationCanceledException（HTTP の期限切れ等）は上流の失敗として縮退させる。
-                    catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                    // IADR-0601 決定 3 (#2116): 呼び出し側が取り消した（ct が立った）後の例外は、**型を問わず**取り消しとして
+                    // 素通りさせる（下の finally が数える）。取り消しに伴う IOException 等を upstream_error にしない。
+                    // ct が立っていない例外は OperationCanceledException（HTTP の期限切れ等）も含めて上流の失敗として縮退させる。
+                    catch (Exception ex) when (!ct.IsCancellationRequested)
                     {
                         // 呼び出し先不調でも 500 を伝播させず、縮退イベントを返す。
                         // IADR-0374 (#1091): ストリーム経路は鎖を持たないため**全ての上流失敗がここへ来る**
@@ -335,7 +336,7 @@ public sealed class CompletionUseCase(
         finally
         {
             // FR-10, IADR-0601 決定 3 (#2116): **ここへ settled=false で来るのは呼び出し側が止めたときだけである** ——
-            // ct による取り消し（MoveNextAsync の OperationCanceledException がそのまま伝播する）か、
+            // ct による取り消し（ct が立った後の MoveNextAsync の例外は型を問わずそのまま伝播する）か、
             // 呼び出し側が途中で列挙を捨てた（gRPC の切断等で DisposeAsync が来た）か。上流の失敗はすべて上の catch が拾う。
             // 🔴 計上は同期の計器（Counter.Add）で、取り消された ct を使わない。取り消しで計上が途切れることはない。
             if (!settled)

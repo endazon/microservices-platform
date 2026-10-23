@@ -230,6 +230,29 @@ public sealed class StreamUsageOnAbortTests : IDisposable
             .Which.Tags[LlmUsageMetrics.UsageCoverageTag].Should().Be(LlmUsageMetrics.CoverageNone);
     }
 
+    // 取り消しに伴ってプロバイダが OperationCanceledException 以外（IOException 等）を投げても、upstream_error にしない。
+    [Fact]
+    public async Task 取り消しの後にプロバイダが別の型の例外を投げてもcancelledとして数える()
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var useCase = UseCase(ct => IoFailureOnCancel(ct));
+
+        var act = async () =>
+        {
+            await foreach (var ev in useCase.StreamAsync(Request(), isSynthetic: false, cts.Token))
+            {
+                if (ev.Delta == "途中")
+                    await cts.CancelAsync();
+            }
+        };
+
+        await act.Should().ThrowAsync<IOException>();
+        Results().Should().Equal(LlmCompletionMetrics.ResultCancelled);
+        Tokens(LlmUsageMetrics.TokenTypeInput).Should().Be(Input);
+        Incomplete().Should().ContainSingle()
+            .Which.Tags[LlmUsageMetrics.IncompleteReasonTag].Should().Be(LlmUsageMetrics.IncompleteCancelled);
+    }
+
     // gRPC の切断等で呼び出し側が列挙を途中で捨てた（DisposeAsync だけが来る）ときも取り消しとして数える。
     [Fact]
     public async Task 呼び出し側が列挙を途中で捨てたときもcancelledを1件数える()
@@ -345,6 +368,23 @@ public sealed class StreamUsageOnAbortTests : IDisposable
         yield return Progress(Input);
         yield return new CompletionChunk("途中");
         await Task.Delay(Timeout.Infinite, ct);
+        yield return new CompletionChunk("届かない");
+    }
+
+    // 取り消されると接続の切断として IOException を投げる（OperationCanceledException に包まない）プロバイダ。
+    private static async IAsyncEnumerable<CompletionChunk> IoFailureOnCancel([EnumeratorCancellation] CancellationToken ct)
+    {
+        yield return Progress(Input);
+        yield return new CompletionChunk("途中");
+        try
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw new IOException("connection aborted by cancellation");
+        }
+
         yield return new CompletionChunk("届かない");
     }
 
