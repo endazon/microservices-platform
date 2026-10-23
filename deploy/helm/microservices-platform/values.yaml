@@ -322,7 +322,7 @@ drift:
 
 # NFR (#197): 水平スケール（HPA）と可用性（PDB）。計画 NFR「HPA で水平スケール」「可用性 99.9%」の実現手段。
 # metrics-server が必要（k3s は既定同梱）。対象はステートレスな要求処理サービス（下記 services リスト）。
-# 段階適用: まず要求処理系を minReplicas:2 + PDB とする。キュー駆動ワーカー（conversion/ingestion=worker:true）は
+# 段階適用: まず要求処理系を minReplicas:2 + PDB とする。キュー駆動ワーカー（conversion/ingestion）は
 # 競合コンシューマで水平化可能だが CPU HPA が不適なため対象外とし、負荷実測（#196）後に個別方針で順次追加する。
 # HPA 対象サービスは Deployment に静的 replicas を持たず HPA が所有する（deployment.yaml 参照）。
 scaling:
@@ -490,8 +490,8 @@ services:
     # FR-12, ADR-0015（Superseded by ADR-0106）: 正規化本文・資産をオブジェクトストレージへ保管する（書き込み側）。
     objectStorage: true
     # FR-15, IADR-0029 (#142): 最小 HTTP サーフェス（［2026-10-10 / #1517］従前の自己申告 /internal/introspection は撤去し、自己申告は下の grpcPort の gRPC 面で行う）。
-    # port を持つと Service が生成され BFF が到達できる。worker=true は HTTP ヘルスプローブを抑止する
-    # （バックグラウンドワーカーは /health/* を持たず、可用性判定に HTTP プローブが不適なため）。
+    # port を持つと Service が生成され BFF が到達できる。port を持つサービスには liveness / readiness が描かれる
+    # （［2026-10-23 / #2140］8080 の /health/live・/health/ready。readiness は自プロセスの必須依存だけを見る）。
     port: 8080
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 フォローアップ 3 (#1537, #1255 経路 ⑤):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
@@ -499,7 +499,6 @@ services:
     # 構成情報 API（BFF の Introspection__Services__*）。面の ServiceCaller は
     # 本サービスの認証（IADR-0465・#1520）が判定する。
     grpcPort: 8081
-    worker: true
     # FR-12 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0400 (#1255): east-west gRPC の
     # 呼び出し側資格情報。realm の confidential client `conversion-service`（service account ＋
     # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
@@ -532,8 +531,8 @@ services:
     # FR-06: storage:// 本文をオブジェクトストレージから実取得する（読み取り側）。
     objectStorage: true
     # FR-15, IADR-0029 (#142): 最小 HTTP サーフェス（［2026-10-10 / #1517］従前の自己申告 /internal/introspection は撤去し、自己申告は下の grpcPort の gRPC 面で行う）。
-    # port を持つと Service が生成され BFF が到達できる。worker=true は HTTP ヘルスプローブを抑止する
-    # （バックグラウンドワーカーは /health/* を持たず、可用性判定に HTTP プローブが不適なため）。
+    # port を持つと Service が生成され BFF が到達できる。port を持つサービスには liveness / readiness が描かれる
+    # （［2026-10-23 / #2140］8080 の /health/live・/health/ready。readiness は自プロセスの必須依存だけを見る）。
     port: 8080
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
@@ -542,7 +541,6 @@ services:
     # ［2026-10-20 / #1993・IADR-0565］文書の索引の状態の面（knowledge.ingestion.v1.DocumentIndexStatus）も受ける
     # （呼び出し元は BFF の文書管理の一覧の Services__IngestionServiceGrpc）。
     grpcPort: 8081
-    worker: true
     # FR-02 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0397 (#1255): east-west gRPC の
     # 呼び出し側資格情報。realm の confidential client `ingestion-service`（service account ＋
     # realm ロール platform-service のみ。ABAC ポリシーは持たない）。

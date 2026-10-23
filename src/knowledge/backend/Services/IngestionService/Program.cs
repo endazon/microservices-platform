@@ -15,6 +15,7 @@ using IngestionService.Infrastructure.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Qdrant.Client;
 using Wolverine;
@@ -48,6 +49,19 @@ builder.Services.AddSingleton<IChunkingService, MarkdownChunkingService>();
 var qdrantHost = builder.Configuration["Qdrant:Host"] ?? "qdrant";
 var qdrantPort = int.Parse(builder.Configuration["Qdrant:Port"] ?? "6334");
 builder.Services.AddSingleton(new QdrantClient(qdrantHost, qdrantPort));
+
+// NFR-21, NFR-06, ADR-0052 決定 4, [[IADR-0602]] (#2140): liveness / readiness（`/health/live`・`/health/ready`。8080）。
+// 従前は Map が無く（上の gRPC リスナの注記だけが残っていた）、chart も probe を描かなかった —— 落ちても k8s が気づかない。
+// readiness に載せるのは**自プロセスの必須依存だけ**: ブローカ（Wolverine＝DocumentUpdated の購読。MassTransit＝IngestionCompleted の
+// 発行で、こちらは AddMassTransit が "masstransit-bus" を暗黙に登録する）と自前のデータストア（Qdrant。書き込み先かつ索引の状態の照会の読み先）。
+// 🔴 **下流のサービス（LLM ゲートウェイ＝埋め込み）は入れない** —— 埋め込みが使えない間も取り込みは全文だけの点で縮退して進む
+// （[[IADR-0536]]）。ここへ入れると LLM ゲートウェイ 1 つの停止で取り込みが NotReady になり、NFR-06 の縮退と逆向きになる。
+// オブジェクトストレージも入れない（本文の欠落は 1 通ごとの失敗・計数で現れる。[[IADR-0540]]）。
+builder.Services.AddPlatformHealthChecks()
+    .AddPlatformWolverineBroker()
+    .AddCheck<QdrantHealthCheck>(
+        QdrantHealthCheck.Name, failureStatus: HealthStatus.Unhealthy,
+        tags: [HealthCheckExtensions.ReadyTag], timeout: TimeSpan.FromSeconds(5));
 
 // FR-02, ADR-0016: モデル別コレクション（既定は voyage/1024 だけ）の定義（起動時作成・残存防止削除に使用）。
 // ［2026-10-17 / #1746 段 S4］ADR-0127 決定 5, [[IADR-0085]]: セルフホスト（ruri/768）は opt-in のときだけ足される。
@@ -181,6 +195,10 @@ builder.Host.UseWolverine(opts =>
 });
 
 var app = builder.Build();
+
+// NFR-21, [[IADR-0602]] (#2140): `/health/live`（依存を見ない）・`/health/ready`（上の ready タグだけ）。
+// helm の liveness / readiness が 8080 のこの 2 経路を叩く（templates/deployment.yaml）。
+app.MapPlatformHealthChecks();
 
 // FR-15, IADR-0029: 自己申告（gRPC 面 `ServiceIntrospection/Get`。［2026-10-10 / #1517］REST の GET /internal/introspection は撤去した）。
 // メッシュ内部限定（ingress へ公開しない。IADR-0017 ネットワーク分離 / IADR-0026 mTLS が防御）。
