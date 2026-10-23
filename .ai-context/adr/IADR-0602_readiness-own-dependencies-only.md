@@ -87,6 +87,11 @@ readiness で外しても「健全なレプリカへ寄せる」効果は 1 つ�
 - 悪い影響 / トレードオフ: k8s の Ready 列だけでは下流の不調が見えなくなる（`/health/dependencies` かメトリクス・アラートで見る）。
   セッションストア全停止時は従来どおり全画面 503 になる（決定 2。可用性はストア側で担う）。
 - helm の probe パスは変えない（`helm template` の差分はコメントのみ）。
+- **`/health/dependencies` は外部から到達しない**（既存の `/health/live`・`/health/ready` と同じ扱い。認証は掛けない）。
+  エッジが BFF へ通すのは `/bff`・`/bff/*` だけである —— Istio のエッジ（`templates/edge.yaml` の `exact: /bff` / `prefix: /bff/`）、
+  ローカルの Traefik（`deploy/local/edge/platform-frontend-ingress.yaml` の `path: /bff`・`pathType: Prefix`＝パス要素単位）、
+  frontend の Caddy（`handle /bff/*`）のいずれでも `/health/*` は BFF に当たらず SPA の catch-all（index.html）へ落ちる。
+  AI 分析はエッジにルートを持たない。compose の BFF の公開は `127.0.0.1:5000`（ループバック）だけである。
 
 ## 検証
 
