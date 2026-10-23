@@ -27,7 +27,8 @@ namespace DocumentService.Features.Documents;
 // ADR-0065 決定 2 の適用: 実体は `Features/Documents/<操作>/` に置くのが原則だが、
 // **本クラスは 4 操作が共有する**ため合成点と同じ階層に置く（`ToDto` / `ToVersionDto` /
 // `PublishUpdatedAsync` と同じ扱い）。**各操作フォルダへ複写しない。**
-public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess access)
+public sealed class DocumentReadUseCase(
+    DocumentDbContext db, DocumentReadAccess access, DocumentService.Features.BreakGlass.BreakGlassViewGate breakGlass)
 {
     // FR-06, UC-03: 一覧（更新の新しい順）。読めない文書は除く（#1614）。
     //
@@ -127,6 +128,29 @@ public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess
         return doc is null
             ? null
             : DocumentEndpoints.ToDto(doc.Value.Doc, await TagResolver.NamesAsync(db), doc.Value.SharedWith);
+    }
+
+    // FR-19, UC-11, SC-03, 計画 ADR-0036 D-08, [[IADR-0610]] (#2046): **SC-03 の閲覧の 1 件の取得**（緊急アクセスを含む）。
+    //
+    // 通常の判定（`DocumentReadAccess`）で読めればそのまま返す（`GetAsync` と同じ）。読めないときに限り、
+    // 緊急アクセスで指名された管理者かを `BreakGlassViewGate` に問う（許すときは閲覧の監査ログを 1 行保存済み）。
+    //
+    // 🔴 **呼ぶのは SC-03 の閲覧の 3 口だけ**（REST `GET /documents/{id}`・gRPC `GetDocument`・`GetDocumentContent`）。
+    //   `GetAsync`（MCP のツール実行も使う）・一覧・版は緊急アクセスで開かない。口を足すときは IADR-0610 を改める。
+    // 🔴 緊急アクセスで返す応答には**共有先の写しを載せない**（閲覧に要らない。ADR-0101 の「写しは所有者へ」と同じ向き）。
+    public async Task<DocumentDto?> GetForViewAsync(DocumentReadPrincipal principal, Guid id, string viewTarget,
+        CancellationToken ct = default)
+    {
+        var doc = await db.Documents.FindAsync([id], ct);
+        if (doc is null) return null;
+
+        var sharedWith = await DocumentEndpoints.ResolveSharedWithAsync(db, doc.Id, ct);
+        if (await access.CanReadAsync(principal, doc, sharedWith, ct))
+            return DocumentEndpoints.ToDto(doc, await TagResolver.NamesAsync(db), sharedWith);
+
+        return await breakGlass.TryAuthorizeViewAsync(principal, doc, viewTarget, ct)
+            ? DocumentEndpoints.ToDto(doc, await TagResolver.NamesAsync(db), sharedWith: null)
+            : null;
     }
 
     // FR-06, UC-03: 版履歴一覧（新しい順）。

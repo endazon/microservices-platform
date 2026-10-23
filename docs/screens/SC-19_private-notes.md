@@ -3,15 +3,15 @@ title: 個人資料管理 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-28
-updated: 2026-09-13
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-19, FR-21, FR-22, SC-19, SC-20, UC-11]
 adrs: [ADR-0031, ADR-0034, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0057, ADR-0098, ADR-0102]
-iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0131, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449]
-specs: [20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching]
-issues: [#451, #1441, #1442, #1445, #1447, #1456, planning#614, planning#618, planning#628]
+iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0131, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610]
+specs: [20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service]
+issues: [#451, #1441, #1442, #1445, #1447, #1456, #2046, planning#614, planning#618, planning#628, planning#841]
 -->
 
 # 画面仕様書: 個人資料管理
@@ -34,6 +34,8 @@ issues: [#451, #1441, #1442, #1445, #1447, #1456, planning#614, planning#618, pl
 > 検索・追加・取り消しを置き、**「本画面では変更できません」の告知を撤去した**。
 > グループも**表示名（＋パス）だけ**を出し、識別子は出さない。
 > 🔴 **緊急アクセスは依然として実装していない**（**発動を記録する口が無い**）。
+> ［2026-10-23 追記］**後段（文書サービス）には発動記録の口を置いた**（発動・本人の終了・状態・監査ログの読み取り）。
+> **画面へ届く中継（BFF）がまだ無い**ため、本画面の導線は引き続き置いていない。
 > 見送りの一覧と理由は §計画（画面設計）との対応 と §未決事項 にある。
 
 ## 画面概要・目的

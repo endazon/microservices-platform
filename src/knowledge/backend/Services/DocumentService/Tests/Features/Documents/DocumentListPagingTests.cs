@@ -24,7 +24,9 @@ public class DocumentListPagingTests
         new DbContextOptionsBuilder<DocumentDbContext>().UseInMemoryDatabase($"list-paging-{Guid.NewGuid():N}").Options);
 
     private static DocumentReadUseCase Reads(DocumentDbContext db)
-        => new(db, new DocumentReadAccess(new StubDocumentReadScopeSource(), new StubContentAbacGate()));
+        => new(db, new DocumentReadAccess(new StubDocumentReadScopeSource(), new StubContentAbacGate()),
+            new DocumentService.Features.BreakGlass.BreakGlassViewGate(
+                db, new StubApproverRoleDirectory(), TimeProvider.System, new RecordingAuditLogger()));
 
     private static readonly DocumentReadPrincipal Machine = DocumentReadPrincipal.RelayedUser("service-account-bff");
 

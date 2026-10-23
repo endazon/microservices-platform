@@ -35,7 +35,9 @@ public sealed class DocumentContentUseCase(
     public async Task<DocumentContentResult?> ReadAsync(
         DocumentReadPrincipal principal, Guid id, CancellationToken ct = default)
     {
-        var doc = await reads.GetAsync(principal, id, ct);
+        // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): SC-03 の本文の閲覧なので、緊急アクセスの判定を含む形を通す
+        // （許すときの監査ログは「本文」の閲覧として 1 行）。
+        var doc = await reads.GetForViewAsync(principal, id, Knowledge.Contracts.Dtos.BreakGlassViewTargets.Content, ct);
         if (doc is null)
             return null;
 

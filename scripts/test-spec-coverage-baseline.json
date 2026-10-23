@@ -354,6 +354,9 @@
     ],
     "docs/tests/FR-19_private-notes-lifecycle.md": [
       "BffPrivateNoteEndpointTests",
+      "BreakGlassEndpointTests",
+      "BreakGlassGrantTests",
+      "BreakGlassViewAuthorizationTests",
       "DeletionPropagationTests",
       "DocScopeCreateDefaultTests",
       "DocScopeValidationTests",

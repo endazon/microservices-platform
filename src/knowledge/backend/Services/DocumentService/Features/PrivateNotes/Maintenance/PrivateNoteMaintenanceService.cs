@@ -13,7 +13,7 @@ namespace DocumentService.Features.PrivateNotes.Maintenance;
 // 個人資料の定期処理。①90 日経過の自動物理削除（＋事後通知 ①-c）②版履歴の刈り取り
 // （直近 50 版かつ 90 日）③完全削除 7 日前通知（①-b）④週次の削除通知（①-a）
 // ⑤同期トークンの期限 7 日前通知（③）⑥**退職 30 日後の完全削除**（通知なし。#1409）
-// ⑦**同期履歴の 3 年超の削除**（ADR-0099 決定 3。#1446）。
+// ⑦**同期履歴の 3 年超の削除**（ADR-0099 決定 3。#1446）⑧**緊急アクセスの記録の 3 年超の削除**（ADR-0036 D-08。#2046）。
 //
 // 🔴 **⑥と①は別の時計である。** ①は ADR-0037 決定 5 の「論理削除から 90 日」、
 // ⑥は ADR-0036 D-09 の「退職から 30 日」であり、起点も対象も違う（⑥は論理削除の有無を見ない）。
@@ -60,6 +60,30 @@ public sealed class PrivateNoteMaintenanceService(
         // **順序はどこでもよい** —— 他の 6 つと対象の表が重ならない（唯一 `SyncAuditEntries` を
         // 触る処理である）。末尾に置くのは、通知の 3 つが遅れる理由を作らないためである。
         await PurgeSyncAuditAsync(now, ct);
+        // ★［2026-10-23 追加 / #2046・ADR-0036 D-08・[[IADR-0610]]］⑧緊急アクセスの監査ログと発動記録の保持期限（3 年）。
+        // ⑦と同じく対象の表が他と重ならない（唯一 `BreakGlass*` を触る処理である）ので順序は問わない。
+        await PurgeBreakGlassRecordsAsync(now, ct);
+    }
+
+    // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): **緊急アクセスの監査ログと発動記録は 3 年で消える。**
+    // 年数は `BreakGlassPolicy.RetentionYears` が唯一の値（ここへ書き下さない）。
+    // 監査ログは行の日時、発動記録は「発動＋15 分」（`ExpiresAt`）で切る —— 発動記録の行の全操作はその時刻以前に起きるので、
+    // 発動記録が先に消えて監査ログだけが残ることは境界の 15 分を除いて無い（残っても読み取りは行の値で返す）。
+    // 通知しない。件数だけを 1 行残す（⑦と同じ粒度）。
+    private async Task PurgeBreakGlassRecordsAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var cutoff = now.AddYears(-Knowledge.Contracts.Dtos.BreakGlassPolicy.RetentionYears);
+        var entries = await db.BreakGlassAuditEntries.Where(a => a.OccurredAt < cutoff).ToListAsync(ct);
+        var grants = await db.BreakGlassGrants.Where(g => g.ExpiresAt < cutoff).ToListAsync(ct);
+        if (entries.Count == 0 && grants.Count == 0) return;
+
+        db.BreakGlassAuditEntries.RemoveRange(entries);
+        db.BreakGlassGrants.RemoveRange(grants);
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation(
+            "保持期限（{Years} 年）を超えた緊急アクセスの記録を削除した（監査ログ {Entries} 件・発動記録 {Grants} 件）",
+            Knowledge.Contracts.Dtos.BreakGlassPolicy.RetentionYears, entries.Count, grants.Count);
     }
 
     // FR-20, SC-20 主要素 6, ADR-0099 決定 3, #1446: **同期履歴は 3 年で消える。**
