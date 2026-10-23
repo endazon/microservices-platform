@@ -1,4 +1,6 @@
-import { test, expect } from './support/axe';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { test, expect, deadKnownViolationKeys } from './support/axe';
 import type {
   AttributeValuesResponse,
   ConversionJobDto,
@@ -1028,4 +1030,15 @@ test('SC-17: 無効化の確認ダイアログを開いた状態に WCAG 2.2 A/A
   expect(traffic.calls.map((c) => c.method)).not.toContain('POST');
 
   expectBffTrafficIsComplete(traffic);
+});
+
+// ───────────────────────────── 台帳の整合 ─────────────────────────────
+
+// #2015: 既知の違反の台帳のキーは、本 spec が走査する「面 / テーマ」のどれかでなければならない。
+// 綴り違い・改名で残ったキーは一度も比べられず、黙って死に行になる（`deadKnownViolationKeys` の注記）。
+test('既知の違反の台帳に、どの走査にも当たらないキーが無い', () => {
+  const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  // ★ 陽性対照: 面名を本文から拾えていること（拾えなければ全キーが死に行と判定され、0 件の台帳では空振りする）。
+  expect(source.match(/expectAxeClean\('/g)?.length ?? 0).toBeGreaterThanOrEqual(28);
+  expect(deadKnownViolationKeys(source)).toEqual([]);
 });

@@ -52,6 +52,20 @@ export const test = base.extend<AxeFixtures>({
 
 export { expect };
 
+/**
+ * 台帳（`axeKnownViolations.ts`）のキーのうち、**どの走査にも当たらないもの**を返す。
+ *
+ * 🔴 台帳は「一致」で比べるが、比べるのは**走査した面のキーだけ**である。面名の綴り違い・改名で
+ * 残ったキーは一度も引かれず、受け入れの理由だけが残る死に行になる。spec の
+ * `expectAxeClean('<面>')` の呼び出しを本文から拾い、`<面> / <テーマ>` の集合と突き合わせる
+ * （実行時に集めると、再試行・シャードで一部の test しか走らない回に集合が欠ける）。
+ */
+export function deadKnownViolationKeys(specSource: string): string[] {
+  const surfaces = [...specSource.matchAll(/expectAxeClean\(\s*'([^']+)'\s*\)/g)].map((m) => m[1]);
+  const scanned = new Set(surfaces.flatMap((surface) => THEMES.map((t) => `${surface} / ${t}`)));
+  return Object.keys(KNOWN_AXE_VIOLATIONS).filter((key) => !scanned.has(key));
+}
+
 async function scan(
   page: Page,
   makeAxeBuilder: () => AxeBuilder,

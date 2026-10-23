@@ -63,6 +63,10 @@ issue: "#2015"
 5. 「NFR-12（アクセシビリティ）」の誤参照は、本 PR が触る e2e の 2 ファイル（`a11y.smoke.spec.ts`・`keyboard-navigation.smoke.spec.ts`）だけ NFR-30 へ直した。
    `src/eslint.config.js` の注記は本 issue の領域外、IADR-0440・0442 は凍結記録なので直さない（残作業として報告）。
 
+6. ［2026-10-24 追記 / AI レビュー 🟡］台帳のキーが走査した「面 / テーマ」のどれかに当たることを専用の 1 本（`deadKnownViolationKeys`）で確かめる。
+   変異: 存在しない面のキー `SC-99 存在しない面 / light` を足すとその 1 キーだけを挙げて赤、実在の `SC-01 / light` は挙げない。
+   併せて `.claude/rules/traceability.repo.md` の NFR の採番を `NFR-01`〜`NFR-30` に広げ、別紙 §4 の内訳を追随した。
+
 ## 母集合（規則 9・10）
 
 - 誤りの側の文字列 `WCAG 2.1`・`wcag2a', 'wcag2aa'`・`6 面`・`走査面`・`NFR-12（アクセシビリティ）`・`#8a6210`・`5.48:1` で src・docs・deploy・scripts・.github を走査した。
@@ -76,7 +80,7 @@ issue: "#2015"
 
 ```bash
 cd src && pnpm install --frozen-lockfile && pnpm run build
-cd platform/frontend && PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm exec playwright test   # 102 passed（a11y 28）
+cd platform/frontend && PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm exec playwright test   # 103 passed（a11y 29）
 cd src && pnpm run lint && pnpm run typecheck && pnpm run format:check
 cd src && pnpm exec vitest run knowledge/frontend/src/features/sc19-private-notes packages/ui   # 219 passed
 node scripts/check-knip.js --require && node scripts/gen-keycloak-theme-tokens.js --check
