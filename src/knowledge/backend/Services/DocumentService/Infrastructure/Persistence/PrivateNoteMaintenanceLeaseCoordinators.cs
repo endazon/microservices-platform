@@ -53,6 +53,13 @@ public sealed class PostgresPrivateNoteMaintenanceLeaseCoordinator(
                 await conn.DisposeAsync();
             return null;
         }
+        catch (OperationCanceledException)
+        {
+            // 停止要求の取り消しは外へ出すが、接続は閉じる（取り消しと許可が行き違って取れていても、セッションごとロックが消える）。
+            if (conn is not null)
+                await conn.DisposeAsync();
+            throw;
+        }
     }
 
     private sealed class AdvisoryLockLease(NpgsqlConnection conn, ILogger logger) : IAsyncDisposable
