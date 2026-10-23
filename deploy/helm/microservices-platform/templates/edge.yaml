@@ -98,13 +98,13 @@ spec:
               number: {{ .Values.edge.privateNotesSync.port }}
     {{- end }}
     {{- if .Values.edge.mcp.enabled }}
-    # FR-16, UC-08, ADR-0024 / ADR-0021, IADR-0593 (#2045): 外部 AI エージェントの入口（MCP の Streamable HTTP）。
+    # FR-16, UC-08, ADR-0024 / ADR-0021, IADR-0594 (#2045): 外部 AI エージェントの入口（MCP の Streamable HTTP）。
     #
     # - **完全一致の /mcp と /mcp/ 配下に分ける。** Istio の prefix は文字列の前方一致なので、`prefix: /mcp` は
     #   同じポートに同居する管理 REST（/mcp-clients*）まで外へ出す。/mcp-clients はここに当たらず catch-all（SPA）へ落ちる。
     # - **rewrite は張らない。** 公開パスと契約パス（MapMcp("/mcp")）を同一にする（/bff・同期と同じ規律）。前置は直書きで knob にしない。
     # - **エッジで JWT 検証を要求しない（認証は MCP サーバーが行う）。** /mcp は audience=mcp-server のトークンだけを通す
-    #   （McpAudience スキーム。トークン無し・platform-api の audience は 401）。RequestAuthentication を置かない理由は IADR-0593 の選択肢 3。
+    #   （McpAudience スキーム。トークン無し・platform-api の audience は 401）。RequestAuthentication を置かない理由は IADR-0594 の選択肢 3。
     # - catch-all より**前**に置くこと（Istio のルートは先勝ち）。
     - match:
         - uri: { exact: /mcp }
@@ -182,7 +182,7 @@ spec:
 {{- end }}
 {{- if .Values.edge.mcp.enabled }}
 ---
-# FR-16, NFR-09, ADR-0024, IADR-0593 決定 2 (#2045): **エッジの主体には MCP サーバーの /mcp の面だけを許す。**
+# FR-16, NFR-09, ADR-0024, IADR-0594 決定 2 (#2045): **エッジの主体には MCP サーバーの /mcp の面だけを許す。**
 #
 # MCP サーバーの 1 つのポートには、/mcp（外部 AI エージェント）と、管理 REST（/mcp-clients*。BFF が利用者のトークンを中継する）・
 # OpenAPI・自己申告（/internal/*）・ヘルスが同居する。NetworkPolicy（allow-edge-ingress-to-mcp）は gateway の Namespace から

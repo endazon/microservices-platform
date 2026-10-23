@@ -2,7 +2,7 @@
 'use strict';
 /*
  * helm-edge-mcp-entry.test.js
- * FR-16, UC-08, NFR-09, ADR-0024 / ADR-0021, IADR-0593 (#2045):
+ * FR-16, UC-08, NFR-09, ADR-0024 / ADR-0021, IADR-0594 (#2045):
  * **外部 AI エージェントの入口（エッジ host の /mcp）を、実際に `helm template` で描いて固定する。**
  *
  * 🔴 **守るのは「/mcp の面だけを外へ出し、同じポートの管理 REST・OpenAPI・自己申告・ヘルスは出さない」ことと、

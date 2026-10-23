@@ -4536,7 +4536,7 @@ ok('#1154: 本番像の既定は opt-in（false）で、NetworkPolicy の穴も�
 });
 
 // ---------------------------------------------------------------------------
-// FR-16 / #2045 / IADR-0593: 外部 AI エージェントの入口（/mcp）。3 つのエッジ（本番チャート・経路 B の Istio・経路 B の Traefik）が
+// FR-16 / #2045 / IADR-0594: 外部 AI エージェントの入口（/mcp）。3 つのエッジ（本番チャート・経路 B の Istio・経路 B の Traefik）が
 // 同じ契約（exact /mcp ＋ prefix /mcp/ → mcp-service:8080・rewrite 無し・catch-all より前）を持つこと。
 // 🔴 `prefix: /mcp`（文字列の前方一致）は同じポートの管理 REST /mcp-clients まで外へ出すので、その形が現れた瞬間に落とす。
 // 稼働のエッジで 401 / 200 / 「管理 REST に届かない」を測るのは統合スタックの門（check-mcp-client-provisioning.js の M13）である。

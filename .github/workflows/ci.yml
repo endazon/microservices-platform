@@ -778,7 +778,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-private-notes-sync-authz.test.js
 
-      # FR-16, NFR-09, ADR-0024, IADR-0593, Issue #2045: 外部 AI エージェントの入口（エッジの /mcp。既定オフ）を有効にしたとき、
+      # FR-16, NFR-09, ADR-0024, IADR-0594, Issue #2045: 外部 AI エージェントの入口（エッジの /mcp。既定オフ）を有効にしたとき、
       # 経路（exact /mcp ＋ prefix /mcp/）・NetworkPolicy の穴・エッジの主体を /mcp の面に絞る AuthorizationPolicy（DENY）を
       # **実際に helm template で描いて**固定する —— 無効時は描かない、経路と門を Istio の規則で要求・呼び出し元の一覧へ当てると
       # エッジ × /mcp の面だけが届き管理 REST（/mcp-clients）は届かない、BFF・プローブは切れない、変異。helm が要るのでこのジョブ。

@@ -69,7 +69,7 @@
  *      利用者のトークン（`bff`・利用者 SAMPLE_USER）と呼び出し元のサービスアカウント（document-service・AST の kb-reader）・使い捨ての登録者に
  *      platform-api が在り mcp-server は無い。運用ツール（grafana）の利用者のトークン・MCP クライアント（M9 の有人・無人）のトークンに
  *      platform-api は無い。MCP クライアントの実トークンで McpServer の既定のスキームの口（GET /mcp-clients）を呼ぶと 401（ロール不足の 403 ではない）。
- *   M13 エッジの /mcp（#2045 / 計画 ADR-0024・ADR-0021 / IADR-0593）: 外部 AI エージェントの入口が**稼働のエッジで**効いている。
+ *   M13 エッジの /mcp（#2045 / 計画 ADR-0024・ADR-0021 / IADR-0594）: 外部 AI エージェントの入口が**稼働のエッジで**効いている。
  *      エッジ（EDGE_URL。既定 https://localhost。証明書は cert-manager/local-edge-root-ca で検証する）経由の POST /mcp（initialize）が、
  *      トークン無し・platform の audience のトークン（使い捨ての登録者）で 401（SPA の HTML へ落ちない）、M9 の無人の MCP クライアントの
  *      実トークンで JSON-RPC の結果（protocolVersion・serverInfo）を返す。エッジ経由の GET /mcp-clients（登録者のトークン）は管理 REST に
@@ -527,7 +527,7 @@ function countEventsContaining(events, value) {
   return events.filter((e) => typeof (e || {}).representation === 'string' && e.representation.includes(value)).length;
 }
 
-// ---------------------------------------------------------------- M13（#2045 / IADR-0593: エッジの /mcp）
+// ---------------------------------------------------------------- M13（#2045 / IADR-0594: エッジの /mcp）
 
 /** M13: MCP の initialize の要求本文（Streamable HTTP の最初の 1 通）。 */
 const MCP_INITIALIZE = {
@@ -1622,7 +1622,7 @@ async function live() {
           status(await send('GET', `${mcpUrl}/mcp-clients`, mcpToken), 401));
       }
 
-      // --- M13（#2045 / IADR-0593: 外部 AI エージェントの入口＝エッジの /mcp）--------------------------------
+      // --- M13（#2045 / IADR-0594: 外部 AI エージェントの入口＝エッジの /mcp）--------------------------------
       // 稼働のエッジ（経路 B の Istio の overlay、istio=false の比較実行では Traefik の Ingress）で、/mcp が MCP サーバーへ届き、
       // MCP サーバーの認証（audience=mcp-server だけ）を通ることを対で測る。管理 REST（/mcp-clients）はエッジから届かない。
       const edgeUrl = env('EDGE_URL', 'https://localhost').replace(/\/+$/, '');

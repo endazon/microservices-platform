@@ -57,7 +57,7 @@ spec:
             host: document-service.microservices-platform.svc.cluster.local
             port:
               number: 8080
-    # FR-16, UC-08, ADR-0024 / ADR-0021, IADR-0593 (#2045): 外部 AI エージェントの入口（MCP の Streamable HTTP）。
+    # FR-16, UC-08, ADR-0024 / ADR-0021, IADR-0594 (#2045): 外部 AI エージェントの入口（MCP の Streamable HTTP）。
     # 本番チャート（templates/edge.yaml）の edge.mcp と同じ契約: **exact /mcp ＋ prefix /mcp/**（`prefix: /mcp` は文字列の前方一致で
     # 同じポートの管理 REST /mcp-clients まで飲むので使わない）・rewrite 無し・catch-all より前。/mcp-clients は catch-all → SPA へ落ちる。
     # 認証は MCP サーバーが行う（audience=mcp-server のトークンだけ。トークン無し・platform-api の audience は 401）。

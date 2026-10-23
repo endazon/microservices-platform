@@ -134,7 +134,7 @@ spec:
         - protocol: TCP
           port: {{ .Values.edge.privateNotesSync.port }}
 {{- end }}
-{{- /* FR-16, UC-08, ADR-0024, IADR-0593 (#2045): エッジ → MCP サーバー（外部 AI エージェントの入口 /mcp）も
+{{- /* FR-16, UC-08, ADR-0024, IADR-0594 (#2045): エッジ → MCP サーバー（外部 AI エージェントの入口 /mcp）も
        default-deny 下では L3/L4 で塞がれる。allow-edge-ingress-to-document-service と同型で 4 本目を開ける。
        **edge.mcp.enabled が立っているときだけ**（既定 false）＝ルートが無い配備では穴も開かない。
        穴はポート全体に開くので、edge.yaml の AuthorizationPolicy（<service>-edge-mcp-only・DENY）が /mcp の面の外を落とす。 */}}

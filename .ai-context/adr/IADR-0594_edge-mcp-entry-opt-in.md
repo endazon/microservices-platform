@@ -1,5 +1,5 @@
 ---
-title: IADR-0593 外部 AI エージェントの入口としてエッジに /mcp（exact /mcp ＋ prefix /mcp/。rewrite 無し）を置く。認証は MCP サーバーの audience 検証に委ね、エッジでは JWT を再検証しない。エッジの主体は L7 の DENY で /mcp の面に閉じる。本番像は opt-in（クライアント単位のレート制限が未配備のため）
+title: IADR-0594 外部 AI エージェントの入口としてエッジに /mcp（exact /mcp ＋ prefix /mcp/。rewrite 無し）を置く。認証は MCP サーバーの audience 検証に委ね、エッジでは JWT を再検証しない。エッジの主体は L7 の DENY で /mcp の面に閉じる。本番像は opt-in（クライアント単位のレート制限が未配備のため）
 type: impl-adr
 status: Accepted
 related_ids: [FR-16, UC-08, UC-09, ADR-0024, ADR-0021, ADR-0134, ADR-0005, NFR-09, IADR-0348, IADR-0297, IADR-0516, IADR-0523, IADR-0589, IADR-0590, IADR-0533]
@@ -14,7 +14,7 @@ related_specs:
   - ../specs/20261023_2045_edge-mcp-entry.md
 ---
 
-# IADR-0593: エッジの /mcp（外部 AI エージェントの入口）（#2045）
+# IADR-0594: エッジの /mcp（外部 AI エージェントの入口）（#2045）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -60,6 +60,10 @@ MCP サーバーの 1 つのポートには `/mcp` と管理 REST（`/mcp-client
 **決定 1（経路）**: 本番像のチャート（`edge.mcp`）・経路 B の Istio の overlay・経路 B の Traefik の Ingress に、`/mcp`（完全一致）と `/mcp/` 配下を
 MCP サーバーの Service（`mcp-service:8080`）へ振る経路を置く。rewrite しない（公開パス＝`MapMcp("/mcp")`）。catch-all より前。
 `/mcp-clients` はどのエッジでも catch-all（SPA）へ落ちる。
+🔴 **門の層の数はエッジごとに違う。** 本番像（Istio）は経路の絞り込み＋L7 の DENY（決定 2）＋NetworkPolicy（決定 3）の 3 層。
+経路 B の Istio の overlay と **Traefik の Ingress は経路の絞り込み 1 層だけ**である（L7 の DENY も ingress の NetworkPolicy も無い。経路 B は
+`networkPolicy.enabled=false`）。Traefik は `Exact /mcp` ＋ `Prefix /mcp/`（末尾スラッシュ込み）なので、Prefix が文字列の前置で照合されても
+パス要素の境界で照合されても `/mcp-clients` には当たらない。経路 B は配備形ではなく、認証（決定 5）は 3 つのエッジで同じである。
 
 **決定 2（L7 の門）**: 本番像で有効のとき、`AuthorizationPolicy` `<edge.mcp.service>-edge-mcp-only`（DENY）を置く。from は gateway の Namespace
 （NetworkPolicy の穴と同じ単一情報源）、to は `notPaths: ["/mcp", "/mcp/*"]`（経路と同じ字面）。ALLOW にしない（名前空間の中の BFF・プローブを巻き込む。IADR-0348 と同じ理由）。
@@ -91,3 +95,5 @@ catch-all 経由で `/mcp` を中継し、決定 4 の opt-in を迂回する経
   その設定は `McpAudienceAuthenticationTests` と統合スタックの M12・M13 が固定する。
 - 悪い（受容）: MCP サーバーは OAuth の保護リソースのメタデータ（RFC 9728）を返さない。有人のエージェントが 401 から認可サーバーを自動で発見する流れは
   エッジの経路だけでは成立しない（クライアントに認可サーバーとクライアント ID を設定して使う）。別の作業である。
+- 悪い（受容）: 経路 B（Istio の overlay・Traefik の Ingress）は経路の絞り込み 1 層だけである（決定 1 の注記）。
+- 計画への環流: レート制限を入口と別の段にする段取りの裁定を planning#828 で求めた。
