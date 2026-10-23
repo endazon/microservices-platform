@@ -30,7 +30,8 @@ public class TagIdentityTests(TestWebApplicationFactory factory)
     // 共有 DB のため、各テストは自分のタグ名を使う。
     private static string UniqueName(string prefix) => $"{prefix}-{Guid.NewGuid():N}";
 
-    private static Dictionary<string, string> Conf() => new() { ["confidentiality"] = "internal" };
+    // #2112 / [[IADR-0598]]: 作成口が `doc_scope=organization` を補うため、更新でも同値を同送する（SC-05 の形）。
+    private static Dictionary<string, string> Conf() => new() { ["confidentiality"] = "internal", ["doc_scope"] = "organization" };
 
     private async Task<TagDto> AddTagAsync(string name)
     {

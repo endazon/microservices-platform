@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using AwesomeAssertions;
+using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace DocumentService.Tests.Features.Documents;
 
@@ -38,6 +41,22 @@ public class DocScopeImmutabilityTests(TestWebApplicationFactory factory)
         });
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
+    }
+
+    // FR-19, ADR-0054 §結果, [[IADR-0598]] (#2112): **`doc_scope` を持たない既存文書**を作る。
+    // 作成口は未指定を `organization` で補うようになったため、HTTP では「持たない文書」を作れない。
+    // 補完が入る前に作られた文書（遡及付与しない）を、作成後に DB 上で属性から `doc_scope` を外して再現する。
+    private async Task<DocumentDto> CreateLegacyWithoutScopeAsync()
+    {
+        var created = await CreateAsync(docScope: null);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+        var doc = await db.Documents.SingleAsync(d => d.Id == created.Id, TestContext.Current.CancellationToken);
+        var attributes = new Dictionary<string, string>(doc.Attributes);
+        attributes.Remove("doc_scope");
+        doc.UpdateMetadata(attributes, doc.Tags.ToList());
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        return created;
     }
 
     private Task<HttpResponseMessage> UpdateAsync(
@@ -108,9 +127,25 @@ public class DocScopeImmutabilityTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task 文書スコープを持たない文書へ後から付与できない()
     {
-        var doc = await CreateAsync(docScope: null);
+        var doc = await CreateLegacyWithoutScopeAsync();
 
         var resp = await UpdateAsync(doc, new Dictionary<string, string>
+        {
+            ["confidentiality"] = "internal",
+            ["doc_scope"] = "organization",
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    // 陰性 4b（#2112 / [[IADR-0598]]）: 作成口の補完は既存文書へ遡及しない ——
+    // メタデータ経路でも、持たない文書へ後から付与できない（ADR-0054 §結果・ADR-0058 決定 1）。
+    [Fact]
+    public async Task メタデータ経路でも文書スコープを持たない文書へ後から付与できない()
+    {
+        var doc = await CreateLegacyWithoutScopeAsync();
+
+        var resp = await PatchAsync(doc, new Dictionary<string, string>
         {
             ["confidentiality"] = "internal",
             ["doc_scope"] = "organization",
@@ -145,7 +180,7 @@ public class DocScopeImmutabilityTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task 文書スコープを持たない文書の更新は通る()
     {
-        var doc = await CreateAsync(docScope: null);
+        var doc = await CreateLegacyWithoutScopeAsync();
 
         var resp = await UpdateAsync(doc, new Dictionary<string, string>
         {

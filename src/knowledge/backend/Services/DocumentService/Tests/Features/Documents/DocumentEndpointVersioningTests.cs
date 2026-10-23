@@ -14,7 +14,8 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     private HttpClient Client() => factory.CreateClient();
 
     // FR-05, IADR-0047: 機密区分はサーバー側で必須。作成/更新の既定フィクスチャ属性。
-    private static Dictionary<string, string> Conf() => new() { ["confidentiality"] = "internal" };
+    // #2112 / [[IADR-0598]]: 作成口が `doc_scope=organization` を補うため、更新でも同値を同送する（SC-05 の形）。
+    private static Dictionary<string, string> Conf() => new() { ["confidentiality"] = "internal", ["doc_scope"] = "organization" };
 
     [Fact]
     public async Task CreateThenUpdate_VersionHistoryGrows()
@@ -76,7 +77,7 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
         var patch = await client.PatchAsJsonAsync($"/documents/{doc!.Id}/metadata",
-            new { attributes = new Dictionary<string, string> { ["confidentiality"] = "internal", ["dept"] = "sales" }, tags = new[] { tagName } }, TestContext.Current.CancellationToken);
+            new { attributes = new Dictionary<string, string> { ["confidentiality"] = "internal", ["doc_scope"] = "organization", ["dept"] = "sales" }, tags = new[] { tagName } }, TestContext.Current.CancellationToken);
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
         var patched = await patch.Content.ReadFromJsonAsync<DocumentDto>(TestContext.Current.CancellationToken);
         patched!.Title.Should().Be("keep-title");

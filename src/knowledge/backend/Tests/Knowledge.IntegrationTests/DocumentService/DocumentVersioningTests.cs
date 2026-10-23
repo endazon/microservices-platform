@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 namespace Knowledge.IntegrationTests.DocumentService;
 
 // FR-06, UC-03: DocumentService バージョン管理・メタデータ管理 統合テスト（実 PostgreSQL）
+// #2112 / [[IADR-0598]]: 作成口が `doc_scope=organization` を補うため、更新でも同値を同送する（SC-05 の形。属性は全置換）。
 [Trait("Category", "Integration")]
 public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFixture rabbit)
     : IClassFixture<PostgresFixture>, IClassFixture<RabbitMqFixture>, IAsyncLifetime
@@ -42,7 +43,7 @@ public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFi
         var create = await _client.PostAsJsonAsync("/documents", new
         {
             title = "版管理テスト",
-            attributes = new { confidentiality = "internal", dept = "engineering" },
+            attributes = new { confidentiality = "internal", doc_scope = "organization", dept = "engineering" },
             tags = new[] { "v1" }
         }, TestContext.Current.CancellationToken);
         create.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -52,14 +53,14 @@ public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFi
         // メタデータのみ更新（版 2）
         var patch = await _client.PatchAsJsonAsync($"/documents/{doc.Id}/metadata", new
         {
-            attributes = new { confidentiality = "internal", dept = "sales" },
+            attributes = new { confidentiality = "internal", doc_scope = "organization", dept = "sales" },
             tags = new[] { "v2" }
         }, TestContext.Current.CancellationToken);
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // タイトル更新（版 3）
         await _client.PutAsJsonAsync($"/documents/{doc.Id}",
-            new { title = "改題", attributes = new { confidentiality = "internal" }, tags = new[] { "v3" } }, TestContext.Current.CancellationToken);
+            new { title = "改題", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = new[] { "v3" } }, TestContext.Current.CancellationToken);
 
         var versionsResp = await _client.GetAsync($"/documents/{doc.Id}/versions", TestContext.Current.CancellationToken);
         versionsResp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -79,11 +80,11 @@ public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFi
     {
         RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var create = await _client.PostAsJsonAsync("/documents",
-            new { title = "並行制御", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
+            new { title = "並行制御", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
         var doc = await create.Content.ReadFromJsonAsync<DocResponse>(TestContext.Current.CancellationToken);
 
         var conflict = await _client.PutAsJsonAsync($"/documents/{doc!.Id}",
-            new { title = "x", attributes = new { confidentiality = "internal" }, tags = new string[] { }, expectedVersion = 99 }, TestContext.Current.CancellationToken);
+            new { title = "x", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = new string[] { }, expectedVersion = 99 }, TestContext.Current.CancellationToken);
         conflict.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 

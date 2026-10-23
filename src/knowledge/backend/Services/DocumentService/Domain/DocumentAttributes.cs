@@ -60,6 +60,25 @@ public static class DocumentAttributes
         return (true, null);
     }
 
+    // FR-19, SC-05, ADR-0054 決定 3・5, ADR-0058 決定 1, [[IADR-0598]] (#2112):
+    // **組織文書の作成口（`POST /documents`）で `doc_scope` が未指定なら `organization` を補う。**
+    //
+    // 🔴 **作成時に付かなければ恒久的に欠落する** —— 作成後の新規付与は `ValidateDocScopeUnchanged` が
+    // 拒否する（ADR-0058 決定 1）。SC-05 のフォームは機密区分しか送らないため、人の経路で作った
+    // 組織文書だけが `doc_scope` を持たないまま確定していた。**クライアントの送り忘れをサーバが閉じる**
+    // （フロントだけ直すと MCP・機械クライアント・別画面で再発する）。
+    //
+    // 🔴 **キーの有無で判定する（空文字を補完で上書きしない）。** 空文字・未知値は値域検証
+    // （`ValidateDocScope`）が 400 で拒否済みであり、ここに届くのは「キー無し」か正準値だけである。
+    // `private-note` はこの口では作成経路の検証が 400 で拒否している（個人資料は `/private-notes`）。
+    // 🔴 **既存文書へは遡及しない**（ADR-0054 §結果）—— 呼ぶのは作成口だけである。
+    public static Dictionary<string, string> WithOrganizationScopeIfAbsent(
+        Dictionary<string, string> attributes)
+    {
+        attributes.TryAdd(DocScopeKey, DocScopeOrganization);
+        return attributes;
+    }
+
     // FR-06, FR-19, ADR-0058 決定 1・2, [[IADR-0278]]: **`doc_scope` は作成時に確定し、以後変更できない。**
     //
     // 🔴 **「`doc_scope` を含む更新を拒否」と書いてはならない。** SC-05 の属性編集フォームは

@@ -49,7 +49,8 @@ public sealed class UnitProjectEndpointMetricsTests(UnitProjectEndpointMetricsTe
 
     private static Dictionary<string, string> Attributes(string? project)
     {
-        var attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" };
+        // #2112 / [[IADR-0598]]: 作成口が `doc_scope=organization` を補うため、更新でも同値を同送する（SC-05 の形）。
+        var attributes = new Dictionary<string, string> { ["confidentiality"] = "internal", ["doc_scope"] = "organization" };
         if (project is not null) attributes["project"] = project;
         return attributes;
     }

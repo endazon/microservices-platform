@@ -92,6 +92,8 @@ public class ContentFingerprintTests(TestWebApplicationFactory factory)
             {
                 ["confidentiality"] = "restricted",
                 ["owner"] = "fp-owner",
+                // #2112 / [[IADR-0598]]: 作成時に補われた doc_scope を同送する（SC-05 の形）。
+                ["doc_scope"] = "organization",
             },
             tags = new List<string>(),
         }, TestContext.Current.CancellationToken);
