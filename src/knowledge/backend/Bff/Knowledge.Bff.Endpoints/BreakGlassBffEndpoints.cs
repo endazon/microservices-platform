@@ -126,7 +126,7 @@ public static class BreakGlassBffEndpoints
             // 🔴 緊急アクセスの判定を含めない形（`GetAsync`）で引く。所有者・共有先として読めるものだけが返る。
             doc = await grpc.GetAsync(http.User, id, ct);
         }
-        catch (Exception ex) when (!ct.IsCancellationRequested && ex is RpcException or InvalidOperationException)
+        catch (Exception ex) when (!ct.IsCancellationRequested && ex is (RpcException or InvalidOperationException))
         {
             DocumentReadFailureLog.Folded(http, "GetDocument", ex, "502");
             return Results.StatusCode(StatusCodes.Status502BadGateway);
@@ -167,7 +167,7 @@ public static class BreakGlassBffEndpoints
             var contentType = resp.Content.Headers.ContentType?.ToString() ?? "application/json";
             return Results.Content(content, contentType, statusCode: (int)resp.StatusCode);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        catch (Exception ex) when (ex is (HttpRequestException or TaskCanceledException) && !ct.IsCancellationRequested)
         {
             // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
             BffDownstreamFailure.Report(http, "DocumentService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
