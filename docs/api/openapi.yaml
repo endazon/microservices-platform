@@ -1541,7 +1541,8 @@ paths:
       summary: "FR-06, UC-03, SC-05: 文書更新（楽観ロック。管理者のみ。#629）"
       description: |
         `expectedVersion` が現在版と異なれば lost update を防ぐため **409** で拒否する。
-        409 の本文は RFC7807 ではなく `{ error: "version_conflict", expectedVersion, currentVersion }`。
+        照合の後に別の更新が版を進めた場合も（`expectedVersion` の有無を問わず）保存が負けて **409** になる（黙って上書きしない）。
+        409 の本文は RFC7807 ではなく `{ error: "version_conflict", expectedVersion, currentVersion }`（`expectedVersion` は要求に無ければ null）。
       operationId: bff-document-update
       requestBody:
         required: true

@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-06, FR-08, UC-03, NFR-09, FR-19, FR-01]
 adrs: [ADR-0141, ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122, ADR-0027]
-iadrs: [IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
-specs: [20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
+iadrs: [IADR-0597, IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
+specs: [20261023_2103_document-optimistic-concurrency, 20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
 issues: [#2102, #2047, #1974, #1973, #1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
 -->
 
@@ -35,7 +35,7 @@ issues: [#2102, #2047, #1974, #1973, #1961, #1931, #1679, #1616, #1575, #1629, #
 | 項目 | 内容 |
 | --- | --- |
 | 入力 | 作成: `title`（必須）, `originalUri`, `contentType`, `attributes`, `tags` / 更新: `title`（必須）, `attributes`, `tags`, `expectedVersion`（任意）, `changeNote`（任意） / メタデータ更新: `attributes`, `tags`, `expectedVersion`, `changeNote` / 正規化取込: `DocumentNormalized` イベント（`DocumentId`, `Title`, `MarkdownUri`, `Attributes`, `Tags`） |
-| 処理 | `Document.Create` で版 1 を記録 → 各更新（`Update` / `UpdateMetadata` / `ApplyNormalized` / `Publish`）が `Version++`・`UpdatedAt` 更新・スナップショット追記を内部で実行 → 更新後 `DocumentUpdated` を発行。`expectedVersion` 指定時は API 層で現在版と照合し不一致なら 409（lost update 防止）。正規化取込は `DocumentId` 一致で冪等 upsert。 |
+| 処理 | `Document.Create` で版 1 を記録 → 各更新（`Update` / `UpdateMetadata` / `ApplyNormalized` / `Publish`）が `Version++`・`UpdatedAt` 更新・スナップショット追記を内部で実行 → 更新後 `DocumentUpdated` を発行。`expectedVersion` 指定時は API 層で現在版と照合し不一致なら 409（lost update 防止）。照合と保存の間に別の更新が版を進めた場合も、保存が負けて 409 になる（版は並行トークン。下の制約）。正規化取込は `DocumentId` 一致で冪等 upsert。 |
 | 出力 | `DocumentDto`（`Id`, `Title`, `Status`, `MarkdownUri`, `Version`, `Attributes`, `Tags`, `CreatedAt`, `UpdatedAt`, `HasBody`, `SharedWith`, `ContentFingerprint`〔本文指紋。後述〕） / `DocumentPageDto`（`Items`, `NextCursor`） / `DocumentVersionDto`（`DocumentId`, `Version`, `Title`, `Status`, `Attributes`, `Tags`, `ChangeNote`, `CreatedAt`。**本文の参照は持たない** — #1011） / `DocumentUpdated` イベント |
 | 業務ルール | バージョン管理の射程は**版の作成・一覧・取得**まで（**復元は含まない**。利用者裁定 2026-08-23）。**版ごとの本文は保持せず、版応答は本文の参照を返さない**（本文のキーは文書 ID で固定・上書き。#1011）。タイトルは作成・更新で必須（空白は 400）。版履歴は append-only で過去版を書き換えない（スナップショットは後続更新の影響を受けない防御的コピー）。版一覧は新しい順（`Version` 降順）。`Status` は `draft`→`normalized`→`published` を取り、公開は `POST /publish` で行い版を追記する。属性（`Attributes`）は下流の ABAC 権限判定・検索フィルタで用いるメタデータ。 |
 
@@ -227,6 +227,7 @@ stateDiagram-v2
 | 作成・更新でタイトル空白 | 保存しない | 400 ValidationProblem（`title`: 「タイトルは必須です。」） |
 | 対象文書が存在しない | 更新・取得・削除を中断 | 404 NotFound |
 | `expectedVersion` が現在版と不一致 | 更新を拒否し lost update を防止 | 409 Conflict（`version_conflict`, `expectedVersion`, `currentVersion`） |
+| 照合の後・保存の前に別の更新が版を進めた（`expectedVersion` の有無を問わない） | 保存を巻き戻し、黙って上書きしない（版の行も残さない・更新イベントも出さない） | 409 Conflict（同じ本文。`currentVersion` は読み直した現在版、`expectedVersion` は要求に無ければ null。その間に文書が消えていれば 404） |
 | 存在しない版番号の取得 | — | 404 NotFound |
 | `DocumentNormalized` 再配信（同一 `DocumentId`） | 冪等 upsert（重複登録しない） | 既存文書を更新し版追記 |
 | `DocumentNormalized` が反映済みより古い・削除より前（遅着・再配送） | 反映しない（本文を読まず、更新イベントも出さない） | 正常終了（§再正規化の順序） |
@@ -239,6 +240,7 @@ stateDiagram-v2
 - [x] `GET /documents/{id}/versions/{version}` が指定版を返し、存在しない版は 404。
 - [x] 過去版スナップショットは後続更新で書き換わらない（append-only）。
 - [x] `PUT` / `PATCH` に古い `expectedVersion` を付与すると 409 を返す。
+- [x] 同じ版を前提にした 2 つの `PUT`（または `PATCH`）が並行すると、一方だけが 200 になり他方は 409 になる。500 にも黙った上書きにもならない（実 PostgreSQL で確かめる）。
 - [x] `PATCH /metadata` はタイトルを変更せず属性・タグのみ更新する。
 - [x] 作成・更新・公開・正規化取込のいずれでも `DocumentUpdated` を発行する。
 - [x] タイトル空白の作成は 400 を返す。
@@ -270,7 +272,10 @@ stateDiagram-v2
   削除は**その実体（過去の版が指していた本文と図表資産を含む）まで及ぶ**。
   🔴 ただし**資産の台帳は遡及付与しない**ため、台帳へ資産欄を足す以前に取り込まれた文書の
   図表資産は実体が残る。**「全部消える」とは読まないこと。**
-- 楽観的並行制御は API 層の `expectedVersion` 照合のみで、DB 行ロックは導入しない。
+- 楽観的並行制御は API 層の `expectedVersion` 照合と、保存時の版の突き合わせ（版を並行トークンにし、`UPDATE … WHERE` 版 = 読んだ版）の 2 段である。DB 行ロックは導入しない。
+  照合を通った後に追い越された保存は 409 を返す。版テーブルの一意索引違反（同じ番号の版の行）も同じ競合として 409 へ写す。
+  🔴 写像は `PUT` と `PATCH …/metadata` の 2 口だけである。他の書き込み（公開・アーカイブ・取り込みの反映・タグの追加・Obsidian 同期・露出トグル等）は、
+  追い越されると黙って上書きせずに失敗する（取り込みの反映は再試行で読み直す）が、409 へは写さない。
 - **呼び出し側の自然キー（外部 ID）での引き当て・upsert は持たない。** 文書の同一性は文書 ID ただ 1 つであり、当面は外部 ID を
   持たないと決まった（呼び出し側は `GET /documents/page` の属性の絞り込みで既存の写しを探す。重複の実害が観測されたら改めて起こす）。
 - 機械クライアントの自分の文書の更新・削除は上の「機械クライアントの自分の文書と、所有者の不変性」のとおり。
