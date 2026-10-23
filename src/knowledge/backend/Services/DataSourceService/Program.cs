@@ -80,6 +80,13 @@ builder.Host.UseWolverine(opts =>
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
+
+    // FR-01, UC-04, ADR-0027 §決定, IADR-0604 決定 1, IADR-0609 (#2169): 発行の**耐久化**（Outbox の表への永続化）。
+    // `RawDocumentFetched` は DB の確定と対にしない（同期の発行は watermark の保存より**前**に出し、逆向きの食い違い〔発行済み・
+    // 未保存〕は決定的な DocumentId による冪等な再発行で収束する）。要るのは「watermark を進めた時点で、それまでの発行が
+    // 失われない」ことだけで、耐久送出が発行のたびに送出前の表への書き込みで満たす（IADR-0609 決定 2）。
+    // 🔴 **接続文字列は DbContext と同じもの**（サービスごとの DB に `wolverine` スキーマを置く）。表は起動時に Wolverine が作る。
+    opts.UsePlatformTransactionalOutbox(connStr);
 });
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。パイプライン段はホストせず、
