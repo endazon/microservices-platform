@@ -135,7 +135,7 @@ jobs:
         # 版を上げるときは **PR で実測して緑を確認してから** SHA を進めること。
         # 🔴 **claude-code-review.yml と claude-coding.yml は同じ SHA を指す** ——
         # 片方だけ動かすと「レビューは通るのに @claude は動かない」という切り分けの難しい状態になる。
-        uses: anthropics/claude-code-action@db77d4d3c98f3f6380e7cd45ffba2342a3dbde3c # v1（2026-09-08 実測で緑）
+        uses: anthropics/claude-code-action@e4a6faad497d33dbc7144135c75e41f82f0bf6c0 # v1（2026-09-08 実測で緑）
         # gh CLI（Issue 発行等）を既定トークンで認証する。gh は GH_TOKEN/GITHUB_TOKEN を参照する。
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
