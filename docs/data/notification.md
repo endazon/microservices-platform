@@ -3,15 +3,15 @@ title: 通知（Notification / EmailOutboxEntry） データ仕様書
 type: data-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-08-28
+updated: 2026-10-23
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, SC-10, UC-11]
 adrs: [ADR-0002, ADR-0004, ADR-0037, ADR-0045]
-iadrs: [IADR-0009, IADR-0215, IADR-0267, IADR-0270, IADR-0288]
-specs: [20260823_issue-600_notification-service-backend, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment]
-issues: [#451, #600, #1025]
+iadrs: [IADR-0009, IADR-0215, IADR-0267, IADR-0270, IADR-0288, IADR-0600]
+specs: [20260823_issue-600_notification-service-backend, 20260828_issue-600_notification-triggers, 20260828_issue-1025_notification-service-deployment, 20261023_2113_email-transient-retry]
+issues: [#451, #600, #1025, #2113]
 -->
 
 # データ仕様書: 通知（Notification / EmailOutboxEntry）
@@ -79,11 +79,12 @@ issues: [#451, #600, #1025]
 | ThresholdPercent | int | — | `null` 可 | 閾値 |
 | Deadline | timestamptz | — | `null` 可 | 期限。**繰り越しの打ち切り条件でもある** |
 | Status | string(20) | ○ | 既定 `pending` | `pending` / `sent` / `deferred` / `dropped` / `failed` |
-| AttemptCount | int | ○ | 既定 0 | 送信を試みた回数 |
+| AttemptCount | int | ○ | 既定 0 | 送信を試みた回数。**一過性の失敗の再試行の上限もこれで判定する**（既定 5 回で `failed`） |
 | DeferralCount | int | ○ | 既定 0 | 繰り越した回数 |
 | CreatedAt | timestamptz | ○ | 通知の発生時刻 | 送出待ちの取り出し順 |
 | SentAt | timestamptz | — | `null` 可 | 送れた時刻。**日次上限の消費を数える基準** |
 | LastOutcomeAt | timestamptz | — | `null` 可 | 直近の結末の時刻 |
+| NextAttemptAt | timestamptz | — | `null` 可 | 一過性の失敗の後、**この時刻より前には送出に拾わない**（バックオフ）。`null` はいつでも拾う。列の追加前からある行は `null` で入り、**既に `failed` の行は遡及して再送の対象へ戻さない** |
 | LastReason | string(200) | — | `null` 可 | 結末の理由。**機械的な理由語だけ**（資料由来の文字列を入れない） |
 
 ## ER 図

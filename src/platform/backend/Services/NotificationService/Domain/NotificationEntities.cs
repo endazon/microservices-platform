@@ -95,6 +95,11 @@ public class EmailOutboxEntry
     public DateTimeOffset? SentAt { get; private set; }
     public DateTimeOffset? LastOutcomeAt { get; private set; }
 
+    // FR-22, ADR-0045 決定 8・フォローアップ 6, IADR-0600 決定 2: 一過性の失敗の後、**この時刻より前には
+    // 送出に拾わない**（バックオフ）。`null` は「いつでも拾ってよい」—— 既存行（本列の追加前に積まれた行）も
+    // `null` で入るので、従来どおり次の周期で拾われる。
+    public DateTimeOffset? NextAttemptAt { get; private set; }
+
     // 結末の理由。**利用者の資料に由来する文字列を入れない**（種別と機械的な理由語だけ）。
     public string? LastReason { get; private set; }
 
@@ -119,6 +124,7 @@ public class EmailOutboxEntry
         SentAt = at;
         LastOutcomeAt = at;
         LastReason = null;
+        NextAttemptAt = null;
     }
 
     // 上限に触れた。**送らずに繰り越す**（ADR-0045 §結果 フォローアップ 8 への回答＝ IADR-0215 決定 4）。
@@ -128,6 +134,21 @@ public class EmailOutboxEntry
         DeferralCount++;
         LastOutcomeAt = at;
         LastReason = reason;
+        // 上限の繰り越しは「上限が空けば次の周期で送る」なので、バックオフの待ちを残さない。
+        NextAttemptAt = null;
+    }
+
+    // FR-22, IADR-0600 決定 1・2: **一過性の送信失敗**（接続断・時間切れ・一時的な SMTP 応答）。
+    // 送信を 1 回試みたので AttemptCount を進め、`deferred` へ戻して `nextAttemptAt` まで拾わせない。
+    // **上限の繰り越し（Defer）とは数えを分ける** —— DeferralCount は上限の繰り越しだけを数え、
+    // 再試行の上限は AttemptCount（送信を試みた回数）で判定する。
+    public void ScheduleRetry(DateTimeOffset at, DateTimeOffset nextAttemptAt, string reason)
+    {
+        Status = EmailOutboxStatus.Deferred;
+        AttemptCount++;
+        LastOutcomeAt = at;
+        LastReason = reason;
+        NextAttemptAt = nextAttemptAt;
     }
 
     // 期限を過ぎた繰り越しは破棄する。**黙って消さない** —— 状態と理由を残す。
@@ -145,6 +166,7 @@ public class EmailOutboxEntry
         AttemptCount++;
         LastOutcomeAt = at;
         LastReason = reason;
+        NextAttemptAt = null;
     }
 }
 

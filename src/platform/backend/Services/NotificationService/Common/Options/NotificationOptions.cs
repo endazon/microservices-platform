@@ -25,4 +25,15 @@ public sealed class NotificationOptions
     // （器がホストを起こすたびに背景処理が走ると、時刻に依存した検証が不安定になる）。
     public bool MaintenanceEnabled { get; set; } = true;
     public TimeSpan MaintenanceInterval { get; set; } = TimeSpan.FromMinutes(5);
+
+    // FR-22, ADR-0045 フォローアップ 6, IADR-0600 決定 2: 一過性の送信失敗の再試行。
+    // **送信を試みる回数の上限**（初回を含む）。1 なら再試行しない。既定 5 回 —— 既定の待ち
+    // （5・10・20・40 分）と合わせて**最初の失敗から約 75 分**で打ち切る。メールは補助経路であり、
+    // それより長い障害は運用ダッシュボードの `failed` で人が気付くべき規模である。
+    public int EmailMaxSendAttempts { get; set; } = 5;
+
+    // 再試行の待ちの基準。n 回目の失敗の後は `基準 × 2^(n-1)` だけ待つ（上限 EmailRetryMaxDelay）。
+    // 既定は定期処理の周期（5 分）と同じ —— 周期より短くしても次の周期まで拾われない。
+    public TimeSpan EmailRetryBaseDelay { get; set; } = TimeSpan.FromMinutes(5);
+    public TimeSpan EmailRetryMaxDelay { get; set; } = TimeSpan.FromHours(1);
 }

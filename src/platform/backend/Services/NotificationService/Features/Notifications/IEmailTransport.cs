@@ -25,8 +25,14 @@ public sealed record EmailMessage(
     string Body);
 
 // 失敗理由は**機械的な理由語**に限る（利用者の資料に由来する文字列を混ぜない）。
-public sealed record EmailSendResult(bool Sent, string? Reason = null)
+//
+// FR-22, IADR-0600 決定 1: **Transient は「トランスポートが一過性と判別できた失敗」だけに立てる**
+// （接続断・時間切れ・一時的な SMTP 応答＝4xx 系）。判別できない失敗・恒久的な失敗（宛先不正・
+// 未構成）は既定の false のままで、従来どおり即 `failed` になる —— **迷ったら恒久側へ倒す**
+// （未構成を一過性と扱うと、毎周期の再送が止まらない）。
+public sealed record EmailSendResult(bool Sent, string? Reason = null, bool Transient = false)
 {
     public static EmailSendResult Success() => new(true);
     public static EmailSendResult Failure(string reason) => new(false, reason);
+    public static EmailSendResult TransientFailure(string reason) => new(false, reason, Transient: true);
 }
