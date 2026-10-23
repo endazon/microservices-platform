@@ -3,15 +3,15 @@ title: LLM 補完メトリクス（終了理由・拒否率）ログ・可観測
 type: observability-spec
 status: in-progress
 created: 2026-07-28
-updated: 2026-10-20
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, NFR-19]
 adrs: [ADR-0006, ADR-0010, ADR-0025, ADR-0038, ADR-0044]
-iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374, IADR-0114, IADR-0535, IADR-0533, IADR-0562, IADR-0564]
-specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261017_1749_anthropic-official-sdk, 20261020_2000_extra-text-block-drop-count]
-issues: [#380, #786, #787, #863, #1091, #1819, #1917, #1902, #1749, #2000]
+iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374, IADR-0114, IADR-0535, IADR-0533, IADR-0562, IADR-0564, IADR-0601]
+specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261017_1749_anthropic-official-sdk, 20261020_2000_extra-text-block-drop-count, 20261023_2116_llm-stream-usage-on-abort]
+issues: [#380, #786, #787, #863, #1091, #1819, #1917, #1902, #1749, #2000, #2047, #2116]
 -->
 
 # 可観測性仕様書: LLM 補完の終了理由（拒否率）
@@ -36,13 +36,20 @@ issues: [#380, #786, #787, #863, #1091, #1819, #1917, #1902, #1749, #2000]
 
 | 属性 | 値域 | 意味 |
 | --- | --- | --- |
-| `llm.result` | `sent` / `egress_denied` / `provider_missing` / `upstream_error` / `fallback` | **送信可否の軸**（送信可否統制の `Sent` に対応）。`fallback` は #863 で追加（下記） |
+| `llm.result` | `sent` / `egress_denied` / `provider_missing` / `upstream_error` / `fallback` / `cancelled` | **送信可否の軸**（送信可否統制の `Sent` に対応）。`fallback` は #863 で追加（下記）。`cancelled` は逐次応答を呼び出し側が取り消した（下記） |
 | `llm.stop_reason` | `end_turn` / `max_tokens` / `refusal` / `stop_sequence` / `tool_use` / `other` / `none` | **モデル側の終了理由**（`Sent` とは独立した軸） |
 | `llm.purpose` | `Llm:Routing:PurposeModels` のキー ＋ `default` ＋ `other` | 用途 |
 | `llm.model` | route 結果のモデル / `none` | 実際に選択されたモデル |
 | `llm.provider` | `claude` / `selfhosted` / `copilot` / `none` | 呼び出し先プロバイダ |
 | `llm.confidentiality` | `public` / `internal` / `confidential` / `restricted` | 入力の最高機密区分 |
 | `llm.upstream_status` | `none` / `rate_limited` / `client_error` / `server_error` / `transport` / `other` | **上流が返したものの軸**（`llm.result` と直交する）。#1091 で追加（下記） |
+
+**［2026-10-23 追記］** `llm.result=cancelled` は、逐次応答（gRPC `CompleteStream`）を**呼び出し側が取り消した**
+（利用者の停止・接続の切断）呼び出しである。送信は成立していたが応答を受け取り切っていないので `sent` には入れず、
+上流の失敗ではないので `upstream_error` にも入れない（利用者の停止で上流障害の率のアラートが誤発火しないようにする）。
+応答の `failureKind` ではない（取り消した呼び出し側へ返す応答は無い）。取り消しまでに判明したトークンの扱いは
+[利用実績の仕様書](llm-usage-and-cost-metrics.md) の「逐次応答が途中で終わったときの扱い」が定める。
+取り消しの後に届いた例外は型を問わず `cancelled` に入り、取り消しを伴わない取り消し例外（HTTP の期限切れ等）は上流の失敗として `upstream_error` に入る。
 
 **［2026-10-08 追記］** `llm.result` の未送信の 3 値（`egress_denied` / `provider_missing` / `upstream_error`）は、
 応答の `failureKind` と**同じ文字列**である（計器の定数は応答の契約の定数を引く）。計器の無い環境
