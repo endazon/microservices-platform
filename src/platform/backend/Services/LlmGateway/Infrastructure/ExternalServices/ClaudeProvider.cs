@@ -148,18 +148,31 @@ public class ClaudeProvider(
             idle.CancelAfter(System.Threading.Timeout.InfiniteTimeSpan);
 
             // message_start で入力トークン、message_delta で出力トークンが逐次確定する。
+            // FR-10, IADR-0601 決定 1 (#2116): 判明した時点で**経過報告のチャンク**（本文なし・Done=false・その時点の累計）を返す。
+            // 上流が途中で切れても、利用者が取り消しても、呼び出し側が判明分を計上できるようにする
+            // （最終チャンクだけに載せると、Done に届かなかった送信の入力トークンが無音で 0 になる）。
+            var usageAdvanced = false;
             if (ev.TryPickStart(out var start))
+            {
                 inputTokens = (int)start.Message.Usage.InputTokens;
+                usageAdvanced = inputTokens > 0;
+            }
 
             // IADR-0104: 終了理由は message_delta（末尾）で確定する。既に送出したデルタは撤回できないため、
             // 最終チャンクへ載せて呼び出し側が破棄判断できるようにする（トレードオフは IADR-0104 §結果）。
             if (ev.TryPickDelta(out var delta))
             {
                 if (delta.Usage.OutputTokens > 0)
+                {
                     outputTokens = (int)delta.Usage.OutputTokens;
+                    usageAdvanced = true;
+                }
                 if (delta.Delta.StopReason?.Raw() is { Length: > 0 } deltaStop)
                     stopReason = deltaStop;
             }
+
+            if (usageAdvanced)
+                yield return new CompletionChunk(string.Empty, Done: false, inputTokens, outputTokens);
 
             // 本文デルタ（text_delta）だけを流す。thinking_delta / signature_delta は流さない（T-35）。
             if (ev.TryPickContentBlockDelta(out var blockDelta)

@@ -174,5 +174,15 @@ public class ClaudeProviderStopReasonTests
         done.StopReason.Should().Be(CompletionStopReasons.EndTurn);
         done.InputTokens.Should().Be(11);
         done.OutputTokens.Should().Be(22);
+
+        // FR-10, IADR-0601 決定 1 (#2116): 判明した時点の累計を経過報告（本文なし・Done=false）で返す。
+        // message_start の入力トークンは本文より前に届く —— 上流が本文の途中で切れても入力分を計上できる。
+        var progress = chunks.Where(c => !c.Done && c.TextDelta.Length == 0).ToList();
+        progress.Should().HaveCount(2);
+        progress[0].InputTokens.Should().Be(11);
+        progress[0].OutputTokens.Should().Be(0);
+        chunks.IndexOf(progress[0]).Should().BeLessThan(chunks.FindIndex(c => c.TextDelta == "回答"));
+        progress[1].InputTokens.Should().Be(11);
+        progress[1].OutputTokens.Should().Be(22);
     }
 }

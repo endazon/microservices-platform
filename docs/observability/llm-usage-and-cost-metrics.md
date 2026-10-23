@@ -4,14 +4,14 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-23
-updated: 2026-10-16
+updated: 2026-10-23
 ---
 <!-- trace:
 ids: [FR-10, FR-11, NFR, NFR-21, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0076]
-iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533]
-specs: [20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue]
-issues: [#380, #443, #546, #1111, #1203, #1741, #1875, #1902, planning#783]
+iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601]
+specs: [20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort]
+issues: [#380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, planning#783]
 -->
 
 # 可観測性仕様書: LLM 利用実績（トークン消費量と金額換算）
@@ -37,6 +37,7 @@ issues: [#380, #443, #546, #1111, #1203, #1741, #1875, #1902, planning#783]
 | `llm.cost.total` | Counter | `{currency}` | `llm_cost_total` | 金額換算の累計 |
 | `llm.pricing.unpriced.total` | Counter | `{completion}` | `llm_pricing_unpriced_total` | **単価を解決できなかった呼び出し**（0 が正常） |
 | `llm.usage.synthetic_excluded.total` | Counter | `{completion}` | `llm_usage_synthetic_excluded_total` | **合成監視のため費用へ計上しなかった呼び出し** |
+| `llm.usage.incomplete.total` | Counter | `{completion}` | `llm_usage_incomplete_total` | **逐次応答が最終チャンク（実数）を受け取らずに終わった送信**（0 が正常。下記） |
 | `llm.budget.monthly_limit` | 観測ゲージ | `{currency}` | `llm_budget_monthly_limit` | **用途別の月次予算の上限**（設定 `Llm:Budget:MonthlyLimits`。**既定なし**。設定された用途だけが系列を持つ） |
 
 🔴 **上限のゲージは金額を設定しない限り系列を持たない。** 金額は所有者が決める値であり、実装は既定を置かない。
@@ -67,6 +68,9 @@ Prometheus 側の名前は、単位 `{currency}` が注記として落ち、ゲ�
 | `llm.currency` | 単価表の通貨（既定 `USD`） | cost / budget |
 | `llm.pricing_status` | `out_of_period` / `no_entry` | unpriced |
 | （合成の除外） | 用途・モデル・プロバイダ・機密区分（tokens / cost と同じ軸） | synthetic_excluded |
+| （不完全） | 用途・モデル・プロバイダ・機密区分（tokens / cost と同じ軸） | incomplete |
+| `llm.incomplete_reason` | `upstream_error`（上流が途中で切れた）/ `cancelled`（呼び出し側が取り消した）/ `no_final_chunk`（例外なく終わったが最終チャンクが無い） | incomplete |
+| `llm.usage_coverage` | `partial`（判明分を tokens / cost へ積んだ。下限）/ `none`（判明分が無く何も積んでいない） | incomplete |
 
 **利用者識別子・プロンプト・本文は属性にしない**（カーディナリティが非有界であり、個人の利用行動の
 記録に踏み込む）。値域の正規化は呼び出し回数のカウンタと**共有**しており、両者は同じ軸で読める ——
@@ -109,19 +113,38 @@ Prometheus 側の名前は、単位 `{currency}` が注記として落ち、ゲ�
 **3 が要点である。** 0 を積むと、**期限切れが「費用の減少」に化けて**費用増加の検知をすり抜ける。
 **金額が過小であることは金額そのものからは読めない** —— 読めるのは 2 のカウンタだけである。
 
+## 🔴 逐次応答が途中で終わったときの扱い
+
+逐次応答（gRPC `CompleteStream`）が、上流の途中切断・呼び出し側の取り消し（利用者の停止・切断）・最終チャンクの欠落で
+**最終チャンクの実数を受け取らずに終わった**ときも、**無音で 0 円にしない**。次の 2 つを同時に行う。
+
+1. **判明分を 1 回だけ積む。** Claude は `message_start` で入力トークンを、`message_delta` で出力トークンを返し、
+   プロバイダはその時点の**累計**を本文なしの経過報告として渡す。ゲートウェイは最新の値で置き換えて持ち（足さない）、
+   最終チャンクが来なかったときだけ、その値で `llm.tokens.total` / `llm.cost.total` を 1 回積む。
+2. **`llm.usage.incomplete.total` を 1 件数える**（終わり方と、判明分を積めたかを属性で分ける）。
+
+**1 は下限である。** 出力トークンは通常 `message_delta`（応答の末尾）でしか届かないため、本文の途中で切れた送信の
+出力分は積まれない。**この系列が 0 でない間、金額と月次予算の判定は過小である**（単価を解決できなかったときと同じ読み方）。
+正常完了は最終チャンクの実数で 1 回だけ積み、経過報告の値は使わない（二重に数えない）。
+**送信が成立する前の失敗**（1 チャンクも届かないうちの 429 等）は一括経路の上流失敗と同じく何も積まず、不完全にも数えない。
+**呼び出し側の取り消しは数える**（要求が上流へ届いていれば課金は始まり得るため）。合成監視は取り消されても費用へ入れず、
+除外の件数だけを積む。
+
 ## 記録しない経路
 
 | 経路 | 理由 |
 | --- | --- |
 | 越境拒否（送信していない） | トークンが存在しない。0 を積むと「安く済んだ」と読める |
-| プロバイダ未登録・上流エラー | 同上 |
-| ストリームが最終チャンクを受け取れずに終わった | 実数が無い。0 埋めをしない |
+| プロバイダ未登録・上流エラー（送信が成立する前の失敗） | 同上 |
 
 ## クエリ例（PromQL）
 
 ```promql
 # 🔴 最初に見る: 単価を解決できなかった呼び出し（0 でなければ下の金額は過小）
 sum by (llm_pricing_status, llm_model) (increase(llm_pricing_unpriced_total[$__range]))
+
+# 逐次応答が途中で終わった送信（0 でなければ下の金額は下限）
+sum by (llm_purpose, llm_incomplete_reason, llm_usage_coverage) (increase(llm_usage_incomplete_total[$__range]))
 
 # 用途別の費用（選択期間の累計）
 sum by (llm_purpose) (increase(llm_cost_total[$__range]))
@@ -146,6 +169,7 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 | 観点 | 見るもの | 意味 |
 | --- | --- | --- |
 | 単価表の陳腐化 | `llm_pricing_unpriced_total` > 0 | **金額が過小である。** 単価表を直すまで金額を信用しない |
+| 逐次応答の途中終了 | `llm_usage_incomplete_total` > 0 | **金額は下限である**（出力分が欠ける）。`llm_incomplete_reason` で上流の切断か利用者の停止かを分ける |
 | 用途別の費用増 | 費用の前月比 | 1.0 を大きく超える用途 |
 | モデル構成の変化 | モデル別の費用 | 上位モデルの比率が上がると回数が同じでも費用は増える |
 | 用途の定義漏れ | `llm_purpose="other"` の増加 | 定義していない用途が来ている（ルーティングが既定へ落ちている） |
