@@ -2717,6 +2717,10 @@ msgstr "太い輪郭・大きい表示 = 起点"
 msgid "失効する"
 msgstr "失効する"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "失効を確認できません。端末の時計がずれている可能性があります。終えるには「今すぐ終了する」を押してください。"
+msgstr "失効を確認できません。端末の時計がずれている可能性があります。終えるには「今すぐ終了する」を押してください。"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "失効済み"
 msgstr "失効済み"
@@ -4023,6 +4027,10 @@ msgstr "状態で絞り込み"
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "状態や種類の絞り込みを変えると、ほかの提案が見つかることがあります。"
 msgstr "状態や種類の絞り込みを変えると、ほかの提案が見つかることがあります。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "状態を再確認する"
+msgstr "状態を再確認する"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "現在の指定先"

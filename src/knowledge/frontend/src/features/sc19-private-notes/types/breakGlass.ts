@@ -55,6 +55,9 @@ export function sameUser(a: string | null | undefined, b: string | null | undefi
  * 🔴 **これは導線の出し分けであって許可ではない。** 本人が早く終えた・名簿でいま管理者でない等は
  * ここでは分からない（終了の行は別の行である）。開けるかどうかは SC-03 の後段が決め、開けなければ 404 になる。
  * 同じ発動に終了の行があれば導線を出さない（`endedGrantIds`）。
+ *
+ * `me` は `/bff/auth/me` の `name`（BFF のセッションの `Identity.Name`。名前の主張は OIDC の `preferred_username`
+ * ＝利用者名であり、表示名ではない）。後段は指名先を正規形（前後の空白を落として小文字）で保存するので、`sameUser` も同じ正規化で比べる。
  */
 export function canOfferView(
   entry: BreakGlassAuditEntryDto,

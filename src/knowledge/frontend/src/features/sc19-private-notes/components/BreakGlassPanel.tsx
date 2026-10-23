@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Alert, Button, Label, Note, Panel, Select, StatusBadge } from '@platform/ui';
 import { QueryState } from '@foundation/ui/QueryState';
@@ -9,7 +9,11 @@ import type {
   PrivateNoteDto,
 } from '@foundation/api/generated/bff.schemas';
 import { useResolvedUsers } from '../../../lib/users';
-import { useBreakGlassActions, useBreakGlassStatus } from '../api/useBreakGlass';
+import {
+  EXPIRY_POLL_LIMIT_MS,
+  useBreakGlassActions,
+  useBreakGlassStatus,
+} from '../api/useBreakGlass';
 import { useNow } from '../hooks/useNow';
 import { remainingSeconds, splitMinutesSeconds } from '../types/breakGlass';
 import { BreakGlassAuditLog } from './BreakGlassAuditLog';
@@ -35,13 +39,17 @@ export interface BreakGlassPanelProps {
 function ActiveGrant({
   grant,
   pending,
+  pollSince,
   onEnd,
   onExpired,
 }: {
   grant: BreakGlassGrantDto;
   pending: boolean;
+  /** 残り 0 になって状態の引き直しを始めた時刻（始めていなければ null）。 */
+  pollSince: number | null;
   onEnd: () => void;
-  onExpired: () => void;
+  /** 残り 0 になった（`restart` は上限に達した後の「状態を再確認する」）。 */
+  onExpired: (grantId: string, restart?: boolean) => void;
 }) {
   const { t } = useLingui();
   const now = useNow(true);
@@ -52,10 +60,14 @@ function ActiveGrant({
     resolved.data?.find((u) => u.username === grant.nomineeUserId)?.displayName ??
     (resolved.isPending ? t`読み込み中…` : t`（不明な利用者）`);
 
-  // 残り 0 になったら状態を引き直す（失効を決めるのはサーバ側の記録である）。
+  // 残り 0 になったら状態を引き直し始める（失効を決めるのはサーバ側の記録である）。
+  // 引き直しは間隔を置いて上限まで続く（`useBreakGlassStatus` の `pollSince`）。
+  const grantId = grant.id;
   useEffect(() => {
-    if (expired) onExpired();
-  }, [expired, onExpired]);
+    if (expired) onExpired(grantId);
+  }, [expired, grantId, onExpired]);
+  // 上限まで引いてもサーバが有効を返す（端末の時計が大きく進んでいる等）。固着させず、理由と再確認の導線を出す。
+  const gaveUp = expired && pollSince !== null && now - pollSince >= EXPIRY_POLL_LIMIT_MS;
 
   const { minutes, seconds } = splitMinutesSeconds(left);
   const endsAt = formatDateTime(grant.endsAt);
@@ -66,7 +78,11 @@ function ActiveGrant({
       <p className="flex flex-wrap items-center gap-2 text-sm">
         <StatusBadge tone="warning">{t`緊急アクセス有効中`}</StatusBadge>
         <span>
-          {expired ? (
+          {gaveUp ? (
+            <Trans>
+              失効を確認できません。端末の時計がずれている可能性があります。終えるには「今すぐ終了する」を押してください。
+            </Trans>
+          ) : expired ? (
             <Trans>まもなく失効します（状態を確認しています）</Trans>
           ) : (
             <Trans>
@@ -85,10 +101,15 @@ function ActiveGrant({
         </dt>
         <dd className="whitespace-pre-wrap break-words">{reason}</dd>
       </dl>
-      <div>
+      <div className="flex flex-wrap gap-2">
         <Button variant="danger" disabled={pending} onClick={onEnd}>
           <Trans>今すぐ終了する</Trans>
         </Button>
+        {gaveUp && (
+          <Button variant="secondary" onClick={() => onExpired(grantId, true)}>
+            <Trans>状態を再確認する</Trans>
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -104,8 +125,23 @@ export function BreakGlassPanel({ notes }: BreakGlassPanelProps) {
   // 選んでいた資料が利用中から外れた（削除した）ら選択も外れる。
   const live = useMemo(() => notes.filter((n) => !n.deleted), [notes]);
   const target = live.find((n) => n.id === targetId) ?? null;
-  const status = useBreakGlassStatus(target?.id ?? null);
+  // 残り 0 の後の引き直し（発動ごと）。**表示中の発動と同じ発動のときだけ**引き直す ——
+  // 失効が確かめられて状態が変われば（有効なし・別の発動）、引き直しは自然に止まる。
+  const [pollFor, setPollFor] = useState<{ grantId: string; since: number } | null>(null);
+  const status = useBreakGlassStatus(target?.id ?? null, pollFor);
   const { activate, end, refresh } = useBreakGlassActions(target?.id ?? null);
+  const activeId = status.data?.active?.id ?? null;
+  const pollSince = pollFor !== null && pollFor.grantId === activeId ? pollFor.since : null;
+
+  const startExpiryPoll = useCallback(
+    (grantId: string, restart = false) => {
+      setPollFor((prev) =>
+        !restart && prev?.grantId === grantId ? prev : { grantId, since: Date.now() },
+      );
+      refresh();
+    },
+    [refresh],
+  );
   const pending = activate.isPending || end.isPending;
 
   function selectTarget(id: string) {
@@ -189,8 +225,9 @@ export function BreakGlassPanel({ notes }: BreakGlassPanelProps) {
                 <ActiveGrant
                   grant={data.active}
                   pending={pending}
+                  pollSince={pollSince}
                   onEnd={runEnd}
-                  onExpired={refresh}
+                  onExpired={startExpiryPoll}
                 />
               ) : (
                 <div className="flex flex-col gap-2">

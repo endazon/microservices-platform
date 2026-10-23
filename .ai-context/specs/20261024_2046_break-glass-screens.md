@@ -65,6 +65,12 @@ plan_refs:
       知らない `via` は落とす
 - [x] AC14 SC-03: `?via=break-glass` で 404 なら、開けないことと考えられる理由を区別せず告げる（`role="alert"`・再試行なし）
 - [x] AC15 ja / en のカタログに未翻訳なし。既存の E2E を壊さない（SC-19 を開いただけでは新しい口を引かない）
+- [x] AC16 （AI レビュー 🟡）残り 0 の後、サーバがその発動を有効と返す間は 5 秒ごとに状態を引き直す（上限 2 分）。失効が返れば止まる。
+      上限に達したら引き直しを止め、端末の時計のずれの可能性と「状態を再確認する」を出す（固着しない）
+- [x] AC17 （AI レビュー 🟡）発動の送信中は確認ダイアログを閉じない（取消・Esc・背景クリック）。失敗はダイアログの中に出て消えない。
+      送信が終われば閉じられる
+- [x] AC18 （AI レビュー 🟢）監査ログの導線の `me` は利用者名である: `/bff/auth/me` の `name` は BFF のセッションの `Identity.Name` で、
+      OIDC の `NameClaimType = "preferred_username"`（`BffSessionExtensions`）。後段の指名先の正規形（trim＋小文字）と同じ正規化で比べる
 
 ## 設計
 
@@ -93,7 +99,8 @@ IADR-0612 を正とする。要点:
 
 - `src/` で `pnpm run typecheck` / `pnpm run lint` / `pnpm run format:check` / `pnpm run test:coverage`
 - `pnpm run i18n` の再生成で差分なし・`node scripts/check-i18n-catalogs.js`・`node scripts/check-knip.js --require`
-- 変異: 理由の必須を外す・自分を候補から除かない・終了の行を見ない・via でも承認欄を出す —— それぞれ赤になること（PR 本文に表）
+- 変異: 理由の必須を外す・自分を候補から除かない・終了の行を見ない・via でも承認欄を出す・失効の引き直しを止める・送信中でも閉じる
+  —— それぞれ赤になること（PR 本文に表）
 - ブラウザ E2E は CI（手元に Playwright のブラウザが無い）
 
 ## 残余リスク・未決

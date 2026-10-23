@@ -2717,6 +2717,10 @@ msgstr "Thick outline, larger size = root"
 msgid "失効する"
 msgstr "Revoke"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "失効を確認できません。端末の時計がずれている可能性があります。終えるには「今すぐ終了する」を押してください。"
+msgstr "Cannot confirm the expiry. Your device clock may be out of sync. To end it, press \"End now\"."
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "失効済み"
 msgstr "Revoked"
@@ -4023,6 +4027,10 @@ msgstr "Filter by status"
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "状態や種類の絞り込みを変えると、ほかの提案が見つかることがあります。"
 msgstr "Changing the state or kind filter may reveal other suggestions."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "状態を再確認する"
+msgstr "Check the status again"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "現在の指定先"

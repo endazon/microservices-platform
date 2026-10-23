@@ -37,6 +37,7 @@ import { REASON_MAX_LENGTH, reasonStateOf, sameUser } from '../types/breakGlass'
 //   画面は「管理者以外は指名できない」ことを先に告げる。
 // ■ 🔴 **識別子（利用者名）は画面に出さない**（ADR-0098 決定 1 と同じ向き）。候補も選択も表示名で出す。
 // ■ 🔴 **自分自身は候補から除く**（後段も本人の指名を 400 にする）。
+// ■ 🔴 **送信中は閉じない**（取消は無効・Esc と背景クリックも無視する）。失敗はダイアログの中に出す。
 // ■ 初期フォーカスは**理由の欄**へ置く（破壊的な既定操作は無く、利用者が最初にするのは理由の入力である）。
 
 export interface BreakGlassDialogProps {
@@ -104,7 +105,9 @@ export function BreakGlassDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open) onClose();
+        // 🔴 **送信中は閉じない**（Esc・背景クリックを含む。AI レビュー 🟡）。閉じると失敗がダイアログごと消え、
+        // 利用者に伝わらない。失敗はこのダイアログの中に出す（閉じないので消えない）。
+        if (!open && !pending) onClose();
       }}
     >
       <DialogContent

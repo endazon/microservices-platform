@@ -372,6 +372,42 @@ describe('SC-19 緊急アクセス: 確認ダイアログ（理由必須・指�
     expect(screen.queryByText('緊急アクセスを発動しました。')).not.toBeInTheDocument();
   });
 
+  it('送信中は Esc でも閉じず、失敗はダイアログの中に残る（AI レビュー 🟡）', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    respond();
+    let rejectActivate: (e: unknown) => void = () => {};
+    const base = mocks.apiRequest.getMockImplementation()!;
+    mocks.apiRequest.mockImplementation((path: string, init?: { method?: string }) =>
+      path === `/private-notes/${NOTE_ID}/break-glass` && init?.method === 'POST'
+        ? new Promise((_resolve, reject) => {
+            rejectActivate = reject;
+          })
+        : base(path, init),
+    );
+    await renderPage();
+    const dialog = within(await openDialog(user));
+    await user.type(dialog.getByLabelText(/発動理由/), '端末紛失のため');
+    await pickNominee(user);
+    await user.click(dialog.getByRole('button', { name: /発動する$/ }));
+
+    await user.keyboard('{Escape}');
+    await settle(300);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'キャンセル' })).toBeDisabled();
+
+    await act(async () => {
+      rejectActivate(ApiError.fromStatus(409, ['raw']));
+    });
+    expect(await dialog.findByRole('alert')).toHaveTextContent(
+      'この資料には有効な緊急アクセスが既にあるか、削除済みのため発動できません。',
+    );
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // 送信が終われば Esc で閉じられる（閉じる経路を塞ぎっぱなしにしない）。
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('キャンセルでは何も送らない', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     respond();
@@ -457,6 +493,66 @@ describe('SC-19 緊急アクセス: 有効中の表示と本人の早期終了',
       (c) => c.path === `/private-notes/${NOTE_ID}/break-glass` && c.method === 'GET',
     ).length;
     expect(after).toBeGreaterThan(before);
+  });
+});
+
+describe('SC-19 緊急アクセス: 失効の確認は固着しない（AI レビュー 🟡）', () => {
+  const statusGets = () =>
+    calls().filter((c) => c.path === `/private-notes/${NOTE_ID}/break-glass` && c.method === 'GET')
+      .length;
+
+  it('端末の時計が進んでいてサーバが有効を返し続けても、間隔を置いて引き直し、失効が返れば表示が変わる', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    // 画面の時計では 5 秒後に 0 になるが、サーバはその後もしばらく有効を返す（端末の時計が進んでいる）。
+    const stillActive = { active: grant({ endsAt: '2026-10-24T03:00:05Z' }) };
+    respond({ status: stillActive });
+    await renderPage();
+    await openPanel(user);
+    await selectTarget(user);
+    await screen.findByText('緊急アクセス有効中');
+
+    await settle(7_000);
+    expect(
+      await screen.findByText('まもなく失効します（状態を確認しています）'),
+    ).toBeInTheDocument();
+    const afterExpiry = statusGets();
+
+    // 1 回引き直して終わりにしない: 5 秒ごとに引き直し続ける。
+    await settle(5_500);
+    await settle(5_500);
+    expect(statusGets()).toBeGreaterThanOrEqual(afterExpiry + 2);
+
+    // サーバが失効を返したら表示が変わり、引き直しは止まる。
+    respond({ status: { active: null } });
+    await settle(5_500);
+    expect(await screen.findByText('有効な緊急アクセスはありません')).toBeInTheDocument();
+    const settled = statusGets();
+    await settle(20_000);
+    expect(statusGets()).toBe(settled);
+  });
+
+  it('上限（2 分）まで引いても有効のままなら引き直しを止め、理由と再確認の導線を出す', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    respond({ status: { active: grant({ endsAt: '2026-10-24T03:00:05Z' }) } });
+    await renderPage();
+    await openPanel(user);
+    await selectTarget(user);
+    await screen.findByText('緊急アクセス有効中');
+
+    await settle(7_000);
+    for (let i = 0; i < 26; i += 1) await settle(5_000);
+    expect(
+      await screen.findByText(/失効を確認できません。端末の時計がずれている可能性があります。/),
+    ).toBeInTheDocument();
+    const stopped = statusGets();
+    await settle(30_000);
+    expect(statusGets()).toBe(stopped);
+
+    await user.click(screen.getByRole('button', { name: '状態を再確認する' }));
+    await settle(6_000);
+    expect(statusGets()).toBeGreaterThan(stopped);
+    // 終える導線は残る。
+    expect(screen.getByRole('button', { name: '今すぐ終了する' })).toBeEnabled();
   });
 });
 

@@ -27,18 +27,38 @@ import type {
 const AUDIT_LIMIT = 50;
 const auditParams = { limit: AUDIT_LIMIT };
 
+/** 残り 0 の後、サーバが失効を返すまで状態を引き直す間隔。 */
+export const EXPIRY_POLL_INTERVAL_MS = 5_000;
+/** その上限（端末の時計がサーバより進んでいると、サーバはしばらく有効を返し続ける。無限には引かない）。 */
+export const EXPIRY_POLL_LIMIT_MS = 120_000;
+
 /**
  * 資料 1 件の緊急アクセスの状態（所有者本人のみ）。
  *
  * **選んだ資料があるときだけ引く**（`enabled`）—— 一覧の行ごとに引かない（行数だけ往復が増える）。
+ *
+ * `expiryPoll`: 画面の残り時間が 0 になった発動とその時刻。**応答がまだその発動を有効として返している間だけ**、
+ * `EXPIRY_POLL_LIMIT_MS` を上限に `EXPIRY_POLL_INTERVAL_MS` ごとに引き直す（失効が返れば自然に止まる）（AI レビュー 🟡: 1 回だけ引き直す形は、端末の時計が進んでいると
+ * 「確認しています」のまま固着した）。失効を決めるのはサーバ側の記録であり、画面は返ってきた状態を描くだけである。
  */
-export function useBreakGlassStatus(id: string | null) {
+export function useBreakGlassStatus(
+  id: string | null,
+  expiryPoll: { grantId: string; since: number } | null = null,
+) {
   const target = id ?? '';
   return useBffBreakGlassStatus<BreakGlassStatusResponse, Error>(target, {
     query: {
       queryKey: getBffBreakGlassStatusQueryKey(target),
       select: okData,
       enabled: target !== '',
+      refetchInterval: (query) => {
+        // `query.state.data` は select 前の生の応答（`{ status, data }`）である。
+        const raw = query.state.data as { data?: BreakGlassStatusResponse } | undefined;
+        const stillActive = expiryPoll !== null && raw?.data?.active?.id === expiryPoll.grantId;
+        return stillActive && Date.now() - expiryPoll.since < EXPIRY_POLL_LIMIT_MS
+          ? EXPIRY_POLL_INTERVAL_MS
+          : false;
+      },
     },
   });
 }

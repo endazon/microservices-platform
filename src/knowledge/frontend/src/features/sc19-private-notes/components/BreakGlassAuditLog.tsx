@@ -78,6 +78,8 @@ function AuditTable({ notes, isAdmin }: { notes: PrivateNoteDto[]; isAdmin: bool
   const { user } = useAuth();
   const audit = useBreakGlassAudit(true);
   const entries = useMemo(() => audit.data ?? [], [audit.data]);
+  // `/bff/users/resolve` の上限（1 回 100 名）: 行は最大 50 件・1 行 3 名で、所有者と指名先は同じ発動の行どうしで重なるため
+  // 実際の名前はずっと少ない。理論上の超過分は `auditUsernamesOf` が 100 で切り、「（不明な利用者）」になる（識別子へは落とさない）。
   const resolved = useResolvedUsers(auditUsernamesOf(entries));
   // 「閲覧する」の出し分けにだけ使う時計（15 秒ごと。秒単位の精度は要らない —— 開けるかは後段が決める）。
   const now = useNow(true, 15_000);
