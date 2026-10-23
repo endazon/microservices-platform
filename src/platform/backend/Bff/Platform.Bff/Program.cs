@@ -89,6 +89,10 @@ builder.Services.AddOpenTelemetry()
     // Meter 名は BFF のサービス名と同じなので収集対象そのものは増えない。
     .WithMetrics(metrics => metrics.AddMeter(UsageEventMetrics.MeterName));
 
+// NFR-19, [[IADR-0603]] (#2104): 後段の不達・時間切れを畳んだ件数（`bff.downstream.failure.total`）。
+// Meter 名は上と同じ BFF のサービス名なので、収集の宣言（AddMeter）は上の 1 行で足りる（試験が一致を固定する）。
+builder.Services.AddBffDownstreamFailureMetrics();
+
 // FR-03, UC-01, SC-01: 横断検索の集約用。ABAC スコープ解決（AuthorizationService）→ 検索（RetrievalService）。
 //
 // 🔴 **認可サービスへの経路は 2 本ある。混ぜてはならない**（計画 ADR-0088 決定 2 / [[IADR-0413]] / #1333）。

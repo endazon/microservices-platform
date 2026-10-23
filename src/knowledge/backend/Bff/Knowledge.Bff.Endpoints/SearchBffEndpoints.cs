@@ -108,7 +108,13 @@ public static class SearchBffEndpoints
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
             {
-                return Results.Ok(new SearchResponse([], 0, 0));
+                // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+                BffDownstreamFailure.Report(http, "RetrievalService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
+                // FR-03, NFR-06, [[IADR-0603]] 決定 2 (#2104): 🔴 **200・0 件へ畳まない。** 畳むと利用者には
+                // 「該当する文書はありません」と見え、条件を変えて探し直させてしまう（後段が落ちているだけなのに）。
+                // 文書一覧（[[IADR-0537]]）・グラフと同じく 502 を返し、画面は失敗表示（再試行）へ出す。
+                // 0 件の正常応答（空クエリ・スコープ無し）は上で早期に返しており、ここと混ざらない。
+                return Results.StatusCode(StatusCodes.Status502BadGateway);
             }
         }).WithName("BffSearch").Produces<SearchResponse>();
 
@@ -187,6 +193,8 @@ public static class SearchBffEndpoints
             }
             catch (Exception ex) when (IsRetrievalUnreachable(ex, ct))
             {
+                // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+                BffDownstreamFailure.Report(http, "RetrievalService", ex, BffDownstreamFailure.Fallbacks.Empty);
                 // 不達（`UNAVAILABLE` / `DEADLINE_EXCEEDED`）と s2s トークンの取得失敗。
                 return Results.Ok(new AttributeValuesResponse([], dictionary));
             }
@@ -250,6 +258,8 @@ public static class SearchBffEndpoints
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
+            // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+            BffDownstreamFailure.Report(http, "DocumentService", ex, BffDownstreamFailure.Fallbacks.Omitted);
             // **後段へ到達できないときは辞書を添えずに続ける** —— 候補一覧（`Values`）は
             // 辞書に依存しないので、辞書が引けないことで検索の候補まで落とさない。
             return (null, null);

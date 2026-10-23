@@ -125,6 +125,8 @@ public static class AnalysisBffEndpoints
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
             {
+                // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+                BffDownstreamFailure.Report(http, "AiAnalysisService", ex, BffDownstreamFailure.Fallbacks.SseError);
                 // 上流不達は SSE の error イベントで中立に伝える（HTTP ステータスは変えられない＝既に 200）。
                 await http.Response.WriteAsync("event: error\ndata: {\"message\":\"分析に失敗しました。\"}\n\n", ct);
                 return;

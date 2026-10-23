@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace Knowledge.Bff.Endpoints.Documents;
 
@@ -36,6 +37,9 @@ internal static class DocumentReadFailureLog
             StatusOf(ex),
             ex.GetType().Name,
             fallback);
+        // NFR-19, [[IADR-0603]] (#2104): BFF の下流失敗の計器（1 本に集約）へも載せる。WARN は上の 1 行（カテゴリは従前どおり）。
+        // 索引の状態だけは取り込み側（IngestionService）から引く。
+        BffDownstreamFailure.Count(http, rpc == "GetIndexStatuses" ? "IngestionService" : "DocumentService", ex, fallback);
     }
 
     private static string StatusOf(Exception ex) => ex switch

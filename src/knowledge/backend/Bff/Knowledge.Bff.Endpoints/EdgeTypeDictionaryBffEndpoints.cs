@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using System.Net.Http;
 using System.Net.Http.Json;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace Knowledge.Bff.Endpoints;
 
@@ -46,14 +47,14 @@ public static class EdgeTypeDictionaryBffEndpoints
         read.MapGet("/", async (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
         {
             var client = Forwarding(httpFactory, http);
-            return await SendAsync(() => client.GetAsync("/graph/edge-types", ct), ct);
+            return await SendAsync(() => client.GetAsync("/graph/edge-types", ct), http, ct);
         }).WithName("BffEdgeTypeList").Produces<List<EdgeTypeDto>>();
 
         write.MapPost("/", async (CreateEdgeTypeRequest req, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>
         {
             var client = Forwarding(httpFactory, http);
-            return await SendAsync(() => client.PostAsJsonAsync("/graph/edge-types", req, ct), ct);
+            return await SendAsync(() => client.PostAsJsonAsync("/graph/edge-types", req, ct), http, ct);
         }).WithName("BffEdgeTypeCreate").Produces<EdgeTypeDto>(StatusCodes.Status201Created);
 
         // ADR-0033 決定 9: **改名しても辺は 1 本も書き換わらない。** 辺は型 ID を参照しており、
@@ -62,7 +63,7 @@ public static class EdgeTypeDictionaryBffEndpoints
             HttpContext http, CancellationToken ct) =>
         {
             var client = Forwarding(httpFactory, http);
-            return await SendAsync(() => client.PutAsJsonAsync($"/graph/edge-types/{id}", req, ct), ct);
+            return await SendAsync(() => client.PutAsJsonAsync($"/graph/edge-types/{id}", req, ct), http, ct);
         }).WithName("BffEdgeTypeRename").Produces<EdgeTypeDto>();
 
         // 🔴 **409 の本文を詰め替えない。** 後段は `{ error, message, usageCount }` を返しており、
@@ -75,7 +76,7 @@ public static class EdgeTypeDictionaryBffEndpoints
             HttpContext http, CancellationToken ct) =>
         {
             var client = Forwarding(httpFactory, http);
-            return await SendAsync(() => client.DeleteAsync($"/graph/edge-types/{id}", ct), ct);
+            return await SendAsync(() => client.DeleteAsync($"/graph/edge-types/{id}", ct), http, ct);
         }).WithName("BffEdgeTypeDelete");
 
         return app;
@@ -94,7 +95,7 @@ public static class EdgeTypeDictionaryBffEndpoints
 
     // 到達できないときだけ 502 へ倒し、**後段が返した応答はそのまま透過する**。
     private static async Task<IResult> SendAsync(
-        Func<Task<HttpResponseMessage>> send, CancellationToken ct)
+        Func<Task<HttpResponseMessage>> send, HttpContext http, CancellationToken ct)
     {
         try
         {
@@ -103,6 +104,8 @@ public static class EdgeTypeDictionaryBffEndpoints
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
+            // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+            BffDownstreamFailure.Report(http, "GraphService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }
     }
