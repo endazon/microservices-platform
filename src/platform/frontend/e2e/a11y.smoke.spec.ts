@@ -1039,6 +1039,7 @@ test('SC-17: 無効化の確認ダイアログを開いた状態に WCAG 2.2 A/A
 test('既知の違反の台帳に、どの走査にも当たらないキーが無い', () => {
   const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
   // ★ 陽性対照: 面名を本文から拾えていること（拾えなければ全キーが死に行と判定され、0 件の台帳では空振りする）。
+  // 閾値は現在の面の数（28）である。**面を足したら上げる**（下げると、面名を拾い損ねた回を見逃す）。
   expect(source.match(/expectAxeClean\('/g)?.length ?? 0).toBeGreaterThanOrEqual(28);
   expect(deadKnownViolationKeys(source)).toEqual([]);
 });
