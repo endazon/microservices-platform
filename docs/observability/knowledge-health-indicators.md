@@ -4,14 +4,14 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-29
-updated: 2026-09-27
+updated: 2026-10-23
 ---
 <!-- trace:
 ids: [FR-05, FR-09, FR-10, FR-16, FR-17, FR-18, FR-19, NFR, UC-05, SC-05, SC-09, SC-10, SC-12]
 adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0035, ADR-0083, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0062, ADR-0085, ADR-0120]
-iadrs: [IADR-0011, IADR-0119, IADR-0153, IADR-0265, IADR-0281, IADR-0299, IADR-0353, IADR-0373, IADR-0389, IADR-0405, IADR-0420, IADR-0425, IADR-0430]
-specs: [20260829_issue-443_knowledge-health-producer, 20260809_issue-637_ingest-no-tag-generation, 20260903_issue-1186_stale-documents-indicator, 20260909_issue-1233_unit-project-missing-indicator, 20260911_issue-1395_cluster-summary-generator, 20260927_issue-1663_singleton-cluster-summary-exclusion]
-issues: [#443, #637, #912, #1186, #1233, #1246, #1363, #1395, #1663, planning#70, planning#304, planning#494, planning#557]
+iadrs: [IADR-0593, IADR-0011, IADR-0119, IADR-0153, IADR-0265, IADR-0281, IADR-0299, IADR-0353, IADR-0373, IADR-0389, IADR-0405, IADR-0420, IADR-0425, IADR-0430]
+specs: [20261023_2097_first-series-zero-normal-alerts, 20260829_issue-443_knowledge-health-producer, 20260809_issue-637_ingest-no-tag-generation, 20260903_issue-1186_stale-documents-indicator, 20260909_issue-1233_unit-project-missing-indicator, 20260911_issue-1395_cluster-summary-generator, 20260927_issue-1663_singleton-cluster-summary-exclusion]
+issues: [#2097, #443, #637, #912, #1186, #1233, #1246, #1363, #1395, #1663, planning#70, planning#304, planning#494, planning#557]
 -->
 
 # 可観測性仕様書: ナレッジ健全性の指標
@@ -95,6 +95,8 @@ issues: [#443, #637, #912, #1186, #1233, #1246, #1363, #1395, #1663, planning#70
 **［2026-09-09 追記］3 枚目（ユニット主体の `project` 欠落）にはアラートも対で置いた** ——
 `increase(…[1h]) > 0` の warning を、Prometheus の 2 経路と Grafana の 2 経路の**計 4 か所に同内容**で。
 🔴 **`absent()` 系は使えない** —— 違反が無ければ系列そのものが立たないため、平常時に鳴り続ける。
+**［2026-10-23 追記 / #2097］最初の 1 件でも鳴るよう、式に初回の腕を足した** —— `(m unless m offset 1h) or increase(m[1h])`
+（1 時間前に無かった系列は計器の値そのものを採る）。`increase` だけでは、系列が初めて現れた最初の違反を数えられず鳴らなかった。
 🔴 **同型の未知タグの計器にアラートは無い。** これは本作業の射程外に残した非対称であり、
 **気付いていないのではなく、まだ置いていない**（別 issue の候補）。
 

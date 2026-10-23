@@ -1,0 +1,266 @@
+# NFR-21, ADR-0006, IADR-0593 (#2097): 「0 が正常」の警報（UnitDocumentsMissingProjectAttribute・IngestionBudgetExhausted・
+# DepartmentSyncNotCorrecting）の式を `promtool test rules` で固定する。DeadLetterReached は messaging-dead-letter.test.yml が持つ。
+#
+# 🔴 守る対象は**初回**である。どの計器も事象が起きたときだけ系列が立ち、OTel の累積値なので最初の標本が 1 になる。
+#   `increase(...[1h])` は窓の中に前の標本が無い系列を 0 とみなすため、`increase` だけの式では**最初の 1 件で鳴らない**。
+#   式は系列ごとに「1 時間前に無かった系列は計器の値、在った系列は前進量」を採る（`(m unless m offset 1h) or increase(m[1h])`）。
+#   各警報の場面 1（初めて 1 で現れる）と場面 3（再起動で instance が替わった新しい系列の 1 件目）がその固定である。
+#   初回の腕を外す変異で場面 1・3 が赤になることを確かめた（IADR-0593）。
+#
+# 実行: promtool test rules deploy/prometheus/tests/*.test.yml（CI の static-checks-units。版は deploy の Prometheus と同じ v2.52.0）
+rule_files:
+  - ../alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+
+  # UnitDocumentsMissingProjectAttribute 場面 1: 系列が**初めて 1 で現れる**（最初の違反）。10 分目に現れ、以後 1 のまま。→ for 5m の後に鳴り、1 時間を過ぎると収まる。
+  - interval: 1m
+    input_series:
+      - series: 'documents_unit_project_missing_total{job="microservices-platform.document-service", instance="a", documents_client_id="unit-ast", documents_operation="create"}'
+        values: '_x10 1x80'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: UnitDocumentsMissingProjectAttribute
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: UnitDocumentsMissingProjectAttribute
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.document-service
+              instance: a
+              documents_client_id: unit-ast
+              documents_operation: create
+            exp_annotations:
+              summary: 'ユニットの主体が project を付けずに文書を保存した（0 が正常）'
+              description: 'DocumentService の documents_unit_project_missing_total が直近 1 時間で前進した（初めて現れた場合を含む）。ユニット（サービスアカウント）の保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みが起きたことを意味する。documents_client_id / documents_operation で書き手と操作を特定する。保存は止まっていない（計器であって統制ではない。ADR-0085 決定 4）。'
+      - eval_time: 80m
+        alertname: UnitDocumentsMissingProjectAttribute
+        exp_alerts: []
+
+  # UnitDocumentsMissingProjectAttribute 場面 2: 既にある系列が前進する（2 件目以降）。→ 前進の前は鳴らず、前進から 5 分後に鳴る。
+  - interval: 1m
+    input_series:
+      - series: 'documents_unit_project_missing_total{job="microservices-platform.document-service", instance="a", documents_client_id="unit-ast", documents_operation="create"}'
+        values: '1x90 2x40'
+    alert_rule_test:
+      - eval_time: 85m
+        alertname: UnitDocumentsMissingProjectAttribute
+        exp_alerts: []
+      - eval_time: 97m
+        alertname: UnitDocumentsMissingProjectAttribute
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.document-service
+              instance: a
+              documents_client_id: unit-ast
+              documents_operation: create
+            exp_annotations:
+              summary: 'ユニットの主体が project を付けずに文書を保存した（0 が正常）'
+              description: 'DocumentService の documents_unit_project_missing_total が直近 1 時間で前進した（初めて現れた場合を含む）。ユニット（サービスアカウント）の保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みが起きたことを意味する。documents_client_id / documents_operation で書き手と操作を特定する。保存は止まっていない（計器であって統制ではない。ADR-0085 決定 4）。'
+
+  # UnitDocumentsMissingProjectAttribute 場面 3: 古いプロセス（instance a）の系列が 1 時間以上前から在り、再起動の後の新しいプロセス（instance b）が 1 件目を数える。
+  #   → 集計の後で「1 時間前に無かった組」を見る形では落ちる場面。系列ごとに見るので鳴る。
+  - interval: 1m
+    input_series:
+      - series: 'documents_unit_project_missing_total{job="microservices-platform.document-service", instance="a", documents_client_id="unit-ast", documents_operation="create"}'
+        values: '1x120'
+      - series: 'documents_unit_project_missing_total{job="microservices-platform.document-service", instance="b", documents_client_id="unit-ast", documents_operation="create"}'
+        values: '_x125 1x40'
+    alert_rule_test:
+      - eval_time: 115m
+        alertname: UnitDocumentsMissingProjectAttribute
+        exp_alerts: []
+      - eval_time: 140m
+        alertname: UnitDocumentsMissingProjectAttribute
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.document-service
+              instance: b
+              documents_client_id: unit-ast
+              documents_operation: create
+            exp_annotations:
+              summary: 'ユニットの主体が project を付けずに文書を保存した（0 が正常）'
+              description: 'DocumentService の documents_unit_project_missing_total が直近 1 時間で前進した（初めて現れた場合を含む）。ユニット（サービスアカウント）の保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みが起きたことを意味する。documents_client_id / documents_operation で書き手と操作を特定する。保存は止まっていない（計器であって統制ではない。ADR-0085 決定 4）。'
+
+  # UnitDocumentsMissingProjectAttribute 場面 4: 平常（系列が無い）。何も鳴らない。
+  - interval: 1m
+    input_series:
+      - series: 'up{job="otel-collector"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: UnitDocumentsMissingProjectAttribute
+        exp_alerts: []
+
+  # IngestionBudgetExhausted 場面 1: 系列が**初めて 1 で現れる**（最初の使い切り）。→ for 5m の後に鳴り、1 時間を過ぎると収まる。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_consumer_timeout_total{job="microservices-platform.ingestion-service", instance="a", messaging_step="RawDocumentFetched", messaging_timeout_target="embedding-budget"}'
+        values: '_x10 1x80'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: IngestionBudgetExhausted
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: IngestionBudgetExhausted
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              messaging_timeout_target: embedding-budget
+            exp_annotations:
+              summary: '取り込みの総枠を使い切り、文書の一部だけが索引された（0 が正常）'
+              description: '取り込みサービスの messaging_consumer_timeout_total（messaging_timeout_target が embedding-budget または lexical-budget）が直近 1 時間で前進した（初めて現れた場合を含む）。総枠（Ingestion:EmbeddingBudgetSeconds。既定 300 秒）を使い切った文書は、残りのチャンクを書かずに再試行せずデッドレターへ送られ、一部の点だけが検索に現れる。embedding-budget が埋め込み側か語彙索引側かを示す。取り込みのログの Warning（exhausted its ... budget）で文書を特定し、本文を分けるか、総枠と受け口の期限（Ingestion:HandlerTimeoutSeconds）を延ばしてから DocumentUpdated を再発行する（運用仕様書 §埋め込みプロバイダ）。'
+      - eval_time: 80m
+        alertname: IngestionBudgetExhausted
+        exp_alerts: []
+
+  # IngestionBudgetExhausted 場面 2: 既にある系列が前進する（2 件目以降）。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_consumer_timeout_total{job="microservices-platform.ingestion-service", instance="a", messaging_step="RawDocumentFetched", messaging_timeout_target="lexical-budget"}'
+        values: '1x90 2x40'
+    alert_rule_test:
+      - eval_time: 85m
+        alertname: IngestionBudgetExhausted
+        exp_alerts: []
+      - eval_time: 97m
+        alertname: IngestionBudgetExhausted
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              messaging_timeout_target: lexical-budget
+            exp_annotations:
+              summary: '取り込みの総枠を使い切り、文書の一部だけが索引された（0 が正常）'
+              description: '取り込みサービスの messaging_consumer_timeout_total（messaging_timeout_target が embedding-budget または lexical-budget）が直近 1 時間で前進した（初めて現れた場合を含む）。総枠（Ingestion:EmbeddingBudgetSeconds。既定 300 秒）を使い切った文書は、残りのチャンクを書かずに再試行せずデッドレターへ送られ、一部の点だけが検索に現れる。lexical-budget が埋め込み側か語彙索引側かを示す。取り込みのログの Warning（exhausted its ... budget）で文書を特定し、本文を分けるか、総枠と受け口の期限（Ingestion:HandlerTimeoutSeconds）を延ばしてから DocumentUpdated を再発行する（運用仕様書 §埋め込みプロバイダ）。'
+
+  # IngestionBudgetExhausted 場面 3: 再起動で instance が替わった新しい系列の 1 件目（古い系列は 1 時間以上前から在る）。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_consumer_timeout_total{job="microservices-platform.ingestion-service", instance="a", messaging_step="RawDocumentFetched", messaging_timeout_target="embedding-budget"}'
+        values: '1x120'
+      - series: 'messaging_consumer_timeout_total{job="microservices-platform.ingestion-service", instance="b", messaging_step="RawDocumentFetched", messaging_timeout_target="embedding-budget"}'
+        values: '_x125 1x40'
+    alert_rule_test:
+      - eval_time: 115m
+        alertname: IngestionBudgetExhausted
+        exp_alerts: []
+      - eval_time: 140m
+        alertname: IngestionBudgetExhausted
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              messaging_timeout_target: embedding-budget
+            exp_annotations:
+              summary: '取り込みの総枠を使い切り、文書の一部だけが索引された（0 が正常）'
+              description: '取り込みサービスの messaging_consumer_timeout_total（messaging_timeout_target が embedding-budget または lexical-budget）が直近 1 時間で前進した（初めて現れた場合を含む）。総枠（Ingestion:EmbeddingBudgetSeconds。既定 300 秒）を使い切った文書は、残りのチャンクを書かずに再試行せずデッドレターへ送られ、一部の点だけが検索に現れる。embedding-budget が埋め込み側か語彙索引側かを示す。取り込みのログの Warning（exhausted its ... budget）で文書を特定し、本文を分けるか、総枠と受け口の期限（Ingestion:HandlerTimeoutSeconds）を延ばしてから DocumentUpdated を再発行する（運用仕様書 §埋め込みプロバイダ）。'
+
+  # IngestionBudgetExhausted 場面 4: 総枠ではない呼び出し先（content。再試行で回復し得る）の時間切れが初めて現れても鳴らない。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_consumer_timeout_total{job="microservices-platform.ingestion-service", instance="a", messaging_step="RawDocumentFetched", messaging_timeout_target="content"}'
+        values: '_x10 1x80'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: IngestionBudgetExhausted
+        exp_alerts: []
+
+  # DepartmentSyncNotCorrecting 場面 1: 利用者の書き込みの失敗（failed）が**初めて 1 で現れる**。成功の系列は前から在る。→ 鳴り、1 時間を過ぎると収まる。
+  - interval: 1m
+    input_series:
+      - series: 'department_sync_users_total{job="microservices-platform.authorization-service", instance="a", department_sync_outcome="corrected"}'
+        values: '5+1x90'
+      - series: 'department_sync_users_total{job="microservices-platform.authorization-service", instance="a", department_sync_outcome="failed"}'
+        values: '_x10 1x80'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: DepartmentSyncNotCorrecting
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: DepartmentSyncNotCorrecting
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: '部門の同期が利用者の属性を直せていない（0 が正常）'
+              description: '認可サービスの部門の同期（DepartmentAttributeSync:Mode=Fix）で、直近 1 時間に利用者の書き込みが失敗した（department_sync_users_total{department_sync_outcome="failed"}）、周期ごと中断した（aborted）、直そうとした全員が「読み取り後に変わった」で見送られた（all_skipped_changed）、または全利用者の列挙を読み切れず部門グループから外れた利用者の属性を消せなかった（department_sync_enumeration_incomplete_total。消去はその周期だけ止まる）。エラーログの IdP 内部 ID で対象を特定し、all_skipped_changed なら運用仕様書の試験利用者 1 人での確認を行う。同期が Off のときは系列が無く鳴らない。'
+      - eval_time: 80m
+        alertname: DepartmentSyncNotCorrecting
+        exp_alerts: []
+
+  # DepartmentSyncNotCorrecting 場面 2: 周期の中断（aborted）が初めて現れる。完了した周期の系列は前から在る。
+  - interval: 1m
+    input_series:
+      - series: 'department_sync_cycles_total{job="microservices-platform.authorization-service", instance="a", department_sync_outcome="completed"}'
+        values: '1+1x90'
+      - series: 'department_sync_cycles_total{job="microservices-platform.authorization-service", instance="a", department_sync_outcome="aborted"}'
+        values: '_x10 1x80'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: DepartmentSyncNotCorrecting
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: DepartmentSyncNotCorrecting
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: '部門の同期が利用者の属性を直せていない（0 が正常）'
+              description: '認可サービスの部門の同期（DepartmentAttributeSync:Mode=Fix）で、直近 1 時間に利用者の書き込みが失敗した（department_sync_users_total{department_sync_outcome="failed"}）、周期ごと中断した（aborted）、直そうとした全員が「読み取り後に変わった」で見送られた（all_skipped_changed）、または全利用者の列挙を読み切れず部門グループから外れた利用者の属性を消せなかった（department_sync_enumeration_incomplete_total。消去はその周期だけ止まる）。エラーログの IdP 内部 ID で対象を特定し、all_skipped_changed なら運用仕様書の試験利用者 1 人での確認を行う。同期が Off のときは系列が無く鳴らない。'
+
+  # DepartmentSyncNotCorrecting 場面 3: 全利用者の列挙の未完了が、再起動で instance が替わった新しい系列で 1 件目を数える（古い系列は 1 時間以上前から在る）。
+  - interval: 1m
+    input_series:
+      - series: 'department_sync_enumeration_incomplete_total{job="microservices-platform.authorization-service", instance="a", department_sync_reason="page_failed"}'
+        values: '1x120'
+      - series: 'department_sync_enumeration_incomplete_total{job="microservices-platform.authorization-service", instance="b", department_sync_reason="page_failed"}'
+        values: '_x125 1x40'
+    alert_rule_test:
+      - eval_time: 115m
+        alertname: DepartmentSyncNotCorrecting
+        exp_alerts: []
+      - eval_time: 140m
+        alertname: DepartmentSyncNotCorrecting
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: '部門の同期が利用者の属性を直せていない（0 が正常）'
+              description: '認可サービスの部門の同期（DepartmentAttributeSync:Mode=Fix）で、直近 1 時間に利用者の書き込みが失敗した（department_sync_users_total{department_sync_outcome="failed"}）、周期ごと中断した（aborted）、直そうとした全員が「読み取り後に変わった」で見送られた（all_skipped_changed）、または全利用者の列挙を読み切れず部門グループから外れた利用者の属性を消せなかった（department_sync_enumeration_incomplete_total。消去はその周期だけ止まる）。エラーログの IdP 内部 ID で対象を特定し、all_skipped_changed なら運用仕様書の試験利用者 1 人での確認を行う。同期が Off のときは系列が無く鳴らない。'
+
+  # DepartmentSyncNotCorrecting 場面 4: 既にある失敗の系列が前進する（2 件目以降）。
+  - interval: 1m
+    input_series:
+      - series: 'department_sync_users_total{job="microservices-platform.authorization-service", instance="a", department_sync_outcome="failed"}'
+        values: '1x90 2x40'
+    alert_rule_test:
+      - eval_time: 85m
+        alertname: DepartmentSyncNotCorrecting
+        exp_alerts: []
+      - eval_time: 97m
+        alertname: DepartmentSyncNotCorrecting
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: '部門の同期が利用者の属性を直せていない（0 が正常）'
+              description: '認可サービスの部門の同期（DepartmentAttributeSync:Mode=Fix）で、直近 1 時間に利用者の書き込みが失敗した（department_sync_users_total{department_sync_outcome="failed"}）、周期ごと中断した（aborted）、直そうとした全員が「読み取り後に変わった」で見送られた（all_skipped_changed）、または全利用者の列挙を読み切れず部門グループから外れた利用者の属性を消せなかった（department_sync_enumeration_incomplete_total。消去はその周期だけ止まる）。エラーログの IdP 内部 ID で対象を特定し、all_skipped_changed なら運用仕様書の試験利用者 1 人での確認を行う。同期が Off のときは系列が無く鳴らない。'
+
+  # DepartmentSyncNotCorrecting 場面 5: 同期が Off（系列が無い）／成功だけが現れる。何も鳴らない。
+  - interval: 1m
+    input_series:
+      - series: 'department_sync_users_total{job="microservices-platform.authorization-service", instance="a", department_sync_outcome="corrected"}'
+        values: '_x10 1+1x80'
+      - series: 'department_sync_cycles_total{job="microservices-platform.authorization-service", instance="a", department_sync_outcome="completed"}'
+        values: '_x10 1+1x80'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: DepartmentSyncNotCorrecting
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: DepartmentSyncNotCorrecting
+        exp_alerts: []

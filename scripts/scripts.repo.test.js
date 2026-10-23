@@ -13424,12 +13424,13 @@ exit $RC
         assert.ok(!expr.includes('absent('), `${rel} の DeadLetterReached が absent() になっている（平常時は系列が無い）`);
         // 🔴 キュー名で絞らない（ADR-0053 決定 1）。queue ラベル・_error / _dlq の照合を持ち込んだら赤にする。
         assert.ok(!/queue|_error|_dlq/.test(expr), `${rel} の DeadLetterReached がキュー名に依存している（ADR-0053 決定 1）`);
-        assert.ok(expr.includes(`sum ${by} (increase(`), `${rel} の DeadLetterReached がサービス・メッセージ型・例外の型ごとに鳴らない`);
-        assert.ok(/\)\s*>\s*0\s+or\s+\(/.test(expr), `${rel} の DeadLetterReached が「前進が 0 を超えたら」で鳴らない`);
-        // 🔴 初回（系列が 1 で初めて現れる）は increase に現れない。「1 時間前に無かった組が今ある」の腕を外したら赤にする
-        //   （場面は deploy/prometheus/tests/messaging-dead-letter.test.yml が promtool で固定する）。
-        assert.ok(expr.includes(`or (sum ${by} (${promName}) unless sum ${by} (${promName} offset 1h))`),
-          `${rel} の DeadLetterReached に初回の腕（unless ... offset 1h）が無い（最初の 1 通で鳴らない）`);
+        // 🔴 初回（系列が 1 で初めて現れる）は increase に現れない。系列ごとに「1 時間前に無かった系列は計器の値」を採る腕を
+        //   外したら赤にする（場面は deploy/prometheus/tests/messaging-dead-letter.test.yml が promtool で固定する）。
+        //   ［#2097・IADR-0593］腕は集計の**前**（系列ごと）に置く。集計の後で組を見る旧い形は、再起動で instance が替わった
+        //   新しい系列の 1 通目を落とす。
+        assert.strictEqual(expr,
+          `sum ${by} ((${promName} unless ${promName} offset 1h) or increase(${promName}[1h])) > 0`,
+          `${rel} の DeadLetterReached が「サービス・メッセージ型・例外の型ごとに、初回の腕つきの前進が 0 を超えたら」の形でない`);
         assert.ok(/description:[^\n]*error_type/.test(rule), `${rel} の DeadLetterReached の description が例外の型を案内していない`);
         assert.ok(/for:\s*5m/.test(rule) && /severity:\s*warning/.test(rule), `${rel} の DeadLetterReached の for / severity が流儀（5m・warning）と違う`);
         if (rel.includes('grafana')) {
@@ -13474,6 +13475,79 @@ exit $RC
       }
       // fail-closed: 走査が 0 件なら何も見ていない。
       assert.ok(services.length >= 7, `Wolverine を載せるサービスが ${services.length} 件しか見つからない（走査が壊れている）: ${services.join(', ')}`);
+    });
+  }
+
+  // --- #2097: 「0 が正常」の警報（`increase(...) > 0`）は、計器の系列が初めて現れたときにも鳴る（IADR-0593） -------------
+  //
+  // OTel の累積カウンタは最初の Add で系列が立ち、最初の標本が 1 になる。`increase()` は窓に前の標本が無い系列を 0 とみなすので、
+  // `increase` だけの式は**最初の 1 件で鳴らない**（#2043 の AI レビューで見つかり、#2097 で既存の 3 本にも同じ穴があると実測）。
+  // 同型の 2 回目なので機械で止める: 4 か所のルールのうち `increase(` を含み閾値が外側の `> 0` の式は、どの `increase(SEL[W])` も
+  // `(SEL unless SEL offset W) or increase(SEL[W])` の形（系列ごとの初回の腕）で持つこと。新しく足した警報もここに掛かる。
+  {
+    const fsF = require('fs');
+    const pathF = require('path');
+    const ROOT_F = pathF.resolve(__dirname, '..');
+    const RULE_FILES_F = [
+      'deploy/prometheus/alerts.yml',
+      'deploy/local/observability/prometheus.yaml',
+      'deploy/grafana/provisioning/alerting/slo-alerts.yaml',
+      'deploy/local/observability/grafana.yaml',
+    ];
+    const TEST_FILES_F = ['deploy/prometheus/tests/first-series-alerts.test.yml', 'deploy/prometheus/tests/messaging-dead-letter.test.yml'];
+    const EXPECTED_F = ['DeadLetterReached', 'DepartmentSyncNotCorrecting', 'IngestionBudgetExhausted', 'UnitDocumentsMissingProjectAttribute'];
+    const readF = (rel) => fsF.readFileSync(pathF.join(ROOT_F, rel), 'utf8');
+    // ルール名ごとの expr（1 行の引用符つき）を読む。コメント行は落とす。
+    const zeroNormalRules = (text) => {
+      const lines = text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+      const out = new Map();
+      const re = /(?:- alert|title):\s*(\w+)\s*$/gm;
+      const defs = [...lines.matchAll(re)];
+      defs.forEach((d, i) => {
+        const body = lines.slice(d.index, i + 1 < defs.length ? defs[i + 1].index : undefined);
+        const m = /expr:\s*'([^']+)'/.exec(body);
+        if (!m) return;
+        const expr = m[1];
+        if (/(?:increase|rate)\(/.test(expr) && /\)\s*>\s*0$/.test(expr)) out.set(d[1], expr);
+      });
+      return out;
+    };
+    // `increase(SEL[W])` を括弧の釣り合いで取り出す（SEL はラベルの絞り込みを含む）。
+    const increases = (expr) => [...expr.matchAll(/increase\(([a-z_:][a-z0-9_:]*(?:\{[^}]*\})?)\[(\w+)\]\)/g)].map((m) => ({ sel: m[1], win: m[2] }));
+
+    ok('#2097: 「0 が正常」の警報は、どの increase にも系列ごとの初回の腕（unless ... offset）を持つ（4 か所・実データ）', () => {
+      for (const rel of RULE_FILES_F) {
+        const rules = zeroNormalRules(readF(rel));
+        // fail-closed: 既知の 4 本が拾えなければ走査が壊れている。増えた分は下の検査に掛かる。
+        for (const name of EXPECTED_F) assert.ok(rules.has(name), `${rel} の ${name} を「0 が正常」の式として拾えない（走査が壊れている）`);
+        for (const [name, expr] of rules) {
+          assert.ok(!/rate\(/.test(expr), `${rel} の ${name} は rate(...) > 0 である。初回の扱いを決めてから本検査を広げること（#2097）`);
+          const incs = increases(expr);
+          assert.ok(incs.length > 0, `${rel} の ${name} の increase を読めない（走査が壊れている）`);
+          for (const { sel, win } of incs) {
+            assert.ok(expr.includes(`(${sel} unless ${sel} offset ${win}) or increase(${sel}[${win}])`),
+              `${rel} の ${name} の increase(${sel}[${win}]) に初回の腕が無い（系列が初めて現れた最初の 1 件で鳴らない。IADR-0593）`);
+          }
+          // 内側に比較を置かない（`increase(...) > 0 or ...`）。閾値は外側の 1 つだけ（Grafana 版の検査器が読める形）。
+          assert.ok(!/>\s*0\s+or\b/.test(expr), `${rel} の ${name} が内側に比較を持つ（閾値は外側の > 0 だけにする）`);
+        }
+      }
+    });
+
+    ok('#2097: 「0 が正常」の警報の計器ごとに、系列が初めて 1 で現れる場面を promtool の単体試験が持つ（実データ）', () => {
+      const rules = zeroNormalRules(readF('deploy/prometheus/alerts.yml'));
+      const tests = TEST_FILES_F.map((rel) => ({ rel, text: readF(rel) }));
+      for (const { rel, text } of tests) assert.match(text, /^\s+- \.\.\/alerts\.yml$/m, `${rel} が compose の alerts.yml を読んでいない`);
+      for (const [name, expr] of rules) {
+        const file = tests.find((x) => x.text.includes(`alertname: ${name}\n`));
+        assert.ok(file, `${name} の promtool の単体試験が無い`);
+        for (const { sel } of increases(expr)) {
+          const metric = sel.replace(/\{.*$/, '');
+          const first = new RegExp(`series: '${metric}\\{[^']*\\}'\\n\\s+values: '_x\\d+ 1x\\d+'`);
+          assert.match(file.text, first, `${file.rel} に ${name} の ${metric} が初めて 1 で現れる場面が無い`);
+        }
+      }
+      assert.match(readF('.github/workflows/ci.yml'), /promtool test rules deploy\/prometheus\/tests\/\*\.test\.yml/, 'CI が promtool の単体試験を回していない');
     });
   }
 
