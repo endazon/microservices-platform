@@ -21,7 +21,7 @@
 | ファイル | 役割 |
 | --- | --- |
 | `traefik-entrypoint.yaml` | k3s Traefik に追加 entrypoint `admin:50000` を定義（`HelmChartConfig`） |
-| `platform-frontend-ingress.yaml` | 80/443（web/websecure）: `/bff`→bff-service、catch-all→frontend-service |
+| `platform-frontend-ingress.yaml` | 80/443（web/websecure）: `/bff`→bff-service、`/mcp`（Exact）・`/mcp/`（Prefix）→mcp-service（外部 AI エージェントの入口。#2045）、catch-all→frontend-service |
 | `admin-ingress-infra.yaml` | 50000（admin）: grafana/headlamp/vault/qdrant をホスト名ベースで公開（platform-infra）。**`ADMIN_EDGE=1` のときだけ当たる**（下記「管理ツールへの入り方」） |
 | `admin-ingress-wiki.yaml` | 50000（admin）: Wiki.js `wiki.localhost`→3000（microservices-platform ns・IADR-0095。OIDC は [wiki-oidc/README](../wiki-oidc/README.md)）。**`ADMIN_EDGE=1` のときだけ** |
 | `argocd-ingress.yaml` | 50000（admin）: argocd-server（argocd ns 存在時、かつ **`ADMIN_EDGE=1` のときだけ**スクリプトが apply） |
@@ -77,7 +77,7 @@ kubectl apply -k deploy/local/edge
 
 ## アクセス
 
-- **platform フロント**: `https://localhost/`（SPA）・`https://localhost/bff/...`（BFF）。
+- **platform フロント**: `https://localhost/`（SPA）・`https://localhost/bff/...`（BFF）。外部 AI エージェントの MCP は `https://localhost/mcp`（audience が `mcp-server` のトークンが要る。SC-12 で登録したクライアント）。
   **cert-manager が発行する `edge-tls`** で終端する（IADR-0206・#779）。ルート CA を信頼ストアへ入れるまで
   ブラウザ警告は出るが、**CA を渡せば検証は通る**（下記「エッジ TLS」）。
   **`http://localhost/`（80）は https へ恒久リダイレクトする**（IADR-0220・#841。平文は残さない）。

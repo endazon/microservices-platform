@@ -97,6 +97,24 @@ spec:
             port:
               number: {{ .Values.edge.privateNotesSync.port }}
     {{- end }}
+    {{- if .Values.edge.mcp.enabled }}
+    # FR-16, UC-08, ADR-0024 / ADR-0021, IADR-0593 (#2045): 外部 AI エージェントの入口（MCP の Streamable HTTP）。
+    #
+    # - **完全一致の /mcp と /mcp/ 配下に分ける。** Istio の prefix は文字列の前方一致なので、`prefix: /mcp` は
+    #   同じポートに同居する管理 REST（/mcp-clients*）まで外へ出す。/mcp-clients はここに当たらず catch-all（SPA）へ落ちる。
+    # - **rewrite は張らない。** 公開パスと契約パス（MapMcp("/mcp")）を同一にする（/bff・同期と同じ規律）。前置は直書きで knob にしない。
+    # - **エッジで JWT 検証を要求しない（認証は MCP サーバーが行う）。** /mcp は audience=mcp-server のトークンだけを通す
+    #   （McpAudience スキーム。トークン無し・platform-api の audience は 401）。RequestAuthentication を置かない理由は IADR-0593 の選択肢 3。
+    # - catch-all より**前**に置くこと（Istio のルートは先勝ち）。
+    - match:
+        - uri: { exact: /mcp }
+        - uri: { prefix: /mcp/ }
+      route:
+        - destination:
+            host: {{ .Values.edge.mcp.service | quote }}
+            port:
+              number: {{ .Values.edge.mcp.port }}
+    {{- end }}
     {{- if .Values.frontend.enabled }}
     # Issue #313, IADR-0078: SPA(frontend) の catch-all。/bff（と任意の /realms・/resources）を先に評価した後、
     # 残る全パス（/・/settings・/assets/*・/config.js 等）を frontend の Service（edge.frontend.service）へ流す。
@@ -161,5 +179,45 @@ spec:
         - operation:
             notPaths:
               - /private-notes/sync/*
+{{- end }}
+{{- if .Values.edge.mcp.enabled }}
+---
+# FR-16, NFR-09, ADR-0024, IADR-0593 決定 2 (#2045): **エッジの主体には MCP サーバーの /mcp の面だけを許す。**
+#
+# MCP サーバーの 1 つのポートには、/mcp（外部 AI エージェント）と、管理 REST（/mcp-clients*。BFF が利用者のトークンを中継する）・
+# OpenAPI・自己申告（/internal/*）・ヘルスが同居する。NetworkPolicy（allow-edge-ingress-to-mcp）は gateway の Namespace から
+# そのポート**全体**を開けるので、共有のゲートウェイへ別の VirtualService が付けば管理 REST へ届き得る。ここで L7 の門を置き、
+# 経路の制限を VirtualService 1 枚に頼らない（多層防御。同期プロトコルの document-service-edge-sync-only と同じ型）。
+#
+# - ALLOW ではなく DENY: ワークロードを選ぶ ALLOW は当たらない要求をすべて拒否に変え、名前空間の中の呼び出し元（BFF の管理 API の中継）と
+#   kubelet のプローブを巻き込む。DENY は当たった要求（gateway の主体 × /mcp の面の外）だけを落とす。
+# - from: gateway の Namespace（edge.gateway.namespace）。NetworkPolicy の穴と同じ単一情報源。
+# - to: notPaths ["/mcp", "/mcp/*"]（route の exact と prefix と同じ字面。knob にしない）。/mcp-clients・/mcpx は当たる＝拒否される。
+#   メソッドは絞らない（Streamable HTTP は POST・GET・DELETE を使う。許すメソッドの正は MCP サーバーの契約にある）。
+# - mTLS: STRICT（既定。IADR-0590）では平文は PeerAuthentication が先に落とす。PERMISSIVE では gateway の Namespace に居る
+#   サイドカー無しの Pod からの平文が本門を素通りする（同期の門と同じ既知の限界。閉じるのは STRICT）。
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ .Values.edge.mcp.service }}-edge-mcp-only
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  # 行き先は route の destination・NetworkPolicy の podSelector と同じ単一情報源（ドリフト無し）。
+  selector:
+    matchLabels:
+      app: {{ .Values.edge.mcp.service }}
+  action: DENY
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - {{ .Values.edge.gateway.namespace | quote }}
+      to:
+        - operation:
+            notPaths:
+              - /mcp
+              - /mcp/*
 {{- end }}
 {{- end }}

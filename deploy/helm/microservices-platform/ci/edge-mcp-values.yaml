@@ -1,0 +1,10 @@
+# FR-16, NFR-09, ADR-0024, IADR-0593 (#2045):
+# CI 専用の values。**配備には使わない**（helm / chart-testing の `ci/` 慣習）。
+#
+# 外部 AI エージェントの入口（/mcp）のエッジ公開は既定オフ（values.yaml の edge.mcp.enabled: false）なので、既定の描画だけを
+# 検査すると有効時の route・NetworkPolicy・AuthorizationPolicy は 1 度も描画・スキーマ突合されない。
+# scripts/check-deploy-manifests.js は chart の `ci/*.yaml` を走査で見つけ、この values でも helm lint / helm template /
+# kubeconform を回す。scripts/helm-edge-mcp-entry.test.js も「有効」をこのファイルで描く（有効の定義を 2 か所に書かない）。
+edge:
+  mcp:
+    enabled: true

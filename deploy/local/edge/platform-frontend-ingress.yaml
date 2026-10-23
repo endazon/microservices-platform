@@ -37,6 +37,23 @@ spec:
                 name: bff-service
                 port:
                   number: 8080
+          # FR-16, UC-08, ADR-0024, IADR-0593 (#2045): 外部 AI エージェントの入口（MCP の Streamable HTTP）→ mcp-service（rewrite 無し）。
+          # Istio のエッジ（deploy/local/edge-istio/virtualservice-app.yaml）・本番チャートの edge.mcp と同じ契約で、**Exact /mcp ＋ Prefix /mcp/**
+          # に分ける（/mcp の文字列前置にすると、実装によっては同じポートの管理 REST /mcp-clients まで飲む）。認証は MCP サーバーが行う。
+          - path: /mcp
+            pathType: Exact
+            backend:
+              service:
+                name: mcp-service
+                port:
+                  number: 8080
+          - path: /mcp/
+            pathType: Prefix
+            backend:
+              service:
+                name: mcp-service
+                port:
+                  number: 8080
           # catch-all → SPA(frontend)。
           - path: /
             pathType: Prefix

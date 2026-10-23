@@ -19,7 +19,7 @@ mesh 内の 3 Service（`frontend-service` / `bff-service` / `wiki-js`）へ**�
 | --- | --- |
 | `traefik-service-off.yaml` | Traefik の LoadBalancer Service を落として **80/443/50000 の hostPort を明け渡す**（`HelmChartConfig`）。**kustomization には入れない**（Gateway より先に当てる必要があるため） |
 | `gateway.yaml` | `msp-edge`（80 は 443 へリダイレクト／443 HTTPS）と `msp-admin-edge`（50000 HTTPS）。どちらも `credentialName: edge-tls` |
-| `virtualservice-app.yaml` | 443: catch-all（`/bff`→bff-service、`/private-notes/sync/`→document-service、残り→frontend-service）と `keycloak.localhost` |
+| `virtualservice-app.yaml` | 443: catch-all（`/bff`→bff-service、`/private-notes/sync/`→document-service、`/mcp`・`/mcp/` 配下→mcp-service（外部 AI エージェントの入口。#2045）、残り→frontend-service）と `keycloak.localhost` |
 | `virtualservice-admin.yaml` | 50000: grafana / headlamp / vault / qdrant / wiki / argocd の 6 host。**kustomization に含めない** —— `ADMIN_EDGE=1` のときだけ `istio-edge-up.sh` が当て、それ以外では消す（IADR-0586。入り方は [edge/README](../edge/README.md)「管理ツールへの入り方」） |
 | `virtualservice-admin-deny.yaml` | 50000 の既定の拒否（`*.localhost` に `directResponse: 403`）。opt-in の 6 host は host の完全一致が優先されるので、こちらは残りの host だけを受ける |
 | `coredns-edge-hosts.yaml` | pod 側の `*.localhost` 解決先を `istio-ingressgateway.istio-system` へ差し替える |

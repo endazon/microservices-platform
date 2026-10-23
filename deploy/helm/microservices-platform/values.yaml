@@ -196,6 +196,21 @@ edge:
     enabled: false
     service: document-service
     port: 8080
+  # FR-16, UC-08, ADR-0024 / ADR-0021, IADR-0593 (#2045): 外部 AI エージェントの入口（エッジ host の /mcp）。
+  # 有効化すると /mcp（完全一致）と /mcp/ 配下が下記 Service へ **rewrite 無しで**流れる（公開パス ＝ MapMcp("/mcp") の契約パス）。
+  # 前置は templates/edge.yaml に直書きで knob にしない。**`prefix: /mcp` にはしない** —— Istio の prefix は文字列の前方一致で、
+  # 同じポートの管理 REST（/mcp-clients*）まで外へ出る。
+  #
+  # 🔴 **既定は false（opt-in）。** クライアント単位のレート制限（計画 11_mcp-server-integration §5）が未配備であり、
+  #    外部の新しい攻撃面を開けるかは運用者の明示の判断とする（IADR-0593 決定 4）。認証は MCP サーバーが行う
+  #    （/mcp は audience=mcp-server のトークンだけを通す。トークン無し・platform の audience は 401）。エッジは認証を緩めない。
+  # 同じ条件で templates/networkpolicy.yaml が gateway → mcp-service の穴を当該ポートに限って開け、templates/edge.yaml が
+  # AuthorizationPolicy（DENY）を置き、gateway の Namespace の主体からは /mcp・/mcp/* 以外（管理 REST・OpenAPI・自己申告・ヘルス）を落とす。
+  # 名前空間の中（BFF の管理 API の中継）・プローブは当たらない＝変わらない。
+  mcp:
+    enabled: false
+    service: mcp-service
+    port: 8080
 
 # IADR-0017 フォローアップ: ClusterIP + NetworkPolicy（デフォルト拒否）を実体化。
 # mesh(mTLS) 配下でも多層防御（defense-in-depth）として維持する（IADR-0026）。
