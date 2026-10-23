@@ -713,6 +713,7 @@ jobs:
 
       # NFR-21, ADR-0053 決定 1, IADR-0592, #2043: 警報ルールを Prometheus 自身の解析器で読み、単体試験を回す。
       # 🔴 試験が固定するのは「系列が初めて 1 で現れる」場面（初回のデッドレター）である —— `increase` だけの式では鳴らない。
+      #   ［#2097・IADR-0593］「0 が正常」の 4 本（first-series-alerts.test.yml を含む）とも、再起動で instance が替わった新しい系列の初回も固定する。
       #   経路 B（k8s の inline）は check-prometheus-alerts-parity.js が compose と式の一致を見るので、compose 側だけを試験する。
       - name: Check Prometheus alert rules (promtool)
         if: ${{ !cancelled() }}
