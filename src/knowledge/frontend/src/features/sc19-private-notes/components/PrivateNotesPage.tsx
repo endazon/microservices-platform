@@ -18,6 +18,7 @@ import {
   TableHeaderCell,
   TableRow,
   Tabs,
+  TabsContent,
   TabsList,
   TabsTrigger,
   Tag,
@@ -380,19 +381,25 @@ export function PrivateNotesPage() {
         }
       >
         {() => (
-          <>
+          // NFR-30 (#2015): **一覧はタブの中身（`TabsContent`）として描く。** 以前はタブの器が
+          // `TabsList` だけを包み、各タブの `aria-controls` が描かれていないパネルの id を指していた
+          // （axe `aria-valid-attr-value`。WCAG 4.1.2）。器を一覧の末尾まで広げ、間隔は外側の
+          // `section` と同じ `gap-4` を器と中身の両方に持たせる（見た目は変えない）。
+          <Tabs
+            value={search.tab}
+            onValueChange={(value) => switchTab(value as TabOption)}
+            className="flex flex-col gap-4"
+          >
             <div className="flex flex-wrap items-end justify-between gap-2">
-              <Tabs value={search.tab} onValueChange={(value) => switchTab(value as TabOption)}>
-                <TabsList>
-                  <TabsTrigger value="active">
-                    <Trans>利用中（{liveCount}）</Trans>
-                  </TabsTrigger>
-                  {/* 05_screens §SC-19 主要素 14: 削除済みの件数バッジ。 */}
-                  <TabsTrigger value="trash">
-                    <Trans>削除済み（{trashedCount}）</Trans>
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <TabsList>
+                <TabsTrigger value="active">
+                  <Trans>利用中（{liveCount}）</Trans>
+                </TabsTrigger>
+                {/* 05_screens §SC-19 主要素 14: 削除済みの件数バッジ。 */}
+                <TabsTrigger value="trash">
+                  <Trans>削除済み（{trashedCount}）</Trans>
+                </TabsTrigger>
+              </TabsList>
               {/*
                 絞り込みは 4 軸（05_screens §SC-19 主要素 6）。**いずれも URL が単一情報源**である。
                 🔴 **同期状態は利用中タブにだけ出す** —— 削除済みは契約上つねに「対象外」であり、
@@ -465,245 +472,249 @@ export function PrivateNotesPage() {
               </div>
             </div>
 
-            {search.tab === 'trash' && trashed.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="secondary"
-                  disabled={selected.length === 0 || pending}
-                  onClick={() => runRestore(selected)}
-                >
-                  <Trans>選択した資料を復元する</Trans>
-                </Button>
-                <Button
-                  variant="danger"
-                  disabled={selected.length === 0 || pending}
-                  onClick={() => setConfirming({ kind: 'purge', ids: selected })}
-                >
-                  <Trans>選択した資料を完全に削除する</Trans>
-                </Button>
-              </div>
-            )}
+            <TabsContent value={search.tab} className="mt-0 flex flex-col gap-4">
+              {search.tab === 'trash' && trashed.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    disabled={selected.length === 0 || pending}
+                    onClick={() => runRestore(selected)}
+                  >
+                    <Trans>選択した資料を復元する</Trans>
+                  </Button>
+                  <Button
+                    variant="danger"
+                    disabled={selected.length === 0 || pending}
+                    onClick={() => setConfirming({ kind: 'purge', ids: selected })}
+                  >
+                    <Trans>選択した資料を完全に削除する</Trans>
+                  </Button>
+                </div>
+              )}
 
-            {/*
+              {/*
             ここへ来るのは「資料はあるが、いまのタブ・絞り込みでは 0 件」の場合だけである
             （資料が 1 件も無い場合は QueryState の `empty` が受ける）。**次の行動を必ず示す。**
           */}
-            {rows.length === 0 ? (
-              <EmptyState
-                title={
-                  search.tab === 'trash'
-                    ? t`削除済みの個人資料はありません。`
-                    : t`条件に一致する個人資料がありません。`
-                }
-                description={
-                  search.tab === 'trash'
-                    ? t`削除した資料は 90 日間ここに残ります。`
-                    : t`絞り込みの語を短くするか、空にしてください。`
-                }
-              />
-            ) : (
-              <Table>
-                <TableCaption>
-                  {search.tab === 'trash' ? t`削除済みの個人資料` : t`個人資料の一覧`}
-                </TableCaption>
-                <TableHead>
-                  <TableRow>
-                    {search.tab === 'trash' && (
+              {rows.length === 0 ? (
+                <EmptyState
+                  title={
+                    search.tab === 'trash'
+                      ? t`削除済みの個人資料はありません。`
+                      : t`条件に一致する個人資料がありません。`
+                  }
+                  description={
+                    search.tab === 'trash'
+                      ? t`削除した資料は 90 日間ここに残ります。`
+                      : t`絞り込みの語を短くするか、空にしてください。`
+                  }
+                />
+              ) : (
+                <Table>
+                  <TableCaption>
+                    {search.tab === 'trash' ? t`削除済みの個人資料` : t`個人資料の一覧`}
+                  </TableCaption>
+                  <TableHead>
+                    <TableRow>
+                      {search.tab === 'trash' && (
+                        <TableHeaderCell scope="col">
+                          <Trans>選択</Trans>
+                        </TableHeaderCell>
+                      )}
                       <TableHeaderCell scope="col">
-                        <Trans>選択</Trans>
+                        <Trans>種別</Trans>
                       </TableHeaderCell>
-                    )}
-                    <TableHeaderCell scope="col">
-                      <Trans>種別</Trans>
-                    </TableHeaderCell>
-                    <TableHeaderCell scope="col">
-                      <Trans>タイトル</Trans>
-                    </TableHeaderCell>
-                    {/* 公開範囲・タグは両タブで、同期状態は利用中タブだけで出す（冒頭の注記）。 */}
-                    <TableHeaderCell scope="col">
-                      <Trans>公開範囲</Trans>
-                    </TableHeaderCell>
-                    {search.tab === 'active' && (
                       <TableHeaderCell scope="col">
-                        <Trans>同期状態</Trans>
+                        <Trans>タイトル</Trans>
                       </TableHeaderCell>
-                    )}
-                    <TableHeaderCell scope="col">
-                      <Trans>タグ</Trans>
-                    </TableHeaderCell>
-                    <TableHeaderCell scope="col">
-                      {search.tab === 'trash' ? <Trans>削除日時</Trans> : <Trans>更新日時</Trans>}
-                    </TableHeaderCell>
-                    {search.tab === 'trash' && (
+                      {/* 公開範囲・タグは両タブで、同期状態は利用中タブだけで出す（冒頭の注記）。 */}
                       <TableHeaderCell scope="col">
-                        <Trans>完全削除まで</Trans>
+                        <Trans>公開範囲</Trans>
                       </TableHeaderCell>
-                    )}
-                    {search.tab === 'active' && (
+                      {search.tab === 'active' && (
+                        <TableHeaderCell scope="col">
+                          <Trans>同期状態</Trans>
+                        </TableHeaderCell>
+                      )}
                       <TableHeaderCell scope="col">
-                        <Trans>露出</Trans>
+                        <Trans>タグ</Trans>
                       </TableHeaderCell>
-                    )}
-                    <TableHeaderCell scope="col">
-                      <Trans>操作</Trans>
-                    </TableHeaderCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {rows.map((note) => {
-                    const days = daysUntilPurge(note.purgeAt, now);
-                    const imminent = isPurgeImminent(days);
-                    // ［2026-08-30 / #1078］翻訳文へは単純な変数で渡す（lingui/no-expression-in-message）。
-                    const title = note.title;
-                    return (
-                      <TableRow key={note.id}>
-                        {search.tab === 'trash' && (
+                      <TableHeaderCell scope="col">
+                        {search.tab === 'trash' ? <Trans>削除日時</Trans> : <Trans>更新日時</Trans>}
+                      </TableHeaderCell>
+                      {search.tab === 'trash' && (
+                        <TableHeaderCell scope="col">
+                          <Trans>完全削除まで</Trans>
+                        </TableHeaderCell>
+                      )}
+                      {search.tab === 'active' && (
+                        <TableHeaderCell scope="col">
+                          <Trans>露出</Trans>
+                        </TableHeaderCell>
+                      )}
+                      <TableHeaderCell scope="col">
+                        <Trans>操作</Trans>
+                      </TableHeaderCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {rows.map((note) => {
+                      const days = daysUntilPurge(note.purgeAt, now);
+                      const imminent = isPurgeImminent(days);
+                      // ［2026-08-30 / #1078］翻訳文へは単純な変数で渡す（lingui/no-expression-in-message）。
+                      const title = note.title;
+                      return (
+                        <TableRow key={note.id}>
+                          {search.tab === 'trash' && (
+                            <TableCell>
+                              <input
+                                type="checkbox"
+                                aria-label={t`${title} を選択`}
+                                checked={selected.includes(note.id)}
+                                onChange={(e) =>
+                                  setSelected((prev) =>
+                                    e.target.checked
+                                      ? [...prev, note.id]
+                                      : prev.filter((id) => id !== note.id),
+                                  )
+                                }
+                              />
+                            </TableCell>
+                          )}
                           <TableCell>
-                            <input
-                              type="checkbox"
-                              aria-label={t`${title} を選択`}
-                              checked={selected.includes(note.id)}
-                              onChange={(e) =>
-                                setSelected((prev) =>
-                                  e.target.checked
-                                    ? [...prev, note.id]
-                                    : prev.filter((id) => id !== note.id),
-                                )
-                              }
-                            />
-                          </TableCell>
-                        )}
-                        <TableCell>
-                          {/*
+                            {/*
                           05_screens §SC-19「個人資料であることの表示」:
                           検索結果・グラフのノードと**同じアイコン 👤 と同じラベル**を使う。
                           **色だけで意味を持たせない**（記号と文言が意味を担う）。
                         */}
-                          <span className="whitespace-nowrap text-xs">
-                            <Trans>👤 個人資料（自分のみ）</Trans>
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-medium">{note.title}</span>
-                          <span className="block text-xs text-fg-muted">{note.vaultPath}</span>
-                        </TableCell>
-                        <TableCell>
-                          {/* 🔴 指定先（共有相手）はここに出さない（冒頭の注記）。 */}
-                          <VisibilityBadge note={note} />
-                        </TableCell>
-                        {search.tab === 'active' && (
-                          <TableCell>
-                            <SyncStateBadge note={note} />
+                            <span className="whitespace-nowrap text-xs">
+                              <Trans>👤 個人資料（自分のみ）</Trans>
+                            </span>
                           </TableCell>
-                        )}
-                        <TableCell>
-                          <TagCell tags={note.tags} />
-                        </TableCell>
-                        <TableCell>
-                          {formatDateTime(search.tab === 'trash' ? note.deletedAt : note.updatedAt)}
-                        </TableCell>
-                        {search.tab === 'trash' && (
                           <TableCell>
-                            {/* 残り 7 日以内は警告色（05_screens §SC-19 主要素 13）。色だけに頼らず文言も変える。 */}
-                            <StatusBadge tone={imminent ? 'warning' : 'neutral'}>
-                              {imminent
-                                ? t`まもなく完全削除（残り ${days} 日）`
-                                : t`残り ${days} 日`}
-                            </StatusBadge>
+                            <span className="font-medium">{note.title}</span>
+                            <span className="block text-xs text-fg-muted">{note.vaultPath}</span>
                           </TableCell>
-                        )}
-                        {search.tab === 'active' && (
                           <TableCell>
-                            <div className="flex flex-col gap-1 text-xs">
-                              <label className="flex items-center gap-1">
-                                <input
-                                  type="checkbox"
-                                  checked={note.includeInSearch}
-                                  disabled={pending}
-                                  onChange={(e) =>
-                                    toggleExposure(note, { includeInSearch: e.target.checked })
-                                  }
-                                />
-                                <Trans>横断検索に含める</Trans>
-                              </label>
-                              <label className="flex items-center gap-1">
-                                <input
-                                  type="checkbox"
-                                  checked={note.includeInGraph}
-                                  disabled={pending}
-                                  onChange={(e) =>
-                                    toggleExposure(note, { includeInGraph: e.target.checked })
-                                  }
-                                />
-                                <Trans>ナレッジグラフに表示する</Trans>
-                              </label>
-                              <label className="flex items-center gap-1">
-                                <input
-                                  type="checkbox"
-                                  checked={note.includeInAi}
-                                  disabled={pending}
-                                  onChange={(e) =>
-                                    toggleExposure(note, { includeInAi: e.target.checked })
-                                  }
-                                />
-                                <Trans>AI の入力に含める</Trans>
-                              </label>
-                            </div>
+                            {/* 🔴 指定先（共有相手）はここに出さない（冒頭の注記）。 */}
+                            <VisibilityBadge note={note} />
                           </TableCell>
-                        )}
-                        <TableCell>
-                          {search.tab === 'trash' ? (
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                disabled={pending}
-                                onClick={() => runRestore([note.id])}
-                              >
-                                <Trans>復元する</Trans>
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                disabled={pending}
-                                onClick={() => setConfirming({ kind: 'purge', ids: [note.id] })}
-                              >
-                                <Trans>完全に削除する</Trans>
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex flex-wrap gap-2">
-                              {/*
+                          {search.tab === 'active' && (
+                            <TableCell>
+                              <SyncStateBadge note={note} />
+                            </TableCell>
+                          )}
+                          <TableCell>
+                            <TagCell tags={note.tags} />
+                          </TableCell>
+                          <TableCell>
+                            {formatDateTime(
+                              search.tab === 'trash' ? note.deletedAt : note.updatedAt,
+                            )}
+                          </TableCell>
+                          {search.tab === 'trash' && (
+                            <TableCell>
+                              {/* 残り 7 日以内は警告色（05_screens §SC-19 主要素 13）。色だけに頼らず文言も変える。 */}
+                              <StatusBadge tone={imminent ? 'warning' : 'neutral'}>
+                                {imminent
+                                  ? t`まもなく完全削除（残り ${days} 日）`
+                                  : t`残り ${days} 日`}
+                              </StatusBadge>
+                            </TableCell>
+                          )}
+                          {search.tab === 'active' && (
+                            <TableCell>
+                              <div className="flex flex-col gap-1 text-xs">
+                                <label className="flex items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={note.includeInSearch}
+                                    disabled={pending}
+                                    onChange={(e) =>
+                                      toggleExposure(note, { includeInSearch: e.target.checked })
+                                    }
+                                  />
+                                  <Trans>横断検索に含める</Trans>
+                                </label>
+                                <label className="flex items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={note.includeInGraph}
+                                    disabled={pending}
+                                    onChange={(e) =>
+                                      toggleExposure(note, { includeInGraph: e.target.checked })
+                                    }
+                                  />
+                                  <Trans>ナレッジグラフに表示する</Trans>
+                                </label>
+                                <label className="flex items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={note.includeInAi}
+                                    disabled={pending}
+                                    onChange={(e) =>
+                                      toggleExposure(note, { includeInAi: e.target.checked })
+                                    }
+                                  />
+                                  <Trans>AI の入力に含める</Trans>
+                                </label>
+                              </div>
+                            </TableCell>
+                          )}
+                          <TableCell>
+                            {search.tab === 'trash' ? (
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={pending}
+                                  onClick={() => runRestore([note.id])}
+                                >
+                                  <Trans>復元する</Trans>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  disabled={pending}
+                                  onClick={() => setConfirming({ kind: 'purge', ids: [note.id] })}
+                                >
+                                  <Trans>完全に削除する</Trans>
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap gap-2">
+                                {/*
                                 05_screens §SC-19 主要素 3: 公開範囲の変更ダイアログへの導線。
                                 **利用中タブだけに置く** —— 削除済みの資料の共有先を変える意味は無い
                                 （復元してから変える）。
                               */}
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                disabled={pending}
-                                onClick={() => setSharing({ kind: 'share', note })}
-                              >
-                                <Trans>共有先を変更する</Trans>
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                disabled={pending}
-                                onClick={() => setConfirming({ kind: 'softDelete', note })}
-                              >
-                                <Trans>削除する</Trans>
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={pending}
+                                  onClick={() => setSharing({ kind: 'share', note })}
+                                >
+                                  <Trans>共有先を変更する</Trans>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={pending}
+                                  onClick={() => setConfirming({ kind: 'softDelete', note })}
+                                >
+                                  <Trans>削除する</Trans>
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </TabsContent>
+          </Tabs>
         )}
       </QueryState>
 

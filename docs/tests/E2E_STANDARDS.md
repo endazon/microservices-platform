@@ -3,15 +3,15 @@ title: E2E テスト基準（Playwright。実行層・命名・ロケータ・�
 type: test-spec
 status: in-progress
 created: 2026-10-21
-updated: 2026-10-21
+updated: 2026-10-24
 author: Claude
 ---
 <!-- trace:
-ids: [NFR]
+ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261021_2014_e2e-standards-and-layers]
-issues: [#2013, #2014]
+iadrs: [IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+specs: [20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens]
+issues: [#2013, #2014, #2015]
 -->
 
 # E2E テスト基準
@@ -151,23 +151,23 @@ issues: [#2013, #2014]
 
 ## 7. アクセシビリティ
 
-- **axe（`@axe-core/playwright`）は L1 で全画面**に走らせる。ダーク・ライトの両テーマで走査する（現状どおり）。
-- **タグ**:
-
-  | | タグ |
-  | --- | --- |
-  | 現状（`e2e/a11y.smoke.spec.ts`） | `wcag2a` / `wcag2aa` / `best-practice` |
-  | 目標 | 上に `wcag21a` / `wcag21aa` を足す |
-
-  🔴 現状の test 名は「WCAG 2.1 A/AA」と称しているが、**WCAG 2.1 で加わった達成基準のタグ（`wcag21a` / `wcag21aa`）は
-  評価していない**。走査しているのは WCAG 2.0 の A/AA ＋ `best-practice` である。タグを足す変更では、
-  増えた違反を先に実測してから指紋スナップショットへ載せる。
-- **走査面**: 現状は 6 面（共通シェル・検索と AI 質問・文書管理・存在秘匿の 404・個人資料の削除確認ダイアログ・
-  共有先ダイアログ）。目標は全画面 ＋ 操作で現れる UI（確認ダイアログ・listbox・モーダル・トースト）を
-  **開いた状態で**走査する。
-- 既知の違反は `rule id + target` の指紋を `toMatchSnapshot` で固定し、増加を止める（削減は別に扱う）。
+- **axe（`@axe-core/playwright`）は L1 で全画面**に走らせる。ダーク・ライトの両テーマで走査する。
+  土台は `e2e/support/axe.ts`（fixture `makeAxeBuilder` / `expectAxeClean`）であり、spec はここから `test` を引く。
+- **適合レベル**: 計画の非機能要件が **WCAG 2.2 レベル AA** を定めている。機械検査が検出する違反は 0 件に保つ。
+  手動の検査は機械検査の代わりにしない。逆に、**機械検査の 0 件は適合の証明ではない**。
+- **タグ**: `wcag2a` / `wcag2aa` / `wcag21a` / `wcag21aa` / `wcag22aa` ＋ `best-practice`（ランドマークの規則は
+  `best-practice` にしか属さない）。走査のたびに「このタグで走ったこと」を確かめる（タグが黙って欠けると、
+  その版で加わった達成基準は永久に緑である）。
+- **走査面**（`e2e/a11y.smoke.spec.ts`）: SPA が描く全画面（ログイン画面の SPA 側の入口を含む）＋
+  共通シェル＋存在秘匿の 404 ＋ **操作で現れる UI を開いた状態**（確認ダイアログ・共有先の listbox・
+  緊急アクセスのダイアログ・編集パネル・タブ・競合の解決欄）。各面は**最も緩い許可ロール**で開く。
+  - 🔴 **Keycloak のテーマが描く画面（ログインの Keycloak 側・二要素認証・パスワード再設定・アカウント設定）は L1 の対象外**である。SPA の
+    ビルド成果物に含まれず、基盤を 1 つも起動しない層では描けない。Keycloak を起動する層での走査は別に扱う。
+- **既知の違反**は `e2e/support/axeKnownViolations.ts` の台帳に、`<規則 ID> <対象セレクタ>` の指紋と
+  **1 件ずつの理由**で載せる。走査結果とは**一致**を求める（増えても、直して減っても、台帳を直すまで落ちる）。
+  `toMatchSnapshot` は採らない（`--update-snapshots` で理由なしに受け入れられるため）。
+  画面側を直せる違反は直すのが先であり、台帳は直すと変更が肥大するものに限る。現在の件数は 0 である。
 - キーボード経路（skip link・Tab 順・フォーカストラップ・Esc）は代表画面 1 本（現状）＋ モーダルを持つ画面ごとに 1 本。
-- WCAG の適合レベルは計画に明記が無い。本書では **AA を作業上の目標**とし、確定は計画側の裁定を待つ。
 - live 層では axe を走らせない（描画は L1 と同じ SPA であり、重複になる）。
 
 ## 8. 視覚回帰
@@ -220,8 +220,8 @@ issues: [#2013, #2014]
 | 成果物のアップロード | なし | `!cancelled()`・14 日 |
 | `timeout-minutes` | なし | job に置く（L1 20 分、live 60 分） |
 | `fullyParallel` | 未指定（ファイル単位） | true（シャードの均等化） |
-| axe のタグ | `wcag2a` / `wcag2aa` / `best-practice` | ＋ `wcag21a` / `wcag21aa` |
-| axe の走査面 | 6 面 | 全画面 ＋ 操作後の UI |
+| axe のタグ | `wcag2a` / `wcag2aa` / `wcag21a` / `wcag21aa` / `wcag22aa` / `best-practice`（達成済み） | 同左 |
+| axe の走査面 | SPA の全画面 ＋ 操作後の UI（達成済み。Keycloak のテーマの画面は対象外） | Keycloak のテーマの画面も走査する |
 | live のブラウザ E2E | なし（curl の `scripts/verify-oidc-edge-flow.sh` だけ） | L2〜L3 を新設。curl の検証は残す（API 層の門として役割が違う） |
 | 試験アカウント | seed の `developer` 等を人と共用 | `e2e-*` を役割ごとに分離 |
 | 視覚回帰 | なし | 既定で採らない（候補 1 件） |
