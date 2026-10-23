@@ -279,13 +279,16 @@ public interface IIdentityAdminClient
 }
 
 // SC-17 主要素 1: IdP が持つ利用者の像。**本サービスはこれを永続化しない**（表を持たない）。
+// ［2026-10-23 / [[IADR-0607]]］`ServiceAccountClientId` は、IdP がその利用者をクライアントのサービスアカウントとして
+// 返したときだけ値を持つ（Keycloak の利用者表現の `serviceAccountClientId`。利用者名から推定しない）。API の応答には写さない。
 public sealed record IdentityUser(
     string Id,
     string Username,
     string DisplayName,
     bool Enabled,
     IReadOnlyList<string> Roles,
-    IReadOnlyDictionary<string, string> Attributes);
+    IReadOnlyDictionary<string, string> Attributes,
+    string? ServiceAccountClientId = null);
 
 // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 2, [[IADR-0473]] (#1609): 全利用者の列挙の結果。
 // 🔴 **Complete が false なら、列挙に居ない人は「居ない」ではなく「不明」である。**

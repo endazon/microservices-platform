@@ -208,7 +208,9 @@ public sealed class DepartmentAttributeSync(
     // 🔴 **列挙が失敗した・打ち切られたら 1 人も足さない。** 部分的な列挙から「0 個」を推定しない（原則 A）。
     // 1 つ属する人の是正はこの結果に依らない（所属者は木から集めてある）ので、周期は止めない。
     // 取り消し（ホストの停止）だけは周期ごと中断する（利用者の失敗や列挙の失敗として数えない）。
-    // サービスアカウント（利用者名の接頭辞）は足さない —— 機械の主体の属性は所属から何も言えない。
+    // サービスアカウントは足さない —— 機械の主体の属性は所属から何も言えない。
+    // ［2026-10-23 / [[IADR-0607]]］判定は IdP が返す属性（`ServiceAccountClientId`）だけで行う。利用者名の接頭辞では除かない
+    // （接頭辞の形の名前を持つ人は同期の対象に残す）。IdP 実装も同じ規則で除くので、ここは除き損ねたときの二重の歯止めである。
     private async Task<bool> AddUsersWithoutDepartmentGroupAsync(
         Dictionary<string, HashSet<string>> codes,
         Dictionary<string, string?> current,
@@ -246,7 +248,7 @@ public sealed class DepartmentAttributeSync(
         foreach (var user in enumeration.Users)
         {
             if (string.IsNullOrEmpty(user.Id) || codes.ContainsKey(user.Id)) continue;
-            if (DepartmentAttributeReconciliation.IsServiceAccount(user.Username)) continue;
+            if (DepartmentAttributeReconciliation.IsServiceAccount(user)) continue;
             if (!user.Attributes.TryGetValue(DepartmentAttributeReconciliation.AttributeKey, out var department)) continue;
 
             codes[user.Id] = new HashSet<string>(StringComparer.Ordinal);

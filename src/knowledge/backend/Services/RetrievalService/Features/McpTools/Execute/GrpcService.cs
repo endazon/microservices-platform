@@ -124,6 +124,7 @@ public sealed class McpToolExecutionGrpcService(
         McpToolDeclarationSource.Declare().Tools.Any(t => string.Equals(t.Name, tool, StringComparison.Ordinal));
 
     // ADR-0034 決定 9: Keycloak が client credentials の主体へ付ける利用者名の形。
+    // ［2026-10-23 / [[IADR-0607]] 残余 2］接頭辞の判定のまま残す。真のとき個人資料を落とす（厳しい側）にだけ働くため。
     internal static bool IsServiceAccount(string userId) =>
         userId.StartsWith(MachinePrincipal.ServiceAccountUsernamePrefix, StringComparison.OrdinalIgnoreCase);
 

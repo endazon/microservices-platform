@@ -1,4 +1,5 @@
 using AuthorizationService.Domain;
+using AuthorizationService.Domain.Ports;
 using AwesomeAssertions;
 
 namespace AuthorizationService.Tests.Domain;
@@ -94,14 +95,20 @@ public class DepartmentAttributeReconciliationTests
         findings.Single(f => f.UserId == "u-plain").Verdict.Should().Be(DepartmentAttributeVerdict.InSync);
     }
 
+    // ［2026-10-23 / [[IADR-0607]]・GHSA-94cm-55g9-2967］🔴 サービスアカウントかどうかは IdP が返す属性
+    // （`ServiceAccountClientId`）だけで決める。利用者名の形では決めない（接頭辞の形の人は同期の対象に残す）。
     [Theory]
-    [InlineData("service-account-abac-seeder", true)]
-    [InlineData("Service-Account-ast", true)]   // 大小文字無視
-    [InlineData("tanaka.taro", false)]
-    [InlineData("my-service-account-x", false)] // 前方一致だけ
-    [InlineData(null, false)]
-    public void IsServiceAccount_is_a_case_insensitive_prefix_match(string? username, bool expected)
-        => DepartmentAttributeReconciliation.IsServiceAccount(username).Should().Be(expected);
+    [InlineData("service-account-abac-seeder", "abac-seeder", true)]
+    [InlineData("odd-name", "odd", true)]                      // 名前の形によらず、IdP が SA と返せば SA
+    [InlineData("service-account-abac-seeder", null, false)]   // 名前の形だけでは SA と読まない
+    [InlineData("Service-Account-ast", null, false)]
+    [InlineData("service-account-x", "", false)]               // 空の値は持たないのと同じ
+    [InlineData("tanaka.taro", null, false)]
+    public void IsServiceAccount_reads_only_the_identity_provider_attribute(
+        string username, string? serviceAccountClientId, bool expected)
+        => DepartmentAttributeReconciliation.IsServiceAccount(
+                new IdentityUser("u", username, username, true, [], new Dictionary<string, string>(), serviceAccountClientId))
+            .Should().Be(expected);
 
     // T-D-04: 冪等 —— 計画どおりに直した属性で再計画すると、食い違いは 0 件である。
     [Fact]
