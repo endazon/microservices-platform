@@ -194,6 +194,8 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
         var stub = new StubDocumentReadInvoker(_factory);
         var client = GrpcClient(stub);
         client.DefaultRequestHeaders.Add(TestAuthHandler.UsernameHeader, "service-account-some-client");
+        // NFR-09, IADR-0606: Keycloak のサービスアカウントのトークンは `azp` に自身のクライアントを載せる（無人の判定は両者の一致）。
+        client.DefaultRequestHeaders.Add(TestAuthHandler.ClientIdHeader, "some-client");
 
         await client.GetAsync(DetailPath, TestContext.Current.CancellationToken);
 

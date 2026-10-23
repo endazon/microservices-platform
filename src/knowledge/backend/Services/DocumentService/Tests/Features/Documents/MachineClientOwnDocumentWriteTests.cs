@@ -290,6 +290,26 @@ public class MachineClientOwnDocumentWriteTests(TestWebApplicationFactory factor
         (await LoadAsync(doc.Id))!.Version.Should().Be(doc.Version);
     }
 
+    // NFR-09, [[IADR-0606]]: 利用者名がサービスアカウントの形でも、発行元のクライアント（`azp`）が
+    // そのサービスアカウントのクライアントでなければ人として扱う（機械の経路へ入れない）。
+    // 対照は同じ利用者名・一致する `azp` の `機械クライアントは自分がownerの組織文書の…` である。
+    [Theory]
+    [InlineData("PATCH")]
+    [InlineData("DELETE")]
+    public async Task 発行元のクライアントと一致しないサービスアカウント名の主体は人として403(string method)
+    {
+        var doc = await SeedAsync(Org(owner: KbWriter));
+        var client = ClientAs(KbWriter, "platform-operator");
+        client.DefaultRequestHeaders.Add(TestAuthHandler.ClientIdHeader, "bff");
+
+        var res = method == "PATCH"
+            ? await PatchAsync(client, doc.Id, Org(KbWriter))
+            : await client.DeleteAsync($"/documents/{doc.Id}", Ct);
+
+        res.StatusCode.Should().Be(HttpStatusCode.Forbidden, "無人の判定は利用者名と azp の一致で行う");
+        (await LoadAsync(doc.Id))!.Version.Should().Be(doc.Version);
+    }
+
     [Theory]
     [InlineData("PUT")]
     [InlineData("PUBLISH")]

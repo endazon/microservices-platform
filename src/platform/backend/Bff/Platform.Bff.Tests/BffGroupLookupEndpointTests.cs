@@ -48,6 +48,8 @@ public class BffGroupLookupEndpointTests : IClassFixture<BffTestFactory>
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.UsernameHeader, "service-account-platform");
+        // NFR-09, IADR-0606: Keycloak のサービスアカウントのトークンは `azp` に自身のクライアントを載せる（無人の判定は両者の一致）。
+        client.DefaultRequestHeaders.Add(TestAuthHandler.ClientIdHeader, "platform");
         client.DefaultRequestHeaders.Add(
             TestAuthHandler.RolesHeader,
             string.Join(',', roles.Length == 0 ? ["platform-service"] : roles));

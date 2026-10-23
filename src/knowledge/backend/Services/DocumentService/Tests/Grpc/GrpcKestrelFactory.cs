@@ -162,6 +162,13 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
         };
         if (withUsername)
             claims["preferred_username"] = subject;
+        // NFR-09, [[IADR-0606]]: 実 Keycloak の access token は必ず `azp` を載せる。サービスアカウント
+        // （`service-account-<clientId>`）で `azp` を与えなかったときは、その形どおり `azp = clientId` を補う
+        // （`MachinePrincipal.IsMachine` の腕 A は利用者名と `azp` の一致で判定する）。
+        azp ??= subject.StartsWith("service-account-", StringComparison.OrdinalIgnoreCase)
+            && subject.Length > "service-account-".Length
+                ? subject["service-account-".Length..]
+                : null;
         if (azp is not null)
             claims["azp"] = azp;
 

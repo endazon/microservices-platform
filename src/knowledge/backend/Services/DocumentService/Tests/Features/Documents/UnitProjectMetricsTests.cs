@@ -103,9 +103,11 @@ public sealed class UnitProjectMetricsTests
         probe.TagsOf(UnitProjectMetrics.OperationTag).Should().Equal(UnitProjectMetrics.OperationUpdate);
     }
 
-    // クライアント識別子を取り出せない無人主体は `unknown` へ倒す（属性の基数を閉じたまま計上する）。
+    // NFR-09, [[IADR-0606]]: クライアント識別のクレームを持たない主体は無人と読まない（計上しない）。
+    // 旧版は「接頭辞だけの利用者名」を無人と読み `unknown` で計上していたが、無人の判定がクライアント識別の
+    // クレームを前提にしたので、無人主体のクライアント識別子は常に取れる（`unknown` の枝は防御として残る）。
     [Fact]
-    public void クライアント識別子が無い無人主体はunknownで計上する()
+    public void クライアント識別のクレームが無い主体は無人と読まず計上しない()
     {
         var (metrics, probe) = Build();
         var noClientId = new ClaimsPrincipal(new ClaimsIdentity(
@@ -114,8 +116,7 @@ public sealed class UnitProjectMetricsTests
         metrics.RecordIfUnitSubjectSavedWithoutProject(
             noClientId, Attributes(null), UnitProjectMetrics.OperationUpdateMetadata);
 
-        probe.Total.Should().Be(1);
-        probe.TagsOf(UnitProjectMetrics.ClientIdTag).Should().Equal(UnitProjectMetrics.UnknownClientId);
+        probe.Total.Should().Be(0);
     }
 
     // **Meter の scope で購読を絞る**（`MeterListener` はプロセス全体を購読するため、
