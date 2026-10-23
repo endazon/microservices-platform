@@ -55,6 +55,9 @@ namespace NotificationService.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("NotificationId")
                         .HasColumnType("uuid");
 

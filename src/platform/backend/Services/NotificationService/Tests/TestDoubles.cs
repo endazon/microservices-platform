@@ -40,6 +40,35 @@ public sealed class ThrowingEmailTransport : IEmailTransport
         => throw new InvalidOperationException("smtp connection refused");
 }
 
+// FR-22, IADR-0600: 先頭の failures 回だけ**一過性の失敗**を返し、その後は成功するトランスポート。
+// failures に int.MaxValue を渡せば「リレーがずっと落ちている」を再現する。
+public sealed class TransientThenSucceedingEmailTransport(int failures, string reason = "smtp-4xx") : IEmailTransport
+{
+    public int Calls { get; private set; }
+    public List<EmailMessage> Sent { get; } = [];
+
+    public Task<EmailSendResult> SendAsync(EmailMessage message, CancellationToken ct = default)
+    {
+        Calls++;
+        if (Calls <= failures)
+            return Task.FromResult(EmailSendResult.TransientFailure(reason));
+        Sent.Add(message);
+        return Task.FromResult(EmailSendResult.Success());
+    }
+}
+
+// FR-22, IADR-0600: 指定の例外を投げ続けるトランスポート（例外の型で一過性かを判別する経路の検証用）。
+public sealed class ExceptionEmailTransport(Func<Exception> factory) : IEmailTransport
+{
+    public int Calls { get; private set; }
+
+    public Task<EmailSendResult> SendAsync(EmailMessage message, CancellationToken ct = default)
+    {
+        Calls++;
+        throw factory();
+    }
+}
+
 // 送信が必ず成功するトランスポート。送った本文を控えて内容を検証できるようにする。
 public sealed class RecordingEmailTransport : IEmailTransport
 {

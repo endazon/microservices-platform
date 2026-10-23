@@ -677,4 +677,5 @@
 | [IADR-0597](./IADR-0597_document-version-optimistic-concurrency.md) | Document の版を EF の並行トークンにし、期待版の照合と保存の間に追い越された更新・メタデータ更新と、トークン化で新たに負け得るようになった削除・露出トグルを 409 version_conflict へ写す（版テーブルの一意索引違反も同じ競合として読む。修正前から 500 だった他の書き込み口は黙って上書きせずに失敗する）（#2103） | Accepted |
 | [IADR-0598](./IADR-0598_sc05-doc-scope-organization-default-on-create.md) | 一般の登録口（POST /documents）で doc_scope が未指定なら organization をサーバで補う（作成時に確定させる。明示値・検証・更新口の不変性・遡及しない方針は変えない）（#2112） | Accepted |
 | [IADR-0599](./IADR-0599_cross-replica-wiki-write-gate-and-maintenance-lease.md) | Wiki.js への書き込みの門はレプリカをまたいで効かせる（wiki-service の PostgreSQL の advisory lock・専用の非プール接続）。wiki は HPA の対象に残し、門の待ちと受け口の実行期限を延ばす。document-service の個人資料の定期処理は GraphService と同型のリースで単一実行にする（#2100） | Accepted |
+| [IADR-0600](./IADR-0600_notification-email-transient-retry.md) | 通知メールの一過性の送信失敗は deferred へ戻して上限つきで再送し、上限超過だけを failed にする（恒久的な失敗・SMTP 未構成は従来どおり即 failed）（#2113） | Accepted |
 | [IADR-0601](./IADR-0601_llm-stream-usage-on-abort-and-cancel.md) | LLM の逐次応答が Done に届かずに終わっても判明分のトークンを 1 回計上し、不完全として数える（llm.usage.incomplete.total）。呼び出し側の取り消しは llm.result=cancelled として数える（#2116） | Accepted |
