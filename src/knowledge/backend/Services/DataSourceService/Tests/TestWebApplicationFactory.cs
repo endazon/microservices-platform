@@ -64,6 +64,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<IMessageBus>();
             services.AddSingleton<RecordingMessageBus>();
             services.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<RecordingMessageBus>());
+
+            // FR-01, ADR-0027 §決定, IADR-0609 (#2169): Program.cs は Wolverine の永続化（耐久送出）を PostgreSQL へ向ける。
+            // 器の DB は InMemory で接続先も到達不能なので、永続化の起動（表の作成・耐久エージェント）を切る。
+            services.DisableAllWolverineMessagePersistence();
         });
     }
 

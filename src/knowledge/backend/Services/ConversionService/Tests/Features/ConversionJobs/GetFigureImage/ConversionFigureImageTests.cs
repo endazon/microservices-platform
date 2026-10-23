@@ -180,6 +180,9 @@ public class ConversionFigureImageTests
                 services.AddMassTransitTestHarness();
                 // 🔴 ADR-0027（#441 E1）: 外部トランスポートを落とさないと実 RabbitMQ への再試行で黙って遅くなる。
                 services.DisableAllExternalWolverineTransports();
+                // FR-12, ADR-0027 §決定, IADR-0609 (#2169): Program.cs は Wolverine の永続化（Transactional Outbox）を
+                // PostgreSQL へ向ける。器の DB は InMemory で接続先も到達不能なので、永続化の起動（表の作成・耐久エージェント）を切る。
+                services.DisableAllWolverineMessagePersistence();
                 // NFR-09, IADR-0465: 門は本物の JwtBearer で判定する（検証鍵だけ差し替え）。
                 TestUserTokens.UseStaticJwtBearer(services);
             });

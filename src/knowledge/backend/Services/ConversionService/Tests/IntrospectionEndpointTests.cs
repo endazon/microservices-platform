@@ -115,6 +115,9 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
                 // 落とさないと、テストごとに実 RabbitMQ への接続再試行（実測 20 回・約 135 秒）が走り、
                 // **落ちるのではなく黙って遅くなる**（1 テスト 2 分半）。ビルドも赤にならないので気づきにくい。
                 services.DisableAllExternalWolverineTransports();
+                // FR-12, ADR-0027 §決定, IADR-0609 (#2169): Program.cs は Wolverine の永続化（Transactional Outbox）を
+                // PostgreSQL へ向ける。器の DB は InMemory で接続先も到達不能なので、永続化の起動（表の作成・耐久エージェント）を切る。
+                services.DisableAllWolverineMessagePersistence();
 
                 // NFR-09, ADR-0109 決定 3, IADR-0465 (#1520): 門は本物の JwtBearer で判定する（検証鍵だけ差し替え）。
                 TestUserTokens.UseStaticJwtBearer(services);

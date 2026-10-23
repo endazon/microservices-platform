@@ -224,6 +224,12 @@ public class ConversionJobEndpointTests
                 services.RemoveAll<IMessageBus>();
                 services.AddSingleton<RecordingMessageBus>();
                 services.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<RecordingMessageBus>());
+                // FR-12, ADR-0027 §決定, IADR-0609 (#2169): Program.cs は Wolverine の永続化（Transactional Outbox）を
+                // PostgreSQL へ向ける。器の DB は InMemory で接続先も到達不能なので、永続化の起動（表の作成・耐久エージェント）を切る。
+                services.DisableAllWolverineMessagePersistence();
+                // 再変換の発行口は Outbox の代役へ差し替える（確定に成功した後でだけ RecordingMessageBus へ出す）。
+                services.RemoveAll<ConversionService.Domain.Ports.IConversionRetryPublisher>();
+                services.AddScoped<ConversionService.Domain.Ports.IConversionRetryPublisher, RecordingConversionRetryPublisher>();
 
                 // NFR-09, ADR-0109 決定 3, IADR-0465 (#1520): 門は本物の JwtBearer で判定する（検証鍵だけ差し替え）。
                 TestUserTokens.UseStaticJwtBearer(services);

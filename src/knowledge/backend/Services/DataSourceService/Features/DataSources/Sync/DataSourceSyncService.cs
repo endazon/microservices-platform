@@ -176,6 +176,12 @@ public sealed class DataSourceSyncService(
                 // **データソースの表示名も運ぶ。** 本文を持たない文書は題名・タグ・所在・
                 // データソース名だけが検索の手掛かりであり、名前は下流（索引テキスト）で
                 // 人が打つ語である。正本は `source.Id` のままで、これは射影用の複写である。
+                //
+                // FR-01, UC-04, ADR-0027 §決定, IADR-0609 決定 2 (#2169): **この発行は watermark の保存と同じトランザクションに載せない。**
+                // 送出先は耐久（`Program.cs` の `UsePlatformTransactionalOutbox`）なので、`PublishAsync` は送出の前に
+                // Outbox の表へ書いてから返る —— watermark を進める保存（呼び出し側）より前に、発行は表に残る形になっている。
+                // 逆向き（発行済み・保存前に停止）は watermark が進まず次回に再発行され、決定的な DocumentId で下流が冪等に upsert する。
+                // ⚠️ 表への書き込みが一時的に失敗したときだけ、Wolverine は例外を出さずメモリ上で書き込みを再試行する（IADR-0609 残余リスク）。
                 await bus.PublishAsync(new RawDocumentFetched(
                     fetchId, source.Id, source.SourceType,
                     item.Path, storageUri, raw.ContentType,
