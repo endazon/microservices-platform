@@ -62,8 +62,45 @@ function isReply(value: unknown): value is BffReply {
   return typeof value === 'object' && value !== null && '__bffReply' in value;
 }
 
+/** SSE のイベント 1 件。`data` は文字列ならそのまま、それ以外は JSON にして載せる。 */
+interface SseEventStub {
+  event: string;
+  data: unknown;
+}
+
 /**
- * 応答本文（200 で返す）、`reply()`、またはそれらを組み立てる関数。
+ * SC-01 (#2017 / E-12): **`text/event-stream` で返す応答**（`apiStream` の口。`/analysis/ask/stream` 等）。
+ *
+ * `route.fulfill` は本文を一度に返すため、「途中まで流れている」状態は観測できない（それは Vitest の担当）。
+ * ここで固定できるのは、**イベント列が画面へ届き、`token` が連結され、`done` / `error` で確定する経路**である。
+ * 本文は SSE の書式（`event:` ＋ `data:` ＋ 空行）で組む —— 画面側のパーサ（`parseSseBlock`）をそのまま通す。
+ */
+interface BffSse {
+  readonly __bffSse: true;
+  readonly status: number;
+  readonly events: readonly SseEventStub[];
+}
+
+export function sse(events: readonly SseEventStub[], status = 200): BffSse {
+  return { __bffSse: true, status, events };
+}
+
+function isSse(value: unknown): value is BffSse {
+  return typeof value === 'object' && value !== null && '__bffSse' in value;
+}
+
+function fulfillSse(route: Route, value: BffSse): Promise<void> {
+  const body = value.events
+    .map((e) => {
+      const data = typeof e.data === 'string' ? e.data : JSON.stringify(e.data);
+      return `event: ${e.event}\ndata: ${data}\n\n`;
+    })
+    .join('');
+  return route.fulfill({ status: value.status, contentType: 'text/event-stream', body });
+}
+
+/**
+ * 応答本文（200 で返す）、`reply()`、`sse()`、またはそれらを組み立てる関数。
  *
  * **`unknown` と union にしない。** `unknown` は union を丸ごと飲み込むため、関数を書いたときに
  * 引数へ文脈型が付かず `any` になる（`noImplicitAny` が拾えなくなる）。契約の応答は必ず
@@ -133,7 +170,8 @@ export async function installBffSession(
     if (handler !== undefined) {
       const value =
         typeof handler === 'function' ? (handler as (c: BffCall) => unknown)(call) : handler;
-      if (isReply(value)) await fulfillJson(route, value.body, value.status);
+      if (isSse(value)) await fulfillSse(route, value);
+      else if (isReply(value)) await fulfillJson(route, value.body, value.status);
       else await fulfillJson(route, value);
       return;
     }

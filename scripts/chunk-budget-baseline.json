@@ -294,10 +294,14 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 644610,
+  "initialTotalBytes": 644788,
   "$comment_initialTotalBytes_20261024_2016_shell-e2e": [
     "［2026-10-24 / #2016（共通シェルの E2E）］644,568 → 644,610（+42 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
     "増分は画面のエラー境界（RouteErrorComponent。初期チャンクに載る）の「再読み込み」で、購読の無い TanStack Query のキャッシュを捨てる 1 行（useQueryClient と removeQueries）である。意図した増加である。"
+  ],
+  "$comment_initialTotalBytes_20261024_2017_sc01-search-e2e": [
+    "［2026-10-24 / #2017（SC-01 の E2E）］644,610 → 644,788（+178 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "増分は出典一覧の部品（CitationList。右レールの AI チャットと共有するので初期チャンクに載る）が描く機密区分の表示名（4 値の写像と Lingui のメッセージ）である。E2E が見つけた表示の欠落を直した、意図した増加である。"
   ],
   "$comment_initialTotalBytes_20261024_2046_break-glass-screens": [
     "［2026-10-24 / #2046 の 3 本目（緊急アクセスの画面）］635,032 → 644,208（+9,176 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",

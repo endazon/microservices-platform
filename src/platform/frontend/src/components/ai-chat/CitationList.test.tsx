@@ -8,13 +8,14 @@ import type { AskCitation } from './citations';
 // SC-01 / 05_screens §共通シェル（右レール AI チャット）/ 裁定 6（出典と本文の対応印）: 出典の一覧。
 // 05_screens §SC-01「区別の表示方法」: アイコン ＋ ラベルを併用し、色だけで意味を持たせない（INDEX 決定 21）。
 
-const cite = (number: number, documentId: string): AskCitation => ({
+const cite = (number: number, documentId: string, confidentiality = 'internal'): AskCitation => ({
   number,
   documentId,
   documentTitle: `文書 ${number}`,
   chunkId: `c${number}`,
   score: 0.9,
   snippet: `抜粋 ${number}`,
+  confidentiality,
 });
 
 function renderList(props: Partial<Parameters<typeof CitationList>[0]> = {}) {
@@ -42,6 +43,31 @@ describe('CitationList', () => {
     });
     expect(screen.getByText('組織文書')).toBeInTheDocument();
     expect(screen.getByText('個人資料')).toBeInTheDocument();
+  });
+
+  // FR-04 / 05_screens §SC-01「出典への機密区分の表示」（#2017）: 表示名は用語集が正（restricted は「取扱制限」）。
+  it('shows the confidentiality display name of each source', () => {
+    renderList({
+      citations: [
+        cite(1, 'a', 'public'),
+        cite(2, 'b', 'internal'),
+        cite(3, 'c', 'confidential'),
+        cite(4, 'd', 'restricted'),
+      ],
+    });
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('公開');
+    expect(items[1]).toHaveTextContent('社内限');
+    expect(items[2]).toHaveTextContent('秘');
+    expect(items[3]).toHaveTextContent('取扱制限');
+    expect(screen.queryByText('restricted')).not.toBeInTheDocument();
+  });
+
+  // 値集合の外の値は既知の表示名へ丸めない（引用の可否の判断を誤らせない）。
+  it('shows an unknown confidentiality value as-is instead of guessing a label', () => {
+    renderList({ citations: [cite(1, 'a', 'top-secret'), cite(2, 'b', 'constructor')] });
+    expect(screen.getByText('top-secret')).toBeInTheDocument();
+    expect(screen.getByText('constructor')).toBeInTheDocument();
   });
 
   // 行き先（typed route）は呼び出し側が渡す。省略時は文字だけで、リンクは張らない。
