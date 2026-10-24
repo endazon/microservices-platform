@@ -281,6 +281,12 @@ test('OTP の後に Keycloak が必須アクションを求めたら、待ち続
     // 失敗した段の attach は origin と path だけ（query の state・code・sid を出さない）。BFF の入口の状態と Location の origin も出す。
     expect(r.out).toContain(`url: ${fake.kcUrl}/realms/platform/login-actions/required-action`);
     expect(r.out).not.toContain('execution=');
+    // Keycloak の画面の表示文言・フォーム・OTP の欄の有無（入力値は読まない）。
+    expect(r.out).toContain(
+      'keycloak messages: アカウントを有効にするには認証アプリを設定してください',
+    );
+    expect(r.out).toContain('keycloak forms: kc-totp-settings-form');
+    expect(r.out).toContain('#otp field: 無い');
     expect(r.out).not.toMatch(/[?&](state|code|session_state)=/);
     // 60 秒の timeout まで待たない（ほかの 5 役割と teardown を含めて短く終わる）。
     expect(Date.now() - started).toBeLessThan(45_000);

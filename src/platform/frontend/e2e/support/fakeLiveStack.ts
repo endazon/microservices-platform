@@ -146,7 +146,8 @@ export async function startFakeLiveStack(
     if (u.pathname === '/realms/platform/login-actions/required-action') {
       return html(
         res,
-        '<form id="kc-totp-settings-form" method="post"><button type="submit">送信</button></form>',
+        '<span class="kc-feedback-text">アカウントを有効にするには認証アプリを設定してください</span>' +
+          '<form id="kc-totp-settings-form" method="post"><button type="submit">送信</button></form>',
       );
     }
     if (u.pathname === '/logout') {

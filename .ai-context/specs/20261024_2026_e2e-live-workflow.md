@@ -48,6 +48,8 @@ issue: "#2026"
 10. **初回の実行の失敗と直し方**（PR #2226 の `e2e-live`。詳しくは IADR-0625）: setup の 6 役割が `/realms/platform/login-actions/required-action` に残った。
     realm の `CONFIGURE_TOTP` が `defaultAction` で、宣言に `requiredActions` の無い試験アカウントへ既定で付いたため。6 名に `"requiredActions": []` を明示し、
     回帰の試験を足し、setup は必須アクションの画面で即座に理由つきで落ちるようにした。
+    ［2026-10-25 追記 / #2026］宣言の `[]` だけでは直らなかった（3 回目の実行も同じ画面）。Keycloak の POST /users は宣言に無い action を外さない
+    （`isUpdateExistingUser=false`）。`reconcile-realm.js` が作成の後に PUT で `requiredActions` を当て直すようにした（詳しくは IADR-0625 の追記）。
 
 ## 母集合（規則 9・10）
 
@@ -63,6 +65,8 @@ node scripts/check-e2e-artifact-secrets.js --self-test  # 7 件
 REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js
 actionlint .github/workflows/e2e-live.yml
 ```
+
+［2026-10-25 追記 / #2026］`check-e2e-artifact-secrets.js --self-test` は符号化形（base32・base64・Basic）、入れ子の上限、オフセット付きの形の正例・負例を足して **14 件**になった（上の「7 件」は起草時の数。`check-e2e-skips.js` は 7 件のまま）。
 
 - 実物の Playwright の成果物で: 一時の spec で `fill(パスワード)` → 走査器が html レポート（埋め込みの zip の中を含む）・trace・error-context の 7 箇所を名指しした。
 - 偽の BFF と Keycloak（`e2e/support/fakeLiveStack.ts`）に対して、一時の層の spec（1 回目に落ちて trace を残す）を足して live の config を流した:

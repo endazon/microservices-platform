@@ -71,6 +71,19 @@ live は実の Keycloak にパスワードと OTP を入れ、BFF のセッシ�
   あわせて setup は、必須アクションの画面へ送られたら待ち続けずに「Keycloak が必須アクションを求めている（フォーム: …）」と言って落ちる（L1 の偽スタックで固定）。
 - **常設の PoC**: E-30 の手順で既に作った試験アカウントには `CONFIGURE_TOTP` が付いている（後追いは既存の利用者を触らない）。PR #2226 本文の手順で外す。
 
+［2026-10-25 追記 / #2026］**上の「直し方」の括弧書き（作成の本文に載れば Keycloak は既定の必須アクションを外す）は誤りだった。**
+3 回目の実行（head `5a16bced`）でも 6 名とも同じ画面（フォーム `kc-totp-settings-form`）に残った。
+Keycloak 26.7.4 の `UsersResource.createUser` は `profile.create()`（realm の defaultAction を付けて作る）の後に
+`UserResource.updateUserFromRep(…, isUpdateExistingUser=false)` を呼び、その中の `removeMissingRequiredActions = isUpdateExistingUser` により、
+**作成（POST /users）では宣言に無い action を外さない**（宣言の action を足すだけ）。外すのは更新（PUT /users/{id}）だけである。
+realm の取り込み（`--import-realm`）は既定の action を付けずに作るので、この差は `reconcile-realm.js` の Job で作った利用者にだけ出る。
+**直し方**: `reconcile-realm.js` の `user.create` は、宣言が `requiredActions` を配列で持つとき、作成の後の手順（postSteps）に
+PUT `/users/{id}`（宣言から資格情報・グループ・ロールを除いた本文）を足して当て直す。`scripts/keycloak-realm-reconcile.test.js` が
+6 名の作成にちょうど 1 つの PUT（`requiredActions: []`・資格情報を載せない）が付くことと、宣言に無い利用者には付かないことを固定する（PUT を外すと赤）。
+2 回目の実行（head `10a9932b`）は「ログイン画面」段で止まり、ブラウザは `/bff/auth/login` に留まった（readiness の門は BFF 401・discovery 200 を通していた）。
+当時は BFF の応答の状態を残していなかったので原因は確定していない。3 回目は診断を足した状態で同じ段を 6 名とも通った。再発したら attach の
+`bff /bff/auth/login: <状態> → Location …` と失敗時の BFF のログで切り分ける。
+
 ## 理由
 
 - 秘密を持たない CI は、漏れる秘密も持たない。使い捨てのスタックはそれを可能にする。

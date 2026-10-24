@@ -52,6 +52,42 @@ function originAndPath(raw: string): string {
   }
 }
 
+/**
+ * Keycloak の画面に出ている表示文言（エラー・案内）と、OTP の欄・フォームの有無。表示文言は秘密ではない（入力値は読まない）。
+ * Keycloak の画面のときだけ読む（アプリの画面の文言は載せない）。
+ */
+async function keycloakScreen(page: Page): Promise<string[]> {
+  let origin = '';
+  try {
+    origin = new URL(page.url()).origin;
+  } catch {
+    return [];
+  }
+  if (origin !== cfg.kcUrl) return [];
+  const texts = await page
+    .locator(
+      '#input-error, [id^="input-error"], .alert-error, .pf-m-danger, .kc-feedback-text, #kc-feedback-text',
+    )
+    .allInnerTexts()
+    .catch(() => [] as string[]);
+  const shown = [...new Set(texts.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean))].map(
+    (t) => t.slice(0, 200),
+  );
+  const forms = await page
+    .locator('form[id]')
+    .evaluateAll((els) => els.map((e) => String((e as unknown as { id: string }).id)))
+    .catch(() => [] as string[]);
+  const otp = await page
+    .locator('#otp')
+    .count()
+    .catch(() => -1);
+  return [
+    `keycloak messages: ${shown.length > 0 ? shown.join(' | ') : '（なし）'}`,
+    `keycloak forms: ${forms.join(', ') || '（なし）'}`,
+    `#otp field: ${otp > 0 ? 'ある' : otp === 0 ? '無い' : '（取れない）'}`,
+  ];
+}
+
 /** 失敗した段を残す。URL は origin と path だけ。値は残さない。`notes` は段が集めた診断（同じく値を含めない）。 */
 async function stage<T>(
   testInfo: TestInfo,
@@ -70,6 +106,7 @@ async function stage<T>(
           `url: ${originAndPath(page.url())}`,
           `title: ${await page.title().catch(() => '（取れない）')}`,
           `expected keycloak origin: ${cfg.kcUrl}`,
+          ...(await keycloakScreen(page)),
           ...notes,
         ].join('\n') + '\n',
       contentType: 'text/plain',
@@ -122,7 +159,7 @@ async function logIn(page: Page, testInfo: TestInfo, role: Role): Promise<void> 
         .evaluateAll((els) => els.map((e) => String((e as unknown as { id: string }).id)));
       throw new Error(
         `Keycloak が必須アクションを求めている（フォーム: ${forms.join(', ') || '不明'}）。試験アカウントに requiredActions が残っている` +
-          '（realm の宣言は requiredActions: [] を明示する。既存の利用者は管理コンソールで外すか、消して作り直す）',
+          '（realm の宣言は requiredActions: [] を明示し、reconcile-realm の Job は作成の後に PUT で当て直す。既存の利用者は管理コンソールで外すか、消して作り直す）',
       );
     }
     const me = await page.request.get('/bff/auth/me');

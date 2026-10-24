@@ -38,6 +38,10 @@ on:
       - "scripts/check-e2e-skips.js"
       - "scripts/check-e2e-artifact-secrets.js"
       - "scripts/gen-e2e-accounts.js"
+      # 試験アカウントの realm 宣言とその投入・偽スタックも live の結果を変える（requiredActions の件と同じ種類の変更）。
+      - "deploy/keycloak/**"
+      - "deploy/local/keycloak-setup/**"
+      - "src/platform/frontend/e2e/support/**"
 
 concurrency:
   group: e2e-live-${{ github.event.pull_request.number || github.ref }}
@@ -158,7 +162,7 @@ jobs:
       # アカウントを作った後で値のファイルが消えているのは異常なので赤にする。
       - name: 🔴 Gate — 成果物に資格情報が載っていない
         id: artifact-scan
-        if: ${{ !cancelled() && steps.accounts.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.accounts.outcome == 'success' && steps.live.outcome != 'skipped' }}
         run: |
           set -euo pipefail
           test -f "$RUNNER_TEMP/e2e-accounts.env" || { echo "::error::試験アカウントを作った後なのに値のファイルが無い（走査できない成果物は上げない）"; exit 1; }

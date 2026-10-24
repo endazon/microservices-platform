@@ -518,6 +518,16 @@ function plan(desired, live) {
       postSteps.push({ method: 'POST', pathSuffix: `/role-mappings/clients/${cr.clientUuid}`, body: cr.refs });
     }
     if (blocked) { defer(`user ${user.username}`, blocked); continue; }
+    // ［2026-10-25 / #2026］宣言の requiredActions を作成の後に PUT で当て直す。🔴 POST /users は宣言の requiredActions を
+    // **足すだけで外さない**: 作成は realm の defaultAction（本 realm では CONFIGURE_TOTP）を付けた利用者を作り、
+    // `UserResource.updateUserFromRep(…, isUpdateExistingUser=false)` は宣言に無い action を消さない（Keycloak 26.7.4 の
+    // `removeMissingRequiredActions = isUpdateExistingUser`）。更新（PUT）は消す。realm の取り込み（--import-realm）は
+    // 既定の action を付けないので、この差は Job で作った利用者にだけ出る（e2e-live の実行で e2e-* 6 名が OTP の後に
+    // 「OTP の登録」へ送られた）。body は作成と同じ宣言から資格情報・グループを除いたもの（PUT はそれらを扱わない）。
+    if (Array.isArray(user.requiredActions)) {
+      postSteps.push({ method: 'PUT', pathSuffix: '',
+        body: pick(user, (k) => !USER_CREATE_SKIP_KEYS.has(k) && k !== 'credentials' && k !== 'groups') });
+    }
     add({ op: 'user.create', target: user.username, method: 'POST', path: `${R}/users`,
       body: pick(user, (k) => !USER_CREATE_SKIP_KEYS.has(k)), postSteps, reason: 'seed 利用者が無い' });
   }

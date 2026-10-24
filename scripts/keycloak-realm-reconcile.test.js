@@ -697,6 +697,30 @@ ok('#2024: dry-run — env が揃えば、e2e の居ない既存 realm へ user.
   assert.deepStrictEqual(plan(desired, after), []);
 });
 
+ok('#2026: 作成の後に宣言の requiredActions を PUT で当て直す（POST /users は realm の defaultAction を外さない）', () => {
+  const env = e2eEnv();
+  const { desired } = resolveE2eCredentials(REALM, env);
+  const ops = plan(desired, liveFrom(withoutE2e(REALM)));
+  assert.strictEqual(ops.length, E2E_USERS.length);
+  for (const op of ops) {
+    const decl = desired.users.find((u) => u.username === op.target);
+    assert.deepStrictEqual(decl.requiredActions, [], `${op.target}: 宣言は requiredActions: [] を明示する`);
+    const put = op.postSteps.filter((st) => st.method === 'PUT' && st.pathSuffix === '');
+    assert.strictEqual(put.length, 1, `${op.target}: requiredActions を当て直す PUT が無い`);
+    assert.deepStrictEqual(put[0].body.requiredActions, []);
+    assert.strictEqual(put[0].body.username, op.target);
+    for (const k of ['credentials', 'groups', 'realmRoles', 'clientRoles', 'id']) {
+      assert.ok(!(k in put[0].body), `${op.target}: PUT の本文に ${k} が載る（資格情報を PUT で送らない）`);
+    }
+  }
+  // 宣言に requiredActions が無い利用者には当て直さない（実行時の既定に任せる）
+  const r2 = JSON.parse(JSON.stringify(desired));
+  const u0 = r2.users.find((u) => u.username === E2E_USERS[0]);
+  delete u0.requiredActions;
+  const op0 = plan(r2, liveFrom(withoutE2e(REALM))).find((o) => o.target === E2E_USERS[0]);
+  assert.ok(!op0.postSteps.some((st) => st.method === 'PUT'));
+});
+
 ok('#2024: env が無ければ 6 名とも外し（名前と欠けたキーだけを告げる）、既存 realm の計画は 0 件（drift にしない）', () => {
   const { desired, resolved, skipped } = resolveE2eCredentials(REALM, {});
   assert.deepStrictEqual(resolved, []);
