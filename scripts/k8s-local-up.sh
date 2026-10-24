@@ -137,6 +137,9 @@ apply_secret() ( # ns name key=val [key=val...]
 #   無ければ従来どおり作る（Merge は Secret を作らないので、新規クラスタでは土台が要る）。ESO 以外の経路は従来どおり毎回置く。
 #   対象は値が Vault の種と一致する保証の無い 3 つ（keycloak-smtp・reset-gate-oidc・abac-seeder-oidc）。基盤の 3 つ（postgres 等）は
 #   seed と同じ値なので従来どおり（IADR-0099）。値の確かめは ESO ブロックの eso_force_sync_wait が行う。
+#   判定は Secret の有無だけで行う（値は読まない＝起動器が秘密の値を比べない。IADR-0616 の選択肢 2 を採らない理由）。そのため
+#   Vault の当該 KV がまだ dev の値（例: keycloak-smtp の SMTP の実値が未投入で、bootstrap の種のまま）なら、Secret も dev の値のまま残る。
+#   これは IADR-0616「結果・残る制約」の範囲内である（値の正は Vault。実値は SC-22 か Vault の KV で入れる）。
 apply_eso_merge_base_secret() { # ns name key=val [key=val...]
   if [ "${ESO:-}" = "1" ] && kubectl -n "$1" get secret "$2" -o name >/dev/null 2>&1; then
     echo "    keep $1/$2（ESO=1・既存の Secret の値は Vault → ESO が持つ。dev の値で上書きしない。IADR-0616）"
@@ -1436,7 +1439,9 @@ if [ "${ESO:-}" = "1" ]; then
           break
         fi
         if [ "$SECONDS" -ge "$deadline" ]; then
+          # IADR-0616「結果」: この warn の後の投入器の WARN（401）は、古い値で名乗った疑いがある。手順は deploy/local/README.md §機密情報。
           echo "      warn: $ns/$es が依頼の後に同期しません（読み手は置き直した値で名乗り得る。続行）"
+          echo "            投入器の WARN（401）が出たら、kubectl -n $ns get externalsecret $es で同期を確かめてから投入器を流し直す（deploy/local/README.md）"
           break
         fi
         sleep 2

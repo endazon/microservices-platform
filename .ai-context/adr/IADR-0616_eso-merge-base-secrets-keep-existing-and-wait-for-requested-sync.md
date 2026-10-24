@@ -70,6 +70,9 @@ ESO の段の待ち（`kubectl wait --for=condition=Ready`）も、前回の実�
 
 - Vault の値と稼働中の Keycloak の値が食い違っていれば、投入器は引き続き 401 になる。これは本 IADR の射程外である（Vault の値を正にする運用。ADR-0124 決定 1）。
 - 新規クラスタの初回は、従来どおり dev の値の土台へ Vault の値が重なる。決定 2 の待ちで、読み手の前に重なっている。
+- 決定 1 は Secret の有無だけで判定する（値は読まない）。Vault の当該 KV が bootstrap の種（dev の値）のままなら、Secret も dev の値のまま残る（例: SMTP の実値を未投入の keycloak-smtp）。値の正は Vault であり、実値は SC-22 か Vault の KV で入れる。
+- 決定 2 の待ちは best-effort である。期限内に同期しなければ warn を出して続け、投入器は古い値で名乗って 401 になり得る。
+  **この warn が出たら投入器の WARN を疑い、ExternalSecret の同期（`SecretSynced` と `status.refreshTime`）を確かめてから投入器を流し直す**（手順は `deploy/local/README.md` §機密情報。warn の文面にも出す）。
 - 投入器の有効・無効の切り替えで Keycloak 26 が `service_account` の client scope を足し、realm の追随の `--check` が差分を出す件（#2195 の追記）は、別の仕組み（realm の宣言と追随の比較）である。本 IADR では扱わない（別の issue）。
 
 ## 検証
