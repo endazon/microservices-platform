@@ -149,7 +149,8 @@ for (const c of CASES) {
 }
 
 /**
- * 取引機能のユニット（ai-stock-trading）の 4 画面。共通シェルの直下に載る（`/trading` の接頭辞は無い。`src/app/routing/router.test.ts`）。
+ * 取引機能のユニット（ai-stock-trading）の 4 画面。共通シェルの直下に載る（`/trading` の接頭辞は無い）。根拠: `/settings`・`/settings/risk`・
+ * `/controls` は `src/app/routing/router.test.ts` 189〜191 行、`/opend-auth` は AST の `frontend/src/features/sc04-opend-auth/routes/sc04OpendAuthRoute.tsx` 30 行。
  * ロール `trading-owner` を持たない利用者には、存在秘匿の NotFound を描く（AST の `RequireRole`）。
  */
 const AST_ROUTES = ['/settings', '/settings/risk', '/controls', '/opend-auth'] as const;
@@ -163,9 +164,12 @@ test.describe('e2e-user（trading-owner を持たない）と取引機能のユ�
     'A-002: e2e-user が取引機能の 4 画面を開くと、どれも見つかりませんでしたになり、ナビに株式自動売買のグループが無い',
     { tag: ['@p0', '@live-ro'] },
     async ({ page }) => {
+      // 1 画面で落ちても残りの画面を確かめる（soft。1 回の実行で 4 画面すべての結果が出る）。
       for (const path of AST_ROUTES) {
         await page.goto(path);
-        await expect(page.getByRole('heading', { name: NOT_FOUND, level: 1 }), path).toBeVisible();
+        await expect
+          .soft(page.getByRole('heading', { name: NOT_FOUND, level: 1 }), path)
+          .toBeVisible();
       }
       await expect(
         page

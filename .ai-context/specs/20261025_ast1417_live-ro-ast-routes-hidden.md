@@ -2,7 +2,7 @@
 title: 作業仕様書 — live-ro に、e2e-user で取引機能の 4 画面が NotFound・ナビに株式自動売買が無いこと（AST 網羅表 A-002 の移し替え）を足す
 type: spec
 status: in-progress
-related_ids: [NFR, IADR-0035, IADR-0337]
+related_ids: [NFR, IADR-0035]
 author: claude
 created: 2026-10-25
 updated: 2026-10-25
@@ -28,4 +28,7 @@ A-002（閲覧者〔e2e-user〕で 4 画面が NotFound・ナビに株式自動�
 ## 判断
 
 - 新しい IADR は置かない（AST/IADR-0589 決定 5 が移し替えを決めた）。
-- 取引機能の画面のパスは共通シェルの直下（`/trading` の接頭辞は無い。`src/app/routing/router.test.ts` 190 行）。
+- 取引機能の画面のパスは共通シェルの直下（`/trading` の接頭辞は無い）。根拠: `/settings`・`/settings/risk`・`/controls` は `src/platform/frontend/src/app/routing/router.test.ts`
+  189〜191 行、`/opend-auth` は AST の `frontend/src/features/sc04-opend-auth/routes/sc04OpendAuthRoute.tsx` 30 行。
+- 権限外の画面は存在秘匿の NotFound を描く（IADR-0035。AST の画面は AST の `RequireRole` が同じ規約で描く）。
+- 4 画面は `expect.soft` で見る（1 画面で落ちても、1 回の実行で 4 画面すべての結果が出る）。網羅表の行 A-002 は 1 つの test のまま。
