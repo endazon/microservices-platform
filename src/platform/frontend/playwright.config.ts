@@ -42,5 +42,20 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 60_000,
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // IADR-0569: L1 の project 名は `smoke`（#2023 で `chromium` から改めた。基準書 §2.1 / §12）。
+  // ja-JP 以外のロケールの project は `smoke-<locale 小文字>` とする。M-020（#2023）: en-US では
+  // ブランド表示名がロケールで差し替わらず、ナビが英語になることを `e2e/i18n.smoke.spec.ts` だけで見る ——
+  // 他の spec は日本語の文言を待つので、en-US では走らせない（走らせると全件が文言の違いで落ちる）。
+  projects: [
+    {
+      name: 'smoke',
+      use: { ...devices['Desktop Chrome'] },
+      testIgnore: /i18n\.smoke\.spec\.ts$/,
+    },
+    {
+      name: 'smoke-en-us',
+      use: { ...devices['Desktop Chrome'], locale: 'en-US' },
+      testMatch: /i18n\.smoke\.spec\.ts$/,
+    },
+  ],
 });
