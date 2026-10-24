@@ -2057,7 +2057,7 @@ msgstr "全消去"
 msgid "公開"
 msgstr "公開"
 
-#: platform/frontend/src/components/ai-chat/CitationList.tsx
+#: platform/frontend/src/lib/i18n/confidentiality.ts
 msgctxt "機密区分"
 msgid "公開"
 msgstr "公開"
@@ -2466,7 +2466,7 @@ msgstr "取得できない"
 msgid "取得に失敗しました。"
 msgstr "取得に失敗しました。"
 
-#: platform/frontend/src/components/ai-chat/CitationList.tsx
+#: platform/frontend/src/lib/i18n/confidentiality.ts
 msgctxt "機密区分"
 msgid "取扱制限"
 msgstr "取扱制限"
@@ -4253,12 +4253,12 @@ msgstr "確認時刻"
 msgid "社内ナレッジ検索・AI 回答プラットフォーム"
 msgstr "社内ナレッジ検索・AI 回答プラットフォーム"
 
-#: platform/frontend/src/components/ai-chat/CitationList.tsx
+#: platform/frontend/src/lib/i18n/confidentiality.ts
 msgctxt "機密区分"
 msgid "社内限"
 msgstr "社内限"
 
-#: platform/frontend/src/components/ai-chat/CitationList.tsx
+#: platform/frontend/src/lib/i18n/confidentiality.ts
 msgctxt "機密区分"
 msgid "秘"
 msgstr "秘"

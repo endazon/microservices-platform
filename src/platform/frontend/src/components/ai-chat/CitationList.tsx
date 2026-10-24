@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { msg } from '@lingui/core/macro';
-import type { MessageDescriptor } from '@lingui/core';
 import { useLingui } from '@lingui/react';
 import { BookOpen, FileText, UserRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Tag, cn } from '@platform/ui';
+import { confidentialityLabel } from '@foundation/i18n';
 import { citationAnchorId } from './citations';
 import type { AskCitation, CitationKind } from './citations';
 
@@ -50,29 +50,7 @@ const KIND_LABELS = {
 } as const;
 
 // FR-04, SC-01（#2017 / E-12）: **出典への機密区分の表示**（05_screens §SC-01「出典への機密区分の表示（確定）」）。
-// 利用者が AI 回答を社外資料へ引用してよいか判断する手掛かりである。表示名の正は計画リポジトリの用語集
-// 「機密区分」（public＝公開 / internal＝社内限 / confidential＝秘 / restricted＝**取扱制限**。「極秘」ではない）。
-// 「公開」は SC-05 の動詞（文書を公開する）と同じ字面なので、`context` で訳を分ける。
-//
-// ［経緯］契約の欄は #541 で入ったが、この部品と画面側の型が欄を持たず、表示は一度も出ていなかった
-// （E2E の M-022 が見つけた）。
-const CONFIDENTIALITY_LABELS: Record<string, MessageDescriptor> = {
-  public: msg({ message: '公開', context: '機密区分' }),
-  internal: msg({ message: '社内限', context: '機密区分' }),
-  confidential: msg({ message: '秘', context: '機密区分' }),
-  restricted: msg({ message: '取扱制限', context: '機密区分' }),
-};
-
-/**
- * 機密区分の表示名。**値集合の外の値は生値のまま出す** —— 契約は `enum` にしておらず（後段の値追加を
- * 破壊的変更にしない）、知らない値を既知の表示名へ丸めると、引用の可否の判断を誤らせる。
- */
-function confidentialityLabel(value: string, translate: (d: MessageDescriptor) => string): string {
-  const descriptor = Object.hasOwn(CONFIDENTIALITY_LABELS, value)
-    ? CONFIDENTIALITY_LABELS[value]
-    : undefined;
-  return descriptor ? translate(descriptor) : value;
-}
+// 写像は SC-02 と共有するため `lib/i18n/confidentiality.ts` に置いた（#2018）。
 
 export function CitationList({
   citations,

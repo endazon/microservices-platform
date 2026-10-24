@@ -324,7 +324,9 @@ describe('DocumentDetailPage (SC-03)', () => {
     // **［2026-09-12］項目名から「:」が消えた**（hi-fi の属性欄を `Kv` / `KvItem` へ寄せたため。
     // `dt` / `dd` の対が区切りを担うので、文字としてのコロンは冗長である）。実装が正・テストを追随。
     expect(screen.getByText('機密区分')).toBeInTheDocument();
-    expect(screen.getByText('internal')).toBeInTheDocument();
+    // ［#2018］機密区分の値は用語集の表示名（internal＝社内限）。部門の値は変換しない。
+    expect(screen.getByText('社内限')).toBeInTheDocument();
+    expect(screen.queryByText('internal')).not.toBeInTheDocument();
     expect(screen.getByText('部門')).toBeInTheDocument();
     expect(screen.getByText('accounting')).toBeInTheDocument();
     expect(screen.getByText('経理')).toBeInTheDocument();

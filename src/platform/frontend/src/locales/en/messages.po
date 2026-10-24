@@ -2057,7 +2057,7 @@ msgstr "Clear all"
 msgid "公開"
 msgstr "Publish"
 
-#: platform/frontend/src/components/ai-chat/CitationList.tsx
+#: platform/frontend/src/lib/i18n/confidentiality.ts
 msgctxt "機密区分"
 msgid "公開"
 msgstr "Public"
@@ -2466,7 +2466,7 @@ msgstr "Unavailable"
 msgid "取得に失敗しました。"
 msgstr "Could not load the data."
 
-#: platform/frontend/src/components/ai-chat/CitationList.tsx
+#: platform/frontend/src/lib/i18n/confidentiality.ts
 msgctxt "機密区分"
 msgid "取扱制限"
 msgstr "Restricted"
@@ -4253,12 +4253,12 @@ msgstr "Checked at"
 msgid "社内ナレッジ検索・AI 回答プラットフォーム"
 msgstr "Internal knowledge search and AI answering platform"
 
-#: platform/frontend/src/components/ai-chat/CitationList.tsx
+#: platform/frontend/src/lib/i18n/confidentiality.ts
 msgctxt "機密区分"
 msgid "社内限"
 msgstr "Internal"
 
-#: platform/frontend/src/components/ai-chat/CitationList.tsx
+#: platform/frontend/src/lib/i18n/confidentiality.ts
 msgctxt "機密区分"
 msgid "秘"
 msgstr "Confidential"
