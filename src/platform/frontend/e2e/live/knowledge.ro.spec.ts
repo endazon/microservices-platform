@@ -19,6 +19,7 @@ import type {
 } from '../../src/lib/api/generated/bff.schemas';
 import { parseLiveEnv, stateFile, type Role } from './support/env';
 import { DEFAULT_AUTH_DIR } from './support/paths';
+import { ja, jaPattern } from './support/catalog';
 
 const cfg = parseLiveEnv(process.env, DEFAULT_AUTH_DIR);
 
@@ -42,6 +43,34 @@ const PUBLIC_DOC = seedOf('public');
 const INTERNAL_DOC = seedOf('internal');
 /** internal の文書にだけ在る department の値（候補の対照）。 */
 const INTERNAL_ONLY_DEPARTMENT = INTERNAL_DOC.attributes.department;
+/** internal の文書のタイトルと本文にだけ在る語（合言葉の後ろの語）。直 URL で本文が出ないことを見る。 */
+const INTERNAL_ONLY_TERM = (() => {
+  const term = INTERNAL_DOC.title
+    .split(/\s+/)
+    .find((w) => w.startsWith('msp-') && w !== SEED.probeTerm);
+  if (!term) throw new Error('internal の seed 文書のタイトルに固有の語が無い（IADR-0627）');
+  return term;
+})();
+
+/** 画面の文言は製品の ja カタログから引く（`support/catalog.ts`。msgid が無ければ読み込みで例外＝L1 の `--list` で赤）。 */
+const T = {
+  askHeading: ja('ナレッジ検索・AI質問'),
+  searchHeading: ja('検索結果一覧'),
+  wikiHeading: ja('Wiki 閲覧'),
+  analyzeHeading: ja('AI分析依頼'),
+  docNotFound: ja('文書が見つかりませんでした。'),
+  wikiTree: ja('ページツリー'),
+  wikiEmpty: ja('閲覧できる Wiki ページはありません。'),
+  wikiTreeFailed: ja('ページツリーを取得できませんでした。'),
+  graphOrigin: (originTitle: string) => ja('起点: {originTitle}', { originTitle }),
+  graphFigure: jaPattern(
+    'ナレッジグラフ（ノード {shownCount} 件・辺 {edgeCount} 本）。詳細は凡例と選択パネルを参照',
+  ),
+  graphNoRelations: ja(
+    'この文書には表示できる関係がありません。辺の型の絞り込みを緩めるか、探索深さを深くしてください。',
+  ),
+  graphFailed: ja('グラフを読み込めませんでした。'),
+};
 
 const HITS_REASON =
   'E2E_SEARCH_HITS=1 が無い（索引が空であり得る環境では、ヒット・候補・文書 ID を要る判定をしない。IADR-0627）';
@@ -59,7 +88,7 @@ async function openSearch(page: Page, query: string): Promise<SearchResponse> {
   await page.goto(`/search?q=${encodeURIComponent(query)}`);
   const res = await responded;
   expect(res.status(), 'POST /bff/search').toBe(200);
-  await expect(page.getByRole('heading', { name: '検索結果一覧', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: T.searchHeading, level: 1 })).toBeVisible();
   return (await res.json()) as SearchResponse;
 }
 
@@ -108,13 +137,17 @@ async function openWithCandidates(
     seen.set(key, { status: r.status(), values });
   };
   page.on('response', onResponse);
-  await page.goto(path);
-  await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
-  await expect
-    .poll(() => [...seen.keys()].sort(), { message: '候補の 3 軸' })
-    .toEqual(['department', 'project', 'tags']);
-  page.off('response', onResponse);
-  return seen;
+  try {
+    await page.goto(path);
+    await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+    await expect
+      .poll(() => [...seen.keys()].sort(), { message: '候補の 3 軸' })
+      .toEqual(['department', 'project', 'tags']);
+    return seen;
+  } finally {
+    // toPass の中で開き直すたびに受け手が積み重ならないよう、失敗しても外す。
+    page.off('response', onResponse);
+  }
 }
 
 /** `/bff/search`・`/bff/analysis/*`（回答・分析の口。LLM を呼ぶ）への要求を数える。 */
@@ -139,7 +172,7 @@ test.describe('e2e-user の検索・文書・グラフ', () => {
     { tag: ['@p0', '@live-ro'] },
     async ({ page }) => {
       const answerCalls = watchAnswerCalls(page);
-      const seen = await openWithCandidates(page, '/ask', 'ナレッジ検索・AI質問');
+      const seen = await openWithCandidates(page, '/ask', T.askHeading);
       for (const [axis, { status }] of seen) expect(status, `候補 ${axis}`).toBe(200);
       expect(answerCalls(), '回答・分析の口').toEqual([]);
     },
@@ -153,7 +186,7 @@ test.describe('e2e-user の検索・文書・グラフ', () => {
       test.skip(!cfg.searchHits, HITS_REASON);
       test.setTimeout(SLOW_TEST_MS);
       await expect(async () => {
-        const seen = await openWithCandidates(page, '/ask', 'ナレッジ検索・AI質問');
+        const seen = await openWithCandidates(page, '/ask', T.askHeading);
         expect(seen.get('department')?.values).toContain(INTERNAL_ONLY_DEPARTMENT);
       }).toPass(INDEX_WAIT);
     },
@@ -188,15 +221,18 @@ test.describe('e2e-user の検索・文書・グラフ', () => {
 
   // SC-03, FR-06, FR-05: M-044。
   test(
-    'M-044: internal の seed 文書を文書詳細で開ける（見出しが文書名）',
+    'M-044: internal の seed 文書を文書詳細で開ける（BFF の取得が 200・見出しが文書名）',
     { tag: ['@p0', '@live-ro'] },
     async ({ page, browser }) => {
       test.skip(!cfg.searchHits, HITS_REASON);
       test.setTimeout(SLOW_TEST_MS);
       const { internalId } = await seedIdsAsUser(browser);
+      // 対の陽性（M-045 の陰性と同じ URL）: 同じ文書の BFF の取得が 200 になる。
+      const fetched = page.waitForResponse((r) => isBff(r.url(), `/bff/documents/${internalId}`));
       await page.goto(`/docs/${internalId}`);
+      expect((await fetched).status(), 'GET /bff/documents/{internal}').toBe(200);
       await expect(page.getByRole('heading', { name: INTERNAL_DOC.title, level: 1 })).toBeVisible();
-      await expect(page.getByText('文書が見つかりませんでした。', { exact: true })).toHaveCount(0);
+      await expect(page.getByText(T.docNotFound, { exact: true })).toHaveCount(0);
     },
   );
 
@@ -207,14 +243,14 @@ test.describe('e2e-user の検索・文書・グラフ', () => {
     async ({ page }) => {
       const pages = page.waitForResponse((r) => isBff(r.url(), '/bff/wiki/pages'));
       await page.goto('/wiki');
-      await expect(page.getByRole('heading', { name: 'Wiki 閲覧', level: 1 })).toBeVisible();
+      await expect(page.getByRole('heading', { name: T.wikiHeading, level: 1 })).toBeVisible();
       expect((await pages).status(), 'GET /bff/wiki/pages').toBe(200);
       await expect(
         page
-          .getByRole('navigation', { name: 'ページツリー' })
-          .or(page.getByText('閲覧できる Wiki ページはありません。', { exact: true })),
+          .getByRole('navigation', { name: T.wikiTree })
+          .or(page.getByText(T.wikiEmpty, { exact: true })),
       ).toBeVisible();
-      await expect(page.getByText('ページツリーを取得できませんでした。')).toHaveCount(0);
+      await expect(page.getByText(T.wikiTreeFailed)).toHaveCount(0);
     },
   );
 
@@ -224,7 +260,7 @@ test.describe('e2e-user の検索・文書・グラフ', () => {
     { tag: ['@p1', '@live-ro'] },
     async ({ page }) => {
       const answerCalls = watchAnswerCalls(page);
-      const seen = await openWithCandidates(page, '/analyze', 'AI分析依頼');
+      const seen = await openWithCandidates(page, '/analyze', T.analyzeHeading);
       for (const [axis, { status }] of seen) expect(status, `候補 ${axis}`).toBe(200);
       expect(answerCalls(), '回答・分析の口').toEqual([]);
     },
@@ -243,13 +279,13 @@ test.describe('e2e-user の検索・文書・グラフ', () => {
       );
       await page.goto(`/graph?root=${publicId}`);
       expect((await neighbors).status(), 'GET /bff/graph/{id}/neighbors').toBe(200);
-      await expect(page.getByText(`起点: ${PUBLIC_DOC.title}`, { exact: true })).toBeVisible();
+      await expect(page.getByText(T.graphOrigin(PUBLIC_DOC.title), { exact: true })).toBeVisible();
       await expect(
         page
-          .getByRole('img', { name: /^ナレッジグラフ（ノード \d+ 件・辺 \d+ 本）/ })
-          .or(page.getByText(/^この文書には表示できる関係がありません。/)),
+          .getByRole('img', { name: T.graphFigure })
+          .or(page.getByText(T.graphNoRelations, { exact: true })),
       ).toBeVisible();
-      await expect(page.getByText('グラフを読み込めませんでした。')).toHaveCount(0);
+      await expect(page.getByText(T.graphFailed)).toHaveCount(0);
     },
   );
 });
@@ -257,7 +293,8 @@ test.describe('e2e-user の検索・文書・グラフ', () => {
 test.describe('e2e-noaccess の検索・文書（ABAC の陰性対照）', () => {
   test.use(as('noaccess'));
 
-  // SC-01, FR-05, IADR-0627: M-030。
+  // SC-01, FR-05, ADR-0043, IADR-0627: M-030。候補は検索と同じ ABAC の絞り込みを通る（計画 ADR-0043 決定 1「到達できる文書に
+  // 実際に付与された値だけを返す」。実装は RetrievalService の `AttributeValuesQuery.ListAsync` が検索と同じ `ScopeFilter` を渡す）。
   test(
     'M-030: 候補は 200 で、public の文書の部門は出るが、internal の seed 文書にだけ在る部門は出ない',
     { tag: ['@p1', '@live-ro'] },
@@ -267,7 +304,7 @@ test.describe('e2e-noaccess の検索・文書（ABAC の陰性対照）', () =>
       await seedIdsAsUser(browser); // 前提: 2 件とも索引に入っている（取り込み前の空で緑にしない）。
       let department: string[] = [];
       await expect(async () => {
-        const seen = await openWithCandidates(page, '/ask', 'ナレッジ検索・AI質問');
+        const seen = await openWithCandidates(page, '/ask', T.askHeading);
         for (const [axis, { status }] of seen) expect(status, `候補 ${axis}`).toBe(200);
         department = seen.get('department')?.values ?? [];
         // 陽性対照: public の文書の部門は noaccess にも出る（候補の口そのものは効いている）。
@@ -313,8 +350,10 @@ test.describe('e2e-noaccess の検索・文書（ABAC の陰性対照）', () =>
       const denied = page.waitForResponse((r) => isBff(r.url(), `/bff/documents/${internalId}`));
       await page.goto(`/docs/${internalId}`);
       expect((await denied).status(), 'GET /bff/documents/{internal}').toBe(404);
-      await expect(page.getByText('文書が見つかりませんでした。', { exact: true })).toBeVisible();
+      await expect(page.getByText(T.docNotFound, { exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: INTERNAL_DOC.title })).toHaveCount(0);
+      // 本文も出ない（internal の文書にだけ在る語が、画面のどこにも無い）。
+      await expect(page.getByText(INTERNAL_ONLY_TERM)).toHaveCount(0);
 
       // 陽性対照: 同じ画面で public の文書は開ける（404 が画面の故障ではない）。
       await page.goto(`/docs/${publicId}`);

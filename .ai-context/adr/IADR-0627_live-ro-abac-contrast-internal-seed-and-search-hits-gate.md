@@ -57,6 +57,13 @@ ABAC の階段は clearance=public に public の文書を読ませる。検索�
    `test.skip(!searchHits, 理由)`。到達（200 ＋描画）の test は門なしで流す。
 5. `e2e-live.yml` は readiness の後に seed 投入器（ABAC・検索）を明示的に再実行し、live の段に `E2E_SEARCH_HITS=1` を渡す（使い捨てスタックは
    `LOCALEMBED=1`・`SEARCHSEED=1` で索引が在る）。paths に両 seed の置き場を足す。
+   🔴 **条件つきの skip は CI の外（常設の PoC での手動実行など、索引の無い環境）のためだけに残す。** `e2e-live.yml` は `E2E_SEARCH_HITS=1` で流すので
+   skip は 0 件であり、`check-e2e-skips.js` の「skip 0 件」をログで確かめる。
+6. **陰性の判定は 3 つの面で見る**: 一覧（M-037）・文書の直 URL（M-045: 画面は「文書が見つかりませんでした」で本文の語が出ず、`GET /bff/documents/{id}` は 404。
+   対の陽性は M-044: user で同じ URL が 200）・候補（M-030）。候補の陰性は製品の仕様として保証されている —— 計画 ADR-0043 決定 1（到達できる文書に
+   実際に付与された値だけを返す）を、RetrievalService の `AttributeValuesQuery.ListAsync` が検索と同じ `ScopeFilter`（利用者の文脈で解決した ABAC）で実装している。
+7. 画面の文言は live の spec に写さず、製品の ja カタログ（`src/platform/frontend/src/locales/ja/messages.po`）の msgid から引く（`e2e/live/support/catalog.ts`）。
+   msgid が無ければ読み込みで例外になり、live の spec を `--list` で読む L1 の `live-opt-in.smoke.spec.ts` が赤にする（e2e-live だけに頼らない）。
 
 ## 理由
 
