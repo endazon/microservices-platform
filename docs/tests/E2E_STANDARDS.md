@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
-issues: [#2013, #2014, #2015, #2191, #2023]
+iadrs: [IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+specs: [20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
+issues: [#2013, #2014, #2015, #2191, #2023, #2036]
 -->
 
 # E2E テスト基準
@@ -88,8 +88,12 @@ issues: [#2013, #2014, #2015, #2191, #2023]
   **［2026-10-24］L1 の project 名を `smoke` へ改めた。** あわせて en-US の project `smoke-en-us` を足した
   （`locale: 'en-US'`。`e2e/i18n.smoke.spec.ts` だけを走らせ、`smoke` はこの spec を走らせない）。
   `playwright.live.config.ts` と `e2e/live/` はまだ無い。
-- **PR の必須チェックは L1 だけ**。L2 以降は必須チェックにしない（稼働環境に依存する赤で PR を止めない。
+- **PR で必ず流すのは L1 だけ**。L2 以降は PR に掛けない（稼働環境に依存する赤で PR を止めない。
   統合スタックの nightly を必須にしなかったのと同じ理由）。
+- **［2026-10-24 訂正］** 従前ここは「PR の必須チェックは L1 だけ」と書いていたが、L1 の check `e2e` は
+  ブランチ保護の必須チェックに**入っていない**。`frontend.yml` は `paths:` を持ち、フロントを触らない PR では
+  起動しないため、必須にすると恒久 pending になる（必須チェックの一覧は [`../ai-workflow.md`](../ai-workflow.md) の表が正本）。
+  L1 はフロントを触る PR では必ず走り、赤ければレビューとマージの判断で止める。
 
 ### 2.2 どの層に置くか
 
@@ -189,9 +193,10 @@ issues: [#2013, #2014, #2015, #2191, #2023]
 
 - trace: L1 は `on-first-retry`（現状）。live 層は `retain-on-failure`（再試行が無いか 1 回なので初回から残す）。
 - `screenshot: 'only-on-failure'`、`video: 'off'`（トレースを見る）。
-- reporter: CI はシャード時に `blob` → `merge-reports` で `html` ＋ `github`。ローカルは `list`。
-- 成果物のアップロードは **`if: ${{ !cancelled() }}`** で常に行い、14 日保存する（**現状**: `frontend.yml` の `e2e` ジョブは
-  アップロードしていない）。
+- reporter: CI はシャードごとに `blob`（＋ログ用の `list`）を書き、`merge-reports` で `html` ＋ `github` にまとめる。ローカルは `list`。
+  **［2026-10-24］配備した**: L1 は 2 シャード（`frontend.yml` の `e2e-shard` ジョブ）で流し、`e2e` ジョブがまとめる。
+- 成果物のアップロードは **`if: ${{ !cancelled() }}`** で常に行い、14 日保存する（**［2026-10-24］配備した**:
+  シャードごとの blob `e2e-blob-report-<N>` と、まとめた html `e2e-html-report`。trace は両方に含まれる）。
 - live 層では BFF 応答の本文を trace に残さない（`trace: { mode: 'retain-on-failure', snapshots: true, sources: false }`。
   `page.route` で本文をログへ書かない）。cookie を含む storageState を成果物に含めない。
 - axe の結果は `testInfo.attach('axe', { body: JSON.stringify(results) })` で添付する。
@@ -211,7 +216,7 @@ issues: [#2013, #2014, #2015, #2191, #2023]
 
 | 層 | ワークフロー | トリガ | 必須チェック | 成果物 |
 | --- | --- | --- | --- | --- |
-| L1 | `frontend.yml` の `e2e` ジョブ（現状あり） | PR・push | **はい** | blob/html report・trace（常時・14 日） |
+| L1 | `frontend.yml` の `e2e-shard` ジョブ（2 シャード）と、まとめる `e2e` ジョブ（check 名は `e2e`） | PR・push（フロントの `paths:` に当たるとき） | いいえ（`paths:` を持つため。§2.1） | blob/html report・trace（常時・14 日） |
 | （Keycloak のテーマの axe） | `keycloak-theme-a11y.yml` の `keycloak-theme-a11y` ジョブ（現状あり。使い捨ての Keycloak をジョブの中で起こす） | テーマ・realm・compose・axe の土台を変える PR・push、dispatch | いいえ | 失敗時のみ html report・test-results（7 日） |
 | L2 | `e2e-live.yml`（**目標**。統合スタックの k3d 上、または稼働中の PoC に対する self-hosted runner） | nightly・dispatch | いいえ | 同上 ＋ skip 一覧 |
 | L3 / L3-T / L3-L | 同 `e2e-live.yml` の `workflow_dispatch` 入力 `layer`（`rw` / `trading` / `llm`）を `E2E_LAYER` へ渡す。`trading` は閉場判定を job の先頭に置く | dispatch のみ | いいえ | 同上 ＋ 復元ログ |
@@ -226,9 +231,10 @@ issues: [#2013, #2014, #2015, #2191, #2023]
 | 項目 | 現状 | 本書の目標 |
 | --- | --- | --- |
 | L1 の project 名 | ~~`chromium`~~ `smoke`（2026-10-24 に改めた。ほかに `smoke-en-us`） | `smoke` |
-| 成果物のアップロード | なし | `!cancelled()`・14 日 |
-| `timeout-minutes` | なし | job に置く（L1 20 分、live 60 分） |
-| `fullyParallel` | 未指定（ファイル単位） | true（シャードの均等化） |
+| 成果物のアップロード | ~~なし~~ L1 は `!cancelled()`・14 日（2026-10-24） | `!cancelled()`・14 日 |
+| `timeout-minutes` | ~~なし~~ L1 は 20 分（2026-10-24。`globalTimeout` は CI で 15 分） | job に置く（L1 20 分、live 60 分） |
+| `fullyParallel` | ~~未指定（ファイル単位）~~ true（2026-10-24） | true（シャードの均等化） |
+| L1 のシャード | 2（2026-10-24） | 1 シャードあたり 10 分以内（§10） |
 | axe のタグ | `wcag2a` / `wcag2aa` / `wcag21a` / `wcag21aa` / `wcag22aa` / `best-practice`（達成済み） | 同左 |
 | axe の走査面 | SPA の全画面 ＋ 操作後の UI ＋ Keycloak のテーマの画面（達成済み。Keycloak のテーマの画面は使い捨ての Keycloak で走査する） | 同左 |
 | live のブラウザ E2E | なし（curl の `scripts/verify-oidc-edge-flow.sh` だけ） | L2〜L3 を新設。curl の検証は残す（API 層の門として役割が違う） |
