@@ -54,9 +54,12 @@ const listen = (server: Server) =>
     server.listen(0, '127.0.0.1', () => resolve((server.address() as AddressInfo).port)),
   );
 
-/** `refuseLogoutFor` の役割はログアウトを 500 で断る（teardown の失敗の経路を見るため）。 */
+/**
+ * `refuseLogoutFor` の役割はログアウトを 500 で断る（teardown の失敗の経路を見るため）。
+ * `requiredActionFor` の役割は OTP の後に Keycloak の必須アクション（OTP の登録）の画面へ送る（#2026 の初回の失敗の形）。
+ */
 export async function startFakeLiveStack(
-  opts: { refuseLogoutFor?: string } = {},
+  opts: { refuseLogoutFor?: string; requiredActionFor?: string } = {},
 ): Promise<FakeLiveStack> {
   const credentials: Record<string, string> = {};
   const secrets: Record<string, { password: string; totp: string }> = {};
@@ -140,6 +143,12 @@ export async function startFakeLiveStack(
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end('{"issuer":"fake"}');
     }
+    if (u.pathname === '/realms/platform/login-actions/required-action') {
+      return html(
+        res,
+        '<form id="kc-totp-settings-form" method="post"><button type="submit">送信</button></form>',
+      );
+    }
     if (u.pathname === '/logout') {
       // 戻り先は BFF のオリジンに限る（それ以外は BFF の根へ戻す）。開いたリダイレクトにしない。
       let back = `${edgeUrl}/`;
@@ -183,6 +192,12 @@ export async function startFakeLiveStack(
         (t) => secrets[role] && otpFor(secrets[role].totp, t) === f.get('otp'),
       );
       if (!ok) return html(res, 'コードが違います', 401);
+      if (role === opts.requiredActionFor) {
+        res.writeHead(302, {
+          location: '/realms/platform/login-actions/required-action?execution=CONFIGURE_TOTP',
+        });
+        return res.end();
+      }
       res.writeHead(302, {
         location: `${edgeUrl}/bff/auth/callback?code=${encodeURIComponent(role)}`,
       });

@@ -80,7 +80,22 @@ async function logIn(page: Page, testInfo: TestInfo, role: Role): Promise<void> 
     await page.locator('#kc-login').click();
   });
   await stage(testInfo, page, 'コールバック', async () => {
-    await page.waitForURL((url) => url.origin === cfg.edgeUrl && !url.pathname.startsWith('/bff/'));
+    // Keycloak が必須アクション（OTP の登録・パスワードの更新など）の画面へ送ったら、待ち続けずにそう言って落とす
+    // （#2026 の初回の実行で、宣言に requiredActions が無い試験アカウントに既定の CONFIGURE_TOTP が付き、ここで 60 秒待った）。
+    await page.waitForURL(
+      (url) =>
+        (url.origin === cfg.edgeUrl && !url.pathname.startsWith('/bff/')) ||
+        (url.origin === cfg.kcUrl && url.pathname.includes('/login-actions/required-action')),
+    );
+    if (new URL(page.url()).pathname.includes('/login-actions/required-action')) {
+      const forms = await page
+        .locator('form[id]')
+        .evaluateAll((els) => els.map((e) => String((e as unknown as { id: string }).id)));
+      throw new Error(
+        `Keycloak が必須アクションを求めている（フォーム: ${forms.join(', ') || '不明'}）。試験アカウントに requiredActions が残っている` +
+          '（realm の宣言は requiredActions: [] を明示する。既存の利用者は管理コンソールで外すか、消して作り直す）',
+      );
+    }
     const me = await page.request.get('/bff/auth/me');
     expect(me.status(), '/bff/auth/me（ログインの後）').toBe(200);
     // 身元の口は名前・subject・ロールを返す（トークンは返さない）。ロールで「その役割として入った」ことを確かめる。

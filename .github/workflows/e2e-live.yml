@@ -102,6 +102,7 @@ jobs:
 
       # 試験アカウント（IADR-0570）。値はこのジョブの中で作り、伏せてから使う。ファイルは runner の一時領域だけに置く。
       - name: Create the e2e-* accounts (disposable values)
+        id: accounts
         run: |
           set -euo pipefail
           umask 077
@@ -153,14 +154,18 @@ jobs:
           node scripts/check-e2e-skips.js --report "$RUNNER_TEMP/e2e-live.json" --layers "$layers"
 
       # 🔴 上げる前に走査する。資格情報の値が載っていれば赤にし、下の upload は走らない。
+      # アカウントを作る前に落ちた実行（スタックが起きない等）では、走査も upload もしない（本当の失敗を隠さない）。
+      # アカウントを作った後で値のファイルが消えているのは異常なので赤にする。
       - name: 🔴 Gate — 成果物に資格情報が載っていない
         id: artifact-scan
-        if: ${{ !cancelled() }}
-        run: >
-          node scripts/check-e2e-artifact-secrets.js
-          --env-file "$RUNNER_TEMP/e2e-accounts.env"
-          --scan src/platform/frontend/playwright-report
-          --scan src/platform/frontend/test-results
+        if: ${{ !cancelled() && steps.accounts.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          test -f "$RUNNER_TEMP/e2e-accounts.env" || { echo "::error::試験アカウントを作った後なのに値のファイルが無い（走査できない成果物は上げない）"; exit 1; }
+          node scripts/check-e2e-artifact-secrets.js \
+            --env-file "$RUNNER_TEMP/e2e-accounts.env" \
+            --scan src/platform/frontend/playwright-report \
+            --scan src/platform/frontend/test-results
 
       - name: Upload report and traces
         if: ${{ !cancelled() && steps.artifact-scan.outcome == 'success' }}

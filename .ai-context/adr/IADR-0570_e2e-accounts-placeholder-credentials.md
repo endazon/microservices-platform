@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-10, NFR-18, ADR-0026, ADR-0124, IADR-0294, IADR-0369, IADR-0518, IADR-0546, IADR-0569]
 author: claude
 created: 2026-10-21
-updated: 2026-10-21
+updated: 2026-10-24
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0026（認証は IdP・TOTP の MFA 必須）
   - planning:projects/microservices-platform/07_adr/ADR-0124（対になる秘密）
@@ -86,6 +86,8 @@ realm の宣言は 2 つの経路で Keycloak へ届く。どちらも宣言を�
 - 回転は利用者の削除と作り直しで行う（後追いは既存の利用者の資格情報を書き換えない）。削除は管理コンソールの手作業である。
 - `k8s-local-up.sh` がホストの Node.js を要するようになった（README の必要ツールに足した）。
 - 稼働の Keycloak での実測（6 名の作成・OTP でのログイン）はこの PR では行っていない。PoC での確認手順を README と PR に書いた（後続の E-31 が live の setup で使う）。
+  ［2026-10-24 追記 / #2026］統合スタックでの初回の実測（PR #2226 の `e2e-live`）で、作った 6 名に realm の既定の必須アクション `CONFIGURE_TOTP`（`defaultAction: true`）が付き、
+  OTP の後に「OTP の登録」の画面へ送られることが分かった。宣言に `"requiredActions": []` を明示して直した（経緯と PoC での直し方は IADR-0625）。
 
 ## 関連
 

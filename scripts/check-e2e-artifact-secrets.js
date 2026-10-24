@@ -10,7 +10,8 @@
  * 通信を記録する。IADR-0624 の実測）。setup は塞いだが、後から書かれる spec が同じ経路を踏んでも止まる門が無い。
  *
  * 見るもの: 指定したディレクトリの全ファイルの生のバイト列と、その中の zip（trace の `.zip`・html レポートが埋め込む
- * `data:application/zip;base64,…`）を展開した中身（入れ子の zip も辿る）。
+ * `data:application/zip;base64,…`）を展開した中身（入れ子の zip も 4 段まで辿り、超えたら例外）。探す形は値そのものに加えて、
+ * TOTP の秘密の base32・各値の base64（標準・URL 用）・Basic 認証の `e2e-<role>:<パスワード>` の base64（`formsOf`）。
  * 見ないもの: セッション cookie の値。cookie は層の trace のリクエストに必ず載り（外す設定が無い）、teardown が実行の終わりに
  * BFF のログアウトで失効させる（IADR-0624 決定 4）。値は実行の後に誰も持たない（state は teardown が消す）ので、ここでは突き合わせない。
  *
@@ -24,6 +25,7 @@
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
+const { base32Encode } = require('./lib/totp.js');
 
 const SECRET_NAME = /^E2E_[A-Z0-9_]+_(PASSWORD|TOTP_SECRET)$/;
 /** 短すぎる値は偶然の一致を拾う。資格情報は 20 文字以上（IADR-0570 の生成器）。 */
@@ -42,6 +44,28 @@ function parseArgs(argv) {
   return a;
 }
 
+/** 入れ子の zip をここまで辿る。超えたら例外（黙って打ち切ると、その奥を「無い」とみなす）。 */
+const MAX_DEPTH = 4;
+
+/**
+ * 1 つの秘密が成果物に載りうる形（純関数）。値そのものに加えて、道具が符号化して残す形を探す:
+ * - TOTP の秘密の base32（認証アプリ・`scripts/lib/totp.js` の `base32Encode`。Keycloak の画面の表示もこの形）
+ * - 各値の base64（HTTP のヘッダや埋め込みのデータ。標準と URL 用の両方）
+ * - Basic 認証の `<利用者>:<パスワード>` の base64（利用者名は `e2e-<role>`）
+ */
+function formsOf(secret) {
+  const forms = [{ how: '値', text: secret.value }];
+  const b64 = Buffer.from(secret.value, 'utf8').toString('base64').replace(/=+$/, '');
+  forms.push({ how: 'base64', text: b64 }, { how: 'base64url', text: b64.replace(/\+/g, '-').replace(/\//g, '_') });
+  if (secret.name.endsWith('_TOTP_SECRET')) forms.push({ how: 'base32', text: base32Encode(secret.value) });
+  if (secret.name.endsWith('_PASSWORD')) {
+    const role = secret.name.slice('E2E_'.length, -'_PASSWORD'.length).toLowerCase().replace(/_/g, '-');
+    const basic = Buffer.from(`e2e-${role}:${secret.value}`, 'utf8').toString('base64').replace(/=+$/, '');
+    forms.push({ how: 'Basic の base64', text: basic });
+  }
+  return forms.filter((f) => f.text.length >= MIN_LENGTH);
+}
+
 /** `KEY=VALUE` の行から資格情報だけを取る（純関数）。 */
 function readSecrets(text) {
   const out = [];
@@ -49,7 +73,7 @@ function readSecrets(text) {
     const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
     if (!m || !SECRET_NAME.test(m[1])) continue;
     if (m[2].length < MIN_LENGTH) throw new Error(`${m[1]}: 値が ${MIN_LENGTH} 文字未満で、偶然の一致と見分けられない`);
-    out.push({ name: m[1], value: m[2] });
+    out.push({ name: m[1], value: m[2], forms: formsOf({ name: m[1], value: m[2] }) });
   }
   if (out.length === 0) throw new Error('資格情報の値が 1 つも読めない（0 件の走査を緑にしない）');
   return out;
@@ -89,8 +113,10 @@ function unzip(buf) {
 
 /** バイト列と、その中の zip を辿って、見つかった資格情報の名前を返す（純関数に近い。zip は再帰で開く）。 */
 function findIn(buf, secrets, where, hits, depth = 0) {
-  if (depth > 4) return;
-  for (const s of secrets) if (buf.includes(s.value)) hits.push({ where, name: s.name });
+  if (depth > MAX_DEPTH) throw new Error(`${where}: zip の入れ子が ${MAX_DEPTH} 段を超える（奥を「無い」とみなさない）`);
+  for (const s of secrets) {
+    for (const f of s.forms) if (buf.includes(f.text)) hits.push({ where, name: s.name, how: f.how });
+  }
   const isZip = buf.length >= 4 && buf.readUInt32LE(0) === 0x04034b50;
   if (isZip) for (const e of unzip(buf)) findIn(e.data, secrets, `${where}!${e.name}`, hits, depth + 1);
   const text = buf.toString('latin1');
@@ -193,6 +219,34 @@ function selfTest() {
       expect: (r) => r.hits.length === 1 && r.hits[0].name === 'E2E_ADMIN_PASSWORD',
     },
     {
+      name: '🔴 TOTP の秘密の base32 形を見つける（認証アプリ・Keycloak の画面の表示の形）',
+      run: () => withDir((d) => fs.writeFileSync(path.join(d, 'a.txt'), `key ${base32Encode(totp)}`)),
+      expect: (r) => r.hits.length === 1 && r.hits[0].name === 'E2E_ADMIN_TOTP_SECRET' && r.hits[0].how === 'base32',
+    },
+    {
+      name: '🔴 値の base64 形を見つける（標準・URL 用）',
+      run: () => withDir((d) => {
+        const b = Buffer.from(pw, 'utf8').toString('base64');
+        fs.writeFileSync(path.join(d, 'a.txt'), b);
+        fs.writeFileSync(path.join(d, 'b.txt'), b.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''));
+      }),
+      expect: (r) => r.hits.filter((h) => h.name === 'E2E_ADMIN_PASSWORD' && /^base64/.test(h.how)).length >= 2,
+    },
+    {
+      name: '🔴 Basic 認証の「利用者:パスワード」の base64 形を見つける',
+      run: () => withDir((d) => fs.writeFileSync(path.join(d, 'h.txt'), `authorization: Basic ${Buffer.from(`e2e-admin:${pw}`).toString('base64')}`)),
+      expect: (r) => r.hits.some((h) => h.name === 'E2E_ADMIN_PASSWORD' && h.how === 'Basic の base64'),
+    },
+    {
+      name: '🔴 zip の入れ子が上限を超えたら例外（奥を黙って打ち切らない）',
+      run: () => {
+        let z = makeZip([['leaf.txt', 'x', false]]);
+        for (let i = 0; i < 6; i++) z = makeZip([[`n${i}.zip`, z, false]]);
+        try { withDir((d) => fs.writeFileSync(path.join(d, 'deep.zip'), z)); return 'no-throw'; } catch (e) { return e.message; }
+      },
+      expect: (m) => /入れ子/.test(m),
+    },
+    {
       name: '値が無ければ 0 件',
       run: () => withDir((d) => fs.writeFileSync(path.join(d, 'trace.zip'), makeZip([['a', 'nothing here', true]]))),
       expect: (r) => r.files === 1 && r.hits.length === 0,
@@ -230,7 +284,7 @@ function main(argv) {
   }
   if (r.hits.length) {
     process.stderr.write(`✗ 成果物に試験アカウントの資格情報が載っている（${r.hits.length} 件。値は出さない）:\n`);
-    for (const h of r.hits) process.stderr.write(`  - ${h.where}: ${h.name}\n`);
+    for (const h of r.hits) process.stderr.write(`  - ${h.where}: ${h.name}（${h.how}）\n`);
     process.exit(1);
   }
   process.stdout.write(`✓ 成果物 ${r.files} ファイル（中の zip を含む）に資格情報 ${secrets.length} 個の値は載っていない\n`);
@@ -243,4 +297,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { readSecrets, unzip, findIn, scan, makeZip, selfTest };
+module.exports = { readSecrets, formsOf, unzip, findIn, scan, makeZip, selfTest };

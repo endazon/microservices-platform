@@ -262,6 +262,30 @@ test('ログアウトに失敗した役割があれば、名前だけを出し�
   }
 });
 
+test('OTP の後に Keycloak が必須アクションを求めたら、待ち続けずにそう言って落ちる（#2026 の初回の失敗の形）', async () => {
+  const fake = await startFakeLiveStack({ requiredActionFor: 'user' });
+  const authDir = mkdtempSync(join(tmpdir(), 'e2e-live-auth-'));
+  try {
+    const started = Date.now();
+    const r = await runLiveAsync({
+      E2E_LIVE: '1',
+      E2E_EDGE_URL: fake.edgeUrl,
+      E2E_KC_URL: fake.kcUrl,
+      E2E_AUTH_DIR: authDir,
+      ...fake.credentials,
+    });
+    expect(r.status, r.out).not.toBe(0);
+    expect(r.out).toContain(
+      'Keycloak が必須アクションを求めている（フォーム: kc-totp-settings-form）',
+    );
+    // 60 秒の timeout まで待たない（ほかの 5 役割と teardown を含めて短く終わる）。
+    expect(Date.now() - started).toBeLessThan(45_000);
+  } finally {
+    await fake.close();
+    rmSync(authDir, { recursive: true, force: true });
+  }
+});
+
 test('process.loadEnvFile は既に在る名前（空を含む）を上書きしない（手元の .env.e2e が子プロセスの試験を変えない根拠）', () => {
   const dir = mkdtempSync(join(tmpdir(), 'e2e-live-env-'));
   try {

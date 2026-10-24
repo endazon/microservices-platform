@@ -1,8 +1,8 @@
 <!-- trace:
 adrs: [ADR-0048, ADR-0118]
-iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507, IADR-0508, IADR-0568, IADR-0578]
-specs: [20261022_ci-workflow-trust-and-injection-hardening, 20261012_1910_static-checks-off-critical-path, 20261008_1796_integration-gate-hardening, 20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups, 20261020_2005_age-apkindex-watch]
-issues: [#1910, #1796, #1775, #1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, #2005, planning#286]
+iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507, IADR-0508, IADR-0568, IADR-0578, IADR-0625]
+specs: [20261022_ci-workflow-trust-and-injection-hardening, 20261012_1910_static-checks-off-critical-path, 20261008_1796_integration-gate-hardening, 20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups, 20261020_2005_age-apkindex-watch, 20261024_2026_e2e-live-workflow]
+issues: [#1910, #1796, #1775, #1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, #2005, #2026, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）

@@ -13634,7 +13634,7 @@ exit $RC
     // --- NFR / #2026 / IADR-0625: live E2E（e2e-live.yml）の門 ------------------------------------------------------
     for (const [file, names] of [
       ['check-e2e-skips.js', ['ある project の test がすべて skip なら赤', 'skip でない test が 0 件なら赤', 'test が 0 件のレポートは例外']],
-      ['check-e2e-artifact-secrets.js', ['1 つも読めなければ例外', 'trace の zip（deflate）の中の値を見つける', '埋め込む base64 の zip', '壊れた zip は例外']],
+      ['check-e2e-artifact-secrets.js', ['1 つも読めなければ例外', 'trace の zip（deflate）の中の値を見つける', '埋め込む base64 の zip', '壊れた zip は例外', 'base32 形', '値の base64 形', 'Basic 認証', '入れ子が上限を超えたら例外']],
     ]) {
       ok(`#2026: ${file} の自己試験が通る`, () => {
         const r = spawnA(process.execPath, [pathA.join(__dirname, file), '--self-test'], { cwd: ROOT_A, encoding: 'utf8' });
@@ -13642,6 +13642,21 @@ exit $RC
         for (const name of names) assert.ok(r.stdout.includes(name), `自己試験から「${name}」が消えた`);
       });
     }
+
+    ok('#2026: OTP の資格情報を宣言する利用者は requiredActions を明示し、CONFIGURE_TOTP を持たない', () => {
+      // realm の requiredActions で CONFIGURE_TOTP が defaultAction（新しい利用者すべてに付く）である。宣言に requiredActions が
+      // 無い利用者を Admin REST API（reconcile-realm.js）で作ると、OTP の資格情報を持ったまま「OTP の登録」の画面へ送られ、
+      // live の setup が全役割で止まる（#2026 の e2e-live の初回の実行で実測。6 役割とも /login-actions/required-action）。
+      const realm = JSON.parse(fsA.readFileSync(pathA.join(ROOT_A, 'deploy/keycloak/microservices-platform-realm.json'), 'utf8'));
+      const def = (realm.requiredActions || []).find((x) => x.alias === 'CONFIGURE_TOTP');
+      assert.ok(def, 'realm に CONFIGURE_TOTP の必須アクションの宣言が無い（読み方が壊れている）');
+      const otpUsers = (realm.users || []).filter((u) => (u.credentials || []).some((c) => c.type === 'otp'));
+      assert.ok(otpUsers.length >= 6, `OTP の資格情報を宣言する利用者が ${otpUsers.length} 名（e2e-* の 6 名が読めない）`);
+      const bad = otpUsers
+        .filter((u) => !Array.isArray(u.requiredActions) || u.requiredActions.includes('CONFIGURE_TOTP'))
+        .map((u) => u.username);
+      assert.deepStrictEqual(bad, [], 'OTP を宣言しているのに requiredActions を明示していない（既定の CONFIGURE_TOTP が付く）');
+    });
 
     ok('#2026: e2e-live.yml は秘密を使わず、成果物を走査してから上げ、全 skip と teardown の失敗を赤にする', () => {
       const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/e2e-live.yml'), 'utf8');

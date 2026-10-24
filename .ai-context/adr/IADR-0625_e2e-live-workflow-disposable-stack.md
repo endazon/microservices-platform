@@ -53,10 +53,23 @@ live は実の Keycloak にパスワードと OTP を入れ、BFF のセッシ�
    `check-stack-ready.js --live` を門にし、`gen-e2e-accounts.js` の値で Secret `platform-infra/e2e-accounts` を作って `reconcile-realm.sh` で 6 名を足し、
    ルート CA を Node と Chromium に信頼させて、`playwright.live.config.ts` を E2E_LIVE=1 で流す。最後にスタックを消す。
 2. `scripts/check-e2e-skips.js` で全 skip（test を持つ project の全部が skip、skip でない test が 0 件）を赤にする。選んだ層に spec が無いのは警告。
-3. `scripts/check-e2e-artifact-secrets.js` で成果物の資格情報の値を走査し、0 件のときだけ html レポートと test-results を 14 日上げる。
+3. `scripts/check-e2e-artifact-secrets.js` で成果物の資格情報の値（と TOTP の秘密の base32・各値の base64・Basic 認証の base64）を、zip の入れ子 4 段まで
+   走査し（超えたら例外）、0 件のときだけ html レポートと test-results を 14 日上げる。試験アカウントを作る前に落ちた実行では走査も upload もしない。
 4. **セッション cookie**: 層の trace に載る（外せない）。teardown が失効させ、失効できなければジョブが赤（Playwright の実行の失敗を握り潰さない）。
    スタックはジョブの終わりに消えるので、30 日のセッションの寿命が 14 日の保存より長くても cookie の使い道は残らない。
 5. 権限はワークフロー単位で `contents: read`。起票は PR で走らない `report-failure` だけが `issues: write`・`actions: read` を持つ。必須チェックにしない。
+
+### 初回の実行で見つけた原因と直し方（PR #2226 の `e2e-live`）
+
+- **症状**: スタック・試験アカウントの作成・CA の信頼は通り、setup の 6 役割すべてが「コールバック」段で 60 秒待って落ちた。
+  失敗した段の attach の path は 6 件とも `/realms/platform/login-actions/required-action`（パスワードと OTP は通り、Keycloak の必須アクションの画面に残っていた）。
+- **原因**: realm の `requiredActions` で `CONFIGURE_TOTP` が `defaultAction: true`（新しい利用者すべてに付く）。試験アカウントの宣言（IADR-0570）は
+  `requiredActions` を持たないので、`reconcile-realm.js` が Admin REST API で作ると既定の `CONFIGURE_TOTP` が付き、宣言の OTP の資格情報を持ったまま
+  「OTP の登録」へ送られた。（2）OTP のポリシーの不一致・（3）エッジのオリジンの差・（4）スタックの不安定ではない —— OTP を通って Keycloak の別の画面へ進んでいる。
+- **直し方**: 6 名の宣言に `"requiredActions": []` を明示した（作成の本文に載り、Keycloak は既定の必須アクションを外す）。
+  `scripts.repo.test.js` が「OTP を宣言する利用者は requiredActions を明示し CONFIGURE_TOTP を持たない」を固定する。
+  あわせて setup は、必須アクションの画面へ送られたら待ち続けずに「Keycloak が必須アクションを求めている（フォーム: …）」と言って落ちる（L1 の偽スタックで固定）。
+- **常設の PoC**: E-30 の手順で既に作った試験アカウントには `CONFIGURE_TOTP` が付いている（後追いは既存の利用者を触らない）。PR #2226 本文の手順で外す。
 
 ## 理由
 

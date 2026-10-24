@@ -35,13 +35,19 @@ issue: "#2026"
 5. **全 skip**: 新設 `scripts/check-e2e-skips.js` が JSON レポートを読み、test を持つ project の全部が skip、または skip でない test が 0 件なら赤。
    選んだ層に spec がまだ無い（E-40 以降）のは警告だけ —— setup の 6 回の実ログインと teardown の失効は実際に走るので「0 件の緑」ではない。
 6. **成果物**: html レポートと test-results を `!cancelled()` で 14 日。**上げる前に** 新設 `scripts/check-e2e-artifact-secrets.js` が資格情報の値
-   （パスワード・TOTP の秘密）を全ファイルと中の zip まで走査し、載っていれば赤にして上げない。
+   （パスワード・TOTP の秘密）を全ファイルと中の zip まで走査し、載っていれば赤にして上げない。値そのものに加えて、TOTP の秘密の base32・各値の base64・
+   Basic 認証の `e2e-<role>:<パスワード>` の base64 も探す。zip の入れ子が 4 段を超えたら例外（［2026-10-24 / PR #2226 の AI レビュー 🟡・🟢］）。
+   試験アカウントを作る前に落ちた実行では走査も upload もしない（本当の失敗を隠さない）。作った後で値のファイルが無ければ赤。
 7. **セッション cookie と保存期間**: 層の trace は cookie を必ず記録する（IADR-0624）。teardown が実行の終わりにログアウトで失効させ、失効できなければ
    Playwright の実行が exit 1（`continue-on-error` を付けない）でジョブが赤。さらにスタックはジョブの終わりに消える。BFF のセッションの寿命は 30 日
    （`BffSessionOptions.SessionLifetimeSeconds` 2592000）で成果物の 14 日より長いが、使い捨てのスタックでは cookie の発行元がジョブの終わりで無くなるので
    保存期間は基準書 §11 の 14 日のままにする。**常設の PoC へ流す経路を足すときは、この前提が崩れるので見直す**（IADR-0625）。
 8. **権限**: ワークフロー単位で `contents: read` だけ。起票は PR では走らない `report-failure`（`ci-failure-issue.yml`。`issues: write`・`actions: read`）だけ。
 9. **必須チェックにしない**（`docs/ai-workflow.md` の表に取り消し線で載せる）。
+
+10. **初回の実行の失敗と直し方**（PR #2226 の `e2e-live`。詳しくは IADR-0625）: setup の 6 役割が `/realms/platform/login-actions/required-action` に残った。
+    realm の `CONFIGURE_TOTP` が `defaultAction` で、宣言に `requiredActions` の無い試験アカウントへ既定で付いたため。6 名に `"requiredActions": []` を明示し、
+    回帰の試験を足し、setup は必須アクションの画面で即座に理由つきで落ちるようにした。
 
 ## 母集合（規則 9・10）
 

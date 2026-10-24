@@ -1497,6 +1497,7 @@
       "lastName": "User",
       "enabled": true,
       "emailVerified": true,
+      "requiredActions": [],
       "attributes": {
         "clearance": [
           "internal"
@@ -1536,6 +1537,7 @@
       "lastName": "Operator",
       "enabled": true,
       "emailVerified": true,
+      "requiredActions": [],
       "attributes": {
         "clearance": [
           "internal"
@@ -1578,6 +1580,7 @@
       "lastName": "Admin",
       "enabled": true,
       "emailVerified": true,
+      "requiredActions": [],
       "attributes": {
         "clearance": [
           "restricted"
@@ -1621,6 +1624,7 @@
       "lastName": "NoAccess",
       "enabled": true,
       "emailVerified": true,
+      "requiredActions": [],
       "attributes": {
         "clearance": [
           "public"
@@ -1656,6 +1660,7 @@
       "lastName": "Revocable",
       "enabled": true,
       "emailVerified": true,
+      "requiredActions": [],
       "attributes": {
         "clearance": [
           "internal"
@@ -1691,6 +1696,7 @@
       "lastName": "TradingOwner",
       "enabled": true,
       "emailVerified": true,
+      "requiredActions": [],
       "attributes": {
         "clearance": [
           "internal"
