@@ -49,7 +49,7 @@ public sealed class VaultOptions
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Address);
 }
 
-/// <summary>Pod の ServiceAccount トークンを読む口（テストが差し替える）。</summary>
+/// <summary>Vault（k8s auth）へ名乗る ServiceAccount トークンを読む口（テストが差し替える）。Kubernetes API 用は <see cref="IKubernetesApiTokenReader"/>（#2193）。</summary>
 public interface IServiceAccountTokenReader
 {
     Task<string> ReadAsync(CancellationToken ct);

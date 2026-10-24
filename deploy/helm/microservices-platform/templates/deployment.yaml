@@ -238,7 +238,10 @@ spec:
           {{- end }}
           {{- if $svc.externalSecretSync }}
             # SC-22, IADR-0456 決定 4 (#1477): 書き込み後に ExternalSecret へ即時同期（force-sync 注釈）を依頼するか。
-            # 名乗りは Pod の ServiceAccount トークン、API サーバの所在は Pod の KUBERNETES_SERVICE_HOST/PORT（env では渡さない）。
+            # 名乗りは Pod の既定の ServiceAccount トークン（/var/run/secrets/kubernetes.io/serviceaccount/token。対象者＝API サーバ）、
+            # API サーバの所在は Pod の KUBERNETES_SERVICE_HOST/PORT（env では渡さない）。
+            # NFR-18, IADR-0585 決定 2, #2193: 上の Vault 用の projected token（audience: vault）は API サーバへ送らない（401 になる）。
+            # 既定のトークンは serviceAccount を持つサービスでは外さない（automountServiceAccountToken: false は SA の無いサービスだけ）。
             - name: ExternalSecretSync__Enabled
               value: {{ $svc.externalSecretSync.enabled | default false | quote }}
           {{- end }}
