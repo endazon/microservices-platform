@@ -61,7 +61,7 @@ issue: "#2025"
    `E2E_INSECURE_TLS=1` のときだけ `ignoreHTTPSErrors`（警告を出す）。
 6. **L1 の config は `e2e/live/**` を `testIgnore` する**（IADR-0569 決定 3）。L1 の既定の testMatch は `*.ro.spec.ts` も拾うため。
 7. **`.env.e2e`**: `e2e/live/.env.e2e` があれば `process.loadEnvFile` で読む（既存の環境変数は上書きしない）。
-   例示 `e2e/live/.env.e2e.example` は変数名と `<set-me>` だけ。`.env.e2e` はリポジトリ直下の `.gitignore` の `*.e2e` が既に外す。
+   例示 `e2e/live/.env.e2e.example` は変数名と `<set-me>` だけ。`.env.e2e` はリポジトリ直下の `.gitignore` の `.env.*` が既に外す（`git check-ignore -v` で `.gitignore:449:.env.*` に当たることを確かめた。同じパターンが例示まで外すので `src/.gitignore` で例示だけを戻した）。
 
 8. **秘密は `fill` で入れない**（実装中の実測で追加）。偽の BFF と Keycloak に対して setup を流したら、`locator.fill(password)` の値が
    step の題として html レポートに 6 名分残った。`fillSecret`（`evaluate` で値を入れ input / change を起こす）に替え、再測で 0 件になった。

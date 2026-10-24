@@ -6,5 +6,5 @@ export const DEFAULT_AUTH_DIR = fileURLToPath(
   new URL('../../../playwright/.auth', import.meta.url),
 );
 
-/** 手元の資格情報（任意）。リポジトリ直下の .gitignore の `*.e2e` が外す。例示は `.env.e2e.example`。 */
+/** 手元の資格情報（任意）。リポジトリ直下の .gitignore の `.env.*` が外す。例示は `.env.e2e.example`。 */
 export const LOCAL_ENV_FILE = fileURLToPath(new URL('../.env.e2e', import.meta.url));

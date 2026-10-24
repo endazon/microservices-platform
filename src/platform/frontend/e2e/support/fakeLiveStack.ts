@@ -31,6 +31,14 @@ export interface FakeLiveStack {
   close: () => Promise<void>;
 }
 
+/** HTML の本文・属性へ入れる値をエスケープする（`& < > " '`）。要求から来た値は必ずこれを通す。 */
+const escapeHtml = (value: string) =>
+  value.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
+  );
+
+/** 本文は固定の文字列か、`escapeHtml` を通した値だけで組む。 */
 const html = (res: ServerResponse, body: string, status = 200) => {
   res.writeHead(status, { 'content-type': 'text/html; charset=utf-8' });
   res.end(`<!doctype html><html lang="ja"><body>${body}</body></html>`);
@@ -133,7 +141,15 @@ export async function startFakeLiveStack(
       return res.end('{"issuer":"fake"}');
     }
     if (u.pathname === '/logout') {
-      res.writeHead(302, { location: u.searchParams.get('redirect') ?? edgeUrl });
+      // 戻り先は BFF のオリジンに限る（それ以外は BFF の根へ戻す）。開いたリダイレクトにしない。
+      let back = `${edgeUrl}/`;
+      try {
+        const target = new URL(u.searchParams.get('redirect') ?? '', edgeUrl);
+        if (target.origin === new URL(edgeUrl).origin) back = target.href;
+      } catch {
+        // 読めない値は既定へ
+      }
+      res.writeHead(302, { location: back });
       return res.end();
     }
     if (u.pathname === '/login' && req.method === 'GET') {
@@ -148,13 +164,14 @@ export async function startFakeLiveStack(
       const role = (f.get('username') ?? '').replace(/^e2e-/, '');
       if (!secrets[role] || secrets[role].password !== f.get('password'))
         return html(res, 'ログインに失敗しました', 401);
-      res.writeHead(302, { location: `/otp?u=${role}` });
+      res.writeHead(302, { location: `/otp?u=${encodeURIComponent(role)}` });
       return res.end();
     }
     if (u.pathname === '/otp' && req.method === 'GET') {
+      const role = u.searchParams.get('u') ?? '';
       return html(
         res,
-        `<form method="post" action="/otp?u=${u.searchParams.get('u')}"><label for="otp">コード</label><input id="otp" name="otp">` +
+        `<form method="post" action="/otp?u=${escapeHtml(encodeURIComponent(role))}"><label for="otp">コード</label><input id="otp" name="otp">` +
           '<button id="kc-login" type="submit">ログイン</button></form>',
       );
     }
@@ -166,7 +183,9 @@ export async function startFakeLiveStack(
         (t) => secrets[role] && otpFor(secrets[role].totp, t) === f.get('otp'),
       );
       if (!ok) return html(res, 'コードが違います', 401);
-      res.writeHead(302, { location: `${edgeUrl}/bff/auth/callback?code=${role}` });
+      res.writeHead(302, {
+        location: `${edgeUrl}/bff/auth/callback?code=${encodeURIComponent(role)}`,
+      });
       return res.end();
     }
     res.writeHead(404);
