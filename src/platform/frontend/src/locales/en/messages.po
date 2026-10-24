@@ -2053,6 +2053,11 @@ msgstr "Clear all"
 msgid "公開"
 msgstr "Publish"
 
+#: platform/frontend/src/components/ai-chat/CitationList.tsx
+msgctxt "機密区分"
+msgid "公開"
+msgstr "Public"
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "公開されているツールはありません。"
 msgstr "No tools are published."
@@ -2456,6 +2461,11 @@ msgstr "Unavailable"
 #: platform/frontend/src/components/ui/QueryState.tsx
 msgid "取得に失敗しました。"
 msgstr "Could not load the data."
+
+#: platform/frontend/src/components/ai-chat/CitationList.tsx
+msgctxt "機密区分"
+msgid "取扱制限"
+msgstr "Restricted"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "取消"
@@ -4238,6 +4248,16 @@ msgstr "Checked at"
 #: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "社内ナレッジ検索・AI 回答プラットフォーム"
 msgstr "Internal knowledge search and AI answering platform"
+
+#: platform/frontend/src/components/ai-chat/CitationList.tsx
+msgctxt "機密区分"
+msgid "社内限"
+msgstr "Internal"
+
+#: platform/frontend/src/components/ai-chat/CitationList.tsx
+msgctxt "機密区分"
+msgid "秘"
+msgstr "Confidential"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 #: knowledge/frontend/src/features/sc22-secrets/routes/sc22SecretsRoute.tsx
