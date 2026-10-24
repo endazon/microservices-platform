@@ -49,14 +49,36 @@ function isSweepable(name) {
 
 const enc = encodeURIComponent;
 
+/** 試験アカウントの役割（realm の `e2e-<role>`。`e2e/live/support/env.ts` の ROLES と同じ並び）。 */
+const ALL_ROLES = ['user', 'operator', 'admin', 'noaccess', 'revocable', 'trading-owner'];
+
 /**
- * 掃く種類（live-poc.md §3）。`role` はその一覧と削除が許される試験アカウント。`remove` が null の種類は列挙だけ。
- * 並びは消す順: タグは使用中だと 409 になるので、タグを付けうる文書・個人資料の後に置く。
+ * 掃く種類（live-poc.md §3）。`remove` が null の種類は列挙だけ。並びは消す順: タグは使用中だと 409 になるので、
+ * タグを付けうる文書・個人資料の後に置く。
+ *
+ * 🔴 **視点**（#2234 のレビュー）: `viewers` は、その種類を**作り得る役割すべて**（BFF の作成の口の x-roles。docs/api/openapi.yaml）
+ * のうち一覧を読める役割である。一覧は役割ごとに取り、**ID の和集合**で判定する。`deleter` は消す役割（`'viewer'` なら見えた役割）。
+ *   - 文書・ABAC ポリシー・データソース・タグ・MCP クライアント: 作成は platform-admin だけ → 視点は e2e-admin だけ。
+ *     文書の一覧は ABAC で絞られる。admin が自分で作った文書が admin に見えるのは seed の「所有者は自分の文書を読める」
+ *     （action read・`owner: ${current_user}`）があるときだけなので、`precondition` で毎回確かめ、無ければ視点の欠けとして出す。
+ *   - 個人資料: 作成は認証だけ（全役割）で、一覧は**本人のものだけ** → 視点は 6 役割すべて。消すのは見えた本人。
  */
+const OWNER_READ = (p) =>
+  p && p.action === 'read' && p.isActive !== false && p.documentConditions &&
+  JSON.stringify(p.documentConditions.owner) === JSON.stringify(['${current_user}']);
+
 const KINDS = [
   {
     kind: 'documents',
-    role: 'admin',
+    viewers: ['admin'],
+    deleter: 'admin',
+    async precondition(get) {
+      const policies = await get('/bff/admin/authz/policies');
+      if (!Array.isArray(policies) || !policies.some(OWNER_READ)) {
+        return '「所有者は自分の文書を読める」の有効なポリシーが無い（admin が作った文書が admin の一覧に出ない）';
+      }
+      return null;
+    },
     async list(get) {
       const out = [];
       for (let page = 0, offset = 0; page < MAX_PAGES; page++) {
@@ -73,7 +95,8 @@ const KINDS = [
   },
   {
     kind: 'private-notes',
-    role: 'user',
+    viewers: ALL_ROLES,
+    deleter: 'viewer',
     async list(get) {
       const body = await get('/bff/private-notes');
       if (!body || !Array.isArray(body.notes)) throw new Error('一覧の形が違う（notes）');
@@ -87,7 +110,8 @@ const KINDS = [
   },
   {
     kind: 'abac-policies',
-    role: 'admin',
+    viewers: ['admin'],
+    deleter: 'admin',
     async list(get) {
       const body = await get('/bff/admin/authz/policies');
       if (!Array.isArray(body)) throw new Error('一覧の形が違う（配列）');
@@ -97,7 +121,8 @@ const KINDS = [
   },
   {
     kind: 'datasources',
-    role: 'admin',
+    viewers: ['admin'],
+    deleter: 'admin',
     async list(get) {
       const body = await get('/bff/datasources');
       if (!Array.isArray(body)) throw new Error('一覧の形が違う（配列）');
@@ -107,7 +132,8 @@ const KINDS = [
   },
   {
     kind: 'mcp-clients',
-    role: 'admin',
+    viewers: ['admin'],
+    deleter: 'admin',
     async list(get) {
       const body = await get('/bff/admin/mcp-clients');
       if (!Array.isArray(body)) throw new Error('一覧の形が違う（配列）');
@@ -118,7 +144,8 @@ const KINDS = [
   },
   {
     kind: 'tags',
-    role: 'admin',
+    viewers: ['admin'],
+    deleter: 'admin',
     async list(get) {
       const body = await get('/bff/tags');
       if (!body || !Array.isArray(body.tags)) throw new Error('一覧の形が違う（tags）');
@@ -213,7 +240,15 @@ async function sweep(opts, deps) {
   const send = async (role, method, p, body) => {
     if (dryRun && method !== 'GET') throw new Error(`dry-run なのに ${method} を送ろうとした（${p}）`);
     if (!p.startsWith('/bff/')) throw new Error(`/bff/ 以外へは送らない: ${p}`);
-    if (!sessions.has(role)) sessions.set(role, cookieHeader(readState(role), opts.edgeUrl));
+    if (!sessions.has(role)) {
+      let state;
+      try {
+        state = readState(role);
+      } catch (e) {
+        throw Object.assign(new Error(e.message), { missingState: true });
+      }
+      sessions.set(role, cookieHeader(state, opts.edgeUrl));
+    }
     const headers = { Accept: 'application/json', Cookie: sessions.get(role) };
     if (method !== 'GET') headers[CSRF_HEADER] = '1';
     if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -225,24 +260,47 @@ async function sweep(opts, deps) {
     });
   };
 
+  /** 視点が欠けたもの（その役割の一覧を見ていない）。「残骸 0」を嘘にしないため、件数の行に必ず添える。 */
+  const gaps = [];
   for (const k of KINDS) {
-    let items;
-    try {
-      items = await k.list(async (p) => {
-        const res = await send(k.role, 'GET', p);
-        if (res.status !== 200) throw new Error(`GET ${p.split('?')[0]} が ${res.status}`);
-        return res.json();
-      });
-    } catch (e) {
-      failures.push(`${k.kind}: 一覧を読めない（${e.message}）`);
-      continue;
+    const get = (role) => async (p) => {
+      const res = await send(role, 'GET', p);
+      if (res.status === 401) throw Object.assign(new Error('セッションが無効（401）'), { gap: true });
+      if (res.status !== 200) throw new Error(`GET ${p.split('?')[0]} が ${res.status}`);
+      return res.json();
+    };
+    // ID の和集合（どの役割で見えたか）。
+    const seen = new Map();
+    const looked = [];
+    for (const role of k.viewers) {
+      try {
+        if (k.precondition) {
+          const missing = await k.precondition(get(role));
+          if (missing) {
+            gaps.push(`${k.kind}@e2e-${role}: ${missing}`);
+            continue;
+          }
+        }
+        for (const it of await k.list(get(role))) {
+          const entry = seen.get(it.id) || { item: it, seenBy: [] };
+          entry.seenBy.push(role);
+          seen.set(it.id, entry);
+        }
+        looked.push(role);
+      } catch (e) {
+        if (e.gap || e.missingState) gaps.push(`${k.kind}@e2e-${role}: ${e.message}`);
+        else failures.push(`${k.kind}@e2e-${role}: 一覧を読めない（${e.message}）`);
+      }
     }
-    const matched = items.filter((it) => isSweepable(it.name));
+    const matched = [...seen.values()].filter((e) => isSweepable(e.item.name));
     found += matched.length;
-    log(`${TAG} ${k.kind}: 一致 ${matched.length} 件（一覧 ${items.length} 件・e2e-${k.role}）`);
-    for (const it of matched) {
+    log(
+      `${TAG} ${k.kind}: 一致 ${matched.length} 件（一覧 ${seen.size} 件・視点: ${looked.map((r) => `e2e-${r}`).join(', ') || 'なし'}` +
+        `${looked.length < k.viewers.length ? `／見ていない視点: ${k.viewers.filter((r) => !looked.includes(r)).map((r) => `e2e-${r}`).join(', ')}` : ''}）`,
+    );
+    for (const { item: it, seenBy } of matched) {
       if (dryRun) {
-        log(`  - ${it.id} ${it.name}`);
+        log(`  - ${it.id} ${it.name}（e2e-${seenBy.join(', e2e-')}）`);
         continue;
       }
       if (!k.remove) {
@@ -250,11 +308,17 @@ async function sweep(opts, deps) {
         continue;
       }
       if (!isSweepable(it.name)) throw new Error(`接頭辞が一致しないものを消そうとした: ${it.id}`); // 防御（ここへは来ない）
+      // 🔴 消すのは**見えた役割**で。消す役割に見えていないものへ送ると、存在秘匿の 404 を「消えた」と取り違える。
+      const role = k.deleter === 'viewer' ? seenBy[0] : k.deleter;
+      if (!seenBy.includes(role)) {
+        failures.push(`${k.kind}: ${it.id} ${it.name} は e2e-${role} の視点で見えない（消せない。見えた役割: e2e-${seenBy.join(', e2e-')}）`);
+        continue;
+      }
       let ok = true;
       for (const step of k.remove(it)) {
         try {
-          const res = await send(k.role, step.method, step.path, step.body);
-          // 404 は既に消えている（test の afterEach が消した・論理削除の後に完全削除へ進んだ）。
+          const res = await send(role, step.method, step.path, step.body);
+          // 404 は既に消えている（test の afterEach が消した・論理削除の後に完全削除へ進んだ）。見えた役割で送るので、存在秘匿の 404 ではない。
           if (res.status !== 404 && (res.status < 200 || res.status >= 300)) {
             failures.push(`${k.kind}: ${it.id} ${it.name} を消せない（${step.method} ${step.path.split('?')[0]} が ${res.status}）`);
             ok = false;
@@ -268,15 +332,19 @@ async function sweep(opts, deps) {
       }
       if (ok) {
         removed++;
-        log(`  - ${it.id} ${it.name}（消した）`);
+        log(`  - ${it.id} ${it.name}（e2e-${role} で消した）`);
       }
     }
   }
 
+  const gapNote = gaps.length ? `（ただし見ていない視点 ${gaps.length}: この視点の残骸は数えていない）` : '';
+  if (gaps.length) log(`${TAG} ⚠ 見ていない視点:\n  - ${gaps.join('\n  - ')}`);
   if (dryRun) {
-    log(found ? `${TAG} ⚠ dry-run: 残骸 ${found} 件（消すには --delete）` : `${TAG} dry-run: 残骸は無い`);
+    log(found ? `${TAG} ⚠ dry-run: 残骸 ${found} 件${gapNote}（消すには --delete）` : `${TAG} dry-run: 残骸 0 件${gapNote}`);
   } else {
-    log(`${TAG} delete: 一致 ${found} 件のうち ${removed} 件を消した`);
+    log(`${TAG} delete: 一致 ${found} 件のうち ${removed} 件を消した${gapNote}`);
+    // 消す実行で視点が欠けたら、掃き切ったとは言えない（exit 1）。dry-run は警告だけ（赤にするかは波 4 の後に #2235 で決める）。
+    for (const g of gaps) failures.push(`見ていない視点: ${g}`);
   }
   if (failures.length) {
     log(`${TAG} ✗ 失敗 ${failures.length} 件:\n  - ${failures.join('\n  - ')}`);
@@ -313,7 +381,7 @@ async function main(argv, deps = {}) {
   return sweep(opts, { fetch: deps.fetch || globalThis.fetch, readState, log });
 }
 
-module.exports = { PREFIX, DISPOSABLE_STACKS, KINDS, isSweepable, parseArgs, checkTarget, cookieHeader, sweep, main };
+module.exports = { PREFIX, DISPOSABLE_STACKS, ALL_ROLES, KINDS, isSweepable, parseArgs, checkTarget, cookieHeader, sweep, main };
 
 if (require.main === module) {
   main(process.argv.slice(2)).then(

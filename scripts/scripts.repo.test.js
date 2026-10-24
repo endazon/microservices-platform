@@ -13724,40 +13724,46 @@ exit $RC
           '/bff/documents': { items: [
             { id: 'd1', title: 'e2e-r1-doc' }, { id: 'd2', title: 'msp-searchseed-tanpopo 検索導線の検証用文書' },
             { id: 'd3', title: 'E2E-r1-upper' }, { id: 'd4', title: 'xe2e-r1-doc' } ], total: 4 },
-          '/bff/private-notes': { usage: {}, notes: [
-            { id: 'n1', title: 'e2e-r1-note', deleted: false }, { id: 'n2', title: 'e2e-r1-trash', deleted: true },
-            { id: 'n3', title: '私のメモ', deleted: false }, { id: 'n4', title: ' e2e-r1-space', deleted: true } ] },
           '/bff/admin/authz/policies': [ { id: 'p1', name: 'dev: public 取扱者は public を読める' }, { id: 'p2', name: 'e2e-r1-policy' },
-            { id: 'p3', name: null } ],
+            { id: 'p3', name: null },
+            ...(sc.noOwnerPolicy ? [] : [{ id: 'p0', name: 'dev: 所有者は自分の文書を読める', action: 'read', isActive: true,
+              documentConditions: { owner: ['\${current_user}'] } }]) ],
           '/bff/datasources': [ { id: 's1', name: 'e2e_r1-source' }, { id: 's2', name: 'e2e-r1-source' } ],
           '/bff/admin/mcp-clients': [ { clientId: 'c1', displayName: 'e2e-r1-mcp' }, { clientId: 'c2', displayName: 'prod-agent' } ],
           '/bff/tags': { tags: [ { id: 't1', name: 'e2e-r1-tag' }, { id: 't2', name: '営業' }, { id: 't3', name: 'e2e' } ] },
         };
+        // 個人資料は本人のものだけが見える（役割ごとに違う一覧）。
+        const notes = {
+          user: [ { id: 'n1', title: 'e2e-r1-note', deleted: false }, { id: 'n2', title: 'e2e-r1-trash', deleted: true },
+                  { id: 'n3', title: '私のメモ', deleted: false }, { id: 'n4', title: ' e2e-r1-space', deleted: true } ],
+          operator: [ { id: 'o1', title: 'e2e-r1-op-note', deleted: false } ],
+        };
         const fetch = async (url, init) => {
           const u = new URL(url);
-          const call = { method: init.method, path: u.pathname, cookie: init.headers.Cookie, csrf: init.headers['X-MSP-CSRF'] || null,
-            body: init.body ? JSON.parse(init.body) : null };
+          const role = String(init.headers.Cookie).replace('__Host-msp-session=', '');
+          const call = { method: init.method, path: u.pathname, role, csrf: init.headers['X-MSP-CSRF'] || null,
+            body: init.body ? JSON.parse(init.body) : null, cookie: init.headers.Cookie };
           calls.push(call);
           const key = init.method + ' ' + u.pathname;
-          const status = (sc.status || {})[key];
+          const status = (sc.status || {})[key] || (sc.status || {})[key + '@' + role];
           if (status) return { status, json: async () => ({}) };
+          if (init.method === 'GET' && u.pathname === '/bff/private-notes') return { status: 200, json: async () => ({ usage: {}, notes: notes[role] || [] }) };
           if (init.method === 'GET') return { status: 200, json: async () => data[u.pathname] };
           return { status: 204, json: async () => ({}) };
         };
-        const states = { admin: { cookies: [ { name: '__Host-msp-session', value: 'ADMIN', domain: 'localhost', expires: -1 },
-                                            { name: 'other', value: 'X', domain: 'example.com', expires: -1 } ] },
-                         user: { cookies: [ { name: '__Host-msp-session', value: 'USER', domain: 'localhost', expires: -1 } ] } };
+        const states = Object.fromEntries(s.ALL_ROLES.map((r) => [r, { cookies: [ { name: '__Host-msp-session', value: r, domain: 'localhost', expires: -1 },
+          { name: 'other', value: 'X', domain: 'example.com', expires: -1 } ] }]));
         s.main(${JSON.stringify(argv)}, {
           fetch, log: (l) => logs.push(l), err: (l) => logs.push(l), env: {},
           currentContext: () => { if (sc.context === 'throw') throw new Error('no ctx'); return sc.context || 'k3d-e2e-live'; },
-          readState: (role) => states[role],
+          readState: (role) => { if ((sc.missingState || []).includes(role)) throw new Error('e2e-' + role + ' の state が無い'); return states[role]; },
         }).then((code) => process.stdout.write(JSON.stringify({ code, calls, logs })));`;
       const r = spawnS(process.execPath, ['-e', code], { encoding: 'utf8', env: { ...process.env, SWEEP_SCENARIO: JSON.stringify(scenario) } });
       assert.strictEqual(r.status, 0, r.stderr);
       return JSON.parse(r.stdout);
     };
     const target = ['--live', '--edge-url', 'https://localhost', '--auth-dir', '/nonexistent', '--stack', 'e2e-live'];
-    const E2E_IDS = new Set(['d1', 'n1', 'n2', 'p2', 's2', 't1']);
+    const E2E_IDS = new Set(['d1', 'n1', 'n2', 'o1', 'p2', 's2', 't1']);
 
     ok('#2030: 接頭辞の判定は e2e- で始まる文字列だけ（大文字・前置き・区切り違い・文字列以外は一致しない）', () => {
       for (const yes of ['e2e-', 'e2e-r1-doc', 'e2e-20261025-note']) assert.strictEqual(sweepLib.isSweepable(yes), true, yes);
@@ -13772,7 +13778,11 @@ exit $RC
       assert.deepStrictEqual([...new Set(out.calls.map((c) => c.method))], ['GET'], 'dry-run が GET 以外を送った');
       const listed = out.logs.filter((l) => /^ {2}- /.test(l)).map((l) => l.split(' ')[3]);
       assert.deepStrictEqual(new Set(listed), new Set([...E2E_IDS, 'c1']), '列挙が e2e- の一致と違う');
-      assert.ok(out.logs.some((l) => l.includes('残骸 7 件')), out.logs.join('\n'));
+      assert.ok(out.logs.some((l) => l.includes('dry-run: 残骸 8 件（消すには')), out.logs.join('\n'));
+      // 視点: 個人資料は 6 役割すべての一覧を取り（本人のものだけが見える）、他の種類は e2e-admin だけ。
+      assert.deepStrictEqual(out.calls.filter((c) => c.path === '/bff/private-notes').map((c) => c.role), sweepLib.ALL_ROLES);
+      assert.ok(out.logs.some((l) => l.includes('private-notes: 一致 3 件（一覧 5 件・視点: e2e-user, e2e-operator, e2e-admin, e2e-noaccess, e2e-revocable, e2e-trading-owner）')), out.logs.join('\n'));
+      assert.ok(out.logs.some((l) => l.includes('documents: 一致 1 件（一覧 4 件・視点: e2e-admin）')), out.logs.join('\n'));
       // --dry-run を明示しても同じ。
       assert.deepStrictEqual(runSweep([...target, '--dry-run']).calls.map((c) => c.method).filter((m) => m !== 'GET'), []);
     });
@@ -13789,6 +13799,7 @@ exit $RC
           'DELETE /bff/documents/d1',
           'DELETE /bff/private-notes/n1', 'POST /bff/private-notes/purge n1',
           'POST /bff/private-notes/purge n2',
+          'DELETE /bff/private-notes/o1', 'POST /bff/private-notes/purge o1',
           'DELETE /bff/admin/authz/policies/p2',
           'DELETE /bff/datasources/s2',
           'DELETE /bff/tags/t1',
@@ -13796,8 +13807,10 @@ exit $RC
         '消す要求の集合・順（タグは最後）が違う',
       );
       assert.ok(writes.every((c) => c.csrf === '1'), '状態変更に X-MSP-CSRF が無い');
-      assert.ok(out.calls.every((c) => c.cookie === (c.path.startsWith('/bff/private-notes') ? '__Host-msp-session=USER' : '__Host-msp-session=ADMIN')),
-        '役割の cookie の取り違え（個人資料は e2e-user・他は e2e-admin。他ドメインの cookie を送らない）');
+      // 個人資料は見えた本人で消し、他の種類は e2e-admin で消す。他ドメインの cookie は送らない。
+      assert.deepStrictEqual(writes.map((c) => c.role), ['admin', 'user', 'user', 'user', 'operator', 'operator', 'admin', 'admin', 'admin']);
+      assert.ok(out.calls.every((c) => /^__Host-msp-session=[a-z-]+$/.test(c.cookie)), '到達先でない cookie を送った');
+      assert.ok(out.calls.filter((c) => !c.path.startsWith('/bff/private-notes')).every((c) => c.role === 'admin'), '管理の種類を admin 以外で読んだ');
       assert.ok(out.logs.some((l) => l.includes('c1 e2e-r1-mcp（消す口が無い。残る）')), 'MCP クライアントが残ることを示していない');
     });
 
@@ -13811,6 +13824,28 @@ exit $RC
       assert.ok(gone.calls.some((c) => c.method === 'POST' && c.body && c.body.ids[0] === 'n1'), '404 の後の完全削除を送っていない');
       // 一覧が読めない種類があれば exit 1（0 件の緑にしない）。
       assert.strictEqual(runSweep(target, { status: { 'GET /bff/tags': 403 } }).code, 1);
+    });
+
+    ok('#2030（#2234 レビュー）: 見ていない視点があれば「残骸 0」と言い切らない（dry-run は警告、--delete は exit 1）', () => {
+      // 1 役割のセッションが失効していた（e2e-revocable は失効の試験に使う）・state が無い。
+      const sc = { status: { 'GET /bff/private-notes@revocable': 401 }, missingState: ['trading-owner'] };
+      const dry = runSweep(target, sc);
+      assert.strictEqual(dry.code, 0, dry.logs.join('\n'));
+      const text = dry.logs.join('\n');
+      assert.match(text, /見ていない視点: e2e-revocable, e2e-trading-owner/);
+      assert.match(text, /private-notes@e2e-revocable: セッションが無効（401）/);
+      assert.match(text, /残骸 8 件（ただし見ていない視点 2: この視点の残骸は数えていない）/);
+      assert.strictEqual(runSweep([...target, '--delete'], sc).code, 1, '消す実行で視点が欠けたのに exit 0');
+      // 文書: 「所有者は自分の文書を読める」が無ければ admin の一覧は admin が作った文書を含まない → 文書の一覧を数えずに欠けとして出す。
+      const noOwner = runSweep(target, { noOwnerPolicy: true });
+      const t2 = noOwner.logs.join('\n');
+      assert.match(t2, /documents: 一致 0 件（一覧 0 件・視点: なし／見ていない視点: e2e-admin）/);
+      assert.match(t2, /documents@e2e-admin: 「所有者は自分の文書を読める」の有効なポリシーが無い/);
+      assert.ok(!noOwner.calls.some((c) => c.path === '/bff/documents'), '前提が無いのに文書の一覧を数えた');
+      // 視点の和集合のもとが 6 役割（env.ts の ROLES と同じ）であること。
+      const roles = /export const ROLES = \[([\s\S]*?)\] as const/.exec(fsS.readFileSync(pathS.join(__dirname, '..', 'src/platform/frontend/e2e/live/support/env.ts'), 'utf8'));
+      assert.ok(roles, 'env.ts の ROLES を読めない');
+      assert.deepStrictEqual([...roles[1].matchAll(/'([^']+)'/g)].map((m) => m[1]), sweepLib.ALL_ROLES, 'sweep の役割が env.ts の ROLES とずれた');
     });
 
     ok('#2030: 向け先を明示しない・使い捨てのスタック以外・context が違うなら exit 2 で、要求を 1 つも送らない', () => {

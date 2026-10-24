@@ -172,6 +172,7 @@ issues: [#2013, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #
   （`--edge-url`・`--auth-dir`・`--stack` は既定値を持たず、kubectl の context が `k3d-e2e-live` でなければ止まる）。
   セッションは live-setup の storageState を使うので、`E2E_SWEEP=dry-run|delete` と `E2E_SWEEP_STACK` を与えると teardown が失効の前に流す
   （`e2e-live.yml` は dry-run）。作成日時の窓（`--older-than`）は持たない —— 使い捨てのスタックには並行する実行が無い。
+  一覧は種類を作り得る役割すべての視点で取り（個人資料は 6 役割、管理の種類は admin）、見ていない視点があれば件数に必ず添える。
 - **［2026-10-25］L2 の ABAC の対照**: 検索用 seed は public の 1 件と internal の 1 件を持つ。`e2e-user`（clearance=internal）には 2 件とも見え、
   `e2e-noaccess`（clearance=public）には public だけが見える。public の 1 件を見えない側の陽性対照にし、見えない側の判定の前に見える側で
   2 件とも索引に入ったことを確かめる（取り込み前の空で緑にしない）。検索のヒット・候補・文書 ID を要る test は **`E2E_SEARCH_HITS=1`** のときだけ

@@ -132,27 +132,63 @@ export function sweepArgs(cfg: LiveEnv): string[] | null {
   ];
 }
 
+/**
+ * 残骸掃きを流す（失効の前に呼ぶ）。返り値は `'off'`（未指定）・`'skipped'`（要る state が欠けた）・`'ok'`・`'failed'`。
+ * 🔴 **要る state が 1 つでも無ければ流さずに理由を 1 行出す**（setup がその役割で落ちた。setup の失敗に二次的な失敗を重ねない。
+ * #2234 のレビュー）。要る state は sweep の視点の和集合 ＝ 6 役割すべて（個人資料は本人の一覧しか見えない。IADR-0629 決定 5）。
+ */
+export function runSweep(
+  cfg: LiveEnv,
+  deps: {
+    exists?: (path: string) => boolean;
+    spawn?: (args: string[]) => {
+      status: number | null;
+      stdout: string;
+      stderr: string;
+      detail?: string;
+    };
+    write?: (line: string) => void;
+  } = {},
+): 'off' | 'skipped' | 'ok' | 'failed' {
+  const args = sweepArgs(cfg);
+  if (!args) return 'off';
+  const exists = deps.exists ?? existsSync;
+  const write = deps.write ?? ((line: string) => process.stdout.write(line));
+  const missing = ROLES.filter((role) => !exists(stateFile(cfg.authDir, role)));
+  if (missing.length) {
+    write(
+      `[e2e-live] 残骸掃きを飛ばした（state が無い役割: ${missing.map((r) => `e2e-${r}`).join(', ')}。setup の失敗を先に見る）\n`,
+    );
+    return 'skipped';
+  }
+  const spawn =
+    deps.spawn ??
+    ((a: string[]) => {
+      const r = spawnSync(process.execPath, a, {
+        encoding: 'utf8',
+        timeout: 5 * 60_000,
+        env: cfg.insecureTls ? { ...process.env, NODE_TLS_REJECT_UNAUTHORIZED: '0' } : process.env,
+      });
+      return {
+        status: r.status,
+        stdout: r.stdout ?? '',
+        stderr: r.stderr ?? '',
+        detail: r.signal ?? r.error?.message,
+      };
+    });
+  const r = spawn(args);
+  write(r.stdout);
+  if (r.stderr) process.stderr.write(r.stderr);
+  if (r.status === 0) return 'ok';
+  process.stderr.write(`[e2e-live] 残骸掃きが exit ${r.status ?? r.detail}\n`);
+  return 'failed';
+}
+
 export default async function globalTeardown(): Promise<void> {
   const cfg = parseLiveEnv(process.env, DEFAULT_AUTH_DIR);
   if (!cfg.live) return;
   // #2030 / IADR-0629: 残骸掃きは**失効の前**に流す（セッションは storageState の cookie を使う）。失敗しても失効は必ず済ませ、最後に exit 1。
-  let sweepFailed = false;
-  const args = sweepArgs(cfg);
-  if (args) {
-    const r = spawnSync(process.execPath, args, {
-      encoding: 'utf8',
-      timeout: 5 * 60_000,
-      env: cfg.insecureTls ? { ...process.env, NODE_TLS_REJECT_UNAUTHORIZED: '0' } : process.env,
-    });
-    process.stdout.write(r.stdout ?? '');
-    process.stderr.write(r.stderr ?? '');
-    if (r.status !== 0) {
-      sweepFailed = true;
-      process.stderr.write(
-        `[e2e-live] 残骸掃きが exit ${r.status ?? r.signal ?? r.error?.message}\n`,
-      );
-    }
-  }
+  const sweepFailed = runSweep(cfg) === 'failed';
   const browser = await chromium.launch();
   let result: RevokeResult;
   try {
