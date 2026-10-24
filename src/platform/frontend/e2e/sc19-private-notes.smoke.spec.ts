@@ -331,9 +331,9 @@ test('SC-19/UC-11 (#1445): share targets are listed by display name, added by se
   // 検索 → 候補（表示名だけ）→ 追加。**すでに共有済みの花子は候補に出ない。**
   await dialog.getByLabel('名前で検索する').fill('次郎');
   const options = dialog.getByRole('option');
-  await expect(options).toHaveCount(1);
-  await expect(options.first()).toHaveText('次郎 ジロウ');
-  await options.first().click();
+  // 候補はちょうど 1 件（`toHaveText` の配列は件数ごと一致を見る）。1 件なので `first()` を要らない。
+  await expect(options).toHaveText(['次郎 ジロウ']);
+  await options.click();
   await dialog.getByRole('button', { name: '追加' }).click();
 
   await expect(dialog.getByText('次郎 ジロウ')).toBeVisible();
@@ -425,9 +425,9 @@ test('SC-19/UC-11 (#1447): group targets are searched, added and revoked by disp
   await dialog.getByRole('radio', { name: 'グループ' }).click();
   await dialog.getByLabel('グループ名で検索する').fill('開発');
   const options = dialog.getByRole('option');
-  await expect(options).toHaveCount(1);
-  await expect(options.first()).toContainText('開発部');
-  await options.first().click();
+  // 候補はちょうど 1 件。表示名とパスを空白 1 つで並べたものが候補の文字列になる。
+  await expect(options).toHaveText(['開発部 /teams/dev']);
+  await options.click();
   await dialog.getByRole('button', { name: '追加' }).click();
 
   await expect(dialog.getByText('開発部')).toBeVisible();

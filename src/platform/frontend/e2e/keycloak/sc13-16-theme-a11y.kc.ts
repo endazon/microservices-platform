@@ -88,7 +88,10 @@ test('SC-14 初回登録・SC-15 新パスワード・SC-16 アカウントコ�
     const secret = await page.locator('#totpSecret').inputValue();
     await page.locator('#totp').fill(totp(secret));
     await page.locator('#userLabel').fill('走査用');
-    await page.locator('#kc-totp-settings-form [type=submit]').first().click();
+    await page
+      .locator('#kc-totp-settings-form')
+      .getByRole('button', { name: '送信', exact: true })
+      .click();
 
     // SC-15 新パスワードの設定
     await expect(page.locator('#password-new')).toBeVisible();
@@ -96,7 +99,10 @@ test('SC-14 初回登録・SC-15 新パスワード・SC-16 アカウントコ�
     const newPassword = `${user.password}-N`;
     await page.locator('#password-new').fill(newPassword);
     await page.locator('#password-confirm').fill(newPassword);
-    await page.locator('#kc-passwd-update-form [type=submit]').first().click();
+    await page
+      .locator('#kc-passwd-update-form')
+      .getByRole('button', { name: '送信', exact: true })
+      .click();
 
     // SC-16 アカウントコンソール（keycloak.v3。React で描かれるので、主要素が出るまで待つ）
     await page.waitForURL((url) => url.pathname.startsWith(ACCOUNT));
@@ -109,7 +115,7 @@ test('SC-14 初回登録・SC-15 新パスワード・SC-16 アカウントコ�
 
     await page.goto(`${ACCOUNT}account-security/device-activity`);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.getByText('Chrome').first()).toBeVisible();
+    await expect(page.getByText('Chrome').filter({ visible: true })).not.toHaveCount(0);
     await expectKeycloakAxeClean(page, 'SC-16 デバイスの活動', testInfo);
 
     // SC-14 ワンタイムコード（登録済みの利用者の 2 度目のログイン）

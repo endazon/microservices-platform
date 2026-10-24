@@ -114,10 +114,14 @@ test('M-098: ドリフトの種別 5 値と深刻度 2 値を、契約の値の�
   await expect(rows).toHaveCount(5);
   for (const [i, kind] of KINDS.entries()) {
     const row = rows.filter({ hasText: `stage-${i + 1}` });
-    // ★ 種別・深刻度は契約の値そのもの（訳さない）。
-    await expect(row.getByRole('cell').nth(0)).toHaveText(kind);
-    await expect(row.getByRole('cell').nth(1)).toHaveText(i % 2 === 0 ? 'Warning' : 'Info');
-    await expect(row.getByRole('cell').nth(2)).toHaveText(`stage-${i + 1}`);
+    // ★ 種別・深刻度は契約の値そのもの（訳さない）。列の順（種別・深刻度・対象・詳細）ごと 1 回で見る
+    // （#2038: `nth()` で列を引かない。基準書 §3）。
+    await expect(row.getByRole('cell')).toHaveText([
+      kind,
+      i % 2 === 0 ? 'Warning' : 'Info',
+      `stage-${i + 1}`,
+      `${kind} の説明`,
+    ]);
   }
 
   expectBffTrafficIsComplete(traffic);

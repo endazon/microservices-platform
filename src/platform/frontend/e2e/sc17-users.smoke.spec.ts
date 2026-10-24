@@ -57,9 +57,11 @@ test('SC-17: a platform administrator reaches the screen and its navigation entr
   await expect(row.getByRole('cell', { name: '運用者', exact: true })).toBeVisible();
   await expect(row.getByText('platform-operator')).toHaveCount(0);
   // ロールのフィルタも表示名で選ぶ（値は識別子のまま）。
-  expect(
-    await page.getByLabel('ロール', { exact: true }).getByRole('option').allTextContents(),
-  ).toEqual(['すべて', 'システム管理者', '運用者']);
+  await expect(page.getByLabel('ロール', { exact: true }).getByRole('option')).toHaveText([
+    'すべて',
+    'システム管理者',
+    '運用者',
+  ]);
 
   expectBffTrafficIsComplete(traffic);
 });
@@ -160,11 +162,7 @@ test('M-106: ロールは定義済みのものから表示名で併任でき、�
   // ★ 選択肢は定義済みのロールだけ（一覧の口が返した 3 種）。#2214: 表示名で出す（表に無いものは生値）。
   const roleGroup = editor.getByRole('group', { name: 'ロール割当（必須・複数選択可）' });
   await expect(roleGroup.getByRole('checkbox')).toHaveCount(3);
-  expect(await roleGroup.locator('label').allTextContents()).toEqual([
-    'システム管理者',
-    '運用者',
-    'wiki-editor',
-  ]);
+  await expect(roleGroup.locator('label')).toHaveText(['システム管理者', '運用者', 'wiki-editor']);
   await expect(roleGroup.getByRole('checkbox', { name: '運用者' })).toBeChecked();
   // 併任: システム管理者を足す（運用者は既に付いている）。
   await roleGroup.getByRole('checkbox', { name: 'システム管理者' }).check();
@@ -176,7 +174,7 @@ test('M-106: ロールは定義済みのものから表示名で併任でき、�
 
   // 揃えて保存する。選択肢は定義済みの値だけ。
   const clearance = editor.getByLabel('機密区分上限 *');
-  expect(await clearance.getByRole('option').allTextContents()).toEqual([
+  await expect(clearance.getByRole('option')).toHaveText([
     '選択してください',
     'public',
     'internal',

@@ -154,7 +154,7 @@ test('M-101: 有人の登録は種別とリダイレクト URI を送り、無�
   const kind = page.getByRole('combobox', { name: 'クライアント種別' });
   // 陽性対照: 一覧と登録フォームが描けてから数える（描画前に数えると空振りする）。
   await expect(page.getByRole('cell', { name: 'agent-alpha' })).toBeVisible();
-  expect(await kind.getByRole('option').allTextContents()).toEqual([
+  await expect(kind.getByRole('option')).toHaveText([
     '有人（Authorization Code + PKCE）',
     '無人（Client Credentials）',
   ]);
@@ -208,7 +208,7 @@ test('M-101: 無人の属性が登録者の部分集合から外れると 400 �
   // 画面は事前に判定しない: 4 区分すべてが選べる（定義済みの値だけ）。
   const value = page.getByTestId('attribute-assignment').getByLabel('値');
   await page.getByTestId('attribute-assignment').getByLabel('属性').selectOption('clearance');
-  expect(await value.getByRole('option').allTextContents()).toEqual([
+  await expect(value.getByRole('option')).toHaveText([
     '選択してください',
     'public',
     'internal',
