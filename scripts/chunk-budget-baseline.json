@@ -294,7 +294,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 644930,
+  "initialTotalBytes": 645436,
   "$comment_initialTotalBytes_20261024_2214_sc17-role-labels": [
     "［2026-10-24 / #2214（SC-17 のロールを計画の表示名で出す）］644,822 → 644,930 B（+108 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。1 kB 未満の遅延チャンクは 11 本のまま。",
     "増分は、初期チャンク（index-*.js）に載る基盤の翻訳カタログ（ja / en）へ足した 2 語（システム管理者・運用者。context「ロール」）の 2 ロケール分である（ビルド成果物で確かめた）。写像そのもの（lib/i18n/roles.ts）は SC-17 の遅延チャンク側にある。E2E が見つけた表示の欠落を直した、意図した増加である。"
@@ -316,6 +316,10 @@
     "develop の取り込み（#2201 がテーマ切替の文言で床を 644,788 → 644,768 B へ 20 B 下げた）の後に測り直し、644,768 → 644,818 B（+50 B。増分は本件の写像の共有だけで、#2201 の減少はそのまま残る）とした。遅延チャンクは 11 本のまま。",
     "原因は 1 つ: 機密区分の表示名の写像（約 0.25 kB）を CitationList から foundation の lib/i18n/confidentiality.ts へ移し、SC-01（出典・右レール）・SC-02（結果一覧）・SC-03（属性パネル）の 4 つの遅延チャンクで共有したこと。Rollup がそれを共有チャンク confidentiality-*.js に切り出し、初期チャンクには先読みの参照だけが載った（+50 B）。",
     "写像を各画面へ複製すれば小さいチャンクは増えないが、同じ表を 2 か所以上に持つと片方が古くなる（#2017 で SC-02・SC-03 が生値のまま取り残されていた事故そのもの）。複製しない方を採った。意図した増加である。"
+  ],
+  "$comment_initialTotalBytes_20261024_2021_sc18-hops-no-rounding": [
+    "［2026-10-24 / #2021（SC-18/19/20/21 の E2E）］644,822 → 645,328 B（+506 B）へ引き上げた。develop の取り込み（#2214 が 644,930 へ上げた）の後に測り直し、644,930 → 645,436 B（+506 B。本件の増分は変わらない）とした。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "A/B で帰属を確かめた: 本件のコードのまま ja / en のカタログ（messages.ts）だけを develop の版へ戻すと 645.00 kB になる。カタログの増分（約 0.33 kB）は SC-18 の探索深さの範囲外のエラーの文言 2 キー（見出しと本文。en は英訳）である。残り（約 0.18 kB）はルート定義 sc18GraphRoute.ts（ルート木は初期チャンクに載る。画面の部品は遅延）に足した isHopsOption と validateSearch の変更である。E2E が見つけた計画との食い違い（hops=4 を既定 2 へ丸めていた）を直した、意図した増加である。"
   ],
   "$comment_initialTotalBytes_20261024_2019_sc05-sc06-e2e": [
     "［2026-10-24 / #2019（SC-05/06/07 の E2E）］644,818 → 644,822 B（+4 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。1 kB 未満の遅延チャンクは 11 本のまま。",

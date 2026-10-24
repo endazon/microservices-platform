@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Button, EmptyState, Input, Label, Note, Select, Tag } from '@platform/ui';
+import { Alert, Button, EmptyState, Input, Label, Note, Select, Tag } from '@platform/ui';
 import { QueryState } from '@foundation/ui/QueryState';
 import { ApiError } from '@foundation/api/ApiError';
 import type { GraphNodeItem } from '@foundation/api/generated/bff.schemas';
@@ -9,8 +9,8 @@ import { useEdgeTypeCatalog, useGraphNeighbors } from '../api/useGraphView';
 import { useGraphFilters } from '../hooks/useGraphFilters';
 import { useGraphNodeSearch } from '../hooks/useGraphNodeSearch';
 import { buildGraphOption } from '../types/graphOption';
-import { HOPS_OPTIONS, THINNING_OPTIONS } from '../routes/sc18GraphRoute';
-import type { GraphSearch, ThinningOption } from '../routes/sc18GraphRoute';
+import { HOPS_OPTIONS, THINNING_OPTIONS, isHopsOption } from '../routes/sc18GraphRoute';
+import type { ThinningOption } from '../routes/sc18GraphRoute';
 import { GraphCanvas } from './GraphCanvas';
 import { GraphLegend } from './GraphLegend';
 import { NodeSidePanel } from './NodeSidePanel';
@@ -37,6 +37,7 @@ export function GraphViewPage() {
   // 探索条件（URL が単一情報源）と、グラフ内検索・選択ノード（ローカル状態）は hooks/ が持つ。
   const { search, setParams, activeTypes, lastActive, toggleType } = useGraphFilters(catalog);
   const neighbors = useGraphNeighbors(search);
+  const hopsValid = isHopsOption(search.hops);
 
   const view = neighbors.data;
   const nodes = useMemo(() => view?.nodes ?? [], [view]);
@@ -133,7 +134,7 @@ export function GraphViewPage() {
     );
   }
 
-  /** 起点未指定 → 404（空） → 三部品（QueryState）の順に描き分ける。 */
+  /** 起点未指定 → 探索深さが範囲外 → 404（空） → 三部品（QueryState）の順に描き分ける。 */
   function renderResult(): ReactNode {
     if (search.root === '') {
       return (
@@ -141,6 +142,16 @@ export function GraphViewPage() {
           title={t`起点が未指定です`}
           description={t`検索結果や文書詳細から「ナレッジグラフで表示」を選ぶか、URL の root パラメータで起点を指定してください。`}
         />
+      );
+    }
+    if (!hopsValid) {
+      return (
+        <Alert tone="danger" role="alert" label={t`探索深さが範囲外です`}>
+          <Trans>
+            探索深さ（hops）は 1・2・3
+            のいずれかです。上限を超える値は丸めずに扱いません。上の「探索深さ（hops）」から選び直してください。
+          </Trans>
+        </Alert>
       );
     }
     if (deniedOrMissing) {
@@ -207,14 +218,19 @@ export function GraphViewPage() {
           <Label htmlFor="graph-hops">
             <Trans>探索深さ（hops）</Trans>
           </Label>
-          {/* 1 / 2 / 3 のみ（既定 2・上限 3）。丸めずエラーの防壁はサーバ（400）に在るが、
-              UI は範囲外を作れない形にする（05_screens §SC-18 入力/バリデーション）。 */}
+          {/* 1 / 2 / 3 のみ（既定 2・上限 3）。選択肢では範囲外を作れない。URL の範囲外は丸めずエラーにし、
+              ここは未選択として出す（05_screens §SC-18 入力/バリデーション。#2021）。 */}
           <Select
             id="graph-hops"
             selectSize="sm"
-            value={search.hops}
-            onChange={(e) => setParams({ hops: Number(e.target.value) as GraphSearch['hops'] })}
+            value={hopsValid ? search.hops : ''}
+            onChange={(e) => setParams({ hops: Number(e.target.value) })}
           >
+            {!hopsValid && (
+              <option value="" disabled>
+                {t`選択してください`}
+              </option>
+            )}
             {HOPS_OPTIONS.map((h) => (
               <option key={h} value={h}>
                 {h === 2 ? t`${h}（既定）` : h === 3 ? t`${h}（上限）` : String(h)}

@@ -534,3 +534,211 @@ test('SC-19: owner activates break-glass for one note and ends it early (#2046)'
 
   expectBffTrafficIsComplete(traffic);
 });
+
+// ───────────── M-058〜M-060（#2021 / E-16）: 容量の 3 段・緊急アクセスの理由・ゴミ箱の一括操作 ─────────────
+//
+// 期待値は計画 05_screens §SC-19 から起こした。
+// - 容量は使用量と上限を示し、**80% と 95% の 2 段で警告する**（95% は警告色。表示の強さを変える）。
+//   100% は新規作成だけを拒否する（固定文言は上の「full quota」のテストが固定する）。内訳に「うち削除済み」を併記する。
+// - 緊急アクセスは**理由入力が必須**で、**発動から 15 分で自動失効**する旨を明示する。
+// - 削除済み（`?tab=trash`）: 各項目の復元・完全削除、**一括選択と一括操作**（復元・完全削除）。
+//   完全削除の確認ダイアログは ①復元できない ②90 日待てば自動で完全削除 ③解放される容量 の 3 点を示す。
+//   完全削除が近い項目（残り 7 日以内）は強調する（色だけでなく文言も変える）。
+
+test('M-058: 容量は 80% で予告、95% で警告を出し分け、どちらも新規作成は止めない', async ({
+  page,
+}) => {
+  let percent = 79;
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: { 'GET /private-notes': () => listOf([note()], percent) },
+  });
+  const notice80 = '保存容量の使用量が 80% を超えました。';
+  const warning95 =
+    '保存容量の使用量が 95% を超えました。上限に達すると新しい資料を作成できなくなります。';
+
+  // 79%: どちらも出ない（陽性対照: 容量の 1 文は出ている）。
+  await page.goto('/my/notes');
+  const quota = page.getByRole('region', { name: '保存容量' });
+  await expect(quota).toContainText(/保存容量: [\d.]+ \/ 1\.00 GB（うち削除済み [\d.]+ GB）/);
+  await expect(quota.getByText(notice80)).toHaveCount(0);
+  await expect(quota.getByText(warning95)).toHaveCount(0);
+
+  // 80%: 予告だけ。
+  percent = 80;
+  await page.reload();
+  await expect(quota.getByText(notice80, { exact: false })).toBeVisible();
+  await expect(quota.getByText(warning95)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '作成する' })).toBeVisible();
+  await expect(page.locator('#note-title')).toBeEnabled();
+
+  // 95%: 警告だけ（予告とは別の文言）。まだ新規作成は止めない（止めるのは 100% だけ）。
+  percent = 95;
+  await page.reload();
+  await expect(quota.getByText(warning95)).toBeVisible();
+  await expect(quota.getByText(notice80)).toHaveCount(0);
+  await expect(page.locator('#note-title')).toBeEnabled();
+  await expect(page.getByText('保存容量の上限に達しました。')).toHaveCount(0);
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('M-059: 緊急アクセスは指名先を選んでも理由が空（空白だけ）なら発動できず、15 分で自動失効する旨を示す', async ({
+  page,
+}) => {
+  const directory: UserSummaryDto[] = [
+    { username: 'hanako', displayName: '花子 ハナコ', enabled: true },
+  ];
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes': listOf([note()]),
+      'GET /private-notes/note-1/break-glass': { active: null },
+      'GET /users/lookup': () => directory,
+      'POST /users/resolve': () => directory,
+    },
+  });
+
+  await page.goto('/my/notes');
+  await page.getByRole('button', { name: '緊急アクセス（Break-glass）' }).click();
+  await page.getByLabel('対象の資料').selectOption('note-1');
+  await page.getByRole('button', { name: 'この資料に緊急アクセスを発動する…' }).click();
+  const dialog = page.getByRole('dialog');
+
+  // ★ 15 分で自動失効する旨（延長できない）を、ダイアログの中に常に出す。
+  await expect(dialog).toContainText('アクセスは発動から 15 分で自動失効し、延長できません。');
+
+  // 指名先だけを選ぶ（陽性対照: 指名先が選ばれ、発動のボタンの名前が変わる）。
+  await dialog.getByLabel('閲覧を許す管理者を名前で検索する').fill('ha');
+  await dialog.getByRole('button', { name: '花子 ハナコ' }).click();
+  const activate = dialog.getByRole('button', { name: '花子 ハナコ に閲覧を許して発動する' });
+  await expect(activate).toBeVisible();
+
+  // ★ 理由が空なら発動できず、空白だけでも同じ。触れた後は「必須」の理由を文言で示す。
+  await expect(activate).toBeDisabled();
+  const reason = dialog.getByLabel('発動理由');
+  await reason.fill('   ');
+  await reason.blur();
+  await expect(activate).toBeDisabled();
+  await expect(dialog.getByText('理由は必須です。空欄では発動できません。')).toBeVisible();
+
+  // 理由を入れると発動できるようになる（押さない —— 発動の経路は上の #2046 のテストが固定する）。
+  await reason.fill('端末紛失のため');
+  await expect(activate).toBeEnabled();
+  expect(traffic.calls.filter((c) => c.key === 'POST /private-notes/note-1/break-glass')).toEqual(
+    [],
+  );
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('M-060: 削除済みタブは残り日数と間近の強調を出し、一括の完全削除は 3 点を示す確認を挟み、やめれば送らない', async ({
+  page,
+}) => {
+  const day = 24 * 60 * 60 * 1000;
+  const trashed = (id: string, title: string, daysLeft: number) =>
+    note({
+      id,
+      title,
+      vaultPath: `${title}.md`,
+      bytes: 60 * 1024 * 1024,
+      deleted: true,
+      syncState: 'excluded',
+      deletedAt: new Date(Date.now() - (90 - daysLeft) * day).toISOString(),
+      purgeAt: new Date(Date.now() + daysLeft * day - 60_000).toISOString(),
+    });
+  let notes = [note(), trashed('old-1', '古い議事録', 3), trashed('old-2', '下書きの残骸', 40)];
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes': () => listOf(notes, 30),
+      'POST /private-notes/purge': (call) => {
+        const ids = (call.body as { ids: string[] }).ids;
+        notes = notes.filter((n) => !ids.includes(n.id));
+        return reply(204, null);
+      },
+    },
+  });
+
+  await page.goto('/my/notes?tab=trash');
+  const table = page.getByRole('table', { name: '削除済みの個人資料' });
+  const rowOf = (title: string) => table.getByRole('row').filter({ hasText: title });
+  // ★ 残り日数と、残り 7 日以内の強調（文言も変える）。
+  await expect(rowOf('古い議事録').getByText('まもなく完全削除（残り 3 日）')).toBeVisible();
+  await expect(rowOf('下書きの残骸').getByText('残り 40 日', { exact: true })).toBeVisible();
+
+  // 一括操作は選ぶまで押せない。
+  const bulkPurge = page.getByRole('button', { name: '選択した資料を完全に削除する' });
+  const bulkRestore = page.getByRole('button', { name: '選択した資料を復元する' });
+  await expect(bulkPurge).toBeDisabled();
+  await expect(bulkRestore).toBeDisabled();
+  await table.getByRole('checkbox', { name: '古い議事録 を選択' }).check();
+  await table.getByRole('checkbox', { name: '下書きの残骸 を選択' }).check();
+  await expect(bulkRestore).toBeEnabled();
+
+  // ★ 確認の 3 点。やめれば送らない。
+  await bulkPurge.click();
+  const dialog = page.getByRole('dialog').or(page.getByRole('alertdialog'));
+  await expect(dialog).toContainText(
+    'この操作は元に戻せません。削除後はいかなる方法でも復元できません。',
+  );
+  await expect(dialog).toContainText('90 日待てば自動的に完全削除されます。');
+  await expect(dialog).toContainText('対象: 2 件 ／ 解放される容量:');
+  await dialog.getByRole('button', { name: 'やめる' }).click();
+  await expect(dialog).toHaveCount(0);
+  const purges = () => traffic.calls.filter((c) => c.key === 'POST /private-notes/purge');
+  expect(purges()).toHaveLength(0);
+
+  // 確認すれば 2 件を 1 回で送る（一括）。
+  await bulkPurge.click();
+  await dialog.getByRole('button', { name: '完全に削除する' }).click();
+  await expect(page.getByText('個人資料を完全に削除しました。')).toBeVisible();
+  expect(purges()).toHaveLength(1);
+  expect((purges()[0].body as { ids: string[] }).ids.sort()).toEqual(['old-1', 'old-2']);
+  await expect(page.getByText('削除済みの個人資料はありません。')).toBeVisible();
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('M-060: 削除済みの資料を選んで一括で復元すると、選んだ分だけ復元を送る', async ({ page }) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes': listOf(
+        [
+          note(),
+          note({
+            id: 'old-1',
+            title: '古い議事録',
+            deleted: true,
+            syncState: 'excluded',
+            deletedAt: '2026-10-01T00:00:00Z',
+            purgeAt: '2026-12-30T00:00:00Z',
+          }),
+          note({
+            id: 'old-2',
+            title: '下書きの残骸',
+            deleted: true,
+            syncState: 'excluded',
+            deletedAt: '2026-10-01T00:00:00Z',
+            purgeAt: '2026-12-30T00:00:00Z',
+          }),
+        ],
+        30,
+      ),
+      'POST /private-notes/old-1/restore': () => note({ id: 'old-1', title: '古い議事録' }),
+    },
+  });
+
+  await page.goto('/my/notes?tab=trash');
+  const table = page.getByRole('table', { name: '削除済みの個人資料' });
+  await table.getByRole('checkbox', { name: '古い議事録 を選択' }).check();
+  await page.getByRole('button', { name: '選択した資料を復元する' }).click();
+  await expect(page.getByText('選択した個人資料を復元しました。')).toBeVisible();
+  // ★ 選んだ 1 件だけを復元する（選んでいない資料には触れない）。完全削除は送らない。
+  expect(traffic.calls.filter((c) => c.method === 'POST').map((c) => c.key)).toEqual([
+    'POST /private-notes/old-1/restore',
+  ]);
+
+  expectBffTrafficIsComplete(traffic);
+});
