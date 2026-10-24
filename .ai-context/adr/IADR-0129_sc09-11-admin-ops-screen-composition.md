@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-09, SC-10, SC-11, UC-05, FR-05, FR-09, FR-10, FR-15, FR-17, ADR-0031, ADR-0033, IADR-0009, IADR-0029, IADR-0030, IADR-0035, IADR-0036, IADR-0040, IADR-0046, IADR-0119, IADR-0142, IADR-0121, IADR-0124, IADR-0125, IADR-0127]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-10
+updated: 2026-10-24
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md
@@ -207,7 +207,7 @@ SC-10 の閲覧ロールが広がる時点で、そのとき必要な出し分�
 | ファイル | 固定する値集合・写像 |
 | --- | --- |
 | `sc09-admin-abac/abacVocabulary.ts` | アクション **3 値**（`read` / `analyze` / `manage`）・スコープ **2 値**（`document` / `user`）・条件リスト → `{userConditions, documentConditions}` の組み立て |
-| `sc11-config/driftView.ts` | ドリフト種別 **5 値**・深刻度 **2 値** → `tone` ＋ 表示名。**未知の値は生値のまま**（丸めない） |
+| `sc11-config/driftView.ts` | ドリフト種別 **5 値**・深刻度 **2 値** → `tone` ＋ 表示名。**未知の値は生値のまま**（丸めない）。［2026-10-24 / #2022］表示名は外した（Amended by IADR-0620） |
 | `sc10-operations/opsTools.ts` | 外部ツール **3 件**（Grafana / Kiali / Jaeger・Tempo）と、未設定の実行時 config を落とす規則 |
 
 ### 決定 7: 新規 UI プリミティブを作らない
@@ -283,4 +283,5 @@ SC-10 の閲覧ロールが広がる時点で、そのとき必要な出し分�
 - Supersedes: なし（[IADR-0035](./IADR-0035_frontend-role-based-nav-and-existence-hiding.md) / [IADR-0036](./IADR-0036_sc11-config-viewer-visualization.md) / [IADR-0040](./IADR-0040_admin-abac-bff-passthrough-and-admin-only.md) / [IADR-0046](./IADR-0046_config-version-history-source.md) はいずれも有効であり、
   本 IADR は新スタックでの**実装の形**を足すだけで、それらの決定を変えない）
 - Superseded by: なし
+- **Amended by: [IADR-0620](IADR-0620_sc11-drift-shows-contract-values.md)**（#2022・2026-10-24。決定 6 の `sc11-config/driftView.ts` の行のうち**表示名**の写像を外し、計画 §SC-11（Q29）どおり種別・深刻度を契約の値のまま表示する。tone への写像と値集合の純関数テストは維持する）
 - 先例: [IADR-0126](./IADR-0126_sse-answer-state-and-search-url-state.md)（#502）・[IADR-0127](./IADR-0127_sc07-retry-admin-only-and-derived-states.md)（#503）——画面の再実装ごとに 1 本の IADR を置く運用

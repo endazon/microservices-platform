@@ -4,7 +4,13 @@ import type { MessageDescriptor } from '@lingui/core';
 // SC-11, FR-15: ドリフト（宣言 Git と実効構成の差分）の表示写像（純関数）。
 //
 // 契約（Platform.Shared.Infrastructure/Foundation/Introspection/DriftDetector.cs）が返す
-// 種別 5 値・深刻度 2 値をそのまま写す。**判定を DOM から切り離してあるのは、値集合そのものを
+// 種別 5 値・深刻度 2 値をそのまま写す。
+//
+// 🔴 **［2026-10-24 / #2022・[[IADR-0620]]］種別と深刻度は契約の値のまま出す（日本語に訳さない）。**
+// 計画 05_screens §SC-11 は「深刻度と種別は契約が返す値をそのまま表示する（日本語に訳さない）。
+// 運用者・管理者向けであり、実装との突合を容易にするため」と定める（2026-08-05 確定・Q29）。
+// 従前は IADR-0129 が表示名（「警告」「接続の不一致」等）を入れていたが、計画の確定を IADR だけでは
+// 覆せないので戻した。**色だけで意味を伝えない状態は保つ**（tone ごとの固定アイコン ＋ 契約の値の文字）。**判定を DOM から切り離してあるのは、値集合そのものを
 // 描画なしで試験できるようにするためである** —— #503 の変異試験 M31 は「値集合から 1 値落としても
 // 画面テストは 1 件も落ちない」ことを実測した（IADR-0129 決定 6）。
 
@@ -17,8 +23,6 @@ export const DRIFT_KINDS = [
   'Unverifiable',
 ] as const;
 
-export type DriftKind = (typeof DRIFT_KINDS)[number];
-
 /** 契約が返す深刻度の 2 値（`DriftDetector.SeverityWarning` / `SeverityInfo`）。 */
 export const DRIFT_SEVERITIES = ['Warning', 'Info'] as const;
 
@@ -28,47 +32,39 @@ export type DriftSeverity = (typeof DRIFT_SEVERITIES)[number];
 export type DriftTone = 'neutral' | 'warning';
 
 export interface DriftSeverityView {
-  /** 表示文言。**未知の深刻度は生値を出すため `string` になる**（翻訳しない）。 */
-  label: MessageDescriptor | string;
+  /** 表示文言。**契約の値そのもの**（`Warning` / `Info`。未知の値も生値。翻訳しない。IADR-0620）。 */
+  label: string;
   tone: DriftTone;
 }
 
-const SEVERITY_VIEWS: Record<DriftSeverity, DriftSeverityView> = {
-  Warning: { label: msg`警告`, tone: 'warning' },
-  Info: { label: msg`情報`, tone: 'neutral' },
-};
-
-const KIND_LABELS: Record<DriftKind, MessageDescriptor> = {
-  MissingApply: msg`適用漏れ（宣言にあり実効に無い）`,
-  UndeclaredSubscription: msg`宣言に無い購読`,
-  StaleStage: msg`古い段の残留`,
-  BindingMismatch: msg`接続の不一致`,
-  Unverifiable: msg`検証不能（担当サービスへ到達できない）`,
+const SEVERITY_TONES: Record<DriftSeverity, DriftTone> = {
+  Warning: 'warning',
+  Info: 'neutral',
 };
 
 function isKnownSeverity(severity: string): severity is DriftSeverity {
   return (DRIFT_SEVERITIES as readonly string[]).includes(severity);
 }
 
-function isKnownKind(kind: string): kind is DriftKind {
-  return (DRIFT_KINDS as readonly string[]).includes(kind);
-}
-
 /**
- * 深刻度を表示の組（文言 ＋ tone）へ写像する。
+ * 深刻度を表示の組（文言 ＋ tone）へ写像する。文言は契約の値そのもので、写すのは tone だけである。
  *
  * **未知の値は握り潰さない**——`—` や「不明」へ丸めず生値をそのまま出す。契約が 2 値と定めていても、
  * サーバが将来 3 つ目を返したときに画面が異常へ気付ける状態にしておく。
  */
 export function driftSeverityView(severity: string): DriftSeverityView {
-  return isKnownSeverity(severity)
-    ? SEVERITY_VIEWS[severity]
-    : { label: severity, tone: 'neutral' };
+  return {
+    label: severity,
+    tone: isKnownSeverity(severity) ? SEVERITY_TONES[severity] : 'neutral',
+  };
 }
 
-/** ドリフト種別を表示名へ写像する。未知の値は生値をそのまま返す（丸めない）。 */
-export function driftKindLabel(kind: string): MessageDescriptor | string {
-  return isKnownKind(kind) ? KIND_LABELS[kind] : kind;
+/**
+ * ドリフト種別の表示文言。**契約の値そのもの**を返す（訳さない。計画 §SC-11・IADR-0620）。
+ * 未知の値も生値のまま（丸めない）。
+ */
+export function driftKindLabel(kind: string): string {
+  return kind;
 }
 
 /**

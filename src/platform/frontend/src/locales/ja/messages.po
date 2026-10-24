@@ -2484,10 +2484,6 @@ msgstr "取消"
 msgid "受信"
 msgstr "受信"
 
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "古い段の残留"
-msgstr "古い段の残留"
-
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "同じパスの資料が既にあります。Obsidian 側でファイル名を変えてください。"
 msgstr "同じパスの資料が既にあります。Obsidian 側でファイル名を変えてください。"
@@ -2808,10 +2804,6 @@ msgstr "実装"
 msgid "宣言（Git）と実効構成に {count} 件の差分があります。"
 msgstr "宣言（Git）と実効構成に {count} 件の差分があります。"
 
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "宣言に無い購読"
-msgstr "宣言に無い購読"
-
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "対称"
 msgstr "対称"
@@ -3006,7 +2998,6 @@ msgstr "必須属性が未設定の場合は保存を拒否します（UC-03 例
 msgid "必須属性にする"
 msgstr "必須属性にする"
 
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 #: platform/frontend/src/components/ui/notifications.tsx
 msgid "情報"
 msgstr "情報"
@@ -3121,10 +3112,6 @@ msgstr "接続している端末はまだありません。"
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "接続している辺:"
 msgstr "接続している辺:"
-
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "接続の不一致"
-msgstr "接続の不一致"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "接続先"
@@ -3830,10 +3817,6 @@ msgstr "検索語を短くするか、辺の型の絞り込みを緩めてくだ
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "検証"
 msgstr "検証"
-
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "検証不能（担当サービスへ到達できない）"
-msgstr "検証不能（担当サービスへ到達できない）"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "検証結果"
@@ -4763,7 +4746,6 @@ msgstr "説明"
 msgid "読み込み中…"
 msgstr "読み込み中…"
 
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 #: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "警告"
 msgstr "警告"
@@ -4975,10 +4957,6 @@ msgstr "適用履歴はありません。"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用日時"
 msgstr "適用日時"
-
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "適用漏れ（宣言にあり実効に無い）"
-msgstr "適用漏れ（宣言にあり実効に無い）"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用者"
