@@ -67,6 +67,12 @@
       "hash": "5192a7a",
       "action": "exclude",
       "reason": "PR #1750 のマージが GitHub の 502 応答で失敗したように見えたため再試行した結果、同じ件名の squash コミットが develop に 2 本載った。c4c1c460 が実際の変更（計画 ADR レンジの引き直し）を持ち、5192a7a4 は差分を 1 つも持たない空の重複コミットである（git show --stat 5192a7a4 で変更ファイル 0 を実測）。CHANGELOG には #1750 を c4c1c460 の 1 行だけで載せるべきであり、空の重複を載せると同じ変更が 2 回計上される。恒久履歴は force push 禁止のため書き換えず、そのまま残す。CHANGELOG 生成時にのみ除外する。hash の 7 桁接頭辞 5192a7a に一致するコミットは全 ref で 1 本だけである（git rev-list --all で実測）。"
+    },
+    {
+      "hash": "6fc45859",
+      "action": "remap",
+      "scope": "NFR,NFR-30,ADR-0031,IADR-0441,IADR-0442,IADR-0443",
+      "reason": "件名のスコープの NFR-12 はアクセシビリティの意味で引いた誤参照である。計画の NFR-12 はパスワードポリシーで、アクセシビリティの起点 ID は NFR-30（WCAG 2.2 レベル AA。planning#814）。type（perf）と desc は正しいため scope の NFR-12 だけを NFR-30 へ差し替える。恒久履歴は force push 禁止で書き換えられないため CHANGELOG 生成時のみ補正する。#2186"
     }
   ]
 }
