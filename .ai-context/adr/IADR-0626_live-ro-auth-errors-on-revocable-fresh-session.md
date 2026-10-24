@@ -96,5 +96,5 @@ related_specs:
 
 ## 残余リスク
 
-- Keycloak の親テーマの ja の文言（誤りの OTP）が版で変わると本 spec が赤になる（欄の説明 `#input-error-*` の中の部分一致で見る。PatternFly の説明は見えない接頭辞も持つので全体一致にしない。PR #2227 の初回の e2e-live で実測）。
+- Keycloak の親テーマの ja の文言（誤りの OTP）が版で変わると本 spec が赤になる（文言は欄に紐づく 1 要素 `#input-error-otp` / `#input-error-username` で見る。根拠は Keycloak 26.7.4 の keycloak.v2 `login/field.ftl`：外側 `#input-error-container-<name>` の中に内側 `#input-error-<name>` が入れ子で、`[id^="input-error"]` は 2 要素に当たる。PR #2227 の e2e-live で実測）。
 - 次の周期を待つので本 spec は最長 30 秒長くなる（live-ro の予算 20 分の中）。
