@@ -21,7 +21,7 @@ import { KNOWN_AXE_VIOLATIONS } from './axeKnownViolations';
 //   増えれば落ち、**直して減っても台帳から消すまで落ちる**（受け入れが恒久化しないため）。
 
 /** 計画 NFR-30 の機械検査のタグ（＋ランドマークを見る `best-practice`）。 */
-const WCAG_22_AA_TAGS = [
+export const WCAG_22_AA_TAGS = [
   'wcag2a',
   'wcag2aa',
   'wcag21a',
@@ -31,7 +31,7 @@ const WCAG_22_AA_TAGS = [
 ] as const;
 
 /** 適用されるテーマ。`system` は測らない——CI の OS 設定に依存し、どちらを測ったか決まらない。 */
-const THEMES = ['light', 'dark'] as const;
+export const THEMES = ['light', 'dark'] as const;
 
 type AxeFixtures = {
   /** NFR-30 のタグを付けた `AxeBuilder` を作る（面を絞るときは呼び出し側で `include()` する）。 */

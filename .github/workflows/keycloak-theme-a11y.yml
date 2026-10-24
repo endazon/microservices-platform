@@ -1,0 +1,137 @@
+# NFR-30（WCAG 2.2 レベル AA）/ SC-13〜16 / ADR-0026 / ADR-0031 (#2191 / IADR-0619):
+# **Keycloak のテーマが描く画面を axe で走査する。**
+#
+# L1（frontend.yml の e2e）は基盤を 1 つも起動しない層で、Keycloak のテーマの画面は描けない（IADR-0614 決定 3）。
+# 本ワークフローは**ジョブの中で使い捨ての Keycloak を 1 つ起こし**、リポジトリのテーマと realm を載せて
+# Playwright ＋ axe で歩く（src/platform/frontend/playwright.keycloak.config.ts）。稼働の Keycloak（k3s）には触れない。
+#
+# - イメージは deploy/docker-compose.yml の keycloak サービスの `image:`（タグ＋digest）を**そのまま読む**。ここへ版を
+#   複写しない —— compose と k8s のタグが同じであることは scripts/check-realm-constraints.js 検査 4 が既に守っている。
+# - 所要時間の見積り（IADR-0619 §結果）: イメージの取得と Keycloak の起動（start-dev ＋ realm の取り込み。手元の実測 約 60 秒）は
+#   pnpm install・ブラウザの導入と並行に進む。走査は 15 面 × 2 テーマで手元の実測 約 35 秒。
+# - **必須チェックにしない**（paths で起動が絞られ、起動しない PR で必須チェックが恒久 pending になるため。
+#   Keycloak の起動の失敗で無関係な PR を止めない＝IADR-0569 決定 1 の L2 以降と同じ扱い）。
+name: Keycloak theme a11y
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - "deploy/keycloak/themes/**"
+      - "deploy/keycloak/microservices-platform-realm.json"
+      - "deploy/docker-compose.yml"
+      - "src/platform/frontend/e2e/keycloak/**"
+      - "src/platform/frontend/e2e/support/axe.ts"
+      - "src/platform/frontend/playwright.keycloak.config.ts"
+      - "src/platform/frontend/package.json"
+      - "src/pnpm-lock.yaml"
+      - ".github/workflows/keycloak-theme-a11y.yml"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    # push 側と同じ集合（YAML のアンカーは使わない。検査器の素朴な YAML 読みが追えないため）。
+    paths:
+      - "deploy/keycloak/themes/**"
+      - "deploy/keycloak/microservices-platform-realm.json"
+      - "deploy/docker-compose.yml"
+      - "src/platform/frontend/e2e/keycloak/**"
+      - "src/platform/frontend/e2e/support/axe.ts"
+      - "src/platform/frontend/playwright.keycloak.config.ts"
+      - "src/platform/frontend/package.json"
+      - "src/pnpm-lock.yaml"
+      - ".github/workflows/keycloak-theme-a11y.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: src
+
+concurrency:
+  group: keycloak-theme-a11y-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# GITHUB_TOKEN は読むだけにする（GitHub へ何も書かない）。
+permissions:
+  contents: read
+
+jobs:
+  keycloak-theme-a11y:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # 先に Keycloak を起こし、起動（約 60 秒）を後続の pnpm install・ブラウザの導入と重ねる。
+      # 管理者パスワードはジョブの中で乱数から作り、ログでは伏せる（リポジトリには何も書かない）。
+      - name: Start disposable Keycloak with the repository theme and realm
+        working-directory: ${{ github.workspace }}
+        run: |
+          image="$(awk '/^  keycloak:/ { f = 1; next } f && /^  [a-z]/ { exit } f && $1 == "image:" { print $2; exit }' deploy/docker-compose.yml)"
+          if [ -z "$image" ]; then echo "::error::deploy/docker-compose.yml の keycloak サービスに image: が無い"; exit 1; fi
+          echo "image: $image"
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "E2E_KC_ADMIN_PASSWORD=$password" >> "$GITHUB_ENV"
+          # realm の取り込みは `<realm>-realm.json` の名前でないと起動しない（compose と同じ。IADR-0524）。
+          docker run -d --name keycloak \
+            -p 127.0.0.1:8080:8080 -p 127.0.0.1:9000:9000 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD="$password" \
+            -e KC_HEALTH_ENABLED=true \
+            -v "$PWD/deploy/keycloak/microservices-platform-realm.json:/opt/keycloak/data/import/platform-realm.json:ro" \
+            -v "$PWD/deploy/keycloak/themes/platform:/opt/keycloak/themes/platform:ro" \
+            "$image" start-dev --import-realm
+
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        working-directory: ${{ github.workspace }}
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: src/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: src/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('src/pnpm-lock.yaml') }}
+      - name: Install Playwright browser
+        run: pnpm --filter @platform/frontend exec playwright install --with-deps chromium
+
+      - name: Wait for Keycloak readiness
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:9000/health/ready > /dev/null; then break; fi
+            sleep 3
+          done
+          curl -sf http://127.0.0.1:9000/health/ready
+          # 🔴 テーマが解決できないと Keycloak は既定のテーマへ**黙って**落ちる（IADR-0532 の実測）。spec の陽性対照
+          # （--color-bg）でも止まるが、原因を先に出す。
+          if docker logs keycloak 2>&1 | grep -E "Failed to find [A-Z]+ theme"; then
+            echo "::error::Keycloak が platform テーマを解決できない"; exit 1
+          fi
+
+      - name: Scan Keycloak theme screens with axe (WCAG 2.2 AA, light and dark)
+        env:
+          E2E_KC_URL: http://localhost:8080
+          E2E_KC_ADMIN_USER: admin
+        run: pnpm --filter @platform/frontend exec playwright test -c playwright.keycloak.config.ts
+
+      - name: Keycloak log (on failure)
+        if: failure()
+        run: docker logs keycloak 2>&1 | tail -200
+      - name: Upload Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: keycloak-theme-a11y-report
+          path: |
+            src/platform/frontend/playwright-report
+            src/platform/frontend/test-results
+          retention-days: 7
