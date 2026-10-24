@@ -83,16 +83,18 @@ existing="$(rmqctl list_users --formatter json | tr ',' '\n' | sed -n 's/.*"user
 
 n=0
 fail=""
+# NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
+#   在るかどうかは here-string で grep へ渡す（パイプを使わない）。
 for u in $(users); do
   if [ "$MODE" = "apply" ]; then
-    if printf '%s\n' "$existing" | grep -Fxq -- "$u"; then
+    if grep -Fxq -- "$u" <<<"$existing"; then
       password_line "$u" | rmqctl_stdin change_password "$u" >/dev/null
     else
       password_line "$u" | rmqctl_stdin add_user "$u" >/dev/null
     fi
     rmqctl set_permissions -p "$VHOST" "$u" '.*' '.*' '.*' >/dev/null
     rmqctl set_user_tags "$u" >/dev/null
-  elif ! printf '%s\n' "$existing" | grep -Fxq -- "$u"; then
+  elif ! grep -Fxq -- "$u" <<<"$existing"; then
     fail="${fail} ${u}(無い)"
     continue
   fi
