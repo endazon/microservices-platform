@@ -1,5 +1,5 @@
 import { test, expect } from './support/cspGuard';
-import type { Page, Request } from '@playwright/test';
+import type { Request } from '@playwright/test';
 import type {
   AttributeValuesResponse,
   PrivateNoteDto,
@@ -11,6 +11,13 @@ import {
   expectBffTrafficIsComplete,
   reply,
 } from './support/bffSession';
+import {
+  NAV_ADMIN,
+  NAV_NO_ROLE,
+  NAV_OPERATOR,
+  readNav,
+  type NavTable,
+} from './support/navExpectations';
 
 // NFR, ADR-0031, ADR-0032, IADR-0035, IADR-0337 (#2016 / E-11): **共通シェルの横断規約**を実ブラウザで固定する。
 // 網羅表（#2013）の M-011（CSRF ヘッダ）・M-012（左ナビの出し分け）・M-014（待ち・失敗・再試行）・
@@ -21,99 +28,12 @@ import {
 const attributeValues: AttributeValuesResponse = { values: [] };
 
 // ───────────────────────────── M-012: 左ナビの出し分け ─────────────────────────────
-
-/**
- * 05_screens §共通シェル（左ナビ 4 グループ・アクセス制御の割当）から起こした、**役割ごとの左ナビの期待値**。
- * グループ名 → 「表示名 → 遷移先」。**鍵の並びは計画の並び**である（グループの並び・グループ内の並びとも。#2189）。
- *
- * - 利用者・個人のグループは全利用者に出る（ABAC の権限内。ロール限定なし）。
- * - 管理: SC-05/06/07 は管理者・運用者、SC-09・SC-12・SC-17 はシステム管理者だけ。
- * - 運用: SC-10・SC-11・SC-22 は運用者・管理者。
- * - SC-03 はナビに置かない。項目が 0 件になったグループは見出しごと出さない（存在秘匿。IADR-0035）。
- * - 可変機能ユニットのグループ（「株式自動売買」）は、そのユニットのロールを持たない 3 役割には出ない。
- */
-const USER_GROUP = {
-  '検索・質問': '/ask',
-  結果一覧: '/search',
-  Wiki: '/wiki',
-  AI分析: '/analyze',
-  ナレッジグラフ: '/graph',
-  AI提案: '/ai-suggestions',
-};
-const PERSONAL_GROUP = { 個人資料: '/my/notes', Obsidian連携: '/my/obsidian' };
-const ADMIN_VIEW_ITEMS = {
-  文書管理: '/admin/documents',
-  データソース: '/admin/sources',
-  変換ジョブ: '/admin/conversions',
-};
-const ADMIN_ONLY_ITEMS = {
-  ABAC設定: '/admin/abac',
-  ユーザー管理: '/admin/users',
-  MCP管理: '/admin/mcp-clients',
-};
-const OPS_GROUP = {
-  ダッシュボード: '/admin/ops',
-  構成ビューア: '/admin/config-viewer',
-  '秘密情報・接続設定の管理': '/admin/secrets',
-};
-
-type NavTable = Record<string, Record<string, string>>;
-
+// 期待値の表と読み方は `support/navExpectations.ts`（live の `live/shell.ro.spec.ts` と共有する）。
 const EXPECTED_NAV: Record<string, { roles: string[]; nav: NavTable }> = {
-  'ロール無し（一般利用者）': {
-    roles: [],
-    nav: { 利用者: USER_GROUP, 個人: PERSONAL_GROUP },
-  },
-  運用者: {
-    roles: ['platform-operator'],
-    nav: { 利用者: USER_GROUP, 個人: PERSONAL_GROUP, 管理: ADMIN_VIEW_ITEMS, 運用: OPS_GROUP },
-  },
-  システム管理者: {
-    roles: ['platform-admin'],
-    nav: {
-      利用者: USER_GROUP,
-      個人: PERSONAL_GROUP,
-      管理: { ...ADMIN_VIEW_ITEMS, ...ADMIN_ONLY_ITEMS },
-      運用: OPS_GROUP,
-    },
-  },
+  'ロール無し（一般利用者）': { roles: [], nav: NAV_NO_ROLE },
+  運用者: { roles: ['platform-operator'], nav: NAV_OPERATOR },
+  システム管理者: { roles: ['platform-admin'], nav: NAV_ADMIN },
 };
-
-/**
- * 左ナビ（`navigation "主要ナビゲーション"`）を、**アクセシビリティツリーから**グループ → 「表示名 → 遷移先」へ読む。
- *
- * 🔴 DOM の構造（`div > h2 + ul`）や CSS には依存しない。見出し（level 2）の後に続くリンクを、その見出しの
- * グループへ数える —— 支援技術の利用者が読む順序そのものである。
- */
-async function readNav(page: Page): Promise<NavTable> {
-  const snapshot = await page
-    .getByRole('navigation', { name: '主要ナビゲーション' })
-    .ariaSnapshot();
-  const table: NavTable = {};
-  let group: string | null = null;
-  let link: string | null = null;
-  for (const line of snapshot.split('\n')) {
-    const heading = /- heading "([^"]+)" \[level=2\]/.exec(line);
-    if (heading) {
-      group = heading[1];
-      table[group] = {};
-      continue;
-    }
-    const name = /- link "([^"]+)"/.exec(line);
-    if (name) {
-      link = name[1];
-      if (group === null) throw new Error(`見出しの前にリンクがある: ${link}`);
-      table[group][link] = '';
-      continue;
-    }
-    const url = /- \/url: (\S+)/.exec(line);
-    if (url && group !== null && link !== null) {
-      table[group][link] = url[1];
-      link = null;
-    }
-  }
-  return table;
-}
 
 for (const [role, { roles, nav }] of Object.entries(EXPECTED_NAV)) {
   test(`M-012: ${role}の左ナビは、計画の役割ごとの項目の集合と並びに一致する（SC-03 は無く、空のグループは見出しごと出ない）`, async ({
