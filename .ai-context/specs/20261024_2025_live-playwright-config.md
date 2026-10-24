@@ -21,10 +21,13 @@ issue: "#2025"
 
 ## 受け入れ基準（issue #2025）
 
-- [x] `E2E_LIVE` 未設定で 0 件。設定時に 6 役割の state ファイルが出来る。readiness 不成立は exit 2。state・trace に cookie 値が含まれない
+- [x] `E2E_LIVE` 未設定で 0 件
+- [ ] 設定時に 6 役割の state ファイルが出来る —— **マージ後に PoC で確認（手順は PR #2223 本文）**。偽の BFF と Keycloak に対しては 6 個出来た
+- [x] readiness 不成立は exit 2
+- [x] state・trace に cookie 値が含まれない（成果物に state も cookie 値も含まれない、と読んだ。下の注記）
   - 0 件・exit 2・値域外の失敗は L1 の `e2e/live-opt-in.smoke.spec.ts` が固定（PR #2223 の CI で緑）。
-  - 6 役割の state と「成果物に cookie 値・パスワードが出ない」は、偽の BFF と Keycloak に対して確かめた（6 passed・state 6 個・成果物の秘密 0 件）。
-    **稼働の PoC での実ログインは未実施**（本 PR は PoC に触れない）。PR #2223 本文の確認手順で確かめる。
+  - 「成果物に cookie 値・パスワードが出ない」は、偽の BFF と Keycloak に対して確かめた（6 passed・state 6 個・成果物の秘密 0 件）。
+    **稼働の PoC での実ログインは未実施**（本 PR は PoC に触れない）。
 
 ### 受け入れ基準の読み方（判断）
 

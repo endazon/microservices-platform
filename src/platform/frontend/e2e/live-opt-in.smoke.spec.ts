@@ -1,7 +1,16 @@
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { credentialNames, missingCredentials, parseLiveEnv, ROLES } from './live/support/env';
+import {
+  credentialNames,
+  missingCredentials,
+  OPTION_NAMES,
+  parseLiveEnv,
+  ROLES,
+} from './live/support/env';
 import { otpFor, remainingSeconds } from './live/support/totp';
 
 // NFR / IADR-0569 決定 4 / IADR-0624（#2025）: live 層の config（`playwright.live.config.ts`）の **opt-in と門**を L1 で固定する。
@@ -9,11 +18,24 @@ import { otpFor, remainingSeconds } from './live/support/totp';
 
 const FRONTEND = fileURLToPath(new URL('..', import.meta.url));
 
-/** live の config を子プロセスで起動する。E2E_* は親から引き継がない（与えたものだけ）。 */
+/**
+ * live の config が読む環境変数をすべて**空**にしたもの。外すだけでは足りない —— config は手元の `e2e/live/.env.e2e` を
+ * `process.loadEnvFile` で読み、**未設定の名前にだけ**値を入れる。空で渡しておけば手元のファイルがあっても試験の結果が変わらない
+ * （config は空を未設定と同じに扱う）。
+ */
+function blankLiveEnv(): Record<string, string> {
+  const names = [...OPTION_NAMES, ...ROLES.flatMap((role) => Object.values(credentialNames(role)))];
+  return Object.fromEntries(names.map((n) => [n, '']));
+}
+
+/** live の config を子プロセスで起動する。E2E_* は親から引き継がない（既定で空。与えたものだけが値を持つ）。 */
 function runLive(env: Record<string, string>, extra: string[] = []) {
-  const base = Object.fromEntries(
-    Object.entries(process.env).filter(([k]) => !k.startsWith('E2E_')),
-  ) as Record<string, string>;
+  const base = {
+    ...(Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !k.startsWith('E2E_')),
+    ) as Record<string, string>),
+    ...blankLiveEnv(),
+  };
   const r = spawnSync(
     process.execPath,
     [
@@ -119,6 +141,28 @@ test('資格情報の欠けは名前だけを返す・到達先はオリジン�
   expect(() =>
     parseLiveEnv({ E2E_LIVE: '1', E2E_EDGE_URL: 'https://localhost/app' }, '/x'),
   ).toThrow(/オリジンだけ/);
+});
+
+test('process.loadEnvFile は既に在る名前（空を含む）を上書きしない（手元の .env.e2e が子プロセスの試験を変えない根拠）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-live-env-'));
+  try {
+    const file = join(dir, '.env.e2e');
+    writeFileSync(file, 'E2E_LIVE=1\nE2E_LAYER=rw\n');
+    const r = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        'process.loadEnvFile(process.argv[1]); console.log(JSON.stringify([process.env.E2E_LIVE, process.env.E2E_LAYER]))',
+        file,
+      ],
+      { env: { PATH: process.env.PATH ?? '', E2E_LIVE: '' }, encoding: 'utf8' },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    // E2E_LIVE は空のまま（上書きされない）。未設定だった E2E_LAYER だけがファイルの値になる。
+    expect(JSON.parse(r.stdout.trim())).toEqual(['', 'rw']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('TOTP は生の秘密の base32 で計算する（Keycloak の secretData.value は生の文字列。IADR-0570）', () => {

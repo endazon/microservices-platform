@@ -28,6 +28,16 @@ export const REALM = 'platform';
 
 type Env = Record<string, string | undefined>;
 
+/** 資格情報のほかに live の config が読む環境変数（**空は未設定と同じ**に扱う）。 */
+export const OPTION_NAMES = [
+  'E2E_LIVE',
+  'E2E_LAYER',
+  'E2E_EDGE_URL',
+  'E2E_KC_URL',
+  'E2E_INSECURE_TLS',
+  'E2E_AUTH_DIR',
+] as const;
+
 export interface LiveEnv {
   live: boolean;
   layers: Layer[];
@@ -72,14 +82,19 @@ function originOf(name: string, value: string): string {
 }
 
 export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
-  const rawLive = env.E2E_LIVE ?? '';
+  // 空は未設定と同じ（`E2E_LAYER=` と書いて既定の ro を選ぶ、子プロセスへ空で渡して手元の .env.e2e を効かせない、の両方が要る）。
+  const read = (name: (typeof OPTION_NAMES)[number]): string | undefined => {
+    const v = env[name];
+    return v === undefined || v === '' ? undefined : v;
+  };
+  const rawLive = read('E2E_LIVE') ?? '';
   if (rawLive !== '' && rawLive !== '1') {
     throw new Error(
       `E2E_LIVE の値域外: ${rawLive}（live にするなら 1、しないなら未設定か空。例示の <set-me> を写したままにしない）`,
     );
   }
   const live = rawLive === '1';
-  const rawLayer = env.E2E_LAYER;
+  const rawLayer = read('E2E_LAYER');
   if (rawLayer !== undefined && !live) {
     throw new Error(
       'E2E_LAYER が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
@@ -99,10 +114,10 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
   return {
     live,
     layers: [...new Set(layers)] as Layer[],
-    edgeUrl: originOf('E2E_EDGE_URL', env.E2E_EDGE_URL ?? DEFAULT_EDGE_URL),
-    kcUrl: originOf('E2E_KC_URL', env.E2E_KC_URL ?? DEFAULT_KC_URL),
-    insecureTls: env.E2E_INSECURE_TLS === '1',
-    authDir: env.E2E_AUTH_DIR || defaultAuthDir,
+    edgeUrl: originOf('E2E_EDGE_URL', read('E2E_EDGE_URL') ?? DEFAULT_EDGE_URL),
+    kcUrl: originOf('E2E_KC_URL', read('E2E_KC_URL') ?? DEFAULT_KC_URL),
+    insecureTls: read('E2E_INSECURE_TLS') === '1',
+    authDir: read('E2E_AUTH_DIR') ?? defaultAuthDir,
   };
 }
 
