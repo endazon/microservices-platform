@@ -351,3 +351,13 @@ test('誤りの OTP は前後 1 周期の正しい値のどれとも違い、次
   expect(code).toBe(otpFor(raw, atMs));
   for (const k of [-1, 0, 1]) expect(wrong).not.toBe(otpFor(raw, atMs + k * 30_000));
 });
+
+test('E2E_SEARCH_HITS は 1 か未設定・空だけを受け、E2E_LIVE=1 無しでは読み込みで失敗する（IADR-0627）', () => {
+  expect(parseLiveEnv({ E2E_LIVE: '1' }, '/tmp/x').searchHits).toBe(false);
+  expect(parseLiveEnv({ E2E_LIVE: '1', E2E_SEARCH_HITS: '' }, '/tmp/x').searchHits).toBe(false);
+  expect(parseLiveEnv({ E2E_LIVE: '1', E2E_SEARCH_HITS: '1' }, '/tmp/x').searchHits).toBe(true);
+  expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_SEARCH_HITS: 'true' }, '/tmp/x')).toThrow(
+    /E2E_SEARCH_HITS の値域外/,
+  );
+  expect(() => parseLiveEnv({ E2E_SEARCH_HITS: '1' }, '/tmp/x')).toThrow(/E2E_LIVE=1 が無い/);
+});

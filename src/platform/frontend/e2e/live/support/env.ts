@@ -36,6 +36,7 @@ export const OPTION_NAMES = [
   'E2E_KC_URL',
   'E2E_INSECURE_TLS',
   'E2E_AUTH_DIR',
+  'E2E_SEARCH_HITS',
 ] as const;
 
 export interface LiveEnv {
@@ -46,6 +47,12 @@ export interface LiveEnv {
   insecureTls: boolean;
   /** storageState の置き場。レポートの外（gitignore）。 */
   authDir: string;
+  /**
+   * `E2E_SEARCH_HITS=1`: 検索の索引が在る（seed 文書が取り込まれ、埋め込みが供給されている）環境で、**ヒットを判定する**
+   * （IADR-0627）。未設定なら検索は「200 ＋描画」だけを見て、ヒットを要る test は理由つきで skip する。
+   * `verify-oidc-edge-flow.sh` の `SEARCH_HITS=1` と同じ意味（索引が空であり得る環境で、空を故障と取り違えない）。
+   */
+  searchHits: boolean;
 }
 
 /** 役割から環境変数名を作る（`trading-owner` → `E2E_TRADING_OWNER_PASSWORD`）。 */
@@ -111,6 +118,17 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
       throw new Error(`E2E_LAYER の値域外: ${layer}（ro / rw / trading / llm のカンマ区切り）`);
     }
   }
+  const rawHits = read('E2E_SEARCH_HITS') ?? '';
+  if (rawHits !== '' && rawHits !== '1') {
+    throw new Error(
+      `E2E_SEARCH_HITS の値域外: ${rawHits}（ヒットを判定するなら 1、しないなら未設定か空）`,
+    );
+  }
+  if (rawHits === '1' && !live) {
+    throw new Error(
+      'E2E_SEARCH_HITS が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
+    );
+  }
   return {
     live,
     layers: [...new Set(layers)] as Layer[],
@@ -118,6 +136,7 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
     kcUrl: originOf('E2E_KC_URL', read('E2E_KC_URL') ?? DEFAULT_KC_URL),
     insecureTls: read('E2E_INSECURE_TLS') === '1',
     authDir: read('E2E_AUTH_DIR') ?? defaultAuthDir,
+    searchHits: rawHits === '1',
   };
 }
 
