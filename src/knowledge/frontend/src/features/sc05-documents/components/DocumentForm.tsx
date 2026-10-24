@@ -7,6 +7,7 @@ import {
   DEFAULT_CONFIDENTIALITY,
 } from '../../../lib/abac';
 import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
+import { confidentialityLabel, i18n } from '@foundation/i18n';
 
 // SC-05, UC-03, FR-06/FR-09: 文書の登録／編集フォーム（hi-fi の「編集フォーム」パネル）。
 // 1 つの部品で新規登録と編集の両方を担う——項目（タイトル・機密区分・タグ）が同一であり、
@@ -116,7 +117,7 @@ export function DocumentForm({
 
         <div>
           {/* 05_screens §SC-05: 機密区分（ABAC属性）は必須・**定義済み区分のみ**。
-                値そのものは翻訳しない（表示名が計画に無い値がある。abac/confidentiality.ts 参照）。 */}
+                選択肢は用語集の表示名で出し、値は契約の値のまま送る（`@foundation/i18n` の写像。#2019）。 */}
           <Label htmlFor="doc-conf" requiredHint={t`（必須）`}>
             <Trans>機密区分（ABAC属性）</Trans>
           </Label>
@@ -127,7 +128,7 @@ export function DocumentForm({
           >
             {CONFIDENTIALITY_VALUES.map((value) => (
               <option key={value} value={value}>
-                {value}
+                {confidentialityLabel(value, (d) => i18n._(d))}
               </option>
             ))}
           </Select>

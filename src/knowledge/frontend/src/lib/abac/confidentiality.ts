@@ -20,7 +20,7 @@
 // **実装先は #541** である（#553 がそう指示している）。ここは値集合の単一情報源に留める。
 // ［2026-10-24 / #2018］表示名の写像は foundation の `@foundation/i18n`（`confidentialityLabel`）にある。
 // SC-01 の出典（#2017）と SC-02 の結果一覧が共有する。knowledge → foundation の向きでしか共有できないため、
-// 本ファイルには置かない。
+// 本ファイルには置かない。［2026-10-24 / #2019］SC-05（一覧・絞り込み・フォーム）と SC-06（既定の機密区分）も同じ写像を使う。
 
 /** 機密区分の許可値（05_screens「定義済み区分のみ」）。 */
 export const CONFIDENTIALITY_VALUES = ['public', 'internal', 'confidential', 'restricted'] as const;

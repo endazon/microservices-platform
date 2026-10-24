@@ -7,6 +7,7 @@ import {
   UNRESOLVED_OWNER,
 } from '../../../lib/abac';
 import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
+import { confidentialityLabel, i18n } from '@foundation/i18n';
 
 // FR-05, UC-04, SC-06, ADR-0036, ADR-0074 決定 1 (#1252): 既定属性 3 つと `owner` 写像表の
 // **読み取り専用の表示**。
@@ -52,7 +53,10 @@ export function DataSourceAttributesView({ source }: { source: DataSourceDto }) 
           <dt>
             <Trans>既定の機密区分</Trans>:
           </dt>
-          <dd>{confidentiality ? <code>{confidentiality}</code> : <Unset />}</dd>
+          {/* 用語集の表示名で出す（`@foundation/i18n` の写像。#2019）。 */}
+          <dd>
+            {confidentiality ? confidentialityLabel(confidentiality, (d) => i18n._(d)) : <Unset />}
+          </dd>
         </div>
         <div className="flex gap-1">
           <dt>

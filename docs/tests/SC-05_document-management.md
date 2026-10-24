@@ -3,15 +3,15 @@ title: SC-05 文書管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-10-20
+updated: 2026-10-24
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-09, SC-03, SC-05, SC-06, SC-07, UC-03]
 adrs: [ADR-0031, ADR-0066]
 iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308, IADR-0537, IADR-0545, IADR-0561, IADR-0565]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation, 20261014_1923_document-list-pagination, 20261015_1923_document-list-sort-filter, 20261017_1923_document-list-facets-preview, 20261020_1993_document-list-index-status]
-issues: [#501, #1065, #1923, #1897, #1993]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation, 20261014_1923_document-list-pagination, 20261015_1923_document-list-sort-filter, 20261017_1923_document-list-facets-preview, 20261020_1993_document-list-index-status, 20261024_2019_sc05-sc06-sc07-e2e]
+issues: [#501, #1065, #1923, #1897, #1993, #2019]
 -->
 
 # テスト仕様書: 文書管理
@@ -50,7 +50,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 | # | 観点 | 起点 | 検証内容 |
 | --- | --- | --- | --- |
-| 1 | 一覧 | —| `GET /bff/documents` を呼び、タイトル（`/docs/$id` へのリンク）・機密区分（**生値**）・版（`v{n}`）を表示する |
+| 1 | 一覧 | —| `GET /bff/documents` を呼び、タイトル（`/docs/$id` へのリンク）・機密区分（~~**生値**~~ ［2026-10-24 / #2019］**用語集の表示名**）・版（`v{n}`）を表示する |
 | 2 | 登録 | 文書管理 基本 1 / 属性・タグ管理 | タイトル・機密区分・タグを送る（`{ title, attributes: { confidentiality }, tags }`） |
 | 3 | **必須属性** | **文書管理の例外フロー** | 空・空白のみでは保存できず、要求も出ない。注記が画面に出ている |
 | 4 | 更新（楽観ロック） | —| 現在版を `expectedVersion` として送る。**既存の属性（部門）を落とさない** |
