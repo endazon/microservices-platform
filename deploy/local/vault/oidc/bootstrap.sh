@@ -34,7 +34,8 @@ ISSUER="${VAULT_OIDC_DISCOVERY_URL:-https://keycloak.localhost/realms/platform}"
 # fail-safe: CA が取れなければ空のまま渡す（＝既定ルートで検証する）。http の issuer を
 # 指定した場合も空のままでよい（Vault は ca_pem を無視する）。
 CA_PEM="${VAULT_OIDC_DISCOVERY_CA_PEM:-}"
-if [ -z "$CA_PEM" ] && printf %s "$ISSUER" | grep -q "^https://"; then
+# NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
+if [ -z "$CA_PEM" ] && grep -q "^https://" <<<"$ISSUER"; then
   CA_PEM="$(kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' 2>/dev/null | base64 -d 2>/dev/null || true)"
   [ -z "$CA_PEM" ] && echo "    warn: cert-manager/local-edge-root-ca が読めない。既定ルートで検証する（自己署名なら失敗する）"
 fi

@@ -91,7 +91,9 @@ fi
 # `--ssl-revoke-best-effort` が緩めるのは**失効確認だけ**で、チェーン検証とホスト名照合は
 # 有効なまま残る（`--insecure` とは別物である）。対応しているときだけ付ける。
 CURL_TLS=(--cacert "$CA_BUNDLE")
-if curl --help all 2>/dev/null | grep -q -- '--ssl-revoke-best-effort'; then
+# NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
+#   コマンドの出力は -q を付けずに読み切らせ、変数の値は here-string で渡す。
+if curl --help all 2>/dev/null | grep -- '--ssl-revoke-best-effort' >/dev/null; then
   CURL_TLS+=(--ssl-revoke-best-effort)
 fi
 
@@ -184,7 +186,7 @@ fi
 #    証拠にならないので、**完全一致だけを宣言と数える**。
 host_declared() { # $1=hostname → 0:宣言あり 1:宣言なし 2:判定不能
   [ -z "$EDGE_HOSTS" ] && return 2
-  printf '%s\n' "$EDGE_HOSTS" | grep -Fxq "$1" && return 0
+  grep -Fxq -- "$1" <<<"$EDGE_HOSTS" && return 0
   return 1
 }
 
