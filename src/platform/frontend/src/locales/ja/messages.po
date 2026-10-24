@@ -3101,6 +3101,14 @@ msgstr "指定先を追加しました。"
 msgid "探索深さ（hops）"
 msgstr "探索深さ（hops）"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "探索深さ（hops）は 1・2・3 のいずれかです。上限を超える値は丸めずに扱いません。上の「探索深さ（hops）」から選び直してください。"
+msgstr "探索深さ（hops）は 1・2・3 のいずれかです。上限を超える値は丸めずに扱いません。上の「探索深さ（hops）」から選び直してください。"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "探索深さが範囲外です"
+msgstr "探索深さが範囲外です"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "接続している端末はまだありません。"
 msgstr "接続している端末はまだありません。"
@@ -4997,6 +5005,7 @@ msgstr "選択した資料を復元する"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "選択してください"
 msgstr "選択してください"
 

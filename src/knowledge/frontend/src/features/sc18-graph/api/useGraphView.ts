@@ -11,6 +11,7 @@ import type {
   GraphView,
 } from '@foundation/api/generated/bff.schemas';
 import type { GraphSearch } from '../routes/sc18GraphRoute';
+import { isHopsOption } from '../routes/sc18GraphRoute';
 
 // SC-18, UC-10, FR-17: グラフ読み取り（/bff/graph/*）。サーバー状態は TanStack Query（ADR-0031）。
 //
@@ -41,7 +42,8 @@ export function useGraphNeighbors(search: GraphSearch) {
       queryKey: getBffGraphNeighborsQueryKey(search.root, params),
       select: okData,
       // 起点未指定では照会しない（空状態の案内を出す。SC-18 主要素 8 とは別の「未指定」状態）。
-      enabled: search.root !== '',
+      // 範囲外の探索深さでは照会しない（丸めずエラー。画面が理由を示す。#2021）。
+      enabled: search.root !== '' && isHopsOption(search.hops),
     },
   });
 }

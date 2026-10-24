@@ -357,14 +357,28 @@ describe('GraphViewPage (SC-18)', () => {
     expect(lastNeighborsPath()).toBeUndefined();
   });
 
-  // URL の不正値（hops=9 等）は既定へ正規化される。サーバの 400 を見せる形にしない。
-  it('normalises invalid search params to defaults', async () => {
+  // ［2026-10-24 / #2021］URL の範囲外の hops（例 9）は**丸めずエラー**にする（05_screens §SC-18 入力表）。
+  // 既定へ正規化すると、利用者は 9 を求めて 2 の結果を見ることになる。間引きの基準の未知値は従来どおり既定へ倒す
+  // （契約が「未知の値・未指定は既定へ縮退」と定める）。
+  it('shows an error for out-of-range hops instead of rounding, and does not query', async () => {
     respond();
     await renderPage(`/graph?root=${ROOT}&hops=9&by=unknown`);
 
+    expect(
+      await screen.findByText(/探索深さ（hops）は 1・2・3 のいずれかです。/),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('探索深さ（hops）')).toHaveValue('');
+    expect(screen.getByLabelText('間引きの基準')).toHaveValue('distance');
+    expect(lastNeighborsPath()).toBeUndefined();
+  });
+
+  it('keeps the default hops when the URL has none', async () => {
+    respond();
+    await renderPage(`/graph?root=${ROOT}`);
+
     await screen.findByTestId('graph-canvas');
     expect(screen.getByLabelText('探索深さ（hops）')).toHaveValue('2');
-    expect(screen.getByLabelText('間引きの基準')).toHaveValue('distance');
     expect(lastNeighborsPath()).toContain('hops=2');
   });
 });

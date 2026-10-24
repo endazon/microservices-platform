@@ -3101,6 +3101,14 @@ msgstr "The share target was added."
 msgid "探索深さ（hops）"
 msgstr "Exploration depth (hops)"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "探索深さ（hops）は 1・2・3 のいずれかです。上限を超える値は丸めずに扱いません。上の「探索深さ（hops）」から選び直してください。"
+msgstr "The exploration depth (hops) must be 1, 2 or 3. Values above the limit are not rounded. Choose again from \"Exploration depth (hops)\" above."
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "探索深さが範囲外です"
+msgstr "Exploration depth out of range"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "接続している端末はまだありません。"
 msgstr "No device is connected yet."
@@ -4997,6 +5005,7 @@ msgstr "Restore selected"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "選択してください"
 msgstr "Select…"
 
