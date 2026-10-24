@@ -294,7 +294,11 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 644822,
+  "initialTotalBytes": 644930,
+  "$comment_initialTotalBytes_20261024_2214_sc17-role-labels": [
+    "［2026-10-24 / #2214（SC-17 のロールを計画の表示名で出す）］644,822 → 644,930 B（+108 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。1 kB 未満の遅延チャンクは 11 本のまま。",
+    "増分は、初期チャンク（index-*.js）に載る基盤の翻訳カタログ（ja / en）へ足した 2 語（システム管理者・運用者。context「ロール」）の 2 ロケール分である（ビルド成果物で確かめた）。写像そのもの（lib/i18n/roles.ts）は SC-17 の遅延チャンク側にある。E2E が見つけた表示の欠落を直した、意図した増加である。"
+  ],
   "$comment_initialTotalBytes_20261024_2016_shell-e2e": [
     "［2026-10-24 / #2016（共通シェルの E2E）］644,568 → 644,610（+42 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
     "増分は画面のエラー境界（RouteErrorComponent。初期チャンクに載る）の「再読み込み」で、購読の無い TanStack Query のキャッシュを捨てる 1 行（useQueryClient と removeQueries）である。意図した増加である。"

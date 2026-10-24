@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Alert, Button, EmptyState, Label, Note, Panel, Select, StatusBadge } from '@platform/ui';
 import { appConfig } from '@foundation/config/runtimeConfig';
+import { i18n, roleLabel } from '@foundation/i18n';
 import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import type { PlatformUserDto } from '@foundation/api/generated/bff.schemas';
@@ -152,7 +153,11 @@ export function UserAccountManagementPage() {
         header: t`ロール`,
         enableSorting: false,
         // 併任は「・」で連ねる（計画の例「管理者・運用者」に合わせる）。
-        cell: ({ row }) => (row.original.roles.length > 0 ? row.original.roles.join('・') : '—'),
+        // #2214: 表示名は `@foundation/i18n` の `roleLabel`（値集合の外は生値）。
+        cell: ({ row }) =>
+          row.original.roles.length > 0
+            ? row.original.roles.map((r) => roleLabel(r, (d) => i18n._(d))).join('・')
+            : '—',
       },
       {
         id: 'attributes',
@@ -291,7 +296,7 @@ export function UserAccountManagementPage() {
               <option value="">{t`すべて`}</option>
               {assignableRoles.map((role) => (
                 <option key={role} value={role}>
-                  {role}
+                  {roleLabel(role, (d) => i18n._(d))}
                 </option>
               ))}
             </Select>
@@ -348,7 +353,8 @@ export function UserAccountManagementPage() {
                   checked={editor.draftRoles.includes(role)}
                   onChange={() => editor.toggleRole(role)}
                 />
-                {role}
+                {/* #2214: 表示名だけを写す。割り当てて送る値は識別子のまま（`toggleRole(role)`）。 */}
+                {roleLabel(role, (d) => i18n._(d))}
               </label>
             ))}
           </fieldset>

@@ -962,6 +962,11 @@ msgstr "System"
 msgid "システム管理"
 msgstr "System administration"
 
+#: platform/frontend/src/lib/i18n/roles.ts
+msgctxt "ロール"
+msgid "システム管理者"
+msgstr "System administrator"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
 msgid "システム管理者には、すべての利用者の緊急アクセスの記録が表示されます（新しい順に最大 50 件）。資料の題名と本文は記録されません。"
 msgstr "System administrators see emergency access records for all users (newest first, up to 50). Note titles and bodies are not recorded."
@@ -4929,6 +4934,11 @@ msgstr "The operations dashboard is unavailable."
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "運用状況は下の専用ツール（Grafana など）でも確認できます。"
 msgstr "Operational status is also available through the dedicated tools below, such as Grafana."
+
+#: platform/frontend/src/lib/i18n/roles.ts
+msgctxt "ロール"
+msgid "運用者"
+msgstr "Operator"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "運用面は専用ツールで提供します。本画面はこれらへの入口です。"

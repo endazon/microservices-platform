@@ -18,13 +18,13 @@ const user: PlatformUserDto = {
   username: 'hando.taro',
   displayName: 'ハンドウ タロウ',
   enabled: true,
-  roles: ['platform-user'],
+  roles: ['platform-operator'],
   attributes: { department: '営業部' },
 };
 
 const adminHandlers = {
   'GET /admin/users': [user],
-  'GET /admin/users/assignable-roles': ['platform-user', 'platform-admin'],
+  'GET /admin/users/assignable-roles': ['platform-admin', 'platform-operator'],
   'GET /admin/authz/attributes': [],
 };
 
@@ -52,6 +52,14 @@ test('SC-17: a platform administrator reaches the screen and its navigation entr
   ).toBeVisible();
   await expect(page.getByRole('link', { name: 'ユーザー管理' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'hando.taro' })).toBeVisible();
+  // ★ #2214: 一覧のロール列は計画の表示名（05_screens §SC-17 主要素）。識別子は出さない。
+  const row = page.getByRole('row').filter({ hasText: 'hando.taro' });
+  await expect(row.getByRole('cell', { name: '運用者', exact: true })).toBeVisible();
+  await expect(row.getByText('platform-operator')).toHaveCount(0);
+  // ロールのフィルタも表示名で選ぶ（値は識別子のまま）。
+  expect(
+    await page.getByLabel('ロール', { exact: true }).getByRole('option').allTextContents(),
+  ).toEqual(['すべて', 'システム管理者', '運用者']);
 
   expectBffTrafficIsComplete(traffic);
 });
@@ -79,12 +87,16 @@ test('SC-17: a non-administrator gets the same not-found page and never learns t
 //
 // 期待値は計画 05_screens §SC-17 から起こした。
 // - ロール割当は必須・複数選択（併任可）。選択肢は定義済みロールだけ（画面は一覧の口から作る）。
+//   ［#2214］選択肢は計画の表示名（platform-admin＝システム管理者・platform-operator＝運用者）で出し、
+//   送る値は識別子のまま。表に無い識別子（realm の `wiki-editor` 等）は生値のまま出す。
+//   計画の 4 種のうち利用者・管理者には realm ロールがまだ無い（ADR-0026 のフォローアップ）。
 // - ABAC 属性: 機密区分上限は**必須**（SC-09 に定義済みの値のみ）、タグは任意。
 // - 部門は部門グループの所属の変更であり、属性 `department` を直接書かない（ADR-0116 決定 1）。
 // - 無効化 → 全セッション即時失効（表示は「無効（全セッション失効）」）。
 // - アカウントは人事システム連携で自動プロビジョニングし、**本画面から新規作成はしない**。
 
-const ROLES = ['platform-user', 'knowledge-admin', 'platform-operator', 'platform-admin'];
+// 開発の realm が持つ「人が割り当てるロール」と同じ集合（`InMemoryIdentityAdminClient` の値域）。
+const ROLES = ['platform-admin', 'platform-operator', 'wiki-editor'];
 const USER_DICTIONARY = [
   {
     id: '66666666-6666-4666-8666-666666666666',
@@ -118,7 +130,7 @@ const editorHandlers = {
   },
 };
 
-test('M-106: ロールは定義済みの 4 種から併任でき、機密区分上限が無ければ保存せず、揃えば部門以外を送る', async ({
+test('M-106: ロールは定義済みのものから表示名で併任でき、機密区分上限が無ければ保存せず、揃えば部門以外を送る', async ({
   page,
 }) => {
   const traffic = await installBffSession(page, {
@@ -145,11 +157,17 @@ test('M-106: ロールは定義済みの 4 種から併任でき、機密区分�
   const editor = page.getByTestId('permission-editor');
   await expect(editor).toBeVisible();
 
-  // ★ 選択肢は定義済みのロールだけ（一覧の口が返した 4 種）。
+  // ★ 選択肢は定義済みのロールだけ（一覧の口が返した 3 種）。#2214: 表示名で出す（表に無いものは生値）。
   const roleGroup = editor.getByRole('group', { name: 'ロール割当（必須・複数選択可）' });
-  await expect(roleGroup.getByRole('checkbox')).toHaveCount(4);
-  // 併任: 運用者を足す（利用者は既に付いている）。
-  await roleGroup.getByRole('checkbox', { name: 'platform-operator' }).check();
+  await expect(roleGroup.getByRole('checkbox')).toHaveCount(3);
+  expect(await roleGroup.locator('label').allTextContents()).toEqual([
+    'システム管理者',
+    '運用者',
+    'wiki-editor',
+  ]);
+  await expect(roleGroup.getByRole('checkbox', { name: '運用者' })).toBeChecked();
+  // 併任: システム管理者を足す（運用者は既に付いている）。
+  await roleGroup.getByRole('checkbox', { name: 'システム管理者' }).check();
 
   // ★ 機密区分上限は必須: 未選択では保存の要求を出さず、理由を示す。
   await editor.getByRole('button', { name: '保存' }).click();
@@ -177,9 +195,10 @@ test('M-106: ロールは定義済みの 4 種から併任でき、機密区分�
     .toEqual(['PUT /admin/users/user-1/attributes', 'PUT /admin/users/user-1/roles']);
 
   const body = (key: string) => traffic.calls.find((c) => c.key === key)?.body;
+  // 送る値は識別子のまま（表示名を送らない）。
   expect((body('PUT /admin/users/user-1/roles') as { roles: string[] }).roles.sort()).toEqual([
+    'platform-admin',
     'platform-operator',
-    'platform-user',
   ]);
   // 属性は機密区分上限だけ（タグは任意なので未選択なら載らない）。部門は属性として書かない。
   expect(body('PUT /admin/users/user-1/attributes')).toEqual({
