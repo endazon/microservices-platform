@@ -256,20 +256,32 @@ test('M-085: 補正のあるジョブの再変換は、補正が失われる旨�
   await expect(confirm).toContainText('このジョブには人手補正が 2 件あります。');
   await expect(confirm.getByRole('button', { name: '取り消す' })).toBeFocused();
 
-  // 取り消すと何も送らない。
+  // 確かめるのは振る舞いの 2 点だけである（確認の前に素の POST が何回出るかは実装の流れなので固定しない）。
+  //   ① 取り消したときは、破棄指定つきの POST を送らない。
+  //   ② 確認したあとで、破棄指定つきの POST を 1 回だけ送る。
+  const discardRetries = () =>
+    traffic.calls.filter(
+      (c) =>
+        c.key === `POST /conversion/jobs/${id}/retry` &&
+        new URLSearchParams(c.search).get('discardCorrections') === 'true',
+    );
+
+  // ① 取り消す。確認が閉じ、破棄指定つきの POST は 1 件も無い。
   await confirm.getByRole('button', { name: '取り消す' }).click();
   await expect(confirm).toHaveCount(0);
-  const retries = () =>
-    traffic.calls.filter((c) => c.key === `POST /conversion/jobs/${id}/retry`).map((c) => c.search);
-  expect(retries()).toEqual(['']);
+  expect(discardRetries()).toHaveLength(0);
 
-  // 確認して破棄すると、破棄の指定つきで 1 回だけ送り直す。
+  // ② もう一度押して、確認したうえで破棄する。破棄指定つきの POST がちょうど 1 回出る。
   await rowOf(page, 'd.pdf').getByRole('button', { name: '再変換', exact: true }).click();
-  await page.getByRole('button', { name: '補正を破棄して再変換' }).click();
+  const discard = page.getByRole('button', { name: '補正を破棄して再変換' });
+  await expect(discard).toBeVisible();
+  // 確認のボタンを押す前は、まだ破棄指定つきの POST を送っていない（確認より前に送れば赤）。
+  expect(discardRetries()).toHaveLength(0);
+  await discard.click();
   await expect(
     page.getByRole('status').filter({ hasText: '再変換を受け付けました。' }),
   ).toBeVisible();
-  expect(retries()).toEqual(['', '', '?discardCorrections=true']);
+  expect(discardRetries()).toHaveLength(1);
 
   expectBffTrafficIsComplete(traffic);
 });

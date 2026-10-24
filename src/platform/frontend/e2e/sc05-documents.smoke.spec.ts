@@ -156,6 +156,22 @@ const twoDocs: DocumentListPageDto = {
 const rowOf = (page: Page, title: string) =>
   page.getByRole('table', { name: '文書の一覧' }).getByRole('row').filter({ hasText: title });
 const DESTRUCTIVE = ['編集', '公開', 'アーカイブ', '削除'];
+// フォームの入力欄（input / select / textarea）を、結び付いたラベルの文言で列挙する。
+// 🔴 **「doc_scope の欄が無い」を 0 件の確認だけにしない**（ラベルの文言が想定の正規表現から外れれば、欄があっても通る）。
+// 全欄のラベルを並べて完全一致で見れば、どんな文言の欄が 1 つ増えても赤になる。列挙が空振りしていないことは、
+// 既知の欄（タイトル等）が並ぶことが陽性対照になる。
+const fieldLabels = (form: ReturnType<Page['getByRole']>) =>
+  form.locator('input:not([type="hidden"]), select, textarea').evaluateAll((els) =>
+    els.map((el) => {
+      // e2e の tsconfig は DOM の型を持たないので、使う 2 つだけを形で書く。
+      const field = el as unknown as {
+        labels?: ArrayLike<{ textContent: string | null }> | null;
+        getAttribute(name: string): string | null;
+      };
+      const text = field.labels?.[0]?.textContent ?? field.getAttribute('aria-label') ?? '';
+      return text.replace(/\s+/g, '');
+    }),
+  );
 
 test('M-073: 運用者には文書の登録・編集・公開・アーカイブ・削除のボタンが 1 つも無く、管理者限定の旨を示す', async ({
   page,
@@ -255,6 +271,12 @@ test('M-072: 作成フォームはタイトルが空なら保存できず、機�
   const tagOptions = await tagSelect.getByRole('option').allTextContents();
   expect(tagOptions.filter((o) => o !== 'タグを選択').sort()).toEqual(['経費', '規程'].sort());
   // ★ doc_scope は本画面が作る組織文書では選ばせない（作成時のみ・以後は編集不可。ADR-0058）。
+  // 欄の全集合は計画 §SC-05 の入力（タイトル・機密区分・タグ）だけである。
+  expect(await fieldLabels(form)).toEqual([
+    'タイトル*（必須）',
+    '機密区分（ABAC属性）*（必須）',
+    'タグ',
+  ]);
   await expect(form.getByLabel(/文書スコープ|doc_scope/)).toHaveCount(0);
 
   await form.getByLabel('タイトル').fill('新しい規程');
@@ -296,6 +318,14 @@ test('M-072: 編集では doc_scope の欄が出ず、保存しても既存の d
     .getByRole('button', { name: '編集', exact: true })
     .click();
   const form = page.getByRole('form', { name: '文書編集' });
+  // ★ 編集の欄の全集合（作成の欄 ＋ 変更メモ）。doc_scope の欄はどんな文言でも増えていない。
+  await expect(form.getByLabel('タイトル')).toBeVisible();
+  expect(await fieldLabels(form)).toEqual([
+    'タイトル*（必須）',
+    '機密区分（ABAC属性）*（必須）',
+    'タグ',
+    '変更メモ',
+  ]);
   await expect(form.getByLabel(/文書スコープ|doc_scope/)).toHaveCount(0);
   await form.getByLabel('タイトル').fill('出張旅費規程');
   await form.getByRole('button', { name: '保存' }).click();

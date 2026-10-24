@@ -321,7 +321,7 @@ test('M-078: 写像先の利用者が実在しない（400）と、サーバの�
   await rowOf(page, '規程集').getByRole('button', { name: '既定属性' }).click();
   const form = page.getByRole('form', { name: '既定属性の編集' });
   await form.getByRole('button', { name: '＋ 写像を追加' }).click();
-  await form.getByLabel('ソース側の利用者 1').fill('hr_system\\nobody');
+  await form.getByLabel('ソース側の利用者 1').fill('hr-system-nobody');
   await form.getByLabel('基盤の利用者 1').fill('nobody');
   await form.getByRole('button', { name: '更新する' }).click();
 
@@ -331,7 +331,7 @@ test('M-078: 写像先の利用者が実在しない（400）と、サーバの�
   await expect(page.getByText('既定属性を更新しました。')).toHaveCount(0);
   const patch = traffic.calls.find((c) => c.key === `PATCH /datasources/${id}`);
   expect((patch?.body as { ownerMappings?: unknown }).ownerMappings).toEqual({
-    'hr_system\\nobody': 'nobody',
+    'hr-system-nobody': 'nobody',
   });
 
   expectBffTrafficIsComplete(traffic);
