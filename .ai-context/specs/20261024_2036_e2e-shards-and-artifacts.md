@@ -17,7 +17,9 @@ issue: "#2036"
 
 ## 受け入れ基準（issue #2036）
 
-- [ ] PR の e2e が 2 シャードで 10 分以内。report と trace が常時 14 日。必須チェック名（ジョブ名）が `docs/ai-workflow.md` の表と一致
+- [x] PR の e2e が 2 シャードで 10 分以内。report と trace が常時 14 日。必須チェック名（ジョブ名）が `docs/ai-workflow.md` の表と一致
+  - 実測（PR #2220・head `e9e9a1b3`）: `e2e-shard (1/2)` 1 分 38 秒、`e2e-shard (2/2)` 1 分 40 秒、集約 `e2e` 31 秒（シャードの開始から集約の終了まで 2 分 23 秒）。
+  - 「trace が常時」の意味: 成果物（blob・html）のアップロードが成否に関わらず常時である。trace 自体は `on-first-retry`（基準書 §9 の L1 の値）なので、再試行した test にだけ残る。
 
 （CI が緑になってから印を付ける。マージをもって完了とする。）
 
@@ -53,4 +55,4 @@ actionlint .github/workflows/frontend.yml
 REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js
 ```
 
-- CI の所要（2 シャードそれぞれ 10 分以内）は PR の実行で確かめ、PR 本文に書く。
+- CI の所要（2 シャードそれぞれ 10 分以内）は PR の実行で確かめ、PR 本文に書いた（上の受け入れ基準の実測）。
