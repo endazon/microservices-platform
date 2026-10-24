@@ -667,7 +667,12 @@ test('SC-06: データソース（一覧 1 件）に WCAG 2.2 A/AA ＋ best-prac
 
   await page.goto('/admin/sources');
   await expect(page.getByRole('heading', { name: 'データソース', level: 1 })).toBeVisible();
-  await expect(page.getByText('社内 Wiki').first()).toBeVisible();
+  await expect(
+    page
+      .getByRole('table', { name: '登録済みデータソースの一覧' })
+      .getByRole('row')
+      .filter({ hasText: '社内 Wiki' }),
+  ).toBeVisible();
 
   await expectAxeClean('SC-06');
 

@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
-issues: [#2013, #2014, #2015, #2191, #2023, #2036]
+iadrs: [IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+specs: [20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
+issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038]
 -->
 
 # E2E テスト基準
@@ -112,13 +112,15 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036]
 - 存在秘匿の NotFound は `getByRole('heading', { name: '見つかりませんでした' })` で引く。
 - `data-testid` を新設するときは kebab-case の意味のある名前（`issued-secret`）にする。動的な id を含めるなら
   `${prefix}-${id}` の形にする。
-- CSS セレクタ・XPath・`nth()` を使わない（**目標**: ESLint の `playwright/no-nth-methods` 等で止める。現状は規約だけ）。
+- CSS セレクタ・XPath・`nth()` を使わない。**［2026-10-24］`nth()` / `first()` / `last()` は ESLint の `playwright/no-nth-methods`（error）が止める**。
+  CSS セレクタ・XPath は規約だけである（Keycloak のテーマの画面は Keycloak の markup を id で引くため、機械では止めていない）。
 - 色・位置・アイコンの描画に依存しない（「色だけで意味を持たせない」と同じ側に立つ）。
 
 ## 4. 待機と時間
 
-- 待機は **web-first アサーションに限る**。`waitForTimeout` を使わない（**目標**: ESLint の
-  `playwright/no-wait-for-timeout` で止める）。`waitForResponse` はスタブ層で「呼ばれたこと」を見るときだけ使う。
+- 待機は **web-first アサーションに限る**。`waitForTimeout` を使わない（**［2026-10-24］ESLint の
+  `playwright/no-wait-for-timeout`（error）が止める**。`expect(await locator.allTextContents())` のような
+  web-first でない比較も `playwright/prefer-web-first-assertions` が止める）。`waitForResponse` はスタブ層で「呼ばれたこと」を見るときだけ使う。
 - 「呼ばない」ことの検証は、`e2e/support/bffSession.ts` の `expectBffTrafficIsComplete` と未処理リクエストの記録で行う。
   時間で待って 0 件を見るのではなく、**本体の描画完了を待ってから記録を見る**。
 - タイムアウト: L1 は test 30 秒（現状）。L2 は 60 秒、L3 系は 120 秒。`expect` の既定 5 秒は変えず、遅い操作だけ
@@ -207,7 +209,8 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036]
   `scripts/check-e2e-flaky.js` が読み、1 件でも flaky なら警告し、同じテストが 3 回連続で flaky なら issue を自動起票する。
 - **live**: `retries: 1`。同じテストが 2 nightly 連続で flaky なら `test.fixme` で隔離し、理由と追跡 issue を書く。
   隔離は 2 週間以内に解消するか削除する。
-- `forbidOnly`（現状）。`test.skip` には理由を必須にする。skip の上限は L1 で 0、live は前提（門）による skip だけを許し、
+- `forbidOnly`（現状）。`test.skip` には理由を必須にする（**［2026-10-24］ESLint の `playwright/require-annotation-reason` が止める**。
+  条件の無い `test.skip` は `playwright/no-skipped-test` が止める）。skip の上限は L1 で 0、live は前提（門）による skip だけを許し、
   全 skip は赤にする（§6）。
 - 検査器・規約の追加は同型の事故 2 回からとする（1 回目は記録に留める）。
 - 実行時間の予算: L1 は **1 シャードあたり 10 分以内**（超えたらシャードを増やす）。live-ro は 20 分、live-rw は 30 分。
@@ -241,4 +244,4 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036]
 | 試験アカウント | seed の `developer` 等を人と共用 | `e2e-*` を役割ごとに分離 |
 | 視覚回帰 | なし | 既定で採らない（候補 1 件） |
 | flaky の集計 | なし | 件数の収集と自動起票 |
-| ESLint（Playwright 用ルール） | なし | `no-wait-for-timeout`・`no-nth-methods`・skip 理由必須 |
+| ESLint（Playwright 用ルール） | ~~なし~~ `eslint-plugin-playwright` の recommended ＋ 下の 3 つを error（2026-10-24。対象は `**/e2e/**`） | `no-wait-for-timeout`・`no-nth-methods`・skip 理由必須 |

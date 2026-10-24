@@ -6,6 +6,7 @@ import globals from 'globals';
 import importPlugin from 'eslint-plugin-import';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import lingui from 'eslint-plugin-lingui';
+import playwright from 'eslint-plugin-playwright';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import storybook from 'eslint-plugin-storybook';
@@ -305,6 +306,19 @@ export const TESTING_LIBRARY_RULE_OVERRIDES = {
   // 加えて本リポジトリは `absent` / `unknown` のように**その試験での意味**を変数名に載せており、
   // `view` へ揃えると読み手が失う情報のほうが大きい。実測 8 件。
   'testing-library/render-result-naming-convention': 'off',
+};
+
+// NFR / IADR-0622（#2038）: `eslint-plugin-playwright` の recommended に**重ねる**規則。
+// 基準書（docs/tests/E2E_STANDARDS.md）が「機械で止める」と書いた 3 つを error にする。
+export const PLAYWRIGHT_RULE_OVERRIDES = {
+  // 基準書 §4: 待機は web-first アサーションに限る。recommended では warn（＝ CI を止めない）。
+  'playwright/no-wait-for-timeout': 'error',
+  // 基準書 §3: `nth()` / `first()` / `last()` を使わない。recommended には入っていない。
+  'playwright/no-nth-methods': 'error',
+  // 基準書 §10: `test.skip` / `test.fixme` には理由を必須にする（`test.skip(cond, '理由')` の形）。
+  'playwright/require-annotation-reason': 'error',
+  // 基準書 §10: L1 の skip は 0 件。live は前提（門）による条件つき skip だけを許す。
+  'playwright/no-skipped-test': ['error', { allowConditional: true }],
 };
 
 // ADR-0031 / IADR-0275: **既存違反の grandfather は `eslint-suppressions.json`（ESLint 9.24+ の
@@ -736,4 +750,16 @@ export default tseslint.config(
   },
   // Storybook の stories に対する規約（既定の recommended）。
   ...storybook.configs['flat/recommended'],
+  // NFR / IADR-0622（#2038）/ 基準書 §3・§4・§10: Playwright の E2E にだけ `eslint-plugin-playwright` を効かせる。
+  // 射程は `**/e2e/**`（L1 の `*.spec.ts`・Keycloak のテーマの `*.kc.ts`・support を含む）。
+  // `ai-stock-trading/**` は外す（別リポの submodule。上の Testing Library・TanStack と同じ線引き）。
+  {
+    ...playwright.configs['flat/recommended'],
+    files: ['**/e2e/**/*.ts'],
+    ignores: ['ai-stock-trading/**'],
+    rules: {
+      ...playwright.configs['flat/recommended'].rules,
+      ...PLAYWRIGHT_RULE_OVERRIDES,
+    },
+  },
 );

@@ -116,13 +116,13 @@ test('M-069: 状態は 4 値・種類は 3 値で、変えるたびに要求に�
   // ★ 選択肢の全集合。
   const state = page.getByRole('combobox', { name: '状態' });
   const kind = page.getByRole('combobox', { name: '種類' });
-  expect(await state.getByRole('option').allTextContents()).toEqual([
+  await expect(state.getByRole('option')).toHaveText([
     '承認待ち',
     '承認済み',
     '却下（再提示を抑止中）',
     'すべて',
   ]);
-  expect(await kind.getByRole('option').allTextContents()).toEqual(['すべて', 'リンク', 'タグ']);
+  await expect(kind.getByRole('option')).toHaveText(['すべて', 'リンク', 'タグ']);
 
   // ★ 変えるたびに要求へ載せて引き直す。
   await state.selectOption({ label: '却下（再提示を抑止中）' });

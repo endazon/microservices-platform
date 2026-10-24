@@ -22,8 +22,8 @@ const JAPANESE = /[぀-ヿ㐀-鿿]/;
 
 /** 左ナビのリンク名（アクセシビリティツリーの順）。ナビは名前で引かず、唯一の navigation を使う。 */
 async function navLinkNames(page: Page): Promise<string[]> {
-  const nav = page.getByRole('navigation').first();
-  await expect(nav.getByRole('link').first()).toBeVisible();
+  const nav = page.getByRole('navigation');
+  await expect(nav.getByRole('link').filter({ visible: true })).not.toHaveCount(0);
   return (await nav.getByRole('link').allTextContents()).map((n) => n.trim());
 }
 

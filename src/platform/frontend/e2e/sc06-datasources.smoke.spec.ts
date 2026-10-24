@@ -364,12 +364,7 @@ test('既定の機密区分: 一覧と登録フォームは表示名で出し、
   await page.getByRole('button', { name: '＋ ソース登録' }).click();
   const form = page.getByRole('form', { name: 'データソース登録' });
   const select = form.getByLabel('既定の機密区分');
-  expect(await select.getByRole('option').allTextContents()).toEqual([
-    '公開',
-    '社内限',
-    '秘',
-    '取扱制限',
-  ]);
+  await expect(select.getByRole('option')).toHaveText(['公開', '社内限', '秘', '取扱制限']);
   await form.getByLabel('名前').fill('役員会の共有');
   await form.getByLabel('接続先 URI').fill('smb://fs01/share/役員会');
   await select.selectOption({ label: '秘' });

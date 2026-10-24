@@ -98,6 +98,7 @@ test('SC-09: the edge-type dictionary tab reads the admin dictionary, not the dr
 
   expectBffTrafficIsComplete(traffic);
 });
+
 // FR-05, SC-09, ADR-0121 決定 1・ADR-0036 D-02 (#1666): **所有者の read ポリシーを画面の操作だけで作る。**
 // 属性辞書は空（owner は辞書に載らない）。実ビルド成果物の上で、選択 → 条件の追加 → 保存の順に押し、
 // BFF へ届いた本文が ADR-0121 決定 1 の形そのものであることを見る。

@@ -395,15 +395,12 @@ test('機密区分: 一覧・絞り込み・作成フォームは表示名で出
 
   // ★ 絞り込みの選択肢も表示名（「すべて」＋ 4 区分）。
   const filter = page.getByLabel('機密区分で絞り込み');
-  expect(await filter.getByRole('option').allTextContents()).toEqual([
-    'すべて',
-    ...CONFIDENTIALITY_LABELS,
-  ]);
+  await expect(filter.getByRole('option')).toHaveText(['すべて', ...CONFIDENTIALITY_LABELS]);
 
   // ★ 作成フォームの選択肢も表示名。選んで保存すると、契約の値（confidential）が載る。
   const form = page.getByRole('form', { name: '文書登録' });
   const select = form.getByLabel('機密区分（ABAC属性）');
-  expect(await select.getByRole('option').allTextContents()).toEqual(CONFIDENTIALITY_LABELS);
+  await expect(select.getByRole('option')).toHaveText(CONFIDENTIALITY_LABELS);
   await form.getByLabel('タイトル').fill('秘の規程');
   await select.selectOption({ label: '秘' });
   await form.getByRole('button', { name: '保存' }).click();

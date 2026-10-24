@@ -110,7 +110,7 @@ test('M-054: 探索深さは 1/2/3（既定 2）だけで、深さと辺の型�
 
   // ★ 選択肢の全集合と既定。
   const hops = page.getByRole('combobox', { name: '探索深さ（hops）' });
-  expect(await hops.getByRole('option').allTextContents()).toEqual(['1', '2（既定）', '3（上限）']);
+  await expect(hops.getByRole('option')).toHaveText(['1', '2（既定）', '3（上限）']);
   await expect(hops).toHaveValue('2');
   const calls = () =>
     traffic.calls
