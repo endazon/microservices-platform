@@ -692,4 +692,5 @@
 | [IADR-0612](./IADR-0612_break-glass-screens.md) | 緊急アクセスの画面。SC-19 に開いたときだけ描く欄（対象 1 件の選択・残り時間・本人の終了・確認ダイアログ・監査ログ）を置き、指名先は既存の利用者検索の候補から選ばせて管理者かは後段が確かめる。指名された管理者は監査ログの行から SC-03 を `?via=break-glass` の文脈つきで開く（文脈は表示だけ。planning#841。#2046） | Accepted |
 | [IADR-0613](./IADR-0613_ingestion-budget-default-fits-collection-count.md) | 取り込みの埋め込みの総枠は、構成で与えていなければ受け口の期限とコレクション数から縮めて既定とする（上限 300 秒・余白 5 秒。既定の 2 本は 300 秒のまま、opt-in の 3 本 280 秒・4 本 260 秒）。#2149 の後に opt-in の配備で取り込みが起動しなかった是正 | Accepted |
 | [IADR-0614](./IADR-0614_axe-wcag22-aa-all-screens-and-known-violation-ledger.md) | axe の E2E は NFR-30 のタグで SPA の全画面と操作後の UI を走査し、既知の違反は理由つきの台帳と一致させる（Keycloak のテーマの画面は L1 の対象外） | Accepted |
-| [IADR-0615](./IADR-0615_review-floor-ci-scripts-tests-as-evidence-when-config-restored.md) | AI レビューの作業ツリーが PR 版と違うときに限り、下限「scripts.test.js 全件」を同じ head の CI scripts-tests の success で満たす | Accepted |
+| [IADR-0615](./IADR-0615_review-floor-ci-scripts-tests-as-evidence-when-config-restored.md) | AI レビューの作業ツリーが PR 版と違うときに限り、下限「scripts.test.js 全件」を同じ head の CI scripts-tests の success で満たす （復元の条件は IADR-0617 で外した） | Accepted |
+| [IADR-0617](./IADR-0617_review-floor-ci-scripts-tests-as-evidence-regardless-of-restore.md) | AI レビューの下限「scripts.test.js 全件」は、作業ツリーの復元の有無を問わず同じ head の CI scripts-tests の success でも満たす | Accepted |

@@ -8473,7 +8473,7 @@ ${r.stderr}`);
       'ci-latency-watch.yml:watch': { checks: 'read', 'pull-requests': 'read' },
       'ci-latency-watch.yml:report-failure': { actions: 'read', issues: 'write' },
       // actions: read は mcp__github_ci__* の導入条件と `gh run list`（ワークフローの注記）
-      // checks: read は判定のステップが同じ head の CI scripts-tests の check-run を読むため（IADR-0615 / #2184）
+      // checks: read は判定のステップが同じ head の CI scripts-tests の check-run を読むため（IADR-0615 / #2184、IADR-0617 / #2206）
       'claude-code-review.yml:claude-review': { actions: 'read', checks: 'read', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
       'claude-coding.yml:claude': { actions: 'read', contents: 'write', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
       'codeql.yml:analyze': { actions: 'read', 'security-events': 'write' },
@@ -17909,6 +17909,14 @@ server.listen(0, '127.0.0.1', async () => {
       for (const word of ['export RESTORED_FILES', 'git diff --name-only HEAD', 'export SCRIPTS_TESTS_CONCLUSION', 'check_name=scripts-tests', '$HEAD_SHA']) {
         if (!step.includes(word)) problems.push(`ステップ「Check review verdict」に「${word}」が無い`);
       }
+      // IADR-0617 (#2206): check-run を待つ条件は作業ツリーの復元（RESTORED_FILES）に依らない。
+      // scripts/ か .github/ の差分の有無だけで待つ（条件に RESTORED_FILES を戻すと、復元なしの PR で値が空のまま渡る）。
+      const wait = step.indexOf('check_name=scripts-tests');
+      const cond = step.lastIndexOf('if [', wait);
+      if (wait >= 0 && cond >= 0 && /RESTORED_FILES/.test(step.slice(cond, step.indexOf('\n', cond)))) {
+        problems.push('ステップ「Check review verdict」の scripts-tests を待つ条件が RESTORED_FILES に依っている（IADR-0617）');
+      }
+      if (/\|\s*grep -q/.test(step)) problems.push('ステップ「Check review verdict」に「… | grep -q」がある（pipefail の下で SIGPIPE。#2202）');
       if (!/\n {6}checks: read\n/.test(text)) problems.push('ジョブの permissions に checks: read が無い（check-run を読めない）');
       return problems;
     };
@@ -17922,6 +17930,11 @@ server.listen(0, '127.0.0.1', async () => {
       // IADR-0615 (#2184): 代わりの根拠を渡す配線を外すと赤になる。
       assert.match(pairProblems(wfRvf.replace('          export RESTORED_FILES\n', '')).join('\n'), /RESTORED_FILES/);
       assert.match(pairProblems(wfRvf.replace('      checks: read\n', '')).join('\n'), /checks: read/);
+      // IADR-0617 (#2206): 待つ条件へ RESTORED_FILES を戻すと赤になる。
+      assert.match(
+        pairProblems(wfRvf.replace('if [ -n "$TOUCHES_SCRIPTS" ]; then', 'if [ -n "$RESTORED_FILES" ] && [ -n "$TOUCHES_SCRIPTS" ]; then')).join('\n'),
+        /RESTORED_FILES に依っている/
+      );
     });
 
     // IADR-0615 (#2184): MSP#2183 の 3 回目の実レビュー本文。レビュアーは scripts.test.js を前景で回したが、
@@ -17932,16 +17945,47 @@ server.listen(0, '127.0.0.1', async () => {
     ok('check-review-verdict[IADR-0615]: MSP#2183 の実本文は、作業ツリーが PR 版と違い同じ head の scripts-tests が success なら下限を満たす', () => {
       assert.deepStrictEqual(floorRvf(reviewRvf, changedRvf, { restoredFiles: ['.claude/rules/traceability.repo.md'], scriptsTestsConclusion: 'success' }), []);
     });
-    ok('check-review-verdict[IADR-0615]: ★陽性対照 —— 同じ本文でも scripts-tests が failure・結果なし、または作業ツリーが PR 版と同じなら赤', () => {
+    ok('check-review-verdict[IADR-0615]: ★陽性対照 —— 同じ本文でも scripts-tests が failure・結果なしなら赤', () => {
       for (const evidence of [
         { restoredFiles: ['.claude/rules/traceability.repo.md'], scriptsTestsConclusion: 'failure' },
         { restoredFiles: ['.claude/rules/traceability.repo.md'], scriptsTestsConclusion: '' },
-        { restoredFiles: [], scriptsTestsConclusion: 'success' },
+        { restoredFiles: [], scriptsTestsConclusion: 'cancelled' },
         {},
       ]) {
         const v = floorRvf(reviewRvf, changedRvf, evidence);
         assert.strictEqual(v.length, 1, JSON.stringify(evidence));
         assert.match(v[0], /scripts\.test\.js 全件/);
+      }
+    });
+
+    // IADR-0617 (#2206): MSP#2205 の 2 回目の実レビュー本文。scripts/ の差分は scripts/chunk-budget-baseline.json の数値だけで、
+    // レビュアーはこれを見落とし「scripts/ .github/ の差分は無いので scripts.test.js は走らせていない」と書いた。
+    // 作業ツリーの復元は無く、同じ head の CI scripts-tests は success だった（IADR-0615 の条件では赤のまま止まった）。
+    const review2205 = fsRvf.readFileSync(pathRvf.join(__dirname, 'fixtures', 'review-floor', 'pr2205-review2.txt'), 'utf8');
+    const changed2205 = [
+      '.ai-context/specs/20261024_2201_theme-toggle-label-in-name.md',
+      'scripts/chunk-budget-baseline.json',
+      'src/platform/frontend/src/components/theme/ThemeToggle.test.tsx',
+      'src/platform/frontend/src/components/theme/ThemeToggle.tsx',
+      'src/platform/frontend/src/locales/en/messages.po',
+      'src/platform/frontend/src/locales/en/messages.ts',
+      'src/platform/frontend/src/locales/ja/messages.po',
+      'src/platform/frontend/src/locales/ja/messages.ts',
+    ];
+    ok('check-review-verdict[IADR-0617]: MSP#2205 の実本文は、復元が無くても同じ head の scripts-tests が success なら下限を満たす', () => {
+      assert.deepStrictEqual(floorRvf(review2205, changed2205, { restoredFiles: [], scriptsTestsConclusion: 'success' }), []);
+    });
+    ok('check-review-verdict[IADR-0617]: ★陽性対照 —— 同じ本文・復元なしで scripts-tests が success でなければ（failure・cancelled・timed_out・空・無し）赤', () => {
+      for (const evidence of [
+        { restoredFiles: [], scriptsTestsConclusion: 'failure' },
+        { restoredFiles: [], scriptsTestsConclusion: 'cancelled' },
+        { restoredFiles: [], scriptsTestsConclusion: 'timed_out' },
+        { restoredFiles: [], scriptsTestsConclusion: '' },
+        {},
+      ]) {
+        const v = floorRvf(review2205, changed2205, evidence);
+        assert.strictEqual(v.length, 1, JSON.stringify(evidence));
+        assert.match(v[0], /scripts\.test\.js 全件.*scripts-tests も success でない/);
       }
     });
   }
