@@ -40,20 +40,24 @@ related_specs:
 | | **B. spec を直す** | **採る**（25 件） |
 | `no-wait-for-timeout` | A. recommended の warn のまま | 採らない。warn は CI を止めない（新規混入が止まらない） |
 | | **B. error** | **採る** |
-| 条件の無い skip | A. recommended の warn | 採らない。L1 の skip は 0 件が基準 |
-| | **B. `no-skipped-test` を `allowConditional: true` で error** | **採る**。live の前提による条件つき skip は残せる |
+| skip | A. recommended の warn | 採らない。L1 の skip は 0 件が基準 |
+| | B. `no-skipped-test` を全 e2e で `allowConditional: true` の error | 採らない。L1 でも `test.skip(cond, '理由')` が通り、「L1 の skip は 0」を機械で守れない（PR #2221 の AI レビュー 🟡） |
+| | **C. 既定は `allowConditional` なしの error。門が要る層（`*.kc.ts`・`e2e/live/`）だけ `allowConditional: true`** | **採る** |
 | CSS セレクタ | `no-raw-locators` を足す | 採らない。Keycloak のテーマの画面は Keycloak の markup を id で引くしかない |
 
 ## 決定
 
 1. `eslint-plugin-playwright`（2.12.1）を `src/package.json` の devDependencies に足し、`src/eslint.config.js` で `**/e2e/**/*.ts` に recommended を適用する。`ai-stock-trading/**` は外す（IADR-0275 と同じ線引き）。
-2. recommended に重ねる規則は `PLAYWRIGHT_RULE_OVERRIDES` に置く: `no-wait-for-timeout`・`no-nth-methods`・`require-annotation-reason` を error、`no-skipped-test` を `allowConditional: true` で error。
-3. 既存の違反は spec を直して 0 件にする。抑制ファイルへは載せない。
+2. recommended に重ねる規則は `PLAYWRIGHT_RULE_OVERRIDES` に置く: `no-wait-for-timeout`・`no-nth-methods`・`require-annotation-reason`・`no-skipped-test` を error。
+   `no-skipped-test` は**条件つきも含めて**止める（L1 の skip は 0 件）。
+3. 前提（門）による条件つき skip を許すのは `PLAYWRIGHT_GATED_SKIP_FILES`（`**/e2e/keycloak/**/*.kc.ts` と `**/e2e/live/**/*.ts`）だけで、
+   そこでは `no-skipped-test` を `allowConditional: true` にする。理由は `require-annotation-reason` が引き続き必須にする。
+4. 既存の違反は spec を直して 0 件にする。抑制ファイルへは載せない。
 
 ## 理由
 
 - 基準書の「目標」を、規約を緩めずに配備できる（直せない違反が無かった）。
-- `allowConditional` で、live 層の門（前提が満たされない時の条件つき skip）を書く余地を残す。
+- 層で分けることで、L1 の skip 0 件を機械で守りつつ、live 層と Keycloak の門（前提が満たされない時の条件つき skip）を書く余地を残す。
 
 ## 影響
 

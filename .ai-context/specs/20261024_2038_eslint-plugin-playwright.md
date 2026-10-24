@@ -29,13 +29,15 @@ issue: "#2038"
    - `playwright/no-wait-for-timeout`（recommended では warn。warn では CI が止まらない）
    - `playwright/no-nth-methods`（recommended に無い）
    - `playwright/require-annotation-reason`（skip / fixme の理由。recommended に無い）
-   - あわせて `playwright/no-skipped-test` を `allowConditional: true` で error にする（L1 の skip は 0。live は前提による条件つき skip だけを許す。基準書 §10）。
+   - あわせて `playwright/no-skipped-test` を error にする。**L1 は条件つきも止める**（L1 の skip は 0。基準書 §10）。
+     前提による条件つき skip が要る層（`e2e/keycloak/**/*.kc.ts`・`e2e/live/**`）だけ `allowConditional: true` に緩める（`PLAYWRIGHT_GATED_SKIP_FILES`）。
+     ［2026-10-24 / PR #2221 の AI レビュー 🟡］当初は全 e2e で `allowConditional: true` にしていたが、それでは L1 の skip 0 を機械で守れないので層で分けた。
 4. **既存の違反は spec を直して解消する。** 無効化・抑制ファイル（`eslint-suppressions.json`）への退避はしない。導入時点の違反は 25 件（error 24・warn 1）だった。
 
 | 規則 | 件数 | 直し方 |
 | --- | --- | --- |
 | `prefer-web-first-assertions`（recommended の error） | 11 | `expect(await x.allTextContents()).toEqual([...])` → `await expect(x).toHaveText([...])`。配列の `toHaveText` は件数と順序ごと一致を見るので、同じ強さで待つ形になる |
-| `no-nth-methods` | 13 | SC-11 の列は `row.getByRole('cell')` を `toHaveText([種別, 深刻度, 対象, 詳細])` で 1 回に見る（詳細の列も見るようになった）。SC-19 の候補は件数 1 を確かめた上で `toHaveText([...])` / `toContainText([...])` と `click()`。SC-06 の a11y は表と行で絞る（sc06 の spec の `rowOf` と同じ形）。i18n のナビは唯一の navigation をそのまま使い、リンクは `filter({ visible: true })` の件数で待つ。Keycloak のテーマは送信ボタンをフォームの中で役割と名前（`送信`）で引く。デバイスの活動は `filter({ visible: true })` の件数で待つ |
+| `no-nth-methods` | 13 | SC-11 の列は `row.getByRole('cell')` を `toHaveText([種別, 深刻度, 対象, 詳細])` で 1 回に見る（詳細の列も見るようになった）。SC-19 の候補は `toHaveText([...])`（件数ごと一致）で 1 件を確かめてから `click()`（グループの候補は表示名とパスを空白で並べた `開発部 /teams/dev`。空白を外すと赤になることを確かめた）。SC-06 の a11y は表と行で絞る（sc06 の spec の `rowOf` と同じ形）。i18n のナビは唯一の navigation をそのまま使い、リンクは `filter({ visible: true })` の件数で待つ。Keycloak のテーマは送信ボタンをフォームの中で役割と名前（`送信`）で引く。デバイスの活動は `filter({ visible: true })` の件数で待つ |
 | `consistent-spacing-between-blocks`（warn） | 1 | 空行を足す |
 
 ## 母集合（規則 9・10）
@@ -56,4 +58,4 @@ node scripts/check-knip.js --require                                           #
 ```
 
 - Keycloak のテーマの spec（`*.kc.ts`）は使い捨ての Keycloak が要り、手元では走らない（docker が無い）。`keycloak-theme-a11y.yml` は `src/platform/frontend/e2e/keycloak/**` と `src/pnpm-lock.yaml` の変更で起動するので、本 PR の CI で確かめる。
-- 変異（一時ファイルを置いて lint し、消した）: `page.waitForTimeout(100)` → `no-wait-for-timeout` の error。`.nth(0)` → `no-nth-methods` の error。条件の無い `test.skip(...)` → `no-skipped-test` の error。理由の無い `test.fixme()` → `require-annotation-reason` の error。
+- 変異（一時ファイルを置いて lint し、消した）: `page.waitForTimeout(100)` → `no-wait-for-timeout` の error。`.nth(0)` → `no-nth-methods` の error。条件の無い `test.skip(...)` → `no-skipped-test` の error。理由の無い `test.fixme()` → `require-annotation-reason` の error。条件つき `test.skip(cond, '理由')` → L1（`*.smoke.spec.ts`・`support/`）では `no-skipped-test` の error、`e2e/keycloak/*.kc.ts`・`e2e/live/*.ro.spec.ts` では通る。

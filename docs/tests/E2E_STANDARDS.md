@@ -210,7 +210,7 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038]
 - **live**: `retries: 1`。同じテストが 2 nightly 連続で flaky なら `test.fixme` で隔離し、理由と追跡 issue を書く。
   隔離は 2 週間以内に解消するか削除する。
 - `forbidOnly`（現状）。`test.skip` には理由を必須にする（**［2026-10-24］ESLint の `playwright/require-annotation-reason` が止める**。
-  条件の無い `test.skip` は `playwright/no-skipped-test` が止める）。skip の上限は L1 で 0、live は前提（門）による skip だけを許し、
+  L1 の `test.skip` は条件つきでも `playwright/no-skipped-test` が止める。条件つきの skip を許すのは `e2e/keycloak/` の `*.kc.ts` と `e2e/live/` だけ）。skip の上限は L1 で 0、live は前提（門）による skip だけを許し、
   全 skip は赤にする（§6）。
 - 検査器・規約の追加は同型の事故 2 回からとする（1 回目は記録に留める）。
 - 実行時間の予算: L1 は **1 シャードあたり 10 分以内**（超えたらシャードを増やす）。live-ro は 20 分、live-rw は 30 分。

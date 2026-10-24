@@ -317,9 +317,15 @@ export const PLAYWRIGHT_RULE_OVERRIDES = {
   'playwright/no-nth-methods': 'error',
   // 基準書 §10: `test.skip` / `test.fixme` には理由を必須にする（`test.skip(cond, '理由')` の形）。
   'playwright/require-annotation-reason': 'error',
-  // 基準書 §10: L1 の skip は 0 件。live は前提（門）による条件つき skip だけを許す。
-  'playwright/no-skipped-test': ['error', { allowConditional: true }],
+  // 基準書 §10: L1 の skip は 0 件。**条件つきの skip も許さない**（`allowConditional` を付けない）。
+  // 前提（門）による条件つき skip が要る層は、下の PLAYWRIGHT_GATED_SKIP_FILES だけで緩める。
+  'playwright/no-skipped-test': 'error',
 };
+
+// NFR / IADR-0622（#2038）: 前提（門）による条件つき skip（`test.skip(cond, '理由')`）を許す層。
+// 使い捨ての Keycloak に対する `*.kc.ts` と、稼働中の PoC に対する live 層（IADR-0569 決定 3 の `e2e/live/`）。
+// L1（`*.smoke.spec.ts` と `support/`）はここに入れない —— L1 の skip は条件つきでも 0 件である。
+export const PLAYWRIGHT_GATED_SKIP_FILES = ['**/e2e/keycloak/**/*.kc.ts', '**/e2e/live/**/*.ts'];
 
 // ADR-0031 / IADR-0275: **既存違反の grandfather は `eslint-suppressions.json`（ESLint 9.24+ の
 // 抑制ファイル。同ディレクトリ）が持つ。** 規則を弱めるのでも、ファイルを ignore するのでもなく、
@@ -760,6 +766,13 @@ export default tseslint.config(
     rules: {
       ...playwright.configs['flat/recommended'].rules,
       ...PLAYWRIGHT_RULE_OVERRIDES,
+    },
+  },
+  {
+    files: PLAYWRIGHT_GATED_SKIP_FILES,
+    ignores: ['ai-stock-trading/**'],
+    rules: {
+      'playwright/no-skipped-test': ['error', { allowConditional: true }],
     },
   },
 );
