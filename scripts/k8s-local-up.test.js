@@ -2297,6 +2297,60 @@ ok('IADR-0577: reconcile-users.sh はパスワードを改行で終わる 1 行�
   assert.ok(/timeout "\$CTL_TIMEOUT" kubectl -n "\$INFRA_NS" exec -i deploy\/rabbitmq/.test(src), '1 回の呼び出しに上限が無い（止まると起動器ごと止まる）');
 });
 
+// NFR, #2200: 「在るか」の判定（list_users の一覧に宣言のユーザーが在るか）は、一致が早い大きな一覧でも反転しない。
+//   旧い形（`printf '%s\n' "$existing" | grep -Fxq`）は pipefail の下で、grep が一致で読むのをやめると printf が SIGPIPE で落ち、
+//   在るユーザーを「無い」と読んだ（CI で偶発。一覧がパイプの容量より大きいと必ず起きる）。宣言のユーザーを一覧の先頭に置き、
+//   後ろに大きな詰め物を足して、--check と apply を何度か回す。変異（旧い形へ戻した写し）は同じ入力で必ず落ちる。
+function reconcile2200(scriptText, mode) {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'reconcile-2200-'));
+  try {
+    const bin = path.join(H, 'bin');
+    fs.mkdirSync(bin);
+    const filler = Array.from({ length: 20000 }, (_, i) => `{"user":"filler-${String(i).padStart(6, '0')}","tags":[]}`).join(',');
+    fs.writeFileSync(path.join(H, 'list.json'), `[{"user":"msp-document","tags":[]},{"user":"ast-audit","tags":[]},${filler}]`);
+    fs.writeFileSync(path.join(bin, 'kubectl'), [
+      '#!/usr/bin/env bash',
+      'case "$*" in',
+      '  *"get secret rabbitmq-users"*) printf "dg==" ; exit 0;;',
+      '  *"rabbitmqctl -q list_users"*) cat "$STUB_H/list.json"; exit 0;;',
+      '  *"rabbitmqctl add_user "*) cat >/dev/null; echo "add ${*: -1}" >> "$STUB_H/log"; exit 0;;',
+      '  *"rabbitmqctl change_password "*) cat >/dev/null; echo "change ${*: -1}" >> "$STUB_H/log"; exit 0;;',
+      // 実物と同じく標準入力（パスワードの 1 行）を読み切る（読まずに閉じると書き手が SIGPIPE で落ちる＝別の反転になる）。
+      '  *"rabbitmqctl authenticate_user "*) cat >/dev/null; exit 0;;',
+      'esac',
+      'exit 0',
+      '',
+    ].join('\n'), { mode: 0o755 });
+    fs.writeFileSync(path.join(H, 'users.txt'), 'msp-document x y msp/rabbitmq-users\nast-audit x y ai-stock-trading/rabbitmq-users\n');
+    const script = path.join(H, 'reconcile-users.sh');
+    fs.writeFileSync(script, scriptText);
+    const results = [];
+    for (let i = 0; i < 5; i++) {
+      fs.writeFileSync(path.join(H, 'log'), '');
+      const r = spawnSync('bash', mode === 'check' ? [script, '--check'] : [script], { encoding: 'utf8', env: { ...process.env,
+        PATH: `${bin}:${process.env.PATH}`, STUB_H: H, RABBITMQ_USERS_FILE: path.join(H, 'users.txt'), RABBITMQ_USERS_TIMEOUT: '1' } });
+      results.push({ status: r.status, out: `${r.stdout}${r.stderr}`, log: fs.readFileSync(path.join(H, 'log'), 'utf8') });
+    }
+    return results;
+  } finally {
+    fs.rmSync(H, { recursive: true, force: true });
+  }
+}
+ok('#2200: reconcile-users.sh の「在るか」は一致が早い大きな一覧でも反転しない（--check は揃っている・apply は change_password）', () => {
+  const RECONCILE = path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/reconcile-users.sh');
+  const src = fs.readFileSync(RECONCILE, 'utf8');
+  for (const r of reconcile2200(src, 'check')) assert.strictEqual(r.status, 0, `--check が揃っているのに落ちた:\n${r.out.slice(-400)}`);
+  for (const r of reconcile2200(src, 'apply')) {
+    assert.strictEqual(r.status, 0, r.out.slice(-400));
+    assert.deepStrictEqual(r.log.trim().split('\n').sort(), ['change ast-audit', 'change msp-document'], `在るユーザーを add_user した:\n${r.log}`);
+  }
+  // 変異: 旧い形（printf | grep -Fxq）へ戻すと、同じ入力で判定が反転する。
+  const old = src.replace(/grep -Fxq -- "\$u" <<<"\$existing"/g, `printf '%s\\n' "$existing" | grep -Fxq -- "$u"`);
+  assert.notStrictEqual(old, src, '変異が空振りしている');
+  assert.ok(reconcile2200(old, 'check').some((r) => r.status !== 0), '旧い形の --check の反転を再現できない（試験が検出力を持たない）');
+  assert.ok(reconcile2200(old, 'apply').some((r) => /add /.test(r.log) || r.status !== 0), '旧い形の apply の反転を再現できない');
+});
+
 // NFR-18, IADR-0577: 既定のユーザーの無効化（deploy/local/rabbitmq-setup/disable-default-user.sh）。
 //   ブローカの状態（ユーザー・接続・Secret）を持つ模型の kubectl で、「確かめてからだけ消す」と「印を先に置く」を試す。
 //   模型: $H/users（在るユーザー）・$H/conns（接続のユーザー）・$H/default（Secret rabbitmq の username）・

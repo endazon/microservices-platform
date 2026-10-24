@@ -114,7 +114,9 @@ else
     # 有効なまま残る（`-k` とは別物）。schannel 以外では未知オプションとして無視されないため、
     # 対応しているときだけ付ける。
     CURL_K="--cacert $CA_BUNDLE"
-    if curl --help all 2>/dev/null | grep -q -- '--ssl-revoke-best-effort'; then
+    # NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
+    #   コマンドの出力は -q を付けずに読み切らせ、変数の値は here-string で渡す（この後の同じ形も同じ）。
+    if curl --help all 2>/dev/null | grep -- '--ssl-revoke-best-effort' >/dev/null; then
       CURL_K="$CURL_K --ssl-revoke-best-effort"
     fi
     TLS_MODE="検証する（CA=$CA_BUNDLE）"
@@ -309,7 +311,7 @@ info "Keycloak: 到達（issuer=$ISSUER）"
 # ---- 1) SPA がエッジから配信されるか -------------------------------------------
 step "1/$TOTAL" "エッジから SPA を取得する"
 SPA=$(curl -s $CURL_K -m 10 "$EDGE_URL/")
-if printf '%s' "$SPA" | grep -qi '<!doctype html'; then
+if grep -qi '<!doctype html' <<<"$SPA"; then
   pass "SPA の HTML が返る"
 else
   fail "SPA の HTML が返らない"
@@ -415,7 +417,7 @@ acquire_session() {
   #   Location=…/login-actions/required-action?execution=CONFIGURE_TOTP&client_id=platform-spa
   # のまま「認可コードを取得できない」で落ちていた。**書いた分岐が死んでいることは、
   # 実行されるまで分からない。**
-  if [ -z "$code" ] && printf '%s' "$location" | grep -q '/login-actions/'; then
+  if [ -z "$code" ] && grep -q '/login-actions/' <<<"$location"; then
     local ra_hdr ra_loc
     ra_hdr=$(mktemp)
     curl -s $CURL_K -c "$jar" -b "$jar" -m 15 -o "$body" -D "$ra_hdr" "$location" >/dev/null
@@ -535,12 +537,12 @@ acquire_session() {
   if [ "$verbose" = "1" ]; then
     pass "BFF がセッション Cookie を発行した（status=$cb_status → ${cb_loc%%\?*}）"
     # ADR-0032 §決定: HttpOnly / Secure / SameSite=Lax。値は見ずに属性だけを見る。
-    if printf '%s' "$set_cookie" | grep -qi '; *httponly'; then
+    if grep -qi '; *httponly' <<<"$set_cookie"; then
       pass "セッション Cookie は HttpOnly"
     else
       fail "セッション Cookie に HttpOnly が無い（ADR-0032：スクリプトから読めるトークン相当の値になる）"
     fi
-    if printf '%s' "$set_cookie" | grep -qi '; *secure'; then
+    if grep -qi '; *secure' <<<"$set_cookie"; then
       pass "セッション Cookie は Secure"
     else
       fail "セッション Cookie に Secure が無い（ADR-0032）"
@@ -1114,7 +1116,7 @@ if [ "$SEARCH_HITS" = "1" ]; then
     info "readiness の本文を読めなかった（kubectl 不在・権限・イメージに wget 無し等）。判定は skip せず、"
     info "段 S4 の結果で代替する —— S4 が緑なら索引は在る。"
     pass "readiness 本文は取得できないが、全文側が実際にヒットしている（段 S4）ので索引は在る"
-  elif printf '%s' "$ready_body" | grep -qi 'Degraded'; then
+  elif grep -qi 'Degraded' <<<"$ready_body"; then
     fail "retrieval-service の /health/ready が Degraded（全文ペイロードインデックスが無い疑い。#1116）"
     info "本文: $(printf '%s' "$ready_body" | head -c 200)"
   else

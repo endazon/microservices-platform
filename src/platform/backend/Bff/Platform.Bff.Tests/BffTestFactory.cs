@@ -703,6 +703,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // 名前は `ExternalSecretSyncRequester.ClientName` と一致させる（型を引かないのは、実装より先に赤を取るため）。
             services.AddHttpClient("KubernetesApi")
                 .ConfigurePrimaryHttpMessageHandler(() => KubernetesApi.CreateHandler());
+            // NFR-18, IADR-0585 決定 2, #2193: Kubernetes API へ名乗るトークンは Vault 用とは別の口・別の値（FakeKubernetesApi が値で見分ける）。
+            services.RemoveAll<IKubernetesApiTokenReader>();
+            services.AddSingleton<IKubernetesApiTokenReader>(new FakeKubernetesApi.TokenReader());
 
             // FR-10: /bff/dashboard/summary は管理系ロール（admin ＋ operator。#544）を要求する。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
