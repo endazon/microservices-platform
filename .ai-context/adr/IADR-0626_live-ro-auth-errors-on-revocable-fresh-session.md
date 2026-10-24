@@ -63,11 +63,25 @@ related_specs:
    file は `retries: 0`・直列。
 3. **この spec は trace・スクリーンショット・動画を残さない**（`test.use({ trace: 'off', screenshot: 'off', video: 'off' })`）。失敗の段は `support/login.ts` の `stage` が
    URL の origin と path・Keycloak の表示文言だけを attach する。秘密は `fillSecret` で入れる（`fill` は値を step の題に載せる）。
-4. **OTP は次の周期を待ってから出す**（`nextPeriodOtp`）。誤りの OTP は前後 1 周期（`otpPolicyLookAheadWindow: 1`）の正しい値のどれとも違う値（`wrongOtpFor`）。
+4. **OTP は次の周期を待ってから出す**（`nextPeriodOtp`）。誤りの OTP は正しい 6 桁と同じ時刻から導き、その前後 1 周期（`otpPolicyLookAheadWindow: 1`）の正しい値のどれとも違う値（`wrongOtpFor`）。
    待つことで誤りどうしの間が 1 秒以上空き、Keycloak の quick login check（既定 1 秒以内の連続失敗で 60 秒ロック）にも掛からない。
 5. **作ったセッションは test の中でログアウトして失効させる**（M-010 そのもの）。途中で落ちたら finally で `/bff/auth/me` の `logoutUrl` を開く。
    巻き添えで `live-setup` の `e2e-revocable` の state も失効しうるが、teardown は「ログアウト前から 401」を失効済みとして扱うので赤にならない。
 6. ログインの部品（`fillSecret`・`stage`・`submitPassword`・`submitOtp`）は `e2e/live/support/login.ts` へ置き、`auth.setup.ts` と共有する。
+
+### brute force の失敗回数（どの役割で何回か）
+
+| 役割 | 1 実行で数えられる失敗 | 内訳 | 戻し方 |
+| --- | --- | --- | --- |
+| `e2e-revocable` | **最大 2 回**（閾値 `failureFactor: 5` 未満） | 実在 ID の誤りのパスワード 1・誤りの OTP 1 | 直後の正しいログインの成功で数えが 0 に戻る |
+| 存在しない ID（`e2e-absent-<乱数>`） | 0 回 | 利用者が無いので数えられない | — |
+| 他の 5 役割 | 0 回 | 誤りの入力をしない（`live-setup` の 1 回のログインは成功だけ） | — |
+
+- `retries: 0`・直列・1 test なので、1 実行で `e2e-revocable` の失敗が 2 回を超えることは無い（成功の前に落ちた場合も、残る数えは最大 2）。
+- live-ro で `e2e-revocable` を使う test は本 spec だけであり、同じ実行の後続の test が `e2e-revocable` のロック（5 回で 900 秒）に当たることは無い。
+  落ちて数えが残った場合も、次の実行の本 spec が足す失敗は 2 回なので、合計は 4 回で閾値 5 に届かない（その成功で 0 に戻る）。
+- 2 回の失敗の間は `nextPeriodOtp` の待ち（1.2 秒以上）で空くので、quick login check（1 秒以内の連続失敗で 60 秒ロック）にも掛からない。
+- 誤りの OTP は正しい 6 桁と**同じ時刻**から導き、その時刻の前後 1 周期の正しい値のどれとも違う（L1 の `live-opt-in.smoke.spec.ts` が固定）。
 
 ## 理由
 

@@ -19,7 +19,7 @@ import { expect, request, test, type Page } from '@playwright/test';
 import { credentialNames, parseLiveEnv, type Role } from './support/env';
 import { stage, submitOtp, submitPassword } from './support/login';
 import { DEFAULT_AUTH_DIR } from './support/paths';
-import { nextPeriodOtp, wrongOtpFor } from './support/totp';
+import { nextPeriodOtp } from './support/totp';
 
 const cfg = parseLiveEnv(process.env, DEFAULT_AUTH_DIR);
 
@@ -97,8 +97,8 @@ test(
           await submitAndWait(page, () => submitPassword(page, USERNAME, password));
           await expect(page.locator('#otp')).toBeVisible();
           // 次の周期を待つ（setup が使った 6 桁を避ける。誤りのパスワードとの間も 1 秒以上空く）。
-          const code = await nextPeriodOtp(secret);
-          await submitAndWait(page, () => submitOtp(page, wrongOtpFor(secret, Date.now())));
+          const { code, wrong } = await nextPeriodOtp(secret);
+          await submitAndWait(page, () => submitOtp(page, wrong));
           await expect(page.getByText(INVALID_OTP)).toBeVisible();
           await expect(page.locator('#otp')).toBeVisible();
           await submitOtp(page, code);

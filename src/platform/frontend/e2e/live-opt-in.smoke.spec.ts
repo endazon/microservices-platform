@@ -344,7 +344,10 @@ test('誤りの OTP は前後 1 周期の正しい値のどれとも違い、次
   const start = Date.now();
   const base = 59_000; // 周期の残り 1 秒
   const now = () => base + (Date.now() - start);
-  const code = await nextPeriodOtp(raw, now);
+  const { code, wrong, atMs } = await nextPeriodOtp(raw, now);
   expect(code).toBe(otpFor(raw, 60_000));
   expect(code).not.toBe(otpFor(raw, base));
+  // 誤りの値は正しい値と同じ時刻から導かれ、その時刻の前後 1 周期の窓のどの正しい値とも違う。
+  expect(code).toBe(otpFor(raw, atMs));
+  for (const k of [-1, 0, 1]) expect(wrong).not.toBe(otpFor(raw, atMs + k * 30_000));
 });

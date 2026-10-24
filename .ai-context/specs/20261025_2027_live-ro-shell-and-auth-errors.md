@@ -49,6 +49,10 @@ issue: "#2027"
 4. 左ナビの期待値の表は L1（`shell.smoke.spec.ts`）から `e2e/support/navExpectations.ts` へ切り出し、L1 と live で同じ表を見る（2 箇所に写さない）。
 5. L1 の `live-opt-in.smoke.spec.ts` の偽スタック（SPA を配らない）は `--project live-setup` に絞る（ro の spec が偽スタックへ流れないように）。
 
+6. **brute force の失敗回数**: 誤りを数えられるのは `e2e-revocable` の **1 実行で最大 2 回**（誤りのパスワード 1・誤りの OTP 1。存在しない ID は 0、他の 5 役割は 0）。
+   閾値は 5（900 秒）。live-ro で `e2e-revocable` を使うのは本 spec の 1 test だけ（`retries: 0`）なので、同じ実行の後続の test がロックに当たることは無い。
+   前回の実行が成功の前に落ちて 2 回残っていても、今回の 2 回を足して 4 回で閾値未満、今回の成功で 0 に戻る（表は IADR-0626 §決定）。
+
 ## 母集合（規則 9・10）
 
 - 「`fillSecret` の置き場」を引いた: `docs/tests/E2E_STANDARDS.md` §9（`e2e/live/auth.setup.ts` の `fillSecret`）→ `support/login.ts` へ直す。
