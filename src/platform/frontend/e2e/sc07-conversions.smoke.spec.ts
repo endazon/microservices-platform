@@ -1,5 +1,12 @@
 import { test, expect } from './support/cspGuard';
-import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
+import type { Page } from '@playwright/test';
+import type { ConversionJobDto } from '../src/lib/api/generated/bff.schemas';
+import {
+  installBffSession,
+  sessionUser,
+  expectBffTrafficIsComplete,
+  reply,
+} from './support/bffSession';
 
 // SC-07 (#503 / #1139): 変換ジョブ（`/admin/conversions`）のスクリーンレベル・スモーク。
 //
@@ -53,5 +60,216 @@ test('SC-07: a user with no administrative role gets the same not-found page', a
   await expect(page.getByRole('link', { name: '変換ジョブ' })).toHaveCount(0);
 
   expect(traffic.calls.map((c) => c.key)).not.toContain('GET /conversion/jobs');
+  expectBffTrafficIsComplete(traffic);
+});
+
+// ───────────── M-084・M-085（#2019 / E-14）: 4 状態・失敗のみ・デッドレター・再変換の拒否と権限 ─────────────
+//
+// 期待値は計画 05_screens §SC-07（ジョブ状態 4 値・「失敗のみ」フィルタ・デッドレターは failed の内訳・
+// 実行中の再変換は拒否・補正ありの再変換は明示確認・再変換と人手補正は管理者限定）から起こした。
+
+function job(overrides: Partial<ConversionJobDto>): ConversionJobDto {
+  return {
+    id: 'aaaaaaaa-0000-0000-0000-000000000000',
+    sourceId: 'src-1',
+    sourceType: 'filesystem',
+    originalPath: '規程集/経費精算.docx',
+    status: 'succeeded',
+    error: null,
+    documentId: null,
+    markdownUri: null,
+    attempts: 1,
+    deadLettered: false,
+    maxAttempts: 5,
+    createdAt: '2026-08-01T00:00:00Z',
+    updatedAt: '2026-08-01T00:00:00Z',
+    diagramsCoded: 0,
+    diagramsRetained: 0,
+    hasCorrection: false,
+    hasBody: true,
+    ...overrides,
+  };
+}
+
+const JOBS: ConversionJobDto[] = [
+  job({ id: 'queued00-0000-0000-0000-000000000000', originalPath: 'a.docx', status: 'queued' }),
+  job({ id: 'process0-0000-0000-0000-000000000000', originalPath: 'b.docx', status: 'processing' }),
+  job({ id: 'success0-0000-0000-0000-000000000000', originalPath: 'c.docx', status: 'succeeded' }),
+  job({
+    id: 'failed00-0000-0000-0000-000000000000',
+    originalPath: 'd.pdf',
+    status: 'failed',
+    error: '形式に対応していません',
+    attempts: 5,
+    deadLettered: true,
+  }),
+];
+const rowOf = (page: Page, path: string) =>
+  page.getByRole('table', { name: '変換ジョブの一覧' }).getByRole('row').filter({ hasText: path });
+
+test('M-084: 4 状態を文字で描き分け、失敗のジョブにはデッドレターの標識と試行回数が付く', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-operator']),
+    handlers: { 'GET /conversion/jobs': JOBS },
+  });
+
+  await page.goto('/admin/conversions');
+  // ★ 状態 4 値（queued / processing / succeeded / failed）は、それぞれ別の文字で示す（色だけに頼らない）。
+  await expect(rowOf(page, 'a.docx').getByText('待機中', { exact: true })).toBeVisible();
+  await expect(rowOf(page, 'b.docx').getByText('変換中', { exact: true })).toBeVisible();
+  await expect(rowOf(page, 'c.docx').getByText('完了', { exact: true })).toBeVisible();
+  await expect(rowOf(page, 'd.pdf').getByText('失敗', { exact: true })).toBeVisible();
+  // ★ デッドレターは failed の内訳（5 値目ではない）。分母は契約の maxAttempts。
+  await expect(rowOf(page, 'd.pdf').getByText('デッドレター（試行 5/5）')).toBeVisible();
+  // ★ 陰性対照: 失敗していないジョブにデッドレターは付かない。
+  for (const p of ['a.docx', 'b.docx', 'c.docx']) {
+    await expect(rowOf(page, p).getByText(/デッドレター/)).toHaveCount(0);
+  }
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('M-084: 「失敗」で絞り込むと status=failed で引き直し、選択肢は「すべて」と 4 状態である', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-operator']),
+    handlers: {
+      'GET /conversion/jobs': (call) =>
+        new URLSearchParams(call.search).get('status') === 'failed'
+          ? JOBS.filter((j) => j.status === 'failed')
+          : JOBS,
+    },
+  });
+
+  await page.goto('/admin/conversions');
+  const filter = page.getByRole('combobox', { name: '状態で絞り込み' });
+  await expect(filter.getByRole('option')).toHaveText([
+    'すべて',
+    '待機中',
+    '変換中',
+    '完了',
+    '失敗',
+  ]);
+  await expect(filter).toHaveValue('');
+
+  await filter.selectOption({ label: '失敗' });
+  await expect(rowOf(page, 'a.docx')).toHaveCount(0);
+  await expect(rowOf(page, 'd.pdf')).toBeVisible();
+
+  const searches = traffic.calls
+    .filter((c) => c.key === 'GET /conversion/jobs')
+    .map((c) => c.search);
+  expect(searches[0]).toBe('');
+  expect(searches.at(-1)).toBe('?status=failed');
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('M-085: 運用者には再変換・人手補正のボタンが無く、管理者限定である旨を文字で示す', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-operator']),
+    handlers: {
+      'GET /conversion/jobs': [
+        ...JOBS,
+        job({
+          id: 'retain00-0000-0000-0000-000000000000',
+          originalPath: 'e.pptx',
+          status: 'succeeded',
+          diagramsRetained: 1,
+        }),
+      ],
+    },
+  });
+
+  await page.goto('/admin/conversions');
+  await expect(rowOf(page, 'd.pdf')).toBeVisible();
+  await expect(page.getByRole('button', { name: '再変換', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '人手補正', exact: true })).toHaveCount(0);
+  await expect(rowOf(page, 'd.pdf').getByText('再変換は管理者のみ実行できます')).toBeVisible();
+  await expect(rowOf(page, 'e.pptx').getByText('人手補正は管理者のみ実行できます')).toBeVisible();
+  expect(traffic.calls.filter((c) => c.method !== 'GET')).toEqual([]);
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('M-085: 再変換は失敗のジョブにだけ出し、実行中で拒否（409）されたら再変換できない旨を示す', async ({
+  page,
+}) => {
+  const failedId = 'failed00-0000-0000-0000-000000000000';
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-admin']),
+    handlers: {
+      'GET /conversion/jobs': JOBS,
+      // 一覧を取ってから押すまでの間に、別の操作で実行中になった（直列化による拒否）。
+      [`POST /conversion/jobs/${failedId}/retry`]: reply(409, { error: 'not_retryable' }),
+    },
+  });
+
+  await page.goto('/admin/conversions');
+  // 陽性対照を先に待つ —— 描画前に「0 件」を数えると空振りで緑になる。
+  await expect(
+    rowOf(page, 'd.pdf').getByRole('button', { name: '再変換', exact: true }),
+  ).toBeVisible();
+  // ★ 実行中・待機中・完了には再変換を出さない（失敗だけ）。
+  for (const p of ['a.docx', 'b.docx', 'c.docx']) {
+    await expect(rowOf(page, p).getByRole('button', { name: '再変換', exact: true })).toHaveCount(
+      0,
+    );
+  }
+  await rowOf(page, 'd.pdf').getByRole('button', { name: '再変換', exact: true }).click();
+
+  await expect(page.getByRole('alert')).toContainText(
+    'このジョブは再変換できません（実行中、または失敗以外の状態です）。',
+  );
+  expect(traffic.calls.filter((c) => c.method === 'POST').map((c) => c.key)).toEqual([
+    `POST /conversion/jobs/${failedId}/retry`,
+  ]);
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('M-085: 補正のあるジョブの再変換は、補正が失われる旨を示して明示確認を求め、確認したときだけ破棄を指定して送る', async ({
+  page,
+}) => {
+  const id = 'failed00-0000-0000-0000-000000000000';
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-admin']),
+    handlers: {
+      'GET /conversion/jobs': [JOBS[3]].map((j) => ({ ...j, hasCorrection: true })),
+      [`POST /conversion/jobs/${id}/retry`]: (call) =>
+        new URLSearchParams(call.search).get('discardCorrections') === 'true'
+          ? reply(202, {})
+          : reply(409, { error: 'corrections_would_be_lost', correctedFigures: 2 }),
+    },
+  });
+
+  await page.goto('/admin/conversions');
+  await rowOf(page, 'd.pdf').getByRole('button', { name: '再変換', exact: true }).click();
+
+  // ★ 確認: 失われる件数（サーバの値）と、破棄・取り消しの 2 つの選択肢。既定の焦点は取り消し側。
+  const confirm = page.getByRole('alert').filter({ hasText: '補正は失われます' });
+  await expect(confirm).toContainText('このジョブには人手補正が 2 件あります。');
+  await expect(confirm.getByRole('button', { name: '取り消す' })).toBeFocused();
+
+  // 取り消すと何も送らない。
+  await confirm.getByRole('button', { name: '取り消す' }).click();
+  await expect(confirm).toHaveCount(0);
+  const retries = () =>
+    traffic.calls.filter((c) => c.key === `POST /conversion/jobs/${id}/retry`).map((c) => c.search);
+  expect(retries()).toEqual(['']);
+
+  // 確認して破棄すると、破棄の指定つきで 1 回だけ送り直す。
+  await rowOf(page, 'd.pdf').getByRole('button', { name: '再変換', exact: true }).click();
+  await page.getByRole('button', { name: '補正を破棄して再変換' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: '再変換を受け付けました。' }),
+  ).toBeVisible();
+  expect(retries()).toEqual(['', '', '?discardCorrections=true']);
+
   expectBffTrafficIsComplete(traffic);
 });
