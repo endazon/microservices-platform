@@ -33,3 +33,31 @@ export async function freshOtp(rawSecret: string, now: () => number = Date.now):
   }
   return otpFor(rawSecret, now());
 }
+
+/**
+ * 次の周期が始まるまで待ってから 6 桁を返す（IADR-0626）。
+ *
+ * 🔴 realm は `otpPolicyCodeReusable: false` なので、同じ利用者が**同じ周期の 6 桁**を 2 度使うと拒否される。
+ * `live-setup` は全役割で 1 回ずつ OTP を使い終えているので、その後に同じ役割でもう一度ログインする spec はこれで出す
+ * （今の周期は setup が使った周期と同じかもしれない。次の周期は必ず新しい）。
+ */
+export async function nextPeriodOtp(
+  rawSecret: string,
+  now: () => number = Date.now,
+): Promise<string> {
+  await new Promise((resolve) => setTimeout(resolve, remainingSeconds(now()) * 1000 + 200));
+  return otpFor(rawSecret, now());
+}
+
+/**
+ * 確実に誤りである 6 桁（純関数）。realm の `otpPolicyLookAheadWindow: 1` は前後 1 周期の値も受け付けるので、
+ * その 3 周期の正しい値のどれとも違う値を返す（`000000` から順に探す）。
+ */
+export function wrongOtpFor(rawSecret: string, nowMs: number): string {
+  const step = STEP_SECONDS * 1000;
+  const valid = new Set([-1, 0, 1].map((k) => otpFor(rawSecret, nowMs + k * step)));
+  for (let n = 0; ; n += 1) {
+    const candidate = String(n).padStart(6, '0');
+    if (!valid.has(candidate)) return candidate;
+  }
+}

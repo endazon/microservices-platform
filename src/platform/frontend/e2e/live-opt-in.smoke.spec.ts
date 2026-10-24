@@ -11,7 +11,7 @@ import {
   parseLiveEnv,
   ROLES,
 } from './live/support/env';
-import { otpFor, remainingSeconds } from './live/support/totp';
+import { nextPeriodOtp, otpFor, remainingSeconds, wrongOtpFor } from './live/support/totp';
 import { startFakeLiveStack } from './support/fakeLiveStack';
 
 // NFR / IADR-0569 決定 4 / IADR-0624（#2025）: live 層の config（`playwright.live.config.ts`）の **opt-in と門**を L1 で固定する。
@@ -94,6 +94,9 @@ async function runLiveAsync(
           'list',
           '--output',
           out,
+          // 偽の BFF と Keycloak は SPA を配らないので、層の spec（`*.ro.spec.ts` など）は流さない。setup と teardown だけを見る。
+          '--project',
+          'live-setup',
         ],
         {
           cwd: FRONTEND,
@@ -155,6 +158,10 @@ test('E2E_LIVE=1 なら live-setup が 6 役割のログインを持ち、既定
   expect(
     r.out.match(/\[live-setup\] › auth\.setup\.ts:\d+:\d+ › e2e-[a-z-]+ でログインし/g),
   ).toHaveLength(ROLES.length);
+  // live-ro の spec（#2027 以降）は live-ro の project に載り、setup の project には載らない。
+  expect(r.out).toMatch(/\[live-ro\] › shell\.ro\.spec\.ts:/);
+  expect(r.out).toMatch(/\[live-ro\] › auth-errors\.ro\.spec\.ts:/);
+  expect(r.out).not.toMatch(/\[live-setup\] › [a-z-]+\.ro\.spec\.ts:/);
   expect(parseLiveEnv({ E2E_LIVE: '1' }, '/tmp/x').layers).toEqual(['ro']);
   expect(parseLiveEnv({ E2E_LIVE: '1', E2E_LAYER: 'ro,rw,ro' }, '/tmp/x').layers).toEqual([
     'ro',
@@ -323,4 +330,21 @@ test('TOTP は生の秘密の base32 で計算する（Keycloak の secretData.v
   expect(otpFor('12345678901234567890', 59_000)).toBe('287082');
   expect(remainingSeconds(59_000)).toBe(1);
   expect(remainingSeconds(60_000)).toBe(30);
+});
+
+test('誤りの OTP は前後 1 周期の正しい値のどれとも違い、次の周期の OTP は今の周期の値と違う（IADR-0626）', async () => {
+  const raw = '12345678901234567890';
+  // realm の otpPolicyLookAheadWindow: 1 は前後 1 周期を受け付ける。その 3 つのどれとも一致しない。
+  for (const t of [30_000, 59_000, 89_000, 1_111_111_109_000]) {
+    const wrong = wrongOtpFor(raw, t);
+    expect(wrong).toMatch(/^\d{6}$/);
+    for (const k of [-1, 0, 1]) expect(wrong).not.toBe(otpFor(raw, t + k * 30_000));
+  }
+  // 周期の終わり（残り 1 秒）で呼ぶと、次の周期まで待って次の周期の値を返す（otpPolicyCodeReusable: false の対策）。
+  const start = Date.now();
+  const base = 59_000; // 周期の残り 1 秒
+  const now = () => base + (Date.now() - start);
+  const code = await nextPeriodOtp(raw, now);
+  expect(code).toBe(otpFor(raw, 60_000));
+  expect(code).not.toBe(otpFor(raw, base));
 });
