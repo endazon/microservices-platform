@@ -1,5 +1,6 @@
 import { i18n } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useRouter } from '@tanstack/react-router';
 import type { ErrorComponentProps } from '@tanstack/react-router';
 import { Button, ErrorState, LoadingState, buttonVariants } from '@platform/ui';
@@ -36,11 +37,19 @@ function errorMessage(error: unknown): string {
  *   - **再読み込み**: 境界の状態を戻し（`reset`）、ルータのデータを無効化して読み直す
  *     （`router.invalidate()`）。`reset` だけだと、同じ失敗したデータをそのまま描き直して
  *     即座に同じ画面へ戻る（＝押しても何も起きないボタンになる）。
+ *     🔴 **［2026-10-24 / NFR・#2016］画面のデータの大半はルータではなく TanStack Query のキャッシュにある。**
+ *     `router.invalidate()` はそこに触れないので、**契約に反した応答で描画が落ちた場合**（取得自体は成功で、
+ *     30 秒は新鮮扱い）は、押しても同じデータで同じ例外へ戻っていた（E2E `shell.smoke.spec.ts` M-015 で実測）。
+ *     落ちた画面の購読はもう外れているので、**購読の無い（inactive）キャッシュを捨ててから**境界を戻す。
+ *     共通シェルが購読中の身元・通知（active）は捨てない。
+ *     **割り切り**: 捨てるのは落ちた画面のキャッシュに限らない——他の画面で取得済みの inactive なキャッシュも捨てる。
+ *     その画面を次に開いたときの再取得が増えるだけで、表示の正しさは損なわない（落ちた画面だけを狙う鍵の管理は持たない）。
  *   - **ホームへ戻る**: 主入口（`ENTRY_ROUTE_PATH`）への**遷移**。`<a href>` で全体を
  *     読み直させない——SPA の中に居るのだから、ルータの遷移で足りる。
  */
 export function RouteErrorComponent({ error, reset }: ErrorComponentProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   return (
     <ErrorState
       title={i18n._(msg`エラー`)}
@@ -51,6 +60,7 @@ export function RouteErrorComponent({ error, reset }: ErrorComponentProps) {
             variant="primary"
             size="sm"
             onClick={() => {
+              queryClient.removeQueries({ type: 'inactive' });
               reset();
               void router.invalidate();
             }}
