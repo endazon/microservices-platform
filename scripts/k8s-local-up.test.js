@@ -363,6 +363,15 @@ const KUBECTL_STUB = [
   // #1839 / IADR-0522: 既存のセッションストアの Secret（値は使い回す）。STUB_SESSION_STORE_EXISTING を与えたときだけ在るものとして返す。
   // #2024 / IADR-0570: 試験アカウントの Secret e2e-accounts（platform-infra）。STUB_E2E_ACCOUNTS（「キー=base64」の改行区切り）を
   //   与えたときだけ在るものとして返す（go-template の問い合わせにはその行を返す）。既定は無い ＝ 取り込み元から e2e 利用者を外す。
+  // NFR-18, IADR-0616 (#2195): ESO（Merge）の土台の Secret の有無（`-n platform-infra get secret <名> -o name`）。
+  //   STUB_ESO_BASE_SECRETS_EXISTING（空白区切りの名前）に挙げたものだけ在る。既定は無い ＝ 新規クラスタ（土台を作る）。
+  'case "$*" in "-n platform-infra get secret "*" -o name") n="${5:-}"; for e in ${STUB_ESO_BASE_SECRETS_EXISTING:-}; do [ "$e" = "$n" ] && exit 0; done; exit 1;; esac',
+  // IADR-0616: ESO の同期の模型。force-sync 注釈を付けると、その ExternalSecret の status.refreshTime が変わる（ESO が同期し直す）。
+  //   STUB_ESO_SYNC_STALLS（空白区切りの名前）に挙げたものは注釈を付けても変わらない（同期しない）。Ready は常に True。
+  'case "$*" in *" annotate externalsecret "*" force-sync="*" --overwrite") : > "$STUB_LOG.force-sync.$5";; esac',
+  'case "$*" in *" get externalsecret "*"{.status.refreshTime}"*) t=t0; [ -e "$STUB_LOG.force-sync.$5" ] && t=t1;',
+  '  for e in ${STUB_ESO_SYNC_STALLS:-}; do [ "$e" = "$5" ] && t=t0; done; printf "2026-10-24T00:00:00Z-%s" "$t"; exit 0;; esac',
+  'case "$*" in *" get externalsecret "*"{.status.conditions"*) printf "True"; exit 0;; esac',
   'case "$*" in *"get secret e2e-accounts"*) [ -n "${STUB_E2E_ACCOUNTS:-}" ] || exit 1; case "$*" in *go-template*) printf "%s\\n" "$STUB_E2E_ACCOUNTS";; esac; exit 0;; esac',
   'case "$*" in *"get secret session-store-credentials"*) [ -n "${STUB_SESSION_STORE_EXISTING:-}" ] && printf "%s" "$STUB_SESSION_STORE_EXISTING" | base64; exit 0;; esac',
   // IADR-0574: 既存の基盤の資格情報の Secret（keycloak-admin / rabbitmq の password）。STUB_*_EXISTING を与えたときだけ在るものとして返す。
@@ -513,6 +522,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'ARGOCD',
     'LOCALEDGE',
     'ESO',
+    'ESO_FORCE_SYNC_TIMEOUT', // IADR-0616 (#2195): 依頼の後の同期を待つ期限。漏れていると停滞の試験が別の長さで走る
     'ABACSEED',
     'SEARCHSEED',
     'TAGSEED', // #1359: タグ辞書の門。漏れていると既定のバイト等価が崩れる
@@ -2670,9 +2680,12 @@ ok('#1102: 起動器から一度も apply されない ExternalSecret マニフ�
 // kcadm 手順へ進むときに、**未同期の NotFound を踏まない**ためである —— 未同期の NotFound は
 // 「配線が無い」ときと**同じ見え方**をするので、本 issue の欠陥そのものと区別がつかない。
 // 理由が違うぶん「rollout 対象に無いのだから待ちも要らない」と後任に削られやすい。ここで固定する。
-ok('#1102: eso_wait が platform-infra の keycloak-smtp を待つ（rollout ではなく案内の実行可能性のため）', () => {
+// ［IADR-0616 / #2195］待ち方は Ready から「依頼の後の同期」（eso_force_sync_wait）へ強めた。Ready は前回の同期で既に True なので、
+//   [3/7] が土台を置いた後でも素通りする。依頼の後の同期は Ready（同期の成立）も併せて確かめる。
+ok('#1102: platform-infra の keycloak-smtp の同期を待つ（rollout ではなく案内の実行可能性のため）', () => {
   assert.ok(
-    anyLineHas(EMITTED_LINES, 'wait --for=condition=Ready externalsecret/keycloak-smtp'),
+    anyLineHas(EMITTED_LINES, 'annotate externalsecret keycloak-smtp force-sync=')
+      && anyLineHas(EMITTED_LINES, 'get externalsecret keycloak-smtp -o jsonpath={.status.conditions[?(@.type=="Ready")].status}'),
     'ESO=1 で keycloak-smtp の SecretSynced 待ちが発行されていない'
       + ' —— 案内文と runbook が `up` 直後に NotFound を返しうる（infra_sync を確認せよ）',
   );
@@ -2687,7 +2700,8 @@ ok('#1102: eso_wait が platform-infra の keycloak-smtp を待つ（rollout で
 // 対象の env は apply_secret の呼び出しから引く（書き写さない）。
 ok('#1793: Secret の値（env）はどの kubectl の引数にも載らず、ファイル経由で同じ値が届く', () => {
   const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
-  const statements = src.replace(/\\\n/g, ' ').split('\n').filter((l) => /^\s*apply_secret\s/.test(l));
+  // IADR-0616 (#2195): ESO（Merge）の土台は apply_eso_merge_base_secret（apply_secret を包む）から置く。同じ母集合に入れる。
+  const statements = src.replace(/\\\n/g, ' ').split('\n').filter((l) => /^\s*apply_(?:eso_merge_base_)?secret\s/.test(l));
   assert.ok(statements.length >= 20, `apply_secret の呼び出しを読めない（${statements.length} 件）`);
   const vars = new Set(['ARGOCD_OIDC_CLIENT_SECRET']);
   for (const st of statements) for (const m of st.matchAll(/"[A-Za-z0-9._-]+=\$\{([A-Z0-9_]+):-/g)) vars.add(m[1]);
@@ -6406,6 +6420,75 @@ ok('IADR-0576: 起動器は ESO の有無によらず Secret platform-infra/abac
   assert.ok(eso.lines.includes('kubectl apply -f deploy/local/vault/eso/externalsecret-abac-seeder-oidc.yaml'), 'ESO=1 で ExternalSecret を当てていない');
   const es = fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'local', 'vault', 'eso', 'externalsecret-abac-seeder-oidc.yaml'), 'utf8');
   assert.ok(/creationPolicy: Merge/.test(es) && /key: msp\/abac-seeder-oidc/.test(es) && /namespace: platform-infra/.test(es), 'ExternalSecret の形が違う');
+});
+
+// --- NFR-18, IADR-0616 (#2195): ESO（Merge）の土台の Secret を dev の値で上書きせず、投入器の前に「依頼の後の同期」を待つ ---------------
+const ESO_BASE_SECRETS = ['keycloak-smtp', 'reset-gate-oidc', 'abac-seeder-oidc'];
+const createdSecret = (r, name) => r.lines.some((l) => l.startsWith(`kubectl create secret generic ${name} -n platform-infra `));
+const forceSyncLine = (r, name) => r.lines.findIndex((l) => new RegExp(`^kubectl -n platform-infra annotate externalsecret ${name} force-sync=\\d+ --overwrite$`).test(l));
+/** 起動器の写しを scripts/ に置いて走らせる（ROOT は $0 から決まる）。変異が空振りしていれば落とす。 */
+function runMutatedUp(env, mutate) {
+  const src = fs.readFileSync(path.join(REPO_ROOT, UP_SCRIPT), 'utf8');
+  const out = mutate(src);
+  assert.notStrictEqual(out, src, '変異が実物と同一（置換が空振りしている）');
+  const rel = path.join('scripts', `.k8s-local-up.mutant-2195-${process.pid}.sh`);
+  fs.writeFileSync(path.join(REPO_ROOT, rel), out);
+  try {
+    return runUp(env, { script: rel });
+  } finally {
+    fs.rmSync(path.join(REPO_ROOT, rel), { force: true });
+  }
+}
+
+ok('IADR-0616: ESO=1 で土台の Secret が既に在れば、起動器は dev の値（env を与えてもその値）で上書きしない', () => {
+  const env = { VAULT: '1', ESO: '1', STUB_ESO_BASE_SECRETS_EXISTING: ESO_BASE_SECRETS.join(' '), ABAC_SEED_CLIENT_SECRET: customOf('abac-seeder') };
+  const r = runUp(env);
+  assert.strictEqual(r.status, 0, r.stderr.slice(-600));
+  for (const name of ESO_BASE_SECRETS) {
+    assert.ok(!createdSecret(r, name), `${name} を既存の値の上へ置き直した`);
+    assert.ok(r.stdout.includes(`keep platform-infra/${name}（ESO=1`), `${name} を触らなかったことを出していない`);
+  }
+  assert.deepStrictEqual(secretOf(r, 'abac-seeder-oidc'), [], '既存の Secret の上へ値を書いた');
+  assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf('abac-seeder')), '値を出力した');
+  // 対照: 他の土台（基盤の postgres 等。IADR-0099）は従来どおり毎回置く。
+  assert.ok(createdSecret(r, 'postgres') && createdSecret(r, 'keycloak-admin'), '基盤の Secret の手動 apply が消えた（IADR-0099）');
+  // 変異: 判定を外して常に置く形（#2195 の前の形）へ戻すと、既存の値を dev の値で上書きする。
+  const m = runMutatedUp(env, (src) => src.replace('if [ "${ESO:-}" = "1" ] && kubectl -n "$1" get secret "$2" -o name >/dev/null 2>&1; then', 'if false; then'));
+  assert.strictEqual(m.status, 0, m.stderr.slice(-600));
+  assert.ok(ESO_BASE_SECRETS.every((n) => createdSecret(m, n)), '変異を見逃した（上書きが観測できない）');
+});
+
+ok('IADR-0616: 土台が無ければ ESO=1 でも作り（Merge は作らない）、ESO が無い経路は在っても従来どおり置く', () => {
+  const fresh = runUp({ VAULT: '1', ESO: '1' });
+  assert.strictEqual(fresh.status, 0, fresh.stderr.slice(-600));
+  for (const name of ESO_BASE_SECRETS) assert.ok(createdSecret(fresh, name), `新規クラスタで ${name} の土台を作っていない`);
+  const noEso = runUp({ STUB_ESO_BASE_SECRETS_EXISTING: ESO_BASE_SECRETS.join(' ') });
+  assert.strictEqual(noEso.status, 0, noEso.stderr.slice(-600));
+  for (const name of ESO_BASE_SECRETS) assert.ok(createdSecret(noEso, name), `ESO の無い経路で ${name} を置かなくなった（値の持ち主は起動器）`);
+  assert.ok(!noEso.lines.some((l) => / annotate externalsecret /.test(l)), 'ESO の無い経路で同期を依頼した');
+});
+
+ok('IADR-0616: ESO=1 は 3 つの ExternalSecret に同期を依頼し、依頼の後の同期を待ってから投入器を走らせる', () => {
+  const r = runUp({ VAULT: '1', ESO: '1', ABACSEED: '1', STUB_ESO_BASE_SECRETS_EXISTING: ESO_BASE_SECRETS.join(' ') });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-600));
+  const seeder = r.lines.findIndex((l) => /^node \S*scripts\/seed-abac-policies\.js/.test(l));
+  assert.ok(seeder >= 0, '投入器が走っていない（前提）');
+  for (const name of ESO_BASE_SECRETS) {
+    const apply = r.lines.indexOf(`kubectl apply -f deploy/local/vault/eso/externalsecret-${name}.yaml`);
+    const sync = forceSyncLine(r, name);
+    assert.ok(apply >= 0 && sync > apply, `${name}: ExternalSecret を当てた後に同期を依頼していない`);
+    assert.ok(sync < seeder, `${name}: 投入器の後に同期を依頼している`);
+    assert.ok(r.stdout.includes(`synced platform-infra/${name}（依頼の後の同期）`), `${name}: 依頼の後の同期を確かめていない`);
+  }
+  // 停滞: 依頼しても同期しなければ、期限で warn を出して続ける（best-effort。起動器は止めない）。
+  const stalled = runUp({ VAULT: '1', ESO: '1', STUB_ESO_SYNC_STALLS: 'abac-seeder-oidc', ESO_FORCE_SYNC_TIMEOUT: '1' });
+  assert.strictEqual(stalled.status, 0, stalled.stderr.slice(-600));
+  assert.ok(stalled.stdout.includes('warn: platform-infra/abac-seeder-oidc が依頼の後に同期しません'), '停滞を warn にしていない');
+  assert.ok(!stalled.stdout.includes('synced platform-infra/abac-seeder-oidc（依頼の後の同期）'), '同期していないのに synced と出した');
+  // 変異: Ready だけを待つ形（#2195 の前の形）へ戻すと、同期を依頼しない（前回の Ready で素通りする）。
+  const m = runMutatedUp({ VAULT: '1', ESO: '1' }, (src) => src.replace('  eso_force_sync_wait "$INFRA_NS" keycloak-smtp reset-gate-oidc abac-seeder-oidc\n', '  eso_wait "$INFRA_NS" keycloak-smtp reset-gate-oidc abac-seeder-oidc\n'));
+  assert.strictEqual(m.status, 0, m.stderr.slice(-600));
+  assert.ok(ESO_BASE_SECRETS.every((n) => forceSyncLine(m, n) < 0), '変異を見逃した');
 });
 
 ok('IADR-0572: 表に無いクライアント・表を読んでいないときの判定は止める側に倒れる（値を比べられない）', () => {

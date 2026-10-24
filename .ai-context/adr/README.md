@@ -693,3 +693,4 @@
 | [IADR-0613](./IADR-0613_ingestion-budget-default-fits-collection-count.md) | 取り込みの埋め込みの総枠は、構成で与えていなければ受け口の期限とコレクション数から縮めて既定とする（上限 300 秒・余白 5 秒。既定の 2 本は 300 秒のまま、opt-in の 3 本 280 秒・4 本 260 秒）。#2149 の後に opt-in の配備で取り込みが起動しなかった是正 | Accepted |
 | [IADR-0614](./IADR-0614_axe-wcag22-aa-all-screens-and-known-violation-ledger.md) | axe の E2E は NFR-30 のタグで SPA の全画面と操作後の UI を走査し、既知の違反は理由つきの台帳と一致させる（Keycloak のテーマの画面は L1 の対象外） | Accepted |
 | [IADR-0615](./IADR-0615_review-floor-ci-scripts-tests-as-evidence-when-config-restored.md) | AI レビューの作業ツリーが PR 版と違うときに限り、下限「scripts.test.js 全件」を同じ head の CI scripts-tests の success で満たす | Accepted |
+| [IADR-0616](./IADR-0616_eso-merge-base-secrets-keep-existing-and-wait-for-requested-sync.md) | ESO（Merge）が値を持つ土台の Secret（keycloak-smtp・reset-gate-oidc・abac-seeder-oidc）は、ESO=1 で既に在れば起動器が上書きせず、読み手の前に「依頼の後の同期」（force-sync の後の refreshTime の変化）を待つ（#2195） | Accepted |
