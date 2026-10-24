@@ -134,7 +134,7 @@ function fetchPlanningNfrRange({
   return [Math.min(...nums), Math.max(...nums)];
 }
 
-/** 宣言の NFR 採番（`` `NFR-01`〜`NFR-30` ``）を読む。無ければ例外（fail-loud）。 */
+/** 宣言の NFR 採番（`` `NFR-01`〜`NFR-29` ``）を読む。無ければ例外（fail-loud）。 */
 function readDeclaredNfrRange(rulesPath = path.join(__dirname, '..', RULES_REL)) {
   let md;
   try {
@@ -145,7 +145,7 @@ function readDeclaredNfrRange(rulesPath = path.join(__dirname, '..', RULES_REL))
   const section = tt.planRangeSection(md);
   if (section === null) throw new Error(`${RULES_REL} に「${tt.PLAN_RANGE_HEADING}」節が見つからない`);
   const m = /`NFR-(\d+)`〜`NFR-(\d+)`/.exec(section);
-  if (!m) throw new Error(`${RULES_REL} の「${tt.PLAN_RANGE_HEADING}」節に NFR の採番（例: \`NFR-01\`〜\`NFR-30\`）が見つからない`);
+  if (!m) throw new Error(`${RULES_REL} の「${tt.PLAN_RANGE_HEADING}」節に NFR の採番（例: \`NFR-01\`〜\`NFR-29\`）が見つからない`);
   return [Number(m[1]), Number(m[2])];
 }
 
@@ -335,7 +335,7 @@ function exitCodeFor(result) {
   return result && result.status === 'error' ? 1 : 0;
 }
 
-/** 種別のレンジを宣言の書式で書く（`ADR-0001..0129` / `NFR-01..30`）。 */
+/** 種別のレンジを宣言の書式で書く（`ADR-0001..0129` / `NFR-01..29`）。 */
 function rangeText(kind, r) {
   const fmt = fmtFor(kind);
   return `${kind}-${fmt(r[0])}..${fmt(r[1])}`;

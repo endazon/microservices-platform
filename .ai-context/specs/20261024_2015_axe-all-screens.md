@@ -74,6 +74,10 @@ issue: "#2015"
      `scripts/check-planning-adr-range.js:611・613` と `scripts/backlog-audit.js:371` の自己試験の固定値（宣言の遅れを意図して作ったもので、現状の主張ではない）。
      `NFR-29` を ID として引く箇所（警報・計測・IADR-0559 など。範囲ではなく要件そのものを指す）。ポート範囲の `20000〜29999`（無関係）。
    - 別件: 同じ計画の `origin/main`（`a47c050`）では計画 ADR が `0001..0143` で、宣言 `0001..0141` は 2 件遅れている。本 PR では引き直さない（報告）。
+   ［2026-10-24 追記 / #2184］**上の NFR の範囲の追随一式（入口の 1 行・別紙・`scripts/` の固定値と注記）は、本 PR から外した。**
+   AI レビューは `.claude/` を統合ブランチ版へ戻した作業ツリーで `scripts.test.js` を走らせるため、入口を直して固定値も直す PR は
+   レビューの下限（`scripts.test.js` 全件）を構造的に満たせない（#2184 に起票）。外した一式は **#2184 の解消後に別の PR へ移した**。
+   本 PR に残るのは、台帳の死に行の検査（判断 6 の前半）だけである。
 
 ## 母集合（規則 9・10）
 
@@ -82,13 +86,13 @@ issue: "#2015"
   `src/packages/ui/src/styles.css`（コントラストの実測の注記）、`deploy/keycloak/themes/platform/{login,account}/resources/css/tokens.css`（生成物）。
 - 除外: `.ai-context/adr/IADR-0435`（`warning 5.48:1`）・`IADR-0440`・`IADR-0442`・`IADR-0569`・既存の `.ai-context/specs/*`（凍結記録）。
   `keyboard-navigation.smoke.spec.ts` の「WCAG 2.1.1」等は達成基準の番号であり誤りではない。`src/eslint.config.js:650` は領域外（報告）。
-  `.claude/rules/traceability.repo.md` の「`NFR-01`〜`NFR-29`」は計画の NFR-30 追加で既に古い（本 PR の変更で生じた誤りではない。報告）。
+  `.claude/rules/traceability.repo.md` の「`NFR-01`〜`NFR-29`」は計画の NFR-30 追加で既に古い（本 PR の変更で生じた誤りではない。追随は #2184 の解消後の別 PR）。
 
 ## 検証
 
 ```bash
 cd src && pnpm install --frozen-lockfile && pnpm run build
-cd platform/frontend && PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm exec playwright test   # 103 passed（a11y 29）
+cd platform/frontend && PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers pnpm exec playwright test   # 103 passed（a11y 29 = 28 面 ＋ 台帳の検査）
 cd src && pnpm run lint && pnpm run typecheck && pnpm run format:check
 cd src && pnpm exec vitest run knowledge/frontend/src/features/sc19-private-notes packages/ui   # 219 passed
 node scripts/check-knip.js --require && node scripts/gen-keycloak-theme-tokens.js --check
