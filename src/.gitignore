@@ -26,3 +26,5 @@ all-blob-reports/
 playwright/.cache/
 # NFR / IADR-0624（#2025）: live 層の storageState（BFF のセッション cookie を持つ）。コミットせず、成果物にも上げない。
 playwright/.auth/
+# 同: live 層の環境変数の例示（変数名と `<set-me>` だけ）。リポジトリ直下の `.env.*` が外すので戻す。実値の `.env.e2e` は外したまま。
+!platform/frontend/e2e/live/.env.e2e.example
