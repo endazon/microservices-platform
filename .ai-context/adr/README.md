@@ -697,3 +697,4 @@
 | [IADR-0617](./IADR-0617_review-floor-ci-scripts-tests-as-evidence-regardless-of-restore.md) | AI レビューの下限「scripts.test.js 全件」は、作業ツリーの復元の有無を問わず同じ head の CI scripts-tests の success でも満たす | Accepted |
 | [IADR-0618](./IADR-0618_keycloak-auto-assigned-service-account-scope.md) | Keycloak 26 がサービスアカウントの client へ自動で付ける既定スコープ `service_account` は宣言の外とし、realm の追随は名前・欄・条件を限定して稼働側の余剰に数えない。検査器は宣言に書くことを止める（#2208） | Accepted |
 | [IADR-0619](./IADR-0619_keycloak-theme-axe-disposable-container.md) | Keycloak のテーマの画面（SC-13 の Keycloak 側・SC-14〜16）は、CI のジョブの中で起こす使い捨ての Keycloak で axe を走らせる（静的描画は採らない）。親テンプレートのラベルの欠陥はテーマの追加スクリプトで補う（#2191） | Accepted |
+| [IADR-0620](./IADR-0620_sc11-drift-shows-contract-values.md) | SC-11 のドリフトの種別と深刻度は、計画（Q29）どおり契約の値のまま表示する（IADR-0129 決定 6 の表示名の写像を改める）（#2022） | Accepted |

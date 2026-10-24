@@ -2484,10 +2484,6 @@ msgstr "Cancel"
 msgid "受信"
 msgstr "Received"
 
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "古い段の残留"
-msgstr "Stale stage left running"
-
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "同じパスの資料が既にあります。Obsidian 側でファイル名を変えてください。"
 msgstr "A note with the same path already exists. Rename the file in Obsidian."
@@ -2808,10 +2804,6 @@ msgstr "Implementation"
 msgid "宣言（Git）と実効構成に {count} 件の差分があります。"
 msgstr "The declaration (Git) and the effective configuration differ in {count} place(s)."
 
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "宣言に無い購読"
-msgstr "Undeclared subscription"
-
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "対称"
 msgstr "Symmetric"
@@ -3006,7 +2998,6 @@ msgstr "Saving is rejected when a required attribute is missing (UC-03 exception
 msgid "必須属性にする"
 msgstr "Make this attribute required"
 
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 #: platform/frontend/src/components/ui/notifications.tsx
 msgid "情報"
 msgstr "Info"
@@ -3121,10 +3112,6 @@ msgstr "No device is connected yet."
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "接続している辺:"
 msgstr "Connected edges:"
-
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "接続の不一致"
-msgstr "Binding mismatch"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "接続先"
@@ -3830,10 +3817,6 @@ msgstr "Shorten the search term, or loosen the edge type filter."
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "検証"
 msgstr "Validate"
-
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "検証不能（担当サービスへ到達できない）"
-msgstr "Unverifiable (the owning service is unreachable)"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "検証結果"
@@ -4763,7 +4746,6 @@ msgstr "Detail"
 msgid "読み込み中…"
 msgstr "Loading…"
 
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 #: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "警告"
 msgstr "Warning"
@@ -4975,10 +4957,6 @@ msgstr "There is no apply history."
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用日時"
 msgstr "Applied at"
-
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "適用漏れ（宣言にあり実効に無い）"
-msgstr "Missing apply (declared but not effective)"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用者"
