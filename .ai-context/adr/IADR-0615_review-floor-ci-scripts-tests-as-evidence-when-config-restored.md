@@ -2,7 +2,7 @@
 title: IADR-0615 AI レビューの作業ツリーが PR 版と違うときに限り、下限「scripts.test.js 全件」を同じ head の CI scripts-tests の success で満たす
 type: impl-adr
 status: Accepted
-related_ids: [NFR, NFR-30, IADR-0538, IADR-0198, IADR-0222, IADR-0614]
+related_ids: [NFR, NFR-30, IADR-0538, IADR-0198, IADR-0222, IADR-0614, IADR-0617]
 author: claude
 created: 2026-10-24
 updated: 2026-10-24
@@ -37,6 +37,10 @@ related_specs:
 
 ## 決定
 
+［2026-10-24 追記 / #2206］**決定 1 の「作業ツリーが PR 版と違う」の条件、決定 2 の「作業ツリーが PR 版と同じ場合」、決定 3 の待つ条件の「作業ツリーの差あり」は、
+IADR-0617 で改めた（Amended by [IADR-0617](IADR-0617_review-floor-ci-scripts-tests-as-evidence-regardless-of-restore.md)）。**
+同じ head の CI `scripts-tests` の success だけで下限を満たす。以下の決定は当時の記録として残す。
+
 1. **案 1 を採る。** `check-review-verdict.js` は、次の 2 つが**両方**成り立つときに限り、下限「`scripts.test.js` 全件」を満たしたとみなす。
    - レビューの作業ツリーが PR 版と違う（`RESTORED_FILES` が空でない）。判定のステップが `git diff --name-only HEAD` で実測する。アクションの内部の一覧は写さない。
    - 同じ head SHA の CI `scripts-tests`（GitHub Actions が出す check-run）の conclusion が `success` である（`SCRIPTS_TESTS_CONCLUSION`）。
@@ -70,3 +74,7 @@ related_specs:
 - 信頼の境界は変わらない。PR の作者は CI の `scripts-tests` を書き換えられるが、検査器（`check-review-verdict.js`）も同じ PR で書き換えられる（`pull_request` は PR 版を走らせる）。
   したがって、新しい穴は開かない。人のレビューとフェーズ末監査が最後の門である。
 - 残余: `scripts-tests` の名前やジョブを変える PR では、代わりの根拠が見つからず赤になる（安全側）。名前を変えるときは、本 IADR の試験と判定のステップを同時に直す。
+
+## 関連
+
+- Amended by: [IADR-0617](IADR-0617_review-floor-ci-scripts-tests-as-evidence-regardless-of-restore.md)（決定 1 の復元の条件・決定 2 の「作業ツリーが PR 版と同じ場合」・決定 3 の待つ条件。#2206）
