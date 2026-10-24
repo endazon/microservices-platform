@@ -647,7 +647,7 @@ export default tseslint.config(
       'lingui/t-call-in-function': 'error',
     },
   },
-  // NFR-12（アクセシビリティ）/ ADR-0031 13_frontend-stack §採用技術一覧: JSX のアクセシビリティ規約を
+  // NFR-30（アクセシビリティ。WCAG 2.2 AA）/ ADR-0031 13_frontend-stack §採用技術一覧: JSX のアクセシビリティ規約を
   // 機械強制する（`eslint-plugin-jsx-a11y` の `recommended` を **error** で採る。利用者裁定 2026-09-12）。
   //
   // **独立したブロックに置く。** 各ユニットのブロック（`platform/frontend/src/**` ほか）へ相乗りさせると、

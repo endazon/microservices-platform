@@ -342,7 +342,7 @@ describe('existence hiding: unknown path and forbidden path render alike (IADR-0
   });
 
   /**
-   * NFR-12 / #1438 / [[IADR-0442]] 決定 1: **`main` ランドマークはシェルに 1 つだけである。**
+   * NFR-30 / #1438 / [[IADR-0442]] 決定 1: **`main` ランドマークはシェルに 1 つだけである。**
    *
    * 従前は `NotFound` が自前の `<main>` を持ち、`Layout` の `<main id="main-content">` の中で
    * 入れ子になっていた（axe の `landmark-no-duplicate-main` / `landmark-main-is-top-level` /
