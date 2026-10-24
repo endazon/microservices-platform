@@ -172,16 +172,9 @@ test('M-111: 一覧に値の列は無く、未設定・取得できないを区�
   const table = page.getByRole('table', { name: '秘密情報の項目の一覧' });
   await expect(table.getByRole('row')).toHaveCount(4);
 
-  // ★ 列の全集合（値の列が無い）。
+  // ★ 列の全集合（値の列が無い）。見出しの文言そのものを比べる（並べ替えの案内は title 属性で、文言に混ざらない）。
   const headers = (await table.getByRole('columnheader').allTextContents()).map((h) => h.trim());
-  expect(headers.map((h) => h.replace(/並べ替え.*$/, '').trim())).toEqual([
-    '項目名',
-    '用途',
-    '最終更新日時',
-    '最終更新者',
-    '供給元',
-    '操作',
-  ]);
+  expect(headers).toEqual(['項目名', '用途', '最終更新日時', '最終更新者', '供給元', '操作']);
   expect(headers.filter((h) => h.includes('値'))).toEqual([]);
 
   // ★ 状態: 設定済み／未設定／取得できない を描き分ける。
@@ -272,7 +265,8 @@ test('M-112: 一括再投入の操作は無く、更新は項目ごとのボタ�
   // 陽性対照: 項目ごとの「更新」は 3 行ぶん出ている。
   await expect(table.getByRole('button', { name: '更新' })).toHaveCount(3);
 
-  // ★ 画面の全ボタンの集合を完全一致で見る（一括・全件の操作がどんな文言で増えても赤になる）。
+  // ★ 本文領域（main。共通シェルのヘッダ・ナビは除く）の全ボタンの集合を完全一致で見る
+  // （一括・全件の操作がどんな文言で増えても赤になる）。
   const names = (await page.getByRole('main').getByRole('button').allTextContents()).map((n) =>
     n.trim(),
   );
