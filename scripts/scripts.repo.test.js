@@ -8473,7 +8473,8 @@ ${r.stderr}`);
       'ci-latency-watch.yml:watch': { checks: 'read', 'pull-requests': 'read' },
       'ci-latency-watch.yml:report-failure': { actions: 'read', issues: 'write' },
       // actions: read は mcp__github_ci__* の導入条件と `gh run list`（ワークフローの注記）
-      'claude-code-review.yml:claude-review': { actions: 'read', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
+      // checks: read は判定のステップが同じ head の CI scripts-tests の check-run を読むため（IADR-0615 / #2184）
+      'claude-code-review.yml:claude-review': { actions: 'read', checks: 'read', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
       'claude-coding.yml:claude': { actions: 'read', contents: 'write', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
       'codeql.yml:analyze': { actions: 'read', 'security-events': 'write' },
       'codeql.yml:report-failure': { actions: 'read', issues: 'write' },
@@ -17904,6 +17905,11 @@ server.listen(0, '127.0.0.1', async () => {
       for (const word of ['if: always()', 'export CHANGED_FILES', 'git diff --name-only', 'node scripts/check-review-verdict.js "$EXECUTION_FILE"']) {
         if (!step.includes(word)) problems.push(`ステップ「Check review verdict」に「${word}」が無い`);
       }
+      // IADR-0615 (#2184): 代わりの根拠（作業ツリーと PR 版の差・同じ head の CI scripts-tests）を検査器へ渡す。
+      for (const word of ['export RESTORED_FILES', 'git diff --name-only HEAD', 'export SCRIPTS_TESTS_CONCLUSION', 'check_name=scripts-tests', '$HEAD_SHA']) {
+        if (!step.includes(word)) problems.push(`ステップ「Check review verdict」に「${word}」が無い`);
+      }
+      if (!/\n {6}checks: read\n/.test(text)) problems.push('ジョブの permissions に checks: read が無い（check-run を読めない）');
       return problems;
     };
     ok('claude-code-review.yml[IADR-0538]: 【検証の下限】の申告・生成物と check-review-verdict.js が対になっている', () => {
@@ -17913,6 +17919,30 @@ server.listen(0, '127.0.0.1', async () => {
       assert.match(pairProblems(wfRvf.replace('          export CHANGED_FILES\n', '')).join('\n'), /CHANGED_FILES/);
       assert.match(pairProblems(wfRvf.replaceAll('生成物 K ファイルを除外', '生成物を除外')).join('\n'), /生成物 K ファイルを除外/);
       assert.match(pairProblems(wfRvf.replace('`pnpm-lock.yaml`・`CHANGELOG.md`・`docs/api', '`CHANGELOG.md`・`docs/api')).join('\n'), /pnpm-lock/);
+      // IADR-0615 (#2184): 代わりの根拠を渡す配線を外すと赤になる。
+      assert.match(pairProblems(wfRvf.replace('          export RESTORED_FILES\n', '')).join('\n'), /RESTORED_FILES/);
+      assert.match(pairProblems(wfRvf.replace('      checks: read\n', '')).join('\n'), /checks: read/);
+    });
+
+    // IADR-0615 (#2184): MSP#2183 の 3 回目の実レビュー本文。レビュアーは scripts.test.js を前景で回したが、
+    // `.claude/` が統合ブランチ版へ戻された作業ツリーで落ち、「🔍 実行できなかったこと」に書いた（正直な申告）。
+    const reviewRvf = fsRvf.readFileSync(pathRvf.join(__dirname, 'fixtures', 'review-floor', 'pr2183-review3.txt'), 'utf8');
+    const changedRvf = ['.claude/rules/traceability.repo.md', 'docs/how-to/plan-id-range-history-annex.md', 'scripts/scripts.repo.test.js', 'scripts/check-planning-adr-range.js'];
+    const { findFloorViolations: floorRvf } = require('./check-review-verdict.js');
+    ok('check-review-verdict[IADR-0615]: MSP#2183 の実本文は、作業ツリーが PR 版と違い同じ head の scripts-tests が success なら下限を満たす', () => {
+      assert.deepStrictEqual(floorRvf(reviewRvf, changedRvf, { restoredFiles: ['.claude/rules/traceability.repo.md'], scriptsTestsConclusion: 'success' }), []);
+    });
+    ok('check-review-verdict[IADR-0615]: ★陽性対照 —— 同じ本文でも scripts-tests が failure・結果なし、または作業ツリーが PR 版と同じなら赤', () => {
+      for (const evidence of [
+        { restoredFiles: ['.claude/rules/traceability.repo.md'], scriptsTestsConclusion: 'failure' },
+        { restoredFiles: ['.claude/rules/traceability.repo.md'], scriptsTestsConclusion: '' },
+        { restoredFiles: [], scriptsTestsConclusion: 'success' },
+        {},
+      ]) {
+        const v = floorRvf(reviewRvf, changedRvf, evidence);
+        assert.strictEqual(v.length, 1, JSON.stringify(evidence));
+        assert.match(v[0], /scripts\.test\.js 全件/);
+      }
     });
   }
 

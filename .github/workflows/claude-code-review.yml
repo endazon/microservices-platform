@@ -78,6 +78,9 @@ jobs:
       #      権限が無いと許可されていても実行時に失敗する。
       # 注: ツール許可に additional_permissions は使わない（あれはアプリトークンのスコープ用）。
       actions: read
+      # NFR, IADR-0615 (#2184): 判定のステップが、同じ head SHA の CI `scripts-tests` の check-run を読む
+      # （`.claude/` 等を統合ブランチ版へ戻された作業ツリーでは、レビュアーが PR 版の scripts.test.js を回せない）。
+      checks: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -326,6 +329,9 @@ jobs:
               `node -e "const r=require('child_process').spawnSync('node',['scripts/scripts.test.js'],{env:Object.assign({},process.env,{REQUIRE_REPO_TESTS:'1'}),stdio:'inherit'});process.exit(r.status===null?1:r.status);"`
               🔴 **Bash の timeout を 600000 にして前景で走らせる。バックグラウンドにしない**（全件は 2 分を超える。
               バックグラウンドへ移ると結果を待ったまま終わり、判定を投稿できない）。
+              `.claude/` 等が統合ブランチ版へ戻されたせいで、復元されたファイルを読む試験だけが落ちたときは、
+              「確認できたこと」に書かず「🔍 実行できなかったこと」に、落ちた試験と復元されたファイルを書く。
+              その場合の下限は、検査器が同じ head の CI `scripts-tests` の success で確かめる（成功と書き換えない）。
             - **`scripts/` / `.github/` / `docs/` / `.ai-context/` のどれかに差分があれば**、文書系の検査器を走らせる:
               `node scripts/check-trace-blocks.js` / `node scripts/gen-knowledge-graph.js --check` /
               `node scripts/check-doc-links.js` / `node scripts/check-doc-updated.js --base origin/develop` /
@@ -573,14 +579,38 @@ jobs:
       # 差分の種類に応じた下限（deploy/helm/** → helm lint / helm template、scripts/ .github/ → scripts.test.js）を
       # 判定するため、PR の変更ファイルを CHANGED_FILES で渡す（checkout は fetch-depth: 0）。差分を引けなければ空で
       # 渡し、検査器はその判定だけを warn 付きで skip する（fail-open）。ALLOW_MISSING_VERDICT は下限には効かない。
+      #
+      # 代わりの根拠（NFR / IADR-0615・#2184）: アクションは `.claude/`・`CLAUDE.md`・`.mcp.json` 等を統合ブランチ版へ戻す。
+      # その作業ツリーで、復元されたファイルを読む scripts.test.js の試験は PR 版を検査できず、下限「scripts.test.js 全件」は
+      # 本文の記載では満たせない（MSP#2183 で 3 回続けて赤）。そこで、作業ツリーが PR 版と違うファイル（RESTORED_FILES。
+      # `git diff --name-only HEAD` で実測し、アクションの内部の一覧を写さない）があるときに限り、**同じ head SHA の
+      # CI `scripts-tests`（ci.yml。GitHub Actions が出す check-run）の success** を待って検査器へ渡す。success 以外・
+      # 待ちきれない・check-run が無いときは空のまま渡し、下限は従来どおり未達になる（緩めて通す形にしない）。
       - name: Check review verdict
         if: always()
         env:
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
           CHANGED_FILES="$(git diff --name-only "$BASE_SHA...$HEAD_SHA" 2>/dev/null \
                            || git diff --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || true)"
           export CHANGED_FILES
+          RESTORED_FILES="$(git diff --name-only HEAD 2>/dev/null || true)"
+          export RESTORED_FILES
+          SCRIPTS_TESTS_CONCLUSION=""
+          if [ -n "$RESTORED_FILES" ] && printf '%s\n' "$CHANGED_FILES" | grep -qE '^(scripts|\.github)/'; then
+            echo "作業ツリーが PR 版と違う: $(printf '%s' "$RESTORED_FILES" | tr '\n' ' ')。CI scripts-tests（$HEAD_SHA）の完了を待つ（最大 10 分）。"
+            for _ in $(seq 1 40); do
+              r="$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?check_name=scripts-tests" \
+                     --jq '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at) | last | select(. != null) | "\(.status) \(.conclusion)"' \
+                     2>/dev/null || true)"
+              case "$r" in "completed "*) SCRIPTS_TESTS_CONCLUSION="${r#completed }"; break ;; esac
+              sleep 15
+            done
+            echo "CI scripts-tests の conclusion: ${SCRIPTS_TESTS_CONCLUSION:-（完了を観測できなかった）}"
+          fi
+          export SCRIPTS_TESTS_CONCLUSION
           node scripts/check-review-verdict.js "$EXECUTION_FILE"
