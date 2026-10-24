@@ -56,7 +56,7 @@ export interface LiveEnv {
   searchHits: boolean;
   /**
    * `E2E_KEEP_SESSIONS=trading-owner`: teardown がこの役割のセッションを失効させずに残す（state は 0600）。後始末は AST の live の
-   * teardown が引き受ける（#2231 / IADR-0628。AST の IADR-0588）。**値域は `trading-owner` だけ**。既定（未設定）は全部失効。
+   * teardown が引き受ける（#2231 / IADR-0628。AST/IADR-0588）。**値域は `trading-owner` だけ**。既定（未設定）は全部失効。
    */
   keepSessions: Role[];
 }

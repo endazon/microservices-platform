@@ -23,7 +23,7 @@ related_specs:
 ## 起点・関連
 
 - 起点 issue: #2231。関連: [IADR-0624](./IADR-0624_live-playwright-config-setup-and-readiness.md)（setup・teardown）・[IADR-0625](./IADR-0625_e2e-live-workflow-disposable-stack.md)（e2e-live）。
-  AST 側は AST の IADR-0588（AST の live 層は MSP の取引オーナーの state を読み、自分の teardown で失効させる）。
+  AST 側は AST/IADR-0588（AST の live 層は MSP の取引オーナーの state を読み、自分の teardown で失効させる）。
 - 作業仕様書: [20261025_2231_live-keep-owner-session](../specs/20261025_2231_live-keep-owner-session.md)。
 
 ## コンテキストと課題
@@ -42,7 +42,7 @@ IADR-0624 の teardown は実行の終わりに 6 役割すべてを失効させ
 
 ## 理由
 
-- AST がログインを写すと、ログイン・秘密の入力・TOTP の部品が 2 か所に分かれる（AST の IADR-0588 の選択肢 B）。残すセッションを 1 役割に限れば、
+- AST がログインを写すと、ログイン・秘密の入力・TOTP の部品が 2 か所に分かれる（AST/IADR-0588 の選択肢 B）。残すセッションを 1 役割に限れば、
   巻き添えの範囲（cookie が手元に残る時間）は AST の 1 回の実行の間だけになる。
 
 ## 影響
