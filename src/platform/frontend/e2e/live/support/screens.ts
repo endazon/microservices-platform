@@ -22,11 +22,19 @@ export async function openScreen(
   headingMsgid: string,
   apis: string[],
 ): Promise<{ statuses: Record<string, number>; bodies: Map<string, Response> }> {
-  const pending = apis.map((api) => bffGet(page, api).then((r) => [api, r] as const));
+  // 見出しの確認が先に落ちても、待ちの Promise が未処理の reject にならないよう、遷移の前に allSettled へ渡しておく
+  // （allSettled は個々の reject を受け止める。見出しで落ちたときに待ちを await して test の時間切れで隠すこともしない）。
+  const settled = Promise.allSettled(apis.map((api) => bffGet(page, api)));
   await page.goto(path);
   await expect(page.getByRole('heading', { name: ja(headingMsgid), level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: NOT_FOUND(), level: 1 })).toHaveCount(0);
-  const bodies = new Map(await Promise.all(pending));
+  const results = await settled;
+  // 取りこぼした応答（待ちの失敗）は、その API の名前つきで失敗にする。
+  const missed = apis.filter((_, i) => results[i].status === 'rejected');
+  expect(missed, '画面が送るはずの GET の応答を受け取れなかった').toEqual([]);
+  const bodies = new Map(
+    apis.map((api, i) => [api, (results[i] as PromiseFulfilledResult<Response>).value] as const),
+  );
   const statuses = Object.fromEntries([...bodies].map(([api, r]) => [api, r.status()]));
   return { statuses, bodies };
 }

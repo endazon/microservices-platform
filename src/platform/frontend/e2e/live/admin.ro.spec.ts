@@ -182,9 +182,9 @@ test.describe('e2e-admin の管理者限定の画面', () => {
         apis,
       );
       expect(statuses).toEqual(allOk(apis));
-      const names = (
-        (await bodies.get('/bff/admin/authz/policies')?.json()) as { name: string }[]
-      ).map((p) => p.name);
+      const body: unknown = await bodies.get('/bff/admin/authz/policies')?.json();
+      expect(Array.isArray(body), 'GET /bff/admin/authz/policies の本文は配列').toBe(true);
+      const names = (body as { name?: unknown }[]).map((p) => p.name);
       expect(names).toEqual(expect.arrayContaining(ABAC_SEED.policies.map((p) => p.name)));
       await expect(page.getByText(ABAC_SEED.policies[0].name, { exact: true })).not.toHaveCount(0);
     },
