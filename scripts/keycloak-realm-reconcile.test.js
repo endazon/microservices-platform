@@ -34,6 +34,7 @@ const {
   RUNTIME_OWNED_REALM_KEYS, CLIENT_CREATE_ONLY_KEYS, GATE_OWNED_REALM_KEYS, GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
   SEED_USER_SELF_SERVICE_ROLES, KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES, isKeycloakAutoAssignedScope,
   resolveE2eCredentials, passwordMeetsPolicy, describeSkipped, renderImport, describe,
+  applyOps, exitCodeFor, reconcileRealm, USER_UPDATE_SKIP_KEYS,
 } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 const { generate: generateE2eAccounts, placeholderNames, propertyName } = require('./gen-e2e-accounts.js');
 
@@ -709,7 +710,7 @@ ok('#2026: 作成の後に宣言の requiredActions を PUT で当て直す（PO
     assert.strictEqual(put.length, 1, `${op.target}: requiredActions を当て直す PUT が無い`);
     assert.deepStrictEqual(put[0].body.requiredActions, []);
     assert.strictEqual(put[0].body.username, op.target);
-    for (const k of ['credentials', 'groups', 'realmRoles', 'clientRoles', 'id']) {
+    for (const k of ['credentials', 'groups', 'federatedIdentities', 'realmRoles', 'clientRoles', 'id']) {
       assert.ok(!(k in put[0].body), `${op.target}: PUT の本文に ${k} が載る（資格情報を PUT で送らない）`);
     }
   }
@@ -719,6 +720,100 @@ ok('#2026: 作成の後に宣言の requiredActions を PUT で当て直す（PO
   delete u0.requiredActions;
   const op0 = plan(r2, liveFrom(withoutE2e(REALM))).find((o) => o.target === E2E_USERS[0]);
   assert.ok(!op0.postSteps.some((st) => st.method === 'PUT'));
+});
+
+ok('#2026: PUT の本文は federatedIdentities も載せない（宣言が持っていても）', () => {
+  const { desired } = resolveE2eCredentials(REALM, e2eEnv());
+  const r2 = JSON.parse(JSON.stringify(desired));
+  const u0 = r2.users.find((u) => u.username === E2E_USERS[0]);
+  u0.federatedIdentities = [{ identityProvider: 'x', userId: 'y', userName: 'z' }];
+  const op0 = plan(r2, liveFrom(withoutE2e(REALM))).find((o) => o.target === E2E_USERS[0]);
+  const put = op0.postSteps.find((st) => st.method === 'PUT');
+  // 実装の集合（USER_UPDATE_SKIP_KEYS）ではなく、要求の一覧で引く（集合から外されても赤になる）。
+  for (const k of ['credentials', 'groups', 'federatedIdentities', 'realmRoles', 'clientRoles']) assert.ok(!(k in put.body), `PUT の本文に ${k}`);
+  assert.ok(USER_UPDATE_SKIP_KEYS.has('federatedIdentities'));
+  assert.ok('federatedIdentities' in op0.body, '作成の本文からは外さない（POST は扱う）');
+});
+
+ok('#2026: 既存の利用者（人の seed も e2e も）には PUT も user.create も出ない（create の経路を通らない）', () => {
+  const { desired } = resolveE2eCredentials(REALM, e2eEnv());
+  const live = liveFrom(REALM);
+  for (const u of desired.users) {
+    if (!u.serviceAccountClientId) assert.ok(live.users[u.username], `${u.username}: fixture に居ない`);
+  }
+  const ops = plan(desired, live);
+  assert.ok(!ops.some((o) => o.op === 'user.create'));
+  assert.ok(!ops.some((o) => o.method === 'PUT' && /\/users\//.test(o.path)), '既存の利用者へ PUT が出た');
+});
+
+/** async の試験は下の async ブロックで待って数える（`ok` は同期）。 */
+const laterCases = [];
+const okLater = (name, fn) => laterCases.push([name, fn]);
+
+/** 偽の Admin API。method + path ごとに状態を返し、呼ばれた順を記録する。 */
+function fakeAdminApi(statusOf) {
+  const calls = [];
+  return {
+    calls,
+    async call(method, path, body) {
+      calls.push({ method, path, body });
+      const status = statusOf(method, path);
+      return { ok: status >= 200 && status < 300, status, text: status >= 300 ? 'boom' : '' };
+    },
+    async get() { return [{ id: 'u-1' }]; },
+  };
+}
+
+okLater('#2026: 当て直しの PUT が失敗したら applyOps は errors を返し、終了コードは 1（作成だけ済んで黙って緑にしない）', async () => {
+  const { desired } = resolveE2eCredentials(REALM, e2eEnv());
+  const ops = plan(desired, liveFrom(withoutE2e(REALM))).slice(0, 1);
+  const kc = fakeAdminApi((m) => (m === 'POST' ? 201 : m === 'PUT' ? 500 : 204));
+  const log = console.log; console.log = () => {};
+  let r;
+  try { r = await applyOps(kc, 'platform', ops); } finally { console.log = log; }
+  assert.ok(kc.calls.some((c) => c.method === 'PUT' && c.path === '/admin/realms/platform/users/u-1'), 'PUT を打っていない');
+  assert.strictEqual(r.errors.length, 1);
+  assert.match(r.errors[0], /^user\.update /);
+  // 再計画では利用者が在るので drift 0 —— 終了コードは errors で 1 にする
+  assert.strictEqual(exitCodeFor({ drift: 0, guardBlocked: 0, applyErrors: r.errors.length }), 1);
+  assert.strictEqual(exitCodeFor({ drift: 0, guardBlocked: 0, applyErrors: 0 }), 0);
+});
+
+okLater('#2026: reconcileRealm — 作成は通り当て直しの PUT が落ちると、再計画は差分 0 でも applyErrors が残り終了コード 1（黙って緑にしない）', async () => {
+  const { desired } = resolveE2eCredentials(REALM, e2eEnv());
+  let n = 0;
+  // 1 回目は e2e が居ない稼働、2 回目以降は作成済み（利用者は実行時が所有するので差分に戻らない）。
+  const collect = async () => (n++ === 0 ? liveFrom(withoutE2e(REALM)) : liveFrom(REALM));
+  const kc = fakeAdminApi((m) => (m === 'PUT' ? 500 : m === 'POST' ? 201 : 204));
+  const log = console.log; const err = console.error; console.log = () => {}; console.error = () => {};
+  let r;
+  try { r = await reconcileRealm(kc, desired, { mode: 'apply', devSecretsAllowed: true, collect }); } finally { console.log = log; console.error = err; }
+  assert.deepStrictEqual(r.ops, [], '再計画は差分 0（この状態が「黙って緑」の温床）');
+  assert.strictEqual(r.applyErrors, E2E_USERS.length);
+  assert.strictEqual(exitCodeFor({ drift: r.ops.length, guardBlocked: r.guardBlocked, applyErrors: r.applyErrors }), 1);
+});
+
+okLater('#2026: 作成が 409（前から在った）なら当て直しの PUT は打たない（既存の利用者の requiredActions を変えない）', async () => {
+  const { desired } = resolveE2eCredentials(REALM, e2eEnv());
+  const ops = plan(desired, liveFrom(withoutE2e(REALM))).slice(0, 1);
+  const kc = fakeAdminApi((m, path) => (m === 'POST' && path.endsWith('/users') ? 409 : 204));
+  const log = console.log; const lines = []; console.log = (l) => lines.push(l);
+  let r;
+  try { r = await applyOps(kc, 'platform', ops); } finally { console.log = log; }
+  assert.ok(!kc.calls.some((c) => c.method === 'PUT'), '409 の利用者へ PUT を打った');
+  assert.deepStrictEqual(r.errors, []);
+  assert.ok(lines.some((l) => /skipped +user\.update/.test(l)));
+});
+
+okLater('#2026: 成功した当て直しはログに user.update の行を出す（PoC の配備で確かめる行）', async () => {
+  const { desired } = resolveE2eCredentials(REALM, e2eEnv());
+  const ops = plan(desired, liveFrom(withoutE2e(REALM))).slice(0, 1);
+  const kc = fakeAdminApi((m) => (m === 'POST' ? 201 : 204));
+  const log = console.log; const lines = []; console.log = (l) => lines.push(l);
+  try { await applyOps(kc, 'platform', ops); } finally { console.log = log; }
+  const i = lines.findIndex((l) => /applied +user\.create/.test(l));
+  const j = lines.findIndex((l) => /applied +user\.update +e2e-/.test(l));
+  assert.ok(i >= 0 && j > i, lines.join('\n'));
 });
 
 ok('#2024: env が無ければ 6 名とも外し（名前と欠けたキーだけを告げる）、既存 realm の計画は 0 件（drift にしない）', () => {
@@ -833,6 +928,11 @@ ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読
 });
 
 (async () => {
+  for (const [name, fn] of laterCases) {
+    await fn();
+    passed++;
+    process.stdout.write(`  ok  ${name}\n`);
+  }
   {
     const live = await collectLive(fakeKc({ saEnabled: false, saUser: { id: 'u-bff' } }), REALM);
     assert.ok(!('bff' in live.serviceAccounts), '稼働 SA 無効なら serviceAccounts に bff を持たない');

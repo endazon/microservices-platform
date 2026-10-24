@@ -5,7 +5,7 @@ status: in-progress
 related_ids: [NFR, NFR-18, ADR-0090, IADR-0569, IADR-0570, IADR-0624, IADR-0625, IADR-0248]
 author: claude
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-25
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0090（門は依存ごと。全 skip を緑にしない）
 issue: "#2026"

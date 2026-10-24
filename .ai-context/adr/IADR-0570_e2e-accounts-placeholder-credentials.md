@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-10, NFR-18, ADR-0026, ADR-0124, IADR-0294, IADR-0369, IADR-0518, IADR-0546, IADR-0569]
 author: claude
 created: 2026-10-21
-updated: 2026-10-24
+updated: 2026-10-25
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0026（認証は IdP・TOTP の MFA 必須）
   - planning:projects/microservices-platform/07_adr/ADR-0124（対になる秘密）
@@ -88,6 +88,8 @@ realm の宣言は 2 つの経路で Keycloak へ届く。どちらも宣言を�
 - 稼働の Keycloak での実測（6 名の作成・OTP でのログイン）はこの PR では行っていない。PoC での確認手順を README と PR に書いた（後続の E-31 が live の setup で使う）。
   ［2026-10-24 追記 / #2026］統合スタックでの初回の実測（PR #2226 の `e2e-live`）で、作った 6 名に realm の既定の必須アクション `CONFIGURE_TOTP`（`defaultAction: true`）が付き、
   OTP の後に「OTP の登録」の画面へ送られることが分かった。宣言に `"requiredActions": []` を明示して直した（経緯と PoC での直し方は IADR-0625）。
+  ［2026-10-25 追記 / #2026］宣言の `[]` だけでは直らなかった。Keycloak の `POST /users` は宣言に無い action を外さない（外すのは PUT だけ）。
+  上の決定の「後追い Job は無い seed 利用者を宣言の本文のまま `POST /users` する」に、**作成の後に宣言の `requiredActions` を PUT で当て直す**手順を足した（IADR-0625 の追記と残余リスク）。
 
 ## 関連
 

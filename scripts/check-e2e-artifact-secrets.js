@@ -48,12 +48,6 @@ function parseArgs(argv) {
 const MAX_DEPTH = 4;
 
 /**
- * 1 つの秘密が成果物に載りうる形（純関数）。値そのものに加えて、道具が符号化して残す形を探す:
- * - TOTP の秘密の base32（認証アプリ・`scripts/lib/totp.js` の `base32Encode`。Keycloak の画面の表示もこの形）
- * - 各値の base64（HTTP のヘッダや埋め込みのデータ。標準と URL 用の両方）
- * - Basic 認証の `<利用者>:<パスワード>` の base64（利用者名は `e2e-<role>`）
- */
-/**
  * 値が符号化の途中（ヘッダや文字列の任意の位置）に置かれたときにも当たる、符号化の**中央部分**（純関数）。
  * 前に 0〜(group-1) バイトの詰め物を付けて符号化し、詰め物と後ろの不明なバイトに掛かる端の文字を落とす。
  * bits は 1 文字あたりのビット数（base64 = 6・base32 = 5）。
@@ -70,6 +64,12 @@ function middles(value, { bits, pads, encode }) {
   return out;
 }
 
+/**
+ * 1 つの秘密が成果物に載りうる形（純関数）。値そのものに加えて、道具が符号化して残す形を探す:
+ * - TOTP の秘密の base32（認証アプリ・`scripts/lib/totp.js` の `base32Encode`。Keycloak の画面の表示もこの形）
+ * - 各値の base64（HTTP のヘッダや埋め込みのデータ。標準と URL 用の両方）
+ * - Basic 認証の `<利用者>:<パスワード>` の base64（利用者名は `e2e-<role>`）
+ */
 function formsOf(secret) {
   const forms = [{ how: '値', text: secret.value }];
   for (const m of middles(secret.value, { bits: 6, pads: 3, encode: (b) => b.toString('base64') })) {

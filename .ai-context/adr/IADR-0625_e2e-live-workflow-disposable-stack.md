@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, NFR-18, ADR-0090, IADR-0569, IADR-0570, IADR-0624, IADR-0248]
 author: claude
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-25
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0090（門は依存ごと。全 skip を緑にしない）
 related_specs:
@@ -101,3 +101,11 @@ PUT `/users/{id}`（宣言から資格情報・グループ・ロールを除い
 - teardown が走らない異常終了（`timeout-minutes` の打ち切り等）でも、スタックの削除（`if: always()`）で cookie の発行元は消える。runner ごと落ちたときは
   スタックも runner と共に消える。
 - 選んだ層に spec がまだ無い間（E-40 以降が入るまで）、日次の実行は setup と teardown だけを確かめる（警告が出る）。
+- ［2026-10-25 追記 / #2026］**本番の realm の後追い（`reconcile-realm.js`。常設の PoC の Keycloak も同じ経路）の挙動が 2 点変わる。**
+  (1) **新しく作る利用者**のうち宣言が `requiredActions` を配列で持つものに、作成の後に PUT `/users/{id}` で宣言の `requiredActions` を当て直す
+  （ログに `applied user.update <名前>` が出る）。既存の利用者は作成の経路を通らず、作成が 409（前から在った）でも当て直さないので変わらない。
+  宣言が `requiredActions` を持たない利用者には当てない。PUT の本文は資格情報・グループ・ロール・`federatedIdentities` を載せない。
+  対象は MSP の realm の人の seed（`admin`・`poc-user`・`poc-operator`・`developer`。宣言は `["CONFIGURE_TOTP"]`＝作成の結果と同じ）と
+  e2e-* 6 名（`[]`）、AST の realm の `dev-owner`・`developer`（`[]`。AST の realm に既定の action は無いので結果は同じ）。サービスアカウントは別の経路で、対象外。
+  (2) **当てられなかった操作が 1 件でもあれば Job を失敗にする**（従来は ERROR の行を出しても、再計画が差分 0 なら緑だった。作成の後の手順の失敗は差分に戻らない）。
+  `k8s-local-up.sh` は Job の失敗で止まるので、従来は黙って通っていた失敗（作成の後のロール割当の失敗を含む）で起動が止まり得る。
