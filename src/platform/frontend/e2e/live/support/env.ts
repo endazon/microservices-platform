@@ -1,0 +1,96 @@
+// NFR / IADR-0569 決定 4 / IADR-0624（#2025）: live 層の opt-in と到達先を環境変数から決める（純関数）。
+//
+// - `E2E_LIVE` はちょうど `1` のときだけ live。それ以外（未設定を含む）は全 project を 0 件にする。
+// - `E2E_LAYER` は `ro` / `rw` / `trading` / `llm` のカンマ区切り。未設定は `ro`。
+//   🔴 値域外の値、および `E2E_LIVE=1` 無しの `E2E_LAYER` は**例外**にする（config の読み込みで失敗させる）。
+//   綴り違いが黙って 0 件の緑になるのを防ぐ（ADR-0090「全 skip を緑にしない」）。
+// - 資格情報（`E2E_<ROLE>_PASSWORD` / `E2E_<ROLE>_TOTP_SECRET`）の**値はここで読まない**。名前だけを持ち、
+//   readiness 門が「揃っているか」を、setup が値を読む。
+
+const LAYERS = ['ro', 'rw', 'trading', 'llm'] as const;
+export type Layer = (typeof LAYERS)[number];
+
+/** 試験アカウントの役割（realm `platform` の `e2e-<role>`。IADR-0570）。環境変数の接頭辞は大文字・`-`→`_`。 */
+export const ROLES = [
+  'user',
+  'operator',
+  'admin',
+  'noaccess',
+  'revocable',
+  'trading-owner',
+] as const;
+export type Role = (typeof ROLES)[number];
+
+const DEFAULT_EDGE_URL = 'https://localhost';
+const DEFAULT_KC_URL = 'https://keycloak.localhost';
+export const REALM = 'platform';
+
+type Env = Record<string, string | undefined>;
+
+export interface LiveEnv {
+  live: boolean;
+  layers: Layer[];
+  edgeUrl: string;
+  kcUrl: string;
+  insecureTls: boolean;
+  /** storageState の置き場。レポートの外（gitignore）。 */
+  authDir: string;
+}
+
+/** 役割から環境変数名を作る（`trading-owner` → `E2E_TRADING_OWNER_PASSWORD`）。 */
+export function credentialNames(role: Role): { password: string; totpSecret: string } {
+  const key = role.toUpperCase().replace(/-/g, '_');
+  return { password: `E2E_${key}_PASSWORD`, totpSecret: `E2E_${key}_TOTP_SECRET` };
+}
+
+/** 6 役割 × 2 の環境変数名のうち、未設定（空を含む）のもの。値は返さない。 */
+export function missingCredentials(env: Env): string[] {
+  return ROLES.flatMap((role) => Object.values(credentialNames(role))).filter((name) => !env[name]);
+}
+
+function originOf(name: string, value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} が URL ではない: ${value}`);
+  }
+  if (url.pathname !== '/' || url.search || url.hash) {
+    throw new Error(`${name} はオリジンだけを書く（パス・クエリを付けない）: ${value}`);
+  }
+  return url.origin;
+}
+
+export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
+  const live = env.E2E_LIVE === '1';
+  const rawLayer = env.E2E_LAYER;
+  if (rawLayer !== undefined && !live) {
+    throw new Error(
+      'E2E_LAYER が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
+    );
+  }
+  const layers = (rawLayer ?? 'ro')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '');
+  if (layers.length === 0)
+    throw new Error('E2E_LAYER が空である（ro / rw / trading / llm のカンマ区切り）');
+  for (const layer of layers) {
+    if (!(LAYERS as readonly string[]).includes(layer)) {
+      throw new Error(`E2E_LAYER の値域外: ${layer}（ro / rw / trading / llm のカンマ区切り）`);
+    }
+  }
+  return {
+    live,
+    layers: [...new Set(layers)] as Layer[],
+    edgeUrl: originOf('E2E_EDGE_URL', env.E2E_EDGE_URL ?? DEFAULT_EDGE_URL),
+    kcUrl: originOf('E2E_KC_URL', env.E2E_KC_URL ?? DEFAULT_KC_URL),
+    insecureTls: env.E2E_INSECURE_TLS === '1',
+    authDir: env.E2E_AUTH_DIR || defaultAuthDir,
+  };
+}
+
+/** 役割の storageState のファイル名（`<authDir>/<role>.json`）。 */
+export function stateFile(authDir: string, role: Role): string {
+  return `${authDir.replace(/\/+$/, '')}/${role}.json`;
+}

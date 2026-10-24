@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
-issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037]
+iadrs: [IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+specs: [20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
+issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025]
 -->
 
 # E2E テスト基準
@@ -74,7 +74,7 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037]
 | config ファイル | project | testMatch | storageState | workers | retries | trace |
 | --- | --- | --- | --- | --- | --- | --- |
 | `playwright.config.ts` | `smoke`（L1） | `e2e/**/*.spec.ts`（`e2e/live/**` を除く） | 無し（`/bff/auth/me` をスタブ） | 既定 | CI で 1 | `on-first-retry` |
-| `playwright.live.config.ts` | `live-setup` | `e2e/live/*.setup.ts` | —（作る側） | 1 | 0 | `retain-on-failure` |
+| `playwright.live.config.ts` | `live-setup` | `e2e/live/*.setup.ts` | —（作る側） | 1 | 0 | **`off`**（パスワードとセッション cookie を記録させない。§9） |
 | 同上 | `live-ro`（L2） | `e2e/live/**/*.ro.spec.ts` | 役割ごと（`test.use`） | 2 | 1 | `retain-on-failure` |
 | 同上 | `live-rw`（L3） | `e2e/live/**/*.rw.spec.ts` | 同上 | **1** | 1 | `retain-on-failure` |
 | 同上 | `trading`（L3-T） | `e2e/live/**/*.trading.spec.ts` | 取引オーナー役 | **1** | 0 | `on` |
@@ -87,7 +87,9 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037]
 - **現状**: ~~L1 の project 名は `chromium` である。次に `playwright.config.ts` を触る変更で `smoke` へ改める。~~
   **［2026-10-24］L1 の project 名を `smoke` へ改めた。** あわせて en-US の project `smoke-en-us` を足した
   （`locale: 'en-US'`。`e2e/i18n.smoke.spec.ts` だけを走らせ、`smoke` はこの spec を走らせない）。
-  `playwright.live.config.ts` と `e2e/live/` はまだ無い。
+  **［2026-10-24］`playwright.live.config.ts` と `e2e/live/`（`auth.setup.ts`・`support/`）を置いた**。`E2E_LIVE=1` が無ければ 0 件で終わり
+  （`pnpm --filter @platform/frontend run test:e2e:live`）、前提（資格情報 12 個・Keycloak の discovery 200・BFF の `/bff/auth/me` 401）が
+  欠ければ exit 2 で終わる。L1 の config は `e2e/live/` を `testIgnore` する。live の spec（`*.ro.spec.ts` など）はまだ無い。
 - **PR で必ず流すのは L1 だけ**。L2 以降は PR に掛けない（稼働環境に依存する赤で PR を止めない。
   統合スタックの nightly を必須にしなかったのと同じ理由）。
 - **［2026-10-24 訂正］** 従前ここは「PR の必須チェックは L1 だけ」と書いていたが、L1 の check `e2e` は
@@ -194,6 +196,11 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037]
 ## 9. 失敗時の成果物
 
 - trace: L1 は `on-first-retry`（現状）。live 層は `retain-on-failure`（再試行が無いか 1 回なので初回から残す）。
+  **ただし `live-setup` は trace・スクリーンショット・動画を残さない**（trace はログインの入力と応答の `Set-Cookie` を記録する）。
+  失敗した段（ログイン画面・OTP 画面・コールバック）は文字で attach する（URL は path だけ）。
+- 🔴 **秘密の値（パスワード・OTP）を `locator.fill(value)` で入れない。** `fill` は値を step の題に載せ、html レポートに残す
+  （実測: 偽の BFF と Keycloak に対して setup を流したら、6 名分のパスワードがレポートに出た）。`e2e/live/auth.setup.ts` の
+  `fillSecret`（値をページの中で入れる。`evaluate` の引数は題に載らない）を使う。
 - `screenshot: 'only-on-failure'`、`video: 'off'`（トレースを見る）。
 - reporter: CI はシャードごとに `blob`（＋ログ用の `list`）を書き、`merge-reports` で `html` ＋ `github` にまとめる。ローカルは `list`。
   **［2026-10-24］配備した**: L1 は 2 シャード（`frontend.yml` の `e2e-shard` ジョブ）で流し、`e2e` ジョブがまとめる。

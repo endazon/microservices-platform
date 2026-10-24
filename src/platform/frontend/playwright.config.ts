@@ -60,7 +60,9 @@ export default defineConfig({
     {
       name: 'smoke',
       use: { ...devices['Desktop Chrome'] },
-      testIgnore: /i18n\.smoke\.spec\.ts$/,
+      // IADR-0569 決定 3 / IADR-0624: live 層（`e2e/live/`。`playwright.live.config.ts` が流す）は L1 で走らせない。
+      // 既定の testMatch は `*.ro.spec.ts` なども拾うため、ディレクトリで外す。
+      testIgnore: [/i18n\.smoke\.spec\.ts$/, /[\\/]e2e[\\/]live[\\/]/],
     },
     {
       name: 'smoke-en-us',
