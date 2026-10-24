@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { i18n } from '@foundation/i18n';
+import { confidentialityLabel, i18n } from '@foundation/i18n';
 import type { MessageDescriptor } from '@lingui/core';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import {
@@ -325,8 +325,11 @@ function ResultRow({ result }: { result: SearchResultDto }) {
   // 「本文なし（原本を参照）」を出す。**`hasBody === false` のときだけ**である
   // （項目を持たない応答＝本文ありとして従来どおり描く）。
   const bodyless = result.hasBody === false;
-  // hi-fi の SC-05 と同じく、機密区分は accent のチップで示す。値そのものは訳さない
-  // （表示名が計画に無い値がある。lib/abac/confidentiality.ts 参照）。
+  // hi-fi の SC-05 と同じく、機密区分は accent のチップで示す。
+  // ［2026-10-24 / #2018］従前ここには「値そのものは訳さない（表示名が計画に無い値がある）」と書き、
+  // 生値（`internal` 等）を出していた。**表示名は用語集で 4 値とも確定している**（2026-08-05 裁定）ので、
+  // SC-01 の出典と同じ写像（`@foundation/i18n` の `confidentialityLabel`）で表示名を出す。
+  // 値集合の外の値は生値のまま出る。
   const confidentiality = result.attributes?.[CONFIDENTIALITY_KEY];
 
   return (
@@ -355,7 +358,11 @@ function ResultRow({ result }: { result: SearchResultDto }) {
         )}
       </TableCell>
       <TableCell>
-        {confidentiality ? <Tag tone="accent">{confidentiality}</Tag> : <span aria-hidden>—</span>}
+        {confidentiality ? (
+          <Tag tone="accent">{confidentialityLabel(confidentiality, (d) => i18n._(d))}</Tag>
+        ) : (
+          <span aria-hidden>—</span>
+        )}
       </TableCell>
       <TableCell>
         <span className="flex flex-wrap gap-1">

@@ -15,6 +15,11 @@ import type { MessageDescriptor } from '@lingui/core';
 // **それでも本ファイルでは値を変換しない。** 写像を入れる先は引用（`CitationDto`）側の **#541** であり
 // （#553 がそう指示している）、ここで先に入れると**同じ写像が 2 か所に生まれる**。
 // 値集合の単一情報源は `lib/abac/confidentiality.ts` である。
+//
+// **［2026-10-24 / #2018］機密区分の値は表示名へ写すようにした。** 写像は SC-01 の出典（#2017）で
+// foundation の `@foundation/i18n`（`confidentialityLabel`）に 1 か所だけ置いたので、上の「2 か所に生まれる」
+// 懸念は無くなった。SC-02 の結果一覧と本画面がそれを使う（写すのは `DocumentDetailPage` の描画時）。
+// 部門（`department`）の値は引き続き変換しない。
 
 /**
  * 計画が画面ラベルを与えている属性キー。**ここに無いキーは描かない**

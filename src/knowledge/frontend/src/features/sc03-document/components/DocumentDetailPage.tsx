@@ -27,6 +27,8 @@ import { useBreadcrumbLeaf } from '@foundation/routing/breadcrumbLeaf';
 // ADR-0031 §採用技術一覧（日付 = dayjs）/ #788: 同じ整形を自前で持っていたが、
 // **同じ整形規則を 2 か所に置かない**ため foundation の 1 本へ寄せた。
 import { formatDateTime } from '@foundation/utils/formatDateTime';
+import { confidentialityLabel } from '@foundation/i18n';
+import { CONFIDENTIALITY_KEY } from '../../../lib/abac';
 import { attributeLabel, orderedAttributes } from '../types/attributes';
 import { isNotFound, useDocumentQueries } from '../api/useDocumentQueries';
 // SC-03, FR-18 (#450): AI 提案の承認欄。**承認の主導線は本画面である**（SC-21 は棚卸しの従）。
@@ -336,8 +338,9 @@ function AttributeList({
         const label = attributeLabel(key);
         return (
           <KvItem key={key} label={label ? i18n._(label) : key}>
-            {/* 値は変換せず生値を出す（attributes.ts の冒頭コメント参照）。 */}
-            {value}
+            {/* 機密区分だけは表示名へ写す（#2018。写像は SC-01・SC-02 と共有。attributes.ts の冒頭コメント参照）。
+                部門の値は変換しない。 */}
+            {key === CONFIDENTIALITY_KEY ? confidentialityLabel(value, (d) => i18n._(d)) : value}
           </KvItem>
         );
       })}

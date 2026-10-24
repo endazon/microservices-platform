@@ -324,13 +324,15 @@ describe('SearchResultsPage (SC-02)', () => {
   });
 
   // hi-fi モック（sc-02）のツールバー行: 機密区分は accent のチップで示す（SC-05 と同じ扱い）。
-  it('lists the confidentiality of each result', async () => {
+  // ［2026-10-24 / #2018］表示名は用語集が正（internal＝社内限）。生値は出さない。
+  it('lists the confidentiality of each result by its display name', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
     await renderPage();
     await search('経費精算');
 
     const row = (await screen.findByRole('link', { name: '経費精算規程 v3.2' })).closest('tr')!;
-    expect(within(row).getByText('internal')).toBeInTheDocument();
+    expect(within(row).getByText('社内限')).toBeInTheDocument();
+    expect(within(row).queryByText('internal')).not.toBeInTheDocument();
   });
 
   it('shows an alert when the search request fails', async () => {
