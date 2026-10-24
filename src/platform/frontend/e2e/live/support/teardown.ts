@@ -9,7 +9,9 @@
 // ログアウトの経路（`AuthBffEndpoints.cs`）: **GET** `/bff/auth/logout?sid=<sid>`。CSRF はセッションの `sid` との一致で防ぐ
 // （ヘッダは要らない）。sid は `/bff/auth/me` の `logoutUrl` が配る。認可サーバへの往復はトップレベルの遷移でしか完結しないので、
 // ブラウザのページで開く。失効したことは、**同じ state の cookie で `/bff/auth/me` が 401** になることで確かめる。
+import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, rmSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { chromium, request, type Browser } from '@playwright/test';
 import { parseLiveEnv, ROLES, stateFile, type LiveEnv, type Role } from './env';
 import { DEFAULT_AUTH_DIR } from './paths';
@@ -105,9 +107,52 @@ export async function revokeSessions(
   return result;
 }
 
+/** 残骸掃き（`scripts/e2e-live-sweep.js`。#2030 / IADR-0629）。 */
+const SWEEP_SCRIPT = fileURLToPath(
+  new URL('../../../../../../scripts/e2e-live-sweep.js', import.meta.url),
+);
+
+/**
+ * sweep に渡す引数（純関数）。`delete` のときだけ `--delete` を付ける（既定は dry-run）。向け先はすべて明示で渡す。
+ * `E2E_SWEEP` が未設定なら null（掃かない）。
+ */
+export function sweepArgs(cfg: LiveEnv): string[] | null {
+  if (cfg.sweep === 'off') return null;
+  if (!cfg.sweepStack) throw new Error('E2E_SWEEP_STACK が無い（sweep の向け先は明示する）');
+  return [
+    SWEEP_SCRIPT,
+    '--live',
+    '--edge-url',
+    cfg.edgeUrl,
+    '--auth-dir',
+    cfg.authDir,
+    '--stack',
+    cfg.sweepStack,
+    cfg.sweep === 'delete' ? '--delete' : '--dry-run',
+  ];
+}
+
 export default async function globalTeardown(): Promise<void> {
   const cfg = parseLiveEnv(process.env, DEFAULT_AUTH_DIR);
   if (!cfg.live) return;
+  // #2030 / IADR-0629: 残骸掃きは**失効の前**に流す（セッションは storageState の cookie を使う）。失敗しても失効は必ず済ませ、最後に exit 1。
+  let sweepFailed = false;
+  const args = sweepArgs(cfg);
+  if (args) {
+    const r = spawnSync(process.execPath, args, {
+      encoding: 'utf8',
+      timeout: 5 * 60_000,
+      env: cfg.insecureTls ? { ...process.env, NODE_TLS_REJECT_UNAUTHORIZED: '0' } : process.env,
+    });
+    process.stdout.write(r.stdout ?? '');
+    process.stderr.write(r.stderr ?? '');
+    if (r.status !== 0) {
+      sweepFailed = true;
+      process.stderr.write(
+        `[e2e-live] 残骸掃きが exit ${r.status ?? r.signal ?? r.error?.message}\n`,
+      );
+    }
+  }
   const browser = await chromium.launch();
   let result: RevokeResult;
   try {
@@ -131,4 +176,5 @@ export default async function globalTeardown(): Promise<void> {
     );
     process.exit(1);
   }
+  if (sweepFailed) process.exit(1);
 }

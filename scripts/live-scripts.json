@@ -32,6 +32,7 @@
     { "path": "measure-abac-combinations.js", "offline": ["--input"] },
     { "path": "measure-cutover-inventory.js", "offline": ["--input", "--print-recreate-sql"] },
     { "path": "measure-search-ndcg.js", "offline": ["--input"] },
+    { "path": "e2e-live-sweep.js", "offline": ["--help"] },
     { "path": "verify-oidc-edge-flow.sh", "offline": [] },
     { "path": "verify-qdrant-attribute-payload.sh", "offline": [] },
     { "path": "verify-qdrant-fulltext-index.sh", "offline": [] },

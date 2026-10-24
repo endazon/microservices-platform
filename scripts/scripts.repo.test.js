@@ -8928,6 +8928,9 @@ ${r.stderr}`);
           // #1935 / IADR-0543: 経路 B の Loki から時間範囲のログを書き出す**読み出し器**（判定を返さず、ファイルを書く）。
           // 走らせると Loki（localhost の port-forward）を読みに行くので、検査器として spawn する母集合に入れない。
           'export-loki-logs.js',
+          // #2030 / IADR-0629: live E2E の残骸掃きの**駆動器**（--delete で稼働の BFF へ削除を送る副作用を持ち、判定を返さない）。
+          // 駆動器と同じく検査器ではない。母集合に数えない（試験は #2030 節）。
+          'e2e-live-sweep.js',
         ];
         const scripts = all.filter((f) => !NOT_CHECKERS.includes(f));
         // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
@@ -13700,6 +13703,172 @@ exit $RC
       assert.doesNotMatch(live[0], /continue-on-error|\|\|\s*true/, 'live の実行の失敗（teardown の失効失敗を含む）を握り潰している');
       // 証明書の検証を外さない。
       assert.doesNotMatch(code, /E2E_INSECURE_TLS/, 'e2e-live.yml が証明書の検証を外している');
+    });
+  }
+
+  // --- NFR / #2030 / IADR-0629: live E2E の残骸掃き（e2e-live-sweep.js）—— 接頭辞 e2e- 以外を消さない ----------------
+  // 🔴 稼働の環境へは当たらない。fetch・kubectl の context・state の読み込みはすべて差し替える（子プロセスの中で main を呼ぶ）。
+  {
+    const sweepLib = require('./e2e-live-sweep.js');
+    const { spawnSync: spawnS } = require('child_process');
+    const fsS = require('fs');
+    const pathS = require('path');
+
+    /** 偽の BFF の上で main を走らせ、終了コード・送った要求・出力を返す。 */
+    const runSweep = (argv, scenario = {}) => {
+      const code = `
+        const s = require(${JSON.stringify(require.resolve('./e2e-live-sweep.js'))});
+        const sc = JSON.parse(process.env.SWEEP_SCENARIO);
+        const calls = []; const logs = [];
+        const data = {
+          '/bff/documents': { items: [
+            { id: 'd1', title: 'e2e-r1-doc' }, { id: 'd2', title: 'msp-searchseed-tanpopo 検索導線の検証用文書' },
+            { id: 'd3', title: 'E2E-r1-upper' }, { id: 'd4', title: 'xe2e-r1-doc' } ], total: 4 },
+          '/bff/private-notes': { usage: {}, notes: [
+            { id: 'n1', title: 'e2e-r1-note', deleted: false }, { id: 'n2', title: 'e2e-r1-trash', deleted: true },
+            { id: 'n3', title: '私のメモ', deleted: false }, { id: 'n4', title: ' e2e-r1-space', deleted: true } ] },
+          '/bff/admin/authz/policies': [ { id: 'p1', name: 'dev: public 取扱者は public を読める' }, { id: 'p2', name: 'e2e-r1-policy' },
+            { id: 'p3', name: null } ],
+          '/bff/datasources': [ { id: 's1', name: 'e2e_r1-source' }, { id: 's2', name: 'e2e-r1-source' } ],
+          '/bff/admin/mcp-clients': [ { clientId: 'c1', displayName: 'e2e-r1-mcp' }, { clientId: 'c2', displayName: 'prod-agent' } ],
+          '/bff/tags': { tags: [ { id: 't1', name: 'e2e-r1-tag' }, { id: 't2', name: '営業' }, { id: 't3', name: 'e2e' } ] },
+        };
+        const fetch = async (url, init) => {
+          const u = new URL(url);
+          const call = { method: init.method, path: u.pathname, cookie: init.headers.Cookie, csrf: init.headers['X-MSP-CSRF'] || null,
+            body: init.body ? JSON.parse(init.body) : null };
+          calls.push(call);
+          const key = init.method + ' ' + u.pathname;
+          const status = (sc.status || {})[key];
+          if (status) return { status, json: async () => ({}) };
+          if (init.method === 'GET') return { status: 200, json: async () => data[u.pathname] };
+          return { status: 204, json: async () => ({}) };
+        };
+        const states = { admin: { cookies: [ { name: '__Host-msp-session', value: 'ADMIN', domain: 'localhost', expires: -1 },
+                                            { name: 'other', value: 'X', domain: 'example.com', expires: -1 } ] },
+                         user: { cookies: [ { name: '__Host-msp-session', value: 'USER', domain: 'localhost', expires: -1 } ] } };
+        s.main(${JSON.stringify(argv)}, {
+          fetch, log: (l) => logs.push(l), err: (l) => logs.push(l), env: {},
+          currentContext: () => { if (sc.context === 'throw') throw new Error('no ctx'); return sc.context || 'k3d-e2e-live'; },
+          readState: (role) => states[role],
+        }).then((code) => process.stdout.write(JSON.stringify({ code, calls, logs })));`;
+      const r = spawnS(process.execPath, ['-e', code], { encoding: 'utf8', env: { ...process.env, SWEEP_SCENARIO: JSON.stringify(scenario) } });
+      assert.strictEqual(r.status, 0, r.stderr);
+      return JSON.parse(r.stdout);
+    };
+    const target = ['--live', '--edge-url', 'https://localhost', '--auth-dir', '/nonexistent', '--stack', 'e2e-live'];
+    const E2E_IDS = new Set(['d1', 'n1', 'n2', 'p2', 's2', 't1']);
+
+    ok('#2030: 接頭辞の判定は e2e- で始まる文字列だけ（大文字・前置き・区切り違い・文字列以外は一致しない）', () => {
+      for (const yes of ['e2e-', 'e2e-r1-doc', 'e2e-20261025-note']) assert.strictEqual(sweepLib.isSweepable(yes), true, yes);
+      for (const no of ['E2E-r1', 'E2e-r1', ' e2e-r1', 'xe2e-r1', 'e2e_r1', 'e2e', 'e2', '', 'dev: e2e-x', '試験 e2e-x', null, undefined, 1, {}, ['e2e-x']]) {
+        assert.strictEqual(sweepLib.isSweepable(no), false, JSON.stringify(no));
+      }
+    });
+
+    ok('#2030: 既定は dry-run で、GET だけを送り、e2e- の一致だけを列挙する', () => {
+      const out = runSweep(target);
+      assert.strictEqual(out.code, 0, out.logs.join('\n'));
+      assert.deepStrictEqual([...new Set(out.calls.map((c) => c.method))], ['GET'], 'dry-run が GET 以外を送った');
+      const listed = out.logs.filter((l) => /^ {2}- /.test(l)).map((l) => l.split(' ')[3]);
+      assert.deepStrictEqual(new Set(listed), new Set([...E2E_IDS, 'c1']), '列挙が e2e- の一致と違う');
+      assert.ok(out.logs.some((l) => l.includes('残骸 7 件')), out.logs.join('\n'));
+      // --dry-run を明示しても同じ。
+      assert.deepStrictEqual(runSweep([...target, '--dry-run']).calls.map((c) => c.method).filter((m) => m !== 'GET'), []);
+    });
+
+    ok('#2030: --delete でも、消す要求は e2e- で始まるものの ID にしか飛ばない（混ぜた一覧）', () => {
+      const out = runSweep([...target, '--delete']);
+      assert.strictEqual(out.code, 0, out.logs.join('\n'));
+      const writes = out.calls.filter((c) => c.method !== 'GET');
+      const ids = writes.map((c) => (c.body ? c.body.ids.join(',') : c.path.split('/').pop()));
+      for (const id of ids) assert.ok(E2E_IDS.has(id), `e2e- でないもの（${id}）へ消す要求を送った`);
+      assert.deepStrictEqual(
+        writes.map((c) => `${c.method} ${c.path}${c.body ? ' ' + c.body.ids.join(',') : ''}`),
+        [
+          'DELETE /bff/documents/d1',
+          'DELETE /bff/private-notes/n1', 'POST /bff/private-notes/purge n1',
+          'POST /bff/private-notes/purge n2',
+          'DELETE /bff/admin/authz/policies/p2',
+          'DELETE /bff/datasources/s2',
+          'DELETE /bff/tags/t1',
+        ],
+        '消す要求の集合・順（タグは最後）が違う',
+      );
+      assert.ok(writes.every((c) => c.csrf === '1'), '状態変更に X-MSP-CSRF が無い');
+      assert.ok(out.calls.every((c) => c.cookie === (c.path.startsWith('/bff/private-notes') ? '__Host-msp-session=USER' : '__Host-msp-session=ADMIN')),
+        '役割の cookie の取り違え（個人資料は e2e-user・他は e2e-admin。他ドメインの cookie を送らない）');
+      assert.ok(out.logs.some((l) => l.includes('c1 e2e-r1-mcp（消す口が無い。残る）')), 'MCP クライアントが残ることを示していない');
+    });
+
+    ok('#2030: 消せないものがあっても残りを続けて exit 1、404 は消えた扱い', () => {
+      const failed = runSweep([...target, '--delete'], { status: { 'DELETE /bff/documents/d1': 500 } });
+      assert.strictEqual(failed.code, 1);
+      assert.ok(failed.calls.some((c) => c.method === 'DELETE' && c.path === '/bff/tags/t1'), '失敗の後の種類を飛ばした');
+      assert.ok(failed.logs.some((l) => l.includes('d1 e2e-r1-doc を消せない（DELETE /bff/documents/d1 が 500）')), failed.logs.join('\n'));
+      const gone = runSweep([...target, '--delete'], { status: { 'DELETE /bff/private-notes/n1': 404 } });
+      assert.strictEqual(gone.code, 0, gone.logs.join('\n'));
+      assert.ok(gone.calls.some((c) => c.method === 'POST' && c.body && c.body.ids[0] === 'n1'), '404 の後の完全削除を送っていない');
+      // 一覧が読めない種類があれば exit 1（0 件の緑にしない）。
+      assert.strictEqual(runSweep(target, { status: { 'GET /bff/tags': 403 } }).code, 1);
+    });
+
+    ok('#2030: 向け先を明示しない・使い捨てのスタック以外・context が違うなら exit 2 で、要求を 1 つも送らない', () => {
+      const cases = [
+        [['--live', '--auth-dir', '/x', '--stack', 'e2e-live'], {}, '--edge-url が無い'],
+        [['--live', '--edge-url', 'https://localhost', '--stack', 'e2e-live'], {}, '--auth-dir が無い'],
+        [['--live', '--edge-url', 'https://localhost', '--auth-dir', '/x'], {}, '--stack が無い'],
+        [['--live', '--edge-url', 'https://localhost', '--auth-dir', '/x', '--stack', 'rancher-desktop'], {}, '使い捨てのスタックだけ'],
+        [['--live', '--edge-url', 'https://localhost', '--auth-dir', '/x', '--stack', 'poc'], {}, '使い捨てのスタックだけ'],
+        [target, { context: 'rancher-desktop' }, 'k3d-e2e-live でない（rancher-desktop）'],
+        [target, { context: 'k3d-e2e-live-2' }, 'k3d-e2e-live でない'],
+        [target, { context: 'throw' }, 'current-context を読めない'],
+        [[...target, '--dry-run', '--delete'], {}, '同時に指定できない'],
+        [[...target, '--force'], {}, '知らない引数'],
+        [['--live', '--edge-url', 'https://localhost/bff', '--auth-dir', '/x', '--stack', 'e2e-live'], {}, 'オリジンだけ'],
+      ];
+      for (const [argv, sc, why] of cases) {
+        const out = runSweep(argv, sc);
+        assert.strictEqual(out.code, 2, `${argv.join(' ')} が止まらない`);
+        assert.deepStrictEqual(out.calls, [], `${argv.join(' ')} が要求を送った`);
+        assert.ok(out.logs.join('\n').includes(why), `${argv.join(' ')}: 「${why}」と言わない\n${out.logs.join('\n')}`);
+      }
+      assert.deepStrictEqual(sweepLib.DISPOSABLE_STACKS, ['e2e-live'], '使い捨てのスタックの一覧が変わった（PoC を足していないか）');
+    });
+
+    ok('#2030: cookie は到達先のホストの生きているものだけを送り、無ければ例外', () => {
+      const st = { cookies: [
+        { name: 'a', value: '1', domain: 'localhost', expires: -1 },
+        { name: 'b', value: '2', domain: '.localhost', expires: 2e9 },
+        { name: 'c', value: '3', domain: 'localhost', expires: 1 },
+        { name: 'd', value: '4', domain: 'keycloak.localhost', expires: -1 } ] };
+      assert.strictEqual(sweepLib.cookieHeader(st, 'https://localhost', 1e9), 'a=1; b=2');
+      assert.throws(() => sweepLib.cookieHeader({ cookies: [] }, 'https://localhost'), /cookie が無い/);
+    });
+
+    ok('#2030: seed（ABAC ポリシー・検索用文書・タグ辞書）の名前は e2e- で始まらない（sweep が seed を消さない）', () => {
+      const names = [];
+      const walk = (x) => {
+        if (Array.isArray(x)) x.forEach(walk);
+        else if (x && typeof x === 'object') for (const [k, v] of Object.entries(x)) {
+          if ((k === 'name' || k === 'title') && typeof v === 'string') names.push(v);
+          walk(v);
+        }
+        else if (typeof x === 'string') names.push(x); // タグ辞書は文字列の配列でありうる
+      };
+      for (const f of ['abac-seed/policies.json', 'search-seed/documents.json', 'tag-seed/tags.json']) {
+        walk(JSON.parse(fsS.readFileSync(pathS.join(__dirname, '..', 'deploy', 'local', f), 'utf8')));
+      }
+      assert.ok(names.length >= 10, `seed の名前を読めていない（${names.length} 件）`);
+      assert.deepStrictEqual(names.filter((n) => sweepLib.isSweepable(n)), [], 'seed に e2e- で始まる名前がある（sweep が消す）');
+    });
+
+    ok('#2030: e2e-live.yml は sweep を dry-run で、このジョブのスタックへ向けて流す（消さない）', () => {
+      const wf = fsS.readFileSync(pathS.join(__dirname, '..', '.github', 'workflows', 'e2e-live.yml'), 'utf8');
+      assert.match(wf, /\n\s+E2E_SWEEP: dry-run\n\s+E2E_SWEEP_STACK: \$\{\{ env\.CLUSTER \}\}\n/);
+      assert.match(wf, /\n {2}CLUSTER: e2e-live\n/, 'スタックの名前が使い捨てのスタックの一覧と違う');
+      assert.doesNotMatch(wf, /E2E_SWEEP: delete|--delete/, 'e2e-live.yml が消す指定をしている');
+      assert.match(wf, /- "scripts\/e2e-live-sweep\.js"/, 'paths に sweep 本体が無い');
     });
   }
 
