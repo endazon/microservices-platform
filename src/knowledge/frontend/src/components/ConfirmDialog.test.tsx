@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ConfirmDialog } from './ConfirmDialog';
 
@@ -43,7 +43,8 @@ describe('ConfirmDialog', () => {
   it('初期フォーカスは取消側にある（開いた瞬間の Enter で破壊的操作を走らせない）', async () => {
     setup();
     await screen.findByRole('dialog');
-    expect(await screen.findByRole('button', { name: 'やめる' })).toHaveFocus();
+    // 初期フォーカスは Base UI がフレームを待って当てる。`findByRole` は要素が在るまでしか待たないので waitFor で待つ（#2224）。
+    await waitFor(() => expect(screen.getByRole('button', { name: 'やめる' })).toHaveFocus());
   });
 
   it('実行を押したときだけ onConfirm を呼ぶ', async () => {
