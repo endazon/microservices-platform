@@ -57,7 +57,8 @@ IADR-0569 が名前（config・project・環境変数）を決め、IADR-0570 �
 1. `playwright.live.config.ts`: `E2E_LIVE=1` のときだけ `live-setup` と `E2E_LAYER` で選んだ層の project を持つ。**未設定・空は 0 件（exit 0）、
    それ以外の値は読み込みで例外**（IADR-0569 決定 4 の「それ以外は 0 件」を狭めた。例示の `<set-me>` を写したまま直し忘れると黙って 0 件の緑になるため）。
    値域外の `E2E_LAYER`・`E2E_LIVE=1` 無しの `E2E_LAYER` は読み込みで例外。判定は `e2e/live/support/env.ts` の純関数。
-2. `globalSetup`（`e2e/live/support/readiness.ts`）: 資格情報の環境変数 12 個（名前だけを報告）・Keycloak の discovery 200・BFF の
+2. `globalSetup`（`e2e/live/support/readiness.ts`）: 資格情報の環境変数 12 個（名前だけを報告。空・空白だけ・例示の `<set-me>` のままは未設定。
+   門を通して実の Keycloak へ失敗ログインを流し、brute force 保護で試験アカウントをロックさせないため）・Keycloak の discovery 200・BFF の
    `/bff/auth/me` 401 を確かめ、満たさなければ **exit 2**。
 3. `e2e/live/auth.setup.ts`: 6 役割で 1 回ずつ実ログインし、`/bff/auth/me` のロール（`platform-admin` / `platform-operator` / `trading-owner`）が
    その役割の宣言と一致することを確かめてから、storageState を `E2E_AUTH_DIR`（既定 `src/platform/frontend/playwright/.auth/`。gitignore）に書く。

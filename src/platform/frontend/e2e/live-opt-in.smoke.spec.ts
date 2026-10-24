@@ -90,9 +90,28 @@ test('前提（資格情報・Keycloak・BFF）が無ければ exit 2（前提�
   expect(r.out).not.toContain('資格情報の環境変数が無い');
 });
 
+test('例示の <set-me> を写したままの資格情報は未設定として exit 2（実の Keycloak へ失敗ログインを流さない）', () => {
+  const adminPassword = envName('ADMIN', 'PASSWORD');
+  const r = runLive({
+    E2E_LIVE: '1',
+    E2E_EDGE_URL: 'http://127.0.0.1:9',
+    E2E_KC_URL: 'http://127.0.0.1:9',
+    ...ALL_CREDENTIALS,
+    [adminPassword]: ' <set-me> ',
+  });
+  expect(r.status, r.out).toBe(2);
+  expect(r.out).toContain(`資格情報の環境変数が無い: ${adminPassword}（`);
+  expect(r.out).not.toContain('<set-me>（');
+});
+
 test('資格情報の欠けは名前だけを返す・到達先はオリジンだけを受ける', () => {
   const adminSecret = envName('ADMIN', 'TOTP', 'SECRET');
   expect(missingCredentials({ ...ALL_CREDENTIALS, [adminSecret]: '' })).toEqual([adminSecret]);
+  expect(missingCredentials({ ...ALL_CREDENTIALS, [adminSecret]: '<set-me>' })).toEqual([
+    adminSecret,
+  ]);
+  expect(missingCredentials({ ...ALL_CREDENTIALS, [adminSecret]: '   ' })).toEqual([adminSecret]);
+  expect(missingCredentials(ALL_CREDENTIALS)).toEqual([]);
   expect(credentialNames('trading-owner')).toEqual({
     password: envName('TRADING', 'OWNER', 'PASSWORD'),
     totpSecret: envName('TRADING', 'OWNER', 'TOTP', 'SECRET'),

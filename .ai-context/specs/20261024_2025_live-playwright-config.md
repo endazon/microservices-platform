@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — [E-31] live 用 Playwright config・setup project（TOTP ログイン → storageState）・readiness 門
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, NFR-10, IADR-0569, IADR-0570, IADR-0294, IADR-0624]
 author: claude
 created: 2026-10-24
@@ -21,9 +21,10 @@ issue: "#2025"
 
 ## 受け入れ基準（issue #2025）
 
-- [ ] `E2E_LIVE` 未設定で 0 件。設定時に 6 役割の state ファイルが出来る。readiness 不成立は exit 2。state・trace に cookie 値が含まれない
-
-（CI が緑になってから印を付ける。6 役割の state は PoC での確認手順で確かめる。）
+- [x] `E2E_LIVE` 未設定で 0 件。設定時に 6 役割の state ファイルが出来る。readiness 不成立は exit 2。state・trace に cookie 値が含まれない
+  - 0 件・exit 2・値域外の失敗は L1 の `e2e/live-opt-in.smoke.spec.ts` が固定（PR #2223 の CI で緑）。
+  - 6 役割の state と「成果物に cookie 値・パスワードが出ない」は、偽の BFF と Keycloak に対して確かめた（6 passed・state 6 個・成果物の秘密 0 件）。
+    **稼働の PoC での実ログインは未実施**（本 PR は PoC に触れない）。PR #2223 本文の確認手順で確かめる。
 
 ### 受け入れ基準の読み方（判断）
 
@@ -42,11 +43,14 @@ issue: "#2025"
    起動して、未設定・空・`1`・それ以外の 4 通りと exit 2 を見る。稼働の環境には触れない。Vitest の include は `src/**` だけなので e2e の support を拾わない）。
    `E2E_INSECURE_TLS=1` の警告は、ワーカーごとに読み込まれる config ではなく globalSetup で 1 回だけ出す。
 2. **readiness 門**: `globalSetup`（`e2e/live/support/readiness.ts`）が live のときだけ走り、
-   ① 12 個の資格情報の環境変数が揃っている（名前だけを報告）② `${E2E_KC_URL}/realms/platform/.well-known/openid-configuration` が 200
+   ① 12 個の資格情報の環境変数が揃っている（名前だけを報告。空・空白だけ・例示の `<set-me>` のままは未設定に数える ——
+   ［2026-10-24 / PR #2223 の AI レビュー 🟢］`<set-me>` のまま門を通すと実の Keycloak へ 6 回の失敗ログインを流し、brute force 保護でロックされうる）② `${E2E_KC_URL}/realms/platform/.well-known/openid-configuration` が 200
    ③ `${E2E_EDGE_URL}/bff/auth/me` が 401、を確かめる。満たさなければ理由を出して **exit 2**（skip の緑とも失敗の赤とも区別。
    `check-stack-ready.js --live` と同じ扱い）。
 3. **setup（`e2e/live/auth.setup.ts`）**: 役割ごとに 1 回ログインする（`/bff/auth/login?returnUrl=/` → Keycloak の `#username`/`#password`/`#kc-login`
-   → `#otp` → BFF の callback → SPA）。`/bff/auth/me` が 200 で本人の名前を返すことを確かめてから storageState を `<authDir>/<role>.json` に書く。
+   → `#otp` → BFF の callback → SPA）。`/bff/auth/me` が 200 で subject を持ち、役割を見分けるロール（`platform-admin` / `platform-operator` /
+   `trading-owner`）がその役割の宣言と一致し、BFF のオリジンの cookie が保存されたことを確かめてから storageState を `<authDir>/<role>.json` に書く
+   （身元の口は利用者名を返さないので名前では見ない。判断 9）。
    `retries: 0`（brute force 保護。基準書 §5）。失敗した段（ログイン画面・OTP 画面・コールバック）を本文に attach する（URL は path だけ。query は載せない）。
 4. **TOTP**: `scripts/lib/totp.js` を `createRequire` で読む（自前の実装を増やさない）。秘密は Keycloak が持つ生の文字列なので
    `totp(base32Encode(raw))`（IADR-0570 決定 3）。周期の残りが 5 秒未満なら次の周期まで待ってから計算する。

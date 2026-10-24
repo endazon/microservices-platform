@@ -44,9 +44,18 @@ export function credentialNames(role: Role): { password: string; totpSecret: str
   return { password: `E2E_${key}_PASSWORD`, totpSecret: `E2E_${key}_TOTP_SECRET` };
 }
 
-/** 6 役割 × 2 の環境変数名のうち、未設定（空を含む）のもの。値は返さない。 */
+/** 例示（`.env.e2e.example`）の置き場所の印。写したまま値を入れ忘れたものを未設定として扱う。 */
+const PLACEHOLDER = '<set-me>';
+
+/**
+ * 6 役割 × 2 の環境変数名のうち、未設定のもの（空・空白だけ・例示の `<set-me>` のまま）。値は返さない。
+ * 🔴 `<set-me>` のまま門を通すと、実の Keycloak へ 6 回の失敗ログインを流し、brute force 保護で試験アカウントがロックされうる。
+ */
 export function missingCredentials(env: Env): string[] {
-  return ROLES.flatMap((role) => Object.values(credentialNames(role))).filter((name) => !env[name]);
+  return ROLES.flatMap((role) => Object.values(credentialNames(role))).filter((name) => {
+    const value = (env[name] ?? '').trim();
+    return value === '' || value === PLACEHOLDER;
+  });
 }
 
 function originOf(name: string, value: string): string {
