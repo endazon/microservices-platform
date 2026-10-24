@@ -702,3 +702,4 @@
 | [IADR-0622](./IADR-0622_eslint-plugin-playwright-for-e2e.md) | E2E（`**/e2e/**`）に `eslint-plugin-playwright` を適用し、`no-wait-for-timeout`・`no-nth-methods`・skip 理由必須を error にする。既存の違反は spec を直して解消（#2038） | Accepted |
 | [IADR-0623](./IADR-0623_e2e-flaky-tally-and-issue-no-quarantine.md) | L1 E2E の flaky は JSON レポートで数えて警告し、develop で 3 回連続なら test ごとに起票する。隔離（skip・fixme）で緑にしない（#2037） | Accepted |
 | [IADR-0624](./IADR-0624_live-playwright-config-setup-and-readiness.md) | live 層の Playwright config は `E2E_LIVE=1` でだけ project を持ち、globalSetup の門（不成立は exit 2）と、秘密（パスワード・cookie）を成果物に残さない setup で 6 役割の storageState を作る（#2025） | Accepted |
+| [IADR-0625](./IADR-0625_e2e-live-workflow-disposable-stack.md) | live E2E（`e2e-live.yml`）は使い捨ての統合スタックの上で、ジョブの中で作った試験アカウントで流し（リポジトリの secret を使わない）、成果物は資格情報を走査してから 14 日残す。全 skip は赤（#2026） | Accepted |
