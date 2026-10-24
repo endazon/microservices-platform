@@ -1,0 +1,213 @@
+# NFR / ADR-0090 / IADR-0569 / IADR-0624 / IADR-0625（#2026）: live 層の Playwright（L2〜L3-L）を**使い捨ての統合スタック**の上で流す。
+#
+# ■ 何をするか
+#   integration-stack.yml と同じ起動器（k3d ＋ scripts/k8s-local-up.sh --live）でスタックを起こし、試験アカウント e2e-* 6 名を
+#   **このジョブの中で作った使い捨ての値**で足し（gen-e2e-accounts.js → Secret platform-infra/e2e-accounts → realm の後追い）、
+#   `playwright.live.config.ts` を E2E_LIVE=1 で流す。nightly は層 ro（setup ＋ live-ro）。dispatch で層を選べる。
+#
+# ■ 秘密の扱い（🔴 必読）
+#   - **リポジトリの secret を 1 つも使わない。** 資格情報はジョブの中で乱数から作り、`::add-mask::` で伏せ、ジョブの終わりにスタックごと消える。
+#     したがって pull_request（fork を含む）で走っても渡る秘密が無い。GITHUB_TOKEN は読み取りだけ（起票は別ジョブ）。
+#   - 成果物（html レポート・test-results）は**上げる前に** scripts/check-e2e-artifact-secrets.js が資格情報の値の有無を走査し、
+#     1 つでも載っていれば赤にして**上げない**。
+#   - セッション cookie は層の trace に必ず載る（Playwright に外す設定が無い）。globalTeardown が実行の終わりに BFF のログアウトで失効させ、
+#     失効できなければ赤になる。さらにスタックはこのジョブの終わりに消える（cookie の発行元が無くなる）。BFF のセッションの寿命（30 日）は
+#     成果物の保存（14 日）より長いが、使い捨てのスタックでは**ジョブの終わりで cookie の使い道が無くなる**ので、保存期間は基準書 §11 の 14 日のままにする
+#     （常設の PoC へ流す経路を足すときは、この前提が崩れるので見直す。IADR-0625）。
+#
+# ■ 必須チェックにしない（docs/ai-workflow.md の表）: 稼働環境に依存する赤で PR を止めない（IADR-0248・IADR-0569 決定 1）。
+name: E2E Live
+
+on:
+  schedule:
+    # 日次。integration-stack.yml（18:30 UTC）と重ねない。
+    - cron: "47 19 * * *"
+  workflow_dispatch:
+    inputs:
+      layer:
+        description: "E2E_LAYER（ro / rw / trading / llm のカンマ区切り。IADR-0569 決定 4）"
+        type: string
+        default: "ro"
+  # live の土台そのものを変える PR でだけ走らせる（秘密を使わないので fork でも安全。必須にはしない）。
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/e2e-live.yml"
+      - "src/platform/frontend/playwright.live.config.ts"
+      - "src/platform/frontend/e2e/live/**"
+      - "scripts/check-e2e-skips.js"
+      - "scripts/check-e2e-artifact-secrets.js"
+      - "scripts/gen-e2e-accounts.js"
+      # 試験アカウントの realm 宣言とその投入・偽スタックも live の結果を変える（requiredActions の件と同じ種類の変更）。
+      - "deploy/keycloak/**"
+      - "deploy/local/keycloak-setup/**"
+      - "src/platform/frontend/e2e/support/**"
+
+concurrency:
+  group: e2e-live-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  K3D_VERSION: v5.8.3
+  CLUSTER: e2e-live
+
+jobs:
+  e2e-live:
+    name: e2e-live
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      E2E_LAYER: ${{ github.event_name == 'workflow_dispatch' && inputs.layer || 'ro' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: src/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: src/pnpm-lock.yaml
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: Self-test the gates
+        run: |
+          node scripts/check-e2e-skips.js --self-test
+          node scripts/check-e2e-artifact-secrets.js --self-test
+          node scripts/check-stack-ready.js --self-test
+
+      - name: Install k3d (pinned)
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG="${K3D_VERSION}" bash
+          k3d version
+
+      - name: Bring up the integration stack (LOCALEDGE=1, ABACSEED=1, SEARCHSEED=1, LOCALEMBED=1)
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          ALLOW_DEV_INFRA_CREDENTIALS=1 LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1 K8S_LOCAL_RUNTIME=k3d \
+            bash scripts/k8s-local-up.sh --live "${CLUSTER}"
+
+      - name: 🔴 Gate — the stack is actually up
+        run: node scripts/check-stack-ready.js --live
+
+      # 試験アカウント（IADR-0570）。値はこのジョブの中で作り、伏せてから使う。ファイルは runner の一時領域だけに置く。
+      - name: Create the e2e-* accounts (disposable values)
+        id: accounts
+        run: |
+          set -euo pipefail
+          umask 077
+          # KV のプロパティ名（e2e-user-password）→ Secret のキー名（E2E_USER_PASSWORD）。IADR-0570 決定 3 と同じ規則。
+          node scripts/gen-e2e-accounts.js \
+            | jq -r 'to_entries[] | "\(.key | ascii_upcase | gsub("-"; "_"))=\(.value)"' > "$RUNNER_TEMP/e2e-accounts.env"
+          while IFS='=' read -r _ v; do echo "::add-mask::$v"; done < "$RUNNER_TEMP/e2e-accounts.env"
+          test "$(grep -c '^E2E_' "$RUNNER_TEMP/e2e-accounts.env")" -eq 12
+          kubectl -n platform-infra create secret generic e2e-accounts --from-env-file="$RUNNER_TEMP/e2e-accounts.env" \
+            --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+          bash deploy/local/keycloak-setup/reconcile-realm.sh
+
+      # ルート CA を信頼させる（証明書の検証を外さない）。Node（readiness・API）は NODE_EXTRA_CA_CERTS、Chromium は NSS の DB。
+      - name: Trust the local edge CA
+        run: |
+          set -euo pipefail
+          kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > "$RUNNER_TEMP/edge-ca.pem"
+          test -s "$RUNNER_TEMP/edge-ca.pem"
+          sudo apt-get install -y -qq libnss3-tools >/dev/null
+          mkdir -p "$HOME/.pki/nssdb"
+          certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password 2>/dev/null || true
+          certutil -d "sql:$HOME/.pki/nssdb" -A -t "C,," -n local-edge-root-ca -i "$RUNNER_TEMP/edge-ca.pem"
+          echo "NODE_EXTRA_CA_CERTS=$RUNNER_TEMP/edge-ca.pem" >> "$GITHUB_ENV"
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: src
+      - name: Install Playwright browser
+        working-directory: src
+        run: pnpm --filter @platform/frontend exec playwright install --with-deps chromium
+
+      # 終了コード: 0 = 緑 / 2 = 前提未整備（readiness 門）/ それ以外 = 失敗。teardown が失効させられなければ 1。
+      - name: E2E live (E2E_LAYER=${{ env.E2E_LAYER }})
+        id: live
+        working-directory: src/platform/frontend
+        env:
+          E2E_LIVE: "1"
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/e2e-live.json
+        run: |
+          set -euo pipefail
+          set -a; . "$RUNNER_TEMP/e2e-accounts.env"; set +a
+          pnpm exec playwright test --config playwright.live.config.ts --reporter github,html,json
+
+      - name: 🔴 Gate — 全 skip を緑にしない（check-e2e-skips）
+        if: ${{ !cancelled() && (steps.live.outcome == 'success' || steps.live.outcome == 'failure') }}
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/e2e-live.json" || { echo "::error::JSON レポートが無い（前提未整備で 1 件も流れていない）"; exit 1; }
+          layers="$(node -e 'const m={ro:"live-ro",rw:"live-rw",trading:"trading",llm:"llm"};console.log(process.argv[1].split(",").map(s=>m[s.trim()]).filter(Boolean).join(","))' "$E2E_LAYER")"
+          node scripts/check-e2e-skips.js --report "$RUNNER_TEMP/e2e-live.json" --layers "$layers"
+
+      # 🔴 上げる前に走査する。資格情報の値が載っていれば赤にし、下の upload は走らない。
+      # アカウントを作る前に落ちた実行（スタックが起きない等）では、走査も upload もしない（本当の失敗を隠さない）。
+      # アカウントを作った後で値のファイルが消えているのは異常なので赤にする。
+      - name: 🔴 Gate — 成果物に資格情報が載っていない
+        id: artifact-scan
+        if: ${{ !cancelled() && steps.accounts.outcome == 'success' && steps.live.outcome != 'skipped' }}
+        run: |
+          set -euo pipefail
+          test -f "$RUNNER_TEMP/e2e-accounts.env" || { echo "::error::試験アカウントを作った後なのに値のファイルが無い（走査できない成果物は上げない）"; exit 1; }
+          node scripts/check-e2e-artifact-secrets.js \
+            --env-file "$RUNNER_TEMP/e2e-accounts.env" \
+            --scan src/platform/frontend/playwright-report \
+            --scan src/platform/frontend/test-results
+
+      - name: Upload report and traces
+        if: ${{ !cancelled() && steps.artifact-scan.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-live-report
+          path: |
+            src/platform/frontend/playwright-report
+            src/platform/frontend/test-results
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Dump cluster state (診断用・失敗時のみ)
+        if: failure()
+        run: |
+          set +e
+          kubectl get pods -A -o wide
+          kubectl get events -A --field-selector type=Warning --sort-by=.lastTimestamp | tail -60
+          # ログインの入口（BFF）と認可サーバ（Keycloak）の直近のログ。どちらも資格情報の値を出さない（BFF はトークンを、Keycloak は
+          # パスワード・OTP をログに書かない）。ジョブのログは公開なので、値を出すコンテナをここへ足さない。
+          echo "::group::bff-service logs"; kubectl -n microservices-platform logs deploy/bff-service --tail=150; echo "::endgroup::"
+          echo "::group::keycloak logs"; kubectl -n platform-infra logs deploy/keycloak --tail=80; echo "::endgroup::"
+
+      - name: Tear down
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/e2e-accounts.env"
+          k3d cluster delete "${CLUSTER}" || true
+
+  # 日次・dispatch の失敗を issue にする（PR では起票しない）。
+  report-failure:
+    needs: [e2e-live]
+    if: always() && github.event_name != 'pull_request' && contains(needs.*.result, 'failure')
+    uses: ./.github/workflows/ci-failure-issue.yml
+    with:
+      marker_key: e2e-live
+    permissions:
+      contents: read
+      issues: write
+      # 失敗ジョブ名の取得（listJobsForWorkflowRun）に要る。呼ばれる側の report ジョブと同じ範囲を与える（#1588）。
+      actions: read

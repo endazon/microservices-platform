@@ -262,6 +262,40 @@ test('ログアウトに失敗した役割があれば、名前だけを出し�
   }
 });
 
+test('OTP の後に Keycloak が必須アクションを求めたら、待ち続けずにそう言って落ちる（#2026 の初回の失敗の形）', async () => {
+  const fake = await startFakeLiveStack({ requiredActionFor: 'user' });
+  const authDir = mkdtempSync(join(tmpdir(), 'e2e-live-auth-'));
+  try {
+    const started = Date.now();
+    const r = await runLiveAsync({
+      E2E_LIVE: '1',
+      E2E_EDGE_URL: fake.edgeUrl,
+      E2E_KC_URL: fake.kcUrl,
+      E2E_AUTH_DIR: authDir,
+      ...fake.credentials,
+    });
+    expect(r.status, r.out).not.toBe(0);
+    expect(r.out).toContain(
+      'Keycloak が必須アクションを求めている（フォーム: kc-totp-settings-form）',
+    );
+    // 失敗した段の attach は origin と path だけ（query の state・code・sid を出さない）。BFF の入口の状態と Location の origin も出す。
+    expect(r.out).toContain(`url: ${fake.kcUrl}/realms/platform/login-actions/required-action`);
+    expect(r.out).not.toContain('execution=');
+    // Keycloak の画面の表示文言・フォーム・OTP の欄の有無（入力値は読まない）。
+    expect(r.out).toContain(
+      'keycloak messages: アカウントを有効にするには認証アプリを設定してください',
+    );
+    expect(r.out).toContain('keycloak forms: kc-totp-settings-form');
+    expect(r.out).toContain('#otp field: 無い');
+    expect(r.out).not.toMatch(/[?&](state|code|session_state)=/);
+    // 60 秒の timeout まで待たない（ほかの 5 役割と teardown を含めて短く終わる）。
+    expect(Date.now() - started).toBeLessThan(45_000);
+  } finally {
+    await fake.close();
+    rmSync(authDir, { recursive: true, force: true });
+  }
+});
+
 test('process.loadEnvFile は既に在る名前（空を含む）を上書きしない（手元の .env.e2e が子プロセスの試験を変えない根拠）', () => {
   const dir = mkdtempSync(join(tmpdir(), 'e2e-live-env-'));
   try {

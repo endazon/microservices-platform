@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
-issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025]
+iadrs: [IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+specs: [20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
+issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
 -->
 
 # E2E テスト基準
@@ -152,7 +152,8 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025]
 - **L1**: 契約フィクスチャと orval 生成型（`bff.schemas.ts`）から組む。手書きの JSON を増やさない。
 - **L2**: seed（`abac-seed` / `search-seed` / `tag-seed`、realm JSON）に依存する。seed の有無は test の先頭で確かめ、
   無ければ `test.skip(true, '<seed 名> 未投入')` で**理由付きの skip** にする。**全 skip は赤にする**
-  （門は依存ごとに訊き、全部が skip なら緑にしない。**目標**: `scripts/check-e2e-skips.js` で検査する）。
+  （門は依存ごとに訊き、全部が skip なら緑にしない。**［2026-10-24］`scripts/check-e2e-skips.js` が `e2e-live.yml` で検査する**:
+  test を持つ project の全部が skip、または skip でない test が 0 件なら赤。選んだ層に spec がまだ無いときは警告だけ）。
 - **L3**: 作るものには `e2e-<runId>-` 接頭辞を必ず付け、afterEach で削除する。削除 API が無いもの（履歴・監査行）は
   作らないか、残ることを網羅表に明記する。履歴を見るテストは「自分の行が増えた」ことだけを見て、絶対件数を見ない。
 - **sweep**: 残骸を掃く `scripts/e2e-live-sweep.js --live --older-than 24h`（接頭辞一致・作成日時。**目標**）を
@@ -239,11 +240,17 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025]
 | --- | --- | --- | --- | --- |
 | L1 | `frontend.yml` の `e2e-shard` ジョブ（2 シャード）と、まとめる `e2e` ジョブ（check 名は `e2e`） | PR・push（フロントの `paths:` に当たるとき） | いいえ（`paths:` を持つため。§2.1） | blob/html report・trace（常時・14 日） |
 | （Keycloak のテーマの axe） | `keycloak-theme-a11y.yml` の `keycloak-theme-a11y` ジョブ（現状あり。使い捨ての Keycloak をジョブの中で起こす） | テーマ・realm・compose・axe の土台を変える PR・push、dispatch | いいえ | 失敗時のみ html report・test-results（7 日） |
-| L2 | `e2e-live.yml`（**目標**。統合スタックの k3d 上、または稼働中の PoC に対する self-hosted runner） | nightly・dispatch | いいえ | 同上 ＋ skip 一覧 |
+| L2 | `e2e-live.yml` の `e2e-live` ジョブ（**［2026-10-24］配備**。統合スタックの k3d 上。稼働中の PoC に対する self-hosted runner は未配備） | nightly・dispatch・live の土台を変える PR | いいえ | html report・test-results（`!cancelled()`・14 日。**上げる前に資格情報の値を走査**し、載っていれば赤にして上げない）＋ skip 一覧（step summary） |
 | L3 / L3-T / L3-L | 同 `e2e-live.yml` の `workflow_dispatch` 入力 `layer`（`rw` / `trading` / `llm`）を `E2E_LAYER` へ渡す。`trading` は閉場判定を job の先頭に置く | dispatch のみ | いいえ | 同上 ＋ 復元ログ |
 
 - live 層の job の先頭で、対象イメージの作成時刻と develop の HEAD の日付を比べ、7 日より古ければ `::warning::` を出して
   結果に注記する（判定は落とさない。古いイメージに対する結果を新しいコードの結果と取り違えないため）。
+  **［2026-10-24］** `e2e-live.yml` は使い捨てのスタックを同じチェックアウトから建てるので、イメージは常にその時点のコードである（比べる対象が無い）。
+  常設の PoC へ流す経路を足すときに置く。
+- **`e2e-live.yml` の秘密の扱い**: リポジトリの secret を使わない。試験アカウントの資格情報はジョブの中で乱数から作り（`gen-e2e-accounts.js` →
+  Secret `platform-infra/e2e-accounts` → realm の後追い）、ログで伏せ、ジョブの終わりにスタックごと消える。そのため pull_request（fork を含む）で
+  走っても渡る秘密が無い。層の trace に載るセッション cookie は teardown が失効させ（失効できなければ赤）、スタックも消えるので、BFF のセッションの
+  寿命（30 日）が成果物の保存（14 日）より長くても使い道が残らない。常設の PoC へ流すときはこの前提が崩れるので見直す。
 - 稼働中の PoC での流し方（試験アカウントの供給・TOTP・到達先・閉場判定と復元・LLM 費用の上限）は別資料にあり、
   live 層を配備する変更で本書の節として取り込む。
 
@@ -258,7 +265,7 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025]
 | L1 のシャード | 2（2026-10-24） | 1 シャードあたり 10 分以内（§10） |
 | axe のタグ | `wcag2a` / `wcag2aa` / `wcag21a` / `wcag21aa` / `wcag22aa` / `best-practice`（達成済み） | 同左 |
 | axe の走査面 | SPA の全画面 ＋ 操作後の UI ＋ Keycloak のテーマの画面（達成済み。Keycloak のテーマの画面は使い捨ての Keycloak で走査する） | 同左 |
-| live のブラウザ E2E | なし（curl の `scripts/verify-oidc-edge-flow.sh` だけ） | L2〜L3 を新設。curl の検証は残す（API 層の門として役割が違う） |
+| live のブラウザ E2E | ~~なし~~ 統合スタック（k3d）上の L2 の土台（`e2e-live.yml`。2026-10-24。spec は後続）。curl の `scripts/verify-oidc-edge-flow.sh` も残る | L2〜L3 を新設。curl の検証は残す（API 層の門として役割が違う） |
 | 試験アカウント | seed の `developer` 等を人と共用 | `e2e-*` を役割ごとに分離 |
 | 視覚回帰 | なし | 既定で採らない（候補 1 件） |
 | flaky の集計 | ~~なし~~ L1 は件数の集計・警告・3 回連続の自動起票（2026-10-24） | 件数の収集と自動起票（隔離はしない） |

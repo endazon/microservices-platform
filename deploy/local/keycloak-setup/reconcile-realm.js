@@ -173,6 +173,8 @@ const DEV_SECRETS_ALLOWED_ENV = 'DEV_CLIENT_SECRETS_ALLOWED';
 const SEED_USER_SELF_SERVICE_ROLES = Object.freeze({ account: Object.freeze(['view-profile', 'manage-account']) });
 // 利用者の作成時に POST /users が処理しないもの（作成後にロール割当の端点で当てる）。
 const USER_CREATE_SKIP_KEYS = new Set(['realmRoles', 'clientRoles', 'serviceAccountClientId', 'id']);
+// ［2026-10-25 / #2026］作成の後に requiredActions を当て直す PUT が載せないもの（PUT はこれらを扱わない／資格情報を二度送らない）。
+const USER_UPDATE_SKIP_KEYS = new Set(['credentials', 'groups', 'federatedIdentities']);
 
 // ---------------------------------------------------------------- 比較（純粋関数）
 
@@ -518,6 +520,18 @@ function plan(desired, live) {
       postSteps.push({ method: 'POST', pathSuffix: `/role-mappings/clients/${cr.clientUuid}`, body: cr.refs });
     }
     if (blocked) { defer(`user ${user.username}`, blocked); continue; }
+    // ［2026-10-25 / #2026］宣言の requiredActions を作成の後に PUT で当て直す。🔴 POST /users は宣言の requiredActions を
+    // **足すだけで外さない**: 作成は realm の defaultAction（本 realm では CONFIGURE_TOTP）を付けた利用者を作り、
+    // `UserResource.updateUserFromRep(…, isUpdateExistingUser=false)` は宣言に無い action を消さない（Keycloak 26.7.4 の
+    // `removeMissingRequiredActions = isUpdateExistingUser`）。更新（PUT）は消す。realm の取り込み（--import-realm）は
+    // 既定の action を付けないので、この差は Job で作った利用者にだけ出る（e2e-live の実行で e2e-* 6 名が OTP の後に
+    // 「OTP の登録」へ送られた）。body は作成と同じ宣言から資格情報・グループを除いたもの（PUT はそれらを扱わない）。
+    // 既存の利用者（上の `cur`）はここへ来ないので当て直さない。宣言が requiredActions を持たない利用者にも当てない。
+    // PUT の失敗は reconcile 全体の失敗にする（applyOps の errors → exitCodeFor。作成だけ済んで黙って緑にしない）。
+    if (Array.isArray(user.requiredActions)) {
+      postSteps.push({ method: 'PUT', pathSuffix: '', label: 'user.update', reason: 'requiredActions を宣言へ当て直す（作成は既定の action を外さない）',
+        body: pick(user, (k) => !USER_CREATE_SKIP_KEYS.has(k) && !USER_UPDATE_SKIP_KEYS.has(k)) });
+    }
     add({ op: 'user.create', target: user.username, method: 'POST', path: `${R}/users`,
       body: pick(user, (k) => !USER_CREATE_SKIP_KEYS.has(k)), postSteps, reason: 'seed 利用者が無い' });
   }
@@ -859,18 +873,62 @@ async function applyOps(kc, realmName, ops) {
       continue;
     }
     applied += 1;
+    const stepLines = [];
     if (op.op === 'user.create' && (op.postSteps || []).length > 0) {
       const found = (await kc.get(`${R}/users?username=${encodeURIComponent(op.target)}&exact=true`)) || [];
       const id = found[0] && found[0].id;
       if (!id) { errors.push(`user.create ${op.target}: 作成後に利用者を引けない`); continue; }
       for (const step of op.postSteps) {
+        // 409（作成の前から在った利用者）には当て直さない —— 既存の利用者の requiredActions は実行時が所有する。
+        if (r.status === 409 && step.label) {
+          stepLines.push(`    skipped   ${step.label.padEnd(24)} ${op.target} — 作成の前から在った（409）。既存の利用者は当て直さない`);
+          continue;
+        }
         const s = await kc.call(step.method, `${R}/users/${id}${step.pathSuffix}`, step.body);
-        if (!s.ok) errors.push(`user.create ${op.target} ${step.pathSuffix}: HTTP ${s.status} ${s.text.slice(0, 200)}`);
+        if (!s.ok) {
+          errors.push(`${step.label || 'user.create'} ${op.target} ${step.pathSuffix || '(本体)'}: HTTP ${s.status} ${s.text.slice(0, 200)}`);
+        } else if (step.label) {
+          stepLines.push(`    applied   ${step.label.padEnd(24)} ${op.target} — ${step.reason}`);
+        }
       }
     }
     console.log(`    applied   ${describe(op)}`);
+    for (const line of stepLines) console.log(line);
   }
   return { applied, errors };
+}
+
+/**
+ * 1 つの realm を計画し、apply なら当てて計画し直す（MAX_PASSES まで）。`collect` は試験で差し替える（既定 collectLive）。
+ * ［2026-10-25 / #2026］当てられなかった操作の数（applyErrors）を返す —— 作成の後の手順の失敗は再計画の差分に戻らないことがある。
+ */
+async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = collectLive }) {
+  let ops = plan(desired, await collect(kc, desired));
+  let applied = 0;
+  let guardBlocked = 0;
+  let applyErrors = 0;
+  if (mode === 'apply') {
+    for (let pass = 1; pass <= MAX_PASSES && ops.length > 0; pass += 1) {
+      // #1830 / IADR-0517: 対象のクライアントを宣言の dev の値で作る操作があり、許されていなければ、この realm には何も書かない。
+      const blocked = devSecretCreations(ops);
+      if (blocked.length > 0 && !devSecretsAllowed) {
+        console.error(`    ERROR サービスアカウントを持つ機密クライアントを公知の dev の値で作る操作がある: ${blocked.join(', ')}。`
+          + ` dev ではない kube context なので、この realm には何も書かない（${DEV_SECRETS_ALLOWED_ENV}=allow でない。#1830）。`
+          + ' 先に認証基盤へ dev 以外の secret で作るか、dev のクラスタなら ALLOW_DEV_CLIENT_SECRETS=1 で再実行する');
+        guardBlocked += blocked.length;
+        break;
+      }
+      if (blocked.length > 0) console.error(`    WARN サービスアカウントを持つ機密クライアントを宣言の dev の値で作る（許可済み）: ${blocked.join(', ')}`);
+      console.log(`    pass ${pass}: ${ops.length} 件`);
+      for (const op of ops) if (op.op === 'deferred') console.log(`    ${describe(op)}`);
+      const r = await applyOps(kc, desired.realm, ops);
+      applied += r.applied;
+      for (const e of r.errors) console.error(`    ERROR ${e}`);
+      applyErrors += r.errors.length;
+      ops = plan(desired, await collect(kc, desired));
+    }
+  }
+  return { ops, applied, guardBlocked, applyErrors };
 }
 
 function readRealmFiles(dir) {
@@ -924,38 +982,32 @@ async function main() {
   let drift = 0;
   let guardBlocked = 0;
   let applied = 0;
+  let applyErrors = 0;
   for (const { file, desired: declared } of realms) {
     console.log(`==> realm '${declared.realm}' (${file}) mode=${mode}`);
     // #2024 / IADR-0570: 試験アカウントの資格情報を差し込む。差し込めない利用者は作らない（drift にも数えない）。
     const { desired, skipped } = resolveE2eCredentials(declared, process.env);
     for (const s of skipped) console.log(`    ${describeSkipped(s)}`);
-    let ops = plan(desired, await collectLive(kc, desired));
-    if (mode === 'apply') {
-      for (let pass = 1; pass <= MAX_PASSES && ops.length > 0; pass += 1) {
-        // #1830 / IADR-0517: 対象のクライアントを宣言の dev の値で作る操作があり、許されていなければ、この realm には何も書かない。
-        const blocked = devSecretCreations(ops);
-        if (blocked.length > 0 && !devSecretsAllowed) {
-          console.error(`    ERROR サービスアカウントを持つ機密クライアントを公知の dev の値で作る操作がある: ${blocked.join(', ')}。`
-            + ` dev ではない kube context なので、この realm には何も書かない（${DEV_SECRETS_ALLOWED_ENV}=allow でない。#1830）。`
-            + ' 先に認証基盤へ dev 以外の secret で作るか、dev のクラスタなら ALLOW_DEV_CLIENT_SECRETS=1 で再実行する');
-          guardBlocked += blocked.length;
-          break;
-        }
-        if (blocked.length > 0) console.error(`    WARN サービスアカウントを持つ機密クライアントを宣言の dev の値で作る（許可済み）: ${blocked.join(', ')}`);
-        console.log(`    pass ${pass}: ${ops.length} 件`);
-        for (const op of ops) if (op.op === 'deferred') console.log(`    ${describe(op)}`);
-        const r = await applyOps(kc, desired.realm, ops);
-        applied += r.applied;
-        for (const e of r.errors) console.error(`    ERROR ${e}`);
-        ops = plan(desired, await collectLive(kc, desired));
-      }
-    }
+    const r = await reconcileRealm(kc, desired, { mode, devSecretsAllowed });
+    const ops = r.ops;
+    applied += r.applied;
+    guardBlocked += r.guardBlocked;
+    applyErrors += r.applyErrors;
     for (const op of ops) console.log(`    drift     ${describe(op)}`);
     if (ops.length === 0) console.log('    一致（差分なし）');
     drift += ops.length;
   }
   console.log(`realms=${realms.length} drift=${drift} applied=${applied}`);
-  if (drift > 0 || guardBlocked > 0) process.exitCode = 1;
+  if (applyErrors > 0) console.error(`ERROR: 当てられなかった操作が ${applyErrors} 件（上の ERROR の行）`);
+  process.exitCode = exitCodeFor({ drift, guardBlocked, applyErrors }) || process.exitCode;
+}
+
+/**
+ * ［2026-10-25 / #2026］終了コード。**純関数**。差分が残る・守りで止めた・当てられなかった操作がある、のいずれでも 1。
+ * 当てられなかった操作は再計画で差分に戻らないことがある（作成の後の手順。利用者は在るので drift 0 になる）ため、別に数える。
+ */
+function exitCodeFor({ drift, guardBlocked, applyErrors }) {
+  return drift > 0 || guardBlocked > 0 || applyErrors > 0 ? 1 : 0;
 }
 
 if (require.main === module) {
@@ -966,6 +1018,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  applyOps, exitCodeFor, reconcileRealm, USER_UPDATE_SKIP_KEYS,
   plan, planMappers, collectLive, contains, merge, describe, gateHoldsClosed,
   devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, isDevSecretGuardedClient, devSecretGuardedClients,
   DEV_SECRETS_ALLOWED_ENV,

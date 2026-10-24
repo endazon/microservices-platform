@@ -54,7 +54,7 @@ Job（`node:22-alpine`・`platform-infra`）は **ConfigMap `keycloak-realms`**�
 
 | 層 | 対象 | 扱い |
 | --- | --- | --- |
-| 宣言（realm JSON が正） | realm の非コレクション設定 / `requiredActions` / realm・client ロール / グループ / client scopes ＋ mappers / clients（属性・redirect・scope 割当 ＋ mappers）/ **seed 利用者の存在** / サービスアカウント利用者のロールと属性 | 差分があれば当てる。集合欄は宣言が全集合、実体は加算的（余剰は消さない） |
+| 宣言（realm JSON が正） | realm の非コレクション設定 / `requiredActions` / realm・client ロール / グループ / client scopes ＋ mappers / clients（属性・redirect・scope 割当 ＋ mappers）/ **seed 利用者の存在**（作成したときだけ、宣言が `requiredActions` を持てば作成の後に PUT で当て直す。Keycloak の作成は realm の既定の action を外さないため。#2026 / IADR-0625） / サービスアカウント利用者のロールと属性 | 差分があれば当てる。集合欄は宣言が全集合、実体は加算的（余剰は消さない） |
 | 宣言（**作成時だけ**） | client の `secret`（開発用の値） | client が無いとき（と realm が無いとき）にだけ宣言の値で作る。**既存の client では比べず・書かず・読まない** |
 | 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション／**既存の client の `secret`** | **触らない**（例外は次の行） |
 | 宣言（**加えるだけ**。#1894 / IADR-0546） | 既存の人の seed 利用者の `account` の `view-profile`・`manage-account`（`SEED_USER_SELF_SERVICE_ROLES`） | 実効の割当に無ければ加える。外さない。他のロールは触らない |
@@ -127,6 +127,8 @@ seed 利用者の宣言（例: `requiredActions`）を変えて既存クラス�
 
 `apply` は「計画 → 適用 → 再計画」を最大 3 周し、最後の計画が 0 件でなければ非 0 で終える。`--check` は計画だけ。
 標準出力の最終行 `realms=<n> drift=<m> applied=<k>` を **`scripts/check-stack-ready.js` の G9** が読む（fail-closed）。
+当てられなかった操作（作成の後の手順の失敗を含む）が 1 件でもあれば Job は失敗する（再計画が差分 0 でも。#2026 / IADR-0625）。
+
 up.sh からの呼び出しは **fail-closed**（失敗したら helm へ進まず非 0 で止まる。IADR-0523 / #1846。旧: best-effort の WARN）。稼働の門は引き続き G9 が持つ。
 
 計画器（`plan(desired, live)`）は純粋関数で、`node scripts/keycloak-realm-reconcile.test.js` が

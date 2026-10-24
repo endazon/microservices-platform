@@ -42,18 +42,73 @@ async function fillSecret(locator: Locator, value: string): Promise<void> {
   }, value);
 }
 
-/** 失敗した段を残す。URL は path だけ（query には state・code が載る）。値は残さない。 */
+/** URL の origin（スキーム・ホスト・ポート）と path だけ。query と fragment（state・code・sid が載る）は出さない。 */
+function originAndPath(raw: string): string {
+  try {
+    const u = new URL(raw);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return '（URL ではない）';
+  }
+}
+
+/**
+ * Keycloak の画面に出ている表示文言（エラー・案内）と、OTP の欄・フォームの有無。表示文言は秘密ではない（入力値は読まない）。
+ * Keycloak の画面のときだけ読む（アプリの画面の文言は載せない）。
+ */
+async function keycloakScreen(page: Page): Promise<string[]> {
+  let origin = '';
+  try {
+    origin = new URL(page.url()).origin;
+  } catch {
+    return [];
+  }
+  if (origin !== cfg.kcUrl) return [];
+  const texts = await page
+    .locator(
+      '#input-error, [id^="input-error"], .alert-error, .pf-m-danger, .kc-feedback-text, #kc-feedback-text',
+    )
+    .allInnerTexts()
+    .catch(() => [] as string[]);
+  const shown = [...new Set(texts.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean))].map(
+    (t) => t.slice(0, 200),
+  );
+  const forms = await page
+    .locator('form[id]')
+    .evaluateAll((els) => els.map((e) => String((e as unknown as { id: string }).id)))
+    .catch(() => [] as string[]);
+  const otp = await page
+    .locator('#otp')
+    .count()
+    .catch(() => -1);
+  return [
+    `keycloak messages: ${shown.length > 0 ? shown.join(' | ') : '（なし）'}`,
+    `keycloak forms: ${forms.join(', ') || '（なし）'}`,
+    `#otp field: ${otp > 0 ? 'ある' : otp === 0 ? '無い' : '（取れない）'}`,
+  ];
+}
+
+/** 失敗した段を残す。URL は origin と path だけ。値は残さない。`notes` は段が集めた診断（同じく値を含めない）。 */
 async function stage<T>(
   testInfo: TestInfo,
   page: Page,
   name: string,
-  run: () => Promise<T>,
+  run: (notes: string[]) => Promise<T>,
 ): Promise<T> {
+  const notes: string[] = [];
   try {
-    return await run();
+    return await run(notes);
   } catch (e) {
     await testInfo.attach('failed-stage', {
-      body: `stage: ${name}\npath: ${new URL(page.url()).pathname}\n`,
+      body:
+        [
+          `stage: ${name}`,
+          `url: ${originAndPath(page.url())}`,
+          `title: ${await page.title().catch(() => '（取れない）')}`,
+          `expected keycloak origin: ${cfg.kcUrl}`,
+          ...(await keycloakScreen(page)),
+          ...notes,
+        ].join('\n') + '\n',
       contentType: 'text/plain',
     });
     throw e;
@@ -66,8 +121,19 @@ async function logIn(page: Page, testInfo: TestInfo, role: Role): Promise<void> 
   const secret = process.env[names.totpSecret] ?? '';
   const username = `e2e-${role}`;
 
-  await stage(testInfo, page, 'ログイン画面', async () => {
-    await page.goto('/bff/auth/login?returnUrl=%2F');
+  await stage(testInfo, page, 'ログイン画面', async (notes) => {
+    // 診断: BFF のログインの入口が返す状態と Location の origin（だけ）を残す。ブラウザの遷移とは別の要求で、ログインの試行には数えない。
+    const probe = await page.request.get('/bff/auth/login?returnUrl=%2F', {
+      maxRedirects: 0,
+      failOnStatusCode: false,
+    });
+    notes.push(
+      `bff /bff/auth/login: ${probe.status()} → Location ${originAndPath(probe.headers()['location'] ?? '')}`,
+    );
+    const landed = await page.goto('/bff/auth/login?returnUrl=%2F');
+    notes.push(
+      `browser landed: ${landed ? landed.status() : '応答なし'} ${originAndPath(page.url())}`,
+    );
     await page.waitForURL((url) => url.origin === cfg.kcUrl);
     await expect(page.locator('#kc-form-login')).toBeVisible();
     await page.locator('#username').fill(username);
@@ -80,7 +146,22 @@ async function logIn(page: Page, testInfo: TestInfo, role: Role): Promise<void> 
     await page.locator('#kc-login').click();
   });
   await stage(testInfo, page, 'コールバック', async () => {
-    await page.waitForURL((url) => url.origin === cfg.edgeUrl && !url.pathname.startsWith('/bff/'));
+    // Keycloak が必須アクション（OTP の登録・パスワードの更新など）の画面へ送ったら、待ち続けずにそう言って落とす
+    // （#2026 の初回の実行で、宣言に requiredActions が無い試験アカウントに既定の CONFIGURE_TOTP が付き、ここで 60 秒待った）。
+    await page.waitForURL(
+      (url) =>
+        (url.origin === cfg.edgeUrl && !url.pathname.startsWith('/bff/')) ||
+        (url.origin === cfg.kcUrl && url.pathname.includes('/login-actions/required-action')),
+    );
+    if (new URL(page.url()).pathname.includes('/login-actions/required-action')) {
+      const forms = await page
+        .locator('form[id]')
+        .evaluateAll((els) => els.map((e) => String((e as unknown as { id: string }).id)));
+      throw new Error(
+        `Keycloak が必須アクションを求めている（フォーム: ${forms.join(', ') || '不明'}）。試験アカウントに requiredActions が残っている` +
+          '（realm の宣言は requiredActions: [] を明示し、reconcile-realm の Job は作成の後に PUT で当て直す。既存の利用者は管理コンソールで外すか、消して作り直す）',
+      );
+    }
     const me = await page.request.get('/bff/auth/me');
     expect(me.status(), '/bff/auth/me（ログインの後）').toBe(200);
     // 身元の口は名前・subject・ロールを返す（トークンは返さない）。ロールで「その役割として入った」ことを確かめる。

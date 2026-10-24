@@ -8478,6 +8478,8 @@ ${r.stderr}`);
       'claude-coding.yml:claude': { actions: 'read', contents: 'write', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
       'codeql.yml:analyze': { actions: 'read', 'security-events': 'write' },
       'codeql.yml:report-failure': { actions: 'read', issues: 'write' },
+      // #2026 / IADR-0625: live E2E の日次・dispatch の失敗の起票（ci-failure-issue.yml の呼び出し。#1588 と同じ範囲）
+      'e2e-live.yml:report-failure': { actions: 'read', issues: 'write' },
       // #2037 / IADR-0623: 直前の develop の実行の成果物を `gh run list` / `gh run download` で読む（actions: read）・
       // 3 回連続 flaky の test の専用 issue を起票・追記する（issues: write）。develop への push だけで走る
       'frontend.yml:e2e-flaky-issue': { actions: 'read', issues: 'write' },
@@ -9106,7 +9108,12 @@ ${r.stderr}`);
         //    新設したため 63 → 64（ラチェットが設計どおり発火した）。🔴 **「同型の事故が 2 回」ではなく基準書
         //    （docs/tests/E2E_STANDARDS.md §10）と親 #2013 の分割案 E-73 の名指しに基づく新設である。** git を一切呼ばず、
         //    引数なしでは使い方を出して exit 2 するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 64, `検査器の母集合が 64 本から変わった（${scripts.length} 件）`);
+        // ★ #2026 / IADR-0625 で `check-e2e-skips.js`（live E2E の JSON レポートで全 skip の project を赤にする）と
+        //    `check-e2e-artifact-secrets.js`（live E2E の成果物を上げる前に、試験アカウントの資格情報の値の有無を zip の中まで走査する）を
+        //    新設したため 64 → 66。🔴 **「同型の事故が 2 回」ではなく基準書 §6・§11 と親 #2013 の分割案 E-32 の名指し**（前者）と、
+        //    IADR-0624 の実測（`fill` の値がレポートに出た）に基づく新設である（後者）。どちらも git を一切呼ばず、引数なしでは使い方を出して
+        //    exit 2 するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 66, `検査器の母集合が 66 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -13622,6 +13629,69 @@ exit $RC
         const m = new RegExp(`^  ${event}:\\n[\\s\\S]*?^    paths:\\n([\\s\\S]*?)(?=^  [a-z_]+:|^[a-z])`, 'm').exec(wf);
         assert.ok(m && m[1].includes('"scripts/check-e2e-flaky.js"'), `${event}.paths に検査器本体が無い`);
       }
+    });
+
+    // --- NFR / #2026 / IADR-0625: live E2E（e2e-live.yml）の門 ------------------------------------------------------
+    for (const [file, names] of [
+      ['check-e2e-skips.js', ['ある project の test がすべて skip なら赤', 'skip でない test が 0 件なら赤', 'test が 0 件のレポートは例外']],
+      ['check-e2e-artifact-secrets.js', ['1 つも読めなければ例外', 'trace の zip（deflate）の中の値を見つける', '埋め込む base64 の zip', '壊れた zip は例外', 'base32 形', '値の base64 形', 'Basic 認証', '入れ子が上限を超えたら例外']],
+    ]) {
+      ok(`#2026: ${file} の自己試験が通る`, () => {
+        const r = spawnA(process.execPath, [pathA.join(__dirname, file), '--self-test'], { cwd: ROOT_A, encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+        for (const name of names) assert.ok(r.stdout.includes(name), `自己試験から「${name}」が消えた`);
+      });
+    }
+
+    ok('#2026: e2e-live.yml の層 → project 名の対応表が playwright.live.config.ts の project 名と一致する', () => {
+      // 対応表がずれると check-e2e-skips の --layers が実在しない project を指し、「層に spec が無い」の警告に紛れて全 skip を見逃す。
+      const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/e2e-live.yml'), 'utf8');
+      const cfg = fsA.readFileSync(pathA.join(ROOT_A, 'src/platform/frontend/playwright.live.config.ts'), 'utf8');
+      const mapSrc = /const m=\{([^}]*)\}/.exec(wf);
+      assert.ok(mapSrc, 'e2e-live.yml に層の対応表（const m={…}）が無い');
+      const map = Object.fromEntries([...mapSrc[1].matchAll(/(\w+):"([^"]+)"/g)].map((m) => [m[1], m[2]]));
+      const block = /const LAYER_PROJECTS[^=]*=\s*\{([\s\S]*?)\n\};/.exec(cfg);
+      assert.ok(block, 'playwright.live.config.ts に LAYER_PROJECTS が無い');
+      const projects = Object.fromEntries([...block[1].matchAll(/\n  (\w+): \{\n    name: '([^']+)'/g)].map((m) => [m[1], m[2]]));
+      assert.strictEqual(Object.keys(projects).length, 4, `LAYER_PROJECTS を 4 層読めない（${JSON.stringify(projects)}）`);
+      assert.deepStrictEqual(map, projects, 'e2e-live.yml の層 → project 名の対応表が config とずれている');
+    });
+
+    ok('#2026: OTP の資格情報を宣言する利用者は requiredActions を明示し、CONFIGURE_TOTP を持たない', () => {
+      // realm の requiredActions で CONFIGURE_TOTP が defaultAction（新しい利用者すべてに付く）である。宣言に requiredActions が
+      // 無い利用者を Admin REST API（reconcile-realm.js）で作ると、OTP の資格情報を持ったまま「OTP の登録」の画面へ送られ、
+      // live の setup が全役割で止まる（#2026 の e2e-live の初回の実行で実測。6 役割とも /login-actions/required-action）。
+      const realm = JSON.parse(fsA.readFileSync(pathA.join(ROOT_A, 'deploy/keycloak/microservices-platform-realm.json'), 'utf8'));
+      const def = (realm.requiredActions || []).find((x) => x.alias === 'CONFIGURE_TOTP');
+      assert.ok(def, 'realm に CONFIGURE_TOTP の必須アクションの宣言が無い（読み方が壊れている）');
+      const otpUsers = (realm.users || []).filter((u) => (u.credentials || []).some((c) => c.type === 'otp'));
+      assert.ok(otpUsers.length >= 6, `OTP の資格情報を宣言する利用者が ${otpUsers.length} 名（e2e-* の 6 名が読めない）`);
+      const bad = otpUsers
+        .filter((u) => !Array.isArray(u.requiredActions) || u.requiredActions.includes('CONFIGURE_TOTP'))
+        .map((u) => u.username);
+      assert.deepStrictEqual(bad, [], 'OTP を宣言しているのに requiredActions を明示していない（既定の CONFIGURE_TOTP が付く）');
+    });
+
+    ok('#2026: e2e-live.yml は秘密を使わず、成果物を走査してから上げ、全 skip と teardown の失敗を赤にする', () => {
+      const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/e2e-live.yml'), 'utf8');
+      const code = wf.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+      // 🔴 リポジトリの secret を 1 つも使わない（pull_request・fork で走っても渡る秘密が無い）。
+      assert.doesNotMatch(code, /\$\{\{\s*secrets\./, 'e2e-live.yml が secrets を参照している');
+      assert.doesNotMatch(code, /pull_request_target/, 'pull_request_target は使わない');
+      // 起票は PR では走らない別ジョブだけ。
+      assert.match(code, /report-failure:\n\s+needs: \[e2e-live\]\n\s+if: always\(\) && github\.event_name != 'pull_request'/);
+      // 走査の門が上げる前にあり、上げるのは門が success のときだけ。
+      const scan = code.indexOf('node scripts/check-e2e-artifact-secrets.js');
+      const upload = code.indexOf('actions/upload-artifact@');
+      assert.ok(scan > 0 && upload > scan, '成果物の走査が upload より前に無い');
+      assert.match(code, /if: \$\{\{ !cancelled\(\) && steps\.artifact-scan\.outcome == 'success' \}\}\n\s+uses: actions\/upload-artifact@/);
+      assert.match(code, /node scripts\/check-e2e-skips\.js --report/);
+      // teardown の失敗（exit 1）を握り潰さない —— 実行のステップに continue-on-error や `|| true` を付けない。
+      const live = /- name: E2E live[\s\S]*?(?=\n      - name:)/.exec(code);
+      assert.ok(live, 'E2E live のステップが無い');
+      assert.doesNotMatch(live[0], /continue-on-error|\|\|\s*true/, 'live の実行の失敗（teardown の失効失敗を含む）を握り潰している');
+      // 証明書の検証を外さない。
+      assert.doesNotMatch(code, /E2E_INSECURE_TLS/, 'e2e-live.yml が証明書の検証を外している');
     });
   }
 
