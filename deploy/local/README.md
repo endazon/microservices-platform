@@ -341,6 +341,13 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
 既に在る KV は env を渡しても書き換わらない —— 認証基盤・データストアと対になる秘密を回すのは
 [対になる秘密のローテーション](../../docs/operations/paired-secret-rotation-runbook.md) の手順である。
 
+🔴 **`VAULT=1 ESO=1` の再実行では、`keycloak-smtp`・`reset-gate-oidc`・`abac-seeder-oidc`（platform-infra）を起動器が置き直さない**（IADR-0616・#2195）。
+既に在る Secret の値は Vault → ESO が持つ。起動器は ESO の段で同期を依頼し（force-sync）、依頼の後の同期を待ってから投入器と門・近接 MTA を動かす。
+**`warn: platform-infra/<名> が依頼の後に同期しません` が出たら、その後の投入器の WARN（401）を疑う。** その Secret は古い値のままかもしれない。
+`kubectl -n platform-infra get externalsecret <名>` が `SecretSynced` で、`status.refreshTime` が warn の後の時刻になったことを確かめる
+（同期しないなら `kubectl -n platform-infra describe externalsecret <名>` で理由を見る）。そのうえで投入器を流し直す
+（例: `node scripts/seed-abac-policies.js --live`。検索・タグの投入器も同じ）。
+
 🔴 **ブローカ（RabbitMQ）のサービスごとのユーザー**（IADR-0573・IADR-0577）: `VAULT=1 ESO=1` のとき、bootstrap が KV
 `msp/rabbitmq-users`・`ai-stock-trading/rabbitmq-users` を無いときだけ乱数で作り、起動器が
 `deploy/local/rabbitmq-setup/reconcile-users.sh` でブローカへユーザーと権限を合わせる（表は同じディレクトリの `users.txt`。値は表示しない）。

@@ -49,7 +49,7 @@ export function ThemeToggle() {
   const upcoming = nextTheme(choice, prefersDark);
   // マクロへ渡す式は**単純な識別子に限る**（`lingui/no-expression-in-message`）。
   // 翻訳済みの名前を先に変数へ落としてから埋める。
-  const currentName = i18n._(CHOICE_NAMES[choice]);
+  const visibleLabel = i18n._(CHOICE_LABELS[choice]);
   const upcomingName = i18n._(CHOICE_NAMES[upcoming]);
 
   return (
@@ -59,13 +59,18 @@ export function ThemeToggle() {
       onClick={cycleTheme}
       // **押した後どうなるかまで読み上げる。** 巡回ボタンは押すまで次が分からないため、
       // 名前が現在の状態だけだと「押してよいのか」を判断できない。
+      // NFR-30, WCAG 2.5.3（#2201）: **名前は見えている文言で始める**（Label in Name）。
+      // 音声操作の利用者は見えている文言（「表示: システム」）を言って押すため、名前がそれを含まないと届かない。
+      // 従前の「表示テーマの切替。現在は システム、…」は見えている文言を含まず、axe 4.14 の
+      // `label-content-name-mismatch` が全画面のヘッダで違反を出した。現在の状態は見えている文言が既に示すので、
+      // 後ろには「何のボタンか」と「押した後」だけを足す。
       aria-label={i18n._(
-        msg`表示テーマの切替。現在は ${currentName}、押すと ${upcomingName} になります`,
+        msg`${visibleLabel}（表示テーマの切替。押すと ${upcomingName} になります）`,
       )}
     >
       {/* アイコンは装飾。意味は隣の文言が担う。 */}
       <Icon className="size-4" aria-hidden />
-      <span>{i18n._(CHOICE_LABELS[choice])}</span>
+      <span>{visibleLabel}</span>
     </Button>
   );
 }
