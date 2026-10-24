@@ -137,6 +137,10 @@ msgstr "Select {title}"
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} result(s) (only documents you may access)"
 
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "{visibleLabel}（表示テーマの切替。押すと {upcomingName} になります）"
+msgstr "{visibleLabel} (switch the display theme; press to change it to {upcomingName})"
+
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "{writtenProperty} を更新しました（版 {writtenVersion}）。"
@@ -4555,10 +4559,6 @@ msgstr "Theme: Dark"
 #: platform/frontend/src/components/theme/ThemeToggle.tsx
 msgid "表示: ライト"
 msgstr "Theme: Light"
-
-#: platform/frontend/src/components/theme/ThemeToggle.tsx
-msgid "表示テーマの切替。現在は {currentName}、押すと {upcomingName} になります"
-msgstr "Switch the display theme. Currently {currentName}; press to change it to {upcomingName}"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "表示中"
