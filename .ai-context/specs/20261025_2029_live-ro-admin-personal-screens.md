@@ -32,7 +32,7 @@ issue: "#2029"
 | M-099 | SC-11 `/admin/config-viewer` | operator / user | operator: 見出し・`GET /bff/admin/config` 200。user: NotFound・BFF 404（存在秘匿） |
 | M-103 | SC-12 `/admin/mcp-clients` | admin | 見出し・一覧 200 |
 | M-108 | SC-17 `/admin/users` | admin | 見出し・一覧 200・`e2e-*` 6 名が居る |
-| M-113 | SC-22 `/admin/secrets` | operator | 見出し・一覧 200・応答に `value` の鍵が無い・値の列が無い |
+| M-113 | SC-22 `/admin/secrets` | operator | 見出し・一覧は 200（応答に `value` の鍵が無い）か、保管先が無い構成の 503（type が vault-not-configured / vault-unavailable・画面がその旨を出す）のどちらか。値の列は無い |
 
 ## 受け入れ基準（issue #2029）
 
@@ -47,6 +47,16 @@ issue: "#2029"
 3. 否定系は隣の役割で見る（IADR-0337）。M-091 は operator で SC-09 に加え SC-12・SC-17 も見る（同じ AdminOnly の境界）。M-099 の陰性は user（構成ビューアは 403 ではなく 404 で存在を秘匿する。`ConfigBffEndpoints`）。
 4. M-075 の行の破壊操作の不在は、行が在る状態でしか意味を持たないので、seed 文書が在る環境（`E2E_SEARCH_HITS=1`）でだけ判定する。「＋ 新規登録」と操作の列の不在は門なしで見る。
 5. 文言は ja のカタログから引く（`support/catalog.ts`）。seed のポリシー名・文書名は seed の宣言から読む（写さない）。
+
+## e2e-live で判明したこと（PR #2229 の初回）
+
+- **M-108**: SC-17 の利用者の列は 1 つのセルに表示名（例「E2E User」）とユーザー名を縦に並べる（`UserAccountManagementPage` の user 列）。
+  セルの名前の完全一致（`getByRole('cell', { name: 'e2e-user', exact: true })`）は当たらない —— **spec の誤り**。セルの中のユーザー名の行を引き、
+  あわせて `GET /bff/admin/users` の応答に 6 名が居ることを見る形に直した（L1 の `sc17-users.smoke.spec.ts` も部分一致で引いている）。
+- **M-113**: `GET /bff/secrets` が 503。BFF は Vault を配備していない構成で 503（`vault-not-configured`）を返す設計である
+  （`SecretItemBffEndpoints.VaultUnavailableAsync`・IADR-0453 決定 5）。`e2e-live.yml` の使い捨てスタックは VAULT を立てないので、
+  **製品は設計どおりで、spec の期待（常に 200）が環境を取り違えていた**。設計にある 2 つの形（200／503 と表示）のどちらかを確かめ、どちらの形でも値が出ない
+  ことを見る形に直した。どちらの形だったかは test の annotation に残す。CI で通るのは 503 の形だけであり、200 の形（値の鍵が無い）は Vault の在る PoC で確かめる。
 
 ## 検証
 

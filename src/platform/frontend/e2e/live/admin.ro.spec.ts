@@ -8,7 +8,7 @@
 //   UI の NotFound と、BFF の実効境界（AdminOnly は 403、構成ビューアは存在秘匿の 404）を同じ役割で見る。
 // - 文言は ja のカタログから引く（`support/catalog.ts`）。
 import { readFileSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page, type Response } from '@playwright/test';
 import { ja } from './support/catalog';
 import { parseLiveEnv, ROLES, stateFile, type Role } from './support/env';
 import { DEFAULT_AUTH_DIR } from './support/paths';
@@ -41,6 +41,30 @@ function hasKey(value: unknown, key: string): boolean {
   if (value !== null && typeof value === 'object')
     return Object.entries(value).some(([k, v]) => k === key || hasKey(v, key));
   return false;
+}
+
+/**
+ * SC-22 の一覧の応答を、設計にある 2 つの形のどちらかとして確かめる（IADR-0453 決定 5）。どちらでもなければ落とす。
+ * - `listed`: 200。応答のどの深さにも `value` の鍵が無い（値は書き込み専用）。
+ * - `store-not-deployed`: 503。problem の type が `vault-not-configured` / `vault-unavailable` で、画面がその旨を出す。
+ */
+async function secretsOutcome(page: Page, res: Response): Promise<string> {
+  if (res.status() === 200) {
+    expect(hasKey(await res.json(), 'value'), '応答の value').toBe(false);
+    return 'listed';
+  }
+  expect(res.status(), 'GET /bff/secrets').toBe(503);
+  const problem = (await res.json()) as { type?: string };
+  expect(problem.type ?? '', 'problem の type').toMatch(/\/vault-(not-configured|unavailable)$/);
+  await expect(
+    page.getByText(
+      ja(
+        '秘密情報の保管先（Vault）が構成されていないか、接続できません。保管先の稼働を確認してください。',
+      ),
+      { exact: true },
+    ),
+  ).toBeVisible();
+  return 'store-not-deployed';
 }
 
 /** SC-05 の破壊操作・作成の押しボタン（L1 の `sc05-documents.smoke.spec.ts` の M-073 と同じ集合）。 */
@@ -147,11 +171,13 @@ test.describe('e2e-operator の管理・運用の画面', () => {
     },
   );
 
-  // SC-22, NFR-18: M-113。値は一覧にも応答にも載らない（書き込み専用）。
+  // SC-22, NFR-18, IADR-0453 決定 5: M-113。値は一覧にも応答にも載らない（書き込み専用）。保管先（Vault）を配備していない構成では、
+  // 一覧の取得は設計どおり 503（problem の type が vault-not-configured / vault-unavailable）で、画面はその旨を出す。使い捨てのスタック
+  // （e2e-live.yml）は VAULT を立てないのでこちらの形になる。どちらの形でも値は出ない。どちらでもない応答は落とす。
   test(
-    'M-113: 秘密情報の管理に到達し、一覧の取得は 200 で、応答に値の鍵が無く、値の列も無い',
+    'M-113: 秘密情報の管理に到達し、一覧は 200（値の鍵も値の列も無い）か、保管先が無い構成の 503（その旨を表示）のどちらかになる',
     { tag: ['@p1', '@live-ro'] },
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
       const apis = ['/bff/secrets'];
       const { statuses, bodies } = await openScreen(
         page,
@@ -159,8 +185,9 @@ test.describe('e2e-operator の管理・運用の画面', () => {
         '秘密情報・接続設定の管理',
         apis,
       );
-      expect(statuses).toEqual(allOk(apis));
-      expect(hasKey(await bodies.get('/bff/secrets')?.json(), 'value'), '応答の value').toBe(false);
+      const outcome = await secretsOutcome(page, bodies.get('/bff/secrets')!);
+      testInfo.annotations.push({ type: 'SC-22 の一覧', description: outcome });
+      expect([200, 503], `GET /bff/secrets（${outcome}）`).toContain(statuses['/bff/secrets']);
       await expect(page.getByRole('columnheader', { name: ja('値'), exact: true })).toHaveCount(0);
     },
   );
@@ -212,10 +239,23 @@ test.describe('e2e-admin の管理者限定の画面', () => {
     { tag: ['@p1', '@live-ro'] },
     async ({ page }) => {
       const apis = ['/bff/admin/users'];
-      const { statuses } = await openScreen(page, '/admin/users', 'ユーザーアカウント管理', apis);
+      const { statuses, bodies } = await openScreen(
+        page,
+        '/admin/users',
+        'ユーザーアカウント管理',
+        apis,
+      );
       expect(statuses).toEqual(allOk(apis));
+      // 応答に 6 名が居る（UI の描き方に依らない）。
+      const body: unknown = await bodies.get('/bff/admin/users')?.json();
+      const usernames = JSON.stringify(body);
+      for (const role of ROLES) expect(usernames, `応答の e2e-${role}`).toContain(`"e2e-${role}"`);
+      // 画面にも居る。利用者の列は 1 つのセルに表示名とユーザー名を縦に並べる（`UserAccountManagementPage` の user 列）ので、
+      // セルの名前の完全一致ではなく、セルの中のユーザー名の行を引く。
       for (const role of ROLES)
-        await expect(page.getByRole('cell', { name: `e2e-${role}`, exact: true })).toBeVisible();
+        await expect(
+          page.getByRole('cell').getByText(`e2e-${role}`, { exact: true }),
+        ).toBeVisible();
     },
   );
 });
