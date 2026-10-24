@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — [E-42] live-ro: 個人・管理・運用画面の到達
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, NFR-18, FR-01, FR-05, FR-06, FR-09, FR-10, FR-12, FR-15, FR-16, FR-18, FR-19, FR-20, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, SC-12, SC-17, SC-19, SC-20, SC-21, SC-22, IADR-0035, IADR-0337, IADR-0626, IADR-0627]
 author: claude
 created: 2026-10-25
@@ -36,9 +36,9 @@ issue: "#2029"
 
 ## 受け入れ基準（issue #2029）
 
-- [ ] 各画面の h1 が出る —— 全行で `openScreen`（見出し＋画面が引く GET の 200 を同じ表示で）
-- [ ] operator は SC-09 で NotFound —— M-091（UI の NotFound ＋ BFF 403。同じ管理者限定の SC-12・SC-17 も）
-- [ ] PR の `e2e-live` が緑・skip 0・teardown 失効 6・成果物の走査 0
+- [x] 各画面の h1 が出る —— 全行で `openScreen`（見出し＋画面が引く GET の 200 を同じ表示で）。M-113 だけは設計の 2 形（200／503）のどちらかで、CI は 503（`vault-unavailable`）
+- [x] operator は SC-09 で NotFound —— M-091（UI の NotFound ＋ BFF 403。同じ管理者限定の SC-12・SC-17 も）
+- [x] PR の `e2e-live` が緑・skip 0・teardown 失効 6・成果物の走査 0 —— PR #2229・run 40128191360（head ba90d7b4）: 45 passed・skip 0・失効 6・走査 0
 
 ## 判断
 
