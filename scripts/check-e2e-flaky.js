@@ -16,7 +16,8 @@
  *      test ごとに `::warning::` を出す**（閾値 WARN_AT = 1）。終了コードは 0（flaky は PR を落とさない）。
  *   2. 連続の判定（`--history`）: develop の直前の実行の要約（同じ形の JSON）と突き合わせ、
  *      **同じ test が直近 STREAK（= 3）回連続で flaky** なら「再発」とする。履歴が STREAK-1 件に満たなければ判定しない。
- *      要約が無い実行（シャードが落ちてまとめられなかった等）は履歴に入らない（＝連続を作らない側へ倒す）。
+ *      直前の実行を新しい順に見て、要約が無い実行（シャードが落ちてまとめられなかった等）に当たったらそこで履歴を打ち切る
+ *      （飛ばさない＝連続を作らない側へ倒す。historyUntilGap）。
  *   3. 起票（`--upsert-issue`）: 再発した test ごとに専用 issue を 1 つ持つ（本文のマーカーで引く）。
  *      無ければ作り、在ればコメントを足す。**自動ではクローズしない。**
  *
@@ -35,7 +36,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { emit } = require('./lib/ci-annotate.js');
+const { emit, format } = require('./lib/ci-annotate.js');
 
 /** 1 件でも flaky なら警告する（基準書 §10）。 */
 const WARN_AT = 1;
@@ -112,18 +113,41 @@ function readSummary(file) {
   return s;
 }
 
-/** 履歴の要約を集める（`<dir>/**\/e2e-flaky-summary.json`）。新しい順（runNumber の降順）に並べる。 */
+/** 履歴の目録の名前。ワークフローが直前の実行を新しい順に 1 行ずつ書く（`<runNumber> <runId> ok|missing`）。 */
+const MANIFEST_NAME = 'manifest.tsv';
+
+/** 目録の本文を読む（純関数）。行の順（新しい順）を保つ。 */
+function parseManifest(text) {
+  const rows = [];
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = /^(\d+)\s+(\d+)\s+(ok|missing)$/.exec(line);
+    if (!m) throw new Error(`履歴の目録の行の形が違う: ${line}`);
+    rows.push({ runNumber: Number(m[1]), runId: m[2], status: m[3] });
+  }
+  return rows;
+}
+
+/**
+ * 連続の判定に使える履歴（純関数）。目録の新しい順に要約を取り、**要約の無い実行に当たったらそこで打ち切る**
+ * （飛ばさない）。要約の無い実行（e2e をまとめられなかった等）は「flaky だったか」を言えないので、
+ * それを飛ばして古い実行と繋ぐと、連続でないものを連続と数える。打ち切れば連続を作らない側へ倒れる。
+ */
+function historyUntilGap(rows, summaryOf) {
+  const out = [];
+  for (const r of rows) {
+    if (r.status !== 'ok') break;
+    out.push(summaryOf(r));
+  }
+  return out;
+}
+
+/** 履歴のディレクトリ（`<dir>/manifest.tsv` と `<dir>/<runId>/e2e-flaky-summary.json`）を読む。 */
 function readHistory(dir) {
-  const found = [];
-  const visit = (d) => {
-    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-      const p = path.join(d, e.name);
-      if (e.isDirectory()) visit(p);
-      else if (e.name === SUMMARY_NAME) found.push(readSummary(p));
-    }
-  };
-  if (dir && fs.existsSync(dir)) visit(dir);
-  return found.sort((a, b) => Number(b.runNumber || 0) - Number(a.runNumber || 0));
+  const manifest = path.join(dir, MANIFEST_NAME);
+  if (!fs.existsSync(manifest)) throw new Error(`履歴の目録が無い: ${manifest}（履歴を集めるステップが動いていない）`);
+  return historyUntilGap(parseManifest(fs.readFileSync(manifest, 'utf8')), (r) => readSummary(path.join(dir, r.runId, SUMMARY_NAME)));
 }
 
 /**
@@ -138,6 +162,25 @@ function findStreaks(current, history, streak = STREAK) {
   return { judged: true, streaks, window };
 }
 
+/**
+ * test 名を Markdown の表のセルへ入れる形にする（純関数）。test 名は spec の書き手が決める任意の文字列である。
+ * 🔴 `\` を先に、`|` と `` ` `` を同じ 1 回の置換で扱う（`|` だけを `\|` にすると、名前の中の `\|` が `\\|` になって
+ * セルの区切りに戻る。CodeQL js/incomplete-sanitization）。改行はセルを壊すので空白へ畳む。
+ */
+function mdCell(text) {
+  return String(text).replace(/[\\|`]/g, (c) => `\\${c}`).replace(/\s*\r?\n\s*/g, ' ');
+}
+
+/** インラインコード（`…`）の中へ入れる形にする（純関数）。バッククォートは閉じを作るので ' へ、改行は空白へ。 */
+function mdCode(text) {
+  return String(text).replace(/`/g, "'").replace(/\s*\r?\n\s*/g, ' ');
+}
+
+/** flaky 1 件の警告の本文（純関数）。workflow コマンドの符号化（`%`・CR・LF）は ci-annotate の format が行う。 */
+function warningMessage(f) {
+  return `E2E の flaky: ${f.id}（e2e/${f.file}:${f.line}）。flaky は pass と数えない`;
+}
+
 /** step summary 用の Markdown（純関数）。 */
 function renderSummary(s) {
   const lines = [
@@ -149,7 +192,7 @@ function renderSummary(s) {
   ];
   if (s.flaky.length) {
     lines.push('', '| test | 場所 |', '| --- | --- |');
-    for (const f of s.flaky) lines.push(`| ${f.id.replace(/\|/g, '\\|')} | \`${f.file}:${f.line}\` |`);
+    for (const f of s.flaky) lines.push(`| ${mdCell(f.id)} | ${mdCell(`${f.file}:${f.line}`)} |`);
     lines.push('', `flaky は pass と数えない。同じ test が develop で ${STREAK} 回連続で flaky なら issue が自動で立つ（skip・隔離で緑にしない）。`);
   }
   return `${lines.join('\n')}\n`;
@@ -165,8 +208,8 @@ function renderIssue(f, window, { repo } = {}) {
     markerOf(f.id),
     `## E2E の test が develop で ${window.length} 回連続で flaky だった`,
     '',
-    `- test: \`${f.id}\``,
-    `- 場所: \`src/platform/frontend/e2e/${f.file}:${f.line}\``,
+    `- test: \`${mdCode(f.id)}\``,
+    `- 場所: \`src/platform/frontend/e2e/${mdCode(f.file)}:${f.line}\``,
     `- 実行（新しい順）: ${window.map((w) => runUrl(repo, w.runId)).join(' / ')}`,
     '',
     '### 扱い',
@@ -222,7 +265,8 @@ async function upsertIssues({ streaks, window, repo, token, api } = {}) {
       done.push({ id: f.id, action: 'commented', number: hit.number });
       continue;
     }
-    const title = `test(NFR): E2E の「${f.titlePath[f.titlePath.length - 1]}」が develop で ${window.length} 回連続で flaky（自動起票）`;
+    const name = String(f.titlePath[f.titlePath.length - 1]).replace(/\s*\r?\n\s*/g, ' ');
+    const title = `test(NFR): E2E の「${name}」が develop で ${window.length} 回連続で flaky（自動起票）`;
     const r = await call('POST', `${base}/issues`, { title: title.slice(0, 250), labels: [LABEL], body: renderIssue(f, window, { repo }) });
     if (!r || !Number.isInteger(r.number)) throw new Error('issue を作成したが番号を読み戻せない');
     done.push({ id: f.id, action: 'created', number: r.number });
@@ -316,6 +360,46 @@ async function selfTest() {
       expect: (r) => !r.judged,
     },
     {
+      name: '🔴 historyUntilGap: 間に要約の無い実行があれば、そこで打ち切る（飛ばして古い実行と繋がない）',
+      run: async () => {
+        const rows = parseManifest('41 9041 ok\n40 9040 missing\n39 9039 ok\n');
+        const h = historyUntilGap(rows, (r) => sum(r.runNumber, [ID]));
+        return { n: h.length, r: findStreaks(sum(42, [ID]), h) };
+      },
+      expect: ({ n, r }) => n === 1 && !r.judged && r.streaks.length === 0,
+    },
+    {
+      name: 'historyUntilGap: 直前 2 回とも要約が在れば両方を使う（3 回連続の判定ができる）',
+      run: async () => findStreaks(sum(42, [ID]), historyUntilGap(parseManifest('41 9041 ok\n40 9040 ok\n'), (r) => sum(r.runNumber, [ID]))),
+      expect: (r) => r.judged && r.streaks.length === 1,
+    },
+    {
+      name: '🔴 parseManifest: 目録の行の形が違えば例外（黙って 0 件の履歴にしない）',
+      run: async () => { try { parseManifest('41 9041 skipped'); return 'no-throw'; } catch (e) { return e.message; } },
+      expect: (m) => /目録の行の形/.test(m),
+    },
+    {
+      name: '🔴 mdCell / mdCode / 警告: test 名の \\・|・`・改行で表・コード・workflow コマンドが壊れない',
+      run: async () => {
+        const nasty = { id: 'smoke › a › 名前に \\| と `x` と\n改行 100%', file: 'a.smoke.spec.ts', line: 3, titlePath: ['名前に \\| と\n改行'] };
+        const md = renderSummary({ total: 1, counts: { expected: 0, unexpected: 0, flaky: 1, skipped: 0 }, flaky: [nasty] });
+        const row = md.split('\n').find((l) => l.includes('名前に'));
+        const prev = process.env.GITHUB_ACTIONS;
+        process.env.GITHUB_ACTIONS = 'true';
+        const cmd = format('warning', warningMessage(nasty), '');
+        if (prev === undefined) delete process.env.GITHUB_ACTIONS; else process.env.GITHUB_ACTIONS = prev;
+        const body = renderIssue(nasty, [sum(1, [])], { repo: 'o/r' });
+        return { row, cmd, body };
+      },
+      expect: ({ row, cmd, body }) =>
+        // 表の行: 区切りの | は外枠の 3 本だけ（名前の中の | は \| として残る）。改行は無い。
+        row.replace(/\\./g, '').split('|').length === 4 && row.includes('\\\\\\|') && row.includes('\\`x\\`')
+        // workflow コマンド: 1 行で、% は %25 に符号化される。
+        && cmd.trimEnd().split('\n').length === 1 && /100%25/.test(cmd) && cmd.startsWith('::warning::')
+        // issue の本文のインラインコードは閉じを作らない（` は ' へ）。
+        && /- test: `[^`]*'x'[^`]*`/.test(body) && !/改行 100%\n/.test(body),
+    },
+    {
       name: 'upsertIssues: 再発が無ければ API を一度も呼ばない（token が無くても例外にしない）',
       run: async () => { const f = fakeApi(); const r = await upsertIssues({ streaks: [], window: [], repo: '', token: '', api: f.api }); return { r, n: f.calls.length }; },
       expect: (x) => x.r.length === 0 && x.n === 0,
@@ -390,7 +474,7 @@ async function main(argv) {
     if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, renderSummary(s));
     if (s.flaky.length >= WARN_AT) {
       for (const f of s.flaky) {
-        emit('warning', `E2E の flaky: ${f.id}（e2e/${f.file}:${f.line}）。flaky は pass と数えない`, { stream: process.stderr, prefix: '  warning  ' });
+        emit('warning', warningMessage(f), { stream: process.stderr, prefix: '  warning  ' });
       }
     }
     process.stdout.write(`E2E の flaky: ${s.flaky.length} 件 / ${s.total} 件（expected ${s.counts.expected}・unexpected ${s.counts.unexpected}・skipped ${s.counts.skipped}）\n`);
@@ -425,6 +509,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  summarize, readSummary, readHistory, findStreaks, renderSummary, renderIssue, upsertIssues, markerOf, testId, selfTest,
+  summarize, readSummary, readHistory, parseManifest, historyUntilGap, mdCell, mdCode, warningMessage, findStreaks, renderSummary, renderIssue, upsertIssues, markerOf, testId, selfTest,
   WARN_AT, STREAK, LABEL, SUMMARY_NAME,
 };

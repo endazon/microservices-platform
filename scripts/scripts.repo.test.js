@@ -13612,6 +13612,9 @@ exit $RC
       assert.match(issue, /if: \$\{\{ github\.event_name == 'push' && github\.ref == 'refs\/heads\/develop'/, '起票は develop への push だけ');
       assert.match(issue, /issues: write/);
       assert.match(issue, /--upsert-issue/);
+      // 要約の無い実行を飛ばさず目録に missing として書き、打ち切りは検査器（historyUntilGap）に任せる（PR #2222 の 🟡）。
+      assert.match(issue, /echo "\$num \$id missing" >> "\$HISTORY_DIR\/manifest\.tsv"/, '要約の無い実行を目録に書いていない（飛ばしている）');
+      assert.match(e2e, /steps\.tally\.outcome == 'success'/, '集計が失敗した実行の要約を上げている');
       // 🔴 flaky を skip / 隔離で緑にする仕組みを持たない（IADR-0623）。
       const code = wf.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n'); // コメントの「skip しない」の説明は数えない
       assert.doesNotMatch(code, /--grep-invert|test\.fixme|quarantine|--last-failed/i, 'frontend.yml が test を外して流している');
