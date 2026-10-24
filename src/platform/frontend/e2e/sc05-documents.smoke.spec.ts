@@ -334,3 +334,53 @@ test('M-074: 保存が 413（本文が大きすぎる）で拒否されたら al
 
   expectBffTrafficIsComplete(traffic);
 });
+
+// FR-04, SC-05 (#2019 / E-14・#2018 の追随): **機密区分は用語集の表示名で出す**（公開 / 社内限 / 秘 / 取扱制限）。
+// 期待値は計画の用語集「機密区分」と 05_screens §SC-03「機密区分の表示名（確定）」から起こした。
+// 一覧・絞り込み・作成フォームの 3 か所で表示名を出し、**送る値は契約の値（`confidential` 等）のまま**である。
+const CONFIDENTIALITY_LABELS = ['公開', '社内限', '秘', '取扱制限'];
+
+test('機密区分: 一覧・絞り込み・作成フォームは表示名で出し、要求には契約の値を載せる', async ({
+  page,
+}) => {
+  let createdBody: unknown;
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-admin']),
+    handlers: {
+      'GET /documents': twoDocs,
+      'GET /tags': tags,
+      'POST /documents': (call) => {
+        createdBody = call.body;
+        return reply(201, { ...draftDoc, id: 'doc-3', title: '秘の規程' });
+      },
+    },
+  });
+
+  await page.goto('/admin/documents');
+  // ★ 陽性対照: 一覧の行が描けている。そのうえで、生値（internal）ではなく表示名（社内限）が出る。
+  const row = rowOf(page, '出張旅費規程（案）');
+  await expect(row).toBeVisible();
+  await expect(row.getByText('社内限', { exact: true })).toBeVisible();
+  await expect(row.getByText('internal', { exact: true })).toHaveCount(0);
+
+  // ★ 絞り込みの選択肢も表示名（「すべて」＋ 4 区分）。
+  const filter = page.getByLabel('機密区分で絞り込み');
+  expect(await filter.getByRole('option').allTextContents()).toEqual([
+    'すべて',
+    ...CONFIDENTIALITY_LABELS,
+  ]);
+
+  // ★ 作成フォームの選択肢も表示名。選んで保存すると、契約の値（confidential）が載る。
+  const form = page.getByRole('form', { name: '文書登録' });
+  const select = form.getByLabel('機密区分（ABAC属性）');
+  expect(await select.getByRole('option').allTextContents()).toEqual(CONFIDENTIALITY_LABELS);
+  await form.getByLabel('タイトル').fill('秘の規程');
+  await select.selectOption({ label: '秘' });
+  await form.getByRole('button', { name: '保存' }).click();
+  await expect(page.getByRole('status').filter({ hasText: '文書を登録しました。' })).toBeVisible();
+  expect((createdBody as { attributes: Record<string, string> }).attributes).toMatchObject({
+    confidentiality: 'confidential',
+  });
+
+  expectBffTrafficIsComplete(traffic);
+});

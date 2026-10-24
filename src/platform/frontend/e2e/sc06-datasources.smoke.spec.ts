@@ -336,3 +336,51 @@ test('M-078: 写像先の利用者が実在しない（400）と、サーバの�
 
   expectBffTrafficIsComplete(traffic);
 });
+
+// FR-04, SC-06 (#2019 / E-14・#2018 の追随): **既定の機密区分も用語集の表示名で出す**（公開 / 社内限 / 秘 / 取扱制限）。
+// 期待値は計画の用語集「機密区分」から起こした。一覧の読み取り専用の表示と登録フォームの選択肢の 2 か所で
+// 表示名を出し、**送る値は契約の値のまま**である。
+test('既定の機密区分: 一覧と登録フォームは表示名で出し、要求には契約の値を載せる', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-admin']),
+    handlers: {
+      'GET /datasources': [source({})],
+      'POST /datasources': (call) => {
+        const body = call.body as { name: string; sourceType: string; connectionUri: string };
+        return reply(201, source({ id: 'b1c2d3e4-0000-4000-8000-000000000001', ...body }));
+      },
+    },
+  });
+
+  await page.goto('/admin/sources');
+  // ★ 陽性対照: 行が描けている。そのうえで、生値（internal）ではなく表示名（社内限）が出る。
+  const row = rowOf(page, '規程集');
+  await expect(row).toBeVisible();
+  await expect(row.getByText('社内限', { exact: true })).toBeVisible();
+  await expect(row.getByText('internal', { exact: true })).toHaveCount(0);
+
+  await page.getByRole('button', { name: '＋ ソース登録' }).click();
+  const form = page.getByRole('form', { name: 'データソース登録' });
+  const select = form.getByLabel('既定の機密区分');
+  expect(await select.getByRole('option').allTextContents()).toEqual([
+    '公開',
+    '社内限',
+    '秘',
+    '取扱制限',
+  ]);
+  await form.getByLabel('名前').fill('役員会の共有');
+  await form.getByLabel('接続先 URI').fill('smb://fs01/share/役員会');
+  await select.selectOption({ label: '秘' });
+  await form.getByRole('button', { name: '登録する' }).click();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'データソースを登録しました。' }),
+  ).toBeVisible();
+  const post = traffic.calls.find((c) => c.key === 'POST /datasources');
+  expect(
+    (post?.body as { defaultAttributes?: Record<string, string> }).defaultAttributes,
+  ).toMatchObject({ confidentiality: 'confidential' });
+
+  expectBffTrafficIsComplete(traffic);
+});

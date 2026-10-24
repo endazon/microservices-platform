@@ -889,7 +889,8 @@ describe('DataSourceManagementPage (SC-06)', () => {
       expect(await screen.findByText('規程集')).toBeInTheDocument();
       const table = within(screen.getByRole('table'));
       // 既定属性 3 つが**値として**読める（ラベルだけでなく値が出る）。
-      expect(table.getByText('confidential')).toBeInTheDocument();
+      // 既定の機密区分は用語集の表示名で出す（confidential＝秘。#2019）。
+      expect(table.getByText('秘')).toBeInTheDocument();
       expect(table.getByText('経理')).toBeInTheDocument();
       expect(table.getByText('active')).toBeInTheDocument();
       // owner 写像表の対が読める（キー昇順で安定）。
@@ -919,7 +920,8 @@ describe('DataSourceManagementPage (SC-06)', () => {
       await renderPage(['platform-admin']);
 
       const table = within(await screen.findByRole('table'));
-      expect(table.getByText('confidential')).toBeInTheDocument();
+      // 既定の機密区分は用語集の表示名で出す（confidential＝秘。#2019）。
+      expect(table.getByText('秘')).toBeInTheDocument();
       expect(table.getByText('経理')).toBeInTheDocument();
       expect(
         within(table.getByRole('list', { name: '所有者の写像' })).getByText('hr_system:tanaka'),
