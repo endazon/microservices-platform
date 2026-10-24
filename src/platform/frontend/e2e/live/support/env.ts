@@ -1,7 +1,7 @@
 // NFR / IADR-0569 決定 4 / IADR-0624（#2025）: live 層の opt-in と到達先を環境変数から決める（純関数）。
 //
 // - `E2E_LIVE`: **未設定・空は opt-out**（全 project を 0 件・exit 0）、**ちょうど `1` だけが live**、それ以外は例外。
-//   例示（`.env.e2e.example` の `<set-me>`）を写したまま直し忘れたときや `true` と書いたときに、黙って 0 件の緑にしない。
+//   例示（`env.e2e.example` の `<set-me>`）を写したまま直し忘れたときや `true` と書いたときに、黙って 0 件の緑にしない。
 // - `E2E_LAYER` は `ro` / `rw` / `trading` / `llm` のカンマ区切り。未設定は `ro`。
 //   🔴 値域外の値、および `E2E_LIVE=1` 無しの `E2E_LAYER` は**例外**にする（config の読み込みで失敗させる）。
 //   綴り違いが黙って 0 件の緑になるのを防ぐ（ADR-0090「全 skip を緑にしない」）。
@@ -61,7 +61,7 @@ export function credentialNames(role: Role): { password: string; totpSecret: str
   return { password: `E2E_${key}_PASSWORD`, totpSecret: `E2E_${key}_TOTP_SECRET` };
 }
 
-/** 例示（`.env.e2e.example`）の置き場所の印。写したまま値を入れ忘れたものを未設定として扱う。 */
+/** 例示（`env.e2e.example`）の置き場所の印。写したまま値を入れ忘れたものを未設定として扱う。 */
 const PLACEHOLDER = '<set-me>';
 
 /**

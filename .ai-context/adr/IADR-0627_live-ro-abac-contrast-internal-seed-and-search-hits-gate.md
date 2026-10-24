@@ -64,6 +64,13 @@ ABAC の階段は clearance=public に public の文書を読ませる。検索�
    実際に付与された値だけを返す）を、RetrievalService の `AttributeValuesQuery.ListAsync` が検索と同じ `ScopeFilter`（利用者の文脈で解決した ABAC）で実装している。
 7. 画面の文言は live の spec に写さず、製品の ja カタログ（`src/platform/frontend/src/locales/ja/messages.po`）の msgid から引く（`e2e/live/support/catalog.ts`）。
    msgid が無ければ読み込みで例外になり、live の spec を `--list` で読む L1 の `live-opt-in.smoke.spec.ts` が赤にする（e2e-live だけに頼らない）。
+8. **live の環境変数の例示を `e2e/live/env.e2e.example` へ改名する**（旧 `e2e/live/.env.e2e.example`）。例示は値を持たない（変数名と `<set-me>` だけ）のに、
+   名前が機密ファイルの形（`.env.*`）に当たり、`.claude/settings.json` の deny（`Read(./**/.env.*)`）と `guard-bash.js` の `SENSITIVE_PATH` で
+   **AI レビューが読めなかった**（PR #2228 の claude-review: 12 ファイル中 11 ファイル。Read と `git diff` が 3 件拒否され、下限「変更ファイルは全部読む」で赤）。
+   PR #2223 で通ったのは、レビューが `git show HEAD:<path>` で読んだからである（deny の形に当たらなかった＝読めたのは deny のすり抜けであって、
+   次も同じ道具を選ぶ保証は無い）。deny は緩めない（実値の `.env.e2e` は守られたまま）。verdict 側で既知の除外にする案は、値を持たないはずの例示に
+   値が紛れ込んでも誰も読まない形を作るので採らない。例示は「読まれるべきファイル」なので、機密の形から外す。
+   リポジトリ直下の `.env` / `.env.*` / `*.env` のどれにも当たらないので、`src/.gitignore` の戻し（`!…/.env.e2e.example`）は外した。
 
 ## 理由
 

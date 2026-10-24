@@ -60,6 +60,10 @@ issue: "#2028"
    「internal の文書にだけ在る値が出ない」と読み替える（#2013 へ注記）。M-048 の「接続先未設定」の文言は撤去済み（#1200）なので、
    「ページツリーか空の表示、失敗の表示は出ない」と読む。
 
+7. （レビューで判明）live の環境変数の例示 `e2e/live/.env.e2e.example` を `e2e/live/env.e2e.example` へ改名する（IADR-0627 決定 8）。
+   参照の母集合は `git grep -n "env\.e2e\.example"` で引いた: `support/env.ts`（2）・`support/paths.ts`・`support/readiness.ts`・`playwright.live.config.ts`・
+   `src/.gitignore`（戻しの行を外す）。`.ai-context/specs/20261024_2025_live-playwright-config.md` は凍結記録なので直さない。
+
 ## 母集合（規則 9・10）
 
 - 「seed は public だけ」を前提にする記述を `grep -rn "confidentiality.*public\|正の対照と負の対照が同じ 1 件"` で引いた:
