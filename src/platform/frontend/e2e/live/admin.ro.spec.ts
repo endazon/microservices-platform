@@ -44,9 +44,21 @@ function hasKey(value: unknown, key: string): boolean {
 }
 
 /**
+ * SC-22 の 503 の problem の type（BFF の `SecretItemBffEndpoints` の `ProblemTypePrefix` ＋ `NotConfiguredProblem` / `UnavailableProblem`。
+ * フロントには同じ定数が無いので完全一致の 2 値をここに書く）。
+ * - `vault-not-configured`: BFF に Vault の接続先が無い（本番像の values.yaml の既定）。
+ * - `vault-unavailable`: 接続先はあるが Vault にログインできない。`deploy/local/values-local.yaml` は BFF の Vault の接続先を常に
+ *   設定するので、VAULT=1 で起こしていない使い捨てのスタック（e2e-live.yml）はこちらになる（PR #2229 の e2e-live で実測）。
+ */
+const VAULT_PROBLEM_TYPES = [
+  'urn:microservices-platform:secret-items:vault-not-configured',
+  'urn:microservices-platform:secret-items:vault-unavailable',
+];
+
+/**
  * SC-22 の一覧の応答を、設計にある 2 つの形のどちらかとして確かめる（IADR-0453 決定 5）。どちらでもなければ落とす。
  * - `listed`: 200。応答のどの深さにも `value` の鍵が無い（値は書き込み専用）。
- * - `store-not-deployed`: 503。problem の type が `vault-not-configured` / `vault-unavailable` で、画面がその旨を出す。
+ * - `store-not-deployed`: 503。problem の type が `VAULT_PROBLEM_TYPES` のどちらかと完全一致し、画面がその旨を出す。
  */
 async function secretsOutcome(page: Page, res: Response): Promise<string> {
   if (res.status() === 200) {
@@ -55,7 +67,7 @@ async function secretsOutcome(page: Page, res: Response): Promise<string> {
   }
   expect(res.status(), 'GET /bff/secrets').toBe(503);
   const problem = (await res.json()) as { type?: string };
-  expect(problem.type ?? '', 'problem の type').toMatch(/\/vault-(not-configured|unavailable)$/);
+  expect(VAULT_PROBLEM_TYPES, 'problem の type（完全一致）').toContain(problem.type);
   await expect(
     page.getByText(
       ja(
@@ -64,7 +76,7 @@ async function secretsOutcome(page: Page, res: Response): Promise<string> {
       { exact: true },
     ),
   ).toBeVisible();
-  return 'store-not-deployed';
+  return `store-not-deployed（${problem.type}）`;
 }
 
 /** SC-05 の破壊操作・作成の押しボタン（L1 の `sc05-documents.smoke.spec.ts` の M-073 と同じ集合）。 */
@@ -171,9 +183,9 @@ test.describe('e2e-operator の管理・運用の画面', () => {
     },
   );
 
-  // SC-22, NFR-18, IADR-0453 決定 5: M-113。値は一覧にも応答にも載らない（書き込み専用）。保管先（Vault）を配備していない構成では、
-  // 一覧の取得は設計どおり 503（problem の type が vault-not-configured / vault-unavailable）で、画面はその旨を出す。使い捨てのスタック
-  // （e2e-live.yml）は VAULT を立てないのでこちらの形になる。どちらの形でも値は出ない。どちらでもない応答は落とす。
+  // SC-22, NFR-18, IADR-0453 決定 5: M-113。値は一覧にも応答にも載らない（書き込み専用）。保管先（Vault）に届かない構成では、
+  // 一覧の取得は設計どおり 503（problem の type は `VAULT_PROBLEM_TYPES`）で、画面はその旨を出す。使い捨てのスタック（e2e-live.yml）は
+  // VAULT を立てないのでこちら（接続先はあるが届かない＝vault-unavailable）になる。どちらの形でも値は出ない。どちらでもない応答は落とす。
   test(
     'M-113: 秘密情報の管理に到達し、一覧は 200（値の鍵も値の列も無い）か、保管先が無い構成の 503（その旨を表示）のどちらかになる',
     { tag: ['@p1', '@live-ro'] },

@@ -53,8 +53,12 @@ issue: "#2029"
 - **M-108**: SC-17 の利用者の列は 1 つのセルに表示名（例「E2E User」）とユーザー名を縦に並べる（`UserAccountManagementPage` の user 列）。
   セルの名前の完全一致（`getByRole('cell', { name: 'e2e-user', exact: true })`）は当たらない —— **spec の誤り**。セルの中のユーザー名の行を引き、
   あわせて `GET /bff/admin/users` の応答に 6 名が居ることを見る形に直した（L1 の `sc17-users.smoke.spec.ts` も部分一致で引いている）。
-- **M-113**: `GET /bff/secrets` が 503。BFF は Vault を配備していない構成で 503（`vault-not-configured`）を返す設計である
-  （`SecretItemBffEndpoints.VaultUnavailableAsync`・IADR-0453 決定 5）。`e2e-live.yml` の使い捨てスタックは VAULT を立てないので、
+- **M-113**: `GET /bff/secrets` が 503。BFF は Vault に届かない構成で 503 を返す設計である（`SecretItemBffEndpoints.VaultUnavailableAsync`・
+  IADR-0453 決定 5。type は接続先が無ければ `urn:microservices-platform:secret-items:vault-not-configured`、接続先はあるがログインできなければ
+  `…:vault-unavailable`）。**［同日・2 回目の e2e-live で訂正］** 当初ここに「Vault を配備していない構成なので not-configured」と書いたが、実測は
+  `vault-unavailable` だった。`deploy/local/values-local.yaml` 201〜202 行が BFF の Vault の接続先（`vault.platform-infra.svc.cluster.local:8200`）を
+  常に設定し、VAULT=1 で起こしていない使い捨てスタックではその先に Vault が居ないためである（同ファイル 199 行の注記どおり）。type は完全一致の 2 値で照合する。
+  `e2e-live.yml` の使い捨てスタックは VAULT を立てないので、
   **製品は設計どおりで、spec の期待（常に 200）が環境を取り違えていた**。設計にある 2 つの形（200／503 と表示）のどちらかを確かめ、どちらの形でも値が出ない
   ことを見る形に直した。どちらの形だったかは test の annotation に残す。CI で通るのは 503 の形だけであり、200 の形（値の鍵が無い）は CI で一度も確かめていない。e2e-live に `VAULT=1` を足して 200 の形を CI で流すことを **#2230** に起票した（起動時間・スタック構成への影響の見積もりを含む）。足すまでの暫定は、Vault の在る常設の PoC で live-ro を流し、annotation が `listed` であることを確かめる。
 
