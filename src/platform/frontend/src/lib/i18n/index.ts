@@ -112,3 +112,6 @@ export function registerUnitMessages(messagesByLocale: Partial<Record<Locale, Me
 }
 
 export { i18n };
+
+// FR-04, SC-01, SC-02（#2018）: 機密区分の表示名（出典一覧と検索結果一覧が共有する）。
+export { confidentialityLabel } from './confidentiality';
