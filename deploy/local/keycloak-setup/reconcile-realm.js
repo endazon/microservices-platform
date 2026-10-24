@@ -75,6 +75,13 @@
  *   作った後の e2e 利用者は他の人の seed 利用者と同じく実行時が所有する（資格情報を比べない・戻さない）。回すときは消して作り直す
  *   （deploy/local/README.md の e2e 節）。
  *
+ * ［2026-10-24 追記 / #2208 / IADR-0618］**Keycloak 26 がサービスアカウントの client へ自分で付ける既定スコープ `service_account` は
+ *   宣言の外（Keycloak が所有する）。** サービスアカウントを持つ client を PUT するたび（投入器の有効・無効の切替、secret の入れ替え、
+ *   本 Job 自身の client.update）に Keycloak が defaultClientScopes へ足し直すので、余剰として外しても次の PUT で戻り、
+ *   `--check` だけが落ち続ける。許すのは `KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES` が名指す組（名前・欄・宣言の
+ *   `serviceAccountsEnabled: true`）の**稼働側の余剰だけ**で、それ以外の余剰は従来どおり外す（宣言が全集合）。
+ *   🔴 宣言にこのスコープを書かない（scripts/check-realm-constraints.js の検査11 が同じ定数で止める）。
+ *
  * 集合欄（redirectUris / webOrigins / scope 割当 / enabledEventTypes …）は**宣言が全集合**（置換）。
  * 実体（client / role / group / mapper / user）は**加算的**（宣言に無い余剰は消さない）。
  *
@@ -140,6 +147,19 @@ const CLIENT_SKIP_KEYS = new Set([
 // 🔴 ここから `secret` を外すと、対の手順で回した client シークレットを次の起動で開発用の値へ戻す。
 const CLIENT_CREATE_ONLY_KEYS = new Set(['secret']);
 const MAPPER_SKIP_KEYS = new Set(['id']);
+// ［2026-10-24 / #2208 / IADR-0618］Keycloak が自分で client へ付けるスコープ（名前 → 欄と、付く条件の宣言側の述語）。
+// 稼働側にあっても**余剰と見なさない**（client.scope.remove を計画しない）。欠落の向きは見ない（宣言に書かないので欠落も起きない）。
+// Keycloak 26 はサービスアカウントを持つ client の作成・更新（PUT）のたびに既定スコープ `service_account` を足す（2026-10-24 の稼働 PoC で実測）。
+// 🔴 ここへ足すと、その名前の余剰を宣言が見なくなる。**名前・欄・条件の 3 つで限定する**（「Keycloak の組み込みは全部許す」にしない）。
+//    検査器（scripts/check-realm-constraints.js の検査11）は同じ定数を読み、宣言にこれらを書くことを止める（所有の境界をそろえる）。
+const KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES = Object.freeze({
+  service_account: Object.freeze({ field: 'defaultClientScopes', when: (client) => !!client && client.serviceAccountsEnabled === true }),
+});
+// 宣言の client の、その欄の稼働側の余剰 name が Keycloak の自動付与として許されるか。
+function isKeycloakAutoAssignedScope(client, field, name) {
+  const rule = Object.prototype.hasOwnProperty.call(KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES, name) ? KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES[name] : null;
+  return !!rule && rule.field === field && rule.when(client);
+}
 // ［2026-10-09 / #1830 / IADR-0517］dev ではないクラスタで宣言の（公知の dev の）secret のまま作らない・稼働の値が宣言の値の
 // ままかを `--check-dev-secrets` で見るクライアント。
 // ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は**手で並べず realm の宣言から導出する** —— サービスアカウントを持つ
@@ -374,6 +394,7 @@ function plan(desired, live) {
       }
       for (const name of have) {
         if (want.has(name)) continue;
+        if (isKeycloakAutoAssignedScope(client, field, name)) continue; // #2208: Keycloak が所有する（PUT のたびに戻る）
         const sc = liveScopes.get(name);
         if (!sc) continue;
         add({ op: 'client.scope.remove', target: `${client.clientId}:${name}`, method: 'DELETE',
@@ -949,6 +970,7 @@ module.exports = {
   devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, isDevSecretGuardedClient, devSecretGuardedClients,
   DEV_SECRETS_ALLOWED_ENV,
   REALM_COLLECTION_KEYS, RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, CLIENT_SKIP_KEYS, CLIENT_CREATE_ONLY_KEYS, MAX_PASSES,
+  KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES, isKeycloakAutoAssignedScope,
   GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED, SEED_USER_SELF_SERVICE_ROLES,
   resolveE2eCredentials, passwordMeetsPolicy, describeSkipped, renderImport, E2E_TOTP_SECRET_RE,
 };

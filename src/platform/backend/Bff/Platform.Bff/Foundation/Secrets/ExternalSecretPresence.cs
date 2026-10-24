@@ -38,7 +38,7 @@ public interface IExternalSecretPresenceReader
 public sealed class ExternalSecretPresenceReader(
     IHttpClientFactory httpClientFactory,
     IOptions<ExternalSecretSyncOptions> options,
-    IServiceAccountTokenReader tokenReader,
+    IKubernetesApiTokenReader tokenReader,
     ILogger<ExternalSecretPresenceReader> logger) : IExternalSecretPresenceReader
 {
     public async Task<ExternalSecretPresence> ReadAsync(ExternalSecretReference target, CancellationToken ct)

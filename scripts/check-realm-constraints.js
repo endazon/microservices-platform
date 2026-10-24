@@ -110,6 +110,14 @@
  *   `account` のロールだけを載せる写像 / `account` の `view-profile`・`manage-account` / スコープの割当（`clientScopeMappings`）/
  *   既定ロールの合成 / 人の seed 利用者の割当。共有の `roles` スコープを広げる直し方は採らない（他のクライアントのトークンが変わる）。
  *
+ * 検査11: **Keycloak が自分で付けるクライアントスコープを宣言に書いていないか**（NFR・#2208・IADR-0618）。
+ * 背景: Keycloak 26 はサービスアカウントを持つ client の作成・更新（PUT）のたびに既定スコープ `service_account` を足す。
+ *   reconcile-realm.js はこれを**宣言の外（Keycloak の所有）**として、稼働側の余剰に数えない（`--check` を落とさない）。
+ *   宣言にも書くと所有が二重になり、宣言が `clientScopes` を明示する realm では import がスコープの実体を作らず
+ *   割当が宙に浮く（reconcile が `scope がまだ無い` の deferred を出し続ける）。境界は reconcile と同じ定数
+ *   （`KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES`）で引き、clients の既定・任意スコープ、realm の既定、`clientScopes` の
+ *   宣言のどこにも書かないことを求める。
+ *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
  *   node scripts/check-realm-constraints.js <path...>  # 明示したファイルのみ検査。
@@ -117,6 +125,8 @@
  */
 const fs = require('fs');
 const path = require('path');
+// #2208 / IADR-0618: Keycloak が自分で付けるスコープの境界は reconcile-realm.js と同じ定数を読む（単一情報源）。
+const { KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const REALM_DIR = 'deploy/keycloak';
@@ -1770,6 +1780,38 @@ function checkRealmAccountConsoleText(text, opts) {
   return collectAccountConsoleGaps(JSON.parse(text), opts);
 }
 
+// --- 検査11: Keycloak が自分で付けるクライアントスコープを宣言に書かない（#2208・IADR-0618） ------------
+// reconcile-realm.js は KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES の組を稼働側の余剰に数えない（Keycloak の所有）。
+// 宣言にも書くと所有が二重になるので、宣言のどこにも現れないことを求める（realm を問わない）。
+function collectAutoAssignedScopeGaps(realm) {
+  if (!realm) return [];
+  const names = Object.keys(KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES);
+  const gaps = [];
+  const why = 'Keycloak が自分で付けるスコープ（サービスアカウントの client の作成・更新のたびに足す）。reconcile-realm.js は'
+    + '稼働側にあっても余剰と見なさないので、宣言には書かない（所有を二重にしない。import でスコープの実体が作られず割当が宙に浮く）';
+  for (const c of Array.isArray(realm.clients) ? realm.clients : []) {
+    if (!c) continue;
+    for (const field of ['defaultClientScopes', 'optionalClientScopes']) {
+      for (const name of Array.isArray(c[field]) ? c[field] : []) {
+        if (names.includes(name)) gaps.push({ path: `realm.clients[${c.clientId || '«無名»'}].${field}`, detail: `${name} がある。${why}` });
+      }
+    }
+  }
+  for (const key of ['defaultDefaultClientScopes', 'defaultOptionalClientScopes']) {
+    for (const name of Array.isArray(realm[key]) ? realm[key] : []) {
+      if (names.includes(name)) gaps.push({ path: `realm.${key}`, detail: `${name} がある。${why}` });
+    }
+  }
+  for (const sc of Array.isArray(realm.clientScopes) ? realm.clientScopes : []) {
+    if (sc && names.includes(sc.name)) gaps.push({ path: `realm.clientScopes[${sc.name}]`, detail: `${sc.name} を宣言している。${why}` });
+  }
+  return gaps;
+}
+
+function checkRealmAutoAssignedScopesText(text) {
+  return collectAutoAssignedScopeGaps(JSON.parse(text));
+}
+
 // --- I/O（副作用は main / checkFiles に閉じる） --------------------------------
 
 // 既定の検査対象（REALM_DIR 配下の *-realm.json）をリポジトリ相対で列挙する。
@@ -1814,6 +1856,7 @@ function checkFiles(relPaths) {
       secretGaps: checkRealmDeclaredSecretsText(text),
       audienceGaps: checkRealmPlatformAudienceText(text),
       accountConsoleGaps: checkRealmAccountConsoleText(text),
+      autoScopeGaps: checkRealmAutoAssignedScopesText(text),
     });
   }
   return results;
@@ -3254,6 +3297,21 @@ function selfTest() {
     && acMut((r) => { for (const u of r.users) if (isServiceAccountUser(u)) delete u.clientRoles; }).length === 0 });
   cases.push({ name: '検査10: platform 以外の realm は見ない', pass: acMut((r) => { r.realm = 'other'; r.clients = []; }).length === 0 });
 
+  // 検査11（#2208・IADR-0618）: 実データは 0 件。宣言のどこへ service_account を書いても赤。他のスコープ名は見ない。
+  const asRealm = () => JSON.parse(fs.readFileSync(path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json'), 'utf8'));
+  const asMut = (f) => { const r = asRealm(); f(r); return collectAutoAssignedScopeGaps(r); };
+  const asSa = (r) => r.clients.find((c) => c.clientId === 'abac-seeder');
+  cases.push({ name: '🔴 検査11: 実データの realm は 0 件（陰性対照。サービスアカウントの client が 20 件以上＝0 件の走査を緑にしない）', pass:
+    asMut(() => {}).length === 0 && asRealm().clients.filter((c) => c.serviceAccountsEnabled === true).length >= 20 });
+  cases.push({ name: '検査11: client の既定・任意スコープ、realm の既定、clientScopes の宣言に service_account を書くと赤（各 1 件）', pass:
+    asMut((r) => { asSa(r).defaultClientScopes.push('service_account'); }).length === 1
+    && asMut((r) => { asSa(r).optionalClientScopes = ['service_account']; }).length === 1
+    && asMut((r) => { r.defaultDefaultClientScopes = ['service_account']; }).length === 1
+    && asMut((r) => { r.defaultOptionalClientScopes = ['service_account']; }).length === 1
+    && asMut((r) => { r.clientScopes.push({ name: 'service_account', protocol: 'openid-connect' }); }).length === 1 });
+  cases.push({ name: '検査11: 自動付与でないスコープ名は見ない（宣言の全集合の検査は reconcile 側）', pass:
+    asMut((r) => { asSa(r).defaultClientScopes.push('email'); r.clientScopes.push({ name: 'service-account' }); }).length === 0 });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -3292,14 +3350,15 @@ function main() {
   const totalSecretGaps = results.reduce((n, r) => n + r.secretGaps.length, 0);
   const totalAudienceGaps = results.reduce((n, r) => n + r.audienceGaps.length, 0);
   const totalAccountConsoleGaps = results.reduce((n, r) => n + r.accountConsoleGaps.length, 0);
+  const totalAutoScopeGaps = results.reduce((n, r) => n + r.autoScopeGaps.length, 0);
   // 同梱テーマの表の版とイメージタグの突合は realm に依らないので、ファイルごとではなく 1 回だけ見る。
   const versionGaps = collectKeycloakVersionGaps(diskReader());
   if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0
     && totalMfaGaps === 0 && totalMailGaps === 0 && totalRelayGaps === 0
     && totalServerUrlGaps === 0 && totalConcealGaps === 0 && totalSaRoleGaps === 0
     && totalMachineGaps === 0 && totalSecretGaps === 0 && totalAudienceGaps === 0
-    && totalAccountConsoleGaps === 0 && versionGaps.length === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / 利用者が利用者名を選べる宣言 / profile を既定に持たないログイン経路のクライアント / 利用者名以外から出す preferred_username / 利用者名の落ちる軽量アクセストークン）・開発用の形でない client シークレット・platform の audience を載せるクライアントの範囲の逸脱・アカウントコンソール（SC-16）の構成の欠落・同梱テーマの表の版と Keycloak イメージタグの食い違いはありません。`);
+    && totalAccountConsoleGaps === 0 && totalAutoScopeGaps === 0 && versionGaps.length === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / 利用者が利用者名を選べる宣言 / profile を既定に持たないログイン経路のクライアント / 利用者名以外から出す preferred_username / 利用者名の落ちる軽量アクセストークン）・開発用の形でない client シークレット・platform の audience を載せるクライアントの範囲の逸脱・アカウントコンソール（SC-16）の構成の欠落・Keycloak が自分で付けるクライアントスコープの宣言・同梱テーマの表の版と Keycloak イメージタグの食い違いはありません。`);
     process.exit(0);
   }
 
@@ -3476,6 +3535,17 @@ function main() {
       + '\n既存の realm へは deploy/local/keycloak-setup/reconcile-realm.sh が当てます。起票は #1894、実装側の記録は IADR-0546 です。');
   }
 
+  if (totalAutoScopeGaps > 0) {
+    console.error(`[check-realm-constraints] Keycloak が自分で付けるクライアントスコープの宣言 ${totalAutoScopeGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.autoScopeGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\n境界の定数は deploy/local/keycloak-setup/reconcile-realm.js の KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES です。'
+      + '\n起票は #2208、実装側の記録は IADR-0618 です。');
+  }
+
   if (versionGaps.length > 0) {
     console.error(`[check-realm-constraints] 同梱テーマの表（Keycloak ${KEYCLOAK_VERSION_FOR_THEMES} で実測）と起動する Keycloak イメージの版の食い違い ${versionGaps.length} 件を検出しました:`);
     for (const g of versionGaps) {
@@ -3531,6 +3601,8 @@ module.exports = {
   checkRealmPlatformAudienceText,
   collectAccountConsoleGaps,
   checkRealmAccountConsoleText,
+  collectAutoAssignedScopeGaps,
+  checkRealmAutoAssignedScopesText,
   ACCOUNT_SELF_SERVICE_ROLES,
   PLATFORM_AUDIENCE,
   PLATFORM_AUDIENCE_SCOPE,

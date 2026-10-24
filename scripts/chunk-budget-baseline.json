@@ -294,7 +294,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 644788,
+  "initialTotalBytes": 644818,
   "$comment_initialTotalBytes_20261024_2016_shell-e2e": [
     "［2026-10-24 / #2016（共通シェルの E2E）］644,568 → 644,610（+42 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
     "増分は画面のエラー境界（RouteErrorComponent。初期チャンクに載る）の「再読み込み」で、購読の無い TanStack Query のキャッシュを捨てる 1 行（useQueryClient と removeQueries）である。意図した増加である。"
@@ -302,6 +302,16 @@
   "$comment_initialTotalBytes_20261024_2017_sc01-search-e2e": [
     "［2026-10-24 / #2017（SC-01 の E2E）］644,610 → 644,788（+178 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
     "増分は出典一覧の部品（CitationList。右レールの AI チャットと共有するので初期チャンクに載る）が描く機密区分の表示名（4 値の写像と Lingui のメッセージ）である。E2E が見つけた表示の欠落を直した、意図した増加である。"
+  ],
+  "$comment_initialTotalBytes_20261024_2201_theme-toggle-label": [
+    "［2026-10-24 / #2201（テーマ切替ボタンの名前を表示文言で始める）］644,788 → 644768 B へ引き下げた（実測値。pnpm run build → --update）。",
+    "減ったのは ThemeToggle の aria-label の文言（共通シェル＝初期チャンク）が短くなり、表示文言の参照を 1 回にまとめたため。床はラチェットなので、減った分は下げておく。"
+  ],
+  "$comment_20261024_2018_sc02-sc03-e2e": [
+    "［2026-10-24 / #2018（SC-02/03 の E2E）］初期ロード 644,788 → 644,838 B（+50 B）、1 kB 未満の遅延チャンク 10 → 11 本。いずれも実測値（pnpm run build → --require が報告し、--update で床を更新した）。",
+    "develop の取り込み（#2201 がテーマ切替の文言で床を 644,788 → 644,768 B へ 20 B 下げた）の後に測り直し、644,768 → 644,818 B（+50 B。増分は本件の写像の共有だけで、#2201 の減少はそのまま残る）とした。遅延チャンクは 11 本のまま。",
+    "原因は 1 つ: 機密区分の表示名の写像（約 0.25 kB）を CitationList から foundation の lib/i18n/confidentiality.ts へ移し、SC-01（出典・右レール）・SC-02（結果一覧）・SC-03（属性パネル）の 4 つの遅延チャンクで共有したこと。Rollup がそれを共有チャンク confidentiality-*.js に切り出し、初期チャンクには先読みの参照だけが載った（+50 B）。",
+    "写像を各画面へ複製すれば小さいチャンクは増えないが、同じ表を 2 か所以上に持つと片方が古くなる（#2017 で SC-02・SC-03 が生値のまま取り残されていた事故そのもの）。複製しない方を採った。意図した増加である。"
   ],
   "$comment_initialTotalBytes_20261024_2046_break-glass-screens": [
     "［2026-10-24 / #2046 の 3 本目（緊急アクセスの画面）］635,032 → 644,208（+9,176 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
@@ -470,7 +480,7 @@
     "判定 4 は warn であり fail にしない（往復の増加は性能の劣化ではあっても壊れではない）。",
     "［2026-08-23 / #917］5 → 6。echartsGraphBundle.ts（GraphChart の登録層 0.16 kB）が同型で 1 本増えた。"
   ],
-  "smallLazyChunks": 10,
+  "smallLazyChunks": 11,
   "$comment_initialTotalBytes_20260912_ast-bump": [
     "［2026-09-12 / #1437 作業 1・2］705,386 → 731,293（+25.91 kB）へ引き上げた。submodule src/ai-stock-trading を",
     "develop 3d35c7a → 7780edc（AST#791: 4 画面を @platform/ui と Lingui へ載せ替え）へ進めた合成ビルドの実測。",

@@ -59,6 +59,7 @@ Job（`node:22-alpine`・`platform-infra`）は **ConfigMap `keycloak-realms`**�
 | 実行時（Keycloak / SC-17 / 本人が正） | 既存の人間の利用者の資格情報・属性・ロール・グループ・`requiredActions`・セッション／**既存の client の `secret`** | **触らない**（例外は次の行） |
 | 宣言（**加えるだけ**。#1894 / IADR-0546） | 既存の人の seed 利用者の `account` の `view-profile`・`manage-account`（`SEED_USER_SELF_SERVICE_ROLES`） | 実効の割当に無ければ加える。外さない。他のロールは触らない |
 | 宣言（**作るときだけ・差し込めたときだけ**。#2024 / IADR-0570） | 試験アカウント `e2e-*` の資格情報（宣言はプレースホルダ `${E2E_…}`。値は Secret `e2e-accounts` を Job が `envFrom` で読む） | 差し込めない利用者は作らない（`skipped` の行。drift にしない）。作った後は実行時が所有する |
+| Keycloak（**自動付与**。#2208 / IADR-0618） | サービスアカウントを持つ client（宣言の `serviceAccountsEnabled: true`）の既定スコープ `service_account`（Keycloak 26 が client の作成・更新のたびに足す。`KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES`） | 稼働側にあっても余剰と見なさない（外さない）。宣言には書かない（`scripts/check-realm-constraints.js` の検査 11）。それ以外の余剰スコープは従来どおり外す |
 
 > **［2026-09-28 / #1682 / ADR-0124 決定 1・IADR-0485］client の `secret` を「作成時だけ」へ移した。**
 > client シークレットは認証基盤と Vault を同時に変えないと成立しない「対になる秘密」であり、本番の値を realm の宣言（Git）に置かない。

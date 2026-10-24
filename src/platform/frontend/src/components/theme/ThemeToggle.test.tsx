@@ -48,8 +48,22 @@ describe('ThemeToggle', () => {
     stubPrefersDark(true);
     render(<ThemeToggle />);
     const button = screen.getByRole('button');
-    expect(button).toHaveAccessibleName(/現在は システム/);
+    expect(button).toHaveAccessibleName(/表示: システム/);
     expect(button).toHaveAccessibleName(/押すと ライト/);
+  });
+
+  // NFR-30, WCAG 2.5.3 Label in Name（#2201）: 名前は見えている文言で始まる（音声操作で見えている語を言えば押せる）。
+  it.each([
+    ['system', '表示: システム'],
+    ['light', '表示: ライト'],
+    ['dark', '表示: ダーク'],
+  ])('名前は見えている文言で始まる（%s）', (choice, visible) => {
+    stubPrefersDark(true);
+    window.localStorage.setItem(STORAGE_KEY, choice);
+    render(<ThemeToggle />);
+    const button = screen.getByRole('button');
+    expect(button).toHaveTextContent(visible);
+    expect(button.getAttribute('aria-label')?.startsWith(visible)).toBe(true);
   });
 
   it('OS がダークのとき system → light → dark → system と巡り、<html> と localStorage が追従する', async () => {
