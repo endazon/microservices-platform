@@ -57,7 +57,17 @@
       //
       // public/config.js は index.html が `<script src="/config.js">` で読む**実行時 config** であり、
       // どこからも import されないのが正しい（ビルドを環境非依存に保つための設計。issue #126）。
-      "entry": ["src/lib/api/generated/**/*.ts", "public/config.js"],
+      //
+      // NFR-30 / IADR-0619 (#2191): Keycloak のテーマの画面の axe 走査は 2 本目の Playwright config
+      // （`playwright.keycloak.config.ts`。spec の接尾辞は `.kc.ts`）から起動される。knip の playwright プラグインが
+      // 見るのは既定名の `playwright.config.ts` だけであり、しかも本 config は `E2E_KC_URL` が無いと読み込みで落ちる
+      // （プラグインに読ませると knip 自体が落ちる）ので、プラグインの設定ではなく entry に置く。
+      "entry": [
+        "src/lib/api/generated/**/*.ts",
+        "public/config.js",
+        "playwright.keycloak.config.ts",
+        "e2e/keycloak/**/*.kc.ts",
+      ],
     },
     "obsidian-plugin": {
       // FR-20 / ADR-0037 決定 1 / IADR-0338 決定 2・3: 自作 Obsidian プラグイン。package.json に `main` は

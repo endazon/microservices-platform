@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens]
-issues: [#2013, #2014, #2015]
+iadrs: [IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+specs: [20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe]
+issues: [#2013, #2014, #2015, #2191]
 -->
 
 # E2E テスト基準
@@ -162,7 +162,13 @@ issues: [#2013, #2014, #2015]
   共通シェル＋存在秘匿の 404 ＋ **操作で現れる UI を開いた状態**（確認ダイアログ・共有先の listbox・
   緊急アクセスのダイアログ・編集パネル・タブ・競合の解決欄）。各面は**最も緩い許可ロール**で開く。
   - 🔴 **Keycloak のテーマが描く画面（ログインの Keycloak 側・二要素認証・パスワード再設定・アカウント設定）は L1 の対象外**である。SPA の
-    ビルド成果物に含まれず、基盤を 1 つも起動しない層では描けない。Keycloak を起動する層での走査は別に扱う。
+    ビルド成果物に含まれず、基盤を 1 つも起動しない層では描けない。
+  - それらの画面は、**CI のジョブの中で起こす使い捨ての Keycloak**（配布物と同じイメージにリポジトリのテーマと realm を載せる）で走査する。
+    ワークフローは `keycloak-theme-a11y.yml`、config は `playwright.keycloak.config.ts`、spec は `e2e/keycloak/*.kc.ts`
+    （L1 の既定の testMatch に当たらない接尾辞）。タグは `e2e/support/axe.ts` から引く。明暗は project の `colorScheme` で与える
+    （Keycloak のテーマは OS の明暗の設定だけに従う）。毎回、テーマの `--color-bg` がその明暗の値であることを確かめる（テーマが解決できないと
+    Keycloak は既定のテーマへ黙って落ちるため）。既知の違反の台帳は `e2e/keycloak/axeKnownViolations.ts` に分けて持つ（作法は同じ。現在 0 件）。
+    走査用の利用者は管理 API で作って消すので、稼働の Keycloak へは向けない。
 - **既知の違反**は `e2e/support/axeKnownViolations.ts` の台帳に、`<規則 ID> <対象セレクタ>` の指紋と
   **1 件ずつの理由**で載せる。走査結果とは**一致**を求める（増えても、直して減っても、台帳を直すまで落ちる）。
   `toMatchSnapshot` は採らない（`--update-snapshots` で理由なしに受け入れられるため）。
@@ -204,6 +210,7 @@ issues: [#2013, #2014, #2015]
 | 層 | ワークフロー | トリガ | 必須チェック | 成果物 |
 | --- | --- | --- | --- | --- |
 | L1 | `frontend.yml` の `e2e` ジョブ（現状あり） | PR・push | **はい** | blob/html report・trace（常時・14 日） |
+| （Keycloak のテーマの axe） | `keycloak-theme-a11y.yml` の `keycloak-theme-a11y` ジョブ（現状あり。使い捨ての Keycloak をジョブの中で起こす） | テーマ・realm・compose・axe の土台を変える PR・push、dispatch | いいえ | 失敗時のみ html report・test-results（7 日） |
 | L2 | `e2e-live.yml`（**目標**。統合スタックの k3d 上、または稼働中の PoC に対する self-hosted runner） | nightly・dispatch | いいえ | 同上 ＋ skip 一覧 |
 | L3 / L3-T / L3-L | 同 `e2e-live.yml` の `workflow_dispatch` 入力 `layer`（`rw` / `trading` / `llm`）を `E2E_LAYER` へ渡す。`trading` は閉場判定を job の先頭に置く | dispatch のみ | いいえ | 同上 ＋ 復元ログ |
 
@@ -221,7 +228,7 @@ issues: [#2013, #2014, #2015]
 | `timeout-minutes` | なし | job に置く（L1 20 分、live 60 分） |
 | `fullyParallel` | 未指定（ファイル単位） | true（シャードの均等化） |
 | axe のタグ | `wcag2a` / `wcag2aa` / `wcag21a` / `wcag21aa` / `wcag22aa` / `best-practice`（達成済み） | 同左 |
-| axe の走査面 | SPA の全画面 ＋ 操作後の UI（達成済み。Keycloak のテーマの画面は対象外） | Keycloak のテーマの画面も走査する |
+| axe の走査面 | SPA の全画面 ＋ 操作後の UI ＋ Keycloak のテーマの画面（達成済み。Keycloak のテーマの画面は使い捨ての Keycloak で走査する） | 同左 |
 | live のブラウザ E2E | なし（curl の `scripts/verify-oidc-edge-flow.sh` だけ） | L2〜L3 を新設。curl の検証は残す（API 層の門として役割が違う） |
 | 試験アカウント | seed の `developer` 等を人と共用 | `e2e-*` を役割ごとに分離 |
 | 視覚回帰 | なし | 既定で採らない（候補 1 件） |

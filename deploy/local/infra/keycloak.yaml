@@ -168,6 +168,8 @@ spec:
                 path: login/resources/css/platform.css
               - key: login__resources__css__tokens.css
                 path: login/resources/css/tokens.css
+              - key: login__resources__js__platform-a11y.js
+                path: login/resources/js/platform-a11y.js
               - key: login__theme.properties
                 path: login/theme.properties
 ---

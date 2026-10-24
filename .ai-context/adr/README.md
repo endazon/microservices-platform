@@ -696,3 +696,4 @@
 | [IADR-0616](./IADR-0616_eso-merge-base-secrets-keep-existing-and-wait-for-requested-sync.md) | ESO（Merge）が値を持つ土台の Secret（keycloak-smtp・reset-gate-oidc・abac-seeder-oidc）は、ESO=1 で既に在れば起動器が上書きせず、読み手の前に「依頼の後の同期」（force-sync の後の refreshTime の変化）を待つ（#2195） | Accepted |
 | [IADR-0617](./IADR-0617_review-floor-ci-scripts-tests-as-evidence-regardless-of-restore.md) | AI レビューの下限「scripts.test.js 全件」は、作業ツリーの復元の有無を問わず同じ head の CI scripts-tests の success でも満たす | Accepted |
 | [IADR-0618](./IADR-0618_keycloak-auto-assigned-service-account-scope.md) | Keycloak 26 がサービスアカウントの client へ自動で付ける既定スコープ `service_account` は宣言の外とし、realm の追随は名前・欄・条件を限定して稼働側の余剰に数えない。検査器は宣言に書くことを止める（#2208） | Accepted |
+| [IADR-0619](./IADR-0619_keycloak-theme-axe-disposable-container.md) | Keycloak のテーマの画面（SC-13 の Keycloak 側・SC-14〜16）は、CI のジョブの中で起こす使い捨ての Keycloak で axe を走らせる（静的描画は採らない）。親テンプレートのラベルの欠陥はテーマの追加スクリプトで補う（#2191） | Accepted |
