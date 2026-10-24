@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +15,8 @@ import {
 import { nextPeriodOtp, otpFor, remainingSeconds, wrongOtpFor } from './live/support/totp';
 import { ja, jaPattern, parsePo } from './live/support/catalog';
 import { startFakeLiveStack } from './support/fakeLiveStack';
-import { revokeSessions } from './live/support/teardown';
+import { revokeSessions, runSweep, sweepArgs } from './live/support/teardown';
+import { createCleanup } from './live/support/cleanup';
 import { submitOtp, submitPassword } from './live/support/login';
 import { stateFile } from './live/support/env';
 
@@ -484,6 +486,140 @@ test('残す役割の state の権限を変えられなくても、他の 5 役�
     expect(result.failed[0].reason).toContain('0600 にできない');
   } finally {
     await fake.close();
+    rmSync(authDir, { recursive: true, force: true });
+  }
+});
+
+test('E2E_SWEEP は dry-run / delete だけを受け、E2E_LIVE=1 と E2E_SWEEP_STACK を要る（向け先を明示しなければ例外。#2030 / IADR-0629）', () => {
+  const base = parseLiveEnv({ E2E_LIVE: '1' }, '/tmp/x');
+  expect([base.sweep, base.sweepStack]).toEqual(['off', null]);
+  expect(sweepArgs(base)).toBeNull();
+  for (const bad of ['1', 'true', 'DELETE', 'dryrun', 'off'])
+    expect(() =>
+      parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: bad, E2E_SWEEP_STACK: 'e2e-live' }, '/tmp/x'),
+    ).toThrow(/E2E_SWEEP の値域外/);
+  expect(() =>
+    parseLiveEnv({ E2E_SWEEP: 'dry-run', E2E_SWEEP_STACK: 'e2e-live' }, '/tmp/x'),
+  ).toThrow(/E2E_LIVE=1 が無い/);
+  expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: 'dry-run' }, '/tmp/x')).toThrow(
+    /E2E_SWEEP_STACK が無い/,
+  );
+  expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP_STACK: 'e2e-live' }, '/tmp/x')).toThrow(
+    /E2E_SWEEP が無い/,
+  );
+  // 既定は dry-run の引数（--delete を付けない）。向け先はすべて明示で渡す。
+  const dry = sweepArgs(
+    parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: 'dry-run', E2E_SWEEP_STACK: 'e2e-live' }, '/tmp/auth'),
+  )!;
+  expect(dry.slice(1)).toEqual([
+    '--live',
+    '--edge-url',
+    'https://localhost',
+    '--auth-dir',
+    '/tmp/auth',
+    '--stack',
+    'e2e-live',
+    '--dry-run',
+  ]);
+  expect(statSync(dry[0]).isFile(), `sweep の本体が無い: ${dry[0]}`).toBe(true);
+  const del = sweepArgs(
+    parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: 'delete', E2E_SWEEP_STACK: 'e2e-live' }, '/tmp/auth'),
+  )!;
+  expect(del.at(-1)).toBe('--delete');
+});
+
+test('後始末は積んだ逆順に /bff/* へ X-MSP-CSRF つきで送り、404 は消えた扱い、失敗しても続けて未削除一覧を attach する（#2030 / IADR-0629）', async ({
+  playwright,
+}, testInfo) => {
+  const seen: string[] = [];
+  const server = createServer((req, res) => {
+    seen.push(`${req.method} ${req.url} csrf=${req.headers['x-msp-csrf'] ?? '-'}`);
+    const status =
+      req.url === '/bff/documents/gone' ? 404 : req.url === '/bff/tags/busy' ? 409 : 204;
+    res.writeHead(status).end();
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const port = (server.address() as { port: number }).port;
+  const request = await playwright.request.newContext({ baseURL: `http://127.0.0.1:${port}` });
+  try {
+    const cleanup = createCleanup(request);
+    // 名前が e2e- で始まらない・/bff/ 以外へ送る後始末は、積む時点で例外（sweep が拾えない・画面を経由させない）。
+    expect(() => cleanup.track('doc-1', { method: 'DELETE', path: '/bff/documents/1' })).toThrow(
+      /e2e- で始める/,
+    );
+    expect(() => cleanup.track('e2e-r1-x', { method: 'DELETE', path: '/api/x' })).toThrow(
+      /\/bff\/ へ直接送る/,
+    );
+    expect(() => cleanup.track('e2e-r1-x')).toThrow(/手順が無い/);
+    cleanup.track('e2e-r1-doc', { method: 'DELETE', path: '/bff/documents/gone' });
+    cleanup.track(
+      'e2e-r1-note',
+      { method: 'DELETE', path: '/bff/private-notes/n1' },
+      { method: 'POST', path: '/bff/private-notes/purge', data: { ids: ['n1'] } },
+    );
+    cleanup.track(
+      'e2e-r1-tag',
+      { method: 'DELETE', path: '/bff/tags/busy' },
+      { method: 'POST', path: '/bff/never' },
+    );
+    const before = testInfo.attachments.length;
+    const leftovers = await cleanup.run(testInfo);
+    expect(seen).toEqual([
+      'DELETE /bff/tags/busy csrf=1',
+      'DELETE /bff/private-notes/n1 csrf=1',
+      'POST /bff/private-notes/purge csrf=1',
+      'DELETE /bff/documents/gone csrf=1',
+    ]);
+    expect(leftovers).toEqual([
+      { name: 'e2e-r1-tag', step: 'DELETE /bff/tags/busy', reason: '409' },
+    ]);
+    const attached = testInfo.attachments.slice(before);
+    expect(attached.map((a) => a.name)).toEqual(['未削除一覧']);
+    expect(JSON.parse(String(attached[0]!.body))).toEqual(leftovers);
+    // 一覧から外す（attach の内容は確かめた。この試験自体の成果物に「未削除」を残さない）。
+    testInfo.attachments.splice(before);
+    const note = testInfo.annotations.findIndex((a) => a.type === '未削除');
+    expect(note, '未削除の注釈が無い').toBeGreaterThanOrEqual(0);
+    testInfo.annotations.splice(note, 1);
+    // 2 回目は空（積んだものは run で空になる）。
+    seen.length = 0;
+    expect(await cleanup.run(testInfo)).toEqual([]);
+    expect(seen).toEqual([]);
+  } finally {
+    await request.dispose();
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('E2E_SWEEP があっても要る state（6 役割）が 1 つでも無ければ、sweep を流さずに理由を 1 行出す（setup の失敗に重ねない。#2234）', () => {
+  const authDir = mkdtempSync(join(tmpdir(), 'e2e-sweep-skip-'));
+  try {
+    const cfg = parseLiveEnv(
+      { E2E_LIVE: '1', E2E_SWEEP: 'dry-run', E2E_SWEEP_STACK: 'e2e-live', E2E_AUTH_DIR: authDir },
+      '/unused',
+    );
+    // setup が e2e-admin と e2e-noaccess で落ちた（その 2 役割の state が無い）。
+    for (const role of ROLES.filter((r) => r !== 'admin' && r !== 'noaccess'))
+      writeFileSync(stateFile(authDir, role), '{"cookies":[],"origins":[]}');
+    const lines: string[] = [];
+    let spawned = 0;
+    const spawn = () => {
+      spawned++;
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    expect(runSweep(cfg, { spawn, write: (l) => lines.push(l) })).toBe('skipped');
+    expect(spawned, 'state が欠けたのに sweep を起動した').toBe(0);
+    expect(lines).toEqual([
+      '[e2e-live] 残骸掃きを飛ばした（state が無い役割: e2e-admin, e2e-noaccess。setup の失敗を先に見る）\n',
+    ]);
+    // 揃えば流す（陽性対照）。未指定なら流さない。
+    for (const role of ROLES)
+      writeFileSync(stateFile(authDir, role), '{"cookies":[],"origins":[]}');
+    expect(runSweep(cfg, { spawn, write: () => {} })).toBe('ok');
+    expect(spawned).toBe(1);
+    expect(runSweep(parseLiveEnv({ E2E_LIVE: '1' }, authDir), { spawn })).toBe('off');
+    expect(spawned).toBe(1);
+  } finally {
     rmSync(authDir, { recursive: true, force: true });
   }
 });

@@ -38,6 +38,8 @@ export const OPTION_NAMES = [
   'E2E_AUTH_DIR',
   'E2E_SEARCH_HITS',
   'E2E_KEEP_SESSIONS',
+  'E2E_SWEEP',
+  'E2E_SWEEP_STACK',
 ] as const;
 
 export interface LiveEnv {
@@ -59,7 +61,16 @@ export interface LiveEnv {
    * teardown が引き受ける（#2231 / IADR-0628。AST/IADR-0588）。**値域は `trading-owner` だけ**。既定（未設定）は全部失効。
    */
   keepSessions: Role[];
+  /**
+   * `E2E_SWEEP=dry-run|delete`: teardown が**失効の前に** `scripts/e2e-live-sweep.js` で残骸（名前が `e2e-` で始まるもの）を掃く
+   * （#2030 / IADR-0629）。未設定は掃かない。`delete` だけが消し、`dry-run` は列挙だけ。
+   */
+  sweep: 'off' | 'dry-run' | 'delete';
+  /** `E2E_SWEEP_STACK`: sweep の向け先の使い捨てのスタック（k3d のクラスタ名）。`E2E_SWEEP` を与えたら必須（既定値は持たない）。 */
+  sweepStack: string | null;
 }
+
+const SWEEP_MODES = ['dry-run', 'delete'] as const;
 
 /** teardown が残してよい役割（AST の live が読む取引オーナーだけ。他の役割は必ず失効させる）。 */
 const KEEPABLE_ROLES = ['trading-owner'] as const satisfies readonly Role[];
@@ -149,6 +160,28 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
       'E2E_KEEP_SESSIONS が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
     );
   }
+  const rawSweep = read('E2E_SWEEP') ?? '';
+  if (rawSweep !== '' && !(SWEEP_MODES as readonly string[]).includes(rawSweep)) {
+    throw new Error(
+      `E2E_SWEEP の値域外: ${rawSweep}（${SWEEP_MODES.join(' / ')}。掃かないなら未設定か空）`,
+    );
+  }
+  if (rawSweep !== '' && !live) {
+    throw new Error(
+      'E2E_SWEEP が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
+    );
+  }
+  const sweepStack = read('E2E_SWEEP_STACK') ?? null;
+  if (rawSweep !== '' && sweepStack === null) {
+    throw new Error(
+      'E2E_SWEEP が設定されているのに E2E_SWEEP_STACK が無い（sweep の向け先は明示する。既定値は持たない）',
+    );
+  }
+  if (sweepStack !== null && rawSweep === '') {
+    throw new Error(
+      'E2E_SWEEP_STACK が設定されているのに E2E_SWEEP が無い（どちらで流すかを明示する）',
+    );
+  }
   return {
     live,
     layers: [...new Set(layers)] as Layer[],
@@ -158,6 +191,8 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
     authDir: read('E2E_AUTH_DIR') ?? defaultAuthDir,
     searchHits: rawHits === '1',
     keepSessions: rawKeep === '' ? [] : [rawKeep as Role],
+    sweep: rawSweep === '' ? 'off' : (rawSweep as 'dry-run' | 'delete'),
+    sweepStack,
   };
 }
 

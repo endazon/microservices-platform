@@ -9,7 +9,7 @@ author: Claude
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+iadrs: [IADR-0629, IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
 specs: [20261025_2231_live-keep-owner-session, 20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
 issues: [#2013, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
 -->
@@ -165,8 +165,14 @@ issues: [#2013, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #
   test を持つ project の全部が skip、または skip でない test が 0 件なら赤。選んだ層に spec がまだ無いときは警告だけ）。
 - **L3**: 作るものには `e2e-<runId>-` 接頭辞を必ず付け、afterEach で削除する。削除 API が無いもの（履歴・監査行）は
   作らないか、残ることを網羅表に明記する。履歴を見るテストは「自分の行が増えた」ことだけを見て、絶対件数を見ない。
-- **sweep**: 残骸を掃く `scripts/e2e-live-sweep.js --live --older-than 24h`（接頭辞一致・作成日時。**目標**）を
-  nightly の最後に流す。接頭辞が一致しないものは消さない。
+  **［2026-10-25］後始末は `e2e/live/support/cleanup.ts` の `createCleanup(page.request)` で積む**（積んだ逆順に `/bff/*` へ直接送る。
+  404 は消えた扱い。消せなかったものは「未削除一覧」として attach し、test は落とさない）。名前が `e2e-` で始まらないものは積めない。
+- **sweep**: 残骸を掃く `scripts/e2e-live-sweep.js`（**接頭辞 `e2e-` の一致だけ**。接頭辞が一致しないものは消さない）。
+  **［2026-10-25］既定は dry-run**（列挙だけ）で、消すには `--delete` を明示する。**向け先は使い捨てのスタックだけ**
+  （`--edge-url`・`--auth-dir`・`--stack` は既定値を持たず、kubectl の context が `k3d-e2e-live` でなければ止まる）。
+  セッションは live-setup の storageState を使うので、`E2E_SWEEP=dry-run|delete` と `E2E_SWEEP_STACK` を与えると teardown が失効の前に流す
+  （`e2e-live.yml` は dry-run）。作成日時の窓（`--older-than`）は持たない —— 使い捨てのスタックには並行する実行が無い。
+  一覧は種類を作り得る役割すべての視点で取り（個人資料は 6 役割、管理の種類は admin）、見ていない視点があれば件数に必ず添える。
 - **［2026-10-25］L2 の ABAC の対照**: 検索用 seed は public の 1 件と internal の 1 件を持つ。`e2e-user`（clearance=internal）には 2 件とも見え、
   `e2e-noaccess`（clearance=public）には public だけが見える。public の 1 件を見えない側の陽性対照にし、見えない側の判定の前に見える側で
   2 件とも索引に入ったことを確かめる（取り込み前の空で緑にしない）。検索のヒット・候補・文書 ID を要る test は **`E2E_SEARCH_HITS=1`** のときだけ
