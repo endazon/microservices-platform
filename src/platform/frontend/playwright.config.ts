@@ -17,9 +17,19 @@ const PREVIEW_URL = `http://localhost:${PREVIEW_PORT}`;
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
+  // NFR / IADR-0621（#2036）: ファイル単位ではなく test 単位で worker とシャードへ配る。
+  // ファイルごとの本数の偏り（数本〜数十本）がそのままシャードの所要の偏りになるのを避ける。
+  // spec はファイル内で状態を共有しない（モジュール直下の可変状態・`describe.serial` は 0 件。走査して確かめた）。
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
+  // NFR / IADR-0621 / 基準書 §4: L1 の 1 実行（CI では 1 シャード）あたりの上限。ジョブの
+  // `timeout-minutes`（20 分）より先に切れ、どの test で止まったかがレポートに残る。
+  globalTimeout: process.env.CI ? 15 * 60_000 : 0,
+  // NFR / IADR-0621 / 基準書 §9: CI はシャードごとに blob を書き、`frontend.yml` の `e2e` ジョブが
+  // `merge-reports` で html ＋ github（注釈）へまとめる。シャードで github を出すと、まとめた側と
+  // 注釈が二重になるため、シャードでは list（ログ）だけを並べる。
+  reporter: process.env.CI ? [['blob'], ['list']] : 'list',
   use: {
     baseURL: PREVIEW_URL,
     trace: 'on-first-retry',

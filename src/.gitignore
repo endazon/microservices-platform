@@ -21,4 +21,6 @@ storybook-static/
 test-results/
 playwright-report/
 blob-report/
+# NFR / #2036: frontend.yml の e2e ジョブが merge-reports の入力として置く（シャードの blob を集めた所）。
+all-blob-reports/
 playwright/.cache/

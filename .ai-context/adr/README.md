@@ -698,3 +698,4 @@
 | [IADR-0618](./IADR-0618_keycloak-auto-assigned-service-account-scope.md) | Keycloak 26 がサービスアカウントの client へ自動で付ける既定スコープ `service_account` は宣言の外とし、realm の追随は名前・欄・条件を限定して稼働側の余剰に数えない。検査器は宣言に書くことを止める（#2208） | Accepted |
 | [IADR-0619](./IADR-0619_keycloak-theme-axe-disposable-container.md) | Keycloak のテーマの画面（SC-13 の Keycloak 側・SC-14〜16）は、CI のジョブの中で起こす使い捨ての Keycloak で axe を走らせる（静的描画は採らない）。親テンプレートのラベルの欠陥はテーマの追加スクリプトで補う（#2191） | Accepted |
 | [IADR-0620](./IADR-0620_sc11-drift-shows-contract-values.md) | SC-11 のドリフトの種別と深刻度は、計画（Q29）どおり契約の値のまま表示する（IADR-0129 決定 6 の表示名の写像を改める）（#2022） | Accepted |
+| [IADR-0621](./IADR-0621_l1-e2e-shards-and-aggregate-check.md) | L1 E2E を 2 シャード（`fullyParallel`）で流し、blob を `merge-reports` でまとめる集約ジョブに check 名 `e2e` を残す。成果物は常時 14 日（#2036） | Accepted |
