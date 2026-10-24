@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Button } from './Button';
 import {
@@ -18,6 +18,10 @@ import {
 // 🔴 **`initialFocus` が通ることを固定する。** 本リポジトリには「破壊的操作の確認ダイアログは
 //    **取消側**へ初期フォーカスを当てる」という既存の規律があり、ラッパが prop を落とすと
 //    その規律が静かに壊れる（画面は動いて見えるので気付けない）。
+//
+// 🔴 **初期フォーカスは Base UI が描いた後で（アニメーションフレームを待って）当てる。** `findByRole` は要素が在るまでしか
+//    待たないので、フォーカスは `waitFor` で待つ。同期で 1 回だけ見ると、フレームが遅い（CI の負荷が高い）ときに当たる前に
+//    評価して落ちる（#2224。requestAnimationFrame を 150ms 遅らせると直す前の形が必ず落ちることを確かめた）。
 
 function ConfirmFixture() {
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -58,7 +62,7 @@ describe('Dialog（Base UI ラッパ）', () => {
     await userEvent.click(screen.getByRole('button', { name: '削除' }));
     await screen.findByRole('dialog');
 
-    expect(await screen.findByRole('button', { name: '取消' })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole('button', { name: '取消' })).toHaveFocus());
   });
 
   it('Escape で閉じる', async () => {
