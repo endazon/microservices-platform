@@ -272,11 +272,12 @@ test('M-112: 一括再投入の操作は無く、更新は項目ごとのボタ�
   // 陽性対照: 項目ごとの「更新」は 3 行ぶん出ている。
   await expect(table.getByRole('button', { name: '更新' })).toHaveCount(3);
 
-  // ★ 画面の全ボタンに、一括・全件・再投入の操作が 1 つも無い。
+  // ★ 画面の全ボタンの集合を完全一致で見る（一括・全件の操作がどんな文言で増えても赤になる）。
   const names = (await page.getByRole('main').getByRole('button').allTextContents()).map((n) =>
     n.trim(),
   );
-  expect(names.filter((n) => /一括|全件|すべて|再投入|まとめて/.test(n))).toEqual([]);
+  // 項目ごとの「更新」が 3 つだけである（運用者には群の表の操作も無い）。
+  expect(names).toEqual(['更新', '更新', '更新']);
   expect(traffic.calls.filter((c) => c.method !== 'GET')).toEqual([]);
 
   expectBffTrafficIsComplete(traffic);

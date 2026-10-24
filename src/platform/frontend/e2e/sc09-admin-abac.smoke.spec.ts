@@ -372,6 +372,9 @@ test('M-088: 使用中の辺の型の削除は拒否され、使用件数を示�
       .filter({ hasText: 'この辺の型は 342 本の辺で使われているため削除できません。' }),
   ).toBeVisible();
   await expect(table.getByText('cites')).toBeVisible();
+  expect(traffic.calls.filter((c) => c.method === 'DELETE').map((c) => c.key)).toEqual([
+    `DELETE /edge-types/${EDGE_TYPE.id}`,
+  ]);
 
   expectBffTrafficIsComplete(traffic);
 });

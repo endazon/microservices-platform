@@ -241,12 +241,12 @@ test('M-107: 本画面にはアカウントを新規作成する操作が無く�
   const row = page.getByRole('row').filter({ hasText: 'hando.taro' });
   await expect(row.getByRole('button', { name: '編集' })).toBeVisible();
 
-  // ★ 画面の全ボタンに、作成・追加・登録・招待の操作が 1 つも無い。
+  // ★ 画面の全ボタンの集合を完全一致で見る（作成・追加・招待の操作がどんな文言で増えても赤になる）。
+  // 並べ替えの見出しボタン（ユーザー・状態）と、行の「編集」だけである。
   const names = (await page.getByRole('main').getByRole('button').allTextContents()).map((n) =>
     n.trim(),
   );
-  expect(names.length).toBeGreaterThan(0);
-  expect(names.filter((n) => /新規|作成|追加|登録|招待/.test(n))).toEqual([]);
+  expect(names).toEqual(['ユーザー', '状態', '編集']);
   await expect(page.getByTestId('users-help')).toContainText('この画面からは作成できません');
   expect(traffic.calls.filter((c) => c.method !== 'GET')).toEqual([]);
 
