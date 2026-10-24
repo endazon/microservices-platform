@@ -37,6 +37,7 @@ export const OPTION_NAMES = [
   'E2E_INSECURE_TLS',
   'E2E_AUTH_DIR',
   'E2E_SEARCH_HITS',
+  'E2E_KEEP_SESSIONS',
 ] as const;
 
 export interface LiveEnv {
@@ -53,7 +54,15 @@ export interface LiveEnv {
    * `verify-oidc-edge-flow.sh` の `SEARCH_HITS=1` と同じ意味（索引が空であり得る環境で、空を故障と取り違えない）。
    */
   searchHits: boolean;
+  /**
+   * `E2E_KEEP_SESSIONS=trading-owner`: teardown がこの役割のセッションを失効させずに残す（state は 0600）。後始末は AST の live の
+   * teardown が引き受ける（#2231 / IADR-0628。AST の IADR-0588）。**値域は `trading-owner` だけ**。既定（未設定）は全部失効。
+   */
+  keepSessions: Role[];
 }
+
+/** teardown が残してよい役割（AST の live が読む取引オーナーだけ。他の役割は必ず失効させる）。 */
+export const KEEPABLE_ROLES = ['trading-owner'] as const satisfies readonly Role[];
 
 /** 役割から環境変数名を作る（`trading-owner` → `E2E_TRADING_OWNER_PASSWORD`）。 */
 export function credentialNames(role: Role): { password: string; totpSecret: string } {
@@ -129,6 +138,17 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
       'E2E_SEARCH_HITS が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
     );
   }
+  const rawKeep = read('E2E_KEEP_SESSIONS') ?? '';
+  if (rawKeep !== '' && !(KEEPABLE_ROLES as readonly string[]).includes(rawKeep)) {
+    throw new Error(
+      `E2E_KEEP_SESSIONS の値域外: ${rawKeep}（残せるのは ${KEEPABLE_ROLES.join(' / ')} だけ。全部を残す指定は無い）`,
+    );
+  }
+  if (rawKeep !== '' && !live) {
+    throw new Error(
+      'E2E_KEEP_SESSIONS が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
+    );
+  }
   return {
     live,
     layers: [...new Set(layers)] as Layer[],
@@ -137,6 +157,7 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
     insecureTls: read('E2E_INSECURE_TLS') === '1',
     authDir: read('E2E_AUTH_DIR') ?? defaultAuthDir,
     searchHits: rawHits === '1',
+    keepSessions: rawKeep === '' ? [] : [rawKeep as Role],
   };
 }
 

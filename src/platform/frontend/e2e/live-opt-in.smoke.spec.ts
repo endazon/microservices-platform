@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -378,4 +378,64 @@ test('live の spec の文言は ja のカタログから引き、msgid が無�
   );
   expect(po.get('前半後半')).toBe('訳の前半訳の後半');
   expect(po.get('単独')).toBe('単独');
+});
+
+test('E2E_KEEP_SESSIONS=trading-owner なら、teardown は他の 5 役割を失効させ、取引オーナーの state だけを 0600 で残す（#2231 / IADR-0628）', async () => {
+  const fake = await startFakeLiveStack();
+  const authDir = mkdtempSync(join(tmpdir(), 'e2e-live-auth-'));
+  try {
+    const r = await runLiveAsync({
+      E2E_LIVE: '1',
+      E2E_KEEP_SESSIONS: 'trading-owner',
+      E2E_EDGE_URL: fake.edgeUrl,
+      E2E_KC_URL: fake.kcUrl,
+      E2E_AUTH_DIR: authDir,
+      ...fake.credentials,
+    });
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toMatch(/6 passed/);
+    // 取引オーナー以外の 5 役割は失効させた（ログアウト 5 回・生きているセッションは取引オーナーの 1 つ）。
+    expect(fake.logouts(), 'ログアウトの回数').toBe(ROLES.length - 1);
+    expect(fake.live(), '生きているセッション').toBe(1);
+    expect(r.out).toContain(
+      '[e2e-live] セッションを失効させた: user, operator, admin, noaccess, revocable',
+    );
+    expect(r.out).toContain(
+      '失効させずに残した（E2E_KEEP_SESSIONS。後始末は AST の live の teardown）: trading-owner',
+    );
+    // 残るのは取引オーナーの state だけで、本人だけが読める権限。
+    expect(readdirSync(authDir)).toEqual(['trading-owner.json']);
+    expect(statSync(join(authDir, 'trading-owner.json')).mode & 0o777).toBe(0o600);
+    for (const secret of [...fake.issued, ...Object.values(fake.credentials)])
+      expect(r.out).not.toContain(secret);
+  } finally {
+    await fake.close();
+    rmSync(authDir, { recursive: true, force: true });
+  }
+});
+
+test('E2E_KEEP_SESSIONS は trading-owner だけを受け、値域外と E2E_LIVE=1 無しは読み込みで失敗する（全部を残す指定は無い）', () => {
+  expect(parseLiveEnv({ E2E_LIVE: '1' }, '/tmp/x').keepSessions).toEqual([]);
+  expect(
+    parseLiveEnv({ E2E_LIVE: '1', E2E_KEEP_SESSIONS: 'trading-owner' }, '/tmp/x').keepSessions,
+  ).toEqual(['trading-owner']);
+  for (const bad of ['1', 'all', 'true', 'user', 'admin', 'trading-owner,user'])
+    expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_KEEP_SESSIONS: bad }, '/tmp/x')).toThrow(
+      /E2E_KEEP_SESSIONS の値域外/,
+    );
+  expect(() => parseLiveEnv({ E2E_KEEP_SESSIONS: 'trading-owner' }, '/tmp/x')).toThrow(
+    /E2E_LIVE=1 が無い/,
+  );
+  // 子プロセスの config の読み込みでも落ちる。
+  const r = runLive({ E2E_LIVE: '1', E2E_KEEP_SESSIONS: 'all' }, ['--list']);
+  expect(r.status, r.out).not.toBe(0);
+  expect(r.out).toContain('E2E_KEEP_SESSIONS の値域外');
+});
+
+test('e2e-live.yml（使い捨てスタック）は E2E_KEEP_SESSIONS を使わない（既定の全部失効のまま。#2231）', () => {
+  const wf = readFileSync(
+    fileURLToPath(new URL('../../../../.github/workflows/e2e-live.yml', import.meta.url)),
+    'utf8',
+  );
+  expect(wf).not.toContain('E2E_KEEP_SESSIONS');
 });

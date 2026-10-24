@@ -9,7 +9,7 @@
 // ログアウトの経路（`AuthBffEndpoints.cs`）: **GET** `/bff/auth/logout?sid=<sid>`。CSRF はセッションの `sid` との一致で防ぐ
 // （ヘッダは要らない）。sid は `/bff/auth/me` の `logoutUrl` が配る。認可サーバへの往復はトップレベルの遷移でしか完結しないので、
 // ブラウザのページで開く。失効したことは、**同じ state の cookie で `/bff/auth/me` が 401** になることで確かめる。
-import { existsSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, rmSync } from 'node:fs';
 import { chromium, request, type Browser } from '@playwright/test';
 import { parseLiveEnv, ROLES, stateFile, type LiveEnv, type Role } from './env';
 import { DEFAULT_AUTH_DIR } from './paths';
@@ -19,17 +19,25 @@ export interface RevokeResult {
   revoked: Role[];
   /** state が無かった役割（setup がその役割で失敗した・前提未整備で流れなかった）。 */
   missing: Role[];
+  /** `E2E_KEEP_SESSIONS` で失効させずに残した役割（state は 0600。後始末は AST の live の teardown。#2231）。 */
+  kept: Role[];
   /** 失効を確かめられなかった役割（名前だけ。値は持たない）。 */
   failed: { role: Role; reason: string }[];
 }
 
 /** 6 役割のセッションを BFF のログアウトで失効させ、state のファイルを消す。値は返さない・出さない。 */
 export async function revokeSessions(cfg: LiveEnv, browser: Browser): Promise<RevokeResult> {
-  const result: RevokeResult = { revoked: [], missing: [], failed: [] };
+  const result: RevokeResult = { revoked: [], missing: [], kept: [], failed: [] };
   for (const role of ROLES) {
     const file = stateFile(cfg.authDir, role);
     if (!existsSync(file)) {
       result.missing.push(role);
+      continue;
+    }
+    // #2231 / IADR-0628: 明示した役割（取引オーナーだけ）は失効させずに残す。他の役割は必ず失効させる。
+    if (cfg.keepSessions.includes(role)) {
+      chmodSync(file, 0o600);
+      result.kept.push(role);
       continue;
     }
     try {
@@ -98,6 +106,9 @@ export default async function globalTeardown(): Promise<void> {
   process.stdout.write(
     `[e2e-live] セッションを失効させた: ${result.revoked.join(', ') || '（なし）'}` +
       (result.missing.length ? `／state が無かった: ${result.missing.join(', ')}` : '') +
+      (result.kept.length
+        ? `／失効させずに残した（E2E_KEEP_SESSIONS。後始末は AST の live の teardown）: ${result.kept.join(', ')}`
+        : '') +
       '\n',
   );
   if (result.failed.length) {

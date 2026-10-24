@@ -6,7 +6,7 @@
 // - 🔴 state は `authDir`（レポートの外・gitignore）にだけ書く。この project は trace・スクリーンショット・動画を切っている
 //   （trace は `fill` の値＝パスワードと、応答の `Set-Cookie` を記録するため。`playwright.live.config.ts`）。
 // - brute force 保護（5 回失敗で 900 秒）があるため retries は 0。失敗した段を attach して fail にする（skip にしない）。
-import { mkdirSync } from 'node:fs';
+import { chmodSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { expect, test as setup, type Page, type TestInfo } from '@playwright/test';
 import { credentialNames, parseLiveEnv, ROLES, stateFile, type Role } from './support/env';
@@ -97,6 +97,8 @@ for (const role of ROLES) {
     const file = stateFile(cfg.authDir, role);
     mkdirSync(dirname(file), { recursive: true });
     const state = await page.context().storageState({ path: file });
+    // cookie を持つファイルは本人だけが読める権限にする（#2231。残す opt-out の state も同じ権限で残る）。
+    chmodSync(file, 0o600);
     // BFF のオリジンのセッション cookie が保存されたこと（値は見ない・出さない）。
     const host = new URL(cfg.edgeUrl).hostname;
     expect(

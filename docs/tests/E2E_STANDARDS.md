@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
-issues: [#2013, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
+iadrs: [IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+specs: [20261025_2231_live-keep-owner-session, 20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
+issues: [#2013, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
 -->
 
 # E2E テスト基準
@@ -215,6 +215,9 @@ issues: [#2013, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #
 - 🔴 **live の層の trace はリクエストの `Cookie`（BFF のセッション）を記録する**（外す設定は無い）。trace は止めず、`playwright.live.config.ts` の
   `globalTeardown` が実行の終わりに（成功でも失敗でも）6 役割のセッションを BFF のログアウトで失効させ、state を消す。失効を確かめられない役割が
   あれば名前だけを出して赤にする。teardown が走らない異常終了では、セッションの寿命が切れるまで cookie が有効のまま残る。
+- **［2026-10-25］取引機能を持つ可変ユニットの live 層だけのための opt-out**: `E2E_KEEP_SESSIONS=trading-owner` のとき、teardown は取引オーナーの
+  セッションだけを失効させずに残す（state は 0600）。値域は `trading-owner` だけで、他の役割は必ず失効させる。既定（未設定）と `e2e-live.yml` は全部失効。
+  残したセッションはそのユニットの live の teardown が失効させる。流す順は「setup を opt-out つきで流す → ユニットの live → ユニットの teardown」。
 - 🔴 **秘密の値（パスワード・OTP）を `locator.fill(value)` で入れない。** `fill` は値を step の題に載せ、html レポートに残す
   （実測: 偽の BFF と Keycloak に対して setup を流したら、6 名分のパスワードがレポートに出た）。`e2e/live/support/login.ts` の
   `fillSecret`（値をページの中で入れる。`evaluate` の引数は題に載らない）を使う（［2026-10-25］`auth.setup.ts` から切り出した）。
