@@ -2410,6 +2410,52 @@ const ALL_0577 = USERS_0577.map((r) => r[0]);
 const flagAt0577 = (r) => r.log.findIndex((l) => /create configmap rabbitmq-default-user --from-literal=disabled=true/.test(l));
 const delAt0577 = (r) => r.log.findIndex((l) => / delete_user /.test(l));
 
+// NFR, #2194: Windows の Git Bash（MSYS2）は、ネイティブの kubectl.exe へ渡す引数のうち `/` で始まるものを Git の導入先のパスへ
+//   書き換える（`/` → `C:/Program Files/Git/`）。模型の kubectl は、書き換えを止める変数（MSYS_NO_PATHCONV=1 か MSYS2_ARG_CONV_EXCL=*）が
+//   無ければ受け取った引数をそのように書き換えてから記録する。vhost の `/` がそのまま届くこと・他の呼び出しに変数を広げないことを見る。
+function reconcile2194(scriptText) {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'reconcile-2194-'));
+  try {
+    const bin = path.join(H, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'kubectl'), [
+      '#!/usr/bin/env bash',
+      'conv=1; [ "${MSYS_NO_PATHCONV:-}" = "1" ] && conv=0; [ "${MSYS2_ARG_CONV_EXCL:-}" = "*" ] && conv=0',
+      'args=(); for a in "$@"; do if [ "$conv" = "1" ] && [ "${a#/}" != "$a" ]; then a="C:/Program Files/Git${a}"; fi; args+=("$a"); done',
+      'set -- "${args[@]}"',
+      'case "$*" in',
+      '  *"get secret rabbitmq-users"*) printf "dg=="; exit 0;;',
+      '  *"rabbitmqctl -q list_users"*) printf "[]"; exit 0;;',
+      '  *"rabbitmqctl -q set_permissions "*) shift 9; [ "$1" = "-p" ] && printf "vhost=%s conv=%s\\n" "$2" "$conv" >> "$STUB_H/log"; exit 0;;',
+      '  *"rabbitmqctl "*) [ "$conv" = "0" ] && echo "unexpected-noconv $*" >> "$STUB_H/log"; cat >/dev/null; exit 0;;',
+      'esac',
+      'exit 0',
+      '',
+    ].join('\n'), { mode: 0o755 });
+    fs.writeFileSync(path.join(H, 'users.txt'), 'msp-document x y msp/rabbitmq-users\n');
+    fs.writeFileSync(path.join(H, 'log'), '');
+    const script = path.join(H, 'reconcile-users.sh');
+    fs.writeFileSync(script, scriptText);
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, STUB_H: H, RABBITMQ_USERS_FILE: path.join(H, 'users.txt'), RABBITMQ_USERS_TIMEOUT: '1' };
+    delete env.MSYS_NO_PATHCONV;
+    delete env.MSYS2_ARG_CONV_EXCL;
+    const r = spawnSync('bash', [script], { encoding: 'utf8', env });
+    return { status: r.status, out: `${r.stdout}${r.stderr}`, log: fs.readFileSync(path.join(H, 'log'), 'utf8') };
+  } finally {
+    fs.rmSync(H, { recursive: true, force: true });
+  }
+}
+ok('#2194: Git Bash の引数の書き換えの下でも、reconcile-users.sh の vhost の「/」はそのまま届く（書き換えを止めるのはその呼び出しだけ）', () => {
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/reconcile-users.sh'), 'utf8');
+  const r = reconcile2194(src);
+  assert.strictEqual(r.status, 0, r.out.slice(-400));
+  assert.deepStrictEqual(r.log.trim().split('\n'), ['vhost=/ conv=0'], `vhost が書き換わった／他の呼び出しに変数が広がった:\n${r.log}`);
+  // 変異: 呼び出しの前の変数を外すと、模型の書き換えで vhost が Git の導入先のパスになる（#2194 の実測の形）。
+  const old = src.replace("MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' rmqctl set_permissions", 'rmqctl set_permissions');
+  assert.notStrictEqual(old, src, '変異が空振りしている');
+  assert.deepStrictEqual(reconcile2194(old).log.trim().split('\n'), ['vhost=C:/Program Files/Git/ conv=1'], '模型が書き換えを再現していない（試験が検出力を持たない）');
+});
+
 ok('IADR-0577: 全ユーザーが認証でき、既定のユーザーの接続が無ければ、印を先に置いてから既定のユーザーを消す', () => {
   const r = disable0577({ users: [...ALL_0577, 'brokeradmin'], conns: ['msp-document', 'ast-audit'] });
   assert.strictEqual(r.status, 0, r.stderr);
