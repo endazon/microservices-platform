@@ -37,8 +37,11 @@ public static class SecretItemServiceCollectionExtensions
         services.TryAddSingleton<IVaultKvClient, VaultKvClient>();
         services.TryAddSingleton<ISecretWriteRecordStore, DistributedCacheSecretWriteRecordStore>();
 
-        // IADR-0456 決定 4 (#1477): 書き込み後に ExternalSecret へ即時同期を依頼する。名乗りは Vault と同じ Pod の SA トークン。
+        // IADR-0456 決定 4 (#1477): 書き込み後に ExternalSecret へ即時同期を依頼する。
+        // NFR-18, IADR-0585 決定 2, #2193: 名乗りは Pod の既定の SA トークン（対象者＝API サーバ）。Vault 用の projected token
+        // （audience: vault）とは読み先も型も分ける（Vault 用を送ると kube-apiserver は 401 を返す）。
         services.AddOptions<ExternalSecretSyncOptions>().BindConfiguration(ExternalSecretSyncOptions.SectionName);
+        services.TryAddSingleton<IKubernetesApiTokenReader, FileKubernetesApiTokenReader>();
         services.AddHttpClient(ExternalSecretSyncRequester.ClientName, (sp, client) =>
                 client.Timeout = TimeSpan.FromSeconds(
                     Math.Max(1, sp.GetRequiredService<IOptions<ExternalSecretSyncOptions>>().Value.TimeoutSeconds)))
@@ -47,7 +50,7 @@ public static class SecretItemServiceCollectionExtensions
         services.TryAddSingleton<IExternalSecretSyncRequester, ExternalSecretSyncRequester>();
 
         // ADR-0104 決定 2, IADR-0460 決定 1 (#1502): 一覧の「供給元」を、同期先 ExternalSecret の有無（`get`）から読む。
-        // 構成・通信路・名乗りは同期依頼と同じもの（`ExternalSecretSync:*`・`KubernetesApi` クライアント・SA トークン）を使う。
+        // 構成・通信路・名乗りは同期依頼と同じもの（`ExternalSecretSync:*`・`KubernetesApi` クライアント・Kubernetes API 用の SA トークン）を使う。
         services.TryAddSingleton<IExternalSecretPresenceReader, ExternalSecretPresenceReader>();
         return services;
     }
