@@ -26,7 +26,11 @@ export interface RevokeResult {
 }
 
 /** 6 役割のセッションを BFF のログアウトで失効させ、state のファイルを消す。値は返さない・出さない。 */
-export async function revokeSessions(cfg: LiveEnv, browser: Browser): Promise<RevokeResult> {
+export async function revokeSessions(
+  cfg: LiveEnv,
+  browser: Browser,
+  chmod: (path: string, mode: number) => void = chmodSync,
+): Promise<RevokeResult> {
   const result: RevokeResult = { revoked: [], missing: [], kept: [], failed: [] };
   for (const role of ROLES) {
     const file = stateFile(cfg.authDir, role);
@@ -35,9 +39,17 @@ export async function revokeSessions(cfg: LiveEnv, browser: Browser): Promise<Re
       continue;
     }
     // #2231 / IADR-0628: 明示した役割（取引オーナーだけ）は失効させずに残す。他の役割は必ず失効させる。
+    // 🔴 権限を変えられなかったら失敗に積んで**次の役割へ進む**（ここで止まると、後ろの役割が失効しないまま残る。最後に exit 1）。
     if (cfg.keepSessions.includes(role)) {
-      chmodSync(file, 0o600);
-      result.kept.push(role);
+      try {
+        chmod(file, 0o600);
+        result.kept.push(role);
+      } catch (e) {
+        result.failed.push({
+          role,
+          reason: `残す state の権限を 0600 にできない（${e instanceof Error ? e.message.split('\n')[0] : String(e)}）`,
+        });
+      }
       continue;
     }
     try {

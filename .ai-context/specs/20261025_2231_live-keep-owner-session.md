@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — live の teardown に取引オーナーのセッションだけを残す opt-out（E2E_KEEP_SESSIONS=trading-owner）
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, ADR-0032, IADR-0624, IADR-0625, IADR-0628]
 author: claude
 created: 2026-10-25
@@ -18,10 +18,12 @@ issue: "#2231"
 
 ## 受け入れ基準（#2231）
 
-- [ ] `E2E_KEEP_SESSIONS=trading-owner` のとき、偽の BFF と Keycloak に対して teardown が 5 回ログアウトし、`trading-owner.json` だけが 0600 で残る（L1）
-- [ ] 値域外・`E2E_LIVE=1` 無しは読み込みで失敗する（L1）
-- [ ] 未設定なら従来どおり 6 回ログアウトして state が残らない（L1。既存の試験）
-- [ ] `e2e-live.yml` が `E2E_KEEP_SESSIONS` を使っていない（L1）
+- [x] `E2E_KEEP_SESSIONS=trading-owner` のとき、偽の BFF と Keycloak に対して teardown が 5 回ログアウトし、`trading-owner.json` だけが 0600 で残る（L1）
+- [x] 値域外・`E2E_LIVE=1` 無しは読み込みで失敗する（L1）
+- [x] 未設定なら従来どおり 6 回ログアウトして state が残らない（L1。既存の試験）
+- [x] `e2e-live.yml` が `E2E_KEEP_SESSIONS` を使っていない（L1）
+
+- [x] （レビュー 🟢 で追加）残す役割の state の権限を変えられなくても、他の 5 役割は 5 回とも失効させ、失敗に積む（exit 1）（L1）
 
 ## 判断（IADR-0628）
 
@@ -38,4 +40,5 @@ issue: "#2231"
 
 ## 検証
 
-- `tsc`・`eslint`・`prettier`、`live-opt-in.smoke.spec.ts`（18 passed。新規 3）。
+- `tsc`・`eslint`・`prettier`、`live-opt-in.smoke.spec.ts`（19 passed。新規 4）。
+- knip: 当初 `KEEPABLE_ROLES` を export して床（exports）を 1 件超えた（PR #2232 の build-test）。モジュールの中だけで使うので export を外した（床は上げない）。

@@ -14,6 +14,9 @@ import {
 import { nextPeriodOtp, otpFor, remainingSeconds, wrongOtpFor } from './live/support/totp';
 import { ja, jaPattern, parsePo } from './live/support/catalog';
 import { startFakeLiveStack } from './support/fakeLiveStack';
+import { revokeSessions } from './live/support/teardown';
+import { submitOtp, submitPassword } from './live/support/login';
+import { stateFile } from './live/support/env';
 
 // NFR / IADR-0569 決定 4 / IADR-0624（#2025）: live 層の config（`playwright.live.config.ts`）の **opt-in と門**を L1 で固定する。
 // 稼働の環境には 1 度も触れない（到達先は誰も listen していない 127.0.0.1:9）。ブラウザも開かない。
@@ -438,4 +441,49 @@ test('e2e-live.yml（使い捨てスタック）は E2E_KEEP_SESSIONS を使わ�
     'utf8',
   );
   expect(wf).not.toContain('E2E_KEEP_SESSIONS');
+});
+
+test('残す役割の state の権限を変えられなくても、他の 5 役割は 5 回とも失効させ、失敗に積む（exit 1 の条件。#2232 / IADR-0628 決定 2）', async ({
+  browser,
+}) => {
+  const fake = await startFakeLiveStack();
+  const authDir = mkdtempSync(join(tmpdir(), 'e2e-live-auth-'));
+  try {
+    // 6 役割の state を偽の BFF と Keycloak に対して作る（setup と同じ画面の流れ。値は入力欄にだけ入れる）。
+    for (const role of ROLES) {
+      const names = credentialNames(role);
+      const context = await browser.newContext({ baseURL: fake.edgeUrl });
+      const page = await context.newPage();
+      await page.goto('/bff/auth/login?returnUrl=%2F');
+      await submitPassword(page, `e2e-${role}`, fake.credentials[names.password]);
+      await submitOtp(page, otpFor(fake.credentials[names.totpSecret], Date.now()));
+      await page.waitForURL((url) => url.origin === fake.edgeUrl);
+      await context.storageState({ path: stateFile(authDir, role) });
+      await context.close();
+    }
+    expect(fake.live(), '作ったセッション').toBe(ROLES.length);
+    const cfg = {
+      ...parseLiveEnv(
+        {
+          E2E_LIVE: '1',
+          E2E_KEEP_SESSIONS: 'trading-owner',
+          E2E_EDGE_URL: fake.edgeUrl,
+          E2E_KC_URL: fake.kcUrl,
+        },
+        authDir,
+      ),
+    };
+    const result = await revokeSessions(cfg, browser, () => {
+      throw new Error('EPERM（試験で失敗させた）');
+    });
+    // 他の 5 役割は 5 回とも失効した。取引オーナーは権限の失敗として積まれ、globalTeardown はこれで exit 1 にする。
+    expect(fake.logouts(), 'ログアウトの回数').toBe(ROLES.length - 1);
+    expect(result.revoked).toEqual(['user', 'operator', 'admin', 'noaccess', 'revocable']);
+    expect(result.kept).toEqual([]);
+    expect(result.failed.map((f) => f.role)).toEqual(['trading-owner']);
+    expect(result.failed[0].reason).toContain('0600 にできない');
+  } finally {
+    await fake.close();
+    rmSync(authDir, { recursive: true, force: true });
+  }
 });

@@ -62,7 +62,7 @@ export interface LiveEnv {
 }
 
 /** teardown が残してよい役割（AST の live が読む取引オーナーだけ。他の役割は必ず失効させる）。 */
-export const KEEPABLE_ROLES = ['trading-owner'] as const satisfies readonly Role[];
+const KEEPABLE_ROLES = ['trading-owner'] as const satisfies readonly Role[];
 
 /** 役割から環境変数名を作る（`trading-owner` → `E2E_TRADING_OWNER_PASSWORD`）。 */
 export function credentialNames(role: Role): { password: string; totpSecret: string } {
