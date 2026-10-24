@@ -28,7 +28,13 @@ A-002（閲覧者〔e2e-user〕で 4 画面が NotFound・ナビに株式自動�
 ## 判断
 
 - 新しい IADR は置かない（AST/IADR-0589 決定 5 が移し替えを決めた）。
-- 取引機能の画面のパスは共通シェルの直下（`/trading` の接頭辞は無い）。根拠: `/settings`・`/settings/risk`・`/controls` は `src/platform/frontend/src/app/routing/router.test.ts`
-  189〜191 行、`/opend-auth` は AST の `frontend/src/features/sc04-opend-auth/routes/sc04OpendAuthRoute.tsx` 30 行。
+- 取引機能の画面のパスは共通シェルの直下（`/trading` の接頭辞は無い）。根拠: `/settings`・`/settings/risk`・`/controls` は
+  `src/platform/frontend/src/app/routing/router.test.ts` の test「mounts the AST screens in the typed route tree」の
+  `arrayContaining(['/settings', '/settings/risk', '/controls'])`、`/opend-auth` は AST の
+  `frontend/src/features/sc04-opend-auth/routes/sc04OpendAuthRoute.tsx` の `path: '/opend-auth'`。
+- **ナビの陰性はナビが描かれている画面（`/ask`）で見る**。NotFound の画面でナビが描かれていなければ「株式自動売買が 0 件」は空振りする。
+  `/ask` で `navigation` の項目（検索・質問）が見えることを確かめてから 0 件を見る。M-013（4 役割の左ナビの表）と重なるが、A-002 の行を単独で
+  読めるよう重複を受容する（陰性を空振りさせないことを優先）。
+- 起点 ID の `NFR` は無採番である。traceability.md の「無採番を許す 2 場合」の **2**（ID 列はあるが、その作業に当たる番号が無い。E2E の網羅というメタ作業）に当たる（IADR-0179 決定 1・IADR-0188）。
 - 権限外の画面は存在秘匿の NotFound を描く（IADR-0035。AST の画面は AST の `RequireRole` が同じ規約で描く）。
 - 4 画面は `expect.soft` で見る（1 画面で落ちても、1 回の実行で 4 画面すべての結果が出る）。網羅表の行 A-002 は 1 つの test のまま。

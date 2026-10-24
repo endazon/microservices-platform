@@ -150,7 +150,8 @@ for (const c of CASES) {
 
 /**
  * 取引機能のユニット（ai-stock-trading）の 4 画面。共通シェルの直下に載る（`/trading` の接頭辞は無い）。根拠: `/settings`・`/settings/risk`・
- * `/controls` は `src/app/routing/router.test.ts` 189〜191 行、`/opend-auth` は AST の `frontend/src/features/sc04-opend-auth/routes/sc04OpendAuthRoute.tsx` 30 行。
+ * `/controls` は `src/app/routing/router.test.ts` の test「mounts the AST screens in the typed route tree」
+ * （`arrayContaining(['/settings', '/settings/risk', '/controls'])`）、`/opend-auth` は AST の `sc04OpendAuthRoute.tsx` の `path: '/opend-auth'`。
  * ロール `trading-owner` を持たない利用者には、存在秘匿の NotFound を描く（AST の `RequireRole`）。
  */
 const AST_ROUTES = ['/settings', '/settings/risk', '/controls', '/opend-auth'] as const;
@@ -171,11 +172,12 @@ test.describe('e2e-user（trading-owner を持たない）と取引機能のユ�
           .soft(page.getByRole('heading', { name: NOT_FOUND, level: 1 }), path)
           .toBeVisible();
       }
-      await expect(
-        page
-          .getByRole('navigation', { name: '主要ナビゲーション' })
-          .getByRole('heading', { name: '株式自動売買' }),
-      ).toHaveCount(0);
+      // ナビの陰性は、ナビが描かれている画面で見る（NotFound の画面でナビが描かれていなければ 0 件で空振りする）。
+      // M-013 と重なるが、A-002 の行を単独で読めるよう重複を受容する（作業仕様書）。
+      await page.goto('/ask');
+      const navigation = page.getByRole('navigation', { name: '主要ナビゲーション' });
+      await expect(navigation.getByRole('link', { name: '検索・質問' })).toBeVisible();
+      await expect(navigation.getByRole('heading', { name: '株式自動売買' })).toHaveCount(0);
     },
   );
 });
