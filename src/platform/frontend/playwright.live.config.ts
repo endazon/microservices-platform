@@ -82,6 +82,9 @@ export default defineConfig({
   globalTimeout: 40 * 60_000,
   forbidOnly: !!process.env.CI,
   globalSetup: cfg.live ? './e2e/live/support/readiness.ts' : undefined,
+  // IADR-0624: 実行の終わりに（成功でも失敗でも）6 役割のセッションを BFF のログアウトで失効させ、state を消す。
+  // 層の trace はリクエストの Cookie を記録する（外せない）ので、失効させて使えなくする。
+  globalTeardown: cfg.live ? './e2e/live/support/teardown.ts' : undefined,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     ...devices['Desktop Chrome'],

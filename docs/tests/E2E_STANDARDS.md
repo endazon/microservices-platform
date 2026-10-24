@@ -198,6 +198,9 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025]
 - trace: L1 は `on-first-retry`（現状）。live 層は `retain-on-failure`（再試行が無いか 1 回なので初回から残す）。
   **ただし `live-setup` は trace・スクリーンショット・動画を残さない**（trace はログインの入力と応答の `Set-Cookie` を記録する）。
   失敗した段（ログイン画面・OTP 画面・コールバック）は文字で attach する（URL は path だけ）。
+- 🔴 **live の層の trace はリクエストの `Cookie`（BFF のセッション）を記録する**（外す設定は無い）。trace は止めず、`playwright.live.config.ts` の
+  `globalTeardown` が実行の終わりに（成功でも失敗でも）6 役割のセッションを BFF のログアウトで失効させ、state を消す。失効を確かめられない役割が
+  あれば名前だけを出して赤にする。teardown が走らない異常終了では、セッションの寿命が切れるまで cookie が有効のまま残る。
 - 🔴 **秘密の値（パスワード・OTP）を `locator.fill(value)` で入れない。** `fill` は値を step の題に載せ、html レポートに残す
   （実測: 偽の BFF と Keycloak に対して setup を流したら、6 名分のパスワードがレポートに出た）。`e2e/live/auth.setup.ts` の
   `fillSecret`（値をページの中で入れる。`evaluate` の引数は題に載らない）を使う。

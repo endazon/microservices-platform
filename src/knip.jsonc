@@ -68,9 +68,10 @@
         "playwright.keycloak.config.ts",
         "e2e/keycloak/**/*.kc.ts",
         // NFR / IADR-0624 (#2025): live 層の config（`playwright.live.config.ts`）はプラグインが読むが、`E2E_LIVE=1` が無ければ
-        // project を 0 件にし globalSetup も置かない（setup と門が読まれない）ので、その 2 つを入口として名指しする。
+        // project を 0 件にし globalSetup / globalTeardown も置かない（setup・門・後始末が読まれない）ので、その 3 つを入口として名指しする。
         "e2e/live/**/*.setup.ts",
         "e2e/live/support/readiness.ts",
+        "e2e/live/support/teardown.ts",
       ],
     },
     "obsidian-plugin": {

@@ -70,6 +70,12 @@ issue: "#2025"
 10. **Knip**: live の config は既定名でなく、`E2E_LIVE` が無いと setup と門を読まないので、`auth.setup.ts` と `readiness.ts` を entry に名指しした。
     config が読み込み時に標準出力へ書くと Knip の JSON が壊れる（実測）ので、案内は標準エラーへ書く。
 
+11. **後始末（`globalTeardown`）**（［2026-10-24 / PR #2223 の監査］）: 層の trace はリクエストの `Cookie` を必ず記録し、成果物（E-32）に
+    稼働の BFF のセッション cookie が 14 日残る。trace は §9 で必須なので止めず、実行の終わりに 6 役割のセッションを BFF のログアウト
+    （GET `/bff/auth/logout?sid=…`。sid の一致が CSRF の守り。`AuthBffEndpoints.cs` を読んで確かめた）で失効させ、同じ cookie で `/bff/auth/me` が 401 に
+    なることを見てから state を消す。失敗した役割は名前だけを出して exit ≠ 0。L1 で偽の BFF と Keycloak（`e2e/support/fakeLiveStack.ts`）に対して
+    6 回のログアウトと state の削除・失敗の経路を固定した（config から globalTeardown を外すと赤になる）。
+
 ## 母集合（規則 9・10）
 
 - 誤りの側の文字列: 「`playwright.live.config.ts` と `e2e/live/` はまだ無い」「live-setup … `retain-on-failure`」。`docs/`・`.ai-context/adr/`・`src/` を走査した。

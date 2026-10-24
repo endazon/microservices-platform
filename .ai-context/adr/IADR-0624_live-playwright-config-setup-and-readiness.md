@@ -63,7 +63,14 @@ IADR-0569 が名前（config・project・環境変数）を決め、IADR-0570 �
 3. `e2e/live/auth.setup.ts`: 6 役割で 1 回ずつ実ログインし、`/bff/auth/me` のロール（`platform-admin` / `platform-operator` / `trading-owner`）が
    その役割の宣言と一致することを確かめてから、storageState を `E2E_AUTH_DIR`（既定 `src/platform/frontend/playwright/.auth/`。gitignore）に書く。
    trace・スクリーンショット・動画は切り、秘密は `fillSecret` で入れる。`retries: 0`。
-4. L1 の `playwright.config.ts` は `e2e/live/` を `testIgnore` する。opt-in・門・TOTP の振る舞いは L1 の `e2e/live-opt-in.smoke.spec.ts` が
+4. **`globalTeardown`（`e2e/live/support/teardown.ts`）**: live の実行の終わりに（成功でも失敗でも）6 役割の state それぞれで
+   BFF のログアウト（**GET** `/bff/auth/logout?sid=…`。CSRF はセッションの `sid` との一致で防ぐのでヘッダは要らない。sid は `/bff/auth/me` の
+   `logoutUrl` が配る。認可サーバを往復するのでブラウザのページで開く）を呼び、**同じ state の cookie で `/bff/auth/me` が 401** になることを
+   確かめてから state のファイルを消す。失効を確かめられない役割があれば、役割の名前だけを出して exit ≠ 0（state は消す）。
+   層の trace（`retain-on-failure`、`trading` は `on`）は**リクエストの `Cookie` ヘッダを必ず記録する**（Playwright に外す設定は無い）。
+   trace は基準書 §9 で必須なので止めず、cookie を実行の終わりに使えなくする（PR #2223 の監査の指摘）。
+5. L1 の `playwright.config.ts` は `e2e/live/` を `testIgnore` する。opt-in・門・TOTP・setup と teardown（偽の BFF と Keycloak `e2e/support/fakeLiveStack.ts` に対して 6 回のログインと 6 回のログアウト・
+   state が残らないこと・ログアウトを断る役割があれば exit ≠ 0）の振る舞いは L1 の `e2e/live-opt-in.smoke.spec.ts` が
    子プロセスで live の config を起動して固定する（稼働の環境に触れない）。
 
 ## 理由
@@ -79,6 +86,11 @@ IADR-0569 が名前（config・project・環境変数）を決め、IADR-0570 �
   成果物に上げる前の検査は E-32（`e2e-live.yml`）の受け入れ基準で扱う。
 
 ## 残余リスク
+
+- **層の trace には稼働の BFF のセッション cookie が残る**（失敗した test と `trading` の全 test）。teardown がログアウトで失効させるので、
+  実行が終わった時点で使えなくなる。成果物に上げる（E-32）前提はこの失効である。
+- **teardown が走らない異常終了**（runner の強制終了・プロセスの kill・`timeout-minutes` での打ち切り）では、cookie は BFF のセッションの寿命が切れるまで有効のまま残る。
+  そのときは state のファイルも残る（`playwright/.auth/`。gitignore・成果物の外）。手で消し、気になるなら管理コンソールで試験アカウントのセッションを切る。
 
 - 稼働の Keycloak・BFF に対する実ログインはこの PR では流していない（偽の BFF と Keycloak に対して 6 名分の state と、秘密が成果物に出ないことを確かめた）。
 - `fillSecret` はフォームの値を直接入れる。Keycloak のテーマが入力欄を JavaScript で作り直す形に変わると効かなくなりうる（そのときは OTP 画面へ進めず setup が赤になる）。

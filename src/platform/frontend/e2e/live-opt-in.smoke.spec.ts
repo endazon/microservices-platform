@@ -1,5 +1,5 @@
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,7 @@ import {
   ROLES,
 } from './live/support/env';
 import { otpFor, remainingSeconds } from './live/support/totp';
+import { startFakeLiveStack } from './support/fakeLiveStack';
 
 // NFR / IADR-0569 決定 4 / IADR-0624（#2025）: live 層の config（`playwright.live.config.ts`）の **opt-in と門**を L1 で固定する。
 // 稼働の環境には 1 度も触れない（到達先は誰も listen していない 127.0.0.1:9）。ブラウザも開かない。
@@ -36,19 +37,83 @@ function runLive(env: Record<string, string>, extra: string[] = []) {
     ) as Record<string, string>),
     ...blankLiveEnv(),
   };
-  const r = spawnSync(
-    process.execPath,
-    [
-      fileURLToPath(import.meta.resolve('@playwright/test/cli')),
-      'test',
-      '--config',
-      'playwright.live.config.ts',
-      '--pass-with-no-tests',
-      ...extra,
-    ],
-    { cwd: FRONTEND, env: { ...base, ...env }, encoding: 'utf8', timeout: 120_000 },
-  );
-  return { status: r.status, out: `${r.stdout}\n${r.stderr}` };
+  // 子の実行の成果物は一時ディレクトリへ（親の L1 の test-results / レポートを消させない・汚さない）。
+  const out = mkdtempSync(join(tmpdir(), 'e2e-live-out-'));
+  try {
+    const r = spawnSync(
+      process.execPath,
+      [
+        fileURLToPath(import.meta.resolve('@playwright/test/cli')),
+        'test',
+        '--config',
+        'playwright.live.config.ts',
+        '--pass-with-no-tests',
+        '--reporter',
+        'list',
+        '--output',
+        out,
+        ...extra,
+      ],
+      {
+        cwd: FRONTEND,
+        env: { ...base, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost', ...env },
+        encoding: 'utf8',
+        timeout: 120_000,
+      },
+    );
+    return { status: r.status, out: `${r.stdout}\n${r.stderr}` };
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+}
+
+/**
+ * runLive の非同期版。偽の BFF と Keycloak は**この試験のプロセス**で listen するので、子を同期で待つと応答できない。
+ */
+async function runLiveAsync(
+  env: Record<string, string>,
+): Promise<{ status: number | null; out: string }> {
+  const out = mkdtempSync(join(tmpdir(), 'e2e-live-out-'));
+  const base = {
+    ...(Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !k.startsWith('E2E_')),
+    ) as Record<string, string>),
+    ...blankLiveEnv(),
+  };
+  try {
+    return await new Promise((resolve, reject) => {
+      const child = spawn(
+        process.execPath,
+        [
+          fileURLToPath(import.meta.resolve('@playwright/test/cli')),
+          'test',
+          '--config',
+          'playwright.live.config.ts',
+          '--pass-with-no-tests',
+          '--reporter',
+          'list',
+          '--output',
+          out,
+        ],
+        {
+          cwd: FRONTEND,
+          env: {
+            ...base,
+            NO_PROXY: '127.0.0.1,localhost',
+            no_proxy: '127.0.0.1,localhost',
+            ...env,
+          },
+        },
+      );
+      let text = '';
+      child.stdout.on('data', (d) => (text += d));
+      child.stderr.on('data', (d) => (text += d));
+      child.on('error', reject);
+      child.on('close', (status) => resolve({ status, out: text }));
+    });
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
 }
 
 /** 環境変数の名前を組み立てる（名前と値の区別が付かない走査器が、鍵名の隣の長い英大文字列を鍵と取り違えないように）。 */
@@ -141,6 +206,60 @@ test('資格情報の欠けは名前だけを返す・到達先はオリジン�
   expect(() =>
     parseLiveEnv({ E2E_LIVE: '1', E2E_EDGE_URL: 'https://localhost/app' }, '/x'),
   ).toThrow(/オリジンだけ/);
+});
+
+test('偽の BFF と Keycloak に対して、setup が 6 役割でログインし、teardown が 6 回ログアウトして state を消す', async () => {
+  const fake = await startFakeLiveStack();
+  const authDir = mkdtempSync(join(tmpdir(), 'e2e-live-auth-'));
+  try {
+    const r = await runLiveAsync({
+      E2E_LIVE: '1',
+      E2E_EDGE_URL: fake.edgeUrl,
+      E2E_KC_URL: fake.kcUrl,
+      E2E_AUTH_DIR: authDir,
+      ...fake.credentials,
+    });
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toMatch(/6 passed/);
+    // globalTeardown が走り、6 役割のセッションをログアウトで失効させた（同じ cookie で /me が 401 になることも teardown が見る）。
+    expect(fake.logouts(), 'ログアウトの回数').toBe(ROLES.length);
+    expect(fake.live(), '生きているセッション').toBe(0);
+    expect(r.out).toContain(
+      '[e2e-live] セッションを失効させた: user, operator, admin, noaccess, revocable, trading-owner',
+    );
+    // state のファイルは残らない。
+    expect(readdirSync(authDir)).toEqual([]);
+    // 出力に cookie の値も資格情報の値も出ない。
+    for (const secret of [...fake.issued, ...Object.values(fake.credentials)])
+      expect(r.out).not.toContain(secret);
+  } finally {
+    await fake.close();
+    rmSync(authDir, { recursive: true, force: true });
+  }
+});
+
+test('ログアウトに失敗した役割があれば、名前だけを出して exit ≠ 0（state は消す）', async () => {
+  const fake = await startFakeLiveStack({ refuseLogoutFor: 'admin' });
+  const authDir = mkdtempSync(join(tmpdir(), 'e2e-live-auth-'));
+  try {
+    const r = await runLiveAsync({
+      E2E_LIVE: '1',
+      E2E_EDGE_URL: fake.edgeUrl,
+      E2E_KC_URL: fake.kcUrl,
+      E2E_AUTH_DIR: authDir,
+      ...fake.credentials,
+    });
+    expect(r.status, r.out).not.toBe(0);
+    expect(r.out).toContain('セッションを失効させられなかった役割');
+    expect(r.out).toContain('e2e-admin:');
+    expect(fake.logouts()).toBe(ROLES.length - 1);
+    expect(readdirSync(authDir)).toEqual([]);
+    for (const secret of [...fake.issued, ...Object.values(fake.credentials)])
+      expect(r.out).not.toContain(secret);
+  } finally {
+    await fake.close();
+    rmSync(authDir, { recursive: true, force: true });
+  }
 });
 
 test('process.loadEnvFile は既に在る名前（空を含む）を上書きしない（手元の .env.e2e が子プロセスの試験を変えない根拠）', () => {
