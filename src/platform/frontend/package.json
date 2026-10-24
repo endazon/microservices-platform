@@ -10,7 +10,8 @@
     "build:analyze": "ANALYZE_BUNDLE=1 tsc -b && ANALYZE_BUNDLE=1 vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:live": "playwright test --config playwright.live.config.ts --pass-with-no-tests"
   },
   "dependencies": {
     "@lingui/core": "^6.6.0",

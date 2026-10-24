@@ -15,5 +15,11 @@
     "noUncheckedSideEffectImports": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "playwright.config.ts", "playwright.keycloak.config.ts", "e2e"]
+  "include": [
+    "vite.config.ts",
+    "playwright.config.ts",
+    "playwright.keycloak.config.ts",
+    "playwright.live.config.ts",
+    "e2e"
+  ]
 }
