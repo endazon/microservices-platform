@@ -56,7 +56,9 @@ helm uninstall istio-ingressgateway -n istio-system >/dev/null 2>&1 || true
 # 🔴 svclb の DaemonSet は **k3s の --servicelb-namespace（既定 kube-system）**に作られる。
 #   Service と同じ namespace ではない。全 namespace から名前で引く。
 for _ in $(seq 1 60); do
-  if ! kubectl get ds -A -o name 2>/dev/null | grep -q "svclb-istio-ingressgateway"; then break; fi
+  # NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
+  #   grep は -q を付けずに最後まで読ませる（出力は捨てる）。
+  if ! kubectl get ds -A -o name 2>/dev/null | grep "svclb-istio-ingressgateway" >/dev/null; then break; fi
   sleep 2
 done
 

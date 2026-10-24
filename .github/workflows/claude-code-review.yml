@@ -78,8 +78,8 @@ jobs:
       #      権限が無いと許可されていても実行時に失敗する。
       # 注: ツール許可に additional_permissions は使わない（あれはアプリトークンのスコープ用）。
       actions: read
-      # NFR, IADR-0615 (#2184): 判定のステップが、同じ head SHA の CI `scripts-tests` の check-run を読む
-      # （`.claude/` 等を統合ブランチ版へ戻された作業ツリーでは、レビュアーが PR 版の scripts.test.js を回せない）。
+      # NFR, IADR-0615 (#2184) / IADR-0617 (#2206): 判定のステップが、同じ head SHA の CI `scripts-tests` の check-run を読む
+      # （下限「scripts.test.js 全件」の代わりの根拠。作業ツリーの復元の有無を問わない）。
       checks: read
     steps:
       - name: Checkout
@@ -138,7 +138,7 @@ jobs:
         # 版を上げるときは **PR で実測して緑を確認してから** SHA を進めること。
         # 🔴 **claude-code-review.yml と claude-coding.yml は同じ SHA を指す** ——
         # 片方だけ動かすと「レビューは通るのに @claude は動かない」という切り分けの難しい状態になる。
-        uses: anthropics/claude-code-action@db77d4d3c98f3f6380e7cd45ffba2342a3dbde3c # v1（2026-09-08 実測で緑）
+        uses: anthropics/claude-code-action@e4a6faad497d33dbc7144135c75e41f82f0bf6c0 # v1（2026-09-08 実測で緑）
         # gh CLI（Issue 発行等）を既定トークンで認証する。gh は GH_TOKEN/GITHUB_TOKEN を参照する。
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -310,7 +310,8 @@ jobs:
               **この申告と下の各項目の実行の記載は `check-review-verdict.js` が読み、欠ければジョブを落とす**
               （M + K が N に満たない・申告が無い・「下限を満たしていない」と書いた・読んだと申告したファイルを
               精読していないと書いた・`deploy/helm/**` の差分で `helm lint` / `helm template` が「確認できたこと」の節に無い・
-              `scripts/` `.github/` の差分で `scripts.test.js` が「確認できたこと」の節に無い）。**実行したコマンドは
+              `scripts/` `.github/` の差分で `scripts.test.js` が「確認できたこと」の節に無く、同じ head の CI `scripts-tests` も
+              success でない）。**実行したコマンドは
               「確認できたこと」の節に、実行しなかったものは「🔍 実行できなかったこと」の節に書く**（検査器は節で読み分ける）。
             - **「読んだ」の定義: 差分を行単位で読んだこと**（全文を読む必要はない。差分は 1 行ずつ全部読む）。
               ファイル名・テスト名の一覧、検査器の結果、要点だけの確認、範囲の確認、先頭部分だけの目視は
@@ -332,6 +333,8 @@ jobs:
               `.claude/` 等が統合ブランチ版へ戻されたせいで、復元されたファイルを読む試験だけが落ちたときは、
               「確認できたこと」に書かず「🔍 実行できなかったこと」に、落ちた試験と復元されたファイルを書く。
               その場合の下限は、検査器が同じ head の CI `scripts-tests` の success で確かめる（成功と書き換えない）。
+              検査器は復元の有無にかかわらず CI の success を下限の代わりの根拠にするが、全件の実行は省かない
+              （差分の所在を見誤って「scripts/ の差分は無い」と書かない。`git diff --name-only` で確かめる）。
             - **`scripts/` / `.github/` / `docs/` / `.ai-context/` のどれかに差分があれば**、文書系の検査器を走らせる:
               `node scripts/check-trace-blocks.js` / `node scripts/gen-knowledge-graph.js --check` /
               `node scripts/check-doc-links.js` / `node scripts/check-doc-updated.js --base origin/develop` /
@@ -580,12 +583,14 @@ jobs:
       # 判定するため、PR の変更ファイルを CHANGED_FILES で渡す（checkout は fetch-depth: 0）。差分を引けなければ空で
       # 渡し、検査器はその判定だけを warn 付きで skip する（fail-open）。ALLOW_MISSING_VERDICT は下限には効かない。
       #
-      # 代わりの根拠（NFR / IADR-0615・#2184）: アクションは `.claude/`・`CLAUDE.md`・`.mcp.json` 等を統合ブランチ版へ戻す。
-      # その作業ツリーで、復元されたファイルを読む scripts.test.js の試験は PR 版を検査できず、下限「scripts.test.js 全件」は
-      # 本文の記載では満たせない（MSP#2183 で 3 回続けて赤）。そこで、作業ツリーが PR 版と違うファイル（RESTORED_FILES。
-      # `git diff --name-only HEAD` で実測し、アクションの内部の一覧を写さない）があるときに限り、**同じ head SHA の
-      # CI `scripts-tests`（ci.yml。GitHub Actions が出す check-run）の success** を待って検査器へ渡す。success 以外・
-      # 待ちきれない・check-run が無いときは空のまま渡し、下限は従来どおり未達になる（緩めて通す形にしない）。
+      # 代わりの根拠（NFR / IADR-0615・#2184、IADR-0617・#2206 で改定）: `scripts/` か `.github/` の差分があれば、
+      # **同じ head SHA の CI `scripts-tests`（ci.yml。GitHub Actions が出す check-run）の conclusion** を待って検査器へ渡す。
+      # success なら下限「scripts.test.js 全件」を満たしたとみなす。scripts.test.js 全件は scripts-tests と同じ試験であり、
+      # レビュアーが回し直しても独立した保証は増えない。IADR-0615 は作業ツリーが PR 版と違う（RESTORED_FILES が空でない）
+      # ときに限っていたが、MSP#2205（復元なし・差分の所在の見誤り）で再実行の枠を食い潰したため、その条件を外した。
+      # RESTORED_FILES（`git diff --name-only HEAD` で実測）はログのためだけに渡す。success 以外・待ちきれない・
+      # check-run が無いときは空のまま渡し、下限は従来どおり未達になる（緩めて通す形にしない）。
+      # 差分の判定は `case` で行う（`printf … | grep -q` は pipefail の下で書き手が SIGPIPE で落ちうる。#2202）。
       - name: Check review verdict
         if: always()
         env:
@@ -601,8 +606,13 @@ jobs:
           RESTORED_FILES="$(git diff --name-only HEAD 2>/dev/null || true)"
           export RESTORED_FILES
           SCRIPTS_TESTS_CONCLUSION=""
-          if [ -n "$RESTORED_FILES" ] && printf '%s\n' "$CHANGED_FILES" | grep -qE '^(scripts|\.github)/'; then
-            echo "作業ツリーが PR 版と違う: $(printf '%s' "$RESTORED_FILES" | tr '\n' ' ')。CI scripts-tests（$HEAD_SHA）の完了を待つ（最大 10 分）。"
+          NL=$'\n'
+          case "$NL$CHANGED_FILES" in
+            *"${NL}scripts/"* | *"${NL}.github/"*) TOUCHES_SCRIPTS=1 ;;
+            *) TOUCHES_SCRIPTS="" ;;
+          esac
+          if [ -n "$TOUCHES_SCRIPTS" ]; then
+            echo "scripts/ か .github/ の差分がある（作業ツリーと PR 版の差: $(printf '%s' "${RESTORED_FILES:-なし}" | tr '\n' ' ')）。CI scripts-tests（$HEAD_SHA）の完了を待つ（最大 10 分）。"
             for _ in $(seq 1 40); do
               r="$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?check_name=scripts-tests" \
                      --jq '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at) | last | select(. != null) | "\(.status) \(.conclusion)"' \

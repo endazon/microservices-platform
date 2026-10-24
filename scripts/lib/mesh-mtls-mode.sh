@@ -126,6 +126,7 @@ current_release_values() {
   local names
   names="$(helm list -n "$ns" -q --filter "^${release}\$" \
     --deployed --failed --pending --superseded --uninstalling --uninstalled 2>/dev/null)" || return 2
-  printf '%s\n' "$names" | grep -qx "$release" || return 1
+  # NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
+  grep -qx -- "$release" <<<"$names" || return 1
   helm get values "$release" -n "$ns" -o yaml 2>/dev/null || return 2
 }

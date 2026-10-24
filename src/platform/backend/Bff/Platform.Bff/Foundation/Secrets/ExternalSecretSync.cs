@@ -29,8 +29,17 @@ public sealed class ExternalSecretSyncOptions
     /// <summary>API サーバの URL の上書き。空なら Pod の `KUBERNETES_SERVICE_HOST` / `KUBERNETES_SERVICE_PORT` から作る。</summary>
     public string? ApiServer { get; set; }
 
+    /// <summary>Kubernetes API 用の既定の ServiceAccount トークンの位置（kubelet が自動でマウントする。対象者＝API サーバ）。</summary>
+    public const string DefaultServiceAccountTokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token";
+
     /// <summary>API サーバの証明書を検証する CA（Pod の ServiceAccount の既定位置）。</summary>
     public string CaCertificatePath { get; set; } = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt";
+
+    /// <summary>
+    /// API サーバへ名乗るトークンの置き場。NFR-18, IADR-0585 決定 2, #2193: **Vault 用の projected token（audience: vault・
+    /// `Vault:ServiceAccountTokenPath`）とは別の読み先**である。Vault 用のトークンを送ると kube-apiserver は対象者が違うので 401 を返す。
+    /// </summary>
+    public string ServiceAccountTokenPath { get; set; } = DefaultServiceAccountTokenPath;
 
     /// <summary>1 回の依頼の上限秒数（書き込みの応答を長く待たせない）。</summary>
     public int TimeoutSeconds { get; set; } = 5;
@@ -62,6 +71,22 @@ public enum ExternalSecretSyncOutcome
     Failed,
 }
 
+/// <summary>
+/// Kubernetes API へ名乗るトークンを読む口（テストが差し替える）。NFR-18, IADR-0585 決定 2, #2193:
+/// 🔴 **Vault へ名乗る <see cref="IServiceAccountTokenReader"/> と型を分ける。** 同じ口を共有すると、片方の読み先を変えたとき
+/// （#2082 で Vault 用を projected token へ移した）もう片方へ黙って波及する。
+/// </summary>
+public interface IKubernetesApiTokenReader
+{
+    Task<string> ReadAsync(CancellationToken ct);
+}
+
+public sealed class FileKubernetesApiTokenReader(IOptions<ExternalSecretSyncOptions> options) : IKubernetesApiTokenReader
+{
+    public async Task<string> ReadAsync(CancellationToken ct) =>
+        (await File.ReadAllTextAsync(options.Value.ServiceAccountTokenPath, ct)).Trim();
+}
+
 public interface IExternalSecretSyncRequester
 {
     Task<ExternalSecretSyncOutcome> RequestSyncAsync(ExternalSecretReference target, CancellationToken ct);
@@ -70,7 +95,7 @@ public interface IExternalSecretSyncRequester
 public sealed class ExternalSecretSyncRequester(
     IHttpClientFactory httpClientFactory,
     IOptions<ExternalSecretSyncOptions> options,
-    IServiceAccountTokenReader tokenReader,
+    IKubernetesApiTokenReader tokenReader,
     TimeProvider time,
     ILogger<ExternalSecretSyncRequester> logger) : IExternalSecretSyncRequester
 {

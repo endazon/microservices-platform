@@ -22,7 +22,8 @@ image_tag_validate() {
   if [ "$tag" = "latest" ]; then
     echo "ERROR: イメージのタグに latest は使えません。不変のタグ（git の sha）を使います（NFR-20 / IADR-0605）。" >&2; return 1
   fi
-  if ! printf '%s' "$tag" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'; then
+  # NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
+  if ! grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$' <<<"$tag"; then
     echo "ERROR: イメージのタグ '$tag' は Docker のタグの形ではありません（[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}。IADR-0605）。" >&2; return 1
   fi
 }

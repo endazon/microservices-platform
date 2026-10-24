@@ -68,10 +68,12 @@
  *                             統合ブランチ版へ戻した結果。ワークフローが `git diff --name-only HEAD` で測る）
  *   SCRIPTS_TESTS_CONCLUSION  同じ head SHA の CI `scripts-tests` の conclusion（`success` 等。無ければ空）
  *
- * 代わりの根拠（#2184 / IADR-0615）: 下限「scripts/ .github/ の差分なら scripts.test.js」は、レビューの作業ツリーが
- * PR 版と違う（RESTORED_FILES が空でない）ときに限り、**同じ head の CI `scripts-tests` が success** であることで
- * 満たしたとみなす。復元されたファイルを読む試験は、その作業ツリーでは PR 版を検査できず、本文の記載では原理的に
- * 満たせないためである。success 以外（failure・cancelled・未完了・check-run が無い）は従来どおり下限未達である。
+ * 代わりの根拠（#2184 / IADR-0615。#2206 / IADR-0617 で改定）: 下限「scripts/ .github/ の差分なら scripts.test.js」は、
+ * **同じ head の CI `scripts-tests` が success** であることでも満たしたとみなす。**作業ツリーの復元（RESTORED_FILES）の
+ * 有無は問わない**（IADR-0617）。scripts.test.js 全件は CI の scripts-tests と同じ試験であり、同じ head で success なら
+ * レビュアーがもう一度回しても独立した保証は増えない。一方、レビュアーが差分の所在を見誤ると再実行の枠を食い潰す
+ * （MSP#2205）。success 以外（failure・cancelled・未完了・check-run が無い）は従来どおり下限未達である。
+ * RESTORED_FILES はログに出すためだけに読む。
  *
  * 終了コード: 判定が揃っていない・下限に反した=1 / 揃っている=0 / 実行ログを読めない=0（fail-open）。
  */
@@ -449,11 +451,11 @@ function mentionsRun(text, cmd) {
 
 /**
  * 同じ head の CI `scripts-tests` が、下限「scripts.test.js 全件」の代わりの根拠になるか（#2184 / IADR-0615）。
- * **両方を要る**: 作業ツリーが PR 版と違うこと（RESTORED_FILES）と、CI が success であること。
- * 作業ツリーが PR 版と同じなら、レビュアーは PR 版をそのまま検査できるので、代わりは認めない。
+ * **CI が success であることだけを要る**（#2206 / IADR-0617 で、作業ツリーの復元〔RESTORED_FILES〕の条件を外した）。
+ * success 以外（failure・cancelled・timed_out・結果なし）は代わりにならない。
  */
 function ciScriptsTestsStandsIn(evidence) {
-  return (evidence.restoredFiles || []).length > 0 && evidence.scriptsTestsConclusion === 'success';
+  return evidence.scriptsTestsConclusion === 'success';
 }
 
 /** CHANGED_FILES（改行区切り）を配列にする。空行は捨てる。 */
@@ -515,9 +517,8 @@ function findFloorViolations(body, changedFiles, evidence = {}) {
       const restored = evidence.restoredFiles || [];
       problems.push(
         `下限「scripts/ か .github/ の差分があれば scripts.test.js 全件」: 本文に「scripts.test.js」を実行した記載が無い（該当 ${touchedScripts.length} ファイル）` +
-          (restored.length
-            ? `。作業ツリーが PR 版と違う（${restored.length} ファイル）が、同じ head の CI scripts-tests は success でない（${evidence.scriptsTestsConclusion || '結果なし'}）`
-            : '')
+          `。同じ head の CI scripts-tests も success でない（${evidence.scriptsTestsConclusion || '結果なし'}）` +
+          (restored.length ? `。作業ツリーは PR 版と違う（${restored.length} ファイル）` : '')
       );
     }
   }
@@ -687,16 +688,24 @@ function selfTest() {
     for (const c of ['failure', 'cancelled', 'timed_out', '']) {
       const v = findFloorViolations(body, changed, { restoredFiles: restored, scriptsTestsConclusion: c });
       assert.strictEqual(v.length, 1, c);
-      assert.match(v[0], /scripts-tests は success でない/, c);
+      assert.match(v[0], /scripts-tests も success でない/, c);
     }
   });
 
-  T('下限: ★陽性対照 —— 作業ツリーが PR 版と同じなら、CI が success でも代わりにならず赤（#2184）', () => {
+  T('下限: 作業ツリーが PR 版と同じでも、同じ head の CI scripts-tests が success なら緑（#2206 / IADR-0617）', () => {
     const body = review('変更 1 ファイル中 1 ファイルを読んだ。');
-    assert.strictEqual(
-      findFloorViolations(body, ['scripts/a.js'], { restoredFiles: [], scriptsTestsConclusion: 'success' }).length,
-      1
-    );
+    assert.deepStrictEqual(findFloorViolations(body, ['scripts/a.js'], { restoredFiles: [], scriptsTestsConclusion: 'success' }), []);
+    assert.deepStrictEqual(findFloorViolations(body, ['scripts/a.js'], { scriptsTestsConclusion: 'success' }), []);
+  });
+
+  T('下限: ★陽性対照 —— 作業ツリーが PR 版と同じで CI が success でなければ赤（#2206 / IADR-0617）', () => {
+    const body = review('変更 1 ファイル中 1 ファイルを読んだ。');
+    for (const c of ['failure', 'cancelled', 'timed_out', '']) {
+      const v = findFloorViolations(body, ['scripts/a.js'], { restoredFiles: [], scriptsTestsConclusion: c });
+      assert.strictEqual(v.length, 1, c);
+      assert.match(v[0], /scripts-tests も success でない/, c);
+    }
+    assert.strictEqual(findFloorViolations(body, ['scripts/a.js'], {}).length, 1);
     // 本文に実行の記載があれば、従来どおり CI の結果に依らず緑。
     const ran = `${body}\n### 確認できたこと\n- scripts.test.js: 1178 passed`;
     assert.deepStrictEqual(findFloorViolations(ran, ['scripts/a.js'], { restoredFiles: [], scriptsTestsConclusion: 'failure' }), []);
@@ -756,8 +765,10 @@ function main(argv) {
     const floor = findFloorViolations(selectReviewBody(events), changed.length ? changed : null, evidence);
     if (ciScriptsTestsStandsIn(evidence)) {
       console.log(
-        `[check-review-verdict] 作業ツリーが PR 版と違う（${evidence.restoredFiles.join(', ')}）。` +
-          '下限「scripts.test.js 全件」は同じ head の CI scripts-tests の success で満たす（IADR-0615）。'
+        '[check-review-verdict] 同じ head の CI scripts-tests は success。下限「scripts.test.js 全件」はこれでも満たす（IADR-0617）。' +
+          (evidence.restoredFiles.length
+            ? `作業ツリーは PR 版と違う（${evidence.restoredFiles.join(', ')}）。`
+            : '作業ツリーは PR 版と同じ。')
       );
     }
     for (const p of floor) emit('error', `[check-review-verdict] 検証の下限に反している —— ${p}`);

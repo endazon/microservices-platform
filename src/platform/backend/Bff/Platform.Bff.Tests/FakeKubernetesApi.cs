@@ -2,21 +2,33 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using Platform.Bff.Foundation.Secrets;
 
 namespace Platform.Bff.Tests;
 
 // SC-22, IADR-0456 決定 4 (#1477): Kubernetes API サーバの偽物（ExternalSecret への force-sync 注釈だけを受ける）。
 //
-// 🔴 **実 API サーバの形を写す**: Bearer は Pod の ServiceAccount トークン（FakeVault と同じ JWT）でなければ 401、
+// 🔴 **実 API サーバの形を写す**: Bearer は Pod の既定の ServiceAccount トークン（対象者＝API サーバ。`ServiceAccountJwt`）でなければ 401、
 // CRD への部分更新は `application/merge-patch+json` 以外を 415、ExternalSecret の口以外は 404。
 // `ForcedStatus` で RBAC の拒否（403）・不在（404）・障害（5xx）を、`Throws` で不達を再現する。
 //
 // ADR-0104 決定 2, IADR-0460 決定 1 (#1502): 一覧の供給元の判定のため、ExternalSecret の `get` も受ける。
 // 既定では**すべての ExternalSecret が在る**（ESO 所有の配備）。`MarkMissing` した名前は `get` も `patch` も 404 を返す
 // （実 API サーバと同じく、在るかどうかは動詞に依らない。AST_ESO=0 で `ast-secrets` を描かない配備の再現）。
+//
+// NFR-18, IADR-0585 決定 2, #2193: Vault 用の projected token（audience: vault。`FakeVault.ServiceAccountJwt`）は**別の値**にし、
+// それを送ってきたら実 API サーバと同じく 401 を返す（対象者が違う）。2 つを同じ値にすると、読み先の取り違えが試験で見えない。
 public sealed class FakeKubernetesApi
 {
     public const string ApiServer = "https://kubernetes.test";
+
+    /// <summary>Kubernetes API 用の既定の SA トークン（`FakeVault.ServiceAccountJwt` とは別の値）。</summary>
+    public const string ServiceAccountJwt = "fake-kubernetes-api-service-account-jwt";
+
+    public sealed class TokenReader : IKubernetesApiTokenReader
+    {
+        public Task<string> ReadAsync(CancellationToken ct) => Task.FromResult(ServiceAccountJwt);
+    }
 
     public sealed record RecordedRequest(string Method, string Path, string? ContentType, string? Body, string? Authorization);
 
@@ -55,7 +67,7 @@ public sealed class FakeKubernetesApi
 
             if (api.Throws)
                 throw new HttpRequestException("kubernetes api unreachable (fake)");
-            if (authorization != "Bearer " + FakeVault.ServiceAccountJwt)
+            if (authorization != "Bearer " + ServiceAccountJwt)
                 return Json(HttpStatusCode.Unauthorized, """{"kind":"Status","reason":"Unauthorized"}""");
             if (api.ForcedStatus is { } forced)
                 return Json(forced, """{"kind":"Status","reason":"forced"}""");
