@@ -24,7 +24,7 @@ const attributeValues: AttributeValuesResponse = { values: [] };
 
 /**
  * 05_screens §共通シェル（左ナビ 4 グループ・アクセス制御の割当）から起こした、**役割ごとの左ナビの期待値**。
- * グループ名 → 「表示名 → 遷移先」。グループ内の並びは比べない（受け入れ基準は「集合」）。
+ * グループ名 → 「表示名 → 遷移先」。**鍵の並びは計画の並び**である（グループの並び・グループ内の並びとも。#2189）。
  *
  * - 利用者・個人のグループは全利用者に出る（ABAC の権限内。ロール限定なし）。
  * - 管理: SC-05/06/07 は管理者・運用者、SC-09・SC-12・SC-17 はシステム管理者だけ。
@@ -48,8 +48,8 @@ const ADMIN_VIEW_ITEMS = {
 };
 const ADMIN_ONLY_ITEMS = {
   ABAC設定: '/admin/abac',
-  MCP管理: '/admin/mcp-clients',
   ユーザー管理: '/admin/users',
+  MCP管理: '/admin/mcp-clients',
 };
 const OPS_GROUP = {
   ダッシュボード: '/admin/ops',
@@ -116,7 +116,7 @@ async function readNav(page: Page): Promise<NavTable> {
 }
 
 for (const [role, { roles, nav }] of Object.entries(EXPECTED_NAV)) {
-  test(`M-012: ${role}の左ナビは、計画の役割ごとの項目の集合と一致する（SC-03 は無く、空のグループは見出しごと出ない）`, async ({
+  test(`M-012: ${role}の左ナビは、計画の役割ごとの項目の集合と並びに一致する（SC-03 は無く、空のグループは見出しごと出ない）`, async ({
     page,
   }) => {
     const traffic = await installBffSession(page, {
@@ -134,8 +134,18 @@ for (const [role, { roles, nav }] of Object.entries(EXPECTED_NAV)) {
       Object.keys(nav).length,
     );
 
-    // ★ 本体: グループの集合と、各グループの「表示名 → 遷移先」の集合が一致する（並びは比べない）。
-    expect(await readNav(page)).toEqual(nav);
+    // ★ 本体: グループの集合と、各グループの「表示名 → 遷移先」の集合が一致する。
+    const actual = await readNav(page);
+    expect(actual).toEqual(nav);
+    // ★ 並び（SC-05, SC-09, SC-12 / #2189）: `toEqual` は鍵の順を比べないので、別に比べる。
+    // 05_screens §共通シェル の並び（グループは 利用者 → 個人 → 管理 → 運用、「管理」の中は
+    // … ABAC設定 → ユーザー管理 → MCP管理）。支援技術が読む順序（アクセシビリティツリー）で比べる。
+    expect(Object.keys(actual), 'グループの並び').toEqual(Object.keys(nav));
+    for (const [group, items] of Object.entries(nav)) {
+      expect(Object.keys(actual[group] ?? {}), `「${group}」グループ内の並び`).toEqual(
+        Object.keys(items),
+      );
+    }
 
     // ★ 陰性対照: 文書詳細（SC-03）はナビに無い。可変機能ユニットのグループも、そのロールが無ければ出ない。
     await expect(navigation.getByRole('link', { name: /文書詳細/ })).toHaveCount(0);
