@@ -173,6 +173,8 @@ test('M-054: URL の探索深さが範囲外（hops=4）なら、丸めずにエ
   expectBffTrafficIsComplete(traffic);
 });
 
+// クライアント側の検証（範囲外の hops を丸めずエラーにし、要求を送らない）は、単体テスト（GraphViewPage.test.tsx）と
+// 上の M-054「URL の探索深さが範囲外（hops=4）なら…」で固定してある。ここは後段の防壁（400）を見る試験である。
 test('M-054: 後段が探索深さを 400 で拒否したら、丸めたグラフを描かずにエラーを示す', async ({
   page,
 }) => {

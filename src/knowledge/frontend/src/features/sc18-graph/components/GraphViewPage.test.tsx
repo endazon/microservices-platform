@@ -373,6 +373,19 @@ describe('GraphViewPage (SC-18)', () => {
     expect(lastNeighborsPath()).toBeUndefined();
   });
 
+  // 🟡（#2217 のレビュー）: 数値でない値・整数でない値も、丸めず同じエラーにする（要求は送らない）。
+  it.each(['abc', '2.5'])('shows the same error for hops=%s and does not query', async (raw) => {
+    respond();
+    await renderPage(`/graph?root=${ROOT}&hops=${raw}`);
+
+    expect(
+      await screen.findByText(/探索深さ（hops）は 1・2・3 のいずれかです。/),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('graph-canvas')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('探索深さ（hops）')).toHaveValue('');
+    expect(lastNeighborsPath()).toBeUndefined();
+  });
+
   it('keeps the default hops when the URL has none', async () => {
     respond();
     await renderPage(`/graph?root=${ROOT}`);
