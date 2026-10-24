@@ -56,7 +56,7 @@ issue: "#2029"
 - **M-113**: `GET /bff/secrets` が 503。BFF は Vault を配備していない構成で 503（`vault-not-configured`）を返す設計である
   （`SecretItemBffEndpoints.VaultUnavailableAsync`・IADR-0453 決定 5）。`e2e-live.yml` の使い捨てスタックは VAULT を立てないので、
   **製品は設計どおりで、spec の期待（常に 200）が環境を取り違えていた**。設計にある 2 つの形（200／503 と表示）のどちらかを確かめ、どちらの形でも値が出ない
-  ことを見る形に直した。どちらの形だったかは test の annotation に残す。CI で通るのは 503 の形だけであり、200 の形（値の鍵が無い）は Vault の在る PoC で確かめる。
+  ことを見る形に直した。どちらの形だったかは test の annotation に残す。CI で通るのは 503 の形だけであり、200 の形（値の鍵が無い）は CI で一度も確かめていない。e2e-live に `VAULT=1` を足して 200 の形を CI で流すことを **#2230** に起票した（起動時間・スタック構成への影響の見積もりを含む）。足すまでの暫定は、Vault の在る常設の PoC で live-ro を流し、annotation が `listed` であることを確かめる。
 
 ## 検証
 
