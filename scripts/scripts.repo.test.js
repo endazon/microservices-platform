@@ -8478,6 +8478,9 @@ ${r.stderr}`);
       'claude-coding.yml:claude': { actions: 'read', contents: 'write', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
       'codeql.yml:analyze': { actions: 'read', 'security-events': 'write' },
       'codeql.yml:report-failure': { actions: 'read', issues: 'write' },
+      // #2037 / IADR-0623: 直前の develop の実行の成果物を `gh run list` / `gh run download` で読む（actions: read）・
+      // 3 回連続 flaky の test の専用 issue を起票・追記する（issues: write）。develop への push だけで走る
+      'frontend.yml:e2e-flaky-issue': { actions: 'read', issues: 'write' },
       'integration-stack.yml:report-failure': { actions: 'read', issues: 'write' },
       // #1617 / 計画 ADR-0118 決定 2: T-25 だけの赤の run を 1 回だけ再実行（actions: write）し、結果を issue へ書く（issues: write）
       // #1998: T-25 の p / W を検査器の注釈から読む（GET /check-runs/{id}/annotations → checks: read）
@@ -9098,7 +9101,12 @@ ${r.stderr}`);
         //    APKINDEX の版を突き合わせ、ずれたら専用 issue を起票する。日次の age-apkindex-watch.yml が走らせる）を新設したため 62 → 63。
         //    **「同型の事故が 2 回」**（#1825・#2003）に基づく新設である。git を一切呼ばず、引数なしでは使い方を出して exit 2 する
         //    （ネットワークにも触れない）ため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 63, `検査器の母集合が 63 本から変わった（${scripts.length} 件）`);
+        // ★ #2037 / IADR-0623 で `check-e2e-flaky.js`（L1 E2E の Playwright の JSON レポートから flaky を数えて警告し、
+        //    develop で 3 回連続 flaky の test を専用 issue に起票する。frontend.yml の e2e / e2e-flaky-issue ジョブが走らせる）を
+        //    新設したため 63 → 64（ラチェットが設計どおり発火した）。🔴 **「同型の事故が 2 回」ではなく基準書
+        //    （docs/tests/E2E_STANDARDS.md §10）と親 #2013 の分割案 E-73 の名指しに基づく新設である。** git を一切呼ばず、
+        //    引数なしでは使い方を出して exit 2 するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 64, `検査器の母集合が 64 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -13577,6 +13585,43 @@ exit $RC
       assert.doesNotMatch(wf, /^\s+pull_request(_target)?:/m, 'PR で走らせない（外部の CDN の状態で PR を赤くしない）');
       assert.match(wf, /run: node scripts\/check-age-apkindex\.js --self-test\n/);
       assert.match(wf, /run: node scripts\/check-age-apkindex\.js --upsert-issue --out "\$RUNNER_TEMP\/age-apkindex\.json"\n/);
+    });
+
+    // --- NFR / #2037 / IADR-0623: L1 E2E の flaky 集計と、3 回連続の起票 ----------------------------------------
+    ok('#2037: check-e2e-flaky.js の自己試験が通る（flaky だけを数える・0 件は赤・3 回連続で起票・token 無しは赤）', () => {
+      const r = spawnA(process.execPath, [pathA.join(__dirname, 'check-e2e-flaky.js'), '--self-test'], { cwd: ROOT_A, encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      assert.match(r.stdout, /自己試験 \d+ 件すべて合格/);
+      for (const name of ['test が 0 件なら例外', '3 回連続で flaky なら再発', '連続でない', '再発が無ければ API を一度も呼ばない', 'token が無ければ例外']) {
+        assert.ok(r.stdout.includes(name), `自己試験から「${name}」が消えた`);
+      }
+    });
+
+    ok('#2037: frontend.yml が flaky を集計し、起票は develop への push の別ジョブだけで行う', () => {
+      const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/frontend.yml'), 'utf8');
+      const job = (name) => {
+        const m = new RegExp(`\\n  ${name}:\\n([\\s\\S]*?)(?=\\n  \\S|$)`).exec(wf);
+        assert.ok(m, `frontend.yml にジョブ ${name} が無い`);
+        return m[1];
+      };
+      const e2e = job('e2e');
+      assert.match(e2e, /--reporter html,github,json /, 'merge-reports が JSON を書かない（集計の入力が無い）');
+      assert.match(e2e, /node scripts\/check-e2e-flaky\.js\n\s+--report "\$RUNNER_TEMP\/e2e-results\.json"/);
+      assert.doesNotMatch(e2e, /issues: write/, 'PR でも走る e2e ジョブに issues: write を持たせない');
+      const issue = job('e2e-flaky-issue');
+      assert.match(issue, /if: \$\{\{ github\.event_name == 'push' && github\.ref == 'refs\/heads\/develop'/, '起票は develop への push だけ');
+      assert.match(issue, /issues: write/);
+      assert.match(issue, /--upsert-issue/);
+      // 要約の無い実行を飛ばさず目録に missing として書き、打ち切りは検査器（historyUntilGap）に任せる（PR #2222 の 🟡）。
+      assert.match(issue, /echo "\$num \$id missing" >> "\$HISTORY_DIR\/manifest\.tsv"/, '要約の無い実行を目録に書いていない（飛ばしている）');
+      assert.match(e2e, /steps\.tally\.outcome == 'success'/, '集計が失敗した実行の要約を上げている');
+      // 🔴 flaky を skip / 隔離で緑にする仕組みを持たない（IADR-0623）。
+      const code = wf.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n'); // コメントの「skip しない」の説明は数えない
+      assert.doesNotMatch(code, /--grep-invert|test\.fixme|quarantine|--last-failed/i, 'frontend.yml が test を外して流している');
+      for (const event of ['push', 'pull_request']) {
+        const m = new RegExp(`^  ${event}:\\n[\\s\\S]*?^    paths:\\n([\\s\\S]*?)(?=^  [a-z_]+:|^[a-z])`, 'm').exec(wf);
+        assert.ok(m && m[1].includes('"scripts/check-e2e-flaky.js"'), `${event}.paths に検査器本体が無い`);
+      }
     });
   }
 

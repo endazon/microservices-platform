@@ -700,3 +700,4 @@
 | [IADR-0620](./IADR-0620_sc11-drift-shows-contract-values.md) | SC-11 のドリフトの種別と深刻度は、計画（Q29）どおり契約の値のまま表示する（IADR-0129 決定 6 の表示名の写像を改める）（#2022） | Accepted |
 | [IADR-0621](./IADR-0621_l1-e2e-shards-and-aggregate-check.md) | L1 E2E を 2 シャード（`fullyParallel`）で流し、blob を `merge-reports` でまとめる集約ジョブに check 名 `e2e` を残す。成果物は常時 14 日（#2036） | Accepted |
 | [IADR-0622](./IADR-0622_eslint-plugin-playwright-for-e2e.md) | E2E（`**/e2e/**`）に `eslint-plugin-playwright` を適用し、`no-wait-for-timeout`・`no-nth-methods`・skip 理由必須を error にする。既存の違反は spec を直して解消（#2038） | Accepted |
+| [IADR-0623](./IADR-0623_e2e-flaky-tally-and-issue-no-quarantine.md) | L1 E2E の flaky は JSON レポートで数えて警告し、develop で 3 回連続なら test ごとに起票する。隔離（skip・fixme）で緑にしない（#2037） | Accepted |
