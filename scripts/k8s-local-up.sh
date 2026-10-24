@@ -131,6 +131,23 @@ apply_secret() ( # ns name key=val [key=val...]
     --dry-run=client -o yaml | kubectl apply -f -
 )
 
+# NFR-18, IADR-0616 (#2195): ESO（creationPolicy: Merge）が値を持つ Secret の「土台」を置く。
+#   ESO=1 で Secret が既に在れば**触らない**（値は Vault → ESO が持つ。dev の値で上書きすると、ESO が次に同期するまで
+#   ＝最大 refreshInterval の間、読み手〔投入器・門・近接 MTA〕が dev の値で名乗る。稼働 PoC で投入器 3 つが 401 になった）。
+#   無ければ従来どおり作る（Merge は Secret を作らないので、新規クラスタでは土台が要る）。ESO 以外の経路は従来どおり毎回置く。
+#   対象は値が Vault の種と一致する保証の無い 3 つ（keycloak-smtp・reset-gate-oidc・abac-seeder-oidc）。基盤の 3 つ（postgres 等）は
+#   seed と同じ値なので従来どおり（IADR-0099）。値の確かめは ESO ブロックの eso_force_sync_wait が行う。
+#   判定は Secret の有無だけで行う（値は読まない＝起動器が秘密の値を比べない。IADR-0616 の選択肢 2 を採らない理由）。そのため
+#   Vault の当該 KV がまだ dev の値（例: keycloak-smtp の SMTP の実値が未投入で、bootstrap の種のまま）なら、Secret も dev の値のまま残る。
+#   これは IADR-0616「結果・残る制約」の範囲内である（値の正は Vault。実値は SC-22 か Vault の KV で入れる）。
+apply_eso_merge_base_secret() { # ns name key=val [key=val...]
+  if [ "${ESO:-}" = "1" ] && kubectl -n "$1" get secret "$2" -o name >/dev/null 2>&1; then
+    echo "    keep $1/$2（ESO=1・既存の Secret の値は Vault → ESO が持つ。dev の値で上書きしない。IADR-0616）"
+    return 0
+  fi
+  apply_secret "$@"
+}
+
 # NFR-18, IADR-0577: ESO を使わない経路のブローカのサービスごとの資格情報（[5/7] から呼ぶ）。
 #   platform-infra/rabbitmq-users ＝ users.txt の全ユーザー（ブローカ側の写し。reconcile-users.sh と起動の直後の復元が読む）
 #   microservices-platform/msp-rabbitmq-users ＝ そのうち microservices-platform のユーザー（helm の各サービスが自分のキーを読む）
@@ -479,6 +496,7 @@ apply_secret "$INFRA_NS" session-store-credentials "password=$session_store_pass
 #   from / user / password は**空**（実環境の値が供給されるまでの fail-safe。runbook §2 の長さ判定が依る）。
 # ESO=1 のときは externalsecret-keycloak-smtp.yaml が creationPolicy: Merge で同じ Secret へ Vault の値を
 # 上書きする（keycloak-admin と同じ形。手動 apply を保持したまま実値へ差し替わる）。
+# ［IADR-0616 / #2195］ESO=1 で既に在れば上書きしない（apply_eso_merge_base_secret。reset-gate-oidc・abac-seeder-oidc も同じ）。
 SMTP_CAPTURE_HOST='mailpit.platform-infra.svc.cluster.local'
 smtp_host="${SMTP_HOST:-$SMTP_CAPTURE_HOST}"
 if [ "$smtp_host" = "$SMTP_CAPTURE_HOST" ]; then
@@ -486,7 +504,7 @@ if [ "$smtp_host" = "$SMTP_CAPTURE_HOST" ]; then
 else
   smtp_port_default='587';  smtp_starttls_default='true'
 fi
-apply_secret "$INFRA_NS" keycloak-smtp \
+apply_eso_merge_base_secret "$INFRA_NS" keycloak-smtp \
   "host=$smtp_host" \
   "port=${SMTP_PORT:-$smtp_port_default}" \
   "starttls=${SMTP_STARTTLS:-$smtp_starttls_default}" \
@@ -499,13 +517,14 @@ apply_secret "$INFRA_NS" keycloak-smtp \
 #    **窓（実在利用者だけ 500）は開いたまま**になる。起動しないほうが気付ける。
 # realm 側の宣言値（deploy/keycloak/microservices-platform-realm.json の reset-gate.secret）と
 # **同じ既定**にする。ズレると Keycloak の token 端点が invalid_client を返す（wikijs-oidc と同じ罠）。
-apply_secret "$INFRA_NS" reset-gate-oidc \
+apply_eso_merge_base_secret "$INFRA_NS" reset-gate-oidc \
   "client-secret=${RESET_GATE_CLIENT_SECRET:-reset-gate-dev-secret-change-me}"
 # NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder。既定で無効・実行の間だけ有効）の client secret。
 #   読み手はホストの投入器（seed-*.js）と運用スクリプト（republish・archive）で、実行時にこの Secret を読む（realm の宣言の値へは落ちない）。
 #   ESO の有無によらず作る（ESO=1 では externalsecret-abac-seeder-oidc.yaml が Merge で Vault の値を重ねる。reset-gate-oidc と同じ形）。
+#   ［IADR-0616 / #2195］ESO=1 で既に在れば上書きしない（apply_eso_merge_base_secret）。
 #   値は env（ABAC_SEED_CLIENT_SECRET）か宣言の値。dev ではない context で env が無ければ [1/7] の直後の判定が止める（IADR-0572）。
-apply_secret "$INFRA_NS" abac-seeder-oidc \
+apply_eso_merge_base_secret "$INFRA_NS" abac-seeder-oidc \
   "client-secret=${ABAC_SEED_CLIENT_SECRET:-$(dev_client_secret_dev_value abac-seeder)}"
 
 # 門のスクリプト本体（deploy/mail-relay/reset-gate.js）。テーマ・realm reconcile と同型で
@@ -1396,6 +1415,39 @@ if [ "${ESO:-}" = "1" ]; then
         || echo "      warn: $ns/$es が SecretSynced になりません（rollout は継続）"
     done
   }
+  # NFR-18, IADR-0616 (#2195): 同期を**依頼して**、その依頼の後の同期が済むまで待つ。
+  #   `condition=Ready` だけでは足りない —— 前回の実行の同期で Ready は既に True なので、[3/7] で Secret を置き直した後でも
+  #   待たずに通り、読み手（投入器・門・近接 MTA）が置き直した値で名乗る（稼働 PoC で投入器 3 つが 401。#2195）。
+  #   force-sync 注釈（ESO は値が変わると同期し直す）を付ける前の `status.refreshTime` を控え、それが変わり、かつ Ready が True に
+  #   なるまで待つ（時刻を解釈しない＝date の方言に依らない。控えた後の同期は全て [3/7] より後である）。
+  #   best-effort（期限〔ESO_FORCE_SYNC_TIMEOUT 秒・既定 90〕を過ぎたら warn して続ける。eso_wait と同じ）。
+  eso_force_sync_wait() { # ns externalsecret-name [name...]
+    local ns="$1"; shift
+    local es before now ready deadline
+    for es in "$@"; do
+      before="$(kubectl -n "$ns" get externalsecret "$es" -o jsonpath='{.status.refreshTime}' 2>/dev/null || true)"
+      if ! kubectl -n "$ns" annotate externalsecret "$es" "force-sync=$(date +%s)" --overwrite >/dev/null 2>&1; then
+        echo "      warn: $ns/$es に同期を依頼できません（続行）"
+        continue
+      fi
+      deadline=$((SECONDS + ${ESO_FORCE_SYNC_TIMEOUT:-90}))
+      while :; do
+        now="$(kubectl -n "$ns" get externalsecret "$es" -o jsonpath='{.status.refreshTime}' 2>/dev/null || true)"
+        ready="$(kubectl -n "$ns" get externalsecret "$es" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
+        if [ -n "$now" ] && [ "$now" != "$before" ] && [ "$ready" = "True" ]; then
+          echo "      synced $ns/$es（依頼の後の同期）"
+          break
+        fi
+        if [ "$SECONDS" -ge "$deadline" ]; then
+          # IADR-0616「結果」: この warn の後の投入器の WARN（401）は、古い値で名乗った疑いがある。手順は deploy/local/README.md §機密情報。
+          echo "      warn: $ns/$es が依頼の後に同期しません（読み手は置き直した値で名乗り得る。続行）"
+          echo "            投入器の WARN（401）が出たら、kubectl -n $ns get externalsecret $es で同期を確かめてから投入器を流し直す（deploy/local/README.md）"
+          break
+        fi
+        sleep 2
+      done
+    done
+  }
   # #1255: retrieval / ingestion の s2s 資格情報。**env(secretKeyRef) で読む Pod がある**ので
   # rollout の前に同期を待つ（待たずに restart すると新 Pod も供給前の Secret を掴む。IADR-0103）。
   # #1817: mcp-client-admin-oidc も同じ理由で待つ（mcp-service が env で読む。下の rollout の対象に既に居る）。
@@ -1419,7 +1471,9 @@ if [ "${ESO:-}" = "1" ]; then
   # #1245 PR-C: reset-gate-oidc も **rollout のために待つ**（門が env で読む。同期前に restart すると
   # 新しい門も供給前の値をつかみ、401 を打ち続ける＝**窓が開いたまま**になる。IADR-0103）。
   # IADR-0576: abac-seeder-oidc も待つ（この後の投入器が Secret から読む。同期前に読むと [3/7] の値で名乗る）。
-  infra_sync="keycloak-smtp reset-gate-oidc abac-seeder-oidc"
+  # ［IADR-0616 / #2195］この 3 つは [3/7] が土台を置く（Merge）ので、Ready ではなく「依頼の後の同期」を待つ（eso_force_sync_wait）。
+  eso_force_sync_wait "$INFRA_NS" keycloak-smtp reset-gate-oidc abac-seeder-oidc
+  infra_sync=""
   [ "${OBSERVABILITY:-}" = "1" ] && infra_sync="$infra_sync grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_sync="$infra_sync headlamp-oidc"
   # shellcheck disable=SC2086
