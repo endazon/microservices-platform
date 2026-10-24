@@ -2,7 +2,14 @@ import { readFileSync } from 'node:fs';
 import { createHmac, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, type Page, type TestInfo } from '@playwright/test';
+import {
+  expect,
+  request,
+  test as base,
+  type APIRequestContext,
+  type Page,
+  type TestInfo,
+} from '@playwright/test';
 import { THEMES, WCAG_22_AA_TAGS } from '../support/axe';
 import { KNOWN_KEYCLOAK_AXE_VIOLATIONS } from './axeKnownViolations';
 
@@ -28,6 +35,35 @@ const TOKENS_CSS = fileURLToPath(
 );
 
 type Theme = (typeof THEMES)[number];
+
+/** テーマのラベル補修スクリプト（`login/resources/js/platform-a11y.js`）が補えなかったときに出す console.error の接頭辞。 */
+const REPAIR_FAILURE_PREFIX = '[platform-a11y]';
+
+/**
+ * spec はここから `test` / `expect` を引く。**ラベルの補修が黙って何もしない状態を落とす**自動 fixture を持つ。
+ *
+ * 補修スクリプトは、壊れたラベル（`for` の指す要素が無い）を見つけたのに付け替え先を決められないとき
+ * （PF5 のフォームグループのクラスが版上げで変わった・入力欄が 0 個や 2 個以上）に `console.error` を出す。
+ * axe の `label` 違反でも捕まるが、原因（補修が効かなくなった）をそのまま出すため、ここでも落とす。
+ */
+export const test = base.extend<{ labelRepairGuard: void }>({
+  labelRepairGuard: [
+    // 第 2 引数は Playwright の慣用では `use` だが、react-hooks の規則が React の `use` と取り違えるため名前を変える。
+    async ({ page }, provide) => {
+      const failures: string[] = [];
+      page.on('console', (message) => {
+        if (message.text().startsWith(REPAIR_FAILURE_PREFIX)) failures.push(message.text());
+      });
+      await provide();
+      expect(failures, 'ラベルの補修（platform-a11y.js）が付け替え先を決められなかった').toEqual(
+        [],
+      );
+    },
+    { auto: true },
+  ],
+});
+
+export { expect };
 
 /** `tokens.css` の `--color-bg` を、既定（ダーク）とライトのメディアクエリの順に読む。 */
 function expectedBackground(theme: Theme): string {
@@ -119,35 +155,37 @@ function env(name: string): string {
   return value;
 }
 
-async function adminToken(): Promise<string> {
-  const response = await fetch(`${env('E2E_KC_URL')}/realms/master/protocol/openid-connect/token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
+// 管理 API は Playwright の `APIRequestContext` で呼ぶ（素の `fetch` は ESLint が禁じる。SPA の通信を 1 箇所へ収束させる
+// 規則で、e2e も対象に入る）。
+async function adminApi(): Promise<APIRequestContext> {
+  const api = await request.newContext({ baseURL: env('E2E_KC_URL') });
+  const response = await api.post('/realms/master/protocol/openid-connect/token', {
+    form: {
       grant_type: 'password',
       client_id: 'admin-cli',
       username: env('E2E_KC_ADMIN_USER'),
       password: env('E2E_KC_ADMIN_PASSWORD'),
-    }),
+    },
   });
-  expect(response.status, '管理者トークン').toBe(200);
-  return ((await response.json()) as { access_token: string }).access_token;
+  expect(response.status(), '管理者トークン').toBe(200);
+  const { access_token: token } = (await response.json()) as { access_token: string };
+  await api.dispose();
+  return request.newContext({
+    baseURL: env('E2E_KC_URL'),
+    extraHTTPHeaders: { authorization: `Bearer ${token}` },
+  });
 }
 
 /** 走査用の利用者を作る。パスワードは realm のポリシー（12 文字以上・3 種以上）を満たす乱数。 */
 export async function createUser(
   requiredActions: string[],
 ): Promise<{ username: string; password: string; remove: () => Promise<void> }> {
-  const token = await adminToken();
+  const api = await adminApi();
   const suffix = randomBytes(4).toString('hex');
   const username = `e2e-a11y-${suffix}`;
   const password = `A11y-${randomBytes(9).toString('base64url')}9a`;
-  const base = `${env('E2E_KC_URL')}/admin/realms/${REALM}/users`;
-  const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
-  const created = await fetch(base, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
+  const created = await api.post(`/admin/realms/${REALM}/users`, {
+    data: {
       username,
       enabled: true,
       email: `${username}@example.invalid`,
@@ -156,19 +194,23 @@ export async function createUser(
       lastName: '利用者',
       requiredActions,
       credentials: [{ type: 'password', value: password, temporary: false }],
-    }),
+    },
   });
-  expect(created.status, `利用者 ${username} の作成`).toBe(201);
-  const location = created.headers.get('location');
+  expect(created.status(), `利用者 ${username} の作成`).toBe(201);
+  const location = created.headers()['location'];
   expect(location, '作成した利用者の Location').toBeTruthy();
+  await api.dispose();
   return {
     username,
     password,
     remove: async () => {
-      await fetch(location!, {
-        method: 'DELETE',
-        headers: { authorization: `Bearer ${await adminToken()}` },
-      });
+      // 管理トークンは短命（既定 60 秒）なので、消すときに取り直す。
+      const admin = await adminApi();
+      const removed = await admin.delete(location);
+      // 🔴 消えたことを確かめる。黙って失敗すると、走査用の利用者が使い捨ての Keycloak に残り続ける
+      // （同じジョブの後続の test が別の利用者名を使うので走査は通り、残ったことに誰も気付かない）。
+      expect(removed.status(), `利用者 ${username} の削除`).toBe(204);
+      await admin.dispose();
     },
   };
 }

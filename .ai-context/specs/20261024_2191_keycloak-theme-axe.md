@@ -52,14 +52,19 @@ issue: "#2191"
   `E2E_KC_URL` が無ければ読み込みで落ちる。
 - 新規 `e2e/keycloak/support.ts`: `expectKeycloakAxeClean(page, surface, testInfo)`（タグは `WCAG_22_AA_TAGS` を輸入・`runOnly` と合格判定 1 件以上・
   `--color-bg` が `tokens.css` のその明暗の値であること・指紋を台帳と一致）、`deadKeycloakKnownViolationKeys`、管理 API による走査用の利用者の作成と削除、TOTP。
-- 新規 `e2e/keycloak/axeKnownViolations.ts`（台帳。0 件）、`e2e/keycloak/sc13-16-theme-a11y.kc.ts`（15 面）。
+- 新規 `e2e/keycloak/axeKnownViolations.ts`（台帳。0 件）、`e2e/keycloak/sc13-16-theme-a11y.kc.ts`（13 面）。
 - `e2e/support/axe.ts`: `WCAG_22_AA_TAGS` と `THEMES` を export する（定義は動かさない）。
 - テーマ: `login/theme.properties` に `scripts=js/platform-a11y.js`、新規 `login/resources/js/platform-a11y.js`（ラベルの付け替え）。
   `deploy/local/infra/keycloak.yaml` の ConfigMap の `items` に 1 行。
 - `src/platform/frontend/tsconfig.node.json`（型検査の対象に新 config）、`src/knip.jsonc`（新 config と spec を entry に）。
 - `docs/tests/E2E_STANDARDS.md` §7・§11・§12 の「Keycloak のテーマの画面は対象外」を改める。
 
-## 走査面（15 面 × 2 テーマ）
+## 走査面（13 面 × 2 テーマ）
+
+> 面の数と `expectKeycloakAxeClean(page, '<面>', …)` の呼び出しの数は**一致する**（1 呼び出し＝1 面＝1 テーマ分の走査。13 件）。
+> 両テーマは呼び出しを増やさず、2 つの project（`keycloak-light` / `keycloak-dark`）が同じ呼び出しを 1 回ずつ通す（走査は計 26 回）。
+> 台帳の整合の test の閾値（呼び出しの数 13 以上）はこの数である。下表は画面ごとに行をまとめたため 9 行で、`/` で区切った面を数えると 13。
+> ［2026-10-24 追記 / #2191］PR の初版は IADR-0619・本書・PR 本文で「15 面」と書いていた。数え違いであり、13 へ直した（AI レビューの指摘）。
 
 | 画面 | 面 | 状態の作り方 |
 | --- | --- | --- |
@@ -87,6 +92,12 @@ issue: "#2191"
 - 変異（赤になることの確認。元に戻した）:
   - `scripts=js/platform-a11y.js` を外す → `label` が SC-14 の 4 面 × 2 テーマで落ちる。
   - `tokens.css` のライトの `--color-fg-muted` を `#b8bccb` に薄める → `color-contrast` がライトの SC-13〜15・エラー画面の全面で落ちる。
+- ［2026-10-24 追記 / #2191］AI レビューの 🟡 3 件と CI の lint の赤への対応の後に、手元で再び 10 passed を確かめた。
+  - lint の赤: `support.ts` の素の `fetch` が、ESLint の「通信は 1 箇所へ収束させる」規則（e2e も対象）に当たっていた。管理 API を Playwright の
+    `APIRequestContext`（`request.newContext()`）で呼ぶ形へ改めた。
+  - 利用者の削除の応答が 204 であることを確かめるようにした。
+  - 補修スクリプトの変異（`closest('.pf-v5-c-form__group')` を `.pf-v6-…` へ）→ 両テーマの SC-14 の test が、明示の確認
+    （`label[for="totp"]` が 1 個）と `labelRepairGuard`（`[platform-a11y]` の console.error 4 件）で落ちる。元に戻した。
 - 手元で走らなかったもの（ディスクの空きが 3 GB を切っているため、workspace の pnpm install をしていない）: eslint・knip・型検査の全体。
   新しいファイルだけを最小の依存で `tsc` に掛けた（Playwright の型の版のずれによる既存と同じ 1 件を除き、エラーなし）。CI の frontend.yml が見る。
 

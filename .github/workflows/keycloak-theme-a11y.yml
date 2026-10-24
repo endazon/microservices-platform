@@ -8,7 +8,7 @@
 # - イメージは deploy/docker-compose.yml の keycloak サービスの `image:`（タグ＋digest）を**そのまま読む**。ここへ版を
 #   複写しない —— compose と k8s のタグが同じであることは scripts/check-realm-constraints.js 検査 4 が既に守っている。
 # - 所要時間の見積り（IADR-0619 §結果）: イメージの取得と Keycloak の起動（start-dev ＋ realm の取り込み。手元の実測 約 60 秒）は
-#   pnpm install・ブラウザの導入と並行に進む。走査は 15 面 × 2 テーマで手元の実測 約 35 秒。
+#   pnpm install・ブラウザの導入と並行に進む。走査は 13 面 × 2 テーマ（26 回）で、PR の CI の実測 約 31 秒・ジョブ全体 約 1 分 45 秒。
 # - **必須チェックにしない**（paths で起動が絞られ、起動しない PR で必須チェックが恒久 pending になるため。
 #   Keycloak の起動の失敗で無関係な PR を止めない＝IADR-0569 決定 1 の L2 以降と同じ扱い）。
 name: Keycloak theme a11y

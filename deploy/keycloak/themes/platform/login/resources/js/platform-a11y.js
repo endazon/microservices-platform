@@ -22,9 +22,16 @@
       var label = labels[i];
       if (document.getElementById(label.htmlFor)) continue;
       var group = label.closest('.pf-v5-c-form__group');
-      if (!group) continue;
-      var controls = group.querySelectorAll(LABELABLE);
-      if (controls.length !== 1 || !controls[0].id) continue;
+      var controls = group ? group.querySelectorAll(LABELABLE) : [];
+      if (controls.length !== 1 || !controls[0].id) {
+        // 黙って何もしない状態にしない（Keycloak の版上げで PF5 のクラスや DOM が変わったときに気付けるように）。
+        // axe の E2E（e2e/keycloak/support.ts の labelRepairGuard）がこの接頭辞の出力を見て落ちる。
+        console.error(
+          '[platform-a11y] ラベルの付け替え先を決められない: for="' + label.htmlFor + '"' +
+            (group ? '（入力欄 ' + controls.length + ' 個）' : '（.pf-v5-c-form__group が無い）'),
+        );
+        continue;
+      }
       label.htmlFor = controls[0].id;
     }
   }

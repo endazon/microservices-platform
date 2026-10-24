@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import {
+  test,
+  expect,
   REALM,
   createUser,
   deadKeycloakKnownViolationKeys,
@@ -73,6 +75,9 @@ test('SC-14 初回登録・SC-15 新パスワード・SC-16 アカウントコ�
 
     // SC-14 初回登録（QR コード）
     await expect(page.locator('#kc-totp-settings-form')).toBeVisible();
+    // ★ 補修（platform-a11y.js）が効いたこと。親の欠陥のある 2 つのラベルが入力欄を指している。
+    await expect(page.locator('label[for="totp"]')).toHaveCount(1);
+    await expect(page.locator('label[for="userLabel"]')).toHaveCount(1);
     await expectKeycloakAxeClean(page, 'SC-14 初回登録', testInfo);
 
     // SC-14 初回登録（手入力キー）
@@ -112,6 +117,8 @@ test('SC-14 初回登録・SC-15 新パスワード・SC-16 アカウントコ�
     await openLogin(page);
     await signIn(page, user.username, newPassword);
     await expect(page.locator('#otp')).toBeVisible();
+    // ★ 補修が効いたこと（親のラベルは `username` を指すが、読み取り専用の入力欄は #kc-attempted-username）。
+    await expect(page.locator('label[for="kc-attempted-username"]')).toHaveCount(1);
     await expectKeycloakAxeClean(page, 'SC-14 ワンタイムコード', testInfo);
 
     // 誤ったコード（現在のコードと必ず違う値にする）
