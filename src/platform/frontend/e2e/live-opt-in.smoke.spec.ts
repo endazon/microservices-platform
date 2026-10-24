@@ -278,6 +278,10 @@ test('OTP の後に Keycloak が必須アクションを求めたら、待ち続
     expect(r.out).toContain(
       'Keycloak が必須アクションを求めている（フォーム: kc-totp-settings-form）',
     );
+    // 失敗した段の attach は origin と path だけ（query の state・code・sid を出さない）。BFF の入口の状態と Location の origin も出す。
+    expect(r.out).toContain(`url: ${fake.kcUrl}/realms/platform/login-actions/required-action`);
+    expect(r.out).not.toContain('execution=');
+    expect(r.out).not.toMatch(/[?&](state|code|session_state)=/);
     // 60 秒の timeout まで待たない（ほかの 5 役割と teardown を含めて短く終わる）。
     expect(Date.now() - started).toBeLessThan(45_000);
   } finally {

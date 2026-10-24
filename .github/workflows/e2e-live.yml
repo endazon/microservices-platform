@@ -184,6 +184,10 @@ jobs:
           set +e
           kubectl get pods -A -o wide
           kubectl get events -A --field-selector type=Warning --sort-by=.lastTimestamp | tail -60
+          # ログインの入口（BFF）と認可サーバ（Keycloak）の直近のログ。どちらも資格情報の値を出さない（BFF はトークンを、Keycloak は
+          # パスワード・OTP をログに書かない）。ジョブのログは公開なので、値を出すコンテナをここへ足さない。
+          echo "::group::bff-service logs"; kubectl -n microservices-platform logs deploy/bff-service --tail=150; echo "::endgroup::"
+          echo "::group::keycloak logs"; kubectl -n platform-infra logs deploy/keycloak --tail=80; echo "::endgroup::"
 
       - name: Tear down
         if: always()

@@ -13643,6 +13643,20 @@ exit $RC
       });
     }
 
+    ok('#2026: e2e-live.yml の層 → project 名の対応表が playwright.live.config.ts の project 名と一致する', () => {
+      // 対応表がずれると check-e2e-skips の --layers が実在しない project を指し、「層に spec が無い」の警告に紛れて全 skip を見逃す。
+      const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/e2e-live.yml'), 'utf8');
+      const cfg = fsA.readFileSync(pathA.join(ROOT_A, 'src/platform/frontend/playwright.live.config.ts'), 'utf8');
+      const mapSrc = /const m=\{([^}]*)\}/.exec(wf);
+      assert.ok(mapSrc, 'e2e-live.yml に層の対応表（const m={…}）が無い');
+      const map = Object.fromEntries([...mapSrc[1].matchAll(/(\w+):"([^"]+)"/g)].map((m) => [m[1], m[2]]));
+      const block = /const LAYER_PROJECTS[^=]*=\s*\{([\s\S]*?)\n\};/.exec(cfg);
+      assert.ok(block, 'playwright.live.config.ts に LAYER_PROJECTS が無い');
+      const projects = Object.fromEntries([...block[1].matchAll(/\n  (\w+): \{\n    name: '([^']+)'/g)].map((m) => [m[1], m[2]]));
+      assert.strictEqual(Object.keys(projects).length, 4, `LAYER_PROJECTS を 4 層読めない（${JSON.stringify(projects)}）`);
+      assert.deepStrictEqual(map, projects, 'e2e-live.yml の層 → project 名の対応表が config とずれている');
+    });
+
     ok('#2026: OTP の資格情報を宣言する利用者は requiredActions を明示し、CONFIGURE_TOTP を持たない', () => {
       // realm の requiredActions で CONFIGURE_TOTP が defaultAction（新しい利用者すべてに付く）である。宣言に requiredActions が
       // 無い利用者を Admin REST API（reconcile-realm.js）で作ると、OTP の資格情報を持ったまま「OTP の登録」の画面へ送られ、

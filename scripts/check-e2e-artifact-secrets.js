@@ -53,17 +53,42 @@ const MAX_DEPTH = 4;
  * - 各値の base64（HTTP のヘッダや埋め込みのデータ。標準と URL 用の両方）
  * - Basic 認証の `<利用者>:<パスワード>` の base64（利用者名は `e2e-<role>`）
  */
+/**
+ * 値が符号化の途中（ヘッダや文字列の任意の位置）に置かれたときにも当たる、符号化の**中央部分**（純関数）。
+ * 前に 0〜(group-1) バイトの詰め物を付けて符号化し、詰め物と後ろの不明なバイトに掛かる端の文字を落とす。
+ * bits は 1 文字あたりのビット数（base64 = 6・base32 = 5）。
+ */
+function middles(value, { bits, pads, encode }) {
+  const data = Buffer.from(value, 'utf8');
+  const out = [];
+  for (let pad = 0; pad < pads; pad++) {
+    const text = encode(Buffer.concat([Buffer.alloc(pad), data])).replace(/=+$/, '');
+    const start = Math.ceil((pad * 8) / bits);
+    const end = Math.floor(((pad + data.length) * 8) / bits);
+    out.push({ pad, text: text.slice(start, end) });
+  }
+  return out;
+}
+
 function formsOf(secret) {
   const forms = [{ how: '値', text: secret.value }];
-  const b64 = Buffer.from(secret.value, 'utf8').toString('base64').replace(/=+$/, '');
-  forms.push({ how: 'base64', text: b64 }, { how: 'base64url', text: b64.replace(/\+/g, '-').replace(/\//g, '_') });
-  if (secret.name.endsWith('_TOTP_SECRET')) forms.push({ how: 'base32', text: base32Encode(secret.value) });
+  for (const m of middles(secret.value, { bits: 6, pads: 3, encode: (b) => b.toString('base64') })) {
+    forms.push({ how: `base64（詰め物 ${m.pad}）`, text: m.text });
+    forms.push({ how: `base64url（詰め物 ${m.pad}）`, text: m.text.replace(/\+/g, '-').replace(/\//g, '_') });
+  }
+  if (secret.name.endsWith('_TOTP_SECRET')) {
+    for (const m of middles(secret.value, { bits: 5, pads: 5, encode: (b) => base32Encode(b) })) {
+      forms.push({ how: `base32（詰め物 ${m.pad}）`, text: m.text });
+    }
+  }
   if (secret.name.endsWith('_PASSWORD')) {
     const role = secret.name.slice('E2E_'.length, -'_PASSWORD'.length).toLowerCase().replace(/_/g, '-');
     const basic = Buffer.from(`e2e-${role}:${secret.value}`, 'utf8').toString('base64').replace(/=+$/, '');
     forms.push({ how: 'Basic の base64', text: basic });
   }
-  return forms.filter((f) => f.text.length >= MIN_LENGTH);
+  // 中央部分が短いと偶然の一致を拾うので、最短の長さに満たない形は探さない。同じ文字列は 1 つにまとめる。
+  const seen = new Set();
+  return forms.filter((f) => f.text.length >= MIN_LENGTH && !seen.has(f.text) && seen.add(f.text));
 }
 
 /** `KEY=VALUE` の行から資格情報だけを取る（純関数）。 */
@@ -221,7 +246,7 @@ function selfTest() {
     {
       name: '🔴 TOTP の秘密の base32 形を見つける（認証アプリ・Keycloak の画面の表示の形）',
       run: () => withDir((d) => fs.writeFileSync(path.join(d, 'a.txt'), `key ${base32Encode(totp)}`)),
-      expect: (r) => r.hits.length === 1 && r.hits[0].name === 'E2E_ADMIN_TOTP_SECRET' && r.hits[0].how === 'base32',
+      expect: (r) => r.hits.length === 1 && r.hits[0].name === 'E2E_ADMIN_TOTP_SECRET' && /^base32/.test(r.hits[0].how),
     },
     {
       name: '🔴 値の base64 形を見つける（標準・URL 用）',
@@ -231,6 +256,30 @@ function selfTest() {
         fs.writeFileSync(path.join(d, 'b.txt'), b.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''));
       }),
       expect: (r) => r.hits.filter((h) => h.name === 'E2E_ADMIN_PASSWORD' && /^base64/.test(h.how)).length >= 2,
+    },
+    {
+      name: '🔴 文字列の途中で base64 に符号化された値を、前の詰め物 0・1・2 バイトの 3 通りとも見つける',
+      run: () => [0, 1, 2].map((pad) => withDir((d) => {
+        const enc = Buffer.from(`${'xyz'.slice(0, pad)}${pw}tail`, 'utf8').toString('base64');
+        fs.writeFileSync(path.join(d, 'h.txt'), `header: ${enc}`);
+      })),
+      expect: (rs) => rs.every((r) => r.hits.some((h) => h.name === 'E2E_ADMIN_PASSWORD' && /^base64/.test(h.how))),
+    },
+    {
+      name: '🔴 文字列の途中で base32 に符号化された TOTP の秘密を、前の詰め物 0〜4 バイトの 5 通りとも見つける',
+      run: () => [0, 1, 2, 3, 4].map((pad) => withDir((d) => {
+        fs.writeFileSync(path.join(d, 'q.txt'), `otpauth ${base32Encode(Buffer.from(`${'abcd'.slice(0, pad)}${totp}zz`, 'utf8'))}`);
+      })),
+      expect: (rs) => rs.every((r) => r.hits.some((h) => h.name === 'E2E_ADMIN_TOTP_SECRET' && /^base32/.test(h.how))),
+    },
+    {
+      name: '陰性: 別の値を途中で符号化したものには当たらない（詰め物の 3 通り・5 通り）',
+      run: () => withDir((d) => {
+        const other = ['Other', 'value', 'Q1w2E3r4T5y6'].join('-');
+        for (const pad of [0, 1, 2]) fs.writeFileSync(path.join(d, `b${pad}.txt`), Buffer.from(`${'xyz'.slice(0, pad)}${other}`).toString('base64'));
+        for (const pad of [0, 1, 2, 3, 4]) fs.writeFileSync(path.join(d, `c${pad}.txt`), base32Encode(Buffer.from(`${'abcd'.slice(0, pad)}${other}`)));
+      }),
+      expect: (r) => r.files === 8 && r.hits.length === 0,
     },
     {
       name: '🔴 Basic 認証の「利用者:パスワード」の base64 形を見つける',
@@ -297,4 +346,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { readSecrets, formsOf, unzip, findIn, scan, makeZip, selfTest };
+module.exports = { readSecrets, middles, formsOf, unzip, findIn, scan, makeZip, selfTest };

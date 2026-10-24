@@ -42,18 +42,36 @@ async function fillSecret(locator: Locator, value: string): Promise<void> {
   }, value);
 }
 
-/** 失敗した段を残す。URL は path だけ（query には state・code が載る）。値は残さない。 */
+/** URL の origin（スキーム・ホスト・ポート）と path だけ。query と fragment（state・code・sid が載る）は出さない。 */
+function originAndPath(raw: string): string {
+  try {
+    const u = new URL(raw);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return '（URL ではない）';
+  }
+}
+
+/** 失敗した段を残す。URL は origin と path だけ。値は残さない。`notes` は段が集めた診断（同じく値を含めない）。 */
 async function stage<T>(
   testInfo: TestInfo,
   page: Page,
   name: string,
-  run: () => Promise<T>,
+  run: (notes: string[]) => Promise<T>,
 ): Promise<T> {
+  const notes: string[] = [];
   try {
-    return await run();
+    return await run(notes);
   } catch (e) {
     await testInfo.attach('failed-stage', {
-      body: `stage: ${name}\npath: ${new URL(page.url()).pathname}\n`,
+      body:
+        [
+          `stage: ${name}`,
+          `url: ${originAndPath(page.url())}`,
+          `title: ${await page.title().catch(() => '（取れない）')}`,
+          `expected keycloak origin: ${cfg.kcUrl}`,
+          ...notes,
+        ].join('\n') + '\n',
       contentType: 'text/plain',
     });
     throw e;
@@ -66,8 +84,19 @@ async function logIn(page: Page, testInfo: TestInfo, role: Role): Promise<void> 
   const secret = process.env[names.totpSecret] ?? '';
   const username = `e2e-${role}`;
 
-  await stage(testInfo, page, 'ログイン画面', async () => {
-    await page.goto('/bff/auth/login?returnUrl=%2F');
+  await stage(testInfo, page, 'ログイン画面', async (notes) => {
+    // 診断: BFF のログインの入口が返す状態と Location の origin（だけ）を残す。ブラウザの遷移とは別の要求で、ログインの試行には数えない。
+    const probe = await page.request.get('/bff/auth/login?returnUrl=%2F', {
+      maxRedirects: 0,
+      failOnStatusCode: false,
+    });
+    notes.push(
+      `bff /bff/auth/login: ${probe.status()} → Location ${originAndPath(probe.headers()['location'] ?? '')}`,
+    );
+    const landed = await page.goto('/bff/auth/login?returnUrl=%2F');
+    notes.push(
+      `browser landed: ${landed ? landed.status() : '応答なし'} ${originAndPath(page.url())}`,
+    );
     await page.waitForURL((url) => url.origin === cfg.kcUrl);
     await expect(page.locator('#kc-form-login')).toBeVisible();
     await page.locator('#username').fill(username);
