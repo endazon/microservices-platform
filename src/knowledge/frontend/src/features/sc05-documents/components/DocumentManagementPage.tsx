@@ -16,7 +16,7 @@ import {
   Tag,
 } from '@platform/ui';
 import { QueryState } from '@foundation/ui/QueryState';
-import { i18n } from '@foundation/i18n';
+import { confidentialityLabel, i18n } from '@foundation/i18n';
 import { ApiError } from '@foundation/api/ApiError';
 import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { toMessages } from '@foundation/utils/apiErrors';
@@ -78,11 +78,13 @@ import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 //       契約を足すのではなく**要素そのものが落ちた**ので、**出していないのが正しい**。
 //     - **タグ辞書 → 裁定 Q18 で照会口を管理系ロールへ開くと確定し、#634 / #640 で実装済み**。
 //       **本画面が補完へ載せる作業は未了**であり、そこが残りである。
-//   機密区分の**値**を訳さない理由は abac/confidentiality.ts を参照。
+//   ~~機密区分の**値**を訳さない理由は abac/confidentiality.ts を参照。~~（下の 2026-10-24 追記で解消）
 //   **［2026-08-10 追記 / #553］裁定は着地している** —— 4 値の表示名は 2026-08-05 の裁定
 //   （Q7・Q8・派生 Q30）で確定し、正は計画リポジトリ project-planning の docs/glossary.md
 //   （restricted＝**取扱制限**）。
 //   **写像の実装先は #541 であり、それまでは生値を出す。**
+//   ［2026-10-24 / #2019］写像を入れた。一覧・絞り込み・フォームの選択肢は表示名で出す（`@foundation/i18n` の
+//   `confidentialityLabel`。SC-02・SC-03 と共有）。送る値は契約の値のまま。
 
 /**
  * 409 の詳細（Problem 本文の errors / detail / title 由来）。
@@ -494,9 +496,13 @@ function DocumentRow({
         {sourceLabel(documentSourceKey(doc), (descriptor) => i18n._(descriptor))}
       </TableCell>
       {/* hi-fi は機密区分を accent のチップで描く（`.tag-accent` 社内限 / `.tag-outline` 秘）。
-          値そのものは訳さない（lib/abac/confidentiality.ts 参照）。 */}
+          表示は用語集の表示名（`@foundation/i18n` の写像。SC-02・SC-03 と共有。#2019）。 */}
       <TableCell>
-        {confidentiality ? <Tag tone="accent">{confidentiality}</Tag> : <span aria-hidden>—</span>}
+        {confidentiality ? (
+          <Tag tone="accent">{confidentialityLabel(confidentiality, (d) => i18n._(d))}</Tag>
+        ) : (
+          <span aria-hidden>—</span>
+        )}
       </TableCell>
       {/* 公開ライフサイクル。INDEX 決定 21: 色だけで意味を持たせない —— `StatusBadge` が
           tone ごとの固定アイコンとテキストを型で強制する。 */}

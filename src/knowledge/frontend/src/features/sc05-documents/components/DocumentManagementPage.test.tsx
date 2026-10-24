@@ -133,10 +133,9 @@ describe('DocumentManagementPage (SC-05)', () => {
     const link = await screen.findByRole('link', { name: '経費精算規程' });
     expect(link).toHaveAttribute('href', `/docs/${DOC_ID}`);
     const table = within(screen.getByRole('table'));
-    // 機密区分は生値のまま出す。**［2026-08-10 追記 / #553］理由は「表示名が 2 値しか無いから」
-    // ではなくなった** —— 4 値の表示名は裁定（2026-08-05 Q7・Q8・派生 Q30）で確定しており、
-    // **写像の実装先が #541 である**ため、それまでの現状として生値を出している。
-    expect(table.getByText('internal')).toBeInTheDocument();
+    // 機密区分は用語集の表示名で出す（internal＝社内限。`@foundation/i18n` の写像を SC-02・SC-03 と共有。#2019）。
+    expect(table.getByText('社内限')).toBeInTheDocument();
+    expect(table.queryByText('internal')).not.toBeInTheDocument();
     expect(table.getByText('v3')).toBeInTheDocument();
     expect(mocks.apiRequest).toHaveBeenCalledWith(
       '/documents?offset=0&limit=50&origin=curated',

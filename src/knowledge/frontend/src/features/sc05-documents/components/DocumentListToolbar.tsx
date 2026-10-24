@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import { Button, Input, Label, Select } from '@platform/ui';
-import { i18n } from '@foundation/i18n';
+import { confidentialityLabel, i18n } from '@foundation/i18n';
 import { DOCUMENT_TITLE_QUERY_MAX, hasConditions } from '../api/useDocumentAdmin';
 import type {
   DocumentConfidentialityFilter,
@@ -179,7 +179,7 @@ export function DocumentListToolbar({
         <Label htmlFor={confidentialityId}>
           <Trans>機密区分で絞り込み</Trans>
         </Label>
-        {/* 値は訳さない（生値。`lib/abac/confidentiality.ts`）。 */}
+        {/* 選択肢は用語集の表示名で出し、値は契約の値のまま送る（`@foundation/i18n` の写像。#2019）。 */}
         <Select
           id={confidentialityId}
           selectSize="sm"
@@ -193,7 +193,7 @@ export function DocumentListToolbar({
           <option value="">{t`すべて`}</option>
           {CONFIDENTIALITY_VALUES.map((value) => (
             <option key={value} value={value}>
-              {value}
+              {confidentialityLabel(value, (d) => i18n._(d))}
             </option>
           ))}
         </Select>
