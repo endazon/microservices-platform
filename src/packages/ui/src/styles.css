@@ -196,7 +196,14 @@
  * **明示ダークを選んだ利用者の指定を OS 設定で覆さない**ためである。
  * ライト値はモックに無いため、Nocturne の ramp を反転して定義した（本文は実測で
  * コントラスト 4.5:1 以上を満たす: brand #5d5294 は白面で 6.77:1 / 地色 #f3f5fe で 6.23:1、
- * fg-muted #595d6c は白面で 6.55:1、success 6.31:1 / warning 5.48:1 / danger 6.18:1）。
+ * fg-muted #595d6c は白面で 6.55:1、success 6.31:1 / warning 5.79:1 / danger 6.18:1）。
+ *
+ * 🔴 ［2026-10-24 / NFR-30・#2015］**warning を #8a6210 から #845f0f へ下げた。** 旧値は
+ * `--color-surface-muted`（#e4e7f5）に対して **4.44:1 しか無く AA（4.5:1）に届かない** —— axe が
+ * `Note tone="warn"`（`text-warning` の文字が `bg-surface-muted` の面に載る）で SC-06・SC-07 を落とした
+ * （`platform/frontend/e2e/a11y.smoke.spec.ts`）。ダークの accent と同じく、落ちているのは
+ * 「warning の文字 × muted の面」という**組み合わせそのもの**なので、要素ではなく値で直す。
+ * 下げた後の実測: bg 5.33 / surface 5.79 / surface-muted 4.70 / accent-soft 4.70。色相は変えていない。
  */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
@@ -214,7 +221,7 @@
     --color-brand-fg: #ffffff;
     --color-accent-soft: #e7e5fe;
     --color-success: #2e6b4e;
-    --color-warning: #8a6210;
+    --color-warning: #845f0f;
     --color-danger: #a3432e;
   }
 }
@@ -235,7 +242,7 @@
   --color-brand-fg: #ffffff;
   --color-accent-soft: #e7e5fe;
   --color-success: #2e6b4e;
-  --color-warning: #8a6210;
+  --color-warning: #845f0f;
   --color-danger: #a3432e;
 }
 
