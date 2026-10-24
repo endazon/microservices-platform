@@ -962,6 +962,11 @@ msgstr "システム"
 msgid "システム管理"
 msgstr "システム管理"
 
+#: platform/frontend/src/lib/i18n/roles.ts
+msgctxt "ロール"
+msgid "システム管理者"
+msgstr "システム管理者"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
 msgid "システム管理者には、すべての利用者の緊急アクセスの記録が表示されます（新しい順に最大 50 件）。資料の題名と本文は記録されません。"
 msgstr "システム管理者には、すべての利用者の緊急アクセスの記録が表示されます（新しい順に最大 50 件）。資料の題名と本文は記録されません。"
@@ -4937,6 +4942,11 @@ msgstr "運用ダッシュボードは利用できません。"
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "運用状況は下の専用ツール（Grafana など）でも確認できます。"
 msgstr "運用状況は下の専用ツール（Grafana など）でも確認できます。"
+
+#: platform/frontend/src/lib/i18n/roles.ts
+msgctxt "ロール"
+msgid "運用者"
+msgstr "運用者"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "運用面は専用ツールで提供します。本画面はこれらへの入口です。"

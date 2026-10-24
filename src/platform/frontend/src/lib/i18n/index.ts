@@ -115,3 +115,6 @@ export { i18n };
 
 // FR-04, SC-01, SC-02（#2018）: 機密区分の表示名（出典一覧と検索結果一覧が共有する）。
 export { confidentialityLabel } from './confidentiality';
+
+// SC-17（#2214）: ロールの表示名（一覧・ロールフィルタ・権限編集が共有する）。
+export { roleLabel } from './roles';
