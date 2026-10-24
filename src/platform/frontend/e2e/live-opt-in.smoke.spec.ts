@@ -12,6 +12,7 @@ import {
   ROLES,
 } from './live/support/env';
 import { nextPeriodOtp, otpFor, remainingSeconds, wrongOtpFor } from './live/support/totp';
+import { ja, jaPattern, parsePo } from './live/support/catalog';
 import { startFakeLiveStack } from './support/fakeLiveStack';
 
 // NFR / IADR-0569 決定 4 / IADR-0624（#2025）: live 層の config（`playwright.live.config.ts`）の **opt-in と門**を L1 で固定する。
@@ -350,4 +351,31 @@ test('誤りの OTP は前後 1 周期の正しい値のどれとも違い、次
   // 誤りの値は正しい値と同じ時刻から導かれ、その時刻の前後 1 周期の窓のどの正しい値とも違う。
   expect(code).toBe(otpFor(raw, atMs));
   for (const k of [-1, 0, 1]) expect(wrong).not.toBe(otpFor(raw, atMs + k * 30_000));
+});
+
+test('E2E_SEARCH_HITS は 1 か未設定・空だけを受け、E2E_LIVE=1 無しでは読み込みで失敗する（IADR-0627）', () => {
+  expect(parseLiveEnv({ E2E_LIVE: '1' }, '/tmp/x').searchHits).toBe(false);
+  expect(parseLiveEnv({ E2E_LIVE: '1', E2E_SEARCH_HITS: '' }, '/tmp/x').searchHits).toBe(false);
+  expect(parseLiveEnv({ E2E_LIVE: '1', E2E_SEARCH_HITS: '1' }, '/tmp/x').searchHits).toBe(true);
+  expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_SEARCH_HITS: 'true' }, '/tmp/x')).toThrow(
+    /E2E_SEARCH_HITS の値域外/,
+  );
+  expect(() => parseLiveEnv({ E2E_SEARCH_HITS: '1' }, '/tmp/x')).toThrow(/E2E_LIVE=1 が無い/);
+});
+
+test('live の spec の文言は ja のカタログから引き、msgid が無ければ例外、件数の文言は数字を受ける正規表現になる（IADR-0627）', () => {
+  // 製品のカタログに在る msgid（SC-18 のグラフの図の名前）。
+  expect(ja('起点: {originTitle}', { originTitle: '文書 A' })).toBe('起点: 文書 A');
+  const figure = jaPattern(
+    'ナレッジグラフ（ノード {shownCount} 件・辺 {edgeCount} 本）。詳細は凡例と選択パネルを参照',
+  );
+  expect('ナレッジグラフ（ノード 3 件・辺 0 本）。詳細は凡例と選択パネルを参照').toMatch(figure);
+  expect('ナレッジグラフ（ノード 件・辺 0 本）。詳細は凡例と選択パネルを参照').not.toMatch(figure);
+  expect(() => ja('カタログに無い文言')).toThrow(/msgid が無い/);
+  // 複数行の msgid / msgstr を連結する。
+  const po = parsePo(
+    'msgid ""\n"前半"\n"後半"\nmsgstr ""\n"訳の前半"\n"訳の後半"\n\nmsgid "単独"\nmsgstr ""\n',
+  );
+  expect(po.get('前半後半')).toBe('訳の前半訳の後半');
+  expect(po.get('単独')).toBe('単独');
 });

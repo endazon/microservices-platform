@@ -13,7 +13,7 @@ import { DEFAULT_AUTH_DIR, LOCAL_ENV_FILE } from './e2e/live/support/paths';
 //   依存として常に走る。値域外の値・`E2E_LIVE=1` 無しの `E2E_LAYER` は**ここで例外**になる（0 件の緑にしない）。
 // - 前提（資格情報・Keycloak・BFF）は `globalSetup` の readiness 門が確かめ、満たさなければ exit 2（前提未整備）。
 
-// 手元の資格情報（任意）。既にある環境変数は上書きしない。例示は `e2e/live/.env.e2e.example`。
+// 手元の資格情報（任意）。既にある環境変数は上書きしない。例示は `e2e/live/env.e2e.example`。
 if (existsSync(LOCAL_ENV_FILE)) process.loadEnvFile(LOCAL_ENV_FILE);
 
 const cfg = parseLiveEnv(process.env, DEFAULT_AUTH_DIR);

@@ -26,7 +26,7 @@ export async function readinessProblems(
   const missing = missingCredentials(env);
   if (missing.length) {
     problems.push(
-      `試験アカウントの資格情報の環境変数が無い: ${missing.join(', ')}（値は Secret platform-infra/e2e-accounts。e2e/live/.env.e2e.example）`,
+      `試験アカウントの資格情報の環境変数が無い: ${missing.join(', ')}（値は Secret platform-infra/e2e-accounts。e2e/live/env.e2e.example）`,
     );
   }
   const discovery = `${cfg.kcUrl}/realms/${REALM}/.well-known/openid-configuration`;

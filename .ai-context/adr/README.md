@@ -704,3 +704,4 @@
 | [IADR-0624](./IADR-0624_live-playwright-config-setup-and-readiness.md) | live 層の Playwright config は `E2E_LIVE=1` でだけ project を持ち、globalSetup の門（不成立は exit 2）と、秘密（パスワード・cookie）を成果物に残さない setup で 6 役割の storageState を作る（#2025） | Accepted |
 | [IADR-0625](./IADR-0625_e2e-live-workflow-disposable-stack.md) | live E2E（`e2e-live.yml`）は使い捨ての統合スタックの上で、ジョブの中で作った試験アカウントで流し（リポジトリの secret を使わない）、成果物は資格情報を走査してから 14 日残す。全 skip は赤（#2026） | Accepted |
 | [IADR-0626](./IADR-0626_live-ro-auth-errors-on-revocable-fresh-session.md) | live-ro のログインの異常系とログアウトは `e2e-revocable` の新しいセッションで行い（backchannel logout は subject の全セッションを消すので、他の spec と共有する役割を巻き添えにしない）、その spec は trace・スクリーンショットを残さない（#2027） | Accepted |
+| [IADR-0627](./IADR-0627_live-ro-abac-contrast-internal-seed-and-search-hits-gate.md) | live-ro の ABAC の対照は internal の seed 文書を 1 件足して両側（user に見え noaccess に見えない・public は両方の陽性対照）で固定し、検索のヒットは `E2E_SEARCH_HITS` の門で判定する（#2028） | Accepted |

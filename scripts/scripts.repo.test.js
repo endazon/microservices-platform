@@ -11883,10 +11883,18 @@ ${r.stderr}`);
       const seed = JSON.parse(fsSS.readFileSync(seeder.SEED_FILE, 'utf8'));
       assert.ok((seed.documents || []).length > 0, 'seed 文書が 0 件（走査が壊れている）');
       assert.deepStrictEqual(seeder.documentsMissingProbeTerm(seed), []);
+      // 正の対照と負の対照が同じ 1 件で成立する条件（abac-seed の静的の分岐は confidentiality だけを見る。
+      // 所有者・共有先の分岐は投入者〔abac-seeder〕の文書にしか一致しないので、負の対照には効かない。#1664）。
+      // 🔴 先頭は public のまま（verify-oidc-edge-flow.sh の日本語の門は documents[0] から語を採る）。
+      assert.strictEqual((seed.documents[0].attributes || {}).confidentiality, 'public', 'documents[0]: confidentiality');
+      // #2028 / IADR-0627: live-ro の ABAC の両側の対照に internal の 1 件を許す（それ以外の区分は置かない）。
+      // internal は clearance=internal 以上に見え、public だけの利用者（e2e-noaccess）と属性なし（poc-operator）には見えない。
+      assert.ok(
+        seed.documents.some((d) => (d.attributes || {}).confidentiality === 'internal'),
+        'internal の対照文書が無い（live-ro の ABAC の対照が成り立たない）',
+      );
       for (const d of seed.documents) {
-        // 正の対照と負の対照が同じ 1 件で成立する条件（abac-seed の静的の分岐は confidentiality だけを見る。
-        // 所有者・共有先の分岐は投入者〔abac-seeder〕の文書にしか一致しないので、負の対照には効かない。#1664）。
-        assert.strictEqual((d.attributes || {}).confidentiality, 'public', `${d.title}: confidentiality`);
+        assert.ok(['public', 'internal'].includes((d.attributes || {}).confidentiality), `${d.title}: confidentiality`);
         assert.ok(!('tags' in d), `${d.title}: tags を宣言してはいけない`);
         assert.ok(String(d.body || '').length > 0, `${d.title}: 本文が空`);
       }

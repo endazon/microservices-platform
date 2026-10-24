@@ -42,6 +42,9 @@ on:
       - "deploy/keycloak/**"
       - "deploy/local/keycloak-setup/**"
       - "src/platform/frontend/e2e/support/**"
+      # live-ro の ABAC の対照と検索のヒットが依存する seed（IADR-0627）。
+      - "deploy/local/search-seed/**"
+      - "deploy/local/abac-seed/**"
 
 concurrency:
   group: e2e-live-${{ github.event.pull_request.number || github.ref }}
@@ -104,6 +107,13 @@ jobs:
       - name: 🔴 Gate — the stack is actually up
         run: node scripts/check-stack-ready.js --live
 
+      # #2028 / IADR-0627: live-ro の ABAC の対照と検索のヒットは seed（ABAC ポリシー・検索用文書 2 件）に依存する。up の中の投入は
+      # best-effort なので、integration-stack.yml と同じく readiness の後に**明示的に再実行して終了コードを見る**（冪等）。
+      - name: ABAC ポリシーの投入を確定させる（冪等・失敗を握り潰さない）
+        run: node scripts/seed-abac-policies.js --live
+      - name: 検索検証用文書の投入を確定させる（冪等・失敗を握り潰さない）
+        run: node scripts/seed-search-documents.js --live
+
       # 試験アカウント（IADR-0570）。値はこのジョブの中で作り、伏せてから使う。ファイルは runner の一時領域だけに置く。
       - name: Create the e2e-* accounts (disposable values)
         id: accounts
@@ -143,6 +153,8 @@ jobs:
         working-directory: src/platform/frontend
         env:
           E2E_LIVE: "1"
+          # IADR-0627: このスタックは LOCALEMBED=1・SEARCHSEED=1 で索引が在るので、検索のヒットと ABAC の対照を判定する（skip しない）。
+          E2E_SEARCH_HITS: "1"
           PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/e2e-live.json
         run: |
           set -euo pipefail
