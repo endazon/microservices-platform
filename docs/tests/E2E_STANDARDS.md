@@ -10,8 +10,8 @@ author: Claude
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
 iadrs: [IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe]
-issues: [#2013, #2014, #2015, #2191]
+specs: [20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
+issues: [#2013, #2014, #2015, #2191, #2023]
 -->
 
 # E2E テスト基準
@@ -84,7 +84,9 @@ issues: [#2013, #2014, #2015, #2191]
   `ro` / `rw` / `trading` / `llm` のカンマ区切りで、未設定なら `ro` とみなす。`live-setup` は
   選ばれた層の依存として常に走る。値域外の値、または `E2E_LIVE=1` 無しの `E2E_LAYER` は
   **config の読み込みで失敗させる**（綴り違いが黙って 0 件の緑になるのを防ぐ）。
-- **現状**: L1 の project 名は `chromium` である。次に `playwright.config.ts` を触る変更で `smoke` へ改める。
+- **現状**: ~~L1 の project 名は `chromium` である。次に `playwright.config.ts` を触る変更で `smoke` へ改める。~~
+  **［2026-10-24］L1 の project 名を `smoke` へ改めた。** あわせて en-US の project `smoke-en-us` を足した
+  （`locale: 'en-US'`。`e2e/i18n.smoke.spec.ts` だけを走らせ、`smoke` はこの spec を走らせない）。
   `playwright.live.config.ts` と `e2e/live/` はまだ無い。
 - **PR の必須チェックは L1 だけ**。L2 以降は必須チェックにしない（稼働環境に依存する赤で PR を止めない。
   統合スタックの nightly を必須にしなかったのと同じ理由）。
@@ -223,7 +225,7 @@ issues: [#2013, #2014, #2015, #2191]
 
 | 項目 | 現状 | 本書の目標 |
 | --- | --- | --- |
-| L1 の project 名 | `chromium` | `smoke` |
+| L1 の project 名 | ~~`chromium`~~ `smoke`（2026-10-24 に改めた。ほかに `smoke-en-us`） | `smoke` |
 | 成果物のアップロード | なし | `!cancelled()`・14 日 |
 | `timeout-minutes` | なし | job に置く（L1 20 分、live 60 分） |
 | `fullyParallel` | 未指定（ファイル単位） | true（シャードの均等化） |

@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, ADR-0031, ADR-0032, ADR-0090, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248]
 author: claude
 created: 2026-10-21
-updated: 2026-10-21
+updated: 2026-10-24
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0032（SPA は BFF セッション。トークンを扱わない）
   - planning:projects/microservices-platform/07_adr/ADR-0090（門は依存ごと。全 skip を緑にしない）
@@ -138,4 +138,5 @@ Playwright の E2E は L1（ビルド済み SPA ＋ `page.route('**/bff/**')`）
 ## 残余リスク
 
 - `smoke` への改名は後続 PR に残る。それまで `docs/tests/E2E_STANDARDS.md` の表と config の現物は食い違う（同書 §2.1 と §12 に「現状」として書いた）。
+  ［2026-10-24 追記 / #2023］改名した（`chromium` → `smoke`）。ロケールの project `smoke-en-us` も本決定の命名で足した。食い違いは解消した。
 - `E2E_LAYER` の fail-loud は live 用 config の実装に依存する。E-31 の受け入れ基準で値域外の値が失敗することを確かめる。
