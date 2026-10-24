@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
-issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038]
+iadrs: [IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+specs: [20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
+issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037]
 -->
 
 # E2E テスト基準
@@ -205,10 +205,18 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038]
 
 ## 10. flaky の扱いと品質ゲート
 
-- **PR（L1）**: `retries: 1`（現状）。flaky は pass と数えない。**目標**: HTML レポートの flaky 件数を
-  `scripts/check-e2e-flaky.js` が読み、1 件でも flaky なら警告し、同じテストが 3 回連続で flaky なら issue を自動起票する。
-- **live**: `retries: 1`。同じテストが 2 nightly 連続で flaky なら `test.fixme` で隔離し、理由と追跡 issue を書く。
-  隔離は 2 週間以内に解消するか削除する。
+- **PR（L1）**: `retries: 1`（現状）。flaky は pass と数えない。**［2026-10-24］配備した**:
+  - **集計・可視化**: `frontend.yml` の `e2e` ジョブが、html レポートと同じ実行結果を JSON でも書き、`scripts/check-e2e-flaky.js` が
+    flaky（再試行で通った test）を数える。**1 件でも flaky なら test ごとに警告の注釈**を出し、件数を step summary に表で出す。
+    flaky で PR は落とさない。レポートを読めない・test が 0 件なら赤にする（0 件の集計を「flaky 0」と誤らない）。
+    要約（`e2e-flaky-summary`）を成果物として 14 日残す。
+  - **再発時の扱い**: develop への push の実行で、**同じ test が直近 3 回連続で flaky なら、test ごとに専用 issue を自動で起票**する
+    （`e2e-flaky-issue` ジョブ。ラベル `e2e-flaky`。在ればコメントを足す。自動ではクローズしない）。PR の実行では起票しない。
+    要約が無い実行（e2e をまとめられなかった等）は連続に数えない。
+- 🔴 **flaky を隔離（`test.skip` / `test.fixme` / 再試行回数の引き上げ / 実行から外す）して緑にしない。** 起票された issue で原因を直す
+  （§4 の待ち方・試験データの共有・時刻依存・スタブの抜け）。**［2026-10-24 改定］** 従前ここには「live は 2 nightly 連続で flaky なら
+  `test.fixme` で隔離し、2 週間以内に解消するか削除する」と書いていたが、隔離で緑にする規約は採らないことにした（skip・隔離は検知を
+  止めるだけで、壊れた test と壊れた画面を区別できなくする）。live 層の集計は、live 層を配備する変更で同じ検査器を使う。
 - `forbidOnly`（現状）。`test.skip` には理由を必須にする（**［2026-10-24］ESLint の `playwright/require-annotation-reason` が止める**。
   L1 の `test.skip` は条件つきでも `playwright/no-skipped-test` が止める。条件つきの skip を許すのは `e2e/keycloak/` の `*.kc.ts` と `e2e/live/` だけ）。skip の上限は L1 で 0、live は前提（門）による skip だけを許し、
   全 skip は赤にする（§6）。
@@ -243,5 +251,5 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038]
 | live のブラウザ E2E | なし（curl の `scripts/verify-oidc-edge-flow.sh` だけ） | L2〜L3 を新設。curl の検証は残す（API 層の門として役割が違う） |
 | 試験アカウント | seed の `developer` 等を人と共用 | `e2e-*` を役割ごとに分離 |
 | 視覚回帰 | なし | 既定で採らない（候補 1 件） |
-| flaky の集計 | なし | 件数の収集と自動起票 |
+| flaky の集計 | ~~なし~~ L1 は件数の集計・警告・3 回連続の自動起票（2026-10-24） | 件数の収集と自動起票（隔離はしない） |
 | ESLint（Playwright 用ルール） | ~~なし~~ `eslint-plugin-playwright` の recommended ＋ 下の 3 つを error（2026-10-24。対象は `**/e2e/**`） | `no-wait-for-timeout`・`no-nth-methods`・skip 理由必須 |
