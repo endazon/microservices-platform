@@ -34,9 +34,13 @@ issue: "#2025"
 
 ## 判断
 
-1. **opt-in（IADR-0569 決定 4）**: `E2E_LIVE=1` でなければ全 project を 0 件にして exit 0（`--pass-with-no-tests`）。
+1. **opt-in（IADR-0569 決定 4）**: `E2E_LIVE` が未設定・空なら全 project を 0 件にして exit 0（`--pass-with-no-tests`）。`1` だけが live で、
+   それ以外の値（例示の `<set-me>` のまま・`true` など）は config の読み込みで失敗させる（［2026-10-24 / PR #2223 の AI レビュー 🟡］初版は
+   「`1` 以外は 0 件」で、例示を写したまま直し忘れると黙って 0 件の緑になった）。
    `E2E_LAYER` は `ro`/`rw`/`trading`/`llm` のカンマ区切り・既定 `ro`。値域外、または `E2E_LIVE=1` 無しの `E2E_LAYER` は config の読み込みで失敗させる。
-   判定は `e2e/live/support/env.ts` の純関数に置き、Vitest で固定する（config を読み込むだけで外へ出ないことも含む）。
+   判定は `e2e/live/support/env.ts` の純関数に置き、**L1 の Playwright の spec `e2e/live-opt-in.smoke.spec.ts`** で固定する（live の config を子プロセスで
+   起動して、未設定・空・`1`・それ以外の 4 通りと exit 2 を見る。稼働の環境には触れない。Vitest の include は `src/**` だけなので e2e の support を拾わない）。
+   `E2E_INSECURE_TLS=1` の警告は、ワーカーごとに読み込まれる config ではなく globalSetup で 1 回だけ出す。
 2. **readiness 門**: `globalSetup`（`e2e/live/support/readiness.ts`）が live のときだけ走り、
    ① 12 個の資格情報の環境変数が揃っている（名前だけを報告）② `${E2E_KC_URL}/realms/platform/.well-known/openid-configuration` が 200
    ③ `${E2E_EDGE_URL}/bff/auth/me` が 401、を確かめる。満たさなければ理由を出して **exit 2**（skip の緑とも失敗の赤とも区別。

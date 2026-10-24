@@ -42,6 +42,8 @@ IADR-0569 が名前（config・project・環境変数）を決め、IADR-0570 �
 | 前提の門の置き場 | A. setup project の最初の test | 採らない。門の不成立が「setup の失敗（赤）」になり、製品の不具合と区別できない |
 | | **B. `globalSetup`。不成立なら exit 2** | **採る**。test を 1 件も流さずに終わる |
 | `E2E_LIVE` が無いとき | A. config で例外 | 採らない。opt-in しないのは正常 |
+| `E2E_LIVE` が `1` でも空でもないとき | A. 0 件（IADR-0569 決定 4 の字面） | 採らない。`<set-me>` や `true` が黙って 0 件の緑になる（PR #2223 の AI レビュー 🟡） |
+| | **B. 読み込みで例外** | **採る**（`E2E_LAYER` の値域外と同じ扱い） |
 | | **B. project を 0 件にし `--pass-with-no-tests` で exit 0** | **採る**（IADR-0569 決定 4） |
 | setup の trace | A. 基準書の表どおり `retain-on-failure` | 採らない。trace は `fill` の値（パスワード）と `Set-Cookie` を記録する |
 | | **B. `off`（スクリーンショット・動画も）。失敗した段は文字で attach** | **採る** |
@@ -52,7 +54,8 @@ IADR-0569 が名前（config・project・環境変数）を決め、IADR-0570 �
 
 ## 決定
 
-1. `playwright.live.config.ts`: `E2E_LIVE=1` のときだけ `live-setup` と `E2E_LAYER` で選んだ層の project を持つ。それ以外は 0 件。
+1. `playwright.live.config.ts`: `E2E_LIVE=1` のときだけ `live-setup` と `E2E_LAYER` で選んだ層の project を持つ。**未設定・空は 0 件（exit 0）、
+   それ以外の値は読み込みで例外**（IADR-0569 決定 4 の「それ以外は 0 件」を狭めた。例示の `<set-me>` を写したまま直し忘れると黙って 0 件の緑になるため）。
    値域外の `E2E_LAYER`・`E2E_LIVE=1` 無しの `E2E_LAYER` は読み込みで例外。判定は `e2e/live/support/env.ts` の純関数。
 2. `globalSetup`（`e2e/live/support/readiness.ts`）: 資格情報の環境変数 12 個（名前だけを報告）・Keycloak の discovery 200・BFF の
    `/bff/auth/me` 401 を確かめ、満たさなければ **exit 2**。

@@ -6,7 +6,8 @@ import { DEFAULT_AUTH_DIR, LOCAL_ENV_FILE } from './e2e/live/support/paths';
 // NFR / IADR-0569 決定 3・4 / IADR-0624（#2025）: **live 層（稼働中の PoC・統合スタック）の config**。
 // L1（`playwright.config.ts`）とは別のファイルにする —— L1 の `webServer`（プレビューの起動）と `baseURL` が live に掛からない。
 //
-// - 🔴 **`E2E_LIVE=1` が無ければ全 project を 0 件にする**（`--pass-with-no-tests` で exit 0）。稼働の環境へ
+// - 🔴 **`E2E_LIVE` が未設定・空なら全 project を 0 件にする**（`--pass-with-no-tests` で exit 0）。`1` だけが live で、
+//   それ以外の値は読み込みで例外（`e2e/live/support/env.ts`）。稼働の環境へ
 //   当たる実行は明示の opt-in でだけ流す（`scripts/verify-oidc-edge-flow.sh` の `--live` / `LIVE=1` と同じ思想）。
 // - `E2E_LAYER`（`ro` / `rw` / `trading` / `llm`。既定 `ro`）で選ばれた層の project だけを有効にし、`live-setup` は
 //   依存として常に走る。値域外の値・`E2E_LIVE=1` 無しの `E2E_LAYER` は**ここで例外**になる（0 件の緑にしない）。
@@ -21,11 +22,6 @@ const cfg = parseLiveEnv(process.env, DEFAULT_AUTH_DIR);
 if (!cfg.live) {
   process.stderr.write(
     '[e2e-live] E2E_LIVE=1 が無いので 0 件で終わる（稼働の環境へ当たる実行は明示の opt-in でだけ流す）\n',
-  );
-}
-if (cfg.live && cfg.insecureTls) {
-  process.stdout.write(
-    '::warning::[e2e-live] E2E_INSECURE_TLS=1: 証明書を検証せずに流す（ルート CA を信頼させられない環境に限る）\n',
   );
 }
 

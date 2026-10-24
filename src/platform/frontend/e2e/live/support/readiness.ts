@@ -44,6 +44,12 @@ export async function readinessProblems(
 export default async function globalSetup(): Promise<void> {
   const cfg = parseLiveEnv(process.env, '');
   if (!cfg.live) return;
+  // config はワーカーごとにも読み込まれるので、1 回だけ出す警告はここ（globalSetup は 1 回）に置く。
+  if (cfg.insecureTls) {
+    process.stdout.write(
+      '::warning::[e2e-live] E2E_INSECURE_TLS=1: 証明書を検証せずに流す（ルート CA を信頼させられない環境に限る）\n',
+    );
+  }
   const ctx = await request.newContext({ ignoreHTTPSErrors: cfg.insecureTls });
   const probe: Probe = async (url) => {
     try {

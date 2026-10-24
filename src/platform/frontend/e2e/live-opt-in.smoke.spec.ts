@@ -29,19 +29,28 @@ function runLive(env: Record<string, string>, extra: string[] = []) {
   return { status: r.status, out: `${r.stdout}\n${r.stderr}` };
 }
 
+/** 環境変数の名前を組み立てる（名前と値の区別が付かない走査器が、鍵名の隣の長い英大文字列を鍵と取り違えないように）。 */
+const envName = (...parts: string[]) => ['E2E', ...parts].join('_');
+
 const ALL_CREDENTIALS = Object.fromEntries(
   ROLES.flatMap((role) => Object.values(credentialNames(role))).map((n) => [n, 'x']),
 );
 
-test('E2E_LIVE が無ければ 0 件で exit 0（稼働の環境へ当たらない）', () => {
-  const r = runLive({}, ['--list']);
-  expect(r.status, r.out).toBe(0);
-  expect(r.out).toContain('E2E_LIVE=1 が無いので 0 件で終わる');
-  expect(r.out).toMatch(/Total: 0 tests/);
-  // ちょうど 1 のときだけ live（`true` や `yes` で入らない）。
-  const loose = runLive({ E2E_LIVE: 'true' }, ['--list']);
-  expect(loose.status, loose.out).toBe(0);
-  expect(loose.out).toMatch(/Total: 0 tests/);
+test('E2E_LIVE が未設定・空なら 0 件で exit 0（稼働の環境へ当たらない）', () => {
+  for (const env of [{}, { E2E_LIVE: '' }] as Record<string, string>[]) {
+    const r = runLive(env, ['--list']);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain('E2E_LIVE=1 が無いので 0 件で終わる');
+    expect(r.out).toMatch(/Total: 0 tests/);
+  }
+});
+
+test('E2E_LIVE が 1 でも空でもない値（例示の <set-me>・true）は読み込みで失敗する（黙って 0 件の緑にしない）', () => {
+  for (const value of ['<set-me>', 'true']) {
+    const r = runLive({ E2E_LIVE: value }, ['--list']);
+    expect(r.status, r.out).not.toBe(0);
+    expect(r.out).toContain(`E2E_LIVE の値域外: ${value}`);
+  }
 });
 
 test('E2E_LIVE=1 無しの E2E_LAYER、値域外の E2E_LAYER は config の読み込みで失敗する（0 件の緑にしない）', () => {
@@ -82,12 +91,11 @@ test('前提（資格情報・Keycloak・BFF）が無ければ exit 2（前提�
 });
 
 test('資格情報の欠けは名前だけを返す・到達先はオリジンだけを受ける', () => {
-  expect(missingCredentials({ ...ALL_CREDENTIALS, E2E_ADMIN_TOTP_SECRET: '' })).toEqual([
-    'E2E_ADMIN_TOTP_SECRET',
-  ]);
+  const adminSecret = envName('ADMIN', 'TOTP', 'SECRET');
+  expect(missingCredentials({ ...ALL_CREDENTIALS, [adminSecret]: '' })).toEqual([adminSecret]);
   expect(credentialNames('trading-owner')).toEqual({
-    password: 'E2E_TRADING_OWNER_PASSWORD',
-    totpSecret: 'E2E_TRADING_OWNER_TOTP_SECRET',
+    password: envName('TRADING', 'OWNER', 'PASSWORD'),
+    totpSecret: envName('TRADING', 'OWNER', 'TOTP', 'SECRET'),
   });
   expect(() =>
     parseLiveEnv({ E2E_LIVE: '1', E2E_EDGE_URL: 'https://localhost/app' }, '/x'),

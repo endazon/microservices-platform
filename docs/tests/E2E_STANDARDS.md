@@ -80,7 +80,7 @@ issues: [#2013, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025]
 | 同上 | `trading`（L3-T） | `e2e/live/**/*.trading.spec.ts` | 取引オーナー役 | **1** | 0 | `on` |
 | 同上 | `llm`（L3-L） | `e2e/live/**/*.llm.spec.ts` | `e2e-user` | 1 | 0 | `retain-on-failure` |
 
-- **opt-in**: live 用 config は `E2E_LIVE=1` が無ければ全 project を 0 件にする。`E2E_LAYER` は
+- **opt-in**: live 用 config は `E2E_LIVE` が未設定・空なら全 project を 0 件にする。`1` だけが live で、それ以外の値は読み込みで失敗させる。`E2E_LAYER` は
   `ro` / `rw` / `trading` / `llm` のカンマ区切りで、未設定なら `ro` とみなす。`live-setup` は
   選ばれた層の依存として常に走る。値域外の値、または `E2E_LIVE=1` 無しの `E2E_LAYER` は
   **config の読み込みで失敗させる**（綴り違いが黙って 0 件の緑になるのを防ぐ）。

@@ -1,6 +1,7 @@
 // NFR / IADR-0569 決定 4 / IADR-0624（#2025）: live 層の opt-in と到達先を環境変数から決める（純関数）。
 //
-// - `E2E_LIVE` はちょうど `1` のときだけ live。それ以外（未設定を含む）は全 project を 0 件にする。
+// - `E2E_LIVE`: **未設定・空は opt-out**（全 project を 0 件・exit 0）、**ちょうど `1` だけが live**、それ以外は例外。
+//   例示（`.env.e2e.example` の `<set-me>`）を写したまま直し忘れたときや `true` と書いたときに、黙って 0 件の緑にしない。
 // - `E2E_LAYER` は `ro` / `rw` / `trading` / `llm` のカンマ区切り。未設定は `ro`。
 //   🔴 値域外の値、および `E2E_LIVE=1` 無しの `E2E_LAYER` は**例外**にする（config の読み込みで失敗させる）。
 //   綴り違いが黙って 0 件の緑になるのを防ぐ（ADR-0090「全 skip を緑にしない」）。
@@ -62,7 +63,13 @@ function originOf(name: string, value: string): string {
 }
 
 export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
-  const live = env.E2E_LIVE === '1';
+  const rawLive = env.E2E_LIVE ?? '';
+  if (rawLive !== '' && rawLive !== '1') {
+    throw new Error(
+      `E2E_LIVE の値域外: ${rawLive}（live にするなら 1、しないなら未設定か空。例示の <set-me> を写したままにしない）`,
+    );
+  }
+  const live = rawLive === '1';
   const rawLayer = env.E2E_LAYER;
   if (rawLayer !== undefined && !live) {
     throw new Error(
