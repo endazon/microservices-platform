@@ -147,3 +147,37 @@ for (const c of CASES) {
     }
   });
 }
+
+/**
+ * 取引機能のユニット（ai-stock-trading）の 4 画面。共通シェルの直下に載る（`/trading` の接頭辞は無い）。根拠: `/settings`・`/settings/risk`・
+ * `/controls` は `src/app/routing/router.test.ts` の test「mounts the AST screens in the typed route tree」
+ * （`arrayContaining(['/settings', '/settings/risk', '/controls'])`）、`/opend-auth` は AST の `sc04OpendAuthRoute.tsx` の `path: '/opend-auth'`。
+ * ロール `trading-owner` を持たない利用者には、存在秘匿の NotFound を描く（AST の `RequireRole`）。
+ */
+const AST_ROUTES = ['/settings', '/settings/risk', '/controls', '/opend-auth'] as const;
+
+// AST/NFR-06, AST/ADR-0038, IADR-0035: 網羅表（AST#1410）A-002 を AST から移した（AST#1417 / AST/IADR-0589 決定 5）。
+// AST の live は取引オーナーの state だけを読む（e2e-user の state を AST に残させない）ので、閲覧者の陰性は本リポジトリの live-ro が持つ。
+test.describe('e2e-user（trading-owner を持たない）と取引機能のユニット', () => {
+  test.use({ storageState: stateFile(cfg.authDir, 'user') });
+
+  test(
+    'A-002: e2e-user が取引機能の 4 画面を開くと、どれも見つかりませんでしたになり、ナビに株式自動売買のグループが無い',
+    { tag: ['@p0', '@live-ro'] },
+    async ({ page }) => {
+      // 1 画面で落ちても残りの画面を確かめる（soft。1 回の実行で 4 画面すべての結果が出る）。
+      for (const path of AST_ROUTES) {
+        await page.goto(path);
+        await expect
+          .soft(page.getByRole('heading', { name: NOT_FOUND, level: 1 }), path)
+          .toBeVisible();
+      }
+      // ナビの陰性は、ナビが描かれている画面で見る（NotFound の画面でナビが描かれていなければ 0 件で空振りする）。
+      // M-013 と重なるが、A-002 の行を単独で読めるよう重複を受容する（作業仕様書）。
+      await page.goto('/ask');
+      const navigation = page.getByRole('navigation', { name: '主要ナビゲーション' });
+      await expect(navigation.getByRole('link', { name: '検索・質問' })).toBeVisible();
+      await expect(navigation.getByRole('heading', { name: '株式自動売買' })).toHaveCount(0);
+    },
+  );
+});
