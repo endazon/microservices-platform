@@ -19,6 +19,8 @@
  *      既存の client では比べず・`PUT` の本文に載せず・稼働の値を読みに行かない（対の手順で回した値を戻さない）。
  *   7. ［2026-10-09 追記 / #1830 / IADR-0517］**管理用の 3 クライアントを、許されていなければ宣言の（公知の）dev の値で作らない。**
  *      稼働の secret が dev の値のままかを `--check-dev-secrets` が名指す（読むだけ・値を出さない）。偽の Keycloak（HTTP）で main まで通す。
+ *   8. ［2026-10-24 追記 / #2208 / IADR-0618］**Keycloak が自分で付ける既定スコープ `service_account`（サービスアカウントの client）は
+ *      余剰と見なさない。** それ以外の余剰（宣言に無いスコープ・条件を外れた service_account）は従来どおり外す。
  *
  * 外部依存ゼロ（Node 標準 assert のみ）。実行: node scripts/keycloak-realm-reconcile.test.js
  */
@@ -30,7 +32,7 @@ const {
   devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, isDevSecretGuardedClient, devSecretGuardedClients,
   DEV_SECRETS_ALLOWED_ENV,
   RUNTIME_OWNED_REALM_KEYS, CLIENT_CREATE_ONLY_KEYS, GATE_OWNED_REALM_KEYS, GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
-  SEED_USER_SELF_SERVICE_ROLES,
+  SEED_USER_SELF_SERVICE_ROLES, KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES, isKeycloakAutoAssignedScope,
   resolveE2eCredentials, passwordMeetsPolicy, describeSkipped, renderImport, describe,
 } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 const { generate: generateE2eAccounts, placeholderNames, propertyName } = require('./gen-e2e-accounts.js');
@@ -368,6 +370,49 @@ ok('scope 割当は宣言が全集合: 欠落は add、余剰は remove', () => 
   assert.deepStrictEqual(kinds(ops).sort(), ['client.scope.add', 'client.scope.remove']);
   assert.strictEqual(ops.find((o) => o.op === 'client.scope.add').target, 'bff:abac-attributes');
   assert.strictEqual(ops.find((o) => o.op === 'client.scope.remove').target, 'bff:realm-management-roles');
+});
+
+// ［2026-10-24 / #2208 / IADR-0618］Keycloak 26 がサービスアカウントの client へ自分で付ける既定スコープ `service_account`。
+// 稼働 PoC では投入器の有効・無効の切替（PUT）と secret の入れ替えのたびに足され、`--check` が落ちた。
+function liveWithAutoAssigned(desired) {
+  const live = liveFrom(desired);
+  live.clientScopes.push({ id: uuid(), name: 'service_account', protocol: 'openid-connect' }); // Keycloak の組み込み（宣言しない）
+  const saIds = new Set(desired.clients.filter((c) => c.serviceAccountsEnabled === true).map((c) => c.clientId));
+  for (const c of live.clients) if (saIds.has(c.clientId)) c.defaultClientScopes = [...(c.defaultClientScopes || []), 'service_account'];
+  return { live, saIds };
+}
+
+ok('#2208 陽性: サービスアカウントを持つ全 client に自動付与の service_account があっても計画は 0 件', () => {
+  const { live, saIds } = liveWithAutoAssigned(REALM);
+  // 母集合は宣言から引く（規則 9）。0 件の走査を緑にしない —— 2026-10-24 の宣言では 20 件。
+  assert.ok(saIds.size >= 20, `サービスアカウントを持つ client が ${saIds.size} 件しかない`);
+  assert.deepStrictEqual(opsOf(REALM, live), []);
+  // 名前・欄・条件で限定されている。
+  assert.deepStrictEqual(Object.keys(KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES), ['service_account']);
+  assert.strictEqual(isKeycloakAutoAssignedScope({ serviceAccountsEnabled: true }, 'defaultClientScopes', 'service_account'), true);
+  assert.strictEqual(isKeycloakAutoAssignedScope({ serviceAccountsEnabled: true }, 'optionalClientScopes', 'service_account'), false);
+  assert.strictEqual(isKeycloakAutoAssignedScope({}, 'defaultClientScopes', 'service_account'), false);
+  assert.strictEqual(isKeycloakAutoAssignedScope({ serviceAccountsEnabled: true }, 'defaultClientScopes', 'email'), false);
+  assert.strictEqual(isKeycloakAutoAssignedScope({ serviceAccountsEnabled: true }, 'defaultClientScopes', 'constructor'), false);
+});
+
+ok('#2208 陰性: 自動付与以外の余剰・条件を外れた service_account は従来どおり client.scope.remove', () => {
+  const { live } = liveWithAutoAssigned(REALM);
+  const seeder = live.clients.find((c) => c.clientId === 'abac-seeder');
+  seeder.defaultClientScopes.push('email'); // 宣言に無い余剰（サービスアカウントの client でも許さない）
+  const wiki = live.clients.find((c) => c.clientId === 'wiki-js'); // サービスアカウントを持たない
+  wiki.defaultClientScopes.push('service_account');
+  const svc = live.clients.find((c) => c.clientId === 'document-service');
+  svc.optionalClientScopes = ['service_account']; // 欄が違う（宣言は optionalClientScopes を持たない＝比べない）
+  const ops = opsOf(REALM, live);
+  assert.deepStrictEqual(ops.map((o) => `${o.op} ${o.target}`).sort(),
+    ['client.scope.remove abac-seeder:email', 'client.scope.remove wiki-js:service_account']);
+  // 宣言が optionalClientScopes を全集合として持つ client なら、そこでの service_account は余剰として外す。
+  const live2 = liveWithAutoAssigned(REALM).live;
+  const desired2 = clone(REALM);
+  desired2.clients.find((c) => c.clientId === 'document-service').optionalClientScopes = [];
+  live2.clients.find((c) => c.clientId === 'document-service').optionalClientScopes = ['service_account'];
+  assert.deepStrictEqual(opsOf(desired2, live2).map((o) => `${o.op} ${o.target}`), ['client.scope.remove document-service:service_account']);
 });
 
 ok('グループが無ければ group.create（サブグループは deferred）、サブグループだけ無ければ group.child.create', () => {
