@@ -27,8 +27,12 @@ const ROLE: Role = 'revocable';
 const USERNAME = `e2e-${ROLE}`;
 /** realm のテーマ（`deploy/keycloak/themes/platform/login/messages/messages_ja.properties`）の固定文言。存在秘匿で実在・非実在に同じく出る。 */
 const INVALID_USER = '社員ID またはパスワードが正しくありません';
-/** 親テーマ（Keycloak の base）の ja の文言。 */
-const INVALID_OTP = /^無効なオーセンティケーターコードです。?$/;
+/**
+ * 親テーマ（Keycloak の base）の ja の文言。欄の下の説明（`#input-error-*`）に出る。
+ * 🔴 `getByText` の全体一致にしない —— PatternFly の説明の要素は支援技術向けの見えない接頭辞も持つので、要素の文字列が
+ * 文言だけにならない（PR #2227 の初回の e2e-live で、文言が出ているのに `^…$` の正規表現が 0 件だった）。
+ */
+const INVALID_OTP = '無効なオーセンティケーターコードです';
 const SESSION_COOKIE = '__Host-msp-session';
 
 test.describe.configure({ mode: 'serial', retries: 0 });
@@ -99,7 +103,7 @@ test(
           // 次の周期を待つ（setup が使った 6 桁を避ける。誤りのパスワードとの間も 1 秒以上空く）。
           const { code, wrong } = await nextPeriodOtp(secret);
           await submitAndWait(page, () => submitOtp(page, wrong));
-          await expect(page.getByText(INVALID_OTP)).toBeVisible();
+          await expect(page.locator('[id^="input-error"]', { hasText: INVALID_OTP })).toBeVisible();
           await expect(page.locator('#otp')).toBeVisible();
           await submitOtp(page, code);
           await page.waitForURL(
