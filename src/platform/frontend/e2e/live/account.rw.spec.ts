@@ -159,9 +159,40 @@ async function requestReset(page: Page, username: string): Promise<string> {
   return shownAfterReset(page, username);
 }
 
-/** アカウントコンソールへ新しくログインする（パスワード → 次の周期の OTP）。個人情報の応答を返す。 */
-async function loginToAccount(page: Page): Promise<unknown> {
+/**
+ * Keycloak の応答のうち失敗（4xx・5xx）と、届かなかった要求を、段の診断（`notes`）へ積む。値は出さない ——
+ * 載せるのは method・path・status と、JSON の `error`・`error_description`（OAuth の誤りの種類。秘密ではない）だけ。
+ * 成功の本文（トークン）は読まない。
+ */
+function watchKeycloakFailures(page: Page, notes: string[]): void {
+  page.on('response', (r) => {
+    const url = new URL(r.url());
+    if (url.origin !== cfg.kcUrl || r.status() < 400) return;
+    const line = `keycloak ${r.request().method()} ${url.pathname} → ${r.status()}`;
+    void r
+      .json()
+      .then((body: { error?: unknown; error_description?: unknown }) =>
+        notes.push(
+          `${line} (error=${String(body.error ?? '')} / ${String(body.error_description ?? '')})`,
+        ),
+      )
+      .catch(() => notes.push(line));
+  });
+  page.on('requestfailed', (r) => {
+    const url = new URL(r.url());
+    notes.push(
+      `request failed: ${r.method()} ${url.origin}${url.pathname} (${r.failure()?.errorText ?? ''})`,
+    );
+  });
+}
+
+/**
+ * アカウントコンソールへ新しくログインする（パスワード → 次の周期の OTP）。個人情報の応答を返す。
+ * コンソールが初期化に失敗して誤りの画面を出したら、個人情報の応答を待たずに落とす（`notes` に Keycloak の失敗の応答が載る）。
+ */
+async function loginToAccount(page: Page, notes: string[]): Promise<unknown> {
   const creds = credentialsOf(SUBJECT, process.env);
+  watchKeycloakFailures(page, notes);
   const profile = page.waitForResponse(
     (r) =>
       r.request().method() === 'GET' &&
@@ -174,9 +205,23 @@ async function loginToAccount(page: Page): Promise<unknown> {
   const { code } = await nextPeriodOtp(creds.totpSecret);
   await submitOtp(page, code);
   await page.waitForURL((url) => url.origin === cfg.kcUrl && url.pathname.startsWith(ACCOUNT_PATH));
-  const res = await profile;
-  expect(res.status(), 'GET account（個人情報）').toBe(200);
-  return res.json();
+  const consoleError = page
+    .locator('.pf-v5-c-alert.pf-m-danger')
+    .waitFor({ state: 'visible', timeout: 90_000 })
+    .then(() => 'error' as const)
+    // 個人情報が先に届いた後の時間切れは、待っていないだけ（落とさない）。
+    .catch(() => 'none' as const);
+  // 誤りの画面が先なら個人情報の待ちは捨てる（後の時間切れで落とさない）。
+  profile.catch(() => undefined);
+  const first = await Promise.race([profile, consoleError]);
+  if (first === 'none') throw new Error('個人情報の応答も誤りの画面も 90 秒のうちに出なかった');
+  if (first === 'error') {
+    throw new Error(
+      'アカウントコンソールが初期化に失敗した（誤りの画面）。Keycloak の失敗の応答は failed-stage の notes を見る',
+    );
+  }
+  expect(first.status(), 'GET account（個人情報）').toBe(200);
+  return first.json();
 }
 
 interface Devices {
@@ -289,13 +334,13 @@ test(
     const b = await ctxB.newPage();
     try {
       await test.step('個人情報: 利用者名は読み取り専用、属性（clearance など）は本人に見えない', () =>
-        stage(testInfo, a, cfg.kcUrl, 'セッション A のログイン', async () => {
+        stage(testInfo, a, cfg.kcUrl, 'セッション A のログイン', async (notes) => {
           expect(SUBJECT_ADMIN_ATTRIBUTES, `${USERNAME} の属性が realm 宣言に無い`).not.toEqual([]);
           expect(
             BFF_CLIENT_NAME,
             'realm 宣言に bff クライアントの表示名が無い（B の行を特定できない）',
           ).not.toBe('');
-          const profile = (await loginToAccount(a)) as {
+          const profile = (await loginToAccount(a, notes)) as {
             username?: string;
             attributes?: Record<string, unknown>;
             userProfileMetadata?: { attributes?: { name: string; readOnly?: boolean }[] };
@@ -322,8 +367,8 @@ test(
         }));
 
       const sessionB = await test.step('自分の別セッション B を作る', () =>
-        stage(testInfo, b, cfg.kcUrl, 'セッション B のログイン', async () => {
-          await loginToAccount(b);
+        stage(testInfo, b, cfg.kcUrl, 'セッション B のログイン', async (notes) => {
+          await loginToAccount(b, notes);
           return (await openDeviceActivity(b)).current;
         }));
 
