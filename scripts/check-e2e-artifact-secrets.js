@@ -390,7 +390,7 @@ function main(argv) {
   const args = parseArgs(argv.slice(2));
   if (args.selfTest) process.exit(selfTest());
   if (!args.envFile || args.scan.length === 0) {
-    process.stderr.write('usage: check-e2e-artifact-secrets.js --env-file <path> --scan <dir> [--scan <dir> …] | --self-test\n');
+    process.stderr.write('usage: check-e2e-artifact-secrets.js --env-file <path> [--issued-file <path>] --scan <dir> [--scan <dir> …] | --self-test\n');
     process.exit(2);
   }
   const credentials = readSecrets(fs.readFileSync(args.envFile, 'utf8'));

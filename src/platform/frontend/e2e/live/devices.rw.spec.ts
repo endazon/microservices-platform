@@ -66,10 +66,11 @@ test(
     const res = await issued;
     expect(res.status(), 'POST /bff/private-notes/devices').toBe(201);
     const body = (await res.json()) as { deviceId: string; token: string };
+    const deviceId = body.deviceId;
+    // 後始末（失効）を先に積む（記録が例外を投げても、発行済みの端末は afterEach が失効させる）。
+    cleanup.track(name, { method: 'DELETE', path: `/bff/private-notes/devices/${deviceId}` });
     // 🔴 トークンは成果物の走査が探せるように記録するだけで、出さない・比べない（IADR-0630 決定 6。失効の後も同じに扱う）。
     recordIssuedSecret(cfg, 'E2E_ISSUED_DEVICE_TOKEN', body.token);
-    const deviceId = body.deviceId;
-    cleanup.track(name, { method: 'DELETE', path: `/bff/private-notes/devices/${deviceId}` });
     // 画面を開き直してトークンの表示を消す（以降の失敗の記録に平文が載らない）。
     await page.reload();
     await expect(page.getByRole('heading', { name: T.obsidianHeading, level: 1 })).toBeVisible();
