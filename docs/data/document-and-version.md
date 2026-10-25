@@ -3,15 +3,15 @@ title: 文書・版履歴（Document / DocumentVersion） データ仕様書
 type: data-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-27
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
-ids: [FR-02, FR-03, FR-06, FR-09, FR-12, SC-03, SC-05, SC-09, UC-04]
-adrs: [ADR-0002, ADR-0014, ADR-0050, ADR-0057, ADR-0070]
-iadrs: [IADR-0001, IADR-0152, IADR-0153, IADR-0290, IADR-0296, IADR-0388, IADR-0475]
-specs: [20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-1575_document-page-and-fingerprint]
-issues: [#634, #635, #637, #1011, #1253, #1254, #1575, planning#473]
+ids: [FR-02, FR-03, FR-06, FR-09, FR-12, FR-19, SC-03, SC-05, SC-09, UC-04]
+adrs: [ADR-0002, ADR-0014, ADR-0027, ADR-0050, ADR-0057, ADR-0070]
+iadrs: [IADR-0001, IADR-0152, IADR-0153, IADR-0290, IADR-0296, IADR-0388, IADR-0475, IADR-0597, IADR-0637]
+specs: [20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-1575_document-page-and-fingerprint, 20261026_2150_document-event-sequence-stage1a]
+issues: [#634, #635, #637, #1011, #1253, #1254, #1575, #2150, #2251, planning#473]
 -->
 
 # データ仕様書: 文書・版履歴（Document / DocumentVersion）
@@ -52,7 +52,8 @@ DocumentVersion は Document 集約配下の**確定版スナップショット*
 | MarkdownUri | string? (varchar(2048)) | - | 最大長 2048 | 正規化 Markdown 本文の URI（オブジェクトストレージ） |
 | OriginalUri | string? (varchar(2048)) | - | 最大長 2048 | 原本ファイルの URI |
 | ContentType | string? (varchar(200)) | - | 最大長 200 | 原本の MIME/コンテンツ種別 |
-| Version | int (integer) | ○ | 既定 1。更新（`Touch()`）ごとに +1 | 現在の版番号 |
+| Version | int (integer) | ○ | 既定 1。更新（`Touch()`）ごとに +1。**並行トークン** | 現在の版番号 |
+| EventSequence | long (bigint) | ○ | 既定 0（列の DEFAULT も 0）。**更新イベントを発行するたびに +1。並行トークン** | **発行の連番。** 文書ごとに単調に進み、更新イベントが運ぶ（削除イベントは最後の値 + 1 を運ぶ）。版（`Version`）と違い、版を進めない状態の変化（露出・共有・論理削除・復元・タグの改名・再発行）でも進む。受け手が同じ版・同じ更新時刻のイベントどうしの順序を決める鍵である。🔴 **本列の追加以前の文書は 0 から始まる**（遡及付与しない。旧い発行は連番を持たない） |
 | Attributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可（空 JSON を保存） | ABAC 属性（例: `confidentiality`, `department`） |
 | Tags | List&lt;Guid&gt; (jsonb) | ○ | 既定 空リスト。NULL 不可。要素は `Tags.Id` を指す（**FK は張らない**。後述） | 分類タグの**識別子**（#635。表示名を複写しない） |
 | AssetUris | List&lt;string&gt; (jsonb) | ○ | 既定 空リスト。NULL 不可（空 JSON `[]` を保存） | 図表資産の参照 URI。**変換経路が生んだ資産の在り処であり、完全削除で実体を消すための台帳**である。🔴 **遡及付与しない**——本欄の追加以前に取り込まれた文書は空のままで、その資産は実体が残る |
@@ -102,6 +103,7 @@ erDiagram
         varchar OriginalUri
         varchar ContentType
         int Version
+        bigint EventSequence
         jsonb Attributes
         jsonb Tags
         jsonb AssetUris
@@ -157,6 +159,7 @@ jsonb 配列の要素に FK は張れない（PostgreSQL の制約が要素単�
 ## 整合性・制約ルール
 
 - **版は append-only**: 更新系メソッド（`Update` / `UpdateMetadata` / `ApplyNormalized` / `SetMarkdownUri` / `Publish`）は必ず `Touch()`（Version++・UpdatedAt 更新）と `Snapshot()` を行い、履歴を書き換えない。
+- **並行する確定は後の側が負ける**: `Version` と `EventSequence` はどちらも並行トークンであり、読んだ後に同じ文書へ別の確定（版を進める更新、または発行だけを伴う状態の変化）が入れば、後から確定する側は確定ごと巻き戻る（発行も出ない）。利用者には 409 `version_conflict` が返る。
 - **版番号の一意性**: `(DocumentId, Version)` 一意制約により、集約内で版番号が単調増加・重複なしを DB でも担保。
 - **正規化の冪等性**: 同一文書の `DocumentNormalized` 再配信時は `ApplyNormalized()` で内容を反映し、`re-normalized` の版を追記。
 - **状態遷移**: `draft` →（正規化）→ `normalized` →（`Publish`）→ `published`。
@@ -185,6 +188,7 @@ jsonb 配列の要素に FK は張れない（PostgreSQL の制約が要素単�
 - `20260627130000_AddDocumentVersions` — `DocumentVersions` テーブル・一意インデックス作成、`Documents` への FK（Cascade）追加。
 - `20260809092529_AddTagDictionary`— `Tags` テーブルと `Name` の一意インデックス作成。
 - `20260809123339_MigrateTagsToIdentifiers`— `Tags.UpdatedAt` 列追加 ＋ **データ移行**（後述）。
+- `20261025145956_AddDocumentEventSequence` — `Documents.EventSequence` 列（bigint・NOT NULL・既定 0）の追加。既存行は 0 になる。他のマイグレーションとの適用順に依存しない。
 - 初期データ（シード）は定義していない。文書は API 作成（`Document.Create`）または正規化イベント（`CreateNormalized`）で生成される。
 
 ### `MigrateTagsToIdentifiers` のデータ移行

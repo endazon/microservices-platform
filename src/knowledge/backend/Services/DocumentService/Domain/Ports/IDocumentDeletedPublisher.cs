@@ -29,7 +29,8 @@ public interface IDocumentDeletedPublisher
 {
     // ⚠️ Wolverine の `IMessageBus.PublishAsync` は CancellationToken を取らない（IADR-0245 /
     // E1 仕様書「受け入れた挙動差」）。ct は契約として受けるが、現行実装では伝播されない。
-    Task PublishDeletedAsync(Guid documentId, DateTimeOffset deletedAt, CancellationToken ct = default);
+    // FR-02, IADR-0637 (#2150): `sequence` は削除した文書の最後の発行の連番 + 1（呼び出し側が、行を消す前に読んだ `Document.EventSequence` から渡す）。
+    Task PublishDeletedAsync(Guid documentId, DateTimeOffset deletedAt, long? sequence = null, CancellationToken ct = default);
 
     // DB の変更（スコープの DocumentDbContext に積んだもの）と積んだ発行を 1 トランザクションで確定し、確定の後に送る。
     // 1 スコープで何度呼んでもよい（定期処理は所有者ごと・周期の段ごとに確定する）。

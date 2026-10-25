@@ -1,0 +1,133 @@
+---
+title: IADR-0637 文書ごとの単調な発行の連番（Document.EventSequence）を唯一の発行点で進めて DocumentUpdated / DocumentDeleted の末尾に運び、連番そのものを並行トークンにする。新たに負け得る単一文書の経路と完全削除は 409 version_conflict へ写し、多数文書の 2 経路と既存の 8 経路は段 1b・1c、受け手の比較は段 2 に分ける
+type: impl-adr
+status: Accepted
+related_ids: [FR-02, FR-06, FR-19, FR-20, ADR-0027, ADR-0057, ADR-0061, ADR-0142, IADR-0122, IADR-0283, IADR-0296, IADR-0455, IADR-0595, IADR-0596, IADR-0597, IADR-0604, IADR-0608, IADR-0636]
+author: claude
+created: 2026-10-26
+updated: 2026-10-26
+related_specs:
+  - ../specs/20261026_2150_document-event-sequence-stage1a.md
+---
+
+# IADR-0637: 文書ごとの単調な発行の連番を契約に足し、並行トークンにする（#2150 / #2251）
+
+> 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
+
+- 状態: Accepted
+- 日付: 2026-10-26
+- 決定者: claude（#2150 / #2251。案 A と案 (i)、範囲の判断 (a)、段 1a・1b・1c・2 の分割はコーディネーターの判断 2026-10-26）
+
+## 起点・関連
+
+- 計画:
+  - FR-02 / FR-06 / FR-19 / FR-20。
+  - ADR-0027（Wolverine。少なくとも 1 回の配送と再試行。到着順は保証しない）。
+  - 🔴 **順序の鍵を定める計画 ADR は無い。** 受け手が何で順序を決めるかは、実装の決定である（取り込み IADR-0595・Wiki と目録 IADR-0596・グラフ `GraphDocument.TryApply`）。本 IADR はその鍵を置き換える土台であり、計画への環流は要らない。
+- 前提とする実装 ADR:
+  - [IADR-0455](./IADR-0455_publish-gate-all-paths-withdrawal-and-private-note-scope.md): `DocumentUpdated` の発行はすべて唯一の発行点を通る。
+  - [IADR-0608](./IADR-0608_transactional-outbox-document-updated.md) / [IADR-0604](./IADR-0604_transactional-outbox-document-deleted.md): 発行は確定と同じトランザクションに積む。
+  - [IADR-0597](./IADR-0597_document-version-optimistic-concurrency.md): `Version` の並行トークンと 409 `version_conflict` の唯一の写し点 `DocumentVersionConflict`。
+  - [IADR-0122](./IADR-0122_contract-schema-source-and-compat-gate.md) 決定 2: 契約の追加は末尾・既定値つき。
+- 本 IADR が置き換える土台になるもの:
+  - [IADR-0595](./IADR-0595_ingestion-index-version-and-write-then-delete.md): 取り込みの版の印。`UpdatedAt` で比べ、等しい版は反映する。
+  - [IADR-0596](./IADR-0596_wiki-catalog-receiver-ordering.md): Wiki・目録の受け手の順序。
+  - [IADR-0636](./IADR-0636_private-note-soft-delete-withdrawal.md): 論理削除の撤収と復元の載せ直しは版を進めない。残余リスク「順序」が #2251 である。
+- 作業仕様書: [20261026_2150_document-event-sequence-stage1a](../specs/20261026_2150_document-event-sequence-stage1a.md)。
+
+## コンテキストと課題
+
+- 受け手は `DocumentUpdated.UpdatedAt` で順序を決め、等しい版は反映する（再配送と再発行が同じ版を運ぶため）。
+- ところが、次の変化は `Touch()` しないので、`UpdatedAt` を進めずに発行する。
+  - 露出（[IADR-0283](./IADR-0283_rag-context-ai-input-exposure.md) 決定 4: 版履歴と Obsidian 同期の `baseVersion` を動かさない）
+  - 共有の付与・取り消し
+  - 論理削除・復元（IADR-0636）
+  - タグの改名・再発行
+- これらの間では、到着順の逆転を受け手が見分けられず、後着が勝つ（#2150）。
+- 再試行の待ち（2・10・30 秒）で逆転すると、外したはずの個人資料が索引・グラフへ載り直す。露出する向き（fail-open）に倒れる（#2251）。
+
+## 検討した選択肢
+
+### 順序の鍵
+
+- A. **文書ごとの単調な発行の連番を契約に足す（採用）。**
+  - 発行のたびに +1 する。版の意味（版履歴・`baseVersion`・If-Match）を変えない。
+- B. 状態の変化でも `UpdatedAt` を進める。採らない。
+  - `UpdatedAt` は画面の「最終更新」と Obsidian 同期の判定材料でもある。
+  - 版を進めない理由（IADR-0283 決定 4）と衝突する。
+
+### 連番の並行（A の前提を確かめて崩れた点）
+
+- いまの並行トークンは `Version` だけである。状態の変化は `Version` を進めない。
+- そのため、並行する 2 つの状態の変化が同じ連番 S を読んで S+1 を書くと、どちらの `UPDATE … WHERE Version = V` も成功する。同じ連番が 2 つの違う状態に付く。
+
+| 案 | 中身 | 正しさ | 範囲 | 判断 |
+| --- | --- | --- | --- | --- |
+| **(i)** | `EventSequence` 自体を EF の並行トークンにする。後から確定する側は確定ごと負ける（発行も出ない） | 正しい | 新たに負け得る経路を 409 へ写す改修（下の表） | **採用** |
+| (ii) | DB 側の原子的な +1（`UPDATE … SET seq = seq + 1 RETURNING`） | **正しくない**。後から確定した側が、確定の前に読んだ古い状態に大きい連番を付けて出し得る（例: 露出 ON の確定の後に、ON を読む前の共有の変更が、後の連番で OFF を運ぶ） | 小さい | 採らない |
+| (iii) | 各確定の冒頭で行をロックして読み直す（`SELECT … FOR UPDATE`） | 正しい | 経路ごとに「読む位置」を確定の中へ移す改修。発行点を呼ぶ 19 経路すべてに及ぶ | 採らない |
+
+## 決定
+
+### 決定 1: 連番は唯一の発行点で進め、確定の中で保存する
+
+- `Document.EventSequence`（`bigint NOT NULL DEFAULT 0`）を足す。
+- `DocumentEndpoints.PublishUpdatedAsync`（唯一の発行点。IADR-0455）が `AdvanceEventSequence()` で +1 し、同じ確定（Outbox のトランザクション）で保存する。その値を `DocumentUpdated.Sequence` に運ぶ。
+- 追跡されていない実体で呼ばれたら、例外で止める。保存されないまま進めると、次の発行が同じ値を使う。
+- 既存の行は 0 から始める（遡及付与しない）。旧い発行は連番を持たない。
+
+### 決定 2: 削除は最後の値 + 1 を運ぶ
+
+- `DocumentDeleted.Sequence` は、消す前に読んだ `EventSequence + 1` である。
+  - 3 経路とも、消す前に行を読んでいる。
+  - Wiki は削除と更新を同じ印で比べる（段 2）。
+- 完全削除で行が見つからない id は null を運ぶ（旧形式と同じ扱い）。
+
+### 決定 3: 契約は末尾・既定値つきの追加とする
+
+- `DocumentUpdated` と `DocumentDeleted` の末尾に `long? Sequence = null` を足す（IADR-0122 決定 2。`check-contract-schema` は非破壊 2 件）。
+- 旧い電文（outbox に残った発行・旧い送り手）は null として読める。
+- 段 2 の受け手は、両方に連番があれば連番で比べ、どちらかに無ければ `UpdatedAt` で比べる。
+
+### 決定 4: 連番は並行トークンである（案 (i)）
+
+- 読んだ後に同じ文書へ別の発行（または版を進める更新）が確定していれば、後から確定する側は確定ごと巻き戻る。発行も出ない。
+- 新たに負け得る経路のうち、次を **#2103 と同じ形の 409 `version_conflict`** へ写す（`DocumentVersionConflict.AfterLostSaveAsync`）。
+
+| 経路 | 1a の前に負けた相手 | 1a の後に負けた側の応答 |
+| --- | --- | --- |
+| 共有の付与・取り消し | 負けなかった | 409 |
+| SC-19 の論理削除・Obsidian 側の削除・復元（`SaveDeletionStateAsync`） | 負けなかった | 409 |
+| Obsidian の既存ノートの更新（Push。`expectedVersion` = `baseVersion`） | Touch する更新（500） | 409 |
+| 個人資料の完全削除（Purge。複数件） | Touch する更新（500） | **id なしの 409**（`DocumentVersionConflict.ProblemForBatch`。全件の削除と発行が巻き戻る） |
+
+- 定期処理の完全削除（退職者・90 日）は、**所有者ごとに確定を隔離する**。
+  - 並行トークンに負けた所有者の分は、行と発行ごと巻き戻して次周期へ回す。他の所有者と周期の後段は進める。
+  - 従前は周期全体の catch しか無く、90 日の削除は全所有者を 1 回で確定していた。1a の後は 1 件の負けで周期の残りが止まるので、1a の中で直した（#2259 のレビュー）。
+- Push と Purge は、最初に引いた母集合（発行の門を呼ぶ経路）から落ちていた。根の語（Document 行を確定する経路）で引き直して見つけた。範囲は判断 (a) で 1a に含めた。
+
+### 決定 5: 段を分ける
+
+- **1a（本 IADR の PR）**: 決定 1〜4。
+- **1b**: 多数文書の 2 経路（Tags/Rename・Republish）。1 件の競合でページの確定ごと巻き戻る。
+  - ページの確定で負けたら、読み直してやり直す（上限は 1b の作業仕様書で決める）。
+  - 上限を超えたら、`nextCursor`（または未処理の範囲）つきの 409 を返す。部分の結果は返さない。
+  - 再開が冪等であることを試験で示す。
+- **1c（#2258）**: もとから 409 へ写していない 8 経路。単一文書は `DocumentVersionConflict`、複数文書は id なしの 409 にする。
+  - Archive・Publish・PutBody・AddTag・SyncConflicts/Resolve・StripUntrustedBoundary・ArchiveAstQuotes・ArchiveBodyless。
+  - 1a で、これらも Touch しない状態の変化に負けるようになる（窓が広がる）。そのため、別件ではなく段として続ける。
+- **2**: 受け手 3 つ（取り込み・グラフ・Wiki）の印に `Sequence` と `UpdatedAt` を両方持ち、決定 3 の規則で比べる。
+- **PoC への配備は 1a・1b・1c がそろってから行う。** 1a だけを配備すると、1b・1c の経路の 500 の窓が広がった状態で動く。
+
+## 結果
+
+- 発行は文書ごとに全順序を持つ。同じ連番が 2 つの状態に付くことは無い（並行トークンが止める）。
+- 受け手はまだ連番を読まないので、挙動は変わらない。
+  - Contracts の互換の試験で確かめた: 旧い電文は null、往復は保たれる、連番の有無は他の内容を変えない。
+  - 受け手の既存の試験も、変更なしで緑だった。
+- 残余リスク:
+  - 1b・1c がマージされるまで、その 10 経路は Touch しない状態の変化にも負けて 500 になり得る。負けた側は確定ごと巻き戻るので、状態は壊れない。
+  - 完全削除が負けたとき、先に消したオブジェクトは戻らない（[IADR-0296](./IADR-0296_deletion-propagation-to-object-storage.md) 決定 3 の順のまま）。
+    - 行は論理削除のまま残り、完全削除のやり直しで片付く。
+    - IADR-0597 の時点からある性質である。
+  - #2150 / #2251 の順序の逆転そのものは、段 2 まで残る。

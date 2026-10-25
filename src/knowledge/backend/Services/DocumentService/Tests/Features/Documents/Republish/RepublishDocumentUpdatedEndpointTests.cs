@@ -325,7 +325,9 @@ public class RepublishDocumentUpdatedEndpointTests
         (await CallAsync(admin, new { dryRun = false, ids = new[] { docId } })).Published.Should().Be(1);
         var republished = Published(factory)[1];
 
-        republished.Should().BeEquivalentTo(normal, "再発行は通常の経路と同じ関数で中身を載せる");
+        republished.Should().BeEquivalentTo(normal, o => o.Excluding(e => e.Sequence), "再発行は通常の経路と同じ関数で中身を載せる");
+        // FR-02, IADR-0637 (#2150): 発行の連番だけは進む（再発行も 1 回の発行である。受け手は連番で順序を判定する）。
+        republished.Sequence.Should().Be(normal.Sequence + 1);
         republished.Tags.Should().Equal(["規程"], "識別子ではなく表示名");
         republished.SharedWith.Should().Equal(["bob"]);
         republished.ContentFingerprint.Should().Be("fp-1");

@@ -30,13 +30,13 @@ public sealed class WolverineDocumentDeletedPublisher(
     : IDocumentDeletedPublisher
 {
     public async Task PublishDeletedAsync(
-        Guid documentId, DateTimeOffset deletedAt, CancellationToken ct = default)
+        Guid documentId, DateTimeOffset deletedAt, long? sequence = null, CancellationToken ct = default)
     {
         // 🔴 イベントの構築をここに置くのは、`findPublishers` が `Publish(new <Event>(` にしか
         // 一致しないためである（組み立て済みの変数を渡すと発行が検査器から見えなくなる）。
         // ⚠️ Wolverine の PublishAsync は CancellationToken を取らない（E1 仕様書「受け入れた挙動差」で受容済みの API 差）。
         // IADR-0604: ここで DB のトランザクションが開き（開いていなければ）、envelope が INSERT される。送出はまだしない。
-        await outbox.PublishAsync(new DocumentDeleted(documentId, deletedAt));
+        await outbox.PublishAsync(new DocumentDeleted(documentId, deletedAt, sequence));
     }
 
     public async Task SaveChangesAndFlushAsync(CancellationToken ct = default)

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents;
 using DocumentService.Infrastructure.Persistence;
@@ -24,7 +25,16 @@ internal static class SoftDeletePrivateNoteEndpoint
 
             var wasDeleted = note.IsDeleted;
             note.SoftDelete(DateTimeOffset.UtcNow);
-            await PrivateNoteEndpoints.SaveDeletionStateAsync(db, bus, id, changed: !wasDeleted, ct);
+            // FR-02, [[IADR-0597]] / IADR-0637 (#2150): 発行の連番は並行トークンである。読んだ後に別の発行が確定していれば確定ごと負ける
+            // （削除の印も残らない）。#2103 と同じ 409 `version_conflict` を返す（500 にしない）。
+            try
+            {
+                await PrivateNoteEndpoints.SaveDeletionStateAsync(db, bus, id, changed: !wasDeleted, ct);
+            }
+            catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+            {
+                return await DocumentVersionConflict.AfterLostSaveAsync(db, id, expectedVersion: null, ct);
+            }
             // 決定 19・20: 論理削除しても容量は空かない（利用者へ伝える事実の機械可読な形）。
             // **契約型で返す**（#451-a）—— 匿名型だと BFF・画面・openapi のどれとも突き合わない。
             return Results.Ok(new PrivateNoteDeletedResponse(note.DeletedAt, note.PurgeAt,

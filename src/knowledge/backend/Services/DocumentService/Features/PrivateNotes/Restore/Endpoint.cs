@@ -1,3 +1,5 @@
+using DocumentService.Features.Documents;
+using Microsoft.EntityFrameworkCore;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 
@@ -21,7 +23,16 @@ internal static class RestorePrivateNoteEndpoint
 
             var now = DateTimeOffset.UtcNow;
             note.Restore(now);
-            await PrivateNoteEndpoints.SaveDeletionStateAsync(db, bus, id, changed: true, ct);
+            // FR-02, [[IADR-0597]] / IADR-0637 (#2150): 発行の連番は並行トークンである。読んだ後に別の発行が確定していれば確定ごと負ける
+            // （削除の印も残らない）。#2103 と同じ 409 `version_conflict` を返す（500 にしない）。
+            try
+            {
+                await PrivateNoteEndpoints.SaveDeletionStateAsync(db, bus, id, changed: true, ct);
+            }
+            catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+            {
+                return await DocumentVersionConflict.AfterLostSaveAsync(db, id, expectedVersion: null, ct);
+            }
             var doc = await db.Documents.FindAsync([id], ct);
             // #1441: 復元後の同期状態は「削除済みだから対象外」ではなくなる —— 導出をやり直す。
             var enrichment = await PrivateNoteEnrichment.LoadAsync(db, owner, [id], now, ct);

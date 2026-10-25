@@ -37,6 +37,7 @@ public sealed class WolverineDocumentUpdatedPublisher(
         string? originalPath = null,
         string? dataSourceName = null,
         List<string>? sharedWith = null,
+        long? sequence = null,
         CancellationToken ct = default)
     {
         if (!_inCommit)
@@ -50,7 +51,7 @@ public sealed class WolverineDocumentUpdatedPublisher(
         // IADR-0608: envelope は `CommitAsync` が開いたトランザクションへ INSERT される。送出はまだしない。
         await outbox.PublishAsync(new DocumentUpdated(
             documentId, title, status, markdownUri, attributes, tags, updatedAt,
-            contentFingerprint, hasBody, originalPath, dataSourceName, sharedWith));
+            contentFingerprint, hasBody, originalPath, dataSourceName, sharedWith, sequence));
     }
 
     public async Task CommitAsync(Func<CancellationToken, Task> saveAndPublish, CancellationToken ct = default)

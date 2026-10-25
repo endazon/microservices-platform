@@ -53,9 +53,21 @@ internal static class PurgePrivateNotesEndpoint
             // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine（IDocumentDeletedPublisher 経由）。
             // FR-19, ADR-0027 §決定, ADR-0057 決定 1・3, IADR-0604 (#2042): **行の削除と同じトランザクションに積んで確定する**
             // （Transactional Outbox）。確定が失敗すれば発行も巻き戻る。確定の後に送出が落ちても Outbox の表に残り再送される。
+            // FR-02, IADR-0637 (#2150): 削除は最後の発行の連番 + 1 を運ぶ（文書の行が無ければ連番なし＝旧形式と同じ扱い）。
+            var sequences = docs.ToDictionary(d => d.Id, d => d.EventSequence + 1);
             foreach (var id in ids)
-                await deletedBus.PublishDeletedAsync(id, now, ct);
-            await deletedBus.SaveChangesAndFlushAsync(ct);
+                await deletedBus.PublishDeletedAsync(id, now, sequences.TryGetValue(id, out var s) ? s : null, ct);
+            // FR-02, IADR-0637 (#2150): 文書行の削除は並行トークン（版・発行の連番）で照合される。読んだ後に同じ資料へ別の確定
+            // （共有・露出・復元など）が入れば、全件の削除と発行が巻き戻る。500 にせず id なしの 409 `version_conflict` を返す。
+            // 先に消したオブジェクトは戻らない（[[IADR-0296]] 決定 3 の順のまま）。行は論理削除のまま残り、完全削除のやり直しで片付く。
+            try
+            {
+                await deletedBus.SaveChangesAndFlushAsync(ct);
+            }
+            catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+            {
+                return DocumentVersionConflict.ProblemForBatch();
+            }
             // 削除を確定させてから使用量を再計算する（先に計算すると purge 分が残って見える）。
             // 使用量が下がって閾値を割れば、警告の発火記録がここで再武装される（FR-22 ②）。
             await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);

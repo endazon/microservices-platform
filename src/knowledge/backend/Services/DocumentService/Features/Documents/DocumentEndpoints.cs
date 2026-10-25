@@ -301,9 +301,19 @@ public static class DocumentEndpoints
             ? DocumentExposure.WithAllExcluded(d.Attributes)
             : d.Attributes;
 
+        // 🔴 FR-02, FR-19, IADR-0637 (#2150 / #2251): **発行の連番を、確定と同じトランザクションで進めて保存してから載せる。**
+        // 唯一の発行点なので、全経路（IADR-0455）がここで採番される。保存は文書行の UPDATE であり、版と連番の両方を並行トークンに持つ ——
+        // 読んだ後に別の発行（または編集）が確定していれば、ここで `DbUpdateConcurrencyException` になり確定ごと巻き戻る（発行 0）。
+        // 追跡外の実体を渡されると連番が保存されず、次の発行が同じ値を使う。黙って進めず止める。
+        if (db.Entry(d).State == EntityState.Detached)
+            throw new InvalidOperationException(
+                $"発行の連番を保存できない: 文書 {d.Id} が追跡されていない（IADR-0637）。発行は追跡中の実体で呼ぶこと。");
+        var sequence = d.AdvanceEventSequence();
+        await db.SaveChangesAsync(ct);
+
         await bus.PublishUpdatedAsync(d.Id, d.Title, d.Status, d.MarkdownUri,
             attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt,
-            d.ContentFingerprint, d.HasBody, d.OriginalPath, d.DataSourceName, sharedWith, ct);
+            d.ContentFingerprint, d.HasBody, d.OriginalPath, d.DataSourceName, sharedWith, sequence, ct);
     }
 
     // FR-19, ADR-0061 決定 1・2 / [[IADR-0396]] 決定 4 (#1184): **発行の門。**

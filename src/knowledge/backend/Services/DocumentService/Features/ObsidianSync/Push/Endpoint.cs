@@ -5,6 +5,7 @@ using DocumentService.Features.Documents;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 // #1446: 方向・結果・失敗理由の値集合は契約（`SyncDirections` / `SyncOutcomes` /
 // `SyncFailureReasons`）が持つ。**後段とBFFと画面で同じ値を使う**ので、ここへ写さない。
 using Knowledge.Contracts.Dtos;
@@ -203,7 +204,17 @@ internal static class PushNoteEndpoint
                     extra: $"count=1 versions={req.Edits.Count}");
                 // FR-20, ADR-0027 §決定, IADR-0608 (#2168): 版の保存と発行（門を通れば）を 1 トランザクションで確定する
                 // （Transactional Outbox）。競合を閉じる・使用量の再計算は確定の後のまま。
-                await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
+                // FR-02, [[IADR-0597]] / IADR-0637 (#2150): `baseVersion` の照合は読んだ時点の比較であり、照合と確定の間に
+                // 別の確定（Touch する更新、または Touch しない状態の変化 —— 共有・露出・論理削除・復元）が入れば確定ごと負ける。
+                // 500 にせず #2103 と同じ 409 `version_conflict` を返す（プラグインは読み直して再送する）。
+                try
+                {
+                    await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
+                }
+                catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+                {
+                    return await DocumentVersionConflict.AfterLostSaveAsync(db, doc.Id, baseVersion, ct);
+                }
                 // #1442, ADR-0037 決定 7: 正しい `baseVersion` で書けた＝**プラグイン側で解決済み**。
                 // 未解決のまま残っている競合を `client` で閉じる（利用者が選んだわけではないので
                 // 3 択のどれでもない値を使う）。閉じないと SC-20 に解決済みの競合が残り続ける。

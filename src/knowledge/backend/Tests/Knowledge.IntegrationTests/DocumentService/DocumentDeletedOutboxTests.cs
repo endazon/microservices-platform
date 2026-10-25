@@ -148,7 +148,7 @@ public sealed class DocumentDeletedOutboxTests(PostgresFixture postgres, RabbitM
             var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
             var deleted = scope.ServiceProvider.GetRequiredService<IDocumentDeletedPublisher>();
             db.DocumentDeletionMarks.Add(DocumentDeletionMark.For(id, at));
-            await deleted.PublishDeletedAsync(id, at, Ct);
+            await deleted.PublishDeletedAsync(id, at, ct: Ct);
             await deleted.SaveChangesAndFlushAsync(Ct);
         }
 
@@ -188,7 +188,7 @@ public sealed class DocumentDeletedOutboxTests(PostgresFixture postgres, RabbitM
             var deleted = scope.ServiceProvider.GetRequiredService<IDocumentDeletedPublisher>();
 
             db.DocumentDeletionMarks.Add(DocumentDeletionMark.For(failed, at));
-            await deleted.PublishDeletedAsync(failed, at, Ct);
+            await deleted.PublishDeletedAsync(failed, at, ct: Ct);
             var act = () => deleted.SaveChangesAndFlushAsync(Ct);
             await act.Should().ThrowAsync<DbUpdateException>("主キーの重複で確定が失敗する");
             (await OutboxRowsAsync(cs)).Should().Be(0, "確定が失敗すれば Outbox の行も巻き戻る");
@@ -196,7 +196,7 @@ public sealed class DocumentDeletedOutboxTests(PostgresFixture postgres, RabbitM
             // 失敗した変更を捨てて、同じスコープ（同じ Outbox）で次の削除を確定する。
             db.ChangeTracker.Clear();
             db.DocumentDeletionMarks.Add(DocumentDeletionMark.For(sentinel, at));
-            await deleted.PublishDeletedAsync(sentinel, at, Ct);
+            await deleted.PublishDeletedAsync(sentinel, at, ct: Ct);
             await deleted.SaveChangesAndFlushAsync(Ct);
         }
 
@@ -227,7 +227,7 @@ public sealed class DocumentDeletedOutboxTests(PostgresFixture postgres, RabbitM
                 var deleted = scope.ServiceProvider.GetRequiredService<IDocumentDeletedPublisher>();
                 var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox<DocumentDbContext>>();
                 outbox.DbContext.DocumentDeletionMarks.Add(DocumentDeletionMark.For(id, at));
-                await deleted.PublishDeletedAsync(id, at, Ct);
+                await deleted.PublishDeletedAsync(id, at, ct: Ct);
 
                 // コミットだけを行い、送出（FlushOutgoingMessagesAsync）へ進まない。
                 await outbox.DbContext.SaveChangesAsync(Ct);

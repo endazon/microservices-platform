@@ -230,6 +230,7 @@ public sealed class CatalogNormalizationOrderingTests
             string? contentFingerprint = null, bool hasBody = true,
             string? originalPath = null, string? dataSourceName = null,
             List<string>? sharedWith = null,
+            long? sequence = null,
             CancellationToken ct = default)
         {
             _events.Enqueue(new PublishedUpdate(documentId, status, updatedAt));

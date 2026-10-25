@@ -53,5 +53,7 @@ public interface IDocumentUpdatedPublisher
         // 索引の側から共有先ベースの分岐を評価できるようにするために独立の項目で運ぶ。
         // 解決は `DocumentEndpoints.PublishUpdatedAsync` の 1 か所だけで行う。
         List<string>? sharedWith = null,
+        // FR-02, IADR-0637 (#2150): 文書ごとの単調な発行の連番（`Document.EventSequence`）。採番は `DocumentEndpoints.PublishUpdatedAsync` の 1 か所。
+        long? sequence = null,
         CancellationToken ct = default);
 }

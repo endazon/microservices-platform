@@ -39,6 +39,10 @@ internal static class DocumentVersionConflict
             currentVersion,
         });
 
+    // FR-02, IADR-0637 (#2150): 複数の文書を 1 回で確定する口（個人資料の完全削除など）が負けたときの応答。
+    // 確定は全体が巻き戻っている（部分の結果は無い）。どの文書で負けたかは返さない（呼び出し側は全体をやり直す）。
+    internal static IResult ProblemForBatch() => Results.Conflict(new { error = "version_conflict" });
+
     // 保存で負けた後の応答。**現在版は読み直す**（追跡中の実体は自分が進めた版を持っており、勝った側の版ではない）。
     // 負けた保存は暗黙のトランザクションごと巻き戻っている（版の行も残らない）。
     // 勝った側が文書を消していたら 404（期待版の比較より前に不存在で返すのと同じ）。

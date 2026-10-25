@@ -57,6 +57,16 @@ public class Document
     public string? DataSourceName { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
+
+    // FR-02, FR-19, IADR-0637 (#2150 / #2251): **発行の連番。** `DocumentUpdated` を発行するたびに確定と同じトランザクションで 1 つ進め、
+    // イベントの `Sequence` に載せる（`DocumentDeleted` は最後の値 + 1 を運ぶ）。`UpdatedAt` を進めない変化（露出・共有・論理削除・復元・
+    // タグの改名・再発行）にも順序の鍵を与えるためで、版（`Version`）とは別に持つ（版は内容の編集の数であり、版履歴と同期の基準版に使う）。
+    // 🔴 **並行トークンである**（`DocumentDbContext`）。並行する 2 つの発行が同じ値を読んで同じ値を書くと、2 つの違う状態が同じ連番を運ぶ。
+    // 後から保存する側は `WHERE "EventSequence" = @読んだ値` が 0 行になって負ける（409 への写像は `DocumentVersionConflict`）。
+    public long EventSequence { get; private set; }
+
+    // 発行の直前に呼ぶ（`DocumentEndpoints.PublishUpdatedAsync` の 1 か所）。進めた後の値を返す。
+    internal long AdvanceEventSequence() => ++EventSequence;
     // FR-01, FR-06, ADR-0027, [[IADR-0596]] 決定 5 (#2102): **台帳へ最後に反映した再正規化の版**（`DocumentNormalized.NormalizedAt`）。
     // これより厳密に古い再正規化は反映しない（`IsNormalizationStale`）。取り込み経路を通っていない文書・本欄の追加以前の文書は null（判定しない）。
     public DateTimeOffset? LastNormalizedAt { get; private set; }
