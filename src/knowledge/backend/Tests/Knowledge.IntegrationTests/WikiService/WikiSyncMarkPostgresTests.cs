@@ -148,7 +148,6 @@ public sealed class WikiSyncMarkPostgresTests(PostgresFixture postgres) : IClass
         mark.Deleted.Should().BeTrue();
     }
 
-    // Wiki.js の「パスごとの今の状態」（題名・非公開）を持つ偽物。`BeforeNextUpsert` は次の push の前に 1 度だけ走る。
     // 🔴 FR-13, IADR-0639 決定 4 (#2150 / #2251) 段 2: **印の連番（`AppliedSequence`）を実 PostgreSQL で測る**（migration 済みの列・
     // timestamptz のマイクロ秒への丸め）。時刻はマイクロ秒より細かい端数つき —— 丸めを外すと、同じ時刻の古い版を端数の分だけ新しいと読む。
     // 規則 11 の表の P1（同時刻の逆転）と P3（撤去の後の古い ON）・P2（作り直し）。
@@ -205,6 +204,7 @@ public sealed class WikiSyncMarkPostgresTests(PostgresFixture postgres) : IClass
         (await verify.Pages.AsNoTracking().SingleAsync(p => p.DocumentId == id, Ct)).Title.Should().Be("作り直し");
     }
 
+    // Wiki.js の「パスごとの今の状態」（題名・非公開）を持つ偽物。`BeforeNextUpsert` は次の push の前に 1 度だけ走る。
     private sealed class StateWikiJs : IWikiJsClient, IWikiContentReader
     {
         public ConcurrentDictionary<string, (string Title, bool IsPrivate)> State { get; } = new();
