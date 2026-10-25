@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — live-rw の利用者の無効化と全セッション失効（SC-17・e2e-revocable。E-53）
 type: spec
-status: in-progress
+status: done
 related_ids: [SC-17, SC-13, NFR-14, UC-05, FR-09, NFR, ADR-0032, IADR-0626, IADR-0630, IADR-0632]
 author: claude
 created: 2026-10-25
@@ -18,11 +18,11 @@ issue: "#2033"
 
 ## 受け入れ基準（#2033 ＋ オーケストレーターの条件 2026-10-25）
 
-- [ ] M-009: e2e-admin が SC-17 で e2e-revocable を無効化すると、別 context でログインしていた e2e-revocable の `/bff/auth/me` と業務の API（`GET /bff/private-notes`）が 401 になり、保護画面は `/login` へ倒れる。再有効化の後も旧セッションのままは 401 —— live-rw
-- [ ] M-109: e2e-admin が SC-17 で e2e-revocable を再有効化すると「有効」に戻る（セッションは戻らない）—— live-rw
-- [ ] afterEach で e2e-revocable が有効に戻っていることを API で確かめ、戻っていなければ有効化を送り、それでも戻らなければ赤 —— live-rw
-- [ ] e2e-revocable を失効させる試験は、他の試験が e2e-revocable の状態を使い終わってから流れる（project の依存で固定。L1 で固定）
-- [ ] e2e-live で skip 0・失効 6・走査 0、sweep の dry-run で残骸 0・見ていない視点 0（settled の件数を報告）
+- [x] M-009: e2e-admin が SC-17 で e2e-revocable を無効化すると、別 context でログインしていた e2e-revocable の `/bff/auth/me` と業務の API（`GET /bff/private-notes`）が 401 になり、保護画面は `/login` へ倒れる。再有効化の後も旧セッションのままは 401 —— live-rw
+- [x] M-109: e2e-admin が SC-17 で e2e-revocable を再有効化すると「有効」に戻る（セッションは戻らない）—— live-rw
+- [x] afterEach で e2e-revocable が有効に戻っていることを API で確かめ、戻っていなければ有効化を送り、それでも戻らなければ赤 —— live-rw
+- [x] e2e-revocable を失効させる試験は、他の試験が e2e-revocable の状態を使い終わってから流れる（project の依存で固定。L1 で固定）
+- [x] e2e-live で skip 0・失効 6・走査 0、sweep の dry-run で残骸 0・見ていない視点 0（settled の件数を報告）
 
 ## 網羅表・API・計画の突き合わせ（着手前）
 
@@ -70,4 +70,4 @@ issue: "#2033"
 - 資格情報の読み出しを `credentialsOf`（`support/env.ts`）へ寄せた: 3 ファイル 6 箇所（`auth.setup.ts`・`auth-errors.ro.spec.ts`・`revocation.rw.spec.ts` の `process.env[...] ?? ''`）。欠けていれば Keycloak へ送る前に止まる（#2239 のレビュー）。
 - `E2E_LIVE=1 E2E_LAYER=ro,rw E2E_STACK=e2e-live … --list`: 53 件（`[live-rw-revocation] › revocation.rw.spec.ts`）。
 - `tsc -p tsconfig.node.json` 0 件・eslint 0 件・prettier 緑。文書の検査は緑。
-- live: e2e-live（PR）の結果は PR に書く。
+- live（head 3fae7b42 の e2e-live、run 40159057048、層 ro,rw）: 53 passed・skip 0（`check-e2e-skips`: 全 skip の project は無い）。`[live-rw-revocation] › revocation.rw.spec.ts` が通り、afterEach の有効化の確認も通った。teardown が失効させたのは 6 役割（user・operator・admin・noaccess・revocable・trading-owner）。成果物 2 ファイルを走査し、資格情報 12 個と発行値 2 個の値はどちらも 0 件。sweep の dry-run は残骸 0 件・見ていない視点 0 件で、後始末済みは 2 件（datasources 1・mcp-clients 1。どちらも無効化済みで残骸に数えない）。

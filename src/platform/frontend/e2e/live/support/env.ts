@@ -106,6 +106,13 @@ const PLACEHOLDER = '<set-me>';
  * 6 役割 × 2 の環境変数名のうち、未設定のもの（空・空白だけ・例示の `<set-me>` のまま）。値は返さない。
  * 🔴 `<set-me>` のまま門を通すと、実の Keycloak へ 6 回の失敗ログインを流し、brute force 保護で試験アカウントがロックされうる。
  */
+export function missingCredentials(env: Env): string[] {
+  return ROLES.flatMap((role) => Object.values(credentialNames(role))).filter((name) => {
+    const value = (env[name] ?? '').trim();
+    return value === '' || value === PLACEHOLDER;
+  });
+}
+
 /**
  * 役割の資格情報（パスワードと TOTP の生の秘密）を読む。🔴 **欠けていれば Keycloak へ送る前に例外**にする（#2239 のレビュー）。
  * 空のパスワードや空の秘密を送ると誤入力として数えられ（brute force は 5 回の失敗で 900 秒）、ロックの原因が読めなくなる。
@@ -123,13 +130,6 @@ export function credentialsOf(role: Role, env: Env): { password: string; totpSec
     );
   }
   return { password: env[names.password]!, totpSecret: env[names.totpSecret]! };
-}
-
-export function missingCredentials(env: Env): string[] {
-  return ROLES.flatMap((role) => Object.values(credentialNames(role))).filter((name) => {
-    const value = (env[name] ?? '').trim();
-    return value === '' || value === PLACEHOLDER;
-  });
 }
 
 function originOf(name: string, value: string): string {
