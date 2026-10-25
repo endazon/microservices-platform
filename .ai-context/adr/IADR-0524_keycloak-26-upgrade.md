@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-16, SC-12, NFR-09, NFR-18, ADR-0134, ADR-0004, ADR-0107, ADR-0112, ADR-0086, ADR-0026, IADR-0516, IADR-0514, IADR-0243, IADR-0369, IADR-0518, IADR-0086, IADR-0079, IADR-0082]
 author: claude
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-25
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0134_mcp-client-keycloak-template-and-secret-one-time-display.md 決定 1・フォローアップ 3
   - planning:projects/microservices-platform/07_adr/ADR-0107_infrastructure-product-selection-criteria.md 決定 2〜5
@@ -139,3 +139,21 @@ Keycloak に直接作り、**陽性対照**（登録どおり・任意の port �
    新しい版のマニフェストで `k8s-local-up.sh` を走らせるだけで一方向の移行が起きる。検知の仕掛けは置いていない（退避を手順の先頭に置くだけ）。
 9. **エッジの後ろのクッキー**（旧 9「転送ヘッダの信頼の範囲」は、転送ヘッダを読ませなくなったので消えた）: **残余ではなかった。**
    ［稼働の 3 回目の後に手元で測り直して訂正］エッジ越しの要求（Host が `KC_HOSTNAME` の host＝`keycloak.localhost`）では、Keycloak は https の frontend URL で「安全な文脈」と判定し、転送ヘッダが無くても 24 と同じ `Secure; SameSite=None` を出す。`SameSite=Lax`・`Secure` なしになるのは Host が hostname と違う要求（in-cluster の `keycloak:8080`。ブラウザは通らない）だけである。初版の「エッジの後ろで Lax になる」は、Host を IP にした手元の試験の読み違いだった（手元の 26.7.4 で、同じ認可要求を Host `keycloak.localhost` と `keycloak:8080` で送り比べた）。
+
+## ［2026-10-25 追記 / #2245］転送ヘッダを読ませない決定の帰結: アカウントコンソールの `webOrigins` に `+` を置く
+
+- **起きたこと**: 使い捨てのスタックで、エッジ越しのアカウントコンソール（SC-16）が token の交換（`POST /realms/platform/protocol/openid-connect/token`）で
+  **403** になり、「何らかの問題が発生しました Server responded with an invalid status.」で開けなかった（#2241 の M-007 の診断で確定）。Keycloak のイベントは出ない。
+- **原因**: Keycloak 26.7.4 の `OAuth2GrantTypeBase.checkClient` は `DefaultCors.checkOrigin()` を通す。`Origin` が client の `webOrigins` にも、要求の origin
+  （`KeycloakUriInfo.getRequestUri()`。**`KC_HOSTNAME` を当てる前の生の要求 URI**）にも一致しなければ `ForbiddenException("Invalid origin")`（イベントなし）。
+  本 IADR の決定で `KC_PROXY_HEADERS` を置かないので、エッジ（TLS 終端）の後ろの要求の origin は `http://keycloak.localhost` になり、ブラウザの
+  `Origin: https://keycloak.localhost` と一致しない。`account-console` の `webOrigins` は空だった（Keycloak 組み込みの作成も web origin を足さない）。
+  BFF は機密クライアントのサーバ間の交換で `Origin` を持たないので、この検査を通っていた。手元の Keycloak（http の直結）では要求の origin と一致して捕まらない。
+- **決定**: realm 宣言の `account-console` に `webOrigins: ["+"]` を置く。`+` は redirect URI（`rootUrl=${authBaseUrl}` に対する
+  `/realms/platform/account/*`）から origin を作り、`${authBaseUrl}` は frontend の base（`KC_HOSTNAME`）で解決されるので `https://keycloak.localhost`
+  を許す。環境の host を宣言に書かないので、PoC・本番の host でも同じ宣言で成り立つ。既存の realm は `reconcile-realm.js` の client の比べ方で当たる
+  （新しい分岐は足さない）。欠落は `check-realm-constraints.js` の検査 10 が止める。
+- **採らなかったもの**: `KC_PROXY_HEADERS` を戻す（本 IADR の表の最終行。メッシュの送り手は `X-Forwarded-Port` を付けず jwks の URL が壊れる）。
+- **影響**: 転送ヘッダを読ませない構成で、ブラウザから token endpoint を叩く公開クライアントは、`webOrigins` に frontend の origin が要る。
+  現在それに当たるのは `account-console` だけである（BFF は機密クライアント）。PoC は realm の reconcile だけで直る（Keycloak は再起動しない）。
+
