@@ -3,15 +3,15 @@ title: 技術要件書
 type: tech-requirements
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-23
+updated: 2026-10-25
 author: claude
 ---
 <!-- trace:
 ids: [FR-14, FR-06]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041, ADR-0065, ADR-0068, ADR-0075, ADR-0077, ADR-0106]
 iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0195, IADR-0196, IADR-0216, IADR-0219, IADR-0229, IADR-0231, IADR-0233, IADR-0234, IADR-0238, IADR-0280, IADR-0282, IADR-0319, IADR-0334, IADR-0349, IADR-0350, IADR-0371, IADR-0379, IADR-0383, IADR-0429, IADR-0458, IADR-0461, IADR-0533, IADR-0581, IADR-0604, IADR-0608, IADR-0609]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_xunit-v3-migration, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260822_issue-455_wolverine-shared-helper, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs, 20260904_issue-1064_backend-stack-reference-impl, 20260905_issue-1249-1250-1251_rotten-derived-values, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1397_bff-user-credential-relay-is-edge, 20260925_1499_object-storage-seaweedfs, 20261008_1799_composability-docs-wolverine-wiring, 20261010_issue-1255-1517_east-west-rest-retirement, 20261022_actions-sha-pin-and-dependabot, 20261023_2042_transactional-outbox-stage1, 20261023_2168_transactional-outbox-stage2, 20261023_2169_transactional-outbox-stage3]
-issues: [#1799, #1499, #1397, #1062, #1064, #1393, #1093, #1094, #1179, #1196, #1249, #1251, #184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, #1255, #1517, #2042, #2168, #2169, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390, planning#490, planning#527, planning#532]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_xunit-v3-migration, 20260822_issue-441_wolverine-retry-dlq-defaults, 20260822_issue-455_wolverine-shared-helper, 20260828_arch-foundation_eight-element-materialization, 20260903_issue-1179_slice-split-status-correction, 20260903_issue-1196_operation-semantics-in-standard-docs, 20260904_issue-1064_backend-stack-reference-impl, 20260905_issue-1249-1250-1251_rotten-derived-values, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1397_bff-user-credential-relay-is-edge, 20260925_1499_object-storage-seaweedfs, 20261008_1799_composability-docs-wolverine-wiring, 20261010_issue-1255-1517_east-west-rest-retirement, 20261022_actions-sha-pin-and-dependabot, 20261023_2042_transactional-outbox-stage1, 20261023_2168_transactional-outbox-stage2, 20261023_2169_transactional-outbox-stage3, 20261025_2134_ingestion-completed-wolverine]
+issues: [#1799, #1499, #1397, #1062, #1064, #1393, #1093, #1094, #1179, #1196, #1249, #1251, #184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, #1255, #1517, #2042, #2168, #2169, #2134, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390, planning#490, planning#527, planning#532]
 -->
 
 # 技術要件書
@@ -55,7 +55,7 @@ issues: [#1799, #1499, #1397, #1062, #1064, #1393, #1093, #1094, #1179, #1196, #
 | データストア（業務） | PostgreSQL | — | DB per Service。jsonb 属性は EF Core の ValueComparer で content 比較 |
 | データストア（ベクトル） | Qdrant | — | モデル別コレクション・決定的チャンク ID |
 | オブジェクトストレージ | SeaweedFS（S3 互換） | 4.47（digest で固定） | 正規化本文・資産。ClusterIP のみ（バケット/キー設計の実装 ADR）。資格情報は k8s Secret。テレメトリは無効化（既定で有効なため）。管理 Console は持たない |
-| メッセージング | RabbitMQ / Kafka（**Wolverine**） | — | メッセージング基盤とブローカーの計画 ADR。イベント駆動パイプライン。契約は `Shared.Contracts`。**現行実装は Wolverine である**（購読は段の登録 `AddPlatformWolverineStep` と共通ヘルパ `UsePlatformMessagingDefaults` ほか。再試行は 2・10・30 秒の後にデッドレター）。**イベント発行の原子性は共通ヘルパ `UsePlatformTransactionalOutbox`（EF Core ＋ PostgreSQL の Transactional Outbox）が担う** —— 適用は、DB 更新と対になる発行（文書サービスの削除イベント・更新イベント、変換サービスの再変換の原本イベント）を確定と同じトランザクションに載せ、データソースの同期の原本イベントは耐久化（送出前に表へ書く）だけを使う。**MassTransit が残るのは移行の済んでいない辺 —— `DocumentNormalized` の発行・購読と `IngestionCompleted` の発行 —— だけである** |
+| メッセージング | RabbitMQ / Kafka（**Wolverine**） | — | メッセージング基盤とブローカーの計画 ADR。イベント駆動パイプライン。契約は `Shared.Contracts`。**現行実装は Wolverine である**（購読は段の登録 `AddPlatformWolverineStep` と共通ヘルパ `UsePlatformMessagingDefaults` ほか。再試行は 2・10・30 秒の後にデッドレター）。**イベント発行の原子性は共通ヘルパ `UsePlatformTransactionalOutbox`（EF Core ＋ PostgreSQL の Transactional Outbox）が担う** —— 適用は、DB 更新と対になる発行（文書サービスの削除イベント・更新イベント、変換サービスの再変換の原本イベント）を確定と同じトランザクションに載せ、データソースの同期の原本イベントは耐久化（送出前に表へ書く）だけを使う。**MassTransit が残るのは移行の済んでいない辺 —— `DocumentNormalized` の発行・購読 —— だけである**（`IngestionCompleted` の発行は 2026-10-25 に Wolverine へ移した。取り込みサービスは DB を持たないので、この発行は非耐久である） |
 | 実行基盤 | k3s（Kubernetes） | — | ランタイムの計画 ADR。Helm `deploy/helm/microservices-platform`、Namespace `microservices-platform` |
 | サービスメッシュ | Istio（Envoy mTLS） | — | サービスメッシュの計画 ADR と STRICT mTLS の実装判断。（`PeerAuthentication`/`DestinationRule`） |
 | CI/CD・GitOps | ArgoCD + Helm | — | GitOps の計画 ADR。Git を単一の真実源に宣言的同期（`deploy/argocd/`） |
@@ -311,9 +311,9 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 エントリ 14 件、および `PackageVersion` を削除した（実測 2026-08-21: `FluentAssertions` の `.csproj` 14 → **0**、
 `using FluentAssertions` を持つ `.cs` 150 → **0**）。
 
-**残件は 42 件 → 29 件 → 26 件 → 15 件 → 13 件**（`MassTransit` **のみ**。最後の 2 件は
+**残件は 42 件 → 29 件 → 26 件 → 15 件 → 13 件 → 9 件 → 7 件**（`MassTransit` **のみ**。13 件への 2 件は
 `Knowledge.Contracts` / `Platform.Shared.Contracts` の**参照だけがあり実コードで使っていなかった**
-分の撤去である）。`Serilog` と `FluentAssertions` は
+分の撤去である。9 件は 2026-10-07 の実測、7 件は 2026-10-25 に取り込みサービスとその試験の 2 件を落とした値）。`Serilog` と `FluentAssertions` は
 不採用のまま `BANNED` に残るため、再混入は引き続き fail する。
 
 > **［2026-08-21 更新］本節の実測値を数え直した。** 直前の値のうち、`FluentAssertions` の

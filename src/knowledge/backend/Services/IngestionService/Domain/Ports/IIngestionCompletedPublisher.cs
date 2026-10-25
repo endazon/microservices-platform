@@ -2,15 +2,11 @@ namespace IngestionService.Domain.Ports;
 
 // FR-02 / ADR-0027（E3b）: 取り込み完了イベントの発行口。
 //
-// 🔴 **抽象を挟む理由は設計の好みではない。トポロジ検査の導出単位がファイルだからである。**
-// DocumentUpdatedConsumer の購読が Wolverine へ移った（E3b）が、IngestionCompleted の発行が
-// 属する辺は本 PR の射程外で MassTransit のまま残る。同一ファイルに両トランスポートの
-// `using` が同居すると、発行が `masstransit+wolverine` の union として記録され、
-// IngestionCompleted の辺を移すときに違反が報告されなくなる（E1 の
-// IDocumentNormalizedPublisher と同じ理由。IADR-0245）。
+// 抽象を挟むのは、トポロジ検査の導出単位がファイルだからである（受け口と発行口でトランスポートの `using` を分ける。IADR-0245）。
+// ［2026-10-25 / #2134］辺 IngestionCompleted は Wolverine へ移った（IADR-0234 単位 E4 の完了。実装は `WolverineIngestionCompletedPublisher`）。
 //
 // ⚠️ イベントの構築は実装側（アダプタ）に置く（`findPublishers` の可視性を保つため）。
-// ［#1771］この辺の移行は IADR-0234 の単位 E4 として追跡する。購読者は結線しない（planning#741 項目 6 の裁定・2026-10-09）。
+// ［#1771］購読者は結線しない（planning#741 項目 6 の裁定・2026-10-09）。
 public interface IIngestionCompletedPublisher
 {
     Task PublishCompletedAsync(

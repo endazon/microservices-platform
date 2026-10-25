@@ -13,7 +13,6 @@ using IngestionService.Domain;
 using IngestionService.Infrastructure.ExternalServices;
 using IngestionService.Infrastructure.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
-using MassTransit;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Platform.Shared.Infrastructure.Foundation.Messaging;
@@ -24,7 +23,7 @@ using Wolverine.RabbitMQ;
 const string ServiceName = "microservices-platform.ingestion-service";
 
 // FR-15, IADR-0029: 自己申告エンドポイントの最小 HTTP サーフェスのため WebApplication を用いる。
-// 取り込みワーカーは Wolverine のハンドラとして稼働する（E3b）。MassTransit は IngestionCompleted の発行だけに残る（単位 E4。IADR-0234 の #1771 追記）。
+// 取り込みワーカーは Wolverine のハンドラとして稼働する（E3b）。IngestionCompleted の発行も Wolverine である（単位 E4。#2134）。
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
@@ -52,8 +51,8 @@ builder.Services.AddSingleton(new QdrantClient(qdrantHost, qdrantPort));
 
 // NFR-21, NFR-06, ADR-0052 決定 4, [[IADR-0602]] (#2140): liveness / readiness（`/health/live`・`/health/ready`。8080）。
 // 従前は Map が無く（上の gRPC リスナの注記だけが残っていた）、chart も probe を描かなかった —— 落ちても k8s が気づかない。
-// readiness に載せるのは**自プロセスの必須依存だけ**: ブローカ（Wolverine＝DocumentUpdated の購読。MassTransit＝IngestionCompleted の
-// 発行で、こちらは AddMassTransit が "masstransit-bus" を暗黙に登録する）と自前のデータストア（Qdrant。書き込み先かつ索引の状態の照会の読み先）。
+// readiness に載せるのは**自プロセスの必須依存だけ**: ブローカ（Wolverine＝DocumentUpdated の購読と IngestionCompleted の発行。
+// ［2026-10-25 / #2134］MassTransit を外したので "masstransit-bus" は無い）と自前のデータストア（Qdrant。書き込み先かつ索引の状態の照会の読み先）。
 // 🔴 **下流のサービス（LLM ゲートウェイ＝埋め込み）は入れない** —— 埋め込みが使えない間も取り込みは全文だけの点で縮退して進む
 // （[[IADR-0536]]）。ここへ入れると LLM ゲートウェイ 1 つの停止で取り込みが NotReady になり、NFR-06 の縮退と逆向きになる。
 // オブジェクトストレージも入れない（本文の欠落は 1 通ごとの失敗・計数で現れる。[[IADR-0540]]）。
@@ -149,21 +148,11 @@ var rabbitConnection = builder.Configuration["RabbitMq:ConnectionString"]
         + "（k8s は helm の global.messaging、compose は x-rabbit-env が注入する）。"
         + " 既定値は持たない —— 未注入をブローカへの接続失敗として現れさせないためである。");
 
-// 🔴 ADR-0027 / E3b: **ingest 段（DocumentUpdated 購読）は Wolverine へ移した。**
-// MassTransit に残るのは IngestionCompleted の**発行だけ**（その辺は本 PR の射程外。
-// 辺は原子的に動かす —— IADR-0234 決定 3）。移行期間中 **両スタックを同居させる**
-// （E1 の ConversionService と同じ形: Wolverine 購読 ＋ MassTransit 発行）。
-builder.Services.AddScoped<IIngestionCompletedPublisher,
-    MassTransitIngestionCompletedPublisher>();
-builder.Services.AddMassTransit(x =>
-    x.UsingRabbitMq((ctx, cfg) =>
-    {
-        cfg.Host(rabbitConnection);
-        cfg.UsePlatformRetry();
-        cfg.ConfigureEndpoints(ctx);
-    }));
+// 🔴 ADR-0027 / E3b・E4: **ingest 段（DocumentUpdated 購読）も IngestionCompleted の発行も Wolverine である。**
+// ［2026-10-25 / #2134］E4 で発行を MassTransit から移し、本サービスから MassTransit を外した。
+// 発行は非耐久である（本サービスは DB を持たず Outbox を使えない）。購読者は居ない（planning#741 項目 6）。購読者が付く時点で耐久化を再検討する。
+builder.Services.AddScoped<IIngestionCompletedPublisher, WolverineIngestionCompletedPublisher>();
 
-// 購読側（DocumentUpdated）は Wolverine。
 builder.Host.UseWolverine(opts =>
 {
     opts.ServiceName = "ingestion-service";
@@ -182,6 +171,10 @@ builder.Host.UseWolverine(opts =>
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う
     // （fan-out の保存: wiki-service / graph-service と別キューになりサービス名前置で分かれる）。
     opts.ListenToPlatformQueue<DocumentUpdated>("ingestion-service", step);
+
+    // FR-02, IADR-0234 単位 E4 (#2134): 発行側の経路宣言（IADR-0314）。fan-out exchange `IngestionCompleted` へ出す。
+    // 宣言が無いと、Wolverine は送り先の無い発行として捨てる（ローカルの規約ルーティングは共通既定が切っている）。
+    opts.RoutePlatformEvent<IngestionCompleted>();
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
