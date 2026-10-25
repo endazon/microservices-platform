@@ -175,6 +175,41 @@ public sealed class IngestToSearchQdrantTests : IAsyncLifetime
                 "取り込みが削除した文書は検索に残らないこと");
     }
 
+    // FR-19, 計画 ADR-0142 決定 5・フォローアップ 1, IADR-0636 (#2138): **論理削除の撤収の後に完全削除しても、削除の伝播は失敗しない。**
+    // 撤収（取り込みの受け手が全コレクションから点を消す）の後、完全削除の受け手（検索の `DocumentDeletedConsumer`）は
+    // 本番の `QdrantVectorStore.DeleteByDocumentAsync` を呼ぶ。該当 0 件の削除が実 Qdrant で例外にならないことを測る
+    // （実測 10 の検索側の試験はメモリ上のストアだった）。
+    [Fact]
+    public async Task PurgeAfterSoftDeleteWithdrawal_SucceedsWithNothingLeft()
+    {
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Qdrant);
+
+        var ct = TestContext.Current.CancellationToken;
+        var documentId = Guid.NewGuid();
+        var text = $"本文には {PresentTerm} という語が含まれる。";
+
+        var writer = NewIngestionStore();
+        await writer.EnsureCollectionsAsync(ct);
+        await writer.EnsureCjkNgramIndexAsync(ct);
+        await writer.UpsertChunkAsync(Collection, Guid.NewGuid(), documentId, "個人メモ",
+            text, 0, Vectorize(text), null, [], [], DateTimeOffset.UtcNow, ct: ct);
+        var reader = NewRetrievalStore();
+        var scope = ScopeFilter.Empty;
+        (await reader.KeywordSearchAsync(PresentTerm, 10, scope, ct))
+            .Should().Contain(r => r.DocumentId == documentId, "陽性対照: 削除の前は当たる");
+
+        // 論理削除の撤収（取り込みの受け手が行う削除）。
+        await writer.DeleteByDocumentFromAllAsync(documentId, ct);
+        (await reader.KeywordSearchAsync(PresentTerm, 10, scope, ct))
+            .Should().NotContain(r => r.DocumentId == documentId, "前提: 撤収で消えている");
+
+        // 完全削除の伝播（検索の受け手が行う削除）。該当 0 件でも成功する。
+        var purge = () => reader.DeleteByDocumentAsync(documentId, ct);
+        await purge.Should().NotThrowAsync("撤収の後の完全削除で伝播が失敗すると、再試行の末にデッドレターへ落ちる");
+        (await reader.KeywordSearchAsync(PresentTerm, 10, scope, ct))
+            .Should().NotContain(r => r.DocumentId == documentId);
+    }
+
     // ── 器 ────────────────────────────────────────────────
 
     private QdrantIngestionVectorStore NewIngestionStore() =>

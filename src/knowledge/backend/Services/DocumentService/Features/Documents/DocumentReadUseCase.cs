@@ -44,12 +44,15 @@ public sealed class DocumentReadUseCase(
             .ToListAsync(ct);
         var shares = await DocumentEndpoints.ResolveSharedWithAsync(
             db, docs.Select(d => d.Id).ToList(), ct);
+        // FR-19, ADR-0142 決定 2, IADR-0636 決定 2 (#2138): 論理削除中の個人資料（共有先と同じく 1 クエリで引く）。
+        var deleted = await DocumentEndpoints.ResolveDeletedPrivateNotesAsync(
+            db, docs.Select(d => d.Id).ToList(), ct);
 
         var visible = new List<DocumentDto>(docs.Count);
         foreach (var d in docs)
         {
             var sharedWith = shares.GetValueOrDefault(d.Id);
-            if (await access.CanReadAsync(principal, d, sharedWith, ct))
+            if (await access.CanReadAsync(principal, d, sharedWith, deleted.Contains(d.Id), ct))
                 visible.Add(DocumentEndpoints.ToDto(d, names, sharedWith));
         }
         return visible;
@@ -94,10 +97,11 @@ public sealed class DocumentReadUseCase(
             if (batch.Count > 0)
             {
                 var shares = await DocumentEndpoints.ResolveSharedWithAsync(db, batch.Select(d => d.Id).ToList(), ct);
+                var deleted = await DocumentEndpoints.ResolveDeletedPrivateNotesAsync(db, batch.Select(d => d.Id).ToList(), ct);
                 foreach (var d in batch)
                 {
                     var sharedWith = shares.GetValueOrDefault(d.Id);
-                    if (!await access.CanReadAsync(principal, d, sharedWith, ct))
+                    if (!await access.CanReadAsync(principal, d, sharedWith, deleted.Contains(d.Id), ct))
                         continue;
                     page.Add((d, sharedWith));
                     if (page.Count > pageSize) break;
@@ -154,7 +158,8 @@ public sealed class DocumentReadUseCase(
         if (doc is null) return null;
 
         var sharedWith = await DocumentEndpoints.ResolveSharedWithAsync(db, doc.Id, ct);
-        if (await access.CanReadAsync(principal, doc, sharedWith, ct))
+        var deleted = await DocumentEndpoints.IsDeletedPrivateNoteAsync(db, doc, ct);
+        if (await access.CanReadAsync(principal, doc, sharedWith, deleted, ct))
             return new(DocumentEndpoints.ToDto(doc, await TagResolver.NamesAsync(db), sharedWith), ViaBreakGlass: false);
 
         if (!allowBreakGlass)
@@ -205,7 +210,8 @@ public sealed class DocumentReadUseCase(
         if (doc is null) return null;
 
         var sharedWith = await DocumentEndpoints.ResolveSharedWithAsync(db, doc.Id, ct);
-        return await access.CanReadAsync(principal, doc, sharedWith, ct) ? (doc, sharedWith) : null;
+        var deleted = await DocumentEndpoints.IsDeletedPrivateNoteAsync(db, doc, ct);
+        return await access.CanReadAsync(principal, doc, sharedWith, deleted, ct) ? (doc, sharedWith) : null;
     }
 }
 
