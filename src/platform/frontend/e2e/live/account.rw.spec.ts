@@ -165,7 +165,12 @@ async function requestReset(page: Page, username: string): Promise<string> {
  * status と、JSON の `error`・`error_description`（OAuth の誤りの種類。秘密ではない）だけ。本文・header の値は載せない。
  * 🔴 コールバックに載る認可コードは、念のため発行値として記録する（成果物の走査が探す）。
  */
-function watchKeycloakFailures(page: Page, notes: string[], failures: string[]): void {
+function watchKeycloakFailures(
+  page: Page,
+  notes: string[],
+  failures: string[],
+  seen: string[],
+): void {
   page.on('request', (r) => {
     const url = new URL(r.url());
     const code = url.origin === cfg.kcUrl ? url.searchParams.get('code') : null;
@@ -173,15 +178,12 @@ function watchKeycloakFailures(page: Page, notes: string[], failures: string[]):
   });
   page.on('response', (r) => {
     const url = new URL(r.url());
-    // 🔴 origin で絞らない（#2034 の調べ: kcUrl に限ると、別の origin へ向いた要求の失敗を取りこぼした）。トークンの受け取りは
-    // 成否によらず残す（status だけ。本文はトークンなので、誤りのときだけ error の種類を読む）。
-    const isToken = url.pathname.endsWith('/protocol/openid-connect/token');
-    if (r.status() < 400 && !isToken) return;
+    // 🔴 origin で絞らない（#2034 の調べ: kcUrl に限ると、別の origin へ向いた要求の失敗を取りこぼした）。
     const line = `${r.request().method()} ${url.origin}${url.pathname} → ${r.status()}`;
-    if (r.status() < 400) {
-      notes.push(line);
-      return;
-    }
+    // #2034 の調べ（3 回目）: 4xx/5xx も届かなかった要求も 0 件だったので、fetch / XHR の応答は status によらず残す
+    // （method・origin＋path・status だけ。query と本文は読まない）。
+    if (['fetch', 'xhr'].includes(r.request().resourceType())) seen.push(line);
+    if (r.status() < 400) return;
     void r
       .json()
       .then(
@@ -200,6 +202,20 @@ function watchKeycloakFailures(page: Page, notes: string[], failures: string[]):
     failures.push(entry);
     notes.push(entry);
   });
+  // keycloak-js と account-ui の初期化の例外は console.error に出る。🔴 query・fragment と JWT の形は伏せ、300 文字で切る。
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    seen.push(`console.error: ${redact(m.text())}`);
+  });
+  page.on('pageerror', (e) => seen.push(`pageerror: ${redact(e.message)}`));
+}
+
+/** 診断の文字列から秘密になりうる部分（URL の query・fragment、JWT の形）を伏せる。 */
+function redact(text: string): string {
+  return text
+    .replace(/eyJ[\w-]+\.[\w-]+\.[\w-]*/g, '<jwt>')
+    .replace(/([?#])[^\s"'<>)]*/g, '$1<redacted>')
+    .slice(0, 300);
 }
 
 /**
@@ -209,7 +225,8 @@ function watchKeycloakFailures(page: Page, notes: string[], failures: string[]):
 async function loginToAccount(page: Page, notes: string[]): Promise<unknown> {
   const creds = credentialsOf(SUBJECT, process.env);
   const failures: string[] = [];
-  watchKeycloakFailures(page, notes, failures);
+  const seen: string[] = [];
+  watchKeycloakFailures(page, notes, failures, seen);
   const profile = page.waitForResponse(
     (r) =>
       r.request().method() === 'GET' &&
@@ -244,15 +261,17 @@ async function loginToAccount(page: Page, notes: string[]): Promise<unknown> {
   const first = await Promise.race([profile, consoleError]);
   // 失敗の応答の本文（error の種類）を読み終えるのを少し待ってから文言に添える。
   await new Promise((resolve) => setTimeout(resolve, 500));
+  // 添付（failed-stage）は reporter が切り詰めるので、切り分けに要る材料は例外の文言に入れる。
+  const detail = [
+    `段: ${notes.filter((n) => n.startsWith('step:')).join(' > ')}`,
+    `失敗の応答・届かなかった要求: ${failures.join(' | ') || '（なし）'}`,
+    `fetch/xhr の応答と console のエラー: ${seen.slice(-40).join(' | ') || '（なし）'}`,
+  ].join('\n');
   if (first === 'none') {
-    throw new Error(
-      `個人情報の応答も誤りの画面も 90 秒のうちに出なかった。Keycloak の失敗の応答: ${failures.join(' | ') || '（なし）'}`,
-    );
+    throw new Error(`個人情報の応答も誤りの画面も 90 秒のうちに出なかった。\n${detail}`);
   }
   if (first === 'error') {
-    throw new Error(
-      `アカウントコンソールが初期化に失敗した（誤りの画面）。Keycloak の失敗の応答: ${failures.join(' | ') || '（なし）'}`,
-    );
+    throw new Error(`アカウントコンソールが初期化に失敗した（誤りの画面）。\n${detail}`);
   }
   expect(first.status(), 'GET account（個人情報）').toBe(200);
   return first.json();
