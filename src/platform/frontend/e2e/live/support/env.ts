@@ -113,6 +113,25 @@ export function missingCredentials(env: Env): string[] {
   });
 }
 
+/**
+ * 役割の資格情報（パスワードと TOTP の生の秘密）を読む。🔴 **欠けていれば Keycloak へ送る前に例外**にする（#2239 のレビュー）。
+ * 空のパスワードや空の秘密を送ると誤入力として数えられ（brute force は 5 回の失敗で 900 秒）、ロックの原因が読めなくなる。
+ * 例外の文言は変数名だけで、値は出さない。未設定の判定は missingCredentials と同じ（空・空白だけ・例示の `<set-me>`）。
+ */
+export function credentialsOf(role: Role, env: Env): { password: string; totpSecret: string } {
+  const names = credentialNames(role);
+  const missing = Object.values(names).filter((name) => {
+    const value = (env[name] ?? '').trim();
+    return value === '' || value === PLACEHOLDER;
+  });
+  if (missing.length) {
+    throw new Error(
+      `e2e-${role} の資格情報の環境変数が無い: ${missing.join(', ')}（値は出さない）`,
+    );
+  }
+  return { password: env[names.password]!, totpSecret: env[names.totpSecret]! };
+}
+
 function originOf(name: string, value: string): string {
   let url: URL;
   try {

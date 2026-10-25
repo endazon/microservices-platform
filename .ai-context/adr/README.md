@@ -709,3 +709,4 @@
 | [IADR-0629](./IADR-0629_live-cleanup-and-disposable-only-sweep.md) | live の後始末は test が積んだ逆順に /bff/* へ直接送り、残骸掃き（sweep）は接頭辞 e2e- の一致だけを、既定 dry-run・使い捨てのスタックだけに向けて teardown の失効の前に流す（#2030） | Accepted |
 | [IADR-0630](./IADR-0630_live-rw-disposable-stack-gate-and-run-id.md) | live-rw の層は使い捨てのスタックの中だけで流し（E2E_STACK と kubectl の context の門を sweep と同じ実装で持つ）、名前は実行ごとの runId で付け、e2e-revocable では作らない（#2031） | Accepted |
 | [IADR-0631](./IADR-0631_live-rw-admin-resources-disable-only-settled.md) | live-rw の管理リソースは何も新しく許さない形で作り、削除の口が無いデータソースと MCP クライアントは無効化までを後始末とし、sweep は無効化済みを残骸に数えない（#2032） | Accepted |
+| [IADR-0632](./IADR-0632_live-rw-revocation-last-project.md) | e2e-revocable を無効化して全セッションを失効させる試験は専用の project で、同じ実行の live-ro・live-rw の後に流し、後始末の有効化が戻らなければ赤にする（#2033） | Accepted |
