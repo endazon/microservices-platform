@@ -17,7 +17,7 @@ import { ja, jaPattern, parsePo } from './live/support/catalog';
 import { startFakeLiveStack } from './support/fakeLiveStack';
 import { revokeSessions, runSweep, sweepArgs, SWEEP_ROLES } from './live/support/teardown';
 import { createCleanup, creatorRole, e2eName } from './live/support/cleanup';
-import { assertDisposableStack } from './live/support/readiness';
+import { assertDisposableStack, prepareIssuedSecretsFile } from './live/support/readiness';
 import { createRequire } from 'node:module';
 import { recordIssuedSecret } from './live/support/issuedSecrets';
 import { submitOtp, submitPassword } from './live/support/login';
@@ -705,7 +705,12 @@ test('発行された値（端末トークン）は 0600 のファイルへ記�
     expect(() =>
       recordIssuedSecret({ issuedSecretsFile: sink }, 'E2E_ISSUED_DEVICE_TOKEN', `${token}\nx`),
     ).toThrow(/記録できない値/);
+    // globalSetup が先に空のファイル（0600）を作る。2 回呼んでも中身を変えない。
+    prepareIssuedSecretsFile({ issuedSecretsFile: sink });
+    expect(statSync(sink).mode & 0o777).toBe(0o600);
+    expect(readFileSync(sink, 'utf8')).toBe('');
     recordIssuedSecret({ issuedSecretsFile: sink }, 'E2E_ISSUED_DEVICE_TOKEN', token);
+    prepareIssuedSecretsFile({ issuedSecretsFile: sink });
     expect(statSync(sink).mode & 0o777).toBe(0o600);
     expect(readFileSync(sink, 'utf8')).toBe(`E2E_ISSUED_DEVICE_TOKEN=${token}\n`);
 
@@ -738,6 +743,11 @@ test('発行された値（端末トークン）は 0600 のファイルへ記�
     const clean = scanWith('Error: expected row\n');
     expect(clean.status, clean.stderr).toBe(0);
     expect(clean.stdout).toContain('発行値 1 個');
+    // 記録先が欠けた（指定したのにファイルが無い）なら赤（0 個として黙って続けない）。
+    rmSync(sink);
+    const lost = scanWith('Error: expected row\n');
+    expect(lost.status, lost.stderr).toBe(1);
+    expect(lost.stderr).toContain('発行値のファイルが無い');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

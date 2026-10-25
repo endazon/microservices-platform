@@ -21,7 +21,8 @@
  * ［2026-10-25 / #2031 / IADR-0630 決定 6］**実行の中で発行された値**（SC-20 の端末トークン、E-54 の SC-22 の試験キーなど）も探す。
  *   live の spec は発行の直後に `E2E_ISSUED_<種類>=<値>` の行を `E2E_ISSUED_SECRETS_FILE`（runner の一時領域・0600）へ追記する
  *   （`e2e/live/support/issuedSecrets.ts`）。`--issued-file` でそのファイルを渡す。失効済みの値も同じに扱う（成果物に残れば赤）。
- *   ファイルが無いのは「この実行で何も発行しなかった」（rw を流していない）なので 0 個として続ける。行の形が違えば例外。
+ *   🔴 `--issued-file` を明示したのにファイルが無ければ exit 1（安全装置の入力が欠けたまま緑にしない）。globalSetup が実行の初めに
+ *   空のファイル（0600）を作るので、「何も発行しなかった」は空のファイル（0 個）で表れ、「記録先が無い」とは区別できる。行の形が違えば例外。
  *
  * 使い方:
  *   node scripts/check-e2e-artifact-secrets.js --env-file <KEY=VALUE の行> [--issued-file <E2E_ISSUED_…=値 の行>] --scan <dir> [--scan <dir> …]
@@ -129,6 +130,15 @@ function readIssued(text) {
     out.push({ name, value: m[2], forms: formsOf({ name, value: m[2] }) });
   }
   return out;
+}
+
+/** `--issued-file` を読む。指定したのにファイルが無ければ例外（0 個として黙って続けない）。指定が無ければ 0 個。 */
+function loadIssued(file) {
+  if (!file) return [];
+  if (!fs.existsSync(file)) {
+    throw new Error(`発行値のファイルが無い（${file}）。globalSetup が空のファイルを作るので、無いのは記録先が欠けた実行である`);
+  }
+  return readIssued(fs.readFileSync(file, 'utf8'));
 }
 
 /** zip の中身を返す（central directory を読む。無圧縮と deflate だけ。Playwright の zip はこの 2 つ）。 */
@@ -346,6 +356,19 @@ function selfTest() {
       expect: (v) => !v.leaked && v.r.hits.length >= 1 && v.r.hits.every((h) => h.name === 'E2E_ISSUED_DEVICE_TOKEN#1'),
     },
     {
+      name: '🔴 --issued-file を指定したのにファイルが無ければ例外、空のファイルは 0 個（記録先の欠けと「何も発行しなかった」を区別する）',
+      run: () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-issued-'));
+        try {
+          let missing;
+          try { loadIssued(path.join(dir, 'none.env')); missing = 'no-throw'; } catch (e) { missing = e.message; }
+          fs.writeFileSync(path.join(dir, 'empty.env'), '');
+          return { missing, empty: loadIssued(path.join(dir, 'empty.env')).length, unset: loadIssued(null).length };
+        } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+      },
+      expect: (v) => /ファイルが無い/.test(v.missing) && v.empty === 0 && v.unset === 0,
+    },
+    {
       name: '🔴 発行値のファイルの形が違えば例外（読めないものを「無い」としない）',
       run: () => { try { readIssued('DEVICE_TOKEN=abcdefghijklmnop'); return 'no-throw'; } catch (e) { return e.message; } },
       expect: (m) => /形が違う/.test(m),
@@ -371,8 +394,7 @@ function main(argv) {
     process.exit(2);
   }
   const credentials = readSecrets(fs.readFileSync(args.envFile, 'utf8'));
-  // 発行値のファイルが無いのは、この実行で何も発行しなかったとき（rw を流していない）。
-  const issued = args.issuedFile && fs.existsSync(args.issuedFile) ? readIssued(fs.readFileSync(args.issuedFile, 'utf8')) : [];
+  const issued = loadIssued(args.issuedFile);
   const secrets = [...credentials, ...issued];
   const r = scan(args.scan, secrets);
   if (r.files === 0) {
@@ -396,4 +418,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { readSecrets, readIssued, middles, formsOf, unzip, findIn, scan, makeZip, selfTest };
+module.exports = { readSecrets, readIssued, loadIssued, middles, formsOf, unzip, findIn, scan, makeZip, selfTest };

@@ -9,6 +9,7 @@
 // 🔴 満たさなければ **exit 2（前提未整備）**で終える。skip の緑（何も確かめていない）とも、失敗の赤（製品の不具合）とも
 // 区別する（`check-stack-ready.js --live` と同じ扱い）。全 project を skip にして緑にする形は採らない。
 import { spawnSync } from 'node:child_process';
+import { closeSync, existsSync, openSync, chmodSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { request } from '@playwright/test';
 import { missingCredentials, parseLiveEnv, REALM, type LiveEnv } from './env';
@@ -70,11 +71,22 @@ export function assertDisposableStack(
   }
 }
 
+/**
+ * 発行値の記録先（`E2E_ISSUED_SECRETS_FILE`）を**実行の初めに空で作る**（0600。在れば中身を変えない）。成果物の走査は、指定した
+ * ファイルが無ければ赤にするので、「何も発行しなかった」（空）と「記録先が欠けた」（無い）を区別できる（#2237 のレビュー）。
+ */
+export function prepareIssuedSecretsFile(cfg: Pick<LiveEnv, 'issuedSecretsFile'>): void {
+  if (!cfg.issuedSecretsFile) return;
+  if (!existsSync(cfg.issuedSecretsFile)) closeSync(openSync(cfg.issuedSecretsFile, 'a', 0o600));
+  chmodSync(cfg.issuedSecretsFile, 0o600);
+}
+
 export default async function globalSetup(): Promise<void> {
   const cfg = parseLiveEnv(process.env, '');
   if (!cfg.live) return;
   // 書き込みの向け先の門は、到達の確かめ（GET）より前に置く（取り違えた向け先へは何も送らない）。
   assertDisposableStack(cfg);
+  prepareIssuedSecretsFile(cfg);
   // config はワーカーごとにも読み込まれるので、1 回だけ出す警告はここ（globalSetup は 1 回）に置く。
   if (cfg.insecureTls) {
     process.stdout.write(

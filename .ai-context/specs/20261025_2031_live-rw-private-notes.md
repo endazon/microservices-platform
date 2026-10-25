@@ -70,7 +70,7 @@ issue: "#2031"
 
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 1199 passed（#2031 の判定器の 1 件を足し、#2030 節の視点の期待を 5 役割へ改めた）。
 - L1 `e2e/live-opt-in.smoke.spec.ts`: 26 passed（新規 4: rw の門・runId と名前・視点の和集合と e2e-revocable の実行時の門・発行値の記録と走査。既存の sweep の 2 件を `E2E_STACK` へ改めた）。
-- 発行値（レビュー後の追加）: `check-e2e-artifact-secrets.js --self-test` 16 件（新規 2: 発行値が成果物にあれば赤・ファイルの形が違えば例外）。
+- 発行値（レビュー後の追加）: `check-e2e-artifact-secrets.js --self-test` 17 件（新規 3: 発行値が成果物にあれば赤・ファイルの形が違えば例外・指定したファイルが無ければ例外）。
 - `E2E_LIVE=1 E2E_LAYER=ro,rw E2E_STACK=e2e-live … --list`: 48 件（live-rw に M-062/M-063 と M-067）。
 - `tsc -p tsconfig.node.json` 0 件・eslint 0 件・prettier 緑。文書の検査は緑。
 - live: e2e-live（PR）で ro,rw を流し、rw の 2 件が通ること・sweep の dry-run が残骸 0・見ていない視点 0 であること（結果は PR に書く）。
