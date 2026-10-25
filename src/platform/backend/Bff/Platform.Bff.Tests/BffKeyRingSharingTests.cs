@@ -223,9 +223,14 @@ public sealed class InMemoryRedisLists
         var database = DispatchProxy.Create<IDatabase, RedisProxy>();
         ((RedisProxy)(object)database).Handler = InvokeDatabase;
         var multiplexer = DispatchProxy.Create<IConnectionMultiplexer, RedisProxy>();
-        ((RedisProxy)(object)multiplexer).Handler = (method, _) => method.Name == nameof(IConnectionMultiplexer.GetDatabase)
-            ? database
-            : throw new NotSupportedException($"偽 Redis（接続）は {method.Name} を実装していない");
+        ((RedisProxy)(object)multiplexer).Handler = (method, _) => method.Name switch
+        {
+            nameof(IConnectionMultiplexer.GetDatabase) => database,
+            // [[IADR-0633]] (#2242): DI のファクトリで作った接続はホストの破棄で Dispose される（回復の試験が本番の配線で作る）。
+            nameof(IDisposable.Dispose) => null,
+            nameof(IAsyncDisposable.DisposeAsync) => ValueTask.CompletedTask,
+            _ => throw new NotSupportedException($"偽 Redis（接続）は {method.Name} を実装していない"),
+        };
         Multiplexer = multiplexer;
     }
 
