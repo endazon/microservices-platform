@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using Knowledge.Contracts.Events;
+using Knowledge.Contracts.Ordering;
 
 namespace IngestionService.Domain;
 

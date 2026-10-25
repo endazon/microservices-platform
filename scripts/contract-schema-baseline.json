@@ -3326,10 +3326,6 @@
           }
         }
       },
-      "Knowledge.Contracts.Events.DocumentEventOrder": {
-        "kind": "class",
-        "members": {}
-      },
       "Knowledge.Contracts.Events.DocumentNormalized": {
         "kind": "record",
         "members": {
@@ -3615,6 +3611,10 @@
             "value": "\"user-input\""
           }
         }
+      },
+      "Knowledge.Contracts.Ordering.DocumentEventOrder": {
+        "kind": "class",
+        "members": {}
       }
     },
     "src/platform/backend/Shared/Platform.Shared.Contracts": {

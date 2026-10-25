@@ -1,5 +1,5 @@
 using AwesomeAssertions;
-using Knowledge.Contracts.Events;
+using Knowledge.Contracts.Ordering;
 using Xunit;
 
 namespace Knowledge.Contracts.Tests;

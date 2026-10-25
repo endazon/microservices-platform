@@ -1,4 +1,4 @@
-namespace Knowledge.Contracts.Events;
+namespace Knowledge.Contracts.Ordering;
 
 // 🔴 FR-02, FR-13, FR-17, FR-19, IADR-0638 決定 1 (#2150 / #2251): **文書のイベントの前後を決める唯一の点**（純関数）。
 //
@@ -11,6 +11,7 @@ namespace Knowledge.Contracts.Events;
 // - 時刻が等しく、双方に連番があるときだけ連番で比べる。どちらかが null（旧形式の電文・移行前の印）なら時刻だけで比べる。
 // - 🔴 **時刻は呼び出し側が保存の精度へ丸めてから渡す**（取り込みはミリ秒、Wiki とグラフはマイクロ秒）。丸めずに比べると、
 //   同じ版の再配送が保存値より「新しい」と読め、同じ時刻の逆転（#2150 の根）を見分けられない。
+// - 🔴 **`Events/` に置かない。** これはイベントではない。`scripts/check-event-topology.js` は `*.Contracts/Events/*.cs` をイベント型として数える。
 public static class DocumentEventOrder
 {
     // a が b より後なら正、前なら負、区別できなければ 0。

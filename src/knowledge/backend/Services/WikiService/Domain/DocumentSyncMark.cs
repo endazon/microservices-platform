@@ -1,4 +1,4 @@
-using Knowledge.Contracts.Events;
+using Knowledge.Contracts.Ordering;
 
 namespace WikiService.Domain;
 

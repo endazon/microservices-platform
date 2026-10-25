@@ -26,6 +26,8 @@ plan_refs:
   2. 時刻が等しく、**双方に連番があれば**連番で比べる。
   3. どちらかの連番が null（旧形式の電文・移行前の印）なら、時刻だけで比べる（等しければ反映する。現行と同じ）。
 - 到着したイベントは、印より**厳密に古い**ときだけ捨てる。等しい（再配送・再発行）なら反映する（冪等）。
+- 比較は `Knowledge.Contracts/Ordering/DocumentEventOrder.cs`（名前空間 `Knowledge.Contracts.Ordering`）の 1 か所に置く。
+  - `Events/` に置かない。`check-event-topology.js` が `*.Contracts/Events/*.cs` をイベント型として数え、baseline に無いイベントとして落ちる（#2264 の CI で実測）。
 - **削除の鍵は (DeletedAt, Sequence)** とする。
   - `DeletedAt` は削除の時刻で、最後の `UpdatedAt` 以上である（更新の時刻は削除より前にしか付かない）。`Sequence` は最後の連番 + 1 である。
   - そのため、削除はそれまでのどの更新よりも後に並ぶ。

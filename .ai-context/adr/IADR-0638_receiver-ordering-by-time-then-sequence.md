@@ -57,6 +57,8 @@ related_specs:
   - 丸めないと、同じ版の再配送が保存値より「新しい」と読め、同じ時刻の逆転も見分けられない。
 - 時刻が等しく、双方に連番があれば、連番で比べる。どちらかが null（旧形式の電文・移行前の印）なら、時刻だけで比べる（現行と同じ）。
 - 印より**厳密に古い**ものだけを捨てる。等しいもの（再配送・再発行）は反映する。
+- 比較は契約の純関数 `Knowledge.Contracts.Ordering.DocumentEventOrder`（`Knowledge.Contracts/Ordering/`）の 1 か所に置き、3 つの受け手が共有する。
+  - `Events/` には置かない。これはイベントではない。`check-event-topology.js` は `*.Contracts/Events/*.cs` をイベント型として数える。
 - 削除の印を持つとき、削除と同じ鍵の更新は古い扱いにする（IADR-0596 決定 2 の現行と同じ。削除は寿命の最後の出来事である）。
 - 削除の第 1 の鍵が `DeletedAt` でよい理由:
   - `DeletedAt` は最後の `UpdatedAt` 以上で、連番は最後の値 + 1 である。
