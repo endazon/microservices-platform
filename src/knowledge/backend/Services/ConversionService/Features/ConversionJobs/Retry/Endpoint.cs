@@ -66,7 +66,12 @@ internal static class RetryConversionJobEndpoint
                     await retry.PublishRetryAsync(ev, c);
             }, ct);
             if (ev is null)
-                return Results.Conflict(new { error = "not_retryable", status = job.Status }); // 競合で状態が変わった等
+            {
+                // FR-12, UC-06, #2159: 判定の後に状態が変わった（並行する再変換に負けた等）。応答の形は変えず、状態は**読み直した現在の値**を返す
+                // （要求の最初に読んだ failed を返すと、負けた側に「失敗のまま」と見せる。#2103 の版の競合が現在版を読み直すのと同じ）。
+                var current = await store.GetAsync(id, ct);
+                return Results.Conflict(new { error = "not_retryable", status = current?.Status ?? job.Status });
+            }
             return Results.Accepted($"/jobs/{id}");
         }).WithName("ConversionJobRetry")
           // NFR-09, FR-12, ADR-0109 決定 3, IADR-0128 決定 1, IADR-0465 (#1520): 再変換は管理者限定。

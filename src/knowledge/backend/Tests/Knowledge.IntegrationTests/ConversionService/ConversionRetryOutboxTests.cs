@@ -166,6 +166,67 @@ public sealed class ConversionRetryOutboxTests(PostgresFixture postgres, RabbitM
         return ev;
     }
 
+    // 別の接続から見て、この DB で行ロックを待っているセッションがあるか（並行の窓が開いたことの確認）。
+    private static async Task WaitUntilSomeoneWaitsForLockAsync(string cs, TimeSpan budget)
+    {
+        var until = DateTime.UtcNow + budget;
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync(Ct);
+        while (true)
+        {
+            await using var cmd = new NpgsqlCommand(
+                "select count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid "
+                + "where not l.granted and a.datname = current_database();", conn);
+            if ((long)(await cmd.ExecuteScalarAsync(Ct))! > 0) return;
+            if (DateTime.UtcNow > until)
+                throw new TimeoutException($"後の再変換が {budget.TotalSeconds:F0} 秒以内に行ロック待ちにならなかった（窓が開いていない）。");
+            await Task.Delay(TimeSpan.FromMilliseconds(100), Ct);
+        }
+    }
+
+    // 🔴 C5（#2159）: 同じジョブへの再変換が並行しても、届くのは 1 通だけ。
+    //
+    // 窓を決定的に開ける: 先の再変換（A）は確定の中で queued へ遷移した（行ロックを持ち、まだコミットしていない）。その間に後の再変換（B）を
+    // 流す —— B の読み取りはコミット済みの failed を見て判定を通り、B の UPDATE は A の行ロックを待つ。待っていることを `pg_locks` で確かめてから
+    // A をコミットすると、PostgreSQL は B の UPDATE の条件（`WHERE "Status" = 'failed'`）を新しい行で評価し直して 0 行にする（並行トークン）。
+    // 🔴 状態の並行トークンを外すと B の UPDATE は条件に状態を持たず成功し、2 通届いてここで赤になる。
+    [Fact]
+    public async Task 並行する再変換は1通だけ届き負けた側は発行しない()
+    {
+        var cs = await CreateDatabaseAsync();
+        var id = Guid.NewGuid();
+        await SeedFailedAsync(cs, id);
+        var (subscriber, probe) = await StartSubscriberAsync();
+        using var _ = subscriber;
+        using var publisher = await StartPublisherAsync(cs);
+
+        Task<RawDocumentFetched?>? later = null;
+        AsyncServiceScope? laterScope = null;
+        RawDocumentFetched? first = null;
+        await using (var scope = publisher.Services.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<IConversionJobStore>();
+            var retry = scope.ServiceProvider.GetRequiredService<IConversionRetryPublisher>();
+            await retry.CommitAsync(async c =>
+            {
+                first = await store.PrepareRetryAsync(id, ct: c);
+                await retry.PublishRetryAsync(first!, c);
+                laterScope = publisher.Services.CreateAsyncScope();
+                later = RetryAsync(laterScope.Value.ServiceProvider, id);
+                await WaitUntilSomeoneWaitsForLockAsync(cs, Delivery);
+            }, Ct);
+        }
+
+        var second = await later!;
+        await laterScope!.Value.DisposeAsync();
+        first.Should().NotBeNull("陽性対照: 先の再変換は発行する");
+        second.Should().BeNull("後の再変換は、待っていた UPDATE が 0 行になって負ける");
+        (await probe.Received(id).WaitAsync(Delivery, Ct)).Should().Be(id);
+        await WaitOutboxDrainedAsync(cs, Delivery);
+        probe.CountFor(id).Should().Be(1, "同じジョブの再変換は 1 通だけ届く");
+        (await StatusAsync(cs, id)).Should().Be(ConversionJobStatus.Queued);
+    }
+
     // C1: 確定すれば、ジョブは queued になりイベントが出る。
     [Fact]
     public async Task 確定するとジョブはqueuedになり再変換のイベントが出る()
