@@ -87,7 +87,8 @@ internal static class DocumentManageScope
             return null;
 
         var sharedWith = await DocumentEndpoints.ResolveSharedWithAsync(db, doc.Id, ct);
-        return await reads.CanReadAsync(DocumentReadPrincipal.FromUser(user), doc, sharedWith, ct)
+        var deleted = await DocumentEndpoints.IsDeletedPrivateNoteAsync(db, doc, ct);
+        return await reads.CanReadAsync(DocumentReadPrincipal.FromUser(user), doc, sharedWith, deleted, ct)
             ? Results.StatusCode(StatusCodes.Status403Forbidden)
             : Results.NotFound();
     }

@@ -212,9 +212,63 @@ public sealed class IngestToSearchInProcessTests : IAsyncLifetime
 
     // ── 段の駆動 ──────────────────────────────────────────
 
+    // FR-19, ADR-0142 決定 1・4, IADR-0636 (#2138): **論理削除した個人資料は検索に当たらず、復元で再び当たる。**
+    // 撤収の形は DocumentService の唯一の発行点と同じ関数（`DocumentExposure.WithAllExcluded`）で作る。論理削除・復元は版を進めない（同じ時刻）。
+    // 全文とハイブリッドの両方で見る（語彙索引を含む全コレクションから消えること）。
+    [Fact]
+    public async Task SoftDeletedPrivateNote_IsNotFound_AndRestoreBringsItBack()
+    {
+        var noteId = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var at = DateTimeOffset.UtcNow;
+        var attributes = new Dictionary<string, string>
+        {
+            [DocumentScopes.Key] = DocumentScopes.PrivateNote,
+            ["owner"] = "alice",
+            ["confidentiality"] = "public",
+        };
+        foreach (var (key, value) in DocumentExposure.Project(includeInSearch: true, includeInGraph: false, includeInAi: true))
+            attributes[key] = value;
+        var body = $"# 個人メモ\n\n本文には {PresentTerm} という語が含まれる。";
+        var note = new DocumentUpdated(noteId, "個人メモ", "normalized", $"storage://knowledge/{noteId}.md",
+            attributes, [], at, SharedWith: ["bob"]);
+
+        await IngestAsync(body, note);
+        await IngestAsync(other, "組織の文書", $"# 組織の文書\n\n本文には {PresentTerm} という語が含まれる。");
+        foreach (var mode in new string?[] { null, SearchModes.Keyword })
+            (await SearchAsync(PresentTerm, mode)).Should().Contain(r => r.DocumentId == noteId,
+                $"陽性対照: 削除の前は当たる（mode={mode ?? "hybrid"}）");
+
+        await IngestAsync(body, note with { Attributes = DocumentExposure.WithAllExcluded(attributes) });
+
+        foreach (var mode in new string?[] { null, SearchModes.Keyword })
+        {
+            var hits = await SearchAsync(PresentTerm, mode);
+            hits.Should().NotContain(r => r.DocumentId == noteId, $"論理削除した個人資料は当たらない（mode={mode ?? "hybrid"}）");
+            hits.Should().Contain(r => r.DocumentId == other, "陽性対照: 同じ語の別の文書は当たる（検索が空なだけの緑にしない）");
+        }
+
+        await IngestAsync(body, note);
+
+        (await SearchAsync(PresentTerm, SearchModes.Keyword)).Should().Contain(r => r.DocumentId == noteId,
+            "復元で元の露出のまま当たる（ADR-0142 決定 4）");
+    }
+
     // 本番の `DocumentUpdatedConsumer` をそのまま回す（購読の配線だけをブローカから外す）。
-    private async Task IngestAsync(Guid documentId, string title, string body,
+    private Task IngestAsync(Guid documentId, string title, string body,
         string? confidentiality = "public")
+        => IngestAsync(body, new DocumentUpdated(
+            DocumentId: documentId,
+            Title: title,
+            Status: "published",
+            MarkdownUri: $"storage://knowledge/{documentId}.md",
+            Attributes: confidentiality is null
+                ? new Dictionary<string, string>()
+                : new Dictionary<string, string> { ["confidentiality"] = confidentiality },
+            Tags: ["段間結合"],
+            UpdatedAt: DateTimeOffset.UtcNow));
+
+    private async Task IngestAsync(string body, DocumentUpdated ev)
     {
         var consumer = new DocumentUpdatedConsumer(
             new FixedContentReader(body),
@@ -231,18 +285,7 @@ public sealed class IngestToSearchInProcessTests : IAsyncLifetime
             new IngestionService.Common.Observability.BodyMissingMetrics(new QdrantTestMeterFactory()),
             NullLogger<DocumentUpdatedConsumer>.Instance);
 
-        await consumer.Handle(
-            new DocumentUpdated(
-                DocumentId: documentId,
-                Title: title,
-                Status: "published",
-                MarkdownUri: $"storage://knowledge/{documentId}.md",
-                Attributes: confidentiality is null
-                    ? new Dictionary<string, string>()
-                    : new Dictionary<string, string> { ["confidentiality"] = confidentiality },
-                Tags: ["段間結合"],
-                UpdatedAt: DateTimeOffset.UtcNow),
-            TestContext.Current.CancellationToken);
+        await consumer.Handle(ev, TestContext.Current.CancellationToken);
     }
 
     private async Task<List<SearchResultDto>> SearchAsync(string query, string? mode = null)

@@ -74,10 +74,12 @@ internal static class ListDocumentPageEndpoint
         DocumentDbContext db, DocumentReadAccess access, CancellationToken ct)
     {
         var shares = await DocumentEndpoints.ResolveSharedWithAsync(db, ledger.Select(d => d.Id).ToList(), ct);
+        // FR-19, IADR-0636 決定 2 (#2138): この口は個人資料を主体に依らず外すが、判定の引数は他の口と同じに渡す（形を割らない）。
+        var deleted = await DocumentEndpoints.ResolveDeletedPrivateNotesAsync(db, ledger.Select(d => d.Id).ToList(), ct);
         var readable = new List<Document>(ledger.Count);
         foreach (var d in ledger)
         {
-            if (await access.CanReadAsync(principal, d, shares.GetValueOrDefault(d.Id), ct))
+            if (await access.CanReadAsync(principal, d, shares.GetValueOrDefault(d.Id), deleted.Contains(d.Id), ct))
                 readable.Add(d);
         }
         return readable;

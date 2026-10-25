@@ -33,6 +33,10 @@ internal static class SetPrivateNoteExposureEndpoint
             if (PrivateNoteEndpoints.SubjectOf(http) is not { } owner) return Results.Unauthorized();
             var note = await PrivateNoteEndpoints.FindOwnedAsync(db, owner, id, ct);
             if (note is null) return Results.NotFound();
+            // 🔴 FR-19, ADR-0142 決定 3, IADR-0636 決定 3 (#2138): **削除中の露出の変更は拒む**（台帳を変えない）。ON にすると削除中の資料が
+            // 載る経路になる。形は同期の push が削除済みへの更新を拒むのと同じ 409（`deleted`・`purgeAt`）。
+            if (note.IsDeleted)
+                return Results.Conflict(new { error = "deleted", purgeAt = note.PurgeAt });
 
             note.SetExposure(req.IncludeInSearch, req.IncludeInGraph, req.IncludeInAi,
                 DateTimeOffset.UtcNow);

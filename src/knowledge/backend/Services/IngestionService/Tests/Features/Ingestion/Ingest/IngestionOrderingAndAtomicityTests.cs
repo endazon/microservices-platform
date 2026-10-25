@@ -54,6 +54,57 @@ public class IngestionOrderingAndAtomicityTests
     private static Task Handle(DocumentUpdatedConsumer consumer, DocumentUpdated ev)
         => consumer.Handle(ev, TestContext.Current.CancellationToken);
 
+    // ── FR-19, ADR-0142 決定 1・4, IADR-0636 (#2138): 論理削除（撤収の形）と復元。どちらも版（UpdatedAt）を進めない ──
+
+    // 個人資料（横断検索 ON・共有あり）の更新。撤収の形は DocumentService の唯一の発行点と同じ関数（`DocumentExposure.WithAllExcluded`）で作る。
+    private static DocumentUpdated NoteEvent(DateTimeOffset updatedAt, bool withdrawn)
+    {
+        var attributes = new Dictionary<string, string>
+        {
+            [DocumentScopes.Key] = DocumentScopes.PrivateNote,
+            ["owner"] = "alice",
+            ["confidentiality"] = "internal",
+        };
+        foreach (var (key, value) in DocumentExposure.Project(includeInSearch: true, includeInGraph: false, includeInAi: true))
+            attributes[key] = value;
+        return new(DocId, "個人メモ", "normalized", "storage://b/note.md",
+            withdrawn ? DocumentExposure.WithAllExcluded(attributes) : attributes, [], updatedAt, SharedWith: ["bob"]);
+    }
+
+    [Fact]
+    public async Task 論理削除の撤収で全索引から消え_同じ版の復元で載り直す()
+    {
+        var index = new StatefulIndex();
+        var consumer = Build(index, new ScriptedReader(TwoChunks));
+
+        await Handle(consumer, NoteEvent(V1, withdrawn: false));
+        index.PointsOf(DocId).Should().NotBeEmpty("陽性対照: 削除の前は共有先の検索に載る");
+
+        await Handle(consumer, NoteEvent(V1, withdrawn: true));
+        index.PointsOf(DocId).Should().BeEmpty("論理削除は全コレクション（語彙索引を含む）から点を消す");
+
+        // 🔴 境界: 復元は版を進めない（撤収と同じ版）。等しい版は反映する（IADR-0595）ので、載り直す。
+        await Handle(consumer, NoteEvent(V1, withdrawn: false));
+        index.PointsOf(DocId).Should().NotBeEmpty("復元で元の露出のまま載り直す（ADR-0142 決定 4）");
+        index.PointsOf(DocId).Should().OnlyContain(p => p.UpdatedAtMs == V1.ToUnixTimeMilliseconds());
+    }
+
+    // 撤収の後に古い版（削除の前に出た更新の再配送）が届いても載り直さない。
+    [Fact]
+    public async Task 論理削除の撤収の後に古い版が届いても載り直さない()
+    {
+        var index = new StatefulIndex();
+        var consumer = Build(index, new ScriptedReader(TwoChunks));
+
+        await Handle(consumer, NoteEvent(V2, withdrawn: false));
+        await Handle(consumer, NoteEvent(V2, withdrawn: true));
+        index.PointsOf(DocId).Should().BeEmpty();
+
+        await Handle(consumer, NoteEvent(V1, withdrawn: false));
+
+        index.PointsOf(DocId).Should().BeEmpty("撤収した版より古い更新は反映しない");
+    }
+
     // ── 到着順の逆転 ──
 
     // 🔴 GraphService の「保持中より古いイベントは適用されない_厳格化後に緩和が復活しない」を取り込みへ写す。
