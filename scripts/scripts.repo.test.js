@@ -13728,8 +13728,10 @@ exit $RC
             { id: 'p3', name: null },
             ...(sc.noOwnerPolicy ? [] : [{ id: 'p0', name: 'dev: 所有者は自分の文書を読める', action: 'read', isActive: true,
               documentConditions: { owner: ['\${current_user}'] } }]) ],
-          '/bff/datasources': [ { id: 's1', name: 'e2e_r1-source' }, { id: 's2', name: 'e2e-r1-source' } ],
-          '/bff/admin/mcp-clients': [ { clientId: 'c1', displayName: 'e2e-r1-mcp' }, { clientId: 'c2', displayName: 'prod-agent' } ],
+          '/bff/datasources': [ { id: 's1', name: 'e2e_r1-source', status: 'active' }, { id: 's2', name: 'e2e-r1-source', status: 'active' },
+            { id: 's3', name: 'e2e-r1-old-source', status: 'disabled' } ],
+          '/bff/admin/mcp-clients': [ { clientId: 'c1', displayName: 'e2e-r1-mcp', enabled: true }, { clientId: 'c2', displayName: 'prod-agent', enabled: true },
+            { clientId: 'c3', displayName: 'e2e-r1-old-mcp', enabled: false } ],
           '/bff/tags': { tags: [ { id: 't1', name: 'e2e-r1-tag' }, { id: 't2', name: '営業' }, { id: 't3', name: 'e2e' } ] },
         };
         // 個人資料は本人のものだけが見える（役割ごとに違う一覧）。
@@ -13778,7 +13780,11 @@ exit $RC
       assert.deepStrictEqual([...new Set(out.calls.map((c) => c.method))], ['GET'], 'dry-run が GET 以外を送った');
       const listed = out.logs.filter((l) => /^ {2}- /.test(l)).map((l) => l.split(' ')[3]);
       assert.deepStrictEqual(new Set(listed), new Set([...E2E_IDS, 'c1']), '列挙が e2e- の一致と違う');
-      assert.ok(out.logs.some((l) => l.includes('dry-run: 残骸 8 件（消すには')), out.logs.join('\n'));
+      assert.ok(out.logs.some((l) => l.includes('dry-run: 残骸 8 件・後始末済み 2 件（残骸に数えない）（消すには')), out.logs.join('\n'));
+      // #2032 / IADR-0631: 削除の口が無い種類の無効化済み（データソース s3・MCP クライアント c3）は後始末済みで、残骸に数えない。
+      const settled = out.logs.filter((l) => /^ {2}= /.test(l)).map((l) => l.split(' ')[3]);
+      assert.deepStrictEqual(settled, ['s3', 'c3'], '無効化済みを後始末済みとして列挙していない');
+      assert.ok(out.logs.some((l) => l.includes('datasources: 一致 1 件・後始末済み 1 件（一覧 3 件')), out.logs.join('\n'));
       // 視点: 個人資料は e2e-revocable を除く 5 役割の一覧を取り（本人のものだけが見える。IADR-0630 決定 5）、他の種類は e2e-admin だけ。
       assert.deepStrictEqual(out.calls.filter((c) => c.path === '/bff/private-notes').map((c) => c.role), ['user', 'operator', 'admin', 'noaccess', 'trading-owner']);
       assert.ok(out.logs.some((l) => l.includes('private-notes: 一致 3 件（一覧 5 件・視点: e2e-user, e2e-operator, e2e-admin, e2e-noaccess, e2e-trading-owner）')), out.logs.join('\n'));
@@ -13791,8 +13797,9 @@ exit $RC
       const out = runSweep([...target, '--delete']);
       assert.strictEqual(out.code, 0, out.logs.join('\n'));
       const writes = out.calls.filter((c) => c.method !== 'GET');
-      const ids = writes.map((c) => (c.body ? c.body.ids.join(',') : c.path.split('/').pop()));
-      for (const id of ids) assert.ok(E2E_IDS.has(id), `e2e- でないもの（${id}）へ消す要求を送った`);
+      const ids = writes.map((c) => (c.body ? c.body.ids.join(',') : c.path.replace(/\/disable$/, '').split('/').pop()));
+      for (const id of ids) assert.ok(E2E_IDS.has(id) || id === 'c1', `e2e- でないもの（${id}）へ消す要求を送った`);
+      assert.ok(!ids.includes('s3') && !ids.includes('c3'), '後始末済み（無効化済み）へ消す要求を送った');
       assert.deepStrictEqual(
         writes.map((c) => `${c.method} ${c.path}${c.body ? ' ' + c.body.ids.join(',') : ''}`),
         [
@@ -13802,16 +13809,18 @@ exit $RC
           'DELETE /bff/private-notes/o1', 'POST /bff/private-notes/purge o1',
           'DELETE /bff/admin/authz/policies/p2',
           'DELETE /bff/datasources/s2',
+          'POST /bff/admin/mcp-clients/c1/disable',
           'DELETE /bff/tags/t1',
         ],
         '消す要求の集合・順（タグは最後）が違う',
       );
       assert.ok(writes.every((c) => c.csrf === '1'), '状態変更に X-MSP-CSRF が無い');
       // 個人資料は見えた本人で消し、他の種類は e2e-admin で消す。他ドメインの cookie は送らない。
-      assert.deepStrictEqual(writes.map((c) => c.role), ['admin', 'user', 'user', 'user', 'operator', 'operator', 'admin', 'admin', 'admin']);
+      assert.deepStrictEqual(writes.map((c) => c.role), ['admin', 'user', 'user', 'user', 'operator', 'operator', 'admin', 'admin', 'admin', 'admin']);
       assert.ok(out.calls.every((c) => /^__Host-msp-session=[a-z-]+$/.test(c.cookie)), '到達先でない cookie を送った');
       assert.ok(out.calls.filter((c) => !c.path.startsWith('/bff/private-notes')).every((c) => c.role === 'admin'), '管理の種類を admin 以外で読んだ');
-      assert.ok(out.logs.some((l) => l.includes('c1 e2e-r1-mcp（消す口が無い。残る）')), 'MCP クライアントが残ることを示していない');
+      // MCP クライアントは削除の口が無いので無効化を送る（IADR-0631 決定 1）。
+      assert.ok(out.logs.some((l) => l.includes('c1 e2e-r1-mcp（e2e-admin で消した）')), 'MCP クライアントを無効化していない');
     });
 
     ok('#2030: 消せないものがあっても残りを続けて exit 1、404 は消えた扱い', () => {
@@ -13834,7 +13843,7 @@ exit $RC
       const text = dry.logs.join('\n');
       assert.match(text, /見ていない視点: e2e-noaccess, e2e-trading-owner/);
       assert.match(text, /private-notes@e2e-noaccess: セッションが無効（401）/);
-      assert.match(text, /残骸 8 件（ただし見ていない視点 2: この視点の残骸は数えていない）/);
+      assert.match(text, /残骸 8 件（ただし見ていない視点 2: この視点の残骸は数えていない）・後始末済み 2 件/);
       assert.strictEqual(runSweep([...target, '--delete'], sc).code, 1, '消す実行で視点が欠けたのに exit 0');
       // 文書: 「所有者は自分の文書を読める」が無ければ admin の一覧は admin が作った文書を含まない → 文書の一覧を数えずに欠けとして出す。
       const noOwner = runSweep(target, { noOwnerPolicy: true });

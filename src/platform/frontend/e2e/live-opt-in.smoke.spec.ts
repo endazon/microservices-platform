@@ -20,6 +20,7 @@ import { createCleanup, creatorRole, e2eName } from './live/support/cleanup';
 import { assertDisposableStack, prepareIssuedSecretsFile } from './live/support/readiness';
 import { createRequire } from 'node:module';
 import { recordIssuedSecret } from './live/support/issuedSecrets';
+import { normalizeRows } from './live/support/dictionaries';
 import { submitOtp, submitPassword } from './live/support/login';
 import { stateFile } from './live/support/env';
 
@@ -751,4 +752,25 @@ test('発行された値（端末トークン）は 0600 のファイルへ記�
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('辞書の突き合わせは e2e- の行と件数の項目を除き、id の無い行も安定したキー（id・key・name・行の JSON）で並べる（#2238 / IADR-0631 決定 4）', () => {
+  const rows = [
+    { name: 'b-tag', usageCount: 3 },
+    { key: 'clearance', scope: 'user' },
+    { id: 'p1', name: 'dev: public 取扱者は public を読める' },
+    { name: 'e2e-r1-tag', usageCount: 0 },
+    { layer: 'x', isSeed: true },
+    { name: 'a-tag', usageCount: 1 },
+  ];
+  const forward = normalizeRows(rows);
+  // id の無い行を含めて逆順で返されても差分にならない。件数（usageCount）が変わっても差分にならない。
+  expect(normalizeRows([...rows].reverse())).toEqual(forward);
+  expect(
+    normalizeRows(rows.map((r) => ('usageCount' in r ? { ...r, usageCount: 99 } : r))),
+  ).toEqual(forward);
+  // 試験が作る行（e2e-）は比べない。中身（件数以外）の違いは差分になる。
+  expect(forward.map((r) => r.name ?? r.key ?? 'json')).not.toContain('e2e-r1-tag');
+  expect(forward.some((r) => 'usageCount' in r)).toBe(false);
+  expect(normalizeRows([...rows, { name: 'c-tag' }])).not.toEqual(forward);
 });

@@ -58,6 +58,7 @@ const ALL_ROLES = ['user', 'operator', 'admin', 'noaccess', 'revocable', 'tradin
  * 🔴 **視点**（#2234 のレビュー）: `viewers` は、その種類を**作り得る役割すべて**（BFF の作成の口の x-roles。docs/api/openapi.yaml）
  * のうち一覧を読める役割である。一覧は役割ごとに取り、**ID の和集合**で判定する。`deleter` は消す役割（`'viewer'` なら見えた役割）。
  *   - 文書・ABAC ポリシー・データソース・タグ・MCP クライアント: 作成は platform-admin だけ → 視点は e2e-admin だけ。
+ *     データソースと MCP クライアントは削除の口が無い（無効化だけ）。`settled` が真の行（無効化済み）は後始末済みとして数えない（IADR-0631）。
  *     文書の一覧は ABAC で絞られる。admin が自分で作った文書が admin に見えるのは seed の「所有者は自分の文書を読める」
  *     （action read・`owner: ${current_user}`）があるときだけなので、`precondition` で毎回確かめ、無ければ視点の欠けとして出す。
  *   - 個人資料: 作成は認証だけ（全役割）で、一覧は**本人のものだけ** → 視点は e2e-revocable を除く 5 役割。消すのは見えた本人。
@@ -129,8 +130,10 @@ const KINDS = [
     async list(get) {
       const body = await get('/bff/datasources');
       if (!Array.isArray(body)) throw new Error('一覧の形が違う（配列）');
-      return body.map((s) => ({ id: s.id, name: s.name }));
+      return body.map((s) => ({ id: s.id, name: s.name, status: s.status }));
     },
+    // 🔴 DELETE は実体を消さず status を disabled にする（DataSource.Disable()）。行は残るので、無効化済みは後始末済み（IADR-0631 決定 1）。
+    settled: (item) => item.status === 'disabled',
     remove: (item) => [{ method: 'DELETE', path: `/bff/datasources/${enc(item.id)}` }],
   },
   {
@@ -140,10 +143,11 @@ const KINDS = [
     async list(get) {
       const body = await get('/bff/admin/mcp-clients');
       if (!Array.isArray(body)) throw new Error('一覧の形が違う（配列）');
-      return body.map((c) => ({ id: c.clientId, name: c.displayName }));
+      return body.map((c) => ({ id: c.clientId, name: c.displayName, enabled: c.enabled }));
     },
-    // BFF に削除の口が無い（無効化だけ）。列挙して残ることを示す。
-    remove: null,
+    // 🔴 BFF に削除の口が無い（無効化だけ。何度送っても 200）。無効化済みは後始末済み、無効化されていなければ無効化を送る（IADR-0631 決定 1）。
+    settled: (item) => item.enabled === false,
+    remove: (item) => [{ method: 'POST', path: `/bff/admin/mcp-clients/${enc(item.id)}/disable` }],
   },
   {
     kind: 'tags',
@@ -216,6 +220,8 @@ async function sweep(opts, deps) {
   const failures = [];
   let found = 0;
   let removed = 0;
+  /** 後始末済み（削除の口が無く無効化済み）の件数。残骸とは別に出す —— 使い捨てのスタックの外で増えていたら気付けるように（IADR-0631 決定 1）。 */
+  let settledTotal = 0;
 
   const send = async (role, method, p, body) => {
     if (dryRun && method !== 'GET') throw new Error(`dry-run なのに ${method} を送ろうとした（${p}）`);
@@ -272,10 +278,15 @@ async function sweep(opts, deps) {
         else failures.push(`${k.kind}@e2e-${role}: 一覧を読めない（${e.message}）`);
       }
     }
-    const matched = [...seen.values()].filter((e) => isSweepable(e.item.name));
+    const all = [...seen.values()].filter((e) => isSweepable(e.item.name));
+    // 削除の口が無い種類（データソース・MCP クライアント）の無効化済みは「後始末済み」として列挙し、残骸に数えない（IADR-0631 決定 1）。
+    const settledOnes = k.settled ? all.filter((e) => k.settled(e.item)) : [];
+    const matched = all.filter((e) => !settledOnes.includes(e));
     found += matched.length;
+    settledTotal += settledOnes.length;
+    for (const { item: it } of settledOnes) log(`  = ${it.id} ${it.name}（後始末済み: 無効化。削除の口が無いので行は残る）`);
     log(
-      `${TAG} ${k.kind}: 一致 ${matched.length} 件（一覧 ${seen.size} 件・視点: ${looked.map((r) => `e2e-${r}`).join(', ') || 'なし'}` +
+      `${TAG} ${k.kind}: 一致 ${matched.length} 件${settledOnes.length ? `・後始末済み ${settledOnes.length} 件` : ''}（一覧 ${seen.size} 件・視点: ${looked.map((r) => `e2e-${r}`).join(', ') || 'なし'}` +
         `${looked.length < k.viewers.length ? `／見ていない視点: ${k.viewers.filter((r) => !looked.includes(r)).map((r) => `e2e-${r}`).join(', ')}` : ''}）`,
     );
     for (const { item: it, seenBy } of matched) {
@@ -317,7 +328,9 @@ async function sweep(opts, deps) {
     }
   }
 
-  const gapNote = gaps.length ? `（ただし見ていない視点 ${gaps.length}: この視点の残骸は数えていない）` : '';
+  const gapNote =
+    (gaps.length ? `（ただし見ていない視点 ${gaps.length}: この視点の残骸は数えていない）` : '') +
+    `・後始末済み ${settledTotal} 件（残骸に数えない）`;
   if (gaps.length) log(`${TAG} ⚠ 見ていない視点:\n  - ${gaps.join('\n  - ')}`);
   if (dryRun) {
     log(found ? `${TAG} ⚠ dry-run: 残骸 ${found} 件${gapNote}（消すには --delete）` : `${TAG} dry-run: 残骸 0 件${gapNote}`);
