@@ -297,17 +297,10 @@ public class PrivateNoteSoftDeleteWithdrawalTests(TestWebApplicationFactory fact
         var session = failing.CreateClient();
         session.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, a.Owner);
 
-        HttpStatusCode? status = null;
-        try
-        {
-            status = (await session.DeleteAsync($"/private-notes/{noteId}", Ct)).StatusCode;
-        }
-        catch (InvalidOperationException ex)
-        {
-            // TestServer は端点の未処理例外を呼び出し側へそのまま投げる。
-            ex.Message.Should().Contain("試験の注入");
-        }
-        status.Should().NotBe(HttpStatusCode.OK, "確定していない削除を成功と返さない");
+        // TestServer は端点の未処理例外を呼び出し側へそのまま投げる（確定していない削除を成功と返さない）。
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.DeleteAsync($"/private-notes/{noteId}", Ct));
+        thrown.Message.Should().Contain("試験の注入");
 
         (await LedgerAsync(a.Session, noteId)).Deleted.Should().BeFalse("確定が失敗すれば削除の印も残らない");
         UpdatesFor(noteId).Count.Should().Be(before);
