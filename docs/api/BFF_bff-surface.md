@@ -3,7 +3,7 @@ title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-05
-updated: 2026-10-24
+updated: 2026-10-26
 author: Claude
 ---
 <!-- trace:
@@ -269,7 +269,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | **RFC7807 `ProblemDetails`** | 参照中削除の 409 | `DELETE /bff/admin/authz/attributes/{id}`（`detail` に参照元ポリシー名） |
 | **素の JSON** | 楽観ロック・状態遷移の 409 | `PUT /bff/documents/{id}`（`version_conflict`）／`POST …/publish`（`invalid_transition`） |
 | **本文あり（透過）** | 再変換の 409 | `POST /bff/conversion/jobs/{id}/retry`（`not_retryable` / **`corrections_would_be_lost` ＋ `correctedFigures`**） |
-| **本文あり（透過）** | 人手補正の 409 | `POST /bff/conversion/jobs/{id}/figures/{figureId}/correction`（`figure_not_correctable` / `job_busy` / `body_unavailable`） |
+| **本文あり（透過）** | 人手補正の 409 | `POST /bff/conversion/jobs/{id}/figures/{figureId}/correction`（`figure_not_correctable` / `job_busy` / `body_unavailable` / **`job_changed` ＋ `status`**） |
 
 `apiClient.parseProblemDetails` は 400 / 409 のとき本文から人間可読なメッセージ群を抽出し、
 `ApiError.details` に載せる（`errors` の配列 → `detail` → `title` の順で拾う）。
