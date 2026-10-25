@@ -173,8 +173,15 @@ function watchKeycloakFailures(page: Page, notes: string[], failures: string[]):
   });
   page.on('response', (r) => {
     const url = new URL(r.url());
-    if (url.origin !== cfg.kcUrl || r.status() < 400) return;
-    const line = `keycloak ${r.request().method()} ${url.pathname} → ${r.status()}`;
+    // 🔴 origin で絞らない（#2034 の調べ: kcUrl に限ると、別の origin へ向いた要求の失敗を取りこぼした）。トークンの受け取りは
+    // 成否によらず残す（status だけ。本文はトークンなので、誤りのときだけ error の種類を読む）。
+    const isToken = url.pathname.endsWith('/protocol/openid-connect/token');
+    if (r.status() < 400 && !isToken) return;
+    const line = `${r.request().method()} ${url.origin}${url.pathname} → ${r.status()}`;
+    if (r.status() < 400) {
+      notes.push(line);
+      return;
+    }
     void r
       .json()
       .then(
@@ -210,13 +217,24 @@ async function loginToAccount(page: Page, notes: string[]): Promise<unknown> {
       new URL(r.url()).searchParams.has('userProfileMetadata'),
     { timeout: 90_000 },
   );
+  notes.push('step: アカウントコンソールを開く');
   await page.goto(`${cfg.kcUrl}${ACCOUNT_PATH}`);
+  notes.push('step: パスワード');
   await submitPassword(page, USERNAME, creds.password);
   const { code } = await nextPeriodOtp(creds.totpSecret);
+  notes.push('step: OTP');
   await submitOtp(page, code);
-  await page.waitForURL((url) => url.origin === cfg.kcUrl && url.pathname.startsWith(ACCOUNT_PATH));
+  await page.waitForURL(
+    (url) => url.origin === cfg.kcUrl && url.pathname.startsWith(ACCOUNT_PATH),
+    {
+      waitUntil: 'commit',
+    },
+  );
+  notes.push('step: アカウントコンソールへ戻った（個人情報の応答か誤りの画面を待つ）');
   const consoleError = page
-    .locator('.pf-v5-c-alert.pf-m-danger')
+    // 誤りの画面は Alert ではなく、danger の題のアイコンを持つ Modal（keycloak-ui-shared の ErrorPage）。#2034 の調べで
+    // Alert の class に固定して外した。アカウントコンソールは開いた直後に dialog を出さないので、dialog が出たら誤りの画面とみなす。
+    .getByRole('dialog')
     .waitFor({ state: 'visible', timeout: 90_000 })
     .then(() => 'error' as const)
     // 個人情報が先に届いた後の時間切れは、待っていないだけ（落とさない）。
