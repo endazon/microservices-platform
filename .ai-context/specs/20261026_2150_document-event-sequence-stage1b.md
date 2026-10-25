@@ -96,10 +96,10 @@ plan_refs:
 
 - [x] 改名は 1 回負けても読み直して確定する。やり直した再発行は、勝った側の後の連番と新しい名前を運ぶ。
 - [x] 改名は上限まで負けたら、409 と SC-09 が出す文言を返す。改名の再発行は 1 通も出ない。
-- [ ] 実 PostgreSQL で、上限まで負けた改名は辞書の名前ごと巻き戻る。同じ要求の再送で確定する（`Knowledge.IntegrationTests` の `DocumentBatchCommitRetryTests`）。**根拠: Integration run 40210322433 待ち**（dispatch はコーディネーター）。
+- [x] 実 PostgreSQL で、上限まで負けた改名は辞書の名前ごと巻き戻る。同じ要求の再送で確定する（`Knowledge.IntegrationTests` の `DocumentBatchCommitRetryTests`）。**根拠: Integration run 40211167540（a26f5c68）で合格**。
 - [x] 改名済みの名前への再送は、辞書を変えずに再発行だけを行う（冪等）。
 - [x] 再発行は 1 回負けても読み直して確定する。上限まで負けたら、負けたページの先頭のカーソルを返す。そこからの再開で、そのページを発行する（単体）。
-- [ ] 同じことを実 PostgreSQL で確かめる（`DocumentBatchCommitRetryTests`）。**根拠: Integration run 40210322433 待ち**。
+- [x] 同じことを実 PostgreSQL で確かめる（`DocumentBatchCommitRetryTests`）。**根拠: Integration run 40211167540（a26f5c68）で合格**。
 - [x] SC-09 は、改名の 409 の `message` を既存の経路で出す。
   - `apiClient` が本文の `message` を `details` に入れる。
   - 画面はそれを出し、使用件数の 409 と取り違えない。
