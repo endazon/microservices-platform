@@ -712,3 +712,4 @@
 | [IADR-0632](./IADR-0632_live-rw-revocation-last-project.md) | e2e-revocable を無効化して全セッションを失効させる試験は専用の project で、同じ実行の live-ro・live-rw の後に流し、後始末の有効化が戻らなければ赤にする（#2033） | Accepted |
 | [IADR-0633](./IADR-0633_bff-keyring-connection-no-cached-failure.md) | BFF のセッションストアへの遅延接続は失敗を覚えない形（PublicationOnly）を 1 か所に置き、鍵リングとヘルスチェックが同じものを使う。AbortOnConnectFail は既定のまま（#2242） | Accepted |
 | [IADR-0634](./IADR-0634_live-rw-reset-request-and-account-console.md) | live-rw のリセット申請はパスワードを変えずメールの受信までとし、リンクは発行値として記録する。アカウントコンソールは読み取り中心で、書き込みは自分で作ったセッションの個別サインアウトだけ（#2034） | Accepted |
+| [IADR-0635](./IADR-0635_e2e-live-paths-system-under-test.md) | e2e-live の pull_request.paths は試験される側（スタックが建てるイメージの中身・起動器と配備物）まで覆い、イメージに入らない変更と e2e-live の旗で当たらない配備物は外す（#2244） | Accepted |
