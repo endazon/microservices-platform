@@ -131,8 +131,12 @@ public sealed class DocumentTagWriteGrpcService(
     // REST の状態コードと 1:1（200 / 400 / 404）。
     // 🔴 **`UNSPECIFIED` を返す枝を作らない** —— 既定値が線上へ出ると、呼び出し元は
     // それを `Unavailable` として扱う（成功に化けさせないための既定である）。
+    // FR-02, IADR-0637 決定 7 (#2150 段 1c): 並行する確定に負けたら `ABORTED`（やり直せる失敗）を投げる。既定の枝（`NOT_WRITABLE`）へ
+    // 落とさない —— 落とすと「その文書は書けない」に化ける。proto の結果の値は足さない（graph はどの RpcException も 502 として承認を確定しない）。
     internal static TagWriteResult ToProto(AddDocumentTagStatus status) => status switch
     {
+        AddDocumentTagStatus.VersionConflict => throw new RpcException(new Status(StatusCode.Aborted,
+            "version_conflict: 並行する文書の確定に負けました。やり直してください。")),
         AddDocumentTagStatus.Applied => TagWriteResult.Applied,
         AddDocumentTagStatus.UnknownTag => TagWriteResult.UnknownTag,
         _ => TagWriteResult.NotWritable,

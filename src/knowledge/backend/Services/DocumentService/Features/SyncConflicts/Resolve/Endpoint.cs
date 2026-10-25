@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Text;
 using DocumentService.Domain;
 using DocumentService.Domain.Ports;
@@ -99,10 +100,20 @@ internal static class ResolveSyncConflictEndpoint
             // #1474: 確定した後に門を通す（`local` は元の資料・`both` は別名資料）。
             // FR-20, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
             // 確定が失敗すれば例外がそのまま出て、下の使用量・監査へ進まない（解決していない競合を記録しない）。
-            if (written is not null)
-                await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, written, ct);
-            else
-                await db.SaveChangesAsync(ct);
+            // FR-02, [[IADR-0597]] / IADR-0637 決定 7 (#2150 段 1c): 負け得るのは元の資料を書く `local` だけである（`both` は別名資料の新規作成、
+            // `server` は競合の記録だけ）。負けたら競合の解決ごと巻き戻り、409 `version_conflict` を返す（競合は未解決のまま残り、選び直せる）。
+            // `local` の本文のオブジェクトは上で上書き済みで戻らない（PutBody と同じ既存の性質）。
+            try
+            {
+                if (written is not null)
+                    await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, written, ct);
+                else
+                    await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+            {
+                return await DocumentVersionConflict.AfterLostSaveAsync(db, doc.Id, expectedVersion: null, ct);
+            }
 
             // FR-22 ②: `both` で使用量が増えるため、警告の跨ぎを再評価する。
             await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);

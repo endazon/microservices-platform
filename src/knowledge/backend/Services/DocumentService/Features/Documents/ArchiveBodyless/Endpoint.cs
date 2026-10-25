@@ -126,7 +126,15 @@ internal static class ArchiveBodylessDocumentsEndpoint
             {
                 foreach (var doc in missing) doc.Archive(ChangeNote);
                 // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 対象全件の保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
-                await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, missing, ct);
+                try
+                {
+                    await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, missing, ct);
+                }
+                catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+                {
+                    // FR-02, IADR-0637 決定 7 (#2150 段 1c): ページの確定が並行トークンに負けた。ページは 1 件も確定していない（発行も出ない）。
+                    return DocumentVersionConflict.ProblemForBatch(DocumentVersionConflict.BatchPageConflictMessage);
+                }
 
                 foreach (var doc in missing)
                 {

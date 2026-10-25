@@ -1698,7 +1698,7 @@ paths:
         "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
         "404": { description: 不在またはスコープ外（存在秘匿） }
         "409":
-          description: "不正な状態遷移（例 archived → published）"
+          description: "不正な状態遷移（例 archived → published）。または、確定が並行する文書の確定に負けた（`error: version_conflict`。IADR-0637 決定 7。本文の形は版の競合と同じ）"
           content:
             application/json:
               schema:
@@ -2313,6 +2313,8 @@ paths:
           description: 未認証
         "403":
           description: 管理者でない
+        "409":
+          description: "ページの確定が並行する文書の確定に負けた（`error: version_conflict` と `message`）。このページは 1 件も確定していない。同じ要求（同じカーソル）を再送する（IADR-0637 決定 7）"
         "502":
           description: 本文の存在確認が NoSuchKey 以外で失敗した（バケットが無い・5xx・時間切れ。そのページは何もアーカイブしない）
         "503":
@@ -2367,6 +2369,8 @@ paths:
           description: 未認証
         "403":
           description: 管理者でない
+        "409":
+          description: "ページの確定が並行する文書の確定に負けた（`error: version_conflict` と `message`）。このページは 1 件も確定していない。同じ要求（同じカーソル）を再送する（IADR-0637 決定 7）"
 
   /documents/strip-untrusted-boundary:
     post:
@@ -2436,6 +2440,8 @@ paths:
           description: 未認証
         "403":
           description: 管理者でない
+        "409":
+          description: "ページの確定が並行する文書の確定に負けた（`error: version_conflict` と `message`）。このページは 1 件も確定していない。同じ要求（同じカーソル）を再送する（IADR-0637 決定 7）"
         "502":
           description: 本文の読み取り（キーの欠落以外）または書き込みが失敗した（そのページは何も書き換えない）
         "503":
@@ -2537,6 +2543,8 @@ paths:
           description: 公開成功
         "404":
           description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
+        "409":
+          description: "確定が並行する文書の確定に負けた（`error: version_conflict`・`expectedVersion`・`currentVersion`。何も確定していない。IADR-0637 決定 7）"
 
   /documents/{id}/archive:
     post:
@@ -2550,6 +2558,8 @@ paths:
           description: アーカイブ成功（status=archived の DocumentUpdated を発行）
         "404":
           description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
+        "409":
+          description: "確定が並行する文書の確定に負けた（`error: version_conflict`・`expectedVersion`・`currentVersion`。何も確定していない。IADR-0637 決定 7）"
 
   /documents/{id}/versions:
     get:
@@ -3732,7 +3742,7 @@ paths:
         "401": { description: 未認証 }
         "403": { description: write 許可ポリシーが無い }
         "404": { description: 不在または他人の資料が混じっている（区別しない） }
-        "409": { description: 削除済みでない資料が混じっている（`not_deleted`） }
+        "409": { description: "削除済みでない資料が混じっている（`not_deleted`）。または、確定が並行する確定に負けた（`version_conflict` と `message`。本文の実体は消えている場合があるが資料は削除済みのまま残る。再送で片付く。IADR-0637 決定 7）" }
 
   /bff/private-notes/devices:
     get:
@@ -3961,7 +3971,7 @@ paths:
         "401": { description: 未認証 }
         "403": { description: write スコープが無い }
         "404": { description: 不在・他人の競合（区別しない） }
-        "409": { description: 解決済みの競合 }
+        "409": { description: "解決済みの競合。または、`local` の確定が並行する確定に負けた（`version_conflict`。解決は巻き戻り、選び直せる。IADR-0637 決定 7）" }
         "507": { description: both の別名資料が保存容量の上限で作れない（ProblemDetails） }
 
   # ── SC-17, FR-05, FR-09, UC-05, ADR-0026: 利用者アカウント管理 BFF ─
