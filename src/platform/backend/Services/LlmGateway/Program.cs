@@ -78,8 +78,12 @@ builder.Services.AddSingleton(sp => AnthropicClientFactory.Create(
 builder.Services.AddHttpClient();
 
 // FR-11, ADR-0010: 呼び出し先の切り替え（機密区分×ティアの越境マトリクス + 用途別モデル）。
-builder.Services.Configure<LlmRoutingOptions>(
-    builder.Configuration.GetSection(LlmRoutingOptions.SectionName));
+// FR-11, IADR-0641 (#2136): Claude のエンドポイントが有効なのに `Llm:ApiKey` が空なら起動時に落とす
+// （従前は最初の呼び出しの 401 で初めて分かった）。鍵なしの検証スタックは `Llm:AllowMissingApiKey=true` を明示する。
+builder.Services.AddOptions<LlmRoutingOptions>()
+    .Bind(builder.Configuration.GetSection(LlmRoutingOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<LlmRoutingOptions>, ClaudeApiKeyStartupValidator>();
 builder.Services.AddSingleton<ILlmRouter, LlmRouter>();
 
 // FR-11: ルーターの判定に従って呼び出し先を切り替えるため、プロバイダをキー付きで登録する。
@@ -157,6 +161,24 @@ app.Services.GetRequiredService<LlmBudgetMetrics>();
                 + "表層の文字 3-gram のみで意味的な近さを持たず、検索品質は保証されません。"
                 + "使い捨ての検証スタック専用です（#992 / IADR-0313）。",
                 deterministic.Name, deterministic.Model, deterministic.Dimensions, deterministic.Collection);
+    }
+}
+
+// FR-11, IADR-0641 (#2136): 明示の opt-out で鍵なしのまま起動したことを、起動時に 1 行残す（鍵の値は出さない）。
+{
+    var routing = app.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value;
+    var enabledClaude = ClaudeApiKeyStartupValidator.EnabledClaudeEndpoints(routing);
+    if (enabledClaude.Count > 0
+        && ClaudeApiKeyStartupValidator.IsKeyMissing(app.Configuration)
+        && ClaudeApiKeyStartupValidator.IsMissingKeyAllowed(app.Configuration))
+    {
+        app.Services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("LlmGateway.Startup")
+            .LogWarning(
+                "Claude のエンドポイント（{Endpoints}）が有効だが {ApiKeyConfigKey} が空のまま、{AllowMissingConfigKey}=true で起動した。"
+                + "Claude への呼び出しは 401 で失敗する。鍵なしの検証スタック専用である（#2136 / IADR-0641）。",
+                string.Join(", ", enabledClaude), AnthropicClientFactory.ApiKeyConfigKey,
+                ClaudeApiKeyStartupValidator.AllowMissingConfigKey);
     }
 }
 

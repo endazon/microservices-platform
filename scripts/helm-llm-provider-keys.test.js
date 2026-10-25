@@ -27,6 +27,8 @@
  *      作るときは全プロパティを空で作り、鍵を `sh -c` の引数へ埋め込まない（#1764 監査）、
  *      ESO 無しの手動 Secret（k8s-local-up.sh）も voyage-api-key を持つ。
  *   6. 変異: リテラルの値・別のワークロードへの混入・Llm__ApiKey の欠落を、実際に `helm template` で描かせると本試験の判定が赤になる。
+ *   7. ［2026-10-26 / #2136・IADR-0641］鍵なしの起動の opt-out（`Llm__AllowMissingApiKey`）は values-local の描画にだけ
+ *      `value: "true"` で 1 回現れ、既定（本番像）の描画には現れない（本番に紛れると、空の鍵で起動が止まらなくなる）。
  *
  * 🔴 **helm が無ければ落ちる（fail-closed）。** helm-synthetic-monitor.test.js と同じ理由（黙って飛ばすと
  *    「検査していない」と「問題が無い」が同じ出力になる）。CI は static-checks-units（azure/setup-helm 済み）で走らせる。
@@ -137,6 +139,28 @@ function checkRender(rendered) {
   return errors;
 }
 
+// FR-11, IADR-0641 (#2136): 鍵なしの起動の opt-out。置いてよいのは鍵なしで動かす検証スタック（values-local）だけ。
+const OPT_OUT_ENV = 'Llm__AllowMissingApiKey';
+
+/** opt-out の置き場の判定器。expected=true なら llmgateway-service に value "true" で 1 回、false なら描画物のどこにも無い。 */
+function checkOptOut(rendered, expected) {
+  const errors = [];
+  const hits = [];
+  for (const d of documents(rendered)) {
+    for (const e of envEntries(d.text, OPT_OUT_ENV)) hits.push({ ...d, entry: e });
+  }
+  if (!expected) {
+    if (hits.length !== 0) errors.push(`${OPT_OUT_ENV} が本番像の描画に現れた（${hits.map((h) => `${h.kind}/${h.name}`).join(', ')}）。空の鍵で起動が止まらなくなる`);
+    return errors;
+  }
+  if (hits.length !== 1) errors.push(`${OPT_OUT_ENV} の出現が ${hits.length} 回（期待は ${OWNER} の 1 回）`);
+  for (const h of hits) {
+    if (!(h.kind === 'Deployment' && h.name === OWNER)) errors.push(`${OPT_OUT_ENV} が ${h.kind}/${h.name} に現れた`);
+    if (!/^\s*value:\s*"true"\s*$/m.test(h.entry)) errors.push(`${OPT_OUT_ENV} の値が "true" ではない:\n${h.entry}`);
+  }
+  return errors;
+}
+
 /** ExternalSecret の data[] を { secretKey, key, property } の列で返す（この 1 ファイルの字面に足りる最小の読み）。 */
 function externalSecretData(text) {
   const body = text.split(/^\s*data:\s*$/m)[1] || '';
@@ -163,6 +187,27 @@ ok('既定（本番像）: Embedding__Voyage__ApiKey は llmgateway-service に�
 
 ok('values-local（経路B）: 同じ形で描かれ、Llm__ApiKey も残っている', () => {
   assert.deepStrictEqual(checkRender(LOCAL), []);
+});
+
+ok('鍵なしの起動の opt-out: values-local にだけ "true" で 1 回、既定（本番像）には無い（#2136）', () => {
+  assert.deepStrictEqual(checkOptOut(DEFAULT, false), []);
+  assert.deepStrictEqual(checkOptOut(LOCAL, true), []);
+});
+
+ok('変異: 既定（本番像）に opt-out を足すと赤・values-local から落とすと赤（#2136）', () => {
+  const withOptOut = JSON.stringify([
+    { name: 'Llm__ApiKey', secretKeyRef: { name: SECRET_NAME, key: 'anthropic-api-key' } },
+    { name: ENV_NAME, secretKeyRef: { name: SECRET_NAME, key: SECRET_KEY, optional: true } },
+    { name: OPT_OUT_ENV, value: 'true' },
+  ]);
+  const leaked = checkOptOut(mustRender(['--set-json', `services.llmgateway.extraEnv=${withOptOut}`]), false);
+  assert.ok(leaked.some((e) => /本番像の描画に現れた/.test(e)), leaked.join('\n'));
+  const withoutOptOut = JSON.stringify([
+    { name: 'Llm__ApiKey', secretKeyRef: { name: SECRET_NAME, key: 'anthropic-api-key' } },
+    { name: ENV_NAME, secretKeyRef: { name: SECRET_NAME, key: SECRET_KEY, optional: true } },
+  ]);
+  const dropped = checkOptOut(mustRender(['-f', VALUES_LOCAL, '--set-json', `services.llmgateway.extraEnv=${withoutOptOut}`]), true);
+  assert.ok(dropped.some((e) => /出現が 0 回/.test(e)), dropped.join('\n'));
 });
 
 ok('ExternalSecret のキーは anthropic・openai・voyage の 3 つちょうどで、voyage-api-key は同じ KV の同名プロパティを読む', () => {

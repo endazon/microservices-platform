@@ -374,7 +374,7 @@ ESO を使わないときは、起動器が Secret `platform-infra/rabbitmq-user
 | `WIKIJS_DB_PASSWORD` | `microservices-platform/wikijs-db.password` | `kp` | Wiki.js DB |
 | `WIKIJS_SYNC_APIKEY` | `microservices-platform/wikijs-sync.apiKey` | 空→**bootstrap が発行**（#1108） | WikiService→Wiki.js 同期。**明示指定が無ければ `deploy/local/wikijs-setup/bootstrap.sh` が Wiki.js に発行させて書き戻す**。up の再実行では既存値を保つ（空で潰さない） |
 | `WIKIJS_ADMIN_PASSWORD` | `microservices-platform/wikijs-admin.password` | **無し（乱数生成）** | Wiki.js の管理者（#1108 / [IADR-0327](../../.ai-context/adr/IADR-0327_wikijs-setup-bootstrap.md)）。**dev 既定文字列を置かない** —— エッジに露出する実ログイン口である |
-| `ANTHROPIC_API_KEY` | `microservices-platform/llm-provider-credentials` | 空=呼ばない | MSP LLM Gateway（values-local が `Llm__ApiKey` へ配線） |
+| `ANTHROPIC_API_KEY` | `microservices-platform/llm-provider-credentials` | 空=呼ばない | MSP LLM Gateway（values-local が `Llm__ApiKey` へ配線）。鍵が空でも起動するのは values-local が `Llm__AllowMissingApiKey=true` を置くためで、本番 chart の既定では空の鍵で起動が止まる（#2136 / [IADR-0641](../../.ai-context/adr/IADR-0641_llm-api-key-fail-fast.md)） |
 | `VOYAGE_API_KEY` | `microservices-platform/llm-provider-credentials.voyage-api-key` | 空=埋め込みが失敗する（public / internal は語彙索引へ全文だけで入り、鍵の投入後に自動で埋め直される。#1908） | MSP LLM Gateway の埋め込み（values-local が `Embedding__Voyage__ApiKey` へ配線。#1764）。**値を env で渡すより Runbook の手順で Vault へ入れる**（[埋め込みの鍵の配線](../../docs/operations/voyage-embedding-key-runbook.md)） |
 
 > `llm-provider-credentials` は values-local の `services.llmgateway.extraEnv` で LlmGateway の

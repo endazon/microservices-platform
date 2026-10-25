@@ -850,6 +850,9 @@ services:
       # readiness は 8080 のまま（1 プロセスが両ポートを起動時に bind する）。
       Grpc__Port: "8081"
       Llm__ApiKey: ${ANTHROPIC_API_KEY:-}
+      # FR-11 / IADR-0641 (#2136): 鍵が空でも起動させる明示の opt-out（compose は鍵なしで動かす前提）。
+      # 無いと、Claude のエンドポイントが有効で鍵が空のゲートウェイは起動時に止まる。鍵を入れても害は無い。
+      Llm__AllowMissingApiKey: "true"
       # ADR-0010 / ADR-0025 / IADR-0022 / IADR-0101: 既定は claude-opus-5-5
       # （定型 sonnet・haiku は用途別ルーティング）
       # ADR-0038 / #850: 最難関 analysis も Opus。claude-fable-5（後継 claude-fable-5-1 も）は非 ZDR のため
