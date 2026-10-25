@@ -16,5 +16,6 @@ public sealed class WolverineIngestionCompletedPublisher(IMessageBus bus) : IIng
 {
     public Task PublishCompletedAsync(
         Guid documentId, int chunkCount, DateTimeOffset completedAt, CancellationToken ct = default) =>
+        // `ct` はここでは効かない: Wolverine の `IMessageBus.PublishAsync` は取り消しを受け取らない（ポートの形を他の発行口と揃えるために残す）。
         bus.PublishAsync(new IngestionCompleted(documentId, chunkCount, completedAt)).AsTask();
 }
