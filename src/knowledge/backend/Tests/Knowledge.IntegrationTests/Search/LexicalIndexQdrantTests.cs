@@ -86,7 +86,7 @@ public sealed class LexicalIndexQdrantTests : IAsyncLifetime
         await writer.UpsertLexicalChunkAsync(chunkId, documentId, "人事の文書",
             $"本文には {PresentTerm} と ABAC-42 が含まれる。", 0, "storage://knowledge/hr.md",
             new Dictionary<string, string> { ["confidentiality"] = "restricted", ["department"] = "hr" },
-            ["人事"], DateTimeOffset.UtcNow, ["bob"], ct);
+            ["人事"], DateTimeOffset.UtcNow, ["bob"], ct: ct);
 
         var reader = NewReader(LexicalCollection);
         var hits = await reader.KeywordSearchAsync(PresentTerm, 10, ScopeFilter.Empty, ct);
